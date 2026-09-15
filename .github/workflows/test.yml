@@ -139,6 +139,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm --prefix frontend ci
       - run: npm --prefix frontend run typecheck
+      - run: npm --prefix frontend run lint
       - run: npm --prefix frontend test
       - run: npm --prefix frontend run build
       # 产物提交进 Git，因为运行时和打包都没有 Node（ADR-0022）。一旦源码改了却忘了

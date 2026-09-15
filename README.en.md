@@ -121,13 +121,13 @@ The repository distributes no media, covers, thumbnails, metadata or site datase
 
 ## Development and contributions
 
-The backend is a FastAPI modular monolith with SQLite as the truth store. The frontend migrates page by page to Vite, TypeScript and Preact islands.
+The backend is a FastAPI modular monolith with SQLite as the truth store. The frontend migrates page by page to React, Tailwind v4 and BoardUI source; the existing Preact islands are a transitional layer.
 Python serves existing pages and committed build output from `web/`; runtime requires neither Node nor a CDN.
 
 | Path | Contents |
 | --- | --- |
 | `src/peach/` | API, media, ledger and source adapters |
-| `frontend/` | TypeScript, Preact islands and Vite build |
+| `frontend/` | TypeScript, React with BoardUI source, transitional Preact islands, Vite build |
 | `web/` | Pages, styles, self-hosted dependencies and `web/dist/` output |
 | `migrations/` | Versioned SQLite migrations |
 | `scripts/`, `tests/` | Development entry points, maintenance scripts and isolated tests |

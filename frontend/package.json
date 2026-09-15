@@ -10,6 +10,7 @@
     "dev:react": "vite build -c vite.react.config.ts --watch",
     "build": "vite build && vite build -c vite.react.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p src/react",
+    "lint": "oxlint -c .oxlintrc.json src/react",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "node --test --test-reporter=tap \"e2e/**/*.test.ts\""
@@ -25,11 +26,13 @@
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
+    "@shadcn/lint": "0.1.0",
     "@tailwindcss/vite": "4.3.3",
     "@types/d3-sankey": "0.12.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "happy-dom": "20.14.0",
+    "oxlint": "1.83.0",
     "playwright-core": "1.63.0",
     "tailwindcss": "4.3.3",
     "typescript": "7.0.2",

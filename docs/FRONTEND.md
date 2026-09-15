@@ -1,9 +1,9 @@
 # 前端 island 层
 
 Peach 的界面正在从 `web/app.js`（无构建、6.7k 行的原生 ES module）逐页迁到
-Vite + TypeScript + Preact。迁移方式是 strangler：**遗留路由继续拥有外壳和每一个页面**，
-一页被重写成 island 之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
-为什么这么做、以及不做整体重写的理由见 `docs/adr/0022-frontend-vite-preact-strangler.md`。
+React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层。迁移方式是 strangler：
+**遗留路由继续拥有外壳和每一个页面**，一页被重写之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
+为什么这么做、以及不做整体重写的理由见 `docs/adr/0031-frontend-react-boardui-tailwind.md`。
 
 只有一条不可变的约束：**运行时没有 Node**。Python 服务、PyInstaller 包和 macOS 上的
 检出都直接读 `web/`，所以构建产物提交进 Git，不用任何 CDN。
@@ -118,6 +118,14 @@ vitest 转译时只剥掉类型、不做检查，所以 `web` 域另跑一遍 `n
 浏览器取本机 Google Chrome（`PEACH_E2E_CHROME` 可指定），短片由 ffmpeg 编码；缺 npm、
 `playwright-core`、ffmpeg 或 Chrome 时显式跳过。声明根是 Windows 形态，目前只在 Windows 上执行。界面验收里发现的同类问题，
 先在这里补一条用例再修。
+
+设计决定另有 `frontend/e2e/design.test.ts`，读 `getComputedStyle` 断言用户定过的外观：React 输入框不带旧焦点环、
+React 子树读到 BoardUI 的 token 原值、持久警示是状态色块。页面迁到 React 时，旧的源码字符串断言按 ADR-0031
+分三类再删：设计决定进这里或 lint，行为进 vitest，布局与运行期进冒烟。
+
+`npm --prefix frontend run lint` 检查 `src/react/` 的设计系统规则，`web` 域与 CI 都跑。`no-restyle` 报在
+BoardUI 组件上的间距或外观，处理办法是在组件外面套一层普通元素，不给规则加例外。
+`src/react/boardui/` 只加不改，`UPSTREAM.sha256` 记着复制时每个文件的哈希，由 `tests/test_frontend_build.py` 比对。
 
 ## 挂载契约
 
@@ -236,6 +244,7 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `vitest` | 前端测试运行器。与 Vite 共用同一份配置解析，不必再维护第二套转译 |
 | `happy-dom` | vitest 的 DOM 环境。断言的是真实 DOM 结构，比 jsdom 轻且启动快 |
 | `playwright-core` | `frontend/e2e/` 的浏览器驱动，只驱动本机 Chrome、不下载浏览器。happy-dom 没有布局，横向溢出、等待态卡住这类事实只有真浏览器测得出；不用 `@playwright/test`，用例跑在 `node:test` 上，与 docu.md（`markdown-viewer/markdown-viewer-extension` 的 `test/helpers/browser-render-harness.ts`）同一做法 |
+| `oxlint`、`@shadcn/lint` | `npm run lint`：Oxlint 加载 `@shadcn/lint` 的六条规则，只查 `src/react/`、排除 `boardui/`。不用 ESLint，因为 `@typescript-eslint/parser` 的 peer 只到 TypeScript 6.0；`eslint` 作为 `@shadcn/lint` 的 peer 会装进来，不调用 |
 | `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上，Preact 的兼容层不在 React Aria 的支持范围内 |
 | `react-aria-components` | BoardUI 输入框与勾选框的交互和无障碍语义：标签关联、键盘操作、`aria-invalid` |
 | `tailwind-merge` | BoardUI 的 `cx()` 合并类名时去掉互相冲突的工具类 |

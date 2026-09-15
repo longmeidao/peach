@@ -7,6 +7,9 @@
 `@/utils/cx` 因此不用改写。这里的文件不做修改：Peach 需要不同的组合或外观时，
 在 `../settings/` 这类 Peach 自己的目录里组合，差异写进下表。
 
+`UPSTREAM.sha256` 记着复制时每个文件的 SHA-256，`tests/test_frontend_build.py` 逐文件比对：
+改了副本、多出没登记的文件都会红。升级上游时重新复制、重算对应行，并更新下表的条目哈希。
+
 | 条目 | 注册表 JSON 的 SHA-256 | 复制的文件 |
 | --- | --- | --- |
 | `theme` | `ee1cb0e973b108b90fd4999796a595fff6a1e5e453e115a6966c43b6e53ed428` | `styles/theme.css` |

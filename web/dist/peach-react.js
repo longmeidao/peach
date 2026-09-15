@@ -13447,8 +13447,8 @@ function Ja({ initial: e, receipt: t }) {
 		noValidate: !0,
 		onSubmit: x,
 		className: "flex w-full flex-col gap-2",
-		children: [/* @__PURE__ */ (0, P.jsx)(Et, { children: "访问密码" }), /* @__PURE__ */ (0, P.jsxs)(Tt, {
-			className: "gap-4 py-4 pr-3",
+		children: [/* @__PURE__ */ (0, P.jsx)(Et, { children: "访问密码" }), /* @__PURE__ */ (0, P.jsx)(Tt, { children: /* @__PURE__ */ (0, P.jsxs)("div", {
+			className: "flex flex-col gap-4 py-4 pr-3",
 			children: [
 				S ? /* @__PURE__ */ (0, P.jsx)("p", {
 					className: "text-body-2-regular text-text-secondary",
@@ -13525,7 +13525,7 @@ function Ja({ initial: e, receipt: t }) {
 					})]
 				}) : null
 			]
-		})]
+		}) })]
 	});
 }
 //#endregion

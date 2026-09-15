@@ -1394,20 +1394,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(labels, heads, "堆叠时的列名要和表头写的是同一串字")
         self.assertIn(".cloudguide-table tbody td::before{content:attr(data-label)", self.css)
 
-    def test_having_no_access_password_is_stated_as_a_warning(self):
-        """没设访问密码画成警示 Note，不是一行灰色小字。
-
-        这说的是这台机器当前的状态：同一个网里任何一台设备打开地址就进了馆藏。
-        灰色小字和旁边「至少 8 个字符」那种填表提示长得一模一样，扫一眼就滑过去。
-        """
-        access = (Path(__file__).resolve().parents[1]
-                  / "frontend/src/react/settings/access-settings.tsx").read_text(encoding="utf-8")
-        note = access[access.index("state.mode === 'open'\n"):][:200]
-        self.assertIn('<Warning label="未设置访问密码">', note)
-        warning = access[access.index("function Warning("):access.index("export function AccessSettings(")]
-        self.assertIn('role="note"', warning)
-        self.assertIn("bg-status-yellow-background", warning)
-
     def test_a_spinner_announces_the_work_and_not_the_button_it_sits_in(self):
         """`spinnerHtml()` 的名字说正在做什么，不复读按钮自己的名字。
 

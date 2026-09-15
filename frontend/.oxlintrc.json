@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "off"
+  },
+  "jsPlugins": ["@shadcn/lint"],
+  "ignorePatterns": ["src/react/boardui/**"],
+  "settings": {
+    "shadcn": {
+      "ui": "@/components",
+      "note": "BoardUI 源码在 src/react/boardui/，只加不改；设计规则与例外见 docs/FRONTEND.md。"
+    }
+  },
+  "rules": {
+    "shadcn/no-restyle": ["error", { "allow": ["layout"] }],
+    "shadcn/no-raw-colors": ["error", {
+      "allow": ["text-body-*", "text-caption-*", "text-display-*", "text-headline-*", "text-large-title-*", "text-title-*"]
+    }],
+    "shadcn/no-arbitrary-values": "error",
+    "shadcn/no-inline-styles": "error",
+    "shadcn/no-unknown-classes": "error",
+    "shadcn/require-static-classes": "error"
+  }
+}

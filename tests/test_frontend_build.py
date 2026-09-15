@@ -15,6 +15,7 @@ ADR-0022 的取舍是「构建产物进 Git」：运行时的 Python 服务、Py
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -191,6 +192,31 @@ class ReactBundleTests(unittest.TestCase):
         self.assertIn("root.classList.toggle('dark',dark)", app_js)
 
 
+class BoardUiUpstreamTests(unittest.TestCase):
+    """`frontend/src/react/boardui/` 是 BoardUI 注册表源码的逐字副本，只加不改（ADR-0031）。
+
+    `UPSTREAM.sha256` 记下复制时每个文件的 SHA-256。改了副本、多出没登记的文件、登记了却
+    删掉，都在这里红。比的是登记的快照而不是线上注册表：上游随时会改，测试不能联网。
+    升级上游时重新复制文件、重算对应行，并更新 `ORIGIN.md` 的条目哈希。
+    """
+
+    BOARDUI = FRONTEND / "src" / "react" / "boardui"
+    RECORDS = ("ORIGIN.md", "UPSTREAM.sha256")
+
+    def test_the_copied_sources_match_their_recorded_upstream_hashes(self):
+        recorded = {}
+        for line in (self.BOARDUI / "UPSTREAM.sha256").read_text(encoding="utf-8").splitlines():
+            digest, path = line.split("  ", 1)
+            recorded[path] = digest
+        present = {file.relative_to(self.BOARDUI).as_posix(): file for file in self.BOARDUI.rglob("*")
+                   if file.is_file() and file.name not in self.RECORDS}
+        self.assertEqual(sorted(present), sorted(recorded),
+                         "boardui/ 的文件要与 UPSTREAM.sha256 一一对应；Peach 自己的组合放在 boardui/ 外面")
+        for path, file in present.items():
+            self.assertEqual(hashlib.sha256(file.read_bytes()).hexdigest(), recorded[path],
+                             f"boardui/{path} 与复制时的上游内容不同；外观差异在 boardui/ 外面组合")
+
+
 class FrontendManifestTests(unittest.TestCase):
     """依赖清单和根 `package.json` 是两份，各自的口径都要精确。"""
 
@@ -231,7 +257,8 @@ class FrontendManifestTests(unittest.TestCase):
         """
         workflow = (ROOT / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
         for step in ("actions/setup-node", "npm --prefix frontend ci",
-                     "npm --prefix frontend run typecheck", "npm --prefix frontend test",
+                     "npm --prefix frontend run typecheck", "npm --prefix frontend run lint",
+                     "npm --prefix frontend test",
                      "npm --prefix frontend run build",
                      "git add --intent-to-add -- web/dist",
                      "git diff --exit-code -- web/dist"):
@@ -366,9 +393,10 @@ class SharedStateContractTests(unittest.TestCase):
 
 
 class VitestTests(unittest.TestCase):
-    """vitest 与 tsc 走同一个测试入口，但缺 Node 时跳过而不是红。
+    """vitest、tsc 与 lint 走同一个测试入口，但缺 Node 时跳过而不是红。
 
-    两者互不覆盖：vitest 经 Vite 转译时只剥掉类型、不做检查，类型错误照样跑绿。
+    三者互不覆盖：vitest 经 Vite 转译时只剥掉类型、不做检查，类型错误照样跑绿；
+    裸色值、任意值和在 BoardUI 组件上改样式，类型和行为测试都看不见。
     """
 
     def _npm(self, tool: str, package: str) -> str:
@@ -386,6 +414,20 @@ class VitestTests(unittest.TestCase):
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=str(FRONTEND), check=False)
         self.assertEqual(completed.returncode, 0, f"{completed.stdout}\n{completed.stderr}")
+
+    def test_the_react_sources_follow_the_design_system_lint(self):
+        """`@shadcn/lint` 挡住裸色值、任意值、内联样式和在 BoardUI 组件上改样式（ADR-0031）。"""
+        npm = self._npm("lint", "oxlint")
+        completed = subprocess.run(
+            [npm, "--prefix", str(FRONTEND), "run", "lint", "--silent", "--", "--format=json"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=str(FRONTEND), check=False)
+        output = f"{completed.stdout}\n{completed.stderr}"
+        self.assertEqual(completed.returncode, 0, output)
+        report = json.loads(completed.stdout)
+        self.assertEqual(report["diagnostics"], [], output)
+        # 没有问题时 Oxlint 什么都不打印，路径写错查了 0 个文件也照样退出 0。
+        self.assertGreater(report["number_of_files"], 0, output)
 
     def test_the_island_suite_passes(self):
         npm = self._npm("vitest", "vitest")
