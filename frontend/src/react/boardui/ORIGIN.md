@@ -12,7 +12,7 @@
 
 | 条目 | 注册表 JSON 的 SHA-256 | 复制的文件 |
 | --- | --- | --- |
-| `theme` | `ee1cb0e973b108b90fd4999796a595fff6a1e5e453e115a6966c43b6e53ed428` | `styles/theme.css` |
+| `theme` | `436353b1f8466dd56adf3909cb7a871288e0d6f5b067cf03a2f860375d2a013e` | `styles/theme.css` |
 | `typography` | `5b7eca25350829755eb15cb474ab009fd1f8b929e62d54182f648b4f2e97bf8e` | `styles/typography.css` |
 | `cx` | `d118c2ace1454a92fbfb69ad0d03b2916fece06ef5102ae26dcedaa6da2e390c` | `utils/cx.ts` |
 | `button` | `89cc2c176d1d94d481bbfc6e34f233ccf109c10d319533cc7c1e98923b6e7d69` | `components/base/buttons/button.tsx` |

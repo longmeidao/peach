@@ -64,6 +64,8 @@
    * Figma name: radius/2lg.
    * --------------------------------------------------------------------------*/
   --radius-2lg: 10px;
+  /* Figma `radius/2,5xl`: kanban columns and other large inset panels. */
+  --radius-2-5xl: 20px;
   --radius-notification-card: 10px;
 
   /* ----- Shadows -------------------------------------------------------------
