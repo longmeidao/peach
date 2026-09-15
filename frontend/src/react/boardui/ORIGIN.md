@@ -47,3 +47,7 @@
 | 汇总行与卡片网格 | `../quality-goals/quality-goals-page.tsx` 的汇总一行用 `title-2-semibold` 配正文字阶排；网格取 `../styles.css` 的 `card-grid`，封面取 `w-card-cover` 与 `aspect-card-cover` | 注册表里没有列表页的汇总行；`auto-fill` 网格与定宽封面在工具类里没有对应档位，写成 `@utility` 与 `@theme` 而不是任意值 |
 | 折叠 | `../settings/section.tsx` 的 `Disclosure` 用原生 `details`，开合调 `/js/ui-components.js` 的 `setCollapseOpen`，高度按共用 Collapse 的 `.fcollapse` 过渡（`.2s ease-in-out`） | 注册表里没有折叠组件；原生 `details` 不过渡高度 |
 | 图标选择 | `../settings/library-icon-picker.tsx` 用 React Aria 的 `Popover`、`RadioGroup` 组合，面板取 `menu-styles.ts` 的外观 | 注册表里没有网格单选的弹出面板 |
+| 二选一切换 | `../scraping/scraping-page.tsx` 提供 Cookie 的两种方式用 React Aria 的 `RadioGroup`，选中项取 `background-tertiary-default` 配 `text-primary` | 注册表里 `tabs` 是页面级导航、`segmented-control` 没有条目；这里切的是同一个字段的两种填法，不是两块内容 |
+| 选文件 | 同上：原生 `input[type=file]` 只留着接文件，点它的是一颗 `secondary` 按钮，选中的文件名跟在旁边 | 注册表里没有文件选择组件；原生控件的按钮长相由浏览器决定，改不动 |
+| 分区标题旁的次要内容 | `../settings/section.tsx` 的 `Section` 收一个 `aside`，标题占剩下的宽度、它靠右（来源站点的站标与登录地址） | `SettingsSectionLabel` 只画标题；把外链塞进标题里会进无障碍名称 |
+| 站点标识 | `../scraping/scraping-page.tsx` 的 `SiteMark` 直接画 `<img>` 取服务端的 `/site-mark`，取不到就把节点摘掉 | `../settings/section.tsx` 的 `SourceMark` 只认雪碧图字形与内嵌 PNG，采集来源的图标是一条服务端地址 |

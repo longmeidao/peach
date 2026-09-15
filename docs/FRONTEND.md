@@ -127,7 +127,7 @@ CI 由 `web-e2e` job 在 `windows-latest` 上执行 `web` 域，矩阵扩成全�
 先在这里补一条用例再修。
 
 设计决定另有 `frontend/e2e/design.test.ts`，读 `getComputedStyle` 断言用户定过的外观：React 输入框不带旧焦点环、
-React 子树读到 BoardUI 的 token 原值、持久警示是状态色块。页面迁到 React 时，旧的源码字符串断言按 ADR-0031
+React 子树读到 BoardUI 的 token 原值、持久警示是状态色块、一张卡底下只有写入那一颗是主按钮。页面迁到 React 时，旧的源码字符串断言按 ADR-0031
 分三类再删：设计决定进这里或 lint，行为进 vitest，布局与运行期进冒烟。
 
 `npm --prefix frontend run lint` 检查 `src/react/` 的设计系统规则，`web` 域与 CI 都跑。`no-restyle` 报在
@@ -192,15 +192,24 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
 
 ## 迁移下一个页面
 
-整页归 React（ADR-0031），`frontend/src/islands/` 不再新增文件。先挑一个**数据来自单个
-`/api/...` GET、容器不与别人共用、写操作少**的页面。
+整页归 React（ADR-0031），`frontend/src/islands/` 不再新增文件。先挑一个**容器不与别人
+共用**的页面；写操作和后台任务的写法已经定型，见下面第 2 条。
 
 1. `frontend/src/react/<page>/<page>.ts`：端点常量、`queryKey`、数据类型和纯折算函数，
    外加一个 `prefetch<Page>(signal)`——`queryClient.fetchQuery` 包住 `src/api.ts` 的
-   `apiGet`，信号透到真正的 `fetch` 上。一页只用一个 `queryKey`：一屏里的几段要是分开
-   取，就会出现这一段是新的、那一段是旧的。
+   `apiGet`，信号透到真正的 `fetch` 上。同一份真相只用一个 `queryKey`：一屏里的几段要是
+   分开取，就会出现这一段是新的、那一段是旧的。节律不同的两份才分键——来源和凭证页的
+   来源列表由用户改，抓封面的任务状态由后台推进，合成一个键的话每两秒的一轮轮询都会把
+   用户正在填的那张卡重画一遍。
 2. `frontend/src/react/<page>/<page>-page.tsx`：组件用 `useQuery` 读同一个 `queryKey`，
    要轮询就写 `refetchInterval`，间隔按上一次拿到的内容算，不另起 `setInterval`。
+   写操作是 `useMutation`，不进 Query 的缓存节律：成功后用 `setQueryData` 把服务端回的
+   那一条换进列表，而不是把整页重取一遍——用户可能正在填同一屏的另一张卡；失败只在卡内
+   留一句原因，缓存里的上一份不动，刚填的内容也不清。同一张卡上互斥的动作共用一个
+   `isPending`，进另一个动作前 `reset()` 掉上一个的结果，屏幕上不会同时挂着两次的结论。
+   跟后台任务时 `refetchInterval` 按状态开关（`running` 才问），并且**首屏读到的旧结果
+   不冒充新结果**：任务关掉页面照样在跑，状态里常年躺着上一趟的回执，只有本次启动过、
+   或者本次亲眼见过它在跑，终态才画成结果、发一次 toast。
 3. `frontend/src/react/entry.tsx`：在 `pages` 里登记 `{prefetch, mount: mounter(Page)}`，
    签名写进 `bundle.d.ts` 的 `ReactPages`；`frontend/src/islands.ts` 里 `IslandContracts`
    的 `props` 取 bundle 的类型、`data` 写 `null`，`REGISTRY` 登记 `{react: '<page>'}`。
@@ -211,6 +220,8 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
    `@theme` 或 `@utility`，类名照常由 Tailwind 生成；lint 不收任意值。
 5. `frontend/test/react/<page>.test.tsx`：假 fetch 加 `test/react/render.tsx` 的挂载助手，
    断言结构、请求次数、轮询节律和失败时留下什么，用例之间 `queryClient.clear()`。
+   有写操作就再断言交上去的请求体、成功后页面上不再留着秘密输入、失败后输入原样还在；
+   有后台任务就用假时钟推到终态，看回执只发一次、卸载之后不再问。
    外观决定进 `frontend/e2e/design.test.ts`：`page.route` 造出真实数据里凑不齐的状态，
    断言读 `getComputedStyle`。
 6. `web/app.js` 的挂载块不变；`web/css/` 与 `web/board.css` 里只服务这一页正文的规则删掉，
@@ -255,7 +266,7 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 728 kB（gzip 189.2 kB），
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 743 kB（gzip 193.2 kB），
 只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 85 kB（gzip 13.3 kB），
 由 `index.html` 在旧样式表之前引入。它的 `build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
