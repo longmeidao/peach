@@ -54,7 +54,9 @@ PAGE_LIMIT = 4 * 1024 * 1024
 IMAGE_LIMIT = 16 * 1024 * 1024
 
 #: 同一部作品在多家店铺上架时，资料先取 FANZA 那条：它与 r18.dev 同源，写法和账本最接近。
-AVBASE_PRODUCT_ORDER = ("fanza", "mgs", "duga")
+#: 店铺名用 AVBase 自己在 `products[].source` 里写的值（2026-09-16 实测 `fanza`、
+#: `mgstage`、`duga`）；写错的名字不会报错，只是那家店排到末位。
+AVBASE_PRODUCT_ORDER = ("fanza", "mgstage", "duga")
 #: 图源按店铺算，不按主机名：`pics.dmm.co.jp` 与 `awsimgsrc.dmm.co.jp` 是同一家的两条路径。
 IMAGE_ORIGINS = (("dmm", ("dmm.co.jp", "dmm.com")), ("duga", ("duga.jp",)),
                  ("mgstage", ("mgstage.com",)), ("javbus", ("javbus.com",)),
@@ -97,19 +99,25 @@ def _named(value: object) -> str:
     return str(value.get("name") or "").strip() if isinstance(value, dict) else ""
 
 
-def _own_product(code: str, work: dict, product: dict) -> bool:
-    """这条商品卖的是本作，不是收录本作的合集。"""
-    if str(product.get("title") or "").strip() == str(work.get("title") or "").strip():
-        return True
-    return identifies_code(code, {"content_id": product.get("product_id")})
-
-
 def _avbase_products(code: str, work: dict) -> list[dict]:
-    """本作自己的商品条目，按 `AVBASE_PRODUCT_ORDER` 排。"""
+    """本作自己的商品条目，按 `AVBASE_PRODUCT_ORDER` 排。
+
+    商品号认得出这个番号的说了算，标题相等只是退路。AVBase 的作品标题取自名寄せ里的
+    某一件商品，而那一件可能是收录本作的合集：259LUXU-1514 的作品标题就是 FANZA 合集
+    `118sng013` 的『FIRST CLASS ファーストクラス File/006』，按标题相等收下它，片名、
+    厂牌、系列和发行日就全成了那张合集的（正确的是 MGStage 那条『ラグジュTV 1485』，
+    2021-11-19）。一件商品号都认不出时才比标题——DUGA 的 `prestige-6584` 这类自编号
+    与番号无关，那时只有标题能认。
+    """
+    products = [product for product in work.get("products") or [] if isinstance(product, dict)]
+    named = [product for product in products
+             if identifies_code(code, {"content_id": product.get("product_id")})]
+    if not named:
+        title = str(work.get("title") or "").strip()
+        named = [product for product in products
+                 if str(product.get("title") or "").strip() == title]
     rank = {source: index for index, source in enumerate(AVBASE_PRODUCT_ORDER)}
-    return sorted((product for product in work.get("products") or []
-                   if isinstance(product, dict) and _own_product(code, work, product)),
-                  key=lambda product: rank.get(product.get("source"), len(rank)))
+    return sorted(named, key=lambda product: rank.get(product.get("source"), len(rank)))
 
 
 def _avbase_covers(code: str, products: list[dict]) -> list[str]:
@@ -139,7 +147,8 @@ def avbase_work(transport, code: str, *, deadline: float | None = None) -> dict:
     covers = _avbase_covers(code, products)
     key = f"{work['prefix']}:{work['work_id']}" if work.get("prefix") else str(work.get("work_id"))
     return dict(id=str(work.get("work_id") or code), source_url=AVBASE_WORK.format(key=urllib.parse.quote(key, safe=":")),
-                title=str(work.get("title") or "").strip(),
+                title=first(lambda product: str(product.get("title") or "").strip())
+                or str(work.get("title") or "").strip(),
                 actresses=[{"japanese_name": _named(actor)} for actor in work.get("actors") or [] if _named(actor)],
                 maker=first(lambda product: _named(product.get("maker"))),
                 label=first(lambda product: _named(product.get("label"))),

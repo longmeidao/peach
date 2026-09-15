@@ -38,7 +38,7 @@ AVBASE_DATA = {"props": {"pageProps": {"works": [
         # 收录本作的合集：标题和番号都对不上，封面和厂牌都不该带进来。
         {"source": "duga", "title": "総集編 8時間", "product_id": "prestige-9999",
          "image_url": "https://pic.duga.jp/unsecure/prestige/9999/noauth/jacket.jpg", "maker": {"name": "別メーカー"}},
-        {"source": "mgs", "title": TITLE, "product_id": "ABW-358", "image_url": MGS_COVER,
+        {"source": "mgstage", "title": TITLE, "product_id": "ABW-358", "image_url": MGS_COVER,
          "maker": {"name": "プレステージ"}, "date": "Tue May 23 2023 09:00:00 GMT+0900"},
         {"source": "fanza", "title": TITLE, "product_id": "118abw358", "image_url": DMM_COVER,
          "maker": {"name": "プレステージ"}, "label": {"name": "ABSOLUTELY WONDERFUL"},
@@ -46,6 +46,24 @@ AVBASE_DATA = {"props": {"pageProps": {"works": [
     ]},
 ]}}}
 AVBASE_SEARCH = "https://www.avbase.net/works?q=ABW-358"
+#: 形状取自 259LUXU-1514 的实测页：名寄せ的作品标题是 FANZA 合集那一件的标题，
+#: 单卖本作的只有 MGStage 那条。
+LUXU_TITLE = "ラグジュTV 1485 綺麗で笑顔が素敵な看護師さんが「普通のセックスでは物足りない…」と刺激を求めて登場！"
+LUXU_COVER = "https://image.mgstage.com/images/luxutv/sp/259luxu/1514/pake-03_sp-259luxu-1514.jpg"
+LUXU_DATA = {"props": {"pageProps": {"works": [
+    {"work_id": "259LUXU-1514", "title": "FIRST CLASS ファーストクラス File/006",
+     "actors": [{"name": "東條なつ"}], "products": [
+         {"source": "fanza", "title": "FIRST CLASS ファーストクラス File/006", "product_id": "118sng013",
+          "image_url": "https://pics.dmm.co.jp/mono/movie/adult/118sng013/118sng013pl.jpg",
+          "maker": {"name": "プレステージ"}, "label": {"name": "SINGLE"},
+          "series": {"name": "FIRST CLASS ファーストクラス"},
+          "date": "Fri Aug 16 2024 09:00:00 GMT+0900"},
+         {"source": "mgstage", "title": LUXU_TITLE, "product_id": "259LUXU-1514", "image_url": LUXU_COVER,
+          "maker": {"name": "ラグジュTV"}, "series": {"name": "ラグジュTV"},
+          "date": "Fri Nov 19 2021 09:00:00 GMT+0900"},
+     ]},
+]}}}
+LUXU_SEARCH = "https://www.avbase.net/works?q=259LUXU-1514"
 JAVBUS_WORK = "https://www.javbus.com/ABW-358"
 JAVDB_SEARCH = "https://javdb.com/search?q=ABW-358&f=all"
 JAVDB_DETAIL = "https://javdb.com/v/Zb7mX?locale=zh"
@@ -91,6 +109,13 @@ class CommunityCatalogTests(unittest.TestCase):
         self.assertEqual(work["actresses"], [{"japanese_name": "涼森れむ"}])
         self.assertEqual(work["cover_urls"], [DMM_COVER, MGS_COVER])
         self.assertEqual(work["source_url"], "https://www.avbase.net/works/prestige:ABW-358")
+
+    def test_avbase_keeps_the_shop_listing_whose_product_number_is_this_code(self):
+        """合集顶着作品标题时也不算本作：商品号认得出番号的那条说了算。"""
+        work = avbase_work(serve({LUXU_SEARCH: avbase_page(LUXU_DATA)}), "259LUXU-1514")
+        self.assertEqual((work["title"], work["maker"], work["series"], work["release_date"]),
+                         (LUXU_TITLE, "ラグジュTV", "ラグジュTV", "2021-11-19"))
+        self.assertEqual(work["cover_urls"], [LUXU_COVER])
 
     def test_avbase_tells_an_unknown_code_apart_from_a_page_it_cannot_read(self):
         empty = {"props": {"pageProps": {"works": []}}}
