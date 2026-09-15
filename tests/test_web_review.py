@@ -1472,16 +1472,45 @@ class ReviewQueueTests(unittest.TestCase):
         })
         self.assertEqual(result["applied_assets"], 0)
 
-    def test_code_creator_candidates_reach_the_review_page(self):
-        fields = ["entity_id", "creator", "verdict", "identity", "assets",
-                  "sample_path", "code_action", "reason"]
-        self._csv("code-creator-review.csv", fields, [
-            {"entity_id": "6869", "creator": "banbi_555", "verdict": "存疑",
-             "identity": "BANBI-555", "assets": "69", "sample_path": "A:/x.mp4",
-             "code_action": "", "reason": "名字像番号，但目录内没有同番号文件"}])
+    def _code_creator(self, entity_id, name, assets):
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,"
+                    "created_at,updated_at) VALUES(?,'creator',?,?,'2026-01-01','2026-01-01')",
+                    (entity_id, name, name.casefold()))
+        for asset_id, asset_name, path in assets:
+            con.execute("INSERT INTO asset(id,location,path,name,medium,creator) "
+                        "VALUES(?,'local',?,?,'video',?)", (asset_id, path, asset_name, name))
+            con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                        "VALUES(?,?,'creator','legacy:asset',1.0)", (asset_id, entity_id))
+        con.commit(); con.close()
+
+    def test_code_creator_queue_is_computed_from_the_ledger(self):
+        """这一类没有候选文件，队列按当前账本现算。
+
+        读 CSV 那份是跑脚本当时的快照：44 行里 27 行的实体后来被清掉了，点进去无事
+        可做，而真正该看的只有 24 条。判据的输入本来就只有账本，没有要留存的外部证据。
+        """
+        self._code_creator(6869, "banbi_555", [
+            (101, "18歳Eカップ彼氏持ち美女.mp4", r"A:\Pack From Shared\pen\banbi_555\18歳.mp4")])
         rows = rm_review.q_review(self.contract)["sections"]["code_creators"]
-        self.assertEqual(rows[0]["item_key"], "6869")
+        self.assertEqual([row["item_key"] for row in rows], ["6869"])
+        self.assertEqual(rows[0]["verdict"], "存疑")
         self.assertIn("没有同番号文件", rows[0]["reason"])
+
+    def test_a_cleaned_up_creator_leaves_the_queue_on_its_own(self):
+        """清理过的行不该靠重跑脚本刷 CSV 才消失。"""
+        self._code_creator(6870, "HD-abp-758", [
+            (102, "HD-abp-758.mp4", r"B:\云下载\HD-abp-758\HD-abp-758.mp4")])
+        self.assertEqual(
+            [row["item_key"] for row in
+             rm_review.q_review(self.contract)["sections"]["code_creators"]], ["6870"])
+
+        con = sqlite3.connect(self.db_path)
+        con.execute("DELETE FROM asset_entity WHERE entity_id=6870")
+        con.execute("DELETE FROM entity WHERE id=6870")
+        con.commit(); con.close()
+        self.assertEqual(
+            rm_review.q_review(self.contract)["counts"]["code_creators"], 0)
 
 
 class PerformerAvatarApplyTests(ReviewQueueTests):
