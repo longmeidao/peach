@@ -2,7 +2,7 @@
 
 ## Board 界面与数值设置
 
-- 作者别名管理复用 `.ftable` 和既有别名 API；Board Table 的公开结构与固定资源见 `BOARD_UI.md`。Data Table 的排序、分页在当前别名规模下不需要，未引入其 React Aria 与 TanStack 依赖。`frontend/src/split-action.tsx` 复用口味页分体按钮外观、共享菜单定位和键盘行为，扫描三种方式使用已有 Lucide 图标，无新增依赖。
+- 作者别名管理复用 `.ftable` 和既有别名 API；Board Table 的公开结构与固定资源见 `BOARD_UI.md`。Data Table 的排序、分页在当前别名规模下不需要，未引入其 React Aria 与 TanStack 依赖。扫描与采集那三种方式收在一颗主键加一个下拉里：触发键用 BoardUI `Button`，面板用已在用的 React Aria `Popover`，行的外观取注册表 `select` 条目带来的 `menu-styles.ts`，无新增依赖（见 `frontend/src/react/boardui/ORIGIN.md`）。
 
 - 关注列表分页复用 `pagination.ts` 的页码范围、边界裁剪与 Board 外观；默认视图按创作者组，表格按来源。批量操作复用人工复核与馆藏的 `selectiondock` 样式和 `selection.ts` 状态同步，跨页选择由来源 ID 集合管理。官方分页源码固定哈希见 `BOARD_UI.md`；沿用现有实现和 Lucide，未增加 React Aria、TanStack 或 Remix Icon 依赖。隔离样例验证了 25 位创作者、75 个来源的分页与跨页选择。
 
@@ -31,7 +31,7 @@
 - 独立包卸载复用正常托盘退出和 Windows PowerShell 助手；计划限制程序标记、数据直属目录、媒体不重叠，助手拒绝目录链接。临时程序、数据、媒体与无关文件组成的真实输入验证只删除计划内容。源码树仅提供手动卸载说明。
 - 扫描与采集统一挂在数据管理；首页进度 Banner 跳转同一入口。默认排序与方向使用浏览偏好，显式 URL 优先。
 
-首页进度 Banner 与数据管理复用 `LibraryProcessing`、`watchJob` 和 `/api/library-processing`，启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败跳转数据管理；数据管理持续读取阶段与真实计数。Geist Banner 取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
+目录页进度横幅与数据管理卡片共用 `frontend/src/react/library-processing/` 那一份读取，读同一个 `LIBRARY_PROCESSING_KEY`，轮询由 TanStack Query 合成一份；启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败跳转数据管理；数据管理持续读取阶段与真实计数。Geist Banner 取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
 ## 独立测试包在线更新
 
 - 2026-09-08 自动检查只读 POC：临时设置触发 GitHub 查询，取得 v0.30.0、35,633,626 字节的 Windows ZIP 与 SHA-256；未下载或安装。桌面 1280×720 与手机 390×844 的设置预览通过，开关联动、频率菜单和保存回执正常。
