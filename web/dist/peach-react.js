@@ -20135,7 +20135,7 @@ function Cm() {
 							className: "text-body-medium text-text-primary",
 							children: e.name
 						}), /* @__PURE__ */ (0, Y.jsx)("dl", {
-							className: "grid grid-cols-1 gap-2 @md:grid-cols-3",
+							className: "inline-grid grid-cols-1 gap-2 @md:grid-cols-3",
 							children: Sm.map(([t, n]) => /* @__PURE__ */ (0, Y.jsxs)("div", {
 								className: "flex flex-col",
 								children: [/* @__PURE__ */ (0, Y.jsx)("dt", {
@@ -20257,7 +20257,7 @@ function Dm({ value: e, label: t, kind: n = "local", onChange: r }) {
 					"aria-label": "候选图标",
 					value: s || Em,
 					onChange: (e) => c(e === Em ? "" : e),
-					className: "grid grid-cols-7 gap-1",
+					className: "inline-grid grid-cols-7 gap-1",
 					children: wm.map(([e, t]) => /* @__PURE__ */ (0, Y.jsx)(Hf, {
 						value: e || Em,
 						"aria-label": e ? t : u,
@@ -20441,7 +20441,7 @@ function Lm({ data: e, receipt: t }) {
 									}) : null
 								]
 							}), /* @__PURE__ */ (0, Y.jsxs)("div", {
-								className: "grid grid-cols-1 gap-3 @lg:grid-cols-2",
+								className: "inline-grid grid-cols-1 gap-3 @lg:grid-cols-2",
 								children: [
 									/* @__PURE__ */ (0, Y.jsx)(vm, {
 										label: "媒体库名称",
