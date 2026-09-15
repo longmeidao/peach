@@ -2254,7 +2254,7 @@ hr.displayName = "ReactiveTextNode", Object.defineProperties(Y.prototype, {
 		value: 1
 	}
 }), pr("__b", function(e, t) {
-	if (typeof t.type == "string") {
+	if (mr(), typeof t.type == "string") {
 		var n, r = t.props;
 		for (var i in r) if (i !== "children") {
 			var a = r[i];
