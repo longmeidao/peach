@@ -14,14 +14,26 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-export async function mount(element: ReactElement): Promise<HTMLElement> {
+/** 挂一棵根并把卸载留给用例：用例要看卸载之后还发不发请求时用它。 */
+export async function mountRoot(element: ReactElement): Promise<{ host: HTMLElement; unmount(): Promise<void> }> {
   const host = document.createElement('div');
   host.className = 'peach-react';
   document.body.append(host);
   const root = createRoot(host);
   roots.push(root);
   await act(async () => root.render(element));
-  return host;
+  return {
+    host,
+    unmount: async () => {
+      const at = roots.indexOf(root);
+      if (at >= 0) roots.splice(at, 1);
+      await act(async () => root.unmount());
+    },
+  };
+}
+
+export async function mount(element: ReactElement): Promise<HTMLElement> {
+  return (await mountRoot(element)).host;
 }
 
 /** 请求链上有好几段 `await`（fetch、json、setState），等它们都落地再断言。 */

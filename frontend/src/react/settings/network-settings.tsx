@@ -8,8 +8,9 @@ import { Select, SelectItem } from '@/components/base/select/select';
 
 import { apiSend } from '../../api';
 import type { ConfigurationGroupProps, PeachProxyState } from '../bundle';
+import { Note } from '../components/note';
 import { AccessSettings } from './access-settings';
-import { ErrorText, Footer, Note, Rows, Section, Stack } from './section';
+import { ErrorText, Footer, Rows, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 const PROXY_MODES = [['environment', '系统代理'], ['direct', '直连'], ['proxy', '自定义']] as const;

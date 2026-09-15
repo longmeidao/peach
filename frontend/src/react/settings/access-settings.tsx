@@ -10,7 +10,8 @@ import { Input } from '@/components/base/input/input';
 
 import { ApiError, apiSend, errorMessage } from '../../api';
 import type { AccessSettingsProps, AccessState } from '../bundle';
-import { ErrorText, Footer, Help, Note, Section, Stack } from './section';
+import { Note } from '../components/note';
+import { ErrorText, Footer, Help, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 type FieldErrors = Partial<Record<'current_password' | 'password' | 'confirmation', string>>;

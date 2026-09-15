@@ -2,10 +2,14 @@
 import './styles.css';
 
 import type { ComponentType } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { UNSAFE_PortalProvider } from 'react-aria';
 import { createRoot } from 'react-dom/client';
 
+import { ActivityPage } from './activity/activity-page';
+import { prefetchTasks } from './activity/tasks';
 import type * as Bundle from './bundle';
+import { queryClient } from './query';
 import { GeneralSettings } from './settings/general-settings';
 import { MaintenanceSettings } from './settings/maintenance-settings';
 import { MediaSettings } from './settings/media-settings';
@@ -25,16 +29,25 @@ function overlayContainer(): HTMLElement {
   return overlays;
 }
 
+/* 所有 React 根共用一个 QueryClient（ADR-0031）：页面级 `prefetch` 写进去的首屏，
+ * 组件挂上去就直接读到，同一份数据不会因为挂在哪棵根上而各取一次。 */
 function mounter<P extends object>(Component: ComponentType<P>) {
   return (el: Element, props: P): Bundle.ReactMount<P> => {
     const root = createRoot(el);
     const paint = (next: P) => root.render(
-      <UNSAFE_PortalProvider getContainer={overlayContainer}><Component {...next} /></UNSAFE_PortalProvider>,
+      <QueryClientProvider client={queryClient}>
+        <UNSAFE_PortalProvider getContainer={overlayContainer}><Component {...next} /></UNSAFE_PortalProvider>
+      </QueryClientProvider>,
     );
     paint(props);
     return { update: paint, unmount: () => root.unmount() };
   };
 }
+
+/** 整页归 React 的那些页面，按名字给遗留层的 React 档用。 */
+export const pages: Bundle.ReactPages = {
+  activity: { prefetch: (_props, signal) => prefetchTasks(signal), mount: mounter(ActivityPage) },
+};
 
 export const mountGeneralSettings: typeof Bundle.mountGeneralSettings = mounter(GeneralSettings);
 export const mountMediaSettings: typeof Bundle.mountMediaSettings = mounter(MediaSettings);

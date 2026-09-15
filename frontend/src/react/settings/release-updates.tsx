@@ -8,7 +8,9 @@ import { Button } from '@/components/base/buttons/button';
 
 import { apiGet, apiSend, errorMessage } from '../../api';
 import type { ReleaseState, UpdateJob } from '../bundle';
-import { ErrorText, ExternalLink, Fact, FactList, Footer, Help, Note, Progress, Section, Stack } from './section';
+import { Note } from '../components/note';
+import { Progress } from '../components/progress';
+import { ErrorText, ExternalLink, Fact, FactList, Footer, Help, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 const ACTIVE = new Set(['downloading', 'verifying', 'extracting', 'preparing', 'restarting', 'installing']);

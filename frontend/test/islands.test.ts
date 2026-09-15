@@ -1,9 +1,14 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act } from 'react';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { islandMounted, islandNames, mountIsland, unmountIsland } from '../src/islands';
+import { queryClient } from '../src/react/query';
 import { resetStores } from '../src/state';
 
 import { deferredFetch, goal, legacyProps, payload, seedGoals } from './helpers';
+
+// React 档挂的是一棵真的 React 根，更新要在 `act` 里落地，否则断言读到的是上一帧。
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const container = () => {
   const el = document.createElement('div');
@@ -17,8 +22,19 @@ afterEach(() => {
   document.body.innerHTML = '';
   // 共享 store 是模块级的，会活过单个用例；不清就变成用例之间的隐藏耦合。
   resetStores();
+  // React 档的首屏落在共用的 Query 缓存里，同样活过单个用例。
+  queryClient.clear();
   vi.unstubAllGlobals();
 });
+
+/** React 档要先动态取回 React 产物再取数，中间隔几步不固定；等到条件成立为止。 */
+async function until(ok: () => boolean, what: string): Promise<void> {
+  for (let step = 0; step < 100; step += 1) {
+    if (ok()) return;
+    await new Promise((resolve) => { setTimeout(resolve, 0) });
+  }
+  throw new Error(`一直没等到：${what}`);
+}
 
 describe('island 注册表', () => {
   it('登记的名字就是遗留路由能挂载的名字', () => {
@@ -92,6 +108,74 @@ describe('mountIsland', () => {
     expect(el.querySelectorAll('.qualityitem')).toHaveLength(1);
     expect(el.textContent).toContain('fresh.mp4');
     expect(el.textContent).not.toContain('stale.mp4');
+  });
+});
+
+describe('mountIsland 的 React 档', () => {
+  // 第一次 `import('@peach/react')` 要现编译整棵 React 子树，比用例里的等待窗口长得多。
+  beforeAll(async () => { await import('@peach/react') });
+
+  const tasks = {
+    available: true,
+    running: [{
+      id: 1, task_key: 'follow-check', task_label: '追更检查', trigger: 'manual', status: 'running',
+      host: 'desk', started_at: '2026-09-11T10:00:00Z', finished_at: null, elapsed_seconds: 5,
+      progress_current: null, progress_total: null, progress_label: '正在查第三个来源',
+      result_summary: {}, error: '',
+    }],
+    skipped: [],
+    finished: [],
+  };
+
+  it('先把首屏取回来再画，React 根挂在自己的 `.peach-react` 容器里', async () => {
+    const fetch = deferredFetch(tasks);
+    fetch.install();
+    const el = container();
+    const mounting = mountIsland('activity', el, {});
+    await until(() => fetch.fetched.mock.calls.length > 0, '取数发出去');
+    expect(el.querySelector('[data-skeleton]'), '数据还没回来就撤骨架会出现第二段等待态').not.toBeNull();
+    fetch.resolve();
+    await act(async () => { await mounting });
+    expect(el.querySelector('[data-skeleton]')).toBeNull();
+    // token、Preflight 与焦点规则都作用在 `.peach-react` 上，根不挂在它里面就没有样式。
+    expect(el.querySelector('.peach-react')?.textContent).toContain('追更检查');
+  });
+
+  it('取数期间用户走开就不画，骨架留给下一页', async () => {
+    const fetch = deferredFetch(tasks);
+    fetch.install();
+    const el = container();
+    let current = true;
+    const mounting = mountIsland('activity', el, {}, { isCurrent: () => current });
+    await until(() => fetch.fetched.mock.calls.length > 0, '取数发出去');
+    current = false;
+    fetch.resolve();
+    await act(async () => { await mounting });
+    expect(el.querySelector('.peach-react'), '页面已经换掉，React 根不能挂上去').toBeNull();
+    expect(el.querySelector('[data-skeleton]')).not.toBeNull();
+  });
+
+  it('卸载时中止在途取数，画过的话连 React 根一起撤掉', async () => {
+    const fetch = deferredFetch(tasks);
+    fetch.install();
+    const el = container();
+    const mounting = mountIsland('activity', el, {});
+    await until(() => fetch.fetched.mock.calls.length > 0, '取数发出去');
+    unmountIsland(el);
+    await mounting;
+    expect(fetch.signal()?.aborted, '离开页面必须真的中止请求').toBe(true);
+    expect(el.querySelector('[data-skeleton]'), '还没画过就卸载，容器里是遗留骨架').not.toBeNull();
+
+    const again = deferredFetch(tasks);
+    again.install();
+    const painting = mountIsland('activity', el, {});
+    await until(() => again.fetched.mock.calls.length > 0, '第二次取数发出去');
+    again.resolve();
+    await act(async () => { await painting });
+    expect(islandMounted(el)).toBe(true);
+    await act(async () => { unmountIsland(el) });
+    expect(el.querySelector('.peach-react'), 'React 根和它的容器要跟着卸载一起走').toBeNull();
+    expect(islandMounted(el)).toBe(false);
   });
 });
 
