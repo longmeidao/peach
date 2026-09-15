@@ -1,12 +1,12 @@
 # Peach 产品待办
 
-更新时间：2026-09-12。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
+更新时间：2026-09-15。这里只记录尚未完成或只完成一部分的需求；运行数字以 `peach-data/state/job-status.md` 的自动区块为准。
 
 ## BoardUI 正式前端迁移
 
-用户已授权正式前端全量迁移，Board 视觉层是唯一一套界面，没有切换开关。以现有 Preact/Vite 架构实施；审查所有页面和原有设计意图，覆盖管理、视频详情、设置、响应式布局及关联选项。布尔开关对应 Board Switch，互斥选择对应 Segmented Control；其余控件逐项取证与映射。玻璃默认折射，「增加对比度」使用实色背景。数值配置支持合法范围内自定义，可关闭功能用 Switch，开启才展示数字输入。
+Board 视觉层是唯一一套界面，没有切换开关；Board 风格的视觉层与控件映射已在生产。迁移按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页改写成 React + Tailwind v4 + BoardUI 原版源码，每次一到两个页面、独立分支集成，旧渲染函数、旧 CSS 与旧断言随页面删除。已迁到 React 的只有配置页四个分区；activity、library-processing、quality-goals、scraping 仍是 Preact island，其余页面仍在 `web/app.js`。布尔开关对应 Board Switch，互斥选择对应 Segmented Control；数值配置支持合法范围内自定义，可关闭功能用 Switch，开启才展示数字输入。
 
-正式工作树已实现共享视觉层、管理与详情卡片、设置布局和数值输入；18984 使用该工作树的完整构建快照进行只读验收。生产尚未切换。Remix Icon 候选审查在预览 `/icon-review.html`，现有已选图标保留至用户筛选。迁移不包含版本号或其他分支发布工作。
+前端基础库随页面引入，取舍与时机见 ADR-0031「前端基础库」一节：TanStack Query 随第一个有两个读者的数据域（`/quality-goals` 与数据管理卡片）进；TanStack Table 随关注管理表格与 BoardUI Data Table 进；React Router 在外壳与路由迁移那一步接管；TanStack Virtual 在馆藏网格迁到 React 时按实测决定。Remix Icon 候选审查在预览 `/icon-review.html`，现有已选图标保留至用户筛选。迁移不包含版本号或其他分支发布工作。
 
 统计与口味已接入 Stat Cards、可展开排名、雷达、媒体库与网盘环形卡；浏览历史支持时间范围、真实访问热图和网站到创作者线索的流向。侧栏使用同一导航的 60/260px 宽窄态，手机从左侧滑入。设置滚动渐隐、手机输入字号、焦点环留白及登录保持时长已接入。Pro 组件使用公开行为的独立适配，范围见 [Board 适配](BOARD_UI.md)。
 
