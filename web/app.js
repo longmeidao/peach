@@ -4875,8 +4875,22 @@ async function openPlaylists(push=true){
 }
 
 let reviewData=null,reviewRuntime=null,reviewCategory='metadata_fields';
+/* 本次打开复核页时自动落库的结果，`{applied}` 或 `{error}`；只读库上是 null。 */
+let reviewAutoApply=null;
 const REVIEW_PAGE_SIZE=20;
 let reviewPage=1,reviewPageView='';
+function autoApplyNote(){
+  /* 自动落库没有按钮，进页面就跑完了（ADR-0018）。一条都没落下时也要说一句：
+     否则「它到底跑没跑」只能靠数队列长度猜，而队列本来就不见得会变短。 */
+  if(!reviewAutoApply)return'';
+  if(reviewAutoApply.error)return noteHtml('自动落库这一步没能执行：'+reviewAutoApply.error,
+    {variant:'warning',label:'自动落库'});
+  const n=reviewAutoApply.applied;
+  return noteHtml(n?`${n} 条候选补进了空字段，已从下面的队列里移走。`
+    :'这一批候选没有可以直接补空的：字段已有值、几家来源给的值不一样，或者番号和文件名对不上，都要人来判。',
+    {variant:n?'success':'secondary',label:'自动落库'});
+}
+
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
 const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
 
@@ -5129,11 +5143,14 @@ async function openReview(push=true){
   if(!surfaceCurrent(surface))return;
   /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
      它改为读取 writer 的严格 CA HTTPS 镜像，判定按钮也一起锁住。 */
+  /* 落库结果要画在页面上。它没有按钮，进页面就跑完了，回执只写控制台的话，用户
+     打开复核页看到的只有一条不见少的队列，无从知道这一步到底有没有发生。 */
+  reviewAutoApply=null;
   if(!runtime.ledger_read_only)try{
     const auto=await api('/api/review/auto-apply',{method:'POST',body:'{}'});
     if(!surfaceCurrent(surface))return;
-    if(auto&&auto.applied)console.info(`自动落库 ${auto.applied} 条（ADR-0018）`);
-  }catch(e){console.info('自动落库未执行：'+e.message)}
+    reviewAutoApply={applied:Number(auto&&auto.applied||0)};
+  }catch(e){reviewAutoApply={error:e.message}}
   const next=await surfaceApi(surface,'/api/review');
   if(!surfaceCurrent(surface))return;
   reviewRuntime=runtime;reviewData=next;
@@ -5159,7 +5176,7 @@ async function openReview(push=true){
       :mirror?.error||reviewRuntime.ledger_read_only_message||'';
     const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
      $('#stats').innerHTML=`<div class="review review-workspace">
-      ${locked?ledgerGateNote(reviewRuntime,mirrorText,'前往写入端复核',writer):''}${
+      ${locked?ledgerGateNote(reviewRuntime,mirrorText,'前往写入端复核',writer):''}${autoApplyNote()}${
       /* 收录 genre 时的候选词表。给的是静态表已经投影到的那批内容标签，一份挂在整页上：
          每张卡各写一遍的话，同一百来个 option 会在 DOM 里重复几十份。 */
       (reviewData.genre_tags||[]).length?`<datalist id="reviewgenretags">${
@@ -5250,7 +5267,7 @@ async function openReview(push=true){
             候选表单的当前信息另有去处——它贴在卡底不跟着滚，那一句读的是「现在是什么」，
             不是这一屏证据的一部分。 */
          const heading=subjectKind&&subjectName?origin
-           :fieldName?`<h4 class="reviewfieldhead"><b class="reviewfieldname">${esc(fieldName)}</b><span title="${esc(subjectText)}">${esc(subjectText)}</span></h4>`
+           :fieldName?`<h4 class="reviewfieldhead"><b class="sbadge reviewfieldname">${esc(fieldName)}</b><span title="${esc(subjectText)}">${esc(subjectText)}</span></h4>`
            :`<h4>${esc(titleText)}</h4>`;
          const currentInfo=metadata?`<div class="reviewcurrentinfo" role="region" aria-label="当前信息" tabindex="0"><p>${esc(evidence)}</p></div>`:'';
          const framed=!metadata&&reviewCategory!=='western_identity';

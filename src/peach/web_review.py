@@ -22,6 +22,8 @@ from .catalog_rules import (
     collapse_superseded_taste_tags,
     is_korean_mib_code,
     normalise_code_key,
+    release_code_from_filename,
+    same_release_code,
     superseded_taste_tags,
 )
 from .config import GENERATED_DIR
@@ -787,6 +789,19 @@ def _evidence_candidates(row: dict) -> list[dict]:
     return [] if lone_community else candidates
 
 
+def _filename_carries_code(code: str, name: str) -> bool:
+    """这个文件名认不认得出这个番号。
+
+    逐字出现最直白，但盘里有大量不写连字符的名字（`MEYD911.mp4`）。编目规则本来就
+    知道怎么从文件名读番号，读出来同号是比子串更强的身份证据——子串只是碰巧包含。
+    两条任一成立即可：本机 2611 条有番号的视频里，逐字命中 1715 条，合起来 2012 条。
+    """
+    if code.casefold() in name.casefold():
+        return True
+    parsed = release_code_from_filename(name)
+    return bool(parsed) and same_release_code(code, parsed)
+
+
 def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     """这一行能否不经复核直接落库；不能就返回 None。
 
@@ -797,16 +812,18 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
        数的是取值不是候选条数（ADR-0025）：两家独立来源给出同一个值是这批候选里最强的
        证据，按条数算却会被判成「有分歧」。实测 349 条这样被扣住，`259LUXU-1509` 的
        厂牌、演员和发行日期都是 mgstage 与 libredmm 逐字相同却谁也没写进账本；
-    3. 番号在该番号名下**每一条**资产的文件名里逐字出现。
+    3. 该番号名下**每一条**资产的文件名都认得出这个番号——逐字出现，或按编目规则
+       解析出来就是它。`MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是
+       `MEYD-911`；本机 2611 条有番号的视频里这样的有 297 条。
 
     来源是不是 official 不在其中（用户 2026-09-04 决定）。补空不覆盖任何东西，唯一的
     风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住 official
     这条的代价是实测 76 条 javbus 补空候选全部滞留人工，它们补的都是账本里空着的发行
     日期——没有可判断项，却要人逐条点过。落库时按来源实际级别记规则名，回溯得出来。
 
-    第 3 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名里
-    逐字出现是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示
-    番号和日期，并不告诉你番号跟这个文件对不对得上。
+    第 3 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名认得出
+    番号是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示番号和
+    日期，并不告诉你番号跟这个文件对不对得上。
 
     出演者多一道形态门槛：官方页把年龄职业写在艺名后面，剪不出艺名的交回人工。
 
@@ -848,8 +865,7 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
         (code, query)))
     if not targets:
         return None
-    folded = code.casefold()
-    if not all(folded in str(target["name"] or "").casefold() for target in targets):
+    if not all(_filename_carries_code(code, str(target["name"] or "")) for target in targets):
         return None
     # 归属是用户判断的字段不走自动落库。ADR-0018 第 1 条只看取值空不空，而用户可以
     # 把一个字段判成空——那也是判断。没有这一道，「清空再等自动补回来」就成了

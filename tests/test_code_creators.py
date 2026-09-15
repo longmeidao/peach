@@ -8,9 +8,25 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "audit_code_creators.py"
 _spec = importlib.util.spec_from_file_location("audit_code_creators", SCRIPT)
-audit = importlib.util.module_from_spec(_spec)
-sys.modules["audit_code_creators"] = audit
-_spec.loader.exec_module(audit)
+_script = importlib.util.module_from_spec(_spec)
+sys.modules["audit_code_creators"] = _script
+_spec.loader.exec_module(_script)
+
+
+class _Audit:
+    """判定与清理归 `peach.code_creators`，命令行入口留在脚本里；测试两边都要够得着。"""
+    from peach.catalog_rules import release_code_from_filename as code_from_filename
+    from peach.catalog_rules import release_code_from_text as canonical_code
+    from peach.code_creators import (  # noqa: F401  逐个点名，测试不跟着模块表面漂移
+        FIELDS, VERDICT_CODE, VERDICT_KEEP, VERDICT_SITE, VERDICT_UNCLEAR,
+        apply_rows, classify, collect, is_filesystem_path,
+    )
+    build_parser = staticmethod(_script.build_parser)
+    run = staticmethod(_script.run)
+    main = staticmethod(_script.main)
+
+
+audit = _Audit
 
 
 SCHEMA = """
@@ -91,6 +107,35 @@ class ClassifyTests(unittest.TestCase):
         verdict, _, _ = audit.classify("banbi_555", [
             _row("18歳Eカップ彼氏持ち美女.mp4", r"A:\Pack From Shared\pen\banbi_555\18歳.mp4"),
             _row("2_2024_06_08_172104.mp4", r"A:\Pack From Shared\pen\banbi_555\2_2024.mp4"),
+        ])
+        self.assertEqual(verdict, audit.VERDICT_UNCLEAR)
+
+    def test_a_download_site_folder_around_the_code_is_still_a_release_folder(self):
+        """站名、画质和分享标记贴在番号前后，目录仍是发行目录，不是创作者。
+
+        本机实测的写法：`Jav.li_MIAD573_HD`、`[98t.tv][98t.tv]ABW-251`、
+        `nes@第一会所@ATID-479`、`kpxvs-300MIUM-698`。整名比对认不出它们，而 11 个这样的
+        「创作者」名下挂着 33 条资产，在创作者索引里各占一个假身份。
+        """
+        for name, sample, code, identity in (
+            ("Jav.li_MIAD573_HD", "MIAD573_01.wmv", "MIAD-573", "MIAD-573"),
+            ("[98t.tv][98t.tv]ABW-251", "ABW-251.mp4", "", "ABW-251"),
+            ("nes@第一会所@ATID-479", "ATID-479.mp4", "", "ATID-479"),
+        ):
+            with self.subTest(name=name):
+                verdict, found, _ = audit.classify(
+                    name, [_row(sample, rf"B:\云下载\{name}\{sample}", code)])
+                self.assertEqual((verdict, found), (audit.VERDICT_CODE, identity))
+
+    def test_an_uploader_account_shaped_like_a_code_is_not_matched_by_containment(self):
+        """按包含关系找番号时，上传者账号是最容易被误伤的一类。
+
+        `banbi_555` 的 code 列存的就是目录名 `BANBI_555`，紧凑形一比自然「包含」。
+        发行番号这道形态门槛把它挡在外面，所以它仍然只是存疑，留给人看。
+        """
+        verdict, _, _ = audit.classify("banbi_555", [
+            _row("18歳Eカップ彼氏持ち美女.mp4",
+                 r"A:\Pack From Shared\pen\banbi_555\18歳.mp4", "BANBI_555"),
         ])
         self.assertEqual(verdict, audit.VERDICT_UNCLEAR)
 

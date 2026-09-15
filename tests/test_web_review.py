@@ -271,6 +271,25 @@ class ReviewQueueTests(unittest.TestCase):
             con.close()
         self.assertEqual(self.queue_keys("metadata_fields"), ["PPT-018:release_date"])
 
+    def test_a_filename_without_the_hyphen_still_identifies_the_code(self):
+        """`MEYD911.mp4` 就是 `MEYD-911`，编目规则读得出来，逐字比对读不出。
+
+        差一个连字符就要人去点一遍，而点的人在界面上看到的仍只是番号和候选值，
+        并不比这条判据知道得更多。本机 2611 条有番号的视频里这样的有 297 条。
+        """
+        self._asset(94, "MEYD-911", "MEYD911.mp4")
+        self.write_metadata_rows([{"item_key": "MEYD-911:release_date", "field": "release_date",
+                                   "current": "", "candidates": ["2015-02-20"],
+                                   "code": "MEYD-911"}])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=94").fetchone()[0],
+                "2015-02-20")
+        finally:
+            con.close()
+
     def test_auto_apply_never_overwrites_or_picks_between_values(self):
         self._asset(92, "AAA-1", "AAA-1.mp4")
         self._asset(93, "BBB-2", "BBB-2.mp4")

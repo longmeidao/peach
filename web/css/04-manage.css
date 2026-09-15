@@ -21,7 +21,9 @@
 .reviewitemheader h4{margin:0}
 /* 字段名先说这张卡在问什么，作品标识跟在后面；省略号只许吃后者。 */
 .reviewfieldhead{display:flex;align-items:baseline;gap:8px;min-width:0}
-.reviewfieldname{flex:none;padding:2px 8px;border-radius:var(--badge-radius);background:var(--hover);color:var(--ink);font-size:var(--fs-xs);font-weight:500}
+/* 底色交给 Board UI 的 `.sbadge`。自己写 `--hover` 的话，亮色主题下它和卡片头
+   的 `--ground` 都解析成 #f5f5f5，字段名连着底色一起没入背景，只有暗色看得见。 */
+.reviewfieldname{flex:none}
 .reviewfieldhead>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .reviewitemheader .reviewentity{margin:0;padding:0;border:0}
 .reviewcurrentinfo{flex:none;padding:10px 20px;border-top:1px solid var(--line-soft);background:var(--ground);max-height:88px;overflow-y:auto;overscroll-behavior:contain}

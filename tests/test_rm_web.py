@@ -2641,6 +2641,27 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(
             [item["id"] for item in rm_web.ordered_multipart_items(restored)], [1, 2])
 
+    def test_volume_numbers_written_with_a_leading_zero_group(self):
+        """`_01`、`_02` 是库里常见的卷号写法，和 `-1`、`-2` 一样要成组。
+
+        实测 MIAD-573：两卷 `MIAD573_01.wmv`（4566 秒）与 `_02`（2577 秒）各占一张卡，
+        详情页把另一卷摆进「接着看」当成同创作者的另一部作品。卷号连续这条判据照旧——
+        同库的 FC2-PPV-4620098 有 01／02／04／05，缺 03，仍然不成组。
+        """
+        padded = [
+            {"id": 28401, "name": "MIAD573_02.wmv", "duration": 2576.7},
+            {"id": 28399, "name": "MIAD573_01.wmv", "duration": 4566.0},
+        ]
+        self.assertEqual(
+            [item["id"] for item in rm_web.ordered_multipart_items(padded)], [28399, 28401])
+        gapped = [
+            {"id": 1, "name": "FC2-PPV-4620098-01.mp4", "duration": 4569.9},
+            {"id": 2, "name": "FC2-PPV-4620098-02.mp4", "duration": 3988.2},
+            {"id": 4, "name": "FC2-PPV-4620098-04.mp4", "duration": 299.9},
+            {"id": 5, "name": "FC2-PPV-4620098-05.mp4", "duration": 177.7},
+        ]
+        self.assertEqual(rm_web.ordered_multipart_items(gapped), [])
+
     def test_two_resolutions_of_one_film_are_not_a_multipart_release(self):
         """共有尾部不从分隔符起头就剥不动，两个清晰度因此仍是两条独立记录。
 

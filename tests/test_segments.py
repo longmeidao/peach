@@ -249,6 +249,30 @@ class SegmentCommandTests(unittest.TestCase):
 
     def test_hardware_encode_failure_falls_back_to_libx264_for_the_slice(self):
         """没有 NVENC 的机器分片不能缺席：CUDA 解码、软件解码两条 NVENC 路都失败后走 libx264。"""
+        captured: list[list[str]] = self._transcode_commands("h264")
+        self.assertEqual([c[c.index("-c:v") + 1] for c in captured], ["h264_nvenc", "h264_nvenc", "libx264"])
+        self.assertIn("-hwaccel", captured[0])
+        self.assertNotIn("-hwaccel", captured[1])
+        for command in captured:
+            self.assertEqual(command[command.index("-output_ts_offset") + 1], "12.000")
+            self.assertEqual(command[command.index("-t") + 1], "6.000")
+            self.assertEqual(command[command.index("-f") + 1], "mpegts")
+
+    def test_a_codec_nvdec_garbles_is_decoded_in_software(self):
+        """VC-1 交给 NVDEC 会解出绿帧，而 FFmpeg 退出码 0、stderr 全空，事后查不出来。
+
+        实测 `MIAD573_02.wmv`（vc1、1080p）：`-hwaccel cuda` 出来的首个分片开头 21 帧
+        在黑场与纯绿之间交替，同一段软件解码后色度全程正常。名单之外一律软件解码，
+        编码探测不出来的也是——省下的 CPU 抵不上一段没人察觉的坏画面。
+        """
+        for codec in ("vc1", "wmv3", ""):
+            with self.subTest(codec=codec):
+                captured = self._transcode_commands(codec)
+                self.assertEqual([c[c.index("-c:v") + 1] for c in captured], ["h264_nvenc", "libx264"])
+                self.assertNotIn("-hwaccel", captured[0])
+
+    def _transcode_commands(self, codec: str) -> list[list[str]]:
+        """NVENC 全程失败时，这个编码的片源实际跑过的命令。"""
         captured: list[list[str]] = []
 
         class _Process:
@@ -274,7 +298,8 @@ class SegmentCommandTests(unittest.TestCase):
                     resolver=mock.Mock(ffmpeg=lambda: type("C", (), {"path": "ffmpeg"})),
                     work_root=root / "cache", prefer_hardware=True,
                 )
-                with mock.patch("asyncio.create_subprocess_exec", fake_exec):
+                with mock.patch("asyncio.create_subprocess_exec", fake_exec), \
+                        mock.patch("peach.segments._probe_video_codec", return_value=codec):
                     target = await service.generate(
                         source, 12.0, 6.0, asset_id=6562, index=2, session="s",
                         registry=StreamSessionRegistry(), transcode=True,
@@ -282,13 +307,7 @@ class SegmentCommandTests(unittest.TestCase):
                 self.assertEqual(target.read_bytes(), b"segment")
 
         asyncio.run(drive())
-        self.assertEqual([c[c.index("-c:v") + 1] for c in captured], ["h264_nvenc", "h264_nvenc", "libx264"])
-        self.assertIn("-hwaccel", captured[0])
-        self.assertNotIn("-hwaccel", captured[1])
-        for command in captured:
-            self.assertEqual(command[command.index("-output_ts_offset") + 1], "12.000")
-            self.assertEqual(command[command.index("-t") + 1], "6.000")
-            self.assertEqual(command[command.index("-f") + 1], "mpegts")
+        return captured
 
 
 class PlanCacheTests(unittest.TestCase):
