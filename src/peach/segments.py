@@ -17,6 +17,23 @@ HLS_SEGMENT_SECONDS = 6
 # 片段缓存上限。超了按最后访问时间淘汰；片段可再生，丢了只是重跑一次 FFmpeg。
 DEFAULT_CACHE_BYTES = 2 << 30
 PLAN_CACHE_LIMIT = 256
+#: 交给 NVDEC 解码的编码。名单之外（含探测不到编码的片源）一律软件解码：NVDEC 对老
+#: 编码吐坏帧时不报错，而这几种是本机 23338 个视频里占绝大多数的、值得省 CPU 的。
+CUDA_DECODE_CODECS = frozenset({"h264", "hevc", "vp9", "av1"})
+CODEC_CACHE_LIMIT = 256
+PROBE_TIMEOUT_SECONDS = 20
+
+
+def _probe_video_codec(ffprobe: Path, source: Path) -> str:
+    """问 ffprobe 要第一条视频流的编码名。问不出来返回空串，调用方按软件解码处理。"""
+    command = (str(ffprobe), "-v", "error", "-select_streams", "v:0", "-show_entries",
+               "stream=codec_name", "-of", "default=nw=1:nk=1", str(source))
+    try:
+        result = subprocess.run(command, capture_output=True, timeout=PROBE_TIMEOUT_SECONDS,
+                                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.decode("utf-8", "replace").strip().lower() if result.returncode == 0 else ""
 
 
 class SegmentUnavailable(RuntimeError):
@@ -69,6 +86,7 @@ class HlsSegmentService:
         self._limit = max_concurrent or max(1, (os.cpu_count() or 4) // 2)
         self._semaphore: asyncio.Semaphore | None = None
         self._plans: OrderedDict[tuple, list[tuple[float, float]]] = OrderedDict()
+        self._codecs: OrderedDict[tuple, str] = OrderedDict()
         # 同一分片常被并发请求：播放器预取、重连、多设备同看都会撞上同一个目标文件。
         # 同目标只放一个生成者，后到者等它完事后直接用缓存，不再各起一个 FFmpeg 重读网盘。
         self._generation_locks: dict[Path, asyncio.Lock] = {}
@@ -84,6 +102,24 @@ class HlsSegmentService:
         except OSError:
             return (str(source), 0, 0)
         return (str(source), stat.st_size, int(stat.st_mtime))
+
+    async def video_codec(self, source: Path) -> str:
+        """片源的视频编码名；探测不到返回空串。按 (路径, 大小, mtime) 缓存。
+
+        只有重编码路径问这一句，用来决定敢不敢把解码交给显卡。探测本身在线程里跑：
+        片源在挂载网盘上时 ffprobe 要几百毫秒，占着事件循环会卡住同时在放的其它片。
+        """
+        key = self.fingerprint(source)
+        cached = self._codecs.get(key)
+        if cached is not None:
+            self._codecs.move_to_end(key)
+            return cached
+        choice = self.resolver.ffprobe()
+        codec = await asyncio.to_thread(_probe_video_codec, choice.path, source) if choice else ""
+        while len(self._codecs) >= CODEC_CACHE_LIMIT:
+            self._codecs.popitem(last=False)
+        self._codecs[key] = codec
+        return codec
 
     def plan(self, source: Path, duration: float) -> list[tuple[float, float]] | None:
         """返回分片计划；读不到关键帧就返回 None，由调用方回退标准 Range。"""
@@ -101,7 +137,9 @@ class HlsSegmentService:
 
     def cached_path(self, source: Path, asset_id: int, index: int, *, transcode: bool = False) -> Path:
         _, size, mtime = self.fingerprint(source)
-        flavor = '-h264-v1' if transcode else ''
+        # 版本号跟着转码命令走：命令变了，磁盘上按旧命令转出来的片段必须失效，
+        # 否则解码器换掉了、播放器拿到的还是上一版那些绿帧。
+        flavor = '-h264-v2' if transcode else ''
         return self.work_root / str(asset_id) / f"{size}-{mtime}-{self.segment_seconds}{flavor}" / f"{index}.ts"
 
     def conversion_plan(self, duration: float) -> list[tuple[float, float]]:
@@ -172,9 +210,10 @@ class HlsSegmentService:
         if registry.is_cancelled(session):
             raise SegmentCancelled(session)
         target.parent.mkdir(parents=True, exist_ok=True)
+        codec = await self.video_codec(source) if transcode and self.prefer_hardware else ""
         detail = ""
         async with self._gate():
-            for name, build in self._attempts(choice.path, source, start, duration, transcode):
+            for name, build in self._attempts(choice.path, source, start, duration, transcode, codec):
                 temporary = target.with_name(f"{uuid.uuid4().hex}.tmp.ts")
                 try:
                     returncode, stderr = await self._run(build(temporary), session, registry)
@@ -199,11 +238,18 @@ class HlsSegmentService:
                     temporary.unlink(missing_ok=True)
         raise SegmentUnavailable(detail)
 
-    def _attempts(self, ffmpeg: Path, source: Path, start: float, duration: float, transcode: bool):
+    def _attempts(self, ffmpeg: Path, source: Path, start: float, duration: float,
+                  transcode: bool, codec: str = ""):
         """依次尝试的命令，每项是 (名字, 接收临时文件路径的构造函数)。
 
         封装复制只有一种。重编码与整片转码用同一条链：CUDA 解码加 NVENC、软件解码加 NVENC、
         最后 libx264；没有显卡的机器只是多失败两次，不会没有分片。
+
+        NVDEC 解得出来的编码才走 CUDA 解码，`codec` 空或不在名单里就从软件解码起。
+        判据放在跑之前是因为坏结果不会自报：实测 `MIAD573_02.wmv`（vc1、1080p）经
+        `-hwaccel cuda` 出来的首个分片，开头 21 帧在黑场与纯绿之间交替（色度均值在
+        128 与 0 之间跳），而 FFmpeg 退出码 0、stderr 全空，绿帧就这么写进缓存，
+        下次命中还是它。同一段去掉 CUDA 解码后色度全程 128，一帧绿都没有。
         """
         prefix = [str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
         mapping = ["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn"]
@@ -221,9 +267,10 @@ class HlsSegmentService:
         nvenc = ["-c:v", "h264_nvenc", "-preset", "p1", "-tune", "hq", "-rc", "vbr", "-cq", "21", "-b:v", "0"]
         attempts = []
         if self.prefer_hardware:
-            cuda = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
-            attempts.append(("cuda-nvenc", lambda out: prefix + cuda + window + mapping
-                             + ["-vf", "scale_cuda=format=nv12"] + nvenc + audio + mux + [str(out)]))
+            if codec in CUDA_DECODE_CODECS:
+                cuda = ["-hwaccel", "cuda", "-hwaccel_output_format", "cuda"]
+                attempts.append(("cuda-nvenc", lambda out: prefix + cuda + window + mapping
+                                 + ["-vf", "scale_cuda=format=nv12"] + nvenc + audio + mux + [str(out)]))
             attempts.append(("nvenc", lambda out: prefix + window + mapping
                              + nvenc + ["-pix_fmt", "yuv420p"] + audio + mux + [str(out)]))
         attempts.append(("libx264", lambda out: prefix + window + mapping + [
