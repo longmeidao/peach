@@ -213,7 +213,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 图片的固有宽高只问文件头：`follow_image_dims.probe_image_dims` 发一个 `Range: bytes=0-65535` 请求，`dims_from_header` 认 PNG／GIF／WebP（VP8、VP8L、VP8X）／JPEG（跳过 EXIF 到 SOF）；判据 `positive_dims` 只有这一份，连接器、`backfill_follow_image_dims.py` 与界面回写（`/api/follow/image-dims`）落库前都经它归一，`FollowStore.set_image_dims` 只补空缺。只有图片视图摆成瀑布流，宽高只为图片卡面预留比例，回填脚本每个条目只问卡面那一张；原文件主机拦脚本（pawchive 的 `file.` 子域挂 ddos-guard）时按缩略图量，详情与灯箱里原图取不到也退回缩略图显示。
 - 归档站（kemono、coomer、pawchive）的帖子有两张以上图或视频时，`KemonoConnector._media_items` 把它们列进 `media_items`（交付文件排第一、按路径去重），详情轮播与 `/follow-stream?media=N` 按条目自己站点的主机白名单取；存量行按上一条的 `rewind` 重抓补上。
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
-- 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
+- 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和无法识别；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
 - 女优与创作者资料页的头像圆框角上有换头像入口：候选来自图库里同名的其他图和这个人取过的每一张图，另外两条路是本机文件与一个 https 地址。每一张取到的图都按内容哈希进候选缓存，被顶下来的那张留在里面，换回去不重新下载。页面只回递服务端自己列出来的 `ref`，图片地址由服务端按索引拼；手填地址是唯一的例外，它过 `http.public_https_url` 那道公网判据。
 - 外部来源 genre 只在 `peach.genre_taxonomy` 投影，日英来源词共用一套既有词表，非内容分类排除、未收录原文回传登记。查表只有 `resolve_genre` 一处，抓取与复核折叠共用它：各写一份的代价是「表里补了这个词，页面上它仍然停在未收录」。r18dev 取 `categories[].name_ja`（DMM 自己那套词），英文只在日文页取不到时兜底——英文是 r18 再译的一层，`企画` 在非内容表里而它的英文 `Variety` 不在。
 - 一件事只留一个标签名：`catalog_rules.RETIRED_TAGS` 存「账本里已有、但不该再用的写法 → 规范名」，`scripts/rename_retired_tags.py --apply --backup` 是写这一步的唯一入口，实体按 `entities.merge_entity` 并、旧名留作别名。绝大多数退役名来自已关停的 Stash 导入（ADR-0021），产地关掉了改一次名就不会再长出来。`pixiv_tag` 不参与：那是作者打的词，改它等于事后修改来源的原话。规范名取馆藏里通行的那个写法，不取词表里先写下的那个——`合集` 3699 条来自文件名，`混合集` 313 条全部来自 Stash。

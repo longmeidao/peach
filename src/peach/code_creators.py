@@ -109,6 +109,41 @@ def classify(name: str, assets: list) -> tuple[str, str, str]:
     return VERDICT_CODE, identity, f"目录与文件同为番号 {identity}"
 
 
+#: 来源片长与本地时长的容差。片源前后常挂一两分钟广告（用户 2026-09-16），来源本身
+#: 只报整分钟，再放宽 30 秒。
+DURATION_TOLERANCE_SECONDS = 150
+
+
+def main_video_seconds(assets: list) -> float | None:
+    """目录里最长那条视频的时长，一条都量不到就是 None。
+
+    目录里常混着预告、论坛文宣和封面图（`Tokyo-Hot n0780-HD` 里就有两个），拿它们和
+    正片的片长比必然对不上。最长的那条才是正片。
+    """
+    durations = [float(row["duration"]) for row in assets
+                 if str(row["medium"] or "") == "video" and row["duration"] is not None
+                 and float(row["duration"]) > 0]
+    return max(durations) if durations else None
+
+
+def duration_confirms_code(local_seconds: float | None,
+                           runtime_minutes: float | None) -> tuple[bool, str]:
+    """来源报的片长认不认这个目录就是这个番号，附一句可读的理由。
+
+    目录名像番号、里面的文件却不带番号时，名字本身答不了「这是发行目录还是上传者账号」
+    （`banbi_555` 与 `Tokyo-Hot n0780-HD` 同一形态）。片长是本机可核验的第二条证据：
+    对得上就是这部片，对不上（`bbsxv.xyz-DOCP-324` 目录里只有一条 90 秒的广告）留人工。
+    """
+    if local_seconds is None:
+        return False, "目录里没有量到时长的视频"
+    if not runtime_minutes:
+        return False, "来源没有给片长"
+    delta = abs(local_seconds - float(runtime_minutes) * 60)
+    verdict = delta <= DURATION_TOLERANCE_SECONDS
+    return verdict, (f"本地 {local_seconds / 60:.1f} 分、来源 {float(runtime_minutes):.0f} 分，"
+                     f"差 {delta:.0f} 秒{'，在容差内' if verdict else '，超出容差'}")
+
+
 def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
     # 用独立 cursor 取具名列，不改调用方连接的 row_factory。
     cursor = connection.cursor()

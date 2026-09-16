@@ -6,11 +6,19 @@ import unittest
 from pathlib import Path
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "audit_code_creators.py"
-_spec = importlib.util.spec_from_file_location("audit_code_creators", SCRIPT)
-_script = importlib.util.module_from_spec(_spec)
-sys.modules["audit_code_creators"] = _script
-_spec.loader.exec_module(_script)
+SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
+
+
+def _load(name):
+    spec = importlib.util.spec_from_file_location(name, SCRIPTS / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_script = _load("audit_code_creators")
+confirm = _load("confirm_code_dirs")
 
 
 class _Audit:
@@ -32,7 +40,7 @@ audit = _Audit
 SCHEMA = """
 CREATE TABLE asset(
   id INTEGER PRIMARY KEY, location TEXT NOT NULL, path TEXT NOT NULL, name TEXT,
-  medium TEXT, creator TEXT, code TEXT, UNIQUE(location,path));
+  medium TEXT, creator TEXT, code TEXT, duration REAL, UNIQUE(location,path));
 CREATE TABLE entity(
   id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT, normalized_name TEXT,
   metadata_json TEXT DEFAULT '{}', created_at TEXT, updated_at TEXT,
@@ -222,6 +230,104 @@ class ApplyTests(unittest.TestCase):
         parser = audit.build_parser()
         with self.assertRaises(SystemExit):
             audit.run(parser.parse_args(["--db", str(self.db), "--apply"]))
+
+
+class DurationEvidenceTests(unittest.TestCase):
+    """目录名像番号、文件却不带番号时，片长是第二条证据（用户 2026-09-16）。"""
+
+    def test_a_couple_of_minutes_of_ads_still_counts_as_the_same_release(self):
+        confirmed, _ = confirm.duration_confirms_code(98 * 60 + 90, 98)
+        self.assertTrue(confirmed)
+
+    def test_a_different_length_is_a_different_thing(self):
+        # `bbsxv.xyz-DOCP-324` 目录里只有一条 90 秒的广告，DOCP-324 本身 120 分钟。
+        confirmed, reason = confirm.duration_confirms_code(90, 120)
+        self.assertFalse(confirmed)
+        self.assertIn("超出容差", reason)
+
+    def test_no_runtime_from_the_source_decides_nothing(self):
+        self.assertEqual(confirm.duration_confirms_code(3600, None),
+                         (False, "来源没有给片长"))
+
+    def test_the_longest_video_is_the_feature(self):
+        """目录里还躺着论坛文宣和封面图，拿它们比片长必然对不上。"""
+        assets = [
+            {"medium": "video", "duration": 5896.8},
+            {"medium": "video", "duration": 31.0},
+            {"medium": "image", "duration": None},
+        ]
+        self.assertEqual(confirm.main_video_seconds(assets), 5896.8)
+        self.assertIsNone(confirm.main_video_seconds([{"medium": "image", "duration": None}]))
+
+
+class ConfirmScriptTests(unittest.TestCase):
+    class _Provider:
+        """按番号答片长的假来源。"""
+
+        def __init__(self, runtimes):
+            self.runtimes, self.asked = runtimes, []
+
+        def query(self, code, **_):
+            self.asked.append(code)
+            raise LookupError("r18.dev 没有这个番号")
+
+        def community(self, code, **_):
+            runtime = self.runtimes.get(code)
+            if runtime is None:
+                raise LookupError("社区来源都没有这个番号")
+            return [("javdb", {"runtime": runtime})]
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name) / "ledger.db"
+        self.connection = sqlite3.connect(self.db)
+        self.addCleanup(self.connection.close)
+        self.connection.executescript(SCHEMA)
+
+    def _creator(self, entity_id, name, assets):
+        self.connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,'creator',?,?)",
+            (entity_id, name, name.casefold()))
+        for asset_id, asset_name, path, medium, duration in assets:
+            self.connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,creator,duration) "
+                "VALUES(?,'local',?,?,?,?,?)",
+                (asset_id, path, asset_name, medium, name, duration))
+            self.connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
+                "VALUES(?,?,'creator','legacy:asset')", (asset_id, entity_id))
+
+    def test_a_release_folder_is_confirmed_by_its_runtime_and_an_account_is_not(self):
+        self._creator(1, "Tokyo-Hot n0780-HD", [
+            (10, "Tokyo-Hot.mp4", r"B:\云下载\Tokyo-Hot n0780-HD\Tokyo-Hot.mp4", "video", 5896.8),
+            (11, "封殺001.jpg", r"B:\云下载\Tokyo-Hot n0780-HD\論壇文宣\封殺001.jpg", "image", None)])
+        self._creator(2, "banbi_555", [
+            (20, "18歳.mp4", r"A:\Pack From Shared\pen\banbi_555\18歳.mp4", "video", 1800.0)])
+        self.connection.commit()
+
+        provider = self._Provider({"n0780": 98})
+        rows = confirm.examine(self.connection, provider)
+        verdicts = {row["creator"]: row["confirmed"] for row in rows}
+
+        self.assertEqual(verdicts, {"Tokyo-Hot n0780-HD": "是", "banbi_555": "否"})
+        self.assertEqual(provider.asked, ["n0780", "BANBI-555"])
+
+        counts = audit.apply_rows(
+            self.connection, [row for row in rows if row["verdict"] == audit.VERDICT_CODE])
+        self.assertEqual(counts["codes"], 2)
+        self.assertEqual(
+            self.connection.execute("SELECT creator,code FROM asset WHERE id=10").fetchone(),
+            (None, "n0780"))
+        # 片长对不上的目录一条都不动。
+        self.assertEqual(
+            self.connection.execute("SELECT creator FROM asset WHERE id=20").fetchone()[0],
+            "banbi_555")
+
+    def test_apply_refuses_to_run_without_a_backup(self):
+        parser = confirm.build_parser()
+        with self.assertRaises(SystemExit):
+            confirm.run(parser.parse_args(["--db", str(self.db), "--apply"]))
 
 
 if __name__ == "__main__":

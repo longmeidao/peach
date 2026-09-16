@@ -219,7 +219,10 @@ const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow
     <div class="count followcount" data-filter-row="bottom"><span class="mono"><span class="countskeleton"></span></span></div></div>
   ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;
 /* 分类名是静态文案，骨架和复核页各要一份，所以它排在骨架前面而不是跟着复核页那段代码。 */
-const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'媒体失败'};
+const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据',media_failure:'无法识别'};
+/* 首页那张卡报的是「等着人判的题」。无法识别列的是 115 上抽不出画面的视频，它们要的是
+   重抽一次，不是逐条判断，却有 799 条——混进总数只会把真要看的一百多条盖掉。 */
+const REVIEW_SUMMARY_SKIPS=new Set(['media_failure']);
 /* 复核页是左边一列分类、右边工具条加一格一格 Fieldset，骨架就用最终容器的那几个类名，
    分栏、列宽和卡高全由页面自己那套规则给：读完数据只是把占位换成内容，版面一格不挪。
    分类名和「复核分类」这两样与数据无关，直接写出来；等的是每类多少条，所以只有计数
@@ -4960,6 +4963,7 @@ async function paintDataManagementCounts(){
     fill('review',async()=>{
       const data=await api('/api/review?counts=1');
       const counts=Object.entries(data.counts||{})
+        .filter(([key])=>!REVIEW_SUMMARY_SKIPS.has(key))
         .map(([key,value])=>[REVIEW_LABELS[key]||key,Number(value)||0])
         .filter(([,value])=>value>0).sort((a,b)=>b[1]-a[1]);
       const total=counts.reduce((sum,[,value])=>sum+value,0);
