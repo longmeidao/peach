@@ -12,7 +12,7 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
-import { DEFAULT_HOME_GLOW, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowChipFill, glowColor, glowPalette, glowPresetName, normalizeHomeGlow, paintHomeGlow } from './js/home-glow.js';
+import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows, paginationHtml, pageCount, clampPage, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
@@ -484,7 +484,7 @@ const PHOTO_SIZES=[['big','大图','maximize'],['small','小图','layout-grid']]
 const PHOTO_LAYOUTS=[['fixed','固定比例','layout-grid'],['masonry','瀑布流','columns-2']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW,accent:DEFAULT_ACCENT};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 appSettings.followInitialDays=[0,7,30,90].includes(+appSettings.followInitialDays)?+appSettings.followInitialDays:30;
@@ -518,6 +518,7 @@ appSettings.metadataRefreshDays=allowedSetting(+appSettings.metadataRefreshDays,
 Object.assign(appSettings,normalizeJavPreferences(appSettings));
 appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
 appSettings.homeGlow=normalizeHomeGlow(appSettings.homeGlow);
+appSettings.accent=normalizeAccent(appSettings.accent);
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
@@ -562,7 +563,16 @@ function applyHomeGlow(){
   if(glowFrame)return;
   glowFrame=requestAnimationFrame(()=>{glowFrame=0;paintHomeGlow(glowField,appSettings.homeGlow)});
 }
+/* 其余玻璃面（搜索框、顶栏图标钮、筛选浮层、设置卡的分区导航、媒体库与配色弹层、窄栏、
+   选择工具条）分散在整棵树上，没有共同的宿主，它们那两团反光的色相只能写在根上。
+   写一次根就是整棵树重算样式，所以这一条只接换档、点颜色和开关那几下；拖强度那条拉条
+   走的是上面的 applyHomeGlow()，一次都不碰根。
+   强调色同理：一次点选写一个属性，换来的是整页的按钮、焦点环和链接跟着走。 */
+const glowRoot=document.documentElement;
+function applyGlassFaces(){paintGlassFaces(glowRoot,appSettings.homeGlow)}
+function applyAccent(){glowRoot.dataset.accent=appSettings.accent}
 paintHomeGlow(glowField,appSettings.homeGlow);
+applyGlassFaces();applyAccent();
 /* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
    形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
 function renderJavImageSetting(){
@@ -604,14 +614,22 @@ const glowStopRowHtml=(key,index)=>{
       <div class="glowpalette" role="radiogroup" aria-label="${esc(label)}颜色">${glowSwatchesHtml()}</div>
     </div></div>`;
 };
-const glowFieldRowHtml=(field,label,max)=>`<div class="glowfield"><span class="glowfieldlabel">${esc(label)}</span>${
+const glowFieldRowHtml=(field,label,max)=>`<div class="glowfield" data-glow-field="${field}"><span class="glowfieldlabel">${esc(label)}</span>${
   dialSliderHtml({value:appSettings.homeGlow[field],min:0,max,step:1,label,attr:`data-glow-dial="${field}"`})}</div>`;
+/* 「玻璃原色」那一档没有三枚光晕：那一层整个算作 0，面上漂的是每块玻璃自带的两团反光。
+   强度、颗粒、柔化、大小和三枚颜色于是全都管不着任何东西，留在屏上就是几样按了不动的
+   控件，所以这一档把它们收起来，换一句说明这一档的颜色由明暗主题给。漂移速度不收——
+   自带那两团也在漂，那条拉条在任何一档下都说了算。「恢复默认」同样不收：任何一档下都
+   要能一步回到出厂那一套，所以它排在分组外面。 */
 const homeGlowControlsHtml=()=>`<p class="glowcurrent">当前配色<b data-glow-preset-name></b></p>
+  <p class="glownative" data-glow-native-note hidden>这一档用每块玻璃自带的反光，颜色跟着明暗主题走。</p>
   <div class="glowfields">
-    ${glowFieldRowHtml('strength','强度',100)}${glowFieldRowHtml('noise','颗粒',60)}</div>
-  <section class="glowgroup"><h4>颜色</h4>
-    <div class="glowstops">${HOME_GLOW_SPOTS.map(glowStopRowHtml).join('')}</div>
-    <div class="glowactions"><button type="button" class="geist-button" data-glow-reset>恢复默认</button></div></section>`;
+    ${glowFieldRowHtml('strength','强度',100)}${glowFieldRowHtml('noise','颗粒',60)}${
+    glowFieldRowHtml('speed','漂移速度',300)}${glowFieldRowHtml('soften','柔化',100)}${
+    glowFieldRowHtml('size','大小',100)}</div>
+  <section class="glowgroup" data-glow-colours><h4>颜色</h4>
+    <div class="glowstops">${HOME_GLOW_SPOTS.map(glowStopRowHtml).join('')}</div></section>
+  <div class="glowactions"><button type="button" class="geist-button" data-glow-reset>恢复默认</button></div>`;
 /* 侧栏那枚钮和这一屏读的是同一份参数，改完两边一起对齐。侧栏还没装配时这里是个空函数，
    首页第一帧就打开设置面板也不会炸。 */
 let syncGlowSidebar=()=>{};
@@ -619,8 +637,12 @@ const glowDials=new Map();
 function syncHomeGlowSetting(){
   const mount=$('#homeGlowControls');
   if(!mount||mount.dataset.glowWired!=='true')return;
-  const glow=appSettings.homeGlow;
+  const glow=appSettings.homeGlow,native=isNativeGlass(glow.preset);
   mount.querySelector('[data-glow-preset-name]').textContent=glowPresetName(glow.preset);
+  mount.querySelector('[data-glow-native-note]').hidden=!native;
+  mount.querySelectorAll('[data-glow-field]').forEach(row=>
+    row.hidden=native&&row.dataset.glowField!=='speed');
+  mount.querySelector('[data-glow-colours]').hidden=native;
   glowDials.forEach((dial,field)=>dial.set(glow[field]));
   mount.querySelectorAll('[data-glow-stop]').forEach(row=>{
     const color=glow[row.dataset.glowStop].color;
@@ -636,10 +658,12 @@ function wireHomeGlowControls(mount){
   mount.querySelectorAll('[data-glow-dial]').forEach(node=>{
     const field=node.dataset.glowDial;
     /* 拖动中只改参数、只排一帧重画；落盘留给松手那一下。每一步都 saveSettings() 的话，
-       一次拖动就是几十次同步 JSON 序列化加一次 localStorage 写入，全在主线程上。 */
+       一次拖动就是几十次同步 JSON 序列化加一次 localStorage 写入，全在主线程上。
+       其余玻璃面跟着走的只有速度，而它那两枚变量只能写在根上——写一次根整棵树重算样式，
+       拖动时每帧一次必掉帧。所以拖动期间只有侧栏那一层在变，松手那一下才铺到整页。 */
     glowDials.set(field,wireDialSlider(node,{
       onInput:value=>{glow()[field]=value;applyHomeGlow()},
-      onChange:()=>saveSettings()}));
+      onChange:()=>{saveSettings();if(field==='speed')applyGlassFaces()}}));
   });
   mount.querySelectorAll('[data-glow-stop]').forEach(row=>{
     const key=row.dataset.glowStop;
@@ -662,12 +686,12 @@ function wireHomeGlowControls(mount){
         const spot=glow()[key];
         spot.color=glowColor(swatch.dataset.glowSwatch,spot.color);
         glow().preset='custom';
-        saveSettings();applyHomeGlow();syncGlowChrome();closeAnchoredMenu();toggle.focus();
+        saveSettings();applyHomeGlow();applyGlassFaces();syncGlowChrome();closeAnchoredMenu();toggle.focus();
       };
     });
   });
   mount.querySelector('[data-glow-reset]').onclick=()=>{
-    appSettings.homeGlow=normalizeHomeGlow(null);saveSettings();applyHomeGlow();syncGlowChrome();
+    appSettings.homeGlow=normalizeHomeGlow(null);saveSettings();applyHomeGlow();applyGlassFaces();syncGlowChrome();
   };
 }
 /* 开关在上面那行设置行上，参数区由这里画。面板每次打开都会走一遍，但 DOM 只建一次：
@@ -676,7 +700,7 @@ function renderHomeGlowSetting(){
   const glow=appSettings.homeGlow,toggle=$('#homeGlowSetting'),mount=$('#homeGlowControls');
   if(!toggle||!mount)return;
   toggle.checked=glow.on;mount.hidden=!glow.on;
-  toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;saveSettings();applyHomeGlow()};
+  toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;saveSettings();applyHomeGlow();applyGlassFaces()};
   if(mount.dataset.glowWired!=='true'){
     mount.dataset.glowWired='true';
     mount.innerHTML=homeGlowControlsHtml();
@@ -10118,14 +10142,21 @@ document.querySelector('#drawer').append(boardFoot);
 boardFoot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
 applyTheme();
 /* 侧栏的光晕配色弹层照 boardui.com 右下角那枚「Accent color」：一枚带右下角色点的按钮，
-   点开是一张 248px 的卡，头部一行标题加「重置」文字键，主体是 6 列圆球，底部一枚
-   全宽次级按钮通到详细设置。圆球本身按 feralui 的预设 chip 做：三枚光晕色等分一圈
-   conic-gradient，再叠 BoardUI 那三层白色高光。
+   点开是一张 248px 的卡，头部一行标题加「重置」文字键，主体是两组 6 列圆球——上面一组
+   光晕、下面一组强调色，底部一枚全宽主按钮通到详细设置。圆球本身按 feralui 的预设 chip
+   做：三枚光晕色等分一圈 conic-gradient，再叠 BoardUI 那三层白色高光；强调色那一组换成
+   BoardUI 自己那颗 radial-gradient 的球。卡的材质与媒体库选择弹层同一条规则。
    实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
 const glowSpotColors=glow=>HOME_GLOW_SPOTS.map(key=>glow[key].color);
+/* 「玻璃原色」那一格的球不带颜色：它画的是当前主题下玻璃自带的那两团反光，两个主题各
+   一套，值只有样式表里一份，所以这里交出一个标记、由 CSS 去取。 */
 const glowChipHtml=(key,label,colors,current)=>`<button type="button" class="board-glow-chip" data-glow-preset="${key}"
   aria-pressed="${key===current}" title="${esc(label)}" aria-label="${esc(label)}"><span class="board-glow-ball"
-  aria-hidden="true" style="--glow-chip:${glowChipFill(colors)}"></span></button>`;
+  aria-hidden="true" ${isNativeGlass(key)?'data-glow-native':`style="--glow-chip:${glowChipFill(colors)}"`}></span></button>`;
+/* 强调色那一排同样不带颜色：球拿的就是这一档真会写上去的 400 与 600 两级。 */
+const accentChipHtml=([key,label],current)=>`<button type="button" class="board-glow-chip" data-accent="${key}"
+  aria-pressed="${key===current}" title="${esc(label)}" aria-label="${esc(label)}"><span class="board-glow-ball"
+  aria-hidden="true" data-accent-ball="${key}"></span></button>`;
 const glowChipsHtml=()=>{
   const glow=appSettings.homeGlow;
   const chips=HOME_GLOW_PRESETS.map(([key,label,palette])=>
@@ -10138,34 +10169,50 @@ const glowChipsHtml=()=>{
 const glowPicker=document.createElement('div');
 glowPicker.className='popmenu board-glow-menu';glowPicker.id='boardGlowMenu';glowPicker.hidden=true;
 glowPicker.setAttribute('popover','manual');glowPicker.setAttribute('role','dialog');
-glowPicker.setAttribute('aria-label','光晕配色');
-glowPicker.innerHTML=`<header class="board-glow-head"><span>配色</span><button type="button" class="board-glow-reset" data-glow-preset-reset>重置</button></header>
-  <div class="board-glow-grid" role="group" aria-label="光晕配色"></div>
-  <footer><button type="button" class="geist-button" data-glow-detail>详细设置</button></footer>`;
+glowPicker.setAttribute('aria-label','配色');
+glowPicker.innerHTML=`<header class="board-glow-head"><span>光晕</span><button type="button" class="board-glow-reset" data-glow-preset-reset>重置</button></header>
+  <div class="board-glow-grid" data-glow-grid role="group" aria-label="光晕"></div>
+  <p class="board-glow-head board-glow-sub"><span>强调色</span></p>
+  <div class="board-glow-grid" data-accent-grid role="group" aria-label="强调色"></div>
+  <footer><button type="button" class="geist-button primary" data-glow-detail>详细设置</button></footer>`;
 document.body.append(glowPicker);
 const glowButton=boardFoot.querySelector('#boardGlowBtn');
 const glowFloating=wireAnchoredMenu(boardFoot,glowButton,glowPicker);
 syncGlowSidebar=()=>{
   const glow=appSettings.homeGlow;
   glowButton.style.setProperty('--glow-swatch',glow.spot1.color);
-  glowPicker.querySelector('.board-glow-grid').innerHTML=glowChipsHtml();
+  glowButton.toggleAttribute('data-glow-native',isNativeGlass(glow.preset));
+  glowPicker.querySelector('[data-glow-grid]').innerHTML=glowChipsHtml();
+  glowPicker.querySelector('[data-accent-grid]').innerHTML=
+    ACCENTS.map(accent=>accentChipHtml(accent,appSettings.accent)).join('');
 };
 /* 一个监听接整格：那一排球会因为「自定义」出现或消失而重画，逐枚绑事件的话，重画之后
    绑的是上一批已经不在文档里的按钮。 */
-glowPicker.querySelector('.board-glow-grid').addEventListener('click',event=>{
+/* 换一档光晕连强调色一起换：一档配色就是一副面，光晕暖着、按钮还是蓝的，读起来是两套
+   皮叠在一起。下面那一排强调色可以单独点，点完只改强调色、不动光晕——先给一套搭配好的，
+   要拆开也拆得开。 */
+glowPicker.querySelector('[data-glow-grid]').addEventListener('click',event=>{
   const chip=event.target.closest?.('[data-glow-preset]');
   if(!chip)return;
   const glow=appSettings.homeGlow,key=chip.dataset.glowPreset;
   if(key==='custom')return;
   glow.preset=key;Object.assign(glow,glowPalette(key));
-  saveSettings();applyHomeGlow();syncGlowChrome();
+  appSettings.accent=glowAccent(key);
+  saveSettings();applyHomeGlow();applyGlassFaces();applyAccent();syncGlowChrome();
 });
-/* 这里重置的是配色，不是整份光晕：标题就写着「配色」，把强度和颗粒一起清掉会让人
-   以为按错了键。整份恢复默认在详细设置那一屏的组底部。 */
+glowPicker.querySelector('[data-accent-grid]').addEventListener('click',event=>{
+  const chip=event.target.closest?.('[data-accent]');
+  if(!chip)return;
+  appSettings.accent=normalizeAccent(chip.dataset.accent);
+  saveSettings();applyAccent();syncGlowChrome();
+});
+/* 这里重置的是配色，不是整份光晕：标题就写着「光晕」和「强调色」，把强度和颗粒一起
+   清掉会让人以为按错了键。整份恢复默认在详细设置那一屏。 */
 glowPicker.querySelector('[data-glow-preset-reset]').onclick=()=>{
   const glow=appSettings.homeGlow;
   glow.preset=DEFAULT_HOME_GLOW.preset;Object.assign(glow,glowPalette(glow.preset));
-  saveSettings();applyHomeGlow();syncGlowChrome();
+  appSettings.accent=DEFAULT_ACCENT;
+  saveSettings();applyHomeGlow();applyGlassFaces();applyAccent();syncGlowChrome();
 };
 glowPicker.querySelector('[data-glow-detail]').onclick=()=>{
   glowFloating.setOpen(false);openDrawer(false);openSettings(true,'界面');

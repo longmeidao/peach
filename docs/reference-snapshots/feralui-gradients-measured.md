@@ -18,6 +18,38 @@
 自带注释承认 CSS 画不出 mesh 场；JSON 导出的参数模型为 `type` / `stops[]`（hex+oklch+
 position）/ `dividers` / `soften` / `noise` / `speed`。
 
+## 预设区那十二枚 chip
+
+2026-09-16 用 agent-browser 打开同一页，读 `.jg-chiprow` 里每个 `.jg-chip` 的文字和它那枚
+圆点的 `conic-gradient`——圆点按色标数等分，四段的颜色就是这一档的四枚色标，顺序与它
+JSON 导出里的 `stops[]` 一致。共十二档，每档四枚。
+
+| feralui 档名 | 色标 1 | 色标 2 | 色标 3 | 色标 4 |
+| --- | --- | --- | --- | --- |
+| Iridescent cloud | `#eaf4fc` | `#1e50a2` | `#f09199` | `#895b8a` |
+| Opal | `#f6f9ff` | `#9be0e8` | `#c4b5f7` | `#f8b8d9` |
+| Lagoon | `#eafbf7` | `#5ce3e6` | `#0f9cc2` | `#274a78` |
+| Emerald | `#f0fbef` | `#8fe3b0` | `#22c79a` | `#0b5f51` |
+| Solar flare | `#fff6de` | `#ffc24b` | `#f4664d` | `#8a2e5e` |
+| Orchid | `#fbeffb` | `#e794c9` | `#9678ce` | `#4a3894` |
+| Peach glow | `#fff3ec` | `#ffc9a3` | `#f08a8c` | `#b65e8c` |
+| Electric tide | `#dffbff` | `#6fd8f2` | `#4c5be0` | `#2a2450` |
+| Sunset | `#ffe9c4` | `#ffae3f` | `#f0574d` | `#5d2a66` |
+| Mint ice | `#f2fdf9` | `#a8f0dc` | `#52cbb0` | `#147a5f` |
+| Midnight bloom | `#12142e` | `#4c3894` | `#b387e8` | `#f6c6e2` |
+| Rose gold | `#fff4e8` | `#fbc9ac` | `#e79ba7` | `#8e5a74` |
+
+色标各自的位置、`soften`、`noise` 与 `speed` 未取得：圆点只按色标数等分，读不出各档自己
+的位置值，而这几项在 Peach 里本来就交给用户那几条拉条。
+
+### Peach 的取法
+
+`web/js/home-glow.js` 按这张表加了对应的十二档，每档取色标 2、3、4。第一枚不取：十一档
+是铺满画布的近白底色、Midnight bloom 那档是近黑底色，在它的 mesh 模型里那是画布本身，
+而 Peach 没有底色层——三枚光晕各自向 `transparent` 收边，身后就是页面自己的面，把那一枚
+搬过来在深色玻璃上等于没有、在浅色玻璃上是一团脏。不透明度不跟着走，统一用 Peach 默认
+档那一组（62 / 52 / 52），那是这块玻璃自己的浓淡。档名中文自拟，按颜色取。
+
 ## Peach 借了什么
 
 只借三点，都不涉及它的代码或位图：

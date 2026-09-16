@@ -101,8 +101,12 @@
    变成一张贴图——真玻璃对着一屋子的光，人一动、窗外云一过，面上的亮斑就换个地方，
    正是这一点让它读成一块有厚度的实物而不是一层半透明的涂层。
    两团大小和亮度不同，加起来才不像一只手电筒；两条轨迹的周期是 41s 和 67s，互质，
-   合起来四十多分钟不重样，看不出循环点在哪。 */
-:root{--glass-fill:rgba(252,253,255,.32);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.32) saturate(.5);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52);--glass-pick-shadow:0 1px 2px #1118270f,0 4px 10px #11182714;--glass-drift-a:radial-gradient(20% 20% at 50% 50%,#ffffff1a,#ffffff0d 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,#ffffff14,#ffffff0a 44%,transparent 74%)}
+   合起来四十多分钟不重样，看不出循环点在哪。
+   两团的色相由 `--glass-tint-a/b` 给：默认是 `--glass-native-a/b`，也就是这块玻璃自带的
+   那一档主题色；用户挑了光晕配色之后，页面把前两枚光晕的颜色写到根上，每一块玻璃跟着
+   换色相，尺寸、alpha 与轨迹一概不动。alpha 写成 `color-mix` 的百分比而不是颜色里的
+   第四个通道，是因为用户给的是不带透明度的色号，而这两团的浓淡是这块材质自己的事。 */
+:root{--glass-fill:rgba(252,253,255,.32);--glass-rim:rgba(255,255,255,.72);--glass-low:rgba(70,80,100,.1);--glass-text:#1d2129;--glass-shadow:0 1px 2px #1118270f,0 8px 18px #11182714,0 24px 48px #11182710;--glass-lift:0 2px 4px #11182714,0 12px 26px #1118271f,0 30px 60px #11182717;--glass-sheen:rgba(255,255,255,.5);--glass-lume:brightness(1.32) saturate(.5);--glass-pick:brightness(1.1) saturate(1.1);--glass-pick-fill:rgba(255,255,255,.52);--glass-pick-shadow:0 1px 2px #1118270f,0 4px 10px #11182714;--glass-native-a:#ffffff;--glass-native-b:#ffffff;--glass-tint-a:var(--glass-native-a);--glass-tint-b:var(--glass-native-b);--glass-drift-a:radial-gradient(20% 20% at 50% 50%,color-mix(in srgb,var(--glass-tint-a) 10%,transparent),color-mix(in srgb,var(--glass-tint-a) 5%,transparent) 42%,transparent 72%);--glass-drift-b:radial-gradient(26% 26% at 50% 50%,color-mix(in srgb,var(--glass-tint-b) 8%,transparent),color-mix(in srgb,var(--glass-tint-b) 4%,transparent) 44%,transparent 74%)}
 :root[data-theme="dark"]{--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-fill:rgba(24,27,33,.24);--glass-rim:rgba(255,255,255,.2);--glass-low:rgba(255,255,255,.05);--glass-text:#eceef3;--glass-shadow:0 1px 2px #00000047,0 10px 22px #00000038,0 28px 56px #0000002b;--glass-lift:0 2px 4px #00000052,0 14px 30px #00000047,0 34px 68px #00000038;--glass-sheen:rgba(230,239,255,.1);--glass-lume:brightness(.5) contrast(1.1);--glass-pick:brightness(1.7) saturate(1.15);--glass-pick-fill:rgba(255,255,255,.13);--glass-pick-shadow:0 1px 2px #00000024,0 6px 14px #0000001f}}
 /* WebKit 在能显示 HDR 的屏幕上（iPhone、带 XDR 屏的 Mac）按扩展范围合成滤镜，`brightness()`
@@ -115,9 +119,10 @@
   :root[data-theme="dark"]{--glass-pick:none;--glass-pick-fill:rgba(255,255,255,.22)}
   @media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-pick:none;--glass-pick-fill:rgba(255,255,255,.22)}}
 }
-/* 亮色玻璃用冷暖反光建立色差，白色页面上也能辨认移动的光斑。 */
-:root[data-theme="light"]{--glass-drift-a:radial-gradient(32% 32% at 50% 50%,#6686b84d,#6686b829 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,#c69d7340,#c69d7324 44%,transparent 74%)}
-@media(prefers-color-scheme:light){:root:not([data-theme]){--glass-drift-a:radial-gradient(32% 32% at 50% 50%,#6686b84d,#6686b829 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,#c69d7340,#c69d7324 44%,transparent 74%)}}
+/* 亮色玻璃用冷暖反光建立色差，白色页面上也能辨认移动的光斑。两团比深色那档大一圈、
+   浓一档：白面反光弱，同一组数值在这里几乎看不见。 */
+:root[data-theme="light"]{--glass-native-a:#6686b8;--glass-native-b:#c69d73;--glass-drift-a:radial-gradient(32% 32% at 50% 50%,color-mix(in srgb,var(--glass-tint-a) 30%,transparent),color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,color-mix(in srgb,var(--glass-tint-b) 25%,transparent),color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)}
+@media(prefers-color-scheme:light){:root:not([data-theme]){--glass-native-a:#6686b8;--glass-native-b:#c69d73;--glass-drift-a:radial-gradient(32% 32% at 50% 50%,color-mix(in srgb,var(--glass-tint-a) 30%,transparent),color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,color-mix(in srgb,var(--glass-tint-b) 25%,transparent),color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)}}
 /* 光斑铺在一张两倍大的画布上，靠 `background-position` 推着走：画布只有元素两倍大时，
    位置从 0% 到 100% 正好把光斑中心从元素的右下角推到左上角，`-10%` 和 `110%` 那两档
    是让它探出框外一点——真实的光斑不会老老实实待在板子里。半径写 20% 是画布的比例，
@@ -150,24 +155,27 @@
   background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
   background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;
   background-position:50% 20%,80% 70%,0 0;
-  animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;
+  animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;
+  animation-play-state:var(--glow-drift-play);
   backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);
   border:0;box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow);
 }
 /* 侧栏这一块玻璃上的反光归 `.glowlayer`：用户配得了色的三枚光晕按同一套 drift 在这里
-   漂。自带那两团白光留着就是两套光斑叠着走，亮的那一档会把配好的颜色冲淡成灰。
-   只对抽屉置空——其余玻璃面（搜索框、筛选浮层、顶栏图标钮）仍走自己那两团，那一点正是
-   「顶多折射到」的意思。填充、sheen、内缘亮线和 backdrop-filter 全部不动。 */
-.drawer.drawer{--glass-drift-a:none;--glass-drift-b:none}
+   漂。自带那两团留着就是两套光斑叠着走，亮的那一档会把配好的颜色冲淡成灰。
+   其余玻璃面仍走自己那两团，只是色相跟着 `--glass-tint-a/b` 换。填充、sheen、内缘亮线
+   和 backdrop-filter 全部不动。
+   「玻璃原色」那一档（根上挂 `data-glow-native`）例外：光晕整层算作 0，抽屉要把自己
+   那两团拿回来，否则侧栏会是全场唯一一块不反光的玻璃。 */
+:root:not([data-glow-native]) .drawer.drawer{--glass-drift-a:none;--glass-drift-b:none}
 /* 搜索框使用浏览器原生模糊，尺寸变化不依赖异步 SVG 位移贴图。 */
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
-html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.reviewcontrols,.reviewgroupbar,.reviewbulktoolbar,.batchbar,.tagselection),
+html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.reviewcontrols,.reviewgroupbar,.reviewbulktoolbar,.batchbar,.tagselection),
 html[data-theme-snapshot] .review.review-has-pane::before{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
 /* 快照撤掉那一下，材质要淡回来：揭示动画刚停，浮层从实底「啪」地跳成毛玻璃，读起来
    像主题又切了第二次。过渡只写在常态上——进快照那一下正在拍旧状态的快照，拍到一半
    路上的颜色就会闪，所以上面那条规则自己把过渡关掉。 */
-.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu{
+.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu,.board-glow-menu.board-glow-menu{
   transition:background-color .28s ease,backdrop-filter .28s ease,-webkit-backdrop-filter .28s ease}
 .board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}
 .entitytagbar.entitytagbar.entitytagbar,
@@ -743,12 +751,14 @@ body>.board-filter-frame{margin-inline:16px}
 .ptoggle{width:42px;height:24px;background:var(--color-background-tertiary-default);border:0;border-radius:999px;transition:background .2s}
 .ptoggle::after{width:18px;height:18px;top:3px;left:3px;background:linear-gradient(#fff 44%,#f3f3f3);box-shadow:0 3px 3px #00000008;transition:transform .2s;transform:none}
 .ptoggle::before{content:'';position:absolute;z-index:1;left:8.25px;top:8.25px;width:7.5px;height:7.5px;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 .375px var(--line);transition:transform .2s}
-.ptoggle:checked{background:linear-gradient(#3986ff,#1760ef);box-shadow:inset 0 1.5px 0 #ffffff40,inset 0 0 0 .75px #3986ff}
+.ptoggle:checked{background:var(--board-blue);box-shadow:inset 0 1.5px 0 #ffffff40,inset 0 0 0 .75px var(--color-accent-400)}
 .ptoggle:checked::after{left:3px;transform:translateX(18px)}
-.ptoggle:checked::before{transform:translateX(18px);background:linear-gradient(#0450e2,#2473fe)}
+.ptoggle:checked::before{transform:translateX(18px);background:linear-gradient(var(--color-accent-700),var(--color-accent-500))}
 .ptoggle:disabled{opacity:.5}
-#applyUISetting{grid-column:1/-1;width:100%;background:linear-gradient(#3986ff,#1760ef);color:#fff;border:1px solid #3986ff;box-shadow:inset 0 1px 1px #ffffff60}
-#applyUISetting:hover{background:linear-gradient(#2879fa,#1459df);color:#fff}
+#applyUISetting{grid-column:1/-1;width:100%;background:var(--board-blue);color:#fff;border:1px solid var(--color-accent-400);box-shadow:inset 0 1px 1px #ffffff60}
+/* 悬停压暗而不是提亮：这枚键铺满一整行，提亮那一档在浅色面上会让它看起来先亮一下再
+   被按下去。压暗那一档正好是 `--board-blue-active` 的两级。 */
+#applyUISetting:hover{background:var(--board-blue-active);color:#fff}
 @media(max-width:760px){.settingscard .settingsscroll .settingrow.settingsortrow{grid-template-columns:1fr;gap:10px}.settingscard .settingsscroll .settingsortcontrols{width:100%}.settingscard .settingsscroll .settingsortcontrols>div{flex:1}.settingscard .settingsscroll .settingsortcontrols .gselect{width:100%}}
 @media(prefers-reduced-motion:reduce){.ptoggle,.ptoggle::after,.ptoggle::before{transition:none}}
 
@@ -918,14 +928,21 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
 .board-glow-toggle{position:relative;display:grid;place-items:center;width:36px;height:36px;flex:none;
   padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
-.board-glow-toggle:hover{background:var(--hover);color:var(--ink)}
+/* 这一排两枚图标键悬停只提图标色，不抬底色：它们坐在侧栏那块玻璃上，一块 6px 圆角的
+   灰方片盖上去，玻璃在那一格里就断了。顶栏那批 `.ib` 站在实底上，那条抬填充的悬停照旧。 */
+.board-glow-toggle:hover,.board-foot-actions>#settingsBtn:hover{background:transparent;color:var(--ink)}
 .board-glow-toggle:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}
 .board-glow-dot{position:absolute;right:0;bottom:0;width:10px;height:10px;border-radius:50%;
   background:var(--glow-swatch,var(--ink));box-shadow:0 0 0 2px var(--ground)}
-.board-glow-menu{box-sizing:border-box;width:248px;max-width:calc(100vw - 32px);padding:10px;gap:0;
-  border:1px solid var(--line);border-radius:24px;background:var(--ground);box-shadow:0 1px 1px rgba(0,0,0,.04),0 4px 4px rgba(0,0,0,.02)}
+/* 这张卡穿的是媒体库选择弹层那身液态玻璃，规则就是同一条，见下面 `.board-library-menu`
+   那一行。两张卡都从侧栏开出来、都盖在馆藏上，实底白卡站在一排毛玻璃中间会读成另一个
+   产品的控件；在这里还多一层意思——卡上那两团漂动的光斑正是用户在卡里挑的那两枚颜色，
+   改一下就在卡自己身上看得见。所以这里只留几何，材质一概不写。 */
+.board-glow-menu{box-sizing:border-box;width:248px;max-width:calc(100vw - 32px);padding:10px;gap:0}
 .board-glow-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px;color:var(--muted);font-size:12px}
+/* 两组之间那条小标题：和头部同一档灰、同一个字号，只是不带右边的文字键。 */
+.board-glow-sub{margin:12px 0 0}
 .board-glow-reset{padding:0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
 .board-glow-reset:hover{color:var(--ink)}
 .board-glow-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:0 4px}
@@ -938,6 +955,13 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
   transition:transform .15s ease}
 .board-glow-ball::after{content:'';position:absolute;left:14%;right:14%;top:6%;height:38.5%;border-radius:50%;
   background:linear-gradient(#ffffff8a,#ffffff00)}
+/* 强调色那一排球按 BoardUI 自己的画法：`radial-gradient(circle closest-side, 亮, 暗)`，
+   取的就是这一档真会被换上去的 400 与 600 两级，所以球色不可能和按钮对不上。
+   「玻璃原色」那一格画的是这块玻璃自带的两团反光色，一半一半：那一档没有三枚光晕可画，
+   拿别的颜色顶上去会让人以为选中它之后侧栏是那个颜色。深色两团同色，球于是是一整颗。 */
+.board-glow-ball[data-accent-ball]{--glow-chip:radial-gradient(circle closest-side,var(--color-accent-400),var(--color-accent-600))}
+.board-glow-ball[data-glow-native]{--glow-chip:conic-gradient(from -90deg,var(--glass-native-a) 0 50%,var(--glass-native-b) 50% 100%)}
+.board-glow-toggle[data-glow-native] .board-glow-dot{background:linear-gradient(135deg,var(--glass-native-a) 50%,var(--glass-native-b) 50%)}
 .board-glow-chip:hover .board-glow-ball{transform:scale(1.1)}
 .board-glow-chip[aria-pressed=true] .board-glow-ball{box-shadow:inset 0 1px 1px #ffffff6b,0 0 0 1.5px var(--ground),0 0 0 2.5px color-mix(in srgb,var(--ink) 32%,transparent)}
 .board-glow-menu footer{margin-top:10px;padding:0 4px}
@@ -945,6 +969,10 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .board-theme-toggle{position:relative;isolation:isolate;display:flex;gap:4px;padding:4px;border-radius:24px;background:var(--picked)}
 .board-theme-toggle button{display:grid;place-items:center;width:32px;height:32px;flex:none;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
 .board-theme-toggle button[aria-pressed=true]{color:var(--ink)}
+/* 没被选中的那一枚此前悬停毫无反馈：它坐在 `--picked` 的轨道上、身上什么都没有，鼠标
+   压上去和没压一样。抬一层 `--hover` 底加提亮图标色，正是这一对旁边那枚滑板给选中项的
+   待遇的弱化版。选中那一枚不跟：它身下已经压着白滑板，再叠一层底就是两块面。 */
+.board-theme-toggle button:not([aria-pressed=true]):hover{background:var(--hover);color:var(--ink)}
 .board-theme-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
 /* `will-change` 把这一枚提成自己的合成层。换主题要把 `:root` 上整套变量重写一遍，
    五千个节点跟着重算样式，主线程一口气忙掉二十几毫秒；滑块跟着卡在半路，按下去的
@@ -1012,7 +1040,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .metricstrip,.tastesummaries{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-flow:row;gap:16px;overflow:visible;border:0;background:none}
 .tastesummary{display:flex;flex-direction:column;min-width:0;padding:16px 0 0;border:0;border-radius:16px;background:var(--ground);overflow:hidden;text-align:left;box-shadow:0 1px 2px #00000008}
 .tastesummary>.board-stat-label{display:flex;align-items:center;gap:8px;padding:0 16px;color:var(--ink-2);font-size:14px;line-height:20px}
-.board-stat-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3986ff25,#1760ef08);color:var(--tungsten);flex:none}
+.board-stat-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,color-mix(in srgb,var(--color-accent-400) 15%,transparent),color-mix(in srgb,var(--color-accent-600) 3%,transparent));color:var(--tungsten);flex:none}
 .board-stat-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tastesummary:nth-child(2) .board-stat-icon{color:#a78bfa;background:#a78bfa18}
 .tastesummary:nth-child(3) .board-stat-icon{color:#34d399;background:#34d39918}
@@ -1035,12 +1063,40 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 @media(max-width:760px){.board-follow-list{padding:8px}}
 @media(max-width:760px){body #manageTitle{width:100%}.followmanage .fauthor{padding:16px}.followmanage .fsechead{gap:8px}.followmanage .fmanagesort{margin-left:0}}
 
+/* 强调色的十一级色阶。机制照搬 BoardUI：主按钮、焦点环、链接、开关、选中态全都引用
+   `--color-accent-*`，换强调色就是把这十一个变量整组指到另一个色相，组件规则一个字不改。
+   上游把这一段写在 `@theme` 里（`frontend/src/react/boardui/styles/theme.css` 第 25–45 行），
+   默认指向 blue 那一组基元，运行时由它自己的 accent 模块整组改写。
+   Peach 这一份排在层叠层之外，所以无论 `/dist/peach-react.css` 里那份 `@layer theme` 怎么
+   写，页面上生效的都是这里；React 子树在 `.peach-react` 上重新声明的是语义 token，它们
+   本来就引用 `--color-accent-*`，值顺着根继承进去，两边因此不会各说各话。
+   色值取 Tailwind v4 色板原文（`tailwindcss/theme.css`），十二个色相绕色轮一圈、六列两行；
+   blue 的 400 用 BoardUI 自己那一枚 `#3392ff` 覆盖值，好让默认档的主按钮渐变一字不变。
+   每一条都带上 `[data-accent-ball=…]`：侧栏弹层里那十二枚圆球就是拿同一组变量画的，
+   球色和真换上去的颜色因此不可能走偏。 */
+:root,:root[data-accent=blue],[data-accent-ball=blue]{--color-accent-50:oklch(97% 0.014 254.604);--color-accent-100:oklch(93.2% 0.032 255.585);--color-accent-200:oklch(88.2% 0.059 254.128);--color-accent-300:oklch(80.9% 0.105 251.813);--color-accent-400:#3392ff;--color-accent-500:oklch(62.3% 0.214 259.815);--color-accent-600:oklch(54.6% 0.245 262.881);--color-accent-700:oklch(48.8% 0.243 264.376);--color-accent-800:oklch(42.4% 0.199 265.638);--color-accent-900:oklch(37.9% 0.146 265.522);--color-accent-950:oklch(28.2% 0.091 267.935)}
+:root[data-accent=red],[data-accent-ball=red]{--color-accent-50:oklch(97.1% 0.013 17.38);--color-accent-100:oklch(93.6% 0.032 17.717);--color-accent-200:oklch(88.5% 0.062 18.334);--color-accent-300:oklch(80.8% 0.114 19.571);--color-accent-400:oklch(70.4% 0.191 22.216);--color-accent-500:oklch(63.7% 0.237 25.331);--color-accent-600:oklch(57.7% 0.245 27.325);--color-accent-700:oklch(50.5% 0.213 27.518);--color-accent-800:oklch(44.4% 0.177 26.899);--color-accent-900:oklch(39.6% 0.141 25.723);--color-accent-950:oklch(25.8% 0.092 26.042)}
+:root[data-accent=orange],[data-accent-ball=orange]{--color-accent-50:oklch(98% 0.016 73.684);--color-accent-100:oklch(95.4% 0.038 75.164);--color-accent-200:oklch(90.1% 0.076 70.697);--color-accent-300:oklch(83.7% 0.128 66.29);--color-accent-400:oklch(75% 0.183 55.934);--color-accent-500:oklch(70.5% 0.213 47.604);--color-accent-600:oklch(64.6% 0.222 41.116);--color-accent-700:oklch(55.3% 0.195 38.402);--color-accent-800:oklch(47% 0.157 37.304);--color-accent-900:oklch(40.8% 0.123 38.172);--color-accent-950:oklch(26.6% 0.079 36.259)}
+:root[data-accent=amber],[data-accent-ball=amber]{--color-accent-50:oklch(98.7% 0.022 95.277);--color-accent-100:oklch(96.2% 0.059 95.617);--color-accent-200:oklch(92.4% 0.12 95.746);--color-accent-300:oklch(87.9% 0.169 91.605);--color-accent-400:oklch(82.8% 0.189 84.429);--color-accent-500:oklch(76.9% 0.188 70.08);--color-accent-600:oklch(66.6% 0.179 58.318);--color-accent-700:oklch(55.5% 0.163 48.998);--color-accent-800:oklch(47.3% 0.137 46.201);--color-accent-900:oklch(41.4% 0.112 45.904);--color-accent-950:oklch(27.9% 0.077 45.635)}
+:root[data-accent=lime],[data-accent-ball=lime]{--color-accent-50:oklch(98.6% 0.031 120.757);--color-accent-100:oklch(96.7% 0.067 122.328);--color-accent-200:oklch(93.8% 0.127 124.321);--color-accent-300:oklch(89.7% 0.196 126.665);--color-accent-400:oklch(84.1% 0.238 128.85);--color-accent-500:oklch(76.8% 0.233 130.85);--color-accent-600:oklch(64.8% 0.2 131.684);--color-accent-700:oklch(53.2% 0.157 131.589);--color-accent-800:oklch(45.3% 0.124 130.933);--color-accent-900:oklch(40.5% 0.101 131.063);--color-accent-950:oklch(27.4% 0.072 132.109)}
+:root[data-accent=emerald],[data-accent-ball=emerald]{--color-accent-50:oklch(97.9% 0.021 166.113);--color-accent-100:oklch(95% 0.052 163.051);--color-accent-200:oklch(90.5% 0.093 164.15);--color-accent-300:oklch(84.5% 0.143 164.978);--color-accent-400:oklch(76.5% 0.177 163.223);--color-accent-500:oklch(69.6% 0.17 162.48);--color-accent-600:oklch(59.6% 0.145 163.225);--color-accent-700:oklch(50.8% 0.118 165.612);--color-accent-800:oklch(43.2% 0.095 166.913);--color-accent-900:oklch(37.8% 0.077 168.94);--color-accent-950:oklch(26.2% 0.051 172.552)}
+:root[data-accent=teal],[data-accent-ball=teal]{--color-accent-50:oklch(98.4% 0.014 180.72);--color-accent-100:oklch(95.3% 0.051 180.801);--color-accent-200:oklch(91% 0.096 180.426);--color-accent-300:oklch(85.5% 0.138 181.071);--color-accent-400:oklch(77.7% 0.152 181.912);--color-accent-500:oklch(70.4% 0.14 182.503);--color-accent-600:oklch(60% 0.118 184.704);--color-accent-700:oklch(51.1% 0.096 186.391);--color-accent-800:oklch(43.7% 0.078 188.216);--color-accent-900:oklch(38.6% 0.063 188.416);--color-accent-950:oklch(27.7% 0.046 192.524)}
+:root[data-accent=sky],[data-accent-ball=sky]{--color-accent-50:oklch(97.7% 0.013 236.62);--color-accent-100:oklch(95.1% 0.026 236.824);--color-accent-200:oklch(90.1% 0.058 230.902);--color-accent-300:oklch(82.8% 0.111 230.318);--color-accent-400:oklch(74.6% 0.16 232.661);--color-accent-500:oklch(68.5% 0.169 237.323);--color-accent-600:oklch(58.8% 0.158 241.966);--color-accent-700:oklch(50% 0.134 242.749);--color-accent-800:oklch(44.3% 0.11 240.79);--color-accent-900:oklch(39.1% 0.09 240.876);--color-accent-950:oklch(29.3% 0.066 243.157)}
+:root[data-accent=indigo],[data-accent-ball=indigo]{--color-accent-50:oklch(96.2% 0.018 272.314);--color-accent-100:oklch(93% 0.034 272.788);--color-accent-200:oklch(87% 0.065 274.039);--color-accent-300:oklch(78.5% 0.115 274.713);--color-accent-400:oklch(67.3% 0.182 276.935);--color-accent-500:oklch(58.5% 0.233 277.117);--color-accent-600:oklch(51.1% 0.262 276.966);--color-accent-700:oklch(45.7% 0.24 277.023);--color-accent-800:oklch(39.8% 0.195 277.366);--color-accent-900:oklch(35.9% 0.144 278.697);--color-accent-950:oklch(25.7% 0.09 281.288)}
+:root[data-accent=violet],[data-accent-ball=violet]{--color-accent-50:oklch(96.9% 0.016 293.756);--color-accent-100:oklch(94.3% 0.029 294.588);--color-accent-200:oklch(89.4% 0.057 293.283);--color-accent-300:oklch(81.1% 0.111 293.571);--color-accent-400:oklch(70.2% 0.183 293.541);--color-accent-500:oklch(60.6% 0.25 292.717);--color-accent-600:oklch(54.1% 0.281 293.009);--color-accent-700:oklch(49.1% 0.27 292.581);--color-accent-800:oklch(43.2% 0.232 292.759);--color-accent-900:oklch(38% 0.189 293.745);--color-accent-950:oklch(28.3% 0.141 291.089)}
+:root[data-accent=fuchsia],[data-accent-ball=fuchsia]{--color-accent-50:oklch(97.7% 0.017 320.058);--color-accent-100:oklch(95.2% 0.037 318.852);--color-accent-200:oklch(90.3% 0.076 319.62);--color-accent-300:oklch(83.3% 0.145 321.434);--color-accent-400:oklch(74% 0.238 322.16);--color-accent-500:oklch(66.7% 0.295 322.15);--color-accent-600:oklch(59.1% 0.293 322.896);--color-accent-700:oklch(51.8% 0.253 323.949);--color-accent-800:oklch(45.2% 0.211 324.591);--color-accent-900:oklch(40.1% 0.17 325.612);--color-accent-950:oklch(29.3% 0.136 325.661)}
+:root[data-accent=rose],[data-accent-ball=rose]{--color-accent-50:oklch(96.9% 0.015 12.422);--color-accent-100:oklch(94.1% 0.03 12.58);--color-accent-200:oklch(89.2% 0.058 10.001);--color-accent-300:oklch(81% 0.117 11.638);--color-accent-400:oklch(71.2% 0.194 13.428);--color-accent-500:oklch(64.5% 0.246 16.439);--color-accent-600:oklch(58.6% 0.253 17.585);--color-accent-700:oklch(51.4% 0.222 16.935);--color-accent-800:oklch(45.5% 0.188 13.697);--color-accent-900:oklch(41% 0.159 10.272);--color-accent-950:oklch(27.1% 0.105 12.094)}
 /* Board 的语义色与复合字阶；图表和业务状态独立于交互强调色。 */
-:root,:root[data-theme="light"]{--color-text-primary:#0a0a0a;--color-text-secondary:#737373;--color-text-tertiary:#a3a3a3;--color-background-full:#fff;--color-background-primary-default:#fff;--color-background-primary-hover:#f5f5f5;--color-background-secondary-default:#f5f5f5;--color-background-tertiary-default:#e5e5e5;--color-border-button-default:#e5e5e5;--color-border-button-hover:#d4d4d4;--color-border-button-active:#a3a3a3;--color-separator-border:#e5e5e5;--color-border-focus-ring:#3b82f6;--color-text-white:#fff;--color-text-disabled:#d4d4d4;--board-blue:linear-gradient(180deg,#2b7fff,#155dfc);--board-blue-hover:linear-gradient(180deg,#3392ff,#2b7fff);--board-blue-active:linear-gradient(180deg,#155dfc,#1447e6);--board-red:linear-gradient(180deg,#fb2c36,#e7000b);--board-red-hover:linear-gradient(180deg,#ff6467,#fb2c36);--board-red-active:linear-gradient(180deg,#e7000b,#c10007);--board-red-line:#fb2c36;--board-red-wash:#ffe2e2;--board-red-text:#c10007}
+:root,:root[data-theme="light"]{--color-text-primary:#0a0a0a;--color-text-secondary:#737373;--color-text-tertiary:#a3a3a3;--color-background-full:#fff;--color-background-primary-default:#fff;--color-background-primary-hover:#f5f5f5;--color-background-secondary-default:#f5f5f5;--color-background-tertiary-default:#e5e5e5;--color-border-button-default:#e5e5e5;--color-border-button-hover:#d4d4d4;--color-border-button-active:#a3a3a3;--color-separator-border:#e5e5e5;--color-border-focus-ring:var(--color-accent-500);--color-text-white:#fff;--color-text-disabled:#d4d4d4;--board-blue:linear-gradient(180deg,var(--color-accent-500),var(--color-accent-600));--board-blue-hover:linear-gradient(180deg,var(--color-accent-400),var(--color-accent-500));--board-blue-active:linear-gradient(180deg,var(--color-accent-600),var(--color-accent-700));--board-red:linear-gradient(180deg,#fb2c36,#e7000b);--board-red-hover:linear-gradient(180deg,#ff6467,#fb2c36);--board-red-active:linear-gradient(180deg,#e7000b,#c10007);--board-red-line:#fb2c36;--board-red-wash:#ffe2e2;--board-red-text:#c10007}
 :root[data-theme="dark"]{--color-text-primary:#fafafa;--color-text-secondary:#737373;--color-text-tertiary:#525252;--color-background-full:#121212;--color-background-primary-default:#262626;--color-background-primary-hover:#40404099;--color-background-secondary-default:#171717;--color-background-tertiary-default:#262626;--color-border-button-default:#404040;--color-border-button-hover:#737373;--color-border-button-active:#525252;--color-separator-border:#262626;--color-text-disabled:#262626;--board-red-line:#ff6467;--board-red-wash:color-mix(in srgb,#460809 60%,transparent);--board-red-text:#ffa2a2}
 @media(prefers-color-scheme:dark){:root:not([data-theme]){--color-text-primary:#fafafa;--color-text-secondary:#737373;--color-text-tertiary:#525252;--color-background-full:#121212;--color-background-primary-default:#262626;--color-background-primary-hover:#40404099;--color-background-secondary-default:#171717;--color-background-tertiary-default:#262626;--color-border-button-default:#404040;--color-border-button-hover:#737373;--color-border-button-active:#525252;--color-separator-border:#262626;--color-text-disabled:#262626;--board-red-line:#ff6467;--board-red-wash:color-mix(in srgb,#460809 60%,transparent);--board-red-text:#ffa2a2}}
 :root{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring);--chart-0:#2dd4bf;--chart-1:#a3e635;--chart-2:#f472b6;--chart-3:#38bdf8;--board-font:'Inter Variable','Inter','Segoe UI','Microsoft YaHei UI','PingFang SC',sans-serif;--board-body:400 14px/20px var(--board-font);--board-body-medium:500 14px/20px var(--board-font);--board-compact:400 13px/18px var(--board-font);--board-caption:400 12px/16px var(--board-font);--board-heading:500 20px/26px var(--board-font);--board-title:500 32px/44px var(--board-font);--board-figure:500 24px/34px var(--board-font)}
 :root[data-theme]{--page:var(--color-background-full);--ground:var(--color-background-secondary-default);--surface:var(--color-background-primary-default);--sunk:var(--color-background-secondary-default);--ink:var(--color-text-primary);--ink-2:var(--color-text-secondary);--muted:var(--color-text-secondary);--line:var(--color-border-button-default);--line-soft:var(--color-separator-border);--picked:var(--color-background-tertiary-default);--inset:var(--color-background-tertiary-default);--hover:var(--color-background-primary-hover);--tungsten:var(--color-border-focus-ring)}
+/* 主题选「跟随系统」时根上没有 `data-theme`，`web/css/01-base.css` 深色那一档的
+   `--tungsten` 用的是自己那枚蓝的字面值，选择器比上面这条 `:root` 更具体，会把它压住。
+   焦点环、链接和数据色跟着强调色走这件事不能只在手动选深色时成立，所以这里按同样的
+   具体度接一条回来。 */
+@media(prefers-color-scheme:dark){:root:not([data-theme]){--tungsten:var(--color-border-focus-ring)}}
 /* 次级按钮压上去时换的那一面。`--hover` 不够用：它照搬 BoardUI 的 `background-primary-hover`，
    暗色那档是 60% 的 #404040 压在 #262626 上，算出来只差几个色阶，上游靠同时点亮边框补足。
    这里要的是不动边、只靠填充说话，所以取同一套面色里的下一档实色——浅色 #e5e5e5、
@@ -1162,7 +1218,7 @@ body :is(button.danger,.reviewactions button.error,.batchbar button.danger):not(
 /* 导航图形使用同宽槽位；logo 的透明边距按实际可见轮廓适配。 */
 .board-home-logo{width:20px;height:20px}.drawer:not(.open) .dnav button:has(.board-home-logo){padding:8px}
 .drawer.drawer .dnav button:not([aria-pressed=true]),.edge.edge button:not([aria-pressed=true]),.board-sidebar-head #brandHome .mark{color:var(--color-text-secondary)}
-.board-library-menu.board-library-menu{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;border:1px solid var(--glass-low);border-radius:22px;color:var(--glass-text);backdrop-filter:blur(22px) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:blur(22px) saturate(160%) var(--glass-lume);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
+.board-library-menu.board-library-menu,.board-glow-menu.board-glow-menu{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;border:1px solid var(--glass-low);border-radius:22px;color:var(--glass-text);backdrop-filter:blur(22px) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:blur(22px) saturate(160%) var(--glass-lume);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
 /* 这一列的填充由那块滑过去的玻璃提供，行自己只管文字色：两边都铺的话，静止态是一块
    不透明的底压在玻璃上面，滑动的那块从头到尾被盖住，看到的只有当前项换了个地方亮起来。
    玻璃住在这一列里，所以这一列是它的定位宿主；行要压在它上面，否则滑过去时字被盖住。 */
@@ -1179,19 +1235,19 @@ body :is(button.danger,.reviewactions button.error,.batchbar button.danger):not(
 
 /* Board 公开基础控件：尺寸与来源登记在 docs/BOARD_UI.md。 */
 .pcheck{vertical-align:middle;align-self:center}.pcheck>span{position:relative;width:16px;height:16px;border:1px solid var(--color-border-button-default);border-radius:4px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d;transition:background .15s,border-color .15s,box-shadow .15s}
-.pcheck input:is(:checked,:indeterminate)+span{color:#fff;border-color:transparent;background:linear-gradient(#3986ff,#1760ef);box-shadow:inset 0 1px 0 #ffffff40,0 1px 2px #0450e229}
+.pcheck input:is(:checked,:indeterminate)+span{color:#fff;border-color:transparent;background:var(--board-blue);box-shadow:inset 0 1px 0 #ffffff40,0 1px 2px #0450e229}
 .pcheck input:indeterminate+span svg{visibility:hidden}.pcheck input:indeterminate+span::after{content:'';position:absolute;top:6px;left:3px;width:8px;height:2px;border-radius:1px;background:#fff}
 .pcheck input:disabled+span{opacity:.5}.pcheck>span svg{width:14px;height:14px;stroke-width:2}.pcheck:hover>span{border-color:var(--color-border-button-hover)}
-input[type=checkbox]:not(.ptoggle):not(.pcheck input){accent-color:#1760ef;width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
-.dual-range .range-base,.dual-range .range-fill{height:6px;top:11px}.dual-range .range-base{background:var(--color-background-tertiary-default);box-shadow:inset 0 1px 1px #0000000f}.dual-range .range-fill{background:linear-gradient(90deg,#3986ff,#1760ef);box-shadow:inset 0 1px 0 #ffffff3d,0 1px 2px #0450e229}
+input[type=checkbox]:not(.ptoggle):not(.pcheck input){accent-color:var(--color-accent-600);width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
+.dual-range .range-base,.dual-range .range-fill{height:6px;top:11px}.dual-range .range-base{background:var(--color-background-tertiary-default);box-shadow:inset 0 1px 1px #0000000f}.dual-range .range-fill{background:linear-gradient(90deg,var(--color-accent-400),var(--color-accent-600));box-shadow:inset 0 1px 0 #ffffff3d,0 1px 2px #0450e229}
 body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px #0000001a,inset 0 1px 0 #ffffffcc;cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),box-shadow .15s}
 /* 抓住的时候手柄涨一圈，松开按同一条弹簧收回去。位置不参与任何过渡——手柄要贴着
    指针走，给它加一段缓动就是让它落在指针后面，滑块立刻变成拖不准的东西。 */
 body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range):active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}
 body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-moz-range-thumb{width:18px;height:18px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px #0000001a}
-body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
+body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--color-accent-400) var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
 body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{margin-top:-7px}
-body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,#3986ff var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0)}
+body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--color-accent-400) var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0)}
 /* 气泡对准手柄居中，越过轨道两端的那一截由 `--range-tip-shift` 收回来（`syncBoardRange`
    量出来的实际溢出）：侧栏只比轨道宽出一点点，伸出去的半截会被侧栏裁掉，读数就只剩
    一半。两端各钉一种对齐只在正好 0% 和 100% 时成立，中间任何位置照样出界。 */
@@ -1201,10 +1257,10 @@ body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;b
 /* 两端都常显：这里是唯一报数的地方，藏起来的话不碰滑块就看不出当前筛的是哪一段。 */
 .dual-range{margin-top:36px}
 .toast{position:relative;align-items:center;gap:12px;width:min(400px,calc(100vw - 32px));padding:16px 44px 16px 16px;border-radius:16px;background:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);font:var(--board-body);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d;overflow:hidden}
-.toast.warn{border-color:var(--color-border-button-default)}.toast .board-notification-icon{display:grid;place-items:center;width:40px;height:40px;flex:none;border-radius:50%;background:color-mix(in srgb,#3986ff 12%,var(--color-background-primary-default));color:#1760ef}.toast.warn .board-notification-icon{background:color-mix(in srgb,#f04452 12%,var(--color-background-primary-default));color:var(--drop)}/* 这枚字形是描边件：不写 `fill:none` 就按 `fill` 的初值涂黑，一个勾会糊成实心箭头。 */
+.toast.warn{border-color:var(--color-border-button-default)}.toast .board-notification-icon{display:grid;place-items:center;width:40px;height:40px;flex:none;border-radius:50%;background:color-mix(in srgb,var(--color-accent-400) 12%,var(--color-background-primary-default));color:var(--color-accent-600)}.toast.warn .board-notification-icon{background:color-mix(in srgb,#f04452 12%,var(--color-background-primary-default));color:var(--drop)}/* 这枚字形是描边件：不写 `fill:none` 就按 `fill` 的初值涂黑，一个勾会糊成实心箭头。 */
 .board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}.toast p{margin:0}.toast .tclose{position:absolute;right:12px;top:12px}.toast .tact{align-self:center;font-weight:500;color:var(--tungsten)}
 .toast.leaving{transform:translateY(8px) scale(.96);filter:blur(3px);transition:height .18s ease-out,margin .18s ease-out,padding .18s ease-out,border-width .18s ease-out,opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}
-.board-notification-timer{position:absolute;bottom:0;left:0;right:0;height:3px;background:#1760ef;transform-origin:left;animation:board-notification-countdown var(--notification-duration) linear forwards}.toast:hover .board-notification-timer,.toast:focus-within .board-notification-timer{animation-play-state:paused}@keyframes board-notification-countdown{to{transform:scaleX(0)}}
+.board-notification-timer{position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--color-accent-600);transform-origin:left;animation:board-notification-countdown var(--notification-duration) linear forwards}.toast:hover .board-notification-timer,.toast:focus-within .board-notification-timer{animation-play-state:paused}@keyframes board-notification-countdown{to{transform:scaleX(0)}}
 .board-tooltip{box-sizing:border-box;max-width:240px;padding:6px 10px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:normal;box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d}
 .board-tooltip{position:fixed;z-index:var(--layer-tooltip);pointer-events:none}.board-tooltip[hidden]{display:none}
 body :is(.popmenu,.gselectmenu,.cardmenupanel){box-sizing:border-box;padding:10px;border:1px solid var(--color-border-button-default);border-radius:16px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d}
@@ -1285,13 +1341,13 @@ body [data-cleanup-empty][hidden]{display:none}
 .reviewitem .reviewstage[data-framed]{padding:0;border:0;background:transparent;box-shadow:none}.reviewitem .reviewtags{min-height:28px;align-content:start}.reviewitem .reviewempty{min-height:160px;max-height:190px;border-radius:12px;background:var(--color-background-secondary-default)}.reviewitem .reviewstage{flex:0 0 auto}.reviewitem .reviewevidence{border:0;padding:12px 0 0}.reviewitem .reviewactions{border:0;border-radius:0 0 16px 16px;background:var(--color-background-secondary-default);margin-top:auto}
 .reviewitem{content-visibility:auto;contain-intrinsic-size:auto var(--review-fieldset-height)}
 body .reviewactions button,body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium)}
-body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,#3986ff 16%,var(--color-background-primary-default));color:#1760ef;border-color:transparent}
-.reviewcontrols,.reviewgroupbar{border:0;border-radius:20px}.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
+body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
+.reviewcontrols,.reviewgroupbar{border:0;border-radius:20px}.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
 .settingsscroll .settingrow{margin-right:16px}.settingsscroll .settinggroup{border-bottom:0}
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
-body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
 html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 @media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;animation:none}}
 @media(prefers-reduced-motion:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection){animation:none}}
@@ -1370,11 +1426,14 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 .insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}
 .insightcopy{padding:24px;gap:0}
 /* ── 复核动作：跳过是蓝色 Chip 的配色（boardui chip.tsx blue：亮 200/800，暗 950@60%/300），悬停深一档 ── */
-body .reviewactions button.warning:not(:disabled){background:#bfdbfe;color:#1e40af;border-color:transparent}
-body .reviewactions button.warning:hover:not(:disabled){background:#93c5fd;color:#1e3a8a}
-:root[data-theme="dark"] body .reviewactions button.warning:not(:disabled){background:#17255499;color:#93c5fd}
-:root[data-theme="dark"] body .reviewactions button.warning:hover:not(:disabled){background:#1e3a8a;color:#bfdbfe}
-@media(prefers-color-scheme:dark){:root:not([data-theme]) body .reviewactions button.warning:not(:disabled){background:#17255499;color:#93c5fd}:root:not([data-theme]) body .reviewactions button.warning:hover:not(:disabled){background:#1e3a8a;color:#bfdbfe}}
+/* 这几档原本写的是 Tailwind blue 的 200/800/300/900/950，逐级换成同名的强调色阶：
+   它们说的是「这一步是主操作」，和主按钮同一个意思，换了强调色只有这里还是蓝的就读成
+   另一套配色。深浅两档各自的深浅关系不动，换的只是色相。 */
+body .reviewactions button.warning:not(:disabled){background:var(--color-accent-200);color:var(--color-accent-800);border-color:transparent}
+body .reviewactions button.warning:hover:not(:disabled){background:var(--color-accent-300);color:var(--color-accent-900)}
+:root[data-theme="dark"] body .reviewactions button.warning:not(:disabled){background:color-mix(in srgb,var(--color-accent-950) 60%,transparent);color:var(--color-accent-300)}
+:root[data-theme="dark"] body .reviewactions button.warning:hover:not(:disabled){background:var(--color-accent-900);color:var(--color-accent-200)}
+@media(prefers-color-scheme:dark){:root:not([data-theme]) body .reviewactions button.warning:not(:disabled){background:color-mix(in srgb,var(--color-accent-950) 60%,transparent);color:var(--color-accent-300)}:root:not([data-theme]) body .reviewactions button.warning:hover:not(:disabled){background:var(--color-accent-900);color:var(--color-accent-200)}}
 body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 /* ── 侧栏收起键（boardui sidebar.tsx）：36px、10px 圆角、次级图标色，悬停与导航项同一层底；收起时与品牌相隔 10px ── */
 .drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);transition:color .15s ease}
@@ -1505,7 +1564,7 @@ body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupb
    所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
    矩形由 `updateReviewSticky` 逐帧量出来，写进 `--review-pane-*`。 */
 body .review{position:relative}
-body .review.review-has-pane::before{content:"";position:fixed;top:var(--review-pane-top,var(--topH));left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);background-size:200% 200%,200% 200%;background-repeat:no-repeat;background-position:50% 20%,80% 70%;animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
+body .review.review-has-pane::before{content:"";position:fixed;top:var(--review-pane-top,var(--topH));left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);background-size:200% 200%,200% 200%;background-repeat:no-repeat;background-position:50% 20%,80% 70%;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
 body .review :is(.reviewbulktoolbar,.reviewgroupbar).review-pane-member{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
 html.board-high-contrast .review.review-has-pane::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 @media(prefers-reduced-transparency:reduce){body .review.review-has-pane::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}

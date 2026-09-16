@@ -104,6 +104,9 @@ body.settings-open{overflow:hidden}
   padding-block:var(--glowrow-pad);color:var(--muted);font-size:var(--fs-sm)}
 .glowcurrent b{color:var(--ink);font-weight:500}
 .glowgroup{display:grid;gap:0;min-width:0}
+/* 「玻璃原色」那一档下面这行字顶替被收走的几条拉条和三行颜色。和上面那行「当前配色」
+   同一档字色与行高，读起来是同一列里的一句话，不是插进来的提示条。 */
+.glownative{margin:0;padding-block:var(--glowrow-pad);color:var(--muted);font-size:var(--fs-sm);line-height:1.6}
 /* 上游那一行是大写加宽字距的英文小标题，中文不大写：中文没有大小写，`text-transform`
    在这里什么也不做，字距倒是会把两个字拉散。 */
 .glowgroup>h4{display:flex;align-items:center;min-height:var(--glowrow-min);
@@ -111,6 +114,10 @@ body.settings-open{overflow:hidden}
 .glowfields{display:flex;flex-direction:column;gap:0;min-width:0}
 .glowfield{display:flex;align-items:center;gap:10px;min-height:var(--glowrow-min);
   padding-block:var(--glowrow-pad);min-width:0}
+/* 带显式 display 的元素盖得住浏览器默认的 `[hidden]{display:none}`：「玻璃原色」那一档
+   要收走其余几条拉条和整组颜色行，少这一条的话它们照样摆在那里，拖也拖得动、什么也
+   不影响。 */
+.glowfield[hidden],.glowgroup[hidden]{display:none}
 .glowfieldlabel{flex:none;width:84px;color:var(--muted);font-size:var(--fs-xs);font-weight:600;white-space:nowrap}
 .glowfield .dial{flex:1;min-width:0}
 /* 颜色行：34px 圆点 + 名称与十六进制两行 + 行尾折角。相邻两行之间那条分隔线从圆点
