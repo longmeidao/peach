@@ -20,6 +20,7 @@ from urllib.parse import quote
 
 from .avatar_provider import install_entity_avatar
 from .catalog_rules import (
+    code_release_date,
     collapse_superseded_taste_tags,
     is_korean_mib_code,
     normalise_code_key,
@@ -960,9 +961,12 @@ def _auto_apply_rule(candidate: dict, agreed: int) -> str:
 
     official 与 community 两类补空在 `review_decision` 里必须分得开：出了问题要回溯的
     是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。多来源一致
-    （ADR-0025）与单来源（ADR-0018）同样要分得开：前者的证据强度不一样。
+    （ADR-0025）与单来源（ADR-0018）同样要分得开：前者的证据强度不一样。来源之间有
+    分歧、按 ADR-0034 取舍过的，记下是按什么取舍的。
     """
     source = str(candidate.get("source") or "").strip()
+    if candidate.get("settled_by"):
+        return f"adr-0034-empty-field-{candidate['settled_by']}"
     if source == LOCAL_NFO_SOURCE:
         return "adr-0029-empty-field-local-nfo"
     spec = SOURCE_SPECS.get(source)
@@ -975,16 +979,45 @@ def _auto_apply_rule(candidate: dict, agreed: int) -> str:
 def _evidence_candidates(row: dict) -> list[dict]:
     """能当补空证据的候选：已登记来源与本地 NFO。
 
-    采集任务只在官方渠道落空时才问社区来源，这时一家之言不够：ABW-358 的发行日期
-    javdb 给的是 MGS 上架日。只剩一家社区来源时一条都不算（ADR-0030）。
+    只剩一家社区来源也算：落库只补空格子（ADR-0033），空着的格子有一个值比没有强；
+    补错的值用户改过一次就归 `user:manual`，自动写入不再碰它（ADR-0034）。
     """
-    candidates = [c for c in row.get("candidates") or []
-                  if str(c.get("source") or "").strip() in SOURCE_SPECS
-                  or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
+    return [c for c in row.get("candidates") or []
+            if str(c.get("source") or "").strip() in SOURCE_SPECS
+            or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
+
+
+#: 社区来源之间取值不一时听这一家的。用户 2026-09-16 逐条核对过：javdb 比 javbus 准（ADR-0034）。
+PREFERRED_COMMUNITY_SOURCE = "javdb"
+
+
+def _settled_candidates(connection, field: str, code: str,
+                        candidates: list[dict]) -> tuple[list[dict], str | None]:
+    """取值只剩一个的那组候选，和据以取舍的规则；取舍不了返回空列表。
+
+    日期式番号的发行日期只认番号自己写的那天：候选里没有这一天就交给人。
+    其余字段取值不一、在场的全是社区来源时，取 javdb 那一侧；有官方来源或本地
+    NFO 在场的分歧照旧交给人（ADR-0034）。
+    """
+    settled_by = None
+    date = code_release_date(code) if field == "release_date" else None
+    if date is not None:
+        matching = [c for c in candidates if str(c.get("display_value") or "").strip() == date]
+        settled_by = "code-date" if len(matching) < len(candidates) else None
+        candidates = matching
+    values = {_candidate_value_key(connection, field, candidate) for candidate in candidates}
+    if None in values or not values:
+        return [], None
+    if len(values) == 1:
+        return candidates, settled_by
     sources = {str(c.get("source") or "").strip() for c in candidates}
-    lone_community = (len(sources) == 1 and str(row.get("source_profile") or "").strip() == "library"
-                      and not any(source == LOCAL_NFO_SOURCE or SOURCE_SPECS[source].official for source in sources))
-    return [] if lone_community else candidates
+    if any(source == LOCAL_NFO_SOURCE or SOURCE_SPECS[source].official for source in sources):
+        return [], None
+    preferred = [c for c in candidates
+                 if str(c.get("source") or "").strip() == PREFERRED_COMMUNITY_SOURCE]
+    if len({_candidate_value_key(connection, field, c) for c in preferred}) != 1:
+        return [], None
+    return preferred, f"{PREFERRED_COMMUNITY_SOURCE}-preferred"
 
 
 def _filename_carries_code(code: str, name: str) -> bool:
@@ -1019,7 +1052,9 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     2. 候选**取值**去重后只剩一个——有第二个取值才存在取舍，而取舍正是复核要做的事。
        数的是取值不是候选条数（ADR-0025）：两家独立来源给出同一个值是这批候选里最强的
        证据，按条数算却会被判成「有分歧」。实测 349 条这样被扣住，`259LUXU-1509` 的
-       厂牌、演员和发行日期都是 mgstage 与 libredmm 逐字相同却谁也没写进账本；
+       厂牌、演员和发行日期都是 mgstage 与 libredmm 逐字相同却谁也没写进账本。两种取舍
+       不用人判（`_settled_candidates`，ADR-0034）：日期式番号的发行日期认番号自己写的
+       那天，全是社区来源的分歧取 javdb 那一侧；
     3. 该番号名下**每一条**资产的文件名都认得出这个番号——逐字出现，或按编目规则
        解析出来就是它。`MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是
        `MEYD-911`；本机 2611 条有番号的视频里这样的有 297 条。
@@ -1051,19 +1086,16 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
         return None
     if str(row.get("current_value") or "").strip():
         return None
-    candidates = _evidence_candidates(row)
-    if not candidates:
+    code = str(row.get("code") or "").strip()
+    if not code:
         return None
-    values = {_candidate_value_key(connection, field, candidate) for candidate in candidates}
-    if len(values) != 1 or None in values:
+    candidates, settled_by = _settled_candidates(connection, field, code, _evidence_candidates(row))
+    if not candidates:
         return None
     if field == "tags" and not _tags_are_fully_resolved(candidates):
         return None
     candidate = _preferred_candidate(field, candidates)
-    code = str(row.get("code") or "").strip()
     query = str(row.get("query") or code).strip()
-    if not code:
-        return None
     # 韩国 MIB 的番号问 JAV 目录站必错，这类候选一条都不该走自动批准。第 3 条对它们
     # 全部成立——文件名就叫 `AR-101 Ari....mp4`——但它保证的是「候选属于这个文件」，
     # 保证不了「来源返回的是这个番号」，而 MIB 恰恰错在后者。只有候选全部来自 MIB
@@ -1086,7 +1118,8 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     if column and any(is_protected(owner_of(target["field_owners"], column))
                       for target in targets):
         return None
-    return {**_normalised_candidate(field, candidate), "agreed_sources": len(candidates)}
+    return {**_normalised_candidate(field, candidate), "agreed_sources": len(candidates),
+            **({"settled_by": settled_by} if settled_by else {})}
 
 
 def _pending_first(rows: list[dict]) -> list[dict]:
@@ -1221,6 +1254,16 @@ def _approved_entity_name(value: object, kind: str) -> str:
     return cleaned
 
 
+def _registered_entity_name(connection, kind: str, name: str) -> str:
+    """来源的写法是账本里某条实体的别名，就换成那条的规范名。
+
+    javdb 写 `Tokyo-Hot`、javbus 写 `東京熱`，账本只该有一个 `东京热`。解析不到（或别名
+    撞了两条）时保留来源原文。
+    """
+    known = resolve_entity(connection, kind, name)
+    return name if known is None else str(known["canonical_name"])
+
+
 #: 复核字段名 → `asset` 的真相字段列。`performers` 与 `tags` 不在这里：它们落在
 #: `asset_tag` / `asset_entity` 的多值行上，不是 `asset` 的一列，归属由那两张表
 #: 自己的 `source` 列承担。
@@ -1322,7 +1365,8 @@ def _apply_metadata_candidate(
         return len(asset_ids)
 
     if field in {"studio", "series"}:
-        name = _approved_entity_name(candidate.get("value"), field)
+        name = _registered_entity_name(
+            connection, field, _approved_entity_name(candidate.get("value"), field))
         write_owned_fields(
             connection, asset_ids, {field: name}, owner)
         connection.execute(

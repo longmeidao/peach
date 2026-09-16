@@ -592,7 +592,7 @@ class _RemoteSession:
     def _metadata(self, row, code, *, update, issue):
         """先问 r18.dev；它没有或出错，再问 AVBase 与 javdb。
 
-        社区来源的值照常进候选，要不要免复核由落库那道闸按「几家一致」判（ADR-0030）。
+        社区来源的值照常进候选，只剩一家也补空，几家不一时取 javdb 的（ADR-0034）。
         两边各自记「没有」的记忆：r18.dev 说没有的番号，一周内直接去问社区来源。
         """
         action = 'querying_metadata'

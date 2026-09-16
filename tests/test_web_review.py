@@ -407,8 +407,8 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(json.loads(note)["rule"], "adr-0029-empty-field-local-nfo")
         self.assertEqual(self.queue_keys("metadata_fields"), ["ABX"])
 
-    def test_library_collection_needs_two_community_sources_to_agree(self):
-        """采集任务问社区来源时官方已经落空，javdb 一家之言可能是别家店铺的上架日（ADR-0030）。"""
+    def test_library_collection_fills_an_empty_field_from_a_lone_community_source(self):
+        """官方落空时只有 javdb 一家也补空，note 里分得清是一家还是两家一致（ADR-0034）。"""
         self._asset(90, "ABW-358", "ABW-358.mp4")
         self._asset(91, "ABW-359", "ABW-359.mp4")
         self._asset(92, "ABW-360", "ABW-360.mp4")
@@ -421,16 +421,18 @@ class ReviewQueueTests(unittest.TestCase):
             {"item_key": "R18", "field": "release_date", "current": "", "profile": "library",
              "candidates": ["2023-05-26"], "code": "ABW-360", "source": "r18dev"},
         ])
-        self.assertEqual(self._auto()["applied"], 2)
+        self.assertEqual(self._auto()["applied"], 3)
         con = sqlite3.connect(self.db_path)
         try:
             dates = dict(con.execute("SELECT id,release_date FROM asset WHERE id IN (90,91,92)"))
-            note = con.execute("SELECT note FROM review_decision WHERE item_key='TWO'").fetchone()[0]
+            notes = dict(con.execute(
+                "SELECT item_key,note FROM review_decision WHERE item_key IN ('ONE','TWO')"))
         finally:
             con.close()
-        self.assertEqual(dates, {90: None, 91: "2023-05-26", 92: "2023-05-26"})
-        self.assertEqual(json.loads(note)["rule"], "adr-0025-empty-field-2-agreed-community-sources")
-        self.assertEqual(self.queue_keys("metadata_fields"), ["ONE"])
+        self.assertEqual(dates, {90: "2023-05-23", 91: "2023-05-26", 92: "2023-05-26"})
+        self.assertEqual(json.loads(notes["ONE"])["rule"], "adr-0018-empty-field-single-community-source")
+        self.assertEqual(json.loads(notes["TWO"])["rule"], "adr-0025-empty-field-2-agreed-community-sources")
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
 
     def test_auto_apply_records_the_source_as_the_field_owner(self):
         self._asset(96, "EEE-5", "EEE-5.mp4")
@@ -574,6 +576,78 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["GGG:title"])
 
+    def test_javdb_settles_a_disagreement_among_community_sources(self):
+        """全是社区来源时取 javdb 那一侧；有官方来源在场的分歧照旧交给人（ADR-0034）。"""
+        self._asset(122, "MAAN-545", "MAAN-545.mp4")
+        self._asset(123, "HHH-8", "HHH-8.mp4")
+        self.write_metadata_rows([
+            {"item_key": "MAAN:studio", "field": "studio", "current": "", "code": "MAAN-545",
+             "candidates": [{"source": "avbase", "value": "DOC"},
+                            {"source": "javbus", "value": "DOC"},
+                            {"source": "javdb", "value": "プレステージプレミアム"}]},
+            {"item_key": "HHH:studio", "field": "studio", "current": "", "code": "HHH-8",
+             "candidates": [{"source": "mgstage", "value": "官方厂牌"},
+                            {"source": "javdb", "value": "社区厂牌"}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            studio = con.execute("SELECT studio FROM asset WHERE id=122").fetchone()[0]
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key='MAAN:studio'").fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual((studio, note["source"], note["rule"]),
+                         ("プレステージプレミアム", "javdb", "adr-0034-empty-field-javdb-preferred"))
+        self.assertEqual(self.queue_keys("metadata_fields"), ["HHH:studio"])
+
+    def test_a_studio_spelled_as_a_registered_alias_lands_under_its_canonical_name(self):
+        """javdb 写 `Tokyo-Hot`，账本把它登记为 `东京热` 的别名，卡片上就该是 `东京热`。"""
+        self._asset(127, "N1042", "n1042.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,"
+                    "updated_at) VALUES(61,'studio','东京热','东京热','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                    "confidence) VALUES(61,'Tokyo-Hot','tokyo-hot','user:manual',1.0)")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "N1042:studio", "field": "studio", "current": "", "code": "N1042",
+             "candidates": ["Tokyo-Hot"], "source": "javdb"},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            studio = con.execute("SELECT studio FROM asset WHERE id=127").fetchone()[0]
+            linked = con.execute("SELECT entity_id FROM asset_entity WHERE asset_id=127 "
+                                 "AND role='studio'").fetchall()
+            studios = con.execute("SELECT count(*) FROM entity WHERE kind='studio'").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual((studio, linked, studios), ("东京热", [(61,)], 1))
+
+    def test_a_dated_code_keeps_the_release_date_it_carries(self):
+        """`092415_001` 自己写着 2015-09-24，javdb 给的转售上架日不落；番号那天谁都没给就交给人。"""
+        self._asset(124, "092415_001", "1pon-092415_001.mp4")
+        self._asset(125, "092415_159", "1pon-092415_159.mp4")
+        self.write_metadata_rows([
+            {"item_key": "D1", "field": "release_date", "current": "", "code": "092415_001",
+             "candidates": [{"source": "javbus", "value": "2015-09-24"},
+                            {"source": "javdb", "value": "2016-06-16"}]},
+            {"item_key": "D2", "field": "release_date", "current": "", "code": "092415_159",
+             "candidates": [{"source": "javdb", "value": "2016-06-09"}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            dates = dict(con.execute("SELECT id,release_date FROM asset WHERE id IN (124,125)"))
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key='D1'").fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual(dates, {124: "2015-09-24", 125: None})
+        self.assertEqual((note["source"], note["rule"]), ("javbus", "adr-0034-empty-field-code-date"))
+        self.assertEqual(self.queue_keys("metadata_fields"), ["D2"])
+
     def test_a_result_for_another_release_never_lands(self):
         """来源返回的不是这个番号，就不该写进真相字段。
 
@@ -672,10 +746,10 @@ class ReviewQueueTests(unittest.TestCase):
                              "value": [{"name": "一ノ瀬アメリ"}]},
                             {"source": "javdb", "display": "美空あやか",
                              "value": [{"name": "美空あやか"}]}]},
-            # 账本不认识的两个名字仍然是两个取值，照常要人判。
+            # 账本不认识的两个名字仍然是两个取值；有官方来源在场，javdb 不替人取舍。
             {"item_key": "N0647:performers", "field": "performers", "current": "",
              "code": "N0647",
-             "candidates": [{"source": "javbus", "display": "新城由衣",
+             "candidates": [{"source": "tokyohot", "display": "新城由衣",
                              "value": [{"name": "新城由衣"}]},
                             {"source": "javdb", "display": "吉澤ひかり",
                              "value": [{"name": "吉澤ひかり"}]}]},

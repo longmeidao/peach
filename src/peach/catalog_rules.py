@@ -725,6 +725,18 @@ def is_uncensored_code(code: str | None) -> bool:
     return any(shape.fullmatch(value) for shape in UNCENSORED_CODE_SHAPES)
 
 
+def code_release_date(code: str | None) -> str | None:
+    """日期式番号自己写着发行日：`092415_001` 是 2015-09-24。别的形状返回 None。
+
+    这几家片商按发行日编号，番号比任何转录站都可靠：javdb 给 `092415_001` 的是
+    2016-06-16，那是转售商的上架日。
+    """
+    value = str(code or "").strip()
+    if not _CODE_DATE.fullmatch(value):
+        return None
+    return f"20{value[4:6]}-{value[0:2]}-{value[2:4]}"
+
+
 def is_uncensored_release(name: str | None, code: str | None) -> bool:
     """番号形状或文件名里的发行站，两者有一个成立就是无码厂商的片。
 
