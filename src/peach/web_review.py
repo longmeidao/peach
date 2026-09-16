@@ -1254,6 +1254,16 @@ def _approved_entity_name(value: object, kind: str) -> str:
     return cleaned
 
 
+def _registered_entity_name(connection, kind: str, name: str) -> str:
+    """来源的写法是账本里某条实体的别名，就换成那条的规范名。
+
+    javdb 写 `Tokyo-Hot`、javbus 写 `東京熱`，账本只该有一个 `东京热`。解析不到（或别名
+    撞了两条）时保留来源原文。
+    """
+    known = resolve_entity(connection, kind, name)
+    return name if known is None else str(known["canonical_name"])
+
+
 #: 复核字段名 → `asset` 的真相字段列。`performers` 与 `tags` 不在这里：它们落在
 #: `asset_tag` / `asset_entity` 的多值行上，不是 `asset` 的一列，归属由那两张表
 #: 自己的 `source` 列承担。
@@ -1355,7 +1365,8 @@ def _apply_metadata_candidate(
         return len(asset_ids)
 
     if field in {"studio", "series"}:
-        name = _approved_entity_name(candidate.get("value"), field)
+        name = _registered_entity_name(
+            connection, field, _approved_entity_name(candidate.get("value"), field))
         write_owned_fields(
             connection, asset_ids, {field: name}, owner)
         connection.execute(

@@ -601,6 +601,30 @@ class ReviewQueueTests(unittest.TestCase):
                          ("プレステージプレミアム", "javdb", "adr-0034-empty-field-javdb-preferred"))
         self.assertEqual(self.queue_keys("metadata_fields"), ["HHH:studio"])
 
+    def test_a_studio_spelled_as_a_registered_alias_lands_under_its_canonical_name(self):
+        """javdb 写 `Tokyo-Hot`，账本把它登记为 `东京热` 的别名，卡片上就该是 `东京热`。"""
+        self._asset(127, "N1042", "n1042.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,"
+                    "updated_at) VALUES(61,'studio','东京热','东京热','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                    "confidence) VALUES(61,'Tokyo-Hot','tokyo-hot','user:manual',1.0)")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "N1042:studio", "field": "studio", "current": "", "code": "N1042",
+             "candidates": ["Tokyo-Hot"], "source": "javdb"},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            studio = con.execute("SELECT studio FROM asset WHERE id=127").fetchone()[0]
+            linked = con.execute("SELECT entity_id FROM asset_entity WHERE asset_id=127 "
+                                 "AND role='studio'").fetchall()
+            studios = con.execute("SELECT count(*) FROM entity WHERE kind='studio'").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual((studio, linked, studios), ("东京热", [(61,)], 1))
+
     def test_a_dated_code_keeps_the_release_date_it_carries(self):
         """`092415_001` 自己写着 2015-09-24，javdb 给的转售上架日不落；番号那天谁都没给就交给人。"""
         self._asset(124, "092415_001", "1pon-092415_001.mp4")
