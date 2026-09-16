@@ -1,3 +1,4 @@
+import colorsys
 import re
 import unittest
 from html.parser import HTMLParser
@@ -6012,10 +6013,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".card.pending-delete .poster")
         self.assertPageContains('<b>回收站</b>')
 
-    def test_surface_has_measured_beeg_glow_geometry(self):
+    def test_home_glow_is_three_spots_over_the_page_colour(self):
+        """光晕只有三枚光斑，底下就是页面本身：不铺底色带，也不压遮罩带。
+
+        那两层是照着一张参考位图配出来的，它们一在，首页顶部就是另一张面——顶栏与卡片
+        之间多出一条谁也说不清归属的色带。去掉之后光斑各自向 transparent 收边，落在 --page 上。
+        """
+        css = stylesheet_source()
         self.assertPageContains("--glow-h:49vh")
-        self.assertPageContains("--glow-veil:rgba(0,0,0,.6)")
         self.assertPageContains("animation:ambient-in .8s ease .5s both")
+        rule = css.split("body::before{", 1)[1].split("}", 1)[0]
+        self.assertEqual(rule.count("radial-gradient("), 3, "三枚光斑，不多也不少")
+        self.assertNotIn("linear-gradient", rule, "底色带与遮罩带都不属于这条规则")
+        for gone in ("--glow-veil", "--glow-angle", "--glow-base"):
+            self.assertPageLacks(gone, "这个变量已经没有使用者")
 
     def test_home_glow_reads_every_colour_and_centre_from_a_variable(self):
         """`body::before` 里一个字面颜色、一个字面坐标都不许有。
@@ -6027,31 +6038,47 @@ class WebUiSourceTests(unittest.TestCase):
         rule = css.split("body::before{", 1)[1].split("}", 1)[0]
         self.assertNotIn("#", rule, "光晕里不许再出现字面颜色")
         self.assertEqual(re.findall(r"rgba?\(", rule), [], "光晕里不许再出现字面颜色")
-        for layer in ("--glow-veil", "--glow-angle", "--glow-lerp",
-                      "--glow-spot-1-color", "--glow-spot-2-x", "--glow-spot-3-fade",
-                      "--glow-base-1", "--glow-base-4", "--glow-h", "--ambient-opacity"):
+        for layer in ("--glow-lerp", "--glow-spot-1-color", "--glow-spot-2-x",
+                      "--glow-spot-3-fade", "--glow-h", "--ambient-opacity"):
             self.assertIn(f"var({layer})", rule, f"{layer} 没有被 body::before 引用")
 
-    def test_home_glow_defaults_stay_on_the_rebuilt_beeg_values(self):
-        """抽成变量不等于换了一版画面：默认值逐项还是重建那一版的数。"""
+    def test_home_glow_defaults_match_the_default_preset(self):
+        """样式表里的默认值就是 `amber` 那一档，两处一字不差。
+
+        对不上的后果只出现在第一帧：`applyHomeGlow()` 跑完之前页面按样式表画，跑完之后
+        按 JS 写的值画，中间会闪一次颜色。
+        """
         css = stylesheet_source()
         for declaration in (
-                "--glow-spot-1-color:rgba(25,169,187,.72); --glow-spot-1-x:42%; --glow-spot-1-y:34%",
-                "--glow-spot-1-w:43%; --glow-spot-1-h:78%; --glow-spot-1-fade:68%",
-                "--glow-spot-2-color:rgba(178,125,141,.58); --glow-spot-2-x:30%; --glow-spot-2-y:6%",
-                "--glow-spot-2-w:36%; --glow-spot-2-h:72%; --glow-spot-2-fade:72%",
-                "--glow-spot-3-color:rgba(84,66,87,.58); --glow-spot-3-x:76%; --glow-spot-3-y:18%",
-                "--glow-spot-3-w:38%; --glow-spot-3-h:70%; --glow-spot-3-fade:72%",
-                "--glow-base-1:#46506b; --glow-base-2:#68688b; --glow-base-3:#274f64; --glow-base-4:#2e2938",
-                "--glow-angle:105deg"):
+                "--glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-x:38%; --glow-spot-1-y:30%",
+                "--glow-spot-1-w:46%; --glow-spot-1-h:76%; --glow-spot-1-fade:70%",
+                "--glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-x:22%; --glow-spot-2-y:10%",
+                "--glow-spot-2-w:34%; --glow-spot-2-h:70%; --glow-spot-2-fade:72%",
+                "--glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-x:78%; --glow-spot-3-y:22%",
+                "--glow-spot-3-w:40%; --glow-spot-3-h:72%; --glow-spot-3-fade:72%"):
             self.assertIn(declaration, css)
         # 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
-        self.assertIn("--glow-noise:0; --glow-strength:1; --glow-theme-scale:.34", css)
+        self.assertIn("--glow-noise:0; --glow-strength:1; --glow-theme-scale:.6", css)
         self.assertIn("--ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale))", css)
-        # 浅色也开：两档各自的缩放与遮罩色都要在，否则浅色要么是 0 要么顶着一道黑影。
-        self.assertEqual(css.count("--glow-veil:rgba(0,0,0,.6); --glow-theme-scale:1;}"), 2,
-                         "深色两块色板都要自己那一档")
-        self.assertIn("--glow-veil:rgba(255,255,255,.55)", css)
+        # 浅色也开：两档各自的缩放都要在，否则浅色那一档要么是 0 要么和深色一样浓。
+        self.assertEqual(css.count("--glow-theme-scale:1;}"), 2, "深色两块色板都要自己那一档")
+
+    def test_home_glow_presets_carry_no_cyan_or_teal(self):
+        """预设里没有一枚光斑落在青绿那一段色相上。
+
+        青绿是照着外部参考配出来的那一版留下的印子，用户点名要它消失。只查名字挡不住——
+        换个十六进制写法就绕过去了，所以按色相角判：150°–210° 之间、饱和度够得上看得见
+        的那一档，一枚都不许有。近乎无彩的灰不在此列，它读出来不是颜色。
+        """
+        block = self.app_js.split("const HOME_GLOW_PRESETS=[", 1)[1].split("\n];", 1)[0]
+        colours = re.findall(r"color:'#([0-9a-f]{6})'", block)
+        self.assertGreaterEqual(len(colours), 12, "四档预设各三枚光斑")
+        for value in colours:
+            with self.subTest(colour=value):
+                red, green, blue = (int(value[at:at + 2], 16) / 255 for at in (0, 2, 4))
+                hue, _light, saturation = colorsys.rgb_to_hls(red, green, blue)
+                self.assertFalse(150 <= hue * 360 <= 210 and saturation >= 0.2,
+                                 f"#{value} 落在青绿那一段")
 
     def test_home_glow_interpolates_in_oklab_with_a_declared_fallback(self):
         """oklab 插值由 @supports 开启，认不出它的引擎退回 sRGB 而不是整层消失。"""
@@ -6072,12 +6099,12 @@ class WebUiSourceTests(unittest.TestCase):
     def test_home_glow_settings_are_stored_bounded_and_written_to_the_root(self):
         """设置里存得住、读回来要夹回区间，改一下就写到 <html> 上。"""
         self.assertPageContains("sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW}")
-        self.assertPageContains("const DEFAULT_HOME_GLOW={on:true,preset:'dusk',strength:100,noise:0,"
-                                "...glowPalette('dusk')}")
+        self.assertPageContains("const DEFAULT_HOME_GLOW={on:true,preset:'amber',strength:100,noise:0,"
+                                "...glowPalette('amber')}")
         self.assertPageContains("appSettings.homeGlow=normalizeHomeGlow(appSettings.homeGlow)")
         self.assertCode("function normalizeHomeGlow(raw){")
         self.assertCode("strength:boundedPreference(+stored.strength,0,100,100),")
-        self.assertCode("noise:boundedPreference(+stored.noise,0,100,0),")
+        self.assertCode("noise:boundedPreference(+stored.noise,0,100,0)};")
         self.assertCode("fade:boundedPreference(+spot.fade,10,100,fallback.fade)};")
         self.assertPageContains("const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))")
         self.assertCode("function applyHomeGlow(glow=appSettings.homeGlow){")
@@ -6085,9 +6112,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("style.setProperty(`--glow-spot-${slot}-color`,glowRgba(spot.color,spot.alpha));")
         self.assertPageContains("applyHomeGlow();")
         # 预设给中文名，含当前默认那一档。
-        self.assertPageContains("['dusk','靛青薄暮',")
+        self.assertPageContains("['amber','钨丝暖阁',{")
         self.assertPageContains("['custom','自定义']")
-        self.assertGreaterEqual(self.app_js.count("',{angle:"), 4, "预设至少四档")
+        self.assertGreaterEqual(self.app_js.count("spot1:{color:'#"), 4, "预设至少四档")
+
+    def test_home_glow_normalisation_replaces_a_retired_preset_wholesale(self):
+        """存着的档名已经不在清单里时，连它那三枚颜色一起换成默认那一档。
+
+        逐项夹回区间对这一种情形不管用：被清退的配色留在 `spot1..3` 上全是合法值，
+        夹完原样还在，页面看上去根本没换过档。自定义不算——那三枚是用户自己挑的。
+        旧版本多存的键（底色与角度）不必单独清理，这里只按当前模型逐项取值。
+        """
+        self.assertCode("const known=HOME_GLOW_CHOICES.some(([key])=>key===stored.preset);")
+        self.assertCode("const preset=known?stored.preset:'amber';")
+        self.assertCode("const seed=glowPalette(preset==='custom'?'amber':preset);")
+        self.assertCode("const spot=known&&stored[key]&&typeof stored[key]==='object'"
+                        "?stored[key]:{},fallback=seed[key];")
+        self.assertPageLacks("angle:boundedPreference", "角度已经不在模型里")
+        self.assertPageLacks("base:seed.base.map", "底色已经不在模型里")
 
     def test_home_glow_panel_uses_the_existing_control_vocabulary(self):
         """光晕那一块只用现成控件：Toggle、Geist Select、拉条、原生取色器和次级按钮。"""

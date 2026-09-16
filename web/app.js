@@ -489,40 +489,38 @@ const PHOTO_SIZES=[['big','大图','maximize'],['small','小图','layout-grid']]
 const PHOTO_LAYOUTS=[['fixed','固定比例','layout-grid'],['masonry','瀑布流','columns-2']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-/* 首页光晕的参数模型。一档配色就是三枚光斑（颜色、不透明度、圆心、椭圆半轴、收边位置）
-   加底层渐变的角度与四个颜色；开关、强度和颗粒不属于配色，换档时不动。
+/* 首页光晕的参数模型。一档配色就是三枚光斑：颜色、不透明度、圆心、椭圆半轴、收边位置；
+   开关、强度和颗粒不属于配色，换档时不动。
    这个形状借自 feralui.dev/gradients 的 JSON 导出（登记在 docs/HANDOFF.md），只借参数模型，
-   渲染仍是 web/css/01-base.css 里那五层纯 CSS 渐变，不引入 Canvas。
-   `dusk` 就是依据 beeg 留存像素重建的那一版，和 :root 上的默认值一字不差。 */
+   渲染仍是 web/css/01-base.css 里那三层纯 CSS 径向渐变，不引入 Canvas。
+   三枚光斑各自向 transparent 收边，落在页面底色上，所以每一枚都得自己亮得起来：
+   压暗的那种颜色在深色页上等于没有，在浅色页上是一团脏。
+   `amber` 是默认那一档，和 :root 上的默认值一字不差。 */
 const HOME_GLOW_SPOTS=['spot1','spot2','spot3'];
 const HOME_GLOW_PRESETS=[
-  ['dusk','靛青薄暮',{angle:105,base:['#46506b','#68688b','#274f64','#2e2938'],
-    spot1:{color:'#19a9bb',alpha:72,x:42,y:34,w:43,h:78,fade:68},
-    spot2:{color:'#b27d8d',alpha:58,x:30,y:6,w:36,h:72,fade:72},
-    spot3:{color:'#544257',alpha:58,x:76,y:18,w:38,h:70,fade:72}}],
-  ['amber','钨丝暖阁',{angle:100,base:['#5a4030','#7a5438','#3c2a22','#241a18'],
+  ['amber','钨丝暖阁',{
     spot1:{color:'#e08a2f',alpha:62,x:38,y:30,w:46,h:76,fade:70},
     spot2:{color:'#c4544a',alpha:52,x:22,y:10,w:34,h:70,fade:72},
-    spot3:{color:'#5a3a2a',alpha:60,x:78,y:22,w:40,h:72,fade:72}}],
-  ['plum','夜樱',{angle:112,base:['#4a3a70','#6a4f8b','#33285a','#221a2e'],
+    spot3:{color:'#a86a52',alpha:52,x:78,y:22,w:40,h:72,fade:72}}],
+  ['plum','夜樱',{
     spot1:{color:'#b455a0',alpha:64,x:46,y:28,w:44,h:76,fade:70},
     spot2:{color:'#6a4fd0',alpha:54,x:24,y:8,w:36,h:72,fade:74},
-    spot3:{color:'#3a2a52',alpha:62,x:80,y:20,w:38,h:70,fade:72}}],
-  ['pine','深林',{angle:98,base:['#2e4a44','#4a6a52','#20403c','#1a2622'],
-    spot1:{color:'#2f9e7a',alpha:66,x:40,y:32,w:44,h:78,fade:68},
+    spot3:{color:'#7a4f96',alpha:56,x:80,y:20,w:38,h:70,fade:72}}],
+  ['pine','深林',{
+    spot1:{color:'#3f9e57',alpha:66,x:40,y:32,w:44,h:78,fade:68},
     spot2:{color:'#7fae4a',alpha:48,x:26,y:8,w:34,h:70,fade:74},
-    spot3:{color:'#274a42',alpha:62,x:78,y:20,w:40,h:70,fade:72}}],
-  ['ash','灰雾',{angle:105,base:['#4c5158','#6a6f77','#3a3e44','#26292e'],
+    spot3:{color:'#4f9463',alpha:56,x:78,y:20,w:40,h:70,fade:72}}],
+  ['ash','灰雾',{
     spot1:{color:'#8f98a4',alpha:52,x:44,y:32,w:46,h:78,fade:70},
     spot2:{color:'#b6bcc4',alpha:38,x:28,y:8,w:36,h:72,fade:74},
-    spot3:{color:'#4a4f57',alpha:52,x:76,y:20,w:38,h:70,fade:72}}],
+    spot3:{color:'#6f7783',alpha:50,x:76,y:20,w:38,h:70,fade:72}}],
 ];
 /* 手调过颜色之后当前档就不再是任何一个预设，下拉要如实说这件事，不能继续顶着上一档的名字。 */
 const HOME_GLOW_CHOICES=[...HOME_GLOW_PRESETS.map(([key,label])=>[key,label]),['custom','自定义']];
 const glowPalette=key=>structuredClone((HOME_GLOW_PRESETS.find(([name])=>name===key)||HOME_GLOW_PRESETS[0])[2]);
 const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))?String(value).toLowerCase():fallback;
 const glowRgba=(hex,alpha)=>`rgba(${[1,3,5].map(at=>parseInt(hex.slice(at,at+2),16)).join(',')},${(alpha/100).toFixed(2)})`;
-const DEFAULT_HOME_GLOW={on:true,preset:'dusk',strength:100,noise:0,...glowPalette('dusk')};
+const DEFAULT_HOME_GLOW={on:true,preset:'amber',strength:100,noise:0,...glowPalette('amber')};
 const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
@@ -584,18 +582,21 @@ applyTheme();
 prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});
 /* 光晕参数整份来自 localStorage，形态和范围都不可信：颜色写成任意字符串会让那一层
    渐变整条失效，百分比越界会把光斑糊成一整片或者缩没。逐项夹回区间、认不出就退回
-   默认那一档，而不是整份丢掉——一个坏掉的数不该把用户调好的其余几档一起清空。 */
+   默认那一档，而不是整份丢掉——一个坏掉的数不该把用户调好的其余几档一起清空。
+   只有一种情形要连颜色一起换掉：存着的档名已经不在清单里。那说明这一档被清退了，
+   留在旁边的三枚光斑颜色正是被清退的那一版，按坏值逐项夹回去只会把它原样留在页面上。
+   自定义不在此列——那三枚颜色是用户自己挑的，档名认得出来，照样留着。
+   已经不存在的键（旧版本的底色与角度）不必单独清理：这里只按当前模型逐项取值。 */
 function normalizeHomeGlow(raw){
   const stored=raw&&typeof raw==='object'?raw:{};
-  const preset=allowedSetting(stored.preset,HOME_GLOW_CHOICES.map(([key])=>key),'dusk');
-  const seed=glowPalette(preset==='custom'?'dusk':preset);
+  const known=HOME_GLOW_CHOICES.some(([key])=>key===stored.preset);
+  const preset=known?stored.preset:'amber';
+  const seed=glowPalette(preset==='custom'?'amber':preset);
   const glow={on:stored.on!==false,preset,
     strength:boundedPreference(+stored.strength,0,100,100),
-    noise:boundedPreference(+stored.noise,0,100,0),
-    angle:boundedPreference(+stored.angle,0,360,seed.angle),
-    base:seed.base.map((color,index)=>glowColor(Array.isArray(stored.base)?stored.base[index]:'',color))};
+    noise:boundedPreference(+stored.noise,0,100,0)};
   for(const key of HOME_GLOW_SPOTS){
-    const spot=stored[key]&&typeof stored[key]==='object'?stored[key]:{},fallback=seed[key];
+    const spot=known&&stored[key]&&typeof stored[key]==='object'?stored[key]:{},fallback=seed[key];
     glow[key]={color:glowColor(spot.color,fallback.color),
       alpha:boundedPreference(+spot.alpha,0,100,fallback.alpha),
       x:boundedPreference(+spot.x,-50,150,fallback.x),y:boundedPreference(+spot.y,-50,150,fallback.y),
@@ -611,14 +612,12 @@ function applyHomeGlow(glow=appSettings.homeGlow){
   const style=document.documentElement.style,live=glow.on;
   style.setProperty('--glow-strength',String(live?glow.strength/100:0));
   style.setProperty('--glow-noise',String(live?glow.noise/100:0));
-  style.setProperty('--glow-angle',`${glow.angle}deg`);
   HOME_GLOW_SPOTS.forEach((key,index)=>{
     const spot=glow[key],slot=index+1;
     style.setProperty(`--glow-spot-${slot}-color`,glowRgba(spot.color,spot.alpha));
     for(const [name,value] of [['x',spot.x],['y',spot.y],['w',spot.w],['h',spot.h],['fade',spot.fade]])
       style.setProperty(`--glow-spot-${slot}-${name}`,`${value}%`);
   });
-  glow.base.forEach((color,index)=>style.setProperty(`--glow-base-${index+1}`,color));
 }
 applyHomeGlow();
 /* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
@@ -663,7 +662,7 @@ function renderHomeGlowSetting(){
   presetMount.innerHTML=selectFieldHtml(HOME_GLOW_CHOICES,glow.preset,{label:'光晕配色'});
   const preset=wireSelectField(presetMount.firstElementChild);
   preset.addEventListener('change',()=>{
-    glow.preset=allowedSetting(preset.value,HOME_GLOW_CHOICES.map(([key])=>key),'dusk');
+    glow.preset=allowedSetting(preset.value,HOME_GLOW_CHOICES.map(([key])=>key),'amber');
     if(glow.preset!=='custom')Object.assign(glow,glowPalette(glow.preset));
     mount.querySelectorAll('[data-glow-spot]').forEach(input=>{input.value=glow[input.dataset.glowSpot].color});
     saveSettings();applyHomeGlow();
