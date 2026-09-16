@@ -215,7 +215,8 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - `/api/related` 用 Tag IDF 加 MMR 排序并缓存；搜索使用 FTS5 trigram，短查询回退 LIKE 并覆盖规范名、别名和检索词，搜索历史在 reader 写入被拒时降级到页面内存。
 - 复核页覆盖元数据、创作者标签、Logo、头像、身份、番号目录、FC2 证据和媒体失败；抓取与 AI 结果仍是候选，批准后才写真相字段，元数据候选保留 MetaTube 目录证据且不下载 URL。
 - 女优与创作者资料页的头像圆框角上有换头像入口：候选来自图库里同名的其他图和这个人取过的每一张图，另外两条路是本机文件与一个 https 地址。每一张取到的图都按内容哈希进候选缓存，被顶下来的那张留在里面，换回去不重新下载。页面只回递服务端自己列出来的 `ref`，图片地址由服务端按索引拼；手填地址是唯一的例外，它过 `http.public_https_url` 那道公网判据。
-- 外部来源 genre 只在 `peach.genre_taxonomy` 投影，日英来源词共用一套既有词表，非内容分类排除、未收录原文回传登记。
+- 外部来源 genre 只在 `peach.genre_taxonomy` 投影，日英来源词共用一套既有词表，非内容分类排除、未收录原文回传登记。查表只有 `resolve_genre` 一处，抓取与复核折叠共用它：各写一份的代价是「表里补了这个词，页面上它仍然停在未收录」。r18dev 取 `categories[].name_ja`（DMM 自己那套词），英文只在日文页取不到时兜底——英文是 r18 再译的一层，`企画` 在非内容表里而它的英文 `Variety` 不在。
+- 一件事只留一个标签名：`catalog_rules.RETIRED_TAGS` 存「账本里已有、但不该再用的写法 → 规范名」，`scripts/rename_retired_tags.py --apply --backup` 是写这一步的唯一入口，实体按 `entities.merge_entity` 并、旧名留作别名。绝大多数退役名来自已关停的 Stash 导入（ADR-0021），产地关掉了改一次名就不会再长出来。`pixiv_tag` 不参与：那是作者打的词，改它等于事后修改来源的原话。
 - 未收录的 genre 在复核卡上就地收录：`genre_decision`（迁移 0026）存「规范化来源词 → 中文标签」，标签留空即判它不是内容词。这张表是静态词表可变的那一半，`peach.genre_decisions` 只管读写、映射仍全在 `genre_taxonomy.map_genres`；收录一次之后 `extract_peach_fields` 与 `scrape_codes.py`、`harvest_kmib.py`、`fetch_fc2_metadata.py` 都当它是已知词，已经排在队列里的候选由 `web_review._fold_genre_decisions` 当场折进值里（读队列、人工批准、自动落库三处同一个函数）。收录只改词表，落库仍要用户按那张卡上的「通过」。页面给的候选词表是静态表已投影到的那批中文标签，不是账本里全部标签实体——后者大半来自文件名，拿它当建议只会把噪声接着抄下去。2026-09-11 之前写下的候选文件只有 `warnings` 里那句中文提示，`genres_in_warning` 按同一处拼出的格式把原文反解回来，旧队列不必先重抓全库才有按钮可点。
 - 补抓按番号发行面分流来源，要求来源认得出所查番号、冷却按连败触发且会过期；无码发行站的片与粘连的版次标记也给得出徽章。
 - 「只采集」把来源明确答复「没有」（HTTP 404、所有渠道无候选，即 `jav_cover_fetch.NotFound`）的番号按来源记进 `state/library-metadata-misses.json`，7 天内不再问；超时与网络故障不记，「重试未完成项」不看这份记忆。没有番号的视频（创作者作品、裸文件）只登记本地海报，不列为问题项。相机文件名派生的旧伪番号（`VIDEO-2022`、`IMG-1734`）由 `scripts/clear_camera_filename_codes.py` 清掉，用户或复核写下的番号不碰。

@@ -7832,7 +7832,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("'1080P':'1080p'")
         self.assertPageContains("'60fps':'60FPS'")
         self.assertPageContains("'AI去码':'AI解码'")
-        self.assertPageContains("'足交':'脚交'")
+        # 显示名不能改成另一个已经存在的标签名，也不能把通行写法换成不通行的。
+        self.assertPageLacks("'足系':'美腿'")
+        self.assertPageLacks("'足交':'脚交'")
         self.assertPageContains("'骑乘':'骑乘位'")
         self.assertPageContains("category=params.get('category')")
 

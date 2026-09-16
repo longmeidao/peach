@@ -18,6 +18,7 @@ from unittest import mock
 
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
+from peach.genre_taxonomy import map_genres
 from peach.field_owners import (
     EXPECTED_REVISION_FIELD,
     USER_MANUAL,
@@ -115,12 +116,15 @@ class ReviewQueueTests(unittest.TestCase):
     def _candidate(item, index, default_source, value):
         """一个候选。`value` 给字符串就是单来源的取值；给 dict 可以单独指定来源，
         并把 `value`（落库用的结构）和 `display`（来源页面的原文）分开。"""
-        source, display = default_source, value
+        source, display, extra = default_source, value, {}
         if isinstance(value, dict):
             source = value.get("source", default_source)
             display = value.get("display", value["value"])
+            # 其余键原样带过去：标签候选还要带上 `unmapped_genres`。
+            extra = {key: item for key, item in value.items()
+                     if key not in {"source", "display", "value"}}
             value = value["value"]
-        return {"candidate_key": f"{item['item_key']}:{index}", "source": source,
+        return {**extra, "candidate_key": f"{item['item_key']}:{index}", "source": source,
                 "display_value": display, "value": value, "confidence": 0.9,
                 # 来源自报的番号。落库前要和这一行的番号对得上，所以默认取同一个值；
                 # 用例给 `provider_id` 就能造出「来源返回的是别的作品」那一半。
@@ -289,6 +293,42 @@ class ReviewQueueTests(unittest.TestCase):
                 "2015-02-20")
         finally:
             con.close()
+
+    def _tag_row(self, item_key, code, genres, *, current=""):
+        """一条标签候选。`value` 是投影后的标签，`unmapped_genres` 是没有去向的原文。"""
+        tags, unmapped = map_genres(genres)
+        return {"item_key": item_key, "code": code, "field": "tags", "current": current,
+                "candidates": [{"value": tags, "display": "、".join(tags),
+                                "unmapped_genres": unmapped}]}
+
+    def test_a_tag_set_with_nowhere_left_to_judge_lands_without_a_human(self):
+        """当前值为空、只有一个来源、每个 genre 都有去向——页面上没有可判断项。
+
+        `当前值：尚无；1 个匹配资产；1 个来源候选` 这样的卡片本机有 268 条，
+        点「通过」和不点的区别只是谁去点。
+        """
+        self._asset(95, "ABW-251", "ABW-251.mp4")
+        self.write_metadata_rows([self._tag_row(
+            "ABW-251:tags", "ABW-251", ["Shaved Pussy", "Masturbation", "Featured Actress"])])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                sorted(row[0] for row in con.execute(
+                    "SELECT tag FROM asset_tag WHERE asset_id=95")),
+                ["白虎", "自慰"], "`Featured Actress` 是演员编成，按非内容排除")
+        finally:
+            con.close()
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_an_unresolved_genre_keeps_the_whole_tag_set_in_the_queue(self):
+        """未收录的那几个词还没决定投影成什么，直接落库等于替用户判它们不算内容。"""
+        self._asset(96, "MIAD-573", "MIAD573_01.wmv")
+        row = self._tag_row("MIAD-573:tags", "MIAD-573", ["スレンダー", "その他フェチ"])
+        self.assertEqual(row["candidates"][0]["unmapped_genres"], ["その他フェチ"])
+        self.write_metadata_rows([row])
+        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self.queue_keys("metadata_fields"), ["MIAD-573:tags"])
 
     def test_auto_apply_never_overwrites_or_picks_between_values(self):
         self._asset(92, "AAA-1", "AAA-1.mp4")

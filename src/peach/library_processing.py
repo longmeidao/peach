@@ -150,6 +150,11 @@ class LibraryMetadataProvider:
         `series_name_ja`、演员 `name_kanji`。厂牌不取日文——账本的厂牌实体用品牌名
         （`Prestige`、`MOODYZ`），换成 `プレステージ` 会另起一个实体。
         这一页取不到时照旧交英文，不让一次失败吞掉整条资料。
+
+        genre 取 `categories[].name_ja`，也就是 DMM 自己那套词。英文是 r18 在它上面
+        再译一层，投影时那一层只会丢信息：`企画` 早就在非内容表里，它的英文 `Variety`
+        不在，于是 MIAD-573 的这条 genre 一路走到复核页上等人判。`その他フェチ` 同理，
+        从 `Other Fetishes` 反推不回「フェチ」这个词根。
         """
         from .jav_cover_fetch import R18_COMBINED, Unavailable, _fetch
         from urllib.parse import quote
@@ -173,6 +178,10 @@ class LibraryMetadataProvider:
                      for row in combined.get('actresses') or []]
         if any(row['japanese_name'] for row in actresses):
             payload['actresses'] = actresses
+        japanese = [row.get('name_ja') or row.get('name_en') or ''
+                    for row in combined.get('categories') or []]
+        if any(japanese):
+            payload['genres'] = [name for name in japanese if name]
         payload['combined'] = combined
         return payload
 

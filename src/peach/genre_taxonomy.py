@@ -70,8 +70,11 @@ CONTENT_GENRES: dict[str, str] = {
     "Ass Lover": "美臀", "Big Asses": "美臀", "Big Ass": "美臀", "Butt": "美臀", "Nice Ass": "美臀",
     "美尻": "美臀", "尻": "美臀", "お尻": "美臀", "尻フェチ": "美臀",
     "巨尻": "美臀",
-    "Foot Fetish": "美腿", "Legs": "美腿", "Beautiful Leg": "美腿",
-    "美脚": "美腿",
+    "Legs": "美腿", "Beautiful Leg": "美腿", "美脚": "美腿",
+    # `Foot Fetish`／`足フェチ` 说的是恋足，不是腿好看。两者投影到同一个标签的话，
+    # 「找恋足题材」和「找美腿出镜」在检索上就再也分不开。
+    "Foot Fetish": "恋足", "足フェチ": "恋足", "Feet": "恋足", "足": "恋足",
+    "足の裏": "恋足", "足裏": "恋足", "足指": "恋足",
     "Slender": "苗条", "スレンダー": "苗条",
     "Chubby": "丰满", "ぽっちゃり": "丰满",
     "Beautiful Girl": "高颜值", "Neat and Clean": "高颜值", "Beauty": "高颜值",
@@ -95,7 +98,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Bride": "婚纱", "花嫁": "婚纱",
     "和服・浴衣": "和服浴衣", "着物・浴衣": "和服浴衣",
     "ツインテール": "双马尾",
-    "High Heels": "高跟鞋", "ハイヒール": "高跟鞋",
+    "High Heels": "高跟", "ハイヒール": "高跟",
     "Cosplay": "角色扮演", "コスプレ": "角色扮演", "コスプレ一般": "角色扮演",
     "Role Play": "角色扮演",
     "Maid": "女仆", "メイド": "女仆",
@@ -119,7 +122,8 @@ CONTENT_GENRES: dict[str, str] = {
     "Nurse": "护士", "ナース・看護婦": "护士", "看護婦・ナース": "护士",
     "看護婦": "护士",
     "Female Teacher": "教师", "女教師": "教师", "教師": "教师",
-    "Private Tutor": "老师", "家庭教師": "老师",
+    # 「老师」在中文里同时盖住校内教师和上门家教，和上一行的「教师」分不开。
+    "Private Tutor": "家庭教师", "家庭教師": "家庭教师",
     "Stewardess": "空姐", "スチュワーデス": "空姐",
     "Picking Up Girls": "探花", "Pick up": "探花", "ナンパ": "探花",
 
@@ -143,7 +147,7 @@ CONTENT_GENRES: dict[str, str] = {
     "寝取り・寝取られ・NTR": "绿帽NTR",
     "Incest": "近亲", "近親相姦": "近亲",
     "Voyeur": "偷拍偷窥", "Hidden Camera": "偷拍偷窥", "盗撮・のぞき": "偷拍偷窥",
-    "Peeping": "偷窥", "のぞき": "偷窥",
+    "Peeping": "偷拍偷窥", "のぞき": "偷拍偷窥",
     "Reluctant": "强制剧情", "無理矢理": "强制剧情",
     "Drama": "剧情", "ドラマ": "剧情",
     "顔出し": "露脸",
@@ -220,34 +224,51 @@ def is_non_content_genre(raw: object) -> bool:
     return any(pattern.search(key) for pattern in NON_CONTENT_PATTERNS)
 
 
+#: `resolve_genre` 判「未收录」时的返回值。用空串而不是另起一个哨兵类型：调用方本来
+#: 就要区分「有标签」和「没有标签」，多一种对象只会让每个调用点多写一次 import。
+UNMAPPED = ""
+
+
+def resolve_genre(raw: object,
+                  decisions: Mapping[str, str | None] | None = None) -> str | None:
+    """一个来源原文的去向：Peach 标签、`None`（非内容，明确排除）、或 `UNMAPPED`。
+
+    查表顺序是用户决定、非内容、内容表。`decisions` 是用户在复核页当场定下的那批，
+    键已规范化。它排在两张静态表前面：用户刚说过的话不该被发版时写下的默认盖掉，
+    而把同一个词收录成别的标签正是他改主意的方式。
+
+    抓取与复核折叠候选走同一个函数。各写一份的代价是「表里补了这个词，页面上它仍然
+    停在未收录」：候选文件是抓取那一刻的产物，表却是后来才补齐的。实测本机 304 条带
+    未收录 genre 的候选里，101 条的未收录项按当前的表全部认得出来。
+    """
+    key = normalise_genre(raw)
+    if not key:
+        return None
+    if decisions and key in decisions:
+        return decisions[key]
+    if is_non_content_genre(key):
+        return None
+    return _CONTENT_INDEX.get(key, UNMAPPED)
+
+
 def map_genres(genres: Iterable[object],
                decisions: Mapping[str, str | None] | None = None) -> tuple[list[str], list[str]]:
     """返回 (Peach 标签, 未收录原文)。已判定为非内容的原文两边都不出现。
 
     标签按首次出现去重保序；未收录原文原样回传，供调用方登记后补表。
-
-    `decisions` 是用户在复核页当场定下的那批，键已规范化，值是中文标签或 `None`
-    （判为非内容）。它排在两张静态表前面：用户刚说过的话不该被发版时写下的默认
-    盖掉，而把同一个词收录成别的标签正是他改主意的方式。
     """
     tags: list[str] = []
     unmapped: list[str] = []
     seen_tags: set[str] = set()
     seen_unmapped: set[str] = set()
-    decided = decisions or {}
     for genre in genres or []:
         key = normalise_genre(genre)
         if not key:
             continue
-        if key in decided:
-            tag = decided[key]
-            if tag is None:
-                continue
-        elif is_non_content_genre(key):
-            continue
-        else:
-            tag = _CONTENT_INDEX.get(key)
+        tag = resolve_genre(genre, decisions)
         if tag is None:
+            continue
+        if not tag:
             if key not in seen_unmapped:
                 seen_unmapped.add(key)
                 unmapped.append(" ".join(str(genre or "").split()))

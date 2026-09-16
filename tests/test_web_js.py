@@ -292,7 +292,10 @@ class WebJsBehaviourTests(unittest.TestCase):
         # 映射只做「显示名」，不做同义词归并：账本里的标签名是真相。查不到就原样
         # 返回，绝不能顺手补一个机翻后缀（`深喉` 曾被显示成 `深喉咙`）。
         self.assertJsResults([
-            ("tags.js", "tagLabel", ["足系"], "美腿"),
+            # `足系` 与 `美腿` 是两个标签，改名会让它们在页面上顶着同一行字；
+            # `足交` 是通行写法，不改成 `脚交`。
+            ("tags.js", "tagLabel", ["足系"], "足系"),
+            ("tags.js", "tagLabel", ["足交"], "足交"),
             ("tags.js", "tagLabel", ["1080P"], "1080p"),
             ("tags.js", "tagLabel", ["深喉"], "深喉"),
             ("tags.js", "tagLabel", ["无码"], "无码"),

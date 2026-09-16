@@ -2627,6 +2627,7 @@ class ScriptingConventionTests(unittest.TestCase):
         "localize_performer_names",
         "localize_series_names",
         "merge_duplicate_identities",
+        "rename_retired_tags",
     )
 
     def test_every_ledger_writer_takes_the_same_three_write_arguments(self):
