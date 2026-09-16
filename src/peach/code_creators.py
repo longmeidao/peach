@@ -35,6 +35,7 @@ from .catalog_rules import (
     release_code_from_filename as code_from_filename,
     release_code_from_text as canonical_code,
 )
+from .field_owners import write_owned_fields
 
 #: fantia 之类的站点作品号既不是番号也不是创作者，单独归类。
 _SITE_POST = re.compile(r"^(fantia)[-_](\d{6,10})$", re.I)
@@ -179,6 +180,44 @@ def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
     return rows
 
 
+#: 这条清理路径写真相字段时的归属串。
+CODE_CREATORS_OWNER = "script:code-creators"
+
+#: 目录名这条证据只给正片背书。`Tokyo-Hot n0780-HD` 里还躺着 `論壇文宣\封殺001.jpg`：
+#: 番号写到它头上，库里它就冒充这部片的文件，垃圾复核那边又因为「自己带真番号」判定
+#: 目录证据不成立，把它挡在队列外——一次补空同时制造了两处错。番号是作品标识，作品是
+#: 目录里那条视频。
+RELEASE_FILE = "medium='video' AND COALESCE(code,'')=''"
+
+
+def _ids_where(connection: sqlite3.Connection, asset_ids: list[int],
+               condition: str, parameters: tuple = ()) -> list[int]:
+    """这批资产里满足 `condition` 的那几条。"""
+    if not asset_ids:
+        return []
+    marks = ",".join("?" * len(asset_ids))
+    return [int(row[0]) for row in connection.execute(
+        f"SELECT id FROM asset WHERE id IN ({marks}) AND {condition}",
+        (*asset_ids, *parameters))]
+
+
+def _write_owned(connection: sqlite3.Connection, asset_ids: list[int], field: str,
+                 value: str | None, *, require_empty: bool = False) -> int:
+    """按字段归属写一个真相字段，返回真的落下去几条。
+
+    数的是写完之后真的等于目标值的条数：`write_owned_fields` 会挡下用户改过的格子，
+    而它回报的 rowcount 数的是匹配到的行，把被挡的那几条也算在里面。
+    """
+    if not asset_ids:
+        return 0
+    write_owned_fields(connection, asset_ids, {field: value}, CODE_CREATORS_OWNER,
+                       require_empty=require_empty)
+    marks = ",".join("?" * len(asset_ids))
+    return connection.execute(
+        f"SELECT count(*) FROM asset WHERE id IN ({marks}) AND {field} IS ?",
+        (*asset_ids, value)).fetchone()[0]
+
+
 def apply_rows(connection: sqlite3.Connection, rows: list[dict[str, object]]) -> dict[str, int]:
     """只清理有文件级证据的行；存疑一律留给人工。"""
     counts = {"links": 0, "entities": 0, "codes": 0, "flat": 0}
@@ -194,19 +233,15 @@ def apply_rows(connection: sqlite3.Connection, rows: list[dict[str, object]]) ->
         ]
         # 番号是作品标识，写进 code；站点作品号不是番号，写进去只会污染刮削队列。
         if row["verdict"] == VERDICT_CODE:
-            for asset_id in asset_ids:
-                connection.execute(
-                    "UPDATE asset SET code=? WHERE id=? AND (code IS NULL OR code='')",
-                    (identity, asset_id))
-                counts["codes"] += connection.execute("SELECT changes()").fetchone()[0]
+            counts["codes"] += _write_owned(
+                connection, _ids_where(connection, asset_ids, RELEASE_FILE),
+                "code", identity, require_empty=True)
         connection.execute(
             "DELETE FROM asset_entity WHERE entity_id=? AND role='creator'", (entity_id,))
         counts["links"] += connection.execute("SELECT changes()").fetchone()[0]
-        for asset_id in asset_ids:
-            connection.execute(
-                "UPDATE asset SET creator=NULL WHERE id=? AND creator=?",
-                (asset_id, row["creator"]))
-            counts["flat"] += connection.execute("SELECT changes()").fetchone()[0]
+        counts["flat"] += _write_owned(
+            connection, _ids_where(connection, asset_ids, "creator=?", (row["creator"],)),
+            "creator", None)
         # 只删掉再无任何关系的实体，避免连带清掉别处仍在引用的身份。
         connection.execute(
             "DELETE FROM entity WHERE id=? AND kind='creator' "
