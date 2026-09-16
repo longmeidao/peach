@@ -41,7 +41,32 @@
      除这五个 token、50% 和 0 之外不写字面圆角；带边框容器里的头尾条用 calc(… - 1px) 保持同心。
      字重同理只有 400／500／600 三档：vercel.com/design.md 明说不要自造数字字重，650、700 全部收到 600。 */
   --pill-radius:999px; --tag-radius:var(--pill-radius);
-  --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px; --tag-pad-y:4px; --tag-pad-x:10px; --ambient-opacity:0; --hover-delay:5s;
+  --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px; --tag-pad-y:4px; --tag-pad-x:10px; --hover-delay:5s;
+  /* 首页光晕的参数层。三枚光斑的颜色、圆心、椭圆尺寸和收边位置，加上底层渐变的角度与
+     四个颜色，全部落在这里；`body::before` 只引用变量，一个字面颜色都不写。默认值就是
+     依据 beeg 留存像素重建的那一版，所以抽成变量之前之后画面完全一样。
+     设置面板改的就是这组变量，由 app.js 的 applyHomeGlow() 写到 <html> 的行内样式上。
+     --glow-lerp 是插值空间：默认空串等于按 sRGB 插，认得 `in oklab` 的引擎在下面那条
+     @supports 里把它换成 `in oklab`。写成变量而不是把整段 background 抄第二遍，是因为
+     两份五层渐变里任何一层改歪一个百分点都看不出来，而它们本该永远相同。 */
+  --glow-lerp: ; --glow-h:49vh; --glow-angle:105deg;
+  /* 盖在光晕最上面的那一层，上端这个颜色、下端一路化进 --page。深色一档压黑是为了把
+     顶栏那条文字从光斑里拔出来；浅色一档同一件事要往亮里做，压黑会在白页顶上糊出一道
+     脏影。所以它跟着色板走，和 --page、--ink 一样两档各写各的值。 */
+  --glow-veil:rgba(255,255,255,.55);
+  --glow-spot-1-color:rgba(25,169,187,.72); --glow-spot-1-x:42%; --glow-spot-1-y:34%;
+  --glow-spot-1-w:43%; --glow-spot-1-h:78%; --glow-spot-1-fade:68%;
+  --glow-spot-2-color:rgba(178,125,141,.58); --glow-spot-2-x:30%; --glow-spot-2-y:6%;
+  --glow-spot-2-w:36%; --glow-spot-2-h:72%; --glow-spot-2-fade:72%;
+  --glow-spot-3-color:rgba(84,66,87,.58); --glow-spot-3-x:76%; --glow-spot-3-y:18%;
+  --glow-spot-3-w:38%; --glow-spot-3-h:70%; --glow-spot-3-fade:72%;
+  --glow-base-1:#46506b; --glow-base-2:#68688b; --glow-base-3:#274f64; --glow-base-4:#2e2938;
+  /* 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
+     这组颜色是照着深底调的，浅色一档照搬会浓得压住顶栏文字，所以浅色把整层按同一个
+     比例收下来，而不是另存一套颜色：用户挑的是同一片光，两个主题不该是两种东西。
+     浅色那一档的 .34 是在浏览器里比出来的——再高一档顶栏的墨色文字开始发灰。 */
+  --glow-noise:0; --glow-strength:1; --glow-theme-scale:.34;
+  --ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale));
   /* 一颗标签的脸只有这一张：--tag-radius 的圆角、一圈 --line、这块比面再沉一档的填充、
      --ink-2 的字。同一个词出现在卡片上、详情面板里、筛选条上和交集条里，读的人认的是
      同一样东西；四处各画各的，同一个词就成了四种控件。写成 token 是因为这块填充是一句
@@ -102,7 +127,8 @@
   --page:#04060A;
   --picked:var(--inset);
   --rating:#E5B34A;
-  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}}
+  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F;
+  --glow-veil:rgba(0,0,0,.6); --glow-theme-scale:1;}}
 :root[data-theme="dark"]{
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
   --line:#3A3A3D; --line-soft:#2C2C30; --inset:rgba(255,255,255,.09);
@@ -115,7 +141,8 @@
   --page:#04060A;
   --picked:var(--inset);
   --rating:#E5B34A;
-  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F; --ambient-opacity:1;}
+  --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F;
+  --glow-veil:rgba(0,0,0,.6); --glow-theme-scale:1;}
 
 *,*::before,*::after{box-sizing:border-box}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
@@ -137,15 +164,25 @@ body{background:var(--page);color:var(--ink);
   font-size:var(--fs-md);line-height:1.45;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums}
 /* Beeg 当前实现是 49vh 静态 glow.webp + 向底色消失的遮罩。Peach 不复制
-   许可不明的位图，依据留存像素重建一张确定性的 CSS 光晕。 */
-body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;height:49vh;
-  opacity:var(--ambient-opacity);background:
-    linear-gradient(to bottom,rgba(0,0,0,.6),var(--page)),
-    radial-gradient(ellipse 43% 78% at 42% 34%,rgba(25,169,187,.72),transparent 68%),
-    radial-gradient(ellipse 36% 72% at 30% 6%,rgba(178,125,141,.58),transparent 72%),
-    radial-gradient(ellipse 38% 70% at 76% 18%,rgba(84,66,87,.58),transparent 72%),
-    linear-gradient(105deg,#46506b 0%,#68688b 24%,#274f64 53%,#2e2938 100%);
+   许可不明的位图，依据留存像素重建一张确定性的 CSS 光晕。
+   五层都只引用 :root 上那组 --glow-* 变量，这里一个颜色和一个坐标都不写死：用户在设置
+   面板里换配色时，改的就是那组变量，规则本身不动。插值空间走 --glow-lerp。 */
+body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
+  height:var(--glow-h);opacity:var(--ambient-opacity);background:
+    linear-gradient(var(--glow-lerp) to bottom,var(--glow-veil),var(--page)),
+    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-1-w) var(--glow-spot-1-h) at var(--glow-spot-1-x) var(--glow-spot-1-y),var(--glow-spot-1-color),transparent var(--glow-spot-1-fade)),
+    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-2-w) var(--glow-spot-2-h) at var(--glow-spot-2-x) var(--glow-spot-2-y),var(--glow-spot-2-color),transparent var(--glow-spot-2-fade)),
+    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-3-w) var(--glow-spot-3-h) at var(--glow-spot-3-x) var(--glow-spot-3-y),var(--glow-spot-3-color),transparent var(--glow-spot-3-fade)),
+    linear-gradient(var(--glow-angle) var(--glow-lerp),var(--glow-base-1) 0%,var(--glow-base-2) 24%,var(--glow-base-3) 53%,var(--glow-base-4) 100%);
   animation:ambient-in .8s ease .5s both}
+/* 认得 oklab 插值的引擎在这里才拿到它。反过来写——默认 `in oklab`、老引擎再关掉——
+   的后果是老引擎把整条 background 判成无效，首页顶上一片光都没有，而不是退回 sRGB。 */
+@supports (background:linear-gradient(in oklab,red,blue)){:root{--glow-lerp:in oklab}}
+/* 颗粒感是可选的一层，默认强度 0 就是关。瓦片由 feTurbulence 当场生成，仓库里不落
+   位图；overlay 只压在光晕上，正文和卡片都在它之后绘制，不受影响。 */
+body::after{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
+  height:var(--glow-h);opacity:var(--glow-noise);mix-blend-mode:overlay;
+  background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='peachglowgrain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23peachglowgrain)'/%3E%3C/svg%3E") 0 0/120px 120px repeat}
 @keyframes ambient-in{from{opacity:0}to{opacity:var(--ambient-opacity)}}
 .disp{font-family:Bahnschrift,"Segoe UI Variable Display","Microsoft YaHei UI",sans-serif;
   font-weight:600;letter-spacing:.02em}

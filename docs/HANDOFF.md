@@ -70,20 +70,14 @@
 
 ## 参考产品证据登记
 
-- [创作者别名表格与关注分页取证](BOARD_UI.md#创作者别名与扫描操作)。
-
-- [Board、Link Button 与搜索动效取证](BOARD_UI.md)。
-
-- [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)。
-
-- 设置：`reference-snapshots/geist-settings.md`。
+- BoardUI：[创作者别名表格与关注分页](BOARD_UI.md#创作者别名与扫描操作)、[Board、Link Button 与搜索动效](BOARD_UI.md)、[复核布局](reference-snapshots/board-review-layout.md)；React 源码 `frontend/src/react/boardui/ORIGIN.md`。
+- [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)；设置：`reference-snapshots/geist-settings.md`。
 
 版本与差异见 `docs/reference-sources.json`、`docs/reference-snapshots/`；取证和更新流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本节只索引快照，不复制测量值。
-React 渲染的规格页、用户截图这类给不出可重抓字节的实测不进登记表，但要在快照正文写明理由——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
+给不出可重抓字节的实测不进登记表，理由写进快照正文——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
 
-- BoardUI：[复核布局](reference-snapshots/board-review-layout.md)；React 源码 `frontend/src/react/boardui/ORIGIN.md`。
-
+- 渐变参数模型、`in oklab` 插值与噪点叠层：`feralui-gradients-measured`。
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
 - 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，必须显式 `data-middle-truncate`，标题、说明、人名和标签保留末尾省略。
 - 统计与口味层级，Note／Progress／Gauge／Context Card 等控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`；配置页截图补证：`vercel-geist-controls-measured`。
