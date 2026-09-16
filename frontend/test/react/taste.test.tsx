@@ -201,6 +201,38 @@ it('导入按 octet-stream 发原文件，文件名走请求头，回来的那�
   expect(tasteGets(fetcher)).toHaveLength(1);
 });
 
+it('导入之后回到导入前看过的范围，读的是导入后的数', async () => {
+  const { fetcher, host } = await open({
+    // 导入前的 90 天、导入回的「全部时间」、导入后的 90 天：三份数各不相同，认得出哪一份。
+    taste: [
+      payload(),
+      payload({ summary: { history_visits: 111, history_sources: 2 } }),
+      payload({ summary: { history_visits: 4321, history_sources: 3 } }),
+      payload({ summary: { history_visits: 999, history_sources: 3 } }),
+    ],
+    imported: { dashboard: payload({ summary: { history_visits: 4321, history_sources: 3 } }) },
+  });
+  await choose(host.querySelector('[aria-haspopup="listbox"]'), '最近 90 天');
+  await settle();
+  expect(host.textContent).toContain('111');
+
+  await choosePeachFile(host.querySelector<HTMLInputElement>('input[type=file]')!,
+    new File(['x'], '历史.zip'));
+  await settle();
+  expect(host.textContent).toContain('4,321');
+
+  await choose(host.querySelector('[aria-haspopup="listbox"]'), '最近 90 天');
+  await settle();
+  /* 换范围一律重取：缓存里那份是导入前的，直接拿来用就是把导入的结果藏起来。
+     导入之后那一趟 `window=all` 也在这里——回的是同一份，它确认的是服务端也已经落地。 */
+  expect(tasteGets(fetcher).map(([input]) => String(input))).toEqual([
+    `${TASTE_URL}?window=all`, `${TASTE_URL}?window=90d`,
+    `${TASTE_URL}?window=all`, `${TASTE_URL}?window=90d`,
+  ]);
+  expect(host.textContent).toContain('999');
+  expect(host.textContent).not.toContain('111');
+});
+
 it('移除数据源用回来的那一份就地换掉，不为一次移除重取整页', async () => {
   const modal = vi.spyOn(legacyUi, 'confirmModal').mockImplementation(async (options) => {
     await options.onConfirm?.();

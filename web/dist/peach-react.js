@@ -26404,7 +26404,7 @@ function Ux(e) {
 	}), y = dt({
 		mutationFn: (e) => Bb(e),
 		onSuccess: (e) => {
-			c("all"), Lf.setQueryData(Mb("all"), e.dashboard), i("已导入口味数据");
+			Lf.setQueryData(Mb("all"), e.dashboard), c("all"), i("已导入口味数据");
 		}
 	}), b = _.data?.status === "running";
 	(0, x.useEffect)(() => {
