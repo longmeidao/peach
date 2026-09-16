@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-09-15
-- 修订：2026-09-15 补齐迁移桥接契约、弹层样式作用域、上游升级方式、lint 边界与验收定义；同日写下前端基础库的取舍与引入时机。2026-09-16 活动页迁入后把挂载方式写成 React 档与 `ReactSlot` 两种，Query 的引入时机与共用方式按实际落地改写
+- 修订：2026-09-15 补齐迁移桥接契约、弹层样式作用域、上游升级方式、lint 边界与验收定义；同日写下前端基础库的取舍与引入时机。2026-09-16 活动页迁入后 Query 的引入时机与共用方式按实际落地改写；同日配置页外壳与换头像迁入、Preact 移除后，挂载方式只剩 React 档一种，JSX 运行时不再分档
 - 关系：替代 ADR-0022 的框架与样式选择；沿用它的绞杀式迁移、构建产物入库、`/dist/` 路由与单一测试入口；ADR-0014 的 Video.js 保留。
 
 ## 背景
@@ -35,19 +35,17 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 ### 技术栈与上游源码
 
 - 新页面与迁移页面用 **React 19 + TypeScript（strict）+ Tailwind v4**，源码在 `frontend/src/react/`，单测用 vitest。
-- JSX 运行时按目录分开：`frontend/src/react/tsconfig.json` 只把 `jsxImportSource` 换成 `react`，未迁移代码继续按 Preact 编译。Vite 与 tsc 都取离文件最近的 tsconfig，不改全局配置。
+- 前端只有 React 一种渲染层，`frontend/src` 里 JSX 只出现在 `src/react/`；`frontend/src/react/tsconfig.json` 只为逐字复制的 BoardUI 源码放宽 `exactOptionalPropertyTypes` 与 `noUncheckedIndexedAccess` 两条，其余继承全局配置。Vite 与 tsc 都取离文件最近的 tsconfig。
 - **BoardUI 源码日常开发只读**：从注册表逐字复制到 `frontend/src/react/boardui/`，来源与条目哈希记在 `ORIGIN.md`，逐文件 SHA-256 记在 `UPSTREAM.sha256`。Peach 需要不同组合或外观时，在 `src/react/` 下 Peach 自己的目录里组合，差异写进 `ORIGIN.md`。
 - **上游升级走独立提交**：整文件重新复制，同一提交更新 `ORIGIN.md` 条目哈希、`UPSTREAM.sha256`、`theme.css` 与相关依赖，跑 `web` 域回归。发现上游缺陷时同样以组合件绕开或等上游修复后整文件替换，不在副本上打补丁。没有引用者的上游文件连同哈希行一起删除。哈希只证明副本没有偏离登记版本，组件行为仍由 vitest 与浏览器断言验证。
 
 ### 迁移桥接
 
 - **迁移节奏不变**：逐页替换，每次一到两个页面、独立分支集成；旧渲染函数、旧 CSS 与旧断言随页面删除，不保留双实现。
-- **迁移期只有两种 React 挂载方式**，都由 `frontend/src/islands.ts` 的 `mountIsland` / `unmountIsland` 对遗留层暴露，遗留层不区分：
-  - **整页归 React 的页面走 React 档**：注册表写 `{react: '<page>'}`，`@peach/react` 的 `pages.<page>` 提供 `prefetch(props, signal)` 与 `mount(el, props)`。`mountIsland` 先 `prefetch` 把首屏写进 Query 缓存（取完数才画，中止就放弃这一次），再在容器里建一个 `.peach-react` 宿主创建 React root；`unmountIsland` 卸根、撤宿主。遗留壳在 `claimSurface` 换页时对 `#stats` 调 `unmountIsland`，它连子孙容器一起卸（`#libraryProcessing` 挂在 `#stats` 里更深的一格上），所以离开页面后组件不再活着，轮询随组件一起停；不在 `#stats` 里的容器（目录页横幅 `#libraryProcessingNotice`）由它自己的路由判据卸。
-  - **仍在 Preact 岛里的 React 子树走 `ReactSlot`**（配置页四个分区），契约如下：每个容器只创建一个 React root，参数变化经 `update` 更新同一个 root；Preact 卸载容器（切页、`unmountIsland`、错误态替换）时，清理函数调用 `root.unmount()`，React 子树的请求经 `AbortController` 一并取消；React 产物是动态加载的，加载完成后先确认容器仍在、本次挂载没有被取消，再创建 root。
-- **业务状态只有一份**：取数与缓存归 TanStack Query，所有 React root 共用一个 `QueryClient`，同一份真相只用一个 `queryKey`，第二个读者读同一个键；节律不同的两份真相分键（来源列表由用户改、由写操作换单条，封面任务由后台推进、按状态轮询），合成一键会让轮询重画用户正在填的表单。写操作用 `useMutation`，成功后用 `setQueryData` 换局部，不为一次写入重取整页；页面之间不经 Preact signals 传数据，也不在两侧各存一份同一数据。`ReactSlot` 里的子树仍经 props 拿数据、经回调（如 `receipt`）交回结果。需要的遗留能力（`confirmModal`、来源图标表、番号标题）只经 `@peach/legacy/*` 的声明模块或 props 传入的遗留函数调用，不抄一份。
+- **迁移期只有一种 React 挂载方式**，由 `frontend/src/islands.ts` 的 `mountIsland` / `unmountIsland` 对遗留层暴露：注册表写 `{react: '<page>'}`，`@peach/react` 的 `pages.<page>` 提供 `prefetch(props, signal)` 与 `mount(el, props)`。`mountIsland` 先 `prefetch` 把首屏写进 Query 缓存（取完数才画，中止就放弃这一次；产物加载回来后先确认容器仍在、遗留层还停在这一页，再画），再在容器里建一个 `.peach-react` 宿主创建 React root，第一帧用 `flushSync` 同步落 DOM（遗留壳挂完紧接着就读页面结构，配置页按 `.configgroup` 拆左栏页签靠它）；`unmountIsland` 中止在途请求、卸根、撤宿主。遗留壳在 `claimSurface` 换页时对 `#stats` 与 `#index` 调 `unmountIsland`，它连子孙容器一起卸（`#libraryProcessing` 挂在 `#stats` 里更深的一格上，换头像挂在 `#index` 的圆框上），所以离开页面后组件不再活着，轮询随组件一起停；不在这两个容器里的（目录页横幅 `#libraryProcessingNotice`）由它自己的路由判据卸。
+- **业务状态只有一份**：取数与缓存归 TanStack Query，所有 React root 共用一个 `QueryClient`，同一份真相只用一个 `queryKey`，第二个读者读同一个键；节律不同的两份真相分键（来源列表由用户改、由写操作换单条，封面任务由后台推进、按状态轮询），合成一键会让轮询重画用户正在填的表单。写操作用 `useMutation`，成功后用 `setQueryData` 换局部，不为一次写入重取整页；页面之间不另起一套订阅传数据，也不在遗留层与 React 两侧各存一份同一数据。页面经 props 拿遗留能力、经回调（如 `receipt`、`onPicked`）交回结果。需要的遗留能力（`confirmModal`、来源图标表、番号标题）只经 `@peach/legacy/*` 的声明模块或 props 传入的遗留函数调用，不抄一份。
 - Peach 自己以 HTML 字符串拼出的 Board 风格组件（`board-sankey.ts`、`board-analytics.ts`、`board-controls.ts`）随使用它们的页面改写成 `src/react/` 下的组合件，复用其中的数据与布局计算。
-- 删除顺序：最后一个 Preact 岛迁完、`ReactSlot` 与 `@peach/legacy/*` 的调用方清空后移除 Preact、`ReactSlot` 与 `mountIsland` 的 Preact 档，此后 `peach-ui.js` 只剩把遗留壳接到 `pages` 上的那层；壳与路由迁完，React Router 直接挂页面，删除 `web/app.js`、React 档与 `peach-ui.js`；上述自写组件全部改写后删除 `board.css` 里与 BoardUI 同名的 token。
+- 删除顺序：Preact 已随最后一个岛（配置页外壳与换头像）移除，`peach-ui.js` 现在是把遗留壳接到 `pages` 上的那层加上仍被 `web/app.js` 调用的非页面模块，这些模块随使用它们的页面一起迁走；壳与路由迁完，React Router 直接挂页面，删除 `web/app.js`、`mountIsland` 与 `peach-ui.js`；上述自写组件全部改写后删除 `board.css` 里与 BoardUI 同名的 token。
 
 ### 新旧样式并存
 
@@ -93,7 +91,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
   - 页面含弹层时，在浏览器里核对明暗主题、焦点进出与恢复、层叠顺序与滚动锁定；
   - `web/dist/` 与源码一致；旧断言的去向写进提交说明。
 - 迁移完成的定义：
-  - `web/app.js` 删除，Preact、`ReactSlot`、`mountIsland` 两档与 `@peach/legacy/*` 移除；
+  - `web/app.js` 删除，`mountIsland` 与 `@peach/legacy/*` 移除；
   - 并存期断言按上一节删除；
   - `tests/test_web_ui.py` 里依赖旧实现的断言迁移或删除完毕，仍然成立的静态资源、页面服务与构建契约测试保留或迁往对应测试文件；
   - AGENTS.md 与 README 的前端章节只描述 React。
