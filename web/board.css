@@ -747,9 +747,14 @@ body>.board-filter-frame{margin-inline:16px}
 .settingscard .board-number-error:not(:empty){position:absolute;z-index:10;right:0;top:calc(100% + 6px);width:max-content;max-width:240px;padding:6px 10px;background:var(--ground);border:1px solid color-mix(in srgb,var(--error,#e5484d) 35%,var(--line));border-radius:8px;box-shadow:0 4px 14px #0002;color:var(--error,#e5484d);font-size:12px;line-height:18px;margin:0}
 .settingscard .board-number-error[hidden]{display:none}
 .settingscard .board-optional-number{position:relative}
+/* 手柄那一下走 `--spring-press`：那条曲线本来就是冲过落点再荡回来一次，18px 的行程上
+   读出来正是「过头一点点、退回来、停住」两跳，不必另写一组带 55%／80% 停的关键帧。
+   轨道换色仍走自己的钟，它是一次颜色交叉淡入，跟着手柄一起弹会把整枚开关读成在呼吸。
+   写成 transition 而不是 animation，是因为 animation 一挂上去，页面载入时已经是开态的
+   那几枚会当场各弹一次——这一屏设置里有十几个开关，进页面就是一片抖。 */
 .ptoggle{width:42px;height:24px;background:var(--color-background-tertiary-default);border:0;border-radius:999px;transition:background .2s}
-.ptoggle::after{width:18px;height:18px;top:3px;left:3px;background:linear-gradient(#fff 44%,#f3f3f3);box-shadow:0 3px 3px #00000008;transition:transform .2s;transform:none}
-.ptoggle::before{content:'';position:absolute;z-index:1;left:8.25px;top:8.25px;width:7.5px;height:7.5px;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 .375px var(--line);transition:transform .2s}
+.ptoggle::after{width:18px;height:18px;top:3px;left:3px;background:linear-gradient(#fff 44%,#f3f3f3);box-shadow:0 3px 3px #00000008;transition:transform calc(var(--spring-press-ms)*1ms) var(--spring-press);transform:none}
+.ptoggle::before{content:'';position:absolute;z-index:1;left:8.25px;top:8.25px;width:7.5px;height:7.5px;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 .375px var(--line);transition:transform calc(var(--spring-press-ms)*1ms) var(--spring-press)}
 .ptoggle:checked{background:var(--board-blue);box-shadow:inset 0 1.5px 0 #ffffff40,inset 0 0 0 .75px var(--color-accent-400)}
 .ptoggle:checked::after{left:3px;transform:translateX(18px)}
 .ptoggle:checked::before{transform:translateX(18px);background:linear-gradient(var(--color-accent-700),var(--color-accent-500))}
@@ -812,6 +817,12 @@ body>.board-filter-frame{margin-inline:16px}
 
 /* BoardUI surface tokens; Peach retains its layouts and specialized media UI. */
 :root{--board-motion:.3s cubic-bezier(.4,0,.2,1);--board-dialog-motion:.3s cubic-bezier(.32,.72,0,1);--fs-lg:16px;--fs-xl:20px;--fs-2xl:24px;--control-h:36px}
+/* 原地换一样东西的那三档：一枚字形换成另一枚、一行字换成另一行、占位换成真内容。
+   三者都是同一件事的不同尺度，所以共用 `--board-motion` 那条缓动，只有时长按跨度分档：
+   字形和文字原地不动只换外观走 250ms，骨架换内容要跨整块区域走 400ms。
+   `--motion-stagger` 是多位数字按位错峰的步长，它跟时长一样要在 reduced motion 下归零——
+   动画时长归零而延迟还在的话，`both` 会把前几位按住不显示，读数看上去缺了几位。 */
+:root{--motion-swap:.25s cubic-bezier(.4,0,.2,1);--motion-reveal:.4s cubic-bezier(.4,0,.2,1);--motion-stagger:70ms}
 body{font-size:14px;line-height:20px}
 button,input,select,textarea{font-family:inherit}
 .index .ihead{padding:4px;gap:12px;min-width:0;flex-wrap:wrap}
@@ -892,7 +903,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
   .settingscard .settingsscroll .gselect,.settingscard .settingsscroll .gselectfield{height:40px;font-size:14px}
   .settingscard .settingsscroll .board-number-control>span{font-size:14px}
 }
-@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0}.settingscard .settingshead::after{transition:none}}
+@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0;--motion-swap:0s;--motion-reveal:0s;--motion-stagger:0ms}.settingscard .settingshead::after{transition:none}}
 /* Stat Cards 的内层读数与底栏；统计卡仍是可键盘切换的视图入口。 */
 /* 侧栏分组使用标题行与带计数的叶项。 */
 .drawer.drawer{display:flex;flex-direction:column;overflow:hidden}
