@@ -896,11 +896,21 @@ def _stage_names(candidate: dict) -> list[str] | None:
     return names or None
 
 
-def _candidate_value_key(field: str, candidate: dict) -> str | None:
-    """两个来源说的是不是同一件事；这条候选本身不可用时返回 None。"""
+def _candidate_value_key(connection, field: str, candidate: dict):
+    """两个来源说的是不是同一件事；这条候选本身不可用时返回 None。
+
+    出演者比的是人，不是写法。同一位在两家站上常挂着不同艺名，而账本早把它们登记在
+    同一条实体名下：`n0646` javbus 写 `一ノ瀬アメリ`、javdb 写 `美空あやか`，两个写法
+    都指向实体 8074（规范名 `美空彩香`）；`011013_511` 的 `飯岡かなこ` 与 `森沢かな`
+    同理。按字符串比，这些行会被判成「来源有分歧」而扣在人工队列里，可分歧问的那个
+    问题账本自己已经答过了。
+
+    解析不到实体的写法保留规范化原名，所以真换了人不会被这一步折掉；顺序也不参与
+    比较——`FSEI-003` 两家给的是同一组六个人，只是排序不同。
+    """
     if field == "performers":
         names = _stage_names(candidate)
-        return None if names is None else "、".join(names)
+        return None if names is None else _performer_identity_keys(connection, names)
     value = str(candidate.get("display_value") or "").strip()
     return value or None
 
@@ -1024,6 +1034,8 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     日期，并不告诉你番号跟这个文件对不对得上。
 
     出演者多一道形态门槛：官方页把年龄职业写在艺名后面，剪不出艺名的交回人工。
+    第 2 条对它比的是人而不是写法：同一位在两家站上挂着不同艺名、账本已把这两个写法
+    登记在同一条实体名下时，那不是分歧（`_candidate_value_key`）。
 
     未登记来源的候选先被剔除再比对取值：没进 `REGISTERED_SOURCES` 的来源不构成证据，
     留着它只会把「一个有效取值」算成分歧。
@@ -1042,7 +1054,7 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     candidates = _evidence_candidates(row)
     if not candidates:
         return None
-    values = {_candidate_value_key(field, candidate) for candidate in candidates}
+    values = {_candidate_value_key(connection, field, candidate) for candidate in candidates}
     if len(values) != 1 or None in values:
         return None
     if field == "tags" and not _tags_are_fully_resolved(candidates):

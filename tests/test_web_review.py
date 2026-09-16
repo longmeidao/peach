@@ -647,6 +647,62 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(note["value"], "本庄美奈子")
         self.assertEqual(note["raw_value"], "本庄美奈子 30歳 元カフェ店員")
 
+    def test_two_sources_naming_one_registered_person_is_not_a_disagreement(self):
+        """两家给的艺名不同，账本却早把它们登记在同一条实体名下，那就不是分歧。
+
+        `n0646` javbus 写 `一ノ瀬アメリ`、javdb 写 `美空あやか`，本机账本里这两个写法
+        都挂在实体 8074（规范名 `美空彩香`）下。按字符串比这类行全被扣在人工队列，
+        而要判的那个问题账本自己已经答过了。
+        """
+        self._asset(125, "N0646", "n0646.mp4")
+        self._asset(126, "N0647", "n0647.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,"
+                    "updated_at) VALUES(60,'performer','美空彩香','美空彩香',"
+                    "'2026-01-01','2026-01-01')")
+        for alias in ("一ノ瀬アメリ", "美空あやか"):
+            con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                        "confidence) VALUES(60,?,?,'peach:canonicalization',1.0)",
+                        (alias, alias))
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "N0646:performers", "field": "performers", "current": "",
+             "code": "N0646",
+             "candidates": [{"source": "javbus", "display": "一ノ瀬アメリ",
+                             "value": [{"name": "一ノ瀬アメリ"}]},
+                            {"source": "javdb", "display": "美空あやか",
+                             "value": [{"name": "美空あやか"}]}]},
+            # 账本不认识的两个名字仍然是两个取值，照常要人判。
+            {"item_key": "N0647:performers", "field": "performers", "current": "",
+             "code": "N0647",
+             "candidates": [{"source": "javbus", "display": "新城由衣",
+                             "value": [{"name": "新城由衣"}]},
+                            {"source": "javdb", "display": "吉澤ひかり",
+                             "value": [{"name": "吉澤ひかり"}]}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        self.assertEqual(self.queue_keys("metadata_fields"), ["N0647:performers"])
+        con = sqlite3.connect(self.db_path)
+        try:
+            # 落的是同一条实体，不是第三个新人。
+            self.assertEqual(con.execute(
+                "SELECT ae.entity_id FROM asset_entity ae WHERE ae.asset_id=125 "
+                "AND ae.role='performer'").fetchall(), [(60,)])
+        finally:
+            con.close()
+
+    def test_one_source_listing_the_cast_in_another_order_is_not_a_disagreement(self):
+        """同一组人换个排序不是换人：`FSEI-003` 两家给的就是同样六个人，顺序不同。"""
+        self._asset(127, "FSEI-003", "FSEI-003.mp4")
+        self.write_metadata_rows([{
+            "item_key": "FSEI-003:performers", "field": "performers", "current": "",
+            "code": "FSEI-003",
+            "candidates": [{"source": "javbus", "display": "宇流木さら、伊東紅蘭",
+                            "value": [{"name": "宇流木さら"}, {"name": "伊東紅蘭"}]},
+                           {"source": "javdb", "display": "伊東紅蘭、宇流木さら",
+                            "value": [{"name": "伊東紅蘭"}, {"name": "宇流木さら"}]}]}])
+        self.assertEqual(self._auto()["applied"], 1)
+
     def test_performer_names_that_are_promo_copy_stay_in_review(self):
         """剪完仍带敬称或空白的不是艺名，是企划文案：剪到哪儿才对本身就是个判断。"""
         self._asset(123, "300MIUM-544", "300MIUM-544.mp4")
