@@ -154,6 +154,11 @@
   backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume);
   border:0;box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow);
 }
+/* 侧栏这一块玻璃上的反光归 `.glowlayer`：用户配得了色的三枚光晕按同一套 drift 在这里
+   漂。自带那两团白光留着就是两套光斑叠着走，亮的那一档会把配好的颜色冲淡成灰。
+   只对抽屉置空——其余玻璃面（搜索框、筛选浮层、顶栏图标钮）仍走自己那两团，那一点正是
+   「顶多折射到」的意思。填充、sheen、内缘亮线和 backdrop-filter 全部不动。 */
+.drawer.drawer{--glass-drift-a:none;--glass-drift-b:none}
 /* 搜索框使用浏览器原生模糊，尺寸变化不依赖异步 SVG 位移贴图。 */
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
@@ -542,7 +547,7 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 @media(prefers-reduced-motion:reduce){.board-segments-ready>.board-segment-thumb{transition:none}}
 .reviewitem,.followtask{border-color:var(--line);border-radius:16px}
 :root[data-theme="dark"]{--page:#111;--ground:#1c1c1c;--surface:#232323;--sunk:#171717;--ink:#fafafa;--ink-2:#d4d4d4;--muted:#a3a3a3;--line:#383838;--line-soft:#303030;--inset:#303030;--picked:#303030;--hover:rgba(255,255,255,.07);--tungsten:#60a5fa}
-/* 首页光晕由设置里的「首页光晕」一项决定开关：关掉时 --glow-strength 是 0，
+/* 侧栏光晕由设置里的「侧栏光晕」一项决定开关：关掉时 --glow-strength 是 0，
    `.glowlayer::before` 的不透明度跟着算成 0。这里不能再压一条 display:none——那会让设置面板上的开关、强度、
    配色和颗粒四个控件全部调不出任何变化，而界面上没有任何东西说得出为什么。 */
 .tiers{background:transparent}
@@ -909,17 +914,20 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .board-foot-actions{display:flex;align-items:center;gap:6px}
 .board-foot-actions>#settingsBtn{width:36px;height:36px;padding:0;display:grid;place-items:center;border-radius:8px;background:transparent;flex:none}
 .board-foot-actions>#settingsBtn svg{width:20px;height:20px;margin:0}
-/* 「光晕配色」照 boardui.com 右下角那枚 Accent color：40×40 圆形、面色底加 1px 边和一层
-   dropdown 薄影，右下角一颗 10px 色点报当前预设的第一枚光斑色，色点外面那圈环取侧栏
+/* 「光晕配色」和它旁边的设置钮是同一排里的两枚图标键，所以穿同一身盒子：36×36、8px
+   圆角、透明底、20px 字形、同一条悬停。boardui.com 那枚 Accent color 自带边框、面色底和
+   一层 dropdown 薄影，是因为它浮在页面内容上、身后什么都没有；这一枚坐在侧栏自己的面
+   上，挨着的设置钮什么都不穿——描一圈框只会让这一对读成两种控件。
+   右下角那颗 10px 色点照上游留着，报的是当前预设的第一枚光晕色；色点外面那圈环取侧栏
    自己的面色，所以它读起来是浮在钮上的一颗，不是钮身上的一块。
+   字形是 Remix 的实心路径（`#ri-palette-line`），按它自己那套用 fill 画。
    实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
-.board-glow-toggle{position:relative;display:grid;place-items:center;width:40px;height:40px;flex:none;
-  padding:0;border:1px solid var(--line);border-radius:50%;background:var(--ground);color:var(--muted);
-  box-shadow:0 1px 1px rgba(0,0,0,.04),0 4px 4px rgba(0,0,0,.02);cursor:pointer}
+.board-glow-toggle{position:relative;display:grid;place-items:center;width:36px;height:36px;flex:none;
+  padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
 .board-glow-toggle:hover{background:var(--hover);color:var(--ink)}
 .board-glow-toggle:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.board-glow-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
-.board-glow-dot{position:absolute;right:2px;bottom:2px;width:10px;height:10px;border-radius:50%;
+.board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}
+.board-glow-dot{position:absolute;right:0;bottom:0;width:10px;height:10px;border-radius:50%;
   background:var(--glow-swatch,var(--ink));box-shadow:0 0 0 2px var(--ground)}
 .board-glow-menu{box-sizing:border-box;width:248px;max-width:calc(100vw - 32px);padding:10px;gap:0;
   border:1px solid var(--line);border-radius:24px;background:var(--ground);box-shadow:0 1px 1px rgba(0,0,0,.04),0 4px 4px rgba(0,0,0,.02)}
@@ -953,8 +961,8 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .board-theme-toggle.is-dark .board-theme-thumb{transform:translateX(36px)}
 /* 侧栏收到 60px 时这一列竖着排。`column-reverse` 而不是 `column`：DOM 里明暗键在前，
    是为了展开态那一横排仍是「明暗在左、配色与设置在右」；竖排时要的顺序正好相反，
-   boardui.com 那一对就是配色在上、明暗在下。40px 的配色钮加上下各 10px 内边距正好
-   占满 60px 侧栏的可用宽度，再宽一点就会挤到边框上。 */
+   boardui.com 那一对就是配色在上、明暗在下。配色钮与设置钮都是 36px，左右各留 10px
+   内边距后在 60px 的侧栏里居中，两枚圆心落在同一条竖线上。 */
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-foot{flex-direction:column-reverse;padding:12px 10px}.drawer:not(.open) .board-foot-actions{flex-direction:column}.drawer:not(.open) .board-theme-toggle{padding:2px;background:transparent}.drawer:not(.open) .board-theme-toggle button[aria-pressed=true],.drawer:not(.open) .board-theme-thumb{display:none}}
 @media(prefers-reduced-motion:reduce){.board-theme-thumb{transition:none}}
 .drawer .sec[data-sidebar-group]{border:0;padding:0;margin:4px 0 0}

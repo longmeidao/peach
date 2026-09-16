@@ -33,10 +33,6 @@
 </script>
 </head>
 <body>
-<!-- 首页光晕自己占一层。这一层存在的理由是失效范围：光晕参数是自定义属性，写在 <html>
-     上等于让整棵树重算样式，拖一次强度拉条每帧要赔十几毫秒；写在这枚没有子节点的空 div
-     上，失效范围就只剩它和它那两枚伪元素。怎么画仍然只在 web/css/01-base.css 一份。 -->
-<div class="glowlayer" aria-hidden="true"></div>
 <a class="skiplink" href="#main">跳到正文</a>
 <!-- Lucide static 1.44.0, ISC. Local pinned subset; no CDN/runtime dependency.
      Climax uses Health Icons 2.0.0 sperm outline-24px, CC0/public domain.
@@ -105,7 +101,6 @@
   <symbol id="i-monitor" viewBox="0 0 24 24"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></symbol><symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" /></symbol><symbol id="i-folder-search" viewBox="0 0 24 24"><path d="M10.7 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v4.1" /><path d="m21 21-1.9-1.9" /><circle cx="17" cy="17" r="3" /></symbol><symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></symbol><symbol id="i-folder-cog" viewBox="0 0 24 24"><path d="M10.3 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.98a2 2 0 0 1 1.69.9l.66 1.2A2 2 0 0 0 12 6h8a2 2 0 0 1 2 2v3.3" /><path d="m14.305 19.53.923-.382" /><path d="m15.228 16.852-.923-.383" /><path d="m16.852 15.228-.383-.923" /><path d="m16.852 20.772-.383.924" /><path d="m19.148 15.228.383-.923" /><path d="m19.53 21.696-.382-.924" /><path d="m20.772 16.852.924-.383" /><path d="m20.772 19.148.924.383" /><circle cx="18" cy="18" r="3" /></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2" /><path d="M12 20v2" /><path d="m4.93 4.93 1.41 1.41" /><path d="m17.66 17.66 1.41 1.41" /><path d="M2 12h2" /><path d="M20 12h2" /><path d="m6.34 17.66-1.41 1.41" /><path d="m19.07 4.93-1.41 1.41" /></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" /></symbol>
-  <symbol id="i-swatch-book" viewBox="0 0 24 24"><path d="M11 17a4 4 0 0 1-8 0V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2Z" /><path d="M16.7 13H19a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H7" /><path d="M 7 17h.01" /><path d="m11 8 2.3-2.3a2.4 2.4 0 0 1 3.404.004L18.6 7.6a2.4 2.4 0 0 1 .026 3.434L9.9 19.8" /></symbol>
   <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4" /><path d="M3.34 19a10 10 0 1 1 17.32 0" /></symbol>
   <symbol id="i-theater-enter" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="1.5"/><path d="M2 16h20M8.5 7 5.5 10l3 3M15.5 7l3 3-3 3"/></symbol>
   <symbol id="i-theater-exit" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="18" rx="1.5"/><path d="M2 16h20M5.5 7l3 3-3 3M18.5 7l-3 3 3 3"/></symbol>
@@ -239,7 +234,12 @@
 </main>
 
 <div class="scrim" id="scrim"></div>
-<aside class="drawer" id="drawer"><div class="drawerscroll" id="drawerScroll"></div></aside>
+<!-- 光晕就是侧栏玻璃面上那两团慢慢漂的光换成用户自己配的三枚，所以它长在 .drawer 里面、
+     跟着抽屉的圆角一起被裁，正文身后一点都没有。单独占一层是因为失效范围：光晕参数是
+     自定义属性，写在 <html> 上等于让整棵树重算样式，拖一次强度拉条每帧要赔十几毫秒；
+     写在这枚没有子节点的空 div 上，失效范围就只剩它和它那两枚伪元素。
+     怎么画仍然只在 web/css/01-base.css 一份。 -->
+<aside class="drawer" id="drawer"><div class="glowlayer" aria-hidden="true"></div><div class="drawerscroll" id="drawerScroll"></div></aside>
 <div class="batchbar selectiondock" id="batchbar" role="group" aria-label="所选项目操作" hidden><span class="selectiondockcount" id="batchCount">已选 0 项</span>
   <button data-batch="like"><svg viewBox="0 0 24 24"><use href="#i-thumbs-up"/></svg>喜欢</button><button data-batch="seen"><svg viewBox="0 0 24 24"><use href="#i-eye"/></svg>看过</button><button data-batch="later"><svg viewBox="0 0 24 24"><use href="#i-bookmark-plus"/></svg>稍后看</button><button data-batch-region><svg viewBox="0 0 24 24"><use href="#i-globe"/></svg>判定产地</button>
   <button class="danger" data-batch="dispose"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>移入回收站</button><button data-trash-only data-batch="restore"><svg viewBox="0 0 24 24"><use href="#i-rotate-ccw"/></svg>还原</button><button class="danger" data-trash-only data-batch="delete"><svg viewBox="0 0 24 24"><use href="#i-trash"/></svg>彻底删除</button>
@@ -290,8 +290,8 @@
       
       <section class="settinggroup"><h3>界面</h3>
       <div class="settingrow"><span><b>主题</b><small>跟随系统，或固定用浅色、深色。</small></span><div id="themeSetting"></div></div>
-      <label class="settingrow"><span><b>首页光晕</b><small id="homeGlowDescription">首页顶部那片彩色光。配色在左栏底部那枚圆钮上挑，这里调强度、颗粒和每一枚光斑。浅色主题按同一组颜色淡一档显示。</small></span><input type="checkbox" id="homeGlowSetting" class="ptoggle" role="switch" aria-describedby="homeGlowDescription"></label>
-      <section class="glowsetting" id="homeGlowControls" aria-label="首页光晕参数"></section>
+      <label class="settingrow"><span><b>侧栏光晕</b><small id="homeGlowDescription">左栏玻璃面上那几团慢慢漂动的光。配色在左栏底部那枚配色钮上挑，这里调强度、颗粒和每一枚光晕的颜色。浅色主题按同一组颜色淡一档显示。</small></span><input type="checkbox" id="homeGlowSetting" class="ptoggle" role="switch" aria-describedby="homeGlowDescription"></label>
+      <section class="glowsetting" id="homeGlowControls" aria-label="侧栏光晕参数"></section>
       <section class="sidebarsetting" aria-labelledby="sidebarOrderTitle"><span><b id="sidebarOrderTitle">左侧导航</b><small>直接拖动排序；可隐藏入口，也可从具体页面列表重新添加。窄栏和筛选抽屉会保持一致。</small></span><div class="sidebarorder" id="sidebarOrderSetting"></div></section>
       </section>
       <section class="settinggroup"><h3>浏览</h3>

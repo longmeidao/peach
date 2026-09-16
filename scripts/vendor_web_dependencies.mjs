@@ -127,9 +127,6 @@ const lucideIcons = new Map([
   // 数据管理页「空文件夹」那张卡的标识：说的是目录本身，既不是打开它，也不是去里面找。
   ["folder", "folder"],
   ["sun", "sun"], ["moon", "moon"],
-  // 侧栏底部「光晕配色」：一叠翻开的色卡，挑的是具体哪一枚颜色。设置分区那一枚
-  // `ri-palette-line` 说的是「界面」这一整组，两者不兼任。
-  ["swatch-book", "swatch-book"],
   // 小窗播放：右键菜单里「迷你播放器」是缩进角落的小屏，小窗上的「展开」是对角撑开；
   // `maximize` 归 JAV 大图版式，不兼任。「循环播放」与「复制视频网址」照 Lucide 本名。
   ["picture-in-picture-2", "picture-in-picture-2"], ["maximize-2", "maximize-2"],
@@ -252,6 +249,9 @@ index = index.replace(/Health Icons sperm outline-24px, CC0\/public domain/,
 index = index.replace(/Phosphor [0-9.]+ regular, MIT/,
   `Phosphor ${versions["@phosphor-icons/core"]} regular, MIT`);
 index = index.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${versions["video.js"]}/`);
+// `palette-line` 有两个使用者，它们说的是同一件事：设置分区的「界面」页签，和侧栏底部
+// 那枚配色钮——那枚钮的弹层底部「详细设置」开的正是「界面」页。一枚字形一个意思，同一个
+// 意思也只有一枚字形，所以这里不给配色钮另备一枚。
 const remixIcons = ["palette-line", "layout-grid-line", "play-circle-line", "search-line", "rss-line", "shield-check-line"];
 const remixSprite = lfText("node_modules", "remixicon", "fonts", "remixicon.symbol.svg");
 for (const name of remixIcons) {
@@ -261,7 +261,7 @@ for (const name of remixIcons) {
   index = index.replace(pattern, symbol);
 }
 stage("web/vendor/remixicon-LICENSE.txt", lfText("node_modules", "remixicon", "License"));
-stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航六枚内联 symbol。完整候选由本地 HTML 审查。\n`);
+stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航六枚内联 symbol，其中 \`palette-line\` 同时给侧栏底部那枚配色钮。完整候选由本地 HTML 审查。\n`);
 stage("web/index.html", index);
 
 let app = text("web", "app.js");
