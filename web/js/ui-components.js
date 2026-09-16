@@ -1,4 +1,5 @@
 import { esc, icon, requestErrorMessage } from './core.js';
+import { playUiSound } from './ui-sounds.js';
 export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
@@ -879,7 +880,11 @@ export function closeAnchoredMenu(){if(openedMenu)openedMenu.setOpen(false)}
    CSS 决定：读到的 animation-name 是 none（旧界面、prefers-reduced-motion）就当场藏起来。
    全站的菜单都从这两个口进出，`hidden` 才始终是「看不见了」，不会有一份自己写的 150ms。 */
 const leavingMenus=new WeakMap();
-export function presentMenu(menu){leavingMenus.delete(menu);menu.classList.remove('leaving');menu.hidden=false}
+export function presentMenu(menu){
+  leavingMenus.delete(menu);menu.classList.remove('leaving');
+  if(menu.hidden)playUiSound('whoosh');
+  menu.hidden=false;
+}
 export function dismissMenu(menu,finish){
   if(menu.hidden||leavingMenus.has(menu))return;
   const done=()=>{if(leavingMenus.get(menu)!==done)return;
@@ -1138,6 +1143,7 @@ export function formModal({title,description='',body='',confirmLabel,cancelLabel
     }finally{busy=false}
   };
   dialog.showModal();
+  playUiSound('pop');
   (dialog.querySelector('.geist-modal-fields input:not([type="checkbox"])')||accept).focus();
   return {dialog,confirmButton:accept,done,close:()=>dialog.close()};
 }
@@ -1202,6 +1208,7 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
       }finally{busy=false}
     };
     dialog.showModal();
+    playUiSound('pop');
     (danger?cancel:accept).focus();
   });
 }
