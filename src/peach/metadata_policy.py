@@ -46,6 +46,10 @@ SOURCE_SPECS = {
     }.items()
 }
 
+#: 社区来源之间不一致时听这一家的。用户 2026-09-16 逐条核对过：javdb 比 javbus 准
+#: （ADR-0034）。实测 `n0780` 的片长 javbus 报 36 分、javdb 报 96 分，盘里那条是 98 分。
+PREFERRED_COMMUNITY_SOURCE = "javdb"
+
 PROFILE_SOURCES = {
     "seesaa": ("sougouwiki",),
     "baseline": ("r18dev",),

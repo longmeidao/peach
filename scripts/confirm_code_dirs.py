@@ -33,6 +33,7 @@ from peach.code_creators import (  # noqa: E402
     main_video_seconds,
 )
 from peach.config import DATABASE_PATH, GENERATED_DIR, SECRETS_DIR  # noqa: E402
+from peach.metadata_policy import PREFERRED_COMMUNITY_SOURCE  # noqa: E402
 from peach.migrations import sqlite_backup  # noqa: E402
 from peach.review_csv import write_rows  # noqa: E402
 
@@ -41,7 +42,11 @@ FIELDS = ("entity_id", "creator", "identity", "assets", "local_seconds", "source
 
 
 def source_runtime(provider, code: str) -> tuple[str, float | None, str]:
-    """这个番号的片长：先问 r18.dev，它没有再问社区来源。返回 (来源, 分钟, 说明)。"""
+    """这个番号的片长：先问 r18.dev，它没有再问社区来源。返回 (来源, 分钟, 说明)。
+
+    社区来源之间按 `PREFERRED_COMMUNITY_SOURCE` 排：`n0780` 的片长 javbus 报 36 分、
+    javdb 报 96 分，盘里那条 98 分——按返回顺序取第一家就会把这个目录判成对不上。
+    """
     try:
         payload = provider.query(code)
         if payload.get("runtime"):
@@ -51,11 +56,13 @@ def source_runtime(provider, code: str) -> tuple[str, float | None, str]:
     else:
         note = "r18dev 没给片长"
     try:
-        for name, payload in provider.community(code):
-            if payload.get("runtime"):
-                return name, float(payload["runtime"]), note
+        found = sorted(provider.community(code),
+                       key=lambda item: item[0] != PREFERRED_COMMUNITY_SOURCE)
     except Exception as error:                                  # noqa: BLE001
         return "", None, f"{note}；社区来源：{type(error).__name__}"
+    for name, payload in found:
+        if payload.get("runtime"):
+            return name, float(payload["runtime"]), note
     return "", None, f"{note}；社区来源没给片长"
 
 
