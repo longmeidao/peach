@@ -2,9 +2,9 @@
 
 ## Board 界面与数值设置
 
-- 作者别名管理复用 `.ftable` 和既有别名 API；Board Table 的公开结构与固定资源见 `BOARD_UI.md`。Data Table 的排序、分页在当前别名规模下不需要，未引入其 React Aria 与 TanStack 依赖。扫描与采集那三种方式收在一颗主键加一个下拉里：触发键用 BoardUI `Button`，面板用已在用的 React Aria `Popover`，行的外观取注册表 `select` 条目带来的 `menu-styles.ts`，无新增依赖（见 `frontend/src/react/boardui/ORIGIN.md`）。
+- 作者别名管理复用逐字复制进 `frontend/src/react/boardui/` 的 BoardUI `Table` 和既有别名 API；公开结构与固定资源见 `BOARD_UI.md`。待合并与已保存两张表都只有几行，排序、分页用不上，不接 `@tanstack/react-table`；合并范围是这一屏自己的勾选状态，所以表里的勾写 `slot={null}`，不走 React Aria Table 自己的行选择。扫描与采集那三种方式收在一颗主键加一个下拉里：触发键用 BoardUI `Button`，面板用已在用的 React Aria `Popover`，行的外观取注册表 `select` 条目带来的 `menu-styles.ts`，无新增依赖（见 `frontend/src/react/boardui/ORIGIN.md`）。
 
-- 关注列表分页复用 `pagination.ts` 的页码范围、边界裁剪与 Board 外观；默认视图按创作者组，表格按来源。批量操作复用人工复核与馆藏的 `selectiondock` 样式和 `selection.ts` 状态同步，跨页选择由来源 ID 集合管理。官方分页源码固定哈希见 `BOARD_UI.md`；沿用现有实现和 Lucide，未增加 React Aria、TanStack 或 Remix Icon 依赖。隔离样例验证了 25 位创作者、75 个来源的分页与跨页选择。
+- 关注列表分页复用 `pagination.ts` 的页码范围与边界裁剪（React 与遗留层共用这一份纯函数）；默认视图按创作者组，表格按来源。表格视图新引入 `@tanstack/react-table` 8.21.3（MIT，https://github.com/TanStack/table ）：列定义、排序状态、行选择与分页交给它，行的身份是来源 ID（`getRowId`），排序与分页跑在全集上、页是最后一刀。归属与时机按 ADR-0031「前端基础库」，是这条待办点名要引入的那一个库，不是顺手加的。两种视图共用同一个来源 ID 集合，批量操作发的是整个集合而不是屏幕上这一页。官方分页与 Table 源码的固定哈希见 `BOARD_UI.md`。`frontend/test/react/follow-manage.test.tsx` 验了 25 位创作者、跨页跨视图勾选与批量写。
 
 - 窄屏筛选框共用 `filterScrollState()`、现有滚动帧调度和原生 sticky；同一方向累计 8px 再切换吸顶，保留文档占位与键盘可达性，无新增依赖。
 

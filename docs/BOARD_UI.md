@@ -16,7 +16,7 @@
 
 2026-09-13 核对 [Table](https://www.boardui.com/components/table) 和 [Data Table](https://www.boardui.com/components/data-table)。实时表格使用 `role="grid"`，单元格为 14px、内边距 10px 12px；页面 CSS 部署标识为 `dpl_QqDLotDUMyvoaXmnBoPEK5tSk8mc`。官方 `https://www.boardui.com/r/table.json` 的 SHA-256 为 `fc12a8f2f4012d9e983e0b9bbb10f9fe3288d74046566d2623d60e7056c50d88`。
 
-创作者别名复用现有 Table 样式，待合并按选择、规范创作者、平台别名、依据和操作分列，已保存别名独立成表。两个名字列各占 18%，依据使用剩余宽度；每行可勾选，表头支持全选与半选，右上角提供带数量的「合并所选」和「全部合并」。支持逐条合并、手动添加和移除。批量合并先列出归属关系，失败时保留未完成项供重试。Peach 保留原生表格与既有 API，没有引入 React Aria 或 TanStack Table。
+创作者别名复用现有 Table 样式，待合并按选择、规范创作者、平台别名、依据和操作分列，已保存别名独立成表。两个名字列各占 18%，依据使用剩余宽度；每行可勾选，表头支持全选与半选，右上角提供带数量的「合并所选」和「全部合并」。支持逐条合并、手动添加和移除。批量合并先列出归属关系，失败时保留未完成项供重试。Peach 这两张表用逐字复制进 `frontend/src/react/boardui/` 的 `table` 条目（建在 React Aria 上）配既有别名 API；待合并与已保存都只有几行，排序与分页用不上，不接 `@tanstack/react-table`。
 
 2026-09-13 实测 [Table 分页](https://www.boardui.com/components/table)：上一页／下一页位于两端，页码居中，按钮高 32px、圆角 8px、14px 字号，前后按钮内边距 6px 8px，分页区域间距 8px。点击下一页后当前页变为 2；官方 `/r/pagination.json` 的 SHA-256 为 `cbbb09ecb86b3f93d4c923f02d272a7086db624ab69eaf5768f036b7458435f8`。Peach 复用既有 `pagination.ts` 与 Board 样式，保留 Lucide 箭头和中文标签，手机页码独占第二排。
 
@@ -166,6 +166,8 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 ### 关注列表的表格视图（2026-09-08）
 
 取证来源是 https://www.boardui.com/components/data-table 的实时 DOM 与样式表：`_next/static/chunks/0n0ugaibgw__p.css`（SHA-256 `a856db5e9e1a58b2e32b7bfa6d7f1cab69dd09e4bd7ac22fc455dd10b525cf27`）里的 `.bui-table` 规则，以及公开注册表 `r/table.json`（`fc12a8f2f4012d9e983e0b9bbb10f9fe3288d74046566d2623d60e7056c50d88`）和 `r/data-table.json`（`613299eca0f448460a546f7959feab8dab19fbfd6e18670f7216ff304a1e3574`）。
+
+2026-09-16 迁页时重取这三份：`r/table.json` 与 `r/pagination.json` 逐字节未变，`r/data-table.json` 已是 `7bb73a6cd099b9b16390e5fe00f8ba2d55b5ef96c1e8f90a056168cd2e3235e6`（24531 字节），上游自己改过。Peach 复制进树的是 `table` 条目，`data-table` 只读不抄（原因见 `frontend/src/react/boardui/ORIGIN.md`），所以这次漂移不影响已复制文件的哈希。
 
 | 上游实测 | Peach 表格视图 |
 | --- | --- |

@@ -516,6 +516,87 @@ class TasteEndpointTests(unittest.TestCase):
             self.assertIn(helper, self.source)
 
 
+class FollowManageEndpointTests(unittest.TestCase):
+    """关注管理页从 `web/app.js` 搬过来时不能把语义契约丢在原地。
+
+    这一页同时管着三份节律不同的真相（来源清单、凭据状态、两趟后台任务），行为由
+    `frontend/test/react/follow-manage.test.tsx` 与 `follow-alias.test.tsx` 守；这里守的是
+    「搬家之后端点、键与身份口径还在同一处」。
+    """
+
+    PAGE = FRONTEND / "src" / "react" / "follow-manage"
+    ENDPOINTS = ("/api/follow", "/api/follow/credentials", "/api/follow/check", "/api/follow/source",
+                 "/api/follow/resolve", "/api/follow/suggest", "/api/follow/author-alias",
+                 "/api/follow/credential", "/api/follow/status")
+
+    def setUp(self):
+        self.data = (self.PAGE / "follow-manage.ts").read_text(encoding="utf-8")
+        self.source = "\n".join(
+            (self.PAGE / name).read_text(encoding="utf-8")
+            for name in ("follow-manage.ts", "follow-manage-page.tsx", "source-list.tsx",
+                         "add-source.tsx", "alias-manager.tsx", "source-view.tsx"))
+
+    def test_each_endpoint_is_declared_once(self):
+        """九条端点在前端各只有一个声明处，就是这一页的数据模块。
+
+        第二处再写一遍就是分头取数的第一步：写完之后换进缓存的那一份和别处取回的那一份
+        会同时挂在屏幕上，谁先回来谁说了算。
+        """
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        for endpoint in self.ENDPOINTS:
+            declared = [path for path in sources
+                        if f"'{endpoint}'" in path.read_text(encoding="utf-8")]
+            self.assertEqual(declared, [self.PAGE / "follow-manage.ts"],
+                             f"{endpoint} 声明在 {[path.name for path in declared]}")
+
+    def test_three_rhythms_are_three_keys(self):
+        """清单、凭据与后台任务各走各的键：合成一个键，开关一条来源就会重问一遍凭据文件。"""
+        for key in ("FOLLOW_MANAGE_KEY = ['follow-manage']",
+                    "FOLLOW_CREDENTIALS_KEY = ['follow-manage', 'credentials']",
+                    "FOLLOW_CHECK_KEY = ['follow-manage', 'check']",
+                    "FOLLOW_RESOLVE_KEY = ['follow-manage', 'resolve']"):
+            self.assertIn(key, self.data)
+
+    def test_the_first_screen_takes_only_the_first_screen(self):
+        """预取只取铺满首屏要的两份，后台任务的快照等挂载之后自己去问。"""
+        prefetch = self.data[self.data.index("export async function prefetchFollowManage"):]
+        prefetch = prefetch[:prefetch.index("\n}")]
+        self.assertIn("FOLLOW_MANAGE_KEY", prefetch)
+        self.assertIn("FOLLOW_CREDENTIALS_KEY", prefetch)
+        for later in ("FOLLOW_CHECK_KEY", "FOLLOW_RESOLVE_KEY"):
+            self.assertNotIn(later, prefetch, f"{later} 不属于首屏")
+
+    def test_a_single_row_write_swaps_that_row(self):
+        """开关、移除一条来源都只换缓存里的那一条，不为一次点击把整页重取一遍。"""
+        self.assertIn("queryClient.setQueryData<FollowData>(FOLLOW_MANAGE_KEY", self.data)
+        self.assertIn("export function patchSource(", self.data)
+        self.assertIn("export function dropSources(", self.data)
+
+    def test_the_poll_only_runs_while_the_job_runs(self):
+        """跑起来两秒一问，停了就不问：节律取自任务状态本身。"""
+        self.assertIn("export const JOB_POLL_MS = 2000", self.data)
+        self.assertIn("job?.status === 'running' ? JOB_POLL_MS : false", self.data)
+        self.assertIn("refetchInterval: (query) => jobPollInterval(query.state.data)", self.source)
+
+    def test_a_stale_terminal_snapshot_is_not_this_run(self):
+        """首屏读到的旧终态不发回执：只有这一次点过或见过它在跑才算数。"""
+        self.assertIn("setTracking(true)", self.source)
+        self.assertIn("if (!tracking) return;", self.source)
+
+    def test_row_identity_is_the_source_id(self):
+        """行的身份是来源 ID：换页、换排序、换视图之后勾选的还是同一批来源。"""
+        self.assertIn("from '@tanstack/react-table'", self.source)
+        self.assertIn("getRowId: (row) => String(row.source.id)", self.source)
+        self.assertIn("manualSorting: true", self.source)
+
+    def test_both_views_sort_the_whole_result_set(self):
+        """两种视图共用一套比较器，排的是全集：只排当前页会让翻页看起来像换了一份数据。"""
+        self.assertIn("export const COLUMN_SORT", self.data)
+        self.assertIn("export function authorGroups(", self.data)
+        self.assertIn("export function tableRows(", self.data)
+        self.assertIn("getPaginationRowModel", self.source)
+
+
 class ConfigurationEndpointTests(unittest.TestCase):
     """整页和各分区读同一条 `/api/configuration`，两份产物各打包一份这个模块。"""
 

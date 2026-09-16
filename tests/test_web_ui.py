@@ -362,7 +362,7 @@ class WebUiSourceTests(unittest.TestCase):
         ".geist-progress", ".watchprogress", ".vjs-play-progress", ".vjs-progress-holder",
         ".trace .bar", ".tokbar",  # 进度与数据
         ".ptoggle:checked",  # Toggle 开态：Geist Toggle 实测轨道 rgb(0,112,243)
-        ".entitylink", ".flink", ".fsourcelink", ".fcred a", ".tokauthor>a", ".taste-history-guide-content a",  # 真正的链接
+        ".entitylink", ".flink", ".tokauthor>a", ".taste-history-guide-content a",  # 真正的链接
     )
 
     def test_tungsten_is_reserved_for_focus_links_progress_and_toggle(self):
@@ -396,13 +396,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(offenders, [],
                          f"这些规则的 --tungsten 不在允许的焦点／链接／进度／Toggle 之列：{offenders}")
 
-    def test_credential_collapse_reserves_space_for_outside_focus_ring(self):
-        css = (Path(__file__).resolve().parents[1] / "web/css/22-followmanage.css").read_text(encoding="utf-8")
-        match = re.search(r"\.fcred \.fcollapsebody\{padding:(\d+)px (\d+)px (\d+)px", css)
-        self.assertIsNotNone(match)
-        self.assertGreaterEqual(int(match[2]), 3)
-        self.assertIn('.fcredfield input{height:32px;width:100%;min-width:0;', css)
-
     def test_field_focus_rings_are_neutral_and_theme_aware(self):
         """输入框静止 1px 中性边、悬停与聚焦同一枚 2px inset ring 换灰档（BoardUI Input）。
 
@@ -434,17 +427,13 @@ class WebUiSourceTests(unittest.TestCase):
                      '.geist-input:focus{outline:0;box-shadow:inset 0 0 0 2px var(--color-border-button-active)}',
                      '.gselectfield[aria-expanded="true"]{box-shadow:inset 0 0 0 2px var(--color-border-button-active)}',
                      '.search:focus-within{box-shadow:inset 0 0 0 2px var(--color-border-button-active)}',
-                     '.preference textarea:focus{box-shadow:inset 0 0 0 2px var(--color-border-button-active);outline:0}',
-                     '.fcredfield input:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}',
-                     '.fcredfield input:focus-visible{outline:0;'
-                     'box-shadow:inset 0 0 0 2px var(--color-border-button-active)}'):
+                     '.preference textarea:focus{box-shadow:inset 0 0 0 2px var(--color-border-button-active);outline:0}'):
             self.assertPageContains(rule)
         # 换档要渐出来：上游 field 的 transition 明确列了 box-shadow，只写
         # border-color 的话环是硬切的。带环的那几个控件都得把它列进去。
         for transition in ('line-height:20px;transition:box-shadow .12s ease}',
                            'font:inherit;font-size:var(--fs-md);line-height:20px;transition:box-shadow .12s ease}',
-                           'transition:border-color .12s ease,background-color .12s ease,box-shadow .12s ease}',
-                           'font-family:inherit;transition:box-shadow .12s ease}'):
+                           'transition:border-color .12s ease,background-color .12s ease,box-shadow .12s ease}'):
             self.assertPageContains(transition)
 
     def test_fieldsets_put_the_bright_face_on_the_content_and_the_bar_below_it(self):
@@ -456,7 +445,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(selector + "{", f"{selector} 应有一条自己的规则")
         css = stylesheet_source()
         for name in (".cleanupfieldset>.geist-fieldset-footer", ".reviewitem .reviewactions",
-                     ".fsechead", ".fsecfoot", ".resourcesyncfooter,.resourceapplyrow"):
+                     ".fsechead", ".resourcesyncfooter,.resourceapplyrow"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
             self.assertIn("background:var(--overlay-5)", rule, f"{name} 是操作条")
@@ -465,7 +454,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_follow_job_panel_sits_on_the_card_tier_inside_the_section(self):
         """进度面板是灰面 `.fsec` 里的一张白卡，与查找结果卡同档。
 
-        它承载的只是一段进度，和 `.fpickitem` 一样躺在 `--ground` 的灰面上；透明或
+        它承载的只是一段进度，和查找结果卡一样躺在 `--ground` 的灰面上；透明或
         同灰会让框只剩一圈边。面板不再与 `.fsec` 同灰，而是 CheckboxCard 那一档：
         `--field-ring` 发丝边配 primary 的白面。
         """
@@ -506,7 +495,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 这一层再写一份的话，它的 `:hover:not(:disabled)` 比 Board 那条静止规则重一个类，
         # 同一颗按钮的静止和悬停就分别由两处给出。
         self.assertNotIn(".geist-button.primary{", css)
-        # 找的是这三条基样式本身，不是别处以同名结尾的派生规则（`.fsecfoot .fbtn{`
+        # 找的是这三条基样式本身，不是别处以同名结尾的派生规则（`.fsechead .fbtn{`
         # 也以 `.fbtn{` 收尾），所以选择器前面必须是上一条规则的边界。
         for name in (".cleanupfieldset button:where(:not(.gselectfield)){",
                      ".fbtn{", ".resourceaction{"):
@@ -936,8 +925,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_a_solid_tier_hover_spells_out_its_own_text_colour(self):
         """把填充换成实心一档的悬停规则必须自己写 `color`，不能指望静止那条留下来。
 
-        `:hover` 只声明 background 时，同一组里更宽的通用悬停（`.fpickactions
-        button:hover`、`.tagselection button:hover` 都是）会把文字提到 `--ink`：
+        `:hover` 只声明 background 时，同一组里更宽的通用悬停（`.tagselection
+        button:hover`、`.junkactions button:hover` 都是）会把文字提到 `--ink`：
         它的选择器更弱，可 `color` 在实心档自己这条里没有对手，于是深色实底上落成
         深字深底，鼠标一压按钮上的字就没了。2026-09-04 用户在关注管理页第二次遇到
         同一个坑；靠「静止那条特指度更高」挡着不算数，那是算出来的巧合，加一条更宽的
@@ -1234,17 +1223,11 @@ class WebUiSourceTests(unittest.TestCase):
         ringed = ("{background:var(--sunk);border-color:var(--line-soft);"
                   "color:var(--muted);cursor:not-allowed}")
         flat = "{background:var(--sunk);color:var(--muted);cursor:not-allowed}"
-        for selector in (".srctools button:disabled", ".frowicon:disabled"):
+        for selector in (".srctools button:disabled",):
             self.assertPageContains(selector + ringed)
         for selector in (".geist-button:disabled", ".fbtn:disabled",
-                         ".resourceaction:disabled",
-                         ".tagselection button:disabled", ".fpickactions button:disabled"):
+                         ".resourceaction:disabled", ".tagselection button:disabled"):
             self.assertPageContains(selector + flat)
-        # 凭据那一组两颗都是实心档（强调档的「保存」、危险档的「清除」），静止态自己没有
-        # 环可留；停用后跟 `.geist-button.primary:disabled` 同形，灰面上补一圈。
-        self.assertPageContains(".fcredactions button:disabled{background:var(--sunk);"
-                                "color:var(--muted);box-shadow:0 0 0 1px var(--line-soft);"
-                                "cursor:not-allowed}")
 
     def test_the_secondary_tier_keeps_a_one_pixel_ring_so_it_reads_on_its_own_ground(self):
         """次级按钮挂一圈 1px 环，实心的三档不挂。
@@ -1289,8 +1272,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_button_filled_with_ground_carries_that_ring(self):
         """凡是填 `--ground` 的可点控件都要有一条 1px 的边，名单之外的也算。
 
-        上一条按名单守四个写法，名单外的七处照样没边：关注管理的「关闭」「添加」、
-        重复页的操作条、评审的选片头、首页的标签选择条、垃圾卡的三颗动作、沉浸浮条。
+        上一条按名单守四个写法，名单外的几处照样没边：关注页的动作键、重复页的操作条、
+        评审的选片头、首页的标签选择条、垃圾卡的三颗动作、沉浸浮条。
         它们填的都是 `--ground`，又坐在同为 `--ground` 的卡片和面板上，暗色一档
         `#080A0D` 压在 `#080A0D` 上，整颗键化在面里。所以这里不数名单，直接扫。
 
@@ -1311,7 +1294,7 @@ class WebUiSourceTests(unittest.TestCase):
                 "box-shadow:0 0 0 1px" in body or "border:1px solid" in body,
                 f"{selector} 填 --ground 又没有边，坐在同色的面上就看不见了")
             scanned.append(selector)
-        self.assertIn(".fpickactions button", scanned, "扫描要真的覆盖到关注管理那组")
+        self.assertIn(".fbtn", scanned, "扫描要真的覆盖到关注页那组")
         start = css.index(".splitbutton{")
         self.assertIn("box-shadow:0 0 0 1px var(--line-soft)",
                       css[start:css.index("}", start)], "拆分按钮的环挂在盒子上")
@@ -1361,19 +1344,20 @@ class WebUiSourceTests(unittest.TestCase):
         没有它的标题只是一行普通粗体字：`wireCollapse` 把原生 `<details>` 的三角
         `list-style` 去掉了（不去掉的话它和布局里的 flex 对不齐），于是「点这里会展开」
         这件事没有任何视觉线索，得靠鼠标移上去变成手型才发现。几何取自 Vercel：
-        16px SVG、`stroke:currentColor`、展开 `rotate(90deg)`。React 档那一族折叠由
-        `src/react/settings/section.tsx` 的 `Disclosure` 给同一枚。
+        16px 字形、`stroke:currentColor`、展开转 90°，并且转要渐变。这一枚由
+        `src/react/settings/section.tsx` 的 `Disclosure` 给，站里的折叠标题共用它。
         """
-        css = stylesheet_source()
-        prefix = ".faliasmanager>summary"
-        start = css.index(prefix + ">svg{")
-        rule = css[start:css.index("}", start)]
-        # 描边色不进这份共用契约：作者别名那一枚故意钉在 --muted 上不随当前项提亮。
-        for declaration in ("width:16px", "height:16px", "flex:none", "fill:none",
-                            "transition:transform .2s ease-in-out"):
-            self.assertIn(declaration, rule, f"{prefix} 的 chevron 缺 {declaration}")
-        self.assertPageContains(prefix + '[aria-expanded="true"]>svg'
-                                         "{transform:rotate(90deg)}")
+        section = self.read_react("settings/section.tsx")
+        self.assertIn("import { RiArrowRightSLine, RiExternalLinkLine } from '@remixicon/react';", section)
+        self.assertIn("className={open ? 'size-4 shrink-0 rotate-90 transition-transform'"
+                      " : 'size-4 shrink-0 transition-transform'}", section)
+        # 折叠态要报给读屏，展开的是哪一块也要指名。
+        self.assertIn("<summary aria-expanded={open} aria-controls={id} onClick={toggle}", section)
+        # 原生三角去掉了，所以这一枚字形是唯一的线索，不能连它一起去掉。
+        self.assertIn("list-none", section)
+        # 侧栏分组折叠还在旧壳里，转的角度与方向跟这一枚对齐。
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-section-toggle[aria-expanded=true] svg{transform:rotate(90deg)}", board)
 
     def test_a_spinner_announces_the_work_and_not_the_button_it_sits_in(self):
         """`spinnerHtml()` 的名字说正在做什么，不复读按钮自己的名字。
@@ -1401,9 +1385,9 @@ class WebUiSourceTests(unittest.TestCase):
         选择器更长、文件又在后面，永远赢。同一形状在 `.configrm` 上已经出现过一次。
 
         所以这里查两遍。只按选择器里有没有 `danger` 查的话，换个类名就绕过去了：
-        `.junktrash`、`.fcredactions button.fquiet` 和 `.fbtn.fquiet` 三颗红底键各自填过
-        同一块 `--drop`，选择器里一个 `danger` 也没有。第二遍改按声明查——实底红配纯白字
-        就是销毁档的样子，无论选择器叫什么。
+        `.junktrash` 和 `.fbtn.fquiet` 这类红底键各自填过同一块 `--drop`，选择器里一个
+        `danger` 也没有。第二遍改按声明查——实底红配纯白字就是销毁档的样子，无论选择器
+        叫什么。
         """
         css = stylesheet_source()
         base = Path(__file__).resolve().parents[1] / "web/css/01-base.css"
@@ -1436,8 +1420,8 @@ class WebUiSourceTests(unittest.TestCase):
                        and re.search(r"color:\s*#fff\b", rule.split("{", 1)[1]))
         self.assertEqual(solid, [".geist-button.error",
                                  ".geist-button.error:hover:not(:disabled)",
-                                 "button.danger:not(.frowicon)",
-                                 "button.danger:not(.frowicon):hover:not(:disabled)"],
+                                 "button.danger.danger",
+                                 "button.danger.danger:hover:not(:disabled)"],
                          "实底红配白字就是销毁档，页面不要用别的类名再填一份：\n"
                          + "\n".join(solid))
         for selector in solid:
@@ -1591,15 +1575,18 @@ class WebUiSourceTests(unittest.TestCase):
 
         作者名长短不一，站标跟着名字走就每行一个位置，一列扫下来得逐行找。按钮上的字只写
         「全选」——它就在这位作者那一行里，说到底选的是谁由所在的行回答；完整的表述留在
-        `aria-label` 上，读屏那边脱离了行的上下文。
+        `aria-label` 上，读屏那边脱离了行的上下文。正文归 React（ADR-0031）：作者卡是
+        `follow-manage/source-list.tsx` 的 `AuthorCard`，遗留层只剩同形状的骨架。
         """
-        app = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(encoding="utf-8")
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('aria-label="全选 ${esc(name)} 的来源">${icon(\'check-check\')}<span data-author-select-label>全选</span></button>', app)
-        self.assertIn("count===fields.length?'取消全选':'全选'", app)
-        self.assertIn("icon(count===fields.length?'check-check-outline':'check-check')", app)
-        self.assertIn("icon(collapsed?'chevron-down':'chevron-up')", app)
-        self.assertIn('class="followtoolbaractions"', app)
+        root = Path(__file__).resolve().parents[1]
+        card = (root / "frontend/src/react/follow-manage/source-list.tsx").read_text(encoding="utf-8")
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        skeleton = (root / "frontend/src/board-skeleton.ts").read_text(encoding="utf-8")
+        self.assertIn("aria-label={`${state.all ? '取消全选' : '全选'} ${name} 的来源`}", card)
+        self.assertIn(">{state.all ? '取消全选' : '全选'}</Button>", card)
+        self.assertIn("aria-label={`${open ? '收起' : '展开'} ${name} 的来源`}", card)
+        self.assertIn('<span data-author-select-label>全选</span>', skeleton)
+        self.assertIn('class="followtoolbaractions"', skeleton)
         self.assertIn(".fauthorhead>.fmeta{margin-left:auto}", board)
         self.assertIn(".fauthorhead>.fmeta~.fmeta,.fauthorhead>.fmeta~.board-author-actions"
                       "{margin-left:0}", board, "撑开的空当只交给第一个 .fmeta")
@@ -1737,9 +1724,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_search_inputs_share_one_component_with_a_visible_focus_ring(self):
         """带搜索语义的输入只有一份实现，点进去看得见焦点。
 
-        Geist Search Input 的契约是：搜索图标占前缀位，查找中原位换 Spinner，
-        输入框几何不变。关注页先有了这套，索引页的筛选框却是另一份私有样式——
-        没有前缀图标、没有任何 focus 规则，点进去和没点一个样。
+        Geist Search Input 的契约是：搜索图标占前缀位，输入框几何不变。索引页的筛选框
+        曾是另一份私有样式——没有前缀图标、没有任何 focus 规则，点进去和没点一个样。
+        关注管理那一处已经整页归 React（ADR-0031），用的是 BoardUI `Input`，查找中的
+        说明落在它下面的 `LoadingDots` 上，不再靠换前缀位表达。
         """
         self.assertPageContains("export function searchInputHtml({label,id='',name='',value='',placeholder='',attrs=''}={})")
         self.assertCode("""const parts=[
@@ -1751,15 +1739,16 @@ class WebUiSourceTests(unittest.TestCase):
         # 焦点环与顶部搜索框同一个配方：BoardUI Input 的 2px inset 灰环。
         self.assertCode('.geist-search input[type="search"]:focus{outline:0;'
                         'box-shadow:inset 0 0 0 2px var(--color-border-button-active)}')
-        # 忙态换的是前缀位，输入框自己不动；hook 跟着组件走，不留关注页专属的名字。
-        self.assertPageContains("form.querySelector('[data-search-prefix]')")
-        self.assertPageContains("if(prefix)prefix.innerHTML=spinnerHtml('查找中');")
         self.assertPageLacks("data-follow-search-prefix")
         self.assertPageLacks("fsearchprefix")
-        # 两个调用点都走组件；索引页的筛选框不再用 placeholder 当标签。
+        # 遗留层剩下的调用点走组件；索引页的筛选框不再用 placeholder 当标签。
         self.assertPageContains("searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})")
-        self.assertPageContains("searchInputHtml({name:'line',label:'来源链接、名字或 id',")
         self.assertPageLacks('<input id="iq" placeholder="过滤…"')
+        # 关注管理的那一处：标签一字不差，查找中的说明是同一屏里的一段文字。
+        add = (Path(__file__).resolve().parents[1]
+               / "frontend/src/react/follow-manage/add-source.tsx").read_text(encoding="utf-8")
+        self.assertIn('<Input aria-label="来源链接、名字或 id"', add)
+        self.assertIn("<LoadingDots label={byName ? BY_NAME_HINT : BY_LINK_HINT} />", add)
         self.assertPageLacks(".isearch")
 
     def test_filtering_waits_for_the_chinese_ime_to_finish_composing(self):
@@ -2363,9 +2352,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 悬停不许提边：这条只写 background。
         rule = self.page[self.page.index(".pcheck:hover>span,"):]
         self.assertNotIn("border-color", rule[:rule.index("}")])
-        # 五个调用点，一个都不许再留原生 checkbox 的 accent-color。
-        for attrs in ("data-follow-enabled=", "data-srcfilter=", "data-pick=",
-                      "data-tag-match-any", 'id="groupCollapseSetting"'):
+        # 遗留层剩下的调用点，一个都不许再留原生 checkbox 的 accent-color。关注管理的
+        # 那几处随整页进了 React，画的是 BoardUI `Checkbox`。
+        for attrs in ("data-pick-playlist=", "data-tag-match-any", 'id="groupCollapseSetting"'):
             self.assertPageContains(attrs)
         # 单选框仍归原生（`.metadatacandidate` 是 radio，不是同一个控件）。
         self.assertPageLacks(".fsrcmenu input{accent-color")
@@ -2483,17 +2472,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertLess(guard, load_body.index("cache(d.items)"))
 
     def test_bulk_follow_updates_run_with_bounded_concurrency(self):
-        """一千条串行 POST 全靠往返等，界面按住不放；一次全发出去又会挤满连接。"""
+        """一千条串行 POST 全靠往返等，界面按住不放；一次全发出去又会挤满连接。
+
+        闸门这一份实现留在遗留层（`web/js/core.js`），关注管理页整页归 React 之后按
+        `@peach/legacy/core` 引它，两边不各写一份。
+        """
         self.assertPageContains("const mapLimit=async(items,limit,run)=>")
         self.assertPageContains("const workers=Math.min(Math.max(1,limit),list.length)")
         # 某一项失败只记下原因，不中断整批。
         self.assertPageContains("catch(error){results[index]={ok:false,error}}")
-        bulk = self.app_js.split("root.querySelectorAll('[data-follow-bulk]')", 1)[1]
-        bulk = bulk.split("/* 查找结果先摆出来", 1)[0]
-        self.assertIn("await mapLimit(ids,6,id=>", bulk)
-        # 撤销那两处仍是单条 POST，不该被这条契约波及。
-        self.assertNotIn("for(const id of ids)", bulk)
-        self.assertPageContains("actionFailure(`批量更新 ${failed.length}/${ids.length} 项`")
+        root = Path(__file__).resolve().parents[1]
+        self.assertIn("export declare function mapLimit<T, R>(",
+                      (root / "frontend/src/legacy/core.d.ts").read_text(encoding="utf-8"))
+        source_list = (root / "frontend/src/react/follow-manage/source-list.tsx").read_text(encoding="utf-8")
+        # 批量改状态与批量标记各有自己的并发档，都不是一条一条等着发。
+        self.assertIn("await mapLimit(work.ids, 4, async (id: number) => {", source_list)
+        self.assertIn("await mapLimit(ids, 6, (id: number) => markItem(id, to))", source_list)
+        self.assertIn("setProblem(`批量更新 ${result.failed.length}/${result.ids.length} 项未完成`)",
+                      source_list)
 
     def test_immerse_stream_does_not_pretend_to_paginate_a_random_sample(self):
         """`sort=rand` 在服务端是未加种子的 `RANDOM()`，偏移量在它上面没有意义。
@@ -2955,7 +2951,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "next?` aria-label=\"按${label}${next.dir?sortDirWord(next.sort,next.dir,words):''}排序\"`:''")
         self.assertPageContains("icon(dir==='asc'?'arrow-up':'arrow-down','sortdir')")
-        self.assertPageContains("const followSortLabel=()=>`按${FOLLOW_SORT_LABELS[followManageSort]||'关注列表'}${")
+        # 关注管理页的那一枚归 React：同一条规矩，箭头只是图标，名称取反方向的词。
+        follow = Path(__file__).resolve().parents[1] / "frontend/src/react/follow-manage"
+        self.assertIn("`按${SORT_LABELS[sort]}${SORT_DIR_WORDS[sort][dir === 'asc' ? 0 : 1]}排序`",
+                      (follow / "follow-manage.ts").read_text(encoding="utf-8"))
+        self.assertIn("leadingIcon={dir === 'asc' ? RiArrowUpLine : RiArrowDownLine}",
+                      (follow / "source-list.tsx").read_text(encoding="utf-8"))
         # 箭头必须真在 sprite 里，否则选中项渲染出一个空 use，方向就完全看不见。
         self.assertPageContains('<symbol id="i-arrow-down" viewBox="0 0 24 24">')
         self.assertPageContains('<symbol id="i-arrow-up" viewBox="0 0 24 24">')
@@ -5139,24 +5140,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
         self.assertPageContains("failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'})")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
-        self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
         # 「没有更多内容」的抓取完摘要跟着检查完成的右下角 notification 走，页内只剩失败与取证缺档。
-        self.assertPageLacks('class="geist-note geist-note-secondary fcheckreport" role="note"')
         self.assertPageLacks('个来源没有更多内容</b>')
         # 每一条失败都进 Note，没有第二套「红字一行」的写法：红色文字既没有图标
         # 也没有边框，在暗色底上和普通说明文字只差一个色相，扫读时整条会被跳过。
         self.assertPageContains('class="geist-note geist-note-error fwarn" role="alert"')
-        self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
-        self.assertPageContains(
-            "noteHtml('文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。',{variant:'error'})")
+        # 关注管理页那两处同样是 Note，只是画在 React 档里（ADR-0031）。
+        follow = Path(__file__).resolve().parents[1] / "frontend/src/react/follow-manage"
+        self.assertIn('<Note tone="error" title={`${failures.length} 个来源检查失败`}',
+                      (follow / "source-list.tsx").read_text(encoding="utf-8"))
+        credentials = (follow / "credentials.tsx").read_text(encoding="utf-8")
+        self.assertIn("const WORLD_READABLE = '文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。'",
+                      credentials)
+        self.assertIn('<Note tone="error" title="凭据文件权限过宽">{WORLD_READABLE}</Note>', credentials)
         self.assertPageLacks('class="fnote warn"')
         self.assertPageLacks(".fnote.warn{")
         self.assertPageLacks("geist-banner")
 
     def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
-        self.assertPageContains('aria-label="凭据存放位置说明">${icon(\'info\')}</button>')
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
+        # 凭据存放位置改由关注管理页自己的说明块直说，不再藏在一枚信息键后面。
+        self.assertIn("{`凭据文件在 ${data.root}`}",
+                      (Path(__file__).resolve().parents[1]
+                       / "frontend/src/react/follow-manage/credentials.tsx").read_text(encoding="utf-8"))
         self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
 
     def test_the_ledger_gate_is_a_note_and_keeps_its_own_tone(self):
@@ -5166,7 +5173,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("variant:runtime?.ledger_sync==='conflict'?'warning':'secondary'")
         self.assertPageContains("className:'runtimegate',actionLabel:actionHref?actionLabel:'',actionHref}")
         self.assertPageContains("ledgerGateNote(reviewRuntime,mirrorText,'前往写入端复核',writer)")
-        self.assertPageContains("ledgerGateNote(followRuntime,followRuntime.ledger_read_only_message||'本机当前只能浏览',")
+        # 关注管理页那一条归 React（ADR-0031）：同一种盒子、同一档色调，去处仍是写入端。
+        page = (Path(__file__).resolve().parents[1]
+                / "frontend/src/react/follow-manage/follow-manage-page.tsx").read_text(encoding="utf-8")
+        self.assertIn('<Note tone="warning" title="本机只能浏览"', page)
+        self.assertIn('前往写入端管理关注', page)
+        self.assertPageContains("readOnlyMessage:runtime?.ledger_read_only_message||'本机当前只能浏览'")
         self.assertPageContains('.geist-note.runtimegate{margin:0 0 12px}')
         # 这个类名只剩定位：框、字形和颜色再出现一份就又能和 Note 走散。
         self.assertPageLacks('.runtimegate{display:grid')
@@ -5675,12 +5687,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('class="trashempty"')
 
     def test_empty_follow_actions_open_the_add_workspace(self):
+        """空态那条「添加关注」落在「添加关注」这一页签上，不是关注管理的首屏。
+
+        页签在地址栏里（`?tab=add`），所以这条链接本身就是那一页的地址：外面发过来
+        一样打得开。已经在这一页上时也走同一条路——壳接住这次点击，换地址、重挂岛。
+        """
         self.assertPageContains('href="/follow-manage?tab=add">添加关注</a>')
-        self.assertPageContains("followManageWorkspace=['list','add','source'].includes(params.get('tab'))?params.get('tab'):'list'")
-        self.assertPageContains("params.set('tab',key)")
-        self.assertPageContains("params.set('tab',followManageWorkspace)")
-        self.assertPageContains("if(tab){tab.click();tab.focus()}")
-        self.assertPageContains("else void openFollowManage(true,'add')")
+        self.assertPageContains("const FOLLOW_MANAGE_TABS=['list','add','source'];")
+        self.assertPageContains("if(params.tab&&params.tab!=='list')search.set('tab',params.tab)")
+        self.assertPageContains("""a[href="/follow-manage?tab=add"]""")
+        self.assertPageContains("void openFollowManage(true,'add')")
         self.assertPageContains('.emptystate .es-actions{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:8px}')
 
     def test_follow_author_actions_stay_in_the_heading_row(self):
@@ -5848,8 +5864,14 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_resource_and_source_mutations_use_terminal_toasts_with_safe_undo(self):
         self.assertPageContains("actionReceipt(operation==='restore'?'已还原':'已移入回收站',{undo:async()=>")
-        self.assertPageContains("actionReceipt(`已添加 ${picked.length} 个关注来源`)")
         self.assertPageContains("actionReceipt(saving?'已保存到账本':(labels[to]||'已更新关注状态')")
+        # 关注管理页的写操作归 React，回执仍是壳那一份 Toast（props 上的 `toast`）。
+        follow = Path(__file__).resolve().parents[1] / "frontend/src/react/follow-manage"
+        self.assertIn("toast(`已添加 ${result.sources.length} 个关注来源`)",
+                      (follow / "add-source.tsx").read_text(encoding="utf-8"))
+        self.assertIn("toast(`已${word} ${result.done.length} 个关注来源`)",
+                      (follow / "source-list.tsx").read_text(encoding="utf-8"))
+        self.assertPageContains("toast:actionReceipt,openFollow:()=>void openFollow()")
         self.assertPageContains("actionReceipt(`已把 ${r.removed} 项移入回收站`,{undo:ids.length?async()=>")
         self.assertPageContains("data-junk-batch=\"dispose\"")
         self.assertPageContains(".batchbar:has([data-junk-batch]:not([hidden]))")
@@ -5908,7 +5930,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".pagelede-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}")
         # 危险档只有 01-base 那一份，页面各自的 .danger 覆盖已经收掉了。
-        self.assertPageContains("button.danger:not(.frowicon){")
+        self.assertPageContains("button.danger.danger{")
         self.assertPageLacks(".pagelede-actions .batchaction.danger{")
         self.assertPageLacks(".count .sorts .batchaction.danger{")
         # 桌面 32px 是 Geist 的控件高度，手机要回到本项目的 44px 命中区。
@@ -6772,7 +6794,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);", board)
-        self.assertIn("body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}", board)
         self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
         self.assertIn("body .review .reviewcontrols{position:static;", board)
         self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;", board)
@@ -7816,8 +7837,12 @@ class WebUiSourceTests(unittest.TestCase):
         )
         self.assertPageContains("setActionBusy(batch)")
         self.assertPageContains("setActionBusy(scan,busy)")
-        self.assertPageContains("setActionBusy(addButton)")
         self.assertPageContains("setActionBusy(btn)")
+        # React 档里同一件事由 `busyProps()` 发：同样是 aria-busy 加 aria-disabled，
+        # 按钮留在 tab 序列上。
+        self.assertIn("{...busyProps(rowHandlers.busy)}",
+                      (Path(__file__).resolve().parents[1]
+                       / "frontend/src/react/follow-manage/source-list.tsx").read_text(encoding="utf-8"))
 
     def test_follow_separator_uses_the_same_border_token_as_tags(self):
         self.assertPageContains(".pill{flex:none;height:var(--filterItemH);padding:0 20px;border:1px solid var(--field-ring)")
@@ -8121,17 +8146,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${esc(tagLabel(t))} <b data-untag=\"${esc(t)}\">✕</b>")
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
         self.assertPageLacks("data-fwarn-dismiss")
-        self.assertPageContains(".fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr);")
+        self.assertPageContains(".fwarn{grid-template-columns:16px minmax(0,1fr);")
         self.assertPageContains(".geist-note-error{--feedback-color:var(--drop);")
         self.assertPageLacks("border-left:2px solid var(--drop)")
-        # 来源行状态徽章（ok 绿 tint / 失败红 tint / 未检查灰）。
-        self.assertPageContains('<span class="sbadge ${badge}" title="${esc(stateTitle)}"><i aria-hidden="true"></i>')
-        self.assertPageContains(".sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}")
-        self.assertPageContains(".sbadge.ok i{background:var(--success)}")
-        self.assertPageContains(".sbadge.error i{background:var(--drop)}")
+        # 来源行状态徽章：失败红、正常绿、暂停黄、未检查灰。关注管理页归 React 之后
+        # 这一枚是 BoardUI `Chip`，档位由同一套判据给。
+        source_view = self.read_react("follow-manage/source-view.tsx")
+        self.assertIn("const color = isBroken(source) ? 'rose'", source_view)
+        self.assertIn(": source.enabled && source.last_status === 'ok' ? 'lime'", source_view)
+        self.assertIn(": source.enabled ? 'yellow' : 'neutral';", source_view)
+        # `.sbadge` 只剩复核卡的字段名徽章一个读者，它不带状态档位，也没有圆点子元素。
+        self.assertPageContains(".sbadge{display:inline-flex;align-items:center;gap:6px;")
+        self.assertPageLacks(".sbadge.ok")
+        self.assertPageLacks(".sbadge i{")
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
-        self.assertPageContains("button.danger:not(.frowicon){")
+        self.assertPageContains("button.danger.danger{")
         # Geist 菜单：触发器和每个选项都有入口图标，菜单内部滚动；开合动效走 Board 层共用那一份。
         self.assertPageContains('data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"')
         self.assertPageContains('role="option" data-sidebar-add-option=')
@@ -8729,14 +8759,9 @@ class WebUiSourceTests(unittest.TestCase):
             ".fauthor .fsource.frow>b", ".fauthorhead b",
             # 作者是展示名，尾部省略；完整身份保留在 title。
             ".followbyline .followauthor",
-            # 四段计数按重要性从左排（未看在最前），尾部省略切掉的正是最不影响判断的那几段；
-            # 它不是标识符，中间截断只会把「未看 3」也切开。
-            ".fbulkcounts",
-            ".fchip", ".followpageaction .fmeta", ".fpickactions [data-pick-state]",
+            ".followpageaction .fmeta",
             ".fsechead .fmeta",
             ".frow>b",
-            # 表格视图的来源名一格：和默认视图那枚 `.frow>b` 是同一段语义文本，只是换了容器。
-            ".ftable .ftname>b",
             ".fvkind", ".idname",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
@@ -9099,8 +9124,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("emptyState('playlist','还没有播放列表'")
         self.assertPageContains('aria-label="编辑播放列表">${icon(\'playlist\')}')
         self.assertPageContains('title="加入播放列表">${icon(\'playlist\')}')
-        # 剩下的那一处 list-filter 是真的筛选，不能一起换掉。
-        self.assertPageContains("${icon('list-filter')}<span data-srcfilter-label>")
+        # 剩下的 list-filter 是真的筛选，不能一起换掉：复核批量面板按这个字形分组和筛选。
+        self.assertPageContains('<symbol id="i-list-filter"')
+        bulk = (Path(__file__).resolve().parents[1]
+                / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
+        self.assertIn("'list-filter'", bulk)
+        # 关注管理的来源筛选归 React 之后用 Remix 的漏斗，含义还是筛选。
+        self.assertIn("leadingIcon={RiFilter3Line}",
+                      self.read_react("follow-manage/add-source.tsx"))
         for symbol in ("text-aa", "playlist"):
             self.assertRegex(
                 self.page,
@@ -9145,9 +9176,14 @@ class WebUiSourceTests(unittest.TestCase):
                 'data-zoom-step="-1" aria-label="缩小">${icon(\'zoom-out\')}',
                 'data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}'):
             self.assertPageContains(needle)
-        # 关注来源那三处问的就是「有没有更新」，转圈归它们。
-        self.assertPageContains('aria-label="检查 ${esc(name)} 的全部来源">${icon(\'refresh-cw\')}')
-        self.assertPageContains("${icon('check-check')}<span data-author-select-label>全选</span>")
+        # 关注来源那几处问的就是「有没有更新」，转圈归它们；页面归 React 之后是 Remix 的
+        # 同一枚字形，全选仍是双勾。
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("leadingIcon={RiRefreshLine}", source_list)
+        self.assertIn("aria-label={`检查 ${name} 的全部来源`}", source_list)
+        self.assertIn("leadingIcon={RiCheckDoubleLine}", source_list)
+        # 骨架照着画，等数据时占的是同一块地方。
+        self.assertIn("<span data-author-select-label>全选</span>", self.markup)
         # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
         self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
         self.assertPageContains("emptyState('file-stack','没有找到重复文件'")
@@ -9710,13 +9746,17 @@ class WebUiSourceTests(unittest.TestCase):
         # 表格外框自己收口：它离卡片脚还有一层内边距，去掉下边框就没有收尾。
         self.assertNotIn(".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe", board)
 
-    def test_the_alias_avatar_stays_a_circle_when_there_is_no_picture(self):
+    def test_the_author_avatar_stays_a_circle_when_there_is_no_picture(self):
         """取不到头像时那个空位仍然是一个圆。
 
-        别名行里头像和别名组都是直接子 `span`，同一条规则把两者都摊成 `flex:1`，
-        兜底头像于是被拉成一颗药丸；有图那一枚是 `<img>`，所以只在取不到时才露馅。
+        兜底那一枚是 `<span>`，跟在一段会伸缩的名字后面；不钉住尺寸就会被拉成一颗
+        药丸。有图那一枚是 `<img>`，所以只在取不到时才露馅。
         """
-        self.assertIn(".faliasidentity>.favatar{flex:none}", self.css)
+        view = self.read_react("follow-manage/source-view.tsx")
+        self.assertIn('className="inline-grid size-8 shrink-0 place-items-center rounded-full', view)
+        self.assertIn("{authorInitial(name)}", view)
+        self.assertIn('className="size-8 shrink-0 rounded-full bg-background-tertiary-default object-cover"',
+                      view)
 
     def test_the_data_cleanup_page_spaces_its_blocks_the_same_way(self):
         """数据管理页三块内容之间是同一个间距。
@@ -10191,7 +10231,7 @@ class WebUiSourceTests(unittest.TestCase):
         而这个差别是没有意思的。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        roster = ("body :is(button.danger:not(.frowicon),.reviewactions button.error,"
+        roster = ("body :is(button.danger,.reviewactions button.error,"
                   ".batchbar button.danger):not(:disabled)")
         self.assertIn(roster + "{position:relative;isolation:isolate;background:var(--board-red);"
                       "border:0;color:#fff;box-shadow:0 1px 2px #0000000d;", board)
@@ -10640,7 +10680,6 @@ class WebUiSourceTests(unittest.TestCase):
             '<button class="geist-button primary" type="submit">新建</button>')
         self.assertPageContains('<button type="submit" class="geist-button primary" data-modal-confirm>')
         self.assertPageLacks(".playlistcreate button,.playlistactions button{")
-        self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
         self.assertPageContains(".playlistcreate label{display:grid;gap:8px;color:var(--muted);"
                                 "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
         self.assertPageLacks(".playlistcreate label{flex:1 1 100%}")
@@ -10649,10 +10688,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".faliasform input{min-width:0;height:34px;")
         for needle in (
                 '<label class="modalfield"><span>名称</span><input class="geist-input" name="name"',
-                '<label>新播放列表<input class="geist-input" name="name"',
-                '<input class="geist-input" name="canonical"',
-                '<input class="geist-input" name="alias"'):
+                '<label>新播放列表<input class="geist-input" name="name"'):
             self.assertPageContains(needle)
+        # 别名管理归 React 之后，这两格用同一档的 BoardUI `Input`，高度也还是那一档。
+        alias = self.read_react("follow-manage/alias-manager.tsx")
+        self.assertIn('<Input aria-label="规范创作者名"', alias)
+        self.assertIn('<Input aria-label="平台别名"', alias)
 
     def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
         """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""
@@ -11161,15 +11202,17 @@ class WebUiSourceTests(unittest.TestCase):
         `pl-10`），而它的文字 Label 是块级、排在控件上方（`block ... mb-2`）——行内并排
         那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
         """
-        self.assertPageContains(
-            """<span class="fmanagesort" data-collapse-field title="关注列表排序">"""
-            """${icon('sort')}${selectFieldHtml(FOLLOW_SORT_OPTIONS,followManageSort,""")
+        # 页面正文归 React，排序是 BoardUI `Select`；骨架照着同一处画，等数据时不挪位。
+        self.assertIn('<Select aria-label="关注列表排序" size="sm" selectedKey={sort}',
+                      self.read_react("follow-manage/source-list.tsx"))
+        self.assertIn("""<span class="fmanagesort" data-collapse-field>"""
+                      """${icon('sort')}${selectFieldHtml(""", self.markup)
         self.assertPageContains('id="i-sort"')
         self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
         self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")
         self.assertPageContains(".fmanagesort .gselectfield{height:var(--control-h);padding:0 12px 0 33px")
         # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着；它由组件写到触发器上。
-        self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
+        self.assertIn("{label:'关注列表排序',attr:'disabled'}", self.markup)
         self.assertCode('aria-expanded="false" aria-label="${esc(label)}"')
         # 标题行里三个可缩项只有说明文字，排序框和动作键都保持完整宽度。
         self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
@@ -11197,7 +11240,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 就是同一行里出现两种「同一种控件」，而缩的偏偏是唯一能改变列表内容的那个。
         self.assertIn("height:var(--control-h)", rule, ".fmanagesort 的触发器与标题行同高")
         self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
-        self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
+        self.assertPageContains(".fsechead .fbtn{height:var(--control-h)}")
 
     def test_the_selection_mark_is_one_shape_that_does_not_flip_with_the_theme(self):
         """选中标记全站一个长相：正圆、一对固定的浅片深勾，尺寸按容器分两档。
@@ -11240,10 +11283,18 @@ class WebUiSourceTests(unittest.TestCase):
                                 "${icon('external-link','externalmark')}")
         self.assertPageContains(".linktable .linkurl a{display:grid;"
                                 "grid-template-columns:minmax(0,1fr) auto;")
-        self.assertPageContains("title=\"打开原来源\">${esc(source.label)}"
-                                "${icon('external-link','externalmark')}")
-        self.assertPageContains('<a class="externallink" href="${esc(search.url)}"'
-                                ' target="_blank" rel="noreferrer noopener"')
+        # 关注来源那一行已经有站标，链接本身不再叠一枚；同页会离开 Peach 的另外两处
+        # （外链搜索建议、凭据的「去取」）走共用的 `ExternalLink`，标由它带。
+        self.assertIn('target="_blank" rel="noreferrer noopener" title="打开原来源"',
+                      self.read_react("follow-manage/source-view.tsx"))
+        self.assertIn("<SourceIcon key={source.id} provider={source.provider} />",
+                      self.read_react("follow-manage/source-list.tsx"))
+        self.assertIn("<ExternalLink href={search.url}>",
+                      self.read_react("follow-manage/add-source.tsx"))
+        self.assertIn("<ExternalLink href={row.where}>去取</ExternalLink>",
+                      self.read_react("follow-manage/credentials.tsx"))
+        self.assertIn("trailingIcon={RiExternalLinkLine}",
+                      self.read_react("settings/section.tsx"))
         # 一处漏掉类名就又变成八档里的第九档，所以按调用点数，不按人工清单。
         self.assertEqual(self.app_js.count("icon('external-link'"),
                          self.app_js.count("icon('external-link','externalmark')"),
@@ -11269,7 +11320,7 @@ class WebUiSourceTests(unittest.TestCase):
         css = stylesheet_source()
         for name in (".reviewpickhead button{",
                      ".tagselection button{", ".batchbar button{",
-                     ".fpickactions button{", ".dupactions.fsechead button{"):
+                     ".junkactions button{", ".dupactions.fsechead button{"):
             found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
             self.assertIsNotNone(found, f"{name} 找不到基样式")
             start = found.end() - len(name)
@@ -11293,64 +11344,67 @@ class WebUiSourceTests(unittest.TestCase):
         只描红边、红字的话，静止态和悬停态在暗色底上几乎一样亮，按下去之前看不出这是
         不可逆动作。Geist 的 error Button 就是实心红填充（实测 `rgb(217,48,54)` 底、白字），
         静止态即红；Peach 按用户 2026-09-06 的取舍跟它走，悬停只把同一块红压深一档。
-        挤在一行图标里的删除键（`.frowicon` 那一类）不在此列：一块实底红在图标行里会炸出
-        一块。判据是这一行里还有几颗销毁键，不是键上有没有文字——配置页「移除这个文件夹」
-        同样只有一枚叉，可它旁边只有一颗「选择文件夹」，所以它走实底红。
+        挤在一行图标里的删除键不在此列：一块实底红在图标行里会炸出一块。判据是这一行里
+        还有几颗销毁键，不是键上有没有文字——配置页「移除这个文件夹」同样只有一枚叉，
+        可它旁边只有一颗「选择文件夹」，所以它走实底红。
 
-        红只有一个入口，所以这几颗键在标记上带 `.danger`。页面另起一个单类承担不了这一
-        档：`.resourceaction`、`.junkactions button` 这类容器规则自己就填底色，权重不低于
-        页面单类、文件又排在 01-base 后面，红会被容器底色盖掉，两边的 CSS 单看都对。
+        红只有一个入口，所以这几颗键在标记上带 `.danger`，选择器把类名写两遍换权重。
+        页面另起一个单类承担不了这一档：`.resourceaction`、`.junkactions button` 这类容器
+        规则自己就填底色，权重不低于页面单类、文件又排在 01-base 后面，红会被容器底色
+        盖掉，两边的 CSS 单看都对。
         """
-        self.assertPageContains("button.danger:not(.frowicon){")
+        self.assertPageContains("button.danger.danger{")
         self.assertPageContains("background:var(--drop);color:#fff;box-shadow:none}")
         # 复核卡的拒绝键走 Geist 的 error 变体，那是同一块红的另一个入口。
         self.assertPageContains(".geist-button.error{background:#da2f35;",
                                 "销毁键静止态就是实底红")
-        # 垃圾复核的「移入回收站」、凭据行的「清除」、失效链接的「删除 N 条」。
+        # 垃圾复核的「移入回收站」、失效链接的「删除 N 条」。
         for markup in ('class="danger" data-junk-operation="dispose"',
-                       'class="danger" data-cred-clear=',
                        'class="resourceaction danger" type="button" id="linkPrune"'):
             self.assertPageContains(markup, "销毁键的红挂在 .danger 上")
+        # React 那侧同一块红走 BoardUI 的 danger 变体：关注来源凭据行的「清除」是其中一颗。
+        self.assertIn('<Button variant="danger" size="small" disabled={readOnly}',
+                      self.read_react("follow-manage/credentials.tsx"))
         # 每个页面各写一份 .danger 的时代结束了：站里只留 01-base 那一条。
         for stale in (".pagelede-actions .batchaction.danger{", ".cleanupfieldset button.danger{",
                       ".playlistactions .danger{", ".dupbtns button.danger{", ".batchbar .danger{"):
             self.assertPageLacks(stale, "危险档只有 01-base 里那一份")
 
-    def test_bulk_footer_keeps_one_line_and_ellipsises_its_counts(self):
-        """底部批量条保持一行，宽度不够时省略说明文字，而不是把动作键甩到第二行。
+    def test_bulk_actions_read_as_one_group_with_the_count_at_the_left(self):
+        """批量操作条只在选中了东西时出现，计数占住左端，动作键排在右端。
 
-        它和分区标题行是同一种行：一行里唯一可以缩的是说明文字，动作键要完整读出来。
-        允许换行的话，窄屏上四段计数加两个键一定放不下，键落到第二行、底栏白长一截。
-        基准取 0 而不是 auto：按内容宽度参与排线的话，它先把整行挤断，缩放轮不到发生。
+        这条是一组动作而不是一段文字，所以整块有 `role="group"` 和自己的名字；计数是
+        选中数的播报位，用 `role="status"`，勾掉一行不必把焦点挪过去也能听见。计数靠
+        `mr-auto` 吃掉空当，动作键因此贴右端起排，条子多宽都读作同一种版式。
         """
-        self.assertPageContains(".fnote.fbulkrow{display:flex;align-items:center;gap:4px 10px}")
-        self.assertPageLacks(".fnote.fbulkrow{display:flex;align-items:center;flex-wrap:wrap",
-                             "换行是这条行长成两行的原因")
-        self.assertPageContains(".fbulkcounts{flex:1 1 0;min-width:0;overflow:hidden;"
-                                "text-overflow:ellipsis;white-space:nowrap}")
-        self.assertPageContains(".fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}")
-        # 标题行早就是这个写法，同一种行的两处行为要对得上。
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn('<div role="group" aria-label="关注来源批量操作"', source_list)
+        self.assertIn('<span role="status" className="mr-auto text-body-2-regular text-text-primary">',
+                      source_list)
+        self.assertIn('{`已选 ${chosen.length} 个来源`}', source_list)
+        # 删除是销毁类，红键并且要走确认弹层，不能点一下就没了。
+        self.assertIn("<Button variant=\"danger\" size=\"small\" disabled={readOnly}", source_list)
+        self.assertIn("confirmLabel: '删除所选来源', danger: true,", source_list)
+        # 分区标题行是同一种行：一行里唯一可以缩的是说明文字，动作键要完整读出来。
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
         self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
 
-    def test_add_form_only_sizes_the_one_button_it_actually_has(self):
-        """`.faddform` 里唯一的按钮是来源筛选触发器，高度由它自己那条给。
+    def test_the_add_form_runs_the_same_lookup_from_enter_and_from_its_button(self):
+        """添加关注那一格，回车和「查找」键走同一个入口。
 
-        这个表单没有提交键——只读查询回车即执行。再留一条按 `.faddform .fbtn` 写的通用
-        高度，读的人会以为旁边还有个提交键；而它被更具体的那条完全盖住，改它不会有任何
-        效果，是一条只会误导人的死规则。
+        查找只列候选、不写任何东西，所以在建议里选中一条直接回车也是安全的。两条路
+        都收进 `search()`：分成两份实现的话，改了其中一处的人不会想到另一处还在。
+        动作键是这一格的主动作，按项目惯例走 primary 实底。
         """
-        self.assertPageContains(
-            ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
-        self.assertPageLacks(".faddform .fbtn{height:38px;min-height:38px}",
-                             "被更具体那条完全盖住的死规则")
-        start = self.app_js.index('<form class="faddform" id="followAdd">')
-        form = self.app_js[start:self.app_js.index("</form>", start)]
-        self.assertNotIn('type="submit"', form, "添加表单没有提交键，回车即执行")
-        self.assertIn('<div class="fsrcfilter" id="followSrcFilter"></div>', form)
-        # 别名表单那个提交键是活的，别顺手一起删。
-        self.assertPageContains(".faliasform .fbtn{height:38px;min-height:38px}")
-        self.assertPageContains('<button class="fbtn primary" type="submit">保存别名</button>')
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("if (event.key !== 'Enter') return;", add)
+        self.assertIn("search(options[active]?.value || line);", add)
+        self.assertIn("onClick={() => search(line)}>查找</Button>", add)
+        self.assertIn('<Button variant="primary" size="small" disabled={readOnly || !line.trim()}', add)
+        # 输入法拼字途中的那个回车是在选字，不是在提交。
+        self.assertIn("if (event.nativeEvent.isComposing) return;", add)
+        # 别名表单那个保存键是活的，别顺手一起删。
+        self.assertIn("保存别名", self.read_react("follow-manage/alias-manager.tsx"))
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""

@@ -647,11 +647,14 @@ class LibraryNfoTests(unittest.TestCase):
     def test_management_controls_keep_credentials_and_empty_sections_visible(self):
         root = Path(__file__).resolve().parents[1]
         source = (root / 'web/app.js').read_text(encoding='utf-8')
-        self.assertIn('wireFollowManage(creds)', source)
-        self.assertIn('const sources=credentials.filter(source=>source.followable);', source)
-        self.assertIn('data-srcfilter-config=', source)
-        self.assertNotIn("if(!providers.length){mount.innerHTML='';return}", source)
-        self.assertIn("needsAttention?' open':''", source)
+        # 关注管理那一屏在 React 里：能加来源的站才进候选，缺必填凭据的那一行默认展开，
+        # 一个站都没配也照样把整块列出来（空清单不等于这块不存在）。
+        follow = root / 'frontend/src/react/follow-manage'
+        add = (follow / 'add-source.tsx').read_text(encoding='utf-8')
+        creds = (follow / 'credentials.tsx').read_text(encoding='utf-8')
+        self.assertIn('const rows = (credentials.providers || []).filter((row) => row.followable);', add)
+        self.assertIn("defaultOpen={row.requirement === 'required' && !credentialDone(row)}>", creds)
+        self.assertIn('const rows = data.providers || [];', creds)
         self.assertIn("unmountIsland($('#libraryProcessingNotice'))", source)
         self.assertIn("mode:'notice'", source)
         configuration = (root / 'frontend/src/react/settings/configuration-page.tsx').read_text(encoding='utf-8')

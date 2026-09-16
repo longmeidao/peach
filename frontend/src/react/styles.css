@@ -17,10 +17,12 @@
 @import "./boardui/styles/typography.css";
 
 @source "./";
-/* 扫描不分代码与注释：这两个词各在注释里出现过一次，生成出来就和旧样式表的 `.ring`、
- * `.grid` 同名。React 子树两个类都不用，直接不生成。 */
+/* 扫描不分代码与注释：这几个词各在注释里出现过，生成出来就和旧样式表的 `.ring`、`.grid`、
+ * `.sr-only` 同名。React 子树三个类都不用——只读屏的文字走 `VisuallyHidden`，它把样式写在
+ * 元素上。直接不生成。 */
 @source not inline("ring");
 @source not inline("grid");
+@source not inline("sr-only");
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -117,7 +119,7 @@
   --color-separator-border:        var(--color-neutral-800);
 }
 
-/* 以下逐字取自上游 globals.css：Checkbox 打勾的描线动画。 */
+/* 以下逐字取自上游 globals.css：Checkbox 打勾的描线动画，和 Table 的全部外观。 */
 
 /* Checkbox tick: draws the stroke on like it's being ticked by hand.
  * The path sets pathLength=1 so the dash math is resolution-independent. */
@@ -139,4 +141,39 @@
     animation: none;
     stroke-dashoffset: 0;
   }
+}
+
+.bui-table {
+  @apply w-full border-collapse text-left;
+}
+/* Header background + border-y live on the cells: with border-collapse the
+ * browser doesn't paint backgrounds/borders set on the <thead> row group.
+ * Backgrounds/borders are set with explicit CSS (theme vars) rather than
+ * @apply, which drops border-width/bg on these row-group cells. */
+.bui-table th {
+  @apply px-3 py-2.5 text-left align-middle text-body-medium text-text-tertiary whitespace-nowrap outline-none;
+  background-color: var(--color-background-secondary-default);
+  border-top: 1px solid var(--color-separator-border);
+  border-bottom: 1px solid var(--color-separator-border);
+  transition: padding 200ms ease, font-size 200ms ease;
+}
+.bui-table td {
+  @apply px-3 py-2.5 align-middle text-body-medium text-text-primary outline-none;
+  transition: padding 200ms ease, font-size 200ms ease;
+}
+/* Separators sit *between* rows only: the trailing row's boundary is drawn by
+ * whatever follows the table (the container's bottom edge, or the pagination
+ * footer's own border-top), so a filtered-down table never doubles up lines. */
+.bui-table tbody tr:not(:last-child) {
+  border-bottom: 1px solid var(--color-separator-border);
+}
+.bui-table tbody tr {
+  @apply transition-colors duration-150;
+}
+.bui-table tbody tr[data-focus-visible] {
+  @apply ring-2 ring-inset ring-border-focus-ring;
+}
+.bui-table.bui-table-sm th,
+.bui-table.bui-table-sm td {
+  @apply px-2.5 py-1.5 text-body-2-medium;
 }

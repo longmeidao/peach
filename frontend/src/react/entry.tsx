@@ -11,6 +11,8 @@ import { ActivityPage } from './activity/activity-page';
 import { prefetchTasks } from './activity/tasks';
 import { AvatarPicker } from './avatar-picker/avatar-picker-page';
 import type * as Bundle from './bundle';
+import { prefetchFollowManage } from './follow-manage/follow-manage';
+import { FollowManagePage } from './follow-manage/follow-manage-page';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
 import { LibraryProcessingCard } from './library-processing/library-processing-card';
 import { LibraryProcessingNotice } from './library-processing/library-processing-notice';
@@ -73,6 +75,11 @@ export const pages: Bundle.ReactPages = {
   'avatar-picker': { prefetch: async () => {}, mount: mounter(AvatarPicker) },
   configuration: {
     prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationPage),
+  },
+  /* 首屏只取来源清单与凭据状态。检查更新与查找那两趟后台任务的快照不在首屏里：它们
+     常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */
+  'follow-manage': {
+    prefetch: (_props, signal) => prefetchFollowManage(signal), mount: mounter(FollowManagePage),
   },
   'library-processing': {
     prefetch: (_props, signal) => prefetchLibraryProcessing(signal),

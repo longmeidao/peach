@@ -19,3 +19,11 @@ export declare function fmtSize(bytes: number | null | undefined): string;
 export declare function siteMarkUrl(params: { source: string } | { domain: string }): string;
 
 export declare function esc(value: string): string;
+
+/** 有界并发的批量请求。返回值顺序与输入一致，某一项失败只记下原因、不中断整批：
+ *  批量操作一次几百条，串行发是实测的卡点，一次全发出去又会自己挤自己。 */
+export declare function mapLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T, index: number) => Promise<R>,
+): Promise<({ ok: true; value: R } | { ok: false; error: unknown })[]>;

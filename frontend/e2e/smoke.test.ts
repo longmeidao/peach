@@ -53,6 +53,12 @@ const ROUTES: readonly Route[] = [
     body: (page) => [heading(page, '#stats', '关注'), heading(page, '#stats', '还没有关注任何来源')],
   },
   {
+    // 骨架里也有「关注列表」那一排分段，可整块带 `aria-hidden`；按角色找得到页签的只有真页面。
+    path: '/follow-manage',
+    body: (page) => [heading(page, '#main', '关注管理'),
+      page.locator('#stats').getByRole('tab', { name: '添加关注', exact: true })],
+  },
+  {
     // 骨架里那条指标带也写着「馆藏视频」，认不出画完没有；只有真页面把四张读数卡做成页签。
     path: '/stats',
     body: (page) => [heading(page, '#main', '统计'), statsInventoryTab(page)],

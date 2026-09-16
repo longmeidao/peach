@@ -8,19 +8,15 @@
    控件仍按实测 Geist：32px 高、14px 字、6px 圆角。 */
 .followmanage{padding:2px 0 48px;display:grid;gap:20px;width:min(812px,100%);
   margin-left:auto;margin-right:auto;align-items:start;font-size:var(--fs-md)}
-.followmanage>.runtimegate{margin-bottom:0}
 .fmain{display:grid;gap:20px;min-width:0}
 /* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */
 .fsec{min-width:0;border:1px solid var(--field-ring);border-radius:var(--surface-radius);
   background:var(--ground);padding:14px 16px 16px}
-/* 面板上中下异色：头部条与页脚条通到卡边（负边距抵消内边距），
-   正文是全站最亮的 --ground，两条横条落到 --page 并各带一条发丝线；圆角随卡收口。 */
+/* 面板上下异色：头部条通到卡边（负边距抵消内边距），正文是全站最亮的 --ground，
+   那条横条落到 --page 并带一条发丝线；圆角随卡收口。 */
 .fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px;
   margin:-14px -16px 12px;padding:11px 16px;background:var(--overlay-5);
   border-bottom:1px solid var(--line-soft);border-radius:calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px) 0 0}
-.fsecfoot{margin:14px -16px -16px;padding:12px 16px;background:var(--overlay-5);
-  border-top:1px solid var(--line-soft);border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}
-.fsecfoot .fnote{margin:0}
 /* 重复页的「操作」条独立于 .fsec 容器：自带卡面与边框，不用负边距。 */
 .dupactions.fsechead{margin:0 0 14px;padding:10px 14px;background:var(--overlay-5);
   border:1px solid var(--field-ring);border-radius:var(--surface-radius)}
@@ -50,29 +46,20 @@
    读起来就是一个点不动的说明标签，而它恰恰是这行里唯一能改变列表内容的控件。 */
 .fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
 .fsechead .iconswitch label{width:34px;height:32px}
-.fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}
+.fsechead .fbtn{height:var(--control-h)}
 /* 排序图标压在触发器左侧，所以左内边距要给它让出位置。 */
 .fmanagesort .gselectfield{height:var(--control-h);padding:0 12px 0 33px;color:var(--ink-2)}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
-.fdesc{position:relative;display:grid;gap:3px;margin:12px 0 0;font-size:var(--fs-xs)}
-.fdesc b{color:var(--ink-2);display:inline-flex;align-items:center;gap:6px}
-.fdesc>span:first-of-type{color:var(--muted);line-height:1.5}
-.fdescinfo{display:inline-grid;place-items:center;width:18px;height:18px;padding:0;border:0;
-  border-radius:var(--badge-radius);background:transparent;color:var(--muted);cursor:help}
-.fdescinfo:hover{color:var(--ink)}.fdescinfo:focus-visible{color:var(--ink);outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
-.fdescinfo svg{width:13px;height:13px;stroke:currentColor;fill:none;
-  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .fnote{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
 .fnote:empty{display:none}
 .fnote b{color:var(--ink-2);font-weight:600}
 .fnote code{font-size:var(--fs-xs)}
-[data-follow-add-state]{color:var(--ink-2)}
 
 /* Geist Note：字段、卡片、分区旁的持久上下文，以及需要用户处理的失败，全部走这里。
    瞬时回执用 toast，销毁确认用 dialog/confirm。整页范围的失败也是这个盒子，只是多
-   一个关闭键（见下面的 .fwarn／.fcheckreport），不另立一套横幅。 */
+   一个关闭键（见下面的 .fwarn），不另立一套横幅。 */
 /* Note 默认无填充，filled 使用不透明浅色面；状态含义由文字和图标共同表达。 */
 :root{--feedback-success:oklch(53.18% .2399 256.99)}
 :root[data-theme="dark"]{--feedback-success:oklch(71.7% .1648 250.794)}
@@ -115,39 +102,12 @@
 
 
 /* 检查失败明细持续保留到状态解决，复用 Note 的边界、图标和语义色。 */
-.fcheckreport,.fwarn{grid-template-columns:16px minmax(0,1fr);margin:10px 0 14px}
-.fcheckreport>div,.fwarn>span{min-width:0}
-.fcheckreport p,.fwarn p{margin:0}
-.fcheckreport b{color:var(--ink);font-variant-numeric:tabular-nums}
-.fcheckfail{color:var(--drop)}
-.fchecknote{color:var(--muted);font-size:var(--fs-xs)}
-/* 行级状态徽章：Geist Badge 的低饱和变体（取证 vercel-geist-semantics-measured.md）。
-   行内状态不上实底彩色——ok 绿 tint、失败红 tint、未检查灰。 */
+.fwarn{grid-template-columns:16px minmax(0,1fr);margin:10px 0 14px}
+.fwarn>span{min-width:0}
+.fwarn p{margin:0}
+/* 徽章：Geist Badge 的低饱和变体（取证 vercel-geist-semantics-measured.md）。带状态档位
+   的那几档归 BoardUI `Chip`，这里剩复核卡字段名这一枚没有档位的。 */
 .sbadge{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--ink-2)}
-.sbadge i{width:6px;height:6px;border-radius:50%;background:var(--muted);flex:none}
-.sbadge.ok i{background:var(--success)}
-.sbadge.error i{background:var(--drop)}
-/* 批量动作是 2292 条级别的操作，不是行内文字链接：按钮的边界让「这会改状态」
-   在点击前就看得见，也和本页其他 .fbtn（检查全部）同一套语言。 */
-.fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}
-/* 底部这条和分区标题行是同一种行：一行里唯一可以缩的是说明文字，两个动作键要完整读出来。
-   允许换行的话，窄屏上四段计数加两个键一定放不下，于是键被甩到第二行、底栏长出一截。
-   基准取 0 而不是 auto：按内容宽度参与排线的话，它会先把整行挤断，缩放根本轮不到发生。 */
-.fnote.fbulkrow{display:flex;align-items:center;gap:4px 10px}
-.fbulkcounts{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* 状态标签：四种状态四种颜色，待办和完成一眼分得开。 */
-/* 凭据状态。类名不能叫 `.fstate`——观看页的卡片错误行已经占了那个名字
-   （`flex:1 1 100%;color:var(--drop)`），撞名会让这里整列变成红色独占一行。
-   状态永远贴右：名字那一格吃掉剩余宽度，状态跟在它后面就落在同一列。 */
-.fcstate{font-size:var(--fs-xs);flex:0 1 auto;margin-left:auto}
-.fcstate+.fcstate{margin-left:0}
-.fcstate.done{color:var(--keep)}
-.fcstate.req{color:var(--drop)}
-.fcstate.missing{color:var(--drop)}
-.fcstate.opt{color:var(--meter)}
-.fcstate.none,.fcstate.blocked{color:var(--muted)}
-
 .fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
   box-sizing:border-box;padding:0 12px;border:0;border-radius:var(--control-radius);
   box-shadow:0 0 0 1px var(--line-soft);
@@ -159,28 +119,12 @@
    这里另写：留一份 Geist 的墨色实底，它的 `:hover:not(:disabled)` 比 Board 那条静止规则
    还重一个类，压上去整颗跳成墨色、还描一圈同色的边——「管理关注」上那道黑边就是它。 */
 .fbtn.primary{font-weight:500}
-/* 去边框那一条只针对动作按钮。这两枚不是动作：一枚点开是来源筛选菜单，一枚是排序
-   方向的开关，它们跟旁边的下拉触发器是同一组控件，共用输入框那圈线。少了线，
-   「全部来源」在白面上只剩一行字，升降序那枚只剩一个箭头浮在页面上。 */
-.fbtn[data-srcfilter-toggle],.fbtn.fmanagedir{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink-2)}
-.fbtn[data-srcfilter-toggle]:hover:not(:disabled),.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
-/* 输入焦点已按 BoardUI Input 收进 01-base 的共享档（hover/focus 的 inset ring），
-   此处只改「添加关注」这一面板的底色：白卡躺在灰面上。选择器用 :where 写开，
-   避免字面上再出现一遍共享输入框的整段规则。 */
-.followmanage :where(.geist-search) input[type="search"]{background:var(--color-background-primary-default)}
-.fbtn[data-srcfilter-toggle][aria-expanded="true"]{border-color:var(--color-border-focus-ring);box-shadow:none;outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
+/* 去边框那一条只针对动作按钮。升降序那枚不是动作：它跟旁边的下拉触发器是同一组
+   控件，共用输入框那圈线。少了线，它在页面上只剩一个箭头浮着。 */
+.fbtn.fmanagedir{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink-2)}
+.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
-
-.faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:start}
-/* 建议下拉是绝对定位的浮层，挂在输入框这一格上：定位父级不给到这里，`.searchmenu`
-   的 `top:calc(100% + 8px)` 就相对整个页面算，下拉会飞到别处去。 */
-.faddfield{position:relative;min-width:0}
-/* 建议还在路上时下拉里站着这一行。行高和一条建议看齐，出结果时下拉不会跳一下。 */
-.searchbusy{display:flex;align-items:center;gap:8px;padding:8px 10px;
-  color:var(--muted);font-size:var(--fs-xs)}
-/* 没有按钮可以变灰，查找中的唯一凭据就是前缀位上的 Spinner——输入框自己必须还能改。 */
-.faddform[aria-busy="true"] input[type="search"]{color:var(--muted)}
 
 /* 卡片内部的行：只用分隔线，不套框——框里再套框正是要避开的那条。 */
 /* grid 项默认 min-width:auto，最宽的一行会把整列撑出容器——窄的那一栏尤其明显。
@@ -201,23 +145,6 @@
   border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
 .ftable tbody tr{border-bottom:1px solid var(--line-soft)}
 .ftable tbody tr:last-child{border-bottom:0}
-.ftable .ftcheck{width:20px;padding-right:0}
-.ftable .ftauthorcell{display:flex;align-items:center;gap:8px;white-space:nowrap}
-.ftable .ftauthorcell .favatar{width:24px;height:24px;font-size:var(--fs-xs)}
-.ftable .ftname{max-width:360px}
-.ftable .ftname>b{display:block;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ftable .ftname>.frowerr{margin:4px 0 0}
-.ftable .fmeta{white-space:nowrap}
-.ftable .ftactions{width:72px;padding-left:0}
-.ftable .ftactions .fsourceactions{justify-content:flex-end}
-/* 能排序的表头是一颗文字键：文字与箭头同色，非当前列的箭头淡下去只说「这列能点」。 */
-.ftsort{display:inline-flex;align-items:center;gap:4px;padding:0;border:0;background:none;
-  font:inherit;color:inherit;cursor:pointer}
-.ftsort svg{width:14px;height:14px;stroke:currentColor;fill:none;opacity:.45}
-.ftsort:hover{color:var(--ink)}
-th[aria-sort="ascending"] .ftsort,th[aria-sort="descending"] .ftsort{color:var(--ink)}
-th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opacity:1}
-.ftsort:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
   border-bottom:1px solid var(--border-10)}
 .frows>.frow:last-child{border-bottom:0}
@@ -225,11 +152,7 @@ th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opa
 .frow>b{flex:1 1 180px;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
 .frow .fmeta{flex:0 0 auto}
-.frowerr{flex:1 1 100%;margin:2px 0 0;font-size:var(--fs-sm);line-height:1.6;color:var(--drop)}
 .fsource.bad>b{color:var(--drop)}
-/* 旁边那格的站标说的是「哪个平台」，这一枚说的是「点下去会离开 Peach」。 */
-.fsourcelink{color:inherit;text-decoration:none}
-.fsourcelink:hover{text-decoration:none;color:var(--tungsten)}
 
 /* 作者分组。同一个人在几个站上是几条来源、一个人，所以头像和名字只出现一次，
    下面才是各站那几行。作者卡固定为可完整显示四条普通来源的高度；更多来源在卡内滚动，
@@ -249,9 +172,7 @@ th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opa
 p.fnote .followtask{color:var(--ink-2)}
 .followtask>.geist-fieldset-content{padding:20px;min-width:0;overflow-wrap:anywhere}
 .followmanage .followtask{margin-bottom:0}
-.fcheckfail strong{font-weight:600}
 .fauthorhead{display:flex;align-items:center;gap:9px;padding:10px 0 6px}
-.fauthorhead>.frowicon{flex-shrink:0}
 .fauthorhead b{font-size:var(--fs-md);min-width:0;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .fauthorhead .fmeta{margin-left:auto;flex:0 1 auto;min-width:0;white-space:nowrap}
@@ -264,21 +185,9 @@ p.fnote .followtask{color:var(--ink-2)}
 .fauthor .fsource.frow{padding-left:0px;display:grid;
   grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
 .fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 只出 favicon 的站名：文字照样写在 DOM 里，按 sr-only 的写法夹起来给读屏。图标取不到
-   时 image-fallback 摘掉 <img>，这条相邻兄弟选择器随之落空，站名就在原位显出来。 */
-.fprovider.iconly .ficon{margin-right:0}
-.fprovider.iconly .ficon+span{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
-  overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .fsource.disabled{opacity:.62}
 .fchannelcheck{display:grid;place-items:center;align-self:center}
 .fsourceactions{display:flex;gap:4px;white-space:nowrap}
-.frowicon{width:32px;height:32px;padding:0;display:grid;place-items:center;flex:none;
-  border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
-.frowicon:hover{background:var(--hover);color:var(--ink)}
-.frowicon:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:not-allowed}
-.frowicon.danger:hover{color:var(--drop);border-color:var(--drop)}
-.frowicon svg{width:16px;height:16px;stroke:currentColor;fill:none}
-.fsource.frow>.frowerr{grid-column:1/-1}
 .favatar{width:28px;height:28px;flex:none;border-radius:var(--pill-radius);object-fit:cover;
   background:var(--overlay-5);outline:1px solid oklch(1 0 0 / 0.1);outline-offset:-1px}
 /* 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。 */
@@ -290,177 +199,22 @@ p.fnote .followtask{color:var(--ink-2)}
 .flink{border:0;background:none;padding:0;color:var(--tungsten);font:inherit;cursor:pointer}
 .flink:hover{color:var(--tungsten);text-decoration:none}
 .empty .flink{margin-left:6px}
-/* 猜你喜欢：一行可点的名字，点了直接拿去查。 */
-.fguess{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:12px}
-.fguess .fmeta{margin-right:2px}
-.fchip{height:26px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);
-  background:transparent;color:var(--ink-2);font:inherit;font-size:var(--fs-sm);cursor:pointer;
-  max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  transition:border-color .15s ease-in-out,color .15s ease-in-out,background-color .15s ease-in-out}
-.fchip:hover{background:var(--hover);color:var(--ink)}
-/* 作者别名折叠照 Vercel 项目页 Deployment Settings 行（登录态实测）：卡片内
-   通栏 48px 行——左 chevron、白字标题、蓝色胶囊计数；上下边线通到卡片内壁
-   （负 margin 抵消 .fsec 的 16px 内边距），hover 铺一层底色。 */
-.faliasmanager{margin:12px -16px -16px;border-top:1px solid var(--line-soft)}
-.faliasmanager>summary{display:flex;align-items:center;gap:8px;min-height:48px;margin:0;padding:2px 16px;
-  cursor:pointer;color:var(--ink);font-size:var(--fs-md);font-weight:400;list-style:none}
-.faliasmanager>summary::-webkit-details-marker{display:none}
-.faliasmanager>summary:hover{background:var(--hover)}
-.faliasmanager>summary[aria-expanded="false"]{border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}
-/* chevron 用 16px SVG，和面包屑同一份 Geist 证据；此前是 › 字形靠 --fs-lg 撑大，
-   那让一个图标尺寸混进了本页只有三档的字阶。 */
-.faliasmanager>summary>svg{flex:none;width:16px;height:16px;stroke:var(--muted);fill:none;
-  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s ease-in-out}
-.faliasmanager>summary[aria-expanded="true"]>svg{transform:rotate(90deg)}
-.faliasbadge{display:inline-flex;align-items:center;height:24px;padding:0 8px;margin-left:2px;
-  border:1px solid var(--border-15);border-radius:var(--control-radius);background:var(--overlay-5);color:var(--muted);
-  font-size:var(--fs-xs);font-weight:400;font-variant-numeric:tabular-nums}
-.faliasmanager .fcollapsebody{padding:4px 16px 16px}
-.faliasform{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:7px;margin-top:10px}
-.faliasform .fbtn{height:38px;min-height:38px}
-.faliaschip{display:inline-flex;align-items:center;gap:3px;color:var(--ink-2)}
-.faliaschip button{width:24px;height:24px;padding:0;border:0;background:transparent;color:var(--muted);
-  display:grid;place-items:center;cursor:pointer}
-.faliaschip button:hover{color:var(--drop)}
-.faliaschip svg{width:14px;height:14px;stroke:currentColor;fill:none}
-.faliasheading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:20px 0 10px}
-.faliasheading h4{margin:0;font-size:var(--fs-sm);font-weight:500}
-.faliasheading>span,.faliasevidence{color:var(--muted)}
-.faliastable{width:100%;min-width:0;table-layout:fixed}
-.faliastable th,.faliastable td{white-space:normal;overflow-wrap:anywhere}
-.faliastable th:last-child:nth-child(5){width:80px}
-.faliastable:not(.faliassaved) th:nth-child(2),.faliastable:not(.faliassaved) th:nth-child(3){width:18%}
-.faliastable .faliascheck{width:40px;text-align:center}
-.faliastable tr.selected{background:var(--picked)}
-.faliasactions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .followpagefooter{margin-top:16px}
-.followmanage .ftablewrap{position:relative}
 .followpageinfo{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted)}
 .followpageinfo>div{flex:none}
-.followmanage:has(.followselectiondock:not([hidden])){padding-bottom:180px}
 .followmanage [data-follow-workspace-panel="list"]{scroll-margin-top:calc(var(--topH) + 16px)}
 @media(max-width:640px){.followpagefooter .board-pagination{flex-wrap:wrap}.followpagefooter .board-pagination>ul{order:3;justify-content:center;width:100%}.followpageinfo{font-size:var(--fs-sm)}}
-.faliasidentity{display:flex;align-items:center;gap:10px;min-width:0}
-.faliasidentity>.favatar{flex:none}
-.faliastable .faliaschip{margin:3px 10px 3px 0;max-width:100%;overflow-wrap:anywhere}
-@media(max-width:640px){.faliastable{min-width:540px}.faliassaved{min-width:0}.faliasidentity>b{min-width:0;overflow-wrap:anywhere}.faliasform{grid-template-columns:minmax(0,1fr)}.faliasform .fbtn{justify-self:end}}
-
-/* summary 是 .frow 的 flex 子项，默认 flex:0 1 auto 不撑满整行——于是有折叠体的那几行
-   状态贴在名字后面，没折叠体的却靠右，同一列两种对齐。让它占满，状态就统一在右边。 */
-.fcred summary{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:8px;
-  cursor:pointer;list-style:none;margin:-9px 0;padding:9px 0}
-.fcred summary::-webkit-details-marker{display:none}
-.fcred summary b{flex:1 1 auto;min-width:0;font-weight:500}
-.fcred.none{color:var(--muted);gap:8px}
-/* 折叠时 .frow 让它是 flex、展开时又变 block，两种几何下 summary 的可用宽度差一个 gap，
-   状态列就差 12px 对不齐。统一成 block：summary 自己是 flex 容器，宽度始终是整行。 */
-details.fcred{display:block;min-width:0}
-/* 展开体的内边距归 .fcollapsebody：留在 .fcred[open] 上的话，收起那一帧高度已经
-   归零、内边距还在，行尾会跳一下。首段自己的上边距换成容器内边距，免得它跟容器
-   外边距合并，量出来的 scrollHeight 比实际矮一截。 */
-.fcred .fcollapsebody{padding:8px 4px 12px}
-.fcred .fcollapsebody>p:first-child{margin-top:0}
-.fcred .ficonslot{flex:none;display:block;width:14px;height:14px}
-.fcred .ficon{margin-right:0}
-.fcred p{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted);
-  overflow-wrap:anywhere}
-.fcred a{color:var(--tungsten)}
-.fcredform{display:grid;gap:16px;margin-top:16px;min-width:0}
-.fcredfield{display:grid;gap:8px;min-width:0}
-.fcredfield span{font-size:var(--fs-xs);color:var(--muted)}
-.fcredfield input{height:32px;width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--border-15);
-  border-radius:var(--control-radius);background:var(--color-background-primary-default);color:var(--ink);padding:0 12px;font-size:var(--fs-md);
-  font-family:inherit;transition:box-shadow .12s ease}
-/* 凭据输入框不是 .geist-input，吃不到 01-base 那份共享档，两档环在这里各写一遍。 */
-.fcredfield input:hover{box-shadow:inset 0 0 0 2px var(--color-border-button-hover)}
-.fcredfield input:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--color-border-button-active)}
-/* 「去取」指向站外的凭据页，后缀那枚外链箭头说明这一下会离开 Peach。 */
-.fcredactions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:0}
-/* 盒子要留在这里：强调档和次级档的那副盒子由 Board 那一层按类名发，`.danger` 两档都不在
-   它的名单上，这条一撤，「清除」就掉回浏览器默认的尺寸和字体，跟旁边的「保存」不同高。 */
-.fcredactions button{box-sizing:border-box;height:36px;padding:0 12px;border:0;border-radius:var(--control-radius);font-family:inherit;font-size:var(--fs-md);font-weight:500;cursor:pointer}
-/* 停用档跟 `.geist-button.primary:disabled` 逐项相同：一块灰面加一圈 1px 环。环不能省，
-   那一面和它坐着的卡片都是 `--sunk` 一类的灰，没有环就连轮廓都读不出来。 */
-.fcredactions button:disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft);cursor:not-allowed}
-/* 「保存」带 `.primary`，那一面和站内每一颗主按钮同一条规则。「清除」会连着共享副本
-   一起删，它走 `.danger`：红、悬停深一档和禁用灰全部来自危险档。两档都不在这里
-   写第二份面色——这一层的 `:hover` 比 Board 那条静止规则重一个类，写了就是静止一套、
-   悬停另一套。 */
-.fcredactions [data-cred-state]{font-size:var(--fs-xs);color:var(--muted)}
 
 @media (max-width:640px){
-  .fauthorhead>.frowicon{width:44px;height:44px}
   .fsec{padding:12px 13px 14px}
   .fsechead{margin:-12px -13px 12px;padding:12px 13px}
-  .fsecfoot{margin:14px -13px -14px;padding:12px 13px}
-  .faliasmanager{margin-left:-13px;margin-right:-13px;margin-bottom:-14px}
-  .faliasmanager>summary{padding:2px 13px}
-  .faliasmanager .fcollapsebody{padding:4px 13px 14px}
-  .faddform>.faddfield{grid-column:1/-1}
-  .faddform>.fsrcfilter{justify-self:start}
   .frow{gap:8px}
   .fsources{grid-template-columns:1fr}
   /* 省略后剩给说明文字的不到 120px，读出来只是「N 个来源 · 」这种半句；
      未看条数在下面每一行来源上都有，标题行让给排序和两个动作键。 */
   .fsechead .fmeta{display:none}
   .frow .fmeta:nth-of-type(2){display:none}
-  .faliasform{grid-template-columns:1fr}
-  .faliasform .fbtn{width:100%}
 }
-
-/* 查找结果属于「添加关注」这一个动作，留在同一容器里；发丝线只分阶段，不再另套卡片。 */
-.fpicks{margin:14px 0 0;padding:14px 0 0;border-top:1px solid var(--border-10)}
-.fpicks .fsechead{margin:0 0 10px;padding:0;background:transparent;border:0}
-.fpicks .fsechead h3{font-size:var(--fs-md)}
-.fpickhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-.fpickhead h3{margin:0;font-size:var(--fs-md)}
-.fsrcfilter{position:relative;display:inline-flex;min-width:0}
-.faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}
-.fsrcmenu{width:min(250px,calc(100vw - 16px))}
-/* 全选与全不选是对整张清单的动作，放在清单上方并用发丝线隔开，不混进来源行里。 */
-.fsrcbulk{display:flex;gap:6px;padding:2px 9px 8px;margin-bottom:4px;border-bottom:1px solid var(--border-10)}
-.fsrcbulk .geist-button{height:28px;padding:0 10px;font-size:var(--fs-sm)}
-.fsrcmenu label{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--control-radius);
-  cursor:pointer;font-size:var(--fs-sm);color:var(--ink-2)}
-.fsrcmenu label:hover{background:var(--hover)}
-.fpick{margin-bottom:12px}
-.fpick>b{display:block;font-size:var(--fs-xs);color:var(--muted);margin-bottom:5px;overflow-wrap:anywhere}
-.fpick.bad>b{color:var(--drop)}
-.fpickempty{margin:7px 0;color:var(--muted);font-size:var(--fs-sm)}
-.fpick p{margin:2px 0;font-size:var(--fs-xs);color:var(--muted)}
-.fpick.bad p{color:var(--drop)}
-.fpickitem{display:flex;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--border-10);border-radius:var(--surface-radius);margin-bottom:4px;cursor:pointer;font-size:var(--fs-xs);transition:background-color .15s ease,border-color .15s ease}
-/* CheckboxCard 的悬停与 board 同一档：卡片自己的底是 primary-default，
-   悬停整面抬到 primary-hover，边框抬钮悬停档。底色不能缺——查找结果躺在
-   --ground 的灰面上，透明底配 #f5f5f5 的悬停在浅色下等于没动。
-   落影与作者卡里的来源行同档，两处都是躺在同底色上的嵌套卡。 */
-.fpickitem{background:var(--color-background-primary-default);box-shadow:var(--shadow-sm)}
-.fpickitem:hover{background:var(--color-background-primary-hover);border-color:var(--color-border-button-hover);color:var(--ink)}
-/* 「已经关注」整行退成主题的中性灰：不该用透明度——它会把边框和复选框一起冲淡，
-   在同一档底色上灰到读不出来。--muted 按主题自己深浅，比底色各深一档。 */
-.fpickitem.known{cursor:default}
-.fpickitem.known:hover{background:var(--color-background-primary-default);border-color:var(--border-10)}
-.fpickitem.known span{color:var(--muted)}
-.fpickitem span{min-width:0;overflow-wrap:anywhere}
-.fpickitem b{margin-right:6px}
-.fpickitem i{display:block;font-style:normal;color:var(--muted);font-size:var(--fs-xs);margin-top:1px}
-/* 外链建议的说明与链接分层：为什么建议去站外是上下文，独立一行吃说明色；
-   下方链接行才是可点的外链，标一枚 externalmark。 */
-.fpicksearch{display:grid;gap:3px;margin:6px 0;padding:8px 10px;border:1px dashed var(--border-15);
-  border-radius:var(--control-radius);font-size:var(--fs-xs)}
-.fpicksearch i{font-style:normal;color:var(--muted)}
-.fpicksearch .externallink{align-items:baseline;justify-self:start}
-.fpickfail{color:var(--drop)!important}
-.fpickactions{display:flex;gap:8px;align-items:center;flex-wrap:nowrap;min-width:0;margin-top:10px}
-.fpickactions button{border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);padding:6px 14px;font-size:var(--fs-xs);cursor:pointer}
-.fpickactions button:hover:not(:disabled){background:var(--hover);color:var(--ink)}
-/* 「添加选中」带 `.primary`，那一面和站内每一颗主按钮同一条规则，压上去不变样。
-   在这里另写一份实底加悬停的话，悬停那条比 Board 的静止规则重一个类，同一颗按钮的
-   静止和悬停就分别由两处给出；而上面那条更宽的 `.fpickactions button:hover` 还会把
-   文字提到 --ink，实底上落成白字白底。 */
-.fpickactions button:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
-.fpickactions [data-pick-state]{display:flex;align-items:center;min-width:0;overflow:hidden;
-  white-space:nowrap;text-overflow:ellipsis;font-size:var(--fs-xs);color:var(--muted)}
 
 /* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；
    按钮仍保留各自的本地加载 / 站点抓取语义。 */
