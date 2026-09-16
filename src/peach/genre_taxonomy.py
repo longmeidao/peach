@@ -107,7 +107,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Amateur": "素人", "Amateur Girls": "素人", "素人": "素人",
     "配信専用素人": "素人",
     "Slut": "痴女", "Nymphomaniac": "痴女", "Bitch": "痴女", "痴女": "痴女",
-    "ハード系": "痴女", "淫語": "淫语ASMR",
+    "ハード系": "痴女", "淫語": "淫语", "Dirty Talk": "淫语",
     "スケベな淫乱淑女": "痴女", "淫乱・ハード系": "痴女",
     "Extreme Ero Woman": "痴女",
     "Married Woman": "人妻", "Young Wife": "人妻", "人妻": "人妻",
@@ -160,8 +160,8 @@ CONTENT_GENRES: dict[str, str] = {
     "4K": "4K",
     "Virtual Reality": "VR", "VR Exclusive": "VR", "High-Quality VR": "VR",
     "8KVR": "VR", "VR専用": "VR",
-    "Compilation": "混合集", "Actress Best Compilation": "混合集",
-    "女優ベスト・総集編": "混合集", "総集編": "混合集",
+    "Compilation": "合集", "Actress Best Compilation": "合集",
+    "女優ベスト・総集編": "合集", "総集編": "合集", "ベスト・総集編": "合集",
 }
 
 #: 来源确实返回、但描述的不是内容的 genre。画质、载体、发行方式、促销企划和

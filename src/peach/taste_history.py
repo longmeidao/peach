@@ -83,11 +83,11 @@ TASTE_CATEGORY_TAGS: dict[str, tuple[str, ...]] = {
     "游戏同人": ("游戏同人", "动漫同人", "日系同人"),
     "乳系": ("乳系", "巨乳", "美乳"),
     "马眼/尿道/龟头": ("马眼", "龟头责"),
-    "ASMR/音声": ("淫语ASMR",),
+    "ASMR/音声": ("淫语",),
     "反差/泄密/探花": ("反差", "泄密流出", "探花"),
 }
 NON_TASTE_SUMMARY_TAGS = TECH_TAGS | LENGTH_TAGS | {
-    "合集", "中文字幕", "内嵌字幕", "外挂字幕", "AI修复", "AI去码", "60fps",
+    "中文字幕", "内嵌字幕", "外挂字幕", "AI修复", "AI去码", "60fps",
 }
 TAKEOUT_HISTORY_MEMBER = "Takeout/Chrome/History.json"
 TAKEOUT_ACTIVITY_MEMBERS = (
