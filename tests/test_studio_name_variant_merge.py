@@ -121,6 +121,76 @@ class ScriptVariantTests(unittest.TestCase):
                                         {1: {"MIDV"}, 2: {"MIDV"}}, taken), [])
 
 
+class BracketedVariantTests(unittest.TestCase):
+    """日英并写的一串。证据只能是账本自己登记过的写法。"""
+
+    def setUp(self):
+        self.module = load_module()
+        self.connection = sqlite3.connect(":memory:")
+        self.connection.executescript(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT,"
+            " normalized_name TEXT);"
+            "CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT,"
+            " normalized_alias TEXT, source TEXT, confidence REAL);")
+        self.connection.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,'studio',?,?)",
+            [(1, "Prestige", "prestige"),
+             (2, "プレステージプレミアム(PRESTIGE PREMIUM)",
+              "プレステージプレミアム(prestige premium)"),
+             (3, "Faleno", "faleno")])
+        self.connection.executemany(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(1,?,?,'peach:canonicalization',1.0)",
+            [("プレステージプレミアム", "プレステージプレミアム"),
+             ("Prestige Premium", "prestige premium")])
+        self.connection.commit()
+        self.counts = {1: 437, 2: 8, 3: 30}
+
+    def tearDown(self):
+        self.connection.close()
+
+    def names(self):
+        return {int(row[0]): str(row[1]) for row in self.connection.execute(
+            "SELECT id,canonical_name FROM entity WHERE kind='studio'")}
+
+    def test_a_registered_alias_on_one_side_is_the_evidence(self):
+        """素人系番号以数字开头，class B 一个前缀都取不到，接不住这一类。"""
+        rows = self.module.bracketed_variants(
+            self.connection, self.names(), self.counts, set())
+        self.assertEqual([(row["keep_name"], row["drop_name"]) for row in rows],
+                         [("Prestige", "プレステージプレミアム(PRESTIGE PREMIUM)")])
+
+    def test_an_unregistered_spelling_is_never_evidence(self):
+        """括号本身说明不了什么。两边都没登记过就没有可核验的身份。"""
+        self.connection.execute("DELETE FROM entity_alias")
+        self.connection.commit()
+        self.assertEqual(self.module.bracketed_variants(
+            self.connection, self.names(), self.counts, set()), [])
+
+    def test_two_sides_pointing_at_two_studios_are_left_to_a_human(self):
+        """一串指到两家去说明它本身有歧义，合并不可逆，交人工。"""
+        self.connection.execute(
+            "UPDATE entity SET canonical_name='Prestige(Faleno)',"
+            "normalized_name='prestige(faleno)' WHERE id=2")
+        self.connection.commit()
+        self.assertEqual(self.module.bracketed_variants(
+            self.connection, self.names(), self.counts, set()), [])
+
+    def test_a_name_already_paired_by_another_class_is_skipped(self):
+        self.assertEqual(self.module.bracketed_variants(
+            self.connection, self.names(), self.counts, {2}), [])
+
+    def test_a_serial_suffix_is_not_a_second_spelling(self):
+        """`AVS collector's (2)` 这种带序号的名字不是并写。"""
+        self.connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name)"
+            " VALUES(4,'studio','Faleno (2)','faleno (2)')")
+        self.connection.commit()
+        rows = self.module.bracketed_variants(
+            self.connection, self.names(), {**self.counts, 4: 1}, set())
+        self.assertNotIn("Faleno (2)", [row["drop_name"] for row in rows])
+
+
 class RelinkTests(unittest.TestCase):
     """合并只改账本，标识却按 canonical_name 落盘，不改挂就成了没人认领的文件。"""
 
