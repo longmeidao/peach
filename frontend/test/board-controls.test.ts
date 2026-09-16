@@ -1,5 +1,5 @@
-import { describe,it,expect,vi } from 'vitest';
-import { syncBoardRange, wireExpandableRanks, wireBoardSegments, wireBoardTabs, wireGrowingCharts } from '../src/board-controls';
+import { describe,it,expect } from 'vitest';
+import { syncBoardRange, wireBoardSegments, wireBoardTabs } from '../src/board-controls';
 
 describe('范围控件',()=>{
   it('视图切换保留原生 radio 且重复接线只创建一个滑块',()=>{
@@ -21,54 +21,6 @@ describe('范围控件',()=>{
     document.body.innerHTML='<div class="reviewtabs" role="tablist"><button role="tab" aria-selected="true">元数据字段</button><button role="tab" aria-selected="false">厂牌 Logo</button></div><div class="managebar"><div class="managebar-menu"><button aria-pressed="true">统计</button></div></div>';
     wireBoardTabs(document);wireBoardTabs(document);
     expect([...document.querySelectorAll('[data-board-tabs]')].map(group=>group.className)).toEqual(['managebar-menu']);
-  });
-  it('洞察页的维度切换拿到滑块，选中项换了也跟着量',()=>{
-    document.body.innerHTML='<div class="insighttabs" role="tablist"><button role="tab" aria-selected="true">内容标签</button><button role="tab" aria-selected="false">最近看过</button></div>';
-    wireBoardSegments(document);wireBoardSegments(document);
-    const group=document.querySelector('.insighttabs')!;
-    expect(group.querySelectorAll('.board-segment-thumb')).toHaveLength(1);
-    expect(group.getAttribute('data-board-segments')).toBe('true');
-    expect(group.getAttribute('data-board-tabs')).toBeNull();
-  });
-  it('排名条与雷达图没有 IntersectionObserver 时立刻可见，重复接线不重复标记',()=>{
-    document.body.innerHTML='<ol class="board-ranked-chart"><li></li></ol><svg class="board-radar"></svg><div class="tasteranks"></div>';
-    vi.stubGlobal('IntersectionObserver',undefined);
-    try{wireGrowingCharts(document);wireGrowingCharts(document)}finally{vi.unstubAllGlobals()}
-    expect(document.querySelectorAll('.board-chart-visible')).toHaveLength(3);
-    expect(document.querySelectorAll('[data-board-chart]')).toHaveLength(3);
-  });
-  it('折叠排名退出键盘导航，展开后恢复，重复接线不重复按钮',()=>{
-    document.body.innerHTML='<div class="tasteranks">'+Array.from({length:7},()=>'<button>排名</button>').join('')+'</div>';
-    wireExpandableRanks(document);wireExpandableRanks(document);
-    const toggle=document.querySelector<HTMLButtonElement>('.board-rank-expand')!;
-    const sixth=document.querySelector('.board-rank-list')!.children[5] as HTMLElement;
-    expect(document.querySelectorAll('.board-rank-expand')).toHaveLength(1);
-    expect(sixth.inert).toBe(true);toggle.click();expect(sixth.inert).toBe(false);
-    expect(toggle.getAttribute('aria-expanded')).toBe('true');toggle.click();expect(sixth.inert).toBe(true);
-  });
-  it('排名的高度过渡只挂在点按那一下，过渡结束即摘掉',()=>{
-    document.body.innerHTML='<div class="tasteranks">'+Array.from({length:7},()=>'<button>排名</button>').join('')+'</div>';
-    wireExpandableRanks(document);
-    const outer=document.querySelector('.board-expand-ranks')!,list=document.querySelector('.board-rank-list')!;
-    expect(outer.classList.contains('toggling')).toBe(false);
-    document.querySelector<HTMLButtonElement>('.board-rank-expand')!.click();
-    expect(outer.classList.contains('toggling')).toBe(true);
-    list.firstElementChild!.dispatchEvent(new Event('transitionend',{bubbles:true}));
-    expect(outer.classList.contains('toggling')).toBe(true);
-    list.dispatchEvent(new Event('transitionend'));
-    expect(outer.classList.contains('toggling')).toBe(false);
-  });
-  it('收起时展开键钉在原位：它被带着上移多少，页面就回滚多少；展开不动页面',()=>{
-    document.body.innerHTML='<div class="tasteranks">'+Array.from({length:7},()=>'<button>排名</button>').join('')+'</div>';
-    wireExpandableRanks(document);
-    const toggle=document.querySelector<HTMLButtonElement>('.board-rank-expand')!;
-    const scroll=vi.spyOn(window,'scrollBy').mockImplementation(()=>{});
-    vi.stubGlobal('requestAnimationFrame',()=>0);
-    try{
-      toggle.click();expect(scroll).not.toHaveBeenCalled();
-      vi.spyOn(toggle,'getBoundingClientRect').mockReturnValueOnce({top:400} as DOMRect).mockReturnValueOnce({top:300} as DOMRect);
-      toggle.click();expect(scroll).toHaveBeenCalledWith(0,-100);
-    }finally{vi.unstubAllGlobals();scroll.mockRestore()}
   });
   it('两个端点分别保留数值与不限状态，重复接线不增加气泡',()=>{
     document.body.innerHTML='<div class="dual-range"><input id="durMin" type="range" min="0" max="180" value="20"><input id="durMax" type="range" min="0" max="180" value="180"></div>';

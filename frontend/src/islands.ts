@@ -14,10 +14,7 @@
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
 export { preferredDirection } from './sort-preferences';
 export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
-export { statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './board-metrics';
-export { initBoardControls, syncBoardRange, wireExpandableRanks, wireGrowingCharts } from './board-controls';
-export { creatorSankeyHtml, wireCreatorSankey } from './board-sankey';
-export { activityChartsHtml, wireActivityCharts } from './board-analytics';
+export { initBoardControls, syncBoardRange } from './board-controls';
 export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
 
 import type * as ReactBundle from '@peach/react';
@@ -32,7 +29,7 @@ export { entitySkeletonHtml } from './entity-skeleton';
 export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
-export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';
+export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './management';
 export { resourceScanHtml } from './resource-sync';
 
 /** 每个 island 的 props。新增 island 时在这里登记，注册表随之要求实现；
@@ -45,6 +42,7 @@ export interface IslandContracts {
   configuration: ReactBundle.ConfigurationProps;
   activity: ReactBundle.ActivityProps;
   stats: ReactBundle.StatsProps;
+  taste: ReactBundle.TasteProps;
 }
 
 export type IslandName = keyof IslandContracts;
@@ -64,6 +62,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   configuration: { react: 'configuration' },
   activity: { react: 'activity' },
   stats: { react: 'stats' },
+  taste: { react: 'taste' },
 };
 
 /** 已注册的 island 名字。遗留层与测试用它核对路由表，不必知道注册表结构。 */

@@ -27,7 +27,7 @@ export function syncBoardRange(input: HTMLInputElement) {
 }
 
 export function initBoardControls() {
-  const scan=(root:ParentNode)=>{root.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(syncBoardRange);wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)};
+  const scan=(root:ParentNode)=>{root.querySelectorAll<HTMLInputElement>('input[type=range]').forEach(syncBoardRange);wireBoardSegments(root);wireBoardTabs(root)};
   scan(document);
   const observer=new MutationObserver(records=>{for(const record of records)for(const node of record.addedNodes)if(node instanceof Element){if(node.matches('input[type=range]'))syncBoardRange(node as HTMLInputElement);scan(node)}});
   observer.observe(document.body,{subtree:true,childList:true});
@@ -78,7 +78,7 @@ const segmentPositions=new Map<string,{x:number;y:number;w:number;h:number}>();
     面板切换那几组是 `role=tablist`：滑块换成按 `aria-selected` 找当前项，ARIA 仍然是 Tabs
     控制 tabpanel，不为了长得像分段控件就把它写成 radiogroup。 */
 export function wireBoardSegments(root:ParentNode) {
-  const selector='.iconswitch,.insightswitch,.insighttabs,.follow-workspace-switch';
+  const selector='.iconswitch,.insightswitch,.follow-workspace-switch';
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{
@@ -102,47 +102,5 @@ export function wireBoardSegments(root:ParentNode) {
     const mutation=new MutationObserver(measure);mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected']});
     const resize=new ResizeObserver(()=>{if(!group.isConnected){resize.disconnect();mutation.disconnect();return}measure()});resize.observe(group);
     measure();requestAnimationFrame(()=>group.classList.add('board-segments-ready'));
-  });
-}
-
-/** 排名条与雷达图进入可见区域后才从零长出（1.2 秒，与统计圆环同一条曲线）；减少动态效果时直接显示。 */
-export function wireGrowingCharts(root:ParentNode) {
-  const selector='.board-ranked-chart,.board-radar,.tasteranks,.board-heat-card,.board-sankey-card';
-  const charts=[...root.querySelectorAll<HTMLElement>(selector)];
-  if(root instanceof HTMLElement&&root.matches(selector))charts.push(root);
-  charts.forEach(chart=>{
-    if(chart.hasAttribute('data-board-chart'))return;chart.dataset.boardChart='true';
-    /* 长完就钉住终态：这些图表大多住在 tab 面板里，面板一藏一显 display 就换过一轮，
-       动画会跟着重头再放。等同一棵子树里没有还在跑的动画再钉，避免掐掉后半段。 */
-    chart.addEventListener('animationend',()=>{
-      if(chart.getAnimations?.({subtree:true}).some(animation=>animation.playState==='running'))return;
-      chart.classList.add('board-chart-settled');
-    });
-    const reveal=()=>chart.classList.add('board-chart-visible');
-    if(typeof IntersectionObserver==='undefined'||matchMedia('(prefers-reduced-motion: reduce)').matches){reveal();return}
-    const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();reveal()}},{threshold:.15});
-    observer.observe(chart);
-  });
-}
-
-export function wireExpandableRanks(root:ParentNode) {
-  root.querySelectorAll<HTMLElement>('.tasteranks').forEach((list,index)=>{
-    if(list.children.length<=5||list.parentElement?.hasAttribute('data-expandable-ranks'))return;
-    const outer=document.createElement('div');outer.className='board-expand-ranks';outer.dataset.expandableRanks='';list.before(outer);outer.append(list);
-    list.id=list.id||`board-rank-list-${index}`;list.classList.add('board-rank-list');
-    const button=document.createElement('button');button.type='button';button.className='board-rank-expand';button.setAttribute('aria-controls',list.id);button.setAttribute('aria-expanded','false');button.setAttribute('aria-label','展开更多排名');button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-down"/></svg>';outer.append(button);
-    /* 收起时正好露五行，第五行落在渐隐里当那个「还有」的提示（boardui 实测：五行 196px、
-       淡掉最后 44px）。多留一截空白的话渐隐盖的是空处，看不出下面还有内容。 */
-    const size=()=>{const row=list.children[4] as HTMLElement;if(!list.offsetWidth)return;outer.style.setProperty('--rank-collapsed-height',`${row.offsetTop-list.offsetTop+row.offsetHeight}px`);outer.style.setProperty('--rank-expanded-height',`${list.scrollHeight}px`)};
-    const update=()=>{const expanded=button.getAttribute('aria-expanded')==='true';outer.classList.toggle('expanded',expanded);[...list.children].forEach((child,i)=>(child as HTMLElement).inert=!expanded&&i>=5);size()};
-    /* 高度过渡只挂在点按那一下。切维度标签时内容换了、量出的高度跟着变，常驻过渡会让列表抖一下。 */
-    const settle=(event:Event)=>{if(event.target===list)outer.classList.remove('toggling')};
-    list.addEventListener('transitionend',settle);list.addEventListener('transitioncancel',settle);
-    /* 收起时展开键钉在指针下。排名卡多在页底，列表变短后视口必须回退；不钉的话键先被带着上移、
-       到底后才换成页面回滚，方向中途一折就是「滚了一下」。过渡期间逐帧按它的位移回滚。 */
-    const pin=()=>{const top=button.getBoundingClientRect().top,until=performance.now()+300;
-      const hold=()=>{const shift=button.getBoundingClientRect().top-top;if(shift)window.scrollBy(0,shift);if(performance.now()<until)requestAnimationFrame(hold)};hold()};
-    button.onclick=()=>{const expanded=button.getAttribute('aria-expanded')!=='true';button.setAttribute('aria-expanded',String(expanded));button.setAttribute('aria-label',expanded?'收起排名':'展开更多排名');outer.classList.add('toggling');update();if(!expanded)pin()};
-    new ResizeObserver(size).observe(list);update();
   });
 }

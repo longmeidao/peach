@@ -128,6 +128,25 @@ export interface StatsProps {
   configurable: boolean;
 }
 
+/** 口味页仍由遗留层提供的能力。都是导航、查表或回执，页面不持有它们的状态。 */
+export interface TasteProps {
+  /** 点一条名次：回目录并按它筛选。`kind` 是 `tag`／`creator`／`performer`。 */
+  onSignal(kind: string, name: string): void;
+  /** 去口味总结里指的那一页（`#/manage/scraping` 这类遗留路由）。 */
+  navigate(route: string): void;
+  /** 写操作在服务端落地之后的过去时回执。 */
+  toast(message: string): void;
+  /** 实体圆标的内层 HTML：有图走图，没图退到首字母。遗留层那份唯一的回落链实现。 */
+  avatarInner(
+    name: string,
+    entity: { id: number; has_image: boolean; avatar_focus?: unknown } | null,
+    representativeAssetId: number | null,
+    kind: string,
+  ): string;
+  /** 从引导流程进来（`?onboarding=1`）：浏览记录导入指南直接展开。 */
+  onboarding: boolean;
+}
+
 /** 来源和凭证页只要遗留层的 Toast：保存与撤销是写操作，回执归全站那一份。 */
 export interface ScrapingProps {
   /** 写操作在服务端落地之后的过去时回执。 */
@@ -166,6 +185,7 @@ export interface ReactPages {
   'quality-goals': ReactPage<QualityGoalsProps>;
   scraping: ReactPage<ScrapingProps>;
   stats: ReactPage<StatsProps>;
+  taste: ReactPage<TasteProps>;
 }
 
 export declare const pages: ReactPages;

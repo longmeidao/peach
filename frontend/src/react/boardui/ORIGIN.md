@@ -60,3 +60,7 @@
 | 读数兼页签 | `../stats/stats-page.tsx` 的四张读数卡是 React Aria 的 `Tabs`／`TabList`／`Tab`，选中态是一圈 `border-focus-ring` | `tabs` 条目是页面级导航的下划线页签，这里切的是同一页里的四层细节，而且页签本身要显示读数 |
 | 径向图 | `../stats/radial-card.tsx`：每段一圈 SVG，`pathLength={100}` 把一圈钉成 100，颜色只取 `chart-1`…`chart-6`，高亮是 React 状态 | 注册表里没有图表条目；`library-processing-notice.tsx` 的 `Gauge` 是单圈进度，排不下多段对比 |
 | 排行 | 同上页面的 `TagRanking`：两列的 `ol`，收起时露前十，展开键是一颗 `secondary` 按钮 | 注册表里没有排行榜；`table` 条目带表头与排序，这里一行只有名次、名字和一个数 |
+| 两套证据的切换 | `../taste/taste-page.tsx` 顶上用 React Aria 的 `Tabs`／`TabList`／`Tab` 整块切浏览器记录与 Peach 内部，选中态取 `background-tertiary-default` | `segmented-control` 没有条目，`tabs` 条目是页面级导航；这里切的是两块各自成篇的内容，不是同一个字段的两种填法 |
+| 雷达图与排行条 | `../taste/charts.tsx` 的 `TasteRadar` 与 `RankedBars`：多边形与矩形都写成 SVG 属性，颜色只取 `chart-4` 与 `chart-track` | 注册表里没有图表条目；`../stats/radial-card.tsx` 是环形占比，画不出多维度的形状与并排的长度 |
+| 热力图 | 同上的 `ActivityCharts`：一格一个 `rect`，浓度是 `fill-opacity`，指到哪一格读数换成哪一格 | 注册表里没有热力图；一格单独没有标注，不换读数就只剩一片颜色深浅 |
+| 流向图 | 同上的 `CreatorSankey`：布局由 `d3-sankey` 算，路径与节点是 SVG，淡入淡出用 `stroke-opacity` | 注册表里没有流向图；`table` 条目排得出同样的数，但看不出来源与创作者之间的分流 |

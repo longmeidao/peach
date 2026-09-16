@@ -20,7 +20,7 @@
 - 增量列表复用 `wireLoadMore` 的请求锁、原位重试与卸载清理；页面注入读取、追加、代际判定和可用条件。首页页码在读取成功后推进，照片沿用随机种子，关注合并分组。显式页码继续使用 `pagination.ts`。
 - 后台任务复用 `watchJob`、`followJobProgress` 默认面板及 `jobActivityHtml` 的真实计数／未知总量显示；关注、来源扫描、链接检查和扫描采集共用渲染。业务保留启动、终态回执和结果面板，不新增轮询循环。
 - 图标按钮统一清除浏览器内边距并居中 SVG，不覆盖业务显隐。Remix Icon 由 `vendor_web_dependencies.mjs` 生成设置导航 symbol；随机按钮保留原有双路径动画。
-- `frontend/src/board-sankey.ts` 使用 d3-sankey 0.12.3（BSD-3-Clause；类型包 0.12.5）计算来源网站到创作者线索的流向。布局依赖不读取浏览历史；Peach 提供去重聚合值并负责隐私边界。分发许可随 `web/vendor/d3-LICENSE.txt` 保留。
+- `frontend/src/react/taste/taste.ts` 使用 d3-sankey 0.12.3（BSD-3-Clause；类型包 0.12.5）计算来源网站到创作者线索的流向。布局依赖不读取浏览历史；Peach 提供去重聚合值并负责隐私边界。分发许可随 `web/vendor/d3-LICENSE.txt` 保留。
 
 复核复用 Checkbox、Button、Badge、Select 与 `/api/review/decision`，默认勾选并沿用馆藏页 Shift 连选语义；支持跨组通过／拒绝与无歧义的共同来源选择。按候选数量、来源组合或字段分组，每项仅出现一次，切组保留选择；成功移出、失败保留，页面离开后停止后续提交。正文使用不占宽度的 Scroller，完成结果复用成功 Note。身份候选复用创作者页、作品详情与 revealSource 核对样本；来源图片和缺图占位共用 220px 预览区，加载失败保留占位。样本读取支持无缩略图作品，回收站不参与。
 

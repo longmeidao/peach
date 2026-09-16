@@ -14,11 +14,12 @@ React + Tailwind v4 + BoardUI 源码。迁移方式是 strangler：
 | --- | --- |
 | `frontend/src/islands.ts` | 挂载契约与注册表，构建入口；其余导出是遗留层仍在用的助手 |
 | `frontend/src/api.ts` | 带 `AbortController` 的取数封装 |
-| `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
+| `frontend/src/management.ts` | 数据管理首屏 Fieldset 与网盘能力显隐 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
 | `frontend/src/react/` | React 子树：`entry.tsx` 是构建入口，`bundle.d.ts` 是对外契约，`boardui/` 逐字复制 BoardUI 源码 |
 | `frontend/src/react/query.ts` | React 子树唯一的 TanStack Query 客户端，页面级 `prefetch` 与组件读的是同一份缓存 |
 | `frontend/src/react/components/` | Peach 自己的组合件（说明条、进度、空态、等待点），BoardUI 注册表里没有对应条目的那些 |
+| `frontend/src/react/taste/` | 口味页：`taste.ts` 是契约与几何算法，`charts.tsx` 是雷达／名次条／热力／桑基，`taste-page.tsx` 是整页 |
 | `frontend/test/` | vitest 用例与遗留模块的桩；`test/react/` 直接挂组件，`islands.test.ts` 走挂载契约 |
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
 | `web/dist/peach-react.js`、`peach-react.css` | React 子树的构建产物，**进 Git** |
@@ -72,7 +73,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `02-topbar.css` | 顶栏与顶部三层 |
 | `03-filterbar.css` | 常驻筛选层、combo、页面提要 |
 | `04-manage.css` | 统计页、播单、复核、元数据、数据管理 fieldset |
-| `05-insights.css` | Analytics／Speed Insights 与口味页 |
+| `05-insights.css` | Analytics／Speed Insights，以及口味页骨架的板块与指标条 |
 | `06-index.css` | 索引页、标签词表、字母表 |
 | `07-entity.css` | 实体资料页头、外链、相关人物 |
 | `08-photos.css` | 照片墙与灯箱主体 |
@@ -216,6 +217,14 @@ const job = useQuery({
 BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选」，整页换成目录仍归遗留壳，页面
 只把标签键交回去（`onTag`）。
 
+口味页（`src/react/taste/`）把「同一份真相换一个范围看」写进键里：`['taste', window]`，换范围
+就是换键，上一份靠 `placeholderData: keepPreviousData` 留在屏幕上。范围是组件状态而不是 URL——
+它不进路由表，壳只按 `/taste` 一条路由挂岛，刷新回到默认的「全部」。服务端的 `_get_taste` 自己
+按 `taste:{window}` 缓存，演示库上一趟往返十几毫秒，所以这一页不设 `staleTime`。后台重算是另
+一个键 `['taste','refresh']`，`running` 时两秒问一次、闲时十秒，终态按下面第 2 条的判据认。
+雷达、名次条、活动热力和创作者桑基都是 React 组件，几何落在 SVG 属性上，颜色只取 BoardUI 的
+`chart-*` 档。
+
 ## 迁移下一个页面
 
 整页归 React（ADR-0031）。先挑一个**容器不与别人共用**的页面；写操作和后台任务的
@@ -294,9 +303,9 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 810.7 kB（gzip 208.5 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 91.6 kB（gzip 14.3 kB），
-由 `index.html` 在旧样式表之前引入。`peach-ui.js` 81.5 kB（gzip 25.7 kB），只剩挂载契约与
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 870.0 kB（gzip 222.9 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 92.6 kB（gzip 14.5 kB），
+由 `index.html` 在旧样式表之前引入。`peach-ui.js` 55.3 kB（gzip 18.3 kB），只剩挂载契约与
 遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。

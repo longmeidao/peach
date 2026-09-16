@@ -100,19 +100,32 @@ export function Fact({ term, children }: { term: ReactNode; children: ReactNode 
 
 /** 展开正文。原生 `details` 给键盘与无障碍语义；开合交给共用 Collapse 的 `setCollapseOpen`，
  *  它给正文外层挂上旧样式表的 `.fcollapse` 让高度过渡。内边距放在里层，高度才能收到 0。 */
-export function Disclosure({ summary, children }: { summary: string; children: ReactNode }) {
+export function Disclosure(
+  { summary, defaultOpen = false, children }:
+  { summary: string; defaultOpen?: boolean; children: ReactNode },
+) {
   const id = useId();
   const details = useRef<HTMLDetailsElement>(null);
   const body = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
+  const primed = useRef(false);
+  const [open, setOpen] = useState(defaultOpen);
   const toggle = (event: MouseEvent) => {
     event.preventDefault();
     if (!details.current || !body.current) return;
     setCollapseOpen(details.current, body.current, !open);
     setOpen(!open);
   };
+  /* 展开一次就交回给 `setCollapseOpen`：`open` 写成 React 的受控属性的话，收起的那段
+     过渡里它会被重新画成展开。这里只在第一次挂上时把初始状态落到 DOM 上。 */
+  const attach = (node: HTMLDetailsElement | null) => {
+    details.current = node;
+    if (node && defaultOpen && !primed.current) {
+      primed.current = true;
+      node.open = true;
+    }
+  };
   return (
-    <details ref={details}>
+    <details ref={attach}>
       <summary aria-expanded={open} aria-controls={id} onClick={toggle}
         className="flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-body-2-medium text-text-secondary outline-none select-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring">
         <RiArrowRightSLine aria-hidden className={open ? 'size-4 shrink-0 rotate-90 transition-transform' : 'size-4 shrink-0 transition-transform'} />
