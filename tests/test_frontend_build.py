@@ -444,6 +444,78 @@ class StatsEndpointTests(unittest.TestCase):
         self.assertEqual(len(routed), 1, f"/api/stats 的路由声明在 {routed}")
 
 
+class TasteEndpointTests(unittest.TestCase):
+    """口味页从 `web/app.js` 搬过来时不能把语义契约丢在原地。
+
+    `tests/test_web_ui.py` 曾对页面源断言这些标记：两套证据是页签、四张读数卡、六种图、
+    导入走 `X-Peach-Filename`、体积与站点圆标走遗留口径。行为由
+    `frontend/test/react/taste.test.tsx` 守，这里守的是「搬家之后这些标记还在同一处」。
+    """
+
+    TASTE = FRONTEND / "src" / "react" / "taste"
+    ENDPOINTS = ("/api/taste", "/api/taste/refresh", "/api/taste/import", "/api/taste/source")
+
+    def setUp(self):
+        self.source = "\n".join(
+            (self.TASTE / name).read_text(encoding="utf-8")
+            for name in ("taste.ts", "taste-page.tsx", "charts.tsx"))
+
+    def test_each_endpoint_is_declared_once(self):
+        """四条端点在前端各只有一个声明处，就是这一页的数据模块。
+
+        第二处再写一遍就是分头取数的第一步：导入之后换进缓存的那一份和别处取回的那一份
+        会同时挂在屏幕上，谁先回来谁说了算。
+        """
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        for endpoint in self.ENDPOINTS:
+            declared = [path for path in sources
+                        if f"'{endpoint}'" in path.read_text(encoding="utf-8")]
+            self.assertEqual(declared, [self.TASTE / "taste.ts"],
+                             f"{endpoint} 声明在 {[path.name for path in declared]}")
+        keyed = [path.name for path in sources
+                 if "TASTE_REFRESH_KEY = [" in path.read_text(encoding="utf-8")]
+        self.assertEqual(keyed, ["taste.ts"], f"queryKey 声明在 {keyed}")
+
+    def test_the_window_rides_on_the_query_key(self):
+        """七天和全部时间是两份真相：键上带范围，切换时留住上一份。"""
+        self.assertIn("tasteKey = (window: string) => ['taste', window]", self.source)
+        self.assertIn("placeholderData: keepPreviousData", self.source)
+
+    def test_the_background_run_only_counts_when_this_session_saw_it(self):
+        """首屏读到的旧终态不发回执：只有本次点过或见过它在跑才算数。"""
+        self.assertIn("refetchInterval", self.source)
+        self.assertIn("已更新口味分析", self.source)
+
+    def test_the_import_keeps_the_filename_header(self):
+        """文件原样当请求体发，文件名走请求头，服务端不必多接一个 multipart 解析器。"""
+        self.assertIn("'Content-Type': 'application/octet-stream'", self.source)
+        self.assertIn("'X-Peach-Filename': encodeURIComponent(file.name)", self.source)
+
+    def test_the_two_bodies_of_evidence_are_tabs(self):
+        """浏览器记录与 Peach 内部是两份证据，并排摆会被读成互相印证。"""
+        self.assertIn("react-aria-components", self.source)
+        for name in ("浏览器记录", "Peach 内部"):
+            self.assertIn(name, self.source)
+
+    def test_every_chart_is_a_react_component(self):
+        """六种图都在 React 里：雷达、排行条、读数卡、两张热力图、创作者流向。"""
+        for component in ("TasteRadar", "RankedBars", "SummaryCard", "HeatCard", "CreatorSankey"):
+            self.assertIn(component, self.source)
+        self.assertIn("from 'd3-sankey'", self.source)
+
+    def test_empty_and_error_states_reuse_the_shared_components(self):
+        """空态与失败态走 `src/react/components/` 的组合件，不是一行灰字。"""
+        self.assertIn("<Note", self.source)
+        for title in ("暂无足够证据", "还没有数据源", "还没有可探索的入口"):
+            self.assertIn(title, self.source)
+
+    def test_readings_reuse_the_legacy_formatters(self):
+        """体积与站点圆标共用遗留口径，不在页面里再写一套。"""
+        self.assertIn("from '@peach/legacy/core'", self.source)
+        for helper in ("fmtSize(", "siteMarkUrl("):
+            self.assertIn(helper, self.source)
+
+
 class ConfigurationEndpointTests(unittest.TestCase):
     """整页和各分区读同一条 `/api/configuration`，两份产物各打包一份这个模块。"""
 

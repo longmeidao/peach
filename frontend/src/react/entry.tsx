@@ -23,6 +23,8 @@ import { prefetchConfiguration } from './settings/configuration';
 import { ConfigurationPage } from './settings/configuration-page';
 import { prefetchStats } from './stats/stats';
 import { StatsPage } from './stats/stats-page';
+import { DEFAULT_WINDOW, prefetchTaste } from './taste/taste';
+import { TastePage } from './taste/taste-page';
 
 /* Popover 这类弹出层由 React Aria 渲染到挂载容器外面。落在 `body` 上就出了 `.peach-react`
  * 的作用域：token 读到的是 `board.css` 的值，Preflight 也管不到。所有 React 根的弹出层都进
@@ -81,4 +83,8 @@ export const pages: Bundle.ReactPages = {
   },
   scraping: { prefetch: (_props, signal) => prefetchScraping(signal), mount: mounter(ScrapingPage) },
   stats: { prefetch: (_props, signal) => prefetchStats(signal), mount: mounter(StatsPage) },
+  /* 首屏取的是「全部时间」那一份：分析范围是组件状态，每次进这一页都从它开始。 */
+  taste: {
+    prefetch: (_props, signal) => prefetchTaste(DEFAULT_WINDOW, signal), mount: mounter(TastePage),
+  },
 };

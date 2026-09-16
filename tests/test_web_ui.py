@@ -1354,23 +1354,20 @@ class WebUiSourceTests(unittest.TestCase):
 
         没有它的标题只是一行普通粗体字：`wireCollapse` 把原生 `<details>` 的三角
         `list-style` 去掉了（不去掉的话它和布局里的 flex 对不齐），于是「点这里会展开」
-        这件事没有任何视觉线索，得靠鼠标移上去变成手型才发现。几何跟作者别名那一处
-        同一份 Vercel 取证：16px SVG、`stroke:currentColor`、展开 `rotate(90deg)`。
+        这件事没有任何视觉线索，得靠鼠标移上去变成手型才发现。几何取自 Vercel：
+        16px SVG、`stroke:currentColor`、展开 `rotate(90deg)`。React 档那一族折叠由
+        `src/react/settings/section.tsx` 的 `Disclosure` 给同一枚。
         """
         css = stylesheet_source()
-        for prefix in (".faliasmanager>summary", ".taste-history-guide summary"):
-            start = css.index(prefix + ">svg{")
-            rule = css[start:css.index("}", start)]
-            # 描边色不进这份共用契约：作者别名那一枚故意钉在 --muted 上不随当前项提亮。
-            for declaration in ("width:16px", "height:16px", "flex:none", "fill:none",
-                                "transition:transform .2s ease-in-out"):
-                self.assertIn(declaration, rule, f"{prefix} 的 chevron 缺 {declaration}")
-            self.assertPageContains(prefix + '[aria-expanded="true"]>svg'
-                                             "{transform:rotate(90deg)}")
-        # 原生三角要一起去掉，否则同一行会出现两枚指示符。
-        prefix = ".taste-history-guide summary"
-        self.assertPageContains(prefix + "::-webkit-details-marker{display:none}")
-        self.assertPageContains(prefix + "{cursor:pointer;", "标题自己是 flex 容器")
+        prefix = ".faliasmanager>summary"
+        start = css.index(prefix + ">svg{")
+        rule = css[start:css.index("}", start)]
+        # 描边色不进这份共用契约：作者别名那一枚故意钉在 --muted 上不随当前项提亮。
+        for declaration in ("width:16px", "height:16px", "flex:none", "fill:none",
+                            "transition:transform .2s ease-in-out"):
+            self.assertIn(declaration, rule, f"{prefix} 的 chevron 缺 {declaration}")
+        self.assertPageContains(prefix + '[aria-expanded="true"]>svg'
+                                         "{transform:rotate(90deg)}")
 
     def test_a_spinner_announces_the_work_and_not_the_button_it_sits_in(self):
         """`spinnerHtml()` 的名字说正在做什么，不复读按钮自己的名字。
@@ -1602,24 +1599,17 @@ class WebUiSourceTests(unittest.TestCase):
                       "{margin-left:0}", board, "撑开的空当只交给第一个 .fmeta")
 
     def test_history_actions_are_one_split_button_with_the_primary_mirrored(self):
-        """读取本机浏览记录和导入历史文件是同一件事的两种做法，合成一个 Split Button。
+        """一件事的两种做法合成一个 Split Button，不摊成两颗地位相同的按钮。
 
         实测记在 `docs/reference-snapshots/vercel-geist-split-button.md`：主动作占左半、
         触发档占右半，两半拼成一个盒子，交界处一条 1px 竖线；触发档里只有一枚箭头，读屏名
-        由 aria-label 给。菜单第一项必须与主动作同名同事——键盘和读屏用户只走菜单这一条路，
-        少列一项就是少一个动作。
+        由 aria-label 给。这份几何现在的读者是数据管理页那张「扫描与采集」卡的骨架
+        （`frontend/src/management.ts`），口味页的同一颗归 React（`HistoryActions`）。
         """
-        self.assertPageContains('<div class="splitbutton board-button-group" data-taste-history-menu>')
-        self.assertPageContains('<button class="splitmain" data-taste-refresh')
-        self.assertPageContains('aria-label="更多取得浏览记录的方式">${icon(\'chevron-down\')}')
-        menu = self.page.split('id="tasteHistoryMenu"')[1]
-        primary = menu.index("data-taste-history-primary")
-        self.assertLess(primary, menu.index("data-taste-import"),
-                        "主动作要排在菜单第一项")
-        self.assertIn("<span>读取浏览器历史</span>", menu[primary:primary + 140],
-                      "菜单第一项的文字要和左半那颗一字不差")
-        # 两处不各写一份读取流程：菜单第一项点回主动作那颗。
-        self.assertPageContains("closeAnchoredMenu();root.querySelector('[data-taste-refresh]').click()")
+        skeleton = (Path(__file__).resolve().parents[1]
+                    / "frontend/src/management.ts").read_text(encoding="utf-8")
+        self.assertIn('<div class="splitbutton board-button-group primary">', skeleton)
+        self.assertIn('class="splitmain geist-button primary"', skeleton)
         css = stylesheet_source()
         main_rule = css[css.index(".splitbutton>.splitmain{"):]
         self.assertIn("border-radius:var(--control-radius) 0 0 var(--control-radius)",
@@ -1947,10 +1937,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("ref?{id:ref,has_image:x.has_image}:null,")
         self.assertPageContains(
             "x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',")
-        # 口味榜（`/api/taste`）：两列直接长在榜行上，判据仍是同一对。
-        self.assertPageContains(
-            "const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image,")
-        self.assertPageContains("rep=row.has_avatar?row.representative_asset_id||null:null;")
+        # 口味榜（`/api/taste`）归 React 档，判据仍是同一对：引用给 `avatarInner()`，
+        # 代表作那一侧只有 `has_avatar` 为真才交。
+        taste = (Path(__file__).resolve().parents[1]
+                 / "frontend/src/react/taste/taste-page.tsx").read_text(encoding="utf-8")
+        self.assertIn("{ id: row.entity_id, has_image: !!row.has_image,", taste)
+        self.assertIn("row.has_avatar ? row.representative_asset_id ?? null : null,", taste)
         # 沉浸模式署名圈读 `/api/item` 的 entity_refs，标志随引用一起来；代表作那一侧
         # 读 REP，入表时已经按 has_avatar 筛过。
         self.assertPageContains(
@@ -2099,13 +2091,15 @@ class WebUiSourceTests(unittest.TestCase):
         SVG 问都不问，要代理才通的来源干脆空着。采集页和口味页同走 `/site-mark`，
         和资料页外链圆标是同一套挑图、合成与缓存。
         """
-        self.assertPageContains('<img src="${esc(siteMarkUrl({domain}))}" alt="" loading="lazy" ')
         for gone in ("google.com/s2/favicons", "faviconFallbackUrl", "SITE_FAVICONS"):
             self.assertPageLacks(gone, "站点图标不得由浏览器向站外取")
-        scraping = (Path(__file__).resolve().parents[1]
-                    / "frontend/src/react/scraping/scraping-page.tsx").read_text(encoding="utf-8")
+        react = Path(__file__).resolve().parents[1] / "frontend/src/react"
+        scraping = (react / "scraping/scraping-page.tsx").read_text(encoding="utf-8")
         self.assertIn("<img src={siteMarkUrl({ source })}", scraping)
         self.assertNotIn("faviconUrl", scraping)
+        taste = (react / "taste/taste-page.tsx").read_text(encoding="utf-8")
+        self.assertIn('<img src={siteMarkUrl({ domain })} alt="" loading="lazy"', taste)
+        self.assertNotIn("faviconUrl", taste)
 
     def test_no_caller_ever_hands_the_link_mark_endpoint_a_url(self):
         # 让前端把地址递给服务端去取，等于开一个任意地址抓取的口子。和 `/follow-stream`
@@ -2122,6 +2116,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<a class="iconlink" href="${esc(x.url)}"')
         self.assertPageContains('<span class="sr-only">${esc(x.label)}</span></a>')
         self.assertPageContains('.entitylinks a.iconlink{width:36px;padding:0;gap:0;justify-content:center}')
+        # 悬停只让药丸的边显出来：这一排是图标，底色一换就读成「选中了这一个」。
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)
 
     def test_an_official_link_shows_its_domain_next_to_the_sites_own_mark(self):
         # 文字是域名——这条链接里唯一确定的东西；图标是站点自己那枚，说的是「这是哪家」。
@@ -5097,75 +5094,33 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("分布在 ${info.entities.toLocaleString()} 个女优、厂牌与系列")
 
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
+        """口味页是 React 档（ADR-0031）：遗留层只铺骨架、交容器与几样自己的能力。
+
+        两套证据怎么切、换范围时留不留上一份、后台那一趟什么时候算数、导入与移除各走
+        哪条路，由 `frontend/test/react/taste.test.tsx` 守；四条端点只声明一次、六种图
+        都在 React 里由 `tests/test_frontend_build.py` 守。这里守的是外壳——路由、
+        入口、交出去的那几样能力，以及正文标记确实已经不在遗留层。
+        """
         self.assertRoute('/taste', "openTaste(push)", "section:'taste'")
-        self.assertPageContains("/api/taste?window=")
-        self.assertPageContains("/api/taste/import")
-        self.assertPageContains("/api/taste/refresh")
-        self.assertPageContains("/api/taste/source")
-        # 口径与免责说明整体清退：这些句子解释的是数字怎么算出来的，
-        # 而这个库只有一个用户，他本人就是定这套口径的人。
-        self.assertPageLacks("原始 URL、标题与搜索内容不会显示在页面")
-        self.assertPageLacks("浏览器记录是当前分析主体")
-        self.assertPageLacks("按真实挂载位置汇总")
-        self.assertPageLacks("播放、评分与明确反馈保持独立")
-        self.assertPageLacks("不自动给标签降权")
-        self.assertPageContains("data-taste-window")
-        self.assertPageContains("data-taste-remove")
-        self.assertPageContains('role="radiogroup" aria-label="口味证据来源"')
-        self.assertPageContains('name="taste-evidence" value="browser"')
-        self.assertPageContains('name="taste-evidence" value="peach"')
-        self.assertPageContains('data-taste-evidence-panel="browser"')
-        self.assertPageContains('data-taste-evidence-panel="peach"')
-        self.assertPageContains("[data-taste-evidence-panel][hidden]")
-        self.assertPageContains("[data-taste-dimension-panel][hidden]")
-        self.assertPageContains('data-taste-dimension="${source}:${key}"')
-        self.assertPageContains("sourceTabs('browser',[['tags','标签']")
-        self.assertPageContains("sourceTabs('peach',[['tags','标签'],['creators','创作者'],['performers','女优']])")
-        self.assertPageContains("rank.browser_tags||[]")
-        self.assertPageContains("rank.peach_performers||rank.performers||[]")
-        self.assertPageContains("visual==='domain'")
-        self.assertPageContains("avatarInner(row.name,ref,rep,visual)")
-        self.assertPageContains("visual==='creator'&&!ref&&!rep&&sourceDomain")
-        # 两处站点头像（域名榜、无实体的创作者）共用一个 siteAvatar；来源提示仍是
-        # 「来源：<域名>」，转义在 siteAvatar 里做一次。
-        self.assertPageContains("siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)")
-        self.assertPageContains('title?` title="${esc(title)}"`')
-        # 哪个站点给哪张图，由服务端按 `/site-mark` 去问站点自己，页面不带这张清单：
-        # 手写死的路径会随对方改版静默失效，而页面这边看不出它已经指向 404。
-        self.assertPageContains("siteMarkUrl({domain})")
-        self.assertPageLacks("negative_tags")
-        self.assertPageContains(".tastehero{margin-bottom:16px}")
-        self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3")
-        self.assertPageContains(".tasteranks-tags{grid-template-columns:repeat(4")
-        self.assertPageContains(".tasterank{width:100%;min-width:0;min-height:58px")
-        self.assertPageContains("@media(max-width:640px){.insighttoolbar,.tastehead")
-        self.assertPageContains(".tastehero{min-height:0;grid-template-columns:minmax(0,1fr)}")
-        self.assertPageContains("data-taste-dimension-panel=\"${source}:${key}\"")
-        self.assertPageContains("class=\"tasterank${kind==='tag'?' tasterank-tag':''}")
-        self.assertPageContains("grid-template-columns:32px minmax(0,1fr) 18px")
-        self.assertPageContains(".tasterank-visual{grid-template-columns:32px 30px minmax(0,1fr) 18px}")
-        self.assertPageContains(".tasterank>svg{justify-self:end")
-        self.assertPageContains(".tasteranks{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}")
-        self.assertPageContains("padding:9px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--overlay-5)")
-        self.assertPageContains(".tasterank-tag{min-height:54px;padding:8px 10px}")
-        self.assertPageContains(".tasterank:is(button):hover{border-color:var(--border-15);background:var(--hover)}")
-        self.assertPageLacks("box-shadow:inset 3px 0 var(--tungsten)")
-        self.assertPageContains(".tastesources .insightpanelbody>div{display:grid;grid-template-columns:repeat(3")
-        self.assertPageContains(".tastesources>header{min-height:0;padding-block:14px}")
-        self.assertPageContains(".tastesources .insightpanelbody{padding:16px}")
-        self.assertPageContains(".tastesource{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--overlay-5)}")
-        self.assertPageContains("tasteAnalysisSection(d.analysis)")
-        self.assertPageContains('<section class="insightpanel tasteleads">')
-        self.assertPageContains("<h3>口味总结</h3>")
-        # 可信度读在说明之前，同一行里它排头一位。
-        self.assertPageContains('<div class="tastelede"><span class="tasteconfidence '
-                                '${esc(confidence.level')
-        self.assertPageContains('.tastelede{display:flex;align-items:baseline;gap:10px;min-width:0}')
-        self.assertPageContains('data-taste-route="${esc(item.route)}"')
-        self.assertPageContains("route(button.dataset.tasteRoute);restoreRoute()")
-        self.assertPageContains(".tasteinsights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px")
-        self.assertPageContains(".tastelead:hover{background:color-mix(in srgb,var(--inset) 94%,var(--ink))}")
-        self.assertPageLacks(".tasteanalysisbody")
+        self.assertPageContains("async function openTaste(push=true)")
+        self.assertPageContains("await ui.mountIsland('taste',$('#stats'),{")
+        # 交出去的都是导航、查表或回执：页面不持有它们的状态，也不自己跳转。
+        self.assertPageContains("onSignal:openTasteSignal")
+        self.assertPageContains("navigate:path=>{route(path);restoreRoute()}")
+        self.assertPageContains("toast:actionReceipt,avatarInner")
+        self.assertPageContains("onboarding:new URLSearchParams(location.search).get('onboarding')==='1'")
+        self.assertPageContains("{isCurrent:()=>surfaceCurrent(surface)}")
+        # 四条端点、缓存、轮询与所有正文标记都归 React 子树，遗留层一条都不留。
+        for gone in ("/api/taste", "TASTE_CACHE_KEY", "peach-taste-job", "wireTasteProgress",
+                     "renderTaste", "tasteAnalysisSection", "data-taste-window",
+                     "data-taste-evidence-panel", "data-taste-dimension", "data-taste-remove",
+                     "data-taste-route"):
+            self.assertPageLacks(gone)
+        # 正文的样式跟着搬走：遗留样式表里只剩骨架读到的那几条层级。
+        for gone in (".tasteranks", ".tasterank", ".tastesources", ".tastesource",
+                     ".tasteleads", ".tastelede", ".tasteinsights", ".tasteconfidence",
+                     ".insighttabs", ".taste-history-guide"):
+            self.assertPageLacks(gone)
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
         for name in ("emptyStateHtml", "loadingDotsHtml", "mediaViewButtonsHtml", "noteHtml", "progressHtml",
@@ -5178,7 +5133,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
         self.assertPageContains("failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'})")
         self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
-        self.assertPageContains("noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})")
         self.assertPageContains('class="geist-note geist-note-error fcheckreport" role="alert"')
         # 「没有更多内容」的抓取完摘要跟着检查完成的右下角 notification 走，页内只剩失败与取证缺档。
         self.assertPageLacks('class="geist-note geist-note-secondary fcheckreport" role="note"')
@@ -5567,7 +5521,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="reviewitemheader">${heading}</header>')
         self.assertPageContains('aria-label="当前信息"')
         self.assertPageContains('</div>${currentInfo}<footer')
-        self.assertPageContains(".taste-guide-skip{width:100%;height:var(--control-h);color:var(--meter)}")
 
     def test_collapsed_rail_is_divided_from_the_content_beside_it(self):
         """窄栏和内容区背景接近，没有分割线就看不出左边那一条到哪里为止。
@@ -6620,17 +6573,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("$('#searchMenu').hidden=true")
 
     def test_board_batch_three_aligns_ranks_buttons_and_the_sidebar_switcher(self):
-        """排名展开键是 bar-list-card 的 40×20 药丸，排名行不再有悬停底；管理页标题四种布局都对齐 1120；
+        """管理页标题四种布局都对齐 1120；
         主按钮与 Board 按钮同一副 36px 盒子；批量条隐藏键真的隐藏、回收站键用 error 渐变；
         复核页工具条自己悬浮、标签条留在原地；通知的状态圆用 lucide circle-alert；
         侧栏切换器是 32px 圆标识加名字加箭头，悬停外描一圈线，收起键只有 20px 高。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-rank-expand{position:absolute;z-index:1;bottom:4px;left:50%;transform:translateX(-50%);display:grid;place-items:center;width:40px;height:20px;", board)
-        self.assertIn(".board-rank-expand svg{width:14px;height:14px;", board)
-        self.assertIn(".board-rank-list .tasterank{position:relative;isolation:isolate;border:0;border-radius:8px;", board)
-        self.assertNotIn(".board-rank-list .tasterank:hover{background:var(--color-background-primary-hover)}", board)
-        self.assertIn("body .tastesource>button{width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);transform:none;", board)
         self.assertIn(".geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);", board)
         self.assertIn("body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}", board)
         self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
@@ -6697,8 +6645,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}", board)
 
     def test_the_board_layer_shares_one_tabs_segments_and_chart_motion(self):
-        """口味页、复核页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的指示条会滑，
-        证据切换与版式切换是同一枚分段滑块，排名条与雷达图进入视口后从零长出 1.2 秒。
+        """复核页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的指示条会滑，
+        证据切换与版式切换是同一枚分段滑块。
 
         随之对齐的还有：排序行里的分段控件与排序键同高（30px）；管理页标题只在 812px
         窄列页面居中，别处与面包屑同一条左边线；复核「跳过」用蓝色 Chip 配色；侧栏收起键
@@ -6708,10 +6656,9 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
         self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';", controls)
-        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs,"
+        self.assertIn("const selector='.iconswitch,.insightswitch,"
                       ".follow-workspace-switch';", controls)
-        self.assertIn("export function wireGrowingCharts(root:ParentNode) {", controls)
-        self.assertIn("wireBoardSegments(root);wireBoardTabs(root);wireGrowingCharts(root)", controls)
+        self.assertIn("wireBoardSegments(root);wireBoardTabs(root)", controls)
         self.assertIn(".insightswitch[data-board-segments]{position:relative;display:inline-flex;align-items:center;gap:2px;padding:4px;"
                       "border:0;border-radius:10px;background:var(--color-background-tertiary-default);box-shadow:none}", board)
         # 浮层上的分段器滑块就是整枚选项：30px 见方、8px 圆角，跟旁边那块滑动玻璃同一副尺寸。
@@ -6722,20 +6669,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("{padding:3px;border-radius:8px;gap:2px}", board)
         # 横滚容器会裁掉滑块与玻璃的落影：上下各留 14px 再用负外边距收回，行高不变。
         self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:14px 2px;margin-block:-14px}", board)
-        # 下划线只归管理导航与设置分区；洞察页的维度是分段控件，复核分类是次级菜单，判据各在
-        # test_the_stats_and_taste_dimensions_switch_as_a_segmented_control 与
+        # 下划线只归管理导航与设置分区；两套证据的切换是分段控件，复核分类是次级菜单，判据各在
+        # test_the_two_bodies_of_evidence_switch_as_a_segmented_control 与
         # test_the_review_categories_look_like_a_secondary_menu。
-        self.assertIn(".insighttabs button[aria-selected=\"true\"]{background:none;color:var(--color-text-primary);font:var(--board-body-medium)}", board)
-        # 统计维度的轨道不裁剪：滑块冲过落点的那一下要能超出轨道，跟其他分段器同一个动法。
-        self.assertIn(".insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;width:auto;"
-                      "max-width:100%;min-height:0;margin:0;padding:4px;border:0;border-radius:10px;"
-                      "background:var(--color-background-tertiary-default);overflow:visible}", board)
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
-        self.assertIn("body .tasterank:is(button):hover,body .board-rank-list .tasterank:hover{border-color:transparent;"
-                      "background:transparent}", board)
-        self.assertIn(".board-ranked-chart.board-chart-visible .board-rank-fill,.tasteranks.board-chart-visible .taste-rank-track i"
-                      "{animation:board-grow-x 1.2s cubic-bezier(.22,.61,.36,1) both}", board)
-        self.assertIn(".board-radar.board-chart-visible .board-radar-value{animation:board-grow-radar 1.2s cubic-bezier(.22,.61,.36,1) both}", board)
         self.assertIn("body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}", board)
         self.assertIn("body .reviewactions button.warning:not(:disabled){background:#bfdbfe;color:#1e40af;border-color:transparent}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);", board)
@@ -8044,29 +7981,6 @@ class WebUiSourceTests(unittest.TestCase):
             if "sans-serif" in line or "monospace" in line:
                 self.assertIn("YaHei", line, f"样式表第 {i} 行字体栈缺 CJK 兜底：{line.strip()[:90]}")
 
-    def test_taste_dashboard_is_persisted_and_refreshed_without_blocking(self):
-        """口味仪表跨页面刷新复用旧结果，过期更新也不阻塞打开页面。
-
-        口味数据来自浏览器历史聚合，24 小时内无需重读。过期时仍先显示
-        持久缓存，再后台更新；请求带序号，慢响应不能覆盖别的窗口或页面。
-        """
-        self.assertPageContains("const TASTE_CACHE_KEY='peach-taste-dashboard-v7',TASTE_CACHE_FRESH_MS=24*60*60*1000;")
-        self.assertPageContains("let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};")
-        self.assertPageContains("let tasteCache=readTasteCache(),tasteRequest=0;")
-        self.assertPageContains("localStorage.getItem(TASTE_CACHE_KEY)")
-        self.assertPageContains("localStorage.setItem(TASTE_CACHE_KEY,JSON.stringify(Object.fromEntries(tasteCache)))")
-        self.assertPageContains("const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;")
-        self.assertPageContains("const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;")
-        self.assertPageContains("if(cached)renderTaste(cached);")
-        self.assertPageContains("if(!cacheFresh)")
-        self.assertPageContains("void surfaceApi(surface,'/api/taste?window='+requestedWindow).then(data=>")
-        self.assertPageContains("tasteCacheSet(requestedWindow,data);")
-        self.assertPageContains("if(request===tasteRequest&&tasteWindow===requestedWindow&&surfaceCurrent(surface))renderTaste(data)")
-        self.assertPageContains("if(!cached&&request===tasteRequest&&surfaceCurrent(surface))")
-        # 三个写路径都更新缓存，别让缓存变陈旧。
-        self.assertPageContains("tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard)")
-        self.assertPageContains("tasteWindow='all';tasteCacheSet('all',payload.dashboard);renderTaste(payload.dashboard)")
-
     def test_no_page_grows_its_own_back_control(self):
         """索引页没有自己的返回按钮：顶栏入口本身就是返回路径。
 
@@ -8475,8 +8389,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("fieldsetTitle('resourceBoxTitle','文件与记录核对')")
         self.assertPageContains("按馆藏记录逐条查找本地磁盘与网盘上的文件")
         self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
-        self.assertPageContains("Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')")
-        self.assertPageContains('wireTasteHistoryGuide(root,localStorage);')
         for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
             self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
@@ -8648,8 +8560,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".tastesummary>small",
             ".gselectfield>span",
-            ".tagpickitem .pickname", ".tasterank b,.tasterank small",
-            ".tastesource b,.tastesource small", ".tg",
+            ".tagpickitem .pickname", ".tg",
             ".tokui .toktitle", "body[data-density=\"dense\"] .card .ctags .tg",
             "body[data-density=\"dense\"] .card .meta .t",
         }
@@ -9031,8 +8942,6 @@ class WebUiSourceTests(unittest.TestCase):
                 # 资源同步比的是盘上和账本的差异；跑过一轮之后那一枚才是「再跑一遍」。
                 'id="resourceScan">${icon(\'git-compare\')}<span>检查文件</span>',
                 "scan.innerHTML=`${icon(done?'rotate-cw':'git-compare')}",
-                # 读浏览器历史是去别处把足迹找回来。
-                "${icon('compass')}读取浏览器历史",
                 # 同步删除把这个目录在盘上和账本里对齐。
                 'aria-label="同步删除">${icon(\'folder-sync\')}',
                 # 沉浸模式是一叠竖着翻的卡，保存为播放列表存的是一份列表。
@@ -9611,28 +9520,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertIn(".faliasidentity>.favatar{flex:none}", self.css)
 
-    def test_a_finished_chart_does_not_grow_again_when_its_tab_comes_back(self):
-        """长完的图表钉住终态，切回这个 tab 不重放。
-
-        面板靠 `hidden` 收起，再显示时 `display` 从 none 换回来，CSS 动画会整段重放：
-        读起来就是每点一次 tab，条形图重新长一次。等同一棵子树里没有还在跑的动画
-        再打标，避免掐掉带延迟的后半段。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-ranked-chart.board-chart-settled .board-rank-fill,"
-                      ".tasteranks.board-chart-settled .taste-rank-track i,"
-                      ".board-radar.board-chart-settled .board-radar-value"
-                      "{animation:none;transform:none;opacity:1}", board)
-        self.assertIn(".board-heat-card.board-chart-settled [data-heat-value],"
-                      ".board-sankey-card.board-chart-settled .board-sankey-links path{animation:none}", board)
-        controls = (Path(__file__).resolve().parents[1]
-                    / "frontend" / "src" / "board-controls.ts").read_text(encoding="utf-8")
-        self.assertIn("const selector='.board-ranked-chart,.board-radar,.tasteranks,"
-                      ".board-heat-card,.board-sankey-card';", controls)
-        self.assertIn("chart.classList.add('board-chart-settled');", controls)
-        self.assertIn("if(chart.getAnimations?.({subtree:true})"
-                      ".some(animation=>animation.playState==='running'))return;", controls)
-
     def test_the_data_cleanup_page_spaces_its_blocks_the_same_way(self):
         """数据管理页三块内容之间是同一个间距。
 
@@ -9981,24 +9868,23 @@ class WebUiSourceTests(unittest.TestCase):
         # 焦点环也是蓝的，两者靠形态分开：焦点是一圈 outline，当前项是底下那条线。
         self.assertIn(".board-local-nav button:focus-visible{outline:2px solid var(--tungsten);", board)
 
-    def test_the_stats_and_taste_dimensions_switch_as_a_segmented_control(self):
-        """统计与口味的维度切换是分段控件，不是下划线 Tabs。
+    def test_the_two_bodies_of_evidence_switch_as_a_segmented_control(self):
+        """两套证据的切换是分段控件，不是下划线 Tabs。
 
-        这三四个面板是同一份数据的互斥视图，一条横线会把它读成页面层级的导航。滑块复用
-        `.board-segment-thumb`，深色下那一档更亮的底一并继承；ARIA 仍然是 Tabs 控制
-        tabpanel，不为了长得像分段控件就改写成 radiogroup。boardui dashboard 实测：内边距
-        4px、10px 圆角，滑块 6px 圆角、transform／width／height 各 200ms。
+        它们是同一件事的两份证据，一条横线会把它读成页面层级的导航。滑块复用
+        `.board-segment-thumb`，深色下那一档更亮的底一并继承。遗留壳铺的那张骨架
+        （`.insightswitch`）与 React 档画出来的那一排读的是同一份几何：内边距 4px、
+        10px 圆角，滑块 6px 圆角、transform／width／height 各 200ms。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
-        self.assertIn(".insighttabs{position:relative;display:inline-flex;align-items:center;gap:2px;"
-                      "width:auto;max-width:100%;min-height:0;margin:0;padding:4px;border:0;"
-                      "border-radius:10px;background:var(--color-background-tertiary-default);", board)
-        self.assertIn("min-height:28px;margin:0;padding:4px 10px;border:0;border-radius:6px;", board)
-        self.assertIn(":is(.iconswitch:not(.themeswitch),.insightswitch,.insighttabs,"
+        self.assertIn(".insightswitch[data-board-segments]{position:relative;display:inline-flex;"
+                      "align-items:center;gap:2px;padding:4px;border:0;border-radius:10px;", board)
+        self.assertIn("min-height:28px;height:auto;padding:4px 10px;border-radius:6px;", board)
+        self.assertIn(":is(.iconswitch:not(.themeswitch),.insightswitch,"
                       ".follow-workspace-switch)>:is(.board-segment-thumb,.skeleton-segment-selected)",
                       board)
-        self.assertIn("const selector='.iconswitch,.insightswitch,.insighttabs,"
+        self.assertIn("const selector='.iconswitch,.insightswitch,"
                       ".follow-workspace-switch';", controls)
         self.assertIn("'label:has(input:checked),button[aria-selected=true]'", controls)
         self.assertIn("mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected']})",
@@ -10006,10 +9892,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 它退出下划线 Tabs 那一族，否则滑块和指示条同时挂上去。
         self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';",
                       controls)
-        self.assertNotIn(".insighttabs{display:flex", board)
-        # 原样式把线挂在选中态上，权重比 `button::after` 高：只写后者，滑块底下还压着一条线。
-        self.assertIn(".insighttabs button::after,.insighttabs button[aria-selected=\"true\"]::after"
-                      "{content:none}", board)
 
     def test_hovering_a_button_lights_the_fill_and_never_the_outline(self):
         """次级按钮悬停只换填充，那圈线一动不动，全站只有一条规则说这件事。
@@ -10280,18 +10162,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("if(!nav.closest('.settingscard'))return", app,
                       "管理区那份横排页签不加玻璃")
 
-    def test_an_empty_activity_panel_keeps_the_room_the_charts_had(self):
-        """浏览活跃没有数据时，那句话上下仍留着有图时那两道 20px。
-
-        有图时外边距长在 `.board-activity-charts` 上，空态没有那层外壳，得自己出——
-        不然它和上下两段贴在一起。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-activity-empty{margin:20px 0}", board)
-        self.assertIn(".board-activity-empty>h3{margin:0", board)
-        self.assertIn(".board-activity-empty>p{margin:8px 0 0", board)
-        self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)
-
     def test_the_shuffle_key_is_the_accent_tier_among_the_sort_keys_beside_it(self):
         """换一批走强调档：这一排其余的是排序开关，只有它是动作。
 
@@ -10410,14 +10280,14 @@ class WebUiSourceTests(unittest.TestCase):
         """board.css 与 `frontend/` 画出来的横滚层走名单，不走按 id 点名的那份清单。
 
         漏登记的表现全站一个样：滚动条被藏掉、滚轮是竖向的、两端也不渐隐，于是那边
-        还有多少内容既看不出也够不着。390px 实测设置弹层那排分区溢出 244px、`/taste`
-        的两张图分别溢出 44px 与 322px，三处都要靠这份名单才拿得到提示。
+        还有多少内容既看不出也够不着。390px 实测设置弹层那排分区溢出 244px，靠这份
+        名单才拿得到提示。React 档的页面自己用 `overflow-x-auto`，不进这份清单。
         """
         page = self.page
         overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
         edge = page.split("const BOARD_EDGE_SCROLLERS=", 1)[1].split(";", 1)[0]
         for selector in (".board-local-nav", ".managebar-menu", ".follow-workspace-switch",
-                         ".fmanagenav", ".board-heat-scroll", ".board-sankey-scroll"):
+                         ".fmanagenav"):
             self.assertIn(selector, edge, f"{selector} 会横向溢出，要按横滚层登记")
         # 扫描只看前一份名单，只写进后一份等于没登记。
         scanned = set(re.findall(r"'(\.[a-z0-9-]+)'", overlay))
@@ -10495,36 +10365,24 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("data-drop=\"self\"", urllink)
         self.assertIn("linkHost(x.url)", urllink)
 
-    def test_a_collapsed_ranking_fades_its_last_row_instead_of_covering_it(self):
-        """收起的排名靠 mask 淡掉最后一行，不是拿一块渐变色盖上去。
+    def test_a_collapsed_ranking_shows_a_fixed_preview_and_one_way_back(self):
+        """收起的排名只露前十，展开与收起共用同一颗次要按钮。
 
-        盖的那种要先猜卡片是什么底色，猜错就在图上留一道横带；淡的这种在任何底色上都
-        成立。boardui 实测：列表自己带 `linear-gradient(#000 calc(100% - 44px),transparent)`，
-        展开就取消，正好露五行、淡掉最后 44px。两头高度由 JS 量好写进变量，展开收起的
-        高度过渡与共用 Collapse 同为 `.2s ease-in-out`：展开要长上千像素，先快后慢的曲线
-        在头一帧就把视口里那一截长完，看着像没有动画。
+        名次归 React 档（`frontend/src/react/taste/taste-page.tsx` 的 `RankList`）：二十条
+        一次铺开会把下面几块整个顶到屏外，所以默认露十条，再由一颗 BoardUI 次要按钮
+        来回切。行为由 `frontend/test/react/stats.test.tsx` 与 `taste.test.tsx` 守，
+        这里守的是「这一条规矩只有一处实现」。
         """
+        taste = (Path(__file__).resolve().parents[1]
+                 / "frontend/src/react/taste/taste-page.tsx").read_text(encoding="utf-8")
+        self.assertIn("const RANK_PREVIEW = 10;", taste)
+        self.assertIn("expanded ? rows : rows.slice(0, RANK_PREVIEW)", taste)
+        self.assertIn("{expanded ? '收起排名' : '展开更多排名'}", taste)
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
-        self.assertIn(".board-expand-ranks:not(.expanded)>.board-rank-list"
-                      "{mask-image:linear-gradient(#000 calc(100% - 44px),transparent)}", board)
-        self.assertNotIn(".board-expand-ranks:not(.expanded)::after", board)
-        # 过渡只挂在点展开键的那一下：切维度标签时内容换了、量出的高度跟着变，常驻过渡会让列表抖一下。
-        self.assertIn(".board-expand-ranks.toggling>.board-rank-list{transition:max-height .2s ease-in-out}", board)
+        self.assertNotIn(".board-expand-ranks", board, "遗留层那套展开排名已经没有读者")
         self.assertIn(".fcollapse{overflow:hidden;transition:height .2s ease-in-out}", (
             Path(__file__).resolve().parents[1] / "web/css/08-photos.css").read_text(encoding="utf-8"))
         self.assertNotIn("overflow:hidden;transition:max-height", board)
-        self.assertIn(".board-rank-list,.board-expand-ranks.toggling>.board-rank-list,"
-                      ".board-rank-expand svg{transition:none}", board)
-        self.assertIn("outer.classList.add('toggling')", controls)
-        # 收起时展开键钉在指针下，页面回退朝一个方向完成，不先上移再回滚。
-        self.assertIn("outer.classList.add('toggling');update();if(!expanded)pin()", controls)
-        self.assertIn("if(shift)window.scrollBy(0,shift)", controls)
-        # 箭头是描边字形。只给宽高的话 use 里那条折线会被默认 fill 填成一枚实心三角。
-        self.assertIn(".board-rank-expand svg{width:14px;height:14px;fill:none;stroke:currentColor;"
-                      "stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"
-                      "transition:transform .2s cubic-bezier(0,0,.2,1)}", board)
-        self.assertIn("`${row.offsetTop-list.offsetTop+row.offsetHeight}px`", controls)
 
     def test_the_library_switcher_menu_opens_against_the_control_it_belongs_to(self):
         """媒体库弹窗贴着切换器的右缘开，允许压住侧栏剩下的那一段。

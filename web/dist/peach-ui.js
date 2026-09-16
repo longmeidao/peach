@@ -98,57 +98,8 @@ function v(e, t, n, r, i) {
 	return !0;
 }
 //#endregion
-//#region src/board-metrics.ts
-var y = (e) => String(e ?? "").replace(/[&<>"']/g, (e) => ({
-	"&": "&amp;",
-	"<": "&lt;",
-	">": "&gt;",
-	"\"": "&quot;",
-	"'": "&#39;"
-})[e]);
-function b(e, t, n, r = "chart-no-axes-combined") {
-	return `<span class="board-stat-label"><span class="board-stat-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-${/^[a-z0-9-]+$/.test(r) ? r : "database"}"/></svg></span>${y(e)}</span><b class="board-stat-value">${y(t)}</b><small class="board-stat-footer">${y(n || "当前记录")}</small>`;
-}
-function x(e, t, n) {
-	if (!Number.isFinite(n) || n <= 0) return "";
-	let r = Math.max(0, Math.min(n, Number.isFinite(t) ? t : 0)), i = r / n * 100;
-	return `<div class="board-job-progress" role="progressbar" aria-label="${y(e)}" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${r}"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle class="board-job-track" cx="18" cy="18" r="15"/><circle class="board-job-fill" cx="18" cy="18" r="15" pathLength="100" stroke-dasharray="${i} ${100 - i}" transform="rotate(-90 18 18)"/></svg><span>${y(e)}<small>${Math.round(i)}%</small></span></div>`;
-}
-function S(e, t) {
-	let n = e.filter((e) => Number.isFinite(e.score) && e.score > 0), r = n.reduce((e, t) => e + t.score, 0);
-	if (!r) return "";
-	let i = 0, a = n.map((e, t) => {
-		let n = e.score / r * 100, a = `<circle cx="100" cy="100" r="72" pathLength="100" fill="none" stroke="var(--chart-${t % 4})" stroke-width="22" stroke-dasharray="${n} ${100 - n}" stroke-dashoffset="${-i}"><title>${y(e.name)}：${e.score.toLocaleString()}</title></circle>`;
-		return i += n, a;
-	}).join("");
-	return `<svg class="board-distribution" viewBox="0 0 200 200" role="img" aria-label="${y(t)}"><g transform="rotate(-90 100 100)">${a}</g><text x="100" y="100" text-anchor="middle" dominant-baseline="middle">${y(t)}</text></svg>`;
-}
-function C(e, t) {
-	let n = e.filter((e) => Number.isFinite(e.score) && e.score > 0).slice().sort((e, t) => t.score - e.score).slice(0, 8);
-	if (!n.length) return "";
-	let r = n[0].score, i = n.map((e) => `<li><span class="board-rank-fill" style="width:${(e.score / r * 100).toFixed(2)}%"></span><span>${y(e.name)}</span><b>${e.score.toLocaleString()}</b></li>`).join("");
-	return `<ol class="board-ranked-chart" aria-label="${y(t)}">${i}</ol>`;
-}
-function w(e, t) {
-	let n = e.filter((e) => Number.isFinite(e.score) && e.score > 0).slice().sort((e, t) => t.score - e.score).slice(0, 6);
-	if (n.length < 3) return "";
-	let r = Math.max(...n.map((e) => e.score)), i = n.length, a = (e, t) => {
-		let n = e / i * Math.PI * 2 - Math.PI / 2;
-		return [160 + Math.cos(n) * t, 140 + Math.sin(n) * t];
-	}, o = (e) => n.map((t, n) => a(n, e(n)).map((e) => e.toFixed(2)).join(",")).join(" "), s = [
-		25,
-		50,
-		75,
-		100
-	].map((e) => `<polygon points="${o(() => e)}" class="board-radar-grid"/>`).join(""), c = n.map((e, t) => {
-		let [n, r] = a(t, 116);
-		return `<text x="${n}" y="${r}" text-anchor="${n < 145 ? "end" : n > 175 ? "start" : "middle"}">${y(e.name)}</text>`;
-	}).join("");
-	return `<svg class="board-radar" viewBox="0 0 320 280" role="img" aria-label="${y(t)}"><title>${y(n.map((e) => `${e.name} ${e.score}`).join("，"))}</title>${s}<polygon points="${o((e) => n[e].score / r * 100)}" class="board-radar-value"/>${c}</svg>`;
-}
-//#endregion
 //#region src/board-controls.ts
-function T(e) {
+function y(e) {
 	let t = Number(e.min) || 0, n = Number(e.max) || 100, r = Number(e.value), i = n > t ? Math.max(0, Math.min(100, (r - t) / (n - t) * 100)) : 0;
 	e.style.setProperty("--board-range-value", `${i}%`);
 	let a = e.closest(".dual-range");
@@ -158,17 +109,17 @@ function T(e) {
 	let c = a.getBoundingClientRect(), l = s.getBoundingClientRect(), u = l.right > c.right ? c.right - l.right : l.left < c.left ? c.left - l.left : 0;
 	u && s.style.setProperty("--range-tip-shift", `${Math.round(u)}px`), a.querySelectorAll(".board-range-tip").forEach((e) => e.toggleAttribute("data-range-active", e === s));
 }
-function E() {
+function b() {
 	let e = (e) => {
-		e.querySelectorAll("input[type=range]").forEach(T), A(e), O(e), j(e);
+		e.querySelectorAll("input[type=range]").forEach(y), w(e), S(e);
 	};
 	e(document), new MutationObserver((t) => {
-		for (let n of t) for (let t of n.addedNodes) t instanceof Element && (t.matches("input[type=range]") && T(t), e(t));
+		for (let n of t) for (let t of n.addedNodes) t instanceof Element && (t.matches("input[type=range]") && y(t), e(t));
 	}).observe(document.body, {
 		subtree: !0,
 		childList: !0
 	}), document.addEventListener("input", (e) => {
-		e.target instanceof HTMLInputElement && e.target.type === "range" && T(e.target);
+		e.target instanceof HTMLInputElement && e.target.type === "range" && y(e.target);
 	});
 	let t = document.createElement("div");
 	t.className = "board-tooltip", t.id = "board-control-tooltip", t.role = "tooltip", t.hidden = !0, document.body.append(t);
@@ -189,8 +140,8 @@ function E() {
 		e.key === "Escape" && o();
 	}), document.addEventListener("scroll", o, !0), window.addEventListener("resize", o);
 }
-var D = /* @__PURE__ */ new Map();
-function O(e) {
+var x = /* @__PURE__ */ new Map();
+function S(e) {
 	let t = ".managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-tabs")) return;
@@ -204,8 +155,8 @@ function O(e) {
 				left: r.offsetLeft,
 				width: r.offsetWidth
 			};
-			n(i), D.set(t, i);
-		}, i = D.get(t);
+			n(i), x.set(t, i);
+		}, i = x.get(t);
 		i ? n(i) : r(), requestAnimationFrame(() => {
 			e.classList.add("board-tabs-ready"), requestAnimationFrame(r);
 		});
@@ -225,15 +176,15 @@ function O(e) {
 		o.observe(e);
 	});
 }
-var k = /* @__PURE__ */ new Map();
-function A(e) {
-	let t = ".iconswitch,.insightswitch,.insighttabs,.follow-workspace-switch", n = [...e.querySelectorAll(t)];
+var C = /* @__PURE__ */ new Map();
+function w(e) {
+	let t = ".iconswitch,.insightswitch,.follow-workspace-switch", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-segments") || e.closest("[data-skeleton]")) return;
 		e.dataset.boardSegments = "true";
 		let t = document.createElement("span");
 		t.className = "board-segment-thumb", t.setAttribute("aria-hidden", "true"), e.prepend(t);
-		let n = e.className + (e.getAttribute("aria-label") ?? ""), r = k.get(n) ?? null, a = () => {
+		let n = e.className + (e.getAttribute("aria-label") ?? ""), r = C.get(n) ?? null, a = () => {
 			let a = e.querySelector("label:has(input:checked),button[aria-selected=true]");
 			if (!a || !a.offsetWidth) return;
 			let o = {
@@ -242,7 +193,7 @@ function A(e) {
 				w: a.offsetWidth,
 				h: a.offsetHeight
 			};
-			i(t, r, o, "x"), r = o, k.set(n, o);
+			i(t, r, o, "x"), r = o, C.set(n, o);
 		};
 		e.addEventListener("change", a);
 		let o = new MutationObserver(a);
@@ -261,527 +212,21 @@ function A(e) {
 		s.observe(e), a(), requestAnimationFrame(() => e.classList.add("board-segments-ready"));
 	});
 }
-function j(e) {
-	let t = ".board-ranked-chart,.board-radar,.tasteranks,.board-heat-card,.board-sankey-card", n = [...e.querySelectorAll(t)];
-	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
-		if (e.hasAttribute("data-board-chart")) return;
-		e.dataset.boardChart = "true", e.addEventListener("animationend", () => {
-			e.getAnimations?.({ subtree: !0 }).some((e) => e.playState === "running") || e.classList.add("board-chart-settled");
-		});
-		let t = () => e.classList.add("board-chart-visible");
-		if (typeof IntersectionObserver > "u" || matchMedia("(prefers-reduced-motion: reduce)").matches) {
-			t();
-			return;
-		}
-		let n = new IntersectionObserver((e) => {
-			e.some((e) => e.isIntersecting) && (n.disconnect(), t());
-		}, { threshold: .15 });
-		n.observe(e);
-	});
-}
-function M(e) {
-	e.querySelectorAll(".tasteranks").forEach((e, t) => {
-		if (e.children.length <= 5 || e.parentElement?.hasAttribute("data-expandable-ranks")) return;
-		let n = document.createElement("div");
-		n.className = "board-expand-ranks", n.dataset.expandableRanks = "", e.before(n), n.append(e), e.id = e.id || `board-rank-list-${t}`, e.classList.add("board-rank-list");
-		let r = document.createElement("button");
-		r.type = "button", r.className = "board-rank-expand", r.setAttribute("aria-controls", e.id), r.setAttribute("aria-expanded", "false"), r.setAttribute("aria-label", "展开更多排名"), r.innerHTML = "<svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-chevron-down\"/></svg>", n.append(r);
-		let i = () => {
-			let t = e.children[4];
-			e.offsetWidth && (n.style.setProperty("--rank-collapsed-height", `${t.offsetTop - e.offsetTop + t.offsetHeight}px`), n.style.setProperty("--rank-expanded-height", `${e.scrollHeight}px`));
-		}, a = () => {
-			let t = r.getAttribute("aria-expanded") === "true";
-			n.classList.toggle("expanded", t), [...e.children].forEach((e, n) => e.inert = !t && n >= 5), i();
-		}, o = (t) => {
-			t.target === e && n.classList.remove("toggling");
-		};
-		e.addEventListener("transitionend", o), e.addEventListener("transitioncancel", o);
-		let s = () => {
-			let e = r.getBoundingClientRect().top, t = performance.now() + 300, n = () => {
-				let i = r.getBoundingClientRect().top - e;
-				i && window.scrollBy(0, i), performance.now() < t && requestAnimationFrame(n);
-			};
-			n();
-		};
-		r.onclick = () => {
-			let e = r.getAttribute("aria-expanded") !== "true";
-			r.setAttribute("aria-expanded", String(e)), r.setAttribute("aria-label", e ? "收起排名" : "展开更多排名"), n.classList.add("toggling"), a(), e || s();
-		}, new ResizeObserver(i).observe(e), a();
-	});
-}
-//#endregion
-//#region node_modules/d3-array/src/max.js
-function N(e, t) {
-	let n;
-	if (t === void 0) for (let t of e) t != null && (n < t || n === void 0 && t >= t) && (n = t);
-	else {
-		let r = -1;
-		for (let i of e) (i = t(i, ++r, e)) != null && (n < i || n === void 0 && i >= i) && (n = i);
-	}
-	return n;
-}
-//#endregion
-//#region node_modules/d3-array/src/min.js
-function P(e, t) {
-	let n;
-	if (t === void 0) for (let t of e) t != null && (n > t || n === void 0 && t >= t) && (n = t);
-	else {
-		let r = -1;
-		for (let i of e) (i = t(i, ++r, e)) != null && (n > i || n === void 0 && i >= i) && (n = i);
-	}
-	return n;
-}
-//#endregion
-//#region node_modules/d3-array/src/sum.js
-function F(e, t) {
-	let n = 0;
-	if (t === void 0) for (let t of e) (t = +t) && (n += t);
-	else {
-		let r = -1;
-		for (let i of e) (i = +t(i, ++r, e)) && (n += i);
-	}
-	return n;
-}
-//#endregion
-//#region node_modules/d3-sankey/src/align.js
-function I(e, t) {
-	return e.sourceLinks.length ? e.depth : t - 1;
-}
-//#endregion
-//#region node_modules/d3-sankey/src/constant.js
-function L(e) {
-	return function() {
-		return e;
-	};
-}
-//#endregion
-//#region node_modules/d3-sankey/src/sankey.js
-function R(e, t) {
-	return z(e.source, t.source) || e.index - t.index;
-}
-function ee(e, t) {
-	return z(e.target, t.target) || e.index - t.index;
-}
-function z(e, t) {
-	return e.y0 - t.y0;
-}
-function B(e) {
-	return e.value;
-}
-function te(e) {
-	return e.index;
-}
-function ne(e) {
-	return e.nodes;
-}
-function re(e) {
-	return e.links;
-}
-function ie(e, t) {
-	let n = e.get(t);
-	if (!n) throw Error("missing: " + t);
-	return n;
-}
-function ae({ nodes: e }) {
-	for (let t of e) {
-		let e = t.y0, n = e;
-		for (let n of t.sourceLinks) n.y0 = e + n.width / 2, e += n.width;
-		for (let e of t.targetLinks) e.y1 = n + e.width / 2, n += e.width;
-	}
-}
-function oe() {
-	let e = 0, t = 0, n = 1, r = 1, i = 24, a = 8, o, s = te, c = I, l, u, d = ne, f = re, p = 6;
-	function m() {
-		let e = {
-			nodes: d.apply(null, arguments),
-			links: f.apply(null, arguments)
-		};
-		return h(e), g(e), _(e), v(e), x(e), ae(e), e;
-	}
-	m.update = function(e) {
-		return ae(e), e;
-	}, m.nodeId = function(e) {
-		return arguments.length ? (s = typeof e == "function" ? e : L(e), m) : s;
-	}, m.nodeAlign = function(e) {
-		return arguments.length ? (c = typeof e == "function" ? e : L(e), m) : c;
-	}, m.nodeSort = function(e) {
-		return arguments.length ? (l = e, m) : l;
-	}, m.nodeWidth = function(e) {
-		return arguments.length ? (i = +e, m) : i;
-	}, m.nodePadding = function(e) {
-		return arguments.length ? (a = o = +e, m) : a;
-	}, m.nodes = function(e) {
-		return arguments.length ? (d = typeof e == "function" ? e : L(e), m) : d;
-	}, m.links = function(e) {
-		return arguments.length ? (f = typeof e == "function" ? e : L(e), m) : f;
-	}, m.linkSort = function(e) {
-		return arguments.length ? (u = e, m) : u;
-	}, m.size = function(i) {
-		return arguments.length ? (e = t = 0, n = +i[0], r = +i[1], m) : [n - e, r - t];
-	}, m.extent = function(i) {
-		return arguments.length ? (e = +i[0][0], n = +i[1][0], t = +i[0][1], r = +i[1][1], m) : [[e, t], [n, r]];
-	}, m.iterations = function(e) {
-		return arguments.length ? (p = +e, m) : p;
-	};
-	function h({ nodes: e, links: t }) {
-		for (let [t, n] of e.entries()) n.index = t, n.sourceLinks = [], n.targetLinks = [];
-		let n = new Map(e.map((t, n) => [s(t, n, e), t]));
-		for (let [e, r] of t.entries()) {
-			r.index = e;
-			let { source: t, target: i } = r;
-			typeof t != "object" && (t = r.source = ie(n, t)), typeof i != "object" && (i = r.target = ie(n, i)), t.sourceLinks.push(r), i.targetLinks.push(r);
-		}
-		if (u != null) for (let { sourceLinks: t, targetLinks: n } of e) t.sort(u), n.sort(u);
-	}
-	function g({ nodes: e }) {
-		for (let t of e) t.value = t.fixedValue === void 0 ? Math.max(F(t.sourceLinks, B), F(t.targetLinks, B)) : t.fixedValue;
-	}
-	function _({ nodes: e }) {
-		let t = e.length, n = new Set(e), r = /* @__PURE__ */ new Set(), i = 0;
-		for (; n.size;) {
-			for (let e of n) {
-				e.depth = i;
-				for (let { target: t } of e.sourceLinks) r.add(t);
-			}
-			if (++i > t) throw Error("circular link");
-			n = r, r = /* @__PURE__ */ new Set();
-		}
-	}
-	function v({ nodes: e }) {
-		let t = e.length, n = new Set(e), r = /* @__PURE__ */ new Set(), i = 0;
-		for (; n.size;) {
-			for (let e of n) {
-				e.height = i;
-				for (let { source: t } of e.targetLinks) r.add(t);
-			}
-			if (++i > t) throw Error("circular link");
-			n = r, r = /* @__PURE__ */ new Set();
-		}
-	}
-	function y({ nodes: t }) {
-		let r = N(t, (e) => e.depth) + 1, a = (n - e - i) / (r - 1), o = Array(r);
-		for (let n of t) {
-			let t = Math.max(0, Math.min(r - 1, Math.floor(c.call(null, n, r))));
-			n.layer = t, n.x0 = e + t * a, n.x1 = n.x0 + i, o[t] ? o[t].push(n) : o[t] = [n];
-		}
-		if (l) for (let e of o) e.sort(l);
-		return o;
-	}
-	function b(e) {
-		let n = P(e, (e) => (r - t - (e.length - 1) * o) / F(e, B));
-		for (let i of e) {
-			let e = t;
-			for (let t of i) {
-				t.y0 = e, t.y1 = e + t.value * n, e = t.y1 + o;
-				for (let e of t.sourceLinks) e.width = e.value * n;
-			}
-			e = (r - e + o) / (i.length + 1);
-			for (let t = 0; t < i.length; ++t) {
-				let n = i[t];
-				n.y0 += e * (t + 1), n.y1 += e * (t + 1);
-			}
-			O(i);
-		}
-	}
-	function x(e) {
-		let n = y(e);
-		o = Math.min(a, (r - t) / (N(n, (e) => e.length) - 1)), b(n);
-		for (let e = 0; e < p; ++e) {
-			let t = .99 ** e, r = Math.max(1 - t, (e + 1) / p);
-			C(n, t, r), S(n, t, r);
-		}
-	}
-	function S(e, t, n) {
-		for (let r = 1, i = e.length; r < i; ++r) {
-			let i = e[r];
-			for (let e of i) {
-				let n = 0, r = 0;
-				for (let { source: t, value: i } of e.targetLinks) {
-					let a = i * (e.layer - t.layer);
-					n += k(t, e) * a, r += a;
-				}
-				if (!(r > 0)) continue;
-				let i = (n / r - e.y0) * t;
-				e.y0 += i, e.y1 += i, D(e);
-			}
-			l === void 0 && i.sort(z), w(i, n);
-		}
-	}
-	function C(e, t, n) {
-		for (let r = e.length - 2; r >= 0; --r) {
-			let i = e[r];
-			for (let e of i) {
-				let n = 0, r = 0;
-				for (let { target: t, value: i } of e.sourceLinks) {
-					let a = i * (t.layer - e.layer);
-					n += A(e, t) * a, r += a;
-				}
-				if (!(r > 0)) continue;
-				let i = (n / r - e.y0) * t;
-				e.y0 += i, e.y1 += i, D(e);
-			}
-			l === void 0 && i.sort(z), w(i, n);
-		}
-	}
-	function w(e, n) {
-		let i = e.length >> 1, a = e[i];
-		E(e, a.y0 - o, i - 1, n), T(e, a.y1 + o, i + 1, n), E(e, r, e.length - 1, n), T(e, t, 0, n);
-	}
-	function T(e, t, n, r) {
-		for (; n < e.length; ++n) {
-			let i = e[n], a = (t - i.y0) * r;
-			a > 1e-6 && (i.y0 += a, i.y1 += a), t = i.y1 + o;
-		}
-	}
-	function E(e, t, n, r) {
-		for (; n >= 0; --n) {
-			let i = e[n], a = (i.y1 - t) * r;
-			a > 1e-6 && (i.y0 -= a, i.y1 -= a), t = i.y0 - o;
-		}
-	}
-	function D({ sourceLinks: e, targetLinks: t }) {
-		if (u === void 0) {
-			for (let { source: { sourceLinks: e } } of t) e.sort(ee);
-			for (let { target: { targetLinks: t } } of e) t.sort(R);
-		}
-	}
-	function O(e) {
-		if (u === void 0) for (let { sourceLinks: t, targetLinks: n } of e) t.sort(ee), n.sort(R);
-	}
-	function k(e, t) {
-		let n = e.y0 - (e.sourceLinks.length - 1) * o / 2;
-		for (let { target: r, width: i } of e.sourceLinks) {
-			if (r === t) break;
-			n += i + o;
-		}
-		for (let { source: r, width: i } of t.targetLinks) {
-			if (r === e) break;
-			n -= i;
-		}
-		return n;
-	}
-	function A(e, t) {
-		let n = t.y0 - (t.targetLinks.length - 1) * o / 2;
-		for (let { source: r, width: i } of t.targetLinks) {
-			if (r === e) break;
-			n += i + o;
-		}
-		for (let { target: r, width: i } of e.sourceLinks) {
-			if (r === t) break;
-			n -= i;
-		}
-		return n;
-	}
-	return m;
-}
-//#endregion
-//#region node_modules/d3-path/src/path.js
-var V = Math.PI, H = 2 * V, U = 1e-6, se = H - U;
-function W() {
-	this._x0 = this._y0 = this._x1 = this._y1 = null, this._ = "";
-}
-function ce() {
-	return new W();
-}
-W.prototype = ce.prototype = {
-	constructor: W,
-	moveTo: function(e, t) {
-		this._ += "M" + (this._x0 = this._x1 = +e) + "," + (this._y0 = this._y1 = +t);
-	},
-	closePath: function() {
-		this._x1 !== null && (this._x1 = this._x0, this._y1 = this._y0, this._ += "Z");
-	},
-	lineTo: function(e, t) {
-		this._ += "L" + (this._x1 = +e) + "," + (this._y1 = +t);
-	},
-	quadraticCurveTo: function(e, t, n, r) {
-		this._ += "Q" + +e + "," + +t + "," + (this._x1 = +n) + "," + (this._y1 = +r);
-	},
-	bezierCurveTo: function(e, t, n, r, i, a) {
-		this._ += "C" + +e + "," + +t + "," + +n + "," + +r + "," + (this._x1 = +i) + "," + (this._y1 = +a);
-	},
-	arcTo: function(e, t, n, r, i) {
-		e = +e, t = +t, n = +n, r = +r, i = +i;
-		var a = this._x1, o = this._y1, s = n - e, c = r - t, l = a - e, u = o - t, d = l * l + u * u;
-		if (i < 0) throw Error("negative radius: " + i);
-		if (this._x1 === null) this._ += "M" + (this._x1 = e) + "," + (this._y1 = t);
-		else if (d > U) {
-			if (!(Math.abs(u * s - c * l) > U) || !i) this._ += "L" + (this._x1 = e) + "," + (this._y1 = t);
-			else {
-				var f = n - a, p = r - o, m = s * s + c * c, h = f * f + p * p, g = Math.sqrt(m), _ = Math.sqrt(d), v = i * Math.tan((V - Math.acos((m + d - h) / (2 * g * _))) / 2), y = v / _, b = v / g;
-				Math.abs(y - 1) > U && (this._ += "L" + (e + y * l) + "," + (t + y * u)), this._ += "A" + i + "," + i + ",0,0," + +(u * f > l * p) + "," + (this._x1 = e + b * s) + "," + (this._y1 = t + b * c);
-			}
-		}
-	},
-	arc: function(e, t, n, r, i, a) {
-		e = +e, t = +t, n = +n, a = !!a;
-		var o = n * Math.cos(r), s = n * Math.sin(r), c = e + o, l = t + s, u = 1 ^ a, d = a ? r - i : i - r;
-		if (n < 0) throw Error("negative radius: " + n);
-		this._x1 === null ? this._ += "M" + c + "," + l : (Math.abs(this._x1 - c) > U || Math.abs(this._y1 - l) > U) && (this._ += "L" + c + "," + l), n && (d < 0 && (d = d % H + H), d > se ? this._ += "A" + n + "," + n + ",0,1," + u + "," + (e - o) + "," + (t - s) + "A" + n + "," + n + ",0,1," + u + "," + (this._x1 = c) + "," + (this._y1 = l) : d > U && (this._ += "A" + n + "," + n + ",0," + +(d >= V) + "," + u + "," + (this._x1 = e + n * Math.cos(i)) + "," + (this._y1 = t + n * Math.sin(i))));
-	},
-	rect: function(e, t, n, r) {
-		this._ += "M" + (this._x0 = this._x1 = +e) + "," + (this._y0 = this._y1 = +t) + "h" + +n + "v" + +r + "h" + -n + "Z";
-	},
-	toString: function() {
-		return this._;
-	}
-};
-//#endregion
-//#region node_modules/d3-shape/src/constant.js
-function le(e) {
-	return function() {
-		return e;
-	};
-}
-//#endregion
-//#region node_modules/d3-shape/src/point.js
-function ue(e) {
-	return e[0];
-}
-function de(e) {
-	return e[1];
-}
-//#endregion
-//#region node_modules/d3-shape/src/array.js
-var fe = Array.prototype.slice;
-//#endregion
-//#region node_modules/d3-shape/src/link/index.js
-function pe(e) {
-	return e.source;
-}
-function me(e) {
-	return e.target;
-}
-function he(e) {
-	var t = pe, n = me, r = ue, i = de, a = null;
-	function o() {
-		var o, s = fe.call(arguments), c = t.apply(this, s), l = n.apply(this, s);
-		if (a ||= o = ce(), e(a, +r.apply(this, (s[0] = c, s)), +i.apply(this, s), +r.apply(this, (s[0] = l, s)), +i.apply(this, s)), o) return a = null, o + "" || null;
-	}
-	return o.source = function(e) {
-		return arguments.length ? (t = e, o) : t;
-	}, o.target = function(e) {
-		return arguments.length ? (n = e, o) : n;
-	}, o.x = function(e) {
-		return arguments.length ? (r = typeof e == "function" ? e : le(+e), o) : r;
-	}, o.y = function(e) {
-		return arguments.length ? (i = typeof e == "function" ? e : le(+e), o) : i;
-	}, o.context = function(e) {
-		return arguments.length ? (a = e ?? null, o) : a;
-	}, o;
-}
-function ge(e, t, n, r, i) {
-	e.moveTo(t, n), e.bezierCurveTo(t = (t + r) / 2, n, t, i, r, i);
-}
-function _e() {
-	return he(ge);
-}
-//#endregion
-//#region node_modules/d3-sankey/src/sankeyLinkHorizontal.js
-function ve(e) {
-	return [e.source.x1, e.y0];
-}
-function ye(e) {
-	return [e.target.x0, e.y1];
-}
-function be() {
-	return _e().source(ve).target(ye);
-}
-//#endregion
-//#region src/board-sankey.ts
-function xe(e = []) {
-	let t = e.filter((e) => e.source && e.target && Number.isFinite(e.value) && e.value > 0);
-	if (!t.length) return "";
-	let n = [...new Set(t.map((e) => e.source))], r = [...new Set(t.map((e) => e.target))], i = oe().nodeId((e) => e.id).nodeWidth(10).nodePadding(22).extent([[155, 16], [535, 404]])({
-		nodes: [...n.map((e) => ({
-			id: `source:${e}`,
-			name: e,
-			side: "source"
-		})), ...r.map((e) => ({
-			id: `target:${e}`,
-			name: e,
-			side: "target"
-		}))],
-		links: t.map((e) => ({
-			source: `source:${e.source}`,
-			target: `target:${e.target}`,
-			value: e.value
-		}))
-	}), a = t.reduce((e, t) => e + t.value, 0), o = be(), s = i.links.map((e) => {
-		let t = e.source, r = e.target;
-		return `<path d="${o(e)}" stroke-width="${Math.max(.5, e.width || 0)}" style="--flow-color:var(--board-chart-${n.indexOf(t.name) % 6})" data-flow-source="${t.index}" data-flow-target="${r.index}" data-flow-value="${e.value}" data-flow-label="${d(t.name)} → ${d(r.name)}" tabindex="0" role="img" aria-label="${d(t.name)} → ${d(r.name)}：${e.value} 条线索"/>`;
-	}).join(""), c = i.nodes.map((e) => `<g data-flow-node="${e.index}" data-flow-value="${e.value}" data-flow-label="${d(e.name)}" tabindex="0" role="img" aria-label="${d(e.name)}：${e.value} 条线索"><rect x="${e.x0}" y="${e.y0}" width="10" height="${Math.max(1, (e.y1 || 0) - (e.y0 || 0))}" rx="5" fill="${e.side === "source" ? `var(--board-chart-${n.indexOf(e.name) % 6})` : "var(--color-text-secondary)"}"/><text x="${e.side === "source" ? 145 : 545}" y="${((e.y0 || 0) + (e.y1 || 0)) / 2}" text-anchor="${e.side === "source" ? "end" : "start"}" dominant-baseline="middle">${d(e.name.length > 18 ? e.name.slice(0, 16) + "…" : e.name)}<tspan x="${e.side === "source" ? 145 : 545}" dy="15">${e.side === "source" ? e.value?.toLocaleString() : ((e.value || 0) / a * 100).toFixed(1) + "%"}</tspan></text></g>`).join("");
-	return `<section class="board-sankey-card" data-sankey-card><header><h3>创作者线索来源</h3><b data-sankey-number>${a.toLocaleString()}</b><span data-sankey-label>条线索</span></header><div class="board-sankey-scroll"><svg viewBox="0 0 720 435" aria-label="来源网站与创作者线索"><g class="board-sankey-links">${s}</g><g class="board-sankey-nodes">${c}</g></svg></div><footer><span>来源网站</span><span>创作者 · 线索占比</span></footer></section>`;
-}
-function Se(e) {
-	e.querySelectorAll("[data-sankey-card]").forEach((e) => {
-		let t = [...e.querySelectorAll("[data-flow-source]")], n = [...e.querySelectorAll("[data-flow-node]")], r = e.querySelector("[data-sankey-number]"), i = e.querySelector("[data-sankey-label]"), a = r.textContent, o = () => {
-			t.forEach((e) => e.style.opacity = ""), n.forEach((e) => e.style.opacity = ""), r.textContent = a, i.textContent = "条线索";
-		};
-		[...t, ...n].forEach((e) => {
-			let a = () => {
-				let a = e.dataset.flowNode;
-				t.forEach((t) => t.style.opacity = String((a === void 0 ? t === e : t.dataset.flowSource === a || t.dataset.flowTarget === a) ? .7 : .08)), n.forEach((n) => n.style.opacity = String(a === void 0 ? n.dataset.flowNode === e.dataset.flowSource || n.dataset.flowNode === e.dataset.flowTarget ? 1 : .3 : n === e || t.some((e) => e.dataset.flowSource === a && e.dataset.flowTarget === n.dataset.flowNode || e.dataset.flowTarget === a && e.dataset.flowSource === n.dataset.flowNode) ? 1 : .3)), r.textContent = Number(e.dataset.flowValue).toLocaleString(), i.textContent = e.dataset.flowLabel;
-			};
-			e.addEventListener("pointerenter", a), e.addEventListener("pointerleave", o), e.addEventListener("focus", a), e.addEventListener("blur", o);
-		});
-	});
-}
-//#endregion
-//#region src/board-analytics.ts
-var Ce = (e) => Number.isFinite(e) && e >= 0, G = [
-	"周一",
-	"周二",
-	"周三",
-	"周四",
-	"周五",
-	"周六",
-	"周日"
-];
-function we(e) {
-	if (!e?.days?.length) return "<section class=\"board-activity-empty\"><h3>浏览活跃时间</h3><p>还没有可用于分析的口味网站访问记录。</p></section>";
-	let t = Array.from({ length: 7 }, () => Array(24).fill(0));
-	for (let n of e.hours || []) Number.isInteger(n.weekday) && n.weekday >= 0 && n.weekday < 7 && Number.isInteger(n.hour) && n.hour >= 0 && n.hour < 24 && Ce(n.count) && (t[n.weekday][n.hour] = (t[n.weekday][n.hour] || 0) + n.count);
-	let n = Math.max(1, ...t.flat()), r = t.flat().reduce((e, t) => e + t, 0), i = t.map((e, t) => `<span class="board-heat-axis">${G[t]}</span>${e.map((e, r) => `<button type="button" data-heat-value="${e}" data-heat-label="${G[t]} ${r}:00" aria-label="${G[t]} ${r}:00，${e} 次访问" style="--heat:${e ? Math.max(12, e / n * 100) : 0}%"></button>`).join("")}`).join(""), a = e.days.filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && Ce(e.count)).sort((e, t) => e.date.localeCompare(t.date));
-	if (!a.length) return "";
-	let o = /* @__PURE__ */ new Date(`${a.at(-1).date}T00:00:00Z`), s = new Date(o);
-	s.setUTCDate(s.getUTCDate() - 90);
-	let c = new Map(a.map((e) => [e.date, e.count])), l = Math.max(1, ...a.map((e) => e.count)), u = Array.from({ length: 91 }, (e, t) => {
-		let n = new Date(s);
-		n.setUTCDate(s.getUTCDate() + t);
-		let r = n.toISOString().slice(0, 10), i = c.get(r) || 0;
-		return `<button type="button" data-heat-value="${i}" data-heat-label="${r}" aria-label="${r}，${i} 次访问" style="--heat:${i ? Math.max(12, i / l * 100) : 0}%"></button>`;
-	}).join("");
-	return `<div class="board-activity-charts"><section class="board-heat-card" data-heat-card><header><h3>浏览活跃时间</h3><b data-heat-number>${r.toLocaleString()}</b><span data-heat-title data-heat-default="口味网站访问">口味网站访问</span></header><div class="board-heat-scroll"><div class="board-hour-grid"><span></span>${Array.from({ length: 24 }, (e, t) => `<span class="board-heat-axis">${t % 2 ? "" : t}</span>`).join("")}${i}</div></div><footer>星期 × 小时<span>${d(e.timezone || "UTC+08:00")}</span></footer></section><section class="board-heat-card" data-heat-card><header><h3>每日活跃</h3><b data-heat-number>${a.filter((e) => e.date >= s.toISOString().slice(0, 10)).reduce((e, t) => e + t.count, 0).toLocaleString()}</b><span data-heat-title data-heat-default="口味网站访问">口味网站访问</span></header><div class="board-day-grid">${u}</div><footer>${s.toISOString().slice(0, 10)}<span>${a.at(-1).date}</span></footer></section></div>`;
-}
-function Te(e) {
-	e.querySelectorAll("[data-heat-card]").forEach((e) => {
-		let t = e.querySelector("[data-heat-number]"), n = e.querySelector("[data-heat-title]"), r = t.textContent;
-		e.querySelectorAll("[data-heat-value]").forEach((e) => {
-			let i = () => {
-				t.textContent = Number(e.dataset.heatValue).toLocaleString(), n.textContent = e.dataset.heatLabel;
-			}, a = () => {
-				t.textContent = r, n.textContent = n.dataset.heatDefault;
-			};
-			e.addEventListener("pointerenter", i), e.addEventListener("pointerleave", a), e.addEventListener("focus", i), e.addEventListener("blur", a);
-		});
-	});
-}
 //#endregion
 //#region src/sidebar-groups.ts
-var K = (e) => e.replace(/[&<>"']/g, (e) => ({
+var T = (e) => e.replace(/[&<>"']/g, (e) => ({
 	"&": "&amp;",
 	"<": "&lt;",
 	">": "&gt;",
 	"\"": "&quot;",
 	"'": "&#39;"
 })[e]);
-function Ee(e, t, n = "", r = "") {
+function E(e, t, n = "", r = "") {
 	if (!t) return "";
 	let i = `sidebar-group-${encodeURIComponent(e)}`;
-	return `<details class="sec${r ? " cat-" + K(r) : ""}" data-sidebar-group="${K(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${K(e)}</span></summary><div class="board-sidebar-body" id="${i}">${t}${n}</div></details>`;
+	return `<details class="sec${r ? " cat-" + T(r) : ""}" data-sidebar-group="${T(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${T(e)}</span></summary><div class="board-sidebar-body" id="${i}">${t}${n}</div></details>`;
 }
-function De(e) {
+function D(e) {
 	e.querySelectorAll("[data-sidebar-group]").forEach((e) => {
 		if (e.dataset.sidebarWired) return;
 		e.dataset.sidebarWired = "true";
@@ -800,15 +245,15 @@ function De(e) {
 		}));
 	});
 }
-var Oe = !1;
-async function ke(e, t) {
-	if (Oe) return;
+var O = !1;
+async function k(e, t) {
+	if (O) return;
 	if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) {
 		t();
 		return;
 	}
 	let n = e.getBoundingClientRect(), r = n.left + n.width / 2, i = n.top + n.height / 2, a = Math.hypot(Math.max(r, innerWidth - r), Math.max(i, innerHeight - i)) * 2.5, o = document.createElement("style");
-	o.textContent = `::view-transition-old(root){animation:none}::view-transition-new(root){mix-blend-mode:normal;mask-image:radial-gradient(circle closest-side,#000 78%,#0006 88%,transparent);mask-repeat:no-repeat;will-change:mask-position,mask-size;animation:peach-theme-reveal 560ms cubic-bezier(.16,1,.3,1) both}@keyframes peach-theme-reveal{from{mask-position:${r}px ${i}px;mask-size:0px 0px}to{mask-position:${r - a / 2}px ${i - a / 2}px;mask-size:${a}px ${a}px}}`, Oe = !0, document.head.append(o);
+	o.textContent = `::view-transition-old(root){animation:none}::view-transition-new(root){mix-blend-mode:normal;mask-image:radial-gradient(circle closest-side,#000 78%,#0006 88%,transparent);mask-repeat:no-repeat;will-change:mask-position,mask-size;animation:peach-theme-reveal 560ms cubic-bezier(.16,1,.3,1) both}@keyframes peach-theme-reveal{from{mask-position:${r}px ${i}px;mask-size:0px 0px}to{mask-position:${r - a / 2}px ${i - a / 2}px;mask-size:${a}px ${a}px}}`, O = !0, document.head.append(o);
 	let s = document.documentElement;
 	s.dataset.themeSnapshot = "true";
 	let c = !1, l = () => {
@@ -819,15 +264,20 @@ async function ke(e, t) {
 	} catch {
 		l();
 	} finally {
-		delete s.dataset.themeSnapshot, o.remove(), Oe = !1;
+		delete s.dataset.themeSnapshot, o.remove(), O = !1;
 	}
 }
 //#endregion
 //#region src/jobs.ts
-function Ae(e, t = 0, n = 0) {
-	return n > 0 ? x(e, t, n) : r(e);
+function A(e, t, n) {
+	if (!Number.isFinite(n) || n <= 0) return "";
+	let r = Math.max(0, Math.min(n, Number.isFinite(t) ? t : 0)), i = r / n * 100;
+	return `<div class="board-job-progress" role="progressbar" aria-label="${d(e)}" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${r}"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle class="board-job-track" cx="18" cy="18" r="15"/><circle class="board-job-fill" cx="18" cy="18" r="15" pathLength="100" stroke-dasharray="${i} ${100 - i}" transform="rotate(-90 18 18)"/></svg><span>${d(e)}<small>${Math.round(i)}%</small></span></div>`;
 }
-async function je(e) {
+function j(e, t = 0, n = 0) {
+	return n > 0 ? A(e, t, n) : r(e);
+}
+async function M(e) {
 	let t = e.pause || ((e) => new Promise((t) => setTimeout(t, e))), n = 0;
 	for (; e.active();) {
 		let r;
@@ -842,14 +292,14 @@ async function je(e) {
 		await t(2e3);
 	}
 }
-function Me(e) {
+function N(e) {
 	let t = e.note || ((e) => a(e, {
 		label: "任务状态",
 		variant: "error"
-	})), n = e.loading || r, i = e.progress || ((e, t, n) => Ae(n || `已处理 ${e} / ${t}`, e, t)), o = e.container || ((e) => `<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${e}</div></section>`), s = document.createElement("div");
+	})), n = e.loading || r, i = e.progress || ((e, t, n) => j(n || `已处理 ${e} / ${t}`, e, t)), o = e.container || ((e) => `<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${e}</div></section>`), s = document.createElement("div");
 	e.host.hidden = !0, s.dataset.followJob = "", s.setAttribute("aria-live", "polite"), e.host.prepend(s);
 	let c = e.storageKey || "peach-follow-job", l = sessionStorage.getItem(c) || void 0, u = !1;
-	je({
+	M({
 		read: e.read,
 		active: () => !u && e.active() && s.isConnected,
 		keepWatching: e.watchIdle !== !1,
@@ -875,24 +325,24 @@ function Me(e) {
 }
 //#endregion
 //#region src/review-evidence.ts
-var Ne = (e = "") => /^https?:\/\//i.test(e) ? e : "";
-function Pe(e = "") {
-	let t = Ne(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
+var P = (e = "") => /^https?:\/\//i.test(e) ? e : "";
+function F(e = "") {
+	let t = P(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
 	return `<div class="reviewimage" data-review-picture><span class="reviewimageempty"${t ? " hidden" : ""}>未取得来源图片</span>${t ? `<img src="${d(t)}" alt="来源候选图片" loading="lazy">` : ""}</div>`;
 }
-function Fe(e) {
-	let t = Ne(e.profile_url), n = (e.preview_assets || []).slice(0, 6), r = Math.max(0, Number(e.video_count || e.videos || 0));
+function I(e) {
+	let t = P(e.profile_url), n = (e.preview_assets || []).slice(0, 6), r = Math.max(0, Number(e.video_count || e.videos || 0));
 	return `<section class="reviewidentityevidence"><h5>候选身份：${d(e.babepedia_name || "未标注")}</h5>
     <div class="reviewevidenceactions">${t ? `<a class="geist-button externallink" href="${d(t)}" target="_blank" rel="noopener noreferrer">来源资料<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>` : ""}
     <button type="button" class="geist-button" data-entity-kind="creator" data-entity-name="${d(e.creator || "")}">查看全部 ${r.toLocaleString()} 部作品</button></div>
-    ${Pe(e.preview_url)}
+    ${F(e.preview_url)}
     <p>通过后记录身份判断。</p>
     ${n.length ? `<h5>本地作品样本</h5><div class="reviewevidencesamples">${n.map((e) => `<div class="reviewevidencesample">
       <button class="geist-button" type="button" data-review-open-item="${e.id}"><span data-middle-truncate title="${d(e.name)}">${d(e.name)}</span></button>
       <button class="geist-button" type="button" data-review-reveal="${e.id}" aria-label="打开 ${d(e.name)} 的文件位置">文件位置</button>
     </div>`).join("")}</div>` : "<p>暂无本地作品样本，打开全部作品核对。</p>"}</section>`;
 }
-function Ie(e) {
+function L(e) {
 	for (let t of e.querySelectorAll("[data-review-picture] img")) {
 		let e = () => {
 			t.hidden = !0;
@@ -904,14 +354,14 @@ function Ie(e) {
 }
 //#endregion
 //#region src/api.ts
-var Le = (e) => p(e);
+var R = (e) => p(e);
 //#endregion
 //#region src/selection.ts
-function Re(e, t, n, r, i, a = i || !e.has(r)) {
+function z(e, t, n, r, i, a = i || !e.has(r)) {
 	let o = n === null ? -1 : t.indexOf(n), s = t.indexOf(r);
 	return i && o >= 0 && s >= 0 ? t.slice(Math.min(o, s), Math.max(o, s) + 1).forEach((t) => e.add(t)) : a ? e.add(r) : e.delete(r), r;
 }
-function ze(e, t) {
+function ee(e, t) {
 	let n = t.filter((t) => e.has(t)).length;
 	return {
 		count: n,
@@ -919,16 +369,16 @@ function ze(e, t) {
 		mixed: n > 0 && n < t.length
 	};
 }
-function Be(e, t, n) {
+function te(e, t, n) {
 	t.forEach((t) => n ? e.add(t) : e.delete(t));
 }
-function Ve({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
+function ne({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
 	e && (e.textContent = t), n && (n.checked = r.all, n.indeterminate = r.mixed);
 	for (let e of i) e.disabled = !r.count || a;
 }
 //#endregion
 //#region src/review-bulk.ts
-var He = () => ({
+var re = () => ({
 	busy: !1,
 	category: "",
 	filter: "",
@@ -939,7 +389,7 @@ var He = () => ({
 	assets: /* @__PURE__ */ new Map(),
 	errors: /* @__PURE__ */ new Map()
 });
-function Ue(e) {
+function B(e) {
 	let t = e?.querySelector(".reviewbulktoolbar");
 	if (!e || e.classList.contains("review-skeleton") || !t || t.offsetParent === null) return;
 	e.style.setProperty("--review-controls-height", `${t.getBoundingClientRect().height}px`);
@@ -955,7 +405,7 @@ function Ue(e) {
 	let o = i.getBoundingClientRect(), s = a.getBoundingClientRect();
 	e.style.setProperty("--review-pane-top", `${o.top}px`), e.style.setProperty("--review-pane-left", `${o.left}px`), e.style.setProperty("--review-pane-width", `${o.width}px`), e.style.setProperty("--review-pane-height", `${s.bottom - o.top}px`);
 }
-function We(e, t) {
+function ie(e, t) {
 	let n = [[
 		"candidates",
 		t ? "按候选数量" : "全部待复核",
@@ -971,7 +421,7 @@ function We(e, t) {
 		"list-filter"
 	]), n;
 }
-function Ge(e, t) {
+function V(e, t) {
 	let n = /* @__PURE__ */ new Map();
 	for (let r of e) {
 		let e, i;
@@ -988,10 +438,10 @@ function Ge(e, t) {
 	}
 	return [...n.values()];
 }
-function Ke(e, t, n, r, i) {
-	e.anchor = Re(e.selected, t, e.anchor, n, r, i);
+function H(e, t, n, r, i) {
+	e.anchor = z(e.selected, t, e.anchor, n, r, i);
 }
-async function qe(e, t, n, r) {
+async function ae(e, t, n, r) {
 	let i = [], a = 0;
 	for (let o of e) {
 		if (!r()) break;
@@ -1002,7 +452,7 @@ async function qe(e, t, n, r) {
 		} catch (e) {
 			i.push({
 				key: o.key,
-				message: Le(e)
+				message: R(e)
 			});
 		}
 	}
@@ -1011,17 +461,17 @@ async function qe(e, t, n, r) {
 		failures: i
 	};
 }
-function Je(e) {
+function U(e) {
 	return e.length ? [...new Set(e.flatMap((e) => e.candidates?.map((e) => e.source || "") || []))].filter((t) => t && e.every((e) => e.candidates?.filter((e) => e.source === t).length === 1)) : [];
 }
-function Ye(e, n) {
+function oe(e, n) {
 	let r = e.querySelector(".reviewlist");
 	if (!r || !n.rows.length || n.locked) return;
 	let i = n.state, a = [...r.querySelectorAll("[data-review-key]")];
 	n.category !== void 0 && i.category !== n.category && (i.category = n.category, i.filter = "", i.groupBy = "candidates", i.anchor = null);
-	let s = n.catalog || n.rows, l = We(s, n.metadata);
+	let s = n.catalog || n.rows, l = ie(s, n.metadata);
 	l.some((e) => e[0] === i.groupBy) || (i.groupBy = "candidates", i.filter = "");
-	let d = Ge(s, i.groupBy);
+	let d = V(s, i.groupBy);
 	d.some((e) => e.key === i.filter) || (i.filter = "");
 	let p = () => [...r.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), m = () => p().filter((e) => i.selected.has(e.dataset.reviewKey)), h = () => n.rows.filter((e) => m().some((t) => t.dataset.reviewKey === e.item_key)), g = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, _ = (e, t = "") => {
 		let n = document.createElement("button");
@@ -1099,7 +549,7 @@ function Ye(e, n) {
 		u.className = "reviewlist", s.append(c, l), o.append(s, u), r.append(o), l.onclick = () => {
 			if (i.busy) return;
 			let e = n.map((e) => e.dataset.reviewKey);
-			Be(i.selected, e, !e.every((e) => i.selected.has(e))), L();
+			te(i.selected, e, !e.every((e) => i.selected.has(e))), L();
 		}, F.push(() => {
 			let e = n.every((e) => i.selected.has(e.dataset.reviewKey));
 			l.innerHTML = f(e ? "check-check-outline" : "check-check") + (e ? "清空本组" : "全选本组"), l.setAttribute("aria-pressed", String(e));
@@ -1116,7 +566,7 @@ function Ye(e, n) {
 				e.className = "reviewpickname", e.append(...r.childNodes), r.classList.add("reviewpickheading"), r.append(a, e);
 			} else e.prepend(a);
 			let s = (e, t) => {
-				Ke(i, p().map((e) => e.dataset.reviewKey), n, e, t), L();
+				H(i, p().map((e) => e.dataset.reviewKey), n, e, t), L();
 			};
 			if (a.addEventListener("mousedown", (e) => {
 				e.shiftKey && e.preventDefault();
@@ -1130,7 +580,7 @@ function Ye(e, n) {
 					else if (t.key === "ArrowDown" || t.key === "ArrowUp") {
 						t.preventDefault();
 						let r = p(), a = r[r.indexOf(e) + (t.key === "ArrowDown" ? 1 : -1)];
-						a && (i.anchor === null && (i.anchor = n), Ke(i, r.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), L(), a.querySelector(".reviewpickitem input")?.focus());
+						a && (i.anchor === null && (i.anchor = n), H(i, r.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), L(), a.querySelector(".reviewpickitem input")?.focus());
 					}
 				}
 			}), F.push(() => {
@@ -1158,20 +608,20 @@ function Ye(e, n) {
 	let I = "";
 	function L() {
 		let e = m(), t = e.length > 0 && e.length === p().length;
-		w.innerHTML = f(t ? "check-check-outline" : "check-check") + (t ? "清空当前选择" : i.filter ? "全选当前分类" : "全选本页"), w.setAttribute("aria-pressed", String(t)), j.hidden = !e.length, Ve({
+		w.innerHTML = f(t ? "check-check-outline" : "check-check") + (t ? "清空当前选择" : i.filter ? "全选当前分类" : "全选本页"), w.setAttribute("aria-pressed", String(t)), j.hidden = !e.length, ne({
 			count: D,
 			label: `已选 ${e.length} 项`,
-			summary: ze(i.selected, p().map((e) => e.dataset.reviewKey)),
+			summary: ee(i.selected, p().map((e) => e.dataset.reviewKey)),
 			actions: [T, E]
 		}), T.disabled ||= e.some((e) => !g(e));
-		let r = Je(h());
+		let r = U(h());
 		O.hidden = !n.metadata || !h().some((e) => (e.candidates?.length || 0) > 1);
 		let a = e.length && !r.length ? "所选项目无共同来源" : "统一选择来源", s = JSON.stringify([a, r]);
 		if (s !== I) {
 			I = s, O.innerHTML = o([["", a], ...r.map((e) => [e, e])], "", { label: "统一选择来源" });
 			let e = u(O.firstElementChild);
 			e.disabled = !r.length, e.addEventListener("change", () => {
-				if (!(i.busy || !Je(h()).includes(e.value))) {
+				if (!(i.busy || !U(h()).includes(e.value))) {
 					for (let t of m()) {
 						let r = n.rows.find((e) => e.item_key === t.dataset.reviewKey).candidates.find((t) => t.source === e.value);
 						t.querySelectorAll("input[type=\"radio\"]").forEach((e) => {
@@ -1204,7 +654,7 @@ function Ye(e, n) {
 			e instanceof KeyboardEvent && e.key === "Tab" || (e.preventDefault(), e.stopImmediatePropagation());
 		};
 		e.addEventListener("click", l, !0), e.addEventListener("keydown", l, !0);
-		let u = 0, d = await qe(a, async (e) => {
+		let u = 0, d = await ae(a, async (e) => {
 			try {
 				return await n.submit(e);
 			} finally {
@@ -1221,9 +671,9 @@ function Ye(e, n) {
 		let f = e.parentElement;
 		n.refresh(), f?.querySelector(".reviewbulktoolbar button")?.focus({ preventScroll: !0 });
 	}
-	L(), Ue(e);
+	L(), B(e);
 }
-function Xe(e, t, n = 1) {
+function se(e, t, n = 1) {
 	let r = (e, t) => Array.from({ length: t - e + 1 }, (t, n) => e + n);
 	if (n * 2 + 5 >= t) return r(1, t);
 	let i = Math.max(e - n, 1), a = Math.min(e + n, t), o = i > 2, s = a < t - 2;
@@ -1243,15 +693,15 @@ function Xe(e, t, n = 1) {
 		t
 	];
 }
-function Ze(e, t) {
+function ce(e, t) {
 	return Math.max(1, Math.ceil(e / t));
 }
-function Qe(e, t) {
+function le(e, t) {
 	return Math.min(Math.max(1, Math.floor(e) || 1), t);
 }
-function $e(e, t, n) {
+function ue(e, t, n) {
 	if (t <= 1) return "";
-	let r = Xe(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
+	let r = se(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
 	return `<nav class="board-pagination" aria-label="${n}">
     <button type="button" class="geist-button" data-page="${e - 1}"${e <= 1 ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"></use></svg>上一页</button>
     <ul>${r}</ul>
@@ -1260,10 +710,10 @@ function $e(e, t, n) {
 }
 //#endregion
 //#region src/native-image.ts
-function et(e, t, n, r) {
+function de(e, t, n, r) {
 	return e > 0 && t > 0 && e === n && t === r;
 }
-function tt(e, t, n, r, i = 1) {
+function fe(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -1280,7 +730,7 @@ function tt(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function nt(e, t, n) {
+function pe(e, t, n) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <section class="entityhero"><div class="entityprofile"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
@@ -1294,27 +744,27 @@ function nt(e, t, n) {
 }
 //#endregion
 //#region src/board-skeleton.ts
-var q = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, J = () => `${q("80%")}${q("48%")}`, Y = (e, t) => e.repeat(t), rt = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${q("45%")}</b><small class="board-stat-footer">${q("60%")}</small></div>`).join("")}</div>`, it = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, at = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, X = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${Y(J(), 3)}</div></section>`, ot = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, st = (e) => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${q("100px")}</span><div class="followtoolbaractions"><button class="fbtn primary followcheckall" disabled>${f("refresh-cw")}<span data-collapse-label>检查全部</span></button><div class="iconswitch" data-board-segments="true"><label>${f("layout-grid")}</label><label>${f("table")}</label></div><span class="fmanagesort" data-collapse-field>${f("sort")}${o([["checked", "检查时间"]], "checked", {
+var W = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, G = () => `${W("80%")}${W("48%")}`, K = (e, t) => e.repeat(t), q = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${W("45%")}</b><small class="board-stat-footer">${W("60%")}</small></div>`).join("")}</div>`, me = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, J = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, Y = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${K(G(), 3)}</div></section>`, he = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, ge = (e) => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${W("100px")}</span><div class="followtoolbaractions"><button class="fbtn primary followcheckall" disabled>${f("refresh-cw")}<span data-collapse-label>检查全部</span></button><div class="iconswitch" data-board-segments="true"><label>${f("layout-grid")}</label><label>${f("table")}</label></div><span class="fmanagesort" data-collapse-field>${f("sort")}${o([["checked", "检查时间"]], "checked", {
 	label: "关注列表排序",
 	attr: "disabled"
-})}</span><button class="fbtn fmanagedir" disabled>${f("arrow-down")}</button>${e ? "" : ot(f("chevron-up") + "<span data-collapse-label>全部收起</span>")}</div></div>`, ct = () => `<div class="fsource frow"><span class="fchannelcheck">${q("18px")}</span><b>${q("85%")}</b><span class="fprovider">${q("54px")}</span><span class="fmeta fchecked">${q("40px")}</span><span class="fsourceactions"><span class="skeleton skeleton-icon"></span><span class="skeleton skeleton-icon"></span></span></div>`, lt = () => `<details class="fauthor" open><summary class="fauthorhead"><span class="favatar skeleton"></span><b>${q("90px")}</b><span class="skeleton skeleton-icon"></span><span class="fmeta">${q("40px")}</span><span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select disabled>${f("check-check")}<span data-author-select-label>全选</span></button><span class="skeleton skeleton-icon"></span></span></summary><div class="fauthorsources">${Y(ct(), 3)}</div></details>`;
-function ut() {
-	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${q("85%")}${q("65%")}${Y(J(), 4)}</div></aside></div></div>`;
+})}</span><button class="fbtn fmanagedir" disabled>${f("arrow-down")}</button>${e ? "" : he(f("chevron-up") + "<span data-collapse-label>全部收起</span>")}</div></div>`, _e = () => `<div class="fsource frow"><span class="fchannelcheck">${W("18px")}</span><b>${W("85%")}</b><span class="fprovider">${W("54px")}</span><span class="fmeta fchecked">${W("40px")}</span><span class="fsourceactions"><span class="skeleton skeleton-icon"></span><span class="skeleton skeleton-icon"></span></span></div>`, ve = () => `<details class="fauthor" open><summary class="fauthorhead"><span class="favatar skeleton"></span><b>${W("90px")}</b><span class="skeleton skeleton-icon"></span><span class="fmeta">${W("40px")}</span><span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select disabled>${f("check-check")}<span data-author-select-label>全选</span></button><span class="skeleton skeleton-icon"></span></span></summary><div class="fauthorsources">${K(_e(), 3)}</div></details>`;
+function ye() {
+	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${W("85%")}${W("65%")}${K(G(), 4)}</div></aside></div></div>`;
 }
-function dt(e, n = {}) {
+function be(e, n = {}) {
 	let r = "";
-	if (e === "/stats") r = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${q("38%")}</header>${rt([
+	if (e === "/stats") r = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${W("38%")}</header>${q([
 		"馆藏视频",
 		"看过",
 		"内容标签",
 		"使用空间"
-	])}${X("馆藏视频")}${X("内容标签")}</div>`;
-	else if (e === "/taste") r = `<div class="tastepage"><header class="tastehead">${at(["浏览器记录", "Peach 内部"], "insightswitch")}${q("24%")}</header><div class="tastestate"></div>${rt([
+	])}${Y("馆藏视频")}${Y("内容标签")}</div>`;
+	else if (e === "/taste") r = `<div class="tastepage"><header class="tastehead">${J(["浏览器记录", "Peach 内部"], "insightswitch")}${W("24%")}</header><div class="tastestate"></div>${q([
 		"浏览记录",
 		"口味维度",
 		"浏览候选",
 		"私有导出"
-	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${Y(J(), 4)}</div></section>${X("口味分析")}<div class="board-activity-charts">${X("浏览活动")}${X("时间分布")}</div>${X("标签")}</div>`;
+	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${K(G(), 4)}</div></section>${Y("口味分析")}<div class="board-activity-charts">${Y("浏览活动")}${Y("时间分布")}</div>${Y("标签")}</div>`;
 	else if (e === "/follow-manage") {
 		let e = n.followLayout === "table", i = e ? `<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>${[
 			"选择",
@@ -1324,7 +774,7 @@ function dt(e, n = {}) {
 			"状态",
 			"上次检查",
 			"操作"
-		].map((e) => `<th>${e === "选择" ? "<label>" + t("disabled aria-label=\"全选本页来源\"") + "</label>" : e}</th>`).join("")}</tr></thead><tbody>${Y(`<tr>${[
+		].map((e) => `<th>${e === "选择" ? "<label>" + t("disabled aria-label=\"全选本页来源\"") + "</label>" : e}</th>`).join("")}</tr></thead><tbody>${K(`<tr>${[
 			"20px",
 			"90px",
 			"120px",
@@ -1332,37 +782,37 @@ function dt(e, n = {}) {
 			"40px",
 			"100px",
 			"60px"
-		].map((e) => `<td>${q(e)}</td>`).join("")}</tr>`, 6)}</tbody></table></div></div>` : `<div class="board-follow-list">${Y(lt(), 4)}</div>`;
+		].map((e) => `<td>${W(e)}</td>`).join("")}</tr>`, 6)}</tbody></table></div></div>` : `<div class="board-follow-list">${K(ve(), 4)}</div>`;
 		r = `<div class="follow followmanage"><div class="fmanageoverview">${[
 			"关注创作者",
 			"启用来源",
 			"检查失败",
 			"未看更新"
-		].map((e) => `<div><span>${e}</span><b>${q()}</b></div>`).join("")}</div>${at([
+		].map((e) => `<div><span>${e}</span><b>${W()}</b></div>`).join("")}</div>${J([
 			"关注列表",
 			"添加关注",
 			"来源和凭证"
-		], "follow-workspace-switch")}<div class="fmain"><section class="fsec" data-follow-workspace-panel="list">${st(e)}<div class="board-follow-selection"${e ? " hidden" : ""}><label>${t("disabled")}全选本页</label></div><div class="frows fsources" data-layout="${e ? "table" : "default"}">${i}<div class="followpagefooter"><div class="followpageinfo">${q("120px")}${q("100px")}</div></div></div></section></div></div>`;
-	} else if (e === "/configuration") r = `<div class="configpage">${it([
+		], "follow-workspace-switch")}<div class="fmain"><section class="fsec" data-follow-workspace-panel="list">${ge(e)}<div class="board-follow-selection"${e ? " hidden" : ""}><label>${t("disabled")}全选本页</label></div><div class="frows fsources" data-layout="${e ? "table" : "default"}">${i}<div class="followpagefooter"><div class="followpageinfo">${W("120px")}${W("100px")}</div></div></div></section></div></div>`;
+	} else if (e === "/configuration") r = `<div class="configpage">${me([
 		"通用",
 		"媒体",
 		"网络与访问",
 		"更新与维护"
-	])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${Y(`<div class="skeleton-setting">${q("35%")}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${q("100px")}</footer></section></div>`;
+	])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${K(`<div class="skeleton-setting">${W("35%")}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${W("100px")}</footer></section></div>`;
 	else if (e === "/activity") r = `<div class="activitypage">${[
 		"正在进行",
 		"被挡下的",
 		"最近完成"
-	].map((e) => `<section class="activitysection"><h3 class="geist-fieldset-title">${e}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${q("35%")}${J()}</div></article></div></section>`).join("")}</div>`;
-	else if (e === "/duplicates") r = `<div class="review"><div class="collection-summary">${q("38%")}</div><div class="fsechead dupactions"><h3>批量保留</h3>${q("40%")}</div>${Y(`<section class="dupgroup"><div class="duphead">${q("45%")}</div><div class="duplist">${Y(`<div class="duprow"><span class="dupcover skeleton"></span><span class="dupmarks">${q()}</span><span class="dupname">${q("90%")}</span>${q()}${q()}${q()}<span class="duppath">${q("70%")}</span></div>`, 2)}</div></section>`, 2)}</div>`;
-	else if (e === "/quality-goals") r = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${q("20%")}</div><div class="qualitylist">${Y(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${J()}</div><footer class="qualityactions">${q("80%")}</footer></article>`, 6)}</div></div>`;
-	else if (e === "/playlists") r = `<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><div class="playlistcreate skeleton-lines"><span>新播放列表</span>${q("200px")}</div></header><div class="playlistcards">${Y(`<article class="card playlistcard"><div class="mixstack"><div class="pic skeleton"></div></div><div class="mixmeta"><span class="mav skeleton"></span><div class="mixcopy skeleton-lines">${J()}</div></div></article>`, 6)}</div></section>`;
+	].map((e) => `<section class="activitysection"><h3 class="geist-fieldset-title">${e}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${W("35%")}${G()}</div></article></div></section>`).join("")}</div>`;
+	else if (e === "/duplicates") r = `<div class="review"><div class="collection-summary">${W("38%")}</div><div class="fsechead dupactions"><h3>批量保留</h3>${W("40%")}</div>${K(`<section class="dupgroup"><div class="duphead">${W("45%")}</div><div class="duplist">${K(`<div class="duprow"><span class="dupcover skeleton"></span><span class="dupmarks">${W()}</span><span class="dupname">${W("90%")}</span>${W()}${W()}${W()}<span class="duppath">${W("70%")}</span></div>`, 2)}</div></section>`, 2)}</div>`;
+	else if (e === "/quality-goals") r = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${W("20%")}</div><div class="qualitylist">${K(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${G()}</div><footer class="qualityactions">${W("80%")}</footer></article>`, 6)}</div></div>`;
+	else if (e === "/playlists") r = `<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><div class="playlistcreate skeleton-lines"><span>新播放列表</span>${W("200px")}</div></header><div class="playlistcards">${K(`<article class="card playlistcard"><div class="mixstack"><div class="pic skeleton"></div></div><div class="mixmeta"><span class="mav skeleton"></span><div class="mixcopy skeleton-lines">${G()}</div></div></article>`, 6)}</div></section>`;
 	else return "";
 	return `<div class="board-page-skeleton" data-skeleton="board${e}" role="status" aria-label="正在读取页面"><div aria-hidden="true" inert>${r}</div></div>`;
 }
 //#endregion
 //#region src/catalog-onboarding.ts
-var ft = [
+var xe = [
 	"loc",
 	"creator",
 	"performer",
@@ -1380,16 +830,16 @@ var ft = [
 	"jav",
 	"thumb"
 ];
-function pt() {
+function Se() {
 	let e = (e) => Array(64).fill(e).join("");
 	return {
 		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
 		tags: "<span class=\"catalog-placeholder placeholder-tags\" aria-hidden=\"true\">" + e("<span class=\"pill\">&nbsp;</span>") + "</span>"
 	};
 }
-async function mt(e, t) {
+async function Ce(e, t) {
 	let n = new URLSearchParams();
-	for (let t of ft) e[t] && n.set(t, e[t]);
+	for (let t of xe) e[t] && n.set(t, e[t]);
 	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
 		...r.creators || [],
 		...r.tagperformers || [],
@@ -1400,7 +850,7 @@ async function mt(e, t) {
 		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
 	}))).filter(Boolean);
 }
-function ht({ kind: e = "catalog", filtered: t = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
+function we({ kind: e = "catalog", filtered: t = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
 	let o = i ? "<button class=\"geist-button primary\" data-empty-settings>添加内容</button>" : "", s = "<a class=\"geist-button" + (!i || a ? " primary" : "") + "\" href=\"/follow-manage?tab=add\">添加关注</a>";
 	if (t || r) return n("search", r ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", r ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" });
 	if (e !== "catalog") {
@@ -1421,7 +871,7 @@ function ht({ kind: e = "catalog", filtered: t = !1, jav: r = !1, configurable: 
 }
 //#endregion
 //#region src/sidebar.ts
-function gt(e) {
+function Te(e) {
 	return [
 		"/",
 		"/unseen",
@@ -1431,23 +881,23 @@ function gt(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function _t(e, t) {
+function Ee(e, t) {
 	return e.dataset.surface?.split("?")[0] === t.split("?")[0] && e.querySelector(".dnav") ? (e.dataset.surface = t, !1) : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function vt(e) {
+function De(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function yt(e) {
+function Oe(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function bt(e, t) {
+function ke(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function xt() {
+function Ae() {
 	let e = [
 		["人工复核", "square-check-big"],
 		["高清版", "sparkles"],
@@ -1492,71 +942,49 @@ function xt() {
         <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" type="button" disabled>检查文件</button></div>
       </div></section></div>`;
 }
-function St(e, t = !1, n = !1) {
-	if (t || n) return "";
-	let r = "<svg class=\"externalmark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
-	return `<details class="taste-history-guide"${e ? " open" : ""}>
-    <summary><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"></use></svg>浏览器历史记录导入指南</summary>
-    <div class="taste-history-guide-content">
-      <p>在运行 Peach 的电脑上使用浏览器：点击上方「读取 Peach 主机」。</p>
-      <p>记录在其他设备上：导出文件后，点击上方「导入历史」。多台设备的文件分别导入。</p>
-      <ul><li>Chrome：在 <a class="externallink" href="https://takeout.google.com/" target="_blank" rel="noreferrer">Google Takeout${r}</a> 选择 Chrome 历史记录，下载 ZIP 后直接导入。</li>
-      <li>其他浏览器：使用 <a class="externallink" href="https://github.com/purarue/browserexport" target="_blank" rel="noreferrer">browserexport${r}</a> 导出历史记录，再导入导出文件。</li></ul>
-      <p>需要刷新时再次读取或导入；数据源可在页面底部移除。</p>
-      <button type="button" class="geist-button taste-guide-skip">跳过</button>
-    </div></details>`;
-}
-var Ct = "peach-taste-guide-dismissed";
-function wt(e, t) {
-	l(e, ".taste-history-guide", "taste-guide-collapse");
-	let n = e.querySelector(".taste-history-guide");
-	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
-		t.setItem(Ct, "1"), n.remove();
-	});
-}
 //#endregion
 //#region src/resource-sync.ts
-var Z = (e = 0) => Number(e).toLocaleString(), Tt = {
+var X = (e = 0) => Number(e).toLocaleString(), je = {
 	local: "本地磁盘",
 	115: "115",
 	pikpak: "PikPak"
-}, Et = (t) => s(e[t] ?? "database"), Dt = (e, t, n) => `<article class="board-plain-stat resourcestat">
+}, Me = (t) => s(e[t] ?? "database"), Z = (e, t, n) => `<article class="board-plain-stat resourcestat">
     <span class="board-plain-stat-head">${e}</span>
     <strong>${t}</strong>
     <span class="cleanupmeta">${n}</span></article>`;
-function Ot(e, t) {
+function Ne(e, t) {
 	let n = e.cache || {
 		files: 0,
 		bytes: 0
 	}, r = !!(e.missing || n.files);
-	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => Dt(`<span class="board-stat-tile resourcestat-tile">${Et(e.location)}</span>${Tt[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${Z(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${Z(e.checked)} 项` : `馆藏中有 ${Z(e.total)} 项`, e.unreadable ? `${Z(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
-    ${Dt("待移入回收站", `${Z(e.missing)} 项`, "")}
-    ${Dt("可清理的缓存", `${Z(n.files)} 个`, n.files ? t(n.bytes) : "")}</div>
-    ${r ? a(`将把找不到文件的 ${Z(e.missing)} 项馆藏记录移入回收站，并清理 ${Z(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
+	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => Z(`<span class="board-stat-tile resourcestat-tile">${Me(e.location)}</span>${je[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${X(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${X(e.checked)} 项` : `馆藏中有 ${X(e.total)} 项`, e.unreadable ? `${X(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
+    ${Z("待移入回收站", `${X(e.missing)} 项`, "")}
+    ${Z("可清理的缓存", `${X(n.files)} 个`, n.files ? t(n.bytes) : "")}</div>
+    ${r ? a(`将把找不到文件的 ${X(e.missing)} 项馆藏记录移入回收站，并清理 ${X(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
     <div class="resourceapplyrow geist-fieldset-footer" data-geist-fieldset-footer>${r ? "<button class=\"geist-button primary\" type=\"button\" id=\"resourceApply\">清理失效记录与缓存</button>" : "<p class=\"resourcesyncok\">已检查可访问的来源，没有待清理的记录或缓存。</p>"}</div>`;
 }
 //#endregion
 //#region src/jav-artwork.ts
-function kt(e) {
+function Pe(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function At(e) {
+function Fe(e) {
 	return {
-		javLayout: kt(e.javLayout),
+		javLayout: Pe(e.javLayout),
 		javImage: Q(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
 function Q(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function jt(e, t) {
+function Ie(e, t) {
 	return e.is_jav && e.code && e.has_cover && (Q(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function Mt(e, t) {
+function Le(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
 	let a = Math.min(1, Math.max(0, i / n)), o = n / r / t, s = (1 - a) * o;
@@ -1567,7 +995,7 @@ function Mt(e, t) {
 		left: l(c)
 	};
 }
-function Nt(e, t) {
+function Re(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (Q(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
@@ -1575,19 +1003,20 @@ function Nt(e, t) {
 }
 //#endregion
 //#region src/islands.ts
-var Pt = {
+var ze = {
 	"avatar-picker": { react: "avatar-picker" },
 	"library-processing": { react: "library-processing" },
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },
 	configuration: { react: "configuration" },
 	activity: { react: "activity" },
-	stats: { react: "stats" }
-}, Ft = () => Object.keys(Pt), $ = /* @__PURE__ */ new Map();
-async function It(e, t, n, r = {}) {
-	let i = Pt[e];
+	stats: { react: "stats" },
+	taste: { react: "taste" }
+}, Be = () => Object.keys(ze), $ = /* @__PURE__ */ new Map();
+async function Ve(e, t, n, r = {}) {
+	let i = ze[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	zt(t);
+	We(t);
 	let a = { controller: new AbortController() };
 	$.set(t, a);
 	let o = (await import("/dist/peach-react.js")).pages[i.react];
@@ -1596,7 +1025,7 @@ async function It(e, t, n, r = {}) {
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!Lt(t, a, r)) return;
+	if (!He(t, a, r)) return;
 	let s = t.ownerDocument.createElement("div");
 	s.className = "peach-react", t.append(s);
 	let c = o.mount(s, n);
@@ -1604,16 +1033,16 @@ async function It(e, t, n, r = {}) {
 		c.unmount(), s.remove();
 	};
 }
-function Lt(e, t, n) {
+function He(e, t, n) {
 	return $.get(e) === t ? n.isCurrent && !n.isCurrent() ? ($.delete(e), !1) : (e.textContent = "", !0) : !1;
 }
-var Rt = (e) => !!e && $.has(e);
-function zt(e) {
-	for (let t of [...$.keys()]) (t === e || e.contains(t)) && Bt(t);
+var Ue = (e) => !!e && $.has(e);
+function We(e) {
+	for (let t of [...$.keys()]) (t === e || e.contains(t)) && Ge(t);
 }
-function Bt(e) {
+function Ge(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.dispose?.());
 }
 //#endregion
-export { Ct as TASTE_GUIDE_KEY, we as activityChartsHtml, dt as boardPageSkeleton, g as boundedPreference, ht as catalogEmptyHtml, mt as catalogSuggestions, Qe as clampPage, xt as cleanupSkeletonHtml, yt as cloudLocations, bt as cloudPreferenceLocations, He as createReviewSelection, xe as creatorSankeyHtml, ut as detailSkeletonHtml, S as distributionChart, pt as emptyCatalogLayout, nt as entitySkeletonHtml, Me as followJobProgress, Ge as groupReviewRows, Fe as identityEvidenceHtml, E as initBoardControls, Rt as islandMounted, Ft as islandNames, jt as javImageKind, Ae as jobActivityHtml, x as jobProgressHtml, et as matchesFaceSource, It as mountIsland, v as mountNumberSetting, tt as nativeImageFit, Q as normalizeJavImage, kt as normalizeJavLayout, At as normalizeJavPreferences, Ze as pageCount, $e as paginationHtml, Mt as panelFrame, m as preferredDirection, w as radarChart, C as rankedChart, Ot as resourceScanHtml, Pe as reviewImageHtml, Be as selectGroup, Re as selectRange, ze as selectionSummary, gt as sidebarHasCatalogContent, Ee as sidebarSectionHtml, vt as sidebarTagCounts, b as statCardBody, T as syncBoardRange, Nt as syncJavImages, _ as syncNumberSetting, Ve as syncSelectionToolbar, _t as syncSidebarSurface, St as tasteHistoryGuideHtml, ke as transitionTheme, zt as unmountIsland, Ue as updateReviewSticky, je as watchJob, Te as wireActivityCharts, Se as wireCreatorSankey, M as wireExpandableRanks, j as wireGrowingCharts, Ie as wireReviewPictures, Ye as wireReviewSelection, De as wireSidebarGroups, wt as wireTasteHistoryGuide };
+export { be as boardPageSkeleton, g as boundedPreference, we as catalogEmptyHtml, Ce as catalogSuggestions, le as clampPage, Ae as cleanupSkeletonHtml, Oe as cloudLocations, ke as cloudPreferenceLocations, re as createReviewSelection, ye as detailSkeletonHtml, Se as emptyCatalogLayout, pe as entitySkeletonHtml, N as followJobProgress, V as groupReviewRows, I as identityEvidenceHtml, b as initBoardControls, Ue as islandMounted, Be as islandNames, Ie as javImageKind, j as jobActivityHtml, de as matchesFaceSource, Ve as mountIsland, v as mountNumberSetting, fe as nativeImageFit, Q as normalizeJavImage, Pe as normalizeJavLayout, Fe as normalizeJavPreferences, ce as pageCount, ue as paginationHtml, Le as panelFrame, m as preferredDirection, Ne as resourceScanHtml, F as reviewImageHtml, te as selectGroup, z as selectRange, ee as selectionSummary, Te as sidebarHasCatalogContent, E as sidebarSectionHtml, De as sidebarTagCounts, y as syncBoardRange, Re as syncJavImages, _ as syncNumberSetting, ne as syncSelectionToolbar, Ee as syncSidebarSurface, k as transitionTheme, We as unmountIsland, B as updateReviewSticky, M as watchJob, L as wireReviewPictures, oe as wireReviewSelection, D as wireSidebarGroups };

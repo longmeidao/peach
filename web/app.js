@@ -1,24 +1,23 @@
-import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, statCardBody, rankedChart, radarChart, distributionChart, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, linkHost, linkMarkUrl, siteMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
+import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
 import { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './dist/peach-ui.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
-import { boardPageSkeleton, detailSkeletonHtml, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
-import { activityChartsHtml, wireActivityCharts } from './dist/peach-ui.js';
+import { boardPageSkeleton, detailSkeletonHtml, initBoardControls, syncBoardRange } from './dist/peach-ui.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows, paginationHtml, pageCount, clampPage, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
-import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './dist/peach-ui.js';
+import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, progressHtml, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
@@ -4476,60 +4475,8 @@ async function openResourceSync(push=true){
   $('#resource-sync')?.scrollIntoView({block:'start'});
 }
 
-/* 口味仪表按窗口持久缓存：刷新页面也先显示上次结果。24 小时内不重读；
-   过期后仍先显示旧结果，再在后台更新。导入、移除数据源和显式「读取」
-   会立即写回缓存。缓存只含页面已经展示的聚合结果，不含原始历史。 */
-const TASTE_CACHE_KEY='peach-taste-dashboard-v7',TASTE_CACHE_FRESH_MS=24*60*60*1000;
-const TASTE_CACHE_WINDOWS=new Set(['all','365d','90d','30d','7d']);
-function readTasteCache(){
-  try{
-    const stored=JSON.parse(localStorage.getItem(TASTE_CACHE_KEY)||'{}');
-    return new Map(Object.entries(stored).filter(([window,entry])=>
-      TASTE_CACHE_WINDOWS.has(window)&&entry&&Number.isFinite(Number(entry.at))&&
-      entry.dashboard&&typeof entry.dashboard==='object'))
-  }catch(_error){return new Map()}
-}
-const TASTE_WINDOWS=[['7d','最近 7 天'],['30d','最近 30 天'],['90d','最近 90 天'],['365d','最近一年'],['all','全部时间']];
-let tasteWindow='all',tasteEvidence='browser',tasteDimension={browser:'tags',peach:'tags'};
-let tasteCache=readTasteCache(),tasteRequest=0;
-function tasteCacheSet(window,dashboard){
-  tasteCache.set(window,{at:Date.now(),dashboard});
-  try{localStorage.setItem(TASTE_CACHE_KEY,JSON.stringify(Object.fromEntries(tasteCache)))}catch(_error){}
-}
-const tasteDate=value=>value?new Date(value).toLocaleDateString('zh-CN'):'—';
-const tasteHours=seconds=>seconds>=3600?(seconds/3600).toFixed(1)+' 小时':Math.round(seconds/60)+' 分钟';
-/* 站点头像：先垫首字母，再叠服务端那枚圆标；取不到就把 <img> 拿掉，露出首字母。
-
-   圆标走 `/site-mark`：浏览器不向对方站点、也不向任何第三方图标代理发请求——那种
-   请求逐个报出这一列里的每一个站，换回来的只是一枚 16px 位图。服务端认得的域名
-   之外不出图，首字母本来就够认。 */
-function siteAvatar(name,domain,title=''){
-  return `<span class="tasteavatar tastesite"${title?` title="${esc(title)}"`:''}>`+
-    `<span class="ini">${esc(String(name).slice(0,1).toUpperCase())}</span>`+
-    `<img src="${esc(siteMarkUrl({domain}))}" alt="" loading="lazy" `+
-    `${imageFallbackAttrs({})}></span>`;
-}
-const tasteRankRows=(rows,kind,empty='暂无足够证据',visual='')=>rows.length?rows.map((row,index)=>{
-    const clickable=kind&&row.peach_items>0;
-    const strength=Number(row.web_visits??row.score??row.visits??row.peach_items??0);
-    const maximum=Math.max(1,...rows.map(item=>Number(item.web_visits??item.score??item.visits??item.peach_items??0)));
-    const detail=row.web_visits!=null
-      ?`${row.web_visits?`浏览 ${row.web_visits}`:''}${row.web_visits&&row.peach_items?' · ':''}${row.peach_items?`Peach ${row.peach_items}`:''}`
-      :`${Number(row.score||row.visits||0).toLocaleString()}`;
-    // 两级图都由 `/api/taste` 说了算：实体图看 `has_image`，代表作头像看 `has_avatar`。
-    const ref=row.entity_id?{id:row.entity_id,has_image:row.has_image,
-                             avatar_focus:row.avatar_focus}:null,
-      rep=row.has_avatar?row.representative_asset_id||null:null;
-    const sourceDomain=String(row.source_domain||'');
-    const media=visual==='domain'
-      ?siteAvatar(row.name,row.name)
-      :visual==='creator'&&!ref&&!rep&&sourceDomain
-        ?siteAvatar(row.name,sourceDomain,`来源：${sourceDomain}`)
-      :visual?`<span class="tasteavatar">${avatarInner(row.name,ref,rep,visual)}</span>`:'';
-    return `<${clickable?'button':'div'} class="tasterank${kind==='tag'?' tasterank-tag':''}${visual?' tasterank-visual':''}"${clickable?` data-taste-kind="${kind}" data-taste-name="${esc(row.name)}"`:''}>
-      <span class="tastepos mono">${index+1}</span>${media}<span class="taste-rank-copy"><b>${esc(row.name)}</b><small>${esc(detail)}</small><span class="taste-rank-track" aria-hidden="true"><i style="width:${Math.max(0,Math.min(100,strength/maximum*100))}%"></i></span></span>
-      ${clickable?icon('chevron-right'):''}</${clickable?'button':'div'}>`}).join(''):
-  emptyStateHtml('search','暂无足够证据',empty);
+/* 点一条口味名次：标签是「回目录并按它筛选」，人名直接进资料页。整页换成哪一屏
+   仍归遗留壳，React 档只说点了哪一条。 */
 function openTasteSignal(kind,name){
   if(kind==='tag'){
     state={...state,tag:name,tag_match:'all',creator:'',studio:'',q:'',state:'',orient:''};
@@ -4537,181 +4484,21 @@ function openTasteSignal(kind,name){
   }
   openEntity(kind,name);
 }
-function tasteAnalysisSection(analysis){
-  if(!analysis||!analysis.headline)return '';
-  const confidence=analysis.confidence||{};
-  const points=(analysis.points||[]).map(point=>`<div class="tasteinsight">
-    <span>${esc(point.label)}</span><b>${esc(point.text)}</b></div>`).join('');
-  //: 探索标签和下一步动作都是「点进去就能做的事」，排成同一列表；
-  //: 前者带 data-taste-kind 走信号面板，后者带 data-taste-route 直接换页。
-  const leads=[...(analysis.explore||[]).map(item=>
-      ({attrs:`data-taste-kind="tag" data-taste-name="${esc(item.tag)}"`,title:item.title,detail:item.detail})),
-    ...(analysis.next_steps||[]).map(item=>
-      ({attrs:`data-taste-route="${esc(item.route)}"`,title:item.title,detail:item.detail}))]
-    .map(lead=>`<button type="button" class="tastelead" ${lead.attrs}>
-      <span><b>${esc(lead.title)}</b><small>${esc(lead.detail)}</small></span>${icon('chevron-right')}</button>`).join('');
-  return `<section class="insightpanel tasteleads">
-      <header><div><h3>口味总结</h3>
-        <div class="tastelede"><span class="tasteconfidence ${esc(confidence.level||'early')}"><i aria-hidden="true"></i>${esc(confidence.label||'仍在学习')}</span>
-          <p>${esc(analysis.headline)}</p></div></div></header>
-      <div class="insightpanelbody">
-        ${points?`<div class="tasteinsights">${points}</div>`:''}
-        <div class="tasteleadlist">${leads||emptyStateHtml('search','还没有可探索的入口','馆藏里暂时没有对得上浏览信号的标签。')}</div>
-      </div></section>`;
-}
-function renderTaste(d){
-  const s=d.summary||{},coverage=d.coverage||{},rank=d.rankings||{},storage=d.storage||{};
-  const summary=(label,value,sub='')=>`<div class="tastesummary">${statCardBody(label,value,sub,{'浏览记录':'history','口味维度':'tags','浏览候选':'search','私有导出':'database','Peach 看过':'eye','喜欢':'thumbs-up','不合口味':'thumbs-down','有标签':'tags'}[label])}</div>`;
-  const coverageMetric=(label,value,sub,done,total)=>`<div class="tastecovermetric"><span>${label}</span><b>${value}</b><small>${sub}</small>${progressHtml(`${label}：${done} / ${total}`,done,total)}</div>`;
-  const sourceRows=(d.sources||[]).map(source=>`<div class="tastesource">
-    <span class="tastebrowser">${icon(source.browser==='browserexport'?'upload':'database')}</span>
-    <span><b>${esc(source.profile)}</b><small>${esc(source.browser)} · ${esc(source.host)} · ${Number(source.visits||0).toLocaleString()} 条</small></span>
-    <button data-taste-remove="${source.source_key}" title="移除分析记录" aria-label="移除 ${esc(source.profile)}">${icon('trash')}</button></div>`).join('');
-  const gapRows=(d.gaps||[]).map(row=>({...row,evidence:['浏览记录']}));
-  const domainRows=(rank.domains||[]).map(row=>({name:row.name,score:row.visits}));
-  const categoryRows=(rank.browser_categories||[]).map(row=>({name:row.name,score:row.score}));
-  const categoryBars=categoryRows.length?rankedChart(categoryRows,'口味维度排名'):
-    emptyStateHtml('search','暂无口味维度','采集浏览记录后，这里会显示聚合后的口味证据。');
-  const rankPanel=(source,key,rows,kind='',empty='暂无足够证据',visual='')=>`<div id="taste-${source}-${key}" role="tabpanel"
-    data-taste-dimension-panel="${source}:${key}"${tasteDimension[source]===key?'':' hidden'}>
-    <div class="tasteranks${kind==='tag'?' tasteranks-tags':''}${visual?' tasteranks-visual':''}">${tasteRankRows(rows,kind,empty,visual)}</div></div>`;
-  const sourceTabs=(source,tabs)=>`<div class="insighttabs" role="tablist" aria-label="${source==='browser'?'浏览器':'Peach'} 口味维度">${tabs.map(([key,label])=>
-    `<button type="button" role="tab" data-taste-dimension="${source}:${key}" aria-selected="${tasteDimension[source]===key}"
-      aria-controls="taste-${source}-${key}"${tasteDimension[source]===key?'':' tabindex="-1"'}>${label}</button>`).join('')}</div>`;
-  $('#stats').innerHTML=`<div class="tastepage">
-    <header class="tastehead"><div class="insightswitch" role="radiogroup" aria-label="口味证据来源">
-        <label><input type="radio" name="taste-evidence" value="browser"${tasteEvidence==='browser'?' checked':''}><span>浏览器记录</span></label>
-        <label><input type="radio" name="taste-evidence" value="peach"${tasteEvidence==='peach'?' checked':''}><span>Peach 内部</span></label></div>
-      <div class="tasteactions">${selectFieldHtml(TASTE_WINDOWS,d.window||tasteWindow,{label:'分析范围',attr:'data-taste-window'})}
-        <div class="splitbutton board-button-group" data-taste-history-menu>
-          <button class="splitmain" data-taste-refresh title="读取运行 Peach 的这台电脑上的浏览记录">${icon('compass')}读取浏览器历史</button>
-          <button type="button" class="splittoggle" data-taste-history-toggle aria-haspopup="menu"
-            aria-expanded="false" aria-controls="tasteHistoryMenu"
-            aria-label="更多取得浏览记录的方式">${icon('chevron-down')}</button>
-          <div class="popmenu cardmenupanel" id="tasteHistoryMenu" role="menu" hidden>
-            <button type="button" role="menuitem" data-taste-history-primary>${icon('compass')}<span>读取浏览器历史</span></button>
-            <button type="button" role="menuitem" data-taste-import>${icon('upload')}<span>导入历史文件</span></button>
-          </div></div><input data-taste-file type="file" hidden></div></header>
-    ${tasteHistoryGuideHtml(new URLSearchParams(location.search).get('onboarding')==='1',Boolean(s.history_sources||d.updated_at),localStorage.getItem(TASTE_GUIDE_KEY)==='1')}
-    <div class="tastestate" data-taste-state role="status" aria-live="polite"></div>
-    <div class="tastesummaries" data-taste-summary="browser"${tasteEvidence==='browser'?'':' hidden'}>
-      ${summary('浏览记录',Number(s.history_visits||0).toLocaleString(),`${s.history_sources||0} 个数据源 · ${tasteDate(s.range_start)}—${tasteDate(s.range_end)}`)}
-      ${summary('口味维度',categoryRows.length.toLocaleString(),categoryRows[0]?.name||'尚无主维度')}
-      ${summary('浏览候选',gapRows.length.toLocaleString())}
-      ${summary('私有导出',Number(storage.exports||0).toLocaleString(),fmtSize(storage.bytes||0))}</div>
-    <div class="tastesummaries" data-taste-summary="peach"${tasteEvidence==='peach'?'':' hidden'}>
-      ${summary('Peach 看过',Number(s.peach_items||0).toLocaleString(),tasteHours(s.peach_seconds||0))}
-      ${summary('喜欢',Number(s.liked||0).toLocaleString())}
-      ${summary('不合口味',Number(s.disliked||0).toLocaleString())}
-      ${summary('有标签',Number(coverage.tagged||0).toLocaleString())}</div>
-    <section class="tastehero" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
-      <div class="insightcopy"><span>浏览器画像</span>${radarChart(categoryRows,'主要口味维度')||'<h2>口味分布</h2>'}
-        <small>${d.updated_at?`更新于 ${tasteDate(d.updated_at)}`:'尚未采集浏览记录'}</small></div>
-      <div class="tastebars">${categoryBars}</div></section>
-    <section class="tastehero" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
-      <div class="insightcopy"><span>Peach 观看</span><h2>${Number(s.peach_items||0).toLocaleString()}</h2><b>个作品有内部行为证据</b>
-        </div>
-      <div class="insightvisual">
-        ${coverageMetric('有标签',Number(coverage.tagged||0).toLocaleString(),`${coverage.untagged||0} 项待补`,coverage.tagged||0,(coverage.tagged||0)+(coverage.untagged||0))}
-        ${coverageMetric('有身份',Number(coverage.identified||0).toLocaleString(),`${coverage.unidentified||0} 项待补`,coverage.identified||0,(coverage.identified||0)+(coverage.unidentified||0))}
-      </div></section>
-    ${tasteAnalysisSection(d.analysis)}
-    <div data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>${activityChartsHtml(d.activity)}${creatorSankeyHtml(d.creator_flows)}</div>
-    <section class="insightpanel tasteanalysis" data-taste-evidence-panel="browser"${tasteEvidence==='browser'?'':' hidden'}>
-      <header>${sourceTabs('browser',[['tags','标签'],['creators','创作者'],['domains','常访问网站'],['gaps','浏览候选']])}</header>
-      <div class="insightpanelbody">
-        ${rankPanel('browser','tags',rank.browser_tags||[],'tag')}
-        ${rankPanel('browser','creators',rank.browser_creators||[],'creator','暂无创作者证据','creator')}
-        ${rankPanel('browser','domains',domainRows,'','暂无网站证据','domain')}
-        ${rankPanel('browser','gaps',gapRows,'','这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据')}
-      </div></section>
-    <section class="insightpanel tasteanalysis" data-taste-evidence-panel="peach"${tasteEvidence==='peach'?'':' hidden'}>
-      <header>${sourceTabs('peach',[['tags','标签'],['creators','创作者'],['performers','女优']])}</header>
-      <div class="insightpanelbody">
-        ${rankPanel('peach','tags',rank.peach_tags||[],'tag')}
-        ${rankPanel('peach','creators',rank.peach_creators||[],'creator','暂无创作者证据','creator')}
-        ${rankPanel('peach','performers',rank.peach_performers||rank.performers||[],'performer','暂无女优证据','performer')}
-      </div></section>
-    <section class="insightpanel tastesources"><header><div><h3>数据源</h3></div></header>
-      <div class="insightpanelbody"><div>${sourceRows||emptyStateHtml('database','还没有数据源','导入或读取浏览记录后，这里会列出已采集设备。')}</div></div></section>
-  </div>`;
-  const root=$('#stats'),stateEl=root.querySelector('[data-taste-state]'),file=root.querySelector('[data-taste-file]');
-  wireActivityCharts(root);
-  wireCreatorSankey(root);
-  wireExpandableRanks(root);
-  wireTasteHistoryGuide(root,localStorage);
-  root.querySelectorAll('input[name="taste-evidence"]').forEach(input=>input.onchange=()=>{
-    tasteEvidence=input.value;
-    root.querySelectorAll('[data-taste-summary]').forEach(panel=>panel.hidden=panel.dataset.tasteSummary!==tasteEvidence);
-    root.querySelectorAll('[data-taste-evidence-panel]').forEach(panel=>panel.hidden=panel.dataset.tasteEvidencePanel!==tasteEvidence)
-  });
-  root.querySelectorAll('[data-taste-dimension]').forEach(button=>button.onclick=()=>{
-    const [source,key]=button.dataset.tasteDimension.split(':');tasteDimension[source]=key;
-    root.querySelectorAll(`[data-taste-dimension^="${source}:"]`).forEach(tab=>{
-      const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
-    root.querySelectorAll(`[data-taste-dimension-panel^="${source}:"]`).forEach(panel=>panel.hidden=panel.dataset.tasteDimensionPanel!==button.dataset.tasteDimension)
-  });
-  const tasteWindowField=wireSelectField(root.querySelector('[data-taste-window]'));
-  tasteWindowField.addEventListener('change',()=>{tasteWindow=tasteWindowField.value;openTaste(false)});
-  /* 总结里的下一步动作按路径走，派发仍旧交给 ROUTES：在这里比对一遍路径字符串，
-     就又多出一处会和那张表不一致的知识。 */
-  root.querySelectorAll('[data-taste-route]').forEach(button=>button.onclick=()=>{
-    route(button.dataset.tasteRoute);restoreRoute()});
-  root.querySelector('[data-taste-refresh]').onclick=async e=>{const button=e.currentTarget;
-    const oldButton=button.innerHTML;
-    setActionBusy(button);
-    button.innerHTML=`${spinnerHtml('正在读取')}<span>读取中…</span>`;
-    stateEl.textContent='';
-    try{const result=await api('/api/taste/refresh',{method:'POST',body:JSON.stringify({window:tasteWindow,background:true})});
-      sessionStorage.setItem('peach-taste-job',result.job_id);
-      if(button.isConnected)void wireTasteProgress()}
-    catch(error){stateEl.textContent=error.message||'读取失败';setActionBusy(button,false);
-      button.innerHTML=oldButton;if(button.isConnected)void wireTasteProgress()}};
-  void wireTasteProgress();
-  const historyMenu=root.querySelector('[data-taste-history-menu]');
-  wireAnchoredMenu(historyMenu,historyMenu.querySelector('[data-taste-history-toggle]'),
-    historyMenu.querySelector('.cardmenupanel'));
-  /* 菜单第一项和左边那颗是同一件事：键盘和读屏用户只走菜单这一条路，少列一项就是少一个
-     动作。这里点回主动作那颗，读取流程只留一份。 */
-  root.querySelector('[data-taste-history-primary]').onclick=()=>{
-    closeAnchoredMenu();root.querySelector('[data-taste-refresh]').click()};
-  root.querySelector('[data-taste-import]').onclick=()=>{closeAnchoredMenu();file.click()};
-  file.onchange=async()=>{const selected=file.files[0];if(!selected)return;stateEl.textContent=`正在导入 ${selected.name}…`;
-    try{const response=await fetch('/api/taste/import',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Peach-Filename':encodeURIComponent(selected.name)},body:selected});
-      const payload=await response.json().catch(()=>null);if(!response.ok)throw new Error(payload?.error||`导入失败（${response.status}）`);
-      tasteWindow='all';tasteCacheSet('all',payload.dashboard);renderTaste(payload.dashboard);actionReceipt('已导入口味数据')}
-    catch(error){stateEl.textContent=error.message||'导入失败';actionFailure('导入口味数据',error)}};
-  root.querySelectorAll('[data-taste-kind]').forEach(button=>button.onclick=()=>openTasteSignal(button.dataset.tasteKind,button.dataset.tasteName));
-  root.querySelectorAll('[data-taste-remove]').forEach(button=>button.onclick=async()=>{
-    return confirmModal({title:'移除口味数据源',body:'这个数据源将不再用于口味分析。原始导出文件保留。',confirmLabel:'移除口味数据源',danger:false,onConfirm:async()=>{
-    setActionBusy(button);stateEl.textContent='正在移除…';
-    try{const result=await api('/api/taste/source',{method:'POST',body:JSON.stringify({operation:'remove',source_key:button.dataset.tasteRemove,window:tasteWindow})});
-      tasteCacheSet(tasteWindow,result.dashboard);renderTaste(result.dashboard);actionReceipt('已移除口味数据源')}
-    catch(error){setActionBusy(button,false);throw error}
-  }});});
-}
 async function openTaste(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   state={...state,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',orient:'',region:'',state:'',q:'',jav:''};
   $('#q').value='';
   if(push)route('/taste');
   const surface=claimSurface('/taste');
-  showManagementBody();
-  const cachedEntry=tasteCache.get(tasteWindow),cached=cachedEntry?.dashboard;
-  const cacheFresh=cached&&Date.now()-cachedEntry.at<TASTE_CACHE_FRESH_MS;
-  if(cached)renderTaste(cached);
-  else showManagementBody({placeholder:managementPlaceholder('/taste')});
-  if(!cacheFresh){
-    const request=++tasteRequest;
-    const requestedWindow=tasteWindow;
-    void surfaceApi(surface,'/api/taste?window='+requestedWindow).then(data=>{
-      tasteCacheSet(requestedWindow,data);
-      if(request===tasteRequest&&tasteWindow===requestedWindow&&surfaceCurrent(surface))renderTaste(data)
-    }).catch(error=>{
-      if(!cached&&request===tasteRequest&&surfaceCurrent(surface))$('#stats').innerHTML=
-        `<div class="tastepage">${noteHtml(error.message||'分析未取得',{variant:'error',label:'分析未取得'})}</div>`
-    })
-  }
+  showManagementBody({placeholder:managementPlaceholder('/taste')});
+  const ui=await import('/dist/peach-ui.js');
+  /* 总结里的下一步动作按路径走，派发仍旧交给 ROUTES：在 React 档里比对一遍路径字符串，
+     就又多出一处会和那张表不一致的知识。 */
+  await ui.mountIsland('taste',$('#stats'),{
+    onSignal:openTasteSignal,navigate:path=>{route(path);restoreRoute()},
+    toast:actionReceipt,avatarInner,
+    onboarding:new URLSearchParams(location.search).get('onboarding')==='1',
+  },{isCurrent:()=>surfaceCurrent(surface)});
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
@@ -6491,14 +6278,6 @@ async function wireOperationProgress({host,path,key,title,busy,complete}){
     storageKey:key,title,busy,watchIdle:false,complete:report=>{
       if(report.status==='failed'){marker.innerHTML=noteHtml(report.error||'任务失败',{variant:'error',label:'任务失败'});return}
       complete(report)}});
-}
-function wireTasteProgress(){
-  const button=$('#stats').querySelector('[data-taste-refresh]');
-  if(!button)return;
-  return wireOperationProgress({host:$('#stats').querySelector('[data-taste-state]'),
-    path:'/api/taste/refresh',key:'peach-taste-job',title:'正在读取浏览记录并更新口味分析…',
-    busy:running=>{setActionBusy(button,running);button.innerHTML=`${icon('compass')}读取浏览器历史`},
-    complete:()=>{tasteCache.clear();void openTaste(false);actionReceipt('已更新口味分析')}});
 }
 function wireResolveProgress(){
   return wireOperationProgress({host:$('#stats').querySelector('[data-follow-add-state]'),

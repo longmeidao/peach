@@ -510,18 +510,18 @@ function deferReviewScroller(container){
 const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
-  '.insighttabs','.skeletondashstrip','.followpagination','.linktablewrap',
+  '.skeletondashstrip','.followpagination','.linktablewrap',
   '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',
-  '.follow-workspace-switch','.fmanagenav','.board-heat-scroll','.board-sankey-scroll',
+  '.follow-workspace-switch','.fmanagenav',
 ].join(',');
 /* Board 层里会超宽的横向滚动层：两端按滚动位置渐隐说明「那边还有」，鼠标停在上面时竖向
    滚轮转成横向。边线留给外层框，渐隐只落在这一层。
    这里登记的都是 `frontend/` 或 board.css 画出来的层，它们不经过 `wireAllDrag` 那份按 id
    点名的清单，漏登记就是「看得见、够不着」：设置弹层那排分区在 390px 下溢出 244px，
-   /taste 的两张图溢出 44px 与 322px，实测都是既没有渐隐也不接滚轮。组件自己量溢出，
-   不溢出的宽度上登记等于空转，所以按可能溢出的层登记，不按某一个断点登记。 */
+   实测既没有渐隐也不接滚轮。组件自己量溢出，不溢出的宽度上登记等于空转，所以按可能
+   溢出的层登记，不按某一个断点登记。React 档的页面自己用 `overflow-x-auto`，不进这份清单。 */
 const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,.board-local-nav,.managebar-menu,'
-  +'.follow-workspace-switch,.fmanagenav,.board-heat-scroll,.board-sankey-scroll';
+  +'.follow-workspace-switch,.fmanagenav';
 
 /**
  * 覆盖式滚动条：滑块浮在内容上，一列宽度都不占。

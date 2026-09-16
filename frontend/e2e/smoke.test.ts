@@ -57,6 +57,12 @@ const ROUTES: readonly Route[] = [
     path: '/stats',
     body: (page) => [heading(page, '#main', '统计'), statsInventoryTab(page)],
   },
+  {
+    // 骨架那条指标带也写着「浏览记录」，认不出画完没有；把两套证据做成页签的只有真页面。
+    path: '/taste',
+    body: (page) => [heading(page, '#main', '口味'),
+      page.locator('#stats').getByRole('tab', { name: '浏览器记录', exact: true })],
+  },
   { path: '/review', body: (page) => [heading(page, '#main', '人工复核'), heading(page, '#stats', '复核分类')] },
   {
     path: '/data-cleanup',

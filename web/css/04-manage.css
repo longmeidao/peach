@@ -156,17 +156,9 @@
 .cleanupfieldset button:where(:not(.gselectfield)) svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}
-.taste-history-guide{margin-top:16px;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground);padding:20px}
-.taste-history-guide summary{cursor:pointer;color:var(--ink);font-weight:500;display:flex;align-items:center;gap:8px;list-style:none}.taste-history-guide summary::-webkit-details-marker{display:none}.taste-history-guide summary>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;transition:transform .2s ease-in-out}.taste-history-guide summary[aria-expanded="true"]>svg{transform:rotate(90deg)}
-.taste-history-guide-content{display:grid;gap:12px;padding-top:16px;color:var(--muted);font-size:var(--fs-md);line-height:1.5}
-.taste-history-guide-content p,.taste-history-guide-content ul{margin:0}
-.taste-history-guide-content ul{padding-left:20px}
-.taste-history-guide-content .taste-guide-skip{width:100%;height:var(--control-h);color:var(--meter)}
 .fsrcoption{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .fsrcoption label{flex:1;min-width:0}
 .fsrcoption .geist-button{font-size:var(--fs-sm);white-space:nowrap}
-.taste-history-guide-content a{color:var(--tungsten);text-decoration:none}
-.taste-history-guide-content a:hover{text-decoration:underline;text-underline-offset:3px}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 /* 来源和凭证页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架：那一句静态说明
@@ -193,4 +185,3 @@
 .reviewselectedcount{display:inline-flex;align-items:center}
 .reviewbulktoolbar .gselect>button{height:32px}
 .reviewbulktoolbar .geist-button{flex:none}
-.taste-history-guide-content .taste-guide-skip:hover{color:var(--meter)}
