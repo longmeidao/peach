@@ -700,7 +700,9 @@ function renderHomeGlowSetting(){
   const glow=appSettings.homeGlow,toggle=$('#homeGlowSetting'),mount=$('#homeGlowControls');
   if(!toggle||!mount)return;
   toggle.checked=glow.on;mount.hidden=!glow.on;
-  toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;saveSettings();applyHomeGlow();applyGlassFaces()};
+  /* 侧栏那张卡跟着这一下立刻改：开关在面板里，弹层在侧栏底部，两处同时看得见，
+     等下一次刷新才对齐的话，关掉之后那一组光晕球还整整齐齐摆在那儿。 */
+  toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;saveSettings();applyHomeGlow();applyGlassFaces();syncGlowSidebar()};
   if(mount.dataset.glowWired!=='true'){
     mount.dataset.glowWired='true';
     mount.innerHTML=homeGlowControlsHtml();
@@ -1693,8 +1695,8 @@ function presentItemDetail(){
   if(stage.hidden)return;
   stage.oncancel=event=>{event.preventDefault();dismissStage()};
   /* 点浮窗外面就退出。原生模态里「外面」还是这个 dialog 自己——遮罩归它，落在遮罩上的
-     事件 target 就是它本人，所以判据取坐标不取 target：浮窗自己 `overflow:auto`，
-     滚动条也长在它身上，按 target 判会把「拖一下滚动条」也算成点了外面。 */
+     事件 target 就是它本人，所以判据取坐标不取 target：按 target 判，浮窗身上任何一块
+     不属于内容的地方都会被算成点了外面。 */
   const outside=event=>{
     const box=stage.getBoundingClientRect();
     return event.clientX<box.left||event.clientX>box.right
@@ -5395,7 +5397,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="followhiddenthumbs">${item.hidden_media.map(media=>`<button data-follow-media-restore="${media.index}" title="恢复显示 ${esc(media.name||'')}" aria-label="恢复显示 ${esc(media.name||'')}">${media.thumb_url?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`:icon('image-off')}<i>${icon('rotate-ccw')}</i></button>`).join('')}</div></div>`:'';
   placeItemDetail(detailOriginAnchor,detailOriginAbove);
   $('#stage').hidden=false;document.body.classList.add('detail-open');
-  $('#stage').innerHTML=`<div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
+  $('#stage').innerHTML=`<div class="stagescroll"><div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}${frameRatio?' framed':''}"${frameRatio?` style="--follow-frame-ratio:${frameRatio.toFixed(4)}"`:''}>${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
@@ -5419,7 +5421,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       ${hiddenStrip}
       <span class="fstate" aria-live="polite"></span>
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
-    </div></div></div>`;
+    </div></div></div></div>`;
   $('#stage').classList.toggle('ambient-on',selectedKind==='video'&&appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',selectedKind==='video'&&appSettings.theaterMode);
   /* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会
@@ -8647,7 +8649,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     +seriesGroup(seriesList);
   placeItemDetail(origin,above);
   $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
-  $('#stage').innerHTML=`<div class="sgrid ${queueContext?'mixgrid':''}">
+  /* 浮窗里的内容统一装在 `.stagescroll` 里：窄屏下滚的是它，全站那条覆盖式滚动条才有
+     地方挂（轨道得是滚动容器的兄弟，而 `<dialog>` 在顶层，轨道挂到它父级上会落进遮罩
+     底下）。「接着看」是 `.sgrid` 的兄弟，也得一起装进来，否则它会被裁在浮窗外面。 */
+  $('#stage').innerHTML=`<div class="stagescroll"><div class="sgrid ${queueContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
        ${playerStatsOverlayHtml()}
       ${offline?`<div class="gate offline" id="offlineGate" role="status">
@@ -8704,7 +8709,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
     </div></div></div>
     ${queueContext||!(appSettings.relatedLimit>0)?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">${
-      pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}`;
+      pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}</div>`;
   $('#stage').classList.toggle('ambient-on',appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',appSettings.theaterMode);
 
@@ -9890,7 +9895,7 @@ const glowPicker=document.createElement('div');
 glowPicker.className='popmenu board-glow-menu';glowPicker.id='boardGlowMenu';glowPicker.hidden=true;
 glowPicker.setAttribute('popover','manual');glowPicker.setAttribute('role','dialog');
 glowPicker.setAttribute('aria-label','配色');
-glowPicker.innerHTML=`<header class="board-glow-head"><span>光晕</span><button type="button" class="board-glow-reset" data-glow-preset-reset>重置</button></header>
+glowPicker.innerHTML=`<header class="board-glow-head" data-glow-presets><span>光晕</span><button type="button" class="board-glow-reset" data-glow-preset-reset>重置</button></header>
   <div class="board-glow-grid" data-glow-grid role="group" aria-label="光晕"></div>
   <p class="board-glow-head board-glow-sub"><span>强调色</span></p>
   <div class="board-glow-grid" data-accent-grid role="group" aria-label="强调色"></div>
@@ -9898,10 +9903,15 @@ glowPicker.innerHTML=`<header class="board-glow-head"><span>光晕</span><button
 document.body.append(glowPicker);
 const glowButton=boardFoot.querySelector('#boardGlowBtn');
 const glowFloating=wireAnchoredMenu(boardFoot,glowButton,glowPicker);
+/* 光晕关掉之后这张卡上只剩强调色可挑：上面那一组球和它的「重置」换的是一层现在不画的
+   东西，点下去屏幕上没有任何反应，而它们还占着卡的上半张。整组收起来，卡就只说当前还
+   管用的那一件事。钮上那枚点同时改口说强调色——BoardUI 原版那颗点本来就是强调色，光晕
+   开着时它说的是第一枚光晕，关着时说的是这一档按钮和焦点环的颜色。 */
 syncGlowSidebar=()=>{
   const glow=appSettings.homeGlow;
-  glowButton.style.setProperty('--glow-swatch',glow.spot1.color);
-  glowButton.toggleAttribute('data-glow-native',isNativeGlass(glow.preset));
+  glowButton.style.setProperty('--glow-swatch',glow.on?glow.spot1.color:'var(--color-accent-500)');
+  glowButton.toggleAttribute('data-glow-native',glow.on&&isNativeGlass(glow.preset));
+  glowPicker.querySelectorAll('[data-glow-presets],[data-glow-grid]').forEach(node=>node.hidden=!glow.on);
   glowPicker.querySelector('[data-glow-grid]').innerHTML=glowChipsHtml();
   glowPicker.querySelector('[data-accent-grid]').innerHTML=
     ACCENTS.map(accent=>accentChipHtml(accent,appSettings.accent)).join('');

@@ -6417,7 +6417,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"')
         self.assertPageContains('<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ri-palette-line"/>'
                                 '</svg><span class="board-glow-dot" aria-hidden="true"></span>')
-        self.assertPageContains('<header class="board-glow-head"><span>光晕</span>')
+        self.assertPageContains('<header class="board-glow-head" data-glow-presets><span>光晕</span>')
         self.assertPageContains('class="board-glow-reset" data-glow-preset-reset>重置</button>')
         self.assertPageContains('<p class="board-glow-head board-glow-sub"><span>强调色</span></p>')
         self.assertPageContains('<footer><button type="button" class="geist-button primary" data-glow-detail>详细设置</button></footer>')
@@ -6443,6 +6443,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-glow-dot{", css)
         # 收起时侧栏只有 60px，两枚键排成一列。
         self.assertIn(".drawer:not(.open) .board-foot-actions{flex-direction:column}", css)
+
+    def test_the_colour_card_drops_the_glow_row_while_the_glow_is_off(self):
+        """光晕关掉之后配色卡里只剩强调色，钮上那枚点改说强调色。
+
+        那一组球和它的「重置」换的是一层现在不画的东西：点下去屏幕上没有任何反应，卡
+        的上半张却还被它占着。整组连同标题一起收起来，卡就只说当前还管用的那一件事。
+        开关在设置面板里、卡在侧栏底部，两处同时看得见，所以开关那一下要当场同步侧栏，
+        不能等下一次刷新。
+        """
+        self.assertCode("glowButton.style.setProperty('--glow-swatch',"
+                        "glow.on?glow.spot1.color:'var(--color-accent-500)');")
+        self.assertCode("glowButton.toggleAttribute('data-glow-native',"
+                        "glow.on&&isNativeGlass(glow.preset));")
+        self.assertCode("glowPicker.querySelectorAll('[data-glow-presets],[data-glow-grid]')"
+                        ".forEach(node=>node.hidden=!glow.on);")
+        self.assertCode("toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;"
+                        "saveSettings();applyHomeGlow();applyGlassFaces();syncGlowSidebar()};")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        # 类名里写死的 display 压得过 [hidden] 那条 UA 规则，收起来要自己说一遍。
+        self.assertIn(".board-glow-head[hidden],.board-glow-grid[hidden]{display:none}", board)
+        # 收起之后「强调色」成了卡里第一样东西，它那 12px 的上间距一起归零。
+        self.assertIn(".board-glow-grid[hidden]+.board-glow-sub{margin-top:0}", board)
 
     def test_home_glow_parameter_block_cannot_overflow_the_settings_card(self):
         """参数区右侧必须自己让出设置卡那一圈留白，不靠 overflow 裁掉。
@@ -10563,6 +10585,30 @@ class WebUiSourceTests(unittest.TestCase):
         scanned = set(re.findall(r"'(\.[a-z0-9-]+)'", overlay))
         unscanned = [s for s in re.findall(r"\.[a-z0-9-]+", edge) if s not in scanned]
         self.assertEqual(unscanned, [], "横滚层也要进 OVERLAY_SCROLLERS 才会被扫到")
+
+    def test_the_detail_dialog_scrolls_an_inner_layer_so_it_gets_the_shared_scrollbar(self):
+        """详情浮窗窄屏下滚的是 `.stagescroll`，滚动条和全站是同一条。
+
+        `<dialog>` 在顶层，它自己滚就只剩系统滚动条：覆盖式那条的轨道必须是滚动容器的
+        兄弟，挂到浮窗父级上会落进遮罩底下。所以内容统一装进一层，滚的是那一层。
+        「接着看」是 `.sgrid` 的兄弟，也得装在同一层里，否则它会被浮窗那条 `overflow:clip`
+        裁在外面、再也够不着。
+        """
+        page = self.page
+        overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
+        self.assertIn("'.stagescroll'", overlay, "滚的那一层要登记才接得上覆盖式滚动条")
+        self.assertPageContains('<div class="stagescroll"><div class="sgrid ${queueContext?\'mixgrid\':\'\'}">')
+        self.assertPageContains('<div class="stagescroll"><div class="sgrid followdetailgrid')
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".stage>.stagescroll{max-height:calc(100dvh - 34px);"
+                      "overflow:hidden auto;overscroll-behavior:contain}", board)
+        # 34px = 浮窗上下各 16px 留白加两条边线，减出来和浮窗自己那条上限落在同一个数上。
+        self.assertIn("max-height:calc(100dvh - 32px)", stylesheet_source())
+        # 手机上浮窗换了一条上限，滚动层跟着换，两边仍旧差两条边线。
+        self.assertIn(".stage>.stagescroll{max-height:calc(100dvh - env(safe-area-inset-top) - 18px)}",
+                      board)
+        # 浮窗自己不再纵向滚：它一滚就是系统滚动条。
+        self.assertNotIn(".stage{overflow:hidden auto}", board)
 
     def test_the_tidy_up_notice_keeps_the_panels_gap_below_it(self):
         """首页那条整理提示下面留和浮层一样宽的空当。
