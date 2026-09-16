@@ -346,11 +346,10 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(fields['studio']['value'], 'Prestige')
 
     def test_r18_genres_are_taken_in_japanese_not_in_r18s_english(self):
-        """英文是 r18 在 DMM 那套词上再译一层，投影时只会丢信息。
+        """英文是 r18 在 DMM 那套词上再译一层，取日文原词才不丢信息。
 
-        `企画` 早就在非内容表里，它的英文 `Variety` 不在，于是 MIAD-573 的这条
-        genre 一路走到复核页上等人判。`その他フェチ` 同理：从 `Other Fetishes`
-        反推不回「フェチ」这个词根。
+        丢的是词根：`その他フェチ` 一眼看得出是「フェチ」那一格的兜底，从
+        `Other Fetishes` 反推不回去。英文写法要另外逐条登记才追得平。
         """
         from peach.library_processing import LibraryMetadataProvider
         detail = {'content_id': '118miad573', 'title': 'x',
@@ -368,7 +367,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(payload['genres'], ['企画', 'その他フェチ', 'スレンダー'])
         tags, unmapped = map_genres(payload['genres'])
         self.assertEqual(tags, ['苗条'])
-        self.assertEqual(unmapped, ['その他フェチ'], '`企画` 是发行企划，按非内容排除')
+        self.assertEqual(unmapped, [], '`企画` 是发行企划、`その他フェチ` 是兜底格，都按非内容排除')
 
     def test_r18_metadata_keeps_english_when_the_japanese_page_fails(self):
         from peach.jav_cover_fetch import Unavailable

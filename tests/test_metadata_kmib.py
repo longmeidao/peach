@@ -114,10 +114,14 @@ class KmibCatalogRuleTests(unittest.TestCase):
         self.assertFalse(is_korean_mib_code("STRC-001"))
 
     def test_kmib_categories_project_onto_existing_tags(self):
-        """只投影到已有词表：Kiss 这类词表里没有的留作未收录，不凭翻译造新标签。"""
+        """k-mib 的类目在来源页上就是英文，没有日文原词可换，只能靠表里收录英文写法。
+
+        投影仍然只落在既有词表上，门槛在 `test_genre_taxonomy`；`Sexy` 这类几乎每部
+        都挂的氛围词按非内容排除，不占一格标签。
+        """
         self.assertEqual(
             map_genres(["Doggy-Style", "Masterbation", "Pretty Girl", "Sexy", "Kiss"]),
-            (["后入", "自慰", "高颜值"], ["Kiss"]))
+            (["后入", "自慰", "高颜值", "接吻"], []))
 
 
 class KmibHarvestTests(unittest.TestCase):
@@ -163,7 +167,7 @@ class KmibHarvestTests(unittest.TestCase):
         self.assertEqual(by_field["studio"]["value"], "MIB")
         self.assertEqual(by_field["performers"]["provider_id"], "YUJ-103")
         self.assertEqual(by_field["performers"]["value"][0]["external_id"], "3")
-        self.assertEqual(by_field["tags"]["value"], ["口交"])
+        self.assertEqual(by_field["tags"]["value"], ["口交", "接吻"])
 
     def test_missing_codes_come_from_filenames_listed_on_the_official_site(self):
         con = sqlite3.connect(self.db)
@@ -196,12 +200,16 @@ class KmibHarvestTests(unittest.TestCase):
                                       logo_root=self.root / "logos",
                                       avatar_root=self.root / "avatars")
         outcome = rm_review.w_review_auto_apply(contract)
-        # 标签不在自动批准字段里，留给人。
-        self.assertEqual(outcome["applied"], 4)
+        # 标签这一行的 genre 全部有去向，所以和另外四个字段一样走补空落库；
+        # 只要还剩一个未收录的词，`_tags_are_fully_resolved` 就把它交回人工。
+        self.assertEqual(outcome["applied"], 5)
         con = sqlite3.connect(self.db)
         try:
             asset = con.execute("SELECT catalog_title,release_date,studio FROM asset "
                                 "WHERE id=1").fetchone()
+            tags = [r[0] for r in con.execute(
+                "SELECT tag FROM asset_tag WHERE asset_id=1 AND tag NOT LIKE '演员:%' "
+                "ORDER BY tag")]
             ref = con.execute(
                 "SELECT e.canonical_name FROM entity_external_ref x JOIN entity e "
                 "ON e.id=x.entity_id WHERE x.provider='kmib' AND x.external_kind='performer' "
@@ -209,6 +217,7 @@ class KmibHarvestTests(unittest.TestCase):
         finally:
             con.close()
         self.assertEqual(asset, ("Do you wanna be my slave", "2024-11-20", "MIB"))
+        self.assertEqual(tags, ["口交", "接吻"])
         self.assertEqual(ref, ("Ain",))
 
 
