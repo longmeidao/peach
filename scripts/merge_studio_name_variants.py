@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""同一家厂牌被记成两条实体的去重：写法变体与日文名／罗马字名两类。
+r"""同一家厂牌被记成两条实体的去重：写法变体、日文名／罗马字名与并写名三类。
 
 `entity` 的唯一约束是 `(kind, normalized_name)`，所以 `AVS collector's` 与
 `AVS collector’s` 可以并存，`Prestige`（425 部）与 `プレステージ`（9 部）也可以。
 后果不是报错而是每一处都少一半：资产数被劈开，标识各装一份，筛选和资料页各算各的。
 
-两类判据都不靠转写。罗马音回日文没有唯一解，反过来也一样，所以这里一条都不推：
+三类判据都不靠转写。罗马音回日文没有唯一解，反过来也一样，所以这里一条都不推：
 
 **写法变体**（class A）——NFKC 之后把弯撇号、星号与全角符号折成同一个形，两个名字
 逐字相等才算一对。`シロウトTV` 与 `ラグジュTV` 不会撞上，因为这个折叠一个假名都不丢；
@@ -16,8 +16,14 @@ r"""同一家厂牌被记成两条实体的去重：写法变体与日文名／�
 前缀就是同一家：`ムーディーズ` 的 MIDA／MIDV／MIRD 三个全部也出现在 `MOODYZ` 名下。
 唯一命中才当候选，撞上两家以上交人工。
 
+**并写名**（class C）——来源把两种写法并在一串里：`プレステージプレミアム(PRESTIGE
+PREMIUM)`。整串匹配不到已有实体，落库那一刻就自己立了一条；括号两边各自却都是
+`Prestige` 名下登记过的写法。证据是账本自己的别名表。素人系的番号前缀以数字开头
+（`300MIUM`），class B 在这里一个前缀都取不到，所以它接不住这一类。
+
 保留哪一边：写法变体保留纯 ASCII 的那一个（用户 2026-09-04 定的口径「统一为英文、
-罗马音」），两边都是或都不是 ASCII 时保留作品多的一侧；日文名／罗马字名一律保留罗马字侧。
+罗马音」），两边都是或都不是 ASCII 时保留作品多的一侧；日文名／罗马字名一律保留罗马字侧；
+并写名保留被括号两边指到的那一条，也就是已经规范化过的那一侧。
 被丢弃的名字降为别名，扁平 `asset.studio` 一并改写成保留名（ADR-0005：兼容投影跟着
 规范关系走）。只改实体不改投影的话，下一次刮削会照着投影里的旧名把实体再建一遍。
 
@@ -56,6 +62,9 @@ SYMBOL_FOLD = str.maketrans({
 JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
 #: 番号前缀：连字符前那一段字母数字。`336KBI-042` 的前缀是 `336KBI`。
 CODE_PREFIX = re.compile(r"^([A-Za-z][A-Za-z0-9]*)-\d")
+#: 两种写法并在一串里：`プレステージプレミアム(PRESTIGE PREMIUM)`。括号里不许再套括号，
+#: 否则 `AVS collector's (2)` 这类带序号的名字会被当成并写。
+BRACKETED = re.compile(r"^(.+?)\s*[（(]\s*([^（()）]+?)\s*[)）]\s*$")
 
 FIELDS = ("keep_id", "keep_name", "keep_assets", "drop_id", "drop_name", "drop_assets",
           "klass", "evidence")
@@ -142,12 +151,52 @@ def script_variants(names: dict[int, str], counts: dict[int, int],
     return rows
 
 
+def bracketed_variants(connection: sqlite3.Connection, names: dict[int, str],
+                       counts: dict[int, int], taken: set[int]) -> list[dict]:
+    """日英并写的一串另存了一条。证据是账本自己登记的别名，不是转写。
+
+    mgstage 与 libredmm 把厂牌写成 `プレステージプレミアム(PRESTIGE PREMIUM)` 这样
+    一串。整串匹配不到已有实体，落库那一刻就自己立了一条新的；括号两边各自却都是
+    `Prestige` 名下登记过的写法。番号前缀在这里作不了证：素人系的前缀以数字开头
+    （`300MIUM`），`CODE_PREFIX` 一个都取不到。
+
+    括号两边都得是账本登记过的写法，并且指向同一条实体。少了「两边都登记过」这一半，
+    `Faleno (2)` 这种带序号的名字就会被当成并写——括号里那个 `2` 说明不了任何事，
+    剩下的等于只按「名字开头一样」合并。指到两家去的同样交人工：合并不可逆。
+    """
+    registered: dict[str, int] = {}
+    for entity_id, name in names.items():
+        registered.setdefault(variant_key(name), entity_id)
+    for entity_id, alias in connection.execute(
+            "SELECT ea.entity_id,ea.alias FROM entity_alias ea"
+            " JOIN entity e ON e.id=ea.entity_id WHERE e.kind='studio'"):
+        registered.setdefault(variant_key(str(alias or "")), int(entity_id))
+    rows = []
+    for entity_id, name in sorted(names.items(), key=lambda item: item[1]):
+        shape = BRACKETED.match(name)
+        if entity_id in taken or not shape:
+            continue
+        sides = [registered.get(variant_key(part)) for part in shape.groups()]
+        hits = {found for found in sides if found is not None and found != entity_id}
+        if None in sides or len(hits) != 1:
+            continue
+        keep = hits.pop()
+        if keep in taken:
+            continue
+        rows.append(_pair(keep, entity_id, names, counts, "并写名",
+                          f"括号两边都是 {names[keep]} 的登记写法"))
+        taken.update({keep, entity_id})
+    return rows
+
+
 def collect(connection: sqlite3.Connection) -> list[dict]:
     names = studios(connection)
     counts, prefixes = asset_facts(connection)
     rows = spelling_variants(names, counts)
     taken = {int(row["keep_id"]) for row in rows} | {int(row["drop_id"]) for row in rows}
-    return rows + script_variants(names, counts, prefixes, taken)
+    rows += script_variants(names, counts, prefixes, taken)
+    taken |= {int(row["keep_id"]) for row in rows} | {int(row["drop_id"]) for row in rows}
+    return rows + bracketed_variants(connection, names, counts, taken)
 
 
 def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> dict[str, int]:
