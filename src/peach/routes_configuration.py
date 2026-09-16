@@ -1,7 +1,7 @@
 """本机配置的 JSON 契约：读取、校验、原子保存与托盘重启请求。
 
-页面外壳是 `frontend/src/islands/configuration.tsx`，各分区是 `frontend/src/react/settings/`
-下的 React 子树，挂在主站的 `/configuration` 路由里（ADR-0031）；这里只回数据。两道门都在服务端：只放行本机连接，只在托盘管理的服务里可写。
+页面整个是 `frontend/src/react/settings/` 下的 React 子树（入口 `configuration-page.tsx`），
+挂在主站的 `/configuration` 路由里（ADR-0031）；这里只回数据。两道门都在服务端：只放行本机连接，只在托盘管理的服务里可写。
 手机上的管理菜单不列这一页，靠的是 `/healthz` 的 `configurable`，但那只是入口的显隐，
 拒绝写入的判定在这里。
 """

@@ -411,6 +411,8 @@ const claimSurface=path=>{
      管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的页面照着原节律继续敲库。
      没挂过东西的容器 unmountIsland 直接返回，逐页判断反而会漏掉新迁过来的那一页。 */
   unmountIsland($('#stats'));
+  /* 资料页那块（换头像挂在它的圆框上）在管理区打开时只是被藏起来，DOM 还在。 */
+  unmountIsland($('#index'));
   surfaceRequests?.abort();
   surfaceRequests=new AbortController();
   surfaceEpoch++;return surfaceToken(path)};
@@ -4228,6 +4230,9 @@ function showHomeSurfaces(){
   // 两个类都要清：只清 entity-open 会让从索引页回首页时顶栏一直空着，
   // 而且下面那两行 style.display='' 恢复不了被 class 隐藏的元素。
   document.body.classList.remove('entity-open','index-open');
+  /* 索引页和资料页都画进 #index，两条路都先经过这里再 `innerHTML=`：直接盖掉的话，
+     上一页挂在里面的 React 根（换头像）就没人卸，留着一棵管着已经不在页面上的节点的根。 */
+  unmountIsland($('#index'));
   $('#stats').hidden=true;$('#index').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
@@ -8942,9 +8947,11 @@ async function openEntity(kind,name,push=true){
      不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的
      正脸原图。换完重进这一页——头像索引在服务端已经失效过一次，重画才读得到新图。 */
   const pickerHost=$('#index').querySelector('[data-avatar-picker]');
-  if(pickerHost&&d.id)import('/dist/peach-ui.js').then(ui=>ui.mountAvatarPicker(pickerHost,{
-    kind,id:Number(d.id),name:d.canonical_name||name,
-    onPicked:()=>openEntity(kind,name,false)}));
+  if(pickerHost&&d.id)import('/dist/peach-ui.js').then(ui=>ui.mountIsland('avatar-picker',pickerHost,{
+    kind,entityId:Number(d.id),name:d.canonical_name||name,
+    onPicked:()=>openEntity(kind,name,false)},
+    // 取产物要等一个来回，这期间页面可能已经重画了：那时这个容器已经不在 #index 里。
+    {isCurrent:()=>$('#index').contains(pickerHost)}));
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
     toggleTag(b.dataset.entityTag));

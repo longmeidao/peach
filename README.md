@@ -120,13 +120,13 @@ uv sync --locked --python 3.14 --extra macos
 
 ## 开发与贡献
 
-后端是 FastAPI 模块化单体，SQLite ledger 是真相源。前端以 React + Tailwind v4 + BoardUI 源码逐页迁移，现有 Preact island 是过渡层；
+后端是 FastAPI 模块化单体，SQLite ledger 是真相源。前端以 React + Tailwind v4 + BoardUI 源码逐页迁移；
 `web/` 提供现有页面与已提交的构建产物，运行时由 Python 直接服务，不依赖 Node 或 CDN。
 
 | 路径 | 内容 |
 | --- | --- |
 | `src/peach/` | API、媒体、ledger 与来源适配器 |
-| `frontend/` | TypeScript、React 与 BoardUI 源码、过渡期的 Preact island、Vite 构建 |
+| `frontend/` | TypeScript、React 与 BoardUI 源码、island 挂载契约、Vite 构建 |
 | `web/` | 页面、样式、自托管依赖与 `web/dist/` 产物 |
 | `migrations/` | SQLite 版本迁移 |
 | `scripts/`、`tests/` | 开发入口、维护脚本与隔离测试 |

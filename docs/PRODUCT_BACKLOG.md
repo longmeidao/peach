@@ -4,7 +4,7 @@
 
 ## BoardUI 正式前端迁移
 
-Board 视觉层是唯一一套界面，没有切换开关；Board 风格的视觉层与控件映射已在生产。迁移按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页改写成 React + Tailwind v4 + BoardUI 原版源码，每次一到两个页面、独立分支集成，旧渲染函数、旧 CSS 与旧断言随页面删除。已迁到 React 的是配置页四个分区、活动页、高清版页、来源和凭证页，以及扫描与采集的卡片和目录页横幅（两个容器读同一个 `queryKey`）；Preact island 只剩配置页外壳，其余页面仍在 `web/app.js`。布尔开关对应 Board Switch，互斥选择对应 Segmented Control；数值配置支持合法范围内自定义，可关闭功能用 Switch，开启才展示数字输入。
+Board 视觉层是唯一一套界面，没有切换开关；Board 风格的视觉层与控件映射已在生产。迁移按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页改写成 React + Tailwind v4 + BoardUI 原版源码，每次一到两个页面、独立分支集成，旧渲染函数、旧 CSS 与旧断言随页面删除。已整页迁到 React 的是配置页、活动页、高清版页、来源和凭证页、换头像那一屏，以及扫描与采集的卡片和目录页横幅（两个容器读同一个 `queryKey`）；前端只有 React 一档，其余页面仍在 `web/app.js`。布尔开关对应 Board Switch，互斥选择对应 Segmented Control；数值配置支持合法范围内自定义，可关闭功能用 Switch，开启才展示数字输入。
 
 前端基础库随页面引入，取舍与时机见 ADR-0031「前端基础库」一节：TanStack Query 已随活动页进入，所有 React root 共用一个 `QueryClient`，数据管理卡片的总数在那一页迁移时读高清版页同一个 `queryKey`；TanStack Table 随关注管理表格与 BoardUI Data Table 进；React Router 在外壳与路由迁移那一步接管；TanStack Virtual 在馆藏网格迁到 React 时按实测决定。Remix Icon 候选审查在预览 `/icon-review.html`，现有已选图标保留至用户筛选。迁移不包含版本号或其他分支发布工作。
 

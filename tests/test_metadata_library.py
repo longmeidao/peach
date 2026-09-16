@@ -601,7 +601,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertIn("catalogEmptyHtml({configurable:runtimeConfigurable})}</div>", source)
         self.assertIn("unmountIsland($('#libraryProcessingNotice'))", source)
         self.assertIn("mode:'notice'", source)
-        configuration = (root / 'frontend/src/islands/configuration.tsx').read_text(encoding='utf-8')
+        configuration = (root / 'frontend/src/react/settings/configuration-page.tsx').read_text(encoding='utf-8')
         self.assertNotIn("'/api/library-processing'", configuration)
         self.assertIn('toast,monitor:true,onComplete:', source)
 

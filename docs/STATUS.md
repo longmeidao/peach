@@ -24,7 +24,7 @@
 - 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片产物走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已合入并在 Windows 生效。
 - Windows 真实 ledger 为 `peach-data/database/ledger.db`，2026-09-13 已应用到 `0031`；`asset_subtitle` 195 行（孤立 19），175 部带字幕轨。09-12 修掉 `local` 路径大小写重复，`asset` 80,761 行。
 - Mac ledger 已授权从共享副本显式拉取并恢复 `in-sync`；`sources` 已迁到内置盘，`archive`、`tools` 仍可指向外置盘。
-- 前端按 ADR-0031 逐页迁往 `frontend/` 的 React + Tailwind + BoardUI 源码，Preact island 是过渡层；产物进 Git、经 `/dist/{name}` 提供；改前端需 Node 24+，见 `docs/FRONTEND.md`。
+- 前端按 ADR-0031 逐页迁往 `frontend/` 的 React + Tailwind + BoardUI 源码，只有 React 一档；产物进 Git、经 `/dist/{name}` 提供；改前端需 Node 24+，见 `docs/FRONTEND.md`。
 - 本机运行 Python 3.14；`requires-python` 下限 3.12，GitHub Actions 同时测 3.12 与 3.14；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
 - 发行名 `peach`，目录名 `peach-app`。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完之前别重启菜单栏：没有口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
 - 扫描与采集显示当前项目、动作与等待时长；无进展 120 秒页面预警，单项外部动作（资料 90 秒、封面 240 秒）超预算只跳过该项并计入可重试；「重试未完成项」按原任务失败集合重试。完整问题写入 `state/library-processing-<job_id>.issues.jsonl`，每条带标题与路径，接口按 `job_id` 分页读取；页面把前 20 条与日志地址收在错误提示的折叠里。已部署核对。

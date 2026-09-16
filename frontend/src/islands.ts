@@ -1,6 +1,6 @@
-/* island 挂载契约（ADR-0022）。
+/* island 挂载契约（ADR-0031）。
  *
- * 遗留路由（`web/app.js`）仍然拥有整个外壳和每一个页面。一个页面被重写成 Preact
+ * 遗留路由（`web/app.js`）仍然拥有整个外壳和每一个页面。一个页面被重写成 React
  * 之后，它的入口只做两件事：铺好加载占位，然后把一个容器交给这里。
  *
  *     const ui = await import('/dist/peach-ui.js');
@@ -8,11 +8,10 @@
  *
  * `mountIsland` 是 async 且**取完数才画**：遗留层已经铺了骨架，island 若先画一个空
  * 容器再自己转圈，同一次进入就会出现两段等待态（`peach-web-ui` 明确禁止）。所以这里
- * 先 await `load()`，再一次性换掉骨架。
+ * 先 await 页面自己的 `prefetch`，再一次性换掉骨架。
  *
  * 容器由遗留层拥有：它会在别的页面进入时直接 `innerHTML=`。因此 `mountIsland` 每次
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
-import { h, render } from 'preact';
 export { preferredDirection } from './sort-preferences';
 export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
 export { statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './board-metrics';
@@ -20,11 +19,7 @@ export { initBoardControls, syncBoardRange, wireExpandableRanks, wireGrowingChar
 export { creatorSankeyHtml, wireCreatorSankey } from './board-sankey';
 export { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './board-analytics';
 export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
-import type { Attributes, ComponentType } from 'preact';
 
-import { errorMessage } from './api';
-import { Configuration, loadConfiguration } from './islands/configuration';
-import type { ConfigurationData, ConfigurationProps } from './islands/configuration';
 import type * as ReactBundle from '@peach/react';
 
 export { watchJob, followJobProgress, jobActivityHtml } from './jobs';
@@ -33,7 +28,6 @@ export { createReviewSelection, wireReviewSelection, updateReviewSticky, groupRe
 export { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './selection';
 export { paginationHtml, pageCount, clampPage } from './pagination';
 export { nativeImageFit, matchesFaceSource } from './native-image';
-export { mountAvatarPicker, unmountAvatarPicker } from './avatar-picker';
 export { entitySkeletonHtml } from './entity-skeleton';
 export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
@@ -41,47 +35,32 @@ export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from '
 export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, tasteHistoryGuideHtml, wireTasteHistoryGuide, TASTE_GUIDE_KEY } from './management';
 export { resourceScanHtml } from './resource-sync';
 
-/** 首屏取数的结果。`data` 与 `error` 恰有一个成立。 */
-export interface IslandState<D> {
-  data: D | null;
-  error: string;
-}
-
-/** 每个 island 的 props 与首屏数据类型。新增 island 时在这里登记，注册表随之要求实现。
- *  React 档的页面自己管数据（首屏落在共用的 Query 缓存里），`data` 写成 `null`。 */
+/** 每个 island 的 props。新增 island 时在这里登记，注册表随之要求实现；
+ *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
 export interface IslandContracts {
-  'library-processing': { props: ReactBundle.LibraryProcessingProps; data: null };
-  'scraping': { props: ReactBundle.ScrapingProps; data: null };
-  'quality-goals': { props: ReactBundle.QualityGoalsProps; data: null };
-  configuration: { props: ConfigurationProps; data: ConfigurationData };
-  activity: { props: ReactBundle.ActivityProps; data: null };
+  'avatar-picker': ReactBundle.AvatarPickerProps;
+  'library-processing': ReactBundle.LibraryProcessingProps;
+  'scraping': ReactBundle.ScrapingProps;
+  'quality-goals': ReactBundle.QualityGoalsProps;
+  configuration: ReactBundle.ConfigurationProps;
+  activity: ReactBundle.ActivityProps;
 }
 
 export type IslandName = keyof IslandContracts;
-type PropsOf<N extends IslandName> = IslandContracts[N]['props'];
-type DataOf<N extends IslandName> = IslandContracts[N]['data'];
+type PropsOf<N extends IslandName> = IslandContracts[N];
 
-/** Preact 档：这里取数、这里渲染。 */
-interface PreactIsland<N extends IslandName> {
-  /** 首屏取数。中止后抛 `AbortError`，`mountIsland` 会静默放弃。 */
-  load(props: PropsOf<N>, signal: AbortSignal): Promise<DataOf<N>>;
-  component: ComponentType<PropsOf<N> & IslandState<DataOf<N>>>;
-}
-
-/** React 档：整页在 `@peach/react` 的 `pages` 里，这里只记它的名字（ADR-0031）。
- *
- *  两侧的契约是同一条：先 `prefetch` 把首屏取回来，再换掉遗留骨架、创建 React 根。 */
-interface ReactIsland {
+/** 整页在 `@peach/react` 的 `pages` 里，这里只记它的名字（ADR-0031）：先 `prefetch`
+ *  把首屏取回来，再换掉遗留骨架、创建 React 根。 */
+interface Island {
   react: keyof ReactBundle.ReactPages;
 }
 
-type IslandDefinition<N extends IslandName> = PreactIsland<N> | ReactIsland;
-
-const REGISTRY: { [N in IslandName]: IslandDefinition<N> } = {
+const REGISTRY: { [N in IslandName]: Island } = {
+  'avatar-picker': { react: 'avatar-picker' },
   'library-processing': { react: 'library-processing' },
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
-  configuration: { load: loadConfiguration, component: Configuration },
+  configuration: { react: 'configuration' },
   activity: { react: 'activity' },
 };
 
@@ -90,9 +69,7 @@ export const islandNames = (): IslandName[] => Object.keys(REGISTRY) as IslandNa
 
 interface Mount {
   controller: AbortController;
-  /** 是否已经真的画过。没画过就不许 `render(null, el)`：那会连遗留骨架一起清掉。 */
-  painted: boolean;
-  /** React 档画过之后，卸载那棵根并撤掉它的容器。Preact 档没有。 */
+  /** 画过之后，卸载那棵根并撤掉它的容器。还没画过的容器里是遗留骨架，不归 island 清。 */
   dispose?: () => void;
 }
 
@@ -111,46 +88,11 @@ export async function mountIsland<N extends IslandName>(
   props: PropsOf<N>,
   options: MountOptions = {},
 ): Promise<void> {
-  const island = REGISTRY[name] as IslandDefinition<N> | undefined;
+  const island = REGISTRY[name] as Island | undefined;
   if (!island) throw new Error(`未注册的 island：${String(name)}`);
   unmountIsland(el);
-  const mount: Mount = { controller: new AbortController(), painted: false };
+  const mount: Mount = { controller: new AbortController() };
   mounted.set(el, mount);
-  if ('react' in island) return mountReactPage(island, el, props, mount, options);
-  let state: IslandState<DataOf<N>>;
-  try {
-    state = { data: await island.load(props, mount.controller.signal), error: '' };
-  } catch (cause) {
-    if (mount.controller.signal.aborted) return;
-    state = { data: null, error: errorMessage(cause) };
-  }
-  if (!claimContainer(el, mount, options)) return;
-  // 注册表有多个 island 之后 `PropsOf<N>` 是按名字分发的索引类型，TS 推不出它与
-  // `Attributes` 相交仍是同一个对象，这里把结论写给它。
-  const attrs = { ...props, ...state } as Attributes & PropsOf<N> & IslandState<DataOf<N>>;
-  render(h(island.component, attrs), el);
-}
-
-/** 取数回来之后还能不能画：期间没有被重挂，遗留层也还停在这一页。能画就顺手清掉遗留骨架。 */
-function claimContainer(el: Element, mount: Mount, options: MountOptions): boolean {
-  // 期间被卸载或重新挂载：这一次的结果已经过期，不许往新内容上盖。
-  if (mounted.get(el) !== mount) return false;
-  // 遗留层已经换了页面：容器现在归别人，画上去就是把别的页面盖掉。
-  if (options.isCurrent && !options.isCurrent()) {
-    mounted.delete(el);
-    return false;
-  }
-  // 遗留骨架不是 Preact 画的，交给 diff 会按标签复用节点、留下 data-skeleton 之类的
-  // 旧属性。整个清掉再画，一次替换，只有一次布局变化。
-  el.textContent = '';
-  mount.painted = true;
-  return true;
-}
-
-/** React 档：动态取回 React 产物，先把首屏落进共用的 Query 缓存，再换掉骨架、创建根。 */
-async function mountReactPage<N extends IslandName>(
-  island: ReactIsland, el: Element, props: PropsOf<N>, mount: Mount, options: MountOptions,
-): Promise<void> {
   const bundle = await import('@peach/react');
   const page = bundle.pages[island.react] as ReactBundle.ReactPage<PropsOf<N>>;
   try {
@@ -168,6 +110,20 @@ async function mountReactPage<N extends IslandName>(
   el.append(host);
   const root = page.mount(host, props);
   mount.dispose = () => { root.unmount(); host.remove() };
+}
+
+/** 取数回来之后还能不能画：期间没有被重挂，遗留层也还停在这一页。能画就顺手清掉遗留骨架。 */
+function claimContainer(el: Element, mount: Mount, options: MountOptions): boolean {
+  // 期间被卸载或重新挂载：这一次的结果已经过期，不许往新内容上盖。
+  if (mounted.get(el) !== mount) return false;
+  // 遗留层已经换了页面：容器现在归别人，画上去就是把别的页面盖掉。
+  if (options.isCurrent && !options.isCurrent()) {
+    mounted.delete(el);
+    return false;
+  }
+  // 遗留骨架整个清掉再画，一次替换，只有一次布局变化。
+  el.textContent = '';
+  return true;
 }
 
 /** 这个容器上是不是已经挂着一个 island。
@@ -193,8 +149,7 @@ function disposeIsland(el: Element): void {
   mount.controller.abort();
   mounted.delete(el);
   // 只清自己画过的东西。还在取数时容器里是遗留骨架，那不属于 island。
-  if (mount.dispose) mount.dispose();
-  else if (mount.painted) render(null, el);
+  mount.dispose?.();
 }
 
 export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages } from './jav-artwork';

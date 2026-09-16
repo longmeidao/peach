@@ -67,18 +67,8 @@ describe('媒体文件夹', () => {
       .toEqual(['#i-fixture-115', '#i-fixture-pikpak', '#i-hard-drive']);
   });
 
-  it('刷新挂载状态只换状态，不动没保存的路径', async () => {
-    const media_sources = [{ location: '115', path: 'B:/', root: 'B:/', online: false }];
-    const fetcher = fetchMock(200, data({ media_sources: [{ ...media_sources[0]!, online: true }] }));
-    vi.stubGlobal('fetch', fetcher);
-    const host = await open({ windows: true, media_sources });
-    await type(paths(host)[0], 'B:/Movies');
-    await click(buttonNamed('刷新挂载状态', host));
-    await settle();
-    expect(fetcher.mock.calls[0]?.[0]).toBe(CONFIGURATION_URL);
-    expect(paths(host)[0]?.value).toBe('B:/Movies');
-    expect(section(host, '挂载状态')?.textContent).toContain('在线');
-  });
+  /* 「刷新挂载状态」重取的是整份配置、换进整页那一个 `queryKey`，那条用例在
+     `configuration.test.tsx` 里：只挂这一个分区，看不出换进去之后谁读到了新的。 */
 
   it('按来源回填全部挂载点，提交带上盘符映射与媒体库', async () => {
     const fetcher = fetchMock(200, { saved: true, url: '/', revision: 'rev-2' });

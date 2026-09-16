@@ -14,11 +14,12 @@
   "rules": {
     "shadcn/no-restyle": ["error", { "allow": ["layout"] }],
     "shadcn/no-raw-colors": ["error", {
-      "allow": ["text-body-*", "text-caption-*", "text-display-*", "text-headline-*", "text-large-title-*", "text-title-*"]
+      "allow": ["text-body-*", "text-caption-*", "text-display-*", "text-headline-*", "text-large-title-*",
+                "text-title-*", "shadow-dropdown"]
     }],
     "shadcn/no-arbitrary-values": "error",
     "shadcn/no-inline-styles": "error",
-    "shadcn/no-unknown-classes": "error",
+    "shadcn/no-unknown-classes": ["error", { "allow": ["configpage", "configgroup"] }],
     "shadcn/require-static-classes": "error"
   }
 }
