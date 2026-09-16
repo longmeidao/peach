@@ -97,7 +97,7 @@ Board 视觉层是唯一一套界面，没有切换开关；Board 风格的视�
 6. 按复用审计依次替换 PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
 7. 分类剩余 44 个无预览变体：确无图片还是解析遗漏。
 8. 另行确认后在生产关注页检查 LazyProcrastinator FANBOX，把已验证的 6 图、正文与 Gofile `OS2Qz9` 资源页写入关注候选；Gofile token 未配置且账户不是 Premium，21 个视频仍未取得。
-9. 在 `/review` 人工处理 JAV 日文系列名、现有创作者标签、FC2、Javinizer、Logo、头像和媒体失败候选；未经批准不写真相字段。
+9. 在 `/review` 人工处理 JAV 日文系列名、现有创作者标签、FC2、Javinizer、Logo、头像和无法识别候选；未经批准不写真相字段。
 10. 将 Windows writer 的最新副本同步到共享传输点，再让 Mac reader 拉取；同步前后核对迁移版本、计数、完整性与 writer 身份。
 11. 在 Mac Finder 以 `smb://peach-writer.local/peach-sync` 连接一次并保存钥匙串记录，再重启菜单栏进程，核对自动挂载、reader 锁定、HTTPS 与 mDNS。
 12. 在实现下载器前先确定媒体凭据、流量与磁盘预算。
