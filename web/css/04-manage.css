@@ -156,9 +156,6 @@
 .cleanupfieldset button:where(:not(.gselectfield)) svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}
-.fsrcoption{display:flex;align-items:center;gap:8px;justify-content:space-between}
-.fsrcoption label{flex:1;min-width:0}
-.fsrcoption .geist-button{font-size:var(--fs-sm);white-space:nowrap}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 /* 来源和凭证页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架：那一句静态说明

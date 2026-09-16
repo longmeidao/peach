@@ -153,6 +153,35 @@ export interface ScrapingProps {
   toast(message: string): void;
 }
 
+/** 关注管理页。
+ *
+ *  地址栏与个人偏好在这里分成两组：`tab`／`page`／`sort`／`dir` 外面链接得过来，跟着地址
+ *  走；`pageSize`／`layout` 是这台浏览器的习惯，跟着 `appSettings` 走。两组都由壳持有存储、
+ *  React 持有实时状态，各只有一份。 */
+export interface FollowManageProps {
+  /** 地址栏此刻带着的页签（`list`／`add`／`source`）。 */
+  tab: string;
+  page: number;
+  sort: string;
+  dir: string;
+  /** 把这四项写回地址栏。空串表示这一项此刻就是默认值，壳不写进去。 */
+  route(params: { tab: string; page: number; sort: string; dir: string }): void;
+  /** 这台浏览器的偏好当前值。 */
+  pageSize: number;
+  layout: string;
+  /** 偏好改了：存储归壳（`appSettings`），页面不自己写一份。 */
+  savePreference(patch: { pageSize?: number; layout?: string }): void;
+  /** 写操作在服务端落地之后的过去时回执。 */
+  toast(message: string): void;
+  /** 去「看更新」那一页（`/follow`）。整页换成哪一屏仍归遗留壳。 */
+  openFollow(): void;
+  /** 账本只读：这台机器只能浏览，写操作全部不给点。 */
+  readOnly: boolean;
+  readOnlyMessage: string;
+  /** 写入端上这一页的地址。取不到时门禁里不给去处。 */
+  writerUrl: string;
+}
+
 /** 扫描与采集。同一份数据两个读者，所以同一个名字挂两种形态：数据管理页那张卡片，
  *  和目录页顶上那条横幅（`mode: 'notice'`）。 */
 export interface LibraryProcessingProps {
@@ -181,6 +210,7 @@ export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'avatar-picker': ReactPage<AvatarPickerProps>;
   configuration: ReactPage<ConfigurationProps>;
+  'follow-manage': ReactPage<FollowManageProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   scraping: ReactPage<ScrapingProps>;

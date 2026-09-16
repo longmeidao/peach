@@ -1005,6 +1005,7 @@ function Re(e, t) {
 //#region src/islands.ts
 var ze = {
 	"avatar-picker": { react: "avatar-picker" },
+	"follow-manage": { react: "follow-manage" },
 	"library-processing": { react: "library-processing" },
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },

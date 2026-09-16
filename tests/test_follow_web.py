@@ -3,6 +3,7 @@
 契约层测试用临时数据库；页面源测试守的是「追更表面」这一个语义契约，
 不是某个文件——判据同 `tests/test_web_ui.py`。
 """
+import hashlib
 import json
 import os
 import re
@@ -2740,18 +2741,33 @@ class FollowWebSourceTests(unittest.TestCase):
         if needle not in board:
             self.fail(f"board.css 缺少：{needle!r}")
 
-    def test_follow_task_controls_keep_content_and_name_the_author(self):
-        self.assertPageContains('data-follow-sources=')
-        self.assertPageContains('group.filter(s=>s.enabled).map(s=>s.id)')
-        self.assertPageContains('aria-label="检查 ${esc(name)} 的全部来源"')
-        self.assertPageContains('row.author||row.label||row.ref')
-        self.assertPageLacks('个来源上次检查失败，原因见对应那一行。')
-        refresh = self.page.split('async function refreshFollowSurface(surface){', 1)[1].split('async function wireOperationProgress', 1)[0]
-        self.assertNotIn('showManagementBody', refresh)
-        self.assertNotIn('scrollTo', refresh)
-        click = self.page.split("root.querySelectorAll('[data-follow-check]').forEach", 1)[1].split('const saveAuthorAlias', 1)[0]
-        self.assertNotIn('openFollowManage', click)
-        self.assertIn('wireFollowProgress()', click)
+    def read_react(self, relative):
+        """React 子树里的一份源码（ADR-0031）。关注管理页的正文不在 `web/` 里。"""
+        return (ROOT / "frontend" / "src" / "react" / relative).read_text(encoding="utf-8")
+
+    def read_front(self, relative):
+        """`frontend/src` 下的一份源码：骨架、island 注册表这类不在 `react/` 子树里的。"""
+        return (ROOT / "frontend" / "src" / relative).read_text(encoding="utf-8")
+
+    def assertReactContains(self, relative, needle, message=""):
+        source = self.read_react(relative)
+        if needle not in source:
+            self.fail(f"{relative} 缺少：{needle!r}" + (f"（{message}）" if message else ""))
+
+    def test_a_failed_check_names_the_author_not_just_the_source_id(self):
+        """检查失败要说清是谁的哪一条，光给一个来源 id 等于让人自己回去翻。
+
+        创作者名不一定在哪个字段上：官方来源给 `author`，归档来源只有 `label`，
+        再不济还有 `ref`。三个依次取，取到哪个说哪个。
+        """
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("{`${row.provider_label || row.provider || ''} "
+                      "${row.author || row.label || row.ref || ''}：${row.error || '未说明原因'}`}",
+                      source_list)
+        # 创作者卡上那一枚检查的是这位创作者还开着的那几条，暂停的不去打扰。
+        self.assertIn("const enabled = group.filter((source) => source.enabled).map((source) => source.id);",
+                      source_list)
+        self.assertIn("aria-label={`检查 ${name} 的全部来源`}", source_list)
 
     def assertPageLacks(self, needle, message=""):
         if needle in self.page:
@@ -2798,159 +2814,150 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("api(`/api/follow?item=${encodeURIComponent(id)}`)")
         self.assertPageContains(".then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})")
 
-    def test_the_add_state_is_looked_up_outside_the_form(self):
-        # 提示行在表单外面。在 form 里找它会拿到 null，第一次赋值就抛 TypeError，
-        # 整个提交静默失败——实测踩过。
-        self.assertPageContains("const state=root.querySelector('[data-follow-add-state]')")
-
     def test_sources_are_added_by_pasting_not_by_a_command(self):
-        self.assertPageContains('id="followAdd"')
-        self.assertPageContains('name="line"')
-        self.assertPageContains("'/api/follow/source'")
-        self.assertPageContains("data-follow-remove")
+        """加一条关注就是把地址粘进去，不用记命令；移除也在同一张清单上。"""
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export const FOLLOW_SOURCE_URL = '/api/follow/source';", data)
+        self.assertIn("export const addSource = (candidate: ResolveCandidate) =>", data)
+        self.assertIn("export const removeSource = (id: number) =>", data)
+        self.assertReactContains("follow-manage/add-source.tsx",
+                                 '<Input aria-label="来源链接、名字或 id" placeholder={PLACEHOLDER} value={line}')
+        self.assertReactContains("follow-manage/source-list.tsx", "aria-label={`移除 ${source.label}`}")
 
-    def test_the_lookup_is_one_line_submitted_by_enter_without_a_button(self):
-        """查找不改任何东西，按 Vercel 表单规范就不该配提交按钮。
+    def test_the_lookup_takes_one_line_and_never_grows_into_a_batch_box(self):
+        """查找字段是一行，不是可以粘一叠地址的多行框。
 
-        规范原话是「输入框获得焦点时，若它是唯一控件，回车即提交」。字段做成
-        textarea 就非配按钮不可——那里回车按规范要插入换行，回车提交没法用。
-        多行批量本身也不成立：一个作者就要几十秒，一次粘五行等于把这个等待乘五，
-        中途还看不出走到哪一行。所以字段收成单行 search input，回车原生提交。
+        多行批量本身不成立：一个作者就要几十秒，一次粘五行等于把这个等待乘五，
+        中途还看不出走到哪一行。所以字段是单行 `Input`，回车和旁边那颗「查找」
+        走同一个入口。
         """
-        page = self.page
-        form = page[page.index('<form class="faddform" id="followAdd">'):]
-        form = form[:form.index("</form>")]
-        # 输入框本体是共用的 Search Input（见 web/js/ui-components.js），
-        # 关注页这里只交名字、无障碍名称和 required。
-        self.assertIn("searchInputHtml({name:'line',label:'来源链接、名字或 id',", form)
-        self.assertIn("attrs:'required'", form)
-        self.assertNotIn("textarea", form)
-        self.assertNotIn('type="submit"', form)
-        # 忙态没有按钮可以变灰，就落在表单自己身上：前缀图标原位换 Spinner。
-        handler = page[page.index("if(form)form.onsubmit=async event=>{"):]
-        handler = handler[:handler.index("\n  };")]
-        self.assertIn("form.dataset.busy='true';form.setAttribute('aria-busy','true')", handler)
-        self.assertIn("if(prefix)prefix.innerHTML=spinnerHtml('查找中')", handler)
-        self.assertIn("form.removeAttribute('aria-busy')", handler)
-        self.assertNotIn("setActionBusy", handler)
-        # 隐式提交在这个表单上不成立：来源筛选的复选框和输入框住在同一个 <form> 里，
-        # 浏览器只在「仅有一个文本字段」时才替你提交。回车必须自己接管。
-        self.assertPageContains("if(event.key!=='Enter')return;")
-        self.assertPageContains("closeAddSuggest();form.requestSubmit();")
-        # 单行以后不再有拆行与自增高。
-        self.assertNotIn("box.style.height", page)
-        self.assertIn("const lines=[line];", handler)
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn('<Input aria-label="来源链接、名字或 id"', add)
+        self.assertNotIn("textarea", add)
+        self.assertIn("if (event.key !== 'Enter') return;", add)
+        self.assertIn("onClick={() => search(line)}>查找</Button>", add)
+        # 一趟查找在跑的时候不再起第二趟，按钮和输入框都进忙态。
+        self.assertIn("if (!query || running || resolve.isPending) return;", add)
+        self.assertIn("{...busyProps(running || resolve.isPending)}", add)
 
     def test_reader_management_is_locked_and_points_to_the_writer(self):
-        # 读请求带上表面的 signal（surfaceApi），切页时会被取消。
+        """本机只能浏览时，管理页说清楚并给出写入端的去处。"""
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        self.assertIn('<Note tone="warning" title="本机只能浏览"', page)
+        self.assertIn("前往写入端管理关注", page)
+        self.assertIn("{readOnlyMessage}", page)
+        # 只读这一位由壳从 runtime 读出来交进 island，React 不自己再判一次。
+        self.assertPageContains("readOnly:!!runtime?.ledger_read_only,")
         self.assertPageContains("surfaceApi(surface,'/healthz')")
-        self.assertPageContains("followRuntime?.ledger_read_only")
-        self.assertPageContains("前往写入端管理关注")
-        self.assertPageContains("#followAdd input,#followAdd button")
+        # 写操作一律停用，不是点下去才报错。
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("disabled={readOnly}", source_list)
 
     def test_failed_source_adds_stay_visible_instead_of_being_erased_by_reload(self):
-        block = self.page[self.page.index("if(addButton)addButton.onclick=async()=>"):
-                          self.page.index("async function followWrite(")]
-        self.assertIn("const failures=[]", block)
-        self.assertIn("state.textContent=failures.join('；')", block)
-        self.assertLess(block.index("if(failures.length)"),
-                        block.index("await openFollowManage(false)"))
-        self.assertIn("return;", block[block.index("if(failures.length)"):])
+        """一批候选里有几条登记失败时，失败原因留在页面上。
+
+        逐条登记，失败的收进清单接着登记下一条；成功那几条会让清单重取，可重取
+        不该把刚才那几行失败一起冲掉——那正是人还没来得及读的东西。
+        """
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("failures.push(`${item.candidate.label}：${errorMessage(cause)}`);", add)
+        self.assertIn("if (result.failures.length) { setProblem(result.failures.join('；')); return }",
+                      add)
+        # 重取排在报错之前，且报错这一支直接 return，不会再往下清空。
+        register = add[add.index("const register = useMutation({"):]
+        register = register[:register.index("\n  });")]
+        self.assertLess(register.index("void reloadFollowManage();"),
+                        register.index("if (result.failures.length)"))
+        self.assertIn('<Note tone="error" title="这一次没有完成">{problem}</Note>', add)
 
     def test_a_bare_name_or_id_is_looked_up_across_sources(self):
-        self.assertPageContains("'/api/follow/resolve'")
-        self.assertPageContains("function renderFollowPicks(")
-        # 结果先勾选再落地，不自动登记。
-        self.assertPageContains("data-pick-add")
-        self.assertPageContains("data-pick-cancel")
+        """光给一个名字或 id 也能查，查完列候选、勾选之后才真的登记。"""
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export const FOLLOW_RESOLVE_URL = '/api/follow/resolve';", data)
+        self.assertIn("export const startResolve = (lines: string[]) =>", data)
+        add = self.read_react("follow-manage/add-source.tsx")
+        # 候选默认勾上，但登记是单独一颗键；查完不自动写。
+        self.assertIn("onClick={() => register.mutate(picked)}", add)
+        self.assertIn("isSelected={!candidate.known && !unpicked.has(key)}", add)
 
-    def test_lookup_results_stay_inside_the_add_section_with_one_title_scale(self):
-        page = self.page
-        manage = page[page.index("function renderFollowManage("):
-                      page.index("function wireFollowItems(")]
-        # 三块内容各是一个工作区面板，按 `data-follow-workspace-panel` 认，别按
-        # `class="fsec"` 认——三块都带这个类，取到的会是第一块而不是「添加关注」。
-        add_section = manage[manage.index('<section class="fsec" data-follow-workspace-panel="add">'):
-                             manage.index('</section>')]
-        self.assertIn('id="followPicks"', add_section)
-        self.assertNotIn('</section>\n      <div id="followPicks">', manage)
-        self.assertPageContains(
-            '<div class="fpicks"><div class="fpickhead"><h3>查找结果</h3>')
-        self.assertPageContains('<p class="fpickempty">站内没有查到来源</p>')
-        self.assertPageContains("box.scrollIntoView({block:'nearest',behavior:'smooth'})")
-        self.assertNotIn(".fpicks h3{", page,
-                         "查找结果不应另起一套标题字号")
+    def test_lookup_results_stay_inside_the_add_section(self):
+        """查找结果留在「添加关注」这一栏里，不另开一屏。
+
+        三栏是三件事，结果跑到别的栏去就得来回切；标题层级也只有一档，结果块不
+        自己再起一套字号。
+        """
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        panel = page[page.index('<TabPanel id="add"'):page.index('<TabPanel id="source"')]
+        self.assertIn("<AddSource data={data}", panel)
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn('<h3 className="text-headline-medium text-text-primary">添加关注</h3>', add)
+        self.assertEqual(add.count("text-headline-medium"), 1, "查找结果不另起一套标题字号")
 
     def test_f95_misses_offer_a_clickable_google_query(self):
-        self.assertPageContains("row.external_searches||[]")
-        self.assertPageContains(
-            'class="externallink" href="${esc(search.url)}"')
-        self.assertPageContains('target="_blank" rel="noreferrer noopener"')
-        self.assertPageContains("${esc(search.query)}")
-        block = self.page[self.page.index("const searches=(row.external_searches||[])"):
-                          self.page.index("return `<div class=\"fpick\">")]
-        # 说明先行、不在链接里；链接行在其后，带外链标。
-        self.assertLess(block.index("<i>${esc(search.evidence)}</i>"),
-                        block.index("<a class=\"externallink\""))
+        add = self.read_react("follow-manage/add-source.tsx")
+        block = add[add.index("{(row.external_searches || []).map((search) => ("):]
+        block = block[:block.index("{failures.length ? (")]
+        self.assertIn('<small className="text-caption-1-regular text-text-secondary">{search.evidence}</small>',
+                      block)
+        self.assertIn("<ExternalLink href={search.url}>{`${search.label}：${search.query}`}</ExternalLink>", block)
+        # 说明先行、不在链接里；链接在其后，带外链标。
+        self.assertLess(block.index("{search.evidence}"), block.index("<ExternalLink"))
+        self.assertReactContains("settings/section.tsx", "trailingIcon={RiExternalLinkLine}")
 
     def test_follow_author_groups_are_one_card_per_author_and_link_to_the_original_page(self):
-        self.assertPageContains('class="frows fsources"')
-        grid = self.page[self.page.index(".fsources{"):]
-        self.assertIn("repeat(auto-fit,minmax(430px,1fr))", grid[:grid.index("}")])
-        self.assertPageContains("groups.slice(start,end).map(followAuthorBlock).join('')")
-        self.assertNotIn(".fsources>.fauthor{display:grid", self.page,
-                         "多栏单位是作者组，不能拆开作者下面的来源行")
-        self.assertPageContains('class="fsourcelink externallink" href="${esc(source.url)}"')
-        self.assertPageContains('title="打开原来源"')
-        self.assertPageContains('rel="noreferrer noopener"')
-        author = self.page[self.page.index(".fauthor{"):]
-        author_rule = author[:author.index("}")]
-        self.assertIn("height:280px", author_rule)
-        self.assertIn("border:1px solid var(--border-10)", author_rule)
-        self.assertIn("grid-template-rows:auto minmax(0,1fr)", author_rule)
-        # 一个作者一张卡，来源直接铺在卡里：卡片高度由 Board 层放开（`.followmanage .fauthor`
-        # 的 `height:auto`），来源那一格不再自带滚动区。
-        self.assertPageContains('<div class="fauthorsources" id="follow-author-${group[0].id}"'
-                                ' aria-label="${esc(name)} 的关注来源">${sourceRows}</div>')
-        self.assertBoardContains(".followmanage .fauthorsources{height:auto;max-height:none;overflow:visible}")
-        # 末位作者卡与批量条之间隔着分页条，卡的四角都圆回去，不再与底条做拼角。
-        self.assertBoardContains(".followmanage .fmain>.fsec:has(>.fsecfoot)>.frows,.followmanage "
-                                 ".fmain>.fsec:has(>.fsecfoot) .board-follow-list{border-bottom-left-radius:0;border-bottom-right-radius:0}")
-        self.assertPageLacks(".fmain>.fsec:has(>.fsecfoot) .fauthor:last-child")
+        """一位创作者一张卡，卡里是他在各个站上的来源，来源名连回原页面。"""
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn('<section aria-label={`${name} 的关注来源`}', source_list)
+        self.assertIn("<AuthorCard key={key} group={group} name={authorName(group, aliases)}", source_list)
+        # 卡片里那一叠来源行是同一位创作者的，展开与否由卡自己记。
+        self.assertIn("<div id={panel} hidden={!open}>", source_list)
+        self.assertIn("const panel = `follow-author-${group[0]!.id}`;", source_list)
+        self.assertReactContains(
+            "follow-manage/source-view.tsx",
+            '<a href={source.url} target="_blank" rel="noreferrer noopener" title="打开原来源"')
 
     def test_source_actions_are_icon_only_and_stay_on_one_row(self):
-        row = self.page[self.page.index("function followSourceCells(source,selectable=false)"):]
-        row = row[:row.index("function followAliasManager")]
-        self.assertIn("data-follow-check", row)
-        self.assertIn("data-follow-remove", row)
-        self.assertIn("${icon('refresh-cw')}", row)
-        self.assertIn("${icon('trash')}", row)
-        self.assertNotIn(">检查</button>", row)
-        self.assertNotIn(">移除</button>", row)
-        rule = self.page[self.page.index(".fauthor .fsource.frow{"):]
-        self.assertIn("flex-wrap:nowrap", rule[:rule.index("}")])
+        """行尾那两颗动作只有字形，名字交给无障碍名称，一行摆得下。
 
-    def test_each_channel_has_a_styled_update_checkbox(self):
-        self.assertPageContains('class="fchannelcheck"')
-        self.assertPageContains('data-follow-enabled="${source.id}"')
-        self.assertPageContains("{action:'enabled',id:Number(control.dataset.followEnabled),enabled}")
-        # 框本身归共用的 .pcheck，.fchannelcheck 只剩这一行在行里的摆放。
-        self.assertPageContains(".fchannelcheck{display:grid;place-items:center;align-self:center}")
-        # 行是 grid 且整行居中，框跟着走。Board 层再压一句「贴顶再推两像素」的话，
-        # 框会比同一行的名字高出半个身位——对齐的是行的上沿，不是它标着的那行字。
-        board = (ROOT / "web" / "board.css").read_text(encoding="utf-8")
-        self.assertNotIn(".followmanage .fchannelcheck{align-self:start", board)
-        self.assertPageContains(".pcheck input{position:absolute;width:1px;height:1px;opacity:0")
-        # Geist Checkbox 选中态实测：框底不变，勾是墨色；不再用蓝底。
-        self.assertPageContains(".pcheck input:checked+span{border-color:var(--ink-2);color:var(--ink)}")
-        self.assertPageContains("${icon('check')}")
+        写上「检查」「移除」两个词的话，窄一点的卡片里这一行就断成两行，而断开的
+        正是每条来源都要看的状态和上次检查时间。
+        """
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        row = source_list[source_list.index("function SourceRow("):
+                          source_list.index("function AuthorCard(")]
+        self.assertIn("iconOnly leadingIcon={RiRefreshLine}", row)
+        self.assertIn("aria-label={`检查 ${source.label} 的更新`}", row)
+        self.assertIn("iconOnly leadingIcon={RiDeleteBinLine}", row)
+        self.assertIn("aria-label={`移除 ${source.label}`}", row)
+        self.assertNotIn(">检查<", row)
+        self.assertNotIn(">移除<", row)
+        # 这两颗自己不换行，行里要挤也是挤前面那几段文字。
+        self.assertIn('<span className="flex shrink-0 items-center gap-1">', row)
+
+    def test_a_row_is_picked_by_its_own_checkbox_and_written_one_row_at_a_time(self):
+        """每行第一格是勾选框，改这一条的状态只换这一条的那一份数据。
+
+        启用与暂停是对选中的那一批说的，写回按单行交换：整张清单重取一遍的话，
+        正在看的那一屏会整个跳一下，而变的只有一个字。
+        """
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("<Checkbox isSelected={selected} onChange={onToggle} "
+                      "aria-label={`选择 ${source.label}`} />", source_list)
+        self.assertIn("else for (const id of result.done) patchSource(id, "
+                      "{ enabled: result.action === 'enabled' });", source_list)
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export function patchSource(id: number, patch: Partial<FollowSource>): void {", data)
+        self.assertIn("queryClient.setQueryData<FollowData>(FOLLOW_MANAGE_KEY, (data) => (data ? {", data)
 
     def test_official_channel_icons_and_alias_manager_are_visible(self):
-        icons = self.page.split("const SOURCE_ICON_PROVIDERS=new Set([", 1)[1].split("]);", 1)[0]
+        """官方站有自己的圆标；作者别名有一块自己的管理区。"""
+        data = self.read_react("follow-manage/follow-manage.ts")
+        icons = data.split("export const SOURCE_ICON_PROVIDERS = new Set([", 1)[1].split("]);", 1)[0]
         for provider in ("fanbox", "patreon", "subscribestar"):
             self.assertIn(f"'{provider}'", icons)
-        self.assertPageContains("followAliasManager(followData.author_aliases,followData.alias_suggestions)")
-        self.assertPageContains("'/api/follow/author-alias'")
+        self.assertIn("export const FOLLOW_ALIAS_URL = '/api/follow/author-alias';", data)
+        self.assertReactContains("follow-manage/follow-manage-page.tsx",
+                                 "<AliasManager groups={data.author_aliases || []}")
 
     def test_the_author_head_shows_its_sites_as_favicons(self):
         """作者卡这一行只出图标：站名在下面每条来源自己那一行上都写着。
@@ -2958,23 +2965,26 @@ class FollowWebSourceTests(unittest.TestCase):
         写进标题栏就是同一个词并排两次，窄卡片里它先把图标挤到贴脸，再把作者名压没。
         站名落在 title 和读屏读的那一段里，真要确认的人读得到。
         """
-        page = self.page
-        block = page[page.index('function followAuthorBlock('):]
-        block = block[:block.index("${sources}")]
-        self.assertIn("group.map(source=>sourceIcon(source.provider)).join('')", block)
-        self.assertNotIn("个来源`", block)
-        self.assertIn('title="${esc(providers)}"', block)
-        self.assertIn('<span class="sr-only">来源：${esc(providers)}</span>', block)
-        rule = page[page.index(".fauthorhead .fmeta{"):]
-        self.assertIn("flex:0 1 auto;min-width:0", rule[:rule.index("}")])
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        head = source_list[source_list.index("function AuthorCard("):
+                           source_list.index("export function SourceList(")]
+        self.assertIn("{group.map((source) => <SourceIcon key={source.id} provider={source.provider} />)}",
+                      head)
+        self.assertIn('<span className="flex shrink-0 items-center gap-1" title={providers}>', head)
+        # 只读屏的那一段走 `VisuallyHidden`：它把样式写在元素上，不生成一个和旧样式表
+        # 同名的工具类（`frontend/test/legacy-class-names.test.ts` 盯着这条）。
+        self.assertIn("<VisuallyHidden>{`来源：${providers}`}</VisuallyHidden>", head)
 
     def test_already_followed_candidates_are_shown_but_not_selectable(self):
-        # 灰掉但仍显示，免得人以为没查到。
-        self.assertPageContains("c.known?' known':''")
-        self.assertPageContains("'已经关注'")
+        """已经关注的候选照样列出来，但勾不动——不然人以为没查到。"""
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("isDisabled={candidate.known}", add)
+        self.assertIn("{candidate.known ? '已经关注' : candidate.evidence}", add)
 
     def test_the_first_name_lookup_warns_about_the_index_download(self):
-        self.assertPageContains("首次按名字查要下载创作者索引，可能几十秒")
+        """按名字查第一次要先下载创作者索引，这一等得说清楚。"""
+        self.assertReactContains("follow-manage/add-source.tsx",
+                                 "首次按名字查要下载创作者索引，可能几十秒")
 
     def test_the_input_and_its_button_are_the_same_height(self):
         # 输入框和旁边的来源筛选按钮齐平；单行以后没有 min-height 与 resize。
@@ -2995,53 +3005,32 @@ class FollowWebSourceTests(unittest.TestCase):
         # 添加表单没有自己的按钮高度规则：输入框几何由 .geist-search 统一给。
         self.assertNotIn(".faddform .fbtn{", page)
 
-    def test_source_filter_uses_the_project_toolbar_layout_without_menu_motion(self):
-        # Vercel Projects：搜索占剩余宽度，筛选带明确标签，主操作在右；
-        # 菜单没有展开动画，并在自己的视口内滚动。
-        self.assertPageContains(
-            ".faddform{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px")
-        self.assertPageContains(
-            ".faddform .fsrcfilter .fbtn{width:auto;height:38px;min-height:38px;padding:0 11px}")
-        self.assertPageContains('aria-expanded="false" aria-haspopup="menu"')
-        self.assertPageContains('aria-label="${esc(label())}" title="${esc(label())}"')
-        self.assertPageContains("data-srcfilter-label")
-        self.assertPageContains("'全部来源'")
-        # 视口内固定、内部滚动、无展开动画属于全站的锚定菜单，来源筛选只多一个宽度。
-        shared = self.page[self.page.index(".popmenu{"):]
-        shared = shared[:shared.index("}")]
-        self.assertIn("position:fixed", shared)
-        self.assertIn("overflow-x:hidden", shared)
-        self.assertIn("overflow-y:auto", shared)
-        self.assertIn("overscroll-behavior:contain", shared)
-        self.assertNotIn("transition", shared)
-        menu = self.page[self.page.index(".fsrcmenu{"):]
-        menu = menu[:menu.index("}")]
-        self.assertIn("width:min(250px,calc(100vw - 16px))", menu)
-        source_filter = self.page[self.page.index("function renderFollowSrcFilter("):
-                                  self.page.index("function renderFollowPicks(")]
-        self.assertNotIn("transitionend", source_filter)
-        self.assertNotIn("style.height", source_filter)
-        self.assertIn("wireAnchoredMenu(mount,toggle,menu);", source_filter)
-        anchored = self.page[self.page.index("export function wireAnchoredMenu("):]
-        self.assertIn("innerWidth-width-8", anchored)
-        self.assertIn("innerHeight-8", anchored)
+    def test_the_source_filter_is_a_labelled_popover_beside_the_lookup_field(self):
+        """来源筛选是查找行右边一颗带名字的按钮，点开是一块弹层。
+
+        按钮上写着当前筛到哪几个站，不必点开才知道；弹层自己是一块 `Dialog`，
+        有名字、能用键盘关掉，弹层位置由 BoardUI 的 `Popover` 定。
+        """
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn('aria-haspopup="dialog" aria-expanded={open} aria-label={label}', add)
+        self.assertIn("leadingIcon={RiFilter3Line}", add)
+        self.assertIn('<Dialog aria-label="来源筛选"', add)
+        self.assertIn('placement="bottom end" offset={4} className={MENU_POPOVER_SURFACE}', add)
+        # 按钮上那句话说的是筛完剩几个站，全留着就直说「全部来源」。
+        self.assertIn("'全部来源'", add)
 
     def test_source_filter_menu_offers_select_all_and_select_none(self):
-        # 两个按钮是对整张清单的动作，摆在来源行上方；勾选状态仍只有 fsrcUnchecked 一份真相。
-        source_filter = self.page[self.page.index("function renderFollowSrcFilter("):
-                                  self.page.index("function renderFollowPicks(")]
-        self.assertIn('<button type="button" class="geist-button" data-srcfilter-all>全选</button>',
-                      source_filter)
-        self.assertIn('<button type="button" class="geist-button" data-srcfilter-none>全不选</button>',
-                      source_filter)
-        self.assertLess(source_filter.index("data-srcfilter-all"),
-                        source_filter.index('data-srcfilter="${esc(provider)}"'))
-        self.assertIn("if(all)all.onclick=()=>setAll(true);", source_filter)
-        self.assertIn("if(none)none.onclick=()=>setAll(false);", source_filter)
-        self.assertIn("const setAll=checked=>{inputs.forEach(input=>setChecked(input,checked));sync()};",
-                      source_filter)
-        bulk = self.page[self.page.index(".fsrcbulk{"):]
-        self.assertIn("border-bottom:1px solid var(--border-10)", bulk[:bulk.index("}")])
+        """弹层顶上给「全选」和「全不选」，它们是对整张清单说的，所以排在逐站那几行上面。
+
+        真相只有 `hidden` 一份：两颗键改的也是它，不去逐个翻勾选框的 DOM 状态。
+        """
+        add = self.read_react("follow-manage/add-source.tsx")
+        filter_block = add[add.index("function SourceFilter("):add.index("function PickRow(")]
+        self.assertIn("onClick={() => onHidden(new Set())}>全选</Button>", filter_block)
+        self.assertIn("onClick={() => onHidden(new Set(rows.map((row) => row.provider_label)))}"
+                      ">全不选</Button>", filter_block)
+        self.assertLess(filter_block.index(">全选</Button>"),
+                        filter_block.index("<Checkbox isSelected={!hidden.has(row.provider_label)}"))
 
     def test_follow_filter_rows_are_multi_select_without_bulk_keys(self):
         """关注页的作者、来源、标签三行都是多选，行首不配「全选／全不选」：这一页是浏览用的。
@@ -3053,7 +3042,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("followAuthor=", self.page.replace("followAuthors=", ""))
         self.assertNotIn("followProvider=", self.page.replace("followProviders=", ""))
         render = self.page[self.page.index("function renderFollow("):
-                           self.page.index("function followAuthorGroups(")]
+                           self.page.index("function followBackfillState(")]
         self.assertIn('aria-pressed="${followAuthors.has(key)}"', render)
         self.assertIn('aria-pressed="${followProviders.has(key)}"', render)
         self.assertIn('selected:followTags.has(key)', render)
@@ -3064,27 +3053,35 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("params.set('provider',[...followProviders].join(','))", self.page)
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
-        # 只看管理页那一段：同样的标题在别的页面上也出现过，全页搜索会命中错的那个。
-        page = self.page
-        body = page[page.index("function renderFollowManage("):
-                    page.index("function wireFollowItems(")]
-        order = [body.index(f'<h3>{heading}')
-                 for heading in ("添加关注", "关注列表", "凭据")]
-        self.assertEqual(order, sorted(order), "管理页分区顺序应为 加关注 → 关注列表 → 凭据")
+        """三栏按做事的先后排：关注列表在最前，其次添加关注，最后才是来源和凭证。
+
+        凭据是出问题时才去配的东西，摆在第一栏就等于每次进来都先看一眼跟这次无关的
+        表单。栏的顺序同时也是地址栏里 `tab` 的取值顺序，壳那边照着同一份。
+        """
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        self.assertIn("const TABS = [['list', '关注列表'], ['add', '添加关注'], "
+                      "['source', '来源和凭证']] as const;", page)
+        self.assertPageContains("const FOLLOW_MANAGE_TABS=['list','add','source'];")
 
     def test_counts_are_a_footnote_not_their_own_section(self):
-        # 四个数字单独占一张通栏卡片，在宽屏上就是一条空长条。
-        page = self.page
-        body = page[page.index("function renderFollowManage("):
-                    page.index("function wireFollowItems(")]
-        self.assertNotIn("<h3>内容", body)
-        self.assertIn("条未看", body)
+        """四段计数跟在列表末尾，不自己占一整块。
+
+        单独占一张通栏卡片的话，宽屏上就是一条空长条；而这四个数只在还有未看的时候
+        才有人读，没有未看时它整块不出现。
+        """
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("{counts.new ? (", source_list)
+        self.assertIn("{`未看 ${counts.new} · 已看 ${counts.seen || 0} · 已保存 "
+                      "${counts.saved || 0} · 已忽略 ${counts.ignored || 0}`}", source_list)
+        # 页顶那四格读数是另一件事：它说的是整个关注面的规模，不是某一次筛选的结果。
+        self.assertReactContains("follow-manage/follow-manage-page.tsx",
+                                 '<Reading term="关注创作者" figure={groups.length} unit="位" />')
 
     def test_the_page_is_one_narrow_column_with_credentials_inline(self):
         """侧栏在哪个宽度上都不对：宽屏把凭据推出视线，窄屏又整个塌到最底下。
 
-        三块内容本来就有先后——先添加、再看列表、要配凭据时才往下翻——那就按顺序
-        排成一列，宽度跟数据管理页同样收到 812px，别让一行横跨整个显示器。
+        三块内容本来就有先后，那就按顺序排成一列，宽度跟数据管理页同样收窄，别让一行
+        横跨整个显示器。骨架照这个宽度画，换页时不会先宽一下再收回去。
         """
         page = self.page
         rule = page[page.index(".followmanage{"):]
@@ -3093,19 +3090,18 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("margin-left:auto;margin-right:auto", rule)
         self.assertNotIn("grid-template-columns", rule)
         self.assertNotIn("faside", page)
-        self.assertNotIn("@media (max-width:1080px){.followmanage{", page)
         # 标题与说明跟内容列同宽，否则标题悬空在更宽的位置上。
         self.assertPageContains(
             ".follow-manage-layout .managetitle,.follow-manage-layout .pagelede{width:min(812px,100%)")
         self.assertPageContains(
             "document.body.classList.toggle('follow-manage-layout',"
             "decodeURIComponent(location.pathname)==='/follow-manage')")
-        # 凭据位于「来源和凭证」分区。
-        body = page[page.index("function renderFollowManage("):
-                    page.index("function wireFollowManage(")]
-        self.assertLess(body.index("<h3>关注列表</h3>"), body.index("<h3>来源和凭证</h3>"))
-        credentials = body[body.index("<h3>来源和凭证</h3>"):]
-        self.assertIn("creds.map(followCredentialRow)", credentials)
+        # React 那一侧同宽：`Page` 是这一族页面共用的那一层。
+        self.assertReactContains("follow-manage/follow-manage-page.tsx", "<Page>")
+        # 凭据在「来源和凭证」那一栏里，每个站一行。
+        self.assertReactContains(
+            "follow-manage/credentials.tsx",
+            "<CredentialSection key={row.provider} row={row} readOnly={readOnly} toast={toast} />")
 
     def test_sections_have_a_frame_but_their_rows_do_not(self):
         """反模式是卡片**套**卡片，不是「不要任何容器」。
@@ -3141,15 +3137,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains(".frows>*{min-width:0}")
 
     def test_credential_states_are_not_all_the_same_colour(self):
-        """缺凭据是待办，配好了是完成态。同色就等于没说。"""
-        page = self.page
-        colours = {}
-        for name in ("done", "req", "opt", "none"):
-            rule = page[page.index(f".fcstate.{name}"):]
-            colours[name] = rule[:rule.index("}")]
-        self.assertNotEqual(colours["done"], colours["req"],
-                            "已配置和缺凭据必须能一眼分开")
-        self.assertNotEqual(colours["done"], colours["none"])
+        """缺凭据是待办，配好了是完成态，接不进来是坏掉了。同色就等于没说。"""
+        creds = self.read_react("follow-manage/credentials.tsx")
+        chip = creds[creds.index("function StateChip("):creds.index("function CredentialForm(")]
+        self.assertIn('if (done) return <Chip variant="caption" color="lime">已配置</Chip>;', chip)
+        self.assertIn("const color = row.requirement === 'required' ? 'yellow'", chip)
+        self.assertIn(": row.requirement === 'blocked' ? 'rose' : 'neutral';", chip)
+        colours = set(re.findall(r"['\"](lime|yellow|rose|neutral)['\"]", chip))
+        self.assertEqual(len(colours), 4, "四种处境要有四副长相")
 
     def test_suggestions_come_from_the_real_library_and_are_clickable(self):
         """「猜你喜欢」取账本里真实存在的创作者，点一下直接拿去查。
@@ -3157,59 +3152,45 @@ class FollowWebSourceTests(unittest.TestCase):
         推荐不能退化成 placeholder：占位文字点不了。占位文字只负责说清该输入什么
         格式（Vercel Forms：以省略号收尾、给出示例样式），不许塞进具体创作者名。
         """
-        self.assertPageContains("function followSuggestionChips(")
-        self.assertPageContains("followData.suggestions")
-        self.assertPageContains("item.visits")
-        self.assertPageContains("data-follow-guess")
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("const guesses = data.suggestions || [];", add)
+        # 点一下就是拿这个名字去查，不是往输入框里填半句话让人再点一次。
+        self.assertIn("onClick={() => search(guess.name)}>{guess.name}</Button>", add)
+        self.assertIn("title={`浏览历史里出现 ${guess.visits} 次", add)
         # 不能退回本地文件的创作者：那是「他有谁的文件」，不是「他喜欢谁」。
-        # 只看关注管理那一段——首页搜索推荐用 facets.creators 是另一回事，合法。
-        page = self.page
-        block = page[page.index("function followSuggestionChips("):
-                     page.index("function wireFollowItems(")]
-        self.assertNotIn("facets.creators", block)
-        self.assertPageContains("form.requestSubmit()")
-        page = self.page
-        body = page[page.index("function renderFollowManage("):
-                    page.index("function wireFollowItems(")]
-        form = body[body.index('<form class="faddform"'):body.index("</form>")]
-        hint = form[form.index("placeholder:'") + len("placeholder:'"):]
-        hint = hint[:hint.index("'")]
-        self.assertEqual(hint, "粘贴来源链接，或输入创作者名、id…")
-        self.assertNotIn("${", hint, "占位文字不许由数据拼出来——那就是把推荐塞进去了")
-        # 这一段里只有一处写死的占位文字。骨架那处 `placeholder:managementPlaceholder(…)`
-        # 是路由占位结构，不是输入框里的字，用带引号的形式把两者分开数。
-        self.assertEqual(body.count("placeholder:'"), 1)
+        self.assertNotIn("facets", add)
+        # 占位文字只说该输入什么格式，不塞具体创作者名。
+        self.assertIn("const PLACEHOLDER = '粘贴来源链接，或输入创作者名、id…';", add)
+        self.assertEqual(add.count("placeholder={"), 1)
+        self.assertEqual(add.count("placeholder='"), 0, "占位文字只有具名常量那一处")
 
     def test_every_credential_state_sits_in_the_same_column(self):
-        """summary 是 .frow 的 flex 子项，默认不撑满整行——于是有折叠体的那几行
-        状态贴在名字后面，没折叠体的却靠右，同一列两种对齐。"""
-        page = self.page
-        rule = page[page.index(".fcred summary{"):]
-        rule = rule[:rule.index("}")]
-        self.assertIn("flex:1 1 auto", rule)
-        self.assertIn("min-width:0", rule)
-        # 两个分支必须用同一个状态类，否则同一列出现两套样式和两种对齐。
-        self.assertNotIn('<span class="fmeta">${esc(label)}</span>', page)
-        self.assertPageContains('<span class="fcstate none">${esc(label)}</span>')
-        state = page[page.index(".fcstate{"):]
-        self.assertIn("margin-left:auto", state[:state.index("}")])
-        # 折叠/展开两种几何下 summary 的可用宽度必须一致，否则状态列差一个 gap。
-        self.assertPageContains("details.fcred{display:block;min-width:0}")
+        """能填的那几行有折叠体、不能填的没有，但抬头是同一段。
+
+        抬头一旦写成两份，两个分支就会各自漂：一边状态贴着名字，一边靠右，同一列两种
+        对齐。所以 `head` 只算一次，两个分支都摆同一个它。"""
+        creds = self.read_react("follow-manage/credentials.tsx")
+        section = creds[creds.index("function CredentialSection("):creds.index("export function Credentials(")]
+        self.assertIn("const head = (", section)
+        self.assertEqual(section.count("{head}"), 2, "两个分支要摆同一段抬头")
+        self.assertEqual(section.count("<StateChip row={row} />"), 1, "状态徽章只该有一处")
+        # 抬头自己是 flex 行：名字可缩、图标和徽章不缩，名字再长也不把状态挤出这一列。
+        self.assertIn('<span className="flex min-w-0 items-center gap-2">', section)
 
     def test_the_add_box_carries_no_standing_how_to_prose(self):
         # 空态保留状态和结果去向；操作说明常驻就是噪音。
-        page = self.page
-        body = page[page.index("function renderFollowManage("):
-                    page.index("function wireFollowItems(")]
-        self.assertNotIn("要一次加多个就每行一条", body)
-        self.assertNotIn("把链接或名字粘进上面的输入框", body)
-        self.assertIn("emptyState('rss','还没有关注来源'", body)
-        self.assertIn("关注来源及其检查状态会显示在这里。", body)
+        add = self.read_react("follow-manage/add-source.tsx")
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertNotIn("要一次加多个就每行一条", add)
+        self.assertNotIn("把链接或名字粘进上面的输入框", add)
+        self.assertIn('<EmptyState icon={RiRssLine} title="还没有关注来源">'
+                      "关注来源及其检查状态会显示在这里。</EmptyState>", sources)
 
     def test_the_panel_cites_the_registered_report_design_source(self):
-        self.assertPageContains("docs/reference-sources.json")
-        self.assertPageContains("vercel-report-design")
-        self.assertNotIn("e3d624baaf29dc1fc645aff3e38f03e564d2d6b1", self.page)
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        self.assertIn("docs/reference-sources.json", page)
+        self.assertIn("vercel-report-design", page)
+        self.assertNotIn("e3d624baaf29dc1fc645aff3e38f03e564d2d6b1", page)
 
     def test_the_type_scale_has_no_arbitrary_in_between_sizes(self):
         """同一份文档点名的另一条：细小灰字加随意字号。
@@ -3229,254 +3210,215 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_credential_rows_say_whether_they_are_needed_at_all(self):
         # 「未配置」本身不是信息：要说清需不需要、需要什么、去哪儿拿。
-        self.assertPageContains("required:['需要'")
-        self.assertPageContains("none:['不需要'")
-        self.assertPageContains("blocked:['接不进来'")
-        self.assertPageContains("row.where")
-        self.assertPageContains("row.howto")
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("required: '需要', optional: '可选', none: '不需要', blocked: '接不进来',", data)
+        creds = self.read_react("follow-manage/credentials.tsx")
+        # 需要什么：缺的字段名直接列出来，不让人点开才知道。
+        self.assertIn('<Chip variant="caption" color="rose">{`缺 ${row.missing.join(\'、\')}`}</Chip>', creds)
+        # 去哪儿拿：说明加一条跳到那个站自己的页面的链接。
+        self.assertIn("{row.where ? <> <ExternalLink href={row.where}>去取</ExternalLink></> : null}", creds)
+        self.assertIn("{row.howto ? <Help>{row.howto}</Help> : null}", creds)
 
     def test_the_page_says_where_the_credential_actually_lands(self):
+        creds = self.read_react("follow-manage/credentials.tsx")
         # 从 Mac 浏览 Windows 实例时，凭据落在 Windows 上——不能写成「本机」。
-        self.assertPageContains("运行 Peach 的电脑")
+        self.assertIn("存成运行 Peach 那台电脑上的一个文件。", creds)
         # Windows 那句要把后果说出来，不能只报一个「不收紧权限」的动作。
-        self.assertPageContains("在 Windows 上它不额外加锁，能登录那台电脑的人都能打开")
-        self.assertPageContains("row.path")
-        self.assertPageContains("row.world_readable")
+        self.assertIn("在 Windows 上它不额外加锁，能登录那台电脑的人都能打开。", creds)
+        self.assertIn('<p className="font-mono text-caption-1-regular break-all text-text-tertiary">{row.path}</p>',
+                      creds)
+        self.assertIn('{row.world_readable ? <Note tone="error" title="凭据文件权限过宽">', creds)
 
     def test_credential_information_card_stays_inside_the_viewport(self):
-        self.assertPageContains('class="fdescinfo" data-fdesc-tooltip')
-        self.assertPageContains('aria-label="凭据存放位置说明"')
-        self.assertPageContains('id="follow-credential-tooltip" role="dialog"')
-        self.assertPageContains("trigger.setAttribute('aria-controls',panel.id)")
-        self.assertPageContains("panel.setAttribute('popover','manual')")
-        self.assertPageContains("event.key==='Escape'")
-        self.assertPageContains("max-width:calc(100vw - 16px)")
-        self.assertPageContains("innerWidth-width-8")
+        """存放位置是一段常驻说明，排在凭据列表末尾，不是一枚要点开的浮层。
 
-    def test_author_aliases_use_the_real_geist_collapse_motion(self):
+        浮层要自己算位置才不越界，而这段字每次都该被读到——它讲的是凭据会落在哪台机器、
+        权限有多宽。排进正文流就没有越界这回事了。"""
+        creds = self.read_react("follow-manage/credentials.tsx")
+        tail = creds[creds.index("export function Credentials("):]
+        self.assertIn('<div className="flex flex-col gap-1 rounded-2lg bg-background-secondary-default px-3 py-2">',
+                      tail)
+        self.assertIn("<b className=\"text-body-medium text-text-primary\">{STORAGE_TITLE}</b>", tail)
+        self.assertIn("{`凭据文件在 ${data.root}`}", tail)
+        for machinery in ("popover", "role=\"dialog\"", "innerWidth"):
+            self.assertNotIn(machinery, creds, "这段说明不该有浮层定位逻辑")
+
+    def test_expanding_prose_animates_a_measured_height(self):
+        """展开是量出来的高度过渡，不是一帧之间蹦出来。
+
+        `height:auto` 不可过渡，所以要先量再写值；收起那半程也要把正文设成 `inert`，
+        否则键盘还能 Tab 进一段看不见的表单。"""
         self.assertPageContains(".fcollapse{overflow:hidden;transition:height .2s ease-in-out}")
         self.assertPageContains("summary.setAttribute('aria-controls',body.id)")
         self.assertPageContains("summary.setAttribute('aria-expanded',String(expanded))")
         self.assertPageContains("body.inert=!expanded")
         self.assertPageContains("body.inert=true")
         self.assertPageContains("body.style.height=body.scrollHeight+'px'")
-        # chevron 是 16px SVG，不是靠字号撑大的 › 字形：本页字阶只有三档，
-        # 图标尺寸混进去就会把「没有随意字号」这条门槛顶穿。
-        self.assertPageContains(".faliasmanager>summary>svg{flex:none;width:16px;height:16px")
-        self.assertPageLacks('.faliasmanager>summary::before{')
-        self.assertPageContains("transition:transform .2s ease-in-out")
-        # 内边距放在内层 .fcollapsebody：.fcollapse 自己带 padding 时 border-box 让
-        # height 过渡卡在 20px，收起末尾会跳一下，展开开头也先露出一截空白。
-        self.assertPageContains("inner.className='fcollapsebody'")
-        self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 16px 16px}")
-        self.assertPageLacks(".faliasmanager>.fcollapse{padding")
-        # 别名行是 Fieldset 的最后一行：负外边距吃掉 .fsec 的底部内边距，收起时底角与
-        # 卡片同心，否则整行下面多出一层 16px 的空带。
-        self.assertPageContains(".faliasmanager{margin:12px -16px -16px;")
-        self.assertPageContains('.faliasmanager>summary[aria-expanded="false"]{border-radius:0 0 calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px)}')
-        self.assertPageContains(".faliasmanager .fcollapsebody{padding:4px 13px 14px}")
-
-    def test_credential_rows_share_the_alias_collapse_motion(self):
-        """凭据行和作者别名共用一份 Collapse 实现。
-
-        `details.fcred` 是 block 布局才接得上：flex 行布局对不上 Collapse 的高度过渡。
-        展开一段正文这件事不该有第二套开合逻辑。
-        """
-        self.assertPageContains("export function wireCollapse(root,selector,idPrefix,triggerSelector='summary')")
-        self.assertPageContains("wireCollapse(root,'details.fauthor','follow-author-collapse','[data-follow-author-toggle]')")
-        self.assertPageContains("wireCollapse(root,'details.faliasmanager','follow-alias-collapse')")
-        self.assertPageContains("wireCollapse(root,'details.fcred','follow-cred-collapse')")
         self.assertEqual(self.page.count("body.style.height=body.scrollHeight+'px'"), 1,
                          "开合逻辑只该有一份")
-        # 内边距归 .fcollapsebody：留在 .fcred[open] 上的话，收起那一帧高度已经归零、
-        # 内边距还在，行尾会跳一下。
-        self.assertPageContains(".fcred .fcollapsebody{padding:8px 4px 12px}")
-        self.assertPageLacks(".fcred[open]{padding-bottom")
-        # 首段自己的上边距换成容器内边距，否则它跟容器外边距合并，scrollHeight 量矮一截。
-        self.assertPageContains(".fcred .fcollapsebody>p:first-child{margin-top:0}")
+        # 箭头跟着一起转：正文在动、指示方向的那一枚却一帧跳过去，两处说的就不是同一件事。
+        self.assertIn("rotate-90 transition-transform", self.read_front("react/settings/section.tsx"))
+
+    def test_credential_rows_expand_through_the_shared_collapse(self):
+        """展开一段正文这件事不该有第二套开合逻辑。
+
+        React 这边的 `Disclosure` 把开合交回遗留的 `setCollapseOpen`：同一份量高度、同一段
+        过渡、同一套 `aria-expanded`/`inert`。内边距放在里层，高度才收得到 0——留在外层的话
+        border-box 会让它卡在一截空白上，收尾跳一下。"""
+        section = self.read_front("react/settings/section.tsx")
+        self.assertIn("import { setCollapseOpen } from '@peach/legacy/ui';", section)
+        self.assertIn("setCollapseOpen(details.current, body.current, !open);", section)
+        self.assertIn('<div ref={body} id={id} inert={!open}>', section)
+        self.assertIn('<div className="flex flex-col gap-2 pt-3">{children}</div>', section)
+        creds = self.read_react("follow-manage/credentials.tsx")
+        self.assertIn("import { Disclosure, ErrorText, ExternalLink, Help } from '../settings/section';", creds)
+        self.assertIn("<Disclosure summary={credentialDone(row) ? '修改凭据' : '填写凭据'}", creds)
+        self.assertIn("defaultOpen={row.requirement === 'required' && !credentialDone(row)}>", creds)
 
     def test_credential_rows_carry_the_same_favicon_as_their_source(self):
         """凭据配的就是那个站，用来源行同一枚 favicon 指认它。"""
-        self.assertPageContains(
-            'const mark=`<span class="ficonslot" aria-hidden="true">${sourceIcon(row.provider)}</span>`')
-        self.assertPageContains('<div class="frow fcred none">${mark}<b>${esc(row.provider_label)}</b>')
-        self.assertPageContains("<summary>${mark}<b>${esc(row.provider_label)}</b>")
+        creds = self.read_react("follow-manage/credentials.tsx")
+        self.assertIn("import { SourceIcon } from './source-view';", creds)
+        self.assertIn("<SourceIcon provider={row.provider} />", creds)
         # 槽位占住 14px，不看里面有没有图：没登记 favicon 的站本来就没有，取不下来的
-        # 那些还会被 data-drop="self" 整个丢掉，两种情况都会让名字的左边缘参差。
-        self.assertPageContains(".fcred .ficonslot{flex:none;display:block;width:14px;height:14px}")
-        self.assertPageContains(".fcred .ficon{margin-right:0}")
-        self.assertIn('data-drop="self"', self.page)
+        # 那些还会被整个丢掉，两种情况都会让名字的左边缘参差。
+        self.assertIn('<span className="inline-flex size-3.5 shrink-0 items-center justify-center">', creds)
+        # 取不下来的那一枚自己撤掉，槽位留着：遗留层靠 `data-drop="self"` 做这件事，React 这边
+        # 是组件自己记下失败。两条路都不能把一个碎图标留在名字左边。
+        self.assertIn("onError={() => setBroken(true)}", self.read_react("follow-manage/source-view.tsx"))
 
     def test_the_follow_list_has_a_default_view_and_a_table_view(self):
-        """两个互斥视图用 Switch（共享 name 的 radio），不是 Toggle。
+        """同一批来源两种看法：默认按作者分卡，表格一行一条。
 
-        默认视图按作者分卡，表格视图一行一条来源。两种视图的 DOM 不同，切换走排序那条
-        重画路径：拿手里这份 followData 重画，不重取接口、不换骨架；勾选与收起的作者
-        各记在自己的 Set 里，重画后都还在。
+        两种视图共用一个勾选集合和一份排序状态——换视图不该让「我选中的那批」或者
+        「现在按什么排」变一次。版式是这台浏览器的个人偏好，存进 `appSettings`，不进地址栏。
         """
-        self.assertPageContains(
-            "const FOLLOW_LAYOUTS=[['default','默认视图','layout-grid'],['table','表格视图','table']]")
-        self.assertPageContains('<symbol id="i-table" viewBox="0 0 24 24">')
-        self.assertPageContains(
-            "iconSwitchHtml('follow-layout','关注列表视图',FOLLOW_LAYOUTS,followListLayout()")
-        self.assertPageContains("{attr:'data-follow-layout'}")
-        self.assertPageContains("${followLayoutButtons()}")
-        self.assertPageContains("wireIconSwitch(root,'data-follow-layout',setFollowListLayout)")
-        self.assertPageContains('<div class="frows fsources" data-layout="${followListLayout()}">${sourceList}</div>')
-        self.assertPageContains(
-            "const content=table?followSourceTable(groups,true,followManagePage,size)")
-        # 切换只换列表本身：页头那枚开关留在原地，滑块才有得滑。
-        self.assertPageContains("const list=document.querySelector('#stats .fsources');\n"
-                                "  if(!list){renderFollowManage(followCredentials||{});return}\n"
-                                "  refreshFollowSourcePage();")
-        self.assertPageContains("groups.slice(start,end).map(followAuthorBlock)")
-        self.assertPageContains("const selectedIds=()=>(followData.sources||[]).filter(source=>followSourceSelection.has(source.id)).map(source=>source.id);")
-        self.assertPageContains('class="selectiondock followselectiondock" role="group" aria-label="关注来源批量操作" hidden')
-        self.assertPageContains("const FOLLOW_PAGE_SIZES=[10,20,50,100];")
-        self.assertPageContains("const sourceList=followSourceListHtml(groups);")
-        self.assertPageContains("const collapsed=collapsedFollowAuthors.has(key);")
-        self.assertPageContains("group.map(source=>followSourceRow(source,true))")
-        self.assertPageContains("data-follow-selection-remove")
-        self.assertPageContains("data-follow-author-toggle")
-        self.assertPageContains("actions:root.querySelectorAll('[data-follow-selection-action]'),locked:!!followRuntime?.ledger_read_only")
-        # 选择要留下来，和 JAV 版式一样存进设置；存过旧值的机器落回默认视图。
-        self.assertPageContains("followLayout:'default'")
-        self.assertPageContains("appSettings.followLayout=value")
-        self.assertPageContains(
-            "allowedSetting(appSettings.followLayout,FOLLOW_LAYOUTS.map(([k])=>k),'default')")
-        # 表格在任何宽度都成立，开关不再按宽度收起。
-        self.assertPageLacks('.fsechead .iconswitch{display:none}')
-        # 宽屏两栏只归默认视图。
-        self.assertBoardContains(
-            '.followmanage .fsources[data-layout="default"] .board-follow-list{grid-template-columns:repeat(2,minmax(0,1fr))')
+        self.assertReactContains(
+            "follow-manage/follow-manage.ts",
+            "export const LAYOUTS = [['default', '默认视图'], ['table', '表格视图']] as const;")
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("const asTable = layout === 'table';", sources)
+        self.assertIn("aria-label={LAYOUTS[0][1]} aria-pressed={!asTable}", sources)
+        self.assertIn("aria-label={LAYOUTS[1][1]} aria-pressed={asTable}", sources)
+        # 勾选集合只有一份，两种视图都读它；表格那份 rowSelection 是由它派生的投影。
+        self.assertIn("const rowSelection: RowSelectionState = useMemo(\n"
+                      "    () => Object.fromEntries([...selected].map((id) => [String(id), true])), [selected]);",
+                      sources)
+        self.assertIn("const pageIds = asTable", sources)
+        # 排序也只有一份：两种视图读同一个 sort/dir，表格自己不再排一遍。
+        self.assertIn("manualSorting: true,", sources)
+        # 版式存进设置，不写地址栏。
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        self.assertIn("savePreference({ layout: next });", page)
+        self.assertNotIn("go({ layout", page)
+        self.assertIn("const [layout, setLayout] = useState<Layout>", page)
 
-    def test_selected_rows_keep_their_top_edge_and_row_icons_share_one_stroke(self):
-        """选中行四边都是蓝框：相邻行那条灰色上边线权重更高，会盖住选中框的上沿，删掉。
+    def test_selected_rows_are_marked_without_repainting_the_row_behind_the_table(self):
+        """选中与否由每行自己说。
 
-        行里的刷新与移除键和列表其它图标同一条线宽；别名行前面是这位作者的头像。
+        卡片那边行底色归 `data-selected`，表格那边归 BoardUI Table 自己的选中态——在它上面
+        再铺一层，就等于把它的 hover 与焦点态盖掉一遍。
         """
-        self.assertNotIn('.followmanage .board-follow-list .fsource.frow+.fsource.frow{border-top:',
-                         (ROOT / 'web' / 'board.css').read_text(encoding='utf-8'))
-        self.assertBoardContains('.followmanage .frowicon svg{stroke-width:2}')
-        self.assertBoardContains('.faliasidentity>.favatar{width:24px;height:24px;font-size:var(--fs-xs)}')
-        self.assertPageContains('<div class="faliasidentity">${followAliasAvatar(group)}<b>${esc(group.canonical_name)}</b>')
-        self.assertPageContains('aria-label="待合并创作者别名"')
-        self.assertPageContains('aria-label="已保存创作者别名"')
-        self.assertPageContains('data-follow-alias-all')
-        self.assertPageContains("confirmLabel:selectedOnly?'合并所选别名':'合并全部别名'")
-        self.assertPageContains('data-follow-alias-selected disabled>合并所选（0）')
-        self.assertPageContains('data-follow-alias-select-all aria-label="全选待合并别名"')
-        self.assertPageContains("aliasSelectAll.indeterminate=count>0&&count<fields.length")
-        self.assertPageContains(".filter(button=>!selectedOnly||button.closest('tr').querySelector('[data-follow-alias-select]').checked)")
-        self.assertPageContains("pending.shift();item.button.closest('tr')?.remove();syncAliasSelection();")
-        self.assertPageContains("const sources=(followData?.sources||[]).filter(source=>source.author_key===`name:${group.canonical_key}`);")
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("<div data-selected={selected || undefined}", sources)
+        self.assertIn("data-selected:bg-background-secondary-default", sources)
+        # 表格行不带自己的底色类：那一层归 Table。
+        table_block = sources[sources.index("{asTable ? ("):]
+        self.assertNotIn("data-selected:bg", table_block)
+        self.assertIn("<TableRow key={row.id} id={row.id}>", table_block)
 
     def test_both_views_render_the_same_source_cells(self):
-        """一条来源的格子只有一份模板：默认视图排成一行，表格视图各放一个 <td>。
+        """一条来源的格子只有一份写法：默认视图排成一行，表格视图各放一个单元格。
 
-        勾选、检查、移除的 data 属性两边一样，wireFollowManage 不分视图；表格里的
-        `<tr>` 顶着 `fsource` 类，`field.closest('.fsource')` 在两种视图里都找得到行。
+        站标、外链、状态徽章、上次检查这四样两边都从同一组组件和同一个纯函数来——各写一份
+        的话，同一条来源在两个视图里迟早读出两个样子。
         """
-        self.assertPageContains("function followSourceCells(source,selectable=false){")
-        self.assertPageContains(
-            "return {className:`fsource${bad?' bad':''}${source.enabled?'':' disabled'}`,"
-            "check,name,provider,status,checked,actions,error};")
-        self.assertPageContains("const cell=followSourceCells(source,selectable);\n  return `<div class=\"frow ${cell.className}\">")
-        self.assertPageContains("${cell.provider(selectable?cell.status:'')}")
-        self.assertPageContains("return `<tr class=\"${cell.className}\">")
-        self.assertPageContains('<td class="ftcheck">${cell.check}</td>')
-        self.assertPageContains('<td class="ftname">${cell.name}${cell.error}</td>')
-        self.assertPageContains('<td class="ftprovider">${cell.provider(\'\',true)}</td>')
-        self.assertPageContains('<td class="ftstatus">${cell.status}</td>')
-        self.assertPageContains('<td class="ftactions">${cell.actions}</td></tr>')
-        self.assertPageContains("selectable.forEach(field=>field.closest('.fsource').classList.toggle('selected',field.checked))")
-        # 时间格两边同一个写法，<i> 只是包一层，不是排版意图。
-        self.assertPageContains('<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5,10))}<span class="fclock">${esc(text.slice(10))}</span>')
-        self.assertPageContains(".fsource .fchecked .fyear{font-style:normal}")
-        self.assertPageContains('<span class="fmeta fprovider${')
-        self.assertPageContains('title="${esc(source.provider_label)}">')
-        self.assertPageContains("function sourceIcon(provider){return SOURCE_ICON_PROVIDERS.has(provider)")
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("import { AuthorAvatar, SourceIcon, SourceLink, StatusBadge } from './source-view';",
+                      sources)
+        for shared, times in (("<SourceLink source=", 2), ("<StatusBadge source=", 2),
+                              ("checkedText(", 2), ("<AuthorAvatar ", 2)):
+            self.assertGreaterEqual(sources.count(shared), times,
+                                    f"两种视图都要用同一份 {shared!r}")
+        # 行上那两个动作也是同一对，无障碍名称的写法也一样。
+        self.assertEqual(sources.count("aria-label={`移除 ${source.label}`}"), 1)
+        self.assertEqual(sources.count("aria-label={`移除 ${context.row.original.source.label}`}"), 1)
+        view = self.read_react("follow-manage/source-view.tsx")
+        self.assertIn("export function SourceLink(", view)
+        self.assertIn("export function StatusBadge(", view)
+        self.assertIn("export function SourceIcon(", view)
+        self.assertIn("export function AuthorAvatar(", view)
 
     def test_the_table_view_follows_the_boardui_data_table(self):
-        """表格视图的数值取自 boardui.com/components/data-table 的 `.bui-table`，登记在 docs/BOARD_UI.md。
+        """表格视图用的就是 boardui 注册表里 `table` 那一份源码，不是照着它再写一张表。
 
-        表头与格子 10px 12px 内边距、14/20、竖直居中；表头 500 字重、次要字色、次级底色、
-        上下各一条分隔线；正文行只有一条下边线。它有而这里不要的三样写在 followSourceTable
-        的注释里：页码、表尾密度档、表头全选。窄屏照它的做法横向滚动，不折叠列。
+        `data-table` 条目本身是 `registry:block`，只有一份示例、依赖的条目 Peach 都没有；它演示
+        的正是「`table` 配 TanStack Table」这套接法，所以这里照接法做、把 `table` 逐字搬进来。
+        外观全在 `.bui-table` 那一组规则里，一起逐字搬进 `react/styles.css`。
         """
-        self.assertPageContains(
-            '<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>')
-        self.assertPageContains('data-follow-select-all aria-label="全选本页来源"')
-        self.assertPageContains('<th scope="col" class="ftcheck">')
-        self.assertPageContains("${followTableHeader('source','来源')}${followTableHeader('provider','站点')}${followTableHeader('status','状态')}")
-        self.assertPageContains('<th scope="col"><span class="sr-only">操作</span></th></tr></thead><tbody>${rows}</tbody></table></div></div>')
-        self.assertPageContains(".ftablewrap{overflow-x:auto;overscroll-behavior-x:contain}")
-        self.assertPageContains(
-            ".ftable{width:100%;min-width:760px;border-collapse:collapse;text-align:left;font-size:var(--fs-md);line-height:20px}")
-        self.assertPageContains(".ftable th,.ftable td{padding:10px 12px;vertical-align:middle}")
-        self.assertPageContains(".ftable th{font-weight:500;white-space:nowrap;color:var(--muted);background:var(--sunk);")
-        self.assertPageContains("border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}")
-        self.assertPageContains(".ftable tbody tr{border-bottom:1px solid var(--line-soft)}")
-        self.assertPageContains(".ftable tbody tr:last-child{border-bottom:0}")
-        # Board 层换成 boardui 同名 token。外框是 primary 底：Board 层的 --ground 就是 secondary，
-        # 和表头同色，表头那条带子会消失；boardui 的表格本来就摆在 primary 面上。
-        # 外框管边线与圆角，里层管横向滚动与两端渐隐：右边线不跟内容一起淡掉。
-        self.assertBoardContains(
-            ".followmanage .ftableframe{border:1px solid var(--color-separator-border);border-radius:var(--surface-radius);"
-            "background:var(--color-background-primary-default);overflow:hidden}"
-            ".followmanage .ftablewrap{border-radius:0;background:transparent}.followmanage .ftable th{border-top:0}")
-        # 外框四边自己收口：它离卡片脚还隔着一层内边距，缺了底边和下面两个圆角就没有收尾。
-        self.assertNotIn(".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe",
-                         (ROOT / "web" / "board.css").read_text(encoding="utf-8"))
-        self.assertBoardContains(
-            ".followmanage .ftable tr.fsource.selected,.followmanage .ftable tr.fsource.selected:hover"
-            "{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}")
-        # 表格滚动层与复核页标签条同一份接线：两端渐隐、鼠标停在上面时竖向滚轮转横向。
-        components = (ROOT / "web" / "js" / "ui-components.js").read_text(encoding="utf-8")
-        self.assertIn("const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,", components)
-        self.assertIn("if(el.matches(BOARD_EDGE_SCROLLERS)){", components)
-        self.assertIn("'.reviewtabs','.junkfilters','.ftablewrap',", components)
-        self.assertBoardContains(
-            ".followmanage .ftable th{color:var(--color-text-tertiary);background:var(--color-background-secondary-default);border-color:var(--color-separator-border)}")
+        boardui = ROOT / "frontend" / "src" / "react" / "boardui"
+        origin = (boardui / "ORIGIN.md").read_text(encoding="utf-8")
+        self.assertIn("| `table` |", origin)
+        self.assertIn("`components/base/table/table.tsx` |", origin)
+        self.assertIn("| `data-table`", origin)
+        copied = (boardui / "components" / "base" / "table" / "table.tsx").read_bytes()
+        digest = hashlib.sha256(copied).hexdigest()
+        recorded = (boardui / "UPSTREAM.sha256").read_text(encoding="utf-8")
+        self.assertIn(f"{digest}  components/base/table/table.tsx", recorded,
+                      "逐字复制的源码要和 UPSTREAM.sha256 对得上")
+        # 外观不在这里重写：页面只用组件，规则逐字落在 styles.css。
+        styles = self.read_front("react/styles.css")
+        self.assertIn(".bui-table th {", styles)
+        self.assertIn("border-top: 1px solid var(--color-separator-border);", styles)
+        self.assertIn(".bui-table tbody tr:not(:last-child) {", styles)
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("import {\n  Table, TableBody, TableCell, TableColumn, TableHeader, TableRow,\n"
+                      "} from '@/components/base/table/table';", sources)
+        self.assertNotIn("<table", sources, "表格标签归复制过来的那份组件")
+        self.assertIn('<Table aria-label="关注来源"', sources)
+        self.assertIn('<TableBody renderEmptyState={() => \'这一页没有来源\'}>', sources)
 
     def test_the_table_header_sorts_by_the_toolbar_sort_keys(self):
-        """表头五列与工具栏下拉是同一份维度：作者、上次检查按作者分组比，来源、站点、状态
-        按单条来源比，表格此时按那一列拉平排。
+        """表头五列与工具栏下拉是同一份维度，点列头就是换工具栏里那一档。
 
-        再点当前列翻方向，点另一列换列并回到该列默认方向；`aria-sort` 只标当前列，
-        方向字形沿用工具栏那对箭头。状态正序是「先看要处理的」：失败、暂停、未检查、正常。
+        排序算在**全集**上，分页只切最后一步：TanStack Table 拿到的 `data` 已经是排好的全部
+        结果，`manualSorting` 让它别再排一遍——否则「排序」就退化成「只排当前页」，翻页看到
+        的不是真的下一批。
         """
-        self.assertPageContains("const FOLLOW_TABLE_SORT={author:'name',source:'source',provider:'provider',status:'status',checked:'checked'};")
-        self.assertPageContains("${followTableHeader('author','创作者')}")
-        self.assertPageContains("${followTableHeader('checked','上次检查')}")
-        self.assertPageContains("const bySource=FOLLOW_SOURCE_SORTS[followManageSort];")
-        self.assertPageContains("groups.forEach(group=>group.sort((a,b)=>flip*bySource(a,b)));")
-        self.assertPageContains("return groups.sort((a,b)=>flip*bySource(a[0],b[0])||byName(a,b));")
-        self.assertPageContains("const pairs=groups.flatMap(group=>group.map(source=>[source,group]));")
-        self.assertPageContains("pairs.sort(([a],[b])=>flip*bySource(a,b));")
-        self.assertPageContains("if(state==='error'||state==='unauthorized')return 0;\n  if(!source.enabled)return 1;\n  return state==='ok'?3:2;")
-        self.assertPageContains(
-            '<th scope="col" aria-sort="${active?(ascending?\'ascending\':\'descending\'):\'none\'}">'
-            '<button type="button" class="ftsort" data-follow-table-sort="${sort}" aria-label="按${label}排序">'
-            "${label}${icon(ascending?'arrow-up':'arrow-down')}</button></th>")
-        self.assertPageContains(
-            "if(followManageSort===sort)followManageDir=followManageDir==='asc'?'desc':'asc';\n"
-            "    else{followManageSort=sort;followManageDir=FOLLOW_SORT_DEFAULT_DIR[sort]||'desc'}\n"
-            "    routeFollowManageSort();")
-        self.assertPageContains(
-            'th[aria-sort="ascending"] .ftsort svg,th[aria-sort="descending"] .ftsort svg{opacity:1}')
-        self.assertPageContains(".ftsort:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}")
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export const COLUMN_SORT = {\n"
+                      "  author: 'name', source: 'source', provider: 'provider', status: 'status',"
+                      " checked: 'checked',\n} as const satisfies Record<string, SortKey>;", data)
+        # 状态正序是「先看要处理的」：失败、暂停、未检查、正常。
+        self.assertIn("if (state === 'error' || state === 'unauthorized') return 0;", data)
+        self.assertIn("if (!source.enabled) return 1;", data)
+        self.assertIn("return state === 'ok' ? 3 : 2;", data)
+        sources = self.read_react("follow-manage/source-list.tsx")
+        # 两边共用一张对照表，方向也共用一个值。
+        self.assertIn("const SORT_COLUMN = Object.fromEntries(\n"
+                      "  Object.entries(COLUMN_SORT).map(([column, sort]) => [sort, column]),\n"
+                      ") as Partial<Record<SortKey, string>>;", sources)
+        self.assertIn("const sortable = header.column.id in COLUMN_SORT;", sources)
+        self.assertIn("allowsSorting={sortable}", sources)
+        self.assertIn("manualSorting: true,", sources)
+        # 排好的是全集，分页模型只负责切窗口。
+        self.assertIn("const rows = useMemo(() => tableRows(groups, sort, dir, aliases),", sources)
+        self.assertIn("data: rows,", sources)
+        self.assertIn("getPaginationRowModel: getPaginationRowModel(),", sources)
+        # 点列头改的是页面那份 sort/dir，卡片视图跟着一起变。
+        self.assertIn("const key = COLUMN_SORT[first.id as keyof typeof COLUMN_SORT];\n"
+                      "      if (key) onSort(key, first.desc ? 'desc' : 'asc');", sources)
 
     def test_the_layout_switch_lines_up_with_the_sort_box(self):
-        """开关和排序框、按钮同处分区标题行，高度必须是同一档。"""
-        rule = self.page[self.page.index(".fsechead .iconswitch{"):]
-        rule = rule[:rule.index("}")]
-        self.assertIn("flex:none", rule)
-        self.assertIn("padding:2px", rule)
-        # 2px 内边距上下各一份，再加外框自己的 1px 边，正好凑齐同排控件的 --control-h。
-        self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
-        self.assertPageContains(".fsechead .fbtn,.fsecfoot .fbtn{height:var(--control-h)}")
-        self.assertPageContains(".fmanagesort .gselectfield{height:var(--control-h);")
+        """版式开关、排序框和方向键同处一行，高度必须是同一档。"""
+        sources = self.read_react("follow-manage/source-list.tsx")
+        toolbar = sources[sources.index('<h3 className="mr-auto text-headline-medium text-text-primary">关注列表</h3>'):]
+        toolbar = toolbar[:toolbar.index("{/* 这一趟在后台跑")]
+        # 按钮一律 small（32px 高），下拉一律 sm：同一行里只许有一档高度。
+        self.assertEqual(toolbar.count('size="small"'), 5, "这一行的按钮都走 small 档")
+        self.assertEqual(toolbar.count('size="sm"'), 1, "排序下拉走 sm 档")
+        self.assertNotIn('size="medium"', toolbar)
+        self.assertNotIn('size="xs"', toolbar)
 
     def test_the_sort_direction_key_is_a_square_icon_button(self):
         """纯图标键是正方形，边长与同排控件同高，图标不被内边距压扁。
@@ -3494,46 +3436,32 @@ class FollowWebSourceTests(unittest.TestCase):
         判据是这一行自己的宽度：同一个视口下侧栏收起与展开留给它的宽度差两百像素，
         视口断点会在一边早折、在另一边照样超框。
         """
-        self.assertPageContains('<div class="fsechead" data-collapse-toolbar>')
-        self.assertPageContains("[data-collapse-toolbar]{container-type:inline-size}")
-        self.assertPageContains("@container (max-width:740px){")
-        self.assertPageContains("[data-collapse-toolbar] [data-collapse-label]{display:none}")
-        self.assertPageContains(
-            "[data-collapse-toolbar] :is(.fbtn,.geist-button):has(>[data-collapse-label])"
-            "{width:var(--control-h);padding:0}")
-        # 下拉收掉当前值和 chevron，框内前缀图标移到正中成为它唯一的字形。
-        self.assertPageContains(
-            "[data-collapse-toolbar] [data-collapse-field] .gselectfield{width:var(--control-h);padding:0}")
-        self.assertPageContains(
-            "[data-collapse-toolbar] [data-collapse-field] .gselectfield>*{display:none}")
-        self.assertPageContains(
-            "[data-collapse-toolbar] [data-collapse-field]>svg{left:50%;transform:translateX(-50%)}")
-        # 收起后名字只剩这两样，所以文字标签只许 display:none。
-        self.assertNotIn('data-follow-unread-days', self.page)
-        self.assertPageContains('<span class="fmanagesort" data-collapse-field title="关注列表排序">')
-        self.assertPageContains('title="检查全部" aria-label="检查全部"')
-        self.assertPageContains('<span data-collapse-label>检查全部</span>')
-        # 忙态换上的那句也是可收的文字；少了标记，检查中的按钮比同排宽一截。
-        self.assertPageContains("'<span data-collapse-label>检查中…</span>'")
-        # 收哪一行也要声明：全站只有这一条工具行接进来。纯图标键和分段控件本来就没有
-        # 字可收，只有文字的按钮（复核页那条批量工具条）收起来是一排认不出的空框。
-        self.assertEqual(self.page.count(" data-collapse-toolbar>"), 1)
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("const TOOLBAR_COMPACT_PX = 740;", sources)
+        self.assertIn("const watch = new ResizeObserver(() => "
+                      "setCompact(node.clientWidth < TOOLBAR_COMPACT_PX));", sources)
+        self.assertIn("const [toolbar, compact] = useCompactToolbar();", sources)
+        self.assertIn('<div ref={toolbar} className="flex flex-wrap items-center gap-2">', sources)
+        # 塌下去走 `Button` 自己的 `iconOnly`：从外面改它的内外边距会被 `no-restyle` 挡下。
+        self.assertEqual(sources.count("iconOnly={compact}"), 2)
+        self.assertNotIn("className={COLLAPSING", sources)
+        # 收起后名字还有人说，也还有字形可看，不能剩一个空框。
+        self.assertIn('aria-label="检查全部" iconOnly={compact}', sources)
+        self.assertIn("aria-label={allCollapsed ? '全部展开' : '全部收起'}", sources)
+        self.assertIn("leadingIcon={allCollapsed ? RiArrowDownSLine : RiArrowUpSLine}", sources)
 
-    def test_alias_count_badge_is_neutral_metadata(self):
-        """「3 组」只是计数，不是待处理提醒：徽章走 Geist gray badge 的中性灰。
+    def test_alias_count_is_neutral_metadata(self):
+        """「3 组」只是计数，不是待处理提醒：它是次要字色的一行小字，不是徽章。
 
-        实测 Geist Badge gray：#1A1A1A 底、#292929 细边、#A1A1A1 字、6px 圆角。此前用
-        蓝底蓝字的 pill，和主按钮同色，读起来像有事要处理。
-        """
-        badge = self.page[self.page.index(".faliasbadge{"):]
-        badge = badge[:badge.index("}")]
-        self.assertIn("border:1px solid var(--border-15)", badge)
-        self.assertIn("border-radius:var(--control-radius)", badge)
-        self.assertIn("background:var(--overlay-5)", badge)
-        self.assertIn("color:var(--muted)", badge)
-        self.assertIn("font-weight:400", badge)
-        self.assertNotIn("tungsten", badge)
-        self.assertNotIn("pill-radius", badge)
+        此前是蓝底蓝字的 pill，和主按钮同色，读起来像有事要处理。要处理的事由旁边那两个
+        合并按钮说。"""
+        alias = self.read_react("follow-manage/alias-manager.tsx")
+        self.assertEqual(
+            alias.count('<span className="text-body-2-regular text-text-secondary">{`${groups.length} 组`}</span>'), 1)
+        self.assertIn('<span className="mr-auto text-body-2-regular text-text-secondary">\n'
+                      "              {`${suggestions.length} 组`}\n            </span>", alias)
+        for loud in ("<Chip", "text-text-error", "bg-button-primary"):
+            self.assertNotIn(loud, alias, "计数不该借用提醒或主按钮的颜色")
 
     def test_follow_source_icons_fail_back_to_plain_text(self):
         """图标由服务端取回落盘（follow_assets.SOURCE_ICON_URLS），页面只认名单、只请求本机。"""
@@ -3700,18 +3628,24 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks(".followfilters{position:relative")
 
     def test_credentials_are_typed_into_the_page_not_into_a_file_by_hand(self):
-        self.assertPageContains('data-cred-form=')
-        self.assertPageContains("'/api/follow/credential'")
-        self.assertPageContains('type="password"')
-        self.assertPageContains("const fields=(row.needs||[]).map")
-        # 值只往磁盘走：保存后清空输入框，页面上再也看不到。
-        self.assertPageContains("form.reset();await openFollowManage(false)")
-        self.assertPageContains("data-cred-clear")
+        self.assertReactContains("follow-manage/follow-manage.ts",
+                                 "export const FOLLOW_CREDENTIAL_URL = '/api/follow/credential';")
+        creds = self.read_react("follow-manage/credentials.tsx")
+        self.assertIn("<Input key={name} type=\"password\" label={name} placeholder={fieldHint(row, name)}", creds)
+        self.assertIn("{(row.needs || []).map((name) => (", creds)
+        # 值只往磁盘走：保存成功就清空输入框，页面上再也看不到。
+        self.assertIn("setValues({});", creds)
+        self.assertIn(">保存配置</Button>", creds)
+        self.assertIn(">清除</Button>", creds)
 
     def test_required_credentials_expand_and_the_source_menu_offers_configuration(self):
-        self.assertPageContains("row?.requirement==='required'")
-        self.assertPageContains('data-srcfilter-config=')
-        self.assertPageContains("${needsAttention?' open':''}")
+        """非配不可的那几行一进来就是敞开的；在别处撞见缺凭据，也能一步跳过去配。"""
+        creds = self.read_react("follow-manage/credentials.tsx")
+        self.assertIn("defaultOpen={row.requirement === 'required' && !credentialDone(row)}>", creds)
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("onClick={() => { setOpen(false); openCredentials() }}>需要配置凭据</Button>", add)
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        self.assertIn("openCredentials={() => { setTab('source'); go({ tab: 'source' }) }}", page)
 
     def test_the_watch_page_does_not_carry_source_management(self):
         # 输入框、移除、凭据都只属于管理页；看的那页保持干净。
@@ -3769,7 +3703,9 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="fbadge wip">WIP</span>')
 
     def test_network_check_is_an_explicit_button_not_an_auto_refresh(self):
-        self.assertPageContains("data-follow-check")
+        # 联网只发生在按下这个键的那一刻。
+        self.assertReactContains("follow-manage/source-list.tsx",
+                                 "onClick={() => startChecking([])}>")
         # 「换一批」自动刷新绝不能顺手触发一次联网检查。这件事现在由路由表上的
         # `refresh:'skip'` 表达：refreshAll 只认这个标记，两个关注页各自带一个。
         self.assertPageContains("if(hit?.route.refresh==='skip')return;")
@@ -3922,41 +3858,48 @@ class FollowWebSourceTests(unittest.TestCase):
         记得住 `strauzek` 的人不一定记得住 `Mr_Strauz`，从没关注过的 `lewdgazer`
         更是只有站点那边知道——所以这里问的是接口，不是页面自己手里那份列表。
         """
-        page = self.page
-        self.assertPageContains('<div class="searchmenu" id="followAddMenu" hidden>')
-        self.assertPageContains("'/api/follow/suggest?q='+encodeURIComponent(query)")
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export const FOLLOW_SUGGEST_URL = '/api/follow/suggest';", data)
+        add = self.read_react("follow-manage/add-source.tsx")
         # 分组的名字和次序照服务端回的来，页面不自己排。
-        self.assertPageContains("<section class=\"searchgroup\"><h3>${esc(group.label)}</h3>")
-        # 结构与样式沿用顶栏搜索的补全，不另起一套。
-        self.assertPageContains('class="searchoption" data-search-value=')
-        self.assertIn("presentMenu(menu);else dismissMenu(menu)", page)
+        self.assertIn("const options = useMemo(() => (suggest.data?.groups || []).flatMap((group) => (\n"
+                      "    group.items.map((item) => "
+                      "({ value: item.value, label: item.matched || item.value, group: group.label }))\n"
+                      "  )), [suggest.data]);", add)
+        self.assertIn('<span className="shrink-0 text-caption-1-regular text-text-tertiary">{option.group}</span>',
+                      add)
+        # 地址不进这条路：服务端认得出里面的 `/`，那时该做的是解析链接。
+        self.assertIn("if (!text || text.includes('/')) { setTerm(''); return }", add)
 
     def test_the_dropdown_says_it_is_working_while_the_site_answers(self):
         """站上那一路要问补全再问分类，实测一秒上下，这段时间必须看得出在做事。
 
-        空着像是敲了没反应；挂着上一个字的结果更糟——那看着就是新结果，而它属于
-        另一个词。所以忙态是一行独立的 Spinner，把旧结果换掉。
+        空着像是敲了没反应；挂着上一个字的结果更糟——那看着就是新结果，而它属于另一个词。
+        所以忙的时候下拉照样掀开，里面是一行独立的等待态，旧结果不留。
         """
-        page = self.page
-        self.assertPageContains('<div class="searchbusy">${spinnerHtml(\'正在查找建议\')}')
-        busy = page[page.index("function presentFollowSuggestBusy("):]
-        busy = busy[:busy.index("\n}")]
-        self.assertIn("presentMenu(menu)", busy)
-        # 忙态那一行不是候选：上下键和回车这时不该选中一个「正在问站点…」。
-        self.assertNotIn("data-search-value", busy)
-        rule = page[page.index(".searchbusy{"):]
-        self.assertIn("display:flex", rule[:rule.index("}")])
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("const suggesting = suggest.isFetching;", add)
+        self.assertIn("const menuOpen = focused && (options.length > 0 || suggesting);", add)
+        self.assertIn('? <div className="px-2 py-1.5"><LoadingDots label="正在查找建议" /></div>', add)
+        # 忙态那一行不是候选：上下键和回车这时不该选中一个「正在查找建议」。
+        self.assertIn("if (!options.length) return;", add)
+        self.assertIn("search(options[active]?.value || line);", add)
+        # 每个词各有各的缓存键，上一个词的答案不会盖到这一个词上。
+        self.assertReactContains(
+            "follow-manage/follow-manage.ts",
+            "export const followSuggestKey = (term: string) => ['follow-manage', 'suggest', term] as const;")
 
     def test_typing_fast_sends_one_request_and_ignores_the_stale_answer(self):
         """联网那一路每敲一下打一枪就是拿站点当键盘缓冲；先回的旧答案还会盖掉新的。"""
-        page = self.page
-        self.assertPageContains("const FOLLOW_SUGGEST_DEBOUNCE=250;")
-        self.assertIn("clearTimeout(followSuggestTimer);", page)
-        self.assertIn(",FOLLOW_SUGGEST_DEBOUNCE);", page)
-        self.assertIn("const request=++followSuggestRequest;", page)
-        self.assertIn("if(request!==followSuggestRequest)return;", page)
-        # 焦点已经走了就不要再掀开：那时不会再有第二次失焦来收场。
-        self.assertIn("if(document.activeElement===box)renderFollowAddMenu(addMenu,query)", page)
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export const SUGGEST_DEBOUNCE_MS = 250;", data)
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("const timer = setTimeout(() => setTerm(text), SUGGEST_DEBOUNCE_MS);\n"
+                      "    return () => clearTimeout(timer);", add)
+        # 只在输入框有焦点时问：焦点已经走了就不再掀开。
+        self.assertIn("enabled: term.length > 0 && focused,", add)
+        # 取消也交给缓存层：换词时上一次请求带着 signal 一起撤掉。
+        self.assertIn("queryFn: ({ signal }) => fetchSuggestions(term, signal),", add)
 
     def test_a_suggestion_can_be_taken_by_keyboard_or_by_mouse(self):
         """下拉两种拿法都要通，而且拿到的名字直接进查找框。
@@ -3964,28 +3907,33 @@ class FollowWebSourceTests(unittest.TestCase):
         鼠标那一路先 `preventDefault` 才行：让下拉抢走焦点就会触发失焦，菜单被收掉，
         click 落到空处。
         """
-        page = self.page
-        self.assertIn("addMenu.onmousedown=event=>event.preventDefault();", page)
-        self.assertIn("box.value=row.dataset.searchValue;closeAddSuggest();", page)
-        self.assertIn("moveFollowSuggest(addMenu,event.key==='ArrowDown'?1:-1)", page)
-        self.assertIn("if(picked)box.value=picked.dataset.searchValue;", page)
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("onMouseDown={(event) => event.preventDefault()}", add)
+        self.assertIn("onClick={() => onPick(option.value)}>", add)
+        self.assertIn("if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {", add)
+        self.assertIn("search(options[active]?.value || line);", add)
         # 选字中的回车和方向键归输入法，不归这里。
-        self.assertIn("if(event.isComposing)return;", page)
-        # 下拉要贴着输入框定位，不能贴到整个表单上——那样会落在筛选复选框下面。
-        rule = page[page.index(".faddfield{"):]
-        self.assertIn("position:relative", rule[:rule.index("}")])
+        self.assertIn("if (event.nativeEvent.isComposing) return;", add)
+        # 下拉贴着输入框定位，不能贴到整个表单上——那样会落在筛选按钮下面。
+        self.assertIn('<div className="relative min-w-64 grow" onFocus={() => setFocused(true)}', add)
+        self.assertIn("'absolute top-full z-10 mt-1 flex w-full flex-col gap-1'", add)
 
     def test_the_source_row_shows_the_site_as_an_icon_only(self):
         """作者卡里站名紧挨着作者名和状态徽章，写出来就是同一个词并排两次。
 
-        表格视图的「站点」是独立一列，列头就叫这个名字，那里出文字。站名两种形态
-        都写在 DOM 里：`.iconly` 只把它夹起来，图标取不到时这条规则落空，站名显出来。
+        表格视图的「站点」是独立一列，列头就叫这个名字，那里出文字。站名两种形态都在：
+        图标画得出来时它交给读屏，没登记图标或者那一枚取不下来时它自己显出来。
         """
-        self.assertPageContains("cell.provider('',true)")
-        self.assertPageContains("withText?'':' iconly'}")
-        self.assertPageContains("<span>${esc(source.provider_label)}</span>")
-        rule = self.page[self.page.index(".fprovider.iconly .ficon+span{"):]
-        self.assertIn("clip:rect(0,0,0,0)", rule[:rule.index("}")])
+        view = self.read_react("follow-manage/source-view.tsx")
+        self.assertIn("export function SourceIcon({ provider, label }: "
+                      "{ provider: string; label?: string }) {", view)
+        self.assertIn("if (!src || broken) return label ? <>{label}</> : null;", view)
+        self.assertIn("{label ? <VisuallyHidden>{label}</VisuallyHidden> : null}", view)
+        sources = self.read_react("follow-manage/source-list.tsx")
+        # 卡片行只给图标看；表格那一列照常出文字。
+        self.assertIn("<SourceIcon provider={source.provider} label={source.provider_label} />", sources)
+        self.assertIn("<SourceIcon provider={context.row.original.source.provider} />\n"
+                      "            {context.row.original.source.provider_label}", sources)
 
     def test_avatars_are_local_urls_and_only_for_providers_that_serve_one(self):
         """头像是元数据，经 Peach 落盘再给页面：两个字段都是本机地址，浏览器不碰对方站点。
@@ -4041,9 +3989,13 @@ class FollowWebSourceTests(unittest.TestCase):
                               f"{provider} 没有实测过的头像来源，不该猜一个")
 
     def test_a_missing_evidence_archive_is_shown_not_swallowed(self):
-        # 证据未存档现在并进那块检查报告，不再单独弹一层——但话不能少说。
-        self.assertPageContains("候选已入库，但这一次的原始响应没有留档")
-        self.assertPageContains("r.evidence_error")
+        # 证据未存档并进那块检查报告，不单独弹一层——但话不能少说。
+        self.assertReactContains(
+            "follow-manage/source-list.tsx",
+            "{evidence ? <Note tone=\"warning\">{`候选已入库，但这一次的原始响应没有留档：${evidence}`}</Note> : null}")
+        self.assertReactContains(
+            "follow-manage/follow-manage.ts",
+            "(job?.results || []).find((row) => row.evidence_error)?.evidence_error || '';")
 
     def test_a_check_says_what_it_actually_found(self):
         """检查完必须报结果。
@@ -4056,24 +4008,28 @@ class FollowWebSourceTests(unittest.TestCase):
         另一个再不管就会一直漏更新——所以失败必须单独列出来并带上原因。
         回执走 toast（非阻塞、自动消失），失败明细留在页内持久行上。
         """
-        self.assertPageContains("function followCheckToast(report)")
-        self.assertPageContains("function followCheckFailNote(report)")
-        # 重画会把结果冲掉，所以先存再画。
-        self.assertPageContains("followCheckReport=report.status==='failed'")
-        self.assertPageContains("${followCheckReport?followCheckFailNote(followCheckReport):''}")
-        for needle in ("新增 <b>", "更新 <b>", "个来源没有更新", "没有任何更新",
-                       "个失败", "fcheckfail", "geist-note",
-                       # 「没有更多内容」的摘要只跟着右下角回执走，页内不铺它的明细条。
-                       "个没有更多内容"):
-            self.assertPageContains(needle)
-        self.assertPageLacks("没有更多历史内容")
-        # 失败要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
-        self.assertPageContains("row.provider_label||row.provider")
-        # 回执带一个具名的后续动作：光摆数字会让人去点「…条详情」那半句，
-        # 文案里不再留悬空的「详情」，去看更新作为显式按钮接住这个意图。
-        self.assertPageContains("action:{label:'去看更新',run:()=>openFollow()}")
-        self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
-        self.assertPageLacks("条详情")
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export function checkSummary(job: CheckJob): string {", data)
+        for needle in ("`新增 ${added} 条`", "`更新 ${updated} 条`", "`${quiet} 个来源没有更新`",
+                       "'没有任何更新'",
+                       # 「没有更多内容」只跟着回执走，页内不铺它的明细条。
+                       "`${exhausted} 个没有更多内容`", "`${failed} 个失败`"):
+            self.assertIn(needle, data)
+        self.assertNotIn("没有更多历史内容", data)
+        sources = self.read_react("follow-manage/source-list.tsx")
+        # 跟完这一趟才报，而且报的是这一趟的结果：重画不会把它冲掉，它自己存着。
+        self.assertIn("setOutcome(state);", sources)
+        self.assertIn("toast(state.status === 'failed' ? (state.error || '检查失败') : checkSummary(state));",
+                      sources)
+        # 失败明细留在页内，且要说清是哪个站，不能让用户去猜 `rule34xxx` 是什么。
+        self.assertIn("export const checkFailures = (job: CheckJob | null): CheckResult[] =>", data)
+        self.assertIn("`${failures.length} 个来源检查失败`", sources)
+        self.assertIn("{`${row.provider_label || row.provider || ''} "
+                      "${row.author || row.label || row.ref || ''}：${row.error || '未说明原因'}`}", sources)
+        # 光摆数字会让人去找「详情」，所以给一个具名的后续动作。
+        self.assertIn("<Button variant=\"secondary\" size=\"small\" onClick={openFollow}>去看更新</Button>",
+                      sources)
+        self.assertNotIn("条详情", sources)
 
     def test_detail_tags_follow_rule34s_own_category_order(self):
         """详情标签按 rule34.xxx 帖子页 `#tag-sidebar` 的类型顺序分组，不按字母。
@@ -4127,11 +4083,18 @@ class FollowWebSourceTests(unittest.TestCase):
         「检查全部」同一套控件语言——按钮的边界让「这会改状态」
         在点击之前就看得见。
         """
-        self.assertPageContains('<button class="fbtn" data-follow-bulk="seen">全部标记已看</button>')
-        self.assertPageContains('<button class="fbtn" data-follow-bulk="ignored">全部忽略</button>')
-        self.assertPageLacks('class="flink" data-follow-bulk')
-        # 不另起一行：按钮内联在计数行里，且不参与收缩，窄屏上只压计数文字（用户回执）。
-        self.assertPageContains('.fbulk{display:inline-flex;gap:8px;margin-left:auto;flex:none}')
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn(">全部标记已看</Button>", sources)
+        self.assertIn(">全部忽略</Button>", sources)
+        # 与本页「检查全部」同一套控件语言、同一档尺寸。
+        self.assertEqual(sources.count('<Button variant="secondary" size="small" disabled={readOnly} '
+                                       '{...busyProps(markAll.isPending)}'), 2)
+        # 不另起一行：按钮就在计数行里，只有计数那半句参与收缩（用户回执）。
+        self.assertIn('<div className="flex flex-wrap items-center gap-2 border-t border-separator-border pt-3">',
+                      sources)
+        self.assertIn('<span className="mr-auto text-body-2-regular text-text-secondary">\n'
+                      "            {`未看 ${counts.new} · 已看 ${counts.seen || 0} ·"
+                      " 已保存 ${counts.saved || 0} · 已忽略 ${counts.ignored || 0}`}", sources)
 
     def test_sources_by_the_same_author_are_one_block(self):
         """同一个作者在几个站上是几条来源、一个人。
@@ -4140,33 +4103,38 @@ class FollowWebSourceTests(unittest.TestCase):
         `lazyprocrastinator` 出现两次（Rule34Video / Rule34.xxx），四行读起来像四个人。
         归组用后端算好的 `author_key`，前端不二次猜。
         """
-        self.assertPageContains("function followAuthorGroups(sources)")
-        self.assertPageContains("source.author_key")
-        self.assertPageContains("const groups=followAuthorGroups(sources);")
-        self.assertPageContains("groups.slice(start,end).map(followAuthorBlock)")
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export function groupByAuthor(sources: FollowSource[]): FollowSource[][] {", data)
+        self.assertIn("const key = source.author_key || `source:${source.id}`;", data)
+        self.assertReactContains("follow-manage/source-list.tsx",
+                                 "{groups.slice(win.start, win.end).map((group) => {")
         # 组标题用作者本人的名字：四条来源合成一组之后还挂着其中一条的平台后缀，
         # 等于说这一组只属于 fanbox，正是这次要消掉的误读。
-        self.assertPageContains("function followAuthorName(group)")
-        self.assertPageContains("const name=followAuthorName(group);")
-        self.assertPageContains("const official=group.find(source=>source.official_avatar_url);")
-        self.assertPageContains("if(officialName)return officialName;")
-        self.assertPageContains(".replace(/\\s+collections?\\s*$/i,'').trim()")
+        self.assertIn("export function authorName(group: FollowSource[], aliases: AliasGroup[] = []): string {",
+                      data)
+        self.assertIn("const official = group.find((source) => source.official_avatar_url);", data)
+        self.assertIn("if (official && authored(official)) return authored(official);", data)
+        self.assertIn("/\\s+collections?\\s*$/i", data)
         # 取不到图片时回退作者首字母；不能从来源标签切出中文“初”“一”。
-        self.assertPageContains("function followAvatarInitial(group)")
-        self.assertPageContains('title="没有可用头像"')
-        avatar = self.page[self.page.index("function followAuthorAvatar(group)"):]
-        avatar = avatar[:avatar.index("function followAuthorBlock")]
-        self.assertIn("followAvatarInitial(group)", avatar)
-        self.assertIn("source.avatar_url", avatar)
-        self.assertIn("source.official_avatar_url", avatar)
-        # 镜像头像是官方头像的下一个候选，声明在 `data-fallbacks` 里；两条都取不到
-        # 才换成首字母垫底。
-        self.assertIn("fallbacks:[fallback]", avatar)
-        self.assertIn("drop:'initial'", avatar)
+        self.assertIn("export function authorInitial(name: string): string {", data)
+        # 镜像头像是官方头像的下一个候选；两条都取不到才换成首字母垫底。
+        self.assertIn("export function authorAvatar(group: FollowSource[]): "
+                      "{ src: string; fallback: string } {", data)
+        view = self.read_react("follow-manage/source-view.tsx")
+        self.assertIn("const chain = [src, fallback].filter(Boolean);", view)
+        self.assertIn("onError={() => setAt(at + 1)}", view)
+        self.assertIn('<span title="没有可用头像"', view)
+        self.assertIn("{authorInitial(name)}", view)
 
     def test_discovered_sources_keep_the_search_term_as_the_author_identity(self):
-        self.assertPageContains('data-author="${esc(c.author||\'\')}"')
-        self.assertPageContains("author:input.dataset.author")
+        """查出来的候选带着「当初是按谁查的」一起写回去。
+
+        同一个人在几个站上的几条来源，就是靠这个身份归成一组；候选上的 `author` 掉了，
+        新加进来的来源就各成一组。"""
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export const addSource = (candidate: ResolveCandidate) =>", data)
+        self.assertIn("author: candidate.author || '', aliases: candidate.aliases || [], defer_check: true,",
+                      data)
 
     def test_only_actionable_media_failures_enter_the_information_stream(self):
         self.assertPageContains("媒体未取得：需要 F95 登录会话解析")
@@ -4189,13 +4157,20 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("text-decoration:none")
 
     def test_loading_semantics_and_known_copy_says_followed(self):
-        self.assertPageContains("@keyframes geist-spinner-opacity")
-        self.assertPageContains("@keyframes geist-loading-dot")
-        self.assertPageContains("spinnerHtml('查找中')")
-        self.assertPageContains("spinnerHtml('抓取中')")
-        self.assertPageContains("setActionBusy(button);button.title='检查中…'")
-        self.assertPageContains("c.known?'已经关注':c.evidence")
-        self.assertPageLacks("已经在追")
+        """等待态分两档：说得出进度的画进度条，说不出的画三个点。
+
+        「已经关注」是这一条候选此刻的处境，不是一句口语。"""
+        dots = self.read_front("react/components/loading-dots.tsx")
+        self.assertIn('<i className="dot-wave-0 size-1 rounded-full bg-current" />', dots)
+        add = self.read_react("follow-manage/add-source.tsx")
+        self.assertIn("? <Progress label={job.data.message || `查找中：${job.data.checked || 0}/${job.data.total}`}",
+                      add)
+        self.assertIn("<LoadingDots label={byName ? BY_NAME_HINT : BY_LINK_HINT} />", add)
+        self.assertIn("{candidate.known ? '已经关注' : candidate.evidence}", add)
+        self.assertNotIn("已经在追", add)
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("<LoadingDots label={job.data?.message || '正在准备检查任务'} />", sources)
+        self.assertIn("{...busyProps(rowHandlers.busy)}", sources)
 
     def test_follow_styles_exist_for_the_card_surface(self):
         for selector in (".followlist{", ".followitem{", ".fbadge{", ".followqueue"):
@@ -4284,36 +4259,39 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("spinnerHtml('抓取中')")
 
     def test_follow_management_list_has_routed_sorting(self):
-        self.assertPageContains("{label:'关注列表排序',attr:'data-follow-sort'}")
-        self.assertPageContains(
-            "const FOLLOW_SORT_OPTIONS=[['checked','检查时间'],['added','添加时间'],['name','创作者名称'],['sources','来源数量'],\n"
-            "  ['source','来源名称'],['provider','站点'],['status','状态']];")
-        self.assertPageContains("followManageSort=FOLLOW_SORT_OPTIONS.some(([key])=>key===requested)?requested:'checked'")
-        self.assertPageContains("const added=group=>Math.max(...group.map(source=>Date.parse(source.created_at||'')||0))")
-        self.assertPageContains("if(followManageSort==='added')return flip*(added(b)-added(a))||byName(a,b);")
+        """排序和页码一起挂在地址栏上：排序决定了哪些来源落在第二页，两者是同一件事的两半。
+
+        换排序只是把手里这份数据重排一次，不重取接口、不换骨架。"""
+        data = self.read_react("follow-manage/follow-manage.ts")
+        self.assertIn("export const SORT_OPTIONS = [\n"
+                      "  ['checked', '检查时间'], ['added', '添加时间'], ['name', '创作者名称'],"
+                      " ['sources', '来源数量'],\n"
+                      "  ['source', '来源名称'], ['provider', '站点'], ['status', '状态'],\n"
+                      "] as const;", data)
+        self.assertIn("export const isSortKey = (value: unknown): value is SortKey =>\n"
+                      "  SORT_OPTIONS.some(([key]) => key === value);", data)
+        self.assertIn("const added = (group: FollowSource[]) => "
+                      "Math.max(...group.map((s) => timeOf(s.created_at)));", data)
+        self.assertIn("if (sort === 'added') return flip * (added(b) - added(a)) || byName(a, b);", data)
         # 每条比较器写的都是该列的默认方向，`flip` 只在方向偏离默认时取反：写成
-        # 「asc 就取反」的话，作者名称默认本来就是正序，一进页面就被翻成倒序。
-        self.assertPageContains(
-            "const flip=followManageDir===(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc')?1:-1;")
-        self.assertPageContains("const FOLLOW_SORT_DEFAULT_DIR={checked:'desc',added:'desc',name:'asc',sources:'desc',source:'asc',provider:'asc',status:'asc'};")
+        # 「asc 就取反」的话，创作者名称默认本来就是正序，一进页面就被翻成倒序。
+        self.assertIn("const flip = dir === SORT_DEFAULT_DIR[sort] ? 1 : -1;", data)
+        self.assertIn("export const SORT_DEFAULT_DIR: Record<SortKey, SortDir> = {\n"
+                      "  checked: 'desc', added: 'desc', name: 'asc', sources: 'desc',\n"
+                      "  source: 'asc', provider: 'asc', status: 'asc',\n};", data)
         # 方向键与排序下拉并排，名称播报点下去会得到什么。
-        self.assertPageContains("<button class=\"fbtn fmanagedir\" type=\"button\" data-follow-dir aria-label=\"${")
-        self.assertPageContains("icon(followManageDir==='asc'?'arrow-up':'arrow-down')")
-        self.assertPageContains(".fsechead .fmanagedir{width:var(--control-h);padding:0}")
-        # 方向等于该列默认值时不写进地址，免得挂一个和默认完全一样的参数。
-        self.assertPageContains(
-            "if(followManageDir!==(FOLLOW_SORT_DEFAULT_DIR[followManageSort]||'desc'))params.set('dir',followManageDir);")
-        self.assertPageContains("followManageDir=requestedDir==='asc'||requestedDir==='desc'?requestedDir")
-        # 换排序只是把手里这份 followData 重排一次：整页换骨架、三个接口重取、滚回顶部，
-        # 换来的是同一批数据的另一个顺序，而屏幕上真正变的只有下面那份关注列表。
-        route = self.page[self.page.index("function routeFollowManageSort()"):]
-        route = route[:route.index(chr(10) + "}")]
-        self.assertIn("renderFollowManage(followCredentials||{});", route)
-        self.assertNotIn("openFollowManage", route)
-        self.assertPageContains("followData=data;followRuntime=runtime;followCredentials=credentials;")
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn("leadingIcon={dir === 'asc' ? RiArrowUpLine : RiArrowDownLine}", sources)
+        self.assertIn("aria-label={sortLabel(sort, dir)}", sources)
+        # 是默认值就不写进地址，免得挂一个和默认完全一样的参数。判据只有数据层知道。
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        self.assertIn("sort: nextSort === DEFAULT_SORT ? '' : nextSort,\n"
+                      "      dir: nextDir === SORT_DEFAULT_DIR[nextSort] ? '' : nextDir,", page)
+        self.assertIn("setSort(nextSort);\n              setDir(nextDir);\n"
+                      "              setPage(1);\n"
+                      "              go({ sort: nextSort, dir: nextDir, page: 1 });", page)
         backend = (ROOT / "src" / "peach" / "web_follow.py").read_text(encoding="utf-8")
         self.assertIn('"created_at": row["created_at"]', backend)
-        self.assertPageContains("return groups.sort((a,b)=>{")
 
     def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):
         self.assertPageContains('grid-template-areas:"media side" "queue queue"')
