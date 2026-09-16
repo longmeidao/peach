@@ -163,8 +163,12 @@ class GenreTaxonomyTests(unittest.TestCase):
         carib, carib_left = map_genres([
             "オリジナル動画", "美乳", "中出し", "パイパン", "オナニー",
             "手コキ", "69", "クンニ", "初裏", "スレンダー"])
-        self.assertEqual(carib, ["美乳", "中出内射", "白虎", "自慰", "手交", "舔阴", "苗条"])
-        self.assertEqual(carib_left, ["69", "初裏"], "没把握的留给人决定")
+        self.assertEqual(carib, ["美乳", "中出内射", "白虎", "自慰", "手交", "69",
+                                 "舔阴", "初次无码", "苗条"])
+        self.assertEqual(carib_left, [])
+        # 没把握的仍旧留给人决定：`Lunch Box Fuck` 是 aventertainments 自造的类目名，
+        # 对应的日文原词未取得，不猜一个译法塞进表里。
+        self.assertEqual(map_genres(["Lunch Box Fuck"])[1], ["Lunch Box Fuck"])
         heyzo, heyzo_left = map_genres([
             "中出し", "潮吹き", "淫語", "騎乗位", "口内発射", "看護婦", "指マン"])
         self.assertEqual(heyzo, ["中出内射", "潮吹", "淫语", "骑乘", "口爆", "护士", "手交"])
@@ -233,6 +237,43 @@ class VocabularyHygieneTests(unittest.TestCase):
         self.assertEqual(map_genres(["淫語"])[0], ["淫语"])
         self.assertEqual(map_genres(["Dirty Talk"])[0], ["淫语"])
 
+    def test_a_source_that_only_publishes_english_still_reaches_one_tag(self):
+        """k-mib、aventertainments、javdb 的类目在来源页上就是英文，没有日文原词可换。
+
+        重抓换不回日文，所以这几个词只能靠表里直接收录。同一件事的两种写法要落在
+        一个标签上，否则筛选面板会摆出两行同义标签。
+        """
+        for english, japanese, tag in (
+            ("Kiss", "キス", "接吻"),
+            ("Ahegao", "アヘ顔", "阿黑颜"),
+            ("Femdom", "女王様", "女性主导"),
+            ("Tiny Girl", "小柄", "娇小"),
+            ("Oil", "ローション・オイル", "油压"),
+            ("Sitting on Face", "顔面騎乗", "颜面骑乘"),
+            ("Beautiful Skin", "美肌", "美肌"),
+        ):
+            self.assertEqual(map_genres([english])[0], [tag])
+            self.assertEqual(map_genres([japanese])[0], [tag])
+
+    def test_every_toy_name_collapses_into_one_tag(self):
+        """`バイブ` 是震动棒、`ローター` 是跳蛋、`電マ` 是电动按摩棒，各压一到五条。
+
+        分成三个标签得到的是三个筛不动的稀标签，筛选面板上多三行、检索上分不开。
+        """
+        for word in ("Sex Toy", "Sex Toys", "大人のおもちゃ", "おもちゃ",
+                     "Vibrator", "Big Vibrator", "Egg Vibrator",
+                     "バイブ", "ローター", "電マ"):
+            self.assertEqual(map_genres([word])[0], ["性玩具"], word)
+
+    def test_a_catch_all_bucket_is_excluded_not_registered(self):
+        """来源的兜底格说的是「归不进上面任何一格」，不是某种内容。"""
+        for word in ("Fetish", "フェチ", "その他フェチ", "Other Fetishes",
+                     "Various Professions", "職業色々"):
+            self.assertTrue(is_non_content_genre(word), word)
+        # 服装与职业细到这一档时，单独立标签只能压住一两部片。
+        for word in ("ジーンズ", "短パン", "店員", "買い物"):
+            self.assertTrue(is_non_content_genre(word), word)
+
     def test_two_source_words_for_one_thing_land_on_one_tag(self):
         """同义的来源词各投一个标签，就是页面上那两行重复的来处。"""
         self.assertEqual(map_genres(["Peeping"])[0], map_genres(["Voyeur"])[0])
@@ -261,13 +302,14 @@ class UserDecisionTests(unittest.TestCase):
     """复核页收录下来的那批，和静态表一起参与查表。"""
 
     def test_a_recorded_genre_stops_coming_back_as_unmapped(self):
-        decisions = {normalise_genre("初裏"): "初次无码"}
-        tags, unmapped = map_genres(["中出し", "初裏", "69"], decisions)
-        self.assertEqual(tags, ["中出内射", "初次无码"])
-        self.assertEqual(unmapped, ["69"], "还没决定的那个仍要回来问")
+        decisions = {normalise_genre("Famous Name"): "有名女优"}
+        tags, unmapped = map_genres(["中出し", "Famous Name", "Lunch Box Fuck"], decisions)
+        self.assertEqual(tags, ["中出内射", "有名女优"])
+        self.assertEqual(unmapped, ["Lunch Box Fuck"], "还没决定的那个仍要回来问")
 
     def test_a_genre_judged_non_content_is_excluded_not_asked_again(self):
-        tags, unmapped = map_genres(["初裏", "巨乳"], {normalise_genre("初裏"): None})
+        tags, unmapped = map_genres(["Lunch Box Fuck", "巨乳"],
+                                    {normalise_genre("Lunch Box Fuck"): None})
         self.assertEqual(tags, ["巨乳"])
         self.assertEqual(unmapped, [], "排除也是结论；再问一遍等于没记下来")
 

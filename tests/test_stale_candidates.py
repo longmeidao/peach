@@ -35,7 +35,7 @@ class StaleGenreTests(unittest.TestCase):
     def test_a_japanese_word_still_waiting_for_a_decision_is_not_stale(self):
         """日文原词已经是这一趟要的东西，重抓一遍只会拿回同一个词。"""
         rows = [_row("asset:2:tags", "tags",
-                     [{"source": "r18dev", "value": [], "unmapped_genres": ["その他フェチ"]}])]
+                     [{"source": "r18dev", "value": [], "unmapped_genres": ["シャワー"]}])]
         self.assertEqual(stale_genre_rows(rows), [])
 
     def test_a_genre_that_is_written_the_same_in_both_languages_is_not_stale(self):

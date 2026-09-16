@@ -1137,21 +1137,23 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "candidate_key": "CARIB-001:tags:caribbeancom:abc", "source": "caribbeancom",
             "source_url": "https://example.invalid/carib", "confidence": 0.9,
             "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
-            "unmapped_genres": ["69", "初裏"], "warnings": ["来源还有 2 个未收录 genre：69、初裏"],
+            "unmapped_genres": ["即ハメ", "シャワー"],
+            "warnings": ["来源还有 2 个未收录 genre：即ハメ、シャワー"],
         })
         before = await self._review_tags_candidate()
-        self.assertEqual(before["unmapped_genres"], ["69", "初裏"])
+        self.assertEqual(before["unmapped_genres"], ["即ハメ", "シャワー"])
         self.assertEqual(before["warnings"], [], "未决的词挪进结构化字段，不再只是一句话")
 
         recorded = await self.client.post("/api/review/genre?t=secret",
-                                          json={"genre": "初裏", "tag": "初次无码"})
+                                          json={"genre": "シャワー", "tag": "浴室"})
         self.assertEqual(recorded.status_code, 200, recorded.text)
-        excluded = await self.client.post("/api/review/genre?t=secret", json={"genre": "69", "tag": ""})
+        excluded = await self.client.post("/api/review/genre?t=secret",
+                                          json={"genre": "即ハメ", "tag": ""})
         self.assertEqual(excluded.status_code, 200, excluded.text)
 
         after = await self._review_tags_candidate()
-        self.assertEqual(after["value"], ["中出内射", "初次无码"])
-        self.assertEqual(after["display_value"], "中出内射、初次无码")
+        self.assertEqual(after["value"], ["中出内射", "浴室"])
+        self.assertEqual(after["display_value"], "中出内射、浴室")
         self.assertEqual(after["unmapped_genres"], [], "两个都有了结论，不该再回来问")
 
         approved = await self.client.post("/api/review/decision?t=secret", json={
@@ -1161,9 +1163,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(approved.status_code, 200, approved.text)
         with closing(sqlite3.connect(self.db)) as connection:
             self.assertEqual([row[0] for row in connection.execute(
-                "SELECT tag FROM asset_tag WHERE asset_id=1 AND tag IN ('中出内射','初次无码') "
+                "SELECT tag FROM asset_tag WHERE asset_id=1 AND tag IN ('中出内射','浴室') "
                 "ORDER BY tag")],
-                ["中出内射", "初次无码"], "页面上多出来的那个标签必须真的落库")
+                ["中出内射", "浴室"], "页面上多出来的那个标签必须真的落库")
 
     async def test_an_old_candidate_carries_its_unmapped_genres_in_the_warning_only(self):
         """2026-09-11 之前写下的候选文件没有结构化那一份，收录按钮同样要能出现。"""
@@ -1174,28 +1176,28 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "candidate_key": "CARIB-001:tags:caribbeancom:old", "source": "caribbeancom",
             "source_url": "https://example.invalid/carib", "confidence": 0.9,
             "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
-            "warnings": ["来源还有 1 个未收录 genre：初裏"],
+            "warnings": ["来源还有 1 个未收录 genre：シャワー"],
         })
-        self.assertEqual((await self._review_tags_candidate())["unmapped_genres"], ["初裏"])
+        self.assertEqual((await self._review_tags_candidate())["unmapped_genres"], ["シャワー"])
 
     async def test_the_genre_tag_answers_to_the_same_rules_as_any_other_tag(self):
         """这里收录的名字和作品页加的标签进同一套词表，判据不能各写一套。"""
         performer = await self.client.post("/api/review/genre?t=secret",
-                                           json={"genre": "初裏", "tag": "演员:桃子"})
+                                           json={"genre": "シャワー", "tag": "演员:桃子"})
         self.assertEqual(performer.status_code, 400, performer.text)
         long_name = await self.client.post("/api/review/genre?t=secret",
-                                           json={"genre": "初裏", "tag": "初" * 81})
+                                           json={"genre": "シャワー", "tag": "浴" * 81})
         self.assertEqual(long_name.status_code, 400, long_name.text)
         blank = await self.client.post("/api/review/genre?t=secret", json={"genre": "  ", "tag": "x"})
         self.assertEqual(blank.status_code, 400, blank.text)
         # 两头的空格是笔误，不是另一个标签：收下来并按去掉空格的写法存。
         trimmed = await self.client.post("/api/review/genre?t=secret",
-                                         json={"genre": "初裏", "tag": " 初次无码 "})
+                                         json={"genre": "シャワー", "tag": " 浴室 "})
         self.assertEqual(trimmed.status_code, 200, trimmed.text)
         with closing(sqlite3.connect(self.db)) as connection:
             self.assertEqual(connection.execute(
-                "SELECT peach_tag FROM genre_decision WHERE source_genre='初裏'").fetchone(),
-                ("初次无码",))
+                "SELECT peach_tag FROM genre_decision WHERE source_genre='シャワー'").fetchone(),
+                ("浴室",))
 
     async def test_catalog_keeps_missing_performers_separate_from_release_code(self):
         with closing(sqlite3.connect(self.db)) as con:

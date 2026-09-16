@@ -324,8 +324,8 @@ class ReviewQueueTests(unittest.TestCase):
     def test_an_unresolved_genre_keeps_the_whole_tag_set_in_the_queue(self):
         """未收录的那几个词还没决定投影成什么，直接落库等于替用户判它们不算内容。"""
         self._asset(96, "MIAD-573", "MIAD573_01.wmv")
-        row = self._tag_row("MIAD-573:tags", "MIAD-573", ["スレンダー", "その他フェチ"])
-        self.assertEqual(row["candidates"][0]["unmapped_genres"], ["その他フェチ"])
+        row = self._tag_row("MIAD-573:tags", "MIAD-573", ["スレンダー", "シャワー"])
+        self.assertEqual(row["candidates"][0]["unmapped_genres"], ["シャワー"])
         self.write_metadata_rows([row])
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["MIAD-573:tags"])

@@ -83,7 +83,7 @@ TASTE_CATEGORY_TAGS: dict[str, tuple[str, ...]] = {
     "游戏同人": ("游戏同人", "动漫同人", "日系同人"),
     "乳系": ("乳系", "巨乳", "美乳"),
     "马眼/尿道/龟头": ("马眼", "龟头责"),
-    "ASMR/音声": ("淫语",),
+    "ASMR/音声": ("ASMR", "淫语"),
     "反差/泄密/探花": ("反差", "泄密流出", "探花"),
 }
 NON_TASTE_SUMMARY_TAGS = TECH_TAGS | LENGTH_TAGS | {
