@@ -4,10 +4,12 @@
 演示素材不取自真实馆藏。画面有两种来源，由 `--art` 选：
 
 - `portrait`（默认）：人像取自 Gfriends 图库里一份人工逐张看过的清单
-  （`scripts/demo-portraits.json`），封面、头像与播放画面都由这张人像排版而成，
-  出演者用清单里的规范艺名。界面因此有真实馆藏的样子。
-- `synthetic`：画面是 FFmpeg lavfi 的渐变、测试图与分形，海报是 Pillow 画的几何图，
-  出演者也是虚构名。不联网，规模基准与测试用它。
+  （`scripts/demo-portraits.json`），封面与图集由这张人像排版而成，出演者用清单里的
+  规范艺名。界面因此有真实馆藏的样子。
+- `synthetic`：海报是 Pillow 画的几何图，出演者也是虚构名。不联网，规模基准与测试用它。
+
+两种模式的短片都是 FFmpeg lavfi 的渐变、测试图与分形，只占位让 scan、probe 与播放器
+有东西可读。
 
 两种模式下作品、厂牌、系列和标签一律虚构，不与 `catalog_rules` 的成人词表相交，由
 `tests/test_demo_dataset.py` 把守——真实艺名配虚构作品，演示素材因此不会断言
@@ -308,10 +310,10 @@ def write_video(ffmpeg: str | None, item: DemoItem, destination: Path, seed: int
 
 
 class PortraitArt:
-    """人像模式下的画面产出：取图、画封面、渲染播放画面。
+    """人像模式下的封面产出：取图、画封面。
 
-    取回的人像和渲染好的底图都按「一位一张」缓存——一套库里同一位常出现好几次，
-    每次重新取图重新渲染，二十四条作品要多花十几倍时间。
+    取回的人像按「一位一张」缓存——一套库里同一位常出现好几次，每次重新取图，
+    二十四条作品要多联网十几倍。
     """
 
     def __init__(self, portraits: list, cache_dir: Path, fetch) -> None:
@@ -319,7 +321,6 @@ class PortraitArt:
         self.cache_dir = cache_dir
         self.fetch = fetch
         self.sources: dict[str, Path] = {}
-        self.frames: dict[tuple[str, str], Path] = {}
 
     def source(self, item: DemoItem) -> Path:
         if item.portrait not in self.sources:
@@ -333,15 +334,6 @@ class PortraitArt:
             self.source(item), destination, code=item.code, title=item.title,
             performer=item.portrait, studio=item.studio or item.creator or "未署名",
             year=(item.release_date[:4] or "2026"), orientation=item.orientation)
-
-    def video(self, item: DemoItem, destination: Path, ffmpeg: str) -> None:
-        key = (item.portrait, item.orientation)
-        if key not in self.frames:
-            base = self.cache_dir / f"frame-{item.orientation}-{len(self.frames):03d}.png"
-            demo_portraits.draw_frame(self.source(item), base, item.orientation)
-            self.frames[key] = base
-        demo_portraits.render_video(ffmpeg, self.frames[key], destination,
-                                    duration=item.duration, orientation=item.orientation)
 
 
 def resolve_portraits(art: str, portraits: list | None) -> list | None:
@@ -393,11 +385,7 @@ def generate(output: Path, *, count: int, seed: int, video: str, duration: int,
 
     started = time.time()
     for index, item in enumerate(items, 1):
-        target = output / item.path
-        if artist and item.portrait and video == "ffmpeg":
-            artist.video(item, target, ffmpeg)
-        else:
-            write_video(ffmpeg if video == "ffmpeg" else None, item, target, seed + index)
+        write_video(ffmpeg if video == "ffmpeg" else None, item, output / item.path, seed + index)
         if item.nfo:
             (output / item.nfo).write_text(render_nfo(item), encoding="utf-8")
         if item.poster:

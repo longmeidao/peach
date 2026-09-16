@@ -216,7 +216,7 @@ class PortraitManifestTests(unittest.TestCase):
         for entry in entries:
             self.assertEqual(len(entry.sha256), 64, entry.name)
             self.assertTrue(entry.name.strip() and "\n" not in entry.name, entry.name)
-            # 封面最长边 900、播放底图两倍渲染到 2560，小于 640 的原图撑不起来。
+            # 竖版封面高 900，长边不到 640 的原图放大上去就糊了。
             self.assertGreaterEqual(max(entry.width, entry.height), 640, entry.name)
             self.assertTrue(entry.url.startswith("https://"), entry.name)
 
