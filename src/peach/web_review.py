@@ -692,12 +692,17 @@ def _metadata_row_adds_information(connection, row: dict) -> bool:
         return False
     if field in MULTI_VALUE_FIELDS:
         if field == "performers":
+            # 企划名义不挑战账本里的主艺名：`259LUXU-1459` 账本存 `結城のの`，
+            # libredmm 与 mgstage 给的是 `桜井奈々 28歳 某企業広報担当` 和
+            # `佐倉井さん 28歳 某企業広報担当`——那是这部片给她起的称呼，不是她本人的
+            # 艺名。两者不在同一层，不构成分歧（用户 2026-09-16 定「取主艺名」）。
             current_key = _performer_identity_keys(connection, _split_multi(current))
             return any(
                 _performer_identity_keys(
                     connection, _split_multi(str(c.get("display_value") or ""))
                 ) != current_key
                 for c in candidates
+                if _offers_another_stage_name(c)
             )
         current_set = frozenset(_split_multi(current))
         return any(
@@ -850,6 +855,29 @@ def _stage_name(name: str) -> str | None:
     if not trimmed or _NOT_A_STAGE_NAME.search(trimmed):
         return None
     return trimmed
+
+
+def _is_planning_alias(name: str) -> bool:
+    """这个写法是不是企划名义——这部片给她起的称呼，不是这个人的主艺名。
+
+    两种形态。一种是把年龄职业写在名字后面（`桜井奈々 28歳 某企業広報担当`）：介绍
+    这一段只在这部片里成立，带着它的那个名字同样只在这部片里成立。另一种是剪完仍
+    认不出艺名边界的（`佐倉井さん`、`超バドミントン部あかりちゃん`），`_stage_name`
+    本来就不收。
+
+    判的是写法不是人：同一个人在别处用主艺名登记，这里的一次性称呼跟那条记录对不上，
+    却不说明账本存错了。
+    """
+    return bool(_PERFORMER_INTRO.search(name)) or _stage_name(name) is None
+
+
+def _offers_another_stage_name(candidate: dict) -> bool:
+    """这条候选给的是不是另一个主艺名；整条都是企划名义就不是。
+
+    空候选照旧算数：那是「来源说这里没人」，与「来源换了个称呼」是两回事。
+    """
+    names = _split_multi(str(candidate.get("display_value") or ""))
+    return not names or not all(_is_planning_alias(name) for name in names)
 
 
 def _stage_names(candidate: dict) -> list[str] | None:

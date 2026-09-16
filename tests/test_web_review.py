@@ -873,6 +873,32 @@ class ReviewQueueTests(unittest.TestCase):
         ])
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["OTHER", "UNKNOWN"])
 
+    def test_planning_alias_never_challenges_the_main_stage_name_in_the_ledger(self):
+        """素人企划的出演者栏写的是这部片给她起的称呼，账本存的是她本人的主艺名。
+
+        `259LUXU-1459` 账本存 `結城のの`，libredmm 与 mgstage 给的是
+        `桜井奈々 28歳 某企業広報担当` 和 `佐倉井さん 28歳 某企業広報担当`。两者不在
+        同一层，按字符串比就成了要人判的「冲突」（用户 2026-09-16 定「取主艺名」）。
+
+        带年龄职业介绍的和剪不出艺名边界的都算企划名义；`DIC-088` 那种三家官方源
+        一致给 `堀越麻央`、账本却存着罗马字的，不带这两个特征，照常要人判。
+        """
+        self.write_metadata_rows([
+            {"item_key": "INTRO", "field": "performers", "current": "結城のの",
+             "candidates": [{"source": "libredmm", "value": "桜井奈々 28歳 某企業広報担当"},
+                            {"source": "mgstage", "value": "佐倉井さん 28歳 某企業広報担当"}]},
+            # 敬称结尾同样是企划名义，哪怕没写年龄。
+            {"item_key": "HONORIFIC", "field": "performers", "current": "美穗乃",
+             "candidates": [{"source": "javbus", "value": "結愛さん"}]},
+            # 一条是企划名义、另一条给的是别的艺名：后者照常要人判。
+            {"item_key": "MIXED", "field": "performers", "current": "結城のの",
+             "candidates": [{"source": "mgstage", "value": "佐倉井さん 28歳 某企業広報担当"},
+                            {"source": "javdb", "value": "桜庭ひかり"}]},
+            {"item_key": "ROMAJI", "field": "performers", "current": "Horikoshimao",
+             "candidates": [{"source": "dmm", "value": "堀越麻央"}]},
+        ])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["MIXED", "ROMAJI"])
+
     def test_reseller_dissent_never_queues_when_the_maker_store_backs_the_ledger(self):
         """MGS 是转售店，它跟片商那份的三处差异是店铺口径，不是事实争议。
 
