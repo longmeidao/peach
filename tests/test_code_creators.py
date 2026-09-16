@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import sqlite3
 import sys
 import tempfile
@@ -40,7 +41,8 @@ audit = _Audit
 SCHEMA = """
 CREATE TABLE asset(
   id INTEGER PRIMARY KEY, location TEXT NOT NULL, path TEXT NOT NULL, name TEXT,
-  medium TEXT, creator TEXT, code TEXT, duration REAL, UNIQUE(location,path));
+  medium TEXT, creator TEXT, code TEXT, duration REAL, field_owners TEXT,
+  mutation_revision INTEGER NOT NULL DEFAULT 0, UNIQUE(location,path));
 CREATE TABLE entity(
   id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT, normalized_name TEXT,
   metadata_json TEXT DEFAULT '{}', created_at TEXT, updated_at TEXT,
@@ -169,6 +171,7 @@ class ApplyTests(unittest.TestCase):
         self.addCleanup(self.connection.close)
         self.connection.executescript(SCHEMA)
 
+    # 媒介按扩展名给，和真实导入一致：目录里混着图片正是本组要覆盖的形态。
     def _creator(self, entity_id, name, assets):
         self.connection.execute(
             "INSERT INTO entity(id,kind,canonical_name,normalized_name) VALUES(?,'creator',?,?)",
@@ -176,8 +179,10 @@ class ApplyTests(unittest.TestCase):
         for asset_id, asset_name, path, code in assets:
             self.connection.execute(
                 "INSERT INTO asset(id,location,path,name,medium,creator,code) "
-                "VALUES(?,'local',?,?,'video',?,?)",
-                (asset_id, path, asset_name, name, code))
+                "VALUES(?,'local',?,?,?,?,?)",
+                (asset_id, path, asset_name,
+                 "image" if asset_name.lower().endswith((".jpg", ".png")) else "video",
+                 name, code))
             self.connection.execute(
                 "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
                 "VALUES(?,?,'creator','legacy:asset')", (asset_id, entity_id))
@@ -207,6 +212,31 @@ class ApplyTests(unittest.TestCase):
         self.assertEqual(
             self.connection.execute("SELECT creator FROM asset WHERE id=20").fetchone()[0],
             "banbi_555")
+
+    def test_the_code_it_writes_names_its_owner(self):
+        self._creator(6, "HD-abp-758", [
+            (60, "HD-abp-758.mp4", r"B:\云下载\HD-abp-758\HD-abp-758.mp4", None)])
+        self.connection.commit()
+        audit.apply_rows(self.connection, audit.collect(self.connection))
+        self.assertEqual(
+            json.loads(self.connection.execute(
+                "SELECT field_owners FROM asset WHERE id=60").fetchone()[0]),
+            {"code": "script:code-creators", "creator": "script:code-creators"})
+
+    def test_a_code_the_user_cleared_stays_cleared(self):
+        # 用户把某条的 code 清空是一次判断，补空不该把它再填回去。
+        self._creator(7, "Tokyo-Hot n0781-HD", [
+            (70, "Tokyo-Hot.mp4", r"B:\云下载\Tokyo-Hot n0781-HD\Tokyo-Hot.mp4", "n0781"),
+            (71, "花絮.mp4", r"B:\云下载\Tokyo-Hot n0781-HD\花絮.mp4", None)])
+        self.connection.execute(
+            """UPDATE asset SET field_owners='{"code":"user:manual"}' WHERE id=71""")
+        self.connection.commit()
+
+        counts = audit.apply_rows(self.connection, audit.collect(self.connection))
+
+        self.assertEqual(counts["codes"], 0)
+        self.assertIsNone(
+            self.connection.execute("SELECT code FROM asset WHERE id=71").fetchone()[0])
 
     def test_existing_code_is_never_overwritten(self):
         self._creator(3, "MIDA-117ch", [
@@ -318,10 +348,14 @@ class ConfirmScriptTests(unittest.TestCase):
 
         counts = audit.apply_rows(
             self.connection, [row for row in rows if row["verdict"] == audit.VERDICT_CODE])
-        self.assertEqual(counts["codes"], 2)
+        self.assertEqual(counts["codes"], 1)
         self.assertEqual(
             self.connection.execute("SELECT creator,code FROM asset WHERE id=10").fetchone(),
             (None, "n0780"))
+        # 目录里的论坛文宣不是这部片的文件：假创作者照样摘掉，番号不给它。
+        self.assertEqual(
+            self.connection.execute("SELECT creator,code FROM asset WHERE id=11").fetchone(),
+            (None, None))
         # 片长对不上的目录一条都不动。
         self.assertEqual(
             self.connection.execute("SELECT creator FROM asset WHERE id=20").fetchone()[0],
