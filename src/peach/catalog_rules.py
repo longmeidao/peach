@@ -215,6 +215,17 @@ _FILE_NOISE = re.compile(
 #: 番号主体：可选的三位素人前缀 + 字母厂牌 + 序号。
 _CODE_BODY = re.compile(r"^(?:\d{3})?[A-Za-z]{2,8}[-_. ]?\d{2,5}$")
 
+#: DMM 自己交付的文件名：四位发行日（`0112` 是 1 月 12 日）顶在番号前面，编码写在后面。
+#: 四位是判据的关键——素人系的前缀恰好三位（`259LUXU-1007`），放宽到「若干位数字」
+#: 就会把它的厂牌段吃掉。编码词也逐个列出，不写成「任意后缀」：那等于允许番号后面
+#: 跟任何东西，`ABP-123-鈴村あいり` 这种把演员名写在后面的名字会被当成同一形状。
+_DMM_DELIVERY = re.compile(
+    r"^\d{4}([A-Za-z]{2,8}\d{2,5})[-_](?:h264|h265|hhb|mhb|dmb|dm|hq|sd|hd|mhbw|dmbw)$", re.I)
+#: HEYZO 官方文件名把站名写在最前面，番号散在中间：`heyzo_hd_1031_full`。中间那截是
+#: 画质档（`hd`／`lt`／`sd`），不是番号的一部分。站名必须出现——只按「下划线里夹一串
+#: 数字」认的话，创作者目录里的 `Banbi_20歳の…_1080` 同样满足。
+_HEYZO_FILENAME = re.compile(r"(?i)(?<![A-Z0-9])heyzo[-_ ]*(?:hd|lt|sd|fhd)?[-_ ]*(\d{3,5})(?![0-9])")
+
 #: 只说明「这是什么文件」的词，形态与番号主体一模一样，但没有一个是厂牌代号。
 #: 不拦的话，`IMG_3092 (2).mp4` 会给出 `IMG-3092`、`video_2025-09-02_20-07-50.mp4` 给出
 #: `VIDEO-2025`、`no0037_01.wmv` 给出 `NO-037`、`part 18.mp4` 给出 `PART-018`；
@@ -650,6 +661,12 @@ def release_code_from_filename(name: str | None) -> str | None:
         _FILE_NOISE.sub("", strip_promo_markers(stem)))
     if code:
         return code
+    delivery = _DMM_DELIVERY.match(stem)
+    if delivery:
+        return normalise_code_key(delivery.group(1))
+    heyzo = _HEYZO_FILENAME.search(stem)
+    if heyzo:
+        return normalise_code_key(f"HEYZO-{heyzo.group(1)}")
     mib = _KOREAN_MIB_FILENAME.match(stem)
     if mib and mib.group(1).upper() in KOREAN_MIB_PREFIXES:
         return normalise_code_key(f"{mib.group(1)}-{mib.group(2)}")
