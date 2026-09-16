@@ -65,6 +65,7 @@ TASK_LABELS = {
     "link-prune": "失效链接清理",
     "resource-scan": "资源对账扫描",
     "resource-apply": "资源对账执行",
+    "empty-folders": "空文件夹与失效条目清理",
     "scraping-cover": "封面采集",
     "media-repair": "播放兼容修复",
     "batch": "批量操作",

@@ -128,6 +128,27 @@ def _missing_resource_ids(rows: Sequence) -> tuple[list[int], int]:
     return missing, unreadable
 
 
+def vanished_asset_rows(contract: ResourceSyncContract, location: str) -> list:
+    """这个来源上文件已经不在的行，回收站里的也算。
+
+    对账扫描（`_scan_missing_resources`）刻意跳过回收站：那边问的是「库里这条还在不在」，
+    等着用户决定去留的行不该混进去。清理这一侧问的是另一件事——文件已经在网盘那边删掉了，
+    账本这一行指的东西不存在了。本机 647 行回收站里有 469 行属于这种，它们既不在对账的
+    视野里，又会被每一轮长跑批处理重新领一次。
+
+    调用方必须先确认这个来源在线（`source_is_online`）：盘没挂上时目录读不到，
+    每一条都会被判成文件没了。
+    """
+    with contract.read_connection() as connection:
+        rows = connection.execute(
+            "SELECT id,path,snapshot_path,disposal FROM asset "
+            "WHERE path IS NOT NULL AND location=? ORDER BY id", (location,),
+        ).fetchall()
+    missing, _unreadable = _missing_resource_ids(rows)
+    gone = set(missing)
+    return [row for row in rows if int(row["id"]) in gone]
+
+
 def _scan_missing_resources(
     contract: ResourceSyncContract,
     progress: Callable[[dict], None] | None = None,

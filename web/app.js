@@ -4828,10 +4828,10 @@ async function openDataCleanup(push=true){
           :'没有重复内容'}</strong>
       <span class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</span>`,'data-cleanup-open="duplicates"'),
     empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
-      <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹')}
+      <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹与失效条目')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
         <p class="cleanupmeta">${sourceLine}</p><div class="cleanupstate" aria-live="polite"></div></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="geist-button primary" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>扫描空文件夹</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>删除空文件夹</span></button></footer>
+      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="geist-button primary" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>检查来源</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>清理</span></button></footer>
     </section>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
@@ -4854,25 +4854,25 @@ async function openDataCleanup(push=true){
   const emptyScan=$('#stats').querySelector('[data-cleanup-empty-scan]');
   emptyScan.onclick=async()=>{
     const status=$('#stats').querySelector('.cleanupstate');setActionBusy(emptyScan);emptyButton.hidden=true;
-    /* 空文件夹扫描是挂载点上的慢活，接口只有跑完才回话：状态行用 Loading Dots 说
+    /* 来源检查是挂载点上的慢活，接口只有跑完才回话：状态行用 Loading Dots 说
        「还在推进」，不假装有百分比。 */
-    status.innerHTML=loadingDotsHtml('正在检查空文件夹…');
+    status.innerHTML=loadingDotsHtml('正在检查来源…');
     try{const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:JSON.stringify({dry_run:true})});
       if(!surfaceCurrent(surface))return;
-      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹${result.errors?`，${result.errors} 个目录读取失败`:''}。`,{label:'检查结果'});
-      emptyButton.hidden=!(result.empty>0);
+      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹、${Number(result.vanished||0).toLocaleString()} 条文件已不在盘上的记录${result.errors?`，${result.errors} 个目录读取失败`:''}。`,{label:'检查结果'});
+      emptyButton.hidden=!(result.empty>0||result.vanished>0);
     }catch(error){status.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})}finally{setActionBusy(emptyScan,false)}
   };
   emptyButton.onclick=async()=>{
-    return confirmModal({title:'删除空文件夹',body:'将删除已连接磁盘和网盘中的空文件夹，保留来源根目录。',confirmLabel:'删除空文件夹',danger:true,onConfirm:async()=>{
+    return confirmModal({title:'清理空文件夹与失效条目',body:'将删除已连接磁盘和网盘中的空文件夹，保留来源根目录；文件已在盘上删掉的记录连同它们的派生产物一起从库里移除，这一步不可撤销。',confirmLabel:'清理',danger:true,onConfirm:async()=>{
     const status=$('#stats').querySelector('.cleanupstate'),original=emptyButton.innerHTML;
-    setActionBusy(emptyButton);emptyButton.innerHTML=`${spinnerHtml('正在删除空文件夹')}<span>正在清理</span>`;
+    setActionBusy(emptyButton);emptyButton.innerHTML=`${spinnerHtml('正在清理')}<span>正在清理</span>`;
     status.textContent='正在自底向上检查已挂载来源…';
     try{
       const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'});
-      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`,{label:'清理结果',variant:result.errors?'warning':'success'});
-      if(result.errors)actionFailure('空文件夹清理',new Error(`${result.errors} 个目录处理失败`));
-      else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹`);
+      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`,{label:'清理结果',variant:result.errors?'warning':'success'});
+      if(result.errors)actionFailure('空文件夹与失效条目清理',new Error(`${result.errors} 个目录处理失败`));
+      else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录`);
     }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original;emptyButton.hidden=true}
   }});
   };

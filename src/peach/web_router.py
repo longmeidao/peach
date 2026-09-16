@@ -326,10 +326,13 @@ READ_ONLY_POST_ROUTES = frozenset({
     "/api/scraping/settings", "/api/scraping/check",
     "/api/follow/resolve", "/api/follow/credential",
     "/api/taste/refresh", "/api/taste/source", "/api/resource-sync/scan",
-    "/api/links/check", "/api/data-cleanup/empty-folders",
+    "/api/links/check",
     # 修复只写 `transcode_root` 里的边车，那是本机缓存，不是账本。
     "/api/media-repair",
 })
+# `/api/data-cleanup/empty-folders` 不在上面：它连文件已消失的账本行一起删，走的是
+# `purge_assets`。检查那一步（`dry_run`）确实不写，但闸门按路径判，宁可连检查一起拦，
+# 也不能让只读端那份复制来的账本被真删一批行。
 
 
 def dispatch_api_get(contract: WebContract, path, args):

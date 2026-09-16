@@ -8889,7 +8889,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
         # 卡片内容高度不同时那道缺口的位置也跟着不齐。垃圾文件与重复文件是顶上一排的读数卡。
-        self.assertPageContains("fieldsetTitle('cleanupEmptyTitle','空文件夹')")
+        self.assertPageContains("fieldsetTitle('cleanupEmptyTitle','空文件夹与失效条目')")
         self.assertPageContains("junk:statCard('垃圾文件','file-archive',")
         self.assertPageContains("duplicates:statCard('重复文件','file-stack',")
         self.assertPageLacks("<legend>垃圾文件</legend>")
@@ -8897,6 +8897,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset')
         self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
         self.assertPageContains("保留来源根目录")
+        # 这一屏会删账本行，检查那一步就得把条数写在脸上，确认框里也要说清不可撤销。
+        self.assertPageContains("条文件已不在盘上的记录")
+        self.assertPageContains("这一步不可撤销")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
