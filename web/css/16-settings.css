@@ -76,7 +76,7 @@ body.settings-open{overflow:hidden}
 .iconswitch.themeswitch svg{width:16px;height:16px}
 /* 手机上三枚圆各自撑到 44px 命中区，圆心间距跟着长，指头点得中。 */
 @media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}
-/* 首页光晕的参数区。它跟着上面那一行开关走，关掉就整块收起来——一组调不出任何效果的
+/* 侧栏光晕的参数区。它跟着上面那一行开关走，关掉就整块收起来——一组调不出任何效果的
    拉条和色块留在原地，读的人只会以为是坏了。
 
    右边那 16px 外边距加 10px 内边距是这一块唯一的定位修正，不是留白偏好。Board 那一层
@@ -90,17 +90,27 @@ body.settings-open{overflow:hidden}
 
    版式照 feralui.dev/gradients 的工作台面板：分组标题是一行小号灰字，参数行是
    「84px 标签 + 自绘拉条 + 等宽读数」，颜色行点开在自己下方弹一张色板。
-   取证见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
-.glowsetting{display:grid;gap:16px;margin-right:16px;padding:0 10px 14px 0;min-width:0}
+   取证见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。
+
+   竖向节奏跟同一张卡里的设置行走同一份数：`board.css` 的
+   `.settingscard .settingsscroll .settingrow` 是最小高 52px、上下各 10px 内边距。
+   `--glowrow-min` / `--glowrow-pad` 就是那两个值，本块每一行都读它。这一块此前是三层
+   gap（16 + 12 + 12）叠出来的间距，同一屏里「当前配色」到「强度」的落差和上面几行设置
+   之间的落差对不上，读起来像是中间漏了一条线。 */
+.glowsetting{--glowrow-min:52px;--glowrow-pad:10px;
+  display:grid;gap:0;margin-right:16px;padding:0 10px 14px 0;min-width:0}
 .glowsetting[hidden]{display:none}
-.glowcurrent{display:flex;align-items:baseline;gap:8px;margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.glowcurrent{display:flex;align-items:center;gap:8px;margin:0;min-height:var(--glowrow-min);
+  padding-block:var(--glowrow-pad);color:var(--muted);font-size:var(--fs-sm)}
 .glowcurrent b{color:var(--ink);font-weight:500}
-.glowgroup{display:grid;gap:12px;min-width:0}
+.glowgroup{display:grid;gap:0;min-width:0}
 /* 上游那一行是大写加宽字距的英文小标题，中文不大写：中文没有大小写，`text-transform`
    在这里什么也不做，字距倒是会把两个字拉散。 */
-.glowgroup>h4{margin:0;color:var(--muted);font-size:var(--fs-xs);font-weight:600}
-.glowfields{display:flex;flex-direction:column;gap:12px;min-width:0}
-.glowfield{display:flex;align-items:center;gap:10px;min-width:0}
+.glowgroup>h4{display:flex;align-items:center;min-height:var(--glowrow-min);
+  padding-block:var(--glowrow-pad);margin:0;color:var(--muted);font-size:var(--fs-xs);font-weight:600}
+.glowfields{display:flex;flex-direction:column;gap:0;min-width:0}
+.glowfield{display:flex;align-items:center;gap:10px;min-height:var(--glowrow-min);
+  padding-block:var(--glowrow-pad);min-width:0}
 .glowfieldlabel{flex:none;width:84px;color:var(--muted);font-size:var(--fs-xs);font-weight:600;white-space:nowrap}
 .glowfield .dial{flex:1;min-width:0}
 /* 颜色行：34px 圆点 + 名称与十六进制两行 + 行尾折角。相邻两行之间那条分隔线从圆点
@@ -109,8 +119,9 @@ body.settings-open{overflow:hidden}
 .glowstop{position:relative;min-width:0}
 .glowstop+.glowstop::before{content:'';position:absolute;left:54px;right:6px;top:0;height:1px;
   background:linear-gradient(to right,var(--line-soft),transparent)}
-.glowstopmain{display:flex;align-items:center;gap:10px;width:100%;min-height:54px;min-width:0;
-  padding:7px 7px 7px 8px;border:0;border-radius:var(--floating-radius);background:transparent;
+.glowstopmain{display:flex;align-items:center;gap:10px;width:100%;min-width:0;
+  min-height:var(--glowrow-min);padding:var(--glowrow-pad) 7px var(--glowrow-pad) 8px;
+  border:0;border-radius:var(--floating-radius);background:transparent;
   color:inherit;font:inherit;text-align:left;cursor:pointer}
 .glowstopmain:hover{background:color-mix(in srgb,var(--ink) 3.2%,transparent)}
 .glowstopmain[aria-expanded="true"]{background:color-mix(in srgb,var(--ink) 4.6%,transparent)}
@@ -146,7 +157,7 @@ body.settings-open{overflow:hidden}
   box-shadow:inset 0 1px 1px var(--frost-light),
   0 0 0 1.5px var(--ground),0 0 0 2.5px color-mix(in srgb,var(--ink) 30%,transparent)}
 .glowswatch:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.glowactions{display:flex;justify-content:flex-end}
+.glowactions{display:flex;justify-content:flex-end;padding-top:var(--glowrow-pad)}
 /* 同一组里排在设置行后面的分区自带分隔线。线属于整块卡片，所以和 .settingrow 一样
    用负边距铺到框边，不在正文宽度里断一截。 */
 .settinggroup :is(.settingrow,.glowsetting)+.sidebarsetting{margin:0;padding:14px 0 0;

@@ -160,6 +160,9 @@ class WebUiSourceTests(unittest.TestCase):
         sources.extend(sorted((web / "js").glob("*.js")))
         cls.css = stylesheet_source()
         cls.app_js = (web / "app.js").read_text(encoding="utf-8")
+        # 光晕的预设表与色板单独拎出来：断言要按色相角遍历那两张表，得先切到它们所在的
+        # 那一份源码。它们现在住在 `web/js/home-glow.js`，不再由 app.js 定义。
+        cls.glow_js = (web / "js" / "home-glow.js").read_text(encoding="utf-8")
         cls.page = chr(10).join(
             path.read_text(encoding="utf-8") for path in sources
         )
@@ -594,7 +597,9 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_drawer_scrolls_in_an_inner_layer_so_the_track_can_stay_put(self):
         """抽屉自己不滚，滚的是里面那层：跟着内容一起滚的轨道等于没有轨道。"""
+        # 光晕那一层是抽屉的第一个子元素，滚的仍然只有 .drawerscroll 那一层。
         self.assertPageContains('<aside class="drawer" id="drawer">'
+                                '<div class="glowlayer" aria-hidden="true"></div>'
                                 '<div class="drawerscroll" id="drawerScroll"></div></aside>')
         self.assertPageContains("$('#drawerScroll').innerHTML=")
         self.assertPageContains(".drawerscroll{height:100%;box-sizing:border-box;"
@@ -5967,49 +5972,64 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".card.pending-delete .poster")
         self.assertPageContains('<b>回收站</b>')
 
-    def test_home_glow_is_three_spots_over_the_page_colour(self):
-        """光晕只有三枚光斑，底下就是页面本身：不铺底色带，也不压遮罩带。
+    def test_sidebar_glow_lives_inside_the_drawer_and_drifts_like_its_glass(self):
+        """光晕是侧栏玻璃面自带的那两团慢漂反光换成的三枚，长在 `.drawer` 里面。
 
-        那两层是照着一张参考位图配出来的，它们一在，首页顶部就是另一张面——顶栏与卡片
-        之间多出一条谁也说不清归属的色带。去掉之后光斑各自向 transparent 收边，落在 --page 上。
+        铺在页面身后的那一版是背景不是光晕——正文和卡片压在它上面，字读不出来。所以这一层
+        `position:absolute;inset:0` 待在抽屉内部，溢出连圆角一起被抽屉的 overflow 裁掉。
+        位置由 drift 那两条动画推着走，和 board.css 给其余玻璃面的是同一套算法；抽屉自己
+        那两团因此必须置为 none，否则两套光斑叠着漂。
         """
-        css = stylesheet_source()
-        self.assertPageContains("--glow-h:49vh")
-        self.assertPageContains("animation:ambient-in .8s ease .5s both")
+        css = stylesheet_source() + (Path(__file__).resolve().parents[1]
+                                     / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('<aside class="drawer" id="drawer"><div class="glowlayer" aria-hidden="true">'
+                      '</div>', self.page, "光晕层是抽屉的第一个子元素")
+        layer = css.split(".glowlayer{", 1)[1].split("}", 1)[0]
+        self.assertIn("position:absolute;inset:0;z-index:-2", layer,
+                      "-1 已经归了 .navglide，光晕要在它下面、玻璃填充之上")
+        self.assertIn(".drawer.drawer{--glass-drift-a:none;--glass-drift-b:none}", css)
         rule = css.split(".glowlayer::before{", 1)[1].split("}", 1)[0]
-        self.assertEqual(rule.count("radial-gradient("), 3, "三枚光斑，不多也不少")
+        self.assertEqual(rule.count("radial-gradient("), 3, "三枚光晕，不多也不少")
+        self.assertIn("background-size:200% 200%", rule, "画布两倍大，drift 才推得动")
+        self.assertIn("animation:glowdriftx 41s linear infinite,"
+                      "glowdrifty 67s linear infinite,ambient-in .8s ease .5s both", rule)
+        # 两条周期互质，合起来看不出循环点；和玻璃那两条同一个数，一眼读成同一种光。
+        for name in ("@keyframes glowdriftx{", "@keyframes glowdrifty{"):
+            self.assertIn(name, css)
         self.assertNotIn("linear-gradient", rule, "底色带与遮罩带都不属于这条规则")
-        for gone in ("--glow-veil", "--glow-angle", "--glow-base"):
+        for gone in ("--glow-veil", "--glow-angle", "--glow-base", "--glow-h:",
+                     "--glow-mask", "--glow-rail-fade", "--glow-spot-1-x"):
             self.assertPageLacks(gone, "这个变量已经没有使用者")
 
-    def test_home_glow_reads_every_colour_and_centre_from_a_variable(self):
-        """`.glowlayer::before` 里一个字面颜色、一个字面坐标都不许有。
+    def test_home_glow_reads_every_colour_and_radius_from_a_variable(self):
+        """`.glowlayer::before` 里一个字面颜色都不许有。
 
-        它们现在是设置面板改得动的参数：写死一处，那一处就永远不跟着用户走，而症状是
+        颜色是设置面板改得动的参数：写死一处，那一处就永远不跟着用户走，而症状是
         「换了配色但有一层没变」——没有报错，只是画面对不上。
         """
         css = stylesheet_source()
         rule = css.split(".glowlayer::before{", 1)[1].split("}", 1)[0]
         self.assertNotIn("#", rule, "光晕里不许再出现字面颜色")
         self.assertEqual(re.findall(r"rgba?\(", rule), [], "光晕里不许再出现字面颜色")
-        for layer in ("--glow-lerp", "--glow-spot-1-color", "--glow-spot-2-x",
-                      "--glow-spot-3-fade", "--glow-h", "--ambient-opacity"):
+        for layer in ("--glow-lerp", "--glow-spot-1-color", "--glow-spot-2-w",
+                      "--glow-spot-3-fade", "--ambient-opacity"):
             self.assertIn(f"var({layer})", rule, f"{layer} 没有被 .glowlayer::before 引用")
 
     def test_home_glow_defaults_match_the_default_preset(self):
         """样式表里的默认值就是 `amber` 那一档，两处一字不差。
 
         对不上的后果只出现在第一帧：`applyHomeGlow()` 跑完之前页面按样式表画，跑完之后
-        按 JS 写的值画，中间会闪一次颜色。
+        按 JS 写的值画，中间会闪一次颜色。颜色是两处都有的那部分；半轴与收边只有这里一份，
+        三枚大小各不相同——一样大就读成一团，不是三枚。
         """
         css = stylesheet_source()
         for declaration in (
-                "--glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-x:38%; --glow-spot-1-y:30%",
-                "--glow-spot-1-w:46%; --glow-spot-1-h:76%; --glow-spot-1-fade:70%",
-                "--glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-x:22%; --glow-spot-2-y:10%",
-                "--glow-spot-2-w:34%; --glow-spot-2-h:70%; --glow-spot-2-fade:72%",
-                "--glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-x:78%; --glow-spot-3-y:22%",
-                "--glow-spot-3-w:40%; --glow-spot-3-h:72%; --glow-spot-3-fade:72%"):
+                "--glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-w:20%; "
+                "--glow-spot-1-h:20%; --glow-spot-1-fade:72%",
+                "--glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-w:26%; "
+                "--glow-spot-2-h:26%; --glow-spot-2-fade:74%",
+                "--glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-w:23%; "
+                "--glow-spot-3-h:23%; --glow-spot-3-fade:73%"):
             self.assertIn(declaration, css)
         # 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
         self.assertIn("--glow-noise:0; --glow-strength:1; --glow-theme-scale:.6", css)
@@ -6018,15 +6038,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(css.count("--glow-theme-scale:1;}"), 2, "深色两块色板都要自己那一档")
 
     def test_home_glow_presets_carry_no_cyan_or_teal(self):
-        """预设里没有一枚光斑落在青绿那一段色相上。
+        """预设里没有一枚光晕落在青绿那一段色相上。
 
         青绿是照着外部参考配出来的那一版留下的印子，用户点名要它消失。只查名字挡不住——
         换个十六进制写法就绕过去了，所以按色相角判：150°–210° 之间、饱和度够得上看得见
         的那一档，一枚都不许有。近乎无彩的灰不在此列，它读出来不是颜色。
         """
-        block = self.app_js.split("const HOME_GLOW_PRESETS=[", 1)[1].split("\n];", 1)[0]
+        block = self.glow_js.split("const HOME_GLOW_PRESETS=[", 1)[1].split("\n];", 1)[0]
         colours = re.findall(r"color:'#([0-9a-f]{6})'", block)
-        self.assertGreaterEqual(len(colours), 12, "四档预设各三枚光斑")
+        self.assertGreaterEqual(len(colours), 12, "四档预设各三枚光晕")
         for value in colours:
             with self.subTest(colour=value):
                 red, green, blue = (int(value[at:at + 2], 16) / 255 for at in (0, 2, 4))
@@ -6051,24 +6071,51 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("feTurbulence", rule)
 
     def test_home_glow_settings_are_stored_bounded_and_written_to_its_own_layer(self):
-        """设置里存得住、读回来要夹回区间，改一下就写到光晕自己那一层上。"""
+        """设置里存得住、读回来要夹回区间，改一下就写到光晕自己那一层上。
+
+        用户面只剩三枚颜色、强度、颗粒和档名：光晕的形状（半轴、收边）和它怎么漂全在
+        样式表里。几何一旦进了 localStorage，改形状就再也改不动那些存过的机器。
+        """
         self.assertPageContains("sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW}")
         self.assertPageContains("const DEFAULT_HOME_GLOW={on:true,preset:'amber',strength:100,noise:0,"
                                 "...glowPalette('amber')}")
         self.assertPageContains("appSettings.homeGlow=normalizeHomeGlow(appSettings.homeGlow)")
         self.assertCode("function normalizeHomeGlow(raw){")
-        self.assertCode("strength:boundedPreference(+stored.strength,0,100,100),")
-        self.assertCode("noise:boundedPreference(+stored.noise,0,100,0)};")
-        self.assertCode("fade:boundedPreference(+spot.fade,10,100,fallback.fade)};")
+        self.assertCode("strength:glowNumber(+stored.strength,0,100,100),")
+        self.assertCode("noise:glowNumber(+stored.noise,0,100,0)};")
+        self.assertPageLacks("fade:glowNumber(+spot.fade", "收边是形状，不是偏好")
         self.assertPageContains("const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))")
-        self.assertCode("function paintHomeGlow(){")
+        self.assertCode("function paintHomeGlow(el,glow){")
         self.assertCode("write('--glow-strength',String(live?glow.strength/100:0));")
-        self.assertCode("write(`--glow-spot-${slot}-color`,glowRgba(spot.color,spot.alpha));")
+        self.assertCode("write(`--glow-spot-${index+1}-color`,glowRgba(spot.color,spot.alpha));")
         self.assertPageContains("applyHomeGlow();")
         # 预设给中文名，含当前默认那一档。
         self.assertPageContains("['amber','钨丝暖阁',{")
         self.assertPageContains("['custom','自定义']")
-        self.assertGreaterEqual(self.app_js.count("spot1:{color:'#"), 4, "预设至少四档")
+        self.assertGreaterEqual(self.glow_js.count("spot1:{color:'#"), 4, "预设至少四档")
+
+    def test_home_glow_data_lives_in_a_module_app_js_only_imports(self):
+        """预设、色板、规范化和那一次绘制都在 `web/js/home-glow.js`，app.js 只 import。
+
+        React 壳要的就是这一份：留在 app.js 里，迁移时同一张预设表、同一套色板和同一段
+        规范化会被抄进组件再各自演化，而两份色板差一枚颜色是看不出来的。
+        所以那个模块不认识 `appSettings`、`$`、`saveSettings`，`paintHomeGlow` 只写传进来的
+        那枚元素；侧栏那枚配色钮、它的弹层和设置面板的装配仍旧留在 app.js。
+        """
+        self.assertIn("import { DEFAULT_HOME_GLOW, GLOW_SPOT_LABELS, GLOW_SWATCHES, "
+                      "GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, "
+                      "HOME_GLOW_SPOTS, glowChipFill, glowColor, glowPalette, glowPresetName, "
+                      "normalizeHomeGlow, paintHomeGlow } from './js/home-glow.js';", self.app_js)
+        for moved in ("const HOME_GLOW_PRESETS=[", "const GLOW_SWATCHES=[",
+                      "const GLOW_SPOT_LABELS=[", "const DEFAULT_HOME_GLOW=",
+                      "function normalizeHomeGlow(", "function paintHomeGlow("):
+            self.assertNotIn(moved, self.app_js, f"{moved} 已经搬进 js/home-glow.js")
+            self.assertIn(moved, self.glow_js)
+        # 注释里说得出这几个名字（它讲的正是「这里没有它们」），代码里一次都不许出现。
+        code = "\n".join(re.sub(r"/\*.*?\*/", "", self.glow_js, flags=re.S).splitlines())
+        for forbidden in ("appSettings", "saveSettings(", "document.", "peach-ui.js"):
+            self.assertNotIn(forbidden, code, "这一份不认识页面，只认参数")
+        self.assertIn("paintHomeGlow(glowField,appSettings.homeGlow)", self.app_js)
 
     def test_home_glow_normalisation_replaces_a_retired_preset_wholesale(self):
         """存着的档名已经不在清单里时，连它那三枚颜色一起换成默认那一档。
@@ -6082,25 +6129,30 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const seed=glowPalette(preset==='custom'?'amber':preset);")
         self.assertCode("const spot=known&&stored[key]&&typeof stored[key]==='object'"
                         "?stored[key]:{},fallback=seed[key];")
-        self.assertPageLacks("angle:boundedPreference", "角度已经不在模型里")
+        self.assertPageLacks("angle:glowNumber", "角度已经不在模型里")
         self.assertPageLacks("base:seed.base.map", "底色已经不在模型里")
 
-    def test_home_glow_panel_is_two_named_groups_of_fields(self):
-        """参数区分成「场」和「颜色」两组：场是强度与颗粒两条拉条，颜色是三枚光斑。
+    def test_home_glow_panel_leads_with_the_preset_then_names_one_group(self):
+        """强度与颗粒直接跟在当前配色后面，只有「颜色」自己占一个带名字的分组。
 
-        分组不是装饰：六个控件平铺时，改「颗粒」和改「光斑二」读起来是同一类操作，
-        而前者动的是整层的质地、后者动的是其中一枚的颜色。
+        强度和颗粒不归任何分组：两条拉条一条调整层的亮度、一条调它的颗粒，都是这一片光
+        自己的事，套一个名字上去只会多出一个读不懂的词。三枚光晕要分组，是因为下面挂着
+        三行各自能展开色板的行。
         """
-        self.assertPageContains('<b>首页光晕</b>')
+        self.assertPageContains('<b>侧栏光晕</b>')
         self.assertPageContains('id="homeGlowSetting" class="ptoggle" role="switch"')
         self.assertPageContains('<section class="glowsetting" id="homeGlowControls"')
         self.assertCode("function renderHomeGlowSetting(){")
         self.assertPageContains("renderHomeGlowSetting();")
-        self.assertPageContains('<section class="glowgroup"><h4>场</h4>')
+        self.assertPageLacks('<h4>场</h4>', "「场」不是这套界面的词")
         self.assertPageContains('<section class="glowgroup"><h4>颜色</h4>')
         self.assertPageContains("glowFieldRowHtml('strength','强度',100)")
         self.assertPageContains("glowFieldRowHtml('noise','颗粒',60)")
-        self.assertPageContains("const GLOW_SPOT_LABELS=['光斑一','光斑二','光斑三'];")
+        # 「光斑」留给 board.css 里玻璃面自带那两团反光，它是另一件东西；用户在这里配的
+        # 三枚一律叫光晕，界面文案和注释都不再混用。
+        self.assertPageContains("const GLOW_SPOT_LABELS=['光晕一','光晕二','光晕三'];")
+        for stale in ("光斑一", "光斑二", "光斑三", "光斑色"):
+            self.assertPageLacks(stale)
         self.assertPageContains('<button type="button" class="geist-button" data-glow-reset>恢复默认</button>')
         # 即时生效，不配「保存」键。
         self.assertPageLacks('data-glow-save')
@@ -6128,7 +6180,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("glow().preset='custom';")
         # 弹层与页面其它浮层同一套开合，不自己写一份定位。
         self.assertCode("wireAnchoredMenu(row,toggle,pop);")
-        block = self.app_js.split("const GLOW_SWATCHES=[", 1)[1].split("\n];", 1)[0]
+        block = self.glow_js.split("const GLOW_SWATCHES=[", 1)[1].split("\n];", 1)[0]
         colours = re.findall(r"'#([0-9a-f]{6})'", block)
         self.assertGreaterEqual(len(colours), 36, "七个色系各六档")
         for value in colours:
@@ -6146,8 +6198,9 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertCode("onInput:value=>{glow()[field]=value;applyHomeGlow()},")
         self.assertCode("onChange:()=>saveSettings()}));")
-        self.assertCode("glowFrame=requestAnimationFrame(()=>{glowFrame=0;paintHomeGlow()});")
-        self.assertCode("if(glowWritten.get(name)===value)return;")
+        self.assertCode("glowFrame=requestAnimationFrame(()=>{glowFrame=0;"
+                        "paintHomeGlow(glowField,appSettings.homeGlow)});")
+        self.assertCode("if(written.get(name)===value)return;")
         # 面板 DOM 只建一次：重建会把正开着的颜色弹层、焦点和拖动状态一起扔掉。
         self.assertCode("if(mount.dataset.glowWired!=='true'){")
 
@@ -6161,9 +6214,8 @@ class WebUiSourceTests(unittest.TestCase):
         css = stylesheet_source()
         self.assertPageContains('<div class="glowlayer" aria-hidden="true"></div>')
         self.assertCode("const glowField=document.querySelector('.glowlayer');")
-        self.assertCode("const glow=appSettings.homeGlow,style=glowField.style,live=glow.on;")
+        self.assertCode("el.style.setProperty(name,value);")
         self.assertIn(".glowlayer{--ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale));", css)
-        self.assertIn("position:absolute;top:0;left:0;right:0;height:0;z-index:0;pointer-events:none}", css)
         self.assertNotIn("body::before{", css, "光晕不再挂在 body 的伪元素上")
         self.assertNotIn("body::after{", css, "光晕不再挂在 body 的伪元素上")
 
@@ -6193,14 +6245,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("const rect=trackBox||track.getBoundingClientRect();", components)
 
     def test_sidebar_carries_the_glow_preset_button_next_to_the_theme_toggle(self):
-        """侧栏底部那枚圆钮就是换配色的入口，收起时和主题键叠成一列。
+        """侧栏底部那枚配色钮就是换配色的入口，收起时和主题键叠成一列。
 
         配色是随手换的东西，设置面板是调细节的地方：把它留在面板里，换一次要开面板、
-        找分区、再找下拉。圆钮右下那枚点说的是现在这一档的第一枚光斑。
+        找分区、再找下拉。钮右下那枚点说的是现在这一档的第一枚光晕。
+        它和旁边的设置钮长得一模一样：36px、8px 圆角、透明底、20px 图标。加一圈边和一层
+        阴影的那一版是 BoardUI 给浮在内容上的按钮画的，这里它站在侧栏面上，紧挨着一枚
+        没有任何框的设置钮——两枚并排却一枚带框，读起来是两种控件。
         """
         self.assertPageContains('class="board-glow-toggle" id="boardGlowBtn" aria-label="光晕配色"')
         self.assertPageContains('aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"')
-        self.assertPageContains("${icon('swatch-book')}<span class=\"board-glow-dot\" aria-hidden=\"true\"></span>")
+        self.assertPageContains('<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ri-palette-line"/>'
+                                '</svg><span class="board-glow-dot" aria-hidden="true"></span>')
         self.assertPageContains('<header class="board-glow-head"><span>配色</span>')
         self.assertPageContains('class="board-glow-reset" data-glow-preset-reset>重置</button>')
         self.assertPageContains('<footer><button type="button" class="geist-button" data-glow-detail>详细设置</button></footer>')
@@ -6209,8 +6265,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-pressed="${key===current}"')
         css = stylesheet_source() + (Path(__file__).resolve().parents[1]
                                      / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-glow-toggle{", css)
-        self.assertIn("border-radius:50%", css)
+        self.assertIn(".board-glow-toggle{position:relative;display:grid;place-items:center;"
+                      "width:36px;height:36px;flex:none;\n  padding:0;border:0;border-radius:8px;"
+                      "background:transparent;color:var(--muted);cursor:pointer}", css)
+        self.assertIn(".board-glow-toggle:hover{background:var(--hover);color:var(--ink)}", css)
+        # 和设置钮对齐到一个数：两枚 36px 的方块在 60px 的收起态里才排得直。
+        self.assertIn(".board-foot-actions>#settingsBtn{width:36px;height:36px;", css)
+        self.assertIn(".board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}", css)
+        # 右下那枚点还留着，它是唯一说得出「现在哪一档」的东西。
+        self.assertIn(".board-glow-dot{", css)
         # 收起时侧栏只有 60px，两枚键排成一列。
         self.assertIn(".drawer:not(.open) .board-foot-actions{flex-direction:column}", css)
 
@@ -9127,11 +9190,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 名下带人的事务所在同一个开关的另一半，走公文包。
         self.assertPageContains("['studios','厂牌','clapperboard'],")
         self.assertPageContains('<symbol id="i-clapperboard" viewBox="0 0 24 24">')
-        # 侧栏底部那枚圆钮换的是首页光晕的配色，所以是一叠翻开的色卡：挑的是具体哪一枚
-        # 颜色。设置分区那一枚 `ri-palette-line` 说的是「界面」这一整组偏好，两者不兼任。
-        self.assertPageContains("${icon('swatch-book')}")
-        self.assertPageContains('<symbol id="i-swatch-book" viewBox="0 0 24 24">')
+        # `ri-palette-line` 有两个消费者，说的是同一件事：外观。侧栏底部那枚钮换的是光晕
+        # 配色，设置里的「界面」那一格是这组偏好的整体入口——弹层上的「详细设置」点开的
+        # 正是那一格，同一个意思给两个字形反而是在说它们不是一件事。
+        self.assertPageContains('<use href="#ri-palette-line"/></svg><span class="board-glow-dot"')
         self.assertPageContains("const SETTINGS_TAB_ICONS={'界面':'ri-palette-line'")
+        self.assertPageLacks("swatch-book", "换下来的这一枚没有别的使用者，雪碧图里也不留")
         for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building",
                      "i-sliders-horizontal", "i-computer"):
             self.assertPageLacks(f'<symbol id="{gone}"')

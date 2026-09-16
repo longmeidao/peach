@@ -42,29 +42,29 @@
      字重同理只有 400／500／600 三档：vercel.com/design.md 明说不要自造数字字重，650、700 全部收到 600。 */
   --pill-radius:999px; --tag-radius:var(--pill-radius);
   --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px; --tag-pad-y:4px; --tag-pad-x:10px; --hover-delay:5s;
-  /* 首页光晕的参数层。三枚光斑的颜色、圆心、椭圆尺寸和收边位置全部落在这里；
+  /* 侧栏光晕的参数层。三枚光晕的颜色、椭圆尺寸和收边位置全部落在这里；
      `.glowlayer::before` 只引用变量，一个字面颜色都不写。这组默认值就是预设「钨丝暖阁」，
-     和 app.js 里那一档一字不差，页面第一帧和 applyHomeGlow() 写完之后画面相同。
-     这里给的是默认值，设置面板改的那一份由 app.js 写到 `.glowlayer` 自己的行内样式上，
-     写在这一层而不是 <html> 上的理由记在下面那条规则里。
+     颜色与 js/home-glow.js 里那一档一字不差，页面第一帧和 applyHomeGlow() 写完之后画面相同。
+     只有颜色那三个由设置面板写到 `.glowlayer` 自己的行内样式上，写在这一层而不是 <html>
+     上的理由记在下面那条规则里；半轴和收边只有这一份，用户不调、也不进 localStorage。
+     圆心根本不在参数里：三枚光晕是侧栏玻璃面上那两团反光换成的，位置由 glowdrift 那两条
+     动画一直推着走，写死一个圆心等于把会动的光钉成一张贴图。存几何还有第二重代价——
+     旧版本那套横躺在页面顶部的坐标会原样跟着老用户留下来。
+     半轴的参照是一张两倍于侧栏的画布（和 board.css 里 --glass-drift-a/b 同一套算法），
+     20% 落到侧栏上就是 40%，跟着侧栏自己的长宽各向异性地拉成椭圆。
      --glow-lerp 是插值空间：默认空串等于按 sRGB 插，认得 `in oklab` 的引擎在下面那条
      @supports 里把它换成 `in oklab`。写成变量而不是把整段 background 抄第二遍，是因为
      两份三层渐变里任何一层改歪一个百分点都看不出来，而它们本该永远相同。 */
-  --glow-lerp: ; --glow-h:49vh;
-  --glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-x:38%; --glow-spot-1-y:30%;
-  --glow-spot-1-w:46%; --glow-spot-1-h:76%; --glow-spot-1-fade:70%;
-  --glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-x:22%; --glow-spot-2-y:10%;
-  --glow-spot-2-w:34%; --glow-spot-2-h:70%; --glow-spot-2-fade:72%;
-  --glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-x:78%; --glow-spot-3-y:22%;
-  --glow-spot-3-w:40%; --glow-spot-3-h:72%; --glow-spot-3-fade:72%;
+  --glow-lerp: ;
+  --glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-w:20%; --glow-spot-1-h:20%; --glow-spot-1-fade:72%;
+  --glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-w:26%; --glow-spot-2-h:26%; --glow-spot-2-fade:74%;
+  --glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-w:23%; --glow-spot-3-h:23%; --glow-spot-3-fade:73%;
   /* 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
-     三枚光斑直接落在页面底色上，深色底吃光、浅色那张白底反光，同一组颜色照搬到浅色会
-     浓得压住顶栏文字，所以浅色把整层按同一个比例收下来，而不是另存一套颜色：用户挑的
-     是同一片光，两个主题不该是两种东西。
-     浅色这一档的 .6 是在浏览器里按首页截图逐档量出来的，判据是玻璃底下露出来的那块底
-     色偏暖多少（红减蓝）：.34 只有 4 级，一眼看过去和白页没区别；.6 是 7 级，光斑读得
-     出来是三种颜色；再往上到 1 是 11 级，顶栏、侧栏和筛选条整片跟着泛米色，那时候有
-     颜色的就不是光晕而是界面本身了。 */
+     深色侧栏那块玻璃吃光、浅色那块反光，同一组颜色照搬到浅色会浓得压住导航文字，所以
+     浅色把整层按同一个比例收下来，而不是另存一套颜色：用户挑的是同一片光，两个主题不该
+     是两种东西。这一档的 .6 是在浏览器里逐档量出来的，判据是玻璃面上那块底色偏暖多少
+     （红减蓝）：.34 只有 4 级，一眼看过去和没开一样；.6 是 7 级，三枚光晕读得出来是三种
+     颜色；到 1 是 11 级，整条侧栏跟着泛米色，那时候有颜色的就不是光而是侧栏本身了。 */
   --glow-noise:0; --glow-strength:1; --glow-theme-scale:.6;
   /* 一颗标签的脸只有这一张：--tag-radius 的圆角、一圈 --line、这块比面再沉一档的填充、
      --ink-2 的字。同一个词出现在卡片上、详情面板里、筛选条上和交集条里，读的人认的是
@@ -162,36 +162,80 @@ body{background:var(--page);color:var(--ink);
   font-family:Roboto,"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
   font-size:var(--fs-md);line-height:1.45;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums}
-/* 光晕住在自己那枚空 div 上，而不是 `body` 的伪元素上，为的是把自定义属性的失效范围
-   关在这一层里。自定义属性是继承的：往 <html> 或 <body> 上写一次 --glow-strength，整棵
-   树都要重算样式。2026-09-16 在首页量过，判据是「写一次变量再强制 layout 的耗时」，取
+/* 光晕住在侧栏里自己那枚空 div 上，而不是 `body` 的伪元素上，为的是把自定义属性的失效
+   范围关在这一层里。自定义属性是继承的：往 <html> 或 <body> 上写一次 --glow-strength，
+   整棵树都要重算样式。2026-09-16 在首页量过，判据是「写一次变量再强制 layout 的耗时」，取
    三轮每帧平均：写在 <html> 上 12.7–16.6ms（页面约 5800–6000 个节点），写一个根本没人
    引用的 --zzz-unused 同样是 15.0–16.2ms——这笔钱买的全是继承失效，和光晕怎么画无关；
    同一份代码写到一枚没有子节点的元素上是 0.09–0.10ms。拖拉条时每帧都要写一次，
    16.7ms 的帧预算里先扣掉 15ms，掉帧就是必然。
    `will-change:opacity` 也试过并量过：同样三轮 60 步合成拖动，提层后每帧间隔取最好一轮
    18.86ms、不提层 19.49ms，轮内波动本身就有 2ms 上下，这 0.6ms 读不出是效果，代价却是
-   一整条 100vw × 49vh 的合成层常驻显存，所以不提。
-   这一层本身不占位：高度为 0，两枚伪元素按 --topH 自己定位，页面其余部分的布局不受影响。
-   三层都只引用 --glow-* 变量，这里一个颜色和一个坐标都不写死：用户在设置面板里换配色时，
-   改的就是那组变量，规则本身不动。插值空间走 --glow-lerp。 */
+   一整块合成层常驻显存，所以不提。
+   三层都只引用 --glow-* 变量，这里一个颜色都不写死：用户在设置面板里换配色时，改的就是
+   那组变量，规则本身不动。插值空间走 --glow-lerp。
+
+   这一层画的就是侧栏玻璃面自带的那两团慢漂反光，换成用户配得了色的三枚。board.css 那条
+   玻璃规则把 --glass-drift-a/b 铺在每一块玻璃上，抽屉这一块交给这里来铺（那条规则里
+   .drawer 的两个变量因此置为 none，两套光斑叠着漂会糊成一团）；搜索框、筛选浮层、图标钮
+   那些玻璃面保持自己原来的漂移不动——它们身上那一点正是从侧栏折射过去的光。
+   正文身后什么都不铺：整条页面宽的光带是背景不是光晕，字压在上面读不出来。
+
+   位置不是参数，由 glowdriftx/glowdrifty 一直推着走，算法照搬 board.css 那两条：画布是
+   元素的两倍大，background-position 从 0% 到 100% 正好把光斑中心从右下角推到左上角，
+   -10% 与 110% 那两档让它探出框外一点。三枚各走一条相位不同的李萨如轨迹，横竖两条动画
+   41s 与 67s 互质，合起来四十多分钟不重样。
+   z-index 取 -2：.drawer 自己带 backdrop-filter，是一个层叠上下文，负层只压在它那块玻璃
+   填充之上、被导航内容全部盖住；-1 已经归了选中项那条 .navglide，光晕要在它下面。
+   溢出由 .drawer 的 overflow:hidden 连圆角一起裁掉，这一层不必自己再写一遍圆角。
+   首屏 ambient-in 那一下淡入留着：这一层一直在动，开页时从 0 亮起来读成「灯亮了」，
+   直接带着满强度出现反而像一张贴图突然贴上去。 */
 .glowlayer{--ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale));
-  position:absolute;top:0;left:0;right:0;height:0;z-index:0;pointer-events:none}
-.glowlayer::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
-  height:var(--glow-h);opacity:var(--ambient-opacity);background:
-    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-1-w) var(--glow-spot-1-h) at var(--glow-spot-1-x) var(--glow-spot-1-y),var(--glow-spot-1-color),transparent var(--glow-spot-1-fade)),
-    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-2-w) var(--glow-spot-2-h) at var(--glow-spot-2-x) var(--glow-spot-2-y),var(--glow-spot-2-color),transparent var(--glow-spot-2-fade)),
-    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-3-w) var(--glow-spot-3-h) at var(--glow-spot-3-x) var(--glow-spot-3-y),var(--glow-spot-3-color),transparent var(--glow-spot-3-fade));
-  animation:ambient-in .8s ease .5s both}
+  position:absolute;inset:0;z-index:-2;pointer-events:none}
+.glowlayer::before{content:"";position:absolute;z-index:0;pointer-events:none;inset:0;
+  opacity:var(--ambient-opacity);background:
+    radial-gradient(var(--glow-lerp) var(--glow-spot-1-w) var(--glow-spot-1-h) at 50% 50%,var(--glow-spot-1-color),transparent var(--glow-spot-1-fade)),
+    radial-gradient(var(--glow-lerp) var(--glow-spot-2-w) var(--glow-spot-2-h) at 50% 50%,var(--glow-spot-2-color),transparent var(--glow-spot-2-fade)),
+    radial-gradient(var(--glow-lerp) var(--glow-spot-3-w) var(--glow-spot-3-h) at 50% 50%,var(--glow-spot-3-color),transparent var(--glow-spot-3-fade));
+  background-size:200% 200%;background-repeat:no-repeat;
+  background-position:50% 20%,80% 70%,20% 80%;
+  animation:glowdriftx 41s linear infinite,glowdrifty 67s linear infinite,ambient-in .8s ease .5s both}
+/* 三条轨迹是同一条李萨如曲线的三个相位：第一枚与 board.css 的 --glass-drift-a 同相，
+   第二枚是它的镜像，第三枚横向错四分之一周期、纵向错八分之一，三枚因此从不在同一处会合。 */
+@keyframes glowdriftx{
+  0%{background-position-x:50%,50%,110%}
+  12.5%{background-position-x:7.6%,92.4%,92.4%}
+  25%{background-position-x:-10%,110%,50%}
+  37.5%{background-position-x:7.6%,92.4%,7.6%}
+  50%{background-position-x:50%,50%,-10%}
+  62.5%{background-position-x:92.4%,7.6%,7.6%}
+  75%{background-position-x:110%,-10%,50%}
+  87.5%{background-position-x:92.4%,7.6%,92.4%}
+  100%{background-position-x:50%,50%,110%}
+}
+@keyframes glowdrifty{
+  0%{background-position-y:-10%,50%,7.6%}
+  12.5%{background-position-y:7.6%,7.6%,50%}
+  25%{background-position-y:50%,-10%,92.4%}
+  37.5%{background-position-y:92.4%,7.6%,110%}
+  50%{background-position-y:110%,50%,92.4%}
+  62.5%{background-position-y:92.4%,92.4%,50%}
+  75%{background-position-y:50%,110%,7.6%}
+  87.5%{background-position-y:7.6%,92.4%,-10%}
+  100%{background-position-y:-10%,50%,7.6%}
+}
 /* 认得 oklab 插值的引擎在这里才拿到它。反过来写——默认 `in oklab`、老引擎再关掉——
    的后果是老引擎把整条 background 判成无效，首页顶上一片光都没有，而不是退回 sRGB。 */
 @supports (background:linear-gradient(in oklab,red,blue)){:root{--glow-lerp:in oklab}}
 /* 颗粒感是可选的一层，默认强度 0 就是关。瓦片由 feTurbulence 当场生成，仓库里不落
-   位图；overlay 只压在光晕上，正文和卡片都在它之后绘制，不受影响。 */
-.glowlayer::after{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
-  height:var(--glow-h);opacity:var(--glow-noise);mix-blend-mode:overlay;
+   位图；overlay 只压在光晕上，导航内容在它之后绘制，不受影响。 */
+.glowlayer::after{content:"";position:absolute;z-index:0;pointer-events:none;inset:0;
+  opacity:var(--glow-noise);mix-blend-mode:overlay;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='peachglowgrain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23peachglowgrain)'/%3E%3C/svg%3E") 0 0/120px 120px repeat}
 @keyframes ambient-in{from{opacity:0}to{opacity:var(--ambient-opacity)}}
+/* 跟着动效偏好走：一屋子的光一直在挪是这块玻璃读成实物的理由，但 prefers-reduced-motion
+   的人要的正是「别再动了」。停在当前那一帧，光还在，只是不动——整层关掉等于换了个配色。 */
+@media (prefers-reduced-motion:reduce){.glowlayer::before{animation:ambient-in .8s ease .5s both}}
 .disp{font-family:Bahnschrift,"Segoe UI Variable Display","Microsoft YaHei UI",sans-serif;
   font-weight:600;letter-spacing:.02em}
 .mono{font-family:"Cascadia Mono",Consolas,ui-monospace,"Microsoft YaHei UI","PingFang SC",monospace;
