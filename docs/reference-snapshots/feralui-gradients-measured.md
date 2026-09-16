@@ -23,12 +23,17 @@ position）/ `dividers` / `soften` / `noise` / `speed`。
 只借三点，都不涉及它的代码或位图：
 
 1. **参数模型**：一档配色 = 若干色标（hex 加位置）+ 柔化 + 噪点。Peach 的 `homeGlow` 落成
-   三枚光斑（颜色、不透明度、圆心、椭圆半轴、收边位置）加底层渐变的角度与四个颜色，
-   开关、强度、噪点单列，见 `web/app.js` 的 `HOME_GLOW_PRESETS`。
-2. **`in oklab` 插值**：`web/css/01-base.css` 的 `body::before` 五层渐变都走它，由
+   三枚光斑（颜色、不透明度、圆心、椭圆半轴、收边位置），开关、强度、噪点单列，
+   见 `web/app.js` 的 `HOME_GLOW_PRESETS`。
+2. **`in oklab` 插值**：`web/css/01-base.css` 的 `body::before` 三层渐变都走它，由
    `--glow-lerp` 一个变量给，`@supports` 判不出时退回 sRGB。
 3. **噪点叠层**：`body::after` 一层 `mix-blend-mode: overlay` 的瓦片，强度 0 即关。瓦片由
    SVG `feTurbulence` 的 data URI 当场生成，不引入它那张 PNG，也不往仓库里落位图。
 
 渲染保持纯 CSS 径向光晕，不引入 Canvas：首页顶栏与筛选条都挂着 `backdrop-filter`，
 一块逐帧重绘的画布压在它们下面会让这两处每一帧都重算。
+
+## 与本快照的差异
+
+Peach 最终只保留光斑层：它那种铺满画布的底色场和压在上面的遮罩，Peach 都不画，三枚光斑
+各自向 `transparent` 收边，底下就是页面自己的 `--page`。

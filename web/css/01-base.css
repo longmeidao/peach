@@ -42,30 +42,29 @@
      字重同理只有 400／500／600 三档：vercel.com/design.md 明说不要自造数字字重，650、700 全部收到 600。 */
   --pill-radius:999px; --tag-radius:var(--pill-radius);
   --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px; --tag-pad-y:4px; --tag-pad-x:10px; --hover-delay:5s;
-  /* 首页光晕的参数层。三枚光斑的颜色、圆心、椭圆尺寸和收边位置，加上底层渐变的角度与
-     四个颜色，全部落在这里；`body::before` 只引用变量，一个字面颜色都不写。默认值就是
-     依据 beeg 留存像素重建的那一版，所以抽成变量之前之后画面完全一样。
+  /* 首页光晕的参数层。三枚光斑的颜色、圆心、椭圆尺寸和收边位置全部落在这里；
+     `body::before` 只引用变量，一个字面颜色都不写。这组默认值就是预设「钨丝暖阁」，
+     和 app.js 里那一档一字不差，页面第一帧和 applyHomeGlow() 写完之后画面相同。
      设置面板改的就是这组变量，由 app.js 的 applyHomeGlow() 写到 <html> 的行内样式上。
      --glow-lerp 是插值空间：默认空串等于按 sRGB 插，认得 `in oklab` 的引擎在下面那条
      @supports 里把它换成 `in oklab`。写成变量而不是把整段 background 抄第二遍，是因为
-     两份五层渐变里任何一层改歪一个百分点都看不出来，而它们本该永远相同。 */
-  --glow-lerp: ; --glow-h:49vh; --glow-angle:105deg;
-  /* 盖在光晕最上面的那一层，上端这个颜色、下端一路化进 --page。深色一档压黑是为了把
-     顶栏那条文字从光斑里拔出来；浅色一档同一件事要往亮里做，压黑会在白页顶上糊出一道
-     脏影。所以它跟着色板走，和 --page、--ink 一样两档各写各的值。 */
-  --glow-veil:rgba(255,255,255,.55);
-  --glow-spot-1-color:rgba(25,169,187,.72); --glow-spot-1-x:42%; --glow-spot-1-y:34%;
-  --glow-spot-1-w:43%; --glow-spot-1-h:78%; --glow-spot-1-fade:68%;
-  --glow-spot-2-color:rgba(178,125,141,.58); --glow-spot-2-x:30%; --glow-spot-2-y:6%;
-  --glow-spot-2-w:36%; --glow-spot-2-h:72%; --glow-spot-2-fade:72%;
-  --glow-spot-3-color:rgba(84,66,87,.58); --glow-spot-3-x:76%; --glow-spot-3-y:18%;
-  --glow-spot-3-w:38%; --glow-spot-3-h:70%; --glow-spot-3-fade:72%;
-  --glow-base-1:#46506b; --glow-base-2:#68688b; --glow-base-3:#274f64; --glow-base-4:#2e2938;
+     两份三层渐变里任何一层改歪一个百分点都看不出来，而它们本该永远相同。 */
+  --glow-lerp: ; --glow-h:49vh;
+  --glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-x:38%; --glow-spot-1-y:30%;
+  --glow-spot-1-w:46%; --glow-spot-1-h:76%; --glow-spot-1-fade:70%;
+  --glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-x:22%; --glow-spot-2-y:10%;
+  --glow-spot-2-w:34%; --glow-spot-2-h:70%; --glow-spot-2-fade:72%;
+  --glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-x:78%; --glow-spot-3-y:22%;
+  --glow-spot-3-w:40%; --glow-spot-3-h:72%; --glow-spot-3-fade:72%;
   /* 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
-     这组颜色是照着深底调的，浅色一档照搬会浓得压住顶栏文字，所以浅色把整层按同一个
-     比例收下来，而不是另存一套颜色：用户挑的是同一片光，两个主题不该是两种东西。
-     浅色那一档的 .34 是在浏览器里比出来的——再高一档顶栏的墨色文字开始发灰。 */
-  --glow-noise:0; --glow-strength:1; --glow-theme-scale:.34;
+     三枚光斑直接落在页面底色上，深色底吃光、浅色那张白底反光，同一组颜色照搬到浅色会
+     浓得压住顶栏文字，所以浅色把整层按同一个比例收下来，而不是另存一套颜色：用户挑的
+     是同一片光，两个主题不该是两种东西。
+     浅色这一档的 .6 是在浏览器里按首页截图逐档量出来的，判据是玻璃底下露出来的那块底
+     色偏暖多少（红减蓝）：.34 只有 4 级，一眼看过去和白页没区别；.6 是 7 级，光斑读得
+     出来是三种颜色；再往上到 1 是 11 级，顶栏、侧栏和筛选条整片跟着泛米色，那时候有
+     颜色的就不是光晕而是界面本身了。 */
+  --glow-noise:0; --glow-strength:1; --glow-theme-scale:.6;
   --ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale));
   /* 一颗标签的脸只有这一张：--tag-radius 的圆角、一圈 --line、这块比面再沉一档的填充、
      --ink-2 的字。同一个词出现在卡片上、详情面板里、筛选条上和交集条里，读的人认的是
@@ -128,7 +127,7 @@
   --picked:var(--inset);
   --rating:#E5B34A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F;
-  --glow-veil:rgba(0,0,0,.6); --glow-theme-scale:1;}}
+  --glow-theme-scale:1;}}
 :root[data-theme="dark"]{
   --ground:#080A0D; --surface:#0C0F14; --sunk:#0B0D11; --hover:rgba(255,255,255,.07); --skeleton-sheen:rgba(255,255,255,.12);
   --line:#3A3A3D; --line-soft:#2C2C30; --inset:rgba(255,255,255,.09);
@@ -142,7 +141,7 @@
   --picked:var(--inset);
   --rating:#E5B34A;
   --loupe:#6FD0C8; --keep:#5FB95F; --meter:#E0912F; --drop:#FF5252; --success:#5FB95F;
-  --glow-veil:rgba(0,0,0,.6); --glow-theme-scale:1;}
+  --glow-theme-scale:1;}
 
 *,*::before,*::after{box-sizing:border-box}
 .sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
@@ -163,17 +162,15 @@ body{background:var(--page);color:var(--ink);
   font-family:Roboto,"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
   font-size:var(--fs-md);line-height:1.45;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums}
-/* Beeg 当前实现是 49vh 静态 glow.webp + 向底色消失的遮罩。Peach 不复制
-   许可不明的位图，依据留存像素重建一张确定性的 CSS 光晕。
-   五层都只引用 :root 上那组 --glow-* 变量，这里一个颜色和一个坐标都不写死：用户在设置
+/* 首页顶上那片光只有三枚径向光斑，各自向 transparent 收边，底下就是 --page 本身，
+   不铺底色也不压遮罩：光斑之外的地方和页面其余部分是同一张面。
+   三层都只引用 :root 上那组 --glow-* 变量，这里一个颜色和一个坐标都不写死：用户在设置
    面板里换配色时，改的就是那组变量，规则本身不动。插值空间走 --glow-lerp。 */
 body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
   height:var(--glow-h);opacity:var(--ambient-opacity);background:
-    linear-gradient(var(--glow-lerp) to bottom,var(--glow-veil),var(--page)),
     radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-1-w) var(--glow-spot-1-h) at var(--glow-spot-1-x) var(--glow-spot-1-y),var(--glow-spot-1-color),transparent var(--glow-spot-1-fade)),
     radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-2-w) var(--glow-spot-2-h) at var(--glow-spot-2-x) var(--glow-spot-2-y),var(--glow-spot-2-color),transparent var(--glow-spot-2-fade)),
-    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-3-w) var(--glow-spot-3-h) at var(--glow-spot-3-x) var(--glow-spot-3-y),var(--glow-spot-3-color),transparent var(--glow-spot-3-fade)),
-    linear-gradient(var(--glow-angle) var(--glow-lerp),var(--glow-base-1) 0%,var(--glow-base-2) 24%,var(--glow-base-3) 53%,var(--glow-base-4) 100%);
+    radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-3-w) var(--glow-spot-3-h) at var(--glow-spot-3-x) var(--glow-spot-3-y),var(--glow-spot-3-color),transparent var(--glow-spot-3-fade));
   animation:ambient-in .8s ease .5s both}
 /* 认得 oklab 插值的引擎在这里才拿到它。反过来写——默认 `in oklab`、老引擎再关掉——
    的后果是老引擎把整条 background 判成无效，首页顶上一片光都没有，而不是退回 sRGB。 */
