@@ -5,12 +5,15 @@ from peach.genre_taxonomy import (
     CONTENT_GENRES,
     NON_CONTENT_GENRES,
     NON_CONTENT_PATTERNS,
+    UNMAPPED,
     genres_in_warning,
     is_non_content_genre,
     map_genres,
     normalise_genre,
+    resolve_genre,
     unmapped_genre_warning,
 )
+from peach.taste_history import TASTE_CATEGORY_TAGS
 
 
 def _catalog_vocabulary() -> set[str]:
@@ -158,6 +161,67 @@ class GenreTaxonomyTests(unittest.TestCase):
         # javbus 会混进画质与演员编成，同样按非内容排除。
         self.assertTrue(all(is_non_content_genre(v)
                             for v in ("1080p", "60fps", "AV女優", "超VIP", "オリジナル動画")))
+
+
+class VocabularyHygieneTests(unittest.TestCase):
+    """一件事只留一个标签名，译名取通行写法。"""
+
+    def test_no_retired_name_survives_anywhere(self):
+        """退役名留在词表或投影表里，等于这次改名只改了一半。
+
+        口味维度那张表也要查：它按标签名取资产，名字改过之后那一条只是不再命中，
+        没有任何报错——`足系` 维度会安静地少掉一整类。
+        """
+        vocabulary = _catalog_vocabulary()
+        self.assertEqual(sorted(set(catalog_rules.RETIRED_TAGS) & vocabulary), [])
+        self.assertEqual(
+            sorted({tag for tag in CONTENT_GENRES.values()
+                    if tag in catalog_rules.RETIRED_TAGS}), [])
+        taste = {tag for tags in TASTE_CATEGORY_TAGS.values() for tag in tags}
+        self.assertEqual(sorted(taste & set(catalog_rules.RETIRED_TAGS)), [])
+        self.assertEqual(sorted(taste - vocabulary), [], "口味维度只能按词表里真有的标签取资产")
+
+    def test_every_retired_name_points_at_a_live_tag(self):
+        """改名的目标必须是词表里真有的标签，否则改完那批资产就剩一个没人认得的名字。"""
+        vocabulary = _catalog_vocabulary()
+        self.assertEqual(
+            sorted(set(catalog_rules.RETIRED_TAGS.values()) - vocabulary), [])
+        self.assertEqual(
+            sorted(set(catalog_rules.RETIRED_TAGS) & set(catalog_rules.RETIRED_TAGS.values())),
+            [], "改名不能接力：一步到位，脚本才能重复执行")
+
+    def test_a_foot_fetish_genre_is_not_a_pair_of_nice_legs(self):
+        """`Foot Fetish` 说的是恋足，不是腿好看。
+
+        两者曾同投 `美腿`，于是「找恋足题材」和「找美腿出镜」在检索上分不开。
+        """
+        self.assertEqual(map_genres(["Foot Fetish"])[0], ["恋足"])
+        self.assertEqual(map_genres(["足フェチ"])[0], ["恋足"])
+        self.assertEqual(map_genres(["Legs"])[0], ["美腿"])
+        self.assertEqual(map_genres(["美脚"])[0], ["美腿"])
+
+    def test_two_source_words_for_one_thing_land_on_one_tag(self):
+        """同义的来源词各投一个标签，就是页面上那两行重复的来处。"""
+        self.assertEqual(map_genres(["Peeping"])[0], map_genres(["Voyeur"])[0])
+        self.assertEqual(map_genres(["High Heels"])[0], ["高跟"])
+        # 家教和校内老师是两件事，中文里「老师」把它们盖在一起。
+        self.assertEqual(map_genres(["家庭教師"])[0], ["家庭教师"])
+        self.assertEqual(map_genres(["女教師"])[0], ["教师"])
+
+
+class ResolveGenreTests(unittest.TestCase):
+    """抓取与复核折叠候选走同一个查表函数。"""
+
+    def test_the_three_outcomes_are_told_apart(self):
+        self.assertEqual(resolve_genre("中出し"), "中出内射")
+        self.assertIsNone(resolve_genre("単体作品"), "非内容是结论，不是未收录")
+        self.assertEqual(resolve_genre("まだ知らない分類"), UNMAPPED)
+        self.assertIsNone(resolve_genre(""), "空值没有可判的东西")
+
+    def test_a_decision_outranks_both_static_tables(self):
+        decisions = {normalise_genre("中出し"): "内射体験", normalise_genre("巨乳"): None}
+        self.assertEqual(resolve_genre("中出し", decisions), "内射体験")
+        self.assertIsNone(resolve_genre("巨乳", decisions))
 
 
 class UserDecisionTests(unittest.TestCase):

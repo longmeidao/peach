@@ -13,6 +13,7 @@ from contextlib import closing
 from filelock import FileLock
 
 from peach.field_owners import owner_of, review_owner
+from peach.genre_taxonomy import map_genres
 from peach.library_nfo import read_nfo, sidecars, local_art
 from peach.library_processing import (STALL_AFTER_SECONDS, decorate, issues_path,
                                       process_library, snapshot, state_path, _fields)
@@ -315,10 +316,36 @@ class LibraryNfoTests(unittest.TestCase):
         # 账本厂牌实体用品牌名，日文写法会另起一个实体。
         self.assertEqual(fields['studio']['value'], 'Prestige')
 
+    def test_r18_genres_are_taken_in_japanese_not_in_r18s_english(self):
+        """英文是 r18 在 DMM 那套词上再译一层，投影时只会丢信息。
+
+        `企画` 早就在非内容表里，它的英文 `Variety` 不在，于是 MIAD-573 的这条
+        genre 一路走到复核页上等人判。`その他フェチ` 同理：从 `Other Fetishes`
+        反推不回「フェチ」这个词根。
+        """
+        from peach.library_processing import LibraryMetadataProvider
+        detail = {'content_id': '118miad573', 'title': 'x',
+                  'categories': [{'name': 'Variety'}, {'name': 'Other Fetishes'},
+                                 {'name': 'Slender'}]}
+        combined = {'content_id': '118miad573',
+                    'categories': [{'name_en': 'Variety', 'name_ja': '企画'},
+                                   {'name_en': 'Other Fetishes', 'name_ja': 'その他フェチ'},
+                                   {'name_en': 'Slender', 'name_ja': 'スレンダー'}]}
+        pages = lambda transport, url, **kwargs: json.dumps(combined if 'combined=' in url else detail)
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            payload = provider.query('MIAD-573')
+        self.assertEqual(payload['genres'], ['企画', 'その他フェチ', 'スレンダー'])
+        tags, unmapped = map_genres(payload['genres'])
+        self.assertEqual(tags, ['苗条'])
+        self.assertEqual(unmapped, ['その他フェチ'], '`企画` 是发行企划，按非内容排除')
+
     def test_r18_metadata_keeps_english_when_the_japanese_page_fails(self):
         from peach.jav_cover_fetch import Unavailable
         from peach.library_processing import LibraryMetadataProvider
-        detail = {'content_id': '118abw358', 'title': 'Remu Style', 'actresses': [{'name': 'Remu Suzumori'}]}
+        detail = {'content_id': '118abw358', 'title': 'Remu Style', 'actresses': [{'name': 'Remu Suzumori'}],
+                  'categories': [{'name': 'Slender'}]}
         def pages(transport, url, **kwargs):
             if 'combined=' in url:
                 raise Unavailable('HTTP 503')
@@ -328,6 +355,7 @@ class LibraryNfoTests(unittest.TestCase):
         with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
             payload = provider.query('ABW-358')
         self.assertEqual(_fields(payload)['title']['value'], 'Remu Style')
+        self.assertEqual(payload['genres'], ['Slender'], '日文页没取到时，英文那份仍然能投影')
         self.assertNotIn('translations', payload)
 
     def test_community_sources_are_asked_once_per_code_and_say_why_they_failed(self):

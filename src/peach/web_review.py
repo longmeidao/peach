@@ -47,7 +47,7 @@ from .field_owners import (
 )
 from .fsutil import atomic_write_bytes
 from .genre_decisions import load_genre_decisions, record_genre_decision
-from .genre_taxonomy import CONTENT_GENRES, genres_in_warning, normalise_genre
+from .genre_taxonomy import CONTENT_GENRES, UNMAPPED, genres_in_warning, resolve_genre
 from .metadata import identifies_code
 from .metadata_policy import FIELD_SOURCE_ORDER, SOURCE_SPECS
 from .previews import logo_key
@@ -414,6 +414,11 @@ def _fold_genre_decisions(field: str, candidate: dict, decided: dict[str, str | 
     之后的这份值，否则页面上标签已经多出一个、批准写下去的还是旧的那几个。
     未决的那些从 `warnings` 里那句话挪到 `unmapped_genres`：页面要拿它们做按钮，
     留一句「来源还有 2 个未收录 genre」只能读，读完还是没有出口。
+
+    静态表也要重查一遍，不只查用户的决定：候选文件停在抓取那一刻，而 `CONTENT_GENRES`
+    与 `NON_CONTENT_GENRES` 一直在补。实测本机 304 条带未收录 genre 的候选里，101 条
+    的未收录项按当前的表全部认得出来——`配信専用`、`ナンパ`、`清楚` 早就在表里了，
+    页面上却还摆着它们等人判。
     """
     if field != "tags":
         return candidate
@@ -423,11 +428,10 @@ def _fold_genre_decisions(field: str, candidate: dict, decided: dict[str, str | 
     values = [str(value) for value in candidate.get("value") or []]
     remaining: list[str] = []
     for genre in unmapped:
-        key = normalise_genre(genre)
-        if key not in decided:
+        tag = resolve_genre(genre, decided)
+        if tag == UNMAPPED:
             remaining.append(genre)
             continue
-        tag = decided[key]
         if tag and tag not in values:
             values.append(tag)
     return {**candidate, "value": values, "display_value": "、".join(values),
@@ -696,10 +700,14 @@ def _use_canonical_entity_names(connection, rows: list[dict]) -> None:
             row["current_name"] = name
 
 
-#: 可以不经人判断直接落库的字段（ADR-0025 扩到 P0 全字段）。标签不在其中：它是多值
-#: 集合，「取值一致」对它没有意义，来源之间的分类粒度分歧也确实需要判断。
+#: 可以不经人判断直接落库的字段（ADR-0025 扩到 P0 全字段）。
+#:
+#: 标签是多值集合，「取值一致」对它的含义是整份集合逐字相同，而不是逐个标签比对；
+#: `_candidate_value_key` 拿的就是拼好的那一串，所以这条判据照样成立。真正需要人的
+#: 是未收录 genre——那几个词还没决定投影成什么，直接落库等于默默把它们丢掉，
+#: 所以 `_tags_are_fully_resolved` 另立一道闸。
 AUTO_APPLY_FIELDS = frozenset({
-    "title", "original_title", "performers", "studio", "series", "release_date",
+    "title", "original_title", "performers", "studio", "series", "release_date", "tags",
 })
 
 #: 素人系官方页把年龄和职业写进出演者栏（`本庄美奈子 30歳 元カフェ店員`），照抄会把
@@ -829,6 +837,16 @@ def _filename_carries_code(code: str, name: str) -> bool:
     return bool(parsed) and same_release_code(code, parsed)
 
 
+def _tags_are_fully_resolved(candidates: list[dict]) -> bool:
+    """这批标签候选里还有没有没人判过的 genre。
+
+    折叠已经按用户决定和当前静态表跑过一遍（`_fold_genre_decisions`），剩在
+    `unmapped_genres` 里的就是三张表都不认的词。这种候选直接落库，等于替用户判了
+    「这几个词不算内容」——而它们恰恰是这一类里唯一需要人的部分。
+    """
+    return not any(candidate.get("unmapped_genres") for candidate in candidates)
+
+
 def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     """这一行能否不经复核直接落库；不能就返回 None。
 
@@ -873,6 +891,8 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
         return None
     values = {_candidate_value_key(field, candidate) for candidate in candidates}
     if len(values) != 1 or None in values:
+        return None
+    if field == "tags" and not _tags_are_fully_resolved(candidates):
         return None
     candidate = _preferred_candidate(field, candidates)
     code = str(row.get("code") or "").strip()
