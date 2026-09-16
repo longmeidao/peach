@@ -167,7 +167,7 @@ class GenreTaxonomyTests(unittest.TestCase):
         self.assertEqual(carib_left, ["69", "初裏"], "没把握的留给人决定")
         heyzo, heyzo_left = map_genres([
             "中出し", "潮吹き", "淫語", "騎乗位", "口内発射", "看護婦", "指マン"])
-        self.assertEqual(heyzo, ["中出内射", "潮吹", "淫语ASMR", "骑乘", "口爆", "护士", "手交"])
+        self.assertEqual(heyzo, ["中出内射", "潮吹", "淫语", "骑乘", "口爆", "护士", "手交"])
         self.assertEqual(heyzo_left, [])
         # javbus 会混进画质与演员编成，同样按非内容排除。
         self.assertTrue(all(is_non_content_genre(v)
@@ -221,6 +221,17 @@ class VocabularyHygieneTests(unittest.TestCase):
         self.assertEqual(map_genres(["足フェチ"])[0], ["恋足"])
         self.assertEqual(map_genres(["Legs"])[0], ["美腿"])
         self.assertEqual(map_genres(["美脚"])[0], ["美腿"])
+
+    def test_the_name_the_library_actually_uses_wins(self):
+        """规范名取馆藏里通行的写法，不取词表里先写下的那个。
+
+        `合集` 3699 条、全部来自文件名；`混合集` 313 条、全部来自已关停的 Stash 导入。
+        """
+        self.assertEqual(map_genres(["総集編"])[0], ["合集"])
+        self.assertEqual(map_genres(["ベスト・総集編"])[0], ["合集"])
+        self.assertEqual(map_genres(["Compilation"])[0], ["合集"])
+        self.assertEqual(map_genres(["淫語"])[0], ["淫语"])
+        self.assertEqual(map_genres(["Dirty Talk"])[0], ["淫语"])
 
     def test_two_source_words_for_one_thing_land_on_one_tag(self):
         """同义的来源词各投一个标签，就是页面上那两行重复的来处。"""
