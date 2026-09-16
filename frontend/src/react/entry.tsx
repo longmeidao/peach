@@ -5,9 +5,11 @@ import type { ComponentType } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { UNSAFE_PortalProvider } from 'react-aria';
 import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 
 import { ActivityPage } from './activity/activity-page';
 import { prefetchTasks } from './activity/tasks';
+import { AvatarPicker } from './avatar-picker/avatar-picker-page';
 import type * as Bundle from './bundle';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
 import { LibraryProcessingCard } from './library-processing/library-processing-card';
@@ -17,10 +19,8 @@ import { prefetchQualityGoals } from './quality-goals/quality-goals';
 import { queryClient } from './query';
 import { ScrapingPage } from './scraping/scraping-page';
 import { prefetchScraping } from './scraping/scraping';
-import { GeneralSettings } from './settings/general-settings';
-import { MaintenanceSettings } from './settings/maintenance-settings';
-import { MediaSettings } from './settings/media-settings';
-import { NetworkSettings } from './settings/network-settings';
+import { prefetchConfiguration } from './settings/configuration';
+import { ConfigurationPage } from './settings/configuration-page';
 
 /* Popover 这类弹出层由 React Aria 渲染到挂载容器外面。落在 `body` 上就出了 `.peach-react`
  * 的作用域：token 读到的是 `board.css` 的值，Preflight 也管不到。所有 React 根的弹出层都进
@@ -37,7 +37,11 @@ function overlayContainer(): HTMLElement {
 }
 
 /* 所有 React 根共用一个 QueryClient（ADR-0031）：页面级 `prefetch` 写进去的首屏，
- * 组件挂上去就直接读到，同一份数据不会因为挂在哪棵根上而各取一次。 */
+ * 组件挂上去就直接读到，同一份数据不会因为挂在哪棵根上而各取一次。
+ *
+ * 第一帧用 `flushSync` 同步落到 DOM 上：遗留壳挂完这一页紧接着就读它画出来的结构
+ * （设置弹层按 `.configgroup` 小标题拆左栏那一列），而 `root.render` 自己是排进下一次
+ * 渲染的。往后的 `update` 照常异步。 */
 function mounter<P extends object>(Component: ComponentType<P>) {
   return (el: Element, props: P): Bundle.ReactMount<P> => {
     const root = createRoot(el);
@@ -46,7 +50,7 @@ function mounter<P extends object>(Component: ComponentType<P>) {
         <UNSAFE_PortalProvider getContainer={overlayContainer}><Component {...next} /></UNSAFE_PortalProvider>
       </QueryClientProvider>,
     );
-    paint(props);
+    flushSync(() => paint(props));
     return { update: paint, unmount: () => root.unmount() };
   };
 }
@@ -57,9 +61,15 @@ const LibraryProcessing = (props: Bundle.LibraryProcessingProps) => (
   props.mode === 'notice' ? <LibraryProcessingNotice {...props} /> : <LibraryProcessingCard {...props} />
 );
 
-/** 整页归 React 的那些页面，按名字给遗留层的 React 档用。 */
+/** 整页归 React 的那些页面，按名字给遗留层用。 */
 export const pages: Bundle.ReactPages = {
   activity: { prefetch: (_props, signal) => prefetchTasks(signal), mount: mounter(ActivityPage) },
+  /* 换头像的候选要打到图库上，而资料页每进一次就预取一遍的话，多数时候没人点开它。
+     首屏没有要取的东西，`prefetch` 是空操作，候选由弹层自己在打开时取。 */
+  'avatar-picker': { prefetch: async () => {}, mount: mounter(AvatarPicker) },
+  configuration: {
+    prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationPage),
+  },
   'library-processing': {
     prefetch: (_props, signal) => prefetchLibraryProcessing(signal),
     mount: mounter(LibraryProcessing),
@@ -69,8 +79,3 @@ export const pages: Bundle.ReactPages = {
   },
   scraping: { prefetch: (_props, signal) => prefetchScraping(signal), mount: mounter(ScrapingPage) },
 };
-
-export const mountGeneralSettings: typeof Bundle.mountGeneralSettings = mounter(GeneralSettings);
-export const mountMediaSettings: typeof Bundle.mountMediaSettings = mounter(MediaSettings);
-export const mountNetworkSettings: typeof Bundle.mountNetworkSettings = mounter(NetworkSettings);
-export const mountMaintenanceSettings: typeof Bundle.mountMaintenanceSettings = mounter(MaintenanceSettings);

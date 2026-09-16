@@ -4,12 +4,9 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { islandMounted, islandNames, mountIsland, unmountIsland } from '../src/islands';
 import { queryClient } from '../src/react/query';
 
-import { configuration, deferredFetch, legacyProps } from './helpers';
+import { deferredFetch } from './helpers';
 
-// Preact 档只剩配置页，它的四个分区本身是 React 子树；这里量的是挂载契约，不挂那四棵根。
-vi.mock('../src/react-slot', () => ({ ReactSlot: () => null }));
-
-// React 档挂的是一棵真的 React 根，更新要在 `act` 里落地，否则断言读到的是上一帧。
+// 挂的是一棵真的 React 根，更新要在 `act` 里落地，否则断言读到的是上一帧。
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 const container = () => {
@@ -20,14 +17,18 @@ const container = () => {
   return el;
 };
 
-afterEach(() => {
+afterEach(async () => {
+  // 页面自己的轮询挂在 React 根上，只清 DOM 不卸载的话，它会一直敲到下一条用例里。
+  await act(async () => {
+    for (const el of [...document.body.children]) unmountIsland(el);
+  });
   document.body.innerHTML = '';
-  // React 档的首屏落在共用的 Query 缓存里，它是模块级的，会活过单个用例。
+  // 首屏落在共用的 Query 缓存里，它是模块级的，会活过单个用例。
   queryClient.clear();
   vi.unstubAllGlobals();
 });
 
-/** React 档要先动态取回 React 产物再取数，中间隔几步不固定；等到条件成立为止。 */
+/** 动态取回 React 产物再取数，中间隔几步不固定；等到条件成立为止。 */
 async function until(ok: () => boolean, what: string): Promise<void> {
   for (let step = 0; step < 100; step += 1) {
     if (ok()) return;
@@ -38,8 +39,8 @@ async function until(ok: () => boolean, what: string): Promise<void> {
 
 describe('island 注册表', () => {
   it('登记的名字就是遗留路由能挂载的名字', () => {
-    expect(islandNames()).toEqual(
-      ['library-processing', 'scraping', 'quality-goals', 'configuration', 'activity']);
+    expect(islandNames()).toEqual([
+      'avatar-picker', 'library-processing', 'scraping', 'quality-goals', 'configuration', 'activity']);
   });
 
   it('未注册的名字立刻失败，不是静默什么都不画', async () => {
@@ -49,89 +50,21 @@ describe('island 注册表', () => {
   });
 });
 
-/** 只有「通用」这一组要 `startup` 才画得出来，用它区分两趟取数回来的是哪一份。 */
-const startup = {
-  available: true, enabled: false, silent: true, message: '', desktop: false, desktop_message: '',
+const tasks = {
+  available: true,
+  running: [{
+    id: 1, task_key: 'follow-check', task_label: '追更检查', trigger: 'manual', status: 'running',
+    host: 'desk', started_at: '2026-09-11T10:00:00Z', finished_at: null, elapsed_seconds: 5,
+    progress_current: null, progress_total: null, progress_label: '正在查第三个来源',
+    result_summary: {}, error: '',
+  }],
+  skipped: [],
+  finished: [],
 };
-const groups = (el: Element) => [...el.querySelectorAll('.configgroup')].map((title) => title.textContent);
 
 describe('mountIsland', () => {
-  it('取数期间保留遗留骨架，数据到位才一次性换掉', async () => {
-    const fetch = deferredFetch(configuration());
-    fetch.install();
-    const el = container();
-    const mounting = mountIsland('configuration', el, legacyProps());
-    await Promise.resolve();
-    expect(el.querySelector('[data-skeleton]'), '骨架被提前撤掉会出现第二段等待态').not.toBeNull();
-    fetch.resolve();
-    await mounting;
-    expect(el.querySelector('[data-skeleton]')).toBeNull();
-    expect(el.querySelectorAll('.configpage')).toHaveLength(1);
-  });
-
-  it('首屏取数失败时画出原因，不留在骨架上', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: false,
-      status: 500,
-      json: async () => ({ message: '账本当前只能浏览' }),
-    })));
-    const el = container();
-    await mountIsland('configuration', el, legacyProps());
-    expect(el.querySelector('.geist-note-error')?.textContent).toContain('账本当前只能浏览');
-  });
-
-  it('取数期间用户走开就不画：遗留层换页的判据是代，不是信号', async () => {
-    const fetch = deferredFetch(configuration());
-    fetch.install();
-    const el = container();
-    let current = true;
-    const mounting = mountIsland('configuration', el, legacyProps(), {
-      isCurrent: () => current,
-    });
-    await Promise.resolve();
-    current = false;
-    fetch.resolve();
-    await mounting;
-    expect(el.querySelector('.configpage'), '页面已经换掉，数据不能盖上去').toBeNull();
-    expect(el.querySelector('[data-skeleton]')).not.toBeNull();
-  });
-
-  it('重新挂载时上一次的迟到响应不再写进容器', async () => {
-    const stale = deferredFetch(configuration({ startup }));
-    stale.install();
-    const el = container();
-    const first = mountIsland('configuration', el, legacyProps());
-    await Promise.resolve();
-
-    const fresh = deferredFetch(configuration());
-    fresh.install();
-    const second = mountIsland('configuration', el, legacyProps());
-    fresh.resolve();
-    await second;
-    stale.resolve();
-    await first;
-
-    expect(el.querySelectorAll('.configpage')).toHaveLength(1);
-    expect(groups(el), '迟到的那一份带着「通用」，它不能盖到这一次的结果上')
-      .toEqual(['媒体', '更新与维护']);
-  });
-});
-
-describe('mountIsland 的 React 档', () => {
   // 第一次 `import('@peach/react')` 要现编译整棵 React 子树，比用例里的等待窗口长得多。
   beforeAll(async () => { await import('@peach/react') });
-
-  const tasks = {
-    available: true,
-    running: [{
-      id: 1, task_key: 'follow-check', task_label: '追更检查', trigger: 'manual', status: 'running',
-      host: 'desk', started_at: '2026-09-11T10:00:00Z', finished_at: null, elapsed_seconds: 5,
-      progress_current: null, progress_total: null, progress_label: '正在查第三个来源',
-      result_summary: {}, error: '',
-    }],
-    skipped: [],
-    finished: [],
-  };
 
   it('先把首屏取回来再画，React 根挂在自己的 `.peach-react` 容器里', async () => {
     const fetch = deferredFetch(tasks);
@@ -185,20 +118,39 @@ describe('mountIsland 的 React 档', () => {
   });
 });
 
-describe('unmountIsland', () => {
-  it('中止在途取数并清空容器', async () => {
-    const fetch = deferredFetch(configuration());
+const configuration = {
+  editable: true, notice: '', revision: 'rev-1', media_dirs: ['D:\\Media'], port: 9123, facts: [],
+  startup: { available: true, enabled: false, silent: true, message: '', desktop: false, desktop_message: '' },
+  peach_proxy: { mode: 'environment', proxy_saved: false, needs_selection: false },
+};
+
+describe('配置页的分区拆分', () => {
+  beforeAll(async () => { await import('@peach/react') });
+
+  /* 遗留壳按 `.configgroup` 小标题把后面的兄弟节点切进左栏那一列（`configTabItems`），
+     设置弹层挂完这一页紧接着就读它。`mountIsland` 返回时结构必须已经在 DOM 上——所以
+     React 根的第一帧走 `flushSync`（`react/entry.tsx` 的 `mounter`）。
+     分区自己怎么排在 `test/react/configuration.test.tsx`。 */
+  it('挂载返回的那一刻，小标题和它的分区已经在容器里', async () => {
+    const fetch = deferredFetch(configuration);
     fetch.install();
     const el = container();
-    const mounting = mountIsland('configuration', el, legacyProps());
-    await Promise.resolve();
-    unmountIsland(el);
-    await mounting;
-    expect(fetch.signal()?.aborted, '离开页面必须真的中止请求').toBe(true);
-    expect(el.querySelector('.configpage')).toBeNull();
-    expect(el.querySelector('[data-skeleton]'),
-      '还没画过就卸载时容器里是遗留骨架，island 不该清掉不属于它的东西').not.toBeNull();
+    await act(async () => {
+      const mounting = mountIsland('configuration', el, { receipt: vi.fn() });
+      await until(() => fetch.fetched.mock.calls.length > 0, '取数发出去');
+      fetch.resolve();
+      await mounting;
+      const titles = [...el.querySelectorAll('.configgroup')].map((title) => title.textContent);
+      expect(titles, '标题还没落到 DOM 上，壳那一刻就拆不出分区')
+        .toEqual(['通用', '媒体', '网络与访问', '更新与维护']);
+      expect(el.querySelector('.configpage')?.parentElement?.classList.contains('peach-react')).toBe(true);
+    });
   });
+
+});
+
+describe('unmountIsland', () => {
+  beforeAll(async () => { await import('@peach/react') });
 
   it('没挂载过的容器是空操作，不抛错也不动 DOM', () => {
     const el = container();
@@ -207,17 +159,15 @@ describe('unmountIsland', () => {
   });
 
   it('容器上挂没挂着，遗留层问得出来', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true, status: 200, json: async () => configuration(),
-    })));
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => tasks })));
     const el = container();
     expect(islandMounted(el)).toBe(false);
     // 取数还没回来也算挂着：这段时间里再挂一次会把在途那次作废，白等一趟。
-    const mounting = mountIsland('configuration', el, legacyProps());
+    const mounting = mountIsland('activity', el, {});
     expect(islandMounted(el)).toBe(true);
-    await mounting;
+    await act(async () => { await mounting });
     expect(islandMounted(el)).toBe(true);
-    unmountIsland(el);
+    await act(async () => { unmountIsland(el) });
     expect(islandMounted(el)).toBe(false);
     // 遗留层拿到的可能是个空引用——那时页面上根本没有这个容器。
     expect(islandMounted(null)).toBe(false);

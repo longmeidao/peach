@@ -16,11 +16,13 @@ import { Checkbox } from '@/components/base/checkbox/checkbox';
 import { Input } from '@/components/base/input/input';
 import { Select, SelectItem } from '@/components/base/select/select';
 
-import { ApiError, apiGet, apiSend, errorMessage } from '../../api';
+import { ApiError, apiSend, errorMessage } from '../../api';
 import { CONFIGURATION_URL, PICK_FOLDER_URL } from '../../configuration-endpoints';
 import type { ConfigurationData, ConfigurationGroupProps } from '../bundle';
 import { Note } from '../components/note';
+import { queryClient } from '../query';
 import { CloudDriveGuide } from './clouddrive-guide';
+import { CONFIGURATION_KEY, fetchConfiguration } from './configuration';
 import { LibraryIconPicker } from './library-icon-picker';
 import {
   ErrorText, ExternalLink, Fact, FactList, FieldLabel, Footer, Help, Section, SourceMark, Stack,
@@ -256,12 +258,14 @@ function MountBadge({ online }: { online: boolean | undefined }) {
   return <span data-mount="unknown" className="inline-flex items-center gap-1.5 text-body-2-medium text-text-secondary"><span aria-hidden className="size-1.5 rounded-full bg-current" />未检测</span>;
 }
 
+/* 重取回来的是整份配置，换进整页那一个键：屏幕上只有一份真相，页面上别处读到的
+   也是这一次的结果。另存一份的话，挂载点在这里是新的、在「这台电脑」那张表单里还是旧的。 */
 function MountStatus({ data }: { data: ConfigurationData }) {
-  const [sources, setSources] = useState(data.media_sources);
+  const sources = data.media_sources;
   const action = useAction();
   if (!sources) return null;
-  const refresh = () => void action.run('refresh', (signal) => apiGet<ConfigurationData>(CONFIGURATION_URL, signal),
-    (result) => setSources(result.media_sources));
+  const refresh = () => void action.run('refresh', (signal) => fetchConfiguration(signal),
+    (result) => queryClient.setQueryData(CONFIGURATION_KEY, result));
   return (
     <Section title="挂载状态">
       <FactList>

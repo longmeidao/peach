@@ -32,6 +32,13 @@
    * 所以取一个共用的名字，而不是每页各写一次像素值。 */
   --container-card-cover: 150px;
   --aspect-card-cover: 16 / 10;
+  /* 换头像那一屏：一排四张 3:4 的候选。头像源基本都是竖的，方格会把人裁成一条。
+   * 工具类里没有这两档，写成 token 而不是任意值。 */
+  --container-avatar-picker: 720px;
+  --aspect-avatar-choice: 3 / 4;
+  /* 模态弹层的遮罩。注册表里没有模态弹层，也就没有它的底色；取值同旧样式表
+   * `.geist-modal::backdrop` 的黑 60%，深浅两档共用一个。 */
+  --color-scrim: color-mix(in srgb, var(--color-black) 60%, transparent);
 }
 
 /* 卡片网格：按可用宽度自动折行，一列放不下 360px 时自己退成一列。工具类里没有

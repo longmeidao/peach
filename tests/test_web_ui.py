@@ -1543,7 +1543,7 @@ class WebUiSourceTests(unittest.TestCase):
         css = stylesheet_source()
         # 播放列表那几个弹层没有自己的关闭键：它们穿 Geist Modal，退出走操作条左端的
         # 取消、Escape 和点遮罩，右上角不再另摆一个叉。
-        for selector in (".mixqueuehead button{", ".settingshead button,.avatarpick-close{"):
+        for selector in (".mixqueuehead button{", ".settingshead button{"):
             start = css.index(selector)
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--control-radius)", rule,
@@ -1557,36 +1557,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("border-radius:50%", media_close,
                       "全屏媒体关闭钮属于圆形媒体操作，不沿用普通 Dialog 关闭钮")
         self.assertIn(
-            ".settingshead button:hover,.avatarpick-close:hover"
-            "{background:var(--hover);color:var(--ink)}", css)
-        # 换头像弹层右上角那颗跟设置弹层是同一颗：并在同一条选择器上，不另画一遍。
-        # 同时要进纯图标按钮那条名单——`<button>` 的 UA 样式带 `padding:1px 6px`，
-        # 24px 的键只剩 12px 内容宽，16px 的图标挤到一边，看着就是那个叉没居中。
+            ".settingshead button:hover{background:var(--hover);color:var(--ink)}", css)
+        # 纯图标按钮要进那条名单——`<button>` 的 UA 样式带 `padding:1px 6px`，24px 的键
+        # 只剩 12px 内容宽，16px 的图标挤到一边，看着就是那个叉没居中。
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingshead button,.avatarpick-close{", board)
+        self.assertIn(".settingscard .settingshead button{", board)
         icon_only = [line for line in board.splitlines()
-                     if line.startswith(":is(.settingshead button,.avatarpick-close,")]
-        self.assertTrue(icon_only, "换头像的关闭键不在纯图标按钮那条名单里")
+                     if line.startswith(":is(.settingshead button,")]
+        self.assertTrue(icon_only, "设置弹层的关闭键不在纯图标按钮那条名单里")
         self.assertIn("padding:0", icon_only[0])
-
-    def test_the_avatar_picker_puts_the_grid_straight_on_the_card(self):
-        """换头像弹层一张面到底：候选网格不另外套底色、描边或圆角。
-
-        候选图本身就是一格一格的方块，外面再套一个沉下去的底加一圈框，等于给同一件事
-        画了两层边界。卡片面用 --page 而不是 `.geist-modal` 自己的 --surface：board.css
-        把面色重排过，--surface 浅色是 #fff、暗色是 #262626，拿它当卡片面，暗色里这张
-        卡会比它盖住的页面还亮一档。
-        """
-        css = stylesheet_source()
-        self.assertIn(".avatarpick-popover{background:var(--page)}", css)
-        panel = css[css.index(".avatarpick-panel{"):]
-        panel = panel[:panel.index("}")]
-        self.assertIn("border-top:1px solid var(--line-soft)", panel)
-        self.assertNotIn("background:", panel)
-        wrap = css[css.index(".avatarpick-gridwrap{"):]
-        wrap = wrap[:wrap.index("}")]
-        for absent in ("background:", "border:", "border-radius:"):
-            self.assertNotIn(absent, wrap, "网格外面不再套一层框")
 
     def test_an_open_collapse_stops_cropping_what_is_inside_it(self):
         """展开着不动时那道裁边摘掉：高度过渡需要它，展开完就只剩副作用。
@@ -1620,21 +1599,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".fauthorhead>.fmeta{margin-left:auto}", board)
         self.assertIn(".fauthorhead>.fmeta~.fmeta,.fauthorhead>.fmeta~.board-author-actions"
                       "{margin-left:0}", board, "撑开的空当只交给第一个 .fmeta")
-
-    def test_the_avatar_picker_leaves_the_same_gap_above_and_below_its_actions(self):
-        """底下那排手填地址上下各留 20px，跟网格滚到哪儿无关。
-
-        上方那道留白整份由这一排自己出。交给网格的 `padding-bottom` 的话，它只在滚到底时
-        才露出来——没滚到底时最后一行图正被下沿裁着，紧接着就是这一排，上面看着只剩几个
-        像素，下面却是满的。
-        """
-        css = stylesheet_source()
-        grid = css[css.index(".avatarpick-grid{"):]
-        grid = grid[:grid.index("}")]
-        self.assertIn("padding:16px 20px 0", grid, "网格自己不留下边距")
-        actions = css[css.index(".avatarpick-actions{"):]
-        actions = actions[:actions.index("}")]
-        self.assertIn("padding:20px", actions)
 
     def test_history_actions_are_one_split_button_with_the_primary_mirrored(self):
         """读取本机浏览记录和导入历史文件是同一件事的两种做法，合成一个 Split Button。
@@ -8539,9 +8503,6 @@ class WebUiSourceTests(unittest.TestCase):
         """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm",
-            # 候选格底下那行是来源名（`S1`、`用过的`），一格只有 80 像素宽。它是语义
-            # 文本不是标识符：中间截断会把「Hand-Storage」切成看不出是哪来的两截。
-            ".avatarpick-cell span",
             ".entitylinklabel",
             ".fauthor .fsource.frow>b", ".fauthorhead b",
             # 作者是展示名，尾部省略；完整身份保留在 title。

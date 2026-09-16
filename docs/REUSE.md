@@ -100,8 +100,8 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
 - [JavDB JBS-023](https://javdb.com/v/6gzM)：项目取页器与 Javinizer-Go v1.5.1 均取得 `風見あゆむ`。本机 provider 配置的 `scrapers.javdb.enabled` 必须开启；源码有码补抓列表包含 JavDB。候选保留 community 来源性质，不自动写真相字段。
 - 编码边界依据 [MDN 视频编码说明](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Video_codecs) 与 [ffprobe 流探测文档](https://ffmpeg.org/ffprobe.html)。复用当前 FFmpeg，无新增依赖；Peach 仅持有兼容格式判定与缓存策略。
 
-CloudDrive 引导复用现有 `settings_file`、`platform.root_online`、`scan_location` 和 Preact
-配置 island；来源仍为 `local`、`115`、`pikpak`。外部挂载由已安装的 CloudDrive 负责，
+CloudDrive 引导复用现有 `settings_file`、`platform.root_online`、`scan_location` 和 React
+配置页；来源仍为 `local`、`115`、`pikpak`。外部挂载由已安装的 CloudDrive 负责，
 [官方帮助](https://www.clouddrive2.com/help.html) 规定 Windows 使用盘符、macOS 使用目录挂载点。
 CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 API，也不保存网盘凭据；因此不引入
 非官方 CloudDrive SDK。路径处理复用 Python 标准库 `pathlib`、`os.scandir`、`tomllib`，
@@ -117,7 +117,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
   它和 browser_cookie3 均不进入正式依赖。Javinizer-Go、HTTPX、curl_cffi、Pillow 和现有候选缓存是正式基础；
   各脚本的请求节拍应复用 `scripting.RateLimiter`／`HostLimiter`，不为同一职责再装一套框架。
 
-- 采集 GUI 复用 Preact island、CredentialStore、HTTPX、Pillow 和 BackgroundJob；
+- 采集 GUI 复用 React island、CredentialStore、HTTPX、Pillow 和 BackgroundJob；
   `jav_cover_fetch` 同时服务界面与 CLI。Peach 保留域内凭据、来源路由、预算、冷却、番号身份与
   高清替换策略。Cookie 文本由标准库 SimpleCookie／MozillaCookieJar 解析；不导入 pickle。
   实施范围与跨平台缺口见 [来源采集](SOURCING.md)；POC 脱敏证据在本机 attic 的抓取复现目录。
@@ -339,6 +339,6 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 ### 文件检查与确认反馈
 
 资源核对复用 `web_resource_sync` 的目录枚举、离线跳过、写前复验与 BackgroundJob，涵盖 local、
-115、PikPak。展示复用 Preact 构建链、Fieldset、Note、Toast 与 confirmModal；确认失败留在弹层，
+115、PikPak。展示复用 `frontend/` 构建链、Fieldset、Note、Toast 与 confirmModal；确认失败留在弹层，
 危险动作初始聚焦取消，忙态阻止重入与关闭。无新增依赖，不引入另一套对话框库。
 真实截图的 487 项／643 个缓存作为无写入渲染样本；配置历史及性能建议依据在 OPERATIONS。

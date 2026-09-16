@@ -57,6 +57,16 @@ const ROUTES: readonly Route[] = [
     path: '/data-cleanup',
     body: (page) => [heading(page, '#main', '数据管理'), heading(page, '#stats', '扫描与采集')],
   },
+  {
+    path: '/quality-goals',
+    // 演示库里没有标记中的目标，等到的是空态那一句：它是真的标题元素，不是一段文字。
+    body: (page) => [heading(page, '#main', '高清版'), heading(page, '#stats', '没有标记中的高清版目标')],
+  },
+  {
+    // 「高清图片可能需要代理」那句遗留骨架里也有，认不出画完没有；「高清封面」那一张只有真页面有。
+    path: '/scraping',
+    body: (page) => [heading(page, '#main', '来源和凭证'), page.locator('#stats form[aria-label="高清封面"]')],
+  },
   { path: '/configuration', body: configurationBody },
   { path: '/activity', body: (page) => [heading(page, '#main', '活动'), heading(page, '#stats', '还没有任务记录')] },
   {

@@ -54,3 +54,5 @@
 | 主键带下拉 | `../library-processing/library-processing-card.tsx` 的 `ScanActions`：触发键是一颗 `iconOnly` 的 `Button`，面板用 React Aria 的 `Popover` + `Dialog`，行的外观取 `components/base/dropdown/menu-styles.ts` | `dropdown` 条目的 `DropdownTrigger` 自己就是那颗按钮、外观全由 `className` 给，`@shadcn/lint` 的 `no-restyle` 只放行布局类，套不进 `Button` 的档位 |
 | 行内横幅 | `../library-processing/library-processing-notice.tsx` 按语气取 `status-yellow`、`background-tertiary-error` 与 `separator-border` 组合，一行里放进度环、一句话和一个去处 | 注册表里没有行内横幅；`notification` 条目是带关闭键和计时的浮动通知 |
 | 进度环 | 同上的 `Gauge`：SVG 两圈，`pathLength={100}` 把一圈长度钉成 100，画出来的那一段就是百分比 | 注册表里没有环形进度；`../components/progress.tsx` 那一份是横条，横幅那一行放不下 |
+| 模态弹层 | `../avatar-picker/avatar-picker-page.tsx` 用 React Aria 的 `ModalOverlay` + `Modal` + `Dialog` 组合，遮罩取 `../styles.css` 的 `--color-scrim`（同旧样式表 `.geist-modal::backdrop` 的黑 60%） | 注册表里没有模态弹层，也就没有它的遮罩底色 |
+| 候选网格 | 同上：一排四张 3:4 的候选，弹层宽度与格子比例取 `../styles.css` 的 `--container-avatar-picker` 与 `--aspect-avatar-choice` | 注册表里没有图片选择网格；这两档在工具类里没有对应档位，写成 `@theme` 而不是任意值 |

@@ -1,7 +1,7 @@
 # 前端 island 层
 
 Peach 的界面正在从 `web/app.js`（无构建、一万一千余行的原生 ES module）逐页迁到
-React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层。迁移方式是 strangler：
+React + Tailwind v4 + BoardUI 源码。迁移方式是 strangler：
 **遗留路由继续拥有外壳和每一个页面**，一页被重写之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
 为什么这么做、以及不做整体重写的理由见 `docs/adr/0031-frontend-react-boardui-tailwind.md`。
 
@@ -12,16 +12,14 @@ React + Tailwind v4 + BoardUI 源码，已迁出的 Preact island 是过渡层�
 
 | 路径 | 是什么 |
 | --- | --- |
-| `frontend/src/islands.ts` | 挂载契约与注册表，构建入口 |
-| `frontend/src/islands/configuration.tsx` | Preact 档只剩配置页这一个外壳，它的四个分区本身是 React 子树 |
+| `frontend/src/islands.ts` | 挂载契约与注册表，构建入口；其余导出是遗留层仍在用的助手 |
 | `frontend/src/api.ts` | 带 `AbortController` 的取数封装 |
 | `frontend/src/management.ts` | 数据管理首屏 Fieldset、网盘能力显隐与浏览历史导入指南 |
 | `frontend/src/legacy/*.d.ts` | `/js/core.js`、`/js/ui-components.js` 的手写类型 |
 | `frontend/src/react/` | React 子树：`entry.tsx` 是构建入口，`bundle.d.ts` 是对外契约，`boardui/` 逐字复制 BoardUI 源码 |
 | `frontend/src/react/query.ts` | React 子树唯一的 TanStack Query 客户端，页面级 `prefetch` 与组件读的是同一份缓存 |
 | `frontend/src/react/components/` | Peach 自己的组合件（说明条、进度、空态、等待点），BoardUI 注册表里没有对应条目的那些 |
-| `frontend/src/react-slot.tsx` | Preact island 里挂 React 子树的交接组件 |
-| `frontend/test/` | vitest 用例与遗留模块的桩；`test/react/` 按 React JSX 转换 |
+| `frontend/test/` | vitest 用例与遗留模块的桩；`test/react/` 直接挂组件，`islands.test.ts` 走挂载契约 |
 | `web/dist/peach-ui.js` | 构建产物，**进 Git**，由 `/dist/{name}` 提供 |
 | `web/dist/peach-react.js`、`peach-react.css` | React 子树的构建产物，**进 Git** |
 
@@ -31,17 +29,19 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 状态，原生 `<form method="post">` 不写一行 JS 就能工作。设置成功以浏览器 cookie 登录并跳入馆藏。
 它的配色 token 从 `web/css/01-base.css` 的 `:root` 两段抽出来，跟随系统深浅色。
 
-配置好之后改文件夹与端口的那张页，外壳是 `frontend/src/islands/configuration.tsx`：它同步画出
-「通用 / 媒体 / 网络与访问 / 更新与维护」四个 `h2.configgroup` 标题，每个标题下挂一个 `ReactSlot`，
-分区本身是 `frontend/src/react/settings/` 里的 React 子树。数据契约是 `/api/configuration`
-（`src/peach/routes_configuration.py`）。
+配置好之后改文件夹与端口的那张页整个是 React（`frontend/src/react/settings/`，入口
+`configuration-page.tsx`）：一条窄列里排「通用 / 媒体 / 网络与访问 / 更新与维护」四组，每组一个
+`h2.configgroup` 小标题，没有内容的组连标题一起省略。数据契约是 `/api/configuration`
+（`src/peach/routes_configuration.py`），端点字符串只在 `frontend/src/configuration-endpoints.ts`
+声明一次，整页和挂载状态那一块读同一个 `queryKey`。
 日常入口是右上角的设置弹层：同一个 island 挂进 `#machineSettings`，左栏「这台电脑」
-那一块按 `.configgroup` 标题拆成四条。标题留在 Preact 外壳里同步输出，是因为拆分发生在
-island 挂载的那一刻，React 子树那时还没加载。
+那一块按 `.configgroup` 标题拆成四条（`web/app.js` 的 `configTabItems`）。壳挂完这一页紧接着
+就读它画出来的结构，所以第一帧要同步落到 DOM 上：`react/entry.tsx` 的 `mounter` 用 `flushSync`
+画第一帧，往后的更新照常异步。小标题和分区因此必须是 `.configpage` 的直接子节点、交替排列。
 `/configuration` 这条路由保留，媒体库选单和首次配置引导都指向它。
 服务端按两道门放行：托盘管理的服务、发起连接的是本机；并在 `/healthz` 里按调用方回
 `configurable`，遗留层据此决定这一块是挂 island 还是换成一句「该配置需在服务端设备修改」。
-表单校验的原因由服务端按字段给（400 的 `errors`），island 写回原位，不在前端复制判定。
+表单校验的原因由服务端按字段给（400 的 `errors`），页面写回原位，不在前端复制判定。
 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页
 （`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。
 
@@ -154,14 +154,14 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
   那棵根还活着，照着原节律继续敲库。
 - 容器归遗留层所有，它会在别的页面进入时直接 `innerHTML=`，所以 `mountIsland` 每次
   都先自我卸载。
-- 注册表有两档。Preact 档写 `{load, component}`；整页归 React 的写 `{react: '<page>'}`，
-  `mountIsland` 动态取回 `@peach/react`，先 `pages.<page>.prefetch(props, signal)` 把首屏
-  写进共用的 Query 缓存，再换掉骨架、在一个 `.peach-react` 容器里创建 React 根。两档
-  对遗留层是同一个调用，`unmountIsland` 对 React 档卸根、撤容器。
-- 离场有两道闸。第一道是壳：`claimSurface` 是所有页面共同经过的换页点，它在那里对
-  管理区正文的容器（`#stats`）调 `unmountIsland`，React 档的根连同它的轮询一起停。
-  多数管理页的离场路径是直接 `innerHTML=`，根被挤出文档却照样活着，所以卸载必须由这
-  一个公共点负责，而不是逐页判断。第二道是 `isCurrent`：取数落地时用户可能已经走开，
+- 注册表里每个名字只记它在 `@peach/react` 的 `pages` 里叫什么。`mountIsland` 动态取回
+  `@peach/react`，先 `pages.<page>.prefetch(props, signal)` 把首屏写进共用的 Query 缓存，
+  再换掉骨架、在一个 `.peach-react` 容器里创建 React 根；`unmountIsland` 卸根、撤容器。
+- 离场有两道闸。第一道是壳：`claimSurface` 是所有页面共同经过的换页点，它在那里对管理区
+  正文（`#stats`）和资料页那块（`#index`）调 `unmountIsland`，根连同它的轮询一起停；
+  `showHomeSurfaces` 是索引页与资料页重画前的公共点，也卸一次 `#index`。
+  多数页面的离场路径是直接 `innerHTML=`，根被挤出文档却照样活着，所以卸载必须由这
+  几个公共点负责，而不是逐页判断。第二道是 `isCurrent`：取数落地时用户可能已经走开，
   这时不画。再进这一页时 `mountIsland` 先自我卸载，同时只有一份。
 
 遗留助手不打进产物：`LOC`、`fmtDur`、`fmtSize`、`emptyStateHtml`、`noteHtml` 在浏览器里
@@ -211,8 +211,8 @@ const job = useQuery({
 
 ## 迁移下一个页面
 
-整页归 React（ADR-0031），`frontend/src/islands/` 不再新增文件。先挑一个**容器不与别人
-共用**的页面；写操作和后台任务的写法已经定型，见下面第 2 条。
+整页归 React（ADR-0031）。先挑一个**容器不与别人共用**的页面；写操作和后台任务的
+写法已经定型，见下面第 2 条。
 
 1. `frontend/src/react/<page>/<page>.ts`：端点常量、`queryKey`、数据类型和纯折算函数，
    外加一个 `prefetch<Page>(signal)`——`queryClient.fetchQuery` 包住 `src/api.ts` 的
@@ -231,7 +231,7 @@ const job = useQuery({
    或者本次亲眼见过它在跑，终态才画成结果、发一次 toast。
 3. `frontend/src/react/entry.tsx`：在 `pages` 里登记 `{prefetch, mount: mounter(Page)}`，
    签名写进 `bundle.d.ts` 的 `ReactPages`；`frontend/src/islands.ts` 里 `IslandContracts`
-   的 `props` 取 bundle 的类型、`data` 写 `null`，`REGISTRY` 登记 `{react: '<page>'}`。
+   取 bundle 的 props 类型，`REGISTRY` 登记 `{react: '<page>'}`。
 4. 外观按 BoardUI：注册表里有的条目逐字复制进 `src/react/boardui/`，哈希记进
    `ORIGIN.md` 与 `UPSTREAM.sha256`；注册表里没有的（分区标题、空态、进度、说明条）
    用 `src/react/components/` 下 Peach 自己的组合件，第二个页面要用就搬进那里，不复制一份。
@@ -255,10 +255,13 @@ const job = useQuery({
 8. 跑 `& .\scripts\test.ps1 -Scope web`（含 tsc、lint、vitest 与真浏览器冒烟），
    再 `npm --prefix frontend run build` 并把 `web/dist/` 一起提交。
 
-Preact island 继续用 `web/css/` 下的分区，复用原有的类名，`peach-ui.js` 不出样式表。
+遗留骨架与 `web/app.js` 画的那些页继续用 `web/css/` 下的分区，`peach-ui.js` 不出样式表。
 React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.css`；它与旧样式表同处一页的
 三条约束（工具类不分层、只扫描 `src/react/`、Preflight 限定在 `.peach-react` 里）写在
 `frontend/src/react/styles.css` 开头，逐字复制与没有复制的上游文件见 `frontend/src/react/boardui/ORIGIN.md`。
+`.oxlintrc.json` 里两条例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
+React 页要按原名输出壳才拆得出分区；`shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
+`no-raw-colors` 只认 `--color-*`，把它当成了未声明的颜色。
 
 ## 依赖清单
 
@@ -269,14 +272,13 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 
 | 依赖 | 为什么需要它 |
 | --- | --- |
-| `preact` | island 的渲染层。10 kB gzip 的运行时，配 `dangerouslySetInnerHTML` 能直接复用遗留层返回 HTML 的助手 |
 | `vite` | 构建入口。库模式出单个 ES module，`external` + `output.paths` 把遗留模块留在外面 |
 | `typescript` | 类型即契约：注册表、props 与端点响应都靠它在编译期拦住漂移 |
 | `vitest` | 前端测试运行器。与 Vite 共用同一份配置解析，不必再维护第二套转译 |
 | `happy-dom` | vitest 的 DOM 环境。断言的是真实 DOM 结构，比 jsdom 轻且启动快 |
 | `playwright-core` | `frontend/e2e/` 的浏览器驱动，只驱动本机 Chrome、不下载浏览器。happy-dom 没有布局，横向溢出、等待态卡住这类事实只有真浏览器测得出；不用 `@playwright/test`，用例跑在 `node:test` 上，与 docu.md（`markdown-viewer/markdown-viewer-extension` 的 `test/helpers/browser-render-harness.ts`）同一做法 |
 | `oxlint`、`@shadcn/lint` | `npm run lint`：Oxlint 加载 `@shadcn/lint` 的六条规则，只查 `src/react/`、排除 `boardui/`。不用 ESLint，因为 `@typescript-eslint/parser` 的 peer 只到 TypeScript 6.0；`eslint` 作为 `@shadcn/lint` 的 peer 会装进来，不调用 |
-| `react`、`react-dom` | React 子树的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上；Peach 不经 Preact 兼容层运行 React Aria（ADR-0031） |
+| `react`、`react-dom` | 前端唯一的渲染层。BoardUI 源码是 React 组件，交互建在 React Aria 上；不经兼容层运行它（ADR-0031）。`react-dom` 的 `flushSync` 还负责配置页那一帧：壳挂完紧接着就读 DOM |
 | `react-aria-components` | BoardUI 输入框、勾选框、开关、下拉与弹出面板的交互和无障碍语义：标签关联、键盘操作、焦点进出、`aria-invalid` |
 | `react-aria` | 只用 `UNSAFE_PortalProvider`：把 Popover 与下拉列表挂进 `body` 末尾同样带 `.peach-react` 的容器，弹层读到与页面内一致的 token 与 Preflight |
 | `@tanstack/react-query` | React 页面的取数与缓存：页面级 `prefetch` 与组件里的 `useQuery` 共用一份缓存，「取完数才画」不必把首屏数据当 props 串一路；轮询写成 `refetchInterval`，卸载时跟着组件一起停 |
@@ -285,11 +287,12 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 759.5 kB（gzip 197.4 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 85.7 kB（gzip 13.4 kB），
-由 `index.html` 在旧样式表之前引入。它的 `build.cssTarget` 对齐 Tailwind v4 的浏览器基线
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 774.5 kB（gzip 200.7 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 87.5 kB（gzip 13.7 kB），
+由 `index.html` 在旧样式表之前引入。`peach-ui.js` 85.6 kB（gzip 26.6 kB），只剩挂载契约与
+遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。
 
-没有引入 `@testing-library/preact`：`preact` 的 `render` 加 `querySelector` 已经够用，
-断言的本来就是真实 DOM。
+没有引入 `@testing-library/react`：`createRoot` 加 `querySelector` 已经够用
+（挂载与输入的助手在 `frontend/test/react/render.tsx`），断言的本来就是真实 DOM。

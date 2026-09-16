@@ -28,11 +28,9 @@ body.settings-open{overflow:hidden}
 /* 这个文件里一条分主题的规则都没有：卡片与分组走 --page、--ground 和 --field-ring，
    遮罩走 --scrim，两档主题由 token 自己换。 */
 .settingshead h2{margin:0;font-size:var(--fs-xl)}
-/* 关闭键全站一份：设置弹层的和换头像弹层的是同一颗，并在同一条选择器上而不是各画一遍。
-   两处摆的位置不同（一处在标题行右端、一处在头部右上角），位置由各自的容器说；
-   这一条只说它长什么样、悬停时怎么变。 */
-.settingshead button,.avatarpick-close{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover,.avatarpick-close:hover{background:var(--hover);color:var(--ink)}
-.settingshead svg,.avatarpick-close svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
+/* 标题行右端那颗关闭键。 */
+.settingshead button{border:0;background:transparent;color:var(--muted);width:34px;height:34px;border-radius:var(--control-radius);cursor:pointer;display:grid;place-items:center;transition:background-color .12s ease,color .12s ease}.settingshead button:hover{background:var(--hover);color:var(--ink)}
+.settingshead svg{width:20px;height:20px;stroke:currentColor;fill:none}.settingrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:14px 0 14px;border-top:1px solid var(--line-soft)}
 .settinggroup>h3+.settingrow{border-top:0}.settingrow b{display:block;font-size:var(--fs-md)}.settingrow small{display:block;color:var(--muted);margin-top:8px;line-height:1.45}
 .settingrow .gselect{min-width:148px}
 .settingrow.settingrelated{border-top:0}

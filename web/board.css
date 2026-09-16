@@ -36,8 +36,8 @@
    标题像是第一行设置。 */
 .settingscard.settingscard .settingshead{grid-column:2;grid-row:1;padding:32px 32px 24px;background:transparent;border:0}
 .settingscard .settingshead h2{font-size:20px;font-weight:500;line-height:28px}
-.settingscard .settingshead button,.avatarpick-close{width:24px;height:24px;border-radius:50%;background:var(--surface)}
-.settingscard .settingshead button svg,.avatarpick-close svg{width:16px;height:16px}
+.settingscard .settingshead button{width:24px;height:24px;border-radius:50%;background:var(--surface)}
+.settingscard .settingshead button svg{width:16px;height:16px}
 .settingscard.settingscard .settingsscroll{padding:var(--settings-gap) 32px 32px;min-height:0;overflow-y:auto}
 /* 右侧这一栏和「这台电脑」下的配置页是同一套分区：标题与页底是 `--page`，每组开关行坐在
    一张 `--ground` 灰卡上，16px 圆角、左内边距 12px，行的分隔线在卡片左沿内 12px 收住——
@@ -784,9 +784,9 @@ body>.board-filter-frame{margin-inline:16px}
 }
 @media(max-width:760px){.settingspanel.settingspanel{padding:12px;grid-template-columns:minmax(0,1fr)}.settingscard.settingscard{width:calc(100vw - 24px);max-width:calc(100vw - 24px);min-width:0}.settingscard .settingsscroll .settingrow:has(.board-optional-number){grid-template-columns:minmax(0,1fr) auto;gap:12px}.settingscard>.board-local-nav{min-width:0;max-width:100%}}
 /* 纯图标按钮不继承浏览器按钮的水平内边距。 */
-:is(.settingshead button,.avatarpick-close,.srctools button,.detailtitletools button,.sidebarorderrow button,#drawerClose){padding:0;display:inline-grid;place-items:center;line-height:1;flex-shrink:0}
-:is(.settingshead button,.avatarpick-close,.srctools button,.detailtitletools button,.sidebarorderrow button,#drawerClose)>svg{display:block;margin:0;flex-shrink:0;align-self:center;justify-self:center}
-:is(.settingshead button,.avatarpick-close,.srctools button,.detailtitletools button,.sidebarorderrow button,#drawerClose)[hidden]{display:none}
+:is(.settingshead button,.srctools button,.detailtitletools button,.sidebarorderrow button,#drawerClose){padding:0;display:inline-grid;place-items:center;line-height:1;flex-shrink:0}
+:is(.settingshead button,.srctools button,.detailtitletools button,.sidebarorderrow button,#drawerClose)>svg{display:block;margin:0;flex-shrink:0;align-self:center;justify-self:center}
+:is(.settingshead button,.srctools button,.detailtitletools button,.sidebarorderrow button,#drawerClose)[hidden]{display:none}
 .closestage{padding:0;display:grid;place-items:center;line-height:1;border-radius:50%;background:var(--surface);color:var(--ink)}
 .closestage svg{display:block;margin:0;justify-self:center;align-self:center}
 

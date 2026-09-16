@@ -150,9 +150,9 @@ class ReactBundleTests(unittest.TestCase):
         """island 按 `@peach/react` 写，产物里必须改写成服务端真的提供的路径，且 React 不进 peach-ui.js。"""
         self.assertIn('import("/dist/peach-react.js")', self.islands)
         self.assertNotIn("react-dom", self.islands)
-        for mount in ("mountGeneralSettings", "mountMediaSettings", "mountNetworkSettings",
-                      "mountMaintenanceSettings"):
-            self.assertIn(mount, self.react)
+        # 注册表按名字取页面，名字得在产物里对得上。
+        for page in ("avatar-picker", "library-processing", "quality-goals", "configuration"):
+            self.assertIn(page, self.react)
 
     def test_the_react_bundle_keeps_the_legacy_modules_external(self):
         self.assertIn('from "/js/core.js"', self.react)
@@ -250,6 +250,15 @@ class FrontendManifestTests(unittest.TestCase):
         self.assertNotIn("vite", root.get("devDependencies", {}))
         self.assertNotIn("preact", root.get("dependencies", {}))
 
+    def test_the_frontend_has_no_preact_left(self):
+        """前端只有 React 一档（ADR-0031）：留着 Preact 就是两套运行时各打一份进产物。"""
+        manifest = json.loads((FRONTEND / "package.json").read_text(encoding="utf-8"))
+        for section in ("dependencies", "devDependencies"):
+            self.assertNotIn("preact", manifest.get(section, {}))
+        config = json.loads(re.sub(r"^\s*//.*$", "", (FRONTEND / "tsconfig.json")
+                                   .read_text(encoding="utf-8"), flags=re.M))
+        self.assertNotIn("jsxImportSource", config["compilerOptions"])
+
     def test_dependabot_watches_the_frontend_manifest(self):
         dependabot = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
         self.assertIn("directory: /frontend", dependabot)
@@ -275,7 +284,7 @@ class FrontendManifestTests(unittest.TestCase):
             ["git", "-C", str(ROOT), "check-ignore", "web/dist/peach-ui.js"],
             capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
         self.assertEqual(tracked.returncode, 1, "web/dist 被 .gitignore 排除了，产物发不出去")
-        for ignored in ("frontend/node_modules/preact/package.json",):
+        for ignored in ("frontend/node_modules/react/package.json",):
             result = subprocess.run(["git", "-C", str(ROOT), "check-ignore", ignored],
                                     capture_output=True, text=True, encoding="utf-8",
                                     errors="replace", check=False)
@@ -379,13 +388,20 @@ class LibraryProcessingEndpointTests(unittest.TestCase):
 
 
 class ConfigurationEndpointTests(unittest.TestCase):
-    """配置页的 Preact 外壳和 React 分区读同一条 `/api/configuration`，两份产物各打包一份。"""
+    """整页和各分区读同一条 `/api/configuration`，两份产物各打包一份这个模块。"""
 
     def test_the_endpoint_is_declared_once(self):
         sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
         declared = [path.name for path in sources
                     if "'/api/configuration'" in path.read_text(encoding="utf-8")]
         self.assertEqual(declared, ["configuration-endpoints.ts"], f"端点声明在 {declared}")
+
+    def test_the_first_screen_and_the_sections_share_one_query_key(self):
+        """挂载状态那一块重取回来的是整份配置，换进整页那一个键：屏幕上只有一份真相。"""
+        sources = sorted(path for path in (FRONTEND / "src" / "react").rglob("*.ts*"))
+        declared = [path.name for path in sources
+                    if "CONFIGURATION_KEY = [" in path.read_text(encoding="utf-8")]
+        self.assertEqual(declared, ["configuration.ts"], f"queryKey 声明在 {declared}")
 
 
 class SharedStateContractTests(unittest.TestCase):

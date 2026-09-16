@@ -1,6 +1,6 @@
 /* `web/dist/peach-react.js` 的对外契约。
  *
- * Preact 那一侧按 `@peach/react` 引用这份产物，构建时改写成 `/dist/peach-react.js`；
+ * `frontend/src/islands.ts` 按 `@peach/react` 引用这份产物，构建时改写成 `/dist/peach-react.js`；
  * `entry.tsx` 按这里的签名实现，两边的类型检查各自对照同一份声明。
  * 配置数据的形状以 `/api/configuration`（`src/peach/routes_configuration.py`）为准。 */
 import type { QualityGoal } from './quality-goals/quality-goals';
@@ -74,11 +74,15 @@ export interface ConfigurationData {
   facts: ConfigurationFact[];
 }
 
-/** 配置页的一个分组（「通用」「媒体」「网络与访问」「更新与维护」）。 */
-export interface ConfigurationGroupProps {
-  data: ConfigurationData;
+/** 配置页只要遗留层的 Toast：保存是写操作，回执归全站那一份。 */
+export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
   receipt(message: string): void;
+}
+
+/** 配置页的一个分组（「通用」「媒体」「网络与访问」「更新与维护」）。 */
+export interface ConfigurationGroupProps extends ConfigurationProps {
+  data: ConfigurationData;
 }
 
 /** 一棵挂在遗留容器里的 React 根。`unmount` 之后容器归还给挂载方。 */
@@ -131,16 +135,24 @@ export interface LibraryProcessingProps {
   monitor?: boolean;
 }
 
+/** 换头像：资料页圆框角上那个加号，连同它点开的那一屏候选。 */
+export interface AvatarPickerProps {
+  /** 实体类型（`performer`／`creator`）。 */
+  kind: string;
+  entityId: number;
+  /** 页面上显示的这个人的名字，用在无障碍名称和那一句说明里。 */
+  name: string;
+  /** 换成功后让宿主重画头像。遗留层传的是「重新进这一页」。 */
+  onPicked(): void;
+}
+
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
+  'avatar-picker': ReactPage<AvatarPickerProps>;
+  configuration: ReactPage<ConfigurationProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   scraping: ReactPage<ScrapingProps>;
 }
 
 export declare const pages: ReactPages;
-
-export declare function mountGeneralSettings(el: Element, props: ConfigurationGroupProps): ReactMount<ConfigurationGroupProps>;
-export declare function mountMediaSettings(el: Element, props: ConfigurationGroupProps): ReactMount<ConfigurationGroupProps>;
-export declare function mountNetworkSettings(el: Element, props: ConfigurationGroupProps): ReactMount<ConfigurationGroupProps>;
-export declare function mountMaintenanceSettings(el: Element, props: ConfigurationGroupProps): ReactMount<ConfigurationGroupProps>;
