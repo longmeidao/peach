@@ -20,6 +20,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.config import DATABASE_PATH, FFMPEG_DIR, LOG_DIR, STATE_DIR
 from peach.ffmpeg import FFmpegResolver
 from peach.jobs import (
+    ACTIVE_ASSET_SQL,
     DiskGuard,
     DiskSpaceDenied,
     JobPolicyError,
@@ -168,7 +169,8 @@ def run(args: argparse.Namespace) -> int:
             sql = (
                 "SELECT id,path FROM asset WHERE medium='video' AND "
                 + duration_selection(args.redo)
-                + " AND location != 'online'" + source_sql + " ORDER BY size ASC"
+                + f" AND location != 'online' AND {ACTIVE_ASSET_SQL}"
+                + source_sql + " ORDER BY size ASC"
             )
             parameters = source_parameters
         if args.limit:

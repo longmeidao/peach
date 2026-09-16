@@ -5,8 +5,14 @@ description: 在用户说抽帧、九宫格、probe、sheets、creator_boards、
 
 # 长跑批处理与流量边界
 
-最后复核：2026-09-04
+最后复核：2026-09-16
 证据来源：`scripts/probe.py`、`scripts/sheets.py`、`src/peach/jobs.py`、相关单元测试与 ADR-0015。
+
+## 领哪些行
+
+批次只领 `jobs.ACTIVE_ASSET_SQL`（`disposal IS NULL`）的行。回收站里的等着用户决定删不删，
+文件多半已经不在盘上：本机 647 行回收站里 469 行的文件已经没了，那一轮 115 抽帧报的 73 条
+`broken_source` 里 72 条是这种行，而且每次重跑都再失败一遍。`--asset` 点名不套这一条。
 
 ## 失败值
 

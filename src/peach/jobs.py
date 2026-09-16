@@ -46,6 +46,14 @@ class TaskRunConflict(JobAlreadyRunning):
         self.blocking_run_id = blocking_run_id
 
 
+#: 长跑批处理只领没被处置的资产。回收站里的行等着用户决定删不删，文件多半已经不在盘上：
+#: 2026-09-16 本机 647 行回收站里，469 行的文件已经没了。对它们抽帧、探时长既产生不了任何
+#: 用户看得见的结果，又要为每一条向网盘发一次注定失败的读请求——那一轮 115 抽帧报的 73 条
+#: `broken_source` 里，72 条是这种行，而且每次重跑都会再失败一遍。
+#: 点名重抽（`--asset`）不套这一条：那是用户指着某一行说「就抽它」。
+ACTIVE_ASSET_SQL = "disposal IS NULL"
+
+
 @dataclass(frozen=True)
 class SourceAccessPolicy:
     metered_locations: frozenset[str] = frozenset({"pikpak", "online"})

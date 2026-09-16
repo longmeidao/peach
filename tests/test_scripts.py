@@ -1571,10 +1571,10 @@ class OperationalScriptTests(unittest.TestCase):
             connection = sqlite3.connect(db)
             connection.execute(
                 "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
-                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT,disposal TEXT)"
             )
             connection.execute(
-                "INSERT INTO asset VALUES(18349,'local',?,'video',752.24,1000,NULL)",
+                "INSERT INTO asset VALUES(18349,'local',?,'video',752.24,1000,NULL,NULL)",
                 (str(root / "one.mp4"),),
             )
             connection.commit()
@@ -1607,15 +1607,15 @@ class OperationalScriptTests(unittest.TestCase):
             connection = sqlite3.connect(db)
             connection.execute(
                 "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
-                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT,disposal TEXT)"
             )
             # 18349 已有陈旧产物且已登记；1 是同来源的另一条待抽项，不该被顺带带走。
             connection.execute(
-                "INSERT INTO asset VALUES(18349,'local',?,'video',110.87,2000,'stale.jpg')",
+                "INSERT INTO asset VALUES(18349,'local',?,'video',110.87,2000,'stale.jpg',NULL)",
                 (str(root / "one.mp4"),),
             )
             connection.execute(
-                "INSERT INTO asset VALUES(1,'local',?,'video',600.0,1000,NULL)",
+                "INSERT INTO asset VALUES(1,'local',?,'video',600.0,1000,NULL,NULL)",
                 (str(root / "two.mp4"),),
             )
             connection.commit()
@@ -1653,6 +1653,56 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(rewritten[:1], b"y", "陈旧产物必须被真正覆盖")
         self.assertIsNone(snapshots[1], "没点名的待抽项不该被这一趟带走")
 
+    def test_sheets_leaves_the_recycle_bin_alone_unless_a_row_is_named(self):
+        """回收站里的行不领，点名的除外。
+
+        那些行等着用户决定删不删，文件多半已经不在盘上：2026-09-16 本机 647 行回收站里
+        469 行的文件已经没了。对它们抽帧每次都要向网盘发一次注定失败的读请求，那一轮
+        115 抽帧的 73 条 `broken_source` 里 72 条是这种行。
+        """
+        sheets = self.sheets
+        for named, expected in ((False, ["keep.mp4"]), (True, ["trashed.mp4"])):
+            with self.subTest(named=named), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                db = root / "ledger.db"
+                connection = sqlite3.connect(db)
+                connection.execute(
+                    "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
+                    "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT,disposal TEXT)"
+                )
+                connection.execute(
+                    "INSERT INTO asset VALUES(1,'local',?,'video',600.0,2000,NULL,'trash')",
+                    (str(root / "trashed.mp4"),),
+                )
+                connection.execute(
+                    "INSERT INTO asset VALUES(2,'local',?,'video',600.0,1000,NULL,NULL)",
+                    (str(root / "keep.mp4"),),
+                )
+                connection.commit()
+                connection.close()
+
+                argv = ["--db", str(db), "--workers", "1", "--min-free", "0",
+                        "--output-root", str(root / "out"), "--log-dir", str(root / "log")]
+                if named:
+                    argv += ["--asset", "1"]
+                args = sheets.build_parser().parse_args(argv)
+
+                shot: list[str] = []
+
+                def fake_sheet(_ffmpeg, path, _duration, destination, _frames):
+                    shot.append(Path(path).name)
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_bytes(b"x" * 8192)
+                    return True, ""
+
+                choice = type("C", (), {"path": "ffmpeg"})
+                with mock.patch.object(sheets, "make_sheet", fake_sheet), \
+                        mock.patch.object(sheets.FFmpegResolver, "ffmpeg",
+                                          lambda _self: choice), \
+                        redirect_stdout(io.StringIO()):
+                    sheets.run(args)
+                self.assertEqual(shot, expected)
+
     def test_sheets_stops_mid_run_when_the_disk_gate_trips(self):
         """验证接线，不只是 DiskGuard 类本身：起跑通过、运行中触线要真的停并报非零码。"""
         sheets = self.sheets
@@ -1662,11 +1712,11 @@ class OperationalScriptTests(unittest.TestCase):
             connection = sqlite3.connect(db)
             connection.execute(
                 "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
-                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT)"
+                "medium TEXT,duration REAL,size INTEGER,snapshot_path TEXT,disposal TEXT)"
             )
             for asset_id in range(1, 61):
                 connection.execute(
-                    "INSERT INTO asset VALUES(?,?,?,?,?,?,NULL)",
+                    "INSERT INTO asset VALUES(?,?,?,?,?,?,NULL,NULL)",
                     (asset_id, "local", str(root / f"{asset_id}.mp4"), "video", 600.0, 1000),
                 )
             connection.commit()
@@ -1769,7 +1819,7 @@ class OperationalScriptTests(unittest.TestCase):
                 "CREATE TABLE asset(id INTEGER PRIMARY KEY,location TEXT,path TEXT,"
                 "medium TEXT,duration REAL,size INTEGER,width INTEGER,height INTEGER,"
                 "vcodec TEXT,fps REAL,has_audio INTEGER,ctx_length TEXT,ctx_orient TEXT,"
-                "ctx_quality TEXT)"
+                "ctx_quality TEXT,disposal TEXT)"
             )
             for asset_id, duration in ((18349, 752.24), (1, None)):
                 connection.execute(

@@ -24,6 +24,7 @@ from peach.scripting import open_readonly
 from peach.classification import is_probable_mainstream_release, is_structural_creator
 from peach.ffmpeg import FFmpegResolver
 from peach.jobs import (
+    ACTIVE_ASSET_SQL,
     DiskGuard,
     DiskSpaceDenied,
     JobPolicyError,
@@ -160,6 +161,7 @@ def build_from_videos(args: argparse.Namespace, ffmpeg: str, ffprobe: str) -> in
     rows = connection.execute(
         "SELECT creator,path,name,duration FROM asset WHERE medium='video' "
         "AND creator IS NOT NULL AND creator<>'' "
+        f"AND {ACTIVE_ASSET_SQL} "
         "AND id NOT IN (SELECT asset_id FROM asset_tag)" + source_sql,
         source_parameters,
     ).fetchall()
@@ -232,11 +234,13 @@ def build_from_snapshots(args: argparse.Namespace, ffmpeg: str, ffprobe: str) ->
     rows = connection.execute(
         "SELECT creator,name,path,snapshot_path FROM asset WHERE medium='video' "
         "AND creator IS NOT NULL AND creator<>'' AND snapshot_path IS NOT NULL "
+        f"AND {ACTIVE_ASSET_SQL} "
         "AND id NOT IN (SELECT asset_id FROM asset_tag)"
     ).fetchall()
     count_rows = connection.execute(
             "SELECT creator,name,path FROM asset WHERE medium='video' AND creator IS NOT NULL "
-            "AND creator<>'' AND id NOT IN (SELECT asset_id FROM asset_tag)"
+            f"AND creator<>'' AND {ACTIVE_ASSET_SQL} "
+            "AND id NOT IN (SELECT asset_id FROM asset_tag)"
         ).fetchall()
     counts = collections.Counter(
         creator for creator, name, path in count_rows

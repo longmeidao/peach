@@ -23,6 +23,7 @@ from peach import frame_capture
 from peach.config import DATABASE_PATH, FFMPEG_DIR, GENERATED_DIR, LOG_DIR, STATE_DIR
 from peach.ffmpeg import FFmpegResolver
 from peach.jobs import (
+    ACTIVE_ASSET_SQL,
     DiskGuard,
     DiskSpaceDenied,
     JobPolicyError,
@@ -163,6 +164,7 @@ def run(args: argparse.Namespace) -> int:
             sql = (
                 "SELECT id,location,path,duration FROM asset WHERE medium='video' "
                 "AND snapshot_path IS NULL AND location != 'online' AND duration > 2"
+                f" AND {ACTIVE_ASSET_SQL}"
                 + source_sql + " ORDER BY size DESC"
             )
             parameters = source_parameters
