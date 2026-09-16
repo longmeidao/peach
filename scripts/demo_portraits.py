@@ -1,4 +1,4 @@
-"""演示库的人像素材：按钉死的清单取图，再排成封面、头像与播放画面。
+"""演示库的人像素材：按钉死的清单取图，再排成封面与头像。
 
 图片字节不进仓库（ADR-0026），进仓库的只有 `demo-portraits.json` 这份清单——去哪取、
 取到的该是什么哈希。生成器运行时按清单取一次，缓存在输出目录旁边。
@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import subprocess
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -25,8 +24,6 @@ MAX_IMAGE_BYTES = 4 * 1024 * 1024
 COVER_LANDSCAPE = (800, 538)
 COVER_PORTRAIT = (600, 900)
 AVATAR_SIDE = 480
-FRAME_LANDSCAPE = (1280, 720)
-FRAME_PORTRAIT = (720, 1280)
 
 #: 封面与画面上的文字要落到 CJK 字形上。按平台找一份，找不到就不写字——
 #: 缺字体的机器上宁可出一张没有标题的封面，也不要满屏豆腐块。
@@ -198,62 +195,3 @@ def draw_avatar(source: Path, destination: Path) -> None:
     square = image.crop((left, top, left + side, top + side))
     destination.parent.mkdir(parents=True, exist_ok=True)
     square.resize((AVATAR_SIDE, AVATAR_SIDE), Image.LANCZOS).save(destination, quality=90)
-
-
-#: 裁切填满能接受的形状差距。人像与画面同朝向时落在这个区间内，直接铺满；
-#: 差得太远（竖版人像塞进横画面）再退回居中加模糊背景，否则会裁得只剩一条。
-FILL_RATIO_RANGE = (0.6, 1.7)
-
-
-def draw_frame(source: Path, destination: Path, orientation: str) -> None:
-    """播放画面的底图。
-
-    人像与画面同朝向就裁切铺满——真实视频的画面本来就是满的，中间一块人像配一圈
-    模糊背景，一看就是拿静态图凑的。朝向对不上才退回居中加模糊背景。
-
-    按两倍渲染——缓推是在这张底图上放大的，原生分辨率推起来会抖。
-    """
-    from PIL import Image, ImageFilter
-
-    size = FRAME_PORTRAIT if orientation == "竖屏" else FRAME_LANDSCAPE
-    image = Image.open(source).convert("RGB")
-    fit = (image.width / image.height) / (size[0] / size[1])
-    if FILL_RATIO_RANGE[0] <= fit <= FILL_RATIO_RANGE[1]:
-        frame = _cover_box(image, size, anchor=0.22)
-    else:
-        frame = _cover_box(image, size, anchor=0.5)
-        frame = frame.filter(ImageFilter.GaussianBlur(size[0] // 46)).point(
-            lambda v: int(v * 0.5))
-        front = image.copy()
-        front.thumbnail((size[0], size[1]), Image.LANCZOS)
-        frame.paste(front, ((size[0] - front.width) // 2, (size[1] - front.height) // 2))
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    frame.resize((size[0] * 2, size[1] * 2), Image.LANCZOS).save(destination)
-
-
-def video_command(ffmpeg: str, base: Path, destination: Path, *, duration: int,
-                  orientation: str) -> list[str]:
-    """人像缓推：一镜到底的慢推，没有转场也没有文字动画。
-
-    `d` 取满整段时长的帧数，缓推才不会中途回弹重来。
-    """
-    size = FRAME_PORTRAIT if orientation == "竖屏" else FRAME_LANDSCAPE
-    frames = max(1, duration * 30)
-    return [
-        ffmpeg, "-y", "-v", "error", "-loop", "1", "-i", str(base),
-        "-vf", (f"zoompan=z='min(zoom+0.0004,1.14)':d={frames}:"
-                "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
-                f"s={size[0]}x{size[1]}:fps=30,format=yuv420p"),
-        "-t", str(duration), "-an", "-c:v", "libx264", "-preset", "veryfast",
-        "-crf", "26", "-movflags", "+faststart", str(destination),
-    ]
-
-
-def render_video(ffmpeg: str, base: Path, destination: Path, *, duration: int,
-                 orientation: str) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        video_command(ffmpeg, base, destination, duration=duration, orientation=orientation),
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
-    if result.returncode != 0 or not destination.is_file() or destination.stat().st_size == 0:
-        raise RuntimeError(f"ffmpeg 生成 {destination.name} 失败：{result.stderr.strip()[:300]}")
