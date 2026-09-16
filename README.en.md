@@ -39,7 +39,7 @@ Local disks alone work. 115 and PikPak arrive as folders mounted by CloudDrive: 
 
 Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family, F95zone and SimpCity (needs your own login cookie). Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
 
-Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
+Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, UI sounds (a soft cue for buttons, switches and action receipts), and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
 
 “Video thumbnail capture”, in the same place, belongs to the computer running Peach rather than to each browser: pick precise (a frame every 10 seconds) or coarse (every 30 seconds) and it captures frames in the background, so dragging the progress bar shows the picture at that point in time. It is off by default and only covers videos on local disks; every frame from a mounted cloud drive costs one fetch from the source. The images are cleaned up together with the video on the data management page.
 

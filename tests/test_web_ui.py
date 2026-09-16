@@ -1671,6 +1671,42 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("panel.classList.add('closing')")
         self.assertPageContains("prefers-reduced-motion: reduce")
 
+    def test_ui_sounds_are_one_synthesised_module_behind_one_switch(self):
+        """界面音效只有一个来源、一个开关，关着时连 AudioContext 都不建。
+
+        声音由 `web/js/ui-sounds.js` 用 Web Audio 当场合成，别处不许再建第二个
+        AudioContext：浏览器限制同时打开的路数，两份实现也会各带一套音量口径。
+        开关在设置「界面」组，偏好存在 `appSettings.uiSounds`，默认开；页面进来先把
+        它灌进模块再挂 document 监听，顺序反了首屏那几下点击就按默认的「关」处理。
+        配方里 `exponentialRampToValueAtTime` 落到 0 会直接抛错，收尾一律 0.001。
+        """
+        web = Path(__file__).resolve().parents[1] / "web"
+        sounds = (web / "js" / "ui-sounds.js").read_text(encoding="utf-8")
+        for path in [web / "index.html", web / "app.js", *sorted((web / "js").glob("*.js"))]:
+            if path.name == "ui-sounds.js":
+                continue
+            self.assertNotIn("AudioContext", path.read_text(encoding="utf-8"),
+                             f"{path.name} 不该自己建 AudioContext，声音都从 ui-sounds.js 发")
+        self.assertIn("if(!audioContext)audioContext=new Context();", sounds)
+        self.assertIn("if(!enabled)return false;", sounds)
+        self.assertNotRegex(sounds, r"exponentialRampToValueAtTime\(\s*0\s*,",
+                            "指数斜坡不能落到 0")
+        self.assertPageContains('class="ptoggle" type="checkbox" id="uiSoundsSetting" role="switch" aria-describedby="uiSoundsDescription"')
+        self.assertPageContains('<b>界面音效</b><small id="uiSoundsDescription">')
+        self.assertPageContains("appSettings.uiSounds=appSettings.uiSounds!==false;")
+        self.assertCode("setUiSoundsEnabled(appSettings.uiSounds);\nwireUiSounds();")
+        self.assertPageContains("$('#uiSoundsSetting').checked=appSettings.uiSounds;")
+        self.assertPageContains("$('#uiSoundsSetting').onchange=")
+        self.assertPageContains("if(appSettings.uiSounds)playUiSound('toggle-on');")
+        # 回执、菜单、弹层、设置面板各在自己的入口响，点击与开关由 document 上的监听统一发。
+        # 表状态的通知三档取音：默认按 warn 分成功与失败，部分来源失败这类提醒是警告。
+        self.assertPageContains("playUiSound(sound||(alert?'error':'success'));")
+        self.assertPageContains("{warn:!!failed,timeout:failed?8000:6000,sound:failed?'warning':'success',")
+        self.assertPageContains("toast({text:'当前筛选下没有可直接播放的内容'},{sound:'warning'})")
+        self.assertPageContains("if(menu.hidden)playUiSound('whoosh');")
+        self.assertEqual(self.page.count("playUiSound('pop');"), 2, "formModal 与 confirmModal 各响一声")
+        self.assertIn("},{capture:true});", sounds)
+
     def test_settings_titlebar_owns_the_full_width_above_its_scroll_container(self):
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto;padding:0 20px 20px")
         self.assertPageContains("padding:0 20px 20px;overscroll-behavior:contain}")
@@ -6769,7 +6805,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("menu.dataset.placement=downward?'bottom':'top';")
         self.assertCode("export function dismissMenu(menu,finish){")
         self.assertCode("if(getComputedStyle(menu).animationName==='none'){done();return}")
-        self.assertCode("export function presentMenu(menu){leavingMenus.delete(menu);menu.classList.remove('leaving');menu.hidden=false}")
+        self.assertCode("export function presentMenu(menu){\n  leavingMenus.delete(menu);menu.classList.remove('leaving');\n"
+                        "  if(menu.hidden)playUiSound('whoosh');\n  menu.hidden=false;\n}")
         self.assertCode("let open=false;")
         self.assertCode("return {setOpen,isOpen:()=>open};")
         # 进场起手是 scale(.95)，定位量框只能读 offsetWidth。

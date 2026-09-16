@@ -11,6 +11,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
+import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { DEFAULT_HOME_GLOW, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowChipFill, glowColor, glowPalette, glowPresetName, normalizeHomeGlow, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows, paginationHtml, pageCount, clampPage, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
@@ -509,6 +510,7 @@ appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.miniplayer=appSettings.miniplayer!==false;
+appSettings.uiSounds=appSettings.uiSounds!==false;
 appSettings.searchHistoryLimit=boundedPreference(+appSettings.searchHistoryLimit,0,50,10);
 appSettings.relatedLimit=boundedPreference(+appSettings.relatedLimit,0,60,20);
 const METADATA_REFRESH_DAYS=[0,7,30,90];
@@ -520,6 +522,10 @@ const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
 document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
+/* 音效跟着偏好走。点击与开关那两声由 document 上的一对监听统一发；回执、菜单和弹层
+   在各自的入口自己响。 */
+setUiSoundsEnabled(appSettings.uiSounds);
+wireUiSounds();
 const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
 if(sortDefaultsMigrated)saveSettings();
 /* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
@@ -757,6 +763,7 @@ function syncSettingsPanel(){
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
   $('#detailAutoplaySetting').checked=appSettings.detailAutoplay;
   $('#miniplayerSetting').checked=appSettings.miniplayer;
+  $('#uiSoundsSetting').checked=appSettings.uiSounds;
   renderSettingSelects();
   renderThemeSetting();
   renderHomeGlowSetting();
@@ -774,6 +781,7 @@ function openSettings(open=true,section=''){
     settingsRequestedSection=section;
     settingsTransition++;panel.classList.remove('closing');
     settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;
+    playUiSound('whoosh');
     document.documentElement.style.overflow='hidden';
     document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();refreshSettingsTabs?.();
     queueMicrotask(()=>$('#settingsClose').focus());return
@@ -809,6 +817,12 @@ $('#settingsPanel').onkeydown=e=>{
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
 $('#detailAutoplaySetting').onchange=e=>{appSettings.detailAutoplay=e.target.checked;saveSettings()};
+/* 开这一格时立刻响一声开关音，人才知道它开了。关的那一声由 document 上的 change 监听
+   发出：捕获阶段排在这个处理器前面，那时开关还没关掉，最后一声还能响出来。 */
+$('#uiSoundsSetting').onchange=e=>{
+  appSettings.uiSounds=e.target.checked;setUiSoundsEnabled(appSettings.uiSounds);saveSettings();
+  if(appSettings.uiSounds)playUiSound('toggle-on');
+};
 /* 关掉小窗播放时正开着的那个小窗也一起收：设置说的是「离开详情不再进小窗」，留着一个
    已经进去的反而像没生效。 */
 $('#miniplayerSetting').onchange=e=>{appSettings.miniplayer=e.target.checked;saveSettings();if(!appSettings.miniplayer)closeMiniplayer()};
@@ -936,7 +950,9 @@ let runtimeConfigurable=null;
 const toastBody=message=>message&&typeof message==='object'&&'html' in message
   ? String(message.html)
   : esc(message&&typeof message==='object'?(message.text??''):message??'');
-const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
+/* 音效按通知表达的状态分三档：成功、警告、失败。默认由 `warn` 取成功或失败；事情
+   做完了但有一部分要留意（几个来源失败、筛出来没有能放的）的传 `sound:'warning'`。 */
+const toast=(message,{timeout=6000,warn=false,action=null,sound=null}={})=>{
   const root=$('#toasts');
   const item=document.createElement('div');
   item.className='toast'+(warn?' warn':'');
@@ -944,6 +960,7 @@ const toast=(message,{timeout=6000,warn=false,action=null}={})=>{
   const paint=(body,alert)=>{
     item.classList.toggle('warn',!!alert);
     item.setAttribute('role',alert?'alert':'status');
+    playUiSound(sound||(alert?'error':'success'));
     item.innerHTML=`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span><p>${body}</p>${
       action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
       }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
@@ -5886,7 +5903,7 @@ function followCheckToast(report){
   toast({html:`检查了 <b>${rows.length}</b> 个来源：${bits.join(' · ')}`+
     (exhausted?` · <b>${exhausted} 个没有更多内容</b>`:'')+
     (failed?` · <b>${failed} 个失败</b>`:'')},
-    {warn:!!failed,timeout:failed?8000:6000,
+    {warn:!!failed,timeout:failed?8000:6000,sound:failed?'warning':'success',
      action:{label:'去看更新',run:()=>openFollow()}});
 }
 /* ── 看的那一页 ── */
@@ -9370,7 +9387,7 @@ async function openTok(startId,push=true){
       const selectedItem=await api('/api/item?id='+startId);
       if(selectedItem.id)tokList=[selectedItem,...tokList.filter(x=>x.id!==startId)];
     }
-    if(!tokList.length){$('#tokClose').click();toast({text:'当前筛选下没有可直接播放的内容'});return}
+    if(!tokList.length){$('#tokClose').click();toast({text:'当前筛选下没有可直接播放的内容'},{sound:'warning'});return}
     tokIdx=Math.max(0,tokList.findIndex(x=>x.id===startId));
     await tokShow();
   }catch(_e){setTokLoading(false);$('#tokClose').click()}
