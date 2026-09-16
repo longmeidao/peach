@@ -1,11 +1,16 @@
-"""`scripts/demo_dataset.py`：SFW 合成演示库要能被 scan 与 process 离线消费。
+"""`scripts/demo_dataset.py`：SFW 演示库要能被 scan 与 process 离线消费。
 
-README 承诺「文档中的演示素材仅限 SFW」，这里把承诺变成门槛：演示词表不得与
+README 承诺「文档中的演示素材仅限 SFW」，这里把承诺变成门槛：作品词表不得与
 `catalog_rules` 的成人词表相交；生成的目录布局要和 `library_nfo` 的边车规则对得上；
 `process_library` 跑完不能向任何外部来源发过请求。
+
+`portrait` 模式的人像来自 `scripts/demo-portraits.json`。这些测试不联网，用本地造的
+图片和注入的取图函数走同一条代码路径，验证的是清单的形状、字节校验与「卡片上的名字
+就是封面上那位」。清单里每一张画面本身能不能见人由人工判定，测试不代替那一步。
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sqlite3
@@ -31,9 +36,9 @@ from support.ledger import fresh_ledger
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load_script():
-    path = ROOT / "scripts" / "demo_dataset.py"
-    spec = importlib.util.spec_from_file_location("peach_script_demo_dataset", path)
+def load_script(name: str = "demo_dataset"):
+    path = ROOT / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"peach_script_{name}", path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -62,7 +67,8 @@ class DemoDatasetTests(unittest.TestCase):
             catalog_rules.ROLE_TAGS, catalog_rules.APPEARANCE_TAGS, catalog_rules.POSITION_TAGS,
             catalog_rules.STORY_TAGS, catalog_rules.RELATIONSHIP_TAGS, catalog_rules.SCENE_TAGS,
             catalog_rules.ATTRIBUTE_TAGS)
-        vocabulary = set(self.demo.CONTENT_TAGS) | set(self.demo.SERIES) | set(self.demo.PERFORMERS)
+        vocabulary = set(self.demo.CONTENT_TAGS) | set(self.demo.SERIES)
+        vocabulary |= set(self.demo.SYNTHETIC_PERFORMERS)
         vocabulary |= set(self.demo.CREATORS) | {name for _, name in self.demo.STUDIOS}
         vocabulary |= {title for title, _ in self.demo.TITLES} | set(self.demo.PLOTS)
         self.assertEqual(vocabulary & adult, set())
@@ -189,6 +195,150 @@ class DemoDatasetTests(unittest.TestCase):
         self.assertIn("peach init", text)
         self.assertIn("apply_metadata_tags.py", text)
         self.assertIn(self.demo.MANIFEST_NAME, text)
+
+
+class PortraitManifestTests(unittest.TestCase):
+    """人像清单与取图边界。不联网。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.portraits = load_script("demo_portraits")
+
+    def test_manifest_entries_are_complete_unique_and_large_enough(self):
+        entries = self.portraits.load_manifest()
+        self.assertGreaterEqual(len(entries), 8)
+        names = [entry.name for entry in entries]
+        digests = [entry.sha256 for entry in entries]
+        # 名字重复会让两条作品挂在同一位名下却是两张脸；哈希重复是同一张图的别名没去干净。
+        self.assertEqual(len(set(names)), len(names))
+        self.assertEqual(len(set(digests)), len(digests))
+        self.assertTrue(any(entry.landscape for entry in entries), "横屏作品需要横版人像")
+        for entry in entries:
+            self.assertEqual(len(entry.sha256), 64, entry.name)
+            self.assertTrue(entry.name.strip() and "\n" not in entry.name, entry.name)
+            # 封面最长边 900、播放底图两倍渲染到 2560，小于 640 的原图撑不起来。
+            self.assertGreaterEqual(max(entry.width, entry.height), 640, entry.name)
+            self.assertTrue(entry.url.startswith("https://"), entry.name)
+
+    def test_fetch_refuses_bytes_that_do_not_match_the_manifest(self):
+        entry = self.portraits.load_manifest()[0]
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError) as caught:
+                self.portraits.fetch(entry, Path(tmp), opener=_opener(b"not the picture"))
+            self.assertIn(entry.name, str(caught.exception))
+            self.assertEqual(list(Path(tmp).glob("*.jpg")), [], "校验没过就不该留下文件")
+
+    def test_fetch_keeps_bytes_whose_digest_matches(self):
+        body = b"pretend this is a jpeg"
+        entry = self.portraits.Portrait(
+            name="试用", key="試用", category="1-Test", filename="試用.jpg",
+            sha256=hashlib.sha256(body).hexdigest(), width=1500, height=2125)
+        with tempfile.TemporaryDirectory() as tmp:
+            first = self.portraits.fetch(entry, Path(tmp), opener=_opener(body))
+            self.assertEqual(first.read_bytes(), body)
+            # 命中缓存就不该再取一次；再给一个会抛的 opener，它不该被调用。
+            again = self.portraits.fetch(entry, Path(tmp), opener=_refusing_opener)
+            self.assertEqual(again, first)
+
+
+class PortraitDatasetTests(unittest.TestCase):
+    """`--art portrait` 的生成路径。人像用本地造的图，取图函数注入，不联网。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.demo = load_script()
+        cls.portraits = load_script("demo_portraits")
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.made: dict[str, Path] = {}
+        self.entries = [
+            self._entry("立花ひなの", 1500, 2125),
+            self._entry("三条あかり", 1500, 2125),
+            self._entry("長峰さやか", 2880, 1800),
+            self._entry("御崎るか", 2880, 1800),
+        ]
+
+    def _entry(self, name: str, width: int, height: int):
+        from PIL import Image
+
+        path = self.root / "pretend" / f"{name}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (width, height), (90, 110, 150)).save(path, quality=70)
+        self.made[name] = path
+        return self.portraits.Portrait(
+            name=name, key=name, category="1-Test", filename=f"{name}.jpg",
+            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            width=width, height=height)
+
+    def _fetch(self, entry, cache_dir):
+        return self.made[entry.name]
+
+    def _generate(self, name: str, **kwargs):
+        output = self.root / name
+        items = self.demo.generate(
+            output, count=kwargs.pop("count", 9), seed=kwargs.pop("seed", 7),
+            video=kwargs.pop("video", "stub"), duration=kwargs.pop("duration", 4),
+            art="portrait", portraits=self.entries, fetch=self._fetch, **kwargs)
+        return output, items
+
+    def test_every_work_names_the_face_that_is_on_its_cover(self):
+        output, items = self._generate("faces")
+        known = {entry.name for entry in self.entries}
+        for item in items:
+            self.assertIn(item.portrait, known, item.path)
+            if item.kind == "coded":
+                # 卡片上的出演者就是封面上那位；对不上细看就穿帮。
+                self.assertEqual(item.performers, [item.portrait], item.code)
+        manifest = json.loads((output / self.demo.MANIFEST_NAME).read_text(encoding="utf-8"))
+        self.assertEqual(manifest["art"], "portrait")
+
+    def test_orientation_picks_a_portrait_of_the_same_shape(self):
+        _, items = self._generate("shapes", count=16)
+        shape = {entry.name: entry.landscape for entry in self.entries}
+        for item in items:
+            self.assertEqual(shape[item.portrait], item.orientation == "横屏", item.path)
+
+    def test_covers_are_written_at_the_documented_sizes(self):
+        from PIL import Image
+
+        output, items = self._generate("covers")
+        for item in items:
+            if not item.poster:
+                continue
+            with Image.open(output / item.poster) as cover:
+                expected = (self.portraits.COVER_PORTRAIT if item.orientation == "竖屏"
+                            else self.portraits.COVER_LANDSCAPE)
+                self.assertEqual(cover.size, expected, item.poster)
+
+    def test_an_empty_manifest_is_refused_with_a_hint(self):
+        with self.assertRaises(RuntimeError) as caught:
+            self.demo.generate(self.root / "none", count=1, seed=1, video="stub",
+                               duration=2, art="portrait", portraits=[])
+        self.assertIn("--art synthetic", str(caught.exception))
+
+
+def _opener(body: bytes):
+    class _Response:
+        def read(self, *args):
+            return body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+    def opener(request, timeout=None):
+        return _Response()
+
+    return opener
+
+
+def _refusing_opener(request, timeout=None):
+    raise AssertionError("缓存命中后不该再联网")
 
 
 if __name__ == "__main__":
