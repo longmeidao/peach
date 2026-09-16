@@ -86,3 +86,73 @@
   100%{transform:translateX(0)}}
 :is(input,textarea,select)[aria-invalid="true"],
 .board-number-control:has([aria-invalid="true"]){animation:field-shake var(--board-motion)}
+
+/* ── 一排头像里指到的那一枚抬起来 ──
+   指到的抬 4px 并放大一档，左右邻座按 .45 的衰减跟着抬一点：只抬一枚读成「这一枚出了
+   毛病」，整排按距离递减地让一下才读成「这一排让开给它」。衰减到第三位只剩 .36px，
+   肉眼分不出，所以选择器只写到两位，不为看不见的那一档再铺一层。
+
+   全程只动 transform：这一排横着滚，改 margin 或 width 会把后面所有人推着走，正在
+   看的那一枚当场滑出指针。叠放的那一组另外左右推开——它们本来压着彼此 14px，只抬不推
+   等于抬起一枚仍被邻座压着半张脸。
+
+   进出各用一条缓动，由整排的 `:has(:hover)` 切换，不写 JS：指上去走站内通用那条，
+   松开走按压弹簧，冲过原位再收回来。`--lift-motion` 读在 board.css 那条 transition
+   里（`#tiers .av` 那一族），因为那条 shorthand 已经排着 scale 与配色，transform
+   只能并进同一条列表。 */
+:is(#tiers .tier,.followauthors,.followworks,.mavstack){
+  --lift-motion:calc(var(--spring-press-ms) * 1ms) var(--spring-press)}
+:is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:hover){--lift-motion:var(--board-motion)}
+:is(#tiers,.followauthors,.followworks) :is(.av,.brandpill),.mavstack .mav{
+  transform:translate(var(--lift-x,0),var(--lift-y,0)) scale(var(--lift-scale,1))}
+.mavstack .mav{transition:transform var(--lift-motion,var(--board-motion))}
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):hover,
+.mavstack .mav:hover{--lift-y:-4px;--lift-scale:1.05}
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):hover+:is(.av,.brandpill),
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill):hover){--lift-y:-1.8px}
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):hover+:is(.av,.brandpill)+:is(.av,.brandpill),
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill)+:is(.av,.brandpill):hover){--lift-y:-.81px}
+.mavstack .mav:hover+.mav{--lift-y:-1.8px;--lift-x:7px}
+.mavstack .mav:hover+.mav+.mav{--lift-y:-.81px;--lift-x:10px}
+.mavstack .mav:has(+.mav:hover){--lift-y:-1.8px;--lift-x:-7px}
+.mavstack .mav:has(+.mav+.mav:hover){--lift-y:-.81px;--lift-x:-10px}
+
+/* ── 清空时输入的内容溶解掉 ──
+   输入框自己的 value 是一瞬间没的，没有动画可挂。所以清空前先照着输入框的位置和字体
+   摆一份同样的字，让它往上飘 12px、糊掉、淡出，真正的输入框当场就空了——光标和输入法
+   一刻也不等这段动画。这一层不可点、不读屏，走完自己摘掉。
+
+   上游还在同一条配方里给每个词铺一层 radial-gradient 做扫光，那部分要逐帧写背景才
+   画得出来，这里不做：搜索框每清一次就跑一段逐帧 JS，换来的是一道一眼看不出来的光。 */
+@keyframes clear-dissolve{to{opacity:0;filter:blur(2px);transform:translateY(-12px)}}
+.cleardissolve{position:absolute;z-index:1;display:flex;align-items:center;overflow:hidden;
+  white-space:nowrap;pointer-events:none;color:inherit;
+  animation:clear-dissolve var(--motion-reveal) forwards}
+
+/* ── 计数徽标弹出来 ──
+   从零长到原大小，同时从模糊里清晰起来。整枚一起弹，不按位拆：这一枚说的是「这里有
+   几条」，读的是有没有变多，不是变成了哪几个数字——按位拆是读数那一条的事。
+   `--motion-pop` 的缓动过一点再收住，落位才读成「弹出来的」。
+
+   `.popped` 是起点帧，摘掉就往原位走。它自己那一帧不带过渡：带的话，挂上去这一枚就
+   开始朝零缩，同一次调用里紧接着摘掉时它才走了零点几个像素，回程于是无处可走——屏幕上
+   什么也没发生。首屏那一批不挂这个类：整排计数一起弹是一屏烟花，而它要说的是
+   「这一枚刚变了」。 */
+.countbadge{display:inline-block;transition:transform var(--motion-pop),
+  opacity var(--motion-pop),filter var(--motion-pop)}
+.countbadge.popped{transform:scale(0);opacity:0;filter:blur(2px);transition:none}
+
+/* ── 标题从模糊里揭示出来 ──
+   每一行从下方 12px 处带模糊长上来，相邻两行差一个 `--motion-stagger`。按行不按词：
+   逐词要把整句拆成一串 `<span>`，复制出来的文字会跟着散架，而这几处标题（作品名、
+   页面名）正是最常被复制走的那几段字。
+
+   走完把类名一起摘掉。留着的话终点帧上还挂着一个 `filter:blur(0)`，非 none 的 filter
+   会另起一个 backdrop root，标题块里任何 backdrop-filter 从此只采样得到它自己。
+
+   起点那一帧不带过渡：这几处标题里有一半是一直在页面上的节点（页面标题、设置面板的
+   分区名），带过渡的话挂上去只是开始朝下淡，下一帧点亮时回程只剩零点几个像素。 */
+.revealline{opacity:0;transform:translateY(12px);filter:blur(3px);transition:none}
+.revealline.revealing{opacity:1;transform:none;filter:blur(0);
+  transition:opacity var(--motion-reveal),transform var(--motion-reveal),filter var(--motion-reveal);
+  transition-delay:calc(var(--motion-stagger) * var(--reveal-at,0))}

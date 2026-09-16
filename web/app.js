@@ -19,7 +19,7 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  popCount, revealSkeleton, setIconSwap, swapText,
+  dissolveValue, popBadges, popCount, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
@@ -316,7 +316,15 @@ const managementPlaceholder=path=>
   boardPageSkeleton(path,{followLayout:followListLayout()})||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 /* 详情浮窗的正文：骨架换成真内容时交叉淡入，内容换内容（在队列里跳下一条）直接换。 */
-const paintStage=html=>revealSkeleton($('#stage'),()=>{$('#stage').innerHTML=html});
+/* 浮窗里那两行标题跟着这一次重画揭示一遍。放在这里而不是各个详情函数里：换一条片子
+   走的也是这一条，标题因此只在「换了内容」时放一次，浮窗开着不动就不重放。 */
+const paintStage=html=>{
+  revealSkeleton($('#stage'),()=>{$('#stage').innerHTML=html});
+  /* 绕开正在淡出的那一层：`revealSkeleton` 把上一屏整块抬成 `.skelfade` 插在最前面，
+     而详情的骨架本身就照着最终结构画，里面也有一个 `.sidecontent`。按文档顺序找的话
+     拿到的是那一份——它上面没有揭示标记，这一句就悄悄地什么也不做。 */
+  revealTexts($('#stage'),':scope>:not(.skelfade) [data-reveal-line]');
+};
 function showDetailLoading(){
   const stage=$('#stage');
   if(!stage.querySelector('[data-skeleton="detail"]'))stage.innerHTML=detailSkeletonHtml();
@@ -1196,24 +1204,28 @@ function resetHomeState(){
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;
   barsDataCache=null;barsDataPromise=null;
 }
+/* 离开搜索结果时把搜索框一起清掉。框里的字不是瞬间没的：`dissolveValue` 先照着它此刻
+   的位置摆一份同样的字飘上去糊掉，输入框当场就空了，回来的人看见的是一个空框加一段
+   刚散掉的残影，而不是「刚才那句话去哪了」。 */
+const clearSearchField=()=>dissolveValue($('#q'));
 /* 「未归属」是全库那一类，不是当前这一页里的子筛选：在某位女优的资料页上再筛「没有
    署名人」永远是空的。所以它和打开资料页一样离开当前语境，回目录只留这一条筛选，
    顶栏芯片指的就是同一份列表。 */
 function openUnowned(){
   resetHomeState();state.owner='none';
-  $('#q').value='';disposeStage(false);showHomeSurfaces();
+  clearSearchField();disposeStage(false);showHomeSurfaces();
   route(homePath());buildEdge();buildBars();load(true);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 /* 详情页那枚产地和未归属同一种东西：它标的不是一句说明，是馆藏里一个能筛的集合。 */
 function openRegion(region){
   resetHomeState();state.region=region||'none';
-  $('#q').value='';disposeStage(false);showHomeSurfaces();
+  clearSearchField();disposeStage(false);showHomeSurfaces();
   route(homePath());buildEdge();buildBars();load(true);
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function openHome(scroll=false){
-  resetHomeState();route('/');$('#q').value='';disposeStage(false);showHomeSurfaces();
+  resetHomeState();route('/');clearSearchField();disposeStage(false);showHomeSurfaces();
   buildEdge();buildBars();load(true);
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -3276,13 +3288,15 @@ function renderJunkNavigation(data){
     const current=key===junkKind,count=countFor(key);
     /* 同一套 Geist Tabs 徽标口径：计数为 0 时整枚去掉。这一条仍用 <a>，因为分类要落到
        URL 上——规范里 Tabs 的行为条款本身就要求当前项可深链、可刷新恢复。 */
-    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)}${count?` <span class="n mono">${count.toLocaleString()}</span>`:''}</a>`;
+    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)}${count?` <span class="n mono" data-count-badge="junk:${esc(key)}">${count.toLocaleString()}</span>`:''}</a>`;
   }).join('');
   $('#count').removeAttribute('aria-busy');
   $('#count').innerHTML=`<div class="junksummary" aria-live="polite">${collectionSummaryHtml(junkView==='dismissed'?'已排除':'待判断',`${Number(data.total||0).toLocaleString()} 个`)}</div>
     <nav class="junkfilters" aria-label="垃圾文件分类">${categoryLinks}<i aria-hidden="true"></i>
-      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'}${dismissedTotal?` <span class="n mono">${dismissedTotal.toLocaleString()}</span>`:''}</a>
+      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'}${dismissedTotal?` <span class="n mono" data-count-badge="junk:dismissed">${dismissedTotal.toLocaleString()}</span>`:''}</a>
     </nav>`;
+  // 判过一批之后各类的待处理数就变了，弹的是变了的那几枚，没动的那几类原地不动。
+  popBadges($('#count'),'junk');
   $('#count').querySelectorAll('[data-junk-kind-link],[data-junk-view-link]').forEach(link=>link.onclick=event=>{
     if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault();
@@ -4090,6 +4104,7 @@ async function buildBars(){
     +appliedTags.concat(pickedTags).map(tagPillHtml).join('');
   wireViewPills();
   wireTagPills($('#tagScroll'));
+  popBadges($('#tagScroll'),'tagbar');
   wireRowPaging($('#tagScroll'),tagPool.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);
   renderCombo(); wireAllDrag();
 
@@ -4100,7 +4115,7 @@ async function buildBars(){
     const off=key==='loc'&&sourceOffline(it.k);
     return `<button class="chip${off?' offline':''}" aria-pressed="${sel}" data-key="${key}" data-multi="${multi?1:0}"
       ${off?`disabled title="${OFFLINE_HINT}"`:''}
-      data-val="${esc(it.k)}">${dot}<span class="chip-label">${esc(it.label||tagLabel(it.k))}</span>${it.n!=null?`<span class="n">${it.n.toLocaleString()}</span>`:''}</button>`;
+      data-val="${esc(it.k)}">${dot}<span class="chip-label">${esc(it.label||tagLabel(it.k))}</span>${it.n!=null?`<span class="n" data-count-badge="${key}:${esc(it.k)}">${it.n.toLocaleString()}</span>`:''}</button>`;
   }).join('')+`</div>`:'';
   // 按语义类别区分来源、创作者、内容和技术规格。
   const sec=(t,b,x,cat)=>sidebarSectionHtml(t,b,x,cat);
@@ -4134,8 +4149,11 @@ async function buildBars(){
     +sec('内容标签',chips(facetData.tags,'tag',false,30),facetData.tags.length>30?sidebarMoreHtml('tag','内容标签'):'','general')
     +sec('影片属性',chips(facetData.tech,'tag',false,16),'','meta')
     +sec('关注标签',followTagRows.length?`<div class="chips">`+followTagRows.map(row=>
-      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}"><span class="chip-label">${esc(tagLabel(row.k))}</span><span class="n">${row.n.toLocaleString()}</span></button>`
+      `<button class="chip online" data-follow-drawer-tag="${esc(row.k)}"><span class="chip-label">${esc(tagLabel(row.k))}</span><span class="n" data-count-badge="follow:${esc(row.k)}">${row.n.toLocaleString()}</span></button>`
       ).join('')+`</div>`:'','','online');
+  /* 抽屉每次筛选都整块重画，所以徽标弹不弹由 `popBadges` 按上一次的值判断，不由节点
+     是不是新建的判断——照后者判，每换一个筛选整列计数都会一起弹。 */
+  popBadges($('#drawerScroll'),'drawer');
   const dc=$('#drawerClose'); if(dc)dc.onclick=()=>openDrawer(false);
   $('#drawer').querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>{
     openIndex(b.dataset.page); closeDrawerAfterNav()});
@@ -4558,14 +4576,14 @@ async function openResourceSync(push=true){
 function openTasteSignal(kind,name){
   if(kind==='tag'){
     state={...state,tag:name,tag_match:'all',creator:'',studio:'',q:'',state:'',orient:''};
-    $('#q').value='';route(homePath());showHomeSurfaces();buildBars();load(true);return
+    clearSearchField();route(homePath());showHomeSurfaces();buildBars();load(true);return
   }
   openEntity(kind,name);
 }
 async function openTaste(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   state={...state,creator:'',studio:'',tag:'',tag_match:'all',len:'',dur_min:'',dur_max:'',orient:'',region:'',state:'',q:'',jav:''};
-  $('#q').value='';
+  clearSearchField();
   if(push)route('/taste');
   const surface=claimSurface('/taste');
   showManagementBody({placeholder:managementPlaceholder('/taste')});
@@ -5434,10 +5452,10 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}${frameRatio?' framed':''}"${frameRatio?` style="--follow-frame-ratio:${frameRatio.toFixed(4)}"`:''}>${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
-      <div class="followdetailtitle"><div class="stitle">${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
+      <div class="followdetailtitle"><div class="stitle" data-reveal-line>${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
-      <div class="smeta mono"><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
+      <div class="smeta mono" data-reveal-line><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
       <p class="fnote followmediaissue" data-media-load-issue hidden>媒体没有取回来：上游这一次没给出内容，多半是站点在限流——过一阵再打开。</p>
@@ -7876,6 +7894,8 @@ function buildManageBar(){
 /* 数据管理五张卡对应的子页（vercel.com/geist/breadcrumbs：有上一级页面的
    子页才画面包屑）。人工复核、回收站、高清版虽也保留侧栏直达入口，
    层级上仍从数据管理进；空文件夹是 hub 上的就地操作，没有独立页面。 */
+//: 上一次页面标题说的是哪一页。空串表示此刻没有管理区标题（首页、目录这些）。
+let lastManagePageLabel='';
 const MANAGE_CRUMB_PAGES={
   '/junk-files':'垃圾文件',
   '/duplicates':'重复文件',
@@ -7905,6 +7925,14 @@ function paintManageTitle(){
   if(entry)el.textContent=pageLabel||entry[1];
   paintManageCrumb();
   paintManageLede();
+  /* 换了页才揭示一遍。同一页里的每一次重画（筛选、判完一批、翻页）走的也是这个函数，
+     不比一下标题的话，页面标题会跟着每一次取数再飘一次。
+     统计页正文里那几块节标题归 React 那一档（ADR-0031），这一批不动 React 子树；
+     这里放的是统计、复核、数据管理共用的那一块页面标题。 */
+  const label=el.hidden?'':el.textContent;
+  if(label===lastManagePageLabel)return;
+  lastManagePageLabel=label;
+  if(label)revealTexts(document,'#manageTitle:not([hidden]),#manageLede:not([hidden])');
 }
 function paintManageCrumb(){
   const el=$('#manageCrumb');if(!el)return;
@@ -8715,10 +8743,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
       <div class="detailtitle">${srcBadge(it.location,it.cost,'srcbig')}
-        <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
+        <div class="stitle" data-reveal-line>${javTitleHtml(it)}${partLabelBadge(it,queueContext)}${it.location==='online'?'':`<span class="srctools detailtitletools">${sourceToolButtons(it.id)}</span>`}</div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       ${ratingHtml(it.rating)}
-      <div class="smeta mono">
+      <div class="smeta mono" data-reveal-line>
         <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}
@@ -9604,7 +9632,7 @@ function openCatalog(path){
 /* 回收站。它和目录页共用同一张网格，只是筛选被钉死成 `trash`。 */
 function openTrash(push){
   if(push)route('/trash');
-  state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};$('#q').value='';
+  state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};clearSearchField();
   showHomeSurfaces();buildEdge();buildBars();load(true);
 }
 /* 索引页（女优／创作者／标签）三条路由共用。
@@ -9725,7 +9753,12 @@ function localTabs(root,sections,host=root){
   const choose=index=>{
     const moved=active!==index;
     active=index;
-    if(host!==root){const heading=host.querySelector('.settingshead h2');if(heading)heading.textContent=items[index].title;root.scrollTop=0}
+    if(host!==root){const heading=host.querySelector('.settingshead h2');
+      if(heading){heading.textContent=items[index].title;
+        /* 只在换了分区时揭示。`choose(0)` 还会在面板收着的时候跑一遍对齐玻璃，
+           那一次标题没换，跟着放就成了开面板时莫名其妙飘一下。 */
+        if(moved)revealTexts(heading.parentElement,'h2');}
+      root.scrollTop=0}
     /* 先全清再点亮当前这一条。同一个节点可能挂在好几条下面（「这台电脑」那一格的外壳
        就是），一条一条 toggle 的话后面那条会把前面点亮的又抹掉。 */
     items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));

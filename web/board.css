@@ -822,7 +822,11 @@ body>.board-filter-frame{margin-inline:16px}
    字形和文字原地不动只换外观走 250ms，骨架换内容要跨整块区域走 400ms。
    `--motion-stagger` 是多位数字按位错峰的步长，它跟时长一样要在 reduced motion 下归零——
    动画时长归零而延迟还在的话，`both` 会把前几位按住不显示，读数看上去缺了几位。 */
-:root{--motion-swap:.25s cubic-bezier(.4,0,.2,1);--motion-reveal:.4s cubic-bezier(.4,0,.2,1);--motion-stagger:70ms}
+/* `--motion-pop` 是「这一枚刚冒出来」那一下：跨度和骨架换内容同为 400ms，缓动却必须
+   带超调——徽标从零长到原大小，匀速收尾读成「被撑开的」，过一点再收住才读成「弹出来的」。
+   缓动不同就不能借 `--motion-reveal`：那两档的缓动写在 token 里，动画里再写第二条
+   缓动是无效声明，整条 `animation` 会被丢掉。 */
+:root{--motion-swap:.25s cubic-bezier(.4,0,.2,1);--motion-reveal:.4s cubic-bezier(.4,0,.2,1);--motion-stagger:70ms;--motion-pop:.4s cubic-bezier(.34,1.36,.64,1)}
 body{font-size:14px;line-height:20px}
 button,input,select,textarea{font-family:inherit}
 .index .ihead{padding:4px;gap:12px;min-width:0;flex-wrap:wrap}
@@ -903,7 +907,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
   .settingscard .settingsscroll .gselect,.settingscard .settingsscroll .gselectfield{height:40px;font-size:14px}
   .settingscard .settingsscroll .board-number-control>span{font-size:14px}
 }
-@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0;--motion-swap:0s;--motion-reveal:0s;--motion-stagger:0ms}.settingscard .settingshead::after{transition:none}}
+@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0;--motion-swap:0s;--motion-reveal:0s;--motion-stagger:0ms;--motion-pop:0s}.settingscard .settingshead::after{transition:none}}
 /* Stat Cards 的内层读数与底栏；统计卡仍是可键盘切换的视图入口。 */
 /* 侧栏分组使用标题行与带计数的叶项。 */
 .drawer.drawer{display:flex;flex-direction:column;overflow:hidden}
@@ -1483,7 +1487,7 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
    住在 `#stats` 里而不是 `#tiers` 里，只按 id 写的话关注页拿不到这一整套，落回 flat
    层那份 64px 头像加一圈描边，同一个人在两页大小和选中样子都不一样。 */
 #tiers .av,#tiers .brandpill,
-:is(.followauthors,.followworks) .av,:is(.followauthors,.followworks) .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
+:is(.followauthors,.followworks) .av,:is(.followauthors,.followworks) .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:transform var(--lift-motion,var(--board-motion)),scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
 #tiers .av:active,#tiers .brandpill:active,
 :is(.followauthors,.followworks) .av:active,:is(.followauthors,.followworks) .brandpill:active{scale:.96;transition:scale .06s ease-out}
 #tiers .av,:is(.followauthors,.followworks) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
