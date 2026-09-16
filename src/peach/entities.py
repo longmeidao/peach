@@ -269,6 +269,25 @@ def merge_entity(
     return moved
 
 
+def _ref_is_free(connection: Connection, entity_id: int, provider: str,
+                 external_kind: str, external_id: str) -> bool:
+    """这个实体在这家来源下还没被别的 id 占着。
+
+    表上 `UNIQUE(entity_id, provider, external_kind)` 说的是「一个实体在一家来源只有一个
+    id」，而插入语句的 `ON CONFLICT` 只认主键那一组，撞上这个索引就是一个未捕获的
+    `IntegrityError`，把整笔事务连同同批次其它字段一起带走。
+
+    撞得上是因为艺名：实体 8004「桥本有菜」名下挂着「橋本ありな」「新ありな」等 8 个
+    别名，r18dev 给前者的 id 是 1032668、给后者是 1078619，账本里已经存着后者。人是一个，
+    来源那边是两个页面。先到的那条留着——它才是账本里其它引用和历史指向的那一个。
+    """
+    held = connection.execute(
+        "SELECT external_id FROM entity_external_ref "
+        "WHERE entity_id=? AND provider=? AND external_kind=?",
+        (entity_id, provider, external_kind)).fetchone()
+    return held is None or str(held[0]) == external_id
+
+
 def upsert_asset_entity(
     connection: Connection, *, kind: str, name: str | None, asset_id: int,
     role: str, source: str, confidence: float = 1.0,
@@ -326,7 +345,8 @@ def upsert_asset_entity(
              last_seen_at=excluded.last_seen_at""",
         (asset_id, entity_id, role, source, confidence, payload, stamp, stamp),
     )
-    if external_provider and external_id is not None:
+    if external_provider and external_id is not None and _ref_is_free(
+            connection, entity_id, external_provider, kind, str(external_id)):
         connection.execute(
             """INSERT INTO entity_external_ref(
                  entity_id,provider,external_kind,external_id,metadata_json,last_synced_at)
