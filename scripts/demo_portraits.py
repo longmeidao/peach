@@ -11,10 +11,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+
+SRC_DIR = Path(__file__).resolve().parent.parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from peach.user_agent import USER_AGENT  # noqa: E402
 
 MANIFEST_PATH = Path(__file__).resolve().parent / "demo-portraits.json"
 GFRIENDS_RAW = "https://raw.githubusercontent.com/gfriends/gfriends/master/Content/"
@@ -80,7 +87,7 @@ def fetch(portrait: Portrait, cache_dir: Path, *, opener=urllib.request.urlopen)
     target = cache_dir / portrait.cache_name
     if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == portrait.sha256:
         return target
-    request = urllib.request.Request(portrait.url, headers={"User-Agent": "peach-demo-dataset"})
+    request = urllib.request.Request(portrait.url, headers={"User-Agent": USER_AGENT})
     with opener(request, timeout=60) as response:
         body = response.read(MAX_IMAGE_BYTES + 1)
     if len(body) > MAX_IMAGE_BYTES:
