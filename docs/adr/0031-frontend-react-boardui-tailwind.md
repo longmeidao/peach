@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-09-15
-- 修订：2026-09-15 补齐迁移桥接契约、弹层样式作用域、上游升级方式、lint 边界与验收定义；同日写下前端基础库的取舍与引入时机。2026-09-16 活动页迁入后 Query 的引入时机与共用方式按实际落地改写；同日配置页外壳与换头像迁入、Preact 移除后，挂载方式只剩 React 档一种，JSX 运行时不再分档
+- 修订：2026-09-15 补齐迁移桥接契约、弹层样式作用域、上游升级方式、lint 边界与验收定义；同日写下前端基础库的取舍与引入时机。2026-09-16 活动页迁入后 Query 的引入时机与共用方式按实际落地改写；同日配置页外壳与换头像迁入、Preact 移除后，挂载方式只剩 React 档一种，JSX 运行时不再分档；同日复核页迁入、已迁八页外观对回迁移前基线后，补页面外观以基线 CSS 为准的判据与玻璃面高对比回退的归属
 - 关系：替代 ADR-0022 的框架与样式选择；沿用它的绞杀式迁移、构建产物入库、`/dist/` 路由与单一测试入口；ADR-0014 的 Video.js 保留。
 
 ## 背景
@@ -37,6 +37,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 - 新页面与迁移页面用 **React 19 + TypeScript（strict）+ Tailwind v4**，源码在 `frontend/src/react/`，单测用 vitest。
 - 前端只有 React 一种渲染层，`frontend/src` 里 JSX 只出现在 `src/react/`；`frontend/src/react/tsconfig.json` 只为逐字复制的 BoardUI 源码放宽 `exactOptionalPropertyTypes` 与 `noUncheckedIndexedAccess` 两条，其余继承全局配置。Vite 与 tsc 都取离文件最近的 tsconfig。
 - **BoardUI 源码日常开发只读**：从注册表逐字复制到 `frontend/src/react/boardui/`，来源与条目哈希记在 `ORIGIN.md`，逐文件 SHA-256 记在 `UPSTREAM.sha256`。Peach 需要不同组合或外观时，在 `src/react/` 下 Peach 自己的目录里组合，差异写进 `ORIGIN.md`。
+- **页面外观以该页迁移前的基线 CSS 为准**，不以「BoardUI 里长什么样」为准：卡面、读数卡、分段控件、空态这类跨页共用的面收在 `src/react/components/` 各自一处（`card.tsx` 按基线选 `filled` / `outlined` / `raised`），页面不自己拼类名串。测试只钉数据流与结构，钉不住外观，验收要对照迁移前提交的样式表与骨架逐块核卡面、网格列数、控件形态。
 - **上游升级走独立提交**：整文件重新复制，同一提交更新 `ORIGIN.md` 条目哈希、`UPSTREAM.sha256`、`theme.css` 与相关依赖，跑 `web` 域回归。发现上游缺陷时同样以组合件绕开或等上游修复后整文件替换，不在副本上打补丁。没有引用者的上游文件连同哈希行一起删除。哈希只证明副本没有偏离登记版本，组件行为仍由 vitest 与浏览器断言验证。
 
 ### 迁移桥接
@@ -44,7 +45,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 - **迁移节奏不变**：逐页替换，每次一到两个页面、独立分支集成；旧渲染函数、旧 CSS 与旧断言随页面删除，不保留双实现。
 - **迁移期只有一种 React 挂载方式**，由 `frontend/src/islands.ts` 的 `mountIsland` / `unmountIsland` 对遗留层暴露：注册表写 `{react: '<page>'}`，`@peach/react` 的 `pages.<page>` 提供 `prefetch(props, signal)` 与 `mount(el, props)`。`mountIsland` 先 `prefetch` 把首屏写进 Query 缓存（取完数才画，中止就放弃这一次；产物加载回来后先确认容器仍在、遗留层还停在这一页，再画），再在容器里建一个 `.peach-react` 宿主创建 React root，第一帧用 `flushSync` 同步落 DOM（遗留壳挂完紧接着就读页面结构，配置页按 `.configgroup` 拆左栏页签靠它）；`unmountIsland` 中止在途请求、卸根、撤宿主。遗留壳在 `claimSurface` 换页时对 `#stats` 与 `#index` 调 `unmountIsland`，它连子孙容器一起卸（`#libraryProcessing` 挂在 `#stats` 里更深的一格上，换头像挂在 `#index` 的圆框上），所以离开页面后组件不再活着，轮询随组件一起停；不在这两个容器里的（目录页横幅 `#libraryProcessingNotice`）由它自己的路由判据卸。
 - **业务状态只有一份**：取数与缓存归 TanStack Query，所有 React root 共用一个 `QueryClient`，同一份真相只用一个 `queryKey`，第二个读者读同一个键；节律不同的两份真相分键（来源列表由用户改、由写操作换单条，封面任务由后台推进、按状态轮询），合成一键会让轮询重画用户正在填的表单。写操作用 `useMutation`，成功后用 `setQueryData` 换局部，不为一次写入重取整页；页面之间不另起一套订阅传数据，也不在遗留层与 React 两侧各存一份同一数据。页面经 props 拿遗留能力、经回调（如 `receipt`、`onPicked`）交回结果。需要的遗留能力（`confirmModal`、来源图标表、番号标题）只经 `@peach/legacy/*` 的声明模块或 props 传入的遗留函数调用，不抄一份。
-- Peach 自己以 HTML 字符串拼出的 Board 风格组件随使用它们的页面改写成 `src/react/` 下的组合件，复用其中的数据与布局计算：`board-metrics.ts`、`board-sankey.ts`、`board-analytics.ts` 已随统计页与口味页改写并删除；`board-controls.ts` 剩下的是给遗留页共用的 DOM 行为（范围输入读数、全站 tooltip、下划线 Tabs 与分段控件的滑块），读者是复核页和各页骨架（关注管理迁走后，`.follow-workspace-switch` 只剩骨架里那一份），随最后一个遗留读者一起删。
+- Peach 自己以 HTML 字符串拼出的 Board 风格组件随使用它们的页面改写成 `src/react/` 下的组合件，复用其中的数据与布局计算：`board-metrics.ts`、`board-sankey.ts`、`board-analytics.ts` 已随统计页与口味页改写并删除；`board-controls.ts` 剩下的是给遗留页共用的 DOM 行为（范围输入读数、全站 tooltip、下划线 Tabs 与分段控件的滑块），读者只剩各页骨架（复核页迁走后页面里没有遗留读者，`.follow-workspace-switch` 只剩骨架里那一份），随最后一个遗留读者一起删。
 - 删除顺序：Preact 已随最后一个岛（配置页外壳与换头像）移除，`peach-ui.js` 现在是把遗留壳接到 `pages` 上的那层加上仍被 `web/app.js` 调用的非页面模块，这些模块随使用它们的页面一起迁走；壳与路由迁完，React Router 直接挂页面，删除 `web/app.js`、`mountIsland` 与 `peach-ui.js`。`board.css` 里与 BoardUI 同名的 token 按 `var()` 读者归零删除，不按自写组件删完删除：口味页迁完时这些 token 仍被 `board.css` 自身和遗留页读着，删早了遗留页就掉色。
 
 ### 新旧样式并存
@@ -54,11 +55,12 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 - 工具类不进层叠层，旧样式表的标签规则因此压不过类名；
 - Preflight 逐字包进 `@scope (.peach-react)`；
 - React 容器上按 `theme.css` 的 `:root` 与 `.dark` 块重新声明同名 token。这份声明不是手工副本，`BoardTokenTests` 逐条比对它与 `theme.css`，不一致即失败；
-- 全局 `:focus-visible` 排除 `.peach-react` 子树。
+- 全局 `:focus-visible` 排除 `.peach-react` 子树；
+- React 子树里复刻的旧玻璃面，其高对比回退仍写在 `web/board.css`，按 `data-*` 属性（`data-glass-pane`）认人：`frontend/test/legacy-class-names.test.ts` 禁止 React 产物与遗留样式表出现同名类。
 
 **作用域覆盖弹层**：React Aria 的 Popover、Select 列表与 Dialog 经 Portal 渲染到容器外。`entry.tsx` 用 `UNSAFE_PortalProvider` 把它们统一挂到 `body` 末尾一个同样带 `.peach-react` 的容器，读到的 token、Preflight 与焦点规则和页面内一致。弹层不塞进可能裁切它的局部容器。
 
-旧样式表全部退出后重新评估上述四条：仍被第三方样式（如 Video.js）需要的隔离保留并写明原因，其余删除，Tailwind 回到上游默认的层叠层写法。
+旧样式表全部退出后重新评估上述五条：仍被第三方样式（如 Video.js）需要的隔离保留并写明原因，其余删除，Tailwind 回到上游默认的层叠层写法。
 
 ### 测试与门槛
 
