@@ -1032,8 +1032,8 @@ class ReviewQueueTests(unittest.TestCase):
         finally:
             con.close()
 
-    def test_a_snapshot_value_the_ledger_no_longer_has_becomes_an_empty_field(self):
-        """反过来也要跟得上：快照里有值、账本已经清空的，那就是个空位。"""
+    def test_an_empty_ledger_field_outranks_a_value_left_in_the_snapshot(self):
+        """账本这一格空着，那它就是个空位，哪怕快照里写着一个值。"""
         self._asset(122, "LIVE-3", "LIVE-3.mp4")
         self.write_metadata_rows([
             {"item_key": "LIVE-3:release_date", "field": "release_date",
