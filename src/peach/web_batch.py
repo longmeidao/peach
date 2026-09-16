@@ -27,7 +27,7 @@ from .regions import normalize_region
 from .task_runs import TaskRunHandle
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_catalog import COST, attach_card_performers
-from .web_resource_sync import clean_resource_orphans
+from .web_resource_sync import clean_resource_orphans, vanished_asset_rows
 from .web_state import WebContract
 
 #: 批量操作在活动页上的名字。表里存 `operation`，人看的是这一列。
@@ -457,15 +457,23 @@ def _remove_empty_ancestors(parent: Path, source_roots: Sequence[Path]) -> list[
     return removed
 
 
-def cleanup_empty_source_directories(*, dry_run: bool = False) -> dict[str, object]:
+def cleanup_empty_source_directories(
+    contract: WebContract | None = None, *, dry_run: bool = False,
+) -> dict[str, object]:
     """Delete empty directories below each online physical source.
 
     The declared source roots themselves are permanent boundaries and are never removed.
     ``os.walk(..., topdown=False)`` ensures children are considered before their parents;
     directory links are not followed or removed.
+
+    网盘那边删掉的文件在账本里留下的行一起清（`contract` 给了才做）。空目录和这些行是
+    同一件事的两半：用户在网盘客户端里删一个目录，盘上留下空壳，账本里留下一批指向
+    不存在文件的行。只清目录，那些行就继续被长跑批处理一轮轮领走、一轮轮失败。删除
+    走 `purge_assets` 这唯一一条物理删除实现，文件本来就没了，删的是账本行和派生产物。
     """
     results: list[dict[str, object]] = []
     total_scanned = total_removed = total_errors = total_empty = 0
+    total_vanished = total_purged = 0
     for location, declarations in LOCATION_ROOT_DECLARATIONS.items():
         roots = [translate_ledger_path(declaration) for declaration in declarations]
         mapped = all(not is_unmapped(root) for root in roots)
@@ -478,10 +486,20 @@ def cleanup_empty_source_directories(*, dry_run: bool = False) -> dict[str, obje
             "removed": 0,
             "empty": 0,
             "errors": 0,
+            "vanished": 0,
+            "purged": 0,
         }
         if not online:
             results.append(row)
             continue
+
+        if contract is not None:
+            gone = vanished_asset_rows(contract, location)
+            row["vanished"] = len(gone)
+            if gone and not dry_run:
+                row["purged"] = _purge_vanished(contract, gone)
+        total_vanished += int(row["vanished"])
+        total_purged += int(row["purged"])
 
         walk_errors: list[OSError] = []
         empty_paths: set[Path] = set()
@@ -518,10 +536,30 @@ def cleanup_empty_source_directories(*, dry_run: bool = False) -> dict[str, obje
         "scanned": total_scanned,
         "removed": total_removed,
         "empty": total_empty,
+        "vanished": total_vanished,
+        "purged": total_purged,
         "dry_run": dry_run,
         "errors": total_errors,
         "sources": results,
     }
+
+
+def _purge_vanished(contract: WebContract, rows) -> int:
+    """删掉这些行，返回真删了几条。
+
+    文件早就不在盘上，`purge_assets` 的文件删除那一步会整条跳过并记进 `blocked`——
+    那正是它要报的东西：还能删掉文件的行说明文件其实还在，它不属于这一批。
+    """
+    contract.cache_bust()
+    outcome = None
+    try:
+        with contract.write_transaction() as connection:
+            outcome = purge_assets(connection, rows)
+    except BaseException:
+        if outcome is not None:
+            _restore_staged_media(outcome["_staged"])
+        raise
+    return int(_finish_purge(outcome).get("purged") or 0)
 
 
 def _finish_purge(outcome):
@@ -621,11 +659,25 @@ def w_empty_trash(contract: WebContract):
     return result
 
 
-def w_cleanup_empty_directories(_contract: WebContract, _body):
-    """Remove empty folders from online physical sources without touching the ledger."""
-    return cleanup_empty_source_directories(dry_run=True) if _body.get('dry_run') is True else cleanup_empty_source_directories()
+def w_cleanup_empty_directories(contract: WebContract, body):
+    """清掉在线来源上的空目录，以及文件已在网盘那边删掉的账本行。
 
-
+    检查这一步只看不删，两个数都报；真删那一步走任务中心留一行记录——它会删账本行，
+    事后要答得出「这批是什么时候、删了多少」，而这张表是唯一留着这个答案的地方。
+    """
+    if body.get("dry_run") is True:
+        return cleanup_empty_source_directories(contract, dry_run=True)
+    run = contract.task_runs.start("empty-folders", trigger="manual")
+    handle = TaskRunHandle(contract.task_runs, run.id if run else None)
+    try:
+        result = cleanup_empty_source_directories(contract)
+    except BaseException as error:
+        handle.finish("failed", error=f"{type(error).__name__}: {error}")
+        raise
+    handle.finish("succeeded", summary={
+        "removed": result["removed"], "purged": result["purged"],
+        "errors": result["errors"]})
+    return result
 
 
 def _batch_region_value(body) -> str | None:

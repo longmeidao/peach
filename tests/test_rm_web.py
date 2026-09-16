@@ -1187,15 +1187,51 @@ class WebDataTests(unittest.TestCase):
         self.assertFalse(result["sources"][1]["online"])
         self.assertNotIn("root", result["sources"][0], "API 不能泄露物理来源路径")
 
-    def test_empty_folder_cleanup_post_is_registered_as_a_non_ledger_write(self):
+    def test_empty_folder_cleanup_post_is_gated_as_a_ledger_write(self):
         self.assertIs(
             rm_web.POST_HANDLERS["/api/data-cleanup/empty-folders"],
             rm_web.w_cleanup_empty_directories,
         )
-        self.assertIn(
+        self.assertNotIn(
             "/api/data-cleanup/empty-folders", rm_web.READ_ONLY_POST_ROUTES,
-            "清理服务端物理目录不写 ledger，不该被 reader 的账本闸门误拦",
+            "它连文件已消失的账本行一起删，只读端那份复制来的账本不能被它清掉",
         )
+
+    def test_cleanup_purges_rows_whose_file_is_gone_and_only_counts_them_when_checking(self):
+        """网盘那边删掉的文件在账本里留下的行，和空目录是同一件事的两半。
+
+        用户在网盘客户端删掉一个目录，盘上留下空壳，账本里留下一批指向不存在文件的行。
+        只清目录的话那些行继续被长跑批处理一轮轮领走、一轮轮失败——本机 647 行回收站里
+        有 469 行是这样。
+        """
+        source_root = Path(self.tmp.name) / "gone-source"
+        kept = source_root / "kept"
+        kept.mkdir(parents=True)
+        (kept / "media.mp4").write_bytes(b"keep")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET location='local',path=?,snapshot_path=NULL WHERE id=1",
+                    (str(source_root / "vanished" / "gone.mp4"),))
+        con.execute("UPDATE asset SET location='local',path=?,snapshot_path=NULL WHERE id=2",
+                    (str(kept / "media.mp4"),))
+        con.execute("UPDATE asset SET location='115' WHERE id=3")
+        con.commit(); con.close()
+
+        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS",
+                               {"local": (str(source_root),)}):
+            checked = web_batch.w_cleanup_empty_directories(self.contract, {"dry_run": True})
+            self.assertEqual(checked["vanished"], 1)
+            self.assertEqual(checked["purged"], 0)
+            self.assertIsNotNone(self.row(1), "检查这一步一条都不删")
+
+            result = web_batch.w_cleanup_empty_directories(self.contract, {})
+
+        self.assertEqual(result["purged"], 1)
+        self.assertIsNone(self.row(1), "文件已经不在，这一行指不到任何东西")
+        self.assertIsNotNone(self.row(2), "文件还在的行一条都不能碰")
+        self.assertEqual((kept / "media.mp4").read_bytes(), b"keep")
+        self.assertEqual(
+            self.contract.task_runs.query(task_key="empty-folders")[0].status, "succeeded",
+            "删账本行这件事要在任务中心留下记录")
 
     def test_empty_folder_scan_counts_nested_candidates_without_removing_anything(self):
         source_root = Path(self.tmp.name) / "scan-source"
@@ -1204,6 +1240,13 @@ class WebDataTests(unittest.TestCase):
         kept = source_root / "kept"
         kept.mkdir()
         (kept / "media.mp4").write_bytes(b"keep")
+        # 账本行也得落在这个临时来源里：装具里 `local` 的路径是 `R:\Media\...`，本机
+        # 那个目录真实存在，失效条目那一步会去读它。
+        (kept / "cover.jpg").write_bytes(b"keep")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET path=? WHERE id=1", (str(kept / "media.mp4"),))
+        con.execute("UPDATE asset SET path=? WHERE id=3", (str(kept / "cover.jpg"),))
+        con.commit(); con.close()
         with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": (str(source_root),)}):
             result = web_batch.w_cleanup_empty_directories(self.contract, {"dry_run": True})
         self.assertEqual(result["empty"], 2)
