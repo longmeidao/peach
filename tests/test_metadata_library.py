@@ -259,6 +259,35 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(list(read_rows(candidates, missing_ok=True)), [])
         provider.query.assert_called_once()
 
+    @windows_ledger_roots
+    def test_a_performer_marker_is_not_a_content_tag_the_ledger_already_has(self):
+        """`演员:` 是出演者在 `asset_tag` 上的扁平投影，算成标签就再也采不回 genre。
+
+        本机 110 部片卡在这上面：`asset_tag` 里只有 `演员:` 那几行，采集因此判定标签
+        有着落，摘掉它们的旧候选也换不回日文原词。
+        """
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'MIDE-612.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'id': 'MIDE-612', 'title': '痴女秘書', 'maker': 'MOODYZ',
+                                       'release_date': '2018-01-01', 'genres': ['淫語'],
+                                       'actresses': [{'japanese_name': '本田岬'}]}
+        factory = Mock(return_value=provider)
+        candidates = self.root / 'generated/library-metadata-field-candidates.csv'
+        process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
+        with closing(sqlite3.connect(db)) as connection, connection:
+            asset_id = connection.execute("SELECT id FROM asset WHERE code='MIDE-612'").fetchone()[0]
+            connection.execute("UPDATE asset SET catalog_title=?, studio=?, release_date=? WHERE id=?",
+                               ('痴女秘書', 'MOODYZ', '2018-01-01', asset_id))
+            connection.execute("INSERT INTO asset_tag(asset_id, tag, confidence, source) VALUES(?,?,?,?)",
+                               (asset_id, '演员:本田岬', 1.0, 'user'))
+        candidates.unlink()
+        process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
+        self.assertIn('tags', {row['field'] for row in read_rows(candidates, missing_ok=True)})
+
     def test_the_collector_carries_the_cookies_saved_in_scraping_settings(self):
         """采集设置里贴的 JavBus Cookie 要真的跟着采集走。
 

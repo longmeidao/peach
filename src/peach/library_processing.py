@@ -748,11 +748,14 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 return state
             # 演员和标签是另外两张表，`asset` 上没有这两列。不带上它们，采集就把每部片都
             # 当成缺演员缺标签，逐个去问 r18，再把账本早就有的写法变成一道复核题。
+            # `演员:` 是出演者在 `asset_tag` 上的扁平投影（ADR-0005），不算内容标签：
+            # 算进来的话，一部片只要有演员就永远不缺标签，它的 genre 再也采不回来。
+            # 本机实测 110 部片正好卡在这上面，`asset_tag` 里只有 `演员:` 那几行。
             multi = ("(SELECT group_concat(entity.canonical_name) FROM asset_entity"
                      " JOIN entity ON entity.id=asset_entity.entity_id"
                      " WHERE asset_entity.asset_id=asset.id AND entity.kind='performer') AS performers,"
                      " (SELECT group_concat(asset_tag.tag) FROM asset_tag"
-                     " WHERE asset_tag.asset_id=asset.id) AS tags")
+                     " WHERE asset_tag.asset_id=asset.id AND asset_tag.tag NOT LIKE '演员:%') AS tags")
             if retrying:
                 placeholders = ','.join('?' * len(chosen_ids))
                 query = (f"SELECT asset.*, {multi} FROM asset WHERE id IN ({placeholders}) AND medium='video' "
