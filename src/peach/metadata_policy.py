@@ -50,6 +50,12 @@ SOURCE_SPECS = {
 #: （ADR-0034）。实测 `n0780` 的片长 javbus 报 36 分、javdb 报 96 分，盘里那条是 98 分。
 PREFERRED_COMMUNITY_SOURCE = "javdb"
 
+#: 兜底来源：同一个字段上还有别家可用时，它的取值不当证据（ADR-0035）。用户
+#: 2026-09-16 逐条核对：javbus 的取值常常来自另一部片，`259LUXU-891` 它答的是
+#: `259LUXU-1891`（ラグジュTV 1879，2026-07-29），而官方 mgstage 那页写的是
+#: ラグジュTV 853、2017-11-26。只有一家都没有时才轮到它。
+FALLBACK_SOURCES = ("javbus",)
+
 PROFILE_SOURCES = {
     "seesaa": ("sougouwiki",),
     "baseline": ("r18dev",),

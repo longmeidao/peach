@@ -51,7 +51,9 @@ from .fsutil import atomic_write_bytes
 from .genre_decisions import load_genre_decisions, record_genre_decision
 from .genre_taxonomy import CONTENT_GENRES, UNMAPPED, genres_in_warning, resolve_genre
 from .metadata import identifies_code
-from .metadata_policy import FIELD_SOURCE_ORDER, PREFERRED_COMMUNITY_SOURCE, SOURCE_SPECS
+from .metadata_policy import (
+    FALLBACK_SOURCES, FIELD_SOURCE_ORDER, PREFERRED_COMMUNITY_SOURCE, SOURCE_SPECS,
+)
 from .previews import logo_key
 from .review_csv import read_rows
 
@@ -551,14 +553,10 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
         elif category == "metadata_fields":
             decided = load_genre_decisions(connection)
             for row in rows:
-                try:
-                    candidates = json.loads(str(row.get("candidates_json") or "[]"))
-                except (TypeError, ValueError):
-                    candidates = []
-                row["candidates"] = [_fold_genre_decisions(str(row.get("field") or ""), candidate, decided)
-                                     for candidate in candidates
-                                     if isinstance(candidate, dict)
-                                     and str(candidate.get("candidate_key") or "").strip()]
+                row["candidates"] = _row_candidates(row, decided)
+            # 候选全是错配时整行消失：剔完一条不剩，就没有可判的东西了。本来就没有候选
+            # 的行照旧留着，它讲的是另一件事（这个番号问过、谁都没给值）。
+            rows = [row for row in rows if row["candidates"] or not _parsed_candidates(row)]
             refresh_current_values(connection, rows)
             # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
             # 没有任何新信息：17 条与当前值逐字相同、7 条标签只是顺序不同。
@@ -956,15 +954,57 @@ def _only_mib_official(row: dict) -> bool:
 LOCAL_NFO_SOURCE = "local_nfo"
 
 
+def _candidate_identifies_code(code: str, candidate: dict) -> bool:
+    """来源返回的是不是这个番号本身。
+
+    落库那一步早就有同一道闸（`_apply_metadata_candidate`），但它只能拒绝，拒绝不掉
+    的是这张卡先占了人的注意力：`259LUXU-891` 的队列里摆着 javbus 按 `259LUXU-1891`
+    取回的标题和日期——那是另一部片，点了也写不进去。既然认得出来，就别摆出来。
+
+    本地 NFO 不按番号去问谁（证据是它躺在视频旁边），没有番号的行也无从核起。
+    """
+    source = str(candidate.get("source") or "").strip()
+    if not code or source == LOCAL_NFO_SOURCE:
+        return True
+    return identifies_code(code, {
+        "id": candidate.get("provider_id"), "content_id": candidate.get("content_id"),
+        "source_url": candidate.get("source_url"),
+    })
+
+
+def _parsed_candidates(row: dict) -> list[dict]:
+    """一行 `candidates_json` 里形状成立的候选，不做任何取舍。"""
+    try:
+        parsed = json.loads(str(row.get("candidates_json") or "[]"))
+    except (TypeError, ValueError):
+        return []
+    return [candidate for candidate in parsed if isinstance(candidate, dict)
+            and str(candidate.get("candidate_key") or "").strip()]
+
+
+def _row_candidates(row: dict, decided) -> list[dict]:
+    """把一行的 `candidates_json` 解析成候选列表：折叠 genre 决定、剔掉番号对不上的。"""
+    field = str(row.get("field") or "").strip()
+    code = str(row.get("code") or "").strip()
+    return [_fold_genre_decisions(field, candidate, decided)
+            for candidate in _parsed_candidates(row)
+            if _candidate_identifies_code(code, candidate)]
+
+
 def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     """这条自动落库该记在哪条规则名下。
 
     official 与 community 两类补空在 `review_decision` 里必须分得开：出了问题要回溯的
     是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。多来源一致
     （ADR-0025）与单来源（ADR-0018）同样要分得开：前者的证据强度不一样。来源之间有
-    分歧、按 ADR-0034 取舍过的，记下是按什么取舍的。
+    分歧、按 ADR-0034 取舍过的，记下是按什么取舍的。覆盖既有取值的那一类（ADR-0035）
+    单独记名：它是唯一一条会改掉账本已有值的自动写入，回溯时第一个要捞出来的就是它。
     """
     source = str(candidate.get("source") or "").strip()
+    if candidate.get("replaces_current"):
+        if agreed > 1:
+            return f"adr-0035-official-replaces-{agreed}-agreed-sources"
+        return "adr-0035-official-replaces-single-source"
     if candidate.get("settled_by"):
         return f"adr-0034-empty-field-{candidate['settled_by']}"
     if source == LOCAL_NFO_SOURCE:
@@ -987,11 +1027,20 @@ def _evidence_candidates(row: dict) -> list[dict]:
             or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
 
 
+def _official_only(candidates: list[dict]) -> bool:
+    """这批候选是不是全部来自官方来源（含官方镜像）。"""
+    sources = {str(c.get("source") or "").strip() for c in candidates}
+    return bool(sources) and all(
+        source in SOURCE_SPECS and SOURCE_SPECS[source].official for source in sources)
+
+
 def _settled_candidates(connection, field: str, code: str,
                         candidates: list[dict]) -> tuple[list[dict], str | None]:
     """取值只剩一个的那组候选，和据以取舍的规则；取舍不了返回空列表。
 
     日期式番号的发行日期只认番号自己写的那天：候选里没有这一天就交给人。
+    兜底来源（javbus）在这之后才降级：还有别家给了值就不看它（ADR-0035），而番号自带
+    的那天是硬事实，谁报出来都算——`092415_001` 只有 javbus 报对，先降级就把它丢了。
     其余字段取值不一、在场的全是社区来源时，取 javdb 那一侧；有官方来源或本地
     NFO 在场的分歧照旧交给人（ADR-0034）。
     """
@@ -1001,6 +1050,8 @@ def _settled_candidates(connection, field: str, code: str,
         matching = [c for c in candidates if str(c.get("display_value") or "").strip() == date]
         settled_by = "code-date" if len(matching) < len(candidates) else None
         candidates = matching
+    candidates = [c for c in candidates
+                  if str(c.get("source") or "").strip() not in FALLBACK_SOURCES] or candidates
     values = {_candidate_value_key(connection, field, candidate) for candidate in candidates}
     if None in values or not values:
         return [], None
@@ -1044,7 +1095,9 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
 
     三项必须同时成立，缺一项就仍然走人工：
 
-    1. 目标字段当前为空——只补空，永不覆盖既有真相字段；
+    1. 目标字段当前为空，或者在场的候选全部来自官方来源——补空之外，官方来源的取值
+       直接替换现值（用户 2026-09-16 定，ADR-0035）。发行方自己那页就是这部片的出处，
+       账本里那个来路不明的旧值没有理由压住它；用户改过的格子归属受保护，仍然不碰；
     2. 候选**取值**去重后只剩一个——有第二个取值才存在取舍，而取舍正是复核要做的事。
        数的是取值不是候选条数（ADR-0025）：两家独立来源给出同一个值是这批候选里最强的
        证据，按条数算却会被判成「有分歧」。实测 349 条这样被扣住，`259LUXU-1509` 的
@@ -1055,10 +1108,11 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
        解析出来就是它。`MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是
        `MEYD-911`；本机 2611 条有番号的视频里这样的有 297 条。
 
-    来源是不是 official 不在其中（用户 2026-09-04 决定）。补空不覆盖任何东西，唯一的
-    风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住 official
-    这条的代价是实测 76 条 javbus 补空候选全部滞留人工，它们补的都是账本里空着的发行
-    日期——没有可判断项，却要人逐条点过。落库时按来源实际级别记规则名，回溯得出来。
+    补空那一支不看来源是不是 official（用户 2026-09-04 决定）：补空不覆盖任何东西，
+    唯一的风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住
+    official 这条的代价是实测 76 条 javbus 补空候选全部滞留人工，它们补的都是账本里
+    空着的发行日期——没有可判断项，却要人逐条点过。落库时按来源实际级别记规则名，
+    回溯得出来。替换现值那一支反过来，只认官方来源：改掉一个已有的值是另一种风险。
 
     第 3 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名认得出
     番号是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示番号和
@@ -1080,13 +1134,14 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     field = str(row.get("field") or "").strip()
     if field not in AUTO_APPLY_FIELDS:
         return None
-    if str(row.get("current_value") or "").strip():
-        return None
     code = str(row.get("code") or "").strip()
     if not code:
         return None
     candidates, settled_by = _settled_candidates(connection, field, code, _evidence_candidates(row))
     if not candidates:
+        return None
+    replaces_current = bool(str(row.get("current_value") or "").strip())
+    if replaces_current and not _official_only(candidates):
         return None
     if field == "tags" and not _tags_are_fully_resolved(candidates):
         return None
@@ -1115,7 +1170,8 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
                       for target in targets):
         return None
     return {**_normalised_candidate(field, candidate), "agreed_sources": len(candidates),
-            **({"settled_by": settled_by} if settled_by else {})}
+            **({"settled_by": settled_by} if settled_by else {}),
+            **({"replaces_current": True} if replaces_current else {})}
 
 
 def _pending_first(rows: list[dict]) -> list[dict]:
@@ -1621,14 +1677,8 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
                 continue
             if str(row.get("status") or "").strip() != "candidate":
                 continue
-            try:
-                parsed = json.loads(str(row.get("candidates_json") or "[]"))
-            except (TypeError, ValueError):
-                continue
             row = dict(row)
-            row["candidates"] = [_fold_genre_decisions(str(row.get("field") or ""), c, genres)
-                                 for c in parsed if isinstance(c, dict)
-                                 and str(c.get("candidate_key") or "").strip()]
+            row["candidates"] = _row_candidates(row, genres)
             candidate = metadata_auto_apply_candidate(connection, row)
             if candidate is None:
                 skipped += 1
