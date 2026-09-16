@@ -126,7 +126,8 @@ class GenreTaxonomyTests(unittest.TestCase):
         """
         for value in ("プレステージ20周年特別企画", "春のBIGセール",
                       "プレステージグループ秋の企画祭り", "プレステージ40％オフセール",
-                      "BIG Sale Part 2"):
+                      "BIG Sale Part 2", "Summer BIG Sale",
+                      "Adult Summer Campaign", "MOODYZ Fan Campaign"):
             self.assertTrue(is_non_content_genre(value), value)
         self.assertEqual(map_genres(["中出し", "春のBIGセール"]), (["中出内射"], []))
         # 形状判据不能误伤内容分类。
@@ -145,7 +146,17 @@ class GenreTaxonomyTests(unittest.TestCase):
 
     def test_non_content_patterns_stay_narrow(self):
         # 每条形状判据都要说得出它为什么必然是卖法而不是内容。
-        self.assertEqual(len(NON_CONTENT_PATTERNS), 5)
+        self.assertEqual(len(NON_CONTENT_PATTERNS), 6)
+
+    def test_no_pattern_carries_a_control_character(self):
+        """`\\b` 被 shell 吃掉一层就成了退格符，正则照样编译、照样静默不匹配。
+
+        源码看上去完全正常，代价是「Summer BIG Sale」这类词一路走到复核页上等人判。
+        """
+        for pattern in NON_CONTENT_PATTERNS:
+            with self.subTest(pattern=pattern.pattern):
+                self.assertEqual(
+                    [char for char in pattern.pattern if ord(char) < 32], [])
 
     def test_uncensored_source_vocabularies_project_too(self):
         """caribbeancom 与 javbus 的词表和 dmm/mgstage 不一样，同样要投影。"""
@@ -189,6 +200,17 @@ class VocabularyHygieneTests(unittest.TestCase):
         self.assertEqual(
             sorted(set(catalog_rules.RETIRED_TAGS) & set(catalog_rules.RETIRED_TAGS.values())),
             [], "改名不能接力：一步到位，脚本才能重复执行")
+
+    def test_an_english_word_is_judged_the_same_as_its_japanese_original(self):
+        """同一个来源分类的两种写法必须同去向，否则英文那份就一路走到复核页上。
+
+        候选文件停在抓取那一刻：日文原词是这之后才开始取的，旧队列里冻着的仍是英文。
+        """
+        for japanese, english in (("企画", "Variety"), ("盗撮・のぞき", "Peeping"),
+                                  ("美脚", "Legs"), ("足フェチ", "Foot Fetish"),
+                                  ("家庭教師", "Private Tutor")):
+            with self.subTest(genre=english):
+                self.assertEqual(map_genres([english]), map_genres([japanese]))
 
     def test_a_foot_fetish_genre_is_not_a_pair_of_nice_legs(self):
         """`Foot Fetish` 说的是恋足，不是腿好看。

@@ -185,7 +185,8 @@ NON_CONTENT_GENRES: frozenset[str] = frozenset({
     "写真集", "Editor's Choice", "Recommended", "本編なし",
     # 演员编成与片长
     "Featured Actress", "Female Porn Star", "AV女優", "単体作品",
-    "企画", "Over 4 Hours", "4時間以上作品", "16時間以上作品",
+    # `Variety` 是 `企画` 的英文：新抓的 genre 取日文原词，旧队列里冻着的那些还是英文。
+    "企画", "Variety", "Over 4 Hours", "4時間以上作品", "16時間以上作品",
     "Gril on top 2", "All Sex",
     # 同人载体
     "同人ソフト オリジナル",
@@ -203,7 +204,8 @@ NON_CONTENT_PATTERNS = (
     re.compile(r"キャンペーン"),
     re.compile(r"企画祭り"),
     re.compile(r"特別企画"),
-    re.compile(r"(?i)big sale"),
+    re.compile(r"(?i)\bbig sale\b"),
+    re.compile(r"(?i)campaign"),
 )
 
 
