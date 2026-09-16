@@ -4712,11 +4712,11 @@ function autoApplyNote(){
      否则「它到底跑没跑」只能靠数队列长度猜，而队列本来就不见得会变短。 */
   if(!reviewAutoApply)return'';
   if(reviewAutoApply.error)return noteHtml('自动落库这一步没能执行：'+reviewAutoApply.error,
-    {variant:'warning',label:'自动落库'});
+    {variant:'warning',label:'自动落库',className:'review-autoapply'});
   const n=reviewAutoApply.applied;
   return noteHtml(n?`${n} 条候选补进了空字段，已从下面的队列里移走。`
     :'这一批候选没有可以直接补空的：字段已有值、几家来源给的值不一样，或者番号和文件名对不上，都要人来判。',
-    {variant:n?'success':'secondary',label:'自动落库'});
+    {variant:n?'success':'secondary',label:'自动落库',className:'review-autoapply'});
 }
 
 /* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
