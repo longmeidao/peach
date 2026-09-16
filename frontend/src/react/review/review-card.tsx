@@ -7,6 +7,7 @@ import { useRef } from 'react';
 import { Button } from '@/components/base/buttons/button';
 import { Checkbox } from '@/components/base/checkbox/checkbox';
 import { Chip } from '@/components/base/badges/chip';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { RiImageLine } from '@remixicon/react';
 import { busyProps } from '../settings/use-action';
@@ -20,8 +21,9 @@ import {
 /* 队列里的卡是一圈细描边围着一层浅底：判定状态靠卡内的东西表达，整卡不换色，所以卡面
    本身要淡——一屏二十张同样的框并排，卡面越安静，眼睛越容易落到内容上。横向内边距 20px
    到边，判定条自己铺满卡底那一格。这一页所有卡只读这一个常量，免得出现两种卡。 */
-const CARD = 'flex min-w-0 flex-col gap-4 rounded-surface border border-separator-border '
-  + 'bg-background-primary-default px-5 pt-4';
+const CARD = cardClass({
+  variant: 'outlined', padding: 'none', className: 'flex flex-col gap-4 px-5 pt-4',
+});
 
 /* 一排卡等高，长出来的那部分在卡内滚。高度随内容走的话，一行里几张卡参差不齐，
    眼睛要在每张卡上重新找「判定」在哪；身份回配那一类要放下来源图和样本列表，高一档。 */

@@ -40,7 +40,7 @@ export function AvatarPicker({ kind, entityId, name, onPicked }: AvatarPickerPro
       </span>
       <ModalOverlay isOpen={open} onOpenChange={setOpen} isDismissable
         className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
-        <Modal className="flex max-h-full w-full max-w-avatar-picker flex-col overflow-hidden rounded-2xl border border-separator-border bg-background-primary-default shadow-dropdown">
+        <Modal className="flex max-h-full w-full max-w-avatar-picker flex-col overflow-hidden rounded-2-5xl border border-separator-border bg-background-full shadow-dropdown">
           <Dialog aria-label="更换头像" className="flex min-h-0 flex-col outline-none">
             <PickerBody kind={kind} entityId={entityId} name={name} onPicked={onPicked}
               close={() => setOpen(false)} />
@@ -122,12 +122,12 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
             <button type="button" key={choice.ref} role="option" data-avatar-choice
               aria-selected={choice.current} title={choiceDetail(choice)} {...busyProps(submit.isPending)}
               onClick={() => { if (!submit.isPending) submit.mutate({ ref: choice.ref }) }}
-              className="relative flex cursor-pointer flex-col gap-1 overflow-hidden rounded-2lg border border-separator-border bg-background-secondary-default pb-1 text-center text-caption-1-regular text-text-secondary outline-none hover:border-border-button-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring aria-selected:border-border-focus-ring aria-selected:text-text-primary aria-disabled:cursor-progress aria-disabled:opacity-60">
+              className="relative flex cursor-pointer flex-col gap-1 overflow-hidden rounded-2lg border border-separator-border bg-background-secondary-default pb-1 text-center text-caption-1-regular text-text-secondary outline-none hover:border-border-button-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring aria-selected:border-border-focus-ring aria-selected:bg-background-tertiary-default aria-selected:text-text-primary aria-disabled:cursor-progress aria-disabled:opacity-60">
               <img loading="lazy" alt="" src={choiceImageUrl(kind, entityId, choice.ref)}
                 className="block w-full aspect-avatar-choice object-cover" />
               <span className="truncate px-1">{choice.label}</span>
               {choice.current
-                ? <span className="absolute top-1 left-1"><Chip variant="caption" color="blue">在用</Chip></span>
+                ? <span className="absolute top-1 left-1"><Chip variant="caption" color="gray">在用</Chip></span>
                 : null}
             </button>
           ))}

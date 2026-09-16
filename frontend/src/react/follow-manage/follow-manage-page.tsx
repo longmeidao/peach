@@ -20,8 +20,11 @@ import { useQuery } from '@tanstack/react-query';
 import { Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
 
 import type { FollowManageProps } from '../bundle';
+import { cardClass } from '../components/card';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
+import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
+import { STAT_STRIP } from '../components/stat-card';
 import { AddSource } from './add-source';
 import { AliasManager } from './alias-manager';
 import { Credentials } from './credentials';
@@ -32,18 +35,16 @@ import {
 } from './follow-manage';
 import { SourceList } from './source-list';
 
-const TAB_CLASS = 'flex cursor-pointer items-center rounded-lg px-3 py-1.5 text-body-2-medium text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:bg-background-tertiary-default data-selected:text-text-primary';
-
 const TABS = [['list', '关注列表'], ['add', '添加关注'], ['source', '来源和凭证']] as const;
 type TabKey = (typeof TABS)[number][0];
 
 const isTab = (value: unknown): value is TabKey => TABS.some(([key]) => key === value);
 
-/** 一格读数：一个名字、一个大数、一句它的量词。 */
+/** 一格读数：一个名字、一个大数、一句它的量词。旧 `.fmanageoverview>div` 的填充卡。 */
 function Reading({ term, figure, unit }: { term: string; figure: number; unit: string }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1 rounded-2xl border border-separator-border p-4">
-      <span className="text-body-2-regular text-text-secondary">{term}</span>
+    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-3 px-6 py-5 max-sm:gap-2 max-sm:p-4' })}>
+      <span className="text-body-medium text-text-secondary">{term}</span>
       <b className="text-title-1-medium tabular-nums text-text-primary">
         {figure}<small className="text-body-2-regular text-text-secondary">{` ${unit}`}</small>
       </b>
@@ -118,7 +119,8 @@ export function FollowManagePage(props: FollowManageProps) {
         </Note>
       ) : null}
 
-      <div className="card-grid gap-3" aria-label="关注概览">
+      {/* 四张一排，窄屏折成两张：旧 `.fmanageoverview` 就是定死四栏，不按卡片宽度自己折。 */}
+      <div className={STAT_STRIP} aria-label="关注概览">
         <Reading term="关注创作者" figure={groups.length} unit="位" />
         <Reading term="启用来源" figure={enabled} unit={`/ ${sources.length}`} />
         <Reading term="检查失败" figure={broken} unit="个来源" />
@@ -131,9 +133,10 @@ export function FollowManagePage(props: FollowManageProps) {
         setTab(next);
         go({ tab: next });
       }} className="flex flex-col gap-6">
-        <TabList aria-label="关注管理区域" className="flex flex-wrap gap-1">
+        {/* 旧 `.follow-workspace-switch`：三块互斥面板，形态是分段控件不是三枚裸按钮。 */}
+        <TabList aria-label="关注管理区域" className={SEGMENTED_TRACK}>
           {TABS.map(([key, name]) => (
-            <Tab key={key} id={key} className={TAB_CLASS}>
+            <Tab key={key} id={key} className={SEGMENT}>
               {key === 'source' && pending ? `${name}（${pending}）` : name}
             </Tab>
           ))}

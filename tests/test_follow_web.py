@@ -2890,8 +2890,11 @@ class FollowWebSourceTests(unittest.TestCase):
         panel = page[page.index('<TabPanel id="add"'):page.index('<TabPanel id="source"')]
         self.assertIn("<AddSource data={data}", panel)
         add = self.read_react("follow-manage/add-source.tsx")
-        self.assertIn('<h3 className="text-headline-medium text-text-primary">添加关注</h3>', add)
-        self.assertEqual(add.count("text-headline-medium"), 1, "查找结果不另起一套标题字号")
+        heading = re.search(r'<h3 className="([^"]*)">添加关注</h3>', add)
+        self.assertIsNotNone(heading, "「添加关注」是这一栏的抬头")
+        # 标题层级只有一档：抬头那一档字阶在这一栏里只出现这一次。
+        self.assertEqual(add.count(heading.group(1)), 1, "查找结果不另起一套标题字号")
+        self.assertEqual(add.count("<h3"), 1, "查找结果不另起一个标题")
 
     def test_f95_misses_offer_a_clickable_google_query(self):
         add = self.read_react("follow-manage/add-source.tsx")
@@ -3183,8 +3186,9 @@ class FollowWebSourceTests(unittest.TestCase):
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertNotIn("要一次加多个就每行一条", add)
         self.assertNotIn("把链接或名字粘进上面的输入框", add)
-        self.assertIn('<EmptyState icon={RiRssLine} title="还没有关注来源">'
-                      "关注来源及其检查状态会显示在这里。</EmptyState>", sources)
+        # 钉的是这段空态说了什么，不是它写成什么样：外壳与图标属于控件层，改那里不该红。
+        self.assertIn('title="还没有关注来源"', sources)
+        self.assertIn("关注来源及其检查状态会显示在这里。</EmptyState>", sources)
 
     def test_the_panel_cites_the_registered_report_design_source(self):
         page = self.read_react("follow-manage/follow-manage-page.tsx")
@@ -3236,10 +3240,10 @@ class FollowWebSourceTests(unittest.TestCase):
         权限有多宽。排进正文流就没有越界这回事了。"""
         creds = self.read_react("follow-manage/credentials.tsx")
         tail = creds[creds.index("export function Credentials("):]
-        self.assertIn('<div className="flex flex-col gap-1 rounded-2lg bg-background-secondary-default px-3 py-2">',
-                      tail)
         self.assertIn("<b className=\"text-body-medium text-text-primary\">{STORAGE_TITLE}</b>", tail)
         self.assertIn("{`凭据文件在 ${data.root}`}", tail)
+        # 排在凭据列表末尾：先是逐站那一叠，这段说明跟在它后面，同在正文流里。
+        self.assertLess(tail.index("<CredentialSection"), tail.index("{STORAGE_TITLE}"))
         for machinery in ("popover", "role=\"dialog\"", "innerWidth"):
             self.assertNotIn(machinery, creds, "这段说明不该有浮层定位逻辑")
 
@@ -3321,7 +3325,9 @@ class FollowWebSourceTests(unittest.TestCase):
         """
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertIn("<div data-selected={selected || undefined}", sources)
-        self.assertIn("data-selected:bg-background-secondary-default", sources)
+        row_open = sources[sources.index("<div data-selected={selected || undefined}"):]
+        row_open = row_open[:row_open.index('">') + 2]
+        self.assertIn("data-selected:bg-", row_open, "卡片行的选中底色挂在这一行自己身上")
         # 表格行不带自己的底色类：那一层归 Table。
         table_block = sources[sources.index("{asTable ? ("):]
         self.assertNotIn("data-selected:bg", table_block)
@@ -3412,8 +3418,7 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_the_layout_switch_lines_up_with_the_sort_box(self):
         """版式开关、排序框和方向键同处一行，高度必须是同一档。"""
         sources = self.read_react("follow-manage/source-list.tsx")
-        toolbar = sources[sources.index('<h3 className="mr-auto text-headline-medium text-text-primary">关注列表</h3>'):]
-        toolbar = toolbar[:toolbar.index("{/* 这一趟在后台跑")]
+        toolbar = sources[sources.index("关注列表</h3>"):sources.index("{/* 这一趟在后台跑")]
         # 按钮一律 small（32px 高），下拉一律 sm：同一行里只许有一档高度。
         self.assertEqual(toolbar.count('size="small"'), 5, "这一行的按钮都走 small 档")
         self.assertEqual(toolbar.count('size="sm"'), 1, "排序下拉走 sm 档")
@@ -4090,8 +4095,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertEqual(sources.count('<Button variant="secondary" size="small" disabled={readOnly} '
                                        '{...busyProps(markAll.isPending)}'), 2)
         # 不另起一行：按钮就在计数行里，只有计数那半句参与收缩（用户回执）。
-        self.assertIn('<div className="flex flex-wrap items-center gap-2 border-t border-separator-border pt-3">',
-                      sources)
+        foot = sources[sources.index("{counts.new ? ("):]
+        foot = foot[:foot.index(") : null}")]
+        self.assertEqual(foot.count("<div"), 1, "计数与两颗按钮同处一行")
+        for inside in (">全部标记已看</Button>", ">全部忽略</Button>", 'className="mr-auto'):
+            self.assertIn(inside, foot)
         self.assertIn('<span className="mr-auto text-body-2-regular text-text-secondary">\n'
                       "            {`未看 ${counts.new} · 已看 ${counts.seen || 0} ·"
                       " 已保存 ${counts.saved || 0} · 已忽略 ${counts.ignored || 0}`}", sources)

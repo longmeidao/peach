@@ -286,10 +286,12 @@ describe('设计决定', () => {
       assert.match(await banner.innerText(), /采集缺失资料 · 38 \/ 100/);
       // 一圈长度钉成 100，画出来的那一段就是百分比本身。
       assert.equal(await banner.locator('[role="progressbar"]').getAttribute('aria-valuenow'), '38');
-      assert.equal(
-        await banner.evaluate((element) => getComputedStyle(element).backgroundColor),
-        'rgba(0, 0, 0, 0)',
-        '任务在跑是正在发生的事，配上状态底色就和「出事了」一个分量');
+      // 判据是「不是语气色」，不钉某一个具体的底：在跑那条走中性底，黄与红留给出事的时候。
+      const tint = await banner.evaluate((element) => getComputedStyle(element).backgroundColor);
+      for (const tone of ['--color-background-tertiary-error', '--color-status-yellow-background']) {
+        assert.notEqual(tint, await tokenColor(running.page, '.peach-react', tone),
+          '任务在跑是正在发生的事，配上状态底色就和「出事了」一个分量');
+      }
     } finally {
       await running.close();
     }

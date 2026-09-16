@@ -34,11 +34,14 @@ import { cx } from '@/utils/cx';
 
 import { errorMessage } from '../../api';
 import type { TasteProps } from '../bundle';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
+import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
+import { StatCard, statCardClass, STAT_STRIP } from '../components/stat-card';
 import { queryClient } from '../query';
 import { Disclosure } from '../settings/section';
 import { busyProps } from '../settings/use-action';
@@ -53,9 +56,9 @@ import {
 const RANK_PREVIEW = 10;
 
 const MENU_ROW = cx(MENU_ITEM, MENU_ITEM_INTERACTIVE, 'text-body-2-medium');
-const CARD = 'flex min-w-0 flex-col gap-4 rounded-2xl border border-separator-border p-5';
-const PANEL_TAB = 'relative cursor-pointer py-3 text-body-2-regular text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:text-text-primary';
-const EVIDENCE_TAB = 'flex cursor-pointer items-center rounded-lg px-3 py-1.5 text-body-2-medium text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:bg-background-tertiary-default data-selected:text-text-primary';
+const CARD = `${cardClass()} flex flex-col gap-4`;
+/** 卡里的一格：旧 `.tastelead`／`.tastesource` 用的是浮层那一档面，比卡面亮一级。 */
+const TILE = 'rounded-xl bg-background-primary-default p-3';
 
 /* 中文正文写成常量：JSX 里换行的文字会在接缝处多出一个空格，中文句子里看得见。 */
 const REFRESH_TITLE = '读取运行 Peach 的这台电脑上的浏览记录';
@@ -73,18 +76,12 @@ export const TASTE_GUIDE_KEY = 'peach-taste-guide-dismissed';
 
 type Glyph = typeof RiEyeLine;
 
-/** 一格读数：一个名字、一个大数、一句它的来历。 */
-function SummaryCard({ icon: Icon, term, figure, detail }:
-{ icon: Glyph; term: string; figure: string; detail?: string }) {
+/** 一格读数：一个名字、一个大数、一句它的来历。和统计页的读数卡是同一张卡。 */
+function SummaryCard({ icon: Icon, term, figure, detail, accent }:
+{ icon: Glyph; term: string; figure: string; detail?: string; accent: number }) {
   return (
-    <div className="flex min-w-0 flex-col gap-2 rounded-2xl border border-separator-border p-4">
-      <span className="flex min-w-0 items-center gap-2 text-body-2-regular text-text-secondary">
-        <Icon aria-hidden className="size-4 shrink-0" />{term}
-      </span>
-      <b className="text-title-1-medium tabular-nums text-text-primary">{figure}</b>
-      <small className="min-w-0 overflow-hidden text-caption-1-regular text-ellipsis whitespace-nowrap text-text-secondary">
-        {detail ?? ''}
-      </small>
+    <div className={statCardClass()}>
+      <StatCard label={term} icon={Icon} accent={accent} figure={figure} footer={detail ?? ''} />
     </div>
   );
 }
@@ -127,18 +124,24 @@ interface RankListProps {
 function RankList({ rows, kind, visual, empty, onSignal, avatarInner }: RankListProps) {
   const [expanded, setExpanded] = useState(false);
   if (!rows.length) {
-    return <EmptyState icon={RiSearchLine} title="暂无足够证据">{empty}</EmptyState>;
+    return <EmptyState shell="plain" icon={RiSearchLine} title="暂无足够证据">{empty}</EmptyState>;
   }
   const shares = rankShares(rows);
   const shown = expanded ? rows : rows.slice(0, RANK_PREVIEW);
   return (
     <div className="flex flex-col gap-3">
-      <ol className="inline-grid w-full gap-1 sm:grid-cols-2">
+      <ol className="inline-grid w-full gap-x-7 gap-y-2 sm:grid-cols-2">
         {shown.map((row, index) => {
           const clickable = !!kind && !!row.peach_items;
           const domain = String(row.source_domain || '');
           const body = (
             <>
+              {/* 名次条铺满整行：旧 `.taste-rank-track` 是 `position:absolute;inset:0` 加 14%
+                  不透明度的一块底，不是文字下面那道细线——一眼看的是行有多长。 */}
+              <svg viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden
+                className="absolute inset-0 -z-10 size-full overflow-hidden rounded-lg opacity-15">
+                <rect width={shares[index]} height={1} className="fill-chart-4" />
+              </svg>
               <span className="w-6 shrink-0 text-caption-1-regular tabular-nums text-text-secondary">
                 {index + 1}
               </span>
@@ -155,24 +158,20 @@ function RankList({ rows, kind, visual, empty, onSignal, avatarInner }: RankList
                     row.has_avatar ? row.representative_asset_id ?? null : null,
                     visual === 'creator' ? 'creator' : kind || 'performer',
                   )} /> : null}
-              <span className="flex min-w-0 grow flex-col gap-1">
-                <b className="min-w-0 text-body-2-regular break-words text-text-primary">{row.name}</b>
+              <span className="flex min-w-0 grow flex-col gap-0.5">
+                <b className="min-w-0 text-body-medium break-words text-text-primary">{row.name}</b>
                 <small className="text-caption-1-regular text-text-secondary">{rankDetail(row)}</small>
-                <svg viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden
-                  className="h-1 w-full overflow-hidden rounded-full">
-                  <rect width={100} height={1} className="fill-chart-track" />
-                  <rect width={shares[index]} height={1} className="fill-chart-4" />
-                </svg>
               </span>
               {clickable ? <RiArrowRightSLine aria-hidden className="size-4 shrink-0 text-text-tertiary" /> : null}
             </>
           );
-          const shape = 'flex w-full min-w-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left';
+          const shape = 'relative isolate flex min-h-11 w-full min-w-0 items-center gap-2.5'
+            + ' rounded-lg px-3 py-2 text-left';
           return (
             <li key={row.name} className="min-w-0">
               {clickable
                 ? <button type="button" onClick={() => onSignal(kind, row.name)}
-                    className={`${shape} cursor-pointer outline-none hover:bg-background-primary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring`}>
+                    className={`${shape} cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring`}>
                     {body}
                   </button>
                 : <div className={shape}>{body}</div>}
@@ -200,12 +199,15 @@ function DimensionPanels(
   } & Pick<TasteProps, 'onSignal' | 'avatarInner'>,
 ) {
   return (
-    <Tabs className="flex flex-col rounded-2xl border border-separator-border">
-      <TabList aria-label={label} className="flex gap-6 overflow-x-auto border-b border-separator-border px-4">
-        {panels.map((panel) => <Tab key={panel.id} id={panel.id} className={PANEL_TAB}>{panel.name}</Tab>)}
-      </TabList>
+    /* 旧 `.insightpanel`：一张 16px 的填充卡，页签是卡内顶上那条分段控件。 */
+    <Tabs className={`${cardClass({ padding: 'none' })} flex flex-col`}>
+      <div className="px-4 pt-3">
+        <TabList aria-label={label} className={SEGMENTED_TRACK}>
+          {panels.map((panel) => <Tab key={panel.id} id={panel.id} className={SEGMENT}>{panel.name}</Tab>)}
+        </TabList>
+      </div>
       {panels.map((panel) => (
-        <TabPanel key={panel.id} id={panel.id} className="p-4">
+        <TabPanel key={panel.id} id={panel.id} className="px-4 pt-3.5 pb-4">
           <RankList {...panel.props} onSignal={onSignal} avatarInner={avatarInner} />
         </TabPanel>
       ))}
@@ -228,23 +230,21 @@ function AnalysisCard({ data, onSignal, navigate }:
   return (
     <section className={CARD} aria-label="口味总结">
       <header className="flex flex-col gap-2">
-        <h3 className="text-headline-medium text-text-primary">口味总结</h3>
-        <p className="flex flex-wrap items-baseline gap-2.5 text-body-2-regular text-text-secondary">
-          {/* 结论旁边那句「有多少把握」。取 BoardUI 的状态底色档，和正文一起读。 */}
-          <span className={confidence.level === 'high'
-            ? 'shrink-0 rounded-md bg-status-lime-background px-2 py-0.5 text-caption-1-medium text-status-lime-text'
-            : confidence.level === 'medium'
-              ? 'shrink-0 rounded-md bg-status-yellow-background px-2 py-0.5 text-caption-1-medium text-status-yellow-text'
-              : 'shrink-0 rounded-md bg-background-tertiary-default px-2 py-0.5 text-caption-1-medium text-text-secondary'}>
-            {confidence.label || '仍在学习'}
-          </span>
-          <span className="min-w-0">{analysis.headline}</span>
+        <h3 className="text-title-2-medium text-text-primary">口味总结</h3>
+        {/* 结论句是这张卡的主角：旧 `.tasteleads .tastelede p` 是 20/30 的主文字色，比正文
+            大一档、限宽 64ch。「有多少把握」是它的注脚，旧版就是一句灰字配一枚 8px 圆点。 */}
+        <p className="max-w-prose text-title-2-regular text-text-primary">{analysis.headline}</p>
+        <p className="flex flex-wrap items-center gap-2 text-body-2-regular text-text-secondary">
+          <i aria-hidden className={`size-2 shrink-0 rounded-full ${confidence.level === 'high'
+            ? 'bg-status-lime-text'
+            : confidence.level === 'medium' ? 'bg-status-yellow-text' : 'bg-text-tertiary'}`} />
+          {confidence.label || '仍在学习'}
         </p>
       </header>
       {analysis.points?.length ? (
         <div className="inline-grid w-full gap-3 sm:grid-cols-2">
           {analysis.points.map((point) => (
-            <div key={point.label} className="flex min-w-0 flex-col gap-1 rounded-xl bg-background-tertiary-default p-3">
+            <div key={point.label} className={`flex min-w-0 flex-col gap-1 ${TILE}`}>
               <span className="text-caption-1-regular text-text-secondary">{point.label}</span>
               <b className="text-body-2-medium break-words text-text-primary">{point.text}</b>
             </div>
@@ -255,7 +255,7 @@ function AnalysisCard({ data, onSignal, navigate }:
         <div className="flex flex-col gap-2">
           {leads.map((lead) => (
             <button key={lead.key} type="button" onClick={lead.act}
-              className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-xl bg-background-tertiary-default p-3 text-left outline-none hover:bg-background-primary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+              className={`flex w-full min-w-0 cursor-pointer items-center gap-3 ${TILE} text-left outline-none hover:bg-background-primary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring`}>
               <span className="flex min-w-0 grow flex-col gap-1">
                 <b className="text-body-2-medium text-text-primary">{lead.title}</b>
                 <small className="text-caption-1-regular text-text-secondary">{lead.detail}</small>
@@ -264,7 +264,7 @@ function AnalysisCard({ data, onSignal, navigate }:
             </button>
           ))}
         </div>
-      ) : <EmptyState icon={RiSearchLine} title="还没有可探索的入口">{NO_LEAD_HINT}</EmptyState>}
+      ) : <EmptyState shell="plain" icon={RiSearchLine} title="还没有可探索的入口">{NO_LEAD_HINT}</EmptyState>}
     </section>
   );
 }
@@ -280,7 +280,7 @@ function HistoryGuide({ onboarding, done }: { onboarding: boolean; done: boolean
     setSkipped(true);
   };
   return (
-    <div className="rounded-2xl border border-separator-border p-4">
+    <div className={cardClass({ padding: 'none', className: 'p-4' })}>
       <Disclosure summary="浏览器历史记录导入指南" defaultOpen={onboarding}>
         <p className="text-body-2-regular text-text-secondary">{GUIDE_LOCAL}</p>
         <p className="text-body-2-regular text-text-secondary">{GUIDE_REMOTE}</p>
@@ -355,13 +355,13 @@ function SourceList(
   });
   return (
     <section className={CARD} aria-label="数据源">
-      <h3 className="text-headline-medium text-text-primary">数据源</h3>
+      <h3 className="text-title-2-medium text-text-primary">数据源</h3>
       {remove.error ? <Note tone="error">{errorMessage(remove.error)}</Note> : null}
       {sources.length ? (
         <div className="inline-grid w-full gap-2 sm:grid-cols-2">
           {sources.map((source) => (
             <div key={source.source_key}
-              className="flex min-w-0 items-center gap-3 rounded-xl bg-background-tertiary-default p-3">
+              className={`flex min-w-0 items-center gap-3 ${TILE}`}>
               <span className="inline-grid size-8 shrink-0 place-items-center rounded-lg text-text-secondary">
                 {source.browser === 'browserexport'
                   ? <RiUploadLine aria-hidden className="size-4" />
@@ -385,7 +385,7 @@ function SourceList(
             </div>
           ))}
         </div>
-      ) : <EmptyState icon={RiDatabase2Line} title="还没有数据源">{NO_SOURCE_HINT}</EmptyState>}
+      ) : <EmptyState shell="plain" icon={RiDatabase2Line} title="还没有数据源">{NO_SOURCE_HINT}</EmptyState>}
     </section>
   );
 }
@@ -492,9 +492,10 @@ export function TastePage(props: TasteProps) {
       <Tabs selectedKey={evidence} onSelectionChange={(key) => setEvidence(String(key))}
         className="flex flex-col gap-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabList aria-label="口味证据来源" className="flex flex-wrap gap-1">
-            <Tab id="browser" className={EVIDENCE_TAB}>浏览器记录</Tab>
-            <Tab id="peach" className={EVIDENCE_TAB}>Peach 内部</Tab>
+          {/* 旧 `.insightswitch`：证据来源是两个互斥视图，形态是分段控件不是两枚裸按钮。 */}
+          <TabList aria-label="口味证据来源" className={SEGMENTED_TRACK}>
+            <Tab id="browser" className={SEGMENT}>浏览器记录</Tab>
+            <Tab id="peach" className={SEGMENT}>Peach 内部</Tab>
           </TabList>
           <div className="flex flex-wrap items-center gap-2">
             <Select aria-label="分析范围" selectedKey={range}
@@ -525,18 +526,18 @@ export function TastePage(props: TasteProps) {
           {problem ? <Note tone="error">{problem}</Note> : null}
         </div>
         <TabPanel id="browser" className="flex flex-col gap-5">
-          <div className="inline-grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard icon={RiHistoryLine} term="浏览记录"
+          <div className={STAT_STRIP}>
+            <SummaryCard accent={0} icon={RiHistoryLine} term="浏览记录"
               figure={Number(summary.history_visits || 0).toLocaleString()}
               detail={`${summary.history_sources || 0} 个数据源 · ${tasteDate(summary.range_start)}—${tasteDate(summary.range_end)}`} />
-            <SummaryCard icon={RiPriceTag3Line} term="口味维度"
+            <SummaryCard accent={1} icon={RiPriceTag3Line} term="口味维度"
               figure={categories.length.toLocaleString()} detail={categories[0]?.name || '尚无主维度'} />
-            <SummaryCard icon={RiSearchLine} term="浏览候选" figure={gaps.length.toLocaleString()} />
-            <SummaryCard icon={RiDatabase2Line} term="私有导出"
+            <SummaryCard accent={2} icon={RiSearchLine} term="浏览候选" figure={gaps.length.toLocaleString()} />
+            <SummaryCard accent={3} icon={RiDatabase2Line} term="私有导出"
               figure={Number(storage.exports || 0).toLocaleString()} detail={fmtSize(storage.bytes || 0)} />
           </div>
           <section className={`${CARD} md:flex-row md:gap-6`} aria-label="浏览器画像">
-            <div className="flex shrink-0 flex-col gap-2 border-b border-separator-border pb-5 md:w-72 md:border-b-0 md:border-r md:pr-6 md:pb-0">
+            <div className="flex shrink-0 flex-col gap-2 pb-5 md:w-72 md:pr-6 md:pb-0">
               <span className="text-caption-1-regular text-text-secondary">浏览器画像</span>
               <TasteRadar rows={categories} label="主要口味维度" />
               <small className="text-caption-1-regular text-text-secondary">
@@ -546,7 +547,7 @@ export function TastePage(props: TasteProps) {
             <div className="min-w-0 grow">
               {categories.length
                 ? <RankedBars rows={categories} label="口味维度排名" />
-                : <EmptyState icon={RiSearchLine} title="暂无口味维度">{NO_CATEGORY_HINT}</EmptyState>}
+                : <EmptyState shell="plain" icon={RiSearchLine} title="暂无口味维度">{NO_CATEGORY_HINT}</EmptyState>}
             </div>
           </section>
           <ActivityCharts activity={data.activity} />
@@ -560,16 +561,16 @@ export function TastePage(props: TasteProps) {
             ]} />
         </TabPanel>
         <TabPanel id="peach" className="flex flex-col gap-5">
-          <div className="inline-grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <SummaryCard icon={RiEyeLine} term="Peach 看过"
+          <div className={STAT_STRIP}>
+            <SummaryCard accent={0} icon={RiEyeLine} term="Peach 看过"
               figure={Number(summary.peach_items || 0).toLocaleString()}
               detail={tasteHours(summary.peach_seconds || 0)} />
-            <SummaryCard icon={RiThumbUpLine} term="喜欢" figure={Number(summary.liked || 0).toLocaleString()} />
-            <SummaryCard icon={RiThumbDownLine} term="不合口味" figure={Number(summary.disliked || 0).toLocaleString()} />
-            <SummaryCard icon={RiPriceTag3Line} term="有标签" figure={tagged.toLocaleString()} />
+            <SummaryCard accent={1} icon={RiThumbUpLine} term="喜欢" figure={Number(summary.liked || 0).toLocaleString()} />
+            <SummaryCard accent={2} icon={RiThumbDownLine} term="不合口味" figure={Number(summary.disliked || 0).toLocaleString()} />
+            <SummaryCard accent={3} icon={RiPriceTag3Line} term="有标签" figure={tagged.toLocaleString()} />
           </div>
           <section className={`${CARD} md:flex-row md:gap-6`} aria-label="Peach 观看">
-            <div className="flex shrink-0 flex-col gap-0.5 border-b border-separator-border pb-5 md:w-72 md:border-b-0 md:border-r md:pr-6 md:pb-0">
+            <div className="flex shrink-0 flex-col gap-0.5 pb-5 md:w-72 md:pr-6 md:pb-0">
               <span className="text-caption-1-regular text-text-secondary">Peach 观看</span>
               <b className="text-display-4-medium tabular-nums text-text-primary">
                 {Number(summary.peach_items || 0).toLocaleString()}
