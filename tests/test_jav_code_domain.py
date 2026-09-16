@@ -236,6 +236,36 @@ class TokyoHotShapeTests(unittest.TestCase):
             "rena yamamoto ss n")
 
 
+class DeliveryFilenameTests(unittest.TestCase):
+    """发行站自己交付的文件名，番号被站方的写法包着。
+
+    样本是本机账本里全部 4 条这样的视频。收益和误判用同一批名字量过：解析不出番号
+    却已有 code 的从 803 条降到 799 条，解析出来与 code 不符的仍是 4 条，20721 条
+    没有 code 的文件新增解析出 0 条。
+    """
+
+    def test_a_dmm_delivery_name_carries_the_code_between_date_and_codec(self):
+        self.assertEqual(release_code_from_filename("0112mide612-h264.mp4"), "MIDE-612")
+
+    def test_the_date_prefix_is_four_digits_and_the_tail_is_a_codec(self):
+        # 三位是素人系的厂牌段（`259LUXU-1007`），放宽位数就会把它吃掉；尾巴不认
+        # 「任意后缀」，否则把演员名写在番号后面的名字也成了同一形状。
+        self.assertIsNone(release_code_from_filename("0112mide612-鈴村あいり.mp4"))
+        self.assertIsNone(release_code_from_filename("259luxu1137-h264.mp4"))
+        self.assertEqual(release_code_from_filename("259LUXU-1137.mp4"), "259LUXU-1137")
+
+    def test_heyzo_writes_its_own_name_before_the_number(self):
+        self.assertEqual(release_code_from_filename("heyzo_hd_1031_full.mp4"), "HEYZO-1031")
+        self.assertEqual(release_code_from_filename("heyzo_lt_1380_full-1.mp4"), "HEYZO-1380")
+        self.assertEqual(release_code_from_filename("HEYZO-1380.mp4"), "HEYZO-1380")
+
+    def test_the_number_alone_is_not_a_heyzo_release(self):
+        # 站名是这条规则的全部证据：少了它，创作者目录里按下划线分段、末尾带画质
+        # 数字的名字同样满足形状。
+        self.assertIsNone(release_code_from_filename("Banbi_20歳の女子大生_1080.mp4"))
+        self.assertIsNone(release_code_from_filename("heyzo.mp4"))
+
+
 class WesternDateShapeTests(unittest.TestCase):
     """西片是「厂牌／系列 + 发行日」，没有番号。
 
