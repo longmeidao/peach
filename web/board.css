@@ -1506,6 +1506,9 @@ body[data-surface="/review"] .reviewtabs{display:flex;flex-direction:column;gap:
 body[data-surface="/review"] .reviewtabs button{height:auto;min-height:40px;text-align:left;justify-content:space-between;padding:10px 12px;white-space:normal}
 body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar,.board-pagination){grid-column:1;min-width:0}
 body[data-surface="/review"] .review-workspace>.runtimegate{grid-column:1/-1;grid-row:1}
+/* 栅格只给了列间距，自动落库那条提示又没写归属，自动摆位把它和下面的队列贴成一体。
+   归到左栏并自带一档行距：这一栏的相邻块（卡片网格、批量操作栏）之间也是 20px。 */
+body[data-surface="/review"] .review-workspace>.review-autoapply{grid-column:1;margin-bottom:20px}
 body[data-surface="/review"] .review-workspace:has(>.runtimegate)>.reviewcontrols{grid-row:2 / span 4}
 body[data-surface="/review"] .reviewitem{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
 body[data-surface="/review"] :is(.reviewlist:not(.reviewgroups),.reviewgroupitems){grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:20px}
