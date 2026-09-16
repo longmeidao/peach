@@ -20,6 +20,7 @@ import { Input } from '@/components/base/input/input';
 import { cx } from '@/utils/cx';
 
 import { errorMessage } from '../../api';
+import { cardClass } from '../components/card';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
@@ -158,7 +159,7 @@ function PickRow(
     (candidate) => !hidden.has(candidate.provider_label || ''));
   const failures = Object.entries(row.failures || {});
   return (
-    <div className="flex flex-col gap-2 rounded-2xl border border-separator-border p-4">
+    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-2 p-4' })}>
       <b className="text-body-medium text-text-primary">{row.line}</b>
       {candidates.length ? candidates.map((candidate) => {
         const key = candidateKey(at, candidate);
@@ -323,8 +324,9 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
   const menuOpen = focused && (options.length > 0 || suggesting);
 
   return (
-    <div className="flex flex-col gap-4">
-      <h3 className="text-headline-medium text-text-primary">添加关注</h3>
+    /* 旧 `.followmanage .fmain>.fsec`：一块分区就是一张填充卡，标题在卡里。 */
+    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-4 px-6 py-5 max-sm:px-4' })}>
+      <h3 className="text-title-2-medium text-text-primary">添加关注</h3>
 
       <div className="flex flex-wrap items-end gap-2">
         {/* 焦点离开的是整块字段才收下拉，不是离开输入框就收：下拉里的每一条都是真的按钮，

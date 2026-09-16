@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
+import { cardClass } from '../components/card';
 import {
   dayCalendar, flowGraph, flowLabel, FLOW_LABEL_X, FLOW_NODE_WIDTH, FLOW_VIEWBOX, hourGrid,
   RADAR_GRID, radarPoints, radarRing, radarShape, rankShares, WEEKDAYS,
@@ -25,17 +26,21 @@ const FLOW_FILL = [
   'fill-chart-4', 'fill-chart-5', 'fill-chart-6',
 ];
 
-const CARD = 'flex min-w-0 flex-col gap-4 rounded-2xl border border-separator-border p-5';
+/* 图表卡比读数卡大一档圆角：旧 `.board-heat-card`／`.board-sankey-card` 都是 20px。 */
+const CARD = `${cardClass({ radius: 'chart' })} flex flex-col gap-4 max-sm:p-4`;
 
-/** 一张图的头：一个标题、一个大数、一句它此刻指的是什么。 */
+/** 一张图的头：一个标题、一个大数、一句它此刻指的是什么。
+ *
+ * 旧 `.board-heat-card>header` 是两列：标题压着大数在左，那句注解贴右下角对齐大数的基线。
+ * 三张图表卡（环形、热图、桑基）共用这一套，所以注解长短不一也不会把标题挤走。 */
 function ChartHead({ title, figure, note }: { title: string; figure: string; note: string }) {
   return (
-    <header className="flex flex-col gap-1">
-      <span className="text-caption-1-regular text-text-secondary">{title}</span>
-      <p className="flex flex-wrap items-baseline gap-2">
-        <b className="text-title-1-medium tabular-nums text-text-primary">{figure}</b>
-        <small className="min-w-0 text-caption-1-regular break-words text-text-secondary">{note}</small>
-      </p>
+    <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+      <span className="flex min-w-0 flex-col gap-1">
+        <h3 className="text-title-2-medium text-text-primary">{title}</h3>
+        <b className="text-display-4-medium tabular-nums text-text-primary">{figure}</b>
+      </span>
+      <small className="min-w-0 text-caption-1-regular break-words text-text-secondary">{note}</small>
     </header>
   );
 }
@@ -143,7 +148,7 @@ export function ActivityCharts({ activity }: { activity: TasteActivity | undefin
   if (!days.cells.length) {
     return (
       <section className={CARD}>
-        <h3 className="text-headline-medium text-text-primary">浏览活跃时间</h3>
+        <h3 className="text-title-2-medium text-text-primary">浏览活跃时间</h3>
         <p className="text-body-2-regular text-text-secondary">还没有可用于分析的口味网站访问记录。</p>
       </section>
     );
@@ -190,12 +195,12 @@ export function CreatorSankey({ flows }: { flows: CreatorFlow[] | undefined }) {
       <div className="min-w-0 overflow-x-auto">
         <svg viewBox={`0 0 ${FLOW_VIEWBOX.width} ${FLOW_VIEWBOX.height}`} fill="none"
           role="img" aria-label="来源网站与创作者线索"
-          className="block h-auto min-w-160 w-full" onPointerLeave={() => setShown(null)}>
+          className="block h-auto max-h-130 min-w-160 w-full" onPointerLeave={() => setShown(null)}>
           <g>
             {graph.links.map((link) => (
               <path key={link.key} d={link.d} strokeWidth={link.width} tabIndex={0} role="img"
                 aria-label={`${link.label}：${link.value} 条线索`}
-                fillOpacity={0} strokeOpacity={linkLit(link, link.label) ? 0.7 : 0.08}
+                fillOpacity={0} strokeOpacity={linkLit(link, link.label) ? 0.55 : 0.08}
                 className={`outline-none transition-opacity ${FLOW_STROKE[link.color]}`}
                 onPointerEnter={() => setShown({ value: link.value, label: link.label, node: null })}
                 onFocus={() => setShown({ value: link.value, label: link.label, node: null })}

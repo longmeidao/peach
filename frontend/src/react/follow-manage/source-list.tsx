@@ -30,6 +30,7 @@ import {
 
 import { errorMessage } from '../../api';
 import { DOTS, paginationRange } from '../../pagination';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
@@ -139,7 +140,7 @@ function SourceRow(
 ) {
   return (
     <div data-selected={selected || undefined}
-      className="flex flex-wrap items-center gap-3 border-t border-separator-border py-2.5 pr-3 pl-4 data-selected:bg-background-secondary-default">
+      className="flex min-h-16 flex-wrap items-center gap-3 rounded-lg px-2 py-3 data-selected:bg-background-tertiary-default">
       <Checkbox isSelected={selected} onChange={onToggle} aria-label={`选择 ${source.label}`} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
         <SourceLink source={source} />
@@ -190,8 +191,8 @@ function AuthorCard(
   const state = selectionState(selected, ids);
   return (
     <section aria-label={`${name} 的关注来源`}
-      className="flex flex-col rounded-2xl border border-separator-border">
-      <div className="flex flex-wrap items-center gap-3 py-2.5 pr-3 pl-4">
+      className={cardClass({ padding: 'none', className: 'flex flex-col overflow-hidden p-2' })}>
+      <div className="flex flex-wrap items-center gap-3 px-2 py-2.5">
         <AuthorAvatar group={group} name={name} />
         <b className="min-w-0 grow text-body-medium break-words text-text-primary">{name}</b>
         <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine}
@@ -494,15 +495,17 @@ export function SourceList(props: SourceListProps) {
 
   if (!sources.length) {
     return (
-      <EmptyState icon={RiRssLine} title="还没有关注来源">关注来源及其检查状态会显示在这里。</EmptyState>
+      <EmptyState shell="plain" icon={RiRssLine} title="还没有关注来源">关注来源及其检查状态会显示在这里。</EmptyState>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    /* 旧 `.followmanage .fmain>.fsec`：整块关注列表是一张填充卡，标题、工具条、创作者分组
+       和底下那条汇总都在同一张卡里，不是一个描边容器套着几行。 */
+    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-4 px-6 py-5 max-sm:px-4' })}>
       {/* 放不下时带字的按钮先收成图标，再让整行换行。收起后名字由 `aria-label` 接着说。 */}
       <div ref={toolbar} className="flex flex-wrap items-center gap-2">
-        <h3 className="mr-auto text-headline-medium text-text-primary">关注列表</h3>
+        <h3 className="mr-auto text-title-2-medium text-text-primary">关注列表</h3>
         <span className="text-body-2-regular text-text-secondary">
           {`${sources.length} 个来源${counts.new ? ` · ${counts.new} 条未看` : ''}`}
         </span>
@@ -660,7 +663,8 @@ export function SourceList(props: SourceListProps) {
       </div>
 
       {counts.new ? (
-        <div className="flex flex-wrap items-center gap-2 border-t border-separator-border pt-3">
+        /* 旧 `.fsecfoot`：汇总与它的动作是卡底那一条带，比卡面暗一点点，通到卡片左右两沿。 */
+        <div className="-mx-6 -mb-5 flex flex-wrap items-center gap-2 border-t border-separator-border rounded-b-2xl bg-card-footer px-6 py-4 max-sm:-mx-4 max-sm:px-4">
           <span className="mr-auto text-body-2-regular text-text-secondary">
             {`未看 ${counts.new} · 已看 ${counts.seen || 0} · 已保存 ${counts.saved || 0} · 已忽略 ${counts.ignored || 0}`}
           </span>

@@ -17,10 +17,15 @@ import { useLibraryProcessingJob } from './use-library-processing';
 
 type Tone = 'gray' | 'warning' | 'error';
 
+/* 旧 `.project-banner`：通栏一条，只有上下两条线、没有圆角也没有左右边——它压在目录页
+ * 内容上方，圆角卡会把自己读成页面上的一块内容，而它说的是「别处有件事在进行」。 */
+const BANNER = 'flex min-h-10 flex-wrap items-center justify-center gap-x-4 gap-y-2'
+  + ' border-y border-separator-border px-6 py-2 max-sm:justify-start';
+
 const SURFACE: Record<Tone, string> = {
-  gray: 'flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-separator-border px-4 py-3 text-text-secondary',
-  warning: 'flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-separator-border bg-status-yellow-background px-4 py-3 text-status-yellow-text',
-  error: 'flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-separator-border bg-background-tertiary-error px-4 py-3 text-text-error-primary',
+  gray: `${BANNER} bg-background-secondary-default text-text-secondary`,
+  warning: `${BANNER} bg-status-yellow-background text-status-yellow-text`,
+  error: `${BANNER} bg-background-tertiary-error text-text-error-primary`,
 };
 
 /** 进度环。几何走 SVG 属性：一圈长度钉成 100，画出来的那一段就是百分比本身。 */
@@ -29,7 +34,7 @@ function Gauge({ value, max }: { value: number; max: number }) {
   return (
     <svg role="progressbar" aria-label="任务完成率" aria-valuemin={0} aria-valuemax={100}
       aria-valuenow={percent} viewBox="0 0 32 32" fill="none"
-      className="size-6 shrink-0 -rotate-90 stroke-current">
+      className="size-8 shrink-0 -rotate-90 stroke-current">
       <circle cx="16" cy="16" r="13" strokeWidth="4" className="opacity-25" />
       <circle cx="16" cy="16" r="13" strokeWidth="4" pathLength={100}
         strokeDasharray={`${percent} 100`} strokeLinecap="round" />
@@ -59,7 +64,7 @@ export function LibraryProcessingNotice(props: LibraryProcessingProps) {
       <div className="flex min-w-0 items-center gap-3">
         {running && total
           ? <Gauge value={checked} max={total} />
-          : <Glyph aria-hidden className="size-5 shrink-0" />}
+          : <Glyph aria-hidden className="size-4 shrink-0" />}
         <p className="min-w-0 text-body-2-regular">{message}</p>
       </div>
       <LinkButton href="/data-cleanup#libraryProcessing" size="small" trailingIcon={RiArrowRightLine}>

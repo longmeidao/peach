@@ -79,7 +79,7 @@ it('首屏用 prefetch 落进缓存的那一份画出来，挂载时不再请求
 
 it('汇总说的是服务端的总数，不是这一页截到的条数', async () => {
   const { host } = await open(payload([goal(), goal({ id: 2, name: 'two.mp4' })], 37));
-  expect(host.querySelector('p')?.textContent).toBe('待升级 · 37 部作品');
+  expect(host.querySelector('b')?.textContent).toBe('37 部作品');
   expect(host.querySelectorAll('li[data-goal-id]')).toHaveLength(2);
 });
 

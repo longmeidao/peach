@@ -63,6 +63,17 @@
   /* 模态弹层的遮罩。注册表里没有模态弹层，也就没有它的底色；取值同旧样式表
    * `.geist-modal::backdrop` 的黑 60%，深浅两档共用一个。 */
   --color-scrim: color-mix(in srgb, var(--color-black) 60%, transparent);
+  /* 读数卡脚注那条带的底色。旧 `--board-card-foot` 是卡面掺 2% 文字色，比卡面暗一点点，
+   * 把脚注和读数分成两段。取值随卡面走，所以真值声明在 `.peach-react` 上（见下），
+   * 这里只把它接成一个颜色 token；`.peach-react` 外面没有卡片，落回透明。 */
+  --color-card-footer: var(--card-footer, transparent);
+  /* 可点的卡悬停时的面。旧 `.metricstrip button:hover` 压的是 `--overlay-5`：亮色黑 5%、
+   * 深色近白 5%，落到卡上就是卡面掺 5% 主文字色。`--surface` 与 `--ground` 在亮色里同为白，
+   * 换一档现成 token 看不出深浅，所以旧版直接混。同上，真值声明在 `.peach-react` 上。 */
+  --color-card-hover: var(--card-hover, transparent);
+  /* 统计与口味两页的折行断点，旧 `05-insights.css` 的媒体查询统一钉在 1000px，
+   * 不落在 Tailwind 的 sm/md/lg 上。写成断点 token，`board:` 变体照常生成。 */
+  --breakpoint-board: 1000px;
 }
 
 /* 粘顶的那一层玻璃。取值逐字同 `web/board.css` 里首页筛选条那一组：同一份 `--glass-*`
@@ -110,6 +121,13 @@
 @utility card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+}
+
+/* 带封面的列表卡窄一档：封面 150px 加右边那一列文字，280px 就够排，旧
+ * `body[data-surface="/quality-goals"] .qualitylist` 钉的就是这个数。 */
+@utility card-grid-cover {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
 }
 
 /* 后台任务仍在推进、又说不出总量时的 Loading Dots。工具类里没有 animation-delay 这一档，
@@ -179,6 +197,14 @@
   --color-border-checkbox-default: var(--color-neutral-700);
   --color-border-checkbox-hover:   var(--color-neutral-500);
   --color-separator-border:        var(--color-neutral-800);
+}
+
+/* 脚注带与悬停面都跟着卡面走，深浅两档各自掺，所以读的是上面重新声明过的卡面色，而不是 `:root` 上
+ * 那一份（`web/board.css` 在 `:root` 给同名 token 另定了值）。选择器写成 `:where()`：
+ * 上面两块由 `BoardTokenTests` 逐条比对 theme.css，这条不是上游 token，不进那两块。 */
+:where(.peach-react) {
+  --card-footer: color-mix(in srgb, var(--color-background-secondary-default) 98%, var(--color-text-primary));
+  --card-hover: color-mix(in srgb, var(--color-background-secondary-default) 95%, var(--color-text-primary));
 }
 
 /* 以下逐字取自上游 globals.css：Checkbox 打勾的描线动画，和 Table 的全部外观。 */

@@ -14,6 +14,7 @@ import {
 } from '@/components/base/table/table';
 
 import { errorMessage } from '../../api';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { ErrorText, FieldLabel } from '../settings/section';
 import { busyProps } from '../settings/use-action';
@@ -100,8 +101,8 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
   const busy = busyProps(merge.isPending);
 
   return (
-    <div className="flex flex-col gap-4">
-      <h3 className="text-headline-medium text-text-primary">创作者别名</h3>
+    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-4 px-6 py-5 max-sm:px-4' })}>
+      <h3 className="text-title-2-medium text-text-primary">创作者别名</h3>
 
       <div className="flex flex-col gap-2">
         <FieldLabel>手动添加别名</FieldLabel>
@@ -217,7 +218,7 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
             </TableBody>
           </Table>
         ) : (
-          <EmptyState icon={RiUserLine} title="还没有保存创作者别名">
+          <EmptyState shell="plain" icon={RiUserLine} title="还没有保存创作者别名">
             填写规范创作者名和平台别名以添加。
           </EmptyState>
         )}

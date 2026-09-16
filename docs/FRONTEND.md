@@ -253,6 +253,9 @@ BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选�
    用 `src/react/components/` 下 Peach 自己的组合件，第二个页面要用就搬进那里，不复制一份。
    `auto-fill` 网格、固定像素的封面这类工具类里没有的档位，在 `styles.css` 里加
    `@theme` 或 `@utility`，类名照常由 Tailwind 生成；lint 不收任意值。
+   卡面取 `components/card.tsx` 的 `cardClass()`，不自己拼描边卡：Board 的卡一律是
+   `--ground` 填充面，各页自拼 `rounded-2xl border border-separator-border` 的结果是同一种
+   卡片长出十几种空心壳。读数卡与分段控件同理，走 `stat-card.tsx`、`segmented.tsx`。
 5. `frontend/test/react/<page>.test.tsx`：假 fetch 加 `test/react/render.tsx` 的挂载助手，
    断言结构、请求次数、轮询节律和失败时留下什么，用例之间 `queryClient.clear()`。
    有写操作就再断言交上去的请求体、成功后页面上不再留着秘密输入、失败后输入原样还在；
@@ -304,8 +307,8 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 1157.4 kB（gzip 293.4 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 99.7 kB（gzip 16.0 kB），
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 1159.0 kB（gzip 294.6 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 108.4 kB（gzip 17.0 kB），
 由 `index.html` 在旧样式表之前引入。`peach-ui.js` 38.6 kB（gzip 13.4 kB），只剩挂载契约与
 遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补

@@ -1,15 +1,20 @@
 /* 没有数据或结果时的空态：图标、标题、说明同处一个组件里（`peach-web-ui`）。
  *
  * 注册表里没有空态条目。标题是真的标题元素，冒烟用例按它认页面主体：一片白和「画出来了、
- * 只是没有内容」在别的断言下长得一模一样。 */
+ * 只是没有内容」在别的断言下长得一模一样。
+ *
+ * 外壳按它落在哪里选，不按「哪个好看」选：卡里的空态自己不再画一层框。 */
 import type { ComponentType, ReactNode } from 'react';
 
 type Glyph = ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>;
 
-/* 卡片里的空态不描边：外面那张卡已经是一个框，再套一层就是框中框。它沉一档底色，
- * 占住图区那块地方，读起来仍是「这里本该有东西」。 */
+/* 卡片里的空态不描边：外面那张卡已经是一个框，再套一层就是框中框。
+ * - `page`：整屏就它一个，自己收一条边。
+ * - `plain`：落在一张卡或一块面板里，只留内边距，同旧 `.insightempty{padding:16px}`。
+ * - `inset`：占住卡里图区那块地方，沉一档底色，读起来仍是「这里本该有东西」。 */
 const SHELL = {
   page: 'rounded-2xl border border-separator-border px-6 py-12',
+  plain: 'px-6 py-12',
   inset: 'min-h-40 justify-center rounded-xl bg-background-secondary-default px-4 py-4',
 } as const;
 

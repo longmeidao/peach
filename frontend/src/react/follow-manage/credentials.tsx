@@ -11,6 +11,7 @@ import { Chip } from '@/components/base/badges/chip';
 import { Input } from '@/components/base/input/input';
 
 import { errorMessage } from '../../api';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { Note } from '../components/note';
 import { queryClient } from '../query';
@@ -122,14 +123,14 @@ function CredentialSection({ row, readOnly, toast }:
   );
   if (row.requirement === 'none' || row.requirement === 'blocked') {
     return (
-      <div className="flex flex-wrap items-center gap-3 border-b border-separator-border py-2.5 pr-3 last:border-b-0">
+      <div className="flex flex-wrap items-center gap-3 border-b border-separator-border px-6 py-5 last:border-b-0 max-sm:px-4">
         {head}
         {row.requirement === 'blocked' ? <Help>{row.why}</Help> : null}
       </div>
     );
   }
   return (
-    <div className="flex flex-col gap-2 border-b border-separator-border py-2.5 pr-3 last:border-b-0">
+    <div className="flex flex-col gap-2 border-b border-separator-border px-6 py-5 last:border-b-0 max-sm:px-4">
       {head}
       <Disclosure summary={credentialDone(row) ? '修改凭据' : '填写凭据'}
         defaultOpen={row.requirement === 'required' && !credentialDone(row)}>
@@ -146,22 +147,24 @@ export function Credentials(
   const rows = data.providers || [];
   const pending = rows.filter((row) => row.requirement === 'required' && !credentialDone(row));
   if (!rows.length) {
-    return <EmptyState icon={RiKey2Line} title="没有可配置的来源">已接入的站点及其凭据状态会显示在这里。</EmptyState>;
+    return <EmptyState shell="plain" icon={RiKey2Line} title="没有可配置的来源">已接入的站点及其凭据状态会显示在这里。</EmptyState>;
   }
   return (
-    <div className="flex flex-col gap-4">
+    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-4 px-6 py-5 max-sm:px-4' })}>
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="mr-auto text-headline-medium text-text-primary">来源和凭证</h3>
+        <h3 className="mr-auto text-title-2-medium text-text-primary">来源和凭证</h3>
         {pending.length
           ? <span className="text-body-2-regular text-text-error-primary">{`${pending.length} 个待配置`}</span>
           : null}
       </div>
-      <div className="flex flex-col">
+      {/* 旧 `[data-follow-panel=credentials]>.frows`：几个来源共处一张填充卡，行与行之间
+          只有一条发丝线，不各自套框。 */}
+      <div className={cardClass({ padding: 'none', className: 'flex flex-col overflow-hidden' })}>
         {rows.map((row) => (
           <CredentialSection key={row.provider} row={row} readOnly={readOnly} toast={toast} />
         ))}
       </div>
-      <div className="flex flex-col gap-1 rounded-2lg bg-background-secondary-default px-3 py-2">
+      <div className="flex flex-col gap-1">
         <b className="text-body-medium text-text-primary">{STORAGE_TITLE}</b>
         <span className="text-body-2-regular text-text-secondary">{STORAGE_BODY}</span>
         <span className="text-body-2-regular text-text-secondary">{`凭据文件在 ${data.root}`}</span>

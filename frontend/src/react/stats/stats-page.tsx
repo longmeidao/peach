@@ -21,10 +21,13 @@ import { LinkButton } from '@/components/base/buttons/link-button';
 
 import { errorMessage } from '../../api';
 import type { StatsProps } from '../bundle';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
+import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
+import { StatCard, statCardClass, STAT_STRIP } from '../components/stat-card';
 import { RadialCard } from './radial-card';
 import {
   fetchStats, percentOf, playedFor, playedItemUrl, reachedShare, STATS_KEY, watchedShare, watchNote,
@@ -34,8 +37,7 @@ import {
 /** 收起时露这么多条排行。三十条一次铺开会把下面两个面板整个顶到屏外。 */
 const RANKING_PREVIEW = 10;
 
-const CARD = 'flex min-w-0 flex-col gap-4 rounded-2xl border border-separator-border p-5';
-const PANEL_TAB = 'relative cursor-pointer py-3 text-body-2-regular text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:text-text-primary';
+const CARD = `${cardClass()} flex flex-col gap-4`;
 
 const NO_VIDEO_HINT = '添加媒体文件夹或关注来源，开始建立你的馆藏。';
 const NO_TAG_HINT = '补全资料或添加标签后，这里会显示馆藏中的内容标签。';
@@ -43,12 +45,13 @@ const NO_WATCH_HINT = '开始播放后，这里会显示最近的真实观看证
 const NO_TAG_SOURCE_HINT = '刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。';
 const NO_VOLUME_HINT = '添加媒体文件夹后，这里会显示存储空间。';
 
-/** 一格事实：一个名字配一个数。 */
+/** 一格事实：一个名字配一个数。面取浮层那一档（旧 `.insightfacts .kv` 的 `--surface`），
+ *  比卡面亮一级。 */
 function Fact({ term, value }: { term: string; value: number }) {
   return (
-    <div className="flex min-w-0 flex-col gap-1.5 rounded-xl bg-background-tertiary-default p-3">
+    <div className="flex min-h-16 min-w-0 flex-col gap-1.5 rounded-2lg bg-background-primary-default p-3">
       <span className="text-caption-1-regular text-text-secondary">{term}</span>
-      <b className="text-title-2-medium tabular-nums text-text-primary">{value.toLocaleString()}</b>
+      <b className="text-title-3-medium tabular-nums text-text-primary">{value.toLocaleString()}</b>
     </div>
   );
 }
@@ -69,10 +72,13 @@ function Coverage({ term, value, total }: { term: string; value: number; total: 
   );
 }
 
-/** 详情那一格的左栏：一句分类、一个大数、一句它的单位。 */
+/** 详情那一格的左栏：一句分类、一个大数、一句它的单位。
+ *
+ * 两栏之间不画线：旧 `board.css` 专门把 `.insightcopy` 的 `border-right` 清成 `border:0`，
+ * 一张填充卡里再切一刀，看起来就是两张卡挤在一起。 */
 function Headline({ term, figure, unit }: { term: string; figure: string; unit: string }) {
   return (
-    <div className="flex shrink-0 flex-col gap-0.5 border-b border-separator-border pb-5 md:w-64 md:border-b-0 md:border-r md:pr-6 md:pb-0">
+    <div className="flex shrink-0 flex-col gap-0.5 pb-5 md:w-64 md:pr-6 md:pb-0">
       <span className="text-caption-1-regular text-text-secondary">{term}</span>
       <b className="text-display-4-medium tabular-nums text-text-primary">{figure}</b>
       <span className="text-body-2-regular text-text-secondary">{unit}</span>
@@ -94,7 +100,7 @@ function InventoryDetail({ data, configurable, openMediaSettings }: { data: Stat
   const videos = data.by_loc.reduce((sum, row) => sum + row.videos, 0);
   if (!videos) {
     return (
-      <EmptyState icon={RiVideoLine} title="还没有视频" actions={
+      <EmptyState shell="plain" icon={RiVideoLine} title="还没有视频" actions={
         <>
           {configurable
             ? <Button size="small" onClick={openMediaSettings}>添加媒体文件夹</Button>
@@ -155,7 +161,7 @@ function VolumeRow({ volume }: { volume: StorageVolume }) {
 function StorageDetail({ volumes, configurable, openMediaSettings }: { volumes: StorageVolume[] } & StatsProps) {
   if (!volumes.length) {
     return (
-      <EmptyState icon={RiHardDrive2Line} title="还没有存储来源" actions={
+      <EmptyState shell="plain" icon={RiHardDrive2Line} title="还没有存储来源" actions={
         configurable ? <Button size="small" onClick={openMediaSettings}>添加媒体文件夹</Button> : undefined
       }>{NO_VOLUME_HINT}</EmptyState>
     );
@@ -171,18 +177,18 @@ function TagRanking({ tags, tagLabel, onTag }: { tags: TopTag[] } & StatsProps) 
   const [expanded, setExpanded] = useState(false);
   if (!tags.length) {
     return (
-      <EmptyState icon={RiPriceTag3Line} title="还没有内容标签"
+      <EmptyState shell="plain" icon={RiPriceTag3Line} title="还没有内容标签"
         actions={<LinkButton href="/data-cleanup" size="small">补全资料</LinkButton>}>{NO_TAG_HINT}</EmptyState>
     );
   }
   const shown = expanded ? tags : tags.slice(0, RANKING_PREVIEW);
   return (
     <div className="flex flex-col gap-3">
-      <ol className="inline-grid w-full gap-1 sm:grid-cols-2">
+      <ol className="inline-grid w-full gap-x-6 gap-y-1 sm:grid-cols-2">
         {shown.map((tag, index) => (
           <li key={tag.k} className="min-w-0">
             <button type="button" onClick={() => onTag(tag.k)}
-              className="flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left outline-none hover:bg-background-primary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring">
+              className="flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
               <span className="w-6 shrink-0 text-caption-1-regular tabular-nums text-text-secondary">{index + 1}</span>
               <span className="min-w-0 grow text-body-2-regular break-words text-text-primary">{tagLabel(tag.k)}</span>
               <b className="text-body-2-medium tabular-nums text-text-secondary">{tag.n.toLocaleString()}</b>
@@ -204,7 +210,7 @@ function TagRanking({ tags, tagLabel, onTag }: { tags: TopTag[] } & StatsProps) 
 function RecentWatches({ rows }: { rows: RecentPlay[] }) {
   if (!rows.length) {
     return (
-      <EmptyState icon={RiHistoryLine} title="还没有观看记录"
+      <EmptyState shell="plain" icon={RiHistoryLine} title="还没有观看记录"
         actions={<LinkButton href="/" size="small">浏览馆藏</LinkButton>}>{NO_WATCH_HINT}</EmptyState>
     );
   }
@@ -239,7 +245,7 @@ function RecentWatches({ rows }: { rows: RecentPlay[] }) {
 function TagSources({ sources, videos }: { sources: TagSource[]; videos: number }) {
   if (!sources.length) {
     return (
-      <EmptyState icon={RiPriceTag3Line} title="还没有标签来源"
+      <EmptyState shell="plain" icon={RiPriceTag3Line} title="还没有标签来源"
         actions={<LinkButton href="/data-cleanup" size="small">补全资料</LinkButton>}>{NO_TAG_SOURCE_HINT}</EmptyState>
     );
   }
@@ -262,19 +268,14 @@ function TagSources({ sources, videos }: { sources: TagSource[]; videos: number 
   );
 }
 
-/** 一张既是读数也是页签的卡。选中态是一圈实线，不靠加粗或换字色。 */
+/** 一张既是读数也是页签的卡。选中态是换一档卡面再压一圈 2px 内描边，不靠加粗或换字色。 */
 function MetricTab(
-  { id, label, figure, detail, icon: Icon }:
-  { id: string; label: string; figure: string; detail: string; icon: typeof RiEyeLine },
+  { id, label, figure, detail, icon: Icon, accent }:
+  { id: string; label: string; figure: string; detail: string; icon: typeof RiEyeLine; accent: number },
 ) {
   return (
-    <Tab id={id}
-      className="flex min-w-0 cursor-pointer flex-col gap-3 rounded-2xl border border-separator-border p-4 outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:border-border-focus-ring">
-      <span className="flex min-w-0 items-center gap-2 text-body-2-regular text-text-secondary">
-        <Icon aria-hidden className="size-4 shrink-0" />{label}
-      </span>
-      <b className="text-title-1-medium tabular-nums text-text-primary">{figure}</b>
-      <small className="min-w-0 overflow-hidden text-caption-1-regular text-ellipsis whitespace-nowrap text-text-secondary">{detail}</small>
+    <Tab id={id} className={statCardClass({ interactive: true, selectable: true })}>
+      <StatCard label={label} icon={Icon} accent={accent} figure={figure} footer={detail} />
     </Tab>
   );
 }
@@ -300,15 +301,15 @@ export function StatsPage(props: StatsProps) {
         {`账本当前快照 · ${videos.toLocaleString()} 个视频 · ${fmtSize(bytes)}`}
       </p>
       <Tabs className="flex flex-col gap-4">
-        <TabList aria-label="统计视图" className="inline-grid w-full gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricTab id="inventory" label="馆藏视频" icon={RiDatabase2Line}
+        <TabList aria-label="统计视图" className={STAT_STRIP}>
+          <MetricTab id="inventory" label="馆藏视频" icon={RiDatabase2Line} accent={0}
             figure={videos.toLocaleString()} detail={fmtSize(bytes)} />
-          <MetricTab id="viewing" label="看过" icon={RiEyeLine}
+          <MetricTab id="viewing" label="看过" icon={RiEyeLine} accent={1}
             figure={consumption.played.toLocaleString()} detail={playedFor(consumption.play_seconds)} />
-          <MetricTab id="coverage" label="内容标签" icon={RiPriceTag3Line}
+          <MetricTab id="coverage" label="内容标签" icon={RiPriceTag3Line} accent={2}
             figure={`${coverage}%`}
             detail={`${data.tag_cov.toLocaleString()} / ${data.attribution.videos.toLocaleString()}`} />
-          <MetricTab id="storage" label="使用空间" icon={RiHardDrive2Line}
+          <MetricTab id="storage" label="使用空间" icon={RiHardDrive2Line} accent={3}
             figure={`${storage.online} 个卷`}
             detail={storage.measured ? `已用 ${fmtSize(storage.used)}` : '容量未取得'} />
         </TabList>
@@ -338,16 +339,18 @@ export function StatsPage(props: StatsProps) {
           </Detail>
         </TabPanel>
       </Tabs>
-      <Tabs className="flex flex-col rounded-2xl border border-separator-border">
-        <TabList aria-label="统计维度"
-          className="flex gap-6 overflow-x-auto border-b border-separator-border px-4">
-          <Tab id="tags" className={PANEL_TAB}>内容标签</Tab>
-          <Tab id="recent" className={PANEL_TAB}>最近看过</Tab>
-          <Tab id="sources" className={PANEL_TAB}>标签来源</Tab>
-        </TabList>
-        <TabPanel id="tags" className="p-4"><TagRanking tags={data.top_tags} {...props} /></TabPanel>
-        <TabPanel id="recent" className="p-4"><RecentWatches rows={data.recent} /></TabPanel>
-        <TabPanel id="sources" className="p-4">
+      {/* 旧 `.insightpanel`：整块一张 16px 的填充卡，页签是卡内顶上那条分段控件。 */}
+      <Tabs className={`${cardClass({ padding: 'none' })} flex flex-col`}>
+        <div className="px-4 pt-3">
+          <TabList aria-label="统计维度" className={SEGMENTED_TRACK}>
+            <Tab id="tags" className={SEGMENT}>内容标签</Tab>
+            <Tab id="recent" className={SEGMENT}>最近看过</Tab>
+            <Tab id="sources" className={SEGMENT}>标签来源</Tab>
+          </TabList>
+        </div>
+        <TabPanel id="tags" className="px-4 pt-3.5 pb-4"><TagRanking tags={data.top_tags} {...props} /></TabPanel>
+        <TabPanel id="recent" className="px-4 pt-3.5 pb-4"><RecentWatches rows={data.recent} /></TabPanel>
+        <TabPanel id="sources" className="px-4 pt-3.5 pb-4">
           <TagSources sources={data.tag_source} videos={data.attribution.videos} />
         </TabPanel>
       </Tabs>

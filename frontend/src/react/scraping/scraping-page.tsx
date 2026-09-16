@@ -28,6 +28,7 @@ import type { ScrapingProps } from '../bundle';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
+import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
 import { queryClient } from '../query';
 import {
   ErrorText, ExternalLink, FieldLabel, Footer, Rows, Section, Stack,
@@ -178,10 +179,9 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
               不让看不见的那一份跟着提交。 */}
           <RadioGroup aria-label="提供 Cookie 的方式（二选一）" value={method}
             onChange={(next) => { setMethod(next); forgetSecrets() }}
-            className="flex flex-wrap gap-1">
+            className={SEGMENTED_TRACK}>
             {COOKIE_METHODS.map(([value, label]) => (
-              <Radio key={value} value={value}
-                className="flex h-8 cursor-pointer items-center rounded-lg px-3 text-body-2-medium text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:bg-background-tertiary-default data-selected:text-text-primary">
+              <Radio key={value} value={value} className={SEGMENT}>
                 {label}
               </Radio>
             ))}

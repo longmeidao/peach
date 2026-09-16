@@ -51,10 +51,13 @@ export function Stack({ divided = false, children }: { divided?: boolean; childr
     : <div className="flex flex-col gap-4 py-4 pr-3">{children}</div>;
 }
 
-/** 底栏：左边一句说这颗按钮此刻意味着什么，右边是按钮。 */
+/** 底栏：左边一句说这颗按钮此刻意味着什么，右边是按钮。
+ *
+ *  底色比卡面暗一点点，通到卡片左右两沿（旧 `.geist-fieldset-footer` 的 `--board-card-foot`）：
+ *  卡片的左内边距在卡自己身上，所以这一条要把它抵掉再自己补回来。 */
 export function Footer({ status, children }: { status?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center justify-end gap-3 border-t border-separator-border py-3 pr-3">
+    <div className="-ml-3 flex flex-wrap items-center justify-end gap-3 rounded-b-2xl border-t border-separator-border bg-card-footer px-3 py-3">
       {status ? <div className="mr-auto min-w-0 text-body-2-regular text-text-secondary">{status}</div> : null}
       {children}
     </div>

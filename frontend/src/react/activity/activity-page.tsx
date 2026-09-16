@@ -16,6 +16,7 @@ import { Chip } from '@/components/base/badges/chip';
 
 import { errorMessage } from '../../api';
 import type { ActivityProps } from '../bundle';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
@@ -44,10 +45,12 @@ function RunCard(
 ) {
   return (
     <li data-status={run.status} data-task-key={run.task_key}
-      className={run.status === 'failed'
-        ? 'flex flex-col rounded-2xl border border-border-error-default'
-        : 'flex flex-col rounded-2xl border border-separator-border'}>
-      <div className="flex flex-col gap-1.5 px-5 pt-5 pb-4">
+      className={cardClass({
+        padding: 'none',
+        bordered: 'line',
+        className: run.status === 'failed' ? 'flex flex-col border-border-error-default' : 'flex flex-col',
+      })}>
+      <div className="flex min-h-30 flex-col gap-1.5 px-5 pt-5 pb-4">
         <div className="flex flex-wrap items-center gap-2">
           <strong className="min-w-0 break-words text-title-1-medium text-text-primary">{run.task_label}</strong>
           <StatusBadge status={run.status} />
@@ -56,7 +59,7 @@ function RunCard(
         {children}
       </div>
       {footer
-        ? <div className="border-t border-separator-border px-5 py-3">
+        ? <div className="flex min-h-14 flex-col justify-center rounded-b-2xl border-t border-separator-border bg-card-footer px-5 py-3">
             <p className="text-caption-1-regular text-text-secondary">{footer}</p>
           </div>
         : null}
@@ -134,14 +137,14 @@ export function ActivityPage(_props: ActivityProps) {
         ? <Note tone="warning">{data.message || '账本上还没有任务中心的表'}</Note>
         : null}
       {quiet
-        ? <EmptyState icon={RiHistoryLine} title="还没有任务记录">
+        ? <EmptyState shell="plain" icon={RiHistoryLine} title="还没有任务记录">
             扫描、追更检查、批量操作和命令行批处理跑起来之后，这里会显示它们的进度与结果。
           </EmptyState>
         : <>
             <Section title="正在进行">
               {running.length
                 ? <RunList live>{running.map((run) => <RunningRun key={run.id} run={run} />)}</RunList>
-                : <p className="text-body-2-regular text-text-secondary">没有任务在跑。</p>}
+                : <Note tone="neutral">没有任务在跑。</Note>}
             </Section>
             {/* 「刚才那一轮为什么没跑」只有这一段答得出：定时触发撞上在跑的那一轮会
                 安静跳过，不留记录的话它在界面上和从没触发过一模一样。 */}
