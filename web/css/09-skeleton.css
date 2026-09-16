@@ -64,7 +64,7 @@
 .cleanup-skeleton .skeletoncard b{width:26%;height:16px;margin:12px 20px 20px}
 .cleanup-skeleton .skeletoncard em{width:100%;height:var(--fieldset-bar-h);margin:0;
   border-radius:0;border-top:1px solid var(--border-10);background:var(--overlay-5)}
-/* 人工复核是左边一列分类、右边工具条加一格一格等高的 Fieldset。骨架直接用最终容器
+/* 人工复核是左边一列分类、右边工具条加一格一格等高的卡片。骨架直接用最终容器
    那几个类名（`.review-workspace`、`.reviewcontrols`、`.reviewbulktoolbar`、`.reviewlist`），
    分栏、列宽和间距就都由页面自己那套规则给，这里只补占位件的尺寸——版面从占位到到货
    一格不挪，靠的是两边根本是同一套规则，不是两处抄同样的数字。
@@ -73,13 +73,12 @@
 .reviewcountskeleton{flex:none;width:28px;height:14px}
 .reviewtoolskeleton{width:120px;height:36px}
 .review-skeleton .reviewtabs button{color:var(--muted)}
-.review-skeleton .skeletoncard{display:grid;gap:0;box-sizing:border-box;height:var(--review-fieldset-height);
-  grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;border:1px solid var(--field-ring);
-  border-radius:var(--floating-radius);background:var(--ground)}
-.review-skeleton .skeletoncard i{aspect-ratio:auto;width:56%;height:22px;margin:20px 20px 0}
-.review-skeleton .skeletoncard b{width:auto;height:auto;margin:16px 20px 20px}
-.review-skeleton .skeletoncard em{width:100%;height:56px;margin:0;border-radius:0;
-  border-top:1px solid var(--line-soft);background:var(--overlay-5)}
+.review-skeleton .skeletoncard{display:grid;gap:16px;box-sizing:border-box;height:var(--review-card-height);
+  grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;padding:20px;
+  border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--surface)}
+.review-skeleton .skeletoncard i{aspect-ratio:auto;width:56%;height:22px;margin:0}
+.review-skeleton .skeletoncard b{width:auto;height:auto;margin:0}
+.review-skeleton .skeletoncard em{width:100%;height:36px;margin:0;border-radius:var(--control-radius);background:var(--overlay-5)}
 /* 关注管理是一列三块（添加关注、关注列表、凭据）的行政界面：骨架照 .fsec 的轮廓画，
    一块对一块、宽度跟着 .followmanage 一起限到 812px。头部条是框体不是待填内容，
    跟 .fsechead 同高同底色，不参与微光。 */

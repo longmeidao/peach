@@ -304,9 +304,9 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 1114.8 kB（gzip 282.9 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 95.5 kB（gzip 15.1 kB），
-由 `index.html` 在旧样式表之前引入。`peach-ui.js` 55.4 kB（gzip 18.3 kB），只剩挂载契约与
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 1157.4 kB（gzip 293.4 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 99.7 kB（gzip 16.0 kB），
+由 `index.html` 在旧样式表之前引入。`peach-ui.js` 38.6 kB（gzip 13.4 kB），只剩挂载契约与
 遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。

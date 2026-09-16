@@ -20,8 +20,6 @@ export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sideba
 import type * as ReactBundle from '@peach/react';
 
 export { watchJob, followJobProgress, jobActivityHtml } from './jobs';
-export { identityEvidenceHtml, reviewImageHtml, wireReviewPictures } from './review-evidence';
-export { createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows } from './review-bulk';
 export { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './selection';
 export { paginationHtml, pageCount, clampPage } from './pagination';
 export { nativeImageFit, matchesFaceSource } from './native-image';
@@ -40,6 +38,7 @@ export interface IslandContracts {
   'library-processing': ReactBundle.LibraryProcessingProps;
   'scraping': ReactBundle.ScrapingProps;
   'quality-goals': ReactBundle.QualityGoalsProps;
+  review: ReactBundle.ReviewProps;
   configuration: ReactBundle.ConfigurationProps;
   activity: ReactBundle.ActivityProps;
   stats: ReactBundle.StatsProps;
@@ -61,6 +60,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'library-processing': { react: 'library-processing' },
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
+  review: { react: 'review' },
   configuration: { react: 'configuration' },
   activity: { react: 'activity' },
   stats: { react: 'stats' },

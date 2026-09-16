@@ -439,11 +439,11 @@ class WebUiSourceTests(unittest.TestCase):
         """操作条以中性透明灰叠在框体上，与骨架使用同一灰阶。"""
         self.assertPageContains("--page:#FAFAFA;")
         self.assertPageContains("--page:#04060A;")
-        for selector in (".cleanupfieldset", ".reviewitem", ".fsec",
+        for selector in (".cleanupfieldset", ".fsec",
                          ".resourcesyncbox,.resourcepanel"):
             self.assertPageContains(selector + "{", f"{selector} 应有一条自己的规则")
         css = stylesheet_source()
-        for name in (".cleanupfieldset>.geist-fieldset-footer", ".reviewitem .reviewactions",
+        for name in (".cleanupfieldset>.geist-fieldset-footer",
                      ".fsechead", ".resourcesyncfooter,.resourceapplyrow"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
@@ -1413,7 +1413,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("background:var(--sunk)", disabled)
         self.assertIn("box-shadow:0 0 0 1px var(--line-soft)", disabled)
         # 第二遍：实底红配纯白字的规则，只准是危险档和 Geist 的 error 变体，且都在 01-base。
-        # `--drop` 当状态点、复核卡左侧的状态条或低透明度衬底不在此列——那些地方的字色
+        # `--drop` 当状态点或低透明度衬底不在此列——那些地方的字色
         # 不是 `#fff`，它们标注的是状态，不是一颗按下去就不可逆的键。
         red = re.compile(r"background:(?:color-mix\(in srgb,)?(?:var\(--drop\)|#da2f35)")
         solid = sorted(rule.split("{")[0].strip()
@@ -1983,23 +1983,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});")
 
-    def test_review_face_kinds_agree_between_the_page_and_the_endpoint(self):
-        """复核卡片那张脸的 kind 两边各存一份，必须逐字一致。
-
-        页面按 `ENTITY_REVIEW_CATEGORIES` 拼 `/entity-image?kind=`，服务端按
-        `web_review.ENTITY_REVIEW_KINDS` 判「这个实体有没有图」。一边判成 creator、
-        另一边按 performer 取图，就是标志说有图而请求照样 404：两份表各自都不会报错，
-        页面上看到的只是又一张碎图。
-        """
-        # 这个文件其余断言只读页面源；这一条守的正是页面与服务端的对不上，
-        # 所以必须两边都看。
-        from peach.web_review import ENTITY_REVIEW_KINDS
-
-        declared = re.search(r"const ENTITY_REVIEW_CATEGORIES=\{([^}]*)\}", self.app_js)
-        self.assertIsNotNone(declared, "页面那份表不在了；改名的话服务端也得跟着改")
-        self.assertEqual(dict(re.findall(r"(\w+):'(\w+)'", declared.group(1))),
-                         ENTITY_REVIEW_KINDS)
-
     def test_face_fallback_chains_end_by_removing_the_broken_image(self):
         """还是取不到图的 <img> 必须被摘掉，不能只停在「不再重试」。
 
@@ -2194,35 +2177,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 横向空间。整条 CSS 一并删掉，别留下没人用的类名。
         self.assertPageLacks('entitylinkarrow', "外链箭头应当已删除")
         self.assertPageLacks('↗', "外链箭头字符应当已删除")
-
-    def test_review_cards_put_the_evidence_at_the_bottom_of_one_stage(self):
-        """复核卡中段是一个框：预览铺满它，判断依据贴在框底。
-
-        依据掉在框外时，一张卡上会出现两块留白——框里空半屏、框外一行字，读起来
-        像两件不相干的事。没抽帧、取不到图的那两种同样在这个框里铺满，卡高因此不随
-        「有没有预览」上下跳。候选表单和身份证据那两类不进框：它们每一项自己就是一个框；
-        候选表单的当前信息另有去处，它贴在卡底不跟着滚。
-        """
-        self.assertPageContains("const framed=!metadata&&reviewCategory!=='western_identity';")
-        self.assertPageContains('const stage=`<div class="reviewstage"'
-                                "${framed?' data-framed=\"\"':''}>${preview}${")
-        self.assertPageContains("!metadata&&evidence?`<p class=\"reviewevidence\">"
-                                "${esc(evidence)}</p>`:''}</div>`;")
-        self.assertPageContains("tags||reviewCategory==='creator_tags'")
-        self.assertPageContains('暂无候选标签</small>')
-        # 高度从卡身一路传到框：滚动壳不给 height，中间就断在内容高度上，框只到
-        # 内容为止，卡的下半截空着。框只长不缩，内容超出时由滚动壳接手。
-        self.assertPageContains(".reviewcontent .geist-scroller{height:100%}")
-        self.assertPageContains(".reviewcontent .geist-scroller-container{display:flex;"
-                                "flex-direction:column}")
-        self.assertPageContains(".reviewstage{flex:1 0 auto;display:flex;"
-                                "flex-direction:column;margin:10px 0 0}")
-        self.assertPageContains(".reviewstage>:first-child{flex:1 1 auto;min-height:0}")
-        self.assertPageContains(".reviewevidence{flex:none;margin:8px 0 0;padding-top:8px;")
-        # 空状态自己不再填色，填色是外面那个框的事，否则框里还有一个框。
-        empty = self.css.split(".emptystate.reviewempty{", 1)[1].split("}", 1)[0]
-        self.assertNotIn("background:", empty)
-        self.assertPageLacks(".reviewcontent .geist-scroller-container:has(>.reviewempty)")
 
     def test_links_that_leave_peach_carry_the_external_mark(self):
         """走出 Peach 的链接带一枚外链标，站内跳转不带，长相全站只有一个。
@@ -4576,7 +4530,7 @@ class WebUiSourceTests(unittest.TestCase):
                       '.board-glow-menu.board-glow-menu{\n'
                       '  transition:background-color .28s ease,backdrop-filter .28s ease,'
                       '-webkit-backdrop-filter .28s ease}', board)
-        snapshot_rule = board.split('html[data-theme-snapshot] .review.review-has-pane::before{', 1)[1]
+        snapshot_rule = board.split('html[data-theme-snapshot] :is(.board-filter-frame,', 1)[1]
         self.assertIn('transition:none!important', snapshot_rule.split('}', 1)[0])
 
     def test_notes_and_navigation_links_keep_their_own_presentation(self):
@@ -5221,7 +5175,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function ledgerGateNote(runtime,message,actionLabel,actionHref){")
         self.assertPageContains("variant:runtime?.ledger_sync==='conflict'?'warning':'secondary'")
         self.assertPageContains("className:'runtimegate',actionLabel:actionHref?actionLabel:'',actionHref}")
-        self.assertPageContains("ledgerGateNote(reviewRuntime,mirrorText,'前往写入端复核',writer)")
         # 关注管理页那一条归 React（ADR-0031）：同一种盒子、同一档色调，去处仍是写入端。
         page = (Path(__file__).resolve().parents[1]
                 / "frontend/src/react/follow-manage/follow-manage-page.tsx").read_text(encoding="utf-8")
@@ -5569,25 +5522,16 @@ class WebUiSourceTests(unittest.TestCase):
         # 检不出脸的那些没有 focus，落在样式表这一档：上四分之一是人像里头最常落的位置。
         self.assertIn(".followworks .brandpill .mk img{object-position:50% 25%}", board)
 
-    def test_review_selection_uses_default_checkboxes_and_a_separate_toolbar(self):
+    def test_selection_docks_only_show_up_once_something_is_picked(self):
+        """批量条和标签选择条是同一种浮层，空着的时候整块不占位。
+
+        条子常驻的话，一张没选时它在屏幕下沿横着一块空玻璃，读起来像是有东西待处理。
+        """
         self.assertPageContains('class="batchbar selectiondock"')
         self.assertPageContains('class="tagselection selectiondock"')
         self.assertPageContains('panel.hidden=!selectMode||!selectedIndexTags.size;')
         self.assertPageContains('.selectiondock[hidden]{display:none}')
-        self.assertPageContains('.review:has(.reviewdock:not([hidden])){padding-bottom:220px}')
-        self.assertPageContains("{rows,catalog:queue,category,metadata:category==='metadata_fields'")
-        self.assertPageContains(".reviewpickitem{display:inline-flex;align-items:center;flex:none;margin:0;user-select:none}")
-        self.assertNotIn("reviewSelectionController", self.page)
         self.assertNotIn("selection.active=selectMode", self.page)
-        self.assertPageContains(".reviewbulktoolbar{padding-block:0;margin-bottom:0}")
-        self.assertPageContains('class="reviewcontrols"')
-        self.assertPageContains("updateReviewSticky($('.review'))")
-        self.assertPageContains('.reviewgroupbar.is-stuck h3{margin-right:auto}')
-        self.assertPageContains('.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck{background:var(--ground);border-bottom-color:var(--line-soft)}')
-        self.assertPageContains('top:calc(var(--topH) + var(--review-controls-height,0px))')
-        self.assertPageContains('class="reviewitemheader">${heading}</header>')
-        self.assertPageContains('aria-label="当前信息"')
-        self.assertPageContains('</div>${currentInfo}<footer')
 
     def test_collapsed_rail_is_divided_from_the_content_beside_it(self):
         """窄栏和内容区背景接近，没有分割线就看不出左边那一条到哪里为止。
@@ -5658,22 +5602,6 @@ class WebUiSourceTests(unittest.TestCase):
         # `.tokui` 整层 pointer-events:none，不把标题放行就是个点不到的按钮。
         self.assertPageContains("cursor:pointer;pointer-events:auto;")
 
-    def test_review_reuses_the_standard_selection_instead_of_its_own_mode(self):
-        """复核页曾自造「多选模式」按钮加框选，只在这一页生效，用户得先发现再记住。
-
-        现在与主网格一致：点一下切换，Shift 选一段。
-        """
-        self.assertPageLacks("reviewSelectMode")
-        self.assertPageLacks("reviewmarquee")
-        self.assertPageLacks("review-select-mode")
-        self.assertPageContains("function wireReviewAssets(root)")
-        self.assertPageContains("if(e.shiftKey&&anchor!==null)")
-        self.assertPageContains("[data-pick-all]")
-        self.assertPageContains("[data-pick-none]")
-        self.assertPageContains('[data-review-asset][aria-pressed="true"]')
-        self.assertPageContains("const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate')")
-        self.assertPageContains("${canApprove&&!locked?'':' disabled'}")
-
     def test_surface_navigation_clears_stale_panels_and_ignores_late_responses(self):
         """跨页面请求返回较慢时，旧统计/复核响应不能覆盖当前页面。"""
         self.assertPageContains("const claimSurface=path=>{")
@@ -5694,33 +5622,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_immersive_close_restores_the_home_surface(self):
         self.assertPageContains("document.body.style.overflow='';openHome()")
-
-    def test_review_asset_picker_wraps_instead_of_scrolling_sideways(self):
-        """一个创作者可能有几十条候选，横向滚动条要一直拉才能看完。"""
-        self.assertPageContains(".reviewasset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr))")
-        self.assertPageContains(".reviewasset.picked{opacity:1;outline:2px solid var(--on-media)")
-        self.assertPageContains('.reviewitem[data-decision="approved"]::before{background:var(--keep)}')
-
-    def test_identity_review_keeps_picture_geometry_and_checkbox_spacing(self):
-        self.assertPageContains('.reviewentity .reviewpickheading{display:flex;align-items:center;gap:8px}')
-        self.assertPageContains('.reviewimage{width:100%;height:220px')
-        self.assertPageContains('justify-content:flex-end}')
-        self.assertPageContains("reviewCategory==='western_identity'?identityEvidenceHtml(row)")
-        self.assertPageContains('revealSource(+button.dataset.reviewReveal')
-
-    def test_review_cards_use_equal_height_fieldsets_and_one_shared_scroller(self):
-        self.assertPageContains('class="reviewitem" data-geist-fieldset')
-        self.assertPageContains('class="geist-fieldset-content">${scrollerHtml(body')
-        self.assertPageContains('class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer')
-        self.assertPageContains('.review{--review-fieldset-height:440px')
-        self.assertPageContains('height:var(--review-fieldset-height);margin:0;padding:0')
-        self.assertPageContains('.reviewitem>.geist-fieldset-content{flex:1;min-height:0;padding:0 20px 12px}')
-        self.assertPageContains('min-height:56px;margin:0;padding:12px 12px 12px 20px')
-        self.assertPageContains('.geist-button{box-sizing:border-box;height:32px')
-        self.assertPageContains('.reviewstate:empty{display:none}')
-        self.assertPageContains('export function scrollerHtml(content')
-        self.assertPageContains("wireScrollers($('#stats'))")
-        self.assertPageLacks('max-height:268px;overflow-y:auto')
 
     def test_empty_states_keep_title_description_and_spacing_together(self):
         self.assertPageContains('export function emptyStateHtml(iconName,title,description')
@@ -5835,23 +5736,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 装不下时要能滚：这两条都靠覆盖式滑块给出可拖的抓手，系统滚动条已经关掉了。
         self.assertPageContains("'.reviewtabs','.junkfilters',")
         self.assertPageContains(
-            '.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]'
-            '{background:var(--picked);color:var(--ink)}')
+            '.junkfilters a[aria-current="page"]{background:var(--picked);color:var(--ink)}')
         # 反相底色不能回来。
-        self.assertPageLacks('.reviewtabs button[aria-pressed="true"]{background:var(--ink-2)')
         self.assertPageLacks('.junkfilters a[aria-current="page"]{border-color:var(--ink-2)')
-        # 外观一样不代表语义一样。复核那条切的是 10 个互不相同的候选数据集，每个分类换掉
-        # 整个面板的数据模型，也没有独立 URL，所以是真 tablist：方向键漫游焦点，tabindex
-        # 只留在选中项上。
-        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">')
-        self.assertPageContains('<button role="tab" id="reviewtab-${key}" aria-controls="reviewpanel"')
-        self.assertPageContains('aria-selected="${on}" tabindex="${on?' + repr('0') + ':' + repr('-1') + '}"')
-        self.assertPageContains('<section class="reviewsection" id="reviewpanel" role="tabpanel" '
-                                'aria-labelledby="reviewtab-${reviewCategory}">')
-        self.assertPageLacks('<button data-review-tab="${key}" aria-pressed=')
-        self.assertPageContains("const step=event.key==='ArrowRight'||event.key==='ArrowDown'?1:event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:0;")
-        self.assertPageContains(
-            ":event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;")
         # 垃圾文件那条是同一批候选按 type 收窄，数据模型不变，当前项落在 URL 上，所以是
         # 导航链接而不是 tab。别为了「两条长得一样」把它也套上 tablist：屏幕阅读器会把
         # 筛选念成「标签页 3 of 7」，键盘上还会多出一层方向键漫游，Ctrl 点开新页也没了。
@@ -5864,7 +5751,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             'dismissedTotal?` <span class="n mono">${dismissedTotal.toLocaleString()}</span>`:' + repr(''))
         self.assertPageLacks(" <span>${countFor(key).toLocaleString()}</span>")
-        self.assertPageContains(".reviewtabs .n,.junkfilters .n{color:var(--muted);"
+        self.assertPageContains(".junkfilters .n{color:var(--muted);"
                                 "font-size:var(--fs-xs);font-variant-numeric:tabular-nums}")
         # 40em 以下要抬高触摸目标；控件现在是定高，min-height 压不动它，两条 tab 一起抬。
         self.assertPageContains(".reviewtabs button,.junkfilters a{height:44px}")
@@ -5941,7 +5828,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_insight_surfaces_use_one_readable_measure(self):
         """统计和口味共享 Vercel 式阅读列；浏览型首页仍保持全宽。"""
         self.assertPageContains(".stats{padding:0 0 42px}")
-        self.assertPageContains(".review{--review-fieldset-height:440px;padding:0 0 42px}")
+        self.assertPageContains(".review{--review-card-height:440px;padding:0 0 42px}")
         self.assertPageLacks("max-width:1440px")
         self.assertPageContains(".insightpage,.tastepage{width:min(1100px,100%);margin:0 auto")
         self.assertPageContains("grid-template-columns:repeat(2,minmax(0,1fr))")
@@ -6169,10 +6056,14 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_glass_face_takes_its_drift_colour_from_the_same_two_variables(self):
         """每一块玻璃面上那两团漂动的反光都读同一对 `--glass-tint-a/b`，一个字面色都不写。
 
-        侧栏那块交给光晕层，其余的（搜索框、顶栏图标钮、筛选浮层、实体条、复核工具条、
-        设置卡的分区导航、媒体库弹层、配色弹层、窄栏）仍走自己那两团——只换色相。写死一处
-        的后果是「换了配色但有一块玻璃没跟上」：没有报错，只是一排毛玻璃里有一块是别的颜色。
+        侧栏那块交给光晕层，其余的（搜索框、顶栏图标钮、筛选浮层、实体条、设置卡的分区
+        导航、媒体库弹层、配色弹层、窄栏）仍走自己那两团——只换色相。写死一处的后果是
+        「换了配色但有一块玻璃没跟上」：没有报错，只是一排毛玻璃里有一块是别的颜色。
         尺寸与 alpha 档位留在各自主题那一档里，它们是这块材质自己的浓淡。
+
+        React 那一侧的玻璃面（复核页的批量工具条）是 `styles.css` 里的一条 `@utility`，
+        读的是同一批 `--glass-*`，一起在这里核对：两份样式表各画一块玻璃才是最容易走散的
+        那种，同一屏上一块跟着配色走、另一块不跟。
         """
         css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         for declaration in ("--glass-tint-a:var(--glass-native-a)",
@@ -6181,12 +6072,16 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(declaration, css)
         # 多选那条悬浮坞、批处理条和标签选择条也读这两团：它们和侧栏同时在屏上，
         # 漏掉任何一条就是一屏里两种颜色的玻璃。
-        for face in ("body .selectiondock{", ".batchbar,.tagselection{",
-                     "body .review.review-has-pane::before{"):
+        for face in ("body .selectiondock{", ".batchbar,.tagselection{"):
             with self.subTest(face=face):
                 rule = css.split(face, 1)[1].split("}", 1)[0]
                 self.assertIn("var(--glass-drift-a),var(--glass-drift-b)", rule)
                 self.assertIn("var(--glow-drift-scale)", rule, "速度那一条也跟着走")
+        react = (Path(__file__).resolve().parents[1]
+                 / "frontend/src/react/styles.css").read_text(encoding="utf-8")
+        pane = react.split("@utility glass-pane {", 1)[1].split("\n}", 1)[0]
+        self.assertIn("var(--glass-drift-a), var(--glass-drift-b)", pane)
+        self.assertIn("var(--glow-drift-scale)", pane, "速度那一条也跟着走")
         drifts = re.findall(r"--glass-drift-[ab]:radial-gradient\((.*?)transparent \d\d%\)", css)
         self.assertEqual(len(drifts), 6, "深浅两档各两团，浅色那档还有跟随系统的一份")
         for drift in drifts:
@@ -7059,16 +6954,13 @@ class WebUiSourceTests(unittest.TestCase):
     def test_board_batch_three_aligns_ranks_buttons_and_the_sidebar_switcher(self):
         """管理页标题四种布局都对齐 1120；
         主按钮与 Board 按钮同一副 36px 盒子；批量条隐藏键真的隐藏、回收站键用 error 渐变；
-        复核页工具条自己悬浮、标签条留在原地；通知的状态圆用 lucide circle-alert；
+        复核页宽度与内容列同宽、分类栏留在原地；通知的状态圆用 lucide circle-alert；
         侧栏切换器是 32px 圆标识加名字加箭头，悬停外描一圈线，收起键只有 20px 高。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);", board)
         self.assertIn("body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}", board)
         self.assertIn("body .review .reviewcontrols{position:static;", board)
-        self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;", board)
-        # 那两条横条的形状归 `test_the_review_toolbar_and_group_bar_read_as_one_box`，同一条
-        # 事实写在两处的话，改一次要改两处，漏掉哪一处都是拿旧样子当断言。
         self.assertIn(".closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}", board)
         self.assertIn("body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}", board)
         self.assertIn("body .batchbar button.danger{", board)
@@ -7082,9 +6974,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".cleanupgrid>.board-processing-skeleton{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:114px}", board)
         self.assertPageContains("${icon(alert?'circle-alert':'check')}")
         self.assertPageContains('<symbol id="i-circle-alert" viewBox="0 0 24 24">')
-        bulk = (Path(__file__).resolve().parents[1] / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
-        self.assertIn("root?.querySelector<HTMLElement>('.reviewbulktoolbar')", bulk)
-        self.assertIn("if (context) context.after(toolbar); else list.before(toolbar);", bulk)
 
     def test_the_library_icon_choices_exist_on_the_server_and_in_the_sprite(self):
         """媒体库图标的 42 枚候选每一枚都在服务端白名单和雪碧图里。
@@ -7128,13 +7017,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}", board)
 
     def test_the_board_layer_shares_one_tabs_segments_and_chart_motion(self):
-        """复核页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的指示条会滑，
+        """管理页与首页工具栏的控件都用 Board 那一份：下划线 Tabs 的指示条会滑，
         证据切换与版式切换是同一枚分段滑块。
 
         随之对齐的还有：排序行里的分段控件与排序键同高（30px）；管理页标题只在 812px
-        窄列页面居中，别处与面包屑同一条左边线；复核「跳过」用蓝色 Chip 配色；侧栏收起键
-        36px、10px 圆角；详情页门挡铺满播放器格、只圆左上角；首页女优与厂牌两排同一枚
-        34px 灰 Pill；沉浸模式的随机流不进脱盘来源的片子。
+        窄列页面居中，别处与面包屑同一条左边线；侧栏收起键 36px、10px 圆角；详情页门挡
+        铺满播放器格、只圆左上角；首页女优与厂牌两排同一枚 34px 灰 Pill；沉浸模式的
+        随机流不进脱盘来源的片子。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
@@ -7152,16 +7041,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("{padding:3px;border-radius:8px;gap:2px}", board)
         # 横滚容器会裁掉滑块与玻璃的落影：上下各留 14px 再用负外边距收回，行高不变。
         self.assertIn(".count .sorts,.entitycollectionhead .sorts{padding:14px 2px;margin-block:-14px}", board)
-        # 下划线只归管理导航与设置分区；两套证据的切换是分段控件，复核分类是次级菜单，判据各在
-        # test_the_two_bodies_of_evidence_switch_as_a_segmented_control 与
-        # test_the_review_categories_look_like_a_secondary_menu。
+        # 下划线只归管理导航与设置分区；两套证据的切换是分段控件，判据在
+        # test_the_two_bodies_of_evidence_switch_as_a_segmented_control。
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}", board)
-        # 这一枚说的是「这一步是主操作」，和主按钮同一个意思，所以跟着强调色色阶走：
-        # 浅色那档取 200 的底配 800 的字，正对上 Tailwind blue 那两枚的同名级。
-        self.assertIn("body .reviewactions button.warning:not(:disabled){"
-                      "background:var(--color-accent-200);color:var(--color-accent-800);"
-                      "border-color:transparent}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);", board)
         self.assertIn(".stage .vwrap{border-radius:var(--surface-radius) 0 0 0}", board)
         self.assertIn(".stage .vwrap>.gate{height:100%;aspect-ratio:auto;border-radius:inherit}", board)
@@ -8429,10 +8312,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("const color = isBroken(source) ? 'rose'", source_view)
         self.assertIn(": source.enabled && source.last_status === 'ok' ? 'lime'", source_view)
         self.assertIn(": source.enabled ? 'yellow' : 'neutral';", source_view)
-        # `.sbadge` 只剩复核卡的字段名徽章一个读者，它不带状态档位，也没有圆点子元素。
-        self.assertPageContains(".sbadge{display:inline-flex;align-items:center;gap:6px;")
-        self.assertPageLacks(".sbadge.ok")
-        self.assertPageLacks(".sbadge i{")
+        # 状态徽章只有 React 那一枚 Chip，遗留样式表里没有第二份。
+        self.assertPageLacks(".sbadge")
         # 清空回收站：danger 语义色。
         self.assertPageContains('class="batchaction danger" id="emptyTrash"')
         self.assertPageContains("button.danger.danger{")
@@ -8827,20 +8708,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['网络与访问',2]")
 
     def test_review_page_is_a_separate_management_layer(self):
-        self.assertPageContains("route('/review')")
+        """复核有自己的路由与分类表；正文归 React 岛（ADR-0031）。"""
         self.assertPageContains("const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签'")
-        self.assertPageContains("candidate_key:candidateKey")
-        self.assertPageContains("class=\"metadatacandidate\"")
-        self.assertPageContains("candidate.official?' · 官方优先':''")
-        self.assertPageContains("candidate.catalog_evidence||{}")
-        self.assertPageContains('class="metadataevidence"')
-        self.assertPageContains("candidate.content_id||candidate.provider_id")
-        self.assertPageContains(".metadataevidence>div{display:grid;grid-template-columns:68px minmax(0,1fr)")
-        self.assertPageContains("/api/review/decision")
+        self.assertPageContains("route('/review'+(params.category?'?category='"
+                                "+encodeURIComponent(params.category):''))")
         self.assertRoute('/review', "section:'review'", "openReview(push)")
-        self.assertPageContains('class="revieworigin"')
-        self.assertPageContains('data-review-open-item="${row.asset_id}"')
-        self.assertPageContains("openItem(+button.dataset.reviewOpenItem)")
+        # 分类是地址的一部分，别的筛法不是：队列判一条就少一条，页码指向的是另一批东西。
+        self.assertPageContains("return {category:Object.hasOwn(REVIEW_LABELS,category)?category:''};")
+        self.assertPageContains("await ui.mountIsland('review',$('#stats'),{...params,")
 
     def test_detail_title_keeps_source_and_file_actions_inline(self):
         """来源徽标浮左只缩进标题的第一行，定位文件与刷新跟在标题文字末尾。
@@ -9003,8 +8878,6 @@ class WebUiSourceTests(unittest.TestCase):
                 'class="dupname" data-middle-truncate',
                 'class="mono duppath" data-middle-truncate',
                 'id="photoDetailTitle" data-middle-truncate',
-                '<div><b data-middle-truncate title="${esc(asset.name||\'\')}"',
-                '<div><b data-middle-truncate title="${esc(row.asset_name||\'\')}"',
                 '<b data-middle-truncate>${esc(javDisplayName(media))}</b>',
                 '<b data-middle-truncate>${esc(javDisplayName(x))}</b>',
                 'class="t resourcecardtitle" data-middle-truncate',
@@ -9015,8 +8888,8 @@ class WebUiSourceTests(unittest.TestCase):
                 # 外链标才留得住：中缩靠改写 textContent 实现，同一节点里的图标会被抹掉。
                 '<span data-middle-truncate>${esc(item.url)}</span>'):
             self.assertPageContains(consumer)
-        # 高清版目标页与统计页归 React 子树，由 frontend 的用例覆盖。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 11)
+        # 高清版目标页、统计页与复核页归 React 子树，由 frontend 的用例覆盖。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 9)
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
@@ -9047,10 +8920,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".ncard .meta .why",
             ".pickrowtext b",
             ".playerstats dd", ".playerstatsmetric>span",
-            ".relatedperson .nm", ".reviewentity b",
-            # 字段名是这张卡在问的问题，不许被省略；省略号只吃它后面那个作品标识。
-            ".reviewfieldhead>span",
-            ".reviewitem h4", ".reviewpickname", ".reviewpickname>span", ".searchoption span",
+            ".relatedperson .nm", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".tastesummary>small",
             ".gselectfield>span",
@@ -9091,17 +8961,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("fc2_markings:'FC2 评论标记'")
         self.assertPageContains("fc2_similarity:'FC2 跨号相似'")
         self.assertPageContains("video_endcards:'片尾/出处证据'")
-        self.assertPageContains("const comparison=row.comparison_assets||[];")
-        self.assertPageContains('class="reviewcompare"')
-        self.assertPageContains("reviewCategory==='fc2_similarity'?''")
 
     def test_reader_review_uses_the_writer_mirror_without_offering_fake_writes(self):
-        self.assertPageContains("const runtime=await surfaceApi(surface,'/healthz')")
-        self.assertPageContains("reviewRuntime=runtime;reviewData=next")
-        self.assertPageContains("正在显示写入端的实时复核队列")
-        self.assertPageContains("前往写入端复核")
-        self.assertPageContains("canApprove&&!locked")
-        self.assertPageContains("${locked?' disabled':''}>跳过")
+        """只读端也进得来：`/healthz` 的判定和写入端地址一起交给岛，由它决定能不能写。"""
+        self.assertPageContains("import('/dist/peach-ui.js'),surfaceApi(surface,'/healthz')]);")
+        self.assertPageContains("?new URL('/review',runtime.ledger_writer_origin).href:''")
+        self.assertPageContains("readOnly:!!runtime?.ledger_read_only,")
+        self.assertPageContains("readOnlyMessage:runtime?.ledger_read_only_message||'本机当前只能浏览',")
+        self.assertPageContains("writerUrl:writer,")
 
     def test_index_pages_drop_the_home_filter_bars_and_back_button(self):
         # 艺人/标签索引和资料页一样是「专注看某一类实体」的表面。
@@ -9401,11 +9268,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("emptyState('playlist','还没有播放列表'")
         self.assertPageContains('aria-label="编辑播放列表">${icon(\'playlist\')}')
         self.assertPageContains('title="加入播放列表">${icon(\'playlist\')}')
-        # 剩下的 list-filter 是真的筛选，不能一起换掉：复核批量面板按这个字形分组和筛选。
-        self.assertPageContains('<symbol id="i-list-filter"')
-        bulk = (Path(__file__).resolve().parents[1]
-                / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
-        self.assertIn("'list-filter'", bulk)
         # 关注管理的来源筛选归 React 之后用 Remix 的漏斗，含义还是筛选。
         self.assertIn("leadingIcon={RiFilter3Line}",
                       self.read_react("follow-manage/add-source.tsx"))
@@ -9548,7 +9410,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 线宽属于图形本身的那几处：勾的笔画、弧的粗细、底格的细线。
         # 勾收两个值是分层的结果：BoardUI 那一层把画格放到 14，笔画跟着收一档。
         not_a_glyph = {
-            ".reviewasset .pickmark svg": {"3"},
             ".pcheck>span svg": {"2", "2.5"},
             ".geist-gauge svg": {"3"},
             ".board-job-progress circle": {"2.5"},
@@ -9565,40 +9426,6 @@ class WebUiSourceTests(unittest.TestCase):
                           f"{selector} 的描边是 {width}")
         # 下拉框的前缀图标自己写死一份，不靠继承。
         self.assertIn("stroke:currentColor;fill:none;stroke-width:2}", self.css)
-
-    def test_the_review_toolbar_and_group_bar_read_as_one_box(self):
-        """复核页顶上那两行是一个框：等宽、常驻、中间不划线，左右就是内容列。
-
-        工具条此前写死 `width:100%` 再配负外边距，右边就比分组条短一个页边距；
-        底色只在 `is-stuck` 时才有，刚进页面看上去根本没有框。现在两行同一层玻璃、
-        圆角上下各收一半，左右和标题、面包屑、卡片同一条边；只有分组条自己滚上去
-        顶住时才各自收口。
-        玻璃静止时就在：首页那块浮层从进页面起就是玻璃，这边等吸顶才变的话，同一套
-        语言里就成了两种东西。框里的控件照那块浮层留 12px，不贴着 20px 的圆角。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        # 那圈 inset 是玻璃的边：静止态底色和页面同样黑，只留落影的话整条读成一块黑方块。
-        # 接缝处不描，上面那条不画底边、下面那条不画顶边，两条合起来仍是一圈。
-        self.assertIn("body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;"
-                      "margin-inline:0;padding:12px;border-radius:20px 20px 0 0;\n"
-                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
-                      "inset -1px 0 0 var(--glass-low),var(--glass-shadow)}", board)
-        self.assertIn("body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;\n"
-                      "  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),"
-                      "inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
-        # 下面那些分组各自成框：上一个可见分组和它之间隔着一整屏卡片。
-        self.assertIn("body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])"
-                      ">.reviewgroupbar{border-radius:20px;\n"
-                      "  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),"
-                      "inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}", board)
-        # 复核页那排标签跟标题、面包屑和下面那块浮层同一条左边。往外挪 12px 能让第一个
-        # 标签的字顶到那条线上，代价是选中那块底色比整页任何东西都往左出去一截。
-        self.assertIn(".reviewtabs{margin-inline:0}", board)
-        self.assertNotIn(".reviewbulktoolbar{width:100%", self.css)
-        # 出血那一套整条退役：只留在 CSS 里也会被下一个人当成还在生效的写法去改。
-        self.assertNotIn("--review-edge", self.css)
-        bulk = (Path(__file__).resolve().parents[1] / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
-        self.assertNotIn("--review-edge", bulk)
 
     def test_the_home_glass_reads_by_luminosity_and_the_four_views_share_one_sliding_pane(self):
         """玻璃靠调背景亮度保可读，四枚视图共用一块会滑的玻璃。
@@ -10117,81 +9944,6 @@ class WebUiSourceTests(unittest.TestCase):
         shared = self.read_react("library-processing/use-library-processing.ts")
         self.assertIn("if (witnessed || mode === 'notice') announceCompletion(state, toast, witnessed);", shared)
 
-    def test_the_pinned_review_bars_share_one_pane_of_glass(self):
-        """粘住的工具条和分组条是一块玻璃，中间没有接缝。
-
-        每条横条各挂一层 `backdrop-filter` 的话，每层只糊自己身后那一段页面：工具条
-        身后是一排卡片，分组条身后是另一排，两段颜色不同，接缝就成了一条明显的分界。
-        玻璃因此由 `.review::before` 画一块，铺满当前粘住的那几行；两条横条粘住后
-        只剩内容，不带底也不带影。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('body .review.review-has-pane::before{content:"";position:fixed;top:var(--review-pane-top,var(--topH));'
-                      "left:var(--review-pane-left,0);width:var(--review-pane-width,0);"
-                      "height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;"
-                      "background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);", board)
-        self.assertIn("body .review :is(.reviewbulktoolbar,.reviewgroupbar).review-pane-member{background:transparent;"
-                      "backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}", board)
-        # 玻璃压在两条横条底下：58 低于分组条的 59 和工具条的 60。
-        self.assertPageContains(".reviewgroupbar{position:sticky;top:calc(var(--topH) + var(--review-controls-height,0px));z-index:59;")
-        for fallback in ("html.board-high-contrast .review.review-has-pane::before{background:var(--ground)",
-                         "@media(prefers-reduced-transparency:reduce){body .review.review-has-pane::before{background:var(--ground)"):
-            self.assertIn(fallback, board)
-        bulk = (Path(__file__).resolve().parents[1] / "frontend" / "src" / "review-bulk.ts").read_text(encoding="utf-8")
-        self.assertIn("root.classList.toggle('review-is-stuck', stuck.length > 0);", bulk)
-        # 玻璃的两端取自首尾两条粘住的横条；下面三行 setProperty 才是它铺多大。
-        self.assertIn("root.classList.add('review-has-pane');", bulk)
-        self.assertIn("const last = next || controls;", bulk)
-        self.assertIn("const head = first.getBoundingClientRect(), foot = last.getBoundingClientRect();", bulk)
-        for name, edge in (("left", "head.left"), ("width", "head.width"), ("height", "foot.bottom - head.top")):
-            self.assertIn(f"root.style.setProperty('--review-pane-{name}', `${{{edge}}}px`);", bulk)
-
-    def test_the_review_categories_look_like_a_secondary_menu(self):
-        """复核分类是一排药丸，不是一排下划线 Tab。
-
-        底下那一屏是同一份复核队列换了个筛法。十枚下划线并排会把它读成十块各不相干的
-        内容；药丸走全站横排互斥那一套——选中只有填充，未选中悬停只提文字色。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".reviewtabs button{height:32px;padding:0 12px;gap:6px;border-radius:var(--control-radius);", board)
-        self.assertIn(".reviewtabs button:hover{background:none;color:var(--color-text-primary)}", board)
-        self.assertIn(".reviewtabs button[aria-selected=\"true\"]{background:var(--picked);color:var(--color-text-primary);", board)
-        # 药丸也不跟洞察页那组维度共用一条规则：那边是带滑块的分段控件。
-        self.assertNotIn(".insighttabs,.reviewtabs{", board)
-        # 键盘行为仍是 tablist：方向键在同一条里移动焦点。
-        self.assertPageContains('<div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">')
-
-    def test_the_review_queue_is_paged_on_the_client(self):
-        """复核队列一页 20 张，翻页只重画这一屏。
-
-        接口一次给出整条队列（实测 4.6 MB、1300 行）本机读 0.1 秒，卡的是把 331 张候选表单和
-        799 张卡一次画进 DOM。分页做在前端：分组筛选先筛后分页，换分类、换分组、换筛选都回第 1 页；
-        分组条与筛选项按整条队列算，这一页上一张都没有的组不画。分页条照 Board 的 Pagination
-        （`r/pagination.json`）：上一页／下一页是 32px 次级小键，页码 32×32 圆角 8，当前页借次级键的面。
-        """
-        self.assertPageContains("const REVIEW_PAGE_SIZE=20;")
-        self.assertPageContains("const rows=filtered.slice((reviewPage-1)*REVIEW_PAGE_SIZE,reviewPage*REVIEW_PAGE_SIZE);")
-        self.assertPageContains("if(view!==reviewPageView){reviewPageView=view;reviewPage=1}")
-        self.assertPageContains("</section>${paginationHtml(reviewPage,pages,'复核分页')}</div>`;")
-        # 采用／拒绝后从整条队列里摘掉，不是从这一页的切片里。
-        self.assertPageContains("const index=queue.findIndex(row=>String(row.item_key)===key);")
-        self.assertPageContains("{rows,catalog:queue,category,metadata:category==='metadata_fields',")
-        root = Path(__file__).resolve().parents[1]
-        board = (root / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:16px}", board)
-        # 全站 36px 那条按钮规则是 `body :is(…):not(…)`，权重 0,2,2；分页键要压过它得再带上 `.review`。
-        self.assertIn("body .review .board-pagination>.geist-button{height:32px;min-height:32px;padding:6px 8px;border-radius:8px}", board)
-        self.assertIn(".board-page{cursor:pointer;transition:none}", board)
-        self.assertIn('.board-page[aria-current="page"]{border:1px solid var(--color-border-button-default);'
-                      "background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 1px 2px #0000000d}", board)
-        pagination = (root / "frontend/src/pagination.ts").read_text(encoding="utf-8")
-        self.assertIn("if (pages <= 1) return '';", pagination)
-        self.assertIn('<use href="#i-chevron-left">', pagination)
-        self.assertIn("' aria-current=\"page\"'", pagination)
-        bulk = (root / "frontend/src/review-bulk.ts").read_text(encoding="utf-8")
-        self.assertIn("const catalog = options.catalog || options.rows;", bulk)
-        self.assertIn("if (!groupCards.length) continue;", bulk)
-
     def test_the_follow_batch_bar_only_carries_row_actions(self):
         """关注页的批量条只有保存、跳过这类按行动作：这一页是浏览用的，不配全选键。"""
         self.assertPageLacks('id="followBatchAll"')
@@ -10510,13 +10262,11 @@ class WebUiSourceTests(unittest.TestCase):
         `.bg-button-primary` 逐字同构）：静止 red-500→600、悬停 400→500、按下 600→700，
         悬停那一档铺在 `::before` 上淡入。
 
-        「同一副面」不是整洁问题。批量条、复核那一排和卸载区都在说「按下去就回不来了」，
-        此前各写死过一对红；同一句话在三个页面上读出三种红，用户要判断的是哪一次更重，
-        而这个差别是没有意思的。
+        「同一副面」不是整洁问题。批量条和卸载区都在说「按下去就回不来了」，同一句话
+        在两个页面上读出两种红，用户要判断的是哪一次更重，而这个差别是没有意思的。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        roster = ("body :is(button.danger,.reviewactions button.error,"
-                  ".batchbar button.danger):not(:disabled)")
+        roster = "body :is(button.danger,.batchbar button.danger):not(:disabled)"
         self.assertIn(roster + "{position:relative;isolation:isolate;background:var(--board-red);"
                       "border:0;color:#fff;box-shadow:0 1px 2px #0000000d;", board)
         self.assertIn(roster + "::before{content:\"\";position:absolute;inset:0;z-index:-1;"
@@ -10752,12 +10502,12 @@ class WebUiSourceTests(unittest.TestCase):
                       "padding:0 8px;border:0;border-radius:7px;background:transparent}", board)
 
     def test_a_two_piece_glass_panel_does_not_paint_the_diagonal_sheen(self):
-        """复核页那两条各做一块，只铺一层平的底色，静止时不显出上下两层。
+        """资料页那两条各做一块，只铺一层平的底色，静止时不显出上下两层。
 
         那道 125° 高光是按盒子自己的对角线铺的：上下两条各铺一遍，接缝两边就成了亮的
         一段和灰的一段，读起来是两块叠在一起。漂移的两团光也不铺：光斑按盒子的百分比
         算，一条只有 48px 高，圆斑压成一道横光，在接缝处被截断。边上那圈高光仍由
-        `inset` 描出来。首页那块和资料页那块都是一整块玻璃，它们照旧铺。
+        `inset` 描出来。首页那块是一整块玻璃，它照旧铺。
         兜底那三条（不支持 backdrop-filter、降低透明度／提高对比度、高对比开关）要和
         主选择器一起长：漏掉哪一条，那些用户看到的就是没有底色的一块。
         """
@@ -10767,20 +10517,18 @@ class WebUiSourceTests(unittest.TestCase):
                             "linear-gradient(125deg,var(--glass-sheen)", 1)[0].rsplit("}", 1)[1]
         for selector in (".board-filter-frame.board-filter-frame.board-filter-frame",
                          ".entitytagbar.entitytagbar.entitytagbar",
-                         ".entitycollectionhead.entitycollectionhead.entitycollectionhead",
-                         "body .review .reviewbulktoolbar", "body .review .reviewgroupbar"):
+                         ".entitycollectionhead.entitycollectionhead.entitycollectionhead"):
             self.assertIn(selector, sheen, "玻璃那条主规则少了一个面")
         for fallback in ("@supports not (backdrop-filter:blur(1px)){",
                          "@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){"):
             rule = board.split(fallback, 1)[1].split("}", 1)[0]
             for selector in (".entitytagbar.entitytagbar.entitytagbar",
-                             ".entitycollectionhead.entitycollectionhead.entitycollectionhead",
-                             "body .review .reviewbulktoolbar", "body .review .reviewgroupbar"):
+                             ".entitycollectionhead.entitycollectionhead.entitycollectionhead"):
                 self.assertIn(selector, rule, f"{fallback} 少了一个面")
         contrast = board.split("html.board-high-contrast .board-filter-frame", 1)[1].split("}", 1)[0]
         for selector in ("html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar",
-                         "html.board-high-contrast .review .reviewbulktoolbar",
-                         "html.board-high-contrast .review .reviewgroupbar"):
+                         "html.board-high-contrast .entitycollectionhead"
+                         ".entitycollectionhead.entitycollectionhead"):
             self.assertIn(selector, contrast, "高对比那条少了一个面")
 
     def test_a_horizontal_tag_row_fades_at_both_ends(self):
@@ -11060,8 +10808,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("current.isCurrent?.()!==false", body)
         self.assertIn("request?.abort()", body)
         self.assertIn("rootMargin:'320px'", body)
-        self.assertEqual(self.page.count("new IntersectionObserver"), 2,
-                         "观察器用于共享分页与复核滚动容器延迟初始化")
+        self.assertEqual(self.page.count("new IntersectionObserver"), 1,
+                         "共享分页只有这一个观察器")
         for consumer in ("function renderFollow", "function renderEntityCollection", "function renderPhotoWall", "function wireCatalogLoadMore"):
             self.assertIn("wireLoadMore(", self._js_function(consumer.split()[-1]))
 
@@ -11527,12 +11275,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".fsechead .fbtn{height:var(--control-h)}")
 
     def test_the_selection_mark_is_one_shape_that_does_not_flip_with_the_theme(self):
-        """选中标记全站一个长相：正圆、一对固定的浅片深勾，尺寸按容器分两档。
+        """选中标记全站一个长相：正圆、一对固定的浅片深勾。
 
         它压在缩略图上，底下是媒体不是页面。取 --ink／--ground 的话，同一张照片上浅色
         一档是深片白勾、暗色一档是浅片深勾，同一个东西两副长相；卡面那圈选中环同理。
-        未选态两处仍旧不同，那是两回事：卡片列表默认一张没选，空框在说「这里可以点」；
-        复核卡默认全选，靠整图变暗读出被取消的那几张，再画空框会像还没开始选。
+        未选态是一个空框，说的是「这里可以点」。
         """
         css = stylesheet_source()
         self.assertIn("--on-media:#F5F7FA; --on-media-ink:#090B0F;", css)
@@ -11544,10 +11291,6 @@ class WebUiSourceTests(unittest.TestCase):
                                 "color:var(--on-media-ink);")
         self.assertPageContains(".card.selected .pic,.card.selected:hover .pic"
                                 "{box-shadow:inset 0 0 0 2px var(--on-media)}")
-        self.assertPageContains(".reviewasset .pickmark{position:absolute;top:4px;right:4px;"
-                                "width:19px;height:19px;border-radius:50%;")
-        self.assertPageContains("background:var(--on-media);color:var(--on-media-ink);"
-                                "box-shadow:0 2px 8px #0008}")
         for stale in ("background:#F5F7FA;color:#090B0F", "inset 0 0 0 2px rgba(245,247,250,.9)"):
             self.assertPageLacks(stale, "这一对只有 --on-media 一个来源")
 
@@ -11579,20 +11322,20 @@ class WebUiSourceTests(unittest.TestCase):
                       self.read_react("follow-manage/credentials.tsx"))
         self.assertIn("trailingIcon={RiExternalLinkLine}",
                       self.read_react("settings/section.tsx"))
+        # 复核卡上「打开原视频」那一处同理，箭头字符不是那枚标。
+        review_evidence = self.read_react("review/review-evidence.tsx")
+        self.assertIn("trailingIcon={RiExternalLinkLine}", review_evidence)
+        self.assertNotIn('↗', review_evidence, "外链标只有图标一种写法")
         # 一处漏掉类名就又变成八档里的第九档，所以按调用点数，不按人工清单。
         self.assertEqual(self.app_js.count("icon('external-link'"),
                          self.app_js.count("icon('external-link','externalmark')"),
                          "web/app.js 里每一枚外链标都带 externalmark")
         root = Path(__file__).resolve().parents[1]
-        # React 子树的外链标是 BoardUI `LinkButton` 的 `trailingIcon`，不走雪碧图，
-        # 所以只数仍在拼 HTML 字符串的那几处。
-        for name in ('management.ts', 'review-evidence.ts'):
-            source = (root / 'frontend/src' / name).read_text(encoding='utf-8')
-            self.assertEqual(source.count('#i-external-link'),
-                             source.count('class="externalmark" viewBox="0 0 24 24"'),
-                             f"{name} 里每一枚外链标都带 externalmark")
-        self.assertNotIn('↗', (root / 'frontend/src/review-evidence.ts').read_text(
-            encoding='utf-8'), "外链标只有图标一种写法")
+        # island 层的外链标还在拼 HTML 字符串，雪碧图那一枚必须带类名。
+        management = (root / 'frontend/src/management.ts').read_text(encoding='utf-8')
+        self.assertEqual(management.count('#i-external-link'),
+                         management.count('class="externalmark" viewBox="0 0 24 24"'),
+                         "management.ts 里每一枚外链标都带 externalmark")
 
     def test_action_keys_in_every_bar_are_flat_fills_not_outlines(self):
         """动作键一律不描边，自己是一块与条子／卡面不同的面。
@@ -11602,8 +11345,7 @@ class WebUiSourceTests(unittest.TestCase):
         浮在缩略图上的纯图标键也不在此列，那圈半透明白边是它与照片之间唯一的分界。
         """
         css = stylesheet_source()
-        for name in (".reviewpickhead button{",
-                     ".tagselection button{", ".batchbar button{",
+        for name in (".tagselection button{", ".batchbar button{",
                      ".junkactions button{", ".dupactions.fsechead button{"):
             found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
             self.assertIsNotNone(found, f"{name} 找不到基样式")
@@ -12100,91 +11842,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update();zoomBar.resize()})")
         self.assertPageContains("activeLightbox.resize?.disconnect()")
 
-    def test_failed_review_decisions_are_shown_instead_of_silently_swallowed(self):
-        """「点了没反应」的真身：失败被吞掉，按钮还卡在 disabled。
-
-        `api()` 在任何非 2xx 都 throw，而这个 async onclick 漏掉 catch 的话：
-        异常成了 unhandled rejection，`button.disabled=false` 永远到不了，于是
-        按钮永久禁用、界面一句话都不给。失败必须说出来并把按钮放开让人重试。
-        """
-        self.assertPageContains('<span class="reviewstate" aria-live="polite"></span>')
-        self.assertPageContains("if(state)state.textContent=result.error||'服务端拒绝了这次判定'")
-        self.assertPageContains("if(state)state.textContent=e.message")
-        # 成功路径 return，其余出口都必须回到放开按钮那一行。
-        self.assertPageContains("button.disabled=false;")
-
-    def test_entity_subject_reviews_lead_with_the_creator_not_one_sample(self):
-        """创作者标签和西方身份判的是「这个人」，不是某一条作品。
-
-        `_attach_review_asset_context` 会退回到 `preview_assets[0]`，于是卡片顶上
-        挂着随便一条样本、写着「打开原视频」：下面 60 个样本上面 1 个视频，
-        西方身份更极端——772 部作品配 1 个。顶部必须是创作者入口。
-        """
-        self.assertPageContains(
-            "const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'}")
-        self.assertPageContains("const subjectKind=ENTITY_REVIEW_CATEGORIES[reviewCategory]")
-        self.assertPageContains('<div class="reviewentity">')
-        # 作品数取 video_count（创作者标签）或 videos（西方身份），两批候选列名不同。
-        self.assertPageContains("const works=Number(row.video_count||row.videos||0)")
-        self.assertPageContains("部作品")
-        # 头像走同一条链，装了实体图才出 `<img>`，取不到就是首字母。
-        self.assertCode(
-            "row.entity_id?{id:row.entity_id,has_image:row.has_image,"
-            "avatar_focus:row.avatar_focus}:null,null,subjectKind)")
-        # 复核页没有全局委托，必须自己接线，否则入口点了没反应。
-        self.assertPageContains(
-            "$('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>")
-
-    def test_review_page_applies_the_certain_part_before_loading_the_queue(self):
-        """ADR-0018：无可判断的条目不该在队列里白占一轮。"""
-        self.assertPageContains("api('/api/review/auto-apply',{method:'POST',body:'{}'})")
-        # 只读端本来就会 409，那是正常状态：失败不拦页面，但也不静默吞掉。
-        self.assertPageContains("catch(e){reviewAutoApply={error:e.message}}")
-        # 这一步没有按钮，页面上不报一句的话，它跑没跑只能靠数队列长度猜。
-        self.assertPageContains("${autoApplyNote()}")
-        self.assertPageContains("function autoApplyNote(){")
-
-    def test_entity_cards_do_not_print_the_name_twice(self):
-        """创作者入口里已经写了名字，卡片顶上再来一个 h4 就是同一行字上下两遍。"""
-        self.assertPageContains("const heading=subjectKind&&subjectName?origin")
-        self.assertPageContains(":`<h4>${esc(titleText)}</h4>`;")
-        # 作品数同理：创作者入口里已经写了「115 部作品」，上面不该再来一行「样本/资产：115」。
-        self.assertPageContains("subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets")
-        # 卡片里只有这一个主体，衬底和居中只会把它推离左边缘，和下面的样本网格对不齐。
-        self.assertPageLacks(
-            ".reviewentity{display:grid;grid-template-columns:132px minmax(0,1fr)")
-        self.assertPageContains("justify-content:start}")
-        self.assertPageContains(".reviewentityface{position:relative;width:44px;height:44px;justify-self:start")
-
-    def test_the_review_card_names_the_field_it_is_asking_about(self):
-        """字段名是这张卡在问的问题，作品标识只是它问的对象。
-
-        写在标题末尾的话，一条无番号视频的文件名会先把它挤出省略号，卡上就只剩
-        一串文件名和一个候选值，读不出这一票投给的是哪个字段。
-        """
-        self.assertPageContains('<h4 class="reviewfieldhead"><b class="sbadge reviewfieldname">')
-        self.assertPageContains("const fieldName=metadata?String(row.field_label||row.field||'').trim():'';")
-        # 省略号只许吃作品标识那一半，字段名不参与收缩。底色归 Board UI 的 `.sbadge`：
-        # 自己写 `--hover` 的话，亮色主题下它和卡片头都是 #f5f5f5，徽章整个没入背景。
-        self.assertPageContains(".reviewfieldname{flex:none}")
-        self.assertPageLacks(".reviewfieldname{flex:none;padding:2px 8px;")
-        self.assertPageContains(".reviewfieldhead>span{min-width:0;overflow:hidden;text-overflow:ellipsis")
-
-    def test_source_values_are_radio_cards_and_the_two_halves_are_told_apart(self):
-        """一张候选卡上下两段读的是两件事，选哪一段能改账本不该靠猜。
-
-        上段是这个来源给的那个值——选中它就会写进账本；下段是同一来源顺带交回来的
-        其它字段，只作判断依据。上段留在卡面、下段沉一档并由一条线隔开。
-        """
-        self.assertPageContains('<div class="metadatacandidates" role="radiogroup"')
-        self.assertPageContains('<span class="metadatacandidatevalue">')
-        # 圆点在右、整卡可点、选中沿用焦点环色的边（boardui Radio card 与 CheckboxCard 同面）。
-        self.assertPageContains(".metadatacandidate>input{grid-column:2;grid-row:1;align-self:center;")
-        self.assertPageContains(".metadatacandidate:has(input:checked){border-color:var(--field-ring-focus)}")
-        self.assertPageContains(".metadataevidence{grid-column:1/-1;display:grid;gap:4px;margin:0;"
-                                "padding:10px 16px;border-top:1px solid var(--line-soft);"
-                                "background:var(--surface)")
-
     def test_the_review_skeleton_is_built_from_the_real_page_containers(self):
         """骨架用最终容器的类名，分栏和列宽就都由页面自己那套规则给。
 
@@ -12200,54 +11857,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.body.dataset.surface=location.pathname;")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         # 骨架里没有分组条，上面那条玻璃自己封口，也不吸顶。
-        self.assertIn("body .review-skeleton .reviewbulktoolbar{position:static;border-radius:20px;", board)
+        self.assertIn("body .review-skeleton .reviewbulktoolbar{position:static;border-radius:16px;", board)
         # 占位卡和到货的卡圆角同一档，不然读完数据整片网格会跳一下。
-        self.assertIn(".review-skeleton .skeletoncard{border:1px solid var(--line-soft);"
-                      "border-radius:var(--surface-radius);", board)
-
-    def test_unmapped_genres_come_with_a_way_to_record_them(self):
-        """来源给了值、Peach 还没决定它算哪个标签，这件事要有出口。
-
-        只写一句「来源还有 2 个未收录 genre」的话，同一句话每批候选都原样再来一次，
-        而 `map_genres` 说的「不允许长期停在『不知道』」在界面上没有出口。
-        """
-        self.assertPageContains('<div class="reviewgenres" role="group" aria-label="未收录 genre">')
-        self.assertPageContains("candidates.flatMap(candidate=>candidate.unmapped_genres||[])")
-        # 收录成一个中文标签，或者判它不是内容：两种结论都要能记下来。
-        self.assertPageContains("data-genre-exclude")
-        # 两个结论都是次级键：这张卡的主动作是「通过」，收录只是让那一步有得可选。
-        self.assertPageContains('<button type="button" class="geist-button" data-genre-accept')
-        self.assertPageContains("api('/api/review/genre',{method:'POST'")
-        # 候选词表一份挂在整页上，不是每张卡各写一遍那一百来个 option。
-        self.assertPageContains('<datalist id="reviewgenretags">')
-        self.assertPageContains('list="reviewgenretags"')
-        # 收录改的是词表，服务端按新词表重新折一遍整条队列，前端不自己折一份。
-        self.assertPageContains("const next=await surfaceApi(surface,'/api/review');")
-
-    def test_sole_metadata_candidate_is_shown_not_offered_as_a_choice(self):
-        """只有一个候选时没什么可选的，单选圈会让人以为还有别的选项。
-
-        但 radio 必须留在 DOM 里：提交路径读的就是 `[name^="metadata-"]:checked`，
-        删掉它会让「通过」退化成「必须选择一个来源值」的报错。
-        """
-        self.assertPageContains("candidates.length===1")
-        self.assertPageContains('<div class="metadatasole">')
-        self.assertPageContains('value="${esc(candidates[0].candidate_key)}" checked')
-        self.assertPageContains(".metadatasole input{display:none}")
-        # 提交路径没变，仍然只认 :checked。
-        self.assertPageContains(
-            "item.querySelector('[name^=\"metadata-\"]:checked')?.value")
-
-    def test_review_bulk_reuses_explicit_decisions_and_insets_scrolling_content(self):
-        self.assertPageContains("wireReviewSelection($('#stats').querySelector('.review')")
-        self.assertPageContains("payload:decisionPayload,submit:payload=>api('/api/review/decision'")
-        self.assertPageContains('.reviewcontent .geist-scroller-container{padding-right:0}')
-        self.assertPageContains('.reviewcontent .ovtrack.ov-y{transform:translateX(12px)}')
-        self.assertPageContains('class="geist-button error" data-review-status="rejected"')
-        self.assertPageContains('.geist-button.error{background:#da2f35;color:#fff;box-shadow:none}')
-        self.assertPageContains('.geist-button.warning{background:#ff990a;color:#000;box-shadow:none}')
-        self.assertPageContains('.geist-button:is(.error,.warning):disabled{background:var(--sunk);color:var(--muted);box-shadow:0 0 0 1px var(--line-soft)}')
-        self.assertPageLacks("${index===0?' checked':''}")
+        self.assertIn(".review-skeleton .skeletoncard{border:0;border-radius:16px;", board)
 
     def test_immersive_fit_compares_source_against_the_viewport(self):
         """竖屏沉浸模式看横屏视频必须完整显示。

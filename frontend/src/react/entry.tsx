@@ -19,6 +19,8 @@ import { LibraryProcessingNotice } from './library-processing/library-processing
 import { QualityGoalsPage } from './quality-goals/quality-goals-page';
 import { prefetchQualityGoals } from './quality-goals/quality-goals';
 import { queryClient } from './query';
+import { prefetchReview } from './review/review';
+import { ReviewPage } from './review/review-page';
 import { ScrapingPage } from './scraping/scraping-page';
 import { prefetchScraping } from './scraping/scraping';
 import { prefetchConfiguration } from './settings/configuration';
@@ -87,6 +89,11 @@ export const pages: Bundle.ReactPages = {
   },
   'quality-goals': {
     prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
+  },
+  /* 确定的那部分先落库再取队列（ADR-0018）。只读账本上不发那一次 POST——reader 明知
+     不能写就不该制造一次 409。 */
+  review: {
+    prefetch: (props, signal) => prefetchReview(props.readOnly, signal), mount: mounter(ReviewPage),
   },
   scraping: { prefetch: (_props, signal) => prefetchScraping(signal), mount: mounter(ScrapingPage) },
   stats: { prefetch: (_props, signal) => prefetchStats(signal), mount: mounter(StatsPage) },

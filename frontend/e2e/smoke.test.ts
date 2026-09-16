@@ -69,7 +69,12 @@ const ROUTES: readonly Route[] = [
     body: (page) => [heading(page, '#main', '口味'),
       page.locator('#stats').getByRole('tab', { name: '浏览器记录', exact: true })],
   },
-  { path: '/review', body: (page) => [heading(page, '#main', '人工复核'), heading(page, '#stats', '复核分类')] },
+  {
+    // 骨架那一列分类也写着「复核分类」，认不出画完没有；把十个分类做成页签的只有真页面。
+    path: '/review',
+    body: (page) => [heading(page, '#main', '人工复核'),
+      page.locator('#stats').getByRole('tab', { name: '元数据字段' })],
+  },
   {
     path: '/data-cleanup',
     body: (page) => [heading(page, '#main', '数据管理'), heading(page, '#stats', '扫描与采集')],

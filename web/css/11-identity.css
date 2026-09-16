@@ -81,39 +81,6 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
    列数、间距与卡片几何由 `board.css` 的 `body[data-surface="/quality-goals"]` 那组给。 */
 .qualitylist{display:grid}
 .qualityitem{min-width:0;background:var(--ground)}
-.revieworigin{display:grid;grid-template-columns:132px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0;padding:8px;
-  border-radius:var(--surface-radius);background:var(--overlay-5)}
-.reviewcompare{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:10px 0}
-.reviewcompare .revieworigin{margin:0;min-width:0;grid-template-columns:1fr}
-.reviewcompare .revieworigin>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-/* 主体是创作者的候选：顶上给创作者入口，几何与 .revieworigin 保持一致，
-   只是把 16:10 的封面换成圆形头像——两种卡片并排时不该看着像两套设计。 */
-/* 不给底色也不居中：卡片里只有这一个主体，衬底和留白只会把它推离左边缘，
-   和下面的样本网格、证据文字对不齐。 */
-.reviewentity{margin:0 0 14px;padding:0 0 14px;border-bottom:1px solid var(--border-10);display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:center;
-  justify-content:start}
-.reviewentityface{position:relative;width:44px;height:44px;justify-self:start;border:0;padding:0;
-  border-radius:50%;overflow:hidden;background:var(--sunk);color:var(--muted);cursor:pointer;
-  display:grid;place-items:center;font-size:var(--fs-2xl)}
-.reviewentityface img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-.reviewentityface:hover{box-shadow:0 0 0 2px var(--ink-2)}
-.reviewentity>div{min-width:0}
-.reviewentityname{border:0;background:none;padding:0;color:var(--ink);font:inherit;cursor:pointer;text-align:left}
-.reviewentityname:hover{color:var(--ink-2)}
-.reviewentity b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:8px}
-.reviewentity>div button:not(.reviewentityname){display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);
-  background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
-.reviewentity>div button:hover{color:var(--ink-2)}
-.reviewentity>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-.reviewentity .reviewpickheading{display:flex;align-items:center;gap:8px}
-.reviewentity small{display:block;margin-top:7px;color:var(--muted);font-size:var(--fs-xs)}
-.revieworigincover{width:132px;aspect-ratio:16/10;border:0;border-radius:var(--surface-radius);overflow:hidden;background:#000;padding:0;cursor:pointer}
-.revieworigincover img{width:100%;height:100%;object-fit:contain;display:block}.revieworigincover span{display:grid;place-items:center;width:100%;height:100%;color:var(--muted)}
-.revieworigin>div{min-width:0}.revieworigin b{display:block;overflow:hidden;white-space:nowrap;margin-bottom:8px}
-.revieworigin>div button{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:var(--control-radius);background:var(--hover);padding:6px 9px;color:var(--ink-2);cursor:pointer}
-.revieworigin>div button:hover{color:var(--ink)}.revieworigin>div button svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-@media(max-width:640px){.reviewcompare{grid-template-columns:1fr}.revieworigin{grid-template-columns:110px minmax(0,1fr)}.revieworigincover{width:110px}}
-
 .indexmore[hidden],.entitymore[hidden]{display:none}
 .indexmore,.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
   min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;
