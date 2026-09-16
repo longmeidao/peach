@@ -17,7 +17,7 @@ export { boundedPreference, mountNumberSetting, syncNumberSetting } from './numb
 export { statCardBody, rankedChart, radarChart, distributionChart, jobProgressHtml } from './board-metrics';
 export { initBoardControls, syncBoardRange, wireExpandableRanks, wireGrowingCharts } from './board-controls';
 export { creatorSankeyHtml, wireCreatorSankey } from './board-sankey';
-export { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './board-analytics';
+export { activityChartsHtml, wireActivityCharts } from './board-analytics';
 export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
 
 import type * as ReactBundle from '@peach/react';
@@ -44,6 +44,7 @@ export interface IslandContracts {
   'quality-goals': ReactBundle.QualityGoalsProps;
   configuration: ReactBundle.ConfigurationProps;
   activity: ReactBundle.ActivityProps;
+  stats: ReactBundle.StatsProps;
 }
 
 export type IslandName = keyof IslandContracts;
@@ -62,6 +63,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'quality-goals': { react: 'quality-goals' },
   configuration: { react: 'configuration' },
   activity: { react: 'activity' },
+  stats: { react: 'stats' },
 };
 
 /** 已注册的 island 名字。遗留层与测试用它核对路由表，不必知道注册表结构。 */

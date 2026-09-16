@@ -1,48 +1,6 @@
 import { esc } from '@peach/legacy/core';
 
-export interface RadialMetric { name:string; value:number; detail?:string }
 const valid=(value:number)=>Number.isFinite(value)&&value>=0;
-
-/** 环与读数使用同一份聚合值；max 对应完整一圈。 */
-export function radialCardHtml(rows:RadialMetric[],title:string,unit='个视频') {
-  const data=rows.filter(row=>valid(row.value));
-  if(!data.length)return '';
-  const total=data.reduce((sum,row)=>sum+row.value,0),max=Math.max(1,...data.map(row=>row.value))*1.1;
-  const step=Math.min(22,110/Math.max(1,data.length)),width=Math.min(15,step*.68);
-  const rings=data.map((row,index)=>{
-    const radius=32+index*step,length=row.value/max*100;
-    return `<g style="--ring-color:var(--board-chart-${index%6});--ring-delay:${index*60}ms"><circle class="board-ring-track" cx="160" cy="160" r="${radius}" stroke-width="${width}"/><circle class="board-ring-value" data-radial-ring="${index}" tabindex="0" role="button" aria-label="${esc(row.name)}：${row.value.toLocaleString()} ${esc(unit)}" aria-pressed="false" cx="160" cy="160" r="${radius}" stroke-width="${width}" pathLength="100" stroke-dasharray="${length} ${100-length}" style="--ring-length:${length}" transform="rotate(-90 160 160)"/></g>`;
-  }).join('');
-  return `<section class="board-radial-card" data-radial-card data-radial-total="${total}" data-radial-title="${esc(title)}"><header><span data-radial-label>${esc(title)}</span><b data-radial-number>${total.toLocaleString()}</b><small>${esc(unit)}</small></header><svg class="board-rings" viewBox="0 0 320 320" aria-label="${esc(title)}">${rings}</svg><div class="board-radial-tiles">${data.map((row,index)=>`<button type="button" data-radial-tile="${index}" data-radial-value="${row.value}" data-radial-name="${esc(row.name)}" aria-pressed="false" style="--ring-color:var(--board-chart-${index%6})"><span><i aria-hidden="true"></i>${esc(row.name)}</span><b>${row.value.toLocaleString()}</b>${row.detail?`<small>${esc(row.detail)}</small>`:''}</button>`).join('')}</div></section>`;
-}
-
-export function wireRadialCards(root:ParentNode) {
-  root.querySelectorAll<HTMLElement>('[data-radial-card]').forEach(card=>{
-    const tiles=[...card.querySelectorAll<HTMLButtonElement>('[data-radial-tile]')],rings=[...card.querySelectorAll<SVGCircleElement>('[data-radial-ring]')];
-    const headline=card.querySelector<HTMLElement>('[data-radial-number]')!,label=card.querySelector<HTMLElement>('[data-radial-label]')!;
-    let selected=-1,current=0,animation=0;
-    const paint=(index:number,duration=300)=>{
-      card.dataset.radialFocus=String(index);
-      tiles.forEach((tile,i)=>{tile.dataset.active=String(i===index);tile.setAttribute('aria-pressed',String(i===selected));rings[i]?.setAttribute('aria-pressed',String(i===selected));if(rings[i])rings[i]!.dataset.active=String(i===index)});
-      const value=index<0?Number(card.dataset.radialTotal):Number(tiles[index]?.dataset.radialValue);
-      label.textContent=index<0?card.dataset.radialTitle!:tiles[index]!.dataset.radialName!;
-      cancelAnimationFrame(animation);const start=current,time=performance.now();
-      const frame=(now:number)=>{if(!card.isConnected)return;const progress=matchMedia('(prefers-reduced-motion: reduce)').matches?1:Math.min(1,(now-time)/duration);current=start+(value-start)*(1-(1-progress)**3);headline.textContent=Math.round(current).toLocaleString();if(progress<1)animation=requestAnimationFrame(frame)};
-      animation=requestAnimationFrame(frame);
-    };
-    const toggle=(index:number)=>{selected=selected===index?-1:index;paint(selected)};
-    [...tiles,...rings].forEach(control=>{
-      const index=Number(control.getAttribute('data-radial-tile')??control.getAttribute('data-radial-ring'));
-      control.addEventListener('pointerenter',()=>paint(index));control.addEventListener('pointerleave',()=>paint(selected));
-      control.addEventListener('focus',()=>paint(index));control.addEventListener('blur',()=>paint(selected));control.addEventListener('click',()=>toggle(index));
-      if(control instanceof SVGElement)control.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();toggle(index)}});
-    });
-    card.dataset.radialFocus='-1';headline.textContent='0';
-    const reveal=()=>{requestAnimationFrame(()=>{if(!card.isConnected)return;card.classList.add('board-chart-visible');paint(-1,1200)})};
-    if(typeof IntersectionObserver==='undefined'||matchMedia('(prefers-reduced-motion: reduce)').matches)reveal();
-    else {const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting)){observer.disconnect();reveal()}},{threshold:.15});observer.observe(card)}
-  });
-}
 
 export interface HistoryActivity { timezone?:string; days:{date:string;count:number}[]; hours:{weekday:number;hour:number;count:number}[] }
 const weekdays=['周一','周二','周三','周四','周五','周六','周日'];

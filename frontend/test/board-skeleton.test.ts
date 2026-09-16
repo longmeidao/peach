@@ -25,7 +25,7 @@ describe('Board 页面骨架', () => {
     expect(boardPageSkeleton('/item/5')).toBe('');
   });
   it.each([
-    ['/stats', '.board-inventory-charts > .board-radial-card', 2],
+    ['/stats', '.insightpanel > .insightpanelbody', 2],
     ['/activity', '.activitysection', 3],
     ['/duplicates', '.dupgroup .duprow', 4],
     ['/quality-goals', '.qualityitem > .qualitycover', 6],

@@ -209,6 +209,13 @@ const job = useQuery({
 `refetchInterval`（活动页 2 秒／10 秒），不另起 `setInterval`：轮询跟着组件走，
 换页时壳在 `claimSurface` 卸根，它自己就停了。
 
+统计页（`src/react/stats/`）是这条判据的另一端：整页只有 `STATS_KEY` 这一个键，读的是账本
+此刻的样子，没有后台任务也不轮询。一屏里的四个读数和下面三个面板分开取的话，就会出现这一格
+是新的、那一格是旧的。四张读数卡同时是页签（React Aria 的 `Tabs`），因为这一页没有别的主
+动作，读数本身就是入口；环形库存图用 SVG 画，`pathLength={100}` 把一圈钉成 100，颜色只取
+BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选」，整页换成目录仍归遗留壳，页面
+只把标签键交回去（`onTag`）。
+
 ## 迁移下一个页面
 
 整页归 React（ADR-0031）。先挑一个**容器不与别人共用**的页面；写操作和后台任务的
@@ -287,9 +294,9 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 774.5 kB（gzip 200.7 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 87.5 kB（gzip 13.7 kB），
-由 `index.html` 在旧样式表之前引入。`peach-ui.js` 85.6 kB（gzip 26.6 kB），只剩挂载契约与
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 810.7 kB（gzip 208.5 kB），
+只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 91.6 kB（gzip 14.3 kB），
+由 `index.html` 在旧样式表之前引入。`peach-ui.js` 81.5 kB（gzip 25.7 kB），只剩挂载契约与
 遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。
