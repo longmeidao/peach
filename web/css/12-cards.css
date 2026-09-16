@@ -298,9 +298,9 @@ img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain
   text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;
   white-space:nowrap;cursor:pointer}
 .reviewtabs button:hover,.junkfilters a:hover{color:var(--ink)}
-.reviewtabs button[aria-selected="true"],.junkfilters a[aria-current="page"]{background:var(--picked);color:var(--ink)}
+.junkfilters a[aria-current="page"]{background:var(--picked);color:var(--ink)}
 .reviewtabs button:focus-visible,.junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.reviewtabs .n,.junkfilters .n{color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
+.junkfilters .n{color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
 .junkfilters i{width:1px;height:20px;background:var(--line-soft);flex:none;margin:0 6px}
 .junkfilters a>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}

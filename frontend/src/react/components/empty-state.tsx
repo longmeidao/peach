@@ -6,12 +6,20 @@ import type { ComponentType, ReactNode } from 'react';
 
 type Glyph = ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>;
 
+/* 卡片里的空态不描边：外面那张卡已经是一个框，再套一层就是框中框。它沉一档底色，
+ * 占住图区那块地方，读起来仍是「这里本该有东西」。 */
+const SHELL = {
+  page: 'rounded-2xl border border-separator-border px-6 py-12',
+  inset: 'min-h-40 justify-center rounded-xl bg-background-secondary-default px-4 py-4',
+} as const;
+
 export function EmptyState(
-  { icon: Icon, title, actions, children }:
-  { icon: Glyph; title: string; actions?: ReactNode; children: ReactNode },
+  { icon: Icon, title, actions, children, shell = 'page' }:
+  { icon: Glyph; title: string; actions?: ReactNode; children: ReactNode;
+    shell?: keyof typeof SHELL },
 ) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-2xl border border-separator-border px-6 py-12 text-center">
+    <div className={`flex flex-col items-center gap-2 text-center ${SHELL[shell]}`}>
       <Icon aria-hidden className="size-6 text-text-tertiary" />
       <h3 className="text-headline-medium text-text-primary">{title}</h3>
       <p className="max-w-prose text-body-2-regular text-text-secondary">{children}</p>

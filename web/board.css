@@ -151,7 +151,7 @@
   87.5%{background-position-y:7.6%,92.4%,0}
   100%{background-position-y:-10%,50%,0}
 }
-.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.settingscard.settingscard>.board-local-nav{
+.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.settingscard.settingscard>.board-local-nav{
   background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
   background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;
   background-position:50% 20%,80% 70%,0 0;
@@ -170,8 +170,7 @@
 /* 搜索框使用浏览器原生模糊，尺寸变化不依赖异步 SVG 位移贴图。 */
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
-html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.reviewcontrols,.reviewgroupbar,.reviewbulktoolbar,.batchbar,.tagselection),
-html[data-theme-snapshot] .review.review-has-pane::before{backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
+html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.batchbar,.tagselection,[data-glass-pane]){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
 /* 快照撤掉那一下，材质要淡回来：揭示动画刚停，浮层从实底「啪」地跳成毛玻璃，读起来
    像主题又切了第二次。过渡只写在常态上——进快照那一下正在拍旧状态的快照，拍到一半
    路上的颜色就会闪，所以上面那条规则自己把过渡关掉。 */
@@ -359,14 +358,14 @@ html[data-theme-snapshot] .review.review-has-pane::before{backdrop-filter:none!i
    项。格子底下再垫一层薄白就是两套反馈同时说话——薄白说「鼠标在这儿」，玻璃说「你
    在这儿」，指针停在别的格上时这两句话指着两个地方。 */
 .drawer.drawer.drawer .dnav button:hover{background:none;color:var(--glass-text)}
-@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.settingscard.settingscard.settingscard>.board-local-nav{background:var(--ground);animation:none}}
-@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.settingscard.settingscard.settingscard>.board-local-nav{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
+@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.settingscard.settingscard.settingscard>.board-local-nav{background:var(--ground);animation:none}}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.settingscard.settingscard.settingscard>.board-local-nav{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
 /* 面上那两团光停在 `background-position` 给的那一处，不再挪：它讲的是光在动，而这
    台机器上「减少动态效果」说的就是别让不由我操作的东西自己动。停住之后它还是两团
    高光，玻璃仍有厚度，只是这屋里的光不再走了。 */
-@media(prefers-reduced-motion:reduce){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,body .review .reviewbulktoolbar,body .review .reviewgroupbar,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{animation:none}}
+@media(prefers-reduced-motion:reduce){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{animation:none}}
 /* Peach-owned media and analytics layouts. */
-html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .review .reviewbulktoolbar,html.board-high-contrast .review .reviewgroupbar,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-frame,html.board-high-contrast .entitytagbar.entitytagbar.entitytagbar,html.board-high-contrast .entitycollectionhead.entitycollectionhead.entitycollectionhead,html.board-high-contrast .drawer.drawer,html.board-high-contrast .edge.edge,html.board-high-contrast .top .search.search,html.board-high-contrast .top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 92%,var(--ink))}
 .followmanage.followmanage{width:100%;max-width:1120px}
 .followmanage .fmain{width:100%;max-width:1120px;margin-inline:auto;gap:20px}
@@ -547,7 +546,7 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .board-segments-ready>.board-segment-thumb{
   transition:width calc(var(--spring-pane-ms,200) * 1ms) ease,height calc(var(--spring-pane-ms,200) * 1ms) ease}
 @media(prefers-reduced-motion:reduce){.board-segments-ready>.board-segment-thumb{transition:none}}
-.reviewitem,.followtask{border-color:var(--line);border-radius:16px}
+.followtask{border-color:var(--line);border-radius:16px}
 :root[data-theme="dark"]{--page:#111;--ground:#1c1c1c;--surface:#232323;--sunk:#171717;--ink:#fafafa;--ink-2:#d4d4d4;--muted:#a3a3a3;--line:#383838;--line-soft:#303030;--inset:#303030;--picked:#303030;--hover:rgba(255,255,255,.07);--tungsten:#60a5fa}
 /* 侧栏光晕由设置里的「侧栏光晕」一项决定开关：关掉时 --glow-strength 是 0，
    `.glowlayer::before` 的不透明度跟着算成 0。这里不能再压一条 display:none——那会让设置面板上的开关、强度、
@@ -1164,8 +1163,8 @@ body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard :is(b,em,u){gri
    只是 60% 的 #404040 压上去，差几个色阶，必须靠边来补；Peach 不跟这条，改成把填充
    直接抬到 `--control-hover`——那是同一套面色里的下一档实色，两档都一眼看得出，
    边就不必跟着闪。`transition` 只留 `background-color`。 */
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.reviewpickhead button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium);white-space:nowrap;text-decoration:none;transition:background-color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.reviewpickhead button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--control-hover)}
+body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium);white-space:nowrap;text-decoration:none;transition:background-color .15s ease}
+body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--control-hover)}
 /* 药丸、标签和外链卡跟按钮同一条。它们的边各有自己的颜色来源，所以逐类钉回静止值，
    不能统一写成一个 token。 */
 body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}
@@ -1174,7 +1173,7 @@ body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}
 .board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}
 body .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 32%,transparent)}
 body .entitylinks a:hover{border-color:var(--line)}
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.reviewpickhead button,.tagselection button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
+body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.tagselection button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
 /* 强调档全站一副面，三档渐变各差一个色阶，照 `boardui.com/components/button` 的
    `.bg-button-primary`（2026-09-12 实测）：静止 accent-500→600、悬停 400→500、按下
    600→700。不带边——上游那颗是 `border:0`，这里补一圈透明边会把内容盒压掉 2px，渐变的
@@ -1183,21 +1182,21 @@ body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.reviewpickhead bu
    它没有插值可言，直接换就是硬切一下。两层交叠着改 opacity 才过渡得起来，这也是上游
    那一份的做法。宿主要 `isolation:isolate`，不然 `z-index:-1` 会把它送到按钮所在层叠
    上下文的底下，铺到卡片背面去。 */
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button).primary:not(:disabled){position:relative;isolation:isolate;background:var(--board-blue);border:0;color:#fff;box-shadow:0 1px 2px #0000000d;transition:box-shadow .15s ease,color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button).primary:not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button).primary:not(:disabled):hover::before{opacity:1}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button).primary:not(:disabled):active{background:var(--board-blue-active)}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewactions button).primary:not(:disabled):active::before{opacity:0}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled){position:relative;isolation:isolate;background:var(--board-blue);border:0;color:#fff;box-shadow:0 1px 2px #0000000d;transition:box-shadow .15s ease,color .15s ease}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled):hover::before{opacity:1}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled):active{background:var(--board-blue-active)}
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled):active::before{opacity:0}
 /* 危险档跟强调档同一副做法，照 `boardui.com/components/button` 的 `.bg-button-danger`
    （2026-09-12 实测，与 `.bg-button-primary` 逐字同构）：静止 red-500→600、悬停
    400→500、按下 600→700，悬停那一档铺在 `::before` 上淡入。
    批量条和复核那一排此前各写死过同一对红，一并并到这份 token 上——同一种「删掉就回不来」
    在不同页面读出两种红，用户无从判断哪一种更重。 */
-body :is(button.danger,.reviewactions button.error,.batchbar button.danger):not(:disabled){position:relative;isolation:isolate;background:var(--board-red);border:0;color:#fff;box-shadow:0 1px 2px #0000000d;transition:box-shadow .15s ease,color .15s ease}
-body :is(button.danger,.reviewactions button.error,.batchbar button.danger):not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-red-hover);opacity:0;transition:opacity .15s ease}
-body :is(button.danger,.reviewactions button.error,.batchbar button.danger):not(:disabled):hover::before{opacity:1}
-body :is(button.danger,.reviewactions button.error,.batchbar button.danger):not(:disabled):active{background:var(--board-red-active)}
-body :is(button.danger,.reviewactions button.error,.batchbar button.danger):not(:disabled):active::before{opacity:0}
+body :is(button.danger,.batchbar button.danger):not(:disabled){position:relative;isolation:isolate;background:var(--board-red);border:0;color:#fff;box-shadow:0 1px 2px #0000000d;transition:box-shadow .15s ease,color .15s ease}
+body :is(button.danger,.batchbar button.danger):not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-red-hover);opacity:0;transition:opacity .15s ease}
+body :is(button.danger,.batchbar button.danger):not(:disabled):hover::before{opacity:1}
+body :is(button.danger,.batchbar button.danger):not(:disabled):active{background:var(--board-red-active)}
+body :is(button.danger,.batchbar button.danger):not(:disabled):active::before{opacity:0}
 .followmanage .fbtn.fmanagedir{width:36px;padding:0}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 98%,var(--ink))}
 .board-sidebar-head #brandHome .mark{color:var(--glass-text)}
@@ -1279,7 +1278,7 @@ body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlin
 .board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}
 .board-link-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .board-link-button>svg{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;transform:rotate(90deg)}
-body :is(.sbadge,.board-chip,.badge){display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 6px;min-height:24px;box-sizing:border-box;border:0;border-radius:6px;background:var(--color-background-tertiary-default);color:var(--color-text-secondary);font:var(--board-caption);white-space:nowrap}
+body :is(.board-chip,.badge){display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 6px;min-height:24px;box-sizing:border-box;border:0;border-radius:6px;background:var(--color-background-tertiary-default);color:var(--color-text-secondary);font:var(--board-caption);white-space:nowrap}
 body .board-chip.success{background:color-mix(in srgb,#84cc16 16%,var(--color-background-primary-default));color:#4d7c0f}body .board-chip.error{background:color-mix(in srgb,#f43f5e 12%,var(--color-background-primary-default));color:#e11d48}
 .fprovider{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.followmanage .fsource.frow{grid-template-columns:20px minmax(120px,1fr) minmax(100px,auto) auto auto}
 .board-button-group{display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-button-group>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--color-text-secondary);font:var(--board-body)}.board-button-group>button+button{border-left:1px solid var(--color-border-button-default)}.board-button-group>button:is(:hover,[aria-pressed=true]):not(.primary){background:var(--control-hover);color:var(--color-text-primary)}
@@ -1338,19 +1337,17 @@ body .splitbutton.primary{border:0;box-shadow:none}
 body .splitbutton.primary>button:disabled{background:var(--sunk);color:var(--muted)}
 body .splitbutton.primary>.splittoggle{border-left-color:color-mix(in srgb,#000 20%,var(--board-blue))}
 body [data-cleanup-empty][hidden]{display:none}
-.reviewitem .reviewstage[data-framed]{padding:0;border:0;background:transparent;box-shadow:none}.reviewitem .reviewtags{min-height:28px;align-content:start}.reviewitem .reviewempty{min-height:160px;max-height:190px;border-radius:12px;background:var(--color-background-secondary-default)}.reviewitem .reviewstage{flex:0 0 auto}.reviewitem .reviewevidence{border:0;padding:12px 0 0}.reviewitem .reviewactions{border:0;border-radius:0 0 16px 16px;background:var(--color-background-secondary-default);margin-top:auto}
-.reviewitem{content-visibility:auto;contain-intrinsic-size:auto var(--review-fieldset-height)}
-body .reviewactions button,body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium)}
-body .reviewactions button.warning,body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
-.reviewcontrols,.reviewgroupbar{border:0;border-radius:20px}.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
+body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:0 1px 2px #0000000d;font:var(--board-body-medium)}
+body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
+.reviewcontrols{border:0;border-radius:20px}.batchbar,.tagselection{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
 .settingsscroll .settingrow{margin-right:16px}.settingsscroll .settinggroup{border-bottom:0}
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
-html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
-@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;animation:none}}
-@media(prefers-reduced-motion:reduce){body :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgroupbar.is-stuck,.batchbar,.tagselection){animation:none}}
+html.board-high-contrast :is(.selectiondock,.batchbar,.tagselection,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;animation:none}}
+@media(prefers-reduced-motion:reduce){body :is(.selectiondock,.batchbar,.tagselection){animation:none}}
 
 /* ── 分段控件（boardui segmented-control.tsx）：口味页的证据切换与工具栏的版式切换同一枚滑块 ──
    轨道 tertiary 底、4px 内边距、10px 圆角、2px 间隔；选项 px 10 / py 4、6px 圆角；选中 Body Medium 主文字色，
@@ -1405,15 +1402,12 @@ html.board-high-contrast :is(.selectiondock,.reviewcontrols.is-stuck,.reviewgrou
 .reviewtabs{margin-inline:0}
 .reviewtabs button{height:32px;padding:0 12px;gap:6px;border-radius:var(--control-radius);color:var(--color-text-secondary);font:var(--board-body)}
 .reviewtabs button:hover{background:none;color:var(--color-text-primary)}
-.reviewtabs button[aria-selected="true"]{background:var(--picked);color:var(--color-text-primary);font:var(--board-body-medium)}
-.reviewtabs .n{color:var(--color-text-secondary);font:500 12px/16px var(--board-font);font-variant-numeric:tabular-nums}
 /* ── 复核队列的分页条照 Board 的 Pagination（pagination.tsx）：nav 两端对齐、gap 8；上一页／下一页是 32px 的次级小键
    （圆角 8、内边距 6/8）；页码 32×32、圆角 8、Body Medium，当前页借次级键的面（primary 底、border-button 描边、xs 阴影），
    其它页码只有文字，悬停 primary-hover 底；「…」是三级文字色。页码格不做过渡：动了背景和阴影，换页时上一枚当前页会
    肉眼可见地淡出。 ── */
 .board-pagination{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin-top:16px}
 .board-pagination>ul{display:flex;align-items:center;gap:2px;margin:0;padding:0;list-style:none}
-body .review .board-pagination>.geist-button{height:32px;min-height:32px;padding:6px 8px;border-radius:8px}
 body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;padding:6px 8px;border-radius:8px}
 .board-pagination>.geist-button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .board-page,.board-page-dots{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin:0;padding:0;border:0;border-radius:8px;background:none;color:var(--color-text-secondary);font:var(--board-body-medium);font-variant-numeric:tabular-nums}
@@ -1425,16 +1419,6 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 .insightpanel>header:not(:has([role="tablist"])){display:block;min-height:0;padding:24px 24px 12px}
 .insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}
 .insightcopy{padding:24px;gap:0}
-/* ── 复核动作：跳过是蓝色 Chip 的配色（boardui chip.tsx blue：亮 200/800，暗 950@60%/300），悬停深一档 ── */
-/* 这几档原本写的是 Tailwind blue 的 200/800/300/900/950，逐级换成同名的强调色阶：
-   它们说的是「这一步是主操作」，和主按钮同一个意思，换了强调色只有这里还是蓝的就读成
-   另一套配色。深浅两档各自的深浅关系不动，换的只是色相。 */
-body .reviewactions button.warning:not(:disabled){background:var(--color-accent-200);color:var(--color-accent-800);border-color:transparent}
-body .reviewactions button.warning:hover:not(:disabled){background:var(--color-accent-300);color:var(--color-accent-900)}
-:root[data-theme="dark"] body .reviewactions button.warning:not(:disabled){background:color-mix(in srgb,var(--color-accent-950) 60%,transparent);color:var(--color-accent-300)}
-:root[data-theme="dark"] body .reviewactions button.warning:hover:not(:disabled){background:var(--color-accent-900);color:var(--color-accent-200)}
-@media(prefers-color-scheme:dark){:root:not([data-theme]) body .reviewactions button.warning:not(:disabled){background:color-mix(in srgb,var(--color-accent-950) 60%,transparent);color:var(--color-accent-300)}:root:not([data-theme]) body .reviewactions button.warning:hover:not(:disabled){background:var(--color-accent-900);color:var(--color-accent-200)}}
-body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 /* ── 侧栏收起键（boardui sidebar.tsx）：36px、10px 圆角、次级图标色，悬停与导航项同一层底；收起时与品牌相隔 10px ── */
 .drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);transition:color .15s ease}
 .drawer .board-sidebar-head #filterBtn:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
@@ -1535,40 +1519,15 @@ body .reviewactions button:disabled{opacity:.5;cursor:not-allowed}
 @keyframes board-check-draw{from{stroke-dashoffset:23px}to{stroke-dashoffset:0}}
 .pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}
 @media(prefers-reduced-motion:reduce){.pcheck input:checked+span svg{animation:none;stroke-dashoffset:0}}
-/* ── Board 第三批：主按钮尺寸、配置页白底、通知与提醒、复核悬浮框、批量条、关注行图标、侧栏切换器 ── */
-/* 主按钮与旁边的 Board 按钮同一副盒子：36px、10px 圆角、Body Medium。复核底部工具条里所有控件都压到 --control-h，主按钮跟着。 */
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.reviewpickhead button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
-body .reviewdock .geist-button.primary{height:var(--control-h);min-height:0}
+/* ── Board 第三批：主按钮尺寸、配置页白底、通知与提醒、批量条、关注行图标、侧栏切换器 ── */
+/* 主按钮与旁边的 Board 按钮同一副盒子：36px、10px 圆角、Body Medium。 */
+body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
 /* 提醒条与上下内容留 12px：关注页检查结果、扫描卡失败都是同一个 Note。 */
 body .followmanage .fwarn{margin:0 0 12px}
 body .library-processing [role=alert]>.geist-note{margin-top:12px}
-/* 复核页与别的管理页同宽；标签条不悬浮，悬浮的是工具条这一层，分组条贴在它下面合成一个玻璃框。 */
+/* 复核页的骨架与别的管理页同宽；分类那一列不悬浮，它是左右分栏里固定的一栏。 */
 body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:border-box}
 body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;display:block;border-radius:0}
-/* 玻璃框左右就是内容列，和标题、面包屑、卡片同一条边。往外扩 16px 再垫回来能让
-   条里的控件对齐卡片，代价是这一块比整页任何东西都宽出去一截，读起来是溢出。
-   框里的控件照首页那块浮层留 12px，不贴着 20px 的圆角。玻璃静止时就在——首页那块
-   浮层从进页面起就是玻璃，这边等吸顶才变，同一套语言里就成了两种东西；粘住之后由
-   `.review::before` 那一层接管，两条横条让出底色。 */
-/* 那圈 inset 是这块玻璃的边，不是把它切成两半的线：暗色下底色和页面一样黑，没有
-   这一圈就只剩一块黑方块。接缝处不描——上面那条不画底边、下面那条不画顶边，两条
-   合起来仍是一圈。 */
-body .review .reviewbulktoolbar{position:sticky;top:var(--topH);z-index:60;width:auto;margin-inline:0;padding:12px;border-radius:20px 20px 0 0;
-  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),var(--glass-shadow)}
-body .review .reviewgroupbar{border:0;border-radius:0 0 20px 20px;padding:8px 12px;
-  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
-body .review .reviewgroup:not([hidden])~.reviewgroup:not([hidden])>.reviewgroupbar{border-radius:20px;
-  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
-/* 悬浮起来的是一块玻璃，不是两块叠在一起。每块玻璃只糊自己身后那一段页面，两块
-   上下相接就会在接缝处显出两种颜色——工具条身后是卡片，分组条身后是另一排卡片。
-   所以玻璃由页面自己画一层，铺满当前粘住的那几行；两条横条只留内容，不带底。
-   矩形由 `updateReviewSticky` 逐帧量出来，写进 `--review-pane-*`。 */
-body .review{position:relative}
-body .review.review-has-pane::before{content:"";position:fixed;top:var(--review-pane-top,var(--topH));left:var(--review-pane-left,0);width:var(--review-pane-width,0);height:var(--review-pane-height,0);z-index:58;pointer-events:none;border-radius:20px;background:var(--glass-drift-a),var(--glass-drift-b),var(--glass-fill);background-size:200% 200%,200% 200%;background-repeat:no-repeat;background-position:50% 20%,80% 70%;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);-webkit-backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow)}
-body .review :is(.reviewbulktoolbar,.reviewgroupbar).review-pane-member{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none;border:0;box-shadow:none}
-html.board-high-contrast .review.review-has-pane::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
-@media(prefers-reduced-transparency:reduce){body .review.review-has-pane::before{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
-@media(prefers-reduced-motion:reduce){body .review.review-has-pane::before{animation:none}}
 
 /* 数据管理子页：结果标题、证据区域和操作栏各有固定归属。 */
 .collection-summary{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:20px 24px;margin-bottom:20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
@@ -1581,25 +1540,15 @@ body[data-surface="/review"] .review-workspace>.reviewcontrols{grid-column:2;gri
 body[data-surface="/review"] .review-category-title{font:var(--board-caption);color:var(--muted);margin:0 12px 12px}
 body[data-surface="/review"] .reviewtabs{display:flex;flex-direction:column;gap:4px;align-items:stretch;white-space:normal}
 body[data-surface="/review"] .reviewtabs button{height:auto;min-height:40px;text-align:left;justify-content:space-between;padding:10px 12px;white-space:normal}
-body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar,.board-pagination){grid-column:1;min-width:0}
-body[data-surface="/review"] .review-workspace>.runtimegate{grid-column:1/-1;grid-row:1}
-/* 栅格只给了列间距，自动落库那条提示又没写归属，自动摆位把它和下面的队列贴成一体。
-   归到左栏并自带一档行距：这一栏的相邻块（卡片网格、批量操作栏）之间也是 20px。 */
-body[data-surface="/review"] .review-workspace>.review-autoapply{grid-column:1;margin-bottom:20px}
-body[data-surface="/review"] .review-workspace:has(>.runtimegate)>.reviewcontrols{grid-row:2 / span 4}
-body[data-surface="/review"] .reviewitem{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
-body[data-surface="/review"] :is(.reviewlist:not(.reviewgroups),.reviewgroupitems){grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:20px}
-body[data-surface="/review"] .reviewitem .reviewactions{border-radius:0 0 var(--surface-radius) var(--surface-radius)}
-/* 骨架卡跟着上面那条 .reviewitem 走，不跟别的骨架页共用 16px 圆角：占位和到货的卡
-   差一档圆角，读完数据整片网格会跳一下。 */
-.review-skeleton .skeletoncard{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
-.review-skeleton .skeletoncard em{background:var(--color-background-secondary-default)}
-/* 骨架里没有分组条，上面那条只开口朝下的圆角和缺一道的边就没有东西接。这块玻璃
-   自己封口：四角都圆，四边都描。它也不吸顶——`updateReviewSticky` 要等数据到货才
-   有东西可量，粘住一块空壳只会把顶栏下面糊上一层。 */
-body .review-skeleton .reviewbulktoolbar{position:static;border-radius:20px;
-  margin-bottom:20px;
-  box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar){grid-column:1;min-width:0}
+body[data-surface="/review"] .reviewlist{grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));gap:20px}
+/* 卡片是一块填充的面：底色、圆角和那层极浅的投影都跟到货的卡逐字对上。占位和到货
+   差一档底色或圆角，读完数据整片网格会跳一下。 */
+.review-skeleton .skeletoncard{border:0;border-radius:16px;background:var(--color-background-secondary-default);box-shadow:0 1px 2px #00000008}
+/* 工具条到货之后是一条普通的横条，骨架也就不糊一层玻璃：占位比到货多一层背景的话，
+   数据回来那一刻这条会自己褪色。它也不吸顶——粘住一块空壳只是把顶栏下面糊上一层。 */
+body .review-skeleton .reviewbulktoolbar{position:static;border-radius:16px;margin-bottom:20px;
+  padding:8px 12px;background:var(--color-background-full)}
 body[data-surface="/duplicates"] #manageLede{display:none}
 body[data-surface="/duplicates"] .dupactions{padding:16px 20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default);flex-wrap:wrap}
 body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}
@@ -1632,7 +1581,7 @@ body[data-surface="/junk-files"] .junkactions{padding:12px;background:var(--colo
  body[data-surface="/review"] .review-workspace{grid-template-columns:1fr}
  body[data-surface="/review"] .review-workspace>.reviewcontrols{position:static;grid-column:1;grid-row:auto!important;margin-bottom:16px}
  body[data-surface="/review"] .reviewtabs{flex-direction:row;flex-wrap:wrap}
- body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar,.board-pagination){grid-column:1}
+ body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar){grid-column:1}
  body[data-surface="/duplicates"] .duprow{grid-template-columns:88px minmax(0,1fr) auto}
  body[data-surface="/duplicates"] .dupcover{grid-row:span 3}
  body[data-surface="/duplicates"] .dupmarks{grid-column:2/-1}
@@ -1645,8 +1594,6 @@ body[data-surface="/junk-files"] .junkactions{padding:12px;background:var(--colo
  body[data-surface="/duplicates"] .duphead{padding:16px}
  body[data-surface="/duplicates"] .duphead .dupbtns{margin:0;width:100%}
  body[data-surface="/duplicates"] .duprow{padding:16px}
- body[data-surface="/review"] .board-pagination{display:flex;flex-wrap:wrap;gap:8px;max-width:100%;overflow:hidden}
- body[data-surface="/review"] .board-pagination>.geist-button{max-width:calc(50% - 4px);overflow:hidden}
 }
 /* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
 /* 批量条上那颗只是不在上面那份尺寸名单里，面色跟站内每一颗危险键同一份。 */

@@ -38,9 +38,71 @@
    * 工具类里没有这两档，写成 token 而不是任意值。 */
   --container-avatar-picker: 720px;
   --aspect-avatar-choice: 3 / 4;
+  /* 顶栏高度。粘顶的工具条要停在顶栏下沿，而这个高度归遗留壳的 `--topH`
+   * （`web/board.css` 与 `web/css/01-base.css` 按屏各给一档），这里只把它接成 `top-topbar`。 */
+  --spacing-topbar: var(--topH, 64px);
+  /* 人工复核那一屏的几何，取自 Board 给这一页的那组规则（`web/board.css` 的
+   * `body[data-surface="/review"]` 与 `web/css/04-manage.css`）：右边分类列 184px、
+   * 卡片列最窄 340px、一张卡 440px 高（身份回配那一类要放下证据，560px）、
+   * 来源图 220px、原视频封面 132px（窄屏 110px）、作品样本一格 92px。 */
+  --container-review-tabs: 184px;
+  --container-review-card: 340px;
+  --container-review-cover: 132px;
+  --container-review-cover-narrow: 110px;
+  --container-review-asset: 92px;
+  --spacing-review-card: 440px;
+  --spacing-review-card-tall: 560px;
+  --spacing-review-image: 220px;
+  /* Board 的两档圆角：不浮起的内嵌表面（缩略图、行卡片）14px，浮起来的那一层 20px。
+   * 名字与取值同 `web/board.css` 的 `--surface-radius`、`--floating-radius`。 */
+  --radius-surface: 14px;
+  --radius-floating: 20px;
+  /* 分类列并回正文上方的那一档，以及药丸缩一号的那一档。 */
+  --breakpoint-review-split: 900px;
+  --breakpoint-review-tight: 600px;
   /* 模态弹层的遮罩。注册表里没有模态弹层，也就没有它的底色；取值同旧样式表
    * `.geist-modal::backdrop` 的黑 60%，深浅两档共用一个。 */
   --color-scrim: color-mix(in srgb, var(--color-black) 60%, transparent);
+}
+
+/* 粘顶的那一层玻璃。取值逐字同 `web/board.css` 里首页筛选条那一组：同一份 `--glass-*`
+ * 变量、同两条 `glassdrift*` 关键帧，所以站内每一块玻璃是同一块，不是几套近似值。
+ * 关掉透明、关掉动效、高对比这三条退路也一起搬过来，漏掉哪条都会在那一档下露馅。 */
+@utility glass-pane {
+  background: var(--glass-drift-a), var(--glass-drift-b),
+    linear-gradient(125deg, var(--glass-sheen), transparent 42%, var(--glass-low)), var(--glass-fill);
+  background-size: 200% 200%, 200% 200%, auto;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: 50% 20%, 80% 70%, 0 0;
+  animation: glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,
+    glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;
+  animation-play-state: var(--glow-drift-play);
+  backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
+  -webkit-backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
+  border: 0;
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 1px 0 0 var(--glass-low),
+    inset -1px 0 0 var(--glass-low), inset 0 -1px 0 var(--glass-low), var(--glass-shadow);
+  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+    background: var(--ground);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+  }
+  @media (prefers-reduced-motion: reduce) { animation: none; }
+  /* 用户自己按下的高对比开关是个挂在 `html` 上的旧类名，React 产物不能和旧样式表同名
+     （`frontend/test/legacy-class-names.test.ts`）。这一面的回退因此写在 `web/board.css`
+     那一行里，与其它玻璃面排在一起，按 `data-glass-pane` 认人。 */
+}
+
+/* 复核队列的卡片网格与作品样本网格。两处都是「按可用宽度自动折行」，只有最窄那一列
+ * 不同：队列卡要放下一张候选表单，样本格只放一张 16/10 的缩略图。 */
+@utility review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--container-review-card)), 1fr));
+}
+@utility review-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--container-review-asset), 1fr));
 }
 
 /* 卡片网格：按可用宽度自动折行，一列放不下 360px 时自己退成一列。工具类里没有

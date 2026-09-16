@@ -22,7 +22,7 @@
 - 图标按钮统一清除浏览器内边距并居中 SVG，不覆盖业务显隐。Remix Icon 由 `vendor_web_dependencies.mjs` 生成设置导航 symbol；随机按钮保留原有双路径动画。
 - `frontend/src/react/taste/taste.ts` 使用 d3-sankey 0.12.3（BSD-3-Clause；类型包 0.12.5）计算来源网站到创作者线索的流向。布局依赖不读取浏览历史；Peach 提供去重聚合值并负责隐私边界。分发许可随 `web/vendor/d3-LICENSE.txt` 保留。
 
-复核复用 Checkbox、Button、Badge、Select 与 `/api/review/decision`，默认勾选并沿用馆藏页 Shift 连选语义；支持跨组通过／拒绝与无歧义的共同来源选择。按候选数量、来源组合或字段分组，每项仅出现一次，切组保留选择；成功移出、失败保留，页面离开后停止后续提交。正文使用不占宽度的 Scroller，完成结果复用成功 Note。身份候选复用创作者页、作品详情与 revealSource 核对样本；来源图片和缺图占位共用 220px 预览区，加载失败保留占位。样本读取支持无缩略图作品，回收站不参与。
+复核复用 Checkbox、Button、Badge、Select 与 `/api/review/decision`，默认勾选并沿用馆藏页 Shift 连选语义；支持跨组通过／拒绝与无歧义的共同来源选择。按候选数量、来源组合或字段分组，每项仅出现一次，切组保留选择；成功移出、失败保留，页面离开后停止后续提交。整页在 `frontend/src/react/review/`，一条队列一个 `queryKey`，判定后改缓存不重取；完成结果复用成功 Note。身份候选复用创作者页、作品详情与 revealSource 核对样本；来源图片和缺图占位共用 220px 预览区，加载失败保留占位。样本读取支持无缩略图作品，回收站不参与。
 
 ## 本机设置与卸载
 

@@ -597,6 +597,101 @@ class FollowManageEndpointTests(unittest.TestCase):
         self.assertIn("getPaginationRowModel", self.source)
 
 
+class ReviewEndpointTests(unittest.TestCase):
+    """人工复核页从 `web/app.js` 搬过来时不能把语义契约丢在原地。
+
+    `web/app.js` 只剩一张骨架和一次挂载，页面行为由 `frontend/test/react/review.test.tsx`
+    守；这里守的是「搬家之后挂载点、端点与键还在同一处」。
+    """
+
+    PAGE = FRONTEND / "src" / "react" / "review"
+    ENDPOINTS = ("/api/review", "/api/review/auto-apply", "/api/review/decision",
+                 "/api/review/genre")
+
+    def setUp(self):
+        self.data = (self.PAGE / "review.ts").read_text(encoding="utf-8")
+        self.source = "\n".join(
+            (self.PAGE / name).read_text(encoding="utf-8")
+            for name in ("review.ts", "review-page.tsx", "review-card.tsx",
+                         "review-evidence.tsx", "candidate-form.tsx", "bulk-toolbar.tsx"))
+
+    def test_the_island_mounts_where_the_skeleton_stands(self):
+        """遗留层按名字挂这一屏，名字在注册表、类型表和产物里都要对得上。
+
+        骨架和岛落在同一个容器上，读完数据只是把占位换成内容；名字对不上的话遗留层
+        照样跑完，屏幕上停在那张骨架。
+        """
+        islands = (FRONTEND / "src" / "islands.ts").read_text(encoding="utf-8")
+        self.assertIn("review: ReactBundle.ReviewProps;", islands)
+        self.assertIn("review: { react: 'review' },", islands)
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("'/review':()=>reviewSkeletonHtml(),", app_js)
+        self.assertIn('data-skeleton="review"', app_js)
+        self.assertIn("await ui.mountIsland('review',$('#stats'),{...params,", app_js)
+        if not REACT_BUNDLE.is_file():
+            self.skipTest(
+                f"{REACT_BUNDLE.relative_to(ROOT)} 不在：先 `npm --prefix frontend run build`")
+        self.assertIn("\n\treview: {", REACT_BUNDLE.read_text(encoding="utf-8"),
+                      "产物里没有这一页，先跑 npm --prefix frontend run build")
+
+    def test_each_endpoint_is_declared_once(self):
+        """四条端点与那一个 `queryKey` 在前端各只有一个声明处，就是这一页的数据模块。
+
+        这一页读一整条队列（一次几兆、上千行），判定、批量判定和收录 genre 三个写操作
+        全都只改缓存里那几行。第二处再写一遍就等于给同一条队列开了第二份快照：判过的行
+        在一处消失、在另一处还列着，而两处都不报错。
+        """
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        for endpoint in self.ENDPOINTS:
+            with self.subTest(endpoint=endpoint):
+                declared = [path for path in sources
+                            if f"'{endpoint}'" in path.read_text(encoding="utf-8")]
+                self.assertEqual(declared, [self.PAGE / "review.ts"],
+                                 f"{endpoint} 声明在 {[path.name for path in declared]}")
+        keyed = [path.name for path in sources
+                 if "REVIEW_KEY = [" in path.read_text(encoding="utf-8")]
+        self.assertEqual(keyed, ["review.ts"], f"queryKey 声明在 {keyed}")
+        routed = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
+                  if "/api/review" in path.read_text(encoding="utf-8")]
+        self.assertEqual(len(routed), 1, f"/api/review 的路由声明在 {routed}")
+
+    def test_the_queue_and_the_receipt_are_two_keys(self):
+        """队列和本次自动落库的回执各走各的键。
+
+        合成一个键的话，收录一个 genre 之后重取队列会把那句回执一起变成新的——它说的
+        是「这一次进来做了什么」，不是账本此刻的样子。
+        """
+        self.assertIn("export const REVIEW_KEY = ['review'] as const;", self.data)
+        self.assertIn("export const REVIEW_AUTO_APPLY_KEY = ['review', 'auto-apply'] as const;",
+                      self.data)
+        self.assertIn("queryClient.setQueryData<ReviewData>(REVIEW_KEY", self.data)
+        self.assertIn("export function dropReviewRows(", self.data)
+
+    def test_the_read_only_end_does_not_write_before_it_reads(self):
+        """只读账本上不发那一次 POST：明知不能写就不该制造一次 409。"""
+        prefetch = self.data[self.data.index("export async function prefetchReview"):]
+        prefetch = prefetch[:prefetch.index("\n}")]
+        self.assertIn("readOnly ? { state: 'skipped' } : await autoApplyReceipt(signal)", prefetch)
+        self.assertIn("queryKey: REVIEW_KEY", prefetch)
+
+    def test_empty_and_error_states_reuse_the_shared_components(self):
+        """空态与失败态走 `src/react/components/` 的组合件，不是一行灰字。"""
+        self.assertIn("<Note", self.source)
+        self.assertIn("<EmptyState", self.source)
+        for title in ("暂无候选", "这批作品尚未抽帧"):
+            self.assertIn(title, self.source)
+
+    def test_the_categories_and_their_names_live_in_one_table(self):
+        """分类名只有这一张表，遗留层那份骨架按同一批名字画占位。"""
+        labels = self.data.split("export const REVIEW_LABELS = {", 1)[1].split("} as const;", 1)[0]
+        pairs = re.findall(r"(\w+): '([^']+)',", labels)
+        self.assertEqual(len(pairs), 10, f"分类表读出来 {len(pairs)} 条")
+        app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        for category, label in pairs:
+            self.assertIn(f"{category}:'{label}'", app_js,
+                          f"骨架里没有 {category}，占位会比到货少一枚")
+
+
 class ConfigurationEndpointTests(unittest.TestCase):
     """整页和各分区读同一条 `/api/configuration`，两份产物各打包一份这个模块。"""
 

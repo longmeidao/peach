@@ -105,9 +105,6 @@
 .fwarn{grid-template-columns:16px minmax(0,1fr);margin:10px 0 14px}
 .fwarn>span{min-width:0}
 .fwarn p{margin:0}
-/* 徽章：Geist Badge 的低饱和变体（取证 vercel-geist-semantics-measured.md）。带状态档位
-   的那几档归 BoardUI `Chip`，这里剩复核卡字段名这一枚没有档位的。 */
-.sbadge{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-xs);color:var(--ink-2)}
 .fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
   box-sizing:border-box;padding:0 12px;border:0;border-radius:var(--control-radius);
   box-shadow:0 0 0 1px var(--line-soft);

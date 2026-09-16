@@ -182,6 +182,38 @@ export interface FollowManageProps {
   writerUrl: string;
 }
 
+/** 人工复核页。
+ *
+ *  `category` 是唯一进地址栏的那一项：十个分类是固定的一组身份，「在看哪一条队列」链接
+ *  得过来，刷新也要还原。分组、筛选与页码是这一刻的看法，队列又是消耗性的（判一条就少
+ *  一条），写进地址栏分享出去只会指向另一批东西。 */
+export interface ReviewProps {
+  /** 地址栏此刻带着的分类。不认识的值退回默认那一档。 */
+  category: string;
+  /** 把分类写回地址栏。空串表示这一项此刻就是默认值，壳不写进去。 */
+  route(params: { category: string }): void;
+  /** 打开作品详情（遗留层的整页视图，含播放器与队列）。 */
+  openItem(id: number): void;
+  /** 打开实体资料页。`kind` 是 `creator`／`performer`。 */
+  openEntity(kind: string, name: string): void;
+  /** 在资源管理器里显示这个文件。成功由遗留层自己发回执，失败回一句原因。 */
+  revealSource(id: number): Promise<string>;
+  /** 实体圆标的内层 HTML：有图走图，没图退到首字母。遗留层那份唯一的回落链实现。 */
+  avatarInner(
+    name: string,
+    entity: { id: number; has_image: boolean; avatar_focus?: unknown } | null,
+    representativeAssetId: number | null,
+    kind: string,
+  ): string;
+  /** 写操作在服务端落地之后的过去时回执。 */
+  toast(message: string): void;
+  /** 账本只读：这台机器只能浏览，判定与收录全部不给点，进页面也不发那一次自动落库。 */
+  readOnly: boolean;
+  readOnlyMessage: string;
+  /** 写入端上这一页的地址。取不到时门禁里不给去处。 */
+  writerUrl: string;
+}
+
 /** 扫描与采集。同一份数据两个读者，所以同一个名字挂两种形态：数据管理页那张卡片，
  *  和目录页顶上那条横幅（`mode: 'notice'`）。 */
 export interface LibraryProcessingProps {
@@ -213,6 +245,7 @@ export interface ReactPages {
   'follow-manage': ReactPage<FollowManageProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
+  review: ReactPage<ReviewProps>;
   scraping: ReactPage<ScrapingProps>;
   stats: ReactPage<StatsProps>;
   taste: ReactPage<TasteProps>;

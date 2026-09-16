@@ -14,6 +14,7 @@
 import { apiGet, apiSend } from '../../api';
 import { clampPage, pageCount } from '../../pagination';
 import { queryClient } from '../query';
+import { localTime } from '../time';
 
 export const FOLLOW_URL = '/api/follow';
 export const FOLLOW_CREDENTIALS_URL = '/api/follow/credentials';
@@ -537,16 +538,7 @@ export const checkFailures = (job: CheckJob | null): CheckResult[] =>
 export const checkEvidenceGap = (job: CheckJob | null): string =>
   (job?.results || []).find((row) => row.evidence_error)?.evidence_error || '';
 
-/** 本机时间。没有时区标记的按 UTC 解释——存进去的时候就是 UTC。 */
-export function localTime(iso: string | null | undefined): string {
-  if (!iso) return '';
-  const text = /[Zz]|[+-]\d\d:?\d\d$/.test(iso) ? iso : `${iso}Z`;
-  const when = new Date(text);
-  if (Number.isNaN(when.getTime())) return String(iso).replace('T', ' ').slice(0, 16);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())} `
-    + `${pad(when.getHours())}:${pad(when.getMinutes())}`;
-}
+export { localTime };
 
 export const checkedText = (source: FollowSource): string =>
   (source.last_checked_at ? localTime(source.last_checked_at) : '未检查');

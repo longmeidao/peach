@@ -13,7 +13,7 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
-import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireReviewSelection, updateReviewSticky, groupReviewRows, paginationHtml, pageCount, clampPage, identityEvidenceHtml, reviewImageHtml, wireReviewPictures, preferredDirection } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -4745,26 +4745,6 @@ async function openPlaylists(push=true){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-let reviewData=null,reviewRuntime=null,reviewCategory='metadata_fields';
-/* 本次打开复核页时自动落库的结果，`{applied}` 或 `{error}`；只读库上是 null。 */
-let reviewAutoApply=null;
-const REVIEW_PAGE_SIZE=20;
-let reviewPage=1,reviewPageView='';
-function autoApplyNote(){
-  /* 自动落库没有按钮，进页面就跑完了（ADR-0018）。一条都没落下时也要说一句：
-     否则「它到底跑没跑」只能靠数队列长度猜，而队列本来就不见得会变短。 */
-  if(!reviewAutoApply)return'';
-  if(reviewAutoApply.error)return noteHtml('自动落库这一步没能执行：'+reviewAutoApply.error,
-    {variant:'warning',label:'自动落库',className:'review-autoapply'});
-  const n=reviewAutoApply.applied;
-  return noteHtml(n?`${n} 条候选补进了空字段，已从下面的队列里移走。`
-    :'这一批候选没有可以直接补空的：字段已有值、几家来源给的值不一样，或者番号和文件名对不上，都要人来判。',
-    {variant:n?'success':'secondary',label:'自动落库',className:'review-autoapply'});
-}
-
-/* 主体是实体而不是单条作品的复核分类。值就是实体 kind。 */
-const ENTITY_REVIEW_CATEGORIES={creator_tags:'creator',western_identity:'creator'};
-
 /* 数据管理是「库里已经有的东西怎么收拾」的唯一入口：广告、重复、空目录，
    加上复核队列、回收站和高清版。它们此前散在管理菜单和统计页两处，
    统计页因此还挂着两块跟统计无关的面板。 */
@@ -5006,279 +4986,6 @@ async function disposeDuplicates(groups,keep,button){
   }finally{setActionBusy(button,false)}
   }});
 }
-async function openReview(push=true){
-  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
-  if(push)route('/review');
-  const surface=claimSurface('/review');
-  showManagementBody({placeholder:managementPlaceholder('/review')});
-  const runtime=await surfaceApi(surface,'/healthz');
-  if(!surfaceCurrent(surface))return;
-  /* ADR-0018：确定的那部分先落库再取队列。reader 明知不能写就不要制造一次 409；
-     它改为读取 writer 的严格 CA HTTPS 镜像，判定按钮也一起锁住。 */
-  /* 落库结果要画在页面上。它没有按钮，进页面就跑完了，回执只写控制台的话，用户
-     打开复核页看到的只有一条不见少的队列，无从知道这一步到底有没有发生。 */
-  reviewAutoApply=null;
-  if(!runtime.ledger_read_only)try{
-    const auto=await api('/api/review/auto-apply',{method:'POST',body:'{}'});
-    if(!surfaceCurrent(surface))return;
-    reviewAutoApply={applied:Number(auto&&auto.applied||0)};
-  }catch(e){reviewAutoApply={error:e.message}}
-  const next=await surfaceApi(surface,'/api/review');
-  if(!surfaceCurrent(surface))return;
-  reviewRuntime=runtime;reviewData=next;
-  const selection=createReviewSelection();
-  const render=()=>{
-    const category=reviewCategory;
-    const queue=reviewData.sections[reviewCategory]||[];
-    /* 分页只做在前端：接口一次给出整条队列（实测 4.6 MB、1300 行，本机读 0.1 秒），卡的是把 331 张候选
-       表单和 799 张卡一次画进 DOM。一页 20 张；分组筛选先筛后分页；换分类、换分组或换筛选都回第 1 页。 */
-    if(selection.category!==category){selection.filter='';selection.groupBy='candidates'}
-    const filtered=selection.filter?groupReviewRows(queue,selection.groupBy).find(group=>group.key===selection.filter)?.rows||queue:queue;
-    const pages=pageCount(filtered.length,REVIEW_PAGE_SIZE);
-    const view=`${category}|${selection.groupBy}|${selection.filter}`;
-    if(view!==reviewPageView){reviewPageView=view;reviewPage=1}
-    reviewPage=clampPage(reviewPage,pages);
-    const rows=filtered.slice((reviewPage-1)*REVIEW_PAGE_SIZE,reviewPage*REVIEW_PAGE_SIZE);
-    const title=REVIEW_LABELS[reviewCategory];
-    const mirror=reviewData.mirror||null,locked=!!reviewRuntime.ledger_read_only;
-    const writer=reviewRuntime.ledger_writer_origin
-      ?new URL('/review',reviewRuntime.ledger_writer_origin).href:'';
-    const mirrorText=mirror?.state==='live'?'正在显示写入端的实时复核队列'
-      :mirror?.state==='cached'?`写入端暂时不可达，显示 ${localTime(mirror.fetched_at)} 的缓存`
-      :mirror?.error||reviewRuntime.ledger_read_only_message||'';
-    const value=row=>row.tags||row.japanese_name||row.path||row.suggested_query||'';
-     $('#stats').innerHTML=`<div class="review review-workspace">
-      ${locked?ledgerGateNote(reviewRuntime,mirrorText,'前往写入端复核',writer):''}${autoApplyNote()}${
-      /* 收录 genre 时的候选词表。给的是静态表已经投影到的那批内容标签，一份挂在整页上：
-         每张卡各写一遍的话，同一百来个 option 会在 DOM 里重复几十份。 */
-      (reviewData.genre_tags||[]).length?`<datalist id="reviewgenretags">${
-        reviewData.genre_tags.map(tag=>`<option value="${esc(tag)}"></option>`).join('')}</datalist>`:''}
-      <div class="reviewcontrols"><h2 class="review-category-title">复核分类</h2><div class="reviewtabs" role="tablist" aria-label="复核分类" aria-orientation="vertical">${Object.entries(REVIEW_LABELS).map(([key,label])=>{
-        /* Geist Tabs（vercel.com/geist/tabs）：计数走独立徽标，为 0 时整枚去掉，不留一个
-           「0」占位；tabindex 只留在选中项上，方向键负责在同一条里移动焦点。 */
-        const on=key===reviewCategory,count=Number(reviewData.counts[key]||0);
-        return `<button role="tab" id="reviewtab-${key}" aria-controls="reviewpanel" data-review-tab="${key}"
-          aria-selected="${on}" tabindex="${on?'0':'-1'}">${label}${
-          count?` <span class="n mono">${count.toLocaleString()}</span>`:''}</button>`;
-      }).join('')}</div></div>
-      <section class="reviewsection" id="reviewpanel" role="tabpanel" aria-labelledby="reviewtab-${reviewCategory}"><div class="reviewlist">${rows.length?rows.map(row=>{
-        const key=row.item_key,decision=row.decision||'pending';
-        const metadata=reviewCategory==='metadata_fields',candidates=row.candidates||[];
-        const tags=String(row.tags||'').split('|').filter(Boolean).map(tag=>`<span>${esc(tag)}</span>`).join('');
-        /* 字段名是这张卡在问的问题（「这个作品的创作者填什么」），作品标识只是它问
-           的对象。写在标题末尾的话，一条无番号视频的文件名会先把它挤出省略号，卡上
-           就只剩一串文件名和一个候选值，读不出这一票投给的是哪个字段。 */
-        const fieldName=metadata?String(row.field_label||row.field||'').trim():'';
-        const subjectText=metadata?String(row.query||row.code||''):(row.creator||row.studio||row.current_name||row.name||key);
-        const titleText=fieldName?`${subjectText} · ${fieldName}`:subjectText;
-        const evidence=row.reason||row.evidence||row.note||row.decision_note||'';
-        const canApprove=metadata?candidates.length>0:(reviewCategory!=='creator_tags'||String(row.status||'').trim()==='candidate');
-         const approveLabel=canApprove?'通过':'已跳过';
-         const assets=row.preview_assets||[];
-         /* 有些候选判的是「这位创作者」，不是某一条作品：创作者标签看的是他全部
-            作品该打什么标签，西方身份回配的是这个人对不对得上。这类卡片顶上必须给
-            创作者入口，而不是从样本里挑一条画成「原视频」——下面 60 个样本、上面
-            1 个视频，读起来就是错的（西方身份那条更极端：772 部作品配 1 个）。 */
-         const subjectKind=ENTITY_REVIEW_CATEGORIES[reviewCategory];
-         const subjectName=String(row.creator||'').trim();
-         const works=Number(row.video_count||row.videos||0);
-         const comparison=row.comparison_assets||[];
-         const comparisonOrigin=comparison.length>1?`<div class="reviewcompare">${comparison.map(asset=>`<div class="revieworigin">
-             <button class="revieworigincover" data-review-open-item="${asset.id}" aria-label="打开原视频 ${esc(asset.name||'')}">
-               ${asset.preview_url?`<img src="${esc(asset.preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
-             <div><b data-middle-truncate title="${esc(asset.name||'')}">${esc(asset.code||asset.name||'原视频')}</b>
-               <button type="button" class="geist-button" data-review-open-item="${asset.id}">${icon('play')}打开原视频</button></div></div>`).join('')}</div>`:'';
-         const origin=comparisonOrigin||subjectKind&&subjectName?comparisonOrigin||`<div class="reviewentity">
-             <button class="reviewentityface" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}"
-               aria-label="打开创作者页：${esc(subjectName)}">${avatarInner(subjectName,
-                 row.entity_id?{id:row.entity_id,has_image:row.has_image,avatar_focus:row.avatar_focus}:null,null,subjectKind)}</button>
-             <div><b><button type="button" class="reviewentityname" data-entity-kind="${subjectKind}" data-entity-name="${esc(subjectName)}">${esc(subjectName)}</button></b>
-               ${works?`<small class="mono">${works.toLocaleString()} 部作品</small>`:''}</div></div>`
-           :row.asset_id?`<div class="revieworigin">
-             <button class="revieworigincover" data-review-open-item="${row.asset_id}" aria-label="打开原视频 ${esc(row.asset_name||'')}">
-               ${row.asset_preview_url?`<img src="${esc(row.asset_preview_url)}" alt="" loading="lazy" data-drop="self">`:'<span>无封面</span>'}</button>
-             <div><b data-middle-truncate title="${esc(row.asset_name||'')}">${esc(row.asset_name||'原视频')}</b>
-               <button type="button" class="geist-button" data-review-open-item="${row.asset_id}">${icon('play')}打开原视频</button></div></div>`:'';
-         /* 只有一个候选时没什么可选的，单选圈只是让人以为还有别的选项。
-            改成纯展示，几何对齐上面的「打开原视频」块。
-            radio 保留但不可见：提交路径读的就是 `[name^="metadata-"]:checked`，
-            删掉它会让批准退化成「必须选择一个来源值」的报错，而不是少一个圈。 */
-         const evidenceLabels={title:'标题',original_title:'原标题',runtime:'来源时长',director:'导演',label:'Label',poster_url:'海报',cover_url:'封面',screenshot_urls:'截图',trailer_url:'预告片'};
-         const candidateEvidence=candidate=>{
-           const rows=Object.entries(candidate.catalog_evidence||{}).filter(([,item])=>item&&item.display_value);
-           return rows.length?`<dl class="metadataevidence">${rows.map(([field,item])=>`<div><dt>${esc(evidenceLabels[field]||field)}</dt><dd>${esc(item.display_value)}</dd>${(item.warnings||[]).map(warning=>`<small>${esc(warning)}</small>`).join('')}</div>`).join('')}</dl>`:''};
-         /* 一张卡上下两段读的是两件事：上段是这个来源给的那个值，也就是选中它就会写
-            进账本的东西；下段是同一来源顺带交回来的其它字段，只作判断依据。两段各自
-            铺底色并由一条线隔开，选哪一段能改账本就不用猜。 */
-         const candidateBody=candidate=>`<span class="metadatacandidatevalue"><b>${esc(candidate.source)}${candidate.official?' · 官方优先':''}${candidate.content_id||candidate.provider_id?` · ID ${esc(candidate.content_id||candidate.provider_id)}`:''}</b>`
-           +`<span>${esc(candidate.display_value||'')}</span>`
-           +(candidate.warnings||[]).map(warning=>`<i>${esc(warning)}</i>`).join('')+'</span>'
-           +candidateEvidence(candidate);
-         const preview=metadata
-           ? (candidates.length===1
-             ? `<div class="metadatasole"><input type="radio" name="metadata-${esc(key)}" value="${esc(candidates[0].candidate_key)}" checked>
-                 ${candidateBody(candidates[0])}</div>`
-             /* 一组互斥的来源值照 boardui Radio card 画：整卡可点、圆点在右、同名 radio
-                自带方向键漫游，所以容器只补 `radiogroup` 这个名字，不另写一套键盘逻辑。 */
-             : `<div class="metadatacandidates" role="radiogroup" aria-label="${esc(fieldName||'候选')}的来源">${candidates.map(candidate=>`<label class="metadatacandidate">${candidateBody(candidate)}<input type="radio" name="metadata-${esc(key)}" value="${esc(candidate.candidate_key)}"></label>`).join('')}</div>`)
-           : reviewCategory==='creator_tags'
-           ? (assets.length?`<div class="reviewpick"><div class="reviewpickhead"><span class="mono" data-picked-count></span>
-               <button type="button" data-pick-all>全选</button><button type="button" data-pick-none>清空</button></div>
-               <div class="reviewasset-grid">${assets.map(asset=>`<button type="button" class="reviewasset picked" data-review-asset="${asset.id}" aria-pressed="true" title="${esc(asset.name)}"><img src="/poster?id=${asset.id}&c=4" alt="" loading="lazy"><span class="pickmark">${icon('check')}</span></button>`).join('')}</div></div>`
-              /* 空白一片会被当成界面坏了。真实原因是这些作品还没抽帧，说清楚比留白好；
-                 空状态铺满卡片中段，卡高不随「有没有预览」上下跳。 */
-              : emptyStateHtml('pics','这批作品尚未抽帧',
-                  `${row.video_count||''} 条作品还没有可用预览；批准后仍会按候选写入标签。`,
-                  {className:'reviewempty'}))
-           : reviewCategory==='fc2_similarity'?''
-           : reviewCategory==='western_identity'?identityEvidenceHtml(row):reviewImageHtml(row.preview_url);
-         /* 预览和判断依据是同一件事的两半：看这几帧，然后读这一句。它们合成卡片中段
-            那一个框，框铺满剩下的高度，依据贴在框底。依据掉在框外时一张卡上就有两块
-            留白——框里空半屏、框外一行字，读起来像两件不相干的事。
-            候选表单和身份证据那两类不进框：它们每一项自己就是一个框，再套一层就是框中框。
-            候选表单的当前信息另有去处——它贴在卡底不跟着滚，那一句读的是「现在是什么」，
-            不是这一屏证据的一部分。 */
-         const heading=subjectKind&&subjectName?origin
-           :fieldName?`<h4 class="reviewfieldhead"><b class="sbadge reviewfieldname">${esc(fieldName)}</b><span title="${esc(subjectText)}">${esc(subjectText)}</span></h4>`
-           :`<h4>${esc(titleText)}</h4>`;
-         const currentInfo=metadata?`<div class="reviewcurrentinfo" role="region" aria-label="当前信息" tabindex="0"><p>${esc(evidence)}</p></div>`:'';
-         const framed=!metadata&&reviewCategory!=='western_identity';
-         /* 未收录 genre 是这张卡上唯一一件不判候选的事：来源给了值，Peach 还没决定它算
-            哪个标签，于是那句「来源还有 2 个未收录 genre」每批都原样再来一次。收录一次
-            是对整张词表说的，不属于其中某一个来源，所以单列一块摆在候选下面。给中文名
-            就是收录成那个标签，判「不是内容」就是永久排除——两种结论都要能记下来，
-            只能记「是什么」的话，排除项会在下一批候选里重新冒出来。 */
-         const pendingGenres=metadata?[...new Set(candidates.flatMap(candidate=>candidate.unmapped_genres||[]))]:[];
-         const genres=pendingGenres.length?`<div class="reviewgenres" role="group" aria-label="未收录 genre">
-           <h5>未收录 genre · ${pendingGenres.length}</h5>${pendingGenres.map(genre=>`<div class="reviewgenre" data-review-genre="${esc(genre)}">
-             <b lang="ja">${esc(genre)}</b>
-             <input type="text" list="reviewgenretags" maxlength="40" placeholder="中文标签" autocomplete="off"
-               aria-label="「${esc(genre)}」收录成的中文标签"${locked?' disabled':''}>
-             ${/* 两个结论都是次级键：这张卡上的主动作是「通过」，把词收进表里只是让那一步
-                  有得可选。收录挂上 primary 的话，同一张卡上会有两个蓝底键在抢「按这里」。 */''
-             }<button type="button" class="geist-button" data-genre-accept${locked?' disabled':''}>收录</button>
-             <button type="button" class="geist-button" data-genre-exclude${locked?' disabled':''}>不是内容</button>
-             <p class="reviewstate" aria-live="polite"></p></div>`).join('')}</div>`:'';
-         const stage=`<div class="reviewstage"${framed?' data-framed=""':''}>${preview}${genres}${
-           !metadata&&evidence?`<p class="reviewevidence">${esc(evidence)}</p>`:''}</div>`;
-         const body=`${
-           // 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。
-           row.source_name?`<p class="reviewalias">来源写法：${esc(row.source_name)}</p>`:''}${
-           // 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。
-           subjectKind&&subjectName?'':`<p>${esc(row.board||row.assets?`样本/资产：${row.video_count||row.assets||''}`:'')}</p>`}${subjectKind&&subjectName?'':origin}${tags||reviewCategory==='creator_tags'?`<div class="reviewtags">${tags||'<small>暂无候选标签</small>'}</div>`:''}${stage}`;
-         /* 主体动作在最右：一行里从左到右是「拒绝、跳过、通过」，读到最后一枚才是这张卡
-            真正要人做的判断。Geist 的弹层与 Fieldset 操作条都是这个方向——取消在左，
-            主动作靠 margin-left:auto 推到最右（vercel-geist-fieldset-scroller-empty-state.md）。 */
-         const actions=`<button class="geist-button error" data-review-status="rejected"${locked?' disabled':''}>拒绝</button><button class="geist-button warning" data-review-status="skipped"${locked?' disabled':''}>跳过</button><button class="geist-button primary" data-review-status="approved"${canApprove&&!locked?'':' disabled'}>${approveLabel}</button><span class="reviewstate" aria-live="polite"></span>`;
-         return `<fieldset class="reviewitem" data-geist-fieldset data-review-key="${esc(key)}" data-decision="${esc(decision)}"><legend class="sr-only">${esc(titleText)}</legend><header class="reviewitemheader">${heading}</header><div class="geist-fieldset-content">${scrollerHtml(body,{className:'reviewcontent',label:`复核：${titleText}`})}</div>${currentInfo}<footer class="reviewactions geist-fieldset-footer" data-geist-fieldset-footer>${actions}</footer></fieldset>`}).join(''):emptyState('square-check-big','暂无候选','该分类当前没有待人工复核的项目。')}</div></section>${paginationHtml(reviewPage,pages,'复核分页')}</div>`;
-     $('#stats').querySelectorAll('.board-pagination [data-page]').forEach(button=>button.onclick=()=>{
-       if(selection.busy)return;
-       reviewPage=+button.dataset.page;selection.anchor=null;render();window.scrollTo({top:0,behavior:'smooth'});
-     });
-     wireReviewAssets($('#stats'));
-    wireScrollers($('#stats'));wireReviewPictures($('#stats'));
-    $('#stats').querySelectorAll('[data-review-reveal]').forEach(button=>button.onclick=()=>revealSource(+button.dataset.reviewReveal,button.closest('[data-review-key]').querySelector('.reviewstate'),{button}));
-    $('#stats').querySelectorAll('[data-review-open-item]').forEach(button=>button.onclick=()=>openItem(+button.dataset.reviewOpenItem));
-    // 没有全局委托，每个界面各自接线（见 #stage 的同类处理）。
-    $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
-      openEntity(button.dataset.entityKind,button.dataset.entityName));
-    /* Geist Tabs 的键盘契约：左右方向键在同一条 tab 里移动焦点，Home/End 到两端；
-       激活仍交给 button 自己的 Enter/Space，不另设快捷键。 */
-    const reviewTabs=[...$('#stats').querySelectorAll('[data-review-tab]')];
-    reviewTabs.forEach((button,index)=>{
-      button.onclick=()=>{if(selection.busy)return;selection.selected.clear();selection.anchor=null;selection.choices.clear();selection.assets.clear();selection.errors.clear();reviewCategory=button.dataset.reviewTab;render()};
-      button.onkeydown=event=>{
-        const step=event.key==='ArrowRight'||event.key==='ArrowDown'?1:event.key==='ArrowLeft'||event.key==='ArrowUp'?-1:0;
-        const target=step?reviewTabs[(index+step+reviewTabs.length)%reviewTabs.length]
-          :event.key==='Home'?reviewTabs[0]:event.key==='End'?reviewTabs[reviewTabs.length-1]:null;
-        if(!target)return;
-        event.preventDefault();target.focus();
-      };
-    });
-    const decisionPayload=(item,status='approved')=>{
-       const row=rows.find(x=>String(x.item_key)===item.dataset.reviewKey);
-       const selectedIds=[...item.querySelectorAll('[data-review-asset][aria-pressed="true"]')].map(cell=>+cell.dataset.reviewAsset);
-       const candidateKey=item.querySelector('[name^="metadata-"]:checked')?.value||'';
-       /* 乐观并发只在这张卡钉死了一条资产时带上：按番号命中多条的组没有单一
-          revision 可报，硬报一个只会在同番号分卷上换来一串假冲突。对不上时
-          服务端回 409，页面重取队列再让人重判。 */
-       const pinned=row.asset_path&&row.asset_mutation_revision!=null;
-       return {category,item_key:item.dataset.reviewKey,status,candidate_key:candidateKey,creator:row.creator,tags:row.tags,studio:row.studio,entity_id:row.entity_id,avatar_url:row.avatar_url,selected_ids:selectedIds,
-         ...(pinned?{expected_revision:row.asset_mutation_revision}:{})};
-    };
-    const removeReviewed=key=>{
-      if(!current())return;
-      const index=queue.findIndex(row=>String(row.item_key)===key);
-      if(index>=0){queue.splice(index,1);reviewData.counts[category]=Math.max(0,(reviewData.counts[category]||1)-1)}
-      selection.selected.delete(key);selection.choices.delete(key);selection.assets.delete(key);selection.errors.delete(key);
-    };
-    const current=()=>surfaceCurrent(surface)&&category===reviewCategory;
-    wireReviewSelection($('#stats').querySelector('.review'),{rows,catalog:queue,category,metadata:category==='metadata_fields',locked,state:selection,
-      payload:decisionPayload,submit:payload=>api('/api/review/decision',{method:'POST',body:JSON.stringify(payload)}),
-      applied:removeReviewed,active:current,refresh:render,notify:actionReceipt});
-    syncHeaderActions();
-    /* 收录一个 genre 改的是词表，不是这条候选：服务端按新词表重新折一遍整条队列
-       （`_fold_genre_decisions`），所以这里重新取一次队列而不是在前端自己折。同一份
-       判据写两遍迟早对不上，而对不上的表现是「页面上标签多了一个，批准写下去的还是旧的」。 */
-    const reloadReview=async()=>{
-      const next=await surfaceApi(surface,'/api/review');
-      if(!next||!current())return;
-      reviewData=next;render();
-    };
-    $('#stats').querySelectorAll('.reviewgenre').forEach(box=>{
-      const input=box.querySelector('input'),state=box.querySelector('.reviewstate'),genre=box.dataset.reviewGenre;
-      const record=async(button,tag)=>{
-        state.textContent='';setActionBusy(button);
-        try{
-          const result=await api('/api/review/genre',{method:'POST',body:JSON.stringify({genre,tag})});
-          if(!result.ok){state.textContent=result.error||'服务端拒绝了这次收录';return}
-          actionReceipt(tag?`已把「${genre}」收录为标签「${tag}」`:`已把「${genre}」判为非内容标签`);
-          await reloadReview();
-        }catch(error){state.textContent=error.message||'收录失败，请重试'}
-        finally{setActionBusy(button,false)}
-      };
-      box.querySelector('[data-genre-accept]').onclick=event=>{
-        const tag=input.value.trim();
-        if(!tag){state.textContent='先给它一个中文标签';input.focus();return}
-        record(event.currentTarget,tag);
-      };
-      box.querySelector('[data-genre-exclude]').onclick=event=>record(event.currentTarget,'');
-      input.onkeydown=event=>{
-        if(event.key!=='Enter'||event.isComposing)return;
-        event.preventDefault();box.querySelector('[data-genre-accept]').click();
-      };
-    });
-    $('#stats').querySelectorAll('[data-review-status]').forEach(button=>button.onclick=async()=>{
-      if(selection.busy)return;
-      const item=button.closest('[data-review-key]');button.disabled=true;selection.busy=true;
-       /* api() 在任何非 2xx 都 throw，这个 onclick 必须自己 catch：漏掉就吞成 unhandled
-         rejection，下面的 button.disabled=false 永远到不了，于是按钮永久禁用、
-         界面一句话都不给——用户看到的就是「点了没反应」。
-         失败必须说出来，并且把按钮放开让人能重试。 */
-      const state=item.querySelector('.reviewstate');
-      if(state)state.textContent='';
-      try{
-        const result=await api('/api/review/decision',{method:'POST',body:JSON.stringify(decisionPayload(item,button.dataset.reviewStatus))});
-        if(result.ok){
-          // 只改 data 属性的话，条目还杵在队列里，看起来就像没生效。
-          // 判过的直接移出本批并同步计数，下一条立刻顶上来。
-          removeReviewed(item.dataset.reviewKey);selection.busy=false;
-          if(!current())return;
-          render();
-          actionReceipt(button.dataset.reviewStatus==='approved'?'已通过候选':
-            button.dataset.reviewStatus==='rejected'?'已拒绝候选':'已跳过候选');
-          return;
-        }
-        if(state)state.textContent=result.error||'服务端拒绝了这次判定';
-      }catch(e){
-        if(state)state.textContent=e.message||'判定失败，请重试';
-      }
-      selection.busy=false;
-      button.disabled=false;
-    });
-  };
-  render();window.scrollTo({top:0,behavior:'smooth'});
-}
 
 /* ── island 挂载点（ADR-0022）──
    高清版目标页已经迁到 Preact。遗留层只留外壳：铺骨架、把自己独有的助手交出去，
@@ -5292,6 +4999,42 @@ async function openQualityGoals(push=true){
   const ui=await import('/dist/peach-ui.js');
   const props={openItem,javTitleHtml,javDisplayName,srcBadge};
   await ui.mountIsland('quality-goals',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
+}
+/* 复核页的分类进地址栏：十个分类是固定的一组身份，「在看哪一条队列」链接得过来，
+   刷新也要还原。分组、筛选与页码不进——队列是消耗性的，判一条就少一条，第 3 页
+   指的是哪二十行随每一次判定而变，分享出去只会指向另一批东西。 */
+function reviewParams(){
+  const category=new URLSearchParams(location.search).get('category')||'';
+  return {category:Object.hasOwn(REVIEW_LABELS,category)?category:''};
+}
+function routeReview(params){
+  route('/review'+(params.category?'?category='+encodeURIComponent(params.category):''));
+}
+async function openReview(push=true){
+  releaseHoverPreviews();disposeStage(false);enterManagementSurface();
+  const params=reviewParams();
+  // 从窄栏点进来是「重新进入」：回到默认那一档分类。
+  if(push){params.category='';routeReview(params)}
+  const surface=claimSurface('/review');
+  showManagementBody({placeholder:managementPlaceholder('/review')});
+  const [ui,runtime]=await Promise.all([
+    import('/dist/peach-ui.js'),surfaceApi(surface,'/healthz')]);
+  if(!surfaceCurrent(surface))return;
+  const writer=runtime?.ledger_writer_origin
+    ?new URL('/review',runtime.ledger_writer_origin).href:'';
+  await ui.mountIsland('review',$('#stats'),{...params,
+    route:routeReview,
+    openItem:id=>void openItem(id),
+    openEntity:(kind,name)=>void openEntity(kind,name),
+    /* 定位成功的回执归全站那一份 Toast，失败要回到出事的那一行旁边。`revealSource`
+       把原因写进 `status.textContent`，这里给它一个收字的对象读回来。 */
+    revealSource:async id=>{const status={textContent:''};await revealSource(id,status);return status.textContent},
+    avatarInner,toast:actionReceipt,
+    readOnly:!!runtime?.ledger_read_only,
+    readOnlyMessage:runtime?.ledger_read_only_message||'本机当前只能浏览',
+    writerUrl:writer,
+  },{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
 /* 活动页（任务中心）也是 island。它自己按内容决定轮询快慢，遗留层不给它任何助手：
@@ -6579,32 +6322,6 @@ async function followWrite(button,path,body){
   }finally{
     setActionBusy(button,false);
   }
-}
-function wireReviewAssets(root){
-  /* 复核页不再自造「多选模式」和框选：交互与主网格一致——点一下切换，Shift 选一段。
-     多一套只在这一页生效的选择方式，用户得先发现它、再记住它。 */
-  root.querySelectorAll('.reviewpick').forEach(pick=>{
-    const cells=[...pick.querySelectorAll('.reviewasset')];
-    const readout=pick.querySelector('[data-picked-count]');
-    let anchor=null;
-    const paint=()=>{
-      const n=cells.filter(c=>c.getAttribute('aria-pressed')==='true').length;
-      if(readout)readout.textContent=`已选 ${n} / ${cells.length}`;
-    };
-    const set=(cell,on)=>{cell.setAttribute('aria-pressed',on);cell.classList.toggle('picked',on)};
-    cells.forEach((cell,index)=>{
-      cell.onclick=e=>{
-        if(e.shiftKey&&anchor!==null){
-          const [a,b]=[Math.min(anchor,index),Math.max(anchor,index)];
-          for(let i=a;i<=b;i++)set(cells[i],true);
-        }else set(cell,cell.getAttribute('aria-pressed')!=='true');
-        anchor=index;paint();
-      };
-    });
-    pick.querySelector('[data-pick-all]').onclick=()=>{cells.forEach(c=>set(c,true));paint()};
-    pick.querySelector('[data-pick-none]').onclick=()=>{cells.forEach(c=>set(c,false));paint()};
-    paint();
-  });
 }
 
 /* ── 全部艺人 / 创作者 / 标签索引页 ── */
@@ -8388,7 +8105,6 @@ function updateMobileFilterScroll(){
 }
 function updateStickySurfaces(){
   updateMobileFilterScroll();
-  updateReviewSticky($('.review'));
   ['.board-filter-frame','#tagbar','#count','.entitytagbar','.entitycollectionhead'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
     const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
