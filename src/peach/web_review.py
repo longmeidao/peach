@@ -505,6 +505,7 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
                     if not is_korean_mib_code(str(row.get("code") or ""))
                     or _only_mib_official(row)]
             rows = _drop_community_challenges_to_official(connection, rows)
+            rows = _drop_shop_side_dissent(rows)
         elif category == "performer_avatars":
             # 候选 CSV 里的 `current_name` 是抓取来源给的罗马音；账本早就有更好的
             # 规范名（`Alice Shaku` 的规范名是 `释爱丽丝`），罗马音本身也已经登记
@@ -574,6 +575,29 @@ def _split_multi(value: str) -> list[str]:
     return [part.strip() for part in re.split(r"[、,，/|]", value or "") if part.strip()]
 
 
+#: 厂牌和系列在账本里也是实体，字段里那串字符只是它的投影。
+ENTITY_BACKED_FIELDS = {"studio", "series"}
+
+
+def _entity_identity_key(connection, kind: str, name: str) -> frozenset:
+    """把一个名字折成身份键：能解析到实体的用实体 id，解析不到的保留规范化原名。
+
+    来源常把两种写法并在一串里——演员是「现名（旧名）」，厂牌是
+    `プレステージプレミアム(PRESTIGE PREMIUM)` 这种日英并写。整串匹配不到实体，
+    括号两边各自却都是已登记别名，所以拆开再查一次。没有一个变体命中就保留原名，
+    真正的冲突不会被这一步吞掉。
+    """
+    variants = [name.strip()]
+    match = re.fullmatch(r"\s*([^（(]+?)\s*[（(]([^）)]+)[）)]\s*", name)
+    if match:
+        variants.extend(part.strip() for part in match.groups() if part.strip())
+    resolved = {
+        row["id"] for variant in variants
+        if (row := resolve_entity(connection, kind, variant))
+    }
+    return frozenset(resolved) if resolved else frozenset({normalize_entity_name(name)})
+
+
 def _performer_identity_keys(connection, names: list[str]) -> frozenset:
     """把演员名折成身份键：能解析到实体的用实体 id，解析不到的保留原名。
 
@@ -583,21 +607,7 @@ def _performer_identity_keys(connection, names: list[str]) -> frozenset:
     """
     keys = set()
     for name in names:
-        # 官方源偶尔把曾用名写成「现名（旧名）」；整串当然匹配不到实体，但括号
-        # 两边各自都是已登记别名。只在所有命中都指向同一实体时折叠，避免把真正
-        # 的多人或同名冲突吞掉。
-        variants = [name.strip()]
-        match = re.fullmatch(r"\s*([^（(]+?)\s*[（(]([^）)]+)[）)]\s*", name)
-        if match:
-            variants.extend(part.strip() for part in match.groups() if part.strip())
-        resolved = {
-            row["id"] for variant in variants
-            if (row := resolve_entity(connection, "performer", variant))
-        }
-        if resolved:
-            keys.update(resolved)
-        else:
-            keys.add(normalize_entity_name(name))
+        keys.update(_entity_identity_key(connection, "performer", name))
     return frozenset(keys)
 
 
@@ -626,6 +636,17 @@ def _metadata_row_adds_information(connection, row: dict) -> bool:
         current_set = frozenset(_split_multi(current))
         return any(
             frozenset(_split_multi(str(c.get("display_value") or ""))) != current_set
+            for c in candidates
+        )
+    if field in ENTITY_BACKED_FIELDS:
+        # 同一家厂牌在三处各有写法：账本存规范名 `Prestige`，javbus 给日文名
+        # `プレステージプレミアム(PRESTIGEPREMIUM)`，libredmm 给日英并写的那一串。
+        # 三者都指向同一条实体，按字符串比就成了要人判的「冲突」。
+        current_key = _entity_identity_key(connection, field, current)
+        return any(
+            _entity_identity_key(
+                connection, field, str(c.get("display_value") or "").strip()
+            ) != current_key
             for c in candidates
         )
     return any(str(c.get("display_value") or "").strip() != current for c in candidates)
@@ -678,6 +699,44 @@ def _drop_community_challenges_to_official(connection, rows: list[dict]) -> list
             and spec.official
             for c in row.get("candidates") or []
         )
+
+    return [row for row in rows if keep(row)]
+
+
+#: MGS 是转售店。同一部片它的商品页跟片商自己那份有三处系统性差异：标题尾巴上缀着
+#: 店铺加赠（`【MGSだけのおまけ映像付き+5分】`），发行日期写的是它自己的先行配信日
+#: （本机实测早 8 天上下），系列写的是店内货架名（`しろうと女子のAV初体験`，片商那边
+#: 是作品系列 `圧倒的ケツ圧ピストン！！`）。三处都不是「哪个对」，是「谁的口径」。
+_SHOP_SIDE_SOURCES = frozenset({"mgstage"})
+#: 片商自己的店和它的镜像。这两家跟账本一致，就说明账本存的已经是片商口径。
+_MAKER_SIDE_SOURCES = frozenset({"dmm", "libredmm"})
+
+
+def _drop_shop_side_dissent(rows: list[dict]) -> list[dict]:
+    """转售店口径的异议不进队列：片商自己那份已经跟账本对上了。
+
+    用户 2026-09-16 定的口径。本机 214 条「账本已有值、来源给的不一样」里，158 条
+    是这一种——发行日期 65、标题 64、系列 29，反对方全是 mgstage 一家，与账本一致的
+    一方是 dmm+libredmm 129 条、dmm 29 条。
+
+    片商方必须真的在场且与账本一致才成立：MGS 独家发行的片子没有片商方候选，它给的
+    值是这个番号唯一的说法，照常进队列。多值字段不走这条——那里的差异是集合成员，
+    不是同一个值的两种写法。
+    """
+    def keep(row: dict) -> bool:
+        current = str(row.get("current_value") or "").strip()
+        if not current or str(row.get("field") or "").strip() in MULTI_VALUE_FIELDS:
+            return True
+        agreeing, dissenting = set(), set()
+        for candidate in row.get("candidates") or []:
+            value = str(candidate.get("display_value") or "").strip()
+            if not value:
+                continue
+            source = str(candidate.get("source") or "").strip()
+            (agreeing if value == current else dissenting).add(source)
+        if not dissenting or not dissenting <= _SHOP_SIDE_SOURCES:
+            return True
+        return not agreeing & _MAKER_SIDE_SOURCES
 
     return [row for row in rows if keep(row)]
 

@@ -835,6 +835,60 @@ class ReviewQueueTests(unittest.TestCase):
         # 只是换写法的不入队；真的换人的留下。
         self.assertEqual(self.queue_keys("metadata_fields"), ["CAST"])
 
+    def test_studio_candidate_folds_onto_the_ledger_brand_entity(self):
+        """厂牌在账本里是实体，字段里那串字符只是投影。
+
+        同一家在三处各有写法：账本存规范名 `Prestige`，javbus 给日文名，
+        mgstage 与 libredmm 给日英并写的一串。实测本机队列里 10 条「厂牌冲突」
+        全是这一种，指的都是同一条实体。
+        """
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(50,'studio','Prestige','prestige','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                    "confidence) VALUES(50,'プレステージプレミアム','プレステージプレミアム',"
+                    "'peach:canonicalization',1.0)")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(51,'studio','Faleno','faleno','2026-01-01','2026-01-01')")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "JA", "field": "studio", "current": "Prestige",
+             "candidates": ["プレステージプレミアム"], "source": "javbus"},
+            {"item_key": "BOTH", "field": "studio", "current": "Prestige",
+             "candidates": ["プレステージプレミアム(PRESTIGE PREMIUM)"], "source": "libredmm"},
+            {"item_key": "OTHER", "field": "studio", "current": "Prestige",
+             "candidates": ["Faleno"], "source": "javbus"},
+            # 两边都没登记过就没有「同一实体」可言，异议照常要人判。
+            {"item_key": "UNKNOWN", "field": "studio", "current": "Prestige",
+             "candidates": ["某个没登记的牌子"], "source": "javbus"},
+        ])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["OTHER", "UNKNOWN"])
+
+    def test_reseller_dissent_never_queues_when_the_maker_store_backs_the_ledger(self):
+        """MGS 是转售店，它跟片商那份的三处差异是店铺口径，不是事实争议。
+
+        标题尾巴上缀店铺加赠，发行日期写自己的先行配信日，系列写店内货架名。
+        本机 214 条「账本已有值、来源给的不一样」里 158 条是这一种：发行日期 65、
+        标题 64、系列 29，与账本一致的一方是 dmm+libredmm 129 条、dmm 29 条。
+        """
+        self.write_metadata_rows([
+            {"item_key": "BONUS", "field": "title", "current": "圧倒的ケツ圧ピストン！！",
+             "candidates": [{"source": "dmm", "value": "圧倒的ケツ圧ピストン！！"},
+                            {"source": "mgstage",
+                             "value": "圧倒的ケツ圧ピストン！！ 【MGSだけのおまけ映像付き+5分】"}]},
+            {"item_key": "EARLY", "field": "release_date", "current": "2021-05-07",
+             "candidates": [{"source": "libredmm", "value": "2021-05-07"},
+                            {"source": "mgstage", "value": "2021-04-29"}]},
+            # MGS 独家发行：片商方没有候选，它给的值是这个番号唯一的说法。
+            {"item_key": "ONLYMGS", "field": "title", "current": "旧标题",
+             "candidates": [{"source": "mgstage", "value": "しろうと女子のAV初体験"}]},
+            # 片商方自己也在反对：那是真冲突，这道过滤不该碰。
+            {"item_key": "MAKER", "field": "release_date", "current": "2021-05-07",
+             "candidates": [{"source": "dmm", "value": "2021-06-01"},
+                            {"source": "mgstage", "value": "2021-04-29"}]},
+        ])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["MAKER", "ONLYMGS"])
+
     def test_performer_avatar_rows_show_the_ledger_name_not_the_scraped_romaji(self):
         """候选 CSV 给的是罗马音，账本早就有更好的名字，罗马音本身也已是别名。"""
         con = sqlite3.connect(self.db_path)
