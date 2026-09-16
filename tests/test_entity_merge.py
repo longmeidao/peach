@@ -95,6 +95,38 @@ class EntityMergeTests(unittest.TestCase):
         self.assertEqual(
             self.con.execute("PRAGMA foreign_key_check").fetchall(), [])
 
+    def test_a_second_id_from_the_same_source_is_dropped_not_raised(self):
+        """合并过的人在来源那边还是两个页面，第二个 id 只能丢掉。
+
+        实体 8004「桥本有菜」名下挂着「橋本ありな」「新ありな」等 8 个别名，r18dev 给
+        前者 1032668、给后者 1078619，账本存的是后者。按别名认出同一个人之后再插第二个
+        id，撞的是 `UNIQUE(entity_id,provider,external_kind)`——插入语句的 `ON CONFLICT`
+        只认主键那一组，于是一条落库把整批自动落库连同别的字段一起带走。
+        """
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
+            "VALUES(10,'橋本ありな別名','橋本ありな別名','mapping',1.0)")
+        self.con.execute(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+            " VALUES(10,'r18dev','performer','1078619')")
+        self.con.commit()
+        entity_id = upsert_asset_entity(
+            self.con, kind="performer", name="橋本ありな別名", asset_id=3,
+            role="performer", source="javinizer:r18dev:performer",
+            external_provider="r18dev", external_id="1032668")
+        self.con.commit()
+        self.assertEqual(entity_id, 10)
+        self.assertEqual(
+            self.con.execute(
+                "SELECT external_id FROM entity_external_ref "
+                "WHERE entity_id=10 AND provider='r18dev'").fetchall(),
+            [("1078619",)], "先到的那条留着")
+        self.assertEqual(
+            self.con.execute(
+                "SELECT count(*) FROM asset_entity WHERE asset_id=3 AND entity_id=10 "
+                "AND source='javinizer:r18dev:performer'").fetchone()[0], 1,
+            "引用写不进去不影响这条出演关系本身")
+
     def test_person_upsert_collapses_repeated_name_and_reuses_unique_alias(self):
         self.con.execute(
             "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence) "
