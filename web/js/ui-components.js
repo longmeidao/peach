@@ -494,9 +494,13 @@ export function wireScrollers(root=document){
   });
 }
 
-/** 挂覆盖式滚动条的滚动容器。列表只写在这一处，样式那边认的是挂上之后的属性。 */
+/** 挂覆盖式滚动条的滚动容器。列表只写在这一处，样式那边认的是挂上之后的属性。
+ *
+ * `.stagescroll` 是详情浮窗里所有内容的外层。窄屏下整块内容自己纵向滚，滚的得是它而不是
+ * `<dialog class="stage">` 本身：轨道必须是滚动容器的兄弟，而 dialog 在顶层，挂在它
+ * 父级上的轨道会落到遮罩底下。宽屏下它不溢出，组件自己量得出来，轨道不显示。 */
 const OVERLAY_SCROLLERS=[
-  '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
+  '.settingsscroll','.sidecontent','.stagescroll','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.skeletondashstrip','.followpagination','.linktablewrap',
   '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',

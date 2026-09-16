@@ -779,10 +779,18 @@ body>.board-filter-frame{margin-inline:16px}
 .card .pic{border-radius:var(--surface-radius)}
 .card .info{background:transparent}
 @media(max-width:760px){.sidecontent{padding:16px}.stage{border-radius:12px}.stage .side{border-left:0;border-top:1px solid var(--line-soft)}}
-/* 单列时媒体、详情栏和队列上下排成一列，总高超过浮窗，整块浮窗自己纵向滚；上面那条
-   `overflow:clip` 只该管横向。视频格吸在浮窗顶上，往下翻标签和动作时画面还在；图片不吸——
-   一张竖图就能占满整屏，吸住它下面就没有地方可滚。 */
-@media(max-width:1080px){.stage{overflow:hidden auto}.stage .vwrap:has(>.video-js){position:sticky;top:0;z-index:3}}
+/* 单列时媒体、详情栏和队列上下排成一列，总高超过浮窗，滚的是里面那一格内容：`<dialog>`
+   在顶层，它自己滚就只能用系统滚动条，全站那条 3px 浮在内容上的轨道挂不上去（轨道得是
+   滚动容器的兄弟，挂到浮窗父级上会落进遮罩底下）。浮窗照旧按内容定高、`overflow:clip`
+   照旧管横向，上限由这一层自己端着：34px 是浮窗那 16px 上下留白加两条边线，减出来的高度
+   与浮窗自己那条 `max-height` 落在同一个数上，浮窗于是不会比这一层高出一条空边。
+   浮窗不改成 flex 或 grid：那一下会让内部几处百分比高度取得到定值，整块内容当场缩成
+   半屏，浮窗下半截空着。
+   视频格吸在这一层顶上，往下翻标签和动作时画面还在；图片不吸——一张竖图就能占满整屏，
+   吸住它下面就没有地方可滚。 */
+@media(max-width:1080px){
+  .stage>.stagescroll{max-height:calc(100dvh - 34px);overflow:hidden auto;overscroll-behavior:contain}
+  .stage .vwrap:has(>.video-js){position:sticky;top:0;z-index:3}}
 /* 手机上浮窗离屏幕边只留 8px，画面格按视频自己的比例排：竖屏和方形视频装进 16:9 的格子里
    只剩中间一小块画面。比例由播放器读到元数据后写进 `--peach-video-ratio`，读到之前仍是 16:9；
    高度封顶 56dvh，吸顶以后下面至少还有四成屏给详情。
@@ -790,6 +798,8 @@ body>.board-filter-frame{margin-inline:16px}
 @media(max-width:760px){
   .stage{inset:calc(env(safe-area-inset-top) + 8px) 8px auto;margin:0 auto;width:calc(100vw - 16px);max-width:calc(100vw - 16px);
     max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}
+  /* 手机上浮窗自己的上限换了一条，滚动层跟着换，两边仍旧差两条边线。 */
+  .stage>.stagescroll{max-height:calc(100dvh - env(safe-area-inset-top) - 18px)}
   .vwrap>.video-js{aspect-ratio:var(--peach-video-ratio,16/9);max-height:56dvh}
 }
 @media(max-width:760px){.settingspanel.settingspanel{padding:12px;grid-template-columns:minmax(0,1fr)}.settingscard.settingscard{width:calc(100vw - 24px);max-width:calc(100vw - 24px);min-width:0}.settingscard .settingsscroll .settingrow:has(.board-optional-number){grid-template-columns:minmax(0,1fr) auto;gap:12px}.settingscard>.board-local-nav{min-width:0;max-width:100%}}
@@ -945,6 +955,10 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .board-glow-reset{padding:0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
 .board-glow-reset:hover{color:var(--ink)}
 .board-glow-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:0 4px}
+/* 类名里写死的 `display` 压得过 `[hidden]` 那条 UA 规则，收起光晕那一组要自己说一遍；
+   收起之后「强调色」成了卡里第一样东西，它那 12px 的上间距也一起归零。 */
+.board-glow-head[hidden],.board-glow-grid[hidden]{display:none}
+.board-glow-grid[hidden]+.board-glow-sub{margin-top:0}
 .board-glow-chip{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;cursor:pointer}
 .board-glow-chip:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 球面那三层白高光是 BoardUI 自己叠出来的，不是一个 radial 就完事：顶上一片大椭圆、
