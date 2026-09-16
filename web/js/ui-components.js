@@ -510,7 +510,7 @@ function deferReviewScroller(container){
 const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
-  '.insighttabs','.insightstorage','.skeletondashstrip','.followpagination','.linktablewrap',
+  '.insighttabs','.skeletondashstrip','.followpagination','.linktablewrap',
   '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',
   '.follow-workspace-switch','.fmanagenav','.board-heat-scroll','.board-sankey-scroll',
 ].join(',');

@@ -116,6 +116,18 @@ export interface QualityGoalsProps {
   srcBadge(location: string, cost: string): string;
 }
 
+/** 统计页仍由遗留层提供的能力。都是纯函数或导航，页面不持有它们的状态。 */
+export interface StatsProps {
+  /** 标签键到界面上的名称（`web/js/tags.js` 的 `tagLabel`）。 */
+  tagLabel(key: string): string;
+  /** 点一个内容标签：回目录并按它筛选。整页换成目录由遗留壳做。 */
+  onTag(key: string): void;
+  /** 打开媒体文件夹设置。没有视频或没有存储来源时空态里的那个去处。 */
+  openMediaSettings(): void;
+  /** 这台机器能不能改配置。不能改时空态不给「添加媒体文件夹」。 */
+  configurable: boolean;
+}
+
 /** 来源和凭证页只要遗留层的 Toast：保存与撤销是写操作，回执归全站那一份。 */
 export interface ScrapingProps {
   /** 写操作在服务端落地之后的过去时回执。 */
@@ -153,6 +165,7 @@ export interface ReactPages {
   'library-processing': ReactPage<LibraryProcessingProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   scraping: ReactPage<ScrapingProps>;
+  stats: ReactPage<StatsProps>;
 }
 
 export declare const pages: ReactPages;

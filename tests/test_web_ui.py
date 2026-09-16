@@ -2997,17 +2997,6 @@ class WebUiSourceTests(unittest.TestCase):
         ):
             self.assertPageContains(rule, f"{group} 的未选中基态必须是 --muted")
 
-    def test_insight_lists_show_real_values_links_and_empty_states(self):
-        """观看、存储和来源以对应结构显示真实数值，缺数据时显示空态。"""
-        self.assertPageContains('class="board-volume-values"')
-        self.assertPageContains('class="board-source-list"')
-        # 空态渲染在表格外面：留一张只有列头的空表等于让人对着两个列名找不存在的行。
-        self.assertPageContains('class="board-watch-history"')
-        self.assertPageContains("emptyStateHtml('history','还没有观看记录'")
-        self.assertPageContains("emptyStateHtml('tags','还没有标签来源'")
-        # 数字列 tabular numerals，各行数位对齐才好跨行比较。
-        self.assertPageContains('data-middle-truncate>${esc(row.name)}</a>')
-
     def test_loading_state_only_covers_the_count_and_leaves_the_filter_bar_in_place(self):
         """骨架只盖会变的计数，筛选条照常画成最终样子并接上事件。
 
@@ -3249,7 +3238,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("@media(max-width:640px){.insighttoolbar,.tastehead{align-items:stretch}")
         # 下限是照这两行的字号算的，字号变了下限也得跟着重算。
         self.assertPageContains(
-            ".metricstrip b,.tastesummary>b{font-size:var(--fs-2xl);line-height:1.15;")
+            ".tastesummary>b{font-size:var(--fs-2xl);line-height:1.15;")
         self.assertPageContains("padding:14px 16px;")
 
     def test_skeleton_slots_are_counted_from_the_container_instead_of_a_fixed_number(self):
@@ -5149,7 +5138,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tasteranks-tags{grid-template-columns:repeat(4")
         self.assertPageContains(".tasterank{width:100%;min-width:0;min-height:58px")
         self.assertPageContains("@media(max-width:640px){.insighttoolbar,.tastehead")
-        self.assertPageContains(".insightdetailbody,.tastehero{min-height:0;grid-template-columns:minmax(0,1fr)}")
+        self.assertPageContains(".tastehero{min-height:0;grid-template-columns:minmax(0,1fr)}")
         self.assertPageContains("data-taste-dimension-panel=\"${source}:${key}\"")
         self.assertPageContains("class=\"tasterank${kind==='tag'?' tasterank-tag':''}")
         self.assertPageContains("grid-template-columns:32px minmax(0,1fr) 18px")
@@ -5164,7 +5153,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tastesources>header{min-height:0;padding-block:14px}")
         self.assertPageContains(".tastesources .insightpanelbody{padding:16px}")
         self.assertPageContains(".tastesource{display:grid;grid-template-columns:34px minmax(0,1fr) 34px;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line-soft);border-radius:var(--control-radius);background:var(--overlay-5)}")
-        self.assertPageContains('class="board-watch-history"')
         self.assertPageContains("tasteAnalysisSection(d.analysis)")
         self.assertPageContains('<section class="insightpanel tasteleads">')
         self.assertPageContains("<h3>口味总结</h3>")
@@ -5177,26 +5165,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".tasteinsights{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px")
         self.assertPageContains(".tastelead:hover{background:color-mix(in srgb,var(--inset) 94%,var(--ink))}")
         self.assertPageLacks(".tasteanalysisbody")
-
-    def test_stats_use_analytics_panels_and_real_determinate_progress(self):
-        self.assertPageContains('class="metricstrip" role="tablist" aria-label="统计视图"')
-        self.assertPageContains('role="tab" data-stats-metric="${key}"')
-        self.assertPageContains('role="tabpanel" data-stats-detail="inventory"')
-        self.assertPageContains('class="insighttabs" role="tablist" aria-label="统计维度"')
-        self.assertPageContains('data-stats-tab="tags" aria-selected="true"')
-        self.assertPageContains('data-stats-panel="recent" hidden')
-        self.assertPageContains("panel.hidden=panel.dataset.statsDetail!==button.dataset.statsMetric")
-        self.assertPageContains('role="progressbar" aria-label="${esc(label)}"')
-        self.assertPageContains('aria-valuemin="0" aria-valuemax="${ceiling}" aria-valuenow="${current}"')
-        self.assertPageContains(".statmetric{padding:3px 0 12px;border-bottom:1px solid var(--line-soft)}")
-        self.assertPageContains(".geist-progress{height:8px;margin-top:7px;overflow:hidden;border-radius:var(--pill-radius);background:var(--line-soft)}")
-        self.assertPageContains("${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}")
-        self.assertPageContains(".metricstrip button[aria-selected=\"true\"]:after")
-        self.assertPageContains(".insightdetailbody[hidden]")
-        self.assertPageContains("[data-stats-panel][hidden]")
-        self.assertPageLacks("const card=(t,body,size='third')")
-        self.assertPageLacks('<div class="statshead"></div>')
-        self.assertPageLacks('class="prog"')
 
     def test_note_semantics_replace_empty_states_for_persistent_errors(self):
         for name in ("emptyStateHtml", "loadingDotsHtml", "mediaViewButtonsHtml", "noteHtml", "progressHtml",
@@ -5945,13 +5913,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".review{--review-fieldset-height:440px;padding:0 0 42px}")
         self.assertPageLacks("max-width:1440px")
         self.assertPageContains(".insightpage,.tastepage{width:min(1100px,100%);margin:0 auto")
-        self.assertPageContains("metricTab('storage','使用空间'")
-        self.assertPageContains('class="board-volume-list"')
-        self.assertPageContains('class="board-volume-values"')
-        self.assertPageContains('class="insightranking"')
         self.assertPageContains("grid-template-columns:repeat(2,minmax(0,1fr))")
-        self.assertPageContains("border-top:1px solid var(--line-soft);border-left:1px solid var(--line-soft);list-style:none")
-        self.assertPageContains('class="board-source-list"')
         self.assertPageContains(".managebar{margin-left:auto;margin-right:auto}")
         self.assertPageContains(".insight-layout .managetitle,.insight-layout .pagelede{width:min(1100px,100%)")
         self.assertPageLacks(".tasteprivacy{margin:16px 16px 0")
@@ -6538,7 +6500,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-rank-expand svg{width:14px;height:14px;", board)
         self.assertIn(".board-rank-list .tasterank{position:relative;isolation:isolate;border:0;border-radius:8px;", board)
         self.assertNotIn(".board-rank-list .tasterank:hover{background:var(--color-background-primary-hover)}", board)
-        self.assertIn(".metricstrip>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--ground))}", board)
         self.assertIn("body .tastesource>button{width:36px;height:36px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);transform:none;", board)
         self.assertIn(".geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);", board)
         self.assertIn("body .followmanage .faddform .geist-search input{background:var(--color-background-primary-default)}", board)
@@ -8281,6 +8242,31 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".activity-run-head{")
         self.assertPageLacks(".activity-progress{")
 
+    def test_the_stats_page_is_an_island_inside_the_management_shell(self):
+        """统计是主站里的一屏，遗留层只铺骨架、交容器和它独有的那几个助手。
+
+        它是 React 档（ADR-0031）：整页在 `frontend/src/react/stats/` 里。读数怎么分层、
+        环形图的几何、排行的收展和三个空态由 `frontend/test/react/stats.test.tsx` 守，
+        搬家之后语义标记还在不在由 `tests/test_frontend_build.py` 的 `StatsEndpointTests`
+        守，数据契约由 `/api/stats` 的路由测试守。
+
+        「点一个内容标签回目录并按它筛选」是整页换成目录，仍归遗留壳：页面只把标签键
+        交回来，不自己调 `route` 或 `load`。
+        """
+        self.assertRoute('/stats', "section:'stats'", "title:'统计'", "openStats(push)")
+        self.assertPageContains("async function openStats(push=true)")
+        self.assertPageContains(
+            "await ui.mountIsland('stats',$('#stats'),{\n"
+            "    tagLabel,onTag:k=>{closeStats();toggleTag(k)},\n"
+            "    openMediaSettings:()=>openSettings(true,'媒体'),configurable:!!runtimeConfigurable,\n"
+            "  },{isCurrent:()=>surfaceCurrent(surface)});")
+        # 正文归 React 子树：读数卡、环形图与排行用 BoardUI 的源码加 Tailwind，
+        # 遗留样式表里只剩骨架要的那几条。
+        self.assertPageLacks(".board-radial-card{")
+        self.assertPageLacks(".insightranking{")
+        self.assertPageLacks(".insightfacts{")
+        self.assertPageLacks(".statmetric{")
+
     def test_the_configuration_page_is_an_island_inside_the_management_shell(self):
         """这台电脑的媒体文件夹与端口是主站里的一屏，不是另一套独立页面。
 
@@ -8488,8 +8474,8 @@ class WebUiSourceTests(unittest.TestCase):
                 # 外链标才留得住：中缩靠改写 textContent 实现，同一节点里的图标会被抹掉。
                 '<span data-middle-truncate>${esc(item.url)}</span>'):
             self.assertPageContains(consumer)
-        # 高清版目标页归 React 子树，由 frontend 的用例覆盖；最近观看的文件名也保留首尾。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 12)
+        # 高清版目标页与统计页归 React 子树，由 frontend 的用例覆盖。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 11)
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
@@ -8517,7 +8503,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".frow>b",
             # 表格视图的来源名一格：和默认视图那枚 `.frow>b` 是同一段语义文本，只是换了容器。
             ".ftable .ftname>b",
-            ".fvkind", ".idname", ".kv>span:first-child",
+            ".fvkind", ".idname",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",
@@ -8530,7 +8516,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".reviewfieldhead>span",
             ".reviewitem h4", ".reviewpickname", ".reviewpickname>span", ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
-            ".insightrankrow>span:nth-child(2)", ".metricstrip small,.tastesummary>small",
+            ".tastesummary>small",
             ".gselectfield>span",
             ".tagpickitem .pickname", ".tasterank b,.tasterank small",
             ".tastesource b,.tastesource small", ".tg",
@@ -9017,7 +9003,6 @@ class WebUiSourceTests(unittest.TestCase):
             ".geist-gauge svg": {"3"},
             ".board-job-progress circle": {"2.5"},
             ".board-radar-grid": {"1"},
-            ".board-ring-value[data-active=true]": {"18"},
         }
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         css = re.sub(r"/\*.*?\*/", "", self.css + board, flags=re.S)
@@ -9848,43 +9833,6 @@ class WebUiSourceTests(unittest.TestCase):
                       "    :box.left<bounds.left?bounds.left-box.left:0;\n"
                       "  if(shift)tip.style.setProperty('--range-tip-shift',`${Math.round(shift)}px`);",
                       controls)
-
-    def test_a_chart_legend_tile_is_the_inlaid_surface_itself(self):
-        """图例小卡自己就是那层凹片，不是摆在一块托盘上的另一张卡。
-
-        卡片底、托盘底、小卡底三层各一个颜色时，数字读起来像是嵌在框里的框；而这一组
-        里只有小卡是可以点的，托盘不承担任何动作，也就不该占一层底色。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-radial-tiles{display:flex;flex-wrap:wrap;gap:8px;"
-                      "padding:0;border-radius:0;background:none}", board)
-        self.assertIn(".board-radial-tiles>button{display:flex;flex:1 1 calc(33.333% - 8px);min-width:0;"
-                      "flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border:0;"
-                      "border-radius:12px;background:var(--color-background-tertiary-default);", board)
-        # 选中仍然只有填充加一圈同色描边，不再靠「白片压在灰托盘上」拉开层次。
-        self.assertIn(".board-radial-tiles>button:is([data-active=true],[aria-pressed=true])"
-                      "{background:color-mix(in srgb,var(--ring-color) 10%,"
-                      "var(--color-background-tertiary-default));box-shadow:inset 0 0 0 1px var(--ring-color)}",
-                      board)
-
-    def test_a_chart_card_takes_the_card_face_and_stands_on_the_page(self):
-        """图表卡的底是 secondary，而且它上面不再套一层面板。
-
-        primary 是浮层与输入框的面：拿它当卡片，浅色下卡和纯白页面一样白、只有靠底下那层
-        面板才看得出边，深色下又比周围都亮一档、卡缝里透出比卡更深的一条。面板与卡同时
-        铺面，同一块地方就叠了三层底色。boardui 的看板卡实测是 secondary、无边框无投影，
-        直接坐在页面上。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-radial-card{min-width:0;padding:20px;border-radius:20px;"
-                      "background:var(--ground);overflow:hidden}", board)
-        # 面移到当前那一格上；装着卡的那一格不铺，两张卡各自独立。
-        self.assertIn(".insightdetail{background:none;overflow:visible}", board)
-        self.assertIn(".insightdetailbody{border-radius:16px;background:var(--ground)}", board)
-        self.assertIn(".insightdetailbody:has(.board-inventory-charts){background:none}", board)
-        # 卡上凹一档用 tertiary：卡面既然是 secondary，三档在深浅两边都还是单调的。
-        self.assertIn(".board-ring-track{stroke:var(--color-background-tertiary-default)}", board)
-        self.assertNotIn("--board-inlay", board)
 
     def test_a_selected_tab_is_marked_in_the_accent_blue(self):
         """选中的 tab 是蓝字加蓝线，全站两处下划线 Tabs 共用同一枚指示条。

@@ -280,7 +280,7 @@ function j(e) {
 	});
 }
 function M(e) {
-	e.querySelectorAll(".tasteranks,.insightranking").forEach((e, t) => {
+	e.querySelectorAll(".tasteranks").forEach((e, t) => {
 		if (e.children.length <= 5 || e.parentElement?.hasAttribute("data-expandable-ranks")) return;
 		let n = document.createElement("div");
 		n.className = "board-expand-ranks", n.dataset.expandableRanks = "", e.before(n), n.append(e), e.id = e.id || `board-rank-list-${t}`, e.classList.add("board-rank-list");
@@ -576,15 +576,15 @@ function oe() {
 }
 //#endregion
 //#region node_modules/d3-path/src/path.js
-var se = Math.PI, ce = 2 * se, V = 1e-6, le = ce - V;
-function ue() {
+var V = Math.PI, H = 2 * V, U = 1e-6, se = H - U;
+function W() {
 	this._x0 = this._y0 = this._x1 = this._y1 = null, this._ = "";
 }
-function de() {
-	return new ue();
+function ce() {
+	return new W();
 }
-ue.prototype = de.prototype = {
-	constructor: ue,
+W.prototype = ce.prototype = {
+	constructor: W,
 	moveTo: function(e, t) {
 		this._ += "M" + (this._x0 = this._x1 = +e) + "," + (this._y0 = this._y1 = +t);
 	},
@@ -605,11 +605,11 @@ ue.prototype = de.prototype = {
 		var a = this._x1, o = this._y1, s = n - e, c = r - t, l = a - e, u = o - t, d = l * l + u * u;
 		if (i < 0) throw Error("negative radius: " + i);
 		if (this._x1 === null) this._ += "M" + (this._x1 = e) + "," + (this._y1 = t);
-		else if (d > V) {
-			if (!(Math.abs(u * s - c * l) > V) || !i) this._ += "L" + (this._x1 = e) + "," + (this._y1 = t);
+		else if (d > U) {
+			if (!(Math.abs(u * s - c * l) > U) || !i) this._ += "L" + (this._x1 = e) + "," + (this._y1 = t);
 			else {
-				var f = n - a, p = r - o, m = s * s + c * c, h = f * f + p * p, g = Math.sqrt(m), _ = Math.sqrt(d), v = i * Math.tan((se - Math.acos((m + d - h) / (2 * g * _))) / 2), y = v / _, b = v / g;
-				Math.abs(y - 1) > V && (this._ += "L" + (e + y * l) + "," + (t + y * u)), this._ += "A" + i + "," + i + ",0,0," + +(u * f > l * p) + "," + (this._x1 = e + b * s) + "," + (this._y1 = t + b * c);
+				var f = n - a, p = r - o, m = s * s + c * c, h = f * f + p * p, g = Math.sqrt(m), _ = Math.sqrt(d), v = i * Math.tan((V - Math.acos((m + d - h) / (2 * g * _))) / 2), y = v / _, b = v / g;
+				Math.abs(y - 1) > U && (this._ += "L" + (e + y * l) + "," + (t + y * u)), this._ += "A" + i + "," + i + ",0,0," + +(u * f > l * p) + "," + (this._x1 = e + b * s) + "," + (this._y1 = t + b * c);
 			}
 		}
 	},
@@ -617,7 +617,7 @@ ue.prototype = de.prototype = {
 		e = +e, t = +t, n = +n, a = !!a;
 		var o = n * Math.cos(r), s = n * Math.sin(r), c = e + o, l = t + s, u = 1 ^ a, d = a ? r - i : i - r;
 		if (n < 0) throw Error("negative radius: " + n);
-		this._x1 === null ? this._ += "M" + c + "," + l : (Math.abs(this._x1 - c) > V || Math.abs(this._y1 - l) > V) && (this._ += "L" + c + "," + l), n && (d < 0 && (d = d % ce + ce), d > le ? this._ += "A" + n + "," + n + ",0,1," + u + "," + (e - o) + "," + (t - s) + "A" + n + "," + n + ",0,1," + u + "," + (this._x1 = c) + "," + (this._y1 = l) : d > V && (this._ += "A" + n + "," + n + ",0," + +(d >= se) + "," + u + "," + (this._x1 = e + n * Math.cos(i)) + "," + (this._y1 = t + n * Math.sin(i))));
+		this._x1 === null ? this._ += "M" + c + "," + l : (Math.abs(this._x1 - c) > U || Math.abs(this._y1 - l) > U) && (this._ += "L" + c + "," + l), n && (d < 0 && (d = d % H + H), d > se ? this._ += "A" + n + "," + n + ",0,1," + u + "," + (e - o) + "," + (t - s) + "A" + n + "," + n + ",0,1," + u + "," + (this._x1 = c) + "," + (this._y1 = l) : d > U && (this._ += "A" + n + "," + n + ",0," + +(d >= V) + "," + u + "," + (this._x1 = e + n * Math.cos(i)) + "," + (this._y1 = t + n * Math.sin(i))));
 	},
 	rect: function(e, t, n, r) {
 		this._ += "M" + (this._x0 = this._x1 = +e) + "," + (this._y0 = this._y1 = +t) + "h" + +n + "v" + +r + "h" + -n + "Z";
@@ -628,68 +628,68 @@ ue.prototype = de.prototype = {
 };
 //#endregion
 //#region node_modules/d3-shape/src/constant.js
-function fe(e) {
+function le(e) {
 	return function() {
 		return e;
 	};
 }
 //#endregion
 //#region node_modules/d3-shape/src/point.js
-function pe(e) {
+function ue(e) {
 	return e[0];
 }
-function me(e) {
+function de(e) {
 	return e[1];
 }
 //#endregion
 //#region node_modules/d3-shape/src/array.js
-var he = Array.prototype.slice;
+var fe = Array.prototype.slice;
 //#endregion
 //#region node_modules/d3-shape/src/link/index.js
-function ge(e) {
+function pe(e) {
 	return e.source;
 }
-function _e(e) {
+function me(e) {
 	return e.target;
 }
-function ve(e) {
-	var t = ge, n = _e, r = pe, i = me, a = null;
+function he(e) {
+	var t = pe, n = me, r = ue, i = de, a = null;
 	function o() {
-		var o, s = he.call(arguments), c = t.apply(this, s), l = n.apply(this, s);
-		if (a ||= o = de(), e(a, +r.apply(this, (s[0] = c, s)), +i.apply(this, s), +r.apply(this, (s[0] = l, s)), +i.apply(this, s)), o) return a = null, o + "" || null;
+		var o, s = fe.call(arguments), c = t.apply(this, s), l = n.apply(this, s);
+		if (a ||= o = ce(), e(a, +r.apply(this, (s[0] = c, s)), +i.apply(this, s), +r.apply(this, (s[0] = l, s)), +i.apply(this, s)), o) return a = null, o + "" || null;
 	}
 	return o.source = function(e) {
 		return arguments.length ? (t = e, o) : t;
 	}, o.target = function(e) {
 		return arguments.length ? (n = e, o) : n;
 	}, o.x = function(e) {
-		return arguments.length ? (r = typeof e == "function" ? e : fe(+e), o) : r;
+		return arguments.length ? (r = typeof e == "function" ? e : le(+e), o) : r;
 	}, o.y = function(e) {
-		return arguments.length ? (i = typeof e == "function" ? e : fe(+e), o) : i;
+		return arguments.length ? (i = typeof e == "function" ? e : le(+e), o) : i;
 	}, o.context = function(e) {
 		return arguments.length ? (a = e ?? null, o) : a;
 	}, o;
 }
-function ye(e, t, n, r, i) {
+function ge(e, t, n, r, i) {
 	e.moveTo(t, n), e.bezierCurveTo(t = (t + r) / 2, n, t, i, r, i);
 }
-function be() {
-	return ve(ye);
+function _e() {
+	return he(ge);
 }
 //#endregion
 //#region node_modules/d3-sankey/src/sankeyLinkHorizontal.js
-function xe(e) {
+function ve(e) {
 	return [e.source.x1, e.y0];
 }
-function Se(e) {
+function ye(e) {
 	return [e.target.x0, e.y1];
 }
-function Ce() {
-	return be().source(xe).target(Se);
+function be() {
+	return _e().source(ve).target(ye);
 }
 //#endregion
 //#region src/board-sankey.ts
-function we(e = []) {
+function xe(e = []) {
 	let t = e.filter((e) => e.source && e.target && Number.isFinite(e.value) && e.value > 0);
 	if (!t.length) return "";
 	let n = [...new Set(t.map((e) => e.source))], r = [...new Set(t.map((e) => e.target))], i = oe().nodeId((e) => e.id).nodeWidth(10).nodePadding(22).extent([[155, 16], [535, 404]])({
@@ -707,13 +707,13 @@ function we(e = []) {
 			target: `target:${e.target}`,
 			value: e.value
 		}))
-	}), a = t.reduce((e, t) => e + t.value, 0), o = Ce(), s = i.links.map((e) => {
+	}), a = t.reduce((e, t) => e + t.value, 0), o = be(), s = i.links.map((e) => {
 		let t = e.source, r = e.target;
 		return `<path d="${o(e)}" stroke-width="${Math.max(.5, e.width || 0)}" style="--flow-color:var(--board-chart-${n.indexOf(t.name) % 6})" data-flow-source="${t.index}" data-flow-target="${r.index}" data-flow-value="${e.value}" data-flow-label="${d(t.name)} → ${d(r.name)}" tabindex="0" role="img" aria-label="${d(t.name)} → ${d(r.name)}：${e.value} 条线索"/>`;
 	}).join(""), c = i.nodes.map((e) => `<g data-flow-node="${e.index}" data-flow-value="${e.value}" data-flow-label="${d(e.name)}" tabindex="0" role="img" aria-label="${d(e.name)}：${e.value} 条线索"><rect x="${e.x0}" y="${e.y0}" width="10" height="${Math.max(1, (e.y1 || 0) - (e.y0 || 0))}" rx="5" fill="${e.side === "source" ? `var(--board-chart-${n.indexOf(e.name) % 6})` : "var(--color-text-secondary)"}"/><text x="${e.side === "source" ? 145 : 545}" y="${((e.y0 || 0) + (e.y1 || 0)) / 2}" text-anchor="${e.side === "source" ? "end" : "start"}" dominant-baseline="middle">${d(e.name.length > 18 ? e.name.slice(0, 16) + "…" : e.name)}<tspan x="${e.side === "source" ? 145 : 545}" dy="15">${e.side === "source" ? e.value?.toLocaleString() : ((e.value || 0) / a * 100).toFixed(1) + "%"}</tspan></text></g>`).join("");
 	return `<section class="board-sankey-card" data-sankey-card><header><h3>创作者线索来源</h3><b data-sankey-number>${a.toLocaleString()}</b><span data-sankey-label>条线索</span></header><div class="board-sankey-scroll"><svg viewBox="0 0 720 435" aria-label="来源网站与创作者线索"><g class="board-sankey-links">${s}</g><g class="board-sankey-nodes">${c}</g></svg></div><footer><span>来源网站</span><span>创作者 · 线索占比</span></footer></section>`;
 }
-function Te(e) {
+function Se(e) {
 	e.querySelectorAll("[data-sankey-card]").forEach((e) => {
 		let t = [...e.querySelectorAll("[data-flow-source]")], n = [...e.querySelectorAll("[data-flow-node]")], r = e.querySelector("[data-sankey-number]"), i = e.querySelector("[data-sankey-label]"), a = r.textContent, o = () => {
 			t.forEach((e) => e.style.opacity = ""), n.forEach((e) => e.style.opacity = ""), r.textContent = a, i.textContent = "条线索";
@@ -729,54 +729,7 @@ function Te(e) {
 }
 //#endregion
 //#region src/board-analytics.ts
-var H = (e) => Number.isFinite(e) && e >= 0;
-function Ee(e, t, n = "个视频") {
-	let r = e.filter((e) => H(e.value));
-	if (!r.length) return "";
-	let i = r.reduce((e, t) => e + t.value, 0), a = Math.max(1, ...r.map((e) => e.value)) * 1.1, o = Math.min(22, 110 / Math.max(1, r.length)), s = Math.min(15, o * .68), c = r.map((e, t) => {
-		let r = 32 + t * o, i = e.value / a * 100;
-		return `<g style="--ring-color:var(--board-chart-${t % 6});--ring-delay:${t * 60}ms"><circle class="board-ring-track" cx="160" cy="160" r="${r}" stroke-width="${s}"/><circle class="board-ring-value" data-radial-ring="${t}" tabindex="0" role="button" aria-label="${d(e.name)}：${e.value.toLocaleString()} ${d(n)}" aria-pressed="false" cx="160" cy="160" r="${r}" stroke-width="${s}" pathLength="100" stroke-dasharray="${i} ${100 - i}" style="--ring-length:${i}" transform="rotate(-90 160 160)"/></g>`;
-	}).join("");
-	return `<section class="board-radial-card" data-radial-card data-radial-total="${i}" data-radial-title="${d(t)}"><header><span data-radial-label>${d(t)}</span><b data-radial-number>${i.toLocaleString()}</b><small>${d(n)}</small></header><svg class="board-rings" viewBox="0 0 320 320" aria-label="${d(t)}">${c}</svg><div class="board-radial-tiles">${r.map((e, t) => `<button type="button" data-radial-tile="${t}" data-radial-value="${e.value}" data-radial-name="${d(e.name)}" aria-pressed="false" style="--ring-color:var(--board-chart-${t % 6})"><span><i aria-hidden="true"></i>${d(e.name)}</span><b>${e.value.toLocaleString()}</b>${e.detail ? `<small>${d(e.detail)}</small>` : ""}</button>`).join("")}</div></section>`;
-}
-function De(e) {
-	e.querySelectorAll("[data-radial-card]").forEach((e) => {
-		let t = [...e.querySelectorAll("[data-radial-tile]")], n = [...e.querySelectorAll("[data-radial-ring]")], r = e.querySelector("[data-radial-number]"), i = e.querySelector("[data-radial-label]"), a = -1, o = 0, s = 0, c = (c, l = 300) => {
-			e.dataset.radialFocus = String(c), t.forEach((e, t) => {
-				e.dataset.active = String(t === c), e.setAttribute("aria-pressed", String(t === a)), n[t]?.setAttribute("aria-pressed", String(t === a)), n[t] && (n[t].dataset.active = String(t === c));
-			});
-			let u = Number(c < 0 ? e.dataset.radialTotal : t[c]?.dataset.radialValue);
-			i.textContent = c < 0 ? e.dataset.radialTitle : t[c].dataset.radialName, cancelAnimationFrame(s);
-			let d = o, f = performance.now(), p = (t) => {
-				if (!e.isConnected) return;
-				let n = matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : Math.min(1, (t - f) / l);
-				o = d + (u - d) * (1 - (1 - n) ** 3), r.textContent = Math.round(o).toLocaleString(), n < 1 && (s = requestAnimationFrame(p));
-			};
-			s = requestAnimationFrame(p);
-		}, l = (e) => {
-			a = a === e ? -1 : e, c(a);
-		};
-		[...t, ...n].forEach((e) => {
-			let t = Number(e.getAttribute("data-radial-tile") ?? e.getAttribute("data-radial-ring"));
-			e.addEventListener("pointerenter", () => c(t)), e.addEventListener("pointerleave", () => c(a)), e.addEventListener("focus", () => c(t)), e.addEventListener("blur", () => c(a)), e.addEventListener("click", () => l(t)), e instanceof SVGElement && e.addEventListener("keydown", (e) => {
-				(e.key === "Enter" || e.key === " ") && (e.preventDefault(), l(t));
-			});
-		}), e.dataset.radialFocus = "-1", r.textContent = "0";
-		let u = () => {
-			requestAnimationFrame(() => {
-				e.isConnected && (e.classList.add("board-chart-visible"), c(-1, 1200));
-			});
-		};
-		if (typeof IntersectionObserver > "u" || matchMedia("(prefers-reduced-motion: reduce)").matches) u();
-		else {
-			let t = new IntersectionObserver((e) => {
-				e.some((e) => e.isIntersecting) && (t.disconnect(), u());
-			}, { threshold: .15 });
-			t.observe(e);
-		}
-	});
-}
-var U = [
+var Ce = (e) => Number.isFinite(e) && e >= 0, G = [
 	"周一",
 	"周二",
 	"周三",
@@ -785,11 +738,11 @@ var U = [
 	"周六",
 	"周日"
 ];
-function Oe(e) {
+function we(e) {
 	if (!e?.days?.length) return "<section class=\"board-activity-empty\"><h3>浏览活跃时间</h3><p>还没有可用于分析的口味网站访问记录。</p></section>";
 	let t = Array.from({ length: 7 }, () => Array(24).fill(0));
-	for (let n of e.hours || []) Number.isInteger(n.weekday) && n.weekday >= 0 && n.weekday < 7 && Number.isInteger(n.hour) && n.hour >= 0 && n.hour < 24 && H(n.count) && (t[n.weekday][n.hour] = (t[n.weekday][n.hour] || 0) + n.count);
-	let n = Math.max(1, ...t.flat()), r = t.flat().reduce((e, t) => e + t, 0), i = t.map((e, t) => `<span class="board-heat-axis">${U[t]}</span>${e.map((e, r) => `<button type="button" data-heat-value="${e}" data-heat-label="${U[t]} ${r}:00" aria-label="${U[t]} ${r}:00，${e} 次访问" style="--heat:${e ? Math.max(12, e / n * 100) : 0}%"></button>`).join("")}`).join(""), a = e.days.filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && H(e.count)).sort((e, t) => e.date.localeCompare(t.date));
+	for (let n of e.hours || []) Number.isInteger(n.weekday) && n.weekday >= 0 && n.weekday < 7 && Number.isInteger(n.hour) && n.hour >= 0 && n.hour < 24 && Ce(n.count) && (t[n.weekday][n.hour] = (t[n.weekday][n.hour] || 0) + n.count);
+	let n = Math.max(1, ...t.flat()), r = t.flat().reduce((e, t) => e + t, 0), i = t.map((e, t) => `<span class="board-heat-axis">${G[t]}</span>${e.map((e, r) => `<button type="button" data-heat-value="${e}" data-heat-label="${G[t]} ${r}:00" aria-label="${G[t]} ${r}:00，${e} 次访问" style="--heat:${e ? Math.max(12, e / n * 100) : 0}%"></button>`).join("")}`).join(""), a = e.days.filter((e) => /^\d{4}-\d{2}-\d{2}$/.test(e.date) && Ce(e.count)).sort((e, t) => e.date.localeCompare(t.date));
 	if (!a.length) return "";
 	let o = /* @__PURE__ */ new Date(`${a.at(-1).date}T00:00:00Z`), s = new Date(o);
 	s.setUTCDate(s.getUTCDate() - 90);
@@ -801,7 +754,7 @@ function Oe(e) {
 	}).join("");
 	return `<div class="board-activity-charts"><section class="board-heat-card" data-heat-card><header><h3>浏览活跃时间</h3><b data-heat-number>${r.toLocaleString()}</b><span data-heat-title data-heat-default="口味网站访问">口味网站访问</span></header><div class="board-heat-scroll"><div class="board-hour-grid"><span></span>${Array.from({ length: 24 }, (e, t) => `<span class="board-heat-axis">${t % 2 ? "" : t}</span>`).join("")}${i}</div></div><footer>星期 × 小时<span>${d(e.timezone || "UTC+08:00")}</span></footer></section><section class="board-heat-card" data-heat-card><header><h3>每日活跃</h3><b data-heat-number>${a.filter((e) => e.date >= s.toISOString().slice(0, 10)).reduce((e, t) => e + t.count, 0).toLocaleString()}</b><span data-heat-title data-heat-default="口味网站访问">口味网站访问</span></header><div class="board-day-grid">${u}</div><footer>${s.toISOString().slice(0, 10)}<span>${a.at(-1).date}</span></footer></section></div>`;
 }
-function ke(e) {
+function Te(e) {
 	e.querySelectorAll("[data-heat-card]").forEach((e) => {
 		let t = e.querySelector("[data-heat-number]"), n = e.querySelector("[data-heat-title]"), r = t.textContent;
 		e.querySelectorAll("[data-heat-value]").forEach((e) => {
@@ -816,19 +769,19 @@ function ke(e) {
 }
 //#endregion
 //#region src/sidebar-groups.ts
-var W = (e) => e.replace(/[&<>"']/g, (e) => ({
+var K = (e) => e.replace(/[&<>"']/g, (e) => ({
 	"&": "&amp;",
 	"<": "&lt;",
 	">": "&gt;",
 	"\"": "&quot;",
 	"'": "&#39;"
 })[e]);
-function Ae(e, t, n = "", r = "") {
+function Ee(e, t, n = "", r = "") {
 	if (!t) return "";
 	let i = `sidebar-group-${encodeURIComponent(e)}`;
-	return `<details class="sec${r ? " cat-" + W(r) : ""}" data-sidebar-group="${W(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${W(e)}</span></summary><div class="board-sidebar-body" id="${i}">${t}${n}</div></details>`;
+	return `<details class="sec${r ? " cat-" + K(r) : ""}" data-sidebar-group="${K(e)}"><summary role="button" class="board-section-toggle"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-right"/></svg><span>${K(e)}</span></summary><div class="board-sidebar-body" id="${i}">${t}${n}</div></details>`;
 }
-function je(e) {
+function De(e) {
 	e.querySelectorAll("[data-sidebar-group]").forEach((e) => {
 		if (e.dataset.sidebarWired) return;
 		e.dataset.sidebarWired = "true";
@@ -847,15 +800,15 @@ function je(e) {
 		}));
 	});
 }
-var G = !1;
-async function Me(e, t) {
-	if (G) return;
+var Oe = !1;
+async function ke(e, t) {
+	if (Oe) return;
 	if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) {
 		t();
 		return;
 	}
 	let n = e.getBoundingClientRect(), r = n.left + n.width / 2, i = n.top + n.height / 2, a = Math.hypot(Math.max(r, innerWidth - r), Math.max(i, innerHeight - i)) * 2.5, o = document.createElement("style");
-	o.textContent = `::view-transition-old(root){animation:none}::view-transition-new(root){mix-blend-mode:normal;mask-image:radial-gradient(circle closest-side,#000 78%,#0006 88%,transparent);mask-repeat:no-repeat;will-change:mask-position,mask-size;animation:peach-theme-reveal 560ms cubic-bezier(.16,1,.3,1) both}@keyframes peach-theme-reveal{from{mask-position:${r}px ${i}px;mask-size:0px 0px}to{mask-position:${r - a / 2}px ${i - a / 2}px;mask-size:${a}px ${a}px}}`, G = !0, document.head.append(o);
+	o.textContent = `::view-transition-old(root){animation:none}::view-transition-new(root){mix-blend-mode:normal;mask-image:radial-gradient(circle closest-side,#000 78%,#0006 88%,transparent);mask-repeat:no-repeat;will-change:mask-position,mask-size;animation:peach-theme-reveal 560ms cubic-bezier(.16,1,.3,1) both}@keyframes peach-theme-reveal{from{mask-position:${r}px ${i}px;mask-size:0px 0px}to{mask-position:${r - a / 2}px ${i - a / 2}px;mask-size:${a}px ${a}px}}`, Oe = !0, document.head.append(o);
 	let s = document.documentElement;
 	s.dataset.themeSnapshot = "true";
 	let c = !1, l = () => {
@@ -866,15 +819,15 @@ async function Me(e, t) {
 	} catch {
 		l();
 	} finally {
-		delete s.dataset.themeSnapshot, o.remove(), G = !1;
+		delete s.dataset.themeSnapshot, o.remove(), Oe = !1;
 	}
 }
 //#endregion
 //#region src/jobs.ts
-function Ne(e, t = 0, n = 0) {
+function Ae(e, t = 0, n = 0) {
 	return n > 0 ? x(e, t, n) : r(e);
 }
-async function Pe(e) {
+async function je(e) {
 	let t = e.pause || ((e) => new Promise((t) => setTimeout(t, e))), n = 0;
 	for (; e.active();) {
 		let r;
@@ -889,14 +842,14 @@ async function Pe(e) {
 		await t(2e3);
 	}
 }
-function Fe(e) {
+function Me(e) {
 	let t = e.note || ((e) => a(e, {
 		label: "任务状态",
 		variant: "error"
-	})), n = e.loading || r, i = e.progress || ((e, t, n) => Ne(n || `已处理 ${e} / ${t}`, e, t)), o = e.container || ((e) => `<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${e}</div></section>`), s = document.createElement("div");
+	})), n = e.loading || r, i = e.progress || ((e, t, n) => Ae(n || `已处理 ${e} / ${t}`, e, t)), o = e.container || ((e) => `<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${e}</div></section>`), s = document.createElement("div");
 	e.host.hidden = !0, s.dataset.followJob = "", s.setAttribute("aria-live", "polite"), e.host.prepend(s);
 	let c = e.storageKey || "peach-follow-job", l = sessionStorage.getItem(c) || void 0, u = !1;
-	Pe({
+	je({
 		read: e.read,
 		active: () => !u && e.active() && s.isConnected,
 		keepWatching: e.watchIdle !== !1,
@@ -922,24 +875,24 @@ function Fe(e) {
 }
 //#endregion
 //#region src/review-evidence.ts
-var Ie = (e = "") => /^https?:\/\//i.test(e) ? e : "";
-function Le(e = "") {
-	let t = Ie(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
+var Ne = (e = "") => /^https?:\/\//i.test(e) ? e : "";
+function Pe(e = "") {
+	let t = Ne(e) || (e.startsWith("/") && !e.startsWith("//") ? e : "");
 	return `<div class="reviewimage" data-review-picture><span class="reviewimageempty"${t ? " hidden" : ""}>未取得来源图片</span>${t ? `<img src="${d(t)}" alt="来源候选图片" loading="lazy">` : ""}</div>`;
 }
-function Re(e) {
-	let t = Ie(e.profile_url), n = (e.preview_assets || []).slice(0, 6), r = Math.max(0, Number(e.video_count || e.videos || 0));
+function Fe(e) {
+	let t = Ne(e.profile_url), n = (e.preview_assets || []).slice(0, 6), r = Math.max(0, Number(e.video_count || e.videos || 0));
 	return `<section class="reviewidentityevidence"><h5>候选身份：${d(e.babepedia_name || "未标注")}</h5>
     <div class="reviewevidenceactions">${t ? `<a class="geist-button externallink" href="${d(t)}" target="_blank" rel="noopener noreferrer">来源资料<svg class="externalmark" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-external-link" /></svg></a>` : ""}
     <button type="button" class="geist-button" data-entity-kind="creator" data-entity-name="${d(e.creator || "")}">查看全部 ${r.toLocaleString()} 部作品</button></div>
-    ${Le(e.preview_url)}
+    ${Pe(e.preview_url)}
     <p>通过后记录身份判断。</p>
     ${n.length ? `<h5>本地作品样本</h5><div class="reviewevidencesamples">${n.map((e) => `<div class="reviewevidencesample">
       <button class="geist-button" type="button" data-review-open-item="${e.id}"><span data-middle-truncate title="${d(e.name)}">${d(e.name)}</span></button>
       <button class="geist-button" type="button" data-review-reveal="${e.id}" aria-label="打开 ${d(e.name)} 的文件位置">文件位置</button>
     </div>`).join("")}</div>` : "<p>暂无本地作品样本，打开全部作品核对。</p>"}</section>`;
 }
-function ze(e) {
+function Ie(e) {
 	for (let t of e.querySelectorAll("[data-review-picture] img")) {
 		let e = () => {
 			t.hidden = !0;
@@ -951,14 +904,14 @@ function ze(e) {
 }
 //#endregion
 //#region src/api.ts
-var Be = (e) => p(e);
+var Le = (e) => p(e);
 //#endregion
 //#region src/selection.ts
-function Ve(e, t, n, r, i, a = i || !e.has(r)) {
+function Re(e, t, n, r, i, a = i || !e.has(r)) {
 	let o = n === null ? -1 : t.indexOf(n), s = t.indexOf(r);
 	return i && o >= 0 && s >= 0 ? t.slice(Math.min(o, s), Math.max(o, s) + 1).forEach((t) => e.add(t)) : a ? e.add(r) : e.delete(r), r;
 }
-function He(e, t) {
+function ze(e, t) {
 	let n = t.filter((t) => e.has(t)).length;
 	return {
 		count: n,
@@ -966,16 +919,16 @@ function He(e, t) {
 		mixed: n > 0 && n < t.length
 	};
 }
-function Ue(e, t, n) {
+function Be(e, t, n) {
 	t.forEach((t) => n ? e.add(t) : e.delete(t));
 }
-function We({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
+function Ve({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
 	e && (e.textContent = t), n && (n.checked = r.all, n.indeterminate = r.mixed);
 	for (let e of i) e.disabled = !r.count || a;
 }
 //#endregion
 //#region src/review-bulk.ts
-var Ge = () => ({
+var He = () => ({
 	busy: !1,
 	category: "",
 	filter: "",
@@ -986,7 +939,7 @@ var Ge = () => ({
 	assets: /* @__PURE__ */ new Map(),
 	errors: /* @__PURE__ */ new Map()
 });
-function Ke(e) {
+function Ue(e) {
 	let t = e?.querySelector(".reviewbulktoolbar");
 	if (!e || e.classList.contains("review-skeleton") || !t || t.offsetParent === null) return;
 	e.style.setProperty("--review-controls-height", `${t.getBoundingClientRect().height}px`);
@@ -1002,7 +955,7 @@ function Ke(e) {
 	let o = i.getBoundingClientRect(), s = a.getBoundingClientRect();
 	e.style.setProperty("--review-pane-top", `${o.top}px`), e.style.setProperty("--review-pane-left", `${o.left}px`), e.style.setProperty("--review-pane-width", `${o.width}px`), e.style.setProperty("--review-pane-height", `${s.bottom - o.top}px`);
 }
-function qe(e, t) {
+function We(e, t) {
 	let n = [[
 		"candidates",
 		t ? "按候选数量" : "全部待复核",
@@ -1018,7 +971,7 @@ function qe(e, t) {
 		"list-filter"
 	]), n;
 }
-function Je(e, t) {
+function Ge(e, t) {
 	let n = /* @__PURE__ */ new Map();
 	for (let r of e) {
 		let e, i;
@@ -1035,10 +988,10 @@ function Je(e, t) {
 	}
 	return [...n.values()];
 }
-function Ye(e, t, n, r, i) {
-	e.anchor = Ve(e.selected, t, e.anchor, n, r, i);
+function Ke(e, t, n, r, i) {
+	e.anchor = Re(e.selected, t, e.anchor, n, r, i);
 }
-async function Xe(e, t, n, r) {
+async function qe(e, t, n, r) {
 	let i = [], a = 0;
 	for (let o of e) {
 		if (!r()) break;
@@ -1049,7 +1002,7 @@ async function Xe(e, t, n, r) {
 		} catch (e) {
 			i.push({
 				key: o.key,
-				message: Be(e)
+				message: Le(e)
 			});
 		}
 	}
@@ -1058,17 +1011,17 @@ async function Xe(e, t, n, r) {
 		failures: i
 	};
 }
-function Ze(e) {
+function Je(e) {
 	return e.length ? [...new Set(e.flatMap((e) => e.candidates?.map((e) => e.source || "") || []))].filter((t) => t && e.every((e) => e.candidates?.filter((e) => e.source === t).length === 1)) : [];
 }
-function Qe(e, n) {
+function Ye(e, n) {
 	let r = e.querySelector(".reviewlist");
 	if (!r || !n.rows.length || n.locked) return;
 	let i = n.state, a = [...r.querySelectorAll("[data-review-key]")];
 	n.category !== void 0 && i.category !== n.category && (i.category = n.category, i.filter = "", i.groupBy = "candidates", i.anchor = null);
-	let s = n.catalog || n.rows, l = qe(s, n.metadata);
+	let s = n.catalog || n.rows, l = We(s, n.metadata);
 	l.some((e) => e[0] === i.groupBy) || (i.groupBy = "candidates", i.filter = "");
-	let d = Je(s, i.groupBy);
+	let d = Ge(s, i.groupBy);
 	d.some((e) => e.key === i.filter) || (i.filter = "");
 	let p = () => [...r.querySelectorAll("[data-review-key]")].filter((e) => !e.closest("[hidden]")), m = () => p().filter((e) => i.selected.has(e.dataset.reviewKey)), h = () => n.rows.filter((e) => m().some((t) => t.dataset.reviewKey === e.item_key)), g = (e) => !e.querySelector("[data-review-status=\"approved\"]")?.disabled, _ = (e, t = "") => {
 		let n = document.createElement("button");
@@ -1146,7 +1099,7 @@ function Qe(e, n) {
 		u.className = "reviewlist", s.append(c, l), o.append(s, u), r.append(o), l.onclick = () => {
 			if (i.busy) return;
 			let e = n.map((e) => e.dataset.reviewKey);
-			Ue(i.selected, e, !e.every((e) => i.selected.has(e))), L();
+			Be(i.selected, e, !e.every((e) => i.selected.has(e))), L();
 		}, F.push(() => {
 			let e = n.every((e) => i.selected.has(e.dataset.reviewKey));
 			l.innerHTML = f(e ? "check-check-outline" : "check-check") + (e ? "清空本组" : "全选本组"), l.setAttribute("aria-pressed", String(e));
@@ -1163,7 +1116,7 @@ function Qe(e, n) {
 				e.className = "reviewpickname", e.append(...r.childNodes), r.classList.add("reviewpickheading"), r.append(a, e);
 			} else e.prepend(a);
 			let s = (e, t) => {
-				Ye(i, p().map((e) => e.dataset.reviewKey), n, e, t), L();
+				Ke(i, p().map((e) => e.dataset.reviewKey), n, e, t), L();
 			};
 			if (a.addEventListener("mousedown", (e) => {
 				e.shiftKey && e.preventDefault();
@@ -1177,7 +1130,7 @@ function Qe(e, n) {
 					else if (t.key === "ArrowDown" || t.key === "ArrowUp") {
 						t.preventDefault();
 						let r = p(), a = r[r.indexOf(e) + (t.key === "ArrowDown" ? 1 : -1)];
-						a && (i.anchor === null && (i.anchor = n), Ye(i, r.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), L(), a.querySelector(".reviewpickitem input")?.focus());
+						a && (i.anchor === null && (i.anchor = n), Ke(i, r.map((e) => e.dataset.reviewKey), a.dataset.reviewKey, !0, !0), L(), a.querySelector(".reviewpickitem input")?.focus());
 					}
 				}
 			}), F.push(() => {
@@ -1205,20 +1158,20 @@ function Qe(e, n) {
 	let I = "";
 	function L() {
 		let e = m(), t = e.length > 0 && e.length === p().length;
-		w.innerHTML = f(t ? "check-check-outline" : "check-check") + (t ? "清空当前选择" : i.filter ? "全选当前分类" : "全选本页"), w.setAttribute("aria-pressed", String(t)), j.hidden = !e.length, We({
+		w.innerHTML = f(t ? "check-check-outline" : "check-check") + (t ? "清空当前选择" : i.filter ? "全选当前分类" : "全选本页"), w.setAttribute("aria-pressed", String(t)), j.hidden = !e.length, Ve({
 			count: D,
 			label: `已选 ${e.length} 项`,
-			summary: He(i.selected, p().map((e) => e.dataset.reviewKey)),
+			summary: ze(i.selected, p().map((e) => e.dataset.reviewKey)),
 			actions: [T, E]
 		}), T.disabled ||= e.some((e) => !g(e));
-		let r = Ze(h());
+		let r = Je(h());
 		O.hidden = !n.metadata || !h().some((e) => (e.candidates?.length || 0) > 1);
 		let a = e.length && !r.length ? "所选项目无共同来源" : "统一选择来源", s = JSON.stringify([a, r]);
 		if (s !== I) {
 			I = s, O.innerHTML = o([["", a], ...r.map((e) => [e, e])], "", { label: "统一选择来源" });
 			let e = u(O.firstElementChild);
 			e.disabled = !r.length, e.addEventListener("change", () => {
-				if (!(i.busy || !Ze(h()).includes(e.value))) {
+				if (!(i.busy || !Je(h()).includes(e.value))) {
 					for (let t of m()) {
 						let r = n.rows.find((e) => e.item_key === t.dataset.reviewKey).candidates.find((t) => t.source === e.value);
 						t.querySelectorAll("input[type=\"radio\"]").forEach((e) => {
@@ -1251,7 +1204,7 @@ function Qe(e, n) {
 			e instanceof KeyboardEvent && e.key === "Tab" || (e.preventDefault(), e.stopImmediatePropagation());
 		};
 		e.addEventListener("click", l, !0), e.addEventListener("keydown", l, !0);
-		let u = 0, d = await Xe(a, async (e) => {
+		let u = 0, d = await qe(a, async (e) => {
 			try {
 				return await n.submit(e);
 			} finally {
@@ -1268,9 +1221,9 @@ function Qe(e, n) {
 		let f = e.parentElement;
 		n.refresh(), f?.querySelector(".reviewbulktoolbar button")?.focus({ preventScroll: !0 });
 	}
-	L(), Ke(e);
+	L(), Ue(e);
 }
-function $e(e, t, n = 1) {
+function Xe(e, t, n = 1) {
 	let r = (e, t) => Array.from({ length: t - e + 1 }, (t, n) => e + n);
 	if (n * 2 + 5 >= t) return r(1, t);
 	let i = Math.max(e - n, 1), a = Math.min(e + n, t), o = i > 2, s = a < t - 2;
@@ -1290,15 +1243,15 @@ function $e(e, t, n = 1) {
 		t
 	];
 }
-function et(e, t) {
+function Ze(e, t) {
 	return Math.max(1, Math.ceil(e / t));
 }
-function tt(e, t) {
+function Qe(e, t) {
 	return Math.min(Math.max(1, Math.floor(e) || 1), t);
 }
-function nt(e, t, n) {
+function $e(e, t, n) {
 	if (t <= 1) return "";
-	let r = $e(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
+	let r = Xe(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
 	return `<nav class="board-pagination" aria-label="${n}">
     <button type="button" class="geist-button" data-page="${e - 1}"${e <= 1 ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"></use></svg>上一页</button>
     <ul>${r}</ul>
@@ -1307,10 +1260,10 @@ function nt(e, t, n) {
 }
 //#endregion
 //#region src/native-image.ts
-function rt(e, t, n, r) {
+function et(e, t, n, r) {
 	return e > 0 && t > 0 && e === n && t === r;
 }
-function it(e, t, n, r, i = 1) {
+function tt(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -1327,7 +1280,7 @@ function it(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function at(e, t, n) {
+function nt(e, t, n) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <section class="entityhero"><div class="entityprofile"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
@@ -1341,27 +1294,27 @@ function at(e, t, n) {
 }
 //#endregion
 //#region src/board-skeleton.ts
-var K = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, q = () => `${K("80%")}${K("48%")}`, J = (e, t) => e.repeat(t), ot = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${K("45%")}</b><small class="board-stat-footer">${K("60%")}</small></div>`).join("")}</div>`, st = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, ct = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, lt = (e) => `<section class="board-radial-card"><header><span>${e}</span><b>${K()}</b></header><div class="board-rings skeleton-rings"><span class="skeleton skeleton-ring"></span></div><div class="skeleton-lines">${q()}</div></section>`, Y = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${J(q(), 3)}</div></section>`, ut = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, dt = (e) => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${K("100px")}</span><div class="followtoolbaractions"><button class="fbtn primary followcheckall" disabled>${f("refresh-cw")}<span data-collapse-label>检查全部</span></button><div class="iconswitch" data-board-segments="true"><label>${f("layout-grid")}</label><label>${f("table")}</label></div><span class="fmanagesort" data-collapse-field>${f("sort")}${o([["checked", "检查时间"]], "checked", {
+var q = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, J = () => `${q("80%")}${q("48%")}`, Y = (e, t) => e.repeat(t), rt = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${q("45%")}</b><small class="board-stat-footer">${q("60%")}</small></div>`).join("")}</div>`, it = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, at = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, X = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${Y(J(), 3)}</div></section>`, ot = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, st = (e) => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${q("100px")}</span><div class="followtoolbaractions"><button class="fbtn primary followcheckall" disabled>${f("refresh-cw")}<span data-collapse-label>检查全部</span></button><div class="iconswitch" data-board-segments="true"><label>${f("layout-grid")}</label><label>${f("table")}</label></div><span class="fmanagesort" data-collapse-field>${f("sort")}${o([["checked", "检查时间"]], "checked", {
 	label: "关注列表排序",
 	attr: "disabled"
-})}</span><button class="fbtn fmanagedir" disabled>${f("arrow-down")}</button>${e ? "" : ut(f("chevron-up") + "<span data-collapse-label>全部收起</span>")}</div></div>`, ft = () => `<div class="fsource frow"><span class="fchannelcheck">${K("18px")}</span><b>${K("85%")}</b><span class="fprovider">${K("54px")}</span><span class="fmeta fchecked">${K("40px")}</span><span class="fsourceactions"><span class="skeleton skeleton-icon"></span><span class="skeleton skeleton-icon"></span></span></div>`, pt = () => `<details class="fauthor" open><summary class="fauthorhead"><span class="favatar skeleton"></span><b>${K("90px")}</b><span class="skeleton skeleton-icon"></span><span class="fmeta">${K("40px")}</span><span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select disabled>${f("check-check")}<span data-author-select-label>全选</span></button><span class="skeleton skeleton-icon"></span></span></summary><div class="fauthorsources">${J(ft(), 3)}</div></details>`;
-function mt() {
-	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${K("85%")}${K("65%")}${J(q(), 4)}</div></aside></div></div>`;
+})}</span><button class="fbtn fmanagedir" disabled>${f("arrow-down")}</button>${e ? "" : ot(f("chevron-up") + "<span data-collapse-label>全部收起</span>")}</div></div>`, ct = () => `<div class="fsource frow"><span class="fchannelcheck">${q("18px")}</span><b>${q("85%")}</b><span class="fprovider">${q("54px")}</span><span class="fmeta fchecked">${q("40px")}</span><span class="fsourceactions"><span class="skeleton skeleton-icon"></span><span class="skeleton skeleton-icon"></span></span></div>`, lt = () => `<details class="fauthor" open><summary class="fauthorhead"><span class="favatar skeleton"></span><b>${q("90px")}</b><span class="skeleton skeleton-icon"></span><span class="fmeta">${q("40px")}</span><span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select disabled>${f("check-check")}<span data-author-select-label>全选</span></button><span class="skeleton skeleton-icon"></span></span></summary><div class="fauthorsources">${Y(ct(), 3)}</div></details>`;
+function ut() {
+	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${q("85%")}${q("65%")}${Y(J(), 4)}</div></aside></div></div>`;
 }
-function ht(e, n = {}) {
+function dt(e, n = {}) {
 	let r = "";
-	if (e === "/stats") r = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${K("38%")}</header>${ot([
+	if (e === "/stats") r = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${q("38%")}</header>${rt([
 		"馆藏视频",
 		"看过",
 		"内容标签",
 		"使用空间"
-	])}<section class="insightdetail"><div class="insightdetailbody"><div class="board-inventory-charts">${lt("网盘与本地")}${lt("媒体库")}</div></div></section>${Y("内容标签")}</div>`;
-	else if (e === "/taste") r = `<div class="tastepage"><header class="tastehead">${ct(["浏览器记录", "Peach 内部"], "insightswitch")}${K("24%")}</header><div class="tastestate"></div>${ot([
+	])}${X("馆藏视频")}${X("内容标签")}</div>`;
+	else if (e === "/taste") r = `<div class="tastepage"><header class="tastehead">${at(["浏览器记录", "Peach 内部"], "insightswitch")}${q("24%")}</header><div class="tastestate"></div>${rt([
 		"浏览记录",
 		"口味维度",
 		"浏览候选",
 		"私有导出"
-	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${J(q(), 4)}</div></section>${Y("口味分析")}<div class="board-activity-charts">${Y("浏览活动")}${Y("时间分布")}</div>${Y("标签")}</div>`;
+	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${Y(J(), 4)}</div></section>${X("口味分析")}<div class="board-activity-charts">${X("浏览活动")}${X("时间分布")}</div>${X("标签")}</div>`;
 	else if (e === "/follow-manage") {
 		let e = n.followLayout === "table", i = e ? `<div class="ftableframe"><div class="ftablewrap"><table class="ftable"><thead><tr>${[
 			"选择",
@@ -1371,7 +1324,7 @@ function ht(e, n = {}) {
 			"状态",
 			"上次检查",
 			"操作"
-		].map((e) => `<th>${e === "选择" ? "<label>" + t("disabled aria-label=\"全选本页来源\"") + "</label>" : e}</th>`).join("")}</tr></thead><tbody>${J(`<tr>${[
+		].map((e) => `<th>${e === "选择" ? "<label>" + t("disabled aria-label=\"全选本页来源\"") + "</label>" : e}</th>`).join("")}</tr></thead><tbody>${Y(`<tr>${[
 			"20px",
 			"90px",
 			"120px",
@@ -1379,37 +1332,37 @@ function ht(e, n = {}) {
 			"40px",
 			"100px",
 			"60px"
-		].map((e) => `<td>${K(e)}</td>`).join("")}</tr>`, 6)}</tbody></table></div></div>` : `<div class="board-follow-list">${J(pt(), 4)}</div>`;
+		].map((e) => `<td>${q(e)}</td>`).join("")}</tr>`, 6)}</tbody></table></div></div>` : `<div class="board-follow-list">${Y(lt(), 4)}</div>`;
 		r = `<div class="follow followmanage"><div class="fmanageoverview">${[
 			"关注创作者",
 			"启用来源",
 			"检查失败",
 			"未看更新"
-		].map((e) => `<div><span>${e}</span><b>${K()}</b></div>`).join("")}</div>${ct([
+		].map((e) => `<div><span>${e}</span><b>${q()}</b></div>`).join("")}</div>${at([
 			"关注列表",
 			"添加关注",
 			"来源和凭证"
-		], "follow-workspace-switch")}<div class="fmain"><section class="fsec" data-follow-workspace-panel="list">${dt(e)}<div class="board-follow-selection"${e ? " hidden" : ""}><label>${t("disabled")}全选本页</label></div><div class="frows fsources" data-layout="${e ? "table" : "default"}">${i}<div class="followpagefooter"><div class="followpageinfo">${K("120px")}${K("100px")}</div></div></div></section></div></div>`;
-	} else if (e === "/configuration") r = `<div class="configpage">${st([
+		], "follow-workspace-switch")}<div class="fmain"><section class="fsec" data-follow-workspace-panel="list">${st(e)}<div class="board-follow-selection"${e ? " hidden" : ""}><label>${t("disabled")}全选本页</label></div><div class="frows fsources" data-layout="${e ? "table" : "default"}">${i}<div class="followpagefooter"><div class="followpageinfo">${q("120px")}${q("100px")}</div></div></div></section></div></div>`;
+	} else if (e === "/configuration") r = `<div class="configpage">${it([
 		"通用",
 		"媒体",
 		"网络与访问",
 		"更新与维护"
-	])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${J(`<div class="skeleton-setting">${K("35%")}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${K("100px")}</footer></section></div>`;
+	])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${Y(`<div class="skeleton-setting">${q("35%")}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${q("100px")}</footer></section></div>`;
 	else if (e === "/activity") r = `<div class="activitypage">${[
 		"正在进行",
 		"被挡下的",
 		"最近完成"
-	].map((e) => `<section class="activitysection"><h3 class="geist-fieldset-title">${e}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${K("35%")}${q()}</div></article></div></section>`).join("")}</div>`;
-	else if (e === "/duplicates") r = `<div class="review"><div class="collection-summary">${K("38%")}</div><div class="fsechead dupactions"><h3>批量保留</h3>${K("40%")}</div>${J(`<section class="dupgroup"><div class="duphead">${K("45%")}</div><div class="duplist">${J(`<div class="duprow"><span class="dupcover skeleton"></span><span class="dupmarks">${K()}</span><span class="dupname">${K("90%")}</span>${K()}${K()}${K()}<span class="duppath">${K("70%")}</span></div>`, 2)}</div></section>`, 2)}</div>`;
-	else if (e === "/quality-goals") r = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${K("20%")}</div><div class="qualitylist">${J(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${q()}</div><footer class="qualityactions">${K("80%")}</footer></article>`, 6)}</div></div>`;
-	else if (e === "/playlists") r = `<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><div class="playlistcreate skeleton-lines"><span>新播放列表</span>${K("200px")}</div></header><div class="playlistcards">${J(`<article class="card playlistcard"><div class="mixstack"><div class="pic skeleton"></div></div><div class="mixmeta"><span class="mav skeleton"></span><div class="mixcopy skeleton-lines">${q()}</div></div></article>`, 6)}</div></section>`;
+	].map((e) => `<section class="activitysection"><h3 class="geist-fieldset-title">${e}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${q("35%")}${J()}</div></article></div></section>`).join("")}</div>`;
+	else if (e === "/duplicates") r = `<div class="review"><div class="collection-summary">${q("38%")}</div><div class="fsechead dupactions"><h3>批量保留</h3>${q("40%")}</div>${Y(`<section class="dupgroup"><div class="duphead">${q("45%")}</div><div class="duplist">${Y(`<div class="duprow"><span class="dupcover skeleton"></span><span class="dupmarks">${q()}</span><span class="dupname">${q("90%")}</span>${q()}${q()}${q()}<span class="duppath">${q("70%")}</span></div>`, 2)}</div></section>`, 2)}</div>`;
+	else if (e === "/quality-goals") r = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${q("20%")}</div><div class="qualitylist">${Y(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${J()}</div><footer class="qualityactions">${q("80%")}</footer></article>`, 6)}</div></div>`;
+	else if (e === "/playlists") r = `<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><div class="playlistcreate skeleton-lines"><span>新播放列表</span>${q("200px")}</div></header><div class="playlistcards">${Y(`<article class="card playlistcard"><div class="mixstack"><div class="pic skeleton"></div></div><div class="mixmeta"><span class="mav skeleton"></span><div class="mixcopy skeleton-lines">${J()}</div></div></article>`, 6)}</div></section>`;
 	else return "";
 	return `<div class="board-page-skeleton" data-skeleton="board${e}" role="status" aria-label="正在读取页面"><div aria-hidden="true" inert>${r}</div></div>`;
 }
 //#endregion
 //#region src/catalog-onboarding.ts
-var gt = [
+var ft = [
 	"loc",
 	"creator",
 	"performer",
@@ -1427,16 +1380,16 @@ var gt = [
 	"jav",
 	"thumb"
 ];
-function _t() {
+function pt() {
 	let e = (e) => Array(64).fill(e).join("");
 	return {
 		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
 		tags: "<span class=\"catalog-placeholder placeholder-tags\" aria-hidden=\"true\">" + e("<span class=\"pill\">&nbsp;</span>") + "</span>"
 	};
 }
-async function vt(e, t) {
+async function mt(e, t) {
 	let n = new URLSearchParams();
-	for (let t of gt) e[t] && n.set(t, e[t]);
+	for (let t of ft) e[t] && n.set(t, e[t]);
 	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
 		...r.creators || [],
 		...r.tagperformers || [],
@@ -1447,7 +1400,7 @@ async function vt(e, t) {
 		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
 	}))).filter(Boolean);
 }
-function yt({ kind: e = "catalog", filtered: t = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
+function ht({ kind: e = "catalog", filtered: t = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
 	let o = i ? "<button class=\"geist-button primary\" data-empty-settings>添加内容</button>" : "", s = "<a class=\"geist-button" + (!i || a ? " primary" : "") + "\" href=\"/follow-manage?tab=add\">添加关注</a>";
 	if (t || r) return n("search", r ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", r ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" });
 	if (e !== "catalog") {
@@ -1468,7 +1421,7 @@ function yt({ kind: e = "catalog", filtered: t = !1, jav: r = !1, configurable: 
 }
 //#endregion
 //#region src/sidebar.ts
-function bt(e) {
+function gt(e) {
 	return [
 		"/",
 		"/unseen",
@@ -1478,23 +1431,23 @@ function bt(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function xt(e, t) {
+function _t(e, t) {
 	return e.dataset.surface?.split("?")[0] === t.split("?")[0] && e.querySelector(".dnav") ? (e.dataset.surface = t, !1) : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function St(e) {
+function vt(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function Ct(e) {
+function yt(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function wt(e, t) {
+function bt(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function Tt() {
+function xt() {
 	let e = [
 		["人工复核", "square-check-big"],
 		["高清版", "sparkles"],
@@ -1539,7 +1492,7 @@ function Tt() {
         <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" type="button" disabled>检查文件</button></div>
       </div></section></div>`;
 }
-function Et(e, t = !1, n = !1) {
+function St(e, t = !1, n = !1) {
 	if (t || n) return "";
 	let r = "<svg class=\"externalmark\" viewBox=\"0 0 24 24\" aria-hidden=\"true\"><use href=\"#i-external-link\"></use></svg>";
 	return `<details class="taste-history-guide"${e ? " open" : ""}>
@@ -1553,57 +1506,57 @@ function Et(e, t = !1, n = !1) {
       <button type="button" class="geist-button taste-guide-skip">跳过</button>
     </div></details>`;
 }
-var Dt = "peach-taste-guide-dismissed";
-function Ot(e, t) {
+var Ct = "peach-taste-guide-dismissed";
+function wt(e, t) {
 	l(e, ".taste-history-guide", "taste-guide-collapse");
 	let n = e.querySelector(".taste-history-guide");
 	n?.querySelector(".taste-guide-skip")?.addEventListener("click", () => {
-		t.setItem(Dt, "1"), n.remove();
+		t.setItem(Ct, "1"), n.remove();
 	});
 }
 //#endregion
 //#region src/resource-sync.ts
-var X = (e = 0) => Number(e).toLocaleString(), kt = {
+var Z = (e = 0) => Number(e).toLocaleString(), Tt = {
 	local: "本地磁盘",
 	115: "115",
 	pikpak: "PikPak"
-}, At = (t) => s(e[t] ?? "database"), Z = (e, t, n) => `<article class="board-plain-stat resourcestat">
+}, Et = (t) => s(e[t] ?? "database"), Dt = (e, t, n) => `<article class="board-plain-stat resourcestat">
     <span class="board-plain-stat-head">${e}</span>
     <strong>${t}</strong>
     <span class="cleanupmeta">${n}</span></article>`;
-function jt(e, t) {
+function Ot(e, t) {
 	let n = e.cache || {
 		files: 0,
 		bytes: 0
 	}, r = !!(e.missing || n.files);
-	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => Z(`<span class="board-stat-tile resourcestat-tile">${At(e.location)}</span>${kt[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${X(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${X(e.checked)} 项` : `馆藏中有 ${X(e.total)} 项`, e.unreadable ? `${X(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
-    ${Z("待移入回收站", `${X(e.missing)} 项`, "")}
-    ${Z("可清理的缓存", `${X(n.files)} 个`, n.files ? t(n.bytes) : "")}</div>
-    ${r ? a(`将把找不到文件的 ${X(e.missing)} 项馆藏记录移入回收站，并清理 ${X(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
+	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => Dt(`<span class="board-stat-tile resourcestat-tile">${Et(e.location)}</span>${Tt[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${Z(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${Z(e.checked)} 项` : `馆藏中有 ${Z(e.total)} 项`, e.unreadable ? `${Z(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
+    ${Dt("待移入回收站", `${Z(e.missing)} 项`, "")}
+    ${Dt("可清理的缓存", `${Z(n.files)} 个`, n.files ? t(n.bytes) : "")}</div>
+    ${r ? a(`将把找不到文件的 ${Z(e.missing)} 项馆藏记录移入回收站，并清理 ${Z(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
     <div class="resourceapplyrow geist-fieldset-footer" data-geist-fieldset-footer>${r ? "<button class=\"geist-button primary\" type=\"button\" id=\"resourceApply\">清理失效记录与缓存</button>" : "<p class=\"resourcesyncok\">已检查可访问的来源，没有待清理的记录或缓存。</p>"}</div>`;
 }
 //#endregion
 //#region src/jav-artwork.ts
-function Mt(e) {
+function kt(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function Nt(e) {
+function At(e) {
 	return {
-		javLayout: Mt(e.javLayout),
+		javLayout: kt(e.javLayout),
 		javImage: Q(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
 function Q(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function Pt(e, t) {
+function jt(e, t) {
 	return e.is_jav && e.code && e.has_cover && (Q(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function Ft(e, t) {
+function Mt(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
 	let a = Math.min(1, Math.max(0, i / n)), o = n / r / t, s = (1 - a) * o;
@@ -1614,7 +1567,7 @@ function Ft(e, t) {
 		left: l(c)
 	};
 }
-function It(e, t) {
+function Nt(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (Q(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
@@ -1622,18 +1575,19 @@ function It(e, t) {
 }
 //#endregion
 //#region src/islands.ts
-var Lt = {
+var Pt = {
 	"avatar-picker": { react: "avatar-picker" },
 	"library-processing": { react: "library-processing" },
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },
 	configuration: { react: "configuration" },
-	activity: { react: "activity" }
-}, Rt = () => Object.keys(Lt), $ = /* @__PURE__ */ new Map();
-async function zt(e, t, n, r = {}) {
-	let i = Lt[e];
+	activity: { react: "activity" },
+	stats: { react: "stats" }
+}, Ft = () => Object.keys(Pt), $ = /* @__PURE__ */ new Map();
+async function It(e, t, n, r = {}) {
+	let i = Pt[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Ht(t);
+	zt(t);
 	let a = { controller: new AbortController() };
 	$.set(t, a);
 	let o = (await import("/dist/peach-react.js")).pages[i.react];
@@ -1642,7 +1596,7 @@ async function zt(e, t, n, r = {}) {
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!Bt(t, a, r)) return;
+	if (!Lt(t, a, r)) return;
 	let s = t.ownerDocument.createElement("div");
 	s.className = "peach-react", t.append(s);
 	let c = o.mount(s, n);
@@ -1650,16 +1604,16 @@ async function zt(e, t, n, r = {}) {
 		c.unmount(), s.remove();
 	};
 }
-function Bt(e, t, n) {
+function Lt(e, t, n) {
 	return $.get(e) === t ? n.isCurrent && !n.isCurrent() ? ($.delete(e), !1) : (e.textContent = "", !0) : !1;
 }
-var Vt = (e) => !!e && $.has(e);
-function Ht(e) {
-	for (let t of [...$.keys()]) (t === e || e.contains(t)) && Ut(t);
+var Rt = (e) => !!e && $.has(e);
+function zt(e) {
+	for (let t of [...$.keys()]) (t === e || e.contains(t)) && Bt(t);
 }
-function Ut(e) {
+function Bt(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.dispose?.());
 }
 //#endregion
-export { Dt as TASTE_GUIDE_KEY, Oe as activityChartsHtml, ht as boardPageSkeleton, g as boundedPreference, yt as catalogEmptyHtml, vt as catalogSuggestions, tt as clampPage, Tt as cleanupSkeletonHtml, Ct as cloudLocations, wt as cloudPreferenceLocations, Ge as createReviewSelection, we as creatorSankeyHtml, mt as detailSkeletonHtml, S as distributionChart, _t as emptyCatalogLayout, at as entitySkeletonHtml, Fe as followJobProgress, Je as groupReviewRows, Re as identityEvidenceHtml, E as initBoardControls, Vt as islandMounted, Rt as islandNames, Pt as javImageKind, Ne as jobActivityHtml, x as jobProgressHtml, rt as matchesFaceSource, zt as mountIsland, v as mountNumberSetting, it as nativeImageFit, Q as normalizeJavImage, Mt as normalizeJavLayout, Nt as normalizeJavPreferences, et as pageCount, nt as paginationHtml, Ft as panelFrame, m as preferredDirection, w as radarChart, Ee as radialCardHtml, C as rankedChart, jt as resourceScanHtml, Le as reviewImageHtml, Ue as selectGroup, Ve as selectRange, He as selectionSummary, bt as sidebarHasCatalogContent, Ae as sidebarSectionHtml, St as sidebarTagCounts, b as statCardBody, T as syncBoardRange, It as syncJavImages, _ as syncNumberSetting, We as syncSelectionToolbar, xt as syncSidebarSurface, Et as tasteHistoryGuideHtml, Me as transitionTheme, Ht as unmountIsland, Ke as updateReviewSticky, Pe as watchJob, ke as wireActivityCharts, Te as wireCreatorSankey, M as wireExpandableRanks, j as wireGrowingCharts, De as wireRadialCards, ze as wireReviewPictures, Qe as wireReviewSelection, je as wireSidebarGroups, Ot as wireTasteHistoryGuide };
+export { Ct as TASTE_GUIDE_KEY, we as activityChartsHtml, dt as boardPageSkeleton, g as boundedPreference, ht as catalogEmptyHtml, mt as catalogSuggestions, Qe as clampPage, xt as cleanupSkeletonHtml, yt as cloudLocations, bt as cloudPreferenceLocations, He as createReviewSelection, xe as creatorSankeyHtml, ut as detailSkeletonHtml, S as distributionChart, pt as emptyCatalogLayout, nt as entitySkeletonHtml, Me as followJobProgress, Ge as groupReviewRows, Fe as identityEvidenceHtml, E as initBoardControls, Rt as islandMounted, Ft as islandNames, jt as javImageKind, Ae as jobActivityHtml, x as jobProgressHtml, et as matchesFaceSource, It as mountIsland, v as mountNumberSetting, tt as nativeImageFit, Q as normalizeJavImage, kt as normalizeJavLayout, At as normalizeJavPreferences, Ze as pageCount, $e as paginationHtml, Mt as panelFrame, m as preferredDirection, w as radarChart, C as rankedChart, Ot as resourceScanHtml, Pe as reviewImageHtml, Be as selectGroup, Re as selectRange, ze as selectionSummary, gt as sidebarHasCatalogContent, Ee as sidebarSectionHtml, vt as sidebarTagCounts, b as statCardBody, T as syncBoardRange, Nt as syncJavImages, _ as syncNumberSetting, Ve as syncSelectionToolbar, _t as syncSidebarSurface, St as tasteHistoryGuideHtml, ke as transitionTheme, zt as unmountIsland, Ue as updateReviewSticky, je as watchJob, Te as wireActivityCharts, Se as wireCreatorSankey, M as wireExpandableRanks, j as wireGrowingCharts, Ie as wireReviewPictures, Ye as wireReviewSelection, De as wireSidebarGroups, wt as wireTasteHistoryGuide };

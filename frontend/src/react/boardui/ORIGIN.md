@@ -56,3 +56,7 @@
 | 进度环 | 同上的 `Gauge`：SVG 两圈，`pathLength={100}` 把一圈长度钉成 100，画出来的那一段就是百分比 | 注册表里没有环形进度；`../components/progress.tsx` 那一份是横条，横幅那一行放不下 |
 | 模态弹层 | `../avatar-picker/avatar-picker-page.tsx` 用 React Aria 的 `ModalOverlay` + `Modal` + `Dialog` 组合，遮罩取 `../styles.css` 的 `--color-scrim`（同旧样式表 `.geist-modal::backdrop` 的黑 60%） | 注册表里没有模态弹层，也就没有它的遮罩底色 |
 | 候选网格 | 同上：一排四张 3:4 的候选，弹层宽度与格子比例取 `../styles.css` 的 `--container-avatar-picker` 与 `--aspect-avatar-choice` | 注册表里没有图片选择网格；这两档在工具类里没有对应档位，写成 `@theme` 而不是任意值 |
+| 空态里的去处 | `../components/empty-state.tsx` 的 `EmptyState` 收一个 `actions`，按钮与链接画在说明下面 | 上游没有空态组件；标题、说明和那个去处必须在同一个组件里，散到调用处就会各排各的 |
+| 读数兼页签 | `../stats/stats-page.tsx` 的四张读数卡是 React Aria 的 `Tabs`／`TabList`／`Tab`，选中态是一圈 `border-focus-ring` | `tabs` 条目是页面级导航的下划线页签，这里切的是同一页里的四层细节，而且页签本身要显示读数 |
+| 径向图 | `../stats/radial-card.tsx`：每段一圈 SVG，`pathLength={100}` 把一圈钉成 100，颜色只取 `chart-1`…`chart-6`，高亮是 React 状态 | 注册表里没有图表条目；`library-processing-notice.tsx` 的 `Gauge` 是单圈进度，排不下多段对比 |
+| 排行 | 同上页面的 `TagRanking`：两列的 `ol`，收起时露前十，展开键是一颗 `secondary` 按钮 | 注册表里没有排行榜；`table` 条目带表头与排序，这里一行只有名次、名字和一个数 |

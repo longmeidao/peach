@@ -387,6 +387,63 @@ class LibraryProcessingEndpointTests(unittest.TestCase):
         self.assertEqual(len(routed), 1, f"/api/library-processing 的路由声明在 {routed}")
 
 
+class StatsEndpointTests(unittest.TestCase):
+    """统计页从 `web/app.js` 搬过来时不能把语义契约丢在原地。
+
+    `tests/test_web_ui.py` 曾对页面源断言这些标记：四张读数卡兼页签、三个空态、体积与
+    来源名走遗留口径、观看那一行中间省略。行为由 `frontend/test/react/stats.test.tsx`
+    守，这里守的是「搬家之后这些标记还在同一处」。
+    """
+
+    STATS = FRONTEND / "src" / "react" / "stats"
+
+    def setUp(self):
+        self.source = "\n".join(
+            (self.STATS / name).read_text(encoding="utf-8")
+            for name in ("stats.ts", "stats-page.tsx", "radial-card.tsx"))
+
+    def test_titles_still_use_middle_truncation(self):
+        """最近看过那一行是文件名，差别常在尾部，末尾省略会把要看的东西切掉。"""
+        self.assertIn("data-middle-truncate", self.source)
+
+    def test_empty_and_error_states_reuse_the_shared_components(self):
+        """三个空态与失败态走 `src/react/components/` 的组合件，不是一行灰字。"""
+        self.assertIn("<Note", self.source)
+        for title in ("还没有视频", "还没有内容标签", "还没有观看记录",
+                      "还没有标签来源", "还没有存储来源"):
+            self.assertIn(title, self.source)
+        self.assertEqual(self.source.count("<EmptyState"), 5)
+
+    def test_readings_reuse_the_legacy_formatters(self):
+        """体积与来源名共用遗留口径，不在页面里再写一套。"""
+        self.assertIn("from '@peach/legacy/core'", self.source)
+        for helper in ("fmtSize(", "LOC["):
+            self.assertIn(helper, self.source)
+
+    def test_the_four_readings_are_the_tabs(self):
+        """四张读数卡本身就是页签：这一页没有别的主动作，读数就是入口。"""
+        self.assertIn("react-aria-components", self.source)
+        self.assertEqual(self.source.count("<MetricTab"), 4)
+
+    def test_ring_geometry_is_a_percentage_of_one_turn(self):
+        """一圈钉成 100，`stroke-dasharray` 写的那个数就是百分比本身。"""
+        self.assertIn("pathLength={100}", self.source)
+
+    def test_the_endpoint_is_declared_once(self):
+        """端点在前端只能有一个声明处，就是这一页的数据模块。"""
+        sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
+        declared = [path for path in sources
+                    if "'/api/stats'" in path.read_text(encoding="utf-8")]
+        self.assertEqual(declared, [self.STATS / "stats.ts"],
+                         f"端点声明在 {[path.name for path in declared]}")
+        keyed = [path.name for path in sources
+                 if "STATS_KEY = [" in path.read_text(encoding="utf-8")]
+        self.assertEqual(keyed, ["stats.ts"], f"queryKey 声明在 {keyed}")
+        routed = [path.name for path in sorted((ROOT / "src" / "peach").glob("web_*.py"))
+                  if '"/api/stats"' in path.read_text(encoding="utf-8")]
+        self.assertEqual(len(routed), 1, f"/api/stats 的路由声明在 {routed}")
+
+
 class ConfigurationEndpointTests(unittest.TestCase):
     """整页和各分区读同一条 `/api/configuration`，两份产物各打包一份这个模块。"""
 

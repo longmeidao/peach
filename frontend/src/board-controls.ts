@@ -126,7 +126,7 @@ export function wireGrowingCharts(root:ParentNode) {
 }
 
 export function wireExpandableRanks(root:ParentNode) {
-  root.querySelectorAll<HTMLElement>('.tasteranks,.insightranking').forEach((list,index)=>{
+  root.querySelectorAll<HTMLElement>('.tasteranks').forEach((list,index)=>{
     if(list.children.length<=5||list.parentElement?.hasAttribute('data-expandable-ranks'))return;
     const outer=document.createElement('div');outer.className='board-expand-ranks';outer.dataset.expandableRanks='';list.before(outer);outer.append(list);
     list.id=list.id||`board-rank-list-${index}`;list.classList.add('board-rank-list');

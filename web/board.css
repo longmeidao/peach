@@ -973,26 +973,16 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .board-job-progress small{display:block;color:var(--muted);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
 @media(prefers-reduced-motion:reduce){.board-job-fill{transition:none}}
 .metricstrip,.tastesummaries{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-flow:row;gap:16px;overflow:visible;border:0;background:none}
-.metricstrip>button,.tastesummary{display:flex;flex-direction:column;min-width:0;padding:16px 0 0;border:0;border-radius:16px;background:var(--ground);overflow:hidden;text-align:left;box-shadow:0 1px 2px #00000008}
-.metricstrip>button[aria-selected=true]{background:var(--ground);box-shadow:inset 0 0 0 2px var(--tungsten)}
-.metricstrip>button:hover{background:color-mix(in srgb,var(--color-text-primary) 6%,var(--ground))}
-.metricstrip>button[aria-selected=true]::after{content:"";display:block;position:absolute;inset:0;height:auto;border:2px solid var(--tungsten);border-radius:inherit;background:none;pointer-events:none;z-index:1}
-.metricstrip>button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
-.metricstrip .board-stat-label,.tastesummary>.board-stat-label{display:flex;align-items:center;gap:8px;padding:0 16px;color:var(--ink-2);font-size:14px;line-height:20px}
+.tastesummary{display:flex;flex-direction:column;min-width:0;padding:16px 0 0;border:0;border-radius:16px;background:var(--ground);overflow:hidden;text-align:left;box-shadow:0 1px 2px #00000008}
+.tastesummary>.board-stat-label{display:flex;align-items:center;gap:8px;padding:0 16px;color:var(--ink-2);font-size:14px;line-height:20px}
 .board-stat-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#3986ff25,#1760ef08);color:var(--tungsten);flex:none}
 .board-stat-icon svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.metricstrip>button:nth-child(2) .board-stat-icon,.tastesummary:nth-child(2) .board-stat-icon{color:#a78bfa;background:#a78bfa18}
-.metricstrip>button:nth-child(3) .board-stat-icon,.tastesummary:nth-child(3) .board-stat-icon{color:#34d399;background:#34d39918}
-.metricstrip>button:nth-child(4) .board-stat-icon,.tastesummary:nth-child(4) .board-stat-icon{color:#f59e0b;background:#f59e0b18}
-.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{padding:12px 16px 16px;font-size:28px;line-height:34px;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.metricstrip>button .board-stat-footer,.tastesummary>.board-stat-footer{display:block;padding:10px 16px;background:var(--board-card-foot);margin:auto 0 0;font-size:12px;line-height:18px;color:var(--muted);min-height:38px}
-.insightdetail,.insightpanel,.tastehero,.tasteanalysis,.tasteleads{border:0;border-radius:16px;background:var(--ground);overflow:clip}
-/* 卡片面只有一层。`.insightdetail` 自己铺面、里面又放一排卡，两层面就都露出来：dark 下
-   卡缝里透出比卡更深的一条，light 下面板和卡差一档、页面又是纯白，同一块地方叠了三种白。
-   面移到当前那一格上，装着卡的那一格不铺。 */
-.insightdetail{background:none;overflow:visible}
-.insightdetailbody{border-radius:16px;background:var(--ground)}
-.insightdetailbody:has(.board-inventory-charts){background:none}
+.tastesummary:nth-child(2) .board-stat-icon{color:#a78bfa;background:#a78bfa18}
+.tastesummary:nth-child(3) .board-stat-icon{color:#34d399;background:#34d39918}
+.tastesummary:nth-child(4) .board-stat-icon{color:#f59e0b;background:#f59e0b18}
+.tastesummary>.board-stat-value{padding:12px 16px 16px;font-size:28px;line-height:34px;font-weight:500;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tastesummary>.board-stat-footer{display:block;padding:10px 16px;background:var(--board-card-foot);margin:auto 0 0;font-size:12px;line-height:18px;color:var(--muted);min-height:38px}
+.insightpanel,.tastehero,.tasteanalysis,.tasteleads{border:0;border-radius:16px;background:var(--ground);overflow:clip}
 .insightcopy{border:0}.insightpanel>header{border:0;padding-top:8px}
 .board-ranked-chart{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .board-ranked-chart li{position:relative;isolation:isolate;display:flex;justify-content:space-between;gap:12px;padding:10px 12px;min-height:40px;border-radius:8px;overflow:hidden;font-size:14px;line-height:20px}
@@ -1003,24 +993,10 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .board-radar-value{fill:color-mix(in srgb,var(--tungsten) 18%,transparent);stroke:var(--tungsten);stroke-width:2;stroke-linejoin:round}
 .board-radar text{font-family:inherit;font-size:12px;fill:var(--muted);dominant-baseline:middle}
 @media(max-width:1000px){.metricstrip,.tastesummaries{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}
-@media(max-width:480px){.board-stat-label{padding-inline:12px;font-size:13px;gap:6px}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{padding:12px;font-size:24px;line-height:34px}.metricstrip>button .board-stat-footer,.tastesummary>.board-stat-footer{padding:8px 12px}.board-stat-icon{width:24px;height:24px}}
+@media(max-width:480px){.board-stat-label{padding-inline:12px;font-size:13px;gap:6px}.tastesummary>.board-stat-value{padding:12px;font-size:24px;line-height:34px}.tastesummary>.board-stat-footer{padding:8px 12px}.board-stat-icon{width:24px;height:24px}}
 
 /* 数据按阅读目的分组，标题与内容共享边缘。 */
 .insightpage,.tastepage{width:100%;max-width:var(--board-content)}
-.board-watch-history,.board-source-list,.board-volume-list{display:grid;gap:20px;min-width:0}
-.board-watch-entry{display:grid;grid-template-columns:minmax(0,1fr) minmax(160px,30%);align-items:center;gap:24px;padding:12px 0}
-.board-watch-entry h3,.board-source-list h3,.board-volume-list h3{margin:0;font-size:14px;line-height:20px;font-weight:500;overflow-wrap:anywhere}
-.board-watch-entry>div{min-width:0}.board-watch-entry h3 a{display:block;max-width:100%;overflow:hidden;white-space:nowrap;color:var(--ink);text-decoration:none}.board-watch-entry h3 a:hover{text-decoration:underline}
-.board-watch-entry p{display:flex;gap:12px;flex-wrap:wrap;margin:4px 0 0;font-size:12px;color:var(--muted)}
-.board-watch-measures small,.board-source-list small,.board-volume-list small{display:block;font-size:12px;line-height:18px;color:var(--muted);margin-top:6px;overflow-wrap:anywhere}
-.board-source-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 32px}
-.board-source-list header,.board-volume-list header{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-.board-source-list header b,.board-volume-list header b{font-size:14px;font-weight:500;white-space:nowrap}
-.board-source-list header small{display:inline;font-weight:400}
-.board-volume-values{display:flex;justify-content:space-between;gap:12px;margin-top:8px;color:var(--muted);font-size:12px}
-.board-volume-values b{color:var(--ink-2);font-weight:400}
-.insightstorage{overflow:visible}.insightfacts{gap:12px}.insightfacts .kv,.insightfacts .kv:nth-child(odd),.insightfacts .kv:nth-child(-n+2){border:0;padding:12px;min-height:64px;display:flex;flex-direction:column;gap:6px;background:var(--surface);border-radius:10px}.insightfacts .kv b{font-size:20px;text-align:left;max-width:100%}.insightfacts::after{display:none}
-.insightranking{border:0;gap:4px 24px}.insightrankrow{border:0;border-radius:8px}.insightrankrow>span:nth-child(2){white-space:normal;overflow-wrap:anywhere}
 .tasteranks,.tasteranks-tags,.tasteranks-visual{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 28px}
 .tasterank,.tasterank-tag{border:0;background:none;border-radius:10px;padding:12px 8px;min-height:72px;grid-template-columns:24px minmax(0,1fr) 16px;gap:12px}
 .tasterank-visual{grid-template-columns:24px 36px minmax(0,1fr) 16px}.tasterank .tasteavatar{width:36px;height:36px}.tasterank b{font-size:14px;line-height:20px;font-weight:500;white-space:normal;overflow-wrap:anywhere}.tasterank small{white-space:normal;line-height:18px}.tasterank .taste-rank-copy{min-width:0}
@@ -1034,7 +1010,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .followmanage .fauthor{container-type:inline-size}
 .board-follow-list{display:grid;border-radius:16px;background:var(--ground);padding:8px 16px}.board-follow-list .fsource.frow{display:grid;grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:12px;padding:8px;min-height:48px;border:0;border-radius:8px}.board-follow-list .fsource.frow>b{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400}.board-follow-list .fsource.selected{background:var(--picked);opacity:1}.board-follow-selection{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px;font-size:13px}.board-follow-selection>label{display:flex;gap:8px;align-items:center}.board-follow-selection>span{margin-right:auto;color:var(--muted)}
 @media(max-width:760px){.board-follow-list{padding:8px}}
-@media(max-width:760px){body #manageTitle{width:100%}.board-watch-entry,.board-source-list,.tasteleads .insightpanelbody,.tasteranks,.tasteranks-tags,.tasteranks-visual,.tastesources .insightpanelbody>div{grid-template-columns:minmax(0,1fr)}.board-watch-entry{gap:8px}.tasteleads>header{padding:20px 16px 12px}.tasteleads .insightpanelbody{padding:8px 16px 20px}.followmanage .fmain>.fsec:has(.fcred)>.frows{grid-template-columns:minmax(0,1fr)}.followmanage .fauthor{padding:16px}.followmanage .fsechead{gap:8px}.followmanage .fmanagesort{margin-left:0}}
+@media(max-width:760px){body #manageTitle{width:100%}.tasteleads .insightpanelbody,.tasteranks,.tasteranks-tags,.tasteranks-visual,.tastesources .insightpanelbody>div{grid-template-columns:minmax(0,1fr)}.tasteleads>header{padding:20px 16px 12px}.tasteleads .insightpanelbody{padding:8px 16px 20px}.followmanage .fmain>.fsec:has(.fcred)>.frows{grid-template-columns:minmax(0,1fr)}.followmanage .fauthor{padding:16px}.followmanage .fsechead{gap:8px}.followmanage .fmanagesort{margin-left:0}}
 
 /* Board 的语义色与复合字阶；图表和业务状态独立于交互强调色。 */
 :root,:root[data-theme="light"]{--color-text-primary:#0a0a0a;--color-text-secondary:#737373;--color-text-tertiary:#a3a3a3;--color-background-full:#fff;--color-background-primary-default:#fff;--color-background-primary-hover:#f5f5f5;--color-background-secondary-default:#f5f5f5;--color-background-tertiary-default:#e5e5e5;--color-border-button-default:#e5e5e5;--color-border-button-hover:#d4d4d4;--color-border-button-active:#a3a3a3;--color-separator-border:#e5e5e5;--color-border-focus-ring:#3b82f6;--color-text-white:#fff;--color-text-disabled:#d4d4d4;--board-blue:linear-gradient(180deg,#2b7fff,#155dfc);--board-blue-hover:linear-gradient(180deg,#3392ff,#2b7fff);--board-blue-active:linear-gradient(180deg,#155dfc,#1447e6);--board-red:linear-gradient(180deg,#fb2c36,#e7000b);--board-red-hover:linear-gradient(180deg,#ff6467,#fb2c36);--board-red-active:linear-gradient(180deg,#e7000b,#c10007);--board-red-line:#fb2c36;--board-red-wash:#ffe2e2;--board-red-text:#c10007}
@@ -1071,9 +1047,6 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 .skeleton-tabs{display:flex;gap:20px;align-items:center;min-height:48px;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--line-soft)}
 .skeleton-setting{display:flex;justify-content:space-between;align-items:center;min-height:64px}
 .skeleton-toggle{width:40px;height:24px;border-radius:var(--pill-radius)}
-.board-rings.skeleton-rings{display:grid;place-items:center;padding:24px 0;box-sizing:border-box}
-.skeleton.skeleton-ring{width:min(70%,252px);height:auto;aspect-ratio:1;border-radius:50%;mask:radial-gradient(circle,transparent 50%,#000 51%)}
-@media(max-width:600px){.skeleton.skeleton-ring{width:min(70%,212px)}}
 .skeleton-radar{width:100%;height:260px;clip-path:polygon(50% 0,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%)}
 .board-page-skeleton .tastesummary{height:152px}
 .board-page-skeleton .tastesummary>b .skeleton{height:34px}
@@ -1270,17 +1243,6 @@ body .sbadge.paused{background:color-mix(in srgb,#ffc600 18%,var(--color-backgro
 .metricstrip>button[aria-selected=true]{background:var(--color-background-primary-default);box-shadow:none}.metricstrip>button[aria-selected=true]::after{box-sizing:border-box}.metricstrip>button[aria-selected=true] .board-stat-footer{background:var(--board-card-foot)}
 body .gselectmenu [role=option][aria-selected=true],body .popmenu [aria-checked=true]{background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-primary)}
 .insightswitch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.insightswitch label>span{display:flex;align-items:center;min-height:28px;padding:4px 10px;border-radius:7px;color:var(--color-text-secondary);font:var(--board-body-medium)}.insightswitch label:has(input:checked)>span{background:var(--color-background-primary-hover);color:var(--color-text-primary);box-shadow:0 1px 2px #0000001a}
-/* 卡面是 secondary，跟 `.board-sankey-card` 同一档。primary 是浮层与输入框的面：
-   拿它当卡片，light 下卡和纯白页面一样白、只靠底下那层面板才看得出边，dark 下又比周围
-   都亮一档。boardui 的看板卡实测就是 bg-background-secondary-default，无边框无投影。 */
-.board-inventory-charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;width:100%;grid-column:1/-1}.board-radial-card{min-width:0;padding:20px;border-radius:20px;background:var(--ground);overflow:hidden}.board-radial-card>header{display:grid;grid-template-columns:1fr auto;gap:4px;color:var(--color-text-secondary)}.board-radial-card>header>b{grid-row:2;font:var(--board-title);color:var(--color-text-primary);font-variant-numeric:tabular-nums}.board-radial-card>header>small{align-self:end;grid-column:2;grid-row:2;font:var(--board-caption)}
-.board-rings{display:block;width:100%;height:300px;overflow:visible}.board-rings circle{fill:none;stroke-linecap:round}.board-ring-track{stroke:var(--color-background-tertiary-default)}.board-ring-value{stroke:var(--ring-color);cursor:pointer;transition:filter .18s,opacity .18s,stroke-width .18s;animation:board-ring-enter .9s cubic-bezier(.16,1,.3,1) var(--ring-delay) backwards;outline:none}.board-ring-value[data-active=true]{filter:brightness(.88);stroke-width:18}.board-ring-value:focus-visible{filter:drop-shadow(0 0 2px var(--color-border-focus-ring))}.board-radial-card:not([data-radial-focus="-1"]) .board-ring-value:not([data-active=true]){opacity:.4}
-@keyframes board-ring-enter{from{stroke-dasharray:0px 100px;opacity:0}to{stroke-dasharray:calc(var(--ring-length) * 1px) calc((100 - var(--ring-length)) * 1px);opacity:1}}
-.board-radial-card:not(.board-chart-visible) .board-ring-value{animation:none;stroke-dasharray:0 100;opacity:0}
-.board-radial-card.board-chart-visible .board-ring-value{animation-duration:1.2s;animation-timing-function:cubic-bezier(.22,.61,.36,1)}
-/* 图例小卡自己就是那层凹片，不再摆在一块托盘上：卡片底、托盘底、小卡底三层各一个
-   颜色，数字读起来像是嵌在框里的框，而这里只有小卡是可以点的。 */
-.board-radial-tiles{display:flex;flex-wrap:wrap;gap:8px;padding:0;border-radius:0;background:none}.board-radial-tiles>button{display:flex;flex:1 1 calc(33.333% - 8px);min-width:0;flex-direction:column;align-items:flex-start;gap:4px;padding:10px;border:0;border-radius:12px;background:var(--color-background-tertiary-default);text-align:left;color:var(--color-text-primary);font:var(--board-body);transition:background .18s,box-shadow .18s}.board-radial-tiles>button>span{display:flex;align-items:center;gap:6px;min-width:0;color:var(--color-text-secondary);overflow-wrap:anywhere}.board-radial-tiles i{width:12px;height:12px;flex:none;border-radius:4px;background:var(--ring-color)}.board-radial-tiles b{font:var(--board-heading);font-variant-numeric:tabular-nums}.board-radial-tiles small{font:var(--board-caption);color:var(--color-text-secondary)}.board-radial-tiles>button:is([data-active=true],[aria-pressed=true]){background:color-mix(in srgb,var(--ring-color) 10%,var(--color-background-tertiary-default));box-shadow:inset 0 0 0 1px var(--ring-color)}
 .board-activity-charts{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:20px;margin:20px 0}.board-heat-card,.board-activity-empty{min-width:0;padding:20px;border-radius:20px;background:var(--color-background-secondary-default)}
 /* 空着的时候那句话自己就是这一块，没有 `.board-activity-charts` 那层外壳，上下 20px
    的外边距得由它自己出——否则有图时隔开的那两段，在没图时贴在一起。
@@ -1288,9 +1250,9 @@ body .gselectmenu [role=option][aria-selected=true],body .popmenu [aria-checked=
    再叠上去，一句话在一个 20px 的盒子里偏得看不出是居中还是靠上。 */
 .board-activity-empty{margin:20px 0}.board-activity-empty>h3{margin:0;font:var(--board-heading)}.board-activity-empty>p{margin:8px 0 0;color:var(--muted);font:var(--board-body)}.board-heat-card header{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:24px}.board-heat-card h3{margin:0;font:var(--board-heading)}.board-heat-card header b{grid-row:2;font:var(--board-title);font-variant-numeric:tabular-nums}.board-heat-card header span{grid-column:2;grid-row:2;align-self:end;color:var(--muted);font:var(--board-caption)}.board-heat-scroll{overflow-x:auto;padding:3px}.board-hour-grid{display:grid;grid-template-columns:32px repeat(24,minmax(10px,1fr));gap:4px;min-width:360px}.board-heat-axis{font:var(--board-caption);color:var(--muted);align-self:center}.board-day-grid{display:grid;grid-auto-flow:column;grid-template-rows:repeat(7,1fr);grid-template-columns:repeat(13,1fr);gap:5px;padding:3px}
 .board-heat-card [data-heat-value]{display:block;aspect-ratio:1;min-width:0;padding:0;border:0;border-radius:3px;background:color-mix(in srgb,#3493ff var(--heat),var(--color-background-tertiary-default));animation:board-heat-enter .4s ease-out both}.board-heat-card [data-heat-value]:is(:hover,:focus-visible){outline:2px solid var(--color-border-focus-ring);outline-offset:1px;filter:brightness(.9)}.board-heat-card footer{display:flex;justify-content:space-between;gap:8px;margin-top:16px;font:var(--board-caption);color:var(--muted)}@keyframes board-heat-enter{from{opacity:0;transform:scale(.8)}to{opacity:1;transform:none}}
-@media(max-width:1000px){.board-inventory-charts,.board-activity-charts{grid-template-columns:1fr}.board-rings{height:260px}}
-@media(max-width:600px){.board-radial-card,.board-heat-card{padding:16px}.board-radial-tiles>button{flex-basis:calc(50% - 8px)}}
-@media(prefers-reduced-motion:reduce){.board-ring-value,.board-heat-card [data-heat-value]{animation:none;transition:none}.board-radial-tiles>button{transition:none}}
+@media(max-width:1000px){.board-activity-charts{grid-template-columns:1fr}}
+@media(max-width:600px){.board-heat-card{padding:16px}}
+@media(prefers-reduced-motion:reduce){.board-heat-card [data-heat-value]{animation:none;transition:none}}
 /* 切换器展开时自己带一圈 2px 描边，导航列表首项又会抬起 hover 底：两者之间留 4px
    的话这两块底色是挨着的，读起来像切换器压在第一项上。 */
 .drawer .board-sidebar-head{margin-bottom:0!important}.drawer .dnav{margin-top:12px;gap:4px}.drawer #brandHome{height:36px;min-height:36px;box-sizing:border-box}.drawer .dnav button{height:36px;min-height:36px}

@@ -35,6 +35,10 @@ const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 const indexEntries = (page: Page): Locator =>
   page.locator('#index [data-k]:visible, #index [data-geist-empty-state]:visible').first();
 
+/** 统计页画完的标志：四张读数卡兼页签，第一张是馆藏。名字里还带读数和体积，按前缀匹配。 */
+const statsInventoryTab = (page: Page): Locator =>
+  page.locator('#stats').getByRole('tab', { name: /^馆藏视频/ });
+
 const ROUTES: readonly Route[] = [
   { path: '/', body: (page) => [page.locator('#grid article.card').first()] },
   { path: '/performers', body: (page) => [heading(page, '#index', '艺人'), indexEntries(page)] },
@@ -49,8 +53,9 @@ const ROUTES: readonly Route[] = [
     body: (page) => [heading(page, '#stats', '关注'), heading(page, '#stats', '还没有关注任何来源')],
   },
   {
+    // 骨架里那条指标带也写着「馆藏视频」，认不出画完没有；只有真页面把四张读数卡做成页签。
     path: '/stats',
-    body: (page) => [heading(page, '#main', '统计'), page.locator('#stats').getByText('馆藏视频', { exact: true })],
+    body: (page) => [heading(page, '#main', '统计'), statsInventoryTab(page)],
   },
   { path: '/review', body: (page) => [heading(page, '#main', '人工复核'), heading(page, '#stats', '复核分类')] },
   {
@@ -152,11 +157,14 @@ describe('路由冒烟', () => {
         history.pushState({}, '', '/stats');
         window.dispatchEvent(new PopStateEvent('popstate'));
       });
-      await expectBody(opened.page, '/stats',
-        [opened.page.locator('#stats').getByText('馆藏视频', { exact: true })]);
+      await expectBody(opened.page, '/stats', [statsInventoryTab(opened.page)]);
       await settle(opened.page);
       const stopped = polls.length;
-      assert.equal(await opened.page.locator('#stats .peach-react').count(), 0,
+      // 统计页自己也是 React 档：管理区正文里应当只剩它那一棵根，活动页那一棵连同轮询一起撤掉。
+      assert.equal(await opened.page.locator('#stats .peach-react').count(), 1,
+        '管理区正文里不是只剩统计页那一棵 React 根');
+      assert.equal(
+        await opened.page.locator('#stats').getByRole('heading', { name: '还没有任务记录' }).count(), 0,
         '换页之后活动页的 React 根还留在管理区正文里');
       await opened.page.waitForTimeout(3_000);
       assert.equal(polls.length, stopped, '离开活动页之后 /api/tasks 还在轮询');

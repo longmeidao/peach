@@ -6,7 +6,7 @@ import { filterScrollState } from './js/filter-scroll.js';
 import { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './dist/peach-ui.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
 import { boardPageSkeleton, detailSkeletonHtml, initBoardControls, syncBoardRange, wireExpandableRanks, creatorSankeyHtml, wireCreatorSankey } from './dist/peach-ui.js';
-import { radialCardHtml, wireRadialCards, activityChartsHtml, wireActivityCharts } from './dist/peach-ui.js';
+import { activityChartsHtml, wireActivityCharts } from './dist/peach-ui.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
@@ -4136,94 +4136,12 @@ async function openStats(push=true){
   enterManagementSurface();
   disposeStage(false);
   showManagementBody({placeholder:managementPlaceholder('/stats')});
-  const d=await surfaceApi(surface,'/api/stats');
-  if(!surfaceCurrent(surface))return;
-  showManagementBody();
-  const a=d.attribution, cs=d.consumption;
-  const pct=(x,y)=>y?Math.round(x/y*100):0;
-  const gb=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':(b/1073741824).toFixed(1)+' GB';
-  const hrs=s=>s>=3600?(s/3600).toFixed(1)+' 小时':Math.round(s/60)+' 分钟';
-  const totalVideos=d.by_loc.reduce((sum,row)=>sum+row.videos,0);
-  const totalBytes=d.by_loc.reduce((sum,row)=>sum+row.bytes,0);
-  const coverage=pct(d.tag_cov,a.videos);
-  const storage=d.storage_summary||{volumes:0,online:0,measured:0,free:0,used:0,total:0};
-  const kv=(k,v,u)=>`<div class="kv"><span>${k}</span><b>${v}${u?`<span class="u">${u}</span>`:''}</b></div>`;
-  const metric=(k,v,max)=>`<div class="statmetric">${kv(k,v.toLocaleString(),pct(v,max)+'%')}${progressHtml(`${k}：${v.toLocaleString()} / ${max.toLocaleString()}`,v,max)}</div>`;
-  const metricTab=(key,label,value,detail,selected=false)=>`<button type="button" role="tab" data-stats-metric="${key}"
-    aria-selected="${selected}" aria-controls="stats-detail-${key}" tabindex="${selected?'0':'-1'}">
-    ${statCardBody(label,value,detail,{inventory:'database',viewing:'eye',coverage:'tags',storage:'hard-drive'}[key])}</button>`;
-  const tagsTable=d.top_tags.length?`<ol class="insightranking">${d.top_tags.map((t,index)=>`<li><button type="button" class="insightrankrow" data-k="${esc(t.k)}">
-    <span class="insightrankpos">${index+1}</span><span>${esc(tagLabel(t.k))}</span><b>${t.n.toLocaleString()}</b></button></li>`).join('')}</ol>`
-    :emptyStateHtml('tags','还没有内容标签','补全资料或添加标签后，这里会显示馆藏中的内容标签。',{actions:'<a class="geist-button" href="/data-cleanup">补全资料</a>'});
-  const recentTable=d.recent.length?`<div class="board-watch-history">${d.recent.map(row=>{
-    const real=row.duration?Math.min(row.play_seconds/row.duration,1)*100:0;
-    const reached=(row.max_reached||0)*100;
-    const note=row.kind==='online'?'在线直接观看':(real<reached-25?'快进扫过':(row.o_count?`高潮 ${row.o_count}`:'正常观看'));
-    return `<article class="board-watch-entry"><div><h3><a href="${row.kind==='online'?'/follow/item/':'/item/'}${Number(row.id)}" data-middle-truncate>${esc(row.name)}</a></h3><p>${esc(row.creator||'')}<span>${note}</span></p></div>
-      <div class="board-watch-measures">${progressHtml(`真实观看 ${real.toFixed(0)}%`,real,100)}<small>真实 ${real.toFixed(0)}% · 到达 ${reached.toFixed(0)}%</small></div></article>`}).join('')}</div>`:
-    `<div class="insightempty">${emptyStateHtml('history','还没有观看记录','开始播放后，这里会显示最近的真实观看证据。',{actions:'<a class="geist-button" href="/">浏览馆藏</a>'})}</div>`;
-  const sourceTable=d.tag_source.length?`<div class="board-source-list">${d.tag_source.map(row=>`<article><header><h3>${esc(row.k)}</h3><b>${row.assets.toLocaleString()} <small>个视频</small></b></header>
-    ${progressHtml(`${row.k} 覆盖视频`,row.assets,a.videos)}<small>${row.n.toLocaleString()} 条标签</small></article>`).join('')}</div>`:
-    `<div class="insightempty">${emptyStateHtml('tags','还没有标签来源','刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。',{actions:'<a class="geist-button" href="/data-cleanup">补全资料</a>'})}</div>`;
-  const storageTable=(d.storage_volumes||[]).length?`<div class="board-volume-list">${(d.storage_volumes||[]).map(row=>{
-    const measured=row.total!=null, usedPct=measured?pct(row.used,row.total):0;
-    return `<article><header><h3>${esc(row.label)}</h3><b>${measured?usedPct+'%':(row.online===false?'离线':'容量未取得')}</b></header><small>${row.root?esc(row.root):'未映射'}</small>
-      ${measured?progressHtml(`${row.label}空间使用率`,row.used,row.total)+`<div class="board-volume-values"><span>已用 <b>${gb(row.used)}</b></span><span>可用 <b>${gb(row.free)}</b></span></div>`:''}</article>`}).join('')}</div>`
-    :emptyStateHtml('hard-drive','还没有存储来源','添加媒体文件夹后，这里会显示存储空间。',{actions:'<button class="geist-button" data-empty-settings>添加媒体文件夹</button>'});
-  $('#stats').innerHTML=`
-    <div class="insightpage statsdashboard" data-stats-dashboard>
-      <header class="insighttoolbar"><p>账本当前快照 · ${totalVideos.toLocaleString()} 个视频 · ${gb(totalBytes)}</p></header>
-      <div class="metricstrip" role="tablist" aria-label="统计视图">
-        ${metricTab('inventory','馆藏视频',totalVideos.toLocaleString(),gb(totalBytes),true)}
-        ${metricTab('viewing','看过',cs.played.toLocaleString(),hrs(cs.play_seconds))}
-        ${metricTab('coverage','内容标签',coverage+'%',`${d.tag_cov.toLocaleString()} / ${a.videos.toLocaleString()}`)}
-        ${metricTab('storage','使用空间',`${storage.online} 个卷`,storage.measured?`已用 ${gb(storage.used)}`:'容量未取得')}
-      </div>
-      <section class="insightdetail">
-        <div id="stats-detail-inventory" role="tabpanel" data-stats-detail="inventory" class="insightdetailbody">
-          ${totalVideos?`<div class="board-inventory-charts">${radialCardHtml(d.by_loc.map(row=>({name:LOC[row.k]||row.k,value:row.videos,detail:gb(row.bytes)})),'网盘与本地')}${radialCardHtml((d.by_library||[]).map(row=>({name:row.name,value:row.videos,detail:gb(row.bytes)})),'媒体库')}</div>`:catalogEmptyHtml({configurable:runtimeConfigurable})}</div>
-        <div id="stats-detail-viewing" role="tabpanel" data-stats-detail="viewing" class="insightdetailbody" hidden>
-          <div class="insightcopy"><span>观看</span><h2>${cs.played.toLocaleString()}</h2><b>个作品有播放记录</b>
-            <p>累计 ${hrs(cs.play_seconds)}</p></div>
-          <div class="insightfacts">${kv('馆藏观看',cs.library_played.toLocaleString())}${kv('在线直接观看',cs.online_played.toLocaleString())}
-            ${kv('高潮计数',cs.o_total.toLocaleString())}${kv('快进扫过',cs.skimmed.toLocaleString())}
-            ${kv('明确不喜欢',cs.dislike.toLocaleString())}${kv('看过了',cs.seen.toLocaleString())}${kv('回收站',cs.trash.toLocaleString())}</div></div>
-        <div id="stats-detail-coverage" role="tabpanel" data-stats-detail="coverage" class="insightdetailbody" hidden>
-          <div class="insightcopy"><span>内容标签覆盖</span><h2>${coverage}%</h2><b>${d.tag_cov.toLocaleString()} / ${a.videos.toLocaleString()}</b>
-            </div>
-          <div class="insightvisual">${metric('有创作者',a.creator,a.videos)}${metric('有番号',a.code,a.videos)}
-            ${metric('有厂牌',a.studio,a.videos)}${metric('已抽帧',a.thumb,a.videos)}${metric('已探测时长',a.duration,a.videos)}</div></div>
-        <div id="stats-detail-storage" role="tabpanel" data-stats-detail="storage" class="insightdetailbody" hidden>
-          <div class="insightcopy"><span>使用空间</span><h2>${storage.measured}</h2><b>个卷已取得容量</b>
-            </div>
-          <div class="insightvisual insightstorage">${storageTable}</div></div>
-      </section>
-      <section class="insightpanel">
-        <header><div class="insighttabs" role="tablist" aria-label="统计维度">
-          <button type="button" role="tab" data-stats-tab="tags" aria-selected="true" aria-controls="stats-panel-tags">内容标签</button>
-          <button type="button" role="tab" data-stats-tab="recent" aria-selected="false" aria-controls="stats-panel-recent" tabindex="-1">最近看过</button>
-          <button type="button" role="tab" data-stats-tab="sources" aria-selected="false" aria-controls="stats-panel-sources" tabindex="-1">标签来源</button>
-        </div></header>
-        <div class="insightpanelbody"><div id="stats-panel-tags" role="tabpanel" data-stats-panel="tags">${tagsTable}</div>
-          <div id="stats-panel-recent" role="tabpanel" data-stats-panel="recent" hidden>${recentTable}</div>
-          <div id="stats-panel-sources" role="tabpanel" data-stats-panel="sources" hidden>${sourceTable}</div></div>
-      </section>
-    </div>`;
-  const statsRoot=$('#stats');
-  wireRadialCards(statsRoot);
-  wireExpandableRanks(statsRoot);
-  statsRoot.querySelectorAll('[data-stats-metric]').forEach(button=>button.onclick=()=>{
-    statsRoot.querySelectorAll('[data-stats-metric]').forEach(tab=>{
-      const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
-    statsRoot.querySelectorAll('[data-stats-detail]').forEach(panel=>panel.hidden=panel.dataset.statsDetail!==button.dataset.statsMetric)
-  });
-  statsRoot.querySelectorAll('[data-stats-tab]').forEach(button=>button.onclick=()=>{
-    statsRoot.querySelectorAll('[data-stats-tab]').forEach(tab=>{
-      const selected=tab===button;tab.setAttribute('aria-selected',String(selected));tab.tabIndex=selected?0:-1});
-    statsRoot.querySelectorAll('[data-stats-panel]').forEach(panel=>panel.hidden=panel.dataset.statsPanel!==button.dataset.statsTab)
-  });
-  $('#stats').querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
-    closeStats(); toggleTag(b.dataset.k)});
+  const ui=await import('/dist/peach-ui.js');
+  /* 点一个内容标签是「回目录并按它筛选」：整页换成目录仍归遗留壳，页面只说点了哪个键。 */
+  await ui.mountIsland('stats',$('#stats'),{
+    tagLabel,onTag:k=>{closeStats();toggleTag(k)},
+    openMediaSettings:()=>openSettings(true,'媒体'),configurable:!!runtimeConfigurable,
+  },{isCurrent:()=>surfaceCurrent(surface)});
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function showHomeSurfaces(){
