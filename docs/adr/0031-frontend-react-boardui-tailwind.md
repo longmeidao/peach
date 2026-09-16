@@ -44,8 +44,8 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 - **迁移节奏不变**：逐页替换，每次一到两个页面、独立分支集成；旧渲染函数、旧 CSS 与旧断言随页面删除，不保留双实现。
 - **迁移期只有一种 React 挂载方式**，由 `frontend/src/islands.ts` 的 `mountIsland` / `unmountIsland` 对遗留层暴露：注册表写 `{react: '<page>'}`，`@peach/react` 的 `pages.<page>` 提供 `prefetch(props, signal)` 与 `mount(el, props)`。`mountIsland` 先 `prefetch` 把首屏写进 Query 缓存（取完数才画，中止就放弃这一次；产物加载回来后先确认容器仍在、遗留层还停在这一页，再画），再在容器里建一个 `.peach-react` 宿主创建 React root，第一帧用 `flushSync` 同步落 DOM（遗留壳挂完紧接着就读页面结构，配置页按 `.configgroup` 拆左栏页签靠它）；`unmountIsland` 中止在途请求、卸根、撤宿主。遗留壳在 `claimSurface` 换页时对 `#stats` 与 `#index` 调 `unmountIsland`，它连子孙容器一起卸（`#libraryProcessing` 挂在 `#stats` 里更深的一格上，换头像挂在 `#index` 的圆框上），所以离开页面后组件不再活着，轮询随组件一起停；不在这两个容器里的（目录页横幅 `#libraryProcessingNotice`）由它自己的路由判据卸。
 - **业务状态只有一份**：取数与缓存归 TanStack Query，所有 React root 共用一个 `QueryClient`，同一份真相只用一个 `queryKey`，第二个读者读同一个键；节律不同的两份真相分键（来源列表由用户改、由写操作换单条，封面任务由后台推进、按状态轮询），合成一键会让轮询重画用户正在填的表单。写操作用 `useMutation`，成功后用 `setQueryData` 换局部，不为一次写入重取整页；页面之间不另起一套订阅传数据，也不在遗留层与 React 两侧各存一份同一数据。页面经 props 拿遗留能力、经回调（如 `receipt`、`onPicked`）交回结果。需要的遗留能力（`confirmModal`、来源图标表、番号标题）只经 `@peach/legacy/*` 的声明模块或 props 传入的遗留函数调用，不抄一份。
-- Peach 自己以 HTML 字符串拼出的 Board 风格组件（`board-sankey.ts`、`board-analytics.ts`、`board-controls.ts`）随使用它们的页面改写成 `src/react/` 下的组合件，复用其中的数据与布局计算。
-- 删除顺序：Preact 已随最后一个岛（配置页外壳与换头像）移除，`peach-ui.js` 现在是把遗留壳接到 `pages` 上的那层加上仍被 `web/app.js` 调用的非页面模块，这些模块随使用它们的页面一起迁走；壳与路由迁完，React Router 直接挂页面，删除 `web/app.js`、`mountIsland` 与 `peach-ui.js`；上述自写组件全部改写后删除 `board.css` 里与 BoardUI 同名的 token。
+- Peach 自己以 HTML 字符串拼出的 Board 风格组件随使用它们的页面改写成 `src/react/` 下的组合件，复用其中的数据与布局计算：`board-metrics.ts`、`board-sankey.ts`、`board-analytics.ts` 已随统计页与口味页改写并删除；`board-controls.ts` 剩下的是给遗留页共用的 DOM 行为（范围输入读数、全站 tooltip、下划线 Tabs 与分段控件的滑块），读者是复核页、关注管理和各页骨架，随最后一个遗留读者一起删。
+- 删除顺序：Preact 已随最后一个岛（配置页外壳与换头像）移除，`peach-ui.js` 现在是把遗留壳接到 `pages` 上的那层加上仍被 `web/app.js` 调用的非页面模块，这些模块随使用它们的页面一起迁走；壳与路由迁完，React Router 直接挂页面，删除 `web/app.js`、`mountIsland` 与 `peach-ui.js`。`board.css` 里与 BoardUI 同名的 token 按 `var()` 读者归零删除，不按自写组件删完删除：口味页迁完时这些 token 仍被 `board.css` 自身和遗留页读着，删早了遗留页就掉色。
 
 ### 新旧样式并存
 
