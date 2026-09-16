@@ -542,8 +542,8 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 @media(prefers-reduced-motion:reduce){.board-segments-ready>.board-segment-thumb{transition:none}}
 .reviewitem,.followtask{border-color:var(--line);border-radius:16px}
 :root[data-theme="dark"]{--page:#111;--ground:#1c1c1c;--surface:#232323;--sunk:#171717;--ink:#fafafa;--ink-2:#d4d4d4;--muted:#a3a3a3;--line:#383838;--line-soft:#303030;--inset:#303030;--picked:#303030;--hover:rgba(255,255,255,.07);--tungsten:#60a5fa}
-/* 首页光晕由设置里的「首页光晕」一项决定开关：关掉时 --glow-strength 是 0，`body::before`
-   的不透明度跟着算成 0。这里不能再压一条 display:none——那会让设置面板上的开关、强度、
+/* 首页光晕由设置里的「首页光晕」一项决定开关：关掉时 --glow-strength 是 0，
+   `.glowlayer::before` 的不透明度跟着算成 0。这里不能再压一条 display:none——那会让设置面板上的开关、强度、
    配色和颗粒四个控件全部调不出任何变化，而界面上没有任何东西说得出为什么。 */
 .tiers{background:transparent}
 /* 面板上沿那道空隙不由自己决定：`.tiers` 收尾留 8px、`main` 上沿又是 14px，它自己那
@@ -906,8 +906,40 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 :is(.popmenu,.context-card,.board-library-menu)[data-placement=top],.sidebaraddmenu.sidebaraddmenu{transform-origin:bottom left}
 .board-library-menu[data-placement=right]{transform-origin:left}
 .board-sidebar-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding:12px}
-.board-sidebar-foot>#settingsBtn{width:36px;height:36px;padding:0;display:grid;place-items:center;border-radius:8px;background:transparent;flex:none}
-.board-sidebar-foot>#settingsBtn svg{width:20px;height:20px;margin:0}
+.board-foot-actions{display:flex;align-items:center;gap:6px}
+.board-foot-actions>#settingsBtn{width:36px;height:36px;padding:0;display:grid;place-items:center;border-radius:8px;background:transparent;flex:none}
+.board-foot-actions>#settingsBtn svg{width:20px;height:20px;margin:0}
+/* 「光晕配色」照 boardui.com 右下角那枚 Accent color：40×40 圆形、面色底加 1px 边和一层
+   dropdown 薄影，右下角一颗 10px 色点报当前预设的第一枚光斑色，色点外面那圈环取侧栏
+   自己的面色，所以它读起来是浮在钮上的一颗，不是钮身上的一块。
+   实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
+.board-glow-toggle{position:relative;display:grid;place-items:center;width:40px;height:40px;flex:none;
+  padding:0;border:1px solid var(--line);border-radius:50%;background:var(--ground);color:var(--muted);
+  box-shadow:0 1px 1px rgba(0,0,0,.04),0 4px 4px rgba(0,0,0,.02);cursor:pointer}
+.board-glow-toggle:hover{background:var(--hover);color:var(--ink)}
+.board-glow-toggle:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.board-glow-toggle svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
+.board-glow-dot{position:absolute;right:2px;bottom:2px;width:10px;height:10px;border-radius:50%;
+  background:var(--glow-swatch,var(--ink));box-shadow:0 0 0 2px var(--ground)}
+.board-glow-menu{box-sizing:border-box;width:248px;max-width:calc(100vw - 32px);padding:10px;gap:0;
+  border:1px solid var(--line);border-radius:24px;background:var(--ground);box-shadow:0 1px 1px rgba(0,0,0,.04),0 4px 4px rgba(0,0,0,.02)}
+.board-glow-head{display:flex;align-items:center;justify-content:space-between;padding:0 4px 8px;color:var(--muted);font-size:12px}
+.board-glow-reset{padding:0;border:0;background:transparent;color:var(--muted);font:inherit;font-size:12px;cursor:pointer}
+.board-glow-reset:hover{color:var(--ink)}
+.board-glow-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;padding:0 4px}
+.board-glow-chip{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:50%;background:transparent;cursor:pointer}
+.board-glow-chip:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+/* 球面那三层白高光是 BoardUI 自己叠出来的，不是一个 radial 就完事：顶上一片大椭圆、
+   里面一小片、底下一道反光，缺了底下那道，球看上去是贴纸不是球。 */
+.board-glow-ball{position:relative;width:28px;height:28px;border-radius:50%;background:var(--glow-chip);
+  box-shadow:inset 0 1px 1px #ffffff6b,inset 0 -1px 2px #0000002e,0 0 0 1px #ffffff29;
+  transition:transform .15s ease}
+.board-glow-ball::after{content:'';position:absolute;left:14%;right:14%;top:6%;height:38.5%;border-radius:50%;
+  background:linear-gradient(#ffffff8a,#ffffff00)}
+.board-glow-chip:hover .board-glow-ball{transform:scale(1.1)}
+.board-glow-chip[aria-pressed=true] .board-glow-ball{box-shadow:inset 0 1px 1px #ffffff6b,0 0 0 1.5px var(--ground),0 0 0 2.5px color-mix(in srgb,var(--ink) 32%,transparent)}
+.board-glow-menu footer{margin-top:10px;padding:0 4px}
+.board-glow-menu footer .geist-button{width:100%}
 .board-theme-toggle{position:relative;isolation:isolate;display:flex;gap:4px;padding:4px;border-radius:24px;background:var(--picked)}
 .board-theme-toggle button{display:grid;place-items:center;width:32px;height:32px;flex:none;padding:0;border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
 .board-theme-toggle button[aria-pressed=true]{color:var(--ink)}
@@ -919,7 +951,11 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    缓动跟滑板同一条弹簧：这一列上会动的东西只有一种手感。 */
 .board-theme-thumb{position:absolute;z-index:-1;left:4px;top:4px;width:32px;height:32px;background:var(--ground);border-radius:50%;box-shadow:0 1px 3px #0001;will-change:transform;transition:transform calc(var(--spring-pane-ms) * 1ms) var(--spring-pane)}
 .board-theme-toggle.is-dark .board-theme-thumb{transform:translateX(36px)}
-@media(min-width:761px){.drawer:not(.open) .board-sidebar-foot{flex-direction:column;padding:12px 10px}.drawer:not(.open) .board-theme-toggle{padding:2px;background:transparent}.drawer:not(.open) .board-theme-toggle button[aria-pressed=true],.drawer:not(.open) .board-theme-thumb{display:none}}
+/* 侧栏收到 60px 时这一列竖着排。`column-reverse` 而不是 `column`：DOM 里明暗键在前，
+   是为了展开态那一横排仍是「明暗在左、配色与设置在右」；竖排时要的顺序正好相反，
+   boardui.com 那一对就是配色在上、明暗在下。40px 的配色钮加上下各 10px 内边距正好
+   占满 60px 侧栏的可用宽度，再宽一点就会挤到边框上。 */
+@media(min-width:761px){.drawer:not(.open) .board-sidebar-foot{flex-direction:column-reverse;padding:12px 10px}.drawer:not(.open) .board-foot-actions{flex-direction:column}.drawer:not(.open) .board-theme-toggle{padding:2px;background:transparent}.drawer:not(.open) .board-theme-toggle button[aria-pressed=true],.drawer:not(.open) .board-theme-thumb{display:none}}
 @media(prefers-reduced-motion:reduce){.board-theme-thumb{transition:none}}
 .drawer .sec[data-sidebar-group]{border:0;padding:0;margin:4px 0 0}
 .drawer .sec[data-sidebar-group]>h3{margin:0 0 4px;letter-spacing:0;text-transform:none;color:var(--muted);font-size:14px;line-height:20px;font-weight:400;gap:4px}

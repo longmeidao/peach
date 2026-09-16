@@ -43,9 +43,10 @@
   --pill-radius:999px; --tag-radius:var(--pill-radius);
   --control-radius:6px; --badge-radius:4px; --floating-radius:12px; --surface-radius:8px; --tag-pad-y:4px; --tag-pad-x:10px; --hover-delay:5s;
   /* 首页光晕的参数层。三枚光斑的颜色、圆心、椭圆尺寸和收边位置全部落在这里；
-     `body::before` 只引用变量，一个字面颜色都不写。这组默认值就是预设「钨丝暖阁」，
+     `.glowlayer::before` 只引用变量，一个字面颜色都不写。这组默认值就是预设「钨丝暖阁」，
      和 app.js 里那一档一字不差，页面第一帧和 applyHomeGlow() 写完之后画面相同。
-     设置面板改的就是这组变量，由 app.js 的 applyHomeGlow() 写到 <html> 的行内样式上。
+     这里给的是默认值，设置面板改的那一份由 app.js 写到 `.glowlayer` 自己的行内样式上，
+     写在这一层而不是 <html> 上的理由记在下面那条规则里。
      --glow-lerp 是插值空间：默认空串等于按 sRGB 插，认得 `in oklab` 的引擎在下面那条
      @supports 里把它换成 `in oklab`。写成变量而不是把整段 background 抄第二遍，是因为
      两份三层渐变里任何一层改歪一个百分点都看不出来，而它们本该永远相同。 */
@@ -65,7 +66,6 @@
      出来是三种颜色；再往上到 1 是 11 级，顶栏、侧栏和筛选条整片跟着泛米色，那时候有
      颜色的就不是光晕而是界面本身了。 */
   --glow-noise:0; --glow-strength:1; --glow-theme-scale:.6;
-  --ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale));
   /* 一颗标签的脸只有这一张：--tag-radius 的圆角、一圈 --line、这块比面再沉一档的填充、
      --ink-2 的字。同一个词出现在卡片上、详情面板里、筛选条上和交集条里，读的人认的是
      同一样东西；四处各画各的，同一个词就成了四种控件。写成 token 是因为这块填充是一句
@@ -162,11 +162,22 @@ body{background:var(--page);color:var(--ink);
   font-family:Roboto,"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI","PingFang SC",sans-serif;
   font-size:var(--fs-md);line-height:1.45;-webkit-font-smoothing:antialiased;
   font-variant-numeric:tabular-nums}
-/* 首页顶上那片光只有三枚径向光斑，各自向 transparent 收边，底下就是 --page 本身，
-   不铺底色也不压遮罩：光斑之外的地方和页面其余部分是同一张面。
-   三层都只引用 :root 上那组 --glow-* 变量，这里一个颜色和一个坐标都不写死：用户在设置
-   面板里换配色时，改的就是那组变量，规则本身不动。插值空间走 --glow-lerp。 */
-body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
+/* 光晕住在自己那枚空 div 上，而不是 `body` 的伪元素上，为的是把自定义属性的失效范围
+   关在这一层里。自定义属性是继承的：往 <html> 或 <body> 上写一次 --glow-strength，整棵
+   树都要重算样式。2026-09-16 在首页量过，判据是「写一次变量再强制 layout 的耗时」，取
+   三轮每帧平均：写在 <html> 上 12.7–16.6ms（页面约 5800–6000 个节点），写一个根本没人
+   引用的 --zzz-unused 同样是 15.0–16.2ms——这笔钱买的全是继承失效，和光晕怎么画无关；
+   同一份代码写到一枚没有子节点的元素上是 0.09–0.10ms。拖拉条时每帧都要写一次，
+   16.7ms 的帧预算里先扣掉 15ms，掉帧就是必然。
+   `will-change:opacity` 也试过并量过：同样三轮 60 步合成拖动，提层后每帧间隔取最好一轮
+   18.86ms、不提层 19.49ms，轮内波动本身就有 2ms 上下，这 0.6ms 读不出是效果，代价却是
+   一整条 100vw × 49vh 的合成层常驻显存，所以不提。
+   这一层本身不占位：高度为 0，两枚伪元素按 --topH 自己定位，页面其余部分的布局不受影响。
+   三层都只引用 --glow-* 变量，这里一个颜色和一个坐标都不写死：用户在设置面板里换配色时，
+   改的就是那组变量，规则本身不动。插值空间走 --glow-lerp。 */
+.glowlayer{--ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale));
+  position:absolute;top:0;left:0;right:0;height:0;z-index:0;pointer-events:none}
+.glowlayer::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
   height:var(--glow-h);opacity:var(--ambient-opacity);background:
     radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-1-w) var(--glow-spot-1-h) at var(--glow-spot-1-x) var(--glow-spot-1-y),var(--glow-spot-1-color),transparent var(--glow-spot-1-fade)),
     radial-gradient(var(--glow-lerp) ellipse var(--glow-spot-2-w) var(--glow-spot-2-h) at var(--glow-spot-2-x) var(--glow-spot-2-y),var(--glow-spot-2-color),transparent var(--glow-spot-2-fade)),
@@ -177,7 +188,7 @@ body::before{content:"";position:absolute;z-index:0;pointer-events:none;top:var(
 @supports (background:linear-gradient(in oklab,red,blue)){:root{--glow-lerp:in oklab}}
 /* 颗粒感是可选的一层，默认强度 0 就是关。瓦片由 feTurbulence 当场生成，仓库里不落
    位图；overlay 只压在光晕上，正文和卡片都在它之后绘制，不受影响。 */
-body::after{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
+.glowlayer::after{content:"";position:absolute;z-index:0;pointer-events:none;top:var(--topH);left:0;right:0;
   height:var(--glow-h);opacity:var(--glow-noise);mix-blend-mode:overlay;
   background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='peachglowgrain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23peachglowgrain)'/%3E%3C/svg%3E") 0 0/120px 120px repeat}
 @keyframes ambient-in{from{opacity:0}to{opacity:var(--ambient-opacity)}}
@@ -356,6 +367,32 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
    margin 抵掉，位置一点不动。头像圈被遮是同一个缺陷重犯多次，横向头像行统一走这
    一条，不要再逐处补 padding。`.followauthors` 自带余量，不在此列。 */
 .tier,.relatedpeople{padding-top:3px;margin-top:-3px}
+
+/* 自绘单值拉条（`dialSliderHtml` / `wireDialSlider`）。几何取自 feralui.dev/gradients 的
+   `.dial-slider`，实测记在 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md：
+   30px 高、20px 轨道、每 10% 一根 1×8px 刻度、3×20px 的圆头抓手，刻度与抓手默认透明，
+   悬停或拖动时才现形——一条静止的拉条上，九根刻度和一枚抓手比那条线本身还抢眼。
+   上游用自己的 ink 色画焦点环，这里仍走站内的 --tungsten：蓝只给焦点环这条是全站的。
+   当前位置只有 --dial-at 一个来源，填充宽度和抓手位置读的是同一个数。 */
+.dial{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0}
+.dial-slider{position:relative;display:flex;align-items:center;height:30px;min-width:0;
+  cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none}
+.dial-track{position:relative;width:100%;height:20px;border-radius:var(--pill-radius);
+  background:color-mix(in srgb,var(--ink) 11%,transparent);box-shadow:inset 0 1px 2px var(--overlay-5);overflow:hidden}
+.dial-fill{position:absolute;inset:0 auto 0 0;width:var(--dial-at,0%);
+  background:color-mix(in srgb,var(--ink) 42%,transparent)}
+.dial-slider[data-dragging] .dial-fill{background:color-mix(in srgb,var(--ink) 55%,transparent)}
+.dial-ticks{position:absolute;left:0;right:0;display:flex;justify-content:space-between;
+  padding:0 10%;opacity:0;pointer-events:none;transition:opacity .12s ease}
+.dial-ticks span{width:1px;height:8px;background:color-mix(in srgb,var(--ink) 20%,transparent)}
+.dial-handle{position:absolute;left:var(--dial-at,0%);width:3px;height:20px;transform:translateX(-50%);
+  border-radius:var(--pill-radius);background:var(--ink);box-shadow:0 1px 2px var(--overlay-5);
+  opacity:0;pointer-events:none;transition:opacity .12s ease}
+.dial-slider:hover :is(.dial-ticks,.dial-handle),
+.dial-slider:focus-visible :is(.dial-ticks,.dial-handle),
+.dial-slider[data-dragging] :is(.dial-ticks,.dial-handle){opacity:1}
+.dial-slider:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px;border-radius:var(--pill-radius)}
+.dial-value{min-width:44px;color:var(--ink-2);font-weight:400;text-align:right}
 
 
 /* 锚定菜单：无展开动画，固定在视口内，内容在菜单内滚动而不是把页面撑出滚动条。
