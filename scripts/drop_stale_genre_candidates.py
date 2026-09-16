@@ -23,7 +23,7 @@ if str(SRC_DIR) not in sys.path:
 from peach.config import GENERATED_DIR
 from peach.library_processing import FIELDS
 from peach.review_csv import read_rows, write_rows
-from peach.stale_candidates import stale_genre_rows, without
+from peach.stale_candidates import is_english, stale_genre_rows, without
 
 CANDIDATES = GENERATED_DIR / "library-metadata-field-candidates.csv"
 
@@ -57,7 +57,7 @@ def run(args: argparse.Namespace) -> int:
 def _words(row: dict) -> set[str]:
     found = set()
     for candidate in json.loads(row.get("candidates_json") or "[]"):
-        found |= {word for word in candidate.get("unmapped_genres") or [] if word.isascii()}
+        found |= {word for word in candidate.get("unmapped_genres") or [] if is_english(word)}
     return found
 
 

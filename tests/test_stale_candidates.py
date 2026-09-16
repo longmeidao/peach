@@ -38,6 +38,12 @@ class StaleGenreTests(unittest.TestCase):
                      [{"source": "r18dev", "value": [], "unmapped_genres": ["その他フェチ"]}])]
         self.assertEqual(stale_genre_rows(rows), [])
 
+    def test_a_genre_that_is_written_the_same_in_both_languages_is_not_stale(self):
+        """`69` 两边写法一样，按它摘行就是每跑一次摘一次、永远收敛不了。"""
+        rows = [_row("asset:9:tags", "tags",
+                     [{"source": "r18dev", "value": ["巨乳"], "unmapped_genres": ["69"]}])]
+        self.assertEqual(stale_genre_rows(rows), [])
+
     def test_other_sources_and_other_fields_are_left_alone(self):
         """英文那一层只有 r18 有；别的来源本来就返回日文。"""
         rows = [
