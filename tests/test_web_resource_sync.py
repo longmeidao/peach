@@ -339,3 +339,23 @@ class PurgeMissingTests(unittest.TestCase):
         self.assertEqual(result["removed"], 0)
         self.assertEqual(result["unreadable"], 3)
         self.assertEqual(self.ids(), [1, 2, 3, 4])
+
+    def test_a_directory_listing_that_silently_skips_a_file_does_not_condemn_its_row(self):
+        """网盘的目录枚举会成功返回、却少给几个名字。
+
+        2026-09-16 本机连测三次 PikPak：677 条、0 条、452 条，三次交集是空的；其中
+        一次报的 383 条挨个 `stat` 过去，前 200 条全都在。少给名字的那一趟不抛错，
+        `unreadable` 数不到它，所以清理那一侧照名单删就会删掉几百行文件还在的资产。
+        """
+        for name in ("002.jpg", "003.jpg"):
+            (self.root / name).write_bytes(b"x")
+        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
+             mock.patch.object(rm_sync, "_missing_resource_ids",
+                               return_value=([1, 2, 3], 0)):
+            rows = rm_sync.vanished_asset_rows(self.contract, "115")
+        self.assertEqual(rows, [], "逐条问过一遍三个文件都在，一条都不该判失效")
+
+    def test_a_file_that_is_really_gone_survives_the_second_look(self):
+        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate):
+            rows = rm_sync.vanished_asset_rows(self.contract, "115")
+        self.assertEqual([int(row["id"]) for row in rows], [2, 3])

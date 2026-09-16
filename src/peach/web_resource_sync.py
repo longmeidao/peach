@@ -138,6 +138,8 @@ def vanished_asset_rows(contract: ResourceSyncContract, location: str) -> list:
 
     调用方必须先确认这个来源在线（`source_is_online`）：盘没挂上时目录读不到，
     每一条都会被判成文件没了。
+
+    目录枚举出来的名单还要逐条 `stat` 复核一遍才作数，理由见 `_confirm_vanished`。
     """
     with contract.read_connection() as connection:
         rows = connection.execute(
@@ -146,7 +148,37 @@ def vanished_asset_rows(contract: ResourceSyncContract, location: str) -> list:
         ).fetchall()
     missing, _unreadable = _missing_resource_ids(rows)
     gone = set(missing)
-    return [row for row in rows if int(row["id"]) in gone]
+    return _confirm_vanished([row for row in rows if int(row["id"]) in gone])
+
+
+def _confirm_vanished(rows: Sequence) -> list:
+    """逐条单独问一次「这个文件在不在」，只留还是答不在的。
+
+    目录枚举在网盘挂载上会静默漏报。2026-09-16 本机连测三次 PikPak：677 条、0 条、
+    452 条，三次交集是空的；其中一次报的 383 条，挨个 `stat` 过去前 200 条全都在。
+    `scandir` 那一趟成功返回、不抛错，只是少给了几个名字，所以 `unreadable` 也数不到
+    它。115 那边稳得多，506 条复核完仍有 475 条——真删掉的确实删了。
+
+    单条 `stat` 是另一条路：问的是「这个名字在不在」，不必把整个目录列全。名单已经被
+    枚举筛到几百条量级，这一趟的成本远小于它挡住的损失——照枚举的结果删，一次就能删掉
+    几百行文件其实还在的资产。
+    """
+    if not rows:
+        return []
+
+    def present(row) -> bool:
+        try:
+            return translate_ledger_path(row["path"]).exists()
+        except OSError:
+            # 读不出来不等于不存在；答不上来的一律留着。
+            return True
+
+    with ThreadPoolExecutor(
+        max_workers=min(RESOURCE_SCAN_WORKERS, len(rows)),
+        thread_name_prefix="PeachVanishedCheck",
+    ) as executor:
+        verdicts = list(executor.map(present, rows))
+    return [row for row, here in zip(rows, verdicts) if not here]
 
 
 def _scan_missing_resources(
