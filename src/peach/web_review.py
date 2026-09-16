@@ -51,7 +51,7 @@ from .fsutil import atomic_write_bytes
 from .genre_decisions import load_genre_decisions, record_genre_decision
 from .genre_taxonomy import CONTENT_GENRES, UNMAPPED, genres_in_warning, resolve_genre
 from .metadata import identifies_code
-from .metadata_policy import FIELD_SOURCE_ORDER, SOURCE_SPECS
+from .metadata_policy import FIELD_SOURCE_ORDER, PREFERRED_COMMUNITY_SOURCE, SOURCE_SPECS
 from .previews import logo_key
 from .review_csv import read_rows
 
@@ -985,10 +985,6 @@ def _evidence_candidates(row: dict) -> list[dict]:
     return [c for c in row.get("candidates") or []
             if str(c.get("source") or "").strip() in SOURCE_SPECS
             or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
-
-
-#: 社区来源之间取值不一时听这一家的。用户 2026-09-16 逐条核对过：javdb 比 javbus 准（ADR-0034）。
-PREFERRED_COMMUNITY_SOURCE = "javdb"
 
 
 def _settled_candidates(connection, field: str, code: str,

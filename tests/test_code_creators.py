@@ -275,7 +275,8 @@ class ConfirmScriptTests(unittest.TestCase):
             runtime = self.runtimes.get(code)
             if runtime is None:
                 raise LookupError("社区来源都没有这个番号")
-            return [("javdb", {"runtime": runtime})]
+            # 真实返回顺序里 javbus 排在 javdb 前面，`n0780` 它报的是 36 分。
+            return [("javbus", {"runtime": 36}), ("javdb", {"runtime": runtime})]
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -312,6 +313,8 @@ class ConfirmScriptTests(unittest.TestCase):
 
         self.assertEqual(verdicts, {"Tokyo-Hot n0780-HD": "是", "banbi_555": "否"})
         self.assertEqual(provider.asked, ["n0780", "BANBI-555"])
+        # 片长取 javdb 的：同一个番号 javbus 报 36 分，盘里那条 98 分。
+        self.assertEqual([row["source"] for row in rows if row["confirmed"] == "是"], ["javdb"])
 
         counts = audit.apply_rows(
             self.connection, [row for row in rows if row["verdict"] == audit.VERDICT_CODE])
