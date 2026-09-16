@@ -1,4 +1,3 @@
-import colorsys
 import re
 import unittest
 from html.parser import HTMLParser
@@ -937,7 +936,10 @@ class WebUiSourceTests(unittest.TestCase):
                    (Path(__file__).resolve().parents[1] / "web/board-entry.css").read_text(encoding="utf-8")]
         # 只看换成实心强调档或危险档的那几条：次级档的悬停压的是同一块面上的 8% 墨，
         # 文字色本来就不该跟着动。
-        filled = re.compile(r"background:(var\(--board-blue-hover\)|linear-gradient\()")
+        # `--board-blue-*` 与 `--color-accent-*` 现在由强调色那一组色阶给，实心档因此
+        # 有三种写法：三档渐变、直接写 `linear-gradient(`，以及单取一级色阶当底。
+        filled = re.compile(r"background:(var\(--board-blue-(hover|active)\)"
+                            r"|var\(--color-accent-\d+\)|linear-gradient\()")
         offenders = []
         seen = 0
         for source in sources:
@@ -4495,11 +4497,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed();")
         self.assertPageContains("['defaultSortSetting','默认排序',[['seed','随机']")
         self.assertIn('@media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}', board)
-        self.assertIn(':root[data-theme="light"]{--glass-drift-a:', board)
-        self.assertIn('#6686b84d,#6686b829 42%,transparent 72%', board)
-        self.assertIn('#c69d7340,#c69d7324 44%,transparent 74%', board)
-        # 这个双写的选择器在表里出现两次：靠前那处是主题切换那条材质过渡，玻璃本体在后面。
-        menu = board.rsplit('.board-library-menu.board-library-menu{', 1)[1].split('}', 1)[0]
+        # 浅色那档的两团自带反光是霁蓝配驼棕，比深色那档浓一档、也大一圈：底下是一片
+        # 近白的页面，照搬深色那组的 10% 白等于什么也看不见。色相由 `--glass-tint-a/b`
+        # 给（默认就指回这两枚），浓淡和尺寸留在这一档自己身上。
+        self.assertIn(':root[data-theme="light"]{--glass-native-a:#6686b8;'
+                      '--glass-native-b:#c69d73;--glass-drift-a:', board)
+        self.assertIn('radial-gradient(32% 32% at 50% 50%,'
+                      'color-mix(in srgb,var(--glass-tint-a) 30%,transparent),'
+                      'color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%)', board)
+        self.assertIn('radial-gradient(38% 38% at 50% 50%,'
+                      'color-mix(in srgb,var(--glass-tint-b) 25%,transparent),'
+                      'color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)', board)
+        # 这个双写的选择器在表里出现两次：靠前那处是主题切换那条材质过渡，玻璃本体在
+        # 后面，而后面那条现在和配色弹层共用——两张从侧栏开出来的卡是同一种材质。
+        menu = board.rsplit('.board-library-menu.board-library-menu,'
+                            '.board-glow-menu.board-glow-menu{', 1)[1].split('}', 1)[0]
         self.assertIn('var(--glass-fill)', menu)
         self.assertIn('backdrop-filter:blur(22px) saturate(160%) var(--glass-lume)', menu)
         self.assertIn('var(--glass-shadow)', menu)
@@ -4560,7 +4572,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
         self.assertIn('.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,'
-                      '.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu{\n'
+                      '.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu,'
+                      '.board-glow-menu.board-glow-menu{\n'
                       '  transition:background-color .28s ease,backdrop-filter .28s ease,'
                       '-webkit-backdrop-filter .28s ease}', board)
         snapshot_rule = board.split('html[data-theme-snapshot] .review.review-has-pane::before{', 1)[1]
@@ -6036,7 +6049,10 @@ class WebUiSourceTests(unittest.TestCase):
         铺在页面身后的那一版是背景不是光晕——正文和卡片压在它上面，字读不出来。所以这一层
         `position:absolute;inset:0` 待在抽屉内部，溢出连圆角一起被抽屉的 overflow 裁掉。
         位置由 drift 那两条动画推着走，和 board.css 给其余玻璃面的是同一套算法；抽屉自己
-        那两团因此必须置为 none，否则两套光斑叠着漂。
+        那两团因此必须置为 none，否则两套光斑叠着漂。「玻璃原色」那一档例外，根上挂着
+        `data-glow-native` 时抽屉要把自己那两团拿回来。
+        两条时长按 `--glow-drift-scale` 同比缩放，41:67 的比例不变——两条一样长就退化成
+        一条来回滑动的直线；拉到停住走 `animation-play-state`，淡入那一条不跟着停。
         """
         css = stylesheet_source() + (Path(__file__).resolve().parents[1]
                                      / "web/board.css").read_text(encoding="utf-8")
@@ -6045,12 +6061,16 @@ class WebUiSourceTests(unittest.TestCase):
         layer = css.split(".glowlayer{", 1)[1].split("}", 1)[0]
         self.assertIn("position:absolute;inset:0;z-index:-2", layer,
                       "-1 已经归了 .navglide，光晕要在它下面、玻璃填充之上")
-        self.assertIn(".drawer.drawer{--glass-drift-a:none;--glass-drift-b:none}", css)
+        self.assertIn(":root:not([data-glow-native]) .drawer.drawer"
+                      "{--glass-drift-a:none;--glass-drift-b:none}", css)
         rule = css.split(".glowlayer::before{", 1)[1].split("}", 1)[0]
         self.assertEqual(rule.count("radial-gradient("), 3, "三枚光晕，不多也不少")
         self.assertIn("background-size:200% 200%", rule, "画布两倍大，drift 才推得动")
-        self.assertIn("animation:glowdriftx 41s linear infinite,"
-                      "glowdrifty 67s linear infinite,ambient-in .8s ease .5s both", rule)
+        self.assertIn("animation:glowdriftx calc(41s * var(--glow-drift-scale)) linear infinite,"
+                      "glowdrifty calc(67s * var(--glow-drift-scale)) linear infinite,"
+                      "ambient-in .8s ease .5s both", rule)
+        self.assertIn("animation-play-state:var(--glow-drift-play),"
+                      "var(--glow-drift-play),running", rule, "淡入那一条不跟着停")
         # 两条周期互质，合起来看不出循环点；和玻璃那两条同一个数，一眼读成同一种光。
         for name in ("@keyframes glowdriftx{", "@keyframes glowdrifty{"):
             self.assertIn(name, css)
@@ -6077,40 +6097,206 @@ class WebUiSourceTests(unittest.TestCase):
         """样式表里的默认值就是 `amber` 那一档，两处一字不差。
 
         对不上的后果只出现在第一帧：`applyHomeGlow()` 跑完之前页面按样式表画，跑完之后
-        按 JS 写的值画，中间会闪一次颜色。颜色是两处都有的那部分；半轴与收边只有这里一份，
-        三枚大小各不相同——一样大就读成一团，不是三枚。
+        按 JS 写的值画，中间会闪一次颜色。颜色是两处都有的那部分；半轴与收边的基准值只有
+        这里一份，三枚大小各不相同——一样大就读成一团，不是三枚。用户那两条几何拉条按
+        倍率乘在基准值上，倍率是变量、基准是字面值，存的因此始终是档位不是算完的百分比。
         """
         css = stylesheet_source()
         for declaration in (
-                "--glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-w:20%; "
-                "--glow-spot-1-h:20%; --glow-spot-1-fade:72%",
-                "--glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-w:26%; "
-                "--glow-spot-2-h:26%; --glow-spot-2-fade:74%",
-                "--glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-w:23%; "
-                "--glow-spot-3-h:23%; --glow-spot-3-fade:73%"):
+                "--glow-spot-1-color:rgba(224,138,47,.62); "
+                "--glow-spot-1-w:calc(20% * var(--glow-size)); "
+                "--glow-spot-1-h:calc(20% * var(--glow-size)); "
+                "--glow-spot-1-fade:calc(72% * var(--glow-soften))",
+                "--glow-spot-2-color:rgba(196,84,74,.52); "
+                "--glow-spot-2-w:calc(26% * var(--glow-size)); "
+                "--glow-spot-2-h:calc(26% * var(--glow-size)); "
+                "--glow-spot-2-fade:calc(74% * var(--glow-soften))",
+                "--glow-spot-3-color:rgba(168,106,82,.52); "
+                "--glow-spot-3-w:calc(23% * var(--glow-size)); "
+                "--glow-spot-3-h:calc(23% * var(--glow-size)); "
+                "--glow-spot-3-fade:calc(73% * var(--glow-soften))"):
             self.assertIn(declaration, css)
+        self.assertIn("--glow-size:1; --glow-soften:1; --glow-drift-scale:1; "
+                      "--glow-drift-play:running;", css, "默认那一档的倍率都是不动")
         # 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
         self.assertIn("--glow-noise:0; --glow-strength:1; --glow-theme-scale:.6", css)
         self.assertIn("--ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale))", css)
         # 浅色也开：两档各自的缩放都要在，否则浅色那一档要么是 0 要么和深色一样浓。
         self.assertEqual(css.count("--glow-theme-scale:1;}"), 2, "深色两块色板都要自己那一档")
 
-    def test_home_glow_presets_carry_no_cyan_or_teal(self):
-        """预设里没有一枚光晕落在青绿那一段色相上。
+    def test_home_glow_presets_are_distinct_and_fully_described(self):
+        """预设表的形状：档名不重、每档三枚合法色、每档带一枚认得出的强调色。
 
-        青绿是照着外部参考配出来的那一版留下的印子，用户点名要它消失。只查名字挡不住——
-        换个十六进制写法就绕过去了，所以按色相角判：150°–210° 之间、饱和度够得上看得见
-        的那一档，一枚都不许有。近乎无彩的灰不在此列，它读出来不是颜色。
+        逐字钉死整张表没有意义——加一档、换一枚颜色都是产品决定，不是回归。要守住的是
+        这张表自己不能坏：重复的档名会让 `glowPalette` 永远取到前一个，写歪的色号会让
+        那一层渐变整条失效，不在清单里的强调色会在选中那一档时静默退回默认。
+        照 feralui 那十二档扩过之后，档数与它相当，见
+        docs/reference-snapshots/feralui-gradients-measured.md。
         """
         block = self.glow_js.split("const HOME_GLOW_PRESETS=[", 1)[1].split("\n];", 1)[0]
-        colours = re.findall(r"color:'#([0-9a-f]{6})'", block)
-        self.assertGreaterEqual(len(colours), 12, "四档预设各三枚光晕")
-        for value in colours:
-            with self.subTest(colour=value):
-                red, green, blue = (int(value[at:at + 2], 16) / 255 for at in (0, 2, 4))
-                hue, _light, saturation = colorsys.rgb_to_hls(red, green, blue)
-                self.assertFalse(150 <= hue * 360 <= 210 and saturation >= 0.2,
-                                 f"#{value} 落在青绿那一段")
+        entries = re.findall(r"\['?(\w+)'?,'(.+?)',\{(.*?)\},'(\w+)'\]", block, re.S)
+        self.assertGreaterEqual(len(entries), 16, "四档原生加 feralui 那十二档，再加玻璃原色")
+        keys = [key for key, _label, _palette, _accent in entries]
+        self.assertEqual(len(set(keys)), len(keys), "档名不许重复")
+        self.assertEqual(keys[0], "amber", "默认那一档排在最前")
+        # 最后那一档的键名在源码里写成常量：`isNativeGlass` 和几处分支都要认它，
+        # 散着写三遍 'native' 的话改名时必漏一处。
+        self.assertEqual(keys[-1], "GLASS_NATIVE_PRESET", "玻璃原色排在最后")
+        accents = re.findall(r"\['(\w+)','.+?'\]", self.glow_js.split("const ACCENTS=[", 1)[1]
+                             .split("];", 1)[0])
+        for key, label, palette, accent in entries:
+            with self.subTest(preset=key):
+                colours = re.findall(r"color:'(#[0-9a-f]{6})'", palette)
+                self.assertEqual(len(colours), 3, "一档就是三枚光晕")
+                self.assertEqual(len(set(colours)),
+                                 len(colours) if key != "GLASS_NATIVE_PRESET" else 2,
+                                 "同一档里两枚一样的颜色只会读成两团")
+                self.assertTrue(2 <= len(label) <= 4, f"{label} 的档名写成两到四个字")
+                self.assertIn(accent, accents, "搭配的强调色要在清单里")
+
+    def test_every_preset_colour_has_a_name_in_the_palette(self):
+        """每一档预设用到的颜色都在命名色板里。
+
+        少一枚的后果不是报错：从侧栏选完预设再打开那一行的颜色弹层，选中环指不出任何
+        一格，读起来像「当前颜色不是这里挑的」。
+        """
+        presets = self.glow_js.split("const HOME_GLOW_PRESETS=[", 1)[1].split("\n];", 1)[0]
+        swatches = self.glow_js.split("const GLOW_SWATCHES=[", 1)[1].split("\n];", 1)[0]
+        named = set(re.findall(r"'(#[0-9a-f]{6})'", swatches))
+        missing = sorted(set(re.findall(r"color:'(#[0-9a-f]{6})'", presets)) - named)
+        self.assertEqual(missing, [], f"这几枚预设色在色板里没有名字：{missing}")
+
+    def test_every_glass_face_takes_its_drift_colour_from_the_same_two_variables(self):
+        """每一块玻璃面上那两团漂动的反光都读同一对 `--glass-tint-a/b`，一个字面色都不写。
+
+        侧栏那块交给光晕层，其余的（搜索框、顶栏图标钮、筛选浮层、实体条、复核工具条、
+        设置卡的分区导航、媒体库弹层、配色弹层、窄栏）仍走自己那两团——只换色相。写死一处
+        的后果是「换了配色但有一块玻璃没跟上」：没有报错，只是一排毛玻璃里有一块是别的颜色。
+        尺寸与 alpha 档位留在各自主题那一档里，它们是这块材质自己的浓淡。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        for declaration in ("--glass-tint-a:var(--glass-native-a)",
+                            "--glass-tint-b:var(--glass-native-b)",
+                            "--glass-native-a:#6686b8;--glass-native-b:#c69d73"):
+            self.assertIn(declaration, css)
+        # 多选那条悬浮坞、批处理条和标签选择条也读这两团：它们和侧栏同时在屏上，
+        # 漏掉任何一条就是一屏里两种颜色的玻璃。
+        for face in ("body .selectiondock{", ".batchbar,.tagselection{",
+                     "body .review.review-has-pane::before{"):
+            with self.subTest(face=face):
+                rule = css.split(face, 1)[1].split("}", 1)[0]
+                self.assertIn("var(--glass-drift-a),var(--glass-drift-b)", rule)
+                self.assertIn("var(--glow-drift-scale)", rule, "速度那一条也跟着走")
+        drifts = re.findall(r"--glass-drift-[ab]:radial-gradient\((.*?)transparent \d\d%\)", css)
+        self.assertEqual(len(drifts), 6, "深浅两档各两团，浅色那档还有跟随系统的一份")
+        for drift in drifts:
+            with self.subTest(drift=drift):
+                self.assertNotIn("#", drift, "色相由变量给，这里不写字面色")
+                self.assertIn("color-mix(in srgb,var(--glass-tint-", drift)
+        # 配色弹层与媒体库弹层共用同一条玻璃规则，两张从侧栏开出来的卡才是同一种材质。
+        self.assertIn(".board-library-menu.board-library-menu,.board-glow-menu.board-glow-menu"
+                      "{background:var(--glass-drift-a),", css)
+        self.assertIn(".board-glow-menu{box-sizing:border-box;width:248px;"
+                      "max-width:calc(100vw - 32px);padding:10px;gap:0}", css,
+                      "这张卡只留几何，材质归那条共用规则")
+        # 速度那一条跟着走，两条时长同比缩放。
+        self.assertIn("animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,"
+                      "glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;\n"
+                      "  animation-play-state:var(--glow-drift-play);", css)
+
+    def test_the_glass_native_preset_hands_every_face_back_to_the_theme(self):
+        """「玻璃原色」那一档不走光晕层，直接让每块玻璃退回自带那两团。
+
+        照三枚光晕重画一份仿制品是另一回事：自带那两团是两团、尺寸与轨迹各有出处、颜色还
+        跟着明暗主题走，仿出来的必然是第三种东西。所以这一档把光晕整层算成 0、把色相变量
+        摘掉，样式表里那一档因此生效。摘掉而不是写回主题色，是因为主题色有两套。
+        """
+        self.assertPageContains("const GLASS_NATIVE_PRESET='native';")
+        self.assertPageContains("const isNativeGlass=key=>key===GLASS_NATIVE_PRESET;")
+        self.assertCode("const live=glow.on&&!isNativeGlass(glow.preset);")
+        self.assertCode("const native=!glow.on||isNativeGlass(glow.preset);")
+        self.assertCode("el.toggleAttribute('data-glow-native',native);")
+        self.assertCode("if(native){el.style.removeProperty('--glass-tint-a');"
+                        "el.style.removeProperty('--glass-tint-b');return}")
+        self.assertCode("el.style.setProperty('--glass-tint-a',glow.spot1.color);")
+        # 这一档的圆球与钮上那颗点画的是当前主题下真在漂的那两色，不拿别的颜色顶。
+        css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(".board-glow-ball[data-glow-native]{--glow-chip:conic-gradient"
+                      "(from -90deg,var(--glass-native-a) 0 50%,var(--glass-native-b) 50% 100%)}", css)
+        self.assertIn(".board-glow-toggle[data-glow-native] .board-glow-dot{", css)
+        # 界面上这一档只留漂移速度：其余几条管不着任何东西，留着就是按了不动的控件。
+        self.assertPageContains("row.hidden=native&&row.dataset.glowField!=='speed');")
+        self.assertPageContains('<p class="glownative" data-glow-native-note hidden>')
+        # `.glowfield` 与 `.glowgroup` 自带 display，不补这一条的话 `hidden` 压根收不走它们：
+        # 拉条照样摆在那里、拖得动，而那一档下它们什么也管不着。
+        self.assertPageContains(".glowfield[hidden],.glowgroup[hidden]{display:none}")
+
+    def test_accent_repoints_the_boardui_ramp_instead_of_recolouring_each_control(self):
+        """换强调色就是把 `--color-accent-50…950` 整组指到另一个色相，组件规则一个字不改。
+
+        机制照搬 BoardUI（`frontend/src/react/boardui/styles/theme.css` 第 25–45 行）：主按钮
+        渐变、焦点环、链接与数据色全都引用同一组变量。逐个控件去改颜色的那条路走不通——
+        React 子树在 `.peach-react` 上重新声明的语义 token 会盖住根上的值，而它们本来就
+        引用 `--color-accent-*`，改这一组就顺着继承进去了，两边因此不会各说各话。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn(":root,:root[data-accent=blue],[data-accent-ball=blue]{--color-accent-50:", css)
+        ramps = re.findall(r":root\[data-accent=(\w+)\],\[data-accent-ball=\1\]\{(.*?)\}", css)
+        self.assertGreaterEqual(len(ramps) + 1, 12, "十二个色相绕色轮一圈")
+        for name, body in ramps:
+            with self.subTest(accent=name):
+                self.assertEqual(len(re.findall(r"--color-accent-\d+:", body)), 11,
+                                 "十一级少一级，引用那一级的控件就没有颜色")
+        # 焦点环、链接与主按钮三档渐变全部从这组色阶派生，不再写死一枚蓝。
+        self.assertIn("--color-border-focus-ring:var(--color-accent-500)", css)
+        self.assertIn("--board-blue:linear-gradient(180deg,var(--color-accent-500),"
+                      "var(--color-accent-600))", css)
+        self.assertIn("--board-blue-hover:linear-gradient(180deg,var(--color-accent-400),"
+                      "var(--color-accent-500))", css)
+        self.assertIn("--board-blue-active:linear-gradient(180deg,var(--color-accent-600),"
+                      "var(--color-accent-700))", css)
+        # 跟随系统的深色没有 data-theme，01-base 那枚字面蓝比 `:root` 更具体，要按同样的
+        # 具体度接回来，否则焦点环和链接只在手动选深色时跟着强调色走。
+        self.assertIn("@media(prefers-color-scheme:dark){:root:not([data-theme])"
+                      "{--tungsten:var(--color-border-focus-ring)}}", css)
+        self.assertIn(".board-glow-ball[data-accent-ball]{--glow-chip:radial-gradient"
+                      "(circle closest-side,var(--color-accent-400),var(--color-accent-600))}", css,
+                      "圆球拿的就是这一档真会写上去的两级")
+        # 开关、勾选框、滑轨填充与主操作键也是同一个意思。漏掉任何一个，换了强调色的页面
+        # 上就会剩下几枚蓝件，读起来像是没换干净。
+        self.assertIn(".ptoggle:checked{background:var(--board-blue);", css)
+        self.assertIn(".pcheck input:is(:checked,:indeterminate)+span{color:#fff;"
+                      "border-color:transparent;background:var(--board-blue);", css)
+        self.assertIn("accent-color:var(--color-accent-600);", css)
+        self.assertIn("#applyUISetting{grid-column:1/-1;width:100%;background:var(--board-blue);", css)
+        for literal in ("#3986ff", "#1760ef", "#2473fe", "#bfdbfe", "#1e40af"):
+            with self.subTest(literal=literal):
+                self.assertNotIn(literal, css, "这一枚蓝的字面值应当由强调色色阶给")
+
+    def test_accent_is_stored_paired_with_a_preset_and_overridable_on_its_own(self):
+        """强调色存一个档名，换光晕预设时跟着换，单点那一排又能把它覆盖掉。
+
+        一档配色就是一副面：光晕暖着、按钮还是蓝的，读起来是两套皮叠在一起。但搭配是
+        建议不是绑定，所以那一排强调色单独点得动，点完只改强调色、不动光晕。
+        """
+        self.assertPageContains("const DEFAULT_ACCENT='blue';")
+        self.assertPageContains("const normalizeAccent=value=>ACCENTS.some(([key])=>key===value)"
+                                "?value:DEFAULT_ACCENT;")
+        self.assertPageContains("const glowAccent=key=>(HOME_GLOW_PRESETS.find(([name])=>name===key)"
+                                "||[])[3]||DEFAULT_ACCENT;")
+        self.assertPageContains("appSettings.accent=normalizeAccent(appSettings.accent)")
+        self.assertCode("function applyAccent(){glowRoot.dataset.accent=appSettings.accent}")
+        # 换预设：光晕、玻璃色相与强调色一起走。
+        self.assertCode("appSettings.accent=glowAccent(key);")
+        # 单点强调色：只写这一个。
+        self.assertCode("appSettings.accent=normalizeAccent(chip.dataset.accent);")
+        self.assertCode("saveSettings();applyAccent();syncGlowChrome();")
+        # 「重置」把两者一起收回默认。
+        self.assertCode("appSettings.accent=DEFAULT_ACCENT;")
+        self.assertPageContains('<div class="board-glow-grid" data-accent-grid role="group" '
+                                'aria-label="强调色"></div>')
+        self.assertPageContains('class="board-glow-chip" data-accent="${key}"')
+        self.assertPageContains('data-accent-ball="${key}"')
 
     def test_home_glow_interpolates_in_oklab_with_a_declared_fallback(self):
         """oklab 插值由 @supports 开启，认不出它的引擎退回 sRGB 而不是整层消失。"""
@@ -6131,26 +6317,35 @@ class WebUiSourceTests(unittest.TestCase):
     def test_home_glow_settings_are_stored_bounded_and_written_to_its_own_layer(self):
         """设置里存得住、读回来要夹回区间，改一下就写到光晕自己那一层上。
 
-        用户面只剩三枚颜色、强度、颗粒和档名：光晕的形状（半轴、收边）和它怎么漂全在
-        样式表里。几何一旦进了 localStorage，改形状就再也改不动那些存过的机器。
+        用户面是三枚颜色、五条拉条和档名：光晕的形状基准（半轴、收边、两条轨迹的时长）
+        全在样式表里，存的只是倍率的档位。几何一旦按算完的百分比进了 localStorage，改形状
+        就再也改不动那些存过的机器。
         """
-        self.assertPageContains("sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW}")
+        self.assertPageContains("sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW,"
+                                "accent:DEFAULT_ACCENT}")
         self.assertPageContains("const DEFAULT_HOME_GLOW={on:true,preset:'amber',strength:100,noise:0,"
-                                "...glowPalette('amber')}")
+                                "speed:100,soften:50,size:50,\n  ...glowPalette('amber')}")
         self.assertPageContains("appSettings.homeGlow=normalizeHomeGlow(appSettings.homeGlow)")
         self.assertCode("function normalizeHomeGlow(raw){")
-        self.assertCode("strength:glowNumber(+stored.strength,0,100,100),")
-        self.assertCode("noise:glowNumber(+stored.noise,0,100,0)};")
+        # 五条拉条的区间与默认值只有一张表，规范化按它逐项夹回去。
+        self.assertCode("const GLOW_RANGES={strength:[0,100,100],noise:[0,100,0],speed:[0,300,100],"
+                        "soften:[0,100,50],size:[0,100,50]};")
+        self.assertCode("for(const [field,[min,max,fallback]] of Object.entries(GLOW_RANGES))")
+        self.assertCode("glow[field]=glowNumber(+stored[field],min,max,fallback);")
         self.assertPageLacks("fade:glowNumber(+spot.fade", "收边是形状，不是偏好")
         self.assertPageContains("const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))")
         self.assertCode("function paintHomeGlow(el,glow){")
         self.assertCode("write('--glow-strength',String(live?glow.strength/100:0));")
         self.assertCode("write(`--glow-spot-${index+1}-color`,glowRgba(spot.color,spot.alpha));")
+        # 三条几何拉条在这里换算成倍率；速度拉到 0 暂停漂移，不去算除以零的时长。
+        self.assertCode("write('--glow-soften',(0.7+glow.soften/100*0.6).toFixed(3));")
+        self.assertCode("write('--glow-size',(0.5+glow.size/100).toFixed(3));")
+        self.assertCode("write('--glow-drift-scale',glow.speed?(100/glow.speed).toFixed(3):'1');")
+        self.assertCode("write('--glow-drift-play',glow.speed?'running':'paused');")
         self.assertPageContains("applyHomeGlow();")
         # 预设给中文名，含当前默认那一档。
         self.assertPageContains("['amber','钨丝暖阁',{")
         self.assertPageContains("['custom','自定义']")
-        self.assertGreaterEqual(self.glow_js.count("spot1:{color:'#"), 4, "预设至少四档")
 
     def test_home_glow_data_lives_in_a_module_app_js_only_imports(self):
         """预设、色板、规范化和那一次绘制都在 `web/js/home-glow.js`，app.js 只 import。
@@ -6160,13 +6355,16 @@ class WebUiSourceTests(unittest.TestCase):
         所以那个模块不认识 `appSettings`、`$`、`saveSettings`，`paintHomeGlow` 只写传进来的
         那枚元素；侧栏那枚配色钮、它的弹层和设置面板的装配仍旧留在 app.js。
         """
-        self.assertIn("import { DEFAULT_HOME_GLOW, GLOW_SPOT_LABELS, GLOW_SWATCHES, "
-                      "GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, "
-                      "HOME_GLOW_SPOTS, glowChipFill, glowColor, glowPalette, glowPresetName, "
-                      "normalizeHomeGlow, paintHomeGlow } from './js/home-glow.js';", self.app_js)
-        for moved in ("const HOME_GLOW_PRESETS=[", "const GLOW_SWATCHES=[",
+        self.assertIn("import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, "
+                      "GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, "
+                      "HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, "
+                      "glowPalette, glowPresetName, isNativeGlass, normalizeAccent, "
+                      "normalizeHomeGlow, paintGlassFaces, paintHomeGlow } "
+                      "from './js/home-glow.js';", self.app_js)
+        for moved in ("const HOME_GLOW_PRESETS=[", "const GLOW_SWATCHES=[", "const ACCENTS=[",
                       "const GLOW_SPOT_LABELS=[", "const DEFAULT_HOME_GLOW=",
-                      "function normalizeHomeGlow(", "function paintHomeGlow("):
+                      "function normalizeHomeGlow(", "function paintHomeGlow(",
+                      "function paintGlassFaces("):
             self.assertNotIn(moved, self.app_js, f"{moved} 已经搬进 js/home-glow.js")
             self.assertIn(moved, self.glow_js)
         # 注释里说得出这几个名字（它讲的正是「这里没有它们」），代码里一次都不许出现。
@@ -6203,9 +6401,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("function renderHomeGlowSetting(){")
         self.assertPageContains("renderHomeGlowSetting();")
         self.assertPageLacks('<h4>场</h4>', "「场」不是这套界面的词")
-        self.assertPageContains('<section class="glowgroup"><h4>颜色</h4>')
+        self.assertPageContains('<section class="glowgroup" data-glow-colours><h4>颜色</h4>')
         self.assertPageContains("glowFieldRowHtml('strength','强度',100)")
         self.assertPageContains("glowFieldRowHtml('noise','颗粒',60)")
+        self.assertPageContains("glowFieldRowHtml('speed','漂移速度',300)")
+        self.assertPageContains("glowFieldRowHtml('soften','柔化',100)")
+        self.assertPageContains("glowFieldRowHtml('size','大小',100)")
         # 「光斑」留给 board.css 里玻璃面自带那两团反光，它是另一件东西；用户在这里配的
         # 三枚一律叫光晕，界面文案和注释都不再混用。
         self.assertPageContains("const GLOW_SPOT_LABELS=['光晕一','光晕二','光晕三'];")
@@ -6226,7 +6427,9 @@ class WebUiSourceTests(unittest.TestCase):
         挑出来的值也不受这套色板约束，等于把「配色」交给了另一套产品。
         """
         self.assertPageLacks('type="color"', "原生取色器已经换成自绘色板")
-        self.assertPageContains("const GLOW_SWATCH_FAMILIES=[['all','全部'],['gray','灰'],['red','红'],")
+        self.assertPageContains("const GLOW_SWATCH_FAMILIES=[['all','全部'],['gray','灰'],['red','红'],"
+                                "['yellow','黄'],\n  ['green','绿'],['cyan','青'],['blue','蓝'],"
+                                "['purple','紫'],['brown','棕']];")
         self.assertPageContains('<div class="glowpalette" role="radiogroup"')
         self.assertPageContains('<div class="glowpills" role="group" aria-label="色系">')
         self.assertPageContains('class="glowpill" data-glow-pill="${key}" aria-pressed="${index===0}"')
@@ -6239,14 +6442,17 @@ class WebUiSourceTests(unittest.TestCase):
         # 弹层与页面其它浮层同一套开合，不自己写一份定位。
         self.assertCode("wireAnchoredMenu(row,toggle,pop);")
         block = self.glow_js.split("const GLOW_SWATCHES=[", 1)[1].split("\n];", 1)[0]
-        colours = re.findall(r"'#([0-9a-f]{6})'", block)
-        self.assertGreaterEqual(len(colours), 36, "七个色系各六档")
-        for value in colours:
+        entries = re.findall(r"\['(\w+)','(.+?)','(#[0-9a-f]{6})'\]", block)
+        self.assertGreaterEqual(len(entries), 42, "八个色系打底各六档，再加各档预设带进来的")
+        families = set(re.findall(r"\['(\w+)',", self.glow_js.split(
+            "const GLOW_SWATCH_FAMILIES=[", 1)[1].split("];", 1)[0]))
+        # 名字按颜色本身取，一枚颜色一个名字：同名不同色、同色不同名，两种都会让色板
+        # 里出现两格「同一样东西」。
+        self.assertEqual(len(set(name for _f, name, _hex in entries)), len(entries))
+        self.assertEqual(len(set(value for _f, _n, value in entries)), len(entries))
+        for family, name, value in entries:
             with self.subTest(colour=value):
-                red, green, blue = (int(value[at:at + 2], 16) / 255 for at in (0, 2, 4))
-                hue, _light, saturation = colorsys.rgb_to_hls(red, green, blue)
-                self.assertFalse(150 <= hue * 360 <= 210 and saturation >= 0.2,
-                                 f"#{value} 落在青绿那一段")
+                self.assertIn(family, families, f"{name} 归的色系不在胶囊那一排里")
 
     def test_home_glow_dials_write_once_a_frame_and_save_on_release(self):
         """拖动只改参数、只排一帧重画，落盘留给松手那一下。
@@ -6255,7 +6461,8 @@ class WebUiSourceTests(unittest.TestCase):
         和 60 次 localStorage 写入，全在主线程上。
         """
         self.assertCode("onInput:value=>{glow()[field]=value;applyHomeGlow()},")
-        self.assertCode("onChange:()=>saveSettings()}));")
+        # 其余玻璃面跟着走的只有速度，而它只能写在根上：拖动期间不写，松手那一下才铺开。
+        self.assertCode("onChange:()=>{saveSettings();if(field==='speed')applyGlassFaces()}}));")
         self.assertCode("glowFrame=requestAnimationFrame(()=>{glowFrame=0;"
                         "paintHomeGlow(glowField,appSettings.homeGlow)});")
         self.assertCode("if(written.get(name)===value)return;")
@@ -6315,9 +6522,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"')
         self.assertPageContains('<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ri-palette-line"/>'
                                 '</svg><span class="board-glow-dot" aria-hidden="true"></span>')
-        self.assertPageContains('<header class="board-glow-head"><span>配色</span>')
+        self.assertPageContains('<header class="board-glow-head"><span>光晕</span>')
         self.assertPageContains('class="board-glow-reset" data-glow-preset-reset>重置</button>')
-        self.assertPageContains('<footer><button type="button" class="geist-button" data-glow-detail>详细设置</button></footer>')
+        self.assertPageContains('<p class="board-glow-head board-glow-sub"><span>强调色</span></p>')
+        self.assertPageContains('<footer><button type="button" class="geist-button primary" data-glow-detail>详细设置</button></footer>')
         self.assertCode("const glowFloating=wireAnchoredMenu(boardFoot,glowButton,glowPicker);")
         # 选中那一档自己报出来，不靠一圈环让人猜。
         self.assertPageContains('aria-pressed="${key===current}"')
@@ -6326,7 +6534,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-glow-toggle{position:relative;display:grid;place-items:center;"
                       "width:36px;height:36px;flex:none;\n  padding:0;border:0;border-radius:8px;"
                       "background:transparent;color:var(--muted);cursor:pointer}", css)
-        self.assertIn(".board-glow-toggle:hover{background:var(--hover);color:var(--ink)}", css)
+        # 这一排两枚图标键坐在侧栏那块玻璃上，悬停只提图标色：抬一层底就是在玻璃上补一块
+        # 不透明的方片，那一格的玻璃在视觉上断掉。顶栏那批 `.ib` 站在实底上，不在此列。
+        self.assertIn(".board-glow-toggle:hover,.board-foot-actions>#settingsBtn:hover"
+                      "{background:transparent;color:var(--ink)}", css)
+        # 明暗切换那一对反过来：它们没被选中时身上什么都没有，只提字色等于没有反馈。
+        self.assertIn(".board-theme-toggle button:not([aria-pressed=true]):hover"
+                      "{background:var(--hover);color:var(--ink)}", css)
         # 和设置钮对齐到一个数：两枚 36px 的方块在 60px 的收起态里才排得直。
         self.assertIn(".board-foot-actions>#settingsBtn{width:36px;height:36px;", css)
         self.assertIn(".board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}", css)
@@ -6765,6 +6979,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu);")
         self.assertPageContains('<div class="popmenu npmenu"')
 
+    def test_an_open_anchored_menu_yields_to_the_settings_panel_and_to_its_neighbours(self):
+        """开着的锚定弹层，点设置或点它那片祖先里别的控件，都要收掉。
+
+        「点到别处就关」不能只按 `mount` 之外算，而 mount 是定位用的那一片祖先：配色弹层
+        给的是侧栏底部那一条，媒体库弹层给的是整个抽屉——设置钮和侧栏里每一枚控件都在
+        里面，于是点它们全算内点，弹层就挂在设置面板旁边不走。mount 缩到触发钮也不行，
+        定位要按它算。判据因此改成「点的是不是这枚菜单自己的东西」。
+        """
+        self.assertPageContains("if(openedMenu.menu.contains(target)"
+                                "||openedMenu.toggle.contains(target))return;")
+        self.assertPageContains("if(openedMenu.mount.contains(target)"
+                                "&&!(target instanceof Element&&target.closest(clickable)))return;")
+        # 触发钮自己那一份要单独放行：它的 click 处理器停的是冒泡，这个监听在捕获阶段，
+        # 停不掉——少这一句的话点开的同一下就被关回去了。
+        self.assertPageContains("openedMenu=next?{mount,menu,toggle,setOpen}")
+        # 设置那一屏盖住整页，进来第一件事就是收掉还开着的那一个。补在这里而不是逐个
+        # 入口上：设置能从侧栏的钮、弹层底部的「详细设置」和快捷键三处进来。
+        self.assertCode("closeAnchoredMenu();\n    settingsRequestedSection=section;")
+
     def test_anchored_menu_fits_the_room_it_has_instead_of_covering_its_toggle(self):
         # 资料页的统称菜单挂在标题上，上方只有一条顶栏的距离、下方也未必够高。
         # 两侧都放不下时压到宽的那一侧、内部滚，不横跨触发钮。
@@ -6924,7 +7157,11 @@ class WebUiSourceTests(unittest.TestCase):
         # test_the_review_categories_look_like_a_secondary_menu。
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}", board)
-        self.assertIn("body .reviewactions button.warning:not(:disabled){background:#bfdbfe;color:#1e40af;border-color:transparent}", board)
+        # 这一枚说的是「这一步是主操作」，和主按钮同一个意思，所以跟着强调色色阶走：
+        # 浅色那档取 200 的底配 800 的字，正对上 Tailwind blue 那两枚的同名级。
+        self.assertIn("body .reviewactions button.warning:not(:disabled){"
+                      "background:var(--color-accent-200);color:var(--color-accent-800);"
+                      "border-color:transparent}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);", board)
         self.assertIn(".stage .vwrap{border-radius:var(--surface-radius) 0 0 0}", board)
         self.assertIn(".stage .vwrap>.gate{height:100%;aspect-ratio:auto;border-radius:inherit}", board)
@@ -9703,17 +9940,24 @@ class WebUiSourceTests(unittest.TestCase):
         要裁住一团飘出去的光就得给玻璃加 `overflow:hidden`，那条带子跟着一起没了。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        # 浓淡写成 `color-mix` 的百分比而不是带 alpha 的色值：色相由用户挑的光晕给，
+        # 这里只说「这块玻璃的反光有多淡」。深色那档默认指回近白。
+        self.assertIn("--glass-native-a:#ffffff;--glass-native-b:#ffffff;", board)
         self.assertIn("--glass-drift-a:radial-gradient(20% 20% at 50% 50%,"
-                      "#ffffff1a,#ffffff0d 42%,transparent 72%)", board)
+                      "color-mix(in srgb,var(--glass-tint-a) 10%,transparent),"
+                      "color-mix(in srgb,var(--glass-tint-a) 5%,transparent) 42%,transparent 72%)", board)
         self.assertIn("--glass-drift-b:radial-gradient(26% 26% at 50% 50%,"
-                      "#ffffff14,#ffffff0a 44%,transparent 74%)", board)
+                      "color-mix(in srgb,var(--glass-tint-b) 8%,transparent),"
+                      "color-mix(in srgb,var(--glass-tint-b) 4%,transparent) 44%,transparent 74%)", board)
+        # 两根钟的时长同乘一个倍率：41:67 的比例不动，轨迹就不会退化成一条往返线。
         self.assertIn("  background:var(--glass-drift-a),var(--glass-drift-b),"
                       "linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),"
                       "var(--glass-fill);\n"
                       "  background-size:200% 200%,200% 200%,auto;"
                       "background-repeat:no-repeat,no-repeat,repeat;\n"
                       "  background-position:50% 20%,80% 70%,0 0;\n"
-                      "  animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;", board)
+                      "  animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,"
+                      "glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;", board)
         # 两团反着走：同一条轨迹上错开半个周期，面上才不是一只手电筒。
         self.assertIn("  25%{background-position-x:-10%,110%,0}", board)
         self.assertIn("  75%{background-position-x:110%,-10%,0}", board)

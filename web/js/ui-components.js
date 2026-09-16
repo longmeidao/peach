@@ -870,8 +870,19 @@ export function growCollapse(body,start,isCurrent=()=>true){
 let openedMenu=null;
 if(!globalThis.__peachMenuCloser){
   globalThis.__peachMenuCloser=true;
+  /* 「点到别处就关」里的「别处」不能只按 mount 之外算。mount 是定位用的那一片祖先——
+     侧栏配色弹层给的是 `.board-sidebar-foot`，媒体库弹层给的是整个 `#drawer`——设置钮
+     和侧栏里其余每一枚控件都在里面，按 mount 算的话点它们全是「内点」，弹层就一直挂着。
+     mount 缩到触发钮本身也不行：定位要按它算，菜单开在左边还是右边看的就是这一片。
+     所以判据改成「点的是不是这枚菜单自己的东西」：菜单内部与触发钮上算内点，mount 里
+     别的可点控件算外点，mount 里的空白仍算内点（点空白本来就什么也不该发生）。 */
+  const clickable='a[href],button,input,select,textarea,summary,[role=button],[role=menuitem],[tabindex]';
   document.addEventListener('click',event=>{
-    if(openedMenu&&!openedMenu.mount.contains(event.target)&&!openedMenu.menu.contains(event.target))openedMenu.setOpen(false)},true);
+    if(!openedMenu)return;
+    const target=event.target;
+    if(openedMenu.menu.contains(target)||openedMenu.toggle.contains(target))return;
+    if(openedMenu.mount.contains(target)&&!(target instanceof Element&&target.closest(clickable)))return;
+    openedMenu.setOpen(false)},true);
 }
 export function closeAnchoredMenu(){if(openedMenu)openedMenu.setOpen(false)}
 /* 菜单面板的开合动效来自 boardui 的 menu-styles.ts（登记在 docs/BOARD_UI.md）：150ms
@@ -952,7 +963,7 @@ export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
         if(inTopLayer&&menu.matches(':popover-open'))menu.hidePopover()});
     }
     toggle.setAttribute('aria-expanded',String(next));
-    openedMenu=next?{mount,menu,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
+    openedMenu=next?{mount,menu,toggle,setOpen}:(openedMenu&&openedMenu.mount===mount?null:openedMenu)};
   toggle.addEventListener('click',event=>{event.stopPropagation();setOpen(!open)});
   mount.addEventListener('keydown',event=>{
     if(event.key==='Escape'&&open){event.stopPropagation();setOpen(false);toggle.focus()}});
