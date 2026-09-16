@@ -55,6 +55,9 @@ class DependencyPolicyTests(unittest.TestCase):
             "zeroconf": "zeroconf",
         }
         imported = set()
+        # `scripts/` 下的模块彼此 import 走顶层名字（那个目录就在 sys.path 上），
+        # 这是同一个仓库里的文件，不是要声明归属的外部依赖。
+        siblings = {path.stem for path in (ROOT / "scripts").rglob("*.py")}
         for folder in (ROOT / "src", ROOT / "scripts"):
             for path in folder.rglob("*.py"):
                 tree = ast.parse(path.read_text(encoding="utf-8-sig"))
@@ -63,7 +66,7 @@ class DependencyPolicyTests(unittest.TestCase):
                         imported.update(alias.name.split(".")[0] for alias in node.names)
                     elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                         imported.add(node.module.split(".")[0])
-        external = imported - sys.stdlib_module_names - {"peach"}
+        external = imported - sys.stdlib_module_names - {"peach"} - siblings
         self.assertEqual(external - owners.keys(), set())
 
         requirements = self.pyproject["project"]["dependencies"][:]
