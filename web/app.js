@@ -489,7 +489,41 @@ const PHOTO_SIZES=[['big','大图','maximize'],['small','小图','layout-grid']]
 const PHOTO_LAYOUTS=[['fixed','固定比例','layout-grid'],['masonry','瀑布流','columns-2']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};
+/* 首页光晕的参数模型。一档配色就是三枚光斑（颜色、不透明度、圆心、椭圆半轴、收边位置）
+   加底层渐变的角度与四个颜色；开关、强度和颗粒不属于配色，换档时不动。
+   这个形状借自 feralui.dev/gradients 的 JSON 导出（登记在 docs/HANDOFF.md），只借参数模型，
+   渲染仍是 web/css/01-base.css 里那五层纯 CSS 渐变，不引入 Canvas。
+   `dusk` 就是依据 beeg 留存像素重建的那一版，和 :root 上的默认值一字不差。 */
+const HOME_GLOW_SPOTS=['spot1','spot2','spot3'];
+const HOME_GLOW_PRESETS=[
+  ['dusk','靛青薄暮',{angle:105,base:['#46506b','#68688b','#274f64','#2e2938'],
+    spot1:{color:'#19a9bb',alpha:72,x:42,y:34,w:43,h:78,fade:68},
+    spot2:{color:'#b27d8d',alpha:58,x:30,y:6,w:36,h:72,fade:72},
+    spot3:{color:'#544257',alpha:58,x:76,y:18,w:38,h:70,fade:72}}],
+  ['amber','钨丝暖阁',{angle:100,base:['#5a4030','#7a5438','#3c2a22','#241a18'],
+    spot1:{color:'#e08a2f',alpha:62,x:38,y:30,w:46,h:76,fade:70},
+    spot2:{color:'#c4544a',alpha:52,x:22,y:10,w:34,h:70,fade:72},
+    spot3:{color:'#5a3a2a',alpha:60,x:78,y:22,w:40,h:72,fade:72}}],
+  ['plum','夜樱',{angle:112,base:['#4a3a70','#6a4f8b','#33285a','#221a2e'],
+    spot1:{color:'#b455a0',alpha:64,x:46,y:28,w:44,h:76,fade:70},
+    spot2:{color:'#6a4fd0',alpha:54,x:24,y:8,w:36,h:72,fade:74},
+    spot3:{color:'#3a2a52',alpha:62,x:80,y:20,w:38,h:70,fade:72}}],
+  ['pine','深林',{angle:98,base:['#2e4a44','#4a6a52','#20403c','#1a2622'],
+    spot1:{color:'#2f9e7a',alpha:66,x:40,y:32,w:44,h:78,fade:68},
+    spot2:{color:'#7fae4a',alpha:48,x:26,y:8,w:34,h:70,fade:74},
+    spot3:{color:'#274a42',alpha:62,x:78,y:20,w:40,h:70,fade:72}}],
+  ['ash','灰雾',{angle:105,base:['#4c5158','#6a6f77','#3a3e44','#26292e'],
+    spot1:{color:'#8f98a4',alpha:52,x:44,y:32,w:46,h:78,fade:70},
+    spot2:{color:'#b6bcc4',alpha:38,x:28,y:8,w:36,h:72,fade:74},
+    spot3:{color:'#4a4f57',alpha:52,x:76,y:20,w:38,h:70,fade:72}}],
+];
+/* 手调过颜色之后当前档就不再是任何一个预设，下拉要如实说这件事，不能继续顶着上一档的名字。 */
+const HOME_GLOW_CHOICES=[...HOME_GLOW_PRESETS.map(([key,label])=>[key,label]),['custom','自定义']];
+const glowPalette=key=>structuredClone((HOME_GLOW_PRESETS.find(([name])=>name===key)||HOME_GLOW_PRESETS[0])[2]);
+const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))?String(value).toLowerCase():fallback;
+const glowRgba=(hex,alpha)=>`rgba(${[1,3,5].map(at=>parseInt(hex.slice(at,at+2),16)).join(',')},${(alpha/100).toFixed(2)})`;
+const DEFAULT_HOME_GLOW={on:true,preset:'dusk',strength:100,noise:0,...glowPalette('dusk')};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 appSettings.followInitialDays=[0,7,30,90].includes(+appSettings.followInitialDays)?+appSettings.followInitialDays:30;
@@ -521,6 +555,7 @@ const METADATA_REFRESH_DAYS=[0,7,30,90];
 appSettings.metadataRefreshDays=allowedSetting(+appSettings.metadataRefreshDays,METADATA_REFRESH_DAYS,30);
 Object.assign(appSettings,normalizeJavPreferences(appSettings));
 appSettings.theme=allowedSetting(appSettings.theme,THEME_CHOICES,'system');
+appSettings.homeGlow=normalizeHomeGlow(appSettings.homeGlow);
 const sidebarKeyAlias=key=>key==='ads'||key==='dupes'?'data-cleanup':key;
 appSettings.sidebarOrder=[...new Set((Array.isArray(appSettings.sidebarOrder)?appSettings.sidebarOrder:DEFAULT_SIDEBAR_ORDER).map(sidebarKeyAlias))].filter(key=>ALL_SIDEBAR_KEYS.includes(key));
 if(!appSettings.sidebarOrder.length)appSettings.sidebarOrder=[...DEFAULT_SIDEBAR_ORDER];
@@ -547,6 +582,45 @@ function applyTheme(choice=appSettings.theme){
 }
 applyTheme();
 prefersDark.addEventListener('change',()=>{if(appSettings.theme==='system')applyTheme()});
+/* 光晕参数整份来自 localStorage，形态和范围都不可信：颜色写成任意字符串会让那一层
+   渐变整条失效，百分比越界会把光斑糊成一整片或者缩没。逐项夹回区间、认不出就退回
+   默认那一档，而不是整份丢掉——一个坏掉的数不该把用户调好的其余几档一起清空。 */
+function normalizeHomeGlow(raw){
+  const stored=raw&&typeof raw==='object'?raw:{};
+  const preset=allowedSetting(stored.preset,HOME_GLOW_CHOICES.map(([key])=>key),'dusk');
+  const seed=glowPalette(preset==='custom'?'dusk':preset);
+  const glow={on:stored.on!==false,preset,
+    strength:boundedPreference(+stored.strength,0,100,100),
+    noise:boundedPreference(+stored.noise,0,100,0),
+    angle:boundedPreference(+stored.angle,0,360,seed.angle),
+    base:seed.base.map((color,index)=>glowColor(Array.isArray(stored.base)?stored.base[index]:'',color))};
+  for(const key of HOME_GLOW_SPOTS){
+    const spot=stored[key]&&typeof stored[key]==='object'?stored[key]:{},fallback=seed[key];
+    glow[key]={color:glowColor(spot.color,fallback.color),
+      alpha:boundedPreference(+spot.alpha,0,100,fallback.alpha),
+      x:boundedPreference(+spot.x,-50,150,fallback.x),y:boundedPreference(+spot.y,-50,150,fallback.y),
+      w:boundedPreference(+spot.w,5,200,fallback.w),h:boundedPreference(+spot.h,5,200,fallback.h),
+      fade:boundedPreference(+spot.fade,10,100,fallback.fade)};
+  }
+  return glow;
+}
+/* 和 applyTheme() 同一个写法：只往 <html> 上写值，光晕怎么画留在 web/css/01-base.css 一份。
+   关掉时强度和颗粒一起归零，body::before 的不透明度按 :root 上那句乘法算成 0，不另设一个
+   「关」的分支——否则「关着」和「强度 0」会是两条各自演化的路径。 */
+function applyHomeGlow(glow=appSettings.homeGlow){
+  const style=document.documentElement.style,live=glow.on;
+  style.setProperty('--glow-strength',String(live?glow.strength/100:0));
+  style.setProperty('--glow-noise',String(live?glow.noise/100:0));
+  style.setProperty('--glow-angle',`${glow.angle}deg`);
+  HOME_GLOW_SPOTS.forEach((key,index)=>{
+    const spot=glow[key],slot=index+1;
+    style.setProperty(`--glow-spot-${slot}-color`,glowRgba(spot.color,spot.alpha));
+    for(const [name,value] of [['x',spot.x],['y',spot.y],['w',spot.w],['h',spot.h],['fade',spot.fade]])
+      style.setProperty(`--glow-spot-${slot}-${name}`,`${value}%`);
+  });
+  glow.base.forEach((color,index)=>style.setProperty(`--glow-base-${index+1}`,color));
+}
+applyHomeGlow();
 /* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
    形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
 function renderJavImageSetting(){
@@ -563,6 +637,50 @@ function renderJavImageSetting(){
   size.innerHTML=iconSwitchHtml('jav-size','JAV 封面默认大小',
     JAV_LAYOUTS,javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true});
   wireJavLayoutButtons(size);
+}
+/* 拉条的已选段要自己画：`::-webkit-slider-runnable-track` 拿不到当前值，只能把比例写成
+   变量交给 CSS。读数跟在同一行右端，不另起一行说明。 */
+function syncGlowRange(input){
+  const min=+input.min,max=+input.max;
+  input.style.setProperty('--glow-fill',`${Math.round((+input.value-min)/(max-min)*100)}%`);
+  const readout=input.parentElement?.querySelector('.glowvalue');
+  if(readout)readout.textContent=`${input.value}%`;
+}
+/* 首页光晕：开关在上面那行设置行上，参数区由这里画。每个控件即时生效并落盘，不配
+   「保存」——这一屏调的就是当场看得见的东西，隔一个按钮就没法比着调。 */
+function renderHomeGlowSetting(){
+  const glow=appSettings.homeGlow,toggle=$('#homeGlowSetting'),mount=$('#homeGlowControls');
+  if(!toggle||!mount)return;
+  toggle.checked=glow.on;mount.hidden=!glow.on;
+  toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;saveSettings();applyHomeGlow()};
+  mount.innerHTML=`<div class="glowrow"><span id="glowPresetLabel">配色</span><div class="glowfield" id="glowPresetSetting"></div></div>
+    <div class="glowrow"><span id="glowStrengthLabel">强度</span><input class="glowrange" type="range" min="0" max="100" step="5" value="${glow.strength}" data-glow-level="strength" aria-labelledby="glowStrengthLabel"><b class="glowvalue mono">${glow.strength}%</b></div>
+    <div class="glowrow"><span id="glowNoiseLabel">颗粒</span><input class="glowrange" type="range" min="0" max="60" step="2" value="${glow.noise}" data-glow-level="noise" aria-labelledby="glowNoiseLabel"><b class="glowvalue mono">${glow.noise}%</b></div>
+    <div class="glowrow"><span>光斑</span><div class="glowcolors">${HOME_GLOW_SPOTS.map((key,index)=>
+      `<span class="glowcolor"><input type="color" value="${esc(glow[key].color)}" data-glow-spot="${key}" aria-label="第 ${index+1} 枚光斑颜色"></span>`).join('')}</div></div>
+    <div class="glowactions"><button type="button" class="geist-button" data-glow-reset>恢复默认</button></div>`;
+  const presetMount=$('#glowPresetSetting');
+  presetMount.innerHTML=selectFieldHtml(HOME_GLOW_CHOICES,glow.preset,{label:'光晕配色'});
+  const preset=wireSelectField(presetMount.firstElementChild);
+  preset.addEventListener('change',()=>{
+    glow.preset=allowedSetting(preset.value,HOME_GLOW_CHOICES.map(([key])=>key),'dusk');
+    if(glow.preset!=='custom')Object.assign(glow,glowPalette(glow.preset));
+    mount.querySelectorAll('[data-glow-spot]').forEach(input=>{input.value=glow[input.dataset.glowSpot].color});
+    saveSettings();applyHomeGlow();
+  });
+  mount.querySelectorAll('[data-glow-level]').forEach(input=>{
+    syncGlowRange(input);
+    input.oninput=()=>{glow[input.dataset.glowLevel]=boundedPreference(+input.value,+input.min,+input.max,0);
+      syncGlowRange(input);saveSettings();applyHomeGlow()};
+  });
+  mount.querySelectorAll('[data-glow-spot]').forEach(input=>{
+    input.oninput=()=>{const spot=glow[input.dataset.glowSpot];
+      spot.color=glowColor(input.value,spot.color);
+      glow.preset='custom';preset.value='custom';saveSettings();applyHomeGlow()};
+  });
+  mount.querySelector('[data-glow-reset]').onclick=()=>{
+    appSettings.homeGlow=normalizeHomeGlow(null);saveSettings();applyHomeGlow();renderHomeGlowSetting();
+  };
 }
 function renderThemeSetting(){
   const mount=$('#themeSetting');
@@ -645,6 +763,7 @@ function syncSettingsPanel(){
   $('#miniplayerSetting').checked=appSettings.miniplayer;
   renderSettingSelects();
   renderThemeSetting();
+  renderHomeGlowSetting();
   renderJavImageSetting();
   renderSidebarOrderSetting();
   loadFollowScheduleSetting();

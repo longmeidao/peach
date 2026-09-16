@@ -76,9 +76,44 @@ body.settings-open{overflow:hidden}
 .iconswitch.themeswitch svg{width:16px;height:16px}
 /* 手机上三枚圆各自撑到 44px 命中区，圆心间距跟着长，指头点得中。 */
 @media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}
+/* 首页光晕的参数区。它跟着上面那一行开关走，关掉就整块收起来——一组调不出任何效果的
+   滑杆和色块留在原地，读的人只会以为是坏了。 */
+.glowsetting{display:grid;gap:12px;padding:0 0 14px}
+.glowsetting[hidden]{display:none}
+.glowrow{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center}
+.glowrow>span{color:var(--muted);font-size:var(--fs-sm)}
+.glowfield{grid-column:2/-1;min-width:0}
+.glowfield .gselect{width:100%;min-width:0}
+.glowvalue{justify-self:end;min-width:44px;color:var(--ink-2);font-weight:400;text-align:right}
+/* 单值拉条照抽屉里那条时长拉条来：轨道 --line、已选段 --ink、抓手填 --ground 再描一圈
+   --ink。抓手永远和它坐落的那张面同色，两档主题读出来是同一句话。已选段的宽度由
+   --glow-fill 给，JS 每次 input 写一次——`::-webkit-slider-runnable-track` 拿不到当前值。 */
+.glowrange{width:100%;min-width:0;height:28px;margin:0;padding:0;background:none;appearance:none;-webkit-appearance:none;cursor:pointer}
+.glowrange::-webkit-slider-runnable-track{height:4px;border-radius:var(--pill-radius);
+  background:linear-gradient(to right,var(--ink) var(--glow-fill,0%),var(--line) var(--glow-fill,0%))}
+.glowrange::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;
+  border:2px solid var(--ink);border-radius:50%;background:var(--ground);cursor:grab;transition:box-shadow .12s ease}
+.glowrange:hover::-webkit-slider-thumb{box-shadow:0 0 0 4px var(--hover)}
+.glowrange:focus-visible{outline:0}
+.glowrange:focus-visible::-webkit-slider-thumb{outline:2px solid var(--tungsten);outline-offset:2px}
+.glowrange::-moz-range-track{height:4px;border-radius:var(--pill-radius);background:var(--line)}
+.glowrange::-moz-range-progress{height:4px;border-radius:var(--pill-radius);background:var(--ink)}
+.glowrange::-moz-range-thumb{width:14px;height:14px;border:2px solid var(--ink);border-radius:50%;background:var(--ground);cursor:grab}
+/* 原生取色器只借它的取色弹层，外框仍是站内输入框那身盒子：浏览器自绘的那枚方块在
+   暗色下和周围完全不是一套语言。 */
+.glowcolors{grid-column:2/-1;display:flex;gap:8px}
+.glowcolor{display:inline-grid;place-items:center;width:var(--control-h);height:var(--control-h);
+  border:1px solid var(--field-ring);border-radius:var(--control-radius);background:var(--ground)}
+.glowcolor:hover{border-color:var(--field-ring-hover)}
+.glowcolor input{width:24px;height:24px;padding:0;border:0;background:none;cursor:pointer}
+.glowcolor input::-webkit-color-swatch-wrapper{padding:0}
+.glowcolor input::-webkit-color-swatch{border:0;border-radius:var(--badge-radius)}
+.glowcolor input::-moz-color-swatch{border:0;border-radius:var(--badge-radius)}
+.glowcolor:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
+.glowactions{display:flex;justify-content:flex-end}
 /* 同一组里排在设置行后面的分区自带分隔线。线属于整块卡片，所以和 .settingrow 一样
    用负边距铺到框边，不在正文宽度里断一截。 */
-.settinggroup .settingrow+.sidebarsetting{margin:0;padding:14px 0 0;
+.settinggroup :is(.settingrow,.glowsetting)+.sidebarsetting{margin:0;padding:14px 0 0;
   border-top:1px solid var(--line-soft)}
 .sidebarsetting{display:grid;gap:12px;padding:0}.sidebarsetting>span b,.sidebarsetting>span small{display:block}.sidebarsetting>span small{margin-top:3px;color:var(--muted);line-height:1.45}.sidebarorder{display:grid;gap:6px}/* 这一列的行、下面那个下拉和「添加」按钮同高：它们是同一张清单的三段，差几像素就
    看得出是两拨控件。34px 的图标钮加上下 1px 内边距和 1px 边框正好是 --control-h。 */

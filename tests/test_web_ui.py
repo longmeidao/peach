@@ -6013,9 +6013,97 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<b>回收站</b>')
 
     def test_surface_has_measured_beeg_glow_geometry(self):
-        self.assertPageContains("height:49vh")
-        self.assertPageContains("linear-gradient(to bottom,rgba(0,0,0,.6),var(--page))")
+        self.assertPageContains("--glow-h:49vh")
+        self.assertPageContains("--glow-veil:rgba(0,0,0,.6)")
         self.assertPageContains("animation:ambient-in .8s ease .5s both")
+
+    def test_home_glow_reads_every_colour_and_centre_from_a_variable(self):
+        """`body::before` 里一个字面颜色、一个字面坐标都不许有。
+
+        它们现在是设置面板改得动的参数：写死一处，那一处就永远不跟着用户走，而症状是
+        「换了配色但有一层没变」——没有报错，只是画面对不上。
+        """
+        css = stylesheet_source()
+        rule = css.split("body::before{", 1)[1].split("}", 1)[0]
+        self.assertNotIn("#", rule, "光晕里不许再出现字面颜色")
+        self.assertEqual(re.findall(r"rgba?\(", rule), [], "光晕里不许再出现字面颜色")
+        for layer in ("--glow-veil", "--glow-angle", "--glow-lerp",
+                      "--glow-spot-1-color", "--glow-spot-2-x", "--glow-spot-3-fade",
+                      "--glow-base-1", "--glow-base-4", "--glow-h", "--ambient-opacity"):
+            self.assertIn(f"var({layer})", rule, f"{layer} 没有被 body::before 引用")
+
+    def test_home_glow_defaults_stay_on_the_rebuilt_beeg_values(self):
+        """抽成变量不等于换了一版画面：默认值逐项还是重建那一版的数。"""
+        css = stylesheet_source()
+        for declaration in (
+                "--glow-spot-1-color:rgba(25,169,187,.72); --glow-spot-1-x:42%; --glow-spot-1-y:34%",
+                "--glow-spot-1-w:43%; --glow-spot-1-h:78%; --glow-spot-1-fade:68%",
+                "--glow-spot-2-color:rgba(178,125,141,.58); --glow-spot-2-x:30%; --glow-spot-2-y:6%",
+                "--glow-spot-2-w:36%; --glow-spot-2-h:72%; --glow-spot-2-fade:72%",
+                "--glow-spot-3-color:rgba(84,66,87,.58); --glow-spot-3-x:76%; --glow-spot-3-y:18%",
+                "--glow-spot-3-w:38%; --glow-spot-3-h:70%; --glow-spot-3-fade:72%",
+                "--glow-base-1:#46506b; --glow-base-2:#68688b; --glow-base-3:#274f64; --glow-base-4:#2e2938",
+                "--glow-angle:105deg"):
+            self.assertIn(declaration, css)
+        # 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
+        self.assertIn("--glow-noise:0; --glow-strength:1; --glow-theme-scale:.34", css)
+        self.assertIn("--ambient-opacity:calc(var(--glow-strength) * var(--glow-theme-scale))", css)
+        # 浅色也开：两档各自的缩放与遮罩色都要在，否则浅色要么是 0 要么顶着一道黑影。
+        self.assertEqual(css.count("--glow-veil:rgba(0,0,0,.6); --glow-theme-scale:1;}"), 2,
+                         "深色两块色板都要自己那一档")
+        self.assertIn("--glow-veil:rgba(255,255,255,.55)", css)
+
+    def test_home_glow_interpolates_in_oklab_with_a_declared_fallback(self):
+        """oklab 插值由 @supports 开启，认不出它的引擎退回 sRGB 而不是整层消失。"""
+        css = stylesheet_source()
+        self.assertIn("--glow-lerp: ;", css, "默认必须是空串，`in oklab` 只在 @supports 里给")
+        self.assertIn("@supports (background:linear-gradient(in oklab,red,blue))"
+                      "{:root{--glow-lerp:in oklab}}", css)
+
+    def test_home_glow_grain_is_generated_not_a_bitmap_in_the_repository(self):
+        """颗粒瓦片是 data URI，仓库里不落位图；强度 0 就是关。"""
+        css = stylesheet_source()
+        rule = css.split("body::after{", 1)[1].split("}", 1)[0]
+        self.assertIn("mix-blend-mode:overlay", rule)
+        self.assertIn("opacity:var(--glow-noise)", rule)
+        self.assertIn("data:image/svg+xml,", rule)
+        self.assertIn("feTurbulence", rule)
+
+    def test_home_glow_settings_are_stored_bounded_and_written_to_the_root(self):
+        """设置里存得住、读回来要夹回区间，改一下就写到 <html> 上。"""
+        self.assertPageContains("sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW}")
+        self.assertPageContains("const DEFAULT_HOME_GLOW={on:true,preset:'dusk',strength:100,noise:0,"
+                                "...glowPalette('dusk')}")
+        self.assertPageContains("appSettings.homeGlow=normalizeHomeGlow(appSettings.homeGlow)")
+        self.assertCode("function normalizeHomeGlow(raw){")
+        self.assertCode("strength:boundedPreference(+stored.strength,0,100,100),")
+        self.assertCode("noise:boundedPreference(+stored.noise,0,100,0),")
+        self.assertCode("fade:boundedPreference(+spot.fade,10,100,fallback.fade)};")
+        self.assertPageContains("const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))")
+        self.assertCode("function applyHomeGlow(glow=appSettings.homeGlow){")
+        self.assertCode("style.setProperty('--glow-strength',String(live?glow.strength/100:0));")
+        self.assertCode("style.setProperty(`--glow-spot-${slot}-color`,glowRgba(spot.color,spot.alpha));")
+        self.assertPageContains("applyHomeGlow();")
+        # 预设给中文名，含当前默认那一档。
+        self.assertPageContains("['dusk','靛青薄暮',")
+        self.assertPageContains("['custom','自定义']")
+        self.assertGreaterEqual(self.app_js.count("',{angle:"), 4, "预设至少四档")
+
+    def test_home_glow_panel_uses_the_existing_control_vocabulary(self):
+        """光晕那一块只用现成控件：Toggle、Geist Select、拉条、原生取色器和次级按钮。"""
+        self.assertPageContains('<b>首页光晕</b>')
+        self.assertPageContains('id="homeGlowSetting" class="ptoggle" role="switch"')
+        self.assertPageContains('<section class="glowsetting" id="homeGlowControls"')
+        self.assertCode("function renderHomeGlowSetting(){")
+        self.assertPageContains("renderHomeGlowSetting();")
+        self.assertPageContains("selectFieldHtml(HOME_GLOW_CHOICES,glow.preset,{label:'光晕配色'})")
+        self.assertPageContains('class="glowrange" type="range" min="0" max="100" step="5"')
+        self.assertPageContains('data-glow-level="noise"')
+        self.assertPageContains('<span class="glowcolor"><input type="color"')
+        self.assertPageContains('<button type="button" class="geist-button" data-glow-reset>恢复默认</button>')
+        # 即时生效，不配「保存」键。
+        self.assertCode("syncGlowRange(input);saveSettings();applyHomeGlow()};")
+        self.assertPageLacks('data-glow-save')
 
     def test_detail_deduplicates_identity_and_supports_tag_editing(self):
         self.assertPageContains("const identitySeen=new Set()")
@@ -8097,7 +8185,7 @@ class WebUiSourceTests(unittest.TestCase):
             "@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}")
         # 分隔线属于整块卡片，铺到框边再断。
         self.assertCode(
-            ".settinggroup .settingrow+.sidebarsetting{margin:0;padding:14px 0 0;"
+            ".settinggroup :is(.settingrow,.glowsetting)+.sidebarsetting{margin:0;padding:14px 0 0;"
             "border-top:1px solid var(--line-soft)}")
 
     def test_search_menu_has_local_history_and_recommendations(self):
@@ -10755,7 +10843,7 @@ class WebUiSourceTests(unittest.TestCase):
         折叠是渲染时做的，所以改完必须重取当前列表：不重画的话，之前被跳过的
         那些卡不会自己冒出来，看上去像开关没生效。
         """
-        self.assertPageContains("groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER};")
+        self.assertPageContains("groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,")
         self.assertPageContains("appSettings.groupCollapse=appSettings.groupCollapse!==false;")
         self.assertPageContains('<input type="checkbox" id="groupCollapseSetting" class="ptoggle" role="switch">')
         self.assertPageContains("$('#groupCollapseSetting').checked=appSettings.groupCollapse;")
