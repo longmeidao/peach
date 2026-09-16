@@ -335,7 +335,7 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["MIAD-573:tags"])
 
-    def test_auto_apply_never_overwrites_or_picks_between_values(self):
+    def test_a_community_value_or_a_choice_between_two_waits_for_review(self):
         self._asset(92, "AAA-1", "AAA-1.mp4")
         self._asset(93, "BBB-2", "BBB-2.mp4")
         con = sqlite3.connect(self.db_path)
@@ -343,15 +343,65 @@ class ReviewQueueTests(unittest.TestCase):
         con.execute("UPDATE asset SET release_date='2001-01-01' WHERE id=92")
         con.commit(); con.close()
         self.write_metadata_rows([
-            # 已有值：只补空，永不覆盖。
+            # 已有值遇上 community 来源：它只补空，改不动账本里已经成立的判断。
             {"item_key": "AAA", "field": "release_date", "current": "2001-01-01",
-             "candidates": ["2015-02-20"], "code": "AAA-1"},
+             "candidates": ["2015-02-20"], "code": "AAA-1", "source": "javdb"},
             # 两个候选：存在取舍，正是复核该做的事。
             {"item_key": "BBB", "field": "release_date", "current": "",
              "candidates": ["2015-02-20", "2016-03-30"], "code": "BBB-2"},
         ])
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["AAA", "BBB"])
+
+    def test_the_only_source_being_official_replaces_the_value_the_ledger_carries(self):
+        """一个字段上只有官方一家说话时，它说的就是这部片的事实，直接落库（ADR-0035）。
+
+        `259LUXU-891` 的发行日期账本里是 2017-11-26，来自官方 mgstage 那页；队列里
+        摆着的挑战者是 javbus 按 `259LUXU-1891` 取回的 2026-07-29。把官方唯一来源
+        卡在人工这一侧，只会让人从这类队列里一条条把错值挑出去。
+        """
+        self._asset(88, "MGS-1", "MGS-1.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET release_date='2001-01-01' WHERE id=88")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "MGS", "field": "release_date", "current": "2001-01-01",
+             "candidates": ["2017-11-26"], "code": "MGS-1", "source": "mgstage"},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=88").fetchone()[0],
+                "2017-11-26")
+            note = con.execute(
+                "SELECT note FROM review_decision WHERE item_key='MGS'").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(json.loads(note)["rule"],
+                         "adr-0035-official-replaces-single-source")
+
+    def test_javbus_gives_way_to_any_other_source_on_the_same_field(self):
+        """javbus 的取值只在没有别家时才算证据（ADR-0035）。
+
+        用户 2026-09-16 逐条核对：它常常答的是另一部片。两家分歧时它退开，剩下的
+        一家就是唯一来源，本来要人判的取舍题不再存在。
+        """
+        self._asset(89, "BUS-1", "BUS-1.mp4")
+        self.write_metadata_rows([
+            {"item_key": "BUS", "field": "release_date", "current": "",
+             "candidates": [{"source": "javdb", "value": "2015-02-20"},
+                            {"source": "javbus", "value": "2026-07-29"}],
+             "code": "BUS-1"},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=89").fetchone()[0],
+                "2015-02-20")
+        finally:
+            con.close()
 
     def test_auto_apply_fills_empty_fields_from_community_sources_too(self):
         """补空不覆盖任何东西，唯一的风险由「番号在文件名里」那条管，与来源级别无关。
@@ -673,6 +723,25 @@ class ReviewQueueTests(unittest.TestCase):
                 .fetchone()[0], 0)
         finally:
             con.close()
+
+    def test_a_row_whose_candidates_all_name_another_release_stays_out_of_the_queue(self):
+        """错配的候选连队列都不该进：它写不进去，摆在那儿只是要人认出它写不进去。
+
+        `259LUXU-891` 那一行的两个候选都是 javbus 按 `259LUXU-1891` 取回的，点批准
+        会被落库端拒掉。实测队列 148 行里有 18 个这样的候选，14 行整行只有它们。
+        """
+        self._asset(133, "259LUXU-891", "259LUXU-891.mp4")
+        self._asset(134, "259LUXU-892", "259LUXU-892.mp4")
+        self.write_metadata_rows([
+            {"item_key": "259LUXU-891:release_date", "field": "release_date",
+             "current": "2017-11-26", "candidates": ["2026-07-29"],
+             "code": "259LUXU-891", "provider_id": "259LUXU-1891", "source": "javbus"},
+            # 同一家给对了番号：这一行仍然是人该看的。
+            {"item_key": "259LUXU-892:release_date", "field": "release_date",
+             "current": "2017-11-26", "candidates": ["2017-12-01"],
+             "code": "259LUXU-892", "source": "javbus"},
+        ])
+        self.assertEqual(self.queue_keys("metadata_fields"), ["259LUXU-892:release_date"])
 
     def test_manual_approval_is_refused_for_another_release_too(self):
         """人点的批准也过这道闸：错配落库的那批里有四成是人工批准的。"""
@@ -1081,10 +1150,11 @@ class ReviewQueueTests(unittest.TestCase):
             self.queue_row("metadata_fields", "LIVE-1:performers")["current_value"],
             "账本里的女优")
 
-    def test_auto_apply_never_fills_a_field_the_ledger_already_filled(self):
-        """自动落库的第一条判据是「这个字段现在是空的」，问的必须是账本此刻。
+    def test_a_community_source_reads_the_ledger_not_the_snapshot_for_emptiness(self):
+        """「这个字段是不是空的」问的必须是账本此刻，不是抓取那一刻的快照。
 
-        照过期快照落库不是补空，是拿来源覆盖已有值——而且写完还记一笔 approved。
+        快照里那个空值是过期的：照它落库不是补空，是拿 community 来源覆盖账本已有
+        的值——而且写完还记一笔 approved。
         """
         self._asset(121, "LIVE-2", "LIVE-2.mp4")
         con = sqlite3.connect(self.db_path)
@@ -1092,7 +1162,7 @@ class ReviewQueueTests(unittest.TestCase):
         con.commit(); con.close()
         self.write_metadata_rows([
             {"item_key": "LIVE-2:title", "field": "title", "current": "",
-             "candidates": ["来源给的另一个标题"], "code": "LIVE-2"},
+             "candidates": ["来源给的另一个标题"], "code": "LIVE-2", "source": "javdb"},
         ])
         self.assertEqual(self._auto()["applied"], 0)
         con = sqlite3.connect(self.db_path)
@@ -1129,7 +1199,7 @@ class ReviewQueueTests(unittest.TestCase):
         con.commit(); con.close()
         self.write_metadata_rows([
             {"item_key": "LIVE-4:title", "field": "title", "current": "",
-             "candidates": ["来源给的另一个标题"], "code": "LIVE-4"},
+             "candidates": ["来源给的另一个标题"], "code": "LIVE-4", "source": "javdb"},
         ])
         self.assertEqual(self.queue_row("metadata_fields", "LIVE-4:title")["current_value"],
                          "第二卷上已有的标题")
