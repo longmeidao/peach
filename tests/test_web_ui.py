@@ -936,7 +936,10 @@ class WebUiSourceTests(unittest.TestCase):
                    (Path(__file__).resolve().parents[1] / "web/board-entry.css").read_text(encoding="utf-8")]
         # 只看换成实心强调档或危险档的那几条：次级档的悬停压的是同一块面上的 8% 墨，
         # 文字色本来就不该跟着动。
-        filled = re.compile(r"background:(var\(--board-blue-hover\)|linear-gradient\()")
+        # `--board-blue-*` 与 `--color-accent-*` 现在由强调色那一组色阶给，实心档因此
+        # 有三种写法：三档渐变、直接写 `linear-gradient(`，以及单取一级色阶当底。
+        filled = re.compile(r"background:(var\(--board-blue-(hover|active)\)"
+                            r"|var\(--color-accent-\d+\)|linear-gradient\()")
         offenders = []
         seen = 0
         for source in sources:
@@ -4494,11 +4497,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed();")
         self.assertPageContains("['defaultSortSetting','默认排序',[['seed','随机']")
         self.assertIn('@media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}', board)
-        self.assertIn(':root[data-theme="light"]{--glass-drift-a:', board)
-        self.assertIn('#6686b84d,#6686b829 42%,transparent 72%', board)
-        self.assertIn('#c69d7340,#c69d7324 44%,transparent 74%', board)
-        # 这个双写的选择器在表里出现两次：靠前那处是主题切换那条材质过渡，玻璃本体在后面。
-        menu = board.rsplit('.board-library-menu.board-library-menu{', 1)[1].split('}', 1)[0]
+        # 浅色那档的两团自带反光是霁蓝配驼棕，比深色那档浓一档、也大一圈：底下是一片
+        # 近白的页面，照搬深色那组的 10% 白等于什么也看不见。色相由 `--glass-tint-a/b`
+        # 给（默认就指回这两枚），浓淡和尺寸留在这一档自己身上。
+        self.assertIn(':root[data-theme="light"]{--glass-native-a:#6686b8;'
+                      '--glass-native-b:#c69d73;--glass-drift-a:', board)
+        self.assertIn('radial-gradient(32% 32% at 50% 50%,'
+                      'color-mix(in srgb,var(--glass-tint-a) 30%,transparent),'
+                      'color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%)', board)
+        self.assertIn('radial-gradient(38% 38% at 50% 50%,'
+                      'color-mix(in srgb,var(--glass-tint-b) 25%,transparent),'
+                      'color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)', board)
+        # 这个双写的选择器在表里出现两次：靠前那处是主题切换那条材质过渡，玻璃本体在
+        # 后面，而后面那条现在和配色弹层共用——两张从侧栏开出来的卡是同一种材质。
+        menu = board.rsplit('.board-library-menu.board-library-menu,'
+                            '.board-glow-menu.board-glow-menu{', 1)[1].split('}', 1)[0]
         self.assertIn('var(--glass-fill)', menu)
         self.assertIn('backdrop-filter:blur(22px) saturate(160%) var(--glass-lume)', menu)
         self.assertIn('var(--glass-shadow)', menu)
@@ -4559,7 +4572,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
         self.assertIn('.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar,'
-                      '.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu{\n'
+                      '.entitycollectionhead.entitycollectionhead,.board-library-menu.board-library-menu,'
+                      '.board-glow-menu.board-glow-menu{\n'
                       '  transition:background-color .28s ease,backdrop-filter .28s ease,'
                       '-webkit-backdrop-filter .28s ease}', board)
         snapshot_rule = board.split('html[data-theme-snapshot] .review.review-has-pane::before{', 1)[1]
@@ -6125,14 +6139,17 @@ class WebUiSourceTests(unittest.TestCase):
         keys = [key for key, _label, _palette, _accent in entries]
         self.assertEqual(len(set(keys)), len(keys), "档名不许重复")
         self.assertEqual(keys[0], "amber", "默认那一档排在最前")
-        self.assertEqual(keys[-1], "native", "玻璃原色排在最后")
+        # 最后那一档的键名在源码里写成常量：`isNativeGlass` 和几处分支都要认它，
+        # 散着写三遍 'native' 的话改名时必漏一处。
+        self.assertEqual(keys[-1], "GLASS_NATIVE_PRESET", "玻璃原色排在最后")
         accents = re.findall(r"\['(\w+)','.+?'\]", self.glow_js.split("const ACCENTS=[", 1)[1]
                              .split("];", 1)[0])
         for key, label, palette, accent in entries:
             with self.subTest(preset=key):
                 colours = re.findall(r"color:'(#[0-9a-f]{6})'", palette)
                 self.assertEqual(len(colours), 3, "一档就是三枚光晕")
-                self.assertEqual(len(set(colours)), len(colours) if key != "native" else 2,
+                self.assertEqual(len(set(colours)),
+                                 len(colours) if key != "GLASS_NATIVE_PRESET" else 2,
                                  "同一档里两枚一样的颜色只会读成两团")
                 self.assertTrue(2 <= len(label) <= 4, f"{label} 的档名写成两到四个字")
                 self.assertIn(accent, accents, "搭配的强调色要在清单里")
@@ -6162,6 +6179,14 @@ class WebUiSourceTests(unittest.TestCase):
                             "--glass-tint-b:var(--glass-native-b)",
                             "--glass-native-a:#6686b8;--glass-native-b:#c69d73"):
             self.assertIn(declaration, css)
+        # 多选那条悬浮坞、批处理条和标签选择条也读这两团：它们和侧栏同时在屏上，
+        # 漏掉任何一条就是一屏里两种颜色的玻璃。
+        for face in ("body .selectiondock{", ".batchbar,.tagselection{",
+                     "body .review.review-has-pane::before{"):
+            with self.subTest(face=face):
+                rule = css.split(face, 1)[1].split("}", 1)[0]
+                self.assertIn("var(--glass-drift-a),var(--glass-drift-b)", rule)
+                self.assertIn("var(--glow-drift-scale)", rule, "速度那一条也跟着走")
         drifts = re.findall(r"--glass-drift-[ab]:radial-gradient\((.*?)transparent \d\d%\)", css)
         self.assertEqual(len(drifts), 6, "深浅两档各两团，浅色那档还有跟随系统的一份")
         for drift in drifts:
@@ -6184,7 +6209,7 @@ class WebUiSourceTests(unittest.TestCase):
 
         照三枚光晕重画一份仿制品是另一回事：自带那两团是两团、尺寸与轨迹各有出处、颜色还
         跟着明暗主题走，仿出来的必然是第三种东西。所以这一档把光晕整层算成 0、把色相变量
-        摘掉，样式表里原本那一档因此重新生效。摘掉而不是写回主题色，是因为主题色有两套。
+        摘掉，样式表里那一档因此生效。摘掉而不是写回主题色，是因为主题色有两套。
         """
         self.assertPageContains("const GLASS_NATIVE_PRESET='native';")
         self.assertPageContains("const isNativeGlass=key=>key===GLASS_NATIVE_PRESET;")
@@ -6244,7 +6269,7 @@ class WebUiSourceTests(unittest.TestCase):
                       "border-color:transparent;background:var(--board-blue);", css)
         self.assertIn("accent-color:var(--color-accent-600);", css)
         self.assertIn("#applyUISetting{grid-column:1/-1;width:100%;background:var(--board-blue);", css)
-        for literal in ("#3986ff", "#1760ef", "#0450e2", "#2473fe", "#bfdbfe", "#1e40af"):
+        for literal in ("#3986ff", "#1760ef", "#2473fe", "#bfdbfe", "#1e40af"):
             with self.subTest(literal=literal):
                 self.assertNotIn(literal, css, "这一枚蓝的字面值应当由强调色色阶给")
 
@@ -6954,6 +6979,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu);")
         self.assertPageContains('<div class="popmenu npmenu"')
 
+    def test_an_open_anchored_menu_yields_to_the_settings_panel_and_to_its_neighbours(self):
+        """开着的锚定弹层，点设置或点它那片祖先里别的控件，都要收掉。
+
+        「点到别处就关」不能只按 `mount` 之外算，而 mount 是定位用的那一片祖先：配色弹层
+        给的是侧栏底部那一条，媒体库弹层给的是整个抽屉——设置钮和侧栏里每一枚控件都在
+        里面，于是点它们全算内点，弹层就挂在设置面板旁边不走。mount 缩到触发钮也不行，
+        定位要按它算。判据因此改成「点的是不是这枚菜单自己的东西」。
+        """
+        self.assertPageContains("if(openedMenu.menu.contains(target)"
+                                "||openedMenu.toggle.contains(target))return;")
+        self.assertPageContains("if(openedMenu.mount.contains(target)"
+                                "&&!(target instanceof Element&&target.closest(clickable)))return;")
+        # 触发钮自己那一份要单独放行：它的 click 处理器停的是冒泡，这个监听在捕获阶段，
+        # 停不掉——少这一句的话点开的同一下就被关回去了。
+        self.assertPageContains("openedMenu=next?{mount,menu,toggle,setOpen}")
+        # 设置那一屏盖住整页，进来第一件事就是收掉还开着的那一个。补在这里而不是逐个
+        # 入口上：设置能从侧栏的钮、弹层底部的「详细设置」和快捷键三处进来。
+        self.assertCode("closeAnchoredMenu();\n    settingsRequestedSection=section;")
+
     def test_anchored_menu_fits_the_room_it_has_instead_of_covering_its_toggle(self):
         # 资料页的统称菜单挂在标题上，上方只有一条顶栏的距离、下方也未必够高。
         # 两侧都放不下时压到宽的那一侧、内部滚，不横跨触发钮。
@@ -7113,7 +7157,11 @@ class WebUiSourceTests(unittest.TestCase):
         # test_the_review_categories_look_like_a_secondary_menu。
         self.assertIn(".insightpanel>header h3,.insightcopy>span{margin:0;font:var(--board-heading);color:var(--color-text-primary)}", board)
         self.assertIn("body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}", board)
-        self.assertIn("body .reviewactions button.warning:not(:disabled){background:#bfdbfe;color:#1e40af;border-color:transparent}", board)
+        # 这一枚说的是「这一步是主操作」，和主按钮同一个意思，所以跟着强调色色阶走：
+        # 浅色那档取 200 的底配 800 的字，正对上 Tailwind blue 那两枚的同名级。
+        self.assertIn("body .reviewactions button.warning:not(:disabled){"
+                      "background:var(--color-accent-200);color:var(--color-accent-800);"
+                      "border-color:transparent}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);", board)
         self.assertIn(".stage .vwrap{border-radius:var(--surface-radius) 0 0 0}", board)
         self.assertIn(".stage .vwrap>.gate{height:100%;aspect-ratio:auto;border-radius:inherit}", board)
@@ -9892,17 +9940,24 @@ class WebUiSourceTests(unittest.TestCase):
         要裁住一团飘出去的光就得给玻璃加 `overflow:hidden`，那条带子跟着一起没了。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        # 浓淡写成 `color-mix` 的百分比而不是带 alpha 的色值：色相由用户挑的光晕给，
+        # 这里只说「这块玻璃的反光有多淡」。深色那档默认指回近白。
+        self.assertIn("--glass-native-a:#ffffff;--glass-native-b:#ffffff;", board)
         self.assertIn("--glass-drift-a:radial-gradient(20% 20% at 50% 50%,"
-                      "#ffffff1a,#ffffff0d 42%,transparent 72%)", board)
+                      "color-mix(in srgb,var(--glass-tint-a) 10%,transparent),"
+                      "color-mix(in srgb,var(--glass-tint-a) 5%,transparent) 42%,transparent 72%)", board)
         self.assertIn("--glass-drift-b:radial-gradient(26% 26% at 50% 50%,"
-                      "#ffffff14,#ffffff0a 44%,transparent 74%)", board)
+                      "color-mix(in srgb,var(--glass-tint-b) 8%,transparent),"
+                      "color-mix(in srgb,var(--glass-tint-b) 4%,transparent) 44%,transparent 74%)", board)
+        # 两根钟的时长同乘一个倍率：41:67 的比例不动，轨迹就不会退化成一条往返线。
         self.assertIn("  background:var(--glass-drift-a),var(--glass-drift-b),"
                       "linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),"
                       "var(--glass-fill);\n"
                       "  background-size:200% 200%,200% 200%,auto;"
                       "background-repeat:no-repeat,no-repeat,repeat;\n"
                       "  background-position:50% 20%,80% 70%,0 0;\n"
-                      "  animation:glassdriftx 41s linear infinite,glassdrifty 67s linear infinite;", board)
+                      "  animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,"
+                      "glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;", board)
         # 两团反着走：同一条轨迹上错开半个周期，面上才不是一只手电筒。
         self.assertIn("  25%{background-position-x:-10%,110%,0}", board)
         self.assertIn("  75%{background-position-x:110%,-10%,0}", board)

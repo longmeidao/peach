@@ -802,6 +802,10 @@ let refreshSettingsTabs=null;
 function openSettings(open=true,section=''){
   const panel=$('#settingsPanel');
   if(open){
+    /* 设置这一屏盖住整页，任何还开着的锚定弹层都得先收掉。做在这里而不是逐枚入口上补：
+       设置能从侧栏的设置钮、配色弹层的「详细设置」和快捷键三处进来，往每一处补一句
+       的话，下一个入口照样会漏。 */
+    closeAnchoredMenu();
     settingsRequestedSection=section;
     settingsTransition++;panel.classList.remove('closing');
     settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;
