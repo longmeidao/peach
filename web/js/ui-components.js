@@ -22,6 +22,105 @@ export function collectionHeaderHtml({readout='',controls='',before='',className
   return `<div class="entitycollectionhead${className?' '+esc(className):''}"${filterRow?` data-filter-row="${esc(filterRow)}"`:''}>${before}<h3${loading?' class="skeleton"':''}>${readout}</h3>${controls}</div>`;
 }
 
+/* ── 原地换态的一组辅助 ──
+   形状和 CSS 在 `web/css/25-motion.css`，那里也写着每一条的来源与取值。这一层只负责
+   「什么时候换」：动画本身一律交给 CSS，JS 不读也不写具体的毫秒数。 */
+
+/**
+ * 两枚字形叠在一格里，换态只改容器上的 `data-icon-state`。
+ *
+ * 直接 `innerHTML=icon(...)` 的地方都可以换成它：重写 innerHTML 会把旧字形连同它正在
+ * 走的动画一起丢掉，新字形也没有起点可走，读出来是一次硬切。
+ */
+export function iconSwapHtml(a,b,state='a',{className='',iconClass='',label=''}={}){
+  return `<span class="iconswap${className?' '+esc(className):''}" data-icon-swap data-icon-state="${state==='b'?'b':'a'}"${
+    label?` aria-label="${esc(label)}"`:''}><span data-icon="a">${icon(a,iconClass)}</span><span data-icon="b">${icon(b,iconClass)}</span></span>`;
+}
+/** 把 `iconSwapHtml` 画出来的那一枚切到 a 或 b；`root` 可以是它本身或它的祖先。 */
+export function setIconSwap(root,state){
+  const el=root&&(root.matches?.('[data-icon-swap]')?root:root.querySelector?.('[data-icon-swap]'));
+  if(el)el.dataset.iconState=state==='b'||state===true?'b':'a';
+  return el;
+}
+
+/**
+ * 一行字换成另一行字：旧字往上糊掉，新字从下方回到原位。
+ *
+ * 值没变就什么也不做——同一次重绘里把同样的字再写一遍是常态，跟着抖一下会让页面看起来
+ * 一直在变。首次写入（这一格还空着）也不放动画：那是内容第一次出现，归骨架那一段。
+ */
+export function swapText(el,text,{html=false}={}){
+  if(!el)return;
+  const next=String(text??''),write=()=>{if(html)el.innerHTML=next;else el.textContent=next};
+  const previous=el.dataset.swapText;
+  if(previous===next&&(el.textContent||'').length)return;
+  el.dataset.swapText=next;
+  el.classList.add('textswap');
+  if(previous===undefined||previous===next){write();return}
+  el.classList.remove('entering');
+  el.classList.add('leaving');
+  const enter=()=>{
+    el.classList.remove('leaving');
+    write();
+    el.classList.add('entering');
+    el.getBoundingClientRect();
+    el.classList.remove('entering');
+  };
+  const done=event=>{if(event.target!==el)return;el.removeEventListener('transitionend',done);enter()};
+  el.addEventListener('transitionend',done);
+  /* 兜底：`--motion-swap` 归零或元素此刻不可见时 `transitionend` 不会来，
+     不兜的话这一行就永远停在透明。 */
+  setTimeout(()=>{if(el.classList.contains('leaving')){el.removeEventListener('transitionend',done);enter()}},400);
+}
+
+/**
+ * 读数按位错峰长出来。把 `text` 拆成一个个字符，数字各占一档延迟，分隔符跟着前一档。
+ *
+ * 和 `swapText` 一样只在值真变时触发，首次写入不放动画。
+ */
+export function popCount(el,text){
+  if(!el)return;
+  const next=String(text??''),previous=el.dataset.popCount;
+  if(previous===next&&el.firstElementChild)return;
+  el.dataset.popCount=next;
+  let at=-1;
+  el.innerHTML=`<span class="digits">${[...next].map(ch=>{
+    if(/\d/.test(ch))at+=1;
+    return `<span style="--digit-at:${Math.max(at,0)}">${esc(ch)}</span>`;
+  }).join('')}</span>`;
+  /* 上一个值没登记过（这一格第一次出现）或压根没变，就只把字写上去。调用点整块重绘时
+     把上一次的读数写回 `dataset.popCount` 再调，这一格才知道自己是换了值还是刚建出来。 */
+  if(previous===undefined||previous===next)return;
+  const group=el.firstElementChild;
+  group.getBoundingClientRect();
+  group.classList.add('popping');
+}
+
+/**
+ * 占位换成真内容：旧的那一屏抬成盖在容器上的一层淡出，新内容同时从模糊里清晰起来。
+ *
+ * `write()` 负责把新内容写进 `container`。容器里没有骨架时直接写，不套这一层——
+ * 翻页、筛选这类「内容换内容」不属于这条动效，套上去每换一次筛选整页都糊一下。
+ */
+export function revealSkeleton(container,write){
+  if(!container)return;
+  const hasSkeleton=container.querySelector('.skeleton,[data-skeleton],.skeletoncard,.countskeleton');
+  if(!hasSkeleton||!container.firstChild){write();return}
+  const fade=document.createElement('div');
+  fade.className='skelfade';
+  fade.setAttribute('aria-hidden','true');
+  while(container.firstChild)fade.append(container.firstChild);
+  write();
+  container.classList.add('skelreveal');
+  container.prepend(fade);
+  container.getBoundingClientRect();
+  container.classList.add('revealing');
+  const drop=()=>{fade.remove();container.classList.remove('skelreveal','revealing')};
+  const done=event=>{if(event.target!==fade)return;fade.removeEventListener('transitionend',done);drop()};
+  fade.addEventListener('transitionend',done);
+  setTimeout(()=>{if(fade.isConnected){fade.removeEventListener('transitionend',done);drop()}},1000);
+}
+
 const horizontalControls=new Map();
 let horizontalCleanup;
 /** 同一容器只绑定一次，滚到边缘后将滚轮交还页面。 */

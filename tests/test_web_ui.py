@@ -83,7 +83,7 @@ class StylesheetPartitionTests(unittest.TestCase):
         "13-stage.css", "14-player.css", "15-detail.css", "16-settings.css",
         "17-overlay.css", "18-drawer.css", "19-immersive.css", "20-offdisk.css",
         "21-online.css", "22-followmanage.css", "23-configuration.css",
-        "24-miniplayer.css",
+        "24-miniplayer.css", "25-motion.css",
     )
 
     @classmethod
@@ -1822,8 +1822,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
         self.assertCode("""if($('#indexFilters')){
     $('#indexFilters').innerHTML=filters;
-    if(people)$('#indexCount').textContent=countText;
-    $('#indexBody').innerHTML=body;
+    if(people)popCount($('#indexCount'),countText);
+    revealSkeleton($('#indexBody'),()=>{$('#indexBody').innerHTML=body});
     $('#indexMore').hidden=!d.has_more;
   }else""")
         # 分类筛选自己有容器，才能不动表头单独换掉。
@@ -3007,7 +3007,9 @@ class WebUiSourceTests(unittest.TestCase):
             "count.innerHTML=state&&state.state==='trash'?''\n"
             "    :`<span class=\"mono\"><span class=\"countskeleton\"></span></span>`+countSortsHtml();\n"
             "  wireCountRow();")
-        self.assertPageContains("    +(trash?'':countSortsHtml());\n  wireCountRow();")
+        self.assertPageContains("    +(trash?'':countSortsHtml());")
+        # 读数那一格换值时按位错峰长出来，接事件仍在同一次重画的末尾。
+        self.assertPageContains("    popCount(readout,lastCountReadout);\n  }\n  wireCountRow();")
         self.assertPageLacks("count.textContent=''",
                              "加载态不能清空整行，筛选条要留在原位")
         # 数据到位后摘掉忙碌标记，屏幕阅读器不再把这一行当成还在读取。
@@ -9220,7 +9222,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-filter-frame .tagcategories .pill{border:1px solid var(--glass-low);background:transparent}", board)
         # 标签页的读数只住在浮层里，页头不再重复一遍。
         self.assertPageContains("${people?`<span class=\"mono\" id=\"indexCount\">${countText}</span>`:''}")
-        self.assertCode("    if(people)$('#indexCount').textContent=countText;")
+        self.assertCode("    if(people)popCount($('#indexCount'),countText);")
 
     def test_the_alphabet_is_one_card_per_letter_with_a_jump_row(self):
         """每个首字一张卡：字头是卡的标题，右边挂计数徽标；一行一枚标签、36px 高、8px
@@ -9324,8 +9326,9 @@ class WebUiSourceTests(unittest.TestCase):
                 # 检查死链找的是断掉的那条链。
                 'id="linkCheck">${icon(\'unlink\')}<span>检查死链</span>',
                 # 资源同步比的是盘上和账本的差异；跑过一轮之后那一枚才是「再跑一遍」。
-                'id="resourceScan">${icon(\'git-compare\')}<span>检查文件</span>',
-                "scan.innerHTML=`${icon(done?'rotate-cw':'git-compare')}",
+                'id="resourceScan">${iconSwapHtml(\'git-compare\',\'rotate-cw\')}'
+                '<span data-scan-label>检查文件</span>',
+                "setIconSwap(scan,done?'b':'a');",
                 # 同步删除把这个目录在盘上和账本里对齐。
                 'aria-label="同步删除">${icon(\'folder-sync\')}',
                 # 沉浸模式是一叠竖着翻的卡，保存为播放列表存的是一份列表。
@@ -9681,8 +9684,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) "
                       "var(--spring-press),box-shadow .15s}", board)
         self.assertIn(":active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}", board)
-        # 关掉动效时两档弹簧一起归零，剩下的是瞬时到位。
-        self.assertIn("--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0}", board)
+        # 关掉动效时两档弹簧一起归零，剩下的是瞬时到位；原地换态那三档也在同一条里。
+        self.assertIn("--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;"
+                      "--spring-press-ms:0;--motion-swap:0s;--motion-reveal:0s;"
+                      "--motion-stagger:0ms}", board)
 
     def test_the_theme_sweep_masks_with_a_gradient_instead_of_a_filtered_svg(self):
         """明暗切换那圈扩散用一段 CSS 渐变当遮罩，柔边靠色标位置给。
@@ -10016,7 +10021,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".toast{position:relative;align-items:center;", board)
         self.assertIn(".board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}", board)
         self.assertIn(".toast p{margin:0}", board)
-        self.assertPageContains("""<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>""")
+        self.assertPageContains("""<span class="board-notification-icon${alert?'':' checkdraw'}" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>""")
 
     def test_the_shorts_band_is_told_apart_by_its_fill_not_a_line(self):
         """竖屏带靠底色和网格区分，不描一圈线。
@@ -11046,7 +11051,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="settingrow settingrelated"')
         self.assertPageContains('.settingrow.settingrelated{border-top:0}')
         self.assertPageContains("['rating','评分']")
-        self.assertPageContains("icon(ascending?'arrow-up':'arrow-down','gselectmark')")
+        self.assertPageContains("iconSwapHtml('arrow-up','arrow-down','a',")
+        self.assertPageContains("setIconSwap(mark,ascending?'a':'b')")
         self.assertPageContains('class="settingsortcontrols"')
         self.assertPageContains("field.disabled=appSettings.defaultSort==='seed'")
         self.assertPageContains("['hoverDelaySetting','悬停放大',[['0','关闭']")
@@ -12150,6 +12156,126 @@ class BoardStyleIsolationTests(unittest.TestCase):
         self.assertTrue(any('.settingshead button' in selector for selector in centering))
         self.assertFalse(any('.ib,' in selector or '.sidebaraddmenu button' in selector
                              for selector in centering))
+
+
+class MotionRecipeTests(unittest.TestCase):
+    """原地换态的那一组动效：时长与缓动只读 token，形态只动合成属性。
+
+    判据全部落在源码上，因为这几条要守的就是「没有写死的毫秒数」和「没有碰布局属性」
+    这两件事——浏览器里看得到的是动了没有，看不到的是它凭什么这样动。
+
+    不继承 `WebUiSourceTests`：继承会把它那几百条用例连同这一组再跑一遍，失败也会
+    挂到这个类名下。自己读要看的那几份源码即可。
+    """
+
+    #: 这一组新增的动效类，每一条都必须只从 token 取时长。
+    MOTION_TOKENS = ("--motion-swap", "--motion-reveal", "--motion-stagger")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = Path(__file__).resolve().parents[1]
+        web = cls.root / "web"
+        cls.css = stylesheet_source()
+        cls.page = chr(10).join(path.read_text(encoding="utf-8") for path in (
+            [web / "index.html", *sorted((web / "css").glob("*.css")), web / "app.js",
+             *sorted((web / "js").glob("*.js"))]))
+
+    def assertPageContains(self, needle: str, message: str = ""):
+        if needle not in self.page:
+            self.fail(f"Web 表面缺少：{needle!r}" + (f"（{message}）" if message else ""))
+
+    def test_reduced_motion_zeroes_every_motion_token(self):
+        """新加的三档时长跟原有的一样，由那一条全局规则一次关掉，不逐处补。
+
+        `--motion-stagger` 尤其不能漏：时长归零而错峰延迟还在的话，`both` 会把后面
+        几位数字按住不显示，读数看上去缺了几位。
+        """
+        # 三档 token 和原有的那几档住在同一处（board.css 的 `:root`），关掉它们的也是
+        # 同一条规则；`stylesheet_source()` 只拼 `web/css/`，board.css 要单独读。
+        board = (Path(__file__).resolve().parents[1]
+                 / "web/board.css").read_text(encoding="utf-8")
+        # board.css 里不止一条 reduced motion 规则，token 那一条认 `--board-motion:0s`。
+        start = board.index("--board-motion:0s")
+        reduced = board[start:board.index("}", start)]
+        for token in self.MOTION_TOKENS:
+            with self.subTest(token=token):
+                self.assertIn(f"{token}:0", reduced, f"{token} 要在 reduced motion 下归零")
+
+    def test_motion_recipes_only_animate_compositor_properties(self):
+        """这几条都长在读数、按钮和整页占位上，一次重排就是一整棵子树。"""
+        motion = (Path(__file__).resolve().parents[1]
+                  / "web/css/25-motion.css").read_text(encoding="utf-8")
+        allowed = {"opacity", "filter", "transform", "translate", "stroke-dashoffset"}
+        frames = re.findall(r"@keyframes\s+[\w-]+\{(.*?)\}\s*\}", motion, re.S)
+        self.assertTrue(frames, "这份分区里应当有关键帧")
+        for body in frames:
+            for prop in re.findall(r"([a-z-]+)\s*:", body):
+                with self.subTest(prop=prop):
+                    self.assertIn(prop, allowed, f"关键帧里不许动 {prop}")
+        for declaration in re.findall(r"transition:([^;}]+)", motion):
+            for prop in re.findall(r"\b([a-z-]+)\s+var\(", declaration):
+                with self.subTest(prop=prop):
+                    self.assertIn(prop, allowed, f"过渡里不许动 {prop}")
+
+    def test_icon_swap_stacks_both_glyphs_in_one_cell(self):
+        """换字形不重写 innerHTML：重写会把旧字形连同它的动画一起丢掉，读出来是硬切。"""
+        self.assertPageContains('.iconswap{display:inline-grid')
+        self.assertPageContains('.iconswap>[data-icon]{grid-area:1/1')
+        # 退场那一枚还占着同一个格子，不收指针的话按钮上有两个可点区域。
+        self.assertPageContains("transform:scale(.25);\n  pointer-events:none")
+        self.assertPageContains("export function iconSwapHtml(a,b,state='a'")
+        self.assertPageContains("export function setIconSwap(root,state)")
+
+    def test_number_and_text_swaps_only_fire_when_the_value_really_changed(self):
+        """首屏那一次不放动画，值没变也不放：同一次重绘里把同样的字再写一遍是常态。"""
+        self.assertPageContains("if(previous===undefined||previous===next)return;")
+        self.assertPageContains("if(previous===undefined||previous===next){write();return}")
+        # 整行重画时读数那一格跟着重建，靠上一次的值判断自己是刚出现还是换了数。
+        self.assertPageContains("if(lastCountReadout)readout.dataset.popCount=lastCountReadout;")
+        self.assertPageContains("animation-delay:calc(var(--motion-stagger) * var(--digit-at,0))")
+
+    def test_skeleton_hands_over_to_content_with_a_cross_fade(self):
+        """骨架淡出糊掉、内容同时清晰起来；内容换内容不走这条。"""
+        self.assertPageContains("const hasSkeleton=container.querySelector("
+                                "'.skeleton,[data-skeleton],.skeletoncard,.countskeleton');")
+        self.assertPageContains("if(!hasSkeleton||!container.firstChild){write();return}")
+        # 终点帧是内容本来的样子；留着它只多留下一个 filter，那会另起一个 backdrop root。
+        self.assertPageContains(
+            ".skelreveal>:not(.skelfade){animation:skel-reveal-in var(--motion-reveal) backwards}")
+
+    def test_toggle_thumb_rides_the_shared_press_spring(self):
+        """手柄那一下的两跳来自 `--spring-press` 本身，不另写一组带 55%／80% 停的关键帧。
+
+        写成 transition 而不是 animation：animation 一挂上去，进设置页时已经是开态的
+        那十几枚开关会当场各弹一次。
+        """
+        board = (Path(__file__).resolve().parents[1]
+                 / "web/board.css").read_text(encoding="utf-8")
+        for pseudo in (".ptoggle::after{", ".ptoggle::before{"):
+            start = board.index(pseudo)
+            rule = board[start:board.index("}", start)]
+            with self.subTest(rule=pseudo):
+                self.assertIn("transition:transform calc(var(--spring-press-ms)*1ms) "
+                              "var(--spring-press)", rule)
+                self.assertNotIn("transition:transform .2s", rule)
+
+    def test_success_check_draws_itself_and_failure_does_not(self):
+        """成功那一枚勾自己画出来；失败那一枚不画——错误要的是立刻看清。"""
+        self.assertPageContains(
+            'class="board-notification-icon${alert?\'\':\' checkdraw\'}"')
+        self.assertPageContains("@keyframes check-draw{from{stroke-dashoffset:24}"
+                                "to{stroke-dashoffset:0}}")
+        # 荡那一下走按压弹簧，其余三条走站内那条通用缓动，都不是手写的毫秒数。
+        self.assertPageContains("check-bob calc(var(--spring-press-ms)*1ms) var(--spring-press)")
+
+    def test_error_shake_rides_on_the_existing_red_border(self):
+        """抖动叠在已经有的红边上：不新增红字，也不改边框色。"""
+        self.assertPageContains(':is(input,textarea,select)[aria-invalid="true"],\n'
+                                '.board-number-control:has([aria-invalid="true"])'
+                                '{animation:field-shake var(--board-motion)}')
+        shake = self.css.split("@keyframes field-shake{", 1)[1].split("}}", 1)[0]
+        self.assertNotIn("color", shake, "抖动只走 transform，颜色归原有的错误样式")
+        self.assertNotIn("border", shake, "抖动只走 transform，边框归原有的错误样式")
 
 
 if __name__ == "__main__":

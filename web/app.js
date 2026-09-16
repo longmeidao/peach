@@ -18,7 +18,8 @@ import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSu
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
-  fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
+  fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
+  popCount, revealSkeleton, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
@@ -257,7 +258,9 @@ const lastGridSection=()=>{
   const grid=$('#grid'),last=grid.lastElementChild;
   if(last&&last.classList.contains('grid'))return last;
   const section=document.createElement('div');section.className='grid';grid.append(section);return section};
-const setGridCards=html=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`};
+/* 占位换成真内容时走交叉淡入：骨架淡出糊掉、内容同时清晰起来。骨架换骨架、内容换
+   内容（翻页、换筛选）不走这条——`revealSkeleton` 自己看出去的那一屏里有没有占位。 */
+const setGridCards=html=>revealSkeleton($('#grid'),()=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`});
 const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
 const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');
 function renderCatalogLoading(label='正在读取作品'){
@@ -312,6 +315,8 @@ const MANAGEMENT_PLACEHOLDERS={
 const managementPlaceholder=path=>
   boardPageSkeleton(path,{followLayout:followListLayout()})||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
+/* 详情浮窗的正文：骨架换成真内容时交叉淡入，内容换内容（在队列里跳下一条）直接换。 */
+const paintStage=html=>revealSkeleton($('#stage'),()=>{$('#stage').innerHTML=html});
 function showDetailLoading(){
   const stage=$('#stage');
   if(!stage.querySelector('[data-skeleton="detail"]'))stage.innerHTML=detailSkeletonHtml();
@@ -770,7 +775,14 @@ function syncSortDirectionSetting(){
   if(field){
     field.disabled=appSettings.defaultSort==='seed';
     const ascending=appSettings.defaultSortDirection==='asc';
-    field.querySelector('[data-select-label]').innerHTML=`${icon(ascending?'arrow-up':'arrow-down','gselectmark')}${ascending?'升序':'降序'}`;
+    /* 两枚箭头叠在同一格里，换的只是方向这一件事。`innerHTML` 重写会把旧字形连同它的
+       动画一起丢掉，读出来是一次硬切，所以只在这一格还没建起来时写一次。 */
+    const mark=field.querySelector('[data-select-label]');
+    if(!mark.querySelector('[data-icon-swap]'))
+      mark.innerHTML=iconSwapHtml('arrow-up','arrow-down','a',
+        {className:'gselectmark',iconClass:'gselectmark'})+'<span data-sort-direction-label></span>';
+    setIconSwap(mark,ascending?'a':'b');
+    mark.querySelector('[data-sort-direction-label]').textContent=ascending?'升序':'降序';
   }
   const help=$('#sortDirectionHelp');
   if(help)help.textContent=appSettings.defaultSort==='seed'?'随机排序不使用方向。':'打开首页时使用的排序与方向。';
@@ -991,7 +1003,10 @@ const toast=(message,{timeout=6000,warn=false,action=null,sound=null}={})=>{
     item.classList.toggle('warn',!!alert);
     item.setAttribute('role',alert?'alert':'status');
     playUiSound(sound||(alert?'error':'success'));
-    item.innerHTML=`<span class="board-notification-icon" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span><p>${body}</p>${
+    /* 成功那一枚勾自己画出来：从下方荡上来、转正、从模糊里清晰，笔画随后走完。
+       保存配置、复核判定这些写操作的回执全走这一条，确认反馈只此一处。
+       失败那一枚不画——错误要的是立刻看清，不是等一段动画。 */
+    item.innerHTML=`<span class="board-notification-icon${alert?'':' checkdraw'}" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span><p>${body}</p>${
       action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
       }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
     item.querySelector('.tclose').onclick=close;
@@ -1395,7 +1410,11 @@ function syncMiniplayerPlayState(){
   if(!player||player.isDisposed()||!button)return;
   const paused=player.paused();
   button.setAttribute('aria-label',paused?'播放':'暂停');
-  button.querySelector('use')?.setAttribute('href',paused?'#i-player-play':'#i-player-pause');
+  /* 主播放器那一枚走的是 path 形变（`morphIcon`），迷你条上这一枚只有 20px，形变看不
+     出来，走两枚字形叠着换。换的只是容器状态，不改 `use` 的 href——改 href 是硬切。 */
+  if(!button.querySelector('[data-icon-swap]'))
+    button.innerHTML=iconSwapHtml('player-pause','player-play',paused?'b':'a');
+  setIconSwap(button,paused?'b':'a');
 }
 function syncMiniplayerTime(){
   const player=miniplayerState.player,out=$('#miniplayerTime');
@@ -4172,6 +4191,8 @@ async function buildBars(){
     if(expanded)group.querySelector('.board-section-toggle').click();
     bind();hold();requestAnimationFrame(hold);});
 }
+/* 上一次画出来的读数。整行重画时读数那一格跟着重建，靠它判断这次是换了值还是刚出现。 */
+let lastCountReadout='';
 /* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
 function renderCount(){
   const n=gridCards().length;   // 竖屏带里的 .scard 不计入「显示 N」
@@ -4183,9 +4204,18 @@ function renderCount(){
   $('#count').classList.toggle('count-actions-only',trash);
   $('#count').removeAttribute('aria-busy');$('#count').removeAttribute('aria-label');
   $('#count').innerHTML=
-    (trash?'':`<span class="mono">${total.toLocaleString()} 个符合 · 显示 ${n}</span>`)
+    (trash?'':`<span class="mono" data-count-readout></span>`)
     // 回收站是待清理队列，不是浏览列表：换一批和排序在这里没有意义。
     +(trash?'':countSortsHtml());
+  /* 这一行每次筛选都整块重画，读数那一格因此是新建出来的，自己不知道上一次是多少。
+     把上一次的值写回去它才分得清「刚建出来」和「换了个数」——只有后者按位错峰长出来，
+     首屏那一次不放动画。 */
+  const readout=$('#count [data-count-readout]');
+  if(readout&&!trash){
+    if(lastCountReadout)readout.dataset.popCount=lastCountReadout;
+    lastCountReadout=`${total.toLocaleString()} 个符合 · 显示 ${n}`;
+    popCount(readout,lastCountReadout);
+  }
   wireCountRow();
   const emptyTrash=$('#emptyTrash');
   if(emptyTrash)emptyTrash.onclick=async(e)=>{
@@ -4449,7 +4479,7 @@ function resourceSyncMarkup(){
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录核对')}
       <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction primary" type="button" id="resourceScan">${icon('git-compare')}<span>检查文件</span></button></div></div>
+      <button class="resourceaction primary" type="button" id="resourceScan">${iconSwapHtml('git-compare','rotate-cw')}<span data-scan-label>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
 }
 async function wireResourceSync(){
@@ -4458,7 +4488,10 @@ async function wireResourceSync(){
   const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
   const setBusy=(busy,done=false)=>{
     setActionBusy(scan,busy);
-    scan.innerHTML=`${icon(done?'rotate-cw':'git-compare')}<span>${busy?'扫描中':done?'重新扫描':'检查文件'}</span>`;
+    /* 这枚键上的字形要从「比对」换成「再来一次」，只改状态不重写 innerHTML：
+       `git-compare` 自己带一套逐笔描画，重写一次就把它连同正在走的笔画一起丢掉。 */
+    setIconSwap(scan,done?'b':'a');
+    swapText(scan.querySelector('[data-scan-label]'),busy?'扫描中':done?'重新扫描':'检查文件');
   };
   const render=payload=>{
     const cache=payload.cache||{files:0,bytes:0};
@@ -5397,7 +5430,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="followhiddenthumbs">${item.hidden_media.map(media=>`<button data-follow-media-restore="${media.index}" title="恢复显示 ${esc(media.name||'')}" aria-label="恢复显示 ${esc(media.name||'')}">${media.thumb_url?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`:icon('image-off')}<i>${icon('rotate-ccw')}</i></button>`).join('')}</div></div>`:'';
   placeItemDetail(detailOriginAnchor,detailOriginAbove);
   $('#stage').hidden=false;document.body.classList.add('detail-open');
-  $('#stage').innerHTML=`<div class="stagescroll"><div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
+  paintStage(`<div class="stagescroll"><div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}${frameRatio?' framed':''}"${frameRatio?` style="--follow-frame-ratio:${frameRatio.toFixed(4)}"`:''}>${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
@@ -5421,7 +5454,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       ${hiddenStrip}
       <span class="fstate" aria-live="polite"></span>
       ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
-    </div></div></div></div>`;
+    </div></div></div></div>`);
   $('#stage').classList.toggle('ambient-on',selectedKind==='video'&&appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',selectedKind==='video'&&appSettings.theaterMode);
   /* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会
@@ -6645,8 +6678,8 @@ async function openIndex(kind,q,push=true,refine=false){
      住在浮层里，跟着浮层一起重画。 */
   if($('#indexFilters')){
     $('#indexFilters').innerHTML=filters;
-    if(people)$('#indexCount').textContent=countText;
-    $('#indexBody').innerHTML=body;
+    if(people)popCount($('#indexCount'),countText);
+    revealSkeleton($('#indexBody'),()=>{$('#indexBody').innerHTML=body});
     $('#indexMore').hidden=!d.has_more;
   }else $('#index').innerHTML=indexHeaderHtml(kind,q,countText)+`<div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
   // 外壳记号跟着内容走：下一次换档时靠它判断页头和浮层还在不在，值不对就整块重画。
@@ -7892,8 +7925,15 @@ function paintManageLede(text='',actionsHtml=''){
   const el=$('#manageLede');if(!el)return;
   el.hidden=!text&&!actionsHtml;
   el.classList.toggle('pagelede-actions',!!actionsHtml);
-  el.innerHTML='';
-  if(text)el.appendChild(Object.assign(document.createElement('span'),{textContent:text}));
+  /* 说明行的文字那一格留在原地：它每次重画说的都是同一件事的新读数，整格重建就没有
+     起点可走，换态只好硬切。右端的动作仍整块重写——它换的是有没有这个按钮。 */
+  const keep=el.querySelector('[data-lede-text]');
+  el.querySelectorAll(':scope>:not([data-lede-text])').forEach(node=>node.remove());
+  if(text){
+    const slot=keep||el.appendChild(Object.assign(document.createElement('span'),{}));
+    slot.setAttribute('data-lede-text','');
+    swapText(slot,text);
+  }else if(keep)keep.remove();
   if(actionsHtml)el.insertAdjacentHTML('beforeend',actionsHtml);
 }
 function paintListTitle(){
@@ -8652,7 +8692,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   /* 浮窗里的内容统一装在 `.stagescroll` 里：窄屏下滚的是它，全站那条覆盖式滚动条才有
      地方挂（轨道得是滚动容器的兄弟，而 `<dialog>` 在顶层，轨道挂到它父级上会落进遮罩
      底下）。「接着看」是 `.sgrid` 的兄弟，也得一起装进来，否则它会被裁在浮窗外面。 */
-  $('#stage').innerHTML=`<div class="stagescroll"><div class="sgrid ${queueContext?'mixgrid':''}">
+  paintStage(`<div class="stagescroll"><div class="sgrid ${queueContext?'mixgrid':''}">
     <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
        ${playerStatsOverlayHtml()}
       ${offline?`<div class="gate offline" id="offlineGate" role="status">
@@ -8709,7 +8749,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
     </div></div></div>
     ${queueContext||!(appSettings.relatedLimit>0)?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">${
-      pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}</div>`;
+      pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}</div>`);
   $('#stage').classList.toggle('ambient-on',appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',appSettings.theaterMode);
 

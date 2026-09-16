@@ -1,0 +1,88 @@
+/* 原地换态的一组动效：字形换字形、读数换读数、占位换内容、成功与失败的那一下。
+
+   共同的形态取自 transitions.dev 的免费配方（逐条的来源 URL、它那边的时长／模糊／
+   缩放取值和 Peach 落成的值记在 docs/reference-snapshots/transitions-dev-measured.md）。
+   借的是形态和参数，类名与 token 都是 Peach 自己的：时长与缓动一律读 board.css 的
+   `--motion-swap`／`--motion-reveal`／`--board-motion`／`--spring-*`，所以
+   `prefers-reduced-motion` 由那一份全局规则一次关掉，这里不再逐处补。
+
+   只动 opacity／transform／filter／stroke-dashoffset，不动 width、height、left 这类
+   会触发重排的属性——这几条都长在读数、按钮和整页占位上，一次重排就是一整棵子树。 */
+
+/* ── 字形换字形 ──
+   两枚字形叠在同一个 grid 格里，换的只是容器上的 `data-icon-state`：innerHTML 重写会
+   把旧字形连同它的动画一起丢掉，看上去就是硬切。退场那一枚缩到 .25 并糊掉，
+   进场那一枚从同样的位置长回原大小。 */
+.iconswap{display:inline-grid;place-items:center;line-height:1;flex:none}
+.iconswap>[data-icon]{grid-area:1/1;display:grid;place-items:center;
+  transition:opacity var(--motion-swap),filter var(--motion-swap),transform var(--motion-swap)}
+.iconswap[data-icon-state="a"]>[data-icon="a"],
+.iconswap[data-icon-state="b"]>[data-icon="b"]{opacity:1;filter:blur(0);transform:scale(1)}
+/* 退场那一枚要收掉指针和读屏：它还占着同一个格子，不收的话按钮上有两个可点区域，
+   读屏也会把两枚字形的名称连着念出来。 */
+.iconswap[data-icon-state="a"]>[data-icon="b"],
+.iconswap[data-icon-state="b"]>[data-icon="a"]{opacity:0;filter:blur(2px);transform:scale(.25);
+  pointer-events:none}
+
+/* ── 一行字换成另一行字 ──
+   退场往上走 4px 并糊掉，新字从下方 4px 处回到原位。`.entering` 那一帧不带过渡，
+   它只是把新字瞬间摆到起点，下一帧摘掉类名才开始走。 */
+.textswap{display:inline-block;transition:opacity var(--motion-swap),
+  filter var(--motion-swap),transform var(--motion-swap)}
+.textswap.leaving{opacity:0;filter:blur(2px);transform:translateY(-4px)}
+.textswap.entering{opacity:0;filter:blur(2px);transform:translateY(4px);transition:none}
+
+/* ── 读数按位错峰 ──
+   每一位从下方 8px 处带模糊长上来，相邻两位差一个 `--motion-stagger`。缓动那条超出
+   1 的控制点是数字自己要的：读数落位时轻轻过一点再收住，才读成「跳到了新值」而不是
+   「被推到了新值」。分隔符（千分位逗号、间隔点）跟着相邻那一位走，不单独占一档。 */
+@keyframes digit-pop-in{
+  from{opacity:0;filter:blur(2px);transform:translateY(8px)}
+  to{opacity:1;filter:blur(0);transform:none}}
+.digits{display:inline-flex;align-items:baseline}
+.digits>span{display:inline-block;white-space:pre}
+.digits.popping>span{animation:digit-pop-in var(--motion-swap) cubic-bezier(.34,1.45,.64,1) both;
+  animation-delay:calc(var(--motion-stagger) * var(--digit-at,0))}
+
+/* ── 占位换成真内容 ──
+   骨架和内容在同一段时间里交叉：骨架淡出并糊掉，内容从模糊里清晰起来。两层必须叠在
+   同一处坐标，所以换的那一刻把旧的整块抬成绝对定位的一层盖在容器上，动画走完再摘掉；
+   容器本身的高度全程由新内容决定，不留一段空白，也不让下面的东西跳两次。 */
+/* `<dialog>` 自己已经是 fixed，它就是淡出层的包含块；再给它一条 relative 会把浮窗从
+   视口定位打回文档流里，整块详情会掉到页面底下。 */
+.skelreveal:not(dialog){position:relative}
+.skelreveal>.skelfade{position:absolute;inset:0;z-index:2;overflow:hidden;pointer-events:none;
+  opacity:1;filter:blur(0);transition:opacity var(--motion-reveal),filter var(--motion-reveal)}
+.skelreveal.revealing>.skelfade{opacity:0;filter:blur(2px)}
+/* 用 `backwards` 不用 `both`：终点帧是内容本来的样子，留着它只多留下一个
+   `filter:blur(0)`，而非 none 的 filter 会另起一个 backdrop root，内容里任何
+   backdrop-filter 从此只采样得到它自己。 */
+.skelreveal>:not(.skelfade){animation:skel-reveal-in var(--motion-reveal) backwards}
+@keyframes skel-reveal-in{from{opacity:0;filter:blur(2px)}to{opacity:1;filter:blur(0)}}
+
+/* ── 成功的那一下 ──
+   勾从下方荡上来的同时转正、从模糊里清晰起来，笔画随后画出。荡那一下走
+   `--spring-press`：它冲过落点再收回来，正是一个「落定」的手感；其余三条走站内那条
+   通用缓动。笔画长度 24 是这枚字形的整条折线，dasharray 与 dashoffset 都是继承属性，
+   写在外层 svg 上就能穿过 `<use>` 落到里面那条 path。 */
+@keyframes check-settle{from{opacity:0;transform:rotate(80deg);filter:blur(10px)}
+  to{opacity:1;transform:rotate(0);filter:blur(0)}}
+@keyframes check-bob{from{translate:0 14px}to{translate:0 0}}
+@keyframes check-draw{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
+.checkdraw>svg{stroke-dasharray:24;
+  animation:check-settle var(--board-motion) backwards,
+    check-bob calc(var(--spring-press-ms)*1ms) var(--spring-press) backwards,
+    check-draw var(--board-motion) var(--motion-stagger) backwards}
+
+/* ── 失败的那一下 ──
+   已经有红边表达「这一格不对」，抖动只是把视线拉过去，所以不另加红字、不改边框色，
+   只在原位左右各走一趟再回中。走的是站内那条通用时长与缓动，reduced motion 下归零。
+   `[aria-invalid]` 一挂上就开始走，是纯 CSS 的触发；同一次提交里同一格再报同一个错，
+   属性没变过，这一下就不重放——判据是「这一格刚变成不对」，不是「又提交了一次」。 */
+@keyframes field-shake{0%{transform:translateX(0)}
+  28.57%{transform:translateX(6px)}
+  57.14%{transform:translateX(-6px)}
+  78.57%{transform:translateX(4px)}
+  100%{transform:translateX(0)}}
+:is(input,textarea,select)[aria-invalid="true"],
+.board-number-control:has([aria-invalid="true"]){animation:field-shake var(--board-motion)}
