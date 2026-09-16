@@ -675,6 +675,97 @@ export function wireIconSwitch(root,attr,apply){
   });
 }
 
+/* 自绘单值拉条。原生 `input[type=range]` 的轨道、抓手和刻度分散在三套带厂商前缀的伪
+   元素里，拿不到当前值也接不上悬停才显形的刻度；换成一个 `role="slider"` 的容器之后，
+   几何、状态和键盘全在一处。形状取自 feralui.dev/gradients 的 `.dial-slider`，实测记在
+   `docs/reference-snapshots/feralui-studio-boardui-accent-measured.md`：30px 高、20px 轨道、
+   每 10% 一根刻度、3×20px 的圆头抓手，刻度与抓手默认透明，悬停或拖动时才出现。
+   颜色一律由 `--ink` 经 color-mix 得到，焦点环仍走站内的 `--tungsten`。
+   当前位置写成 `--dial-at` 交给 CSS：填充宽度和抓手位置是同一个数，分两处写就会错开。 */
+const DIAL_TICKS=9;
+export function dialSliderHtml({value=0,min=0,max=100,step=1,label='',suffix='%',attr='',className=''}={}){
+  const at=max>min?(value-min)/(max-min)*100:0;
+  const text=`${value}${suffix}`;
+  return `<div class="dial${className?` ${esc(className)}`:''}" ${attr}>
+    <div class="dial-slider" data-dial-slider role="slider" tabindex="0" aria-label="${esc(label)}"
+      aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${value}" aria-valuetext="${esc(text)}"
+      data-dial-step="${step}" style="--dial-at:${at}%">
+      <span class="dial-track" aria-hidden="true"><span class="dial-fill"></span></span>
+      <span class="dial-ticks" aria-hidden="true">${'<span></span>'.repeat(DIAL_TICKS)}</span>
+      <span class="dial-handle" aria-hidden="true"></span>
+    </div><b class="dial-value mono" data-dial-value>${esc(text)}</b></div>`;
+}
+
+/**
+ * 接上 dialSliderHtml 画出来的一条拉条。
+ *
+ * `onInput` 在拖动和键盘的每一步都发，调用方自己合并到一帧里；`onChange` 只在松手、
+ * 键盘落键和触摸取消时发一次，落盘归它。两者分开是这条拉条唯一的性能约定：拖动中
+ * 每一步都写 localStorage 的话，一次 60 步的拖动就是 60 次同步序列化。
+ */
+export function wireDialSlider(root,{onInput=()=>{},onChange=()=>{},suffix='%'}={}){
+  const slider=root.querySelector('[data-dial-slider]'),readout=root.querySelector('[data-dial-value]');
+  const track=root.querySelector('.dial-track');
+  const min=+slider.getAttribute('aria-valuemin'),max=+slider.getAttribute('aria-valuemax');
+  const step=+slider.dataset.dialStep||1;
+  let value=+slider.getAttribute('aria-valuenow');
+  const clamp=raw=>Math.min(max,Math.max(min,Math.round(raw/step)*step));
+  const paint=()=>{
+    const text=`${value}${suffix}`;
+    slider.style.setProperty('--dial-at',`${max>min?(value-min)/(max-min)*100:0}%`);
+    slider.setAttribute('aria-valuenow',String(value));
+    slider.setAttribute('aria-valuetext',text);
+    if(readout)readout.textContent=text;
+  };
+  const set=(raw,notify)=>{
+    const next=clamp(raw);
+    if(next===value)return false;
+    value=next;paint();if(notify)onInput(value);return true;
+  };
+  /* 轨道几何在按下那一刻量一次就够，之后每次 pointermove 都读缓存。指针捕获期间这条
+     轨道不会跑，而 `getBoundingClientRect()` 会强制同步一次样式与布局——放在每一个
+     pointermove 里，一次拖动就是上百次强制布局，实测占掉这条链路一大半时间。 */
+  let trackBox=null;
+  const fromPointer=event=>{
+    const rect=trackBox||track.getBoundingClientRect();
+    const ratio=rect.width?(event.clientX-rect.left)/rect.width:0;
+    set(min+(max-min)*Math.min(1,Math.max(0,ratio)),true);
+  };
+  slider.addEventListener('pointerdown',event=>{
+    if(event.pointerType==='mouse'&&event.button!==0)return;
+    event.preventDefault();slider.focus();
+    trackBox=track.getBoundingClientRect();
+    slider.dataset.dragging='true';
+    /* 指针捕获拿不到就算了：一次合成出来的 pointerdown（自动化、辅助技术）带的 id
+       不对应任何活动指针，`setPointerCapture` 会抛，抛出去整条拖动就断在第一步。 */
+    try{slider.setPointerCapture(event.pointerId)}catch(_e){}
+    fromPointer(event);
+  });
+  slider.addEventListener('pointermove',event=>{if(slider.dataset.dragging==='true')fromPointer(event)});
+  const release=event=>{
+    if(slider.dataset.dragging!=='true')return;
+    delete slider.dataset.dragging;trackBox=null;
+    try{if(slider.hasPointerCapture(event.pointerId))slider.releasePointerCapture(event.pointerId)}catch(_e){}
+    onChange(value);
+  };
+  slider.addEventListener('pointerup',release);
+  slider.addEventListener('pointercancel',release);
+  /* 键盘一档就是一个 step，按住 Shift 走 10。Home／End 直接到两端：一条 0–100 的拉条
+     用方向键从一头走到另一头要按一百下，那不叫可用。 */
+  slider.addEventListener('keydown',event=>{
+    const span=event.shiftKey?10:step;
+    const moves={ArrowLeft:-span,ArrowDown:-span,ArrowRight:span,ArrowUp:span};
+    let next=null;
+    if(event.key in moves)next=value+moves[event.key];
+    else if(event.key==='Home')next=min;
+    else if(event.key==='End')next=max;
+    if(next===null)return;
+    event.preventDefault();
+    if(set(next,true))onChange(value);
+  });
+  return {get value(){return value},set(next){set(next,false)}};
+}
+
 /**
  * 共用勾选框。原生 checkbox 在暗色下由浏览器自绘，跟站内别的控件不是同一套语言；
  * `accent-color` 也只能改选中色，未选中态连悬停反馈都给不了。所以自绘一份，关注

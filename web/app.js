@@ -15,10 +15,10 @@ import { mountIsland, unmountIsland, islandMounted, createReviewSelection, wireR
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
-  setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
+  setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
 } from './js/ui-components.js';
 
@@ -514,9 +514,34 @@ const HOME_GLOW_PRESETS=[
     spot2:{color:'#b6bcc4',alpha:38,x:28,y:8,w:36,h:72,fade:74},
     spot3:{color:'#6f7783',alpha:50,x:76,y:20,w:38,h:70,fade:72}}],
 ];
-/* 手调过颜色之后当前档就不再是任何一个预设，下拉要如实说这件事，不能继续顶着上一档的名字。 */
+/* 手调过颜色之后当前档就不再是任何一个预设，侧栏那一格和面板顶上的标识要如实说这件事，
+   不能继续顶着上一档的名字。 */
 const HOME_GLOW_CHOICES=[...HOME_GLOW_PRESETS.map(([key,label])=>[key,label]),['custom','自定义']];
+const glowPresetName=key=>(HOME_GLOW_CHOICES.find(([name])=>name===key)||HOME_GLOW_CHOICES[0])[1];
 const glowPalette=key=>structuredClone((HOME_GLOW_PRESETS.find(([name])=>name===key)||HOME_GLOW_PRESETS[0])[2]);
+/* 挑颜色的那张色板。七个色系各六档明度，名字按颜色本身取，不按它被用在哪儿——同一枚
+   颜色换到另一枚光斑上还是同一个名字。十二枚预设色全部落在这张表里，所以从侧栏选完
+   预设再打开颜色弹层，选中环指得出当前那一格；表里缺哪一枚，那一枚就永远是「没选中」。
+   青绿整段不收：它在深色页上发冷、在浅色页上发脏，首页那片光用不上。 */
+const GLOW_SWATCH_FAMILIES=[['all','全部'],['gray','灰'],['red','红'],['yellow','黄'],
+  ['green','绿'],['blue','蓝'],['purple','紫'],['brown','棕']];
+const GLOW_SWATCHES=[
+  ['gray','云灰','#d8dade'],['gray','雾灰','#b6bcc4'],['gray','石灰','#8f98a4'],
+  ['gray','铁灰','#6f7783'],['gray','墨灰','#4a4e56'],['gray','深灰','#2e3138'],
+  ['red','樱红','#f08a8a'],['red','珊瑚','#e26a62'],['red','砖红','#c4544a'],
+  ['red','朱红','#b5322f'],['red','酒红','#8e2a2c'],['red','暗红','#6b2224'],
+  ['yellow','麦黄','#f2d48a'],['yellow','琥珀','#e8b451'],['yellow','钨丝','#e08a2f'],
+  ['yellow','金黄','#cf8a20'],['yellow','姜黄','#a9701c'],['yellow','栗黄','#7d5216'],
+  ['green','嫩芽','#a9cf7e'],['green','叶绿','#7fae4a'],['green','草绿','#5da34f'],
+  ['green','森绿','#3f9e57'],['green','苔绿','#4f9463'],['green','墨绿','#27563a'],
+  ['blue','天蓝','#9fc2e8'],['blue','湖蓝','#6a9fd8'],['blue','靛蓝','#4478c0'],
+  ['blue','宝蓝','#2f5ba3'],['blue','深蓝','#27467c'],['blue','夜蓝','#1c3358'],
+  ['purple','丁香','#c3a7e0'],['purple','品红','#b455a0'],['purple','薰衣草','#a67fd2'],
+  ['purple','葡萄','#6a4fd0'],['purple','茄紫','#7a4f96'],['purple','深紫','#432c6d'],
+  ['brown','沙棕','#d6b492'],['brown','陶棕','#bd8f68'],['brown','赭棕','#a86a52'],
+  ['brown','栗棕','#8c5340'],['brown','褐棕','#6d3f31'],['brown','深褐','#4e2d23'],
+];
+const GLOW_SPOT_LABELS=['光斑一','光斑二','光斑三'];
 const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))?String(value).toLowerCase():fallback;
 const glowRgba=(hex,alpha)=>`rgba(${[1,3,5].map(at=>parseInt(hex.slice(at,at+2),16)).join(',')},${(alpha/100).toFixed(2)})`;
 const DEFAULT_HOME_GLOW={on:true,preset:'amber',strength:100,noise:0,...glowPalette('amber')};
@@ -604,21 +629,43 @@ function normalizeHomeGlow(raw){
   }
   return glow;
 }
-/* 和 applyTheme() 同一个写法：只往 <html> 上写值，光晕怎么画留在 web/css/01-base.css 一份。
-   关掉时强度和颗粒一起归零，body::before 的不透明度按 :root 上那句乘法算成 0，不另设一个
-   「关」的分支——否则「关着」和「强度 0」会是两条各自演化的路径。 */
-function applyHomeGlow(glow=appSettings.homeGlow){
-  const style=document.documentElement.style,live=glow.on;
-  style.setProperty('--glow-strength',String(live?glow.strength/100:0));
-  style.setProperty('--glow-noise',String(live?glow.noise/100:0));
+/* 只写值，光晕怎么画留在 web/css/01-base.css 一份。关掉时强度和颗粒一起归零，
+   `.glowlayer::before` 的不透明度按那句乘法算成 0，不另设一个「关」的分支——否则
+   「关着」和「强度 0」会是两条各自演化的路径。
+
+   写的对象是 `.glowlayer` 那枚空 div，不是 <html>。自定义属性是继承的，写在根上整棵树
+   都要重算样式，实测每帧 15ms 上下，拖动时帧预算当场就超；写到一枚没有子节点的元素上
+   是 0.09ms。量法和数字记在 web/css/01-base.css 那条规则上面。
+
+   写之前先和上一次写进去的值比一遍。整份参数有 20 个变量，拖强度那条拉条时变的只有
+   一个；不比就是每一步把 20 个都重设一遍。实测拖 60 步是 1320 次 setProperty，去掉
+   重复之后只剩真正变了的那几次。 */
+const glowWritten=new Map();
+const glowField=document.querySelector('.glowlayer');
+function paintHomeGlow(){
+  const glow=appSettings.homeGlow,style=glowField.style,live=glow.on;
+  const write=(name,value)=>{
+    if(glowWritten.get(name)===value)return;
+    glowWritten.set(name,value);style.setProperty(name,value);
+  };
+  write('--glow-strength',String(live?glow.strength/100:0));
+  write('--glow-noise',String(live?glow.noise/100:0));
   HOME_GLOW_SPOTS.forEach((key,index)=>{
     const spot=glow[key],slot=index+1;
-    style.setProperty(`--glow-spot-${slot}-color`,glowRgba(spot.color,spot.alpha));
+    write(`--glow-spot-${slot}-color`,glowRgba(spot.color,spot.alpha));
     for(const [name,value] of [['x',spot.x],['y',spot.y],['w',spot.w],['h',spot.h],['fade',spot.fade]])
-      style.setProperty(`--glow-spot-${slot}-${name}`,`${value}%`);
+      write(`--glow-spot-${slot}-${name}`,`${value}%`);
   });
 }
-applyHomeGlow();
+/* 一帧只写一次。指针拖动一秒能发上百个 pointermove，每一个都同步写变量的话，写进去的
+   中间那几十份没有任何一帧画得出来，代价却照付。排进 requestAnimationFrame 之后，写的
+   就是这一帧真正要画的那一份。 */
+let glowFrame=0;
+function applyHomeGlow(){
+  if(glowFrame)return;
+  glowFrame=requestAnimationFrame(()=>{glowFrame=0;paintHomeGlow()});
+}
+paintHomeGlow();
 /* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
    形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
 function renderJavImageSetting(){
@@ -636,49 +683,107 @@ function renderJavImageSetting(){
     JAV_LAYOUTS,javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true});
   wireJavLayoutButtons(size);
 }
-/* 拉条的已选段要自己画：`::-webkit-slider-runnable-track` 拿不到当前值，只能把比例写成
-   变量交给 CSS。读数跟在同一行右端，不另起一行说明。 */
-function syncGlowRange(input){
-  const min=+input.min,max=+input.max;
-  input.style.setProperty('--glow-fill',`${Math.round((+input.value-min)/(max-min)*100)}%`);
-  const readout=input.parentElement?.querySelector('.glowvalue');
-  if(readout)readout.textContent=`${input.value}%`;
+/* 首页光晕的详细设置照 feralui.dev/gradients 的工作台面板来：分组标题是一行小号灰字，
+   参数行是「84px 标签 + 自绘拉条 + 右侧等宽读数」，颜色行点开在自己下方弹一张色板。
+   取证见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。
+   预设不在这一屏选——它在侧栏底部那枚圆钮上，这里只留一行只读的当前档名，否则同一件
+   事有两个入口，用户得先弄清哪一个说了算。 */
+const glowSwatchesHtml=()=>GLOW_SWATCHES.map(([family,name,hex])=>
+  `<button type="button" class="glowswatch" role="radio" aria-checked="false" data-glow-swatch="${hex}"
+    data-glow-family="${family}" style="--glow-swatch:${hex}" title="${esc(name)}" aria-label="${esc(name)}"></button>`).join('');
+const glowPillsHtml=()=>GLOW_SWATCH_FAMILIES.map(([key,label],index)=>
+  `<button type="button" class="glowpill" data-glow-pill="${key}" aria-pressed="${index===0}">${esc(label)}</button>`).join('');
+const glowStopRowHtml=(key,index)=>{
+  const label=GLOW_SPOT_LABELS[index];
+  return `<div class="glowstop" data-glow-stop="${key}">
+    <button type="button" class="glowstopmain" data-glow-stop-toggle aria-haspopup="dialog" aria-expanded="false">
+      <span class="glowstopdot" aria-hidden="true" data-glow-stop-dot></span>
+      <span class="glowstoptext"><b>${esc(label)}</b><small class="mono" data-glow-stop-hex></small></span>
+      ${icon('chevron-down')}</button>
+    <div class="popmenu glowstoppop" data-glow-stop-pop popover="manual" hidden>
+      <div class="glowpills" role="group" aria-label="色系">${glowPillsHtml()}</div>
+      <div class="glowpalette" role="radiogroup" aria-label="${esc(label)}颜色">${glowSwatchesHtml()}</div>
+    </div></div>`;
+};
+const glowFieldRowHtml=(field,label,max)=>`<div class="glowfield"><span class="glowfieldlabel">${esc(label)}</span>${
+  dialSliderHtml({value:appSettings.homeGlow[field],min:0,max,step:1,label,attr:`data-glow-dial="${field}"`})}</div>`;
+const homeGlowControlsHtml=()=>`<p class="glowcurrent">当前配色<b data-glow-preset-name></b></p>
+  <section class="glowgroup"><h4>场</h4><div class="glowfields">
+    ${glowFieldRowHtml('strength','强度',100)}${glowFieldRowHtml('noise','颗粒',60)}</div></section>
+  <section class="glowgroup"><h4>颜色</h4>
+    <div class="glowstops">${HOME_GLOW_SPOTS.map(glowStopRowHtml).join('')}</div>
+    <div class="glowactions"><button type="button" class="geist-button" data-glow-reset>恢复默认</button></div></section>`;
+/* 侧栏那枚钮和这一屏读的是同一份参数，改完两边一起对齐。侧栏还没装配时这里是个空函数，
+   首页第一帧就打开设置面板也不会炸。 */
+let syncGlowSidebar=()=>{};
+const glowDials=new Map();
+function syncHomeGlowSetting(){
+  const mount=$('#homeGlowControls');
+  if(!mount||mount.dataset.glowWired!=='true')return;
+  const glow=appSettings.homeGlow;
+  mount.querySelector('[data-glow-preset-name]').textContent=glowPresetName(glow.preset);
+  glowDials.forEach((dial,field)=>dial.set(glow[field]));
+  mount.querySelectorAll('[data-glow-stop]').forEach(row=>{
+    const color=glow[row.dataset.glowStop].color;
+    row.querySelector('[data-glow-stop-dot]').style.setProperty('--glow-swatch',color);
+    row.querySelector('[data-glow-stop-hex]').textContent=color;
+    row.querySelectorAll('[data-glow-swatch]').forEach(swatch=>
+      swatch.setAttribute('aria-checked',String(swatch.dataset.glowSwatch===color)));
+  });
 }
-/* 首页光晕：开关在上面那行设置行上，参数区由这里画。每个控件即时生效并落盘，不配
-   「保存」——这一屏调的就是当场看得见的东西，隔一个按钮就没法比着调。 */
+function syncGlowChrome(){syncHomeGlowSetting();syncGlowSidebar()}
+function wireHomeGlowControls(mount){
+  const glow=()=>appSettings.homeGlow;
+  mount.querySelectorAll('[data-glow-dial]').forEach(node=>{
+    const field=node.dataset.glowDial;
+    /* 拖动中只改参数、只排一帧重画；落盘留给松手那一下。每一步都 saveSettings() 的话，
+       一次拖动就是几十次同步 JSON 序列化加一次 localStorage 写入，全在主线程上。 */
+    glowDials.set(field,wireDialSlider(node,{
+      onInput:value=>{glow()[field]=value;applyHomeGlow()},
+      onChange:()=>saveSettings()}));
+  });
+  mount.querySelectorAll('[data-glow-stop]').forEach(row=>{
+    const key=row.dataset.glowStop;
+    const toggle=row.querySelector('[data-glow-stop-toggle]'),pop=row.querySelector('[data-glow-stop-pop]');
+    /* 弹层左右贴齐这一行：宽度不跟着行走的话，一张比行窄的色板看不出是从哪一行开出来的。
+       这条要排在 wireAnchoredMenu 之前，它按当前宽度算左缘。 */
+    toggle.addEventListener('click',()=>{pop.style.width=`${row.getBoundingClientRect().width}px`});
+    wireAnchoredMenu(row,toggle,pop);
+    const pills=[...pop.querySelectorAll('[data-glow-pill]')];
+    const swatches=[...pop.querySelectorAll('[data-glow-swatch]')];
+    pills.forEach(pill=>{
+      pill.onclick=()=>{
+        pills.forEach(other=>other.setAttribute('aria-pressed',String(other===pill)));
+        const family=pill.dataset.glowPill;
+        swatches.forEach(swatch=>{swatch.hidden=family!=='all'&&swatch.dataset.glowFamily!==family});
+      };
+    });
+    swatches.forEach(swatch=>{
+      swatch.onclick=()=>{
+        const spot=glow()[key];
+        spot.color=glowColor(swatch.dataset.glowSwatch,spot.color);
+        glow().preset='custom';
+        saveSettings();applyHomeGlow();syncGlowChrome();closeAnchoredMenu();toggle.focus();
+      };
+    });
+  });
+  mount.querySelector('[data-glow-reset]').onclick=()=>{
+    appSettings.homeGlow=normalizeHomeGlow(null);saveSettings();applyHomeGlow();syncGlowChrome();
+  };
+}
+/* 开关在上面那行设置行上，参数区由这里画。面板每次打开都会走一遍，但 DOM 只建一次：
+   重建会把正开着的颜色弹层、焦点和拉条的拖动状态一起扔掉。 */
 function renderHomeGlowSetting(){
   const glow=appSettings.homeGlow,toggle=$('#homeGlowSetting'),mount=$('#homeGlowControls');
   if(!toggle||!mount)return;
   toggle.checked=glow.on;mount.hidden=!glow.on;
   toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;saveSettings();applyHomeGlow()};
-  mount.innerHTML=`<div class="glowrow"><span id="glowPresetLabel">配色</span><div class="glowfield" id="glowPresetSetting"></div></div>
-    <div class="glowrow"><span id="glowStrengthLabel">强度</span><input class="glowrange" type="range" min="0" max="100" step="5" value="${glow.strength}" data-glow-level="strength" aria-labelledby="glowStrengthLabel"><b class="glowvalue mono">${glow.strength}%</b></div>
-    <div class="glowrow"><span id="glowNoiseLabel">颗粒</span><input class="glowrange" type="range" min="0" max="60" step="2" value="${glow.noise}" data-glow-level="noise" aria-labelledby="glowNoiseLabel"><b class="glowvalue mono">${glow.noise}%</b></div>
-    <div class="glowrow"><span>光斑</span><div class="glowcolors">${HOME_GLOW_SPOTS.map((key,index)=>
-      `<span class="glowcolor"><input type="color" value="${esc(glow[key].color)}" data-glow-spot="${key}" aria-label="第 ${index+1} 枚光斑颜色"></span>`).join('')}</div></div>
-    <div class="glowactions"><button type="button" class="geist-button" data-glow-reset>恢复默认</button></div>`;
-  const presetMount=$('#glowPresetSetting');
-  presetMount.innerHTML=selectFieldHtml(HOME_GLOW_CHOICES,glow.preset,{label:'光晕配色'});
-  const preset=wireSelectField(presetMount.firstElementChild);
-  preset.addEventListener('change',()=>{
-    glow.preset=allowedSetting(preset.value,HOME_GLOW_CHOICES.map(([key])=>key),'amber');
-    if(glow.preset!=='custom')Object.assign(glow,glowPalette(glow.preset));
-    mount.querySelectorAll('[data-glow-spot]').forEach(input=>{input.value=glow[input.dataset.glowSpot].color});
-    saveSettings();applyHomeGlow();
-  });
-  mount.querySelectorAll('[data-glow-level]').forEach(input=>{
-    syncGlowRange(input);
-    input.oninput=()=>{glow[input.dataset.glowLevel]=boundedPreference(+input.value,+input.min,+input.max,0);
-      syncGlowRange(input);saveSettings();applyHomeGlow()};
-  });
-  mount.querySelectorAll('[data-glow-spot]').forEach(input=>{
-    input.oninput=()=>{const spot=glow[input.dataset.glowSpot];
-      spot.color=glowColor(input.value,spot.color);
-      glow.preset='custom';preset.value='custom';saveSettings();applyHomeGlow()};
-  });
-  mount.querySelector('[data-glow-reset]').onclick=()=>{
-    appSettings.homeGlow=normalizeHomeGlow(null);saveSettings();applyHomeGlow();renderHomeGlowSetting();
-  };
+  if(mount.dataset.glowWired!=='true'){
+    mount.dataset.glowWired='true';
+    mount.innerHTML=homeGlowControlsHtml();
+    wireHomeGlowControls(mount);
+  }
+  syncHomeGlowSetting();
 }
 function renderThemeSetting(){
   const mount=$('#themeSetting');
@@ -11081,9 +11186,71 @@ api('/api/libraries').then(data=>{
 const boardToggle=document.querySelector('#filterBtn'),toggleHome=document.createComment('sidebar toggle');boardToggle.before(toggleHome);
 const boardFoot=document.createElement('div');boardFoot.className='board-sidebar-foot';
 boardFoot.innerHTML=`<div class="board-theme-toggle" role="group" aria-label="明暗主题"><span class="board-theme-thumb" aria-hidden="true"></span><button type="button" data-board-theme="light" aria-label="浅色主题">${icon('sun')}</button><button type="button" data-board-theme="dark" aria-label="深色主题">${icon('moon')}</button></div>`;
-boardFoot.append(document.querySelector('#settingsBtn'));document.querySelector('#drawer').append(boardFoot);
+/* 光晕配色钮和设置钮归一组，明暗键单独一组：侧栏收窄到 60px 时这一列竖着排，明暗键
+   落在最下面（boardui.com 右下角那一对就是配色在上、明暗在下）。展开态横排：明暗在左、
+   这一组在右。 */
+boardFoot.insertAdjacentHTML('beforeend',`<div class="board-foot-actions"><button type="button" class="board-glow-toggle" id="boardGlowBtn" aria-label="光晕配色" aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu">${icon('swatch-book')}<span class="board-glow-dot" aria-hidden="true"></span></button></div>`);
+boardFoot.querySelector('.board-foot-actions').append(document.querySelector('#settingsBtn'));
+document.querySelector('#drawer').append(boardFoot);
 boardFoot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
 applyTheme();
+/* 侧栏的光晕配色弹层照 boardui.com 右下角那枚「Accent color」：一枚带右下角色点的圆钮，
+   点开是一张 248px 的卡，头部一行标题加「重置」文字键，主体是 6 列圆球，底部一枚
+   全宽次级按钮通到详细设置。圆球本身按 feralui 的预设 chip 做：三枚光斑色等分一圈
+   conic-gradient，再叠 BoardUI 那三层白色高光。
+   实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
+const glowSpotColors=glow=>HOME_GLOW_SPOTS.map(key=>glow[key].color);
+const glowChipFill=colors=>`conic-gradient(from -90deg,${colors.map((color,index)=>
+  `${color} ${(index*100/colors.length).toFixed(3)}% ${((index+1)*100/colors.length).toFixed(3)}%`).join(',')})`;
+const glowChipHtml=(key,label,colors,current)=>`<button type="button" class="board-glow-chip" data-glow-preset="${key}"
+  aria-pressed="${key===current}" title="${esc(label)}" aria-label="${esc(label)}"><span class="board-glow-ball"
+  aria-hidden="true" style="--glow-chip:${glowChipFill(colors)}"></span></button>`;
+const glowChipsHtml=()=>{
+  const glow=appSettings.homeGlow;
+  const chips=HOME_GLOW_PRESETS.map(([key,label,palette])=>
+    glowChipHtml(key,label,HOME_GLOW_SPOTS.map(spot=>palette[spot].color),glow.preset));
+  /* 「自定义」只有在用户真手调过颜色之后才占一格：没调过时那一格里是一份和默认档
+     一模一样的球，点它什么也不会变，读起来却像还有一档没试过。 */
+  if(glow.preset==='custom')chips.push(glowChipHtml('custom','自定义',glowSpotColors(glow),'custom'));
+  return chips.join('');
+};
+const glowPicker=document.createElement('div');
+glowPicker.className='popmenu board-glow-menu';glowPicker.id='boardGlowMenu';glowPicker.hidden=true;
+glowPicker.setAttribute('popover','manual');glowPicker.setAttribute('role','dialog');
+glowPicker.setAttribute('aria-label','光晕配色');
+glowPicker.innerHTML=`<header class="board-glow-head"><span>配色</span><button type="button" class="board-glow-reset" data-glow-preset-reset>重置</button></header>
+  <div class="board-glow-grid" role="group" aria-label="光晕配色"></div>
+  <footer><button type="button" class="geist-button" data-glow-detail>详细设置</button></footer>`;
+document.body.append(glowPicker);
+const glowButton=boardFoot.querySelector('#boardGlowBtn');
+const glowFloating=wireAnchoredMenu(boardFoot,glowButton,glowPicker);
+syncGlowSidebar=()=>{
+  const glow=appSettings.homeGlow;
+  glowButton.style.setProperty('--glow-swatch',glow.spot1.color);
+  glowPicker.querySelector('.board-glow-grid').innerHTML=glowChipsHtml();
+};
+/* 一个监听接整格：那一排球会因为「自定义」出现或消失而重画，逐枚绑事件的话，重画之后
+   绑的是上一批已经不在文档里的按钮。 */
+glowPicker.querySelector('.board-glow-grid').addEventListener('click',event=>{
+  const chip=event.target.closest?.('[data-glow-preset]');
+  if(!chip)return;
+  const glow=appSettings.homeGlow,key=chip.dataset.glowPreset;
+  if(key==='custom')return;
+  glow.preset=key;Object.assign(glow,glowPalette(key));
+  saveSettings();applyHomeGlow();syncGlowChrome();
+});
+/* 这里重置的是配色，不是整份光晕：标题就写着「配色」，把强度和颗粒一起清掉会让人
+   以为按错了键。整份恢复默认在详细设置那一屏的组底部。 */
+glowPicker.querySelector('[data-glow-preset-reset]').onclick=()=>{
+  const glow=appSettings.homeGlow;
+  glow.preset=DEFAULT_HOME_GLOW.preset;Object.assign(glow,glowPalette(glow.preset));
+  saveSettings();applyHomeGlow();syncGlowChrome();
+};
+glowPicker.querySelector('[data-glow-detail]').onclick=()=>{
+  glowFloating.setOpen(false);openDrawer(false);openSettings(true,'界面');
+  queueMicrotask(()=>$('#homeGlowControls')?.scrollIntoView({block:'nearest'}));
+};
+syncGlowSidebar();
 function placeBrand(){
   const close=document.querySelector('#drawerClose');
   if(close){const head=close.parentElement;head.classList.add('board-sidebar-head');

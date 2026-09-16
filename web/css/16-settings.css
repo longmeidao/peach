@@ -77,39 +77,75 @@ body.settings-open{overflow:hidden}
 /* 手机上三枚圆各自撑到 44px 命中区，圆心间距跟着长，指头点得中。 */
 @media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}
 /* 首页光晕的参数区。它跟着上面那一行开关走，关掉就整块收起来——一组调不出任何效果的
-   滑杆和色块留在原地，读的人只会以为是坏了。 */
-.glowsetting{display:grid;gap:12px;padding:0 0 14px}
+   拉条和色块留在原地，读的人只会以为是坏了。
+
+   右边那 16px 外边距加 10px 内边距是这一块唯一的定位修正，不是留白偏好。Board 那一层
+   给 `.settinggroup` 的内边距是 `0 0 0 12px`——只有左边；右边那一段由每个 `.settingrow`
+   自己的 `margin-right:16px`（board.css `.settingsscroll .settingrow`）和 `padding-right:10px`
+   一起给。`.glowsetting` 不是 settingrow，两样都拿不到，于是一路顶到分组的右边缘：
+   2026-09-16 在 1440 宽下实测，同组设置行的盒子右缘落在 1108、正文右缘 1098，这一块
+   落在 1124，正好压在分组那 16px 圆角的弧线上，读数、色块和「恢复默认」被切掉一角。
+   `.sidebarsetting` 早就为同一件事单独写过同样的两个值，这里按同一个办法补齐，
+   不靠 `overflow:hidden` 把溢出盖住。
+
+   版式照 feralui.dev/gradients 的工作台面板：分组标题是一行小号灰字，参数行是
+   「84px 标签 + 自绘拉条 + 等宽读数」，颜色行点开在自己下方弹一张色板。
+   取证见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
+.glowsetting{display:grid;gap:16px;margin-right:16px;padding:0 10px 14px 0;min-width:0}
 .glowsetting[hidden]{display:none}
-.glowrow{display:grid;grid-template-columns:72px minmax(0,1fr) auto;gap:12px;align-items:center}
-.glowrow>span{color:var(--muted);font-size:var(--fs-sm)}
-.glowfield{grid-column:2/-1;min-width:0}
-.glowfield .gselect{width:100%;min-width:0}
-.glowvalue{justify-self:end;min-width:44px;color:var(--ink-2);font-weight:400;text-align:right}
-/* 单值拉条照抽屉里那条时长拉条来：轨道 --line、已选段 --ink、抓手填 --ground 再描一圈
-   --ink。抓手永远和它坐落的那张面同色，两档主题读出来是同一句话。已选段的宽度由
-   --glow-fill 给，JS 每次 input 写一次——`::-webkit-slider-runnable-track` 拿不到当前值。 */
-.glowrange{width:100%;min-width:0;height:28px;margin:0;padding:0;background:none;appearance:none;-webkit-appearance:none;cursor:pointer}
-.glowrange::-webkit-slider-runnable-track{height:4px;border-radius:var(--pill-radius);
-  background:linear-gradient(to right,var(--ink) var(--glow-fill,0%),var(--line) var(--glow-fill,0%))}
-.glowrange::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:16px;height:16px;margin-top:-6px;
-  border:2px solid var(--ink);border-radius:50%;background:var(--ground);cursor:grab;transition:box-shadow .12s ease}
-.glowrange:hover::-webkit-slider-thumb{box-shadow:0 0 0 4px var(--hover)}
-.glowrange:focus-visible{outline:0}
-.glowrange:focus-visible::-webkit-slider-thumb{outline:2px solid var(--tungsten);outline-offset:2px}
-.glowrange::-moz-range-track{height:4px;border-radius:var(--pill-radius);background:var(--line)}
-.glowrange::-moz-range-progress{height:4px;border-radius:var(--pill-radius);background:var(--ink)}
-.glowrange::-moz-range-thumb{width:14px;height:14px;border:2px solid var(--ink);border-radius:50%;background:var(--ground);cursor:grab}
-/* 原生取色器只借它的取色弹层，外框仍是站内输入框那身盒子：浏览器自绘的那枚方块在
-   暗色下和周围完全不是一套语言。 */
-.glowcolors{grid-column:2/-1;display:flex;gap:8px}
-.glowcolor{display:inline-grid;place-items:center;width:var(--control-h);height:var(--control-h);
-  border:1px solid var(--field-ring);border-radius:var(--control-radius);background:var(--ground)}
-.glowcolor:hover{border-color:var(--field-ring-hover)}
-.glowcolor input{width:24px;height:24px;padding:0;border:0;background:none;cursor:pointer}
-.glowcolor input::-webkit-color-swatch-wrapper{padding:0}
-.glowcolor input::-webkit-color-swatch{border:0;border-radius:var(--badge-radius)}
-.glowcolor input::-moz-color-swatch{border:0;border-radius:var(--badge-radius)}
-.glowcolor:has(input:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
+.glowcurrent{display:flex;align-items:baseline;gap:8px;margin:0;color:var(--muted);font-size:var(--fs-sm)}
+.glowcurrent b{color:var(--ink);font-weight:500}
+.glowgroup{display:grid;gap:12px;min-width:0}
+/* 上游那一行是大写加宽字距的英文小标题，中文不大写：中文没有大小写，`text-transform`
+   在这里什么也不做，字距倒是会把两个字拉散。 */
+.glowgroup>h4{margin:0;color:var(--muted);font-size:var(--fs-xs);font-weight:600}
+.glowfields{display:flex;flex-direction:column;gap:12px;min-width:0}
+.glowfield{display:flex;align-items:center;gap:10px;min-width:0}
+.glowfieldlabel{flex:none;width:84px;color:var(--muted);font-size:var(--fs-xs);font-weight:600;white-space:nowrap}
+.glowfield .dial{flex:1;min-width:0}
+/* 颜色行：34px 圆点 + 名称与十六进制两行 + 行尾折角。相邻两行之间那条分隔线从圆点
+   右侧起算，左边那一段留给圆点本身——线一路铺到最左边的话，三枚圆点会被切成一列格子。 */
+.glowstops{display:grid;min-width:0}
+.glowstop{position:relative;min-width:0}
+.glowstop+.glowstop::before{content:'';position:absolute;left:54px;right:6px;top:0;height:1px;
+  background:linear-gradient(to right,var(--line-soft),transparent)}
+.glowstopmain{display:flex;align-items:center;gap:10px;width:100%;min-height:54px;min-width:0;
+  padding:7px 7px 7px 8px;border:0;border-radius:var(--floating-radius);background:transparent;
+  color:inherit;font:inherit;text-align:left;cursor:pointer}
+.glowstopmain:hover{background:color-mix(in srgb,var(--ink) 3.2%,transparent)}
+.glowstopmain[aria-expanded="true"]{background:color-mix(in srgb,var(--ink) 4.6%,transparent)}
+.glowstopmain:focus-visible{outline:2px solid var(--tungsten);outline-offset:-2px}
+.glowstopmain>svg{width:14px;height:14px;flex:none;margin-left:auto;color:var(--muted);stroke:currentColor;fill:none}
+.glowstopdot{width:34px;height:34px;flex:none;border-radius:50%;background:var(--glow-swatch,var(--line));
+  box-shadow:inset 0 1px 1px var(--frost-light),inset 0 -1px 2px var(--overlay-5),0 0 0 1px var(--border-15)}
+.glowstoptext{display:grid;min-width:0}
+.glowstoptext>b{font-size:var(--fs-sm);font-weight:600}
+.glowstoptext>small{color:var(--muted)}
+/* 色板弹层贴着行开，宽度由 JS 写成行宽。盒子、阴影和开合动效都来自共用的 .popmenu。 */
+.glowstoppop{display:grid;gap:0;padding:0;overflow:hidden}
+.glowpills{display:flex;gap:6px;padding:8px;border-bottom:1px solid var(--line-soft);
+  overflow-x:auto;overscroll-behavior:contain;scrollbar-width:none}
+.glowpills::-webkit-scrollbar{display:none}
+.glowpill{flex:none;padding:5px 13px;border:0;border-radius:var(--pill-radius);
+  background:color-mix(in srgb,var(--ink) 6%,transparent);color:var(--ink-2);
+  font-size:var(--fs-xs);font-weight:500;cursor:pointer}
+.glowpill[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.glowpill:not([aria-pressed="true"]):hover{color:var(--ink)}
+.glowpill:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.glowpalette{display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:8px 9px;
+  max-height:218px;padding:10px;overflow-y:auto;overscroll-behavior:contain}
+.glowswatch{width:34px;height:34px;padding:0;border:1px solid var(--border-15);border-radius:50%;
+  background:var(--glow-swatch);box-shadow:inset 0 1px 1px var(--frost-light);cursor:pointer;
+  transition:transform .12s ease}
+.glowswatch[hidden]{display:none}
+.glowswatch:hover{transform:scale(1.055)}
+/* 选中这一枚要连底色一起重申：这块色板住在 `.popmenu` 里，board.css 给浮层菜单项的
+   `[aria-checked=true]` 配了一张选中面，只写 box-shadow 的话那张面会盖掉色块自己的颜色，
+   当前这一枚就成了唯一一个没有颜色的圆点。选择器多一节是为了压过那条，不是为了好看。 */
+.glowpalette .glowswatch[aria-checked="true"]{background:var(--glow-swatch);
+  box-shadow:inset 0 1px 1px var(--frost-light),
+  0 0 0 1.5px var(--ground),0 0 0 2.5px color-mix(in srgb,var(--ink) 30%,transparent)}
+.glowswatch:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .glowactions{display:flex;justify-content:flex-end}
 /* 同一组里排在设置行后面的分区自带分隔线。线属于整块卡片，所以和 .settingrow 一样
    用负边距铺到框边，不在正文宽度里断一截。 */

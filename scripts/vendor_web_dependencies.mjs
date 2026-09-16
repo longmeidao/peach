@@ -127,6 +127,9 @@ const lucideIcons = new Map([
   // 数据管理页「空文件夹」那张卡的标识：说的是目录本身，既不是打开它，也不是去里面找。
   ["folder", "folder"],
   ["sun", "sun"], ["moon", "moon"],
+  // 侧栏底部「光晕配色」：一叠翻开的色卡，挑的是具体哪一枚颜色。设置分区那一枚
+  // `ri-palette-line` 说的是「界面」这一整组，两者不兼任。
+  ["swatch-book", "swatch-book"],
   // 小窗播放：右键菜单里「迷你播放器」是缩进角落的小屏，小窗上的「展开」是对角撑开；
   // `maximize` 归 JAV 大图版式，不兼任。「循环播放」与「复制视频网址」照 Lucide 本名。
   ["picture-in-picture-2", "picture-in-picture-2"], ["maximize-2", "maximize-2"],
