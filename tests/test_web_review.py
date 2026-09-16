@@ -70,8 +70,9 @@ class ReviewQueueTests(unittest.TestCase):
 
     def write_metadata_candidates(self, rows):
         path = self.candidates / "metadata-field-candidates-20260822.csv"
-        fields = ["item_key", "code", "query", "field", "field_label", "current_value",
-                  "candidates_json", "source_count", "source_profile", "status", "size_gb", "videos", "fetched_at"]
+        fields = ["item_key", "code", "query", "asset_id", "asset_path", "field",
+                  "field_label", "current_value", "candidates_json", "source_count",
+                  "source_profile", "status", "size_gb", "videos", "fetched_at"]
         with path.open("w", encoding="utf-8-sig", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=fields)
             writer.writeheader(); writer.writerows(rows)
@@ -93,6 +94,10 @@ class ReviewQueueTests(unittest.TestCase):
     def queue_keys(self, category):
         rows, _source, _skipped = rm_review._review_rows(self.contract, category)
         return [row["item_key"] for row in rows]
+
+    def queue_row(self, category, item_key):
+        rows, _source, _skipped = rm_review._review_rows(self.contract, category)
+        return next(row for row in rows if row["item_key"] == item_key)
 
     def write_metadata_rows(self, rows):
         import json as _json
@@ -333,6 +338,10 @@ class ReviewQueueTests(unittest.TestCase):
     def test_auto_apply_never_overwrites_or_picks_between_values(self):
         self._asset(92, "AAA-1", "AAA-1.mp4")
         self._asset(93, "BBB-2", "BBB-2.mp4")
+        con = sqlite3.connect(self.db_path)
+        # 「已有值」这件事由账本说了算，候选件那一栏只是抓取那一刻的快照。
+        con.execute("UPDATE asset SET release_date='2001-01-01' WHERE id=92")
+        con.commit(); con.close()
         self.write_metadata_rows([
             # 已有值：只补空，永不覆盖。
             {"item_key": "AAA", "field": "release_date", "current": "2001-01-01",
@@ -888,6 +897,119 @@ class ReviewQueueTests(unittest.TestCase):
                             {"source": "mgstage", "value": "2021-04-29"}]},
         ])
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["MAKER", "ONLYMGS"])
+
+    def test_the_current_value_comes_from_the_ledger_not_the_snapshot(self):
+        """候选件的现值停在抓取那一刻，落过库之后它还写着空。
+
+        实测 300 行队列里 85 行是这样（标签 29、演员 22、标题 13、厂牌 8、系列 8、
+        发行日期 5）。队列拿它判「补空还是冲突」，判错的方向是把已有值当成空位。
+        """
+        self._asset(120, "LIVE-1", "LIVE-1.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET catalog_title='账本里已经有的标题' WHERE id=120")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,"
+                    "updated_at) VALUES(60,'performer','账本里的女优','账本里的女优',"
+                    "'2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                    "VALUES(120,60,'performer','board',1.0)")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "LIVE-1:title", "field": "title", "current": "",
+             "candidates": ["来源给的另一个标题"], "code": "LIVE-1"},
+            {"item_key": "LIVE-1:performers", "field": "performers", "current": "",
+             "candidates": ["来源给的另一个人"], "code": "LIVE-1"},
+        ])
+        self.assertEqual(self.queue_row("metadata_fields", "LIVE-1:title")["current_value"],
+                         "账本里已经有的标题")
+        self.assertEqual(
+            self.queue_row("metadata_fields", "LIVE-1:performers")["current_value"],
+            "账本里的女优")
+
+    def test_auto_apply_never_fills_a_field_the_ledger_already_filled(self):
+        """自动落库的第一条判据是「这个字段现在是空的」，问的必须是账本此刻。
+
+        照过期快照落库不是补空，是拿来源覆盖已有值——而且写完还记一笔 approved。
+        """
+        self._asset(121, "LIVE-2", "LIVE-2.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET catalog_title='账本里已经有的标题' WHERE id=121")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "LIVE-2:title", "field": "title", "current": "",
+             "candidates": ["来源给的另一个标题"], "code": "LIVE-2"},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT catalog_title FROM asset WHERE id=121").fetchone()[0],
+                "账本里已经有的标题")
+            self.assertEqual(con.execute(
+                "SELECT count(*) FROM review_decision WHERE item_key='LIVE-2:title'"
+            ).fetchone()[0], 0)
+        finally:
+            con.close()
+
+    def test_a_snapshot_value_the_ledger_no_longer_has_becomes_an_empty_field(self):
+        """反过来也要跟得上：快照里有值、账本已经清空的，那就是个空位。"""
+        self._asset(122, "LIVE-3", "LIVE-3.mp4")
+        self.write_metadata_rows([
+            {"item_key": "LIVE-3:release_date", "field": "release_date",
+             "current": "2019-01-01", "candidates": ["2020-02-02"], "code": "LIVE-3"},
+        ])
+        self.assertEqual(
+            self.queue_row("metadata_fields", "LIVE-3:release_date")["current_value"], "")
+
+    def test_one_filled_copy_in_the_group_means_the_field_is_not_empty(self):
+        """同番号多卷时落库是整组一起写，所以「空不空」也得按整组问。
+
+        实测 `259LUXU-902` 在账本里有 10 条，九条空、一条有值。只看空着的那一条会
+        判成空位，落库却把第十条已有的值一起改掉。
+        """
+        self._asset(123, "LIVE-4", "LIVE-4-A.mp4")
+        self._asset(124, "LIVE-4", "LIVE-4-B.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET catalog_title='第二卷上已有的标题' WHERE id=124")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "LIVE-4:title", "field": "title", "current": "",
+             "candidates": ["来源给的另一个标题"], "code": "LIVE-4"},
+        ])
+        self.assertEqual(self.queue_row("metadata_fields", "LIVE-4:title")["current_value"],
+                         "第二卷上已有的标题")
+        self.assertEqual(self._auto()["applied"], 0)
+
+    def test_a_row_pinned_to_one_file_asks_only_that_file(self):
+        """带 `asset_path` 的行落库只写那一个文件，现值也只能问那一个。"""
+        self._asset(125, "LIVE-5", "LIVE-5-A.mp4")
+        self._asset(126, "LIVE-5", "LIVE-5-B.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET catalog_title='另一卷的标题' WHERE id=126")
+        con.commit(); con.close()
+        payload = [{
+            "item_key": "asset:125:title", "code": "LIVE-5", "query": "LIVE-5",
+            "asset_id": "125", "asset_path": "/x/LIVE-5-A.mp4",
+            "field": "title", "field_label": "标题", "current_value": "",
+            "candidates_json": json.dumps([{
+                "candidate_key": "asset:125:title:r18dev:1", "source": "r18dev",
+                "display_value": "来源给的标题", "value": "来源给的标题",
+                "confidence": 0.9, "provider_id": "LIVE-5", "source_url": "",
+                "raw_snapshot": ""}], ensure_ascii=False),
+            "source_count": "1", "source_profile": "", "status": "candidate",
+            "size_gb": "", "videos": "1", "fetched_at": "",
+        }]
+        self.write_metadata_candidates(payload)
+        self.assertEqual(
+            self.queue_row("metadata_fields", "asset:125:title")["current_value"], "")
+
+    def test_a_code_the_ledger_never_heard_of_keeps_the_snapshot_value(self):
+        """账本里没有这个番号的资产，就没有「现值」可问，别把有值的改成空。"""
+        self.write_metadata_rows([
+            {"item_key": "GHOST:studio", "field": "studio", "current": "Prestige",
+             "candidates": ["Faleno"], "code": "GHOST-1"},
+        ])
+        self.assertEqual(self.queue_row("metadata_fields", "GHOST:studio")["current_value"],
+                         "Prestige")
 
     def test_performer_avatar_rows_show_the_ledger_name_not_the_scraped_romaji(self):
         """候选 CSV 给的是罗马音，账本早就有更好的名字，罗马音本身也已是别名。"""

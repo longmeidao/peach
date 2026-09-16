@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import time
+from collections import defaultdict
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
@@ -273,6 +274,70 @@ def _creator_previews(connection, creators: list[str], *, include_unpictured: bo
     return previews
 
 
+#: 多值字段在账本里是实体关系，不是 `asset` 上的列。
+_MULTI_VALUE_ROLES = {"performers": "performer", "tags": "tag"}
+
+
+def refresh_current_values(connection, rows: list[dict]) -> None:
+    """把候选行的「账本现值」换成账本此刻的值。
+
+    候选件是抓取那一刻写的，`current_value` 也就停在那一刻。之后落过库、合并过实体、
+    改过名的，这一栏都不跟着动：实测 300 行队列里有 85 行写着空而账本早有值（标签 29、
+    演员 22、标题 13、厂牌 8、系列 8、发行日期 5）。队列拿它判「补空还是冲突」，自动
+    落库拿它判「这里是不是空的」——过期一份，两处一起错，而且错的方向是往库里写。
+
+    账本里找不到这个番号的资产时保留候选件那一份：那种行本来就轮不到按现值判。
+    """
+    codes = [code for code in dict.fromkeys(
+        str(row.get(key) or "").strip() for row in rows for key in ("code", "query")) if code]
+    if not codes:
+        return
+    columns = sorted(set(METADATA_FIELD_COLUMNS.values()))
+    marks = ",".join("?" * len(codes))
+    by_asset: dict[int, dict] = {}
+    by_code: dict[str, list[int]] = defaultdict(list)
+    for asset in connection.execute(
+            f"SELECT id,code,{','.join(columns)} FROM asset WHERE medium='video' "
+            f"AND (disposal IS NULL OR disposal<>'trash') AND code IN ({marks}) ORDER BY id",
+            codes):
+        by_asset[int(asset["id"])] = dict(asset)
+        by_code[normalise_code_key(asset["code"])].append(int(asset["id"]))
+    if not by_asset:
+        return
+    ids = list(by_asset)
+    id_marks = ",".join("?" * len(ids))
+    linked: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    for asset_id, role, name in connection.execute(
+            f"SELECT ae.asset_id,ae.role,e.canonical_name FROM asset_entity ae"
+            f" JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id IN ({id_marks})"
+            " AND ae.role IN ('performer','tag') ORDER BY e.canonical_name", ids):
+        linked[int(asset_id)][str(role)].append(str(name))
+
+    for row in rows:
+        field = str(row.get("field") or "").strip()
+        raw = str(row.get("asset_id") or "").strip()
+        # 取值范围必须和 `_apply_metadata_candidate` 写的范围一样：钉住单个文件的行
+        # （带 `asset_path`，本机 275 行）只看那一个，其余按番号整组。范围不一致就会
+        # 出现「按九卷里空着的那一卷判成空位，落库却把第十卷已有的值一起改掉」。
+        if str(row.get("asset_path") or "").strip() and raw.isdigit() and int(raw) in by_asset:
+            targets = [int(raw)]
+        else:
+            key = normalise_code_key(str(row.get("code") or row.get("query") or ""))
+            targets = by_code.get(key, [])
+        if not targets:
+            continue
+        column = METADATA_FIELD_COLUMNS.get(field)
+        if column:
+            # 同番号多卷时任取有值的那一卷：落库本来就是整组一起写。
+            row["current_value"] = next(
+                (value for target in targets
+                 if (value := str(by_asset[target][column] or "").strip())), "")
+        elif field in _MULTI_VALUE_ROLES:
+            role = _MULTI_VALUE_ROLES[field]
+            row["current_value"] = "、".join(dict.fromkeys(
+                name for target in targets for name in linked[target][role]))
+
+
 def _attach_review_asset_context(connection, rows: list[dict]) -> None:
     """Attach one representative original video without per-row SQL queries."""
     codes = [str(row.get("code") or row.get("query") or "").strip()
@@ -493,6 +558,7 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
                                      for candidate in candidates
                                      if isinstance(candidate, dict)
                                      and str(candidate.get("candidate_key") or "").strip()]
+            refresh_current_values(connection, rows)
             # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
             # 没有任何新信息：17 条与当前值逐字相同、7 条标签只是顺序不同。
             rows = [row for row in rows if _metadata_row_adds_information(connection, row)]
@@ -1464,6 +1530,10 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
         decided = {row["item_key"] for row in connection.execute(
             "SELECT item_key FROM review_decision WHERE category='metadata_fields'")}
         genres = load_genre_decisions(connection)
+        # 第 1 条判据是「这个字段现在是空的」，问的必须是账本此刻，不是候选件那一刻。
+        # 候选落盘之后落过库、合并过实体的，快照还写着空，照它落库就是拿来源覆盖已有值。
+        rows = [dict(row) for row in rows]
+        refresh_current_values(connection, rows)
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         for row in rows:
             item_key = str(row.get("item_key") or "").strip()
