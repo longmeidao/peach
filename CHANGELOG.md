@@ -21,6 +21,16 @@ Removed / Fixed / Security。
 
 ## [未发布]
 
+## [0.34.1] - 2026-09-20
+
+### 修复
+
+- **桌面**：独立测试包可选择局域网访问，其他设备通过配置的端口与 `.local` 地址打开。
+- **馆藏**：扫描结束后立即落库符合安全规则的资料，其余候选继续留在复核。
+- **馆藏**：NFO 与 120 MiB 以上视频不再误入垃圾队列，同番号的大体积短版本归入重复项。
+- **配置**：首次设置按 BoardUI 统一分类层级、间距与按钮，访问密码改为开关，访问地址按范围显示。
+- **桌面**：完全卸载清理设置备份与解压目录。
+
 ## [0.34.0] - 2026-09-19
 
 ### 新增
@@ -305,7 +315,8 @@ Removed / Fixed / Security。
 - **桌面**：独立包使用 UTF-8 启动日志。
 - **配置**：首次设置后的跳转目标取新鲜读到的 mDNS 名。
 
-[未发布]: https://github.com/longmeidao/peach/compare/v0.34.0...HEAD
+[未发布]: https://github.com/longmeidao/peach/compare/v0.34.1...HEAD
+[0.34.1]: https://github.com/longmeidao/peach/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/longmeidao/peach/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/longmeidao/peach/compare/v0.31.0...v0.33.0
 [0.31.0]: https://github.com/longmeidao/peach/compare/v0.30.0...v0.31.0
