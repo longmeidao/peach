@@ -90,10 +90,9 @@ export const pages: Bundle.ReactPages = {
   'quality-goals': {
     prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
   },
-  /* 确定的那部分先落库再取队列（ADR-0018）。只读账本上不发那一次 POST——reader 明知
-     不能写就不该制造一次 409。 */
+  /* ADR-0018 的确定项已由扫描与资料处理任务落库；复核页只读取剩下的判断题。 */
   review: {
-    prefetch: (props, signal) => prefetchReview(props.readOnly, signal), mount: mounter(ReviewPage),
+    prefetch: (_props, signal) => prefetchReview(signal), mount: mounter(ReviewPage),
   },
   scraping: { prefetch: (_props, signal) => prefetchScraping(signal), mount: mounter(ScrapingPage) },
   stats: { prefetch: (_props, signal) => prefetchStats(signal), mount: mounter(StatsPage) },

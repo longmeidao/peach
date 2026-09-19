@@ -605,8 +605,7 @@ class ReviewEndpointTests(unittest.TestCase):
     """
 
     PAGE = FRONTEND / "src" / "react" / "review"
-    ENDPOINTS = ("/api/review", "/api/review/auto-apply", "/api/review/decision",
-                 "/api/review/genre")
+    ENDPOINTS = ("/api/review", "/api/review/decision", "/api/review/genre")
 
     def setUp(self):
         self.data = (self.PAGE / "review.ts").read_text(encoding="utf-8")
@@ -635,7 +634,7 @@ class ReviewEndpointTests(unittest.TestCase):
                       "产物里没有这一页，先跑 npm --prefix frontend run build")
 
     def test_each_endpoint_is_declared_once(self):
-        """四条端点与那一个 `queryKey` 在前端各只有一个声明处，就是这一页的数据模块。
+        """三条端点与那一个 `queryKey` 在前端各只有一个声明处，就是这一页的数据模块。
 
         这一页读一整条队列（一次几兆、上千行），判定、批量判定和收录 genre 三个写操作
         全都只改缓存里那几行。第二处再写一遍就等于给同一条队列开了第二份快照：判过的行
@@ -655,24 +654,17 @@ class ReviewEndpointTests(unittest.TestCase):
                   if "/api/review" in path.read_text(encoding="utf-8")]
         self.assertEqual(len(routed), 1, f"/api/review 的路由声明在 {routed}")
 
-    def test_the_queue_and_the_receipt_are_two_keys(self):
-        """队列和本次自动落库的回执各走各的键。
-
-        合成一个键的话，收录一个 genre 之后重取队列会把那句回执一起变成新的——它说的
-        是「这一次进来做了什么」，不是账本此刻的样子。
-        """
+    def test_the_queue_has_one_query_key(self):
         self.assertIn("export const REVIEW_KEY = ['review'] as const;", self.data)
-        self.assertIn("export const REVIEW_AUTO_APPLY_KEY = ['review', 'auto-apply'] as const;",
-                      self.data)
         self.assertIn("queryClient.setQueryData<ReviewData>(REVIEW_KEY", self.data)
         self.assertIn("export function dropReviewRows(", self.data)
 
-    def test_the_read_only_end_does_not_write_before_it_reads(self):
-        """只读账本上不发那一次 POST：明知不能写就不该制造一次 409。"""
+    def test_opening_review_only_reads_the_queue(self):
+        """自动落库已跟随处理任务完成，打开复核页不能再发写请求。"""
         prefetch = self.data[self.data.index("export async function prefetchReview"):]
         prefetch = prefetch[:prefetch.index("\n}")]
-        self.assertIn("readOnly ? { state: 'skipped' } : await autoApplyReceipt(signal)", prefetch)
         self.assertIn("queryKey: REVIEW_KEY", prefetch)
+        self.assertNotIn("apiSend", prefetch)
 
     def test_empty_and_error_states_reuse_the_shared_components(self):
         """空态与失败态走 `src/react/components/` 的组合件，不是一行灰字。"""

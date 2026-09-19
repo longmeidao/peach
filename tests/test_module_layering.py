@@ -28,14 +28,14 @@ SOURCE_ROOT = pathlib.Path(peach.__file__).parent
 #: 守规则的东西自己先漂了，是这条门槛最容易出的故障。
 WEB_MODULES = {path.stem for path in SOURCE_ROOT.glob("web_*.py")}
 
-#: FastAPI 适配层：`api` 是组装点，`routes_*` 是它挂上去的路由表。把 web 层接到
-#: HTTP 上是这一层的职责，方向是对的。
+#: FastAPI 与命令行适配层：`api` / `cli` 是组装点，`routes_*` 是前者挂上去的路由表。
+#: 把 Web 服务接到 HTTP 或顶层命令上是这一层的职责，方向是对的。
 #:
 #: 和 `WEB_MODULES` 同样按文件名推导。只写着 `api` 的话，`create_app` 拆成
 #: `routes_auth`/`routes_pages`/`routes_media`/`routes_api` 之后再拆一个模块就会被判成
 #: 「非 web 模块 import 了 web 层」——门槛报的是假警，改的人只会来把它加进清单。
 ROUTE_MODULES = {path.stem for path in SOURCE_ROOT.glob("routes_*.py")}
-COMPOSITION_ROOTS = {"api"} | ROUTE_MODULES
+COMPOSITION_ROOTS = {"api", "cli"} | ROUTE_MODULES
 
 
 def _local_imports(path: pathlib.Path) -> set[str]:

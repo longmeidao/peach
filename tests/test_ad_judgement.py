@@ -218,6 +218,16 @@ class ResourceJunkQueueTests(unittest.TestCase):
             {(10, "image"), (11, "other")},
         )
 
+    def test_nfo_and_large_same_code_clips_never_enter_the_junk_queue(self):
+        """NFO 是资料边车；达到 120 MB 的同番号短版本归重复清理，不归垃圾。"""
+        self.add(13, "local", r"R:\番号\点击观看.nfo", "other", 4096)
+        self.add(14, "local", r"R:\番号\FC2-PPV-1110408.mp4", "video",
+                 4 * 1024**3, 50 * 60, code="FC2-PPV-1110408")
+        self.add(15, "local", r"R:\番号\FC2-PPV-1110408-2-4K修复.mp4", "video",
+                 488 * 1024**2, 3 * 60, code="FC2-PPV-1110408")
+
+        self.assertEqual(q_ads(self.contract, limit=200)["items"], [])
+
     def test_mib_archives_can_be_excluded_and_reconsidered_per_asset(self):
         """域名文件名可能是真资源；“不是垃圾”必须可持久排除且能撤销。"""
         self.add(20, "115", r"B:\\MIB\\Mib19.com.zip", "archive", 14 * 1024**3)

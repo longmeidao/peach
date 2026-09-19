@@ -437,7 +437,7 @@ class SetupPageTests(_Case):
             self.assertIn(f">{title}<", body)
         # 只有媒体文件夹非填不可。其余四项都有能直接用的默认值，折进「高级设置」，
         # 独立包与源码部署是同一张表单；有一项报错时折叠展开着。
-        details = body.index("<details><summary><span>高级设置</span>")
+        details = body.index('<details><summary><span class="setting-title">高级设置</span>')
         self.assertLess(body.index('id="add-dir"'), details)
         for key in ("data_root", "host", "port", "mdns_name"):
             self.assertLess(details, body.index(f'name="{key}"'), key)
@@ -471,11 +471,32 @@ class SetupPageTests(_Case):
             self.assertIn(f"<span>{label}</span>", body)
         self.assertIn('<input type="radio" name="host" value="2" checked>', body)
         self.assertLess(body.index('value="2" checked'), body.index('name="host" value="1"'))
-        # 选「只有这台电脑」时局域网地址输入框由页内脚本禁用。
+        # 选「只有这台电脑」时局域网地址整项隐藏，输入框同时禁用、不随表单提交。
         self.assertIn("field.disabled=!lan", body)
+        self.assertIn("fieldRow.hidden=!lan", body)
         # 局域网访问地址只填名字，框内前缀 `https://`、后缀 `.local` 拼成完整网址。
         self.assertIn('<div class="affix"><span>https://</span><input', body)
         self.assertIn("<span>.local</span>", body)
+        # 端口只填写数字，localhost 是不可编辑的固定前缀。
+        self.assertIn('<div class="affix"><span>localhost:</span><input id="f-port"', body)
+        # 密码默认关闭；开启后脚本才显示并启用两项输入。
+        self.assertIn('id="access-enabled" class="ptoggle" name="access_enabled" type="checkbox" role="switch"', body)
+        self.assertIn('id="access-password-fields" hidden', body)
+        self.assertIn("accessFields.hidden=!accessToggle.checked", body)
+        for title in ("媒体库", "访问密码", "高级设置", "完成设置后"):
+            self.assertIn(f'>{title}<', body)
+        self.assertIn('<h2 class="setting-title" id="setup-options-title">完成设置后</h2>', body)
+        self.assertIn('<h3 class="setting-subtitle">浏览器历史记录', body)
+        self.assertIn('.setup-auth-card .setting-title,.setup-auth-card .field>label.setting-title{margin:0;'
+                      'padding:0;border:0;color:var(--ink);font:600 14px/20px', body)
+        self.assertIn('.setup-auth-card .field-label{color:var(--ink-2);font:500 14px/20px', body)
+        self.assertIn(
+            '.setup-auth-card form>:is(.access-field,details,.setup-options){margin-top:24px;'
+            'padding-top:24px;border-top:1px solid var(--line)}', body)
+        self.assertIn('.setup-auth-card .password-fields>label:not(:first-child){margin-top:16px}', body)
+        self.assertIn(
+            '.setup-auth-card .history-guide-choice{margin-top:16px;padding-top:24px;'
+            'border-top:1px solid var(--line)}', body)
         # 勾选框用站内共用的自绘结构，路径使用普通文字。
         self.assertIn('<span class="pcheck"><input type="checkbox" name="scan_now" value="y" checked>', body)
         self.assertIn("完成设置后扫描并补全资料：", body)
@@ -484,6 +505,12 @@ class SetupPageTests(_Case):
         self.assertIn('数据目录<span class="req"', body)
         self.assertIn('端口<span class="req"', body)
         self.assertIn('局域网访问地址<span class="req"', body)
+        # 首启页唯一主操作与站内 Board primary 共用蓝色渐变。
+        self.assertIn(
+            '.setup-auth-card :is(button[type=submit],.setup-enter){position:relative;'
+            'isolation:isolate;border:0;color:#fff;background:var(--board-blue)}', body)
+        self.assertIn('background:var(--board-blue-hover)', body)
+        self.assertIn('.setup-auth-card .dir :is(button.pick,button.rm){width:40px;height:40px', body)
 
     @unittest.skipIf(NATIVE_WINDOWS, "盘符本身就是挂载点，Windows 上没有这句话")
     def test_the_mounts_explanation_sits_under_the_media_field_on_posix(self):
@@ -531,11 +558,36 @@ class SetupPageTests(_Case):
         self.assertFalse(self.data_root.exists())
 
     def test_a_disabled_lan_address_falls_back_to_the_default_name(self):
-        """选「只有这台电脑」后地址框是禁用的，不随表单提交；服务端按默认值补上。"""
+        """选「只有这台电脑」后地址项隐藏且不提交；服务端按默认值补上。"""
         response = self._post("/setup", self._form(host="1", mdns_name=None))
         self.assertEqual(response.status_code, 200)
         loaded = self._loaded()
         self.assertEqual((loaded.server.host, loaded.server.mdns_name), ("127.0.0.1", "peach"))
+
+    def test_password_switch_requires_a_password_and_stays_open_on_error(self):
+        response = self._post("/setup", self._form(access_enabled="y"))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("请输入访问密码", response.text)
+        self.assertIn('name="access_enabled" type="checkbox" role="switch" value="y" checked', response.text)
+        self.assertNotIn('id="access-password-fields" hidden', response.text)
+
+    def test_password_fields_are_ignored_while_the_switch_is_off(self):
+        from peach import access
+        response = self._post("/setup", self._form(
+            access_password="should-not-be-used", access_confirm="should-not-be-used"))
+        self.assertEqual(response.status_code, 200, response.text)
+        policy = access.load(self.data_root / "secrets" / "access.json")
+        self.assertEqual(policy["mode"], "open")
+
+    def test_password_switch_saves_the_confirmed_password(self):
+        from peach import access
+        response = self._post("/setup", self._form(
+            access_enabled="y", access_password="correct-password",
+            access_confirm="correct-password"))
+        self.assertEqual(response.status_code, 200, response.text)
+        policy = access.load(self.data_root / "secrets" / "access.json")
+        self.assertEqual(policy["mode"], "password")
+        self.assertTrue(access.verify(policy, "correct-password"))
 
     def test_a_valid_submission_builds_the_tree_and_shows_what_happens_next(self):
         response = self._post("/setup", self._form())
@@ -624,7 +676,7 @@ class SetupPageTests(_Case):
     def test_advanced_settings_fold_with_the_shared_collapse_and_the_site_scrollbar(self):
         """高级设置是 Geist Collapse：借主站的 wireCollapse，chevron 与高度都 200ms；滚动条也是主站那条。"""
         body = self._get("/").text
-        self.assertIn('<summary><span>高级设置</span><svg viewBox="0 0 24 24" aria-hidden="true">', body)
+        self.assertIn('<summary><span class="setting-title">高级设置</span><svg viewBox="0 0 24 24" aria-hidden="true">', body)
         self.assertIn('import{attachOverlayScrollbar,wireCollapse,selectFieldHtml,wireSelectField,MEDIA_SOURCE_ICONS}from"/js/ui-components.js";'
                       'attachOverlayScrollbar(document.documentElement,{variant:"page"});'
                       'wireCollapse(document,"details","setup-collapse");', body)
@@ -650,7 +702,7 @@ class SetupPageTests(_Case):
         response = self._post("/setup", self._form(port="99999"))
         self.assertEqual(response.status_code, 400)
         body = response.text
-        self.assertIn("<details open><summary><span>高级设置</span>", body)
+        self.assertIn('<details open><summary><span class="setting-title">高级设置</span>', body)
         self.assertLess(body.index('name="port"'), body.index('<p class="bad" role="alert">'))
 
     def test_a_second_submission_refuses_to_overwrite_the_settings_file(self):

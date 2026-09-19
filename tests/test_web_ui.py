@@ -9999,7 +9999,7 @@ class WebUiSourceTests(unittest.TestCase):
         data = self.read_react("library-processing/library-processing.ts")
         self.assertIn("Date.now() / 1000 - state.completed_at < FRESH_COMPLETION_SECONDS", data)
         self.assertIn("localStorage.getItem(ANNOUNCED_KEY) === state.job_id", data)
-        self.assertIn("toast(`扫描与资料采集已完成：识别 ${state.identified || 0} 个番号", data)
+        self.assertIn("自动落库 ${state.auto_applied || 0} 条", data)
         self.assertNotIn("toast('已完成扫描与资料采集')", data)
         shared = self.read_react("library-processing/use-library-processing.ts")
         self.assertIn("if (witnessed || mode === 'notice') announceCompletion(state, toast, witnessed);", shared)
@@ -10339,12 +10339,11 @@ class WebUiSourceTests(unittest.TestCase):
         for stale in ("#ff3347", "#e60012", "#ff6471"):
             self.assertNotIn(stale, board, f"危险档的红只从 token 来，{stale} 是第二份")
 
-    def test_the_entry_pages_primary_button_is_the_one_from_inside_the_app(self):
-        """错误页、登录页和首启页的主按钮跟站内是同一颗规则，不是抄一份色值。
+    def test_the_entry_pages_keep_the_shared_geist_primary_rule(self):
+        """入口页的主按钮跟站内是同一颗规则，不是抄一份色值。
 
-        这三张页面是没登录时看到的 Peach，按钮换一种蓝就等于说这是另一个产品。它们的
-        样式内联在页面里，`routes_pages._board_button_rules()` 把 board.css 的强调档连同
-        它用到的 token 一起取过去，站内改一次渐变这三页跟着走。
+        首启与登录表单从 `board-entry.css` 使用同一组渐变 token；带
+        `.geist-button primary` 的独立错误页直接使用提取出的完整规则。
         """
         root = Path(__file__).resolve().parents[1]
         board = (root / "web/board.css").read_text(encoding="utf-8")
@@ -10353,6 +10352,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("--board-blue:", entry, "那条渐变只在 board.css 声明")
         from peach.routes_pages import _board_button_rules
         rules = _board_button_rules()
+        self.assertIn(":root,:root[data-accent=blue],[data-accent-ball=blue]{--color-accent-50:",
+                      rules, "入口页必须取得默认蓝色色阶，渐变 token 才有实际色值")
+        self.assertIn("--color-accent-500:", rules)
         # board.css 里这个 token 声明了两遍，Board 那一层的映射排在后面、也是实际生效的
         # 那一份；取过去的要是最后一处。
         gradient = re.findall(r"--board-blue:(linear-gradient\([^;}]+\))", board)[-1]

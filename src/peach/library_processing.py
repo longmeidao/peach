@@ -646,9 +646,17 @@ class _RemoteSession:
         return 0
 
 
+def _apply_finished_candidates(callback, db_path, candidate_root):
+    """调用组装层的自动落库规则；未注入时保留核心处理器的独立可用性。"""
+    if callback is None:
+        return {"applied": 0}
+    return callback(Path(db_path), Path(candidate_root))
+
+
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
-                    retry_ids=None, active=lambda: True, stage=ALL_STAGES):
+                    retry_ids=None, active=lambda: True, stage=ALL_STAGES,
+                    apply_candidates=None):
     """登记文件与确定的番号，外部资料保留为可复核候选。
 
     `retry_ids` 为 `None` 时处理整个馆藏；给定时只处理这些项目（上一任务记录的
@@ -870,8 +878,12 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                        current_asset_id=None, current_asset_name='', current_action='',
                        current_started_at=None, current_deadline_at=None)
             flush_candidates(force=True)
+            # 候选完整落盘后立即执行调用方注入的窄规则，不再等人打开复核页才触发。
+            # 核心处理层不反向依赖 Web 复核层；CLI 与 Web 两个组装入口都传入同一实现。
+            auto_apply = _apply_finished_candidates(apply_candidates, db_path, candidate_root)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
+                   auto_applied=auto_apply['applied'],
                    error=f"{state['issue_count']} 项需要处理，请查看详情并重试。" if state['issue_count'] else '',
                    completed_at=time.time(), current_asset_id=None, current_asset_name='',
                    current_action='', current_started_at=None, current_deadline_at=None)
