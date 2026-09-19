@@ -493,8 +493,10 @@ describe('设计决定', () => {
         };
       });
       assert.equal(bounds.stackLeft, left, '展开时左缘发生位移');
-      assert.equal(after[0], before[0], '指向第三枚时第一枚被往左推');
-      assert.equal(after[1], before[1], '指向第三枚时第二枚被往左推');
+      // Chrome 合成层结束 transition 时会留下远小于一个物理像素的浮点残差；这里守的是
+      // 头像没有发生可见位移，不把 303 与 302.9933 这种同一像素内的取整差判成布局回退。
+      assert.ok(Math.abs(after[0] - before[0]) <= .5, '指向第三枚时第一枚被往左推');
+      assert.ok(Math.abs(after[1] - before[1]) <= .5, '指向第三枚时第二枚被往左推');
       assert.ok(after[3] > before[3] && after[4] > before[4], '右侧邻座没有朝标题方向让开');
       assert.ok(bounds.firstRingLeft >= bounds.cardLeft - .5, '首枚放大加描边后被卡片左缘裁切');
       assert.ok(bounds.lastRingRight <= bounds.cardRight + .5, '头像展开越出卡片右缘');
