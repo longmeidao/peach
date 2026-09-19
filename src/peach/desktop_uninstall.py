@@ -33,7 +33,13 @@ def plan(config, *, delete_data: bool, program: Path | None = None) -> dict:
     for path in [target, *directories]:
         if any(item.is_relative_to(path) or path.is_relative_to(item) for item in media):
             raise ValueError("卸载目录与媒体目录重叠，请手动检查")
-    files = [config.path.resolve(), root / "config.previous.toml", root / "config.pending.toml"] if delete_data else []
+    files: list[Path] = []
+    if delete_data:
+        # `config.toml.<说明>` 都是 Peach 设置备份；其它未列名文件继续保留。
+        generated = [config.path.resolve(), root / "config.previous.toml", root / "config.pending.toml"]
+        generated.extend(path.resolve() for path in root.glob("config.toml.*")
+                         if path.is_file() or path.is_symlink())
+        files = sorted(set(generated), key=lambda path: os.path.normcase(str(path)))
     return {"program": str(target), "data_root": str(root), "directories": [str(p) for p in directories],
             "files": [str(p) for p in files], "delete_data": delete_data}
 
@@ -71,6 +77,7 @@ def request(config, delete_data: bool) -> dict:
 
 
 # 系统助手从 stdin 接受数据，路径不拼进脚本文本；只清理计划中的目录。
+# `quiet` 只在测试里置真：跳过弹窗，错误改走日志文件。
 _SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
@@ -79,35 +86,67 @@ $peachProgram = [IO.Path]::GetFullPath($peachJob.program)
 $peachData = [IO.Path]::GetFullPath($peachJob.data_root)
 if (-not (Test-Path -LiteralPath (Join-Path $peachProgram '_internal/standalone.txt'))) { exit 2 }
 if ($peachProgram.Length -lt 4 -or $peachProgram -eq $env:USERPROFILE) { exit 2 }
-$peachProcess = Get-Process -Id $peachJob.pid -ErrorAction SilentlyContinue
+$peachProcess = if ($peachJob.pid) { Get-Process -Id $peachJob.pid -ErrorAction SilentlyContinue }
 if ($peachProcess -and -not $peachProcess.WaitForExit(90000)) { exit 3 }
 foreach ($peachPath in @($peachJob.directories) + @($peachJob.files)) {
   if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($peachPath)) -ne $peachData) { exit 2 }
 }
+function Stop-PeachProgramProcesses {
+  # 托盘退出时被硬杀的服务会留下自己的子进程：扫描、转码用的可执行文件可能就在
+  # `_internal` 里。按镜像路径清场，只匹配程序目录前缀加一个分隔符，不误伤名字
+  # 相近的其它解压目录。
+  $peachStrays = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $_.Path -and $_.Path.StartsWith($peachProgram + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
+  })
+  foreach ($peachStray in $peachStrays) {
+    Stop-Process -Id $peachStray.Id -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($peachStray in $peachStrays) {
+    Wait-Process -Id $peachStray.Id -Timeout 10 -ErrorAction SilentlyContinue
+  }
+}
 try {
   function Test-PeachTree($peachNode) {
     $peachItem = Get-Item -LiteralPath $peachNode -Force
-    if ($peachItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Directory contains a link; manual cleanup required' }
+    if ($peachItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw ('卸载目标含有链接：' + $peachNode) }
     if ($peachItem.PSIsContainer) {
       foreach ($peachChild in Get-ChildItem -LiteralPath $peachNode -Force) { Test-PeachTree $peachChild.FullName }
     }
   }
+  Stop-PeachProgramProcesses
   foreach ($peachPath in @($peachJob.directories) + @($peachJob.files) + @($peachProgram)) {
     if (Test-Path -LiteralPath $peachPath) { Test-PeachTree $peachPath }
   }
   foreach ($peachPath in @($peachJob.directories) + @($peachJob.files) + @($peachProgram)) {
-    if (Test-Path -LiteralPath $peachPath) {
-      $peachItem = Get-Item -LiteralPath $peachPath -Force
-      if ($peachItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Directory is a link' }
-      Remove-Item -LiteralPath $peachPath -Recurse -Force
+    for ($peachAttempt = 3; $peachAttempt -gt 0; $peachAttempt--) {
+      if (-not (Test-Path -LiteralPath $peachPath)) { break }
+      try {
+        $peachItem = Get-Item -LiteralPath $peachPath -Force
+        if ($peachItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw ('卸载目标是链接：' + $peachPath) }
+        Remove-Item -LiteralPath $peachPath -Recurse -Force
+        break
+      } catch {
+        if ($peachAttempt -le 1) { throw ('删除失败：' + $peachPath + '：' + $_.Exception.Message) }
+        Stop-PeachProgramProcesses
+        Start-Sleep -Seconds 2
+      }
     }
   }
   if ($peachJob.delete_data -and (Test-Path -LiteralPath $peachData) -and -not (Get-ChildItem -LiteralPath $peachData -Force | Select-Object -First 1)) {
     Remove-Item -LiteralPath $peachData
   }
 } catch {
-  [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null
-  [System.Windows.Forms.MessageBox]::Show('卸载未完成，请手动检查：' + $peachProgram + [Environment]::NewLine + $peachData, 'Peach') | Out-Null
+  $peachReason = $_.Exception.Message
+  $peachLog = Join-Path ([IO.Path]::GetTempPath()) 'peach-uninstall.log'
+  $peachDetail = '原因：' + $peachReason
+  try {
+    Add-Content -LiteralPath $peachLog -Value ((Get-Date -Format s) + '  ' + $peachReason) -Encoding UTF8
+    $peachDetail += [Environment]::NewLine + '详情记录在 ' + $peachLog
+  } catch { }
+  if (-not $peachJob.quiet) {
+    [System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show('卸载未完成，请手动检查：' + [Environment]::NewLine + $peachProgram + [Environment]::NewLine + $peachData + [Environment]::NewLine + $peachDetail, 'Peach') | Out-Null
+  }
   exit 1
 }
 """

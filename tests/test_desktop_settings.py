@@ -3,8 +3,10 @@ import json
 import base64
 import ctypes
 import os
+import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -65,9 +67,18 @@ class DesktopSettingsTests(unittest.TestCase):
     def test_uninstall_plan_keeps_media_and_can_preserve_all_data(self):
         keep = desktop_uninstall.plan(self.config, delete_data=False, program=self.program)
         self.assertEqual(keep['directories'], [])
+        generated_backup = self.data / 'config.toml.before-access-fix-20260906-135757'
+        generated_backup.write_text('fixture')
+        manual_backup = self.data / 'config.toml.bak'
+        manual_backup.write_text('fixture')
+        unrelated = self.data / 'personal.txt'
+        unrelated.write_text('preserve')
         full = desktop_uninstall.plan(self.config, delete_data=True, program=self.program)
         self.assertEqual(len(full['directories']), len(settings_file.DIRECTORY_KEYS))
         self.assertNotIn(str(self.root / 'media'), full['directories'])
+        self.assertIn(str(generated_backup), full['files'])
+        self.assertIn(str(manual_backup), full['files'])
+        self.assertNotIn(str(unrelated), full['files'])
 
     def test_uninstall_refuses_media_overlap_external_storage_and_source_tree(self):
         self.config.locations = {'local': (str(self.data / 'sources/media'),)}
@@ -332,6 +343,8 @@ class DesktopSettingsTests(unittest.TestCase):
             path.mkdir()
             (path / 'fixture.txt').write_text('fixture')
         self.config.path.write_text('fixture')
+        generated_backup = self.data / 'config.toml.before-access-fix-20260906-135757'
+        generated_backup.write_text('fixture')
         unrelated = self.data / 'personal.txt'
         unrelated.write_text('preserve')
         media = self.root / 'media'
@@ -346,5 +359,56 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.program.exists())
         self.assertFalse(self.config.path.exists())
+        self.assertFalse(generated_backup.exists())
         self.assertTrue(unrelated.is_file())
         self.assertTrue((media / 'video.mp4').is_file())
+
+    def _run_native_uninstall(self, job):
+        shell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        return subprocess.run([str(shell), '-NoProfile', '-NonInteractive', '-EncodedCommand',
+                               base64.b64encode(desktop_uninstall._SCRIPT.encode('utf-16-le')).decode('ascii')],
+                              input=json.dumps(dict(job, pid=2147483647, quiet=True)).encode('utf-8'), capture_output=True,
+                              timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
+    def test_native_uninstall_kills_strays_running_from_the_program(self):
+        stray = self.program / 'Stray.exe'
+        shutil.copyfile(Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/cmd.exe', stray)
+        held = subprocess.Popen([str(stray), '/c', 'ping', '-n', '60', '127.0.0.1'],
+                                creationflags=subprocess.CREATE_NO_WINDOW)
+        self.addCleanup(held.kill)
+        result = self._run_native_uninstall(
+            desktop_uninstall.plan(self.config, delete_data=False, program=self.program))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.program.exists())
+        self.assertTrue(self.root.exists(), '只删除 Peach 解压目录，不删除用户选择的父目录')
+        self.assertIsNotNone(held.poll())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
+    def test_native_uninstall_retries_until_the_file_is_released(self):
+        blocked = self.program / '_internal' / 'locked.bin'
+        blocked.write_text('fixture')
+        handle = blocked.open('rb')
+        self.addCleanup(handle.close)
+        timer = threading.Timer(1.0, handle.close)
+        timer.start()
+        self.addCleanup(timer.join)
+        result = self._run_native_uninstall(
+            desktop_uninstall.plan(self.config, delete_data=False, program=self.program))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.program.exists())
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
+    def test_native_uninstall_names_the_blocked_file_in_the_error_log(self):
+        blocked = self.program / '_internal' / 'locked.bin'
+        blocked.write_text('fixture')
+        handle = blocked.open('rb')
+        self.addCleanup(handle.close)
+        log = Path(tempfile.gettempdir()) / 'peach-uninstall.log'
+        log.unlink(missing_ok=True)
+        self.addCleanup(log.unlink)
+        result = self._run_native_uninstall(
+            desktop_uninstall.plan(self.config, delete_data=False, program=self.program))
+        self.assertEqual(result.returncode, 1, result.stderr)
+        self.assertTrue(self.program.exists())
+        self.assertIn('locked.bin', log.read_text(encoding='utf-8'))
