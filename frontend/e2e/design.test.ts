@@ -436,14 +436,35 @@ describe('设计决定', () => {
       assert.equal(result.duration, '0.25s');
 
       const input = opened.page.locator('#q');
+      await opened.page.evaluate(() => {
+        document.documentElement.removeAttribute('data-count-animation');
+        const count = document.querySelector('#count');
+        const observer = new MutationObserver(() => {
+          const digit = count?.querySelector<HTMLElement>('[data-count-readout] .digits.popping > span');
+          if (!digit) return;
+          const style = getComputedStyle(digit);
+          document.documentElement.dataset.countAnimation = JSON.stringify({
+            animationName: style.animationName,
+            duration: style.animationDuration,
+          });
+          observer.disconnect();
+        });
+        observer.observe(count!, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+      });
       await input.fill('读数变值');
       await input.press('Enter');
       await opened.page.waitForFunction(() =>
         document.querySelector('#count [data-count-readout]')?.textContent?.includes('34 个符合'));
-      const liveDigit = opened.page.locator('#count [data-count-readout] .digits.popping > span').first();
-      await liveDigit.waitFor({ timeout: 5_000 });
-      assert.equal(await liveDigit.evaluate((element) => getComputedStyle(element).animationName),
-        'digit-pop-in', '真实读数节点变值后没有播放动画');
+      /* 读数更新后还可能因自动续页再重画。在触发前观察真实节点，既能验收
+         动画的计算值，也不把断言绑在之后某一次采样恰好撞上短暂节点。 */
+      await opened.page.waitForFunction(() =>
+        document.documentElement.hasAttribute('data-count-animation'), undefined, { timeout: 5_000 });
+      const liveAnimation = await opened.page.evaluate(() =>
+        JSON.parse(document.documentElement.dataset.countAnimation || '{}') as {
+          animationName?: string; duration?: string;
+        });
+      assert.equal(liveAnimation.animationName, 'digit-pop-in', '真实读数节点变值后没有播放动画');
+      assert.equal(liveAnimation.duration, '0.25s');
     } finally {
       await opened.close();
     }
