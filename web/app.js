@@ -1727,8 +1727,11 @@ function presentItemDetail(){
   stage.oncancel=event=>{event.preventDefault();dismissStage()};
   /* 点浮窗外面就退出。原生模态里「外面」还是这个 dialog 自己——遮罩归它，落在遮罩上的
      事件 target 就是它本人，所以判据取坐标不取 target：按 target 判，浮窗身上任何一块
-     不属于内容的地方都会被算成点了外面。 */
+     不属于内容的地方都会被算成点了外面。只看坐标也不够：播放器全屏后铺满整个视口，
+     浮窗的矩形仍是详情排版里那块，点进度条右段或底部控制栏会落在矩形外，播放器被当成浮窗外面
+     关掉，全屏和播放一起断。所以两条都要成立：target 是 dialog 本身，坐标在浮窗外。 */
   const outside=event=>{
+    if(event.target!==stage)return false;
     const box=stage.getBoundingClientRect();
     return event.clientX<box.left||event.clientX>box.right
       ||event.clientY<box.top||event.clientY>box.bottom;
