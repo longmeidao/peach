@@ -1119,7 +1119,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             """      ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       ${ratingHtml(it.rating)}
-      <div class="smeta mono">""")
+      <div class="smeta mono" data-reveal-line>""")
         self.assertPageContains(
             "const value=picked===before?0:picked;")
         self.assertPageContains(
@@ -5749,9 +5749,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-junk-kind-link="${esc(key)}"${current?' + repr(' aria-current="page"'))
         # 计数是徽标不是标题的一部分，为 0 时整枚去掉，两条一个口径。
         self.assertPageContains(
-            'count?` <span class="n mono">${count.toLocaleString()}</span>`:' + repr(''))
+            'count?` <span class="n mono" data-count-badge="junk:${esc(key)}">'
+            '${count.toLocaleString()}</span>`:' + repr(''))
         self.assertPageContains(
-            'dismissedTotal?` <span class="n mono">${dismissedTotal.toLocaleString()}</span>`:' + repr(''))
+            'dismissedTotal?` <span class="n mono" data-count-badge="junk:dismissed">'
+            '${dismissedTotal.toLocaleString()}</span>`:' + repr(''))
         self.assertPageLacks(" <span>${countFor(key).toLocaleString()}</span>")
         self.assertPageContains(".junkfilters .n{color:var(--muted);"
                                 "font-size:var(--fs-xs);font-variant-numeric:tabular-nums}")
@@ -5910,7 +5912,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function resetHomeState(){")
         self.assertPageContains("q:'',jav:'',thumb:'0'};")
         self.assertPageContains("function openHome(scroll=false){")
-        self.assertPageContains("resetHomeState();route('/');$('#q').value='';disposeStage(false);showHomeSurfaces();")
+        self.assertPageContains("resetHomeState();route('/');clearSearchField();disposeStage(false);showHomeSurfaces();")
         self.assertPageContains("buildEdge();buildBars();load(true);")
         # 抽屉和窄栏已经共用 navTo，这一句只应该存在一处；
         # 两份副本正是当初把追更入口漏在抽屉里的原因。
@@ -7482,7 +7484,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains('aria-pressed="${selected}">${esc(label)}${count==null?\'\':'
-                                '`<span class="${esc(countClass)}">${esc(count)}</span>`}')
+                                '`<span class="${esc(countClass)}" data-count-badge="${esc(value)}">'
+                                '${esc(count)}</span>`}')
         self.assertPageContains(".pill .n{margin-left:7px;color:var(--muted);font-size:var(--fs-xs);"
                                 "font-variant-numeric:tabular-nums}")
         self.assertPageContains('.pill[aria-pressed="true"] .n,.pill:hover .n{color:var(--ink-2)}')
@@ -7796,7 +7799,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".javedition.uncensored{color:var(--meter)}")
         self.assertPageContains(".javedition.cracked{color:var(--drop)}")
         self.assertPageContains('<button class="t cardtitle" data-open>${shownTitle}</button>')
-        self.assertPageContains('<div class="stitle">${javTitleHtml(it)}')
+        self.assertPageContains('<div class="stitle" data-reveal-line>${javTitleHtml(it)}')
         self.assertPageContains("$('#tokTitle').textContent=javDisplayName(it)")
         self.assertPageContains("<b data-middle-truncate>${esc(javDisplayName(x))}</b>")
 
@@ -8203,7 +8206,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_recycle_bin_has_its_own_route_and_reports_undeletable_files(self):
         self.assertRoute('/trash', "section:'trash'", "openTrash(push)")
         self.assertPageContains("function openTrash(push){")
-        self.assertPageContains("state:'trash',q:''};$('#q').value='';")
+        self.assertPageContains("state:'trash',q:''};clearSearchField();")
         self.assertPageContains("/api/trash/empty")
         self.assertPageContains("r.blocked&&r.blocked.length")
 
@@ -8750,7 +8753,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             '<div class="detailtitle">${srcBadge(it.location,it.cost,\'srcbig\')}\n'
-            '        <div class="stitle">${javTitleHtml(it)}${partLabelBadge(it,queueContext)}'
+            '        <div class="stitle" data-reveal-line>${javTitleHtml(it)}${partLabelBadge(it,queueContext)}'
             '${it.location===\'online\'?\'\':`<span class="srctools detailtitletools">'
             '${sourceToolButtons(it.id)}</span>`}</div></div>')
         self.assertPageContains(".detailtitle{display:flow-root;margin-bottom:10px}")
@@ -9687,7 +9690,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 关掉动效时两档弹簧一起归零，剩下的是瞬时到位；原地换态那三档也在同一条里。
         self.assertIn("--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;"
                       "--spring-press-ms:0;--motion-swap:0s;--motion-reveal:0s;"
-                      "--motion-stagger:0ms}", board)
+                      "--motion-stagger:0ms;--motion-pop:0s}", board)
 
     def test_the_theme_sweep_masks_with_a_gradient_instead_of_a_filtered_svg(self):
         """明暗切换那圈扩散用一段 CSS 渐变当遮罩，柔边靠色标位置给。
@@ -12276,6 +12279,87 @@ class MotionRecipeTests(unittest.TestCase):
         shake = self.css.split("@keyframes field-shake{", 1)[1].split("}}", 1)[0]
         self.assertNotIn("color", shake, "抖动只走 transform，颜色归原有的错误样式")
         self.assertNotIn("border", shake, "抖动只走 transform，边框归原有的错误样式")
+
+    def test_avatar_lift_moves_only_transform_and_never_layout(self):
+        """一排头像里抬起一枚：邻座跟着让，但这一排的几何一格也不动。
+
+        这两排横着滚，改 margin 或 width 会把后面所有人推着走，正在看的那一枚当场滑
+        出指针。进出两条缓动由整排的 `:has(:hover)` 切换，所以这里也钉住那一对。
+        """
+        motion = (Path(__file__).resolve().parents[1]
+                  / "web/css/25-motion.css").read_text(encoding="utf-8")
+        # 注释本身就在说「不许碰 margin 和 width」，所以只取注释之后那几条声明。
+        lift = motion.split("── 一排头像里指到的那一枚抬起来 ──", 1)[1].split("*/", 1)[1].split("/*", 1)[0]
+        for banned in ("margin", "width:", "gap:", "padding"):
+            with self.subTest(prop=banned):
+                self.assertNotIn(banned, lift, f"抬起来那一下不许碰 {banned}")
+        self.assertPageContains(
+            "transform:translate(var(--lift-x,0),var(--lift-y,0)) scale(var(--lift-scale,1))")
+        self.assertPageContains(
+            ":is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:hover)"
+            "{--lift-motion:var(--board-motion)}")
+        # 落回走按压弹簧：站内已经有采样自真实弹簧的那一档，不另起一条近似。
+        self.assertPageContains("--lift-motion:calc(var(--spring-press-ms) * 1ms) var(--spring-press)")
+        # 那条 transition 住在 board.css：它的 shorthand 已经排着 scale 与配色，
+        # transform 只能并进同一条列表，另写一条会被它整条盖掉。
+        board = (Path(__file__).resolve().parents[1]
+                 / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("transition:transform var(--lift-motion,var(--board-motion)),scale ", board)
+
+    def test_clearing_the_search_box_dissolves_the_old_text(self):
+        """输入框的 value 是一瞬间没的，飘的是照着它摆的一份复制品。
+
+        复制品先摆好、value 当场清空，光标与输入法一刻也不等这段动画；六个清空入口
+        共用同一个函数，漏掉一个就是那条路径上硬切。
+        """
+        self.assertPageContains("export function dissolveValue(input,host=input&&input.parentElement)")
+        self.assertPageContains("const clearSearchField=()=>dissolveValue($('#q'));")
+        self.assertPageContains("animation:clear-dissolve var(--motion-reveal) forwards")
+        app = (Path(__file__).resolve().parents[1]
+               / "web/app.js").read_text(encoding="utf-8")
+        self.assertNotIn("$('#q').value='';", app, "清空搜索框只走 clearSearchField")
+        self.assertGreaterEqual(app.count("clearSearchField();"), 6)
+
+    def test_count_badges_pop_only_for_the_ones_that_really_changed(self):
+        """这几排每换一个筛选都整块重画，按节点判等于每次筛选整列计数一起弹。"""
+        self.assertPageContains("export function popBadges(root,scope='')")
+        self.assertPageContains("if(previous===undefined||previous===next)return;\n    el.classList.add('popped');")
+        # 整枚一起弹，不按位拆：徽标读的是有没有变多，按位拆是读数那一条的事。
+        # 起点那一帧不带过渡：带的话挂上去只是开始朝零缩，同一次调用里摘掉时回程无处可走。
+        self.assertPageContains(
+            ".countbadge.popped{transform:scale(0);opacity:0;filter:blur(2px);transition:none}")
+        for call in ("popBadges($('#tagScroll'),'tagbar')",
+                     "popBadges($('#drawerScroll'),'drawer')",
+                     "popBadges($('#count'),'junk')"):
+            with self.subTest(call=call):
+                self.assertPageContains(call)
+
+    def test_titles_reveal_by_line_and_leave_no_filter_behind(self):
+        """按行不按词：这几处标题正是最常被复制走的几段字，拆成一串 span 会散架。
+
+        走完把类名一并摘掉。留着终点帧上那个 `filter:blur(0)`，非 none 的 filter 会
+        另起一个 backdrop root，标题块里任何 backdrop-filter 从此只采样得到它自己。
+        """
+        self.assertPageContains("export function revealTexts(root,selector='[data-reveal-line]')")
+        self.assertPageContains("transition-delay:calc(var(--motion-stagger) * var(--reveal-at,0))")
+        self.assertPageContains(
+            ".revealline{opacity:0;transform:translateY(12px);filter:blur(3px);transition:none}")
+        self.assertPageContains(".revealline.revealing{opacity:1;transform:none;filter:blur(0);")
+        self.assertPageContains("el.classList.remove('revealline','revealing')")
+        motion = (Path(__file__).resolve().parents[1]
+                  / "web/css/25-motion.css").read_text(encoding="utf-8")
+        self.assertNotIn("word-break", motion.split(".revealline", 1)[1])
+        # 换了页才揭示一遍；同一页里的每一次重画走的也是这个函数。
+        self.assertPageContains("if(label===lastManagePageLabel)return;")
+        self.assertPageContains("if(moved)revealTexts(heading.parentElement,'h2');")
+
+    def test_the_new_pop_easing_is_a_token_and_reduced_motion_zeroes_it(self):
+        """`animation` 里只能有一条缓动函数：token 已经带着一条，再写第二条整条无效。"""
+        board = (Path(__file__).resolve().parents[1]
+                 / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("--motion-pop:.4s cubic-bezier(.34,1.36,.64,1)", board)
+        start = board.index("--board-motion:0s")
+        self.assertIn("--motion-pop:0", board[start:board.index("}", start)])
 
 
 if __name__ == "__main__":

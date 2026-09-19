@@ -9,7 +9,7 @@ export function filterChipHtml(label,{attr,value,selected=false,count,className=
   /* 计数前不写空格。`.pill` 是 flex 容器，纯空白的文本节点不参与布局，写了也量不出
      一个像素——间隔归 `.pill .n` 的 margin，写在两处就是两份真相，而其中一份从来
      没生效过。 */
-  return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':`<span class="${esc(countClass)}">${esc(count)}</span>`}</button>`;
+  return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':`<span class="${esc(countClass)}" data-count-badge="${esc(value)}">${esc(count)}</span>`}</button>`;
 }
 /* `extra` 排在换一批与排序键之间。那个位置放的是版式、大小这类「这批东西怎么摆」的
    开关，以及跟换一批同类的动作键；排序键一律排在最末，挨着它说明的那批内容。 */
@@ -119,6 +119,82 @@ export function revealSkeleton(container,write){
   const done=event=>{if(event.target!==fade)return;fade.removeEventListener('transitionend',done);drop()};
   fade.addEventListener('transitionend',done);
   setTimeout(()=>{if(fade.isConnected){fade.removeEventListener('transitionend',done);drop()}},1000);
+}
+
+/**
+ * 清空输入框，框里那段字往上飘着糊掉。
+ *
+ * 输入框的 value 是一瞬间没的，动画只能挂在别处：这里照着它此刻的位置和字体摆一份同样
+ * 的字，让那一份去飘，真正的输入框当场就空了，光标和输入法一刻也不等。`host` 缺省取
+ * 输入框的父元素，它必须是定位祖先，否则这一层会飘到页面左上角去。
+ */
+export function dissolveValue(input,host=input&&input.parentElement){
+  if(!input||!host)return;
+  const text=input.value;
+  input.value='';
+  if(!text||!input.isConnected)return;
+  const box=input.getBoundingClientRect(),frame=host.getBoundingClientRect();
+  if(!box.width)return;
+  const ghost=document.createElement('span');
+  ghost.className='cleardissolve';
+  ghost.setAttribute('aria-hidden','true');
+  ghost.textContent=text;
+  const style=getComputedStyle(input);
+  Object.assign(ghost.style,{left:`${box.left-frame.left}px`,top:`${box.top-frame.top}px`,
+    width:`${box.width}px`,height:`${box.height}px`,font:style.font,letterSpacing:style.letterSpacing});
+  host.append(ghost);
+  const drop=()=>ghost.remove();
+  ghost.addEventListener('animationend',drop,{once:true});
+  /* 兜底：`--motion-reveal` 归零或这一刻元素不可见时 `animationend` 不会来，
+     不兜的话这份复制品就永远盖在输入框上。 */
+  setTimeout(drop,1000);
+}
+
+/* 计数徽标上一次是多少。徽标所在的那一排每次筛选都整块重画，节点本身留不住上一个值，
+   所以记在这里，键由调用方给的范围加徽标自己的键拼成。 */
+const badgeCounts=new Map();
+/**
+ * 一排计数徽标里值真变了的那几枚弹一下，其余的不动。
+ *
+ * 首次见到某一枚不弹：那是它第一次出现在这个范围里，整排一起弹是一屏烟花，而它要说的
+ * 是「这一枚刚变了」。`scope` 区分同一个键在不同排里的计数（顶部筛选条和抽屉各有一份）。
+ */
+export function popBadges(root,scope=''){
+  if(!root)return;
+  root.querySelectorAll('[data-count-badge]').forEach(el=>{
+    const key=`${scope} ${el.dataset.countBadge}`,next=el.textContent||'';
+    const previous=badgeCounts.get(key);
+    badgeCounts.set(key,next);
+    el.classList.add('countbadge');
+    if(previous===undefined||previous===next)return;
+    el.classList.add('popped');
+    el.getBoundingClientRect();
+    el.classList.remove('popped');
+  });
+}
+
+/**
+ * 一段标题从模糊里逐行揭示出来。
+ *
+ * 按行不按词：逐词要把整句拆成一串 `<span>`，复制出来的文字会跟着散架，而这几处标题
+ * 正是最常被复制走的那几段字。走完把类名和行序一起摘掉，终点帧不留下 `filter`。
+ */
+export function revealTexts(root,selector='[data-reveal-line]'){
+  if(!root)return;
+  const lines=[...root.querySelectorAll(selector)];
+  if(!lines.length)return;
+  /* 起止两个状态都挂在行自己身上，不挂在外面那一层：这几处标题里有一对是 `<body>` 的
+     直接子元素（页面标题和它的说明行），要共同的祖先就只剩 body 本身。 */
+  lines.forEach((el,i)=>{el.classList.remove('revealing');el.classList.add('revealline');
+    el.style.setProperty('--reveal-at',String(i))});
+  lines[0].getBoundingClientRect();
+  lines.forEach(el=>el.classList.add('revealing'));
+  const drop=()=>lines.forEach(el=>{el.classList.remove('revealline','revealing');
+    el.style.removeProperty('--reveal-at')});
+  const last=lines[lines.length-1];
+  const done=event=>{if(event.target!==last)return;last.removeEventListener('transitionend',done);drop()};
+  last.addEventListener('transitionend',done);
+  setTimeout(()=>{if(last.classList.contains('revealline')){last.removeEventListener('transitionend',done);drop()}},1200);
 }
 
 const horizontalControls=new Map();
