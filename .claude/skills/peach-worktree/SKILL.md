@@ -5,19 +5,20 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 # 并行 worktree 与提交边界
 
-最后复核：2026-09-19
-证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017、2026-09-19 本机会话工具记录。
+最后复核：2026-09-20
+证据来源：`docs/HANDOFF.md`「并行智能体与 Git 工作树」、`README.md`、ADR-0015、ADR-0017、本机工作树与沙箱工具记录。
 
 ## 是否委派与何时使用
-
 单一功能域、局部改动或预计 30 分钟内完成的任务，由协调者在自己的隔离工作树直接完成；只有任务可独立并行、需要隔离环境，或长跑过程能明确缩短总耗时才委派。
 默认最多一个工作者；多个工作者只用于彼此无依赖的任务。委派只传目标、相关文件、边界和验收命令，不转交完整对话。
 协调者只在完成、阻塞或至少五分钟的检查点读取状态，不做分钟级轮询，也不重复工作者完成的搜索、浏览器检查和测试。
 任何会写入当前机器 `peach-app` 的代码任务都使用隔离工作树。主目录只做集成，不做并行编辑；worktree 本机重建，不跨机器复制目录。
 
 ## 流程
-
 1. 协调者在主目录创建隔离工作树：`& .\.venv\Scripts\python.exe -X utf8 scripts\agent_worktree.py create --agent claude --task <task>`。它建在 `peach-worktrees/`，Codex 和 Claude 共用这一个目录。**不要用 Claude Code 内置的工作树机制（`.claude/worktrees/`）**：它在分支被集成后会被回收，目录却留在原地。
+   Windows Codex 对 `create`／`ready`／`integrate`／`prune --apply`、`git add` 与 `git commit`
+   从第一次调用就按 `peach-shell-commands` 的沙箱规则使用受控提权；它们会写主检出的
+   Git common directory，工作树目录可写不代表 `.git/worktrees/**` 可写。
 
 2. 工作者只在自己的工作树内编辑。`create` 自动锁定工作树，成功集成后解锁；不复制 `.venv`；用 `uv sync --locked --all-extras` 创建自己的测试环境。
 3. 测试在当前工作树根目录运行：Windows `& .\scripts\test.ps1`，macOS/Linux `./scripts/test.sh`。默认 `auto` 按改动文件取影响域并集；文档及无改动检查 `checks`，未知影响面、共享测试设施和实际依赖选 `full`。域清单唯一真相在 `scripts/test_runner.py`；局部调试可显式选域。

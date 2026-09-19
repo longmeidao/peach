@@ -160,6 +160,15 @@ class VerificationTests(unittest.TestCase):
         with mock.patch.object(evidence.shutil, "which", return_value=None):
             self.assertNotEqual(evidence.environment(self.repo), broken)
 
+    def test_unspawnable_tools_names_every_resolved_tool_blocked_by_permissions(self):
+        """入口需要工具名来给出一条明确结论，不能等测试分片各自抛 CreateProcess。"""
+        with mock.patch.object(evidence.shutil, "which", side_effect=lambda name: f"/tools/{name}"), \
+                mock.patch.object(evidence, "tool_identity",
+                                  side_effect=lambda executable, stamp, probe:
+                                  "unspawnable" if executable.endswith(("uv", "git")) else "ok"), \
+                mock.patch.object(evidence.Path, "stat", return_value=mock.Mock(st_mtime_ns=1)):
+            self.assertEqual(evidence.unspawnable_tools(), ("uv", "git"))
+
     def test_commit_metadata_preserves_content_record(self):
         worker, _ = self.worker()
         state = self.certify(worker)

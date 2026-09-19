@@ -15,6 +15,16 @@ from support.ledger import fresh_ledger
 
 
 class TestPlanningTests(unittest.TestCase):
+    def test_unspawnable_tools_stop_before_any_test_shard_starts(self):
+        output = io.StringIO()
+        with patch.object(runner.test_evidence, 'unspawnable_tools', return_value=('uv',)), \
+             patch.object(runner, 'build_suite', side_effect=AssertionError('环境不成立时不应加载测试')), \
+             contextlib.redirect_stdout(output):
+            with self.assertRaisesRegex(SystemExit, '3'):
+                runner.main(['--scope', 'checks'])
+        self.assertIn('uv', output.getvalue())
+        self.assertIn('正常 PowerShell 权限', output.getvalue())
+
     def test_dependency_changes_require_full_but_tool_version_does_not(self):
         source = '[project]\nrequires-python=">=3.12"\ndependencies=["demo==1"]\n[tool.uv]\nrequired-version="==1"\n'
         for replacement, expected in ((source.replace('==1"\n', '==2"\n'), ('packaging',)),

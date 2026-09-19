@@ -82,6 +82,7 @@ def python_identity(executable: str, stamp: int) -> dict:
 #: 就报「缺少有效测试记录」，而回到工作树跑 `auto` 又说「复用记录」，两句查的是两个键。
 #: 探针只用最短的那条：`openssl version -a` 会连 OPENSSLDIR 一起打出来，那又是路径。
 TOOL_PROBES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("uv", ("--version",)),
     ("node", ("--version",)),
     ("npm", ("--version",)),
     ("git", ("--version",)),
@@ -105,7 +106,8 @@ def tool_identity(executable: str, stamp: int, probe: tuple[str, ...]) -> str:
     return digest([done.returncode, done.stdout.strip(), done.stderr.strip()])
 
 
-def environment(root: Path) -> str:
+def tool_identities() -> dict[str, str | None]:
+    """PATH 上外部工具的可执行身份；存在但启动受限时明确记作 unspawnable。"""
     tools = {}
     for name, probe in TOOL_PROBES:
         executable = shutil.which(name)
@@ -120,6 +122,17 @@ def environment(root: Path) -> str:
         except OSError:
             stamp = 0
         tools[name] = tool_identity(executable, stamp, probe)
+    return tools
+
+
+def unspawnable_tools() -> tuple[str, ...]:
+    """返回能解析到路径、但当前进程权限无法启动的外部工具。"""
+    return tuple(name for name, identity in tool_identities().items()
+                 if identity == "unspawnable")
+
+
+def environment(root: Path) -> str:
+    tools = tool_identities()
     # 同一个目录可在 sys.path 中出现多次；依赖身份取集合，版本变化仍改变指纹。
     python = interpreter(root)
     identity = python_identity(str(python), python.stat().st_mtime_ns)
@@ -128,7 +141,7 @@ def environment(root: Path) -> str:
                         if d.metadata.get("Name", "").casefold() != "peach"})
     node_lock = root / "frontend/node_modules/.package-lock.json"
     return digest({
-        "schema": 4, "python": identity["version"], "executable": str(python),
+        "schema": 5, "python": identity["version"], "executable": str(python),
         "platform": platform.platform(), "packages": installed, "tools": tools,
         "node_modules": hashlib.sha256(node_lock.read_bytes()).hexdigest() if node_lock.exists() else None,
         "flags": {k: v for k, v in os.environ.items()
