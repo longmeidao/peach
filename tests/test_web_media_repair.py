@@ -6,7 +6,7 @@
 import sqlite3
 import tempfile
 import unittest
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from unittest import mock
 
 from peach import web_contract as rm_web
@@ -76,7 +76,8 @@ class MediaRepairRunTests(unittest.TestCase):
         self.contract.header_repairs = self.store
         self.contract.transcode_service = self.transcodes
         patch = mock.patch.object(
-            rm_repair, "translate_ledger_path", lambda raw: self.media / Path(str(raw)).name)
+            rm_repair, "translate_ledger_path",
+            lambda raw: self.media / PureWindowsPath(str(raw)).name)
         patch.start()
         self.addCleanup(patch.stop)
 
