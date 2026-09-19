@@ -488,16 +488,20 @@ describe('设计决定', () => {
       assert.equal(await avatars.count(), 5, 'API 给七位表演者时卡片没有收在五枚以内');
       const before = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
       const left = (await stack.boundingBox())!.x;
+      const waitForAvatarMotion = () => stack.evaluate(async (element) => {
+        const animations = element.getAnimations({ subtree: true });
+        await Promise.all(animations.map((animation) => animation.finished.catch(() => undefined)));
+      });
 
       await avatars.first().hover();
-      await opened.page.waitForTimeout(320);
+      await waitForAvatarMotion();
       const firstSpread = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
       for (let index = 1; index < firstSpread.length; index += 1) {
         assert.ok(firstSpread[index] > before[index], `首枚悬停时第 ${index + 1} 枚没有向标题方向展开`);
       }
 
       await avatars.nth(2).hover();
-      await opened.page.waitForTimeout(320);
+      await waitForAvatarMotion();
       const after = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
       const card = stack.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " card ")]').first();
       const bounds = await card.evaluate((cardElement) => {
@@ -524,7 +528,7 @@ describe('设计决定', () => {
 
       await opened.page.mouse.move(0, 0);
       await avatars.nth(2).focus();
-      await opened.page.waitForTimeout(320);
+      await waitForAvatarMotion();
       const layers = await avatars.evaluateAll((items) => items.map((item) => Number(getComputedStyle(item).zIndex)));
       assert.equal(layers[2], Math.max(...layers), '键盘焦点所在头像没有升到最高层');
 
@@ -535,7 +539,7 @@ describe('设计决定', () => {
         await opened.page.waitForFunction(() => !document.querySelector('#drawer')?.classList.contains('open'));
       }
       await avatars.first().hover();
-      await opened.page.waitForTimeout(320);
+      await waitForAvatarMotion();
       const narrow = await card.evaluate((cardElement) => {
         const cardRect = cardElement.getBoundingClientRect();
         const firstRect = cardElement.querySelector('.mav')!.getBoundingClientRect();
