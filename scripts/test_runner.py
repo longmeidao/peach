@@ -487,6 +487,21 @@ def run_shards(scopes: tuple[str, ...], *, jobs: int, shard_count: int,
     return passed, count, timings
 
 
+def environment_preflight(timings: Path | None = None) -> None:
+    """外部工具若被执行权限挡住，在创建测试分片前给出一条可操作的结论。"""
+    blocked = test_evidence.unspawnable_tools()
+    if not blocked:
+        return
+    names = "、".join(blocked)
+    print(f"Peach 测试环境无法启动 PATH 中的工具：{names}。"
+          "Windows Codex 任务请让 scripts/test.ps1 通过受控提权在正常 PowerShell 权限下运行；"
+          "其他环境请先修复这些工具的执行权限。不要改单测或跳过用例。", flush=True)
+    if timings is not None:
+        timings.write_text(json.dumps({"success": False, "count": 0, "timings": []}),
+                           encoding="utf-8")
+    raise SystemExit(3)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     # `--scope` 可重复：本机并行的父进程把 `auto` 算出来的几个域原样交给每个分片子进程。
@@ -507,6 +522,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_scopes:
         print("\n".join(("full", "auto", *SCOPES)))
         return 0
+    environment_preflight(args.timings)
     requested: tuple[str, ...] = tuple(dict.fromkeys(args.scopes or ("auto",)))
     if "auto" in requested and len(requested) > 1:
         parser.error("auto 不能与别的域同时指定")

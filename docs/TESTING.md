@@ -66,11 +66,15 @@ macOS 按影响域验证：
 
 显式全量用 Windows `-Scope full` 或 macOS 首参数 `full`。入口优先当前工作树环境、核对源码位置，并记录慢测试。依赖、代码在测试中变化会使证据失效；完成安装和编辑后再启动最终验证。
 
+正式入口会在创建测试分片前探测 PATH 中的外部工具。工具路径存在但当前权限不能启动时，
+入口以一条环境结论退出，不把同一个 `CreateProcess` 权限错误散落到多个用例。Windows Codex
+任务应让整条 `scripts/test.ps1` 通过受控提权在正常 PowerShell 权限下运行；不改单测、不跳过用例。
+
 ## 记录的环境身份
 
 记录只在「代码、环境、范围」三项都匹配时可复用，环境那一项由 `scripts/test_evidence.py`
 的 `environment()` 算成一个摘要：解释器与已安装包、平台、`PEACH_*` 等环境变量、前端
-`node_modules` 锁，以及 node／npm／git／ffmpeg／ffprobe／openssl 六个外部工具。
+`node_modules` 锁，以及 uv／node／npm／git／ffmpeg／ffprobe／openssl 七个外部工具。
 
 工具身份取它**自报的版本**，不取 PATH 解析到的路径与文件字节。同一套 Git 安装在
 PowerShell 里解析到 `Git\cmd\git.exe`、在 Git Bash 里解析到 `Git\mingw64\bin\git.exe`，

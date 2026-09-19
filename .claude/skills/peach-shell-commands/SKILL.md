@@ -5,10 +5,10 @@ description: 在写 PowerShell 或 Bash 命令、拼多行内容、用 rg 或 Py
 
 # 命令与路径的形态
 
-最后复核：2026-09-08
+最后复核：2026-09-20
 证据来源：`tests/test_agent_worktree.py` 与 `tests/test_scripts.py` 里临时目录 `.resolve()`
 和正斜杠路径的注释、`scripts/test.ps1` 与 `scripts/test.sh` 的编码约定、Git 历史里被
-heredoc 转义损坏的那几次补丁。
+heredoc 转义损坏的那几次补丁，以及 `scripts/test_runner.py` 的外部工具预检。
 
 ## 何时使用
 
@@ -24,6 +24,19 @@ heredoc 转义损坏的那几次补丁。
 - `rg` 的路径参数不含 `*`，要筛文件用 `-g`；退出码 1 表示无匹配，不是失败。
 - Python CLI 加 `-X utf8`；PowerShell 读 UTF-8 日志显式加 `-Encoding utf8`。编码要在输出端
   固定，只给读取端指定编码挡不住乱码。
+
+## Windows Codex 沙箱
+
+- `windows.sandbox = "elevated"` 是隔离模式，不是管理员权限。项目测试、npm／PyInstaller 构建、
+  Git common directory 写入需要正常 PowerShell 权限时，从第一次调用就用受控提权和窄命令前缀；
+  不先在沙箱里制造一次 `WinError 5`。
+- `_winapi.CreateProcess` 或 `.git/**/index.lock` 返回拒绝访问时，原样重跑统一入口；不拆成单测、
+  不改断言、不跳过用例。`scripts/test.ps1` 会在分片前报告无法启动的外部工具。
+- `danger-full-access` 是取消隔离，不是“提权沙箱”。除非用户明确要求承担全局风险，否则保留沙箱，
+  只给当前项目入口所需的命令授权。
+- Windows 全量测试若外套 `resource_run.py`，给 `scripts/test.ps1` 传 `-Jobs 1`；外层 Job Object
+  与入口的四路并发叠加会让 Git Bash、Python 和临时 Git 进程出现 I/O 或进程创建错误。
+  npm／PyInstaller、FFmpeg 与媒体批处理仍按资源预算使用外层守卫。
 
 ## 多行内容一律落盘
 
