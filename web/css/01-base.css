@@ -61,9 +61,9 @@
      两份三层渐变里任何一层改歪一个百分点都看不出来，而它们本该永远相同。 */
   --glow-lerp: ;
   --glow-size:1; --glow-soften:1; --glow-drift-scale:1; --glow-drift-play:running;
-  --glow-spot-1-color:rgba(224,138,47,.62); --glow-spot-1-w:calc(20% * var(--glow-size)); --glow-spot-1-h:calc(20% * var(--glow-size)); --glow-spot-1-fade:calc(72% * var(--glow-soften));
-  --glow-spot-2-color:rgba(196,84,74,.52); --glow-spot-2-w:calc(26% * var(--glow-size)); --glow-spot-2-h:calc(26% * var(--glow-size)); --glow-spot-2-fade:calc(74% * var(--glow-soften));
-  --glow-spot-3-color:rgba(168,106,82,.52); --glow-spot-3-w:calc(23% * var(--glow-size)); --glow-spot-3-h:calc(23% * var(--glow-size)); --glow-spot-3-fade:calc(73% * var(--glow-soften));
+  --glow-spot-1-color:rgba(143,152,164,.52); --glow-spot-1-w:calc(20% * var(--glow-size)); --glow-spot-1-h:calc(20% * var(--glow-size)); --glow-spot-1-fade:calc(72% * var(--glow-soften));
+  --glow-spot-2-color:rgba(182,188,196,.38); --glow-spot-2-w:calc(26% * var(--glow-size)); --glow-spot-2-h:calc(26% * var(--glow-size)); --glow-spot-2-fade:calc(74% * var(--glow-soften));
+  --glow-spot-3-color:rgba(111,119,131,.50); --glow-spot-3-w:calc(23% * var(--glow-size)); --glow-spot-3-h:calc(23% * var(--glow-size)); --glow-spot-3-fade:calc(73% * var(--glow-soften));
   /* 强度是用户那一档，主题缩放是色板那一档，实际不透明度是两者相乘。
      深色侧栏那块玻璃吃光、浅色那块反光，同一组颜色照搬到浅色会浓得压住导航文字，所以
      浅色把整层按同一个比例收下来，而不是另存一套颜色：用户挑的是同一片光，两个主题不该

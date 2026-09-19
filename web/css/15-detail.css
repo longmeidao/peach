@@ -6,7 +6,7 @@
   flex-direction:column;overflow-y:auto;overflow-x:hidden}
 .stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
 /* 标题默认折成两行：番号在前、正文在后，两行够认出是哪一部；正文动辄五六行，整段摊开
-   会把评分、标签和动作全推到折叠线以下。真溢出时标题下面那排键末尾多一枚展开键，展开
+   会把评分、标签和动作全推到折叠线以下。真溢出时标题下面那排键最前面多一枚展开键，展开
    了换成收起；没溢出就不画它（判定在 app.js 里量）。来源徽标是行内块、站在第一行开头，
    随文字一起被折。那排键自成一行排在标题下面：夹在被折的文字末尾会一起被裁掉。 */
 .detailtitle{display:block;margin-bottom:10px}
@@ -14,6 +14,7 @@
 .detailtitle .stitle{min-width:0;margin:0;line-height:1.75}
 .stitletext{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}
 .stitletext[data-expanded]{display:block;-webkit-line-clamp:unset;line-clamp:unset}
+.stitletext[data-foldable]{cursor:pointer}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
    缺了就被按默认 fill:black 画成黑块（详见 .photonav 那一段的同类修复）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}

@@ -25294,7 +25294,7 @@ function ub({ kind: e, entityId: t, name: n, onPicked: r }) {
 			"aria-haspopup": "dialog",
 			"aria-label": `更换${n}的头像`,
 			onClick: () => a(!0),
-			className: "flex size-7 cursor-pointer items-center justify-center rounded-full border border-border-button-default bg-background-primary-default text-foreground-icon-primary shadow-xs outline-none ring-2 ring-background-full transition-colors hover:border-border-button-hover hover:bg-background-primary-hover focus-visible:ring-border-focus-ring active:bg-background-primary-active",
+			className: "flex size-7 cursor-pointer items-center justify-center rounded-full border border-border-button-default bg-background-primary-default text-foreground-icon-primary shadow-xs outline-none ring-2 ring-background-full transition-colors hover:border-border-button-hover hover:bg-background-primary-hover/60 dark:hover:bg-background-primary-hover focus-visible:ring-border-focus-ring active:bg-background-primary-active",
 			children: /* @__PURE__ */ (0, C.jsx)(Ef, {
 				"aria-hidden": !0,
 				className: "size-4"

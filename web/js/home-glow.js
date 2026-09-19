@@ -19,12 +19,12 @@
    模型，渲染仍是那三层纯 CSS 径向渐变，不引入 Canvas。
    三枚光晕各自向 transparent 收边，落在侧栏那块玻璃上，所以每一枚都得自己亮得起来：
    压暗的那种颜色在深色侧栏上等于没有，在浅色侧栏上是一团脏。
-   `amber` 是默认那一档，和 :root 上的默认值一字不差。
+   `ash` 是默认那一档，和 :root 上的默认值一字不差。
    每一档还带一枚搭配的强调色：换配色是换整套外观，按钮、焦点环和链接跟着走才是一副面。
    单点强调色可以把它覆盖掉，那一下只改强调色、不动光晕。 */
 const HOME_GLOW_SPOTS=['spot1','spot2','spot3'];
 const GLOW_SPOT_LABELS=['光晕一','光晕二','光晕三'];
-/* 「玻璃原色」是每块玻璃自带的那两团反光，颜色由明暗主题给：深色近白、浅色一蓝一棕。
+/* 「玻璃原色」是每块玻璃自带的那两团反光，颜色由明暗主题给：深色近白、浅色一蓝一灰。
    它不走光晕那一层——两团、各自的尺寸与轨迹全在 board.css 的 `--glass-drift-a/b` 里，
    照着三枚光晕重画一遍只会得到一份形状不同的仿制品。选中这一档时光晕整层的强度算成 0，
    同时不往根上写 `--glass-tint-*`，每块玻璃于是退回自己那一档主题色。
@@ -74,7 +74,7 @@ const HOME_GLOW_PRESETS=[
   ['rosegold','玫瑰金',{
     spot1:{color:'#fbc9ac',alpha:62},spot2:{color:'#e79ba7',alpha:52},spot3:{color:'#8e5a74',alpha:52}},'rose'],
   [GLASS_NATIVE_PRESET,'玻璃原色',{
-    spot1:{color:'#6686b8',alpha:52},spot2:{color:'#c69d73',alpha:44},spot3:{color:'#6686b8',alpha:52}},'blue'],
+    spot1:{color:'#6686b8',alpha:52},spot2:{color:'#8f98a4',alpha:44},spot3:{color:'#6686b8',alpha:52}},'blue'],
 ];
 const isNativeGlass=key=>key===GLASS_NATIVE_PRESET;
 /* 手调过颜色之后当前档就不再是任何一个预设，侧栏那一格和面板顶上的标识要如实说这件事，
@@ -130,9 +130,10 @@ const GLOW_SWATCHES=[
   ['purple','莓紫','#b65e8c'],['purple','墨紫','#2a2450'],['purple','暮紫','#5d2a66'],
   ['purple','夜紫','#4c3894'],['purple','淡紫','#b387e8'],['purple','玫紫','#8e5a74'],
   ['brown','杏橙','#ffc9a3'],['brown','浅杏','#fbc9ac'],
-  /* 这两枚是玻璃自带那两团反光在浅色主题下的颜色。「玻璃原色」那一档的界面不显示颜色，
-     但它在模型里仍有三枚合法色，同一条「预设用到的颜色都在表里」因此也要对它成立。 */
-  ['blue','霁蓝','#6686b8'],['brown','驼棕','#c69d73'],
+  /* 这一枚是玻璃自带那团蓝色反光在浅色主题下的颜色，另一团是上面灰系的石灰。「玻璃原色」
+     那一档的界面不显示颜色，但它在模型里仍有三枚合法色，同一条「预设用到的颜色都在表里」
+     因此也要对它成立。 */
+  ['blue','霁蓝','#6686b8'],
 ];
 const glowNumber=(value,min,max,fallback)=>Number.isInteger(value)&&value>=min&&value<=max?value:fallback;
 const glowColor=(value,fallback)=>/^#[0-9a-f]{6}$/i.test(String(value))?String(value).toLowerCase():fallback;
