@@ -15,6 +15,27 @@ import urllib.request
 import urllib.parse
 
 
+def wait_health(opener, base: str, process: subprocess.Popen, log_path: Path) -> dict:
+    deadline = time.monotonic() + 40
+    while True:
+        try:
+            with opener.open(base + "/healthz", timeout=1) as response:
+                return json.load(response)
+        except (OSError, urllib.error.URLError):
+            if process.poll() is not None or time.monotonic() > deadline:
+                raise RuntimeError(log_path.read_text(errors="replace"))
+            time.sleep(.25)
+
+
+def lan_base(port: int) -> str:
+    routed = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        routed.connect(("192.0.2.1", 80))
+        return f"http://{routed.getsockname()[0]}:{port}"
+    finally:
+        routed.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("executable", type=Path)
@@ -33,26 +54,20 @@ def main() -> int:
             with socket.socket() as reservation:
                 reservation.bind(("127.0.0.1", 0))
                 port = reservation.getsockname()[1]
-            command = [str(executable), "serve", "--host", "127.0.0.1", "--port", str(port),
-                       "--no-ledger-sync", "--no-mdns"]
-            process = subprocess.Popen(command + ["--setup"], cwd=root, env=environment, stdout=log, stderr=log)
+            setup_command = [str(executable), "serve", "--host", "127.0.0.1", "--port", str(port),
+                             "--no-ledger-sync", "--no-mdns", "--setup"]
+            process = subprocess.Popen(setup_command, cwd=root, env=environment, stdout=log, stderr=log)
             try:
                 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}),
                     urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
                 base = f"http://127.0.0.1:{port}"
-                deadline = time.monotonic() + 40
-                while True:
-                    try:
-                        with opener.open(base + "/healthz", timeout=1) as response:
-                            health = json.load(response)
-                        break
-                    except (OSError, urllib.error.URLError):
-                        if process.poll() is not None or time.monotonic() > deadline:
-                            raise RuntimeError((root / "runtime.log").read_text(errors="replace"))
-                        time.sleep(.25)
+                health = wait_health(opener, base, process, root / "runtime.log")
                 with opener.open(base + "/", timeout=5) as response:
                     assert 'action="/setup"' in response.read().decode("utf-8")
-                form = {"media_dir": str(media), "media_location": "115", "port": str(port)}
+                password = "standalone-smoke-password"
+                form = {"media_dir": str(media), "media_location": "115", "host": "2",
+                        "port": str(port), "mdns_name": "peach", "access_enabled": "y",
+                        "access_password": password, "access_confirm": password}
                 request = urllib.request.Request(base + "/setup",
                     data=urllib.parse.urlencode(form).encode(), headers={"Origin": base})
                 with opener.open(request, timeout=60) as response:
@@ -60,17 +75,19 @@ def main() -> int:
                 assert (data / "database" / "ledger.db").is_file()
                 process.terminate()
                 process.wait(timeout=15)
+                command = [str(executable), "serve", "--host", "0.0.0.0", "--port", str(port),
+                           "--no-ledger-sync"]
                 process = subprocess.Popen(command, cwd=root, env=environment, stdout=log, stderr=log)
-                deadline = time.monotonic() + 40
-                while True:
-                    try:
-                        with opener.open(base + "/healthz", timeout=1) as response:
-                            health = json.load(response)
-                        break
-                    except (OSError, urllib.error.URLError):
-                        if process.poll() is not None or time.monotonic() > deadline:
-                            raise RuntimeError((root / "runtime.log").read_text(errors="replace"))
-                        time.sleep(.25)
+                health = wait_health(opener, base, process, root / "runtime.log")
+                assert health["mdns_backend"]
+                assert health["mdns_service_host"] == "peach.local"
+                with opener.open(lan_base(port) + "/healthz", timeout=5) as response:
+                    assert json.load(response)["ok"]
+                login = urllib.request.Request(base + "/login",
+                    data=urllib.parse.urlencode({"token": password, "days": "0"}).encode(),
+                    headers={"Origin": base})
+                with opener.open(login, timeout=10) as response:
+                    assert response.status == 200
                 for path in ("/", "/app.css", "/app.js", "/dist/peach-ui.js", "/api/items"):
                     with opener.open(base + path, timeout=10) as response:
                         assert response.status == 200, path
@@ -92,7 +109,7 @@ def main() -> int:
                 assert (data / "config.previous.toml").is_file()
                 assert (data / "state" / "configuration-reload.request").is_file()
                 print(json.dumps({"ok": True, "version": health.get("version"),
-                                  "checks": ["oobe", "migrations", "serve", "automatic-login", "pages", "island", "items", "clouddrive-configuration"]}))
+                                  "checks": ["oobe", "migrations", "lan-bind", "mdns", "password-login", "pages", "island", "items", "clouddrive-configuration"]}))
             finally:
                 process.terminate()
                 process.wait(timeout=15)

@@ -655,16 +655,21 @@ def normal_url(config) -> str:
 
 
 def configured_service_specs(config) -> tuple[ServiceSpec, ...]:
-    """独立测试包按设置文件启动本机服务；源码入口沿用其生命周期。"""
+    """独立测试包按设置文件启动服务；源码入口沿用其生命周期。
+
+    独立包不接管 80/443，也不要求安装本机 CA：局域网模式直接在用户填写的高位端口
+    提供 HTTP，并发布带端口的 mDNS 服务。托盘自己仍从回环地址打开和做健康检查，
+    不把本机操作绕去网卡、代理或 mDNS。
+    """
     from .distribution import standalone
     if not standalone():
         return build_service_specs(tls_dir=config.directory("secrets") / "tls",
                                    mdns_hostname=normal_hostname(config))
-    if config.server.host != "127.0.0.1":
-        raise ValueError("独立测试包只支持本机访问，请在配置中选择「只有这台电脑」")
     return (ServiceSpec("http", setup_url(config) + "healthz",
-                        (str(_peach_executable()), "serve", "--host", "127.0.0.1",
-                         "--port", str(config.server.port), "--no-mdns", "--no-ledger-sync"),
+                        (str(_peach_executable()), "serve", "--host", config.server.host,
+                         "--port", str(config.server.port),
+                         *(("--no-mdns",) if config.server.host == "127.0.0.1" else ()),
+                         "--no-ledger-sync"),
                         True),)
 
 

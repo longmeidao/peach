@@ -490,7 +490,11 @@ def _field_html(question, value: str, error: str, note: str) -> str:
                    f'spellcheck="false" aria-invalid="{"true" if error else "false"}" '
                    f'value="{escape(value, quote=True)}">')
         if question.key == "mdns_name":
-            control = f'<div class="affix"><span>https://</span>{control}<span>.local</span></div>'
+            scheme = "http" if distribution.standalone() else "https"
+            control = f'<div class="affix"><span>{scheme}://</span>{control}<span>.local</span></div>'
+            if distribution.standalone():
+                help_text = ("其他设备打开这个地址时要加上上面的端口，例如 "
+                             "http://peach.local:8900。首次连接请允许 Windows 专用网络访问。")
         elif question.key == "port":
             control = f'<div class="affix"><span>localhost:</span>{control}</div>'
         else:
@@ -602,8 +606,11 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_gui
 
 
 def _normal_url(config) -> str:
-    """设置完成之后正常服务的地址。只有这台电脑就给回环，局域网给 `<名字>.local`。"""
-    if config.server.host in _LOOPBACK:
+    """设置完成之后本机浏览器要去的地址。
+
+    独立包即使对局域网监听，本机也走回环；源码部署才走由托盘维护的 HTTPS 固定入口。
+    """
+    if distribution.standalone() or config.server.host in _LOOPBACK:
         return f"http://127.0.0.1:{config.server.port}/"
     return f"https://{config.server.mdns_name}.local/"
 

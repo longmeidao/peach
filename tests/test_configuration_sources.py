@@ -107,6 +107,7 @@ class MediaConfigurationTests(unittest.TestCase):
                 packaged = setup_done_page(SimpleNamespace(config=config, tree=tree), windows=True,
                                            scan_requested=False, history_guide=True)
             self.assertIn('<a class="setup-enter" href=', packaged)
+            self.assertIn(f'href="http://127.0.0.1:{config.server.port}/taste?onboarding=1"', packaged)
             self.assertIn('>导入浏览器历史记录</a>', packaged)
             self.assertIn('<details><summary><span>运行信息</span>', packaged)
             self.assertNotIn('<details open', packaged)

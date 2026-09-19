@@ -16,7 +16,7 @@ from html import escape
 from pathlib import Path
 from unittest import mock
 
-from peach import onboarding, routes_pages, settings_file
+from peach import distribution, onboarding, routes_pages, settings_file
 
 NATIVE_WINDOWS = os.name == "nt"
 HAS_HTTP_DEPS = all(importlib.util.find_spec(name) for name in ("fastapi", "httpx"))
@@ -474,9 +474,12 @@ class SetupPageTests(_Case):
         # 选「只有这台电脑」时局域网地址整项隐藏，输入框同时禁用、不随表单提交。
         self.assertIn("field.disabled=!lan", body)
         self.assertIn("fieldRow.hidden=!lan", body)
-        # 局域网访问地址只填名字，框内前缀 `https://`、后缀 `.local` 拼成完整网址。
-        self.assertIn('<div class="affix"><span>https://</span><input', body)
+        # 局域网访问地址只填名字。独立包走自己的高位 HTTP 端口，源码部署才走固定 HTTPS。
+        scheme = "http" if distribution.standalone() else "https"
+        self.assertIn(f'<div class="affix"><span>{scheme}://</span><input', body)
         self.assertIn("<span>.local</span>", body)
+        if distribution.standalone():
+            self.assertIn("http://peach.local:8900", body)
         # 端口只填写数字，localhost 是不可编辑的固定前缀。
         self.assertIn('<div class="affix"><span>localhost:</span><input id="f-port"', body)
         # 密码默认关闭；开启后脚本才显示并启用两项输入。
@@ -1041,7 +1044,20 @@ class StandaloneConfigurationTests(_Case):
         spec, = configured_service_specs(self.config)
         self.assertEqual(spec.health_url, "http://127.0.0.1:9123/healthz")
         self.assertIn("9123", spec.command)
+        self.assertIn("--no-mdns", spec.command)
         self.assertEqual(normal_url(self.config), "http://127.0.0.1:9123/")
+
+    def test_standalone_lan_binds_all_interfaces_and_publishes_mdns(self):
+        from dataclasses import replace
+        from peach.tray import configured_service_specs, normal_url
+        lan = replace(self.config, server=replace(
+            self.config.server, host="0.0.0.0", port=9123, mdns_name="peach-test"))
+        spec, = configured_service_specs(lan)
+        self.assertEqual(spec.health_url, "http://127.0.0.1:9123/healthz")
+        self.assertEqual(spec.command[spec.command.index("--host") + 1], "0.0.0.0")
+        self.assertNotIn("--no-mdns", spec.command)
+        self.assertIn("--no-ledger-sync", spec.command)
+        self.assertEqual(normal_url(lan), "http://127.0.0.1:9123/")
 
     def test_standalone_version_inspection_does_not_execute_git(self):
         from peach.versioning import VersionManager

@@ -65,8 +65,9 @@ Peach is **pre-1.0**. The application interface is currently Chinese only.
 2. Open `Peach.exe`, select existing media folders in the setup page and submit.
 3. Browse your library. Media and service configuration are available from page settings or the tray menu.
 
-The test package is accessible only on the same computer and needs no Python, Git, Node or OpenSSL.
-Data lives separately from the program in `%LOCALAPPDATA%\Peach\peach-data`.
+The test package can stay local to one computer or allow devices on the same LAN during first-run setup.
+LAN clients open `http://<configured-name>.local:<port>`; on first use, allow only Private networks in the Windows Firewall prompt.
+No Python, Git, Node or OpenSSL is required. Data lives separately from the program in `%LOCALAPPDATA%\Peach\peach-data`.
 
 Settings → “This computer” → Updates and maintenance compares the installed version with the latest GitHub prerelease.
 Automatic updates can check every 6 hours, daily, or weekly and are off by default. Standalone packages can download automatically and wait for restart confirmation; source installations support automatic checks.
