@@ -33,13 +33,21 @@ export function AvatarPicker({ kind, entityId, name, onPicked }: AvatarPickerPro
   return (
     <>
       {/* 加号压在圆框右下角那一圈上——它属于这张头像，离得远了就成了页面上一个不知道
-          管什么的按钮。定位归外面这一层，按钮本身照 BoardUI 原样。 */}
-      <span className="absolute right-1 bottom-1">
-        <IconButton icon={RiAddLine} size="small" aria-haspopup="dialog"
-          aria-label={`更换${name}的头像`} onClick={() => setOpen(true)} />
+          管什么的按钮。定位归外面这一层；头像那张图自己带 `z-index:1`，这一层要抬到它上面，
+          不然按钮有一半藏在图底下。按钮收成 28px 的圆——它坐在一个圆的边上，方钮压在弧线
+          上会遮掉一大块脸；一圈页面底色的描边把它和图分开。BoardUI 的 IconButton 只有方形，
+          形状归组件自己管，所以这里是一枚原生按钮，底色、描边、悬停与焦点环取它同一套 token。 */}
+      <span className="absolute right-1 bottom-1 z-10">
+        <button type="button" aria-haspopup="dialog" aria-label={`更换${name}的头像`}
+          onClick={() => setOpen(true)}
+          className="flex size-7 cursor-pointer items-center justify-center rounded-full border border-border-button-default bg-background-primary-default text-foreground-icon-primary shadow-xs outline-none ring-2 ring-background-full transition-colors hover:border-border-button-hover hover:bg-background-primary-hover focus-visible:ring-border-focus-ring active:bg-background-primary-active">
+          <RiAddLine aria-hidden className="size-4" />
+        </button>
       </span>
+      {/* 层级取遗留壳的 `--layer-dialog`：顶栏和侧栏各有自己的 z-index，比 Tailwind 那档
+          `z-50` 都高，遮罩压不住它们，弹层开着时那两块还亮着。 */}
       <ModalOverlay isOpen={open} onOpenChange={setOpen} isDismissable
-        className="fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4">
+        className="fixed inset-0 z-dialog flex items-center justify-center bg-scrim p-4">
         <Modal className="flex max-h-full w-full max-w-avatar-picker flex-col overflow-hidden rounded-2-5xl border border-separator-border bg-background-full shadow-dropdown">
           <Dialog aria-label="更换头像" className="flex min-h-0 flex-col outline-none">
             <PickerBody kind={kind} entityId={entityId} name={name} onPicked={onPicked}
@@ -114,8 +122,9 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
         </div>
         <IconButton icon={RiCloseLine} size="small" aria-label="关闭" onClick={close} />
       </div>
-      {/* 候选网格是这一屏唯一会滚的层：头部和底下那排操作再长也不动。 */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-separator-border px-5 pt-4">
+      {/* 候选网格是这一屏唯一会滚的层：头部和底下那排操作再长也不动。上下各留 16px：
+          只留上边的话，最后一排图贴着底下那条线。 */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-separator-border px-5 py-4">
         <div role="listbox" aria-label="候选头像"
           className="inline-grid grid-cols-3 content-start gap-2 sm:grid-cols-4">
           {choices.map((choice) => (

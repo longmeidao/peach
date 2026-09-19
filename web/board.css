@@ -946,19 +946,30 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    圆角、透明底、20px 字形、同一条悬停。boardui.com 那枚 Accent color 自带边框、面色底和
    一层 dropdown 薄影，是因为它浮在页面内容上、身后什么都没有；这一枚坐在侧栏自己的面
    上，挨着的设置钮什么都不穿——描一圈框只会让这一对读成两种控件。
-   右下角那颗 10px 色点照上游留着，报的是当前预设的第一枚光晕色；色点外面那圈环取侧栏
-   自己的面色，所以它读起来是浮在钮上的一颗，不是钮身上的一块。
-   字形是 Remix 的实心路径（`#ri-palette-line`），按它自己那套用 fill 画。
+   钮上不画调色盘字形，画的是它管的那两样本身：左上一枚 15px 的圆报当前预设的第一枚光晕
+   色，右下一枚同大的圆报强调色、叠在光晕那枚上面（它是按钮和焦点环真会换上的颜色，也是
+   光晕关掉后唯一还管用的那一档，所以站在上层）；两枚都叠 BoardUI 球面那层高光，和卡里
+   两组球是同一种东西。强调色那枚外面一圈侧栏面色的环把两枚分开。光晕关掉时光晕那枚收起、
+   强调色那枚居中。
    实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
 .board-glow-toggle{position:relative;display:grid;place-items:center;width:36px;height:36px;flex:none;
   padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
-/* 这一排两枚图标键悬停只提图标色，不抬底色：它们坐在侧栏那块玻璃上，一块 6px 圆角的
-   灰方片盖上去，玻璃在那一格里就断了。顶栏那批 `.ib` 站在实底上，那条抬填充的悬停照旧。 */
+.board-glow-mark{position:relative;display:block;width:24px;height:24px;transition:transform .15s ease}
+.board-glow-mark-glow,.board-glow-mark-accent{position:absolute;width:15px;height:15px;border-radius:50%;
+  box-shadow:inset 0 1px 1px #ffffff6b,inset 0 -1px 2px #0000002e}
+.board-glow-mark-glow{left:0;top:0;background:var(--glow-swatch,var(--ink))}
+.board-glow-mark-accent{right:0;bottom:0;z-index:1;
+  background:radial-gradient(circle closest-side,var(--color-accent-400),var(--color-accent-600));
+  box-shadow:inset 0 1px 1px #ffffff6b,inset 0 -1px 2px #0000002e,0 0 0 2px var(--ground)}
+.board-glow-toggle[data-glow-off] .board-glow-mark-glow{display:none}
+.board-glow-toggle[data-glow-off] .board-glow-mark-accent{right:auto;bottom:auto;left:50%;top:50%;transform:translate(-50%,-50%);
+  box-shadow:inset 0 1px 1px #ffffff6b,inset 0 -1px 2px #0000002e}
+.board-glow-toggle:hover .board-glow-mark{transform:scale(1.08)}
+/* 这一排两枚键悬停不抬底色：它们坐在侧栏那块玻璃上，一块 6px 圆角的灰方片盖上去，玻璃在
+   那一格里就断了。设置钮悬停只提图标色，配色钮上没有字形、两枚圆微微放大。顶栏那批 `.ib`
+   站在实底上，那条抬填充的悬停照旧。 */
 .board-glow-toggle:hover,.board-foot-actions>#settingsBtn:hover{background:transparent;color:var(--ink)}
 .board-glow-toggle:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}
-.board-glow-dot{position:absolute;right:0;bottom:0;width:10px;height:10px;border-radius:50%;
-  background:var(--glow-swatch,var(--ink));box-shadow:0 0 0 2px var(--ground)}
 /* 这张卡穿的是媒体库选择弹层那身液态玻璃，规则就是同一条，见下面 `.board-library-menu`
    那一行。两张卡都从侧栏开出来、都盖在馆藏上，实底白卡站在一排毛玻璃中间会读成另一个
    产品的控件；在这里还多一层意思——卡上那两团漂动的光斑正是用户在卡里挑的那两枚颜色，
@@ -989,7 +1000,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    拿别的颜色顶上去会让人以为选中它之后侧栏是那个颜色。深色两团同色，球于是是一整颗。 */
 .board-glow-ball[data-accent-ball]{--glow-chip:radial-gradient(circle closest-side,var(--color-accent-400),var(--color-accent-600))}
 .board-glow-ball[data-glow-native]{--glow-chip:conic-gradient(from -90deg,var(--glass-native-a) 0 50%,var(--glass-native-b) 50% 100%)}
-.board-glow-toggle[data-glow-native] .board-glow-dot{background:linear-gradient(135deg,var(--glass-native-a) 50%,var(--glass-native-b) 50%)}
+.board-glow-toggle[data-glow-native] .board-glow-mark-glow{background:linear-gradient(135deg,var(--glass-native-a) 50%,var(--glass-native-b) 50%)}
 .board-glow-chip:hover .board-glow-ball{transform:scale(1.1)}
 .board-glow-chip[aria-pressed=true] .board-glow-ball{box-shadow:inset 0 1px 1px #ffffff6b,0 0 0 1.5px var(--ground),0 0 0 2.5px color-mix(in srgb,var(--ink) 32%,transparent)}
 .board-glow-menu footer{margin-top:10px;padding:0 4px}

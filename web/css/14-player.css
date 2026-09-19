@@ -13,7 +13,9 @@
    比它保护的东西更显眼。设置面板与统计面板本来就是 max-height 加内部滚动，播放器矮下来
    它们跟着矮，不会被裁。占位门同用一套判据，否则点开的一瞬间整页会往下跳一截。 */
 .vwrap>.video-js{width:100%;height:auto;max-height:76vh;aspect-ratio:16/9;background:#000}
-.vwrap .video-js .vjs-tech{object-fit:contain}
+/* 画面层的高度只跟着外框走。上面那条 `.vwrap video` 的 76vh 是给裸 `<video>` 的，它同样
+   命中 Video.js 里面这一枚：影院模式把外框放高之后，画面还停在 76vh，底下空出一条黑边。 */
+.vwrap .video-js .vjs-tech{object-fit:contain;max-height:none}
 .vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:56px;height:56px;margin:0;
   transform:translate(-50%,-50%);border:0;border-radius:50%;
   background:rgba(0,0,0,.3);box-shadow:none;line-height:56px}
@@ -118,14 +120,17 @@
 .vwrap .video-js .vjs-volume-panel:focus-within>.vjs-volume-control.vjs-volume-horizontal,
 .vwrap .video-js .vjs-volume-panel.vjs-hover>.vjs-volume-control.vjs-volume-horizontal,
 .vwrap .video-js .vjs-volume-panel.vjs-slider-active>.vjs-volume-control.vjs-volume-horizontal{opacity:1;visibility:visible;pointer-events:auto;transition-delay:.08s}
-.vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{box-sizing:border-box;position:absolute!important;left:0!important;right:auto!important;top:50%!important;width:52px!important;height:2px!important;margin:0!important;overflow:visible!important;background:rgba(255,255,255,.3);transform:translateY(-50%)}
-.vwrap .video-js .vjs-volume-panel .vjs-volume-level{height:2px;background:#fff}
+/* 滑轨本体撑满面板那 40px 高：Video.js 只在滑轨元素上接鼠标，画出来的那条 2px 线要是
+   就是滑轨，鼠标得正好压在线上才点得到。线和进度各画在竖直中线上，滑轨自己透明。 */
+.vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{box-sizing:border-box;position:absolute!important;left:0!important;right:auto!important;top:0!important;width:52px!important;height:40px!important;margin:0!important;overflow:visible!important;background:transparent;transform:none}
+.vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;background:rgba(255,255,255,.3)}
+.vwrap .video-js .vjs-volume-panel .vjs-volume-level{top:50%;bottom:auto;height:2px;margin-top:-1px;background:#fff}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:50%;right:-6px;width:12px;height:12px;margin:0;font-size:0;border-radius:50%;background:#fff;transform:translateY(-50%)}
 /* `right:auto` 必须带 !important：Video.js 的 VolumeLevelTooltip 每 30ms 往元素上写一句
    行内 `style.right=-Npx`，行内声明压过样式表里同名的普通声明。`left:50%` 和那个 right
    同时成立时，绝对定位的宽度就由两边反推，不再收缩到文字宽——底色会摊成一块比数字大得多
    的方块，而且它下一次测量自己时又按新宽度算 N，尺寸每帧都在飘。 */
-.vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto!important;top:auto;bottom:calc(100% + 32px);
+.vwrap .video-js .vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto!important;top:auto;bottom:calc(50% + 31px);
   float:none;transform:translateX(-50%);padding:5px 9px;border-radius:var(--surface-radius);background:rgba(0,0,0,.6);
   backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:#fff;font-family:inherit;font-size:var(--fs-sm);font-weight:500;
   line-height:15px;text-shadow:0 0 2px #000;overflow:visible;white-space:nowrap}

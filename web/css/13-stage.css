@@ -98,6 +98,17 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid.mixgrid>.mixqueue .queueedit button{color:#fff}
 /* 宽屏时详情栏决定首行高度，脱盘／错误占位也要铺满同一行，不能留下半块空背景。 */
 @media (min-width:1081px){
+  /* 浮窗里那一层竖着排：媒体格拿剩下的高度，「接着看」按内容定高钉在底下。浮窗照旧按
+     内容定高、由 max-height 封顶，超过封顶时被压缩的是媒体那一行，不是推荐带——否则
+     76vh 的画面加一条推荐带比视口高，推荐带整条落在浮窗外面。格里的媒体和详情栏都要
+     `min-height:0`，行才压得下去；画面的上限跟着格走，宽了就按 contain 留黑边。 */
+  .stage:not(.theater-mode)>.stagescroll{display:flex;flex-direction:column;max-height:calc(100dvh - 34px)}
+  .stage:not(.theater-mode)>.stagescroll>.sgrid{flex:1 1 auto;min-height:0}
+  .stage:not(.theater-mode) .sgrid>.vwrap{min-height:0}
+  .stage:not(.theater-mode) .vwrap>.video-js{max-height:min(76vh,100%)}
+  /* 影院模式画面独占一行、详情栏整段排在下面，总高必然超过浮窗：这一层自己滚，和窄屏
+     那条同一个写法。 */
+  .stage.theater-mode>.stagescroll{max-height:calc(100dvh - 34px);overflow:hidden auto;overscroll-behavior:contain}
   .sgrid.mixgrid>.vwrap{align-self:stretch}
   .sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}
   .stage.theater-mode .sgrid{grid-template-columns:minmax(0,1fr)}
