@@ -706,7 +706,12 @@ class WebUiSourceTests(unittest.TestCase):
         target 就是它本人，而浮窗 `overflow:auto` 的滚动条也长在它身上，按 target 判
         会把拖一下滚动条也算成点了外面。按下那一刻也要在外面——详情里进度条、音量条和
         队列都能拖，从控件上拖出边界再松手同样会收到一次 click。
+
+        坐标之外还要求 target 是 dialog 本身：播放器全屏时铺满视口，浮窗矩形不变，
+        点进度条右段会落在矩形外，只看坐标就会关掉详情、连带退出全屏并停播。
         """
+        self.assertPageContains("const outside=event=>{\n    if(event.target!==stage)return false;",
+                                "全屏播放器里的点击不算浮窗外面")
         self.assertPageContains("stage.oncancel=event=>{event.preventDefault();dismissStage()};")
         self.assertPageContains("stage.onpointerdown=event=>{stageDismissArmed=outside(event)};")
         self.assertPageContains(
