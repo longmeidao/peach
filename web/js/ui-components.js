@@ -128,26 +128,44 @@ export function revealSkeleton(container,write){
  * 的字，让那一份去飘，真正的输入框当场就空了，光标和输入法一刻也不等。`host` 缺省取
  * 输入框的父元素，它必须是定位祖先，否则这一层会飘到页面左上角去。
  */
-export function dissolveValue(input,host=input&&input.parentElement){
-  if(!input||!host)return;
-  const text=input.value;
+export function dissolveValue(input,host=input&&input.parentElement,
+  {text=input&&input.value,scrollLeft=input&&input.scrollLeft||0}={}){
+  if(!input||!host)return ()=>{};
+  host.querySelectorAll(':scope > .cleardissolve').forEach(node=>node.remove());
+  input.classList.remove('dissolving');
   input.value='';
-  if(!text||!input.isConnected)return;
+  if(!text||!input.isConnected)return ()=>{};
   const box=input.getBoundingClientRect(),frame=host.getBoundingClientRect();
-  if(!box.width)return;
+  if(!box.width)return ()=>{};
   const ghost=document.createElement('span');
   ghost.className='cleardissolve';
   ghost.setAttribute('aria-hidden','true');
-  ghost.textContent=text;
+  const value=document.createElement('span');
+  value.dataset.dissolveValue='';
+  value.textContent=text;
+  value.style.transform=`translateX(-${Math.max(0,scrollLeft)}px)`;
+  ghost.append(value);
   const style=getComputedStyle(input);
-  Object.assign(ghost.style,{left:`${box.left-frame.left}px`,top:`${box.top-frame.top}px`,
-    width:`${box.width}px`,height:`${box.height}px`,font:style.font,letterSpacing:style.letterSpacing});
+  Object.assign(ghost.style,{left:`${box.left-frame.left-host.clientLeft}px`,
+    top:`${box.top-frame.top-host.clientTop}px`,width:`${box.width}px`,height:`${box.height}px`,
+    boxSizing:'border-box',padding:style.padding,font:style.font,lineHeight:style.lineHeight,
+    letterSpacing:style.letterSpacing,textAlign:style.textAlign,direction:style.direction});
+  input.classList.add('dissolving');
   host.append(ghost);
-  const drop=()=>ghost.remove();
-  ghost.addEventListener('animationend',drop,{once:true});
+  let active=true,timer=null;
+  const drop=()=>{
+    if(!active)return;
+    active=false;
+    if(timer!==null)clearTimeout(timer);
+    ghost.removeEventListener('animationend',drop);
+    ghost.remove();
+    if(!host.querySelector(':scope > .cleardissolve'))input.classList.remove('dissolving');
+  };
+  ghost.addEventListener('animationend',drop);
   /* 兜底：`--motion-reveal` 归零或这一刻元素不可见时 `animationend` 不会来，
      不兜的话这份复制品就永远盖在输入框上。 */
-  setTimeout(drop,1000);
+  timer=setTimeout(drop,1000);
+  return drop;
 }
 
 /* 计数徽标上一次是多少。徽标所在的那一排每次筛选都整块重画，节点本身留不住上一个值，

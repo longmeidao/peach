@@ -32,7 +32,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
-from peach import settings_file
+from peach import link_marks, scraping_access, settings_file
 from peach.config import FFMPEG_DIR
 from peach.ffmpeg import FFmpegResolver
 from peach.library_processing import process_library
@@ -85,6 +85,16 @@ def refuse_network(*args, **kwargs):
     raise AssertionError("演示库的 process 不应向任何外部来源发请求")
 
 
+def e2e_command(npm: str, node: str, concurrency: str = "") -> list[str]:
+    """资源受限运行可串行两个 Node 测试文件；日常与 CI 仍走 package script。"""
+    if not concurrency:
+        return [npm, "--prefix", str(FRONTEND), "run", "e2e", "--silent"]
+    if not concurrency.isdecimal() or int(concurrency) < 1:
+        raise AssertionError("PEACH_E2E_CONCURRENCY 必须是正整数")
+    return [node, "--test", f"--test-concurrency={int(concurrency)}",
+            "--test-reporter=tap", "e2e/**/*.test.ts"]
+
+
 @windows_ledger_roots
 class WebE2ESmokeTests(unittest.TestCase):
     @classmethod
@@ -92,6 +102,9 @@ class WebE2ESmokeTests(unittest.TestCase):
         npm = shutil.which("npm")
         if npm is None:
             missing_prerequisite("跳过 e2e：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
+        node = shutil.which("node")
+        if node is None:
+            missing_prerequisite("跳过 e2e：本机没有 Node。装 Node 24+ 后 `-Scope web` 会带上它")
         if not (FRONTEND / "node_modules" / "playwright-core").is_dir():
             missing_prerequisite("跳过 e2e：frontend/node_modules 还没装，先 `npm --prefix frontend ci`")
         ffmpeg = FFmpegResolver(FFMPEG_DIR).ffmpeg()
@@ -100,7 +113,7 @@ class WebE2ESmokeTests(unittest.TestCase):
         chrome = chrome_executable()
         if chrome is None:
             missing_prerequisite("跳过 e2e：没找到 Chrome；装 Google Chrome 或用 PEACH_E2E_CHROME 指定")
-        cls.npm, cls.ffmpeg, cls.chrome = npm, str(ffmpeg.path), chrome
+        cls.npm, cls.node, cls.ffmpeg, cls.chrome = npm, node, str(ffmpeg.path), chrome
         cls.root = Path(tempfile.mkdtemp(prefix="peach-e2e-")).resolve()
         cls.server = None
         try:
@@ -140,6 +153,15 @@ class WebE2ESmokeTests(unittest.TestCase):
         )
         settings_file.write(config)
         generated = config.directory("generated")
+        # 路由冒烟只验页面与站标端点的衔接；取图算法另有 mock 契约，不让这轮布局测试依赖外网。
+        mark_root = generated / "site-marks"
+        mark_root.mkdir(parents=True)
+        mark = (ROOT / "resources" / "peach-logo.png").read_bytes()
+        for spec in scraping_access.SOURCES.values():
+            cached = link_marks.cached_path(mark_root, spec["login"])
+            if cached is None:
+                raise AssertionError(f"采集来源没有可缓存的主机：{spec['login']}")
+            cached.write_bytes(mark)
         result = process_library(config, cls.db, generated, generated / "covers",
                                  provider_factory=refuse_network)
         if result["status"] != "complete":
@@ -184,7 +206,8 @@ class WebE2ESmokeTests(unittest.TestCase):
                    PEACH_E2E_CHROME=self.chrome)
         try:
             completed = subprocess.run(
-                [self.npm, "--prefix", str(FRONTEND), "run", "e2e", "--silent"],
+                e2e_command(self.npm, self.node,
+                            os.environ.get("PEACH_E2E_CONCURRENCY", "").strip()),
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(FRONTEND), env=env, timeout=E2E_SECONDS, check=False)
         except subprocess.TimeoutExpired as expired:
@@ -210,6 +233,17 @@ class MissingPrerequisiteTests(unittest.TestCase):
         with mock.patch.dict(os.environ, local, clear=True):
             with self.assertRaises(unittest.SkipTest):
                 missing_prerequisite("没有 npm")
+
+    def test_resource_limited_e2e_places_concurrency_before_the_test_glob(self):
+        self.assertEqual(e2e_command("npm", "node", "1"), [
+            "node", "--test", "--test-concurrency=1", "--test-reporter=tap",
+            "e2e/**/*.test.ts",
+        ])
+        self.assertEqual(e2e_command("npm", "node"), [
+            "npm", "--prefix", str(FRONTEND), "run", "e2e", "--silent",
+        ])
+        with self.assertRaisesRegex(AssertionError, "必须是正整数"):
+            e2e_command("npm", "node", "0")
 
 
 if __name__ == "__main__":

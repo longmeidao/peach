@@ -1802,8 +1802,9 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("iq.oninput=e=>{if(e.isComposing)return;refineIndex()};")
         self.assertPageContains("iq.oncompositionend=refineIndex;")
-        self.assertPageContains("$('#q').oninput=e=>{if(e.isComposing)return;refreshSearchMenu()};")
-        self.assertPageContains("$('#q').oncompositionend=refreshSearchMenu;")
+        self.assertPageContains("const handleSearchInput=e=>{\n  if(e.isComposing)return;")
+        self.assertPageContains("$('#q').oninput=handleSearchInput;")
+        self.assertPageContains("$('#q').addEventListener('compositionend',handleSearchInput);")
         self.assertPageContains("search.oninput=e=>{if(e.isComposing)return;renderPicker()};")
         self.assertPageContains("search.oncompositionend=renderPicker;")
         # 顶部搜索和标签选择器的键盘处理在最前面让位给输入法。
@@ -1870,11 +1871,12 @@ class WebUiSourceTests(unittest.TestCase):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
         self.assertPageContains("const coStarred=performers.length>1&&!primaryCreator")
         self.assertPageContains('<div class="mavstack">')
-        self.assertPageContains("performers.slice(0,3)")
+        self.assertPageContains("performers.slice(0,5)")
         self.assertPageContains("data-entity-kind=\"performer\" data-entity-name=\"${esc(nm)}\"")
         self.assertPageContains("data-entity-name=\"${esc(performer)}\"")
         self.assertPageContains("等 ${performerTotal} 人")
-        self.assertPageContains(".mavstack .mav+.mav{margin-left:-14px}")
+        self.assertPageContains(".mavstack .mav+.mav{margin-left:-22px}")
+        self.assertPageContains(".mavstack .mav:nth-child(n+6){display:none}")
 
     def test_card_tags_drop_whole_names_instead_of_ellipsizing_them(self):
         """卡片上宁可少放几个标签，也要把名字写全。
@@ -2612,7 +2614,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("document.addEventListener('pointerdown',event=>{\n"
                                 "  if(!event.target.closest('.search'))"
                                 "hideSearchMenu();\n},true);")
-        self.assertPageContains("if(e.key==='Escape'&&!$('#searchMenu').hidden){")
+        self.assertPageContains("const hadValue=!!$('#q').value,hadMenu=!$('#searchMenu').hidden;")
+        self.assertPageContains("if(hadMenu){hideSearchMenu();searchActive=-1;e.preventDefault();return}")
         self.assertPageLacks("]).then(renderSearchMenu)});")
 
     def test_card_aspect_ratio_actually_reaches_the_element(self):
@@ -3160,7 +3163,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('class="danger" data-cleanup-empty hidden', self.app_js)
         self.assertIn("body .splitbutton.primary{border:0;box-shadow:none}", board)
         # 顶栏密度键跟筛选框的版式开关取同一份字形映射。
-        self.assertPageContains("const glyph=PHOTO_SIZES.find(([key])=>key===size)?.[2];if(!glyph)return;")
+        self.assertPageContains("button.innerHTML=iconSwapHtml(big[2],small[2],")
+        self.assertPageContains("}else setIconSwap(button,size===small[0]?'b':'a');")
         self.assertPageContains("syncDensityIcon(density==='big'?'big':'small')}")
         self.assertPageContains("  }else applyDensity();")
 
@@ -9726,7 +9730,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(":active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}", board)
         # 关掉动效时两档弹簧一起归零，剩下的是瞬时到位；原地换态那三档也在同一条里。
         self.assertIn("--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;"
-                      "--spring-press-ms:0;--motion-swap:0s;--motion-reveal:0s;"
+                      "--spring-press-ms:0;--motion-swap:0s;--motion-count:0s;--motion-reveal:0s;"
                       "--motion-stagger:0ms;--motion-pop:0s}", board)
 
     def test_the_theme_sweep_masks_with_a_gradient_instead_of_a_filtered_svg(self):
@@ -11066,8 +11070,8 @@ class WebUiSourceTests(unittest.TestCase):
         去裁——行高凑不出整行，第三行会露半截字，用户看到的就是被切掉的「399 MB」。
         """
         self.assertCode(
-            ".ncard .mavstack .mav:nth-child(3),\n"
-            ".sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(3){display:none}")
+            ".ncard .mavstack .mav:nth-child(n+3),\n"
+            ".sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(n+3){display:none}")
         self.assertPageContains(
             ".ncard .meta .s{flex-wrap:nowrap;overflow:hidden}")
         self.assertPageContains(
@@ -12274,6 +12278,7 @@ class MotionRecipeTests(unittest.TestCase):
         self.assertPageContains("if(previous===undefined||previous===next){write();return}")
         # 整行重画时读数那一格跟着重建，靠上一次的值判断自己是刚出现还是换了数。
         self.assertPageContains("if(lastCountReadout)readout.dataset.popCount=lastCountReadout;")
+        self.assertPageContains(".digits.popping>span{animation:digit-pop-in var(--motion-count) both;")
         self.assertPageContains("animation-delay:calc(var(--motion-stagger) * var(--digit-at,0))")
 
     def test_skeleton_hands_over_to_content_with_a_cross_fade(self):
@@ -12335,8 +12340,11 @@ class MotionRecipeTests(unittest.TestCase):
         self.assertPageContains(
             "transform:translate(var(--lift-x,0),var(--lift-y,0)) scale(var(--lift-scale,1))")
         self.assertPageContains(
-            ":is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:hover)"
+            ":is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:is(:hover,:focus-visible))"
             "{--lift-motion:var(--board-motion)}")
+        self.assertPageContains(
+            ".mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav+.mav{--lift-x:40px}")
+        self.assertNotIn("--lift-x:-", motion, "叠放头像不得向卡片左缘移动")
         # 落回走按压弹簧：站内已经有采样自真实弹簧的那一档，不另起一条近似。
         self.assertPageContains("--lift-motion:calc(var(--spring-press-ms) * 1ms) var(--spring-press)")
         # 那条 transition 住在 board.css：它的 shorthand 已经排着 scale 与配色，
@@ -12351,8 +12359,12 @@ class MotionRecipeTests(unittest.TestCase):
         复制品先摆好、value 当场清空，光标与输入法一刻也不等这段动画；六个清空入口
         共用同一个函数，漏掉一个就是那条路径上硬切。
         """
-        self.assertPageContains("export function dissolveValue(input,host=input&&input.parentElement)")
-        self.assertPageContains("const clearSearchField=()=>dissolveValue($('#q'));")
+        self.assertPageContains("export function dissolveValue(input,host=input&&input.parentElement,")
+        self.assertPageContains("if(!next&&searchValueSnapshot.text)clearSearchField(searchValueSnapshot);")
+        self.assertPageContains("$('#q').addEventListener('compositionstart',()=>{cancelSearchDissolve();")
+        self.assertPageContains("$('#q').addEventListener('beforeinput'")
+        self.assertPageContains(".search input.dissolving::placeholder{opacity:0}")
+        self.assertPageContains("if(!host.querySelector(':scope > .cleardissolve'))input.classList.remove('dissolving')")
         self.assertPageContains("animation:clear-dissolve var(--motion-reveal) forwards")
         app = (Path(__file__).resolve().parents[1]
                / "web/app.js").read_text(encoding="utf-8")
@@ -12397,8 +12409,10 @@ class MotionRecipeTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1]
                  / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("--motion-pop:.4s cubic-bezier(.34,1.36,.64,1)", board)
+        self.assertIn("--motion-count:.25s cubic-bezier(.34,1.45,.64,1)", board)
         start = board.index("--board-motion:0s")
         self.assertIn("--motion-pop:0", board[start:board.index("}", start)])
+        self.assertIn("--motion-count:0", board[start:board.index("}", start)])
 
 
 if __name__ == "__main__":

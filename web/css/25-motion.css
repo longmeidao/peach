@@ -41,7 +41,7 @@
   to{opacity:1;filter:blur(0);transform:none}}
 .digits{display:inline-flex;align-items:baseline}
 .digits>span{display:inline-block;white-space:pre}
-.digits.popping>span{animation:digit-pop-in var(--motion-swap) cubic-bezier(.34,1.45,.64,1) both;
+.digits.popping>span{animation:digit-pop-in var(--motion-count) both;
   animation-delay:calc(var(--motion-stagger) * var(--digit-at,0))}
 
 /* ── 占位换成真内容 ──
@@ -102,20 +102,23 @@
    只能并进同一条列表。 */
 :is(#tiers .tier,.followauthors,.followworks,.mavstack){
   --lift-motion:calc(var(--spring-press-ms) * 1ms) var(--spring-press)}
-:is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:hover){--lift-motion:var(--board-motion)}
+:is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:is(:hover,:focus-visible)){--lift-motion:var(--board-motion)}
 :is(#tiers,.followauthors,.followworks) :is(.av,.brandpill),.mavstack .mav{
   transform:translate(var(--lift-x,0),var(--lift-y,0)) scale(var(--lift-scale,1))}
 .mavstack .mav{transition:transform var(--lift-motion,var(--board-motion))}
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):hover,
-.mavstack .mav:hover{--lift-y:-4px;--lift-scale:1.05}
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):hover+:is(.av,.brandpill),
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill):hover){--lift-y:-1.8px}
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):hover+:is(.av,.brandpill)+:is(.av,.brandpill),
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill)+:is(.av,.brandpill):hover){--lift-y:-.81px}
-.mavstack .mav:hover+.mav{--lift-y:-1.8px;--lift-x:7px}
-.mavstack .mav:hover+.mav+.mav{--lift-y:-.81px;--lift-x:10px}
-.mavstack .mav:has(+.mav:hover){--lift-y:-1.8px;--lift-x:-7px}
-.mavstack .mav:has(+.mav+.mav:hover){--lift-y:-.81px;--lift-x:-10px}
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):is(:hover,:focus-visible),
+.mavstack .mav:is(:hover,:focus-visible){--lift-y:-4px;--lift-scale:1.05}
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):is(:hover,:focus-visible)+:is(.av,.brandpill),
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill):is(:hover,:focus-visible)){--lift-y:-1.8px}
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):is(:hover,:focus-visible)+:is(.av,.brandpill)+:is(.av,.brandpill),
+:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill)+:is(.av,.brandpill):is(:hover,:focus-visible)){--lift-y:-.81px}
+/* 叠放头像的左缘不动，只让右侧邻座朝标题方向逐枚让开；折叠时每枚前进 16px，展开后
+   恢复成 26px 的可辨步长，五枚连同左侧安全距仍收在 168px 密集卡内。键盘焦点与指针
+   使用同一套几何。 */
+.mavstack .mav:is(:hover,:focus-visible)+.mav{--lift-y:-1.8px;--lift-x:10px}
+.mavstack .mav:is(:hover,:focus-visible)+.mav+.mav{--lift-y:-.81px;--lift-x:20px}
+.mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav{--lift-x:30px}
+.mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav+.mav{--lift-x:40px}
 
 /* ── 清空时输入的内容溶解掉 ──
    输入框自己的 value 是一瞬间没的，没有动画可挂。所以清空前先照着输入框的位置和字体
@@ -125,9 +128,11 @@
    上游还在同一条配方里给每个词铺一层 radial-gradient 做扫光，那部分要逐帧写背景才
    画得出来，这里不做：搜索框每清一次就跑一段逐帧 JS，换来的是一道一眼看不出来的光。 */
 @keyframes clear-dissolve{to{opacity:0;filter:blur(2px);transform:translateY(-12px)}}
-.cleardissolve{position:absolute;z-index:1;display:flex;align-items:center;overflow:hidden;
+.cleardissolve{position:absolute;z-index:2;display:flex;align-items:center;overflow:hidden;
   white-space:nowrap;pointer-events:none;color:inherit;
   animation:clear-dissolve var(--motion-reveal) forwards}
+.cleardissolve>[data-dissolve-value]{display:block;min-width:max-content;will-change:transform}
+.search input.dissolving::placeholder{opacity:0}
 
 /* ── 计数徽标弹出来 ──
    从零长到原大小，同时从模糊里清晰起来。整枚一起弹，不按位拆：这一枚说的是「这里有

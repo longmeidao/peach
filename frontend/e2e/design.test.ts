@@ -128,6 +128,46 @@ async function openProcessing(
   return opened;
 }
 
+/** 打开目录并等到读数与卡片一起替下首屏骨架。 */
+async function openCatalog(browser: Browser): Promise<Visit> {
+  const opened = await visit(browser, '/', DESKTOP);
+  await opened.page.locator('#count [data-count-readout]').waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
+interface CatalogFixture {
+  total: number;
+  items: Array<Record<string, unknown>>;
+  [key: string]: unknown;
+}
+
+/** 从演示库取一份能完整渲染的真实目录响应，只替换当前判据需要的字段。 */
+async function openCatalogFixture(
+  browser: Browser,
+  change: (payload: CatalogFixture, url: URL) => void,
+): Promise<Visit> {
+  const opened = await visit(browser, '/', DESKTOP);
+  let baseline: CatalogFixture | undefined;
+  await opened.page.route(/\/api\/items\?/, async (route) => {
+    if (!baseline) {
+      const response = await route.fetch();
+      baseline = await response.json() as CatalogFixture;
+    }
+    const payload = structuredClone(baseline);
+    change(payload, new URL(route.request().url()));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(payload),
+    });
+  });
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('#count [data-count-readout]').waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
 /** 一趟跑到一半的扫描与采集。 */
 const RUNNING_JOB = { status: 'running', stage: '采集缺失资料', checked: 38, total: 100 };
 
@@ -339,6 +379,213 @@ describe('设计决定', () => {
       assert.equal(await link.getAttribute('href'), 'https://demoa.example/login');
       assert.equal((await link.getAttribute('rel'))!.split(/\s+/).sort().join(' '), 'noopener noreferrer');
       assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('顶栏版式键保留两枚字形并原地换态', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
+      const button = opened.page.locator('#density');
+      const swap = button.locator('[data-icon-swap]');
+      await swap.waitFor({ timeout: 5_000 });
+      assert.equal(await swap.locator('[data-icon]').count(), 2);
+      const before = await swap.getAttribute('data-icon-state');
+      await swap.evaluate((element) => { element.setAttribute('data-test-identity', 'density-swap'); });
+      await button.click();
+      assert.notEqual(await swap.getAttribute('data-icon-state'), before,
+        '按下后仍停在同一枚字形');
+      assert.equal(await swap.locator('[data-icon]').count(), 2,
+        '换态不应销毁其中一枚字形');
+      await button.click();
+      assert.equal(await swap.getAttribute('data-icon-state'), before, '第二次按下没有回到原字形');
+      assert.equal(await button.locator('[data-icon-swap][data-test-identity="density-swap"]').count(), 1,
+        '两次换态之间重建了字形容器');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('读数首次静态落笔，变值时每一位都有有效动画', { timeout: 60_000 }, async () => {
+    const opened = await openCatalogFixture(browser, (payload, url) => {
+      payload.total = url.searchParams.has('q') ? 34 : 12;
+    });
+    try {
+      await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
+      const result = await opened.page.evaluate(async () => {
+        const { popCount } = await import('/js/ui-components.js');
+        const host = document.createElement('span');
+        document.body.append(host);
+        popCount(host, '12');
+        const firstWasStatic = !host.firstElementChild?.classList.contains('popping');
+        popCount(host, '34');
+        const digit = host.querySelector<HTMLElement>('.digits.popping > span');
+        const style = digit && getComputedStyle(digit);
+        const answer = {
+          firstWasStatic,
+          animationName: style?.animationName || '',
+          duration: style?.animationDuration || '',
+        };
+        host.remove();
+        return answer;
+      });
+      assert.equal(result.firstWasStatic, true, '首次写入不应弹动');
+      assert.equal(result.animationName, 'digit-pop-in');
+      assert.equal(result.duration, '0.25s');
+
+      const input = opened.page.locator('#q');
+      await input.fill('读数变值');
+      await input.press('Enter');
+      await opened.page.waitForFunction(() =>
+        document.querySelector('#count [data-count-readout]')?.textContent?.includes('34 个符合'));
+      const liveDigit = opened.page.locator('#count [data-count-readout] .digits.popping > span').first();
+      await liveDigit.waitFor({ timeout: 5_000 });
+      assert.equal(await liveDigit.evaluate((element) => getComputedStyle(element).animationName),
+        'digit-pop-in', '真实读数节点变值后没有播放动画');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('五枚叠放头像只朝标题方向展开，左缘和窄卡边界不动', { timeout: 60_000 }, async () => {
+    const names = Array.from({ length: 7 }, (_, index) => `演示演员 ${index + 1}`);
+    const opened = await openCatalogFixture(browser, (payload) => {
+      const item = payload.items[0];
+      if (!item) throw new Error('演示目录没有可替换的卡片');
+      item.creator = '';
+      item.performers = names;
+      item.performer_total = names.length;
+      item.performer_entities = names.map((name, index) => ({ id: 90_000 + index, name, has_image: false }));
+    });
+    try {
+      await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
+      const stack = opened.page.locator('.card[data-id] .mavstack').first();
+      await stack.waitFor({ timeout: 5_000 });
+      const avatars = stack.locator('.mav');
+      assert.equal(await avatars.count(), 5, 'API 给七位表演者时卡片没有收在五枚以内');
+      const before = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
+      const left = (await stack.boundingBox())!.x;
+
+      await avatars.first().hover();
+      await opened.page.waitForTimeout(320);
+      const firstSpread = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
+      for (let index = 1; index < firstSpread.length; index += 1) {
+        assert.ok(firstSpread[index] > before[index], `首枚悬停时第 ${index + 1} 枚没有向标题方向展开`);
+      }
+
+      await avatars.nth(2).hover();
+      await opened.page.waitForTimeout(320);
+      const after = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
+      const card = stack.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " card ")]').first();
+      const bounds = await card.evaluate((cardElement) => {
+        const stackRect = cardElement.querySelector('.mavstack')!.getBoundingClientRect();
+        const lastRect = cardElement.querySelector('.mav:last-child')!.getBoundingClientRect();
+        const firstRect = cardElement.querySelector('.mav')!.getBoundingClientRect();
+        const cardRect = cardElement.getBoundingClientRect();
+        return {
+          stackLeft: stackRect.left,
+          firstRingLeft: firstRect.left - 2,
+          lastRingRight: lastRect.right + 2,
+          cardLeft: cardRect.left,
+          cardRight: cardRect.right,
+        };
+      });
+      assert.equal(bounds.stackLeft, left, '展开时左缘发生位移');
+      assert.equal(after[0], before[0], '指向第三枚时第一枚被往左推');
+      assert.equal(after[1], before[1], '指向第三枚时第二枚被往左推');
+      assert.ok(after[3] > before[3] && after[4] > before[4], '右侧邻座没有朝标题方向让开');
+      assert.ok(bounds.firstRingLeft >= bounds.cardLeft - .5, '首枚放大加描边后被卡片左缘裁切');
+      assert.ok(bounds.lastRingRight <= bounds.cardRight + .5, '头像展开越出卡片右缘');
+
+      await opened.page.mouse.move(0, 0);
+      await avatars.nth(2).focus();
+      await opened.page.waitForTimeout(320);
+      const layers = await avatars.evaluateAll((items) => items.map((item) => Number(getComputedStyle(item).zIndex)));
+      assert.equal(layers[2], Math.max(...layers), '键盘焦点所在头像没有升到最高层');
+
+      await opened.page.setViewportSize({ width: 390, height: 844 });
+      const drawer = opened.page.locator('#drawer');
+      if (await drawer.evaluate((element) => element.classList.contains('open'))) {
+        await opened.page.locator('#scrim').evaluate((element) => (element as HTMLElement).click());
+        await opened.page.waitForFunction(() => !document.querySelector('#drawer')?.classList.contains('open'));
+      }
+      await avatars.first().hover();
+      await opened.page.waitForTimeout(320);
+      const narrow = await card.evaluate((cardElement) => {
+        const cardRect = cardElement.getBoundingClientRect();
+        const firstRect = cardElement.querySelector('.mav')!.getBoundingClientRect();
+        const lastRect = cardElement.querySelector('.mav:last-child')!.getBoundingClientRect();
+        let clip: Element | null = cardElement.parentElement;
+        while (clip && clip !== document.documentElement) {
+          const style = getComputedStyle(clip);
+          if (style.overflowX !== 'visible' || style.overflowY !== 'visible') break;
+          clip = clip.parentElement;
+        }
+        const clipRect = (clip || document.documentElement).getBoundingClientRect();
+        return {
+          firstRingLeft: firstRect.left - 2,
+          lastRingRight: lastRect.right + 2,
+          cardLeft: cardRect.left,
+          cardRight: cardRect.right,
+          clipLeft: clipRect.left,
+          clipRight: clipRect.right,
+          viewport: document.documentElement.clientWidth,
+        };
+      });
+      assert.ok(narrow.firstRingLeft >= Math.max(narrow.cardLeft, narrow.clipLeft) - .5,
+        '390px 视口下首枚头像或描边被最近的裁切祖先截掉');
+      assert.ok(narrow.lastRingRight <= Math.min(narrow.cardRight, narrow.clipRight, narrow.viewport) + .5,
+        '390px 视口下展开头像越出卡片、裁切祖先或视口');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('搜索框从非空变空时立即清值并溶解原内容', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
+      const input = opened.page.locator('#q');
+      const text = '一段长到会在搜索框里横向滚动的内容 0123456789 ABCDEFGHIJKLMNOPQRSTUVWXYZ '.repeat(4).trim();
+      await input.fill(text);
+      await input.evaluate((element) => {
+        const field = element as HTMLInputElement;
+        field.setSelectionRange(field.value.length, field.value.length);
+        field.scrollLeft = field.scrollWidth;
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+      });
+      assert.ok(await input.evaluate((element) => (element as HTMLInputElement).scrollLeft) > 0,
+        '测试内容没有真正让搜索框横向滚动');
+      await input.fill('');
+      const ghost = opened.page.locator('.search > .cleardissolve');
+      await ghost.waitFor({ timeout: 1_000 });
+      assert.equal(await input.inputValue(), '', '动画阻塞了真实输入框清空');
+      assert.equal(await ghost.locator('[data-dissolve-value]').textContent(), text);
+      assert.equal(await input.evaluate((element) => getComputedStyle(element, '::placeholder').opacity), '0');
+      assert.match(await ghost.locator('[data-dissolve-value]').getAttribute('style') || '', /translateX\(-\d+px\)/);
+      await ghost.waitFor({ state: 'detached', timeout: 2_000 });
+      assert.equal(await input.evaluate((element) => element.classList.contains('dissolving')), false,
+        '动画结束后仍压着输入框的溶解状态');
+
+      await input.fill(text);
+      await input.fill('');
+      await opened.page.locator('.search > .cleardissolve').waitFor({ timeout: 1_000 });
+      await input.type('新输入');
+      assert.equal(await opened.page.locator('.search > .cleardissolve').count(), 0,
+        '清空后继续输入仍被旧残影覆盖');
+      assert.equal(await input.inputValue(), '新输入');
+
+      await input.fill('输入法候选');
+      await input.fill('');
+      await opened.page.locator('.search > .cleardissolve').waitFor({ timeout: 1_000 });
+      await input.evaluate((element) => element.dispatchEvent(new CompositionEvent('compositionstart', {
+        bubbles: true,
+        data: '候',
+      })));
+      assert.equal(await opened.page.locator('.search > .cleardissolve').count(), 0,
+        '输入法开始组字后旧残影仍覆盖候选字');
     } finally {
       await opened.close();
     }
