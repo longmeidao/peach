@@ -169,6 +169,14 @@ class SectionTests(unittest.TestCase):
     def test_a_version_without_a_section_yields_nothing(self):
         self.assertEqual(changelog.section_of(DOCUMENT, "0.28.0"), "")
 
+    def test_a_release_refuses_raw_commit_scopes_before_it_is_shipped(self):
+        raw = "## [0.8.0] - 2026-09-19\n\n### 修复\n\n- web：修好一处界面\n"
+        with self.assertRaisesRegex(VersionError, "未归类.*web"):
+            changelog.require_labeled_entries(raw, "0.8.0")
+
+        labeled = raw.replace("web：", "**界面**：")
+        changelog.require_labeled_entries(labeled, "0.8.0")
+
 
 class NotesTests(unittest.TestCase):
     """Release 页正文：那一节原文加安装提示，缺那一节就拒绝。"""

@@ -169,6 +169,7 @@ def _staged_release(repo: str) -> tuple[str, str, list[str]]:
     document = (ROOT / changelog.CHANGELOG).read_text(encoding="utf-8")
     if not changelog.has_section(document, version):
         raise ValueError(f"{changelog.CHANGELOG} 缺少 {version} 一节；先用 --bump 起草再润色")
+    changelog.require_labeled_entries(document, version)
     _require_free_tag(repo, tag)
     if command("git", "tag", "--list", tag):
         raise ValueError(f"本地 {tag} 已存在，请先检查它的归属")
