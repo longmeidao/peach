@@ -598,7 +598,12 @@ describe('设计决定', () => {
       await ghost.waitFor({ timeout: 1_000 });
       assert.equal(await input.inputValue(), '', '动画阻塞了真实输入框清空');
       assert.equal(await ghost.locator('[data-dissolve-value]').textContent(), text);
-      assert.equal(await input.evaluate((element) => getComputedStyle(element, '::placeholder').opacity), '0');
+      // 残影节点先挂载，placeholder 再经 CSS transition 淡出；慢速 Windows runner 上
+      // 两件事可能跨帧。等待过渡的最终状态，仍然守住 placeholder 必须完全不可见。
+      await opened.page.waitForFunction(() => {
+        const field = document.querySelector('#q');
+        return field !== null && getComputedStyle(field, '::placeholder').opacity === '0';
+      }, undefined, { timeout: 1_000 });
       assert.match(await ghost.locator('[data-dissolve-value]').getAttribute('style') || '', /translateX\(-\d+px\)/);
       await ghost.waitFor({ state: 'detached', timeout: 2_000 });
       assert.equal(await input.evaluate((element) => element.classList.contains('dissolving')), false,
