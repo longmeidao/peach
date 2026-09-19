@@ -1207,7 +1207,19 @@ function resetHomeState(){
 /* 离开搜索结果时把搜索框一起清掉。框里的字不是瞬间没的：`dissolveValue` 先照着它此刻
    的位置摆一份同样的字飘上去糊掉，输入框当场就空了，回来的人看见的是一个空框加一段
    刚散掉的残影，而不是「刚才那句话去哪了」。 */
-const clearSearchField=()=>dissolveValue($('#q'));
+let searchValueSnapshot={text:'',scrollLeft:0};
+let cancelSearchDissolve=()=>{};
+const rememberSearchValue=(input=$('#q'))=>{
+  searchValueSnapshot={text:input?.value||'',scrollLeft:input?.scrollLeft||0};
+};
+const clearSearchField=(snapshot=null)=>{
+  const input=$('#q');if(!input)return;
+  const liveSnapshot={text:input.value,scrollLeft:input.scrollLeft||0};
+  const previous=snapshot||(liveSnapshot.text?liveSnapshot:searchValueSnapshot);
+  cancelSearchDissolve();
+  cancelSearchDissolve=dissolveValue(input,input.parentElement,previous);
+  searchValueSnapshot={text:'',scrollLeft:0};
+};
 /* 「未归属」是全库那一类，不是当前这一页里的子筛选：在某位女优的资料页上再筛「没有
    署名人」永远是空的。所以它和打开资料页一样离开当前语境，回目录只留这一条筛选，
    顶栏芯片指的就是同一份列表。 */
@@ -1242,7 +1254,7 @@ const entityFilterSearch=filters=>{const params=new URLSearchParams();
 const cloneBarsContext=context=>context&&context.type==='entity'
   ? {...context,filters:{...context.filters}}:context;
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
-$('#q').value=state.q;
+$('#q').value=state.q;rememberSearchValue();
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
 let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeQueue=null;
 let detailOriginAnchor=null,detailOriginAbove=false,detailReturnNeedsRestore=false;
@@ -2694,8 +2706,10 @@ let density=localStorage.getItem('density')||'big';
    映射（PHOTO_SIZES 的第三位），按下去跟着换成当前状态的图标。 */
 function syncDensityIcon(size){
   const button=$('#density');if(!button)return;
-  const glyph=PHOTO_SIZES.find(([key])=>key===size)?.[2];if(!glyph)return;
-  button.querySelector('use')?.setAttribute('href',`#i-${glyph}`);
+  const [big,small]=PHOTO_SIZES;
+  if(!button.querySelector('[data-icon-swap]')){
+    button.innerHTML=iconSwapHtml(big[2],small[2],size===small[0]?'b':'a');
+  }else setIconSwap(button,size===small[0]?'b':'a');
   button.setAttribute('aria-label',size==='big'?'切换为小图':'切换为大图')}
 function applyDensity(){document.documentElement.style.setProperty('--tile',TILES[density]);
   document.body.dataset.density=density;
@@ -3097,7 +3111,7 @@ function cardIdentity(it,linked=true){
   // 会在普通卡片里折成三行；「第一位 + 等 N 人」仍能说明身份与规模。
   const coStarred=performers.length>1&&!primaryCreator;
   const avatar=coStarred
-    ? `<div class="mavstack">${performers.slice(0,3)
+    ? `<div class="mavstack">${performers.slice(0,5)
         .map((nm,i)=>link('mav',`data-entity-kind="performer" data-entity-name="${esc(nm)}" title="打开${esc(performerLabel(it))}页：${esc(nm)}"`,avatarInner(nm,performerRefs[i],REP[nm])))
         .join('')}</div>`
     : (()=>{
@@ -4734,7 +4748,7 @@ async function openPlaylists(push=true){
       ?`<img class="poster" src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" data-drop="self">`
       :'<span class="nopic">无预览</span>';
     const faces=(list.faces||[]).length
-      ? `<div class="mavstack">${list.faces.map(face=>`<button class="mav entitylink"
+      ? `<div class="mavstack">${list.faces.slice(0,5).map(face=>`<button class="mav entitylink"
           data-entity-kind="${esc(face.kind)}" data-entity-name="${esc(face.name)}"
           title="打开资料页：${esc(face.name)}">${avatarInner(face.name,face,REP[face.name],face.kind)}</button>`).join('')}</div>`
       : `<span class="mav"><span class="ini">${esc(list.name.slice(0,1))}</span></span>`;
@@ -8380,6 +8394,7 @@ function renderSearchMenu(){const menu=$('#searchMenu'),query=$('#q').value.trim
   })}
 function runSearch(useSuggestion=false,committed=false){let query=$('#q').value.trim();
   if(useSuggestion&&!query){query=$('#q').dataset.suggestion||'';$('#q').value=query}
+  rememberSearchValue();
   if(committed)rememberSearch(query);
   disposeStage(false);
   state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)}
@@ -8404,13 +8419,30 @@ const refreshSearchMenu=()=>{searchActive=-1;
     /* 回调回来时焦点可能已经不在输入框上：失焦那条 140ms 的兜底先把下拉栏收了，
        晚到的 then 再把它掀开，而这一刻没有焦点，也就再不会有第二次失焦来收场。 */
     if(document.activeElement===$('#q'))renderSearchMenu()}),SUGGEST_DEBOUNCE)};
-$('#q').oninput=e=>{if(e.isComposing)return;refreshSearchMenu()};
-$('#q').oncompositionend=refreshSearchMenu;
+const handleSearchInput=e=>{
+  if(e.isComposing)return;
+  const input=$('#q'),next=input.value;
+  if(!next&&searchValueSnapshot.text)clearSearchField(searchValueSnapshot);
+  else{
+    if(next){cancelSearchDissolve();cancelSearchDissolve=()=>{}}
+    rememberSearchValue(input);
+  }
+  refreshSearchMenu();
+};
+$('#q').oninput=handleSearchInput;
+$('#q').addEventListener('compositionend',handleSearchInput);
+$('#q').addEventListener('compositionstart',()=>{cancelSearchDissolve();cancelSearchDissolve=()=>{}});
+$('#q').addEventListener('beforeinput',e=>{if(!e.isComposing)rememberSearchValue(e.currentTarget)});
+$('#q').addEventListener('scroll',e=>{if(e.currentTarget.value)rememberSearchValue(e.currentTarget)});
+$('#q').addEventListener('pointerdown',e=>{if(e.currentTarget.value)rememberSearchValue(e.currentTarget)});
 $('#q').onkeydown=e=>{
   /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
   if(e.isComposing)return;
-  if(e.key==='Escape'&&!$('#searchMenu').hidden){
-    hideSearchMenu();searchActive=-1;e.preventDefault();return;
+  if(e.key==='Escape'){
+    const hadValue=!!$('#q').value,hadMenu=!$('#searchMenu').hidden;
+    if(hadMenu){hideSearchMenu();searchActive=-1;e.preventDefault();return}
+    if(hadValue){clearSearchField({text:$('#q').value,scrollLeft:$('#q').scrollLeft||searchValueSnapshot.scrollLeft});
+      searchActive=-1;e.preventDefault();refreshSearchMenu();return}
   }
   if(e.key==='ArrowDown'||e.key==='ArrowUp'){
     if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
@@ -8423,7 +8455,7 @@ $('#q').onkeydown=e=>{
   hideSearchMenu();
   // 选中的是一部作品时回车就开它，和点它一样，不绕一趟搜索。
   if(picked&&picked.dataset.openItem){$('#q').blur();openItem(+picked.dataset.openItem);return}
-  if(picked)$('#q').value=picked.dataset.searchValue;
+  if(picked){$('#q').value=picked.dataset.searchValue;rememberSearchValue()}
   // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
   runSearch(!picked,true);
   $('#q').blur();
@@ -9654,7 +9686,7 @@ function openCatalog(path){
     dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
     state:ROUTE_STATES[path]||params.get('state')||'',...resolveSort(params.get('sort'),params.get('dir')),
     seed:params.get('seed')||(enteringHome?rollSeed():state.seed||rollSeed()),q:params.get('q')||'',jav:params.get('jav')||''};
-  $('#q').value=state.q;buildEdge();buildBars();load(true);
+  $('#q').value=state.q;rememberSearchValue();buildEdge();buildBars();load(true);
 }
 /* 回收站。它和目录页共用同一张网格，只是筛选被钉死成 `trash`。 */
 function openTrash(push){

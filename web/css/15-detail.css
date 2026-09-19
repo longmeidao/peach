@@ -153,11 +153,10 @@
    整条横向带被最高的一张顶起来、矮的下面全是空。窄卡只放两个头像，元数据钉成一行不换行：
    大小和观看次数干脆不放，推荐理由留着截尾——那才是这条带存在的理由。
    不能用固定高度加 overflow 去裁：`.s` 的行高和 gap 凑不出整行，第三行会露半截字。 */
-.ncard .mavstack .mav:nth-child(3),
-.sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(3){display:none}
+.ncard .mavstack .mav:nth-child(n+3),
+.sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(n+3){display:none}
 .ncard .meta .s{flex-wrap:nowrap;overflow:hidden}
 .ncard .meta .who{flex:0 1 auto;max-width:55%}
 .ncard .meta .whomore{flex:none;white-space:nowrap}
 .ncard .meta .why{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ncard .meta .size,.ncard .meta .watchcount{display:none}
-
