@@ -150,12 +150,20 @@ async function openCatalogFixture(
   const opened = await visit(browser, '/', DESKTOP);
   let baseline: CatalogFixture | undefined;
   await opened.page.route(/\/api\/items\?/, async (route) => {
+    const url = new URL(route.request().url());
+    /* `visit()` 返回时，首屏还可能在后台续取下一页。路由接管之后若先撞上 offset>0，
+       那份响应本来就可能没有卡片，不能拿它当首屏基线；让旧请求原样完成，reload 后
+       再以 offset=0 的响应建立夹具。 */
+    if (url.searchParams.get('offset') !== '0') {
+      await route.continue();
+      return;
+    }
     if (!baseline) {
       const response = await route.fetch();
       baseline = await response.json() as CatalogFixture;
     }
     const payload = structuredClone(baseline);
-    change(payload, new URL(route.request().url()));
+    change(payload, url);
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
