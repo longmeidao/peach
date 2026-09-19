@@ -2905,7 +2905,7 @@ class ShipTests(unittest.TestCase):
     def _version(self):
         return mock.patch.object(self.release.version_bump, "read_version", return_value="0.8.0")
 
-    def _document(self, text="## [0.8.0] - 2026-09-07\n\n### 新增\n\n- 那件事\n"):
+    def _document(self, text="## [0.8.0] - 2026-09-07\n\n### 新增\n\n- **界面**：那件事\n"):
         return mock.patch.object(Path, "read_text", return_value=text)
 
     @staticmethod
@@ -2947,6 +2947,13 @@ class ShipTests(unittest.TestCase):
                 self._document("# 变更日志\n\n## [未发布]\n"), \
                 self.assertRaisesRegex(ValueError, "缺少 0.8.0"):
             self.release.ship("owner/repo", apply=True)
+
+    def test_an_unclassified_release_note_cannot_be_committed(self):
+        raw = "## [0.8.0] - 2026-09-07\n\n### 修复\n\n- web：那件事\n"
+        with self._shell() as command, self._api(), self._version(), self._document(raw), \
+                self.assertRaisesRegex(self.release.version_bump.VersionError, "未归类.*web"):
+            self.release.ship("owner/repo", apply=True)
+        self.assertEqual(self._writes(command), [])
 
     def test_an_occupied_tag_stops_the_whole_thing(self):
         for tags, local, message in (([{"ref": "refs/tags/v0.8.0"}], "", "已存在"),

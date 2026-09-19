@@ -227,6 +227,20 @@ def section_of(document: str, version: str) -> str:
     return found["body"].strip("\n") if found else ""
 
 
+def require_labeled_entries(document: str, version: str) -> None:
+    """定版条目必须使用封闭的中文区域标签，不能把提交 scope 直接发给使用者。"""
+    section = section_of(document, version)
+    allowed = "|".join(re.escape(area) for area in AREAS)
+    labeled = re.compile(rf"^- \*\*(?:{allowed})\*\*：")
+    invalid = [line for line in section.splitlines()
+               if line.startswith("- ") and labeled.match(line) is None]
+    if invalid:
+        preview = "；".join(invalid[:3])
+        remainder = f"（另有 {len(invalid) - 3} 条）" if len(invalid) > 3 else ""
+        raise version_bump.VersionError(
+            f"{CHANGELOG} 的 {version} 一节还有未归类条目：{preview}{remainder}")
+
+
 def notes(document: str, version: str) -> str:
     """Release 页的正文：这一版在 `CHANGELOG.md` 里的那一节，后面跟安装提示。
 
