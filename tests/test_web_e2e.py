@@ -27,6 +27,7 @@ import tempfile
 import time
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 from contextlib import closing
 from pathlib import Path
@@ -119,6 +120,7 @@ class WebE2ESmokeTests(unittest.TestCase):
         try:
             cls._build_library()
             cls._start_server()
+            cls._warm_stream()
         except BaseException:
             cls.tearDownClass()
             raise
@@ -200,6 +202,30 @@ class WebE2ESmokeTests(unittest.TestCase):
     def _server_log(cls) -> str:
         cls.log.flush()
         return (cls.root / "serve.log").read_text(encoding="utf-8", errors="replace")[-4000:]
+
+    @classmethod
+    def _warm_stream(cls):
+        """在 Chrome 启动多进程前用真实端点完成短片的兼容转码。"""
+        session = f"e2e-prewarm-{os.getpid()}"
+        query = urllib.parse.urlencode({"id": cls.item, "session": session})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        try:
+            with opener.open(f"{cls.origin}/stream?{query}", timeout=60) as response:
+                if response.status != 200:
+                    raise AssertionError(f"演示短片预热失败：HTTP {response.status}")
+                response.read()
+        except (urllib.error.URLError, OSError) as error:
+            raise AssertionError(f"演示短片预热失败：{error}\n{cls._server_log()}") from error
+        finally:
+            cancel = urllib.request.Request(
+                f"{cls.origin}/api/stream-cancel?{urllib.parse.urlencode({'session': session})}",
+                method="POST", headers={"Origin": cls.origin})
+            try:
+                with opener.open(cancel, timeout=5) as response:
+                    if response.status != 200:
+                        raise AssertionError(f"演示短片取消失败：HTTP {response.status}")
+            except (urllib.error.URLError, OSError) as error:
+                raise AssertionError(f"演示短片取消失败：{error}") from error
 
     def test_every_route_holds_the_layout_and_runtime_invariants(self):
         env = dict(os.environ, PEACH_E2E_ORIGIN=self.origin, PEACH_E2E_ITEM=str(self.item),

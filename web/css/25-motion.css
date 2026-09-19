@@ -87,38 +87,24 @@
 :is(input,textarea,select)[aria-invalid="true"],
 .board-number-control:has([aria-invalid="true"]){animation:field-shake var(--board-motion)}
 
-/* ── 一排头像里指到的那一枚抬起来 ──
-   指到的抬 4px 并放大一档，左右邻座按 .45 的衰减跟着抬一点：只抬一枚读成「这一枚出了
-   毛病」，整排按距离递减地让一下才读成「这一排让开给它」。衰减到第三位只剩 .36px，
-   肉眼分不出，所以选择器只写到两位，不为看不见的那一档再铺一层。
-
-   全程只动 transform：这一排横着滚，改 margin 或 width 会把后面所有人推着走，正在
-   看的那一枚当场滑出指针。叠放的那一组另外左右推开——它们本来压着彼此 14px，只抬不推
-   等于抬起一枚仍被邻座压着半张脸。
-
-   进出各用一条缓动，由整排的 `:has(:hover)` 切换，不写 JS：指上去走站内通用那条，
-   松开走按压弹簧，冲过原位再收回来。`--lift-motion` 读在 board.css 那条 transition
-   里（`#tiers .av` 那一族），因为那条 shorthand 已经排着 scale 与配色，transform
-   只能并进同一条列表。 */
-:is(#tiers .tier,.followauthors,.followworks,.mavstack){
+/* ── 作品卡共演头像里指到的那一枚抬起来 ──
+   叠放头像本来彼此覆盖，指到的一枚抬起并放大，右侧邻座逐枚朝标题方向让开。全程只动
+   transform，卡片的几何与首页顶栏头像、厂牌筛选都不受影响。进出各用一条既有缓动，
+   `:has(:hover)` 让整组在同一时刻切换。 */
+.card .mavstack{
   --lift-motion:calc(var(--spring-press-ms) * 1ms) var(--spring-press)}
-:is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:is(:hover,:focus-visible)){--lift-motion:var(--board-motion)}
-:is(#tiers,.followauthors,.followworks) :is(.av,.brandpill),.mavstack .mav{
+.card .mavstack:has(:is(:hover,:focus-visible)){--lift-motion:var(--board-motion)}
+.card .mavstack .mav{
   transform:translate(var(--lift-x,0),var(--lift-y,0)) scale(var(--lift-scale,1))}
-.mavstack .mav{transition:transform var(--lift-motion,var(--board-motion))}
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):is(:hover,:focus-visible),
-.mavstack .mav:is(:hover,:focus-visible){--lift-y:-4px;--lift-scale:1.05}
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):is(:hover,:focus-visible)+:is(.av,.brandpill),
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill):is(:hover,:focus-visible)){--lift-y:-1.8px}
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):is(:hover,:focus-visible)+:is(.av,.brandpill)+:is(.av,.brandpill),
-:is(#tiers .tier,.followauthors,.followworks) :is(.av,.brandpill):has(+:is(.av,.brandpill)+:is(.av,.brandpill):is(:hover,:focus-visible)){--lift-y:-.81px}
+.card .mavstack .mav{transition:transform var(--lift-motion,var(--board-motion))}
+.card .mavstack .mav:is(:hover,:focus-visible){--lift-y:-4px;--lift-scale:1.05}
 /* 叠放头像的左缘不动，只让右侧邻座朝标题方向逐枚让开；折叠时每枚前进 16px，展开后
    恢复成 26px 的可辨步长，五枚连同左侧安全距仍收在 168px 密集卡内。键盘焦点与指针
    使用同一套几何。 */
-.mavstack .mav:is(:hover,:focus-visible)+.mav{--lift-y:-1.8px;--lift-x:10px}
-.mavstack .mav:is(:hover,:focus-visible)+.mav+.mav{--lift-y:-.81px;--lift-x:20px}
-.mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav{--lift-x:30px}
-.mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav+.mav{--lift-x:40px}
+.card .mavstack .mav:is(:hover,:focus-visible)+.mav{--lift-y:-1.8px;--lift-x:10px}
+.card .mavstack .mav:is(:hover,:focus-visible)+.mav+.mav{--lift-y:-.81px;--lift-x:20px}
+.card .mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav{--lift-x:30px}
+.card .mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav+.mav{--lift-x:40px}
 
 /* ── 清空时输入的内容溶解掉 ──
    输入框自己的 value 是一瞬间没的，没有动画可挂。所以清空前先照着输入框的位置和字体

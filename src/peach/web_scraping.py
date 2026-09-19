@@ -3,7 +3,6 @@ import io
 import hashlib
 import json
 import time
-import threading
 import httpx
 
 from PIL import Image
@@ -11,8 +10,24 @@ from PIL import Image
 from .http import HttpRequest
 from .scraping_access import SOURCES, SourcePaused, SourceTransport, describe, save
 
-_COVER_LOCK = threading.Lock()
 
+def _installed_candidate(installed, previous, candidate_for):
+    if isinstance(installed, dict) and installed.get("source_url"):
+        return candidate_for(str(installed["source_url"]))
+    return previous[0] if previous is not None else None
+
+
+def _kept_cover_size(target, incoming, incoming_size, current,
+                     candidate_improves, candidate_quality):
+    if not target.is_file():
+        return None
+    with Image.open(target) as image:
+        current_size = image.size
+    if candidate_improves(
+            incoming, incoming_size[0] * incoming_size[1],
+            candidate_quality(current), current_size[0] * current_size[1]):
+        return None
+    return current_size
 
 def w_scraping_cover(contract, body):
     """仅处理用户指定且馆藏命中的番号；完整解码后才允许升级封面。"""
@@ -29,20 +44,23 @@ def w_scraping_cover(contract, body):
 
 
 def _fetch_cover(contract, code):
-    from .jav_cover_fetch import (best_cover, HostLimitedTransport, NO_USABLE_OFFICIAL,
+    from .cover_artwork import install_cover
+    from .jav_cover_fetch import (best_cover, candidate_for, candidate_improves,
+                                 candidate_quality,
+                                 HostLimitedTransport, NO_USABLE_OFFICIAL,
                                  OFFICIAL_PLACEHOLDER_ONLY, Unavailable,
                                  fc2_cover_candidates, logged_success_evidence)
     from .review_csv import read_rows
     target = contract.cover_root / (code + ".jpg")
     sidecar = target.with_suffix(".scraping.json")
     try:
-        previous = json.loads(sidecar.read_text(encoding="utf-8"))
-        if (time.time() - float(previous["checked_at"]) < 86400 and target.is_file()
-                and hashlib.sha256(target.read_bytes()).hexdigest() == previous["raw_sha256"]):
-            return {"ok": True, "code": code, "result": f"已复用 24 小时内核验的本机封面（{previous['width']} × {previous['height']}），本次未重复请求来源。", **{
-                key: previous[key] for key in ("width", "height", "raw_sha256")}}
+        installed = json.loads(sidecar.read_text(encoding="utf-8"))
+        if (time.time() - float(installed["checked_at"]) < 86400 and target.is_file()
+                and hashlib.sha256(target.read_bytes()).hexdigest() == installed["raw_sha256"]):
+            return {"ok": True, "code": code, "result": f"已复用 24 小时内核验的本机封面（{installed['width']} × {installed['height']}），本次未重复请求来源。", **{
+                key: installed[key] for key in ("width", "height", "raw_sha256")}}
     except (OSError, ValueError, KeyError, TypeError):
-        pass
+        installed = None
     raw = SourceTransport(contract.follow_secrets_root, max_requests=80,
                           max_bytes=32 * 1024 * 1024, max_seconds=180)
     transport = HostLimitedTransport(raw, 1.5)
@@ -68,26 +86,20 @@ def _fetch_cover(contract, code):
         candidate, size, data = best_cover(observed, code, 0, diagnostics=diagnostics,
                                           prior_candidates=prior,
                                           metadata_root=contract.follow_sources_root / "metadata" / "javinizer-go")
-        with _COVER_LOCK:
-            if target.is_file():
-                with Image.open(target) as image:
-                    if image.width * image.height >= size[0] * size[1]:
-                        suffix = "部分来源连接失败，未能完成全部来源比较。" if network_failed or any(s >= 400 and s != 404 for s in statuses) else "本次未找到更大尺寸的可用封面。"
-                        return {"ok": True, "code": code, "reason": "kept_existing",
-                                "result": f"本机封面 {image.width} × {image.height}，本次取得的最大可用封面 {size[0]} × {size[1]}；保留本机封面。{suffix}"}
-            target.parent.mkdir(parents=True, exist_ok=True)
-            temporary = target.with_suffix(".scraping.tmp")
-            try:
-                temporary.write_bytes(data)
-                temporary.replace(target)
-            finally:
-                temporary.unlink(missing_ok=True)
-            evidence = {"code": code, "width": size[0], "height": size[1],
-                        "source": candidate.source, "source_url": candidate.url,
-                        "raw_sha256": hashlib.sha256(data).hexdigest(),
-                        "installed_sha256": hashlib.sha256(data).hexdigest(),
-                        "checked_at": time.time(), "resolver": "peach-jav-cover-v1"}
-            sidecar.write_text(json.dumps(evidence, ensure_ascii=False), encoding="utf-8")
+        current_candidate = _installed_candidate(installed, previous, candidate_for)
+        kept_size = _kept_cover_size(
+            target, candidate, size, current_candidate,
+            candidate_improves, candidate_quality)
+        if kept_size is not None:
+            suffix = "部分来源连接失败，未能完成全部来源比较。" if network_failed or any(s >= 400 and s != 404 for s in statuses) else "本次未找到更大尺寸或更合适的可用封面。"
+            return {"ok": True, "code": code, "reason": "kept_existing",
+                    "result": f"本机封面 {kept_size[0]} × {kept_size[1]}，本次取得的可用封面 {size[0]} × {size[1]}；保留本机封面。{suffix}"}
+        evidence = {"code": code, "width": size[0], "height": size[1],
+                    "source": candidate.source, "source_url": candidate.url,
+                    "raw_sha256": hashlib.sha256(data).hexdigest(),
+                    "installed_sha256": hashlib.sha256(data).hexdigest(),
+                    "checked_at": time.time(), "resolver": "peach-jav-cover-v1"}
+        install_cover(target, code, data, size, evidence=evidence)
         return {"ok": True, "code": code, "result": "高清封面已保存", "width": size[0],
                 "height": size[1], "requests": raw.requests, "bytes": raw.bytes}
     except Unavailable as exc:

@@ -202,6 +202,34 @@ class ScrapingAccessTests(unittest.TestCase):
         self.assertIn("800 × 600", result["result"])
         self.assertEqual(target.read_bytes(), original)
 
+    def test_equal_size_product_image_replaces_a_preview(self):
+        from peach.web_scraping import _fetch_cover
+        from peach.jav_cover_fetch import candidate_for
+        preview = ("https://image.mgstage.com/images/luxutv/sp/259luxu/1509/"
+                   "popsample2_sp-259luxu-1509.jpg")
+        product = ("https://image.mgstage.com/images/luxutv/259luxu/1509/"
+                   "pb_e_259luxu-1509.jpg")
+        target = self.root / "259LUXU-1509.jpg"
+        old = io.BytesIO()
+        Image.new("RGB", (840, 472), "black").save(old, "JPEG")
+        target.write_bytes(old.getvalue())
+        target.with_suffix(".scraping.json").write_text(json.dumps({
+            "checked_at": 0, "source_url": preview, "raw_sha256": "old",
+            "width": 840, "height": 472,
+        }), encoding="utf-8")
+        new = io.BytesIO()
+        Image.new("RGB", (840, 472), "white").save(new, "JPEG")
+        contract = SimpleNamespace(cover_root=self.root, candidate_root=self.root,
+                                   follow_secrets_root=self.root / "secrets",
+                                   follow_sources_root=self.root)
+        with patch("peach.jav_cover_fetch.best_cover", return_value=(
+            candidate_for(product), (840, 472), new.getvalue(),
+        )), patch("peach.cover_artwork._sidecars", return_value={}):
+            result = _fetch_cover(contract, "259LUXU-1509")
+        self.assertTrue(result["ok"])
+        self.assertNotEqual(result.get("reason"), "kept_existing")
+        self.assertEqual(target.read_bytes(), new.getvalue())
+
     def test_cover_failure_explains_observed_cause_without_exposing_urls(self):
         from peach.web_scraping import _fetch_cover
         from peach.jav_cover_fetch import Unavailable

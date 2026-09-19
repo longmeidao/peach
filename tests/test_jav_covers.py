@@ -297,6 +297,32 @@ class OfficialSourceTests(unittest.TestCase):
             [candidate.url for candidate in candidates],
             ["https://image.mgstage.com/images/prestige/abw/232/pb_e_abw-232.jpg"],
         )
+        self.assertEqual(candidates[0].kind, covers.PRODUCT_IMAGE)
+
+    def test_mgstage_product_image_beats_an_equal_size_preview(self):
+        preview = covers.candidate_for(
+            "https://image.mgstage.com/images/luxutv/sp/259luxu/1509/popsample2_sp-259luxu-1509.jpg")
+        product = covers.candidate_for(
+            "https://image.mgstage.com/images/luxutv/259luxu/1509/pb_e_259luxu-1509.jpg")
+        with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                patch.object(covers, "probe_size", return_value=(840, 472)), \
+                patch.object(covers, "_fetch", return_value=jpeg(840, 472)):
+            winner, size, _ = covers.best_cover(
+                lambda *args: None, "259LUXU-1509", 0,
+                prior_candidates=(preview, product),
+            )
+        self.assertEqual((winner.url, winner.kind, size),
+                         (product.url, covers.PRODUCT_IMAGE, (840, 472)))
+
+    def test_mgstage_preview_remains_a_fallback(self):
+        preview = covers.candidate_for(
+            "https://image.mgstage.com/images/luxutv/sp/259luxu/1509/popsample2_sp-259luxu-1509.jpg")
+        with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                patch.object(covers, "probe_size", return_value=(840, 472)), \
+                patch.object(covers, "_fetch", return_value=jpeg(840, 472)):
+            winner, _, _ = covers.best_cover(
+                lambda *args: None, "259LUXU-1509", 0, prior_candidates=(preview,))
+        self.assertEqual(winner, preview)
 
     def test_prestige_api_selects_exact_code_and_package_image(self):
         query = covers.urllib.parse.urlencode({
