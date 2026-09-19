@@ -28,7 +28,7 @@
 
 - Peach 代理复用 HTTPX 的 `trust_env`、`proxy` 与本机 CredentialStore；来源只选择公共策略或直接连接，地址不回传。单一旧代理可继承，多个地址需明确选择。
 - 自启复用项目 Windows WScript.Shell 快捷方式和 macOS LaunchAgent；[微软原生文档](https://learn.microsoft.com/en-us/troubleshoot/windows-client/admin-development/create-desktop-shortcut-with-wsh)支持 TargetPath、Arguments 与 Save。Windows 自带 COM，无新增依赖；pylnk3 无需引入。临时中文路径的真实快捷方式读、写、移除通过。
-- 独立包卸载复用正常托盘退出和 Windows PowerShell 助手；计划限制程序标记、数据直属目录、媒体不重叠，助手拒绝目录链接。临时程序、数据、媒体与无关文件组成的真实输入验证只删除计划内容。源码树仅提供手动卸载说明。
+- 独立包卸载复用正常托盘退出和 Windows PowerShell 助手；计划限制程序标记、数据直属目录、媒体不重叠，助手拒绝目录链接。助手会退出仍从程序目录运行的进程并重试删除；完全卸载把 `config.toml.*` 视为设置备份。临时程序、被占用文件、历史设置备份、数据、媒体与无关文件组成的真实输入验证只删除计划内容和整个解压程序目录。源码树仅提供手动卸载说明。
 - 扫描与采集统一挂在数据管理；首页进度 Banner 跳转同一入口。默认排序与方向使用浏览偏好，显式 URL 优先。
 
 目录页进度横幅与数据管理卡片共用 `frontend/src/react/library-processing/` 那一份读取，读同一个 `LIBRARY_PROCESSING_KEY`，轮询由 TanStack Query 合成一份；启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败跳转数据管理；数据管理持续读取阶段与真实计数。Geist Banner 取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
