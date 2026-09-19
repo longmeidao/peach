@@ -137,8 +137,8 @@ body.refreshing #batchAction svg,
    剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
-.card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;
-  position:relative;transition:transform .18s ease,filter .18s ease;transform-origin:center}
+.card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;border-radius:var(--surface-radius);
+  position:relative;transition:transform .18s ease,filter .18s ease,background-color .15s ease;transform-origin:center}
 /* 视口外的卡片跳过渲染：一屏滚动要算的只剩屏上那几十张，连续加载到一千五百张时帧间隔
    仍在预算附近（实测见 ADR-0031「馆藏网格连续加载的实测」）。`auto 320px` 是占位高度，
    没渲染过的卡先按 320px 排进来，渲染过的记住自己的实际尺寸。
@@ -208,7 +208,9 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 /* 预览图：单格，contain 放进固定 16:9 框 —— 不拉伸、不裁切、不改框体大小 */
 .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
   display:block;background:#000}
-.cardopenhit{position:absolute;inset:0;z-index:3;border:0;background:transparent;padding:0;cursor:pointer}
+.cardopenhit{position:absolute;inset:0;z-index:1;border:0;border-radius:inherit;background:transparent;padding:0;cursor:pointer}
+.cardopenhit:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.card>.pic,.card>.partstack,.card>.meta{position:relative;z-index:2}
 /* 悬停即播真视频（仅免费源，计费源永远不自动拉流） */
 .hv{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;
   opacity:0;transition:opacity .2s}
@@ -218,13 +220,9 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
    不写 z-index，和 `.hv` 一样靠 DOM 次序压在 `.poster` 之上。 */
 img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
   background:#000;display:block}
-/* 悬停描边画在盖住封面的伪元素上，`border` 和 `outline` 两条路都走不通：`border-box` 下
-   border 会把 `.pic` 的内容盒收窄 1px，里面 `contain` 的封面跟着缩一圈、两侧多露一截黑底，
-   看上去是图片抖了一下；outline 落在 padding box 最外一圈，而铺满 `inset:0` 的封面和悬停
-   视频是定位子元素，会把它盖掉——只剩没封面的卡看得见线，有封面的没有。伪元素排在所有
-   子元素之后，不参与布局，两种卡拿到同一条线。 */
-.card:hover .pic::after{content:"";position:absolute;z-index:6;inset:0;pointer-events:none;
-  border:1px solid color-mix(in srgb,var(--ink) 48%,transparent);border-radius:inherit}
+body .card:not(.junkcard,.resourcecard):hover{background:var(--hover)}
+body .card:not(.junkcard,.resourcecard):hover .pic{filter:saturate(.9) brightness(.94)}
+body .card:not(.junkcard,.resourcecard):focus-within{background:var(--hover)}
 .select-mode .card{cursor:default}
 .select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter{pointer-events:none!important}
 .card.selected .pic,.card.selected:hover .pic{box-shadow:inset 0 0 0 2px var(--on-media)}
@@ -307,7 +305,6 @@ img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain
 .junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground);
   content-visibility:auto;contain-intrinsic-size:auto 360px}
 .junkcard .pic{border:0;border-radius:0}.junkcard:hover .pic{box-shadow:none}
-.junkcard:hover .pic::after{content:none}
 .junkcard .poster{object-fit:contain}.junkbody{display:flex;flex:1;flex-direction:column;min-height:0}
 .select-mode .junkcard .junkactions{pointer-events:none;opacity:.52}
 .junkmeta{display:grid;gap:6px;min-width:0;padding:12px}.junkmeta .s{display:flex;gap:7px;min-width:0;flex-wrap:wrap;
@@ -413,12 +410,13 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
    压到卡片外面，这时候省略号是唯一的出路。 */
 .ctags{display:flex;flex-wrap:wrap;align-content:flex-start;gap:5px;min-width:0;overflow:hidden;
   height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)}
-.tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font-size:var(--fs-xs);border:1px solid var(--line);
+.tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font:inherit;font-size:var(--fs-xs);border:1px solid var(--line);
   line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:100%;
   background:var(--tag-fill)}
 .tg.general,.tg.artist,.tg.meta,.tg.relationship,.tg.role,.tg.appearance,.tg.scene,.tg.story,.tg.position{color:var(--ink-2);border-color:var(--line)}
 .tg.artist{font-weight:600}
 .tg:hover{color:var(--ink);background:var(--hover)}
+.tg:disabled{cursor:not-allowed}
 body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
 body[data-density="dense"] .card .ctags .tg{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 /* 顶栏的密集模式固定为标题、身份、标签三行。缺少标签时第三行仍保留，

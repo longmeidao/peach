@@ -117,6 +117,36 @@ class Candidate:
     source: str
     url: str
     referer: str = "https://www.dmm.co.jp/"
+    kind: str = "cover"
+
+
+PRODUCT_IMAGE = "product"
+PREVIEW_IMAGE = "preview"
+COVER_IMAGE = "cover"
+_CANDIDATE_QUALITY = {PREVIEW_IMAGE: 0, COVER_IMAGE: 1, PRODUCT_IMAGE: 2}
+
+
+def candidate_quality(candidate: Candidate | None) -> int:
+    """来源里的图片角色，供同尺寸候选择优；不按主机名整体提权。"""
+    if candidate is None:
+        return _CANDIDATE_QUALITY[PRODUCT_IMAGE]
+    return _CANDIDATE_QUALITY.get(candidate.kind, _CANDIDATE_QUALITY[COVER_IMAGE])
+
+
+def candidate_improves(candidate: Candidate, pixels: int,
+                       baseline_quality: int, baseline_pixels: int) -> bool:
+    """图片角色或像素数至少有一项严格改善，候选才算升级。"""
+    return candidate_quality(candidate) > baseline_quality or pixels > baseline_pixels
+
+
+def _previous_quality(previous) -> int:
+    return candidate_quality(previous[0] if previous is not None else None)
+
+
+def _keep_upgrade_existing(upgrade: bool, candidate: Candidate, pixels: int,
+                           baseline_quality: int, baseline_pixels: int) -> bool:
+    return upgrade and not candidate_improves(
+        candidate, pixels, baseline_quality, baseline_pixels)
 
 
 @dataclass(frozen=True)
@@ -289,8 +319,15 @@ def _referer_for(url: str) -> str:
     return "https://www.dmm.co.jp/"
 
 
-def candidate_for(url: str) -> Candidate:
-    return Candidate(urlparse(url).netloc.lower(), url, _referer_for(url))
+def candidate_for(url: str, *, kind: str | None = None) -> Candidate:
+    parsed = urlparse(url)
+    filename = Path(parsed.path).name.lower()
+    if kind is None and "mgstage.com" in parsed.netloc.lower():
+        if filename.startswith(("pb_e_", "pake-03_")):
+            kind = PRODUCT_IMAGE
+        elif "popsample" in filename:
+            kind = PREVIEW_IMAGE
+    return Candidate(parsed.netloc.lower(), url, _referer_for(url), kind or COVER_IMAGE)
 
 
 def fc2_cover_candidates(path: Path | None) -> dict[str, Candidate]:
@@ -581,6 +618,7 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
                prior_candidates: tuple[Candidate, ...] = (),
                known_sizes: dict[str, tuple[int, int]] | None = None,
                minimum_pixels: int = 0,
+               minimum_quality: int = _CANDIDATE_QUALITY[PRODUCT_IMAGE],
                minimum_width: int = MIN_WIDTH,
                deadline: float | None = None,
                diagnostics: dict[str, int] | None = None,
@@ -622,8 +660,10 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     candidates = [
         candidate for candidate in candidates
         if candidate.url not in known_sizes
-        or known_sizes[candidate.url][0] * known_sizes[candidate.url][1]
-        > minimum_pixels
+        or candidate_improves(
+            candidate,
+            known_sizes[candidate.url][0] * known_sizes[candidate.url][1],
+            minimum_quality, minimum_pixels)
     ]
     if not candidates:
         raise NotFound("所有渠道都没有候选")
@@ -651,7 +691,8 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     if not measured:
         raise Unavailable(_no_usable_official(diagnostics))
 
-    for _pixels, winner, size in sorted(measured, key=lambda item: item[0], reverse=True):
+    for _pixels, winner, size in sorted(
+            measured, key=lambda item: (candidate_quality(item[1]), item[0]), reverse=True):
         try:
             data = _fetch(transport, winner.url, referer=winner.referer,
                           limit=16 * 1024 * 1024, deadline=deadline)
@@ -668,7 +709,9 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         if actual_size != size or actual_size[0] < minimum_width:
             record("dimension_mismatch")
             continue
-        if actual_size[0] * actual_size[1] <= minimum_pixels:
+        if not candidate_improves(
+                winner, actual_size[0] * actual_size[1],
+                minimum_quality, minimum_pixels):
             continue
         return winner, actual_size, data
     raise Unavailable("可用候选完整下载都失败")
@@ -1005,6 +1048,7 @@ def run(args: argparse.Namespace, handle: TaskRunHandle | None = None) -> int:
                     except (UnidentifiedImageError, OSError):
                         pass
                 previous = logged_success_evidence(previous_rows, code)
+                baseline_quality = _previous_quality(previous)
                 prior = tuple(candidate for candidate in (
                     fc2_candidates.get(code), previous[0] if previous is not None else None,
                 ) if candidate is not None)
@@ -1015,6 +1059,7 @@ def run(args: argparse.Namespace, handle: TaskRunHandle | None = None) -> int:
                     metadata_root=args.metadata_root, prior_candidates=prior,
                     known_sizes=known_sizes,
                     minimum_pixels=current_size[0] * current_size[1],
+                    minimum_quality=baseline_quality,
                 )
             # 网络异常必须按条吞掉。一次 SSL 抖动
             # （httpx.ConnectError: UNEXPECTED_EOF_WHILE_READING）此前直接打死了
@@ -1035,8 +1080,9 @@ def run(args: argparse.Namespace, handle: TaskRunHandle | None = None) -> int:
                     print(f"[{index}/{len(todo)}] 未取得 {code}："
                           f"{type(exc).__name__} {exc}", flush=True)
             else:
-                if (args.upgrade_existing
-                        and width * height <= current_size[0] * current_size[1]):
+                if _keep_upgrade_existing(
+                        args.upgrade_existing, winner, width * height,
+                        baseline_quality, current_size[0] * current_size[1]):
                     stats["kept"] += 1
                     print(f"[{index}/{len(todo)}] 保留 {code}  "
                           f"{current_size[0]}x{current_size[1]} >= {width}x{height}",

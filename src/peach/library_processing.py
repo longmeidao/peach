@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import sqlite3
 import time
@@ -216,11 +217,8 @@ class LibraryMetadataProvider:
         if chosen is None:
             raise Unavailable('；'.join(problems)) if problems else NotFound('官方与社区来源都没有这部片的封面')
         candidate, size, data = chosen
-        cover_root.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_suffix('.processing.tmp')
-        temporary.write_bytes(data)
-        temporary.replace(target)
-        _save(target.with_suffix('.scraping.json'), dict(source=candidate.source,
+        from .cover_artwork import install_cover
+        install_cover(target, code, data, size, evidence=dict(source=candidate.source,
             source_url=candidate.url, width=size[0], height=size[1], verified_by=list(verified_by),
             raw_sha256=hashlib.sha256(data).hexdigest(), checked_at=time.time()))
         return True
@@ -377,10 +375,11 @@ def _local_poster(video, code, cover_root, payload=None, posters=None):
         return False
     with Image.open(poster) as image:
         image.load()
-        cover_root.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_suffix('.processing.tmp')
-        image.convert('RGB').save(temporary, format='JPEG', quality=95)
-        temporary.replace(target)
+        output = io.BytesIO()
+        image.convert('RGB').save(output, format='JPEG', quality=95)
+        data, size = output.getvalue(), image.size
+    from .cover_artwork import install_cover
+    install_cover(target, code, data, size)
     return True
 
 

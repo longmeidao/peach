@@ -590,4 +590,73 @@ describe('设计决定', () => {
       await opened.close();
     }
   });
+
+  it('卡片悬停反馈不在封面像素上描边', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      const card = opened.page.locator('article.card:not(.junkcard)').first();
+      const picture = card.locator('.pic');
+      await card.hover();
+      const overlay = await picture.evaluate((element) => {
+        const style = getComputedStyle(element, '::after');
+        return { content: style.content, borderWidth: style.borderTopWidth };
+      });
+      assert.equal(overlay.content, 'none', '悬停伪元素仍覆盖在封面像素上');
+      assert.equal(overlay.borderWidth, '0px', '悬停边线仍污染圆角边缘像素');
+      assert.equal(await card.locator('.later-tools').evaluate(
+        (element) => getComputedStyle(element).opacity), '1', '移除描边后没有保留悬停反馈');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('抬起与推开只属于作品卡的共演头像', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
+      for (const selector of ['#tiers .av', '#tiers .brandpill']) {
+        const entry = opened.page.locator(selector).first();
+        if (!await entry.count()) continue;
+        await entry.hover();
+        await opened.page.waitForTimeout(320);
+        assert.equal(await entry.evaluate((element) => getComputedStyle(element).transform), 'none',
+          `${selector} 仍套用了作品共演头像的抬起效果`);
+      }
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('视频卡整块是入口且内部链接保持独立', { timeout: 60_000 }, async () => {
+    const opened = await openCatalogFixture(browser, (payload) => {
+      payload.items[0] = { ...payload.items[0], tags: ['演示标签'] };
+    });
+    try {
+      const card = opened.page.locator('article.card[data-id]').first();
+      const opener = card.locator('.cardopenhit');
+      const boxes = await Promise.all([card.boundingBox(), opener.boundingBox()]);
+      assert.deepEqual(boxes[1], boxes[0], '全卡入口没有覆盖图片、文字与卡内空白');
+      await card.hover();
+      assert.notEqual(await card.evaluate((element) => getComputedStyle(element).backgroundColor),
+        'rgba(0, 0, 0, 0)', '悬停整卡没有灰色反馈');
+
+      await opened.page.setViewportSize({ width: 390, height: 844 });
+      const narrow = await Promise.all([card.boundingBox(), opener.boundingBox()]);
+      assert.deepEqual(narrow[1], narrow[0], '390px 下全卡入口没有覆盖完整卡片');
+      assert.ok((narrow[0]?.x || 0) >= 0 && (narrow[0]?.x || 0) + (narrow[0]?.width || 0) <= 390,
+        '390px 下视频卡越出视口');
+
+      const nested = card.locator('.tg:not(:disabled)').first();
+      const tag = await nested.getAttribute('data-tag');
+      assert.ok(tag, '演示卡没有可操作的内部标签');
+      await nested.focus();
+      assert.equal(await nested.evaluate((element) => element.matches(':focus-visible')), true,
+        '卡内链接不能用键盘聚焦');
+      await nested.press('Enter');
+      await opened.page.waitForURL((url) => url.searchParams.get('tag') === tag, { timeout: 10_000 });
+      assert.doesNotMatch(opened.page.url(), /\/item\//, '卡内链接冒泡打开了视频');
+    } finally {
+      await opened.close();
+    }
+  });
 });

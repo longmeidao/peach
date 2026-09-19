@@ -2627,25 +2627,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="pic" style="--card-ratio:${ar}">')
         self.assertPageContains(".pic{position:relative;aspect-ratio:var(--card-ratio,16/9)")
 
-    def test_card_hover_edge_sits_above_the_cover_and_leaves_layout_alone(self):
-        """悬停描边由覆盖层伪元素承担，有没有封面都是同一条线。
-
-        `.pic` 是 `border-box`：描边写成 `border` 会把内容盒收窄 1px，里面 `contain`
-        的封面跟着缩一圈、两侧多露一截黑底。写成 `outline` 不占布局，但它落在 padding
-        box 最外一圈，铺满 `inset:0` 的封面和悬停视频是定位子元素，会把它盖掉——
-        缺封面的卡有线、有封面的没有，同一个网格里两种卡的悬停反馈对不上。
-        """
+    def test_card_hover_feedback_has_no_edge_over_the_cover(self):
+        """整卡用底色与轻微明度反馈悬停，圆角上不再覆盖一圈深色像素。"""
+        self.assertPageLacks('.card:hover .pic::after{content:""')
         self.assertPageContains(
-            '.card:hover .pic::after{content:"";position:absolute;z-index:6;inset:0;'
-            'pointer-events:none;')
+            "body .card:not(.junkcard,.resourcecard):hover{background:var(--hover)}")
         self.assertPageContains(
-            "  border:1px solid color-mix(in srgb,var(--ink) 48%,transparent);"
-            "border-radius:inherit}")
-        self.assertNotIn(
-            ".card:hover .pic{", self.css,
-            "描边落在 `.pic` 自己身上就会参与布局或被封面盖住，只能写在伪元素上")
-        # 回收站卡片的缩略图不描边，抵消的对象也得跟着是伪元素。
-        self.assertPageContains(".junkcard:hover .pic::after{content:none}")
+            "body .card:not(.junkcard,.resourcecard):hover .pic{filter:saturate(.9) brightness(.94)}")
 
     def test_catalog_cards_skip_rendering_outside_the_viewport(self):
         """馆藏网格的卡片交给浏览器按视口取舍，一屏滚动只算屏上那几十张。
@@ -7778,11 +7766,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("Math.abs(event.deltaY)<=Math.abs(event.deltaX)||el.scrollWidth<=el.clientWidth")
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
-        self.assertPageContains('class="cardopenhit" data-open')
+        self.assertPageContains('type="button" class="cardopenhit" data-open')
         self.assertPageContains('<button class="t cardtitle" data-open>')
         self.assertPageContains("const openCard=(id,anchor=el)=>miniplayerTakesCard(it)?miniplayerPlay(id):onClick?onClick(id,anchor):(it?.part_group")
         self.assertPageContains("if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id,el)")
-        self.assertPageContains(".cardopenhit{position:absolute;inset:0;z-index:3")
+        self.assertPageContains(".cardopenhit{position:absolute;inset:0;z-index:1")
+        self.assertPageContains(".card>.pic,.card>.partstack,.card>.meta{position:relative;z-index:2}")
         self.assertPageContains("el.querySelectorAll('[data-open]').forEach(opener=>")
         self.assertPageContains("opener.dataset.openWired='1'")
         self.assertPageContains(".hovertools button{pointer-events:none")
@@ -12161,10 +12150,11 @@ class CoverSleeveThresholdTests(unittest.TestCase):
     def test_the_face_script_takes_the_thresholds_from_the_module(self):
         """脚本按封套丢掉左半边的脸，用的必须是模块里那一份，不是自己抄的一份。"""
         root = Path(__file__).resolve().parents[1]
-        source = (root / "scripts" / "detect_cover_faces.py").read_text(encoding="utf-8")
-        self.assertIn(
-            "from peach.jav_poster_crop import SLEEVE_RATIO_MAX, SLEEVE_RATIO_MIN", source)
-        self.assertIsNone(re.search(r"^SLEEVE_RATIO_M(?:IN|AX) = ", source, re.M),
+        script = (root / "scripts" / "detect_cover_faces.py").read_text(encoding="utf-8")
+        source = (root / "src" / "peach" / "cover_artwork.py").read_text(encoding="utf-8")
+        self.assertIn("from peach.cover_artwork import face_record", script)
+        self.assertIn("jav_poster_crop.SLEEVE_RATIO_MIN <= ratio", source)
+        self.assertIsNone(re.search(r"^SLEEVE_RATIO_M(?:IN|AX) = ", script + source, re.M),
                           "阈值抄成第二份就会和页面漂开")
 
 
@@ -12325,33 +12315,29 @@ class MotionRecipeTests(unittest.TestCase):
         self.assertNotIn("border", shake, "抖动只走 transform，边框归原有的错误样式")
 
     def test_avatar_lift_moves_only_transform_and_never_layout(self):
-        """一排头像里抬起一枚：邻座跟着让，但这一排的几何一格也不动。
+        """作品卡共演头像抬起一枚：邻座跟着让，但卡片几何一格也不动。
 
-        这两排横着滚，改 margin 或 width 会把后面所有人推着走，正在看的那一枚当场滑
-        出指针。进出两条缓动由整排的 `:has(:hover)` 切换，所以这里也钉住那一对。
+        改 margin 或 width 会推开卡片内容；进出两条缓动由整组的 `:has(:hover)` 切换，
+        所以这里也钉住那一对，并排除首页头像与厂牌。
         """
         motion = (Path(__file__).resolve().parents[1]
                   / "web/css/25-motion.css").read_text(encoding="utf-8")
         # 注释本身就在说「不许碰 margin 和 width」，所以只取注释之后那几条声明。
-        lift = motion.split("── 一排头像里指到的那一枚抬起来 ──", 1)[1].split("*/", 1)[1].split("/*", 1)[0]
+        lift = motion.split("── 作品卡共演头像里指到的那一枚抬起来 ──", 1)[1].split("*/", 1)[1].split("/*", 1)[0]
         for banned in ("margin", "width:", "gap:", "padding"):
             with self.subTest(prop=banned):
                 self.assertNotIn(banned, lift, f"抬起来那一下不许碰 {banned}")
         self.assertPageContains(
             "transform:translate(var(--lift-x,0),var(--lift-y,0)) scale(var(--lift-scale,1))")
         self.assertPageContains(
-            ":is(#tiers .tier,.followauthors,.followworks,.mavstack):has(:is(:hover,:focus-visible))"
-            "{--lift-motion:var(--board-motion)}")
+            ".card .mavstack:has(:is(:hover,:focus-visible)){--lift-motion:var(--board-motion)}")
         self.assertPageContains(
-            ".mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav+.mav{--lift-x:40px}")
+            ".card .mavstack .mav:is(:hover,:focus-visible)+.mav+.mav+.mav+.mav{--lift-x:40px}")
+        self.assertNotIn("#tiers .tier", lift)
+        self.assertNotIn(".brandpill", lift)
         self.assertNotIn("--lift-x:-", motion, "叠放头像不得向卡片左缘移动")
         # 落回走按压弹簧：站内已经有采样自真实弹簧的那一档，不另起一条近似。
         self.assertPageContains("--lift-motion:calc(var(--spring-press-ms) * 1ms) var(--spring-press)")
-        # 那条 transition 住在 board.css：它的 shorthand 已经排着 scale 与配色，
-        # transform 只能并进同一条列表，另写一条会被它整条盖掉。
-        board = (Path(__file__).resolve().parents[1]
-                 / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("transition:transform var(--lift-motion,var(--board-motion)),scale ", board)
 
     def test_clearing_the_search_box_dissolves_the_old_text(self):
         """输入框的 value 是一瞬间没的，飘的是照着它摆的一份复制品。

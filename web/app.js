@@ -3179,7 +3179,7 @@ function cardHtml(it,cls){
     ? `<div class="watchprogress" role="progressbar" aria-label="观看进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(watchedRatio*100)}"><i style="width:${(watchedRatio*100).toFixed(1)}%"></i></div>`
     : (it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'');
   const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
-  const tgs=(it.follow_tags||it.tags||[]).slice(0,3).map(x=>`<span class="tg general"${it.follow_item_id?'':` data-tag="${esc(x)}"`}>${esc(tagLabel(x))}</span>`).join('');
+  const tgs=(it.follow_tags||it.tags||[]).slice(0,3).map(x=>`<button type="button" class="tg general"${it.follow_item_id?' disabled':` data-tag="${esc(x)}"`}>${esc(tagLabel(x))}</button>`).join('');
   const laterTool=`<div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
       ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>`;
   /* 分卷卡悬浮翻的是各卷首帧，没有可控的视频：倒计时环和快退／快进那三颗留着的话，
@@ -3196,7 +3196,8 @@ function cardHtml(it,cls){
      同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
   const stacked=parts||editions;
   return `<article class="card ${stacked?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
-    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}<button class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
+    <button type="button" class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
+    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
       ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${stacked?'</div>':''}

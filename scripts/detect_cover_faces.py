@@ -25,44 +25,20 @@ import json
 import sys
 from pathlib import Path
 
-import cv2
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import COVER_DIR
-from peach.face_detect import FaceDetector, FaceModelUnavailable, main_face
-#: 长封套的宽高比区间。判据只有一份，住在 `peach.jav_poster_crop`：竖海报取景框、
-#: 这里的左半剧照剔除、`web/app.js` 的 `coverAnchor` 都按同一对值分档，各写一份
-#: 就会出现「脚本按封套丢掉左半边的脸、页面按剧照用那张脸取景」。
-from peach.jav_poster_crop import SLEEVE_RATIO_MAX, SLEEVE_RATIO_MIN
-
-#: 长封套上正封的起始横向位置。左边是剧照拼贴，检出必然是假阳性。
-FRONT_START = 0.468
-#: 纵向取景的合理区间。超出这个范围的检出多半不是主体人物。
-MIN_Y, MAX_Y = 0.05, 0.60
+from peach.cover_artwork import face_record
+from peach.face_detect import FaceDetector, FaceModelUnavailable
 
 
 def detect(path: Path, detector: FaceDetector) -> dict | None:
+    import cv2
     image = cv2.imread(str(path))
-    if image is None:
-        return None
-    height, width = image.shape[:2]
-    ratio = width / height if height else 0
-    faces = detector.detect(image)
-    # 长封套左半边是剧照拼贴，那里的脸不是正封主体。这条仍然保留：它挡的不是
-    # 假阳性（YuNet 给的是真脸），而是「拼贴里的另一个人」——按面积取最大在
-    # `ABW-232` 这类图上已经落在右侧正封，但拼贴里偶尔会有更大的一张。
-    if SLEEVE_RATIO_MIN <= ratio < SLEEVE_RATIO_MAX:
-        faces = [face for face in faces if face.cx >= FRONT_START]
-    faces = [face for face in faces if MIN_Y <= face.cy <= MAX_Y]
-    if not faces:
-        return {"ratio": round(ratio, 3), "face": None}
-    best = main_face(faces)
-    return {"ratio": round(ratio, 3),
-            "face": {"cx": best.cx, "cy": best.cy, "score": best.score}}
+    return face_record(image, detector)
 
 
 def build_parser() -> argparse.ArgumentParser:
