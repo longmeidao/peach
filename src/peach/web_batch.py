@@ -144,6 +144,9 @@ AD_DIR_APP = re.compile(r"(?:^|[^A-Za-z.])APP(?:[^A-Za-z.]|$)", re.I)
 #: `麻豆传媒` 单独出现可能是这个厂牌的资源目录。
 AD_DIR_BRAND_MEDIA = re.compile(r"(?:视频|視頻|影视|影視|传媒|傳媒|直播|短视频|短視頻)", re.I)
 JUNK_KINDS = frozenset({"video", "image", "audio", "archive", "url", "other"})
+#: 达到这个体积的视频不再当广告残留。这个值与原有「小于 120 MB」证据同源；
+#: 较大的同番号短版本属于重复清理问题，由 ``q_duplicates`` 承接。
+JUNK_VIDEO_MAX_BYTES = 120 * 1024**2
 
 
 def promo_residue(name: str) -> int:
@@ -223,6 +226,21 @@ def _promo_directory(parts) -> bool:
     return False
 
 
+def _junk_rows(connection):
+    """读取能进入垃圾复核的物理文件；NFO 与大视频在最外层就排除。"""
+    rows = connection.execute(
+        "SELECT id,location,name,medium,creator,code,size,duration,width,height,snapshot_path,"
+        "feedback,disposal,play_count,leave_ratio,o_count,studio,ctx_orient,path "
+        "FROM asset WHERE location IN ('local','115','pikpak') AND disposal IS NULL "
+        "AND (COALESCE(medium,'other')<>'video' OR (size < ? "
+        "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200))",
+        (JUNK_VIDEO_MAX_BYTES,)).fetchall()
+    # NFO 是媒体资料边车，不是等待清理的物理内容；即使名字或所在目录带推广词，
+    # 也应由资料读取报告解析问题，不能进入会把文件移入回收站的垃圾队列。
+    return [row for row in rows if PureWindowsPath(
+        row["name"] or row["path"] or "").suffix.casefold() != ".nfo"]
+
+
 def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending"):
     """疑似垃圾复核队列 —— **不自动删**，只排队让人看证据确认。
 
@@ -256,12 +274,7 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
     if status not in {"pending", "dismissed"}:
         raise ValueError("invalid junk status")
     with contract.read_connection() as c:
-        rows = c.execute(
-            "SELECT id,location,name,medium,creator,code,size,duration,width,height,snapshot_path,"
-            "feedback,disposal,play_count,leave_ratio,o_count,studio,ctx_orient,path "
-            "FROM asset WHERE location IN ('local','115','pikpak') AND disposal IS NULL "
-            "AND (COALESCE(medium,'other')<>'video' OR (size < 500*1024*1024 "
-            "AND duration IS NOT NULL AND duration BETWEEN 15 AND 1200))").fetchall()
+        rows = _junk_rows(c)
         # 同番号是否存在明显更长的版本；只在 code 是真番号时才有意义。
         longer = {r[0]: r[1] for r in c.execute(
             "SELECT code, max(duration) FROM asset WHERE medium='video' AND code IS NOT NULL "
@@ -367,7 +380,7 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
                 s += 40; why.append(f"同番号有 {mx/60:.0f} 分完整版")
             if d["duration"] < 240:
                 s += 15; why.append("不足 4 分钟")
-            if (d["size"] or 0) < 120 * 1024**2:
+            if (d["size"] or 0) < JUNK_VIDEO_MAX_BYTES:
                 s += 10; why.append("小于 120 MB")
             if promo_dir:
                 # 30 分单独不构成删片理由：正片也可能躺在别人起错名的目录里，
@@ -802,8 +815,65 @@ def w_batch(contract: WebContract, body):
     return {"ok": True, "operation": operation, "changed": len(valid_ids)}
 
 
+def _add_large_short_copy_cluster(items: list[dict], clusters: list[list[dict]]):
+    """把同番号的大体积短版本并到完整版所在组，返回这个组。"""
+    claimed = {item["id"] for cluster in clusters for item in cluster}
+    full = max(items, key=lambda item: item.get("duration") or 0)
+    full_duration = float(full.get("duration") or 0)
+    short_copies = [item for item in items
+                    if item["id"] not in claimed and item["id"] != full["id"]
+                    and (item.get("size") or 0) >= JUNK_VIDEO_MAX_BYTES
+                    and 0 < float(item.get("duration") or 0) < full_duration * 0.2
+                    and not PART_MARK.search(PureWindowsPath(
+                        str(item.get("name") or "")).stem)]
+    if not short_copies:
+        return None
+    cluster = next((candidate for candidate in clusters if any(
+        item["id"] == full["id"] for item in candidate)), None)
+    if cluster is None:
+        cluster = [full]
+        clusters.append(cluster)
+    cluster.extend(short_copies)
+    return cluster
+
+
+def _duplicate_groups(grouped: dict[str, list[dict]]):
+    """把已按番号归组的资产整理成重复项 API 结果。"""
+    groups = []
+    for code, items in grouped.items():
+        if len(items) < 2:
+            continue
+        clusters = [cluster for cluster in duration_clusters(items) if len(cluster) >= 2]
+        short_copy_cluster = _add_large_short_copy_cluster(items, clusters)
+        for cluster in clusters:
+            largest = max(cluster, key=lambda x: x.get("size") or 0)
+            longest = max(cluster, key=lambda x: x.get("duration") or 0)
+            hashes_present = [x["hash"] for x in cluster if x["hash"]]
+            hashes = set(hashes_present)
+            for item in cluster:
+                item["is_largest"] = item["id"] == largest["id"]
+                item["is_longest"] = item["id"] == longest["id"]
+                item.pop("hash", None)
+                item.pop("disposal", None)
+            groups.append({
+                "code": code,
+                "files": sorted(cluster, key=lambda x: -(x.get("size") or 0)),
+                "count": len(cluster),
+                "evidence": "same_code_short_copy" if cluster is short_copy_cluster
+                else "duration",
+                # 必须每个文件都有 sha1 且完全相同才算确证字节一致。缺一个哈希
+                # 就只是「时长相近」的推断，不能对外宣称已确证。
+                "identical": len(hashes) == 1 and len(hashes_present) == len(cluster),
+                "drives": sorted({x["drive"] for x in cluster}),
+                "cross_drive": len({x["drive"] for x in cluster}) > 1,
+                "reclaimable": sum(x.get("size") or 0 for x in cluster)
+                - (largest.get("size") or 0),
+            })
+    return groups
+
+
 def q_duplicates(contract: WebContract, args):
-    """按番号 + 时长找真重复；每簇标出最大与最长的那个。"""
+    """按番号 + 时长找真重复，也收同番号的大体积短版本。"""
     limit = min(max(int(args.get("limit", "60")), 1), 300)
     offset = max(int(args.get("offset", "0")), 0)
     with contract.read_connection() as connection:
@@ -822,34 +892,7 @@ def q_duplicates(contract: WebContract, args):
         item["drive"] = str(item.get("path") or "")[:2].upper()
         grouped.setdefault(normalise_code_key(row["code"]), []).append(item)
 
-    groups = []
-    for code, items in grouped.items():
-        if len(items) < 2:
-            continue
-        for cluster in duration_clusters(items):
-            if len(cluster) < 2:
-                continue
-            largest = max(cluster, key=lambda x: x.get("size") or 0)
-            longest = max(cluster, key=lambda x: x.get("duration") or 0)
-            hashes_present = [x["hash"] for x in cluster if x["hash"]]
-            hashes = set(hashes_present)
-            for item in cluster:
-                item["is_largest"] = item["id"] == largest["id"]
-                item["is_longest"] = item["id"] == longest["id"]
-                item.pop("hash", None)
-                item.pop("disposal", None)
-            groups.append({
-                "code": code,
-                "files": sorted(cluster, key=lambda x: -(x.get("size") or 0)),
-                "count": len(cluster),
-                # 必须每个文件都有 sha1 且完全相同才算确证字节一致。缺一个哈希
-                # 就只是「时长相近」的推断，不能对外宣称已确证。
-                "identical": len(hashes) == 1 and len(hashes_present) == len(cluster),
-                "drives": sorted({x["drive"] for x in cluster}),
-                "cross_drive": len({x["drive"] for x in cluster}) > 1,
-                "reclaimable": sum(x.get("size") or 0 for x in cluster)
-                - (largest.get("size") or 0),
-            })
+    groups = _duplicate_groups(grouped)
     groups.sort(key=lambda g: -g["reclaimable"])
     window = groups[offset:offset + limit]
     return {

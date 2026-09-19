@@ -470,10 +470,12 @@ def _scan(args: argparse.Namespace) -> int:
 
 def _process_library(args: argparse.Namespace) -> int:
     from .library_processing import process_library
+    from .web_review import auto_apply_metadata
     _require_readable_settings()
     config = settings_file.active()
     result = process_library(config, args.db, config.directory('generated'),
                              config.directory('generated') / 'covers', location=args.location,
+                             apply_candidates=auto_apply_metadata,
                              report=lambda state: print(f"{state['stage']}：{state['checked']}/{state['total']}", flush=True))
     return 0 if result['status'] == 'complete' else 1
 

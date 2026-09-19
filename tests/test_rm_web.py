@@ -2563,6 +2563,20 @@ class DuplicateDetectionTests(unittest.TestCase):
         flagged = {f["id"] for g in result["groups"] for f in g["files"]}
         self.assertNotIn(real, flagged, "199 分钟的正片不该被判成重复")
 
+    def test_large_short_same_code_copy_is_a_duplicate_not_junk(self):
+        full = self.add("FC2-PPV-1110408", 50 * 60, 4_000_000_000,
+                        name="FC2-PPV-1110408.mp4")
+        short = self.add("FC2-PPV-1110408", 3 * 60, 488 * 1024**2,
+                         name="FC2-PPV-1110408-2-4K修复.mp4")
+
+        result = self.groups()
+
+        self.assertEqual(result["total"], 1)
+        group = result["groups"][0]
+        self.assertEqual({item["id"] for item in group["files"]}, {full, short})
+        self.assertEqual(group["evidence"], "same_code_short_copy")
+        self.assertEqual(group["reclaimable"], 488 * 1024**2)
+
     def test_largest_and_longest_are_marked_separately(self):
         # 时长差必须落在容差内才是同一簇；体积最大与时长最长可以是不同文件，
         # 实测 MEYD-692 里最长的那个反而是码率更低的 nyap2p 版本。

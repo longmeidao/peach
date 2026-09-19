@@ -1,32 +1,25 @@
-/* 人工复核页的数据契约、分组分页纯函数与写操作。四条端点在 `frontend/src` 里都只在这里
+/* 人工复核页的数据契约、分组分页纯函数与写操作。三条端点在 `frontend/src` 里都只在这里
  * 声明一次（`tests/test_frontend_build.py` 盯着）。
  *
- * 这一页有两份节律不同的真相，所以有两个键：
- * - `['review']` 是整条复核队列。接口一次给出全部分类（实测 4.6 MB、1300 行，本机读
+ * `['review']` 是整条复核队列。接口一次给出全部分类（实测 4.6 MB、1300 行，本机读
  *   0.1 秒），十个分类合在一个响应里，所以也只用一个 `queryKey`：分类切换是翻这一份的
  *   不同段落，不是另一份真相。判定写回来时只把那几行从缓存里摘掉（`dropReviewRows`），
  *   不为一次判定把整条队列重取一遍。
- * - `['review','auto-apply']` 是进页面那一刻自动落库的回执（ADR-0018）。它由
- *   `prefetchReview` 写一次，说的是「本次进入做了什么」，不是账本此刻的样子；和队列
- *   合成一个键的话，收录一个 genre 之后重取队列会把这句回执一起变成新的。
  *
  * 分组、筛选、分页都是纯函数：工具条上的计数说的是整条队列，卡片只画当前这一页，两边
  * 用同一套判据算，各写一份迟早对不上。 */
-import { apiGet, apiSend, errorMessage } from '../../api';
+import { apiGet, apiSend } from '../../api';
 import { clampPage, pageCount } from '../../pagination';
 import { selectRange } from '../../selection';
 import { queryClient } from '../query';
 import { localTime } from '../time';
 
 export const REVIEW_URL = '/api/review';
-export const REVIEW_AUTO_APPLY_URL = '/api/review/auto-apply';
 export const REVIEW_DECISION_URL = '/api/review/decision';
 export const REVIEW_GENRE_URL = '/api/review/genre';
 
 /** 整条复核队列。 */
 export const REVIEW_KEY = ['review'] as const;
-/** 本次进入时自动落库的回执。 */
-export const REVIEW_AUTO_APPLY_KEY = ['review', 'auto-apply'] as const;
 
 /** 复核分类与它们在界面上的名字。次序就是页签次序。 */
 export const REVIEW_LABELS = {
@@ -150,13 +143,6 @@ export interface ReviewData {
   genre_tags?: string[];
   mirror?: ReviewMirror | null;
 }
-
-/** 自动落库这一步的三种结局。它没有按钮，进页面就跑完了，所以回执必须画在页面上：
- *  只写控制台的话，用户看到的只有一条不见少的队列。 */
-export type AutoApplyResult =
-  | { state: 'applied'; applied: number }
-  | { state: 'failed'; error: string }
-  | { state: 'skipped' };
 
 /* ── 分组、筛选、分页 ── */
 
@@ -325,26 +311,8 @@ export const submitDecision = (payload: Record<string, unknown>) =>
 export const recordGenre = (genre: string, tag: string) =>
   apiSend<DecisionResult>(REVIEW_GENRE_URL, { genre, tag });
 
-/** 落库一次并把回执收成页面数据（ADR-0018：确定的那部分先落库再取队列）。
- *
- *  `prefetchReview` 是唯一的调用者——这一步没有按钮，进页面就跑完了，所以组件那边
- *  `enabled: false`，只读它写进缓存的那一份，不会在挂载时再 POST 一次。 */
-export async function autoApplyReceipt(signal?: AbortSignal): Promise<AutoApplyResult> {
-  try {
-    const result = await apiSend<{ applied?: number }>(REVIEW_AUTO_APPLY_URL, {}, 'POST', signal);
-    return { state: 'applied', applied: Number(result?.applied || 0) };
-  } catch (cause) {
-    if (signal?.aborted) throw cause;
-    return { state: 'failed', error: errorMessage(cause) };
-  }
-}
-
-/** 首屏：先落库、再取队列。
- *
- *  只读账本上不发那一次 POST——reader 明知不能写就不该制造一次 409，回执写成「跳过」。 */
-export async function prefetchReview(readOnly: boolean, signal: AbortSignal): Promise<void> {
-  const receipt: AutoApplyResult = readOnly ? { state: 'skipped' } : await autoApplyReceipt(signal);
-  queryClient.setQueryData<AutoApplyResult>(REVIEW_AUTO_APPLY_KEY, receipt);
+/** 首屏只读复核队列。符合 ADR-0018 的候选已在扫描与资料处理结束时落库。 */
+export async function prefetchReview(signal: AbortSignal): Promise<void> {
   await queryClient.fetchQuery({ queryKey: REVIEW_KEY, queryFn: () => fetchReview(signal) });
 }
 

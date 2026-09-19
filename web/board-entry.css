@@ -6,9 +6,7 @@ body{background:var(--page)}
 main{background:var(--ground);border:1px solid var(--line);border-radius:24px;padding:28px;box-shadow:0 4px 16px #00000008}
 h1{font-weight:500}
 input[type=text],input[type=password],input[type=number],select,.affix{background:var(--field);border-radius:10px}
-/* 主按钮那一颗不写在这里：`routes_pages._board_button_rules()` 把 `board.css` 里的
-   Board primary 连同它用到的 token 一起内联进这三页，站内改一次渐变这里跟着走。
-   表单里那些没带 `.geist-button primary` 的提交键还是要自己接上同一副盒子。 */
+/* 表单提交是这一屏唯一主操作，复用站内 Board primary 的三档渐变。 */
 button[type=submit],form>button{position:relative;isolation:isolate;height:36px;background:var(--board-blue);color:#fff;border:0;box-shadow:0 1px 2px #0000000d;border-radius:10px}
 button[type=submit]::before,form>button::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
 button[type=submit]:hover:not(:disabled)::before,form>button:hover:not(:disabled)::before{opacity:1}
@@ -29,16 +27,20 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card form{margin-top:28px}
 .setup-auth-card .field{margin-top:24px}
 .setup-auth-card form>.field:first-child{margin-top:0}
+.setup-auth-card form>:is(.access-field,details,.setup-options){margin-top:24px;padding-top:24px;border-top:1px solid var(--line)}
 .setup-auth-card .dir{padding:12px;background:var(--surface);border:0;border-radius:var(--control-radius)}
 .setup-auth-card input,.setup-auth-card .affix{background:var(--surface)}
 .setup-auth-card .help{font-size:12px;line-height:18px}
+.setup-auth-card .setting-title,.setup-auth-card .field>label.setting-title{margin:0;padding:0;border:0;color:var(--ink);font:600 14px/20px var(--board-font,system-ui,sans-serif)}
+.setup-auth-card .field-label{color:var(--ink-2);font:500 14px/20px var(--board-font,system-ui,sans-serif)}
+.setup-auth-card .setting-subtitle{margin:0;color:var(--ink);font:500 14px/20px var(--board-font,system-ui,sans-serif)}
 .setup-auth-card .field>label:not(:first-child){margin-top:16px}
 .setup-auth-card details{padding:0;background:transparent;border-radius:0}
 .setup-auth-card summary{min-height:32px;justify-content:space-between;font-size:14px}
-.setup-auth-card .setup-options{margin-top:24px;display:grid;gap:8px}
+.setup-auth-card .setup-options{display:grid;gap:8px}
 .setup-auth-card .check{margin:0;align-items:flex-start;min-height:24px;gap:8px;font-size:13px;line-height:20px}
-.setup-auth-card .history-guide-choice{margin-top:12px}
-.setup-auth-card .history-guide-choice h2{margin:0 0 12px;padding:0;border:0;font-size:14px;font-weight:500}
+.setup-auth-card .history-guide-choice{margin-top:16px;padding-top:24px;border-top:1px solid var(--line)}
+.setup-auth-card .history-guide-choice .setting-subtitle{margin:0 0 12px;padding:0;border:0}
 .setup-auth-card .bad{padding:8px 10px;border-radius:var(--control-radius);background:color-mix(in srgb,var(--drop) 8%,var(--ground));overflow-wrap:anywhere}
 .setup-auth-card :is(button[type=submit],.setup-enter){margin-top:24px;min-height:36px}
 .setup-auth-card .switch label{height:auto;min-height:40px;padding:6px 8px;text-align:center;font-size:13px;line-height:18px}
@@ -72,6 +74,20 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card .switch:has(label:nth-of-type(2) input:checked)::before{transform:translateX(calc(100% + 4px))}
 .setup-auth-card .switch label:has(input:checked){background:transparent;box-shadow:none;color:var(--ink)}
 .setup-auth-card .switch label{min-height:32px;color:var(--muted)}
+.setup-auth-card .toggle-setting{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:0;color:var(--ink);cursor:pointer}
+.setup-auth-card .toggle-setting>span:first-child{display:grid;gap:2px}
+.setup-auth-card .toggle-setting small{color:var(--muted);font-size:12px;line-height:18px;font-weight:400}
+.setup-auth-card .ptoggle{appearance:none;position:relative;flex:none;width:42px;height:24px;margin:0;border:0;border-radius:999px;background:var(--button-border-active);cursor:pointer;transition:background .2s ease}
+.setup-auth-card .ptoggle::after{content:'';position:absolute;width:18px;height:18px;left:3px;top:3px;border-radius:50%;background:linear-gradient(#fff 44%,#f3f3f3);box-shadow:0 3px 3px #00000008,0 .75px 0 #0000000d;transition:transform .2s ease}
+.setup-auth-card .ptoggle::before{content:'';position:absolute;z-index:1;left:8.25px;top:8.25px;width:7.5px;height:7.5px;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 .375px var(--line);transition:transform .2s ease}
+.setup-auth-card .ptoggle:checked{background:var(--board-blue);box-shadow:inset 0 1.5px 0 #ffffff40,inset 0 0 0 .75px var(--color-accent-400)}
+.setup-auth-card .ptoggle:checked::after,.setup-auth-card .ptoggle:checked::before{transform:translateX(18px)}
+.setup-auth-card .ptoggle:checked::before{background:linear-gradient(var(--color-accent-700),var(--color-accent-500))}
+.setup-auth-card .ptoggle:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+.setup-auth-card .password-fields{margin-top:20px}
+.setup-auth-card .password-fields>label{display:block;margin:0 0 6px;color:var(--ink-2);font-size:14px;line-height:20px;font-weight:500}
+.setup-auth-card .password-fields>label:not(:first-child){margin-top:16px}
+.setup-auth-card .password-fields[hidden]{display:none}
 .setup-auth-card summary:hover{color:var(--ink-2)}
 .setup-auth-card .gselectfield{padding:0 12px;gap:8px;width:100%;color:var(--ink)}
 .setup-auth-card .gselectfield>svg{width:16px;height:16px}
@@ -91,7 +107,7 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card input[type=text]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h5l2 2h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2Z'/%3E%3C/svg%3E")}
 .setup-auth-card input[type=password]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='1.8' stroke-linecap='round'%3E%3Crect x='4' y='10' width='16' height='11' rx='2'/%3E%3Cpath d='M8 10V7a4 4 0 0 1 8 0v3M12 14v3'/%3E%3C/svg%3E")}
 .setup-auth-card input[type=number]{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888888' stroke-width='1.8' stroke-linecap='round'%3E%3Cpath d='M4 9h16M3 15h16M10 3 8 21M16 3l-2 18'/%3E%3C/svg%3E")}
-.setup-auth-card .affix input[type=text]{padding-left:12px;background-image:none}
+.setup-auth-card .affix input:is([type=text],[type=number]){padding-left:12px;background-image:none}
 .setup-auth-card .entry-input{display:block;position:relative;min-width:0;width:100%}
 .setup-auth-card .dir>.entry-input{flex:1 1 0;width:0}
 .setup-auth-card .entry-input>input{display:block;width:100%}
@@ -102,26 +118,23 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card{--button-border:#ebebeb;--button-border-hover:#d4d4d4;--button-border-active:#a3a3a3;--button-hover:#f7f7f7;--button-active:#ebebeb;--button-shadow:#0000000d;--button-disabled:linear-gradient(#ebebeb,#d4d4d4)}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]) .setup-auth-card{--button-border:#404040;--button-border-hover:#737373;--button-border-active:#525252;--button-hover:color-mix(in srgb,#404040 60%,transparent);--button-active:#262626;--button-shadow:#0000002e;--button-disabled:linear-gradient(#404040,#262626)}}
 :root[data-theme=dark] .setup-auth-card{--button-border:#404040;--button-border-hover:#737373;--button-border-active:#525252;--button-hover:color-mix(in srgb,#404040 60%,transparent);--button-active:#262626;--button-shadow:#0000002e;--button-disabled:linear-gradient(#404040,#262626)}
-.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter){display:inline-flex;align-items:center;justify-content:center;height:36px;padding:8px 12px;border-radius:10px;font-size:14px;font-weight:500;line-height:20px;white-space:nowrap;user-select:none;box-shadow:0 1px 2px var(--button-shadow);transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease,color .15s ease,transform .42s cubic-bezier(.4,0,.2,1)}
-.setup-auth-card :is(.pick,.add)[hidden]{display:none}
-.setup-auth-card button.pick{width:36px;padding:8px;align-self:flex-start;margin-top:2px}
+.setup-auth-card :is(.pick,.rm,.add,button[type=submit],.setup-enter){display:inline-flex;align-items:center;justify-content:center;height:36px;padding:8px 12px;border-radius:10px;font-size:14px;font-weight:500;line-height:20px;white-space:nowrap;user-select:none;box-shadow:0 1px 2px var(--button-shadow);transition:background-color .15s ease,border-color .15s ease,box-shadow .15s ease,color .15s ease,transform .42s cubic-bezier(.4,0,.2,1)}
+.setup-auth-card :is(.pick,.rm,.add)[hidden]{display:none}
+.setup-auth-card .dir :is(button.pick,button.rm){width:40px;height:40px;padding:10px;align-self:flex-start;margin-top:0}
 .setup-auth-card .pick svg{width:20px;height:20px;flex:none}
 .setup-auth-card button.add{padding-left:8px}
-.setup-auth-card :is(.pick,.add){background:var(--ground);border:1px solid var(--button-border);color:var(--ink)}
-.setup-auth-card :is(.pick,.add):hover:not(:disabled):not([aria-disabled=true]){background:var(--button-hover);border-color:var(--button-border-hover)}
-.setup-auth-card :is(.pick,.add):active:not(:disabled):not([aria-disabled=true]){background:var(--button-active);border-color:var(--button-border-active)}
-/* 首启和登录的提交键跟错误页那颗、跟站内每一颗主按钮同一张面：三档渐变都是
-   `--board-blue` `--board-blue-hover` `--board-blue-active`，由
-   `routes_pages._board_button_rules()` 从 `board.css` 送进来。悬停那一档同样铺在
-   `::before` 上淡入，不直接换 `background`。按下那一下照旧配 0.98 的缩放，那是上游
-   `button-press-motion` 那一份。 */
+.setup-auth-card :is(.pick,.rm,.add){background:var(--ground);border:1px solid var(--button-border);color:var(--ink)}
+.setup-auth-card :is(.pick,.rm,.add):hover:not(:disabled):not([aria-disabled=true]){background:var(--button-hover);border-color:var(--button-border-hover)}
+.setup-auth-card :is(.pick,.rm,.add):active:not(:disabled):not([aria-disabled=true]){background:var(--button-active);border-color:var(--button-border-active)}
+.setup-auth-card .rm:hover:not(:disabled):not([aria-disabled=true]){background:var(--drop);color:#fff;border-color:var(--drop)}
+/* 首启和登录的主操作与站内 Board primary 共用三档渐变。 */
 .setup-auth-card :is(button[type=submit],.setup-enter){position:relative;isolation:isolate;border:0;color:#fff;background:var(--board-blue)}
 .setup-auth-card :is(button[type=submit],.setup-enter)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
 .setup-auth-card :is(button[type=submit],.setup-enter):hover:not(:disabled):not([aria-disabled=true])::before{opacity:1}
 .setup-auth-card :is(button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){background:var(--board-blue-active)}
 .setup-auth-card :is(button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true])::before{opacity:0}
-.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){transform:scale(.98);transition-duration:.15s,.15s,.15s,.15s,.22s}
-.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){cursor:not-allowed;color:var(--muted);box-shadow:none;transform:none;background:var(--surface);border-color:var(--button-border)}
+.setup-auth-card :is(.pick,.rm,.add,button[type=submit],.setup-enter):active:not(:disabled):not([aria-disabled=true]){transform:scale(.98);transition-duration:.15s,.15s,.15s,.15s,.22s}
+.setup-auth-card :is(.pick,.rm,.add,button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){cursor:not-allowed;color:var(--muted);box-shadow:none;transform:none;background:var(--surface);border-color:var(--button-border)}
 .setup-auth-card :is(button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){background:var(--button-disabled)}
-@media(prefers-reduced-motion:reduce){.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter),.setup-auth-card :is(.pick,.add,button[type=submit],.setup-enter):active{transition:none;transform:none}}
+@media(prefers-reduced-motion:reduce){.setup-auth-card :is(.pick,.rm,.add,button[type=submit],.setup-enter),.setup-auth-card :is(.pick,.rm,.add,button[type=submit],.setup-enter):active{transition:none;transform:none}.setup-auth-card .ptoggle,.setup-auth-card .ptoggle::after,.setup-auth-card .ptoggle::before{transition:none}}
 @media(max-width:600px){body:has(.setup-auth-card){padding:24px 16px}main:has(.setup-auth-card){padding:24px}.setup-auth-card input[type=password]{font-size:16px}}

@@ -4996,7 +4996,9 @@ function renderDuplicates(){
     ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
       <div class="duphead"><b class="mono">${esc(g.code)}</b>
         <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>
-        ${g.identical?'<span class="dupflag ok">sha1 一致</span>':'<span class="dupflag">时长推断</span>'}
+        ${g.identical?'<span class="dupflag ok">sha1 一致</span>'
+          :g.evidence==='same_code_short_copy'?'<span class="dupflag">同番号短版本</span>'
+          :'<span class="dupflag">时长推断</span>'}
         ${g.cross_drive?`<span class="dupflag">跨盘 ${esc(g.drives.join(' '))}</span>`:''}
         <span class="dupbtns"><button data-dup-keep="largest" data-dup-i="${gi}">留最大</button>
           <button data-dup-keep="longest" data-dup-i="${gi}">留最长</button>

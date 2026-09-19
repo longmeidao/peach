@@ -12,14 +12,14 @@ from contextlib import closing
 
 from filelock import FileLock
 
-from peach.field_owners import owner_of, review_owner
+from peach.field_owners import auto_owner, owner_of, review_owner
 from peach.genre_taxonomy import map_genres
 from peach.library_nfo import read_nfo, sidecars, local_art
 from peach.library_processing import (STALL_AFTER_SECONDS, decorate, issues_path,
                                       process_library, snapshot, state_path, _fields)
 from peach.review_csv import read_rows
 from peach.settings_file import PeachConfig
-from peach.web_review import _apply_metadata_candidate
+from peach.web_review import _apply_metadata_candidate, auto_apply_metadata
 from support.conditions import windows_ledger_roots
 from support.ledger import fresh_ledger
 
@@ -141,6 +141,36 @@ class LibraryNfoTests(unittest.TestCase):
         with patch('peach.web_library_processing.process_library') as worker:
             self.assertEqual(q_library_processing(contract, {})['job_id'], 'one')
             worker.assert_not_called()
+
+    @windows_ledger_roots
+    def test_processing_auto_applies_safe_nfo_fields_before_it_finishes(self):
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-358.mp4').write_bytes(b'video')
+        (media / 'ABW-358.nfo').write_text(
+            '<movie><title>涼森れむ流</title><sorttitle>ABW-358</sorttitle></movie>',
+            encoding='utf-8')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        provider = Mock()
+        provider.query.return_value = {'id': 'ABW-358'}
+
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=Mock(return_value=provider),
+                                 apply_candidates=auto_apply_metadata)
+
+        self.assertGreaterEqual(result['auto_applied'], 1)
+        with closing(sqlite3.connect(db)) as connection:
+            title, owners = connection.execute(
+                "SELECT catalog_title,field_owners FROM asset WHERE code='ABW-358'").fetchone()
+            decision = connection.execute(
+                "SELECT status,note FROM review_decision WHERE category='metadata_fields' "
+                "AND item_key='asset:1:title'").fetchone()
+        self.assertEqual(title, '涼森れむ流')
+        self.assertEqual(owner_of(owners, 'catalog_title'), auto_owner('local_nfo'))
+        self.assertEqual(decision[0], 'approved')
+        self.assertEqual(json.loads(decision[1])['rule'], 'adr-0029-empty-field-local-nfo')
 
     @windows_ledger_roots
     def test_no_code_video_pairs_with_its_sibling_image_without_nfo(self):

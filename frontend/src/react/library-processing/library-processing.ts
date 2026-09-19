@@ -32,6 +32,7 @@ export interface LibraryProcessingData {
   scanned?: number;
   identified?: number;
   candidates?: number;
+  auto_applied?: number;
   covers?: number;
   error?: string;
   issue_count?: number;
@@ -155,5 +156,5 @@ export function announceCompletion(
     if (state.job_id) localStorage.setItem(ANNOUNCED_KEY, state.job_id);
   } catch { /* 存储不可用时照常提示，最多重复一次 */ }
   toast(`扫描与资料采集已完成：识别 ${state.identified || 0} 个番号，`
-    + `整理 ${state.candidates || 0} 组资料候选`);
+    + `整理 ${state.candidates || 0} 组资料候选，自动落库 ${state.auto_applied || 0} 条`);
 }

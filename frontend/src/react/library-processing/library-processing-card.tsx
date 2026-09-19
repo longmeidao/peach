@@ -48,7 +48,7 @@ const CARD_TEXT = '扫描媒体文件夹，导入已有资料，采集缺失信�
 const STALLED_TEXT = '这个项目处理时间较长，暂时没有新进展。可以继续等待，或在任务结束后重试未完成项。';
 const receiptText = (state: LibraryProcessingData) =>
   `已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，`
-  + `整理 ${state.candidates || 0} 组资料候选。`;
+  + `整理 ${state.candidates || 0} 组资料候选，自动落库 ${state.auto_applied || 0} 条。`;
 
 /** 主键加一个下拉：三种方式改的是同一件事，摊成三颗按钮读不出哪个是常用的那一个。
  *

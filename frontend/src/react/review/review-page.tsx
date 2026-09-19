@@ -1,8 +1,7 @@
 /* 人工复核页：把带出处的候选摆到人面前，等一次明确的批准或否决。
  *
- * 进页面先落库再取队列（ADR-0018）：能直接补空的那部分不该占着人的注意力，剩下的才是
- * 题。落库没有按钮，所以它的回执必须画在页面上——只写控制台的话，用户看到的只有一条
- * 不见少的队列，无从知道这一步到底有没有发生。
+ * ADR-0018 的确定项在扫描与资料处理任务结束时已经落库；这一页只读取剩下的判断题，
+ * 打开页面不会再触发一次写操作。
  *
  * 地址栏与组件状态的分界（ADR-0031「迁移桥接」）：
  * - `category` 在地址栏上。十个分类是固定的一组身份，「在看哪一条队列」链接得过来，
@@ -25,13 +24,11 @@ import { Page } from '../components/page';
 import { BulkToolbar } from './bulk-toolbar';
 import { GenreTagList } from './candidate-form';
 import { ReviewCard } from './review-card';
-import type {
-  AutoApplyResult, DecisionStatus, ReviewCategory, ReviewData, ReviewGrouping, ReviewRow, RowChoice,
-} from './review';
+import type { DecisionStatus, ReviewCategory, ReviewData, ReviewGrouping, ReviewRow, RowChoice } from './review';
 import {
-  autoApplyReceipt, canApprove, DEFAULT_CATEGORY, decisionPayload, decisionReceipt, defaultChoice,
+  canApprove, DEFAULT_CATEGORY, decisionPayload, decisionReceipt, defaultChoice,
   dropReviewRows, fetchReview, filterReviewRows, groupReviewRows, isReviewCategory, mirrorText,
-  REVIEW_AUTO_APPLY_KEY, REVIEW_CATEGORIES, REVIEW_KEY, REVIEW_LABELS, reviewGroupingOptions,
+  REVIEW_CATEGORIES, REVIEW_KEY, REVIEW_LABELS, reviewGroupingOptions,
   reviewWindow, selectReviewRange, submitDecision,
 } from './review';
 
@@ -66,22 +63,6 @@ function Pagination(
   );
 }
 
-/** 自动落库的回执。一条都没落下时也要说一句：否则「它到底跑没跑」只能靠数队列长度猜，
- *  而队列本来就不见得会变短。只读账本上这一步根本没发生，那句话由门禁说，这里不出。 */
-function AutoApplyNote({ receipt }: { receipt: AutoApplyResult | undefined }) {
-  if (!receipt || receipt.state === 'skipped') return null;
-  if (receipt.state === 'failed') {
-    return <Note tone="warning" title="自动落库">{`自动落库这一步没能执行：${receipt.error}`}</Note>;
-  }
-  return (
-    <Note tone={receipt.applied ? 'success' : 'neutral'} title="自动落库">
-      {receipt.applied
-        ? `${receipt.applied} 条候选补进了空字段，已从下面的队列里移走。`
-        : '这一批候选没有可以直接补空的：字段已有值、几家来源给的值不一样，或者番号和文件名对不上，都要人来判。'}
-    </Note>
-  );
-}
-
 export function ReviewPage(props: ReviewProps) {
   const {
     route, openItem, openEntity, revealSource, avatarInner, toast,
@@ -106,11 +87,6 @@ export function ReviewPage(props: ReviewProps) {
   useEffect(() => () => { alive.current = false }, []);
 
   const review = useQuery({ queryKey: REVIEW_KEY, queryFn: ({ signal }) => fetchReview(signal) });
-  /* 回执由 `prefetchReview` 在进页面那一刻写进缓存。这一步没有按钮，重新挂载也不该再
-     POST 一次，所以只订阅、不取数；订阅本身是必要的——没有观察者的那一份会被回收掉。 */
-  const auto = useQuery({
-    queryKey: REVIEW_AUTO_APPLY_KEY, queryFn: () => autoApplyReceipt(), enabled: false,
-  });
 
   const data: ReviewData = review.data || { sections: {}, counts: {} };
   const queue = data.sections[category] || [];
@@ -256,7 +232,6 @@ export function ReviewPage(props: ReviewProps) {
           {mirror}
         </Note>
       ) : null}
-      <AutoApplyNote receipt={auto.data} />
       <GenreTagList tags={genreTags} />
 
       {/* 分类列钉在正文右边，跟着页面滚；窄到放不下两列时并回正文上方排成一行药丸。 */}

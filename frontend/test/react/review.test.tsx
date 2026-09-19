@@ -9,8 +9,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { queryClient } from '../../src/react/query';
 import {
-  commonReviewSources, filterReviewRows, groupReviewRows, prefetchReview, REVIEW_AUTO_APPLY_URL,
-  REVIEW_DECISION_URL, REVIEW_KEY, REVIEW_PAGE_SIZE, REVIEW_URL, reviewGroupingOptions,
+  commonReviewSources, filterReviewRows, groupReviewRows, prefetchReview, REVIEW_DECISION_URL,
+  REVIEW_KEY, REVIEW_PAGE_SIZE, REVIEW_URL, reviewGroupingOptions,
   reviewWindow, type ReviewCandidate, type ReviewData, type ReviewRow,
 } from '../../src/react/review/review';
 import { ReviewPage } from '../../src/react/review/review-page';
@@ -53,8 +53,6 @@ const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }
 
 interface Plan {
   data?: ReviewData;
-  /** 自动落库这一趟的结局：给数就是落了几条，给 Error 就是这一步没能执行。 */
-  applied?: number | Error;
   /** 判定的回答：给一串就按顺序一条一条回（最后一条之后一直回它）。 */
   decisions?: { ok: boolean; error?: string }[];
 }
@@ -63,10 +61,6 @@ function serve(plan: Plan = {}) {
   const decisions = [...(plan.decisions ?? [{ ok: true }])];
   const fetcher = vi.fn(async (input: string) => {
     const url = String(input);
-    if (url === REVIEW_AUTO_APPLY_URL) {
-      if (plan.applied instanceof Error) throw plan.applied;
-      return ok({ applied: plan.applied ?? 0 });
-    }
     if (url === REVIEW_DECISION_URL) {
       return ok(decisions.length > 1 ? decisions.shift()! : decisions[0]!);
     }
@@ -93,11 +87,11 @@ const shellProps = (over: Partial<Props> = {}): Props => ({
   ...over,
 });
 
-/** 走完真实的首屏路径：先落库再取队列，然后挂载。 */
+/** 走完真实的首屏路径：只取队列，然后挂载。 */
 async function open(plan: Plan = {}, over: Partial<Props> = {}) {
   const fetcher = serve(plan);
   const props = shellProps(over);
-  await prefetchReview(!!props.readOnly, new AbortController().signal).catch(() => {});
+  await prefetchReview(new AbortController().signal).catch(() => {});
   const mounted = await mountRoot(
     <QueryClientProvider client={queryClient}><ReviewPage {...props} /></QueryClientProvider>);
   await settle();
@@ -226,11 +220,11 @@ it('多来源候选没选来源就批量通过时先说清楚，不替人按下�
   expect(queueOf().sections.metadata_fields).toHaveLength(QUEUE.length);
 });
 
-it('只读账本上不发自动落库，判定与批量都不给点', async () => {
+it('只读账本上判定与批量都不给点', async () => {
   const { host, fetcher } = await open(
     { data: review({ mirror: { state: 'live' } }) },
     { readOnly: true, writerUrl: 'https://writer.example/review' });
-  expect(fetcher.mock.calls.map(([url]) => String(url))).not.toContain(REVIEW_AUTO_APPLY_URL);
+  expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([REVIEW_URL]);
   expect(noteText(host).join()).toContain('正在显示写入端的实时复核队列');
   expect(host.querySelector('a[href="https://writer.example/review"]')).toBeTruthy();
   // 勾选与批量操作整条都不出现：没有可写的东西，工具条只是一排点不动的按钮。
@@ -241,23 +235,7 @@ it('只读账本上不发自动落库，判定与批量都不给点', async () =
   }
 });
 
-it('自动落库落下了几条就报几条', async () => {
-  const { host } = await open({ applied: 7 });
-  expect(noteText(host).join()).toContain('7 条候选补进了空字段，已从下面的队列里移走。');
-});
-
-it('自动落库一条都没落下时也说一句', async () => {
-  const { host } = await open({ applied: 0 });
-  expect(noteText(host).join()).toContain('这一批候选没有可以直接补空的');
-});
-
-it('自动落库没能执行时说出原因，队列照常显示', async () => {
-  const { host } = await open({ applied: new Error('账本被占用') });
-  expect(noteText(host).join()).toContain('自动落库这一步没能执行：账本被占用');
-  expect(cards(host)).toHaveLength(REVIEW_PAGE_SIZE);
-});
-
-it('只读账本上不出自动落库那句话：这一步根本没发生', async () => {
-  const { host } = await open({}, { readOnly: true });
-  expect(noteText(host).join()).not.toContain('自动落库');
+it('打开复核页只读队列，不再触发自动落库写操作', async () => {
+  const { fetcher } = await open();
+  expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([REVIEW_URL]);
 });

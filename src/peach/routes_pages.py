@@ -76,8 +76,8 @@ border:1px solid var(--line);border-radius:var(--control-radius);background:var(
 color:var(--ink);font:inherit}
 .affix{display:flex;align-items:center;height:var(--control-h);border:1px solid var(--line);
 border-radius:var(--control-radius);background:var(--ground)}
-.affix input[type=text]{flex:1 1 auto;min-width:0;height:100%;border:0;border-radius:0;background:transparent}
-.affix input[type=text]:focus-visible{outline:0}
+.affix input:is([type=text],[type=number]){flex:1 1 auto;min-width:0;height:100%;border:0;border-radius:0;background:transparent}
+.affix input:is([type=text],[type=number]):focus-visible{outline:0}
 .affix:focus-within{outline:2px solid var(--tungsten);outline-offset:3px}
 .affix>span{flex:none;padding:0 12px;height:100%;display:grid;place-items:center;
 color:var(--muted);border-left:1px solid var(--line-soft)}
@@ -178,21 +178,33 @@ _SETUP_COPY = {
 #: 同一局域网里的设备看。命令行问答按 `HOST_OPTIONS` 的编号顺序念，两边取值一致。
 _HOST_ORDER = ("2", "1")
 
-#: 选「只有这台电脑」时局域网地址没有意义，输入框跟着禁用；禁用的字段不随表单提交，
-#: 服务端按题目默认值补上。没有脚本时两个字段都可编辑，提交照样成立。
+#: 选「只有这台电脑」时局域网地址没有意义，整项隐藏且输入框禁用；禁用的字段不随表单
+#: 提交，服务端按题目默认值补上。密码同样只在开关打开后显示并启用输入框。
 #: 媒体文件夹列表的「添加文件夹」与每行的移除键也在这里亮出来：只剩一行时移除键隐藏。
 _SETUP_SCRIPT = """<script>
 (function(){
   var radios=document.querySelectorAll('input[name="host"]');
   var field=document.getElementById('f-mdns_name');
-  if(radios.length&&field){
+  var fieldRow=document.getElementById('field-mdns_name');
+  if(radios.length&&field&&fieldRow){
     var sync=function(){
       var lan=false;
       radios.forEach(function(radio){if(radio.checked&&radio.value==="2"){lan=true;}});
       field.disabled=!lan;
+      fieldRow.hidden=!lan;
     };
     radios.forEach(function(radio){radio.addEventListener('change',sync);});
     sync();
+  }
+  var accessToggle=document.getElementById('access-enabled');
+  var accessFields=document.getElementById('access-password-fields');
+  if(accessToggle&&accessFields){
+    var syncAccess=function(){
+      accessFields.hidden=!accessToggle.checked;
+      accessFields.querySelectorAll('input').forEach(function(input){input.disabled=!accessToggle.checked;});
+    };
+    accessToggle.addEventListener('change',syncAccess);
+    syncAccess();
   }
   var list=document.getElementById('dirs');
   var add=document.getElementById('add-dir');
@@ -328,15 +340,17 @@ def _button_rules() -> str:
 def _board_button_rules() -> str:
     """入口页的主按钮就是站内那一颗：规则和 token 都从 `board.css` 原样取。
 
-    错误页、登录页和首启页都是没登录时看到的 Peach，按钮换一种蓝就等于说这是另一个
-    产品。把值抄进 `board-entry.css` 也能画成一样，但那是第二份色值——站内改一次渐变，
-    这三页就悄悄留在旧的那一版上。
+    错误页、登录页和首启页都是没登录时看到的 Peach，按钮换一种颜色就等于说这是另一个
+    产品。表单提交键由 `board-entry.css` 接同一组 token，渐变色值仍只在 `board.css` 一处。
 
     只取主按钮那几条（静止、悬停铺的那层底、按下、尺寸）和它们用到的 token：`board.css`
     的 `:root` 里还有一份把 `--page` `--ground` 按 Board 的角色重排的映射，整块搬过来
     会把入口页自己的面色对调。
     """
     board = (PROJECT_ROOT / "web/board.css").read_text(encoding="utf-8")
+    accent = re.search(
+        r'^:root,:root\[data-accent=blue\],\[data-accent-ball=blue\]'
+        r'\{--color-accent-50:[^}]*\}', board, re.M).group(0)
     palettes = re.findall(
         r'^(?:@media\(prefers-color-scheme:dark\)\{)?:root[^{]*\{--color-text-primary:[^}]*\}\}?',
         board, re.M)
@@ -346,7 +360,7 @@ def _board_button_rules() -> str:
     rules = re.findall(
         r'^body :is\([^)]*\)\.primary(?::not\(:disabled\))?'
         r'(?::hover|:active)?(?:::before)?\{[^}]*\}', board, re.M)
-    return ''.join(palettes) + ''.join(switches) + ':root{' + ';'.join(fonts) + '}' + ''.join(rules)
+    return accent + ''.join(palettes) + ''.join(switches) + ':root{' + ';'.join(fonts) + '}' + ''.join(rules)
 
 
 #: 运行信息的术语／取值两列，窄屏叠成一列。只有带 `configfacts` 的页面才内联。
@@ -428,7 +442,7 @@ def _media_dirs_html(values: Sequence[str], errors: Sequence[str], note: str, *,
         for index, value in enumerate(rows))
     return (
         '<div class="field">'
-        f'<label for="f-media_dir">{escape(title)}<span class="req" aria-hidden="true">*</span></label>'
+        f'<label class="setting-title" for="f-media_dir">{escape(title)}<span class="req" aria-hidden="true">*</span></label>'
         f'<div class="dirs" id="dirs">{body}</div>'
         '<button type="button" class="add" id="add-dir" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>添加媒体库</button>'
         f'<template id="dir-row">{_media_dir_row("", "", first=False, windows=windows)}</template>'
@@ -469,7 +483,7 @@ def _field_html(question, value: str, error: str, note: str) -> str:
         )
         control = (f'<div class="switch" role="radiogroup" aria-labelledby="l-{key}">'
                    f'{options}</div>')
-        label = f'<span class="legend" id="l-{key}">{escape(title)}</span>'
+        label = f'<span class="legend field-label" id="l-{key}">{escape(title)}</span>'
     else:
         kind = "number" if question.key == "port" else "text"
         control = (f'<input id="f-{key}" name="{key}" type="{kind}" required autocomplete="off" '
@@ -477,13 +491,15 @@ def _field_html(question, value: str, error: str, note: str) -> str:
                    f'value="{escape(value, quote=True)}">')
         if question.key == "mdns_name":
             control = f'<div class="affix"><span>https://</span>{control}<span>.local</span></div>'
+        elif question.key == "port":
+            control = f'<div class="affix"><span>localhost:</span>{control}</div>'
         else:
             control = f'<span class="entry-input">{control}</span>'
-        label = f'<label for="f-{key}">{escape(title)}{star}</label>'
+        label = f'<label class="field-label" for="f-{key}">{escape(title)}{star}</label>'
     tail = "".join(
         f'<p class="help">{escape(line)}</p>' for line in (help_text, note) if line)
     tail += f'<p class="bad" role="alert">{escape(error)}</p>' if error else ""
-    return f'<div class="field">{label}{control}{tail}</div>'
+    return f'<div class="field" id="field-{key}">{label}{control}{tail}</div>'
 
 
 def setup_page(
@@ -518,19 +534,28 @@ def setup_page(
         value = str(values.get(question.key, question.default))
         advanced.append(_field_html(question, value, str(errors.get(question.key, "")), ""))
     opened = " open" if any(errors.get(key) for key in ("data_root", "host", "port", "mdns_name")) else ""
-    fields.append(f'<details{opened}><summary><span>高级设置</span>{_CHEVRON_SVG}</summary>'
+    fields.append(f'<details{opened}><summary><span class="setting-title">高级设置</span>{_CHEVRON_SVG}</summary>'
                   + "".join(advanced) + "</details>")
     access_error = str(errors.get("access_password", ""))
-    fields.insert(1, '<div class="field"><label for="access-password">访问密码<span class="optional">可选</span></label>'
-                  '<span class="entry-input"><input id="access-password" name="access_password" type="password" maxlength="256" '
-                  f'aria-invalid="{"true" if access_error else "false"}" '
-                  'autocomplete="new-password" aria-describedby="access-help"></span>'
+    access_enabled = values.get("access_enabled") == "y" or bool(access_error)
+    access_hidden = "" if access_enabled else " hidden"
+    access_disabled = "" if access_enabled else " disabled"
+    fields.insert(1, '<div class="field access-field">'
+                  '<label class="toggle-setting" for="access-enabled"><span><strong class="setting-title">访问密码</strong>'
+                  '<small>开启后，访问 Peach 需要先登录。</small></span>'
+                  f'<input id="access-enabled" class="ptoggle" name="access_enabled" type="checkbox" role="switch" value="y"'
+                  f'{" checked" if access_enabled else ""}></label>'
+                  f'<div class="password-fields" id="access-password-fields"{access_hidden}>'
+                  '<label class="field-label" for="access-password">访问密码</label><span class="entry-input">'
+                  '<input id="access-password" name="access_password" type="password" maxlength="256" '
+                  f'aria-invalid="{"true" if access_error else "false"}" autocomplete="new-password" '
+                  f'aria-describedby="access-help"{access_disabled}></span>'
                   + (f'<p class="bad" id="access-help" role="alert">{escape(access_error)}</p>' if access_error
-                     else '<p class="help" id="access-help">留空即可直接访问；设置密码需至少 8 个字符。</p>')
-                  + '<p class="help">未设置密码时，能连接到 Peach 的设备可直接进入。</p>'
-                  '<label for="access-confirm">确认访问密码</label><span class="entry-input"><input id="access-confirm" '
-                  f'aria-invalid="{"true" if access_error else "false"}" '
-                  'name="access_confirm" type="password" maxlength="256" autocomplete="new-password"></span></div>')
+                     else '<p class="help" id="access-help">请输入 8–256 个字符。</p>')
+                  + '<label class="field-label" for="access-confirm">确认访问密码</label><span class="entry-input">'
+                  '<input id="access-confirm" name="access_confirm" type="password" maxlength="256" '
+                  f'aria-invalid="{"true" if access_error else "false"}" autocomplete="new-password"{access_disabled}></span>'
+                  '</div></div>')
     filled = [path for path in media_dirs if path]
     if not filled:
         scan_text = "完成设置后扫描并补全资料"
@@ -544,10 +569,11 @@ def setup_page(
         '<p class="lede">添加媒体库，开始整理你的馆藏。</p></header>'
         '<form method="post" action="/setup">'
         + "".join(fields)
-        + '<section class="setup-options" aria-label="完成设置后">'
+        + '<section class="setup-options" aria-labelledby="setup-options-title">'
+        + '<h2 class="setting-title" id="setup-options-title">完成设置后</h2>'
         + _check_html("scan_now", scan_text, checked=scan_now)
-        + '<p class="help">读取已有 NFO 和封面，采集缺失资料。进度可在设置中查看，资料候选在复核后应用。</p>'
-        + '<section class="history-guide-choice"><h2>浏览器历史记录<span class="optional">可选</span></h2>'
+        + '<p class="help">读取已有 NFO 和封面，采集缺失资料。符合自动规则的资料会在处理完成后落库，其余候选留在复核。</p>'
+        + '<section class="history-guide-choice"><h3 class="setting-subtitle">浏览器历史记录<span class="optional">可选</span></h3>'
         + _check_html("history_guide", "接下来导入浏览器历史记录", checked=values.get("history_guide") == "y")
         + '<p class="help">用于生成口味分析。完成设置后选择读取这台电脑，或导入其他设备的记录；也可稍后从「口味」进入。</p></section>'
         + '</section><button type="submit">完成设置</button></form></section>'
@@ -702,8 +728,13 @@ async def setup_submit(request: Request):
     config = settings_file.active()
     answers, errors = _read_answers(config, submitted, windows=windows)
     from . import access
+    password_enabled = "access_enabled" in form
+    password = str(submitted.get("access_password", "")) if password_enabled else ""
+    confirmation = str(submitted.get("access_confirm", "")) if password_enabled else ""
     try:
-        access.validate_password(str(submitted.get("access_password", "")), str(submitted.get("access_confirm", "")))
+        if password_enabled and not password:
+            raise ValueError("请输入访问密码")
+        access.validate_password(password, confirmation)
     except ValueError as exc:
         errors["access_password"] = str(exc)
     if distribution.standalone() and answers is not None:
@@ -724,7 +755,7 @@ async def setup_submit(request: Request):
         raise HTTPException(status_code=409, detail="settings file already exists")
     try:
         applied = onboarding.apply(resolved, answers, windows=windows,
-                                   access_password=str(submitted.get("access_password", "")))
+                                   access_password=password)
     except (OSError, RuntimeError) as exc:
         return HTMLResponse(setup_page(config, windows=windows, values=submitted,
                                       errors={"data_root": str(exc)}, scan_now=scan_now), status_code=400)

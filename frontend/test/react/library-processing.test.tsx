@@ -115,7 +115,8 @@ it('启动只提交一次，进度用 GET 读回来，完成后给出回执与�
   expect(toast).toHaveBeenCalledTimes(1);
   const receipt = host.querySelector('[role="status"]');
   expect(receipt?.textContent).toContain('处理完成');
-  expect(receipt?.textContent).toContain('已扫描 9 个文件，识别 4 个番号，整理 2 组资料候选。');
+  expect(receipt?.textContent).toContain(
+    '已扫描 9 个文件，识别 4 个番号，整理 2 组资料候选，自动落库 0 条。');
 });
 
 it('首屏读到的上一趟终态不冒充这一次的回执', async () => {
@@ -245,7 +246,8 @@ it('刚结束的任务横幅第一次读到也报，同一个任务号只报一�
     await mounted.unmount();
   }
   expect(toast).toHaveBeenCalledTimes(1);
-  expect(toast).toHaveBeenNthCalledWith(1, '扫描与资料采集已完成：识别 3 个番号，整理 2 组资料候选');
+  expect(toast).toHaveBeenNthCalledWith(
+    1, '扫描与资料采集已完成：识别 3 个番号，整理 2 组资料候选，自动落库 0 条');
 });
 
 it('两个容器读同一趟任务：一个周期只问一次，撤掉一个另一个照常', async () => {

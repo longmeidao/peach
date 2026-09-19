@@ -55,6 +55,7 @@ from .metadata_policy import (
     FALLBACK_SOURCES, FIELD_SOURCE_ORDER, PREFERRED_COMMUNITY_SOURCE, SOURCE_SPECS,
 )
 from .previews import logo_key
+from .repository import LedgerDatabase
 from .review_csv import read_rows
 
 
@@ -1718,6 +1719,29 @@ def w_review_auto_apply(contract: ReviewContract, _body=None):
     contract.cache_bust()
     return {"ok": True, "applied": len(applied), "left_to_review": skipped,
             "items": applied}
+
+
+def auto_apply_metadata(db_path: Path, candidate_root: Path):
+    """资料处理完成后立即应用符合窄规则的候选。
+
+    命令行首扫与 Web 后台任务都经过 ``process_library``，不能依赖有人随后打开复核页。
+    这里给同一套复核写入逻辑装一个最小契约，仍走 ``LedgerDatabase`` 的写事务、字段归属
+    与 ``review_decision`` 留痕；没有另开一条绕过闸门的写入路径。
+    """
+    database = LedgerDatabase(Path(db_path))
+
+    class ProcessingReviewContract:
+        def __init__(self):
+            self.candidate_root = Path(candidate_root)
+
+        def write_transaction(self):
+            return database.write_transaction()
+
+        @staticmethod
+        def cache_bust():
+            return None
+
+    return w_review_auto_apply(ProcessingReviewContract())
 
 
 def w_review_decision(contract: ReviewContract, body):
