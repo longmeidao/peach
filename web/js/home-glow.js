@@ -31,15 +31,17 @@ const GLOW_SPOT_LABELS=['光晕一','光晕二','光晕三'];
    留着的这三枚颜色是模型里的填充，让「三枚光晕」在任何一档下都取得到合法值；这一档的
    界面不显示它们。 */
 const GLASS_NATIVE_PRESET='native';
+/* 默认那一档排在最前：灰雾配蓝。灰是最不挑主题的光晕，蓝是 BoardUI 自己的强调色，
+   两者一起就是这个壳没被改过时的样子；暖色那几档留给人自己挑。 */
 const HOME_GLOW_PRESETS=[
+  ['ash','灰雾',{
+    spot1:{color:'#8f98a4',alpha:52},spot2:{color:'#b6bcc4',alpha:38},spot3:{color:'#6f7783',alpha:50}},'blue'],
   ['amber','钨丝暖阁',{
     spot1:{color:'#e08a2f',alpha:62},spot2:{color:'#c4544a',alpha:52},spot3:{color:'#a86a52',alpha:52}},'amber'],
   ['plum','夜樱',{
     spot1:{color:'#b455a0',alpha:64},spot2:{color:'#6a4fd0',alpha:54},spot3:{color:'#7a4f96',alpha:56}},'violet'],
   ['pine','深林',{
     spot1:{color:'#3f9e57',alpha:66},spot2:{color:'#7fae4a',alpha:48},spot3:{color:'#4f9463',alpha:56}},'emerald'],
-  ['ash','灰雾',{
-    spot1:{color:'#8f98a4',alpha:52},spot2:{color:'#b6bcc4',alpha:38},spot3:{color:'#6f7783',alpha:50}},'sky'],
   /* 下面十二档照 feralui.dev/gradients 预设区那十二枚 chip 取色，逐档记在
      docs/reference-snapshots/feralui-gradients-measured.md。它每档四枚色标，第一枚一律是
      铺满画布的底色（十一档near-white、Midnight bloom 那档是近黑），Peach 没有底色层——
@@ -140,8 +142,8 @@ const glowRgba=(hex,alpha)=>`rgba(${[1,3,5].map(at=>parseInt(hex.slice(at,at+2),
    会各按各的理解走。速度是个例外，它的中位是 100，上限 300——那一档拉满是三倍快，
    而 0 就是停住。 */
 const GLOW_RANGES={strength:[0,100,100],noise:[0,100,0],speed:[0,300,100],soften:[0,100,50],size:[0,100,50]};
-const DEFAULT_HOME_GLOW={on:true,preset:'amber',strength:100,noise:0,speed:100,soften:50,size:50,
-  ...glowPalette('amber')};
+const DEFAULT_HOME_GLOW={on:true,preset:'ash',strength:100,noise:0,speed:100,soften:50,size:50,
+  ...glowPalette('ash')};
 /* 光晕参数整份来自 localStorage，形态和范围都不可信：颜色写成任意字符串会让那一层
    渐变整条失效，百分比越界会把光晕糊成一整片或者缩没。逐项夹回区间、认不出就退回
    默认那一档，而不是整份丢掉——一个坏掉的数不该把用户调好的其余几档一起清空。
@@ -154,8 +156,8 @@ const DEFAULT_HOME_GLOW={on:true,preset:'amber',strength:100,noise:0,speed:100,s
 function normalizeHomeGlow(raw){
   const stored=raw&&typeof raw==='object'?raw:{};
   const known=HOME_GLOW_CHOICES.some(([key])=>key===stored.preset);
-  const preset=known?stored.preset:'amber';
-  const seed=glowPalette(preset==='custom'?'amber':preset);
+  const preset=known?stored.preset:'ash';
+  const seed=glowPalette(preset==='custom'?'ash':preset);
   const glow={on:stored.on!==false,preset};
   for(const [field,[min,max,fallback]] of Object.entries(GLOW_RANGES))
     glow[field]=glowNumber(+stored[field],min,max,fallback);

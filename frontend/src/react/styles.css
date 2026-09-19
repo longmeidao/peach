@@ -41,6 +41,9 @@
   /* 顶栏高度。粘顶的工具条要停在顶栏下沿，而这个高度归遗留壳的 `--topH`
    * （`web/board.css` 与 `web/css/01-base.css` 按屏各给一档），这里只把它接成 `top-topbar`。 */
   --spacing-topbar: var(--topH, 64px);
+  /* 模态弹层的层级。顶栏、侧栏与遮罩的 z-index 归遗留壳的 `--layer-*`（`web/css/01-base.css`），
+   * 这里接成 `z-dialog`，不另写一个数字。 */
+  --z-index-dialog: var(--layer-dialog, 1000);
   /* 人工复核那一屏的几何，取自 Board 给这一页的那组规则（`web/board.css` 的
    * `body[data-surface="/review"]` 与 `web/css/04-manage.css`）：右边分类列 184px、
    * 卡片列最窄 340px、一张卡 440px 高（身份回配那一类要放下证据，560px）、

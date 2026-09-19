@@ -25288,19 +25288,23 @@ var sb = (e) => !!e && e.index_stale && !e.choices.some((e) => e.source === "gfr
 function ub({ kind: e, entityId: t, name: n, onPicked: r }) {
 	let [i, a] = (0, S.useState)(!1);
 	return /* @__PURE__ */ (0, C.jsxs)(C.Fragment, { children: [/* @__PURE__ */ (0, C.jsx)("span", {
-		className: "absolute right-1 bottom-1",
-		children: /* @__PURE__ */ (0, C.jsx)(Uy, {
-			icon: Ef,
-			size: "small",
+		className: "absolute right-1 bottom-1 z-10",
+		children: /* @__PURE__ */ (0, C.jsx)("button", {
+			type: "button",
 			"aria-haspopup": "dialog",
 			"aria-label": `更换${n}的头像`,
-			onClick: () => a(!0)
+			onClick: () => a(!0),
+			className: "flex size-7 cursor-pointer items-center justify-center rounded-full border border-border-button-default bg-background-primary-default text-foreground-icon-primary shadow-xs outline-none ring-2 ring-background-full transition-colors hover:border-border-button-hover hover:bg-background-primary-hover focus-visible:ring-border-focus-ring active:bg-background-primary-active",
+			children: /* @__PURE__ */ (0, C.jsx)(Ef, {
+				"aria-hidden": !0,
+				className: "size-4"
+			})
 		})
 	}), /* @__PURE__ */ (0, C.jsx)(iv, {
 		isOpen: i,
 		onOpenChange: a,
 		isDismissable: !0,
-		className: "fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4",
+		className: "fixed inset-0 z-dialog flex items-center justify-center bg-scrim p-4",
 		children: /* @__PURE__ */ (0, C.jsx)(nv, {
 			className: "flex max-h-full w-full max-w-avatar-picker flex-col overflow-hidden rounded-2-5xl border border-separator-border bg-background-full shadow-dropdown",
 			children: /* @__PURE__ */ (0, C.jsx)(X_, {
@@ -25383,7 +25387,7 @@ function db({ kind: e, entityId: t, name: n, onPicked: r, close: i }) {
 			]
 		}),
 		/* @__PURE__ */ (0, C.jsx)("div", {
-			className: "flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-separator-border px-5 pt-4",
+			className: "flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-separator-border px-5 py-4",
 			children: /* @__PURE__ */ (0, C.jsx)("div", {
 				role: "listbox",
 				"aria-label": "候选头像",

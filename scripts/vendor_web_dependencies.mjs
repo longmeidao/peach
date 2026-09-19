@@ -196,13 +196,15 @@ for (const [symbol, { icon, viewBox }] of phosphorIcons) {
 // 圆角风格本来就是一致的，各站点自己的 favicon 拼不出这种一致。颜色同理：X 是黑底白字、
 // Instagram 是那道粉紫，认出是哪一家靠的正是这个，跟着界面主题变反而认不出。场色和白
 // 字形都是人家标识的一部分，不是界面 token，所以写死在这里、不吃 currentColor。
-// 深色主题下黑盘不悬空：它画在 `.entitylinks a` 那圈药丸里，药丸自带 1px 边和
-// `--overlay-5` 底，盘与页面之间始终隔着一条边界，白字形本身也一直看得见。
+// 场色铺满整个 viewBox，圆角交给外面那层 `.entitylinkicon`（`--badge-radius` 加
+// `overflow:hidden`）去裁：官网那一格的 favicon 也是这么裁成圆角方块的，社媒标记和它站在
+// 同一排，一排圆盘夹着几块圆角方片读起来是两种控件。深色主题下黑块不悬空：它画在
+// `.entitylinks a` 那圈框里，框自带 1px 边，块与页面之间始终隔着一条边界。
 //
-// 字形按 24×.5/256 缩到圆心，占直径的一半，所以圆的边沿到字形之间总有一圈呼吸空间，
-// 靠的是缩放而不是外面那层 `overflow:hidden`：社媒标记是拿来认牌子的，裁掉一角就不是
-// 那个牌子了。缩放写在一层 `<g>` 上而不是逐条 path 上——上游哪天把一个 logo 拆成两条
-// 路径或补一个 `<circle>`，包在外面这一层照样把它们一起缩进圆里。
+// 字形按 24×.5/256 缩到中心，占边长的一半，所以四条边到字形之间总有一圈呼吸空间，外圈
+// 那点圆角裁掉的只是场色的角、碰不到字形：社媒标记是拿来认牌子的，裁掉一角就不是那个
+// 牌子了。缩放写在一层 `<g>` 上而不是逐条 path 上——上游哪天把一个 logo 拆成两条路径或
+// 补一个 `<circle>`，包在外面这一层照样把它们一起缩进场里。
 //
 // Instagram 的场是渐变不是单色，写成 symbol 内部一条 `linearGradient`。放在 symbol 里
 // 而不是雪碧图顶层：`<use>` 克隆整棵子树，引用在它自己那份影子树里就解析得到。
@@ -231,7 +233,7 @@ for (const [symbol, [icon, field]] of brandDiscs) {
       + "</linearGradient>"
     : "";
   const disc = defs
-    + `<circle cx="12" cy="12" r="12" stroke="none" fill="${graded ? `url(#${symbol}-field)` : field}"/>`
+    + `<rect width="24" height="24" stroke="none" fill="${graded ? `url(#${symbol}-field)` : field}"/>`
     + `<g fill="#fff" stroke="none" transform="${GLYPH_TRANSFORM}">${inner}</g>`;
   const pattern = new RegExp(`<symbol id="i-${symbol}" viewBox="0 0 24 24">[\\s\\S]*?<\\/symbol>`);
   if (!pattern.test(index)) throw new Error(`缺少品牌标记 symbol：${symbol}`);
