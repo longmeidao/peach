@@ -77,7 +77,9 @@ const ROUTES: readonly Route[] = [
   },
   {
     path: '/data-cleanup',
-    body: (page) => [heading(page, '#main', '数据管理'), heading(page, '#stats', '扫描与采集')],
+    // 挂载前的遗留骨架用 heading，最终 React 卡片用带名字的 section；等最终语义才能证明挂载完成。
+    body: (page) => [heading(page, '#main', '数据管理'),
+      page.locator('#stats section[aria-label="扫描与采集"]')],
   },
   {
     path: '/quality-goals',
