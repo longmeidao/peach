@@ -125,6 +125,9 @@
 .vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal{box-sizing:border-box;position:absolute!important;left:0!important;right:auto!important;top:0!important;width:52px!important;height:40px!important;margin:0!important;overflow:visible!important;background:transparent;transform:none}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-bar.vjs-slider-horizontal::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;background:rgba(255,255,255,.3)}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level{top:50%;bottom:auto;height:2px;margin-top:-1px;background:#fff}
+/* Video.js 在鼠标所在的位置画一条 1px 黑线、高度随滑轨，滑轨撑满面板后它成了一整条竖杠。
+   位置已经由上面那枚数字说了，线本身只去掉底色，数字照旧挂在它身上。 */
+.vwrap .video-js .vjs-volume-panel .vjs-mouse-display{background:transparent}
 .vwrap .video-js .vjs-volume-panel .vjs-volume-level:before{top:50%;right:-6px;width:12px;height:12px;margin:0;font-size:0;border-radius:50%;background:#fff;transform:translateY(-50%)}
 /* `right:auto` 必须带 !important：Video.js 的 VolumeLevelTooltip 每 30ms 往元素上写一句
    行内 `style.right=-Npx`，行内声明压过样式表里同名的普通声明。`left:50%` 和那个 right

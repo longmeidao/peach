@@ -3986,6 +3986,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-volume-bar.vjs-slider-horizontal::before{content:\"\";position:absolute;"
                                 "left:0;right:0;top:50%;height:2px;margin-top:-1px;background:rgba(255,255,255,.3)}")
         self.assertPageContains(".vjs-volume-level{top:50%;bottom:auto;height:2px;margin-top:-1px;background:#fff}")
+        # 鼠标位置那条 1px 线随滑轨一起有 40px 高，去掉底色；数字仍挂在它身上。
+        self.assertPageContains(".vwrap .video-js .vjs-volume-panel .vjs-mouse-display{background:transparent}")
         self.assertPageContains(".vjs-control-bar>.vjs-volume-panel{box-sizing:border-box;z-index:3;position:relative")
         # 音量胶囊和右边那枚胶囊同一排、同一档底色，毛玻璃也必须同一档：只有一边磨砂，
         # 展开之后它就比邻居更透，画面颜色直接透上来。
@@ -4457,11 +4459,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed();")
         self.assertPageContains("['defaultSortSetting','默认排序',[['seed','随机']")
         self.assertIn('@media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}', board)
-        # 浅色那档的两团自带反光是霁蓝配驼棕，比深色那档浓一档、也大一圈：底下是一片
+        # 浅色那档的两团自带反光是霁蓝配石灰，比深色那档浓一档、也大一圈：底下是一片
         # 近白的页面，照搬深色那组的 10% 白等于什么也看不见。色相由 `--glass-tint-a/b`
         # 给（默认就指回这两枚），浓淡和尺寸留在这一档自己身上。
         self.assertIn(':root[data-theme="light"]{--glass-native-a:#6686b8;'
-                      '--glass-native-b:#c69d73;--glass-drift-a:', board)
+                      '--glass-native-b:#8f98a4;--glass-drift-a:', board)
         self.assertIn('radial-gradient(32% 32% at 50% 50%,'
                       'color-mix(in srgb,var(--glass-tint-a) 30%,transparent),'
                       'color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%)', board)
@@ -5990,7 +5992,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(f"var({layer})", rule, f"{layer} 没有被 .glowlayer::before 引用")
 
     def test_home_glow_defaults_match_the_default_preset(self):
-        """样式表里的默认值就是 `amber` 那一档，两处一字不差。
+        """样式表里的默认值就是 `ash` 那一档，两处一字不差。
 
         对不上的后果只出现在第一帧：`applyHomeGlow()` 跑完之前页面按样式表画，跑完之后
         按 JS 写的值画，中间会闪一次颜色。颜色是两处都有的那部分；半轴与收边的基准值只有
@@ -5999,15 +6001,15 @@ class WebUiSourceTests(unittest.TestCase):
         """
         css = stylesheet_source()
         for declaration in (
-                "--glow-spot-1-color:rgba(224,138,47,.62); "
+                "--glow-spot-1-color:rgba(143,152,164,.52); "
                 "--glow-spot-1-w:calc(20% * var(--glow-size)); "
                 "--glow-spot-1-h:calc(20% * var(--glow-size)); "
                 "--glow-spot-1-fade:calc(72% * var(--glow-soften))",
-                "--glow-spot-2-color:rgba(196,84,74,.52); "
+                "--glow-spot-2-color:rgba(182,188,196,.38); "
                 "--glow-spot-2-w:calc(26% * var(--glow-size)); "
                 "--glow-spot-2-h:calc(26% * var(--glow-size)); "
                 "--glow-spot-2-fade:calc(74% * var(--glow-soften))",
-                "--glow-spot-3-color:rgba(168,106,82,.52); "
+                "--glow-spot-3-color:rgba(111,119,131,.50); "
                 "--glow-spot-3-w:calc(23% * var(--glow-size)); "
                 "--glow-spot-3-h:calc(23% * var(--glow-size)); "
                 "--glow-spot-3-fade:calc(73% * var(--glow-soften))"):
@@ -6077,7 +6079,7 @@ class WebUiSourceTests(unittest.TestCase):
         css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         for declaration in ("--glass-tint-a:var(--glass-native-a)",
                             "--glass-tint-b:var(--glass-native-b)",
-                            "--glass-native-a:#6686b8;--glass-native-b:#c69d73"):
+                            "--glass-native-a:#6686b8;--glass-native-b:#8f98a4"):
             self.assertIn(declaration, css)
         # 多选那条悬浮坞、批处理条和标签选择条也读这两团：它们和侧栏同时在屏上，
         # 漏掉任何一条就是一屏里两种颜色的玻璃。
@@ -6426,11 +6428,10 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains('class="board-glow-toggle" id="boardGlowBtn" aria-label="光晕配色"')
         self.assertPageContains('aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"')
-        # 钮上不画字形，画的就是它管的那两样：左上光晕色、右下强调色叠在上面。
-        self.assertPageContains('<span class="board-glow-mark" aria-hidden="true"><span class="board-glow-mark-glow">'
-                                '</span><span class="board-glow-mark-accent"></span></span></button>')
-        self.assertPageLacks('<use href="#ri-palette-line"/></svg><span class="board-glow-dot"',
-                             "配色钮上不再画调色盘字形和那颗色点")
+        # 钮上是调色盘字形，右下角两枚叠着的小圆报它管的那两样：光晕色、强调色压在上面。
+        self.assertPageContains('<use href="#ri-palette-line"/></svg><span class="board-glow-mark" aria-hidden="true">'
+                                '<span class="board-glow-mark-glow"></span><span class="board-glow-mark-accent"></span>'
+                                '</span></button>')
         css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".board-glow-mark-glow{left:0;top:0;background:var(--glow-swatch,var(--ink))}", css)
         self.assertIn(".board-glow-mark-accent{right:0;bottom:0;z-index:1;", css)
@@ -6456,8 +6457,9 @@ class WebUiSourceTests(unittest.TestCase):
                       "{background:var(--hover);color:var(--ink)}", css)
         # 和设置钮对齐到一个数：两枚 36px 的方块在 60px 的收起态里才排得直。
         self.assertIn(".board-foot-actions>#settingsBtn{width:36px;height:36px;", css)
-        # 钮上两枚叠着的圆就是「现在哪一档」：光晕色在左上，强调色在右下压着它。
-        self.assertIn(".board-glow-mark{position:relative;display:block;width:24px;height:24px;", css)
+        # 两枚叠着的小圆就是「现在哪一档」，坐在钮的右下角，字形留在中间。
+        self.assertIn(".board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}", css)
+        self.assertIn(".board-glow-mark{position:absolute;right:0;bottom:0;display:block;width:16px;height:14px}", css)
         self.assertNotIn(".board-glow-dot{", css)
         # 收起时侧栏只有 60px，两枚键排成一列。
         self.assertIn(".drawer:not(.open) .board-foot-actions{flex-direction:column}", css)
@@ -8764,16 +8766,20 @@ class WebUiSourceTests(unittest.TestCase):
         """标题默认折成两行，真溢出才给展开键；文件动作和它排成标题下面那一行。
 
         番号在前、正文在后，两行够认出是哪一部；正文动辄五六行，整段摊开会把评分、标签
-        和动作全推到折叠线以下。展开键和定位、同步那两枚长得一样、排在同一行末尾——它们
-        都是围着这条标题的动作。夹在被折的文字末尾的话会一起被裁掉，所以那排键不再行内
-        跟在文字后面。折叠态量 scrollHeight 判溢出，没溢出就不画展开键。
+        和动作全推到折叠线以下。展开键和定位、同步那两枚长得一样、排在同一行最前面——它们
+        都是围着这条标题的动作，管标题本身的那一枚离标题最近。夹在被折的文字末尾的话会一起
+        被裁掉，所以那排键不行内跟在文字后面。折叠态量 scrollHeight 判溢出，没溢出就不画
+        展开键；能折的标题文字本身也接点击，选中文字那一下不算。
         """
         self.assertPageContains(
             '<div class="detailtitle"><div class="stitle" data-reveal-line><span class="stitletext" data-detail-title>'
             '${srcBadge(it.location,it.cost,\'srcbig\')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span>'
-            '<span class="srctools detailtitletools">${it.location===\'online\'?\'\':sourceToolButtons(it.id)}'
-            '<button type="button" data-title-fold hidden aria-expanded="false" aria-label="展开标题" '
-            'title="展开完整标题">${icon(\'chevron-down\')}</button></span></div></div>')
+            '<span class="srctools detailtitletools"><button type="button" data-title-fold hidden '
+            'aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon(\'chevron-down\')}</button>'
+            '${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span></div></div>')
+        self.assertPageContains(".stitletext[data-foldable]{cursor:pointer}")
+        self.assertCode("titleText.toggleAttribute('data-foldable',!titleFold.hidden);")
+        self.assertCode("if(titleFold.hidden||String(getSelection()||''))return;")
         self.assertPageContains(
             ".stitletext{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}")
         self.assertPageContains(".stitletext[data-expanded]{display:block;-webkit-line-clamp:unset;line-clamp:unset}")
@@ -9420,8 +9426,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 名下带人的事务所在同一个开关的另一半，走公文包。
         self.assertPageContains("['studios','厂牌','clapperboard'],")
         self.assertPageContains('<symbol id="i-clapperboard" viewBox="0 0 24 24">')
-        # `ri-palette-line` 归设置里的「界面」那一格。侧栏底部那枚配色钮不画字形，画的是
-        # 它管的两种颜色本身，所以不和这一格抢同一个意思。
+        # `ri-palette-line` 是「外观」这个意思：设置里的「界面」那一格和侧栏底部那枚配色钮
+        # 共用它，两处说的是同一件事。
         self.assertPageContains("const SETTINGS_TAB_ICONS={'界面':'ri-palette-line'")
         self.assertPageContains('<symbol viewBox="0 0 24 24" id="ri-palette-line">')
         self.assertPageLacks("swatch-book", "换下来的这一枚没有别的使用者，雪碧图里也不留")
@@ -11992,7 +11998,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
         # 在线资产是 URL，没有本地文件可定位。
-        self.assertPageContains('<span class="srctools detailtitletools">${it.location===\'online\'?\'\':sourceToolButtons(it.id)}')
+        self.assertPageContains('${icon(\'chevron-down\')}</button>${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span>')
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")

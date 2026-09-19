@@ -36,11 +36,13 @@ export function AvatarPicker({ kind, entityId, name, onPicked }: AvatarPickerPro
           管什么的按钮。定位归外面这一层；头像那张图自己带 `z-index:1`，这一层要抬到它上面，
           不然按钮有一半藏在图底下。按钮收成 28px 的圆——它坐在一个圆的边上，方钮压在弧线
           上会遮掉一大块脸；一圈页面底色的描边把它和图分开。BoardUI 的 IconButton 只有方形，
-          形状归组件自己管，所以这里是一枚原生按钮，底色、描边、悬停与焦点环取它同一套 token。 */}
+          形状归组件自己管，所以这里是一枚原生按钮，底色、描边、悬停与焦点环取它同一套 token。
+          悬停时底色透出身后的脸：暗色那档的悬停色本来就带 60% 透明，浅色那档是实色，
+          这里给它补同样的 60%，两档读起来是同一个动作。 */}
       <span className="absolute right-1 bottom-1 z-10">
         <button type="button" aria-haspopup="dialog" aria-label={`更换${name}的头像`}
           onClick={() => setOpen(true)}
-          className="flex size-7 cursor-pointer items-center justify-center rounded-full border border-border-button-default bg-background-primary-default text-foreground-icon-primary shadow-xs outline-none ring-2 ring-background-full transition-colors hover:border-border-button-hover hover:bg-background-primary-hover focus-visible:ring-border-focus-ring active:bg-background-primary-active">
+          className="flex size-7 cursor-pointer items-center justify-center rounded-full border border-border-button-default bg-background-primary-default text-foreground-icon-primary shadow-xs outline-none ring-2 ring-background-full transition-colors hover:border-border-button-hover hover:bg-background-primary-hover/60 dark:hover:bg-background-primary-hover focus-visible:ring-border-focus-ring active:bg-background-primary-active">
           <RiAddLine aria-hidden className="size-4" />
         </button>
       </span>

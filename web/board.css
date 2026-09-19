@@ -119,10 +119,11 @@
   :root[data-theme="dark"]{--glass-pick:none;--glass-pick-fill:rgba(255,255,255,.22)}
   @media(prefers-color-scheme:dark){:root:not([data-theme]){--glass-pick:none;--glass-pick-fill:rgba(255,255,255,.22)}}
 }
-/* 亮色玻璃用冷暖反光建立色差，白色页面上也能辨认移动的光斑。两团比深色那档大一圈、
-   浓一档：白面反光弱，同一组数值在这里几乎看不见。 */
-:root[data-theme="light"]{--glass-native-a:#6686b8;--glass-native-b:#c69d73;--glass-drift-a:radial-gradient(32% 32% at 50% 50%,color-mix(in srgb,var(--glass-tint-a) 30%,transparent),color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,color-mix(in srgb,var(--glass-tint-b) 25%,transparent),color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)}
-@media(prefers-color-scheme:light){:root:not([data-theme]){--glass-native-a:#6686b8;--glass-native-b:#c69d73;--glass-drift-a:radial-gradient(32% 32% at 50% 50%,color-mix(in srgb,var(--glass-tint-a) 30%,transparent),color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,color-mix(in srgb,var(--glass-tint-b) 25%,transparent),color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)}}
+/* 亮色玻璃用一蓝一灰两团反光建立色差，白色页面上也能辨认移动的光斑；两枚和默认那档
+   灰雾配蓝同色，光晕关掉之后界面不会换成另一副色调。两团比深色那档大一圈、浓一档：
+   白面反光弱，同一组数值在这里几乎看不见。 */
+:root[data-theme="light"]{--glass-native-a:#6686b8;--glass-native-b:#8f98a4;--glass-drift-a:radial-gradient(32% 32% at 50% 50%,color-mix(in srgb,var(--glass-tint-a) 30%,transparent),color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,color-mix(in srgb,var(--glass-tint-b) 25%,transparent),color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)}
+@media(prefers-color-scheme:light){:root:not([data-theme]){--glass-native-a:#6686b8;--glass-native-b:#8f98a4;--glass-drift-a:radial-gradient(32% 32% at 50% 50%,color-mix(in srgb,var(--glass-tint-a) 30%,transparent),color-mix(in srgb,var(--glass-tint-a) 16%,transparent) 42%,transparent 72%);--glass-drift-b:radial-gradient(38% 38% at 50% 50%,color-mix(in srgb,var(--glass-tint-b) 25%,transparent),color-mix(in srgb,var(--glass-tint-b) 14%,transparent) 44%,transparent 74%)}}
 /* 光斑铺在一张两倍大的画布上，靠 `background-position` 推着走：画布只有元素两倍大时，
    位置从 0% 到 100% 正好把光斑中心从元素的右下角推到左上角，`-10%` 和 `110%` 那两档
    是让它探出框外一点——真实的光斑不会老老实实待在板子里。半径写 20% 是画布的比例，
@@ -946,28 +947,23 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    圆角、透明底、20px 字形、同一条悬停。boardui.com 那枚 Accent color 自带边框、面色底和
    一层 dropdown 薄影，是因为它浮在页面内容上、身后什么都没有；这一枚坐在侧栏自己的面
    上，挨着的设置钮什么都不穿——描一圈框只会让这一对读成两种控件。
-   钮上不画调色盘字形，画的是它管的那两样本身：左上一枚 15px 的圆报当前预设的第一枚光晕
-   色，右下一枚同大的圆报强调色、叠在光晕那枚上面（它是按钮和焦点环真会换上的颜色，也是
-   光晕关掉后唯一还管用的那一档，所以站在上层）；两枚都叠 BoardUI 球面那层高光，和卡里
-   两组球是同一种东西。强调色那枚外面一圈侧栏面色的环把两枚分开。光晕关掉时光晕那枚收起、
-   强调色那枚居中。
+   中间是 Remix 的调色盘字形（`#ri-palette-line`，实心路径，按它自己那套用 fill 画），
+   说这枚键管什么。右下角照上游的色点位置放两枚 10px 的小圆、错开叠一半：左上那枚报当前
+   预设的第一枚光晕色，右下那枚报强调色、叠在上层（它是按钮和焦点环真会换上的颜色，也是
+   光晕关掉后唯一还管用的那一档）。强调色那枚外面一圈侧栏面色的环把两枚分开，整组外沿
+   同样一圈环，读起来是浮在钮上的一组，不是钮身上的一块。光晕关掉时只剩强调色那一枚。
    实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
 .board-glow-toggle{position:relative;display:grid;place-items:center;width:36px;height:36px;flex:none;
   padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
-.board-glow-mark{position:relative;display:block;width:24px;height:24px;transition:transform .15s ease}
-.board-glow-mark-glow,.board-glow-mark-accent{position:absolute;width:15px;height:15px;border-radius:50%;
-  box-shadow:inset 0 1px 1px #ffffff6b,inset 0 -1px 2px #0000002e}
+.board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}
+.board-glow-mark{position:absolute;right:0;bottom:0;display:block;width:16px;height:14px}
+.board-glow-mark-glow,.board-glow-mark-accent{position:absolute;width:10px;height:10px;border-radius:50%;
+  box-shadow:0 0 0 2px var(--ground)}
 .board-glow-mark-glow{left:0;top:0;background:var(--glow-swatch,var(--ink))}
-.board-glow-mark-accent{right:0;bottom:0;z-index:1;
-  background:radial-gradient(circle closest-side,var(--color-accent-400),var(--color-accent-600));
-  box-shadow:inset 0 1px 1px #ffffff6b,inset 0 -1px 2px #0000002e,0 0 0 2px var(--ground)}
+.board-glow-mark-accent{right:0;bottom:0;z-index:1;background:var(--color-accent-500)}
 .board-glow-toggle[data-glow-off] .board-glow-mark-glow{display:none}
-.board-glow-toggle[data-glow-off] .board-glow-mark-accent{right:auto;bottom:auto;left:50%;top:50%;transform:translate(-50%,-50%);
-  box-shadow:inset 0 1px 1px #ffffff6b,inset 0 -1px 2px #0000002e}
-.board-glow-toggle:hover .board-glow-mark{transform:scale(1.08)}
-/* 这一排两枚键悬停不抬底色：它们坐在侧栏那块玻璃上，一块 6px 圆角的灰方片盖上去，玻璃在
-   那一格里就断了。设置钮悬停只提图标色，配色钮上没有字形、两枚圆微微放大。顶栏那批 `.ib`
-   站在实底上，那条抬填充的悬停照旧。 */
+/* 这一排两枚键悬停只提图标色，不抬底色：它们坐在侧栏那块玻璃上，一块 6px 圆角的灰方片
+   盖上去，玻璃在那一格里就断了。顶栏那批 `.ib` 站在实底上，那条抬填充的悬停照旧。 */
 .board-glow-toggle:hover,.board-foot-actions>#settingsBtn:hover{background:transparent;color:var(--ink)}
 .board-glow-toggle:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 这张卡穿的是媒体库选择弹层那身液态玻璃，规则就是同一条，见下面 `.board-library-menu`

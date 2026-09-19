@@ -8742,7 +8742,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
-      <div class="detailtitle"><div class="stitle" data-reveal-line><span class="stitletext" data-detail-title>${srcBadge(it.location,it.cost,'srcbig')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span><span class="srctools detailtitletools">${it.location==='online'?'':sourceToolButtons(it.id)}<button type="button" data-title-fold hidden aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon('chevron-down')}</button></span></div></div>
+      <div class="detailtitle"><div class="stitle" data-reveal-line><span class="stitletext" data-detail-title>${srcBadge(it.location,it.cost,'srcbig')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span><span class="srctools detailtitletools"><button type="button" data-title-fold hidden aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon('chevron-down')}</button>${it.location==='online'?'':sourceToolButtons(it.id)}</span></div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       ${ratingHtml(it.rating)}
       <div class="smeta mono" data-reveal-line>
@@ -8793,19 +8793,26 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   wireSourceTools($('#stage'),r=>{
     if(r.items.some(x=>x.id===it.id))closeDetail();});
   /* 标题默认折成两行，真溢出才给展开键：折叠态下 scrollHeight 比 clientHeight 高，就是有
-     行被裁掉了。展开与收起换字形——往下多看一截是 chevron-down，收回去是 chevron-up。 */
+     行被裁掉了。展开与收起换字形——往下多看一截是 chevron-down，收回去是 chevron-up。
+     展开键排在那排键最前面，紧挨着它管的标题。标题文字本身也接这一下：人想看全文时手
+     本来就落在字上。选中文字那一下不算，那是在复制标题。 */
   const titleText=$('#stage').querySelector('[data-detail-title]');
   const titleFold=$('#stage').querySelector('[data-title-fold]');
   if(titleText&&titleFold){
     const syncTitleFold=()=>{
       const expanded=titleText.hasAttribute('data-expanded');
       if(!expanded)titleFold.hidden=titleText.scrollHeight<=titleText.clientHeight+1;
+      titleText.toggleAttribute('data-foldable',!titleFold.hidden);
       titleFold.setAttribute('aria-expanded',String(expanded));
       titleFold.setAttribute('aria-label',expanded?'收起标题':'展开标题');
       titleFold.title=expanded?'收起标题':'展开完整标题';
       titleFold.querySelector('use').setAttribute('href',expanded?'#i-chevron-up':'#i-chevron-down');
     };
     titleFold.onclick=()=>{titleText.toggleAttribute('data-expanded');syncTitleFold()};
+    titleText.onclick=()=>{
+      if(titleFold.hidden||String(getSelection()||''))return;
+      titleFold.click();
+    };
     /* 溢出不只在打开那一刻判：影院模式和普通视图之间切换时标题栏宽度差一大截，两行放得下
        的标题换到窄栏就溢出了。观察者第一次回调就是初判；节点随浮窗重画被摘掉后一起回收。 */
     new ResizeObserver(syncTitleFold).observe(titleText);
@@ -9951,7 +9958,7 @@ boardFoot.innerHTML=`<div class="board-theme-toggle" role="group" aria-label="�
    字形直接引 `#ri-palette-line`，不走 `icon()`：那一枚是 Remix 的实心路径，`icon()` 拼的是
    `#i-` 前缀的线条件。它和设置分区「界面」那一枚是同一个意思——这枚钮的弹层底部「详细
    设置」开的正是那一页，两处说的都是外观，同一个意思本来就只该有一枚字形。 */
-boardFoot.insertAdjacentHTML('beforeend',`<div class="board-foot-actions"><button type="button" class="board-glow-toggle" id="boardGlowBtn" aria-label="光晕配色" aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"><span class="board-glow-mark" aria-hidden="true"><span class="board-glow-mark-glow"></span><span class="board-glow-mark-accent"></span></span></button></div>`);
+boardFoot.insertAdjacentHTML('beforeend',`<div class="board-foot-actions"><button type="button" class="board-glow-toggle" id="boardGlowBtn" aria-label="光晕配色" aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ri-palette-line"/></svg><span class="board-glow-mark" aria-hidden="true"><span class="board-glow-mark-glow"></span><span class="board-glow-mark-accent"></span></span></button></div>`);
 boardFoot.querySelector('.board-foot-actions').append(document.querySelector('#settingsBtn'));
 document.querySelector('#drawer').append(boardFoot);
 boardFoot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
@@ -9997,7 +10004,7 @@ const glowFloating=wireAnchoredMenu(boardFoot,glowButton,glowPicker);
 /* 光晕关掉之后这张卡上只剩强调色可挑：上面那一组球和它的「重置」换的是一层现在不画的
    东西，点下去屏幕上没有任何反应，而它们还占着卡的上半张。整组收起来，卡就只说当前还
    管用的那一件事。钮上那枚点同时改口说强调色——BoardUI 原版那颗点本来就是强调色，光晕
-   开着时它说的是第一枚光晕，关着时那一枚收起、只剩强调色那一枚居中。 */
+   开着时它说的是第一枚光晕，关着时那一枚收起、只剩强调色那一枚。 */
 syncGlowSidebar=()=>{
   const glow=appSettings.homeGlow;
   glowButton.style.setProperty('--glow-swatch',glow.on?glow.spot1.color:'var(--color-accent-500)');
