@@ -31,7 +31,7 @@ export function ConfigurationPage({ receipt }: ConfigurationProps) {
     );
   }
   const group: ConfigurationGroupProps = { data, receipt };
-  const network = Boolean(data.peach_proxy || data.access);
+  const network = Boolean(data.peach_proxy || data.access || data.tunnel);
   return (
     <div className="configpage">
       {data.startup ? <h2 className="configgroup">通用</h2> : null}

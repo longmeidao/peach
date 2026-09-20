@@ -36,6 +36,13 @@ def lan_base(port: int) -> str:
         routed.close()
 
 
+def assert_standalone_tunnel(configuration: dict) -> None:
+    tunnel = configuration['tunnel']
+    assert tunnel['enabled'] is False
+    assert tunnel['state'] == 'stopped'
+    assert tunnel['available'] is True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("executable", type=Path)
@@ -94,6 +101,7 @@ def main() -> int:
                 with opener.open(base + "/api/configuration", timeout=5) as response:
                     configuration = json.load(response)
                 assert configuration['media_sources'][0]['location'] == '115'
+                assert_standalone_tunnel(configuration)
                 second = root / 'pikpak'
                 second.mkdir()
                 sources = configuration['media_sources'] + [{'location': 'pikpak', 'path': str(second)}]
@@ -109,7 +117,7 @@ def main() -> int:
                 assert (data / "config.previous.toml").is_file()
                 assert (data / "state" / "configuration-reload.request").is_file()
                 print(json.dumps({"ok": True, "version": health.get("version"),
-                                  "checks": ["oobe", "migrations", "lan-bind", "mdns", "password-login", "pages", "island", "items", "clouddrive-configuration"]}))
+                                  "checks": ["oobe", "migrations", "lan-bind", "mdns", "password-login", "pages", "island", "items", "clouddrive-configuration", "cloudflared-sidecar"]}))
             finally:
                 process.terminate()
                 process.wait(timeout=15)

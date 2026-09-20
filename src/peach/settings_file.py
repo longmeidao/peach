@@ -156,6 +156,19 @@ class ReplicationSettings:
 
 
 @dataclass(frozen=True)
+class TunnelSettings:
+    """Cloudflare Quick Tunnel 的本机开关。
+
+    Quick Tunnel 没有稳定域名，也没有 Cloudflare Access 身份层，所以默认关闭，
+    只有在 Peach 自己已经启用访问密码时才允许打开。`binary` 只记录本机可执行文件
+    的显式位置，不把二进制或下载地址写进设置文件。
+    """
+
+    enabled: bool = False
+    binary: str = ""
+
+
+@dataclass(frozen=True)
 class PeachConfig:
     """一次合并的结果。`config.py` 把它投影成模块常量。"""
 
@@ -176,6 +189,7 @@ class PeachConfig:
         default_factory=lambda: dict(DEFAULT_LOCATION_ROOTS))
     server: ServerSettings = ServerSettings()
     replication: ReplicationSettings = ReplicationSettings()
+    tunnel: TunnelSettings = TunnelSettings()
 
     @property
     def configured(self) -> bool:
@@ -364,12 +378,21 @@ def _merge(
             replication_table, "smb_user", defaults.smb_user, path, "replication."),
     )
 
+    tunnel_table = _table(document, "tunnel", path)
+    tunnel_defaults = TunnelSettings()
+    tunnel = TunnelSettings(
+        enabled=_boolean(
+            tunnel_table, "enabled", tunnel_defaults.enabled, path, "tunnel."),
+        binary=_string(
+            tunnel_table, "binary", tunnel_defaults.binary, path, "tunnel."),
+    )
+
     config = PeachConfig(
         data_root=data_root, path=path, present=present, data_root_found=found,
         directories=directories, mounts=mounts, locations=locations,
         library_names=_string_map(_table(media, "libraries", path), path, "media.libraries."),
         library_icons=_string_map(_table(media, "library_icons", path), path, "media.library_icons."),
-        server=server, replication=replication,
+        server=server, replication=replication, tunnel=tunnel,
     )
     return _apply_environment(config, environ)
 
@@ -563,6 +586,16 @@ def render(config: PeachConfig) -> str:
         "smb_host": config.replication.smb_host,
         "smb_share": config.replication.smb_share,
         "smb_user": config.replication.smb_user,
+    })
+    lines += [
+        "",
+        "[tunnel]",
+        "# Cloudflare Quick Tunnel 默认关闭；打开前必须先设置访问密码。",
+        "# binary 留空时按内置包、PEACH_CLOUDFLARED 和 PATH 的顺序寻找 cloudflared。",
+    ]
+    lines += _render_pairs({
+        "enabled": config.tunnel.enabled,
+        "binary": config.tunnel.binary,
     })
     return "\n".join(lines) + "\n"
 

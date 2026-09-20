@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
-from . import auth, onboarding, scan, settings_file
+from . import auth, distribution, onboarding, scan, settings_file
 from .api import create_app
 from .config import (
     CONFIGURED,
@@ -19,6 +20,8 @@ from .config import (
     SETTINGS_ERROR,
     SHARED_DATABASE_PATH,
     STATE_DIR,
+    CLOUDFLARED_BINARY,
+    TUNNEL_ENABLED,
     PeachSettings,
 )
 from .migrations import plan, upgrade
@@ -27,6 +30,7 @@ from .scripting import open_readonly
 from .sync import LedgerSync, device_id
 from .sync import plan as sync_plan
 from .sync import writer_device
+from . import tunnel
 
 
 DEFAULT_DB = DATABASE_PATH
@@ -82,6 +86,10 @@ def _serve(args: argparse.Namespace) -> int:
     # 也不要口令。口令刻意置空而不是读文件——表单一提交就会生成一份口令，那之后要是
     # 有人重启这条引导服务，读到新口令的它会把还没看到口令的用户关在门外。
     # 安全边界由绑定地址给：这条服务只监听回环（`build_setup_service_specs`）。
+    tunnel_lan_address = None
+    if not distribution.standalone() and not _is_loopback(args.host):
+        from .mdns import lan_ipv4
+        tunnel_lan_address = args.mdns_address or lan_ipv4()
     settings = PeachSettings(
         db_path=args.db,
         token="" if args.setup else _serve_token(args),
@@ -93,6 +101,13 @@ def _serve(args: argparse.Namespace) -> int:
         mdns_port=args.port,
         mdns_address=args.mdns_address,
         tls_enabled=tls_enabled,
+        tunnel_enabled=TUNNEL_ENABLED,
+        tunnel_binary=CLOUDFLARED_BINARY,
+        tunnel_standalone=distribution.standalone(),
+        tunnel_lan_address=tunnel_lan_address,
+        tunnel_origin_port=(args.port if distribution.standalone() or tls_enabled else None),
+        tunnel_state_root=settings_file.active().directory("state"),
+        tunnel_log_root=settings_file.active().directory("logs"),
     )
     sync = _build_sync(args, settings)
     uvicorn.run(
@@ -539,6 +554,55 @@ def _token(args: argparse.Namespace) -> int:
     return 0
 
 
+def _tunnel(args: argparse.Namespace) -> int:
+    """运行一个前台 Quick Tunnel；托盘/配置页使用同一模块的生命周期管理。"""
+    _require_readable_settings()
+    config = settings_file.load_config()
+    if not config.configured:
+        raise SystemExit("这台机器还没初始化过，先跑 `peach init`。")
+    state_dir = config.directory("state")
+    log_dir = config.directory("logs")
+    if args.action == "status":
+        snapshot = tunnel.saved_snapshot(state_dir)
+        print(f"状态：{snapshot.state}")
+        if snapshot.url:
+            print(f"地址：{snapshot.url}")
+        if snapshot.error:
+            print(f"原因：{snapshot.error}")
+        return 0 if snapshot.state not in {"error"} else 1
+
+    token = auth.resolve_token("", config.directory("secrets"))
+    lan_address = args.lan_address
+    if not distribution.standalone() and not lan_address:
+        from .mdns import lan_ipv4
+        lan_address = lan_ipv4()
+    origin_port = getattr(args, "https_port", None)
+    if origin_port is None:
+        origin_port = (
+            config.server.port if distribution.standalone()
+            else (8443 if sys.platform == "darwin" else 443)
+        )
+    plan = tunnel.plan_for_config(
+        config,
+        access_path=config.directory("secrets") / "access.json",
+        token=token,
+        standalone_mode=distribution.standalone(),
+        lan_address=lan_address,
+        https_port=origin_port,
+    )
+    manager = tunnel.TunnelManager(state_dir, log_dir, wait_timeout=args.timeout)
+    snapshot = manager.start(plan)
+    print(f"临时链接：{snapshot.url}", flush=True)
+    try:
+        while manager.snapshot().state == "running":
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("正在停止临时链接…", flush=True)
+    finally:
+        manager.stop()
+    return 0
+
+
 #: 留空就会改变行为的坐标。进程猜不出来，只能让人在命令行给。
 _BLANK_HINTS = (
     ("server.review_writer_origin", "--writer-origin https://<writer 的地址>",
@@ -646,6 +710,17 @@ def build_parser() -> argparse.ArgumentParser:
     token.add_argument("--rotate", action="store_true",
                        help="换一个新口令，已签发的 cookie 立即失效")
     token.set_defaults(handler=_token)
+
+    tunnel_parser = commands.add_parser(
+        "tunnel", help="运行或查看 Cloudflare Quick Tunnel（默认要求已设置访问密码）",
+    )
+    tunnel_parser.add_argument("action", choices=("start", "status"), nargs="?", default="start")
+    tunnel_parser.add_argument("--lan-address", help=argparse.SUPPRESS)
+    tunnel_parser.add_argument(
+        "--https-port", type=int, help="源码服务的实际 HTTPS 端口（macOS 默认 8443，其他平台默认 443）",
+    )
+    tunnel_parser.add_argument("--timeout", type=float, default=30.0)
+    tunnel_parser.set_defaults(handler=_tunnel)
 
     migrate = commands.add_parser("migrate", help="inspect or apply SQLite migrations")
     migrate.add_argument("action", choices=("status", "upgrade"), nargs="?", default="status")

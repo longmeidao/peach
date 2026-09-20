@@ -70,6 +70,8 @@ MDNS_NAME: str = _SETTINGS.server.mdns_name
 MDNS_HOSTNAME: str = f"{MDNS_NAME}.local"
 SERVE_HOST: str = _SETTINGS.server.host
 SERVE_PORT: int = _SETTINGS.server.port
+TUNNEL_ENABLED: bool = _SETTINGS.tunnel.enabled
+CLOUDFLARED_BINARY: str = _SETTINGS.tunnel.binary
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,15 @@ class PeachSettings:
     mdns_port: int = 80
     mdns_address: str | None = None
     tls_enabled: bool = False
+    #: Quick Tunnel 由应用进程管理；默认关闭，打开前由 tunnel 模块检查访问密码。
+    tunnel_enabled: bool = TUNNEL_ENABLED
+    tunnel_binary: str = CLOUDFLARED_BINARY
+    tunnel_standalone: bool = False
+    tunnel_lan_address: str | None = None
+    #: Tunnel origin 的实际端口；None 表示独立包取设置文件端口，源码取 443。
+    tunnel_origin_port: int | None = None
+    tunnel_state_root: Path = STATE_DIR
+    tunnel_log_root: Path = LOG_DIR
     #: 这台机器跑过 `peach init` 了没有。`/healthz` 与首页据此决定是否弹首次运行提示。
     configured: bool = CONFIGURED
     # reader 只从 writer 的严格 CA HTTPS 镜像复核 JSON；不复制候选 CSV，更不放宽写入闸门。

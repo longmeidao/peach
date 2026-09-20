@@ -19,7 +19,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from filelock import FileLock, Timeout
 
-from . import access, distribution, folder_picker, onboarding, settings_file, media_configuration
+from . import access, distribution, folder_picker, onboarding, settings_file, media_configuration, tunnel
 from .routes_auth import require_auth, same_origin
 from .web_entry import runtime_fact_entries
 from . import release_updates, standalone_update, peach_proxy, desktop_startup, desktop_uninstall
@@ -121,6 +121,16 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
     if not config.present:
         raise HTTPException(409, "请先完成首次设置")
     result = snapshot(config)
+    state = request.app.state.tunnel.snapshot()
+    result["tunnel"] = {
+        "enabled": config.tunnel.enabled,
+        "state": state.state,
+        "url": state.url,
+        "error": state.error,
+        "available": tunnel.resolve_binary(
+            config.tunnel.binary, base_dir=config.data_root,
+        ) is not None,
+    }
     result["automatic_updates"] = request.app.state.automatic_updates.snapshot()
     if result["automatic_updates"].get("result"):
         result["updates"] = result["automatic_updates"]["result"]
@@ -311,6 +321,68 @@ def save_access(request: Request, body: dict[str, Any] = Body(default_factory=di
         from .routes_auth import set_auth_cookie
         set_auth_cookie(response, request, login=True)
     return response
+
+
+@router.post("/api/configuration/tunnel")
+def save_tunnel(request: Request, body: dict[str, Any] = Body(default_factory=dict),
+                _args=Depends(require_auth)):
+    """启动或停止本机 Quick Tunnel；入口只对本机配置页开放。"""
+    local_only(request)
+    same_origin(request)
+    config = settings_file.load_config()
+    if not config.present:
+        raise HTTPException(409, "请先完成首次设置")
+    if body.get("revision") != revision(config):
+        raise HTTPException(409, "设置已变更，请刷新后再保存")
+    enabled = body.get("enabled")
+    if not isinstance(enabled, bool):
+        raise HTTPException(400, "enabled 必须是 true 或 false")
+    manager = request.app.state.tunnel
+    state = tunnel.TunnelSnapshot(state="stopped")
+    started_here = False
+    if enabled:
+        settings = request.app.state.settings
+        try:
+            existing = manager.snapshot()
+            started_here = existing.state not in {"starting", "running"}
+            plan = tunnel.plan_for_config(
+                config,
+                access_path=settings.access_path,
+                token=settings.token,
+                standalone_mode=getattr(settings, "tunnel_standalone", distribution.standalone()),
+                lan_address=getattr(settings, "tunnel_lan_address", None),
+                https_port=getattr(settings, "tunnel_origin_port", None),
+                tls_enabled=getattr(settings, "tls_enabled", True),
+            )
+            state = manager.start(plan)
+        except tunnel.TunnelError as exc:
+            raise HTTPException(409, str(exc)) from exc
+    updated = replace(config, tunnel=replace(config.tunnel, enabled=enabled))
+    try:
+        with FileLock(str(config.path.with_suffix(".lock")), timeout=0):
+            current = settings_file.load_config()
+            if revision(current) != revision(config):
+                if started_here:
+                    manager.stop()
+                raise HTTPException(409, "设置已变更，请刷新后再保存")
+            settings_file.write(updated, force=True)
+    except Timeout:
+        if started_here:
+            manager.stop()
+        raise HTTPException(409, "设置正在保存，请稍后重试") from None
+    except OSError as exc:
+        if started_here:
+            manager.stop()
+        raise HTTPException(500, f"设置写入失败：{exc}") from exc
+    if not enabled:
+        state = manager.stop()
+    return {
+        "enabled": enabled,
+        "state": state.state,
+        "url": state.url,
+        "error": state.error,
+        "revision": revision(updated),
+    }
 
 
 @router.post("/api/pick-folder")

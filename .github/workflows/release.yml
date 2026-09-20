@@ -55,9 +55,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'uv 安装依赖失败' }
           uv pip check --python .venv/Scripts/python.exe
           if ($LASTEXITCODE -ne 0) { throw 'uv 依赖检查失败' }
+      - name: 获取并校验 cloudflared 旁路文件
+        shell: pwsh
+        run: '& ./scripts/fetch_cloudflared.ps1 -OutputPath "$env:RUNNER_TEMP/cloudflared.exe"'
       - name: 构建独立目录包
         shell: pwsh
-        run: '& ./scripts/build_windows.ps1 -Standalone'
+        run: '& ./scripts/build_windows.ps1 -Standalone -CloudflaredPath "$env:RUNNER_TEMP/cloudflared.exe"'
       - name: 压缩完整程序目录
         shell: pwsh
         run: |
