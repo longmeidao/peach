@@ -172,7 +172,7 @@ export function FollowManagePage(props: FollowManageProps) {
           <AddSource data={data} credentials={creds} readOnly={readOnly} toast={toast}
             openCredentials={() => { setTab('source'); go({ tab: 'source' }) }} />
           <AliasManager groups={data.author_aliases || []} readOnly={readOnly} toast={toast}
-            suggestions={data.alias_suggestions || []} />
+            suggestions={data.alias_suggestions || []} sources={data.sources} />
         </TabPanel>
 
         <TabPanel id="source" className="flex flex-col gap-4">

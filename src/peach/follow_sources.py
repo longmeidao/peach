@@ -1886,7 +1886,12 @@ def profile_link_identity(url: str, *, forum_host: str = "") -> tuple[str, str] 
     `forum_host` 传进来时，论坛自己的 `/members/<name>.<id>/` 也算一个身份：
     作者本人在站上有账号时，正文里贴的就是这个地址。
     """
-    parsed = urllib.parse.urlsplit(str(url or "").strip())
+    value = str(url or "").strip()
+    # booru 的 source 偶尔把几条出处用空格拼在一个字段里。urlsplit 会把后一条
+    # 吞进前一条的 path，让第一段手柄看起来仍然合法；这种字段不是一条身份链接。
+    if not value or any(character.isspace() for character in value):
+        return None
+    parsed = urllib.parse.urlsplit(value)
     if parsed.scheme not in ("http", "https"):
         return None
     host = (parsed.hostname or "").lower().removeprefix("www.")

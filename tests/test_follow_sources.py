@@ -1320,6 +1320,10 @@ class ProfileLinkTests(unittest.TestCase):
         self.assertIsNone(
             follow_sources.profile_link_identity("https://gofile.io/d/oOdYTK"))
 
+    def test_multiple_urls_in_one_source_field_are_not_one_identity(self):
+        self.assertIsNone(follow_sources.profile_link_identity(
+            "https://x.com/Final_EliteDog/status/1 https://patreon.com/another"))
+
     def test_the_forum_member_page_counts_only_for_its_own_forum(self):
         self.assertEqual(
             follow_sources.profile_link_identity(

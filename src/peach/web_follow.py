@@ -1017,7 +1017,10 @@ def _profile_link_suggestions(rows, aliases: dict[str, str]) -> list[dict]:
     suggestions: list[dict] = []
     seen: set[tuple[str, str]] = set()
     for row in rows:
-        if row["entity_id"]:
+        # “首楼创作者主页”只来自 F95 的开楼正文。booru 每条作品的 source 是作品
+        # 出处，合作作品会指向另一位作者；即使旧账本里已有误收的 official_links，
+        # 也不能再把它展示成身份合并建议。
+        if row["entity_id"] or row["provider"] != "f95zone":
             continue
         canonical = _author_display_name(row)
         canonical_key = normalized_author_name(canonical)
@@ -1149,6 +1152,17 @@ def _official_avatar_url(row) -> str | None:
         return "/follow-avatar?" + urllib.parse.urlencode(
             {"service": service, "id": user})
     metadata = _source_metadata(row)
+    if provider != "f95zone":
+        expected = {
+            normalized_author_name(str(row["ref"] or "")),
+            normalized_author_name(str(metadata.get("author_key") or "")),
+        }
+        links = metadata.get("official_links")
+        metadata = {**metadata, "official_links": [
+            link for link in (links if isinstance(links, list) else ())
+            if isinstance(link, dict)
+            and normalized_author_name(str(link.get("handle") or "")) in expected
+        ]}
     identity = _official_fanbox_identity(metadata)
     if identity:
         return "/follow-avatar?" + urllib.parse.urlencode(

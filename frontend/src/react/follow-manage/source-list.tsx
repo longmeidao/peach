@@ -32,6 +32,7 @@ import { ChevronSortDown } from '@/components/foundations/icons/chevrons';
 import { errorMessage } from '../../api';
 import { DOTS, paginationRange } from '../../pagination';
 import { cardClass } from '../components/card';
+import { DataTableFrame } from '../components/data-table-frame';
 import { EmptyState } from '../components/empty-state';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
@@ -599,7 +600,7 @@ export function SourceList(props: SourceListProps) {
       ) : null}
 
       {asTable ? (
-        <div data-follow-table>
+        <DataTableFrame follow>
           <Table aria-label="关注来源" size="sm"
             sortDescriptor={sorting[0]
               ? { column: sorting[0].id, direction: sorting[0].desc ? 'descending' : 'ascending' }
@@ -639,7 +640,7 @@ export function SourceList(props: SourceListProps) {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </DataTableFrame>
       ) : (
         <>
           <Checkbox isSelected={pageState.all} isIndeterminate={pageState.some}

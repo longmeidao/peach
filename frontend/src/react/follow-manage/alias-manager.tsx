@@ -15,19 +15,22 @@ import {
 
 import { errorMessage } from '../../api';
 import { cardClass } from '../components/card';
+import { DataTableFrame } from '../components/data-table-frame';
 import { EmptyState } from '../components/empty-state';
 import { ErrorText, FieldLabel } from '../settings/section';
 import { busyProps } from '../settings/use-action';
 import {
   addAlias, reloadFollowManage, removeAlias,
-  type AliasGroup, type AliasSuggestion,
+  type AliasGroup, type AliasSuggestion, type FollowSource,
 } from './follow-manage';
+import { AuthorAvatar } from './source-view';
 
 const REMOVE_BODY = (alias: string) => `将移除别名「${alias}」，对应来源恢复为独立创作者组。`;
 
 export interface AliasManagerProps {
   groups: AliasGroup[];
   suggestions: AliasSuggestion[];
+  sources?: FollowSource[];
   readOnly: boolean;
   toast(message: string): void;
 }
@@ -35,7 +38,26 @@ export interface AliasManagerProps {
 /** 一条待合并的身份：一个别名只可能归进一个规范名，所以用别名本身当键。 */
 const suggestionKey = (item: AliasSuggestion) => item.alias;
 
-export function AliasManager({ groups, suggestions, readOnly, toast }: AliasManagerProps) {
+function authorSources(sources: FollowSource[], name: string, canonicalKey?: string) {
+  const expected = canonicalKey ? `name:${canonicalKey}` : '';
+  const anchor = expected
+    ? sources.find((source) => source.author_key === expected)
+    : sources.find((source) => source.author_name === name || source.entity_name === name);
+  return anchor ? sources.filter((source) => source.author_key === anchor.author_key) : [];
+}
+
+function AuthorIdentity({ sources, name, canonicalKey }: {
+  sources: FollowSource[]; name: string; canonicalKey?: string;
+}) {
+  return (
+    <span className="flex items-center gap-2">
+      <AuthorAvatar group={authorSources(sources, name, canonicalKey)} name={name} />
+      <b className="text-body-medium">{name}</b>
+    </span>
+  );
+}
+
+export function AliasManager({ groups, suggestions, sources = [], readOnly, toast }: AliasManagerProps) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set<string>());
   const [problem, setProblem] = useState('');
   const [canonical, setCanonical] = useState('');
@@ -133,7 +155,8 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
             <Button variant="primary" size="small" disabled={readOnly} {...busy}
               onClick={() => mergeSome(suggestions, true)}>{`全部合并（${suggestions.length}）`}</Button>
           </div>
-          <Table aria-label="待合并创作者别名" size="sm">
+          <DataTableFrame>
+            <Table aria-label="待合并创作者别名" size="sm">
             <TableHeader>
               <TableColumn id="select">
                 {/* `slot={null}`：表格自带一个叫 selection 的插槽，摆进去的勾不声明归属就
@@ -153,7 +176,8 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
               {suggestions.map((item) => {
                 const key = suggestionKey(item);
                 return (
-                  <TableRow key={key} id={key}>
+                  <TableRow key={key} id={key}
+                    data-board-selected={selected.has(key) || undefined}>
                     <TableCell>
                       <Checkbox slot={null} isSelected={selected.has(key)}
                         aria-label={`选择别名 ${item.alias}，归入 ${item.canonical}`}
@@ -163,7 +187,9 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
                           setSelected(next);
                         }} />
                     </TableCell>
-                    <TableCell><b className="text-body-medium">{item.canonical}</b></TableCell>
+                    <TableCell>
+                      <AuthorIdentity sources={sources} name={item.canonical} />
+                    </TableCell>
                     <TableCell>{item.alias}</TableCell>
                     <TableCell>
                       <span className="text-body-2-regular text-text-secondary">{item.evidence}</span>
@@ -176,7 +202,8 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
                 );
               })}
             </TableBody>
-          </Table>
+            </Table>
+          </DataTableFrame>
         </div>
       ) : null}
 
@@ -186,7 +213,8 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
           <span className="text-body-2-regular text-text-secondary">{`${groups.length} 组`}</span>
         </div>
         {groups.length ? (
-          <Table aria-label="已保存创作者别名" size="sm">
+          <DataTableFrame>
+            <Table aria-label="已保存创作者别名" size="sm">
             <TableHeader>
               <TableColumn id="canonical" isRowHeader>规范创作者</TableColumn>
               <TableColumn id="aliases">平台别名</TableColumn>
@@ -194,7 +222,10 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
             <TableBody>
               {groups.map((group) => (
                 <TableRow key={group.canonical_key} id={group.canonical_key}>
-                  <TableCell><b className="text-body-medium">{group.canonical_name}</b></TableCell>
+                  <TableCell>
+                    <AuthorIdentity sources={sources} name={group.canonical_name}
+                      canonicalKey={group.canonical_key} />
+                  </TableCell>
                   <TableCell>
                     <span className="flex flex-wrap items-center gap-1.5">
                       {group.aliases.map((item) => (
@@ -216,7 +247,8 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
+            </Table>
+          </DataTableFrame>
         ) : (
           <EmptyState shell="plain" icon={RiUserLine} title="还没有保存创作者别名">
             填写规范创作者名和平台别名以添加。
