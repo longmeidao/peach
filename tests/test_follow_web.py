@@ -3317,18 +3317,37 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("go({ layout", page)
         self.assertIn("const [layout, setLayout] = useState<Layout>", page)
 
-    def test_selected_rows_keep_the_divider_only_surface_in_both_views(self):
-        """卡片来源行保持透明并以 divider 分隔，表格底色仍归 BoardUI Table。"""
+    def test_selected_rows_follow_boardui_data_table_feedback(self):
+        """卡片来源行保持透明；表格选中行使用 BoardUI Data Table 的 secondary 背景。"""
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertIn("<div data-selected={selected || undefined}", sources)
         row_open = sources[sources.index("<div data-selected={selected || undefined}"):]
         row_open = row_open[:row_open.index('">') + 2]
         self.assertNotIn("data-selected:bg-", row_open)
         self.assertIn("data-source-divider", sources)
-        # 表格行不带额外底色类：那一层归 Table。
+        # 表格把 TanStack 的选择状态交给 Table 的 data attribute，外观仍由共享 CSS 管。
         table_block = sources[sources.index("{asTable ? ("):]
         self.assertNotIn("data-selected:bg", table_block)
-        self.assertIn("<TableRow key={row.id} id={row.id}>", table_block)
+        self.assertIn("data-follow-selected={row.getIsSelected() || undefined}", table_block)
+        styles = self.read_front("react/styles.css")
+        self.assertIn("[data-follow-table] .bui-table tbody tr[data-follow-selected]", styles)
+        self.assertIn("background-color: var(--color-background-secondary-default);", styles)
+
+    def test_follow_views_use_primary_surfaces_secondary_actions_and_visible_dividers(self):
+        """列表外框、作者与紧凑表格分三层；行内操作不借主动作的蓝色。"""
+        sources = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn('data-follow-author-header data-open={open || undefined}', sources)
+        self.assertIn('<div data-follow-table>', sources)
+        self.assertEqual(sources.count('variant="secondary" size="small" iconOnly'), 5)
+        self.assertIn('<Button variant="secondary" size="small" aria-expanded={open}', sources)
+        styles = self.read_front("react/styles.css")
+        self.assertIn("[data-follow-author-header][data-open]", styles)
+        self.assertIn("border-bottom: 1px solid var(--color-border-button-default);", styles)
+        self.assertIn("[data-follow-table] {\n  overflow: hidden;\n  border: 1px solid "
+                      "var(--color-border-button-default);", styles)
+        self.assertIn("[data-follow-table] .bui-table th {\n  border-top: 0;", styles)
+        self.assertIn("[data-source-divider] > * + * {\n  border-top: 1px solid "
+                      "var(--color-border-button-default);", styles)
 
     def test_both_views_render_the_same_source_cells(self):
         """一条来源的格子只有一份写法：默认视图排成一行，表格视图各放一个单元格。
@@ -3403,6 +3422,8 @@ class FollowWebSourceTests(unittest.TestCase):
                       ") as Partial<Record<SortKey, string>>;", sources)
         self.assertIn("const sortable = header.column.id in COLUMN_SORT;", sources)
         self.assertIn("allowsSorting={sortable}", sources)
+        self.assertIn("<ChevronSortDown", sources)
+        self.assertIn("data-direction={sortDirection || undefined}", sources)
         self.assertIn("manualSorting: true,", sources)
         # 排好的是全集，分页模型只负责切窗口。
         self.assertIn("const rows = useMemo(() => tableRows(groups, sort, dir, aliases),", sources)

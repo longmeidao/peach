@@ -6435,13 +6435,13 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains('class="board-glow-toggle" id="boardGlowBtn" aria-label="光晕配色"')
         self.assertPageContains('aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"')
-        # 钮上是调色盘字形，右下角两枚叠着的小圆报它管的那两样：光晕色、强调色压在上面。
+        # 钮上是调色盘字形，右下角两枚沿同一竖线叠着的小圆报光晕色与强调色。
         self.assertPageContains('<use href="#ri-palette-line"/></svg><span class="board-glow-mark" aria-hidden="true">'
                                 '<span class="board-glow-mark-glow"></span><span class="board-glow-mark-accent"></span>'
                                 '</span></button>')
         css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".board-glow-mark-glow{left:0;top:0;background:var(--glow-swatch,var(--ink))}", css)
-        self.assertIn(".board-glow-mark-accent{right:0;bottom:0;z-index:1;", css)
+        self.assertIn(".board-glow-mark-accent{left:0;bottom:0;z-index:1;", css)
         self.assertIn(".board-glow-toggle[data-glow-off] .board-glow-mark-glow{display:none}", css)
         self.assertPageContains('<header class="board-glow-head" data-glow-presets><span>光晕</span>')
         self.assertPageContains('class="board-glow-reset" data-glow-preset-reset>重置</button>')
@@ -6464,9 +6464,9 @@ class WebUiSourceTests(unittest.TestCase):
                       "{background:var(--hover);color:var(--ink)}", css)
         # 和设置钮对齐到一个数：两枚 36px 的方块在 60px 的收起态里才排得直。
         self.assertIn(".board-foot-actions>#settingsBtn{width:36px;height:36px;", css)
-        # 两枚叠着的小圆就是「现在哪一档」，坐在钮的右下角，字形留在中间。
+        # 两枚叠着的小圆就是「现在哪一档」，在钮的右下角上下对齐，字形留在中间。
         self.assertIn(".board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}", css)
-        self.assertIn(".board-glow-mark{position:absolute;right:0;bottom:0;display:block;width:16px;height:14px}", css)
+        self.assertIn(".board-glow-mark{position:absolute;right:0;bottom:0;display:block;width:10px;height:16px}", css)
         self.assertNotIn(".board-glow-dot{", css)
         # 收起时侧栏只有 60px，两枚键排成一列。
         self.assertIn(".drawer:not(.open) .board-foot-actions{flex-direction:column}", css)
@@ -10026,7 +10026,8 @@ class WebUiSourceTests(unittest.TestCase):
 
         读数卡是 stat-cards.tsx 的 plain 变体做成按钮（132px、圆角 16、secondary 底、内边距 16、
         32px 图标格里 20px 字形、读数 24/34），整张卡就是那一页的入口；五张在 1120 内一行摆下，
-        窄了折两列、再折一列。扫描与采集和空文件夹是要做的事，不是读数，各占一整行、左说明右按钮。
+        窄了折两列、再折一列。扫描与采集和空文件夹是要做的事，不是读数，各占一整行、左说明右按钮；
+        下方四张任务卡同样用 secondary 灰底，浅色主题不会退回白卡。
         骨架复用同一套结构，页首因此和读数卡直接接上：同样五个入口再排一条链接条，是同一件事
         画两遍，而那条链接条连选中态都没有。
         """
@@ -10051,6 +10052,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("@media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}", board)
         self.assertIn("@media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}", board)
         self.assertIn(".cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
+        self.assertIn(".cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-secondary-default);", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{align-self:stretch;justify-content:flex-end;min-height:0;padding:24px;border:0;background:none}", board)
         self.assertGreaterEqual(self.app_js.count('class="resourcesyncbox" data-geist-fieldset data-cleanup-task'), 2)
@@ -10641,6 +10643,12 @@ class WebUiSourceTests(unittest.TestCase):
         scanned = set(re.findall(r"'(\.[a-z0-9-]+)'", overlay))
         unscanned = [s for s in re.findall(r"\.[a-z0-9-]+", edge) if s not in scanned]
         self.assertEqual(unscanned, [], "横滚层也要进 OVERLAY_SCROLLERS 才会被扫到")
+
+    def test_react_listboxes_use_the_shared_overlay_scrollbar(self):
+        """React Select 的浮层也登记到全站覆盖式滚动条，不露系统滚动条。"""
+        overlay = self.page.split("const OVERLAY_SCROLLERS=[", 1)[1].split(
+            "].join(',')", 1)[0]
+        self.assertIn("'[role=\"listbox\"]'", overlay)
 
     def test_the_detail_dialog_scrolls_an_inner_layer_so_it_gets_the_shared_scrollbar(self):
         """详情浮窗窄屏下滚的是 `.stagescroll`，滚动条和全站是同一条。

@@ -242,10 +242,22 @@ it('表格视图把每条来源摊成一行，勾的还是来源 ID', async () =
 
   await click(checkboxNamed(host, '选择 甲 · Pawchive'));
   expect(host.textContent).toContain('已选 1 个来源');
+  expect(checkboxNamed(host, '选择 甲 · Pawchive')?.closest('[role="row"]')
+    ?.hasAttribute('data-follow-selected')).toBe(true);
 
   await click([...host.querySelectorAll('button')].find((b) => b.textContent === '暂停'));
   await settle();
   expect(sentBody(fetcher, FOLLOW_SOURCE_URL)).toEqual([{ action: 'enabled', id: 2, enabled: false }]);
+});
+
+it('表格的可排序列显示并更新排序三角', async () => {
+  const { host, props } = await open({}, { layout: 'table' });
+  const author = [...host.querySelectorAll<HTMLElement>('[role="columnheader"]')]
+    .find((cell) => cell.textContent?.includes('创作者'));
+  expect(author?.querySelector('svg')).not.toBeNull();
+
+  await click(author);
+  expect(props.route).toHaveBeenCalledWith({ tab: 'list', page: 1, sort: 'name', dir: '' });
 });
 
 it('排序和页码一起写进地址栏，默认值不写', async () => {

@@ -27,6 +27,7 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import {
   Table, TableBody, TableCell, TableColumn, TableHeader, TableRow,
 } from '@/components/base/table/table';
+import { ChevronSortDown } from '@/components/foundations/icons/chevrons';
 
 import { errorMessage } from '../../api';
 import { DOTS, paginationRange } from '../../pagination';
@@ -161,11 +162,11 @@ function SourceRow(
         {checkedText(source)}
       </span>
       <span className="flex shrink-0 items-center gap-1">
-        <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine}
+        <Button variant="secondary" size="small" iconOnly leadingIcon={RiRefreshLine}
           aria-label={`检查 ${source.label} 的更新`}
           disabled={!source.enabled || handlers.readOnly} {...busyProps(handlers.busy)}
           onClick={() => handlers.check([source.id])} />
-        <Button variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBinLine}
+        <Button variant="secondary" size="small" iconOnly leadingIcon={RiDeleteBinLine}
           aria-label={`移除 ${source.label}`} disabled={handlers.readOnly}
           onClick={() => handlers.remove(source)} />
       </span>
@@ -195,10 +196,11 @@ function AuthorCard(
       className={cardClass({
         variant: 'raised', padding: 'none', className: 'flex flex-col overflow-hidden p-2',
       })}>
-      <div className="flex flex-wrap items-center gap-3 px-2 py-2.5">
+      <div data-follow-author-header data-open={open || undefined}
+        className="flex flex-wrap items-center gap-3 px-2 py-2.5">
         <AuthorAvatar group={group} name={name} />
         <b className="min-w-0 grow text-body-medium break-words text-text-primary">{name}</b>
-        <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine}
+        <Button variant="secondary" size="small" iconOnly leadingIcon={RiRefreshLine}
           aria-label={`检查 ${name} 的全部来源`} disabled={!enabled.length || handlers.readOnly}
           {...busyProps(handlers.busy)} onClick={() => handlers.check(enabled)} />
         <span className="flex shrink-0 items-center gap-1" title={providers}>
@@ -214,7 +216,7 @@ function AuthorCard(
           aria-pressed={state.all ? 'true' : state.some ? 'mixed' : 'false'}
           aria-label={`${state.all ? '取消全选' : '全选'} ${name} 的来源`}
           onClick={() => onToggleGroup(!state.all)}>{state.all ? '取消全选' : '全选'}</Button>
-        <Button variant="ghost" size="small" aria-expanded={open} aria-controls={panel}
+        <Button variant="secondary" size="small" aria-expanded={open} aria-controls={panel}
           leadingIcon={open ? RiArrowUpSLine : RiArrowDownSLine}
           aria-label={`${open ? '收起' : '展开'} ${name} 的来源`}
           onClick={() => onOpen(!open)}>{open ? '收起' : '展开'}</Button>
@@ -430,12 +432,12 @@ export function SourceList(props: SourceListProps) {
         header: label('actions'),
         cell: (context) => (
           <span className="flex items-center gap-1">
-            <Button variant="ghost" size="small" iconOnly leadingIcon={RiRefreshLine}
+            <Button variant="secondary" size="small" iconOnly leadingIcon={RiRefreshLine}
               aria-label={`检查 ${context.row.original.source.label} 的更新`}
               disabled={!context.row.original.source.enabled || rowHandlers.readOnly}
               {...busyProps(rowHandlers.busy)}
               onClick={() => handlers.current.check([context.row.original.source.id])} />
-            <Button variant="ghost" size="small" iconOnly leadingIcon={RiDeleteBinLine}
+            <Button variant="secondary" size="small" iconOnly leadingIcon={RiDeleteBinLine}
               aria-label={`移除 ${context.row.original.source.label}`} disabled={rowHandlers.readOnly}
               onClick={() => handlers.current.remove(context.row.original.source)} />
           </span>
@@ -597,39 +599,47 @@ export function SourceList(props: SourceListProps) {
       ) : null}
 
       {asTable ? (
-        <Table aria-label="关注来源"
-          sortDescriptor={sorting[0]
-            ? { column: sorting[0].id, direction: sorting[0].desc ? 'descending' : 'ascending' }
-            : undefined}
-          onSortChange={(descriptor) => table.setSorting([
-            { id: String(descriptor.column), desc: descriptor.direction === 'descending' },
-          ])}>
-          <TableHeader>
-            {table.getHeaderGroups()[0]!.headers.map((header) => {
-              const sortable = header.column.id in COLUMN_SORT;
-              const text = flexRender(header.column.columnDef.header, header.getContext());
-              return (
-                <TableColumn key={header.id} id={header.id} allowsSorting={sortable}
-                  isRowHeader={header.column.id === 'source'}>
-                  {sortable ? text : <VisuallyHidden>{text}</VisuallyHidden>}
-                </TableColumn>
-              );
-            })}
-          </TableHeader>
-          {/* 选中与否由每行第一格那个勾表示：行底色归 Table 自己，另铺一层就是在它的
-              hover 与焦点态上面再画一遍。 */}
-          <TableBody renderEmptyState={() => '这一页没有来源'}>
-            {pageRows.map((row) => (
-              <TableRow key={row.id} id={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell key={cell.id}>
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+        <div data-follow-table>
+          <Table aria-label="关注来源" size="sm"
+            sortDescriptor={sorting[0]
+              ? { column: sorting[0].id, direction: sorting[0].desc ? 'descending' : 'ascending' }
+              : undefined}
+            onSortChange={(descriptor) => table.setSorting([
+              { id: String(descriptor.column), desc: descriptor.direction === 'descending' },
+            ])}>
+            <TableHeader>
+              {table.getHeaderGroups()[0]!.headers.map((header) => {
+                const sortable = header.column.id in COLUMN_SORT;
+                const text = flexRender(header.column.columnDef.header, header.getContext());
+                return (
+                  <TableColumn key={header.id} id={header.id} allowsSorting={sortable}
+                    isRowHeader={header.column.id === 'source'}>
+                    {({ sortDirection }) => sortable ? (
+                      <span className="flex items-center gap-0.5">
+                        {text}
+                        <span data-sort-indicator data-direction={sortDirection || undefined}>
+                          <ChevronSortDown />
+                        </span>
+                      </span>
+                    ) : <VisuallyHidden>{text}</VisuallyHidden>}
+                  </TableColumn>
+                );
+              })}
+            </TableHeader>
+            <TableBody renderEmptyState={() => '这一页没有来源'}>
+              {pageRows.map((row) => (
+                <TableRow key={row.id} id={row.id}
+                  data-follow-selected={row.getIsSelected() || undefined}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       ) : (
         <>
           <Checkbox isSelected={pageState.all} isIndeterminate={pageState.some}
