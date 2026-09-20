@@ -17,6 +17,7 @@ CI（`GITHUB_ACTIONS=true`）判失败，与 vitest 同一口径；浏览器不�
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import shutil
 import socket
@@ -86,13 +87,12 @@ def refuse_network(*args, **kwargs):
     raise AssertionError("演示库的 process 不应向任何外部来源发请求")
 
 
-def e2e_command(npm: str, node: str, concurrency: str = "") -> list[str]:
-    """资源受限运行可串行两个 Node 测试文件；日常与 CI 仍走 package script。"""
-    if not concurrency:
-        return [npm, "--prefix", str(FRONTEND), "run", "e2e", "--silent"]
-    if not concurrency.isdecimal() or int(concurrency) < 1:
+def e2e_command(_npm: str, node: str, concurrency: str = "") -> list[str]:
+    """两个文件共用服务；直接启动 Node 也省掉资源守卫内的一层 npm 进程。"""
+    selected = concurrency or "1"
+    if not selected.isdecimal() or int(selected) < 1:
         raise AssertionError("PEACH_E2E_CONCURRENCY 必须是正整数")
-    return [node, "--test", f"--test-concurrency={int(concurrency)}",
+    return [node, "--test", f"--test-concurrency={int(selected)}",
             "--test-reporter=tap", "e2e/**/*.test.ts"]
 
 
@@ -265,13 +265,21 @@ class MissingPrerequisiteTests(unittest.TestCase):
             with self.assertRaises(unittest.SkipTest):
                 missing_prerequisite("没有 npm")
 
-    def test_resource_limited_e2e_places_concurrency_before_the_test_glob(self):
+    def test_e2e_files_share_one_server_and_run_serially(self):
+        manifest = json.loads((FRONTEND / "package.json").read_text(encoding="utf-8"))
+        self.assertEqual(
+            manifest["scripts"]["e2e"],
+            'node --test --test-concurrency=1 --test-reporter=tap "e2e/**/*.test.ts"',
+        )
+
+    def test_e2e_command_serializes_by_default_and_places_the_override_before_the_glob(self):
         self.assertEqual(e2e_command("npm", "node", "1"), [
             "node", "--test", "--test-concurrency=1", "--test-reporter=tap",
             "e2e/**/*.test.ts",
         ])
         self.assertEqual(e2e_command("npm", "node"), [
-            "npm", "--prefix", str(FRONTEND), "run", "e2e", "--silent",
+            "node", "--test", "--test-concurrency=1", "--test-reporter=tap",
+            "e2e/**/*.test.ts",
         ])
         with self.assertRaisesRegex(AssertionError, "必须是正整数"):
             e2e_command("npm", "node", "0")

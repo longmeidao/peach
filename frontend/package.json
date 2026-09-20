@@ -13,7 +13,7 @@
     "lint": "oxlint -c .oxlintrc.json src/react",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "node --test --test-reporter=tap \"e2e/**/*.test.ts\""
+    "e2e": "node --test --test-concurrency=1 --test-reporter=tap \"e2e/**/*.test.ts\""
   },
   "dependencies": {
     "@remixicon/react": "4.9.0",
