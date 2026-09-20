@@ -1,12 +1,13 @@
-/* 批量工具条：分组方式、分类筛选、全选本页，以及选中之后那一条判定栏。
+/* 复核筛选与批量动作：分组方式、分类筛选、全选本页留在吸顶栏，所选项目的判定动作
+ * 使用首页同款底部悬浮框。
  *
  * 分组方式和筛选项按**整条队列**算，卡片只画当前这一页：筛选里的计数说的是队列，不是
- * 这一屏。工具条吸在顶栏下沿，所以选中之后的判定栏接在它下面，而不是另开一个浮窗——
- * 两块各自定位的话，滚动时它们会互相盖住。 */
+ * 这一屏。筛选条高度保持不变，勾选项目时不会把下滑后吸顶的内容往下推。 */
 import { RiCheckDoubleLine } from '@remixicon/react';
 
 import { Button } from '@/components/base/buttons/button';
 import { Select, SelectItem } from '@/components/base/select/select';
+import { SelectionDock } from '../components/selection-dock';
 import type { DecisionStatus, ReviewGroup, ReviewGrouping, ReviewRow } from './review';
 import { commonReviewSources } from './review';
 
@@ -50,10 +51,9 @@ export function BulkToolbar(props: BulkToolbarProps) {
   };
 
   return (
-    <div role="group" aria-label="复核批量操作"
-      data-glass-pane=""
-      className="glass-pane sticky top-topbar z-10 flex flex-col gap-3 rounded-floating p-3">
-      <div className="flex flex-wrap items-center gap-2">
+    <>
+      <div role="group" aria-label="复核筛选" data-review-filter data-glass-pane=""
+        className="sticky top-topbar z-10 flex flex-wrap items-center gap-2 p-3">
         <Select aria-label="筛选分组方式" size="sm" selectedKey={groupBy}
           onSelectionChange={(key) => { if (key !== null) onGroupBy(String(key) as ReviewGrouping) }}>
           {groupOptions.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
@@ -77,12 +77,8 @@ export function BulkToolbar(props: BulkToolbarProps) {
         </Button>
       </div>
 
-      {shown.length || selected.size ? (
-        <div role="group" aria-label="复核所选项目"
-          className="flex flex-wrap items-center gap-2 rounded-2lg bg-background-secondary-default px-3 py-2">
-          <span role="status" className="tabular-nums text-body-2-medium text-text-primary">
-            {`已选 ${selected.size} 项`}
-          </span>
+      {selected.size ? (
+        <SelectionDock label="复核所选项目" count={`已选 ${selected.size} 项`}>
           {needsSource ? (
             <Select aria-label="统一选择来源" size="sm" selectedKey=""
               isDisabled={busy || !sources.length}
@@ -100,8 +96,8 @@ export function BulkToolbar(props: BulkToolbarProps) {
           {feedback
             ? <p role="status" className="w-full text-body-2-regular text-text-secondary">{feedback}</p>
             : null}
-        </div>
+        </SelectionDock>
       ) : null}
-    </div>
+    </>
   );
 }

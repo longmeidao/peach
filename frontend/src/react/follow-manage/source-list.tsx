@@ -35,6 +35,7 @@ import { EmptyState } from '../components/empty-state';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
+import { SelectionDock } from '../components/selection-dock';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import {
@@ -140,7 +141,7 @@ function SourceRow(
 ) {
   return (
     <div data-selected={selected || undefined}
-      className="flex min-h-16 flex-wrap items-center gap-3 rounded-lg px-2 py-3 data-selected:bg-background-tertiary-default">
+      className="flex min-h-16 flex-wrap items-center gap-3 px-2 py-3">
       <Checkbox isSelected={selected} onChange={onToggle} aria-label={`选择 ${source.label}`} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
         <SourceLink source={source} />
@@ -191,7 +192,9 @@ function AuthorCard(
   const state = selectionState(selected, ids);
   return (
     <section aria-label={`${name} 的关注来源`}
-      className={cardClass({ padding: 'none', className: 'flex flex-col overflow-hidden p-2' })}>
+      className={cardClass({
+        variant: 'raised', padding: 'none', className: 'flex flex-col overflow-hidden p-2',
+      })}>
       <div className="flex flex-wrap items-center gap-3 px-2 py-2.5">
         <AuthorAvatar group={group} name={name} />
         <b className="min-w-0 grow text-body-medium break-words text-text-primary">{name}</b>
@@ -212,10 +215,11 @@ function AuthorCard(
           aria-label={`${state.all ? '取消全选' : '全选'} ${name} 的来源`}
           onClick={() => onToggleGroup(!state.all)}>{state.all ? '取消全选' : '全选'}</Button>
         <Button variant="ghost" size="small" aria-expanded={open} aria-controls={panel}
+          leadingIcon={open ? RiArrowUpSLine : RiArrowDownSLine}
           aria-label={`${open ? '收起' : '展开'} ${name} 的来源`}
           onClick={() => onOpen(!open)}>{open ? '收起' : '展开'}</Button>
       </div>
-      <div id={panel} hidden={!open}>
+      <div id={panel} hidden={!open} data-source-divider>
         {group.map((source) => (
           <SourceRow key={source.id} source={source} handlers={handlers}
             selected={selected.has(source.id)} onToggle={(on) => onToggle(source.id, on)} />
@@ -502,37 +506,44 @@ export function SourceList(props: SourceListProps) {
   return (
     /* 旧 `.followmanage .fmain>.fsec`：整块关注列表是一张填充卡，标题、工具条、创作者分组
        和底下那条汇总都在同一张卡里，不是一个描边容器套着几行。 */
-    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-4 px-6 py-5 max-sm:px-4' })}>
+    <div className={cardClass({
+      padding: 'none',
+      className: 'flex flex-col gap-4 px-6 py-5 max-sm:px-4',
+    })}>
       {/* 放不下时带字的按钮先收成图标，再让整行换行。收起后名字由 `aria-label` 接着说。 */}
       <div ref={toolbar} className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto text-title-2-medium text-text-primary">关注列表</h3>
         <span className="text-body-2-regular text-text-secondary">
           {`${sources.length} 个来源${counts.new ? ` · ${counts.new} 条未看` : ''}`}
         </span>
-        <Button variant="primary" size="small" leadingIcon={RiRefreshLine} disabled={readOnly}
+        <Button variant="primary" leadingIcon={RiRefreshLine} disabled={readOnly}
           aria-label="检查全部" iconOnly={compact}
           {...busyProps(rowHandlers.busy)} onClick={() => startChecking([])}>检查全部</Button>
-        <Button variant={asTable ? 'ghost' : 'secondary'} size="small" iconOnly
-          leadingIcon={RiLayoutGridLine} aria-label={LAYOUTS[0][1]} aria-pressed={!asTable}
-          onClick={() => onLayout('default')} />
-        <Button variant={asTable ? 'secondary' : 'ghost'} size="small" iconOnly
-          leadingIcon={RiTableLine} aria-label={LAYOUTS[1][1]} aria-pressed={asTable}
-          onClick={() => onLayout('table')} />
-        <Select aria-label="关注列表排序" size="sm" selectedKey={sort}
-          onSelectionChange={(key) => {
-            if (key === null) return;
-            const next = String(key) as SortKey;
-            onSort(next, SORT_DEFAULT_DIR[next]);
-          }}>
-          {SORT_OPTIONS.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
-        </Select>
+        <span data-button-group role="group" aria-label="关注列表版式">
+          <Button variant="ghost" iconOnly
+            leadingIcon={RiLayoutGridLine} aria-label={LAYOUTS[0][1]} aria-pressed={!asTable}
+            onClick={() => onLayout('default')} />
+          <Button variant="ghost" iconOnly
+            leadingIcon={RiTableLine} aria-label={LAYOUTS[1][1]} aria-pressed={asTable}
+            onClick={() => onLayout('table')} />
+        </span>
+        <span data-follow-sort-control>
+          <Select aria-label="关注列表排序" selectedKey={sort}
+            onSelectionChange={(key) => {
+              if (key === null) return;
+              const next = String(key) as SortKey;
+              onSort(next, SORT_DEFAULT_DIR[next]);
+            }}>
+            {SORT_OPTIONS.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
+          </Select>
+        </span>
         {/* 箭头是装饰，方向由无障碍名称说，而且说的是点下去会得到的那一头。 */}
-        <Button variant="secondary" size="small" iconOnly
+        <Button variant="secondary" iconOnly
           leadingIcon={dir === 'asc' ? RiArrowUpLine : RiArrowDownLine}
           aria-label={sortLabel(sort, dir)}
           onClick={() => onSort(sort, dir === 'asc' ? 'desc' : 'asc')} />
         {asTable ? null : (
-          <Button variant="secondary" size="small" iconOnly={compact}
+          <Button variant="secondary" iconOnly={compact}
             leadingIcon={allCollapsed ? RiArrowDownSLine : RiArrowUpSLine}
             aria-label={allCollapsed ? '全部展开' : '全部收起'}
             onClick={() => setCollapsed(allCollapsed
@@ -567,11 +578,7 @@ export function SourceList(props: SourceListProps) {
       </div>
 
       {chosen.length ? (
-        <div role="group" aria-label="关注来源批量操作"
-          className="flex flex-wrap items-center gap-2 rounded-2lg bg-background-secondary-default px-3 py-2">
-          <span role="status" className="mr-auto text-body-2-regular text-text-primary">
-            {`已选 ${chosen.length} 个来源`}
-          </span>
+        <SelectionDock label="关注来源批量操作" count={`已选 ${chosen.length} 个来源`}>
           <Button variant="secondary" size="small" disabled={readOnly}
             {...busyProps(rowHandlers.busy)} onClick={() => startChecking(chosen)}>检查所选</Button>
           <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
@@ -586,7 +593,7 @@ export function SourceList(props: SourceListProps) {
               onConfirm: () => bulk.mutateAsync({ ids: chosen, action: 'remove' }),
             })}>删除</Button>
           <Button variant="ghost" size="small" onClick={() => onSelected(new Set())}>取消选择</Button>
-        </div>
+        </SelectionDock>
       ) : null}
 
       {asTable ? (

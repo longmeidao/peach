@@ -91,6 +91,7 @@ it('三种扫描采集方式共用一颗主键加一个下拉，各自交自己�
 
   await click(buttonNamed('扫描并补全资料', host));
   await click(host.querySelector('[aria-haspopup="dialog"]'));
+  expect(menuItem('扫描并补全资料')).not.toBeNull();
   await click(menuItem('只扫描'));
   await click(host.querySelector('[aria-haspopup="dialog"]'));
   await click(menuItem('只采集'));

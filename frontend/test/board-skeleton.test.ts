@@ -46,13 +46,14 @@ describe('Board 页面骨架', () => {
     expect(root.querySelectorAll('video, audio, iframe')).toHaveLength(0);
     expect(root.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
-  it('骨架分区不接入交互滑块', () => {
+  it('关注骨架的工作区切换保留原来的分段控件', () => {
     const root = document.createElement('div');
     root.innerHTML = boardPageSkeleton('/follow-manage');
     wireBoardSegments(root);
     expect(root.querySelector('.board-segment-thumb')).toBeNull();
     expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('关注列表');
     expect(root.querySelectorAll('.skeleton-segments > span')).toHaveLength(3);
+    expect(root.querySelectorAll('.board-button-group > button')).toHaveLength(2);
     expect(root.querySelector('[data-follow-workspace-panel="list"]')).not.toBeNull();
     expect(root.querySelector('[data-follow-panel="sources"]')).toBeNull();
     expect(root.querySelectorAll('.board-follow-list .fauthor')).toHaveLength(4);

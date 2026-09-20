@@ -106,7 +106,7 @@ function SourceFilter(
   };
   return (
     <>
-      <Button ref={trigger} variant="secondary" size="small" leadingIcon={RiFilter3Line}
+      <Button ref={trigger} variant="secondary" leadingIcon={RiFilter3Line}
         aria-haspopup="dialog" aria-expanded={open} aria-label={label}
         onClick={() => setOpen(true)}>{label}</Button>
       <Popover triggerRef={trigger} isOpen={open} onOpenChange={setOpen}
@@ -344,7 +344,7 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
         </div>
         <SourceFilter credentials={credentials} hidden={hidden} onHidden={setHidden}
           openCredentials={openCredentials} />
-        <Button variant="primary" size="small" disabled={readOnly || !line.trim()}
+        <Button variant="primary" disabled={readOnly || !line.trim()}
           {...busyProps(running || resolve.isPending)} onClick={() => search(line)}>查找</Button>
       </div>
 

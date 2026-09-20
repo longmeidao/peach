@@ -210,27 +210,188 @@
   --card-hover: color-mix(in srgb, var(--color-background-secondary-default) 95%, var(--color-text-primary));
 }
 
-/* 以下逐字取自上游 globals.css：Checkbox 打勾的描线动画，和 Table 的全部外观。 */
+/* 排序 Select 与同排的 medium Button 共用 36px。BoardUI 的 Select 把视觉样式留在内层
+ * trigger，按项目约定从外层普通元素约束几何，不在组件上追加 restyle class。 */
+.peach-react [data-follow-sort-control] > div > button {
+  height: calc(var(--spacing) * 9);
+  padding-block: 0;
+}
 
-/* Checkbox tick: draws the stroke on like it's being ticked by hand.
- * The path sets pathLength=1 so the dash math is resolution-independent. */
-@keyframes check-draw {
+/* 复核筛选条逐项使用首页 `.board-filter-frame` 的玻璃参数；选择动作则逐项使用首页
+ * `.selectiondock` 的参数。两块玻璃的饱和度本来就不同，不能拿同一个近似 utility 套。 */
+.peach-react [data-review-filter] {
+  top: calc(var(--topH) + 8px);
+  border: 0;
+  border-radius: 22px;
+  background: var(--glass-drift-a), var(--glass-drift-b),
+    linear-gradient(125deg, var(--glass-sheen), transparent 42%, var(--glass-low)), var(--glass-fill);
+  background-size: 200% 200%, 200% 200%, auto;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: 50% 20%, 80% 70%, 0 0;
+  animation: glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,
+    glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;
+  animation-play-state: var(--glow-drift-play);
+  backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
+  -webkit-backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 1px 0 0 var(--glass-low),
+    inset -1px 0 0 var(--glass-low), inset 0 -1px 0 var(--glass-low), var(--glass-shadow);
+  isolation: isolate;
+  color: var(--glass-text);
+  overflow: visible;
+}
+
+.peach-react [data-selection-dock] {
+  position: fixed;
+  z-index: 180;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  left: 50%;
+  display: flex;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 9px 11px;
+  transform: translateX(-50%);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--glass-drift-a), var(--glass-drift-b),
+    linear-gradient(125deg, var(--glass-sheen), transparent 42%, var(--glass-low)), var(--glass-fill);
+  background-size: 200% 200%, 200% 200%, auto;
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: 50% 20%, 80% 70%, 0 0;
+  animation: glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,
+    glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;
+  animation-play-state: var(--glow-drift-play);
+  backdrop-filter: var(--glass-optic, blur(22px)) saturate(145%);
+  -webkit-backdrop-filter: var(--glass-optic, blur(22px)) saturate(145%);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 1px 0 0 var(--glass-low),
+    inset -1px 0 0 var(--glass-low), inset 0 -1px 0 var(--glass-low), var(--glass-shadow);
+}
+
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .peach-react :is([data-review-filter], [data-selection-dock]) {
+    background: var(--ground);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    animation: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peach-react :is([data-review-filter], [data-selection-dock]) { animation: none; }
+}
+
+.peach-react:has([data-selection-dock]) {
+  padding-bottom: 96px;
+}
+
+.peach-react [data-source-divider] > * + * {
+  border-top: 1px solid var(--color-separator-border);
+}
+
+/* 排名保留迁移前的图标式展开：列表原地长开，箭头同步说明当前方向。 */
+.peach-react [data-expandable-ranking] {
+  position: relative;
+  padding-bottom: 28px;
+}
+
+.peach-react [data-expandable-ranking-list] {
+  max-height: var(--ranking-collapsed-height, none);
+  overflow: hidden;
+}
+
+.peach-react [data-expandable-ranking][data-expanded] [data-expandable-ranking-list] {
+  max-height: var(--ranking-expanded-height, none);
+}
+
+.peach-react [data-expandable-ranking][data-animating] [data-expandable-ranking-list] {
+  transition: max-height 200ms var(--ease-in-out);
+}
+
+.peach-react [data-expandable-ranking]:not([data-expanded]) [data-expandable-ranking-list] {
+  mask-image: linear-gradient(#000 calc(100% - 44px), transparent);
+}
+
+.peach-react [data-ranking-toggle] {
+  position: absolute;
+  z-index: 1;
+  bottom: 4px;
+  left: 50%;
+  display: grid;
+  width: 40px;
+  height: 20px;
+  padding: 0;
+  transform: translateX(-50%);
+  place-items: center;
+  border: 1px solid var(--color-border-button-default);
+  border-radius: 999px;
+  background: var(--color-background-primary-default);
+  box-shadow: 0 1px 3px #0000001a;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.peach-react [data-ranking-toggle]:hover {
+  background: var(--color-background-primary-hover);
+  color: var(--color-text-primary);
+}
+
+.peach-react [data-ranking-toggle]:focus-visible {
+  outline: 2px solid var(--color-border-focus-ring);
+  outline-offset: 2px;
+}
+
+.peach-react [data-ranking-toggle] svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 200ms var(--ease-in-out);
+}
+
+.peach-react [data-ranking-toggle][aria-expanded='true'] svg {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .peach-react [data-expandable-ranking][data-animating] [data-expandable-ranking-list],
+  .peach-react [data-ranking-toggle] svg {
+    transition: none;
+  }
+}
+
+/* BoardUI 的 visually-hidden 原生 checkbox 会被旧样式表重新拉成 16px，获得浏览器自带的
+ * 黑色 focus outline；真正的焦点环已经由旁边的 CheckboxGlyph 负责。把原生控件收回 1px
+ * 并去掉 appearance，避免选中那一帧从裁切层里闪出黑框。 */
+.peach-react label[data-rac] input[type='checkbox'] {
+  width: 1px;
+  height: 1px;
+  appearance: none;
+  outline: none;
+}
+
+/* 构建器会把 SVG 的 unitless stroke-dashoffset 改写成 px，破坏 pathLength=1 的归一化，
+ * 勾会在浏览器重算路径长度时来回跳。改成只动 opacity/transform 的单次出现动画。 */
+@keyframes checkbox-mark-enter {
   from {
-    stroke-dashoffset: 1;
+    opacity: 0;
+    transform: scale(.72);
   }
   to {
-    stroke-dashoffset: 0;
+    opacity: 1;
+    transform: scale(1);
   }
 }
 .animate-check-draw {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: check-draw 200ms cubic-bezier(0.65, 0, 0.35, 1) forwards;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: checkbox-mark-enter 150ms var(--ease-out) both;
 }
 @media (prefers-reduced-motion: reduce) {
   .animate-check-draw {
     animation: none;
-    stroke-dashoffset: 0;
+    opacity: 1;
+    transform: none;
   }
 }
 

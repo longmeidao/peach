@@ -473,10 +473,18 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 @media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}
 /* 读数下面那两张是要做的事，各占一行，与扫描卡同一个左说明右按钮的形状。 */
-.cleanupgrid>.cleanupemptyfolders{display:grid;grid-template-columns:1fr auto;align-items:center}
-.cleanupgrid>.cleanupemptyfolders>.geist-fieldset-content{min-height:0;padding:24px}
-.cleanupgrid>.cleanupemptyfolders>.geist-fieldset-footer{border:0;padding:24px;background:none;display:flex;gap:8px;flex-wrap:wrap}
+.cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-primary-default);box-shadow:var(--shadow-card)}
+.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content]){min-height:0;padding:24px}
+.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-footer,[data-geist-fieldset-footer]){justify-content:flex-end;border:0;padding:24px;background:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cleanupgrid :is(.cleanupprocessing,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content]){display:flex;flex-direction:column;gap:8px}
+.cleanupgrid :is(.cleanupprocessing,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content])>:is(h3,p){margin:0}
+.cleanupgrid [data-cleanup-processing] h3{font:var(--board-heading);letter-spacing:0}
 .cleanupgrid>.cleanupemptyfolders strong{font:var(--board-body);color:var(--color-text-secondary);letter-spacing:0}
+.resourcesyncbox[data-cleanup-task]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.resourcesyncbox[data-cleanup-task]>.resourcesyncbody{min-height:0;padding:24px}
+.resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{align-self:stretch;justify-content:flex-end;min-height:0;padding:24px;border:0;background:none}
+.resourcesyncbox[data-cleanup-task] .geist-fieldset-title{margin:0 0 8px;font:var(--board-heading);letter-spacing:0}
 /* 来源行和资源同步结果面板取同一份站标；离线那枚跟着结果面板的 offline 用色。 */
 .cleanupgrid>.cleanupemptyfolders .cleanupmeta{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
 .cleanupsourcemark{display:inline-flex;align-items:center;gap:6px}
@@ -1273,7 +1281,7 @@ body :is(button.danger,.batchbar button.danger):not(:disabled):active::before{op
 .pcheck input:is(:checked,:indeterminate)+span{color:#fff;border-color:transparent;background:var(--board-blue);box-shadow:inset 0 1px 0 #ffffff40,0 1px 2px #0450e229}
 .pcheck input:indeterminate+span svg{visibility:hidden}.pcheck input:indeterminate+span::after{content:'';position:absolute;top:6px;left:3px;width:8px;height:2px;border-radius:1px;background:#fff}
 .pcheck input:disabled+span{opacity:.5}.pcheck>span svg{width:14px;height:14px;stroke-width:2}.pcheck:hover>span{border-color:var(--color-border-button-hover)}
-input[type=checkbox]:not(.ptoggle):not(.pcheck input){accent-color:var(--color-accent-600);width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
+input[type=checkbox]:not(.ptoggle):not(.pcheck input):not(.peach-react input){accent-color:var(--color-accent-600);width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
 .dual-range .range-base,.dual-range .range-fill{height:6px;top:11px}.dual-range .range-base{background:var(--color-background-tertiary-default);box-shadow:inset 0 1px 1px #0000000f}.dual-range .range-fill{background:linear-gradient(90deg,var(--color-accent-400),var(--color-accent-600));box-shadow:inset 0 1px 0 #ffffff3d,0 1px 2px #0450e229}
 body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px #0000001a,inset 0 1px 0 #ffffffcc;cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),box-shadow .15s}
 /* 抓住的时候手柄涨一圈，松开按同一条弹簧收回去。位置不参与任何过渡——手柄要贴着
@@ -1317,7 +1325,12 @@ body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlin
 body :is(.board-chip,.badge){display:inline-flex;align-items:center;justify-content:center;gap:4px;padding:4px 6px;min-height:24px;box-sizing:border-box;border:0;border-radius:6px;background:var(--color-background-tertiary-default);color:var(--color-text-secondary);font:var(--board-caption);white-space:nowrap}
 body .board-chip.success{background:color-mix(in srgb,#84cc16 16%,var(--color-background-primary-default));color:#4d7c0f}body .board-chip.error{background:color-mix(in srgb,#f43f5e 12%,var(--color-background-primary-default));color:#e11d48}
 .fprovider{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.followmanage .fsource.frow{grid-template-columns:20px minmax(120px,1fr) minmax(100px,auto) auto auto}
-.board-button-group{display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.board-button-group>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;background:transparent;color:var(--color-text-secondary);font:var(--board-body)}.board-button-group>button+button{border-left:1px solid var(--color-border-button-default)}.board-button-group>button:is(:hover,[aria-pressed=true]):not(.primary){background:var(--control-hover);color:var(--color-text-primary)}
+:is(.board-button-group,[data-button-group]){display:inline-flex;align-items:center;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}
+:is(.board-button-group,[data-button-group])>button{height:34px;padding:0 12px;border:0;border-radius:0;box-shadow:none;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap}
+:is(.board-button-group,[data-button-group]):not([data-variant=primary])>button{background:transparent}
+:is(.board-button-group,[data-button-group])>button+button{border-left:1px solid var(--color-border-button-default)}
+:is(.board-button-group,[data-button-group])>button:is(:hover,[aria-pressed=true],[aria-selected=true]):not(.primary){background:var(--control-hover);color:var(--color-text-primary)}
+:is(.board-button-group,[data-button-group])>button:focus-visible{position:relative;z-index:1;outline:2px solid var(--color-border-focus-ring);outline-offset:-2px}
 .photolight .photonav{width:36px;height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-secondary);box-shadow:0 1px 2px #0000000d}.photolight .photonav:hover{background:var(--color-background-primary-hover)}.photolight .photonav svg{width:20px;height:20px}.photolight .photonav.swiper-button-disabled{opacity:.4;pointer-events:none}
 .board-carousel-pagination{display:flex;align-items:center;justify-content:center;gap:8px;max-width:160px;margin-inline:auto;overflow:hidden;height:28px}.board-carousel-pagination .swiper-pagination-bullet{width:6px;height:6px;flex:none;margin:0!important;border:0;padding:0;border-radius:999px;background:#a3a3a3;opacity:1;transition:width .2s ease-out,background .2s ease-out}.board-carousel-pagination .swiper-pagination-bullet-active{width:16px;background:#fafafa}
 @media(prefers-reduced-motion:reduce){.board-tooltip,.board-carousel-pagination .swiper-pagination-bullet{transition:none}}
@@ -1338,7 +1351,7 @@ body .board-chip.success{background:color-mix(in srgb,#84cc16 16%,var(--color-ba
 .followmanage .fsourceactions{padding:2px;overflow:visible}
 .cleanupgrid>.board-processing-skeleton{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:114px}
 .board-processing-skeleton>.geist-fieldset-footer{border:0;background:none}
-@media(max-width:1000px){.cleanupgrid>.board-processing-skeleton{grid-template-columns:1fr}.board-processing-skeleton>.geist-fieldset-footer{justify-content:flex-start}}
+@media(max-width:1000px){.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]),.resourcesyncbox[data-cleanup-task]{grid-template-columns:1fr}.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-footer,[data-geist-fieldset-footer]),.resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{justify-content:flex-start;padding-top:0}.cleanupgrid>.board-processing-skeleton{grid-template-columns:1fr}.board-processing-skeleton>.geist-fieldset-footer{justify-content:flex-start}}
 .metricstrip>button[aria-selected=true]{background:var(--color-background-primary-default);box-shadow:none}.metricstrip>button[aria-selected=true]::after{box-sizing:border-box}.metricstrip>button[aria-selected=true] .board-stat-footer{background:var(--board-card-foot)}
 body .gselectmenu [role=option][aria-selected=true],body .popmenu [aria-checked=true]{background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-primary)}
 .insightswitch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--color-background-primary-default);box-shadow:0 1px 2px #0000000d}.insightswitch label>span{display:flex;align-items:center;min-height:28px;padding:4px 10px;border-radius:7px;color:var(--color-text-secondary);font:var(--board-body-medium)}.insightswitch label:has(input:checked)>span{background:var(--color-background-primary-hover);color:var(--color-text-primary);box-shadow:0 1px 2px #0000001a}
@@ -1359,10 +1372,19 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 @media(prefers-reduced-motion:reduce){[data-board-tabs].board-tabs-ready::before{transition:none}}
 .followmanage .fsource:has([data-follow-select]){background:var(--color-background-primary-default)}
 .followmanage .fsource.selected:has([data-follow-select]){border-color:var(--color-border-focus-ring)}
-/* 两半之间那条线交给右半的左边界，跟这一组里 `button+button` 的分隔线是同一条规则，
-   上下顶满。四角与外圈仍归外框：两半各自带边和圆角的话，交界处是两条线叠着。 */
+/* 两半之间的线独立盖在右半左缘，上下顶满；两颗 Button 自己不再画悬停层，
+   整组 hover 保持原蓝色，鼠标跨过中缝也不会一明一暗。 */
 .splitbutton.board-button-group>.splitmain,.splitbutton.board-button-group>.splittoggle{border:0;border-radius:0;box-shadow:none}
 .splitbutton.board-button-group>.splittoggle{border-left:1px solid var(--color-border-button-default)}
+[data-split-button][data-button-group]{position:relative;isolation:isolate}
+[data-split-button][data-button-group]>button{position:relative;z-index:1;height:36px;border:0;border-radius:0;background:none!important;box-shadow:none}
+[data-split-button][data-button-group]>button::before{display:none!important}
+[data-split-button][data-button-group]>button+button{position:relative;border-left:0}
+[data-split-button][data-button-group]>button+button::after{content:"";position:absolute;z-index:2;inset-block:0;left:0;width:1px;background:#fff;pointer-events:none}
+[data-split-button][data-variant=primary]{border:0;background:var(--board-blue);box-shadow:none}
+[data-split-button][data-variant=primary]:has(>button:active){background:var(--board-blue-active)}
+[data-split-button][data-variant=primary]>button{color:#fff}
+[data-split-button][data-variant=primary]>button:last-child{width:36px;padding:8px}
 /* 这两半压上去换的那一面跟站内其他次级按钮是同一个 token。基线那条按 `--inset` 填，
    特指度还比这一组的规则高，两处今天算出来是同一个值，改其中一个就会分家。 */
 .splitbutton.board-button-group>button:is(:hover,[aria-pressed=true]):not(.primary){background:var(--control-hover)}
@@ -1381,8 +1403,12 @@ body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
+/* React 产物会按构建目标把标准属性折成 `-webkit-backdrop-filter`，当前 Chromium 不认后者。
+   标准属性留在不经转换的共享样式表里，数值逐项对齐首页上下两块玻璃。 */
+body .peach-react [data-review-filter]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}
+body .peach-react [data-selection-dock]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%)}
 html.board-high-contrast :is(.selectiondock,.batchbar,.tagselection,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
-@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.batchbar,.tagselection,.card .badge){background:var(--ground);backdrop-filter:none;animation:none}}
+@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.batchbar,.tagselection,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;animation:none}}
 @media(prefers-reduced-motion:reduce){body :is(.selectiondock,.batchbar,.tagselection){animation:none}}
 
 /* ── 分段控件（boardui segmented-control.tsx）：口味页的证据切换与工具栏的版式切换同一枚滑块 ──

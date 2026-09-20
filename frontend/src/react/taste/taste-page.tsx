@@ -36,6 +36,7 @@ import { errorMessage } from '../../api';
 import type { TasteProps } from '../bundle';
 import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
+import { ExpandableRanking } from '../components/expandable-ranking';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
@@ -122,16 +123,14 @@ interface RankListProps {
 
 /** 一榜名次。点得动的那些是按钮，其余是行——馆藏里没有对应条目时点进去只会是一张空页。 */
 function RankList({ rows, kind, visual, empty, onSignal, avatarInner }: RankListProps) {
-  const [expanded, setExpanded] = useState(false);
   if (!rows.length) {
     return <EmptyState shell="plain" icon={RiSearchLine} title="暂无足够证据">{empty}</EmptyState>;
   }
   const shares = rankShares(rows);
-  const shown = expanded ? rows : rows.slice(0, RANK_PREVIEW);
   return (
-    <div className="flex flex-col gap-3">
-      <ol className="inline-grid w-full gap-x-7 gap-y-2 sm:grid-cols-2">
-        {shown.map((row, index) => {
+    <ExpandableRanking previewCount={RANK_PREVIEW}
+      className="inline-grid w-full gap-x-7 gap-y-2 sm:grid-cols-2">
+        {rows.map((row, index) => {
           const clickable = !!kind && !!row.peach_items;
           const domain = String(row.source_domain || '');
           const body = (
@@ -178,15 +177,7 @@ function RankList({ rows, kind, visual, empty, onSignal, avatarInner }: RankList
             </li>
           );
         })}
-      </ol>
-      {rows.length > RANK_PREVIEW ? (
-        <div className="flex justify-center">
-          <Button variant="secondary" size="small" onClick={() => setExpanded(!expanded)}>
-            {expanded ? '收起排名' : '展开更多排名'}
-          </Button>
-        </div>
-      ) : null}
-    </div>
+    </ExpandableRanking>
   );
 }
 
@@ -317,7 +308,7 @@ function HistoryActions(
   const pick = (act: () => void) => { setOpen(false); act() };
   return (
     <>
-      <span className="flex items-center gap-1">
+      <span data-button-group data-split-button data-variant="primary">
         <Button leadingIcon={RiCompassLine} title={REFRESH_TITLE} onClick={onRefresh} {...busyProps(busy)}>
           读取浏览器历史
         </Button>

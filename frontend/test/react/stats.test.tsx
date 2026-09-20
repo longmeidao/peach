@@ -152,14 +152,20 @@ it('取不到容量的卷不画使用率，只说取不到', async () => {
   expect(panel.querySelector('[role=progressbar]')).toBeNull();
 });
 
-it('排行收起时只露前十，展开之后全给', async () => {
+it('排行收起时后两项不可交互，箭头原地展开并能收回', async () => {
   const tags = Array.from({ length: 12 }, (_, index) => ({ k: `tag:${index}`, n: 12 - index, cat: 'genre' }));
   const { host } = await open(payload({ top_tags: tags }));
-  expect(host.querySelectorAll('ol li')).toHaveLength(10);
-  await click(buttonNamed('展开更多排名', host));
-  expect(host.querySelectorAll('ol li')).toHaveLength(12);
-  await click(buttonNamed('收起排名', host));
-  expect(host.querySelectorAll('ol li')).toHaveLength(10);
+  const rows = host.querySelectorAll('ol li');
+  const expand = host.querySelector<HTMLButtonElement>('button[aria-label="展开更多排名"]');
+  expect(rows).toHaveLength(12);
+  expect(rows[10]?.hasAttribute('inert')).toBe(true);
+  expect(expand?.querySelector('svg')).not.toBeNull();
+  expect(expand?.textContent).toBe('');
+  await click(expand);
+  expect(rows[10]?.hasAttribute('inert')).toBe(false);
+  expect(host.querySelector('[data-expandable-ranking]')?.hasAttribute('data-animating')).toBe(true);
+  await click(host.querySelector('button[aria-label="收起排名"]'));
+  expect(rows[10]?.hasAttribute('inert')).toBe(true);
 });
 
 it('点一个内容标签把键交回给壳，页面自己不跳转', async () => {

@@ -2913,7 +2913,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn('<section aria-label={`${name} 的关注来源`}', source_list)
         self.assertIn("<AuthorCard key={key} group={group} name={authorName(group, aliases)}", source_list)
         # 卡片里那一叠来源行是同一位创作者的，展开与否由卡自己记。
-        self.assertIn("<div id={panel} hidden={!open}>", source_list)
+        self.assertIn("<div id={panel} hidden={!open} data-source-divider>", source_list)
         self.assertIn("const panel = `follow-author-${group[0]!.id}`;", source_list)
         self.assertReactContains(
             "follow-manage/source-view.tsx",
@@ -3317,18 +3317,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("go({ layout", page)
         self.assertIn("const [layout, setLayout] = useState<Layout>", page)
 
-    def test_selected_rows_are_marked_without_repainting_the_row_behind_the_table(self):
-        """选中与否由每行自己说。
-
-        卡片那边行底色归 `data-selected`，表格那边归 BoardUI Table 自己的选中态——在它上面
-        再铺一层，就等于把它的 hover 与焦点态盖掉一遍。
-        """
+    def test_selected_rows_keep_the_divider_only_surface_in_both_views(self):
+        """卡片来源行保持透明并以 divider 分隔，表格底色仍归 BoardUI Table。"""
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertIn("<div data-selected={selected || undefined}", sources)
         row_open = sources[sources.index("<div data-selected={selected || undefined}"):]
         row_open = row_open[:row_open.index('">') + 2]
-        self.assertIn("data-selected:bg-", row_open, "卡片行的选中底色挂在这一行自己身上")
-        # 表格行不带自己的底色类：那一层归 Table。
+        self.assertNotIn("data-selected:bg-", row_open)
+        self.assertIn("data-source-divider", sources)
+        # 表格行不带额外底色类：那一层归 Table。
         table_block = sources[sources.index("{asTable ? ("):]
         self.assertNotIn("data-selected:bg", table_block)
         self.assertIn("<TableRow key={row.id} id={row.id}>", table_block)
@@ -3419,11 +3416,12 @@ class FollowWebSourceTests(unittest.TestCase):
         """版式开关、排序框和方向键同处一行，高度必须是同一档。"""
         sources = self.read_react("follow-manage/source-list.tsx")
         toolbar = sources[sources.index("关注列表</h3>"):sources.index("{/* 这一趟在后台跑")]
-        # 按钮一律 small（32px 高），下拉一律 sm：同一行里只许有一档高度。
-        self.assertEqual(toolbar.count('size="small"'), 5, "这一行的按钮都走 small 档")
-        self.assertEqual(toolbar.count('size="sm"'), 1, "排序下拉走 sm 档")
-        self.assertNotIn('size="medium"', toolbar)
+        # 工具条都走默认 medium（36px 高），排序下拉再由专用钩子锁到同一高度。
+        self.assertNotIn('size="small"', toolbar)
+        self.assertNotIn('size="sm"', toolbar)
         self.assertNotIn('size="xs"', toolbar)
+        self.assertIn("data-button-group", toolbar)
+        self.assertIn("data-follow-sort-control", toolbar)
 
     def test_the_sort_direction_key_is_a_square_icon_button(self):
         """纯图标键是正方形，边长与同排控件同高，图标不被内边距压扁。

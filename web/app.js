@@ -4391,7 +4391,7 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 function linkManagerMarkup(){
   return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
     <h2 id="linkManagerTitle">链接管理</h2>
-    <div class="resourcesyncbox" data-geist-fieldset>
+    <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','站外链接')}
       <div id="linkSummary" class="linksummary"></div></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
@@ -4511,7 +4511,7 @@ function wirePruneProgress(){
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
     <h2 id="resourceSyncTitle">资源同步</h2>
-    <div class="resourcesyncbox" data-geist-fieldset>
+    <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录核对')}
       <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
@@ -4867,7 +4867,7 @@ async function openDataCleanup(push=true){
     /* 卡片和它的提示是两件东西：提示挂在卡片外面，和资源同步那两块一个写法。
        `#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子。 */
     scraping:`<div class="cleanupscraping" id="libraryProcessing">
-      <section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">
+      <section class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupScrapingTitle">
         <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
           <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
@@ -4878,7 +4878,7 @@ async function openDataCleanup(push=true){
           ?`${Number(duplicates.total).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件`
           :'没有重复内容'}</strong>
       <span class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</span>`,'data-cleanup-open="duplicates"'),
-    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanupEmptyTitle">
+    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupEmptyTitle">
       <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹与失效条目')}
         <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
         <p class="cleanupmeta">${sourceLine}</p><div class="cleanupstate" aria-live="polite"></div></div>
@@ -10171,7 +10171,7 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
     /* 设置弹层那一栏也在名单里。它挂在 `<body>` 上、不在 `#main` 里，所以下面那个
        观察器看不到它开合——但它从头到尾都在 DOM 里，初次 `sync` 就能接上；面板收着时
        宽高是零，`draw` 直接返回，等 `ResizeObserver` 在它露出来那一帧再画一次贴图。 */
-    document.querySelectorAll('.board-filter-frame,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar,.settingscard>.board-local-nav').forEach(attach);
+    document.querySelectorAll('.board-filter-frame,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar,.settingscard>.board-local-nav,[data-glass-pane]').forEach(attach);
   };
   new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
 }

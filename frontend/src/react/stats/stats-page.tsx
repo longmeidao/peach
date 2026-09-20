@@ -11,7 +11,7 @@ import {
   RiDatabase2Line, RiEyeLine, RiHardDrive2Line, RiHistoryLine, RiPriceTag3Line, RiVideoLine,
 } from '@remixicon/react';
 import { useQuery } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
 
 import { fmtSize, LOC } from '@peach/legacy/core';
@@ -23,6 +23,7 @@ import { errorMessage } from '../../api';
 import type { StatsProps } from '../bundle';
 import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
+import { ExpandableRanking } from '../components/expandable-ranking';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
@@ -174,18 +175,16 @@ function StorageDetail({ volumes, configurable, openMediaSettings }: { volumes: 
 }
 
 function TagRanking({ tags, tagLabel, onTag }: { tags: TopTag[] } & StatsProps) {
-  const [expanded, setExpanded] = useState(false);
   if (!tags.length) {
     return (
       <EmptyState shell="plain" icon={RiPriceTag3Line} title="还没有内容标签"
         actions={<LinkButton href="/data-cleanup" size="small">补全资料</LinkButton>}>{NO_TAG_HINT}</EmptyState>
     );
   }
-  const shown = expanded ? tags : tags.slice(0, RANKING_PREVIEW);
   return (
-    <div className="flex flex-col gap-3">
-      <ol className="inline-grid w-full gap-x-6 gap-y-1 sm:grid-cols-2">
-        {shown.map((tag, index) => (
+    <ExpandableRanking previewCount={RANKING_PREVIEW}
+      className="inline-grid w-full gap-x-6 gap-y-1 sm:grid-cols-2">
+        {tags.map((tag, index) => (
           <li key={tag.k} className="min-w-0">
             <button type="button" onClick={() => onTag(tag.k)}
               className="flex min-h-11 w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-lg px-3 py-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring">
@@ -195,15 +194,7 @@ function TagRanking({ tags, tagLabel, onTag }: { tags: TopTag[] } & StatsProps) 
             </button>
           </li>
         ))}
-      </ol>
-      {tags.length > RANKING_PREVIEW ? (
-        <div className="flex justify-center">
-          <Button variant="secondary" size="small" onClick={() => setExpanded(!expanded)}>
-            {expanded ? '收起排名' : '展开更多排名'}
-          </Button>
-        </div>
-      ) : null}
-    </div>
+    </ExpandableRanking>
   );
 }
 

@@ -415,7 +415,7 @@ function M(e, t, n) {
 }
 //#endregion
 //#region src/board-skeleton.ts
-var N = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, P = () => `${N("80%")}${N("48%")}`, F = (e, t) => e.repeat(t), I = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${N("45%")}</b><small class="board-stat-footer">${N("60%")}</small></div>`).join("")}</div>`, L = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, R = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, z = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${F(P(), 3)}</div></section>`, B = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, V = (e) => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${N("100px")}</span><div class="followtoolbaractions"><button class="fbtn primary followcheckall" disabled>${u("refresh-cw")}<span data-collapse-label>检查全部</span></button><div class="iconswitch" data-board-segments="true"><label>${u("layout-grid")}</label><label>${u("table")}</label></div><span class="fmanagesort" data-collapse-field>${u("sort")}${o([["checked", "检查时间"]], "checked", {
+var N = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, P = () => `${N("80%")}${N("48%")}`, F = (e, t) => e.repeat(t), I = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${N("45%")}</b><small class="board-stat-footer">${N("60%")}</small></div>`).join("")}</div>`, L = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, R = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, z = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${F(P(), 3)}</div></section>`, B = (e) => `<button class="fbtn" type="button" disabled>${e}</button>`, V = (e) => `<div class="fsechead" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta">${N("100px")}</span><div class="followtoolbaractions"><button class="fbtn primary followcheckall" disabled>${u("refresh-cw")}<span data-collapse-label>检查全部</span></button><div class="board-button-group"><button type="button" disabled aria-pressed="true">${u("layout-grid")}</button><button type="button" disabled>${u("table")}</button></div><span class="fmanagesort" data-collapse-field>${u("sort")}${o([["checked", "检查时间"]], "checked", {
 	label: "关注列表排序",
 	attr: "disabled"
 })}</span><button class="fbtn fmanagedir" disabled>${u("arrow-down")}</button>${e ? "" : B(u("chevron-up") + "<span data-collapse-label>全部收起</span>")}</div></div>`, H = () => `<div class="fsource frow"><span class="fchannelcheck">${N("18px")}</span><b>${N("85%")}</b><span class="fprovider">${N("54px")}</span><span class="fmeta fchecked">${N("40px")}</span><span class="fsourceactions"><span class="skeleton skeleton-icon"></span><span class="skeleton skeleton-icon"></span></span></div>`, U = () => `<details class="fauthor" open><summary class="fauthorhead"><span class="favatar skeleton"></span><b>${N("90px")}</b><span class="skeleton skeleton-icon"></span><span class="fmeta">${N("40px")}</span><span class="board-author-actions"><button type="button" class="fbtn small" data-follow-author-select disabled>${u("check-check")}<span data-author-select-label>全选</span></button><span class="skeleton skeleton-icon"></span></span></summary><div class="fauthorsources">${F(H(), 3)}</div></details>`;
@@ -582,19 +582,19 @@ function _e() {
         <span class="board-plain-stat-head"><span class="board-stat-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${n}"></use></svg></span>${e}</span>
         <strong>${t}</strong><span class="cleanupmeta">${t}</span></button>`).join("")}</div>
     <div class="cleanupgrid">
-      <section class="cleanupfieldset board-processing-skeleton" data-geist-fieldset aria-labelledby="cleanup-loading-scan">
+      <section class="cleanupfieldset cleanupprocessing board-processing-skeleton" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-scan">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-scan">扫描与采集</h3>
           <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="board-link-button" href="/scraping"><span>来源和凭证</span><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-up"></use></svg></a><div class="splitbutton board-button-group primary"><button type="button" class="splitmain geist-button primary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-database"></use></svg>扫描并补全资料</button><button type="button" class="splittoggle geist-button primary" disabled aria-label="更多扫描与采集方式"><svg aria-hidden="true"><use href="#i-chevron-down"></use></svg></button></div></footer>
       </section>
-      <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanup-loading-empty">
+      <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹</h3>
           <strong>${t}</strong><p class="cleanupmeta">${t}</p></div>
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled><svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>扫描空文件夹</span></button></footer>
       </section></div>
     <section class="resourcesync" aria-labelledby="cleanup-loading-links">
       <h2 id="cleanup-loading-links">链接管理</h2>
-      <div class="resourcesyncbox" data-geist-fieldset>
+      <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">站外链接</h3>
           <div class="linksummary"><div class="linkstats">${[
 		"链接总数",
@@ -607,7 +607,7 @@ function _e() {
       </div></section>
     <section class="resourcesync" aria-labelledby="cleanup-loading-sync">
       <h2 id="cleanup-loading-sync">资源同步</h2>
-      <div class="resourcesyncbox" data-geist-fieldset>
+      <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">文件与记录核对</h3>
           <p>${t}</p></div>
         <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" type="button" disabled>检查文件</button></div>

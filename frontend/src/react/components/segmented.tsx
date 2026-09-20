@@ -1,7 +1,8 @@
 /* 分段控件：一排互斥选项挤在一条药丸轨道里。
  *
- * 迁移前统计页的面板页签 `.insighttabs`、口味页的 `.insightswitch`、关注管理的
- * `.follow-workspace-switch` 是同一个形状：轨道 `background-tertiary-default` 打底、4px 内边距、
+ * 迁移前统计页的面板页签 `.insighttabs`、口味页的 `.insightswitch` 与关注管理页的
+ * `.follow-workspace-switch` 是同一个形状：
+ * 轨道 `background-tertiary-default` 打底、4px 内边距、
  * 10px 圆角，选中那一格是一块浮起来的面（6px 圆角、1px 接触阴影）。迁到 React 时这几处都掉成了
  * 裸文字加一条下划线，一排选项看不出是一个控件。
  *
