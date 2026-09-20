@@ -1598,9 +1598,9 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 .post-setup-notification[data-collapsed=true]>.post-setup-task-list,.post-setup-notification[data-collapsed=true]>footer{display:none}
 .post-setup-task-list{display:grid;gap:0;min-height:0;margin:0;padding:4px;border-block:1px solid var(--color-border-button-default);overflow-y:auto;list-style:none}
 .post-setup-task{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-.post-setup-task+.post-setup-task::before{content:"";position:absolute;inset:0 0 auto;height:1px;background:var(--color-border-button-default);pointer-events:none;transition:opacity .15s ease}
+.post-setup-task+.post-setup-task::before{content:"";position:absolute;inset:0 12px auto;height:1px;background:var(--color-border-button-default);pointer-events:none}
 .post-setup-task:has(>a:hover)::before,.post-setup-task:has(>a:hover)+.post-setup-task::before{opacity:0}
-.post-setup-task>a{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) 16px;align-items:center;gap:12px;min-width:0;min-height:62px;padding:10px 8px 10px 12px;border-radius:8px;color:var(--ink);text-decoration:none;transition:background-color .15s ease,color .15s ease}
+.post-setup-task>a{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) 16px;align-items:center;gap:12px;min-width:0;min-height:62px;padding:10px 8px 10px 12px;border-radius:8px;color:var(--ink);text-decoration:none}
 .post-setup-task>a:hover{background:var(--hover)}
 .post-setup-task>a>svg{width:16px;height:16px;color:var(--color-text-secondary);fill:none;stroke:currentColor;stroke-width:2}
 .post-setup-task>a:hover>svg{color:var(--color-text-primary)}
