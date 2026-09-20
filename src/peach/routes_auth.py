@@ -14,6 +14,7 @@ import html
 from collections import OrderedDict
 import threading
 import time
+from urllib.parse import urlsplit
 from . import access
 from .web_entry import board_entry_style
 from starlette.concurrency import run_in_threadpool
@@ -83,11 +84,51 @@ class AssetLoginRequired(Exception):
     """页面资产（app.css/app.js）未授权：401 形态是 PlainText 提示。"""
 
 
+def _origin_key(value: str) -> tuple[str, str, int | None] | None:
+    """把 Origin 头和随机 Quick Tunnel URL 归一到可比较的三元组。"""
+    try:
+        parsed = urlsplit(value.strip().rstrip("/"))
+    except ValueError:
+        return None
+    if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+            or parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
+        return None
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+    return parsed.scheme.lower(), parsed.hostname.rstrip(".").lower(), port
+
+
+def _tunnel_origin(request: Request) -> tuple[str, str, int | None] | None:
+    """返回当前进程实际拿到的 Quick Tunnel origin，而不是信任请求头。"""
+    manager = getattr(request.app.state, "tunnel", None)
+    if manager is None:
+        return None
+    try:
+        url = manager.snapshot().url
+    except (AttributeError, OSError, ValueError):
+        return None
+    return _origin_key(url) if url else None
+
+
 def same_origin(request: Request) -> None:
-    """浏览器发来的写请求必须来自 Peach 自己的页面：带了别处的 Origin 就拒。"""
+    """浏览器写请求只接受 Peach 页面或当前 Quick Tunnel 页面发来的 Origin。
+
+    独立包的 origin 是回环 HTTP，cloudflared 转发时 Host 仍可能是本机地址，
+    所以不能单纯把 ``Origin`` 和 ASGI 的 ``base_url`` 比较。随机入口由当前
+    TunnelManager 产生并保存在进程内，外部 Origin 必须精确匹配这一份，不能由
+    调用方通过 ``X-Forwarded-*`` 自己声明一个可信地址。
+    """
     origin = request.headers.get("origin")
-    if request.headers.get("sec-fetch-site") == "cross-site" or (origin and origin.rstrip("/") != str(request.base_url).rstrip("/")):
+    if request.headers.get("sec-fetch-site") == "cross-site":
         raise HTTPException(403, "请从 Peach 配置页提交")
+    if origin:
+        supplied = _origin_key(origin)
+        local = _origin_key(str(request.base_url))
+        tunnel_origin = _tunnel_origin(request)
+        if supplied is None or supplied not in {local, tunnel_origin}:
+            raise HTTPException(403, "请从 Peach 配置页提交")
 
 
 def require_auth(request: Request) -> dict[str, str]:

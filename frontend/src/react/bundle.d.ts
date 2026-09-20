@@ -7,6 +7,14 @@ import type { QualityGoal } from './quality-goals/quality-goals';
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
+export interface TunnelState {
+  enabled: boolean;
+  state: 'stopped' | 'starting' | 'running' | 'error';
+  url: string;
+  error: string;
+  available: boolean;
+}
+
 export interface AccessSettingsProps {
   initial: AccessState;
   receipt(message: string): void;
@@ -60,6 +68,7 @@ export interface ConfigurationData {
   update_job?: UpdateJob;
   automatic_updates?: AutomaticUpdateState;
   access?: AccessState;
+  tunnel?: TunnelState;
   editable: boolean;
   /** 不能编辑时给用户看的原因，可编辑时为空。 */
   notice: string;

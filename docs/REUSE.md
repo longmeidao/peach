@@ -60,6 +60,7 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   CI 复用 GitHub Actions 独立 runner 分片与现有 unittest 入口；Peach 仅维护影响域策略，不引入并发测试框架。验证记录与最小安装规则见 `TESTING.md`。
 
 - 访问密码复用 Python 3.14 的 [hashlib.scrypt](https://docs.python.org/3.14/library/hashlib.html) 与 OpenSSL，浏览器会话复用 [ItsDangerous 2.2.0](https://itsdangerous.palletsprojects.com/en/stable/)（Pallets 维护、BSD-3-Clause、Python 3.8+、纯 Python、wheel 16 KB、无传递依赖）；本机原子配置写入复用 tempfile/os.replace，并将已有 filelock 3.32.4 纳入运行依赖。当前树和 Git 的认证入口已有内部口令、三种拒绝响应和本机配置守卫，继续复用。Starlette SessionMiddleware 采用统一时长并随响应更新会话，不满足每台设备选择固定截止时间的要求；直接使用同源签名库，由 Peach 维护可选密码、截止时间与撤销策略。临时文件 POC 的密码验证、签名验证和篡改拒绝通过，耗时 0.153 秒；真实凭据未读取。新增依赖不包含账户体系或数据库迁移。
+- Cloudflare Quick Tunnel 复用官方 `cloudflared`（Apache-2.0）而不在 Peach 内实现隧道协议。源码环境只管理 PATH/环境变量中的进程；Windows 独立包旁路文件固定为 `2026.9.0`，资产、下载地址和 SHA-256 记录在 `scripts/cloudflared-windows.json`，由 `fetch_cloudflared.ps1` 与构建脚本双重校验。Quick Tunnel 的 URL 申请和边缘连接是两个阶段，Peach 使用官方 `--pidfile`（首次成功连接后才写入）作为就绪判据；未取得连接不向页面宣称可用。源码 HTTPS origin 使用项目 CA，独立包使用回环 HTTP，并由当前进程持有的随机 URL 参与写请求来源校验。
 
 - README 交付检查复用系统 Git 的 `diff --no-renames -z` 和 `interpret-trailers --parse`，
   挂到既有 `agent_worktree.py ready/integrate`；Peach 只定义影响文件与双语声明 policy。

@@ -99,7 +99,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_repo_hygiene.py",
                 "test_review_csv.py", "test_jav_code_domain.py",
                 "test_subprocess_encoding.py", "test_module_layering.py",
-                "test_copy_final_state.py", "test_demo_dataset.py"),
+                "test_copy_final_state.py", "test_demo_dataset.py",
+                "test_cloudflared_packaging.py", "test_tunnel.py"),
     # 前端 island 层（ADR-0022）。产物与源码的断言不需要 Node；vitest 那部分在没有
     # npm 时自己跳过，所以这个域在任何机器上都能跑，`full` 也就自动包含它。
     # `test_web_perf.py` 两个域都登记：压缩与 ETag 是 API 交付（catalog），
@@ -121,7 +122,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
              "test_folder_picker.py", "test_fsutil.py", "test_runtime_consistency.py",
              "test_subprocess_encoding.py", "test_windows_update.py", "test_buildinfo.py"),
     "packaging": ("test_dependency_policy.py", "test_buildinfo.py", "test_onboarding.py",
-                  "test_cli.py", "test_versioning.py", "test_frontend_build.py"),
+                  "test_cli.py", "test_versioning.py", "test_frontend_build.py",
+                  "test_cloudflared_packaging.py"),
 }
 
 SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {

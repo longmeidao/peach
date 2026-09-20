@@ -9,6 +9,14 @@
 「专用网络」；不需要安装 Python、Git、Node 或 OpenSSL。局域网里有其他使用者时建议开启访问密码。
 数据保存在当前用户的 `%LOCALAPPDATA%\Peach\peach-data`，和程序目录分开。
 
+## 临时远程链接
+
+配置页的「Cloudflare 临时链接」默认关闭。先在「访问设置」中设置访问密码，再启动链接；地址是 cloudflared 临时生成的随机 `https://<id>.trycloudflare.com`，不是直接打开 `https://try.cloudflare.com/`。关闭 Peach 或停止链接后，地址失效。
+
+源码运行使用本机 HTTPS 与项目 CA；Windows 独立包使用回环 HTTP，外部访问仍由 Cloudflare 提供 HTTPS。独立包已附带经过 SHA-256 校验的 `cloudflared.exe`。如果页面提示连接失败，先检查防火墙或代理是否允许 cloudflared 出站 TCP/UDP `7844`；已经显示随机地址不代表边缘连接已经成功。
+
+该功能面向临时预览，不是稳定域名、团队账号或 Cloudflare Access。不要把随机地址写入书签、文档或公开配置；不要在没有访问密码时绕过页面强行启动。
+
 ## 配置与反馈
 
 - 页面右上角「设置」→「媒体文件夹与服务配置」，或托盘「配置 Peach」，可以修改媒体文件夹、端口并请求扫描。

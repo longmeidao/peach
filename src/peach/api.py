@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
-from . import __version__, web_contract, web_follow
+from . import __version__, settings_file, tunnel, web_contract, web_follow
 from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
 from .buildinfo import frozen_build
 from .config import PeachSettings
@@ -98,13 +98,45 @@ def _offline_response(exc: MediaOffline) -> JSONResponse:
     return response
 
 
+def _resolve_tunnel_manager(
+    settings: PeachSettings, manager: tunnel.TunnelManager | None,
+) -> tunnel.TunnelManager:
+    return manager if manager is not None else tunnel.TunnelManager(
+        settings.tunnel_state_root, settings.tunnel_log_root,
+    )
+
+
+def _tunnel_plan(settings: PeachSettings) -> tunnel.TunnelPlan:
+    config = settings_file.load_config()
+    return tunnel.plan_for_config(
+        config,
+        access_path=settings.access_path,
+        token=settings.token,
+        standalone_mode=settings.tunnel_standalone,
+        lan_address=settings.tunnel_lan_address,
+        https_port=settings.tunnel_origin_port,
+        tls_enabled=settings.tls_enabled,
+    )
+
+
+def _start_tunnel(settings: PeachSettings, manager: tunnel.TunnelManager) -> None:
+    if not (settings.tunnel_enabled and settings.configured):
+        return
+    try:
+        manager.start(_tunnel_plan(settings))
+    except tunnel.TunnelError:
+        LOGGER.warning("Cloudflare Tunnel 未能启动", exc_info=True)
+
+
 def create_app(
     settings: PeachSettings | None = None,
     sync: LedgerSync | None = None,
     review_mirror: ReviewMirror | None = None,
+    tunnel_manager: tunnel.TunnelManager | None = None,
 ) -> FastAPI:
     """`sync` 由 CLI 注入。测试直接建 app 时不传，复制与只读闸门整体不参与。"""
     settings = settings or PeachSettings()
+    tunnel_manager = _resolve_tunnel_manager(settings, tunnel_manager)
     database = LedgerDatabase(settings.db_path)
     contract = web_contract.WebContract(
         settings.db_path, settings.snapshot_root,
@@ -206,6 +238,7 @@ def create_app(
         if recovered:
             logging.getLogger(__name__).info(
                 "task center recovered %s interrupted run(s)", len(recovered))
+        _start_tunnel(settings, tunnel_manager)
         follow_scheduler.start()
         automatic_updates.start()
         warmup = asyncio.create_task(warm_startup_entries())
@@ -226,6 +259,7 @@ def create_app(
             contract.stop_background_jobs()
             if mdns is not None:
                 await asyncio.to_thread(mdns.stop)
+            tunnel_manager.stop()
             http_transport.close()
             hls_plan_executor.shutdown(wait=False, cancel_futures=True)
 
@@ -259,6 +293,7 @@ def create_app(
     app.state.automatic_updates = automatic_updates
     app.state.stream_sessions = StreamSessionRegistry()
     app.state.sync = sync
+    app.state.tunnel = tunnel_manager
 
     # 媒体三异常的统一出口，路由里不再手抄同一组 try/except。
     # 404/503/404 是逐个异常的状态码契约，不许并成一种。
@@ -346,6 +381,7 @@ def create_app(
         # 不探测共享目录或迁移数据库；健康检查必须无副作用。
         ffmpeg = resolver.ffmpeg()
         read_only = bool(sync is not None and sync.read_only)
+        tunnel_state = tunnel_manager.snapshot()
         return {"ok": True, "service": "peach-api", "version": __version__,
                 # 打包这份代码的提交。源码运行时是 null：跑的就是检出本身。
                 "build_commit": BUILD.commit if BUILD else None,
@@ -365,7 +401,10 @@ def create_app(
                 "ledger_read_only": read_only,
                 "ledger_read_only_message": sync.read_only_message if read_only else None,
                 "ledger_writer_origin": settings.review_writer_origin if read_only else None,
-                "scheme": "https" if settings.tls_enabled else "http"}
+                "scheme": "https" if settings.tls_enabled else "http",
+                # 健康检查可能被公网探针访问，不能在这里回传随机 Tunnel URL。
+                "tunnel": {"enabled": settings.tunnel_enabled, "state": tunnel_state.state},
+        }
 
     # 顺序即契约：catch-all 最后。`routes_media` 里有 `/api/stream-plan` 与
     # `/api/stream-cancel` 两条具名 API，所以它也要排在 `routes_api` 之前。

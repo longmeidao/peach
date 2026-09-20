@@ -10,6 +10,7 @@ import { apiSend } from '../../api';
 import type { ConfigurationGroupProps, PeachProxyState } from '../bundle';
 import { Note } from '../components/note';
 import { AccessSettings } from './access-settings';
+import { TunnelSettings } from './tunnel-settings';
 import { ErrorText, Footer, Rows, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
@@ -20,6 +21,7 @@ export function NetworkSettings({ data, receipt }: ConfigurationGroupProps) {
     <div className="flex flex-col gap-6">
       {data.peach_proxy ? <PeachProxy initial={data.peach_proxy} receipt={receipt} /> : null}
       {data.access ? <AccessSettings initial={data.access} receipt={receipt} /> : null}
+      {data.tunnel ? <TunnelSettings data={data} initial={data.tunnel} receipt={receipt} /> : null}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 ﻿param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist\Peach'),
-    [switch]$Standalone
+    [switch]$Standalone,
+    [string]$CloudflaredPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -77,6 +78,29 @@ if ($Standalone) {
     $BuildMode = @('--onedir', '--add-data', "$(Join-Path $PSScriptRoot 'standalone.txt');.")
     $BuildDestination = Split-Path -Parent $OutputPath
 }
+$CloudflaredSource = $null
+$CloudflaredManifest = $null
+$CloudflaredHash = $null
+if ($Standalone) {
+    $CloudflaredCandidates = @()
+    if ($CloudflaredPath) { $CloudflaredCandidates += $CloudflaredPath }
+    if ($env:PEACH_CLOUDFLARED_BUILD) { $CloudflaredCandidates += $env:PEACH_CLOUDFLARED_BUILD }
+    $CloudflaredCandidates += (Join-Path $ProjectRoot 'vendor\cloudflared\cloudflared.exe')
+    foreach ($Candidate in $CloudflaredCandidates) {
+        if ($Candidate -and (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+            $CloudflaredSource = (Resolve-Path -LiteralPath $Candidate).Path
+            break
+        }
+    }
+    if (-not $CloudflaredSource) {
+        throw 'Standalone build requires cloudflared.exe. Run scripts/fetch_cloudflared.ps1 or pass -CloudflaredPath.'
+    }
+    $CloudflaredManifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'cloudflared-windows.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    $CloudflaredHash = (Get-FileHash -LiteralPath $CloudflaredSource -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($CloudflaredHash -ne $CloudflaredManifest.sha256.ToLowerInvariant()) {
+        throw "cloudflared SHA-256 mismatch: expected $($CloudflaredManifest.sha256), got $CloudflaredHash"
+    }
+}
 & $Python -m PyInstaller --noconfirm --clean @BuildMode --windowed --name Peach `
     --distpath $BuildDestination --workpath $WorkPath --specpath $BuildPath `
     --paths (Join-Path $ProjectRoot 'src') --python-option 'X utf8' `
@@ -94,6 +118,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Peach build failed.' }
 if ($Standalone) {
     Copy-Item -LiteralPath (Join-Path $ProjectRoot 'docs/TESTING_DESKTOP.md') -Destination (Join-Path $OutputPath '开始使用.md')
     Copy-Item -LiteralPath (Join-Path $ProjectRoot 'LICENSE') -Destination (Join-Path $OutputPath 'LICENSE.txt')
+    Copy-Item -LiteralPath $CloudflaredSource -Destination (Join-Path $OutputPath 'cloudflared.exe') -Force
+    $CloudflaredManifest | Add-Member -NotePropertyName packaged_sha256 -NotePropertyValue $CloudflaredHash -Force
+    $CloudflaredManifest | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $OutputPath 'cloudflared-manifest.json') -Encoding utf8
 }
 
 # 工作目录只服务这一次构建：`--clean` 已让下一次不复用它，留着只是几十 MB 的中间产物。
