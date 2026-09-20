@@ -443,7 +443,7 @@ const route=(path,replace=false)=>{
   barsRequestSeq++;
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
   lastRoutePath=decodeURIComponent(new URL(path,location.href).pathname);
-  queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation()});
+  queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation();void syncPostSetupTutorial()});
 };
 
 /* ── 脱盘模式 ─────────────────────────────────────────────────────────────────
@@ -1272,8 +1272,8 @@ const postSetupTutorialSkipped=()=>{
 const setPostSetupTutorialSkipped=values=>{
   try{localStorage.setItem(POST_SETUP_TUTORIAL_SKIPPED_KEY,JSON.stringify([...values]))}catch(_error){}
 };
-/* `onboarding=1` 来自设置完成页。历史导入可以先去口味页，但标记会一直留到用户
-   第一次回首页；清单只读真实接口，不用“访问过页面”冒充完成。 */
+/* `onboarding=1` 来自设置完成页。历史导入可以先去口味页，标记会在 Peach 的每一页
+   保持生效；清单只读真实接口，不用“访问过页面”冒充完成。 */
 if(new URLSearchParams(location.search).get('onboarding')==='1'){
   setPostSetupTutorialMarker('pending');
   if(location.pathname==='/'){
@@ -1335,7 +1335,7 @@ const postSetupTutorialHtml=(tasks,skippedCount,totalCount)=>{
     </li>`).join('');
   return `<article class="post-setup-notification" data-collapsed="${collapsed}">
       <header class="post-setup-notification-head">
-        <span class="post-setup-notification-icon" aria-hidden="true">${icon('sparkles')}</span>
+        <span class="post-setup-notification-icon" aria-hidden="true">${icon('compass')}</span>
         <div><h2>完成 Peach 的安装教程</h2>
         <p>已处理 ${completeCount}/${totalCount} 项，完成后会自动打勾。</p></div>
         <button class="post-setup-collapse" type="button" data-tutorial-collapse aria-controls="postSetupTaskList" aria-expanded="${!collapsed}"
@@ -1347,23 +1347,29 @@ const postSetupTutorialHtml=(tasks,skippedCount,totalCount)=>{
 };
 async function syncPostSetupTutorial(){
   const root=$('#postSetupTutorial');if(!root)return;
-  if(location.pathname!=='/'||postSetupTutorialMarker()!=='pending'){
-    root.hidden=true;root.innerHTML='';return
+  if(postSetupTutorialMarker()!=='pending'){
+    root.hidden=true;root.innerHTML='';delete root.dataset.tutorialSignature;return
   }
   const request=++postSetupTutorialRequest;root.hidden=false;root.setAttribute('aria-busy','true');
-  root.innerHTML=`<article class="post-setup-notification post-setup-loading">${icon('sparkles')}<p>正在检查安装进度…</p></article>`;
+  if(!root.firstElementChild){
+    root.innerHTML=`<article class="post-setup-notification post-setup-loading">${icon('compass')}<p>正在检查安装进度…</p></article>`;
+  }
   try{
     const tasks=await postSetupTutorialTasks();
-    if(request!==postSetupTutorialRequest||location.pathname!=='/')return;
+    if(request!==postSetupTutorialRequest)return;
     const knownKeys=new Set(tasks.map(task=>task.key));
     const skipped=new Set([...postSetupTutorialSkipped()].filter(key=>knownKeys.has(key)));
     setPostSetupTutorialSkipped(skipped);
     const visible=tasks.filter(task=>!skipped.has(task.key));
     const pending=visible.filter(task=>!task.done);
     if(!pending.length){
-      setPostSetupTutorialMarker('complete');root.hidden=true;root.innerHTML='';root.removeAttribute('aria-busy');return
+      setPostSetupTutorialMarker('complete');root.hidden=true;root.innerHTML='';delete root.dataset.tutorialSignature;
+      root.removeAttribute('aria-busy');return
     }
-    root.innerHTML=postSetupTutorialHtml(visible,skipped.size,tasks.length);root.removeAttribute('aria-busy');
+    const signature=JSON.stringify(visible.map(task=>[task.key,task.done,task.label,task.description,task.href]));
+    if(root.dataset.tutorialSignature===signature){root.removeAttribute('aria-busy');return}
+    root.innerHTML=postSetupTutorialHtml(visible,skipped.size,tasks.length);
+    root.dataset.tutorialSignature=signature;root.removeAttribute('aria-busy');
     const next=pending[0];
     const collapse=root.querySelector('[data-tutorial-collapse]');
     collapse.onclick=()=>{
@@ -1388,7 +1394,7 @@ async function syncPostSetupTutorial(){
     };
   }catch(_error){
     if(request!==postSetupTutorialRequest)return;
-    root.innerHTML=`<article class="post-setup-notification post-setup-error">${icon('alert')}<div><h2>暂时无法检查安装进度</h2><p>Peach 会在你下次回到首页时重新检查。</p></div></article>`;
+    root.innerHTML=`<article class="post-setup-notification post-setup-error">${icon('alert')}<div><h2>暂时无法检查安装进度</h2><p>Peach 会在你切换页面或重新打开后检查。</p></div></article>`;
     root.removeAttribute('aria-busy');
   }
 }
@@ -4506,7 +4512,6 @@ function enterManagementSurface(){
   // the management page after it resolves.
   loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';
   hideDiscoveryBars();
-  const tutorial=$('#postSetupTutorial');if(tutorial){tutorial.hidden=true;tutorial.innerHTML=''}
   document.body.classList.remove('entity-open','index-open');
 }
 async function openStats(push=true){
@@ -4534,7 +4539,6 @@ function showHomeSurfaces(){
   $('#stats').hidden=true;$('#index').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
-  void syncPostSetupTutorial();
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
@@ -9844,7 +9848,6 @@ function openCatalog(path){
     state:ROUTE_STATES[path]||params.get('state')||'',...resolveSort(params.get('sort'),params.get('dir')),
     seed:params.get('seed')||(enteringHome?rollSeed():state.seed||rollSeed()),q:params.get('q')||'',jav:params.get('jav')||''};
   $('#q').value=state.q;rememberSearchValue();buildEdge();buildBars();load(true);
-  void syncPostSetupTutorial();
 }
 /* 回收站。它和目录页共用同一张网格，只是筛选被钉死成 `trash`。 */
 function openTrash(push){
@@ -9883,6 +9886,7 @@ async function restoreRoute(){
   syncPageTitle(location.href);
   buildDrawerNavigation();
   const path=decodeURIComponent(location.pathname);
+  void syncPostSetupTutorial();
   if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
     route(junkPath(),true);await restoreRoute();return;
   }
