@@ -368,11 +368,26 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
         if not name or key in seen:
             continue
         seen.add(key)
-        performers.append({
+        aliases: list[str] = []
+        for alias in (
+            *(item.get("aliases") if isinstance(item.get("aliases"), list) else []),
+            item.get("name_kana"), item.get("name_romaji"),
+        ):
+            cleaned = canonicalize_entity_name("performer", alias)
+            if (cleaned and normalize_entity_name(cleaned) != key
+                    and normalize_entity_name(cleaned) not in {
+                        normalize_entity_name(value) for value in aliases}):
+                aliases.append(cleaned)
+        performer = {
             "name": name,
             "external_id": str(item.get("dmm_id") or ""),
             "thumb_url": str(item.get("thumb_url") or ""),
-        })
+        }
+        if aliases:
+            performer["aliases"] = aliases
+        if item.get("profile_source"):
+            performer["profile_source"] = str(item["profile_source"])
+        performers.append(performer)
     return performers, warnings
 
 

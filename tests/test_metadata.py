@@ -164,6 +164,20 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertIn("已规范化", fields["release_date"]["warnings"][0])
         self.assertEqual(fields["tags"]["value"], ["肛交"])
 
+    def test_performer_profile_names_are_aliases_not_separate_people(self):
+        fields = extract_peach_fields({"actresses": [{
+            "dmm_id": 1051912, "japanese_name": "涼森れむ",
+            "name_kana": "すずもりれむ", "name_romaji": "Remu Suzumori",
+            "thumb_url": "https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg",
+            "profile_source": "r18dev",
+        }]})
+        self.assertEqual(fields["performers"]["value"], [{
+            "name": "涼森れむ", "external_id": "1051912",
+            "thumb_url": "https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg",
+            "aliases": ["すずもりれむ", "Remu Suzumori"],
+            "profile_source": "r18dev",
+        }])
+
     def test_series_and_studio_take_the_japanese_original(self):
         payload = {
             "maker": "Prestige",

@@ -305,7 +305,8 @@ def install(providers_root: Path, avatar_root: Path, kind: str,
     cache.store(url, body, inspected)
     cache.store_provenance(provenance_now(
         entity_id=int(entity_id), provider=str(origin.get("provider") or "picker"),
-        source_kind="user_selected", matched_name=str(origin.get("matched_name") or ""),
+        source_kind=str(origin.get("source_kind") or "user_selected"),
+        matched_name=str(origin.get("matched_name") or ""),
         name_source=str(origin.get("name_source") or "picker"),
         external_id=str(origin.get("external_id") or ""), upstream_url=url,
         width=inspected.width, height=inspected.height,

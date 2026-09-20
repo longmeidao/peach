@@ -144,6 +144,14 @@ class GenreTaxonomyTests(unittest.TestCase):
         self.assertEqual(tags, ["性教育", "中出内射", "巨乳", "苗条"])
         self.assertEqual(unmapped, [])
 
+    def test_traditional_nfo_spellings_share_the_same_taxonomy(self):
+        tags, unmapped = map_genres([
+            "主觀視角", "苗條", "單體作品", "MGSだけのおまけ映像付き",
+            "フルハイビジョン(FHD)",
+        ])
+        self.assertEqual(tags, ["主观视角", "苗条"])
+        self.assertEqual(unmapped, [])
+
     def test_non_content_patterns_stay_narrow(self):
         # 每条形状判据都要说得出它为什么必然是卖法而不是内容。
         self.assertEqual(len(NON_CONTENT_PATTERNS), 6)
