@@ -223,6 +223,18 @@ def _get_review(contract, args):
     return payload
 
 
+def _get_post_setup_tutorial(contract, _args):
+    """一次给安装教程六项真实状态，避免遗留首页重新接管 React 口味页的契约。"""
+    return {
+        "library": q_items(contract, {"limit": "1", "thumb": "0"}),
+        "scraping": q_scraping(contract, {}),
+        "taste": _get_taste(contract, {"window": "all"}),
+        "follow": q_follow(contract, {"limit": "1"}),
+        "credentials": q_follow_credentials(contract, {}),
+        "review": _get_review(contract, {"counts": "1"}),
+    }
+
+
 def _post_empty_trash(contract, _body):
     return w_empty_trash(contract)
 
@@ -270,6 +282,7 @@ GET_HANDLERS = {
     "/api/search-history": _get_search_history,
     "/api/taste": _get_taste,
     "/api/review": _get_review,
+    "/api/post-setup-tutorial": _get_post_setup_tutorial,
 }
 
 POST_HANDLERS = {

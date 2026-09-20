@@ -532,6 +532,15 @@ class SetupPageTests(_Case):
         self.assertFalse(missing.exists(), "校验不替人建目录")
         self.assertFalse(self.data_root.exists(), "校验失败不落任何文件")
 
+    def test_a_declared_local_source_must_exist_before_setup_is_saved(self):
+        missing = self.root / "missing-local-source"
+        response = self._post("/setup", self._form(
+            media_dir=str(missing), media_location="local", media_root=""))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("目录不存在", response.text)
+        self.assertFalse(missing.exists(), "校验不替用户创建媒体库")
+        self.assertFalse(self.data_root.exists(), "校验失败不写设置")
+
     def test_two_directories_are_declared_together_and_shown_in_the_scan_label(self):
         second = self.root / "more"
         second.mkdir()
@@ -610,6 +619,7 @@ class SetupPageTests(_Case):
         body = response.text
         self.assertIn("设置完成", body)
         self.assertIn("首次扫描已排队", body)
+        self.assertIn('/?onboarding=1', body)
         self.assertNotIn("peach token", body)
         self.assertNotIn("账本", body)
         # 完成页尾部是与配置页共用的运行信息，默认折叠：版本、位置和 FFmpeg 展开可查。

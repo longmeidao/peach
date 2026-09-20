@@ -103,6 +103,7 @@ class MediaConfigurationTests(unittest.TestCase):
             self.assertIn('<details><summary><span>运行信息</span>', html)
             self.assertNotIn('<details open', html)
             self.assertIn('<a class="setup-enter" href=', html)
+            self.assertIn(f'href="http://127.0.0.1:{config.server.port}/?onboarding=1"', html)
             with patch('peach.distribution.standalone', return_value=True):
                 packaged = setup_done_page(SimpleNamespace(config=config, tree=tree), windows=True,
                                            scan_requested=False, history_guide=True)

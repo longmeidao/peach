@@ -134,6 +134,37 @@ class StylesheetPartitionTests(unittest.TestCase):
 
 
 class WebUiSourceTests(unittest.TestCase):
+    def test_post_setup_tutorial_lives_on_home_and_checks_real_state(self):
+        root = Path(__file__).resolve().parents[1]
+        html = (root / "web/index.html").read_text(encoding="utf-8")
+        app = (root / "web/app.js").read_text(encoding="utf-8")
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('id="postSetupTutorial"', html)
+        self.assertIn("const POST_SETUP_TUTORIAL_KEY='peach.post-setup-tutorial.v1'", app)
+        self.assertIn("const POST_SETUP_TUTORIAL_COLLAPSED_KEY='peach.post-setup-tutorial-collapsed.v1'", app)
+        self.assertIn("api('/api/post-setup-tutorial')", app)
+        for label in ('设置采集来源与凭证', '导入浏览器历史记录', '补齐关注来源凭证'):
+            self.assertIn(label, app)
+        self.assertIn("source=>source.accepts_cookie", app)
+        self.assertIn("source=>source.cookie_saved", app)
+        self.assertIn("taste.summary?.history_sources", app)
+        self.assertIn("location.pathname!=='/'", app)
+        self.assertIn("tasks.every(task=>task.done)", app)
+        self.assertIn("data-tutorial-collapse", app)
+        self.assertIn("setPostSetupTutorialCollapsed(collapsed)", app)
+        self.assertIn(".post-setup-notification", board)
+        self.assertIn(".post-setup-task[data-state=checked]", board)
+        self.assertIn(".post-setup-task:hover+.post-setup-task{border-top-color:transparent}", board)
+        self.assertIn(".post-setup-task:hover{border-top-color:transparent;background:var(--hover)}", board)
+        self.assertIn("position:fixed;right:12px;bottom:12px;z-index:100", board)
+        self.assertIn("width:min(400px,calc(100vw - 24px))", board)
+        self.assertIn("pointer-events:none", board)
+        self.assertIn(".post-setup-notification{pointer-events:auto", board)
+        self.assertIn(".post-setup-notification[data-collapsed=true]>.post-setup-task-list", board)
+        self.assertIn("color:var(--color-text-secondary);fill:none;stroke:currentColor", board)
+        self.assertGreater(html.index('id="postSetupTutorial"'), html.index('</main>'))
+        self.assertIn("@media(max-width:720px)", board)
+
     def test_index_and_entity_visibility_targets_exist_in_the_page(self):
         html = (Path(__file__).resolve().parents[1] / "web/index.html").read_text(encoding="utf-8")
         for start, end in (("async function openIndex(", "  const title="),
