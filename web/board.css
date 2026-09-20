@@ -473,7 +473,7 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 @media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}
 /* 读数下面那两张是要做的事，各占一行，与扫描卡同一个左说明右按钮的形状。 */
-.cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-primary-default);box-shadow:var(--shadow-card)}
+.cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-secondary-default);box-shadow:var(--shadow-card)}
 .cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
 .cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content]){min-height:0;padding:24px}
 .cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-footer,[data-geist-fieldset-footer]){justify-content:flex-end;border:0;padding:24px;background:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -956,19 +956,19 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    一层 dropdown 薄影，是因为它浮在页面内容上、身后什么都没有；这一枚坐在侧栏自己的面
    上，挨着的设置钮什么都不穿——描一圈框只会让这一对读成两种控件。
    中间是 Remix 的调色盘字形（`#ri-palette-line`，实心路径，按它自己那套用 fill 画），
-   说这枚键管什么。右下角照上游的色点位置放两枚 10px 的小圆、错开叠一半：左上那枚报当前
-   预设的第一枚光晕色，右下那枚报强调色、叠在上层（它是按钮和焦点环真会换上的颜色，也是
+   说这枚键管什么。右下角放两枚 10px 的小圆，沿同一条竖线叠一半：上面那枚报当前
+   预设的第一枚光晕色，下面那枚报强调色、叠在上层（它是按钮和焦点环真会换上的颜色，也是
    光晕关掉后唯一还管用的那一档）。强调色那枚外面一圈侧栏面色的环把两枚分开，整组外沿
    同样一圈环，读起来是浮在钮上的一组，不是钮身上的一块。光晕关掉时只剩强调色那一枚。
    实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
 .board-glow-toggle{position:relative;display:grid;place-items:center;width:36px;height:36px;flex:none;
   padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);cursor:pointer}
 .board-glow-toggle svg{width:20px;height:20px;fill:currentColor;stroke:none}
-.board-glow-mark{position:absolute;right:0;bottom:0;display:block;width:16px;height:14px}
+.board-glow-mark{position:absolute;right:0;bottom:0;display:block;width:10px;height:16px}
 .board-glow-mark-glow,.board-glow-mark-accent{position:absolute;width:10px;height:10px;border-radius:50%;
   box-shadow:0 0 0 2px var(--ground)}
 .board-glow-mark-glow{left:0;top:0;background:var(--glow-swatch,var(--ink))}
-.board-glow-mark-accent{right:0;bottom:0;z-index:1;background:var(--color-accent-500)}
+.board-glow-mark-accent{left:0;bottom:0;z-index:1;background:var(--color-accent-500)}
 .board-glow-toggle[data-glow-off] .board-glow-mark-glow{display:none}
 /* 这一排两枚键悬停只提图标色，不抬底色：它们坐在侧栏那块玻璃上，一块 6px 圆角的灰方片
    盖上去，玻璃在那一格里就断了。顶栏那批 `.ib` 站在实底上，那条抬填充的悬停照旧。 */

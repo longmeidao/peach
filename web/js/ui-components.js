@@ -697,7 +697,7 @@ const OVERLAY_SCROLLERS=[
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.skeletondashstrip','.followpagination','.linktablewrap',
   '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',
-  '.follow-workspace-switch','.fmanagenav',
+  '.follow-workspace-switch','.fmanagenav','[role="listbox"]',
 ].join(',');
 /* Board 层里会超宽的横向滚动层：两端按滚动位置渐隐说明「那边还有」，鼠标停在上面时竖向
    滚轮转成横向。边线留给外层框，渐隐只落在这一层。
