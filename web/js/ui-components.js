@@ -104,6 +104,9 @@ export function popCount(el,text){
  */
 export function revealSkeleton(container,write){
   if(!container)return;
+  /* 还没到显示门槛就已经取完：直接落内容。隐藏中的占位从未被人看见，不该为了它再
+     播一段「骨架退场」；这也让很快的本地请求完全没有骨架闪烁。 */
+  if(container.querySelector('.skeleton-awaiting')){write();return}
   const hasSkeleton=container.querySelector('.skeleton,[data-skeleton],.skeletoncard,.countskeleton');
   if(!hasSkeleton||!container.firstChild){write();return}
   const fade=document.createElement('div');
@@ -568,6 +571,28 @@ const SKELETON_SLOT_WIDTHS={
   pill:[92,68,104,76,88,64,96,72,100,80,68,92,76,84],
 };
 
+/* 低于这一段的请求直接显示内容。Peach 的数据多在本机，立即把占位画出来会让几十毫秒的
+   正常读取看成一次闪烁；超过门槛才说明页面确实需要等待。只藏最外层占位，内部结构仍先
+   参与布局和 fit 计算，因此真正出现时不会再重排。 */
+const SKELETON_REVEAL_DELAY=180;
+const SKELETON_REVEAL_SELECTOR='[data-skeleton],[data-skeleton-tier],.countskeleton';
+function armSkeletonReveal(root){
+  if(!root)return;
+  const all=[...(root.matches?.(SKELETON_REVEAL_SELECTOR)?[root]:[]),
+    ...root.querySelectorAll(SKELETON_REVEAL_SELECTOR)];
+  const targets=all.filter(node=>!all.some(parent=>parent!==node&&parent.contains(node)));
+  for(const target of targets){
+    if(target.dataset.skeletonReveal)return;
+    target.dataset.skeletonReveal='pending';
+    target.classList.add('skeleton-awaiting');
+    setTimeout(()=>{
+      if(!target.isConnected||target.dataset.skeletonReveal!=='pending')return;
+      target.dataset.skeletonReveal='shown';
+      target.classList.remove('skeleton-awaiting');
+    },SKELETON_REVEAL_DELAY);
+  }
+}
+
 /** 一行横向骨架：逐枚追加到溢出容器右缘为止。上限只是死循环的护栏。 */
 export function fillSkeletonTier(row,kind){
   const slot=SKELETON_SLOT[kind],widths=SKELETON_SLOT_WIDTHS[kind];
@@ -576,6 +601,7 @@ export function fillSkeletonTier(row,kind){
     row.insertAdjacentHTML('beforeend',slot(widths[i%widths.length]));
     if(row.scrollWidth>row.clientWidth)break;
   }
+  armSkeletonReveal(row);
 }
 
 /** 骨架落进 DOM 之后按实际尺寸补齐：横向一行铺满，卡片网格补到整行且盖住视口余量。 */
@@ -599,6 +625,7 @@ export function fitSkeleton(root){
     while(grid.children.length>want)grid.lastElementChild.remove();
     while(grid.children.length<want)grid.appendChild(first.cloneNode(true));
   }
+  armSkeletonReveal(root);
 }
 
 /**

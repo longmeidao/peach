@@ -122,6 +122,45 @@ class RegistrationTests(_StoreCase):
 
 
 class RecordTests(_StoreCase):
+    def test_booru_source_only_becomes_a_profile_when_the_handle_matches(self):
+        source_id = self._source(
+            provider="rule34xxx", ref="auxtasy", label="Auxtasy",
+            metadata={"author_key": "auxtasy", "official_links": [
+                {"service": "twitter", "handle": "OldWrongName",
+                 "url": "https://x.com/OldWrongName"},
+            ]},
+        )
+        self.store.record(source_id, _fetch([
+            _candidate("1", "one", provider="rule34xxx",
+                       extra={"source": "https://x.com/Auxtasy/status/1"}),
+            _candidate("2", "two", provider="rule34xxx",
+                       extra={"source": "https://www.patreon.com/futavr/posts/2"}),
+        ], provider="rule34xxx", ref="auxtasy"), moment=MOMENT)
+
+        metadata = json.loads(self.store.sources()[0]["metadata_json"])
+        self.assertEqual(
+            [(link["service"], link["handle"]) for link in metadata["official_links"]],
+            [("twitter", "Auxtasy")],
+        )
+
+    def test_booru_source_accepts_a_confirmed_alias_but_not_a_collaborator(self):
+        self.store.upsert_author_alias(
+            "LazyProcrastinator", "lazyprocrast", source="manual", moment=MOMENT)
+        source_id = self._source(
+            provider="rule34xxx", ref="lazyprocrastinator",
+            metadata={"author_key": "lazyprocrastinator"},
+        )
+        self.store.record(source_id, _fetch([
+            _candidate("1", "one", provider="rule34xxx",
+                       extra={"source": "https://lazyprocrast.fanbox.cc/posts/1"}),
+            _candidate("2", "two", provider="rule34xxx",
+                       extra={"source": "https://x.com/unrelated/status/2"}),
+        ], provider="rule34xxx", ref="lazyprocrastinator"), moment=MOMENT)
+
+        metadata = json.loads(self.store.sources()[0]["metadata_json"])
+        self.assertEqual([link["handle"] for link in metadata["official_links"]],
+                         ["lazyprocrast"])
+
     def test_first_fetch_adds_items_and_classifies_variants(self):
         source_id = self._source(entity_id=self._entity())
         outcome = self.store.record(source_id, _fetch([

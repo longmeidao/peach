@@ -278,6 +278,7 @@ function renderCatalogLoading(label='正在读取作品'){
   $('#loadSentinel').hidden=true;
   setGridCards(pageSkeletonHtml(label,
     {cards:true,className:'catalog-skeleton postercard-skeleton'}));
+  fitSkeleton(count);
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -328,6 +329,7 @@ const paintStage=html=>{
 function showDetailLoading(){
   const stage=$('#stage');
   if(!stage.querySelector('[data-skeleton="detail"]'))stage.innerHTML=detailSkeletonHtml();
+  fitSkeleton(stage);
   stage.hidden=false;document.body.classList.add('detail-open');
   presentItemDetail();
 }
@@ -373,6 +375,12 @@ function renderInitialSurfaceLoading(){
     $('#index').hidden=false;$('#grid').innerHTML='';
     showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]]);
     fitSkeleton($('#index'));
+    return;
+  }
+  /* 未匹配的地址没有随后的读取，不能留一张永远不会被替换的目录骨架。合法的目录、
+     回收站和沉浸模式都有路由，才进入各自真实请求对应的等待态。 */
+  if(!matchRoute(ROUTES,path)){
+    $('#grid').innerHTML='';$('#count').textContent='';$('#loadSentinel').hidden=true;
     return;
   }
   renderCatalogLoading();
@@ -6843,7 +6851,7 @@ function markEntityCollectionBusy(kind,name,filters){
      跟头上的筛选对不上的列表——数字在转圈，底下那几十张却还是上一次的答案。 */
   const grid=section.querySelector('.grid');
   if(grid){grid.innerHTML=pageSkeletonHtml('正在读取作品',
-    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(grid)}
+    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(section)}
   const more=section.querySelector('.entitymore');
   if(more)more.hidden=true;
 }
@@ -8817,6 +8825,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}</div>`);
   $('#stage').classList.toggle('ambient-on',appSettings.ambientMode);
   $('#stage').classList.toggle('theater-mode',appSettings.theaterMode);
+  fitSkeleton($('#nrow'));
 
   const closeDetail=async()=>{const restore=cloneBarsContext(detailReturnBarsContext);
     const returnPath=detailReturnPath||'/',restoreSurface=detailReturnNeedsRestore;

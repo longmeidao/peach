@@ -2961,6 +2961,12 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("export const FOLLOW_ALIAS_URL = '/api/follow/author-alias';", data)
         self.assertReactContains("follow-manage/follow-manage-page.tsx",
                                  "<AliasManager groups={data.author_aliases || []}")
+        self.assertReactContains("follow-manage/follow-manage-page.tsx",
+                                 "suggestions={data.alias_suggestions || []} sources={data.sources}")
+        aliases = self.read_react("follow-manage/alias-manager.tsx")
+        self.assertIn("<DataTableFrame>", aliases)
+        self.assertEqual(aliases.count("<DataTableFrame>"), 2)
+        self.assertIn("<AuthorAvatar group={authorSources(sources, name, canonicalKey)}", aliases)
 
     def test_the_author_head_shows_its_sites_as_favicons(self):
         """作者卡这一行只出图标：站名在下面每条来源自己那一行上都写着。
@@ -3330,22 +3336,22 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("data-selected:bg", table_block)
         self.assertIn("data-follow-selected={row.getIsSelected() || undefined}", table_block)
         styles = self.read_front("react/styles.css")
-        self.assertIn("[data-follow-table] .bui-table tbody tr[data-follow-selected]", styles)
+        self.assertIn("[data-board-data-table] .bui-table tbody tr[data-follow-selected]", styles)
         self.assertIn("background-color: var(--color-background-secondary-default);", styles)
 
     def test_follow_views_use_primary_surfaces_secondary_actions_and_visible_dividers(self):
         """列表外框、作者与紧凑表格分三层；行内操作不借主动作的蓝色。"""
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertIn('data-follow-author-header data-open={open || undefined}', sources)
-        self.assertIn('<div data-follow-table>', sources)
+        self.assertIn('<DataTableFrame follow>', sources)
         self.assertEqual(sources.count('variant="secondary" size="small" iconOnly'), 5)
         self.assertIn('<Button variant="secondary" size="small" aria-expanded={open}', sources)
         styles = self.read_front("react/styles.css")
         self.assertIn("[data-follow-author-header][data-open]", styles)
         self.assertIn("border-bottom: 1px solid var(--color-border-button-default);", styles)
-        self.assertIn("[data-follow-table] {\n  overflow: hidden;\n  border: 1px solid "
+        self.assertIn("[data-board-data-table] {\n  overflow: hidden;\n  border: 1px solid "
                       "var(--color-border-button-default);", styles)
-        self.assertIn("[data-follow-table] .bui-table th {\n  border-top: 0;", styles)
+        self.assertIn("[data-board-data-table] .bui-table th {\n  border-top: 0;", styles)
         self.assertIn("[data-source-divider] > * + * {\n  border-top: 1px solid "
                       "var(--color-border-button-default);", styles)
 
@@ -3875,6 +3881,17 @@ class FollowWebSourceTests(unittest.TestCase):
         # 论坛账号名常是搬运工自己的，pixiv 的身份是一串数字：都不当别名提。
         self.assertEqual(
             web_follow._profile_link_suggestions(rows, {"strauzek": "mrstrauz"}), [])
+
+    def test_booru_work_sources_never_become_opening_post_alias_evidence(self):
+        """旧账本即使留着误收的作品 source，也不能再把合作作者显示为合并建议。"""
+        rows = [{
+            "id": 1, "entity_id": None, "entity_name": None,
+            "provider": "rule34xxx", "ref": "auxtasy", "label": "Auxtasy",
+            "metadata_json": json.dumps({"author_key": "auxtasy", "official_links": [
+                {"service": "patreon", "handle": "futavr"},
+            ]}),
+        }]
+        self.assertEqual(web_follow._profile_link_suggestions(rows, {}), [])
 
     def test_the_add_box_suggests_names_while_you_type(self):
         """敲半个名字就要有下拉，而且分组和排序由服务端说了算。

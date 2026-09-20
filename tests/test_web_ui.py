@@ -3278,6 +3278,22 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("""${kind==='cards'&&fill?' data-fill=""':''}""")
         self.assertPageContains(".skeletonpanel[data-fill]>div")
 
+    def test_short_requests_never_show_a_skeleton(self):
+        """本机请求在显示门槛内完成时直接落内容；真正等待才展示占位。"""
+        self.assertPageContains("const SKELETON_REVEAL_DELAY=180;")
+        self.assertPageContains("target.classList.add('skeleton-awaiting');")
+        self.assertPageContains("target.classList.remove('skeleton-awaiting');")
+        self.assertPageContains("if(container.querySelector('.skeleton-awaiting')){write();return}")
+        self.assertPageContains(".skeleton-awaiting{visibility:hidden}")
+        # 独立于整页骨架的计数、详情与推荐区域也必须经过同一个门槛。
+        for call in ("fitSkeleton(count);", "fitSkeleton(stage);", "fitSkeleton($('#nrow'));"):
+            self.assertPageContains(call)
+
+    def test_unmatched_routes_do_not_leave_an_orphan_skeleton(self):
+        """没有请求的未知地址不能显示一张永远等不到内容的目录骨架。"""
+        self.assertPageContains("if(!matchRoute(ROUTES,path)){")
+        self.assertPageContains("$('#grid').innerHTML='';$('#count').textContent='';$('#loadSentinel').hidden=true;")
+
     def test_the_follow_skeleton_reuses_the_poster_card_shape_and_adds_its_own_rows(self):
         """关注页跟首页是同一种海报卡，几何共用一块；它自己多一条作者行和一块两排的浮层。
 
@@ -7297,7 +7313,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("html.refiltering{overflow-anchor:none}", stylesheet_source())
         # 目录那边的骨架由 load(true) 铺；资料页的集合自己铺一份同样的。
         self.assertCode("  if(grid){grid.innerHTML=pageSkeletonHtml('正在读取作品',\n"
-                        "    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(grid)}")
+                        "    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(section)}")
         self.assertPageContains("  if(more)more.hidden=true;")
 
     def test_adding_a_filter_only_changes_the_list_underneath(self):
@@ -8030,6 +8046,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("border-bottom:1px solid var(--border-10)}")
         # 关注更新流仍是同质卡片流，它那张骨架不受影响。
         self.assertPageContains("pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})")
+
+    def test_follow_list_skeleton_matches_both_react_layouts(self):
+        """关注列表的等待态按偏好画卡片或表格，不借迁移前的列表盒子凑形状。"""
+        root = Path(__file__).resolve().parents[1]
+        source = (root / "frontend/src/board-skeleton.ts").read_text(encoding="utf-8")
+        skeleton = (root / "web/css/09-skeleton.css").read_text(encoding="utf-8")
+
+        self.assertIn("const table=options.followLayout==='table';", source)
+        self.assertIn('follow-skeleton-surface', source)
+        self.assertIn('class="follow-skeleton-authors"', source)
+        self.assertIn('follow-skeleton-table', source)
+        self.assertIn('class="ftableframe follow-skeleton-table"', source)
+        self.assertIn('class="fauthor follow-skeleton-author"', source)
+
+        self.assertIn("background:var(--color-background-secondary-default)", skeleton)
+        self.assertIn(".follow-skeleton-author{overflow:hidden;padding:8px;border-radius:var(--floating-radius);"
+                      "background:var(--color-background-primary-default)", skeleton)
+        self.assertIn(".follow-skeleton-table{width:100%;min-width:0;overflow-x:auto;", skeleton)
+        self.assertIn(".follow-skeleton-source+.follow-skeleton-source{border-top:1px solid", skeleton)
+        self.assertIn("@media(max-width:1023px){.followmanage.follow-list-skeleton .fmanageoverview", skeleton)
 
     def test_loading_actions_are_inert_and_dimmed_without_losing_focus(self):
         """用户触发的等待态统一走 Geist loading button，而不是各页自造半套状态。"""

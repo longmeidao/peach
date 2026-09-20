@@ -22,7 +22,7 @@ from .follow import FollowSourceError, write_immutable
 from .follow_image_dims import positive_dims
 from .follow_sources import (
     FollowCandidate, Rule34VideoConnector, SourceFetch, canonical_source_ref,
-    official_profile_handle,
+    official_profile_handle, profile_link_identity,
 )
 from .follow_variants import classify, group_duplicates
 
@@ -415,6 +415,7 @@ class FollowStore:
             return RecordOutcome(source_id, not_modified=True)
 
         evidence, evidence_error = self._persist_evidence(fetch, moment)
+        self._replace_candidate_profile_links(source_id, fetch, moment=moment)
         added = updated = 0
         for candidate in fetch.candidates:
             verdict = classify(candidate.title, creator_aliases=creator_aliases,
@@ -484,6 +485,58 @@ class FollowStore:
                 (fetch.etag, fetch.last_modified, stamp, stamp, source_id))
         return RecordOutcome(source_id, len(fetch.candidates), added, updated,
                              evidence_path=evidence, evidence_error=evidence_error)
+
+    def _replace_candidate_profile_links(
+        self,
+        source_id: int,
+        fetch: SourceFetch,
+        *,
+        moment: datetime | None = None,
+    ) -> None:
+        """只把能证明属于当前作者的 booru 出处记进来源名片。
+
+        Rule34 的 ``source`` 属于作品，不属于订阅作者：合作作品会同时链接另一位作者，
+        因此“在白名单站点上”仍不足以证明同一人。只有外链手柄与当前来源作者键相同，
+        或已经由用户确认的别名表把两者指向同一规范作者时，才接纳为作者身份。
+
+        每次完整结果都替换这项，而不是与旧值累加；这样下一次正常检查就会清掉旧版
+        误收的合作作者。这里只更新抓取中的这条来源，不扫描或批量改写真实账本。
+        """
+        if fetch.provider not in {"rule34xxx", "rule34paheal"}:
+            return
+        row = self._connect().execute(
+            "SELECT ref,metadata_json FROM follow_source WHERE id=?", (source_id,)
+        ).fetchone()
+        if row is None:
+            return
+        try:
+            metadata = json.loads(row["metadata_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            metadata = {}
+        mapping, _groups = self.author_aliases()
+        source_keys = {
+            normalized_author_name(str(row["ref"] or "")),
+            normalized_author_name(str(metadata.get("author_key") or ""))
+            if isinstance(metadata, dict) else "",
+        }
+        source_roots = {mapping.get(key, key) for key in source_keys if key}
+        links: list[dict[str, str]] = []
+        seen: set[tuple[str, str]] = set()
+        for candidate in fetch.candidates:
+            source = str(candidate.extra.get("source") or "").strip()
+            identity = profile_link_identity(source)
+            if identity is None:
+                continue
+            service, handle = identity
+            handle_key = normalized_author_name(handle)
+            if not handle_key or mapping.get(handle_key, handle_key) not in source_roots:
+                continue
+            key = (service.casefold(), handle.casefold())
+            if key in seen:
+                continue
+            seen.add(key)
+            links.append({"service": service, "handle": handle, "url": source})
+        self.merge_source_metadata(source_id, {"official_links": links}, moment=moment)
 
     def enriched_external_ids(self, source_id: int, mark: str) -> frozenset[str]:
         """这条来源里细节已经补齐、不必再打详情页的条目 id。

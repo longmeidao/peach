@@ -298,23 +298,24 @@
 /* 关注表格坐在关注列表的 secondary 外框里，自己的 primary 面负责浅色的白底与暗色的
  * 实体卡面；选中行回到 BoardUI Data Table 的 secondary 反馈。这里的边线取 button border，
  * 因为 Peach 暗色 primary 与 separator 同为 neutral-800，用 separator 会完全消失。 */
-.peach-react [data-follow-table] {
+.peach-react [data-board-data-table] {
   overflow: hidden;
   border: 1px solid var(--color-border-button-default);
   border-radius: var(--radius-surface);
   background: var(--color-background-primary-default);
 }
 
-.peach-react [data-follow-table] .bui-table th {
+.peach-react [data-board-data-table] .bui-table th {
   border-top: 0;
 }
 
-.peach-react [data-follow-table] .bui-table th,
-.peach-react [data-follow-table] .bui-table tbody tr:not(:last-child) {
+.peach-react [data-board-data-table] .bui-table th,
+.peach-react [data-board-data-table] .bui-table tbody tr:not(:last-child) {
   border-color: var(--color-border-button-default);
 }
 
-.peach-react [data-follow-table] .bui-table tbody tr[data-follow-selected] {
+.peach-react [data-board-data-table] .bui-table tbody tr[data-follow-selected],
+.peach-react [data-board-data-table] .bui-table tbody tr[data-board-selected] {
   background-color: var(--color-background-secondary-default);
 }
 
