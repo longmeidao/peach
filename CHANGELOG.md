@@ -21,6 +21,8 @@ Removed / Fixed / Security。
 
 ## [未发布]
 
+## [0.34.2] - 2026-09-20
+
 ### 修复
 
 - **界面**：完成首次设置后，右下角会跨页面无闪烁地显示安装教程；六项任务按真实状态自动打勾，也可逐项跳过，全部处理后自动消失。
@@ -320,7 +322,8 @@ Removed / Fixed / Security。
 - **桌面**：独立包使用 UTF-8 启动日志。
 - **配置**：首次设置后的跳转目标取新鲜读到的 mDNS 名。
 
-[未发布]: https://github.com/longmeidao/peach/compare/v0.34.1...HEAD
+[未发布]: https://github.com/longmeidao/peach/compare/v0.34.2...HEAD
+[0.34.2]: https://github.com/longmeidao/peach/compare/v0.34.1...v0.34.2
 [0.34.1]: https://github.com/longmeidao/peach/compare/v0.34.0...v0.34.1
 [0.34.0]: https://github.com/longmeidao/peach/compare/v0.33.0...v0.34.0
 [0.33.0]: https://github.com/longmeidao/peach/compare/v0.31.0...v0.33.0
