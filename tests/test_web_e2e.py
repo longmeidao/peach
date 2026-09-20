@@ -251,6 +251,11 @@ class WebE2ESmokeTests(unittest.TestCase):
 class MissingPrerequisiteTests(unittest.TestCase):
     """CI 里浏览器用例只能执行或失败，不能静默跳过；工作流那一半由 `test_frontend_build.py` 守。"""
 
+    def test_headless_browser_stays_within_the_resource_guard_process_budget(self):
+        harness = (FRONTEND / "e2e" / "harness.ts").read_text(encoding="utf-8")
+        self.assertIn("args: ['--renderer-process-limit=2']", harness)
+        self.assertIn("timeout: 30_000", harness)
+
     def test_missing_prerequisites_skip_locally_and_fail_on_ci(self):
         with mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
             with self.assertRaisesRegex(AssertionError, "没有 npm"):
