@@ -1251,6 +1251,7 @@ function openHome(scroll=false){
 }
 const POST_SETUP_TUTORIAL_KEY='peach.post-setup-tutorial.v1';
 const POST_SETUP_TUTORIAL_COLLAPSED_KEY='peach.post-setup-tutorial-collapsed.v1';
+const POST_SETUP_TUTORIAL_SKIPPED_KEY='peach.post-setup-tutorial-skipped.v1';
 let postSetupTutorialRequest=0;
 const postSetupTutorialMarker=()=>{
   try{return localStorage.getItem(POST_SETUP_TUTORIAL_KEY)||''}catch(_error){return ''}
@@ -1263,6 +1264,13 @@ const postSetupTutorialCollapsed=()=>{
 };
 const setPostSetupTutorialCollapsed=value=>{
   try{localStorage.setItem(POST_SETUP_TUTORIAL_COLLAPSED_KEY,value?'1':'0')}catch(_error){}
+};
+const postSetupTutorialSkipped=()=>{
+  try{return new Set(JSON.parse(localStorage.getItem(POST_SETUP_TUTORIAL_SKIPPED_KEY)||'[]'))}
+  catch(_error){return new Set()}
+};
+const setPostSetupTutorialSkipped=values=>{
+  try{localStorage.setItem(POST_SETUP_TUTORIAL_SKIPPED_KEY,JSON.stringify([...values]))}catch(_error){}
 };
 /* `onboarding=1` 来自设置完成页。历史导入可以先去口味页，但标记会一直留到用户
    第一次回首页；清单只读真实接口，不用“访问过页面”冒充完成。 */
@@ -1290,7 +1298,7 @@ const postSetupTutorialTasks=async()=>{
   return [
     {key:'library',label:'完成首次扫描',description:libraryReady
       ?`已经导入 ${Number(library.total).toLocaleString()} 项馆藏。`:'等待扫描导入第一项馆藏。',
-      href:'/configuration',done:libraryReady,icon:'scan-search'},
+      href:'/data-cleanup',done:libraryReady,icon:'scan-search'},
     {key:'scraping',label:'设置采集来源与凭证',description:savedScrapingCredentials.length
       ?`已为 ${savedScrapingCredentials.length.toLocaleString()} 个采集来源保存凭证。`
       :'检查来源连接方式，并为需要登录的来源保存凭证。',
@@ -1313,27 +1321,28 @@ const postSetupTutorialTasks=async()=>{
       href:'/review',done:libraryReady&&pendingReview===0,icon:'square-check-big'},
   ];
 };
-const postSetupTutorialHtml=tasks=>{
+const postSetupTutorialHtml=(tasks,skippedCount,totalCount)=>{
   const ordered=[...tasks].sort((left,right)=>Number(left.done)-Number(right.done));
-  const complete=tasks.every(task=>task.done),next=tasks.find(task=>!task.done);
-  const completeCount=tasks.filter(task=>task.done).length;
-  const collapsed=postSetupTutorialCollapsed()&&!complete;
+  const next=tasks.find(task=>!task.done);
+  const completeCount=tasks.filter(task=>task.done).length+skippedCount;
+  const collapsed=postSetupTutorialCollapsed();
   const rows=ordered.map(task=>`<li class="post-setup-task" data-state="${task.done?'checked':'unchecked'}">
     <a href="${task.href}" data-tutorial-task="${task.key}">
       <span class="post-setup-check" aria-hidden="true">${task.done?icon('check'):icon(task.icon)}</span>
       <span><b>${task.label}</b><small>${task.description}</small></span>
-      ${icon('chevron-right')}</a></li>`).join('');
+      ${icon('chevron-right')}</a>
+    ${task.done?'':`<button class="post-setup-skip" type="button" data-tutorial-skip="${task.key}" data-tutorial-label="${task.label}">跳过</button>`}
+    </li>`).join('');
   return `<article class="post-setup-notification" data-collapsed="${collapsed}">
       <header class="post-setup-notification-head">
-        <span class="post-setup-notification-icon" aria-hidden="true">${icon(complete?'check-check':'sparkles')}</span>
-        <div><h2>${complete?'Peach 已准备好':'完成 Peach 的安装教程'}</h2>
-        <p>${complete?'这些步骤都已经通过实际状态检查。':`已完成 ${completeCount}/${tasks.length} 项，完成后会自动打勾。`}</p></div>
+        <span class="post-setup-notification-icon" aria-hidden="true">${icon('sparkles')}</span>
+        <div><h2>完成 Peach 的安装教程</h2>
+        <p>已处理 ${completeCount}/${totalCount} 项，完成后会自动打勾。</p></div>
         <button class="post-setup-collapse" type="button" data-tutorial-collapse aria-controls="postSetupTaskList" aria-expanded="${!collapsed}"
-          aria-label="${collapsed?'展开安装教程':'折叠安装教程'}">${icon(collapsed?'chevron-down':'chevron-up')}</button>
+          aria-label="${collapsed?'展开安装教程':'折叠安装教程'}">${icon(collapsed?'chevron-up':'chevron-down')}</button>
       </header>
       <ol class="post-setup-task-list" id="postSetupTaskList">${rows}</ol>
-      <footer><button class="geist-button" type="button" data-tutorial-action="${complete?'finish':'next'}">
-        ${complete?'完成教程':`继续：${next.label}`}</button></footer>
+      <footer><button class="geist-button" type="button" data-tutorial-action="next">继续：${next.label}</button></footer>
     </article>`;
 };
 async function syncPostSetupTutorial(){
@@ -1346,8 +1355,16 @@ async function syncPostSetupTutorial(){
   try{
     const tasks=await postSetupTutorialTasks();
     if(request!==postSetupTutorialRequest||location.pathname!=='/')return;
-    root.innerHTML=postSetupTutorialHtml(tasks);root.removeAttribute('aria-busy');
-    const complete=tasks.every(task=>task.done),next=tasks.find(task=>!task.done);
+    const knownKeys=new Set(tasks.map(task=>task.key));
+    const skipped=new Set([...postSetupTutorialSkipped()].filter(key=>knownKeys.has(key)));
+    setPostSetupTutorialSkipped(skipped);
+    const visible=tasks.filter(task=>!skipped.has(task.key));
+    const pending=visible.filter(task=>!task.done);
+    if(!pending.length){
+      setPostSetupTutorialMarker('complete');root.hidden=true;root.innerHTML='';root.removeAttribute('aria-busy');return
+    }
+    root.innerHTML=postSetupTutorialHtml(visible,skipped.size,tasks.length);root.removeAttribute('aria-busy');
+    const next=pending[0];
     const collapse=root.querySelector('[data-tutorial-collapse]');
     collapse.onclick=()=>{
       const card=root.querySelector('.post-setup-notification');
@@ -1355,10 +1372,18 @@ async function syncPostSetupTutorial(){
       card.dataset.collapsed=String(collapsed);setPostSetupTutorialCollapsed(collapsed);
       collapse.setAttribute('aria-expanded',String(!collapsed));
       collapse.setAttribute('aria-label',collapsed?'展开安装教程':'折叠安装教程');
-      collapse.innerHTML=icon(collapsed?'chevron-down':'chevron-up');
+      collapse.innerHTML=icon(collapsed?'chevron-up':'chevron-down');
     };
+    root.querySelectorAll('[data-tutorial-skip]').forEach(button=>button.onclick=()=>{
+      const skippedNow=postSetupTutorialSkipped(),key=button.dataset.tutorialSkip;
+      skippedNow.add(key);setPostSetupTutorialSkipped(skippedNow);
+      actionReceipt(`已跳过「${button.dataset.tutorialLabel}」`,{undo:async()=>{
+        const restored=postSetupTutorialSkipped();restored.delete(key);setPostSetupTutorialSkipped(restored);
+        setPostSetupTutorialMarker('pending');await syncPostSetupTutorial();
+      }});
+      void syncPostSetupTutorial();
+    });
     root.querySelector('[data-tutorial-action]').onclick=()=>{
-      if(complete){setPostSetupTutorialMarker('complete');root.hidden=true;root.innerHTML='';return}
       location.href=next.href;
     };
   }catch(_error){
