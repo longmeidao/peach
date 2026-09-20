@@ -781,7 +781,7 @@ def _setup_media_source_errors(dirs: Sequence[str], kinds: object,
     source_kinds = list(kinds) if isinstance(kinds, (list, tuple)) else []
     for index, path in enumerate(dirs):
         kind = source_kinds[index] if index < len(source_kinds) else "local"
-        if errors[index] or kind != "local":
+        if kind != "local":
             continue
         try:
             validate(path)

@@ -85,6 +85,18 @@ class MediaConfigurationTests(unittest.TestCase):
             self.assertIn('name="media_root"', html)
             self.assertIn('value="B:/"', html)
 
+    def test_setup_local_source_reports_native_directory_error_first(self):
+        from peach.routes_pages import _setup_media_source_errors
+
+        def missing_directory(_path):
+            raise ValueError("目录不存在：/missing")
+
+        errors = _setup_media_source_errors(
+            ["/missing"], ["local"],
+            ["Windows 中的对应路径必须包含盘符，例如 B:\\"], missing_directory,
+        )
+        self.assertEqual(errors, ["目录不存在：/missing"])
+
     def test_completion_page_keeps_runtime_details_collapsed(self):
         from peach.routes_pages import setup_done_page
         with tempfile.TemporaryDirectory() as directory:
