@@ -53,15 +53,14 @@ describe('Board 页面骨架', () => {
     expect(root.querySelector('.board-segment-thumb')).toBeNull();
     expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('关注列表');
     expect(root.querySelectorAll('.skeleton-segments > span')).toHaveLength(3);
-    expect(root.querySelectorAll('.board-button-group > button')).toHaveLength(2);
-    expect(root.querySelector('[data-follow-workspace-panel="list"]')).not.toBeNull();
-    expect(root.querySelector('[data-follow-panel="sources"]')).toBeNull();
-    expect(root.querySelectorAll('.board-follow-list .fauthor')).toHaveLength(4);
-    expect(root.querySelectorAll('.fauthorsources .fsource.frow')).toHaveLength(12);
-    expect(root.querySelectorAll('.fsource.frow > *')).toHaveLength(60);
-    expect(root.querySelectorAll('.board-follow-selection button')).toHaveLength(0);
+    expect(root.querySelectorAll('.follow-skeleton-button-group > button')).toHaveLength(2);
+    expect(root.querySelector('.follow-skeleton-surface')).not.toBeNull();
+    expect(root.querySelectorAll('.follow-skeleton-authors .follow-skeleton-author')).toHaveLength(3);
+    expect(root.querySelectorAll('.follow-skeleton-source')).toHaveLength(10);
+    expect(root.querySelectorAll('.follow-skeleton-source > *')).toHaveLength(60);
+    expect(root.querySelectorAll('.follow-skeleton-select-all button')).toHaveLength(0);
     expect(root.querySelector('.followtoolbaractions')?.lastElementChild?.textContent).toBe('全部收起');
-    expect(root.querySelector('.followpagefooter')).not.toBeNull();
+    expect(root.querySelector('.follow-skeleton-footer')).not.toBeNull();
     expect(root.querySelector('.selectiondock')).toBeNull();
   });
   it('口味骨架保留分段背景与状态行间距', () => {
@@ -74,9 +73,9 @@ describe('Board 页面骨架', () => {
   });
   it('关注表格视图预留表头与来源行',()=>{
     const root=document.createElement('div');root.innerHTML=boardPageSkeleton('/follow-manage',{followLayout:'table'});
-    expect(root.querySelector('.fsources[data-layout="table"]')).not.toBeNull();
-    expect(root.querySelectorAll('thead th')).toHaveLength(7);
-    expect(root.querySelectorAll('tbody tr')).toHaveLength(6);
-    expect(root.querySelector('.fauthor')).toBeNull();
+    expect(root.querySelector('.follow-skeleton-table')).not.toBeNull();
+    expect(root.querySelectorAll('.follow-skeleton-table-row.head > span')).toHaveLength(7);
+    expect(root.querySelectorAll('.follow-skeleton-table-row:not(.head)')).toHaveLength(20);
+    expect(root.querySelector('.follow-skeleton-author')).toBeNull();
   });
 });

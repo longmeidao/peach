@@ -96,6 +96,73 @@
 /* 塌成一列时要压掉上面那三条显式定位，特异性必须与它们持平，所以仍写 nth-child。 */
 @media (max-width:1080px){.followmanage-skeleton>div{grid-template-columns:minmax(0,1fr)}
   .followmanage-skeleton .skeletoncard:nth-child(n){grid-area:auto}}
+/* 关注列表整页由 React 接管，首屏骨架也按它的两档最终版式画。外层是 secondary 灰卡，
+   默认视图里的创作者再浮一层 primary 白卡；紧凑视图则是一张完整的 Data Table。骨架
+   保留真实列表的语义类名，再由下面这些专用规则固定尺寸，接管时卡面、列线和行高不跳。 */
+.follow-list-skeleton{display:flex;flex-direction:column;gap:24px}
+.follow-skeleton-surface{display:flex;min-width:0;flex-direction:column;gap:16px;padding:20px 24px;
+  border-radius:var(--floating-radius);background:var(--color-background-secondary-default);box-shadow:var(--shadow-card)}
+.follow-skeleton-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.follow-skeleton-toolbar h3{margin:0 auto 0 0;color:var(--color-text-primary);font:var(--board-heading)}
+.follow-skeleton-count{flex:none}.follow-skeleton-count>.skeleton{height:18px}
+.follow-list-skeleton .followtoolbaractions{display:flex;align-items:center;gap:8px;max-width:100%}
+.follow-skeleton-button,.follow-skeleton-select{display:inline-flex;box-sizing:border-box;height:36px;align-items:center;
+  justify-content:center;gap:8px;padding:0 12px;border:1px solid var(--color-border-button-default);
+  border-radius:var(--control-radius);background:var(--color-background-primary-default);color:var(--color-text-secondary);
+  font:var(--board-body-medium);white-space:nowrap}
+.follow-skeleton-button svg,.follow-skeleton-select svg{width:18px;height:18px;flex:none}
+.follow-skeleton-button svg,.follow-skeleton-select svg{fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+.follow-skeleton-button.primary{border-color:transparent;background:var(--board-blue);color:#fff}
+.followmanage.follow-list-skeleton .follow-skeleton-button.primary{border-color:transparent;background:var(--board-blue);color:#fff}
+.follow-skeleton-button.square{width:36px;padding:0}
+.follow-skeleton-button-group{display:inline-flex;overflow:hidden;border:1px solid var(--color-border-button-default);
+  border-radius:var(--control-radius);background:var(--color-background-primary-default)}
+.follow-skeleton-button-group .follow-skeleton-button{width:42px;border:0;border-radius:0;padding:0}
+.follow-skeleton-button-group .follow-skeleton-button+.follow-skeleton-button{border-left:1px solid var(--color-border-button-default)}
+.follow-skeleton-button-group .selected{background:var(--color-background-tertiary-default);color:var(--color-text-primary)}
+.follow-skeleton-select{min-width:112px;justify-content:space-between}
+.follow-skeleton-select-all{display:flex;align-items:center;gap:8px;min-height:24px;color:var(--color-text-primary);font:var(--board-body)}
+.follow-skeleton-check{display:block;box-sizing:border-box;width:18px;height:18px;flex:none;border:1px solid var(--color-border-button-default);
+  border-radius:var(--badge-radius);background:var(--color-background-primary-default)}
+.follow-skeleton-authors{display:flex;flex-direction:column;gap:12px}
+.follow-skeleton-author{overflow:hidden;padding:8px;border-radius:var(--floating-radius);background:var(--color-background-primary-default);box-shadow:var(--shadow-card)}
+.followmanage.follow-list-skeleton .follow-skeleton-author{background:var(--color-background-primary-default)}
+.follow-skeleton-author>.fauthorhead{display:flex;min-height:44px;align-items:center;gap:12px;padding:6px 8px 10px;
+  border-bottom:1px solid var(--color-border-button-default)}
+.follow-skeleton-avatar{width:32px;height:32px;flex:none;border-radius:50%}
+.follow-skeleton-author>.fauthorhead>b{min-width:80px;flex:1}.follow-skeleton-author>.fauthorhead>b>.skeleton{height:18px}
+.follow-skeleton-author-actions{display:flex;align-items:center;gap:8px}
+.follow-skeleton-author-actions>i,.follow-skeleton-row-actions>i,.follow-skeleton-pages>i{display:block;box-sizing:border-box;
+  width:32px;height:32px;border:1px solid var(--color-border-button-default);border-radius:var(--control-radius);background:var(--color-background-primary-default)}
+.follow-skeleton-author-meta{width:54px;height:18px}.follow-skeleton-author-actions>.fbtn{min-width:68px}
+.follow-skeleton-source{display:grid;min-height:64px;box-sizing:border-box;grid-template-columns:18px minmax(100px,1fr) 28px 52px 116px 72px;
+  align-items:center;gap:12px;padding:12px 8px}
+.follow-skeleton-source+.follow-skeleton-source{border-top:1px solid var(--color-border-button-default)}
+.follow-skeleton-source-name>.skeleton,.follow-skeleton-date>.skeleton{height:18px}
+.follow-skeleton-provider{width:24px;height:24px;border-radius:var(--control-radius)}
+.follow-skeleton-status{width:52px;height:28px;border-radius:var(--control-radius)}
+.follow-skeleton-row-actions{display:flex;gap:4px}.follow-skeleton-row-actions>i{background:var(--color-background-primary-default)}
+.follow-skeleton-table{width:100%;min-width:0;overflow-x:auto;border:1px solid var(--color-border-button-default);
+  border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
+.follow-skeleton-table-row{display:grid;min-height:49px;box-sizing:border-box;
+  min-width:680px;
+  grid-template-columns:44px minmax(110px,.9fr) minmax(160px,1.6fr) minmax(100px,.8fr) 76px 116px 72px;
+  align-items:center;padding:0 12px;color:var(--color-text-tertiary);font:var(--board-body-medium)}
+.follow-skeleton-table-row+.follow-skeleton-table-row{border-top:1px solid var(--color-border-button-default)}
+.follow-skeleton-table-row.head{min-height:49px;background:var(--color-background-primary-default)}
+.follow-skeleton-table-row:not(.head)>span>.skeleton{height:18px}
+.follow-skeleton-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:36px}
+.follow-skeleton-footer>span>.skeleton{height:18px}.follow-skeleton-pages{display:flex;gap:8px}
+/* React 的读数带在 `lg`（1024px）才切四栏；旧 `.fmanageoverview` 是 760px，若不在骨架
+   这里补齐，同一个 800–1023px 视口会先看到四张一排，再变成两张一排。 */
+@media(max-width:1023px){.followmanage.follow-list-skeleton .fmanageoverview{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.follow-list-skeleton{gap:20px}.follow-skeleton-surface{padding:16px}
+  .follow-skeleton-toolbar h3{flex-basis:100%}.follow-skeleton-count{margin-right:auto}
+  .follow-list-skeleton .followtoolbaractions{overflow:hidden}.follow-skeleton-button span{display:none}.follow-skeleton-button{width:36px;padding:0}
+  .follow-skeleton-select{min-width:104px}.follow-skeleton-source{grid-template-columns:18px minmax(90px,1fr) 28px 52px 68px}
+  .follow-skeleton-source>.follow-skeleton-date{display:none}.follow-skeleton-author-actions>.skeleton{display:none}
+  .follow-skeleton-table-row{min-width:640px}.follow-skeleton-footer>span:nth-child(2){display:none}}
 .skeleton-dashboard>div{gap:16px}
 /* 四格与真的指标带同宽同高：下限 140px、单格 96px、内边距 14/16、间隙 4px 都取自
    .metricstrip / .tastesummaries，手机上同样露边滚动。 */
@@ -126,6 +193,8 @@
    变化，一屏十几块同时喘，比内容本身还抢眼。节奏照抄实测值：1.5s ease-in-out
    infinite reverse，位移半个自身宽度。全局的 prefers-reduced-motion 规则会关掉它。 */
 @keyframes skeleton-sweep{to{transform:translateX(-50%)}}
+/* 本地读取在 180ms 内完成时不展示骨架；JS 到门槛后直接移除这一类，不依赖动效偏好。 */
+.skeleton-awaiting{visibility:hidden}
 .skeleton,.skeletoncard i,.skeletoncard b,.skeletoncard em,
 .skeletondashhero i,.skeletondashhero b,
 .skeletondashpanel i,.skeletondashpanel b,.skeletondashpanel em,
