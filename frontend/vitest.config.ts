@@ -22,6 +22,8 @@ export default mergeConfig(base, defineConfig({
   test: {
     environment: 'happy-dom',
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    // 受限 runner 与本机资源守卫都给整棵测试进程树留固定预算；默认按 CPU 数扩张会耗尽进程槽。
+    maxWorkers: 4,
     restoreMocks: true,
   },
 }));

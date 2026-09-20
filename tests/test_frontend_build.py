@@ -79,6 +79,17 @@ class IslandBundleTests(unittest.TestCase):
         for key in ("enabled:", "silent:", "desktop:"):
             self.assertIn(key, payload, f"保存开机自启没带上 {key}")
 
+    def test_react_bundle_records_stable_dependency_paths(self):
+        """区域注释只能从 `node_modules/` 起，不得把生成它的工作树路径写进产物。"""
+        if not REACT_BUNDLE.is_file():
+            self.skipTest(f"{REACT_BUNDLE.relative_to(ROOT)} 不在：先 `npm --prefix frontend run build`")
+        react = REACT_BUNDLE.read_text(encoding="utf-8")
+        captured = [line for line in react.splitlines()
+                    if line.startswith("//#region ") and "node_modules/" in line
+                    and not line.startswith("//#region node_modules/")]
+        self.assertEqual(captured, [],
+                         "React 产物带了工作树相对路径；在当前工作树安装依赖后重新构建")
+
     def test_the_route_that_serves_it_is_registered(self):
         # 扫整个包而不是 `api.py` 一个文件：这条路由现在住在 `routes_pages.py`，
         # 而它属于哪个模块是内部事，前端只关心它被注册了。
@@ -744,6 +755,10 @@ class VitestTests(unittest.TestCase):
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             cwd=str(FRONTEND), check=False)
         self.assertEqual(completed.returncode, 0, f"{completed.stdout}\n{completed.stderr}")
+
+    def test_the_island_suite_has_a_bounded_worker_pool(self):
+        config = (FRONTEND / "vitest.config.ts").read_text(encoding="utf-8")
+        self.assertIn("maxWorkers: 4", config)
 
     def test_the_react_sources_follow_the_design_system_lint(self):
         """`@shadcn/lint` 挡住裸色值、任意值、内联样式和在 BoardUI 组件上改样式（ADR-0031）。"""
