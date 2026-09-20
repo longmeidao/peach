@@ -443,7 +443,7 @@ const route=(path,replace=false)=>{
   barsRequestSeq++;
   history[replace?'replaceState':'pushState']({},'',path);syncPageTitle(path);
   lastRoutePath=decodeURIComponent(new URL(path,location.href).pathname);
-  queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation()});
+  queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation();void syncPostSetupTutorial()});
 };
 
 /* ── 脱盘模式 ─────────────────────────────────────────────────────────────────
@@ -1248,6 +1248,155 @@ function openHome(scroll=false){
   resetHomeState();route('/');clearSearchField();disposeStage(false);showHomeSurfaces();
   buildEdge();buildBars();load(true);
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
+}
+const POST_SETUP_TUTORIAL_KEY='peach.post-setup-tutorial.v1';
+const POST_SETUP_TUTORIAL_COLLAPSED_KEY='peach.post-setup-tutorial-collapsed.v1';
+const POST_SETUP_TUTORIAL_SKIPPED_KEY='peach.post-setup-tutorial-skipped.v1';
+let postSetupTutorialRequest=0;
+const postSetupTutorialMarker=()=>{
+  try{return localStorage.getItem(POST_SETUP_TUTORIAL_KEY)||''}catch(_error){return ''}
+};
+const setPostSetupTutorialMarker=value=>{
+  try{localStorage.setItem(POST_SETUP_TUTORIAL_KEY,value)}catch(_error){}
+};
+const postSetupTutorialCollapsed=()=>{
+  try{return localStorage.getItem(POST_SETUP_TUTORIAL_COLLAPSED_KEY)==='1'}catch(_error){return false}
+};
+const setPostSetupTutorialCollapsed=value=>{
+  try{localStorage.setItem(POST_SETUP_TUTORIAL_COLLAPSED_KEY,value?'1':'0')}catch(_error){}
+};
+const postSetupTutorialSkipped=()=>{
+  try{return new Set(JSON.parse(localStorage.getItem(POST_SETUP_TUTORIAL_SKIPPED_KEY)||'[]'))}
+  catch(_error){return new Set()}
+};
+const setPostSetupTutorialSkipped=values=>{
+  try{localStorage.setItem(POST_SETUP_TUTORIAL_SKIPPED_KEY,JSON.stringify([...values]))}catch(_error){}
+};
+/* `onboarding=1` 来自设置完成页。历史导入可以先去口味页，标记会在 Peach 的每一页
+   保持生效；清单只读真实接口，不用“访问过页面”冒充完成。 */
+if(new URLSearchParams(location.search).get('onboarding')==='1'){
+  setPostSetupTutorialMarker('pending');
+  if(location.pathname==='/'){
+    const clean=new URL(location.href);clean.searchParams.delete('onboarding');
+    history.replaceState(history.state,'',clean.pathname+clean.search+clean.hash);
+  }
+}
+const postSetupTutorialTasks=async()=>{
+  const {library,scraping,taste,follow,credentials,review}=await api('/api/post-setup-tutorial');
+  const scrapingCredentialSources=(scraping.sources||[]).filter(source=>source.accepts_cookie);
+  const savedScrapingCredentials=scrapingCredentialSources.filter(source=>source.cookie_saved);
+  const sources=(follow.sources||[]).filter(source=>source.enabled!==false);
+  const providers=new Map((credentials.providers||[]).map(row=>[row.provider,row]));
+  const required=[...new Set(sources.map(source=>source.provider))]
+    .map(provider=>providers.get(provider)).filter(row=>row?.requirement==='required');
+  const libraryReady=Number(library.total||0)>0;
+  const followReady=sources.length>0;
+  const credentialsReady=followReady&&required.every(row=>row.present&&!row.missing?.length);
+  const pendingReview=Object.entries(review.counts||{})
+    .filter(([key])=>!REVIEW_SUMMARY_SKIPS.has(key))
+    .reduce((sum,[,value])=>sum+(Number(value)||0),0);
+  return [
+    {key:'library',label:'完成首次扫描',description:libraryReady
+      ?`已经导入 ${Number(library.total).toLocaleString()} 项馆藏。`:'等待扫描导入第一项馆藏。',
+      href:'/data-cleanup',done:libraryReady,icon:'scan-search'},
+    {key:'scraping',label:'设置采集来源与凭证',description:savedScrapingCredentials.length
+      ?`已为 ${savedScrapingCredentials.length.toLocaleString()} 个采集来源保存凭证。`
+      :'检查来源连接方式，并为需要登录的来源保存凭证。',
+      href:'/scraping',done:savedScrapingCredentials.length>0,icon:'settings'},
+    {key:'history',label:'导入浏览器历史记录',description:Number(taste.summary?.history_sources||0)>0
+      ?`已导入 ${Number(taste.summary.history_sources).toLocaleString()} 份浏览器历史。`
+      :'从这台电脑的浏览器导入口味分析记录。',
+      href:'/taste?onboarding=1',done:Number(taste.summary?.history_sources||0)>0,icon:'history'},
+    {key:'follow',label:'添加一个关注来源',description:followReady
+      ?`已启用 ${sources.length.toLocaleString()} 个来源。`:'添加想持续追踪的创作者或来源。',
+      href:'/follow-manage?tab=add',done:followReady,icon:'rss'},
+    {key:'credentials',label:'补齐关注来源凭证',description:!followReady
+      ?'添加关注后，会按来源检查必要凭证。':required.length
+        ?(credentialsReady?'已配置当前来源需要的凭证。':`${required.length.toLocaleString()} 个来源需要凭证。`)
+        :'当前关注来源不需要凭证。',
+      href:'/follow-manage?tab=source',done:credentialsReady,icon:'key-round'},
+    {key:'review',label:'处理首次复核',description:!libraryReady
+      ?'扫描完成后，会在这里列出需要你判断的资料。':pendingReview
+        ?`还有 ${pendingReview.toLocaleString()} 条需要复核。`:'首次复核队列已清空。',
+      href:'/review',done:libraryReady&&pendingReview===0,icon:'square-check-big'},
+  ];
+};
+const postSetupTutorialHtml=(tasks,skippedCount,totalCount)=>{
+  const ordered=[...tasks].sort((left,right)=>Number(left.done)-Number(right.done));
+  const next=tasks.find(task=>!task.done);
+  const completeCount=tasks.filter(task=>task.done).length+skippedCount;
+  const collapsed=postSetupTutorialCollapsed();
+  const rows=ordered.map(task=>`<li class="post-setup-task" data-state="${task.done?'checked':'unchecked'}">
+    <a href="${task.href}" data-tutorial-task="${task.key}">
+      <span class="post-setup-check" aria-hidden="true">${task.done?icon('check'):icon(task.icon)}</span>
+      <span><b>${task.label}</b><small>${task.description}</small></span>
+      ${icon('chevron-right')}</a>
+    ${task.done?'':`<button class="post-setup-skip" type="button" data-tutorial-skip="${task.key}" data-tutorial-label="${task.label}">跳过</button>`}
+    </li>`).join('');
+  return `<article class="post-setup-notification" data-collapsed="${collapsed}">
+      <header class="post-setup-notification-head">
+        <span class="post-setup-notification-icon" aria-hidden="true">${icon('compass')}</span>
+        <div><h2>完成 Peach 的安装教程</h2>
+        <p>已处理 ${completeCount}/${totalCount} 项，完成后会自动打勾。</p></div>
+        <button class="post-setup-collapse" type="button" data-tutorial-collapse aria-controls="postSetupTaskList" aria-expanded="${!collapsed}"
+          aria-label="${collapsed?'展开安装教程':'折叠安装教程'}">${icon(collapsed?'chevron-up':'chevron-down')}</button>
+      </header>
+      <ol class="post-setup-task-list" id="postSetupTaskList">${rows}</ol>
+      <footer><button class="geist-button" type="button" data-tutorial-action="next">继续：${next.label}</button></footer>
+    </article>`;
+};
+async function syncPostSetupTutorial(){
+  const root=$('#postSetupTutorial');if(!root)return;
+  if(postSetupTutorialMarker()!=='pending'){
+    root.hidden=true;root.innerHTML='';delete root.dataset.tutorialSignature;return
+  }
+  const request=++postSetupTutorialRequest;root.hidden=false;root.setAttribute('aria-busy','true');
+  if(!root.firstElementChild){
+    root.innerHTML=`<article class="post-setup-notification post-setup-loading">${icon('compass')}<p>正在检查安装进度…</p></article>`;
+  }
+  try{
+    const tasks=await postSetupTutorialTasks();
+    if(request!==postSetupTutorialRequest)return;
+    const knownKeys=new Set(tasks.map(task=>task.key));
+    const skipped=new Set([...postSetupTutorialSkipped()].filter(key=>knownKeys.has(key)));
+    setPostSetupTutorialSkipped(skipped);
+    const visible=tasks.filter(task=>!skipped.has(task.key));
+    const pending=visible.filter(task=>!task.done);
+    if(!pending.length){
+      setPostSetupTutorialMarker('complete');root.hidden=true;root.innerHTML='';delete root.dataset.tutorialSignature;
+      root.removeAttribute('aria-busy');return
+    }
+    const signature=JSON.stringify(visible.map(task=>[task.key,task.done,task.label,task.description,task.href]));
+    if(root.dataset.tutorialSignature===signature){root.removeAttribute('aria-busy');return}
+    root.innerHTML=postSetupTutorialHtml(visible,skipped.size,tasks.length);
+    root.dataset.tutorialSignature=signature;root.removeAttribute('aria-busy');
+    const next=pending[0];
+    const collapse=root.querySelector('[data-tutorial-collapse]');
+    collapse.onclick=()=>{
+      const card=root.querySelector('.post-setup-notification');
+      const collapsed=card.dataset.collapsed!=='true';
+      card.dataset.collapsed=String(collapsed);setPostSetupTutorialCollapsed(collapsed);
+      collapse.setAttribute('aria-expanded',String(!collapsed));
+      collapse.setAttribute('aria-label',collapsed?'展开安装教程':'折叠安装教程');
+      collapse.innerHTML=icon(collapsed?'chevron-up':'chevron-down');
+    };
+    root.querySelectorAll('[data-tutorial-skip]').forEach(button=>button.onclick=()=>{
+      const skippedNow=postSetupTutorialSkipped(),key=button.dataset.tutorialSkip;
+      skippedNow.add(key);setPostSetupTutorialSkipped(skippedNow);
+      actionReceipt(`已跳过「${button.dataset.tutorialLabel}」`,{undo:async()=>{
+        const restored=postSetupTutorialSkipped();restored.delete(key);setPostSetupTutorialSkipped(restored);
+        setPostSetupTutorialMarker('pending');await syncPostSetupTutorial();
+      }});
+      void syncPostSetupTutorial();
+    });
+    root.querySelector('[data-tutorial-action]').onclick=()=>{
+      location.href=next.href;
+    };
+  }catch(_error){
+    if(request!==postSetupTutorialRequest)return;
+    root.innerHTML=`<article class="post-setup-notification post-setup-error">${icon('alert')}<div><h2>暂时无法检查安装进度</h2><p>Peach 会在你切换页面或重新打开后检查。</p></div></article>`;
+    root.removeAttribute('aria-busy');
+  }
 }
 const ENTITY_FILTER_KEYS=['loc','creator','tag','state','dur_min','dur_max','orient','sort','dir'];
 const emptyEntityFilters=()=>Object.fromEntries(
@@ -9737,6 +9886,7 @@ async function restoreRoute(){
   syncPageTitle(location.href);
   buildDrawerNavigation();
   const path=decodeURIComponent(location.pathname);
+  void syncPostSetupTutorial();
   if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
     route(junkPath(),true);await restoreRoute();return;
   }

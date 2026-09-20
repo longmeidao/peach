@@ -242,7 +242,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
 | 相关推荐 | OpenAver `dca4c0c368ea0c2db9cf15e48977de2fc75e7077` 的 Tag IDF + 系列／片商／出演者规则只作固定算法参考（MIT） | 独立实现规范实体评分、MMR 多样性、稳定 seed、解释原因与负反馈边界；不复制上游 UI／源码 |
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
-| 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库） | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核 |
+| 女优头像候选 | Gfriends 的 GitHub raw 索引与单张媒体（只作外部 Provider，不克隆图库）；r18.dev 人物对象给出的 DMM 官方 `actjpgs` 缩略图只作精确身份绑定的首次头像 | 名字链、质量档位、格式/尺寸/SHA-256 门槛、候选缓存、provenance、健康统计和人工复核；首次头像只在人物主名精确一致、实体已连到同一资产且没有在位头像时安装，不进入高清候选排序 |
 | Gfriends 索引读法 | `src/peach/gfriends.py` | 页面与批处理共用这一份：`Filetree.json` 解析、名字链匹配、`quality_key` 排序、raw 地址拼接与本地缓存的保鲜期。**目录前缀是来源优先级，不是清晰度**——上游 README 写成「质量升序」，逐个来源核下来是小而精在前（`0-` 网友投稿、`1-`～`8-` 写真机构与片商官方、`8-` 往后是收录上万但原图两三百像素的大型数据库），所以排第一的是「最该先试的一张」，不是「最好看的一张」；`AI-Fix-` 前缀是上游自己做的放大与去水印，去掉前缀取未处理原件 |
 | 「这个地址能不能让 Peach 替人去取」 | `src/peach/http.py` 的 `public_https_url` + `resolves_publicly` | 追更的图片代理与换头像的手填地址共用同一道判据：必须 https、必须公网域名、不收 IP 字面量与用户信息、解析出来的每一个地址都要 `is_global`。Peach 跑在用户自己的机器上，能访问路由器后台、NAS 和本机各个端口，「你给地址我去下」不设边界就是一个替人发请求的跳板 |
 | 头像落盘 | `src/peach/avatar_provider.install_entity_avatar` | 采集脚本、复核页与换头像共用这一份：`.img` 经临时文件原子替换，`.ct`、`.provenance.json` 与人脸 `.face.json` 四件套一起换。检不出脸要删 sidecar 而不是留着——上一张图的脸框会被页面拿去给这一张取景，放大到一个空位置上，而这在界面上与「本来就该这么显示」看不出区别 |
@@ -307,7 +307,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 
 ## 当前替换队列
 
-本地库导入复用 Kodi/Jellyfin NFO 协议（2026-09-06 核对 [Kodi](https://kodi.wiki/view/NFO_files/Movies)、[Jellyfin](https://jellyfin.org/docs/general/server/metadata/nfo/)），XML 解析复用 Python 3.12+ 标准库 ElementTree（PSF，无新增依赖），图片复用项目固定版 Pillow。只适配影片、单集与音乐视频的字段；整剧、音乐专辑、播放记录及远端图片引用保留在原文件，不作为影片资料套用。拒绝 DTD、超大输入与越目录图片引用。同名边车优先，`movie.nfo` 和通用海报只用于单影片目录；正片和图片同属一组连号（`(1).mp4` 配 `(1).jpg`…`(119).jpg`）时同名图是图集的一张，不当海报。真实 JavBoss NFO 与同番号 R18 JSON 的只读 POC 已取得：本地保留原标题、演员和自定义标签，远端能补厂牌、导演、发行商、时长和图片出处。网络复用现有 R18 JSON 入口、SourceTransport 与封面解析器；独立包无需另装 Go。Javinizer-Go 仍服务多来源离线查询，本适配不新增站点 HTML 解析器。候选按资产 ID 与路径定位，批准时复核目标；时长证据不覆盖媒体探测时长。
+本地库导入复用 Kodi/Jellyfin NFO 协议（2026-09-06 核对 [Kodi](https://kodi.wiki/view/NFO_files/Movies)、[Jellyfin](https://jellyfin.org/docs/general/server/metadata/nfo/)），XML 解析复用 Python 3.12+ 标准库 ElementTree（PSF，无新增依赖），图片复用项目固定版 Pillow。只适配影片、单集与音乐视频的字段；整剧、音乐专辑、播放记录及远端图片引用保留在原文件，不作为影片资料套用。拒绝 DTD、超大输入与越目录图片引用。同名边车优先，`movie.nfo` 和通用海报只用于单影片目录；正片和图片同属一组连号（`(1).mp4` 配 `(1).jpg`…`(119).jpg`）时同名图是图集的一张，不当海报。真实 JavBoss NFO 与同番号 R18 JSON 的只读 POC 已取得：本地保留原标题、演员和词表未收录的自定义标签；已知内容词统一投影为 Peach 中文标签，明确的画质、促销、发行属性与演员编成丢弃。远端能补厂牌、导演、发行商、时长和图片出处；NFO 与远端人物主名精确一致时还补 DMM id、假名、罗马字与首次头像，不替换演员真值。网络复用现有 R18 JSON 入口、SourceTransport、头像缓存与封面解析器；独立包无需另装 Go。Javinizer-Go 仍服务多来源离线查询，本适配不新增站点 HTML 解析器。候选按资产 ID 与路径定位，批准时复核目标；时长证据不覆盖媒体探测时长。
 
 已完成：共享 Media/Job/HTTP 边界、feedparser、Pillow、Beautiful Soup、FTS5、可安全导入的批处理脚本和按任务范围终止进程。
 

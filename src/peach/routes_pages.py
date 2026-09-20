@@ -588,7 +588,7 @@ def setup_page(
 def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_guide: bool = False) -> str:
     """成功页：扫描是否已排队、进入 Peach 的入口，运行信息默认折叠。口令不显示在页面上。"""
     config = applied.config
-    destination = escape(_normal_url(config) + ('taste?onboarding=1' if history_guide else ''), quote=True)
+    destination = escape(_normal_url(config) + ('taste?onboarding=1' if history_guide else '?onboarding=1'), quote=True)
     destination_label = '导入浏览器历史记录' if history_guide else '进入 Peach'
     scan = ("首次扫描已排队，将在后台整理媒体库。你可以继续使用 Peach。" if scan_requested
             else "你可以稍后在配置页开始扫描媒体库。")
@@ -774,6 +774,22 @@ async def setup_submit(request: Request):
     return response
 
 
+def _setup_media_source_errors(dirs: Sequence[str], kinds: object,
+                               problems: Sequence[str], validate) -> list[str]:
+    """首启的本地来源必须真的可读；CloudDrive 来源仍可离线保存。"""
+    errors = list(problems) if problems else [""] * len(dirs)
+    source_kinds = list(kinds) if isinstance(kinds, (list, tuple)) else []
+    for index, path in enumerate(dirs):
+        kind = source_kinds[index] if index < len(source_kinds) else "local"
+        if errors[index] or kind != "local":
+            continue
+        try:
+            validate(path)
+        except ValueError as exc:
+            errors[index] = str(exc)
+    return errors if any(errors) else []
+
+
 def _read_answers(
     config, submitted: Mapping[str, object], *, windows: bool,
 ) -> tuple[object, dict[str, object]]:
@@ -793,6 +809,7 @@ def _read_answers(
                 sources = [{"location": kinds[i] if i < len(kinds) else "local", "path": path,
                             "root": roots[i] if i < len(roots) else ""} for i, path in enumerate(dirs)]
                 _, _, problems = media_configuration.validate(sources, windows=windows)
+                problems = _setup_media_source_errors(dirs, kinds, problems, question.validate)
                 if problems:
                     errors["media_dir"] = problems
                 values.update(media_dirs=tuple(Path(path) for path in dirs), media_sources=sources)

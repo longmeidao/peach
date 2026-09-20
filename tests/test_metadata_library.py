@@ -1,4 +1,5 @@
 """既有库边车识别和统一处理的隔离回归。"""
+import io
 import json
 import os
 import sqlite3
@@ -11,9 +12,11 @@ from unittest.mock import Mock, patch
 from contextlib import closing
 
 from filelock import FileLock
+from PIL import Image
 
 from peach.field_owners import auto_owner, owner_of, review_owner
 from peach.genre_taxonomy import map_genres
+from peach.http import HttpResponse
 from peach.library_nfo import read_nfo, sidecars, local_art
 from peach.library_processing import (STALL_AFTER_SECONDS, decorate, issues_path,
                                       process_library, snapshot, state_path, _fields)
@@ -35,11 +38,14 @@ class LibraryNfoTests(unittest.TestCase):
         path.write_text('<movie><generator>JavBoss</generator><uniqueid type="javboss">ABW-358</uniqueid>'
             '<title>作品</title><originaltitle>原題</originaltitle><set><name>系列</name></set>'
             '<premiered>2023-05-26</premiered><runtime>210</runtime><actor><name>涼森れむ</name></actor>'
-            '<genre>自定义标签</genre><tag>有码</tag></movie>', encoding='utf-8')
+            '<genre>自定义标签</genre><tag>有码</tag><tag>主觀視角</tag><tag>苗條</tag>'
+            '<tag>單體作品</tag><tag>MGSだけのおまけ映像付き</tag>'
+            '<tag>フルハイビジョン(FHD)</tag></movie>', encoding='utf-8')
         payload, raw = read_nfo(path)
         self.assertEqual(payload['id'], 'ABW-358')
         self.assertEqual(payload['source_generator'], 'JavBoss')
-        self.assertIn('自定义标签', _fields(payload)['tags']['value'])
+        tags = _fields(payload)['tags']['value']
+        self.assertEqual(tags, ['自定义标签', '有码', '主观视角', '苗条'])
         self.assertEqual(payload['runtime'], '210')
         self.assertEqual(raw, path.read_bytes())
 
@@ -171,6 +177,60 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(owner_of(owners, 'catalog_title'), auto_owner('local_nfo'))
         self.assertEqual(decision[0], 'approved')
         self.assertEqual(json.loads(decision[1])['rule'], 'adr-0029-empty-field-local-nfo')
+
+    @windows_ledger_roots
+    def test_new_import_normalizes_nfo_tags_and_enriches_the_same_performer(self):
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-358.mp4').write_bytes(b'video')
+        (media / 'ABW-358.nfo').write_text(
+            '<movie><title>涼森れむ流</title><sorttitle>ABW-358</sorttitle>'
+            '<actor><name>涼森れむ</name></actor><tag>主觀視角</tag><tag>苗條</tag>'
+            '<tag>單體作品</tag><tag>フルハイビジョン(FHD)</tag></movie>',
+            encoding='utf-8')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        image = io.BytesIO()
+        Image.new('RGB', (125, 125), '#795548').save(image, format='JPEG')
+        transport = Mock(return_value=HttpResponse(
+            200, {'content-type': 'image/jpeg'}, image.getvalue(),
+            'https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg'))
+        provider = Mock()
+        provider.transport = transport
+        provider.query.return_value = {
+            'id': 'ABW-358',
+            'actresses': [{
+                'dmm_id': 1051912, 'japanese_name': '涼森れむ',
+                'name_kana': 'すずもりれむ', 'name_romaji': 'Remu Suzumori',
+                'thumb_url': 'https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg',
+                'profile_source': 'r18dev',
+            }],
+        }
+        provider.cover.return_value = False
+
+        with patch('peach.avatar_provider.FaceProbe') as face:
+            face.return_value.return_value = None
+            result = process_library(
+                config, db, self.root / 'generated', self.root / 'covers',
+                provider_factory=Mock(return_value=provider),
+                apply_candidates=auto_apply_metadata)
+
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual(result['performer_aliases'], 2)
+        self.assertEqual(result['performer_avatars'], 1)
+        with closing(sqlite3.connect(db)) as connection:
+            entity_id = connection.execute(
+                "SELECT id FROM entity WHERE kind='performer' AND canonical_name='涼森れむ'").fetchone()[0]
+            aliases = {row[0] for row in connection.execute(
+                'SELECT alias FROM entity_alias WHERE entity_id=?', (entity_id,))}
+            tags = {row[0] for row in connection.execute(
+                "SELECT tag FROM asset_tag WHERE tag NOT LIKE '演员:%'")}
+        self.assertEqual(aliases, {'すずもりれむ', 'Remu Suzumori'})
+        self.assertEqual(tags, {'主观视角', '苗条'})
+        self.assertTrue((self.root / 'generated' / 'avatars'
+                         / f'performer-{entity_id}.img').is_file())
+        transport.assert_called_once()
 
     @windows_ledger_roots
     def test_no_code_video_pairs_with_its_sibling_image_without_nfo(self):
@@ -360,7 +420,9 @@ class LibraryNfoTests(unittest.TestCase):
                   'series': {'name': 'HOW TO SEX'}, 'actresses': [{'name': 'Remu Suzumori'}]}
         combined = {'content_id': '118abw358', 'title_ja': '涼森れむ流', 'series_name_ja': '保健室の先生',
                     'label_name_ja': 'ABSOLUTELY WONDERFUL', 'maker_name_ja': 'プレステージ',
-                    'actresses': [{'name_kanji': '涼森れむ', 'name_romaji': 'Remu Suzumori'}],
+                    'actresses': [{'id': 1051912, 'image_url': 'suzumori_remu.jpg',
+                                   'name_kanji': '涼森れむ', 'name_kana': 'すずもりれむ',
+                                   'name_romaji': 'Remu Suzumori'}],
                     'directors': [{'name_kanji': 'チャーリー中田'}]}
         pages = lambda transport, url, **kwargs: json.dumps(combined if 'combined=' in url else detail)
         provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
@@ -372,6 +434,11 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(fields['title']['value'], '涼森れむ流')
         self.assertEqual(fields['series']['value'], '保健室の先生')
         self.assertEqual(fields['performers']['display_value'], '涼森れむ')
+        self.assertEqual(fields['performers']['value'][0]['external_id'], '1051912')
+        self.assertEqual(fields['performers']['value'][0]['aliases'],
+                         ['すずもりれむ', 'Remu Suzumori'])
+        self.assertEqual(fields['performers']['value'][0]['thumb_url'],
+                         'https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg')
         # 账本厂牌实体用品牌名，日文写法会另起一个实体。
         self.assertEqual(fields['studio']['value'], 'Prestige')
 

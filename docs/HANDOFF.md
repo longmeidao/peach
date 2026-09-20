@@ -72,7 +72,6 @@
 
 - BoardUI：[创作者别名表格与关注分页](BOARD_UI.md#创作者别名与扫描操作)、[Board、Link Button 与搜索动效](BOARD_UI.md)、[复核布局](reference-snapshots/board-review-layout.md)；React 源码 `frontend/src/react/boardui/ORIGIN.md`。
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)；设置：`reference-snapshots/geist-settings.md`。
-
 版本与差异见 `docs/reference-sources.json`、`docs/reference-snapshots/`，流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本节只索引快照，不复制测量值；给不出可重抓
 字节的实测不登记，理由写进快照正文——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。

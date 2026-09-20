@@ -1471,7 +1471,9 @@ def _apply_metadata_candidate(
                 upsert_asset_entity(
                     connection, kind="performer", name=name, asset_id=asset_id,
                     role="performer", source=f"javinizer:{source}:performer",
-                    confidence=confidence, external_provider=(source if external_id else None),
+                    confidence=confidence,
+                    external_provider=_performer_external_provider(
+                        performer, source, external_id),
                     external_id=(external_id or None), metadata=metadata, now=now,
                 )
         # 演员是 performer 真相，不回写 asset.creator；两种身份混写正是重复名称事故的来源之一。
@@ -1522,6 +1524,18 @@ def _apply_metadata_candidate(
                 metadata=metadata, now=now,
             )
     return len(asset_ids)
+
+
+def _performer_external_provider(performer: dict, source: str,
+                                 external_id: str) -> str | None:
+    """人物外部编号跟随资料来源，不被承载候选的 NFO 来源冒领。"""
+    if not external_id:
+        return None
+    # NFO 的名字是这次落库的真值。在线 profile 只在随后精确对到这个实体后才登记编号，
+    # 不能让一个错误或被改写的 external_id 抢先把作品连到另一条既有实体。
+    if source == LOCAL_NFO_SOURCE and performer.get("profile_source"):
+        return None
+    return str(performer.get("profile_source") or source)
 
 
 #: 候选图的扩展名 -> content type。`/logo` 靠 `.ct` 边车决定回什么头。

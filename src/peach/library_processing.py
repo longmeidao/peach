@@ -10,6 +10,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from contextlib import closing
 from pathlib import Path
+from urllib.parse import quote
 
 from filelock import FileLock, Timeout
 from PIL import Image
@@ -55,6 +56,24 @@ SOURCE_INTERVALS = {'javdb.com': 5.0, 'jdbstatic.com': 5.0}
 SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb', 'local_nfo': '本地 NFO'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page'}
+R18_ACTRESS_IMAGE = "https://pics.dmm.co.jp/mono/actjpgs/{filename}"
+
+
+def _r18_actresses(rows):
+    actresses = []
+    for row in rows or []:
+        image = str(row.get('image_url') or '').strip()
+        thumb_url = (R18_ACTRESS_IMAGE.format(filename=quote(image, safe=''))
+                     if image and '/' not in image and '\\' not in image else '')
+        actresses.append({
+            'japanese_name': row.get('name_kanji') or row.get('name_romaji') or '',
+            'name_kana': row.get('name_kana') or '',
+            'name_romaji': row.get('name_romaji') or '',
+            'dmm_id': row.get('id') or '',
+            'thumb_url': thumb_url,
+            'profile_source': 'r18dev',
+        })
+    return actresses
 
 
 def describe_failure(error):
@@ -175,8 +194,7 @@ class LibraryMetadataProvider:
                                         series=combined.get('series_name_ja') or '',
                                         label=combined.get('label_name_ja') or '',
                                         director=directors[0] if directors else '')]
-        actresses = [{'japanese_name': row.get('name_kanji') or row.get('name_romaji') or ''}
-                     for row in combined.get('actresses') or []]
+        actresses = _r18_actresses(combined.get('actresses'))
         if any(row['japanese_name'] for row in actresses):
             payload['actresses'] = actresses
         japanese = [row.get('name_ja') or row.get('name_en') or ''
@@ -391,7 +409,19 @@ def _fields(payload, genre_decisions=None):
             fields[key] = evidence[key]
     if payload.get('local_tags'):
         from .entities import canonicalize_entity_name
-        values = list(dict.fromkeys(canonicalize_entity_name('tag', value) for value in payload['local_tags']))
+        from .genre_taxonomy import UNMAPPED, resolve_genre
+        # NFO 的 tag 既可能是来源 genre，也可能是用户自己的本地标签。认得出的统一
+        # 投影成 Peach 中文标签，明确的画质／促销／发行属性丢掉；词表不认识的原样
+        # 保留，不能把用户自己的分类当成「未知 genre」静默吞掉。
+        values = []
+        for raw in payload['local_tags']:
+            resolved = resolve_genre(raw, genre_decisions)
+            if resolved is None:
+                continue
+            value = raw if resolved == UNMAPPED else resolved
+            value = canonicalize_entity_name('tag', value)
+            if value and value not in values:
+                values.append(value)
         values = [value for value in values if value]
         if values:
             fields['tags'] = dict(value=values, display_value='、'.join(values), warnings=[])
@@ -447,11 +477,14 @@ def _merge_candidates(groups, row, code, source, document, evidence_path, genre_
     official = bool(spec and spec.official)
     for field, value in _fields(document, genre_decisions).items():
         current = _text(row.get(COLUMN_OF.get(field, field)))
+        key = f"asset:{row['id']}:{field}"
+        if not local and field == 'performers' and field in local_fields:
+            _merge_local_performer_profiles(groups, key, value, source)
+            continue
         if not local and (field in local_fields or current):
             continue
         if current and current == _text(value.get('display_value', value['value'])):
             continue
-        key = f"asset:{row['id']}:{field}"
         identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
         # 来源自报的番号跟着候选走：落库前要再核一次身份，javdb 的详情页地址里没有番号。
         candidate = dict(candidate_key=identity, source=source, provider=PROVIDER_NAMES.get(source, source),
@@ -475,6 +508,53 @@ def _merge_candidates(groups, row, code, source, document, evidence_path, genre_
         choices.append(candidate)
         group.update(candidates_json=json.dumps(choices, ensure_ascii=False), source_count=len(choices),
                      fetched_at=time.strftime('%Y-%m-%d %H:%M:%S'))
+        groups[key] = group
+
+
+def _merge_local_performer_profiles(groups, key, remote, source):
+    """NFO 的演员值不让在线来源替换，但收下同名人物的资料页证据。
+
+    r18 combined 页同一个人物对象里带 DMM id、假名、罗马字和官方头像；此前因为
+    NFO 已给演员，整条在线候选被跳过，这些不改变演员真值的资料也一起丢了。只在
+    规范化主名逐字匹配时合并，来源给了另一个人时仍按 ADR-0029 保留 NFO 一条。
+    """
+    from .entities import normalize_entity_name
+
+    group = groups.get(key)
+    if group is None:
+        return
+    try:
+        candidates = json.loads(group['candidates_json'])
+    except (KeyError, TypeError, ValueError):
+        return
+    remote_people = {
+        normalize_entity_name(person.get('name')): person
+        for person in remote.get('value') or [] if isinstance(person, dict)
+    }
+    changed = False
+    for candidate in candidates:
+        if candidate.get('source') != 'local_nfo':
+            continue
+        people = candidate.get('value')
+        if not isinstance(people, list):
+            continue
+        for person in people:
+            if not isinstance(person, dict):
+                continue
+            matched = remote_people.get(normalize_entity_name(person.get('name')))
+            if matched is None:
+                continue
+            for field in ('external_id', 'thumb_url', 'aliases'):
+                if matched.get(field) and person.get(field) != matched[field]:
+                    person[field] = matched[field]
+                    changed = True
+            if matched.get('profile_source') or source:
+                profile_source = matched.get('profile_source') or source
+                if person.get('profile_source') != profile_source:
+                    person['profile_source'] = profile_source
+                    changed = True
+    if changed:
+        group['candidates_json'] = json.dumps(candidates, ensure_ascii=False)
         groups[key] = group
 
 
@@ -651,6 +731,19 @@ def _apply_finished_candidates(callback, db_path, candidate_root):
     if callback is None:
         return {"applied": 0}
     return callback(Path(db_path), Path(candidate_root))
+
+
+def _enrich_finished_performers(callback, db_path, groups, config, candidate_root, remote):
+    """自动落库启用时补同一人物的资料；只采集候选时保持完全只读。"""
+    empty = {'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}
+    if callback is None:
+        return empty
+    from .metadata_performer_profiles import enrich_performer_profiles
+    return enrich_performer_profiles(
+        Path(db_path), groups.values(), config.directory('generated') / 'avatars',
+        candidate_root / 'provider-cache' / 'performer-avatars',
+        transport_factory=lambda: getattr(remote.provider(), 'transport', None),
+    )
 
 
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
@@ -861,7 +954,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     evidence_path.parent.mkdir(parents=True, exist_ok=True)
                     evidence_path.write_bytes(raw)
                     entries.append(('local_nfo', payload, evidence_path))
-                local_fields = _fields(payload) if payload else {}
+                local_fields = _fields(payload, genre_decisions) if payload else {}
                 missing = _missing_fields(row, target_key, groups, local_fields)
                 found, covers = remote.collect(row, code, missing, cover_root, update=update, issue=issue)
                 entries.extend(found)
@@ -881,9 +974,14 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             # 候选完整落盘后立即执行调用方注入的窄规则，不再等人打开复核页才触发。
             # 核心处理层不反向依赖 Web 复核层；CLI 与 Web 两个组装入口都传入同一实现。
             auto_apply = _apply_finished_candidates(apply_candidates, db_path, candidate_root)
+            profiles = _enrich_finished_performers(
+                apply_candidates, db_path, groups, config, candidate_root, remote)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
                    auto_applied=auto_apply['applied'],
+                   performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
+                   performer_profile_conflicts=profiles['conflicts'],
+                   performer_profile_failed=profiles['failed'],
                    error=f"{state['issue_count']} 项需要处理，请查看详情并重试。" if state['issue_count'] else '',
                    completed_at=time.time(), current_asset_id=None, current_asset_name='',
                    current_action='', current_started_at=None, current_deadline_at=None)

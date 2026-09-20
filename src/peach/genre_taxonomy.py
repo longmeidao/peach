@@ -54,6 +54,7 @@ CONTENT_GENRES: dict[str, str] = {
     "Doggystyle": "后入", "Doggy-Style": "后入", "Strong Doggy Style": "后入",
     "Standing Doggy Style": "后入", "バック": "后入",
     "POV": "主观视角", "Gonzo": "主观视角", "主観": "主观视角", "ハメ撮り": "主观视角",
+    "主觀視角": "主观视角",
     "Threesome / Foursome": "3P多人", "Threesome": "3P多人", "3P・4P": "3P多人",
     "3P": "3P多人",
     "Orgy": "多人", "乱交": "多人", "G*******g": "多人", "Harem": "多人", "ハーレム": "多人",
@@ -84,7 +85,7 @@ CONTENT_GENRES: dict[str, str] = {
     # 「找恋足题材」和「找美腿出镜」在检索上就再也分不开。
     "Foot Fetish": "恋足", "足フェチ": "恋足", "Feet": "恋足", "足": "恋足",
     "足の裏": "恋足", "足裏": "恋足", "足指": "恋足",
-    "Slender": "苗条", "スレンダー": "苗条",
+    "Slender": "苗条", "スレンダー": "苗条", "苗條": "苗条",
     "Chubby": "丰满", "ぽっちゃり": "丰满",
     # `苗条` 说的是身材细，`娇小` 说的是个子小，两件事在检索上分得开。
     "Tiny Girl": "娇小", "小柄": "娇小", "低身長": "娇小",
@@ -215,7 +216,7 @@ NON_CONTENT_GENRES: frozenset[str] = frozenset({
     "Sample Video", "Sample Movie", "Photo Gallery", "サンプル動画",
     "写真集", "Editor's Choice", "Recommended", "本編なし",
     # 演员编成与片长
-    "Featured Actress", "Female Porn Star", "AV女優", "単体作品",
+    "Featured Actress", "Female Porn Star", "AV女優", "単体作品", "單體作品",
     # `Variety` 是 `企画` 的英文：新抓的 genre 取日文原词，旧队列里冻着的那些还是英文。
     "企画", "Variety", "Over 4 Hours", "4時間以上作品", "16時間以上作品",
     "Gril on top 2", "All Sex",

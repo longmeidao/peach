@@ -134,6 +134,61 @@ class StylesheetPartitionTests(unittest.TestCase):
 
 
 class WebUiSourceTests(unittest.TestCase):
+    def test_post_setup_tutorial_persists_across_routes_and_checks_real_state(self):
+        root = Path(__file__).resolve().parents[1]
+        html = (root / "web/index.html").read_text(encoding="utf-8")
+        app = (root / "web/app.js").read_text(encoding="utf-8")
+        board = (root / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('id="postSetupTutorial"', html)
+        self.assertIn("const POST_SETUP_TUTORIAL_KEY='peach.post-setup-tutorial.v1'", app)
+        self.assertIn("const POST_SETUP_TUTORIAL_COLLAPSED_KEY='peach.post-setup-tutorial-collapsed.v1'", app)
+        self.assertIn("const POST_SETUP_TUTORIAL_SKIPPED_KEY='peach.post-setup-tutorial-skipped.v1'", app)
+        self.assertIn("api('/api/post-setup-tutorial')", app)
+        for label in ('设置采集来源与凭证', '导入浏览器历史记录', '补齐关注来源凭证'):
+            self.assertIn(label, app)
+        self.assertIn("source=>source.accepts_cookie", app)
+        self.assertIn("source=>source.cookie_saved", app)
+        self.assertIn("taste.summary?.history_sources", app)
+        tutorial = app[app.index("const POST_SETUP_TUTORIAL_KEY="):app.index("const ENTITY_FILTER_KEYS=")]
+        self.assertNotIn("location.pathname!=='/'", tutorial)
+        self.assertIn("${icon('compass')}</span>", tutorial)
+        self.assertIn("void syncPostSetupTutorial()", app[app.index("const route="):app.index("/* ── 脱盘模式")])
+        management = app[app.index("function enterManagementSurface()"):
+                         app.index("async function openStats")]
+        self.assertNotIn("postSetupTutorial", management)
+        self.assertIn("const pending=visible.filter(task=>!task.done)", app)
+        self.assertIn("data-tutorial-collapse", app)
+        self.assertIn("data-tutorial-skip", app)
+        self.assertIn("setPostSetupTutorialCollapsed(collapsed)", app)
+        self.assertIn("href:'/data-cleanup',done:libraryReady", app)
+        self.assertIn("icon(collapsed?'chevron-up':'chevron-down')", app)
+        self.assertIn("if(!root.firstElementChild){", tutorial)
+        self.assertIn("if(root.dataset.tutorialSignature===signature){root.removeAttribute('aria-busy');return}", tutorial)
+        self.assertIn("root.dataset.tutorialSignature=signature", tutorial)
+        self.assertIn("if(!pending.length){", app)
+        self.assertIn("setPostSetupTutorialMarker('complete');root.hidden=true", app)
+        self.assertIn("actionReceipt(`已跳过", app)
+        self.assertIn(".post-setup-notification", board)
+        self.assertIn(".post-setup-task[data-state=checked]", board)
+        self.assertIn(".post-setup-task+.post-setup-task::before{content:\"\";position:absolute;", board)
+        self.assertIn("inset:0 12px auto;height:1px", board)
+        self.assertIn("background:var(--color-border-button-default);pointer-events:none}", board)
+        self.assertIn(".post-setup-task:has(>a:hover)::before,.post-setup-task:has(>a:hover)+.post-setup-task::before{opacity:0}", board)
+        self.assertIn(".post-setup-task>a:hover{background:var(--hover)}", board)
+        self.assertIn("border-radius:8px;color:var(--ink);text-decoration:none}", board)
+        self.assertNotIn(".post-setup-task:hover{", board)
+        self.assertIn("position:fixed;right:12px;bottom:12px;z-index:100", board)
+        self.assertIn("width:min(400px,calc(100vw - 24px))", board)
+        self.assertIn("pointer-events:none", board)
+        self.assertIn(".post-setup-notification{pointer-events:auto", board)
+        self.assertIn(".post-setup-notification-head{display:grid;grid-template-columns:40px minmax(0,1fr) 32px;align-items:center", board)
+        self.assertIn("width:32px;height:32px;margin:0 -4px 0 0", board)
+        self.assertIn(".post-setup-notification[data-collapsed=true]>.post-setup-task-list", board)
+        self.assertIn(".post-setup-skip:hover", board)
+        self.assertIn("color:var(--color-text-secondary);fill:none;stroke:currentColor", board)
+        self.assertGreater(html.index('id="postSetupTutorial"'), html.index('</main>'))
+        self.assertIn("@media(max-width:720px)", board)
+
     def test_index_and_entity_visibility_targets_exist_in_the_page(self):
         html = (Path(__file__).resolve().parents[1] / "web/index.html").read_text(encoding="utf-8")
         for start, end in (("async function openIndex(", "  const title="),
@@ -1855,7 +1910,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 目录页四个筛选态的标题就是筛选名本身，和侧栏取同一份 STATE_LABELS。
         self.assertPageContains("title:STATE_LABELS[key],open:()=>openCatalog(path)")
         self.assertPageContains('syncPageTitle(path);')
-        self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation()})')
+        self.assertPageContains('queueMicrotask(()=>{syncHeaderActions();paintListTitle();buildDrawerNavigation();void syncPostSetupTutorial()})')
         self.assertPageContains("queueMicrotask(()=>$('#settingsClose').focus())")
         self.assertPageContains('if(settingsReturnFocus&&document.contains(settingsReturnFocus))')
         self.assertPageContains("if(e.key!=='Tab')return")

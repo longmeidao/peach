@@ -1581,6 +1581,48 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 @keyframes board-check-draw{from{stroke-dashoffset:23px}to{stroke-dashoffset:0}}
 .pcheck input:checked+span svg{animation:board-check-draw .2s cubic-bezier(.65,0,.35,1) forwards}
 @media(prefers-reduced-motion:reduce){.pcheck input:checked+span svg{animation:none;stroke-dashoffset:0}}
+
+/* 安装后教程：BoardUI NotificationViewport 把教程固定在右下角，内部任务沿用 RareUI
+   Task List 的真实状态、完成项后移与打勾，不占当前页面正文的布局空间。 */
+#postSetupTutorial{position:fixed;right:12px;bottom:12px;z-index:100;display:block;width:min(400px,calc(100vw - 24px));max-height:calc(100dvh - 24px);pointer-events:none}
+#postSetupTutorial[hidden]{display:none}
+.post-setup-notification{pointer-events:auto;display:flex;flex-direction:column;max-height:inherit;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:16px;background:var(--color-background-primary-default);box-shadow:0 1px 1px #0000000d,0 4px 4px #0000001a;animation:post-setup-notification-in .15s ease-out}
+.post-setup-notification-head{display:grid;grid-template-columns:40px minmax(0,1fr) 32px;align-items:center;gap:12px;padding:16px}
+.post-setup-notification-icon{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;background:var(--color-notification-information-background);color:var(--color-notification-information-foreground)}
+.post-setup-notification-icon>svg,.post-setup-error>svg,.post-setup-loading>svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+.post-setup-notification h2{margin:0;color:var(--color-text-primary);font:var(--board-body-medium)}
+.post-setup-notification p{margin:4px 0 0;color:var(--color-text-secondary);font:var(--board-body-2-regular)}
+.post-setup-collapse{display:grid;place-items:center;width:32px;height:32px;margin:0 -4px 0 0;padding:0;border:0;border-radius:8px;background:transparent;color:var(--color-text-secondary)}
+.post-setup-collapse:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
+.post-setup-collapse>svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2}
+.post-setup-notification[data-collapsed=true]>.post-setup-task-list,.post-setup-notification[data-collapsed=true]>footer{display:none}
+.post-setup-task-list{display:grid;gap:0;min-height:0;margin:0;padding:4px;border-block:1px solid var(--color-border-button-default);overflow-y:auto;list-style:none}
+.post-setup-task{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.post-setup-task+.post-setup-task::before{content:"";position:absolute;inset:0 12px auto;height:1px;background:var(--color-border-button-default);pointer-events:none}
+.post-setup-task:has(>a:hover)::before,.post-setup-task:has(>a:hover)+.post-setup-task::before{opacity:0}
+.post-setup-task>a{position:relative;display:grid;grid-template-columns:24px minmax(0,1fr) 16px;align-items:center;gap:12px;min-width:0;min-height:62px;padding:10px 8px 10px 12px;border-radius:8px;color:var(--ink);text-decoration:none}
+.post-setup-task>a:hover{background:var(--hover)}
+.post-setup-task>a>svg{width:16px;height:16px;color:var(--color-text-secondary);fill:none;stroke:currentColor;stroke-width:2}
+.post-setup-task>a:hover>svg{color:var(--color-text-primary)}
+.post-setup-skip{position:relative;margin-right:8px;padding:6px 8px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--color-text-secondary);font:var(--board-body-2-regular);transition:background-color .15s ease,color .15s ease}
+.post-setup-skip:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
+.post-setup-check{display:grid;place-items:center;width:24px;height:24px;border:1px solid var(--line);border-radius:50%;color:var(--muted)}
+.post-setup-check svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2}
+.post-setup-task b,.post-setup-task small{display:block}
+.post-setup-task b{font:var(--board-body-medium)}
+.post-setup-task small{margin-top:2px;color:var(--muted);font:var(--board-body-2-regular)}
+.post-setup-task[data-state=checked] .post-setup-check{border-color:var(--color-accent-500);background:var(--color-accent-500);color:#fff}
+.post-setup-task[data-state=checked] b{text-decoration:line-through;color:var(--muted)}
+.post-setup-task[data-state=checked]>a{opacity:.72}
+.post-setup-notification>footer{padding:12px}
+.post-setup-notification>footer>.geist-button{width:100%}
+.post-setup-loading{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:54px;padding:16px}
+.post-setup-loading p{margin:0}
+.post-setup-error{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:16px}
+@keyframes post-setup-notification-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
+@media(min-width:640px){#postSetupTutorial{right:24px;bottom:24px;max-height:calc(100dvh - 48px)}}
+@media(max-width:720px){.post-setup-task>a{min-height:58px;padding-left:10px}}
+@media(prefers-reduced-motion:reduce){.post-setup-notification{animation:none}.post-setup-task,.post-setup-task>a{transition:none}}
 /* ── Board 第三批：主按钮尺寸、配置页白底、通知与提醒、批量条、关注行图标、侧栏切换器 ── */
 /* 主按钮与旁边的 Board 按钮同一副盒子：36px、10px 圆角、Body Medium。 */
 body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
