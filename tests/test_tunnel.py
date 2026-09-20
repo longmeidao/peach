@@ -105,9 +105,9 @@ class TunnelPlanTests(unittest.TestCase):
         ca.write_bytes(b"ca")
         plan = tunnel.plan_for_config(
             self.config, access_path=self.access_path, token="internal-token",
-            standalone_mode=False, lan_address="192.168.50.162",
+            standalone_mode=False, lan_address="192.0.2.162",
         )
-        self.assertEqual(plan.origin.url, "https://192.168.50.162:443")
+        self.assertEqual(plan.origin.url, "https://192.0.2.162:443")
         self.assertEqual(plan.origin.origin_server_name, "peach.local")
         self.assertIn(("--origin-ca-pool", str(ca)), tuple(zip(plan.command, plan.command[1:])))
 
@@ -116,10 +116,10 @@ class TunnelPlanTests(unittest.TestCase):
         ca.parent.mkdir(parents=True)
         ca.write_bytes(b"ca")
         origin = tunnel.origin_for_config(
-            self.config, standalone_mode=False, lan_address="192.168.50.162",
+            self.config, standalone_mode=False, lan_address="192.0.2.162",
             https_port=8443,
         )
-        self.assertEqual(origin.url, "https://192.168.50.162:8443")
+        self.assertEqual(origin.url, "https://192.0.2.162:8443")
 
     def test_source_ipv6_origin_is_bracketed(self):
         ca = self.config.directory("secrets") / "tls" / "peach-local-ca.crt"
@@ -134,7 +134,7 @@ class TunnelPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(tunnel.TunnelError, "需要正在运行的 HTTPS"):
             tunnel.plan_for_config(
                 self.config, access_path=self.access_path, token="internal-token",
-                standalone_mode=False, lan_address="192.168.50.162",
+                standalone_mode=False, lan_address="192.0.2.162",
                 tls_enabled=False,
             )
 
