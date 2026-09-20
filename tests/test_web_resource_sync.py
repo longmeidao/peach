@@ -57,6 +57,10 @@ class PurgeMissingTests(unittest.TestCase):
             (self.root / name).write_bytes(b"x")
 
     def tearDown(self):
+        # 状态到达 complete 后，后台线程还要结算 task_run。先等线程真正退出，避免它在
+        # TemporaryDirectory 清理期间继续打开 ledger 或写入目录。
+        self.contract.resource_scan.stop()
+        self.contract.resource_apply_job.stop()
         self.tmp.cleanup()
 
     def _translate(self, raw):
@@ -241,14 +245,13 @@ class PurgeMissingTests(unittest.TestCase):
              mock.patch.object(rm_sync, "source_is_online", lambda loc: loc == "115"):
             started = rm_sync.w_resource_sync_scan(
                 self.contract, {"background": True, "restart": True})
-            self.assertEqual(started["status"], "running")
-            deadline = time.time() + 2
-            while True:
+            self.assertIn(started["status"], {"running", "complete"})
+            status = started
+            deadline = time.monotonic() + 2
+            while status["status"] == "running":
                 status = rm_sync.w_resource_sync_scan(
                     self.contract, {"background": True})
-                if status["status"] != "running":
-                    break
-                self.assertLess(time.time(), deadline)
+                self.assertLess(time.monotonic(), deadline)
                 time.sleep(0.01)
             self.assertEqual(status["status"], "complete")
             self.assertEqual(status["missing"], 2)

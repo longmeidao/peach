@@ -43,7 +43,12 @@ export function requiredEnv(name: string): string {
 }
 
 export async function launch(): Promise<Browser> {
-  return chromium.launch({ headless: true, executablePath: requiredEnv('PEACH_E2E_CHROME') });
+  return chromium.launch({
+    headless: true,
+    executablePath: requiredEnv('PEACH_E2E_CHROME'),
+    args: ['--renderer-process-limit=2'],
+    timeout: 30_000,
+  });
 }
 
 /** 等待态以 `aria-busy="true"` 与 `data-skeleton` 为准；超时就是等待态卡住了。
@@ -52,7 +57,9 @@ export async function launch(): Promise<Browser> {
  * 它只证明「没有东西在等」，证明不了页面画出来了：主体完全没渲染时同样立刻成立。
  * 所以调用方先等到目标页面自己的主体出现，再调它。 */
 export async function settle(page: Page): Promise<void> {
-  await page.waitForLoadState('networkidle');
+  /* 活动页和馆藏页会持续轮询任务状态，本来就不保证进入 `networkidle`。页面导航由
+     `visit()` 等到 load，主体由调用方的 `expectBody()` 验证；这里只等 Peach 自己公开的
+     等待态结束。 */
   await page.waitForFunction(
     () => !document.querySelector('[aria-busy="true"],[data-skeleton]'),
     undefined, { timeout: 15_000 });
