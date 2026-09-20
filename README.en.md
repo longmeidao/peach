@@ -4,178 +4,78 @@
 
 <h1 align="center">Peach</h1>
 
-<p align="center">A personal library for media across your disks, mounted drives and followed sources.</p>
+<p align="center">Turn media on disks, mounted drives and followed sources into a private library of your own.</p>
 
 <p align="center">
-  <a href="https://github.com/longmeidao/peach/releases">Download for Windows</a> ·
-  <a href="#quick-start">Quick start</a> ·
+  <a href="https://github.com/longmeidao/peach/releases">Download the Windows test package</a> ·
+  <a href="#feature-preview">Feature preview</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="README.md">中文</a>
 </p>
 
-<p align="center">
-  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&amp;label=tests&amp;style=flat" alt="Tests"></a>
-  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&amp;label=release&amp;style=flat" alt="Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?style=flat" alt="AGPL-3.0-or-later"></a>
-</p>
+Peach is a single-user, local-first media library. It brings search, playback, organization and followed updates into one browser interface, while the catalog, watch history and review decisions stay in a local SQLite ledger.
 
-Peach is a single-user, local-first media system. Search, play and organize media you already own on your computer, with browser access from your phone over the LAN. Your library, viewing history and review decisions stay in a local SQLite ledger.
+> **18+** Intended for adults managing adult-content collections. The repository contains no media or site datasets. Source connectors require the user's own access rights and do not bypass paywalls, bot checks or other access controls.
 
-> **18+** Intended for adults managing adult-content collections. The repository contains no media or site datasets; documentation uses SFW demo material only. Connectors require access rights and do not bypass paywalls, bot verification or other access controls.
+## Feature preview
 
-## Features
+https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
 
-| Capability | What it does |
-| --- | --- |
-| Browse and search | Find videos and photo collections by work, performer, studio, creator, series or tag; the search bar completes identities and works from your library as you type; works with nobody credited form an Unassigned group |
-| Region split | Japan, Korea, mainland China and the West each form their own class; filter by one or several, or list the ones still undecided. Release codes that can be recognised are classified automatically; for the rest you decide once per batch, and automatic results never overwrite that |
-| Play and save | Play local and mounted media; keep watch-later items, viewing state, Mixes and playlists, and let a video keep going in a corner miniplayer after you leave its details |
-| Scan and enrich | Scan folders, detect existing NFO files and local posters, fetch missing metadata and write it to the catalog after review |
-| Follow updates | Register official or archive sources, explicitly check updates, view and save content inside Peach |
-| Review and organize | Review external candidates and identity assessments; manage duplicates, junk, unavailable files and trash |
-| Taste and history | Explore your taste profile, import browsing records and manage reasons for liking items |
+<p align="center"><a href="docs/assets/peach-overview.mp4">Download the 58-second feature video</a></p>
 
-Local disks alone work. 115 and PikPak arrive as folders mounted by CloudDrive: sign in and mount them there first, then add the folders to Peach. See [CloudDrive tuning](docs/CLOUDDRIVE.md) for cache and read-length settings.
+## What it does
 
-Follow sources include FANBOX, Patreon, SubscribeStar, Kemono, Pawchive, Coomer, the Rule34 family, F95zone and SimpCity (needs your own login cookie). Availability depends on the site and your access rights. See [source collection](docs/SOURCING.md) for supported workflows and boundaries.
+<table>
+  <thead>
+    <tr>
+      <th width="180" nowrap>Capability</th>
+      <th>Summary</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td width="180" nowrap><strong>Visual library</strong></td>
+      <td>Browse videos and photo collections by cover; search by work, performer, studio, creator, series or tag; use library filters, identity completion and large-cover mode from the same page.</td>
+    </tr>
+    <tr>
+      <td width="180" nowrap><strong>Playback and links</strong></td>
+      <td>Play media from local disks and mounted drives, with people, studios, tags and related works beside the player; keep watch-later items, viewing state, Mixes, playlists and a corner miniplayer.</td>
+    </tr>
+    <tr>
+      <td width="180" nowrap><strong>People and identity</strong></td>
+      <td>Collect portraits, aliases, external links and work relationships on performer profiles, while external identity candidates retain provenance and wait for review.</td>
+    </tr>
+    <tr>
+      <td width="180" nowrap><strong>Collection and enrichment</strong></td>
+      <td>Scan folders for NFO files, local posters and existing metadata; fetch missing covers, portraits and metadata, then write reviewed results to the library.</td>
+    </tr>
+    <tr>
+      <td width="180" nowrap><strong>Multi-source following</strong></td>
+      <td>Register official or archive sources, see one creator's updates across sites and save content inside Peach.</td>
+    </tr>
+    <tr>
+      <td width="180" nowrap><strong>Interface and devices</strong></td>
+      <td>Use light or dark themes, custom colors and responsive pages on desktop, tablet and phone; review duplicates, unavailable files, trash and external candidates in one place.</td>
+    </tr>
+  </tbody>
+</table>
 
-Interface preferences are saved in the current browser and live under Settings: default sort, official covers or preview images for JAV works, autoplay when details open, UI sounds (a soft cue for buttons, switches and action receipts), and SFW mode, which blurs, desaturates and dims images and video and stops hover previews.
+## Get Peach
 
-“Video thumbnail capture”, in the same place, belongs to the computer running Peach rather than to each browser: pick precise (a frame every 10 seconds) or coarse (every 30 seconds) and it captures frames in the background, so dragging the progress bar shows the picture at that point in time. It is off by default and only covers videos on local disks; every frame from a mounted cloud drive costs one fetch from the source. The images are cleaned up together with the video on the data management page.
+The standalone Windows x64 test package is available from [GitHub Releases](https://github.com/longmeidao/peach/releases); Windows and macOS can also run Peach from source, which requires Python 3.12 or newer. See [Windows testing](docs/TESTING_DESKTOP.md) and [operations](docs/OPERATIONS.md) for downloads, verification and configuration.
 
-The interface uses Board styling. “Increase contrast” in Settings disables navigation transparency and refraction; “Sidebar glow” is the three slowly drifting lights on the sidebar’s glass, and the other glass surfaces (search box, top-bar icon buttons, filter overlay, the settings card’s section nav, the library and palette popovers) pick up the first two colours. The palette button at the bottom of the sidebar picks both a glow preset and an accent colour: the “Native glass” preset hands every surface back to its own reflection, which follows the light or dark theme, while the accent drives buttons, focus rings, links and data colours. Settings adjusts strength, grain, drift speed, softness, size and each of the three glow colours. It shows in both the light and dark themes. Numeric preferences accept custom values within their supported ranges, with switches for optional features.
+## Data boundaries
 
-Choose a media library at the top of the sidebar; theme and settings controls are fixed at the bottom. Set library names and icons in Configuration; matching names group folders into one library. Library selection filters work lists and facets. Cloud libraries use locally served provider icons by default.
-
-“Remember me” uses this browser’s Security preference (1–365 days, default 30). Leaving it unchecked creates a browser session lasting at most 12 hours.
-
-## Quick start
-
-Peach is **pre-1.0**. The application interface is currently Chinese only.
-
-| Platform | Available today |
-| --- | --- |
-| Windows | Standalone test package or source installation |
-| macOS | Source installation; standalone desktop packaging is in development |
-| Linux | Unsupported and untested |
-
-### Windows test package
-
-1. Download `Peach-<version>-windows-x64.zip` from [GitHub Releases](https://github.com/longmeidao/peach/releases) and extract the complete archive.
-2. Open `Peach.exe`, select existing media folders in the setup page and submit.
-3. Browse your library. Media and service configuration are available from page settings or the tray menu.
-
-The test package can stay local to one computer or allow devices on the same LAN during first-run setup.
-LAN clients open `http://<configured-name>.local:<port>`; on first use, allow only Private networks in the Windows Firewall prompt.
-No Python, Git, Node or OpenSSL is required. Data lives separately from the program in `%LOCALAPPDATA%\Peach\peach-data`.
-
-Settings → “This computer” → Updates and maintenance compares the installed version with the latest GitHub prerelease.
-Automatic updates can check every 6 hours, daily, or weekly and are off by default. Standalone packages can download automatically and wait for restart confirmation; source installations support automatic checks.
-Standalone packages download and install the update in the app and restore the previous version if installation fails;
-you can also exit the tray and extract a complete new package over it, keeping the data directory.
-The same section offers uninstall, with optional removal of Peach data; original media is preserved.
-
-Install FFmpeg and ffprobe separately for transcoding, probing and thumbnails. Without them, browsing and playback of browser-compatible formats remain available.
-The package is unsigned; see [Windows testing](docs/TESTING_DESKTOP.md) for download verification, configuration and feedback.
-
-### Run from source
-
-Requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) **0.12.13** and **Python 3.12 or newer**. These examples use 3.14; uv can download a missing Python interpreter. CI covers 3.12 and 3.14.
-Node is unnecessary at runtime; frontend development needs Node 24 or newer.
-
-Clone the repository:
-
-```shell
-git clone https://github.com/longmeidao/peach.git peach-app
-cd peach-app
-```
-
-Windows: create the environment, install and launch setup in PowerShell:
-
-```powershell
-uv sync --locked --python 3.14
-& .\.venv\Scripts\peach-tray.exe
-```
-
-macOS: create the environment, install menu-bar support and launch setup:
-
-```shell
-uv sync --locked --python 3.14 --extra macos
-./.venv/bin/peach-tray
-```
-
-Setup configures media folders, access scope and ports. Alternatively, use the `peach init` terminal wizard followed by `peach serve`; executables are in the virtual environment directories above.
-
-Source deployments default to a sibling `peach-data/` directory. Set `PEACH_DATA_ROOT` for a custom location.
-The access password is optional during setup. Leave it blank to allow devices that can reach Peach to enter directly. Configuration lets you set, change or disable the password; Security settings control how long to stay signed in. Existing deployments retain their current login requirement. Local CA generation requires OpenSSL.
-See [operations](docs/OPERATIONS.md) for configuration, HTTPS, CloudDrive mounts and non-interactive initialization.
-
-## Your data
-
-- Media stays in its original folders. Transcoding uses disposable derived caches without rewriting source files.
-- The SQLite ledger stores library identities, viewing behavior and human decisions. External metadata and AI assertions retain provenance and confidence and require review to become truth.
-- Credentials live in the data directory's `secrets/`, outside Git, logs and API responses. Migrations and irreversible operations require a backup and authorization.
-- Each deployment serves one person and is not intended for teams or public hosting.
-- Optional replication is off by default. The verified setup is a Windows writer and macOS reader, each with a local ledger. A shared folder transports data; replication and takeover are explicit. Divergence makes the ledger read-only rather than automatically merging it. See [replication boundaries](docs/adr/0017-dual-host-local-runtime-and-sync-boundaries.md).
-
-The repository distributes no media, covers, thumbnails, metadata or site datasets. External titles, images and descriptions remain the content and copyright of their respective sites and creators.
-
-## Development and contributions
-
-The backend is a FastAPI modular monolith with SQLite as the truth store. The frontend migrates page by page to React, Tailwind v4 and BoardUI source.
-Python serves existing pages and committed build output from `web/`; runtime requires neither Node nor a CDN.
-
-| Path | Contents |
-| --- | --- |
-| `src/peach/` | API, media, ledger and source adapters |
-| `frontend/` | TypeScript, React with BoardUI source, the island mount contract, Vite build |
-| `web/` | Pages, styles, self-hosted dependencies and `web/dist/` output |
-| `migrations/` | Versioned SQLite migrations |
-| `scripts/`, `tests/` | Development entry points, maintenance scripts and isolated tests |
-| `docs/` | Guides, architecture and project status |
-
-Read the [working agreement](AGENTS.md) before changing the project. Tests use temporary databases and media. Run the official entry point in an isolated worktree.
-
-Windows: run checks for the current changes:
-
-```powershell
-& .\scripts\test.ps1
-```
-
-macOS: run checks for the current changes:
-
-```shell
-./scripts/test.sh
-```
-
-The default `auto` scope selects affected domains. See [testing and dependencies](docs/TESTING.md) for the CI policy.
-See [frontend development](docs/FRONTEND.md) for installation, builds, type checking and committed output.
-Dependency manifests and lockfiles define versions; Dependabot checks Python, npm and GitHub Actions weekly.
-
-For issues, include the version, steps, expected result and actual result. Do not attach a real ledger, media, cookies or private keys.
-Report security issues according to the [security policy](SECURITY.md).
+Media stays in its original folders, while the catalog, identities, viewing history and human decisions stay in a local SQLite ledger. External metadata and AI output enter as candidates with provenance and confidence; credentials stay outside Git, logs and API responses. Peach is for single-user self-hosting and does not provide a public-site or team permission model.
 
 ## Documentation
 
-Detailed project documentation is in Chinese.
+[Windows testing](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sources](docs/SOURCING.md) · [Changelog](CHANGELOG.md) · [Development agreement](AGENTS.md) · [Architecture decisions](docs/adr/)
 
-| Task | Guide |
-| --- | --- |
-| Download, configure and test the package | [Windows testing](docs/TESTING_DESKTOP.md) |
-| Configure media, LAN, HTTPS and replication | [Operations](docs/OPERATIONS.md) |
-| Understand collection and evidence boundaries | [Sources](docs/SOURCING.md) |
-| Check the installed runtime and verification | [Status](docs/STATUS.md) |
-| See what changed in each release | [Changelog](CHANGELOG.md) |
-| Find open work | [Backlog](docs/PRODUCT_BACKLOG.md) |
-| Change and maintain Peach | [Working agreement](AGENTS.md) · [Frontend](docs/FRONTEND.md) · [Reuse](docs/REUSE.md) |
-| Read durable conventions and architecture | [Handoff](docs/HANDOFF.md) · [Decisions](docs/adr/) |
-
-README describes mainline capabilities. Status records the installed runtime and its verification; Releases identifies distributed packages.
-See [README maintenance](docs/README_MAINTENANCE.md) for the documentation update process.
+Run development checks through `& .\scripts\test.ps1` on Windows or `./scripts/test.sh` on macOS/Linux.
 
 ## License
 
 [AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao.
 
-Vendored frontend dependencies retain upstream licenses and provenance in [web/vendor](web/vendor/).
-FFmpeg is not distributed with the repository or packages; install it separately and follow its license.
+Vendored frontend files retain their upstream licenses and provenance under [web/vendor](web/vendor/).
