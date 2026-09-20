@@ -34,13 +34,15 @@ export function GenreTagList({ tags }: { tags: string[] }) {
 }
 
 /** 一个来源给的值，加上它顺带交回来的判断依据。 */
-function CandidateBody({ candidate }: { candidate: ReviewCandidate }) {
+function CandidateBody(
+  { candidate, selectable = false }: { candidate: ReviewCandidate; selectable?: boolean },
+) {
   const evidence = Object.entries(candidate.catalog_evidence || {})
     .filter(([, item]) => item && item.display_value);
   const id = candidate.content_id || candidate.provider_id;
   return (
     <span className="flex min-w-0 flex-1 flex-col">
-      <span className="flex min-w-0 flex-col gap-0.5 px-4 py-3 group-hover:bg-background-primary-hover group-data-selected:bg-background-primary-hover">
+      <span className="relative flex min-w-0 flex-col gap-0.5 px-4 py-3 group-hover:bg-background-primary-hover group-data-selected:bg-background-primary-hover">
         <b className="text-body-2-medium text-text-secondary">
           {candidate.source}
           {candidate.official ? ' · 官方优先' : ''}
@@ -52,6 +54,12 @@ function CandidateBody({ candidate }: { candidate: ReviewCandidate }) {
         {(candidate.warnings || []).map((warning) => (
           <i key={warning} className="text-body-2-regular text-status-yellow-text">{warning}</i>
         ))}
+        {selectable ? (
+          <span aria-hidden="true" data-candidate-choice
+            className="absolute top-4 right-4 inline-grid size-4 place-items-center rounded-full border border-border-checkbox-default bg-background-primary-default group-hover:border-border-checkbox-hover group-data-selected:border-border-focus-ring group-data-selected:bg-accent-600">
+            <span className="size-1.5 rounded-full bg-text-white opacity-0 group-data-selected:opacity-100" />
+          </span>
+        ) : null}
       </span>
       {evidence.length ? (
         <dl className="flex flex-col gap-1 border-t border-separator-border bg-background-primary-default px-4 py-2.5">
@@ -102,11 +110,7 @@ export function CandidateChoices(
       {candidates.map((candidate) => (
         <Radio key={candidate.candidate_key} value={candidate.candidate_key}
           className="group flex cursor-pointer items-center gap-2 overflow-hidden rounded-surface border border-separator-border bg-background-secondary-default outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:border-border-button-active data-disabled:cursor-not-allowed">
-          <CandidateBody candidate={candidate} />
-          {/* 注册表里没有单选控件，这一枚圆点照 `CheckboxGlyph` 的选中态取同一档 accent。 */}
-          <span className="mr-3 inline-grid size-4 shrink-0 place-items-center rounded-full border border-border-checkbox-default group-data-selected:border-accent-600">
-            <span className="size-2 rounded-full bg-transparent group-data-selected:bg-accent-600" />
-          </span>
+          <CandidateBody candidate={candidate} selectable />
         </Radio>
       ))}
     </RadioGroup>

@@ -202,6 +202,7 @@ it('勾选跨页也跨视图，批量发出去的是整个 ID 集合', async () 
 
   await click(checkboxNamed(host, '全选本页来源'));
   expect(host.textContent).toContain('已选 10 个来源');
+  expect(host.querySelector('[data-selection-dock]')).not.toBeNull();
 
   // 翻到第二页再勾一条：上一页那十条还在选中集合里。
   await click([...host.querySelectorAll('button')].find((b) => b.textContent === '下一页'));

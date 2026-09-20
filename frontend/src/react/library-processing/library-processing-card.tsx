@@ -25,7 +25,7 @@ import type { LibraryProcessingProps } from '../bundle';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
-import { Disclosure, Footer, Section, Stack } from '../settings/section';
+import { Disclosure } from '../settings/section';
 import { busyProps } from '../settings/use-action';
 import { queryClient } from '../query';
 import {
@@ -36,6 +36,7 @@ import { useLibraryProcessingJob } from './use-library-processing';
 
 /** 菜单里那两种只跑一半的方式。主键「扫描并补全资料」两段都跑，交的是空请求体。 */
 const PARTIAL_RUNS = [
+  { label: '扫描并补全资料', icon: RiDatabase2Line, command: {} },
   { label: '只扫描', icon: RiHardDrive2Line, command: { stage: 'scan' } },
   { label: '只采集', icon: RiGlobalLine, command: { stage: 'collect' } },
 ] as const;
@@ -65,7 +66,7 @@ function ScanActions({ busy, onRun }: { busy: boolean; onRun(command: LibraryPro
   };
   return (
     <>
-      <span className="flex items-center gap-1">
+      <span data-button-group data-split-button data-variant="primary">
         <Button leadingIcon={RiDatabase2Line} onClick={() => run({})} {...busyProps(busy)}>
           扫描并补全资料
         </Button>
@@ -182,8 +183,9 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Section title="扫描与采集">
-        <Stack>
+      <section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing>
+        <div data-geist-fieldset-content>
+          <h3 className="text-title-2-medium text-text-primary">扫描与采集</h3>
           <p className="text-body-2-regular text-text-secondary">{CARD_TEXT}</p>
           {state.status === 'running'
             ? <div className="flex flex-col gap-1.5">
@@ -197,16 +199,16 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
                   : <LoadingDots label={line} />}
               </div>
             : null}
-        </Stack>
-        <Footer>
+        </div>
+        <footer data-geist-fieldset-footer>
           <LinkButton href="/scraping" size="small" trailingIcon={RiArrowRightLine}>来源和凭证</LinkButton>
           {state.candidates
             ? <LinkButton href="/review" size="small" trailingIcon={RiArrowRightLine}>复核资料</LinkButton>
             : null}
           {/* 失败且有可重试项时，这一趟该做的事是「重试未完成项」，它在下面那条错误提示里。 */}
           {retryable ? null : <ScanActions busy={busy} onRun={run} />}
-        </Footer>
-      </Section>
+        </footer>
+      </section>
       <Outcome state={state} problem={problem} settled={settled} onRetry={retry} />
     </div>
   );

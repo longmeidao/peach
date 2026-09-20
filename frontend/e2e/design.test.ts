@@ -375,6 +375,32 @@ describe('设计决定', () => {
       assert.equal(await scan.getAttribute('aria-busy'), 'true');
       assert.equal(await scan.evaluate((element) => (element as HTMLButtonElement).disabled), false,
         '用原生 disabled 挡的话按钮连焦点都拿不到');
+      const split = card.locator('[data-split-button]');
+      const parts = split.locator(':scope > button');
+      assert.equal(await parts.count(), 2, '拆分按钮没有保持主操作与菜单两区');
+      const boxes = await parts.evaluateAll((buttons) => buttons.map((button) => {
+        const rect = button.getBoundingClientRect();
+        return { left: rect.left, right: rect.right, height: rect.height };
+      }));
+      assert.ok(Math.abs(boxes[0]!.right - boxes[1]!.left) < 0.5,
+        '拆分按钮两区之间留了空隙');
+      assert.equal(boxes[0]!.height, boxes[1]!.height, '拆分按钮两区高度不一致');
+      const divider = await parts.nth(1).evaluate((element) => {
+        const style = getComputedStyle(element, '::after');
+        return { width: style.width, color: style.backgroundColor };
+      });
+      assert.equal(divider.width, '1px', '拆分按钮分隔线宽度不对');
+      assert.notEqual(divider.color, 'rgba(0, 0, 0, 0)', '拆分按钮分隔线没有颜色');
+      const base = await split.evaluate((element) => getComputedStyle(element).backgroundImage);
+      for (const part of [parts.first(), parts.last()]) {
+        await part.hover();
+        assert.equal(await split.evaluate(
+          (element) => getComputedStyle(element).backgroundImage), base,
+        '拆分按钮悬停时改变了整组底色');
+        assert.deepEqual(await parts.evaluateAll((buttons) => buttons.map(
+          (button) => getComputedStyle(button).backgroundColor)),
+        ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], '按钮自己仍在切换底色');
+      }
     } finally {
       await opened.close();
     }
@@ -643,6 +669,8 @@ describe('设计决定', () => {
       });
       assert.equal(overlay.content, 'none', '悬停伪元素仍覆盖在封面像素上');
       assert.equal(overlay.borderWidth, '0px', '悬停边线仍污染圆角边缘像素');
+      assert.match(await card.evaluate((element) => getComputedStyle(element).boxShadow),
+        /0px 0px 0px 8px/, '悬停底色没有在卡片四周向外多铺 8px');
       assert.equal(await card.locator('.later-tools').evaluate(
         (element) => getComputedStyle(element).opacity), '1', '移除描边后没有保留悬停反馈');
     } finally {

@@ -1618,9 +1618,19 @@ class WebUiSourceTests(unittest.TestCase):
         toggle_rule = toggle_rule[:toggle_rule.index("}")]
         self.assertIn("border-radius:0 var(--control-radius) var(--control-radius) 0",
                       toggle_rule)
-        # 交界那条线是右半自己的左边界，上下顶满：一根浮在上面、两端各收进去几像素的竖线，
-        # 压上左半时填充铺到交界，线的两端就各露出一截没被铺到的底色。
+        # 遗留骨架仍由右半的左边界画线；React 两颗主按钮会各画悬停层，交界线另盖在最上面。
         self.assertIn("border-left:1px solid var(--border-15)", toggle_rule)
+        scan = self.read_react("library-processing/library-processing-card.tsx")
+        self.assertIn('<span data-button-group data-split-button data-variant="primary">', scan)
+        self.assertIn("{ label: '扫描并补全资料', icon: RiDatabase2Line, command: {} },", scan)
+        taste = self.read_react("taste/taste-page.tsx")
+        self.assertIn('<span data-button-group data-split-button data-variant="primary">', taste)
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn("[data-split-button][data-button-group]>button+button::after{content:\"\";", board)
+        self.assertIn("inset-block:0;left:0;width:1px;background:#fff", board)
+        self.assertIn("[data-split-button][data-button-group]>button{position:relative;z-index:1;"
+                      "height:36px;border:0;border-radius:0;background:none!important", board)
+        self.assertNotIn("[data-split-button][data-variant=primary]:hover", board)
 
     def test_the_progress_bar_can_be_grabbed_well_above_the_coloured_line(self):
         """彩条 6px，命中区 18px，多出来的 12px 全在条上方。
@@ -2628,10 +2638,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".pic{position:relative;aspect-ratio:var(--card-ratio,16/9)")
 
     def test_card_hover_feedback_has_no_edge_over_the_cover(self):
-        """整卡用底色与轻微明度反馈悬停，圆角上不再覆盖一圈深色像素。"""
+        """整卡底色向外多铺 8px，封面像素上不覆盖一圈深色边。"""
         self.assertPageLacks('.card:hover .pic::after{content:""')
         self.assertPageContains(
-            "body .card:not(.junkcard,.resourcecard):hover{background:var(--hover)}")
+            "body .card:not(.junkcard,.resourcecard):hover{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}")
         self.assertPageContains(
             "body .card:not(.junkcard,.resourcecard):hover .pic{filter:saturate(.9) brightness(.94)}")
 
@@ -8824,8 +8834,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("junk:statCard('垃圾文件','file-archive',")
         self.assertPageContains("duplicates:statCard('重复文件','file-stack',")
         self.assertPageLacks("<legend>垃圾文件</legend>")
-        self.assertPageContains('class="cleanupfieldset" data-geist-fieldset aria-labelledby=')
-        self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset')
+        self.assertPageContains('class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby=')
+        self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task')
         self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
         self.assertPageContains("保留来源根目录")
         # 这一屏会删账本行，检查那一步就得把条数写在脸上，确认框里也要说清不可撤销。
@@ -9957,13 +9967,14 @@ class WebUiSourceTests(unittest.TestCase):
         结果、故障与重试怎么说由 `frontend/test/react/library-processing.test.tsx` 守。
         """
         self.assertPageContains('<div class="cleanupscraping" id="libraryProcessing">')
-        self.assertPageContains('<section class="cleanupfieldset" data-geist-fieldset aria-labelledby="cleanupScrapingTitle">')
+        self.assertPageContains('<section class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupScrapingTitle">')
         card = self.read_react("library-processing/library-processing-card.tsx")
-        # 提示排在 `Section` 之后，两块由外面这一层的 `gap` 分开。
+        # 提示排在任务卡之后，两块由外面这一层的 `gap` 分开。
         self.assertIn(
-            "      </Section>\n"
+            "      </section>\n"
             "      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} />",
             card)
+        self.assertIn("data-geist-fieldset data-cleanup-task data-cleanup-processing", card)
         # 空着时整块收起：`aria-live` 的容器留一条空轨道，卡片底下会凭空多出一个间距。
         self.assertIn('<div aria-live="polite" className="flex flex-col gap-4 empty:hidden">', card)
         # 进度条留在卡片里，和那颗按钮同一格。
@@ -10039,10 +10050,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-plain-stat>.cleanupmeta{display:block;min-height:16px;margin:0;font:var(--board-caption);color:var(--color-text-tertiary);", board)
         self.assertIn("@media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}", board)
         self.assertIn("@media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}", board)
-        self.assertIn(".cleanupgrid>.cleanupemptyfolders{display:grid;grid-template-columns:1fr auto;align-items:center}", board)
+        self.assertIn(".cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
+        self.assertIn(".resourcesyncbox[data-cleanup-task]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
+        self.assertIn(".resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{align-self:stretch;justify-content:flex-end;min-height:0;padding:24px;border:0;background:none}", board)
+        self.assertGreaterEqual(self.app_js.count('class="resourcesyncbox" data-geist-fieldset data-cleanup-task'), 2)
         skeleton = (root / "frontend/src/management.ts").read_text(encoding="utf-8")
         self.assertIn('<div class="cleanupstats">${stats.map(([title, glyph]) => `', skeleton)
-        self.assertIn('<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset aria-labelledby="cleanup-loading-empty">', skeleton)
+        self.assertIn('<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">', skeleton)
+        self.assertEqual(skeleton.count("data-cleanup-task"), 4,
+                         "数据管理骨架要同步画出两张任务卡和两块 BoardUI 操作区")
 
     def test_the_toast_glyph_is_stroked_and_sits_level_with_its_line(self):
         """Toast 里那枚勾是描边件，和文字同一条中线。
@@ -10722,23 +10738,25 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("linkHost(x.url)", urllink)
 
     def test_a_collapsed_ranking_shows_a_fixed_preview_and_one_way_back(self):
-        """收起的排名只露前十，展开与收起共用同一颗次要按钮。
+        """收起的排名只露前十，展开与收起共用同一颗图标按钮。
 
-        名次归 React 档（`frontend/src/react/taste/taste-page.tsx` 的 `RankList`）：二十条
-        一次铺开会把下面几块整个顶到屏外，所以默认露十条，再由一颗 BoardUI 次要按钮
-        来回切。行为由 `frontend/test/react/stats.test.tsx` 与 `taste.test.tsx` 守，
-        这里守的是「这一条规矩只有一处实现」。
+        迁移前是一枚 40×20 的箭头药丸，列表原地长开；React 共用组件保留这套行为，
+        而不是把它换成带字的普通按钮。这里同时守住测量高度、状态图标和 reduced motion。
         """
         taste = (Path(__file__).resolve().parents[1]
                  / "frontend/src/react/taste/taste-page.tsx").read_text(encoding="utf-8")
         self.assertIn("const RANK_PREVIEW = 10;", taste)
-        self.assertIn("expanded ? rows : rows.slice(0, RANK_PREVIEW)", taste)
-        self.assertIn("{expanded ? '收起排名' : '展开更多排名'}", taste)
+        self.assertIn("<ExpandableRanking previewCount={RANK_PREVIEW}", taste)
+        ranking = self.read_react("components/expandable-ranking.tsx")
+        self.assertIn("data-ranking-toggle", ranking)
+        self.assertIn("aria-label={expanded ? '收起排名' : '展开更多排名'}", ranking)
+        self.assertIn("--ranking-collapsed-height", ranking)
+        styles = self.read_react("styles.css")
+        self.assertIn("transition: max-height 200ms var(--ease-in-out);", styles)
+        self.assertIn("[data-ranking-toggle][aria-expanded='true'] svg", styles)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", styles)
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertNotIn(".board-expand-ranks", board, "遗留层那套展开排名已经没有读者")
-        self.assertIn(".fcollapse{overflow:hidden;transition:height .2s ease-in-out}", (
-            Path(__file__).resolve().parents[1] / "web/css/08-photos.css").read_text(encoding="utf-8"))
-        self.assertNotIn("overflow:hidden;transition:max-height", board)
 
     def test_the_library_switcher_menu_opens_against_the_control_it_belongs_to(self):
         """媒体库弹窗贴着切换器的右缘开，允许压住侧栏剩下的那一段。
@@ -11324,8 +11342,16 @@ class WebUiSourceTests(unittest.TestCase):
         那种写法 Geist 没有。工具行没有上方空间，图标又足够把下拉框和普通按钮区分开。
         """
         # 页面正文归 React，排序是 BoardUI `Select`；骨架照着同一处画，等数据时不挪位。
-        self.assertIn('<Select aria-label="关注列表排序" size="sm" selectedKey={sort}',
-                      self.read_react("follow-manage/source-list.tsx"))
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        self.assertIn('<span data-follow-sort-control>', source_list)
+        self.assertIn("padding: 'none',\n      className: 'flex flex-col gap-4", source_list)
+        self.assertNotIn('dark:bg-transparent', source_list)
+        self.assertEqual(source_list.count("variant: 'raised', padding: 'none'"), 1,
+                         "关注列表是灰色容器，只有创作者卡是白色")
+        self.assertIn('<div id={panel} hidden={!open} data-source-divider>', source_list)
+        self.assertNotIn("rounded-lg bg-background-secondary-default px-2 py-3", source_list)
+        self.assertIn('<Select aria-label="关注列表排序" selectedKey={sort}', source_list)
+        self.assertNotIn('aria-label="关注列表排序" size="sm"', source_list)
         self.assertIn("""<span class="fmanagesort" data-collapse-field>"""
                       """${icon('sort')}${selectFieldHtml(""", self.markup)
         self.assertPageContains('id="i-sort"')
@@ -11485,24 +11511,40 @@ class WebUiSourceTests(unittest.TestCase):
                       ".playlistactions .danger{", ".dupbtns button.danger{", ".batchbar .danger{"):
             self.assertPageLacks(stale, "危险档只有 01-base 里那一份")
 
-    def test_bulk_actions_read_as_one_group_with_the_count_at_the_left(self):
-        """批量操作条只在选中了东西时出现，计数占住左端，动作键排在右端。
-
-        这条是一组动作而不是一段文字，所以整块有 `role="group"` 和自己的名字；计数是
-        选中数的播报位，用 `role="status"`，勾掉一行不必把焦点挪过去也能听见。计数靠
-        `mr-auto` 吃掉空当，动作键因此贴右端起排，条子多宽都读作同一种版式。
-        """
+    def test_bulk_actions_use_the_home_selection_dock(self):
+        """批量操作只在选中后出现，并与首页多选共用底部悬浮框。"""
         source_list = self.read_react("follow-manage/source-list.tsx")
-        self.assertIn('<div role="group" aria-label="关注来源批量操作"', source_list)
-        self.assertIn('<span role="status" className="mr-auto text-body-2-regular text-text-primary">',
-                      source_list)
-        self.assertIn('{`已选 ${chosen.length} 个来源`}', source_list)
+        self.assertIn('<SelectionDock label="关注来源批量操作"', source_list)
+        self.assertIn('count={`已选 ${chosen.length} 个来源`}', source_list)
         # 删除是销毁类，红键并且要走确认弹层，不能点一下就没了。
         self.assertIn("<Button variant=\"danger\" size=\"small\" disabled={readOnly}", source_list)
         self.assertIn("confirmLabel: '删除所选来源', danger: true,", source_list)
         # 分区标题行是同一种行：一行里唯一可以缩的是说明文字，动作键要完整读出来。
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
         self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+
+    def test_react_selection_uses_the_home_dock_and_review_filters_keep_their_height(self):
+        """复核和关注的勾选动作都落到底部悬浮框，筛选条不因勾选而变高。"""
+        dock = self.read_react("components/selection-dock.tsx")
+        review = self.read_react("review/bulk-toolbar.tsx")
+        candidate = self.read_react("review/candidate-form.tsx")
+        styles = self.read_react("styles.css")
+        board = (Path(__file__).resolve().parents[1] / "web" / "board.css").read_text(encoding="utf-8")
+        self.assertIn('data-selection-dock data-glass-pane=""', dock)
+        self.assertIn('<SelectionDock label="复核所选项目"', review)
+        self.assertIn('data-review-filter data-glass-pane=""', review)
+        self.assertIn("top: calc(var(--topH) + 8px);", styles)
+        self.assertIn("position: fixed;", styles)
+        self.assertIn(".settingscard>.board-local-nav,[data-glass-pane]", self.app_js)
+        self.assertIn("body .peach-react [data-review-filter]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}", board)
+        self.assertIn("body .peach-react [data-selection-dock]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%)}", board)
+        self.assertIn("data-candidate-choice", candidate)
+        self.assertLess(candidate.index("data-candidate-choice"), candidate.index("<dl className"),
+                        "来源选择圈只出现在候选上栏，不能再落到下方证据区旁边")
+        self.assertIn("label[data-rac] input[type='checkbox']", styles)
+        self.assertIn("animation: checkbox-mark-enter 150ms var(--ease-out) both;", styles)
+        self.assertNotIn("stroke-dashoffset: 1;", styles)
+        self.assertIn(":not(.pcheck input):not(.peach-react input)", board)
 
     def test_the_add_form_runs_the_same_lookup_from_enter_and_from_its_button(self):
         """添加关注那一格，回车和「查找」键走同一个入口。
@@ -11515,11 +11557,28 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("if (event.key !== 'Enter') return;", add)
         self.assertIn("search(options[active]?.value || line);", add)
         self.assertIn("onClick={() => search(line)}>查找</Button>", add)
-        self.assertIn('<Button variant="primary" size="small" disabled={readOnly || !line.trim()}', add)
+        self.assertIn('<Button variant="primary" disabled={readOnly || !line.trim()}', add)
+        self.assertNotIn('<Button variant="primary" size="small" disabled={readOnly || !line.trim()}', add)
         # 输入法拼字途中的那个回车是在选字，不是在提交。
         self.assertIn("if (event.nativeEvent.isComposing) return;", add)
         # 别名表单那个保存键是活的，别顺手一起删。
         self.assertIn("保存别名", self.read_react("follow-manage/alias-manager.tsx"))
+
+    def test_follow_management_actions_share_the_medium_control_height(self):
+        """同排控件用 36px；顶部保留分段控件，版式切换使用 Button Group。"""
+        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        source_list = self.read_react("follow-manage/source-list.tsx")
+        add = self.read_react("follow-manage/add-source.tsx")
+        aliases = self.read_react("follow-manage/alias-manager.tsx")
+        styles = self.read_react("styles.css")
+        self.assertIn("import { SEGMENT, SEGMENTED_TRACK }", page)
+        self.assertIn('<TabList aria-label="关注管理区域" className={SEGMENTED_TRACK}>', page)
+        self.assertIn('<span data-button-group role="group" aria-label="关注列表版式">', source_list)
+        self.assertIn('<span data-follow-sort-control>', source_list)
+        self.assertIn("height: calc(var(--spacing) * 9);", styles)
+        self.assertNotIn('variant="primary" size="small" disabled={readOnly || !line.trim()}', add)
+        self.assertNotIn('ref={trigger} variant="secondary" size="small"', add)
+        self.assertNotIn('variant="primary" size="small" disabled={readOnly || !canonical.trim()', aliases)
 
     def test_follow_filter_buttons_write_the_url_before_refetching(self):
         """先写 URL 再重取。反过来的话 openFollow 会照旧 URL 把状态推回去。"""

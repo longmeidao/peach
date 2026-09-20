@@ -152,11 +152,14 @@ it('筛掉一个分组之后回到第一页', async () => {
 
 it('分类进地址栏，换一条队列就把手里的选择放下', async () => {
   const { host, props } = await open();
+  expect(host.querySelector('[data-selection-dock]')).toBeNull();
   await click(boxOf(host, 0));
   expect(statusText(host)).toContain('已选 1 项');
+  expect(host.querySelector('[data-selection-dock]')).not.toBeNull();
   await click(tabNamed(host, '创作者标签'));
   expect(props.route).toHaveBeenCalledWith({ category: 'creator_tags' });
   expect(statusText(host)).not.toContain('已选 1 项');
+  expect(host.querySelector('[data-selection-dock]')).toBeNull();
   // 默认那一档不写进地址栏。
   await click(tabNamed(host, '元数据字段'));
   expect(props.route).toHaveBeenLastCalledWith({ category: '' });

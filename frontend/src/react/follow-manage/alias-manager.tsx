@@ -111,7 +111,7 @@ export function AliasManager({ groups, suggestions, readOnly, toast }: AliasMana
             onChange={setCanonical} isDisabled={readOnly} className="w-56" />
           <Input aria-label="平台别名" placeholder="平台别名" value={alias}
             onChange={setAlias} isDisabled={readOnly} className="w-56" />
-          <Button variant="primary" size="small" disabled={readOnly || !canonical.trim() || !alias.trim()}
+          <Button variant="primary" disabled={readOnly || !canonical.trim() || !alias.trim()}
             {...busyProps(save.isPending)}
             onClick={() => save.mutate({ canonical: canonical.trim(), alias: alias.trim() })}>
             保存别名
