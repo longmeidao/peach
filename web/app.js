@@ -5178,16 +5178,29 @@ async function openDuplicates(push=true){
   dupData={...next,cloudLocations:cloudLocations(sources.sources||[])};
   renderDuplicates();
 }
+/* 「留 115」只在这一组既有 115 又有别处文件时出现：整组都在同一个网盘，留它和留最大
+   是同一个结果，多一颗键只是多一个要读的选项。 */
+function mixedCloudPreferences(files,configured){
+  return cloudPreferenceLocations(files,configured).filter(loc=>files.some(f=>f.location!==loc));
+}
+/* 文件所在的库跟侧栏媒体库菜单、来源角标用同一枚图形：115 与 PikPak 取官方站标，
+   本地盘取硬盘。 */
+function dupLocationHtml(f){
+  const key=f.location||'';
+  return `<span class="mono duploc">${SRCICON[key]||''}<span>${esc(LOC[key]||key||f.drive||'')}</span></span>`;
+}
 function renderDuplicates(){
   const d=dupData;if(!d)return;
   const groups=d.groups||[];
+  const configured=d.cloudLocations||[];
+  const bulkClouds=configured.filter(loc=>groups.some(g=>mixedCloudPreferences(g.files,[loc]).length));
   paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`);
   $('#stats').innerHTML=`<div class="review">
     ${collectionSummaryHtml('重复内容',`${Number(d.total||0).toLocaleString()} 组`,`${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`)}
-    ${groups.length?`<div class="fsechead dupactions"><h3>批量保留</h3>
+    ${groups.length?`<div class="dupactions" data-glass-pane><h3>批量保留</h3>
       <button data-dup-all="largest">全部保留最大</button>
       <button data-dup-all="longest">全部保留最长</button>
-      ${cloudPreferenceLocations(groups.flatMap(g=>g.files),d.cloudLocations||[]).map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join('')}</div>`:''}
+      ${bulkClouds.map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join('')}</div>`:''}
     ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
       <div class="duphead"><b class="mono">${esc(g.code)}</b>
         <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>
@@ -5197,13 +5210,13 @@ function renderDuplicates(){
         ${g.cross_drive?`<span class="dupflag">跨盘 ${esc(g.drives.join(' '))}</span>`:''}
         <span class="dupbtns"><button data-dup-keep="largest" data-dup-i="${gi}">留最大</button>
           <button data-dup-keep="longest" data-dup-i="${gi}">留最长</button>
-          ${cloudPreferenceLocations(g.files,d.cloudLocations||[]).map(loc=>`<button data-dup-keep="${loc}" data-dup-i="${gi}">留 ${esc(LOC[loc])}</button>`).join('')}
+          ${mixedCloudPreferences(g.files,configured).map(loc=>`<button data-dup-keep="${loc}" data-dup-i="${gi}">留 ${esc(LOC[loc])}</button>`).join('')}
           <button class="danger" data-dup-keep="all" data-dup-i="${gi}">整组回收</button></span></div>
       <div class="duplist">${g.files.map(f=>`<div class="duprow">
         <button type="button" class="dupcover" data-open-dup="${f.id}" aria-label="预览 ${esc(f.name)}"><img src="/thumb?id=${f.id}&c=4" alt="" loading="lazy" data-drop="self">${icon('play')}</button>
-        <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span>
-        <button class="dupname" data-middle-truncate data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
-        <span class="mono">${esc(LOC[f.location]||f.location||f.drive||'')}</span>
+        <span class="duptitle"><button class="dupname" data-middle-truncate data-middle-truncate-within data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
+          <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span></span>
+        ${dupLocationHtml(f)}
         <span class="mono">${fmtSize(f.size||0)}</span>
         <span class="mono">${fmtDur(f.duration)}</span>
         <span class="mono duppath" data-middle-truncate title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
