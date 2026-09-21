@@ -267,6 +267,9 @@ stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n-
 stage("web/index.html", index);
 
 let app = text("web", "app.js");
+// 播放器脚本按需加载，版本钉在 app.js 的加载器里而不是 index.html，所以这里和 index
+// 一样要跟着清单走；`test_dependency_policy` 两侧都核。
+app = app.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${versions["video.js"]}/`);
 app = app.replaceAll(/\/vendor\/swiper\/[0-9.]+\//g, `/vendor/swiper/${versions.swiper}/`);
 stage("web/app.js", app);
 

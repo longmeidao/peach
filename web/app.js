@@ -2576,8 +2576,8 @@ const loadScript=src=>new Promise((resolve,reject)=>{
 let videojsLoader=null;
 const ensureVideojs=()=>{
   if(globalThis.videojs)return Promise.resolve(globalThis.videojs);
-  return videojsLoader||(videojsLoader=loadScript('/vendor/videojs/8.24.0/video.min.js')
-    .then(()=>loadScript('/vendor/videojs/8.24.0/lang/zh-CN.js'))
+  return videojsLoader||(videojsLoader=loadScript('/vendor/videojs/8.24.1/video.min.js')
+    .then(()=>loadScript('/vendor/videojs/8.24.1/lang/zh-CN.js'))
     .then(()=>globalThis.videojs)
     /* 失败要把 loader 清空，否则一次网络抖动之后这一整页都再也挂不上播放器了。 */
     .catch(error=>{videojsLoader=null;throw error}));
