@@ -29003,21 +29003,18 @@ function jw(e) {
 							onClick: () => p("table")
 						})]
 					}),
-					/* @__PURE__ */ (0, w.jsx)("span", {
-						"data-follow-sort-control": !0,
-						children: /* @__PURE__ */ (0, w.jsx)(xw, {
-							"aria-label": "关注列表排序",
-							selectedKey: n,
-							onSelectionChange: (e) => {
-								if (e === null) return;
-								let t = String(e);
-								d(t, Fb[t]);
-							},
-							children: Nb.map(([e, t]) => /* @__PURE__ */ (0, w.jsx)(Sw, {
-								id: e,
-								children: t
-							}, e))
-						})
+					/* @__PURE__ */ (0, w.jsx)(xw, {
+						"aria-label": "关注列表排序",
+						selectedKey: n,
+						onSelectionChange: (e) => {
+							if (e === null) return;
+							let t = String(e);
+							d(t, Fb[t]);
+						},
+						children: Nb.map(([e, t]) => /* @__PURE__ */ (0, w.jsx)(Sw, {
+							id: e,
+							children: t
+						}, e))
 					}),
 					/* @__PURE__ */ (0, w.jsx)(X, {
 						variant: "secondary",

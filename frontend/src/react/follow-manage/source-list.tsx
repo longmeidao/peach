@@ -530,16 +530,14 @@ export function SourceList(props: SourceListProps) {
             leadingIcon={RiTableLine} aria-label={LAYOUTS[1][1]} aria-pressed={asTable}
             onClick={() => onLayout('table')} />
         </span>
-        <span data-follow-sort-control>
-          <Select aria-label="关注列表排序" selectedKey={sort}
-            onSelectionChange={(key) => {
-              if (key === null) return;
-              const next = String(key) as SortKey;
-              onSort(next, SORT_DEFAULT_DIR[next]);
-            }}>
-            {SORT_OPTIONS.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
-          </Select>
-        </span>
+        <Select aria-label="关注列表排序" selectedKey={sort}
+          onSelectionChange={(key) => {
+            if (key === null) return;
+            const next = String(key) as SortKey;
+            onSort(next, SORT_DEFAULT_DIR[next]);
+          }}>
+          {SORT_OPTIONS.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
+        </Select>
         {/* 箭头是装饰，方向由无障碍名称说，而且说的是点下去会得到的那一头。 */}
         <Button variant="secondary" iconOnly
           leadingIcon={dir === 'asc' ? RiArrowUpLine : RiArrowDownLine}
