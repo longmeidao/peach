@@ -3,6 +3,7 @@ import json
 import io
 from pathlib import Path
 import tempfile
+import time
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -134,6 +135,41 @@ class ScrapingAccessTests(unittest.TestCase):
             with self.assertRaises(SourcePaused):
                 SourceTransport(self.root)(request, 1, 100)
         factory.assert_not_called()
+
+    def test_a_spent_budget_says_what_to_do_instead_of_naming_the_counter(self):
+        """三条闸门按任务重新计数，所以话说到「再跑一次接着采」为止。
+
+        「请求预算」是这个类内部的词：看到它的人在问题清单里只能读出「有个数用完了」，
+        既不知道那个数归谁管，也不知道自己还要不要动手。一趟任务的用量见
+        `library_processing.MAX_SOURCE_*`。
+        """
+        from peach.scraping_access import SourcePaused
+        request = HttpRequest("GET", "https://javdb.com/search?q=ABW-358", {})
+        budgets = [
+            SourceTransport(self.root, max_requests=1),
+            SourceTransport(self.root, max_seconds=0.001),
+            SourceTransport(self.root, max_bytes=1),
+        ]
+        budgets[0].requests = 1
+        budgets[1].deadline = time.monotonic() - 1
+        budgets[2].bytes = 1
+        for transport in budgets:
+            with self.assertRaises(SourcePaused) as spent:
+                transport(request, 1, 100)
+            self.assertIn("本趟", str(spent.exception))
+            self.assertIn("再跑一次接着采", str(spent.exception))
+            self.assertNotIn("预算", str(spent.exception))
+
+    def test_a_library_scan_asks_for_enough_to_carry_a_batch_of_covers(self):
+        """一趟任务的三条闸门要够一批片子用完，不然每次跑都停在同一个地方。
+
+        一部片问三家目录站、每家 1～2 次，6000 次约等于 1500 部；每来源 2 秒的间隔下
+        三家并行也要 4 小时才用得完，时间不会先掐断请求数。每次约 250 KB，1 GiB 装得下。
+        """
+        from peach import library_processing
+        self.assertEqual(library_processing.MAX_SOURCE_REQUESTS, 6000)
+        self.assertEqual(library_processing.MAX_SOURCE_BYTES, 1024 * 1024 * 1024)
+        self.assertEqual(library_processing.MAX_SOURCE_SECONDS, 4 * 3600)
 
     def test_a_community_source_that_refuses_is_paused_as_a_whole(self):
         """javdb 超配额回 403 不带 Retry-After，接着问只会每条都再撞一次、把封期拖长。"""

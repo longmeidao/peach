@@ -105,6 +105,14 @@ CANDIDATE_FLUSH_SECONDS = 5.0
 COLLECTED_FIELDS = ('title', 'performers', 'studio', 'release_date', 'tags')
 COLUMN_OF = {'title': 'catalog_title'}
 
+#: 一趟任务向外部来源要的总量。三条闸门里谁先到谁生效，之后每部片只记「本趟…已用完」。
+#: 一部片问三家目录站、每家 1～2 次，所以 6000 次约等于 1500 部；按 `SOURCE_INTERVALS`
+#: 的每来源 2 秒间隔，三家并行也正好要 4 小时才用得完，时间不会先把它掐断。
+#: 封面与资料页合计每次约 250 KB，1 GiB 装得下这 6000 次。
+MAX_SOURCE_REQUESTS = 6000
+MAX_SOURCE_BYTES = 1024 * 1024 * 1024
+MAX_SOURCE_SECONDS = 4 * 3600
+
 
 class LibraryMetadataProvider:
     """复用封面采集的 R18 JSON 入口与按来源配置的传输。
@@ -116,8 +124,10 @@ class LibraryMetadataProvider:
     def __init__(self, secrets_root):
         from .scraping_access import SourceTransport
         from .jav_cover_fetch import HostLimitedTransport
-        self.transport = HostLimitedTransport(SourceTransport(secrets_root, max_requests=1000,
-            max_bytes=128 * 1024 * 1024, max_seconds=3600), 2.0, intervals=SOURCE_INTERVALS)
+        self.transport = HostLimitedTransport(
+            SourceTransport(secrets_root, max_requests=MAX_SOURCE_REQUESTS,
+                            max_bytes=MAX_SOURCE_BYTES, max_seconds=MAX_SOURCE_SECONDS),
+            2.0, intervals=SOURCE_INTERVALS)
 
     def community(self, code, *, deadline=None):
         """官方渠道落空时问 AVBase、JavBus 与 javdb，返回 `[(来源, 资料)]`。
