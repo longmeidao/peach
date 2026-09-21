@@ -255,10 +255,15 @@ def build_command(binary: Path, origin: TunnelOrigin) -> tuple[str, ...]:
 
 
 def build_named_command(binary: Path, token: str) -> tuple[str, ...]:
-    """命名隧道的入向配置在 Cloudflare 后台，这里不传 `--url` 也不传 origin 选项。"""
+    """命名隧道的入向配置在 Cloudflare 后台，这里不传 `--url` 也不传 origin 选项。
+
+    `--no-autoupdate`、`--loglevel`、`--metrics` 和管理器补的 `--pidfile` 都是 `tunnel`
+    这一级的选项，必须写在 `run` 前面；`run` 只认它自己的 `--token`。
+    """
     return (
-        str(binary), "tunnel", "run", "--token", token,
+        str(binary), "tunnel",
         "--no-autoupdate", "--loglevel", "info", "--metrics", "127.0.0.1:0",
+        "run", "--token", token,
     )
 
 
@@ -837,7 +842,8 @@ class TunnelManager:
                 # writable, no untracked cloudflared process may be left behind.
                 handle = self.log_file.open("a", encoding="utf-8")
                 process = self._popen(
-                    [*plan.command, "--pidfile", str(self.pid_file)],
+                    # `--pidfile` 紧跟 `tunnel` 子命令：Quick 与 Named 两种命令里它都属于这一级。
+                    [*plan.command[:2], "--pidfile", str(self.pid_file), *plan.command[2:]],
                     stdin=subprocess.DEVNULL,
                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                     text=True, encoding="utf-8", errors="replace", bufsize=1,
