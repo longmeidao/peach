@@ -77,6 +77,34 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('type="checkbox" name="days"', html)
         self.assertNotIn('type="radio"', html)
 
+    def test_the_login_page_is_the_auth_card_in_its_single_field_form(self):
+        """登录页与首启页是同一张 Auth Card：样式整份取 `entry_page_style()`，控件同一副。
+
+        字段是 Board Input（label 在上、`.entry-input` 包住、聚焦环由卡片规则接管），
+        「保持登录」是站内自绘 Checkbox，「登录」是全宽 primary 提交键；页面自己不再留
+        第二套色板。主题预读脚本要排在样式之前，手动选的深浅色才能在首绘前定下来。
+        """
+        from peach.web_entry import CHECK_SVG, entry_page_style
+        html = routes_auth.login_html("/next?x=1")
+        self.assertIn(entry_page_style(), html)
+        self.assertNotIn("--alert:", html, "登录页不留自己那套色板")
+        self.assertIn('<section class="setup-auth-card login-card">', html)
+        self.assertIn('<header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40"><h1>Peach</h1></header>', html)
+        self.assertIn('<div class="field"><label class="field-label" for="login-token">访问密码</label>'
+                      '<span class="entry-input"><input id="login-token" name="token" type="password"', html)
+        self.assertIn('aria-invalid="false" required autofocus>', html)
+        self.assertIn('<label class="check"><span class="pcheck"><input type="checkbox" name="days" value="30" checked>', html)
+        self.assertIn(CHECK_SVG, html)
+        self.assertIn('<span>保持登录</span></label><button type="submit">登录</button></form>', html)
+        self.assertIn('value="/next?x=1"', html)
+        self.assertNotIn('role="alert"', html)
+        theme_script = 'document.documentElement.dataset.theme=c;'
+        self.assertLess(html.index(theme_script), html.index('<style'), "主题预读要排在任何样式之前")
+        # 密码错了是字段的事：框体转 danger 色，原因紧跟在字段里并由 aria-describedby 指过去。
+        wrong = routes_auth.login_html("/", invalid=True)
+        self.assertIn('aria-invalid="true" aria-describedby="login-error" required autofocus>', wrong)
+        self.assertIn('</span><p class="bad" id="login-error" role="alert">访问密码不正确</p></div>', wrong)
+
     async def test_password_change_revokes_sessions_and_disable_is_explicit(self):
         policy = access.save(self.path, "correct-password")
         await self.login()

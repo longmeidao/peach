@@ -16,7 +16,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 from . import access, tunnel
-from .web_entry import board_entry_style
+from .web_entry import check_html, entry_page_style
 from starlette.concurrency import run_in_threadpool
 from urllib.parse import parse_qs
 
@@ -194,10 +194,18 @@ def set_auth_cookie(response: Response, request: Request, *, days: int = 30, log
 
 
 def login_html(next_path: str, *, invalid: bool = False) -> str:
+    """登录页：首启页那张 Auth Card 的单字段形态，控件全部来自 `web_entry`。
+
+    这一页和首启页是同一副面孔的两个状态，所以样式层整份取 `entry_page_style()`，
+    不在这里另留一套色板和控件——那一套自成一格，登录完跳进馆藏就像换了个产品。
+    """
     safe_next = html.escape(next_path, quote=True)
-    error = '<p role="alert">访问密码不正确</p>' if invalid else ""
+    # 密码错了是这个字段的事，不是整页的事：框体线条转 danger 色，原因紧跟在下面。
+    field_state = "true" if invalid else "false"
+    described = ' aria-describedby="login-error"' if invalid else ""
+    error = '<p class="bad" id="login-error" role="alert">访问密码不正确</p>' if invalid else ""
     return (
-        '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         '<meta name="color-scheme" content="light dark">'
         # 公网入口在跑的时候这一页就在互联网上，不希望它进任何搜索结果。
@@ -207,46 +215,23 @@ def login_html(next_path: str, *, invalid: bool = False) -> str:
         # 图标声明和主站同一份。书签地址是 `/`，没有会话时这一页就是它实际停在的地方：
         # 这里不声明，浏览器只会去要 `/favicon.ico`，把「这个站没有图标」记进书签。
         '<link rel="icon" href="/favicon.ico" type="image/x-icon">'
-        # 这一页在拿到 cookie 之前就要出图，取不到 /app.css，所以色板在这儿留一份最小副本。
-        # 三条分支和 web/css/01-base.css 同构：默认浅色、系统深色、手动选的那一档压过系统。
-        # 选择由下面这段脚本在第一次绘制前读出来——固定浅色的人不该在登录页先看一眼深色。
+        # 手动选的那一档压过系统偏好，必须在第一次绘制前定下来——固定浅色的人不该在
+        # 登录页先看一眼深色。深浅两套色板由 `entry_page_style()` 随后给出。
         '<script>(()=>{try{'
         'const c=JSON.parse(localStorage.getItem("peach.settings.v1")||"{}").theme;'
         'if(c==="light"||c==="dark")document.documentElement.dataset.theme=c;'
         '}catch(e){}})();</script>'
-        '<style>'
-        '*{box-sizing:border-box}'
-        ':root{color-scheme:light;--bg:#FFFFFF;--card:#FAFAFA;--line:rgba(0,0,0,.10);'
-        '--ink:#171717;--ink-2:#4D4D4D;--field:#FFFFFF;--alert:#C0392B;'
-        '--shadow:0 1px 1px rgba(0,0,0,.02),0 4px 8px -4px rgba(0,0,0,.04),0 16px 24px -8px rgba(0,0,0,.06)}'
-        '@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark;'
-        '--bg:#080A0D;--card:#0C0F14;--line:rgba(255,255,255,.12);--ink:#FFFFFF;--ink-2:#C9CDD4;'
-        '--field:#0B0D11;--alert:#FF5252;--shadow:0 24px 80px rgba(0,0,0,.48)}}'
-        'html[data-theme="dark"]{color-scheme:dark;'
-        '--bg:#080A0D;--card:#0C0F14;--line:rgba(255,255,255,.12);--ink:#FFFFFF;--ink-2:#C9CDD4;'
-        '--field:#0B0D11;--alert:#FF5252;--shadow:0 24px 80px rgba(0,0,0,.48)}'
-        'html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}'
-        'body{min-height:100dvh;display:grid;place-items:center;padding:24px;font:15px/1.45 system-ui,sans-serif}'
-        'main{width:min(360px,100%);padding:30px;border:1px solid var(--line);border-radius:20px;'
-        'background:var(--card);box-shadow:var(--shadow)}'
-        '.brand{display:flex;align-items:center;gap:12px;margin-bottom:24px}.brand img{width:48px;height:48px}'
-        'h1{margin:0;font-size:24px;letter-spacing:.02em}label{display:grid;gap:8px;color:var(--ink-2)}'
-        'input,select{width:100%;height:44px;border:1px solid var(--line);border-radius:11px;'
-        'background:var(--field);color:var(--ink);padding:0 13px;font:inherit;outline:none}'
-        'input:focus,select:focus{outline:2px solid var(--ink);outline-offset:2px}'
-        'form{display:grid;gap:16px}form p{font-size:13px;color:var(--ink-2);margin:0}'
-        '.remember{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px}'
-        '.remember input{width:16px;height:16px;margin:0;accent-color:var(--ink);flex:none}'
-        'button{width:100%;height:44px;margin-top:16px;border:0;border-radius:11px;cursor:pointer;'
-        'background:var(--ink);color:var(--bg);font:500 15px system-ui,sans-serif}'
-        'button:hover{background:color-mix(in srgb,var(--ink) 88%,var(--bg));color:var(--bg)}p[role=alert]{margin:0 0 14px;color:var(--alert)}'
-        f'</style>{board_entry_style()}<body><main><div class="brand"><img src="/peach-logo.png" alt=""><h1>Peach</h1></div>'
-        f'{error}<form method="post" action="/login">'
-        '<label>访问密码 <input name="token" type="password" maxlength="256" '
-        'autocomplete="current-password" required></label>'
+        f'{entry_page_style()}</head><body><main>'
+        '<section class="setup-auth-card login-card">'
+        '<header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40"><h1>Peach</h1></header>'
+        '<form method="post" action="/login">'
+        '<div class="field"><label class="field-label" for="login-token">访问密码</label>'
+        '<span class="entry-input"><input id="login-token" name="token" type="password" maxlength="256" '
+        f'autocomplete="current-password" aria-invalid="{field_state}"{described} required autofocus></span>'
+        f'{error}</div>'
         f'<input name="next" type="hidden" value="{safe_next}">'
-        '<label class="remember"><input type="checkbox" name="days" value="30" checked>保持登录</label>'
-        '<button type="submit">登录</button></form></main><script>'
+        + check_html("days", "保持登录", checked=True, value="30")
+        + '<button type="submit">登录</button></form></section></main><script>'
         'try{const d=JSON.parse(localStorage.getItem("peach.settings.v1")||"{}").loginDays;'
         'if(Number.isInteger(d)&&d>=1&&d<=365)document.querySelector("[name=days]").value=String(d)}catch{}'
         '</script></body></html>'

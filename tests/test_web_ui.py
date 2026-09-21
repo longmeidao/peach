@@ -10496,7 +10496,7 @@ class WebUiSourceTests(unittest.TestCase):
         entry = (root / "web/board-entry.css").read_text(encoding="utf-8")
         self.assertNotIn(".geist-button.primary{", entry, "入口页不留第二份强调档色值")
         self.assertNotIn("--board-blue:", entry, "那条渐变只在 board.css 声明")
-        from peach.routes_pages import _board_button_rules
+        from peach.web_entry import _board_button_rules
         rules = _board_button_rules()
         self.assertIn(":root,:root[data-accent=blue],[data-accent-ball=blue]{--color-accent-50:",
                       rules, "入口页必须取得默认蓝色色阶，渐变 token 才有实际色值")
@@ -10519,6 +10519,25 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(suffix, rules, "悬停和按下那几条也要跟过去")
         self.assertIn("--board-blue-hover:linear-gradient(", rules)
         self.assertIn("--board-blue-active:linear-gradient(", rules)
+
+    def test_the_login_card_rules_live_in_the_shared_entry_stylesheet(self):
+        """登录页专属的那几条规则只在 `board-entry.css`，danger 档在焦点里也不能被清掉。
+
+        密码错了之后字段带着 `autofocus` 回来，`.entry-input input:focus-visible` 那条会把
+        框上的 danger 描线清成 `none`，用户看到的只是一圈灰色焦点环；焦点里的 danger 档
+        要自己写一条更具体的规则压过去。
+        """
+        css = (Path(__file__).resolve().parents[1] / "web/board-entry.css").read_text(encoding="utf-8")
+        self.assertIn("main:has(.login-card){max-width:400px}", css)
+        self.assertIn(".login-card header{display:flex;align-items:center;gap:12px}", css)
+        self.assertIn(".setup-auth-card input[aria-invalid=true]{box-shadow:inset 0 0 0 1px var(--drop),", css)
+        self.assertIn(".setup-auth-card .entry-input input[aria-invalid=true]:focus-visible{box-shadow:inset 0 0 0 2px var(--drop),", css)
+        self.assertIn(".setup-auth-card .entry-input:has(input[aria-invalid=true]:focus-visible)::after{content:none}", css)
+        self.assertNotIn(".remember", css, "「保持登录」用站内 Checkbox，不留原生 checkbox 那条")
+        # 图标和输入框是一个控件：焦点环落满整个 .entry-input，不从图标右侧才开始。
+        self.assertIn(".setup-auth-card .entry-input:has(input:focus-visible)::after{content:'';position:absolute;inset:0;border-radius:10px;", css)
+        # 错误态只让框体线条变 danger 色，原因是字段下方一行 muted 说明，不是红字压红底。
+        self.assertIn(".login-card .bad{margin:6px 0 0;padding:0;border-radius:0;background:transparent;color:var(--muted);font-size:12px;line-height:18px}", css)
 
     def test_the_settings_drawer_column_is_the_same_glass_as_the_sidebar(self):
         """设置弹层左栏和左侧抽屉是同一件事的两种形态，玻璃并在同一条规则上。

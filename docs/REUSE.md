@@ -12,7 +12,7 @@
 
 - 浮层筛选由 `web/js/ui-components.js` 的 `mountFilterFrame()` 承载：首页与实体资料页共用视图、标签、读数、控件四个槽位。外框负责玻璃与吸顶，页面负责查询状态和事件；视频、照片与名册更新只替换底行。复用现有 Board 控件及原生 DOM，不新增依赖；身份与观看状态的组合沿用 `/api/items`。
 
-- 组件映射、官方公开注册表证据与许可证见 [Board 界面](BOARD_UI.md)。`web/board.css` 共用正式页面结构，设置可关闭该视觉层；登录和首启页共用 `board_entry_style()`。
+- 组件映射、官方公开注册表证据与许可证见 [Board 界面](BOARD_UI.md)。`web/board.css` 共用正式页面结构，设置可关闭该视觉层；登录、首启与错误页共用 `web_entry.entry_page_style()`，登录页是首启 Auth Card 的单字段形态。
 - `frontend/src/number-setting.ts` 共用带单位输入、可选 Switch、整数边界和锚定错误提示。关闭保留上次合法值，异步读取后切换也恢复实际值；业务保存仍由调用方负责。
 - 筛选内层复用 `filterChipHtml`、`sortControlsHtml`、`collectionHeaderHtml`，首页、关注和资料页提供查询键及读数。横向行复用 `wireHorizontalScroller`，拖动、滚轮、渐隐与卸载清理归同一个生命周期。
 - 选择范围与工具条复用 `frontend/src/selection.ts`；馆藏、关注与复核保持各自身份、可见顺序、默认选择及写入权限。批量失败项的保留由业务负责。
