@@ -1183,15 +1183,17 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "candidate_key": "CARIB-001:tags:caribbeancom:abc", "source": "caribbeancom",
             "source_url": "https://example.invalid/carib", "confidence": 0.9,
             "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
-            "unmapped_genres": ["即ハメ", "シャワー"],
-            "warnings": ["来源还有 2 个未收录 genre：即ハメ、シャワー"],
+            "unmapped_genres": ["即ハメ", "温泉"],
+            "warnings": ["来源还有 2 个未收录 genre：即ハメ、温泉"],
         })
         before = await self._review_tags_candidate()
-        self.assertEqual(before["unmapped_genres"], ["即ハメ", "シャワー"])
+        self.assertEqual(before["unmapped_genres"], ["即ハメ", "温泉"])
         self.assertEqual(before["warnings"], [], "未决的词挪进结构化字段，不再只是一句话")
 
+        # 这两个词得是 `genre_taxonomy` 没收的：词表收了谁，这条路径就不会再问谁。
+        # `温泉` 说的是一趟旅程而不是场地，词表刻意留白，恰好是「由人在这里决定」的例子。
         recorded = await self.client.post("/api/review/genre?t=secret",
-                                          json={"genre": "シャワー", "tag": "浴室"})
+                                          json={"genre": "温泉", "tag": "浴室"})
         self.assertEqual(recorded.status_code, 200, recorded.text)
         excluded = await self.client.post("/api/review/genre?t=secret",
                                           json={"genre": "即ハメ", "tag": ""})
@@ -1222,9 +1224,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "candidate_key": "CARIB-001:tags:caribbeancom:old", "source": "caribbeancom",
             "source_url": "https://example.invalid/carib", "confidence": 0.9,
             "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
-            "warnings": ["来源还有 1 个未收录 genre：シャワー"],
+            "warnings": ["来源还有 1 个未收录 genre：温泉"],
         })
-        self.assertEqual((await self._review_tags_candidate())["unmapped_genres"], ["シャワー"])
+        self.assertEqual((await self._review_tags_candidate())["unmapped_genres"], ["温泉"])
 
     async def test_the_genre_tag_answers_to_the_same_rules_as_any_other_tag(self):
         """这里收录的名字和作品页加的标签进同一套词表，判据不能各写一套。"""
