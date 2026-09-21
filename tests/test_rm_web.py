@@ -912,7 +912,7 @@ class WebDataTests(unittest.TestCase):
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
             "/api/search-history", "/api/trash/empty", "/api/data-cleanup/empty-folders",
             "/api/review/decision", "/api/review/genre",
-            "/api/purge-missing", "/api/review/auto-apply",
+            "/api/purge-missing",
             "/api/links/check", "/api/links/prune",
             "/api/resource-sync/scan", "/api/resource-sync/apply",
             "/api/follow/check", "/api/follow/status", "/api/follow/media/hide",

@@ -34,6 +34,11 @@ export interface LibraryProcessingData {
   candidates?: number;
   auto_applied?: number;
   covers?: number;
+  /* 落库之后补齐女优资料那一步的四个读数：别名、头像、交回人工的冲突、没取到的头像。 */
+  performer_aliases?: number;
+  performer_avatars?: number;
+  performer_profile_conflicts?: number;
+  performer_profile_failed?: number;
   error?: string;
   issue_count?: number;
   issue_preview?: LibraryProcessingIssue[];

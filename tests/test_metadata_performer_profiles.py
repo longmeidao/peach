@@ -14,6 +14,7 @@ from PIL import Image
 
 from peach.http import HttpResponse
 from peach.metadata_performer_profiles import enrich_performer_profiles
+from peach.repository import LedgerDatabase
 from support.ledger import fresh_ledger
 
 
@@ -29,6 +30,7 @@ class ImportedPerformerProfileTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name).resolve()
         self.db = fresh_ledger(self.root)
+        self.database = LedgerDatabase(Path(self.db))
         with closing(sqlite3.connect(self.db)) as connection, connection:
             connection.execute(
                 "INSERT INTO asset(id,location,path,name,medium,code) "
@@ -66,7 +68,7 @@ class ImportedPerformerProfileTests(unittest.TestCase):
         with patch("peach.avatar_provider.FaceProbe") as face:
             face.return_value.return_value = None
             result = enrich_performer_profiles(
-                self.db, [self.group()], self.root / "avatars", self.root / "providers",
+                self.database, [self.group()], self.root / "avatars", self.root / "providers",
                 transport_factory=lambda: transport)
         self.assertEqual(result, {"aliases": 2, "avatars": 1, "conflicts": 0, "failed": 0})
         with closing(sqlite3.connect(self.db)) as connection:
@@ -79,12 +81,107 @@ class ImportedPerformerProfileTests(unittest.TestCase):
     def test_tampered_avatar_url_is_never_requested_but_aliases_still_land(self):
         transport = Mock()
         result = enrich_performer_profiles(
-            self.db, [self.group("http://127.0.0.1/admin")],
+            self.database, [self.group("http://127.0.0.1/admin")],
             self.root / "avatars", self.root / "providers",
             transport_factory=lambda: transport)
         self.assertEqual(result["aliases"], 2)
         self.assertEqual(result["avatars"], 0)
         transport.assert_not_called()
+
+    def test_a_second_import_of_the_same_profile_adds_nothing(self):
+        """别名已经在库里、头像已经在位时，重跑一遍不该再报新增。
+
+        处理任务每跑完一次都走这一步，全库重扫是常事。第二次还报「补了 2 个别名」的话，
+        那个数就不再是「这次真的补上了多少」，界面上也看不出什么时候该收手。
+        """
+        transport = Mock(return_value=HttpResponse(
+            200, {"content-type": "image/jpeg"}, picture(),
+            "https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg"))
+        with patch("peach.avatar_provider.FaceProbe") as face:
+            face.return_value.return_value = None
+            enrich_performer_profiles(
+                self.database, [self.group()], self.root / "avatars", self.root / "providers",
+                transport_factory=lambda: transport)
+            again = enrich_performer_profiles(
+                self.database, [self.group()], self.root / "avatars", self.root / "providers",
+                transport_factory=lambda: transport)
+        self.assertEqual(again, {"aliases": 0, "avatars": 0, "conflicts": 0, "failed": 0})
+        transport.assert_called_once()
+
+    def test_a_failed_download_is_counted_and_reported_with_its_cause(self):
+        """取不到的那张要留下可查的原因，并且按可重试记进问题清单。"""
+        def refuse(_request, _timeout, _max_bytes):
+            raise OSError("connection reset")
+
+        issues = []
+        result = enrich_performer_profiles(
+            self.database, [self.group()], self.root / "avatars", self.root / "providers",
+            transport_factory=lambda: refuse,
+            issue=lambda asset_id, message: issues.append((asset_id, message)))
+        self.assertEqual(result["failed"], 1)
+        self.assertEqual(result["avatars"], 0)
+        self.assertEqual([asset_id for asset_id, _message in issues], [1])
+        self.assertIn("头像未取得", issues[0][1])
+        self.assertFalse((self.root / "avatars" / "performer-7.img").exists())
+
+    def test_an_external_id_held_by_another_entity_counts_as_a_conflict(self):
+        """同一个 r18 编号挂在别的实体上时，这一条交回人工，不两边都认。"""
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(8,'performer','別人','別人','t','t')")
+            connection.execute(
+                "UPDATE entity_external_ref SET entity_id=8 WHERE external_id='1051912'")
+        transport = Mock()
+        result = enrich_performer_profiles(
+            self.database, [self.group()], self.root / "avatars", self.root / "providers",
+            transport_factory=lambda: transport)
+        self.assertEqual(result, {"aliases": 0, "avatars": 0, "conflicts": 1, "failed": 0})
+        transport.assert_not_called()
+
+    def test_a_stopped_job_neither_writes_aliases_nor_fetches_avatars(self):
+        """停止之后一条都不许再落库、一张都不许再取。"""
+        transport = Mock()
+        result = enrich_performer_profiles(
+            self.database, [self.group()], self.root / "avatars", self.root / "providers",
+            transport_factory=lambda: transport, active=lambda: False)
+        self.assertEqual(result, {"aliases": 0, "avatars": 0, "conflicts": 0, "failed": 0})
+        transport.assert_not_called()
+        with closing(sqlite3.connect(self.db)) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT count(*) FROM entity_alias").fetchone()[0], 0)
+
+    def test_stopping_between_avatars_leaves_the_rest_alone(self):
+        """停在第二张之前：第一张已经装上，剩下的既不取也不写。"""
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(9,'performer','八乃つばさ','八乃つばさ','t','t')")
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                "VALUES(1,9,'performer','javinizer:local_nfo:performer',0.9)")
+        group = json.loads(self.group()["candidates_json"])
+        group[0]["value"].append({
+            "name": "八乃つばさ", "external_id": "1041234", "aliases": [],
+            "thumb_url": "https://pics.dmm.co.jp/mono/actjpgs/hachino_tsubasa.jpg",
+            "profile_source": "r18dev"})
+        rows = [{"asset_id": 1, "item_key": "asset:1:performers", "field": "performers",
+                 "candidates_json": json.dumps(group, ensure_ascii=False)}]
+        calls = []
+
+        def once(request, _timeout, _max_bytes):
+            calls.append(request)
+            return HttpResponse(200, {"content-type": "image/jpeg"}, picture(),
+                                "https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg")
+
+        with patch("peach.avatar_provider.FaceProbe") as face:
+            face.return_value.return_value = None
+            result = enrich_performer_profiles(
+                self.database, rows, self.root / "avatars", self.root / "providers",
+                transport_factory=lambda: once,
+                active=lambda: len(calls) < 1)
+        self.assertEqual(result["avatars"], 1)
+        self.assertEqual(len(calls), 1)
 
     def test_candidate_still_waiting_for_review_cannot_enrich_the_entity(self):
         with closing(sqlite3.connect(self.db)) as connection, connection:
@@ -92,7 +189,7 @@ class ImportedPerformerProfileTests(unittest.TestCase):
                 "DELETE FROM review_decision WHERE item_key='asset:1:performers'")
         transport = Mock()
         result = enrich_performer_profiles(
-            self.db, [self.group()], self.root / "avatars", self.root / "providers",
+            self.database, [self.group()], self.root / "avatars", self.root / "providers",
             transport_factory=lambda: transport)
         self.assertEqual(result, {"aliases": 0, "avatars": 0, "conflicts": 0, "failed": 0})
         transport.assert_not_called()

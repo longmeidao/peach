@@ -513,7 +513,9 @@ def verify(database: Path) -> dict:
 
 
 def apply(args, releases: list[dict], stars: list[dict]) -> dict:
-    from peach.web_review import w_review_auto_apply, w_review_decision
+    from peach.metadata_auto_apply import auto_apply_metadata
+    from peach.repository import LedgerDatabase
+    from peach.web_review import w_review_decision
     from peach.web_state import WebContract
 
     report: dict = {"backup": str(backup_ledger(args.db))}
@@ -534,7 +536,7 @@ def apply(args, releases: list[dict], stars: list[dict]) -> dict:
     # 自动批准只读这一份：同一个目录里其它来源的候选不在本次授权范围内。
     with tempfile.TemporaryDirectory() as scratch:
         shutil.copy2(args.out / CANDIDATE_FILE, Path(scratch) / CANDIDATE_FILE)
-        outcome = w_review_auto_apply(WebContract(args.db, candidate_root=Path(scratch)))
+        outcome = auto_apply_metadata(LedgerDatabase(args.db), Path(scratch))
     report["auto_applied"] = outcome["applied"]
     report["left_to_review"] = outcome["left_to_review"]
 

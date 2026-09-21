@@ -7,16 +7,20 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import avatar_picker
 from .entities import canonicalize_entity_name, normalize_entity_name, resolve_entity
 from .http import HttpxTransport
-from .previews import entity_image_key
-from .repository import LedgerDatabase
+from .library_processing import describe_failure
+
+LOGGER = logging.getLogger(__name__)
 
 
+#: 补头像这一段在页面上的阶段名。它每张都要联网，和前面按资产计数的几段不是一回事。
+PROFILE_STAGE = "补齐女优资料"
 PROFILE_ALIAS_SOURCE = "r18dev:performer-profile"
 OFFICIAL_AVATAR_HOST = "pics.dmm.co.jp"
 OFFICIAL_AVATAR_PREFIX = "/mono/actjpgs/"
@@ -116,12 +120,19 @@ def _official_avatar(url: str) -> bool:
             and parsed.path != OFFICIAL_AVATAR_PREFIX)
 
 
-def enrich_performer_profiles(db_path: Path, groups, avatar_root: Path,
-                               providers_root: Path, *, transport_factory=None) -> dict:
-    """把已落库且仍连着这条资产的人物资料补齐；单项失败不打断整批导入。"""
+def enrich_performer_profiles(database, groups, avatar_root: Path,
+                               providers_root: Path, *, transport_factory=None,
+                               active=lambda: True, progress=lambda **values: None,
+                               issue=lambda asset_id, message: None) -> dict:
+    """把已落库且仍连着这条资产的人物资料补齐；单项失败不打断整批导入。
+
+    `database` 由调用方注入：写锁挂在实例上，自己再建一个就绕开了它。`active` 返回假时
+    立即收工——停止之后既不写库也不再联网。
+    """
     result = {"aliases": 0, "avatars": 0, "conflicts": 0, "failed": 0}
     tasks: dict[int, dict] = {}
-    database = LedgerDatabase(Path(db_path))
+    if not active():
+        return result
     with database.write_transaction() as connection:
         profiles = _profiles(connection, groups)
         for profile in profiles:
@@ -157,8 +168,9 @@ def enrich_performer_profiles(db_path: Path, groups, avatar_root: Path,
                 )
                 result["aliases"] += int(connection.execute(
                     "SELECT changes()").fetchone()[0])
-            avatar = avatar_root / f"{entity_image_key('performer', entity_id)}.img"
-            if (not avatar.is_file() and _official_avatar(profile["avatar_url"])
+            # 在位判定用装图那一侧的函数，`{key}.img` 的拼法只在 avatar_picker 里有一份。
+            installed = avatar_picker.installed_digest(avatar_root, "performer", entity_id)
+            if (not installed and _official_avatar(profile["avatar_url"])
                     and entity_id not in tasks):
                 tasks[entity_id] = profile
 
@@ -169,7 +181,10 @@ def enrich_performer_profiles(db_path: Path, groups, avatar_root: Path,
     if owns_transport:
         transport = HttpxTransport()
     try:
-        for entity_id, profile in tasks.items():
+        for done, (entity_id, profile) in enumerate(tasks.items()):
+            # 停止之后一张都不再取：这一步在处理任务的最后，用户按下停止时它往往才刚开始。
+            if not active():
+                break
             try:
                 body = avatar_picker.fetch_image(transport, profile["avatar_url"])
                 avatar_picker.accept_image(body)
@@ -181,8 +196,16 @@ def enrich_performer_profiles(db_path: Path, groups, avatar_root: Path,
                      "upstream_url": profile["avatar_url"]},
                 )
                 result["avatars"] += 1
-            except Exception:  # 网络、解码或可选人脸模型失败都只影响这一张头像。
+            except Exception as error:  # 网络、解码或可选人脸模型失败都只影响这一张头像。
                 result["failed"] += 1
+                # 只记一个数的话，界面上是「补齐 0 张」而没有任何可查的原因。
+                reason = describe_failure(error)
+                LOGGER.warning("performer avatar failed: entity=%s url=%s: %s",
+                               entity_id, profile["avatar_url"], reason, exc_info=True)
+                issue(profile["asset_id"], f'{profile["name"]} 的头像未取得：{reason}')
+            # 每张之后上报一次：这一段每张都要联网，不报进度就会被判成「长时间没有进展」。
+            progress(stage=PROFILE_STAGE, performer_avatars=result["avatars"],
+                     performer_profile_failed=result["failed"])
     finally:
         if owns_transport:
             transport.close()

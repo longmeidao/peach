@@ -7,8 +7,8 @@ import unittest
 from pathlib import Path
 
 from peach import web_contract as rm_web
-from peach import web_review as rm_review
 from peach.catalog_rules import is_korean_mib_code, release_code_from_filename
+from peach.metadata_auto_apply import auto_apply_metadata
 from peach.genre_taxonomy import map_genres
 from peach.metadata_kmib import parse_list, parse_star, parse_video
 
@@ -199,7 +199,7 @@ class KmibHarvestTests(unittest.TestCase):
         contract = rm_web.WebContract(Path(self.db), candidate_root=candidates,
                                       logo_root=self.root / "logos",
                                       avatar_root=self.root / "avatars")
-        outcome = rm_review.w_review_auto_apply(contract)
+        outcome = auto_apply_metadata(contract.database, candidates)
         # 标签这一行的 genre 全部有去向，所以和另外四个字段一样走补空落库；
         # 只要还剩一个未收录的词，`_tags_are_fully_resolved` 就把它交回人工。
         self.assertEqual(outcome["applied"], 5)
