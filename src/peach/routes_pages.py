@@ -352,7 +352,7 @@ def setup_page(
             media_dirs = _media_dir_values(values, question.default)
             row_errors = errors.get("media_dir", [])
             note = "" if windows else onboarding.mounts_explanation(
-                [path for path in media_dirs if path] or ["你在上面填的目录"])
+                [path for path in media_dirs if path] or ["上面填写的目录"])
             fields.append(_media_dirs_html(media_dirs, list(row_errors), "" if windows else
                 "本机文件夹是这台电脑读取媒体的位置；Windows 中的对应路径用于匹配馆藏中已有的路径。",
                 locations=values.get("media_location", ()), roots=values.get("media_root", ()), windows=windows))
@@ -399,7 +399,7 @@ def setup_page(
     body = (
         '<section class="setup-auth-card"><header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
         "<h1>欢迎使用 Peach</h1>"
-        '<p class="lede">添加媒体库，开始整理你的馆藏。</p></header>'
+        '<p class="lede">添加媒体库，开始整理馆藏。</p></header>'
         '<form method="post" action="/setup">'
         + "".join(fields)
         + '<section class="setup-options" aria-labelledby="setup-options-title">'
@@ -419,11 +419,11 @@ def setup_done_page(applied, *, windows: bool, scan_requested: bool, history_gui
     config = applied.config
     destination = escape(_normal_url(config) + ('taste?onboarding=1' if history_guide else '?onboarding=1'), quote=True)
     destination_label = '导入浏览器历史记录' if history_guide else '进入 Peach'
-    scan = ("首次扫描已排队，将在后台整理媒体库。你可以继续使用 Peach。" if scan_requested
-            else "你可以稍后在配置页开始扫描媒体库。")
+    scan = ("首次扫描已排队，在后台整理媒体库，期间可以照常使用 Peach。" if scan_requested
+            else "稍后在配置页开始扫描媒体库。")
     body = (
         '<section class="setup-auth-card"><header><img class="mark" src="/peach-logo.png" alt="" width="40" height="40">'
-        '<h1>设置完成</h1><p class="lede">正在启动你的馆藏。</p></header>'
+        '<h1>设置完成</h1><p class="lede">正在启动馆藏。</p></header>'
         f'<p>{scan}</p>'
         + f'<p><a class="setup-enter" href="{destination}">{destination_label}</a></p>'
         + runtime_facts_html(config, collapsible=True)

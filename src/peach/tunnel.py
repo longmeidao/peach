@@ -331,8 +331,8 @@ def _require_binary(
     )
     if binary is None:
         raise TunnelError(
-            "找不到 cloudflared；请安装官方 cloudflared，"
-            "或在设置文件的 tunnel.binary 指定路径，也可用 PEACH_CLOUDFLARED 指定"
+            "找不到 cloudflared：安装官方 cloudflared，"
+            "或用设置文件的 tunnel.binary 与 PEACH_CLOUDFLARED 指定路径"
         )
     return binary
 

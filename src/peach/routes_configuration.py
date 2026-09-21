@@ -28,7 +28,7 @@ router = APIRouter()
 _SAVE_LOCK = threading.Lock()
 RELOAD_NAME = onboarding.RELOAD_NAME
 #: 直接由 CLI 管理的服务使用设置文件。
-FILE_MANAGED_NOTICE = "此部署通过配置文件管理服务，请在本机编辑下方的设置文件。"
+FILE_MANAGED_NOTICE = "这个部署由配置文件管理服务；在本机编辑下方的设置文件。"
 
 
 def managed_configuration() -> bool:
@@ -343,7 +343,7 @@ def save_access(request: Request, body: dict[str, Any] = Body(default_factory=di
     if body["action"] == "set" and not password:
         raise HTTPException(400, {"message": "请输入访问密码", "errors": {"password": "请输入访问密码"}})
     if body["action"] == "disable" and body.get("confirm_disable") is not True:
-        raise HTTPException(400, "请确认允许能连接到 Peach 的设备直接访问")
+        raise HTTPException(400, "关闭访问密码前先勾选确认")
     try:
         try:
             access.validate_password(password, body.get("confirmation", ""))

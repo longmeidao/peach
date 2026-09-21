@@ -60,7 +60,7 @@ def plan(config, *, delete_data: bool, program: Path | None = None) -> dict:
 
 
 def snapshot(config) -> dict:
-    result = {"available": False, "message": "此系统请退出 Peach 后手动移除程序与数据目录", "data_root": str(config.data_root),
+    result = {"available": False, "message": "这个系统上先退出 Peach，再手动移除程序与数据目录", "data_root": str(config.data_root),
               "directories": [str(config.directory(key)) for key in settings_file.DIRECTORY_KEYS], "full_available": False}
     if sys.platform != "win32":
         return result

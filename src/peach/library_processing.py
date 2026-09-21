@@ -352,7 +352,7 @@ def snapshot(config):
                 if state.get('status') == 'running':
                     # 拿得到锁说明写入者已经不在了。结论写回文件：只改副本的话，另一个读取者
                     # 正好短暂占着锁时会读到原样的「运行中」，界面就在两种状态之间来回跳。
-                    state.update(status='failed', error='处理被中断，请重试。',
+                    state.update(status='failed', error='处理被中断，可重试未完成的部分。',
                                  completed_at=state.get('last_progress_at') or time.time())
                     _save(state_path(config), state)
         except Timeout:
@@ -379,9 +379,9 @@ def snapshot(config):
                 state.update(notes=notes, issue_count=problems, issue_preview=preview,
                              issues_truncated=problems > len(preview),
                              retryable_asset_ids=sorted(retryable))
-                if state.get('error') == f'{count} 项需要处理，请查看详情并重试。':
+                if state.get('error') == f'{count} 项需要处理，可重试未完成的部分。':
                     state['status'] = 'failed' if problems else 'complete'
-                    state['error'] = f'{problems} 项需要处理，请查看详情并重试。' if problems else ''
+                    state['error'] = f'{problems} 项需要处理，可重试未完成的部分。' if problems else ''
         except (OSError, ValueError, TypeError):
             pass
     return decorate(state)
@@ -884,7 +884,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             if stage == SCAN_STAGE:
                 update(status='failed' if state['issue_count'] else 'complete',
                        stage='处理结束', completed_at=time.time(),
-                       error=f"{state['issue_count']} 项需要处理，请查看详情并重试。"
+                       error=f"{state['issue_count']} 项需要处理，可重试未完成的部分。"
                              if state['issue_count'] else '')
                 return state
             # 演员和标签是另外两张表，`asset` 上没有这两列。不带上它们，采集就把每部片都
@@ -1023,11 +1023,11 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                    performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
                    performer_profile_conflicts=profiles['conflicts'],
                    performer_profile_failed=profiles['failed'],
-                   error=f"{state['issue_count']} 项需要处理，请查看详情并重试。" if state['issue_count'] else '',
+                   error=f"{state['issue_count']} 项需要处理，可重试未完成的部分。" if state['issue_count'] else '',
                    completed_at=time.time(), current_asset_id=None, current_asset_name='',
                    current_action='', current_started_at=None, current_deadline_at=None)
         except Exception:
-            state.update(status='failed', error='处理被中断，请检查媒体目录后重试。', completed_at=time.time())
+            state.update(status='failed', error='处理被中断。核对媒体目录后重试。', completed_at=time.time())
             _save(path, state)
             raise
         finally:
