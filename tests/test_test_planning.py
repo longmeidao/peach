@@ -47,13 +47,11 @@ class TestPlanningTests(unittest.TestCase):
 
     def test_shards_and_the_explicit_switch_skip_the_preflight(self):
         """分片子进程的域由父进程定下，父进程已经查过同一套工具；开关留给判断过的人。"""
-        output = io.StringIO()
-        with patch.object(runner, 'environment_preflight',
-                          side_effect=AssertionError('分片子进程不应重复预检')), \
-             patch.object(runner, 'build_suite', return_value=unittest.TestSuite()), \
-             contextlib.redirect_stdout(output):
-            self.assertEqual(
-                runner.main(['--scope', 'checks', '--shard-count', '2', '--shard-index', '1']), 1)
+        with patch.object(runner.test_evidence, 'unspawnable_tools', return_value=('git',)), \
+             contextlib.redirect_stdout(io.StringIO()):
+            runner.environment_preflight(('checks',), shard_count=2)
+            with self.assertRaisesRegex(SystemExit, '3'):
+                runner.environment_preflight(('checks',), shard_count=1)
         switched = io.StringIO()
         with patch.object(runner.test_evidence, 'unspawnable_tools', return_value=('git',)), \
              patch.dict(os.environ, {'PEACH_SKIP_PREFLIGHT': '1'}), \

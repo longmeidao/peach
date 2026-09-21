@@ -507,13 +507,19 @@ def tools_needed_by(scopes: tuple[str, ...]) -> frozenset[str]:
     return frozenset(needed)
 
 
-def environment_preflight(scopes: tuple[str, ...], timings: Path | None = None) -> None:
+def environment_preflight(scopes: tuple[str, ...], timings: Path | None = None,
+                          *, shard_count: int = 1) -> None:
     """外部工具若被执行权限挡住，在创建测试分片前给出一条可操作的结论。
 
     只有本次真的会用到的工具才判失败。受限环境里 ffmpeg 起不来是事实，但它不该挡住
     一次只改文档的 `checks`：那一轮一个媒体用例都不加载，硬失败只是把人赶出正式入口。
     其余工具仍然报出来，免得后面的失败被当成别的原因。
+
+    分片子进程直接返回：域由父进程定下，它在切片前查过同一套工具，每片各查一遍只会
+    把同一条结论打印 N 遍。
     """
+    if shard_count > 1:
+        return
     blocked = test_evidence.unspawnable_tools()
     if not blocked:
         return
@@ -568,10 +574,7 @@ def main(argv: list[str] | None = None) -> int:
             paths = changed_files(ROOT, args.base)
             scopes, explanation = scopes_for_changes(paths, contents=changed_contents(ROOT, args.base, paths))
         print(explanation, flush=True)
-    # 只有非分片的这一次预检：域已经定下，父进程在切片前查过同一套工具，每片各查一遍
-    # 只会把同一条结论打印 N 遍。
-    if args.shard_count == 1:
-        environment_preflight(scopes, args.timings)
+    environment_preflight(scopes, args.timings, shard_count=args.shard_count)
     files = {path for scope in scopes for path in selected_files(scope)}
     print(f"Peach test scope: {' '.join(scopes)} ({len(files)} files)", flush=True)
     if args.shard_count > 1:
