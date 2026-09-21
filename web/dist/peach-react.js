@@ -26819,7 +26819,7 @@ function LS({ path: e, prefix: t, className: n, onRevealed: r }) {
 }
 //#endregion
 //#region src/react/follow-manage/credentials.tsx
-var RS = "这些账号信息存在哪里", zS = "存成运行 Peach 那台电脑上的一个文件。在 Windows 上它不额外加锁，能登录那台电脑的人都能打开。", BS = "将清除这个来源在本机和共享副本中的登录凭据。", VS = "文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。";
+var RS = "这些账号信息存在哪里", zS = "存成运行 Peach 那台电脑上的一个文件。在 Windows 上它不额外加锁，能登录那台电脑的人都能打开。", BS = "将清除这个来源在本机和共享副本中的登录凭据。", VS = "文件权限过宽。在运行 Peach 的 POSIX 主机上收紧为 0600。";
 function HS(e, t) {
 	return (e.shared_fields || []).includes(t) ? "来自共享，留空表示不改" : e.fields.includes(t) ? "已保存，留空表示不改" : "未填写";
 }
@@ -29532,7 +29532,7 @@ var $w = [
 		icon: Kf,
 		command: { stage: "collect" }
 	}
-], eT = K(Jx, Yx, "text-body-2-medium"), tT = "扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。", nT = "这个项目处理时间较长，暂时没有新进展。可以继续等待，或在任务结束后重试未完成项。", rT = (e) => {
+], eT = K(Jx, Yx, "text-body-2-medium"), tT = "扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。", nT = "这一项耗时较长，暂时没有新进展。任务结束后可以重试未完成的部分。", rT = (e) => {
 	let t = e.performer_aliases || 0, n = e.performer_avatars || 0, r = e.performer_profile_conflicts || 0, i = e.performer_profile_failed || 0;
 	if (!t && !n && !r && !i) return "";
 	let a = [`补齐女优资料：别名 ${t} 个，头像 ${n} 张`];
@@ -30850,7 +30850,7 @@ function yE(e) {
 	}), he = (e) => {
 		if (!(me.isPending || !de.length)) {
 			if (e === "approved" && F && de.some((e) => !ue(e).candidateKey)) {
-				D("请先为所选的多来源候选选择来源。");
+				D("先为所选的多来源候选选择来源。");
 				return;
 			}
 			D(""), me.mutate(e);
@@ -31123,7 +31123,7 @@ function PE({ source: e, toast: t }) {
 					e.accepts_cookie ? /* @__PURE__ */ (0, w.jsxs)(w.Fragment, { children: [
 						/* @__PURE__ */ (0, w.jsx)("p", {
 							className: "text-body-2-regular text-text-secondary",
-							children: e.cookie_saved ? "Cookie 已保存，登录是否有效请在抓取时确认。" : "需要登录时，任选一种方式提供 Cookie。"
+							children: e.cookie_saved ? "Cookie 已保存；登录是否有效要到抓取时才知道。" : "需要登录时，任选一种方式提供 Cookie。"
 						}),
 						/* @__PURE__ */ (0, w.jsx)(mv, {
 							"aria-label": "提供 Cookie 的方式（二选一）",
@@ -31273,7 +31273,7 @@ function IE({ toast: e }) {
 	return n ? /* @__PURE__ */ (0, w.jsxs)(uh, { children: [
 		/* @__PURE__ */ (0, w.jsx)("p", {
 			className: "text-body-2-regular text-text-secondary",
-			children: "高清图片可能需要代理才能下载，请先检查连接。"
+			children: "高清图片可能要经代理才能下载，先检查连接。"
 		}),
 		/* @__PURE__ */ (0, w.jsx)(FE, { toast: e }),
 		(n.sources || []).map((t) => /* @__PURE__ */ (0, w.jsx)(PE, {
@@ -31417,7 +31417,7 @@ function KE({ startup: e, receipt: t }) {
 				}),
 				/* @__PURE__ */ (0, w.jsx)(Qx, {
 					label: "静默启动",
-					description: "静默启动仅显示托盘，开机后启动 Peach 打开时生效。",
+					description: "开机后只显示托盘图标，不打开网页；「开机后启动 Peach」打开时生效。",
 					children: /* @__PURE__ */ (0, w.jsx)(WE, {
 						"aria-label": "静默启动",
 						isSelected: i,
@@ -31627,7 +31627,7 @@ function eD({ initial: e, initialJob: t }) {
 						className: "flex flex-col gap-2",
 						children: [
 							/* @__PURE__ */ (0, w.jsx)(dh, {
-								label: "更新准备进度：下载、校验、解压、准备安装",
+								label: "更新准备进度",
 								value: i.progress,
 								stops: QE
 							}),
@@ -31712,7 +31712,7 @@ function iD({ initial: e, receipt: t }) {
 			mode: n,
 			interval_hours: i
 		}, "POST", e), () => t("已保存配置"));
-	}, c = e.available ? e.download_available ? "开启后一分钟内开始检查。下载完成后，在此确认重启安装。" : "开启后一分钟内开始检查。源码运行请前往发布页获取新版本。" : "自动更新需要由托盘管理的服务。";
+	}, c = e.available ? e.download_available ? "开启后一分钟内开始检查。下载完成后，在此确认重启安装。" : "开启后一分钟内开始检查。源码运行时在发布页获取新版本。" : "自动更新需要由托盘管理的服务。";
 	return /* @__PURE__ */ (0, w.jsxs)(tS, {
 		title: "自动更新",
 		onSubmit: s,
@@ -31796,7 +31796,7 @@ function oD({ uninstall: e, receipt: t }) {
 		id: "uninstallPeach",
 		title: "卸载 Peach",
 		children: [/* @__PURE__ */ (0, w.jsxs)(rS, { children: [
-			e.available ? /* @__PURE__ */ (0, w.jsx)(aS, { children: "卸载会退出 Peach、移除程序、开机自启和桌面图标。原始媒体文件保留。" }) : null,
+			e.available ? /* @__PURE__ */ (0, w.jsx)(aS, { children: "卸载移除 Peach 程序本身，原始媒体文件保留。" }) : null,
 			/* @__PURE__ */ (0, w.jsx)(Wx, {
 				isSelected: n,
 				isDisabled: !e.full_available || !!i,
@@ -31860,7 +31860,7 @@ function lD() {
 		})] }), /* @__PURE__ */ (0, w.jsxs)(dS, {
 			summary: "CloudDrive 缓存建议",
 			children: [
-				/* @__PURE__ */ (0, w.jsx)(aS, { children: "看缓存放在哪块硬盘上，照那一档填。这是起步值，填得越大不一定越快。" }),
+				/* @__PURE__ */ (0, w.jsx)(aS, { children: "看缓存放在哪块硬盘上，照那一档填。这是起步值，按实际播放表现再调。" }),
 				/* @__PURE__ */ (0, w.jsx)("ul", {
 					"aria-label": "按缓存所在硬盘分档",
 					className: "flex flex-col gap-2",
@@ -31893,7 +31893,7 @@ function lD() {
 					]
 				}),
 				/* @__PURE__ */ (0, w.jsxs)(aS, { children: [
-					"三处缓存分别管什么、这几个值怎么往上调、码率和速度怎么换算、线程上限与直链代理怎么取舍，以及这些起步值的来源，都在",
+					"三处缓存的分工、往上调的方法和这些起步值的来源在",
 					/* @__PURE__ */ (0, w.jsx)(cS, {
 						href: "https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md",
 						children: "CloudDrive 配置与调优"
@@ -32315,7 +32315,7 @@ function TD({ data: e }) {
 //#endregion
 //#region src/react/settings/access-settings.tsx
 var ED = {
-	legacy: "当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。",
+	legacy: "当前使用系统生成的访问口令。改设自己的密码，或关闭登录要求。",
 	locked: "访问设置无法读取，请在本机检查配置文件。",
 	password: "已设置密码。新设备需要登录，保持登录时间在登录页选择。"
 };
@@ -32356,7 +32356,7 @@ function DD({ initial: e, receipt: t }) {
 				n.mode === "password" || n.mode === "legacy" ? /* @__PURE__ */ (0, w.jsx)(Wx, {
 					isSelected: u,
 					onChange: d,
-					children: "关闭访问密码，允许能连接到 Peach 的设备直接访问"
+					children: "关闭访问密码"
 				}) : null,
 				n.mode === "password" ? /* @__PURE__ */ (0, w.jsx)(Zy, {
 					id: "access-current",
@@ -32419,7 +32419,7 @@ function DD({ initial: e, receipt: t }) {
 //#region src/react/settings/tunnel-settings.tsx
 var OD = 2e3, kD = [["quick", "临时链接"], ["named", "命名隧道"]], AD = {
 	quick: "只用于临时预览；地址随机、重启后会变化。启动前必须设置访问密码。",
-	named: "地址是你在 Cloudflare 后台绑定的公开主机名，重启后不变。启动前必须设置访问密码，身份策略在 Cloudflare Access 里配置。"
+	named: "地址是 Cloudflare 后台绑定的公开主机名，重启后不变。启动前必须设置访问密码，身份策略在 Cloudflare Access 里配置。"
 };
 function jD({ revision: e, initial: t, receipt: n }) {
 	let [r, i] = (0, C.useState)(t), [a, o] = (0, C.useState)(e), [s, c] = (0, C.useState)(t.mode), [l, u] = (0, C.useState)(t.hostname), [d, f] = (0, C.useState)(""), [p, m] = (0, C.useState)({}), h = Qy(), g = r.state === "starting" || r.state === "running", _ = r.named_available && s === "named";
@@ -32493,7 +32493,7 @@ function jD({ revision: e, initial: t, receipt: n }) {
 			r.available ? null : /* @__PURE__ */ (0, w.jsx)(J, {
 				tone: "warning",
 				title: "找不到 cloudflared",
-				children: "请安装官方 cloudflared，或在设置文件的 tunnel.binary 指定路径，也可用 PEACH_CLOUDFLARED 指定。"
+				children: "安装官方 cloudflared，或用设置文件的 tunnel.binary 与 PEACH_CLOUDFLARED 指定路径。"
 			}),
 			r.state === "running" && r.url ? /* @__PURE__ */ (0, w.jsx)(J, {
 				tone: "info",
@@ -32511,7 +32511,7 @@ function jD({ revision: e, initial: t, receipt: n }) {
 			r.error ? /* @__PURE__ */ (0, w.jsx)(oS, { children: r.error }) : null,
 			h.error ? /* @__PURE__ */ (0, w.jsx)(oS, { children: h.error }) : null
 		] }), /* @__PURE__ */ (0, w.jsxs)(iS, {
-			status: r.enabled ? "服务重启时会按设置尝试恢复。" : "默认关闭，不会自动暴露本机服务。",
+			status: r.enabled ? "服务重启时会按设置尝试恢复。" : "服务重启后保持关闭。",
 			children: [/* @__PURE__ */ (0, w.jsx)(X, {
 				onClick: () => v("toggle", !g, (e) => n(e.enabled ? "公网入口已启动" : "公网入口已停止")),
 				...Z(h.busy === "toggle"),
@@ -32567,7 +32567,7 @@ function PD({ initial: e, receipt: t }) {
 		children: [
 			/* @__PURE__ */ (0, w.jsx)(nS, { children: /* @__PURE__ */ (0, w.jsx)(Qx, {
 				label: "连接方式",
-				description: "采集来源选择“Peach 代理”时共用此设置。",
+				description: "采集来源选「Peach 代理」时共用这里的连接方式。",
 				children: /* @__PURE__ */ (0, w.jsx)(xw, {
 					"aria-label": "连接方式",
 					selectedKey: i,
@@ -32837,7 +32837,7 @@ function ZD({ title: e, rows: t, unit: n = "个视频" }) {
 }
 //#endregion
 //#region src/react/stats/stats-page.tsx
-var QD = 10, $D = `${oh()} flex flex-col gap-4`, eO = "添加媒体文件夹或关注来源，开始建立你的馆藏。", tO = "补全资料或添加标签后，这里会显示馆藏中的内容标签。", nO = "开始播放后，这里会显示最近的真实观看证据。", rO = "刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。", iO = "添加媒体文件夹后，这里会显示存储空间。";
+var QD = 10, $D = `${oh()} flex flex-col gap-4`, eO = "添加媒体文件夹或关注来源后，这里会显示馆藏统计。", tO = "补全资料或添加标签后，这里会显示馆藏中的内容标签。", nO = "开始播放后，这里会显示最近的真实观看证据。", rO = "刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。", iO = "添加媒体文件夹后，这里会显示存储空间。";
 function aO({ term: e, value: t }) {
 	return /* @__PURE__ */ (0, w.jsxs)("div", {
 		className: "flex min-h-16 min-w-0 flex-col gap-1.5 rounded-2lg bg-background-primary-default p-3",

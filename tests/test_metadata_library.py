@@ -787,7 +787,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual((second['status'], second['issue_count']), ('complete', 0))
         self.assertEqual((first['status'], first['issue_count']), ('failed', 1))
         # 状态文件里没有 `notes` 的任务，读出来要按日志把告知项和问题分开重算。
-        stored = dict(second, status='failed', error='2 项需要处理，请查看详情并重试。', issue_count=2,
+        stored = dict(second, status='failed', error='2 项需要处理，可重试未完成的部分。', issue_count=2,
                       issue_preview=[{'asset_id': 1, 'title': 'STP-26232.mp4', 'path': '',
                                       'message': message, 'severity': 'error'}
                                      for message in ('外部来源没有这部片的资料，7 天内不再问',

@@ -274,7 +274,7 @@ describe('设计决定', () => {
   it('持久警示是状态色块，不和字段说明共用灰色小字', { timeout: 60_000 }, async () => {
     const opened = await openAccess(browser);
     try {
-      await opened.form.getByText('关闭访问密码，允许能连接到 Peach 的设备直接访问').click({ timeout: 5_000 });
+      await opened.form.getByText('关闭访问密码', { exact: true }).click({ timeout: 5_000 });
       const note = opened.form.locator('[role="note"]');
       await note.waitFor({ timeout: 5_000 });
       const surface = await note.evaluate((element) => getComputedStyle(element).backgroundColor);

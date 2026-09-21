@@ -69,7 +69,7 @@ export function AutomaticUpdates({ initial, receipt }: { initial: AutomaticUpdat
     ? '自动更新需要由托盘管理的服务。'
     : initial.download_available
       ? '开启后一分钟内开始检查。下载完成后，在此确认重启安装。'
-      : '开启后一分钟内开始检查。源码运行请前往发布页获取新版本。';
+      : '开启后一分钟内开始检查。源码运行时在发布页获取新版本。';
   return (
     <Section title="自动更新" onSubmit={submit}>
       <Rows>
@@ -136,7 +136,7 @@ export function UninstallSettings(
   return (
     <Section id="uninstallPeach" title="卸载 Peach">
       <Stack>
-        {uninstall.available ? <Help>卸载会退出 Peach、移除程序、开机自启和桌面图标。原始媒体文件保留。</Help> : null}
+        {uninstall.available ? <Help>卸载移除 Peach 程序本身，原始媒体文件保留。</Help> : null}
         <Checkbox isSelected={removeData} isDisabled={!uninstall.full_available || Boolean(accepted)} onChange={setRemoveData}>
           完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存
         </Checkbox>

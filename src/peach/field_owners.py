@@ -116,9 +116,9 @@ def owner_label(owner: str | None) -> str:
     """
     kind, _, identifier = str(owner or "").partition(":")
     if kind == "user":
-        return "你填的"
+        return "手动填写"
     if kind == "review":
-        return f"你批准的 {identifier}"
+        return f"复核批准 {identifier}"
     if kind == "auto":
         return f"{identifier} 免复核落库"
     if kind == "scan":

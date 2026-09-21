@@ -219,7 +219,7 @@ it('多来源候选没选来源就批量通过时先说清楚，不替人按下�
   await click(buttonIn(host, '全选本页'));
   await click(buttonIn(host, '通过所选'));
   await settle();
-  expect(statusText(host)).toContain('请先为所选的多来源候选选择来源。');
+  expect(statusText(host)).toContain('先为所选的多来源候选选择来源。');
   expect(queueOf().sections.metadata_fields).toHaveLength(QUEUE.length);
 });
 

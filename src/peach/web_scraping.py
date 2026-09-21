@@ -57,7 +57,7 @@ def _fetch_cover(contract, code):
         installed = json.loads(sidecar.read_text(encoding="utf-8"))
         if (time.time() - float(installed["checked_at"]) < 86400 and target.is_file()
                 and hashlib.sha256(target.read_bytes()).hexdigest() == installed["raw_sha256"]):
-            return {"ok": True, "code": code, "result": f"已复用 24 小时内核验的本机封面（{installed['width']} × {installed['height']}），本次未重复请求来源。", **{
+            return {"ok": True, "code": code, "result": f"复用 24 小时内核验过的本机封面（{installed['width']} × {installed['height']}），没有再向来源请求。", **{
                 key: installed[key] for key in ("width", "height", "raw_sha256")}}
     except (OSError, ValueError, KeyError, TypeError):
         installed = None
@@ -91,9 +91,9 @@ def _fetch_cover(contract, code):
             target, candidate, size, current_candidate,
             candidate_improves, candidate_quality)
         if kept_size is not None:
-            suffix = "部分来源连接失败，未能完成全部来源比较。" if network_failed or any(s >= 400 and s != 404 for s in statuses) else "本次未找到更大尺寸或更合适的可用封面。"
+            suffix = "部分来源连接失败，未能完成全部来源比较。" if network_failed or any(s >= 400 and s != 404 for s in statuses) else "没有找到更大或更合适的封面。"
             return {"ok": True, "code": code, "reason": "kept_existing",
-                    "result": f"本机封面 {kept_size[0]} × {kept_size[1]}，本次取得的可用封面 {size[0]} × {size[1]}；保留本机封面。{suffix}"}
+                    "result": f"本机封面 {kept_size[0]} × {kept_size[1]}，来源可用封面 {size[0]} × {size[1]}；保留本机封面。{suffix}"}
         evidence = {"code": code, "width": size[0], "height": size[1],
                     "source": candidate.source, "source_url": candidate.url,
                     "raw_sha256": hashlib.sha256(data).hexdigest(),
@@ -111,7 +111,7 @@ def _fetch_cover(contract, code):
         elif any(s >= 500 for s in statuses):
             reason, message = "source_error", "来源服务异常（HTTP 5xx），请稍后重试。"
         elif str(exc) == "所有渠道都没有候选":
-            reason, message = "no_candidate", "本次来源未返回匹配该番号的封面候选，无法判断是否还有高清版。"
+            reason, message = "no_candidate", "来源没有返回这个番号的封面候选，无法判断是否有高清版。"
         else:
             reason, message = {
                 OFFICIAL_PLACEHOLDER_ONLY: ("placeholder_only", f"{OFFICIAL_PLACEHOLDER_ONLY}。"),

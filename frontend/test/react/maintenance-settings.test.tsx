@@ -63,7 +63,7 @@ describe('自动更新', () => {
     const host = await mount(<AutomaticUpdates initial={{ ...automatic, mode: 'check', download_available: false }} receipt={receipt} />);
     expect(switches(host)[1]!.disabled).toBe(true);
     const interval = [...host.querySelectorAll('p')].find((p) => p.textContent === '检查频率');
-    expect(interval?.nextElementSibling?.textContent).toBe('开启后一分钟内开始检查。源码运行请前往发布页获取新版本。');
+    expect(interval?.nextElementSibling?.textContent).toBe('开启后一分钟内开始检查。源码运行时在发布页获取新版本。');
     await submit(host.querySelector('form'));
     await settle();
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('设置正在保存');

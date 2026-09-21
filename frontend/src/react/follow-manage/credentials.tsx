@@ -28,7 +28,7 @@ import { RiKey2Line } from '@remixicon/react';
 const STORAGE_TITLE = '这些账号信息存在哪里';
 const STORAGE_BODY = '存成运行 Peach 那台电脑上的一个文件。在 Windows 上它不额外加锁，能登录那台电脑的人都能打开。';
 const CLEAR_BODY = '将清除这个来源在本机和共享副本中的登录凭据。';
-const WORLD_READABLE = '文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。';
+const WORLD_READABLE = '文件权限过宽。在运行 Peach 的 POSIX 主机上收紧为 0600。';
 
 /** 一个字段此刻的样子：共享回填的、本机存过的，还是从来没填过。 */
 function fieldHint(row: CredentialRow, name: string): string {

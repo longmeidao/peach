@@ -113,7 +113,7 @@ def media_dir_validator(*, windows: bool) -> Callable[[str], Path]:
             raise ValueError("媒体目录不能为空")
         path = Path(text).expanduser()
         if not path.is_dir():
-            raise ValueError(f"目录不存在或不是目录：{path}（这里不会替你创建）")
+            raise ValueError(f"目录不存在，或者不是目录：{path}。先建好再填。")
         resolved = path.resolve()
         if windows and not is_windows_path(str(resolved)):
             raise ValueError(f"{resolved} 不是盘符路径；网络位置先映射成盘符再来")

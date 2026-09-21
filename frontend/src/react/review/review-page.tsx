@@ -181,7 +181,7 @@ export function ReviewPage(props: ReviewProps) {
     if (bulk.isPending || !selectedRows.length) return;
     if (status === 'approved' && metadata
       && selectedRows.some((row) => !choiceOf(row).candidateKey)) {
-      setFeedback('请先为所选的多来源候选选择来源。');
+      setFeedback('先为所选的多来源候选选择来源。');
       return;
     }
     setFeedback('');

@@ -36,7 +36,7 @@ export function StartupSettings({ startup, receipt }: { startup: StartupState; r
         <SettingsRow label="开机后启动 Peach">
           <Switch aria-label="开机后启动 Peach" isSelected={enabled} isDisabled={!startup.available} onChange={setEnabled} />
         </SettingsRow>
-        <SettingsRow label="静默启动" description="静默启动仅显示托盘，开机后启动 Peach 打开时生效。">
+        <SettingsRow label="静默启动" description="开机后只显示托盘图标，不打开网页；「开机后启动 Peach」打开时生效。">
           <Switch aria-label="静默启动" isSelected={silent} isDisabled={!startup.available || !enabled} onChange={setSilent} />
         </SettingsRow>
         <SettingsRow label="在桌面创建快捷方式" description={startup.desktop_message || '双击图标打开 Peach 网页；卸载时一并移除。'}>

@@ -17,7 +17,7 @@ import { busyProps, useAction } from './use-action';
 type FieldErrors = Partial<Record<'current_password' | 'password' | 'confirmation', string>>;
 
 const HELP: Partial<Record<AccessState['mode'], string>> = {
-  legacy: '当前使用系统生成的访问口令。你可以设置自己的密码，或关闭登录要求。',
+  legacy: '当前使用系统生成的访问口令。改设自己的密码，或关闭登录要求。',
   locked: '访问设置无法读取，请在本机检查配置文件。',
   password: '已设置密码。新设备需要登录，保持登录时间在登录页选择。',
 };
@@ -69,7 +69,7 @@ export function AccessSettings({ initial, receipt }: AccessSettingsProps) {
             ? <Note tone="warning" title="未设置访问密码">能连接到 Peach 的设备打开地址就能看馆藏，不需要登录。</Note>
             : null}
           {state.mode === 'password' || state.mode === 'legacy'
-            ? <Checkbox isSelected={disable} onChange={setDisable}>关闭访问密码，允许能连接到 Peach 的设备直接访问</Checkbox>
+            ? <Checkbox isSelected={disable} onChange={setDisable}>关闭访问密码</Checkbox>
             : null}
           {state.mode === 'password'
             ? <Input id="access-current" type="password" label="当前访问密码" autoComplete="current-password" maxLength={256}

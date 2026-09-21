@@ -621,7 +621,7 @@ class ReviewQueueTests(unittest.TestCase):
         row = next(item for item in rows if item["item_key"] == "III-9:studio")
         self.assertEqual(row["current_owner"], USER_MANUAL)
         self.assertEqual(row["asset_mutation_revision"], 1)
-        self.assertIn("（你填的）", rm_review._review_evidence("metadata_fields", row))
+        self.assertIn("（手动填写）", rm_review._review_evidence("metadata_fields", row))
 
     def test_two_sources_saying_the_same_thing_land_without_review(self):
         """数取值，不数候选条数。

@@ -103,7 +103,7 @@ export function ReleaseUpdates({ initial, initialJob }: { initial: ReleaseState;
         {job.state === 'error' ? <ErrorText>{job.message}</ErrorText> : null}
         {job.state !== 'idle' && job.state !== 'error' ? (
           <div aria-live="polite" className="flex flex-col gap-2">
-            <Progress label="更新准备进度：下载、校验、解压、准备安装" value={job.progress} stops={STOPS} />
+            <Progress label="更新准备进度" value={job.progress} stops={STOPS} />
             <Help>下载 → 校验 → 解压 → 准备安装 · {job.message}</Help>
             <Help>{reading}</Help>
           </div>
