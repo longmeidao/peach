@@ -9,7 +9,7 @@
 
 ## beeg 侧：未取得
 
-用户要求「使用 beeg 的这种」。按 `peach-reference-evidence` 先取源码：
+目标形态取自 beeg 的悬停预览。按 `peach-reference-evidence` 先取源码：
 
 - <https://beeg.com/> 当前入口指向 `/dist/main.8fa6fc40.js` 与 `/dist/main.8fa6fc40.css`。
 - `main.8fa6fc40.js`，758,486 字节，SHA-256

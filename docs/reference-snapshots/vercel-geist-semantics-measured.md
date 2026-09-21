@@ -38,7 +38,7 @@
 ## 布局与字体
 
 - 文档正文列：body `max-width:1265px`，main 实测 1220px；Dashboard 的设置类
-  页面内容列实测约 943px（用户提供的 Team Settings 截图）——低密度页面不全宽。
+  页面内容列实测约 943px（Team Settings 手工截图）——低密度页面不全宽。
 - 正文字体栈：`Geist, Inter, -apple-system, …, sans-serif`，全程无衬线；站方
   栈里没有 CJK 名字，中文站必须自行补 CJK sans，否则 Chrome 的中文默认字体
   （宋体）会接管标题。
@@ -50,7 +50,7 @@
   `1px rgba(255,255,255,0.14)`、radius 8px）；卡内标题 **20px/600/26px 行高**，
   描述为 muted 灰；卡底与主体之间发丝分隔，底部一行「左侧 helper 灰字 +
   右侧动作按钮」。
-- 危险设置卡（Delete Project，用户截图）：整卡红发丝边框，底部一条红 tint
+- 危险设置卡（Delete Project，手工截图）：整卡红发丝边框，底部一条红 tint
   区，右侧 danger 实底按钮；Pause Project 用 warning（amber）实底按钮。
 - 文档页排版：H1 40px/48 行高/600/`-2.4px`/`mb 12px`；导语 20px/30 行高 muted；
   正文段落 16px/24 行高，`mt 16px`。
@@ -87,7 +87,7 @@
   顺序为 Search、`Filter and Sort Projects`、Add New；实测同一行 36px 高、8px gap，
   搜索占剩余宽度，筛选按钮 36×36px，Add New 115×36px。筛选菜单 250px 宽、6px
   内边距、12px 圆角，内部纵向滚动且 `overscroll-behavior:contain`；展开没有动画。
-  用户截图 `codex-clipboard-b47d665c-a203-4c22-8e79-1123b896e555.png` 的 SHA-256 为
+  手工截图的 SHA-256 为
   `037CBD12E6254072817F402864A0B11C641AA920CA4BD9EDEC08D591DAF2EA1E`（1673×189）。
 
 Peach 保留的差异：添加关注沿用现有 38px 输入基线，因此筛选钮是 38×38px；Tooltip
@@ -110,7 +110,7 @@ Peach 图片灯箱的信息卡据此保持一个“在资源管理器中显示�
 
 ## 选中态与开关色（2026-09-03 实测，深色主题）
 
-用 Claude_Browser 打开 `vercel.com/geist/*` 的示例块，读 `getComputedStyle` 得到的值。
+用浏览器打开 `vercel.com/geist/*` 的示例块，读 `getComputedStyle` 得到的值。
 取证目的只有一个：Geist 的「被选中」到底用不用蓝。
 
 | 控件 | 页面 | 选中／开态 | 未选中 |
@@ -281,16 +281,16 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 ### 纠正记录
 
 `1367a9a`（2026-09-03）把 Switch／Tabs 的取证结论推广成了全站规则，顺手删掉了
-`.edge button:hover` 与 `.dnav button:hover` 的填充。用户 2026-09-04 指出窄栏悬停没反馈，
-并给出 Vercel 后台左栏的截图（Projects 与 Deployments 两行同时带填充）。上表是照此复测的结果：
+`.edge button:hover` 与 `.dnav button:hover` 的填充。2026-09-04 发现窄栏悬停没反馈，
+对照 Vercel 后台左栏的截图（Projects 与 Deployments 两行同时带填充）。上表是照此复测的结果：
 证据只覆盖横排选项组，推广到侧栏没有依据。已按上表把两处填充改回，并加正向断言
 `test_sidebar_nav_keeps_the_hover_fill_and_leaves_state_to_the_color` 锁住。
 
 ### Peach 对应（2026-09-03 收敛，2026-09-04 修正侧栏一条）
 
 - 按下／选中（`aria-pressed="true"`、`aria-current`、`.selected`、`.current`、`.picked`、`:checked`）
-  只有填充：一律 `--hover` 底 `--ink` 字，不加边、不加内嵌一圈线、不加字重。这条推翻了本文件
-  此前写的两版——先是「统一 `--ink-2` 底 `--ground` 字」（Geist 的 Switch 选中项只是 `#0A0A0A`
+  只有填充：一律 `--hover` 底 `--ink` 字，不加边、不加内嵌一圈线、不加字重。这与本文件早前记录
+  冲突，以本条实测为准——早前两版先是「统一 `--ink-2` 底 `--ground` 字」（Geist 的 Switch 选中项只是 `#0A0A0A`
   面上抬到 `#1A1A1A`，没有一处是反相白块），再是「无边框补内嵌一圈线、带边框提到墨色 28%、
   还要更强就加字重」（那一整套是自造的强调阶梯，上面三个组件的类名里一条都没有）。
 - 因此**同一排横向互斥选项的未选中项，悬停只提文字色到 `--ink`，不上填充**。这些组的
@@ -331,7 +331,7 @@ Peach 的两列侧栏导航按上表对齐：`.edge button` 与 `.dnav button` �
 
 - 取证方式：内置浏览器登录态下打开 `vercel.com/<team>/~/settings` 与 `vercel.com/<team>`，
   读 `getComputedStyle`；暗色一档把 `<html>` 的 `light-theme` 换成 `dark-theme` 后重读 token。
-- 这一轮回答的是四个问题：输入框聚焦是什么色、fieldset 两块面各是什么色、
+- 本节测四项：输入框聚焦是什么色、fieldset 两块面各是什么色、
   按钮是不是「无脑全黑」、滚动条有没有被改写。
 
 ### 中性刻度（同一组 token 的明暗两档）

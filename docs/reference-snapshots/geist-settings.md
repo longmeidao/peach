@@ -51,7 +51,7 @@
 
 站内文字链接参考本页 Fieldset 的 `View documentation` 示例：`text-[var(--geist-link-color)]`、`hover:underline`、`focus-visible:outline-2` 与 `outline-offset-4`。Peach 使用主题链接色、悬停下划线及 2px 焦点轮廓，访问后颜色保持一致；“配置 Peach 代理”跳转 `/configuration#peachProxy`，不附外链箭头。独立 `/geist/link` 页面未取得，证据来自官方 Fieldset 示例及本页已登记 HTML。
 
-2026-09-06 再次通过 HTTPX 获取官方 Fieldset、Input、Description、Note 的 HTML/CSS。Fieldset 与共同 CSS 的 SHA-256 与本页首表一致；Input 为 `df3a8b7ba933798842915d06056ef079878faa091af6b8d67e61d69cc0a08962`，Description 为 `7a16d502b3fdba316ef740057b275d2acdeb85f79d4944201331af906d9b497f`。浏览器参考页返回 `js execution timed out`，实时参考布局未取得。
+Input 的 HTML SHA-256 为 `df3a8b7ba933798842915d06056ef079878faa091af6b8d67e61d69cc0a08962`，Description 为 `7a16d502b3fdba316ef740057b275d2acdeb85f79d4944201331af906d9b497f`；Fieldset 与共同 CSS 的 SHA-256 与首表一致。浏览器参考页返回 `js execution timed out`，实时参考布局未取得。
 
 Fieldset 正文 `p-5` 为 20px；副标题 `pt-2` 为 8px，`pb-5` 为 20px；副标题是最后一个孩子时正文取消底内边距，避免两份留白相加。Footer 使用 `pt-3 pr-3 pb-3 pl-5`，即上、右、下 12px，左 20px。Label 使用 8px 的 `mb-2`。这些是具体组件值，不是所有元素一律相隔 8px 的规定。
 
@@ -76,8 +76,8 @@ Peach 的表单组、卡片和页头使用上述一致性约定；不将它们�
 
 Peach 按界面、浏览、播放、搜索、关注、安全排列。主题和导航属于界面；JAV 封面和合并分卷属于浏览；悬停放大属于播放。排序与方向共用一行，随机排序禁用方向。独立设置之间加线，同一设置的关联控件之间不加线；JAV 封面类型与大小作为关联项，中间不加线。卡片之间使用间距。行位置按相邻关系判断，不按 div / label 类型判断。
 
-按用户指定，排序选项在入口和菜单使用纯文字，方向箭头仅显示在入口，方向菜单保留文字与选中标记。预览复用正式导航排序、隐藏与添加函数，持久化使用独立预览数据。
+排序选项在入口和菜单使用纯文字，方向箭头仅显示在入口，方向菜单保留文字与选中标记。预览复用正式导航排序、隐藏与添加函数，持久化使用独立预览数据。
 
-Toggle 复用已测量的中号 36×20、17px 圆点；按用户截图使用白色圆点，开态保留 Peach 主题蓝，属于明确的色彩差异。合并分卷、详情自动播放、安全模式使用 switch 语义。悬停放大的 0 值表示关闭，保存在浏览器设置，普通预览保持原行为。
+Toggle 复用已测量的中号 36×20、17px 圆点；圆点用白色，开态保留 Peach 主题蓝，是与上游明确的色彩差异。合并分卷、详情自动播放、安全模式使用 switch 语义。悬停放大的 0 值表示关闭，保存在浏览器设置，普通预览保持原行为。
 
 影响面：页面及本地设置契约、共享卡片悬停、源测试与计时行为测试适用；数据层和 API 无变更。首页及实体列表复用 wireHover，其他未使用该函数的页面不受影响。没有真实账本写入、生产替换、发布或智能体规则变更。

@@ -90,6 +90,6 @@
 - 揭示走完把类名一并摘掉。终点帧留着 `filter:blur(0)` 的话，非 none 的 filter 会另起一个
   backdrop root，标题块里任何 backdrop-filter 从此只采样得到它自己——和第一批骨架那条
   用 `backwards` 不用 `both` 是同一个理由。
-- **未取得**：上游各条配方的设计原始稿、参数取值理由与许可条款仍未取得。BoardUI 的
+- BoardUI 的
   Input（<https://www.boardui.com/components/input>，2026-09-17）没有清空键，Geist 那几份
   快照里也没有，所以这一批不新增清空控件，只做已有清空路径上的内容溶解。
