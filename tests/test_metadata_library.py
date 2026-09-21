@@ -819,8 +819,8 @@ class LibraryNfoTests(unittest.TestCase):
                          ['封面未取得：来源返回 HTTP 503'], '来源说没有只报一个数，不占问题清单')
         self.assertEqual(first['notes'], {'querying_metadata': 1})
         recorded = json.loads(misses_path(config).read_text(encoding='utf-8'))
-        self.assertEqual(list(recorded), ['r18dev', 'community'])
-        self.assertEqual(list(recorded['r18dev']), ['STP-26232'])
+        self.assertEqual(list(recorded['misses']), ['r18dev', 'community'])
+        self.assertEqual(list(recorded['misses']['r18dev']), ['STP-26232'])
 
         provider.cover.side_effect = NotFound('所有渠道都没有候选')
         second = run()
@@ -856,6 +856,33 @@ class LibraryNfoTests(unittest.TestCase):
         cache = _MissCache(misses_path(config), now=lambda: time.time() + 8 * 24 * 3600)
         self.assertFalse(cache.fresh('r18dev', 'STP-26232'), '7 天后再问一次')
         self.assertFalse(_MissCache(self.root / 'missing.json').fresh('r18dev', 'STP-26232'))
+
+    def test_a_new_source_clears_what_the_old_lineup_said_it_did_not_have(self):
+        """每条「没有」都是当时那批来源给的答案；接上一家新的，整份记忆就不作数了。
+
+        2026-09-21 接上 FC2 商品页与 fc2cmadb 时，430 个 FC2 番号手上压着一条
+        「封面没有」，按番号问是问不动的：答案没变，能问的人变了。
+        """
+        from peach.library_processing import _MissCache, sources_fingerprint
+        path = self.root / 'misses.json'
+        cache = _MissCache(path)
+        cache.record('cover', 'FC2-PPV-3189161')
+        self.assertTrue(_MissCache(path).fresh('cover', 'FC2-PPV-3189161'))
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['sources'],
+                         sources_fingerprint())
+
+        widened = _MissCache(path, fingerprint='多了一家')
+        self.assertFalse(widened.fresh('cover', 'FC2-PPV-3189161'))
+        widened.record('cover', 'NEW-001')
+        self.assertEqual(list(json.loads(path.read_text(encoding='utf-8'))['misses']['cover']),
+                         ['NEW-001'], '作废的那批不该被写回来')
+
+    def test_a_memory_written_before_the_fingerprint_is_not_trusted(self):
+        """旧格式没记下当时问的是哪几家，无从判断它还作不作数，一律重问。"""
+        from peach.library_processing import _MissCache
+        path = self.root / 'legacy.json'
+        path.write_text(json.dumps({'r18dev': {'STP-26232': time.time()}}), encoding='utf-8')
+        self.assertFalse(_MissCache(path).fresh('r18dev', 'STP-26232'))
 
     def test_management_controls_keep_credentials_and_empty_sections_visible(self):
         root = Path(__file__).resolve().parents[1]

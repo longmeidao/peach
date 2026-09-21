@@ -757,24 +757,42 @@ class _DirectoryIndex:
         return found
 
 
+def sources_fingerprint():
+    """当前认得哪几家来源。记忆按它作废，接上新来源就不必等 TTL。
+
+    `cover` 那条记的是「所有封面来源加起来都没有」，`community` 那条记的是「逐家问过
+    都说没有」——两句话都以「当时会问哪几家」为前提。2026-09-21 接上 FC2 商品页与
+    fc2cmadb 之后，430 个 FC2 番号手上还压着一条「封面没有」，按番号问是问不动的：
+    答案没变，能问的人变了。
+    """
+    return hashlib.sha256('\n'.join(sorted(SOURCE_SPECS)).encode('utf-8')).hexdigest()[:12]
+
+
 class _MissCache:
     """来源明确答复「没有」的番号，按来源分开记，期内不再问。
 
     r18.dev 不认识的番号每轮「只采集」都重问一遍，每条卡在主机 2 秒间隔上，答案永远一样；
     真实账本上这样的行有六百多条，一轮就是几十分钟。只记 `NotFound`：网络故障与超时
     下次可能就好了，不该记。每记一条就落盘，任务被打断也不丢。
+
+    记忆还绑着写下它时的来源目录（`sources_fingerprint`）：目录一变整份作废，
+    因为每条「没有」都是那一批来源给的答案。
     """
 
-    def __init__(self, path, *, ttl=MISS_TTL_SECONDS, now=time.time):
+    def __init__(self, path, *, ttl=MISS_TTL_SECONDS, now=time.time,
+                 fingerprint=None):
         self._path = path
         self._ttl = ttl
         self._now = now
+        self._fingerprint = fingerprint if fingerprint is not None else sources_fingerprint()
         try:
             loaded = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             loaded = {}
+        if not isinstance(loaded, dict) or loaded.get('sources') != self._fingerprint:
+            loaded = {}
         self._entries = {}
-        for source, codes in (loaded.items() if isinstance(loaded, dict) else ()):
+        for source, codes in (loaded.get('misses') or {}).items():
             if isinstance(codes, dict):
                 self._entries[source] = {code: float(stamp) for code, stamp in codes.items()
                                          if isinstance(stamp, (int, float))}
@@ -786,8 +804,9 @@ class _MissCache:
     def record(self, source, code):
         now = self._now()
         self._entries.setdefault(source, {})[code] = now
-        _save(self._path, {name: {key: stamp for key, stamp in codes.items() if now - stamp < self._ttl}
-                           for name, codes in self._entries.items()})
+        _save(self._path, {'sources': self._fingerprint, 'misses': {
+            name: {key: stamp for key, stamp in codes.items() if now - stamp < self._ttl}
+            for name, codes in self._entries.items()}})
 
 
 class _RemoteSession:
