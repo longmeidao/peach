@@ -119,6 +119,7 @@ class BoardTokenTests(unittest.TestCase):
     #: 有一行写清原因：默认逐字照抄，例外必须是写下来的决定，不是谁顺手改的一次。
     LOCAL_TOKEN_VALUES = {
         (".dark", "--color-border-checkbox-default"): "var(--color-neutral-600)",
+        (".dark", "--color-separator-border"): "var(--color-neutral-700)",
     }
 
     def test_the_react_subtree_redeclares_shared_tokens_with_upstream_values(self):

@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/base/checkbox/checkbox';
 import { Chip } from '@/components/base/badges/chip';
 import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
+import { useOverlayScrollbar } from '../components/overlay-scrollbar';
 import { RiImageLine } from '@remixicon/react';
 import { busyProps } from '../settings/use-action';
 import { CandidateChoices, PendingGenres } from './candidate-form';
@@ -72,6 +73,9 @@ export function ReviewCard(props: ReviewCardProps) {
   /* Checkbox 的 `onChange` 只给新状态，Shift 要从触发它的那一下事件里取：按下先于变更，
      键盘的空格也一样。 */
   const range = useRef(false);
+  /* 卡里会自己滚的两块：中段的证据，和贴在卡底那一句当前信息。 */
+  const body = useOverlayScrollbar<HTMLDivElement>();
+  const current = useOverlayScrollbar<HTMLParagraphElement>();
   const metadata = category === 'metadata_fields';
   const subjectKind = ENTITY_REVIEW_KINDS[category] || '';
   const subjectName = String(row.creator || '').trim();
@@ -157,40 +161,47 @@ export function ReviewCard(props: ReviewCardProps) {
         {decided ? <Chip variant="caption" color="neutral">{row.decision}</Chip> : null}
       </header>
 
-      {/* 中段只长不缩：内容短时它吃掉剩下的高度，内容长时卡不变形，由这一段自己滚。 */}
-      <div className="flex min-w-0 min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
-        {/* 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。 */}
-        {row.source_name
-          ? <p className="text-body-2-regular text-text-secondary">{`来源写法：${row.source_name}`}</p>
-          : null}
-        {/* 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。 */}
-        {!asEntity && (row.board || row.assets)
-          ? <p className="text-body-2-regular text-text-secondary">
-              {`样本/资产：${row.video_count || row.assets || ''}`}
-            </p>
-          : null}
-        {!asEntity && origin ? origin : null}
-        {tags.length || category === 'creator_tags' ? (
-          <div className="flex flex-wrap gap-1">
-            {tags.length
-              ? tags.map((tag) => <Chip key={tag} variant="caption" color="soft">{tag}</Chip>)
-              : <small className="text-body-2-regular text-text-secondary">暂无候选标签</small>}
-          </div>
-        ) : null}
-        {preview}
-        <PendingGenres row={row} tags={genreTags} locked={locked} toast={handlers.toast} />
-        {!metadata && evidence
-          ? <p className="text-body-2-regular text-text-secondary">{evidence}</p>
-          : null}
+      {/* 中段只长不缩：内容短时它吃掉剩下的高度，内容长时卡不变形，由这一段自己滚。
+          外面这一层只为放那条覆盖式滚动条的轨道：它按 `absolute` 铺，得有一个只裹着
+          滚动块本身的定位祖先，否则会跑到整页的右边缘去。 */}
+      <div className="relative flex min-w-0 min-h-0 flex-1 flex-col">
+        <div ref={body} className="flex min-w-0 min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+          {/* 账本规范名当标题，抓取来源给的写法（多为罗马音）留作副标题。 */}
+          {row.source_name
+            ? <p className="text-body-2-regular text-text-secondary">{`来源写法：${row.source_name}`}</p>
+            : null}
+          {/* 实体类卡片的作品数已经写在创作者入口里，这里再写一遍就是同一个数字两处。 */}
+          {!asEntity && (row.board || row.assets)
+            ? <p className="text-body-2-regular text-text-secondary">
+                {`样本/资产：${row.video_count || row.assets || ''}`}
+              </p>
+            : null}
+          {!asEntity && origin ? origin : null}
+          {tags.length || category === 'creator_tags' ? (
+            <div className="flex flex-wrap gap-1">
+              {tags.length
+                ? tags.map((tag) => <Chip key={tag} variant="caption" color="soft">{tag}</Chip>)
+                : <small className="text-body-2-regular text-text-secondary">暂无候选标签</small>}
+            </div>
+          ) : null}
+          {preview}
+          <PendingGenres row={row} tags={genreTags} locked={locked} toast={handlers.toast} />
+          {!metadata && evidence
+            ? <p className="text-body-2-regular text-text-secondary">{evidence}</p>
+            : null}
+        </div>
       </div>
 
       {/* 候选表单的当前信息另有去处：它贴在卡底，那一句读的是「现在是什么」，不是这一屏
-          证据的一部分。 */}
+          证据的一部分。外面一层同样只为那条轨道，负边距由它出：轨道要贴着卡的内缘，
+          而这一句自己得铺满整条。 */}
       {metadata && evidence
-        ? <p role="region" aria-label="当前信息"
-            className="-mx-5 max-h-22 shrink-0 overflow-y-auto border-t border-separator-border px-5 py-2.5 text-body-2-regular text-text-secondary">
-            {evidence}
-          </p>
+        ? <div className="relative -mx-5 shrink-0">
+            <p ref={current} role="region" aria-label="当前信息"
+              className="max-h-22 overflow-y-auto border-t border-separator-border px-5 py-2.5 text-body-2-regular text-text-secondary">
+              {evidence}
+            </p>
+          </div>
         : null}
 
       {/* 动作条占满卡底那一格：沉一档底色、上面一条线把「看证据」和「下判断」分开，

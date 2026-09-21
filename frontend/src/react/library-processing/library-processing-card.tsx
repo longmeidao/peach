@@ -12,7 +12,6 @@ import {
 } from '@remixicon/react';
 import { useMutation } from '@tanstack/react-query';
 import { Dialog, Popover } from 'react-aria-components';
-import { attachOverlayScrollbar } from '@peach/legacy/ui';
 
 import { Button } from '@/components/base/buttons/button';
 import { LinkButton } from '@/components/base/buttons/link-button';
@@ -25,6 +24,7 @@ import { apiSend, errorMessage } from '../../api';
 import type { LibraryProcessingProps } from '../bundle';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
+import { useOverlayScrollbar } from '../components/overlay-scrollbar';
 import { PathLine } from '../components/path-line';
 import { Progress } from '../components/progress';
 import { Disclosure } from '../settings/section';
@@ -117,10 +117,8 @@ function Outcome(
   const details = issueDetails(state);
   const retryable = state.status === 'failed' && !!state.retryable_asset_ids?.length;
   const notes = notesLine(state.notes || {});
-  const list = useRef<HTMLUListElement>(null);
-  /* 清单是这一页唯一自己滚的块，原生滚动条在这儿就是一条系统灰柱子。挂全站那条覆盖式
-     的：它自带「已挂过」标记，所以每次渲染都试一次，清单从无到有那一次才挂得上。 */
-  useEffect(() => { attachOverlayScrollbar(list.current) });
+  /* 清单是这一页唯一自己滚的块，原生滚动条在这儿就是一条系统灰柱子。 */
+  const list = useOverlayScrollbar<HTMLUListElement>();
   return (
     /* 空着时整块收起：`aria-live` 的容器留着一条空轨道，卡片底下就凭空多出一个间距。 */
     <div aria-live="polite" className="flex flex-col gap-4 empty:hidden">
