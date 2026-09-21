@@ -187,7 +187,7 @@ const FAILED_JOB = {
   issues_log: 'C:\\peach-data\\state\\library-processing-demo.issues.jsonl',
   issue_preview: Array.from({ length: 20 }, (_, at) => ({
     asset_id: at + 1, title: `示例-${at + 1}.mp4`, path: `B:\\番号\\示例-${at + 1}.mp4`,
-    message: '封面未取得：javdb：请求预算已用完；已有图片保留',
+    message: '封面未取得：javdb：本趟采集次数已用完，再跑一次接着采；已有图片保留',
   })),
 };
 
@@ -360,9 +360,28 @@ describe('设计决定', () => {
     try {
       const banner = failed.page.locator('#libraryProcessingNotice [role="alert"]');
       await banner.waitFor({ state: 'visible', timeout: 15_000 });
-      assert.equal(
-        await banner.evaluate((element) => getComputedStyle(element).backgroundColor),
+      /* 计算值现在是 `oklab()`／`oklch()`，两种记法之间没法直接比字符串，所以统一在
+         canvas 上取回 RGBA 再比。 */
+      const surface = await banner.evaluate((element) => {
+        const style = getComputedStyle(element);
+        const context = document.createElement('canvas').getContext('2d')!;
+        const paint = (color: string) => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = color;
+          context.fillRect(0, 0, 1, 1);
+          return [...context.getImageData(0, 0, 1, 1).data];
+        };
+        return { tint: style.backgroundColor, line: paint(style.borderTopColor), ink: paint(style.color) };
+      });
+      assert.equal(surface.tint,
         await tokenColor(failed.page, '.peach-react', '--color-background-tertiary-error'));
+      // 上下两条线取自己的文字色：红底上横一条中性灰线，读起来是把这一条切成了两半。
+      for (const at of [0, 1, 2]) {
+        assert.ok(Math.abs(surface.line[at]! - surface.ink[at]!) <= 2,
+          `横幅的线没跟着语气走：线 ${surface.line} 与字 ${surface.ink} 不是同一个色`);
+      }
+      assert.ok(surface.line[3]! < surface.ink[3]!,
+        '线和字一样实，整条读起来像三行字');
     } finally {
       await failed.close();
     }

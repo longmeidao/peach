@@ -193,17 +193,19 @@ class SourceTransport:
         raise ValueError("采集重定向次数超过上限")
 
     def _request(self, request: HttpRequest, timeout: float, max_bytes: int):
+        """闸门到顶的三句话都写「本趟」和「再跑一次接着采」：这三条按任务重新计数，
+        读的人要据以决定的是「现在重跑一遍」，不是去查哪里还有配额。"""
         source = source_for(request.url)
         if self.max_requests and self.requests >= self.max_requests:
-            raise SourcePaused("请求预算已用完；已有图片保留")
+            raise SourcePaused("本趟采集次数已用完，再跑一次接着采；已有图片保留")
         if self.deadline:
             timeout = min(timeout, self.deadline - time.monotonic())
             if timeout <= 0:
-                raise SourcePaused("采集时间预算已用完；已有图片保留")
+                raise SourcePaused("本趟采集时间已用完，再跑一次接着采；已有图片保留")
         if self.max_bytes:
             remaining = self.max_bytes - self.bytes
             if remaining <= 0:
-                raise SourcePaused("下载预算已用完；已有图片保留")
+                raise SourcePaused("本趟下载量已用完，再跑一次接着采；已有图片保留")
             max_bytes = min(max_bytes, remaining - 1)
         key = source or hashlib.sha256(hostname_of(request.url).encode()).hexdigest()
         cooldown = self.root / ("scraping-" + key + ".cooldown.json")
