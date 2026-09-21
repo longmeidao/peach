@@ -147,6 +147,10 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     # 托盘既是 sync 域的服务编排，也被版本与桌面设置那些 tooling 测试读源码。
     "src/peach/tray.py": ("sync", "tooling"),
     "src/peach/jav_poster_crop.py": ("metadata", "web"),
+    # genre 词表按名字只推得出 metadata。复核队列与 API 那两处的用例拿「词表没收的词」
+    # 当素材：词表一收那个词，`test_web_review.py`（catalog）与 `test_fastapi_api.py`
+    # （web）就红，而改词表的人跑不到那两个域——2026-09-21 就是这样把 master 跑红的。
+    "src/peach/genre_taxonomy.py": ("metadata", "catalog", "web"),
     # 处理任务的主体测试是 `test_metadata_library.py`，它登记在 metadata 与 web 两个域；
     # `test_stale_candidates.py` 在 metadata，`test_web_e2e.py` 在 web 里整条跑它。
     # 模块名与测试文件名对不上，按名字推不出来，不指明就退化成 full。
