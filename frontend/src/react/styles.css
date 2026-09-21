@@ -168,7 +168,10 @@
   --color-border-button-default:   var(--color-neutral-700);
   --color-border-button-hover:     var(--color-neutral-500);
   --color-border-button-active:    var(--color-neutral-600);
-  --color-border-checkbox-default: var(--color-neutral-700);
+  /* 上游 theme.css 这一档是 neutral-700。这颗框的底就是卡面色，整个形状全靠那 1px 说话，
+     而 neutral-700 压在 neutral-800 上只差 11 个 CIE 明度（浅色那对有 15）——细线在低亮度
+     那头当场消失，暗色下看着就是「没有框」。差异登记在 `boardui/ORIGIN.md`。 */
+  --color-border-checkbox-default: var(--color-neutral-600);
   --color-border-checkbox-hover:   var(--color-neutral-500);
   --color-separator-border:        var(--color-neutral-800);
 }

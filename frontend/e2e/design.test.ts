@@ -116,6 +116,43 @@ async function openScraping(browser: Browser): Promise<Visit> {
   return opened;
 }
 
+/** 一行等人判的元数据候选。字段以 `src/peach/web_review.py` 的 `_review_rows` 为准。 */
+const REVIEW_ROW = {
+  item_key: 'metadata_fields:ABC-123:studio',
+  field: 'studio',
+  field_label: '厂牌',
+  code: 'ABC-123',
+  query: 'ABC-123',
+  candidates: [{ candidate_key: 'javdb:studio', source: 'javdb', display_value: '示例厂牌' }],
+};
+
+/** 人工复核页按一行造出来的队列打开：演示库里这一格未必正好有候选，而队列空了就没有卡。 */
+async function openReview(browser: Browser): Promise<Visit> {
+  const opened = await visit(browser, '/review', DESKTOP);
+  await opened.page.route('**/api/review', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      sections: { metadata_fields: [REVIEW_ROW] }, counts: { metadata_fields: 1 }, genre_tags: [],
+    }),
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('section[data-review-key]').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
+/** CIE L*。一条 1px 的线看不看得见跟的是明度差，不是对比度比值：同样 1.48:1，浅色底上
+ *  是一条灰线，深色底上两头的绝对亮度都贴着 0，什么都看不出来。 */
+function lightness([red, green, blue]: number[]): number {
+  const linear = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const y = 0.2126 * linear(red!) + 0.7152 * linear(green!) + 0.0722 * linear(blue!);
+  return y > 0.008856 ? 116 * Math.cbrt(y) - 16 : 903.3 * y;
+}
+
 /** 按给定的一份 `/api/library-processing` 打开某一页：演示库里那趟任务早就跑完了，
  *  而运行态和失败态正是这两条要看的东西。字段以 `src/peach/web_library_processing.py` 为准。 */
 async function openProcessing(
@@ -852,6 +889,61 @@ describe('设计决定', () => {
       }
       assert.ok(tops.tutorial >= 0 && tops.left >= 0 && tops.right <= MOBILE.width,
         '教程浮窗越出了 390px 视口');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('复核卡的勾选框和标题共用一条中线', { timeout: 60_000 }, async () => {
+    const opened = await openReview(browser);
+    try {
+      /* 勾选框 16px、标题那行 24px（字段名是一枚 caption Chip）。两个高度不同的东西
+         顶对顶排在一起，读的人看到的是勾选框比标题高出一截，而它们说的是同一张卡。 */
+      const offset = await opened.page.locator('section[data-review-key] header').first()
+        .evaluate((element) => {
+          const middle = (node: Element) => {
+            const box = node.getBoundingClientRect();
+            return box.top + box.height / 2;
+          };
+          return middle(element.querySelector('label > span')!) - middle(element.querySelector('h4')!);
+        });
+      assert.ok(Math.abs(offset) <= 1, `勾选框比标题偏了 ${offset.toFixed(1)}px，不在同一条中线上`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('暗色下没选中的勾选框边线不比浅色下更弱', { timeout: 60_000 }, async () => {
+    const opened = await openReview(browser);
+    try {
+      /* 这颗框的底和卡面同色，所以整个形状全靠那一圈 1px 的边说话。浅色下它是白底上的
+         浅灰线，暗色下必须至少同样清楚——否则卡上看着就是「没有框」。 */
+      /* 计算值是 `oklch()` 原样，解析不出通道；画进 1×1 的画布再读回来就是 RGBA。 */
+      const edge = () => opened.page.locator('section[data-review-key] header label > span').first()
+        .evaluate((node) => {
+          const context = document.createElement('canvas').getContext('2d')!;
+          const paint = (color: string) => {
+            context.clearRect(0, 0, 1, 1);
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const style = getComputedStyle(node);
+          return [paint(style.borderTopColor), paint(style.backgroundColor)] as const;
+        });
+      const [lightEdge, lightFace] = await edge();
+      // `web/app.js` 的 `applyTheme('dark')` 就是这两句；这里只借它换一次配色。
+      await opened.page.evaluate(() => {
+        document.documentElement.dataset.theme = 'dark';
+        document.documentElement.classList.add('dark');
+      });
+      const [darkEdge, darkFace] = await edge();
+      const light = Math.abs(lightness(lightEdge) - lightness(lightFace));
+      const dark = Math.abs(lightness(darkEdge) - lightness(darkFace));
+      assert.ok(dark >= light,
+        `暗色下边线与框内只差 ${dark.toFixed(1)} 个明度，浅色下有 ${light.toFixed(1)}`);
+      assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }
