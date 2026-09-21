@@ -72,7 +72,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 
 - ledger 仍是唯一真相源；AI 与刮削结果仍是候选，不因通用化放宽。
 - 单进程 FastAPI 模块化单体不变；不引入 PostgreSQL、微服务或多账号。
-- Windows 与 macOS 都是一等运行平台；Linux 不在支持范围，未测试（2026-09-04 用户决定）。
+- Windows 与 macOS 都是一等运行平台；Linux 不在支持范围，未测试（2026-09-04 决定）。
 - 任何阶段都不允许把当前用户的数据形状写死为默认值；默认值必须对一个全新用户成立。
 
 ## 后果
@@ -114,7 +114,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 
 ### 翻公开的操作顺序
 
-标【授权】的动作必须在同一轮拿到用户明确同意，不得由智能体自行执行。
+标【授权】的动作须当场取得明确授权。
 
 1. 【授权】`git push origin master`。推送前确认网络出口能稳定连 GitHub：2026-09-04 一次 `git fetch` 遇到 TLS 连接中途断开。
 2. 等 `Test` 工作流绿，红则先修再继续。
@@ -127,7 +127,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 
 - 仓库 `longmeidao/peach` 已 Public；第 1 至 5 步全部完成，打 tag 与正式 Release 留待独立发行版可用时一起做。
 - `Test` 在 windows/macos × 3.12/3.14 与两个 web job 全绿的提交是 `4ca8433`；靶机上暴露并修掉的测试缺陷有两类：契约测试没显式传 `configured=True`（无 peach-data 的机器会拿到首次运行页），脚本测试的临时目录没 `.resolve()`。`npm audit` 对 registry 503 退避重试三次。
-- 分支规则集 `protect-master`（id 22263433）：默认分支禁删除、禁强推。Secret scanning、Push protection、Private vulnerability reporting、Dependabot alerts 已开启；Dependabot security updates 未开，自动开 PR 由用户决定。
+- 分支规则集 `protect-master`（id 22263433）：默认分支禁删除、禁强推。Secret scanning、Push protection、Private vulnerability reporting、Dependabot alerts 已开启；Dependabot security updates 未开，是否让它自动开 PR 另行决定。
 - 公开后的补漏（同日）：`MachineCoordinateTests` 改成只写形状不点名的门槛（家目录路径、私网 IP、`.local` 主机名、本机账号与主机名运行时派生）；发行名定为 `peach`，目录名 `peach-app` 不变；macOS bundle ID 改中性 ID 由用户定为待办第 28 条。
 - 开箱引导的顺序由用户定：先 CLI 问答（`peach init` 无参数进入问答并可首扫，逻辑在 `peach.onboarding`，已在 master），再 GUI 引导（托盘首启打开首次运行页升级成的表单，调同一组函数），两者都已在 master。
 - GUI 引导已落地：未配置的机器上 `peach-tray` 起一条只绑回环的 `peach serve --setup` 引导服务并打开浏览器，首次运行页是表单，`POST /setup` 调与 CLI 同一个 `onboarding.apply()`；`tray.SetupGate` 在健康轮询里新鲜读设置文件，完成后不重启托盘进程就切到正常服务，并消费 `<数据根>/state/first-scan.request` 用子进程跑首扫。需要设置的判据是「没有 config.toml 且没有账本」，端口与失败形态见 `docs/OPERATIONS.md`「首次运行与设置文件」。
