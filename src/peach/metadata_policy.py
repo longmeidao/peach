@@ -46,6 +46,9 @@ SOURCE_SPECS = {
         # FC2 下架作品的镜像站。它转载的是发行方那一页，但标题和标签由站方用户维护，
         # 所以按社区来源对待：取值进复核，不当官方证据。同样不走 Javinizer-Go。
         "fc2cmadb": "community",
+        # 一本道的官网作品 JSON（`peach.metadata_1pondo`）。发行方自己那一份，不走
+        # Javinizer-Go，所以同样不进 REGISTERED_SOURCES。
+        "1pondo": "official",
     }.items()
 }
 
@@ -110,27 +113,27 @@ for _name, _routes in ROUTED_PROFILE_SOURCES.items():
 FIELD_SOURCE_ORDER = {
     "title": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
-        "caribbeancom", "tokyohot", "fc2", "javdb", "javlibrary",
+        "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javlibrary",
         "javbus", "javstash", "jav321", "dlgetchu",
     ),
     "original_title": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
-        "caribbeancom", "tokyohot", "fc2", "javdb", "javlibrary",
+        "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javlibrary",
         "javbus", "javstash", "jav321", "dlgetchu",
     ),
     "performers": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
-        "caribbeancom", "tokyohot", "fc2", "javdb", "javbus",
+        "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javbus",
         "javlibrary", "javstash", "jav321", "dlgetchu",
     ),
     "studio": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
-        "caribbeancom", "tokyohot", "fc2", "javdb", "javbus",
+        "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javbus",
         "javlibrary", "javstash", "jav321", "dlgetchu",
     ),
     "series": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
-        "caribbeancom", "tokyohot", "fc2", "javdb", "javlibrary",
+        "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javlibrary",
         "javbus", "javstash", "jav321", "dlgetchu",
     ),
     # aventertainment 是面向海外的转售商，不是发行方，它给的是自己的上架日期：
@@ -138,7 +141,7 @@ FIELD_SOURCE_ORDER = {
     # （javbus 与番号一致）；`092415-001` 同样差了 9 个月。发行方站点排在
     # 转售商前面，两个字段都要改——只改 tags 会留下一个照样写错日期的路径。
     "release_date": (
-        "dmm", "libredmm", "mgstage", "tokyohot", "caribbeancom",
+        "dmm", "libredmm", "mgstage", "tokyohot", "caribbeancom", "1pondo",
         "aventertainment", "dlgetchu", "fc2", "r18dev", "javdb",
         "javlibrary", "javbus", "jav321", "javstash",
     ),
@@ -147,7 +150,7 @@ FIELD_SOURCE_ORDER = {
     # libredmm 都只给「AV女優・単体作品・サンプル動画」3 项泛化类别，r18dev
     # 同样只有 3 项。厂牌、系列、日期这些字段仍以 dmm 为准，不跟着改。
     "tags": (
-        "mgstage", "dmm", "libredmm", "tokyohot", "caribbeancom",
+        "mgstage", "dmm", "libredmm", "tokyohot", "caribbeancom", "1pondo",
         "aventertainment", "dlgetchu", "fc2", "r18dev", "javstash",
         "javdb", "javlibrary", "javbus", "jav321",
     ),

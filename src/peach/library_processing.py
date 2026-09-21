@@ -54,12 +54,14 @@ MISS_TTL_SECONDS = 7 * 24 * 3600
 #: 主机间隔。默认 2 秒；javdb 按出口 IP 计配额，5 秒一页是它的来源下限（docs/SOURCING.md）。
 SOURCE_INTERVALS = {'javdb.com': 5.0, 'jdbstatic.com': 5.0}
 SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb',
-                 'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'local_nfo': '本地 NFO'}
+                 'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', '1pondo': '一本道', 'local_nfo': '本地 NFO'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
-                  'fc2cmadb': 'fc2cmadb-article'}
+                  'fc2cmadb': 'fc2cmadb-article', '1pondo': '1pondo-json'}
 #: FC2 商品页实测 300～320 KB，fc2cmadb 那页 90 KB；说明与评论都在同一页里。
 FC2_PAGE_LIMIT = 2 * 1024 * 1024
+#: 一本道的作品 JSON 实测 6～8 KB，带样片清单也只有十几 KB。
+ONE_PONDO_LIMIT = 1024 * 1024
 R18_ACTRESS_IMAGE = "https://pics.dmm.co.jp/mono/actjpgs/{filename}"
 
 
@@ -210,24 +212,60 @@ class LibraryMetadataProvider:
             raise NotFound(f'{SOURCE_LABELS[source]} 上没有这个商品')
         return [(source, payload)]
 
-    def _official_candidates(self, code, *, deadline=None):
+    def one_pondo(self, code, *, deadline=None):
+        """一本道自己那份作品 JSON，返回 `[('1pondo', 资料)]`。
+
+        资料和封面两步都要它，同一个番号只问一次。下架的作品官网直接回 404，那就是
+        「站上没有」，记进「没有」的记忆，一周内不再问。
+        """
+        from .jav_cover_fetch import _fetch
+        from .metadata_1pondo import ROOT, SOURCE, detail_url, parse_details
+        cache = self.__dict__.setdefault('_1pondo', {})
+        if code not in cache:
+            url = detail_url(code)
+            if not url:
+                cache[code] = NotFound('这个番号不是一本道的写法')
+            else:
+                try:
+                    document = _fetch(self.transport, url, referer=ROOT + '/',
+                                      limit=ONE_PONDO_LIMIT, deadline=deadline)
+                except (DeadlineExceeded, NotFound) as error:
+                    cache[code] = error if isinstance(error, DeadlineExceeded) \
+                        else NotFound('一本道站上没有这部片')
+                except Exception as error:  # noqa: BLE001 - 原因由调用方汇总成一句话
+                    cache[code] = error
+                else:
+                    payload = parse_details(document, code)
+                    cache[code] = ([(SOURCE, payload)] if payload
+                                   else NotFound('一本道回的作品号对不上这个番号'))
+        if isinstance(cache[code], Exception):
+            raise type(cache[code])(str(cache[code]))
+        return cache[code]
+
+    def _official_candidates(self, code, evidence=(), *, deadline=None):
         """发行方自己那张封面，交给 `best_cover` 当候选。
 
-        只有 FC2 走这里：别的番号的官方面 `best_cover` 自己会找（r18、MGS、Prestige），
-        而 FC2 它一处都不问。资料那步问过的同一份缓存，这里不再发请求。
+        只有 FC2 和一本道走这里：别的番号的官方面 `best_cover` 自己会找（r18、MGS、
+        Prestige），这两家它一处都不问。资料那步问过的同一份缓存，这里不再发请求。
         """
         from .jav_cover_fetch import Candidate, Unavailable
-        from .metadata_fc2 import ROOT
-        if 'fc2' not in _sources_for(code):
+        from .metadata_1pondo import ROOT as PONDO_ROOT
+        from .metadata_fc2 import ROOT as FC2_ROOT
+        sources = _sources_for(code, *evidence)
+        if 'fc2' in sources:
+            source, ask, referer = 'fc2', self.fc2, FC2_ROOT + '/'
+        elif '1pondo' in sources:
+            source, ask, referer = '1pondo', self.one_pondo, PONDO_ROOT + '/'
+        else:
             return ()
         try:
-            found = self.fc2(code, deadline=deadline)
+            found = ask(code, deadline=deadline)
         except (NotFound, DeadlineExceeded):
             raise
         except Exception as error:  # noqa: BLE001 - 交给 `cover()` 汇总成一句话
-            raise Unavailable(f'{SOURCE_LABELS["fc2"]}：{describe_failure(error)}') from error
+            raise Unavailable(f'{SOURCE_LABELS[source]}：{describe_failure(error)}') from error
         return tuple(Candidate(urlparse(payload['cover_url']).netloc.lower(),
-                               payload['cover_url'], ROOT + '/')
+                               payload['cover_url'], referer)
                      for _, payload in found if payload.get('cover_url'))
 
     def query(self, code, source='r18dev', *, deadline=None):
@@ -290,14 +328,15 @@ class LibraryMetadataProvider:
         payload['combined'] = combined
         return payload
 
-    def cover(self, code, cover_root, *, deadline=None):
+    def cover(self, code, cover_root, *, deadline=None, evidence=()):
         """官方大图优先；没有就用社区来源里两个图源对得上的那张；再没有就用官方小图。
 
         小图也比没有封面强（素人系官方图只有 300×300），但社区来源的大图只有被另一个
         图源印证过才用，官方小图本身也算一个图源（ADR-0030）。
 
-        FC2 的那张走官方这一档而不是社区那一档：`storage*.contents.fc2.com` 上的图就是卖家
-        自己传的商品图（实测 2350×2352），它是发行方，没有第二个图源可印证也不该被扣住。
+        FC2 与一本道的那张走官方这一档而不是社区那一档：`storage*.contents.fc2.com` 上的图
+        是卖家自己传的商品图（实测 2350×2352），一本道那张是站点自己的剧照（960×540），
+        两处都是发行方，没有第二个图源可印证也不该被扣住。`evidence` 见 `_sources_for`。
         """
         from .community_catalog import verified_cover
         from .jav_cover_fetch import MIN_WIDTH, SMALL_MIN_WIDTH, Unavailable, best_cover
@@ -307,7 +346,7 @@ class LibraryMetadataProvider:
         official, verified_by, problems = None, (), []
         try:
             official = best_cover(self.transport, code, 0, deadline=deadline,
-                                  prior_candidates=self._official_candidates(code, deadline=deadline),
+                                  prior_candidates=self._official_candidates(code, evidence, deadline=deadline),
                                   minimum_width=SMALL_MIN_WIDTH)
         except NotFound:
             pass
@@ -660,7 +699,7 @@ def _merge_local_performer_profiles(groups, key, remote, source):
         groups[key] = group
 
 
-def _sources_for(code):
+def _sources_for(code, *evidence):
     """按这个番号问哪几家资料来源，从左到右，先给出资料的那家算数。
 
     韩国 MIB 的编号不在 JAV 目录站上，一家都不问：番号相同的日本作品会原样通过番号核验，
@@ -668,17 +707,30 @@ def _sources_for(code):
 
     FC2 跳过 r18.dev（实测 85 条问了 85 条落空，每条白等一次主机间隔），直接问发行方
     自己那一页；它没有或已下架时再落到社区来源，那里 javdb 收了一部分 FC2。
+
+    一本道的番号也不问 r18.dev，改问它自己那份作品 JSON：无码片商不在 r18 上，而目录站
+    给日期式番号的发行日是转售商的上架日（`092415_001` javdb 报 2016-06-16，番号自己写着
+    2015-09-24）。`evidence` 是这一行的路径、文件名与账本厂牌——一本道与カリビアンコム
+    的番号同形，只有本机证据指着一本道时才问它，问不着的照旧落到社区来源。
     """
     if not code or is_korean_mib_code(code):
         return ()
     if code.upper().startswith('FC2'):
         return ('fc2', 'community')
+    from .metadata_1pondo import movie_id, names_this_studio
+    if movie_id(code) and names_this_studio(*evidence):
+        return ('1pondo', 'community')
     return ('r18dev', 'community')
 
 
 def _asks_cover(code):
     """这个番号要不要问外部封面。MIB 同样不问，理由见 `_sources_for`。"""
     return bool(code) and not is_korean_mib_code(code)
+
+
+def _studio_evidence(row):
+    """判片商时本机手上有的证据：文件路径、文件名和账本里已记的厂牌。"""
+    return (row.get('path'), row.get('name'), row.get('studio'))
 
 
 def _missing_fields(row, target_key, groups, local_fields=()):
@@ -766,7 +818,7 @@ class _RemoteSession:
     def collect(self, row, code, missing, cover_root, *, update, issue):
         """给这一行补外部资料与封面；返回 (证据条目, 新落盘的封面数)。"""
         entries, covers = [], 0
-        if missing and _sources_for(code):
+        if missing and _sources_for(code, *_studio_evidence(row)):
             entries = self._metadata(row, code, update=update, issue=issue)
         if _asks_cover(code) and not (cover_root / (code + '.jpg')).is_file():
             covers = self._cover(row, code, cover_root, update=update, issue=issue)
@@ -781,9 +833,9 @@ class _RemoteSession:
         """按 `_sources_for` 给的顺序问，先给出资料的那家算数。
 
         JAV 番号先问 r18.dev，它没有或出错再问 AVBase、JavBus 与 javdb；FC2 番号问发行方
-        自己那一页，下架的才落到社区来源。社区来源的值照常进候选，只剩一家也补空，几家不
-        一时取 javdb 的（ADR-0034）。每家各自记「没有」的记忆：说过没有的番号，一周内直接
-        问下一家。
+        自己那一页，下架的才落到社区来源；一本道的番号问它自己那份作品 JSON。社区来源的值
+        照常进候选，只剩一家也补空，几家不一时取 javdb 的（ADR-0034）。每家各自记「没有」
+        的记忆：说过没有的番号，一周内直接问下一家。
         """
         action = 'querying_metadata'
         budget = ACTION_BUDGETS[action]
@@ -791,7 +843,7 @@ class _RemoteSession:
                current_started_at=time.time(), current_deadline_at=time.time() + budget)
         deadline = time.monotonic() + budget
         problems = []
-        for source in _sources_for(code):
+        for source in _sources_for(code, *_studio_evidence(row)):
             if self._consult and self.misses.fresh(source, code):
                 continue
             try:
@@ -799,6 +851,8 @@ class _RemoteSession:
                     found = [('r18dev', self.provider().query(code, 'r18dev', deadline=deadline))]
                 elif source == 'fc2':
                     found = self.provider().fc2(code, deadline=deadline)
+                elif source == '1pondo':
+                    found = self.provider().one_pondo(code, deadline=deadline)
                 else:
                     found = self.provider().community(code, deadline=deadline)
             except DeadlineExceeded:
@@ -829,7 +883,8 @@ class _RemoteSession:
         update(stage='采集缺失封面', current_action=action,
                current_started_at=time.time(), current_deadline_at=time.time() + budget)
         try:
-            return int(self.provider().cover(code, cover_root, deadline=time.monotonic() + budget))
+            return int(self.provider().cover(code, cover_root, deadline=time.monotonic() + budget,
+                                             evidence=_studio_evidence(row)))
         except DeadlineExceeded:
             self.reset()
             issue(row, '封面在预算时间内未取得，可稍后重试', action=action, retryable=True)

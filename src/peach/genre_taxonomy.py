@@ -254,7 +254,7 @@ NON_CONTENT_GENRES: frozenset[str] = frozenset({
     "Outlet (store That Sells Seconds, Discontinued Lines, Etc.)",
     "期間限定セール", "セール", "MGS限定特典映像", "特典映像あり",
     "配信専用", "MGSだけのおまけ映像付き", "Top Selling",
-    "オリジナル動画", "超VIP", "1080p", "60fps",
+    "オリジナル動画", "超VIP", "1080p", "720p", "480p", "60fps",
     "Series", "Independent", "AV Open 2014 Heavyweight",
     # 样片与附属物料
     "Sample Video", "Sample Movie", "Photo Gallery", "サンプル動画",
