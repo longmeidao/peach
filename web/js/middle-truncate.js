@@ -47,9 +47,28 @@ const measuredWidth=(element,value)=>{
   return width;
 };
 
+/* 可用宽度默认取元素自己的盒子。带 data-middle-truncate-within 的元素按内容收缩（后面紧跟着
+   别的东西，比如文件名后面的「最大」标记），自己的盒子就是当前文字的宽度——拿它当上限，
+   clientWidth 取整少掉的那不到一像素每一轮都让全文「放不下」，越截越短。这类元素改按父级
+   量：父级的内容宽减去所有兄弟和列间距，剩下的才是文字能占的。 */
+const availableWidth=element=>{
+  if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;
+  const box=element.parentElement;if(!box)return element.clientWidth;
+  const style=getComputedStyle(box);
+  const gap=parseFloat(style.columnGap)||0;
+  let used=0,shown=0;
+  for(const child of box.children){
+    const width=child.getBoundingClientRect().width;
+    if(child===element){shown++;continue}
+    if(width>0){used+=width;shown++}
+  }
+  return box.getBoundingClientRect().width-(parseFloat(style.paddingLeft)||0)-(parseFloat(style.paddingRight)||0)
+    -used-gap*Math.max(0,shown-1);
+};
+
 const paint=element=>{
   const state=states.get(element);if(!state||!element.isConnected)return;
-  const available=element.clientWidth;
+  const available=availableWidth(element);
   const rendered=available>0
     ? middleTruncateText(state.full,candidate=>measuredWidth(element,candidate)<=available)
     : state.full;
@@ -73,7 +92,9 @@ const bind=element=>{
   if(!states.has(element))states.set(element,{full:element.textContent||'',rendered:element.textContent||'',raf:0});
   if(!observed.has(element)){
     observed.add(element);
-    resizeObserver?.observe(element);
+    /* 按父级量的元素跟着父级的尺寸重算：它自己的盒子只会随文字变，不会随窗口变。 */
+    if(element.dataset.middleTruncateWithin!==undefined&&element.parentElement)resizeObserver?.observe(element.parentElement);
+    else resizeObserver?.observe(element);
   }
   schedule(element);
 };
@@ -86,7 +107,10 @@ const scan=node=>{
 };
 
 function initMiddleTruncate(root=document){
-  resizeObserver=new ResizeObserver(entries=>entries.forEach(entry=>schedule(entry.target)));
+  resizeObserver=new ResizeObserver(entries=>entries.forEach(entry=>{
+    schedule(entry.target);
+    entry.target.querySelectorAll?.(':scope>[data-middle-truncate-within]').forEach(schedule);
+  }));
   scan(root.documentElement||root);
   const mutations=new MutationObserver(records=>records.forEach(record=>{
     record.addedNodes.forEach(scan);

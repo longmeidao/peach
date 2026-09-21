@@ -1668,12 +1668,25 @@ body[data-surface="/review"] .reviewlist{grid-template-columns:repeat(auto-fill,
 body .review-skeleton .reviewbulktoolbar{position:static;border-radius:16px;margin-bottom:20px;
   padding:8px 12px;background:var(--color-background-full)}
 body[data-surface="/duplicates"] #manageLede{display:none}
-body[data-surface="/duplicates"] .dupactions{padding:16px 20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default);flex-wrap:wrap}
+/* 「批量保留」是一块吸顶的玻璃，料取 `[data-glass-pane]` 那一份、几何照首页筛选框：跟顶栏留
+   8px、22px 圆角、字色走 `--glass-text`；管理页正文随窗口滚，`position:sticky` 直接对着视口。
+   里面的键沿用筛选框胶囊的形态：30px 高、13px 字、一圈 `--glass-low` 发丝边、不铺填充——
+   flat 面那种实底键摆到玻璃上是整条里唯一一块不透光的东西。 */
+body[data-surface="/duplicates"] .dupactions{position:sticky;top:calc(var(--topH) + 8px);z-index:60;isolation:isolate;margin:0 0 22px;padding:10px 16px;border-radius:22px;color:var(--glass-text);flex-wrap:wrap;gap:8px 10px}
+body[data-surface="/duplicates"] .dupactions h3{margin:0 4px 0 0;font:var(--board-body-medium);color:inherit}
+body[data-surface="/duplicates"] .dupactions button{height:30px;padding:0 12px;border:1px solid var(--glass-low);border-radius:var(--pill-radius);background:transparent;color:var(--glass-text);font-size:13px;line-height:1;white-space:nowrap;cursor:pointer}
+body[data-surface="/duplicates"] .dupactions button:hover{border-color:var(--glass-rim);background:var(--glass-pick-fill)}
+body[data-surface="/duplicates"] .dupactions button[aria-busy="true"]{color:color-mix(in srgb,var(--glass-text) 55%,transparent);cursor:wait}
+/* 每组一张卡：浅色下正文与页面同是白的，一圈发丝边分不出层，于是跟数据管理、复核那几张
+   卡一样落到 `--color-background-secondary-default`，头部条与正文同色、靠一条发丝线分开；
+   深色下头部比正文暗一档已经读得出层，保持原来的取法。 */
 body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}
 body[data-surface="/duplicates"] .duphead{padding:20px;gap:12px;background:var(--color-background-secondary-default)}
+html:not(.dark) body[data-surface="/duplicates"] .dupgroup{background:var(--color-background-secondary-default)}
+html:not(.dark) body[data-surface="/duplicates"] .duphead{border-bottom:1px solid var(--line-soft)}
 body[data-surface="/duplicates"] .duphead>b{font:var(--board-heading)}
 body[data-surface="/duplicates"] .duphead .dupbtns{flex-wrap:wrap;gap:8px}
-body[data-surface="/duplicates"] .duprow{grid-template-columns:112px 90px minmax(0,1fr) 64px 84px 84px;padding:16px 20px;gap:12px}
+body[data-surface="/duplicates"] .duprow{grid-template-columns:112px minmax(0,1fr) 84px 84px 84px;padding:16px 20px;gap:12px}
 .dupcover{grid-row:span 2;position:relative;aspect-ratio:16/10;padding:0;overflow:hidden;border:0;border-radius:var(--control-radius);background:var(--color-background-tertiary-default);color:var(--muted);cursor:pointer;display:grid;place-items:center}
 .dupcover img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 .dupcover svg{width:24px;height:24px}
@@ -1700,10 +1713,9 @@ body[data-surface="/junk-files"] .junkactions{padding:12px;background:var(--colo
  body[data-surface="/review"] .review-workspace>.reviewcontrols{position:static;grid-column:1;grid-row:auto!important;margin-bottom:16px}
  body[data-surface="/review"] .reviewtabs{flex-direction:row;flex-wrap:wrap}
  body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar){grid-column:1}
- body[data-surface="/duplicates"] .duprow{grid-template-columns:88px minmax(0,1fr) auto}
- body[data-surface="/duplicates"] .dupcover{grid-row:span 3}
- body[data-surface="/duplicates"] .dupmarks{grid-column:2/-1}
- body[data-surface="/duplicates"] .dupname{grid-column:2/-1}
+ body[data-surface="/duplicates"] .duprow{grid-template-columns:88px minmax(0,1fr) auto auto}
+ body[data-surface="/duplicates"] .dupcover{grid-row:span 2}
+ body[data-surface="/duplicates"] .duptitle{grid-column:2/-1}
  body[data-surface="/duplicates"] .duppath{grid-column:1/-1}
 }
 @media(max-width:600px){

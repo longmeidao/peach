@@ -579,8 +579,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("border:0", rule, f"{name} 跟次级档一样不描边")
         for name in (".cleanupfieldset button:where(:not(.gselectfield)):hover{",
                      ".fbtn:hover:not(:disabled){",
-                     ".resourceaction:hover:not(:disabled){",
-                     ".dupactions.fsechead button:hover{"):
+                     ".resourceaction:hover:not(:disabled){"):
             start = css.index(name)
             rule = css[start:css.index("}", start)]
             self.assertIn(secondary_hover, rule, f"{name} 的悬停与次级档同抬一档")
@@ -1583,7 +1582,7 @@ class WebUiSourceTests(unittest.TestCase):
         for selector in (".fbadge{", ".fvkind{", ".dupmarks i{"):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
-        for selector in (".dupactions button,.dupbtns button{", ".indexmore,.entitymore{"):
+        for selector in (".dupbtns button{", ".indexmore,.entitymore{"):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
@@ -8942,7 +8941,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
         self.assertPageContains("fieldsetTitle('resourceBoxTitle','文件与记录核对')")
         self.assertPageContains("按馆藏记录逐条查找本地磁盘与网盘上的文件")
-        self.assertPageContains("cloudPreferenceLocations(g.files,d.cloudLocations||[])")
+        self.assertPageContains("mixedCloudPreferences(g.files,configured)")
         for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
             self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
@@ -9041,7 +9040,48 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id)")
         self.assertPageContains("g.files.filter(f=>f.location===keep)")
         self.assertPageContains('data-dup-all="${loc}"')
-        self.assertPageContains('cloudPreferenceLocations(groups.flatMap(g=>g.files),d.cloudLocations||[])')
+        self.assertPageContains("const bulkClouds=configured.filter(loc=>groups.some(g=>mixedCloudPreferences(g.files,[loc]).length));")
+
+    def test_cloud_preference_buttons_only_appear_for_mixed_location_groups(self):
+        """整组都在同一个网盘时不出「留 115」：留它和留最大是同一个结果。
+
+        「批量保留」条上的「全部优先 115」同理，只在至少一组混着 115 与别处文件时出现。
+        `duplicateVictims` 的选法不变：没有该网盘文件的组仍退回留最大。
+        """
+        self.assertPageContains("function mixedCloudPreferences(files,configured){")
+        self.assertPageContains("return cloudPreferenceLocations(files,configured).filter(loc=>files.some(f=>f.location!==loc));")
+        self.assertPageContains('${mixedCloudPreferences(g.files,configured).map(loc=>`<button data-dup-keep="${loc}" data-dup-i="${gi}">留 ${esc(LOC[loc])}</button>`).join(\'\')}')
+        self.assertPageContains('${bulkClouds.map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join(\'\')}')
+        self.assertPageLacks('cloudPreferenceLocations(g.files,d.cloudLocations||[])')
+        self.assertPageLacks('cloudPreferenceLocations(groups.flatMap(g=>g.files)')
+        self.assertPageContains("const preferred=(keep==='115'||keep==='pikpak')?g.files.filter(f=>f.location===keep):[];")
+
+    def test_duplicate_rows_put_the_library_icon_before_its_name_and_marks_after_the_filename(self):
+        """所在库用侧栏媒体库菜单同一枚图形；「最大」「最长」紧跟文件名右侧。"""
+        self.assertPageContains('return `<span class="mono duploc">${SRCICON[key]||\'\'}<span>${esc(LOC[key]||key||f.drive||\'\')}</span></span>`;')
+        self.assertPageContains("${dupLocationHtml(f)}")
+        self.assertPageContains('<span class="duptitle"><button class="dupname" data-middle-truncate data-middle-truncate-within data-open-dup="${f.id}"')
+        self.assertPageContains('<span class="dupmarks">${f.is_largest?\'<i class="big">最大</i>\':\'\'}${f.is_longest?\'<i class="long">最长</i>\':\'\'}</span></span>')
+        self.assertPageContains(".duptitle{display:flex;align-items:center;gap:8px;min-width:0}")
+        self.assertPageContains(".dupname{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap;")
+        self.assertPageContains(".dupmarks{display:flex;flex:none;gap:4px}")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('body[data-surface="/duplicates"] .duprow{grid-template-columns:112px minmax(0,1fr) 84px 84px 84px;', board)
+        self.assertIn(' body[data-surface="/duplicates"] .duprow{grid-template-columns:88px minmax(0,1fr) auto auto}', board)
+        self.assertIn(' body[data-surface="/duplicates"] .duptitle{grid-column:2/-1}', board)
+        self.assertNotIn('body[data-surface="/duplicates"] .dupmarks{grid-column', board)
+
+    def test_duplicate_bulk_bar_is_a_sticky_glass_pane_and_light_groups_sit_above_the_page(self):
+        """「批量保留」条吸顶、材质取 `[data-glass-pane]`；浅色下每组卡落到 secondary 底色。"""
+        self.assertPageContains('<div class="dupactions" data-glass-pane><h3>批量保留</h3>')
+        self.assertPageLacks('class="fsechead dupactions"')
+        self.assertPageLacks(".dupactions.fsechead")
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('body[data-surface="/duplicates"] .dupactions{position:sticky;top:calc(var(--topH) + 8px);z-index:60;isolation:isolate;margin:0 0 22px;padding:10px 16px;border-radius:22px;color:var(--glass-text);', board)
+        self.assertIn('body[data-surface="/duplicates"] .dupactions button{height:30px;padding:0 12px;border:1px solid var(--glass-low);border-radius:var(--pill-radius);background:transparent;color:var(--glass-text);', board)
+        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .dupgroup{background:var(--color-background-secondary-default)}', board)
+        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .duphead{border-bottom:1px solid var(--line-soft)}', board)
+        self.assertIn('body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}', board)
 
     def test_duplicate_group_can_be_entirely_recycled_when_every_file_is_an_ad(self):
         self.assertPageContains("if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}")
@@ -9072,7 +9112,11 @@ class WebUiSourceTests(unittest.TestCase):
                 '<span data-middle-truncate>${esc(item.url)}</span>'):
             self.assertPageContains(consumer)
         # 高清版目标页、统计页与复核页归 React 子树，由 frontend 的用例覆盖。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 9)
+        # 十处里有一处是重复文件名上的 `data-middle-truncate-within`：它后面紧跟着「最大」
+        # 「最长」标记，自己按内容收缩，可用宽度要按父级量。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 10)
+        self.assertPageContains('class="dupname" data-middle-truncate data-middle-truncate-within')
+        self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         self.assertEqual(self.app_js.count("data-truncate-end"), 4)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
@@ -11643,8 +11687,8 @@ class WebUiSourceTests(unittest.TestCase):
         浮在缩略图上的纯图标键也不在此列，那圈半透明白边是它与照片之间唯一的分界。
         """
         css = stylesheet_source()
-        for name in (".tagselection button{", ".batchbar button{",
-                     ".junkactions button{", ".dupactions.fsechead button{"):
+        # 重复页「批量保留」那条不在此列：它是一块玻璃，上面的键沿用筛选框胶囊那圈 `--glass-low` 发丝边。
+        for name in (".tagselection button{", ".batchbar button{", ".junkactions button{"):
             found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
             self.assertIsNotNone(found, f"{name} 找不到基样式")
             start = found.end() - len(name)
