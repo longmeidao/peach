@@ -246,7 +246,8 @@ def _require_binary(
     )
     if binary is None:
         raise TunnelError(
-            "找不到 cloudflared；请安装官方 cloudflared，或设置 PEACH_CLOUDFLARED"
+            "找不到 cloudflared；请安装官方 cloudflared，"
+            "或在设置文件的 tunnel.binary 指定路径，也可用 PEACH_CLOUDFLARED 指定"
         )
     return binary
 
@@ -384,7 +385,8 @@ def _posix_image_name(pid: int) -> str:
     try:
         result = subprocess.run(
             ["ps", "-p", str(pid), "-o", "comm="],
-            capture_output=True, text=True, timeout=5, check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=5, check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return ""

@@ -435,6 +435,23 @@ class TunnelRouteTests(unittest.TestCase):
         manager.start.assert_called_once_with(self.plan)
         manager.stop.assert_not_called()
 
+    def test_the_write_response_carries_the_same_fields_as_the_read(self):
+        manager = self.manager()
+        with self.patches(), mock.patch.object(routes_configuration, "revision", return_value="rev"), \
+                mock.patch.object(routes_configuration.tunnel, "plan_for_config", return_value=self.plan), \
+                mock.patch.object(routes_configuration, "FileLock") as lock, \
+                mock.patch.object(routes_configuration, "replace", return_value=self.config):
+            lock.return_value.__enter__.return_value = lock.return_value
+            result = routes_configuration.save_tunnel(
+                self.request(manager), {"revision": "rev", "enabled": True}, None,
+            )
+            read = routes_configuration.tunnel_payload(
+                self.config, tunnel.TunnelSnapshot(state="running"), True,
+            )
+        self.assertEqual(set(result) - {"revision"}, set(read))
+        self.assertIn("available", result)
+        self.assertTrue(result["enabled"])
+
     def test_stale_revision_rolls_back_only_a_tunnel_started_by_this_request(self):
         manager = self.manager()
         with self.patches(current=SimpleNamespace(path=self.config_path)), \
@@ -477,7 +494,7 @@ def direct_interpreter() -> str:
         try:
             child = subprocess.Popen(
                 [candidate, "-c", "import os; print(os.getpid())"],
-                stdout=subprocess.PIPE, text=True,
+                stdout=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
             )
             printed, _ = child.communicate(timeout=60)
         except (OSError, ValueError, subprocess.SubprocessError):
@@ -559,7 +576,7 @@ class TunnelChildProcessTests(unittest.TestCase):
         child.wait(timeout=30)
         self.assertIsNotNone(child.returncode)
 
-    def test_a_pid_that_is_no_longer_cloudflared_is_left_alone(self):
+    def test_a_pid_belonging_to_another_program_is_left_alone(self):
         state_dir = self.root / "state"
         state_dir.mkdir()
         child = self.background_child(state_dir / "child.pid")

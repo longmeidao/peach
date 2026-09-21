@@ -123,6 +123,21 @@ def snapshot(config) -> dict[str, Any]:
     }
 
 
+def tunnel_payload(config, state: tunnel.TunnelSnapshot, enabled: bool) -> dict[str, Any]:
+    """读接口和写回接口用同一份形状。
+
+    页面收到写回响应后整块替换本地状态，少一个字段就等于把它置空：`available`
+    缺席时「找不到 cloudflared」会和刚拿到的随机链接一起显示。
+    """
+    return {
+        "enabled": enabled,
+        "state": state.state,
+        "url": state.url,
+        "error": state.error,
+        "available": tunnel.resolve_binary(config.tunnel.binary) is not None,
+    }
+
+
 @router.get("/api/configuration")
 def read_configuration(request: Request, _args=Depends(require_auth)):
     local_only(request)
@@ -131,13 +146,7 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
         raise HTTPException(409, "请先完成首次设置")
     result = snapshot(config)
     state = request.app.state.tunnel.snapshot()
-    result["tunnel"] = {
-        "enabled": config.tunnel.enabled,
-        "state": state.state,
-        "url": state.url,
-        "error": state.error,
-        "available": tunnel.resolve_binary(config.tunnel.binary) is not None,
-    }
+    result["tunnel"] = tunnel_payload(config, state, config.tunnel.enabled)
     result["automatic_updates"] = request.app.state.automatic_updates.snapshot()
     if result["automatic_updates"].get("result"):
         result["updates"] = result["automatic_updates"]["result"]
@@ -416,13 +425,7 @@ def save_tunnel(request: Request, body: dict[str, Any] = Body(default_factory=di
         raise HTTPException(500, f"设置写入失败：{exc}") from exc
     if not enabled:
         state = manager.stop()
-    return {
-        "enabled": enabled,
-        "state": state.state,
-        "url": state.url,
-        "error": state.error,
-        "revision": revision(updated),
-    }
+    return {**tunnel_payload(updated, state, enabled), "revision": revision(updated)}
 
 
 @router.post("/api/pick-folder")

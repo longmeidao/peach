@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)]
     [string]$OutputPath,
     # 校验一份已经下载好的文件；哈希闸门不变，离线构建和测试走这条。
