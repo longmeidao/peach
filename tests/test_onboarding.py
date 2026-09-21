@@ -1024,7 +1024,7 @@ class StandaloneConfigurationTests(_Case):
             self.assertNotIn('<p class="lede">', missing.text)
             self.assertNotIn("这个地址下没有页面。", missing.text)
             self.assertIn('<a class="geist-button primary" href="/">返回首页</a>', missing.text)
-            from peach.routes_pages import _board_button_rules, _button_rules
+            from peach.web_entry import _board_button_rules, _button_rules
             self.assertIn('.geist-button{', _button_rules())
             self.assertIn(_button_rules(), missing.text)
             # 主按钮那一颗连同它用到的 token 从 board.css 原样取：这三张页面上的强调档

@@ -1479,20 +1479,25 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('<link rel="icon" href="/favicon.ico" type="image/x-icon">', page.text)
 
     async def test_the_login_page_follows_the_chosen_theme(self):
-        """登录页在拿到 cookie 之前出图，所以它自带一份最小色板，跟着同一个选择走。
+        """登录页在拿到 cookie 之前出图，色板随入口页共用样式内联，跟着同一个选择走。
 
         它取不到 `/app.css`，颜色只能写在页面里。写死一档的话，固定浅色的人从地址栏
         直接进来先看见一整屏黑，登录完才跳回浅色——同一次打开出现两套配色。
         """
+        from peach.web_entry import entry_page_style
         page = await self.client.get("/login?next=/")
         self.assertEqual(page.status_code, 200)
         self.assertIn('<meta name="color-scheme" content="light dark">', page.text)
-        self.assertIn(":root{color-scheme:light;--bg:#FFFFFF;", page.text)
-        self.assertIn('@media (prefers-color-scheme:dark){html:not([data-theme="light"])', page.text)
-        self.assertIn('html[data-theme="dark"]{color-scheme:dark;', page.text)
-        self.assertIn("background:var(--bg);color:var(--ink)", page.text)
+        self.assertIn(entry_page_style(), page.text)
+        # 三条分支：默认浅色、跟随系统的深色、手动选的那一档压过系统。
+        self.assertIn(":root{--bg:#f7f7f7;--page:#f7f7f7;--ground:#fff;", page.text)
+        self.assertIn("@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#111;", page.text)
+        self.assertIn(":root[data-theme=dark]{--bg:#111;", page.text)
+        self.assertIn("body{background:var(--page)}", page.text)
         # 手动选的那一档存在页面自己的 localStorage 里，首帧之前就要读出来。
         self.assertIn('localStorage.getItem("peach.settings.v1")', page.text)
+        self.assertLess(page.text.index('localStorage.getItem("peach.settings.v1")'),
+                        page.text.index("<style"), "主题预读要排在任何样式之前")
 
     async def test_client_routes_serve_the_single_page_surface(self):
         await self.client.post(

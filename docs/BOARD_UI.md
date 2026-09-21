@@ -373,7 +373,7 @@ Peach 照抄这一副面，包括 `::before` 的交叉淡入和 `border:0`——
 `box-sizing:border-box` 下把内容盒压掉 2px，而 `background-origin` 是 padding-box，渐变被压到
 34px 再延展回 36px，色标就跟上游错开一像素。三档 token 是 `--board-blue`、`--board-blue-hover`、
 `--board-blue-active`，连同规则只在 `web/board.css` 一处，错误页、登录页和首启页由
-`routes_pages._board_button_rules()` 取同一份过去；判据写在
+`web_entry._board_button_rules()` 取同一份过去；判据写在
 `test_the_primary_tier_has_one_face_and_crossfades_into_its_hover`。
 
 Peach 在这一档上的主动差异有两项：`padding` 取 `8px 12px` 而不是上游的四边 `8px`，中文字比

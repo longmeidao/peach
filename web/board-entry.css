@@ -14,9 +14,6 @@ button[type=submit]:active:not(:disabled),form>button:active:not(:disabled){back
 button[type=submit]:active:not(:disabled)::before,form>button:active:not(:disabled)::before{opacity:0}
 .switch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px #0002}
 @media(max-width:480px){main{padding:20px}}
-/* Auth Card：单行登录偏好。 */
-.remember{display:flex;align-items:center;gap:8px;font-size:14px;line-height:20px}
-.remember input{appearance:auto;width:16px;height:16px;margin:0;accent-color:#2473fe;flex:none}
 /* Auth Card 的首启表单保留媒体来源与高级设置。 */
 body:has(.setup-auth-card){padding:48px 24px;min-height:100svh}
 main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 1px 2px #0000000d}
@@ -52,7 +49,8 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card :focus-visible{outline:2px solid var(--muted);outline-offset:2px}
 .setup-auth-card .gselectfield:focus-visible{outline:2px solid var(--muted);outline-offset:-2px}
 .setup-auth-card .affix:focus-within{outline:0;box-shadow:none}
-.setup-auth-card input[aria-invalid=true]{border-color:var(--drop);box-shadow:0 0 0 2px color-mix(in srgb,var(--drop) 12%,transparent)}
+/* 输入框没有 border，danger 档要落在同一圈内描线上，外面那层只是衬色。 */
+.setup-auth-card input[aria-invalid=true]{box-shadow:inset 0 0 0 1px var(--drop),0 0 0 2px color-mix(in srgb,var(--drop) 12%,transparent)}
 .setup-auth-card input:disabled{background:var(--surface);color:var(--muted);box-shadow:none;cursor:not-allowed}
 .setup-auth-card .affix input[type=text]{height:100%;border:0;box-shadow:none;background:transparent;border-radius:0}
 .setup-auth-card :is(.pick,.rm,.add){height:36px;border:1px solid var(--line);background:var(--ground);color:var(--ink);box-shadow:0 1px 2px #0000000d;font-size:14px;border-radius:10px}
@@ -111,8 +109,12 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card .entry-input{display:block;position:relative;min-width:0;width:100%}
 .setup-auth-card .dir>.entry-input{flex:1 1 0;width:0}
 .setup-auth-card .entry-input>input{display:block;width:100%}
-.setup-auth-card .entry-input:has(input:focus-visible)::after{content:'';position:absolute;inset:2px 2px 2px 34px;border-radius:8px;box-shadow:inset 0 0 0 2px var(--muted);pointer-events:none}
+/* 图标和输入框是一个控件：焦点环落满整个 .entry-input，不把图标那一段切成独立一截。 */
+.setup-auth-card .entry-input:has(input:focus-visible)::after{content:'';position:absolute;inset:0;border-radius:10px;box-shadow:inset 0 0 0 2px var(--muted);pointer-events:none}
 .setup-auth-card .entry-input input:focus-visible{outline:0;box-shadow:none}
+/* 密码错了字段仍握着焦点：焦点环整圈换成 danger 色，不让上面那条把描线清掉。 */
+.setup-auth-card .entry-input input[aria-invalid=true]:focus-visible{box-shadow:inset 0 0 0 2px var(--drop),0 0 0 2px color-mix(in srgb,var(--drop) 12%,transparent)}
+.setup-auth-card .entry-input:has(input[aria-invalid=true]:focus-visible)::after{content:none}
 .setup-auth-card .affix input[type=text]:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--muted);border-radius:8px}
 /* Board Button medium；公开源码与状态测量见 docs/BOARD_UI.md。 */
 .setup-auth-card{--button-border:#ebebeb;--button-border-hover:#d4d4d4;--button-border-active:#a3a3a3;--button-hover:#f7f7f7;--button-active:#ebebeb;--button-shadow:#0000000d;--button-disabled:linear-gradient(#ebebeb,#d4d4d4)}
@@ -138,3 +140,12 @@ main:has(.setup-auth-card){width:100%;max-width:560px;padding:32px;box-shadow:0 
 .setup-auth-card :is(button[type=submit],.setup-enter):is(:disabled,[aria-disabled=true]){background:var(--button-disabled)}
 @media(prefers-reduced-motion:reduce){.setup-auth-card :is(.pick,.rm,.add,button[type=submit],.setup-enter),.setup-auth-card :is(.pick,.rm,.add,button[type=submit],.setup-enter):active{transition:none;transform:none}.setup-auth-card .ptoggle,.setup-auth-card .ptoggle::after,.setup-auth-card .ptoggle::before{transition:none}}
 @media(max-width:600px){body:has(.setup-auth-card){padding:24px 16px}main:has(.setup-auth-card){padding:24px}.setup-auth-card input[type=password]{font-size:16px}}
+/* 登录是 Auth Card 的单字段形态：窄一档、垂直居中，品牌行横排。 */
+body:has(.login-card){display:grid;align-items:center;justify-items:center}
+main:has(.login-card){max-width:400px}
+.login-card header{display:flex;align-items:center;gap:12px}
+.login-card .mark{margin-bottom:0}
+.login-card h1{font-size:20px;line-height:28px}
+.login-card .check{margin-top:20px}
+/* 错误态只让框体线条变 danger 色；原因是字段下方一行普通说明，与 .help 同一形态。 */
+.login-card .bad{margin:6px 0 0;padding:0;border-radius:0;background:transparent;color:var(--muted);font-size:12px;line-height:18px}
