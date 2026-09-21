@@ -38,6 +38,7 @@
 | 深色模式 | 上游读 `<html class="dark">`；`web/app.js` 的 `applyTheme()` 与 `index.html` 首帧脚本按实际深浅加减这个类 | Peach 的主题选择写在 `data-theme`，跟随系统时不写属性 |
 | 与 `web/board.css` 同名的 `--color-*` token | `:root` 上由 `board.css` 定值；`../styles.css` 在 `.peach-react` 与 `.dark .peach-react` 上按 `theme.css` 原文重新声明 | 未迁移页面的颜色保持不变，React 子树读到上游值 |
 | 深色的 `--color-border-checkbox-default` | 两份定值都抬到 `neutral-600`，不取上游的 `neutral-700`；`tests/test_frontend_build.py` 的 `LOCAL_TOKEN_VALUES` 记着这一条 | 未选中的勾选框底色就是卡面色，形状全靠那 1px 边线说话。`neutral-700` 压在 `neutral-800` 上只差 11 个 CIE 明度，浅色那一对有 15——低亮度那头的细线当场消失，暗色下看着就是没有框 |
+| 深色的 `--color-separator-border` | 两份定值都抬到 `neutral-700`，不取上游的 `neutral-800`；`tests/test_frontend_build.py` 的 `LOCAL_TOKEN_VALUES` 记着这一条 | 深色的 `--color-background-primary-default` 也是 `neutral-800`，两者同色。复核卡的外框、候选块与它下面那段证据之间的线、卡片脚注带的上边线全画在那种面上，明度差是 0.0，不是弱而是没有。`neutral-700` 在卡面上差 11.9，浅色那一对是 9.1；再亮一档就成了抢眼的白线 |
 | 弹出层的挂载位置 | `../entry.tsx` 用 `react-aria` 的 `UNSAFE_PortalProvider` 把 Popover 渲染进 `body` 末尾一个同样带 `.peach-react` 的容器 | 上游 Popover 渲染到 `body`，落在 token 重声明与 Preflight 的作用域外，读到的是 `board.css` 的值 |
 | 焦点环 | 输入框只画 BoardUI 外框上的 `ring`；`web/css/01-base.css` 的全局 `:focus-visible` 排除 `.peach-react` 子树 | 旧样式表排在后面，同特指度时会盖过 `outline-none`，内层输入框多出一圈 |
 | 与旧样式表同名的类 | 网格容器放在 flex 父元素里写 `inline-grid`，块级化后按 `display:grid` 计算，类名不和卡片网格撞，也不触发任意值 lint；`../styles.css` 用 `@source not inline("ring")` 不生成注释里扫到的 `ring`；`frontend/test/legacy-class-names.test.ts` 核对产物与旧样式表无同名类 | 旧样式表排在后面，卡片网格那条同名规则会把 `grid-cols-*` 压成一列，生成的 `.ring` 也会落到旧页面的 `.ring` 元素上 |

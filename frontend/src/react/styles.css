@@ -173,7 +173,13 @@
      那头当场消失，暗色下看着就是「没有框」。差异登记在 `boardui/ORIGIN.md`。 */
   --color-border-checkbox-default: var(--color-neutral-600);
   --color-border-checkbox-hover:   var(--color-neutral-500);
-  --color-separator-border:        var(--color-neutral-800);
+  /* 上游 theme.css 这一档是 neutral-800，而暗色的 `--color-background-primary-default`
+     也是 neutral-800：复核卡的外框、候选块与它下面那段证据之间的线、卡片脚注带的上边线，
+     全都画在那种面上，线和面同色就是一点都看不见——不是「弱」，是 0.0 个明度差。
+     neutral-700 压在 neutral-800 上差 11.9，浅色那对（neutral-200 压白）是 9.1，
+     换到填充面（neutral-900）上是 19.4 对 5.6。再亮一档就成了抢眼的白线。
+     差异登记在 `boardui/ORIGIN.md`。 */
+  --color-separator-border:        var(--color-neutral-700);
 }
 
 /* 脚注带与悬停面都跟着卡面走，深浅两档各自掺，所以读的是上面重新声明过的卡面色，而不是 `:root` 上
@@ -203,6 +209,23 @@
 
 .peach-react button[aria-haspopup="listbox"][class~="text-body-2-medium"] {
   height: calc(var(--spacing) * 8);
+}
+
+/* 横着滚的那几条不画滚动条：拖得动、也能滚轮横滚，一条系统灰柱子横在图表或分段控件
+ * 底下，只会让那一块看着比实际矮一截。遗留层的 `.tier`、`.tagbar`、`.srow` 就是这个
+ * 做法（`web/css/01-base.css`），这里只是把同一条搬进岛内。
+ *
+ * 按 `overflow-x-auto` 认，不逐处挂钩子：横滚的块以后还会加，而漏挂和「这块本来就该
+ * 露系统条」在屏幕上看不出区别。
+ *
+ * 竖着滚的块不走这条：藏掉原生的却不给别的指示，就没人知道那一块还有下文。那些块挂
+ * 全站那条覆盖式滑块，接法在 `components/overlay-scrollbar.ts`。 */
+.peach-react [class~="overflow-x-auto"] {
+  scrollbar-width: none;
+}
+
+.peach-react [class~="overflow-x-auto"]::-webkit-scrollbar {
+  display: none;
 }
 
 /* 两块玻璃的料由 `web/board.css` 的 `[data-glass-pane]` 一处给，两个元素都挂着那个属性。

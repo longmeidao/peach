@@ -966,4 +966,49 @@ describe('设计决定', () => {
       await opened.close();
     }
   });
+
+  it('暗色下分隔线在两种卡面上都不比浅色更弱', { timeout: 60_000 }, async () => {
+    const opened = await openReview(browser);
+    try {
+      /* 量的是 token 对而不是某一条线：`separator-border` 画在哪种面上由各处自己决定，
+         复核卡的外框和候选块之间那条线落在 `primary`，脚注带那条落在 `secondary`。逐条去点名，
+         新加一处就得记得再补一条用例，而漏补和「这处本来就没线」在屏幕上看不出区别。
+         末尾再核一次复核卡自己的框线确实取的就是这个 token，免得两档都合格却根本没落到现场。 */
+      const read = () => opened.page.locator('section[data-review-key]').first()
+        .evaluate((node) => {
+          const context = document.createElement('canvas').getContext('2d')!;
+          const paint = (color: string) => {
+            context.clearRect(0, 0, 1, 1);
+            context.fillStyle = color;
+            context.fillRect(0, 0, 1, 1);
+            return [...context.getImageData(0, 0, 1, 1).data];
+          };
+          const style = getComputedStyle(node);
+          const token = (name: string) => paint(style.getPropertyValue(name).trim());
+          return {
+            line: token('--color-separator-border'),
+            card: token('--color-background-primary-default'),
+            filled: token('--color-background-secondary-default'),
+            edge: paint(style.borderTopColor),
+          };
+        });
+      const before = await read();
+      // `web/app.js` 的 `applyTheme('dark')` 就是这两句；这里只借它换一次配色。
+      await opened.page.evaluate(() => {
+        document.documentElement.dataset.theme = 'dark';
+        document.documentElement.classList.add('dark');
+      });
+      const after = await read();
+      for (const [face, label] of [['card', '描边卡面'], ['filled', '填充卡面']] as const) {
+        const light = Math.abs(lightness(before.line) - lightness(before[face]));
+        const dark = Math.abs(lightness(after.line) - lightness(after[face]));
+        assert.ok(dark >= light,
+          `暗色下分隔线压在${label}上只差 ${dark.toFixed(1)} 个明度，浅色下有 ${light.toFixed(1)}`);
+      }
+      assert.deepEqual(after.edge, after.line, '复核卡的框线没走 separator-border');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 });

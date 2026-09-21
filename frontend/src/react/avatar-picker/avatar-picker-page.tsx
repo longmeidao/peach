@@ -21,6 +21,7 @@ import { Input } from '@/components/base/input/input';
 import { errorMessage } from '../../api';
 import type { AvatarPickerProps } from '../bundle';
 import { Note } from '../components/note';
+import { useOverlayScrollbar } from '../components/overlay-scrollbar';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import {
@@ -64,6 +65,7 @@ export function AvatarPicker({ kind, entityId, name, onPicked }: AvatarPickerPro
 /** 弹层内容。只在弹层开着时挂载，候选也就只在这时候取。 */
 function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps & { close(): void }) {
   const file = useRef<HTMLInputElement>(null);
+  const grid = useOverlayScrollbar<HTMLDivElement>();
   const [url, setUrl] = useState('');
   const [fileProblem, setFileProblem] = useState('');
   const key = avatarChoicesKey(kind, entityId);
@@ -125,23 +127,26 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
         <IconButton icon={RiCloseLine} size="small" aria-label="关闭" onClick={close} />
       </div>
       {/* 候选网格是这一屏唯一会滚的层：头部和底下那排操作再长也不动。上下各留 16px：
-          只留上边的话，最后一排图贴着底下那条线。 */}
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-separator-border px-5 py-4">
-        <div role="listbox" aria-label="候选头像"
-          className="inline-grid grid-cols-3 content-start gap-2 sm:grid-cols-4">
-          {choices.map((choice) => (
-            <button type="button" key={choice.ref} role="option" data-avatar-choice
-              aria-selected={choice.current} title={choiceDetail(choice)} {...busyProps(submit.isPending)}
-              onClick={() => { if (!submit.isPending) submit.mutate({ ref: choice.ref }) }}
-              className="relative flex cursor-pointer flex-col gap-1 overflow-hidden rounded-2lg border border-separator-border bg-background-secondary-default pb-1 text-center text-caption-1-regular text-text-secondary outline-none hover:border-border-button-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring aria-selected:border-border-focus-ring aria-selected:bg-background-tertiary-default aria-selected:text-text-primary aria-disabled:cursor-progress aria-disabled:opacity-60">
-              <img loading="lazy" alt="" src={choiceImageUrl(kind, entityId, choice.ref)}
-                className="block w-full aspect-avatar-choice object-cover" />
-              <span className="truncate px-1">{choice.label}</span>
-              {choice.current
-                ? <span className="absolute top-1 left-1"><Chip variant="caption" color="gray">在用</Chip></span>
-                : null}
-            </button>
-          ))}
+          只留上边的话，最后一排图贴着底下那条线。外面这一层只为放那条覆盖式滚动条的
+          轨道，它按 `absolute` 铺，得有一个只裹着滚动块本身的定位祖先。 */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={grid} className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-separator-border px-5 py-4">
+          <div role="listbox" aria-label="候选头像"
+            className="inline-grid grid-cols-3 content-start gap-2 sm:grid-cols-4">
+            {choices.map((choice) => (
+              <button type="button" key={choice.ref} role="option" data-avatar-choice
+                aria-selected={choice.current} title={choiceDetail(choice)} {...busyProps(submit.isPending)}
+                onClick={() => { if (!submit.isPending) submit.mutate({ ref: choice.ref }) }}
+                className="relative flex cursor-pointer flex-col gap-1 overflow-hidden rounded-2lg border border-separator-border bg-background-secondary-default pb-1 text-center text-caption-1-regular text-text-secondary outline-none hover:border-border-button-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring aria-selected:border-border-focus-ring aria-selected:bg-background-tertiary-default aria-selected:text-text-primary aria-disabled:cursor-progress aria-disabled:opacity-60">
+                <img loading="lazy" alt="" src={choiceImageUrl(kind, entityId, choice.ref)}
+                  className="block w-full aspect-avatar-choice object-cover" />
+                <span className="truncate px-1">{choice.label}</span>
+                {choice.current
+                  ? <span className="absolute top-1 left-1"><Chip variant="caption" color="gray">在用</Chip></span>
+                  : null}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       {/* 手填地址和本机文件跟候选是并列的三条路，不是候选看完之后的补充，所以摆在固定

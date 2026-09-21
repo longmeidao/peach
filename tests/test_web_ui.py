@@ -10132,8 +10132,31 @@ class WebUiSourceTests(unittest.TestCase):
         # 完整记录退回灰字，旁边给一颗打开它的键：它是出事之后自己去翻的东西。
         self.assertIn('<div className="mt-2 border-t border-separator-border pt-2 text-text-secondary">', extra)
         self.assertIn('<PathLine path={details.log} prefix="完整记录：" className="text-caption-1-regular"', extra)
-        # 清单自己滚，滚动条走全站那条覆盖式的。
-        self.assertIn("attachOverlayScrollbar(list.current)", card)
+        # 清单自己滚，滚动条走全站那条覆盖式的。接法收在 `components/overlay-scrollbar.ts`：
+        # 岛里每个会滚的块都过它，免得各写各的 useEffect。
+        self.assertIn("const list = useOverlayScrollbar<HTMLUListElement>()", card)
+
+    def test_every_vertical_scroller_in_the_island_wears_the_site_scrollbar(self):
+        """岛里自己竖着滚的块都接那条覆盖式滚动条。
+
+        原生滚动条占一列宽度、配色跟着操作系统走，和站上别处那条 3px 的浮动滑块不是一个
+        东西；遗留层按名单批量挂的 `wireOverlayScrollbars` 扫不到岛自己画的 DOM。逐处去看
+        的话，新加一块就得记得再挂一次，而漏挂和「这块本来就该露系统条」在屏幕上看不出区别。
+
+        横着滚的那几条不在这里：它们拖得动也能滚轮横滚，原生条由 `styles.css` 一条规则藏掉。
+        """
+        island = Path(__file__).resolve().parents[1] / "frontend" / "src" / "react"
+        missing = []
+        for path in sorted(island.rglob("*.tsx")):
+            # `boardui/` 是上游的逐字复制件，差异走 `ORIGIN.md`，不在这里改。
+            if "boardui" in path.parts:
+                continue
+            source = path.read_text(encoding="utf-8")
+            if "overflow-y-auto" in source and "useOverlayScrollbar" not in source:
+                missing.append(path.relative_to(island).as_posix())
+        self.assertEqual(missing, [], "这些块自己竖着滚，却还露着系统滚动条；"
+                                      "用 `components/overlay-scrollbar.ts` 的 `useOverlayScrollbar` 接上：\n"
+                                      + "\n".join(missing))
 
     def test_a_finished_scan_is_announced_once_even_if_it_ended_before_the_page_opened(self):
         """完成用通知报。首次引导那一趟常在跳到目录页之前就跑完，横幅从没见过「运行中」，
