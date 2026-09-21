@@ -46,7 +46,9 @@ async function open(config: ConfigurationData, receipt = vi.fn()) {
   serve(config);
   await prefetchConfiguration(new AbortController().signal);
   const host = await mount(
-    <QueryClientProvider client={queryClient}><ConfigurationPage receipt={receipt} /></QueryClientProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ConfigurationPage receipt={receipt} reopenTutorial={vi.fn()} />
+    </QueryClientProvider>,
   );
   return host;
 }
@@ -75,7 +77,9 @@ it('取不到配置就说打不开，连同服务端给的那句原因', async (
     ok: false, status: 503, json: async () => ({ message: '账本正在迁移' }),
   })));
   const host = await mount(
-    <QueryClientProvider client={queryClient}><ConfigurationPage receipt={vi.fn()} /></QueryClientProvider>,
+    <QueryClientProvider client={queryClient}>
+      <ConfigurationPage receipt={vi.fn()} reopenTutorial={vi.fn()} />
+    </QueryClientProvider>,
   );
   await settle();
   const note = host.querySelector('[role="alert"]');

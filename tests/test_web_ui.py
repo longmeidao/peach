@@ -152,7 +152,9 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(label, app)
         self.assertIn("source=>source.accepts_cookie", app)
         self.assertIn("source=>source.cookie_saved", app)
-        self.assertIn("taste.summary?.history_sources", app)
+        # 教程只读服务端算好的读数；`taste.history_sources` 是一个数，不是整份口味分析。
+        self.assertIn("taste.history_sources", app)
+        self.assertNotIn("taste.summary", app[app.index("const postSetupTutorialTasks="):app.index("const ENTITY_FILTER_KEYS=")])
         tutorial = app[app.index("const postSetupTutorialTasks="):app.index("const ENTITY_FILTER_KEYS=")]
         self.assertNotIn("location.pathname!=='/'", tutorial)
         self.assertIn("${icon('compass')}</span>", tutorial)
@@ -176,7 +178,9 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(mark, tutorial)
         # 清单做完这件事落在服务端，换台设备不再被教一遍。
         self.assertIn("postSetupTutorialDone", app)
-        self.assertIn('id="tutorialReopen"', html)
+        # 重开教程那枚键归配置页的「更新与维护」，遗留层只给它一个可调用的入口。
+        self.assertNotIn("tutorialReopen", html)
+        self.assertIn("reopenTutorial:reopenTutorialFromSettings", app)
         self.assertIn("reopenPostSetupTutorial()", app)
         self.assertIn(".post-setup-notification", board)
         self.assertIn(".post-setup-task[data-state=checked]", board)
@@ -4932,7 +4936,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const runtime=await api('/healthz').catch(()=>null);")
         self.assertPageContains("if(runtime)runtimeConfigurable=!!runtime.configurable;")
         self.assertPageContains(
-            "await mountIsland('configuration',host,{receipt:message=>actionReceipt(message)},{isCurrent:open});")
+            "await mountIsland('configuration',host,\n"
+            "    {receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings},{isCurrent:open});")
         self.assertPageContains("{label:'该配置需在服务端设备修改'}")
         # 弹层里那一份配置页已经由外面那圈分区页签管着，别再给它自己叠一排。
         self.assertPageContains("const config=document.querySelector('#stats .configpage');")
@@ -6388,12 +6393,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("angle:glowNumber", "角度已经不在模型里")
         self.assertPageLacks("base:seed.base.map", "底色已经不在模型里")
 
-    def test_home_glow_panel_leads_with_the_preset_then_names_one_group(self):
-        """强度与颗粒直接跟在当前配色后面，只有「颜色」自己占一个带名字的分组。
+    def test_home_glow_panel_names_both_of_its_groups(self):
+        """当前档名与五条参数归「配色」，三枚光晕归「颜色」，两个组名同一档式样。
 
-        强度和颗粒不归任何分组：两条拉条一条调整层的亮度、一条调它的颗粒，都是这一片光
-        自己的事，套一个名字上去只会多出一个读不懂的词。三枚光晕要分组，是因为下面挂着
-        三行各自能展开色板的行。
+        这一屏排在「侧栏光晕」那一行下面。两组都带名字才看得出各自管什么；没有名字的那
+        一组会被读成上一行设置的附属控件。
         """
         self.assertPageContains('<b>侧栏光晕</b>')
         self.assertPageContains('id="homeGlowSetting" class="ptoggle" role="switch"')
@@ -6401,6 +6405,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("function renderHomeGlowSetting(){")
         self.assertPageContains("renderHomeGlowSetting();")
         self.assertPageLacks('<h4>场</h4>', "「场」不是这套界面的词")
+        self.assertPageContains('<section class="glowgroup"><h4>配色</h4>')
         self.assertPageContains('<section class="glowgroup" data-glow-colours><h4>颜色</h4>')
         self.assertPageContains("glowFieldRowHtml('strength','强度',100)")
         self.assertPageContains("glowFieldRowHtml('noise','颗粒',60)")
@@ -8864,7 +8869,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "await ui.mountIsland('configuration',$('#stats'),props,"
             "{isCurrent:()=>surfaceCurrent(surface)})")
-        self.assertPageContains("const props={receipt:message=>actionReceipt(message)};")
+        self.assertPageContains(
+            "const props={receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings};")
         self.assertPageContains(
             "document.body.classList.toggle('configuration-layout',current==='configuration');")
         self.assertPageContains("'/configuration':()=>configurationSkeletonHtml()")

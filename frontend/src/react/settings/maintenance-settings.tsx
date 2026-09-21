@@ -1,4 +1,4 @@
-/* 「更新与维护」分组：自动更新、检查更新、播放兼容修复、运行信息与卸载。 */
+/* 「更新与维护」分组：自动更新、检查更新、播放兼容修复、运行信息、卸载与重开安装教程。 */
 import { useState, type FormEvent } from 'react';
 import { confirmModal } from '@peach/legacy/ui';
 
@@ -9,7 +9,9 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { Switch } from '@/components/base/switch/switch';
 
 import { apiSend } from '../../api';
-import type { AutomaticUpdateState, ConfigurationFact, ConfigurationGroupProps, UninstallState } from '../bundle';
+import type {
+  AutomaticUpdateState, ConfigurationFact, ConfigurationGroupProps, ConfigurationProps, UninstallState,
+} from '../bundle';
 import { PathLine } from '../components/path-line';
 import { MediaRepair } from './media-repair';
 import { ReleaseUpdates } from './release-updates';
@@ -18,7 +20,9 @@ import { busyProps, useAction } from './use-action';
 
 const INTERVALS = [['6', '每 6 小时'], ['24', '每天'], ['168', '每周']] as const;
 
-export function MaintenanceSettings({ data, receipt }: ConfigurationGroupProps) {
+export function MaintenanceSettings(
+  { data, receipt, reopenTutorial }: ConfigurationGroupProps & Pick<ConfigurationProps, 'reopenTutorial'>,
+) {
   return (
     <div className="flex flex-col gap-6">
       {data.automatic_updates ? <AutomaticUpdates initial={data.automatic_updates} receipt={receipt} /> : null}
@@ -26,7 +30,26 @@ export function MaintenanceSettings({ data, receipt }: ConfigurationGroupProps) 
       <MediaRepair />
       <Facts facts={data.facts} />
       {data.uninstall ? <UninstallSettings uninstall={data.uninstall} receipt={receipt} /> : null}
+      <TutorialSettings receipt={receipt} reopenTutorial={reopenTutorial} />
     </div>
+  );
+}
+
+/** 安装教程的重开入口。教程卡本身还画在遗留层，这里只按一下让它回来。 */
+export function TutorialSettings({ receipt, reopenTutorial }: ConfigurationProps) {
+  const action = useAction();
+  const reopen = () => void action.run('reopen', () => reopenTutorial(),
+    () => receipt('已重新打开安装教程'));
+  return (
+    <Section title="安装教程">
+      <Stack>
+        <Help>关掉的安装教程从这里叫回来：跳过的项目会重新出现，做完的仍然算完成。</Help>
+        {action.error ? <ErrorText>{action.error}</ErrorText> : null}
+      </Stack>
+      <Footer>
+        <Button onClick={reopen} {...busyProps(action.busy === 'reopen')}>重新打开教程</Button>
+      </Footer>
+    </Section>
   );
 }
 

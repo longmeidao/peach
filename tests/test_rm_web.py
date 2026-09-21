@@ -1854,7 +1854,49 @@ class WebDataTests(unittest.TestCase):
         ).fetchone()[0], 0)
         con.close()
 
+    def test_post_setup_tutorial_only_carries_progress_counts(self):
+        """安装教程的聚合只带六个读数，不带馆藏明细、口味分析、关注列表与候选全文。
 
+        首页右下角那张卡每次切路由都取一次；六个页面的完整载荷拼在一起，真实馆藏上要二十多秒、
+        三百多 KB。这里钉住每一段的键集合，多出一个键就是明细搬进来了。
+        """
+        from peach import taste_history
+        root = Path(self.tmp.name).resolve()
+        (root / "candidates").mkdir()
+        (root / "secrets").mkdir()
+        store = root / "history.db"
+        with closing(sqlite3.connect(store)) as history:
+            taste_history._prepare_store(history)
+            history.execute(
+                "INSERT INTO history_source VALUES('k1','chrome','Default','pc','h','2026-01-01','2026-01-02')")
+            history.commit()
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO follow_source(provider,ref,label,url,enabled,created_at,updated_at) "
+            "VALUES('kemono','a','A','https://kemono.su/a',1,'2026-01-01','2026-01-01'),"
+            "('rule34','b','B','https://rule34.xxx/b',0,'2026-01-01','2026-01-01')")
+        con.commit()
+        con.close()
+        contract = rm_web.WebContract(
+            Path(self.db_path), avatar_root=self.avatars, logo_root=self.logos,
+            candidate_root=root / "candidates", follow_secrets_root=root / "secrets",
+            taste_history_store=store)
+        payload = rm_web.dispatch_api_get(contract, "/api/post-setup-tutorial", {})
+        self.assertEqual(set(payload), {"library", "scraping", "taste", "follow", "credentials", "review"})
+        # 馆藏读数与首页列表同一条 WHERE：图片与回收站不算。
+        self.assertEqual(payload["library"], {"total": 2})
+        self.assertEqual(payload["taste"], {"history_sources": 1})
+        self.assertEqual(payload["follow"], {"sources": [
+            {"provider": "kemono", "enabled": True}, {"provider": "rule34", "enabled": False}]})
+        self.assertTrue(payload["scraping"]["sources"])
+        for source in payload["scraping"]["sources"]:
+            self.assertEqual(set(source), {"source", "accepts_cookie", "cookie_saved"})
+        self.assertTrue(payload["credentials"]["providers"])
+        for provider in payload["credentials"]["providers"]:
+            self.assertEqual(set(provider), {"provider", "requirement", "present", "missing"})
+        self.assertEqual(set(payload["review"]), {"counts"})
+        self.assertTrue(all(isinstance(value, int) for value in payload["review"]["counts"].values()))
+        self.assertLess(len(json.dumps(payload, ensure_ascii=False)), 8_000)
 
 
 

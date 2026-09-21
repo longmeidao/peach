@@ -137,7 +137,7 @@ describe('配置页的分区拆分', () => {
     fetch.install();
     const el = container();
     await act(async () => {
-      const mounting = mountIsland('configuration', el, { receipt: vi.fn() });
+      const mounting = mountIsland('configuration', el, { receipt: vi.fn(), reopenTutorial: vi.fn() });
       await until(() => fetch.fetched.mock.calls.length > 0, '取数发出去');
       fetch.resolve();
       await mounting;
