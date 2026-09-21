@@ -115,17 +115,29 @@ class BoardTokenTests(unittest.TestCase):
             found.update(re.findall(r"(--color-[\w-]+):\s*([^;]+);", block.group(1)))
         return found
 
+    #: Peach 自己定值、不跟上游的 token。每一条都要在 `boardui/ORIGIN.md` 的差异表里
+    #: 有一行写清原因：默认逐字照抄，例外必须是写下来的决定，不是谁顺手改的一次。
+    LOCAL_TOKEN_VALUES = {
+        (".dark", "--color-border-checkbox-default"): "var(--color-neutral-600)",
+    }
+
     def test_the_react_subtree_redeclares_shared_tokens_with_upstream_values(self):
-        """board.css 在 `:root` 上另定同名 token 且排在后面；React 容器上的值逐字等于 theme.css。"""
+        """board.css 在 `:root` 上另定同名 token 且排在后面；React 容器上的值逐字等于 theme.css，
+        登记在 `ORIGIN.md` 差异表里的那几条除外。"""
         legacy = "".join(path.read_text(encoding="utf-8") for path in
                          [ROOT / "web" / "board.css", *sorted((ROOT / "web" / "css").glob("*.css"))])
         shared = set(re.findall(r"(--color-[\w-]+):", legacy))
         theme = (FRONTEND / "src" / "react" / "boardui" / "styles" / "theme.css").read_text(encoding="utf-8")
         styles = (FRONTEND / "src" / "react" / "styles.css").read_text(encoding="utf-8")
+        origin = (FRONTEND / "src" / "react" / "boardui" / "ORIGIN.md").read_text(encoding="utf-8")
         for upstream, local in ((":root", ".peach-react"), (".dark", ".dark .peach-react")):
             expected = {name: value for name, value in self.declarations(theme, upstream).items()
                         if name in shared}
             self.assertTrue(expected, f"theme.css 的 {upstream} 块里没找到同名 token")
+            for (scope, name), value in self.LOCAL_TOKEN_VALUES.items():
+                if scope == upstream and name in expected:
+                    self.assertIn(name, origin, f"{name} 偏离上游，要在 ORIGIN.md 的差异表里写明原因")
+                    expected[name] = value
             self.assertEqual(self.declarations(styles, local), expected,
                              f"styles.css 的 {local} 要与 theme.css 的 {upstream} 同名 token 逐条一致")
 

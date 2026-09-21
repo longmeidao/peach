@@ -25,6 +25,10 @@ const CARD = cardClass({
   variant: 'outlined', padding: 'none', className: 'flex flex-col gap-4 px-5 pt-4',
 });
 
+/* 卡头那一行的行高：字段名是一枚 caption Chip（12/16 加上下各 4），24px 由它定。标题、
+   勾选框和判定徽章各自在这 24px 里居中，谁的字号变了也还在同一条中线上。 */
+const HEADING_LINE = 'flex min-h-6 min-w-0 items-center';
+
 /* 一排卡等高，长出来的那部分在卡内滚。高度随内容走的话，一行里几张卡参差不齐，
    眼睛要在每张卡上重新找「判定」在哪；身份回配那一类要放下来源图和样本列表，高一档。 */
 const CARD_HEIGHT = (category: ReviewCategory) =>
@@ -127,18 +131,23 @@ export function ReviewCard(props: ReviewCardProps) {
     : fieldName
       /* 字段名是这张卡在问的问题（「这个作品的创作者填什么」），作品标识只是它问的对象。
          写在标题末尾的话，一条无番号视频的文件名会先把它挤出省略号。 */
-      ? <h4 className="flex min-w-0 flex-wrap items-center gap-2">
+      ? <h4 className={`${HEADING_LINE} flex-wrap gap-2`}>
           <Chip variant="caption" color="blue">{fieldName}</Chip>
           <span title={subject} className="min-w-0 truncate text-body-medium text-text-primary">{subject}</span>
         </h4>
-      : <h4 className="min-w-0 truncate text-body-medium text-text-primary" title={title}>{title}</h4>;
+      : <h4 className={HEADING_LINE}>
+          <span title={title} className="min-w-0 truncate text-body-medium text-text-primary">{title}</span>
+        </h4>;
 
   return (
     <section aria-label={title} data-review-key={row.item_key}
       className={`${CARD} ${CARD_HEIGHT(category)} overflow-hidden`}>
       <header className="flex min-w-0 shrink-0 items-start gap-2">
         {locked ? null : (
-          <span onPointerDownCapture={(event) => { range.current = event.shiftKey }}
+          /* 勾选框只有 16px，标题那行 24px。两个都按 24px 各自居中，中线才落在一条上——
+             顶对顶排的话，读的人看到的是勾选框浮在标题上面一截。 */
+          <span className={`${HEADING_LINE} shrink-0`}
+            onPointerDownCapture={(event) => { range.current = event.shiftKey }}
             onKeyDownCapture={(event) => { range.current = event.shiftKey }}>
             <Checkbox isSelected={selected} aria-label={`选择 ${title}`}
               onChange={(on) => onSelect(range.current, on)} />

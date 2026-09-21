@@ -7144,7 +7144,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}", board)
         self.assertIn(".followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:2}", board)
         self.assertIn("--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3", board)
-        self.assertIn("--color-border-checkbox-default:#404040;--color-border-checkbox-hover:#737373", board)
+        # 暗档的默认边线比上游亮一档：框底就是卡面色，那 1px 是这个形状唯一的证据。
+        self.assertIn("--color-border-checkbox-default:#525252;--color-border-checkbox-hover:#737373", board)
         self.assertIn(".pcheck:hover>span,label:hover>.pcheck>span{border-color:var(--color-border-checkbox-hover);background:var(--color-background-primary-default)}", board)
         self.assertIn(".pcheck input:is(:checked,:indeterminate)+span{border-color:transparent;background:var(--board-blue);"
                       "box-shadow:inset 0 2px 0 0 #ffffff40,inset 0 0 0 1px #3b82f6}", board)
