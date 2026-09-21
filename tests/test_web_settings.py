@@ -94,7 +94,7 @@ class SettingsRoundTripTests(unittest.TestCase):
         self.assertEqual(q_settings(self.contract),
                          {"sidebarOrder": list(DEFAULT_SIDEBAR_ORDER),
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
-                          "followInitialDays": 30})
+                          "followInitialDays": 30, "postSetupTutorialDone": False})
 
     def test_the_metadata_refresh_period_round_trips_and_rejects_odd_values(self):
         """这个数直接决定服务端要不要出网重取头像，坏载荷不能把它变成 1 秒或 1 天。"""
@@ -118,9 +118,22 @@ class SettingsRoundTripTests(unittest.TestCase):
         self.assertEqual(w_settings(self.contract, {"sidebarOrder": order}),
                          {"ok": True, "sidebarOrder": order,
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
-                          "followInitialDays": 30})
+                          "followInitialDays": 30, "postSetupTutorialDone": False})
         self.assertEqual(q_settings(self.contract)["sidebarOrder"], order)
         self.assertEqual(self._stored_json()["sidebarOrder"], order)
+
+    def test_the_tutorial_marker_is_a_boolean_that_survives_a_reread(self):
+        """装完就是装完：换台设备打开不该再被教一遍，所以它也跟着账本走。"""
+        self.assertFalse(q_settings(self.contract)["postSetupTutorialDone"])
+        self.assertTrue(w_settings(self.contract, {"postSetupTutorialDone": True})
+                        ["postSetupTutorialDone"])
+        self.assertIs(self._stored_json()["postSetupTutorialDone"], True)
+        for truthy in ("yes", 1, [1]):
+            self.assertFalse(w_settings(self.contract, {"postSetupTutorialDone": truthy})
+                             ["postSetupTutorialDone"], truthy)
+        w_settings(self.contract, {"postSetupTutorialDone": True})
+        self.assertEqual(w_settings(self.contract, {"sidebarOrder": ["", "tags"]})
+                         ["postSetupTutorialDone"], True)
 
     def test_initial_history_range_is_persisted_without_changing_other_preferences(self):
         w_settings(self.contract, {"sidebarOrder": ["", "tags"]})

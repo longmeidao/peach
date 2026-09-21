@@ -23,6 +23,9 @@ import {
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
+  postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
+  postSetupTutorialSkipped, setPostSetupTutorialSkipped, postSetupTutorialSignature,
+  nextPostSetupTutorialRequest, isCurrentPostSetupTutorialRequest, resetPostSetupTutorialState,
 } from './js/ui-components.js';
 
 initMiddleTruncate(document);
@@ -1249,37 +1252,22 @@ function openHome(scroll=false){
   buildEdge();buildBars();load(true);
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
-const POST_SETUP_TUTORIAL_KEY='peach.post-setup-tutorial.v1';
-const POST_SETUP_TUTORIAL_COLLAPSED_KEY='peach.post-setup-tutorial-collapsed.v1';
-const POST_SETUP_TUTORIAL_SKIPPED_KEY='peach.post-setup-tutorial-skipped.v1';
-let postSetupTutorialRequest=0;
-const postSetupTutorialMarker=()=>{
-  try{return localStorage.getItem(POST_SETUP_TUTORIAL_KEY)||''}catch(_error){return ''}
-};
-const setPostSetupTutorialMarker=value=>{
-  try{localStorage.setItem(POST_SETUP_TUTORIAL_KEY,value)}catch(_error){}
-};
-const postSetupTutorialCollapsed=()=>{
-  try{return localStorage.getItem(POST_SETUP_TUTORIAL_COLLAPSED_KEY)==='1'}catch(_error){return false}
-};
-const setPostSetupTutorialCollapsed=value=>{
-  try{localStorage.setItem(POST_SETUP_TUTORIAL_COLLAPSED_KEY,value?'1':'0')}catch(_error){}
-};
-const postSetupTutorialSkipped=()=>{
-  try{return new Set(JSON.parse(localStorage.getItem(POST_SETUP_TUTORIAL_SKIPPED_KEY)||'[]'))}
-  catch(_error){return new Set()}
-};
-const setPostSetupTutorialSkipped=values=>{
-  try{localStorage.setItem(POST_SETUP_TUTORIAL_SKIPPED_KEY,JSON.stringify([...values]))}catch(_error){}
-};
-/* `onboarding=1` 来自设置完成页。历史导入可以先去口味页，标记会在 Peach 的每一页
-   保持生效；清单只读真实接口，不用“访问过页面”冒充完成。 */
-if(new URLSearchParams(location.search).get('onboarding')==='1'){
+/* `onboarding=1` 来自设置完成页。标记会在 Peach 的每一页保持生效；清单只读真实接口，
+   不用“访问过页面”冒充完成。地址栏里那一位一进门就擦掉——它只说明「这一次是从设置
+   完成页进来的」，留在地址里会被收藏、被分享、被刷新时重放。口味页要知道这件事，
+   所以它落在一个内存变量上，取一次就没了。 */
+let cameFromSetup=new URLSearchParams(location.search).get('onboarding')==='1';
+const claimSetupEntry=()=>{const came=cameFromSetup;cameFromSetup=false;return came};
+/* 清单做完这件事跟着账本走（`/api/settings` 的 `postSetupTutorialDone`），本地的
+   `pending` 只是这台设备上的镜像。null 表示还没问过服务端，问一次就够——页面活着的
+   这段时间里改动它的只有我们自己。 */
+let postSetupTutorialDone=null,postSetupTutorialNeedsReopen=false;
+if(cameFromSetup){
   setPostSetupTutorialMarker('pending');
-  if(location.pathname==='/'){
-    const clean=new URL(location.href);clean.searchParams.delete('onboarding');
-    history.replaceState(history.state,'',clean.pathname+clean.search+clean.hash);
-  }
+  // 账本里那句「教程做完了」可能是上一次安装留下的，刚走完设置就得撤回。
+  postSetupTutorialDone=false;postSetupTutorialNeedsReopen=true;
+  const clean=new URL(location.href);clean.searchParams.delete('onboarding');
+  history.replaceState(history.state,'',clean.pathname+(clean.search||'')+clean.hash);
 }
 const postSetupTutorialTasks=async()=>{
   const {library,scraping,taste,follow,credentials,review}=await api('/api/post-setup-tutorial');
@@ -1306,7 +1294,7 @@ const postSetupTutorialTasks=async()=>{
     {key:'history',label:'导入浏览器历史记录',description:Number(taste.summary?.history_sources||0)>0
       ?`已导入 ${Number(taste.summary.history_sources).toLocaleString()} 份浏览器历史。`
       :'从这台电脑的浏览器导入口味分析记录。',
-      href:'/taste?onboarding=1',done:Number(taste.summary?.history_sources||0)>0,icon:'history'},
+      href:'/taste',setupEntry:true,done:Number(taste.summary?.history_sources||0)>0,icon:'history'},
     {key:'follow',label:'添加一个关注来源',description:followReady
       ?`已启用 ${sources.length.toLocaleString()} 个来源。`:'添加想持续追踪的创作者或来源。',
       href:'/follow-manage?tab=add',done:followReady,icon:'rss'},
@@ -1345,28 +1333,56 @@ const postSetupTutorialHtml=(tasks,skippedCount,totalCount)=>{
       <footer><button class="geist-button" type="button" data-tutorial-action="next">继续：${next.label}</button></footer>
     </article>`;
 };
+const writePostSetupTutorialDone=async done=>{
+  postSetupTutorialDone=done;
+  await api('/api/settings',{method:'POST',body:JSON.stringify({postSetupTutorialDone:done})});
+};
+const readPostSetupTutorialDone=async()=>{
+  if(postSetupTutorialDone===null){
+    try{postSetupTutorialDone=(await api('/api/settings')).postSetupTutorialDone===true}
+    catch(_error){postSetupTutorialDone=false}
+  }
+  return postSetupTutorialDone;
+};
+/* 教程自己的跳转不走整页刷新：那张卡是常驻的，刷新一次要重来一遍取数和动画，
+   刚点开的折叠也没了。口味页的导入指南要知道这一步是教程带过去的。 */
+const openTutorialTarget=task=>{
+  if(task.setupEntry)cameFromSetup=true;
+  route(task.href);void restoreRoute();
+};
+/** 重新打开安装教程：本地三个键归位，服务端标记同时撤回。 */
+async function reopenPostSetupTutorial(){
+  resetPostSetupTutorialState();
+  await writePostSetupTutorialDone(false);
+  await syncPostSetupTutorial();
+}
 async function syncPostSetupTutorial(){
   const root=$('#postSetupTutorial');if(!root)return;
-  if(postSetupTutorialMarker()!=='pending'){
-    root.hidden=true;root.innerHTML='';delete root.dataset.tutorialSignature;return
+  const hide=()=>{root.hidden=true;root.innerHTML='';delete root.dataset.tutorialSignature;
+    root.removeAttribute('aria-busy')};
+  if(postSetupTutorialNeedsReopen){
+    postSetupTutorialNeedsReopen=false;
+    await writePostSetupTutorialDone(false).catch(()=>{});
   }
-  const request=++postSetupTutorialRequest;root.hidden=false;root.setAttribute('aria-busy','true');
+  if(postSetupTutorialMarker()!=='pending'||await readPostSetupTutorialDone()){hide();return}
+  const request=nextPostSetupTutorialRequest();root.hidden=false;root.setAttribute('aria-busy','true');
   if(!root.firstElementChild){
     root.innerHTML=`<article class="post-setup-notification post-setup-loading">${icon('compass')}<p>正在检查安装进度…</p></article>`;
   }
   try{
     const tasks=await postSetupTutorialTasks();
-    if(request!==postSetupTutorialRequest)return;
+    if(!isCurrentPostSetupTutorialRequest(request))return;
     const knownKeys=new Set(tasks.map(task=>task.key));
     const skipped=new Set([...postSetupTutorialSkipped()].filter(key=>knownKeys.has(key)));
     setPostSetupTutorialSkipped(skipped);
     const visible=tasks.filter(task=>!skipped.has(task.key));
     const pending=visible.filter(task=>!task.done);
     if(!pending.length){
-      setPostSetupTutorialMarker('complete');root.hidden=true;root.innerHTML='';delete root.dataset.tutorialSignature;
-      root.removeAttribute('aria-busy');return
+      setPostSetupTutorialMarker('complete');hide();
+      await writePostSetupTutorialDone(true).catch(()=>{});
+      return
     }
-    const signature=JSON.stringify(visible.map(task=>[task.key,task.done,task.label,task.description,task.href]));
+    const signature=postSetupTutorialSignature(visible);
     if(root.dataset.tutorialSignature===signature){root.removeAttribute('aria-busy');return}
     root.innerHTML=postSetupTutorialHtml(visible,skipped.size,tasks.length);
     root.dataset.tutorialSignature=signature;root.removeAttribute('aria-busy');
@@ -1389,15 +1405,41 @@ async function syncPostSetupTutorial(){
       }});
       void syncPostSetupTutorial();
     });
-    root.querySelector('[data-tutorial-action]').onclick=()=>{
-      location.href=next.href;
-    };
+    const byKey=new Map(visible.map(task=>[task.key,task]));
+    root.querySelectorAll('[data-tutorial-task]').forEach(link=>link.onclick=event=>{
+      const task=byKey.get(link.dataset.tutorialTask);
+      if(!task||event.metaKey||event.ctrlKey||event.shiftKey||event.button)return;
+      event.preventDefault();openTutorialTarget(task);
+    });
+    root.querySelector('[data-tutorial-action]').onclick=()=>openTutorialTarget(next);
   }catch(_error){
-    if(request!==postSetupTutorialRequest)return;
-    root.innerHTML=`<article class="post-setup-notification post-setup-error">${icon('alert')}<div><h2>暂时无法检查安装进度</h2><p>Peach 会在你切换页面或重新打开后检查。</p></div></article>`;
+    if(!isCurrentPostSetupTutorialRequest(request))return;
+    /* 取数失败时这张卡是死的：没有清单，也没有下一步。给一条重试和一个关闭，
+       不然它只能一直杵在右下角占着地方。 */
+    root.innerHTML=`<article class="post-setup-notification post-setup-error">${icon('alert')}
+      <div><h2>暂时无法检查安装进度</h2><p>Peach 会在你切换页面或重新打开后检查。</p>
+      <div class="post-setup-error-actions"><button class="geist-button" type="button" data-tutorial-retry>重试</button>
+      <button class="geist-button" type="button" data-tutorial-dismiss>关闭</button></div></div></article>`;
     root.removeAttribute('aria-busy');
+    root.querySelector('[data-tutorial-retry]').onclick=()=>{
+      delete root.dataset.tutorialSignature;root.innerHTML='';void syncPostSetupTutorial();
+    };
+    root.querySelector('[data-tutorial-dismiss]').onclick=hide;
   }
 }
+/* 教程关掉之后没有别的入口能把它叫回来。写入落在账本上，所以忙态落在这枚键上，
+   成功了再发回执。 */
+$('#tutorialReopen').onclick=async event=>{
+  const button=event.currentTarget;
+  setActionBusy(button);
+  try{
+    await reopenPostSetupTutorial();
+    openSettings(false);
+    actionReceipt('已重新打开安装教程');
+  }catch(error){
+    toast({text:error?.message||'没能重新打开安装教程'},{warn:true});
+  }finally{setActionBusy(button,false)}
+};
 const ENTITY_FILTER_KEYS=['loc','creator','tag','state','dur_min','dur_max','orient','sort','dir'];
 const emptyEntityFilters=()=>Object.fromEntries(
   ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':key==='dir'?'desc':'']));
@@ -4768,7 +4810,7 @@ async function openTaste(push=true){
   await ui.mountIsland('taste',$('#stats'),{
     onSignal:openTasteSignal,navigate:path=>{route(path);restoreRoute()},
     toast:actionReceipt,avatarInner,
-    onboarding:new URLSearchParams(location.search).get('onboarding')==='1',
+    onboarding:claimSetupEntry(),
   },{isCurrent:()=>surfaceCurrent(surface)});
   window.scrollTo({top:0,behavior:'smooth'});
 }

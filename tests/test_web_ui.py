@@ -139,17 +139,21 @@ class WebUiSourceTests(unittest.TestCase):
         html = (root / "web/index.html").read_text(encoding="utf-8")
         app = (root / "web/app.js").read_text(encoding="utf-8")
         board = (root / "web/board.css").read_text(encoding="utf-8")
+        components = (root / "web/js/ui-components.js").read_text(encoding="utf-8")
         self.assertIn('id="postSetupTutorial"', html)
-        self.assertIn("const POST_SETUP_TUTORIAL_KEY='peach.post-setup-tutorial.v1'", app)
-        self.assertIn("const POST_SETUP_TUTORIAL_COLLAPSED_KEY='peach.post-setup-tutorial-collapsed.v1'", app)
-        self.assertIn("const POST_SETUP_TUTORIAL_SKIPPED_KEY='peach.post-setup-tutorial-skipped.v1'", app)
+        # 三个本地键、签名和请求代际归 ui-components 的状态模块；跳过、折叠、跨页常驻和
+        # 「签名没变就不重绘」这四条由 `frontend/test/post-setup-tutorial.test.ts` 按行为验。
+        for key in ("peach.post-setup-tutorial.v1", "peach.post-setup-tutorial-collapsed.v1",
+                    "peach.post-setup-tutorial-skipped.v1"):
+            self.assertIn(key, components)
+            self.assertNotIn(key, app)
         self.assertIn("api('/api/post-setup-tutorial')", app)
         for label in ('设置采集来源与凭证', '导入浏览器历史记录', '补齐关注来源凭证'):
             self.assertIn(label, app)
         self.assertIn("source=>source.accepts_cookie", app)
         self.assertIn("source=>source.cookie_saved", app)
         self.assertIn("taste.summary?.history_sources", app)
-        tutorial = app[app.index("const POST_SETUP_TUTORIAL_KEY="):app.index("const ENTITY_FILTER_KEYS=")]
+        tutorial = app[app.index("const postSetupTutorialTasks="):app.index("const ENTITY_FILTER_KEYS=")]
         self.assertNotIn("location.pathname!=='/'", tutorial)
         self.assertIn("${icon('compass')}</span>", tutorial)
         self.assertIn("void syncPostSetupTutorial()", app[app.index("const route="):app.index("/* ── 脱盘模式")])
@@ -163,11 +167,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("href:'/data-cleanup',done:libraryReady", app)
         self.assertIn("icon(collapsed?'chevron-up':'chevron-down')", app)
         self.assertIn("if(!root.firstElementChild){", tutorial)
-        self.assertIn("if(root.dataset.tutorialSignature===signature){root.removeAttribute('aria-busy');return}", tutorial)
-        self.assertIn("root.dataset.tutorialSignature=signature", tutorial)
         self.assertIn("if(!pending.length){", app)
-        self.assertIn("setPostSetupTutorialMarker('complete');root.hidden=true", app)
         self.assertIn("actionReceipt(`已跳过", app)
+        # 教程自己的跳转走路由，不整页刷新；取数失败那张卡给得出重试和关闭。
+        self.assertNotIn("location.href=next.href", tutorial)
+        self.assertIn("route(task.href);void restoreRoute()", tutorial)
+        for mark in ("data-tutorial-retry", "data-tutorial-dismiss"):
+            self.assertIn(mark, tutorial)
+        # 清单做完这件事落在服务端，换台设备不再被教一遍。
+        self.assertIn("postSetupTutorialDone", app)
+        self.assertIn('id="tutorialReopen"', html)
+        self.assertIn("reopenPostSetupTutorial()", app)
         self.assertIn(".post-setup-notification", board)
         self.assertIn(".post-setup-task[data-state=checked]", board)
         self.assertIn(".post-setup-task+.post-setup-task::before{content:\"\";position:absolute;", board)
@@ -177,7 +187,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".post-setup-task>a:hover{background:var(--hover)}", board)
         self.assertIn("border-radius:8px;color:var(--ink);text-decoration:none}", board)
         self.assertNotIn(".post-setup-task:hover{", board)
-        self.assertIn("position:fixed;right:12px;bottom:12px;z-index:100", board)
+        # 右下角同时住着 Toast 栈和窄屏的批量选择条，教程按它们占的高度抬起来；
+        # 真实几何由 `frontend/e2e/design.test.ts` 在 390×844 下量。
+        self.assertIn("--post-setup-reserve:82px;position:fixed;right:12px;"
+                      "bottom:calc(12px + var(--post-setup-reserve));z-index:100", board)
+        self.assertIn("@media(max-width:639px){#postSetupTutorial{--post-setup-reserve:150px}}", board)
         self.assertIn("width:min(400px,calc(100vw - 24px))", board)
         self.assertIn("pointer-events:none", board)
         self.assertIn(".post-setup-notification{pointer-events:auto", board)
@@ -5205,7 +5219,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("onSignal:openTasteSignal")
         self.assertPageContains("navigate:path=>{route(path);restoreRoute()}")
         self.assertPageContains("toast:actionReceipt,avatarInner")
-        self.assertPageContains("onboarding:new URLSearchParams(location.search).get('onboarding')==='1'")
+        # 「这一次是从设置完成页进来的」是一次性的：地址栏那一位进门就擦掉，取值走内存变量。
+        self.assertPageContains("onboarding:claimSetupEntry()")
         self.assertPageContains("{isCurrent:()=>surfaceCurrent(surface)}")
         # 四条端点、缓存、轮询与所有正文标记都归 React 子树，遗留层一条都不留。
         for gone in ("/api/taste", "TASTE_CACHE_KEY", "peach-taste-job", "wireTasteProgress",

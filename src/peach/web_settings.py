@@ -43,7 +43,11 @@ DEFAULT_FOLLOW_INITIAL_DAYS = 30
 
 #: 只有这些键跟着账本走。白名单而不是黑名单：将来往设置里加字段的人必须显式表态
 #: 它该不该跨机同步，而不是默认就同步过去。
-SYNCED_SETTING_KEYS = frozenset({"sidebarOrder", "metadataRefreshDays", "followInitialDays"})
+#: `postSetupTutorialDone` 说的是「这套馆藏已经装完了」，不是「这台设备看过教程」——
+#: 装完就是装完，换台设备打开不该再被教一遍，所以它也跟着账本走。
+SYNCED_SETTING_KEYS = frozenset({
+    "sidebarOrder", "metadataRefreshDays", "followInitialDays", "postSetupTutorialDone",
+})
 
 
 class SettingsContract(Protocol):
@@ -128,6 +132,7 @@ def q_settings(contract: SettingsContract, _args=None) -> dict:
         "metadataRefreshDays": normalise_metadata_refresh_days(
             payload.get("metadataRefreshDays")),
         "followInitialDays": normalise_follow_initial_days(payload.get("followInitialDays")),
+        "postSetupTutorialDone": payload.get("postSetupTutorialDone") is True,
     }
 
 
@@ -153,6 +158,8 @@ def w_settings(contract: SettingsContract, body) -> dict:
             body["metadataRefreshDays"])
     if "followInitialDays" in body:
         merged["followInitialDays"] = normalise_follow_initial_days(body["followInitialDays"])
+    if "postSetupTutorialDone" in body:
+        merged["postSetupTutorialDone"] = body["postSetupTutorialDone"] is True
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with contract.write_transaction() as connection:
         updated = connection.execute(
