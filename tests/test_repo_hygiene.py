@@ -157,6 +157,37 @@ class BundledImageTests(unittest.TestCase):
         )
 
 
+class DocumentationMediaTests(unittest.TestCase):
+    """`docs/assets/` 只放少量演示媒体，且每个文件都要小到能进 Git。
+
+    README 的介绍视频住在这里，所以这一档不是「不许有字节」而是「有上限」：没有上限的话，
+    下一段素材进来时挡住它的只剩人的自觉，而仓库一旦收下几十 MB 的二进制，clone 的人
+    每次都得付这笔钱，删掉也只是从工作区消失，历史里照样躺着。
+    """
+
+    ASSETS = DOCS / "assets"
+    #: 只认这几种容器：都是浏览器与 GitHub 直接播得动的格式，不需要额外转码说明。
+    MEDIA_SUFFIXES = frozenset({".mp4", ".webm"})
+    MAX_BYTES = 8 * 1024 * 1024
+
+    def test_demo_media_stays_within_its_allowed_types_and_size(self):
+        if not self.ASSETS.is_dir():
+            self.skipTest("docs/assets 不存在")
+        for path in sorted(self.ASSETS.rglob("*")):
+            if not path.is_file():
+                continue
+            with self.subTest(asset=path.name):
+                self.assertIn(
+                    path.suffix.lower(), self.MEDIA_SUFFIXES,
+                    "docs/assets 只收 mp4 与 webm 演示媒体；截图与图标走 resources/",
+                )
+                self.assertLessEqual(
+                    path.stat().st_size, self.MAX_BYTES,
+                    f"{path.name} 超过 {self.MAX_BYTES // (1024 * 1024)} MB："
+                    "演示媒体要先压到这个上限以内，压不下去就别放进仓库",
+                )
+
+
 class BacklogSelfConsistencyTests(unittest.TestCase):
     """产品待办自己报的数必须和它列的条目对得上。
 
