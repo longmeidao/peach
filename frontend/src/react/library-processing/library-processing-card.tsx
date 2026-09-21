@@ -47,9 +47,24 @@ const MENU_ROW = cx(MENU_ITEM, MENU_ITEM_INTERACTIVE, 'text-body-2-medium');
 const CARD_TEXT = '扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，'
   + '几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。';
 const STALLED_TEXT = '这个项目处理时间较长，暂时没有新进展。可以继续等待，或在任务结束后重试未完成项。';
+/* 补齐女优资料是落库之后的一步，一趟里常常什么都不用补，那时这句话不出现：
+   四个读数全是 0 还写一句「别名 0 个」，读的人分不清是没得补还是这一步没跑。 */
+const profileText = (state: LibraryProcessingData) => {
+  const aliases = state.performer_aliases || 0;
+  const avatars = state.performer_avatars || 0;
+  const conflicts = state.performer_profile_conflicts || 0;
+  const failed = state.performer_profile_failed || 0;
+  if (!aliases && !avatars && !conflicts && !failed) return '';
+  const parts = [`补齐女优资料：别名 ${aliases} 个，头像 ${avatars} 张`];
+  if (conflicts) parts.push(`${conflicts} 个同名冲突交回人工`);
+  if (failed) parts.push(`${failed} 张头像未取得`);
+  return `${parts.join('，')}。`;
+};
+
 const receiptText = (state: LibraryProcessingData) =>
   `已扫描 ${state.scanned || 0} 个文件，识别 ${state.identified || 0} 个番号，`
-  + `整理 ${state.candidates || 0} 组资料候选，自动落库 ${state.auto_applied || 0} 条。`;
+  + `整理 ${state.candidates || 0} 组资料候选，自动落库 ${state.auto_applied || 0} 条。`
+  + profileText(state);
 
 /** 主键加一个下拉：三种方式改的是同一件事，摊成三颗按钮读不出哪个是常用的那一个。
  *

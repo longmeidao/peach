@@ -118,6 +118,27 @@ it('启动只提交一次，进度用 GET 读回来，完成后给出回执与�
   expect(receipt?.textContent).toContain('处理完成');
   expect(receipt?.textContent).toContain(
     '已扫描 9 个文件，识别 4 个番号，整理 2 组资料候选，自动落库 0 条。');
+  // 这一趟没补任何女优资料，回执里就不出现那句话。
+  expect(receipt?.textContent).not.toContain('补齐女优资料');
+});
+
+it('补齐女优资料的读数进回执，冲突和未取得各自点名', async () => {
+  const served = await open(
+    { status: 'idle' },
+    (method) => method === 'POST'
+      ? { status: 'running', job_id: 'one' }
+      : {
+          status: 'complete', job_id: 'one', scanned: 9, identified: 4, candidates: 2,
+          auto_applied: 2, performer_aliases: 5, performer_avatars: 3,
+          performer_profile_conflicts: 1, performer_profile_failed: 2,
+        },
+  );
+  const host = await mount(card({ toast: vi.fn() }));
+  await click(buttonNamed('扫描并补全资料', host));
+
+  expect(served.posts()).toEqual([{}]);
+  expect(host.querySelector('[role="status"]')?.textContent).toContain(
+    '补齐女优资料：别名 5 个，头像 3 张，1 个同名冲突交回人工，2 张头像未取得。');
 });
 
 it('首屏读到的上一趟终态不冒充这一次的回执', async () => {
