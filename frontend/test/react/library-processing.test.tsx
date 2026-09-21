@@ -186,10 +186,21 @@ it('失败时把问题清单折叠进错误提示，重试只交失败的那些�
   expect(details.querySelector('li')?.textContent).toContain('样品.mp4');
   expect(details.querySelector('li code')?.textContent).toBe('R:\\Media\\样品.mp4');
   expect(details.querySelector('p')?.textContent).toContain(LOG);
+  // 清单自己那条滚动条走全站那份覆盖式的，不留系统灰柱子。
+  const list = details.querySelector('ul')!;
+  expect(list.dataset.overlayScrollbar).toBe('true');
+  expect(list.parentElement?.querySelector('.ovtrack')).not.toBeNull();
   // 这一趟该做的事是把没做完的补上，页脚不再摆「重新跑一整批」。
   expect(buttonNamed('扫描并补全资料', host)).toBeNull();
 
-  await click(buttonNamed('重试未完成项'));
+  // 重试键是这条提示的主动作：和卡片一样摆在右边，不是正文底下一颗次级键。
+  const retry = buttonNamed('重试未完成项')!;
+  expect(retry.className).toContain('bg-button-primary');
+  const headline = alert!.firstElementChild!;
+  expect(headline.className).toContain('justify-between');
+  expect(headline.lastElementChild).toBe(retry);
+
+  await click(retry);
   expect(served.posts()).toEqual([{ job_id: 'one', retry: [7, 8] }]);
 });
 

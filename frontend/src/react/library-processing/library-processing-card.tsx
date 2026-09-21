@@ -12,6 +12,7 @@ import {
 } from '@remixicon/react';
 import { useMutation } from '@tanstack/react-query';
 import { Dialog, Popover } from 'react-aria-components';
+import { attachOverlayScrollbar } from '@peach/legacy/ui';
 
 import { Button } from '@/components/base/buttons/button';
 import { LinkButton } from '@/components/base/buttons/link-button';
@@ -115,6 +116,10 @@ function Outcome(
   const details = issueDetails(state);
   const retryable = state.status === 'failed' && !!state.retryable_asset_ids?.length;
   const notes = notesLine(state.notes || {});
+  const list = useRef<HTMLUListElement>(null);
+  /* 清单是这一页唯一自己滚的块，原生滚动条在这儿就是一条系统灰柱子。挂全站那条覆盖式
+     的：它自带「已挂过」标记，所以每次渲染都试一次，清单从无到有那一次才挂得上。 */
+  useEffect(() => { attachOverlayScrollbar(list.current) });
   return (
     /* 空着时整块收起：`aria-live` 的容器留着一条空轨道，卡片底下就凭空多出一个间距。 */
     <div aria-live="polite" className="flex flex-col gap-4 empty:hidden">
@@ -122,31 +127,33 @@ function Outcome(
         ? <Note tone="warning" title="处理较慢">{STALLED_TEXT}</Note>
         : null}
       {problem || state.status === 'failed'
-        ? <Note tone="error" extra={
-            <div className="flex flex-col items-start gap-3 pt-1">
-              {retryable
-                ? <Button variant="secondary" size="small" onClick={onRetry}>重试未完成项</Button>
-                : null}
-              {details
-                ? <Disclosure summary={details.label}>
-                    <ul className="flex max-h-96 flex-col gap-2 overflow-y-auto">
-                      {details.items.map((item) => (
-                        <li key={item.key} className="flex flex-col gap-0.5">
-                          {item.href
-                            ? <a href={item.href} className="text-body-2-medium underline-offset-4 hover:underline">{item.label}</a>
-                            : <span className="text-body-2-medium">{item.label}</span>}
-                          <span className="text-caption-1-regular">{item.note}</span>
-                          {item.hint ? <code className="text-caption-1-regular break-all">{item.hint}</code> : null}
-                        </li>
-                      ))}
-                    </ul>
+        ? <Note tone="error"
+            action={retryable
+              ? <Button variant="primary" size="small" onClick={onRetry}>重试未完成项</Button>
+              : null}
+            extra={details
+              ? <div className="pt-1">
+                  <Disclosure summary={details.label}>
+                    {/* 轨道是滚动容器的兄弟，得有一层只裹着清单的定位祖先给它落脚。 */}
+                    <div className="relative">
+                      <ul ref={list} className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-3">
+                        {details.items.map((item) => (
+                          <li key={item.key} className="flex flex-col gap-0.5">
+                            {item.href
+                              ? <a href={item.href} className="text-body-2-medium underline-offset-4 hover:underline">{item.label}</a>
+                              : <span className="text-body-2-medium">{item.label}</span>}
+                            <span className="text-caption-1-regular">{item.note}</span>
+                            {item.hint ? <code className="text-caption-1-regular break-all">{item.hint}</code> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                     {details.footnote
                       ? <p className="text-caption-1-regular break-all">{details.footnote}</p>
                       : null}
                   </Disclosure>
-                : null}
-            </div>
-          }>
+                </div>
+              : null}>
             {problem || state.error || '处理未完成，请重试'}
           </Note>
         : null}

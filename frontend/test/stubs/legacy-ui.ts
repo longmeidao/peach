@@ -12,8 +12,8 @@ export const emptyStateHtml = (
   + `<div class="es-icon" data-icon="${iconName}"></div>`
   + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div>${options.actions || ''}</div>`;
 
-// @ts-expect-error 汇总行复用正式模板，折叠开合用正式实现。
-export {collectionSummaryHtml, setCollapseOpen} from '../../../web/js/ui-components.js';
+// @ts-expect-error 汇总行复用正式模板，折叠开合与覆盖式滚动条用正式实现。
+export {attachOverlayScrollbar, collectionSummaryHtml, setCollapseOpen} from '../../../web/js/ui-components.js';
 export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;
 export const checkboxHtml = (attrs = ''): string => `<span class="pcheck"><input type="checkbox" ${attrs}></span>`;
 export const progressHtml = (label: string, value: number, max = 100): string =>

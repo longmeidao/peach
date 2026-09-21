@@ -10099,6 +10099,8 @@ class WebUiSourceTests(unittest.TestCase):
         给标题、说明和路径三段：只给一个链接的话，是哪个文件得逐个点开才知道，而路径
         才是去磁盘上确认或改名时要用的。前 20 条之外的去完整日志里看，地址写在折叠底部。
 
+        重试是这条提示的主动作，和卡片一样摆在右边：这一页的操作键都在右侧同一列上。
+
         默认折叠、重试只交失败那些项由 `frontend/test/react/library-processing.test.tsx` 守。
         """
         data = self.read_react("library-processing/library-processing.ts")
@@ -10108,11 +10110,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',", data)
         card = self.read_react("library-processing/library-processing-card.tsx")
         # 结论、重试键和这份清单都在同一条 Note 里：摆到外面就成了一句话加两块没有出处的东西。
-        note, extra = card.split('<Note tone="error" extra={', 1)
-        self.assertIn("重试未完成项", extra)
+        note, rest = card.split('<Note tone="error"', 1)
+        action, extra = rest.split("extra={", 1)
+        self.assertIn("重试未完成项", action)
+        self.assertIn('<Button variant="primary" size="small" onClick={onRetry}>', action)
         self.assertIn("<Disclosure summary={details.label}>", extra)
         self.assertIn("{details.footnote", extra)
         self.assertNotIn("<Disclosure", note)
+        # 清单自己滚，滚动条走全站那条覆盖式的。
+        self.assertIn("attachOverlayScrollbar(list.current)", card)
 
     def test_a_finished_scan_is_announced_once_even_if_it_ended_before_the_page_opened(self):
         """完成用通知报。首次引导那一趟常在跳到目录页之前就跑完，横幅从没见过「运行中」，
