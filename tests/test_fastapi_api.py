@@ -1183,20 +1183,21 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "candidate_key": "CARIB-001:tags:caribbeancom:abc", "source": "caribbeancom",
             "source_url": "https://example.invalid/carib", "confidence": 0.9,
             "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
-            "unmapped_genres": ["即ハメ", "温泉"],
-            "warnings": ["来源还有 2 个未收录 genre：即ハメ、温泉"],
+            "unmapped_genres": ["まだ決めていない分類", "まだ知らない分類"],
+            "warnings": ["来源还有 2 个未收录 genre：まだ決めていない分類、まだ知らない分類"],
         })
         before = await self._review_tags_candidate()
-        self.assertEqual(before["unmapped_genres"], ["即ハメ", "温泉"])
+        self.assertEqual(before["unmapped_genres"], ["まだ決めていない分類", "まだ知らない分類"])
         self.assertEqual(before["warnings"], [], "未决的词挪进结构化字段，不再只是一句话")
 
-        # 这两个词得是 `genre_taxonomy` 没收的：词表收了谁，这条路径就不会再问谁。
-        # `温泉` 说的是一趟旅程而不是场地，词表刻意留白，恰好是「由人在这里决定」的例子。
+        # 素材必须是占位词，不能拿真实来源词：词表一收那个词，这条路径就没有未决的
+        # 词可测，而扩词表的人跑不到 web 域。2026-09-21 先后拿 `シャワー` 和 `温泉`
+        # 当素材，两次都是这样把测试跑红的。
         recorded = await self.client.post("/api/review/genre?t=secret",
-                                          json={"genre": "温泉", "tag": "浴室"})
+                                          json={"genre": "まだ知らない分類", "tag": "浴室"})
         self.assertEqual(recorded.status_code, 200, recorded.text)
         excluded = await self.client.post("/api/review/genre?t=secret",
-                                          json={"genre": "即ハメ", "tag": ""})
+                                          json={"genre": "まだ決めていない分類", "tag": ""})
         self.assertEqual(excluded.status_code, 200, excluded.text)
 
         after = await self._review_tags_candidate()
@@ -1224,9 +1225,10 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "candidate_key": "CARIB-001:tags:caribbeancom:old", "source": "caribbeancom",
             "source_url": "https://example.invalid/carib", "confidence": 0.9,
             "provider_id": "CARIB-001", "value": ["中出内射"], "display_value": "中出内射",
-            "warnings": ["来源还有 1 个未收录 genre：温泉"],
+            "warnings": ["来源还有 1 个未收录 genre：まだ知らない分類"],
         })
-        self.assertEqual((await self._review_tags_candidate())["unmapped_genres"], ["温泉"])
+        self.assertEqual((await self._review_tags_candidate())["unmapped_genres"],
+                         ["まだ知らない分類"])
 
     async def test_the_genre_tag_answers_to_the_same_rules_as_any_other_tag(self):
         """这里收录的名字和作品页加的标签进同一套词表，判据不能各写一套。"""

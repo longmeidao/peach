@@ -367,9 +367,11 @@ class ReviewQueueTests(unittest.TestCase):
     def test_an_unresolved_genre_keeps_the_whole_tag_set_in_the_queue(self):
         """未收录的那几个词还没决定投影成什么，直接落库等于替用户判它们不算内容。"""
         self._asset(96, "MIAD-573", "MIAD573_01.wmv")
-        # `温泉` 得是 `genre_taxonomy` 没收的词：词表一收它，这条路径就没有未决的词可测。
-        row = self._tag_row("MIAD-573:tags", "MIAD-573", ["スレンダー", "温泉"])
-        self.assertEqual(row["candidates"][0]["unmapped_genres"], ["温泉"])
+        # 素材必须是占位词，不能拿真实来源词：词表一收那个词，这条路径就没有未决的
+        # 词可测，而扩词表的人跑不到 catalog 域。2026-09-21 先后拿 `シャワー` 和
+        # `温泉` 当素材，两次都是这样把测试跑红的。
+        row = self._tag_row("MIAD-573:tags", "MIAD-573", ["スレンダー", "まだ知らない分類"])
+        self.assertEqual(row["candidates"][0]["unmapped_genres"], ["まだ知らない分類"])
         self.write_metadata_rows([row])
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["MIAD-573:tags"])
