@@ -184,11 +184,25 @@
   --card-hover: color-mix(in srgb, var(--color-background-secondary-default) 95%, var(--color-text-primary));
 }
 
-/* 排序 Select 与同排的 medium Button 共用 36px。BoardUI 的 Select 把视觉样式留在内层
- * trigger，按项目约定从外层普通元素约束几何，不在组件上追加 restyle class。 */
-.peach-react [data-follow-sort-control] > div > button {
+/* BoardUI 这一族控件共用两档高度：Button 写着 `h-9`／`h-8`，Input 也是 36px／32px。
+ * 只有 Select 的 trigger 不写高度，靠 `py-2`／`py-1` 加 1px 边框撑出 38px 和 28px——摆在
+ * 同一排里，md 比旁边高 2px，sm 矮 4px。复核页筛选条上那三颗（两个 sm 下拉加一枚 small
+ * 按钮）一眼就看得出来。
+ *
+ * 所以这一档写成整层的规则，不是某一排的补丁：逐排挂钩子的话，新加一排就得记得再挂一次，
+ * 而漏挂和「这排本来就该这样」在屏幕上看不出区别。高度在 Peach 这一层从外面补齐，
+ * `boardui/` 那份复制件逐字不改。
+ *
+ * 按 `aria-haspopup="listbox"` 认这颗 trigger：那是 react-aria 给下拉按钮的固定标记，
+ * 每个 Select 都有、别的控件都没有。小号那一档由 trigger 自己带的 `text-body-2-medium`
+ * 认，那正是组件里 `size === "sm"` 的分支。 */
+.peach-react button[aria-haspopup="listbox"] {
   height: calc(var(--spacing) * 9);
   padding-block: 0;
+}
+
+.peach-react button[aria-haspopup="listbox"][class~="text-body-2-medium"] {
+  height: calc(var(--spacing) * 8);
 }
 
 /* 两块玻璃的料由 `web/board.css` 的 `[data-glass-pane]` 一处给，两个元素都挂着那个属性。

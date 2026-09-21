@@ -3450,12 +3450,14 @@ class FollowWebSourceTests(unittest.TestCase):
         """版式开关、排序框和方向键同处一行，高度必须是同一档。"""
         sources = self.read_react("follow-manage/source-list.tsx")
         toolbar = sources[sources.index("关注列表</h3>"):sources.index("{/* 这一趟在后台跑")]
-        # 工具条都走默认 medium（36px 高），排序下拉再由专用钩子锁到同一高度。
+        # 工具条都走默认 medium（36px 高）。
         self.assertNotIn('size="small"', toolbar)
         self.assertNotIn('size="sm"', toolbar)
         self.assertNotIn('size="xs"', toolbar)
         self.assertIn("data-button-group", toolbar)
-        self.assertIn("data-follow-sort-control", toolbar)
+        self.assertIn('<Select aria-label="关注列表排序"', toolbar)
+        # 下拉差的那 2px 由 styles.css 里整层的规则补，不靠这一排自己挂钩子。
+        self.assertIn('button[aria-haspopup="listbox"]', self.read_react("styles.css"))
 
     def test_the_sort_direction_key_is_a_square_icon_button(self):
         """纯图标键是正方形，边长与同排控件同高，图标不被内边距压扁。

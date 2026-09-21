@@ -894,6 +894,24 @@ describe('设计决定', () => {
     }
   });
 
+  it('复核筛选条上的下拉和按钮一样高', { timeout: 60_000 }, async () => {
+    const opened = await openReview(browser);
+    try {
+      /* BoardUI 的 Button 和 Input 都写死 h-8／h-9，Select 的 trigger 只有内边距，
+         自己撑到 28px／38px。三颗并排时那 4px 一眼就看得见。量的是整条筛选条上每一颗
+         控件，而不是点名某一颗：这一排以后加什么，都得落在同一档上。 */
+      const heights = await opened.page.locator('[data-review-filter]')
+        .evaluate((bar) => [...bar.querySelectorAll('button')]
+          .map((node) => Math.round(node.getBoundingClientRect().height)));
+      assert.ok(heights.length >= 2, `筛选条上只量到 ${heights.length} 颗控件`);
+      assert.deepEqual([...new Set(heights)], [heights[0]],
+        `筛选条上的控件高度不齐：${heights.join(' / ')}`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('复核卡的勾选框和标题共用一条中线', { timeout: 60_000 }, async () => {
     const opened = await openReview(browser);
     try {

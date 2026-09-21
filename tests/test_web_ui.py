@@ -11504,7 +11504,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         # 页面正文归 React，排序是 BoardUI `Select`；骨架照着同一处画，等数据时不挪位。
         source_list = self.read_react("follow-manage/source-list.tsx")
-        self.assertIn('<span data-follow-sort-control>', source_list)
         self.assertIn("padding: 'none',\n      className: 'flex flex-col gap-4", source_list)
         self.assertNotIn('dark:bg-transparent', source_list)
         self.assertEqual(source_list.count("variant: 'raised', padding: 'none'"), 1,
@@ -11735,8 +11734,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("import { SEGMENT, SEGMENTED_TRACK }", page)
         self.assertIn('<TabList aria-label="关注管理区域" className={SEGMENTED_TRACK}>', page)
         self.assertIn('<span data-button-group role="group" aria-label="关注列表版式">', source_list)
-        self.assertIn('<span data-follow-sort-control>', source_list)
-        self.assertIn("height: calc(var(--spacing) * 9);", styles)
+        self.assertIn('<Select aria-label="关注列表排序"', source_list)
+        # 下拉的 trigger 不写高度，靠内边距撑出 38px／28px；两档都在这里锁回控件族的高度。
+        self.assertIn('.peach-react button[aria-haspopup="listbox"] {\n'
+                      "  height: calc(var(--spacing) * 9);\n  padding-block: 0;\n}", styles)
+        self.assertIn('.peach-react button[aria-haspopup="listbox"][class~="text-body-2-medium"] {\n'
+                      "  height: calc(var(--spacing) * 8);\n}", styles)
         self.assertNotIn('variant="primary" size="small" disabled={readOnly || !line.trim()}', add)
         self.assertNotIn('ref={trigger} variant="secondary" size="small"', add)
         self.assertNotIn('variant="primary" size="small" disabled={readOnly || !canonical.trim()', aliases)
