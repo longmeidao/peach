@@ -24,7 +24,7 @@ uv sync --locked --extra build
 
 提交 `pyproject.toml` 与 `uv.lock`。CI 使用 `--locked` 拒绝过期锁文件；Dependabot 的 `uv` 生态负责更新。`uv pip install` 用于临时环境或安装产物，不用于维护项目依赖。普通 pip 安装 wheel 的冒烟仍独立验证打包声明。
 
-npm 的两份清单还有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。Dependabot 只改 manifest 与 lock，算不出这些，它的 PR 上 `npm run check:vendor` 或 island 产物那一关会红——它的 workflow 拿到的 token 是只读的，推不回 `dependabot/**`。在隔离工作树里用 `scripts/adopt_dependency_bump.py --pr <编号> --co-author '<工具> (<模型>) <厂商 noreply>'` 接管：签出那份清单、重算派生产物、只暂存这些并提交，`--apply` 前先看它列出的文件清单。uv 与 github-actions 的升级没有派生产物，直接合并即可。
+npm 的两份清单还有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。Dependabot 只改 manifest 与 lock，算不出这些，它的 PR 上 `npm run check:vendor` 或 island 产物那一关会红——它的 workflow 拿到的 token 是只读的，推不回 `dependabot/**`。在隔离工作树里用 `scripts/adopt_dependency_bump.py --pr <编号> --co-author '<工具> (<模型>) <厂商 noreply>'` 接管：签出那份清单、重算派生产物、只暂存这些并提交，`--apply` 前先看它列出的文件清单。uv 与 github-actions 的升级没有派生产物，直接合并即可。破坏性的大版本升级由 `.github/dependabot.yml` 的 `ignore` 显式挡在自动 PR 之外，迁移单开分支做。
 
 版本来自 `src/peach/__init__.py`，已纳入 uv 缓存键；源码版本更新后再次同步会刷新安装元数据。缓存规则采用 [uv 官方动态元数据机制](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)。
 
@@ -70,11 +70,19 @@ macOS 按影响域验证：
 入口以一条环境结论退出，不把同一个 `CreateProcess` 权限错误散落到多个用例。Windows Codex
 任务应让整条 `scripts/test.ps1` 通过受控提权在正常 PowerShell 权限下运行；不改单测、不跳过用例。
 
+判失败的只有本次所选域真的会用到的工具，其余启动受限的工具只打印一行提示：受限环境里
+ffmpeg 起不来是事实，但它不该挡住一次只改文档的 `checks`。域由选中的测试源码推出来。
+确认本次无关时用 `PEACH_SKIP_PREFLIGHT=1` 整体跳过预检；分片子进程不重复预检。
+
 ## 记录的环境身份
 
 记录只在「代码、环境、范围」三项都匹配时可复用，环境那一项由 `scripts/test_evidence.py`
 的 `environment()` 算成一个摘要：解释器与已安装包、平台、`PEACH_*` 等环境变量、前端
-`node_modules` 锁，以及 uv／node／npm／git／ffmpeg／ffprobe／openssl 七个外部工具。
+`node_modules` 锁，以及 node／npm／git／ffmpeg／ffprobe／openssl 六个外部工具。
+
+uv 只探针、不进指纹：它负责建环境，装出来的解释器与包已经逐个记在摘要里，而它自己由
+winget 自动升级。把它的版本也算进去的话，升级当天全部记录一起失效，被验证的那套环境
+却一个字节都没变。
 
 工具身份取它**自报的版本**，不取 PATH 解析到的路径与文件字节。同一套 Git 安装在
 PowerShell 里解析到 `Git\cmd\git.exe`、在 Git Bash 里解析到 `Git\mingw64\bin\git.exe`，

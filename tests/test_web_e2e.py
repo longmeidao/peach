@@ -10,7 +10,7 @@
 路径翻译，声明根若沿用内建默认，process 读到的就是这台机器的真实媒体目录。
 
 短片由 ffmpeg 编码成真能解码的 2 秒片段：详情页的播放器会预加载源，占位字节只会让
-`/stream` 返回 503。缺 npm、`playwright-core`、ffmpeg 或本机 Chrome 时，本机显式跳过，
+`/stream` 返回 503。缺 Node、`playwright-core`、ffmpeg 或本机 Chrome 时，本机显式跳过，
 CI（`GITHUB_ACTIONS=true`）判失败，与 vitest 同一口径；浏览器不另外下载，
 `PEACH_E2E_CHROME` 可以指定可执行文件。CI 的 `web-e2e` job 负责装齐这四样。
 """
@@ -87,8 +87,11 @@ def refuse_network(*args, **kwargs):
     raise AssertionError("演示库的 process 不应向任何外部来源发请求")
 
 
-def e2e_command(_npm: str, node: str, concurrency: str = "") -> list[str]:
-    """两个文件共用服务；直接启动 Node 也省掉资源守卫内的一层 npm 进程。"""
+def e2e_command(node: str, concurrency: str = "") -> list[str]:
+    """串行跑是浏览器进程预算：每条用例的 Chrome 只给两个渲染进程（`e2e/harness.ts`）。
+
+    直接启动 Node 也省掉资源守卫内的一层 npm 进程。
+    """
     selected = concurrency or "1"
     if not selected.isdecimal() or int(selected) < 1:
         raise AssertionError("PEACH_E2E_CONCURRENCY 必须是正整数")
@@ -100,9 +103,6 @@ def e2e_command(_npm: str, node: str, concurrency: str = "") -> list[str]:
 class WebE2ESmokeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        npm = shutil.which("npm")
-        if npm is None:
-            missing_prerequisite("跳过 e2e：本机没有 npm。装 Node 24+ 后 `-Scope web` 会带上它")
         node = shutil.which("node")
         if node is None:
             missing_prerequisite("跳过 e2e：本机没有 Node。装 Node 24+ 后 `-Scope web` 会带上它")
@@ -114,7 +114,7 @@ class WebE2ESmokeTests(unittest.TestCase):
         chrome = chrome_executable()
         if chrome is None:
             missing_prerequisite("跳过 e2e：没找到 Chrome；装 Google Chrome 或用 PEACH_E2E_CHROME 指定")
-        cls.npm, cls.node, cls.ffmpeg, cls.chrome = npm, node, str(ffmpeg.path), chrome
+        cls.node, cls.ffmpeg, cls.chrome = node, str(ffmpeg.path), chrome
         cls.root = Path(tempfile.mkdtemp(prefix="peach-e2e-")).resolve()
         cls.server = None
         try:
@@ -232,8 +232,7 @@ class WebE2ESmokeTests(unittest.TestCase):
                    PEACH_E2E_CHROME=self.chrome)
         try:
             completed = subprocess.run(
-                e2e_command(self.npm, self.node,
-                            os.environ.get("PEACH_E2E_CONCURRENCY", "").strip()),
+                e2e_command(self.node, os.environ.get("PEACH_E2E_CONCURRENCY", "").strip()),
                 capture_output=True, text=True, encoding="utf-8", errors="replace",
                 cwd=str(FRONTEND), env=env, timeout=E2E_SECONDS, check=False)
         except subprocess.TimeoutExpired as expired:
@@ -265,7 +264,7 @@ class MissingPrerequisiteTests(unittest.TestCase):
             with self.assertRaises(unittest.SkipTest):
                 missing_prerequisite("没有 npm")
 
-    def test_e2e_files_share_one_server_and_run_serially(self):
+    def test_the_npm_script_runs_within_the_same_browser_process_budget(self):
         manifest = json.loads((FRONTEND / "package.json").read_text(encoding="utf-8"))
         self.assertEqual(
             manifest["scripts"]["e2e"],
@@ -273,16 +272,16 @@ class MissingPrerequisiteTests(unittest.TestCase):
         )
 
     def test_e2e_command_serializes_by_default_and_places_the_override_before_the_glob(self):
-        self.assertEqual(e2e_command("npm", "node", "1"), [
+        self.assertEqual(e2e_command("node", "1"), [
             "node", "--test", "--test-concurrency=1", "--test-reporter=tap",
             "e2e/**/*.test.ts",
         ])
-        self.assertEqual(e2e_command("npm", "node"), [
+        self.assertEqual(e2e_command("node"), [
             "node", "--test", "--test-concurrency=1", "--test-reporter=tap",
             "e2e/**/*.test.ts",
         ])
         with self.assertRaisesRegex(AssertionError, "必须是正整数"):
-            e2e_command("npm", "node", "0")
+            e2e_command("node", "0")
 
 
 if __name__ == "__main__":

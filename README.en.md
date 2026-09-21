@@ -62,7 +62,20 @@ https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
 
 ## Get Peach
 
-The standalone Windows x64 test package is available from [GitHub Releases](https://github.com/longmeidao/peach/releases); Windows and macOS can also run Peach from source, which requires Python 3.12 or newer. See [Windows testing](docs/TESTING_DESKTOP.md) and [operations](docs/OPERATIONS.md) for downloads, verification and configuration.
+The standalone Windows x64 test package is available from [GitHub Releases](https://github.com/longmeidao/peach/releases); Windows and macOS can also run Peach from source, which requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.12 or newer. See [Windows testing](docs/TESTING_DESKTOP.md) and [operations](docs/OPERATIONS.md) for downloads, verification and configuration.
+
+Running from source (the example uses Python 3.14; uv downloads a missing interpreter):
+
+```powershell
+git clone https://github.com/longmeidao/peach.git peach-app
+cd peach-app
+uv sync --locked --python 3.14
+& .\.venv\Scripts\peach-tray.exe
+```
+
+On macOS replace the last two commands with `uv sync --locked --python 3.14 --extra macos` and `./.venv/bin/peach-tray`. The tray opens the first-run setup page, where you pick media folders, access scope and port.
+
+FFmpeg and ffprobe are installed separately: without them you can still browse and play browser-compatible formats, while transcoding, probing and thumbnails stay unavailable. Source deployments keep data in `peach-data/` next to the repository, the standalone package uses `%LOCALAPPDATA%\Peach\peach-data`, and `PEACH_DATA_ROOT` points either one elsewhere. LAN and HTTPS access are covered in [operations](docs/OPERATIONS.md); updates and uninstall live under Settings → This computer → Updates, with the standalone steps in [Windows testing](docs/TESTING_DESKTOP.md).
 
 ## Data boundaries
 
@@ -70,9 +83,11 @@ Media stays in its original folders, while the catalog, identities, viewing hist
 
 ## Documentation
 
-[Windows testing](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sources](docs/SOURCING.md) · [Changelog](CHANGELOG.md) · [Development agreement](AGENTS.md) · [Architecture decisions](docs/adr/)
+Using Peach: [Windows testing](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sources](docs/SOURCING.md) · [Project status](docs/STATUS.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-Run development checks through `& .\scripts\test.ps1` on Windows or `./scripts/test.sh` on macOS/Linux.
+Developing Peach: [Development agreement](AGENTS.md) · [Testing and dependencies](docs/TESTING.md) · [Frontend](docs/FRONTEND.md) · [Product backlog](docs/PRODUCT_BACKLOG.md) · [Handover notes](docs/HANDOFF.md) · [Reuse list](docs/REUSE.md) · [README maintenance](docs/README_MAINTENANCE.md) · [Architecture decisions](docs/adr/)
+
+Run development checks through `& .\scripts\test.ps1` on Windows or `./scripts/test.sh` on macOS/Linux. File issues with the version, the steps, and the expected and actual results; never attach a real ledger, media, cookies or private keys. Report security problems through the [security policy](SECURITY.md).
 
 ## License
 

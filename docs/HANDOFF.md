@@ -8,7 +8,7 @@
 
 - NFO 见 `docs/REUSE.md`；[Banner](https://vercel.com/geist/banner) 取证见 `vercel-geist-library-banner.md`。
 - 凭据焦点外扩 3px，正文左右留 4px；输入框可收缩，验收所有裁切祖先。
-- 截图与视觉验收的画面保护：SFW 模式（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有当本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。
+- 截图与视觉验收的画面保护：SFW 模式（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。
 - 卡片实体链接必须由同一个 `{kind,name}` 结构生成，不许先独立选显示名、再按别的字段推断类型；账本 `size` 为空或 0 时显示「大小未知」，不伪装成 `0 MB`。
 - 排除竖屏是首页取景而不是全局过滤器：`exclude_vertical` 进搜索或实体列表会让按名字搜竖屏视频返回 0 结果，`test_only_the_default_home_list_drops_portrait_videos` 守这条线。
 - 竖屏条整行占位并且必须插在行边界上，由 `SHORTS_ROW_OFFSET` 控制插在第几行之后，不额外拉一批视频补上一行余位。
@@ -25,7 +25,8 @@
 - Logo 与头像都渲染成方框，候选按实测像素判定，只有 URL 没有实测尺寸不算候选；取源方向、门槛值与站点判据见 `docs/SOURCING.md`。
 - 小圆标与厂牌大 logo 是两个位置、两种资产：圆标取站点自己声明的那一份并过内容外接框闸门，宽扁字标不参加圆标竞选，`/logo` 的 `variant` 只在真有两份时才分岔（细节见 `docs/SOURCING.md`）。
 - 改了圆标的取图规则或合成方式必须同时加 `link_marks.RENDER_VERSION`：缓存保鲜期 30 天，不换键的话代码换了用户看到的仍是旧那张。
-- 图集就是目录：账本没有图集实体，`/api/photos` 按 `path` 去掉文件名分组、ID 取该目录里最小的资产 ID，同名目录在两个来源下算两个图集。图片墙只读 `/photo-thumb`（Pillow 缩到 640 宽、每张回源一次），原图只在灯箱读；灯箱复用 Swiper，必须等其 CSS 与 JS 都就绪再构造，否则首次打开多图会重叠。- 人工复核入口固定为 `/review`，候选来自 writer 本机 `generated` 下的 CSV，状态写 `review_decision`；封面抓取的成功、尺寸和缺失是机械状态，不进人工复核。
+- 图集就是目录：账本没有图集实体，`/api/photos` 按 `path` 去掉文件名分组、ID 取该目录里最小的资产 ID，同名目录在两个来源下算两个图集。图片墙只读 `/photo-thumb`（Pillow 缩到 640 宽、每张回源一次），原图只在灯箱读；灯箱复用 Swiper，必须等其 CSS 与 JS 都就绪再构造，否则首次打开多图会重叠。
+- 人工复核入口固定为 `/review`，候选来自 writer 本机 `generated` 下的 CSV，状态写 `review_decision`；封面抓取的成功、尺寸和缺失是机械状态，不进人工复核。
 - reader 只通过 Peach CA 严格校验的 HTTPS 读 writer 已归一化的 JSON 并原子缓存到本机，先确认目标 `/healthz` 是 `ledger_sync=writer`，writer 离线只展示上次缓存；reader 永久禁用批准、跳过、拒绝和关注管理的写入，不得为修空页面而同步整个 `generated`、SQLite/WAL 或放宽写端点白名单。
 - 转载站水印域名不是番号：剥掉 TLD 后与 `IPX219C`、`MEYD911` 同形，`normalise_code_key` 会替它补连字符（`HHD800` → `HHD-800`），JAV 过滤、`display_code` 和 `clean_names` 重命名就全把水印当成作品标识。形态分不开，只有实证名单 `catalog_rules.REPOST_SITE_LABELS` 能分，存压缩形让 `BEI88` 与 `BEI-088` 同命中；加条目先用 `scripts/audit_domain_codes.py` 在真实 ledger 取 `<label>.<tld>` 或 `<label>@` 的路径证据。
 - 「什么算番号」只在 `catalog_rules` 一份，脚本一律 import，同一条排除规则只加在其中一份上等于没加；改 `code` 走 `audit_domain_codes.py --apply --backup`，只写复核过的那份 CSV、按原值 `WHERE` 挡住漂移、存疑档不写，FTS 由 `AFTER UPDATE OF name,code` 触发器重建但要核对真跑过。
@@ -37,7 +38,7 @@
 
 - Codex 读取 `AGENTS.md`，Claude 通过 `CLAUDE.md` 导入；项目技能共用 `.claude/skills/`，Codex 按入口索引读取。
 - 测试入口为 Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`。选测与 CI 见 `TESTING.md`；证据、集成互斥和锁定见 `peach-worktree`。
-- 指令维护：按任务读取，缩小技能触发，保留事故边界；用文档、行为与数据任务复核。见 [OpenAI 方法](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)。静态检查不证明效率改善。
+- 指令维护：按任务读取，缩小技能触发，保留事故边界，用文档、行为与数据任务复核，静态检查不证明效率改善。方法见 [OpenAI](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)。
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
 - 触发是概率性的：必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
 - 用户不是消息中转站。结论、进度、待办和证据必须写入共享文档或机器可读产物。
@@ -54,7 +55,7 @@
 - 结论被修正时所有派生产物必须重建，只改说明文字不够：过期的删除清单比没有清单更危险。
 - 直接证据：视觉逐条任务在聊天里说「已保存」但 `asset_tag` 的 `source='vision'` 为 0，根本没有写入步骤；`disposal-candidates.csv` 在 `BNST033` 修正后未重建，把真实 3.2 GB 正片列为待删。
 - 解析用的固定件必须是抓回来的那份 HTML，不能照记忆重画：那样只能证明代码和记忆一致，会出现测试全绿而线上一个字段都没采到（实例见 `docs/SOURCING.md`）。
-- Claude 的 `.claude/settings.json` 配了 Stop、StopFailure、SessionEnd hook，用 `${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe` 调 `scripts/job_status.py --write --hook-event`：只记脱敏生命周期摘要，重新从 ledger 与产物算数字，原子写入 `peach-data/state/job-status.md`，不复制 prompt、response 或凭据。
+- Claude 的 `.claude/settings.json` 配了 Stop、StopFailure、SessionEnd hook，用 `${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe` 调 `scripts/job_status.py --write --hook-event`：只记脱敏生命周期摘要，从 ledger 与产物重算数字后原子写入 `peach-data/state/job-status.md`，不复制 prompt、response 或凭据。
 - 那份产物不进 Git，`docs/STATUS.md` 只留一行指针；工作者会话不写这份状态，机器级进度只由主检出的会话记录。强制杀进程或断电时 hook 不运行，下次调用会补上。
 
 ## 中文文档写作规范
@@ -72,6 +73,7 @@
 
 - BoardUI：[创作者别名表格与关注分页](BOARD_UI.md#创作者别名与扫描操作)、[Board、Link Button 与搜索动效](BOARD_UI.md)、[复核布局](reference-snapshots/board-review-layout.md)；React 源码 `frontend/src/react/boardui/ORIGIN.md`。
 - [Geist 控件](reference-snapshots/vercel-geist-controls-measured.md)；[复核操作](reference-snapshots/vercel-review-actions.md)；[README 维护](README_MAINTENANCE.md)；设置：`reference-snapshots/geist-settings.md`。
+
 版本与差异见 `docs/reference-sources.json`、`docs/reference-snapshots/`，流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本节只索引快照，不复制测量值；给不出可重抓
 字节的实测不登记，理由写进快照正文——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
@@ -101,7 +103,7 @@
 `.claude/skills/peach-batch-jobs/SKILL.md`；当前批次数量与运行进度只写 `peach-data/state/job-status.md`。
 
 - 采集脚本的整页 HTML 缓存与限速集中在 `peach.page_cache.Site`：判据改一行就要重跑，缓存在手才能让重跑读离线数据、不再打外站。
-- 传输错误由 `Site` 自己退让重试，采集脚本不必各写一遍；HTTP 状态码不重试，404 重试三次仍是 404，只是白花三倍流量。
+- 传输错误由 `Site` 自己退让重试，采集脚本不必各写一遍；HTTP 状态码不重试，404 重试三次仍是 404，白花三倍流量。
 
 ## 身份、来源与标识采集
 
@@ -123,7 +125,7 @@
 
 ## 数据安全
 
-- 真实 ledger 是当前写入者本机 `peach-data/database/ledger.db`（WAL 模式），正常浏览会合法写入播放与行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
+- 真实 ledger 是写入者本机 `peach-data/database/ledger.db`（WAL），正常浏览会合法写入播放与行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
 - 测试必须使用临时 SQLite、媒体和全部缓存根，不得写真实 ledger 或 `generated`；FastAPI 测试须显式传入 snapshots、posters、photo-thumbs、transcodes、stream-segments、按 asset 生成的头像与 covers。
 - 可重建缓存的删除边界由当前数据库路径拥有，生产库只可清理同一 `peach-data` 下的缓存，边界外一律跳过：一次漏配曾在清空回收站的测试里删掉真实 JAV 封面。
 - 已应用的迁移文件不得修改，任何后续变更必须新增版本；真实迁移与缓存删除的操作序列见 `docs/OPERATIONS.md`。
@@ -134,13 +136,13 @@
 
 CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 
-- 源码部署由项目 venv 持有服务，刷新入口为 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
+- 源码部署由项目 venv 持有服务，刷新入口 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。
-- 两台机器可以同时跑服务，但同时写入会很快冲突转只读；「接管 Ledger 写入」的短路与拒绝条件见 OPERATIONS。
+- 两台机器可同时跑服务，但同时写入会很快冲突转只读；「接管 Ledger 写入」的短路与拒绝条件见 OPERATIONS。
 - `src/peach/__init__.py::__version__` 是版本唯一来源；自动更新只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，工作区脏或两边分叉就原样报出来交给人——并行工作树和主检出共用同一个对象库。
-- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP。`[media.mounts]` 按 `asset.location` 给本机落点，Windows 上整表为空；`replication.enabled` 默认关，关掉即整条复制链路不装配。首次运行问答与扫描是 `peach.onboarding`／`peach.scan` 的纯逻辑，CLI 与托盘设置页共用。
+- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP。`[media.mounts]` 按 `asset.location` 给本机落点，Windows 上整表为空；`replication.enabled` 默认关，关掉即整条复制链路不装配。首启问答与扫描是 `peach.onboarding`／`peach.scan` 的纯逻辑，CLI 与托盘设置页共用。
 - `.local` 用本机 CA 而不是 Let's Encrypt，证书与私钥留在本机 `peach-data/secrets` 且按设计不跨机共享；FastAPI 是唯一 Web server，探测本机服务必须绕过系统代理，否则代理会替服务回 503。
-- 网盘目录整理后必须经「管理 → 资源同步」显式对账，不做后台静默删除；源文件缺失的 asset 和垃圾文件候选都只能先进回收站，清空回收站才永久删除账本行。
+- 网盘目录整理后必须经「管理 → 资源同步」显式对账，不做后台静默删除；源文件缺失的 asset 和垃圾文件候选都先进回收站，清空回收站才永久删除账本行。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg；转码只写缓存，永不改写原媒体。
 - 验证分开报告：静态/单元/API、桌面浏览器、390×844 手机、生产服务是否已重启。
 
@@ -151,11 +153,11 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
 - 前端按 ADR-0031 走 strangler 迁移：新页面进 `frontend/src/react/`（React + Tailwind + BoardUI 源码），逐页替换，不做整站重写；分发阶段见 ADR-0023。
 - 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不复制易过期的版本号、像素值和控件清单。
-- `/taste` 只读合并 Peach 行为与本机私有浏览历史，明确以浏览器记录为主要画像、Peach 内部为辅助证据，两者分别排序，不把「不合口味」自动归因或降权到 Tag。
+- `/taste` 只读合并 Peach 行为与本机私有浏览历史，明确以浏览器记录为主要画像、Peach 内部为辅助证据，分别排序，不把「不合口味」自动归因或降权到 Tag。
 - 查询词里的负号项整体排除，下划线是组合词边界的一部分，不得把 `-ai_generated` 拆成正向 `generated`；模糊时长旧 Tag 只作兼容识别，不进入口味、索引、详情和筛选状态。
-- 原始 URL 与标题不进入页面或 ledger；上传原件保存在 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器先由 SQLite backup API 取一致快照。本机发现不等于跨机同步，跨机数据要显式导出、传输并按来源去重合并。
+- 原始 URL 与标题不进入页面或 ledger；上传原件存 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器先由 SQLite backup API 取一致快照。本机发现不等于跨机同步，跨机数据要显式导出、传输并按来源去重合并。
 - 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准；关注页顶部标签筛选与卡片只用来源明确标记为 `general` 的内容标签，详情页与在线索引保留全部来源标签并按类型着色，未知类型不猜成 `general`。
-- 自动追更固定使用 APScheduler 3.11.3，只在 ledger writer 启动，频率保存在 `peach-data/state/follow-schedule.json`，默认每小时且启动后等待一个完整间隔，不要改成启动即抓；任务保持 `coalesce=True`、`max_instances=1`，与手动检查共用 `WebContract.follow_check_lock`，reader 只显示不可用状态。
+- 自动追更固定用 APScheduler 3.11.3，只在 ledger writer 启动，频率存 `peach-data/state/follow-schedule.json`，默认每小时且启动后等待一个完整间隔，不要改成启动即抓；任务保持 `coalesce=True`、`max_instances=1`，与手动检查共用 `WebContract.follow_check_lock`，reader 只显示不可用状态。
 - 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。
 
 ## Web 性能边界
@@ -163,10 +165,10 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 - 列表必须分批构建；首批才计算总数，后续多取一条判断是否还有下一页。无限滚动同一时间只允许一个追加请求。
 - 聚合查询禁止按实体发 N+1 SQL；相邻请求可复用缓存，但异步响应必须核对请求序号和当前路由，旧响应不得覆盖新页面。
 - 远端媒体 hover 只读本地预览；离开详情、换页或替换 DOM 时停止播放并取消当前 stream session，不能让 CloudDrive 继续读盘。
-- 当前批量大小、播放器版本、像素值与性能测量属于实现快照，统一留在测试、`docs/STATUS.md` 或参考快照，不写入长期上下文。
+- 当前批量大小、播放器版本、像素值与性能测量属于实现快照，留在测试、`docs/STATUS.md` 或参考快照，不写入长期上下文。
 
 ## 恢复入口
 
-项目重构时已从活动目录删除 deprecated 脚本和按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 和重构前的
-根仓库元数据备份都在各机 `peach-data` 的 `state`／`archive` 下，只作恢复证据；那两个目录的当前位置以
+重构时从活动目录删除的 deprecated 脚本与按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 与重构前的
+根仓库元数据备份在各机 `peach-data` 的 `state`／`archive` 下，只作恢复证据；位置以
 `docs/STATUS.md` 为准，Mac 的 `archive` 是指向外置盘的符号链接，盘不在时读不到不等于备份没了。

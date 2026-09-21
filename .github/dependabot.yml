@@ -28,6 +28,11 @@ updates:
       time: "09:20"
       timezone: Asia/Taipei
     open-pull-requests-limit: 10
+    ignore:
+      # @tanstack/react-table v9 是破坏性 API 改写，升上去要改每一处表格的列定义与
+      # 行模型；迁移单开分支排期，不由每周的自动 PR 顺手带进来。
+      - dependency-name: "@tanstack/react-table"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

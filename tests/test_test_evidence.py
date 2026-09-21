@@ -151,6 +151,27 @@ class VerificationTests(unittest.TestCase):
         with mock.patch.object(evidence.shutil, "which", return_value=None):
             self.assertNotEqual(evidence.environment(self.repo), baseline)
 
+    def test_a_newer_uv_keeps_the_environment_fingerprint_stable(self):
+        """uv 只负责建环境，它自己的版本不进指纹。
+
+        winget 会自动升级 uv，而它装出来的解释器与包已经逐个进了指纹。把 uv 的版本也
+        记进去的话，升级当天全部测试记录一起失效，被验证的那套环境却一个字节都没变，
+        代价是每台机器重跑一遍全量。
+        """
+        def probe_as(uv: str, others: str):
+            return mock.patch.object(
+                evidence, "tool_identity",
+                side_effect=lambda executable, stamp, probe:
+                uv if executable.endswith("uv") else others)
+
+        with mock.patch.object(evidence.shutil, "which", side_effect=lambda name: f"/a/{name}"):
+            with probe_as("uv-1", "ok"):
+                baseline = evidence.environment(self.repo)
+            with probe_as("uv-2", "ok"):
+                self.assertEqual(evidence.environment(self.repo), baseline)
+            with probe_as("uv-1", "changed"):
+                self.assertNotEqual(evidence.environment(self.repo), baseline)
+
     def test_an_unspawnable_tool_is_not_the_same_as_a_missing_one(self):
         """探针跑不起来和工具不在 PATH 上是两种环境，指纹要能分开。"""
         absent = self.root / "no-such-tool"

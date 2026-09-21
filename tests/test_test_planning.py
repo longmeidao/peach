@@ -3,6 +3,7 @@ from pathlib import Path
 import contextlib
 import io
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -24,6 +25,39 @@ class TestPlanningTests(unittest.TestCase):
                 runner.main(['--scope', 'checks'])
         self.assertIn('uv', output.getvalue())
         self.assertIn('正常 PowerShell 权限', output.getvalue())
+
+    def test_a_tool_this_scope_never_starts_only_warns(self):
+        """受限环境里起不动的工具，只有本次真会用到时才判失败。
+
+        `checks` 一个媒体用例都不加载，让媒体工具的权限错误挡住它，等于把人赶出正式
+        入口去手拼命令。工具仍然报出来，后面真出问题时看得见这一行。
+        """
+        # 名字拼出来：判据是「选中的测试源码里出现了这个工具名」，而本文件自己就在
+        # `checks` 域里，直接写出来这一域就自证需要它了。
+        blocked = 'ff' + 'mpeg'
+        self.assertNotIn(blocked, runner.tools_needed_by(('checks',)))
+        self.assertIn(blocked, runner.tools_needed_by(('media',)))
+        output = io.StringIO()
+        with patch.object(runner.test_evidence, 'unspawnable_tools', return_value=(blocked,)), \
+             contextlib.redirect_stdout(output):
+            runner.environment_preflight(('checks',))
+            with self.assertRaisesRegex(SystemExit, '3'):
+                runner.environment_preflight(('media',))
+        self.assertIn('本次范围不需要', output.getvalue())
+
+    def test_shards_and_the_explicit_switch_skip_the_preflight(self):
+        """分片子进程的域由父进程定下，父进程已经查过同一套工具；开关留给判断过的人。"""
+        with patch.object(runner.test_evidence, 'unspawnable_tools', return_value=('git',)), \
+             contextlib.redirect_stdout(io.StringIO()):
+            runner.environment_preflight(('checks',), shard_count=2)
+            with self.assertRaisesRegex(SystemExit, '3'):
+                runner.environment_preflight(('checks',), shard_count=1)
+        switched = io.StringIO()
+        with patch.object(runner.test_evidence, 'unspawnable_tools', return_value=('git',)), \
+             patch.dict(os.environ, {'PEACH_SKIP_PREFLIGHT': '1'}), \
+             contextlib.redirect_stdout(switched):
+            runner.environment_preflight(('checks',))
+        self.assertIn('PEACH_SKIP_PREFLIGHT=1', switched.getvalue())
 
     def test_dependency_changes_require_full_but_tool_version_does_not(self):
         source = '[project]\nrequires-python=">=3.12"\ndependencies=["demo==1"]\n[tool.uv]\nrequired-version="==1"\n'

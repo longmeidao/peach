@@ -489,15 +489,54 @@ def run_shards(scopes: tuple[str, ...], *, jobs: int, shard_count: int,
     return passed, count, timings
 
 
-def environment_preflight(timings: Path | None = None) -> None:
-    """外部工具若被执行权限挡住，在创建测试分片前给出一条可操作的结论。"""
+def tools_needed_by(scopes: tuple[str, ...]) -> frozenset[str]:
+    """本次选中的测试文件真正会用到的外部工具。
+
+    判据是「选中的源码里出现了这个工具名」，不是一张手写的域到工具的表：测试搬域、
+    新测试引入新工具时，手写的表会静静过期，而过期的表比没有表更坏——它会拿一个
+    本次根本不启动的工具去挡住一次只改文档的 `checks`。
+    """
+    names = tuple(name for name, _ in test_evidence.TOOL_PROBES)
+    needed: set[str] = set()
+    for path in {path for scope in scopes for path in selected_files(scope)}:
+        try:
+            source = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        needed.update(name for name in names if name in source)
+    return frozenset(needed)
+
+
+def environment_preflight(scopes: tuple[str, ...], timings: Path | None = None,
+                          *, shard_count: int = 1) -> None:
+    """外部工具若被执行权限挡住，在创建测试分片前给出一条可操作的结论。
+
+    只有本次真的会用到的工具才判失败。受限环境里 ffmpeg 起不来是事实，但它不该挡住
+    一次只改文档的 `checks`：那一轮一个媒体用例都不加载，硬失败只是把人赶出正式入口。
+    其余工具仍然报出来，免得后面的失败被当成别的原因。
+
+    分片子进程直接返回：域由父进程定下，它在切片前查过同一套工具，每片各查一遍只会
+    把同一条结论打印 N 遍。
+    """
+    if shard_count > 1:
+        return
     blocked = test_evidence.unspawnable_tools()
     if not blocked:
         return
-    names = "、".join(blocked)
-    print(f"Peach 测试环境无法启动 PATH 中的工具：{names}。"
+    if os.environ.get("PEACH_SKIP_PREFLIGHT") == "1":
+        print(f"跳过外部工具预检（PEACH_SKIP_PREFLIGHT=1）：{'、'.join(blocked)}", flush=True)
+        return
+    needed = tools_needed_by(scopes)
+    fatal = tuple(name for name in blocked if name in needed)
+    spared = tuple(name for name in blocked if name not in needed)
+    if spared:
+        print(f"本次范围不需要这些启动受限的工具，只作提示：{'、'.join(spared)}", flush=True)
+    if not fatal:
+        return
+    print(f"Peach 测试环境无法启动 PATH 中的工具：{'、'.join(fatal)}。"
           "Windows Codex 任务请让 scripts/test.ps1 通过受控提权在正常 PowerShell 权限下运行；"
-          "其他环境请先修复这些工具的执行权限。不要改单测或跳过用例。", flush=True)
+          "其他环境请先修复这些工具的执行权限。不要改单测或跳过用例。"
+          "确认本次无关时用 PEACH_SKIP_PREFLIGHT=1 跳过预检。", flush=True)
     if timings is not None:
         timings.write_text(json.dumps({"success": False, "count": 0, "timings": []}),
                            encoding="utf-8")
@@ -524,7 +563,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.list_scopes:
         print("\n".join(("full", "auto", *SCOPES)))
         return 0
-    environment_preflight(args.timings)
     requested: tuple[str, ...] = tuple(dict.fromkeys(args.scopes or ("auto",)))
     if "auto" in requested and len(requested) > 1:
         parser.error("auto 不能与别的域同时指定")
@@ -536,6 +574,7 @@ def main(argv: list[str] | None = None) -> int:
             paths = changed_files(ROOT, args.base)
             scopes, explanation = scopes_for_changes(paths, contents=changed_contents(ROOT, args.base, paths))
         print(explanation, flush=True)
+    environment_preflight(scopes, args.timings, shard_count=args.shard_count)
     files = {path for scope in scopes for path in selected_files(scope)}
     print(f"Peach test scope: {' '.join(scopes)} ({len(files)} files)", flush=True)
     if args.shard_count > 1:
