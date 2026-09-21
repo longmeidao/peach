@@ -56,7 +56,7 @@
       "url": "https://fiu758.com/?cat=37",
       "snapshot": "docs/reference-snapshots/fiu758-studio-logo-discovery.md",
       "checked_on": "2026-08-27",
-      "sha256": "d7878183896e238900cc476c5f0c293a2f1b31684dcde0fad42798c1069b7de9",
+      "sha256": "18c384344c0889885ba236081d75db5675902f78d88859230290b57c8ed3d427",
       "role": "只作厂牌日文分类名和 Logo 候选发现；第三方博客不直接升级为 Peach 真相或已安装素材。",
       "consumers": [
         "scripts/normalize_studio_logos.py",
@@ -141,7 +141,7 @@
       "url": "https://beeg.com/SweetieFox",
       "snapshot": "docs/reference-snapshots/beeg-profile-layout.md",
       "checked_on": "2026-08-30",
-      "sha256": "4f3ae0154c3f5d2d9c8c42203557eb4498d98eff1412fdf2209b8e4c5a9ac386",
+      "sha256": "324fd6f91be176898d8564ca807fcc326bbe04730f4eae6a6941a5b69edb2135",
       "role": "女优、厂牌与关注页的无标题信息轨道参考；资料页以单个 32px PicsIcon 在标签左侧切换视频与照片，合集详情按 Peach 现有详情结构适配。",
       "consumers": [
         "web/css/",
@@ -188,7 +188,7 @@
       "url": "https://vercel.com/<account>/~/settings/notifications",
       "snapshot": "docs/reference-snapshots/vercel-notifications-note.md",
       "checked_on": "2026-08-30",
-      "sha256": "022ff589df68eded7830aa5d655735d196eef7d9f75cb744342bf8a9a82dbb90",
+      "sha256": "c0193723048db3c8e180798eb6b770e4953facf2f3a6f3f2d7050ac981fbbe94",
       "role": "口味页底部补充说明的中性 Note 结构依据；信息图标使用 2px 圆端描边，无真实动作时不伪造链接。",
       "consumers": [
         "web/css/",
@@ -202,7 +202,7 @@
       "url": "https://www.youtube.com/watch?v=jNQXAC9IVRw",
       "snapshot": "docs/reference-snapshots/youtube-player-controls-user-screenshot.md",
       "checked_on": "2026-09-04",
-      "sha256": "04750ce7eab99620f6db809bba114cef8b655f99beda4071f0874ff85b3ea2b0",
+      "sha256": "56082f84a3d1ef68ec02431959b6fa72d95b666d52531e665ea2da418aee89c3",
       "role": "实际 YouTube e937390a DOM、CSS、JS 与用户截图锁定播放器几何、状态和设置面板；官方帮助锁定氛围模式和影院模式语义。；窄屏折叠门槛与统一悬停提示取自播放器 9470c977 的 www-player.css 与 base.js。",
       "consumers": [
         "web/css/",
@@ -218,7 +218,7 @@
       "url": "https://github.com/slive777/OpenAver",
       "snapshot": "docs/reference-snapshots/openaver-related-ranking.md",
       "checked_on": "2026-08-31",
-      "sha256": "43bba6cccf989409e5a7c71fd9304cc5df19974df547984d24f1f097cef4144a",
+      "sha256": "5db4200a5d3c19b7bb105376e6f8fab760302940f0059b8d00d50bb2dbdf2690",
       "git": {
         "repository": "https://github.com/slive777/OpenAver.git",
         "ref": "refs/heads/main",
@@ -238,7 +238,7 @@
       "url": "https://www.youtube.com/",
       "snapshot": "docs/reference-snapshots/youtube-stats-buffer-measured.md",
       "checked_on": "2026-08-29",
-      "sha256": "e013aba1ecef37c3c911c909d1cd9ad9a46a53214d7f790448181fb3f434d558",
+      "sha256": "cc2d01738821be9c0aff2c9c772bc015ae02ca7d4feae6336dd8194e4d6efdc7",
       "role": "播放统计中的连接速度、网络活动和缓冲健康滚动历史图参考；Peach 保留自己的播放器、色彩与数据口径。时间轴不采用本条，见快照的移植说明。",
       "consumers": [
         "web/css/",
