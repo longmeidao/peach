@@ -172,7 +172,7 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
         {source.accepts_cookie ? <>
           <p className="text-body-2-regular text-text-secondary">
             {source.cookie_saved
-              ? 'Cookie 已保存，登录是否有效请在抓取时确认。'
+              ? 'Cookie 已保存；登录是否有效要到抓取时才知道。'
               : '需要登录时，任选一种方式提供 Cookie。'}
           </p>
           {/* 两种方式互斥，交上去的只能是其中一种：切换时把另一种的输入清掉，
@@ -305,7 +305,7 @@ export function ScrapingPage({ toast }: ScrapingProps) {
   }
   return (
     <Page>
-      <p className="text-body-2-regular text-text-secondary">高清图片可能需要代理才能下载，请先检查连接。</p>
+      <p className="text-body-2-regular text-text-secondary">高清图片可能要经代理才能下载，先检查连接。</p>
       <CoverCard toast={toast} />
       {(data.sources || []).map(
         (source) => <SourceCard key={source.source} source={source} toast={toast} />)}

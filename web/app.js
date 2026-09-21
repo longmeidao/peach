@@ -309,7 +309,7 @@ const MANAGEMENT_PLACEHOLDERS={
   '/configuration':()=>configurationSkeletonHtml(),
   /* 采集来源是 812px 窄列里一叠同宽的 Fieldset：一块高清封面加六个来源。骨架画四块，
      那是首屏装得下的张数；说明那一句是静态文案，与数据无关，立刻显示。 */
-  '/scraping':()=>`<div class="scraping-page"><p>高清图片可能需要代理才能下载，请先检查连接。</p>
+  '/scraping':()=>`<div class="scraping-page"><p>高清图片可能要经代理才能下载，先检查连接。</p>
     ${pageSkeletonHtml('正在读取采集来源',{cards:true,count:4,fill:false,className:'cleanup-skeleton'})}</div>`,
 };
 /* 关注管理的骨架要照用户上次选的视图画：等数据的这段时间画成卡片、数据到了换成表格
@@ -1109,8 +1109,8 @@ async function syncMachineSettings(){
   if(!open())return;
   if(runtime)runtimeConfigurable=!!runtime.configurable;
   if(!runtime||!runtimeConfigurable){
-    host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新属于运行 Peach 服务的设备；在该设备的浏览器打开设置进行修改。',
-      {label:'该配置需在服务端设备修改'});
+    host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新只能在运行 Peach 服务的那台设备上改：在它的浏览器里打开设置。',
+      {label:'在服务端设备修改'});
     list();
     return;
   }
@@ -1306,7 +1306,7 @@ const postSetupTutorialTasks=async()=>{
         :'当前关注来源不需要凭证。',
       href:'/follow-manage?tab=source',done:credentialsReady,icon:'key-round'},
     {key:'review',label:'处理首次复核',description:!libraryReady
-      ?'扫描完成后，会在这里列出需要你判断的资料。':pendingReview
+      ?'扫描完成后，这里会列出需要复核的资料。':pendingReview
         ?`还有 ${pendingReview.toLocaleString()} 条需要复核。`:'首次复核队列已清空。',
       href:'/review',done:libraryReady&&pendingReview===0,icon:'square-check-big'},
   ];
@@ -1327,7 +1327,7 @@ const postSetupTutorialHtml=(tasks,skippedCount,totalCount)=>{
       <header class="post-setup-notification-head">
         <span class="post-setup-notification-icon" aria-hidden="true">${icon('compass')}</span>
         <div><h2>完成 Peach 的安装教程</h2>
-        <p>已处理 ${completeCount}/${totalCount} 项，完成后会自动打勾。</p></div>
+        <p>已处理 ${completeCount}/${totalCount} 项。</p></div>
         <button class="post-setup-collapse" type="button" data-tutorial-collapse aria-controls="postSetupTaskList" aria-expanded="${!collapsed}"
           aria-label="${collapsed?'展开安装教程':'折叠安装教程'}">${icon(collapsed?'chevron-up':'chevron-down')}</button>
       </header>
@@ -1419,7 +1419,7 @@ async function syncPostSetupTutorial(){
     /* 取数失败时这张卡是死的：没有清单，也没有下一步。给一条重试和一个关闭，
        不然它只能一直杵在右下角占着地方。 */
     root.innerHTML=`<article class="post-setup-notification post-setup-error">${icon('alert')}
-      <div><h2>暂时无法检查安装进度</h2><p>Peach 会在你切换页面或重新打开后检查。</p>
+      <div><h2>暂时无法检查安装进度</h2><p>切换页面或重新打开后会再检查一次。</p>
       <div class="post-setup-error-actions"><button class="geist-button" type="button" data-tutorial-retry>重试</button>
       <button class="geist-button" type="button" data-tutorial-dismiss>关闭</button></div></div></article>`;
     root.removeAttribute('aria-busy');
@@ -2835,7 +2835,7 @@ $('#batchbar').querySelector('[data-batch-region]').onclick=async()=>{
   const ids=[...selected];if(!ids.length)return;
   const modal=formModal({
     title:'判定产地',
-    description:`选中的 ${ids.length} 项归为同一个产地。这是你的判断，之后的刮削和自动推断都不会改写它。`,
+    description:`选中的 ${ids.length} 项归为同一个产地。判定之后，刮削和自动推断不再改写产地。`,
     body:`<div class="chips" role="group" aria-label="产地">`+REGION_CHOICES.map(([key,label])=>
       `<button type="button" class="chip" aria-pressed="false" data-region-pick="${key}">
         <span class="chip-label">${label}</span></button>`).join('')+`</div>`,
@@ -4638,7 +4638,7 @@ async function wireLinkManager(){
     const retryRow=retryable.length?`<div class="linkretryrow">
       <button class="resourceaction primary" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
       <button class="resourceaction primary" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
-    const unclear=table('本次未访问成功',payload.unclear||[],'未必失效：部分站点拒绝程序访问，也可能是临时故障。这些链接保留，可勾选后单独重试。',{pick:retryable.length>0,footer:retryRow});
+    const unclear=table('本次未访问成功',payload.unclear||[],'站点拒绝程序访问或一次临时故障都会落在这里。链接保留，可勾选后单独重试。',{pick:retryable.length>0,footer:retryRow});
     const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
       <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
     const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接均可访问。</p>':'';
@@ -5673,8 +5673,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       <div class="smeta mono" data-reveal-line><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
-      <p class="fnote followmediaissue" data-media-load-issue hidden>媒体没有取回来：上游这一次没给出内容，多半是站点在限流——过一阵再打开。</p>
-      <p class="fnote followmediaissue" data-media-thumb-fallback hidden>原图没取回来，这里先显示缩略图：上游拦下了这一次请求。</p>
+      <p class="fnote followmediaissue" data-media-load-issue hidden>媒体未取回：上游这一次没有返回内容，多半是站点限流，过一阵再打开。</p>
+      <p class="fnote followmediaissue" data-media-thumb-fallback hidden>原图未取回，先显示缩略图：上游拦下了这一次请求。</p>
       ${followResourceLinks(item)}
       <div class="fb followdetailactions">
         <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
@@ -7299,9 +7299,9 @@ function renderPhotoWall(kind,name,filters,data,append=false){
    「文件没了」，那个闸门在服务端：整条来源不在线时直接拒绝，一行都不动。
    路径始终由服务端按 asset id 查，前端拿不到也不该拿到 `path`。 ── */
 const SOURCE_HINTS={
-  'source offline':'来源不在线，已拒绝对账（避免把没挂上的盘当成文件被删）',
+  'source offline':'来源不在线，这一次不对账；接上这个来源后重试',
   'source not mapped':'本机没有映射这个来源的盘符',
-  'file missing':'源文件已经不在了，点右边同步把账本对齐',
+  'file missing':'源文件已不在盘上；点右边的同步把账本对齐',
   'unsupported platform':'当前服务端系统不支持直接定位文件',
   'reveal failed':'打开文件管理器失败，请重试',
 };
@@ -8983,7 +8983,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
         <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
         ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}
         ${it.region_label?`<button class="detailmetaitem regionlink" type="button" data-open-region="${esc(it.region)}"
-          title="${it.region_settled?'你判定的产地；打开同产地的作品':'按番号或厂牌推断的产地，选中它批量判定后不再变；打开同产地的作品'}"
+          title="${it.region_settled?'已判定的产地；打开同产地的作品':'按番号或厂牌推断的产地，批量判定后不再变；打开同产地的作品'}"
           >${icon('globe')}<span>${esc(it.region_label)}${it.region_settled?'':'（推断）'}</span></button>`:''}</div>
       <div class="detailidentity">${identityRows}</div>
       <div class="stags" id="detailTags"></div>

@@ -41,7 +41,7 @@ export function PeachProxy({ initial, receipt }: { initial: PeachProxyState; rec
   return (
     <Section id="peachProxy" title="Peach 代理" onSubmit={submit}>
       <Rows>
-        <SettingsRow label="连接方式" description="采集来源选择“Peach 代理”时共用此设置。">
+        <SettingsRow label="连接方式" description="采集来源选「Peach 代理」时共用这里的连接方式。">
           <Select aria-label="连接方式" selectedKey={mode} onSelectionChange={(key) => { if (key !== null) setMode(String(key)); }}>
             {PROXY_MODES.map(([key, name]) => <SelectItem key={key} id={key}>{name}</SelectItem>)}
           </Select>

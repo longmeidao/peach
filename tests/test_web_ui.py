@@ -4761,7 +4761,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".followdetailmedia.framed .followdetailposter{width:100%;aspect-ratio:var(--follow-frame-ratio)}", online)
         self.assertCode("if(fallback&&el.getAttribute('src')!==fallback){")
         self.assertCode("el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}")
-        self.assertPageContains("data-media-thumb-fallback hidden>原图没取回来，这里先显示缩略图")
+        self.assertPageContains("data-media-thumb-fallback hidden>原图未取回，先显示缩略图")
         # 灯箱里翻到的每一张同样退回它自己的缩略图。
         self.assertCode("box.querySelectorAll('.photomain img').forEach((img,at)=>img.addEventListener('error',()=>{")
         self.assertCode("if(thumb&&img.getAttribute('src')!==thumb)img.src=thumb},{once:true}));")
@@ -4938,7 +4938,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "await mountIsland('configuration',host,\n"
             "    {receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings},{isCurrent:open});")
-        self.assertPageContains("{label:'该配置需在服务端设备修改'}")
+        self.assertPageContains("{label:'在服务端设备修改'}")
         # 弹层里那一份配置页已经由外面那圈分区页签管着，别再给它自己叠一排。
         self.assertPageContains("const config=document.querySelector('#stats .configpage');")
         # `runtimeConfigurable` 还有第二个用处：馆藏空态按它决定给不给「去配置媒体文件夹」。
@@ -4970,7 +4970,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const groups=[...settings.querySelectorAll(':scope > .settinggroup:not([hidden])')];")
         # 两条分支各自列出来：读不到服务端时那一句话也得有人能看见。
-        self.assertPageContains("{label:'该配置需在服务端设备修改'}")
+        self.assertPageContains("{label:'在服务端设备修改'}")
         self.assertPageContains("    list();\n    return;\n  }")
         # 挂到一半被关掉的那次不算数，否则留下的是一条点开什么都没有的「这台电脑」。
         self.assertPageContains("if(!open()){machineSettingsMounted=false;return}")
@@ -5260,7 +5260,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('<Note tone="error" title={`${failures.length} 个来源检查失败`}',
                       (follow / "source-list.tsx").read_text(encoding="utf-8"))
         credentials = (follow / "credentials.tsx").read_text(encoding="utf-8")
-        self.assertIn("const WORLD_READABLE = '文件权限过宽，请在运行 Peach 的 POSIX 主机上收紧为 0600。'",
+        self.assertIn("const WORLD_READABLE = '文件权限过宽。在运行 Peach 的 POSIX 主机上收紧为 0600。'",
                       credentials)
         self.assertIn('<Note tone="error" title="凭据文件权限过宽">{WORLD_READABLE}</Note>', credentials)
         self.assertPageLacks('class="fnote warn"')
@@ -12259,8 +12259,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-folder-open"')
 
     def test_offline_source_is_reported_as_a_refusal_not_a_failure(self):
-        # 盘没挂上时拒绝对账，措辞必须让人看懂「不是出错，是我不敢删」。
-        self.assertPageContains("'source offline':'来源不在线，已拒绝对账")
+        # 盘没挂上时跳过对账，措辞要点明来源状态和恢复办法，别读成一次失败。
+        self.assertPageContains("'source offline':'来源不在线，这一次不对账；接上这个来源后重试'")
 
     def test_photo_view_is_addressable_and_survives_a_reload(self):
         self.assertPageContains("params.get('media')==='photos'?'photos':'videos'")

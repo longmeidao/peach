@@ -48,7 +48,7 @@ const MENU_ROW = cx(MENU_ITEM, MENU_ITEM_INTERACTIVE, 'text-body-2-medium');
 /* 中文正文写成常量：JSX 里换行的文字会在接缝处多出一个空格，中文句子里看得见。 */
 const CARD_TEXT = '扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，'
   + '几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。';
-const STALLED_TEXT = '这个项目处理时间较长，暂时没有新进展。可以继续等待，或在任务结束后重试未完成项。';
+const STALLED_TEXT = '这一项耗时较长，暂时没有新进展。任务结束后可以重试未完成的部分。';
 /* 补齐女优资料是落库之后的一步，一趟里常常什么都不用补，那时这句话不出现：
    四个读数全是 0 还写一句「别名 0 个」，读的人分不清是没得补还是这一步没跑。 */
 const profileText = (state: LibraryProcessingData) => {

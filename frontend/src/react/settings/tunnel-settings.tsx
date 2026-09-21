@@ -25,7 +25,7 @@ const MODES: [TunnelState['mode'], string][] = [['quick', '临时链接'], ['nam
 
 const HELP: Record<TunnelState['mode'], string> = {
   quick: '只用于临时预览；地址随机、重启后会变化。启动前必须设置访问密码。',
-  named: '地址是你在 Cloudflare 后台绑定的公开主机名，重启后不变。启动前必须设置访问密码，'
+  named: '地址是 Cloudflare 后台绑定的公开主机名，重启后不变。启动前必须设置访问密码，'
     + '身份策略在 Cloudflare Access 里配置。',
 };
 
@@ -121,7 +121,7 @@ export function TunnelSettings({ revision: initialRevision, initial, receipt }: 
               : '在 Cloudflare Zero Trust 的隧道详情页复制。'} />
         </> : null}
         {!state.available
-          ? <Note tone="warning" title="找不到 cloudflared">请安装官方 cloudflared，或在设置文件的 tunnel.binary 指定路径，也可用 PEACH_CLOUDFLARED 指定。</Note>
+          ? <Note tone="warning" title="找不到 cloudflared">安装官方 cloudflared，或用设置文件的 tunnel.binary 与 PEACH_CLOUDFLARED 指定路径。</Note>
           : null}
         {state.state === 'running' && state.url
           ? <Note tone="info" title="公网地址"><ExternalLink href={state.url}>{state.url}</ExternalLink></Note>
@@ -130,7 +130,7 @@ export function TunnelSettings({ revision: initialRevision, initial, receipt }: 
         {state.error ? <ErrorText>{state.error}</ErrorText> : null}
         {action.error ? <ErrorText>{action.error}</ErrorText> : null}
       </Stack>
-      <Footer status={state.enabled ? '服务重启时会按设置尝试恢复。' : '默认关闭，不会自动暴露本机服务。'}>
+      <Footer status={state.enabled ? '服务重启时会按设置尝试恢复。' : '服务重启后保持关闭。'}>
         <Button onClick={toggle} {...busyProps(action.busy === 'toggle')}>
           {active ? '停止公网入口' : '启动公网入口'}
         </Button>

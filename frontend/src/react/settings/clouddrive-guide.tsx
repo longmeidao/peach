@@ -20,7 +20,7 @@ export function CloudDriveGuide() {
         <ExternalLink href="https://www.clouddrive2.com/help.html">挂载帮助</ExternalLink>
       </Help>
       <Disclosure summary="CloudDrive 缓存建议">
-        <Help>看缓存放在哪块硬盘上，照那一档填。这是起步值，填得越大不一定越快。</Help>
+        <Help>看缓存放在哪块硬盘上，照那一档填。这是起步值，按实际播放表现再调。</Help>
         {/* 三档同形、跨档比较：窄处每档一块纵排，宽处三项读数排成三列对齐。 */}
         <ul aria-label="按缓存所在硬盘分档" className="flex flex-col gap-2">
           {CLOUDDRIVE_PROFILES.map((profile) => (
@@ -43,7 +43,7 @@ export function CloudDriveGuide() {
           <li>Buffer Cache 占内存，磁盘缓存和文件夹缓存占硬盘，改一个管不住另外两个。</li>
         </ul>
         <Help>
-          三处缓存分别管什么、这几个值怎么往上调、码率和速度怎么换算、线程上限与直链代理怎么取舍，以及这些起步值的来源，都在
+          三处缓存的分工、往上调的方法和这些起步值的来源在
           <ExternalLink href="https://github.com/longmeidao/peach/blob/master/docs/CLOUDDRIVE.md">CloudDrive 配置与调优</ExternalLink>。
         </Help>
       </Disclosure>

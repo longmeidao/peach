@@ -40,7 +40,7 @@ const RANKING_PREVIEW = 10;
 
 const CARD = `${cardClass()} flex flex-col gap-4`;
 
-const NO_VIDEO_HINT = '添加媒体文件夹或关注来源，开始建立你的馆藏。';
+const NO_VIDEO_HINT = '添加媒体文件夹或关注来源后，这里会显示馆藏统计。';
 const NO_TAG_HINT = '补全资料或添加标签后，这里会显示馆藏中的内容标签。';
 const NO_WATCH_HINT = '开始播放后，这里会显示最近的真实观看证据。';
 const NO_TAG_SOURCE_HINT = '刮削或手动打标之后，这里会显示每个来源覆盖了多少视频。';

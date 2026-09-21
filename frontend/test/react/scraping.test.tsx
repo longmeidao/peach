@@ -116,7 +116,7 @@ it('保存后清空秘密输入，列表就地换成服务端回的那一条，�
     },
   });
   expect(password(host)?.value, '保存回来之后页面上不再留着刚交上去的那一份').toBe('');
-  expect(host.textContent).toContain('登录是否有效请在抓取时确认');
+  expect(host.textContent).toContain('登录是否有效要到抓取时才知道');
   expect(buttonNamed('撤销 Cookie', host)).not.toBeNull();
   expect(toast).toHaveBeenCalledWith('来源设置已保存');
   expect(calls.filter((call) => call.path === '/api/scraping' && call.method === 'GET'),
