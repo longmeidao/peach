@@ -135,6 +135,52 @@ class MediaCacheHeaderTests(unittest.TestCase):
 
 
 @unittest.skipUnless(HAS_DEPS, "FastAPI/httpx 尚未安装")
+class RobotsTests(unittest.IsolatedAsyncioTestCase):
+    """整站不进搜索引擎。
+
+    响应头覆盖每一个响应，`/robots.txt` 与两页 `<meta>` 覆盖爬虫会主动去读的位置。
+    公网入口一开，这个站就在互联网上，收录了就再也收不回来，所以不按部署开关。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.TemporaryDirectory()
+        root = Path(cls.tmp.name).resolve()
+        cls.app = create_app(PeachSettings(
+            configured=True, db_path=root / "ledger.db", follow_state_root=root / "state"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.app.state.http_transport.close()
+        cls.tmp.cleanup()
+
+    def client(self):
+        return httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url="http://testserver")
+
+    async def test_robots_txt_is_readable_without_signing_in(self):
+        async with self.client() as client:
+            response = await client.get("/robots.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "User-agent: *\nDisallow: /\n")
+
+    async def test_every_response_carries_the_robots_header(self):
+        async with self.client() as client:
+            for path in ("/robots.txt", "/healthz", "/login", "/favicon.ico", "/api/items"):
+                with self.subTest(path=path):
+                    response = await client.get(path)
+                    self.assertEqual(
+                        response.headers["x-robots-tag"], "noindex, nofollow, noarchive")
+
+    def test_the_login_page_and_the_app_shell_declare_noindex(self):
+        # 这份服务没有口令，`/login` 会直接跳回首页；声明本身在页面源里。
+        self.assertIn('<meta name="robots" content="noindex, nofollow">',
+                      routes_auth.login_html("/"))
+        shell = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn('<meta name="robots" content="noindex, nofollow">', shell)
+
+
+@unittest.skipUnless(HAS_DEPS, "FastAPI/httpx 尚未安装")
 class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -2212,6 +2258,8 @@ PUBLIC_ROUTES = {
     ("GET,HEAD", "/favicon.ico"),
     ("GET,HEAD", "/favicon.svg"),
     ("GET,HEAD", "/peach-logo.png"),
+    # 拒绝收录的声明。爬虫没有会话，被 401 挡住等于这份声明根本没被读到。
+    ("GET,HEAD", "/robots.txt"),
 }
 
 

@@ -199,7 +199,11 @@ def login_html(next_path: str, *, invalid: bool = False) -> str:
     return (
         '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<meta name="color-scheme" content="light dark"><title>登录 Peach</title>'
+        '<meta name="color-scheme" content="light dark">'
+        # 公网入口在跑的时候这一页就在互联网上，不希望它进任何搜索结果。
+        # 响应头那一份（`X-Robots-Tag`）管所有响应，这一行管只读 HTML 的爬虫。
+        '<meta name="robots" content="noindex, nofollow">'
+        '<title>登录 Peach</title>'
         # 图标声明和主站同一份。书签地址是 `/`，没有会话时这一页就是它实际停在的地方：
         # 这里不声明，浏览器只会去要 `/favicon.ico`，把「这个站没有图标」记进书签。
         '<link rel="icon" href="/favicon.ico" type="image/x-icon">'

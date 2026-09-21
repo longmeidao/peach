@@ -42,6 +42,11 @@ from .web_state import FAVICON
 
 router = APIRouter()
 
+#: 整站的收录态度，`api.py` 的中间件给每个响应都挂上这一份。Peach 是一个人的私人
+#: 馆藏，任何一次公网暴露都不该在搜索引擎里留下痕迹：不收录、不跟随、不留快照。
+ROBOTS_TAG = "noindex, nofollow, noarchive"
+ROBOTS_TXT = "User-agent: *\nDisallow: /\n"
+
 #: 回环地址的三种写法。既用来判提交端点的调用方，也用来判「只有这台电脑」那个监听选择。
 _LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
 
@@ -901,6 +906,18 @@ def app_bundle(request: Request, name: str,
         return PlainTextResponse("missing", status_code=404)
     media = "text/css" if name.endswith(".css") else "text/javascript"
     return asset_response(request, path, media)
+
+
+@router.api_route("/robots.txt", methods=["GET", "HEAD"])
+def robots_txt():
+    """不要求登录：爬虫拿不到会话，被 401 挡住就等于没读到这份声明。
+
+    响应头里那一条才是真闸门（登录页、资产与 API 都带着它）；这一份只是把同一个
+    结论放在爬虫会主动来取的固定路径上。
+    """
+    response = PlainTextResponse(ROBOTS_TXT)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @router.api_route("/favicon.svg", methods=["GET", "HEAD"])
