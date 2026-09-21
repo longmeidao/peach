@@ -29686,10 +29686,10 @@ function iT(e) {
 }
 //#endregion
 //#region src/react/library-processing/library-processing-notice.tsx
-var aT = "flex min-h-10 flex-wrap items-center justify-center gap-x-4 gap-y-2 border-y border-separator-border px-6 py-2 max-sm:justify-start", oT = {
-	gray: `${aT} bg-background-secondary-default text-text-secondary`,
-	warning: `${aT} bg-status-yellow-background text-status-yellow-text`,
-	error: `${aT} bg-background-tertiary-error text-text-error-primary`
+var aT = "flex min-h-10 flex-wrap items-center justify-center gap-x-4 gap-y-2 border-y px-6 py-2 max-sm:justify-start", oT = {
+	gray: `${aT} border-separator-border bg-background-secondary-default text-text-secondary`,
+	warning: `${aT} border-current/35 bg-status-yellow-background text-status-yellow-text`,
+	error: `${aT} border-current/35 bg-background-tertiary-error text-text-error-primary`
 };
 function sT({ value: e, max: t }) {
 	let n = Math.max(0, Math.min(100, e / t * 100));

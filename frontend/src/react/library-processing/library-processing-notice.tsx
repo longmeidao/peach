@@ -20,12 +20,15 @@ type Tone = 'gray' | 'warning' | 'error';
 /* 旧 `.project-banner`：通栏一条，只有上下两条线、没有圆角也没有左右边——它压在目录页
  * 内容上方，圆角卡会把自己读成页面上的一块内容，而它说的是「别处有件事在进行」。 */
 const BANNER = 'flex min-h-10 flex-wrap items-center justify-center gap-x-4 gap-y-2'
-  + ' border-y border-separator-border px-6 py-2 max-sm:justify-start';
+  + ' border-y px-6 py-2 max-sm:justify-start';
 
+/* 上下两条线跟着语气走：中性那档是页面分隔线，出事那两档取自己的文字色淡一档
+ * （`border-current/35`）。红底上横一条中性灰线，读起来是把这一条切成了两半，
+ * 而不是这一块整个在说同一件事。 */
 const SURFACE: Record<Tone, string> = {
-  gray: `${BANNER} bg-background-secondary-default text-text-secondary`,
-  warning: `${BANNER} bg-status-yellow-background text-status-yellow-text`,
-  error: `${BANNER} bg-background-tertiary-error text-text-error-primary`,
+  gray: `${BANNER} border-separator-border bg-background-secondary-default text-text-secondary`,
+  warning: `${BANNER} border-current/35 bg-status-yellow-background text-status-yellow-text`,
+  error: `${BANNER} border-current/35 bg-background-tertiary-error text-text-error-primary`,
 };
 
 /** 进度环。几何走 SVG 属性：一圈长度钉成 100，画出来的那一段就是百分比本身。 */
