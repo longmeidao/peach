@@ -166,6 +166,20 @@ async function openProcessing(
   return opened;
 }
 
+/** 1280 的桌面视口比 `--board-content` 还窄，量不出「网格铺满、标题居中」这类差别。 */
+const WIDE = { name: 'wide', width: 1600, height: 900, mobile: false };
+
+/** 垃圾文件页。计数行由页面自己画，演示库里一条候选都没有时它照样在。 */
+async function openJunk(browser: Browser): Promise<Visit> {
+  const opened = await visit(browser, '/junk-files', WIDE);
+  await expectBody(opened.page, '/junk-files', [
+    opened.page.locator('#count .collection-summary'),
+    opened.page.locator('#count .junkfilters'),
+  ]);
+  await settle(opened.page);
+  return opened;
+}
+
 /** 打开目录并等到读数与卡片一起替下首屏骨架。 */
 async function openCatalog(browser: Browser): Promise<Visit> {
   const opened = await visit(browser, '/', DESKTOP);
@@ -1007,6 +1021,70 @@ describe('设计决定', () => {
       }
       assert.deepEqual(after.edge, after.line, '复核卡的框线没走 separator-border');
       assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('垃圾文件的计数行是两块看得见、跟标题同宽的面', { timeout: 60_000 }, async () => {
+    const opened = await openJunk(browser);
+    try {
+      /* 三件事一起量，它们是同一条：这一行装着摘要和分类切换两块整宽的面，横排时后者
+         被挤成 0 宽；两块面和网格只要有一支不受 --board-content 约束，宽屏上标题就缩在
+         中间、卡片顶着两边；浅色下 primary 就是页面底色，不换一档这两块面整个消失。 */
+      const box = await opened.page.evaluate(() => {
+        // 浅色是两块面最容易消失的那一档：深色下 primary 本来就比页面亮一级。
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.classList.remove('dark');
+        const span = (selector: string) => {
+          const rect = document.querySelector(selector)!.getBoundingClientRect();
+          return { left: Math.round(rect.left), width: Math.round(rect.width) };
+        };
+        const face = (selector: string) =>
+          getComputedStyle(document.querySelector(selector)!).backgroundColor;
+        return {
+          title: span('#manageTitle'),
+          summary: span('#count .collection-summary'),
+          filters: span('#count .junkfilters'),
+          grid: span('#grid'),
+          summaryFace: face('#count .collection-summary'),
+          filtersFace: face('#count .junkfilters'),
+          page: getComputedStyle(document.body).backgroundColor,
+        };
+      });
+      assert.ok(box.filters.width > 0, '分类切换被摘要挤成 0 宽，整条在宽屏上看不见');
+      for (const [label, measured] of [['摘要', box.summary], ['分类切换', box.filters],
+        ['网格', box.grid]] as const) {
+        assert.deepEqual(measured, box.title,
+          `${label}和标题不同宽：${measured.left}+${measured.width} 对 ${box.title.left}+${box.title.width}`);
+      }
+      assert.notEqual(box.summaryFace, box.page, '摘要那块面和页面底色同色，整块看不见');
+      assert.notEqual(box.filtersFace, box.page, '分类切换那块面和页面底色同色，整块看不见');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('垃圾文件等数据时画的仍是它自己那条计数行', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/junk-files', WIDE);
+    try {
+      /* 把等待态停在屏幕上：让这一页唯一那次取数挂着不回。等的只有读数，分类切换由
+         URL 决定、此刻就画得出最终样子；画成目录那条的话，等待期间摆着一排这一页根本
+         没有的换批与排序键，数据到货整行再换成另一种东西。 */
+      await opened.page.route('**/api/ads?**', () => {});
+      await opened.page.reload({ waitUntil: 'load' });
+      await opened.page.locator('#count .junkfilters').waitFor({ timeout: 15_000 });
+      const row = await opened.page.locator('#count').evaluate((node) => ({
+        busy: node.getAttribute('aria-busy'),
+        filters: node.querySelectorAll('.junkfilters a').length,
+        placeholder: node.querySelectorAll('.collection-summary .countskeleton').length,
+        sorts: node.querySelectorAll('.sorts').length,
+      }));
+      assert.equal(row.busy, 'true', '等待态没有对辅助技术公开');
+      assert.ok(row.filters > 0, '等待期间这一行没有分类切换');
+      assert.equal(row.placeholder, 1, '占位没有落在读数那一格');
+      assert.equal(row.sorts, 0, '等待期间摆着这一页没有的排序键');
     } finally {
       await opened.close();
     }

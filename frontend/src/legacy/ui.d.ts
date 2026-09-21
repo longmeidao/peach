@@ -12,7 +12,7 @@ export declare function emptyStateHtml(
   options?: { className?: string; actions?: string },
 ): string;
 
-export declare function collectionSummaryHtml(label: string, value: string, detail?: string): string;
+export declare function collectionSummaryHtml(label: string, value: string, detail?: string, options?: { pending?: boolean }): string;
 export declare function badgeHtml(text: string): string;
 export declare function checkboxHtml(inputAttrs?: string): string;
 export declare function loadingDotsHtml(label?: string, options?: { className?: string }): string;

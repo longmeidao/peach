@@ -1653,6 +1653,11 @@ body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;displa
 .collection-summary span{font:var(--board-body);color:var(--color-text-secondary)}
 .collection-summary strong{font:var(--board-title);color:var(--color-text-primary);font-variant-numeric:tabular-nums}
 .collection-summary p{margin:0;color:var(--color-text-secondary);font:var(--board-body)}
+/* 浅色下 primary 就是页面底色，这块不描边的面于是整个消失，读起来是数字直接落在页面上。
+   深色下 primary 比页面亮一档，本来就分得开——跟重复文件那两块面同一条判据。 */
+html:not(.dark) .collection-summary{background:var(--color-background-secondary-default)}
+/* 数字回来前占它的位置：跟着 --board-title 的 32px 走，行高 44px 容得下，数字到货不改行高。 */
+.collection-summary strong .countskeleton{width:96px;height:32px}
 body[data-surface="/review"] .review-workspace{display:grid;grid-template-columns:minmax(0,1fr) 184px;column-gap:24px;align-items:start}
 body[data-surface="/review"] .review-workspace>.reviewcontrols{grid-column:2;grid-row:1 / span 4;position:sticky;top:var(--topH);padding:16px 8px;background:var(--color-background-primary-default);border-radius:var(--surface-radius)}
 body[data-surface="/review"] .review-category-title{font:var(--board-caption);color:var(--muted);margin:0 12px 12px}
@@ -1698,15 +1703,24 @@ body[data-surface="/quality-goals"] .qualityitem{display:grid;grid-template-colu
 body[data-surface="/quality-goals"] .qualitycover{position:relative;display:grid;place-items:center;grid-row:1 / span 2;width:150px;aspect-ratio:16/10;border-radius:var(--control-radius);background:var(--color-background-tertiary-default)}
 .qualitybody{padding:4px 4px 0;min-width:0}
 .qualityactions{display:flex;justify-content:flex-end;padding:8px 4px 0;background:transparent}
+/* 垃圾文件的计数行装着两块整宽的面：上面是「待判断 N 个」那块摘要，下面是分类切换。
+   这一行仍按目录页的横排走的话，`width:100%` 的摘要把后面那条挤到 0 宽，而它自己
+   `min-width:0` 又带横向滚动，于是宽屏上分类切换整条看不见，只剩一块摘要贴着网格。 */
+body[data-surface="/junk-files"] #count{flex-direction:column;align-items:stretch;gap:16px;padding-inline:0}
 body[data-surface="/junk-files"] .junksummary{width:100%}
 body[data-surface="/junk-files"] .collection-summary{margin:0}
 body[data-surface="/junk-files"] .junkfilters{width:100%;padding:12px;gap:8px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
+/* 它是数据管理的子页：摘要、分类条、网格和加载哨兵跟标题、面包屑、区块切换条同宽。
+   只有网格那一支铺满内容区时，宽屏上标题居中缩在中间、卡片顶着两边，同一页有两条
+   对不上的左边界。 */
+body[data-surface="/junk-files"] :is(#count,#grid,#loadSentinel){width:100%;max-width:var(--board-content);margin-inline:auto}
 body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack>.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
 body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack .card{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden;gap:0}
 body[data-surface="/trash"] .gridstack .card .pic{border-radius:0}
 body[data-surface="/trash"] .gridstack .card>.meta{padding:16px 20px}
 body[data-surface="/trash"] #manageLede{padding:20px 24px;background:var(--color-background-primary-default);border-radius:var(--surface-radius);gap:16px;flex-wrap:wrap}
 body[data-surface="/trash"] #manageLede>span{font:var(--board-heading)}
+html:not(.dark) body[data-surface="/junk-files"] .junkfilters{background:var(--color-background-secondary-default)}
 body[data-surface="/junk-files"] .junkmeta{padding:20px}
 body[data-surface="/junk-files"] .junkactions{padding:12px;background:var(--color-background-secondary-default);flex-wrap:wrap}
 @media(max-width:900px){
