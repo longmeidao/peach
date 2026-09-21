@@ -63,9 +63,67 @@ class SlugTests(unittest.TestCase):
         self.assertEqual(len(urls), 8)   # 2 个 slug 写法 × 4 种域名形态
 
 
+class NormaliseTests(unittest.TestCase):
+    """比对前留下哪些字符，决定了整整一类厂牌能不能被判。"""
+
+    def setUp(self):
+        self.module = load_module()
+
+    def test_a_name_written_only_in_japanese_still_has_something_to_compare(self):
+        """账本 130 个有作品的厂牌里有 19 个一个拉丁字母都没有。
+
+        只留 ASCII 的话它们的 token 全是空串，`site_verdict` 第一步就判「没有可比对的
+        字符」；这些厂牌的域名又推不出来，`--seeds` 是唯一入口，于是人工查到的地址取回
+        什么都没用。实测 `https://www.1pondo.tv/` 返回 200、标题正是
+        `一本道 | 美を追求する高画質アダルト動画サイト`，照样被写成「没有官网」。
+        """
+        for name in ("一本道", "カリビアンコム", "スーパーモデルメディア", "俺の素人"):
+            self.assertTrue(self.module.normalise(name), name)
+
+    def test_the_prolonged_sound_mark_is_part_of_the_name_but_the_dot_is_not(self):
+        """`ー` 在名字里，`・` 是分隔符——两个都住在片假名区，取舍不能按区块一刀切。"""
+        self.assertEqual(self.module.normalise("スーパーモデルメディア"), "スーパーモデルメディア")
+        self.assertEqual(self.module.normalise("ソフト・オン・デマンド"), "ソフトオンデマンド")
+
+    def test_the_separators_that_never_line_up_are_still_stripped(self):
+        """全角括号、`【】` 和日文注音照旧剥掉，否则 `Idea Pocket` 那一类又对不上了。"""
+        self.assertEqual(
+            self.module.normalise("【IDEAPOCKET (アイデアポケット）】公式サイト"),
+            "ideapocketアイデアポケット公式サイト")
+
+    def test_different_studios_are_not_folded_onto_one_token(self):
+        """剥字符不能把两家压成同一个串。"""
+        self.assertNotEqual(self.module.normalise("MOODYZ"), self.module.normalise("MADONNA"))
+        self.assertNotEqual(self.module.normalise("一本道"), self.module.normalise("東京熱"))
+
+
 class VerdictTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
+
+    def test_a_japanese_only_name_is_judged_by_the_same_two_signals(self):
+        """`一本道` 实测：标题自述厂牌名 + 页面是成人站，和拉丁名厂牌走的是同一条路。"""
+        title = "一本道 | 美を追求する高画質アダルト動画サイト"
+        verdict, note = self.module.site_verdict(
+            "一本道", 200, page(title), title, "https://www.1pondo.tv/")
+        self.assertEqual(verdict, "ok")
+        self.assertIn("成人站", note)
+
+    def test_an_uncensored_site_that_says_video_the_other_way_is_still_adult(self):
+        """无码站普遍写「アダルト動画」「無修正」，不写「アダルトビデオ」。
+
+        少了这两个词，`www.1pondo.tv` 这种厂牌名自述得清清楚楚的真官网只能判 weak，
+        原因仅仅是站上用的是「動画」而不是「ビデオ」。
+        """
+        for filler in ("高画質アダルト動画サイト", "無修正オリジナル作品"):
+            self.assertTrue(self.module.ADULT.search(filler), filler)
+
+    def test_the_adult_check_still_turns_away_the_same_name_companies(self):
+        """放宽成人词不能把同名站一起放进来——那正是这条判据存在的理由。"""
+        for filler in ("Home | Hunter Engineering Company®",
+                       "Bazooka Bass Tubes 车载音响产品目录",
+                       "Madonna – Icon Community"):
+            self.assertIsNone(self.module.ADULT.search(filler), filler)
 
     def test_a_title_that_names_the_studio_is_accepted(self):
         """实测标题：分隔符、全角括号和日文注音都对不齐，剥到字母数字才可比。"""
@@ -318,8 +376,65 @@ class VerdictTests(unittest.TestCase):
         self.assertEqual(self.module.page_title(body), title)
 
 
+class AliasVerdictTests(unittest.TestCase):
+    """账本里的其他写法和规范名一起参与「页面自述厂牌名」那一道。"""
+
+    def setUp(self):
+        self.module = load_module()
+        # 实测 `https://www.tokyo-hot.com/` 的标题。
+        self.title = "年齢確認 | Tokyo-Hot 東京熱 無修正オリジナル徹底凌辱動画"
+
+    def test_the_canonical_name_alone_cannot_match_a_differently_written_site(self):
+        """账本挑了简体「东京热」当规范名，站上写的是日文新字体「東京熱」。
+
+        逐字比不上，而这不是页面的问题：页面不会知道账本挑了哪个写法。
+        """
+        verdict, note = self.module.site_verdict(
+            "东京热", 200, page(self.title), self.title, "https://www.tokyo-hot.com/")
+        self.assertEqual(verdict, "未取得")
+        self.assertIn("没有厂牌名", note)
+
+    def test_a_registered_alias_lets_the_page_declare_itself(self):
+        """别名是账本里这个实体自己的名字，不是从页面上猜出来的，所以不放松判据。"""
+        verdict, note = self.module.site_verdict(
+            "东京热", 200, page(self.title), self.title, "https://www.tokyo-hot.com/",
+            aliases=("Tokyo Hot", "Tokyo-Hot", "東京熱"))
+        self.assertEqual(verdict, "ok")
+        self.assertIn("成人站", note)
+
+    def test_the_note_says_which_spelling_matched(self):
+        """复核的人看到标题里写着别的写法，得能立刻明白为什么判成了 ok。"""
+        _, note = self.module.site_verdict(
+            "东京热", 200, page(self.title), self.title, "https://www.tokyo-hot.com/",
+            aliases=("東京熱",))
+        self.assertIn("東京熱", note)
+
+    def test_a_canonical_match_does_not_claim_an_alias(self):
+        """规范名自己对上的时候判词不加那半句，不然每一行都在解释一件没发生的事。"""
+        title = "年齢チェック | AVメーカー【MOODYZ】公式サイト"
+        _, note = self.module.site_verdict(
+            "MOODYZ", 200, page(title), title, "https://moodyz.com/", aliases=("ムーディーズ",))
+        self.assertEqual(note, "标题自述厂牌名，且页面是成人站")
+
+    def test_an_alias_does_not_rescue_a_page_that_is_not_adult(self):
+        """别名只替页面找回名字，成人语境那一条照旧要自己站住。"""
+        title = "Tokyo Hot Chicken | 東京熱 麻辣炸鸡"
+        verdict, _ = self.module.site_verdict(
+            "东京热", 200, page(title, "本店の営業時間のご案内。"), title,
+            "https://tokyohot-chicken.example/", aliases=("東京熱",))
+        self.assertEqual(verdict, "weak")
+
+    def test_a_name_and_aliases_that_are_all_unusable_say_so(self):
+        """一个可比对字符都凑不出来时要写清是「没得比」，不是「页面没提」。"""
+        title = "なにかのサイト"
+        verdict, note = self.module.site_verdict(
+            "・", 200, page(title), title, "https://example.com/", aliases=("＋＋",))
+        self.assertEqual(verdict, "未取得")
+        self.assertIn("没有可比对", note)
+
+
 class ConfirmedSiteTests(unittest.TestCase):
-    """用户确认的母公司官网：补一条页面上没有的信息，不是放宽判据。"""
+    """用户确认的官网：补一条页面上没有的信息，不是放宽判据。"""
 
     def setUp(self):
         self.module = load_module()
@@ -367,6 +482,25 @@ class ConfirmedSiteTests(unittest.TestCase):
             confirmed=reason)
         self.assertEqual(verdict, "未取得")
 
+    def test_m_girls_lab_is_confirmed_because_the_site_uses_another_brand_name(self):
+        """第二种形状：账本记的拉丁写法在站上根本不用，而账本也没有对应别名。
+
+        实测 `https://mko-labo.net/top` 返回 200、55 KB、标题
+        `トップ | 調教、全身奉仕、醜態...M女専門のAVメーカー【えむっ娘ラボ】公式`——
+        `M Girls' Lab` 这个串整站不出现，别名表里也没有「えむっ娘ラボ」可以对上，
+        所以 `aliases` 那条能查证的路走不通，只剩用户确认。
+        """
+        url, reason = self.module.CONFIRMED_SITES["M Girls' Lab"]
+        self.assertEqual(url, "https://mko-labo.net/top")
+        self.assertIn("えむっ娘ラボ", reason)
+        title = "トップ | 調教、全身奉仕、醜態...M女専門のAVメーカー【えむっ娘ラボ】公式"
+        without, _ = self.module.site_verdict(
+            "M Girls' Lab", 200, page(title), title, url)
+        self.assertEqual(without, "未取得")
+        verdict, _ = self.module.site_verdict(
+            "M Girls' Lab", 200, page(title), title, url, confirmed=reason)
+        self.assertEqual(verdict, "ok")
+
     def test_studios_outside_the_whitelist_are_judged_exactly_as_before(self):
         """白名单只影响列出来的那几行。少了这条，「加一行确认」就等于放宽了通用判据。"""
         title = "Bazooka Bass Tubes"
@@ -407,6 +541,7 @@ class PlatformRowTests(unittest.TestCase):
             "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
         writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
         writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT)")
         writer.execute("INSERT INTO entity VALUES(1,'studio','FC2-PPV')")
         writer.commit()
 
@@ -441,6 +576,9 @@ class LoadStudioTests(unittest.TestCase):
             "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
         writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
         writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT)")
+        writer.executemany("INSERT INTO entity_alias VALUES(?,?)",
+                           [(1, "Big Pictures"), (1, "ビッグ"), (2, "")])
         writer.executemany("INSERT INTO entity VALUES(?,?,?)",
                            [(1, "studio", "Big"), (2, "studio", "Small"),
                             (3, "performer", "人"), (4, "studio", "Empty")])
@@ -483,6 +621,19 @@ class LoadStudioTests(unittest.TestCase):
         """复核件的行序要可预期：给的顺序就是写出来的顺序。"""
         rows = self.module.load_named_studios(self.reader(), ["Small", "Big"])
         self.assertEqual([r["studio"] for r in rows], ["Small", "Big"])
+
+    def test_aliases_come_back_per_entity_and_only_for_the_ids_asked_for(self):
+        """别名一次查完：默认扫描有一百多家，每家一次往返换不来任何东西。"""
+        self.assertEqual(self.module.load_aliases(self.reader(), [1, 2, 4]),
+                         {1: ("Big Pictures", "ビッグ")})
+
+    def test_asking_for_nothing_does_not_hit_the_database(self):
+        """`--limit 0` 之后可能一家都不剩，空 IN 列表是个语法错误。"""
+        self.assertEqual(self.module.load_aliases(self.reader(), []), {})
+
+    def test_an_empty_alias_row_is_not_a_spelling(self):
+        """空串进了表，`site_verdict` 会拿到一个 normalise 后为空的写法：白占一次比对。"""
+        self.assertEqual(self.module.load_aliases(self.reader(), [2]), {})
 
     def test_a_name_the_ledger_does_not_have_fails_loudly(self):
         """拼错的名字必须报错。
@@ -580,6 +731,7 @@ class RunTrailTests(unittest.TestCase):
             "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
         writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
         writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT)")
         writer.execute("INSERT INTO entity VALUES(1,'studio','Prestige')")
         writer.commit()
         self.module.time = type("clock", (), {
@@ -665,6 +817,7 @@ class ConfirmedRunTests(unittest.TestCase):
             "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
         writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
         writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT)")
         writer.execute("INSERT INTO entity VALUES(1,'studio','SOD Create')")
         writer.commit()
         self.module.time = type("clock", (), {
@@ -702,6 +855,53 @@ class ConfirmedRunTests(unittest.TestCase):
         self.assertEqual(row["verdict"], "ok")
         self.assertEqual(row["final_url"], "https://www.sod.co.jp/")
         self.assertIn("用户", row["note"])
+
+
+class AliasRunTests(unittest.TestCase):
+    """别名要真的从账本走到判定里，不是只在 `site_verdict` 的参数上存在。"""
+
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = Path(tempfile.mkdtemp())
+        self.db = self.tmp / "ledger.db"
+        writer = sqlite3.connect(self.db)
+        self.addCleanup(writer.close)
+        writer.execute(
+            "CREATE TABLE entity(id INTEGER PRIMARY KEY, kind TEXT, canonical_name TEXT)")
+        writer.execute("CREATE TABLE asset(id INTEGER PRIMARY KEY, medium TEXT)")
+        writer.execute("CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER)")
+        writer.execute("CREATE TABLE entity_alias(entity_id INTEGER, alias TEXT)")
+        writer.execute("INSERT INTO entity VALUES(1,'studio','东京热')")
+        writer.executemany("INSERT INTO entity_alias VALUES(?,?)",
+                           [(1, "东京热"), (1, "東京熱")])
+        writer.commit()
+        self.module.time = type("clock", (), {
+            "sleep": lambda _self, seconds: None,
+            "monotonic": lambda _self: 0.0,
+        })()
+
+    def test_a_seeded_site_is_confirmed_through_the_ledger_alias(self):
+        """实测：账本规范名是简体「东京热」，`www.tokyo-hot.com` 的标题写的是「東京熱」。
+
+        这家的域名推不出来（名字里没有拉丁字母），`--seeds` 是唯一入口；别名接不上的话，
+        人工查到的地址取回 200 也只能写成未取得。规范名自己也登记在别名表里，判词不该
+        因此写成「对上的是别名『东京热』」。
+        """
+        import argparse
+        seeds = self.tmp / "seeds.csv"
+        seeds.write_text("studio,site\n东京热,https://www.tokyo-hot.com/\n", encoding="utf-8")
+        title = "年齢確認 | Tokyo-Hot 東京熱 無修正オリジナル徹底凌辱動画"
+        self.module.probe = lambda url, timeout, **kwargs: (200, page(title), url)
+        args = argparse.Namespace(
+            db=self.db, output=self.tmp / "out.csv", seeds=seeds,
+            min_assets=3, only=["东京热"], interval=0.0, timeout=1.0, limit=0)
+        self.assertEqual(self.module.run(args), 0)
+        from peach.review_csv import read_rows
+        row = read_rows(self.tmp / "out.csv")[0]
+        self.assertEqual(row["verdict"], "ok")
+        self.assertEqual(row["final_url"], "https://www.tokyo-hot.com/")
+        self.assertIn("東京熱", row["note"])
+        self.assertNotIn("「东京热」", row["note"])
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ import re
 import sqlite3
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -64,13 +65,24 @@ MIN_BODY = 5000
 # 缺的那一半是「这一页是不是 AV 厂牌站」。这不是补丁：我们要找的就是 AV 厂牌官网，
 # 成人语境本来就是判据的一部分。日站首页普遍带年龄门，这些词因此极稳；同时留下英文
 # 写法，免得把西方厂牌一律打成待复核。
+#
+# `アダルト動画` 与 `無修正` 是无码站那一头补上的：`www.1pondo.tv` 实测 200、标题正是
+# `一本道 | 美を追求する高画質アダルト動画サイト`，厂牌名自述得清清楚楚，却因为站上写的是
+# 「動画」而不是「ビデオ」被判成 weak。这两个词同样不会出现在 Hunter Engineering、
+# Bazooka、麦当娜那三个同名站上，判据的分辨力没有变松。
 ADULT = re.compile(
-    r"年齢認証|年齢チェック|AVメーカー|アダルトビデオ|アダルトDVD|18歳未満|成人向"
-    r"|adult video|adult dvd|porn|18\+|over 18", re.I)
+    r"年齢認証|年齢チェック|AVメーカー|アダルトビデオ|アダルトDVD|アダルト動画|無修正"
+    r"|18歳未満|成人向|adult video|adult dvd|porn|18\+|over 18", re.I)
 FIELDS = ("entity_id", "studio", "assets", "candidate_url", "final_url", "status",
           "bytes", "sha256", "title", "verdict", "note")
 
-#: 用户当场确认的母公司官网。**这不是放宽通用判据，是补一条页面上没有的信息。**
+#: 用户当场确认的厂牌官网。**这不是放宽通用判据，是补一条页面上没有的信息。**
+#:
+#: 两种形状都是「账本这边的名字和站上那个牌子对不起来，而对应关系只有人知道」：厂牌属于
+#: 哪家公司（`SOD Create` → Soft On Demand），或者账本记的是个站上根本不用的写法
+#: （`M Girls' Lab` → 站上叫「えむっ娘ラボ」）。第二种要先确认账本 `entity_alias` 里也没有
+#: 能对上的别名——有别名就该走 `site_verdict` 的 `aliases`，那是页面上能查证的路，
+#: 不该拿白名单顶掉（`东京热` 就是这样自证的）。
 #:
 #: `SOD Create` 是 Soft On Demand 的厂牌。母公司官网 `www.sod.co.jp` 实测 200、是成人站，
 #: 标题却是 `SOFT ON DEMAND（ソフト・オン・デマンド）`——标题和正文里都不会出现
@@ -85,6 +97,11 @@ CONFIRMED_SITES: dict[str, tuple[str, str]] = {
         "https://www.sod.co.jp/",
         "用户 2026-09-03 确认：SOD Create 是 Soft On Demand 的厂牌，"
         "sod.co.jp 是母公司官网",
+    ),
+    "M Girls' Lab": (
+        "https://mko-labo.net/top",
+        "用户 2026-09-21 指定：厂牌在自己站上叫「えむっ娘ラボ」，"
+        "`M Girls' Lab` 是账本这边的拉丁写法，整站不出现，账本也没有对应别名",
     ),
 }
 
@@ -107,14 +124,28 @@ def is_platform(name: str) -> bool:
     return normalise(name) in PLATFORM_ENTITIES
 
 
-def normalise(text: str) -> str:
-    """只留 ASCII 字母数字。
+#: 比对时留下的字符：ASCII 字母数字，加上汉字、平假名、片假名和长音符 `ー`。
+#:
+#: 分隔符、括号、全角标点和日文注音两边永远对不齐（`Idea Pocket` 对
+#: `【IDEAPOCKET (アイデアポケット）】公式サイト`），剥掉之后才可比；剥这些不会把不同厂牌
+#: 压成同一个串——`moodyz` 和 `madonna` 剥完仍然不同。
+#:
+#: 汉字与假名必须留下。只留 ASCII 的话，名字里一个拉丁字母都没有的厂牌 token 归零，
+#: `site_verdict` 第一件事就是判「厂牌名里没有可比对的字母数字」。账本 130 个有作品的厂牌
+#: 里有 19 个是这个形状（`一本道`、`カリビアンコム`、`スーパーモデルメディア`……），而它们的
+#: 域名又推不出来（`slugs` 拿不到拉丁词），`--seeds` 于是是唯一入口——人工喂进来的地址无论
+#: 取回什么都只能判未取得，「推不出来的用 --seeds 喂，走同一条验证」这条路对这 19 家是断的。
+#: 实测 `https://www.1pondo.tv/` 返回 200、标题正是 `一本道 | 美を追求する高画質アダルト動画
+#: サイト`，照样写成「没有官网」。
+#:
+#: `・`（U+30FB）住在片假名区里，但它是分隔符，和上面剥掉的那些同类，所以不收；`ー`
+#: （U+30FC）是名字本身的一部分（`スーパーモデルメディア`、`マーレーインターナショナル`），必须收。
+KEPT = re.compile(r"[^0-9a-zぁ-ゖァ-ヺー一-鿿]")
 
-    厂牌名和网页标题的分隔符、括号、全角字符、日文注音全都对不齐（`Idea Pocket` 对
-    `【IDEAPOCKET (アイデアポケット）】公式サイト`），逐字比必然失败。剥到只剩字母数字
-    之后两边才可比，而这一步不会把不同厂牌压成同一个串——`moodyz` 和 `madonna` 剥完仍然不同。
-    """
-    return re.sub(r"[^0-9a-z]", "", text.lower())
+
+def normalise(text: str) -> str:
+    """只留可比对的字符，取舍见 `KEPT`。"""
+    return KEPT.sub("", text.lower())
 
 
 def slugs(name: str) -> list[str]:
@@ -179,7 +210,7 @@ def page_title(body: bytes) -> str:
 
 def site_verdict(name: str, status: int, body: bytes, title: str,
                  url: str = "", derived_hosts: frozenset[str] = frozenset(),
-                 confirmed: str = "") -> tuple[str, str]:
+                 confirmed: str = "", aliases: Sequence[str] = ()) -> tuple[str, str]:
     """这一页认不认自己是这个厂牌。
 
     四道都必须过：HTTP 200、不是空壳、不是停放页、标题里出现厂牌名且不只是域名回显。
@@ -188,6 +219,12 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
 
     `confirmed` 是 `CONFIRMED_SITES` 里那句理由：它只替掉最后一道「页面得自述厂牌名」，
     前面几道照旧要过。
+
+    `aliases` 是账本 `entity_alias` 里这个厂牌的其他写法，和规范名一起参与最后那道。
+    页面不会知道账本挑了哪个写法当规范名：`东京热` 的官网标题是
+    `年齢確認 | Tokyo-Hot 東京熱 無修正オリジナル徹底凌辱動画`，简体的「热」和日文新字体的
+    「熱」逐字比不上，而账本早就记着 `東京熱`、`Tokyo-Hot`、`Tokyo Hot` 三个别名。拿别名一起
+    比不放松任何判据——每个别名都是账本里这个实体自己的名字，不是从页面上猜出来的。
     """
     if status != 200:
         return "未取得", f"HTTP {status}"
@@ -221,13 +258,20 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     # 母公司官网上，那条信息不在页面里。
     if confirmed:
         return "ok", f"{confirmed}；实测标题：{title[:40] or '无'}"
-    token = normalise(name)
-    if not token:
-        return "未取得", "厂牌名里没有可比对的字母数字"
+    spellings = [(spelling, normalise(spelling)) for spelling in (name, *aliases)]
+    spellings = [pair for pair in spellings if pair[1]]
+    if not spellings:
+        return "未取得", "厂牌名与别名里都没有可比对的字符"
     adult = bool(ADULT.search(text))
-    if token in normalise(title):
+    # 命中哪个写法要写进判词。`东京热` 的行上只写「标题自述厂牌名」，复核的人看到标题里
+    # 是「東京熱」会以为判错了；写出对上的是哪个别名，这一步就自己解释了自己。写「对上的是
+    # 别名」而不是「页面写作」：normalise 剥掉分隔符之后 `Tokyo Hot` 和页面上的 `Tokyo-Hot`
+    # 是同一个串，说成页面的原文就不准了。
+    spelled = next((t for t, token in spellings if token in normalise(title)), "")
+    if spelled:
+        matched = "" if spelled == name else f"（对上的是别名「{spelled}」）"
         if adult:
-            return "ok", "标题自述厂牌名，且页面是成人站"
+            return "ok", f"标题自述厂牌名{matched}，且页面是成人站"
         # 同名的无关公司到这里为止和真站没有任何可区分之处，所以只能交给人看，
         # 不能算已确认——一条错的官网会被下游当成社媒 handle 的来源。
         return "weak", f"标题有厂牌名但页面不像成人站；需人工确认（{title[:40]}）"
@@ -244,9 +288,30 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     # 一个 LinkedIn 个人主页因此被确认成厂牌官网。跳走之后这条证据就不再成立。
     if host in derived_hosts and adult:
         return "ok", "域名由厂牌名推出，且页面是成人站（标题用假名写品牌名）"
-    if token in normalise(text[:20000]):
+    body_text = normalise(text[:20000])
+    if any(token in body_text for _, token in spellings):
         return "weak", "标题未自述，但正文出现厂牌名；需人工看图确认"
     return "未取得", f"标题与正文都没有厂牌名（标题：{title[:40] or '无'}）"
+
+
+def load_aliases(connection: sqlite3.Connection, entity_ids: Sequence[int]
+                 ) -> dict[int, tuple[str, ...]]:
+    """这些厂牌在账本里的其他写法，按 `entity_alias` 的原样取。
+
+    一次查完而不是每家一条：`--min-assets` 的默认扫描有一百多家，每家一次往返换不来任何东西。
+    """
+    if not entity_ids:
+        return {}
+    holes = ",".join("?" * len(entity_ids))
+    out: dict[int, tuple[str, ...]] = {}
+    for entity_id, alias in connection.execute(
+            f"SELECT entity_id,alias FROM entity_alias WHERE entity_id IN ({holes}) "
+            "ORDER BY entity_id,alias", tuple(entity_ids)):
+        # 空串不是一个写法。留着它，`site_verdict` 那边会拿到一个 normalise 后为空的
+        # spelling，对判定毫无作用，却让「这家有没有别名」在这张表上答不上来。
+        if alias:
+            out[entity_id] = out.get(entity_id, ()) + (alias,)
+    return out
 
 
 def load_studios(connection: sqlite3.Connection, minimum: int) -> list[dict]:
@@ -360,10 +425,11 @@ def run(args) -> int:
     try:
         studios = (load_named_studios(connection, args.only) if args.only
                    else load_studios(connection, args.min_assets))
+        if args.limit:
+            studios = studios[:args.limit]
+        aliases = load_aliases(connection, [record["entity_id"] for record in studios])
     finally:
         connection.close()
-    if args.limit:
-        studios = studios[:args.limit]
 
     seeds: dict[str, list[str]] = {}
     if args.seeds:
@@ -376,6 +442,9 @@ def run(args) -> int:
     last = 0.0
     for record in studios:
         name = record["studio"]
+        # 规范名自己也可能登记在别名表里；留着它，判词就会写「页面写作『X』」而 X 正是
+        # 规范名，读的人会以为命中的是另一个写法。
+        other_names = tuple(a for a in aliases.get(record["entity_id"], ()) if a != name)
         row = {field: "" for field in FIELDS}
         row.update(record)
         row["verdict"], row["note"] = "未取得", "没有可推导的候选域名"
@@ -416,7 +485,8 @@ def run(args) -> int:
             title = page_title(body)
             verdict, note = site_verdict(
                 name, status, body, title, final, derived_hosts=derived_hosts,
-                confirmed=confirmed[1] if confirmed and url == confirmed[0] else "")
+                confirmed=confirmed[1] if confirmed and url == confirmed[0] else "",
+                aliases=other_names)
             trail.append(f"{url} → {verdict}：{note}")
             # 取回了字节的候选比连不上的更值得留在行里：状态码、标题和 sha256 才是
             # 人能复核的证据。已经采信过一个 ok/weak 之后不再覆盖。
