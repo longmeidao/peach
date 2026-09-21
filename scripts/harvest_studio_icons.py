@@ -193,7 +193,7 @@ LOGO_SOURCES: dict[str, str] = {
 #: 问题不在 96 这个数，在于宽扁字标根本不该走那条原样装的路。
 #:
 #: 来源是 MGStage 的厂牌名录 `/ppv/makers.php`（用户 2026-09-04 指定），十一页 351 家，
-#: 由 `harvest_mgstage_makers.py` 对账后人工确认。站上有两种规格（2026-09-04 量过）：
+#: 由 `harvest_maker_directories.py` 对账后人工确认。站上有两种规格（2026-09-04 量过）：
 #: 通用的 `pc/<slug>.gif` 是 180×54 白底纯字标，首页轮播位另有 `pc/top/<slug>.jpg`
 #: 400×80／406×86，29 家对上账本的里 7 家有。取的一律是前者，理由见下面 Jackson 那条。
 #:
@@ -226,6 +226,10 @@ WORDMARK_SOURCES: dict[str, str] = {
     "M Girls' Lab":
         "https://cdn.up-timely.com/image/16/site_design/base/logo_image"
         "/agm4a2ESultyKGcW2F3tWNjLS0VTjbjzXuueyhai.png",
+    # ナンパTV 是 Prestige 旗下 label，自己没有站，账本里也一条链接都没有——自动发现
+    # 那四条链都是从链接出发的，对它一条都启动不了。母公司名录 `/api/maker` 里有它
+    # 200×55 的白底字标（2026-09-22 实测），番号 `200GANA` 与账本那 9 部对得上。
+    "ナンパTV": "https://www.prestige-av.com/api/media/maker/banner-nanpa.jpg",
 }
 
 
