@@ -3806,8 +3806,8 @@ class WebUiSourceTests(unittest.TestCase):
         )
 
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
-        self.assertPageContains('/vendor/videojs/8.24.0/video.min.js')
-        self.assertPageContains('/vendor/videojs/8.24.0/video-js.min.css')
+        self.assertPageContains('/vendor/videojs/8.24.1/video.min.js')
+        self.assertPageContains('/vendor/videojs/8.24.1/video-js.min.css')
 
     def test_detail_opens_with_the_local_cover_before_the_video_loads(self):
         """详情开场先把本地封面挂上海报位。
@@ -3852,12 +3852,12 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertCode("const ensureVideojs=()=>{")
         self.assertCode(
-            "videojsLoader=loadScript('/vendor/videojs/8.24.0/video.min.js')"
-            ".then(()=>loadScript('/vendor/videojs/8.24.0/lang/zh-CN.js'))")
+            "videojsLoader=loadScript('/vendor/videojs/8.24.1/video.min.js')"
+            ".then(()=>loadScript('/vendor/videojs/8.24.1/lang/zh-CN.js'))")
         self.assertPageLacks('<script src="/vendor/videojs',
                              "播放器脚本才用得上，不进首屏")
         # 样式表留在首屏：它是 .video-js 的版式来源，等到点开才拉会先闪一帧裸 video。
-        self.assertPageContains('<link rel="stylesheet" href="/vendor/videojs/8.24.0/video-js.min.css">')
+        self.assertPageContains('<link rel="stylesheet" href="/vendor/videojs/8.24.1/video-js.min.css">')
 
     def test_detail_player_controls_use_two_rows_and_offer_real_quality_levels(self):
         self.assertPageContains(".vwrap .video-js .vjs-big-play-button{left:50%;top:50%;width:56px;height:56px")
