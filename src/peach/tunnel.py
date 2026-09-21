@@ -6,11 +6,13 @@ Quick Tunnel 的随机地址只写进数据根的状态文件，不进入设置�
 """
 from __future__ import annotations
 
+import ctypes
 import json
 import ipaddress
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -28,9 +30,11 @@ STATE_FILENAME = "cloudflare-tunnel.json"
 LOG_FILENAME = "cloudflare-tunnel.log"
 PID_FILENAME = "cloudflared.pid"
 QUICK_URL_RE = re.compile(
-    r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com(?:/[^\s]*)?",
+    r"https://[a-z0-9][a-z0-9-]*\.trycloudflare\.com",
     re.IGNORECASE,
 )
+#: cloudflared 转发时一定会带上的请求头；只要隧道在跑，带这些头的连接就来自公网。
+EDGE_HEADERS = ("cf-connecting-ip", "cf-ray")
 
 
 class TunnelError(RuntimeError):
@@ -77,12 +81,15 @@ def extract_quick_url(line: str) -> str | None:
 def resolve_binary(
     configured: str = "",
     *,
-    base_dir: Path | None = None,
     executable: Path | None = None,
     environ: dict[str, str] | None = None,
     which: Callable[[str], str | None] = shutil.which,
 ) -> Path | None:
-    """按显式配置、打包旁路、环境变量和 PATH 的顺序找 cloudflared。"""
+    """按显式配置、打包旁路、环境变量和 PATH 的顺序找 cloudflared。
+
+    数据根不在搜索范围里：它是用户放媒体和账本的地方，任何能往那里写文件的人都
+    不该因此获得一次本机可执行文件的启动机会。
+    """
     environ = os.environ if environ is None else environ
     candidates: list[Path] = []
 
@@ -100,9 +107,6 @@ def resolve_binary(
             package_dir / "_internal" / "cloudflared.exe",
             package_dir / "_internal" / "cloudflared",
         ))
-    if base_dir is not None:
-        candidates.extend((Path(base_dir) / "cloudflared.exe", Path(base_dir) / "cloudflared"))
-
     for candidate in candidates:
         try:
             if candidate.is_file():
@@ -117,23 +121,22 @@ def resolve_binary(
     return None
 
 
-def origin_for_config(
-    config, *, standalone_mode: bool, lan_address: str | None = None,
-    https_port: int | None = None,
+def build_origin(
+    *, standalone_mode: bool, port: int | None, mdns_name: str = "",
+    lan_address: str | None = None, ca_path: Path | None = None,
 ) -> TunnelOrigin:
     """为源码托盘和独立包分别构造 origin。
 
     源码服务的 80 端口只是跳转口，不能拿来做 Tunnel origin；独立包则没有本机 TLS
-    入口，使用回环 HTTP。Cloudflare edge 到浏览器仍然是 HTTPS。未显式传端口时，
-    独立包取设置文件里的服务端口，源码取标准 HTTPS 端口。
+    入口，使用回环 HTTP。Cloudflare edge 到浏览器仍然是 HTTPS。源码未显式传端口时
+    取标准 HTTPS 端口。
     """
     if standalone_mode:
-        port = config.server.port if https_port is None else https_port
         if type(port) is not int or not 1 <= port <= 65535:
             raise TunnelError(f"独立包 Tunnel 的 HTTP 端口无效：{port}")
         return TunnelOrigin(f"http://127.0.0.1:{port}")
-    if https_port is None:
-        https_port = 443
+    if port is None:
+        port = 443
     address = (lan_address or "").strip()
     if not address:
         raise TunnelError("无法确定源码服务的局域网地址")
@@ -141,18 +144,31 @@ def origin_for_config(
         parsed_address = ipaddress.ip_address(address)
     except ValueError as exc:
         raise TunnelError(f"源码 Tunnel 的局域网地址不是 IP：{address}") from exc
-    hostname = config.server.mdns_name.strip().rstrip(".")
+    hostname = (mdns_name or "").strip().rstrip(".")
     if not hostname:
         raise TunnelError("源码服务没有配置 mDNS 名称")
     origin_name = hostname if hostname.endswith(".local") else f"{hostname}.local"
-    ca = config.directory("secrets") / "tls" / "peach-local-ca.crt"
-    if not ca.is_file():
-        raise TunnelError(f"源码 Tunnel 需要项目 CA：{ca}")
-    if type(https_port) is not int or not 1 <= https_port <= 65535:
-        raise TunnelError(f"源码 Tunnel 的 HTTPS 端口无效：{https_port}")
+    if ca_path is None or not Path(ca_path).is_file():
+        raise TunnelError(f"源码 Tunnel 需要项目 CA：{ca_path}")
+    if type(port) is not int or not 1 <= port <= 65535:
+        raise TunnelError(f"源码 Tunnel 的 HTTPS 端口无效：{port}")
     host = f"[{address}]" if parsed_address.version == 6 else address
     return TunnelOrigin(
-        f"https://{host}:{https_port}", origin_server_name=origin_name, ca_path=ca,
+        f"https://{host}:{port}", origin_server_name=origin_name, ca_path=Path(ca_path),
+    )
+
+
+def origin_for_config(
+    config, *, standalone_mode: bool, lan_address: str | None = None,
+    https_port: int | None = None,
+) -> TunnelOrigin:
+    """从设置文件取端口、mDNS 名和项目 CA，其余交给 `build_origin`。"""
+    port = config.server.port if standalone_mode and https_port is None else https_port
+    return build_origin(
+        standalone_mode=standalone_mode, port=port,
+        mdns_name=getattr(config.server, "mdns_name", ""),
+        lan_address=lan_address,
+        ca_path=config.directory("secrets") / "tls" / "peach-local-ca.crt",
     )
 
 
@@ -207,22 +223,78 @@ def plan_for_config(
     if not standalone_mode and not tls_enabled:
         raise TunnelError("源码 Tunnel 需要正在运行的 HTTPS 服务")
     tunnel_settings = getattr(config, "tunnel", None)
-    binary = resolve_binary(
+    binary = _require_binary(
         getattr(tunnel_settings, "binary", ""),
-        base_dir=Path(getattr(config, "data_root", ".")),
-        executable=executable,
-        environ=environ,
-        which=which,
+        executable=executable, environ=environ, which=which,
     )
-    if binary is None:
-        raise TunnelError(
-            "找不到 cloudflared；请安装官方 cloudflared，或设置 PEACH_CLOUDFLARED"
-        )
     origin = origin_for_config(
         config, standalone_mode=standalone_mode, lan_address=lan_address,
         https_port=https_port,
     )
     return TunnelPlan(binary=binary, origin=origin, command=build_command(binary, origin))
+
+
+def _require_binary(
+    configured: str,
+    *,
+    executable: Path | None = None,
+    environ: dict[str, str] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> Path:
+    binary = resolve_binary(
+        configured, executable=executable, environ=environ, which=which,
+    )
+    if binary is None:
+        raise TunnelError(
+            "找不到 cloudflared；请安装官方 cloudflared，"
+            "或在设置文件的 tunnel.binary 指定路径，也可用 PEACH_CLOUDFLARED 指定"
+        )
+    return binary
+
+
+def plan_for_settings(
+    settings,
+    *,
+    executable: Path | None = None,
+    environ: dict[str, str] | None = None,
+    which: Callable[[str], str | None] = shutil.which,
+) -> TunnelPlan:
+    """只用本次启动注入的运行设置构造计划。
+
+    服务进程不再回头读设置文件：公网入口的开关、端口和 origin 必须与这条服务实际
+    监听的形态一致，而设置文件可以在服务运行期间被改成别的样子。
+    """
+    validate_access(settings.access_path, settings.token)
+    if not settings.tunnel_standalone and not settings.tls_enabled:
+        raise TunnelError("源码 Tunnel 需要正在运行的 HTTPS 服务")
+    binary = _require_binary(
+        settings.tunnel_binary, executable=executable, environ=environ, which=which,
+    )
+    origin = build_origin(
+        standalone_mode=settings.tunnel_standalone,
+        port=settings.tunnel_origin_port,
+        mdns_name=settings.mdns_name,
+        lan_address=settings.tunnel_lan_address,
+        ca_path=settings.tunnel_ca_path,
+    )
+    return TunnelPlan(binary=binary, origin=origin, command=build_command(binary, origin))
+
+
+def running(manager) -> bool:
+    """只有 manager 自己报告 running 才算公网入口在服务中。"""
+    if manager is None:
+        return False
+    try:
+        return manager.snapshot().state == "running"
+    except (AttributeError, OSError, ValueError):
+        return False
+
+
+def from_edge(manager, headers) -> bool:
+    """隧道在跑时，带 Cloudflare 转发头的连接一律按公网来源处理。"""
+    if not running(manager):
+        return False
+    return any(headers.get(name) for name in EDGE_HEADERS)
 
 
 def _read_state(path: Path) -> TunnelSnapshot:
@@ -247,7 +319,9 @@ def saved_snapshot(state_dir: Path) -> TunnelSnapshot:
     """读取状态文件；不把旧的 running 记录误报成当前进程仍在运行。"""
     saved = _read_state(state_path(state_dir))
     if saved.state in {"running", "starting"}:
-        return TunnelSnapshot(state="stopped", error="上一次 Tunnel 已随服务停止")
+        return TunnelSnapshot(
+            state="stopped", error="上一次 Tunnel 没有正常收尾，运行结果未取得",
+        )
     return saved
 
 
@@ -274,6 +348,191 @@ def _write_state(path: Path, snapshot: TunnelSnapshot) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_PROCESS_TERMINATE = 0x0001
+_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+#: JobObjectExtendedLimitInformation
+_JOB_EXTENDED_LIMIT_CLASS = 9
+
+
+def _windows_image_name(pid: int) -> str:
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.QueryFullProcessImageNameW.argtypes = (
+        wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD),
+    )
+    handle = kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return ""
+    try:
+        size = wintypes.DWORD(32768)
+        buffer = ctypes.create_unicode_buffer(size.value)
+        if not kernel32.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(size)):
+            return ""
+        return Path(buffer.value).name
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _posix_image_name(pid: int) -> str:
+    try:
+        return Path(f"/proc/{pid}/comm").read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        pass
+    try:
+        result = subprocess.run(
+            ["ps", "-p", str(pid), "-o", "comm="],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=5, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return Path(result.stdout.strip()).name if result.returncode == 0 else ""
+
+
+def process_image_name(pid: int) -> str:
+    """取这个 pid 当前的可执行名；取不到就返回空串，调用方按未取得处理。"""
+    if pid <= 0:
+        return ""
+    try:
+        return _windows_image_name(pid) if os.name == "nt" else _posix_image_name(pid)
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+def _terminate_windows_pid(pid: int) -> None:
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    handle = kernel32.OpenProcess(_PROCESS_TERMINATE | 0x00100000, False, pid)
+    if not handle:
+        return
+    try:
+        kernel32.TerminateProcess(handle, 1)
+        kernel32.WaitForSingleObject(handle, 5000)
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def _terminate_posix_pid(pid: int) -> None:
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except OSError:
+        return
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except OSError:
+            return
+        time.sleep(0.1)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except OSError:
+        pass
+
+
+def terminate_pid(pid: int) -> None:
+    """终止一个不是本进程子进程的 pid；调用方负责先确认它就是 cloudflared。"""
+    if pid <= 0:
+        return
+    try:
+        if os.name == "nt":
+            _terminate_windows_pid(pid)
+        else:
+            _terminate_posix_pid(pid)
+    except (OSError, ValueError, AttributeError):
+        pass
+
+
+def _create_kill_on_close_job():
+    """建一个随句柄关闭一并终止成员的 Job Object；非 Windows 返回 None。
+
+    服务进程被强杀时不会走 `stop()`，只有内核托管的 Job 能保证 cloudflared 不会
+    独自留在公网上继续转发。
+    """
+    if os.name != "nt":
+        return None
+    from ctypes import wintypes
+
+    class _IoCounters(ctypes.Structure):
+        _fields_ = [(name, ctypes.c_ulonglong) for name in (
+            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
+            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
+        )]
+
+    class _BasicLimits(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_longlong),
+            ("PerJobUserTimeLimit", ctypes.c_longlong),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class _ExtendedLimits(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", _BasicLimits),
+            ("IoInfo", _IoCounters),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        return None
+    limits = _ExtendedLimits()
+    limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    if not kernel32.SetInformationJobObject(
+        wintypes.HANDLE(job), _JOB_EXTENDED_LIMIT_CLASS,
+        ctypes.byref(limits), ctypes.sizeof(limits),
+    ):
+        kernel32.CloseHandle(wintypes.HANDLE(job))
+        return None
+    return job
+
+
+def _assign_to_job(job, process) -> None:
+    if job is None or os.name != "nt":
+        return
+    handle = getattr(process, "_handle", None)
+    if handle is None:
+        return
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    try:
+        kernel32.AssignProcessToJobObject(wintypes.HANDLE(job), wintypes.HANDLE(int(handle)))
+    except (OSError, ValueError, TypeError):
+        # 内核拒绝嵌套 Job 时仍然启动：stop() 与 pidfile 回收仍会收掉这个子进程。
+        pass
+
+
+def _close_job(job) -> None:
+    if job is None or os.name != "nt":
+        return
+    from ctypes import wintypes
+
+    try:
+        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(job))
+    except (OSError, ValueError):
+        pass
+
+
 class TunnelManager:
     """一个 Peach 服务进程拥有的一条 cloudflared 子进程。"""
 
@@ -285,10 +544,13 @@ class TunnelManager:
         popen: Callable[..., subprocess.Popen] = subprocess.Popen,
         wait_timeout: float = 30.0,
         clock: Callable[[], float] = time.monotonic,
+        image_name: Callable[[int], str] = process_image_name,
     ) -> None:
         self.state_dir = Path(state_dir)
         self.log_dir = Path(log_dir)
         self._popen = popen
+        self._image_name = image_name
+        self._job = None
         self._wait_timeout = wait_timeout
         self._clock = clock
         self._lock = threading.RLock()
@@ -360,6 +622,24 @@ class TunnelManager:
                 process.wait(timeout=3)
             except (AttributeError, OSError, subprocess.TimeoutExpired):
                 pass
+
+    def reclaim_orphan(self) -> int | None:
+        """收掉上一次服务留下的 cloudflared，并返回被收掉的 pid。
+
+        判据是 pidfile 里的进程此刻还在、且可执行名就是 cloudflared；名字取不到或
+        对不上就原样留着，绝不按 pid 猜身份去杀一个别人的进程。
+        """
+        try:
+            pid = int(self.pid_file.read_text(encoding="ascii").strip())
+        except (OSError, ValueError):
+            return None
+        if pid <= 0 or pid == os.getpid():
+            return None
+        name = self._image_name(pid)
+        if "cloudflared" not in name.lower():
+            return None
+        terminate_pid(pid)
+        return pid
 
     def _write_error(self, message: str) -> None:
         self._error = message
@@ -444,7 +724,10 @@ class TunnelManager:
             self._ready.clear()
             self.state_dir.mkdir(parents=True, exist_ok=True)
             self.log_dir.mkdir(parents=True, exist_ok=True)
+            self.reclaim_orphan()
             self.pid_file.unlink(missing_ok=True)
+            if self._job is None:
+                self._job = _create_kill_on_close_job()
             handle: TextIO | None = None
             process: subprocess.Popen | None = None
             try:
@@ -473,6 +756,7 @@ class TunnelManager:
                 self._ready.set()
                 self._write_error(message)
                 raise TunnelError(message) from exc
+            _assign_to_job(self._job, process)
             self._process = process
             stream = process.stdout
             if stream is None:
@@ -555,14 +839,17 @@ class TunnelManager:
         with self._lock:
             process = self._process
             reader = self._reader
+            job = self._job
             self._process = None
             self._reader = None
+            self._job = None
             self._generation += 1
             cleanup_generation = self._generation
             self._url = ""
             self._error = ""
             self._ready.set()
         self._terminate_process(process)
+        _close_job(job)
         if reader is not None and reader.is_alive():
             reader.join(timeout=1)
         snapshot = TunnelSnapshot(state="stopped")

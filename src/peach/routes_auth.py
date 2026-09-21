@@ -15,7 +15,7 @@ from collections import OrderedDict
 import threading
 import time
 from urllib.parse import urlsplit
-from . import access
+from . import access, tunnel
 from .web_entry import board_entry_style
 from starlette.concurrency import run_in_threadpool
 from urllib.parse import parse_qs
@@ -28,9 +28,23 @@ _ATTEMPTS: OrderedDict[str, list[float]] = OrderedDict()
 _ATTEMPTS_LOCK = threading.Lock()
 
 
+def _attempt_key(request: Request) -> str:
+    """限速按真实来源分桶。
+
+    隧道在跑时所有请求的连接源都是 cloudflared 的回环地址，按它计数等于把整个公网
+    合成一个桶：外面一台机器试满十次，本机浏览器也跟着被锁一分钟。这时改用边缘给出
+    的客户端地址，隧道没在跑就仍按连接源，避免任何人自带一个头就换一个桶。
+    """
+    if tunnel.running(getattr(request.app.state, "tunnel", None)):
+        forwarded = (request.headers.get("cf-connecting-ip") or "").strip()
+        if forwarded:
+            return f"cf:{forwarded}"
+    return request.client.host if request.client else "unknown"
+
+
 def _login_attempt(request: Request) -> None:
     """按连接来源限制密码尝试，保留有界的短期计数。"""
-    peer = request.client.host if request.client else "unknown"
+    peer = _attempt_key(request)
     now = time.monotonic()
     with _ATTEMPTS_LOCK:
         attempts = [stamp for stamp in _ATTEMPTS.pop(peer, []) if now - stamp < 60]

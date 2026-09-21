@@ -50,9 +50,18 @@ def revision(config) -> str:
     return hashlib.sha256(config.path.read_bytes()).hexdigest()
 
 
+def tunnel_forwarded(request: Request) -> bool:
+    """隧道在跑时，带 Cloudflare 转发头的请求一律按公网来源处理。
+
+    cloudflared 从本机回环连进来，源 IP 与本机浏览器完全一样；转发头是唯一能把
+    两者分开的证据，宁可把伪造了这些头的本机请求挡在配置页外面。
+    """
+    return tunnel.from_edge(getattr(request.app.state, "tunnel", None), request.headers)
+
+
 def local_client(request: Request) -> bool:
     """按连接两端的 IP 识别本机；Host 只用于校验允许的入口名称。"""
-    if not request.client:
+    if not request.client or tunnel_forwarded(request):
         return False
     server = request.scope.get("server")
     try:
@@ -114,6 +123,21 @@ def snapshot(config) -> dict[str, Any]:
     }
 
 
+def tunnel_payload(config, state: tunnel.TunnelSnapshot, enabled: bool) -> dict[str, Any]:
+    """读接口和写回接口用同一份形状。
+
+    页面收到写回响应后整块替换本地状态，少一个字段就等于把它置空：`available`
+    缺席时「找不到 cloudflared」会和刚拿到的随机链接一起显示。
+    """
+    return {
+        "enabled": enabled,
+        "state": state.state,
+        "url": state.url,
+        "error": state.error,
+        "available": tunnel.resolve_binary(config.tunnel.binary) is not None,
+    }
+
+
 @router.get("/api/configuration")
 def read_configuration(request: Request, _args=Depends(require_auth)):
     local_only(request)
@@ -122,15 +146,7 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
         raise HTTPException(409, "请先完成首次设置")
     result = snapshot(config)
     state = request.app.state.tunnel.snapshot()
-    result["tunnel"] = {
-        "enabled": config.tunnel.enabled,
-        "state": state.state,
-        "url": state.url,
-        "error": state.error,
-        "available": tunnel.resolve_binary(
-            config.tunnel.binary, base_dir=config.data_root,
-        ) is not None,
-    }
+    result["tunnel"] = tunnel_payload(config, state, config.tunnel.enabled)
     result["automatic_updates"] = request.app.state.automatic_updates.snapshot()
     if result["automatic_updates"].get("result"):
         result["updates"] = result["automatic_updates"]["result"]
@@ -277,6 +293,34 @@ def _validate(body: dict[str, Any], config) -> tuple[dict[str, Any], dict[str, A
     return errors, validated
 
 
+def _close_tunnel_without_password(request: Request) -> str:
+    """没有访问密码就不能留着公网入口；这里当场停掉并把开关写回关闭。
+
+    启动前的检查挡不住这条路径：隧道是在有密码时起来的，密码被关掉之后它还在转发。
+    """
+    manager = getattr(request.app.state, "tunnel", None)
+    if manager is None:
+        return ""
+    try:
+        state = manager.snapshot().state
+    except (AttributeError, OSError, ValueError):
+        return ""
+    if state not in {"starting", "running"}:
+        return ""
+    manager.stop()
+    try:
+        config = settings_file.load_config()
+        if config.present and config.tunnel.enabled:
+            with FileLock(str(config.path.with_suffix(".lock")), timeout=0):
+                settings_file.write(
+                    replace(config, tunnel=replace(config.tunnel, enabled=False)),
+                    force=True,
+                )
+    except (Timeout, OSError, ValueError):
+        return "临时远程链接已停止；设置文件未能写入，请在本机检查设置文件。"
+    return "已停止临时远程链接：没有访问密码时不保留公网入口。"
+
+
 @router.post("/api/configuration/access")
 def save_access(request: Request, body: dict[str, Any] = Body(default_factory=dict),
                 _args=Depends(require_auth)):
@@ -314,7 +358,12 @@ def save_access(request: Request, body: dict[str, Any] = Body(default_factory=di
         raise HTTPException(409, "访问设置正在保存，请稍后重试") from None
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
-    response = JSONResponse(access.public(policy), headers={"Cache-Control": "no-store"})
+    payload = access.public(policy)
+    if policy["mode"] != "password":
+        notice = _close_tunnel_without_password(request)
+        if notice:
+            payload["tunnel_notice"] = notice
+    response = JSONResponse(payload, headers={"Cache-Control": "no-store"})
     response.delete_cookie("tok", path="/")
     response.delete_cookie(access.COOKIE, path="/")
     if policy["mode"] == "password":
@@ -376,13 +425,7 @@ def save_tunnel(request: Request, body: dict[str, Any] = Body(default_factory=di
         raise HTTPException(500, f"设置写入失败：{exc}") from exc
     if not enabled:
         state = manager.stop()
-    return {
-        "enabled": enabled,
-        "state": state.state,
-        "url": state.url,
-        "error": state.error,
-        "revision": revision(updated),
-    }
+    return {**tunnel_payload(updated, state, enabled), "revision": revision(updated)}
 
 
 @router.post("/api/pick-folder")

@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
-from . import __version__, settings_file, tunnel, web_contract, web_follow
+from . import __version__, tunnel, web_contract, web_follow
 from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
 from .buildinfo import frozen_build
 from .config import PeachSettings
@@ -106,24 +106,12 @@ def _resolve_tunnel_manager(
     )
 
 
-def _tunnel_plan(settings: PeachSettings) -> tunnel.TunnelPlan:
-    config = settings_file.load_config()
-    return tunnel.plan_for_config(
-        config,
-        access_path=settings.access_path,
-        token=settings.token,
-        standalone_mode=settings.tunnel_standalone,
-        lan_address=settings.tunnel_lan_address,
-        https_port=settings.tunnel_origin_port,
-        tls_enabled=settings.tls_enabled,
-    )
-
-
 def _start_tunnel(settings: PeachSettings, manager: tunnel.TunnelManager) -> None:
+    """公网入口只按本次启动注入的设置开；不回头读设置文件里的当前值。"""
     if not (settings.tunnel_enabled and settings.configured):
         return
     try:
-        manager.start(_tunnel_plan(settings))
+        manager.start(tunnel.plan_for_settings(settings))
     except tunnel.TunnelError:
         LOGGER.warning("Cloudflare Tunnel 未能启动", exc_info=True)
 
@@ -238,7 +226,9 @@ def create_app(
         if recovered:
             logging.getLogger(__name__).info(
                 "task center recovered %s interrupted run(s)", len(recovered))
-        _start_tunnel(settings, tunnel_manager)
+        # 启动握手要等 cloudflared 连上边缘，可以占到几十秒；和 mDNS 一样交给线程，
+        # 不要在事件循环里卡住整条服务的启动。
+        await asyncio.to_thread(_start_tunnel, settings, tunnel_manager)
         follow_scheduler.start()
         automatic_updates.start()
         warmup = asyncio.create_task(warm_startup_entries())
@@ -259,7 +249,7 @@ def create_app(
             contract.stop_background_jobs()
             if mdns is not None:
                 await asyncio.to_thread(mdns.stop)
-            tunnel_manager.stop()
+            await asyncio.to_thread(tunnel_manager.stop)
             http_transport.close()
             hls_plan_executor.shutdown(wait=False, cancel_futures=True)
 
