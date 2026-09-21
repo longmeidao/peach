@@ -702,6 +702,38 @@ class LibraryNfoTests(unittest.TestCase):
                          'FC2-PPV')
 
     @windows_ledger_roots
+    def test_a_dated_code_asks_1pondo_only_when_this_file_says_it_is_theirs(self):
+        """一本道与カリビアンコム 的番号同形：问错那家，答回来的是同一天发行的另一部片。"""
+        media = self.root / 'media'
+        (media / '1pon').mkdir(parents=True)
+        (media / 'Carib-040221-001-FHD').mkdir()
+        (media / '1pon' / '112312_478-1pon-whole1_hd.mp4').write_bytes(b'video')
+        (media / 'Carib-040221-001-FHD' / '040221-001-carib-1080p.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = Mock()
+        provider.one_pondo.return_value = [('1pondo', {
+            'id': '112312_478', 'content_id': '112312_478', 'maker': '一本道',
+            'title': '裸演奏 〜第5回演奏会・ホルン〜', 'series': '裸演奏',
+            'release_date': '2012-11-23', 'genres': ['スレンダー'],
+            'actresses': [{'japanese_name': '飯岡かなこ', 'name_romaji': 'Kanako Iioka'}],
+            'source_url': 'https://www.1pondo.tv/movies/112312_478/'})]
+        provider.query.return_value = {'maker': 'Caribbean', 'id': '040221-001', 'source_url': ''}
+        provider.cover.return_value = False
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=Mock(return_value=provider))
+        self.assertEqual(result['status'], 'complete')
+        self.assertEqual([item.args[0] for item in provider.one_pondo.call_args_list], ['112312_478'])
+        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['040221-001'])
+        rows = {(row['code'], row['field']): row
+                for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
+        performers = json.loads(rows[('112312_478', 'performers')]['candidates_json'])
+        self.assertEqual([(c['source'], c['provider'], c['official']) for c in performers],
+                         [('1pondo', '1pondo-json', True)])
+        self.assertEqual(performers[0]['display_value'], '飯岡かなこ')
+        self.assertEqual(result['issue_count'], 0)
+
+    @windows_ledger_roots
     def test_files_without_a_code_are_registered_but_not_reported(self):
         """账本里两万多行创作者作品本来就没有番号，逐行报问题只会淹掉真正要处理的几十条。"""
         media = self.root / 'media'
