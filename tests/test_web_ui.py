@@ -10195,7 +10195,10 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".toast{position:relative;align-items:center;", board)
-        self.assertIn(".board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}", board)
+        # 圆线帽是感叹号那一点的全部：Lucide 把它画成零长度的线段，平头线帽下它就消失。
+        self.assertIn(
+            ".board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;"
+            "stroke-width:2;stroke-linecap:round;stroke-linejoin:round}", board)
         self.assertIn(".toast p{margin:0}", board)
         self.assertPageContains("""<span class="board-notification-icon${alert?'':' checkdraw'}" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>""")
 
