@@ -43,6 +43,9 @@ SOURCE_SPECS = {
         # 韩国 MIB 的官网（scripts/harvest_kmib.py）。不走 Javinizer-Go，所以不进
         # REGISTERED_SOURCES；登记在这里是为了复核与自动批准按官方来源对待它。
         "kmib": "official",
+        # FC2 下架作品的镜像站。它转载的是发行方那一页，但标题和标签由站方用户维护，
+        # 所以按社区来源对待：取值进复核，不当官方证据。同样不走 Javinizer-Go。
+        "fc2cmadb": "community",
     }.items()
 }
 

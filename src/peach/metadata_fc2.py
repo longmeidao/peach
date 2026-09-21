@@ -1,0 +1,202 @@
+"""FC2 内容市场（adult.contents.fc2.com）与镜像站 fc2cmadb 的作品页解析。
+
+FC2 不是 JAV：番号是卖家自己的投稿号，JAV 目录站按它去查要么没有，要么撞上别的片。
+r18.dev 对 FC2 实测 85 条问了 85 条全空；AVBase 与 JavBus 对本地这批番号一律回「没有
+这个番号」；javdb 有页面但配额紧。发行方自己那一页才是这批番号的正主：不要凭据、
+一次请求给全标题、说明、卖家、商品标签、时长、販売日和封面原图。
+
+页面主体在 `<script type="application/ld+json">` 的 Product 里，正文 DOM 只补它没有的
+那几项。下架的商品仍回 200，靠正文里没有 Product 判定，不当成抓取失败。
+
+下架的商品在 fc2cmadb 上还留着：它是个 Laravel + Inertia 的镜像站，整棵 props 树放在
+`<script type="application/json">` 里，免登录就能读，字段与商品页一一对得上——本地那批
+没封面的 FC2 多半只能从这里取（实测 `FC2-PPV-3189161` 官方页已空，镜像给出 3456×1942
+的原图）。两处的封面都指向 `storage*.contents.fc2.com` 上的同一个文件，镜像有时给的是
+`contents-thumbnail*.fc2.com/w276/` 包装过的缩略图地址，`_storage_original` 把包装拆掉。
+
+带分段后缀的番号（`FC2-PPV-3312576-1`）在这里一律认不出商品号，于是一处都不问。那是
+对的：合集的封面套给每个分段，屏幕上就是 21 个不同内容顶着同一张图。
+
+演员不取。商品页没有演员栏，标题里那个名字是卖家自己写的宣传语，`みお(19)` 这样的
+写法既不是艺名也没有第二处可以印证；FC2 的演员线索在 fc2cmadb 的评论区，那是另一条路
+（`scripts/fetch_fc2_metadata.py`）。
+
+只解析传进来的 HTML，不联网：抓取由 `library_processing` 那一侧负责。
+"""
+from __future__ import annotations
+
+import json
+import re
+
+from bs4 import BeautifulSoup
+
+ROOT = "https://adult.contents.fc2.com"
+SOURCE = "fc2"
+ARTICLE_URL = ROOT + "/article/{video_id}/"
+USER_URL = ROOT + "/users/{slug}/"
+
+MIRROR_ROOT = "https://fc2cmadb.com"
+MIRROR_SOURCE = "fc2cmadb"
+MIRROR_URL = MIRROR_ROOT + "/articles/{video_id}"
+
+#: 账本里 FC2 一律记在这个厂牌下（库内既有的 561 条就是它），新抓的跟着走，免得同一批
+#: 内容分裂成两个厂牌实体。卖家是另一回事，它走 `label`：那是只作证据的目录字段，
+#: 归不归实体由复核页上的人判断，解析器不替他决定。
+STUDIO = "FC2-PPV"
+
+_VIDEO_ID = re.compile(r"^FC2(?:[-_. ]?PPV)?[-_. ]?(\d{5,})$", re.I)
+#: `41:50` 与 `1:23:45` 两种都有。
+_RUNTIME = re.compile(r"^(?:(\d{1,2}):)?(\d{1,2}):(\d{2})$")
+_SOLD_ON = re.compile(r"販売日\s*[:：]\s*(\d{4})/(\d{2})/(\d{2})")
+#: `https://contents-thumbnail2.fc2.com/w276/storage92000.contents.fc2.com/file/…`
+#: 前半截是缩放服务，后半截就是原件地址。
+_THUMBNAIL_WRAPPER = re.compile(
+    r"^https?://contents-thumbnail\d*\.fc2\.com/w\d+/(storage[\w.-]+\.fc2\.com/.+)$", re.I)
+
+
+def video_id(code: str) -> str:
+    """账本番号 → 商品号。认不出来的回空串，由调用方决定怎么处置。"""
+    found = _VIDEO_ID.match(str(code or "").strip())
+    return found.group(1) if found else ""
+
+
+def canonical_code(video: str) -> str:
+    """商品号 → 账本写法。"""
+    digits = str(video or "").strip()
+    return f"FC2-PPV-{digits}" if digits.isdigit() else ""
+
+
+def article_url(code: str) -> str:
+    """这个番号的商品页地址；认不出商品号时回空串。"""
+    found = video_id(code)
+    return ARTICLE_URL.format(video_id=found) if found else ""
+
+
+def runtime_minutes(raw: str) -> float | None:
+    match = _RUNTIME.match(str(raw or "").strip())
+    if not match:
+        return None
+    hours, minutes, seconds = match.groups()
+    total = int(hours or 0) * 60 + int(minutes) + int(seconds) / 60
+    return round(total, 2) if total > 0 else None
+
+
+def _product(soup: BeautifulSoup) -> dict | None:
+    """页面里那份 Product。下架的商品这一段整个不出现。"""
+    for node in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(node.string or "")
+        except ValueError:
+            continue
+        if isinstance(data, dict) and data.get("@type") == "Product":
+            return data
+    return None
+
+
+def _text(node) -> str:
+    return " ".join(node.get_text(" ", strip=True).split()) if node is not None else ""
+
+
+def parse_article(html: str | bytes, code: str) -> dict | None:
+    """商品页 → 与 `extract_peach_fields` 兼容的 payload；已下架或对不上番号回 None。
+
+    番号要核：`article/<id>/` 取不到商品时 FC2 回的是一个 200 的「見つかりませんでした」页，
+    而站上的商品号会被复用给别的投稿，不核就会把另一部片的资料写到这个番号头上。
+    """
+    wanted = video_id(code)
+    if not wanted:
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    product = _product(soup)
+    if product is None or str(product.get("sku") or "").strip() != wanted:
+        return None
+    image = product.get("image")
+    #: 商品图有两处：正文那张是 `w276` 缩略图，Product 里这个是存储原件（实测
+    #: 2350×2352）。取原件，缩略图连封面的最低宽度都过不了。
+    cover = _storage_original((image or {}).get("url")) if isinstance(image, dict) else ""
+    brand = product.get("brand")
+    seller = brand if isinstance(brand, dict) else {}
+    tags = [_text(node) for node in soup.select(".items_article_TagArea a")]
+    sold = _SOLD_ON.search(soup.get_text(" ", strip=True))
+    return {
+        "id": canonical_code(wanted),
+        "content_id": wanted,
+        "source_url": ARTICLE_URL.format(video_id=wanted),
+        "title": str(product.get("name") or "").strip(),
+        "description": str(product.get("description") or "").strip(),
+        "release_date": "-".join(sold.groups()) if sold else "",
+        "runtime": runtime_minutes(_text(soup.select_one("p.items_article_info"))),
+        "actresses": [],
+        "maker": STUDIO,
+        # 卖家在站上既有名字也有主页；名字空着时退回主页地址，别把这一栏丢掉。
+        "label": _seller_name(soup) or str(seller.get("url") or "").strip(),
+        "seller_url": str(seller.get("url") or "").strip(),
+        "genres": list(dict.fromkeys(tag for tag in tags if tag)),
+        "cover_url": cover,
+        "cover_urls": [cover] if cover else [],
+    }
+
+
+def _seller_name(soup: BeautifulSoup) -> str:
+    """卖家名。Product 的 `brand.name` 实测常是 null，站上写在头部那个指向用户页的链接里。"""
+    link = soup.select_one('.items_article_headerInfo a[href*="/users/"]')
+    return _text(link)
+
+
+def mirror_url(code: str) -> str:
+    """这个番号在 fc2cmadb 上的地址；认不出商品号时回空串。"""
+    found = video_id(code)
+    return MIRROR_URL.format(video_id=found) if found else ""
+
+
+def _storage_original(url: str) -> str:
+    """缩略图地址 → 原件地址。已经是原件的原样返回。"""
+    found = _THUMBNAIL_WRAPPER.match(str(url or "").strip())
+    return f"https://{found.group(1)}" if found else str(url or "").strip()
+
+
+def _inertia_props(soup: BeautifulSoup) -> dict:
+    for node in soup.find_all("script", type="application/json"):
+        try:
+            data = json.loads(node.string or "")
+        except ValueError:
+            continue
+        if isinstance(data, dict) and isinstance(data.get("props"), dict):
+            return data["props"]
+    return {}
+
+
+def parse_mirror(html: str | bytes, code: str) -> dict | None:
+    """fc2cmadb 的作品页 → 同一份 payload 形状；对不上番号回 None。
+
+    站上没有的商品回 404，那一档由抓取那侧判成「没有」。演员同样不取：这一页正文里
+    也没有演员栏，评论区那条线另走 `scripts/fetch_fc2_metadata.py`。
+    """
+    wanted = video_id(code)
+    if not wanted:
+        return None
+    article = _inertia_props(BeautifulSoup(html, "html.parser")).get("article")
+    if not isinstance(article, dict) or str(article.get("video_id") or "").strip() != wanted:
+        return None
+    writer = article.get("writer") if isinstance(article.get("writer"), dict) else {}
+    slug = str(writer.get("slug") or "").strip()
+    cover = _storage_original(article.get("image_url"))
+    tags = [str((tag or {}).get("name") or "").strip() for tag in article.get("tags") or []]
+    return {
+        "id": canonical_code(wanted),
+        "content_id": wanted,
+        "source_url": MIRROR_URL.format(video_id=wanted),
+        "title": str(article.get("title") or "").strip(),
+        "description": "",
+        "release_date": str(article.get("release_date") or "").strip(),
+        "runtime": runtime_minutes(article.get("duration")),
+        "actresses": [],
+        "maker": STUDIO,
+        "label": str(writer.get("name") or "").strip(),
+        # 镜像的 slug 与官方用户页的 slug 是同一个（实测 `otonakamenz` 两处一致），
+        # 所以这一栏指回发行方自己那一页，而不是镜像的作者页。
+        "seller_url": USER_URL.format(slug=slug) if slug else "",
+        "genres": list(dict.fromkeys(tag for tag in tags if tag)),
+        "cover_url": cover,
+        "cover_urls": [cover] if cover else [],
+    }

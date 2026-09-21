@@ -669,8 +669,8 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual([item.args[0] for item in provider.cover.call_args_list], ['ABW-001'])
 
     @windows_ledger_roots
-    def test_fc2_codes_ask_no_r18_metadata_but_still_try_a_cover(self):
-        """r18.dev 没有 FC2，问一次就是白等一次主机间隔；封面另有 FC2 自己的来源。"""
+    def test_fc2_codes_ask_the_shop_itself_and_never_r18(self):
+        """r18.dev 没有 FC2，问一次就是白等一次主机间隔；发行方自己那一页才有这批番号。"""
         media = self.root / 'media'
         media.mkdir()
         for name in ('FC2-PPV-1239052.mp4', 'ABW-001.mp4'):
@@ -679,14 +679,27 @@ class LibraryNfoTests(unittest.TestCase):
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
         provider = Mock()
         provider.query.return_value = {'maker': 'Studio', 'id': 'ABW-001', 'source_url': ''}
+        provider.fc2.return_value = [('fc2', {
+            'id': 'FC2-PPV-1239052', 'content_id': '1239052', 'maker': 'FC2-PPV',
+            'title': 'みお(19)の動画', 'label': '大人仮面Z', 'genres': ['おっぱい'],
+            'release_date': '2024-03-31', 'actresses': [],
+            'source_url': 'https://adult.contents.fc2.com/article/1239052/'})]
         provider.cover.return_value = False
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
                                  provider_factory=Mock(return_value=provider))
         self.assertEqual(result['status'], 'complete')
         self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['ABW-001'])
+        self.assertEqual([item.args[0] for item in provider.fc2.call_args_list], ['FC2-PPV-1239052'])
         self.assertEqual(sorted(item.args[0] for item in provider.cover.call_args_list),
                          ['ABW-001', 'FC2-PPV-1239052'])
         self.assertEqual(result['issue_count'], 0)
+        rows = {(row['code'], row['field']): row
+                for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
+        title = json.loads(rows[('FC2-PPV-1239052', 'title')]['candidates_json'])
+        self.assertEqual([(c['source'], c['provider'], c['source_kind'], c['official']) for c in title],
+                         [('fc2', 'fc2-article', 'official', True)])
+        self.assertEqual(json.loads(rows[('FC2-PPV-1239052', 'studio')]['candidates_json'])[0]['value'],
+                         'FC2-PPV')
 
     @windows_ledger_roots
     def test_files_without_a_code_are_registered_but_not_reported(self):
