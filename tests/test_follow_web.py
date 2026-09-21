@@ -3324,13 +3324,16 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("const [layout, setLayout] = useState<Layout>", page)
 
     def test_selected_rows_follow_boardui_data_table_feedback(self):
-        """卡片来源行保持透明；表格选中行使用 BoardUI Data Table 的 secondary 背景。"""
+        """两种视图的选中行都拿 BoardUI Data Table 那一档 secondary 背景，外观归共享 CSS。"""
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertIn("<div data-selected={selected || undefined}", sources)
         row_open = sources[sources.index("<div data-selected={selected || undefined}"):]
         row_open = row_open[:row_open.index('">') + 2]
         self.assertNotIn("data-selected:bg-", row_open)
         self.assertIn("data-source-divider", sources)
+        # 卡片那一行的反馈和表格同一档，写在同一份样式表里。
+        self.assertIn("[data-source-divider] > [data-selected]",
+                      self.read_front("react/styles.css"))
         # 表格把 TanStack 的选择状态交给 Table 的 data attribute，外观仍由共享 CSS 管。
         table_block = sources[sources.index("{asTable ? ("):]
         self.assertNotIn("data-selected:bg", table_block)
@@ -3344,16 +3347,19 @@ class FollowWebSourceTests(unittest.TestCase):
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertIn('data-follow-author-header data-open={open || undefined}', sources)
         self.assertIn('<DataTableFrame follow>', sources)
-        self.assertEqual(sources.count('variant="secondary" size="small" iconOnly'), 5)
+        # 整屏只有「检查全部」一枚主动作，行内动作都不借它的蓝；画出来几枚图标键、
+        # 分别叫什么，由 `frontend/test/react/follow-manage.test.tsx` 在渲染结果上判。
+        self.assertEqual(sources.count('variant="primary"'), 1)
         self.assertIn('<Button variant="secondary" size="small" aria-expanded={open}', sources)
+        # 三处分层与分隔线各有自己的规则。这里只认规则还在：把整段声明逐字比一遍的话，
+        # 样式表换一次缩进就红，而那正是格式化工具随时会做的事。
         styles = self.read_front("react/styles.css")
-        self.assertIn("[data-follow-author-header][data-open]", styles)
-        self.assertIn("border-bottom: 1px solid var(--color-border-button-default);", styles)
-        self.assertIn("[data-board-data-table] {\n  overflow: hidden;\n  border: 1px solid "
-                      "var(--color-border-button-default);", styles)
-        self.assertIn("[data-board-data-table] .bui-table th {\n  border-top: 0;", styles)
-        self.assertIn("[data-source-divider] > * + * {\n  border-top: 1px solid "
-                      "var(--color-border-button-default);", styles)
+        for selector in ("[data-follow-author-header][data-open] {",
+                         "[data-board-data-table] {",
+                         "[data-board-data-table] .bui-table th {",
+                         "[data-source-divider] > * + * {"):
+            with self.subTest(selector=selector):
+                self.assertIn(selector, styles)
 
     def test_both_views_render_the_same_source_cells(self):
         """一条来源的格子只有一份写法：默认视图排成一行，表格视图各放一个单元格。

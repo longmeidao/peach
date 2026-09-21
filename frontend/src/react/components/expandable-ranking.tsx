@@ -42,7 +42,8 @@ export function ExpandableRanking(
   });
 
   return (
-    <div data-expandable-ranking data-expanded={expanded || undefined}
+    <div data-expandable-ranking data-expandable={expandable || undefined}
+      data-expanded={expanded || undefined}
       data-animating={animating || undefined}>
       <ol id={listId} ref={list} data-expandable-ranking-list className={className}
         onTransitionEnd={(event) => {

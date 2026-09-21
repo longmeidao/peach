@@ -161,6 +161,25 @@ class RecordTests(_StoreCase):
         self.assertEqual([link["handle"] for link in metadata["official_links"]],
                          ["lazyprocrast"])
 
+    def test_backfill_pages_add_to_the_profile_links_the_first_page_found(self):
+        """往回抓只并集追加出处：更早那几页看不到近期作品链出去的那些站。"""
+        source_id = self._source(
+            provider="rule34xxx", ref="auxtasy", label="Auxtasy",
+            metadata={"author_key": "auxtasy"},
+        )
+        self.store.record(source_id, _fetch([
+            _candidate("1", "one", provider="rule34xxx",
+                       extra={"source": "https://x.com/Auxtasy/status/1"}),
+        ], provider="rule34xxx", ref="auxtasy"), moment=MOMENT)
+        self.store.record(source_id, _fetch([
+            _candidate("9", "nine", provider="rule34xxx",
+                       extra={"source": "https://auxtasy.fanbox.cc/posts/9"}),
+        ], provider="rule34xxx", ref="auxtasy"), moment=MOMENT, page=2)
+
+        metadata = json.loads(self.store.sources()[0]["metadata_json"])
+        self.assertEqual([link["handle"] for link in metadata["official_links"]],
+                         ["Auxtasy", "auxtasy"])
+
     def test_first_fetch_adds_items_and_classifies_variants(self):
         source_id = self._source(entity_id=self._entity())
         outcome = self.store.record(source_id, _fetch([

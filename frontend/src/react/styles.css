@@ -79,35 +79,6 @@
   --breakpoint-board: 1000px;
 }
 
-/* 粘顶的那一层玻璃。取值逐字同 `web/board.css` 里首页筛选条那一组：同一份 `--glass-*`
- * 变量、同两条 `glassdrift*` 关键帧，所以站内每一块玻璃是同一块，不是几套近似值。
- * 关掉透明、关掉动效、高对比这三条退路也一起搬过来，漏掉哪条都会在那一档下露馅。 */
-@utility glass-pane {
-  background: var(--glass-drift-a), var(--glass-drift-b),
-    linear-gradient(125deg, var(--glass-sheen), transparent 42%, var(--glass-low)), var(--glass-fill);
-  background-size: 200% 200%, 200% 200%, auto;
-  background-repeat: no-repeat, no-repeat, repeat;
-  background-position: 50% 20%, 80% 70%, 0 0;
-  animation: glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,
-    glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;
-  animation-play-state: var(--glow-drift-play);
-  backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
-  -webkit-backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
-  border: 0;
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 1px 0 0 var(--glass-low),
-    inset -1px 0 0 var(--glass-low), inset 0 -1px 0 var(--glass-low), var(--glass-shadow);
-  @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-    background: var(--ground);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    animation: none;
-  }
-  @media (prefers-reduced-motion: reduce) { animation: none; }
-  /* 用户自己按下的高对比开关是个挂在 `html` 上的旧类名，React 产物不能和旧样式表同名
-     （`frontend/test/legacy-class-names.test.ts`）。这一面的回退因此写在 `web/board.css`
-     那一行里，与其它玻璃面排在一起，按 `data-glass-pane` 认人。 */
-}
-
 /* 复核队列的卡片网格与作品样本网格。两处都是「按可用宽度自动折行」，只有最窄那一列
  * 不同：队列卡要放下一张候选表单，样本格只放一张 16/10 的缩略图。 */
 @utility review-grid {
@@ -217,24 +188,14 @@
   padding-block: 0;
 }
 
-/* 复核筛选条逐项使用首页 `.board-filter-frame` 的玻璃参数；选择动作则逐项使用首页
- * `.selectiondock` 的参数。两块玻璃的饱和度本来就不同，不能拿同一个近似 utility 套。 */
+/* 两块玻璃的料由 `web/board.css` 的 `[data-glass-pane]` 一处给，两个元素都挂着那个属性。
+ * 留在这里的是各自的几何、`backdrop-filter` 的饱和度和文字色：首页 `.board-filter-frame`
+ * 与 `.selectiondock` 的饱和度本来就不同，不能拿同一个近似 utility 套。 */
 .peach-react [data-review-filter] {
   top: calc(var(--topH) + 8px);
-  border: 0;
   border-radius: 22px;
-  background: var(--glass-drift-a), var(--glass-drift-b),
-    linear-gradient(125deg, var(--glass-sheen), transparent 42%, var(--glass-low)), var(--glass-fill);
-  background-size: 200% 200%, 200% 200%, auto;
-  background-repeat: no-repeat, no-repeat, repeat;
-  background-position: 50% 20%, 80% 70%, 0 0;
-  animation: glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,
-    glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;
-  animation-play-state: var(--glow-drift-play);
   backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
   -webkit-backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 1px 0 0 var(--glass-low),
-    inset -1px 0 0 var(--glass-low), inset 0 -1px 0 var(--glass-low), var(--glass-shadow);
   isolation: isolate;
   color: var(--glass-text);
   overflow: visible;
@@ -254,20 +215,9 @@
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 0;
   border-radius: 22px;
-  background: var(--glass-drift-a), var(--glass-drift-b),
-    linear-gradient(125deg, var(--glass-sheen), transparent 42%, var(--glass-low)), var(--glass-fill);
-  background-size: 200% 200%, 200% 200%, auto;
-  background-repeat: no-repeat, no-repeat, repeat;
-  background-position: 50% 20%, 80% 70%, 0 0;
-  animation: glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,
-    glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;
-  animation-play-state: var(--glow-drift-play);
   backdrop-filter: var(--glass-optic, blur(22px)) saturate(145%);
   -webkit-backdrop-filter: var(--glass-optic, blur(22px)) saturate(145%);
-  box-shadow: inset 0 1px 0 var(--glass-rim), inset 1px 0 0 var(--glass-low),
-    inset -1px 0 0 var(--glass-low), inset 0 -1px 0 var(--glass-low), var(--glass-shadow);
 }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
@@ -319,6 +269,12 @@
   background-color: var(--color-background-secondary-default);
 }
 
+/* 卡片视图里勾上的来源行走同一档反馈：两种视图共用一个勾选集合，只有表格给底色的话，
+ * 换个视图同一批选中项就看不出来了。 */
+.peach-react [data-source-divider] > [data-selected] {
+  background-color: var(--color-background-secondary-default);
+}
+
 .peach-react [data-follow-table] [data-sort-indicator] {
   display: inline-flex;
   flex: none;
@@ -342,6 +298,11 @@
 /* 排名保留迁移前的图标式展开：列表原地长开，箭头同步说明当前方向。 */
 .peach-react [data-expandable-ranking] {
   position: relative;
+}
+
+/* 底部这 28px 是给展开键留的位置，渐隐同理：行数没超过预览档时那枚键根本不画，
+ * 只认 `[data-expandable-ranking]` 的话，短榜会凭空多出一段空白，最后一行还被抹掉。 */
+.peach-react [data-expandable-ranking][data-expandable] {
   padding-bottom: 28px;
 }
 
@@ -358,7 +319,7 @@
   transition: max-height 200ms var(--ease-in-out);
 }
 
-.peach-react [data-expandable-ranking]:not([data-expanded]) [data-expandable-ranking-list] {
+.peach-react [data-expandable-ranking][data-expandable]:not([data-expanded]) [data-expandable-ranking-list] {
   mask-image: linear-gradient(#000 calc(100% - 44px), transparent);
 }
 
@@ -376,7 +337,7 @@
   border: 1px solid var(--color-border-button-default);
   border-radius: 999px;
   background: var(--color-background-primary-default);
-  box-shadow: 0 1px 3px #0000001a;
+  box-shadow: var(--shadow-sm);
   color: var(--color-text-secondary);
   cursor: pointer;
 }

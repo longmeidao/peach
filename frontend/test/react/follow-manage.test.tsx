@@ -194,6 +194,21 @@ it('默认视图一位创作者一张卡', async () => {
     .toEqual(['甲 的关注来源', '乙 的关注来源', '丙 的关注来源']);
 });
 
+it('卡片里每条来源两枚图标键，勾中的那条自己标出来', async () => {
+  const { host } = await open();
+  const card = cards(host)[0]!;
+  expect(buttonLabelled(card, '检查 甲 的全部来源')).not.toBeNull();
+  const rows = () => [...card.querySelectorAll('[data-source-divider] > *')];
+  expect(rows()).toHaveLength(2);
+  for (const row of rows()) {
+    const icons = [...row.querySelectorAll('button')].filter((button) => !button.textContent?.trim());
+    expect(icons.map((button) => button.getAttribute('aria-label'))).toHaveLength(2);
+  }
+
+  await click(checkboxNamed(host, '选择 甲 · Kemono'));
+  expect(rows().filter((row) => row.hasAttribute('data-selected'))).toHaveLength(1);
+});
+
 it('勾选跨页也跨视图，批量发出去的是整个 ID 集合', async () => {
   const many = Array.from({ length: 12 }, (_, at) => source({
     id: at + 1, author_key: `name:人${at}`, author_name: `人${at}`,

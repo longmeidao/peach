@@ -32518,6 +32518,7 @@ function LD({ children: e, className: t = "", previewCount: n = 10 }) {
 	let d = l.map((e, t) => !(0, S.isValidElement)(e) || t < n ? e : (0, S.cloneElement)(e, { inert: !a || void 0 }));
 	return /* @__PURE__ */ (0, C.jsxs)("div", {
 		"data-expandable-ranking": !0,
+		"data-expandable": u || void 0,
 		"data-expanded": a || void 0,
 		"data-animating": s || void 0,
 		children: [/* @__PURE__ */ (0, C.jsx)("ol", {
