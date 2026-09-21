@@ -5197,10 +5197,10 @@ function renderDuplicates(){
   paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`);
   $('#stats').innerHTML=`<div class="review">
     ${collectionSummaryHtml('重复内容',`${Number(d.total||0).toLocaleString()} 组`,`${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`)}
-    ${groups.length?`<div class="dupactions" data-glass-pane><h3>批量保留</h3>
+    ${groups.length?`<div class="board-filter-frame" data-filter-frame><div class="dupactions" data-filter-row="top"><h3>批量保留</h3>
       <button data-dup-all="largest">全部保留最大</button>
       <button data-dup-all="longest">全部保留最长</button>
-      ${bulkClouds.map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join('')}</div>`:''}
+      ${bulkClouds.map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join('')}</div></div>`:''}
     ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
       <div class="duphead"><b class="mono">${esc(g.code)}</b>
         <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>

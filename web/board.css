@@ -1668,22 +1668,23 @@ body[data-surface="/review"] .reviewlist{grid-template-columns:repeat(auto-fill,
 body .review-skeleton .reviewbulktoolbar{position:static;border-radius:16px;margin-bottom:20px;
   padding:8px 12px;background:var(--color-background-full)}
 body[data-surface="/duplicates"] #manageLede{display:none}
-/* 「批量保留」是一块吸顶的玻璃，料取 `[data-glass-pane]` 那一份、几何照首页筛选框：跟顶栏留
-   8px、22px 圆角、字色走 `--glass-text`；管理页正文随窗口滚，`position:sticky` 直接对着视口。
-   里面的键沿用筛选框胶囊的形态：30px 高、13px 字、一圈 `--glass-low` 发丝边、不铺填充——
-   flat 面那种实底键摆到玻璃上是整条里唯一一块不透光的东西。 */
-body[data-surface="/duplicates"] .dupactions{position:sticky;top:calc(var(--topH) + 8px);z-index:60;isolation:isolate;margin:0 0 22px;padding:10px 16px;border-radius:22px;color:var(--glass-text);flex-wrap:wrap;gap:8px 10px}
+/* 「批量保留」就是首页那块悬浮筛选框：外层 `.board-filter-frame` 拿玻璃料、吸顶、`backdrop-filter`
+   与 `board-is-stuck` 的抬影，这一排只是它的一格 `[data-filter-row]`。`[data-glass-pane]` 那份料
+   不带 `backdrop-filter`，套上去身后的字一个不糊地透出来。里面的键沿用筛选框胶囊的形态：30px 高、
+   13px 字、一圈 `--glass-low` 发丝边、不铺填充——flat 面那种实底键摆到玻璃上是整条里唯一一块
+   不透光的东西。 */
+body[data-surface="/duplicates"] .dupactions{margin:0;padding:10px 16px;flex-wrap:wrap;gap:8px 10px;color:var(--glass-text)}
 body[data-surface="/duplicates"] .dupactions h3{margin:0 4px 0 0;font:var(--board-body-medium);color:inherit}
 body[data-surface="/duplicates"] .dupactions button{height:30px;padding:0 12px;border:1px solid var(--glass-low);border-radius:var(--pill-radius);background:transparent;color:var(--glass-text);font-size:13px;line-height:1;white-space:nowrap;cursor:pointer}
 body[data-surface="/duplicates"] .dupactions button:hover{border-color:var(--glass-rim);background:var(--glass-pick-fill)}
 body[data-surface="/duplicates"] .dupactions button[aria-busy="true"]{color:color-mix(in srgb,var(--glass-text) 55%,transparent);cursor:wait}
-/* 每组一张卡：浅色下正文与页面同是白的，一圈发丝边分不出层，于是跟数据管理、复核那几张
-   卡一样落到 `--color-background-secondary-default`，头部条与正文同色、靠一条发丝线分开；
-   深色下头部比正文暗一档已经读得出层，保持原来的取法。 */
+/* 每组一张卡，头部比正文深一档，两块面自己就分得开，不靠一条细线。深色下正文 primary、头部
+   secondary 本来就是这样；浅色下 primary 与页面同是白的，正文于是跟数据管理、复核那几张卡一样
+   落到 secondary，头部再深一档取 tertiary。 */
 body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}
 body[data-surface="/duplicates"] .duphead{padding:20px;gap:12px;background:var(--color-background-secondary-default)}
 html:not(.dark) body[data-surface="/duplicates"] .dupgroup{background:var(--color-background-secondary-default)}
-html:not(.dark) body[data-surface="/duplicates"] .duphead{border-bottom:1px solid var(--line-soft)}
+html:not(.dark) body[data-surface="/duplicates"] .duphead{background:var(--color-background-tertiary-default)}
 body[data-surface="/duplicates"] .duphead>b{font:var(--board-heading)}
 body[data-surface="/duplicates"] .duphead .dupbtns{flex-wrap:wrap;gap:8px}
 body[data-surface="/duplicates"] .duprow{grid-template-columns:112px minmax(0,1fr) 84px 84px 84px;padding:16px 20px;gap:12px}

@@ -9072,16 +9072,26 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn('body[data-surface="/duplicates"] .dupmarks{grid-column', board)
 
     def test_duplicate_bulk_bar_is_a_sticky_glass_pane_and_light_groups_sit_above_the_page(self):
-        """「批量保留」条吸顶、材质取 `[data-glass-pane]`；浅色下每组卡落到 secondary 底色。"""
-        self.assertPageContains('<div class="dupactions" data-glass-pane><h3>批量保留</h3>')
+        """「批量保留」条就是首页那块 `.board-filter-frame`；每组卡头部比正文深一档。
+
+        `[data-glass-pane]` 那份料没有 `backdrop-filter`，吸顶后身后的组标题原样透出来；
+        玻璃、吸顶、`backdrop-filter` 与 `board-is-stuck` 抬影都在 `.board-filter-frame` 这一个类上，
+        这一排只做它的一格 `[data-filter-row]`，不复制样式。
+        """
+        self.assertPageContains('<div class="board-filter-frame" data-filter-frame><div class="dupactions" data-filter-row="top"><h3>批量保留</h3>')
+        self.assertPageLacks('class="dupactions" data-glass-pane')
         self.assertPageLacks('class="fsechead dupactions"')
         self.assertPageLacks(".dupactions.fsechead")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('body[data-surface="/duplicates"] .dupactions{position:sticky;top:calc(var(--topH) + 8px);z-index:60;isolation:isolate;margin:0 0 22px;padding:10px 16px;border-radius:22px;color:var(--glass-text);', board)
+        self.assertIn('body[data-surface="/duplicates"] .dupactions{margin:0;padding:10px 16px;flex-wrap:wrap;gap:8px 10px;color:var(--glass-text)}', board)
+        self.assertNotIn('body[data-surface="/duplicates"] .dupactions{position:sticky', board)
         self.assertIn('body[data-surface="/duplicates"] .dupactions button{height:30px;padding:0 12px;border:1px solid var(--glass-low);border-radius:var(--pill-radius);background:transparent;color:var(--glass-text);', board)
-        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .dupgroup{background:var(--color-background-secondary-default)}', board)
-        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .duphead{border-bottom:1px solid var(--line-soft)}', board)
+        # 一深一淡：深色正文 primary、头部 secondary；浅色正文 secondary、头部 tertiary。
         self.assertIn('body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}', board)
+        self.assertIn('body[data-surface="/duplicates"] .duphead{padding:20px;gap:12px;background:var(--color-background-secondary-default)}', board)
+        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .dupgroup{background:var(--color-background-secondary-default)}', board)
+        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .duphead{background:var(--color-background-tertiary-default)}', board)
+        self.assertNotIn('.duphead{border-bottom', board)
 
     def test_duplicate_group_can_be_entirely_recycled_when_every_file_is_an_ad(self):
         self.assertPageContains("if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}")
