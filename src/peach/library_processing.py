@@ -79,12 +79,14 @@ def _r18_actresses(rows):
 def describe_failure(error):
     """把来源失败写成问题清单里能直接读懂的一句。"""
     import httpx
+    from .avatar_picker import PickerError
     from .jav_cover_fetch import Unavailable
     from .scraping_access import SourcePaused
     text = str(error).strip()
     if isinstance(error, Unavailable) and text.startswith('HTTP '):
         return f'来源返回 {text}'
-    if isinstance(error, (Unavailable, SourcePaused, httpx.TransportError)) and text:
+    # 这几个的消息本来就是写给人看的，原样用；别的只报类型，免得把内部细节贴到界面上。
+    if isinstance(error, (Unavailable, SourcePaused, PickerError, httpx.TransportError)) and text:
         return text
     return f'处理出错（{type(error).__name__}）'
 #: 来源说「没有」不是待办：馆藏里本来就有大量独立资源和创作者作品，任何目录站都收不到
@@ -461,6 +463,12 @@ def _provider_code(raw):
         return ''
 
 
+def _candidate_identity(source, value):
+    """候选的身份：来源加取值。取值变了身份就得跟着变，否则「批准的是哪一版」答不出来。"""
+    return hashlib.sha256(json.dumps([source, value], ensure_ascii=False,
+                                     sort_keys=True).encode()).hexdigest()
+
+
 def _merge_candidates(groups, row, code, source, document, evidence_path, genre_decisions, local_fields=()):
     """把 `document` 里认得出的字段并进 `groups`：同来源的旧候选换掉，别的来源保留。
 
@@ -485,7 +493,7 @@ def _merge_candidates(groups, row, code, source, document, evidence_path, genre_
             continue
         if current and current == _text(value.get('display_value', value['value'])):
             continue
-        identity = hashlib.sha256(json.dumps([source, value['value']], ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+        identity = _candidate_identity(source, value['value'])
         # 来源自报的番号跟着候选走：落库前要再核一次身份，javdb 的详情页地址里没有番号。
         candidate = dict(candidate_key=identity, source=source, provider=PROVIDER_NAMES.get(source, source),
                          value=value['value'], display_value=value.get('display_value', str(value['value'])),
@@ -538,6 +546,7 @@ def _merge_local_performer_profiles(groups, key, remote, source):
         people = candidate.get('value')
         if not isinstance(people, list):
             continue
+        before = json.dumps(people, ensure_ascii=False, sort_keys=True)
         for person in people:
             if not isinstance(person, dict):
                 continue
@@ -553,6 +562,10 @@ def _merge_local_performer_profiles(groups, key, remote, source):
                 if person.get('profile_source') != profile_source:
                     person['profile_source'] = profile_source
                     changed = True
+        # 取值变了，身份就得重算：`candidate_key` 是「用户批准的是哪一版」的唯一凭据，
+        # 补进资料却留着旧键，事后按键回溯拿到的是没有这些证据的那一版。
+        if json.dumps(people, ensure_ascii=False, sort_keys=True) != before:
+            candidate['candidate_key'] = _candidate_identity(candidate.get('source'), people)
     if changed:
         group['candidates_json'] = json.dumps(candidates, ensure_ascii=False)
         groups[key] = group
@@ -726,30 +739,45 @@ class _RemoteSession:
         return 0
 
 
-def _apply_finished_candidates(callback, db_path, candidate_root):
-    """调用组装层的自动落库规则；未注入时保留核心处理器的独立可用性。"""
-    if callback is None:
-        return {"applied": 0}
-    return callback(Path(db_path), Path(candidate_root))
+def _apply_finished_candidates(database, candidate_root, active):
+    """候选落盘后立即执行窄规则自动落库；没有账本实例时只采集候选。
+
+    停止后一条都不再写：任务已经不属于这次运行，用户按下停止之后账本还在变，
+    是这个功能最难解释的一种表现。
+    """
+    if database is None or not active():
+        return {'applied': 0}
+    from .metadata_auto_apply import auto_apply_metadata
+    return auto_apply_metadata(database, Path(candidate_root), active=active)
 
 
-def _enrich_finished_performers(callback, db_path, groups, config, candidate_root, remote):
+def _enrich_finished_performers(database, groups, config, candidate_root, remote, active,
+                                update=lambda **values: None,
+                                issue=lambda asset, message, **options: None):
     """自动落库启用时补同一人物的资料；只采集候选时保持完全只读。"""
     empty = {'aliases': 0, 'avatars': 0, 'conflicts': 0, 'failed': 0}
-    if callback is None:
+    if database is None or not active():
         return empty
     from .metadata_performer_profiles import enrich_performer_profiles
+    # 问题清单要的是这条资产的 id 和路径，候选行上都有。
+    rows = {int(group['asset_id']): {'id': int(group['asset_id']),
+                                     'path': group.get('asset_path') or ''}
+            for group in groups.values() if str(group.get('asset_id') or '').isdigit()}
     return enrich_performer_profiles(
-        Path(db_path), groups.values(), config.directory('generated') / 'avatars',
+        database, groups.values(), config.directory('generated') / 'avatars',
         candidate_root / 'provider-cache' / 'performer-avatars',
         transport_factory=lambda: getattr(remote.provider(), 'transport', None),
+        active=active, progress=update,
+        # 头像取不到是可重试的：下一次「重试失败项」会连着这条资产一起再来一遍。
+        issue=lambda asset_id, message: issue(rows.get(asset_id), message,
+                                              action='fetching_cover', retryable=True),
     )
 
 
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES,
-                    apply_candidates=None):
+                    database=None):
     """登记文件与确定的番号，外部资料保留为可复核候选。
 
     `retry_ids` 为 `None` 时处理整个馆藏；给定时只处理这些项目（上一任务记录的
@@ -759,6 +787,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
     跳过那一遍、直接读本地资料并采集缺失的。新盘刚接上时要的是前者——几万个
     文件登记完就能用，不必等采集；采集被网络拖住时要的是后者，重跑不必再扫一遍
     磁盘。缺省两段都跑。
+
+    `database` 是调用方已经在用的 `LedgerDatabase`。给了它才做收尾的自动落库与人物
+    资料补齐，并且与调用方共用同一把进程内写锁；不给就只采集候选。
     """
     _require_writer(config, db_path)
     path = state_path(config)
@@ -973,9 +1004,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             flush_candidates(force=True)
             # 候选完整落盘后立即执行调用方注入的窄规则，不再等人打开复核页才触发。
             # 核心处理层不反向依赖 Web 复核层；CLI 与 Web 两个组装入口都传入同一实现。
-            auto_apply = _apply_finished_candidates(apply_candidates, db_path, candidate_root)
+            auto_apply = _apply_finished_candidates(database, candidate_root, active)
             profiles = _enrich_finished_performers(
-                apply_candidates, db_path, groups, config, candidate_root, remote)
+                database, groups, config, candidate_root, remote, active, update, issue)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
                    auto_applied=auto_apply['applied'],

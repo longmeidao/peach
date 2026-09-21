@@ -29,7 +29,7 @@ from peach.library_nfo import local_art, read_nfo, sidecars
 from peach.library_processing import process_library
 from peach.review_csv import read_rows
 from peach.settings_file import PeachConfig
-from peach.web_review import _apply_metadata_candidate
+from peach.metadata_auto_apply import _apply_metadata_candidate
 from support.conditions import windows_ledger_roots
 from support.ledger import fresh_ledger
 

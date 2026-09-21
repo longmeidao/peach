@@ -2467,7 +2467,7 @@ class ApplyMetadataTagsTests(unittest.TestCase):
     def test_it_reuses_the_review_write_mapping_instead_of_its_own_sql(self):
         """自己拼 INSERT 会漏掉删旧行、规范化标签名和 asset_entity 那一半。"""
         source = (ROOT / "scripts" / "apply_metadata_tags.py").read_text(encoding="utf-8")
-        self.assertIn("from peach.web_review import _apply_metadata_candidate", source)
+        self.assertIn("from peach.metadata_auto_apply import _apply_metadata_candidate", source)
         self.assertNotIn("INSERT INTO asset_tag", source)
 
     def test_only_the_requested_source_and_field_are_written(self):

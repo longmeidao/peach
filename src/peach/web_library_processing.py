@@ -4,7 +4,6 @@ import json
 from . import settings_file
 from .library_processing import (ALL_STAGES, COLLECT_STAGE, SCAN_STAGE, STAGES,
                                 decorate, issues_path, process_library, snapshot)
-from .web_review import auto_apply_metadata
 
 
 def _current(contract):
@@ -86,7 +85,9 @@ def w_library_processing(contract, body):
         try:
             result = process_library(config, contract.db_path, contract.candidate_root, contract.cover_root,
                 job_id=job_id, retry_ids=retry_ids, stage=stage,
-                apply_candidates=auto_apply_metadata,
+                # 自动落库与页面写的是同一个 `LedgerDatabase`：进程内写锁在实例上，
+                # 另建一个就是在同一个进程里开第二条写入路径。
+                database=contract.database,
                 active=lambda: (contract.library_processing_job.snapshot() or {}).get('job_id') == job_id,
                 report=lambda state: contract.library_processing_job.update(job_id, **{
                     key: value for key, value in state.items() if key != 'job_id'}))

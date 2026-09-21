@@ -16,9 +16,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from peach import review_csv as rm_candidates
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
 from peach.genre_taxonomy import map_genres
+from peach.metadata_auto_apply import auto_apply_metadata
 from peach.field_owners import (
     EXPECTED_REVISION_FIELD,
     USER_MANUAL,
@@ -143,7 +145,43 @@ class ReviewQueueTests(unittest.TestCase):
         con.commit(); con.close()
 
     def _auto(self):
-        return rm_review.w_review_auto_apply(self.contract)
+        return auto_apply_metadata(self.contract.database, self.candidates)
+
+    def test_auto_apply_commits_in_batches_and_keeps_what_landed_before_a_stop(self):
+        """整库一趟能有上万条。一个事务包到底的话，写锁全程被占着，界面上的复核与编辑
+        都得排队；任务中途停下来，已经判完的也跟着回滚。分批提交两头都解决。
+        """
+        rows = []
+        for index, asset_id in enumerate((201, 202, 203, 204), start=1):
+            code = f"PPT-1{index:02d}"
+            self._asset(asset_id, code, f"{code}.mp4")
+            rows.append({"item_key": f"{code}:release_date", "field": "release_date",
+                         "current": "", "candidates": ["2015-02-20"], "code": code})
+        self.write_metadata_rows(rows)
+
+        database = self.contract.database
+        opened = []
+        real = database.write_transaction
+
+        def counted():
+            opened.append(1)
+            return real()
+
+        database.write_transaction = counted
+        # 第三批开始之前停：前两批各自提交过，剩下的一条都不动。
+        result = auto_apply_metadata(database, self.candidates, batch_size=1,
+                                     active=lambda: len(opened) < 2)
+        database.write_transaction = real
+
+        self.assertEqual(len(opened), 2)
+        self.assertEqual(result["applied"], 2)
+        con = sqlite3.connect(self.db_path)
+        try:
+            landed = [row[0] for row in con.execute(
+                "SELECT id FROM asset WHERE release_date='2015-02-20' ORDER BY id")]
+        finally:
+            con.close()
+        self.assertEqual(landed, [201, 202])
 
     def test_latest_candidate_uses_write_time_not_filename_order(self):
         older = self.candidates / "metadata-field-candidates-windows-p0-proof-20260822.csv"
@@ -154,7 +192,7 @@ class ReviewQueueTests(unittest.TestCase):
         os.utime(newer, (2000, 2000))
 
         self.assertEqual(
-            rm_review.latest_candidate_file("metadata_fields", self.candidates), newer,
+            rm_candidates.latest_candidate_file("metadata_fields", self.candidates), newer,
         )
 
     def test_older_batches_keep_their_undecided_rows_in_the_queue(self):

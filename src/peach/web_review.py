@@ -1,8 +1,8 @@
 """复核队列：把带出处的候选摆到人面前，等一次明确的批准或否决。
 
 从 `web_contract` 拆出。这一域读 `peach-data/generated` 下的候选 CSV、把它们和账本
-现状比对、渲染成待复核行，并在用户批准后写真相字段——ADR-0006/0018 的闸门就落在
-`w_review_decision` 与 `w_review_auto_apply` 这两处。
+现状比对、渲染成待复核行，并在用户批准后写真相字段——ADR-0006 的闸门落在
+`w_review_decision`，判据与写入映射本身归 `metadata_auto_apply`。
 
 浏览域不需要知道候选文件长什么样，复核域也不需要知道首页怎么排序；它们过去只是
 恰好住在同一个文件里。
@@ -11,52 +11,43 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import time
-from collections import defaultdict
 from pathlib import Path, PurePosixPath
 from typing import Protocol
 from urllib.parse import quote
 
 from .avatar_provider import install_entity_avatar
-from .catalog_rules import (
-    code_release_date,
-    collapse_superseded_taste_tags,
-    is_korean_mib_code,
-    normalise_code_key,
-    release_code_from_filename,
-    same_release_code,
-    superseded_taste_tags,
-)
+from .catalog_rules import is_korean_mib_code, normalise_code_key
 from .code_creators import collect
-from .config import GENERATED_DIR
-from .entities import (
-    canonicalize_entity_name,
-    collapse_repeated_entity_name,
-    normalize_entity_name,
-    resolve_entity,
-    upsert_asset_entity,
-)
+from .entities import normalize_entity_name, resolve_entity
 from .field_owners import (
     EXPECTED_REVISION_FIELD,
-    auto_owner,
-    check_revision,
-    is_protected,
     owner_label,
     owner_of,
     review_owner,
-    write_owned_fields,
 )
 from .fsutil import atomic_write_bytes
 from .genre_decisions import load_genre_decisions, record_genre_decision
-from .genre_taxonomy import CONTENT_GENRES, UNMAPPED, genres_in_warning, resolve_genre
-from .metadata import identifies_code
-from .metadata_policy import (
-    FALLBACK_SOURCES, FIELD_SOURCE_ORDER, PREFERRED_COMMUNITY_SOURCE, SOURCE_SPECS,
+from .genre_taxonomy import CONTENT_GENRES
+# 判据与写入映射属于领域层（`metadata_auto_apply`）：命令行首扫、处理任务的自动落库和
+# 这里的「通过」按钮必须是同一套，复核域只负责把它们摆到人面前并记下决定。
+from .metadata_auto_apply import (
+    METADATA_FIELD_COLUMNS,
+    REVIEW_APPLY_LIMIT,
+    _apply_metadata_candidate,
+    _entity_identity_key,
+    _fold_genre_decisions,
+    _offers_another_stage_name,
+    _only_mib_official,
+    _parsed_candidates,
+    _performer_identity_keys,
+    _row_candidates,
+    _split_multi,
+    refresh_current_values,
 )
+from .metadata_policy import SOURCE_SPECS
 from .previews import logo_key
-from .repository import LedgerDatabase
-from .review_csv import read_rows
+from .review_csv import CANDIDATE_PREFIX, read_candidates
 
 
 class ReviewContract(Protocol):
@@ -73,40 +64,6 @@ class ReviewContract(Protocol):
     def write_transaction(self): ...
 
 
-# 候选文件名带批次日期，代码里只认前缀并永远取目录里实际最后写完的一份；
-# 文件名允许附加主机/用途，不能用字典序冒充时间顺序。2026-08-30 的
-# `...japanese-official-tags-20260827...` 就曾被更旧的 `...windows-p0-proof-20260822...`
-# 盖住，导致新官方标签在复核页完全不可见。
-CANDIDATE_PREFIX = {
-    "metadata_fields": "metadata-field-candidates-",
-    "creator_tags": "creator-tags-candidate-",
-    "studio_logos": "studio-logo-candidate-",
-    "performer_avatars": "performer-avatar-candidate-",
-    # 这三类此前只落在 CSV 里没有界面入口，复核负担等于被丢回给用户去翻文件。
-    "western_identity": "babepedia-candidates",
-    "cover_sources": "cover-fetch-log",
-    "fc2_markings": "fc2-candidate-log",
-    "fc2_similarity": "fc2-similarity-candidate-",
-    "video_endcards": "video-endcard-candidate-",
-}
-ADDITIONAL_CANDIDATE_FILES = {
-    # 分区文件先于通用批次读取；同一个 item_key 出现时，窄范围的刷新证据应覆盖
-    # 通用批次里的旧候选，而不是被 seen 去重静默吞掉。
-    "metadata_fields": ("library-metadata-field-candidates.csv", "japanese-title-candidates.csv", "fc2-metadata-field-candidates.csv", "kmib-metadata-field-candidates.csv"),
-}
-# 每类候选的稳定主键列。缺这一列的行直接跳过并计数，绝不退化成行号——
-# 行号会在 CSV 重排后把历史决定悄悄挪到别的条目上。
-CANDIDATE_KEY = {
-    "metadata_fields": "item_key",
-    "creator_tags": "board",
-    "studio_logos": "studio",
-    "performer_avatars": "entity_id",
-    "western_identity": "entity_id",
-    "cover_sources": "code",
-    "fc2_markings": "code",
-    "fc2_similarity": "pair_key",
-    "video_endcards": "candidate_key",
-}
 #: 队列现算、不读候选文件的类别，取行的函数见 `LIVE_CATEGORY_ROWS`。判据的输入就是
 #: 账本本身，没有需要留存的外部证据，所以 CSV 只是某一次跑脚本时的快照：实测那份
 #: 44 行里有 27 行的实体早已不在库里，点进去无事可做，真正该看的只有 24 条。
@@ -151,82 +108,6 @@ def _needs_review(category: str, row: dict) -> bool:
 
 
 REVIEW_PREVIEW_LIMIT = 60
-REVIEW_APPLY_LIMIT = 500
-
-
-def latest_candidate_file(category: str, root: Path | None = None) -> Path | None:
-    prefix = CANDIDATE_PREFIX.get(category)
-    if not prefix:
-        return None
-    matches = list((root or GENERATED_DIR).glob(f"{prefix}*.csv"))
-    if not matches:
-        return None
-    return max(matches, key=lambda path: (path.stat().st_mtime_ns, path.name))
-
-
-#: 按番号分批跑、每批只覆盖自己那批番号的类别。这些类别读全部批次，别的只读最新一份。
-#: 差别在于批次之间是不是同一批对象：元数据字段候选每批问的是不同的番号，上一批未复核
-#: 的行在下一批里根本不会出现；封面日志、创作者标签那些每批重跑同一批对象，旧批次是
-#: 过时快照，读进来只会把已经作废的证据摆回台面。
-MULTI_BATCH_CATEGORIES = frozenset({"metadata_fields"})
-
-
-def candidate_files(category: str, root: Path | None = None) -> list[Path]:
-    """这一类的候选文件，按证据优先级排列：先读的那份说了算。
-
-    分区文件最优先，批次文件按写入时间从新到旧。分批类别的**旧批次不能因为跑了新批次
-    就消失**：只读最新一份实测让 9 月 1 日那批 128 条可落库的行在复核页上完全不可见
-    ——它们既没被判过，也再没机会被判。
-    """
-    base = root or GENERATED_DIR
-    partitions = [
-        base / name for name in ADDITIONAL_CANDIDATE_FILES.get(category, ())
-        if (base / name).is_file()
-    ]
-    if category in MULTI_BATCH_CATEGORIES:
-        prefix = CANDIDATE_PREFIX.get(category)
-        batches = sorted(
-            (path for path in base.glob(f"{prefix}*.csv") if path.is_file()),
-            key=lambda path: (path.stat().st_mtime_ns, path.name), reverse=True,
-        ) if prefix else []
-    else:
-        latest = latest_candidate_file(category, root)
-        batches = [latest] if latest is not None and latest.is_file() else []
-    ordered, seen = [], set()
-    for path in partitions + batches:
-        if path not in seen:
-            seen.add(path)
-            ordered.append(path)
-    return ordered
-
-
-def _candidate_source_label(paths: list[Path]) -> str:
-    """复核页要看得出证据来自哪；十几份批次名字全列出来会把那一行撑爆。"""
-    names = [path.name for path in paths]
-    if len(names) <= 3:
-        return "; ".join(names)
-    return "; ".join(names[:3]) + f" 等 {len(names)} 份"
-
-
-def read_candidates(category: str, root: Path | None = None) -> tuple[list[dict], str | None, int]:
-    """读取全部批次的候选，返回（有稳定主键的行, 来源说明, 被跳过的行数）。"""
-    paths = candidate_files(category, root)
-    if not paths:
-        return [], None, 0
-    key_column = CANDIDATE_KEY[category]
-    rows, skipped, seen = [], 0, set()
-    for candidate_path in paths:
-        for row in read_rows(candidate_path):
-            key = str(row.get(key_column) or "").strip()
-            if not key:
-                skipped += 1
-                continue
-            if key in seen:
-                continue
-            seen.add(key)
-            row["item_key"] = key
-            rows.append(row)
-    return rows, _candidate_source_label(paths), skipped
 
 
 def _creator_entity_ids(connection, creators: list[str]) -> dict[str, int]:
@@ -276,70 +157,6 @@ def _creator_previews(connection, creators: list[str], *, include_unpictured: bo
             seen[candidate].add(row["id"])
             bucket.append({"id": row["id"], "name": row["name"], "duration": row["duration"]})
     return previews
-
-
-#: 多值字段在账本里是实体关系，不是 `asset` 上的列。
-_MULTI_VALUE_ROLES = {"performers": "performer", "tags": "tag"}
-
-
-def refresh_current_values(connection, rows: list[dict]) -> None:
-    """把候选行的「账本现值」换成账本此刻的值。
-
-    候选件是抓取那一刻写的，`current_value` 也就停在那一刻。之后落过库、合并过实体、
-    改过名的，这一栏都不跟着动：实测 300 行队列里有 85 行写着空而账本早有值（标签 29、
-    演员 22、标题 13、厂牌 8、系列 8、发行日期 5）。队列拿它判「补空还是冲突」，自动
-    落库拿它判「这里是不是空的」——过期一份，两处一起错，而且错的方向是往库里写。
-
-    账本里找不到这个番号的资产时保留候选件那一份：那种行本来就轮不到按现值判。
-    """
-    codes = [code for code in dict.fromkeys(
-        str(row.get(key) or "").strip() for row in rows for key in ("code", "query")) if code]
-    if not codes:
-        return
-    columns = sorted(set(METADATA_FIELD_COLUMNS.values()))
-    marks = ",".join("?" * len(codes))
-    by_asset: dict[int, dict] = {}
-    by_code: dict[str, list[int]] = defaultdict(list)
-    for asset in connection.execute(
-            f"SELECT id,code,{','.join(columns)} FROM asset WHERE medium='video' "
-            f"AND (disposal IS NULL OR disposal<>'trash') AND code IN ({marks}) ORDER BY id",
-            codes):
-        by_asset[int(asset["id"])] = dict(asset)
-        by_code[normalise_code_key(asset["code"])].append(int(asset["id"]))
-    if not by_asset:
-        return
-    ids = list(by_asset)
-    id_marks = ",".join("?" * len(ids))
-    linked: dict[int, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
-    for asset_id, role, name in connection.execute(
-            f"SELECT ae.asset_id,ae.role,e.canonical_name FROM asset_entity ae"
-            f" JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id IN ({id_marks})"
-            " AND ae.role IN ('performer','tag') ORDER BY e.canonical_name", ids):
-        linked[int(asset_id)][str(role)].append(str(name))
-
-    for row in rows:
-        field = str(row.get("field") or "").strip()
-        raw = str(row.get("asset_id") or "").strip()
-        # 取值范围必须和 `_apply_metadata_candidate` 写的范围一样：钉住单个文件的行
-        # （带 `asset_path`，本机 275 行）只看那一个，其余按番号整组。范围不一致就会
-        # 出现「按九卷里空着的那一卷判成空位，落库却把第十卷已有的值一起改掉」。
-        if str(row.get("asset_path") or "").strip() and raw.isdigit() and int(raw) in by_asset:
-            targets = [int(raw)]
-        else:
-            key = normalise_code_key(str(row.get("code") or row.get("query") or ""))
-            targets = by_code.get(key, [])
-        if not targets:
-            continue
-        column = METADATA_FIELD_COLUMNS.get(field)
-        if column:
-            # 同番号多卷时任取有值的那一卷：落库本来就是整组一起写。
-            row["current_value"] = next(
-                (value for target in targets
-                 if (value := str(by_asset[target][column] or "").strip())), "")
-        elif field in _MULTI_VALUE_ROLES:
-            role = _MULTI_VALUE_ROLES[field]
-            row["current_value"] = "、".join(dict.fromkeys(
-                name for target in targets for name in linked[target][role]))
 
 
 def _attach_review_asset_context(connection, rows: list[dict]) -> None:
@@ -456,57 +273,6 @@ def _metadata_decision_is_stale(decision: dict, row: dict) -> bool:
     keys = {str(candidate.get("candidate_key") or "").strip()
             for candidate in row.get("candidates") or []}
     return bool(keys) and approved_key not in keys
-
-
-def _unmapped_genres(candidate: dict) -> list[str]:
-    """候选里那批未收录原文。
-
-    `unmapped_genres` 是结构化的那份。2026-09-11 之前写下的候选文件只有 `warnings`
-    里那句中文提示，而复核页要能在它们身上就把 genre 收录进来——让用户先重抓一遍全库
-    才有按钮可点，等于这个功能对现有队列不存在。反解只认 `genre_taxonomy` 自己拼出
-    的那个格式，两边写在同一个文件里。
-    """
-    structured = [str(item).strip() for item in candidate.get("unmapped_genres") or []]
-    if any(structured):
-        return [item for item in structured if item]
-    for warning in candidate.get("warnings") or []:
-        recovered = genres_in_warning(warning)
-        if recovered:
-            return recovered
-    return []
-
-
-def _fold_genre_decisions(field: str, candidate: dict, decided: dict[str, str | None]) -> dict:
-    """把用户已经收录的 genre 折进这条候选，剩下的以结构化形式交给页面。
-
-    候选文件是抓取那一刻的产物，收录一个 genre 不重抓全库；判定要写进账本的也是折过
-    之后的这份值，否则页面上标签已经多出一个、批准写下去的还是旧的那几个。
-    未决的那些从 `warnings` 里那句话挪到 `unmapped_genres`：页面要拿它们做按钮，
-    留一句「来源还有 2 个未收录 genre」只能读，读完还是没有出口。
-
-    静态表也要重查一遍，不只查用户的决定：候选文件停在抓取那一刻，而 `CONTENT_GENRES`
-    与 `NON_CONTENT_GENRES` 一直在补。实测本机 304 条带未收录 genre 的候选里，101 条
-    的未收录项按当前的表全部认得出来——`配信専用`、`ナンパ`、`清楚` 早就在表里了，
-    页面上却还摆着它们等人判。
-    """
-    if field != "tags":
-        return candidate
-    unmapped = _unmapped_genres(candidate)
-    if not unmapped:
-        return candidate
-    values = [str(value) for value in candidate.get("value") or []]
-    remaining: list[str] = []
-    for genre in unmapped:
-        tag = resolve_genre(genre, decided)
-        if tag == UNMAPPED:
-            remaining.append(genre)
-            continue
-        if tag and tag not in values:
-            values.append(tag)
-    return {**candidate, "value": values, "display_value": "、".join(values),
-            "unmapped_genres": remaining,
-            "warnings": [warning for warning in candidate.get("warnings") or []
-                         if not genres_in_warning(warning)]}
 
 
 def _code_creator_rows(connection) -> list[dict]:
@@ -637,44 +403,8 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
 MULTI_VALUE_FIELDS = {"performers", "tags"}
 
 
-def _split_multi(value: str) -> list[str]:
-    return [part.strip() for part in re.split(r"[、,，/|]", value or "") if part.strip()]
-
-
 #: 厂牌和系列在账本里也是实体，字段里那串字符只是它的投影。
 ENTITY_BACKED_FIELDS = {"studio", "series"}
-
-
-def _entity_identity_key(connection, kind: str, name: str) -> frozenset:
-    """把一个名字折成身份键：能解析到实体的用实体 id，解析不到的保留规范化原名。
-
-    来源常把两种写法并在一串里——演员是「现名（旧名）」，厂牌是
-    `プレステージプレミアム(PRESTIGE PREMIUM)` 这种日英并写。整串匹配不到实体，
-    括号两边各自却都是已登记别名，所以拆开再查一次。没有一个变体命中就保留原名，
-    真正的冲突不会被这一步吞掉。
-    """
-    variants = [name.strip()]
-    match = re.fullmatch(r"\s*([^（(]+?)\s*[（(]([^）)]+)[）)]\s*", name)
-    if match:
-        variants.extend(part.strip() for part in match.groups() if part.strip())
-    resolved = {
-        row["id"] for variant in variants
-        if (row := resolve_entity(connection, kind, variant))
-    }
-    return frozenset(resolved) if resolved else frozenset({normalize_entity_name(name)})
-
-
-def _performer_identity_keys(connection, names: list[str]) -> frozenset:
-    """把演员名折成身份键：能解析到实体的用实体 id，解析不到的保留原名。
-
-    r18dev 给的是日文名，而账本规范名多数已本地化成中文——`桃谷エリカ` 与
-    `桃谷绘里香` 实测就是同一条实体（日文名早已登记为别名）。按字符串比会把
-    这类候选全判成「有差异」，批准反而把规范名倒退成别名。
-    """
-    keys = set()
-    for name in names:
-        keys.update(_entity_identity_key(connection, "performer", name))
-    return frozenset(keys)
 
 
 def _metadata_row_adds_information(connection, row: dict) -> bool:
@@ -830,351 +560,6 @@ def _use_canonical_entity_names(connection, rows: list[dict]) -> None:
             row["current_name"] = name
 
 
-#: 可以不经人判断直接落库的字段（ADR-0025 扩到 P0 全字段）。
-#:
-#: 标签是多值集合，「取值一致」对它的含义是整份集合逐字相同，而不是逐个标签比对；
-#: `_candidate_value_key` 拿的就是拼好的那一串，所以这条判据照样成立。真正需要人的
-#: 是未收录 genre——那几个词还没决定投影成什么，直接落库等于默默把它们丢掉，
-#: 所以 `_tags_are_fully_resolved` 另立一道闸。
-AUTO_APPLY_FIELDS = frozenset({
-    "title", "original_title", "performers", "studio", "series", "release_date", "tags",
-})
-
-#: 素人系官方页把年龄和职业写进出演者栏（`本庄美奈子 30歳 元カフェ店員`），照抄会把
-#: 整句变成实体名。艺名到年龄标记为止，后面是介绍；`はな/19歳/…` 用斜杠分段，同理。
-_PERFORMER_INTRO = re.compile(r"[\s　]*[（(]?\d+\s*歳.*$")
-_PERFORMER_SEGMENT = re.compile(r"[/／].*$")
-#: 剪完仍带空白、分隔符或敬称的不是艺名，是企划文案（`超バドミントン部あかりちゃん`、
-#: `まゆみさん`）。这类交回人工：剪到哪儿才对，本身就是个判断。
-_NOT_A_STAGE_NAME = re.compile(r"[\s　/／]|ちゃん$|さん$")
-
-
-def _stage_name(name: str) -> str | None:
-    """出演者栏里的艺名；认不出艺名边界时返回 None。"""
-    trimmed = _PERFORMER_INTRO.sub("", _PERFORMER_SEGMENT.sub("", str(name or ""))).strip()
-    if not trimmed or _NOT_A_STAGE_NAME.search(trimmed):
-        return None
-    return trimmed
-
-
-def _is_planning_alias(name: str) -> bool:
-    """这个写法是不是企划名义——这部片给她起的称呼，不是这个人的主艺名。
-
-    两种形态。一种是把年龄职业写在名字后面（`桜井奈々 28歳 某企業広報担当`）：介绍
-    这一段只在这部片里成立，带着它的那个名字同样只在这部片里成立。另一种是剪完仍
-    认不出艺名边界的（`佐倉井さん`、`超バドミントン部あかりちゃん`），`_stage_name`
-    本来就不收。
-
-    判的是写法不是人：同一个人在别处用主艺名登记，这里的一次性称呼跟那条记录对不上，
-    却不说明账本存错了。
-    """
-    return bool(_PERFORMER_INTRO.search(name)) or _stage_name(name) is None
-
-
-def _offers_another_stage_name(candidate: dict) -> bool:
-    """这条候选给的是不是另一个主艺名；整条都是企划名义就不是。
-
-    空候选照旧算数：那是「来源说这里没人」，与「来源换了个称呼」是两回事。
-    """
-    names = _split_multi(str(candidate.get("display_value") or ""))
-    return not names or not all(_is_planning_alias(name) for name in names)
-
-
-def _stage_names(candidate: dict) -> list[str] | None:
-    """整条出演者候选剪成艺名列表；有一个剪不出来就整条回人工。"""
-    people = candidate.get("value")
-    if not isinstance(people, list) or not people:
-        return None
-    names = []
-    for person in people:
-        if not isinstance(person, dict):
-            return None
-        name = _stage_name(person.get("name"))
-        if name is None:
-            return None
-        names.append(name)
-    return names or None
-
-
-def _candidate_value_key(connection, field: str, candidate: dict):
-    """两个来源说的是不是同一件事；这条候选本身不可用时返回 None。
-
-    出演者比的是人，不是写法。同一位在两家站上常挂着不同艺名，而账本早把它们登记在
-    同一条实体名下：`n0646` javbus 写 `一ノ瀬アメリ`、javdb 写 `美空あやか`，两个写法
-    都指向实体 8074（规范名 `美空彩香`）；`011013_511` 的 `飯岡かなこ` 与 `森沢かな`
-    同理。按字符串比，这些行会被判成「来源有分歧」而扣在人工队列里，可分歧问的那个
-    问题账本自己已经答过了。
-
-    解析不到实体的写法保留规范化原名，所以真换了人不会被这一步折掉；顺序也不参与
-    比较——`FSEI-003` 两家给的是同一组六个人，只是排序不同。
-    """
-    if field == "performers":
-        names = _stage_names(candidate)
-        return None if names is None else _performer_identity_keys(connection, names)
-    value = str(candidate.get("display_value") or "").strip()
-    return value or None
-
-
-def _normalised_candidate(field: str, candidate: dict) -> dict:
-    """落库用的候选。出演者写剪好的艺名，原文留在 `raw_display_value` 里备查。"""
-    if field != "performers":
-        return candidate
-    names = _stage_names(candidate) or []
-    people = [{**person, "name": name}
-              for person, name in zip(candidate.get("value") or [], names)]
-    return {**candidate, "value": people, "display_value": "、".join(names),
-            "raw_display_value": str(candidate.get("display_value") or "").strip()}
-
-
-def _preferred_candidate(field: str, candidates: list[dict]) -> dict:
-    """取值一致时由谁署名。字段来源优先级已经排好，落库记的出处就该是最靠前的那家。"""
-    order = FIELD_SOURCE_ORDER.get(field, ())
-    def rank(candidate: dict) -> tuple[int, str]:
-        source = str(candidate.get("source") or "").strip()
-        return (order.index(source) if source in order else len(order), source)
-    return min(candidates, key=rank)
-
-
-#: 韩国 MIB 番号唯一可信的来源：官网 k-mib.com（`metadata_kmib`）。
-MIB_OFFICIAL_SOURCE = "kmib"
-
-
-def _only_mib_official(row: dict) -> bool:
-    """这一行的候选是否全部来自 MIB 官网；没有候选或解析不了时为 False。"""
-    candidates = row.get("candidates")
-    if candidates is None:
-        try:
-            candidates = json.loads(str(row.get("candidates_json") or "[]"))
-        except (TypeError, ValueError):
-            return False
-    sources = {str(c.get("source") or "").strip()
-               for c in candidates if isinstance(c, dict)}
-    return sources == {MIB_OFFICIAL_SOURCE}
-
-
-LOCAL_NFO_SOURCE = "local_nfo"
-
-
-def _candidate_identifies_code(code: str, candidate: dict) -> bool:
-    """来源返回的是不是这个番号本身。
-
-    落库那一步早就有同一道闸（`_apply_metadata_candidate`），但它只能拒绝，拒绝不掉
-    的是这张卡先占了人的注意力：`259LUXU-891` 的队列里摆着 javbus 按 `259LUXU-1891`
-    取回的标题和日期——那是另一部片，点了也写不进去。既然认得出来，就别摆出来。
-
-    本地 NFO 不按番号去问谁（证据是它躺在视频旁边），没有番号的行也无从核起。
-    """
-    source = str(candidate.get("source") or "").strip()
-    if not code or source == LOCAL_NFO_SOURCE:
-        return True
-    return identifies_code(code, {
-        "id": candidate.get("provider_id"), "content_id": candidate.get("content_id"),
-        "source_url": candidate.get("source_url"),
-    })
-
-
-def _parsed_candidates(row: dict) -> list[dict]:
-    """一行 `candidates_json` 里形状成立的候选，不做任何取舍。"""
-    try:
-        parsed = json.loads(str(row.get("candidates_json") or "[]"))
-    except (TypeError, ValueError):
-        return []
-    return [candidate for candidate in parsed if isinstance(candidate, dict)
-            and str(candidate.get("candidate_key") or "").strip()]
-
-
-def _row_candidates(row: dict, decided) -> list[dict]:
-    """把一行的 `candidates_json` 解析成候选列表：折叠 genre 决定、剔掉番号对不上的。"""
-    field = str(row.get("field") or "").strip()
-    code = str(row.get("code") or "").strip()
-    return [_fold_genre_decisions(field, candidate, decided)
-            for candidate in _parsed_candidates(row)
-            if _candidate_identifies_code(code, candidate)]
-
-
-def _auto_apply_rule(candidate: dict, agreed: int) -> str:
-    """这条自动落库该记在哪条规则名下。
-
-    official 与 community 两类补空在 `review_decision` 里必须分得开：出了问题要回溯的
-    是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。多来源一致
-    （ADR-0025）与单来源（ADR-0018）同样要分得开：前者的证据强度不一样。来源之间有
-    分歧、按 ADR-0034 取舍过的，记下是按什么取舍的。覆盖既有取值的那一类（ADR-0035）
-    单独记名：它是唯一一条会改掉账本已有值的自动写入，回溯时第一个要捞出来的就是它。
-    """
-    source = str(candidate.get("source") or "").strip()
-    if candidate.get("replaces_current"):
-        if agreed > 1:
-            return f"adr-0035-official-replaces-{agreed}-agreed-sources"
-        return "adr-0035-official-replaces-single-source"
-    if candidate.get("settled_by"):
-        return f"adr-0034-empty-field-{candidate['settled_by']}"
-    if source == LOCAL_NFO_SOURCE:
-        return "adr-0029-empty-field-local-nfo"
-    spec = SOURCE_SPECS.get(source)
-    kind = "official" if spec is not None and spec.official else "community"
-    if agreed > 1:
-        return f"adr-0025-empty-field-{agreed}-agreed-{kind}-sources"
-    return f"adr-0018-empty-field-single-{kind}-source"
-
-
-def _evidence_candidates(row: dict) -> list[dict]:
-    """能当补空证据的候选：已登记来源与本地 NFO。
-
-    只剩一家社区来源也算：落库只补空格子（ADR-0033），空着的格子有一个值比没有强；
-    补错的值用户改过一次就归 `user:manual`，自动写入不再碰它（ADR-0034）。
-    """
-    return [c for c in row.get("candidates") or []
-            if str(c.get("source") or "").strip() in SOURCE_SPECS
-            or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
-
-
-def _official_only(candidates: list[dict]) -> bool:
-    """这批候选是不是全部来自官方来源（含官方镜像）。"""
-    sources = {str(c.get("source") or "").strip() for c in candidates}
-    return bool(sources) and all(
-        source in SOURCE_SPECS and SOURCE_SPECS[source].official for source in sources)
-
-
-def _settled_candidates(connection, field: str, code: str,
-                        candidates: list[dict]) -> tuple[list[dict], str | None]:
-    """取值只剩一个的那组候选，和据以取舍的规则；取舍不了返回空列表。
-
-    日期式番号的发行日期只认番号自己写的那天：候选里没有这一天就交给人。
-    兜底来源（javbus）在这之后才降级：还有别家给了值就不看它（ADR-0035），而番号自带
-    的那天是硬事实，谁报出来都算——`092415_001` 只有 javbus 报对，先降级就把它丢了。
-    其余字段取值不一、在场的全是社区来源时，取 javdb 那一侧；有官方来源或本地
-    NFO 在场的分歧照旧交给人（ADR-0034）。
-    """
-    settled_by = None
-    date = code_release_date(code) if field == "release_date" else None
-    if date is not None:
-        matching = [c for c in candidates if str(c.get("display_value") or "").strip() == date]
-        settled_by = "code-date" if len(matching) < len(candidates) else None
-        candidates = matching
-    candidates = [c for c in candidates
-                  if str(c.get("source") or "").strip() not in FALLBACK_SOURCES] or candidates
-    values = {_candidate_value_key(connection, field, candidate) for candidate in candidates}
-    if None in values or not values:
-        return [], None
-    if len(values) == 1:
-        return candidates, settled_by
-    sources = {str(c.get("source") or "").strip() for c in candidates}
-    if any(source == LOCAL_NFO_SOURCE or SOURCE_SPECS[source].official for source in sources):
-        return [], None
-    preferred = [c for c in candidates
-                 if str(c.get("source") or "").strip() == PREFERRED_COMMUNITY_SOURCE]
-    if len({_candidate_value_key(connection, field, c) for c in preferred}) != 1:
-        return [], None
-    return preferred, f"{PREFERRED_COMMUNITY_SOURCE}-preferred"
-
-
-def _filename_carries_code(code: str, name: str) -> bool:
-    """这个文件名认不认得出这个番号。
-
-    逐字出现最直白，但盘里有大量不写连字符的名字（`MEYD911.mp4`）。编目规则本来就
-    知道怎么从文件名读番号，读出来同号是比子串更强的身份证据——子串只是碰巧包含。
-    两条任一成立即可：本机 2611 条有番号的视频里，逐字命中 1715 条，合起来 2012 条。
-    """
-    if code.casefold() in name.casefold():
-        return True
-    parsed = release_code_from_filename(name)
-    return bool(parsed) and same_release_code(code, parsed)
-
-
-def _tags_are_fully_resolved(candidates: list[dict]) -> bool:
-    """这批标签候选里还有没有没人判过的 genre。
-
-    折叠已经按用户决定和当前静态表跑过一遍（`_fold_genre_decisions`），剩在
-    `unmapped_genres` 里的就是三张表都不认的词。这种候选直接落库，等于替用户判了
-    「这几个词不算内容」——而它们恰恰是这一类里唯一需要人的部分。
-    """
-    return not any(candidate.get("unmapped_genres") for candidate in candidates)
-
-
-def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
-    """这一行能否不经复核直接落库；不能就返回 None。
-
-    三项必须同时成立，缺一项就仍然走人工：
-
-    1. 目标字段当前为空，或者在场的候选全部来自官方来源——补空之外，官方来源的取值
-       直接替换现值（用户 2026-09-16 定，ADR-0035）。发行方自己那页就是这部片的出处，
-       账本里那个来路不明的旧值没有理由压住它；用户改过的格子归属受保护，仍然不碰；
-    2. 候选**取值**去重后只剩一个——有第二个取值才存在取舍，而取舍正是复核要做的事。
-       数的是取值不是候选条数（ADR-0025）：两家独立来源给出同一个值是这批候选里最强的
-       证据，按条数算却会被判成「有分歧」。实测 349 条这样被扣住，`259LUXU-1509` 的
-       厂牌、演员和发行日期都是 mgstage 与 libredmm 逐字相同却谁也没写进账本。两种取舍
-       不用人判（`_settled_candidates`，ADR-0034）：日期式番号的发行日期认番号自己写的
-       那天，全是社区来源的分歧取 javdb 那一侧；
-    3. 该番号名下**每一条**资产的文件名都认得出这个番号——逐字出现，或按编目规则
-       解析出来就是它。`MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是
-       `MEYD-911`；本机 2611 条有番号的视频里这样的有 297 条。
-
-    补空那一支不看来源是不是 official（用户 2026-09-04 决定）：补空不覆盖任何东西，
-    唯一的风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住
-    official 这条的代价是实测 76 条 javbus 补空候选全部滞留人工，它们补的都是账本里
-    空着的发行日期——没有可判断项，却要人逐条点过。落库时按来源实际级别记规则名，
-    回溯得出来。替换现值那一支反过来，只认官方来源：改掉一个已有的值是另一种风险。
-
-    第 3 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名认得出
-    番号是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示番号和
-    日期，并不告诉你番号跟这个文件对不对得上。
-
-    出演者多一道形态门槛：官方页把年龄职业写在艺名后面，剪不出艺名的交回人工。
-    第 2 条对它比的是人而不是写法：同一位在两家站上挂着不同艺名、账本已把这两个写法
-    登记在同一条实体名下时，那不是分歧（`_candidate_value_key`）。
-
-    未登记来源的候选先被剔除再比对取值：没进 `REGISTERED_SOURCES` 的来源不构成证据，
-    留着它只会把「一个有效取值」算成分歧。
-
-    来源级别一律按当前 policy 解析，不读候选 CSV 里的同名字段：那是抓取当时的
-    快照，实测 r18dev 在 CSV 里写着 False，而现行 policy 认它是 official_mirror。
-
-    本地 NFO 不在登记表里，却同样构成证据（ADR-0029）：采集时它的番号已经和文件名
-    对过，第 3 条照样再核一遍。
-    """
-    field = str(row.get("field") or "").strip()
-    if field not in AUTO_APPLY_FIELDS:
-        return None
-    code = str(row.get("code") or "").strip()
-    if not code:
-        return None
-    candidates, settled_by = _settled_candidates(connection, field, code, _evidence_candidates(row))
-    if not candidates:
-        return None
-    replaces_current = bool(str(row.get("current_value") or "").strip())
-    if replaces_current and not _official_only(candidates):
-        return None
-    if field == "tags" and not _tags_are_fully_resolved(candidates):
-        return None
-    candidate = _preferred_candidate(field, candidates)
-    query = str(row.get("query") or code).strip()
-    # 韩国 MIB 的番号问 JAV 目录站必错，这类候选一条都不该走自动批准。第 3 条对它们
-    # 全部成立——文件名就叫 `AR-101 Ari....mp4`——但它保证的是「候选属于这个文件」，
-    # 保证不了「来源返回的是这个番号」，而 MIB 恰恰错在后者。只有候选全部来自 MIB
-    # 官网时才放行：官网按番号列出的就是这部片本身。
-    if is_korean_mib_code(code) and not _only_mib_official(row):
-        return None
-    targets = list(connection.execute(
-        "SELECT name,field_owners FROM asset WHERE medium='video' "
-        "AND (upper(trim(code))=upper(?) OR upper(trim(code))=upper(?)) "
-        "AND (disposal IS NULL OR disposal<>'trash')",
-        (code, query)))
-    if not targets:
-        return None
-    if not all(_filename_carries_code(code, str(target["name"] or "")) for target in targets):
-        return None
-    # 归属是用户判断的字段不走自动落库。ADR-0018 第 1 条只看取值空不空，而用户可以
-    # 把一个字段判成空——那也是判断。没有这一道，「清空再等自动补回来」就成了
-    # 用户无法表达的意思。
-    column = METADATA_FIELD_COLUMNS.get(field)
-    if column and any(is_protected(owner_of(target["field_owners"], column))
-                      for target in targets):
-        return None
-    return {**_normalised_candidate(field, candidate), "agreed_sources": len(candidates),
-            **({"settled_by": settled_by} if settled_by else {}),
-            **({"replaces_current": True} if replaces_current else {})}
-
-
 def _pending_first(rows: list[dict]) -> list[dict]:
     """判过的不再占复核队列。
 
@@ -1295,247 +680,6 @@ def _selected_metadata_candidate(contract: ReviewContract, item_key: str, candid
     if selected is None:
         raise ValueError("所选来源值不在当前字段候选中")
     return group, selected
-
-
-def _approved_entity_name(value: object, kind: str) -> str:
-    name = str(value or "").strip()
-    cleaned = canonicalize_entity_name(kind, name)
-    if kind not in {"creator", "performer"}:
-        cleaned = collapse_repeated_entity_name(cleaned)
-    if not name or not cleaned or cleaned != name:
-        raise ValueError("候选仍含重复或未规范化的实体名，拒绝写入")
-    return cleaned
-
-
-def _registered_entity_name(connection, kind: str, name: str) -> str:
-    """来源的写法是账本里某条实体的别名，就换成那条的规范名。
-
-    javdb 写 `Tokyo-Hot`、javbus 写 `東京熱`，账本只该有一个 `东京热`。解析不到（或别名
-    撞了两条）时保留来源原文。
-    """
-    known = resolve_entity(connection, kind, name)
-    return name if known is None else str(known["canonical_name"])
-
-
-#: 复核字段名 → `asset` 的真相字段列。`performers` 与 `tags` 不在这里：它们落在
-#: `asset_tag` / `asset_entity` 的多值行上，不是 `asset` 的一列，归属由那两张表
-#: 自己的 `source` 列承担。
-METADATA_FIELD_COLUMNS = {
-    "title": "catalog_title", "original_title": "original_title",
-    "release_date": "release_date", "studio": "studio", "series": "series",
-}
-
-
-def _apply_metadata_candidate(
-    connection, group: dict, candidate: dict, now: str, owner: str, *,
-    expected_revision: int | None = None,
-) -> int:
-    """把一个候选的取值写进真相字段，`owner` 是本次写入者的归属串。
-
-    `owner` 没有默认值：写入者是谁属于调用点的事实，给个默认就等于让下一个
-    调用点默默继承别人的身份，而这一层留痕正是 ADR-0005 要保住的东西。
-    """
-    field = str(group.get("field") or "").strip()
-    if field not in {
-        "title", "original_title", "performers", "studio", "series", "release_date", "tags",
-    }:
-        raise ValueError("该元数据字段没有 Peach 写入映射")
-    code = str(group.get("code") or "").strip()
-    query = str(group.get("query") or code).strip()
-    if group.get('asset_path'):
-        assets = connection.execute(
-            "SELECT id FROM asset WHERE id=? AND path=? AND medium='video' "
-            "AND (disposal IS NULL OR disposal<>'trash')",
-            (group.get('asset_id'), group['asset_path']),
-        ).fetchall()
-    else:
-        assets = connection.execute(
-            "SELECT id FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
-            "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
-            (code, query),
-        ).fetchall()
-    asset_ids = sorted({int(row["id"]) for row in assets})
-    if not asset_ids:
-        raise ValueError("当前 ledger 已没有匹配的可用资产")
-    if len(asset_ids) > REVIEW_APPLY_LIMIT:
-        raise ValueError(f"同番号资产 {len(asset_ids)} 条，超过单次批准上限 {REVIEW_APPLY_LIMIT}")
-    # 乐观并发的凭据在写任何一张表之前验，多值字段那两条分支才同样受它保护。
-    check_revision(connection, asset_ids, expected_revision)
-    source = str(candidate.get("source") or "").strip()
-    candidate_key = str(candidate.get("candidate_key") or "").strip()
-    if not re.fullmatch(r"[a-z0-9_-]+", source) or not candidate_key:
-        raise ValueError("字段候选来源无效")
-    try:
-        confidence = float(candidate.get("confidence"))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("字段候选置信度无效") from exc
-    if not 0 <= confidence <= 1:
-        raise ValueError("字段候选置信度越界")
-    # 来源返回的必须就是这个番号。抓取时也核验，但那道闸只管「快照落盘之前」，
-    # 而候选一旦进了 CSV 就再没人问过身份：2026-09-08 的自动批准读的正是 09-02
-    # 落盘的那批，把 356 条错配写进真相字段，`AR-101` 拿的是 `STAR-101`、
-    # `259LUXU-764` 拿的是 `259LUXU-1764`。落库是唯一必经之处，闸放在这里才
-    # 同时管住人工批准和自动批准——那 356 条里有 142 条是人点的。
-    #
-    # 两种情形没有番号可核：没有番号的资产（靠 `asset_path` 钉住那一个文件），
-    # 以及本地 NFO——它不按番号去问谁，证据是这份 sidecar 就躺在视频旁边。
-    if code and source != "local_nfo" and not identifies_code(code, {
-        "id": candidate.get("provider_id"), "content_id": candidate.get("content_id"),
-        "source_url": candidate.get("source_url"),
-    }):
-        raise ValueError(
-            f"来源返回的不是 {code}：id={candidate.get('provider_id')!r} "
-            f"content_id={candidate.get('content_id')!r}")
-    metadata = {
-        "provider": candidate.get("provider") or "javinizer-go", "source": source,
-        "source_url": candidate.get("source_url"),
-        "provider_id": candidate.get("provider_id"), "content_id": candidate.get("content_id"),
-        "raw_snapshot": candidate.get("raw_snapshot"), "review_item": group["item_key"],
-        "candidate_key": candidate_key,
-    }
-    marks = ",".join("?" * len(asset_ids))
-
-    if field in {"title", "original_title"}:
-        raw_value = str(candidate.get("value") or "")
-        value = " ".join(raw_value.split())
-        if (not value or len(value) > 1000
-                or any(ord(char) < 32 for char in raw_value)):
-            raise ValueError("标题候选为空、过长或含控制字符")
-        write_owned_fields(
-            connection, asset_ids, {METADATA_FIELD_COLUMNS[field]: value}, owner)
-        return len(asset_ids)
-
-    if field == "release_date":
-        value = str(candidate.get("value") or "").strip()
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
-            raise ValueError("发行日期候选必须是 YYYY-MM-DD")
-        try:
-            time.strptime(value, "%Y-%m-%d")
-        except ValueError as exc:
-            raise ValueError("发行日期候选无效") from exc
-        write_owned_fields(
-            connection, asset_ids, {"release_date": value}, owner)
-        return len(asset_ids)
-
-    if field in {"studio", "series"}:
-        name = _registered_entity_name(
-            connection, field, _approved_entity_name(candidate.get("value"), field))
-        write_owned_fields(
-            connection, asset_ids, {field: name}, owner)
-        connection.execute(
-            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role=? "
-            "AND source LIKE 'javinizer:%'",
-            (*asset_ids, field),
-        )
-        for asset_id in asset_ids:
-            upsert_asset_entity(
-                connection, kind=field, name=name, asset_id=asset_id, role=field,
-                source=f"javinizer:{source}:{field}", confidence=confidence,
-                metadata=metadata, now=now,
-            )
-        return len(asset_ids)
-
-    if field == "performers":
-        raw_performers = candidate.get("value")
-        if not isinstance(raw_performers, list):
-            raise ValueError("演员候选必须是数组")
-        performers: list[dict] = []
-        seen: set[str] = set()
-        for raw in raw_performers:
-            if not isinstance(raw, dict):
-                raise ValueError("演员候选条目无效")
-            name = _approved_entity_name(raw.get("name"), "performer")
-            normalized = normalize_entity_name(name)
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            performers.append({**raw, "name": name})
-        if not performers:
-            raise ValueError("演员候选为空")
-        connection.execute(
-            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='performer' "
-            "AND source LIKE 'javinizer:%'", asset_ids,
-        )
-        connection.execute(
-            f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
-            "AND source LIKE 'javinizer:%:performer'", asset_ids,
-        )
-        for asset_id in asset_ids:
-            for performer in performers:
-                name = performer["name"]
-                external_id = str(performer.get("external_id") or "").strip()
-                connection.execute(
-                    "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
-                    (asset_id, "演员:" + name, confidence, f"javinizer:{source}:performer"),
-                )
-                upsert_asset_entity(
-                    connection, kind="performer", name=name, asset_id=asset_id,
-                    role="performer", source=f"javinizer:{source}:performer",
-                    confidence=confidence,
-                    external_provider=_performer_external_provider(
-                        performer, source, external_id),
-                    external_id=(external_id or None), metadata=metadata, now=now,
-                )
-        # 演员是 performer 真相，不回写 asset.creator；两种身份混写正是重复名称事故的来源之一。
-        return len(asset_ids)
-
-    raw_tags = candidate.get("value")
-    if not isinstance(raw_tags, list):
-        raise ValueError("标签候选必须是数组")
-    tags = collapse_superseded_taste_tags(list(dict.fromkeys(
-        _approved_entity_name(tag, "tag") for tag in raw_tags
-    )))
-    if not tags:
-        raise ValueError("标签候选为空")
-    obsolete_tags = superseded_taste_tags(tags)
-    if obsolete_tags:
-        obsolete_marks = ",".join("?" * len(obsolete_tags))
-        obsolete_values = sorted(obsolete_tags)
-        connection.execute(
-            f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
-            f"AND tag IN ({obsolete_marks})",
-            [*asset_ids, *obsolete_values],
-        )
-        connection.execute(
-            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
-            f"AND entity_id IN (SELECT id FROM entity WHERE kind='tag' "
-            f"AND canonical_name IN ({obsolete_marks}))",
-            [*asset_ids, *obsolete_values],
-        )
-    connection.execute(
-        f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
-        "AND source LIKE 'javinizer:%'", asset_ids,
-    )
-    connection.execute(
-        f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
-        "AND source LIKE 'javinizer:%:tag'", asset_ids,
-    )
-    for asset_id in asset_ids:
-        for tag in tags:
-            connection.execute(
-                "INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?) "
-                "ON CONFLICT DO UPDATE SET "
-                "confidence=excluded.confidence,source=excluded.source",
-                (asset_id, tag, confidence, f"javinizer:{source}:tag"),
-            )
-            upsert_asset_entity(
-                connection, kind="tag", name=tag, asset_id=asset_id, role="tag",
-                source=f"javinizer:{source}:tag", confidence=confidence,
-                metadata=metadata, now=now,
-            )
-    return len(asset_ids)
-
-
-def _performer_external_provider(performer: dict, source: str,
-                                 external_id: str) -> str | None:
-    """人物外部编号跟随资料来源，不被承载候选的 NFO 来源冒领。"""
-    if not external_id:
-        return None
-    # NFO 的名字是这次落库的真值。在线 profile 只在随后精确对到这个实体后才登记编号，
-    # 不能让一个错误或被改写的 external_id 抢先把作品连到另一条既有实体。
-    if source == LOCAL_NFO_SOURCE and performer.get("profile_source"):
-        return None
-    return str(performer.get("profile_source") or source)
 
 
 #: 候选图的扩展名 -> content type。`/logo` 靠 `.ct` 边车决定回什么头。
@@ -1665,97 +809,6 @@ def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
         "purpose": "local studio identity cache",
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     return 1
-
-
-def w_review_auto_apply(contract: ReviewContract, _body=None):
-    """把确定的那部分直接落库，不占人工队列。
-
-    ADR-0018：这是「刮削结果只作候选、不直接改写真相字段」的一个**窄例外**，
-    不是废除该规则。判据见 `metadata_auto_apply_candidate`，四项缺一即回到人工。
-    每条仍写 review_decision 留痕（note 里记来源与判据），所以事后可以追问
-    「这个值是谁写的、凭什么」——留痕才是那条规则真正要保住的东西。
-    """
-    rows, _source, _skipped = read_candidates("metadata_fields", contract.candidate_root)
-    applied, skipped = [], 0
-    with contract.write_transaction() as connection:
-        decided = {row["item_key"] for row in connection.execute(
-            "SELECT item_key FROM review_decision WHERE category='metadata_fields'")}
-        genres = load_genre_decisions(connection)
-        # 第 1 条判据是「这个字段现在是空的」，问的必须是账本此刻，不是候选件那一刻。
-        # 候选落盘之后落过库、合并过实体的，快照还写着空，照它落库就是拿来源覆盖已有值。
-        rows = [dict(row) for row in rows]
-        refresh_current_values(connection, rows)
-        now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        for row in rows:
-            item_key = str(row.get("item_key") or "").strip()
-            if not item_key or item_key in decided:
-                continue
-            if str(row.get("status") or "").strip() != "candidate":
-                continue
-            row = dict(row)
-            row["candidates"] = _row_candidates(row, genres)
-            candidate = metadata_auto_apply_candidate(connection, row)
-            if candidate is None:
-                skipped += 1
-                continue
-            try:
-                count = _apply_metadata_candidate(
-                    connection, row, candidate, now,
-                    auto_owner(str(candidate.get("source") or "")))
-            except ValueError:
-                # 落库条件在这一刻不成立（例如资产已删）：回到人工，不记决定。
-                skipped += 1
-                continue
-            connection.execute(
-                "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
-                "VALUES('metadata_fields',?,'approved',?,?) "
-                "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,"
-                "note=excluded.note,updated_at=excluded.updated_at",
-                (item_key, json.dumps({
-                    "auto_applied": True,
-                    # 规则名记来源的实际级别，不写死 official：补空对 community 源同样
-                    # 成立，但两者日后要分开回溯时，note 是唯一还留着这个区别的地方。
-                    "rule": _auto_apply_rule(candidate, candidate.get("agreed_sources") or 1),
-                    "candidate_key": candidate.get("candidate_key"),
-                    "source": candidate.get("source"),
-                    "value": candidate.get("display_value"),
-                    # 出演者写的是剪过的艺名，原文得留着：事后要答得出账本里这个名字
-                    # 是从哪一句剪出来的。
-                    **({"raw_value": candidate["raw_display_value"]}
-                       if candidate.get("raw_display_value")
-                       and candidate["raw_display_value"] != candidate.get("display_value")
-                       else {}),
-                }, ensure_ascii=False, separators=(",", ":")), now),
-            )
-            applied.append({"item_key": item_key, "field": row.get("field"),
-                            "value": candidate.get("display_value"),
-                            "assets": count})
-    contract.cache_bust()
-    return {"ok": True, "applied": len(applied), "left_to_review": skipped,
-            "items": applied}
-
-
-def auto_apply_metadata(db_path: Path, candidate_root: Path):
-    """资料处理完成后立即应用符合窄规则的候选。
-
-    命令行首扫与 Web 后台任务都经过 ``process_library``，不能依赖有人随后打开复核页。
-    这里给同一套复核写入逻辑装一个最小契约，仍走 ``LedgerDatabase`` 的写事务、字段归属
-    与 ``review_decision`` 留痕；没有另开一条绕过闸门的写入路径。
-    """
-    database = LedgerDatabase(Path(db_path))
-
-    class ProcessingReviewContract:
-        def __init__(self):
-            self.candidate_root = Path(candidate_root)
-
-        def write_transaction(self):
-            return database.write_transaction()
-
-        @staticmethod
-        def cache_bust():
-            return None
-
-    return w_review_auto_apply(ProcessingReviewContract())
 
 
 def w_review_decision(contract: ReviewContract, body):

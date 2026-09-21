@@ -18,11 +18,13 @@ from peach.field_owners import auto_owner, owner_of, review_owner
 from peach.genre_taxonomy import map_genres
 from peach.http import HttpResponse
 from peach.library_nfo import read_nfo, sidecars, local_art
-from peach.library_processing import (STALL_AFTER_SECONDS, decorate, issues_path,
+from peach.library_processing import (STALL_AFTER_SECONDS, _candidate_identity, decorate,
+                                      issues_path, _merge_local_performer_profiles,
                                       process_library, snapshot, state_path, _fields)
+from peach.metadata_auto_apply import _apply_metadata_candidate
+from peach.repository import LedgerDatabase
 from peach.review_csv import read_rows
 from peach.settings_file import PeachConfig
-from peach.web_review import _apply_metadata_candidate, auto_apply_metadata
 from support.conditions import windows_ledger_roots
 from support.ledger import fresh_ledger
 
@@ -164,7 +166,7 @@ class LibraryNfoTests(unittest.TestCase):
 
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
                                  provider_factory=Mock(return_value=provider),
-                                 apply_candidates=auto_apply_metadata)
+                                 database=LedgerDatabase(db))
 
         self.assertGreaterEqual(result['auto_applied'], 1)
         with closing(sqlite3.connect(db)) as connection:
@@ -177,6 +179,75 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(owner_of(owners, 'catalog_title'), auto_owner('local_nfo'))
         self.assertEqual(decision[0], 'approved')
         self.assertEqual(json.loads(decision[1])['rule'], 'adr-0029-empty-field-local-nfo')
+
+    @windows_ledger_roots
+    def test_a_stopped_job_lands_nothing_and_fetches_nothing(self):
+        """停止之后收尾那两步一个都不做：候选不落库，头像不下载。
+
+        采集本身停在哪一行都无所谓，而收尾这两步是在全部候选写完之后才跑的——
+        停止键按下去，界面上任务已经结束，账本却还在变，是最难解释的一种表现。
+        """
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'ABW-358.mp4').write_bytes(b'video')
+        (media / 'ABW-358.nfo').write_text(
+            '<movie><title>涼森れむ流</title><sorttitle>ABW-358</sorttitle>'
+            '<actor><name>涼森れむ</name></actor></movie>', encoding='utf-8')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        transport = Mock()
+        provider = Mock()
+        provider.transport = transport
+        provider.query.return_value = {'id': 'ABW-358'}
+        # 采集跑完、收尾还没开始的那一刻按下停止。
+        alive = {'value': True}
+
+        def report(state):
+            if state.get('stage') == '保存资料候选':
+                alive['value'] = False
+
+        with self.assertRaises(InterruptedError):
+            process_library(config, db, self.root / 'generated', self.root / 'covers',
+                            provider_factory=Mock(return_value=provider),
+                            database=LedgerDatabase(db), report=report,
+                            active=lambda: alive['value'])
+
+        with closing(sqlite3.connect(db)) as connection:
+            decisions = connection.execute(
+                "SELECT count(*) FROM review_decision").fetchone()[0]
+            title = connection.execute(
+                "SELECT catalog_title FROM asset WHERE code='ABW-358'").fetchone()[0]
+        self.assertEqual(decisions, 0)
+        self.assertIsNone(title)
+        transport.assert_not_called()
+        self.assertFalse((self.root / 'generated' / 'avatars').exists())
+
+    @windows_ledger_roots
+    def test_profile_evidence_gives_the_candidate_a_new_identity(self):
+        """把资料页证据并进 NFO 那条候选之后，`candidate_key` 换成新取值的那一个。
+
+        键是「用户批准的是哪一版」的唯一凭据。补了 DMM 编号和官方头像却留着旧键，
+        事后按键回溯拿到的是没有这些证据的那一版，两边对不上。
+        """
+        groups = {}
+        key = 'asset:1:performers'
+        people = [{'name': '涼森れむ'}]
+        groups[key] = {'item_key': key, 'field': 'performers',
+                       'candidates_json': json.dumps(
+                           [{'candidate_key': _candidate_identity('local_nfo', people),
+                             'source': 'local_nfo', 'value': people}], ensure_ascii=False)}
+        before = json.loads(groups[key]['candidates_json'])[0]['candidate_key']
+
+        _merge_local_performer_profiles(groups, key, {'value': [{
+            'name': '涼森れむ', 'external_id': '1051912',
+            'thumb_url': 'https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg',
+            'profile_source': 'r18dev'}]}, 'r18dev')
+
+        candidate = json.loads(groups[key]['candidates_json'])[0]
+        self.assertNotEqual(candidate['candidate_key'], before)
+        self.assertEqual(candidate['candidate_key'],
+                         _candidate_identity('local_nfo', candidate['value']))
 
     @windows_ledger_roots
     def test_new_import_normalizes_nfo_tags_and_enriches_the_same_performer(self):
@@ -214,7 +285,7 @@ class LibraryNfoTests(unittest.TestCase):
             result = process_library(
                 config, db, self.root / 'generated', self.root / 'covers',
                 provider_factory=Mock(return_value=provider),
-                apply_candidates=auto_apply_metadata)
+                database=LedgerDatabase(db))
 
         self.assertEqual(result['status'], 'complete')
         self.assertEqual(result['performer_aliases'], 2)
@@ -1068,7 +1139,7 @@ class LibraryWatchdogTests(unittest.TestCase):
         contract = SimpleNamespace(
             db_path=Path(self.root / 'database' / 'ledger.db'),
             candidate_root=self.root / 'generated', cover_root=self.root / 'covers',
-            cache_bust=lambda: None,
+            cache_bust=lambda: None, database=Mock(),
             library_processing_job=SimpleNamespace(
                 snapshot=lambda: None,
                 start=lambda work, restart, initial: (work('job'), initial)[1],

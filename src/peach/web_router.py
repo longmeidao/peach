@@ -66,7 +66,7 @@ from .web_library_processing import q_library_processing, q_library_processing_i
 from .web_media_repair import q_media_repair, w_media_repair
 from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resource_sync_scan
-from .web_review import q_review, w_review_auto_apply, w_review_decision, w_review_genre
+from .web_review import q_review, w_review_decision, w_review_genre
 from .web_settings import q_settings, w_settings
 from .web_scraping import q_scraping, w_scraping_settings, w_scraping_check, w_scraping_cover
 from .web_state import WebContract
@@ -327,7 +327,6 @@ POST_HANDLERS = {
     "/api/resource-sync/scan": w_resource_sync_scan,
     "/api/resource-sync/apply": w_resource_sync_apply,
     "/api/media-repair": w_media_repair,
-    "/api/review/auto-apply": w_review_auto_apply,
     "/api/review/decision": w_review_decision,
     "/api/review/genre": w_review_genre,
     "/api/settings": w_settings,
