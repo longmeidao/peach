@@ -559,9 +559,18 @@ def render(config: PeachConfig) -> str:
         "# 一个来源有几个目录就写几个：local = ['D:\\Videos', 'E:\\Movies']。",
     ]
     lines += _render_roots(dict(config.locations))
-    lines += ["", "[media.libraries]"]
+    lines += [
+        "",
+        "[media.libraries]",
+        "# 声明根 -> 馆藏在界面上的名字。不写就取目录名；同名的几个根合成一个馆藏。",
+    ]
     lines += [f"{_render_value(root)} = {_render_value(name)}" for root, name in config.library_names.items()]
-    lines += ["", "[media.library_icons]"]
+    lines += [
+        "",
+        "[media.library_icons]",
+        "# 声明根 -> 馆藏图标。取值是 peach.media_libraries.LIBRARY_ICONS 里的字形名，",
+        "# 不认识的值忽略：只含一个来源的馆藏回落到该来源的图标，跨来源的用 database。",
+    ]
     lines += [f"{_render_value(root)} = {_render_value(icon)}" for root, icon in config.library_icons.items()]
     lines += [
         "",

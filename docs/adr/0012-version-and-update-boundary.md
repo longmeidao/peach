@@ -23,8 +23,8 @@ MessageBox；仓库因 R: 盘所有权检查失败时只显示「无法读取」
   `safe.directory`，不修改用户的全局 Git 配置。
 - 没有 `origin` 时报告「本地开发版、未配置更新源」。配置后，用户显式点击才在后台执行
   `git fetch --prune origin`，然后比较当前分支与 upstream 的 ahead/behind。
-- 更新检查绝不 checkout、merge、pull、reset 或安装；发现更新只报告，由协调者按 worktree
-  协议审核集成。
+- 更新检查绝不 checkout、merge、pull、reset 或安装；发现更新只报告，在主检出按 worktree
+  流程人工审核后集成。
 - 托盘正常动作只使用 pystray 非模态系统通知。Git、网络和比较工作不得运行在托盘消息线程。
 
 ## 已拒绝方案

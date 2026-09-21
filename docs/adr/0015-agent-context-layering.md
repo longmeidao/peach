@@ -10,11 +10,11 @@
 条目越多，真正的硬门槛越容易被稀释。`docs/HANDOFF.md` 已达 215 行，同时混装长期规则、
 一次性事故证据和按日期记录的批次说明，读者无法只取自己需要的一段。
 
-用户提供参考视频 `https://www.youtube.com/watch?v=e1snsuY4lTI`
-（`My AGENTS.md & SKILLS.md Breakdown (Don't copy them)`）。取证过程如实记录：本方直接抓取
+参考视频 `https://www.youtube.com/watch?v=e1snsuY4lTI`
+（`My AGENTS.md & SKILLS.md Breakdown (Don't copy them)`）。取证过程如实记录：自动抓取
 失败——youtube.com 只返回页脚导航，`youtubetotranscript.com` 对 WebFetch 返回 HTTP 403，
-浏览器打开落在机器人验证页且未绕过；**逐字稿由用户于 2026-08-17 手动提供**，本 ADR 采用的是
-这份用户提供的转写内容，不是本方独立取证的结果。
+浏览器打开落在机器人验证页且未绕过；**逐字稿于 2026-08-17 手工提供**，本 ADR 采用的是
+这份手工转写，不是独立取证的结果。
 
 从该逐字稿采纳的观点（只取方法论，不取作者的具体条文——视频本身也明确反对照抄）：
 

@@ -2,12 +2,11 @@
 
 - 取证日期：2026-09-16
 - URL：<https://feralui.dev/gradients>、<https://www.boardui.com/components/button>
-- 取证方式：协调者在实时页面上读 DOM 与计算样式；feralui 一侧另取两份样式表的 SHA-256。
+- 取证方式：在实时页面上读 DOM 与计算样式；feralui 一侧另取两份样式表的 SHA-256。
 - 样式表指纹：
   - `/assets/JapaneseGradients-DGpoXXSy.css` SHA-256 `e48fa12445d1c3834857ca50a913658420556159c238acf38f2cf1727f2597ec`
   - `/assets/index-GXg76-98.css` SHA-256 `f11598620f1c71fba79f28d1061c8e5343ab95d1c96ebfcbbe82e3a97dbbe305`
-- 本轮实现者（`agent/claude/glow-studio-ui`）没有自己复抓这两个站点，下面的数字照抄协调者
-  的取证原文，未声称重测。
+- 以下数值转录自上述实时页面读数，未在采用这些值的分支上复抓，不声称重测。
 
 ## 不登记进 `docs/reference-sources.json` 的理由
 
@@ -52,7 +51,7 @@ SPA，可读的只有构建产物，页面主体由运行时生成；BoardUI 一
 | 运行时改写这十一个变量的模块是 `components/application/theme/accent.ts` | 同上第 31 行的指路；**该文件未取得**——vendored 进来的只有 `styles/theme.css`，那个模块不在仓库里，它到底把变量写到哪个元素上没有直接证据 |
 | React 子树在 `.peach-react` 上重新声明的同名语义 token 里，`--color-border-focus-ring` 本身就写成 `var(--color-accent-500)` | `frontend/src/react/styles.css` 第 99 行 |
 | 十一级里每一级都真的有人引用（50 与 200 各 1–2 处，500 最多 11 处） | 构建产物 `web/dist/peach-react.css` |
-| 弹层里到底是哪二十个色相 | **未取得**：本轮没有回到 boardui.com 复抓，上面那张表只记了「20 色时」的卡高 |
+| 弹层里到底是哪二十个色相 | **未取得**：没有回到 boardui.com 复抓，上面那张表只记了「20 色时」的卡高 |
 
 Peach 因此不照抄它那二十档，也不猜 `accent.ts` 的写法：十一级色阶按 `:root[data-accent=…]`
 一档一条写在 `web/board.css` 里，排在层叠层之外，无论 `/dist/peach-react.css` 那份

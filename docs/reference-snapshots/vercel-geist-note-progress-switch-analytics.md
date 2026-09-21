@@ -5,9 +5,9 @@
 - 官方页：<https://vercel.com/geist/note>、<https://vercel.com/geist/progress>、<https://vercel.com/geist/switch>。
 - **不登记进 `docs/reference-sources.json`**：下面锁的是当次 HTML 的 SHA-256 和登录态截图，
   仓库里没有可比对的上游快照文件；登记表要求的是「快照文件 + 可重抓 URL」这一对。
-- Windows Schannel 路径反复返回凭据错误，本次固定使用仓库外已有的 OpenSSL curl 入口 `<用户目录>\.local\bin\curl-ossl.cmd`，请求头为 `Accept: text/html,application/xhtml+xml` 与 `User-Agent: Mozilla/5.0`。
+- Windows Schannel 路径反复返回凭据错误，抓取改用 OpenSSL 构建的 curl，请求头为 `Accept: text/html,application/xhtml+xml` 与 `User-Agent: Mozilla/5.0`。
 - 页面 HTML SHA-256：Note `18FF709BAE3813D8153DE2631793280614B1290941E4BD11D67026EC17E2B5FC`；Progress `2DD846E2EC4A8ADF7D3FD1F5C6CE4ACCEA95E29D71881DF8AC6F6874290AD744`；Switch `075696BCEEB320D2267179AA86E1B037D7607C977DA7B1E6B93366A9990EF6A5`。
-- 登录态 Analytics：`https://vercel.com/<account>/<project>/analytics`，由 Codex 内置浏览器读取
+- 登录态 Analytics：`https://vercel.com/<account>/<project>/analytics`，在登录态浏览器里读取
   DOM 与 1178×900 当前视图截图；导航、全局筛选、三个摘要指标、图表、维度 tablist、数据行与
   空状态均已取得。
 - 登录态 Speed Insights：`https://vercel.com/<account>/<project>/speed-insights`，2026-08-30
@@ -72,7 +72,7 @@ HTTPX 取得 `https://vercel.com/geist/fieldset` 当前 HTML，SHA-256 为
 正文提供 Without Footer 示例，DOM 使用 `group/fieldset material-base`、正文 `p-5`；
 关注任务复用现有 Fieldset 的 20px 正文内边距、项目表面 token 与真实来源计数 Progress，
 不加无动作的页脚。官方浏览器读取两次报 `js execution timed out; kernel reset`，
-当前交互与计算样式未取得；本地桌面与手机另行验收，不把 HTML 取证说成视觉验收。
+当前交互与计算样式未取得；本地桌面与手机另行验收。
 此段是人工笔记，不登记到可变上游快照注册表。
 
 - Peach 是无构建的原生 HTML／CSS／ES module，不引入 Geist React 包；复用语义、状态与可测量层级，统一实现位于 `web/js/ui-components.js`。
@@ -90,7 +90,7 @@ HTML SHA-256：Note `f3471155164c8e0085419ce04e15928463cb526b4a52b51483c214fd84b
 
 - NoteAction 在提示内部放置一个操作按钮；需要处理的失败使用 filled 浅色背景。进度仅在数值变化时平滑过渡 200ms，减少动态效果偏好下关闭过渡。
 - Note 使用语义色、12px 图文间距、14px 正文，成功为蓝色。默认无填充，filled 用低饱和色底；small 用于紧凑说明。Note 持续到状态解决，不额外加关闭键；短成功回执仍用 Toast。
-- 页面后台任务使用 Project Banner：正文 14px，最小高度 40px，上下 8px、横向 24px；处理链接持续带下划线。按用户要求在横幅内用 32px Gauge 表示任务完成比例，这是 Peach 的用途差异；详情仍用 Progress。
+- 页面后台任务使用 Project Banner：正文 14px，最小高度 40px，上下 8px、横向 24px；处理链接持续带下划线。横幅内用 32px Gauge 表示任务完成比例，这是 Peach 的用途差异；详情仍用 Progress。
 - Gauge 用于实际已用／总容量，无有效总量时显示未取得。容量统一采用 80% 警告、95% 危险阈值，颜色与文字同档；任务完成率不使用容量阈值。
 - Progress 按状态使用蓝、黄、红，而非把接近完成误判为危险；stops 仅用于真实阶段并带标签。更新准备使用后端的 65、67、90 阶段边界；浏览记录分阶段计数，不把不同单位拼成虚假的总体百分比。
 - 局部未知总量任务使用带边界的 Fieldset 内容区与 Loading Dots，已知计数时添加文字与 Progress；不重复嵌套已有任务容器。

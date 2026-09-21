@@ -1,7 +1,7 @@
 # YouTube 播放统计缓冲图测量
 
 - 取得日期：2026-08-29
-- 证据：用户提供的 YouTube「Stats for Nerds」截图
+- 证据：YouTube「Stats for Nerds」手工截图
 - 截图尺寸：1004 × 340 px
 - 截图 SHA-256：`fec8b20b76b45cf2bae355d34cd51c97522789ffa0e43078fe18711c1241026f`
 - 测量方式：按截图像素坐标读取三条图带的可见边界

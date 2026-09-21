@@ -1,5 +1,25 @@
 # 身份、来源与标识采集
 
+## 采集判据
+
+本文件保存「从外部站点取得身份与标识」这件事的判据细节：脚本分工、实测反例、判词含义和不能走的路。
+采集本身的限流、续跑与流量预算见 `.claude/skills/peach-batch-jobs/SKILL.md`，
+参考产品证据的登记方式见 `.claude/skills/peach-reference-evidence/SKILL.md`。
+
+采集脚本一律只产出复核 CSV。写 `entity.canonical_name`、`asset.studio`、`entity_link` 或头像字节
+都是另一次授权，判据见 `.claude/skills/peach-ledger-write/SKILL.md`。
+
+**没有哪个来源是绝对的**，javdb、laoshi、jae、R18 都只是参考，各带自己的可信度：资料页的名字
+可能是转载渠道改过的。同一条事实由两个互不相干的来源给出才是最强的证据，只有一个来源说的一律
+当候选；冲突时不按站名分高低，按这条事实本身还能不能另找一个来源印证——已经进账本的那一侧
+也不例外，它当初也只是某个来源的一次判定。
+
+具体的例子：**判 X 账号是不是本人官方号，粉丝量是第一道筛子。** 官方号的粉丝量不会太少，
+`matumoto_arrows` 这种数量级明显偏低的就该疑。2026-09-04 实测两例——松本一香账本里的
+`MatuMoto_Ich1ka` 才是官方，javdb 给的 `matumoto_arrows` 驳回；铃村爱里反过来，javdb 给的
+`airi_mgr` 在活、账本原有的 `naxsuzumura` 已疑似失效，按 javdb 那条装入。冲突不能一刀切成
+「以账本为准」或「以新来源为准」。
+
 ## Seesaa Wiki 作品证据
 
 `scripts/scrape_codes.py --profile seesaa` 使用素人系総合 Wiki 的公开搜索与作品表格，产出既有
@@ -25,8 +45,8 @@ Seesaa 是托管平台，以下 Wiki 由各自维护者编辑，不能按平台�
 | [人妻系まとめ](https://hitoduma-matome.memo.wiki/)／[素人AV女優名鑑](https://shiroutoav.memo.wiki/) | 特定类别人物与作品线索 |
 | [VR作品](https://seesaawiki.jp/vr_video/)／[成人映画](https://seesaawiki.jp/nikkatsu/)／[NHpedia](https://seesaawiki.jp/nhpedia/) | VR、成人电影、跨性别演员等分领域索引 |
 
-以上入口已于 2026-09-06 取页。除素人系総合外仅完成来源调查，详情解析尚未接入；平台首页的
-游戏、小说、生成模型教程和场所服务 Wiki 不适用于现有视频作品元数据补全。
+表内入口取页于 2026-09-06。平台首页的游戏、小说、生成模型教程和场所服务 Wiki
+不适用于现有视频作品元数据补全。
 
 ## K-MIB 官网作品与演员
 
@@ -50,31 +70,29 @@ Seesaa 是托管平台，以下 Wiki 由各自维护者编辑，不能按平台�
 
 ## 本机采集入口
 
-「数据管理」→「设置采集来源」（`/scraping`）提供官方高清封面定点抓取和来源连接设置。
-界面与 `scripts/fetch_jav_covers.py` 共用 `peach.jav_cover_fetch`；不需要把开发者的映射文件或
+GUI 与 `scripts/fetch_jav_covers.py` 共用 `peach.jav_cover_fetch`；不需要把开发者的映射文件或
 Cookie 复制到新用户电脑。已有成功元数据快照优先，缺快照的公开来源可联网查询。
 
 - R18、DMM、Prestige、MGStage 的封面 HTTP 路径使用按来源的系统代理／应用直连／自定义代理配置。
   DMM 连接检查分别报告页面与高清 CDN；HTTPX 环境代理不等于系统 PAC，应用直连也不能排除 TUN。
 - FC2 的 Cookie 粘贴与 Netscape 文件导入复用 CredentialStore；仅保存当前来源域内未过期项目。
-  `fetch_fc2_metadata.py` 默认读取这份配置，`--cookies` 可显式指定文件。保存不代表登录会话有效。
+  `fetch_fc2_metadata.py` 默认读取这份配置，`--cookies` 可显式指定文件。保存动作本身不校验
+  登录会话是否有效。
 - GUI 封面任务每次只接受馆藏命中的一个番号，复用 BackgroundJob；最多 80 个请求、32 MiB，
   请求发出前检查 180 秒截止时间。只在完整图与探测尺寸相同、可完整解码且面积更大时原子替换。
   原始字节不降采样；成功边车记录原图与安装摘要，24 小时内摘要匹配则不重复下载。
 - 429 的 Retry-After 冷却落本机文件，新 transport 也遵守；失败不删除已有封面。
   程序重启不自动重放写入任务，未完成任务由用户重新发起。
 
-该配置目前覆盖封面 HTTP 与 FC2 CLI。Javinizer-Go 子进程、其它采集脚本与 curl_cffi 连接器
-仍使用各自配置；来源清单导出／首次同步、标准模式、浏览器会话导入和完整批量 GUI 尚待实施。
-Instagram 的 Instaloader 4.15.3 匿名 POC 对 Bambi、LINX 返回 ConnectionException；独立用户
-登录会话未取得，不能承诺自动发现全部高清头像。自动适配器不进入正式依赖。
+该配置覆盖封面 HTTP 与 FC2 CLI。Javinizer-Go 子进程、其它采集脚本与 curl_cffi 连接器
+仍使用各自配置。Instagram 的 Instaloader 匿名 POC 对 Bambi、LINX 返回 ConnectionException；
+独立用户登录会话未取得。自动适配器不进入正式依赖。
 
-Windows 空数据预览的项目 CA HTTPS、合成 Cookie 保存／撤销、DMM 2184×1464 CDN 与界面产物
-摘要验证通过；这不是第二名真实用户、macOS 或全部地区网络的验收。测试步骤见
-[Windows 测试版](TESTING_DESKTOP.md)，架构完整要求见 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)。
+测试步骤见 [Windows 测试版](TESTING_DESKTOP.md)，架构完整要求见
+[ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)。
 
-无元数据缓存的 ABW-232 POC 取得 1024×690，16 次请求、775899 字节。即时 r18 厂牌证据与
-本机快照使用同一来源路由，Prestige 与 MGS 都参加候选比较；原始图片没有派生降采样。
+即时 r18 厂牌证据与本机快照使用同一来源路由，Prestige 与 MGS 都参加候选比较；
+原始图片没有派生降采样。
 
 ## 无番号视频的联网识别
 
@@ -96,31 +114,11 @@ Telegram 资源）走 `scripts/identify_resources.py` 的两段式流程，识�
 「背着老公和合租室友的狂欢」、女优「梓怡」、厂牌「麻豆传媒」，来源 madou.io 与
 av911.tv，三条候选已进复核队列。
 
-## 采集判据
-
-本文件保存「从外部站点取得身份与标识」这件事的判据细节：脚本分工、实测反例、判词含义和不能走的路。
-`docs/HANDOFF.md` 只留一句话的边界并指到这里；采集本身的限流、续跑与流量预算见
-`.claude/skills/peach-batch-jobs/SKILL.md`，参考产品证据的登记方式见 `.claude/skills/peach-reference-evidence/SKILL.md`。
-
-采集脚本一律只产出复核 CSV。写 `entity.canonical_name`、`asset.studio`、`entity_link` 或头像字节
-都是另一次授权，判据见 `.claude/skills/peach-ledger-write/SKILL.md`。
-
-**没有哪个来源是绝对的**，javdb、laoshi、jae、R18 都只是参考，各带自己的可信度：名录站抄来的
-社媒账号可能是三年前的旧号，资料页的名字可能是转载渠道改过的。同一条事实由两个互不相干的来源
-给出才是最强的证据，只有一个来源说的一律当候选，冲突时不按站名分高低——按这条事实本身还能不能
-另找一个来源印证。已经进账本的那一侧也不例外：它当初也只是某个来源的一次判定。
-
-具体的例子：**判 X 账号是不是本人官方号，粉丝量是第一道筛子。** 官方号的粉丝量不会太少，
-`matumoto_arrows` 这种数量级明显偏低的就该疑。2026-09-04 实测两例——松本一香账本里的
-`MatuMoto_Ich1ka` 才是官方，javdb 给的 `matumoto_arrows` 驳回；铃村爱里反过来，javdb 给的
-`airi_mgr` 在活、账本原有的 `naxsuzumura` 已疑似失效，按 javdb 那条装入。冲突不能一刀切成
-「以账本为准」或「以新来源为准」。
-
 ## 命名与身份合并
 
 - 规范名优先用有出处的简体中文通行名，暂无可靠中译时保留日文；旧艺名、罗马字、假名和繁体名降为别名。
   `no_avatar` 只表示没取得合格图片，不得阻止已核实姓名落库。
-- 「这一页只有一位女优」永远不构成证据：库里大量番号是 BEST 合集，搜索无结果的页面仍会渲染推荐文章。
+- 「这一页只有一位女优」不构成证据：库里大量番号是 BEST 合集，搜索无结果的页面仍会渲染推荐文章。
   精确回配命中优先于任何「唯一」推断，「唯一」只有在两个番号同证时才作数。
 - `entity(kind, normalized_name)` 的唯一约束冲突通常不是 bug，而是同一人新旧艺名的信号：合并走
   `peach.entities.merge_entity`，保留作品多的一侧，迁移关系、别名、外部引用、链接和搜索词，旧称全留作别名。
@@ -161,7 +159,7 @@ av911.tv，三条候选已进复核队列。
   留给文件操作。缺连字符的紧凑 code 只有同时具备片商、发行日或 performer／studio／series 实体证据才恢复。
 - 素人系日期式番号（`MMDDYY_NNN`／`MMDDYY-NNN`）的分隔符是片商标识，属于身份：一本道、パコパコママ、
   カリビアンコムPR 用 `_`，カリビアンコム 用 `-`，同一天同一序号是两部不同影片。JavDB 自己就分开保存
-  （`attic/evidence/20260911-javdb-api-probe/probe-result.json`：搜 `092415-001`，首位返回的是一本道的
+  （仓库外的 `attic/evidence/20260911-javdb-api-probe/probe-result.json`：搜 `092415-001`，首位返回的是一本道的
   `092415_001`）。`catalog_rules` 的归一化、身份比对和查询变体一律原样保留分隔符，也不生成另一种写法的
   变体——用错分隔符搜到的是别的片；只有来源给出不带分隔符的纯数字串时两种才都算命中，缺一个字符不是反证。
   野生文件名的写法会漂移（同一部一本道既有 `1pon-092415-001-fhd1`，也有 `1pondo-092415_001-FHD`），
@@ -169,7 +167,7 @@ av911.tv，三条候选已进复核队列。
 - 日期式番号的六位是 `MMDDYY`，月日必须成立才算这一形态。只看位数的话，手机录像
   `VID_20220818_125735_816.mp4` 里的 `125735_816`（12 月 57 日）就是一条一本道番号。
 - Tokyo-Hot 的编号没有厂牌字母段，规范写法是小写：本编 `n1234`／`k1234` 补零到四位，Red Hot 支线
-  写成 `red-123`。javbus 的作品页地址就是 `/n1234`，参考实现 NeoAVDC（MIT，
+  写成 `red-123`。javbus 的作品页地址就是 `/n1234`，参考实现 NeoAVDC（MIT，仓库外的
   `attic/tools/20260911-参考项目/NeoAVDC/src/main/number/parseNumber.ts` 的 `TOKYOHOT_NUM_RE`）同样
   输出小写 `n####`；`k` 与 `red` 两支在本机账本里一条没有，它们在 javdb／javbus 上的写法**未取得**实证。
   编号只有一个字母，形态挡不住 `no0037_01` 这类名字，所以只在两个位置上认它：名字开头，或名字里
@@ -180,8 +178,8 @@ av911.tv，三条候选已进复核队列。
   账本里的 `E078. Redhead.Sucking.Big.Cock.And.Hard.Sex.2019.10.15` 中段搜会得到系列名 `Sex`。
 - 只说明「这是什么文件」的词（`IMG`、`VID`、`VIDEO`、`NO`、`PART`）与番号主体同形，集中在
   `catalog_rules.CODE_BODY_STOPWORDS`；画质词归 `_QUALITY_HEAD`、转载站标识归 `REPOST_SITE_LABELS`，
-  三份名单各管一类，提取时依次过一遍。新增条目先用 `build/parse_shapes_audit.py stems` 在真实账本上取
-  误判证据；创作者昵称（`sumwall95`、`retsu_dao`）同样撞这个形态，逐个塞进名单只会得到一张不收敛的表。
+  三份名单各管一类，提取时依次过一遍。新增条目先用本机临时工具 `build/parse_shapes_audit.py`
+  （不随仓库分发）的 `stems` 在真实账本上取误判证据；创作者昵称（`sumwall95`、`retsu_dao`）同样撞这个形态，逐个塞进名单只会得到一张不收敛的表。
 - 推广域名在番号的头、尾和方括号三种位置都出现（`www.98t.la@ABW-358-U`、`ABP-762-fuckbe.com`、
   `[xxx.cc]ABC-123`），番号提取与目录判重共用 `strip_promo_markers` 这一层，各剥一半会让叠了两层的
   `[98t.tv][98t.tv]ABW-251` 在其中一处漏网。
@@ -232,8 +230,8 @@ av911.tv，三条候选已进复核队列。
   等于随机给她安一张别人的脸，所以「只找出一张」是唯一敢自动装的判据。单名即使只命中一张，证据也
   只有「键完全相同」这一条，装上之后仍要在资料页上认一眼；对着作品认人这件事机器做不了。
 - **它的取数判据是「盘上没有 `performer-<id>.img`」，所以一张装上去的差图会把更好的源永久挡在门外。**
-  2026-09-05 社媒采集把作品封面裁片装进 37 个槽位，这 37 位从此不算缺口；Gfriends 索引里有其中
-  19 位的正脸照，宫下玲奈那一档 1176×1803，一次都没被考虑过。缺口审计答不了「在位那张够不够好」，
+  2026-09-05 社媒采集把作品封面裁片装进了一批空槽位，这些人从此不算缺口；Gfriends 索引里有其中
+  一部分的正脸照，宫下玲奈那一档 1176×1803，一次都没被考虑过。缺口审计答不了「在位那张够不够好」，
   换源要另起一轮普查：按 provenance 的 `provider` 认出封面裁片，按 sidecar 认出检不出脸、脸太小、
   源图太小，再逐个问一次图库。
 - **抓回来的头像带别人的水印，要在字节里去掉，不是靠取景遮住。** 页面按脸取景后，底部那条
@@ -242,39 +240,35 @@ av911.tv，三条候选已进复核队列。
   产出一份候选 CSV 加一叠左右对照的标注图，人确认后再 `--apply`；原图连三个边车整套搬进
   `avatars-superseded/`，provenance 补一段 `watermark_scrubbed`，取景 sidecar 按新图重算。
   检出与移除的判据、模型来源和实测数字见 REUSE.md「头像水印检出」。
-- **移除优先裁边，能裁就不 inpaint。** 620 张实测：37 张有检出，其中 16 张纯裁切、1 张裁切加
-  修补、6 张只能修补。裁切一个像素都不伪造，inpaint 会；而且 inpaint 的结果在这批图上普遍不好看
-  ——`performer-7911` 左边一列名字水印只抹掉汉字、留下半透明的 `Ai Yuzuki`，比原样更难看。
+- **移除优先裁边，能裁就不 inpaint。** 那一批里 37 张有检出。裁切一个像素都不伪造，inpaint 会；
+  而且 inpaint 的结果在这批图上普遍不好看——`performer-7911` 左边一列名字水印只抹掉汉字、
+  留下半透明的 `Ai Yuzuki`，比原样更难看。
   裁切线受两条约束：不许切进人脸框加留白（脸框取自 `peach.face_detect`），不许把图裁得只剩
   70% 面积以下；逐边独立判定，一条边裁不动不影响别的边。
 - **检出器抓不到半透明水印，所以这条流程是半自动的，人工补框是正路不是补丁。**
-  `NUBILES.NET`、`MATTIEDOLL.DEVIANTART.COM` 这类叠在皮肤上的低对比度水印，DB 模型给不出框。
   往 `--marks` 的 CSV 里补一行 `file,x,y,w,h` 就行，人工框不受分数、尺寸和位置先验约束——那些
   判据是用来质疑检出器的，不该用来推翻已经看过图的判断。实测 `performer-7911` 补一个
   `0,0,62,508` 的整条左边框，四处水印一次全裁掉。
 - **一张图上检出超过 4 处文字就整张放过，不动一个像素。** 那不是带水印的头像，是作品封面被当成
   头像装了进去，满屏宣传文字全被检出（实测 620 张里 14 张，最多的一张 32 处）。去水印解决不了
-  这个问题，涂一遍只会把一张错图变成一张糊掉的错图；它们要的是换源，就是上一条说的那 37 个槽位。
-- **显示门槛按最大的那一格算，与审计脚本那道源头门槛不是一条。** 同一份实体图喂四个位置
-  （顶栏、卡片署名、共演者、资料页大位，`entityFaceImg` 一处出图），没有第二个来源；最大的是
-  `.entityportrait` 160px CSS，两倍屏要 320px，短边够就填得满。审计那道「长边 ≥ 500」拦的是
-  缩略图级来源，拿它当显示门槛会把一张脸宽 208px 的 382×382 挡在门外，让在位那张脸只有 55px
-  的封面裁片继续占着位子。放大那一侧不必靠门槛兜底：`face-frame.js` 的倍数夹在无损上限里，
-  源图小只是放得少，不会糊。
+  这个问题，涂一遍只会把一张错图变成一张糊掉的错图；它们要的是换源，就是上一条说的那批封面裁片。
+- **审计脚本那道「长边 ≥ 500」是源头门槛，不是显示门槛。** 它拦的是缩略图级来源；拿它当显示
+  门槛会把一张脸宽 208px 的 382×382 挡在门外，让在位那张脸只有 55px 的封面裁片继续占着位子。
+  显示侧的尺寸约定见 `docs/FRONTEND.md`。
 - **挑图按检出的人脸宽度，不按画布面积。** 1280×795 合照里那张脸可能远小于 500×600 单人照里的；
   检不出脸的一律不装，官方图也一样。换图只在赢家那张脸更宽时才动手，填不满圆框的赢家只在在位的
   检不出脸时当保底装上。取景 sidecar 必须跟着图一起换（`/review` 的批准落地自 0.17.2 起也检一次脸），
-  留着上一张图的脸框最糟：页面会拿它给这一张取景、放大到一个空位置上。
+  理由见下文「换图必须换 sidecar」。
 - 可用来源实测结论：r18.dev、av-wiki.net、Gfriends 可用；javlibrary、missav、xslist 被
   Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
-  javdb.com 抓得到，但它自己按出口 IP 封速率（2026-09-04 封 3～7 日），只能小批量慢跑，见下文。
+  javdb.com 抓得到，但它自己按出口 IP 封速率，判据见下文。
   既有库采集只在官方渠道落空时按番号问 AVBase、JavBus 与 javdb：javdb 主机间隔 5 秒，javdb 与 AVBase 回 403
   就整源停下（`scraping_access.SOURCES` 的 `blocked_pause`），资料与封面的比对规则见 ADR-0030、ADR-0032。
   失败原因分开说：官方各版本只回「准备中」占位图是作品多半已下架（MIDE-594）；两个图源各有图但 dHash 对不上是
   「不是同一张图」，不用。社区来源的图只出自一个图源时照样装上，`.scraping.json` 的 `verified_by` 为空即未经印证
   （IPX-060 只有 javdb）。JavBus 有年龄门，2026-09-15 实测番号页不带 Cookie 回答题式年龄验证页；javdb 有登录墙。
   两家的 Cookie 由用户在浏览器里过门或登录后贴进采集设置，公开采集随请求带上。MIDE-594 在 JavBus 有封面
-  （用户 2026-09-15 核对），IPX-060 在 JavBus 是 404。Javinizer-Go 的 JavBus、javdb 快照只借厂牌选官方渠道，
+  （2026-09-15 人工核对），IPX-060 在 JavBus 是 404。Javinizer-Go 的 JavBus、javdb 快照只借厂牌选官方渠道，
   封面不当官方候选：JavBus 搜不到原番号时返回的是别的作品。
   Gfriends 只按 `Filetree.json` 和单张 raw 媒体当外部 Provider 用，不克隆图库、不把图片放进 Git。
   索引缓存按 mtime 计龄（一天），取不到新索引就退回旧缓存并在输出里告警；那一轮的「未收录」
@@ -402,13 +396,13 @@ av911.tv，三条候选已进复核队列。
   才是名片：带 cookie 时 `63802` 给出 `patreon/strauzek`、`twitter/strauzek`、`twitter/Mr_Strauz` 和
   F95 会员页，游客态这三条站外链接全被换成 `/login/`，有的版块对游客整个关闭（`189698` 回登录页）。
   名片里有 FANBOX 创作者 id 或 pixiv 数字 id 时头像取 FANBOX（`50685`、`87212`、`295303` 三条有）；
-  没有时取 X 与 Patreon，两家都不带凭据：X 登出页的 og:image 按 `social_links.twimg_tiers` 从原图往下退，
-  Patreon 公开的 `api/campaigns?filter[vanity]=` 给 `avatar_photo_image_urls.original`。两家各取到能用
+  没有时取 X 与 Patreon，两家都不带凭据：X 登出页的 og:image 按下文「`pbs.twimg.com` 的尺寸后缀」
+  那条退档，Patreon 公开的 `api/campaigns?filter[vanity]=` 给 `avatar_photo_image_urls.original`。两家各取到能用
   的最大一档后比实际像素留大的（`13899` 的 X 原图 400×400、Patreon 原图 256×256）；SubscribeStar
   **未取得**。认哪些主机算身份写死在
   `follow_sources.profile_link_identity`：论坛正文是谁都能贴链接的地方，放开主机等于把别人贴的地址
   当成作者。
-- **jae.tokyo 的女优名录是第三个来源**（用户 2026-09-04 指定，同一站的厂牌名录见下一节）。三届的资料页
+- **jae.tokyo 的女优名录是第三个来源**（人工指定来源，同一站的厂牌名录见下一节）。三届的资料页
   各不相同：2014 是 `jae2014/actress/NNN.html`，社媒和博客混在正文的 `<a>` 里；2015 是
   `jae2015/actress.html` 的 `offActress` 弹层，`actressLinkBtn` 一个按钮一条链接；2017 是
   `jae2017/actress/NNN.html`，人像在 `img_area`、链接在 `link_area`。391 页跑一遍，命中账本 145 人。
@@ -432,7 +426,6 @@ av911.tv，三条候选已进复核队列。
   `harvest_social_avatars.py` 的 `jae` 路线读走，和 X、babepedia 的候选在同一套内容寻址缓存里按
   短边排名比大小；jae 的 600×1000 竖版人像稳赢 X 的 240×240，145 条人像里 5 人产生候选、装上 4 张
   （其余早已有头像，`load_targets` 不收）。竖版全身宣传照的取景交给人脸 sidecar，见 REUSE.md「人脸取景」。
-
 - **X 的显示名写着「応援」的是粉丝号，不是本人。** 名录页把 `篠田ゆう様💝応援アカウント`
   这种账号当本人账号挂着，验活也是「活」——它确实活着，只是不是这个人的。证据里标一句不够：
   `installable()` 只看 verdict 和 alive，标注留在证据里照样会装进账本，jae 8 条、javdb 3 条
@@ -594,11 +587,11 @@ av911.tv，三条候选已进复核队列。
   尝试的理由——`SOD Create` 曾只剩一句 `取不到：ConnectError`，而真正有信息的那次
   （`www.sod.co.jp` → 200、标题 `SOFT ON DEMAND`）已被覆盖，人看到复核件时无从判断；现在候选判词按
   顺序拼成证据链写进 `note`，只有确认的行才留单条理由。
-- 页面上没有的信息，判据里补不出来，只能由用户确认。`SOD Create` 的官网就是母公司站
+- 页面上没有的信息，判据里补不出来，只能人工确认。`SOD Create` 的官网就是母公司站
   `www.sod.co.jp`（200、成人站、标题 `SOFT ON DEMAND（ソフト・オン・デマンド）`），而 `SOD Create`
   这个串整站不出现——通用判据到此只能判「标题与正文都没有厂牌名」，缺的那条是「这个厂牌属于哪家公司」。
   放宽通用判据去接住它，等于把 `hunter.com`、`bazooka.com`、`madonna.com` 一起放进来。所以走
-  `harvest_studio_sites.CONFIRMED_SITES`：一行一个厂牌，写清地址与用户确认的日期和理由，它只替掉最后
+  `harvest_studio_sites.CONFIRMED_SITES`：一行一个厂牌，写清地址与人工确认的日期和理由，它只替掉最后
   那道「页面得自述厂牌名」，状态码、空壳、停放页／自述不可用、域名回显四道照旧要过——确认的是「这个地址
   属于这家公司」，不是「这个地址此刻返回什么都算数」。确认地址排在所有推导候选前面，命中就不再走那串死域名。
 - 作品数少的厂牌不等于不用补链接。`--min-assets` 是为全量扫描定的阈值，账本里 BangBus、BangBros18
@@ -637,7 +630,7 @@ av911.tv，三条候选已进复核队列。
   FC2 文字」的纵向锁定图，缩到 28px 文字糊成一团，且挂在 FC2 ID 而不是 PPV 市场的主机上——是「过闸门
   不等于合适」那一类。`blog.fc2.com`、`live.fc2.com`、`static.fc2.com` 上也没有单独的大尺寸独角兽资产
   （`apple-touch-icon`、`favicon-192`、`icon.png` 全 404）。所以这不是「发现流程没找对」，是站上确实没有。
-- FC2 的两个位置各用一份非官网来源，两个地址都由用户 2026-09-03 当场指定，取回时间同日：
+- FC2 的两个位置各用一份非官网来源，两个地址都是人工指定来源，2026-09-03 指定并于同日取回：
   `icon` 位是 `storage.googleapis.com/datanyze-data//technologies/8ef39cbce34aece41d279b6e8e7dbb77aea3086e.png`
   （400×400 RGBA、内容比 1.07、纯红色独角兽没有文字，sha256 `ddaa3216…f449462`、40901 B），已写进
   `site_icons.HOST_OVERRIDES` 的 `fc2.com`。服务端回的 content-type 是 `application/octet-stream`，
@@ -647,13 +640,12 @@ av911.tv，三条候选已进复核队列。
   文字、内容比 3.02，sha256 `6911574c…6c6f1b7`、8916 B），写进 `harvest_studio_icons.LOGO_SOURCES` 而不是
   `HOST_OVERRIDES`：那张表管「按主机发现图标」的例外，这一份管「这个厂牌的大字标在哪」，键的含义和取用
   位置都不同。曾用 App Store 的「FC2動画」商店图标（512×512、内容比 1.00、sha256 `ac318e2b…c99538`），
-  2026-09-03 被用户否决——背景多了胶片图案；地址仍可复现（iTunes Lookup API），但不要再拿回来用。
-  没采信的来源与原因：seeklogo 同站那份 2000×662 是字标不用，用户指定的 429409 这份是 600×600 方形锁定图、
+  2026-09-03 不采用：背景多了胶片图案；地址仍可复现（iTunes Lookup API），但不要再拿回来用。
+  没采信的来源与原因：seeklogo 同站那份 2000×662 是字标不用，人工指定的 429409 这份是 600×600 方形锁定图、
   装 `logo` 位；Wikimedia 的 `File:FC2_Logo.jpg` 是同名的另一家（Fiction Collective Two）、
   simpleicons／vectorlogo.zone／iconduck 全 404 或已死、brandfetch 与 clearbit 要凭据或连不上、
   Google／DuckDuckGo 的 favicon 服务只回 16×16、`unavatar.io` 拿到的三个 FC2 账号头像是鸭子和房子的
   吉祥物画不是独角兽、Google Play 那几个 FC2 应用图标里独角兽只是角标。
-
 - 指定标识来源按**形状**分两张表，不是按画质。三个取用位（`.entityportrait`、`.idface`、筛选片）
   都是 `object-fit:cover` 的方框，宽扁字标原样装进去只剩正中间几个字母。所以
   `LOGO_SOURCES` 是原样装的方标（`MIN_LOGO_SHORT_EDGE=96`，低于它就是缩略图），
@@ -673,8 +665,8 @@ av911.tv，三条候选已进复核队列。
   「匹配」，实际 29 个。前缀候选比前三路弱，判据要写进复核件让人能分辨：`きらきらワイフ` 撞上的
   `kira*kira`、`おっぱいちゃん` 撞上的 `OPPAI` 都是另外两家真实厂牌。
 - 351 对 29 的卡点在账本不在名录：厂牌实体几乎没有日文别名，名录给的又全是日文名。补日文别名能把
-  同一份名录的覆盖面一次性抬上去（待办 26）。
-- **重复实体按写法与书写系统两类合并，一律留英文／罗马音那一侧**（用户 2026-09-04 授权，
+  同一份名录的覆盖面一次性抬上去，待办见 `docs/PRODUCT_BACKLOG.md`「待执行的操作」第 24 条。
+- **重复实体按写法与书写系统两类合并，一律留英文／罗马音那一侧**（2026-09-04，
   `merge_studio_name_variants.py`，11 对，备份 `ledger.pre-studio-variant-merge-20260904.db`）。
   写法变体（`AVS collector's` 对 `AVS collector’s`）的比较键是 NFKC 加符号折叠，**一个假名都不能丢**：
   只留 ASCII 的折法把 `シロウトTV` 与 `ラグジュTV` 双双折成 `tv`，合出来的是两家真实厂牌搅在一起，
@@ -685,8 +677,7 @@ av911.tv，三条候选已进复核队列。
   那一刻起没人认领，而保留方的大位空着就回落到补白字标——`プレステージ` 拿着 jae.tokyo 那张 320×320，
   `Prestige` 缺的正是它。`merge_studio_name_variants.py --logo-root` 按复核件搬运，保留方缺哪个变体补
   哪个、已有的一个字节都不动，`.ct` 与 `.provenance.json` 随图走（少了 `.ct`，`/logo` 答不出
-  Content-Type）。实测搬了 8 个文件，六家保留方现在 icon、logo、主位齐全。
-
+  Content-Type）。
 - 妄想族自家的发行目录 `mousouzoku-av.com/maker/list/<50音>/` 是 official 级方标来源：213 家，
   一律 `contents/maker/id<N>/logo_l.jpg`、200×200，直接够 `LOGO_SOURCES` 的门槛，不必烤方。
   `wa` 那一页回 500，其余九页正常。名录写 `厂牌/发行集团`（`Asia/妄想族`），账本写罗马字
@@ -720,18 +711,11 @@ av911.tv，三条候选已进复核队列。
 - 过闸门后再分两条通道：成品方形图标（threads 那枚黑底圆角白字）原样放行，圆由 CSS 的
   `.entitylinkicon` 裁，服务端再画一次只会把人家设计好的底色换掉；透明单色字形才做「品牌色圆底 +
   白色主体」。
-- 厂牌标识按位置分 icon / logo 两份，但只在真的有两份时才分岔。`/logo?studio=X` 的可选 `variant`：
-  `icon` 先找 `<safe>.icon.img`、`logo` 先找 `<safe>.logo.img`，都回落到既有的 `<safe>.img`；不带参数与
-  加这个参数之前完全一致，认不出的值也按不带处理。`large` 是第三个值，也是唯一一个不对应落盘后缀的：
-  它按文件本身的像素量在这个厂牌的所有份里挑最清晰的一张，矢量（SVG）排在所有位图之前。页面上
-  小地方（来源角标、筛选片、身份格、卡片徽标）取 `icon`，索引页大图版式的厂牌格与厂牌页那个 160 px
-  大位取 `large`；索引页紧凑版式的圆框仍取 `icon`，完整字标横过来塞进圆里看得清的部分比方标还少，
-  换版式时页面原地改地址里的 `variant` 再取一次——后缀说明不了清晰度：Prestige 的 `icon` 只有 42 px、MOODYZ 与 Wanz Factory 的只有 64 px，
-  而它们的裸文件分别是 632 / 403 / 238 px。129 个厂牌里只有 42 个有图、其中 17 个由
-  `normalize_studio_logos.py` 补过方，所以绝大多数厂牌两个位置拿到的仍是同一张。
-- **Logo 文件一律是不透明方图。** 小位铺满（cover）；大位按 contain 摆，图不足框的八成时不再放大，
-  原尺寸居中、四周用同一张图放大模糊补底（页面侧的 `data-fit-native`）。
-  边距和底色烤进文件，页面不再各自补救。
+- 厂牌标识按位置分 icon / logo 两份，但只在真的有两份时才分岔：`<safe>.icon.img`、`<safe>.logo.img`
+  都回落到既有的 `<safe>.img`。落盘后缀说明不了清晰度：Prestige 的 `icon` 只有 42 px、MOODYZ 与
+  Wanz Factory 的只有 64 px，而它们的裸文件分别是 632 / 403 / 238 px。绝大多数厂牌两个位置拿到的
+  仍是同一张。取图位与 `variant` 参数的页面约定见 `docs/FRONTEND.md`。
+- **Logo 文件一律是不透明方图。** 边距和底色烤进文件，页面不再各自补救。
   位图的唯一入口是 `peach.images.bake_square`，`classify_plate` 给出它据以分流的判定：
   - `mark`（有透明像素，如 PREMIUM 的全透明底蓝色字标）——按 alpha 外接框裁掉透明边，居中放到不透明
     方底上，内容占边长 `PLATE_CONTENT_RATIO`（0.76，四周各留约 12%），像素不缩放，出不透明 PNG。
@@ -776,10 +760,8 @@ av911.tv，三条候选已进复核队列。
   装好的文件上（HEYZO 就是这么修回来的）。边车继续指向原图，别把指针改指到这一轮备份的归一产物。
   边车的 `action` 是认来路的稳定标识不是描述：`bake-white-plate`、`pad-to-square`、`refit-plate`、
   `plate-vector`。`harvest_studio_icons.padded_studios` 按 `pad-to-square` 认「这一张的源图是条状字标」，
-  把重新摆位记成补方等于污染那份名单，所以三条位图路径分开记。
-  已装的位图里 26 个 `mark` 烤过底、5 个长条补过方（边车在 `*.img.normalization.json`）；2026-09-08 的
-  dry-run 报 52 个待改：46 个重新摆位、4 个矢量包方底、HEYZO 改配深底、pikpak 重补方。
-  回溯真实目录需另行授权。
+  把重新摆位记成补方等于污染那份名单，所以三条位图路径分开记；每张已装位图的来路记在
+  `*.img.normalization.json`。回溯已装文件是写操作，走 `normalize_studio_logos.py --apply`。
 - **已装的方标太小要再问一趟。** 小圆片是 32 CSS px，2 倍屏 64 实像素；`harvest_studio_icons.py`
   把短边不够这个数的厂牌一并收进目标（`INSTALLED_SHORT_EDGE`、`small_installed_marks`），量的是小位
   真会取到的那一份（`<safe>.icon.img` 优先，没有才回落 `<safe>.img`；`.logo.img` 归大位不参与）。
@@ -862,8 +844,7 @@ av911.tv，三条候选已进复核队列。
   `site_icons.best_mark(accept=...)` 挂一道守卫：`site_icons.HOST_SCOPE` 的候选一律不算数，判词
   `平台通用图标`，证据写明取到的是哪个主机的哪一份加 sha256。`/link-mark` 那个位置本来就是按主机的
   （`cache_key` 也按主机），不受这条约束。`HOST_OVERRIDES` 的键因此支持「主机 + 路径前缀」并取最长匹配。
-- **来源顺序按分辨率择优，不按正式程度死排**（用户 2026-09-05 定的口径：厂牌页大位是方图，头像够清晰
-  就能当 icon 用）。`harvest_studio_icons.icon_row` 一条链走下来：官网声明的图标 → 首页 header 的
+- **来源顺序按分辨率择优，不按正式程度死排**（厂牌页大位是方图，头像够清晰就能当 icon 用）。`harvest_studio_icons.icon_row` 一条链走下来：官网声明的图标 → 首页 header 的
   `<img>` → 人指定的社媒头像 → 页面上挂着的 X 账号头像。短边到 `GOOD_ENOUGH_SHORT_EDGE=360` 就停——
   公司格最宽 180 CSS px，2 倍屏 360 实像素之后在页面上没有分别，每多问一个来源就多敲一次别人的门。
   没到线才把余下的来源问完，然后按短边取最大的那一枚，但要大出 `BETTER_BY=1.5` 倍才顶掉排在前面的：
@@ -890,19 +871,19 @@ av911.tv，三条候选已进复核队列。
   成熟解析器、Cookie GUI 与签名地址刷新按 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)
   实施；1000×1000 原图实测及当前验证边界见 [抓取审计](SCRAPING_AUDIT.md)。未完成跨账号 POC
   时只记「地址发现未取得」，不得写成平台像素上限；账号归属仍需区分公司号与艺人号。
-- **字标补白**（用户 2026-09-03 定的口径：不是 icon 也可以装 icon，尽量不要落入无图）：方标一个都没做成、
+- **字标补白**（不是 icon 也可以装 icon，尽量不要落入无图）：方标一个都没做成、
   却取回过短边 ≥ `MIN_SHORT_EDGE` 的宽扁字标时，用 `peach.images.bake_square` 烤成方图装上，判词
   `字标补白`，`content_aspect` 照记（那个数就是「这枚其实是字标」的提示）。同一份方图再出一行
   `logo`（判词 `ok`）装进 `<safe>.logo.img`：不出这行大位会回落到 `<safe>.img`，BangBus 页顶上挂的就成了
   母品牌 BANGBROS。两位装的都是方图：页面三处取图位都是 cover 的方框，298×50 的宽条直接装上去只剩
-  中间的「NG」两个字母。用户指定的 logo 来源做成时优先。留第一份而不是最大的一份：
+  中间的「NG」两个字母。人工指定的 logo 来源做成时优先。留第一份而不是最大的一份：
   `best_mark` 的遍历顺序已经是「覆盖表 → 声明 → 根路径猜测」。BangBus（298×50／比 6.60）与 BangBros18
   （298×50／比 6.06）走的就是这条，来源是 `bangbros.com/websites` 服务端渲染进 HTML 的 `*_LOGO` 资产
   （注意 `/` 转义）。MonstersOfCock 那一页没有对应的 logo 资产，`site-api.project1service.com/v1/collections`
   只给照片 avatar/banner，频道页顶部那张 `assets/brand/1151/banners/…jpg` 是 1920×400 的照片横幅不是标识，
   `www.monstersofcock.com` 是同一套 Aylo 壳（favicon 同样是「1」、无 apple-touch-icon），所以它记
   **未取得**、继续回落现有的 `MonstersOfCock.img`，不用推测顶替。
-- **展会名录**（用户 2026-09-04 指定 `jae.tokyo`，Japan Adult Expo 的参展厂牌名录）：2014／2015／2017
+- **展会名录**（人工指定来源 `jae.tokyo`，Japan Adult Expo 的参展厂牌名录）：2014／2015／2017
   三届各带一套厂商自己交的 logo，页面结构每届不同——2014 是 `exhibitor/` 里 `<li><a><h2>名字</h2>` 加
   `images/logo/*.jpg`（270×180，`alt` 不可靠），2015 是 `maker.html` 里 `offMaker` 弹层的
   `makerLogo`／`makerRightTitle`／`makerLinkBtn`（188×188），2017 是 `maker.html` 的 `alt` 加详情页

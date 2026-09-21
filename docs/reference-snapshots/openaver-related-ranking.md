@@ -19,7 +19,7 @@
 
 ## 有意差异
 
-Peach 不复制 OpenAver 界面、源码或媒体库模型，只独立实现可验证的排序规则。Peach 的相关推荐仍由 ledger 规范实体和既有 DTO 驱动；负反馈与回收站边界继续由 Peach 负责。MMR 与稳定破同分是 Peach 为队列连续播放增加的约束，不声称来自 OpenAver。
+Peach 的相关推荐由 ledger 规范实体和既有 DTO 驱动；负反馈与回收站边界继续由 Peach 负责。MMR 与稳定破同分是 Peach 为队列连续播放增加的约束。
 
 ## 验证边界
 
