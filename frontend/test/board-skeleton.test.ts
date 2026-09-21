@@ -78,4 +78,11 @@ describe('Board 页面骨架', () => {
     expect(root.querySelectorAll('.follow-skeleton-table-row:not(.head)')).toHaveLength(20);
     expect(root.querySelector('.follow-skeleton-author')).toBeNull();
   });
+  it('表格骨架的行数跟着每页条数走',()=>{
+    localStorage.setItem('peach.settings.v1',JSON.stringify({followPageSize:40}));
+    try{
+      const root=document.createElement('div');root.innerHTML=boardPageSkeleton('/follow-manage',{followLayout:'table'});
+      expect(root.querySelectorAll('.follow-skeleton-table-row:not(.head)')).toHaveLength(40);
+    }finally{localStorage.removeItem('peach.settings.v1')}
+  });
 });

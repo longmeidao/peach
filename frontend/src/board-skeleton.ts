@@ -14,13 +14,23 @@ const followToolbar = (table: boolean) => `<div class="fsechead follow-skeleton-
 const followCheck = () => `<span class="fchannelcheck follow-skeleton-check" aria-hidden="true"></span>`;
 const followRow = () => `<div class="fsource frow follow-skeleton-source">${followCheck()}<b class="follow-skeleton-source-name">${line('72%')}</b><span class="fprovider follow-skeleton-provider skeleton"></span><span class="follow-skeleton-status skeleton"></span><span class="fmeta fchecked follow-skeleton-date">${line('100%')}</span><span class="fsourceactions follow-skeleton-row-actions"><i></i><i></i></span></div>`;
 const followAuthor = (rows = 3) => `<details class="fauthor follow-skeleton-author" open><summary class="fauthorhead"><span class="favatar follow-skeleton-avatar skeleton"></span><b>${line('92px')}</b><span class="fmeta follow-skeleton-author-meta skeleton"></span><span class="board-author-actions follow-skeleton-author-actions"><i></i><button type="button" class="fbtn small" data-follow-author-select disabled>${icon('check-check')}<span data-author-select-label>全选</span></button><i></i></span></summary><div class="fauthorsources follow-skeleton-sources">${repeat(followRow(),rows)}</div></details>`;
-const followTable = () => `<div class="ftableframe follow-skeleton-table"><div class="ftablewrap"><div class="ftable follow-skeleton-table-row head">${['','创作者','来源','站点','状态','上次检查',''].map(label=>`<span>${label}</span>`).join('')}</div>${repeat(`<div class="follow-skeleton-table-row">${followCheck()}${['74%','88%','62%','54%','78%'].map(width=>`<span>${line(width)}</span>`).join('')}<span class="fsourceactions follow-skeleton-row-actions"><i></i><i></i></span></div>`,20)}</div></div>`;
+/** 表格骨架画多少行由每页条数决定，写死一个数会在别的页大小上多留或少留一屏。
+ *  偏好存在旧层那份 `peach.settings.v1` 里，直接读它：骨架跑在 island 挂载之前，
+ *  这时候页面自己的状态还不存在。 */
+const followPageSize = (): number => {
+  try {
+    return Number(JSON.parse(localStorage.getItem('peach.settings.v1')||'{}').followPageSize)||20;
+  } catch { return 20 }
+};
+const followTable = (rows: number) => `<div class="ftableframe follow-skeleton-table"><div class="ftablewrap"><div class="ftable follow-skeleton-table-row head">${['','创作者','来源','站点','状态','上次检查',''].map(label=>`<span>${label}</span>`).join('')}</div>${repeat(`<div class="follow-skeleton-table-row">${followCheck()}${['74%','88%','62%','54%','78%'].map(width=>`<span>${line(width)}</span>`).join('')}<span class="fsourceactions follow-skeleton-row-actions"><i></i><i></i></span></div>`,rows)}</div></div>`;
 
 export function detailSkeletonHtml(): string {
   return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${line('85%')}${line('65%')}${repeat(lines(), 4)}</div></aside></div></div>`;
 }
 
-export function boardPageSkeleton(path: string, options: {followLayout?: string} = {}): string {
+export function boardPageSkeleton(
+  path: string, options: {followLayout?: string; followPageSize?: number} = {},
+): string {
   let body = '';
   if (path === '/stats') {
     body = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${line('38%')}</header>${metrics(['馆藏视频', '看过', '内容标签', '使用空间'])}${panel('馆藏视频')}${panel('内容标签')}</div>`;
@@ -28,7 +38,7 @@ export function boardPageSkeleton(path: string, options: {followLayout?: string}
     body = `<div class="tastepage"><header class="tastehead">${segments(['浏览器记录', 'Peach 内部'], 'insightswitch')}${line('24%')}</header><div class="tastestate"></div>${metrics(['浏览记录', '口味维度', '浏览候选', '私有导出'], 'tastesummaries')}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${repeat(lines(), 4)}</div></section>${panel('口味分析')}<div class="board-activity-charts">${panel('浏览活动')}${panel('时间分布')}</div>${panel('标签')}</div>`;
   } else if (path === '/follow-manage') {
     const table=options.followLayout==='table';
-    const content=table?followTable():`<div class="follow-skeleton-authors">${followAuthor(3)}${followAuthor(4)}${followAuthor(3)}</div>`;
+    const content=table?followTable(options.followPageSize||followPageSize()):`<div class="follow-skeleton-authors">${followAuthor(3)}${followAuthor(4)}${followAuthor(3)}</div>`;
     body = `<div class="follow followmanage follow-list-skeleton"><div class="fmanageoverview">${['关注创作者', '启用来源', '检查失败', '未看更新'].map(label => `<div><span>${label}</span><b>${line()}</b></div>`).join('')}</div>${segments(['关注列表', '添加关注', '来源和凭证'], 'follow-workspace-switch')}<div class="fmain"><section class="fsec follow-skeleton-surface" data-follow-workspace-panel="list">${followToolbar(table)}${table?'':`<div class="board-follow-selection follow-skeleton-select-all">${followCheck()}<span>全选本页</span></div>`}<div class="frows fsources" data-layout="${table?'table':'default'}">${content}<footer class="followpagefooter follow-skeleton-footer"><span class="followpageinfo">${line('116px')}</span><span>${line('96px')}</span><span class="follow-skeleton-pages"><i></i><i></i><i></i></span></footer></div></section></div></div>`;
   } else if (path === '/configuration') {
     body = `<div class="configpage">${tabs(['通用', '媒体', '网络与访问', '更新与维护'])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${repeat(`<div class="skeleton-setting">${line('35%')}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${line('100px')}</footer></section></div>`;

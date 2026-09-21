@@ -6150,8 +6150,8 @@ class WebUiSourceTests(unittest.TestCase):
         「换了配色但有一块玻璃没跟上」：没有报错，只是一排毛玻璃里有一块是别的颜色。
         尺寸与 alpha 档位留在各自主题那一档里，它们是这块材质自己的浓淡。
 
-        React 那一侧的玻璃面（复核页的批量工具条）是 `styles.css` 里的一条 `@utility`，
-        读的是同一批 `--glass-*`，一起在这里核对：两份样式表各画一块玻璃才是最容易走散的
+        React 那一侧的玻璃面（复核筛选条、选择动作坞）挂 `data-glass-pane`，材质由这份
+        样式表同一条属性选择器给，一起在这里核对：两份样式表各画一块玻璃才是最容易走散的
         那种，同一屏上一块跟着配色走、另一块不跟。
         """
         css = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -6161,16 +6161,15 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(declaration, css)
         # 多选那条悬浮坞、批处理条和标签选择条也读这两团：它们和侧栏同时在屏上，
         # 漏掉任何一条就是一屏里两种颜色的玻璃。
-        for face in ("body .selectiondock{", ".batchbar,.tagselection{"):
+        for face in ("body .selectiondock{", ".batchbar,.tagselection{", "[data-glass-pane]{"):
             with self.subTest(face=face):
                 rule = css.split(face, 1)[1].split("}", 1)[0]
                 self.assertIn("var(--glass-drift-a),var(--glass-drift-b)", rule)
                 self.assertIn("var(--glow-drift-scale)", rule, "速度那一条也跟着走")
+        # React 那两块玻璃自己只留几何与饱和度，材质不再各写一份。
         react = (Path(__file__).resolve().parents[1]
                  / "frontend/src/react/styles.css").read_text(encoding="utf-8")
-        pane = react.split("@utility glass-pane {", 1)[1].split("\n}", 1)[0]
-        self.assertIn("var(--glass-drift-a), var(--glass-drift-b)", pane)
-        self.assertIn("var(--glow-drift-scale)", pane, "速度那一条也跟着走")
+        self.assertNotIn("var(--glass-drift-a)", react)
         drifts = re.findall(r"--glass-drift-[ab]:radial-gradient\((.*?)transparent \d\d%\)", css)
         self.assertEqual(len(drifts), 6, "深浅两档各两团，浅色那档还有跟随系统的一份")
         for drift in drifts:
@@ -8116,8 +8115,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('class="fauthor follow-skeleton-author"', source)
 
         self.assertIn("background:var(--color-background-secondary-default)", skeleton)
-        self.assertIn(".follow-skeleton-author{overflow:hidden;padding:8px;border-radius:var(--floating-radius);"
+        # 作者卡与主动作键都被 `.followmanage` 那一档压着，特异性一次给够，不并列两条同样的规则。
+        self.assertIn(".followmanage.follow-list-skeleton .follow-skeleton-author{overflow:hidden;padding:8px;"
                       "background:var(--color-background-primary-default)", skeleton)
+        self.assertEqual(skeleton.count(".follow-skeleton-author{"), 1)
+        self.assertEqual(skeleton.count(".follow-skeleton-button.primary{"), 1)
+        # 来源行照 React 的 `SourceRow` 排，不借迁移前那套网格列。
+        self.assertIn(".followmanage.follow-list-skeleton .fauthor .follow-skeleton-source{display:flex;", skeleton)
         self.assertIn(".follow-skeleton-table{width:100%;min-width:0;overflow-x:auto;", skeleton)
         self.assertIn(".follow-skeleton-source+.follow-skeleton-source{border-top:1px solid", skeleton)
         self.assertIn("@media(max-width:1023px){.followmanage.follow-list-skeleton .fmanageoverview", skeleton)

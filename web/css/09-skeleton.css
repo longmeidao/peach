@@ -113,8 +113,9 @@
 .follow-skeleton-button svg,.follow-skeleton-select svg{width:18px;height:18px;flex:none}
 .follow-skeleton-button svg,.follow-skeleton-select svg{fill:none;stroke:currentColor;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
-.follow-skeleton-button.primary{border-color:transparent;background:var(--board-blue);color:#fff}
-.followmanage.follow-list-skeleton .follow-skeleton-button.primary{border-color:transparent;background:var(--board-blue);color:#fff}
+/* 压着这枚键的是 `board.css` 的 `.followmanage .fbtn` 那一档，所以特异性一次给够：
+   骨架自己那条 `.follow-skeleton-button` 只有一个类，实底和白字落不下来。 */
+.followmanage.follow-list-skeleton .follow-skeleton-button.primary{border-color:transparent;background:var(--board-blue);color:var(--color-text-white)}
 .follow-skeleton-button.square{width:36px;padding:0}
 .follow-skeleton-button-group{display:inline-flex;overflow:hidden;border:1px solid var(--color-border-button-default);
   border-radius:var(--control-radius);background:var(--color-background-primary-default)}
@@ -126,8 +127,10 @@
 .follow-skeleton-check{display:block;box-sizing:border-box;width:18px;height:18px;flex:none;border:1px solid var(--color-border-button-default);
   border-radius:var(--badge-radius);background:var(--color-background-primary-default)}
 .follow-skeleton-authors{display:flex;flex-direction:column;gap:12px}
-.follow-skeleton-author{overflow:hidden;padding:8px;border-radius:var(--floating-radius);background:var(--color-background-primary-default);box-shadow:var(--shadow-card)}
-.followmanage.follow-list-skeleton .follow-skeleton-author{background:var(--color-background-primary-default)}
+/* 同上，压着作者卡的是 `.followmanage .fauthor`：面与内边距一起在这一条里给够，不然骨架
+   长着旧列表盒子的 16px 内边距，接管成 React 的 `p-2` 卡时整列往里跳一次。圆角是唯一一处
+   不用自己写的：那条规则给的 16px 正是 React 卡的值，圆角 token 里没有这一档。 */
+.followmanage.follow-list-skeleton .follow-skeleton-author{overflow:hidden;padding:8px;background:var(--color-background-primary-default);box-shadow:var(--shadow-card)}
 .follow-skeleton-author>.fauthorhead{display:flex;min-height:44px;align-items:center;gap:12px;padding:6px 8px 10px;
   border-bottom:1px solid var(--color-border-button-default)}
 .follow-skeleton-avatar{width:32px;height:32px;flex:none;border-radius:50%}
@@ -136,8 +139,14 @@
 .follow-skeleton-author-actions>i,.follow-skeleton-row-actions>i,.follow-skeleton-pages>i{display:block;box-sizing:border-box;
   width:32px;height:32px;border:1px solid var(--color-border-button-default);border-radius:var(--control-radius);background:var(--color-background-primary-default)}
 .follow-skeleton-author-meta{width:54px;height:18px}.follow-skeleton-author-actions>.fbtn{min-width:68px}
-.follow-skeleton-source{display:grid;min-height:64px;box-sizing:border-box;grid-template-columns:18px minmax(100px,1fr) 28px 52px 116px 72px;
-  align-items:center;gap:12px;padding:12px 8px}
+/* 来源行跟 React 的 `SourceRow` 同一个形状：flex、可换行、12px 间隔，名字占住中间那段，
+   其余格子各按自己的宽度排。压着它的是 `22-followmanage.css` 的 `.fauthor .fsource.frow`，
+   那条也是三个类，所以这里数到四个——只写 `.follow-skeleton-source` 会拿到旧列表那套网格列。 */
+.followmanage.follow-list-skeleton .fauthor .follow-skeleton-source{display:flex;min-height:64px;box-sizing:border-box;
+  flex-wrap:wrap;align-items:center;gap:12px;padding:12px 8px}
+.follow-skeleton-source>.follow-skeleton-source-name{min-width:0;flex:1 1 auto}
+.follow-skeleton-source>.follow-skeleton-date{flex:none;width:116px}
+.follow-skeleton-source>:is(.follow-skeleton-check,.follow-skeleton-provider,.follow-skeleton-status,.follow-skeleton-row-actions){flex:none}
 .follow-skeleton-source+.follow-skeleton-source{border-top:1px solid var(--color-border-button-default)}
 .follow-skeleton-source-name>.skeleton,.follow-skeleton-date>.skeleton{height:18px}
 .follow-skeleton-provider{width:24px;height:24px;border-radius:var(--control-radius)}
@@ -160,7 +169,7 @@
 @media(max-width:760px){.follow-list-skeleton{gap:20px}.follow-skeleton-surface{padding:16px}
   .follow-skeleton-toolbar h3{flex-basis:100%}.follow-skeleton-count{margin-right:auto}
   .follow-list-skeleton .followtoolbaractions{overflow:hidden}.follow-skeleton-button span{display:none}.follow-skeleton-button{width:36px;padding:0}
-  .follow-skeleton-select{min-width:104px}.follow-skeleton-source{grid-template-columns:18px minmax(90px,1fr) 28px 52px 68px}
+  .follow-skeleton-select{min-width:104px}
   .follow-skeleton-source>.follow-skeleton-date{display:none}.follow-skeleton-author-actions>.skeleton{display:none}
   .follow-skeleton-table-row{min-width:640px}.follow-skeleton-footer>span:nth-child(2){display:none}}
 .skeleton-dashboard>div{gap:16px}
