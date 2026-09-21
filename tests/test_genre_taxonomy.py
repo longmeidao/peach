@@ -290,6 +290,78 @@ class VocabularyHygieneTests(unittest.TestCase):
         self.assertEqual(map_genres(["家庭教師"])[0], ["家庭教师"])
         self.assertEqual(map_genres(["女教師"])[0], ["教师"])
 
+    def test_every_spelling_a_source_uses_reaches_the_same_tag(self):
+        """同一个含义在各来源写法不同：英日、连写分写、片假名平假名。
+
+        `normalise_genre` 只折叠大小写、全半角和空白，`Doggystyle` 与 `Doggy Style`、
+        `おもちゃ` 与 `オモチャ` 在它眼里仍是两个键，词表里得各登记一次。
+        """
+        for spellings, tag in (
+            (("Doggystyle", "Doggy Style", "Doggy", "バック", "後背位"), "后入"),
+            (("Deep Throat", "Deepthroat", "Irrumatio", "イラマチオ"), "深喉"),
+            (("Handjob", "Hand Job", "Fingering", "指マン", "手マン"), "手交"),
+            (("Titty Fuck", "Tit Fuck", "Paizuri", "パイズリ"), "乳交"),
+            (("Squirting", "Squirt", "潮吹き"), "潮吹"),
+            (("Threesome", "Foursome", "3P・4P", "3P/4P", "4P"), "3P多人"),
+            (("Orgy", "Gangbang", "Gang Bang", "Group Sex", "乱交"), "多人"),
+            (("Sex Toy", "Toys", "Dildo", "おもちゃ", "オモチャ", "Pinkrotor", "ピンクローター"), "性玩具"),
+            (("Facesitting", "Face Sitting", "顔面騎乗"), "颜面骑乘"),
+            (("Big Tits", "Big Boobs", "Busty", "巨乳"), "巨乳"),
+            (("Small Tits", "Tiny Tits", "Flat Chest", "貧乳"), "贫乳"),
+            (("Slender", "Slim", "Skinny", "細身", "スレンダー"), "苗条"),
+            (("Tiny Girl", "Petite", "小柄", "ミニマム"), "娇小"),
+            (("Tall Girl", "Tall", "長身", "高身長", "高身長グラマラス"), "高个"),
+            (("Pantyhose", "パンスト", "タイツ", "ストッキング", "網タイツ"), "丝袜"),
+            (("Kimono", "Yukata", "着物", "浴衣", "和服・浴衣"), "和服浴衣"),
+            (("Twintails", "Pigtails", "ツインテール"), "双马尾"),
+            (("Married Woman", "Housewife", "Wife", "主婦", "人妻"), "人妻"),
+            (("School Girls", "Schoolgirl", "Student", "女学生", "女子校生"), "学生"),
+            (("Nurse", "看護婦", "看護師", "ナース"), "护士"),
+            (("Stewardess", "Flight Attendant", "キャビンアテンダント"), "空姐"),
+            (("Bath", "Shower", "Bathroom", "お風呂", "シャワー", "入浴"), "浴室"),
+            (("School", "Classroom", "学校", "教室", "学園もの"), "教室学校"),
+            (("Hotel", "ホテル"), "酒店"),
+            (("Office", "オフィス"), "办公室"),
+            (("Bondage", "Shibari", "Tied Up", "緊縛", "縛り"), "捆绑"),
+            (("Cuckold", "Netorare", "寝取り", "寝取られ"), "绿帽NTR"),
+            (("Cheating Wife", "Cheating", "不倫", "浮気"), "出轨"),
+            (("Voyeur", "盗撮", "盗撮・のぞき"), "偷拍偷窥"),
+            (("Uncensored", "無修正"), "无码"),
+            (("Virtual Reality", "VR", "VR専用"), "VR"),
+        ):
+            for spelling in spellings:
+                with self.subTest(spelling=spelling):
+                    self.assertEqual(map_genres([spelling])[0], [tag])
+
+    def test_a_debut_is_filed_with_the_first_shoot(self):
+        """`デビュー作品`／`Debut` 是厂牌说的「第一次上镜」，和素人系列的 `初撮り` 同一格。"""
+        for word in ("初撮り", "デビュー作品", "Debut"):
+            self.assertEqual(map_genres([word])[0], ["初拍"], word)
+
+    def test_fame_and_mood_words_are_excluded_not_registered(self):
+        """`Famous Name` 说的是演员名气，`Hardcore Fuck`、`Scream for Joy` 是氛围词。
+
+        `Choker`、`Kawaii Fashion` 和 `ジーンズ` 同档：比词表细一级的穿搭。
+        """
+        for word in ("Famous Name", "Hardcore Fuck", "Scream for Joy",
+                     "Choker", "Kawaii Fashion"):
+            self.assertTrue(is_non_content_genre(word), word)
+        self.assertEqual(map_genres(["Famous Name", "中出し"]), (["中出内射"], []))
+
+    def test_words_without_a_fitting_tag_stay_on_the_review_page(self):
+        """词表里没有贴切标签的原文留给人判，不硬塞一个近似词。
+
+        `風俗` 比 `按摩` 宽（外送、店内都算），`温泉` 说的是旅程不是浴室，
+        `金髪・ブロンド`、`Short Hair` 是发型而词表只有双马尾，`スポーツ`、`童貞`、
+        `汗だく`、`泥酔`、`ドラッグ`、`局部アップ`、`Nice Pussy`、`Glamorous Body`、
+        `ドキュメンタリー`、`イメージビデオ`、`Inter` 各自没有对应格子。
+        """
+        for word in ("風俗", "温泉", "金髪・ブロンド", "Short Hair", "スポーツ", "童貞",
+                     "汗だく", "泥酔", "ドラッグ", "局部アップ", "Nice Pussy",
+                     "Glamorous Body", "ドキュメンタリー", "イメージビデオ", "Inter"):
+            with self.subTest(word=word):
+                self.assertEqual(resolve_genre(word), UNMAPPED)
+
 
 class ResolveGenreTests(unittest.TestCase):
     """抓取与复核折叠候选走同一个查表函数。"""
