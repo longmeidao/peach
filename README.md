@@ -17,12 +17,6 @@ Peach 是面向单人的本地优先媒体馆藏应用。它在浏览器里统�
 
 > **18+** 面向管理成人内容馆藏的成年人。仓库不包含媒体或站点数据；来源连接器要求使用者拥有相应访问权，不绕过付费墙、机器人验证或其他访问控制。
 
-## 功能预览
-
-https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
-
-<p align="center"><a href="docs/assets/peach-overview.mp4">下载 58 秒功能介绍视频</a></p>
-
 ## 能做什么
 
 <table>
