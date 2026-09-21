@@ -568,7 +568,7 @@ def main(argv: list[str] | None = None) -> int:
             paths = changed_files(ROOT, args.base)
             scopes, explanation = scopes_for_changes(paths, contents=changed_contents(ROOT, args.base, paths))
         print(explanation, flush=True)
-    # 分片子进程不再预检：域已经定下，父进程在切片前查过同一套工具，每片再查一遍
+    # 只有非分片的这一次预检：域已经定下，父进程在切片前查过同一套工具，每片各查一遍
     # 只会把同一条结论打印 N 遍。
     if args.shard_count == 1:
         environment_preflight(scopes, args.timings)
