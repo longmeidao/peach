@@ -72,6 +72,9 @@ SERVE_HOST: str = _SETTINGS.server.host
 SERVE_PORT: int = _SETTINGS.server.port
 TUNNEL_ENABLED: bool = _SETTINGS.tunnel.enabled
 CLOUDFLARED_BINARY: str = _SETTINGS.tunnel.binary
+TUNNEL_MODE: str = _SETTINGS.tunnel.mode
+TUNNEL_TOKEN: str = _SETTINGS.tunnel.token
+TUNNEL_HOSTNAME: str = _SETTINGS.tunnel.hostname
 
 
 @dataclass(frozen=True)
@@ -91,6 +94,11 @@ class PeachSettings:
     #: 从设置文件读出后注入，`create_app()` 自己构造的设置一律是关闭加空路径。
     tunnel_enabled: bool = False
     tunnel_binary: str = ""
+    #: 公网入口的形态。`named` 走用户自建的命名隧道，只在源码开发环境成立；
+    #: 令牌从设置文件注入，进程内只用于拼启动参数，不写日志也不回给页面。
+    tunnel_mode: str = "quick"
+    tunnel_token: str = ""
+    tunnel_hostname: str = ""
     tunnel_standalone: bool = False
     tunnel_lan_address: str | None = None
     #: Tunnel origin 的实际端口；源码部署留 None 表示标准 HTTPS 端口。

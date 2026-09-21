@@ -157,15 +157,22 @@ class ReplicationSettings:
 
 @dataclass(frozen=True)
 class TunnelSettings:
-    """Cloudflare Quick Tunnel 的本机开关。
+    """Cloudflare Tunnel 的本机开关。
 
     Quick Tunnel 没有稳定域名，也没有 Cloudflare Access 身份层，所以默认关闭，
     只有在 Peach 自己已经启用访问密码时才允许打开。`binary` 只记录本机可执行文件
     的显式位置，不把二进制或下载地址写进设置文件。
+
+    `mode = "named"` 换成用户自己在 Cloudflare 后台建的命名隧道：入口是 `hostname`
+    这个固定主机名，凭据是 `token`。令牌只落在这个文件里，不进账本、日志和健康检查。
+    命名隧道只在源码开发环境可用，独立包读到它会拒绝启动隧道。
     """
 
     enabled: bool = False
     binary: str = ""
+    mode: str = "quick"
+    token: str = ""
+    hostname: str = ""
 
 
 @dataclass(frozen=True)
@@ -385,6 +392,12 @@ def _merge(
             tunnel_table, "enabled", tunnel_defaults.enabled, path, "tunnel."),
         binary=_string(
             tunnel_table, "binary", tunnel_defaults.binary, path, "tunnel."),
+        mode=_string(
+            tunnel_table, "mode", tunnel_defaults.mode, path, "tunnel."),
+        token=_string(
+            tunnel_table, "token", tunnel_defaults.token, path, "tunnel."),
+        hostname=_string(
+            tunnel_table, "hostname", tunnel_defaults.hostname, path, "tunnel."),
     )
 
     config = PeachConfig(
@@ -590,12 +603,18 @@ def render(config: PeachConfig) -> str:
     lines += [
         "",
         "[tunnel]",
-        "# Cloudflare Quick Tunnel 默认关闭；打开前必须先设置访问密码。",
+        "# Cloudflare Tunnel 默认关闭；打开前必须先设置访问密码。",
         "# binary 留空时按内置包、PEACH_CLOUDFLARED 和 PATH 的顺序寻找 cloudflared。",
+        "# mode = \"quick\" 是随机地址的临时链接；\"named\" 用自建命名隧道，只在源码开发",
+        "# 环境可用，需要 hostname（Cloudflare 后台绑定的公开主机名）和 token（隧道令牌）。",
+        "# token 是凭据：这个文件是它唯一的存放处，不要复制到别处，也不要提交进 Git。",
     ]
     lines += _render_pairs({
         "enabled": config.tunnel.enabled,
         "binary": config.tunnel.binary,
+        "mode": config.tunnel.mode,
+        "hostname": config.tunnel.hostname,
+        "token": config.tunnel.token,
     })
     return "\n".join(lines) + "\n"
 

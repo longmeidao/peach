@@ -135,6 +135,12 @@ def tunnel_payload(config, state: tunnel.TunnelSnapshot, enabled: bool) -> dict[
         "url": state.url,
         "error": state.error,
         "available": tunnel.resolve_binary(config.tunnel.binary) is not None,
+        "mode": (getattr(config.tunnel, "mode", "") or tunnel.QUICK_MODE).strip().lower(),
+        "hostname": getattr(config.tunnel, "hostname", ""),
+        # 令牌是凭据，只回报存没存过。页面据此显示「已保存」，不回显任何字符。
+        "token_set": bool((getattr(config.tunnel, "token", "") or "").strip()),
+        # 命名隧道要一份自建隧道的后台配置，独立包给不出，这一块在那里根本不渲染。
+        "named_available": not distribution.standalone(),
     }
 
 
@@ -372,10 +378,36 @@ def save_access(request: Request, body: dict[str, Any] = Body(default_factory=di
     return response
 
 
+def tunnel_changes(config, body: dict[str, Any]) -> dict[str, Any]:
+    """从写回请求里取出隧道形态，缺席的键保持设置文件里的现值。
+
+    令牌不回显，页面也就交不回原值：空串一律当作「不改」，要换只能提交一个新的。
+    命名隧道在独立包里没有着落点，这里当场拒绝，不让它先落盘再在启动时失败。
+    """
+    changes: dict[str, Any] = {}
+    for key in ("mode", "hostname", "token"):
+        if key in body and not isinstance(body[key], str):
+            raise HTTPException(400, f"{key} 必须是文字")
+    try:
+        if "mode" in body:
+            changes["mode"] = tunnel.normalize_mode(body["mode"])
+        if body.get("hostname", "").strip():
+            changes["hostname"] = tunnel.normalize_hostname(body["hostname"])
+    except tunnel.TunnelError as exc:
+        field = "mode" if "mode" in body and "mode" not in changes else "hostname"
+        raise HTTPException(400, {"message": str(exc), "errors": {field: str(exc)}}) from exc
+    if body.get("token", "").strip():
+        changes["token"] = body["token"].strip()
+    mode = changes.get("mode") or (getattr(config.tunnel, "mode", "") or tunnel.QUICK_MODE)
+    if mode == tunnel.NAMED_MODE and distribution.standalone():
+        raise HTTPException(400, tunnel.STANDALONE_NAMED_ERROR)
+    return changes
+
+
 @router.post("/api/configuration/tunnel")
 def save_tunnel(request: Request, body: dict[str, Any] = Body(default_factory=dict),
                 _args=Depends(require_auth)):
-    """启动或停止本机 Quick Tunnel；入口只对本机配置页开放。"""
+    """保存隧道形态并启动或停止它；入口只对本机配置页开放。"""
     local_only(request)
     same_origin(request)
     config = settings_file.load_config()
@@ -386,6 +418,9 @@ def save_tunnel(request: Request, body: dict[str, Any] = Body(default_factory=di
     enabled = body.get("enabled")
     if not isinstance(enabled, bool):
         raise HTTPException(400, "enabled 必须是 true 或 false")
+    updated = replace(
+        config, tunnel=replace(config.tunnel, enabled=enabled, **tunnel_changes(config, body)),
+    )
     manager = request.app.state.tunnel
     state = tunnel.TunnelSnapshot(state="stopped")
     started_here = False
@@ -394,8 +429,9 @@ def save_tunnel(request: Request, body: dict[str, Any] = Body(default_factory=di
         try:
             existing = manager.snapshot()
             started_here = existing.state not in {"starting", "running"}
+            # 计划按这次提交的形态构造，不是磁盘上那一份：模式和主机名可能就是本次改的。
             plan = tunnel.plan_for_config(
-                config,
+                updated,
                 access_path=settings.access_path,
                 token=settings.token,
                 standalone_mode=getattr(settings, "tunnel_standalone", distribution.standalone()),
@@ -406,7 +442,6 @@ def save_tunnel(request: Request, body: dict[str, Any] = Body(default_factory=di
             state = manager.start(plan)
         except tunnel.TunnelError as exc:
             raise HTTPException(409, str(exc)) from exc
-    updated = replace(config, tunnel=replace(config.tunnel, enabled=enabled))
     try:
         with FileLock(str(config.path.with_suffix(".lock")), timeout=0):
             current = settings_file.load_config()
