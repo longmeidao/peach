@@ -714,10 +714,22 @@ class WordmarkSourceTests(unittest.TestCase):
         已装的那些多来自 jae.tokyo 的 320×320 方标，换成 180×54 的字标是降级。
         """
         self.assertTrue(self.original, "字标来源表不能是空的")
+        own_site = {studio for studio, url in MODULE.WORDMARK_SOURCES.items()
+                    if "mgstage.com" not in url}
+        self.assertEqual(own_site, {"M Girls' Lab"})
         for studio, url in MODULE.WORDMARK_SOURCES.items():
             with self.subTest(studio=studio):
-                self.assertRegex(url, r"^https://static\.mgstage\.com/mgs/img/pc/")
+                if studio not in own_site:
+                    self.assertRegex(url, r"^https://static\.mgstage\.com/mgs/img/pc/")
                 self.assertNotIn(studio, MODULE.LOGO_SOURCES)
+
+    def test_a_studio_whose_own_site_carries_the_wordmark_is_pinned_to_that_site(self):
+        """自动发现给 M Girls' Lab 小位挑的是它 X 账号那张项圈照片：400×400、内容比
+        1.04，够大够方，里面没有脸所以人像闸也过。「照片不是标识」闸门判不出来，
+        只能指定官网 header 里那张字标，两个位置都从它烤。
+        """
+        self.assertRegex(MODULE.WORDMARK_SOURCES["M Girls' Lab"],
+                         r"^https://cdn\.up-timely\.com/image/16/site_design/")
 
 
 class Fetch:

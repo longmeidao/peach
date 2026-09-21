@@ -219,6 +219,13 @@ WORDMARK_SOURCES: dict[str, str] = {
     "S-Cute": "https://static.mgstage.com/mgs/img/pc/scute.gif",
     "VIP": "https://static.mgstage.com/mgs/img/pc/vip.gif",
     "Waap Entertainment": "https://static.mgstage.com/mgs/img/pc/waap.gif",
+    # 这一条不来自 MGStage 名录，是厂牌官网 `mko-labo.net` header 里那张 391×143 的
+    # 字标（2026-09-22 实测）。指定它是为了挡住自动发现给小位挑的那一枚：页面上挂的
+    # X 账号头像是一张项圈的照片，400×400、内容比 1.04，够大也够方，人像闸也过——
+    # 里面没有脸——装上去厂牌页顶着一条项圈。照片不是标识，这一点闸门判不出来。
+    "M Girls' Lab":
+        "https://cdn.up-timely.com/image/16/site_design/base/logo_image"
+        "/agm4a2ESultyKGcW2F3tWNjLS0VTjbjzXuueyhai.png",
 }
 
 
