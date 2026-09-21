@@ -180,6 +180,17 @@ async function openCatalogFixture(
 /** 一趟跑到一半的扫描与采集。 */
 const RUNNING_JOB = { status: 'running', stage: '采集缺失资料', checked: 38, total: 100 };
 
+/** 一趟断在半路、攒下一份长问题清单的扫描与采集：演示库里这两样都凑不出来。 */
+const FAILED_JOB = {
+  status: 'failed', job_id: 'one', error: '处理被中断，请检查媒体目录后重试。',
+  issue_count: 347, issues_truncated: true, retryable_asset_ids: [1, 2],
+  issues_log: 'C:\\peach-data\\state\\library-processing-demo.issues.jsonl',
+  issue_preview: Array.from({ length: 20 }, (_, at) => ({
+    asset_id: at + 1, title: `示例-${at + 1}.mp4`, path: `B:\\番号\\示例-${at + 1}.mp4`,
+    message: '封面未取得：javdb：请求预算已用完；已有图片保留',
+  })),
+};
+
 describe('设计决定', () => {
   let browser: Browser;
 
@@ -402,6 +413,38 @@ describe('设计决定', () => {
           (button) => getComputedStyle(button).backgroundColor)),
         ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], '按钮自己仍在切换底色');
       }
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('失败提示里重试键靠右，问题清单铺满提示并走覆盖式滚动条', { timeout: 60_000 }, async () => {
+    const opened = await openProcessing(browser, '/data-cleanup', FAILED_JOB);
+    try {
+      const alert = opened.page.locator('#libraryProcessing [role="alert"]');
+      await alert.waitFor({ state: 'visible', timeout: 15_000 });
+      await alert.locator('summary').click();
+      const list = alert.locator('ul');
+      await list.waitFor({ state: 'visible', timeout: 5_000 });
+      const geometry = await alert.evaluate((element) => {
+        const note = element.getBoundingClientRect();
+        const button = element.querySelector('button')!.getBoundingClientRect();
+        const items = element.querySelector('ul')!;
+        return {
+          padding: parseFloat(getComputedStyle(element).paddingRight),
+          noteRight: note.right, buttonRight: button.right,
+          listRight: items.getBoundingClientRect().right,
+          client: items.clientWidth, offset: items.offsetWidth,
+          track: !!element.querySelector('.ovtrack'),
+        };
+      });
+      assert.ok(geometry.noteRight - geometry.buttonRight - geometry.padding < 1,
+        '重试键没有贴着提示的右内边，读起来就不是这条提示的主动作');
+      assert.ok(geometry.noteRight - geometry.listRight - geometry.padding < 1,
+        '问题清单没有铺满提示的宽度');
+      assert.equal(geometry.client, geometry.offset, '原生滚动条还占着清单右边一列');
+      assert.ok(geometry.track, '清单没有挂上全站那条覆盖式滚动条');
+      assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }
