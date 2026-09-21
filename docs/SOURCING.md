@@ -68,6 +68,30 @@ Seesaa 是托管平台，以下 Wiki 由各自维护者编辑，不能按平台�
 - 双词罗马音艺名（`Mao Hamasaki`、`Sarina Momonaga`）过不了艺名形态门槛，由人工复核；
   后者按别名对到 `藤木真央`，身份待确认。
 
+## FC2 作品资料与封面
+
+FC2 不是 JAV：番号是卖家自己的投稿号，JAV 目录站按它去查要么没有、要么撞上别的片。实测
+r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「没有这个番号」，javdb 收了
+一部分但配额紧。库内采集（`peach.library_processing`）对 FC2 番号因此只问两处，解析器在
+`peach.metadata_fc2`，都不要凭据：
+
+- 发行方自己那一页 `adult.contents.fc2.com/article/<video_id>/`，资料在 `ld+json` 的 Product
+  里，一次请求给标题、说明、卖家、商品标签、时长、販売日和封面原图（实测 2350×2352）。
+  核 `sku`：站上的商品号会被复用给别的投稿。
+- 下架的商品页仍回 200 且不再带 Product，这不是抓取失败。接着问镜像站
+  `fc2cmadb.com/articles/<video_id>`（Laravel + Inertia，props 树在 `application/json` 里），
+  它留着下架作品的同一批字段（`FC2-PPV-3189161` 实测取回 3456×1942 的原图）。标题与标签由
+  站方用户维护，按社区来源登记，取值进复核。
+
+两处的封面都指向 `storage*.contents.fc2.com` 上卖家自己传的那个文件，所以按官方图对待，不走
+社区来源的两图源印证（ADR-0030）。镜像有时给的是 `contents-thumbnail*.fc2.com/w276/` 包装过的
+地址，解析器把包装拆掉取原件。
+
+演员两处都不取：商品页没有演员栏，标题里的名字是卖家写的宣传语。FC2 的演员线索在 fc2cmadb 的
+评论区，走 `scripts/fetch_fc2_metadata.py`，那条路另有等价标记与合集判定。带分段后缀的番号
+（`FC2-PPV-3312576-1`）认不出商品号，一处都不问：合集封面套给每一段，就是 21 个不同内容顶着
+同一张图。
+
 ## 本机采集入口
 
 GUI 与 `scripts/fetch_jav_covers.py` 共用 `peach.jav_cover_fetch`；不需要把开发者的映射文件或
