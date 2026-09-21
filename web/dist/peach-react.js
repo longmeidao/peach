@@ -410,6 +410,7 @@ function ie(e, t) {
 	if (typeof e != typeof t) return !1;
 	if (e && t && typeof e == "object" && typeof t == "object") {
 		if (Array.isArray(e) && Array.isArray(t)) {
+			if (t.length > e.length) return !1;
 			for (let n = 0; n < t.length; n++) if (!ie(e[n], t[n])) return !1;
 			return !0;
 		}
@@ -451,10 +452,11 @@ function ce(e) {
 }
 function le(e) {
 	if (!ue(e)) return !1;
-	let t = e.constructor;
-	if (t === void 0) return !0;
-	let n = t.prototype;
-	return !(!ue(n) || !n.hasOwnProperty("isPrototypeOf") || Object.getPrototypeOf(e) !== Object.prototype);
+	let t = Object.getPrototypeOf(e), n = t?.constructor;
+	if (n === void 0) return !0;
+	if (typeof n != "function") return !1;
+	let r = n.prototype;
+	return !(!ue(r) || !r.hasOwnProperty("isPrototypeOf") || t !== Object.prototype);
 }
 function ue(e) {
 	return Object.prototype.toString.call(e) === "[object Object]";
@@ -1176,7 +1178,7 @@ var Re = class extends be {
 		}, t);
 	}
 	#_() {
-		return (typeof this.options.refetchInterval == "function" ? this.options.refetchInterval(this.#t) : this.options.refetchInterval) ?? !1;
+		return P(this.options.refetchInterval, this.#t) ?? !1;
 	}
 	#v(e) {
 		this.#x(), this.#f = e, !(this.#f === 0 || !this.#h(this.#f)) && (this.#d = O.setInterval(() => {
@@ -1287,7 +1289,7 @@ function Be(e, t) {
 }
 function Ve(e, t, n) {
 	if (P(t.enabled, e) !== !1 && P(t.staleTime, e) !== "static") {
-		let r = typeof n == "function" ? n(e) : n;
+		let r = P(n, e);
 		return r === "always" || r !== !1 && Ue(e, t);
 	}
 	return !1;

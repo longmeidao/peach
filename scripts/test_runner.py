@@ -147,6 +147,10 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     # 托盘既是 sync 域的服务编排，也被版本与桌面设置那些 tooling 测试读源码。
     "src/peach/tray.py": ("sync", "tooling"),
     "src/peach/jav_poster_crop.py": ("metadata", "web"),
+    # 处理任务的主体测试是 `test_metadata_library.py`，它登记在 metadata 与 web 两个域；
+    # `test_stale_candidates.py` 在 metadata，`test_web_e2e.py` 在 web 里整条跑它。
+    # 模块名与测试文件名对不上，按名字推不出来，不指明就退化成 full。
+    "src/peach/library_processing.py": ("metadata", "web"),
     # 入口页共用件的测试住在首启与配置来源那两份 tooling 测试里。
     "src/peach/web_entry.py": ("catalog", "tooling", "web"),
     # 这几份文档有测试在读它们的正文：改文档也要跑到那条测试。

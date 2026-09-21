@@ -50,7 +50,8 @@ javbus 补空候选全部滞留人工，补的都是账本里空着的发行日�
 证明不了账本现在这一个是它写的；拿它当已确认会把 `_metadata_decision_is_stale`
 本该重开的字段永久压在队列外面。
 
-判据实现见 `metadata_auto_apply_candidate`；执行入口是 `POST /api/review/auto-apply`，
+判据实现见 `metadata_auto_apply_candidate`；执行入口是处理任务收尾时调用的
+`metadata_auto_apply.auto_apply_metadata`（调用点在 `library_processing._apply_finished_candidates`），
 走正常写事务，因而同样受只读端闸门约束。
 
 ## 理由
