@@ -698,7 +698,16 @@ av911.tv，三条候选已进复核队列。
   共 351 家，规格统一 180×54；`osusume` 是站方推荐位、和音节页整片重合，靠 slug 去重；
   50 音导航条自己也是 gif、和厂牌字标混在同一批 `<img>` 里，只能按文件名排掉；
   `【独占】` 是销售身份不是厂牌名的一部分。整站有年龄门，不带 `adc=1` 只回一张确认页。
-- 名录给日文名、账本记罗马字，桥是文件名里的 slug。`harvest_mgstage_makers.py` 四路匹配：
+- 发行商自己的名录同样是这一类来源，入口和 MGStage 并排登记在
+  `harvest_maker_directories.DIRECTORIES`（2026-09-22 实测）。Prestige `/api/maker` 一次回
+  11 家 JSON，`codeName` 就是现成的罗马字 slug，图是 `/api/media/maker/banner-<slug>.jpg`
+  200×55 白底字标（Jackson 那张例外，1024×346）；`/maker` 与 `/maker/<slug>` 都是客户端
+  渲染的空壳、标题完全一样，从 HTML 认不出谁是谁，所以走 API 而不是抓页面。KMP `/label`
+  一页列完 42 家，名字在 `alt` 上，大半是 SVG——矢量哪个尺寸都清楚，不按后缀筛；厂牌图住在
+  `/img2018/label/<slug>/` 或 `/file/label_<时间戳>.<后缀>`，站头页脚那两张 KMP 自家标识走
+  `/wp-content/themes/`，按路径分得开。**存名录入口不存图片地址**：`file/label_1727404339.png`
+  那串是时间戳，厂牌换一次标识地址就变，重跑一次拿到的才是当下那份。
+- 名录给日文名、账本记罗马字，桥是文件名里的 slug。`harvest_maker_directories.py` 四路匹配：
   slug 归一相等、日文名相等、罗马字对上别名、唯一前缀候选（slug 是缩写时，如 `waap` 对
   `Waap Entertainment`）。**归一成空串必须当不可比**：纯日文名折掉非 ASCII 后都是空串，
   不排掉的话 351 家会全部对成同一家，复核件看着满满当当、一条都不能用——首轮探测报过 332 个

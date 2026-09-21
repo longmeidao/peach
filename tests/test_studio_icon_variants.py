@@ -708,6 +708,10 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertEqual([row["verdict"] for row in rows], [MODULE.PADDED, MODULE.OK])
         self.assertEqual(fetch.asked, [self.url])
 
+    #: 不来自 MGStage 名录的那几条，各有各的理由，逐条另有用例。整表只允许这几家
+    #: 走别的来源：漏写一家就意味着有人往表里加了一条没人解释过的地址。
+    NAMED_EXCEPTIONS = {"M Girls' Lab", "ナンパTV"}
+
     def test_the_mgstage_directory_is_the_source_and_only_for_imageless_studios(self):
         """用户 2026-09-04 指定 MGStage 名录；只收当前一张图都没有的厂牌。
 
@@ -716,7 +720,7 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertTrue(self.original, "字标来源表不能是空的")
         own_site = {studio for studio, url in MODULE.WORDMARK_SOURCES.items()
                     if "mgstage.com" not in url}
-        self.assertEqual(own_site, {"M Girls' Lab"})
+        self.assertEqual(own_site, self.NAMED_EXCEPTIONS)
         for studio, url in MODULE.WORDMARK_SOURCES.items():
             with self.subTest(studio=studio):
                 if studio not in own_site:
@@ -730,6 +734,13 @@ class WordmarkSourceTests(unittest.TestCase):
         """
         self.assertRegex(MODULE.WORDMARK_SOURCES["M Girls' Lab"],
                          r"^https://cdn\.up-timely\.com/image/16/site_design/")
+
+    def test_a_label_without_a_site_of_its_own_is_pinned_to_its_parent_directory(self):
+        """ナンパTV 自己没有站，账本里也一条链接都没有——自动发现那四条链全都从
+        链接出发，对它一条都启动不了。母公司 Prestige 的名录里有它的字标。
+        """
+        self.assertRegex(MODULE.WORDMARK_SOURCES["ナンパTV"],
+                         r"^https://www\.prestige-av\.com/api/media/maker/")
 
 
 class Fetch:
