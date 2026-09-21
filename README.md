@@ -62,7 +62,20 @@ https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
 
 ## 获取 Peach
 
-Windows x64 独立测试包在 [GitHub Releases](https://github.com/longmeidao/peach/releases) 提供；Windows 与 macOS 也可从源码运行，源码方式需要 Python 3.12 或更高。下载、校验与配置见 [Windows 测试版](docs/TESTING_DESKTOP.md) 和 [运行与配置](docs/OPERATIONS.md)。
+Windows x64 独立测试包在 [GitHub Releases](https://github.com/longmeidao/peach/releases) 提供；Windows 与 macOS 也可从源码运行，源码方式需要 Git、[uv](https://docs.astral.sh/uv/getting-started/installation/) 和 Python 3.12 或更高。下载、校验与配置见 [Windows 测试版](docs/TESTING_DESKTOP.md) 和 [运行与配置](docs/OPERATIONS.md)。
+
+源码运行（下例用 Python 3.14，uv 会自动下载缺失的解释器）：
+
+```powershell
+git clone https://github.com/longmeidao/peach.git peach-app
+cd peach-app
+uv sync --locked --python 3.14
+& .\.venv\Scripts\peach-tray.exe
+```
+
+macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.venv/bin/peach-tray`。托盘会打开首次设置页，在那里选媒体文件夹、访问范围和端口。
+
+FFmpeg 与 ffprobe 需自行安装：缺少时仍可浏览和播放浏览器兼容格式，转码、探测与缩略图不可用。源码部署的数据默认在仓库同级的 `peach-data/`，独立测试包放在 `%LOCALAPPDATA%\Peach\peach-data`，`PEACH_DATA_ROOT` 可指定其他位置。局域网与 HTTPS 访问见 [运行与配置](docs/OPERATIONS.md)；更新与卸载在「设置 → 这台电脑 → 更新与维护」，独立包的步骤见 [Windows 测试版](docs/TESTING_DESKTOP.md)。
 
 ## 数据边界
 
@@ -70,9 +83,11 @@ Windows x64 独立测试包在 [GitHub Releases](https://github.com/longmeidao/p
 
 ## 文档
 
-[Windows 测试版](docs/TESTING_DESKTOP.md) · [运行与配置](docs/OPERATIONS.md) · [来源采集](docs/SOURCING.md) · [变更日志](CHANGELOG.md) · [开发约定](AGENTS.md) · [架构决策](docs/adr/)
+使用：[Windows 测试版](docs/TESTING_DESKTOP.md) · [运行与配置](docs/OPERATIONS.md) · [来源采集](docs/SOURCING.md) · [项目状态](docs/STATUS.md) · [变更日志](CHANGELOG.md) · [安全政策](SECURITY.md)
 
-开发验证统一使用 Windows `& .\scripts\test.ps1` 或 macOS/Linux `./scripts/test.sh`。
+开发：[开发约定](AGENTS.md) · [测试与依赖](docs/TESTING.md) · [前端开发](docs/FRONTEND.md) · [产品待办](docs/PRODUCT_BACKLOG.md) · [交接说明](docs/HANDOFF.md) · [复用清单](docs/REUSE.md) · [README 维护](docs/README_MAINTENANCE.md) · [架构决策](docs/adr/)
+
+开发验证统一使用 Windows `& .\scripts\test.ps1` 或 macOS/Linux `./scripts/test.sh`。提交问题请附版本、操作步骤、预期与实际结果，不要附带真实账本、媒体、Cookie 或私钥；安全问题按[安全政策](SECURITY.md)报告。
 
 ## 许可证
 
