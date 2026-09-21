@@ -36,6 +36,18 @@ def lan_base(port: int) -> str:
         routed.close()
 
 
+def assert_requires_login(opener, base: str) -> None:
+    """登录之后 `/api/items` 返回 200，只说明它能返回 200。
+
+    密码这道门是不是真的关着，得在还没登录的时候敲一次。
+    """
+    try:
+        with opener.open(base + "/api/items", timeout=10) as response:
+            raise AssertionError(f"未登录拿到了 /api/items：{response.status}")
+    except urllib.error.HTTPError as error:
+        assert error.code == 401, f"未登录访问 /api/items 应为 401，实际 {error.code}"
+
+
 def assert_standalone_tunnel(configuration: dict) -> None:
     tunnel = configuration['tunnel']
     assert tunnel['enabled'] is False
@@ -86,10 +98,14 @@ def main() -> int:
                            "--no-ledger-sync"]
                 process = subprocess.Popen(command, cwd=root, env=environment, stdout=log, stderr=log)
                 health = wait_health(opener, base, process, root / "runtime.log")
+                # mDNS 这两行是服务自报：这个脚本只用标准库，发不出组播查询，也就
+                # 验不到「局域网里真的解析得到 peach.local」。反查要 zeroconf，归
+                # `tests/test_desktop_settings.py` 那一侧。
                 assert health["mdns_backend"]
                 assert health["mdns_service_host"] == "peach.local"
                 with opener.open(lan_base(port) + "/healthz", timeout=5) as response:
                     assert json.load(response)["ok"]
+                assert_requires_login(opener, base)
                 login = urllib.request.Request(base + "/login",
                     data=urllib.parse.urlencode({"token": password, "days": "0"}).encode(),
                     headers={"Origin": base})
@@ -117,7 +133,7 @@ def main() -> int:
                 assert (data / "config.previous.toml").is_file()
                 assert (data / "state" / "configuration-reload.request").is_file()
                 print(json.dumps({"ok": True, "version": health.get("version"),
-                                  "checks": ["oobe", "migrations", "lan-bind", "mdns", "password-login", "pages", "island", "items", "clouddrive-configuration", "cloudflared-sidecar"]}))
+                                  "checks": ["oobe", "migrations", "lan-bind", "mdns", "password-login", "unauthenticated-api", "pages", "island", "items", "clouddrive-configuration", "cloudflared-sidecar"]}))
             finally:
                 process.terminate()
                 process.wait(timeout=15)

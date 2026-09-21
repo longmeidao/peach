@@ -5,6 +5,7 @@ import base64
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -13,6 +14,22 @@ from filelock import FileLock
 
 from . import desktop_startup, distribution, settings_file, standalone_update
 from .fsutil import atomic_write_text
+
+
+#: Peach 生成的设置备份：`config.toml.<说明>-YYYYMMDD-HHMMSS`，时间戳跟着
+#: `scripts` 与 `cli.py` 里同一个 `%Y%m%d-%H%M%S`。
+_GENERATED_BACKUP = re.compile(r"config\.toml\.[A-Za-z0-9._-]*?-\d{8}-\d{6}")
+
+
+def _generated_backups(root: Path) -> list[Path]:
+    """数据根里由 Peach 自己写下的设置备份。
+
+    `config.toml.bak` 是 `docs/OPERATIONS.md` 教用户在升级前自己复制的一份，删掉它
+    等于把回退的路一起删了；只认带时间戳的那种形态，其它未列名文件同样保留。
+    """
+    return [path.resolve() for path in root.glob("config.toml.*")
+            if _GENERATED_BACKUP.fullmatch(path.name)
+            and (path.is_file() or path.is_symlink())]
 
 
 def plan(config, *, delete_data: bool, program: Path | None = None) -> dict:
@@ -35,10 +52,8 @@ def plan(config, *, delete_data: bool, program: Path | None = None) -> dict:
             raise ValueError("卸载目录与媒体目录重叠，请手动检查")
     files: list[Path] = []
     if delete_data:
-        # `config.toml.<说明>` 都是 Peach 设置备份；其它未列名文件继续保留。
         generated = [config.path.resolve(), root / "config.previous.toml", root / "config.pending.toml"]
-        generated.extend(path.resolve() for path in root.glob("config.toml.*")
-                         if path.is_file() or path.is_symlink())
+        generated.extend(_generated_backups(root))
         files = sorted(set(generated), key=lambda path: os.path.normcase(str(path)))
     return {"program": str(target), "data_root": str(root), "directories": [str(p) for p in directories],
             "files": [str(p) for p in files], "delete_data": delete_data}
@@ -77,7 +92,9 @@ def request(config, delete_data: bool) -> dict:
 
 
 # 系统助手从 stdin 接受数据，路径不拼进脚本文本；只清理计划中的目录。
-# `quiet` 只在测试里置真：跳过弹窗，错误改走日志文件。
+# `quiet` 只在测试里置真：跳过弹窗，错误改走日志文件。`log` 同样只在测试里给，
+# 把失败日志引到用例自己的临时目录：写死临时目录那一个名字的话，并发的两个用例会
+# 读到对方的行，清理还会动到这台机器上真卸载留下的那一份。
 _SCRIPT = r"""
 $ErrorActionPreference = 'Stop'
 [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
@@ -137,7 +154,7 @@ try {
   }
 } catch {
   $peachReason = $_.Exception.Message
-  $peachLog = Join-Path ([IO.Path]::GetTempPath()) 'peach-uninstall.log'
+  $peachLog = if ($peachJob.log) { $peachJob.log } else { Join-Path ([IO.Path]::GetTempPath()) 'peach-uninstall.log' }
   $peachDetail = '原因：' + $peachReason
   try {
     Add-Content -LiteralPath $peachLog -Value ((Get-Date -Format s) + '  ' + $peachReason) -Encoding UTF8
