@@ -619,8 +619,8 @@ function renderJavImageSetting(){
    取证见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。
    预设不在这一屏选——它在侧栏底部那枚配色钮上，这里只留一行只读的当前档名，否则同一件
    事有两个入口，用户得先弄清哪一个说了算。
-   强度和颗粒不再套一层分组标题：这一块总共五行，上面还顶着「当前配色」，两行拉条前面
-   再加一行小灰字，读起来是又进了一层，而它们和下面三枚颜色本来就都属于这一项。 */
+   当前档名和五条参数同属「配色」这一组，组名与下面「颜色」同一档式样：这一屏在设置里
+   排在「侧栏光晕」那一行之后，没有组名的话它读起来是散在上一行底下的几条控件。 */
 const glowSwatchesHtml=()=>GLOW_SWATCHES.map(([family,name,hex])=>
   `<button type="button" class="glowswatch" role="radio" aria-checked="false" data-glow-swatch="${hex}"
     data-glow-family="${family}" style="--glow-swatch:${hex}" title="${esc(name)}" aria-label="${esc(name)}"></button>`).join('');
@@ -645,12 +645,13 @@ const glowFieldRowHtml=(field,label,max)=>`<div class="glowfield" data-glow-fiel
    控件，所以这一档把它们收起来，换一句说明这一档的颜色由明暗主题给。漂移速度不收——
    自带那两团也在漂，那条拉条在任何一档下都说了算。「恢复默认」同样不收：任何一档下都
    要能一步回到出厂那一套，所以它排在分组外面。 */
-const homeGlowControlsHtml=()=>`<p class="glowcurrent">当前配色<b data-glow-preset-name></b></p>
+const homeGlowControlsHtml=()=>`<section class="glowgroup"><h4>配色</h4>
+  <p class="glowcurrent">当前配色<b data-glow-preset-name></b></p>
   <p class="glownative" data-glow-native-note hidden>这一档用每块玻璃自带的反光，颜色跟着明暗主题走。</p>
   <div class="glowfields">
     ${glowFieldRowHtml('strength','强度',100)}${glowFieldRowHtml('noise','颗粒',60)}${
     glowFieldRowHtml('speed','漂移速度',300)}${glowFieldRowHtml('soften','柔化',100)}${
-    glowFieldRowHtml('size','大小',100)}</div>
+    glowFieldRowHtml('size','大小',100)}</div></section>
   <section class="glowgroup" data-glow-colours><h4>颜色</h4>
     <div class="glowstops">${HOME_GLOW_SPOTS.map(glowStopRowHtml).join('')}</div></section>
   <div class="glowactions"><button type="button" class="geist-button" data-glow-reset>恢复默认</button></div>`;
@@ -1114,7 +1115,8 @@ async function syncMachineSettings(){
     return;
   }
   machineSettingsMounted=true;
-  await mountIsland('configuration',host,{receipt:message=>actionReceipt(message)},{isCurrent:open});
+  await mountIsland('configuration',host,
+    {receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings},{isCurrent:open});
   /* 挂到一半用户把弹层关了：island 认出自己过期，不会画，这一格里一样东西都没有。
      退回未挂状态让下次重来，别留一条点开是空白的「这台电脑」。 */
   if(!open()){machineSettingsMounted=false;return}
@@ -1291,10 +1293,10 @@ const postSetupTutorialTasks=async()=>{
       ?`已为 ${savedScrapingCredentials.length.toLocaleString()} 个采集来源保存凭证。`
       :'检查来源连接方式，并为需要登录的来源保存凭证。',
       href:'/scraping',done:savedScrapingCredentials.length>0,icon:'settings'},
-    {key:'history',label:'导入浏览器历史记录',description:Number(taste.summary?.history_sources||0)>0
-      ?`已导入 ${Number(taste.summary.history_sources).toLocaleString()} 份浏览器历史。`
+    {key:'history',label:'导入浏览器历史记录',description:Number(taste.history_sources||0)>0
+      ?`已导入 ${Number(taste.history_sources).toLocaleString()} 份浏览器历史。`
       :'从这台电脑的浏览器导入口味分析记录。',
-      href:'/taste',setupEntry:true,done:Number(taste.summary?.history_sources||0)>0,icon:'history'},
+      href:'/taste',setupEntry:true,done:Number(taste.history_sources||0)>0,icon:'history'},
     {key:'follow',label:'添加一个关注来源',description:followReady
       ?`已启用 ${sources.length.toLocaleString()} 个来源。`:'添加想持续追踪的创作者或来源。',
       href:'/follow-manage?tab=add',done:followReady,icon:'rss'},
@@ -1427,19 +1429,13 @@ async function syncPostSetupTutorial(){
     root.querySelector('[data-tutorial-dismiss]').onclick=hide;
   }
 }
-/* 教程关掉之后没有别的入口能把它叫回来。写入落在账本上，所以忙态落在这枚键上，
-   成功了再发回执。 */
-$('#tutorialReopen').onclick=async event=>{
-  const button=event.currentTarget;
-  setActionBusy(button);
-  try{
-    await reopenPostSetupTutorial();
-    openSettings(false);
-    actionReceipt('已重新打开安装教程');
-  }catch(error){
-    toast({text:error?.message||'没能重新打开安装教程'},{warn:true});
-  }finally{setActionBusy(button,false)}
-};
+/* 教程关掉之后没有别的入口能把它叫回来。那枚键画在配置页的「更新与维护」里，忙态、
+   失败原因和回执都由那一侧给；这里只做本地状态归位、撤回账本标记，再把设置弹层关掉，
+   让重新出现的那张卡露出来。写入失败就把原因抛回去。 */
+async function reopenTutorialFromSettings(){
+  await reopenPostSetupTutorial();
+  openSettings(false);
+}
 const ENTITY_FILTER_KEYS=['loc','creator','tag','state','dur_min','dur_max','orient','sort','dir'];
 const emptyEntityFilters=()=>Object.fromEntries(
   ENTITY_FILTER_KEYS.map(key=>[key,key==='sort'?'new':key==='dir'?'desc':'']));
@@ -5329,7 +5325,7 @@ async function openConfiguration(push=true){
   const surface=claimSurface('/configuration');
   showManagementBody({placeholder:managementPlaceholder('/configuration')});
   const ui=await import('/dist/peach-ui.js');
-  const props={receipt:message=>actionReceipt(message)};
+  const props={receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings};
   await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface)){
     if(location.hash==='#libraryProcessing'){history.replaceState(null,'','/data-cleanup#libraryProcessing');await openDataCleanup(false);return}

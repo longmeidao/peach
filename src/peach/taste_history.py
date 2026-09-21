@@ -579,6 +579,18 @@ def remove_history_source(store_path: Path, source_key: str) -> int:
     return removed
 
 
+def history_source_count(store_path: Path) -> int:
+    """导入过几份浏览器历史。与 `_history_dashboard_evidence` 的 `sources` 同一张表、
+    同一个数：安装教程只要这个读数，不必把整份口味分析算一遍。"""
+    if not store_path.is_file():
+        return 0
+    try:
+        with closing(sqlite3.connect(store_path)) as store:
+            return int(store.execute("SELECT count(*) FROM history_source").fetchone()[0])
+    except sqlite3.DatabaseError:
+        return 0
+
+
 def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str, object]:
     empty = {
         "visits": 0, "sources": [], "range_start": None, "range_end": None,

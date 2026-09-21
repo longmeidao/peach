@@ -94,10 +94,13 @@ export interface ConfigurationData {
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
   receipt(message: string): void;
+  /** 让安装教程重新出现：跳过与折叠归位、撤回账本标记，再关掉设置弹层。 */
+  reopenTutorial(): Promise<void>;
 }
 
-/** 配置页的一个分组（「通用」「媒体」「网络与访问」「更新与维护」）。 */
-export interface ConfigurationGroupProps extends ConfigurationProps {
+/** 配置页的一个分组（「通用」「媒体」「网络与访问」「更新与维护」）。
+ *  重开教程那一半只归「更新与维护」，别的分组不必接它。 */
+export interface ConfigurationGroupProps extends Pick<ConfigurationProps, 'receipt'> {
   data: ConfigurationData;
 }
 

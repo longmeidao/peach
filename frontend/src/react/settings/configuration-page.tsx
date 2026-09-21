@@ -16,7 +16,7 @@ import { MaintenanceSettings } from './maintenance-settings';
 import { MediaSettings } from './media-settings';
 import { NetworkSettings } from './network-settings';
 
-export function ConfigurationPage({ receipt }: ConfigurationProps) {
+export function ConfigurationPage({ receipt, reopenTutorial }: ConfigurationProps) {
   const config = useQuery({
     queryKey: CONFIGURATION_KEY, queryFn: ({ signal }) => fetchConfiguration(signal),
   });
@@ -41,7 +41,7 @@ export function ConfigurationPage({ receipt }: ConfigurationProps) {
       {network ? <h2 className="configgroup">网络与访问</h2> : null}
       {network ? <NetworkSettings {...group} /> : null}
       <h2 className="configgroup">更新与维护</h2>
-      <MaintenanceSettings {...group} />
+      <MaintenanceSettings {...group} reopenTutorial={reopenTutorial} />
     </div>
   );
 }

@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import * as legacyUi from '@peach/legacy/ui';
 
 import type { ConfigurationData, ReleaseState } from '../../src/react/bundle';
-import { AutomaticUpdates, MaintenanceSettings, UninstallSettings } from '../../src/react/settings/maintenance-settings';
+import {
+  AutomaticUpdates, MaintenanceSettings, TutorialSettings, UninstallSettings,
+} from '../../src/react/settings/maintenance-settings';
 import { ReleaseUpdates } from '../../src/react/settings/release-updates';
 import { buttonNamed, choose, click, fetchMock, mount, section, sentBody, settle, submit, switches } from './render';
 
@@ -14,7 +16,7 @@ const release: ReleaseState = {
 };
 const uninstall = { available: true, full_available: true, message: '', data_root: 'fixture', directories: ['fixture', 'fixture/cache'] };
 
-it('分区依次是自动更新、检查更新、播放兼容修复、运行信息与卸载；缺依赖的那条运行信息带下载链接', async () => {
+it('分区依次是自动更新、检查更新、播放兼容修复、运行信息、卸载与安装教程；缺依赖的那条运行信息带下载链接', async () => {
   const data: ConfigurationData = {
     editable: true, notice: '', revision: 'r', media_dirs: [], port: 9123,
     automatic_updates: automatic, updates: release, uninstall,
@@ -23,9 +25,9 @@ it('分区依次是自动更新、检查更新、播放兼容修复、运行信�
       { term: 'FFmpeg', value: '未找到 FFmpeg', download_url: 'https://ffmpeg.org/download.html', download_label: '下载 FFmpeg' },
     ],
   };
-  const host = await mount(<MaintenanceSettings data={data} receipt={vi.fn()} />);
+  const host = await mount(<MaintenanceSettings data={data} receipt={vi.fn()} reopenTutorial={vi.fn()} />);
   expect([...host.firstElementChild!.children].map((node) => node.getAttribute('aria-label')))
-    .toEqual(['自动更新', '检查更新', '播放兼容修复', '运行信息', '卸载 Peach']);
+    .toEqual(['自动更新', '检查更新', '播放兼容修复', '运行信息', '卸载 Peach', '安装教程']);
   const facts = section(host, '运行信息')!;
   expect([...facts.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['版本', 'FFmpeg']);
   const link = facts.querySelector('a[href="https://ffmpeg.org/download.html"]');
@@ -142,4 +144,29 @@ it('卸载默认保留数据，勾选完全卸载后确认文案点名要删的�
   expect(sentBody(fetcher)).toEqual({ delete_data: true, confirmation: '卸载 Peach' });
   expect(area.querySelector('[role="status"]')?.textContent).toBe('Peach 将在几秒后退出并卸载。');
   expect(buttonNamed('卸载 Peach', area)?.disabled).toBe(true);
+});
+
+describe('安装教程', () => {
+  it('按下去调遗留层那一半，成功后发回执', async () => {
+    const reopenTutorial = vi.fn(async () => {});
+    const receipt = vi.fn();
+    const host = await mount(<TutorialSettings receipt={receipt} reopenTutorial={reopenTutorial} />);
+    expect(host.textContent).toContain('跳过的项目会重新出现');
+    // 主动作：BoardUI Button 的默认 variant 就是 primary，这里不该被降成 secondary。
+    expect(buttonNamed('重新打开教程', host)?.className).toContain('bg-button-primary');
+    await click(buttonNamed('重新打开教程', host));
+    expect(reopenTutorial).toHaveBeenCalledTimes(1);
+    expect(receipt).toHaveBeenCalledWith('已重新打开安装教程');
+  });
+
+  it('写入失败时原因留在原位，不发回执', async () => {
+    const receipt = vi.fn();
+    const host = await mount(
+      <TutorialSettings receipt={receipt} reopenTutorial={vi.fn(async () => { throw new Error('账本写入失败') })} />,
+    );
+    await click(buttonNamed('重新打开教程', host));
+    await settle();
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe('账本写入失败');
+    expect(receipt).not.toHaveBeenCalled();
+  });
 });
