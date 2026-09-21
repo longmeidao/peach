@@ -415,7 +415,7 @@ class FollowStore:
             return RecordOutcome(source_id, not_modified=True)
 
         evidence, evidence_error = self._persist_evidence(fetch, moment)
-        self._replace_candidate_profile_links(source_id, fetch, moment=moment)
+        self._replace_candidate_profile_links(source_id, fetch, moment=moment, page=page)
         added = updated = 0
         for candidate in fetch.candidates:
             verdict = classify(candidate.title, creator_aliases=creator_aliases,
@@ -492,6 +492,7 @@ class FollowStore:
         fetch: SourceFetch,
         *,
         moment: datetime | None = None,
+        page: int = 0,
     ) -> None:
         """只把能证明属于当前作者的 booru 出处记进来源名片。
 
@@ -499,8 +500,10 @@ class FollowStore:
         因此“在白名单站点上”仍不足以证明同一人。只有外链手柄与当前来源作者键相同，
         或已经由用户确认的别名表把两者指向同一规范作者时，才接纳为作者身份。
 
-        每次完整结果都替换这项，而不是与旧值累加；这样下一次正常检查就会清掉旧版
-        误收的合作作者。这里只更新抓取中的这条来源，不扫描或批量改写真实账本。
+        第一页替换这项，而不是与旧值累加；这样下一次正常检查就会清掉旧版误收的
+        合作作者。往回抓的页只并集追加：那一页看见的是更早的作品，把它当成完整结果
+        写回去，第一页刚记下的出处就被一次回填抹掉了。这里只更新抓取中的这条来源，
+        不扫描或批量改写真实账本。
         """
         if fetch.provider not in {"rule34xxx", "rule34paheal"}:
             return
@@ -522,6 +525,20 @@ class FollowStore:
         source_roots = {mapping.get(key, key) for key in source_keys if key}
         links: list[dict[str, str]] = []
         seen: set[tuple[str, str]] = set()
+        if page and isinstance(metadata, dict):
+            for entry in metadata.get("official_links") or ():
+                if not isinstance(entry, dict):
+                    continue
+                service = str(entry.get("service") or "")
+                handle = str(entry.get("handle") or "")
+                if not service or not handle:
+                    continue
+                key = (service.casefold(), handle.casefold())
+                if key in seen:
+                    continue
+                seen.add(key)
+                links.append({"service": service, "handle": handle,
+                              "url": str(entry.get("url") or "")})
         for candidate in fetch.candidates:
             source = str(candidate.extra.get("source") or "").strip()
             identity = profile_link_identity(source)
