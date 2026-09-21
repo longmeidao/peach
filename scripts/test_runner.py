@@ -151,6 +151,11 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     # 当素材：词表一收那个词，`test_web_review.py`（catalog）与 `test_fastapi_api.py`
     # （web）就红，而改词表的人跑不到那两个域——2026-09-21 就是这样把 master 跑红的。
     "src/peach/genre_taxonomy.py": ("metadata", "catalog", "web"),
+    # 标签词表是 genre 投影的落点，复核页与目录页也按它筛选。
+    "src/peach/catalog_rules.py": ("metadata", "catalog", "web"),
+    # 来源顺序一变，`test_scripts.py` 里钉住的 field_rank 就跟着挪，而那份用例
+    # 住在 tooling——按名字只推得出 metadata，不指明就跑不到。
+    "src/peach/metadata_policy.py": ("metadata", "tooling"),
     # 处理任务的主体测试是 `test_metadata_library.py`，它登记在 metadata 与 web 两个域；
     # `test_stale_candidates.py` 在 metadata，`test_web_e2e.py` 在 web 里整条跑它。
     # 模块名与测试文件名对不上，按名字推不出来，不指明就退化成 full。

@@ -1992,7 +1992,9 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(tag_candidates[0]["profile"], "custom")
             self.assertEqual(tag_candidates[0]["policy_version"],
                              "metadata-source-policy-v4")
-            self.assertEqual(tag_candidates[0]["field_rank"], 9)
+            # 位次跟着 `metadata_policy.FIELD_SOURCE_ORDER` 里 tags 那一行走：
+            # 前面每插进一个来源，r18dev 就往后挪一格。
+            self.assertEqual(tag_candidates[0]["field_rank"], 10)
             self.assertEqual(tag_candidates[0]["source_kind"], "official_mirror")
             self.assertTrue(all(row["source_profile"] == "custom" for row in rows))
             self.assertTrue((raw / "ABC-001" / "r18dev.json").is_file())

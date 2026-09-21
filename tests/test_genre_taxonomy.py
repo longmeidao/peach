@@ -348,17 +348,55 @@ class VocabularyHygieneTests(unittest.TestCase):
             self.assertTrue(is_non_content_genre(word), word)
         self.assertEqual(map_genres(["Famous Name", "中出し"]), (["中出内射"], []))
 
-    def test_words_without_a_fitting_tag_stay_on_the_review_page(self):
-        """词表里没有贴切标签的原文留给人判，不硬塞一个近似词。
+    def test_the_newly_localised_words_reach_their_tag(self):
+        """本机候选里出现过、之前没有中文标签的那批，现在各有去处。
 
-        `風俗` 比 `按摩` 宽（外送、店内都算），`温泉` 说的是旅程不是浴室，
-        `金髪・ブロンド`、`Short Hair` 是发型而词表只有双马尾，`スポーツ`、`童貞`、
-        `汗だく`、`泥酔`、`ドラッグ`、`局部アップ`、`Nice Pussy`、`Glamorous Body`、
-        `ドキュメンタリー`、`イメージビデオ`、`Inter` 各自没有对应格子。
+        这些原文此前逐轮回到复核页问同一个问题，而复核页给的答案只落在
+        `genre_decision` 里——换一台机器、换一份候选又要再答一遍。
         """
-        for word in ("風俗", "温泉", "金髪・ブロンド", "Short Hair", "スポーツ", "童貞",
-                     "汗だく", "泥酔", "ドラッグ", "局部アップ", "Nice Pussy",
-                     "Glamorous Body", "ドキュメンタリー", "イメージビデオ", "Inter"):
+        for spellings, tag in (
+            (("風俗", "ソープ", "Soapland", "デリヘル"), "风俗店"),
+            (("温泉", "Hot Spring"), "温泉"),
+            (("金髪・ブロンド", "Blonde", "金髪", "ブロンド"), "金发"),
+            (("Short Hair", "ショートヘア", "短髪"), "短发"),
+            (("スポーツ", "Sports", "アスリート"), "运动"),
+            (("童貞", "Virgin Boy"), "处男"),
+            (("処女", "Virgin"), "处女"),
+            (("汗だく", "Sweaty", "汗"), "汗湿"),
+            (("泥酔", "Drunk", "酔っ払い"), "醉酒"),
+            (("ドラッグ", "媚薬", "Aphrodisiac"), "药物"),
+            (("局部アップ", "Close Up", "Close-Up"), "局部特写"),
+            (("Nice Pussy", "Beautiful Pussy"), "美穴"),
+            (("Glamorous Body", "グラマー"), "丰满"),
+            (("ドキュメンタリー", "Documentary"), "纪录片"),
+            (("イメージビデオ", "Image Video", "グラビア"), "写真映像"),
+            (("痴漢", "Molester", "Groping"), "痴汉"),
+            (("妊婦", "Pregnant"), "孕妇"),
+            (("巨根", "Big Cock", "デカチン"), "巨根"),
+            (("放尿", "Peeing", "おしっこ"), "放尿"),
+            (("黒人", "Black Guy"), "黑人"),
+        ):
+            for spelling in spellings:
+                with self.subTest(spelling=spelling):
+                    self.assertEqual(map_genres([spelling])[0], [tag])
+
+    def test_the_first_time_is_told_apart_by_whose_first_time_it_is(self):
+        """`童貞` 说男方、`処女` 说女方；英文 `Virgin` 单说时讲的是女方。
+
+        两边合成一个「第一次」标签，馆藏里就再也问不出想找的是哪一种。
+        """
+        self.assertEqual(map_genres(["童貞", "処女"])[0], ["处男", "处女"])
+        self.assertEqual(map_genres(["Virgin"])[0], ["处女"])
+        self.assertEqual(map_genres(["Virgin Boy"])[0], ["处男"])
+
+    def test_words_whose_meaning_is_not_settled_stay_on_the_review_page(self):
+        """含义还没查清的原文留给人判，不按字面猜一个标签。
+
+        `Lunch Box Fuck` 是 aventertainments 机器翻译出来的格子，字面对不上任何
+        行为；`Inter` 只在 SMBD-110 上出现，是站方截断的半个词，既可能是
+        `Interracial` 也可能是 `Interview`。猜哪一个都会写出一条错标签。
+        """
+        for word in ("Lunch Box Fuck", "Inter"):
             with self.subTest(word=word):
                 self.assertEqual(resolve_genre(word), UNMAPPED)
 
