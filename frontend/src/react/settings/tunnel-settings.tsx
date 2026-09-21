@@ -1,20 +1,35 @@
-/* Cloudflare Quick Tunnel：只显示本机托盘服务实际返回的随机入口。
- * Quick Tunnel 没有稳定域名和独立身份层，服务端会在 `open` 模式下拒绝启动；
- * 这里不保存 URL 或任何密码，刷新配置页重新读取服务状态。 */
+/* Cloudflare Tunnel：临时链接显示服务实际返回的随机入口，命名隧道显示配置好的公开主机名。
+ *
+ * 临时链接没有稳定域名和独立身份层，服务端会在 `open` 模式下拒绝启动。命名隧道多一份
+ * 隧道令牌：它只往服务端去，回来的只有「存过没有」，这里任何时候都不显示令牌本身。
+ * 模式选择只在源码开发环境出现，独立包收到的 `named_available` 是 false。 */
 import { useEffect, useState, type FormEvent } from 'react';
+import { Radio, RadioGroup } from 'react-aria-components';
 
 import { Button } from '@/components/base/buttons/button';
+import { Input } from '@/components/base/input/input';
 
-import { apiSend } from '../../api';
+import { ApiError, apiSend, errorMessage } from '../../api';
 import type { ConfigurationData, TunnelState } from '../bundle';
 import { Note } from '../components/note';
 import { queryClient } from '../query';
+import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
 import { CONFIGURATION_KEY, fetchConfiguration } from './configuration';
 import { ExternalLink, ErrorText, Footer, Help, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 /** 连接握手在服务端进行，页面按固定间隔重问，直到拿到入口或失败原因。 */
 const POLL_INTERVAL = 2000;
+
+const MODES: [TunnelState['mode'], string][] = [['quick', '临时链接'], ['named', '命名隧道']];
+
+const HELP: Record<TunnelState['mode'], string> = {
+  quick: '只用于临时预览；地址随机、重启后会变化。启动前必须设置访问密码。',
+  named: '地址是你在 Cloudflare 后台绑定的公开主机名，重启后不变。启动前必须设置访问密码，'
+    + '身份策略在 Cloudflare Access 里配置。',
+};
+
+type FieldErrors = Partial<Record<'hostname' | 'mode', string>>;
 
 export function TunnelSettings({ revision: initialRevision, initial, receipt }: {
   revision: string;
@@ -23,8 +38,13 @@ export function TunnelSettings({ revision: initialRevision, initial, receipt }: 
 }) {
   const [state, setState] = useState(initial);
   const [revision, setRevision] = useState(initialRevision);
+  const [mode, setMode] = useState<TunnelState['mode']>(initial.mode);
+  const [hostname, setHostname] = useState(initial.hostname);
+  const [token, setToken] = useState('');
+  const [fields, setFields] = useState<FieldErrors>({});
   const action = useAction();
   const active = state.state === 'starting' || state.state === 'running';
+  const named = state.named_available && mode === 'named';
 
   useEffect(() => {
     if (state.state !== 'starting') return undefined;
@@ -46,35 +66,77 @@ export function TunnelSettings({ revision: initialRevision, initial, receipt }: 
     };
   }, [state.state]);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    void action.run('toggle', (signal) => apiSend<TunnelState & { revision: string }>(
+  /** 开关和保存走同一个端点：形态与开关状态一次提交，服务端据此构造启动计划。 */
+  const send = (key: 'save' | 'toggle', enabled: boolean, done: (next: TunnelState) => void) => {
+    setFields({});
+    void action.run(key, (signal) => apiSend<TunnelState & { revision: string }>(
       '/api/configuration/tunnel',
-      { revision, enabled: !active }, 'POST', signal,
+      { revision, enabled, mode, hostname, token }, 'POST', signal,
     ), (next) => {
       setState(next);
       setRevision(next.revision);
-      receipt(next.enabled ? '临时远程链接已启动' : '临时远程链接已停止');
+      setMode(next.mode);
+      setHostname(next.hostname);
+      // 令牌交上去之后草稿就清掉：页面上不留一份明文，回来的也只有「存过没有」。
+      setToken('');
+      done(next);
+    }, (cause) => {
+      const payload = cause instanceof ApiError
+        ? cause.body as { errors?: FieldErrors; detail?: { errors?: FieldErrors } } : null;
+      const errors = payload?.errors || payload?.detail?.errors;
+      if (errors) setFields(errors); else action.setError(errorMessage(cause));
     });
   };
 
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    send('save', active, () => receipt('已保存配置'));
+  };
+
+  const toggle = () => send('toggle', !active, (next) => receipt(
+    next.enabled ? '公网入口已启动' : '公网入口已停止',
+  ));
+
   return (
-    <Section title="Cloudflare 临时链接" onSubmit={submit}>
+    <Section title="Cloudflare 公网入口" onSubmit={submit}>
       <Stack>
-        <Help>只用于临时预览；地址随机、重启后会变化。启动前必须设置访问密码。</Help>
+        {state.named_available
+          ? <RadioGroup aria-label="公网入口的形态（二选一）" value={mode} isDisabled={active}
+              onChange={(next) => setMode(next as TunnelState['mode'])} className={SEGMENTED_TRACK}>
+              {MODES.map(([value, label]) => (
+                <Radio key={value} value={value} className={SEGMENT}>{label}</Radio>
+              ))}
+            </RadioGroup>
+          : null}
+        <Help>{HELP[named ? 'named' : 'quick']}</Help>
+        {named ? <>
+          <Input id="tunnel-hostname" label="公开主机名" autoComplete="off" maxLength={253}
+            value={hostname} onChange={setHostname} isDisabled={active} validationBehavior="aria"
+            isInvalid={Boolean(fields.hostname)}
+            hint={fields.hostname || '在 Cloudflare Zero Trust 里指向本机 origin 的那个主机名。'} />
+          <Input id="tunnel-token" type="password" label="隧道令牌" autoComplete="off" maxLength={2048}
+            value={token} onChange={setToken} isDisabled={active} validationBehavior="aria"
+            hint={state.token_set
+              ? '已保存。留空表示沿用已保存的令牌。'
+              : '在 Cloudflare Zero Trust 的隧道详情页复制。'} />
+        </> : null}
         {!state.available
           ? <Note tone="warning" title="找不到 cloudflared">请安装官方 cloudflared，或在设置文件的 tunnel.binary 指定路径，也可用 PEACH_CLOUDFLARED 指定。</Note>
           : null}
         {state.state === 'running' && state.url
-          ? <Note tone="info" title="临时链接"><ExternalLink href={state.url}>{state.url}</ExternalLink></Note>
+          ? <Note tone="info" title="公网地址"><ExternalLink href={state.url}>{state.url}</ExternalLink></Note>
           : null}
-        {state.state === 'starting' ? <Note tone="info" title="正在连接">正在等待 Cloudflare 返回入口地址。</Note> : null}
+        {state.state === 'starting' ? <Note tone="info" title="正在连接">正在等待 cloudflared 连上 Cloudflare 边缘。</Note> : null}
         {state.error ? <ErrorText>{state.error}</ErrorText> : null}
+        {action.error ? <ErrorText>{action.error}</ErrorText> : null}
       </Stack>
       <Footer status={state.enabled ? '服务重启时会按设置尝试恢复。' : '默认关闭，不会自动暴露本机服务。'}>
-        <Button type="submit" {...busyProps(action.busy === 'toggle')}>
-          {active ? '停止临时链接' : '启动临时链接'}
+        <Button onClick={toggle} {...busyProps(action.busy === 'toggle')}>
+          {active ? '停止公网入口' : '启动公网入口'}
         </Button>
+        {state.named_available
+          ? <Button type="submit" {...busyProps(action.busy === 'save')}>保存配置</Button>
+          : null}
       </Footer>
     </Section>
   );

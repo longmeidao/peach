@@ -26,7 +26,7 @@
 - 本机运行 Python 3.14；`requires-python` 下限 3.12，GitHub Actions 同时测 3.12 与 3.14；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。
 - 发行名 `peach`，目录名 `peach-app`。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完前别重启菜单栏：无口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
 - 扫描与采集显示项目、动作与等待时长；无进展 120 秒预警，单项外部动作（资料 90 秒、封面 240 秒）超预算跳过该项计入可重试，「重试未完成项」重跑原任务失败集合。问题写入 `state/library-processing-<job_id>.issues.jsonl`（带标题与路径），接口按 `job_id` 分页，页面错误折叠给前 20 条与日志地址。已部署核对。
-- Cloudflare Quick Tunnel 已接入：默认关闭，配置页开关启停，须先启用访问密码；随机地址只写数据根状态文件。
+- Cloudflare 公网入口默认关闭，配置页启停，须先设访问密码；临时链接地址只写状态文件，命名隧道限源码环境、令牌只存设置文件。整站 `X-Robots-Tag: noindex` 加 `/robots.txt`。
 
 ## 批处理进度
 

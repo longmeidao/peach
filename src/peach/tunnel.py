@@ -1,8 +1,12 @@
-"""Cloudflare Quick Tunnel 的受控进程边界。
+"""Cloudflare Tunnel 的受控进程边界。
 
 Peach 不实现 Cloudflare 协议，只负责三件事：为两种部署选正确的本机 origin，
 把访问密码作为启动前置条件，以及在自己的服务生命周期内管理 ``cloudflared``。
 Quick Tunnel 的随机地址只写进数据根的状态文件，不进入设置、账本或日志文档。
+
+命名隧道（Named Tunnel）多一条固定入口：地址是用户在 Cloudflare 后台绑定的公开主机名，
+不从 cloudflared 的输出里捕获，就绪判据只剩 pidfile。它要一份隧道令牌，只存在设置文件里，
+不进账本、日志与健康检查；本模块把它从子进程输出中抹掉，也不打印任何启动计划。
 """
 from __future__ import annotations
 
@@ -35,6 +39,15 @@ QUICK_URL_RE = re.compile(
 )
 #: cloudflared 转发时一定会带上的请求头；只要隧道在跑，带这些头的连接就来自公网。
 EDGE_HEADERS = ("cf-connecting-ip", "cf-ray")
+QUICK_MODE = "quick"
+NAMED_MODE = "named"
+MODES = (QUICK_MODE, NAMED_MODE)
+STANDALONE_NAMED_ERROR = "独立包只支持临时链接"
+#: 一段主机名标签：字母数字开头结尾，中间可带连字符；整串至少两段且不超过 253 字符。
+HOSTNAME_RE = re.compile(
+    r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$"
+)
 
 
 class TunnelError(RuntimeError):
@@ -53,6 +66,11 @@ class TunnelPlan:
     binary: Path
     origin: TunnelOrigin
     command: tuple[str, ...]
+    mode: str = QUICK_MODE
+    #: 命名隧道的公开入口。非空表示地址已经定下来，不必也不该从子进程输出里捕获。
+    url: str = ""
+    #: 命令里带着的凭据。管理器只用它做一件事：把它从子进程日志里抹掉。
+    secret: str = ""
 
 
 @dataclass(frozen=True)
@@ -192,6 +210,37 @@ def validate_access(access_path: Path | None, token: str) -> None:
         raise TunnelError(message)
 
 
+def normalize_mode(value: str) -> str:
+    """把设置里的模式收敛成两个已知值之一；空串按临时链接处理。"""
+    mode = (value or "").strip().lower() or QUICK_MODE
+    if mode not in MODES:
+        raise TunnelError(f"tunnel.mode 只能是 quick 或 named：{value}")
+    return mode
+
+
+def normalize_hostname(value: str) -> str:
+    """校验公开主机名。
+
+    用户多半从 Cloudflare 后台整条地址复制过来，所以容忍 `https://` 前缀和末尾的点；
+    其余一律按域名判，路径、端口和空格都算填错——这个值同时用于展示和同源校验，
+    放一个解析不出主机的串进去等于把写接口的门开在一个谁都对不上的名字上。
+    """
+    host = (value or "").strip().rstrip(".").lower()
+    for prefix in ("https://", "http://"):
+        if host.startswith(prefix):
+            host = host[len(prefix):]
+    host = host.rstrip("/").rstrip(".")
+    if not host:
+        raise TunnelError("命名隧道需要填写公开主机名")
+    if not HOSTNAME_RE.match(host):
+        raise TunnelError(f"公开主机名不是有效的域名：{value}")
+    return host
+
+
+def public_url(hostname: str) -> str:
+    return f"https://{hostname}"
+
+
 def build_command(binary: Path, origin: TunnelOrigin) -> tuple[str, ...]:
     """构造不带凭据的 Quick Tunnel 命令。"""
     command = [
@@ -203,6 +252,30 @@ def build_command(binary: Path, origin: TunnelOrigin) -> tuple[str, ...]:
     if origin.ca_path is not None:
         command.extend(("--origin-ca-pool", str(origin.ca_path)))
     return tuple(command)
+
+
+def build_named_command(binary: Path, token: str) -> tuple[str, ...]:
+    """命名隧道的入向配置在 Cloudflare 后台，这里不传 `--url` 也不传 origin 选项。"""
+    return (
+        str(binary), "tunnel", "run", "--token", token,
+        "--no-autoupdate", "--loglevel", "info", "--metrics", "127.0.0.1:0",
+    )
+
+
+def named_plan(
+    binary: Path, *, token: str, hostname: str, standalone_mode: bool,
+) -> TunnelPlan:
+    """命名隧道只在源码开发环境可用，且必须同时有令牌和公开主机名。"""
+    if standalone_mode:
+        raise TunnelError(STANDALONE_NAMED_ERROR)
+    secret = (token or "").strip()
+    if not secret:
+        raise TunnelError("命名隧道需要填写 Cloudflare 隧道令牌")
+    url = public_url(normalize_hostname(hostname))
+    return TunnelPlan(
+        binary=binary, origin=TunnelOrigin(url), command=build_named_command(binary, secret),
+        mode=NAMED_MODE, url=url, secret=secret,
+    )
 
 
 def plan_for_config(
@@ -227,6 +300,13 @@ def plan_for_config(
         getattr(tunnel_settings, "binary", ""),
         executable=executable, environ=environ, which=which,
     )
+    if normalize_mode(getattr(tunnel_settings, "mode", "")) == NAMED_MODE:
+        return named_plan(
+            binary,
+            token=getattr(tunnel_settings, "token", ""),
+            hostname=getattr(tunnel_settings, "hostname", ""),
+            standalone_mode=standalone_mode,
+        )
     origin = origin_for_config(
         config, standalone_mode=standalone_mode, lan_address=lan_address,
         https_port=https_port,
@@ -270,6 +350,13 @@ def plan_for_settings(
     binary = _require_binary(
         settings.tunnel_binary, executable=executable, environ=environ, which=which,
     )
+    if normalize_mode(getattr(settings, "tunnel_mode", "")) == NAMED_MODE:
+        return named_plan(
+            binary,
+            token=getattr(settings, "tunnel_token", ""),
+            hostname=getattr(settings, "tunnel_hostname", ""),
+            standalone_mode=settings.tunnel_standalone,
+        )
     origin = build_origin(
         standalone_mode=settings.tunnel_standalone,
         port=settings.tunnel_origin_port,
@@ -560,6 +647,9 @@ class TunnelManager:
         self._process: subprocess.Popen | None = None
         self._reader: threading.Thread | None = None
         self._url = ""
+        # 命名隧道的地址由设置给定，子进程输出里出现的任何地址都不该盖掉它。
+        self._fixed_url = False
+        self._secret = ""
         self._error = ""
         self._started_at = ""
         self._ready = threading.Event()
@@ -643,6 +733,10 @@ class TunnelManager:
 
     def _write_error(self, message: str) -> None:
         self._error = message
+        # 启动失败后不留着命名隧道那个固定地址：它是计划里的值，不是一条在服务的入口。
+        self._url = ""
+        self._fixed_url = False
+        self._secret = ""
         try:
             _write_state(self.state_file, TunnelSnapshot(state="error", error=message))
         except OSError:
@@ -673,9 +767,14 @@ class TunnelManager:
         try:
             for raw in iter(stream.readline, ""):
                 line = str(raw).rstrip("\r\n")
+                secret = self._secret
+                if secret:
+                    line = line.replace(secret, "***")
                 if line:
                     handle.write(line + "\n")
                     handle.flush()
+                if self._fixed_url:
+                    continue
                 url = extract_quick_url(line)
                 if url:
                     with self._lock:
@@ -718,7 +817,10 @@ class TunnelManager:
                 return self.snapshot()
             self._generation += 1
             generation = self._generation
-            self._url = ""
+            # 命名隧道开工前地址就是已知的，等的只是 cloudflared 把 pidfile 写出来。
+            self._url = plan.url
+            self._fixed_url = bool(plan.url)
+            self._secret = plan.secret
             self._error = ""
             self._started_at = datetime.now(timezone.utc).isoformat()
             self._ready.clear()
@@ -846,6 +948,8 @@ class TunnelManager:
             self._generation += 1
             cleanup_generation = self._generation
             self._url = ""
+            self._fixed_url = False
+            self._secret = ""
             self._error = ""
             self._ready.set()
         self._terminate_process(process)

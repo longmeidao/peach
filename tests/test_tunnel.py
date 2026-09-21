@@ -11,7 +11,7 @@ from unittest import mock
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from peach import access, api, routes_auth, routes_configuration, tunnel
+from peach import access, api, routes_auth, routes_configuration, settings_file, tunnel
 from peach.config import PeachSettings
 
 #: 假扮 cloudflared 的真实子进程：写 pidfile、按行吐出一条入口，然后等着被收掉。
@@ -29,11 +29,18 @@ while True:
 '''
 
 
+#: 夹具里的隧道令牌一律是这个假值；真实令牌不进仓库，也不进任何测试输出。
+FAKE_TOKEN = "fake-tunnel-token-for-tests"
+
+
 class _Config:
-    def __init__(self, root: Path, *, port: int = 8900, binary: str = ""):
+    def __init__(self, root: Path, *, port: int = 8900, binary: str = "",
+                 mode: str = "quick", token: str = "", hostname: str = ""):
         self.data_root = root
         self.server = SimpleNamespace(port=port, mdns_name="peach")
-        self.tunnel = SimpleNamespace(binary=binary)
+        self.tunnel = SimpleNamespace(
+            binary=binary, mode=mode, token=token, hostname=hostname,
+        )
 
     def directory(self, name: str) -> Path:
         return self.data_root / name
@@ -226,6 +233,87 @@ class TunnelPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(tunnel.TunnelError, "需要正在运行的 HTTPS"):
             tunnel.plan_for_settings(settings, environ={})
 
+    def named_config(self, **overrides):
+        values = {
+            "binary": str(self.binary), "mode": "named",
+            "token": FAKE_TOKEN, "hostname": "peach.example.com",
+        }
+        return _Config(self.root, **{**values, **overrides})
+
+    def test_named_mode_runs_by_token_and_takes_its_url_from_the_hostname(self):
+        plan = tunnel.plan_for_config(
+            self.named_config(), access_path=self.access_path, token="internal-token",
+            standalone_mode=False, lan_address="192.0.2.162",
+        )
+        self.assertEqual(plan.mode, "named")
+        self.assertEqual(plan.url, "https://peach.example.com")
+        self.assertEqual(plan.origin.url, "https://peach.example.com")
+        self.assertEqual(plan.command[1:5], ("tunnel", "run", "--token", FAKE_TOKEN))
+        self.assertNotIn("--url", plan.command)
+        for option in ("--no-autoupdate", "--metrics"):
+            self.assertIn(option, plan.command)
+        self.assertEqual(plan.command[plan.command.index("--metrics") + 1], "127.0.0.1:0")
+
+    def test_a_standalone_package_refuses_the_named_mode(self):
+        with self.assertRaisesRegex(tunnel.TunnelError, tunnel.STANDALONE_NAMED_ERROR):
+            tunnel.plan_for_config(
+                self.named_config(), access_path=self.access_path, token="internal-token",
+                standalone_mode=True,
+            )
+
+    def test_named_mode_needs_both_a_token_and_a_hostname(self):
+        with self.assertRaisesRegex(tunnel.TunnelError, "隧道令牌"):
+            tunnel.plan_for_config(
+                self.named_config(token="  "), access_path=self.access_path,
+                token="internal-token", standalone_mode=False,
+            )
+        with self.assertRaisesRegex(tunnel.TunnelError, "公开主机名"):
+            tunnel.plan_for_config(
+                self.named_config(hostname=""), access_path=self.access_path,
+                token="internal-token", standalone_mode=False,
+            )
+
+    def test_a_hostname_with_a_path_or_a_bare_label_is_rejected(self):
+        for value in ("peach.example.com/admin", "localhost", "peach.example.com:8443", "-bad.example.com"):
+            with self.subTest(value=value), self.assertRaises(tunnel.TunnelError):
+                tunnel.normalize_hostname(value)
+
+    def test_a_hostname_copied_with_its_scheme_still_resolves(self):
+        self.assertEqual(
+            tunnel.normalize_hostname(" https://Peach.Example.COM/ "), "peach.example.com")
+
+    def test_an_unknown_mode_is_refused_instead_of_falling_back(self):
+        with self.assertRaisesRegex(tunnel.TunnelError, "quick 或 named"):
+            tunnel.normalize_mode("tunnel")
+        self.assertEqual(tunnel.normalize_mode(""), "quick")
+
+    def test_injected_settings_carry_the_named_mode_without_an_origin_lookup(self):
+        settings = SimpleNamespace(
+            access_path=self.access_path, token="internal-token",
+            tunnel_standalone=False, tunnel_binary=str(self.binary),
+            tunnel_mode="named", tunnel_token=FAKE_TOKEN,
+            tunnel_hostname="peach.example.com",
+            tunnel_origin_port=None, tunnel_lan_address=None,
+            tunnel_ca_path=self.root / "missing-ca.crt", tls_enabled=True,
+            mdns_name="peach",
+        )
+        plan = tunnel.plan_for_settings(settings, environ={})
+        self.assertEqual(plan.url, "https://peach.example.com")
+        self.assertEqual(plan.secret, FAKE_TOKEN)
+
+    def test_a_standalone_package_refuses_named_settings_at_startup(self):
+        settings = SimpleNamespace(
+            access_path=self.access_path, token="internal-token",
+            tunnel_standalone=True, tunnel_binary=str(self.binary),
+            tunnel_mode="named", tunnel_token=FAKE_TOKEN,
+            tunnel_hostname="peach.example.com",
+            tunnel_origin_port=8900, tunnel_lan_address=None,
+            tunnel_ca_path=self.root / "missing-ca.crt", tls_enabled=False,
+            mdns_name="peach",
+        )
+        with self.assertRaisesRegex(tunnel.TunnelError, tunnel.STANDALONE_NAMED_ERROR):
+            tunnel.plan_for_settings(settings, environ={})
+
 
 class TunnelManagerTests(unittest.TestCase):
     def setUp(self):
@@ -249,6 +337,45 @@ class TunnelManagerTests(unittest.TestCase):
             origin=tunnel.TunnelOrigin("http://127.0.0.1:8900"),
             command=("cloudflared", "tunnel", "--url", "http://127.0.0.1:8900"),
         )
+
+    def named_plan(self):
+        return tunnel.TunnelPlan(
+            binary=self.root / "cloudflared.exe",
+            origin=tunnel.TunnelOrigin("https://peach.example.com"),
+            command=("cloudflared", "tunnel", "run", "--token", FAKE_TOKEN),
+            mode="named", url="https://peach.example.com", secret=FAKE_TOKEN,
+        )
+
+    def test_a_named_tunnel_is_ready_on_its_pidfile_and_keeps_its_own_url(self):
+        manager = tunnel.TunnelManager(
+            self.root / "state", self.root / "logs", popen=self.popen, wait_timeout=2,
+        )
+        started = manager.start(self.named_plan())
+        self.assertEqual(started.state, "running")
+        # 子进程那一行随机地址不能盖掉设置里定下来的入口。
+        self.assertEqual(started.url, "https://peach.example.com")
+        manager.stop()
+
+    def test_the_tunnel_token_never_reaches_the_log_or_the_snapshot(self):
+        def leaky(command, **kwargs):
+            pid_index = command.index("--pidfile") + 1
+            Path(command[pid_index]).write_text("4123\n", encoding="ascii")
+            process = _Process(_Stream(f"INF | registering with token {FAKE_TOKEN}\n"))
+            self.processes.append(process)
+            return process
+
+        manager = tunnel.TunnelManager(
+            self.root / "state", self.root / "logs", popen=leaky, wait_timeout=2,
+        )
+        started = manager.start(self.named_plan())
+        manager.stop()
+        log = (self.root / "logs" / tunnel.LOG_FILENAME).read_text(encoding="utf-8")
+        self.assertNotIn(FAKE_TOKEN, log)
+        self.assertIn("***", log)
+        self.assertNotIn(FAKE_TOKEN, repr(started))
+        state_file = self.root / "state" / tunnel.STATE_FILENAME
+        if state_file.exists():
+            self.assertNotIn(FAKE_TOKEN, state_file.read_text(encoding="utf-8"))
 
     def test_start_writes_url_and_stop_removes_state(self):
         manager = tunnel.TunnelManager(
@@ -368,6 +495,35 @@ class TunnelOriginGuardTests(unittest.TestCase):
             routes_auth.same_origin(self.request("https://other.trycloudflare.com"))
         self.assertEqual(raised.exception.status_code, 403)
 
+    def named_request(self, origin: str, *, hostname: str = "peach.example.com"):
+        """命名隧道的主机名来自运行设置，隧道快照此刻还没有地址。"""
+        manager = SimpleNamespace(snapshot=lambda: tunnel.TunnelSnapshot(state="starting"))
+        settings = SimpleNamespace(tunnel_mode="named", tunnel_hostname=hostname)
+        return SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(tunnel=manager, settings=settings)),
+            headers={"origin": origin},
+            base_url="http://127.0.0.1:8900/",
+        )
+
+    def test_the_configured_named_hostname_is_allowed_before_the_handshake_finishes(self):
+        routes_auth.same_origin(self.named_request("https://peach.example.com"))
+
+    def test_another_hostname_is_rejected_in_the_named_mode(self):
+        with self.assertRaises(HTTPException) as raised:
+            routes_auth.same_origin(self.named_request("https://peach.example.net"))
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_a_named_hostname_is_not_allowed_while_the_mode_is_quick(self):
+        manager = SimpleNamespace(snapshot=lambda: tunnel.TunnelSnapshot(state="stopped"))
+        settings = SimpleNamespace(tunnel_mode="quick", tunnel_hostname="peach.example.com")
+        request = SimpleNamespace(
+            app=SimpleNamespace(state=SimpleNamespace(tunnel=manager, settings=settings)),
+            headers={"origin": "https://peach.example.com"},
+            base_url="http://127.0.0.1:8900/",
+        )
+        with self.assertRaises(HTTPException):
+            routes_auth.same_origin(request)
+
 
 class TunnelRouteTests(unittest.TestCase):
     def setUp(self):
@@ -480,6 +636,122 @@ class TunnelRouteTests(unittest.TestCase):
                     self.request(manager), {"revision": "rev", "enabled": True}, None,
                 )
         manager.stop.assert_not_called()
+
+
+class NamedTunnelRouteTests(unittest.TestCase):
+    """写回接口同时收下形态与开关；令牌只进设置文件，不回给页面。"""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name).resolve()
+        self.config_path = self.root / "config.toml"
+        self.config_path.write_text("[tunnel]\nenabled = false\n", encoding="utf-8")
+        self.config = settings_file.PeachConfig(
+            data_root=self.root, path=self.config_path, present=True,
+        )
+        self.settings = SimpleNamespace(
+            access_path=self.root / "access.json", token="internal-token",
+            tunnel_standalone=False, tunnel_lan_address="192.0.2.162",
+            tunnel_origin_port=443, tls_enabled=True,
+        )
+        self.plan = tunnel.TunnelPlan(
+            binary=self.root / "cloudflared.exe",
+            origin=tunnel.TunnelOrigin("https://peach.example.com"),
+            command=("cloudflared", "tunnel", "run", "--token", FAKE_TOKEN),
+            mode="named", url="https://peach.example.com", secret=FAKE_TOKEN,
+        )
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def request(self, manager):
+        state = SimpleNamespace(tunnel=manager, settings=self.settings)
+        return SimpleNamespace(
+            app=SimpleNamespace(state=state),
+            client=SimpleNamespace(host="127.0.0.1"),
+            scope={"server": ("127.0.0.1", 8900)},
+            url=SimpleNamespace(hostname="127.0.0.1"),
+            headers={"origin": "http://127.0.0.1:8900"},
+            base_url="http://127.0.0.1:8900/",
+        )
+
+    def manager(self):
+        manager = mock.Mock()
+        manager.snapshot.return_value = tunnel.TunnelSnapshot(state="stopped")
+        manager.start.return_value = tunnel.TunnelSnapshot(
+            state="running", url="https://peach.example.com", pid=4123,
+        )
+        manager.stop.return_value = tunnel.TunnelSnapshot(state="stopped")
+        return manager
+
+    def save(self, body, *, plan_for_config=None):
+        written = mock.Mock()
+        manager = self.manager()
+        planner = plan_for_config or mock.Mock(return_value=self.plan)
+        with mock.patch.multiple(
+            routes_configuration.settings_file,
+            load_config=mock.Mock(return_value=self.config), write=written,
+        ), mock.patch.object(routes_configuration, "revision", return_value="rev"), \
+                mock.patch.object(routes_configuration.tunnel, "plan_for_config", planner), \
+                mock.patch.object(routes_configuration, "FileLock") as lock:
+            lock.return_value.__enter__.return_value = lock.return_value
+            result = routes_configuration.save_tunnel(
+                self.request(manager), {"revision": "rev", **body}, None,
+            )
+        return result, written, manager, planner
+
+    def test_the_named_form_is_persisted_and_the_plan_uses_this_submission(self):
+        result, written, _manager, planner = self.save({
+            "enabled": True, "mode": "named",
+            "hostname": "https://Peach.Example.com/", "token": FAKE_TOKEN,
+        })
+        saved = written.call_args.args[0]
+        self.assertEqual(saved.tunnel.mode, "named")
+        self.assertEqual(saved.tunnel.hostname, "peach.example.com")
+        self.assertEqual(saved.tunnel.token, FAKE_TOKEN)
+        self.assertEqual(planner.call_args.args[0].tunnel.hostname, "peach.example.com")
+        self.assertEqual(result["mode"], "named")
+        self.assertEqual(result["hostname"], "peach.example.com")
+        self.assertTrue(result["token_set"])
+        self.assertTrue(result["named_available"])
+
+    def test_the_response_never_carries_the_token_itself(self):
+        result, _written, _manager, _planner = self.save({
+            "enabled": True, "mode": "named",
+            "hostname": "peach.example.com", "token": FAKE_TOKEN,
+        })
+        self.assertNotIn(FAKE_TOKEN, json.dumps(result, ensure_ascii=False))
+        self.assertNotIn("token", set(result) - {"token_set"})
+
+    def test_an_empty_token_keeps_the_saved_one(self):
+        self.config = settings_file.PeachConfig(
+            data_root=self.root, path=self.config_path, present=True,
+            tunnel=settings_file.TunnelSettings(
+                mode="named", token=FAKE_TOKEN, hostname="peach.example.com"),
+        )
+        _result, written, _manager, _planner = self.save({
+            "enabled": False, "mode": "named", "hostname": "peach.example.com", "token": "",
+        })
+        self.assertEqual(written.call_args.args[0].tunnel.token, FAKE_TOKEN)
+
+    def test_an_invalid_hostname_comes_back_as_a_field_error(self):
+        with self.assertRaises(HTTPException) as raised:
+            self.save({"enabled": False, "mode": "named", "hostname": "peach.example.com/admin"})
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("hostname", raised.exception.detail["errors"])
+
+    def test_a_standalone_package_refuses_to_store_the_named_mode(self):
+        with mock.patch.object(routes_configuration.distribution, "standalone", return_value=True):
+            with self.assertRaises(HTTPException) as raised:
+                routes_configuration.tunnel_changes(self.config, {"mode": "named"})
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(raised.exception.detail, tunnel.STANDALONE_NAMED_ERROR)
+
+    def test_a_standalone_package_reports_that_the_named_mode_is_unavailable(self):
+        with mock.patch.object(routes_configuration.distribution, "standalone", return_value=True):
+            payload = routes_configuration.tunnel_payload(
+                self.config, tunnel.TunnelSnapshot(), False)
+        self.assertFalse(payload["named_available"])
 
 
 def direct_interpreter() -> str:

@@ -346,6 +346,9 @@ def create_app(
             response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
+        # 公网入口开着的时候整个站都在互联网上。这一条覆盖每一个响应——页面、静态
+        # 资源和 API 都算，页面里的 `<meta name="robots">` 只管得到 HTML 那几页。
+        response.headers["X-Robots-Tag"] = routes_pages.ROBOTS_TAG
         return response
 
     # JSON 契约、页面脚本与样式是仅有的几类大文本响应，压下去省的字节最多：

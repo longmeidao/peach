@@ -22,6 +22,9 @@ from .config import (
     STATE_DIR,
     CLOUDFLARED_BINARY,
     TUNNEL_ENABLED,
+    TUNNEL_HOSTNAME,
+    TUNNEL_MODE,
+    TUNNEL_TOKEN,
     PeachSettings,
 )
 from .migrations import plan, upgrade
@@ -103,6 +106,9 @@ def _serve(args: argparse.Namespace) -> int:
         tls_enabled=tls_enabled,
         tunnel_enabled=TUNNEL_ENABLED,
         tunnel_binary=CLOUDFLARED_BINARY,
+        tunnel_mode=TUNNEL_MODE,
+        tunnel_token=TUNNEL_TOKEN,
+        tunnel_hostname=TUNNEL_HOSTNAME,
         tunnel_standalone=distribution.standalone(),
         tunnel_lan_address=tunnel_lan_address,
         tunnel_origin_port=(args.port if distribution.standalone() or tls_enabled else None),
@@ -555,7 +561,7 @@ def _token(args: argparse.Namespace) -> int:
 
 
 def _tunnel(args: argparse.Namespace) -> int:
-    """运行一个前台 Quick Tunnel；托盘/配置页使用同一模块的生命周期管理。"""
+    """按设置文件的模式运行一个前台隧道；托盘/配置页使用同一模块的生命周期管理。"""
     _require_readable_settings()
     config = settings_file.load_config()
     if not config.configured:
@@ -595,7 +601,7 @@ def _tunnel(args: argparse.Namespace) -> int:
     # 起来了，只有走到 finally 才收得掉。
     try:
         snapshot = manager.start(plan)
-        print(f"临时链接：{snapshot.url}", flush=True)
+        print(f"公网入口：{snapshot.url}", flush=True)
         while manager.snapshot().state == "running":
             time.sleep(1)
     except KeyboardInterrupt:
@@ -714,7 +720,7 @@ def build_parser() -> argparse.ArgumentParser:
     token.set_defaults(handler=_token)
 
     tunnel_parser = commands.add_parser(
-        "tunnel", help="运行或查看 Cloudflare Quick Tunnel（默认要求已设置访问密码）",
+        "tunnel", help="运行或查看 Cloudflare Tunnel（默认要求已设置访问密码）",
     )
     tunnel_parser.add_argument("action", choices=("start", "status"), nargs="?", default="start")
     tunnel_parser.add_argument("--lan-address", help=argparse.SUPPRESS)

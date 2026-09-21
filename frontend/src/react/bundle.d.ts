@@ -13,6 +13,13 @@ export interface TunnelState {
   url: string;
   error: string;
   available: boolean;
+  mode: 'quick' | 'named';
+  /** 命名隧道绑定的公开主机名，临时链接模式下为空。 */
+  hostname: string;
+  /** 隧道令牌存没存过。令牌本身不回传，页面只据此显示已保存。 */
+  token_set: boolean;
+  /** 这台部署能不能用命名隧道；独立包为 false，那一块整个不渲染。 */
+  named_available: boolean;
 }
 
 export interface AccessSettingsProps {

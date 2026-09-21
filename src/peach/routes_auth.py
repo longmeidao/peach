@@ -99,7 +99,7 @@ class AssetLoginRequired(Exception):
 
 
 def _origin_key(value: str) -> tuple[str, str, int | None] | None:
-    """把 Origin 头和随机 Quick Tunnel URL 归一到可比较的三元组。"""
+    """把 Origin 头和隧道 URL 归一到可比较的三元组。"""
     try:
         parsed = urlsplit(value.strip().rstrip("/"))
     except ValueError:
@@ -115,7 +115,7 @@ def _origin_key(value: str) -> tuple[str, str, int | None] | None:
 
 
 def _tunnel_origin(request: Request) -> tuple[str, str, int | None] | None:
-    """返回当前进程实际拿到的 Quick Tunnel origin，而不是信任请求头。"""
+    """返回当前进程实际拿到的隧道 origin，而不是信任请求头。"""
     manager = getattr(request.app.state, "tunnel", None)
     if manager is None:
         return None
@@ -126,13 +126,27 @@ def _tunnel_origin(request: Request) -> tuple[str, str, int | None] | None:
     return _origin_key(url) if url else None
 
 
+def _named_origin(request: Request) -> tuple[str, str, int | None] | None:
+    """命名隧道的公开主机名。
+
+    它来自本次启动注入的运行设置，不是请求头，也不随隧道握手完成才出现：连接刚建立
+    那几秒页面就已经能提交，这时 manager 的快照还没进入 running。
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if getattr(settings, "tunnel_mode", "") != tunnel.NAMED_MODE:
+        return None
+    hostname = (getattr(settings, "tunnel_hostname", "") or "").strip()
+    return _origin_key(tunnel.public_url(hostname)) if hostname else None
+
+
 def same_origin(request: Request) -> None:
-    """浏览器写请求只接受 Peach 页面或当前 Quick Tunnel 页面发来的 Origin。
+    """浏览器写请求只接受 Peach 页面或当前隧道页面发来的 Origin。
 
     独立包的 origin 是回环 HTTP，cloudflared 转发时 Host 仍可能是本机地址，
-    所以不能单纯把 ``Origin`` 和 ASGI 的 ``base_url`` 比较。随机入口由当前
-    TunnelManager 产生并保存在进程内，外部 Origin 必须精确匹配这一份，不能由
-    调用方通过 ``X-Forwarded-*`` 自己声明一个可信地址。
+    所以不能单纯把 ``Origin`` 和 ASGI 的 ``base_url`` 比较。临时链接的随机入口由当前
+    TunnelManager 产生并保存在进程内，命名隧道的公开主机名来自本次启动的运行设置；
+    外部 Origin 必须精确匹配这两者之一，不能由调用方通过 ``X-Forwarded-*`` 自己
+    声明一个可信地址。
     """
     origin = request.headers.get("origin")
     if request.headers.get("sec-fetch-site") == "cross-site":
@@ -140,8 +154,8 @@ def same_origin(request: Request) -> None:
     if origin:
         supplied = _origin_key(origin)
         local = _origin_key(str(request.base_url))
-        tunnel_origin = _tunnel_origin(request)
-        if supplied is None or supplied not in {local, tunnel_origin}:
+        allowed = {local, _tunnel_origin(request), _named_origin(request)}
+        if supplied is None or supplied not in allowed:
             raise HTTPException(403, "请从 Peach 配置页提交")
 
 
@@ -185,7 +199,11 @@ def login_html(next_path: str, *, invalid: bool = False) -> str:
     return (
         '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<meta name="color-scheme" content="light dark"><title>登录 Peach</title>'
+        '<meta name="color-scheme" content="light dark">'
+        # 公网入口在跑的时候这一页就在互联网上，不希望它进任何搜索结果。
+        # 响应头那一份（`X-Robots-Tag`）管所有响应，这一行管只读 HTML 的爬虫。
+        '<meta name="robots" content="noindex, nofollow">'
+        '<title>登录 Peach</title>'
         # 图标声明和主站同一份。书签地址是 `/`，没有会话时这一页就是它实际停在的地方：
         # 这里不声明，浏览器只会去要 `/favicon.ico`，把「这个站没有图标」记进书签。
         '<link rel="icon" href="/favicon.ico" type="image/x-icon">'
