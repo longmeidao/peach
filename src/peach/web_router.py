@@ -224,15 +224,19 @@ def _get_review(contract, args):
 
 
 def _get_post_setup_tutorial(contract, _args):
-    """一次给安装教程六项真实状态，避免遗留首页重新接管 React 口味页的契约。"""
-    return {
+    """一次给安装教程六项真实状态，避免遗留首页重新接管 React 口味页的契约。
+
+    教程卡跟着每次路由切换重新取数，而这一发要摸六处；走聚合缓存之后，连着点几页
+    只算一次，账本一提交就失效，所以读到的仍然是当下的进度。
+    """
+    return contract.cached("post-setup-tutorial", lambda: {
         "library": q_items(contract, {"limit": "1", "thumb": "0"}),
         "scraping": q_scraping(contract, {}),
         "taste": _get_taste(contract, {"window": "all"}),
         "follow": q_follow(contract, {"limit": "1"}),
         "credentials": q_follow_credentials(contract, {}),
         "review": _get_review(contract, {"counts": "1"}),
-    }
+    })
 
 
 def _post_empty_trash(contract, _body):

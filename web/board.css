@@ -1587,8 +1587,12 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 @media(prefers-reduced-motion:reduce){.pcheck input:checked+span svg{animation:none;stroke-dashoffset:0}}
 
 /* 安装后教程：BoardUI NotificationViewport 把教程固定在右下角，内部任务沿用 RareUI
-   Task List 的真实状态、完成项后移与打勾，不占当前页面正文的布局空间。 */
-#postSetupTutorial{position:fixed;right:12px;bottom:12px;z-index:100;display:block;width:min(400px,calc(100vw - 24px));max-height:calc(100dvh - 24px);pointer-events:none}
+   Task List 的真实状态、完成项后移与打勾，不占当前页面正文的布局空间。
+   右下角不是它一个人的：Toast 栈从 22px 起往上叠，窄屏还有居中的批量选择条。教程会
+   一直挂到清单做完，压上去就是把回执和批量操作盖死，所以按它们占的高度抬起来，
+   最大高度同步扣掉这段留白。 */
+#postSetupTutorial{--post-setup-reserve:82px;position:fixed;right:12px;bottom:calc(12px + var(--post-setup-reserve));z-index:100;display:block;width:min(400px,calc(100vw - 24px));max-height:calc(100dvh - 24px - var(--post-setup-reserve));pointer-events:none}
+@media(max-width:639px){#postSetupTutorial{--post-setup-reserve:150px}}
 #postSetupTutorial[hidden]{display:none}
 .post-setup-notification{pointer-events:auto;display:flex;flex-direction:column;max-height:inherit;overflow:hidden;border:1px solid var(--color-border-button-default);border-radius:16px;background:var(--color-background-primary-default);box-shadow:0 1px 1px #0000000d,0 4px 4px #0000001a;animation:post-setup-notification-in .15s ease-out}
 .post-setup-notification-head{display:grid;grid-template-columns:40px minmax(0,1fr) 32px;align-items:center;gap:12px;padding:16px}
@@ -1623,8 +1627,9 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 .post-setup-loading{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:54px;padding:16px}
 .post-setup-loading p{margin:0}
 .post-setup-error{display:grid;grid-template-columns:20px minmax(0,1fr);gap:8px;padding:16px}
+.post-setup-error-actions{display:flex;gap:8px;margin-top:12px}
 @keyframes post-setup-notification-in{from{opacity:0;transform:translateY(8px) scale(.98)}to{opacity:1;transform:none}}
-@media(min-width:640px){#postSetupTutorial{right:24px;bottom:24px;max-height:calc(100dvh - 48px)}}
+@media(min-width:640px){#postSetupTutorial{right:24px;bottom:calc(24px + var(--post-setup-reserve));max-height:calc(100dvh - 48px - var(--post-setup-reserve))}}
 @media(max-width:720px){.post-setup-task>a{min-height:58px;padding-left:10px}}
 @media(prefers-reduced-motion:reduce){.post-setup-notification{animation:none}.post-setup-task,.post-setup-task>a{transition:none}}
 /* ── Board 第三批：主按钮尺寸、配置页白底、通知与提醒、批量条、关注行图标、侧栏切换器 ── */

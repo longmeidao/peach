@@ -11,6 +11,7 @@ import type { Browser, Locator, Page } from 'playwright-core';
 import { configurationBody, expectBody, launch, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
+const MOBILE = VIEWPORTS.find((viewport) => viewport.mobile)!;
 
 /** 在 `scope` 里解析一个颜色 token：临时挂一个元素读背景色，读完就移除。 */
 async function tokenColor(page: Page, scope: string, token: string): Promise<string> {
@@ -723,6 +724,48 @@ describe('设计决定', () => {
       await nested.press('Enter');
       await opened.page.waitForURL((url) => url.searchParams.get('tag') === tag, { timeout: 10_000 });
       assert.doesNotMatch(opened.page.url(), /\/item\//, '卡内链接冒泡打开了视频');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('390px 下教程浮窗不压住 Toast 和批量选择条', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', MOBILE);
+    try {
+      await opened.page.evaluate(() => {
+        localStorage.setItem('peach.post-setup-tutorial.v1', 'pending');
+        localStorage.removeItem('peach.post-setup-tutorial-collapsed.v1');
+        localStorage.removeItem('peach.post-setup-tutorial-skipped.v1');
+      });
+      await opened.page.reload({ waitUntil: 'load' });
+      const card = opened.page.locator('#postSetupTutorial .post-setup-notification');
+      await card.waitFor({ state: 'visible', timeout: 20_000 });
+      /* 回执和批量条平时不在 DOM 里，用它们各自的正式类名放一份进去再量。留白按
+         一枚回执算，所以演示库自己弹出来的那几枚先清掉，量的才是这条判据。 */
+      await opened.page.evaluate(() => {
+        const toasts = document.getElementById('toasts')!;
+        toasts.replaceChildren();
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = '<p>已保存配置</p>';
+        toasts.append(toast);
+        document.getElementById('batchbar')!.hidden = false;
+      });
+      const tops = await opened.page.evaluate(() => {
+        const top = (selector: string) => Math.min(...[...document.querySelectorAll(selector)]
+          .map((node) => node.getBoundingClientRect().top));
+        const card = document.querySelector('#postSetupTutorial .post-setup-notification')!
+          .getBoundingClientRect();
+        return { tutorial: card.top, bottom: card.bottom, left: card.left, right: card.right,
+          toast: top('#toasts .toast'), dock: top('#batchbar') };
+      });
+      for (const [name, top] of [['Toast', tops.toast], ['批量选择条', tops.dock]] as const) {
+        assert.ok(Number.isFinite(top), `${name}没有出现在页面上`);
+        assert.ok(tops.bottom <= top + 1,
+          `教程浮窗盖住了${name}：教程下沿 ${tops.bottom}，${name} 上沿 ${top}`);
+      }
+      assert.ok(tops.tutorial >= 0 && tops.left >= 0 && tops.right <= MOBILE.width,
+        '教程浮窗越出了 390px 视口');
     } finally {
       await opened.close();
     }

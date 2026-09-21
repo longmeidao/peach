@@ -582,7 +582,9 @@ function armSkeletonReveal(root){
     ...root.querySelectorAll(SKELETON_REVEAL_SELECTOR)];
   const targets=all.filter(node=>!all.some(parent=>parent!==node&&parent.contains(node)));
   for(const target of targets){
-    if(target.dataset.skeletonReveal)return;
+    /* 已经武装过的跳过这一枚就好。写 `return` 会让同一批里排在它后面的占位
+       一个都拿不到延迟标记，补进来的那半屏骨架直接闪出来。 */
+    if(target.dataset.skeletonReveal)continue;
     target.dataset.skeletonReveal='pending';
     target.classList.add('skeleton-awaiting');
     setTimeout(()=>{
@@ -1432,4 +1434,47 @@ export function confirmModal({title,body,confirmLabel,cancelLabel='取消',onCon
     playUiSound('pop');
     (danger?cancel:accept).focus();
   });
+}
+
+/* ── 安装后教程的状态 ──
+   教程本身还画在遗留层（迁往 React 的待办在 `docs/PRODUCT_BACKLOG.md`），但「做到哪了」
+   不属于渲染：清单做完这件事跟着账本走（`/api/settings` 的 `postSetupTutorialDone`），
+   换台设备打开不会又被教一遍；折叠和逐项跳过是当下这块屏幕的摆法，留在本地。
+   三个键、签名和请求代际都收在这里，装配那一侧只管把它们接到 DOM 上。 */
+export const POST_SETUP_TUTORIAL_KEY='peach.post-setup-tutorial.v1';
+export const POST_SETUP_TUTORIAL_COLLAPSED_KEY='peach.post-setup-tutorial-collapsed.v1';
+export const POST_SETUP_TUTORIAL_SKIPPED_KEY='peach.post-setup-tutorial-skipped.v1';
+
+const readStored=key=>{try{return localStorage.getItem(key)}catch(_error){return null}};
+const writeStored=(key,value)=>{try{localStorage.setItem(key,value)}catch(_error){}};
+
+export const postSetupTutorialMarker=()=>readStored(POST_SETUP_TUTORIAL_KEY)||'';
+export const setPostSetupTutorialMarker=value=>writeStored(POST_SETUP_TUTORIAL_KEY,value);
+export const postSetupTutorialCollapsed=()=>readStored(POST_SETUP_TUTORIAL_COLLAPSED_KEY)==='1';
+export const setPostSetupTutorialCollapsed=value=>
+  writeStored(POST_SETUP_TUTORIAL_COLLAPSED_KEY,value?'1':'0');
+export const postSetupTutorialSkipped=()=>{
+  try{
+    const parsed=JSON.parse(readStored(POST_SETUP_TUTORIAL_SKIPPED_KEY)||'[]');
+    return new Set(Array.isArray(parsed)?parsed.filter(key=>typeof key==='string'):[]);
+  }catch(_error){return new Set()}
+};
+export const setPostSetupTutorialSkipped=values=>
+  writeStored(POST_SETUP_TUTORIAL_SKIPPED_KEY,JSON.stringify([...values]));
+
+/* 重绘的判据：清单里每一项的文字、目标和完成与否。只要这一串没变，页面上那张卡就
+   还是对的，重画一次只会打断正在读它的人和刚点开的折叠。 */
+export const postSetupTutorialSignature=tasks=>JSON.stringify(
+  tasks.map(task=>[task.key,task.done,task.label,task.description,task.href]));
+
+/* 请求代际：教程跟着每次路由切换重新取数，慢的那一发回来时页面可能已经换了。 */
+let postSetupTutorialRequest=0;
+export const nextPostSetupTutorialRequest=()=>++postSetupTutorialRequest;
+export const isCurrentPostSetupTutorialRequest=request=>request===postSetupTutorialRequest;
+
+/** 重新打开教程：清掉跳过与折叠，本地标记回到未完成，由调用方负责服务端那一半。 */
+export function resetPostSetupTutorialState(){
+  setPostSetupTutorialSkipped(new Set());
+  setPostSetupTutorialCollapsed(false);
+  setPostSetupTutorialMarker('pending');
 }

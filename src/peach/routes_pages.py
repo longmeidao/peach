@@ -541,7 +541,13 @@ def setup_page(
     fields.append(f'<details{opened}><summary><span class="setting-title">高级设置</span>{_CHEVRON_SVG}</summary>'
                   + "".join(advanced) + "</details>")
     access_error = str(errors.get("access_password", ""))
-    access_enabled = values.get("access_enabled") == "y" or bool(access_error)
+    host_value = next((str(values.get(question.key, question.default))
+                       for question in asked if question.key == "host"), "2")
+    # 独立包默认对局域网监听，明文 HTTP 又没有别的门。第一次打开这张表时把密码
+    # 开关按 host 的默认值打开；表单回填时用户自己的选择说了算，`values` 非空就
+    # 只看 `access_enabled`——复选框不勾是不提交的，那正是「他关掉了」。
+    access_enabled = (values.get("access_enabled") == "y" or bool(access_error)
+                      or (not values and host_value == "2"))
     access_hidden = "" if access_enabled else " hidden"
     access_disabled = "" if access_enabled else " disabled"
     fields.insert(1, '<div class="field access-field">'
@@ -549,6 +555,7 @@ def setup_page(
                   '<small>开启后，访问 Peach 需要先登录。</small></span>'
                   f'<input id="access-enabled" class="ptoggle" name="access_enabled" type="checkbox" role="switch" value="y"'
                   f'{" checked" if access_enabled else ""}></label>'
+                  '<p class="help" id="access-consequence">未设置密码时，能连接到 Peach 的设备可直接进入。</p>'
                   f'<div class="password-fields" id="access-password-fields"{access_hidden}>'
                   '<label class="field-label" for="access-password">访问密码</label><span class="entry-input">'
                   '<input id="access-password" name="access_password" type="password" maxlength="256" '
@@ -776,7 +783,14 @@ async def setup_submit(request: Request):
 
 def _setup_media_source_errors(dirs: Sequence[str], kinds: object,
                                problems: Sequence[str], validate) -> list[str]:
-    """首启的本地来源必须真的可读；CloudDrive 来源仍可离线保存。"""
+    """首启的本地来源必须真的可读；CloudDrive 来源仍可离线保存。
+
+    `media_configuration.validate` 对整表不成立的情况（一行都没填、超过 100 行）
+    只回一句话，和行数对不上。那种时候原样交回去让页面显示，不能按行去覆盖——
+    索引会越界，用户看到的是 500 而不是「请添加 1 到 100 个媒体文件夹」。
+    """
+    if problems and len(problems) != len(dirs):
+        return list(problems)
     errors = list(problems) if problems else [""] * len(dirs)
     source_kinds = list(kinds) if isinstance(kinds, (list, tuple)) else []
     for index, path in enumerate(dirs):

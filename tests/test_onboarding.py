@@ -482,10 +482,11 @@ class SetupPageTests(_Case):
             self.assertIn("http://peach.local:8900", body)
         # 端口只填写数字，localhost 是不可编辑的固定前缀。
         self.assertIn('<div class="affix"><span>localhost:</span><input id="f-port"', body)
-        # 密码默认关闭；开启后脚本才显示并启用两项输入。
+        # 默认对局域网监听，所以密码开关默认打开、两项输入直接可填；关掉后脚本再隐藏并禁用它们。
         self.assertIn('id="access-enabled" class="ptoggle" name="access_enabled" type="checkbox" role="switch"', body)
-        self.assertIn('id="access-password-fields" hidden', body)
+        self.assertNotIn('id="access-password-fields" hidden', body)
         self.assertIn("accessFields.hidden=!accessToggle.checked", body)
+        self.assertIn('<p class="help" id="access-consequence">未设置密码时，能连接到 Peach 的设备可直接进入。</p>', body)
         for title in ("媒体库", "访问密码", "高级设置", "完成设置后"):
             self.assertIn(f'>{title}<', body)
         self.assertIn('<h2 class="setting-title" id="setup-options-title">完成设置后</h2>', body)
@@ -539,6 +540,30 @@ class SetupPageTests(_Case):
         self.assertEqual(response.status_code, 400)
         self.assertIn("目录不存在", response.text)
         self.assertFalse(missing.exists(), "校验不替用户创建媒体库")
+        self.assertFalse(self.data_root.exists(), "校验失败不写设置")
+
+    def test_the_lan_default_arms_the_access_password_and_says_what_no_password_means(self):
+        body = self._get("/").text
+        toggle = body[body.index('id="access-enabled"'):]
+        self.assertIn('value="y" checked>', toggle[:toggle.index("</label>")])
+        self.assertIn('未设置密码时，能连接到 Peach 的设备可直接进入。', body)
+        self.assertLess(body.index('id="access-enabled"'), body.index('id="access-consequence"'))
+        self.assertLess(body.index('id="access-consequence"'), body.index('id="access-password-fields"'))
+
+    def test_turning_the_access_password_off_survives_a_failed_submission(self):
+        # 复选框不勾就不提交，回填时那正是「他关掉了」，不能被局域网默认又打开一次。
+        response = self._post("/setup", self._form(port="0", access_enabled=None))
+        self.assertEqual(response.status_code, 400)
+        toggle = response.text[response.text.index('id="access-enabled"'):]
+        self.assertNotIn(' checked', toggle[:toggle.index("</label>")])
+
+    def test_more_rows_than_the_limit_come_back_as_a_form_not_a_crash(self):
+        # 整表不成立时校验器只回一句话，长度与行数对不上；按行覆盖会越界，用户拿到的是 500。
+        response = self._post("/setup", self._form(
+            media_dir=[str(self.media)] * 101, media_location=["local"] * 101,
+            media_root=[r"R:\media"] * 101))
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("请添加 1 到 100 个媒体文件夹", response.text)
         self.assertFalse(self.data_root.exists(), "校验失败不写设置")
 
     def test_two_directories_are_declared_together_and_shown_in_the_scan_label(self):

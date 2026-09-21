@@ -77,7 +77,8 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertEqual(len(full['directories']), len(settings_file.DIRECTORY_KEYS))
         self.assertNotIn(str(self.root / 'media'), full['directories'])
         self.assertIn(str(generated_backup), full['files'])
-        self.assertIn(str(manual_backup), full['files'])
+        self.assertNotIn(str(manual_backup), full['files'],
+                         'config.toml.bak 是用户按运维文档自己复制的回退副本')
         self.assertNotIn(str(unrelated), full['files'])
 
     def test_uninstall_refuses_media_overlap_external_storage_and_source_tree(self):
@@ -363,11 +364,14 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertTrue(unrelated.is_file())
         self.assertTrue((media / 'video.mp4').is_file())
 
-    def _run_native_uninstall(self, job):
+    def _run_native_uninstall(self, job, log=None):
         shell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+        payload = dict(job, pid=2147483647, quiet=True)
+        if log is not None:
+            payload['log'] = str(log)
         return subprocess.run([str(shell), '-NoProfile', '-NonInteractive', '-EncodedCommand',
                                base64.b64encode(desktop_uninstall._SCRIPT.encode('utf-16-le')).decode('ascii')],
-                              input=json.dumps(dict(job, pid=2147483647, quiet=True)).encode('utf-8'), capture_output=True,
+                              input=json.dumps(payload).encode('utf-8'), capture_output=True,
                               timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
 
     @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
@@ -404,11 +408,10 @@ class DesktopSettingsTests(unittest.TestCase):
         blocked.write_text('fixture')
         handle = blocked.open('rb')
         self.addCleanup(handle.close)
-        log = Path(tempfile.gettempdir()) / 'peach-uninstall.log'
-        log.unlink(missing_ok=True)
-        self.addCleanup(log.unlink)
+        log = self.root / 'uninstall.log'
+        self.addCleanup(log.unlink, missing_ok=True)
         result = self._run_native_uninstall(
-            desktop_uninstall.plan(self.config, delete_data=False, program=self.program))
+            desktop_uninstall.plan(self.config, delete_data=False, program=self.program), log=log)
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertTrue(self.program.exists())
         self.assertIn('locked.bin', log.read_text(encoding='utf-8'))
