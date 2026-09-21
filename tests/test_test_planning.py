@@ -96,6 +96,19 @@ class TestPlanningTests(unittest.TestCase):
                          ('metadata', 'tooling'))
         self.assertEqual(runner.scopes_for_changes(['README.md'])[0], ('checks', 'tooling'))
 
+    def test_library_processing_selects_the_domains_that_exercise_it(self):
+        """`library_processing.py` 的模块名与测试文件名对不上，按名字推不出域。
+
+        验它的测试是 `test_metadata_library.py`（metadata 与 web 都登记）、
+        `test_stale_candidates.py`（metadata）和 `test_web_e2e.py`（web）；
+        映射缺了这一条，改处理任务就整轮退化成 `full`。
+        """
+        scopes, _ = runner.scopes_for_changes(['src/peach/library_processing.py'])
+        self.assertEqual(scopes, ('metadata', 'web'))
+        selected = {path.name for scope in scopes for path in runner.selected_files(scope)}
+        self.assertLessEqual({'test_metadata_library.py', 'test_stale_candidates.py',
+                              'test_web_e2e.py'}, selected)
+
     def test_missing_git_base_selects_wide_matrix(self):
         with patch.object(sys, 'argv', ['ci_plan.py', '--event', 'push', '--base', 'missing']), \
              patch.object(runner, 'changed_files', side_effect=subprocess.CalledProcessError(1, 'git')), \
