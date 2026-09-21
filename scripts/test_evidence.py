@@ -91,6 +91,11 @@ TOOL_PROBES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("openssl", ("version",)),
 )
 
+#: 探到、但不进环境指纹的工具。uv 只负责建环境，装出来的解释器与包已经逐个进了指纹；
+#: 把它自己的版本也记进去，winget 每升一次 uv 就让全部测试记录同时失效，而被验证的
+#: 那套环境一个字节都没变。它仍然参与探针，启动受限时照样报得出来。
+FINGERPRINT_EXCLUDED = ("uv",)
+
 
 @lru_cache(maxsize=32)
 def tool_identity(executable: str, stamp: int, probe: tuple[str, ...]) -> str:
@@ -132,7 +137,8 @@ def unspawnable_tools() -> tuple[str, ...]:
 
 
 def environment(root: Path) -> str:
-    tools = tool_identities()
+    tools = {name: identity for name, identity in tool_identities().items()
+             if name not in FINGERPRINT_EXCLUDED}
     # 同一个目录可在 sys.path 中出现多次；依赖身份取集合，版本变化仍改变指纹。
     python = interpreter(root)
     identity = python_identity(str(python), python.stat().st_mtime_ns)
@@ -141,7 +147,7 @@ def environment(root: Path) -> str:
                         if d.metadata.get("Name", "").casefold() != "peach"})
     node_lock = root / "frontend/node_modules/.package-lock.json"
     return digest({
-        "schema": 5, "python": identity["version"], "executable": str(python),
+        "schema": 6, "python": identity["version"], "executable": str(python),
         "platform": platform.platform(), "packages": installed, "tools": tools,
         "node_modules": hashlib.sha256(node_lock.read_bytes()).hexdigest() if node_lock.exists() else None,
         "flags": {k: v for k, v in os.environ.items()
