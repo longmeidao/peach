@@ -107,11 +107,11 @@ def collect(db_path: Path, generated: Path, state_path: Path | None = None) -> l
                       "AND (snapshot_path IS NULL OR snapshot_path='') "
                       "AND (duration IS NULL OR duration<=0)", loc)
         lines.append(f"  - `{loc}`：{ready} / {blocked} / {ready + blocked}")
-    # 2026-08-15 实测重新标定：瓶颈是流量不是时间，旧的"25~40 秒/帧、全量 14 天"不成立。
-    lines.append("  PikPak 的策略组已可切 DIRECT：2026-08-15 实测走代理时 9 帧 163 MB / 13.7 秒，"
-                 "走直连时 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算。"
-                 "全量抽帧仍是 773 GB 量级（代理口径），按创作者采样 88 板直连约 2.7 GB。"
-                 "115 一直走直连，同样动作约 285 MB 一张九宫格。")
+    # 抽帧的瓶颈是流量不是时间；下面是带日期与条件的实测参考，不是当前状态。
+    lines.append("  抽帧流量参考（2026-08-15 实测）：PikPak 走代理 9 帧 163 MB / 13.7 秒，"
+                 "直连 30.5 MB / 64.2 秒——慢约 4.7 倍但流量少约 5 倍且不占代理预算；"
+                 "全量抽帧约 773 GB（代理口径），按创作者采样 88 板直连约 2.7 GB；"
+                 "115 直连一张九宫格约 285 MB。")
 
     untagged = one("SELECT count(*) FROM asset WHERE medium='video' "
                    "AND id NOT IN (SELECT asset_id FROM asset_tag)")
