@@ -31,8 +31,11 @@ it('React 样式产物的类名不和旧样式表同名', () => {
     ...readdirSync(resolve(web, 'css')).filter((name) => name.endsWith('.css'))
       .flatMap((name) => [...classNames(read('css', name))]),
   ]);
-  // `.peach-react` 是两边约好的容器名：旧样式表靠它把 React 子树排除在全局焦点环之外。
+  /* 这两枚是两边约好的名字，同名正是契约：`.peach-react` 让旧样式表把 React 子树排除在
+     全局焦点环之外；`.dark` 是 `web/app.js` 的 `applyTheme` 挂在 <html> 上的主题标记，旧
+     样式表按它给浅色单独换面，React 侧 Tailwind 的 dark 变体读的也是它。 */
+  const agreed = new Set(['peach-react', 'dark']);
   const shared = [...classNames(read('dist', 'peach-react.css'))]
-    .filter((name) => name !== 'peach-react' && legacy.has(name));
+    .filter((name) => !agreed.has(name) && legacy.has(name));
   expect(shared).toEqual([]);
 });
