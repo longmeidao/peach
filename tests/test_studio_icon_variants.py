@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -423,18 +424,28 @@ class HarvestTargetTests(unittest.TestCase):
         self.links = {"Fitch": [{"url": "https://fitch-av.com/"}],
                       "Hon_Naka": [{"url": "https://honnaka.jp/"}],
                       "S1": [{"url": "https://s1s1s1.com/"}]}
-        # 两张指定来源表加起来三十多条，留着会盖住这里每一条判据。要用的测试自己往里放。
+        # 三张指定来源表加起来三十多条，留着会盖住这里每一条判据。要用的测试自己往里放。
         self.sources = dict(MODULE.LOGO_SOURCES_BY_SAFE)
         self.wordmarks = dict(MODULE.WORDMARK_SOURCES_BY_SAFE)
-        MODULE.LOGO_SOURCES_BY_SAFE.clear()
-        MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
+        self.icons = dict(MODULE.ICON_SOURCES_BY_SAFE)
+        for table in (MODULE.LOGO_SOURCES_BY_SAFE, MODULE.WORDMARK_SOURCES_BY_SAFE,
+                      MODULE.ICON_SOURCES_BY_SAFE):
+            table.clear()
 
     def tearDown(self):
-        MODULE.LOGO_SOURCES_BY_SAFE.clear()
-        MODULE.LOGO_SOURCES_BY_SAFE.update(self.sources)
-        MODULE.WORDMARK_SOURCES_BY_SAFE.clear()
-        MODULE.WORDMARK_SOURCES_BY_SAFE.update(self.wordmarks)
+        for table, saved in ((MODULE.LOGO_SOURCES_BY_SAFE, self.sources),
+                             (MODULE.WORDMARK_SOURCES_BY_SAFE, self.wordmarks),
+                             (MODULE.ICON_SOURCES_BY_SAFE, self.icons)):
+            table.clear()
+            table.update(saved)
         self.tmp.cleanup()
+
+    def pin(self, safe, variant, installed_url, size=(160, 160)):
+        """装着一份图并留下边车，边车里记的地址是 `installed_url`。"""
+        (self.logos / f"{safe}.img").write_bytes(b"x")
+        (self.logos / f"{safe}.{variant}.img").write_bytes(png_bytes(size=size))
+        (self.logos / f"{safe}.{variant}.img.provenance.json").write_text(
+            json.dumps({"source_url": installed_url}), encoding="utf-8")
 
     def test_a_designated_wordmark_source_is_reason_enough(self):
         """字标来源那批在账本里连一条链接都没有，按「有链接」收目标一条都收不到。"""
@@ -511,6 +522,35 @@ class HarvestTargetTests(unittest.TestCase):
         """量不出尺寸的不当成「小」：那是坏文件或 Pillow 不认的格式，不是判据。"""
         self.assertEqual(MODULE.small_installed_marks(self.logos), {})
 
+    def test_a_restated_source_reopens_a_studio_that_already_has_its_image(self):
+        """改掉表里的地址，图还装着——前三条判据一条都收不到它，复核件上连行都没有。"""
+        MODULE.WORDMARK_SOURCES_BY_SAFE["Jackson"] = "https://static.example/new.jpg"
+        self.pin("Jackson", MODULE.LOGO, "https://static.example/old.gif")
+        self.assertEqual(MODULE.harvest_targets({}, {}, self.logos)["Jackson"],
+                         {"original_size": "160x160", "installed": "Jackson.logo.img"})
+
+    def test_a_source_that_matches_the_sidecar_stays_out(self):
+        """装完边车就和表一致，它自己退出目标集——重跑不会反复敲同一扇门。"""
+        url = "https://static.example/jackson.gif"
+        MODULE.WORDMARK_SOURCES_BY_SAFE["Jackson"] = url
+        self.pin("Jackson", MODULE.LOGO, url)
+        self.assertEqual(MODULE.harvest_targets({}, {}, self.logos), {})
+
+    def test_an_image_without_a_sidecar_is_left_alone(self):
+        """来源无从比对。收进来等于拿指定表去盖掉另一条线装的图。"""
+        MODULE.WORDMARK_SOURCES_BY_SAFE["Jackson"] = "https://static.example/new.jpg"
+        (self.logos / "Jackson.img").write_bytes(b"x")
+        (self.logos / "Jackson.logo.img").write_bytes(png_bytes(size=(160, 160)))
+        self.assertEqual(MODULE.harvest_targets({}, {}, self.logos), {})
+
+    def test_the_icon_table_is_compared_against_the_icon_slot(self):
+        """`ICON_SOURCES` 只管小位。拿大位的边车去比，换过的会被判成没换过。"""
+        MODULE.ICON_SOURCES_BY_SAFE["シロウトTV"] = "https://static.example/square.jpg"
+        self.pin("シロウトTV", MODULE.ICON, "http://expo.example/034.png", (414, 414))
+        self.assertIn("シロウトTV", MODULE.harvest_targets({}, {}, self.logos))
+        self.assertEqual(MODULE.installed_source(self.logos, "シロウトTV", MODULE.LOGO),
+                         None, "大位没有边车，这一条不该把它也算成换过")
+
 
 class LogoSourceTests(unittest.TestCase):
     """`logo` 位的指定来源。这一位不过内容比闸门——大位要的本来就是完整字标。"""
@@ -542,22 +582,32 @@ class LogoSourceTests(unittest.TestCase):
         它同时覆盖 logo 与字标两张来源表：只认前一张的话，字标来源那批在复核件上
         会认不出是谁。
         """
-        registered = {**MODULE.LOGO_SOURCES, **MODULE.WORDMARK_SOURCES}
+        registered = {**MODULE.LOGO_SOURCES, **MODULE.WORDMARK_SOURCES,
+                      **MODULE.ICON_SOURCES}
         self.assertEqual(sorted(MODULE.LOGO_SOURCE_NAMES),
-                         sorted(set(self.original) | set(MODULE.WORDMARK_SOURCES_BY_SAFE)))
+                         sorted(set(self.original) | set(MODULE.WORDMARK_SOURCES_BY_SAFE)
+                                | set(MODULE.ICON_SOURCES_BY_SAFE)))
         for safe, studio in MODULE.LOGO_SOURCE_NAMES.items():
             with self.subTest(studio=studio):
                 self.assertEqual(MODULE.safe_name(studio), safe)
                 self.assertIn(studio, registered)
 
-    def test_no_studio_is_registered_in_both_source_tables(self):
-        """同一个厂牌落进两张表时，谁盖谁全看代码顺序——那是看不出来的差别。"""
+    def test_only_the_two_tables_that_split_the_slots_may_share_a_studio(self):
+        """`WORDMARK_SOURCES` 把两个位置都占了，和另外两张都不能有交集。
+
+        `LOGO_SOURCES` 和 `ICON_SOURCES` 相反，重合正是它们的用途：一家厂牌的大位
+        取展会那张横条字标、小位取名录里并排的那枚方标，只有分开指才对得上。
+        """
         self.assertEqual(set(self.original) & set(MODULE.WORDMARK_SOURCES_BY_SAFE), set())
+        self.assertEqual(
+            set(MODULE.ICON_SOURCES_BY_SAFE) & set(MODULE.WORDMARK_SOURCES_BY_SAFE), set())
+        self.assertIn("シロウトTV", MODULE.ICON_SOURCES)
+        self.assertIn("シロウトTV", MODULE.LOGO_SOURCES)
 
     def test_no_two_keys_collapse_onto_one_file_name(self):
         """键写的是账本 canonical_name。同一家的别名写法再写一条，`..._BY_SAFE` 会把
         两条折成一个键，谁盖谁全看字典顺序，而两条指向的 URL 未必是同一张图。"""
-        for table in (MODULE.LOGO_SOURCES, MODULE.WORDMARK_SOURCES):
+        for table in (MODULE.LOGO_SOURCES, MODULE.WORDMARK_SOURCES, MODULE.ICON_SOURCES):
             with self.subTest(table=len(table)):
                 keys = [MODULE.safe_name(name) for name in table]
                 self.assertEqual(sorted(keys), sorted(set(keys)))
@@ -568,7 +618,7 @@ class LogoSourceTests(unittest.TestCase):
         2016 那届只有图没有名字，认不出是谁家的，所以表里没有 jae2016。
         """
         expo = [url for url in MODULE.LOGO_SOURCES.values() if "jae.tokyo" in url]
-        self.assertEqual(len(expo), 24)
+        self.assertEqual(len(expo), 20)
         self.assertEqual([url for url in expo if "jae2016" in url], [])
         for url in expo:
             with self.subTest(url=url):
@@ -708,24 +758,34 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertEqual([row["verdict"] for row in rows], [MODULE.PADDED, MODULE.OK])
         self.assertEqual(fetch.asked, [self.url])
 
-    #: 不来自 MGStage 名录的那几条，各有各的理由，逐条另有用例。整表只允许这几家
-    #: 走别的来源：漏写一家就意味着有人往表里加了一条没人解释过的地址。
-    NAMED_EXCEPTIONS = {"M Girls' Lab", "ナンパTV"}
+    #: `harvest_maker_directories.py` 那三个名录各自的地址形态。表里的每一条都得落在
+    #: 这里面，或者落在下面那份点名清单里。
+    DIRECTORY_URLS = (
+        r"^https://static\.mgstage\.com/mgs/img/pc/",
+        r"^https://www\.prestige-av\.com/api/media/maker/",
+        r"^https://www\.km-produce\.com/img2018/label/[^/]+/logo\.svg$",
+    )
 
-    def test_the_mgstage_directory_is_the_source_and_only_for_imageless_studios(self):
-        """用户 2026-09-04 指定 MGStage 名录；只收当前一张图都没有的厂牌。
+    #: 名录之外的来源，各有各的理由，逐条另有用例。整表只允许这几家走别的地址：
+    #: 漏写一家就意味着有人往表里加了一条没人解释过的来源。
+    NAMED_EXCEPTIONS = {"M Girls' Lab"}
 
-        已装的那些多来自 jae.tokyo 的 320×320 方标，换成 180×54 的字标是降级。
-        """
+    def test_every_wordmark_comes_from_a_maker_directory_or_a_named_exception(self):
+        """用户 2026-09-04 与 09-22 指定的是那三个厂牌名录，不是随便哪张网图。"""
         self.assertTrue(self.original, "字标来源表不能是空的")
-        own_site = {studio for studio, url in MODULE.WORDMARK_SOURCES.items()
-                    if "mgstage.com" not in url}
-        self.assertEqual(own_site, self.NAMED_EXCEPTIONS)
-        for studio, url in MODULE.WORDMARK_SOURCES.items():
+        off_directory = {
+            studio for studio, url in MODULE.WORDMARK_SOURCES.items()
+            if not any(re.match(pattern, url) for pattern in self.DIRECTORY_URLS)}
+        self.assertEqual(off_directory, self.NAMED_EXCEPTIONS)
+
+    def test_no_studio_takes_its_wordmark_and_its_square_logo_from_two_tables(self):
+        """这一张表把两个位置都占了，所以和 `LOGO_SOURCES` 不能有交集——同一个厂牌
+        落进两张表时，谁盖谁全看 `harvest` 里的代码顺序，那是看不出来的差别。
+        """
+        for studio in MODULE.WORDMARK_SOURCES:
             with self.subTest(studio=studio):
-                if studio not in own_site:
-                    self.assertRegex(url, r"^https://static\.mgstage\.com/mgs/img/pc/")
                 self.assertNotIn(studio, MODULE.LOGO_SOURCES)
+                self.assertNotIn(studio, MODULE.ICON_SOURCES)
 
     def test_a_studio_whose_own_site_carries_the_wordmark_is_pinned_to_that_site(self):
         """自动发现给 M Girls' Lab 小位挑的是它 X 账号那张项圈照片：400×400、内容比
@@ -741,6 +801,103 @@ class WordmarkSourceTests(unittest.TestCase):
         """
         self.assertRegex(MODULE.WORDMARK_SOURCES["ナンパTV"],
                          r"^https://www\.prestige-av\.com/api/media/maker/")
+
+    def test_the_labels_that_replaced_an_expo_logo_are_the_five_the_user_picked(self):
+        """用户 2026-09-22 逐张看过对比图后点名这五家换走名录版，其余已有图的不收。
+
+        名录版未必更大：`ラグジュTV` 落地 200×200，展会那份是 413×413。这条约束防的
+        是往表里顺手多塞一家——那一家没人比过两版，装上去可能是降级。
+        """
+        picked = {"Jackson", "ラグジュTV", "million", "BAZOOKA", "俺の素人"}
+        from_parent = {studio for studio, url in MODULE.WORDMARK_SOURCES.items()
+                       if "prestige-av.com" in url or "km-produce.com" in url}
+        self.assertEqual(from_parent, picked | {"ナンパTV"})
+
+
+class IconSourceTests(unittest.TestCase):
+    """指定方标来源：只管小位，大位照旧由 `logo_row` 或发现流程出。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.candidates = Path(self.tmp.name).resolve() / "candidates"
+        self.target = {"original_size": "", "installed": ""}
+        self.url = "https://static.example/maker/banner-shiroutotv.jpg"
+        self.original = dict(MODULE.ICON_SOURCES_BY_SAFE)
+        MODULE.ICON_SOURCES_BY_SAFE["シロウトTV"] = self.url
+
+    def tearDown(self):
+        MODULE.ICON_SOURCES_BY_SAFE.clear()
+        MODULE.ICON_SOURCES_BY_SAFE.update(self.original)
+        self.tmp.cleanup()
+
+    def row(self, payload=None, reachable=True):
+        pages = {self.url: payload} if payload is not None else {}
+        return MODULE.icon_source_row("シロウトTV", self.target,
+                                      Fetch(pages, reachable=reachable), self.candidates)
+
+    def test_the_square_mark_is_cut_out_of_a_wide_source_image(self):
+        """名录那张 200×55 里方标和字标并排，落地的该是方标那一块。
+
+        `bake_square` 的 `refit_plate` 按内容裁一遍，所以落地边长由标识本身决定，
+        不是源图那 200。
+        """
+        row = self.row(block_png((60, 60)))
+        self.assertEqual((row["variant"], row["verdict"]), (MODULE.ICON, MODULE.OK))
+        self.assertEqual(row["link_kind"], "icon-source")
+        width, height = (int(value) for value in str(row["mark_size"]).split("x"))
+        self.assertEqual(width, height)
+        self.assertLess(float(str(row["content_aspect"])), MODULE.link_marks.MAX_CONTENT_ASPECT)
+
+    def test_the_candidate_file_matches_the_recorded_hash(self):
+        row = self.row(block_png((60, 60)))
+        stored = Path(str(row["candidate"])).read_bytes()
+        self.assertEqual(hashlib.sha256(stored).hexdigest(), row["sha256"])
+        self.assertTrue(str(row["candidate"]).endswith("シロウトTV.png"))
+
+    def test_a_studio_without_a_registered_square_source_gets_no_row(self):
+        self.assertIsNone(MODULE.icon_source_row("HEYZO", self.target, Fetch(),
+                                                 self.candidates))
+
+    def test_a_mark_that_shrinks_below_the_icon_floor_is_refused(self):
+        """闸门量的是裁出来那一块，不是源图：源图够大、标识只占中间一丁点也不算数。"""
+        row = self.row(block_png((20, 20)))
+        self.assertEqual(row["verdict"], MODULE.TOOSMALL)
+        self.assertEqual(row["candidate"], "")
+
+    def test_an_unreachable_or_undecodable_source_is_未取得(self):
+        for payload, reachable in ((None, False), (b"<html>404</html>", True)):
+            with self.subTest(reachable=reachable):
+                row = self.row(payload, reachable=reachable)
+                self.assertEqual(row["verdict"], MODULE.MISSING)
+                self.assertEqual(row["candidate"], "")
+
+    def test_the_big_slot_keeps_its_own_source(self):
+        """两位分开指才有这张表。小位走名录、大位仍走 `LOGO_SOURCES` 那张展会图。"""
+        expo = "http://expo.example/034.png"
+        saved = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        MODULE.LOGO_SOURCES_BY_SAFE["シロウトTV"] = expo
+        try:
+            fetch = Fetch({self.url: block_png((60, 60)),
+                           expo: block_png((320, 320))})
+            rows = MODULE.harvest({"シロウトTV": self.target}, {}, fetch, self.candidates)
+        finally:
+            MODULE.LOGO_SOURCES_BY_SAFE.clear()
+            MODULE.LOGO_SOURCES_BY_SAFE.update(saved)
+        self.assertEqual([(row["variant"], row["url"]) for row in rows],
+                         [(MODULE.ICON, self.url), (MODULE.LOGO, expo)])
+
+    def test_the_square_source_keeps_link_discovery_out_of_the_small_slot(self):
+        """指定就是结论。放它去走发现流程只会把指好的那一枚挤掉。"""
+        saved = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        MODULE.LOGO_SOURCES_BY_SAFE.pop("シロウトTV", None)
+        try:
+            fetch = Fetch({self.url: block_png((60, 60))})
+            rows = MODULE.harvest({"シロウトTV": self.target}, {}, fetch, self.candidates)
+        finally:
+            MODULE.LOGO_SOURCES_BY_SAFE.clear()
+            MODULE.LOGO_SOURCES_BY_SAFE.update(saved)
+        self.assertEqual([row["variant"] for row in rows], [MODULE.ICON])
+        self.assertEqual(fetch.asked, [self.url])
 
 
 class Fetch:
@@ -976,19 +1133,29 @@ class HarvestTests(unittest.TestCase):
         self.assertTrue(logos[1]["candidate"])
 
     def designated_source_harvest(self, studio, payload):
-        """账本里一条链接都没有的厂牌：`best_mark` 根本不会被调，不用替身。"""
+        """只有指定 logo 来源、账本里一条链接都没有的厂牌：`best_mark` 不会被调。
+
+        另外两张表里同名的条目要摘掉：它们各自走别的分支，留着测的就不是这一条路了。
+        """
         safe = MODULE.safe_name(studio)
         url = f"http://logos.example/{safe}.png"
         original = dict(MODULE.LOGO_SOURCES_BY_SAFE)
+        others = {id(table): dict(table) for table in
+                  (MODULE.WORDMARK_SOURCES_BY_SAFE, MODULE.ICON_SOURCES_BY_SAFE)}
         names = dict(MODULE.LOGO_SOURCE_NAMES)
         MODULE.LOGO_SOURCES_BY_SAFE[safe] = url
         MODULE.LOGO_SOURCE_NAMES[safe] = studio
+        for table in (MODULE.WORDMARK_SOURCES_BY_SAFE, MODULE.ICON_SOURCES_BY_SAFE):
+            table.pop(safe, None)
         try:
             return MODULE.harvest({safe: {"original_size": "", "installed": ""}}, {},
                                   Fetch(pages={url: payload}), self.candidates)
         finally:
             MODULE.LOGO_SOURCES_BY_SAFE.clear()
             MODULE.LOGO_SOURCES_BY_SAFE.update(original)
+            for table in (MODULE.WORDMARK_SOURCES_BY_SAFE, MODULE.ICON_SOURCES_BY_SAFE):
+                table.clear()
+                table.update(others[id(table)])
             MODULE.LOGO_SOURCE_NAMES.clear()
             MODULE.LOGO_SOURCE_NAMES.update(names)
 
@@ -1412,6 +1579,18 @@ class InstallTests(unittest.TestCase):
         (self.logos / "Fitch.icon.img").write_bytes(png_bytes((64, 64)))
         self.assertEqual(MODULE.install([self.row], self.logos), ["Fitch.icon.img"])
         self.assertEqual((self.logos / "Fitch.icon.img").read_bytes(), self.payload)
+
+    def test_a_designated_source_replaces_a_bigger_one(self):
+        """那道守卫防的是自动发现的抖动。指定表里的地址是人逐张看过写进去的，
+        换上一张小的也是想要的结果——`シロウトTV` 的小位就是 414 换成 64。
+        """
+        for kind in MODULE.PINNED_KINDS:
+            with self.subTest(kind=kind):
+                (self.logos / "Fitch.icon.img").write_bytes(png_bytes((968, 968)))
+                row = dict(self.row, link_kind=kind)
+                self.assertEqual(MODULE.install([row], self.logos), ["Fitch.icon.img"])
+                self.assertEqual((self.logos / "Fitch.icon.img").read_bytes(),
+                                 self.payload)
 
     def test_an_unreadable_installed_file_is_not_treated_as_bigger(self):
         """`<safe>.img` 里躺着的不一定是图；读不出尺寸就按空位办，别把大位卡死。"""
