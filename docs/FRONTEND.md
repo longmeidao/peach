@@ -170,6 +170,11 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
 打进去就会有两份实现，语义契约各走一份。只存在于 `app.js` 里的助手
 （`javTitleHtml`、`srcBadge`、`openItem` 这类）作为 props 传进来，类型写在 island 自己的文件里。
 
+两条跨层都成立的硬约束：
+
+- 数据库元数据不得插值到 inline JavaScript 事件属性：真实厂牌名里的撇号曾直接造成 Firefox 语法错误。
+- 前端 API 包装必须先检查 HTTP 状态再返回 JSON：冲突只读时写端点返回 `409` 和错误 JSON，当成普通成功对象会清空选择并重载，用户只看到条目原样回来。批量处置和详情反馈必须保留当前选择并显示失败原因。
+
 ## 共享状态怎么写
 
 判据只有一条：**这份数据有没有第二个读者**。

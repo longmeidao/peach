@@ -34,9 +34,9 @@
 
 `harvest_social_avatars.py` 声明 Instagram 只记录链接，`harvest_studio_icons.named_avatars` 消费人工提供的 CDN 地址。当前源码和 REUSE 未登记 Instaloader／gallery-dl 头像解析的成功 POC 或拒绝证据，因此不能把局部 `web_profile_info` 429 和页面小图推导成自动解析不可行。
 
-Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_info` 与 `profile_pic_url_hd` 分支；gallery-dl 也有 `InstagramAvatarExtractor`，支持 `/USER/avatar/` 与登录／匿名分支。它们都是应比较的成熟能力，但本轮未读取用户 Cookie、未执行登录态跨账号 POC，不能把「已有接口」写成「本机和所有用户均验证成功」。该问题在统计中归入社媒入口，图标入口不重复计数。
+Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_info` 与 `profile_pic_url_hd` 分支；gallery-dl 也有 `InstagramAvatarExtractor`，支持 `/USER/avatar/` 与登录／匿名分支。它们都是应比较的成熟能力，但登录态跨账号 POC 未执行（未读取 Cookie），所以「已有接口」只等于接口存在。该问题在统计中归入社媒入口，图标入口不重复计数。
 
-用户提供的 Bambi 图片直链与本机 `agency-avatars.json` 的图片文件编号一致；本轮前一阶段不带 Cookie、严格 TLS 请求返回 200、JPEG、1000×1000、92,068 字节，原图 SHA-256 为 `fc004f50edd9a3d684582eacf72b0521883ba42d40307304db062dc0cc931c1f`。文档不保存临时签名 URL。证据仅证明该直链在核验时可下载，不证明所有账号的地址发现成功。
+人工提供的 Bambi 图片直链与本机 `agency-avatars.json` 的图片文件编号一致；不带 Cookie、严格 TLS 请求返回 200、JPEG、1000×1000、92,068 字节，原图 SHA-256 为 `fc004f50edd9a3d684582eacf72b0521883ba42d40307304db062dc0cc931c1f`。文档不保存临时签名 URL。这一条只说明该直链当时可下载，地址发现本身没有测过。
 
 首选验证 Instaloader，不同时加入两套正式 Instagram 运行时。记录 Python／桌面包兼容性、依赖体积、会话导入、限流与账号身份结果后决定采用；GUI 会话导入不是手工维护 CDN URL。
 
@@ -72,9 +72,9 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 ## 已有复用与历史证据
 
 - `scrape_codes.py` 调 `JavinizerGoProvider`，由外部 Javinizer-Go v1.5.1 查询，Peach 只做身份、字段候选、来源健康和复核。不是自研整套 JAV scraper。
-- `fetch_studio_avatar_candidates.py` 使用 unavatar 解析地址、平台 CDN 下载及 `LogoCandidateCache`。公共服务是可变化依赖，需要无 API key 可用性与服务失败测试；本轮没有把它认定为长期免费保证。
+- `fetch_studio_avatar_candidates.py` 使用 unavatar 解析地址、平台 CDN 下载及 `LogoCandidateCache`。unavatar 是公共服务，随时可能改规则或收费，所以要有无 API key 的可用性测试和服务失败测试。
 - Gfriends 索引与头像审计复用原始索引、Pillow 和 `AvatarCandidateCache`；目录名录／本地化入口复用 `page_cache.Site`、`minnano_av`、`javdb`、名字链和 OpenCC。事务所名册的同名 `Site` 是脚本自有类，计入上面的内部重复。身份消歧仍需 Peach 承担。
-- FANBOX 已使用 curl_cffi 和 PixivUtil2 固定正文模型；Rule34Video 已部分使用 yt-dlp；其余归档／booru 官方接口及 Gofile 边界已在 REUSE 登记。这里只核对复用入口，不把本轮审计当成所有在线 provider 的端到端验收。
+- FANBOX 已使用 curl_cffi 和 PixivUtil2 固定正文模型；Rule34Video 已部分使用 yt-dlp；其余归档／booru 官方接口及 Gofile 边界已在 REUSE 登记。这里只核对复用入口，没有对在线 provider 做端到端验收。
 - Git 中可指认的基础收口包括 `80b04d2`（UA／主机限流）、`053aed5`（番号归一化）、`c374601`（CSV）、`bdeddbc`（头像档位）。存在历史重复与后续收口证据，但不能把已删除实现重复算进当前 17 个入口。 <!-- copy-lint-disable-line -->
 
 ## 无代理刮削的实际机制
@@ -98,7 +98,7 @@ Movie Data Capture 的当前配置提供代理开关、超时／重试、来源�
 
 进程存在 HTTP_PROXY／HTTPS_PROXY／ALL_PROXY，但不输出其值。沙箱中的无代理请求均连接失败，故以主机权限复测结果作为上表依据；这仍未排除 TUN 或上游路由。FlowLens 的出口证据未取得，不能称「物理无代理」。r18 使用的是有界通用 UA HTTP 探测，未取得 Javinizer-Go 专用 UA／dump 的等价现场结果，不据此宣称其 provider 不可用。
 
-本机取证脚本和脱敏 JSON 位于 `attic/evidence/20260905-scraping-reproducibility/`，不进入发行版。实际网络结果只适用于该时刻和主机，不能外推到中国大陆、台湾或其他地区的所有用户。
+取证脚本和脱敏 JSON 位于仓库外的 `attic/evidence/20260905-scraping-reproducibility/`，不随仓库分发。上面的网络结果绑定当时那台主机和那条线路，换地区或换出口就要重测。
 
 ## 新用户复现差距
 

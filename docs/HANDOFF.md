@@ -8,7 +8,7 @@
 
 - NFO 见 `docs/REUSE.md`；[Banner](https://vercel.com/geist/banner) 取证见 `vercel-geist-library-banner.md`。
 - 凭据焦点外扩 3px，正文左右留 4px；输入框可收缩，验收所有裁切祖先。
-- 截图与视觉验收的画面保护：SFW 模式（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只有本轮截图会交给会审查内容的模型（自动视觉审查或外发工具）时才开启，开完记得关；普通个人浏览一律不遮挡。
+- 截图与视觉验收的画面保护：SFW 模式（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只在截图要交给会审查内容的模型（自动视觉审查或外发工具）时开启，用完关掉；普通个人浏览一律不遮挡。
 - 卡片实体链接必须由同一个 `{kind,name}` 结构生成，不许先独立选显示名、再按别的字段推断类型；账本 `size` 为空或 0 时显示「大小未知」，不伪装成 `0 MB`。
 - 排除竖屏是首页取景而不是全局过滤器：`exclude_vertical` 进搜索或实体列表会让按名字搜竖屏视频返回 0 结果，`test_only_the_default_home_list_drops_portrait_videos` 守这条线。
 - 竖屏条整行占位并且必须插在行边界上，由 `SHORTS_ROW_OFFSET` 控制插在第几行之后，不额外拉一批视频补上一行余位。
@@ -41,7 +41,7 @@
 - 指令维护：按任务读取，缩小技能触发，保留事故边界，用文档、行为与数据任务复核，静态检查不证明效率改善。方法见 [OpenAI](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)。
 - 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
 - 触发是概率性的：必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
-- 用户不是消息中转站。结论、进度、待办和证据必须写入共享文档或机器可读产物。
+- 结论、进度、待办和证据写进共享文档或机器可读产物，不靠人转述。
 
 ## 并行智能体与 Git 工作树
 
@@ -56,7 +56,7 @@
 - 直接证据：视觉逐条任务在聊天里说「已保存」但 `asset_tag` 的 `source='vision'` 为 0，根本没有写入步骤；`disposal-candidates.csv` 在 `BNST033` 修正后未重建，把真实 3.2 GB 正片列为待删。
 - 解析用的固定件必须是抓回来的那份 HTML，不能照记忆重画：那样只能证明代码和记忆一致，会出现测试全绿而线上一个字段都没采到（实例见 `docs/SOURCING.md`）。
 - Claude 的 `.claude/settings.json` 配了 Stop、StopFailure、SessionEnd hook，用 `${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe` 调 `scripts/job_status.py --write --hook-event`：只记脱敏生命周期摘要，从 ledger 与产物重算数字后原子写入 `peach-data/state/job-status.md`，不复制 prompt、response 或凭据。
-- 那份产物不进 Git，`docs/STATUS.md` 只留一行指针；工作者会话不写这份状态，机器级进度只由主检出的会话记录。强制杀进程或断电时 hook 不运行，下次调用会补上。
+- 那份产物不进 Git，`docs/STATUS.md` 只留一行指针；只有主检出的会话写这份状态，隔离工作树里的不写。强制杀进程或断电时 hook 不运行，下次调用会补上。
 
 ## 中文文档写作规范
 
@@ -111,7 +111,7 @@
 
 - 采集脚本一律只产出复核 CSV；写 `entity.canonical_name`、`asset.studio`、`entity_link` 或头像字节都是另一次授权。
 - 规范名优先用有出处的简体中文通行名，旧艺名、罗马字、假名和繁体名降为别名；`no_avatar` 只表示没取得合格图片，不阻止已核实姓名落库。
-- 实体合并不可逆：走 `peach.entities.merge_entity`，必须先取得用户授权、先备份，合并后 `PRAGMA foreign_key_check` 应为 0；改写 `entity.canonical_name` 与迁移同级，`--apply` 必须同时给 `--backup`。
+- 实体合并不可逆：走 `peach.entities.merge_entity`，须当场授权并先备份，合并后 `PRAGMA foreign_key_check` 应为 0；改写 `entity.canonical_name` 与迁移同级，`--apply` 必须同时给 `--backup`。
 - 「这一页只有一位女优」「这个 handle 存在」「站上没有」都不是证据：精确回配优先于任何唯一性推断，二手结论要自己请求一次才算取证，查不到就写「未取得」。
 - 名字与厂牌名都由站点给出，不由罗马音或 slug 推定；一律跨来源同证，单页 404 只说明那一页取不到。
 - 被 Cloudflare 拦或有验证墙的站一律放弃，不绕过机器人检测。

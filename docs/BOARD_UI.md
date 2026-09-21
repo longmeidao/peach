@@ -36,11 +36,11 @@
 
 2026-09-11 核对 [liquid-gooey spring.ts](https://github.com/Jakubantalik/Libraries/blob/422180dd7a5ac646c85deedc65500c4a74339127/packages/liquid-gooey/src/spring.ts)，MIT，源码 SHA-256 `9dc0d5e9dd269000d95743572320039404982803d1b2da9977e717b5956d5481`。
 
-形变证据来自同一 revision 的 `LiquidItem.tsx`：`morph.shape` 将尺寸变化描述为弹性形变、过冲和软胶回落；`observer.ts`（SHA-256 `5e44c076e50ceb707572cd7b4e083f835a5d454cc21fb405f5c7dd3ff3ef4865`）分别驱动位置、尺寸和圆角。此前记录的裁切与透明度方案未满足用户要求的图标形变，不能作为形变验收证据。 <!-- copy-lint-disable-line -->
+形变证据来自同一 revision 的 `LiquidItem.tsx`：`morph.shape` 将尺寸变化描述为弹性形变、过冲和软胶回落；`observer.ts`（SHA-256 `5e44c076e50ceb707572cd7b4e083f835a5d454cc21fb405f5c7dd3ff3ef4865`）分别驱动位置、尺寸和圆角。形变验收要看轮廓本身在变，裁切与透明度做不出这个效果，不算证据。
 
 Peach 使用现有 313ms 玻璃弹簧（stiffness 1700、damping 46、mass 1），从图标真实矩形变为搜索框，轮廓中途鼓起、回落，反向操作从当前可见矩形接续。关键帧限制在视口内，玻璃全程可见，文字不横向缩放。尺寸动画只作用于绝对定位的搜索层，建议面板在动画结束后显示；起止同高 36px、共用顶栏中心线。右侧按钮依次为搜索、沉浸、多选。
 
-未新增依赖；上游未作为完整搜索组件复刻。上游搜索交互与本轮浏览器实测未取得，本轮按用户要求不调用浏览器工具。
+未新增依赖；上游未作为完整搜索组件复刻。上游搜索交互与浏览器实测未取得：这次取证不走浏览器通道，只读了源码。
 
 ## 数据整理子页
 
@@ -64,19 +64,14 @@ Peach 使用现有 313ms 玻璃弹簧（stiffness 1700、damping 46、mass 1）�
 | `/templates/ai-image-generation` | Gallery、Styles 与图像网格；采用预览优先的卡片结构 |
 | `/templates/ai-profile` | 身份概要与指标卡；不引入与文件整理无关的数据面板 |
 
-模板已逐页读取实时 DOM；没有宣称八个模板的所有交互、动画和响应式状态均已验证。
+模板已逐页读取实时 DOM。
 Pro 模板只作为公开外观和信息层级参考。实现使用现有 Preact、共享 HTML 控件及 Board token，无新增依赖。
 
 作用范围是 `/review`、`/quality-goals`、`/duplicates`、`/junk-files`、`/trash`。
 数据管理入口保持卡片导航。复核分类在桌面纵向排列，窄屏自动换行；分组、候选、批量动作和分页沿用既有实现。
 重复组提供文件预览及尺寸、时长、位置比较；高清版、垃圾文件和回收站共用预览卡片的版式。
 
-预览来源核对：8095 的 `app.js` 和 `board.css` 匹配 `claude-entity-float-and-settings`，
-其提交已包含于当前 master；8097 的 `app.js` 匹配本次工作树基线 `f09fc8b6`，
-`board.css` 匹配 master。18984 使用当前 `codex-data-pages-board` 的源码和构建，写入请求由只读预览拒绝。
-生产入口、真实 ledger 和凭据未修改。
-
-Peach 使用 Board 的视觉与组件语义，保留 Vite、Preact、FastAPI 和现有媒体行为。Board 的公开实现依赖 React Aria，不能把组件名称相同当作 Preact 可直接替换的证明。本次由共享 HTML 控件、原生键盘行为与 Preact 数值控件适配；没有新增 React 运行时。
+Peach 使用 Board 的视觉与组件语义，保留 Vite、Preact、FastAPI 和现有媒体行为。Board 的公开实现依赖 React Aria；组件名相同不等于 Preact 能直接替换。适配由共享 HTML 控件、原生键盘行为与 Preact 数值控件承担，没有新增 React 运行时。
 
 ## 控件对应
 
@@ -137,7 +132,7 @@ Input 的上游错误信息位于字段下方，并通过 `errorMessage` 关联�
 
 Agent Progress 的公开演示使用定时步骤。Peach 的作业由服务端状态推进，采用自有圆形数量进度，不把计时当作完成，也不把逐作品循环的阶段假装成整批已完成步骤。共核对 9 类入口：
 
-| 入口 | 本次处理 |
+| 入口 | 进度口径 |
 | --- | --- |
 | 扫描与采集 | 当前阶段文字 + 已处理视频数 |
 | 链接检测 | 已检查 / 总数 |
@@ -169,7 +164,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 
 取证来源是 https://www.boardui.com/components/data-table 的实时 DOM 与样式表：`_next/static/chunks/0n0ugaibgw__p.css`（SHA-256 `a856db5e9e1a58b2e32b7bfa6d7f1cab69dd09e4bd7ac22fc455dd10b525cf27`）里的 `.bui-table` 规则，以及公开注册表 `r/table.json`（`fc12a8f2f4012d9e983e0b9bbb10f9fe3288d74046566d2623d60e7056c50d88`）和 `r/data-table.json`（`613299eca0f448460a546f7959feab8dab19fbfd6e18670f7216ff304a1e3574`）。
 
-2026-09-16 迁页时重取这三份：`r/table.json` 与 `r/pagination.json` 逐字节未变，`r/data-table.json` 已是 `7bb73a6cd099b9b16390e5fe00f8ba2d55b5ef96c1e8f90a056168cd2e3235e6`（24531 字节），上游自己改过。Peach 复制进树的是 `table` 条目，`data-table` 只读不抄（原因见 `frontend/src/react/boardui/ORIGIN.md`），所以这次漂移不影响已复制文件的哈希。
+2026-09-16 重取这三份：`r/table.json` 与 `r/pagination.json` 逐字节未变，`r/data-table.json` 已是 `7bb73a6cd099b9b16390e5fe00f8ba2d55b5ef96c1e8f90a056168cd2e3235e6`（24531 字节），上游自己改过。Peach 复制进树的是 `table` 条目，`data-table` 只读不抄（原因见 `frontend/src/react/boardui/ORIGIN.md`），所以这次漂移不影响已复制文件的哈希。
 
 | 上游实测 | Peach 表格视图 |
 | --- | --- |
@@ -197,8 +192,8 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 选中 blue-500→600 渐变 + `inset 0 2px 0 0 #ffffff40, inset 0 0 0 1px accent-500`；悬停渐变提到 400→500 | 同值，渐变取 `--board-blue` |
 | 勾 2px 圆头，`pathLength=1`，`check-draw` 200ms cubic-bezier(.65,0,.35,1) 从零画出；减少动态效果时直接显示 | 勾是雪碧图的 `check`，无法写 pathLength，按路径实长 23 写 dasharray；其余同值 |
 | 页面上卡片摆在 primary 面上 | 关注列表整段是一只 `--ground` 卡（与「添加关注」同一只），作者卡是 primary 面，来源行才是 CheckboxCard；这样悬停的 primary-hover 才不与底同色 |
-| Segmented Control 暗色：轨道 neutral-925、滑块 neutral-800 | Peach 暗色页面本身更深，轨道留 tertiary（#262626），滑块提主文字色 14%；上一节写的「未取得」以此为准 |
-| Avatar `avatar-neutral-background`：亮 neutral-300、暗 `background-primary-default` | 首页两排与身份头像继续用主文字色 10% 混底：暗色里上游值与卡片底同色，正是用户回执的问题 |
+| Segmented Control 暗色：轨道 neutral-925、滑块 neutral-800 | Peach 暗色页面本身更深，轨道留 tertiary（#262626），滑块提主文字色 14%；这一组取代上文「分段滑块的暗色」那条「未取得」 |
+| Avatar `avatar-neutral-background`：亮 neutral-300、暗 `background-primary-default` | 首页两排与身份头像继续用主文字色 10% 混底：暗色里上游值与卡片底同色，头像会看不出边界 |
 
 媒体库图标选择器同批：格子与触发钮同一枚 20px、2 描边的字形，装在同一个 20px 盒子里居中；候选 42 枚一行七枚，题材、身份、场景、媒介各一组；网盘库不另选时显示来源站标（服务端 `media_libraries.libraries` 本就把单一来源的库落到该来源），本地路径没有可识别的来源，写作「默认」并显示磁盘。
 
@@ -222,7 +217,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 
 | Peach 现有 | 处理 | 依据 |
 | --- | --- | --- |
-| Toast（操作回执、撤销） | 切成 Notification：卡片、状态圆、倒计时条已由 Board 层承接，本次补上 180ms 退场 | 短暂、可自动消失的回执正是 Notification 的用途 |
+| Toast（操作回执、撤销） | 切成 Notification：卡片、状态圆、倒计时条已由 Board 层承接，另加 180ms 退场 | 短暂、可自动消失的回执正是 Notification 的用途 |
 | Toast 的进场 | 保留 Peach 的 180ms 淡入 | 上游无 `introDelay` 时不做进场；一条突然出现的卡片在 Peach 里没有别的东西衬托 |
 | Toast 的正文与动作 | 保留单段正文和行内文字动作，未拆标题／说明、未换成下方小按钮 | Peach 的回执只有一句话、最多一个「撤销」 |
 | 成功态的颜色 | 保留信息蓝 | `notification-success-*` token 的值未取得 |
@@ -244,7 +239,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 排名行悬停与展开键 | PillTab 悬停 `background-primary-hover` 200ms | 悬停改为主文字色 6% 薄底 + 200ms：暗色 primary-hover 太跳、亮色看不见；展开键同一层 |
 | 三个面板标题（口味总结、浏览器画像、数据源） | Heading 20/26 | 同一档，React 版用 `text-title-2-medium`；内边距统一 20（卡面走 `cardClass()` 的 `p-5`，三档内边距收成一档） |
 | 复核「跳过」 | Chip blue：亮 200/800、暗 950@60%/300 | 采用；`error`／`primary` 不变 |
-| 交集条上已生效的筛选 | Chip subtle + neutral：`px-1.5 py-1`、Body 1 Medium、tertiary 底配次文字色，不描边 | 主动偏离：用户点名以详情面板那颗标签为基底统一全站标签，所以这一颗也走 `--tag-radius`（这套里是 8px）+ 一圈 `--line` + 28px 移除键，只有填充取 `--picked` 说明它已生效。上游 Chip 只标状态，Peach 的每一颗都要能就地撤掉，同一个词还要在卡片、详情面板、筛选条上认得出是同一样东西 |
+| 交集条上已生效的筛选 | Chip subtle + neutral：`px-1.5 py-1`、Body 1 Medium、tertiary 底配次文字色，不描边 | 主动偏离：全站标签以详情面板那颗为基底统一，所以这一颗也走 `--tag-radius`（这套里是 8px）+ 一圈 `--line` + 28px 移除键，只有填充取 `--picked` 说明它已生效。上游 Chip 只标状态，Peach 的每一颗都要能就地撤掉，同一个词还要在卡片、详情面板、筛选条上认得出是同一样东西 |
 | 侧栏名单的展开键 | 无对应（上游侧栏不截断名单） | 取排名卡那枚展开药丸的身量；再按一下收的是整组，不是把名单退回另一个断点 |
 | 侧栏收起键 | 36px、`rounded-2lg`、`foreground-icon-secondary`，收起时与品牌相隔 10px | 采用，图标沿用 Peach 的 `panel-left` |
 | 详情页门挡 | 无对应 | 铺满播放器格不留黑；播放器格只圆左上角（右贴侧栏、下接「接着看」），窄屏与影院模式圆上面两角 |
@@ -259,8 +254,8 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 
 | 位置 | 上游 | Peach |
 | --- | --- | --- |
-| 排名行 | 行 36px、圆角 8、无悬停类；填充条 `absolute inset-y-0 left-0` 圆角 8，`chart-6` 14% 透明，只对宽度和颜色做 500ms 过渡 | 行与填充条圆角 8，填充 15%（工具类档位），去掉行悬停底（两层叠一起就是回执里的「违和」）；行高保留 44 容两行字；填充条用 `preserveAspectRatio="none"` 的 SVG 铺满整行，宽度写在 `rect` 上，不走内联样式，也没有过渡 |
-| 「Show N more」 | 40×20 药丸，居中贴底 4px，`border-button-default` 描边、primary 底、xs 阴影，14px 箭头，悬停 primary-hover 150ms；被折起的行直接不渲染，没有渐隐 | 同尺寸同色；保留 48px 渐隐是主动差异；点按展开键时列表高度走共用 Collapse 的 `.2s ease-in-out`（用户要求，上游没有高度动画；先快后慢的曲线在头一帧就把视口里那截长完，展开看不出动画），过渡只在点按那一下挂上，切维度标签引起的高度变化直接到位，不跟着抖；收起时展开键逐帧钉在指针下（用户选定），卡片多在页底，变短引起的视口回退朝一个方向完成，不先上移再回滚 |
+| 排名行 | 行 36px、圆角 8、无悬停类；填充条 `absolute inset-y-0 left-0` 圆角 8，`chart-6` 14% 透明，只对宽度和颜色做 500ms 过渡 | 行与填充条圆角 8，填充 15%（工具类档位），去掉行悬停底（悬停底与填充条两层叠一起会显得脏）；行高保留 44 容两行字；填充条用 `preserveAspectRatio="none"` 的 SVG 铺满整行，宽度写在 `rect` 上，不走内联样式，也没有过渡 |
+| 「Show N more」 | 40×20 药丸，居中贴底 4px，`border-button-default` 描边、primary 底、xs 阴影，14px 箭头，悬停 primary-hover 150ms；被折起的行直接不渲染，没有渐隐 | 同尺寸同色；保留 48px 渐隐是主动差异；点按展开键时列表高度走共用 Collapse 的 `.2s ease-in-out`（主动差异，上游没有高度动画；先快后慢的曲线在头一帧就把视口里那截长完，展开看不出动画），过渡只在点按那一下挂上，切维度标签引起的高度变化直接到位，不跟着抖；收起时展开键逐帧钉在指针下，卡片多在页底，变短引起的视口回退朝一个方向完成，不先上移再回滚 |
 | 数据源卡的删除键 | 站上图标键 `size-9 rounded-2lg text-foreground-icon-secondary`，只过渡颜色 | 36px、圆角 10、透明底，悬停主文字色 6% 薄底加 `--drop` 文字，`transform:none` |
 | 指标卡悬停 | 无对应 | `--surface` 与 `--ground` 在亮色里同为白，改主文字色 6% 混底 |
 | 管理页标题 | 无对应 | `body body.cleanup-layout` 写错让标题一直留在 812px 窄列；标题、面包屑、导语不看布局类一律对齐 1120（复核、高清版、重复文件这些子页没有布局类），复核页容器同宽 |
@@ -268,7 +263,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 | 灰卡上的控件 | secondary 底上放 primary 白底控件 | 配置页下拉、输入、图标触发键与关注页添加框都白底 |
 | 通知状态圆 | Notification 用 lucide 图标 | 警告态换 `circle-alert`（自绘 `i-alert` 在 20px 下只剩一个点）；Note 与上下留 12px |
 | 复核页悬浮 | 无对应 | 标签条留在原地，工具条自己悬浮；分组条贴在它下面时两条合成一个平底玻璃框（上 20 0 0 / 下 0 0 20 20，同一块 `--glass-fill`，中间只靠 20px 间隔分开）；两条都向外扩 16px 再垫回，控件与卡片同一左边 |
-| 详情页关闭键 | 用户以 YouTube 为参照：播放器上的键亮色下也是黑底 | 60% 黑底白字，悬停 20% 白晕；此前亮色下白底白晕看不出悬停 |
+| 详情页关闭键 | 参照 YouTube：播放器上的键亮色下也是黑底 | 60% 黑底白字，悬停 20% 白晕；此前亮色下白底白晕看不出悬停 |
 | 数据管理骨架 | 无对应 | 扫描卡的「采集来源」「扫描并补全资料」从骨架起就都在位，内容换入只是变成可点 |
 | 批量条 | 无对应 | Board 的 `inline-flex` 曾压过 `[hidden]`，从垃圾页回首页会多出三个键；「移入回收站」用 error 按钮同一条红色渐变，首页与垃圾页文案统一 |
 | 媒体库菜单 | 侧向弹出的菜单贴在侧栏右缘外 8px | 收起时触发钮只有 32px，菜单从侧栏右缘起算，不再压到侧栏上 |
@@ -278,7 +273,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 
 ### 首页两排、关注批量条、复核分页与数据管理页（2026-09-09）
 
-取证来源：公开注册表 `r/pagination.json`（`pagination.tsx`）、`r/stat-cards.json`（`stat-cards.tsx` 的 PlainStatCard）、`r/avatar.json`（`avatar.tsx`），以及 `/templates/dashboard` 与 `/templates/finance` 的实时 DOM。这三份 JSON 本轮只读了正文，SHA-256 未取得。模板左侧可切换的其它视图（calendar、medical-profile、ai-chat、ai-image-generation、ai-profile）是日历、档案、对话与生图页，与 Peach 现有页面无对应，未采用。
+取证来源：公开注册表 `r/pagination.json`（`pagination.tsx`）、`r/stat-cards.json`（`stat-cards.tsx` 的 PlainStatCard）、`r/avatar.json`（`avatar.tsx`），以及 `/templates/dashboard` 与 `/templates/finance` 的实时 DOM。这三份 JSON 只读了正文，SHA-256 未取得。模板左侧可切换的其它视图（calendar、medical-profile、ai-chat、ai-image-generation、ai-profile）是日历、档案、对话与生图页，与 Peach 现有页面无对应，未采用。
 
 | 位置 | 上游 | Peach |
 | --- | --- | --- |
@@ -290,7 +285,7 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 
 ### 复核卡的候选、未收录 genre 与骨架（2026-09-11）
 
-Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.tsx`），本轮未新取证据：
+Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.tsx`），未新取证据：
 上游只有 CheckboxCard 一件，Radio 版是同一只卡换控件类型。
 
 | 位置 | 上游 | Peach |
@@ -313,7 +308,7 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 | 位置 | 上游 | Peach |
 | --- | --- | --- |
 | 资料卡 | 未取得（card／profile-card 404）；卡形沿用 `.fsec`：secondary 底、18px 圆角、不描边、卡脚 `--board-card-foot` | `<section class="entityhero">`：`.entityprofile` 里 120px 头像加身份三行——名字 Title 3（24/32、500）、别名·视频数·事务所、外链排成 36px／10px 圆角的 secondary Button；同台艺人收进卡脚 `.entityfoot` 那条带，它是这个人的附注，不是正文；事务所的名册是正文，走 Tabs 里那一档。窄屏卡不变，只有卡里正文那一格改成单列居中、头像 96px |
-| 视频／照片／艺人切换 | `tabs.tsx` 是页面级导航的形；这一组按用户口味留在筛选浮层上，不取 Tabs | 浮层最左端的一组媒体圆键（`mediaViewButtonsHtml`，`aria-pressed`），选中那枚由圆玻璃 `viewglide-round` 滑过去标出，跟四枚观看状态各一块玻璃；隔一道竖杠再是观看状态、再一道才是标签。`boardTabsHtml()` 的下划线 Tabs 只给索引页切地址用 |
+| 视频／照片／艺人切换 | `tabs.tsx` 是页面级导航的形；这一组留在筛选浮层上，不取 Tabs | 浮层最左端的一组媒体圆键（`mediaViewButtonsHtml`，`aria-pressed`），选中那枚由圆玻璃 `viewglide-round` 滑过去标出，跟四枚观看状态各一块玻璃；隔一道竖杠再是观看状态、再一道才是标签。`boardTabsHtml()` 的下划线 Tabs 只给索引页切地址用 |
 | 资料页筛选条 | 无对应 | 媒体圆键、四枚观看状态、标签三段由粗到细，`aria-label`「媒体与标签」；照片、名册视图下标签收起、竖杠隐去，圆键留着 |
 | 关注页 | 无对应（上游没有更新流页） | 对齐首页而不是另起一套：顶上两排对着首页那两排——作者行 `.followauthors` 对女优，是 48px 头像加名字的 `.av`；题材行 `.followworks` 对厂牌，是 28px 圆标加名字的 `.brandpill`，两排都跟首页共用 board.css 里同一份规则，骨架也各铺各的档（`data-skeleton-tier` 取 `av` 与 `brandpill`）。题材收的是来源记成 copyright 的作品和记成 character 的人物，同一系列的各代归成一枚（`_WORK_SERIES` 前缀加 `_WORK_ALIASES` 别名），人物末尾的消歧括号只影响显示；发行商、平台、节庆和占位词按 `_NON_WORK_TAGS` 加公司后缀形态 `_COMPANY_TAG_RE` 剔掉，被记成 character 的种族与占位词按 `_NON_CHARACTER_TAGS` 剔掉；显示名按词提首字母（`_work_label`），来源自己写了大小写的词原样留；三排（作者、题材、标签）的取样一律走 `followRandomOrder`，按本次访问的种子随机取、进一次换一批，和首页那两排同一个道理——按条数取前 24 的话，八十来个题材里永远只露出同样那二十几个；圆标走 `/work-icon?work=`，服务端拿这个身份在账本里按「带 `3d`、评分高」排出五个候选，顺着取第一张脸够大的封面（取的是站点高清那层，250px 缩略图里一张脸只剩十几像素、检不出来）：「YuNet 检出了脸」这一关太松，实测它在远景图上会给出占长边百分之五、分数 0.69 的框、罩在肩背的纹身上，而圆标正是按这个框放大的，圆里于是是一小块皮肤；判据因此是 `_usable_face` 两条线：占比 `_WORK_ICON_FACE_SHARE`（`FACE_PX_IN_STORE ÷ ICON_SIDE`，脸框宽占画面长边 6.6%——正好是「按默认那一档存下来脸还有 34 个像素」那条线）问圆里落下的是不是脸，像素 `FACE_PX_IN_STORE`（34px）问这张脸放得大放不大——页面按脸放大时不许上采样，源图里那张脸有多少像素就是天花板。缺哪条都漏一类：实测本库 74 枚圆标里有五枚占比全过却仍旧看不清，它们那一条没有封面、候选只能退回站点那层 250px 的缩略图，脸在里面只剩 18～24 个像素，放到头也只占圆的三成。两条都过才停，否则看下一张。本库这几张全都不够时接着去站点问一趟（`work_icon_search_urls`）：库里存的是用户关注的那几位作者发的东西，一个题材常常只有一两条、未必有正脸，而站上同一个标签下有成千上万帖，`sort:score` 要最热的 8 张接在本库那几张后面继续找——先只要带 `3d` 的，那个标签下一张都没有再问一次不限形式的。标签写法取本库 rule34xxx 条目里用得最多的那个（`the_witcher_(series)`、`dbd`、`clair_obscur:_expedition_33`），照归一化后的题材身份拼出来的在站上是零命中。这一趟是惰性的：本库挑得出脸就一个字节都不出网；取不到凭据、站点报错或网络不通一律当作没有候选，圆标退回首字母而不是 500。都走完还是一张都不够格的题材按「没有头」处理：退回第一张取得到的图、不写人脸记录，页面于是按样式表里的默认取景摆整张封面。这类题材多半真的给不出正脸——顶着头发的背影、非人形的主角，或者站上那个标签下本来就只有远景；与其把画面里最大的那块皮肤放大成一枚认不出的圆，不如老实摆一张全身，它至少还认得出是哪部作品。本库 74 个题材按占比那条线分开的两边正是「一眼认得出」和「认不出」。核对图床主机、按 `trim_letterbox` 裁掉源图自己留的黑边（判据是这一行的平均亮度和最亮那个像素都低：只看平均会把夜景整片暗部当黑边裁掉，只看最大值又会被一颗噪点挡住；裁完剩不到四成就当判据认错了东西，不裁），再按 `icon_side` 算出的边长存本机，页面递不进地址，挑不出时退回首字母。落盘这一档按「页面放大到头要多少像素」定，不按圆标那 28px 定——放大的上限之一是源图里那张脸有多少像素，缩到 256px 时脸框只剩 19～30px，正好卡住。每一枚各算各的：脸在画面里占得越小，落盘边长越大（`FACE_PX_IN_STORE`＝28px 的圆 × 双倍屏 × 脸最多占六成），下限是 `ICON_SIDE`（512px）；远景全身图按这条要两千像素，`MAX_ICON_SIDE`（1024px）在那里刹住——再小的脸就认了放不大，一枚圆标不值两百 KB。取景由服务端写在图旁的 `.face.json`，facet 行第五位带回页面、走头像那套 `facePos` 落成 `object-position`，再由 `face-frame.js` 按脸框放大；28px 的圆上比例那一档（32%）只给得出 9px 的脸，改由 `MIN_FACE_PX` 这条像素下限接管，48px 的作者头像上它算出来低于 32%、仍走比例。脸够大不等于摆得正：脸心离画面边缘近时，把它拉到框心的位移会让图露白、于是被夹回边上，所以「摆正」本身也算放大的理由（`centred`），再由 `FACE_CEILING`（脸框占框 60%，整颗头刚好填满）刹住。检不出脸的退到样式表里的 `50% 25%`。筛选条 `.tagbar` 与读数 `.count` 收进同一块 `mountFilterFrame` 浮层。上排最左是视频／图片两枚媒体圆键，跟资料页同一个控件、同一块圆玻璃（`GLIDE_ROWS.media` 多认 `.followmediaview`），隔一道竖杠才是四枚状态（全部、未看、已保存、已忽略，不挂计数）——它们是首页四枚视图的同一个控件，共用那块滑动玻璃（`GLIDE_ROWS.views` 多认 `.followviews`）；来源图标与标签在右半截横滚，来源类型的着色只在选中时上色。下排读数照首页写「N 项更新 · 显示 M」，右端是 `sortControlsHtml` 那一组：换一批（切到 `sort=rand&seed=`，整批按种子打散、种子写进地址），然后是更新时间／热度／时长三档排序；图片墙上多一枚 30px 见方的「仅显示图片」图标开关（字形是 Lucide `captions-off`，不跟媒体那一档的图片字形撞），开着时垫的是筛选条那块滑动玻璃（`GLIDE_ROWS.imagesonly`），跟旁边的版式分段器同一块料、同一副尺寸——浮层上的分段器轨道不留内边距，选项 30px 见方、8px 圆角。换一批等数据时也画首页那段描边忙态（读数行挂 `aria-busy`）。排序归服务端（`/api/follow?sort=&dir=&seed=`）：分页在它那一侧，浏览器只拿到当前这几页，而 `FollowStore.group()` 结尾无条件按 `newest_at` 倒序，所以条目层和发布组层都要按同一把尺再排一次（`_sorted_items` 与 `_sorted_groups`）。生效的筛选摊在浮层正下方，用的就是首页那条交集筛选条（`.combo` 容器加 `.cb` 芯片加「全部清除」）——放上方会把吸顶玻璃和两排头像一起推下去，放下方只推列表，而列表本来就要重画。换排序、点作者头像这类只换内容的操作也只重画列表：`.followlist` 换成 `pageSkeletonHtml` 的卡片骨架，浮层、两排头像和交集条留在原地。页头右端「管理关注」是次级按钮，「检查更新」在它右边当这一屏唯一的主按钮（没有来源时不出，蓝色归空态里的「添加关注」）；底部「加载更多」旁不再重复读数。图片墙的每张 `<img>` 带 `width`/`height`，浏览器在图落地前就按固有比例占位，列不会随加载重排；尺寸是条目上的一个字段（清单内的图各带一对），来源接口给的（fanbox imageMap、rule34.xxx dapi）、回填脚本问文件头得到的、界面加载完回写的（`data-learn-dims` → `POST /api/follow/image-dims`）三条路同权、只补空缺；两层都没有的卡片按 1:1 占位，不硬猜 |
 | 两页骨架 | Skeleton 只是占位形状 | 都把 `.board-filter-frame` 外框和上下两排的 `data-filter-row` 写全，否则等的那几秒钟是两块各带圆角的浮层；资料页骨架用 `.entityprofile`／`.entityidentity` 的真实类名，筛选条那排用 `data-skeleton-tier="pill"` 铺药丸 |
@@ -354,8 +349,8 @@ Announcement 的图标标题动作结构和 RareUI Task List 的 24px 圆形状�
 不做跨行淡变，分隔线使用暗色主题下仍可辨识的按钮边框色，右侧箭头使用次级文字色。固定 revision、SHA 与差异见
 [安装后教程取证](reference-snapshots/rareui-boardui-post-setup-tutorial.md)。
 
-纠正（2026-09-12）：这一段此处一度记过「上游 primary 没有悬停态」，同日取到规则原文后作废。
-当时那三条证据全落在同一个盲点上——悬停那一层挂在伪元素上。① 读 `className` 看不到：悬停
+2026-09-12 取到规则原文：上游 primary 有悬停态，只是挂在伪元素上。此前三条读法都读不到它，
+盲点是同一个。① 读 `className` 看不到：悬停
 不是 Tailwind 的 `hover:` 类，写在样式表里；② 真鼠标悬停读 computed 也看不到：读的是元素
 自己的 `background-image`，变的是 `::before` 的 `opacity`，`getComputedStyle(el)` 不传第二个
 参数就取不到那一层；③ 注册表 `/r/button.json` 的 primary 那一行确实只有
@@ -408,11 +403,14 @@ setup 使用同一勾线形状、蓝色渐变及这两组状态规则。
 
 详情使用并列观看进度卡与独立动作按钮；Esc 先退出详情、再收起侧栏。首页与实体页排序保持横向滚动，换批按钮沿用动画 SVG，采用中性 Board 按钮。
 
-- 178 项前端测试通过，包含非法值不保存、关闭恢复、异步读取值恢复、图表数值、库名及图标提交、分组展开记忆、页面骨架、排名展开与流向聚焦、图标草稿取消、分段切换及演示状态不请求任务接口；构建与类型检查通过。
-- 18984 服务工作树的完整构建快照，避免编辑期间混用源码和产物。桌面已检查设置、首页、详情、统计、口味、数据管理、关注管理、配置与复核；390×844 已检查统计、口味、首页、设置、详情、标签与事务所索引，没有页面横向溢出。
-- 设置关闭图标中心偏差为 0；纯图标控件不覆盖工具栏业务显隐。旧版模式关闭 Board 样式，增加对比度时导航 `backdrop-filter` 为 `none`，退出两种状态均已核对。
-- 预览只读，未写真实 ledger、配置或凭据；脱盘状态下真实播放未验证。生产入口与版本号未改。
-- 390×844 实测索引页无横向溢出、输入 16px；设置数值控件 40px 高。侧栏收起后容器与内容均为 60px，横向滚动轨道隐藏。手机展开按钮位于抽屉内部，抽屉距顶部 12px。
+桌面与 390×844 两档都不允许页面横向溢出，覆盖设置、首页、详情、统计、口味、数据管理、
+关注管理、配置、复核、标签与事务所索引。390×844 下输入 16px，设置数值控件 40px 高；
+侧栏收起后容器与内容均为 60px，横向滚动轨道隐藏；手机展开按钮在抽屉内部，抽屉距顶部 12px。
+设置关闭图标中心偏差为 0；纯图标控件不覆盖工具栏的业务显隐。旧版模式关闭 Board 样式，
+增加对比度时导航 `backdrop-filter` 为 `none`，两种状态都要能退出。
+`tests/` 与 `frontend/test/` 覆盖非法值不保存、关闭恢复、异步读取值恢复、图表数值、
+库名与图标提交、分组展开记忆、页面骨架、排名展开与流向聚焦、图标草稿取消、分段切换，
+以及演示状态不请求任务接口。
 
 ## 控件与状态预览
 

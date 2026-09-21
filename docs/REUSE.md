@@ -34,12 +34,9 @@
 目录页进度横幅与数据管理卡片共用 `frontend/src/react/library-processing/` 那一份读取，读同一个 `LIBRARY_PROCESSING_KEY`，轮询由 TanStack Query 合成一份；启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败跳转数据管理；数据管理持续读取阶段与真实计数。Geist Banner 取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
 ## 独立测试包在线更新
 
-- 2026-09-08 自动检查只读 POC：临时设置触发 GitHub 查询，取得 v0.30.0、35,633,626 字节的 Windows ZIP 与 SHA-256；未下载或安装。桌面 1280×720 与手机 390×844 的设置预览通过，开关联动、频率菜单和保存回执正常。
-
 - 自动更新设置复用 APScheduler 3.11.3（MIT，项目已有依赖，Python 3.12+ 与 Windows/macOS）、共享 HTTPX 发行查询、filelock 与原子 JSON 写入，安装继续走 `standalone_update`。按 [interval trigger](https://apscheduler.readthedocs.io/en/3.x/modules/triggers/interval.html) 每分钟检查是否到期；本机持久时间与文件锁协调多个服务，关闭、6/24/168 小时间隔与源码下载限制由 Peach 管理。默认关闭，下载仅准备安装，重启仍需确认；没有新增依赖或安装框架。设置保存在 state 目录的 `automatic-updates.json`。
 
-- 版本与资产信息复用 GitHub Releases REST API，测试通道包含预发布版本；查询复用项目 HTTPX 0.28.1，下载用其流式读取，ZIP 解压使用 Python 3.12+ 标准库，互斥复用 FileLock。没有新增依赖。
-- 2026-09-06 真实只读 POC：GitHub 返回 v0.16.0、Windows ZIP 35,489,963 字节和 SHA-256 digest；仅发布记录中已上传的完整独立包可进入更新。
+- 版本与资产信息复用 GitHub Releases REST API，测试通道包含预发布版本；查询复用项目 HTTPX 0.28.1，下载用其流式读取，ZIP 解压使用 Python 3.12+ 标准库，互斥复用 FileLock。没有新增依赖。只读查询已对真实 Release 验过：只有发布记录里已上传的完整独立包才进入更新，查询不下载也不安装。
 - Peach 维护安装策略与进度：下载校验后在程序同卷暂存，用户确认重启，复制出来的包内助手等待原托盘退出，再切换完整目录；失败保留或恢复旧目录。配置、数据库与媒体不作为更新包内容写入。
 - 已核对 [Velopack Windows 文档](https://docs.velopack.io/packaging/operating-systems/windows) 和 [WinSparkle 文档](https://winsparkle.org/)：前者要求其安装目录与包格式，后者要求 appcast 并使用原生更新界面；现有 GitHub 产物为 PyInstaller ZIP，进度在 Web 显示，因此复用现有托盘进程与目录替换协议，未引入额外安装框架。
 - Web 复用 Fieldset、Progress、confirmModal；状态由 `standalone-update.json` 保存。下载按字节计量，解压按文件数计量，替换使用阶段进度；服务重启期间保留等待状态，恢复连接后核对版本。
@@ -47,7 +44,7 @@
 
 JAV 默认封面（官方封面／预览图）与默认大小（大图／小图）独立保存，复用 localStorage、共享 Switch 和既有 `/cover`、`/poster` 接口，不新增依赖。`frontend/src/jav-artwork.ts` 负责作品身份、偏好恢复与缺图回退；首页、接着看、实体作品、详情推荐、Mix 静止与翻图、播放队列共用封面选择。小图保留所选来源，设置换图保留播放和滚动位置。
 
-这是 Codex 与 Claude 共用的实现查找表。新增、恢复或重写代码前必须按
+这是实现查找表。新增、恢复或重写代码前必须按
 `.claude/skills/peach-reuse-first/SKILL.md` 先查本文件、当前树、Git 历史和成熟外部实现。
 
 ## 复用决策门槛
@@ -97,7 +94,7 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
 跨进程占锁与释放由临时 Git 仓库回归验证；代码、环境和范围记录属于 Peach 的集成约束。
 ### 播放、身份与控件实证
 
-- 2026-09-05，用户图 3 的 PNG 像素统计：页面 `#04060A`、框体 `#080A0D`、操作条 `#141619`、选中项 `#191B1E`。操作条复用 `--overlay-5`，骨架与最终控件共用灰阶。截图为用户提供的静态证据，不登记为可重抓上游资源。
+- 2026-09-05 手工截图的 PNG 像素统计：页面 `#04060A`、框体 `#080A0D`、操作条 `#141619`、选中项 `#191B1E`。操作条复用 `--overlay-5`，骨架与最终控件共用灰阶。截图是静态证据，不登记为可重抓上游资源。
 - [JavDB JBS-023](https://javdb.com/v/6gzM)：项目取页器与 Javinizer-Go v1.5.1 均取得 `風見あゆむ`。本机 provider 配置的 `scrapers.javdb.enabled` 必须开启；源码有码补抓列表包含 JavDB。候选保留 community 来源性质，不自动写真相字段。
 - 编码边界依据 [MDN 视频编码说明](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Video_codecs) 与 [ffprobe 流探测文档](https://ffmpeg.org/ffprobe.html)。复用当前 FFmpeg，无新增依赖；Peach 仅持有兼容格式判定与缓存策略。
 
@@ -156,7 +153,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 推理 Provider 与 Agent Provider 的能力契约；
 - 任务归属、进度、取消、成本和证据规则。
 
-下面这些是基础设施而不是产品行为，所以要单独记下被拒绝的候选和不可替代约束，免得下一轮又从「这看起来该有现成库」开始。
+下面这些是基础设施而不是产品行为，所以单独记下被拒绝的候选和不可替代约束，避免再从「这看起来该有现成库」开始。
 
 | 自研实现 | 被拒绝的候选 | 不可替代约束 |
 |---|---|---|
@@ -176,8 +173,6 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 和 ADR 已经写下的不在这里重复，出处用 `git log -S` 查。
 
 - 本地浏览器支持 MP4/WebM/Ogg，其余容器由 `TranscodeService` 按六秒片段缓存成 H.264/AAC MP4，永不改写原媒体；ffprobe 判定可直接复制的流不重编码，其余在 Windows 走 CUDA/NVDEC；29999、30005 实片首段及跳播解码通过。
-- 中译补正 20 位，38 位待核。
-- 29999 及另 16 番号、23 视频补齐女优，账本完整。实屏未验。
 - 远端 MP4 默认走标准 Range，显式开启的 HLS 使用关键帧对齐片段并在失败时回退 Range。
 - 页面共用 SPA、JSON 与 gzip/ETag；侧栏随当前视频集合，已保存在线作品复用关注详情。
 - Logo、侧栏「首页」和沉浸模式关闭统一清除分类、搜索与 JAV 筛选，首页默认稳定随机、换批才换种子，再点当前排序回到随机。
@@ -254,7 +249,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | FC2 目录元数据与跨号证据 | 已缓存的 fc2cmadb Inertia `article`／评论收获；Javinizer-Go v1.5.1 的 FC2 解析器只作官方商品页字段边界参考 | 2026-08-31 登录态实测旧文章仍提供标题、原始标签、日期、时长、卖家、FC2 CDN 封面与 `comments`；Peach 只把无歧义标签翻译成现有词表，标题／标签进入 `/review`，实测 `w1200` 封面经尺寸与解码门槛落生成产物；稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核仍由 Peach 管，不依赖 FC2-Leak-Detector/JavSP，也不把镜像候选直写 ledger |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe；Windows 已实测 FFmpeg 9.0.1 full build 的 CUDA/NVDEC、`scale_cuda` 与 NVENC，现有二进制启用 GPL/version3。CI 复用 `FedericoCarboni/setup-ffmpeg@v3`（MIT）并固定 FFmpeg 9.0.1；Gyan 官方 x64 full build 的 7z 为 165,742,351 字节，Python 3.12/3.14 的 Windows runner 共用同一版本。默认 `release` 会访问 Gyan 易失的 `release-version` 端点，2026-09-19 实测返回空响应并让两组 Windows 测试在执行前失败；固定版本改从 GyanD/codexffmpeg 的精确 GitHub release 资产下载。 | 任务策略和 Media Engine 编排：容器与内部编码分别检查，MP4/M4V 的 H.264 8-bit 与兼容音轨可直出；其余容器中的 H.264 8-bit 优先只换 MP4 封装；其余 Windows 输入依次尝试 CUDA→H.264 NVENC、软件解码→NVENC、原 `libx264` 回退，macOS 保持封装复制或软件转码。2026-09-05 的 JBS-023 原片为 MPEG-4 Part 2/AAC，12 秒样本经既有 FFmpeg 链路在 2.42 秒输出 H.264/AAC 并通过画面解码；兼容性依据为 MDN Web video codec guide 与 ffprobe 官方 stream 文档。真实 CloudDrive POC 中，H.264/AAC 的 30 秒片段封装耗时 0.64 秒，1080p HEVC 的 30 秒 CUDA/NVENC 转码耗时 1.60 秒；不新增 Python 依赖，不改生产、原媒体或 ledger。 |
 | HTML5/HLS/DASH 播放 | Video.js 8.24.1 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板；详情不兼容片源复用 HlsSegmentService 与 FFmpeg 按六秒编码 H.264/AAC，独立缓存、绝对时间轴及会话取消；JBS-023 首段 0.67 秒、十分钟处 1.96 秒，YRH-097 首段 1.01 秒，无整片预转码 |
-| 播放器设置与影院布局 | Video.js 8.24.1 的 `playbackRate`、既有 QualityLevel、原生 tooltip 与控制栏插槽；YouTube `e937390a` 实际 DOM／CSS／JS 提供可复现的几何、状态、动画和图形证据 | Peach 在现有 DOM 上组合氛围模式、播放速度、真实清晰度和影院模式，并复用 59 px 两排控制栏、40→111 px 横向音量、4→6 px 进度动画、右侧共享胶囊、整行悬停的 274 px 设置菜单和视口级全屏；普通视图 `contain` 保全片源，全屏按用户明确要求改用 `cover` 铺满视口，接受非等比例片源的边缘裁切。全屏命中同时使用 Video.js／原生类和 `isFullscreen()` 同步的 `data-peach-fullscreen`，并覆盖 `body.vjs-full-window` 回退，不能再靠单个 CSS 类推断运行态；标准、WebKit、Gecko 等浏览器专用伪类必须放进 forgiving `:is(...)` 或拆成独立规则，不能在普通 selector list 混写后让某浏览器因未知伪类废掉整组声明。用户要求精准图形的设置项、radio 选中勾、菜单箭头、中央 bezel 与 loading 只 vendoring 当前锁定版本的 SVG path／spinner 结构，音量 hover 与滑轨中心沿用上游外层伪元素和 50% 几何，tooltip 仅补 Peach 两排控制栏需要的显式层级与越界可见；不复制播放器控制逻辑、不迁移到 Video.js 10 Menu，也不引入重复现有质量选择的插件 |
+| 播放器设置与影院布局 | Video.js 8.24.1 的 `playbackRate`、既有 QualityLevel、原生 tooltip 与控制栏插槽；YouTube `e937390a` 实际 DOM／CSS／JS 提供可复现的几何、状态、动画和图形证据 | Peach 在现有 DOM 上组合氛围模式、播放速度、真实清晰度和影院模式，并复用 59 px 两排控制栏、40→111 px 横向音量、4→6 px 进度动画、右侧共享胶囊、整行悬停的 274 px 设置菜单和视口级全屏；普通视图 `contain` 保全片源，全屏用 `cover` 铺满视口，接受非等比例片源的边缘裁切。全屏命中同时使用 Video.js／原生类和 `isFullscreen()` 同步的 `data-peach-fullscreen`，并覆盖 `body.vjs-full-window` 回退，不能再靠单个 CSS 类推断运行态；标准、WebKit、Gecko 等浏览器专用伪类必须放进 forgiving `:is(...)` 或拆成独立规则，不能在普通 selector list 混写后让某浏览器因未知伪类废掉整组声明。要求图形精准的设置项、radio 选中勾、菜单箭头、中央 bezel 与 loading 只 vendoring 当前锁定版本的 SVG path／spinner 结构，音量 hover 与滑轨中心沿用上游外层伪元素和 50% 几何，tooltip 仅补 Peach 两排控制栏需要的显式层级与越界可见；不复制播放器控制逻辑、不迁移到 Video.js 10 Menu，也不引入重复现有质量选择的插件 |
 | 播放器时刻预览 | Video.js 原生进度控件 + Peach 自己的 `/timeline?id=&s=`（10×10 接触印相），取不到时退到既有 `/poster?id=&c=0…8` 九宫格切片 | 时间轴图由 `peach.timeline_sheets` 按每 10 或 30 秒一帧预先铺好，只覆盖 `location='local'`：网盘上的每抽一帧都要回源拉一次，实测 115 单文件抽九帧约 285 MB，两万部按每 10 秒一帧算流量以 TB 计。没铺到的片子和在线视频退回九宫格，那九格是全片九等分、只给近似时刻。抽帧与拼图命令与九宫格脚本共用 `peach.frame_capture`，不另起一份裸 ffmpeg 调用。`videojs-vtt-thumbnails` 与 `videojs-sprite-thumbnails` 都要求另建 sprite/VTT 契约并多一层运行时依赖，而格子位置的换算在 Peach 这边是一行整除，所以不引入 |
 | 外挂字幕 sidecar | 浏览器原生 `TextTrack` 与 [WebVTT 规范](https://www.w3.org/TR/webvtt1/)；配对判据复用 `catalog_rules` 的 `VERSION_TAIL_TOKENS` 与 `release_code_from_filename`。两份本机参考项目只作行为证据：sakuramediabe `src/service/transfers/imports/import_service.py` 加 `src/common/movie_numbers.py` 的 `subtitle_matches_movie_number`（限同目录、纯番号匹配、无同名兜底），NeoAVDC `src/main/media/organizeMedia.ts` 加 `src/main/number/parseNumber.ts` 的 `SUBTITLE_EXTS`／`isSubtitleFile`（`.srt .ass .sub .vtt .ssa`，按视频主名前缀跟随）。Peach 的三条判据正是这两者的并集加顺序 | `subtitles.py` 只做三件事：同目录配对（exact／suffix／code／orphan，跨目录一律不算）、`asset_subtitle` 幂等登记、srt/ass/ssa → WebVTT。转换不外包：`pysubs2` 会为一件几十行的事引入运行时依赖，而已经在管的 FFmpeg 要为每次取字幕起一个子进程、失败只给退出码，说不出「这份字幕的编码认不出来」——而编码恰是这个库最常踩的一项（GBK／Big5／Shift_JIS 各有）。`gb18030` 明确不用：它几乎吞下任何字节，放进来就再也报不出「认不出编码」。内封字幕轨不在这条里，现有 `probe.py` 只取 `v:0`，没有任何流信息落库 |
 | 分卷文件命名 | [Plex 官方命名](https://support.plex.tv/articles/naming-and-organizing-your-movie-media-files/)的 `cd/disc/disk/dvd/part/pt + 数字` 与 [Kodi 官方 File Stacking](https://kodi.wiki/view/File_stacking)只作行为证据；运行时复用当前树的 `part_marker`，不新增扫描器依赖 | 兼容馆藏已有的裸数字和 A–H 后缀；仅连续、唯一标记自动合卡，保留每个 asset 和播放会话，不拼接或改写媒体 |
@@ -279,7 +274,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 视频出处/片尾证据 | 现有 FFmpeg 抽帧 + Windows.Media.Ocr WinRT Provider（Windows PowerShell 5.1 固定适配器） | 有界首尾采样、缓存、来源/Full version 分类、健康统计与人工复核 |
 | 参考产品行为 | 当前线上交互 + 有版本的公开 DOM/CSS/JS；取不到源码时用精确截图测量 | 证据登记、无障碍、Peach 差异、回归检查 |
 | 浏览器历史解析 | `browserexport==0.4.4`（已替换 `taste_history.py` 自写的 Chrome/Firefox/Zen/Safari SQLite 解析） | Python 3.14 依赖解析通过；POC 在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致，macOS 的 Safari／Zen／Firefox／Chrome 路径发现有独立测试。首个消费者是 `/taste` 的本机读取与导出导入；Peach 保留 SQLite backup、Takeout、私有原始存储、域名分析和 candidate 生成，并在 Windows 自己关闭只读连接以避开依赖的文件句柄滞留。跨主机同步不由该依赖提供，仍须显式导出、传输和按来源去重合并。 |
-| 批处理进程锁 | `portalocker==4.3.0` 的 `PidFileLock`，**仍是候选，尚未替换 `jobs.PidFileLock`** | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。Peach 只保留任务归属和错误文案映射。替换落地前不得声明依赖已进入生产。 |
+| 批处理进程锁 | 候选 `portalocker==4.3.0` 的 `PidFileLock`；生产仍是 `src/peach/jobs.py::PidFileLock` | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。替换时 Peach 只保留任务归属和错误文案映射；落地前不算已进入生产的依赖。 |
 | Rule34Video 媒体页解析 | `yt-dlp==2026.8.19`（已部分替换自写解析） | 对真实视频 4533145 无写入提取成功，取得 4 个格式、31 个标签、缩略图与时间。Peach 仍负责作者分页、合集/超多 model 排除、来源分组和跨站去重。 |
 | Rule34.xxx / Paheal 高清封面 | 固定参考 gallery-dl `86047cf67a12bdb6ff1085774f8ad9fc347e8da9`（GPL-2.0，只作协议行为证据，不引入运行时）；运行时复用现有 FFmpeg | booru URL 明确支持 `sample_url`/`preview_url`/`file_url` 回退，Paheal 抽取器只取得原始 `file_url`。真实 POC 中 Rule34.xxx 历史 preview 为 250×141、同哈希 sample 为 1920×1080；Paheal 页面只有低清 poster/og:image，原视频可生成 1280×720 JPEG。视频缩略图工具 ffmpegthumbnailer 默认取 10% 位置，Peach 不再引入 GPL 运行时；直接复用 FFmpeg `blackframe` 导出的 `lavfi.blackframe.pblack`，在开头 30 秒选第一张黑色像素低于 98% 的帧，并用版本化缓存键淘汰旧黑帧。Peach 继续负责 URL 白名单、同源代理、按需双并发抽帧、缓存与低清失败回退，不新增依赖、不改 ledger。 |
 | FANBOX 正文解析 | PixivUtil2 `v20251112` / `e537e96` 的公开正文模型（BSD-2-Clause，只复用数据模型，不引入整套下载器） | Peach 的独立规范化 DTO 已覆盖 image/text/file/article/video/entry、`fileMap`、`embedMap`、`urlEmbedMap` 和旧 HTML 正文，并保留正文顺序、稳定去重、可播放媒体与文件页边界；许可证依据写在实现头部。PixivUtil2 是完整下载器而非可嵌入解析库，因此不引入整套依赖；传输继续固定 `curl_cffi==0.16.2`。真实公开帖 12228983 只读 POC 得到 article、6 图和 Gofile `OS2Qz9`。 |
