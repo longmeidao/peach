@@ -138,17 +138,17 @@ ASPECT_SLACK = 1.1
 #: 2000×662 的横向字标，那是字标不装这里。FC2 站上自己的大资产只有 189×68、690×68 两条
 #: 横向字标，缩到 160 px 认不出。
 #:
-#: 剩下 26 条来自 jae.tokyo（Japan Adult Expo 2014／2015／2017 的参展厂牌名录），
+#: 剩下 22 条来自 jae.tokyo（Japan Adult Expo 2014／2015／2017 的参展厂牌名录），
 #: 用户 2026-09-04 指定的来源。名录每届各带一套厂商 logo：2017 是 320×320，2015 是
 #: 188×188，2014 是 270×180，同一家出现在多届时取像素最多的那一届。键一律写账本
 #: canonical_name，名录上厂牌自称的写法只用来认人：名录写 `ムーディーズ`、账本写
 #: `MOODYZ`，落盘名跟账本走。2016 那届只有图没有名字，认不出是谁家的，不取。
-#: 这 26 家在账本里一张图都没有，且绝大多数连一条 official／catalog 链接都没有——
+#: 这些厂牌在账本里一张图都没有，且绝大多数连一条 official／catalog 链接都没有——
 #: favicon 那条路走不到它们，所以小位也从这一张烤（见 `icon_from_logo`）。
+#: 展会名录只是权宜之计：厂牌自己的名录交的是同一枚标识的当期版本，两边都有的按
+#: `WORDMARK_SOURCES` 走。`シロウトTV` 的大位在这里，小位另有指定（`ICON_SOURCES`）。
 LOGO_SOURCES: dict[str, str] = {
     "FC2-PPV": "https://images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png",
-    "ラグジュTV": "http://www.jae.tokyo/jae2017/images/maker/maker_image/036.png",
-    "BAZOOKA": "http://www.jae.tokyo/jae2017/images/maker/maker_image/009.png",
     "Prestige": "http://www.jae.tokyo/jae2017/images/maker/maker_image/023.png",
     "JET Eizo": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
     "MOODYZ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/054.png",
@@ -159,7 +159,6 @@ LOGO_SOURCES: dict[str, str] = {
     "DOC": "http://www.jae.tokyo/jae2017/images/maker/maker_image/025.png",
     "MAXING": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/MAXING_logo.jpg",
     "SOD Create": "http://www.jae.tokyo/jae2015/images/maker/11_sod.png",
-    "million": "http://www.jae.tokyo/jae2017/images/maker/maker_image/011.png",
     "Baltan": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/baltan_logo.jpg",
     "BeFree": "http://www.jae.tokyo/jae2015/images/maker/17_befree.png",
     "Dogma": "http://www.jae.tokyo/jae2015/images/maker/34_dogma.png",
@@ -170,7 +169,6 @@ LOGO_SOURCES: dict[str, str] = {
     "ゲッツ！！ボンボン/妄想族": "http://www.jae.tokyo/jae2017/images/maker/maker_image/029.png",
     "シロウトTV": "http://www.jae.tokyo/jae2017/images/maker/maker_image/034.png",
     "PREMIUM": "http://www.jae.tokyo/jae2015/images/maker/27_premium.png",
-    "俺の素人": "http://www.jae.tokyo/jae2017/images/maker/maker_image/018.png",
     # 妄想族自家发行目录 `mousouzoku-av.com/maker/list/<50音>/`（用户 2026-09-04 指定），
     # 213 家一律 `contents/maker/id<N>/logo_l.jpg`、200×200 真方标——这一位要的正是方的，
     # 不必烤。目录里 173 家挂 妄想族、39 家挂 エマニエル，都是同人／独立厂牌，
@@ -192,14 +190,16 @@ LOGO_SOURCES: dict[str, str] = {
 #: 宽扁图进去只剩正中间那几个字母。`MIN_LOGO_SHORT_EDGE` 拦下 406×86 拦得对——
 #: 问题不在 96 这个数，在于宽扁字标根本不该走那条原样装的路。
 #:
-#: 来源是 MGStage 的厂牌名录 `/ppv/makers.php`（用户 2026-09-04 指定），十一页 351 家，
-#: 由 `harvest_maker_directories.py` 对账后人工确认。站上有两种规格（2026-09-04 量过）：
-#: 通用的 `pc/<slug>.gif` 是 180×54 白底纯字标，首页轮播位另有 `pc/top/<slug>.jpg`
-#: 400×80／406×86，29 家对上账本的里 7 家有。取的一律是前者，理由见下面 Jackson 那条。
+#: 来源是 `harvest_maker_directories.py` 那三个厂牌名录（用户 2026-09-04 与 09-22 指定），
+#: 对账后人工确认。MGStage `/ppv/makers.php` 十一页 351 家，站上有两种规格
+#: （2026-09-04 量过）：通用的 `pc/<slug>.gif` 是 180×54 白底纯字标，首页轮播位另有
+#: `pc/top/<slug>.jpg` 400×80／406×86。取的一律是前者，理由见下面 Jackson 那条。
+#: Prestige `/api/maker` 的 `api/media/maker/banner-<slug>.jpg` 一律 200×55；KMP `/label`
+#: 的 `img2018/label/<slug>/logo.svg` 是矢量，栅格到多大都清晰。
 #:
-#: 只收当前**一张图都没有**的厂牌。已装的那些多来自 jae.tokyo 名录（320×320 的真方标），
-#: 拿 180×54 的字标去换是降级；而补白过的厂牌本来就在目标集里，收进来只会把它们
-#: 悄悄换成另一张补白图。
+#: **收已有图的厂牌要逐张比过。** 名录版未必更大：jae.tokyo 那批展会图是 320×320 的
+#: 真方标，换成 180×54 的字标是降级。用户 2026-09-22 逐张看过对比图后点名换的五家在
+#: 下面各自带一条判词，其余已有图的厂牌不收。
 #:
 #: `きらきらワイフ` 与 `おっぱいちゃん` 不在表里：对账时它们只走到「前缀候选」，撞上的
 #: `kira*kira` 和 `OPPAI` 是另外两家真实厂牌，而这两家都已经有图，收进来只有装错的风险。
@@ -209,10 +209,11 @@ WORDMARK_SOURCES: dict[str, str] = {
     "HMJM": "https://static.mgstage.com/mgs/img/pc/hmjm.gif",
     "Ienergy": "https://static.mgstage.com/mgs/img/pc/ienergy.gif",
     "いんすた": "https://static.mgstage.com/mgs/img/pc/insta.gif",
-    # 首页轮播位那份 `top/jackson.jpg` 大一倍（400×80），但它是带洋红底的横幅：
-    # 烤成方图后上下补出两大块洋红，标识本身只剩正中一条。通用位这份是白底透明的
-    # 纯字标，小四倍也是对的那一张。大不等于好——2026-09-04 两份都烤出来比过。
-    "Jackson": "https://static.mgstage.com/mgs/img/pc/jackson.gif",
+    # Jackson 是 Prestige 旗下 label，母公司名录那份 `banner-jackson.jpg` 是 1024×346、
+    # 白底的纯字标，烤成方图落地 1024×1024（2026-09-22 实测）。MGStage 同一家有两份：
+    # `pc/jackson.gif` 180×54，首页轮播位 `pc/top/jackson.jpg` 400×80 带洋红底，烤方后
+    # 上下补出两大块洋红。三份里只有母公司这一份既是白底纯字标又够大。
+    "Jackson": "https://www.prestige-av.com/api/media/maker/banner-jackson.jpg",
     "まんまんランド": "https://static.mgstage.com/mgs/img/pc/manmanland.gif",
     "Planet Plus": "https://static.mgstage.com/mgs/img/pc/planetplus.gif",
     "Radix": "https://static.mgstage.com/mgs/img/pc/radix.gif",
@@ -230,6 +231,33 @@ WORDMARK_SOURCES: dict[str, str] = {
     # 那四条链都是从链接出发的，对它一条都启动不了。母公司名录 `/api/maker` 里有它
     # 200×55 的白底字标（2026-09-22 实测），番号 `200GANA` 与账本那 9 部对得上。
     "ナンパTV": "https://www.prestige-av.com/api/media/maker/banner-nanpa.jpg",
+    # ラグジュTV 同属 Prestige。这一条是这五家里唯一的降分辨率：名录版 200×55 烤方后
+    # 落地 200×200，展会那份是 413×413。用户 2026-09-22 看过两版后仍指定名录版——
+    # 展会图是 2017 年那一届交的，名录版是厂牌现在挂在自己站上的那一枚。
+    "ラグジュTV": "https://www.prestige-av.com/api/media/maker/banner-lux.jpg",
+    # 下面三家是 KMP 旗下 label，`/label` 名录给的是 SVG。矢量没有固有像素，栅格到
+    # `link_marks.VECTOR_RASTER_SIZE` 就是 512×192，烤方落地 512×512，比展会那批
+    # 416～421 的位图大且是矢量源（2026-09-22 实测）。白字标由 `bake_square` 配深底。
+    "million": "https://www.km-produce.com/img2018/label/million/logo.svg",
+    "BAZOOKA": "https://www.km-produce.com/img2018/label/bazooka/logo.svg",
+    "俺の素人": "https://www.km-produce.com/img2018/label/oreshiro/logo.svg",
+}
+
+
+#: 指定的**方标**来源，按 canonical_name。只管 `icon` 位，大位仍由 `LOGO_SOURCES`
+#: 或发现流程出——这是它和另外两张表的全部区别：那两张都是一张图管两位。
+#:
+#: 存在的理由只有一个形态：厂牌交出来的那张图里，方标和字标是并排的两块，而两个位置
+#: 要的是不同的那一块。`シロウトTV` 是实测样本——名录版 200×55 里左边是黑框「素」方标
+#: （主体 41×49，内容比 1.20），右边是「シロウトTV」横排字标。`bake_square` 的
+#: `refit_plate` 按内容裁一遍，落地 64×64 正好是那枚「素」（2026-09-22 实测），顶
+#: 28 px 的筛选片和 32 px 的圆片够用；而展会那份 414×414 的横条字标缩到 28 px 只剩
+#: 一团糊，它该待的位置是 160 px 的大位。
+#:
+#: 键可以和 `LOGO_SOURCES` 重合——两位各取各的正是这张表的用途；和
+#: `WORDMARK_SOURCES` 不能重合，那一张已经把两位都占了。
+ICON_SOURCES: dict[str, str] = {
+    "シロウトTV": "https://www.prestige-av.com/api/media/maker/banner-shiroutotv.jpg",
 }
 
 
@@ -245,11 +273,13 @@ LOGO_SOURCES_BY_SAFE = {safe_name(name): url for name, url in LOGO_SOURCES.items
 WORDMARK_SOURCES_BY_SAFE = {safe_name(name): url
                             for name, url in WORDMARK_SOURCES.items()}
 
-#: 同一张表的反向索引：安全文件名 → canonical_name。没有链接的厂牌拿不到别的名字，
+ICON_SOURCES_BY_SAFE = {safe_name(name): url for name, url in ICON_SOURCES.items()}
+
+#: 三张表的反向索引：安全文件名 → canonical_name。没有链接的厂牌拿不到别的名字，
 #: 复核件上的 `studio` 列只能从这里取；`safe.replace("_", " ")` 对日文名会还原成一排
 #: 下划线，那一列就认不出是谁了。
 LOGO_SOURCE_NAMES = {safe_name(name): name
-                     for name in (*LOGO_SOURCES, *WORDMARK_SOURCES)}
+                     for name in (*LOGO_SOURCES, *WORDMARK_SOURCES, *ICON_SOURCES)}
 
 
 def padded_studios(logo_root: Path) -> dict[str, dict[str, object]]:
@@ -300,6 +330,46 @@ def small_installed_marks(logo_root: Path) -> dict[str, dict[str, str]]:
     return small
 
 
+def installed_source(logo_root: Path, safe: str, variant: str) -> str | None:
+    """`<safe>.<variant>.img` 是从哪个地址装的；没有边车或边车没记就返回 None。"""
+    sidecar = logo_root / f"{safe}.{variant}.img.provenance.json"
+    try:
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    url = record.get("source_url")
+    return url if isinstance(url, str) and url else None
+
+
+def restated_sources(logo_root: Path) -> dict[str, dict[str, str]]:
+    """指定表改了地址、装着的还是先前那一张的厂牌。
+
+    `harvest_targets` 按「有没有 `<safe>.img`」收人，改掉表里的 URL 单靠那一条收不到：
+    文件在，人就进不来，复核件上连一行都不会出现。装图时写的 provenance 边车记着这一份
+    是从哪个地址装的，和表里现在写的对不上就说明指定换过了，该再取一趟。装完边车就和
+    表一致，下一轮它自己退出目标集——重跑不会反复敲同一扇门。
+
+    没有边车的不收：那些文件不是这条路装的，来源无从比对，收进来等于拿指定表去盖掉
+    另一条线的成果。
+    """
+    wanted: dict[str, dict[str, str]] = {}
+    for table, variant in ((LOGO_SOURCES_BY_SAFE, LOGO),
+                           (WORDMARK_SOURCES_BY_SAFE, LOGO),
+                           (ICON_SOURCES_BY_SAFE, ICON)):
+        for safe, url in table.items():
+            if installed_source(logo_root, safe, variant) in (None, url):
+                continue
+            path = logo_root / f"{safe}.{variant}.img"
+            try:
+                size = images.measure_image_size(path.read_bytes())
+            except OSError:
+                size = None
+            wanted[safe] = {
+                "original_size": f"{size[0]}x{size[1]}" if size else "",
+                "installed": path.name}
+    return wanted
+
+
 def harvest_targets(padded: dict[str, dict[str, object]],
                     links: dict[str, list[dict[str, str]]],
                     logo_root: Path) -> dict[str, dict[str, str]]:
@@ -314,9 +384,12 @@ def harvest_targets(padded: dict[str, dict[str, object]],
     的一份，见 `small_installed_marks`。落盘另有一道 `_shorter_than_installed` 守卫，
     所以再问一趟只可能换上更大的，问不到更大的就在复核件上留一行判词。
 
-    指定 logo 来源自己就是入场理由。jae.tokyo 那 26 家在账本里没有任何链接，按「有链接」
-    收目标一条都收不到，而这一位的图早就指好了在哪。`WORDMARK_SOURCES` 同理：那 12 家
+    指定 logo 来源自己就是入场理由。jae.tokyo 那批在账本里没有任何链接，按「有链接」
+    收目标一条都收不到，而这一位的图早就指好了在哪。`WORDMARK_SOURCES` 同理：那些厂牌
     连链接带图一样都没有，图的位置也已经指好了。
+
+    指定表改了地址是第四条入场理由（`restated_sources`）：那些厂牌图都装着，前三条
+    一条都收不到它们。
     """
     targets: dict[str, dict[str, str]] = {}
     for safe, original in padded.items():
@@ -325,6 +398,8 @@ def harvest_targets(padded: dict[str, dict[str, object]],
             "original_size": f"{width}x{height}" if width and height else "",
             "installed": f"{safe}.img"}
     for safe, measured in small_installed_marks(logo_root).items():
+        targets.setdefault(safe, dict(measured))
+    for safe, measured in restated_sources(logo_root).items():
         targets.setdefault(safe, dict(measured))
     for safe in list(links) + list(LOGO_SOURCES_BY_SAFE) + list(WORDMARK_SOURCES_BY_SAFE):
         if safe in targets or (logo_root / f"{safe}.img").exists():
@@ -968,6 +1043,45 @@ def wordmark_source_rows(safe: str, target: dict[str, str], fetch, candidate_dir
     return icon, logo
 
 
+def icon_source_row(safe: str, target: dict[str, str], fetch, candidate_dir: Path
+                    ) -> dict[str, object] | None:
+    """指定方标来源的 `icon` 一行；这个厂牌没有指定方标来源就返回 None。
+
+    和字标那条的区别只在出几行：这一张只管小位，大位仍由 `logo_row` 或发现流程出。
+    源图里方标和字标并排时，`bake_square` 的 `refit_plate` 按内容裁一遍，落地的正是
+    方标那一块——`シロウトTV` 的 200×55 落成 64×64 就是这么来的。
+    """
+    url = ICON_SOURCES_BY_SAFE.get(safe)
+    if not url:
+        return None
+    kind = "icon-source"
+    got = fetch(url)
+    if got is None:
+        return _row(safe, target, None, ICON, MISSING, url=url, link_kind=kind,
+                    evidence="指定的方标来源一份字节都没取回来")
+    source = link_marks.decode(got[0], got[1])
+    if source is None:
+        return _row(safe, target, None, ICON, MISSING, url=url, link_kind=kind,
+                    evidence="指定的方标来源解不开")
+    plate = images.bake_square(_as_png(source))
+    square = link_marks.decode(plate) if plate else None
+    if square is None:
+        return _row(safe, target, None, ICON, MISSING, url=url, link_kind=kind,
+                    mark_size=f"{source.size[0]}x{source.size[1]}",
+                    evidence="指定的方标来源烤不成方图")
+    if min(square.size) < MIN_SHORT_EDGE:
+        return _row(safe, target, None, ICON, TOOSMALL, url=url, link_kind=kind,
+                    mark_size=f"{square.size[0]}x{square.size[1]}",
+                    evidence=f"裁出来的方标短边 {min(square.size)} < {MIN_SHORT_EDGE}")
+    payload = _as_png(square)
+    return _row(safe, target, None, ICON, OK, url=url, link_kind=kind,
+                mark_size=f"{square.size[0]}x{square.size[1]}",
+                content_aspect=f"{link_marks.content_aspect(square):.2f}",
+                sha256=hashlib.sha256(payload).hexdigest(),
+                candidate=str(_store(candidate_dir, f"{safe}.png", payload)),
+                evidence=f"指定的方标来源（{source.size[0]}x{source.size[1]}）裁出方标")
+
+
 def harvest(targets: dict[str, dict[str, str]],
             links: dict[str, list[dict[str, str]]],
             fetch, candidate_dir: Path, faces=None,
@@ -975,6 +1089,9 @@ def harvest(targets: dict[str, dict[str, str]],
     """每个目标厂牌出一行 `icon`；有指定 logo 来源或走了字标补白的再出 `logo` 行。
 
     有指定字标来源的厂牌只走那一条，两行都从同一张方图出（`wordmark_source_rows`）。
+
+    有指定**方标**来源的厂牌，小位走那一条、大位照常（`icon_source_row`）：两个位置
+    要的是源图里并排的不同那一块时，只有分开指才对得上。
 
     小位自己没做成、大位的指定来源做成了时，小位从大位那张烤（`icon_from_logo`）。
 
@@ -996,8 +1113,11 @@ def harvest(targets: dict[str, dict[str, str]],
             continue
         name = (entries[0]["studio"] if entries
                 else LOGO_SOURCE_NAMES.get(safe, safe.replace("_", " ")))
-        icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir, faces,
-                                       (avatars or {}).get(name, ""))
+        wordmark_logo = None
+        icon = icon_source_row(safe, target, fetch, candidate_dir)
+        if icon is None:
+            icon, wordmark_logo = icon_row(safe, target, entries, fetch, candidate_dir,
+                                           faces, (avatars or {}).get(name, ""))
         logo = logo_row(safe, target, entries, fetch, candidate_dir)
         if (logo is not None and logo["verdict"] == OK
                 and icon["verdict"] not in INSTALLABLE):
@@ -1010,12 +1130,22 @@ def harvest(targets: dict[str, dict[str, str]],
     return rows
 
 
+#: 三张指定来源表在复核件上的 `link_kind`。这些行的图是人指的，不受「只认更大的」
+#: 那道守卫约束，理由见 `_shorter_than_installed`。
+PINNED_KINDS = ("logo-source", "wordmark-source", "icon-source")
+
+
 def _shorter_than_installed(destination: Path, payload: bytes) -> bool:
     """已经装着的那一份更大，这一枚就别覆盖它。
 
     取数抖一下这一趟就只剩声明的小图标：krone-web.jp 在 2026-09-05 那一次一份字节都没
     回来，于是 968 的方标被 253 顶掉，而复核件上那一行写的是 `ok`——看不出刚刚发生的是
     一次网络故障。装图这一步只认更大的，重跑一趟就自己修好。
+
+    这道守卫防的是自动发现那条链的抖动，所以指定来源不过它（`PINNED_KINDS`）：那些
+    地址是人逐张看过之后写进表里的，换一张小的也是想要的结果。`シロウトTV` 的小位
+    正是这种——展会那份 414×414 的横条字标在 28 px 的筛选片上只剩一团糊，换上的
+    64×64 方标小得多，却是那个位置该有的东西。
     """
     if not destination.exists():
         return False
@@ -1052,8 +1182,9 @@ def install(rows: list[dict[str, object]], logo_root: Path) -> list[str]:
         base = logo_root / f'{row["safe"]}.img'
         if not base.exists():
             targets.append(base)
+        pinned = row.get("link_kind") in PINNED_KINDS
         for destination in targets:
-            if _shorter_than_installed(destination, payload):
+            if not pinned and _shorter_than_installed(destination, payload):
                 continue
             staging = destination.with_name(f"{destination.name}.{uuid.uuid4().hex}.tmp")
             staging.write_bytes(payload)
