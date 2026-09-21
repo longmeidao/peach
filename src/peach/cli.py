@@ -591,9 +591,11 @@ def _tunnel(args: argparse.Namespace) -> int:
         https_port=origin_port,
     )
     manager = tunnel.TunnelManager(state_dir, log_dir, wait_timeout=args.timeout)
-    snapshot = manager.start(plan)
-    print(f"临时链接：{snapshot.url}", flush=True)
+    # 启动握手本身也要在 try 里：Ctrl-C 打在等待边缘连接的那几十秒上时，子进程已经
+    # 起来了，只有走到 finally 才收得掉。
     try:
+        snapshot = manager.start(plan)
+        print(f"临时链接：{snapshot.url}", flush=True)
         while manager.snapshot().state == "running":
             time.sleep(1)
     except KeyboardInterrupt:

@@ -87,13 +87,16 @@ class PeachSettings:
     mdns_port: int = 80
     mdns_address: str | None = None
     tls_enabled: bool = False
-    #: Quick Tunnel 由应用进程管理；默认关闭，打开前由 tunnel 模块检查访问密码。
-    tunnel_enabled: bool = TUNNEL_ENABLED
-    tunnel_binary: str = CLOUDFLARED_BINARY
+    #: Quick Tunnel 由应用进程管理，公网入口不能从默认值打开：这两项只由 `cli._serve`
+    #: 从设置文件读出后注入，`create_app()` 自己构造的设置一律是关闭加空路径。
+    tunnel_enabled: bool = False
+    tunnel_binary: str = ""
     tunnel_standalone: bool = False
     tunnel_lan_address: str | None = None
-    #: Tunnel origin 的实际端口；None 表示独立包取设置文件端口，源码取 443。
+    #: Tunnel origin 的实际端口；源码部署留 None 表示标准 HTTPS 端口。
     tunnel_origin_port: int | None = None
+    #: 源码部署的 Tunnel origin 走本机 HTTPS，cloudflared 用这份项目 CA 校验它。
+    tunnel_ca_path: Path = SECRETS_DIR / "tls" / "peach-local-ca.crt"
     tunnel_state_root: Path = STATE_DIR
     tunnel_log_root: Path = LOG_DIR
     #: 这台机器跑过 `peach init` 了没有。`/healthz` 与首页据此决定是否弹首次运行提示。
