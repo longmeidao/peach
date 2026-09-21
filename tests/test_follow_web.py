@@ -3235,7 +3235,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("存成运行 Peach 那台电脑上的一个文件。", creds)
         # Windows 那句要把后果说出来，不能只报一个「不收紧权限」的动作。
         self.assertIn("在 Windows 上它不额外加锁，能登录那台电脑的人都能打开。", creds)
-        self.assertIn('<p className="font-mono text-caption-1-regular break-all text-text-tertiary">{row.path}</p>',
+        # 路径旁边给一颗打开它的键：凭据文件要人自己去编辑，照着路径再翻一遍是白翻。
+        self.assertIn('<PathLine path={row.path} className="font-mono text-caption-1-regular text-text-tertiary"',
                       creds)
         self.assertIn('{row.world_readable ? <Note tone="error" title="凭据文件权限过宽">', creds)
 
@@ -3247,7 +3248,7 @@ class FollowWebSourceTests(unittest.TestCase):
         creds = self.read_react("follow-manage/credentials.tsx")
         tail = creds[creds.index("export function Credentials("):]
         self.assertIn("<b className=\"text-body-medium text-text-primary\">{STORAGE_TITLE}</b>", tail)
-        self.assertIn("{`凭据文件在 ${data.root}`}", tail)
+        self.assertIn('<PathLine path={data.root} prefix="凭据文件在 "', tail)
         # 排在凭据列表末尾：先是逐站那一叠，这段说明跟在它后面，同在正文流里。
         self.assertLess(tail.index("<CredentialSection"), tail.index("{STORAGE_TITLE}"))
         for machinery in ("popover", "role=\"dialog\"", "innerWidth"):

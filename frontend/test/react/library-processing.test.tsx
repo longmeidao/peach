@@ -185,11 +185,20 @@ it('失败时把问题清单折叠进错误提示，重试只交失败的那些�
   expect(details.querySelector('li a')?.getAttribute('href')).toBe('/item/7');
   expect(details.querySelector('li')?.textContent).toContain('样品.mp4');
   expect(details.querySelector('li code')?.textContent).toBe('R:\\Media\\样品.mp4');
-  expect(details.querySelector('p')?.textContent).toContain(LOG);
   // 清单自己那条滚动条走全站那份覆盖式的，不留系统灰柱子。
   const list = details.querySelector('ul')!;
   expect(list.dataset.overlayScrollbar).toBe('true');
   expect(list.parentElement?.querySelector('.ovtrack')).not.toBeNull();
+  /* 同一块红底上叠着三段：结论、清单、日志地址。条与条、段与段之间各横一条线，
+     不然几十条同样长短的明细连成一片，看不出哪一条结束了。 */
+  expect(list.querySelector('li')!.className).toContain('border-b');
+  expect(details.parentElement?.className).toContain('border-t');
+  // 完整记录是出事之后自己去翻的东西，退回灰字，旁边给一颗打开它的键。
+  const log = details.querySelector('p')!;
+  expect(log.textContent).toBe(`完整记录：${LOG}`);
+  expect(log.closest('.text-text-secondary')).not.toBeNull();
+  expect(log.closest('.border-t')).not.toBeNull();
+  expect(details.querySelector('button[aria-label="在资源管理器中显示"]')).not.toBeNull();
   // 这一趟该做的事是把没做完的补上，页脚不再摆「重新跑一整批」。
   expect(buttonNamed('扫描并补全资料', host)).toBeNull();
 

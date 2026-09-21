@@ -14,6 +14,7 @@ import { errorMessage } from '../../api';
 import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { Note } from '../components/note';
+import { PathLine } from '../components/path-line';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import { Disclosure, ErrorText, ExternalLink, Help } from '../settings/section';
@@ -101,7 +102,9 @@ function CredentialForm({ row, readOnly, toast }:
       {(row.shared_fields || []).length
         ? <Help>{`${row.shared_fields!.join('、')} 是从共享副本回填的，本机没有单独存。清除会把两边一起删。`}</Help>
         : null}
-      <p className="font-mono text-caption-1-regular break-all text-text-tertiary">{row.path}</p>
+      {row.path
+        ? <PathLine path={row.path} className="font-mono text-caption-1-regular text-text-tertiary" onRevealed={toast} />
+        : null}
       {row.world_readable ? <Note tone="error" title="凭据文件权限过宽">{WORLD_READABLE}</Note> : null}
     </div>
   );
@@ -167,7 +170,8 @@ export function Credentials(
       <div className="flex flex-col gap-1">
         <b className="text-body-medium text-text-primary">{STORAGE_TITLE}</b>
         <span className="text-body-2-regular text-text-secondary">{STORAGE_BODY}</span>
-        <span className="text-body-2-regular text-text-secondary">{`凭据文件在 ${data.root}`}</span>
+        <PathLine path={data.root} prefix="凭据文件在 " className="text-body-2-regular text-text-secondary"
+          onRevealed={toast} />
       </div>
     </div>
   );

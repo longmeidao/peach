@@ -10,6 +10,7 @@ import { Switch } from '@/components/base/switch/switch';
 
 import { apiSend } from '../../api';
 import type { AutomaticUpdateState, ConfigurationFact, ConfigurationGroupProps, UninstallState } from '../bundle';
+import { PathLine } from '../components/path-line';
 import { MediaRepair } from './media-repair';
 import { ReleaseUpdates } from './release-updates';
 import { Disclosure, ErrorText, ExternalLink, Fact, FactList, Footer, Help, Rows, Section, Stack } from './section';
@@ -24,7 +25,7 @@ export function MaintenanceSettings({ data, receipt }: ConfigurationGroupProps) 
       {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
       <MediaRepair />
       <Facts facts={data.facts} />
-      {data.uninstall ? <UninstallSettings uninstall={data.uninstall} /> : null}
+      {data.uninstall ? <UninstallSettings uninstall={data.uninstall} receipt={receipt} /> : null}
     </div>
   );
 }
@@ -88,7 +89,9 @@ function Facts({ facts }: { facts: ConfigurationFact[] }) {
   );
 }
 
-export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) {
+export function UninstallSettings(
+  { uninstall, receipt }: { uninstall: UninstallState; receipt(message: string): void },
+) {
   const [removeData, setRemoveData] = useState(false);
   const [accepted, setAccepted] = useState('');
   const remove = () => void confirmModal({
@@ -115,7 +118,9 @@ export function UninstallSettings({ uninstall }: { uninstall: UninstallState }) 
           完全卸载：同时删除设置、本地数据库、观看记录、凭据和缓存
         </Checkbox>
         <Disclosure summary="数据目录">
-          {paths.map((path) => <p key={path} className="text-body-2-regular break-all text-text-secondary">{path}</p>)}
+          {paths.map((path) => (
+            <PathLine key={path} path={path} className="text-body-2-regular text-text-secondary" onRevealed={receipt} />
+          ))}
         </Disclosure>
       </Stack>
       <Footer status={status ? <p role={accepted ? 'status' : undefined}>{status}</p> : null}>

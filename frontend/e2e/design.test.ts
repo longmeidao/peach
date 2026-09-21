@@ -463,6 +463,30 @@ describe('设计决定', () => {
         '问题清单没有铺满提示的宽度');
       assert.equal(geometry.client, geometry.offset, '原生滚动条还占着清单右边一列');
       assert.ok(geometry.track, '清单没有挂上全站那条覆盖式滚动条');
+      /* 同一块红底上叠着三段：结论、清单、完整记录。条与条之间要看得见界，完整记录
+         要退回灰字——它不是这条提示在说的事，是出事之后自己去翻的东西。 */
+      const layering = await alert.evaluate((element) => {
+        const context = document.createElement('canvas').getContext('2d')!;
+        const paint = (color: string) => {
+          context.clearRect(0, 0, 1, 1);
+          context.fillStyle = color;
+          context.fillRect(0, 0, 1, 1);
+          return [...context.getImageData(0, 0, 1, 1).data];
+        };
+        // `divide-y` 把线画在每条的下缘（末条除外），所以量的是第一条的下边。
+        const first = element.querySelectorAll('li')[0]!;
+        const log = element.querySelector('details p')!;
+        return {
+          divider: parseFloat(getComputedStyle(first).borderBottomWidth),
+          dividerInk: paint(getComputedStyle(first).borderBottomColor),
+          logInk: paint(getComputedStyle(log).color),
+          bodyInk: paint(getComputedStyle(element).color),
+        };
+      });
+      assert.ok(layering.divider > 0, '两条明细之间没有界，几十条连成一片');
+      assert.ok(layering.dividerInk[3]! < layering.bodyInk[3]!, '条间的线和正文一样实');
+      assert.ok([0, 1, 2].some((at) => Math.abs(layering.logInk[at]! - layering.bodyInk[at]!) > 8),
+        '完整记录还跟着提示是红的，读起来像又出了一件事');
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

@@ -25,6 +25,7 @@ import { apiSend, errorMessage } from '../../api';
 import type { LibraryProcessingProps } from '../bundle';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
+import { PathLine } from '../components/path-line';
 import { Progress } from '../components/progress';
 import { Disclosure } from '../settings/section';
 import { busyProps } from '../settings/use-action';
@@ -107,10 +108,10 @@ function ScanActions({ busy, onRun }: { busy: boolean; onRun(command: LibraryPro
 
 /** 卡片外面那一块：这一趟怎么了。逐条明细要展开才读，完整清单在状态给出的日志文件里。 */
 function Outcome(
-  { state, problem, settled, onRetry }:
+  { state, problem, settled, onRetry, toast }:
   {
     state: LibraryProcessingData; problem: string;
-    settled: LibraryProcessingData | null; onRetry(): void;
+    settled: LibraryProcessingData | null; onRetry(): void; toast(message: string): void;
   },
 ) {
   const details = issueDetails(state);
@@ -132,13 +133,20 @@ function Outcome(
               ? <Button variant="primary" size="small" onClick={onRetry}>重试未完成项</Button>
               : null}
             extra={details
-              ? <div className="pt-1">
+              /* 三层东西叠在同一块红底上：一句结论、一份清单、一条日志地址。各自之间
+                 横一条自己颜色的发丝线，读的人才看得出哪一段结束了——只靠间距的话，
+                 几十条同样长短的明细会连成一片。 */
+              ? <div className="mt-1.5 border-t border-current/20 pt-1.5">
                   <Disclosure summary={details.label}>
                     {/* 轨道是滚动容器的兄弟，得有一层只裹着清单的定位祖先给它落脚。 */}
                     <div className="relative">
-                      <ul ref={list} className="flex max-h-96 flex-col gap-2 overflow-y-auto pr-3">
+                      {/* 条间线画在每条自己身上，不用 `divide-y`：那一族的选择器裹在
+                          `:where()` 里没有特异性，压不过岛内 `@scope` 末尾那条把所有元素
+                          边框清零的 preflight，线会静默消失。 */}
+                      <ul ref={list} className="max-h-96 overflow-y-auto pr-3">
                         {details.items.map((item) => (
-                          <li key={item.key} className="flex flex-col gap-0.5">
+                          <li key={item.key}
+                            className="flex flex-col gap-0.5 border-b border-current/15 py-2 first:pt-1 last:border-b-0 last:pb-1">
                             {item.href
                               ? <a href={item.href} className="text-body-2-medium underline-offset-4 hover:underline">{item.label}</a>
                               : <span className="text-body-2-medium">{item.label}</span>}
@@ -148,8 +156,13 @@ function Outcome(
                         ))}
                       </ul>
                     </div>
-                    {details.footnote
-                      ? <p className="text-caption-1-regular break-all">{details.footnote}</p>
+                    {details.log
+                      /* 完整记录不是这条提示在说的事，它是出事之后自己去翻的东西：
+                         留在红底上但退回灰字，分隔线跟着它一起淡下去。 */
+                      ? <div className="mt-2 border-t border-separator-border pt-2 text-text-secondary">
+                          <PathLine path={details.log} prefix="完整记录：" className="text-caption-1-regular"
+                            onRevealed={toast} />
+                        </div>
                       : null}
                   </Disclosure>
                 </div>
@@ -161,8 +174,14 @@ function Outcome(
         ? <Note tone="success" title="处理完成">{receiptText(settled)}</Note>
         : null}
       {state.status !== 'running' && notes
-        ? <Note tone="neutral">
-            {notes}{state.issues_log ? ` 完整记录：${state.issues_log}` : ''}
+        ? <Note tone="neutral"
+            extra={state.issues_log
+              ? <div className="mt-1.5 border-t border-separator-border pt-1.5">
+                  <PathLine path={state.issues_log} prefix="完整记录：" className="text-caption-1-regular"
+                    onRevealed={toast} />
+                </div>
+              : null}>
+            {notes}
           </Note>
         : null}
     </div>
@@ -231,7 +250,7 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
           {retryable ? null : <ScanActions busy={busy} onRun={run} />}
         </footer>
       </section>
-      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} />
+      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} toast={toast} />
     </div>
   );
 }
