@@ -248,10 +248,12 @@ class TunnelPlanTests(unittest.TestCase):
         self.assertEqual(plan.mode, "named")
         self.assertEqual(plan.url, "https://peach.example.com")
         self.assertEqual(plan.origin.url, "https://peach.example.com")
-        self.assertEqual(plan.command[1:5], ("tunnel", "run", "--token", FAKE_TOKEN))
+        self.assertEqual(plan.command[1], "tunnel")
+        self.assertEqual(plan.command[-3:], ("run", "--token", FAKE_TOKEN))
         self.assertNotIn("--url", plan.command)
-        for option in ("--no-autoupdate", "--metrics"):
-            self.assertIn(option, plan.command)
+        run_index = plan.command.index("run")
+        for option in ("--no-autoupdate", "--loglevel", "--metrics"):
+            self.assertLess(plan.command.index(option), run_index)
         self.assertEqual(plan.command[plan.command.index("--metrics") + 1], "127.0.0.1:0")
 
     def test_a_standalone_package_refuses_the_named_mode(self):
@@ -325,6 +327,8 @@ class TunnelManagerTests(unittest.TestCase):
         self.temp.cleanup()
 
     def popen(self, command, **kwargs):
+        # `--pidfile` 是 `tunnel` 这一级的选项，得紧跟在子命令后面，落到 `run` 后面会被拒。
+        self.assertEqual(command[1:3], ["tunnel", "--pidfile"])
         pid_index = command.index("--pidfile") + 1
         Path(command[pid_index]).write_text("4123\n", encoding="ascii")
         process = _Process(_Stream("INF | Your quick Tunnel has been created! https://unit-7.trycloudflare.com\n"))
