@@ -122,12 +122,14 @@ it('卸载默认保留数据，勾选完全卸载后确认文案点名要删的�
   const modal = vi.spyOn(legacyUi, 'confirmModal');
   const fetcher = fetchMock(200, { message: 'Peach 将在几秒后退出并卸载。' });
   vi.stubGlobal('fetch', fetcher);
-  const host = await mount(<UninstallSettings uninstall={uninstall} />);
+  const host = await mount(<UninstallSettings uninstall={uninstall} receipt={vi.fn()} />);
   const area = host.querySelector('#uninstallPeach')!;
   expect(area.textContent).toContain('原始媒体文件保留');
   const full = area.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   expect(full.checked).toBe(false);
   expect([...area.querySelectorAll('details p')].map((p) => p.textContent)).toEqual(['fixture', 'fixture/cache']);
+  // 每条路径自己带一颗打开键：要删的是哪几个目录，看一眼比照着路径再翻一遍快。
+  expect([...area.querySelectorAll('details button[aria-label="在资源管理器中显示"]')]).toHaveLength(2);
   await click(buttonNamed('卸载 Peach', area));
   expect(modal.mock.calls[0]?.[0]).toMatchObject({ title: '卸载 Peach', danger: true, confirmLabel: '卸载 Peach' });
   expect(String(modal.mock.calls[0]?.[0].body)).toContain('设置、本地数据库、观看记录与缓存保留');

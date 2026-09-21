@@ -96,17 +96,67 @@ def media_library_list(request: Request, args: dict[str, str] = Depends(require_
                           for row in media_libraries.libraries(settings_file.active())]}
 
 
+def _own_data_path(raw: str) -> Path | None:
+    """把前端递回来的路径收回到 Peach 自己的数据目录里，越界的一律返回 `None`。
+
+    页面上看得见的本机路径只有这一类：凭据文件、问题日志、卸载会删的那几个目录，
+    全都是服务端按 `DIRECTORY_KEYS` 自己算出来发下去的。所以这里不信任递回来的那
+    一串，而是拿同一份设置重算一遍边界再比对——`resolve()` 之后 `..` 与符号链接都
+    已经落到真实位置上，能过这一关的只可能是服务端本来就展示过的东西。
+    """
+    from . import settings_file
+
+    if not raw.strip():
+        return None
+    config = settings_file.active()
+    try:
+        target = Path(raw).expanduser().resolve()
+    except OSError:
+        return None
+    for root in [config.data_root, *(config.directory(key) for key in settings_file.DIRECTORY_KEYS)]:
+        try:
+            resolved = root.resolve()
+        except OSError:
+            continue
+        if target == resolved or target.is_relative_to(resolved):
+            return target
+    return None
+
+
 @router.post("/api/reveal")
 def reveal(request: Request, body: dict[str, Any] = Body(default_factory=dict), args: dict[str, str] = Depends(require_auth)):
-    """在本机文件管理器里定位某个资产的源文件。
+    """在本机文件管理器里定位一个文件：媒体资产按 `id`，Peach 自己的数据按 `path`。
 
-    用于「跳过去自己整理网盘目录」：A:/B: 是 CloudDrive 挂上来的盘符，在
-    资源管理器里和本地目录没有区别。路径一律由服务端按 asset id 查出来——
-    `q_item` 刻意不把 `path` 发给前端，这里不能反过来让前端把路径传进来。
+    媒体那条用于「跳过去自己整理网盘目录」：A:/B: 是 CloudDrive 挂上来的盘符，在
+    资源管理器里和本地目录没有区别。它的路径一律由服务端按 asset id 查出来——
+    `q_item` 刻意不把 `path` 发给前端，这里不能反过来让前端把路径传进来，所以
+    `id` 在场时 `path` 连看都不看。
+
+    `path` 那条留给页面上本来就印着全路径的几处（凭据文件、问题日志、数据目录）：
+    人读到路径，下一步就是去那儿看一眼。边界仍在服务端（`_own_data_path`）。
 
     写不进 ledger，所以不受 reader 的只读闸门约束；但它会在**服务端所在的
     机器**上弹窗，从 Mac 浏览时弹在 Windows 那台，也正是文件所在的机器。
     """
+    if body.get("id") is None and body.get("path") is not None:
+        # 这一条的原因要一路显示到路径旁边，所以每种都自带一句中文：页面那层的统一错误
+        # 映射按状态码说话，410／501 落在它的表外，只剩一句「操作未完成」。
+        target = _own_data_path(str(body.get("path") or ""))
+        if target is None:
+            return JSONResponse({"error": "path not in the data root",
+                                 "message": "这个位置不归 Peach 管，只能自己打开"}, status_code=403)
+        if not target.exists():
+            return JSONResponse({"error": "file missing",
+                                 "message": "这个位置已经不在了"}, status_code=410)
+        try:
+            if not reveal_path(target):
+                return JSONResponse({"error": "unsupported platform",
+                                     "message": "这台机器上打不开文件管理器"}, status_code=501)
+        except OSError as error:
+            LOGGER.warning("reveal failed for %s: %s", target, error)
+            return JSONResponse({"error": "reveal failed",
+                                 "message": "打开文件管理器失败，请重试"}, status_code=500)
+        return {"ok": True, "path": str(target)}
     try:
         asset_id = int(body.get("id"))
     except (TypeError, ValueError):

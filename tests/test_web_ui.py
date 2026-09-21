@@ -5266,7 +5266,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
         self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
         # 凭据存放位置改由关注管理页自己的说明块直说，不再藏在一枚信息键后面。
-        self.assertIn("{`凭据文件在 ${data.root}`}",
+        self.assertIn('<PathLine path={data.root} prefix="凭据文件在 "',
                       (Path(__file__).resolve().parents[1]
                        / "frontend/src/react/follow-manage/credentials.tsx").read_text(encoding="utf-8"))
         self.assertPageContains('.geist-note>svg{width:16px;height:24px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}')
@@ -10082,7 +10082,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 提示排在任务卡之后，两块由外面这一层的 `gap` 分开。
         self.assertIn(
             "      </section>\n"
-            "      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} />",
+            "      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} toast={toast} />",
             card)
         self.assertIn("data-geist-fieldset data-cleanup-task data-cleanup-processing", card)
         # 空着时整块收起：`aria-live` 的容器留一条空轨道，卡片底下会凭空多出一个间距。
@@ -10107,7 +10107,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("label: issue.title || (issue.asset_id ? `视频 ${issue.asset_id}` : '媒体来源'),", data)
         self.assertIn("note: issue.message,", data)
         self.assertIn("hint: issue.path || '',", data)
-        self.assertIn("footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',", data)
+        self.assertIn("log: state.issues_log || '',", data)
         card = self.read_react("library-processing/library-processing-card.tsx")
         # 结论、重试键和这份清单都在同一条 Note 里：摆到外面就成了一句话加两块没有出处的东西。
         note, rest = card.split('<Note tone="error"', 1)
@@ -10115,8 +10115,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("重试未完成项", action)
         self.assertIn('<Button variant="primary" size="small" onClick={onRetry}>', action)
         self.assertIn("<Disclosure summary={details.label}>", extra)
-        self.assertIn("{details.footnote", extra)
         self.assertNotIn("<Disclosure", note)
+        # 结论、清单、日志地址三段各自划界：条与条之间也是，几十条明细连成一片就读不动了。
+        self.assertIn('<div className="mt-1.5 border-t border-current/20 pt-1.5">', extra)
+        # 条间线画在每条身上：`divide-*` 的选择器裹在 `:where()` 里，压不过岛内那条边框清零。
+        self.assertIn('className="max-h-96 overflow-y-auto pr-3"', extra)
+        self.assertIn('className="flex flex-col gap-0.5 border-b border-current/15 py-2'
+                      ' first:pt-1 last:border-b-0 last:pb-1"', extra)
+        # 完整记录退回灰字，旁边给一颗打开它的键：它是出事之后自己去翻的东西。
+        self.assertIn('<div className="mt-2 border-t border-separator-border pt-2 text-text-secondary">', extra)
+        self.assertIn('<PathLine path={details.log} prefix="完整记录：" className="text-caption-1-regular"', extra)
         # 清单自己滚，滚动条走全站那条覆盖式的。
         self.assertIn("attachOverlayScrollbar(list.current)", card)
 

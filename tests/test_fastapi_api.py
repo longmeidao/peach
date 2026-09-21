@@ -2132,6 +2132,40 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         reveal.assert_called_once_with(source)
 
+    async def test_reveal_by_path_stays_inside_peach_own_data_root(self):
+        """页面上印着全路径的那几处（凭据文件、问题日志、要删的数据目录）按 `path` 定位。
+
+        递回来的那一串只是候选：服务端拿同一份设置把数据根重算一遍再比对，所以往上爬
+        出去的、数据根外面的一律不开。媒体文件不走这条——它的路径压根没发给过前端。
+        """
+        from peach import settings_file
+
+        data_root = self.root / "peach-data"
+        log = data_root / "state" / "library-processing-one.issues.jsonl"
+        log.parent.mkdir(parents=True)
+        log.write_text("", encoding="utf-8")
+        outside = self.root / "elsewhere.txt"
+        outside.write_text("", encoding="utf-8")
+        config = settings_file.load_config(environ={"PEACH_DATA_ROOT": str(data_root)})
+        headers = {"X-Token": "secret"}
+        with patch("peach.settings_file.active", return_value=config), \
+                patch("peach.routes_api.reveal_path", return_value=True) as reveal:
+            opened = await self.client.post("/api/reveal", headers=headers, json={"path": str(log)})
+            refused = await self.client.post("/api/reveal", headers=headers, json={"path": str(outside)})
+            climbing = await self.client.post(
+                "/api/reveal", headers=headers,
+                json={"path": str(log.parent / ".." / ".." / "elsewhere.txt")})
+            gone = await self.client.post(
+                "/api/reveal", headers=headers, json={"path": str(log.parent / "gone.jsonl")})
+        self.assertEqual(opened.status_code, 200)
+        reveal.assert_called_once_with(log.resolve())
+        self.assertEqual(refused.status_code, 403)
+        self.assertEqual(climbing.status_code, 403, "`..` 爬出数据根的一样不开")
+        self.assertEqual(gone.status_code, 410)
+        # 410 与 403 在页面那层的通用错误映射里都没有说法，原因得由这条自己写成中文。
+        self.assertEqual(gone.json()["message"], "这个位置已经不在了")
+        self.assertIn("不归 Peach 管", refused.json()["message"])
+
     async def test_photo_thumbnail_is_generated_once_and_cached(self):
         source = self._seed_photo()
         headers = {"X-Token": "secret"}

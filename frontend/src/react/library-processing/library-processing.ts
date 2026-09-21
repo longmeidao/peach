@@ -122,7 +122,8 @@ export function currentLine(state: LibraryProcessingData): string {
 export interface IssueDetails {
   label: string;
   items: { key: string; label: string; href: string; note: string; hint: string }[];
-  footnote: string;
+  /** 完整记录的本机路径，原样一串：前缀文字和打开它的那颗键归页面，那里才知道摆在哪。 */
+  log: string;
 }
 
 export function issueDetails(state: LibraryProcessingData): IssueDetails | null {
@@ -139,7 +140,7 @@ export function issueDetails(state: LibraryProcessingData): IssueDetails | null 
       note: issue.message,
       hint: issue.path || '',
     })),
-    footnote: state.issues_log ? `完整记录：${state.issues_log}` : '',
+    log: state.issues_log || '',
   };
 }
 
