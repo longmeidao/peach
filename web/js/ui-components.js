@@ -361,9 +361,12 @@ function noteDetailsHtml({label='',items=[],footnote=''}={}){
     <ul>${items.map(line).join('')}</ul>${footnote?`<p>${esc(footnote)}</p>`:''}</details>`;
 }
 
-/** 数据管理子页的结果标题，只接收当前查询得到的读数。 */
-export function collectionSummaryHtml(label,value,detail=''){
-  return `<header class="collection-summary"><div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>${detail?`<p>${esc(detail)}</p>`:''}</header>`;
+/** 数据管理子页的结果标题，只接收当前查询得到的读数。
+    `pending` 是这次请求还没回来：标题那一句同步就有，等的只有读数，占位也就只盖读数
+    那一格，宽高定死，数字回来时这块面不改高度。 */
+export function collectionSummaryHtml(label,value,detail='',{pending=false}={}){
+  const figure=pending?'<span class="countskeleton"></span>':esc(value);
+  return `<header class="collection-summary"><div><span>${esc(label)}</span><strong>${figure}</strong></div>${detail?`<p>${esc(detail)}</p>`:''}</header>`;
 }
 
 /* Inline, persistent context beside the field/card/section it describes.

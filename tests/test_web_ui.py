@@ -3077,14 +3077,16 @@ class WebUiSourceTests(unittest.TestCase):
 
         筛选条完全由当前 state 决定，这次请求不会改变它，所以没有可占位的东西：
         连它一起清空的话，刚点下的那一枚会在等数据的整段时间里失去高亮，看着像
-        没点上；`.count:empty` 还会把整行折叠，网格跟着往上跳一截。
+        没点上；`.count:empty` 还会把整行折叠，网格跟着往上跳一截。垃圾文件那一屏的
+        计数行是另一条控件，走它自己的 `junkNavigationHtml`。
         """
         self.assertPageContains("const countSortsHtml=()=>!state?'':")
         # 加载态与最终态取同一份筛选条，两边不可能画得不一样。
         self.assertPageContains(
             "count.innerHTML=state&&state.state==='trash'?''\n"
+            "    :junk?junkNavigationHtml(null)\n"
             "    :`<span class=\"mono\"><span class=\"countskeleton\"></span></span>`+countSortsHtml();\n"
-            "  wireCountRow();")
+            "  if(junk)wireJunkNavigation();else wireCountRow();")
         self.assertPageContains("    +(trash?'':countSortsHtml());")
         # 读数那一格换值时按位错峰长出来，接事件仍在同一次重画的末尾。
         self.assertPageContains("    popCount(readout,lastCountReadout);\n  }\n  wireCountRow();")
@@ -5816,6 +5818,46 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("renderCatalogLoading(state.state==='ads'?'正在读取垃圾文件':'正在读取作品')")
         self.assertPageLacks("loadingDotsHtml('正在读取垃圾文件…')")
         self.assertPageLacks("junkloading")
+
+    def test_junk_wait_state_draws_this_page_own_count_row(self):
+        """等待期间的计数行画的是垃圾文件自己那条，不是目录的排序。
+
+        `peach-web-ui` 的判据：骨架复用最终容器的结构，能同步得到的筛选控件立即显示。
+        分类有哪几项、此刻选中哪一项、看的是待判断还是已排除，全由 URL 决定；随这次请求
+        变的只有摘要里那个数字和各类的计数徽标，占位就只盖它们。照目录那条画的话，等待
+        期间摆着一排这一页根本没有的换批与排序键，数据到货整行再换成另一种东西。
+        """
+        loading = self.app_js.split("function renderCatalogLoading(", 1)[1].split("\n}", 1)[0]
+        self.assertIn("junkNavigationHtml(null)", loading)
+        self.assertIn("if(junk)wireJunkNavigation();else wireCountRow();", loading)
+        # 这一行自己的版式类平时由 load() 写，深链冷启动时骨架排在它前面。
+        self.assertIn("count.classList.toggle('junkcount',junk)", loading)
+        self.assertIn("count.classList.toggle('manage-static',junk)", loading)
+        # 等待与到货是同一份结构、同一份接线，不是两份互相追赶的模板。
+        self.assertPageContains("$('#count').innerHTML=junkNavigationHtml(data);")
+        self.assertPageContains("{pending:!data}")
+        self.assertPageContains(
+            "const figure=pending?'<span class=\"countskeleton\"></span>':esc(value);")
+
+    def test_junk_count_row_stacks_two_visible_faces_as_wide_as_the_title(self):
+        """垃圾文件的计数行是上下两块整宽的面，跟标题、面包屑和网格同宽。
+
+        摘要和分类切换各自都是一块 `width:100%` 的面。这一行按目录那条横排的话，摘要
+        `flex:none` 占满整行，分类切换 `min-width:0` 被压成 0 宽、内容滚进看不见的地方，
+        宽屏上那条分类整个消失。宽度同理：它是数据管理的子页，标题与区块切换条都收在
+        `--board-content` 里，只有网格那一支铺满内容区时，同一页会有两条对不上的左边界。
+        浅色下 `primary` 就是页面底色，这两块不描边的面于是整个看不见——跟重复文件那两块
+        面同一条判据。
+        """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        self.assertIn('body[data-surface="/junk-files"] #count{flex-direction:column;'
+                      'align-items:stretch;gap:16px;padding-inline:0}', board)
+        self.assertIn('body[data-surface="/junk-files"] :is(#count,#grid,#loadSentinel)'
+                      '{width:100%;max-width:var(--board-content);margin-inline:auto}', board)
+        self.assertIn('html:not(.dark) .collection-summary'
+                      '{background:var(--color-background-secondary-default)}', board)
+        self.assertIn('html:not(.dark) body[data-surface="/junk-files"] .junkfilters'
+                      '{background:var(--color-background-secondary-default)}', board)
 
     def test_category_switchers_are_geist_secondary_tabs_not_a_segmented_control(self):
         """复核分类和垃圾文件分类共用一套外观：带描边的 Geist Tabs secondary 几何。

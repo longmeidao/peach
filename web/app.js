@@ -270,10 +270,17 @@ function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
   count.setAttribute('aria-label',label);
+  /* 垃圾文件那一屏的计数行是自己的：一块摘要面加一条分类切换，没有排序也没有换批。
+     照目录那条画的话，等待期间摆着一排这一页根本没有的排序键，数据到货整行再换成
+     另一种东西。版式类平时由 load() 写，深链冷启动时骨架排在它前面，这里一并带上。 */
+  const junk=decodeURIComponent(location.pathname)==='/junk-files';
+  count.classList.toggle('manage-static',junk);
+  count.classList.toggle('junkcount',junk);
   // 回收站的计数挂在说明行上，这一行只剩「清空回收站」，没有会变的数字可占位。
   count.innerHTML=state&&state.state==='trash'?''
+    :junk?junkNavigationHtml(null)
     :`<span class="mono"><span class="countskeleton"></span></span>`+countSortsHtml();
-  wireCountRow();
+  if(junk)wireJunkNavigation();else wireCountRow();
   /* 骨架一铺上去就得把底部那颗 Loading Dots 收掉。骨架说的是「等下会出现几张什么
      形状的卡」，dots 说的是「上面已经有内容，还在往下接」；两段同时在场时一屏里
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
@@ -3494,22 +3501,34 @@ function wireJunkCards(root){
     });
   });
 }
-function renderJunkNavigation(data){
-  const countFor=key=>key?Number(data.counts?.[key]||0):Number(data.all_total||0);
-  const dismissedTotal=Number(data.dismissed_total||0);
+/* 计数行的最终样子。分类有哪几项、此刻选中哪一项、看的是待判断还是已排除，全由
+   URL 决定，等数据的这段时间就能画成最终样子；随这次请求变的只有摘要里那个数字和
+   各类的计数徽标，`data` 为空时它们让位给占位，别的原地不动。 */
+function junkNavigationHtml(data){
+  const countFor=key=>key?Number(data?.counts?.[key]||0):Number(data?.all_total||0);
+  const dismissedTotal=Number(data?.dismissed_total||0);
   const categoryLinks=JUNK_KIND_OPTIONS.map(([key,label,glyph])=>{
-    const current=key===junkKind,count=countFor(key);
+    const current=key===junkKind,count=data?countFor(key):0;
     /* 同一套 Geist Tabs 徽标口径：计数为 0 时整枚去掉。这一条仍用 <a>，因为分类要落到
        URL 上——规范里 Tabs 的行为条款本身就要求当前项可深链、可刷新恢复。 */
     return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)}${count?` <span class="n mono" data-count-badge="junk:${esc(key)}">${count.toLocaleString()}</span>`:''}</a>`;
   }).join('');
-  $('#count').removeAttribute('aria-busy');
-  $('#count').innerHTML=`<div class="junksummary" aria-live="polite">${collectionSummaryHtml(junkView==='dismissed'?'已排除':'待判断',`${Number(data.total||0).toLocaleString()} 个`)}</div>
+  return `<div class="junksummary" aria-live="polite">${collectionSummaryHtml(junkView==='dismissed'?'已排除':'待判断',
+      data?`${Number(data.total||0).toLocaleString()} 个`:'','',{pending:!data})}</div>
     <nav class="junkfilters" aria-label="垃圾文件分类">${categoryLinks}<i aria-hidden="true"></i>
       <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'}${dismissedTotal?` <span class="n mono" data-count-badge="junk:dismissed">${dismissedTotal.toLocaleString()}</span>`:''}</a>
     </nav>`;
+}
+function renderJunkNavigation(data){
+  $('#count').removeAttribute('aria-busy');
+  $('#count').innerHTML=junkNavigationHtml(data);
   // 判过一批之后各类的待处理数就变了，弹的是变了的那几枚，没动的那几类原地不动。
   popBadges($('#count'),'junk');
+  wireJunkNavigation();
+}
+/* 等待态与到货后是同一条分类切换，接线也就只有这一份：骨架里点分类会换到那一类
+   继续等，跟数据已经到了时点它是同一件事。 */
+function wireJunkNavigation(){
   $('#count').querySelectorAll('[data-junk-kind-link],[data-junk-view-link]').forEach(link=>link.onclick=event=>{
     if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
     event.preventDefault();
