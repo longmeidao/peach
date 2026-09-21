@@ -279,8 +279,10 @@ webTests = webTests.replaceAll(/\/vendor\/swiper\/[0-9.]+\//g, `/vendor/swiper/$
 stage("tests/test_web_ui.py", webTests);
 
 let reuse = text("docs", "REUSE.md");
-reuse = reuse.replace(/Video\.js [0-9.]+/, `Video.js ${versions["video.js"]}`);
-reuse = reuse.replace(/Swiper [0-9.]+/, `Swiper ${versions.swiper}`);
+// 版本号在这份文档里不止出现一次，换第一处会留下一行对不上的旧版本。只认完整
+// 三段版本号：正文里还有「Video.js 10 Menu」那样指某个大版本的说法，它不是固定版本。
+reuse = reuse.replaceAll(/Video\.js \d+\.\d+\.\d+/g, `Video.js ${versions["video.js"]}`);
+reuse = reuse.replaceAll(/Swiper \d+\.\d+\.\d+/g, `Swiper ${versions.swiper}`);
 stage("docs/REUSE.md", reuse);
 
 stage("web/vendor/lucide-LICENSE.txt", lfText("node_modules", "lucide-static", "LICENSE"));
