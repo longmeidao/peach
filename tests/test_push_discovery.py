@@ -375,9 +375,11 @@ class LocalChannelTests(_ServiceCase):
         self.assertEqual(service.snapshot()["queue"]["ingested"], 1)
 
     def test_the_cloud_mounts_are_never_watched(self):
+        # 只看选根这一步：监视器起不起得来是另一件事（缺 watchdog 时它报「不可用」），
+        # 网盘来源不进本地通道的判据不该跟着那一步一起变红。
         service = self.service()
-        service.save({"enabled": True, "watch_local": True, "cloud": False, "prefixes": []})
-        self.assertEqual(list(service.snapshot()["local_roots"]), [self.declared["local"][0]])
+        roots = [(location, root) for location, root, _ in service._local_roots()]
+        self.assertEqual(roots, [("local", self.declared["local"][0])])
 
 
 class WebhookRouteTests(_ServiceCase):
