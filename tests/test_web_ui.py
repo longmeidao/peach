@@ -10318,8 +10318,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('className="max-h-96 overflow-y-auto pr-3"', extra)
         self.assertIn('className="flex flex-col gap-0.5 border-b border-current/15 py-2'
                       ' first:pt-1 last:border-b-0 last:pb-1"', extra)
-        # 完整记录退回灰字，旁边给一颗打开它的键：它是出事之后自己去翻的东西。
-        self.assertIn('<div className="mt-2 border-t border-separator-border pt-2 text-text-secondary">', extra)
+        # 完整记录退回灰字，旁边给一颗打开它的键：它是出事之后自己去翻的东西。那条线取
+        # 这行字自己的颜色，中性 separator 在有色底上是另一种灰，跟这行字对不上。
+        self.assertIn('<div className="mt-2 border-t border-current/20 pt-2 text-text-secondary">', extra)
         self.assertIn('<PathLine path={details.log} prefix="完整记录：" className="text-caption-1-regular"', extra)
         # 清单自己滚，滚动条走全站那条覆盖式的。接法收在 `components/overlay-scrollbar.ts`：
         # 岛里每个会滚的块都过它，免得各写各的 useEffect。

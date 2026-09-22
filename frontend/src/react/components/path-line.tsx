@@ -59,7 +59,8 @@ export function PathLine(
   };
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-start justify-between gap-2">
+      {/* 路径和那颗键排在同一条中线上：键比这行小字高一截，顶对齐时它自己看着往上飘。 */}
+      <div className="flex items-center justify-between gap-2">
         <p className={cx('min-w-0 break-all', className)}>
           {prefix}{path}
         </p>

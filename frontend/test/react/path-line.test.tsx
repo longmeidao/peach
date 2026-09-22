@@ -45,3 +45,10 @@ it('服务端不认这条路径时照直说，不落进通用的权限说法', a
 
   expect(host.textContent).toContain('这个位置不归 Peach 管，只能自己打开');
 });
+
+it('路径和那颗键排在同一条中线上', async () => {
+  // 键比这行小字高一截，顶对齐时它自己看着往上飘。
+  const host = await mount(<PathLine path={LOG} prefix="完整记录：" />);
+
+  expect(host.querySelector('p')!.parentElement!.className).toContain('items-center');
+});

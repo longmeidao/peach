@@ -492,10 +492,37 @@ def decorate(state, *, now=None):
     return state
 
 
-def _issue_classification(message, retryable):
+def source_paused(error):
+    """这次失败是不是「来源被限住了」——按异常类型判，不按话术。
+
+    限流和取不到是两回事，处理它们的动作也不是一个：来源正在冷却或本趟配额用完时，
+    这部片的资料站上有没有还没问出来，等一会儿重跑就有；站上确实没有那张图，重跑
+    多少遍都一样。混在一句「未取得」里，读的人分不出哪些值得再等。
+    """
+    from .scraping_access import SourcePaused
+    return isinstance(error, SourcePaused)
+
+
+def issue_summary(problems, paused=0):
+    """问题清单顶上那一句：几项要处理，其中几项只是等来源放开。
+
+    两类的下一步动作不同。限流那些现在按多少次重试都是同一句「来源正在冷却」，得等；
+    其余是这一部片自己的事，当场重试就有结果。数混在一起报，等的人会一直点重试。
+    """
+    if not problems:
+        return ''
+    if paused >= problems:
+        return f'{problems} 项都卡在来源限流上，等一会儿再跑一次。'
+    if paused:
+        return (f'{problems} 项需要处理，其中 {paused} 项是来源限流，等一会儿再跑；'
+                '其余可重试未完成的部分。')
+    return f'{problems} 项需要处理，可重试未完成的部分。'
+
+
+def _issue_classification(message, retryable, paused):
     """这条记录写进日志的级别，以及它值不值得重试。告知项两样都不是问题。"""
     note = NOTE_KEYS.get(message)
-    return 'info' if note else 'error', retryable and not note
+    return ('info' if note else 'paused' if paused else 'error'), retryable and not note
 
 
 def _record_issue(state, log_path, record):
@@ -511,6 +538,8 @@ def _record_issue(state, log_path, record):
         state['notes'][note] = state['notes'].get(note, 0) + 1
         return
     state['issue_count'] += 1
+    if record['severity'] == 'paused':
+        state['paused_count'] = state.get('paused_count', 0) + 1
     if len(state['issue_preview']) < ISSUE_PREVIEW_LIMIT:
         state['issue_preview'].append({key: record[key] for key in
                                        ('asset_id', 'title', 'path', 'message', 'severity')})
@@ -561,9 +590,10 @@ def snapshot(config):
                 state.update(notes=notes, issue_count=problems, issue_preview=preview,
                              issues_truncated=problems > len(preview),
                              retryable_asset_ids=sorted(retryable))
-                if state.get('error') == f'{count} 项需要处理，可重试未完成的部分。':
+                # 这条兼容路径读的是没有 `notes` 的旧状态，那一版还不分限流，所以只按项数写。
+                if state.get('error') == issue_summary(count):
                     state['status'] = 'failed' if problems else 'complete'
-                    state['error'] = f'{problems} 项需要处理，可重试未完成的部分。' if problems else ''
+                    state['error'] = issue_summary(problems)
         except (OSError, ValueError, TypeError):
             pass
     return decorate(state)
@@ -965,7 +995,7 @@ class _RemoteSession:
         evidence = _studio_evidence(row)
         chain = metadata_routes.route_for_code(code, *evidence, overrides=self._routes)
         required = list(metadata_routes.required_scalars(missing))
-        problems, entries = [], []
+        problems, held, entries = [], [], []
         for source in _sources_for(code, *evidence, route_overrides=self._routes):
             if self._consult and self.misses.fresh(source, code):
                 continue
@@ -1002,6 +1032,7 @@ class _RemoteSession:
                 # 就成了「社区来源：javdb：…」。单家来源的原因不带来源名，这里补上。
                 problems.append(describe_failure(error) if source == 'community'
                                 else f'{SOURCE_LABELS.get(source, source)}：{describe_failure(error)}')
+                held.append(source_paused(error))
                 continue
             update(stage='保存资料候选')
             entries.extend(self._evidence(name, code, payload) for name, payload in found)
@@ -1009,8 +1040,11 @@ class _RemoteSession:
                 break
         if entries:
             return entries
-        issue(row, '外部资料未取得：' + '；'.join(problems) if problems else MISS_MESSAGES[action],
-              action=action, retryable=True)
+        # 链上任何一档还在正常作答，这一行就是真没取到；全被限住时才算没轮到。
+        paused = bool(held) and all(held)
+        issue(row, ('外部资料本趟没轮到：' if paused else '外部资料未取得：') + '；'.join(problems)
+              if problems else MISS_MESSAGES[action],
+              action=action, retryable=True, paused=paused)
         return []
 
     def _cover(self, row, code, cover_root, *, update, issue):
@@ -1031,7 +1065,9 @@ class _RemoteSession:
             self.misses.record('cover', code)
             issue(row, MISS_MESSAGES[action], action=action, retryable=True)
         except Exception as error:
-            issue(row, f'封面未取得：{describe_failure(error)}', action=action, retryable=True)
+            paused = source_paused(error)
+            issue(row, ('封面本趟没轮到：' if paused else '封面未取得：') + describe_failure(error),
+                  action=action, retryable=True, paused=paused)
         return 0
 
 
@@ -1135,8 +1171,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
         state = dict(job_id=job_id or uuid.uuid4().hex, status='running',
                      stage='读取本地资料' if retrying else '扫描文件',
                      checked=0, total=0, scanned=0, identified=0, candidates=0, covers=0,
-                     issue_count=0, issue_preview=[], issues_truncated=False, notes={},
-                     retryable_asset_ids=[],
+                     issue_count=0, paused_count=0, issue_preview=[], issues_truncated=False,
+                     notes={}, retryable_asset_ids=[],
                      last_progress_at=time.time(), progress_seq=0,
                      current_asset_id=None, current_asset_name='', current_action='',
                      current_started_at=None, current_deadline_at=None,
@@ -1169,7 +1205,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             flush_state(force='status' in values)
             report(dict(state))
 
-        def issue(asset, message, *, action='', retryable=False):
+        def issue(asset, message, *, action='', retryable=False, paused=False):
             """`asset` 是这一项的馆藏行，来源离线一类与具体项目无关的问题给 `None`。
 
             每条问题都带上标题与路径：光有「NFO 无法解析」和一个链接，人得逐个点开
@@ -1179,7 +1215,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             asset_id = asset.get('id')
             title = str(asset.get('catalog_title') or '') or Path(str(asset.get('name') or '')).name
             asset_path = str(asset.get('path') or '')
-            severity, retryable = _issue_classification(message, retryable)
+            severity, retryable = _issue_classification(message, retryable, paused)
             _record_issue(state, log_path, {
                 'asset_id': asset_id, 'title': title, 'path': asset_path, 'message': message,
                 'severity': severity, 'failed_action': action, 'retryable': retryable,
@@ -1213,8 +1249,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             if stage == SCAN_STAGE:
                 update(status='failed' if state['issue_count'] else 'complete',
                        stage='处理结束', completed_at=time.time(),
-                       error=f"{state['issue_count']} 项需要处理，可重试未完成的部分。"
-                             if state['issue_count'] else '')
+                       error=issue_summary(state['issue_count'], state['paused_count']))
                 return state
             # 演员和标签是另外两张表，`asset` 上没有这两列。不带上它们，采集就把每部片都
             # 当成缺演员缺标签，逐个去问 r18，再把账本早就有的写法变成一道复核题。
@@ -1353,7 +1388,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                    performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
                    performer_profile_conflicts=profiles['conflicts'],
                    performer_profile_failed=profiles['failed'],
-                   error=f"{state['issue_count']} 项需要处理，可重试未完成的部分。" if state['issue_count'] else '',
+                   error=issue_summary(state['issue_count'], state['paused_count']),
                    completed_at=time.time(), current_asset_id=None, current_asset_name='',
                    current_action='', current_started_at=None, current_deadline_at=None)
         except Exception:
