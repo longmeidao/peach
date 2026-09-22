@@ -67,6 +67,65 @@ PREFERRED_COMMUNITY_SOURCE = "javdb"
 #: ラグジュTV 853、2017-11-26。只有一家都没有时才轮到它。
 FALLBACK_SOURCES = ("javbus",)
 
+#: 视频旁边那份 NFO。它不是联网来源，所以不进 `SOURCE_SPECS`，但字段优先级链
+#: 要给它排一个位置（ADR-0029 起它就是补空证据），名字只能有一份。
+LOCAL_NFO_SOURCE = "local_nfo"
+
+#: 字段优先级链的层级，数字越小越先被采信（ADR-0038）。用户自己整理的 NFO 在最前，
+#: 其次是发行方自己那页，再次是逐条核对过的 javdb，然后是其余社区站，最后是兜底。
+#: 未登记的来源排在所有已知来源之后：它不构成证据，但也不该把整条链判成无解。
+CHAIN_LOCAL_NFO, CHAIN_OFFICIAL, CHAIN_PREFERRED = 0, 1, 2
+CHAIN_COMMUNITY, CHAIN_FALLBACK, CHAIN_UNKNOWN = 3, 4, 5
+
+#: 稀疏例外：某个字段上把几家来源提到链首，顺序就是这里写的顺序（对应 amane 的
+#: `field_priority`）。整条链已经按「谁更接近发行方」排好，这张表只用来记录逐条
+#: 核对后发现的反例，不是第二份来源顺序表——每加一行都要能说出是哪个番号上看出来的。
+#: 本机当前一条例外都没有，空表就是「链本身够用」的如实记录。
+FIELD_SOURCE_PRIORITY: dict[str, tuple[str, ...]] = {}
+
+#: 字段级黑名单（对应 amane 的 `field_blacklist`），优先于一切：列进来的来源在这个
+#: 字段上连候选都不算，不参与取值比对，也不会因为「只剩它一家」而被采信。它和兜底
+#: 来源不是一回事——兜底是「有别家就退开」，黑名单是「这个字段上它说什么都不听」。
+FIELD_SOURCE_BLACKLIST: dict[str, frozenset[str]] = {}
+
+
+def source_tier(source: str) -> int:
+    """这家来源在字段优先级链上的层级。"""
+    name = str(source or "").strip()
+    if name == LOCAL_NFO_SOURCE:
+        return CHAIN_LOCAL_NFO
+    if name in FALLBACK_SOURCES:
+        return CHAIN_FALLBACK
+    spec = SOURCE_SPECS.get(name)
+    if spec is None:
+        return CHAIN_UNKNOWN
+    if spec.official:
+        return CHAIN_OFFICIAL
+    if name == PREFERRED_COMMUNITY_SOURCE:
+        return CHAIN_PREFERRED
+    return CHAIN_COMMUNITY
+
+
+def chain_rank(field: str, source: str) -> tuple[int, int, str]:
+    """字段优先级链上的排序键，越小越先采信。
+
+    层内用 `FIELD_SOURCE_ORDER` 再排一次：官方来源之间谁更接近这部片的发行方，
+    那张表早就按字段排过，不必再写第二份。表里没有的来源排在同层末尾，名字兜底
+    保证同分时顺序是确定的——不确定的顺序会让同一批候选在两次运行里落不同的值。
+    """
+    name = str(source or "").strip()
+    priority = FIELD_SOURCE_PRIORITY.get(field, ())
+    if name in priority:
+        return (-1, priority.index(name), name)
+    order = FIELD_SOURCE_ORDER.get(field, ())
+    within = order.index(name) if name in order else len(order)
+    return (source_tier(name), within, name)
+
+
+def blacklisted(field: str, source: str) -> bool:
+    """这个字段上这家来源是不是被判了不听。"""
+    return str(source or "").strip() in FIELD_SOURCE_BLACKLIST.get(field, frozenset())
+
 PROFILE_SOURCES = {
     "seesaa": ("sougouwiki",),
     "baseline": ("r18dev",),

@@ -1012,8 +1012,12 @@ def _apply_finished_candidates(database, candidate_root, active):
     """
     if database is None or not active():
         return {'applied': 0}
+    from .jav_cover_fetch import DEFAULT_METADATA_ROOT
     from .metadata_auto_apply import auto_apply_metadata
-    return auto_apply_metadata(database, Path(candidate_root), active=active)
+    # 快照目录是企划名义解析的证据来源（ADR-0038）。路径只有 `DEFAULT_METADATA_ROOT`
+    # 一份定义，这里传它而不是再拼一次：两处各拼一份，改数据根时会有一处留在原地。
+    return auto_apply_metadata(database, Path(candidate_root), active=active,
+                               snapshot_root=DEFAULT_METADATA_ROOT)
 
 
 def _enrich_finished_performers(database, groups, config, candidate_root, remote, active,
