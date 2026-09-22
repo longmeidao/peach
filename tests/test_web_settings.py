@@ -94,7 +94,8 @@ class SettingsRoundTripTests(unittest.TestCase):
         self.assertEqual(q_settings(self.contract),
                          {"sidebarOrder": list(DEFAULT_SIDEBAR_ORDER),
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
-                          "followInitialDays": 30, "postSetupTutorialDone": False})
+                          "followInitialDays": 30, "postSetupTutorialDone": False,
+                          "organizeTemplates": {}})
 
     def test_the_metadata_refresh_period_round_trips_and_rejects_odd_values(self):
         """这个数直接决定服务端要不要出网重取头像，坏载荷不能把它变成 1 秒或 1 天。"""
@@ -118,7 +119,8 @@ class SettingsRoundTripTests(unittest.TestCase):
         self.assertEqual(w_settings(self.contract, {"sidebarOrder": order}),
                          {"ok": True, "sidebarOrder": order,
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
-                          "followInitialDays": 30, "postSetupTutorialDone": False})
+                          "followInitialDays": 30, "postSetupTutorialDone": False,
+                          "organizeTemplates": {}})
         self.assertEqual(q_settings(self.contract)["sidebarOrder"], order)
         self.assertEqual(self._stored_json()["sidebarOrder"], order)
 

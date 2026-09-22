@@ -66,6 +66,9 @@ from .web_follow import (
 from .web_links import w_links, w_links_check, w_links_prune
 from .web_library_processing import q_library_processing, q_library_processing_issues, w_library_processing
 from .web_media_repair import q_media_repair, w_media_repair
+from .web_organize import (
+    q_organize, w_organize_apply, w_organize_preview, w_organize_rollback,
+)
 from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resource_sync_scan
 from .web_review import q_review, w_review_decision, w_review_genre
@@ -292,6 +295,7 @@ GET_HANDLERS = {
     "/api/links/prune": lambda contract, args: contract.link_prune_job.snapshot() or {"status": "idle"},
     "/api/resource-sync/apply": lambda contract, args: contract.resource_apply_job.snapshot() or {"status": "idle"},
     "/api/media-repair": q_media_repair,
+    "/api/organize": q_organize,
     "/api/items": q_items,
     "/api/item": _get_item,
     "/api/parts": q_parts,
@@ -349,6 +353,9 @@ POST_HANDLERS = {
     "/api/taste/source": w_taste_source,
     "/api/trash/empty": _post_empty_trash,
     "/api/data-cleanup/empty-folders": w_cleanup_empty_directories,
+    "/api/organize/preview": w_organize_preview,
+    "/api/organize/apply": w_organize_apply,
+    "/api/organize/rollback": w_organize_rollback,
     "/api/purge-missing": w_purge_missing,
     "/api/links/check": w_links_check,
     "/api/links/prune": w_links_prune,
@@ -373,6 +380,8 @@ READ_ONLY_POST_ROUTES = frozenset({
     "/api/links/check",
     # 修复只写 `transcode_root` 里的边车，那是本机缓存，不是账本。
     "/api/media-repair",
+    # 整理的预览只出一份计划 CSV，不动文件也不改账本；执行与回滚不在这里。
+    "/api/organize/preview",
 })
 # `/api/data-cleanup/empty-folders` 不在上面：它连文件已消失的账本行一起删，走的是
 # `purge_assets`。检查那一步（`dry_run`）确实不写，但闸门按路径判，宁可连检查一起拦，

@@ -97,7 +97,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_job_status.py", "test_jobs.py", "test_task_runs.py",
                 "test_task_center_integration.py", "test_reference_updates.py",
                 "test_repo_hygiene.py",
-                "test_review_csv.py", "test_jav_code_domain.py",
+                "test_review_csv.py", "test_jav_code_domain.py", "test_organize.py",
                 "test_subprocess_encoding.py", "test_module_layering.py",
                 "test_copy_final_state.py", "test_demo_dataset.py",
                 "test_cloudflared_packaging.py", "test_tunnel.py"),

@@ -79,7 +79,7 @@ FFmpeg and ffprobe are installed separately: without them you can still browse a
 
 ## Data boundaries
 
-Media stays in its original folders, while the catalog, identities, viewing history and human decisions stay in a local SQLite ledger. External metadata and AI output enter as candidates with provenance and confidence; credentials stay outside Git, logs and API responses. Peach is for single-user self-hosting and does not provide a public-site or team permission model.
+Media stays in its original folders by default; organizing is an explicit action you start yourself, with a preview first and a rollback afterwards. The catalog, identities, viewing history and human decisions stay in a local SQLite ledger. External metadata and AI output enter as candidates with provenance and confidence; credentials stay outside Git, logs and API responses. Peach is for single-user self-hosting and does not provide a public-site or team permission model.
 
 ## Documentation
 
