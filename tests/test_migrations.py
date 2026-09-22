@@ -25,7 +25,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -42,7 +42,7 @@ class MigrationTests(unittest.TestCase):
                          "playlist", "playlist_item",
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "genre_decision", "asset_subtitle", "task_run", "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -812,6 +812,51 @@ class TaskRunTableTests(unittest.TestCase):
             "ORDER BY id DESC LIMIT 20"))
         self.assertIn("idx_task_run_key_recent", plan_rows)
 
+
+class ExternalRefUniquenessTests(unittest.TestCase):
+    """0032：一位实体在一个站点可以有多个页面，一个页面仍只属于一位实体。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+        self.connection = sqlite3.connect(self.db)
+        self.addCleanup(self.connection.close)
+        for entity_id, name in ((10, "釈アリス"), (11, "天川そら")):
+            self.connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES(?,'performer',?,?,'t','t')", (entity_id, name, name))
+        self.connection.commit()
+
+    def _ref(self, entity_id: int, external_id: str):
+        self.connection.execute(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+            " VALUES(?,'javdb','performer',?)", (entity_id, external_id))
+        self.connection.commit()
+
+    def test_one_performer_can_hold_two_pages_on_the_same_site(self):
+        self._ref(10, "d45k9")
+        self._ref(10, "ZX5z7")
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM entity_external_ref WHERE entity_id=10").fetchone()[0], 2)
+
+    def test_the_same_page_cannot_be_claimed_twice(self):
+        self._ref(10, "d45k9")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._ref(11, "d45k9")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self._ref(10, "d45k9")
+
+    def test_deleting_the_performer_takes_every_page_with_it(self):
+        self._ref(10, "d45k9")
+        self._ref(10, "ZX5z7")
+        self.connection.execute("PRAGMA foreign_keys=ON")
+        self.connection.execute("DELETE FROM entity WHERE id=10")
+        self.connection.commit()
+        self.assertEqual(self.connection.execute(
+            "SELECT count(*) FROM entity_external_ref").fetchone()[0], 0)
 
 
 if __name__ == "__main__":

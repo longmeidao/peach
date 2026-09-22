@@ -1,12 +1,26 @@
-"""人物资料页的外部入口：三个站点的直达地址，以及它们的本机开关与模板。
+"""人物资料页的外部入口：几个站点的直达地址，以及它们的本机开关与模板。
 
-入口只由后端拼：地址要用的两样东西都在服务端——`entity_external_ref` 里的站点 id，
-和 `entity.canonical_name`。前端拿到的是一串 `{site, label, url}`，没有模板也没有
-拼装规则，换一个站不必同时改两侧。
+入口只由后端拼：地址要用的东西都在服务端——`entity_external_ref` 里的站点 id、
+`entity.canonical_name` 和 `entity_alias`。前端拿到的是一串带栏位与图标的
+`{site, label, url, section, line, icon}`，没有模板也没有拼装规则，换一个站不必同时
+改两侧。
 
 **没有 id 的站点不出现。** 退回搜索地址等于把「这个人在那边是谁」这件事交给站内检索
-去猜，而同名的人正是最需要点进去核对的那一批；MISSAV 那条按规范名拼，是因为它的路径
-本来就是名字，不是猜出来的检索词。
+去猜，而同名的人正是最需要点进去核对的那一批。
+
+**MISSAV 按日文艺名拼。** 它的路径就是名字，而账本里 794 位 performer 有 601 位的规范名
+是中文译名，拿译名拼出来的是一个不存在的页面（实测 `/cn/actresses/释爱丽丝` 返回 404，
+`/cn/actresses/釈アリス` 返回 200）。所以这一站从别名里挑日文艺名：
+
+- 含假名才算日文写法。汉字分不出中日——`佐々木さき` 认得出，纯汉字的艺名认不出，
+  那种只能退回规范名。
+- 纯平假名的那条是读音不是艺名。`r18:performer` 每位都带一条（`しゃくありす`），
+  而站上的页面挂在混着汉字或片假名的艺名下（`釈アリス`），实测纯平假名同样 404。
+- 同样形态的有多条时，优先 `avdb-actor-mapping`、`javdb`、`wiki` 这几类艺名来源。
+- 一条都挑不出时才用规范名：拼错的地址和没有地址相比，前者更难发现。
+
+**同一个站点可以有多枚入口。** 一位女优在 javdb 常有两个演员页，两边挂的作品不同，
+所以每个 id 各出一枚，第二枚起在标签后缀一个序号。
 """
 from __future__ import annotations
 
@@ -24,33 +38,57 @@ FILENAME = "entry-links.json"
 #: `entity_external_ref.external_kind`：人物那一档。
 EXTERNAL_KIND = "performer"
 
+#: 三个栏位。资料页按这三个词给灰色小标题，站点归在它下面。
+SECTION_HOME = "演员主页"
+SECTION_WATCH = "在线观看"
+SECTION_LIBRARY = "在线片库"
+
 
 @dataclass(frozen=True)
 class EntrySite:
-    """一个入口站点。`provider` 空串表示这一站按名字拼，不需要账本里的 id。"""
+    """一个入口站点。
+
+    `provider` 空串表示这一站按名字拼，不需要账本里的 id。`label` 是药丸上的字，
+    `title` 是配置页和报错里的站点名——同一个站在两个栏位各有一枚时，药丸靠栏位标题
+    说清是哪一枚，而配置页没有栏位标题，得自己把话说全。
+    """
 
     key: str
     label: str
+    title: str
     placeholder: str
     provider: str
     template: str
+    section: str
+    line: int
+    icon: str
 
 
 SITES: tuple[EntrySite, ...] = (
-    EntrySite("javdb", "JavDB", "javdb_id", "javdb",
-              "https://javdb.com/actors/{javdb_id}?sort_type=4"),
-    EntrySite("minnano-av", "minnano-av", "minnano_id", "minnano-av",
-              "https://www.minnano-av.com/actress{minnano_id}.html"),
-    EntrySite("missav", "MISSAV", "name", "",
-              "https://missav.ws/dm42/cn/actresses/{name}"),
+    EntrySite("minnano-av", "minnano-av", "minnano-av", "minnano_id", "minnano-av",
+              "https://www.minnano-av.com/actress{minnano_id}.html",
+              SECTION_HOME, 1, "brand-minnano"),
+    EntrySite("javdb-home", "JavDB", "JavDB 演员主页", "javdb_id", "javdb",
+              "https://javdb.com/actors/{javdb_id}",
+              SECTION_HOME, 1, "brand-javdb"),
+    EntrySite("missav", "MISSAV", "MISSAV", "name", "",
+              "https://missav.ws/cn/actresses/{name}",
+              SECTION_WATCH, 1, "brand-missav"),
+    EntrySite("javdb", "JavDB", "JavDB 作品列表", "javdb_id", "javdb",
+              "https://javdb.com/actors/{javdb_id}?sort_type=4",
+              SECTION_LIBRARY, 2, "brand-javdb"),
 )
 _BY_KEY = {site.key: site for site in SITES}
 #: 模板长度上限。地址栏塞得下的东西远不止这个数，但入口模板只有一个占位符要填。
 _TEMPLATE_LIMIT = 300
+#: 第二枚起的序号。用完退回括号数字，标签宁可长一点也不能两枚长得一模一样。
+_ORDINALS = "②③④⑤⑥⑦⑧⑨"
+#: 艺名类的别名来源。按子串认：来源串后面还挂着采集批次。
+_STAGE_NAME_SOURCES = ("avdb-actor-mapping", "javdb", "wiki")
 
 
 def defaults() -> dict:
-    """三站全开，模板即上面那三条。"""
+    """各站全开，模板即上面那几条。"""
     return {site.key: {"enabled": True, "template": site.template} for site in SITES}
 
 
@@ -85,7 +123,7 @@ def snapshot(root: Path) -> dict:
     saved = read(root)
     return {"sites": [{
         "key": site.key,
-        "label": site.label,
+        "label": site.title,
         "placeholder": site.placeholder,
         "enabled": saved[site.key]["enabled"],
         "template": saved[site.key]["template"],
@@ -97,22 +135,22 @@ def _template_problem(site: EntrySite, template: str) -> str:
     """模板不能用时的那一句原因；能用时是空串。"""
     mark = "{" + site.placeholder + "}"
     if not template:
-        return f"{site.label} 的地址模板不能为空"
+        return f"{site.title} 的地址模板不能为空"
     if len(template) > _TEMPLATE_LIMIT:
-        return f"{site.label} 的地址模板请控制在 {_TEMPLATE_LIMIT} 个字符以内"
+        return f"{site.title} 的地址模板请控制在 {_TEMPLATE_LIMIT} 个字符以内"
     if any(char.isspace() for char in template):
-        return f"{site.label} 的地址模板里不能有空格"
+        return f"{site.title} 的地址模板里不能有空格"
     if not template.startswith("https://"):
-        return f"{site.label} 的地址模板要以 https:// 开头"
+        return f"{site.title} 的地址模板要以 https:// 开头"
     if template.count(mark) != 1:
-        return f"{site.label} 的地址模板要且只要一个 {mark}"
+        return f"{site.title} 的地址模板要且只要一个 {mark}"
     if template.replace(mark, "").count("{") or template.replace(mark, "").count("}"):
-        return f"{site.label} 的地址模板里只认 {mark} 这一个占位符"
+        return f"{site.title} 的地址模板里只认 {mark} 这一个占位符"
     return ""
 
 
 def save(root: Path, body: dict) -> dict:
-    """写回三站的开关与模板。任一项不合规就整批不写。"""
+    """写回各站的开关与模板。任一项不合规就整批不写。"""
     rows = body.get("sites")
     if not isinstance(rows, dict):
         raise ValueError("请提交每个站点的开关与地址模板")
@@ -120,12 +158,12 @@ def save(root: Path, body: dict) -> dict:
     for site in SITES:
         row = rows.get(site.key)
         if not isinstance(row, dict):
-            raise ValueError(f"缺少 {site.label} 的设置")
+            raise ValueError(f"缺少 {site.title} 的设置")
         if not isinstance(row.get("enabled"), bool):
-            raise ValueError(f"{site.label} 的开关必须是 true 或 false")
+            raise ValueError(f"{site.title} 的开关必须是 true 或 false")
         template = row.get("template")
         if not isinstance(template, str):
-            raise ValueError(f"{site.label} 的地址模板必须是文字")
+            raise ValueError(f"{site.title} 的地址模板必须是文字")
         problem = _template_problem(site, template.strip())
         if problem:
             raise ValueError(problem)
@@ -137,40 +175,78 @@ def save(root: Path, body: dict) -> dict:
     return snapshot(root)
 
 
-def provider_ids(refs) -> dict[str, str]:
-    """`entity_external_ref` 的行 → 站点 id。只认人物那一档。"""
-    found: dict[str, str] = {}
+def provider_ids(refs) -> dict[str, list[str]]:
+    """`entity_external_ref` 的行 → 这个站点上的 id 们。只认人物那一档。"""
+    found: dict[str, list[str]] = {}
     for ref in refs or ():
         if str(ref.get("external_kind") or "") != EXTERNAL_KIND:
             continue
         external_id = str(ref.get("external_id") or "").strip()
         provider = str(ref.get("provider") or "")
-        if external_id and provider not in found:
-            found[provider] = external_id
+        ids = found.setdefault(provider, [])
+        if external_id and external_id not in ids:
+            ids.append(external_id)
     return found
 
 
-def build(settings: dict, canonical_name: str, refs) -> list[dict]:
-    """这条人物实体能直达的站点。缺 id 的站点不出现在结果里。"""
-    ids = provider_ids(refs)
+def _has_kana(written: str) -> bool:
+    return any(0x3040 <= ord(char) <= 0x30FF for char in written)
+
+
+def _only_hiragana(written: str) -> bool:
+    """写法里除了空白和标点就只有平假名。那是读音，不是站上挂着页面的艺名。"""
+    return all(char.isspace() or not char.isalnum() or 0x3041 <= ord(char) <= 0x309F
+               for char in written)
+
+
+def japanese_name(canonical_name: str, aliases) -> str:
+    """这位的日文艺名。挑不出来时退回规范名，判据见模块开头。"""
     name = str(canonical_name or "").strip()
+    chosen: tuple[tuple[int, int, int], str] | None = None
+    for index, row in enumerate(aliases or ()):
+        written = str((row.get("alias") if isinstance(row, dict) else row) or "").strip()
+        if not written or not _has_kana(written):
+            continue
+        source = str((row.get("source") if isinstance(row, dict) else "") or "")
+        rank = (1 if _only_hiragana(written) else 0,
+                0 if any(mark in source for mark in _STAGE_NAME_SOURCES) else 1,
+                index)
+        if chosen is None or rank < chosen[0]:
+            chosen = (rank, written)
+    return chosen[1] if chosen else name
+
+
+def _numbered(label: str, index: int) -> str:
+    """同一个站点第二枚起带序号，否则两枚药丸读起来是同一条。"""
+    if index == 0:
+        return label
+    if index <= len(_ORDINALS):
+        return f"{label} {_ORDINALS[index - 1]}"
+    return f"{label} ({index + 1})"
+
+
+def build(settings: dict, canonical_name: str, refs, aliases=()) -> list[dict]:
+    """这条人物实体能直达的地址，按栏位与行序排好。缺 id 的站点不出现在结果里。"""
+    ids = provider_ids(refs)
+    written = japanese_name(canonical_name, aliases)
     out: list[dict] = []
     for site in SITES:
         row = settings.get(site.key) or {}
         if not row.get("enabled", True):
             continue
-        value = ids.get(site.provider, "") if site.provider else name
-        if not value:
-            continue
+        values = ids.get(site.provider, []) if site.provider else ([written] if written else [])
         template = str(row.get("template") or site.template)
         if _template_problem(site, template):
             template = site.template
-        out.append({"site": site.key, "label": site.label,
-                    "url": template.replace("{" + site.placeholder + "}",
-                                            quote(value, safe=""))})
-    return out
+        for index, value in enumerate(values):
+            out.append({"site": site.key, "label": _numbered(site.label, index),
+                        "section": site.section, "line": site.line, "icon": site.icon,
+                        "url": template.replace("{" + site.placeholder + "}",
+                                                quote(value, safe=""))})
+    # 稳定排序：行内仍按 SITES 的先后，而 SITES 的顺序就是栏位的顺序。
+    return sorted(out, key=lambda entry: entry["line"])
 
 
-def entry_links(root: Path, canonical_name: str, refs) -> list[dict]:
+def entry_links(root: Path, canonical_name: str, refs, aliases=()) -> list[dict]:
     """读设置并拼出入口。资料页只调这一个。"""
-    return build(read(root), canonical_name, refs)
+    return build(read(root), canonical_name, refs, aliases)

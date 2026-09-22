@@ -349,12 +349,15 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "brandIcon", [None], ""),
         ])
 
-    def test_link_host_reads_as_a_name_not_as_a_url(self):
-        # 域名当名字：厂牌页的官网链接直接显示它。`www.` 不携带信息，只占宽度。
+    def test_a_site_reads_as_the_short_name_people_actually_say(self):
+        # 事务所和片商平时就被叫作 NAX、T-POWERS、DMM；子域照样命中主域那一条。
         self.assertJsResults([
-            ("core.js", "linkHost", ["https://www.example.com/a?b=1"], "EXAMPLE.COM"),
-            ("core.js", "linkHost", ["https://Sub.Example.co.jp/"], "SUB.EXAMPLE.CO.JP"),
-            ("core.js", "linkHost", ["不是网址"], ""),
+            ("core.js", "siteName", ["https://official.nax-pro.com/model/14717"], "NAX"),
+            ("core.js", "siteName", ["https://www.T-Powers.co.jp/"], "T-POWERS"),
+            ("core.js", "siteName", ["https://video.dmm.co.jp/av/list/?id=1"], "DMM"),
+            # 表里没有这一家时交回空串，调用点退回账本里的 label。
+            ("core.js", "siteName", ["https://example.com/a"], ""),
+            ("core.js", "siteName", ["不是网址"], ""),
         ])
 
     def test_a_site_mark_carries_a_key_and_never_a_url(self):

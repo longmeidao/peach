@@ -50,10 +50,10 @@
 /* 外链排成一行次级按钮：36px 高、控件圆角、一圈线，跟 Board 的 secondary Button 同一个形。
    它们是「去哪」的入口，不是标签，所以不画成药丸。 */
 .entitylinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;max-width:100%}
-.entitylinks a,.entitylinks .private{box-sizing:border-box;min-width:0;max-width:100%;height:36px;border:1px solid var(--line);
+.entitylinks a,.entryentries a,.entitylinks .private{box-sizing:border-box;min-width:0;max-width:100%;height:36px;border:1px solid var(--line);
   border-radius:var(--control-radius);padding:0 12px 0 8px;font-size:var(--fs-sm);text-decoration:none;color:var(--ink);
   background:transparent;display:inline-flex;align-items:center;gap:8px;overflow:hidden}
-.entitylinks a:hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
+.entitylinks a:hover,.entryentries a:hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
 .entitylinks .private{color:var(--muted);border-style:dashed}
 /* 圆盘本身不垫底色。X 这类内联品牌标记直接画在按钮上，垫一层 `--sunk` 只会让它比
    周围暗一档，看着像这条链接被禁用了——而图标要说的是「去哪」，不是「能不能点」。 */
@@ -71,14 +71,18 @@
 .entitylinks a.iconlink{width:36px;padding:0;gap:0;justify-content:center}
 /* 官网域名前显示站点自己那枚图标，取不到才露出地球；与带名称的链接共用间距。 */
 .entitylinks a.urllink{letter-spacing:.02em}
-/* 外部入口那一排：同一个人在别处的那一页。行首那个词说明这一排通向站外，不是馆藏里的
-   东西。入口本身不另写形状——Board 对不带圆标的站外链接已有一套文字链写法
-   （board.css 里 `a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon))`），
-   这三枚正落在里面；上面那排外链是药丸，因为它们每枚都带一个圆标撑着。
-   窄屏下整行换行，入口跟着往下排——三枚横滚一个都省不下，不值得再接一套拖动映射。 */
-.entryrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:14px;max-width:100%}
-.entryhead{flex:none;color:var(--muted);font-size:var(--fs-sm)}
-.entryentries{display:flex;flex-wrap:wrap;gap:12px;min-width:0}
+/* 外部入口：同一个人在别处的那几页，按「去那儿干什么」分栏。栏位标题走全站那套灰色
+   小标题（和 `.tagpicksection h4`、`.next h3` 同一档字号、字重与字距），栏与栏之间隔一条
+   细竖线——同一行里并排的两组标题，不划开就读成一串。
+   入口本身和上面那排外链是同一枚药丸：两排都是「去哪」的入口，都带着一个圆标，形状
+   共用 `.entitylinks a` 那条规则，这里只管怎么排。
+   窄屏下竖线撤掉：换行之后它落在行首，划开的是上下不是左右。 */
+.entryrows{display:flex;flex-direction:column;gap:12px;margin-top:14px;max-width:100%}
+.entryrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px;max-width:100%}
+.entrygroup{display:flex;flex-direction:column;gap:7px;min-width:0}
+.entrygroup+.entrygroup{padding-left:16px;border-left:1px solid var(--line-soft)}
+.entryhead{color:var(--muted);font-size:var(--fs-xs);font-weight:600;letter-spacing:.12em}
+.entryentries{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
 .entityskeletontext{width:100%}
 .entityskeletontext .entitytitle .skeleton{width:60%;height:auto}
 .entityskeletontext .alias .skeleton{display:block;width:40%;height:20px}

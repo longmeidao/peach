@@ -1,5 +1,5 @@
 import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, linkHost, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, siteName, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
@@ -7896,19 +7896,36 @@ async function openEntity(kind,name,push=true){
       // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
       return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
     }
-    /* 官网这一格的文字是域名，图标是站点自己的那枚。域名说的是「点过去到哪」，图标说的
-       是「这是哪家」，两句话不重复，所以图标不退回地球。取不到图时 `data-drop="self"`
-       把 img 撤掉，露出底下那枚地球。 */
-    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
+    /* 图标是站点自己的那枚，说的是「这是哪家」；取不到图时 `data-drop="self"` 把 img
+       撤掉，露出底下那枚地球。
+
+       文字是这家站平时被叫的那个短名（`siteName`），人物页和厂牌页同一张表。完整的
+       名称留在 `title` 里，点之前要看全称把指针停上去就有。 */
+    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(siteName(x.url)||x.label)}</span></a>`;
   }).join('');
-  /* 外部入口：同一个人在 JavDB、minnano-av 与 MISSAV 的那一页。地址由服务端按站点 id
-     和规范名拼好下发（`peach.entry_links`），这里只排版——站点 id 缺席时那一枚根本不在
+  /* 外部入口：同一个人在 minnano-av、JavDB 与 MISSAV 的那几页。地址、栏位、行号和图标
+     都由服务端下发（`peach.entry_links`），这里只排版——站点 id 缺席时那一枚根本不在
      `entry_links` 里，页面上也就没有一个点过去落空的入口。
 
-     文字就是站名：这一排只有三枚，而「去哪」这件事站名自己说得最清楚；`/link-mark` 那条
-     图标链认的是账本里的链接 id，这几条不是账本链接，取不到圆标。 */
-  const entryLinks=(d.entry_links||[]).map(x=>
-    `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.label)}</a>`).join('');
+     按栏位分组：一枚入口说的是「去哪个站」，栏位说的是「去那儿干什么」，两句话都要有，
+     所以站名留在药丸上，「演员主页／在线观看／在线片库」写成栏位标题。同一个站在两个
+     栏位各有一枚，同一个栏位里同一个站也可能有两枚——javdb 上一位女优有两个演员页是
+     常事，服务端已经给第二枚编好号。
+
+     `/link-mark` 那条圆标认的是账本里的链接 id，这几条不是账本链接，所以图标用雪碧图里
+     各站自己那枚品牌标记，和上面那排社媒外链同一个形。 */
+  const entryLines=[];
+  (d.entry_links||[]).forEach(x=>{
+    let line=entryLines.at(-1);
+    if(!line||line.line!==x.line)entryLines.push(line={line:x.line,groups:[]});
+    let group=line.groups.at(-1);
+    if(!group||group.section!==x.section)line.groups.push(group={section:x.section,items:[]});
+    group.items.push(x);
+  });
+  const entryLinks=entryLines.map(line=>`<div class="entryrow">${line.groups.map(group=>
+    `<div class="entrygroup"><span class="entryhead">${esc(group.section)}</span><span class="entryentries">${
+      group.items.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><span class="entitylinkicon brand">${icon(x.icon)}</span><span class="entitylinklabel">${esc(x.label)}</span></a>`).join('')
+    }</span></div>`).join('')}</div>`).join('');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
@@ -7986,7 +8003,7 @@ async function openEntity(kind,name,push=true){
       <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}
-        ${entryLinks?`<div class="entryrow"><span class="entryhead">外部入口</span><span class="entryentries">${entryLinks}</span></div>`:''}</div></div>
+        ${entryLinks?`<div class="entryrows">${entryLinks}</div>`:''}</div></div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>

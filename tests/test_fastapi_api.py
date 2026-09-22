@@ -1039,9 +1039,12 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         entries = response.json()["entry_links"]
-        self.assertEqual([row["site"] for row in entries], ["javdb", "missav"])
-        self.assertEqual(entries[0]["url"], "https://javdb.com/actors/NPD3?sort_type=4")
-        self.assertTrue(entries[1]["url"].startswith("https://missav.ws/dm42/cn/actresses/%"))
+        self.assertEqual([row["site"] for row in entries], ["javdb-home", "missav", "javdb"])
+        self.assertEqual([row["section"] for row in entries],
+                         ["演员主页", "在线观看", "在线片库"])
+        self.assertEqual(entries[0]["url"], "https://javdb.com/actors/NPD3")
+        self.assertTrue(entries[1]["url"].startswith("https://missav.ws/cn/actresses/%"))
+        self.assertEqual(entries[2]["url"], "https://javdb.com/actors/NPD3?sort_type=4")
 
     async def test_review_queue_is_readable_and_decisions_are_persisted(self):
         response = await self.client.get("/api/review?t=secret")

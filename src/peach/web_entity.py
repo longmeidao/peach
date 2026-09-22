@@ -75,14 +75,8 @@ def q_entity(contract: WebContract, args):
         except (TypeError, ValueError):
             metadata = {}
         d["metadata"] = metadata
-        # 同一个名字按来源分行（主键含 source），合并会再写一条 `merge:*`，所以同一个
-        # 写法能出现两次。留痕属于账本，展示不该把同一个名字并排列两遍：按归一形取
-        # 置信度最高的那一条。`max()` 让 SQLite 把裸列取自同一行，结果是确定的。
-        d["aliases"] = [r[0] for r in c.execute(
-            "SELECT alias,max(confidence) AS top FROM entity_alias WHERE entity_id=?"
-            " GROUP BY normalized_alias ORDER BY top DESC,alias",
-            (d["id"],),
-        )]
+        alias_rows = _entity_alias_rows(c, d["id"])
+        d["aliases"] = [row["alias"] for row in alias_rows]
         # 罗马字仍是检索和旧链接的重要身份键，但中文/日文规范名下面再把英文全列一遍
         # 只会像名称没有本地化。展示契约单独收窄，身份契约 `aliases` 保持完整。
         d["display_aliases"] = _display_entity_aliases(
@@ -117,14 +111,15 @@ def q_entity(contract: WebContract, args):
         )]
         d["external_refs"] = [dict(r) for r in c.execute(
             "SELECT provider,external_kind,external_id,last_synced_at "
-            "FROM entity_external_ref WHERE entity_id=? ORDER BY provider,external_kind",
+            "FROM entity_external_ref WHERE entity_id=? "
+            "ORDER BY provider,external_kind,external_id",
             (d["id"],),
         )]
-        # 外部入口下发的是拼好的地址，不是模板：拼它要的站点 id 和规范名都在服务端，
+        # 外部入口下发的是拼好的地址，不是模板：拼它要的站点 id、规范名和别名都在服务端，
         # 前端再拼一遍就会有两份规则。缺 id 的站点不出现在这个列表里。
         d["entry_links"] = (
             entry_links.entry_links(contract.entry_links_root, d["canonical_name"],
-                                    d["external_refs"])
+                                    d["external_refs"], alias_rows)
             if kind == "performer" else [])
         scope = scope_predicate(kind, "ae.entity_id")
         count, rep = c.execute(
@@ -230,6 +225,19 @@ def q_entity(contract: WebContract, args):
 
 #: 图集查询一律带 `a.` 别名。
 PHOTO_DIR = dir_expr()
+
+
+def _entity_alias_rows(c, entity_id: int) -> list[dict]:
+    """这条实体的别名连同来源。
+
+    同一个名字按来源分行（主键含 source），合并会再写一条 `merge:*`，所以同一个写法
+    能出现两次。留痕属于账本，展示不该把同一个名字并排列两遍：按归一形取置信度最高
+    的那一条。`max()` 让 SQLite 把裸列取自同一行，结果是确定的。来源跟着别名一起
+    取：外部入口要从这些写法里挑日文艺名，而挑哪一条要看来源。
+    """
+    return [dict(r) for r in c.execute(
+        "SELECT alias,source,max(confidence) AS top FROM entity_alias WHERE entity_id=?"
+        " GROUP BY normalized_alias ORDER BY top DESC,alias", (entity_id,))]
 
 
 def _display_entity_aliases(canonical_name: str, aliases: list[str]) -> list[str]:
