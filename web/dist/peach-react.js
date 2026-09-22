@@ -31432,7 +31432,7 @@ function KE({ initial: e, receipt: t }) {
 			/* @__PURE__ */ (0, w.jsxs)(iS, {
 				divided: !0,
 				children: [
-					/* @__PURE__ */ (0, w.jsx)(oS, { children: "账本里没有这个站点 id 的人物不显示它那一枚入口，地址不会退回站内搜索。" }),
+					/* @__PURE__ */ (0, w.jsx)(oS, { children: "账本里没有这个站点 id 的人物不显示它那一枚入口，地址不会退回站内搜索。 JavDB 与 MISSAV 只收 JAV 女优，这两枚还要账本里有哪个 JAV 目录站给过她 id 才出现； FC2 个人摄那类创作者没有这种 id，资料页上也就没有这一行。" }),
 					n.map((e) => /* @__PURE__ */ (0, w.jsx)(Zy, {
 						id: `entry-link-${e.key}`,
 						label: `${e.label} 地址模板`,

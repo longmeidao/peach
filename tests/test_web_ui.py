@@ -2236,59 +2236,67 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "['nax-pro.com','NAX'],['t-powers.co.jp','T-POWERS'],['dmm.co.jp','DMM']")
         self.assertPageContains(".entitylinks a.urllink{letter-spacing:.02em}")
-        links = self.app_js[self.app_js.index("const links=(d.links||[]).map"):]
+        links = self.app_js[self.app_js.index("const siteLinks=(d.links||[]).map"):]
         links = links[:links.index(".join('');")]
         official = links.split('class="iconlink"')[-1]
         self.assertIn('<img class="entityfavicon" src="${esc(linkMarkUrl(x))}"', official)
         self.assertIn('data-drop="self"', official)
 
-    def test_the_entry_rows_only_print_what_the_server_already_built(self):
-        """外部入口是服务端拼好的地址、栏位、行号和图标，页面只负责排。
+    def test_the_entry_links_only_print_what_the_server_already_built(self):
+        """外部入口是服务端拼好的地址、位置与标记，页面只负责排。
 
-        前端手里没有站点 id 也没有名字，模板拼在这边等于再养一份规则；缺 id 的站点根本
-        不在 `entry_links` 里，页面上也就没有一枚点过去落空的入口。栏位标题说「去那儿
-        干什么」，药丸上的站名说「去哪个站」，两句话都要有。
+        前端手里没有站点 id 也没有名字，模板拼在这边等于再养一份规则；缺 id 的站点、
+        以及不是 JAV 女优的那些人，根本不在 `entry_links` 里，页面上也就没有一枚点过去
+        落空的入口。
         """
-        self.assertPageContains("const entryLinks=entryLines.map(line=>")
-        self.assertCode("if(!line||line.line!==x.line)entryLines.push(line={line:x.line,groups:[]});")
-        self.assertCode(
-            "if(!group||group.section!==x.section)"
-            "line.groups.push(group={section:x.section,items:[]});")
+        self.assertCode("const entryLinks=d.entry_links||[];")
+        # minnano-av 那一枚混进上面那排外链，排在最左。
+        self.assertCode("const links=entryLinks.filter(x=>x.slot==='pill').map(x=>")
         self.assertPageContains(
-            '<div class="entrygroup"><span class="entryhead">${esc(group.section)}</span>')
-        self.assertPageContains(
-            '<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">'
-            '<span class="entitylinkicon brand">${icon(x.icon)}</span>'
+            '<span class="entitylinkicon brand">${icon(x.mark)}</span>'
             '<span class="entitylinklabel">${esc(x.label)}</span></a>')
-        self.assertPageContains('<div class="entryrows">${entryLinks}</div>')
-        entry = self.app_js[self.app_js.index("const entryLines=[];"):]
+        self.assertCode(").join('')+siteLinks;")
+        self.assertCode("const entryMarks=entryLinks.filter(x=>x.slot==='mark').map(x=>")
+        self.assertPageContains(
+            '<a class="entrymark" href="${esc(x.url)}" target="_blank" rel="noreferrer"')
+        # MISSAV 没有图形标识，那一枚排字；带序号的第二枚把序号摆在标识旁边。
+        self.assertPageContains(
+            "x.mark?icon(x.mark):'<span class=\"missavmark\">"
+            "<span>MISS</span><span>AV</span></span>'")
+        self.assertPageContains('<span class="entryordinal">${esc(x.ordinal)}</span>')
+        self.assertPageContains('<div class="entrymarks">${entryMarks}</div>')
+        entry = self.app_js[self.app_js.index("const entryLinks=d.entry_links||[];"):]
         self.assertNotIn("http", entry[:entry.index("const tags=")], "地址由服务端拼，页面不许自己接")
         self.assertPageContains(
-            ".entryrows{display:flex;flex-direction:column;gap:12px;"
+            ".entrymarks{display:flex;flex-wrap:wrap;align-items:center;gap:32px;"
             "margin-top:14px;max-width:100%}")
+        # 标识自己就说清了是哪家，不套药丸；hover 用 Board 那块 --hover。
+        # 选择器要压过 board.css 里按 [target=_blank] 把外链染蓝、抹平内边距的那条。
         self.assertPageContains(
-            ".entryrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px;max-width:100%}")
-        self.assertPageContains(".entryentries{display:flex;flex-wrap:wrap;gap:8px;min-width:0}")
-        # 药丸的形状和上面那排外链共用一条规则，不另抄一份。
-        self.assertPageContains(".entitylinks a,.entryentries a,.entitylinks .private{")
-        # 栏与栏之间一条细竖线；窄屏换行后它划的是上下，所以在那里撤掉。
-        self.assertPageContains(
-            ".entrygroup+.entrygroup{padding-left:16px;border-left:1px solid var(--line-soft)}")
-        self.assertPageContains(
-            ".entityhero .entrygroup+.entrygroup{padding-left:0;border-left:0}")
-        self.assertPageContains(
-            ".entityhero .entryrow,.entityhero .entryentries{justify-content:center}")
+            ".entityhero .entrymarks a.entrymark:any-link:hover"
+            "{background:var(--hover);text-decoration:none}")
+        self.assertPageContains(".entrymark svg{height:22px;width:auto}")
+        self.assertPageContains(".entityhero .entrymarks{justify-content:center}")
 
-    def test_the_entry_sites_carry_their_own_brand_marks(self):
-        """三个站各有一枚自绘品牌标记，和社媒那几枚同形：场色铺满，字形留白。"""
-        for name, field in (("minnano", "#29ABE2"), ("javdb", "#2563EB"), ("missav", "#DC2626")):
-            self.assertPageContains(
-                f'<symbol id="i-brand-{name}" viewBox="0 0 24 24">'
-                f'<rect width="24" height="24" stroke="none" fill="{field}"/>')
-        # 雪碧图里的自绘件要在生成脚本的名单上，否则换上游版本时会被当成漏管的一枚。
+    def test_the_watch_row_prints_each_site_own_wordmark(self):
+        """JavDB 用它页面导航里那枚横标识，MISSAV 按它自己的排版规则排字。"""
+        self.assertPageContains('<symbol id="i-mark-javdb" viewBox="0 0 326 111">')
+        # 「Jav」那半在站上是纯白，压在 Peach 的浅色面上会消失，所以跟页面墨色走。
+        self.assertPageContains('<path stroke="none" fill="currentColor" d="M47.4375 29.5469')
+        self.assertPageContains('fill="#2F80ED"')
+        self.assertCode("const WIDE_ICONS={'text-aa':1.435,'mark-javdb':326/111};")
+        self.assertPageContains(
+            ".missavmark{font-family:Halant,Georgia,\"Times New Roman\",serif;"
+            "font-weight:500;\n  font-size:var(--fs-2xl);line-height:22px;")
+        self.assertPageContains(".missavmark span:last-child{color:#FE628E}")
+        # minnano-av 的圆标取自它自己的标识文件左半，viewBox 因此是 70×70。
+        self.assertPageContains(
+            '<symbol id="i-brand-minnano" viewBox="0 0 70 70">'
+            '<circle cx="35" cy="35" r="35" stroke="none" fill="#29abe2"/>')
+        # 雪碧图里手工维护的那几枚要在生成脚本的名单上，否则会被当成漏管的一枚。
         generator = (Path(__file__).resolve().parents[1] / "scripts"
                      / "vendor_web_dependencies.mjs").read_text(encoding="utf-8")
-        self.assertIn('"brand-minnano", "brand-javdb", "brand-missav",', generator)
+        self.assertIn('"brand-minnano", "mark-javdb",', generator)
 
     def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
         self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
@@ -11128,7 +11136,7 @@ class WebUiSourceTests(unittest.TestCase):
         外层 `<svg>` 的 viewBox 也得跟着 symbol 的比例，否则 `use` 仍旧 meet 进
         24×24 的方框，把 symbol 那侧的宽框白改了。宽度交给 CSS 按高推。
         """
-        self.assertPageContains("const WIDE_ICONS={'text-aa':1.435};")
+        self.assertPageContains("const WIDE_ICONS={'text-aa':1.435,'mark-javdb':326/111};")
         self.assertPageContains(
             "const ratio=WIDE_ICONS[name],classes=[ratio?'iconwide':'',cls].filter(Boolean).join(' ');")
         self.assertPageContains(

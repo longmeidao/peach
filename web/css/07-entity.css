@@ -50,10 +50,10 @@
 /* 外链排成一行次级按钮：36px 高、控件圆角、一圈线，跟 Board 的 secondary Button 同一个形。
    它们是「去哪」的入口，不是标签，所以不画成药丸。 */
 .entitylinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;max-width:100%}
-.entitylinks a,.entryentries a,.entitylinks .private{box-sizing:border-box;min-width:0;max-width:100%;height:36px;border:1px solid var(--line);
+.entitylinks a,.entitylinks .private{box-sizing:border-box;min-width:0;max-width:100%;height:36px;border:1px solid var(--line);
   border-radius:var(--control-radius);padding:0 12px 0 8px;font-size:var(--fs-sm);text-decoration:none;color:var(--ink);
   background:transparent;display:inline-flex;align-items:center;gap:8px;overflow:hidden}
-.entitylinks a:hover,.entryentries a:hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
+.entitylinks a:hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
 .entitylinks .private{color:var(--muted);border-style:dashed}
 /* 圆盘本身不垫底色。X 这类内联品牌标记直接画在按钮上，垫一层 `--sunk` 只会让它比
    周围暗一档，看着像这条链接被禁用了——而图标要说的是「去哪」，不是「能不能点」。 */
@@ -71,18 +71,27 @@
 .entitylinks a.iconlink{width:36px;padding:0;gap:0;justify-content:center}
 /* 官网域名前显示站点自己那枚图标，取不到才露出地球；与带名称的链接共用间距。 */
 .entitylinks a.urllink{letter-spacing:.02em}
-/* 外部入口：同一个人在别处的那几页，按「去那儿干什么」分栏。栏位标题走全站那套灰色
-   小标题（和 `.tagpicksection h4`、`.next h3` 同一档字号、字重与字距），栏与栏之间隔一条
-   细竖线——同一行里并排的两组标题，不划开就读成一串。
-   入口本身和上面那排外链是同一枚药丸：两排都是「去哪」的入口，都带着一个圆标，形状
-   共用 `.entitylinks a` 那条规则，这里只管怎么排。
-   窄屏下竖线撤掉：换行之后它落在行首，划开的是上下不是左右。 */
-.entryrows{display:flex;flex-direction:column;gap:12px;margin-top:14px;max-width:100%}
-.entryrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px;max-width:100%}
-.entrygroup{display:flex;flex-direction:column;gap:7px;min-width:0}
-.entrygroup+.entrygroup{padding-left:16px;border-left:1px solid var(--line-soft)}
-.entryhead{color:var(--muted);font-size:var(--fs-xs);font-weight:600;letter-spacing:.12em}
-.entryentries{display:flex;flex-wrap:wrap;gap:8px;min-width:0}
+/* 看片的那一行：两站自己的横向标识排在一起，不套药丸。标识本身已经说清是哪家，再画
+   一圈框、再写一遍站名，说的是同一件事，占的却是三倍高度。
+   高度统一 22px、按标识自己的比例定宽；hover 用 Board 那块 `--hover` 垫一层，圆角走
+   `--control-radius`，负外边距让垫层不把这一行撑开；32px 的间距减掉左右各 8px 的垫层，
+   两枚标识之间还剩 16px，看着才是两条链接而不是一长条。
+   选择器写得这么长是为了压过 board.css 里「一句话就是一个链接」那条：它按 `[target=_blank]`
+   收所有外链，把字染蓝、抹平内边距，标识里跟着墨色走的那半会一起变蓝。那条算三个类，
+   加上 `:any-link` 这里才是四个；board.css 又在最后加载，同分也是它赢。 */
+.entrymarks{display:flex;flex-wrap:wrap;align-items:center;gap:32px;margin-top:14px;max-width:100%}
+.entityhero .entrymarks a.entrymark:any-link{display:inline-flex;align-items:center;gap:6px;min-width:0;
+  text-decoration:none;color:var(--ink);border-radius:var(--control-radius);padding:4px 8px;margin:-4px -8px}
+.entityhero .entrymarks a.entrymark:any-link:hover{background:var(--hover);text-decoration:none}
+/* 标识自己带着 fill：蓝块和白字是站点的配色，`currentColor` 那半跟页面墨色走。
+   这里只定高，宽度由外层 viewBox 的比例推出来。 */
+.entrymark svg{height:22px;width:auto}
+.entryordinal{color:var(--muted);font-size:var(--fs-sm)}
+/* MISSAV 那枚是排出来的字，规则照它站上那套：Halant 500、`MISS` 跟页面墨色、`AV`
+   用它的粉。字号按它 36px 里 22px 帽高的比例落到这一行的高度上。 */
+.missavmark{font-family:Halant,Georgia,"Times New Roman",serif;font-weight:500;
+  font-size:var(--fs-2xl);line-height:22px;letter-spacing:.01em;white-space:nowrap}
+.missavmark span:last-child{color:#FE628E}
 .entityskeletontext{width:100%}
 .entityskeletontext .entitytitle .skeleton{width:60%;height:auto}
 .entityskeletontext .alias .skeleton{display:block;width:40%;height:20px}

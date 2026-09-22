@@ -1,4 +1,4 @@
-/* 「外部入口」：人物资料页上通向 JavDB、minnano-av 与 MISSAV 的那三枚直达入口。
+/* 「外部入口」：人物资料页上通向 minnano-av、JavDB 与 MISSAV 的那三枚直达入口。
  *
  * 每站一个开关加一条地址模板。地址由服务端拼（`peach.entry_links`），这一页交的只是
  * 模板本身——站点 id 与规范名都在账本里，前端拿不到也不该拿。模板里的占位符由服务端
@@ -53,7 +53,9 @@ export function EntryLinksForm({ initial, receipt }: {
         ))}
       </Rows>
       <Stack divided>
-        <Help>账本里没有这个站点 id 的人物不显示它那一枚入口，地址不会退回站内搜索。</Help>
+        <Help>账本里没有这个站点 id 的人物不显示它那一枚入口，地址不会退回站内搜索。
+          JavDB 与 MISSAV 只收 JAV 女优，这两枚还要账本里有哪个 JAV 目录站给过她 id 才出现；
+          FC2 个人摄那类创作者没有这种 id，资料页上也就没有这一行。</Help>
         {sites.map((site) => (
           <Input key={site.key} id={`entry-link-${site.key}`} label={`${site.label} 地址模板`}
             autoComplete="off" maxLength={300} value={site.template}
