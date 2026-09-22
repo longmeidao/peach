@@ -11,6 +11,7 @@ import { ActivityPage } from './activity/activity-page';
 import { prefetchTasks } from './activity/tasks';
 import { AvatarPicker } from './avatar-picker/avatar-picker-page';
 import type * as Bundle from './bundle';
+import { CoverCrop } from './cover-crop/cover-crop-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
 import { FollowManagePage } from './follow-manage/follow-manage-page';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
@@ -75,6 +76,8 @@ export const pages: Bundle.ReactPages = {
   /* 换头像的候选要打到图库上，而资料页每进一次就预取一遍的话，多数时候没人点开它。
      首屏没有要取的东西，`prefetch` 是空操作，候选由弹层自己在打开时取。 */
   'avatar-picker': { prefetch: async () => {}, mount: mounter(AvatarPicker) },
+  /* 裁剪封面同理：详情页每进一次都挂这枚键，首屏没有要取的东西，图到点开才量。 */
+  'cover-crop': { prefetch: async () => {}, mount: mounter(CoverCrop) },
   configuration: {
     prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationPage),
   },

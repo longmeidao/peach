@@ -34,6 +34,7 @@ export { resourceScanHtml } from './resource-sync';
  *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
 export interface IslandContracts {
   'avatar-picker': ReactBundle.AvatarPickerProps;
+  'cover-crop': ReactBundle.CoverCropProps;
   'follow-manage': ReactBundle.FollowManageProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
   'scraping': ReactBundle.ScrapingProps;
@@ -56,6 +57,7 @@ interface Island {
 
 const REGISTRY: { [N in IslandName]: Island } = {
   'avatar-picker': { react: 'avatar-picker' },
+  'cover-crop': { react: 'cover-crop' },
   'follow-manage': { react: 'follow-manage' },
   'library-processing': { react: 'library-processing' },
   'scraping': { react: 'scraping' },

@@ -8,7 +8,7 @@
  * 固定不动，只有网格滚。候选到点开弹层才取：资料页每进一次就预取一遍，多数时候没人点。
  * 注册表里没有模态弹层，用 React Aria 的 `Modal` 组合，差异登记在 `../boardui/ORIGIN.md`。 */
 import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, CSSProperties } from 'react';
 import { RiAddLine, RiCloseLine, RiUserLine } from '@remixicon/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components';
@@ -19,14 +19,16 @@ import { IconButton } from '@/components/base/buttons/icon-button';
 import { Input } from '@/components/base/input/input';
 
 import { errorMessage } from '../../api';
+import { centeredBox, isUsableSize, previewStyle, type CropBox, type CropSize } from '../../crop-geometry';
 import type { AvatarPickerProps } from '../bundle';
 import { Note } from '../components/note';
 import { useOverlayScrollbar } from '../components/overlay-scrollbar';
+import { CropFrame } from '../crop/crop-frame';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import {
-  avatarChoicesKey, choiceDetail, choiceImageUrl, fetchAvatarChoices, indexNotReady, pickerNote,
-  sendAvatarPick, type AvatarSubmission,
+  avatarChoicesKey, baseLabel, choiceDetail, choiceImageUrl, fetchAvatarChoices, indexNotReady,
+  pickerNote, sendAvatarPick, type AvatarChoice, type AvatarSubmission,
 } from './avatar-picker';
 
 export function AvatarPicker({ kind, entityId, name, onPicked }: AvatarPickerProps) {
@@ -68,6 +70,9 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
   const grid = useOverlayScrollbar<HTMLDivElement>();
   const [url, setUrl] = useState('');
   const [fileProblem, setFileProblem] = useState('');
+  /* 作品画面那一组点开的是框选，不是当场换图。整屏换掉而不是再叠一层弹层：这一步
+     要的是尽可能大的底图，而弹层套弹层只会让底图更小。 */
+  const [cropping, setCropping] = useState<AvatarChoice | null>(null);
   const key = avatarChoicesKey(kind, entityId);
   const picked = useRef(false);
 
@@ -115,17 +120,29 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Heading slot="title" className="text-title-3-semibold text-text-primary">更换头像</Heading>
-            {choices.length ? <Chip color="soft">{choices.length} 张可选</Chip> : null}
+            <Heading slot="title" className="text-title-3-semibold text-text-primary">
+              {cropping ? '框出头像那一块' : '更换头像'}
+            </Heading>
+            {!cropping && choices.length ? <Chip color="soft">{choices.length} 张可选</Chip> : null}
           </div>
-          <p className="text-body-2-regular text-text-secondary">{pickerNote(name, data)}</p>
-          {indexNotReady(data)
+          <p className="text-body-2-regular text-text-secondary">
+            {cropping
+              ? `${cropping.label}：拖动方框选一块，滚轮或角上那枚方块改大小。`
+              : pickerNote(name, data)}
+          </p>
+          {!cropping && indexNotReady(data)
             ? <Note tone="neutral">图库索引还没取过，只能从用过的图里选。</Note>
             : null}
           {problem ? <Note tone="error">{problem}</Note> : null}
         </div>
         <IconButton icon={RiCloseLine} size="small" aria-label="关闭" onClick={close} />
       </div>
+      {cropping ? (
+        <CropStep kind={kind} entityId={entityId} choice={cropping} busy={submit.isPending}
+          back={() => setCropping(null)}
+          confirm={(ref, crop) => { if (!submit.isPending) submit.mutate({ ref, crop }) }} />
+      ) : (
+      <>
       {/* 候选网格是这一屏唯一会滚的层：头部和底下那排操作再长也不动。上下各留 16px：
           只留上边的话，最后一排图贴着底下那条线。外面这一层只为放那条覆盖式滚动条的
           轨道，它按 `absolute` 铺，得有一个只裹着滚动块本身的定位祖先。 */}
@@ -136,7 +153,11 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
             {choices.map((choice) => (
               <button type="button" key={choice.ref} role="option" data-avatar-choice
                 aria-selected={choice.current} title={choiceDetail(choice)} {...busyProps(submit.isPending)}
-                onClick={() => { if (!submit.isPending) submit.mutate({ ref: choice.ref }) }}
+                onClick={() => {
+                  if (submit.isPending) return;
+                  if (choice.crop) setCropping(choice);
+                  else submit.mutate({ ref: choice.ref });
+                }}
                 className="relative flex cursor-pointer flex-col gap-1 overflow-hidden rounded-2lg border border-separator-border bg-background-secondary-default pb-1 text-center text-caption-1-regular text-text-secondary outline-none hover:border-border-button-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring aria-selected:border-border-focus-ring aria-selected:bg-background-tertiary-default aria-selected:text-text-primary aria-disabled:cursor-progress aria-disabled:opacity-60">
                 <img loading="lazy" alt="" src={choiceImageUrl(kind, entityId, choice.ref)}
                   className="block w-full aspect-avatar-choice object-cover" />
@@ -163,6 +184,72 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
           </div>
           <Button disabled={!url.trim()} {...busyProps(submit.isPending)}
             onClick={() => { if (!submit.isPending) submit.mutate({ url: url.trim() }) }}>用这个地址</Button>
+        </div>
+      </div>
+      </>
+      )}
+    </>
+  );
+}
+
+/** 框选那一步：一张底图、一个方框、一个圆预览。
+ *
+ *  比例锁死 1:1 且不给解锁：头像框是圆的，非方图装进去只会被再裁一次，而第二次
+ *  裁在哪由 CSS 说了算，人在这里框的那一块就不作数了。 */
+function CropStep({ kind, entityId, choice, busy, back, confirm }: {
+  kind: string; entityId: number; choice: AvatarChoice; busy: boolean;
+  back(): void; confirm(ref: string, crop: CropBox): void;
+}) {
+  const bases = choice.bases.length ? choice.bases : [choice.ref];
+  const [base, setBase] = useState(bases[0]);
+  const [size, setSize] = useState<CropSize | null>(null);
+  const [box, setBox] = useState<CropBox | null>(null);
+  const src = choiceImageUrl(kind, entityId, base);
+  const frame = useOverlayScrollbar<HTMLDivElement>();
+  /* 换底图就是换一张图，上一张的框一个数都不留：同一组坐标落在另一张图上是一块
+     错位的区域，而错位在屏幕上和「本来就框在这儿」看不出区别。 */
+  function pickBase(next: string) {
+    setBase(next);
+    setSize(null);
+    setBox(null);
+  }
+  const preview = box && size ? previewStyle(box, size) : null;
+  return (
+    <>
+      <div ref={frame} className="flex min-h-0 flex-1 flex-col items-center gap-4 overflow-y-auto border-t border-separator-border px-5 py-4">
+        <CropFrame src={src} aspect={1} box={box} size={size}
+          label={`${choice.label} 的头像取景框`}
+          onSize={(next) => {
+            setSize(next);
+            if (isUsableSize(next)) setBox(centeredBox(next, 1));
+          }}
+          onBox={setBox} />
+        {/* 底图那一排：封面加九宫格九格。一部作品里哪一格有正脸，只能看着换。 */}
+        {bases.length > 1 ? (
+          <div role="radiogroup" aria-label="底图" className="flex flex-wrap justify-center gap-2">
+            {bases.map((ref) => (
+              <button type="button" key={ref} role="radio" aria-checked={ref === base}
+                data-crop-base onClick={() => pickBase(ref)}
+                className="cursor-pointer rounded-lg px-2 py-1 text-caption-1-regular text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring aria-checked:bg-background-tertiary-default aria-checked:text-text-primary">
+                {baseLabel(ref)}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-separator-border p-5">
+        {/* 圆预览就是它上线之后的样子。背景图和上面那张是同一个地址，不多取一次。 */}
+        <span aria-hidden data-crop-preview
+          className="size-crop-preview shrink-0 rounded-full border border-separator-border bg-background-secondary-default bg-(image:--crop-preview) bg-(position:--crop-preview-at) bg-(length:--crop-preview-size) bg-no-repeat"
+          style={preview ? {
+            '--crop-preview': `url("${src}")`,
+            '--crop-preview-size': preview.size,
+            '--crop-preview-at': preview.position,
+          } as CSSProperties : undefined} />
+        <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
+          <Button variant="secondary" onClick={back} {...busyProps(busy)}>回候选</Button>
+          <Button disabled={!box || !size} {...busyProps(busy)}
+            onClick={() => { if (box && !busy) confirm(base, box) }}>用这一块</Button>
         </div>
       </div>
     </>

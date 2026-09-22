@@ -23,9 +23,9 @@ export function javImageKind(item: { is_jav?: boolean; code?: string; has_cover?
 }
 
 /** 接口 `poster_box` 的形状：`x0/y0/x1/y1` 是源图像素坐标，`px` 是源图尺寸，
- *  `method` 记着这个框是沿折痕（`fold`）还是按正封宽高比的先验（`ratio`）定出来的。
- *  框就是正封本身，`x0` 即折痕所在的列。不该裁、没算过、算法版本落后的封面拿到的
- *  是 null。 */
+ *  `method` 记着这个框是沿折痕（`fold`）、按正封宽高比的先验（`ratio`），还是人在
+ *  详情页自己框的（`manual`）。前两档的框永远满高贴右缘，只有 `x0` 是活的；手工框
+ *  四边都可能动。不该裁、没算过、算法版本落后的封面拿到的是 null。 */
 export interface PosterBox {
   x0: number;
   y0: number;
@@ -35,29 +35,52 @@ export interface PosterBox {
   px: number[];
 }
 
-/** 正封在卡片里的摆法：`clip` 是从图片左缘切掉的比例（折痕以左是封底），`left` 是
- *  图片左缘相对卡片宽度的偏移，两个都是百分数。没有框时返回 null，调用方原样退回
- *  CSS 里那份贴右缘的回退。
+/** 正封在卡片里的摆法。四个数都是百分数：`clip` 是从图片四边各切掉多少（喂
+ *  `clip-path: inset()`），`left`／`top` 是图片左上角相对卡片的偏移，`height` 是图片
+ *  高度相对卡片高度。没有框时返回 null，调用方原样退回 CSS 里那份贴右缘的回退。
  *
- *  图片按卡片高度铺满、宽度随原始比例走，于是渲染宽度是卡片宽的
- *  `源图宽 / 源图高 / 容器比例` 倍——页面这一侧只需要知道容器的比例，不必去量它。
- *  正封占其中 `1 − 折痕比例`：装得下就居中，两侧各留一条交给模糊背景；装不下只能
- *  贴右缘从左边切，因为标题、女优名和角标都压在正封右侧。
+ *  缩放由框的高度定：框那一块正好铺满卡片高度，所以图片被放到卡片高的
+ *  `源图高 / 框高` 倍。算出来的那两档框本来就是满高，这一档于是恒为 100%，一个像素
+ *  都不放大；只有手工框横着切一刀时才会大于 100%。
  *
- *  纵向一个像素都不裁：图片高度正好等于卡片高度，所以这一档没有纵向锚点可写。 */
-export function panelFrame(box: Partial<PosterBox> | null | undefined, ratio: number): { clip: number; left: number } | null {
+ *  横向：框占卡片宽的 `框宽 / 框高 / 容器比例`。装得下就居中，两侧各留一条交给模糊
+ *  背景；装不下就让框的右缘贴住卡片右缘再从左边切，因为标题、女优名和角标都压在
+ *  正封右侧。 */
+export function panelFrame(box: Partial<PosterBox> | null | undefined, ratio: number): {
+  clip: { top: number; right: number; bottom: number; left: number };
+  left: number; top: number; height: number;
+} | null {
   const width = Number(box?.px?.[0]);
   const height = Number(box?.px?.[1]);
   const x0 = Number(box?.x0);
   if (!(width > 0 && height > 0 && ratio > 0) || !Number.isFinite(x0)) return null;
-  // 夹回 0–1：框落在图片外面是数据坏了，按整幅可见处理比按负宽度算下去安全。
-  const fold = Math.min(1, Math.max(0, x0 / width));
-  const wide = width / height / ratio;
-  const visible = (1 - fold) * wide;
+  // 夹回图片里面：框落在图片外面是数据坏了，按整幅可见处理比按负宽度算下去安全。
+  // 缺 `y0/y1/x1` 的按「满高到右缘」补——算出来的那两档框就是这个形状。
+  const span = (value: unknown, fallback: number, limit: number) =>
+    Math.min(limit, Math.max(0, Number.isFinite(Number(value)) ? Number(value) : fallback));
+  const left0 = span(x0, 0, width);
+  const right = Math.max(left0, span(box?.x1, width, width));
+  const top0 = span(box?.y0, 0, height);
+  const bottom = Math.max(top0, span(box?.y1, height, height));
+  const boxWidth = right - left0;
+  const boxHeight = bottom - top0;
+  if (!(boxWidth > 0 && boxHeight > 0)) return null;
+  const visible = boxWidth / boxHeight / ratio;
   if (!(visible > 0)) return null;
-  const left = visible <= 1 ? (1 - visible) / 2 - fold * wide : 1 - wide;
-  const percent = (value: number) => Math.round(value * 10000) / 100;
-  return { clip: percent(fold), left: percent(left) };
+  const offset = visible <= 1
+    ? (1 - visible) / 2 - left0 / boxHeight / ratio
+    : 1 - right / boxHeight / ratio;
+  // `|| 0` 是为了把 -0 收成 0：写进 CSS 两者一样，读出来比对时不一样。
+  const percent = (value: number) => (Math.round(value * 10000) || 0) / 100;
+  return {
+    clip: {
+      top: percent(top0 / height), right: percent(1 - right / width),
+      bottom: percent(1 - bottom / height), left: percent(left0 / width),
+    },
+    left: percent(offset),
+    top: percent(-top0 / boxHeight),
+    height: percent(height / boxHeight),
+  };
 }
 
 /** 原地换图，保留列表顺序、滚动位置和正在播放的媒体。 */

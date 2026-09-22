@@ -276,13 +276,15 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
    `object-fit:cover` 只裁一个轴，另一个轴的锚点是死值。 */
 /* 没有折痕数据的封套只能贴最右边缘：那是「正封顶着封套右缘」这条规律的最小假设。 */
 .poster.cover.front[data-frame="sleeve"]{object-position:100% var(--cover-y,22%)}
-/* 有折痕数据的走这一档：图片按卡片高度铺满、宽度随原始比例，`clip-path` 从折痕处切掉
-   左边的封底，剩下的正封由 `--panel-left` 摆正。`inset:0` 定死了 left/right，和这里的
-   left+width 过约束，显式撤掉再写，不靠浏览器取舍；元素盒本身就是原始宽高比，
+/* 有框数据的走这一档：`clip-path` 把框外面四边都切掉，剩下的那一块由 `--panel-left`
+   与 `--panel-top` 摆正、`--panel-height` 放到铺满卡片高度。`inset:0` 定死了 left/right，
+   和这里的 left+width 过约束，显式撤掉再写，不靠浏览器取舍；元素盒本身就是原始宽高比，
    `object-fit` 在这里三种取值等价，写 fill 表明「不要再插手缩放」。
-   纵向一个像素都不裁，所以这一档没有 `--cover-y`。 */
-.poster.cover.front.panel{inset:0 auto auto var(--panel-left,0%);width:auto;max-width:none;
-  height:100%;object-fit:fill;clip-path:inset(0 0 0 var(--panel-clip,0%))}
+   四个值都由 `panelFrame` 算好：沿折痕和按比例算出来的框满高贴右缘，top 为 0、
+   height 为 100%，纵向一个像素都不裁；只有人手工横着框才用得上另两个轴。 */
+.poster.cover.front.panel{inset:var(--panel-top,0%) auto auto var(--panel-left,0%);width:auto;
+  max-width:none;height:var(--panel-height,100%);object-fit:fill;
+  clip-path:inset(var(--panel-clip,0 0 0 0))}
 .poster.cover.front[data-frame="front"]{object-position:50% var(--cover-y,22%)}
 /* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
    居中：那是取不到人脸时唯一站得住的猜测。 */

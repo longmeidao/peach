@@ -38,6 +38,12 @@
    * 工具类里没有这两档，写成 token 而不是任意值。 */
   --container-avatar-picker: 720px;
   --aspect-avatar-choice: 3 / 4;
+  /* 框选那一屏：底图最高占半屏，剩下的高度留给圆头像预览和底下那排操作——框到一半
+   * 还要滚动才看得见确认键的话，人会以为这一步没做完。封面是横版封套，比换头像那
+   * 一屏宽一档才放得下整张图。圆预览与资料页那张头像同一档，框出来就是上线的样子。 */
+  --spacing-crop-frame: 50vh;
+  --spacing-crop-preview: 96px;
+  --container-cover-crop: 880px;
   /* 顶栏高度。粘顶的工具条要停在顶栏下沿，而这个高度归遗留壳的 `--topH`
    * （`web/board.css` 与 `web/css/01-base.css` 按屏各给一档），这里只把它接成 `top-topbar`。 */
   --spacing-topbar: var(--topH, 64px);

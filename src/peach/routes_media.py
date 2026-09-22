@@ -28,9 +28,9 @@ from fastapi.responses import (
 from starlette.staticfiles import StaticFiles
 
 from . import (
-    avatar_face, avatar_picker, avatar_provider, follow_assets, link_marks,
-    scraping_access, site_icons, subtitles, taste_history, timeline_sheets,
-    web_follow, web_settings,
+    avatar_face, avatar_picker, avatar_provider, follow_assets, images,
+    jav_poster_crop, link_marks, scraping_access, site_icons, subtitles,
+    taste_history, timeline_sheets, web_follow, web_settings,
 )
 from .config import GENERATED_DIR
 from .follow import FollowSourceError
@@ -489,6 +489,41 @@ def cover(request: Request, code: str = "", args: dict[str, str] = Depends(requi
     if path is None:
         return JSONResponse({"error": "no cover"}, status_code=404)
     return _image_response(request, path, media_type="image/jpeg")
+
+
+@router.post("/api/cover-crop")
+async def cover_crop(request: Request, args: dict[str, str] = Depends(require_auth)):
+    """人自己框的正封那一块，或者把它撤掉换回算出来的那个。
+
+    写的是封面旁边的 `.poster.json`，不生成第二张图片：正封本来就不是一张新图，
+    而是一组坐标（`jav_poster_crop` 的约定）。所以封面原图一个字节都不动，撤掉
+    手工框就是删掉这份 sidecar，下一次取景重新按折痕判据算。
+
+    `box` 是源图像素的 `{x0,y0,x1,y1}`，右下开区间；`box` 为 null 表示恢复默认。
+    """
+    state = request.app.state.web_contract
+    sent = await request.json()
+    payload = sent if isinstance(sent, dict) else {}
+    code = str(payload.get("code") or "")
+    path = state.cover_path(code)
+    if path is None:
+        return JSONResponse({"error": "这个番号没有封面"}, status_code=404)
+    size = images.measure_image_size(path.read_bytes())
+    if size is None:
+        return JSONResponse({"error": "这张封面读不出来"}, status_code=422)
+    if payload.get("box") is None:
+        # 恢复默认是当场按折痕判据重算一遍，不是删掉 sidecar：删掉之后没有人会
+        # 再来算，页面拿到的是「这张图不该裁」，正封从此再也回不来。
+        record = jav_poster_crop.crop_record(
+            code, size[0], size[1], jav_poster_crop.file_gradient(path))
+    else:
+        record = jav_poster_crop.manual_record(size[0], size[1], payload.get("box"))
+    if record is None:
+        return JSONResponse({"error": "框选的区域不成立"}, status_code=400)
+    jav_poster_crop.write_sidecar(path, record)
+    state.cache_bust()
+    return JSONResponse({"ok": True, "code": code,
+                         "poster_box": jav_poster_crop.projection(record)})
 
 
 @router.api_route("/endcard-frame", methods=["GET", "HEAD"])
@@ -979,6 +1014,20 @@ def _picker_kind(kind: str) -> str:
     return kind if kind in {"performer", "creator"} else "performer"
 
 
+def _picker_artwork(request: Request) -> avatar_picker.ArtworkSource:
+    """作品画面的取图口。九宫格没铺过就现抽一格，和 `/poster` 走同一条路。"""
+    state = request.app.state
+
+    def frame(asset_id: int, cell: int):
+        try:
+            return state.preview_service.poster(asset_id, cell)
+        except PreviewUnavailable:
+            return None
+
+    return avatar_picker.ArtworkSource(
+        cover_root=state.web_contract.cover_root, frame=frame)
+
+
 @router.get("/api/avatar-choices")
 def avatar_choices(request: Request, kind: str = "performer", id: int = 0,
                    args: dict[str, str] = Depends(require_auth)):
@@ -987,7 +1036,8 @@ def avatar_choices(request: Request, kind: str = "performer", id: int = 0,
     providers_root, avatar_root = _picker_roots(state)
     with state.read_connection() as connection:
         return JSONResponse(avatar_picker.choices(
-            connection, providers_root, avatar_root, _picker_kind(kind), id))
+            connection, providers_root, avatar_root, _picker_kind(kind), id,
+            cover_root=state.cover_root))
 
 
 @router.api_route("/avatar-choice", methods=["GET", "HEAD"])
@@ -1004,7 +1054,7 @@ def avatar_choice(request: Request, kind: str = "performer", id: int = 0,
         try:
             body, origin = avatar_picker.resolve(
                 ref, connection, providers_root, id,
-                request.app.state.http_transport)
+                request.app.state.http_transport, _picker_artwork(request))
         except avatar_picker.PickerError as error:
             return JSONResponse({"error": str(error)}, status_code=404)
     inspected = avatar_provider.inspect_avatar(body)
@@ -1024,9 +1074,12 @@ def avatar_choice(request: Request, kind: str = "performer", id: int = 0,
 async def avatar_pick(request: Request, args: dict[str, str] = Depends(require_auth)):
     """换头像。三种来源共用这一个出口，区别只在字节从哪来。
 
-    - `ref`：服务端自己列出来的候选（图库同名图，或这个人取过的图）
+    - `ref`：服务端自己列出来的候选（图库同名图、这个人取过的图，或他作品里的画面）
     - `url`：用户手填的地址，必须过 `allowed_source` 那道公网判据
     - 请求体直接是图片字节：用户从本机选的文件，浏览器原样发过来
+
+    `crop` 是这四条路共用的一道可选工序：给了框就先按源图像素切一块再装。作品画面
+    那一路必须给框——横图整张装进圆框只剩一块背景。被切的原图一个字节都不动。
 
     被顶下来的那张不删也不搬：它按内容哈希躺在候选缓存里，下次出现在候选列表的
     「用过的」那一组，换回去只是再装一次。
@@ -1054,7 +1107,7 @@ async def avatar_pick(request: Request, args: dict[str, str] = Depends(require_a
             with state.read_connection() as connection:
                 body, origin = avatar_picker.resolve(
                     ref, connection, providers_root, entity_id,
-                    request.app.state.http_transport)
+                    request.app.state.http_transport, _picker_artwork(request))
         elif url:
             if not avatar_picker.allowed_source(url):
                 return JSONResponse(
@@ -1067,6 +1120,9 @@ async def avatar_pick(request: Request, args: dict[str, str] = Depends(require_a
                       "external_id": str(payload.get("name") or "")}
         else:
             return JSONResponse({"error": "没有可用的图片"}, status_code=400)
+        if isinstance(payload.get("crop"), dict):
+            body, cropped = avatar_picker.crop(body, payload["crop"])
+            origin = {**origin, **cropped}
         result = avatar_picker.install(providers_root, avatar_root, kind,
                                        entity_id, body, origin)
     except avatar_picker.PickerError as error:

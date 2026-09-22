@@ -2851,17 +2851,24 @@ class WebUiSourceTests(unittest.TestCase):
         按数值验收；这里守的是「框有没有送到元素上、算出来的值有没有写回去」这条链路。
         """
         self.assertPageContains("const pb=it.poster_box;")
+        # 六个数一条属性：框的四条边加源图宽高。手工框四边都可能动，少送一个就错位。
+        self.assertPageContains(
+            "[pb.x0,(pb.px||[])[0],(pb.px||[])[1],pb.y0,pb.x1,pb.y1].map(Number).join(' ')")
         self.assertPageContains(' data-posterbox="')
         # 换回官方封面时换的是同一个 <img>，框必须跟着元素走，不能只贴在封面那份 HTML 上。
         self.assertPageContains('/ data-(?:c[xy]|posterbox)="[^"]*"/g')
         self.assertPageContains("posterPanel(img,car);")
-        self.assertPageContains("const frame=panelFrame({x0,px:[imgW,imgH]},ratio);")
-        self.assertPageContains("img.style.setProperty('--panel-clip',`${frame.clip}%`);")
-        self.assertPageContains("img.style.setProperty('--panel-left',`${frame.left}%`);")
+        self.assertPageContains("const frame=panelFrame({x0,y0,x1,y1,px:[imgW,imgH]},ratio);")
         self.assertPageContains(
-            ".poster.cover.front.panel{inset:0 auto auto var(--panel-left,0%)",
+            "`${frame.clip.top}% ${frame.clip.right}% ${frame.clip.bottom}% ${frame.clip.left}%`")
+        self.assertPageContains("img.style.setProperty('--panel-left',`${frame.left}%`);")
+        # 手工框可以横着切一刀，纵向那两个轴要跟着一起送到元素上。
+        self.assertPageContains("img.style.setProperty('--panel-top',`${frame.top}%`);")
+        self.assertPageContains("img.style.setProperty('--panel-height',`${frame.height}%`);")
+        self.assertPageContains(
+            ".poster.cover.front.panel{inset:var(--panel-top,0%) auto auto var(--panel-left,0%)",
             "正封的位置靠元素自身定位，不是 object-position")
-        self.assertPageContains("clip-path:inset(0 0 0 var(--panel-clip,0%))")
+        self.assertPageContains("clip-path:inset(var(--panel-clip,0 0 0 0))")
         # 只有整张封套才有正封可切；竖版正封和 16:9 剧照走各自那条 object-position。
         self.assertPageContains("if(img.dataset.frame!=='sleeve')return;")
         # 没有框就一个字都不写，CSS 里那份贴右缘的回退照旧生效。
@@ -9024,6 +9031,7 @@ class WebUiSourceTests(unittest.TestCase):
             '${srcBadge(it.location,it.cost,\'srcbig\')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span>'
             '<span class="srctools detailtitletools"><button type="button" data-title-fold hidden '
             'aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon(\'chevron-down\')}</button>'
+            '${it.has_cover&&it.code?\'<span data-cover-crop></span>\':\'\'}'
             '${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span></div></div>')
         self.assertPageContains(".stitletext[data-foldable]{cursor:pointer}")
         self.assertCode("titleText.toggleAttribute('data-foldable',!titleFold.hidden);")
@@ -12426,7 +12434,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
         # 在线资产是 URL，没有本地文件可定位。
-        self.assertPageContains('${icon(\'chevron-down\')}</button>${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span>')
+        self.assertPageContains('${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span>')
 
     def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
         self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")

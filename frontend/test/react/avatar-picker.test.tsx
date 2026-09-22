@@ -26,6 +26,8 @@ const choice = (over: Partial<AvatarChoice> = {}): AvatarChoice => ({
   detail: '葵つかさ.jpg',
   found_by: '',
   current: false,
+  crop: false,
+  bases: [],
   ...over,
 });
 
@@ -177,4 +179,67 @@ it('图库索引还没取过时只剩手填那两条路', async () => {
   expect(dialog()?.textContent).toContain('图库索引还没取过');
   expect(buttonNamed('从本机选图片')).not.toBeNull();
   expect(document.querySelector('input[type=file]')).not.toBeNull();
+});
+
+/** 作品画面那一档：点开是框一块，不是直接装上去。 */
+const artwork = () => choice({
+  ref: 'asset:11:cover', source: 'asset', label: 'ABW-232', detail: '',
+  crop: true, bases: ['asset:11:cover', 'asset:11:cell4'],
+});
+
+/** happy-dom 不真取图，所以自己报一次尺寸：框的一切都从这一步开始。 */
+async function reportSize(width: number, height: number) {
+  const image = document.querySelector('[role="dialog"] img');
+  if (!image) throw new Error('取景图没有画出来');
+  for (const [name, value] of [['naturalWidth', width], ['naturalHeight', height],
+    ['clientWidth', width], ['clientHeight', height]] as const) {
+    Object.defineProperty(image, name, { value, configurable: true });
+  }
+  image.dispatchEvent(new Event('load', { bubbles: false }));
+  await settle();
+}
+
+it('作品画面先框一块再装，方框是正方形的', async () => {
+  const calls = server(listing([artwork()]));
+  const { picked } = await openPicker();
+  await click(cells()[0]);
+  await settle();
+  // 点一下不该直接换头像：这一步只是进框选。
+  expect(calls).toHaveLength(1);
+  expect(dialog()?.textContent).toContain('框出头像那一块');
+  await reportSize(800, 540);
+  await click(buttonNamed('用这一块'));
+  await settle();
+  expect(sent(calls, 1)[0]).toBe('/api/avatar-pick');
+  expect(body(calls, 1)).toEqual({
+    kind: 'performer', id: 7792, ref: 'asset:11:cover',
+    // 头像是圆的，框只能是正方形：短边 540 居中。
+    crop: { x0: 130, y0: 0, x1: 670, y1: 540 },
+  });
+  expect(picked).toHaveBeenCalledOnce();
+});
+
+it('换底图就换一张图，上一张的框一个数都不留', async () => {
+  server(listing([artwork()]));
+  await openPicker();
+  await click(cells()[0]);
+  await settle();
+  const bases = [...document.querySelectorAll<HTMLElement>('[data-crop-base]')];
+  expect(bases.map((one) => one.textContent?.trim())).toEqual(['封面', '第 5 格']);
+  await reportSize(800, 540);
+  await click(bases[1]);
+  await settle();
+  // 新底图还没量出尺寸，这一刻没有框可提交。
+  expect(buttonNamed('用这一块')?.getAttribute('disabled')).not.toBeNull();
+});
+
+it('框错了能回候选，回去还是那一屏', async () => {
+  const calls = server(listing([artwork()]));
+  await openPicker();
+  await click(cells()[0]);
+  await settle();
+  await click(buttonNamed('回候选'));
+  await settle();
+  expect(cells()).toHaveLength(1);
+  expect(calls).toHaveLength(1);
 });
