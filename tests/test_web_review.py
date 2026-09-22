@@ -338,6 +338,39 @@ class ReviewQueueTests(unittest.TestCase):
         finally:
             con.close()
 
+    def test_the_ledgers_own_spelling_of_the_code_still_matches_the_candidate(self):
+        """账本存编目后的写法，候选件写来源站上那个号，两边归一化之后是同一个键。
+
+        `n0762` 在账本里是 `TOKYO-HOT-N0762`，按字符串比一条都对不上——而复核页
+        用的就是归一化那一份，于是页面显示「1 个匹配资产」，自动落库却说没有。
+        """
+        self._asset(95, "TOKYO-HOT-N0762", "n0762.mkv")
+        self.write_metadata_rows([{"item_key": "n0762:release_date", "field": "release_date",
+                                   "current": "", "candidates": ["2012-07-13"],
+                                   "code": "n0762"}])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=95").fetchone()[0],
+                "2012-07-13")
+        finally:
+            con.close()
+
+    def test_a_code_that_only_looks_alike_is_not_taken_for_this_one(self):
+        """收小范围用的是子串，判等仍按归一化：`N0762` 出现在别的番号里不算命中。"""
+        self._asset(96, "AN0762X", "AN0762X.mp4")
+        self.write_metadata_rows([{"item_key": "n0762:release_date", "field": "release_date",
+                                   "current": "", "candidates": ["2012-07-13"],
+                                   "code": "n0762"}])
+        self.assertEqual(self._auto()["applied"], 0)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertIsNone(
+                con.execute("SELECT release_date FROM asset WHERE id=96").fetchone()[0])
+        finally:
+            con.close()
+
     def _tag_row(self, item_key, code, genres, *, current=""):
         """一条标签候选。`value` 是投影后的标签，`unmapped_genres` 是没有去向的原文。"""
         tags, unmapped = map_genres(genres)

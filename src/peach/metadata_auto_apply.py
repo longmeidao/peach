@@ -66,6 +66,39 @@ REVIEW_APPLY_LIMIT = 500
 _MULTI_VALUE_ROLES = {"performers": "performer", "tags": "tag"}
 
 
+def _codes_matching(connection, codes: list[str], columns: str) -> list:
+    """这些番号名下的资产行。账本里的写法未必和候选件一致。
+
+    账本存的是编目后的规范写法，候选件写的是来源站上的那个号：Tokyo-Hot 的 `n0762`
+    在账本里是 `TOKYO-HOT-N0762`，按字符串比一条都对不上（2026-09-22 实测 n0762 的
+    标题、演员、系列、发行日期四行全部因此判成「账本里没有这个番号」，停在人工队列，
+    而账本里的别名早就把「藤原遼子／森沢かな」和「東熱／東京熱」各自认作一个）。
+    `normalise_code_key` 两边归一化之后是同一个键，它也正是封面缓存和复核页在用的那个。
+
+    先按字符串精确查一遍，没覆盖到的番号才宽查：归一化后的键是账本写法的子串
+    （`n0762` ⊂ `TOKYO-HOT-N0762`），拿它把范围收小，再逐条按归一化判等。
+    """
+    wanted = [code for code in dict.fromkeys(code.strip() for code in codes) if code]
+    if not wanted:
+        return []
+    marks = ",".join("?" * len(wanted))
+    found = list(connection.execute(
+        f"SELECT {columns} FROM asset WHERE medium='video' "
+        f"AND (disposal IS NULL OR disposal<>'trash') "
+        f"AND upper(trim(code)) IN ({','.join(['upper(?)'] * len(wanted))}) ORDER BY id", wanted))
+    covered = {normalise_code_key(str(row["code"] or "")) for row in found}
+    missing = [code for code in wanted if normalise_code_key(code) not in covered]
+    if not missing:
+        return found
+    keys = {normalise_code_key(code) for code in missing} - {""}
+    likes = " OR ".join(["upper(code) LIKE '%'||upper(?)||'%'"] * len(keys))
+    found += [row for row in connection.execute(
+        f"SELECT {columns} FROM asset WHERE medium='video' "
+        f"AND (disposal IS NULL OR disposal<>'trash') AND ({likes}) ORDER BY id", sorted(keys))
+        if normalise_code_key(str(row["code"] or "")) in keys]
+    return found
+
+
 def refresh_current_values(connection, rows: list[dict]) -> None:
     """把候选行的「账本现值」换成账本此刻的值。
 
@@ -81,13 +114,9 @@ def refresh_current_values(connection, rows: list[dict]) -> None:
     if not codes:
         return
     columns = sorted(set(METADATA_FIELD_COLUMNS.values()))
-    marks = ",".join("?" * len(codes))
     by_asset: dict[int, dict] = {}
     by_code: dict[str, list[int]] = defaultdict(list)
-    for asset in connection.execute(
-            f"SELECT id,code,{','.join(columns)} FROM asset WHERE medium='video' "
-            f"AND (disposal IS NULL OR disposal<>'trash') AND code IN ({marks}) ORDER BY id",
-            codes):
+    for asset in _codes_matching(connection, codes, f"id,code,{','.join(columns)}"):
         by_asset[int(asset["id"])] = dict(asset)
         by_code[normalise_code_key(asset["code"])].append(int(asset["id"]))
     if not by_asset:
@@ -580,11 +609,7 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     # 官网时才放行：官网按番号列出的就是这部片本身。
     if is_korean_mib_code(code) and not _only_mib_official(row):
         return None
-    targets = list(connection.execute(
-        "SELECT name,field_owners FROM asset WHERE medium='video' "
-        "AND (upper(trim(code))=upper(?) OR upper(trim(code))=upper(?)) "
-        "AND (disposal IS NULL OR disposal<>'trash')",
-        (code, query)))
+    targets = _codes_matching(connection, [code, query], "code,name,field_owners")
     if not targets:
         return None
     if not all(_filename_carries_code(code, str(target["name"] or "")) for target in targets):
@@ -714,11 +739,8 @@ def _apply_metadata_candidate(
             (group.get('asset_id'), group['asset_path']),
         ).fetchall()
     else:
-        assets = connection.execute(
-            "SELECT id FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
-            "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
-            (code, query),
-        ).fetchall()
+        # 写入范围必须和判据、现值刷新看的是同一组资产，三处共用一份番号匹配。
+        assets = _codes_matching(connection, [code, query], "id,code")
     asset_ids = sorted({int(row["id"]) for row in assets})
     if not asset_ids:
         raise ValueError("当前 ledger 已没有匹配的可用资产")
