@@ -193,6 +193,8 @@ function PickRow(
 
 export function AddSource({ data, credentials, readOnly, toast, openCredentials }: AddSourceProps) {
   const [line, setLine] = useState('');
+  /** 这一趟查的是什么。输入框在发出查找时就清空了，等待态的那句提示按它判断。 */
+  const [asked, setAsked] = useState('');
   const [term, setTerm] = useState('');
   const [focused, setFocused] = useState(false);
   const [active, setActive] = useState(-1);
@@ -231,10 +233,13 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
 
   const resolve = useMutation({
     mutationFn: (text: string) => startResolve([text]),
-    onSuccess: () => {
+    onSuccess: (started) => {
       setTracking(true);
       setOutcome(null);
       setUnpicked(new Set());
+      /* 同检查那一趟：先把这一趟的快照换进缓存，上一趟的终态才不会在重读回来之前冒充结果，
+         这一趟在重读之前就跑完时也不会被那份旧快照顶掉。 */
+      queryClient.setQueryData(FOLLOW_RESOLVE_KEY, started);
       void queryClient.invalidateQueries({ queryKey: FOLLOW_RESOLVE_KEY, exact: true });
     },
     onError: (cause) => setProblem(errorMessage(cause)),
@@ -255,6 +260,7 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
     if (!query || running || resolve.isPending) return;
     setProblem('');
     setActive(-1);
+    setAsked(query);
     setLine('');
     setTerm('');
     resolve.mutate(query);
@@ -319,7 +325,7 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
   });
 
   const guesses = data.suggestions || [];
-  const byName = !line.includes('/');
+  const byName = !asked.includes('/');
   const suggesting = suggest.isFetching;
   const menuOpen = focused && (options.length > 0 || suggesting);
 

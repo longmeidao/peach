@@ -260,10 +260,12 @@ export function SourceList(props: SourceListProps) {
 
   const check = useMutation({
     mutationFn: (ids: number[]) => startCheck(ids),
-    onSuccess: () => {
+    onSuccess: (started) => {
       setTracking(true);
       setOutcome(null);
-      // 起的那一次回的就是任务快照，但节律由这个键说了算：让它立刻重读一次接上。
+      /* 起的那一次回的就是这一趟的快照，先换进缓存再重读：缓存里还躺着上一趟的终态，重读
+         回来之前它会先被当成这一趟的回执报出去。 */
+      queryClient.setQueryData(FOLLOW_CHECK_KEY, started);
       void queryClient.invalidateQueries({ queryKey: FOLLOW_CHECK_KEY, exact: true });
     },
     onError: (cause) => setProblem(errorMessage(cause)),
