@@ -708,7 +708,21 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
             record("too_small")
     if not measured:
         raise Unavailable(_no_usable_official(diagnostics))
+    return _download_best(transport, measured, record, minimum_width=minimum_width,
+                          minimum_quality=minimum_quality, minimum_pixels=minimum_pixels,
+                          deadline=deadline)
 
+
+def _download_best(transport: HttpTransport, measured, record, *, minimum_width: int,
+                   minimum_quality: int, minimum_pixels: int,
+                   deadline: float | None) -> tuple[Candidate, tuple[int, int], bytes]:
+    """按来源档次与像素从高到低完整下载，第一张尺寸对得上、是静态图、确实更好的就是它。
+
+    动图只有下完整张才认得出：FC2 链末档 JavArchive 的图床存的常是 GIF 预览动画，
+    只读头部量尺寸时它和一张静态图没有区别，落进 `.jpg` 之后卡片就一直在动。候选全是
+    动图时算没有，而不是没下载成——再问一遍还是这几张。
+    """
+    animated = 0
     for _pixels, winner, size in sorted(
             measured, key=lambda item: (candidate_quality(item[1]), item[0]), reverse=True):
         try:
@@ -719,10 +733,15 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
             continue
         try:
             with Image.open(io.BytesIO(data)) as image:
+                moving = getattr(image, "is_animated", False)
                 image.load()
                 actual_size = image.size
         except (OSError, ValueError, Image.DecompressionBombError):
             record("invalid_image")
+            continue
+        if moving:
+            record("animated")
+            animated += 1
             continue
         if actual_size != size or actual_size[0] < minimum_width:
             record("dimension_mismatch")
@@ -732,6 +751,8 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
                 minimum_quality, minimum_pixels):
             continue
         return winner, actual_size, data
+    if animated == len(measured):
+        raise NotFound("官方候选都是动图")
     raise Unavailable("可用候选完整下载都失败")
 
 
