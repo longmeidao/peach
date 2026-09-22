@@ -35,7 +35,7 @@ SOURCES = {
     "instagram": {"label": "Instagram", "domains": ("instagram.com", "cdninstagram.com"), "login": "https://www.instagram.com/accounts/login/", "cookie": True},
     # 两家社区来源拒绝访问时回 403，不发 Retry-After：javdb 是出口 IP 超了配额（一封 3～7 日，
     # docs/SOURCING.md），AVBase 是 Cloudflare 验证。封期里接着问只会每条都再撞一次，
-    # `blocked_pause` 秒内整个来源停下。
+    # 所以整个来源停下——停多久按 `FIRST_BLOCKED_PAUSE` 翻倍，`blocked_pause` 是这个来源的上限。
     # `session`：公开采集也带上用户在采集设置里贴的 Cookie。javdb 有登录墙，JavBus 有年龄门，
     # 不带只回确认页；Cookie 由用户在浏览器里过门或登录后贴进来，Peach 不读浏览器的 Cookie 库。
     "javdb": {"label": "JavDB", "domains": ("javdb.com", "jdbstatic.com", "jdbimgs.com"), "login": "https://javdb.com/",
@@ -45,15 +45,23 @@ SOURCES = {
 }
 _LOCK = threading.RLock()
 
+#: 撞上拒绝访问后第一次停多久。`blocked_pause` 是**上限**，不是首停时长：那几家按出口
+#: IP 计的封，实际封期常常远短于上限。2026-09-22 实测——javdb 记下的 24 小时只走了
+#: 6.6 小时，用同一套 client 问首页和两条搜索全回 200，剩下的时间整个来源在盲等，那一轮
+#: 778 部片的 1432 条失败全部写着「来源正在冷却」。所以先停这一档，连着再撞才翻倍到上限；
+#: 通了一次就把记录清掉，下次从最短的一档重新起算。
+FIRST_BLOCKED_PAUSE = 900
+
 
 class SourcePaused(RuntimeError):
     """来源冷却期内停止请求，保留已有图像。"""
 
 
-def _pause(cooldown: Path, until: float) -> None:
+def _pause(cooldown: Path, until: float, blocks: int = 0) -> None:
     with _LOCK:
         cooldown.parent.mkdir(parents=True, exist_ok=True)
-        cooldown.write_text(json.dumps({"until": max(until, time.time() + 1)}), encoding="utf-8")
+        cooldown.write_text(json.dumps({"until": max(until, time.time() + 1), "blocks": blocks}),
+                            encoding="utf-8")
 
 
 def source_for(url: str) -> str | None:
@@ -215,9 +223,10 @@ class SourceTransport:
         key = source or hashlib.sha256(hostname_of(request.url).encode()).hexdigest()
         cooldown = self.root / ("scraping-" + key + ".cooldown.json")
         try:
-            until = float(json.loads(cooldown.read_text(encoding="utf-8"))["until"])
+            record = json.loads(cooldown.read_text(encoding="utf-8"))
+            until, blocks = float(record["until"]), int(record.get("blocks") or 0)
         except (OSError, ValueError, KeyError, TypeError):
-            until = 0
+            until, blocks = 0, 0
         if until > time.time():
             raise SourcePaused("来源正在冷却，请稍后重试；已有图片保留")
         if source not in self.transports:
@@ -240,12 +249,17 @@ class SourceTransport:
                     until = parsedate_to_datetime(retry).timestamp()
                 except (ValueError, TypeError, OverflowError):
                     until = time.time() + 900
-            _pause(cooldown, until)
+            _pause(cooldown, until, blocks)
             raise SourcePaused("来源限流，已记录冷却时间；已有图片保留")
         blocked_pause = SOURCES.get(source or "", {}).get("blocked_pause")
         if response.status == 403 and blocked_pause:
-            _pause(cooldown, time.time() + blocked_pause)
+            blocks += 1
+            _pause(cooldown, time.time()
+                   + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1), blocked_pause), blocks)
             raise SourcePaused("来源拒绝访问，暂停向它请求一段时间；已有图片保留")
+        if blocks and response.status < 400:
+            # 这一趟通了，封已经解除：清掉记录，下次撞上从最短的一档重新起算。
+            cooldown.unlink(missing_ok=True)
         return response
 
     def renew(self):
