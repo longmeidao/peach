@@ -18,7 +18,8 @@ export interface LibraryProcessingIssue {
   title?: string;
   path?: string;
   message: string;
-  severity?: 'info' | 'error';
+  /** `paused` 是来源限流没轮到这一项，等来源放开再跑就有；`error` 是它自己出的事。 */
+  severity?: 'info' | 'error' | 'paused';
 }
 
 /** 一趟扫描与采集的快照。字段以 `q_library_processing`（`src/peach/web_library_processing.py`）为准。 */
@@ -41,6 +42,8 @@ export interface LibraryProcessingData {
   performer_profile_failed?: number;
   error?: string;
   issue_count?: number;
+  /** `issue_count` 里卡在来源限流上的那些，等来源放开再跑一次就有。 */
+  paused_count?: number;
   issue_preview?: LibraryProcessingIssue[];
   issues_log?: string;
   issues_truncated?: boolean;

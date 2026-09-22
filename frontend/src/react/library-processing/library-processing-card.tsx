@@ -155,9 +155,10 @@ function Outcome(
                       </ul>
                     </div>
                     {details.log
-                      /* 完整记录不是这条提示在说的事，它是出事之后自己去翻的东西：
-                         留在红底上但退回灰字，分隔线跟着它一起淡下去。 */
-                      ? <div className="mt-2 border-t border-separator-border pt-2 text-text-secondary">
+                      /* 完整记录不是这条提示在说的事，它是出事之后自己去翻的东西：留在
+                         红底上但退回灰字。那条线取这行字自己的颜色（`border-current`），
+                         中性的 `separator` 在有色底上是另一种灰，跟这行字对不上。 */
+                      ? <div className="mt-2 border-t border-current/20 pt-2 text-text-secondary">
                           <PathLine path={details.log} prefix="完整记录：" className="text-caption-1-regular"
                             onRevealed={toast} />
                         </div>
@@ -174,7 +175,8 @@ function Outcome(
       {state.status !== 'running' && notes
         ? <Note tone="neutral"
             extra={state.issues_log
-              ? <div className="mt-1.5 border-t border-separator-border pt-1.5">
+              /* 同上：线跟着这行灰字走，两块提示里的那一条才是同一条。 */
+              ? <div className="mt-1.5 border-t border-current/20 pt-1.5 text-text-secondary">
                   <PathLine path={state.issues_log} prefix="完整记录：" className="text-caption-1-regular"
                     onRevealed={toast} />
                 </div>

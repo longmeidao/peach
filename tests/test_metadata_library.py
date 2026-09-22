@@ -878,6 +878,39 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(result['issue_count'], 0)
 
     @windows_ledger_roots
+    def test_a_throttled_source_reads_as_waiting_not_as_a_thing_that_went_wrong(self):
+        """限流和取不到分开报：一个等一会儿就有，一个再点多少次都是同一句。"""
+        from peach.jav_cover_fetch import NotFound
+        from peach.scraping_access import SourcePaused
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'STP-26232.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        provider = stub_provider()
+        provider.query.side_effect = NotFound('HTTP 404')
+        provider.community.side_effect = SourcePaused('来源正在冷却，请稍后重试；已有图片保留')
+        provider.cover.side_effect = SourcePaused('本趟采集次数已用完，再跑一次接着采')
+        state = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                provider_factory=Mock(return_value=provider))
+        self.assertEqual([row['message'] for row in state['issue_preview']],
+                         ['外部资料本趟没轮到：来源正在冷却，请稍后重试；已有图片保留',
+                          '封面本趟没轮到：本趟采集次数已用完，再跑一次接着采'])
+        self.assertEqual({row['severity'] for row in state['issue_preview']}, {'paused'})
+        self.assertEqual((state['issue_count'], state['paused_count']), (2, 2))
+        self.assertEqual(state['error'], '2 项都卡在来源限流上，等一会儿再跑一次。')
+        self.assertEqual(state['retryable_asset_ids'], [1], '等来源放开之后重试仍然有意义')
+
+    def test_the_two_kinds_are_counted_apart_in_the_line_that_sums_them_up(self):
+        from peach.library_processing import issue_summary
+        self.assertEqual(issue_summary(0), '')
+        self.assertEqual(issue_summary(3), '3 项需要处理，可重试未完成的部分。')
+        self.assertEqual(issue_summary(3, 1),
+                         '3 项需要处理，其中 1 项是来源限流，等一会儿再跑；其余可重试未完成的部分。')
+        self.assertEqual(issue_summary(3, 3), '3 项都卡在来源限流上，等一会儿再跑一次。')
+
+    @windows_ledger_roots
     def test_a_source_that_said_no_is_not_asked_again_for_a_week(self):
         """r18.dev 不认识的番号每轮都重问、每条卡一次 2 秒的主机间隔，答案永远一样。
 

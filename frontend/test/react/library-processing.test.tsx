@@ -80,6 +80,10 @@ it('来源说没有只报一个数，不算问题也不提供失败重试', asyn
   const host = await mount(card({ toast: vi.fn() }));
   expect(host.textContent).toContain('外部来源没有资料 30 部、没有封面 162 部，7 天内不再问。');
   expect(host.textContent).toContain(LOG);
+  /* 完整记录那一行退回灰字，它上面那条线取同一个颜色；中性 separator 是另一种灰。 */
+  const record = [...host.querySelectorAll('p')].find((line) => line.textContent?.includes(LOG))!;
+  expect(record.closest('.text-text-secondary')).not.toBeNull();
+  expect(record.closest('.border-t')!.className).toContain('border-current/20');
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(buttonNamed('重试未完成项')).toBeNull();
   expect(host.querySelector('details')).toBeNull();
@@ -197,7 +201,8 @@ it('失败时把问题清单折叠进错误提示，重试只交失败的那些�
   const log = details.querySelector('p')!;
   expect(log.textContent).toBe(`完整记录：${LOG}`);
   expect(log.closest('.text-text-secondary')).not.toBeNull();
-  expect(log.closest('.border-t')).not.toBeNull();
+  // 那条线取这行灰字自己的颜色：中性 separator 在有色底上是另一种灰，跟它对不上。
+  expect(log.closest('.border-t')!.className).toContain('border-current/20');
   expect(details.querySelector('button[aria-label="在资源管理器中显示"]')).not.toBeNull();
   // 补上没做完的那些是这一趟的事，重新跑一整批是下一趟的事：页脚那颗留着，各答各的问题。
   expect(buttonNamed('扫描并补全资料', host)?.textContent).toBe('扫描并补全资料');

@@ -27457,7 +27457,7 @@ function mC({ path: e, prefix: t, className: n, onRevealed: r }) {
 	return /* @__PURE__ */ (0, w.jsxs)("div", {
 		className: "flex flex-col gap-1",
 		children: [/* @__PURE__ */ (0, w.jsxs)("div", {
-			className: "flex items-start justify-between gap-2",
+			className: "flex items-center justify-between gap-2",
 			children: [/* @__PURE__ */ (0, w.jsxs)("p", {
 				className: K("min-w-0 break-all", n),
 				children: [t, e]
@@ -30291,7 +30291,7 @@ function LT({ state: e, problem: t, settled: n, onRetry: r, toast: i }) {
 								}, e.key))
 							})
 						}), a.log ? /* @__PURE__ */ (0, w.jsx)("div", {
-							className: "mt-2 border-t border-separator-border pt-2 text-text-secondary",
+							className: "mt-2 border-t border-current/20 pt-2 text-text-secondary",
 							children: /* @__PURE__ */ (0, w.jsx)(mC, {
 								path: a.log,
 								prefix: "完整记录：",
@@ -30311,7 +30311,7 @@ function LT({ state: e, problem: t, settled: n, onRetry: r, toast: i }) {
 			e.status !== "running" && s ? /* @__PURE__ */ (0, w.jsx)(J, {
 				tone: "neutral",
 				extra: e.issues_log ? /* @__PURE__ */ (0, w.jsx)("div", {
-					className: "mt-1.5 border-t border-separator-border pt-1.5",
+					className: "mt-1.5 border-t border-current/20 pt-1.5 text-text-secondary",
 					children: /* @__PURE__ */ (0, w.jsx)(mC, {
 						path: e.issues_log,
 						prefix: "完整记录：",
