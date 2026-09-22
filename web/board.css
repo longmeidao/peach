@@ -16,7 +16,7 @@
 .settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:12px 0 0;font-size:13px;color:var(--muted);padding:4px 8px 8px}
 .settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{margin-top:0}
 .settingscard.settingscard>.board-local-nav button{flex:0 0 auto;justify-content:flex-start;padding:8px;border:0;border-radius:10px;font-size:14px;min-height:36px;font-weight:500}
-.settingscard.settingscard>.board-local-nav button{display:flex;align-items:center;gap:8px}.settingscard.settingscard>.board-local-nav button svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;flex:none}
+.settingscard.settingscard>.board-local-nav button{display:flex;align-items:center;gap:8px}.settingscard.settingscard>.board-local-nav button svg{width:20px;height:20px;fill:currentColor;stroke:none;flex:none}
 /* 这一列自己不铺底，当前那一条的填充由 `.navglide` 那块滑过去的玻璃提供——跟筛选条上
    四枚视图、左侧抽屉那一列是同一套做法。两边都铺的话，静止态就是一块不透明的
    `--picked` 压在玻璃上面，切换时只看得见它瞬间换位置，滑动的那块从头到尾被盖住。
