@@ -152,6 +152,58 @@ def parse_notification(body) -> list[str]:
     return found
 
 
+#: CloudDrive2「通知设置」那个「配置内容」框里的整段 TOML。形状照它自带的默认模板，
+#: 三处按本机填：地址、端点路径、共享密钥。`{base_url}`、`{action}` 这些花括号是
+#: CloudDrive2 自己的占位符，Python 这边不碰，所以模板用 `%s` 代入。
+_CLOUDDRIVE_CONFIG = """[global_params]
+base_url = "%s"
+enabled = true
+
+[global_params.default_headers]
+content-type = "application/json"
+user-agent = "clouddrive2/{version}"
+
+[file_system_watcher]
+url = "{base_url}%s"
+method = "POST"
+enabled = true
+body = '''
+{
+  "data": [
+    {
+      "action": "{action}",
+      "is_dir": "{is_dir}",
+      "source_file": "{source_file}",
+      "destination_file": "{destination_file}"
+    }
+  ]
+}
+'''
+
+[file_system_watcher.headers]
+%s = "%s"
+
+[mount_point_watcher]
+enabled = false
+"""
+
+
+def clouddrive_config(origin: str, secret: str) -> str:
+    """整段抄进 CloudDrive2 的配置文本。两样缺一样就给空串，页面据此说还不能抄。
+
+    地址只能是 HTTPS。80 口上那条服务对 `POST` 回的是 426 而不是重定向——跨 origin
+    的 307 会让 CloudDrive2 把密钥和正文原样再发一遍到另一个地址上。
+
+    正文只留 Peach 要读的那四个字段，默认模板里的设备名、事件时间那些一概不要：
+    `parse_notification` 本来就忽略它们，少发一样东西就少一处能对不上的地方。
+    挂载点通知关掉——它送的是挂载状态，一条路径都没有，收下来只是空转一次队列。
+    """
+    origin, secret = str(origin or "").strip().rstrip("/"), str(secret or "").strip()
+    if not origin or not secret:
+        return ""
+    return _CLOUDDRIVE_CONFIG % (origin, WEBHOOK_PATH, SECRET_HEADER, secret)
+
+
 def normalise_prefix(raw: str) -> str:
     """前缀统一成 `/foo` 形态：前导一个斜杠、尾部不留斜杠。"""
     text = str(raw or "").strip().replace("\\", "/")

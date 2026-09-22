@@ -19,8 +19,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from filelock import FileLock, Timeout
 
-from . import (access, distribution, entry_links, folder_picker, onboarding, settings_file,
-               media_configuration, tunnel)
+from . import (access, distribution, entry_links, folder_picker, onboarding, push_discovery,
+               settings_file, media_configuration, tunnel)
 from .routes_auth import require_auth, same_origin
 from .web_entry import runtime_fact_entries
 from . import release_updates, standalone_update, peach_proxy, desktop_startup, desktop_uninstall
@@ -146,6 +146,31 @@ def tunnel_payload(config, state: tunnel.TunnelSnapshot, enabled: bool) -> dict[
     }
 
 
+def push_discovery_payload(request: Request, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """推送发现的状态，外加一段能整个抄进 CloudDrive2 的配置。
+
+    读接口和两条写回接口用同一份形状：页面收到写回响应后整块替换本地状态，这里少一个
+    字段就等于把刚换完的密钥那段配置置空。
+
+    地址不取这次请求的 origin：配置页多半是从回环地址打开的，而 TLS 那条服务只绑在
+    局域网地址上，把 `127.0.0.1` 抄过去 CloudDrive2 连不上。取这台机器对外公布的那个
+    地址，也就是 mDNS 登记的同一个。没开 TLS 或者不知道自己的地址时给空串，页面据此
+    说这段现在给不出来，而不是发一段填了也不通的配置出去。
+    """
+    if payload is None:
+        payload = request.app.state.push_discovery.snapshot(reveal=True)
+    mdns = getattr(request.app.state, "mdns", None)
+    settings = request.app.state.settings
+    address = str(getattr(mdns, "address", "") or settings.mdns_address or "").strip()
+    port = int(settings.mdns_port or 0)
+    origin = ""
+    if settings.tls_enabled and address:
+        origin = f"https://{address}" if port in (0, 443) else f"https://{address}:{port}"
+    payload["origin"] = origin
+    payload["config_toml"] = push_discovery.clouddrive_config(origin, payload.get("secret", ""))
+    return payload
+
+
 @router.get("/api/configuration")
 def read_configuration(request: Request, _args=Depends(require_auth)):
     local_only(request)
@@ -157,7 +182,7 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
     result["tunnel"] = tunnel_payload(config, state, config.tunnel.enabled)
     result["automatic_updates"] = request.app.state.automatic_updates.snapshot()
     # 这一路已经过了 `local_only`，密钥可以给出来：用户要把它抄进 CloudDrive2。
-    result["push_discovery"] = request.app.state.push_discovery.snapshot(reveal=True)
+    result["push_discovery"] = push_discovery_payload(request)
     if result["automatic_updates"].get("result"):
         result["updates"] = result["automatic_updates"]["result"]
     return result
@@ -204,7 +229,7 @@ def save_push_discovery(request: Request, body: dict = Body(...), _args=Depends(
     local_only(request)
     same_origin(request)
     try:
-        return request.app.state.push_discovery.save(body)
+        return push_discovery_payload(request, request.app.state.push_discovery.save(body))
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
@@ -215,7 +240,7 @@ def rotate_push_discovery_secret(request: Request, _args=Depends(require_auth)):
     local_only(request)
     same_origin(request)
     try:
-        return request.app.state.push_discovery.rotate_secret()
+        return push_discovery_payload(request, request.app.state.push_discovery.rotate_secret())
     except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
 

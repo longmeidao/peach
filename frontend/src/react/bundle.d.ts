@@ -72,6 +72,10 @@ export interface PushDiscoveryState {
   queue: PushDiscoveryQueue;
   /** 可选的媒体根，前缀表里的下拉就从这里取。 */
   media_roots: string[];
+  /** CloudDrive2 该往哪个地址推。没开 TLS 或这台机器不知道自己的地址时是空串。 */
+  origin: string;
+  /** 整段抄进 CloudDrive2「配置内容」的 TOML；地址或密钥缺一样就是空串。 */
+  config_toml: string;
 }
 
 export interface AutomaticUpdateState {
