@@ -3,14 +3,20 @@
    圆角裁掉。 */
 .entityhero{display:flex;flex-direction:column;margin:0 0 22px;border-radius:var(--floating-radius);
   background:var(--ground);overflow:hidden;min-width:0;max-width:100%}
-.entityprofile{display:grid;grid-template-columns:120px minmax(0,1fr);gap:20px;padding:20px;
+/* 头像跟着右边那列的高度长。身份列有几行是看这个人有多少东西：只有名字和别名时是两行，
+   加上外链和看片那一行就是四行，头像钉死 120px 的话卡上下会空出一截，圆框反倒比文字轻。
+   所以这一列不再写死宽度：圆框拉满这一行的高度，宽由 `aspect-ratio` 推出来，下限 120px
+   保住原来的尺寸，上限 160px 免得内容再多时圆框把这一页的主角抢了。 */
+.entityprofile{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;padding:20px;
   align-items:center;min-width:0}
+.entityprofile>.entityportraitwrap{align-self:stretch;display:flex;align-items:center}
 /* 圆框外面这一层只为换头像那枚加号存在：圆框自己是 `overflow:hidden`（图要被裁成
    圆的），贴在它边上的按钮放进去就没了。 */
 .entityportraitwrap{position:relative;width:max-content;max-width:100%}
 /* `position:relative` 是给人脸放大留的包含块：放大后的 img 转成绝对定位，偏移必须
    相对这个圆框算，否则会挂到最近的定位祖先上去。见 app.js 的 avatarFrame。 */
-.entityportrait{width:120px;aspect-ratio:1;border-radius:50%;overflow:hidden;background:var(--overlay-5);
+.entityportrait{height:100%;min-height:120px;max-height:160px;width:auto;
+  aspect-ratio:1;border-radius:50%;overflow:hidden;background:var(--overlay-5);
   display:grid;place-items:center;font-size:var(--fs-4xl);color:var(--muted);max-width:100%;
   position:relative}
 .entityportrait.square{border-radius:var(--floating-radius)}.entityportrait img,.entityportrait>span{grid-area:1/1}

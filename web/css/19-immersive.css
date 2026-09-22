@@ -185,7 +185,8 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
      左像右文那套是给宽屏的：手机上 92 px 头像旁边只剩两百多像素，别名和链接被挤成
      两三行，头像下面又空着一大片。居中之后名字和链接都拿到整行宽度。 */
   .entityprofile{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px;justify-items:center;text-align:center}
-  .entityportrait{width:96px}.entityhero h2{font-size:var(--fs-xl)}
+  /* 单列时头像上下各是一整行，没有「右边那列有多高」可跟，尺寸就还是钉住的 96px。 */
+  .entityportrait{height:96px;min-height:96px;max-height:96px;width:96px}.entityhero h2{font-size:var(--fs-xl)}
   .entityidentity{width:100%}
   .entityfoot{padding:10px 16px}
   /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。 */
@@ -204,9 +205,14 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
      居中要写 `safe center`：普通的 `center` 在装不下时把溢出的那半推到滚动起点
      之前，那几条怎么滑都够不着。safe 的意思就是一旦溢出就改成贴左。
      `overflow-x` 一开，竖直方向也就不能再是 visible，只能钉成 hidden；焦点环画在
-     药丸外 2px，所以上下各让出 4px 再用负外边距收回来，键盘走到最后一条时环还在。 */
+     药丸外 2px，所以上下各让出 4px 再用负外边距收回来，键盘走到最后一条时环还在。
+     滚动的那一层要顶到卡的左右边：收在卡的 16px 内边距里的话，最后那枚药丸是在卡当中
+     被切一刀，看着像画坏了；顶到边上切口就落在卡沿，和筛选条滚到屏幕边是同一个读法。
+     负外边距把层撑到边，等量的内边距把药丸推回原位，`scroll-padding-inline` 让键盘
+     滚过去的那一枚也停在这个内边距里。 */
   .entityhero .entitylinks{justify-content:safe center;flex-wrap:nowrap;
-    margin-top:9px;margin-bottom:-4px;padding-block:4px;
+    margin-top:9px;margin-bottom:-4px;margin-inline:-16px;padding-block:4px;padding-inline:16px;
+    scroll-padding-inline:16px;max-width:none;
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
   .entityhero .entitylinks::-webkit-scrollbar{display:none}
   .entityhero .entitylinks>*{flex:none}

@@ -53,7 +53,9 @@ SLOT_MARK = "mark"
 
 #: JAV 目录站。实体在这些站里有 `performer` id，才算「这是一位 JAV 女优」。
 #: 判据见模块开头：这是别处已经收录过她的现成证据。
-JAV_DIRECTORIES = frozenset({"javdb", "minnano-av", "r18dev", "dmm", "kmib", "avbase"})
+#: 事务所自己的名册不算——`k-mib.com` 那类站收的是所属艺人，和她拍不拍 JAV 是两件事，
+#: 只凭它出现在名册上推不出 JavDB 与 MISSAV 上有她的页面。
+JAV_DIRECTORIES = frozenset({"javdb", "minnano-av", "r18dev", "dmm", "avbase"})
 
 
 @dataclass(frozen=True)
@@ -77,7 +79,9 @@ class EntrySite:
 
 
 SITES: tuple[EntrySite, ...] = (
-    EntrySite("minnano-av", "minnano-av", "minnano-av", "minnano_id", "minnano-av",
+    # 页面上写站点自己的名字「みんなのAV」，取自它官网的 title；`minnano-av` 是域名和
+    # 账本里的 provider，留给设置项的 key 与 `entity_external_ref` 用。
+    EntrySite("minnano-av", "みんなのAV", "みんなのAV", "minnano_id", "minnano-av",
               "https://www.minnano-av.com/actress{minnano_id}.html",
               SLOT_PILL, "brand-minnano"),
     # javdb 的演员页就是作品列表，`sort_type=4` 只是把它按发行日期排；两条地址落在同一页，
