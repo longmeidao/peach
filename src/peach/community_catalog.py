@@ -78,7 +78,11 @@ _JAVDB_BOX = re.compile(r'<a href="(/v/[A-Za-z0-9]+)" class="box" title="[^"]*">
 _JAVDB_PANEL = re.compile(r'<div class="panel-block[^"]*">\s*<strong>([^<:：]+)[:：]</strong>\s*(?:&nbsp;)?\s*'
                           r'<span class="value">(.*?)</span>', re.S)
 _JAVDB_TITLE = re.compile(r'<strong class="current-title">([^<]*)</strong>')
-_JAVDB_COVER = re.compile(r'<img src="(https://[^"]+)" class="video-cover"')
+#: 详情页那张封面。认标签、再从标签里取 `src`，不把属性挨着写死：站上的顺序变过，
+#: 2026-09-22 实测是 `class` 在前、`src` 在后，中间还夹着 `width`、`height` 与
+#: `fetchpriority`，按旧顺序写的正则一张都取不到，而页面其余部分照常解析，缺的只是封面。
+_JAVDB_COVER = re.compile(r'<img\b[^>]*\bclass="video-cover"[^>]*>')
+_IMG_SRC = re.compile(r'\bsrc="(https://[^"]+)"')
 _JAVDB_ACTRESS = re.compile(r'<a\s([^>]*)>([^<]+)</a>')
 #: 演員一栏里每个人名都挂着自己的资料页。那串 id 正是人物页 JavDB 入口要的东西，
 #: 取名字时顺手带出来——另走一趟演员页只是把同一页再取一遍，而 javdb 的配额最紧。
@@ -228,7 +232,8 @@ def javdb_work(transport, code: str, *, deadline: float | None = None) -> dict:
         raise Unavailable("javdb 详情页的番号与搜索结果不一致")
     runtime = re.search(r"\d+", clean(panel.get("時長", "")))
     title = _JAVDB_TITLE.search(page)
-    cover = _JAVDB_COVER.search(page)
+    tag = _JAVDB_COVER.search(page)
+    cover = _IMG_SRC.search(tag.group(0)) if tag else None
     return dict(id=shown, source_url=url, title=clean(title.group(1)) if title else "",
                 actresses=javdb_actresses(panel.get("演員", "")),
                 maker=_maker_writing(clean(panel.get("片商", ""))), label=clean(panel.get("發行", "")),
