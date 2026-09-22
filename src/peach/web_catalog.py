@@ -826,13 +826,30 @@ def q_item(contract: WebContract, aid):
     d.pop("snapshot_path", None); d.pop("path", None)
     return d
 
+def _one_card_per_release(contract: WebContract, source_code, rows: list[dict]) -> list[dict]:
+    """一套分卷只留首卷一张卡；和正在看的这部同属一套的一张都不留。
+
+    接着看按共享实体排序，同一部片的几卷实体完全一样，不收拢就会并排占满前几格。
+    """
+    groups = _multipart_groups(contract, [source_code, *(row.get("code") for row in rows)])
+    source_key = normalise_code_key(source_code) if source_code else ""
+    kept = []
+    for row in rows:
+        key = normalise_code_key(row.get("code")) if row.get("code") else ""
+        group = groups.get(key)
+        if group and any(item["id"] == row["id"] for item in group) and (
+                key == source_key or row["id"] != group[0]["id"]):
+            continue
+        kept.append(row)
+    return kept
+
 def q_related(contract: WebContract, aid, limit=24):
     """接着看：IDF 抑制泛标签，MMR 避免近重复连续占满列表。"""
     from peach.related import rank_related
 
     with contract.read_connection() as c:
         source_row = c.execute(
-            "SELECT id,duration,release_date FROM asset WHERE id=?", (aid,),
+            "SELECT id,code,duration,release_date FROM asset WHERE id=?", (aid,),
         ).fetchone()
         if not source_row:
             return {"items": []}
@@ -857,6 +874,7 @@ def q_related(contract: WebContract, aid, limit=24):
             "ORDER BY count(DISTINCT shared.entity_id) DESC,a.id LIMIT 4000",
             (aid, *source_entity_ids),
         )]
+        candidate_rows = _one_card_per_release(contract, source_row["code"], candidate_rows)
         ids = [aid, *(row["id"] for row in candidate_rows)]
         entities = {asset_id: {} for asset_id in ids}
         for offset in range(0, len(ids), 800):
@@ -885,6 +903,7 @@ def q_related(contract: WebContract, aid, limit=24):
             row.pop("entities", None)
             row.pop("year", None)
     attach_card_performers(contract, picked)
+    attach_multipart_groups(contract, picked)
     related_tags: dict[int, list[str]] = {}
     if picked:
         related_ids = [row["id"] for row in picked]
