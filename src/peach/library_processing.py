@@ -140,14 +140,15 @@ class CoverKept(NotFound):
 def cover_settled(path):
     """本机那张封面够不够大，大到这一轮不必再问来源。
 
-    宽度到 `jav_cover_fetch.MIN_WIDTH`（700）就算定了，再往上换是
-    `fetch_jav_covers.py --upgrade-existing` 那条批处理的事。不到这个宽度的多半是缩略图，
+    长边到 `jav_cover_fetch.MIN_WIDTH`（700）就算定了，再往上换是
+    `fetch_jav_covers.py --upgrade-existing` 那条批处理的事。不到这个尺寸的多半是缩略图，
     发行方那里常常还留着原图：2026-09-23 实测梨奈名下 6 部 276×154 的 FC2，官方存储上
     都有 1180×2100 到 3360×1890 的原图。所以缩略图不算有了封面，采集照样去问，问来的
-    更宽才换（`CoverKept`）；同目录的本地海报也一样，够大的才算定。
+    更宽才换（`CoverKept`）；同目录的本地海报也一样，够大的才算定。量长边不量宽：
+    600×900 的竖版海报是一张清楚的正封，按宽度算会被当成缩略图再去问一遍来源。
     """
     size = measure_image_file(path)
-    return size is not None and size[0] >= MIN_WIDTH
+    return size is not None and max(size) >= MIN_WIDTH
 
 
 class LibraryMetadataProvider:
