@@ -65,9 +65,10 @@ it('四个分区各有小标题，标题和分区交替排在 `.configpage` 的�
     .toEqual([true, false, true, false, true, false, true, false]);
 });
 
+/* 「通用」不在这条规则里：那一组装着订阅源，而订阅源不看配置快照，哪份配置下它都有内容。 */
 it('没有内容的组连标题一起省略', async () => {
   const host = await open(data());
-  expect(groups(host)).toEqual(['媒体', '更新与维护']);
+  expect(groups(host)).toEqual(['通用', '媒体', '更新与维护']);
   expect(host.textContent).not.toContain('开机自启');
   expect(host.textContent).not.toContain('Peach 代理');
 });

@@ -87,6 +87,8 @@ TASK_LABELS = {
     "scrape-codes": "番号资料刮削",
     "jav-covers": "封面批量抓取",
     "entity-avatar": "补实体头像",
+    "feed-check": "订阅源拉取",
+    "feed-scrape": "取新作资料",
 }
 
 

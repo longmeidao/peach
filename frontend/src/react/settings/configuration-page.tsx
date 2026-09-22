@@ -11,6 +11,7 @@ import { errorMessage } from '../../api';
 import type { ConfigurationGroupProps, ConfigurationProps } from '../bundle';
 import { Note } from '../components/note';
 import { CONFIGURATION_KEY, fetchConfiguration } from './configuration';
+import { FeedSettings } from './feed-settings';
 import { GeneralSettings } from './general-settings';
 import { MaintenanceSettings } from './maintenance-settings';
 import { MediaSettings } from './media-settings';
@@ -31,12 +32,13 @@ export function ConfigurationPage({ receipt, reopenTutorial }: ConfigurationProp
     );
   }
   const group: ConfigurationGroupProps = { data, receipt };
-  const general = Boolean(data.startup || data.entry_links);
   const network = Boolean(data.peach_proxy || data.access || data.tunnel);
   return (
     <div className="configpage">
-      {general ? <h2 className="configgroup">通用</h2> : null}
-      {general ? <GeneralSettings {...group} /> : null}
+      {/* 「通用」这一组总有内容：订阅源不看这份配置快照，自己读 `/api/feeds`。它和上面那两节
+          装在同一个直接子节点里——遗留壳按 `.configgroup` 切它后面那一个兄弟节点。 */}
+      <h2 className="configgroup">通用</h2>
+      <div className="flex flex-col gap-6"><GeneralSettings {...group} /><FeedSettings /></div>
       <h2 className="configgroup">媒体</h2>
       <MediaSettings {...group} />
       {network ? <h2 className="configgroup">网络与访问</h2> : null}

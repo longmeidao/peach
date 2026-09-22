@@ -457,3 +457,25 @@ body[data-density="dense"] .card .meta .watchcount{display:none}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
 .srow .scard{flex:none;width:214px;cursor:pointer}
 body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
+
+/* 订阅源发现的新作（ADR-0041）。横排复用 `.srow`，卡片复用 `.card` 的封套与元数据；
+ * 这里只定宽度、淡出已读那一档，以及那两颗悬浮动作键——其余形态跟着资产卡走，
+ * 两种卡长得不一样的地方只应该是它们真的不一样的地方。 */
+.feednew{margin:0 0 18px}
+.feednewtitle{margin:0 0 10px;font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted)}
+.feednewrow{padding-bottom:7px}
+.feednewcard{flex:none;width:168px}
+/* 已看过的不移走，只退到背景里：已读是标记，不是关掉。 */
+.feednewcard.isread{opacity:.55}
+/* 通向作品页的点击区。形态同 `.cardopenhit`，但那一个的语义是站内落点，这一条是外链。 */
+.feednewopen{position:absolute;inset:0;z-index:1;border-radius:inherit}
+.feednewopen:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+/* 两颗动作键沿用 `.hovertools` 的磨砂圆底，只换尺寸和落点。`.hovertools` 默认
+   `pointer-events:none`——那是为了让指针落到底下的预览上，而这两颗是这张卡唯一能按的
+   东西，所以在显形的同时把点击收回来。 */
+.feednewtools{inset:auto 7px 7px auto;gap:6px}
+.feednewcard:hover .feednewtools,.feednewcard:focus-within .feednewtools{opacity:1}
+.feednewcard:hover .feednewtools button,.feednewcard:focus-within .feednewtools button{pointer-events:auto}
+.feednewtools button{width:32px;height:32px}
+.feednewtools button svg{width:17px;height:17px}
+.feednewcard .meta .t{font-size:var(--fs-sm)}

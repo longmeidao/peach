@@ -234,6 +234,8 @@
 
 <main id="main" tabindex="-1">
   <div id="libraryProcessingNotice"></div>
+  <!-- 订阅源发现的新作（ADR-0042）。只在首页那几条目录路径上出现，由 app.js 按路径开合。 -->
+  <section class="feednew" id="feedNew" aria-label="新作 · 未入库" hidden></section>
   <dialog class="stage" id="stage" aria-label="作品详情" hidden></dialog>
   <div class="combo" id="combo"></div>
   <section class="index" id="index" hidden></section>
