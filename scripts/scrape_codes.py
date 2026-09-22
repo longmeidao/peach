@@ -36,7 +36,7 @@ from peach.jobs import DiskGuard, JobPolicyError
 from peach.task_runs import cli_run
 from peach.metadata import (
     CATALOG_EVIDENCE_FIELDS,
-    JAVINIZER_GO_VERSION,
+    JAVINIZER_GO_MIN_VERSION,
     JavinizerGoProvider,
     MetadataProviderError,
     extract_catalog_evidence,
@@ -114,6 +114,17 @@ def _is_explicit_code(code: str) -> bool:
     return is_jav_code(normalise_code_key(code))
 
 
+def _adapter_version(adapter: object) -> str:
+    """快照里记的是实际取回这条结果的那个二进制的版本，不是仓库声明的最低版本。
+
+    版本策略从「必须等于」改成「最低版本 + 同一大版本」之后，本机装的可能是更高的
+    小版本；继续把常量写进 `provider_version`，快照就会声称是另一份二进制取回来的，
+    而快照正是事后判断「这条证据出自哪一版解析器」的唯一依据。
+    """
+    provider = getattr(adapter, "javinizer", adapter)
+    return str(getattr(provider, "version", "") or JAVINIZER_GO_MIN_VERSION)
+
+
 def _fetch_source(adapter, *, query: str, source: str, snapshot: Path,
                   refresh: bool,
                   health: dict) -> tuple[dict | None, MetadataProviderError | None, bool]:
@@ -136,10 +147,12 @@ def _fetch_source(adapter, *, query: str, source: str, snapshot: Path,
             health["fetched"] += 1
             payload = adapter.query(query, source)
         if not snapshot.is_file() or refresh:
-            _write_snapshot(snapshot, code=query, source=source, result=payload)
+            _write_snapshot(snapshot, code=query, source=source, result=payload,
+                            version=_adapter_version(adapter))
     except MetadataProviderError as error:
         if not reused or refresh:
-            _write_snapshot(snapshot, code=query, source=source, error=error)
+            _write_snapshot(snapshot, code=query, source=source, error=error,
+                            version=_adapter_version(adapter))
         return None, error, reused
     return payload, None, reused
 
@@ -285,10 +298,11 @@ def _read_settled_error(path: Path) -> MetadataProviderError | None:
 
 
 def _write_snapshot(path: Path, *, code: str, source: str, result: dict | None = None,
-                    error: MetadataProviderError | None = None) -> None:
+                    error: MetadataProviderError | None = None,
+                    version: str = JAVINIZER_GO_MIN_VERSION) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     wrapper: dict[str, object] = {
-        "provider": "javinizer-go", "provider_version": JAVINIZER_GO_VERSION,
+        "provider": "javinizer-go", "provider_version": version,
         "code": code, "source": source,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }

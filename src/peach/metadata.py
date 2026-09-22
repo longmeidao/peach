@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import platform
 import re
@@ -27,7 +28,22 @@ from .entities import (
 )
 
 
-JAVINIZER_GO_VERSION = "1.5.1"
+#: 能用的最低 Javinizer-Go 版本。版本判定只拦两件真事：低于它（缺本项目依赖的
+#: 修复），以及大版本不同（`scrape` 的 JSON 形状和错误对象可能整体换过）。同一个
+#: 大版本里更高的小版本放行并记一条日志——要求自报版本逐字等于某个值，换来的不是
+#: 保护而是停摆：上游每发一次补丁，本机装好的新二进制都会被判成版本不匹配，而那
+#: 一版补丁多半根本没碰 `scrape` 这条命令。
+#:
+#: 2026-09-22 逐条核对 v1.5.1...v1.5.2 的差异：`cmd/javinizer/commands/scrape/`
+#: 下只有 `json_output_test.go` 动了一行测试超时，命令本体没有改动；typed warning
+#: code（#236）只加在 HTTP API 与 UI 上，CLI 的 JSON 没有这一项。Peach 读的
+#: `source`、`id`、`content_id`、`source_url` 与 `error.{kind,status_code,message,
+#: url,retryable,temporary}` 逐项仍然成立。config.yaml 侧只动了
+#: `output.download.download_timeout` 的默认值，那是 organizer 下载用的，
+#: Peach 不走 organizer。
+JAVINIZER_GO_MIN_VERSION = "1.5.2"
+_MIN_TOOL_VERSION = tuple(int(part) for part in JAVINIZER_GO_MIN_VERSION.split("."))
+LOGGER = logging.getLogger(__name__)
 #: 日期式那一支两种分隔符都放行：`_` 是一本道等片商的标识，不是可替换的写法
 #: （`catalog_rules._CODE_DATE`）。这里拦的是路径、URL 和任意文本，不是分隔符。
 _SAFE_CODE = re.compile(
@@ -135,34 +151,76 @@ def auth_error(source: str, reason: str, *, status_code: int = 0) -> MetadataPro
     )
 
 
-def _platform_tool_path() -> Path | None:
+def parse_tool_version(text: object) -> tuple[int, ...] | None:
+    """把 `v1.5.2` 这种自报版本转成可比较的三元组，认不出来返回 None。
+
+    工具目录名和 `version --short` 的输出用的是同一种写法，所以只留一处解析。
+    """
+    matched = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", str(text or "").strip())
+    return tuple(int(part) for part in matched.groups()) if matched else None
+
+
+def _platform_tool_name() -> tuple[str, str] | None:
+    """当前平台在工具目录里的（平台子目录，可执行文件名）。"""
     machine = platform.machine().lower()
     if sys.platform == "darwin" and machine in {"arm64", "aarch64"}:
-        return TOOLS_DIR / "javinizer" / f"v{JAVINIZER_GO_VERSION}" / "darwin-arm64" / "javinizer"
+        return "darwin-arm64", "javinizer"
     if os.name == "nt" and machine in {"amd64", "x86_64"}:
-        return TOOLS_DIR / "javinizer" / f"v{JAVINIZER_GO_VERSION}" / "windows-amd64" / "javinizer.exe"
+        return "windows-amd64", "javinizer.exe"
     if sys.platform.startswith("linux") and machine in {"amd64", "x86_64"}:
-        return TOOLS_DIR / "javinizer" / f"v{JAVINIZER_GO_VERSION}" / "linux-amd64" / "javinizer"
+        return "linux-amd64", "javinizer"
     if sys.platform.startswith("linux") and machine in {"arm64", "aarch64"}:
-        return TOOLS_DIR / "javinizer" / f"v{JAVINIZER_GO_VERSION}" / "linux-arm64" / "javinizer"
+        return "linux-arm64", "javinizer"
     return None
+
+
+def bundled_tool_paths() -> list[Path]:
+    """工具目录里本平台可用的二进制，最低版本排第一，其后是更新的同大版本。
+
+    最低版本优先不是保守，是因为那一份是本项目实际跑过真实来源验证的；同目录下
+    更新的 1.x 只在它缺席时顶上，升级时也就不必先把旧目录删掉。不同大版本的目录
+    不进候选——路径能凑出来不代表那份二进制的输出还是这个形状。
+    """
+    named = _platform_tool_name()
+    if named is None:
+        return []
+    directory, executable = named
+    root = TOOLS_DIR / "javinizer"
+    paths = [root / f"v{JAVINIZER_GO_MIN_VERSION}" / directory / executable]
+    newer: list[tuple[tuple[int, ...], Path]] = []
+    try:
+        entries = list(root.iterdir())
+    except OSError:
+        entries = []
+    for entry in entries:
+        parsed = parse_tool_version(entry.name)
+        if parsed is None or parsed[0] != _MIN_TOOL_VERSION[0] or parsed <= _MIN_TOOL_VERSION:
+            continue
+        newer.append((parsed, entry / directory / executable))
+    paths.extend(path for _, path in sorted(newer, key=lambda item: item[0], reverse=True))
+    return paths
+
+
+def javinizer_install_location() -> str:
+    """版本不合格时告诉人该把二进制放到哪。措辞只有这一处。"""
+    paths = bundled_tool_paths()
+    return str(paths[0]) if paths else "PEACH_JAVINIZER_BIN 指向的位置"
 
 
 def resolve_javinizer_binary(explicit: str | Path | None = None) -> Path:
     """Resolve a pinned local tool before falling back to PATH."""
     requested = str(explicit or os.environ.get("PEACH_JAVINIZER_BIN") or "").strip()
     candidates = [Path(requested)] if requested else []
-    bundled = _platform_tool_path()
-    if bundled is not None:
-        candidates.append(bundled)
+    candidates.extend(bundled_tool_paths())
     on_path = shutil.which("javinizer")
     if on_path:
         candidates.append(Path(on_path))
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
-    expected = str(bundled) if bundled is not None else "PEACH_JAVINIZER_BIN"
-    raise MetadataProviderError(f"Javinizer-Go v{JAVINIZER_GO_VERSION} 未安装：{expected}")
+    raise MetadataProviderError(
+        f"Javinizer-Go v{JAVINIZER_GO_MIN_VERSION} 或更高的 "
+        f"{_MIN_TOOL_VERSION[0]}.x 未安装：{javinizer_install_location()}")
 
 
 def validate_provider_code(code: str) -> str:
@@ -259,6 +317,8 @@ class JavinizerGoProvider:
     config_path: Path = STATE_DIR / "javinizer-provider" / "config.yaml"
     timeout: int = 45
     runner: Runner = subprocess.run
+    #: 这个二进制自报的版本，供快照的 provenance 用；不是声明的最低版本。
+    version: str = JAVINIZER_GO_MIN_VERSION
 
     @classmethod
     def create(
@@ -273,16 +333,29 @@ class JavinizerGoProvider:
             )
         except OSError as exc:
             raise MetadataProviderError(f"无法验证 Javinizer-Go 版本：{exc}") from exc
-        if version.returncode or version.stdout.strip() != f"v{JAVINIZER_GO_VERSION}":
-            actual = version.stdout.strip() or version.stderr.strip() or f"exit {version.returncode}"
+        reported = version.stdout.strip()
+        parsed = None if version.returncode else parse_tool_version(reported)
+        if parsed is None:
+            actual = reported or version.stderr.strip() or f"exit {version.returncode}"
+            raise MetadataProviderError(f"读不出 Javinizer-Go 版本：{actual}")
+        if parsed[0] != _MIN_TOOL_VERSION[0]:
             raise MetadataProviderError(
-                f"Javinizer-Go 版本不匹配：需要 v{JAVINIZER_GO_VERSION}，实际 {actual}"
-            )
+                f"Javinizer-Go 大版本不符：需要 {_MIN_TOOL_VERSION[0]}.x，实际 {reported}；"
+                f"装一份到 {javinizer_install_location()}")
+        if parsed < _MIN_TOOL_VERSION:
+            raise MetadataProviderError(
+                f"Javinizer-Go 版本过低：需要 v{JAVINIZER_GO_MIN_VERSION} 或更高的 "
+                f"{_MIN_TOOL_VERSION[0]}.x，实际 {reported}；"
+                f"装一份到 {javinizer_install_location()}")
+        if parsed > _MIN_TOOL_VERSION:
+            LOGGER.info("Javinizer-Go %s 高于验证过的 v%s，按同一大版本接受：%s",
+                        reported, JAVINIZER_GO_MIN_VERSION, resolved)
         return cls(
             resolved,
             Path(config_path) if config_path else STATE_DIR / "javinizer-provider" / "config.yaml",
             timeout,
             runner,
+            reported.lstrip("v"),
         )
 
     def query(self, code: str, source: str) -> dict:

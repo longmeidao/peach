@@ -71,7 +71,7 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 
 ## 已有复用与历史证据
 
-- `scrape_codes.py` 调 `JavinizerGoProvider`，由外部 Javinizer-Go v1.5.1 查询，Peach 只做身份、字段候选、来源健康和复核。不是自研整套 JAV scraper。
+- `scrape_codes.py` 调 `JavinizerGoProvider`，由外部 Javinizer-Go v1.5.2 查询，Peach 只做身份、字段候选、来源健康和复核。不是自研整套 JAV scraper。
 - `fetch_studio_avatar_candidates.py` 使用 unavatar 解析地址、平台 CDN 下载及 `LogoCandidateCache`。unavatar 是公共服务，随时可能改规则或收费，所以要有无 API key 的可用性测试和服务失败测试。
 - Gfriends 索引与头像审计复用原始索引、Pillow 和 `AvatarCandidateCache`；目录名录／本地化入口复用 `page_cache.Site`、`minnano_av`、`javdb`、名字链和 OpenCC。事务所名册的同名 `Site` 是脚本自有类，计入上面的内部重复。身份消歧仍需 Peach 承担。
 - FANBOX 已使用 curl_cffi 和 PixivUtil2 固定正文模型；Rule34Video 已部分使用 yt-dlp；其余归档／booru 官方接口及 Gofile 边界已在 REUSE 登记。这里只核对复用入口，没有对在线 provider 做端到端验收。
@@ -79,7 +79,7 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 
 ## 无代理刮削的实际机制
 
-Javinizer-Go v1.5.1 示例配置默认启用 r18dev，使用面向刮削器的 JSON 与专用 UA；支持按来源代理、CDN Referer、缓存和 r18 dump。**可用的聚合数据／本地缓存可以减少访问每个原站，不会让被阻断的原站凭空可达。** dump 需要先取得，缓存中的封面 URL 与原图字节也是两种资源。Peach 目前未证明已经接入其 dump 管理。
+Javinizer-Go v1.5.2 示例配置默认启用 r18dev，使用面向刮削器的 JSON 与专用 UA；支持按来源代理、CDN Referer、缓存和 r18 dump。**可用的聚合数据／本地缓存可以减少访问每个原站，不会让被阻断的原站凭空可达。** dump 需要先取得，缓存中的封面 URL 与原图字节也是两种资源。Peach 目前未证明已经接入其 dump 管理。
 
 Movie Data Capture 的当前配置提供代理开关、超时／重试、来源优先级和仅补缺图；这些是选源与缓存策略，不是任意地区无代理可达的保证。本次只用其配置作行为对照，不把整个应用加入 Peach。上游绕过验证的可选分支不在 Peach 采用范围内。
 
@@ -117,7 +117,7 @@ Movie Data Capture 的当前配置提供代理开关、超时／重试、来源�
 
 ## 外部核验入口
 
-- [Javinizer-Go v1.5.1 配置](https://github.com/javinizer/javinizer-go/blob/v1.5.1/configs/config.yaml.example)：来源、代理与 CDN Referer；固定 revision 的高清差异见 REUSE。
+- [Javinizer-Go v1.5.2 配置](https://github.com/javinizer/javinizer-go/blob/v1.5.2/configs/config.yaml.example)：来源、代理与 CDN Referer；固定 revision 的高清差异见 REUSE。
 - [Instaloader 4.15.3 头像实现](https://github.com/instaloader/instaloader/blob/v4.15.3/instaloader/structures.py)、[安装依赖](https://github.com/instaloader/instaloader/blob/v4.15.3/setup.py)、[MIT 许可证](https://github.com/instaloader/instaloader/blob/v4.15.3/LICENSE)、[会话导入](https://instaloader.github.io/cli-options.html#login-download-private-profiles)、[429 限制](https://instaloader.github.io/troubleshooting.html)。
 - [gallery-dl Instagram 提取器](https://github.com/mikf/gallery-dl/blob/master/gallery_dl/extractor/instagram.py)：GPL-2.0，对照源码，未复制或引入；采用前锁定 revision 与真实输入验证。
 - [Movie Data Capture 配置](https://github.com/mvdctop/Movie_Data_Capture/blob/master/config.ini)：只作策略对照，不作为安装推荐或当前站点可达性证据。
