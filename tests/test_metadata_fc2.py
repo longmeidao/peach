@@ -2,10 +2,13 @@
 import json
 import unittest
 
-from peach.metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_SOURCE, SOURCE, STUDIO, archive_link,
-                                archive_search_url, article_url, canonical_code, mirror_url,
-                                parse_archive, parse_article, parse_mirror,
-                                runtime_minutes, video_id)
+from peach.metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_COMPONENT, MIRROR_SOURCE, SOURCE, STUDIO,
+                                archive_link, archive_search_url, article_url, canonical_code,
+                                mirror_partial_headers, mirror_url, parse_archive, parse_article,
+                                parse_mirror, parse_mirror_actresses, runtime_minutes, video_id)
+
+#: 站上那份前端资源的指纹，2026-09-22 实测形态。
+MIRROR_VERSION = "fcb3b524d4c7f8f3d2c38e437b35b7a9"
 
 COVER = "https://storage92000.contents.fc2.com/file/261/26076760/1711813737.76.jpg"
 TITLE = "みお(19)可愛い巨乳JDの初アナル貫通動画"
@@ -100,16 +103,29 @@ def archive_page(video="4137487", title=None, large="{root}{video}pl.jpg",
 
 def mirror_page(video="3189161", title="【無】コスプレシリーズ", image=COVER,
                 slug="rina_vlog", seller="梨奈の射精動画＠個人撮影",
-                release="2023-02-19", duration="46:06", tags=("ハメ撮り", "フェラ")):
+                release="2023-02-19", duration="46:06", tags=("ハメ撮り", "フェラ"),
+                component=MIRROR_COMPONENT, version=MIRROR_VERSION):
     """fc2cmadb 是 Laravel + Inertia，整棵 props 树放在一个 script 里，正文是空壳。"""
-    props = {"props": {"appName": "FC2CMADB", "auth": {"user": None},
-                       "article": {"id": 364910, "video_id": int(video), "title": title,
-                                   "release_date": release, "duration": duration,
-                                   "image_url": image,
-                                   "writer": {"id": 1818, "slug": slug, "name": seller},
-                                   "tags": [{"name": tag} for tag in tags]}}}
-    return (f'<script type="application/json">{json.dumps(props, ensure_ascii=False)}</script>'
-            '<div id="app"></div>')
+    page = {"component": component, "version": version, "url": f"/articles/{video}",
+            "props": {"appName": "FC2CMADB", "auth": {"user": None},
+                      "article": {"id": 364910, "video_id": int(video), "title": title,
+                                  "release_date": release, "duration": duration,
+                                  "image_url": image,
+                                  "writer": {"id": 1818, "slug": slug, "name": seller},
+                                  "tags": [{"name": tag} for tag in tags]}}}
+    return (f'<script data-page="app" type="application/json">'
+            f'{json.dumps(page, ensure_ascii=False)}</script><div id="app"></div>')
+
+
+def mirror_actresses(*named):
+    """点名 `actresses` 那一跳回来的东西：整份 Inertia 响应，props 里只剩要的那一栏。"""
+    listed = [{"id": 3667 + at, "name": name, "description": None,
+               "alias_name": "ののみやすず 逢坂りの きたのあや", "redirect_url": None,
+               "pivot": {"article_id": 521612, "actress_id": 3667 + at}}
+              for at, name in enumerate(named)]
+    return json.dumps({"component": MIRROR_COMPONENT, "version": MIRROR_VERSION,
+                       "url": "/articles/3189161",
+                       "props": {"errors": {}, "actresses": listed}}, ensure_ascii=False)
 
 
 class Fc2CodeTests(unittest.TestCase):
@@ -184,7 +200,32 @@ class Fc2MirrorPageTests(unittest.TestCase):
         self.assertEqual(found["label"], "梨奈の射精動画＠個人撮影")
         self.assertEqual(found["seller_url"], "https://adult.contents.fc2.com/users/rina_vlog/")
         self.assertEqual(found["genres"], ["ハメ撮り", "フェラ"])
-        self.assertEqual(found["actresses"], [])
+
+    def test_the_named_women_come_from_the_second_ask_not_from_this_page(self):
+        # 女优是这一页的延迟 prop：首屏那份 HTML 里一个人也没有，点名要过才有。
+        self.assertEqual(parse_mirror(mirror_page(), "FC2-PPV-3189161")["actresses"], [])
+        found = parse_mirror(mirror_page(), "FC2-PPV-3189161",
+                             actresses=parse_mirror_actresses(mirror_actresses("野々宮すず")))
+        self.assertEqual(found["actresses"], ["野々宮すず"])
+
+    def test_the_second_ask_names_this_page_and_only_the_column_it_wants(self):
+        headers = mirror_partial_headers(mirror_page())
+        self.assertEqual(headers["X-Inertia-Version"], MIRROR_VERSION)
+        self.assertEqual(headers["X-Inertia-Partial-Component"], MIRROR_COMPONENT)
+        self.assertEqual(headers["X-Inertia-Partial-Data"], "actresses")
+
+    def test_a_page_that_is_not_a_product_page_is_never_asked_a_second_time(self):
+        # 站上没有的商品回的是错误页，它照样带着版本号，问下去只会白花一趟配额。
+        self.assertEqual(mirror_partial_headers(mirror_page(component="Error")), {})
+        self.assertEqual(mirror_partial_headers(mirror_page(version="")), {})
+        self.assertEqual(mirror_partial_headers("<div id='app'></div>"), {})
+
+    def test_the_stage_names_a_woman_has_worn_are_not_more_women(self):
+        # `alias_name` 那一串是同一个人的曾用名，一位女优挂着十几个。
+        self.assertEqual(parse_mirror_actresses(mirror_actresses("野々宮すず", "ゆうか")),
+                         ["野々宮すず", "ゆうか"])
+        self.assertEqual(parse_mirror_actresses(mirror_actresses()), [])
+        self.assertEqual(parse_mirror_actresses("<html>429</html>"), [])
 
     def test_the_mirror_cover_points_at_the_file_itself(self):
         # 镜像有时给的是缩放服务的地址。w276 只有 276 像素宽，连封面的最低宽度都过不了，

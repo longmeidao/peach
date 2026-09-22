@@ -186,8 +186,8 @@ class LibraryMetadataProvider:
         `route` 是这个番号的完整来源链（`metadata_routes.route_for_code`）：链上摘掉哪一处
         就不问哪一处，不给就三处按上面的顺序都问。
         """
-        from .metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_ROOT, MIRROR_SOURCE, ROOT, SOURCE,
-                                   article_url, mirror_url, parse_article, parse_mirror)
+        from .metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_SOURCE, ROOT, SOURCE,
+                                   article_url, parse_article)
         cache = self.__dict__.setdefault('_fc2', {})
         if code not in cache:
             if not article_url(code):
@@ -197,8 +197,7 @@ class LibraryMetadataProvider:
                 attempts = [attempt for name, attempt in (
                     (SOURCE, lambda: self._fc2_page(SOURCE, ROOT, article_url(code), parse_article,
                                                     code, deadline=deadline)),
-                    (MIRROR_SOURCE, lambda: self._fc2_page(MIRROR_SOURCE, MIRROR_ROOT, mirror_url(code),
-                                                           parse_mirror, code, deadline=deadline)),
+                    (MIRROR_SOURCE, lambda: self._fc2_mirror(code, deadline=deadline)),
                     (ARCHIVE_SOURCE, lambda: self._fc2_archive(code, deadline=deadline)))
                     if route is None or name in route]
                 for attempt in attempts:
@@ -220,6 +219,34 @@ class LibraryMetadataProvider:
         if isinstance(cache[code], Exception):
             raise type(cache[code])(str(cache[code]))
         return cache[code]
+
+    def _fc2_mirror(self, code, *, deadline=None):
+        """fc2cmadb 那一档要两跳：作品页给完整资料，女优那一栏得单独再问一次。
+
+        女优是这一页的延迟 prop，首屏那份 HTML 里根本没有。第二跳只要一千来字节，握手
+        版本号取自刚拿到的这一页。问不出来就按没有女优落——其余那些字段是站上最全的一
+        份，不该被这一跳的失败拖着一起丢。
+        """
+        from .jav_cover_fetch import Unavailable, _fetch
+        from .metadata_fc2 import (MIRROR_ROOT, MIRROR_SOURCE, mirror_partial_headers,
+                                   mirror_url, parse_mirror, parse_mirror_actresses)
+        from .scraping_access import SourcePaused
+        url = mirror_url(code)
+        page = _fetch(self.transport, url, referer=MIRROR_ROOT + '/',
+                      limit=FC2_PAGE_LIMIT, deadline=deadline)
+        headers = mirror_partial_headers(page)
+        actresses = ()
+        if headers:
+            try:
+                partial = _fetch(self.transport, url, referer=url, limit=FC2_PAGE_LIMIT,
+                                 extra_headers=headers, deadline=deadline)
+            except (SourcePaused, Unavailable):
+                partial = b''
+            actresses = parse_mirror_actresses(partial)
+        payload = parse_mirror(page, code, actresses=actresses)
+        if not payload:
+            raise NotFound(f'{SOURCE_LABELS[MIRROR_SOURCE]} 上没有这个商品')
+        return [(MIRROR_SOURCE, payload)]
 
     def _fc2_archive(self, code, *, deadline=None):
         """JavArchive 那一档要先搜再取作品页：作品地址里夹着站内文章号和标题，拼不出来。
