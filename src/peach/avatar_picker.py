@@ -176,6 +176,9 @@ def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
     乘以十张图，摆出来是几百个格子，而人要找的是「哪一部里有一张正脸」。
 
     没有封面也没铺过九宫格的作品不列：那种格子点开是一片空白。
+
+    同一个番号分了几段、或在两个目录各有一份时，账本里是几条 asset 行，封面却是同一
+    张：只留文件最大的那一份，其余几行不再各占一格。
     """
     rows = connection.execute(
         "SELECT a.id,a.code,COALESCE(NULLIF(a.catalog_title,''),a.name),a.snapshot_path "
@@ -185,10 +188,15 @@ def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
         (int(entity_id), MAX_ASSET_CHOICES * 3),
     ).fetchall()
     out: list[Choice] = []
+    seen_codes: set[str] = set()
     for asset_id, code, title, snapshot in rows:
         if len(out) >= MAX_ASSET_CHOICES:
             break
         key = normalise_code_key(code)
+        if key:
+            if key in seen_codes:
+                continue
+            seen_codes.add(key)
         has_cover = bool(key) and (Path(cover_root) / f"{key}.jpg").is_file()
         has_sheet = bool(snapshot)
         if not has_cover and not has_sheet:
