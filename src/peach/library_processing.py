@@ -22,6 +22,7 @@ from .jav_cover_fetch import DeadlineExceeded, NotFound
 from .library_nfo import directory_files, read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
 from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
+from . import metadata_routes
 from .metadata_policy import SOURCE_SPECS
 from .platform import root_online, translate_ledger_path
 from .review_csv import read_rows, write_rows
@@ -137,12 +138,14 @@ class LibraryMetadataProvider:
                             max_bytes=MAX_SOURCE_BYTES, max_seconds=MAX_SOURCE_SECONDS),
             2.0, intervals=SOURCE_INTERVALS)
 
-    def community(self, code, *, deadline=None):
-        """官方渠道落空时问社区来源，返回 `[(来源, 资料)]`。
+    def community(self, code, *, deadline=None, route=None):
+        """官方渠道落空时问综合索引那一档，返回 `[(来源, 资料)]`。
 
-        问哪几家按 `community_catalog.community_sources_for`：厂牌番号问 AVBase、JavBus
-        与 javdb，FC2 的商品号只问 javdb。资料和封面两步都可能要它，同一个番号只问一次：
-        javdb 的配额经不起每部片问两遍。
+        问哪几家按 `community_catalog.community_sources_for`，它转手问
+        `metadata_routes.community_route`：有码与素人问 AVBase、JavBus 与 javdb，
+        FC2 的商品号只问 javdb。`route` 是调用方已经算好的那一档成员，给了就不再算
+        （那一步要本机证据，provider 手上没有）。资料和封面两步都可能要它，同一个
+        番号只问一次：javdb 的配额经不起每部片问两遍。
         几家都明确说没有才是 `NotFound`；有一家出错且谁都没给资料时，带着原因报 `Unavailable`。
         """
         from .community_catalog import community_sources_for
@@ -150,7 +153,7 @@ class LibraryMetadataProvider:
         cache = self.__dict__.setdefault('_community', {})
         if code not in cache:
             found, problems = [], []
-            for source, fetch in community_sources_for(code):
+            for source, fetch in community_sources_for(code, route=route):
                 try:
                     found.append((source, fetch(self.transport, code, deadline=deadline)))
                 except DeadlineExceeded:
@@ -166,7 +169,7 @@ class LibraryMetadataProvider:
             raise type(cache[code])(str(cache[code]))
         return cache[code]
 
-    def fc2(self, code, *, deadline=None):
+    def fc2(self, code, *, deadline=None, route=None):
         """FC2 自己那一页，下架了就依次问两个存档站；返回 `[(来源, 资料)]`。
 
         资料和封面两步都要它，同一个番号只问一次：商品页约 300 KB，问两遍白花一份流量。
@@ -176,8 +179,11 @@ class LibraryMetadataProvider:
         一张转存封面，比官方原图差一档，所以排在最后（2026-09-22 实测 `FC2-PPV-4137487`
         在 fc2cmadb 是 404，JavArchive 上有）。三处都没有才按 `NotFound` 交出去，记进
         「没有」的记忆，一周内不再问。
+
+        `route` 是这个番号的完整来源链（`metadata_routes.route_for_code`）：链上摘掉哪一处
+        就不问哪一处，不给就三处按上面的顺序都问。
         """
-        from .metadata_fc2 import (MIRROR_ROOT, MIRROR_SOURCE, ROOT, SOURCE,
+        from .metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_ROOT, MIRROR_SOURCE, ROOT, SOURCE,
                                    article_url, mirror_url, parse_article, parse_mirror)
         cache = self.__dict__.setdefault('_fc2', {})
         if code not in cache:
@@ -185,12 +191,14 @@ class LibraryMetadataProvider:
                 cache[code] = NotFound('这个番号认不出 FC2 商品号')
             else:
                 found, problems = None, []
-                for attempt in (
-                        lambda: self._fc2_page(SOURCE, ROOT, article_url(code), parse_article,
-                                               code, deadline=deadline),
-                        lambda: self._fc2_page(MIRROR_SOURCE, MIRROR_ROOT, mirror_url(code),
-                                               parse_mirror, code, deadline=deadline),
-                        lambda: self._fc2_archive(code, deadline=deadline)):
+                attempts = [attempt for name, attempt in (
+                    (SOURCE, lambda: self._fc2_page(SOURCE, ROOT, article_url(code), parse_article,
+                                                    code, deadline=deadline)),
+                    (MIRROR_SOURCE, lambda: self._fc2_page(MIRROR_SOURCE, MIRROR_ROOT, mirror_url(code),
+                                                           parse_mirror, code, deadline=deadline)),
+                    (ARCHIVE_SOURCE, lambda: self._fc2_archive(code, deadline=deadline)))
+                    if route is None or name in route]
+                for attempt in attempts:
                     try:
                         found = attempt()
                     except DeadlineExceeded as error:
@@ -724,28 +732,21 @@ def _merge_local_performer_profiles(groups, key, remote, source):
         groups[key] = group
 
 
-def _sources_for(code, *evidence):
-    """按这个番号问哪几家资料来源，从左到右，先给出资料的那家算数。
+def _sources_for(code, *evidence, route_overrides=None):
+    """按这个番号问哪几**档**资料来源，从左到右；链本身在 `metadata_routes`。
 
-    韩国 MIB 的编号不在 JAV 目录站上，一家都不问：番号相同的日本作品会原样通过番号核验，
-    取回来的是别的片。
-
-    FC2 跳过 r18.dev（实测 85 条问了 85 条落空，每条白等一次主机间隔），直接问发行方
-    自己那一页；它没有或已下架时再落到社区来源，那里 javdb 收了一部分 FC2。
-
-    一本道的番号也不问 r18.dev，改问它自己那份作品 JSON：无码片商不在 r18 上，而目录站
-    给日期式番号的发行日是转售商的上架日（`092415_001` javdb 报 2016-06-16，番号自己写着
-    2015-09-24）。`evidence` 是这一行的路径、文件名与账本厂牌——一本道与カリビアンコム
-    的番号同形，只有本机证据指着一本道时才问它，问不着的照旧落到社区来源。
+    这里只把「按内容类型的来源链」摊成这条采集路认得的档名：官方与发行方那几家逐个
+    成档，三家综合索引合成一档 `community`（那一档不逐家短路，理由见
+    `metadata_routes.COMMUNITY_STAGE`）。`evidence` 是这一行的路径、文件名与账本
+    厂牌——一本道与カリビアンコム 的番号同形，只有本机证据指着一本道时才问它。
     """
-    if not code or is_korean_mib_code(code):
-        return ()
-    if code.upper().startswith('FC2'):
-        return ('fc2', 'community')
-    from .metadata_1pondo import movie_id, names_this_studio
-    if movie_id(code) and names_this_studio(*evidence):
-        return ('1pondo', 'community')
-    return ('r18dev', 'community')
+    return metadata_routes.stages_for_code(code, *evidence, overrides=route_overrides)
+
+
+def _given_fields(entries):
+    """这些证据条目一共给出了哪几个非空 Peach 字段。链上何时停手按它判。"""
+    return {field for _, payload, _ in entries
+            for field, value in extract_peach_fields(payload).items() if value}
 
 
 def _asks_cover(code):
@@ -846,11 +847,13 @@ class _MissCache:
 class _RemoteSession:
     """一个任务共用的外部来源连接，加上来源说过「没有」的记忆。"""
 
-    def __init__(self, config, provider_factory, misses, *, retrying):
+    def __init__(self, config, provider_factory, misses, *, retrying, routes=None):
         self._config = config
         self._factory = provider_factory
         self._provider = None
         self.misses = misses
+        #: 用户对每种内容类型的来源链覆盖，形状见 `metadata_routes.parse_route_overrides`。
+        self._routes = routes or None
         # 「重试未完成项」按上一任务的失败集合强制重试，不看记忆；答复仍照记。
         self._consult = not retrying
 
@@ -877,45 +880,87 @@ class _RemoteSession:
         entries, covers = [], 0
         if not _scrapes_as_jav(row, code):
             return entries, covers
-        if missing and _sources_for(code, *_studio_evidence(row)):
-            entries = self._metadata(row, code, update=update, issue=issue)
+        if missing and _sources_for(code, *_studio_evidence(row),
+                                    route_overrides=self._routes):
+            entries = self._metadata(row, code, missing, update=update, issue=issue)
         if _asks_cover(code) and not (cover_root / (code + '.jpg')).is_file():
             covers = self._cover(row, code, cover_root, update=update, issue=issue)
         return entries, covers
 
     def _evidence(self, source, code, payload):
-        evidence_path = self._config.directory('sources') / 'library-metadata' / f'{code}-{source}.json'
-        _save(evidence_path, payload)
-        return (source, payload, evidence_path)
+        _save(self._evidence_path(code, source), payload)
+        return (source, payload, self._evidence_path(code, source))
 
-    def _metadata(self, row, code, *, update, issue):
-        """按 `_sources_for` 给的顺序问，先给出资料的那家算数。
+    def _evidence_path(self, code, source):
+        return self._config.directory('sources') / 'library-metadata' / f'{code}-{source}.json'
 
-        JAV 番号先问 r18.dev，它没有或出错再问 AVBase、JavBus 与 javdb；FC2 番号问发行方
-        自己那一页，下架的才落到社区来源；一本道的番号问它自己那份作品 JSON。社区来源的值
-        照常进候选，只剩一家也补空，几家不一时取 javdb 的（ADR-0034）。每家各自记「没有」
-        的记忆：说过没有的番号，一周内直接问下一家。
+    def _cached_evidence(self, names, code):
+        """这一档上次答过的原始快照；命中就不发请求。
+
+        有效期与「说过没有」的记忆同一个（`MISS_TTL_SECONDS`，7 天）：来源会补录、
+        片子可能后来上架，两边同时到期才不会出现「没有」已经过期、「有」还压着旧值。
+        「重试未完成项」强制重问，判据同 `self._consult`——那一趟要的就是新答复。
+        """
+        found = []
+        for name in names:
+            path = self._evidence_path(code, name)
+            try:
+                if time.time() - path.stat().st_mtime > MISS_TTL_SECONDS:
+                    continue
+                found.append((name, json.loads(path.read_text(encoding='utf-8')), path))
+            except (OSError, ValueError):
+                continue
+        return found
+
+    def _metadata(self, row, code, missing, *, update, issue):
+        """按内容类型的来源链逐档问，必填标量字段够了就不问下一档。
+
+        链在 `metadata_routes`：有码与素人先问 r18.dev，无码问一本道官网（本机证据指着
+        它时），FC2 问发行方商品页与下架镜像，问不着才落到 AVBase、JavBus 与 javdb 那一档。
+
+        短路判据是**这一行还缺的必填标量**（标题、演员、厂牌、发行日期），不是「有人答了
+        就算」：r18.dev 少给演员时照旧往下问，否则那一行只能等人工去填。列表字段（标签、
+        封面）不参与短路——多一家就多一批标签和一个图源，而免复核本来就要两家一致
+        （ADR-0030、ADR-0034）、封面互证要两个图源（ADR-0032）。
+
+        社区那一档的值照常进候选，只剩一家也补空，几家不一时取 javdb 的（ADR-0034）。
+        每档各自记「没有」的记忆：说过没有的番号，一周内直接问下一档。
         """
         action = 'querying_metadata'
         budget = ACTION_BUDGETS[action]
         update(stage='采集缺失资料', current_action=action,
                current_started_at=time.time(), current_deadline_at=time.time() + budget)
         deadline = time.monotonic() + budget
-        problems = []
-        for source in _sources_for(code, *_studio_evidence(row)):
+        evidence = _studio_evidence(row)
+        chain = metadata_routes.route_for_code(code, *evidence, overrides=self._routes)
+        required = list(metadata_routes.required_scalars(missing))
+        problems, entries = [], []
+        for source in _sources_for(code, *evidence, route_overrides=self._routes):
             if self._consult and self.misses.fresh(source, code):
+                continue
+            cached = (self._cached_evidence(metadata_routes.stage_members(source, chain), code)
+                      if self._consult else [])
+            if cached:
+                entries.extend(cached)
+                if metadata_routes.settles(required, _given_fields(entries)):
+                    break
                 continue
             try:
                 if source == 'r18dev':
                     found = [('r18dev', self.provider().query(code, 'r18dev', deadline=deadline))]
                 elif source == 'fc2':
-                    found = self.provider().fc2(code, deadline=deadline)
+                    found = self.provider().fc2(code, deadline=deadline, route=chain)
                 elif source == '1pondo':
                     found = self.provider().one_pondo(code, deadline=deadline)
                 else:
-                    found = self.provider().community(code, deadline=deadline)
+                    found = self.provider().community(
+                        code, deadline=deadline,
+                        route=metadata_routes.community_route(
+                            code, *evidence, overrides=self._routes))
             except DeadlineExceeded:
                 self.reset()
+                if entries:
+                    break
                 issue(row, '外部资料在预算时间内未取得，可稍后重试', action=action, retryable=True)
                 return []
             except NotFound:
@@ -928,7 +973,11 @@ class _RemoteSession:
                                 else f'{SOURCE_LABELS.get(source, source)}：{describe_failure(error)}')
                 continue
             update(stage='保存资料候选')
-            return [self._evidence(name, code, payload) for name, payload in found]
+            entries.extend(self._evidence(name, code, payload) for name, payload in found)
+            if metadata_routes.settles(required, _given_fields(entries)):
+                break
+        if entries:
+            return entries
         issue(row, '外部资料未取得：' + '；'.join(problems) if problems else MISS_MESSAGES[action],
               action=action, retryable=True)
         return []
@@ -993,7 +1042,7 @@ def _enrich_finished_performers(database, groups, config, candidate_root, remote
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES,
-                    database=None):
+                    database=None, route_overrides=None):
     """登记文件与确定的番号，外部资料保留为可复核候选。
 
     `retry_ids` 为 `None` 时处理整个馆藏；给定时只处理这些项目（上一任务记录的
@@ -1006,8 +1055,12 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
 
     `database` 是调用方已经在用的 `LedgerDatabase`。给了它才做收尾的自动落库与人物
     资料补齐，并且与调用方共用同一把进程内写锁；不给就只采集候选。
+
+    `route_overrides` 覆盖某几种内容类型的来源链，形状与判据见
+    `metadata_routes.parse_route_overrides`；不给就用内建那张表。
     """
     _require_writer(config, db_path)
+    routes = metadata_routes.parse_route_overrides(route_overrides)
     path = state_path(config)
     path.parent.mkdir(parents=True, exist_ok=True)
     retrying = retry_ids is not None
@@ -1067,7 +1120,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             report(dict(state))
 
         update()
-        remote = _RemoteSession(config, provider_factory, _MissCache(misses_path(config)), retrying=retrying)
+        remote = _RemoteSession(config, provider_factory, _MissCache(misses_path(config)),
+                                retrying=retrying, routes=routes)
         flush_candidates = lambda force=False: None
 
         try:

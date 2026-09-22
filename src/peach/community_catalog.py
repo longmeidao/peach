@@ -222,20 +222,23 @@ def javdb_work(transport, code: str, *, deadline: float | None = None) -> dict:
 COMMUNITY_SOURCES = (("avbase", avbase_work), ("javbus", javbus_work), ("javdb", javdb_work))
 
 
-def community_sources_for(code: str):
-    """这个番号问社区里的哪几家，顺序同 `COMMUNITY_SOURCES`。
+def community_sources_for(code: str, *hints: str, route=None):
+    """这个番号问社区里的哪几家，顺序同这个番号的来源链。
 
-    FC2 的商品号只问 javdb：另两家的目录里没有 FC2。2026-09-22 清点本机攒下的 1213 份
-    来源证据，AVBase 那 86 份、JavBus 那 37 份全是厂牌番号，对 FC2 番号一份都没给过，
-    javdb 则给了 166 份。问了只是各撞一次空搜索，白花两家的配额，还多两次被 Cloudflare
-    记上的机会。这和 `library_processing._sources_for` 里 FC2 跳过 r18.dev 是同一回事。
+    成员与顺序的真相在 `metadata_routes`：有码与素人问 AVBase、JavBus 与 javdb，
+    FC2 的商品号只问 javdb，韩国 MIB 一家都不问。`route` 是调用方已经算好的那一档成员
+    （算它要本机路径与厂牌证据，这里手上没有），给了就直接用。
+
+    FC2 只问 javdb 的依据：2026-09-22 清点本机攒下的 1213 份来源证据，AVBase 那 86 份、
+    JavBus 那 37 份全是厂牌番号，对 FC2 番号一份都没给过，javdb 则给了 166 份。问了只是
+    各撞一次空搜索，白花两家的配额，还多两次被 Cloudflare 记上的机会。
 
     省不出时间是预料之中的：`HostLimiter` 等的是「距上次满 5 秒」，这两家的往返本来就落在
     等 javdb 的窗口里。一轮采集的长短由 javdb 的请求数乘 5 秒定死，这里改的是请求次数。
     """
-    if str(code or "").upper().startswith("FC2"):
-        return tuple(entry for entry in COMMUNITY_SOURCES if entry[0] == "javdb")
-    return COMMUNITY_SOURCES
+    from .metadata_routes import community_route
+    members = community_route(code, *hints) if route is None else tuple(route)
+    return tuple(entry for entry in COMMUNITY_SOURCES if entry[0] in members)
 
 
 def origin_of(url: str) -> str:
