@@ -6,7 +6,7 @@ import unittest
 from PIL import Image
 
 from peach.community_catalog import (COMMUNITY_SOURCES, IMAGE_LIMIT, avbase_work, community_sources_for,
-                                     javbus_work, javdb_work, verified_cover)
+                                     javbus_work, javdb_actresses, javdb_work, verified_cover)
 from peach.http import HttpResponse
 from peach.jav_cover_fetch import Candidate, NotFound, Unavailable, _fetch
 
@@ -145,8 +145,20 @@ class CommunityCatalogTests(unittest.TestCase):
         work = javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE}), "ABW-358")
         self.assertEqual((work["id"], work["title"], work["maker"], work["release_date"], work["runtime"]),
                          ("ABW-358", TITLE, "プレステージ", "2023-05-23", 210))
-        self.assertEqual(work["actresses"], [{"japanese_name": "涼森れむ"}], "男优不进演员")
+        self.assertEqual(
+            work["actresses"],
+            [{"japanese_name": "涼森れむ", "profile_source": "javdb", "external_id": "a"}],
+            "男优不进演员；女优带着她在 javdb 的演员 id")
         self.assertEqual((work["source_url"], work["cover_urls"]), ("https://javdb.com/v/Zb7mX", [JAVDB_COVER]))
+
+    def test_javdb_reads_the_actor_id_whichever_side_of_the_class_it_sits(self):
+        """属性的先后由站方模板决定，不该成为拿不到演员 id 的理由。"""
+        self.assertEqual(
+            javdb_actresses('<a class="actor-female" href="/actors/z9">葵いぶき</a>'),
+            [{"japanese_name": "葵いぶき", "profile_source": "javdb", "external_id": "z9"}])
+        self.assertEqual(
+            javdb_actresses('<a class="actor-female">名字没挂链接</a>'),
+            [{"japanese_name": "名字没挂链接", "profile_source": "javdb", "external_id": ""}])
 
     def test_javdb_reports_a_missing_code_and_a_login_wall_differently(self):
         with self.assertRaises(NotFound):

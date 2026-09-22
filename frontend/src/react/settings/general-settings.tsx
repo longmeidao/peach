@@ -1,4 +1,4 @@
-/* 「通用」分组：开机自启与桌面快捷方式。 */
+/* 「通用」分组：开机自启与桌面快捷方式，加上人物资料页那三枚外部入口。 */
 import { useState, type FormEvent } from 'react';
 
 import { SettingsRow } from '@/components/application/settings/settings-rows';
@@ -7,11 +7,17 @@ import { Switch } from '@/components/base/switch/switch';
 
 import { apiSend } from '../../api';
 import type { ConfigurationGroupProps, StartupState } from '../bundle';
+import { EntryLinksForm } from './entry-links-settings';
 import { ErrorText, Footer, Help, Rows, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 export function GeneralSettings({ data, receipt }: ConfigurationGroupProps) {
-  return data.startup ? <StartupSettings startup={data.startup} receipt={receipt} /> : null;
+  return (
+    <div className="flex flex-col gap-6">
+      {data.startup ? <StartupSettings startup={data.startup} receipt={receipt} /> : null}
+      {data.entry_links ? <EntryLinksForm initial={data.entry_links} receipt={receipt} /> : null}
+    </div>
+  );
 }
 
 export function StartupSettings({ startup, receipt }: { startup: StartupState; receipt(message: string): void }) {

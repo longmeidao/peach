@@ -19,7 +19,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from filelock import FileLock, Timeout
 
-from . import access, distribution, folder_picker, onboarding, settings_file, media_configuration, tunnel
+from . import (access, distribution, entry_links, folder_picker, onboarding, settings_file,
+               media_configuration, tunnel)
 from .routes_auth import require_auth, same_origin
 from .web_entry import runtime_fact_entries
 from . import release_updates, standalone_update, peach_proxy, desktop_startup, desktop_uninstall
@@ -107,6 +108,7 @@ def snapshot(config) -> dict[str, Any]:
         "startup": desktop_startup.snapshot(config),
         "uninstall": desktop_uninstall.snapshot(config),
         "peach_proxy": peach_proxy.describe(config.directory("secrets")),
+        "entry_links": entry_links.snapshot(config.directory("state")),
         "updates": release_updates.snapshot(),
         "update_job": standalone_update.public(),
         "access": access.public(access.load(config.directory("secrets") / "access.json")),
@@ -182,6 +184,16 @@ def save_peach_proxy(request: Request, body: dict = Body(...), _args=Depends(req
     try:
         return peach_proxy.save(settings_file.load_config().directory("secrets"), body)
     except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/api/configuration/entry-links")
+def save_entry_links(request: Request, body: dict = Body(...), _args=Depends(require_auth)):
+    local_only(request)
+    same_origin(request)
+    try:
+        return entry_links.save(settings_file.load_config().directory("state"), body)
+    except (ValueError, OSError, Timeout) as exc:
         raise HTTPException(400, str(exc)) from exc
 
 

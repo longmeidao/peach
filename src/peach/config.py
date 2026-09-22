@@ -141,3 +141,5 @@ class PeachSettings:
     taste_history_manifest: Path = STATE_DIR / "taste-history" / "manifest.json"
     # 自动追更频率是本机运行偏好，不属于 ledger 真相。
     follow_state_root: Path = STATE_DIR
+    # 人物页外部入口的开关与地址模板，同样是本机偏好。
+    entry_links_root: Path = STATE_DIR

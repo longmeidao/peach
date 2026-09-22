@@ -7,6 +7,7 @@ import unittest
 from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import quote
 
 from peach import __version__
 from support.mp4 import minimal_mp4
@@ -282,6 +283,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             taste_history_import_root=self.taste_import_root,
             taste_history_output_root=self.taste_output_root,
             taste_history_manifest=self.taste_manifest,
+            entry_links_root=self.root / "state",
         )
         self.app = create_app(self.settings)
         # 字节与时间表夹具不含可解码画面；编码判定由媒体域的真实样本覆盖。
@@ -1014,6 +1016,32 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["avatar_focus"], {"axis": "y", "pct": 23})
+
+    async def test_entity_gives_direct_entries_only_for_the_sites_it_has_an_id_for(self):
+        """外部入口随资料一起下发；账本里没有那个站点 id 的，那一枚就不在列表里。"""
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name) "
+            "VALUES(3,'performer','七沢みあ','七沢みあ')"
+        )
+        connection.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(1,3,'performer','test',1.0)"
+        )
+        connection.execute(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id) "
+            "VALUES(3,'javdb','performer','NPD3')"
+        )
+        connection.commit(); connection.close()
+
+        response = await self.client.get(
+            "/api/entity?t=secret&kind=performer&name=" + quote("七沢みあ")
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        entries = response.json()["entry_links"]
+        self.assertEqual([row["site"] for row in entries], ["javdb", "missav"])
+        self.assertEqual(entries[0]["url"], "https://javdb.com/actors/NPD3?sort_type=4")
+        self.assertTrue(entries[1]["url"].startswith("https://missav.ws/dm42/cn/actresses/%"))
 
     async def test_review_queue_is_readable_and_decisions_are_persisted(self):
         response = await self.client.get("/api/review?t=secret")

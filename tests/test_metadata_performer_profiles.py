@@ -78,6 +78,28 @@ class ImportedPerformerProfileTests(unittest.TestCase):
         self.assertTrue((self.root / "avatars" / "performer-7.img").is_file())
         transport.assert_called_once()
 
+    def test_a_javdb_actor_id_lands_as_a_performer_external_ref(self):
+        """javdb 的演员 id 落进账本，人物页的 JavDB 入口就是靠它拼出来的。
+
+        这一路不带头像，整段一次网都不出；名字没连着这条资产的人一个都不登记。
+        """
+        group = dict(self.group(), candidates_json=json.dumps([{
+            "candidate_key": "profile", "source": "javdb",
+            "value": [{"name": "涼森れむ", "external_id": "NPD3", "profile_source": "javdb"},
+                      {"name": "別人", "external_id": "ZZZZ", "profile_source": "javdb"}],
+        }], ensure_ascii=False))
+        transport = Mock()
+        result = enrich_performer_profiles(
+            self.database, [group], self.root / "avatars", self.root / "providers",
+            transport_factory=lambda: transport)
+        self.assertEqual(result["avatars"], 0)
+        transport.assert_not_called()
+        with closing(sqlite3.connect(self.db)) as connection:
+            refs = connection.execute(
+                "SELECT entity_id,external_id FROM entity_external_ref "
+                "WHERE provider='javdb' AND external_kind='performer'").fetchall()
+        self.assertEqual(refs, [(7, "NPD3")])
+
     def test_tampered_avatar_url_is_never_requested_but_aliases_still_land(self):
         transport = Mock()
         result = enrich_performer_profiles(

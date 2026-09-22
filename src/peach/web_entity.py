@@ -14,6 +14,7 @@ import time
 
 from urllib.parse import urlsplit
 
+from . import entry_links
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .web_catalog import (
@@ -119,6 +120,12 @@ def q_entity(contract: WebContract, args):
             "FROM entity_external_ref WHERE entity_id=? ORDER BY provider,external_kind",
             (d["id"],),
         )]
+        # 外部入口下发的是拼好的地址，不是模板：拼它要的站点 id 和规范名都在服务端，
+        # 前端再拼一遍就会有两份规则。缺 id 的站点不出现在这个列表里。
+        d["entry_links"] = (
+            entry_links.entry_links(contract.entry_links_root, d["canonical_name"],
+                                    d["external_refs"])
+            if kind == "performer" else [])
         scope = scope_predicate(kind, "ae.entity_id")
         count, rep = c.execute(
             "SELECT count(DISTINCT ae.asset_id),"

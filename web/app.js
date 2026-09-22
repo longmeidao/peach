@@ -7901,6 +7901,14 @@ async function openEntity(kind,name,push=true){
        把 img 撤掉，露出底下那枚地球。 */
     return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(linkHost(x.url)||x.label)}</span></a>`;
   }).join('');
+  /* 外部入口：同一个人在 JavDB、minnano-av 与 MISSAV 的那一页。地址由服务端按站点 id
+     和规范名拼好下发（`peach.entry_links`），这里只排版——站点 id 缺席时那一枚根本不在
+     `entry_links` 里，页面上也就没有一个点过去落空的入口。
+
+     文字就是站名：这一排只有三枚，而「去哪」这件事站名自己说得最清楚；`/link-mark` 那条
+     图标链认的是账本里的链接 id，这几条不是账本链接，取不到圆标。 */
+  const entryLinks=(d.entry_links||[]).map(x=>
+    `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.label)}</a>`).join('');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
@@ -7977,7 +7985,8 @@ async function openEntity(kind,name,push=true){
         people?'<span data-avatar-picker></span>':''}</div>
       <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
-        ${links?`<div class="entitylinks">${links}</div>`:''}</div></div>
+        ${links?`<div class="entitylinks">${links}</div>`:''}
+        ${entryLinks?`<div class="entryrow"><span class="entryhead">外部入口</span><span class="entryentries">${entryLinks}</span></div>`:''}</div></div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>

@@ -31,11 +31,12 @@ export function ConfigurationPage({ receipt, reopenTutorial }: ConfigurationProp
     );
   }
   const group: ConfigurationGroupProps = { data, receipt };
+  const general = Boolean(data.startup || data.entry_links);
   const network = Boolean(data.peach_proxy || data.access || data.tunnel);
   return (
     <div className="configpage">
-      {data.startup ? <h2 className="configgroup">通用</h2> : null}
-      {data.startup ? <GeneralSettings {...group} /> : null}
+      {general ? <h2 className="configgroup">通用</h2> : null}
+      {general ? <GeneralSettings {...group} /> : null}
       <h2 className="configgroup">媒体</h2>
       <MediaSettings {...group} />
       {network ? <h2 className="configgroup">网络与访问</h2> : null}

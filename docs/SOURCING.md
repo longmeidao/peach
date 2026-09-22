@@ -568,6 +568,12 @@ av911.tv，三条候选已进复核队列。
   逐个写法搜 `search?f=actor&q=`，结果卡片的 `title` 一栏就是这个人在站上的全部写法，不点进去就能判
   身份。名字链要整条搜完再放弃——账本的规范名多是简体（`三上悠亚`），javdb 上是 `三上悠亜`／`三上悠亞`，
   `name_key()` 不做简繁转换，只搜规范名一个都搜不到（`harvest_directory_links.collect_javdb`）。
+- **javdb 的演员 id 在作品详情页就拿得到，不必另走一趟资料页。** 演員一栏每个名字都挂着
+  `/actors/<id>`，`community_catalog.javdb_actresses` 取名字时顺手带出来，名字精确匹配到这条
+  资产已关联的人物实体才登记成 `entity_external_ref(provider='javdb', external_kind='performer')`。
+  人物页的 JavDB 入口就是靠它拼的（`peach.entry_links`），另开一页只是把同一页再取一遍，
+  而 javdb 的配额最紧。历史数据走 `scripts/backfill_performer_entry_ids.py`：javdb 页面缓存与
+  `review/agency-rosters.csv` 的 `actress_id` 各补一路，先出 dry-run CSV 再 `--apply`。
 - **同名两条记录不取第一个。** 同一位女优在站上常有「有碼」「無碼」两条，搜索结果把两条都给出来；
   两页都进判定，撞上的账号会落成 `conflict` 进复核表。取第一个是默默替用户挑了一位。
 - **一部分资料页要登录，回的是登入页而不是 401。** 不注册账号，那一页记一行「未取得」并写明是谁——
