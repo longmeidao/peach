@@ -259,17 +259,28 @@ class LibraryMetadataProvider:
         搜索结果那一条只有标题和一张缩略图，作品页才有标签、发行日、时长和真正的封面
         位。省掉这一跳换来的是三个字段全空、封面地址靠文件名硬推——站上的命名没有统一，
         推出来的多半不存在。搜不着就是没有，不当抓取失败。
+
+        同一个商品站上常有好几条：不同转存者各发一次，图也各存各的，先后没有质量含义。
+        每一条都取，第一条的图未必还在（2026-09-22 实测 `1436028` 的 `/641159-` 那条
+        404，`/800025-` 那条有 1280×720）。走到这一档时前两处已经都说没有，多那一两页
+        换的是这个番号有没有封面。地址里的标题有的已编码、有的是原字，拼之前统一编一遍。
         """
         from .jav_cover_fetch import _fetch
-        from .metadata_fc2 import (ARCHIVE_ROOT, ARCHIVE_SOURCE, archive_link,
+        from .metadata_fc2 import (ARCHIVE_ROOT, ARCHIVE_SOURCE, archive_links,
                                    archive_search_url, parse_archive)
         results = _fetch(self.transport, archive_search_url(code), referer=ARCHIVE_ROOT + '/',
                          limit=FC2_PAGE_LIMIT, deadline=deadline)
-        link = archive_link(results, code)
-        if not link:
+        found = []
+        for link in archive_links(results, code):
+            url = ARCHIVE_ROOT + quote(link, safe='/%')
+            try:
+                found += self._fc2_page(ARCHIVE_SOURCE, ARCHIVE_ROOT, url, parse_archive,
+                                        code, deadline=deadline)
+            except NotFound:
+                continue
+        if not found:
             raise NotFound(f'{SOURCE_LABELS[ARCHIVE_SOURCE]} 上没有这个商品')
-        return self._fc2_page(ARCHIVE_SOURCE, ARCHIVE_ROOT, ARCHIVE_ROOT + link,
-                              parse_archive, code, deadline=deadline)
+        return found
 
     def _fc2_page(self, source, root, url, parse, code, *, deadline=None):
         """抓一页并解析成 `[(来源, 资料)]`；页面在、但那份数据对不上这个商品时报没有。"""

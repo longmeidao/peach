@@ -188,21 +188,23 @@ def archive_search_url(code: str) -> str:
     return ARCHIVE_SEARCH_URL.format(code=urllib.parse.quote(canonical_code(found))) if found else ""
 
 
-def archive_link(html: str | bytes, code: str) -> str:
-    """搜索结果里这个商品号那一条的站内地址；没有回空串。
+def archive_links(html: str | bytes, code: str) -> list[str]:
+    """搜索结果里这个商品号的每一条站内地址，按站上的先后；没有回空表。
 
     商品号要按数字边界比：`4137487` 不能命中 `41374870`，站上两个号真的都有。搜索页的
     结果、侧栏的本周热门和归档菜单用的是同一种地址形状，所以只认地址里带着这个号的那条。
+
+    同一个商品常有好几条：不同转存者各发一次，图也各存各的。第一条的图未必还在
+    （2026-09-22 实测 `1436028` 的 `/641159-` 那条是 404，`/800025-` 那条有 1280×720），
+    所以取封面时每一条都要看过。
     """
     wanted = video_id(code)
     if not wanted:
-        return ""
+        return []
     text = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
     boundary = re.compile(rf"(?<!\d){re.escape(wanted)}(?!\d)")
-    for href in _ARCHIVE_LINK.findall(text):
-        if boundary.search(urllib.parse.unquote(href)):
-            return href
-    return ""
+    return list(dict.fromkeys(href for href in _ARCHIVE_LINK.findall(text)
+                              if boundary.search(urllib.parse.unquote(href))))
 
 
 def _strip_code(title: str, wanted: str) -> str:

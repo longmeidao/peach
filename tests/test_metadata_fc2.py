@@ -3,7 +3,7 @@ import json
 import unittest
 
 from peach.metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_COMPONENT, MIRROR_SOURCE, SOURCE, STUDIO,
-                                archive_link, archive_search_url, article_url, canonical_code,
+                                archive_links, archive_search_url, article_url, canonical_code,
                                 mirror_partial_headers, mirror_url, parse_archive, parse_article,
                                 parse_mirror, parse_mirror_actresses, runtime_minutes, video_id)
 
@@ -46,14 +46,17 @@ ARCHIVE_TITLE = "Gカップ・脅威 マジ凄いです！脅威のパイパーG
 ARCHIVE_PICTURES = "https://img.javstore.net/images/2023/12/26/"
 
 
-def search_page(video="4137487", picture=True):
+def search_page(video="4137487", picture=True, reposted=False):
     """搜索结果。侧栏的本周热门与归档菜单用的是同一种地址形状，所以它们也在这一页里。
 
     第二条那部没有图，只有标题链接——站上实测一半的结果是这样（`1863914`、`2110084`）。
+    `reposted` 是同一个商品的第二条：不同转存者各发一次，文章号、番号写法和标题都不同。
     """
     heading = f"FC2-PPV-{video} {ARCHIVE_TITLE}"
     thumb = (f'<img src="{ARCHIVE_PICTURES}{video}ps.jpg" alt="{heading}" loading="lazy">'
              if picture else "")
+    repost = (f'<li><a href="/800025-fc2ppv-{video}-離婚の後遺症で性欲が止まらない変態女-pn.html" '
+              f'title="FC2PPV {video} 離婚の後遺症">转存的那一条</a></li>' if reposted else "")
     return (
         '<ul><li><a href="/1000-featured-articles-cn.html">Featured</a></li>'
         '<li><a href="/4-av-censored-cn.html">AV Censored</a></li></ul>'
@@ -63,7 +66,7 @@ def search_page(video="4137487", picture=True):
         '</li><li>'
         '<a href="/735702-fc2-ppv-1863914-10代美少女、圧倒的透明感のしほちゃん。-pn.html" '
         'title="FC2 PPV 1863914 10代美少女、圧倒的透明感のしほちゃん。">另一部</a>'
-        "</li></ul></div>"
+        f"</li>{repost}</ul></div>"
     )
 
 
@@ -257,19 +260,25 @@ class Fc2MirrorPageTests(unittest.TestCase):
 
 class JavArchiveTests(unittest.TestCase):
     def test_the_search_page_gives_up_the_link_that_carries_this_shop_number(self):
-        self.assertEqual(archive_link(search_page(), "FC2-PPV-4137487"), ARCHIVE_LINK)
-        self.assertEqual(archive_link(search_page().encode(), "fc2ppv4137487"), ARCHIVE_LINK)
+        self.assertEqual(archive_links(search_page(), "FC2-PPV-4137487"), [ARCHIVE_LINK])
+        self.assertEqual(archive_links(search_page().encode(), "fc2ppv4137487"), [ARCHIVE_LINK])
 
     def test_a_longer_number_that_merely_starts_the_same_is_not_this_one(self):
         # 站上 `4137487` 与 `41374870` 都有；按子串比会把后者的标题和封面安到前者头上。
-        self.assertEqual(archive_link(search_page(video="41374870"), "FC2-PPV-4137487"), "")
-        self.assertEqual(archive_link(search_page(), "FC2-PPV-9999999"), "")
-        self.assertEqual(archive_link(search_page(), "ORETD-615"), "")
+        self.assertEqual(archive_links(search_page(video="41374870"), "FC2-PPV-4137487"), [])
+        self.assertEqual(archive_links(search_page(), "FC2-PPV-9999999"), [])
+        self.assertEqual(archive_links(search_page(), "ORETD-615"), [])
 
     def test_one_search_page_holds_several_works_and_each_code_finds_its_own(self):
         # 一页里既有别的作品，也有侧栏的热门与归档，挑的必须是这个商品号那一条。
-        self.assertTrue(archive_link(search_page(), "FC2-PPV-1863914").startswith("/735702-"))
-        self.assertTrue(archive_link(search_page(), "FC2-PPV-4137487").startswith("/926949-"))
+        self.assertTrue(archive_links(search_page(), "FC2-PPV-1863914")[0].startswith("/735702-"))
+        self.assertTrue(archive_links(search_page(), "FC2-PPV-4137487")[0].startswith("/926949-"))
+
+    def test_every_repost_of_the_same_work_is_handed_over(self):
+        # 不同转存者各发一次，图也各存各的：`1436028` 的 `/641159-` 那条是 404，
+        # `/800025-` 那条有 1280×720。先后没有质量含义，所以两条都要。
+        found = archive_links(search_page(reposted=True), "FC2-PPV-4137487")
+        self.assertEqual([link.split("-")[0] for link in found], ["/926949", "/800025"])
 
     def test_the_archive_page_gives_the_title_without_the_code_in_front_of_it(self):
         found = parse_archive(archive_page(), "FC2-PPV-4137487")
