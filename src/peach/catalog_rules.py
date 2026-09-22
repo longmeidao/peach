@@ -608,6 +608,39 @@ def is_jav_asset(code: str | None, studio: str | None = None,
     )
 
 
+#: 发行体系自己的写法，形态本身就是发行证据：FC2 商品号（含 `FC-437689` 这种变体）、
+#: 素人平台的三位数字前缀（`300MIUM-698`）、MGStage 素人系（`STP-26232`、`SIRO-3508`）、
+#: 日期式番号（`071213-625`）。创作者的文件名撞不出这几种形状，所以它们一概放行。
+_RELEASE_SYSTEM_SHAPE = re.compile(r"^(FC2|FC-\d{5,}|\d{3}[A-Z]+-|ST[PN]-|SIRO-|\d{6}[-_])")
+
+
+def scrapes_as_jav(code: str | None, studio: str | None = None,
+                   creator: str | None = None, release_date: str | None = None,
+                   entity_kinds: tuple[str, ...] | list[str] = (),
+                   region: str | None = None) -> bool:
+    """这个番号该不该拿去问 JAV 来源。
+
+    和 `is_jav_asset` 的分工：那个判「这条记录算不算一部 JAV 发行物」，要求发行证据
+    已经落在账本里，用来决定浏览时归到哪一类。刮削入口不能用它——那份证据本来就是
+    刮回来的，没刮过就没证据，拿它当门会把每一部还没刮过的新片一起关在外面。
+
+    这里只拦一种：**创作者作品的文件名被读成了番号**。`sumwall95 masturbation_1.mp4`
+    出 `SUMWALL-095`、`aerith 2412a.mp4` 出 `AERITH-2412`（角色名加年月），形态上和厂牌
+    番号毫无区别。判据是「归在某个创作者名下、没有厂牌也没有其他发行证据、写法又不属于
+    任何发行体系」。2026-09-22 只读盘点：账本 2851 部有番号的资产里这样的 126 部，
+    105 部是 `oscarkim123` 的 cosplay、19 部是 `sunwall` 的剪辑，每轮采集都拿去问一遍
+    javdb；同一盘点里被放行的真番号零误伤。
+    """
+    if str(region or "").strip() not in ("", JAPAN_REGION):
+        return False
+    if not str(creator or "").strip():
+        return True
+    if (str(studio or "").strip() or str(release_date or "").strip()
+            or RELEASE_EVIDENCE_KINDS.intersection(entity_kinds)):
+        return True
+    return bool(_RELEASE_SYSTEM_SHAPE.match(normalise_code_key(code).upper()))
+
+
 def release_code_from_text(value: str | None) -> str | None:
     """从一段文字（目录名或文件名主干）里解析出规范番号；解析不出返回 None。
 

@@ -42,6 +42,7 @@ from peach.catalog_rules import (
     release_code_from_text,
     release_identity,
     same_release_code,
+    scrapes_as_jav,
     tokyo_hot_code,
     western_release_identity,
 )
@@ -114,6 +115,37 @@ class NormalisationTests(unittest.TestCase):
         self.assertFalse(is_jav_asset("HHD800", None, "2022-04-01"))
         self.assertFalse(is_jav_asset("HHD800", None, None, ("performer",)))
         self.assertTrue(is_jav_asset("PBD390", "MOODYZ"))
+
+
+class ScrapeGateTests(unittest.TestCase):
+    """`scrapes_as_jav` 只拦「创作者作品的文件名被读成番号」，不替代发行证据。"""
+
+    def test_a_creator_filename_that_looks_like_a_code_is_not_asked_about(self):
+        # `sumwall95 masturbation_1.mp4` 与 `aerith 2412a.mp4`（角色名加年月）。
+        self.assertFalse(scrapes_as_jav("SUMWALL-095", None, "sunwall"))
+        self.assertFalse(scrapes_as_jav("AERITH-2412", None, "oscarkim123"))
+        self.assertFalse(scrapes_as_jav("DAO-001", None, "Retsu_dao"))
+
+    def test_release_evidence_on_the_same_row_puts_it_back_in(self):
+        self.assertTrue(scrapes_as_jav("ABW-358", "Prestige", "oscarkim123"))
+        self.assertTrue(scrapes_as_jav("ABW-358", None, "oscarkim123", "2024-12-01"))
+        self.assertTrue(scrapes_as_jav("ABW-358", None, "oscarkim123", None, ("performer",)))
+
+    def test_a_release_system_shape_never_needs_the_rest_of_the_evidence(self):
+        # 这四种写法本身就是发行体系的证据，创作者的文件名撞不出来。
+        for code in ("FC2-PPV-1233719", "FC-437689", "300MIUM-698", "STP-26232",
+                     "SIRO-3508", "071213-625"):
+            self.assertTrue(scrapes_as_jav(code, None, "合集-洛丽塔 多创作者"), code)
+
+    def test_a_row_without_a_creator_is_asked_about_before_anything_is_known(self):
+        """刮削入口不能要求发行证据先落库：那份证据正是这一趟要去取的。"""
+        self.assertTrue(scrapes_as_jav("300NTK-625"))
+        self.assertTrue(scrapes_as_jav("MIDE-001"))
+        self.assertFalse(is_jav_asset("MIDE-001"), '同一条在浏览分类里仍然不算已坐实的发行物')
+
+    def test_a_decided_region_outside_japan_stays_out(self):
+        self.assertFalse(scrapes_as_jav("AR-032", "MIB", None, None, (), "kr"))
+        self.assertTrue(scrapes_as_jav("MIDE-001", None, None, None, (), "jp"))
 
 
 class ExtractionTests(unittest.TestCase):

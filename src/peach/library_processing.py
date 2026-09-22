@@ -16,7 +16,7 @@ from filelock import FileLock, Timeout
 from PIL import Image
 
 from .catalog_rules import (is_jav_code, is_korean_mib_code, normalise_code_key,
-                            release_code_from_filename, same_release_code)
+                            release_code_from_filename, same_release_code, scrapes_as_jav)
 from .field_owners import SCAN_FILENAME, write_owned_fields
 from .jav_cover_fetch import DeadlineExceeded, NotFound
 from .library_nfo import directory_files, read_nfo, sidecars, local_art
@@ -728,6 +728,15 @@ def _asks_cover(code):
     return bool(code) and not is_korean_mib_code(code)
 
 
+def _scrapes_as_jav(row, code):
+    """把账本行摊成 `catalog_rules.scrapes_as_jav` 要的那几样发行证据。
+
+    `performers` 是取行时用 group_concat 带上的出演者投影；`asset` 上没有这一列。
+    """
+    return scrapes_as_jav(code, row.get('studio'), row.get('creator'), row.get('release_date'),
+                          ('performer',) if row.get('performers') else (), row.get('region'))
+
+
 def _studio_evidence(row):
     """判片商时本机手上有的证据：文件路径、文件名和账本里已记的厂牌。"""
     return (row.get('path'), row.get('name'), row.get('studio'))
@@ -835,8 +844,14 @@ class _RemoteSession:
             self._provider.close()
 
     def collect(self, row, code, missing, cover_root, *, update, issue):
-        """给这一行补外部资料与封面；返回 (证据条目, 新落盘的封面数)。"""
+        """给这一行补外部资料与封面；返回 (证据条目, 新落盘的封面数)。
+
+        文件名被读成番号的创作者作品一家都不问，判据见 `catalog_rules.scrapes_as_jav`；
+        本地海报在调用方那一步已经登记过，这里跳过的只是外部来源。
+        """
         entries, covers = [], 0
+        if not _scrapes_as_jav(row, code):
+            return entries, covers
         if missing and _sources_for(code, *_studio_evidence(row)):
             entries = self._metadata(row, code, update=update, issue=issue)
         if _asks_cover(code) and not (cover_root / (code + '.jpg')).is_file():
