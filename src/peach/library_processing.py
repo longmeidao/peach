@@ -172,10 +172,10 @@ class LibraryMetadataProvider:
             raise type(cache[code])(str(cache[code]))
         return cache[code]
 
-    def fc2(self, code, *, deadline=None, route=None):
+    def fc2(self, code, *, deadline=None, route=None, covers=False):
         """FC2 自己那一页，下架了就依次问两个存档站；返回沿路答上的每一档 `[(来源, 资料)]`。
 
-        资料和封面两步都要它，同一个番号只问一次：商品页约 300 KB，问两遍白花一份流量。
+        资料和封面两步都要它，同一档只问一次：商品页约 300 KB，问两遍白花一份流量。
         已下架的商品仍回 200，解析器认不出那份 Product 就回 None——那不是抓取失败，是这部
         片在站上没有了。本地这批没封面的 FC2 多数是这种，所以接着问 fc2cmadb：它留着下架
         作品的标题、卖家、标签与封面原图。它也没有的才落到 JavArchive，那一档只给标题和
@@ -183,50 +183,47 @@ class LibraryMetadataProvider:
         在 fc2cmadb 是 404，JavArchive 上有）。三处都没有才按 `NotFound` 交出去，记进
         「没有」的记忆，一周内不再问。
 
-        哪一档给出封面地址才停：答上的那一档常常有资料而没有图——站上标着没有商品图，
-        或者地址还在、FC2 的存储上那张已经删了。停在它那里，后面真有图的那一档就再也
-        没机会（2026-09-22 实测 `FC2-PPV-3232110` 在 fc2cmadb 拿到的地址是 404，JavArchive
-        上有一张）。前面答过的资料照旧带着走：多一档就多一批标签和一个图源（ADR-0030）。
+        资料那一步答上就停，封面那一步（`covers`）把链问到底。给出地址的那一档常常下不来
+        图：站上标着没有商品图，或者地址还在、FC2 的存储上那张已经删了——而这一层判不出
+        来，能不能用要等 `best_cover` 量过才知道（2026-09-22 实测 `FC2-PPV-3232110` 从
+        fc2cmadb 拿到的地址是 404，JavArchive 上另有一张 1417×829）。所以封面要的是链上
+        全部图源，由它择优；多问那一档顺带多一批标签（ADR-0030）。
 
         `route` 是这个番号的完整来源链（`metadata_routes.route_for_code`）：链上摘掉哪一处
         就不问哪一处，不给就三处按上面的顺序都问。
         """
         from .metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_SOURCE, ROOT, SOURCE,
                                    article_url, parse_article)
+        if not article_url(code):
+            raise NotFound('这个番号认不出 FC2 商品号')
         cache = self.__dict__.setdefault('_fc2', {})
-        if code not in cache:
-            if not article_url(code):
-                cache[code] = NotFound('这个番号认不出 FC2 商品号')
-            else:
-                found, problems = [], []
-                attempts = [attempt for name, attempt in (
-                    (SOURCE, lambda: self._fc2_page(SOURCE, ROOT, article_url(code), parse_article,
-                                                    code, deadline=deadline)),
-                    (MIRROR_SOURCE, lambda: self._fc2_mirror(code, deadline=deadline)),
-                    (ARCHIVE_SOURCE, lambda: self._fc2_archive(code, deadline=deadline)))
-                    if route is None or name in route]
-                for attempt in attempts:
-                    try:
-                        found += attempt()
-                    except DeadlineExceeded as error:
-                        # 前面已经答上时预算用尽只是「没再往下问」，不是这个番号没取到。
-                        if not found:
-                            cache[code] = error
-                        break
-                    except NotFound:
-                        continue
-                    except Exception as error:  # noqa: BLE001 - 原因由调用方汇总成一句话
-                        problems.append(error)
-                        continue
-                    if any(payload.get('cover_url') for _, payload in found):
-                        break
-                if code not in cache:
-                    # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
-                    cache[code] = found or (problems[0] if problems
-                                            else NotFound('FC2、fc2cmadb 与 JavArchive 上都没有这个商品'))
-        if isinstance(cache[code], Exception):
-            raise type(cache[code])(str(cache[code]))
-        return cache[code]
+        state = cache.setdefault(code, {'found': [], 'problems': [], 'asked': set()})
+        for name, attempt in ((SOURCE, lambda: self._fc2_page(SOURCE, ROOT, article_url(code),
+                                                              parse_article, code, deadline=deadline)),
+                              (MIRROR_SOURCE, lambda: self._fc2_mirror(code, deadline=deadline)),
+                              (ARCHIVE_SOURCE, lambda: self._fc2_archive(code, deadline=deadline))):
+            if (route is not None and name not in route) or name in state['asked']:
+                continue
+            if state['found'] and not covers:
+                break
+            state['asked'].add(name)
+            try:
+                state['found'] += attempt()
+            except DeadlineExceeded:
+                # 前面已经答上时预算用尽只是「没再往下问」，不是这个番号没取到。
+                if not state['found']:
+                    raise
+                break
+            except NotFound:
+                continue
+            except Exception as error:  # noqa: BLE001 - 原因由调用方汇总成一句话
+                state['problems'].append(error)
+        if state['found']:
+            return state['found']
+        # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
+        if state['problems']:
+            raise type(state['problems'][0])(str(state['problems'][0]))
+        raise NotFound('FC2、fc2cmadb 与 JavArchive 上都没有这个商品')
 
     def _fc2_mirror(self, code, *, deadline=None):
         """fc2cmadb 那一档要两跳：作品页给完整资料，女优那一栏得单独再问一次。
@@ -318,14 +315,17 @@ class LibraryMetadataProvider:
         """发行方自己那张封面，交给 `best_cover` 当候选。
 
         只有 FC2 和一本道走这里：别的番号的官方面 `best_cover` 自己会找（r18、MGS、
-        Prestige），这两家它一处都不问。资料那步问过的同一份缓存，这里不再发请求。
+        Prestige），这两家它一处都不问。资料那步问过的档这里不再发请求，FC2 链上它没
+        走到的那几档要补问：图源要凑齐了交给 `best_cover` 量，它才挑得出能用的那张。
         """
+        from functools import partial
+
         from .jav_cover_fetch import Candidate, Unavailable
         from .metadata_1pondo import ROOT as PONDO_ROOT
         from .metadata_fc2 import ROOT as FC2_ROOT
         sources = _sources_for(code, *evidence)
         if 'fc2' in sources:
-            source, ask, referer = 'fc2', self.fc2, FC2_ROOT + '/'
+            source, ask, referer = 'fc2', partial(self.fc2, covers=True), FC2_ROOT + '/'
         elif '1pondo' in sources:
             source, ask, referer = '1pondo', self.one_pondo, PONDO_ROOT + '/'
         else:

@@ -631,44 +631,54 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(found[0][1]['actresses'], [])
         self.assertEqual(found[0][1]['title'], '【無】コスプレシリーズ')
 
-    def test_a_source_that_answers_without_a_cover_does_not_end_the_chain(self):
-        """镜像站标着没有商品图时，后面那一档还留着一张转存封面，得问到它。"""
+    def _fc2_provider(self, asked, *, image='https://storage92000.contents.fc2.com/file/1.jpg'):
+        """三档都摆好的 FC2 链：官方页已空，镜像在，JavArchive 上另有一张转存封面。"""
         from peach.library_processing import LibraryMetadataProvider
         def pages(transport, url, **kwargs):
             if 'fc2cmadb.com' in url:
                 if kwargs.get('extra_headers'):
+                    # 女优那一栏点名再问一次，问的还是这一页，不算又问了一档。
                     return json.dumps({'props': {'actresses': []}})
-                return _mirror_page(image='/storage/images/article/no-image.jpg', video=3232110)
+                asked.append(url)
+                return _mirror_page(image=image, video=3232110)
+            asked.append(url)
             if 'javarchive.com' in url:
                 return _archive_pages(url)
             raise NotFound('官方那一页已空')
         provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
         provider.transport = Mock()
+        return provider, pages
+
+    def test_the_metadata_step_stops_at_the_source_that_answers(self):
+        """标量字段够了就不必再问一档：那一趟只多一批标签，一份流量却是实打实的。"""
+        asked = []
+        provider, pages = self._fc2_provider(asked)
         with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
             found = provider.fc2('FC2-PPV-3232110')
-        self.assertEqual([source for source, _ in found], ['fc2cmadb', 'javarchive'])
-        self.assertEqual(found[0][1]['cover_url'], '', '站上那张占位件不是这部片的封面')
-        self.assertEqual(found[1][1]['cover_url'], _ARCHIVE_COVER)
-        self.assertEqual(found[0][1]['title'], '【無】コスプレシリーズ',
-                         '前面答过的资料照旧带着走')
-
-    def test_the_chain_stops_at_the_source_that_hands_over_a_cover(self):
-        """有图的那一档就够了：再往下问只是多花一份流量，图源已经有了。"""
-        from peach.library_processing import LibraryMetadataProvider
-        asked = []
-        def pages(transport, url, **kwargs):
-            asked.append(url)
-            if 'fc2cmadb.com' in url:
-                if kwargs.get('extra_headers'):
-                    return json.dumps({'props': {'actresses': []}})
-                return _mirror_page()
-            raise NotFound('官方那一页已空')
-        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
-        provider.transport = Mock()
-        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
-            found = provider.fc2('FC2-PPV-3189161')
         self.assertEqual([source for source, _ in found], ['fc2cmadb'])
         self.assertFalse([url for url in asked if 'javarchive.com' in url])
+
+    def test_the_cover_step_asks_the_rest_of_the_chain_for_more_image_sources(self):
+        """答上的那一档给的地址下不下得来图，这一层判不出来，所以图源要凑齐再挑。"""
+        asked = []
+        provider, pages = self._fc2_provider(asked)
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            provider.fc2('FC2-PPV-3232110')
+            found = provider.fc2('FC2-PPV-3232110', covers=True)
+        self.assertEqual([source for source, _ in found], ['fc2cmadb', 'javarchive'])
+        self.assertEqual(found[1][1]['cover_url'], _ARCHIVE_COVER)
+        self.assertEqual([url for url in asked if 'fc2cmadb.com' in url and 'articles' in url].count(
+            'https://fc2cmadb.com/articles/3232110'), 1, '资料那步问过的档不再问第二遍')
+
+    def test_the_mirrors_placeholder_leaves_the_cover_to_the_next_source(self):
+        """镜像站标着没有商品图时，它那一栏挂的是占位件，不是这部片的封面。"""
+        asked = []
+        provider, pages = self._fc2_provider(asked, image='/storage/images/article/no-image.jpg')
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3232110', covers=True)
+        self.assertEqual(found[0][1]['cover_url'], '')
+        self.assertEqual(found[0][1]['title'], '【無】コスプレシリーズ', '资料照旧带着走')
+        self.assertEqual(found[1][1]['cover_url'], _ARCHIVE_COVER)
 
     def test_javdb_keeps_its_own_host_interval_on_both_of_its_hosts(self):
         """这一档的节奏由用户定，改动要连图床一起改：页面与图分别落在两个主机上。"""
