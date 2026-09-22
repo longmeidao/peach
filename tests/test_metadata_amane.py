@@ -36,7 +36,7 @@ FOUND = {"status": "found", "metadata": {
     "actors": [{"name": "女優", "gender": "female"}, {"name": "男", "gender": "male"}],
     "poster_urls": ["https://x/p.jpg"], "thumb_urls": ["https://x/t.jpg"],
     "trailer_urls": [], "extrafanart": ["https://x/1.jpg"], "directors": ["監督"],
-    "source_url": "https://fc2ppvdb.com/articles/1234567", "external_id": "https://fc2ppvdb.com/articles/1234567",
+    "source_url": "https://fc2club.top/html/FC2-PPV-1234567.html", "external_id": "https://fc2club.top/html/FC2-PPV-1234567.html",
 }, "elapsed_s": 0.3}
 
 
@@ -166,16 +166,16 @@ class BridgeQueryTests(unittest.TestCase):
 
         def runner(command, **kwargs):
             calls.append((command, kwargs))
-            return completed("noise from a stray print\n" + report(fc2ppvdb=FOUND) + "\n")
+            return completed("noise from a stray print\n" + report(fc2club=FOUND) + "\n")
 
         bridge = metadata_amane.AmaneBridge.create(self.tools, runner=runner)
-        result = bridge.query("fc2-ppv-1234567", ["fc2ppvdb"], proxy_options={"trust_env": False, "proxy": "http://p:1"},
+        result = bridge.query("fc2-ppv-1234567", ["fc2club"], proxy_options={"trust_env": False, "proxy": "http://p:1"},
                               timeout=42)
-        self.assertEqual(result["sites"]["fc2ppvdb"]["status"], "found")
+        self.assertEqual(result["sites"]["fc2club"]["status"], "found")
         command, kwargs = calls[0]
         self.assertEqual(command[0], str(self.python))
         self.assertEqual(command[command.index("--number") + 1], "FC2-PPV-1234567")
-        self.assertEqual(command[command.index("--sites") + 1], "fc2ppvdb")
+        self.assertEqual(command[command.index("--sites") + 1], "fc2club")
         self.assertEqual(command[command.index("--proxy") + 1], "http://p:1")
         self.assertEqual(kwargs["timeout"], 42)
         self.assertFalse(kwargs["shell"])
@@ -207,8 +207,8 @@ class BridgeQueryTests(unittest.TestCase):
 
 class PayloadTests(unittest.TestCase):
     def test_amane_metadata_lands_in_the_javinizer_shaped_payload(self):
-        payload = metadata_amane.to_payload("fc2ppvdb", "FC2-PPV-1234567", FOUND["metadata"])
-        self.assertEqual(payload["source"], "fc2ppvdb")
+        payload = metadata_amane.to_payload("fc2club", "FC2-PPV-1234567", FOUND["metadata"])
+        self.assertEqual(payload["source"], "fc2club")
         self.assertEqual(payload["content_id"], "FC2-PPV-1234567")
         self.assertEqual(payload["id"], "FC2-PPV-1234567")
         self.assertEqual(payload["maker"], "卖家")
@@ -225,14 +225,14 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(fields["release_date"]["value"], "2024-01-02")
 
     def test_split_report_keeps_hits_that_identify_the_code_and_files_the_rest(self):
-        wrong = {"status": "found", "metadata": {**FOUND["metadata"], "number": "FC2-PPV-7654321", "source_url": "https://fc2club.top/html/FC2-PPV-7654321.html"}}
+        wrong = {"status": "found", "metadata": {**FOUND["metadata"], "number": "FC2-PPV-7654321", "source_url": "https://freejavbt.com/FC2-PPV-7654321"}}
         found, failures = metadata_amane.split_report("FC2-PPV-1234567", json.loads(report(
-            fc2ppvdb=FOUND, fc2club=wrong,
+            fc2club=FOUND, freejavbt=wrong,
             avsox={"status": "failed", "reason": "rate_limited", "http_status": 429},
             airav={"status": "not_found", "reason": "not_found"})))
-        self.assertEqual([site for site, _ in found], ["fc2ppvdb"])
-        self.assertEqual(set(failures), {"fc2club", "avsox", "airav"})
-        self.assertEqual(failures["fc2club"].kind, "not_found")
+        self.assertEqual([site for site, _ in found], ["fc2club"])
+        self.assertEqual(set(failures), {"freejavbt", "avsox", "airav"})
+        self.assertEqual(failures["freejavbt"].kind, "not_found")
         self.assertEqual(failures["avsox"].kind, "unavailable")
         self.assertEqual(failures["avsox"].detail, "rate_limited")
         self.assertEqual(failures["avsox"].status_code, 429)
@@ -313,24 +313,24 @@ class ProviderStageTests(unittest.TestCase):
         return provider
 
     def test_a_hit_comes_back_as_source_payload_pairs_and_is_cached(self):
-        provider = self.provider(report(fc2ppvdb=FOUND, fc2club={"status": "not_found", "reason": "not_found"}))
-        found = provider.amane("FC2-PPV-1234567", route=("fc2ppvdb", "fc2club"))
-        self.assertEqual([site for site, _ in found], ["fc2ppvdb"])
+        provider = self.provider(report(fc2club=FOUND, avsox={"status": "not_found", "reason": "not_found"}))
+        found = provider.amane("FC2-PPV-1234567", route=("fc2club", "avsox"))
+        self.assertEqual([site for site, _ in found], ["fc2club"])
         self.assertEqual(found[0][1]["title"], "標題")
-        provider.amane("FC2-PPV-1234567", route=("fc2ppvdb", "fc2club"))
+        provider.amane("FC2-PPV-1234567", route=("fc2club", "avsox"))
         self.assertEqual(len(self.calls), 1)
-        self.assertEqual(self.calls[0][self.calls[0].index("--sites") + 1], "fc2ppvdb,fc2club")
+        self.assertEqual(self.calls[0][self.calls[0].index("--sites") + 1], "fc2club,avsox")
 
     def test_all_misses_are_not_found_and_errors_are_unavailable_with_the_reason(self):
-        provider = self.provider(report(fc2ppvdb={"status": "not_found", "reason": "not_found"},
-                                        fc2club={"status": "not_found", "reason": "not_found"}))
+        provider = self.provider(report(fc2club={"status": "not_found", "reason": "not_found"},
+                                        avsox={"status": "not_found", "reason": "not_found"}))
         with self.assertRaises(NotFound):
-            provider.amane("FC2-PPV-1234567", route=("fc2ppvdb", "fc2club"))
-        provider = self.provider(report(fc2ppvdb={"status": "failed", "reason": "server_error", "http_status": 526},
-                                        fc2club={"status": "not_found", "reason": "not_found"}))
+            provider.amane("FC2-PPV-1234567", route=("fc2club", "avsox"))
+        provider = self.provider(report(fc2club={"status": "failed", "reason": "server_error", "http_status": 526},
+                                        avsox={"status": "not_found", "reason": "not_found"}))
         with self.assertRaises(Unavailable) as caught:
-            provider.amane("FC2-PPV-7654321", route=("fc2ppvdb", "fc2club"))
-        self.assertIn("FC2PPVDB", str(caught.exception))
+            provider.amane("FC2-PPV-7654321", route=("fc2club", "avsox"))
+        self.assertIn("FC2Club", str(caught.exception))
         self.assertIn("526", str(caught.exception))
 
     def test_a_block_pauses_that_site_and_a_fully_paused_stage_is_reported_as_paused(self):

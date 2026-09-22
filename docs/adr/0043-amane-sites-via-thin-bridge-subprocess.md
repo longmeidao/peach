@@ -5,8 +5,8 @@
 
 ## 背景
 
-`sqzw-x/amane`（GPL-3.0）接了二十多个 JAV 影片站的解析器，其中 fc2ppvdb、fc2club、freejavbt、
-airav、avsox 是 Peach 自己没有的。2026-09-22 的 POC（`docs/reference-snapshots/amane-crawlers-poc.md`）
+`sqzw-x/amane`（GPL-3.0）接了二十多个 JAV 影片站的解析器，其中 fc2club、freejavbt、airav、
+avsox 是 Peach 自己没有且站点可达的。2026-09-22 的 POC（`docs/reference-snapshots/amane-crawlers-poc.md`）
 证实它的爬虫层能脱离 FastAPI 与 AppRuntime 手工构造并跑通真实番号，但也量出了三道墙：它要求
 Python 3.14、依赖全用 `>=` 下限，并进 Peach 主 venv 会撞上「精确固定版本」的门槛并把 Peach 的
 下限从 3.12 抬上去；它的聚合层会连带 SQLAlchemy 与配置层；它的 `observability.invoke_source`
@@ -42,7 +42,7 @@ Peach 一侧 `peach.metadata_amane.AmaneBridge` 起它、读那一行、按站�
 ADR-0038 结算。amane 的字段合并逻辑不复制。
 
 **六、默认链只在 Peach 没有对应解析器的位置接。** FC2 链在 JavArchive 之后、javdb 之前插
-fc2ppvdb 与 fc2club；无码链末尾接 avsox；有码与素人链不变，freejavbt 与 airav 只能由用户整条
+fc2club；无码链末尾接 avsox；有码与素人链不变，freejavbt 与 airav 只能由用户整条
 覆盖时点名。javdb / javbus / dmm 这些 Peach 已有的不经桥换：两条路径答同一站，分歧没人会去看。
 经桥的几站合成一档 `amane`，一次子进程并发问完，不占综合索引那一档的互证名额。
 
@@ -56,7 +56,7 @@ fc2ppvdb 与 fc2club；无码链末尾接 avsox；有码与素人链不变，fre
   规则也和 ADR-0038 冲突。
 - **自动跟随上游最新 tag。** 站点改版的修复和字段语义的变化混在同一次升级里，没人读过 diff 就
   换掉，候选里多出来的错值要等复核时才发现。
-- **在 Peach 里重写这五个站的解析器。** 复用优先（`peach-reuse-first`）：上游有人在维护，Peach
+- **在 Peach 里重写这四个站的解析器。** 复用优先（`peach-reuse-first`）：上游有人在维护，Peach
   只需要一道进程边界。
 
 ## 后果
@@ -70,3 +70,8 @@ fc2ppvdb 与 fc2club；无码链末尾接 avsox；有码与素人链不变，fre
   接受它换来不改上游一行。
 - amane 的 `WebClient` 以 `verify=False` 发请求；这一路取回的是公开页面的文字与图片地址，不带
   凭据，Peach 自己的 httpx 那一路不受影响。
+
+## 修订：移除 fc2ppvdb（2026-09-22）
+
+fc2ppvdb 从开放站表、FC2 链与桥的站表中移除：当日实测三个商品号都回 HTTP 526（站方 Cloudflare 源站证书故障），用户判定该站已不可访问。 <!-- copy-lint-disable-line -->
+经桥的站只剩 fc2club、freejavbt、airav、avsox 四站；站点恢复后要接回来，按本 ADR「四」的升级流程同批改站表、链与 `docs/REUSE.md`。

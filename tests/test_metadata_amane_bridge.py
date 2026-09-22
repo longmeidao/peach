@@ -75,19 +75,19 @@ class BridgeContractTests(unittest.TestCase):
 
     def test_a_hit_prints_one_json_line_and_exits_zero(self):
         runtime = make_runtime({
-            "fc2ppvdb": FakeMetadata(number="FC2-PPV-1", title="標題", actors=[{"name": "A", "gender": "female"}]),
-            "fc2club": None,
+            "fc2club": FakeMetadata(number="FC2-PPV-1", title="標題", actors=[{"name": "A", "gender": "female"}]),
+            "avsox": None,
         })
-        code, lines = run_main(["--number", "FC2-PPV-1", "--sites", "fc2ppvdb,fc2club"], runtime)
+        code, lines = run_main(["--number", "FC2-PPV-1", "--sites", "fc2club,avsox"], runtime)
         self.assertEqual(code, bridge.EXIT_FOUND)
         self.assertEqual(len(lines), 1)
         report = json.loads(lines[0])
         self.assertEqual(report["number"], "FC2-PPV-1")
         self.assertEqual(report["amane"], {"version": "0.16.1"})
-        self.assertEqual(report["sites"]["fc2ppvdb"]["status"], "found")
-        self.assertEqual(report["sites"]["fc2ppvdb"]["metadata"]["title"], "標題")
-        self.assertEqual(report["sites"]["fc2club"], {"status": "not_found", "reason": "not_found",
-                                                     "elapsed_s": report["sites"]["fc2club"]["elapsed_s"]})
+        self.assertEqual(report["sites"]["fc2club"]["status"], "found")
+        self.assertEqual(report["sites"]["fc2club"]["metadata"]["title"], "標題")
+        self.assertEqual(report["sites"]["avsox"], {"status": "not_found", "reason": "not_found",
+                                                   "elapsed_s": report["sites"]["avsox"]["elapsed_s"]})
 
     def test_all_misses_exit_two_and_any_error_without_a_hit_exits_three(self):
         runtime = make_runtime({"avsox": None, "airav": None})
