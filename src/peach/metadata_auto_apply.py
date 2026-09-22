@@ -66,6 +66,39 @@ REVIEW_APPLY_LIMIT = 500
 _MULTI_VALUE_ROLES = {"performers": "performer", "tags": "tag"}
 
 
+def _codes_matching(connection, codes: list[str], columns: str) -> list:
+    """这些番号名下的资产行。账本里的写法未必和候选件一致。
+
+    账本存的是编目后的规范写法，候选件写的是来源站上的那个号：Tokyo-Hot 的 `n0762`
+    在账本里是 `TOKYO-HOT-N0762`，按字符串比一条都对不上（2026-09-22 实测 n0762 的
+    标题、演员、系列、发行日期四行全部因此判成「账本里没有这个番号」，停在人工队列，
+    而账本里的别名早就把「藤原遼子／森沢かな」和「東熱／東京熱」各自认作一个）。
+    `normalise_code_key` 两边归一化之后是同一个键，它也正是封面缓存和复核页在用的那个。
+
+    先按字符串精确查一遍，没覆盖到的番号才宽查：归一化后的键是账本写法的子串
+    （`n0762` ⊂ `TOKYO-HOT-N0762`），拿它把范围收小，再逐条按归一化判等。
+    """
+    wanted = [code for code in dict.fromkeys(code.strip() for code in codes) if code]
+    if not wanted:
+        return []
+    marks = ",".join("?" * len(wanted))
+    found = list(connection.execute(
+        f"SELECT {columns} FROM asset WHERE medium='video' "
+        f"AND (disposal IS NULL OR disposal<>'trash') "
+        f"AND upper(trim(code)) IN ({','.join(['upper(?)'] * len(wanted))}) ORDER BY id", wanted))
+    covered = {normalise_code_key(str(row["code"] or "")) for row in found}
+    missing = [code for code in wanted if normalise_code_key(code) not in covered]
+    if not missing:
+        return found
+    keys = {normalise_code_key(code) for code in missing} - {""}
+    likes = " OR ".join(["upper(code) LIKE '%'||upper(?)||'%'"] * len(keys))
+    found += [row for row in connection.execute(
+        f"SELECT {columns} FROM asset WHERE medium='video' "
+        f"AND (disposal IS NULL OR disposal<>'trash') AND ({likes}) ORDER BY id", sorted(keys))
+        if normalise_code_key(str(row["code"] or "")) in keys]
+    return found
+
+
 def refresh_current_values(connection, rows: list[dict]) -> None:
     """把候选行的「账本现值」换成账本此刻的值。
 
@@ -81,13 +114,9 @@ def refresh_current_values(connection, rows: list[dict]) -> None:
     if not codes:
         return
     columns = sorted(set(METADATA_FIELD_COLUMNS.values()))
-    marks = ",".join("?" * len(codes))
     by_asset: dict[int, dict] = {}
     by_code: dict[str, list[int]] = defaultdict(list)
-    for asset in connection.execute(
-            f"SELECT id,code,{','.join(columns)} FROM asset WHERE medium='video' "
-            f"AND (disposal IS NULL OR disposal<>'trash') AND code IN ({marks}) ORDER BY id",
-            codes):
+    for asset in _codes_matching(connection, codes, f"id,code,{','.join(columns)}"):
         by_asset[int(asset["id"])] = dict(asset)
         by_code[normalise_code_key(asset["code"])].append(int(asset["id"]))
     if not by_asset:
@@ -474,17 +503,50 @@ def _settled_candidates(connection, field: str, code: str, candidates: list[dict
     return chosen, settled_by, overruled
 
 
+#: FC2 番号里的商品号。`FC2-PPV-4927200`、`FC2PPV 4927200`、`fc4592208` 都取那串数字。
+_FC2_PRODUCT = re.compile(r"^FC2[-_ ]*(?:PPV)?[-_ ]*(\d{5,})$", re.I)
+
+
 def _filename_carries_code(code: str, name: str) -> bool:
     """这个文件名认不认得出这个番号。
 
     逐字出现最直白，但盘里有大量不写连字符的名字（`MEYD911.mp4`）。编目规则本来就
     知道怎么从文件名读番号，读出来同号是比子串更强的身份证据——子串只是碰巧包含。
     两条任一成立即可：本机 2611 条有番号的视频里，逐字命中 1715 条，合起来 2012 条。
+
+    FC2 另算一条：它的身份就是商品号那串数字，前缀谁爱怎么写怎么写——账本存
+    `FC2-PPV-4927200`，盘里同一部片叫 `FC2-4927200-CD1.mp4`、`fc4592208.mp4`、
+    `1879920.mp4`，三种前两条都认不出（2026-09-22 实测队列里 12 行因此停住）。
+    数字本身足够长（5 位起），碰巧撞上的余地很小。
     """
     if code.casefold() in name.casefold():
         return True
+    product = _FC2_PRODUCT.search(code)
+    if product:
+        return bool(re.search(rf"(?<!\d){product.group(1)}(?!\d)", name))
     parsed = release_code_from_filename(name)
     return bool(parsed) and same_release_code(code, parsed)
+
+
+def _group_identifies_code(code: str, targets) -> bool:
+    """这一组资产是不是这个番号的片。
+
+    要求这组里**有**文件名认得出这个番号的，而认不出的那些也没有指向别的番号。
+
+    盗版包会往同一个番号目录里塞推广片：`259LUXU-902` 名下两条正片各 985 MB 和
+    2714 MB，旁边躺着 `免费手机看片.avi`（4.4 MB／26 秒）、`線上影片每天火熱更新中.avi`
+    和一条手游广告，三条的文件名读不出任何番号（2026-09-22 实测队列里 16 行是这一种）。
+    逐条都要认得出的话，这类组的元数据就一直空着。
+
+    身份保证仍然成立：读不出番号的文件证明不了这组是别的片；组里真混进别的番号时
+    那一条读得出来，照旧交回人工。
+    """
+    names = [str(target["name"] or "") for target in targets]
+    if not any(_filename_carries_code(code, name) for name in names):
+        return False
+    return not any(
+        (parsed := release_code_from_filename(name)) and not same_release_code(code, parsed)
+        for name in names if not _filename_carries_code(code, name))
 
 
 def pending_genres(candidates: list[dict]) -> list[str]:
@@ -530,9 +592,10 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     2. 目标字段当前为空，或者结算下来的来源不是兜底那一家——补空之外，链首那家的
        取值直接替换现值。发行方自己那页就是这部片的出处，账本里那个来路不明的旧值
        没有理由压住它；用户改过的格子归属受保护，仍然不碰；
-    3. 该番号名下**每一条**资产的文件名都认得出这个番号——逐字出现，或按编目规则
-       解析出来就是它。`MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是
-       `MEYD-911`；本机 2611 条有番号的视频里这样的有 297 条。
+    3. 该番号名下有资产的文件名认得出这个番号，认不出的那些也没有指向别的番号
+       （`_group_identifies_code`）——逐字出现，或按编目规则解析出来就是它。
+       `MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是 `MEYD-911`；本机
+       2611 条有番号的视频里这样的有 297 条。
 
     补空那一支不看来源是不是 official（用户 2026-09-04 决定）：补空不覆盖任何东西，
     唯一的风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住
@@ -580,14 +643,10 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     # 官网时才放行：官网按番号列出的就是这部片本身。
     if is_korean_mib_code(code) and not _only_mib_official(row):
         return None
-    targets = list(connection.execute(
-        "SELECT name,field_owners FROM asset WHERE medium='video' "
-        "AND (upper(trim(code))=upper(?) OR upper(trim(code))=upper(?)) "
-        "AND (disposal IS NULL OR disposal<>'trash')",
-        (code, query)))
+    targets = _codes_matching(connection, [code, query], "code,name,field_owners")
     if not targets:
         return None
-    if not all(_filename_carries_code(code, str(target["name"] or "")) for target in targets):
+    if not _group_identifies_code(code, targets):
         return None
     # 归属是用户判断的字段不走自动落库。ADR-0018 第 1 条只看取值空不空，而用户可以
     # 把一个字段判成空——那也是判断。没有这一道，「清空再等自动补回来」就成了
@@ -714,11 +773,8 @@ def _apply_metadata_candidate(
             (group.get('asset_id'), group['asset_path']),
         ).fetchall()
     else:
-        assets = connection.execute(
-            "SELECT id FROM asset WHERE medium='video' AND (upper(trim(code))=upper(?) "
-            "OR upper(trim(code))=upper(?)) AND (disposal IS NULL OR disposal<>'trash')",
-            (code, query),
-        ).fetchall()
+        # 写入范围必须和判据、现值刷新看的是同一组资产，三处共用一份番号匹配。
+        assets = _codes_matching(connection, [code, query], "id,code")
     asset_ids = sorted({int(row["id"]) for row in assets})
     if not asset_ids:
         raise ValueError("当前 ledger 已没有匹配的可用资产")
