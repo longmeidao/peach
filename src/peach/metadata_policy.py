@@ -46,6 +46,11 @@ SOURCE_SPECS = {
         # FC2 下架作品的镜像站。它转载的是发行方那一页，但标题和标签由站方用户维护，
         # 所以按社区来源对待：取值进复核，不当官方证据。同样不走 Javinizer-Go。
         "fc2cmadb": "community",
+        # fc2cmadb 也没有的下架 FC2 的最后一档（`peach.metadata_fc2.parse_archive`）。
+        # 转载站，标题由发布者写，封面是转存件，按社区来源对待。登记在这里还有一层作用：
+        # 「没有」的记忆按 `sources_fingerprint` 作废，接上这一档，此前压着「三处都没有」
+        # 的番号下一轮就会重问一遍，不必等 TTL 走完。
+        "javarchive": "community",
         # 一本道的官网作品 JSON（`peach.metadata_1pondo`）。发行方自己那一份，不走
         # Javinizer-Go，所以同样不进 REGISTERED_SOURCES。
         "1pondo": "official",
