@@ -3691,6 +3691,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}")
 
+    def test_a_dropdown_row_puts_its_mark_in_the_same_column_as_the_trigger(self):
+        """展开下拉时站标不挪位：面板每一行的图标和触发器里那一枚落在同一列。
+
+        选中态只有填充，行首不留勾的位置；行的 6px 内边距加上 `.popmenu` 自己的 6px 正好
+        等于触发器的 12px，两处图标于是对齐到一像素（复现页实测都是距左 13px，含 1px 边框）。
+        """
+        self.assertCode('aria-selected="${String(value)===String(chosen[0])}" tabindex="-1">'
+                        '<span data-select-content>')
+        self.assertPageContains("padding:0 6px;border:0;border-radius:var(--control-radius);"
+                                "background:transparent;color:var(--ink-2);")
+        self.assertPageContains("height:var(--control-h);padding:0 10px 0 12px;")
+        self.assertPageLacks('.popmenu.gselectmenu button[aria-selected="true"]>svg',
+                             "选中项靠填充读出来，行首不画勾")
+
     def test_settings_panel_fits_the_visible_viewport_on_ios(self):
         """iOS 上 `vh` 算的是不减地址栏的「大视口」。
 
