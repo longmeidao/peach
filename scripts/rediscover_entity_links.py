@@ -18,26 +18,23 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sqlite3
 import sys
-import time
 from pathlib import Path
-from urllib.parse import unquote, urljoin, urlsplit
 
 import httpx
-import tldextract
-
-_PSL = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None, include_psl_private_domains=True)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.entities import name_chain   # noqa: E402
+# 形状判据与「在站点上把地址找回来」那套动作定义在 peach.link_repair；
+# `repair_entity_links` 用的是同一套，判据只有这一份。
+from peach.link_repair import (   # noqa: E402,F401
+    anchors_naming, confirms, index_candidates, registrable, same_site,
+)
 from peach.review_csv import write_rows   # noqa: E402
 from peach.scripting import USER_AGENT, RateLimiter, open_readonly   # noqa: E402
 
-ANCHOR = re.compile(r'<a\s[^>]*href=["\']([^"\']+)["\']([^>]*)>(.*?)</a>', re.S | re.I)
-TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.S | re.I)
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence",
           "old_url", "matched_name", "found_via", "verdict")
 
@@ -52,70 +49,6 @@ def fetch(url: str, timeout: float = 12.0) -> tuple[int, str, str]:
     except Exception:
         return 0, "", url
     return response.status_code, response.text, str(response.url)
-
-
-def registrable(host: str) -> str:
-    """固定离线 PSL 含 PRIVATE 区段；不同托管租户保持独立。"""
-    return _PSL(host.casefold().rstrip(".")).top_domain_under_public_suffix
-
-
-def same_site(candidate: str, original: str) -> bool:
-    a = registrable(urlsplit(candidate).hostname or "")
-    b = registrable(urlsplit(original).hostname or "")
-    return bool(a) and a == b
-
-
-def index_candidates(url: str) -> list[str]:
-    """从死链逐层上溯的索引页，最深的先试。
-
-    艺人页几乎总挂在某个列表下面，而站点改版通常只动其中一层
-    （`/official/talent/X` → `/talent/X/`），上一层的列表往往原地还在。
-    """
-    parts = urlsplit(url)
-    root = f"{parts.scheme}://{parts.netloc}"
-    out: list[str] = []
-    segments = [s for s in parts.path.split("/") if s]
-    for cut in range(len(segments) - 1, -1, -1):
-        candidate = root + "/" + "/".join(segments[:cut]) + ("/" if cut else "")
-        if candidate not in out:
-            out.append(candidate)
-    if root + "/" not in out:
-        out.append(root + "/")
-    return out[:4]
-
-
-def anchors_naming(html: str, base: str, names: list[str]) -> list[tuple[str, str]]:
-    """索引页里提到这些名字的链接，返回 (绝对地址, 命中的名字)。
-
-    href 也要看：日文站的艺人页地址常常就是 URL 编码后的名字，而锚文本可能只是一张图。
-    """
-    found: list[tuple[str, str]] = []
-    for match in ANCHOR.finditer(html):
-        href = match.group(1)
-        text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", match.group(3))).strip()
-        haystack = text + " " + unquote(href)
-        for name in names:
-            if name and name in haystack:
-                target = urljoin(base, href)
-                if urlsplit(target).scheme in {"http", "https"}:
-                    found.append((target, name))
-                break
-    return found
-
-
-def confirms(html: str, names: list[str]) -> str:
-    """页面标题里有没有这个人的名字；有就返回命中的写法。
-
-    列表页同样回 200。少了这一条，`/talent/` 本身会被当成每个人的新地址。
-    """
-    match = TITLE.search(html)
-    title = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", match.group(1))).strip() if match else ""
-    # 站点常把姓与名之间加空格（`涼森 れむ`），逐字比会漏掉。
-    squeezed = title.replace(" ", "").replace("　", "")
-    for name in names:
-        if name and (name in title or name.replace(" ", "") in squeezed):
-            return title[:90]
-    return ""
 
 
 def rediscover(record: dict, interval: float, timeout: float) -> dict:
