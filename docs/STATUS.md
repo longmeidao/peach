@@ -8,7 +8,7 @@
 
 - 女优头像 545 张，脸宽中位数 320px，37 张带水印待复核；被顶掉的整套留在 `avatars-superseded/`（判据见 `SOURCING.md`）。
 - 小图、资料骨架、官网图标、社媒品牌色与自动播放开关已实现，请求共用 Chrome UA；厂牌标识 198 张随仓库分发（ADR-0026）。
-- Eightman 与 SO MODEL AGENT 已合为 8662，成员与关联作品保留，旧名仍可解析。
+- 数据管理页的「整理」按模板预览、执行、回滚上一批，只动视频、同卷内（ADR-0039），真实库未执行过。
 - 产地是独立维度，JAV 是它的投影：`region` 为空时按厂牌、创作者、番号逐层推断，不落库；韩国 MIB 已不算 JAV。
 
 - Windows 是 ledger writer，入口是源码托盘（`pythonw -m peach.tray`，子服务用 venv 的 `peach.exe`），重启 `restart_windows_tray.py --source`；代码与数据在内置盘，外置盘只供 `R:\media`。
@@ -20,7 +20,7 @@
 - 可选密码已上线：首启可跳过，配置页可改可关，登录可记住设备；旧安装保留口令。
 - macOS 是 reader，代码与 `peach-data` 在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入返回 409。
 - 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已在 Windows 生效。
-- Windows 真实 ledger `peach-data/database/ledger.db`，2026-09-13 已应用到 `0031`；`asset_subtitle` 195 行（孤立 19），175 部带字幕轨。09-12 修掉 `local` 路径大小写重复，`asset` 80,761 行。
+- Windows 真实 ledger `peach-data/database/ledger.db`，2026-09-13 已应用到 `0031`；`asset_subtitle` 195 行（孤立 19），175 部带字幕轨，`asset` 80,761 行。
 - Mac ledger 已授权从共享副本显式拉取并恢复 `in-sync`；`sources` 已迁内置盘，`archive`、`tools` 仍可指向外置盘。
 - 前端按 ADR-0031 逐页迁往 `frontend/` 的 React + Tailwind + BoardUI 源码，只有 React 一档；产物进 Git，经 `/dist/{name}` 提供；改前端需 Node 24+（`docs/FRONTEND.md`）。
 - 本机运行 Python 3.14；`requires-python` 下限 3.12，GitHub Actions 同时测 3.12 与 3.14；Windows FFmpeg/ffprobe 位于 `peach-data/tools/ffmpeg`，macOS 走 PATH。

@@ -158,6 +158,8 @@ class WebContract:
             "PeachTimelineThumbnailJob", "timeline-thumbnails")
         self.resource_apply_job = self._job("PeachResourceApplyJob", "resource-apply")
         self.media_repair_job = self._job("PeachMediaRepairJob", "media-repair")
+        # 整理（ADR-0039）：同一时间只跑一批，互斥由这个任务自己的键提供。
+        self.organize_job = self._job("PeachOrganizeJob", "organize")
         self.follow_scheduler = None
         #: 批量修 MP4 头要的两件东西，由 `api` 在装配时接上：它们属于播放链路，
         #: 建在 app 那一侧，契约这边只留接口。没接上时修复端点会说清楚。

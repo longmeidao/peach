@@ -68,6 +68,7 @@ TASK_LABELS = {
     "empty-folders": "空文件夹与失效条目清理",
     "scraping-cover": "封面采集",
     "media-repair": "播放兼容修复",
+    "organize": "按模板整理",
     "batch": "批量操作",
     "scrape-codes": "番号资料刮削",
     "jav-covers": "封面批量抓取",

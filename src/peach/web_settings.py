@@ -45,8 +45,10 @@ DEFAULT_FOLLOW_INITIAL_DAYS = 30
 #: 它该不该跨机同步，而不是默认就同步过去。
 #: `postSetupTutorialDone` 说的是「这套馆藏已经装完了」，不是「这台设备看过教程」——
 #: 装完就是装完，换台设备打开不该再被教一遍，所以它也跟着账本走。
+#: 整理模板（ADR-0039）同理：它是「我要我的库长什么样」，不是这台设备上的顺手。
 SYNCED_SETTING_KEYS = frozenset({
     "sidebarOrder", "metadataRefreshDays", "followInitialDays", "postSetupTutorialDone",
+    "organizeTemplates",
 })
 
 
@@ -109,6 +111,33 @@ def follow_initial_days(contract: SettingsContract) -> int:
     return normalise_follow_initial_days(_stored(contract).get("followInitialDays"))
 
 
+def normalise_organize_templates(raw) -> dict:
+    """收敛整理模板：`{来源: {"file": 模板, "dir": 模板}}`。
+
+    模板在这里就要过一遍 `validate_template`：它决定文件会被改成什么名字、放到哪一层，
+    一个带 `..` 的模板存进去、等到执行那一刻才拒绝，用户已经点过确认了。
+    """
+    from .organize_templates import validate_template
+    if not isinstance(raw, dict):
+        return {}
+    clean: dict[str, dict[str, str]] = {}
+    for location, entry in raw.items():
+        if location not in {"local", "115", "pikpak"} or not isinstance(entry, dict):
+            continue
+        # 模板不合法时 `TemplateError` 原样抛给调用方：它是 `ValueError`，API 翻成 400
+        # 并把那句中文交给用户，而不是把这一份悄悄丢掉。
+        file_template = validate_template(str(entry.get("file") or ""))
+        dir_template = validate_template(str(entry.get("dir") or ""), directory=True)
+        if file_template or dir_template:
+            clean[location] = {"file": file_template, "dir": dir_template}
+    return clean
+
+
+def organize_templates(contract: SettingsContract) -> dict:
+    """服务端读到的整理模板。没配过就是空字典，整理端点据此拒绝执行。"""
+    return normalise_organize_templates(_stored(contract).get("organizeTemplates"))
+
+
 def _stored(contract: SettingsContract) -> dict:
     with contract.read_connection() as connection:
         row = connection.execute(
@@ -133,6 +162,7 @@ def q_settings(contract: SettingsContract, _args=None) -> dict:
             payload.get("metadataRefreshDays")),
         "followInitialDays": normalise_follow_initial_days(payload.get("followInitialDays")),
         "postSetupTutorialDone": payload.get("postSetupTutorialDone") is True,
+        "organizeTemplates": normalise_organize_templates(payload.get("organizeTemplates")),
     }
 
 
@@ -160,6 +190,8 @@ def w_settings(contract: SettingsContract, body) -> dict:
         merged["followInitialDays"] = normalise_follow_initial_days(body["followInitialDays"])
     if "postSetupTutorialDone" in body:
         merged["postSetupTutorialDone"] = body["postSetupTutorialDone"] is True
+    if "organizeTemplates" in body:
+        merged["organizeTemplates"] = normalise_organize_templates(body["organizeTemplates"])
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with contract.write_transaction() as connection:
         updated = connection.execute(

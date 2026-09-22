@@ -5044,14 +5044,167 @@ const DATA_MANAGEMENT_ENTRIES=[
    各占一整行放在读数下面。 */
 const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];
 
+/* 整理（ADR-0039）：媒体默认留在原目录，这一块是唯一会动文件名和目录的入口。
+   两份模板、一次预览、一次执行，外加把上一批原样退回去。 */
+function organizeCardMarkup(payload){
+  const locations=payload.locations||[];
+  const presets=payload.presets||[];
+  const hint=(payload.placeholders||[]).map(item=>`{${item.key}} ${item.label}`).join(' · ');
+  return `<section class="cleanupfieldset cleanuporganize" id="organize" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupOrganizeTitle">
+    <div class="geist-fieldset-content">${fieldsetTitle('cleanupOrganizeTitle','整理')}
+      <p>按模板给文件改名并归入目录。先预览，确认后执行；执行过的一批可以整批退回。</p>
+      <div class="organizefields">
+        <div class="organizesource" data-organize-source></div>
+        <label class="organizefield"><span>文件名模板</span>
+          <input type="text" class="geist-input" data-organize-file spellcheck="false"
+            autocapitalize="off" placeholder="{number}[ {title}]"></label>
+        <label class="organizefield"><span>目录模板</span>
+          <input type="text" class="geist-input" data-organize-dir spellcheck="false"
+            autocapitalize="off" placeholder="留空表示原地改名"></label>
+        <div class="organizepresets">${presets.map((preset,index)=>
+          `<button type="button" class="geist-button" data-organize-preset="${index}">${esc(preset.label)}</button>`).join('')}</div>
+        <p class="cleanupmeta">${esc(hint)}；方括号里的内容在字段为空时整段省略。</p>
+      </div>
+      <div class="organizestate" aria-live="polite"></div></div>
+    <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
+      <button type="button" class="geist-button primary" data-organize-preview ${locations.length?'':'disabled'}>预览</button>
+      <button type="button" class="geist-button primary" data-organize-apply hidden>执行整理</button>
+      <button type="button" class="geist-button" data-organize-rollback ${payload.last_batch?'':'hidden'}>回滚上一批</button>
+    </footer></section>`;
+}
+
+/* 预览结果只列会变的行：库里几万行里改不到的那部分是背景，不是结果。 */
+function organizePlanHtml(result){
+  const counts=result.counts||{},reasons=result.reasons||{};
+  const rows=(result.rows||[]).slice(0,8).map(row=>
+    `<li><span data-middle-truncate title="${esc(row.current_path)}">${esc(baseName(row.current_path))}</span><span aria-hidden="true">→</span><span data-middle-truncate title="${esc(row.target_path)}">${esc(baseName(row.target_path))}</span></li>`).join('');
+  const skipped=Object.entries(reasons).sort((a,b)=>b[1]-a[1])
+    .map(([reason,count])=>`${esc(reason)} ${Number(count).toLocaleString()}`).join(' · ');
+  if(!Number(counts.change||0))
+    return noteHtml(`没有要改的文件。${skipped?`跳过：${skipped}。`:''}`,{label:'预览结果'});
+  return `${noteHtml(`${Number(counts.change).toLocaleString()} 个文件会改名或移动，${Number(counts.unchanged||0).toLocaleString()} 个已经就是目标名字${skipped?`；跳过 ${skipped}`:''}。`,{label:'预览结果'})}
+    <ol class="organizeplan">${rows}</ol>${result.truncated?'<p class="cleanupmeta">只列出前 8 行，完整计划在计划 CSV 里。</p>':''}`;
+}
+
+function baseName(path){
+  const text=String(path||'');
+  return text.slice(Math.max(text.lastIndexOf('\\'),text.lastIndexOf('/'))+1);
+}
+
+async function wireOrganize(surface,payload){
+  const host=$('#organize');
+  if(!host)return;
+  const status=host.querySelector('.organizestate');
+  const fileInput=host.querySelector('[data-organize-file]');
+  const dirInput=host.querySelector('[data-organize-dir]');
+  const previewButton=host.querySelector('[data-organize-preview]');
+  const applyButton=host.querySelector('[data-organize-apply]');
+  const rollbackButton=host.querySelector('[data-organize-rollback]');
+  const locations=payload.locations||[];
+  const templates=payload.templates||{};
+  const mount=host.querySelector('[data-organize-source]');
+  let location=locations[0]?.location||'';
+  const loadTemplates=()=>{
+    const stored=templates[location]||{};
+    fileInput.value=stored.file||'';
+    dirInput.value=stored.dir||'';
+  };
+  if(locations.length){
+    mount.innerHTML=selectFieldHtml(locations.map(item=>
+      [item.location,LOC[item.location]||item.location,MEDIA_SOURCE_ICONS[item.location]||'database']),
+      location,{label:'整理哪个来源'});
+    const field=wireSelectField(mount.firstElementChild);
+    field.addEventListener('change',()=>{location=field.value;loadTemplates();applyButton.hidden=true;status.innerHTML=''});
+  }
+  loadTemplates();
+  host.querySelectorAll('[data-organize-preset]').forEach(button=>button.onclick=()=>{
+    const preset=(payload.presets||[])[Number(button.dataset.organizePreset)];
+    if(!preset)return;
+    fileInput.value=preset.file;dirInput.value=preset.dir;
+    fileInput.removeAttribute('aria-invalid');dirInput.removeAttribute('aria-invalid');
+  });
+  const body=()=>JSON.stringify({location,file_template:fileInput.value.trim(),
+    dir_template:dirInput.value.trim()});
+  /* 模板跟着账本走，所以预览成功的那一刻顺手存下来：用户下次进这一页看到的是
+     自己上次用的那两行，而不是又一次空框。只读端存不进去，那不该挡住预览。 */
+  const remember=async()=>{
+    try{await api('/api/settings',{method:'POST',body:JSON.stringify({organizeTemplates:{
+      ...templates,[location]:{file:fileInput.value.trim(),dir:dirInput.value.trim()}}})})}
+    catch(_error){}
+  };
+  previewButton.onclick=async()=>{
+    fileInput.removeAttribute('aria-invalid');dirInput.removeAttribute('aria-invalid');
+    setActionBusy(previewButton);applyButton.hidden=true;
+    status.innerHTML=loadingDotsHtml('正在按模板算计划…');
+    try{
+      const result=await api('/api/organize/preview',{method:'POST',body:body()});
+      if(!surfaceCurrent(surface))return;
+      status.innerHTML=organizePlanHtml(result);
+      applyButton.hidden=!Number(result.counts?.change||0);
+      templates[location]={file:fileInput.value.trim(),dir:dirInput.value.trim()};
+      void remember();
+    }catch(error){
+      /* 模板不合法时错误就出在这两个框里的一个，所以除了说原因还要指出是哪一格。 */
+      const target=/目录模板|分隔符|盘符|`\.`/.test(error.message)?dirInput:fileInput;
+      target.setAttribute('aria-invalid','true');target.focus();
+      status.innerHTML=noteHtml(error.message,{variant:'error',label:'模板不可用'});
+    }finally{setActionBusy(previewButton,false)}
+  };
+  applyButton.onclick=async()=>{
+    const name=LOC[location]||location;
+    return confirmModal({title:'按模板整理文件',
+      body:`将按这两份模板改动「${name}」上的文件名与目录，目标已存在的行会整行跳过。这一批可以从「回滚上一批」整批退回。`,
+      confirmLabel:'整理文件',danger:false,onConfirm:async()=>{
+        const started=await api('/api/organize/apply',{method:'POST',
+          body:JSON.stringify({location,file_template:fileInput.value.trim(),
+            dir_template:dirInput.value.trim(),confirm:true})});
+        sessionStorage.setItem('peach-organize-job',started.job_id);
+        if(surfaceCurrent(surface))void wireOrganizeProgress();
+      }});
+  };
+  rollbackButton.onclick=async()=>{
+    return confirmModal({title:'回滚上一批整理',
+      body:`将把上一批整理动过的文件退回整理前的名字与位置，账本路径跟着退回。退回后这一批不再出现在这里。`,
+      confirmLabel:'回滚整理',danger:false,onConfirm:async()=>{
+        const started=await api('/api/organize/rollback',{method:'POST',
+          body:JSON.stringify({confirm:true})});
+        sessionStorage.setItem('peach-organize-job',started.job_id);
+        if(surfaceCurrent(surface))void wireOrganizeProgress();
+      }});
+  };
+  void wireOrganizeProgress();
+}
+
+function wireOrganizeProgress(){
+  return wireOperationProgress({host:$('#organize'),path:'/api/organize',
+    key:'peach-organize-job',title:'正在整理文件…',
+    busy:running=>{const button=$('#organize')?.querySelector('[data-organize-apply]');
+      if(button)setActionBusy(button,running)},
+    complete:out=>{
+      const status=$('#organize')?.querySelector('.organizestate');
+      if(!status)return;
+      const restored=out.restored;
+      const failed=Number(out.failed||0);
+      const done=Number(restored===undefined?out.moved||0:restored);
+      const text=restored===undefined
+        ?`已整理 ${done.toLocaleString()} 个文件${failed?`，${failed.toLocaleString()} 行未能处理`:''}。`
+        :`已退回 ${done.toLocaleString()} 个文件${failed?`，${failed.toLocaleString()} 行未能退回`:''}。`;
+      status.innerHTML=noteHtml(text,{label:failed?'部分完成':'整理结果',variant:failed?'warning':'success'});
+      if(failed)actionFailure('按模板整理',new Error(`${failed} 行未能处理`));
+      else actionReceipt(text.replace(/。$/,''));
+      const rollback=$('#organize')?.querySelector('[data-organize-rollback]');
+      if(rollback)rollback.hidden=restored!==undefined&&!failed;
+    }});
+}
+
 async function openDataCleanup(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/data-cleanup');
   const surface=claimSurface('/data-cleanup');
   showManagementBody({placeholder:managementPlaceholder('/data-cleanup')});
-  const [junk,duplicates,sources]=await Promise.all([
+  const [junk,duplicates,sources,organizeState]=await Promise.all([
     surfaceApi(surface,'/api/ads?limit=1'),surfaceApi(surface,'/api/duplicates?limit=1'),
-    surfaceApi(surface,'/api/sources'),
+    surfaceApi(surface,'/api/sources'),surfaceApi(surface,'/api/organize'),
   ]);
   if(!surfaceCurrent(surface))return;
   paintManageLede();
@@ -5102,7 +5255,7 @@ async function openDataCleanup(push=true){
   };
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
     ${DATA_MANAGEMENT_STATS.map(section=>cleanupCards[section]).join('')}
-  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>
+  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}${organizeCardMarkup(organizeState)}</div>
   ${linkManagerMarkup()}
   ${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
@@ -5141,6 +5294,7 @@ async function openDataCleanup(push=true){
     }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original;emptyButton.hidden=true}
   }});
   };
+  await wireOrganize(surface,organizeState);
   await wireLinkManager();
   await wireResourceSync();
 }

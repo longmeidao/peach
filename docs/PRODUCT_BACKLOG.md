@@ -52,7 +52,7 @@ shuffle_key 改变随机浏览的序列语义，先测关系筛选收益再决�
    - 公开分发：待项目相对稳定，安装、升级、数据迁移及跨平台回归稳定后，同批推进 PyPI 包发布和 WinGet 登记；现阶段仅记录计划，不上传或登记。发布前确认发行名，调整禁止上传标记，完善自动构建、版本发布与两端安装验收。
    - 发行名与 WinGet 应用 ID 未定案也未注册，发布前确认并复核可用性；产品显示名继续使用 Peach。
 8. 女优高清头像的写入侧：`scripts/audit_performer_portraits.py` 出候选与实测证据，资料页上人可以逐个换掉任何一张（图库同名候选、用过的图、本机文件、https 地址），`scripts/fill_portrait_gaps.py` 把图库里只命中一张的批量装上、其余产对照表。仍缺换源那一轮（在位的封面裁片挡住更好的源），以及实体合并后孤立头像的 relink（如 `8022 <- 8168`：只有旧 ID 的 provenance 名唯一命中当前实体、当前目标又不存在时才算候选，不覆盖、不删除旧文件）。
-9. 文件名与网盘目录整理的落地：`scripts/clean_names.py` 与目录计划只出 dry-run CSV。真正改名要独立维护窗口——停同类任务、确认本机是 writer、SQLite backup、逐条同目录 rename 并同步账本 path/name、失败时文件名回滚，最后跑完整性、外键与路径存在性检查；不跨盘移动，也不按文件夹名猜创作者。
+9. 文件名与网盘目录整理：按模板的那一路已落地（ADR-0039）——数据管理页的「整理」与 `scripts/organize_media.py` 共用 `peach.organize`，预览出计划 CSV、执行前 SQLite backup、逐条 rename 并同步账本 path/name、失败回滚、事后完整性与外键检查，只动视频、只在同卷内、目标已存在整行跳过，批次可整批退回。仍缺三件：`scripts/clean_names.py`（域名噪声）与 `scripts/flatten_release_dirs.py`（冗余目录层）两条专门形态仍只出 dry-run CSV；旁挂封面与字幕不跟着主文件改名；真实库上还没执行过任何一批（2026-09-22 只读预览：115 会改 1484、跳过 8627，PikPak 会改 167、跳过 10436，`local` 因外置盘未挂载整批跳过）。
 10. 来源与默认值通用化（ADR-0023 第 5 阶段候选）：`peach init` 的问答已按本机路径只声明 `local`，非交互路径写出的 `DEFAULT_LOCATION_ROOTS`（`R:\media`、`B:/`、`A:/`）仍是维护者的示例盘符。剩两件事：来源用「本地 / 远端挂载」类型字段代替代码里按 `local`/`115`/`pikpak` 名字点名（`web_resource_sync.py` 的 SQL、`media.py` 的 HLS 规则）；复制链路支持 win↔win、mac↔mac 与任意一台当写者，目前只验证过 Windows 写者 + macOS 读者。
 11. 非 editable 安装的跨平台验收：wheel 资源与 Windows 基础依赖、仓库外 CLI 冒烟已就绪，仍需取得 macOS、Python 3.12 消费任务结果。
 12. 健康检查生产验收：`db` 区分 missing、empty、available、unavailable，`?ready=1` 检查 schema 校验和；待部署后用项目 CA 验证 HTTPS 与损坏／未初始化状态。

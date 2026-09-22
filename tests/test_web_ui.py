@@ -9161,12 +9161,15 @@ class WebUiSourceTests(unittest.TestCase):
                 # 死链表里的地址：`/official/talent/X` 与 `/talent/X` 的差别就在尾部，
                 # 尾部省略会把这张表要回答的东西切掉。省略挂在里面那个 span 上，
                 # 外链标才留得住：中缩靠改写 textContent 实现，同一节点里的图标会被抹掉。
-                '<span data-middle-truncate>${esc(item.url)}</span>'):
+                '<span data-middle-truncate>${esc(item.url)}</span>',
+                # 整理预览的两列都是文件名，差别常常只在番号或结尾的 CD 标记上。
+                '<span data-middle-truncate title="${esc(row.current_path)}">',
+                '<span data-middle-truncate title="${esc(row.target_path)}">'):
             self.assertPageContains(consumer)
         # 高清版目标页、统计页与复核页归 React 子树，由 frontend 的用例覆盖。
-        # 十处里有一处是重复文件名上的 `data-middle-truncate-within`：它后面紧跟着「最大」
+        # 十二处里有一处是重复文件名上的 `data-middle-truncate-within`：它后面紧跟着「最大」
         # 「最长」标记，自己按内容收缩，可用宽度要按父级量。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 10)
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 12)
         self.assertPageContains('class="dupname" data-middle-truncate data-middle-truncate-within')
         self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
@@ -10286,7 +10289,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;')
         self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
         self.assertPageLacks('cleanup-workspace-switch')
-        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}</div>')
+        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}'
+                                '${organizeCardMarkup(organizeState)}</div>')
         # 样式也一起走：没有使用者的选择器留在 board.css 里，下一个人会当它是现役版式去改。
         self.assertNotIn("cleanup-workspace-switch",
                          (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"))

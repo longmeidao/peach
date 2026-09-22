@@ -72,6 +72,19 @@
 .cleanupfieldset button:where(:not(.gselectfield)) svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
 .cleanupfieldset .cleanupstate:empty{display:none}
+/* 整理那张卡：两份模板、一排预设、一段结果。字段标签是块级、排在控件上方（Geist 的
+   Label 就是这个形状）；来源下拉靠框内前缀图标自报用途，同一行不再挂文字标签。 */
+.organizefields{display:grid;gap:12px;margin-top:12px}
+.organizefield{display:grid;gap:6px;min-width:0}
+.organizefield>span{color:var(--ink-2);font-size:var(--fs-sm)}
+.organizepresets{display:flex;flex-wrap:wrap;gap:8px}
+.organizeplan{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px;min-width:0}
+.organizeplan li{display:flex;align-items:center;gap:8px;min-width:0;
+  color:var(--ink-2);font-size:var(--fs-sm)}
+.organizeplan li span{min-width:0;overflow:hidden;white-space:nowrap}
+.organizeplan li span:last-child{color:var(--ink)}
+.cleanupfieldset .organizestate{margin-top:12px;display:grid;gap:8px}
+.cleanupfieldset .organizestate:empty{display:none}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 /* 来源和凭证页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架：那一句静态说明
