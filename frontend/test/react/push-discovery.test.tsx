@@ -36,6 +36,21 @@ it('配置块给的是服务端拼好的那一段，复制键把它整个写进�
   expect(receipt).toHaveBeenCalledWith('已复制 CloudDrive2 配置');
 });
 
+it('配置块默认收起，横向滚动用全站的覆盖式滑块', async () => {
+  /* 抄它的人不用读它：三十行里只有地址和密钥两处跟这台机器有关，两处都已经填好了。
+     纵向不设上限是因为这一页本来就在设置面板的滚动区里，再套一层的话滚轮落在哪一层
+     要看指针停在哪儿。横向那条不挂覆盖式的话，Windows 上露的是占一列宽的系统滚动条，
+     正好盖住右侧圆角。 */
+  const host = await mount(<PushDiscoveryForm initial={state()} receipt={vi.fn()} />);
+  const pre = host.querySelector('pre')!;
+  const fold = pre.closest('details');
+  expect(fold?.open).toBe(false);
+  expect(fold?.querySelector('summary')?.textContent).toContain('查看这段配置');
+  expect(pre.className).not.toContain('max-h');
+  expect(pre.dataset.overlayScrollbar).toBe('true');
+  expect(pre.parentElement?.querySelector('.ovtrack')).not.toBeNull();
+});
+
 it('这台机器没有对外的 HTTPS 地址时说出原因，不发一段填了也不通的配置', async () => {
   const host = await mount(
     <PushDiscoveryForm initial={state({ origin: '', config_toml: '' })} receipt={vi.fn()} />);

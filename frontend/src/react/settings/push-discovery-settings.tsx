@@ -24,7 +24,8 @@ import { Switch } from '@/components/base/switch/switch';
 
 import { apiSend, errorMessage } from '../../api';
 import type { PushDiscoveryPrefix, PushDiscoveryState } from '../bundle';
-import { ErrorText, Fact, FactList, FieldLabel, Footer, Help, Rows, Section, Stack } from './section';
+import { useOverlayScrollbar } from '../components/overlay-scrollbar';
+import { Disclosure, ErrorText, Fact, FactList, FieldLabel, Footer, Help, Rows, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 const SAVE_URL = '/api/configuration/push-discovery';
@@ -38,6 +39,7 @@ export function PushDiscoveryForm({ initial, receipt }: {
   const [rows, setRows] = useState<PushDiscoveryPrefix[]>(initial.prefixes);
   const [failure, setFailure] = useState('');
   const action = useAction();
+  const configScroll = useOverlayScrollbar<HTMLPreElement>();
   const roots = state.media_roots;
   /* 读数说的是服务端此刻在跑什么，所以按已保存的开关收放：拨一下开关它们就跟着出现的话，
      写的还是上一次的状态，「本机文件夹监视 · 没有运行」会被读成「打开了也没用」。
@@ -72,7 +74,7 @@ export function PushDiscoveryForm({ initial, receipt }: {
   const copy = () => {
     void navigator.clipboard.writeText(live.config_toml).then(
       () => receipt('已复制 CloudDrive2 配置'),
-      () => setFailure('浏览器没让这一页写剪贴板，把上面那段选中自己复制。'));
+      () => setFailure('浏览器没让这一页写剪贴板，展开「查看这段配置」选中自己复制。'));
   };
 
   return (
@@ -112,19 +114,28 @@ export function PushDiscoveryForm({ initial, receipt }: {
         <Stack divided>
           <div className="flex flex-col gap-3">
             <FieldLabel>CloudDrive2 配置内容</FieldLabel>
-            <Help>在 CloudDrive2 的「系统设置 → 通知设置」里，把下面这段整个贴进「配置内容」再保存。
+            <Help>在 CloudDrive2 的「系统设置 → 通知设置」里，复制这段配置贴进「配置内容」再保存。
               地址、端点和密钥都已经填好了；换过密钥之后要重新贴一次。</Help>
             {live.config_toml ? (
               <>
-                {/* 只读的一段文本，不做成输入框：它没有可编辑的部分，贴进 CloudDrive2 的
-                    是原样这一段。换行要保留，所以横向自己滚，不折行。 */}
-                <pre tabIndex={0}
-                  className="max-h-72 overflow-auto rounded-2xl bg-background-tertiary-default p-3 text-caption-1-regular whitespace-pre text-text-primary">
-                  {live.config_toml}
-                </pre>
                 <div>
                   <Button size="small" onClick={copy}>复制配置</Button>
                 </div>
+                {/* 收起来是因为抄它的人不用读它：三十行里只有地址和密钥两处跟这台机器有关，
+                    两处都已经填好了。展开是留给要核对推到哪儿的那一次。 */}
+                <Disclosure summary="查看这段配置">
+                  {/* 只读的一段文本，不做成输入框：它没有可编辑的部分，贴进 CloudDrive2 的
+                      是原样这一段。换行要保留，所以窄屏下横向自己滚，不折行。
+                      纵向不设上限：这一整页本来就在设置面板自己的滚动区里，再套一层的话滚轮
+                      落在哪一层要看指针停在哪儿。横向那条用全站的覆盖式滑块，轨道挂在只裹着
+                      它的这层 `relative` 上。 */}
+                  <div className="relative">
+                    <pre ref={configScroll} tabIndex={0}
+                      className="overflow-x-auto rounded-2xl bg-background-tertiary-default p-3 text-caption-1-regular whitespace-pre text-text-primary">
+                      {live.config_toml}
+                    </pre>
+                  </div>
+                </Disclosure>
               </>
             ) : (
               <Help>{live.origin
