@@ -60,15 +60,21 @@ _THUMBNAIL_WRAPPER = re.compile(
 #: JavArchive 的作品地址：`/926949-FC2-PPV-4137487-<标题>-pn.html`。开头那串是站内文章号，
 #: 商品号夹在标题里，所以地址拼不出来，只能先搜。
 _ARCHIVE_LINK = re.compile(r'href="(/\d+-[^"]+\.html)"')
-#: 图转存在 javstore 上，沿用 FC2 自己的命名：`4137487pl.jpg` 是大图、`ps` 是小图。
-#: `_s.jpg` 那种是把多帧拼成的长条预览，不是封面，按后缀整条排除。
-_ARCHIVE_PICTURE = re.compile(
-    r'src="(https?://img\d*\.javstore\.net/images/[\d/]+/(\d{5,})(pl|ps)\.(?:jpe?g|png))"', re.I)
-#: 搜索结果的一条：`<a href=… title="<完整标题>"><img src="…ps.jpg" …></a>`。`title` 和
-#: `alt` 里是带空格的原标题，地址里那份把空格换成了连字符，所以标题只认属性不认地址。
-_ARCHIVE_RESULT = re.compile(
-    r'<a\s+href="(/\d+-[^"]+\.html)"\s+title="([^"]*)"\s*>\s*'
-    r'<img\s+src="(https?://img\d*\.javstore\.net/images/[\d/]+/(\d{5,})(?:pl|ps)\.(?:jpe?g|png))"', re.I)
+#: 作品页上封面的两个位置：`div.fisrst_sc` 里那张排前，schema.org 的 `image` 排后。
+#: 认位置不认文件名——转存者的命名没有统一：`4137487pl.jpg` 沿用 FC2 自己的 `pl`/`ps`，
+#: `FC2PPV-4030617.jpg` 与 `FC2PPV-4030617-2.jpg` 是他自己起的，`FC2PPV835964-2.jpg`
+#: 连连字符都省了。按名字认的话后两种一张都取不到（2026-09-22 实测 4 部里 3 部如此）。
+_ARCHIVE_COVER_SLOTS = ("div.fisrst_sc img[src]", 'img[itemprop="image"][src]')
+#: 多帧拼成的长条预览，正文里叫 `Preview(ビデオのサムネイル)`，不是封面。
+_ARCHIVE_PREVIEW = re.compile(r"_s\.(?:jpe?g|png)$", re.I)
+#: 正文那块资料：`标签：A｜B｜C`、`日期：2023/11/21`、`时长：50:03`，每项后面跟一个 `<br>`。
+#: 只在 `div.news` 里搜：head 的 `<meta name="description">` 里有同样的字样，值被站方
+#: 截断成 `…｜S級...`，跟着一串属性和标签，当成资料取回来就是一条坏值。
+_ARCHIVE_ROWS = {
+    "genres": re.compile(r"标签\s*[:：]\s*([^<]*)"),
+    "release_date": re.compile(r"日期\s*[:：]\s*(\d{4})/(\d{2})/(\d{2})"),
+    "runtime": re.compile(r"时长\s*[:：]\s*([\d:]+)"),
+}
 
 
 def video_id(code: str) -> str:
@@ -189,47 +195,6 @@ def archive_link(html: str | bytes, code: str) -> str:
     return ""
 
 
-def parse_search(html: str | bytes, code: str) -> dict | None:
-    """搜索结果那一条本身够不够用；不够回 None，由调用方去取作品页。
-
-    带图的那条结果里已经有作品页要给的全部两样：`title` 属性是带空格的原标题，`img`
-    指着 javstore 上的 `ps` 小图，把文件名换成 `pl` 就是作品页上那张大图（实测
-    `4137487` 255×294 → 709×399、`835964` 510×690 → 1417×825）。省下的是一次同主机
-    请求——JavArchive 的间隔要等，作品页又是 150 KB。
-
-    一半的结果不带图（实测 4 部里 `1863914`、`2110084` 两部只有标题链接），那几部照旧
-    去取作品页。`cover_urls` 把 `pl` 排在 `ps` 前面：`pl` 是按命名规律推出来的，没有
-    在这一页上被证实过，取不到时后面那个是这一页确实给了的。
-    """
-    wanted = video_id(code)
-    if not wanted:
-        return None
-    text = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
-    boundary = re.compile(rf"(?<!\d){re.escape(wanted)}(?!\d)")
-    for href, title, picture, found in _ARCHIVE_RESULT.findall(text):
-        if found != wanted or not boundary.search(title):
-            continue
-        large = re.sub(r"ps(\.(?:jpe?g|png))$", r"pl\1", picture, flags=re.I)
-        covers = list(dict.fromkeys([large, picture]))
-        return {
-            "id": canonical_code(wanted),
-            "content_id": wanted,
-            "source_url": urllib.parse.urljoin(ARCHIVE_ROOT, href),
-            "title": _strip_code(title, wanted),
-            "description": "",
-            "release_date": "",
-            "runtime": None,
-            "actresses": [],
-            "maker": STUDIO,
-            "label": "",
-            "seller_url": "",
-            "genres": [],
-            "cover_url": covers[0],
-            "cover_urls": covers,
-        }
-    return None
-
-
 def _strip_code(title: str, wanted: str) -> str:
     """标题开头那截番号剥掉：站上 `FC2-PPV-4137487`、`FC2PPV 1863914` 两种写法都有。"""
     return re.sub(rf"^\s*FC2[-_. ]?(?:PPV)?[-_. ]?{re.escape(wanted)}\s*[-—:：]?\s*", "",
@@ -239,10 +204,16 @@ def _strip_code(title: str, wanted: str) -> str:
 def parse_archive(html: str | bytes, code: str) -> dict | None:
     """JavArchive 的作品页 → 同一份 payload 形状；对不上番号回 None。
 
-    这一档只有标题和封面：页面没有販売日、卖家和商品标签，正文那几段是转载来的下载链接，
-    一概不取。封面走 javstore 上的转存件，命名沿用 FC2 自己的 `pl`（大）/`ps`（小），
-    实测 `4137487pl.jpg` 709×399、`ps` 255×294——比官方存储那份原图差一档，所以这一档
-    排在 fc2cmadb 后面，只在两处都没有时才用（2026-09-22 实测 4137487 在 fc2cmadb 是 404）。
+    这一档给标题、封面，以及正文那块资料里转存者填了的标签、发行日和时长。填不填是他的
+    自由：2026-09-22 实测 4 部里只有 `4030617` 三样齐全（10 个标签、2023/11/21、50:03），
+    另外三部那一块整个空着。卖家和商品说明站上没有，正文余下几段是转载来的网盘链接，
+    一概不取。封面比官方存储那份原图差一档，所以这一档排在 fc2cmadb 后面。
+
+    封面认位置不认文件名。站上三种命名都有——`4137487pl.jpg` 沿用 FC2 自己的 `pl`/`ps`，
+    `FC2PPV-4030617.jpg` 与 `FC2PPV835964-2.jpg` 是转存者自己起的——按名字认的话后两种
+    一张都取不到，`4030617` 与 `2110084` 此前就是这样空着回来的。两个图位都收，去重后
+    `div.fisrst_sc` 那张排前：实测它是作品自己的封面，schema.org 的 `image` 常是同一张的
+    另一版本。`_s.jpg` 结尾的排除掉，那是正文里标着 `Preview` 的多帧长条拼图。
 
     标题以站内 `<h1>` 为准，开头那截番号剥掉：站上 `FC2-PPV-4137487`、`FC2PPV 1863914`
     两种写法都有，留着就把番号写进了标题。`<h1>` 里认不出这个商品号就当没有这一页——
@@ -258,23 +229,50 @@ def parse_archive(html: str | bytes, code: str) -> dict | None:
     if not title or not re.search(rf"(?<!\d){re.escape(wanted)}(?!\d)", title):
         return None
     link = heading.select_one("a[href]")
-    pictures = {kind.lower(): url for url, found, kind in _ARCHIVE_PICTURE.findall(text) if found == wanted}
-    cover = pictures.get("pl") or pictures.get("ps") or ""
+    covers = []
+    for slot in _ARCHIVE_COVER_SLOTS:
+        for picture in soup.select(slot):
+            url = str(picture.get("src") or "").strip()
+            if url and not _ARCHIVE_PREVIEW.search(url) and url not in covers:
+                covers.append(url)
+    rows = _archive_rows(soup)
     return {
         "id": canonical_code(wanted),
         "content_id": wanted,
         "source_url": urllib.parse.urljoin(ARCHIVE_ROOT, link["href"]) if link else "",
         "title": _strip_code(title, wanted),
         "description": "",
-        "release_date": "",
-        "runtime": None,
+        "release_date": rows["release_date"],
+        "runtime": runtime_minutes(rows["runtime"]),
         "actresses": [],
         "maker": STUDIO,
         "label": "",
         "seller_url": "",
-        "genres": [],
-        "cover_url": cover,
-        "cover_urls": [cover] if cover else [],
+        "genres": rows["genres"],
+        "cover_url": covers[0] if covers else "",
+        "cover_urls": covers,
+    }
+
+
+def _archive_rows(soup: BeautifulSoup) -> dict:
+    """正文那块资料：标签、发行日、时长。哪一样没填就回这一样的空值。
+
+    只在 `div.news` 里搜。整页搜的话 head 里那条 `<meta name="description">` 会先命中：
+    站方把同一段话截断成 `…｜S級...` 写进 `content`，取回来的是半截标签加一串属性。
+    """
+    block = soup.select_one("div.news")
+    if block is None:
+        return {"genres": [], "release_date": "", "runtime": ""}
+    text = str(block)
+    tags = _ARCHIVE_ROWS["genres"].search(text)
+    sold = _ARCHIVE_ROWS["release_date"].search(text)
+    runtime = _ARCHIVE_ROWS["runtime"].search(text)
+    # 站上用全角竖线分隔；转存者留空时那一行写成 `--`，当成一个标签就入了库。
+    names = [name.strip() for name in re.split(r"[｜|]", tags.group(1))] if tags else []
+    return {
+        "genres": list(dict.fromkeys(name for name in names if name and name != "--")),
+        "release_date": "-".join(sold.groups()) if sold else "",
+        "runtime": runtime.group(1) if runtime else "",
     }
 
 

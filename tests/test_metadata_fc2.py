@@ -4,7 +4,7 @@ import unittest
 
 from peach.metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_SOURCE, SOURCE, STUDIO, archive_link,
                                 archive_search_url, article_url, canonical_code, mirror_url,
-                                parse_archive, parse_article, parse_mirror, parse_search,
+                                parse_archive, parse_article, parse_mirror,
                                 runtime_minutes, video_id)
 
 COVER = "https://storage92000.contents.fc2.com/file/261/26076760/1711813737.76.jpg"
@@ -65,18 +65,34 @@ def search_page(video="4137487", picture=True):
 
 
 def archive_page(video="4137487", title=None, large="{root}{video}pl.jpg",
-                 small="{root}{video}ps.jpg"):
-    """作品页。正文那几段是转载来的下载链接，解析用得上的只有标题和图。"""
+                 small="{root}{video}ps.jpg", tags="ハメ撮り｜素人｜爆乳", release="2023/11/21",
+                 runtime="50:03"):
+    """作品页。封面在两个图位上，标签、日期、时长在正文那块资料里，转存者可填可不填。
+
+    `<head>` 里那条 `description` 照站上的样子写：它把同一段话截断成 `…｜S級...` 塞进
+    `content`，整页搜「标签：」会先命中它。余下几段是转载来的网盘链接，一概不取。
+    """
     heading = title if title is not None else f"FC2-PPV-{video} {ARCHIVE_TITLE}"
     link = ARCHIVE_LINK if video == "4137487" else f"/926949-FC2-PPV-{video}-x-pn.html"
-    pictures = "".join(
-        f'<img src="{shape.format(root=ARCHIVE_PICTURES, video=video)}" alt="{heading}" />'
-        for shape in (large, small) if shape)
+    slots = []
+    if large:
+        slots.append('<div class="fisrst_sc">'
+                     f'<img src="{large.format(root=ARCHIVE_PICTURES, video=video)}" '
+                     f'alt="{heading}" /></div>')
+    if small:
+        slots.append(f'<img itemprop="image" src="{small.format(root=ARCHIVE_PICTURES, video=video)}"'
+                     f' alt="{heading}">')
+    rows = "".join(f"{label}：{value} <br class='a5555' />" for label, value in
+                   (("标签", tags), ("日期", release), ("时长", runtime)) if value)
     return (
+        '<head><meta name="description" content="商品名称：FC2-PPV-'
+        f'{video} {ARCHIVE_TITLE} 标签：ハメ撮り｜素人｜S級..." /></head>'
         f'<div class="menudd"><h1><a href="{link}" title="{heading}">{heading}</a></h1></div>'
         f'<div class="news"><div class="first_des">{heading}</div>'
-        f'<div class="fisrst_sc">{pictures}</div>'
-        # 多帧拼成的长条预览，不是封面。
+        + "".join(slots)
+        + f"商品名称：{heading} <br class='a5555' />{rows}"
+        # 多帧拼成的长条预览，正文里标着 Preview，不是封面。
+        f'Original version: <a href="{ARCHIVE_PICTURES}ARCHIVE-FC2PPV-{video}_s.jpg">CLICK HERE!</a>'
         f'<img src="{ARCHIVE_PICTURES}fc2ppv-{video}_s.jpg" alt="{heading}" />'
         '<div class="downloads">https://rapidgator.net/file/deadbeef/x.mp4.html</div></div>'
     )
@@ -214,39 +230,49 @@ class JavArchiveTests(unittest.TestCase):
         self.assertEqual(parse_archive(archive_page(title="FC2PPV 4137487 素顔"), "FC2-PPV-4137487")["title"],
                          "素顔")
 
-    def test_the_big_transfer_wins_and_the_stitched_preview_is_never_a_cover(self):
-        # `_s.jpg` 是把多帧拼成的长条（实测 1024×2000），装上去就是一格拉长的马赛克。
+    def test_the_cover_is_read_from_its_slot_whatever_the_transferrer_named_the_file(self):
+        """封面认位置不认文件名：站上三种命名都有，按名字认的话两种一张都取不到。"""
         found = parse_archive(archive_page(), "FC2-PPV-4137487")
-        self.assertEqual(found["cover_url"], "https://img.javstore.net/images/2023/12/26/4137487pl.jpg")
-        self.assertEqual(found["cover_urls"], [found["cover_url"]])
-        small = parse_archive(archive_page(large=""), "FC2-PPV-4137487")
-        self.assertEqual(small["cover_url"], "https://img.javstore.net/images/2023/12/26/4137487ps.jpg")
-        self.assertEqual(parse_archive(archive_page(large="", small=""), "FC2-PPV-4137487")["cover_urls"], [])
+        self.assertEqual(found["cover_url"], ARCHIVE_PICTURES + "4137487pl.jpg")
+        self.assertEqual(found["cover_urls"], [ARCHIVE_PICTURES + "4137487pl.jpg",
+                                               ARCHIVE_PICTURES + "4137487ps.jpg"])
+        # 转存者自己起的名字：`FC2PPV-4030617.jpg`、`FC2PPV835964-2.jpg`，都不带 `pl`/`ps`。
+        named = parse_archive(archive_page(large="{root}FC2PPV-{video}.jpg",
+                                           small="{root}FC2PPV{video}-2.jpg"), "FC2-PPV-4137487")
+        self.assertEqual(named["cover_urls"], [ARCHIVE_PICTURES + "FC2PPV-4137487.jpg",
+                                               ARCHIVE_PICTURES + "FC2PPV4137487-2.jpg"])
+        # 只有 schema.org 那个图位时它就是封面（实测 `835964` 的页面就少了前一个）。
+        self.assertEqual(parse_archive(archive_page(large=""), "FC2-PPV-4137487")["cover_url"],
+                         ARCHIVE_PICTURES + "4137487ps.jpg")
+        self.assertEqual(parse_archive(archive_page(large="", small=""),
+                                       "FC2-PPV-4137487")["cover_urls"], [])
+
+    def test_the_stitched_preview_is_never_a_cover(self):
+        # `_s.jpg` 是把多帧拼成的长条（实测 1024×2000），装上去就是一格拉长的马赛克。
+        found = parse_archive(archive_page(large="", small=""), "FC2-PPV-4137487")
+        self.assertEqual(found["cover_urls"], [])
+        self.assertNotIn("_s.jpg", str(parse_archive(archive_page(), "FC2-PPV-4137487")["cover_urls"]))
+
+    def test_the_body_block_gives_up_the_tags_the_date_and_the_runtime(self):
+        """转存者填了就取。2026-09-22 实测 4 部里只有 `4030617` 这块是齐的。"""
+        found = parse_archive(archive_page(), "FC2-PPV-4137487")
+        self.assertEqual(found["genres"], ["ハメ撮り", "素人", "爆乳"])
+        self.assertEqual(found["release_date"], "2023-11-21")
+        self.assertEqual(found["runtime"], 50.05)
+
+    def test_an_empty_block_stays_empty_instead_of_taking_the_truncated_meta_line(self):
+        """`<head>` 那条 description 里有同一段话的截断版，取回来就是半截标签加一串属性。"""
+        bare = parse_archive(archive_page(tags="", release="", runtime=""), "FC2-PPV-4137487")
+        self.assertEqual((bare["genres"], bare["release_date"], bare["runtime"]), ([], "", None))
+        # 站上没填标签时那一行写成 `--`，当成一个标签就入了库。
+        self.assertEqual(parse_archive(archive_page(tags="--"), "FC2-PPV-4137487")["genres"], [])
 
     def test_another_products_archive_page_is_not_this_ones_data(self):
         self.assertIsNone(parse_archive(archive_page(video="4364209"), "FC2-PPV-4137487"))
         self.assertIsNone(parse_archive("<div class='news'></div>", "FC2-PPV-4137487"))
         self.assertIsNone(parse_archive(archive_page(), "ORETD-615"))
 
-    def test_a_result_that_carries_a_picture_needs_no_second_request(self):
-        found = parse_search(search_page(), "FC2-PPV-4137487")
-        self.assertEqual(found["title"], ARCHIVE_TITLE)
-        self.assertEqual(found["source_url"], "https://javarchive.com" + ARCHIVE_LINK)
-        # `pl` 是按命名规律推出来的，排在这一页确实给了的 `ps` 前面。
-        self.assertEqual(found["cover_urls"], [ARCHIVE_PICTURES + "4137487pl.jpg",
-                                               ARCHIVE_PICTURES + "4137487ps.jpg"])
-        self.assertEqual(found["cover_url"], found["cover_urls"][0])
-
-    def test_a_result_without_a_picture_falls_back_to_the_work_page(self):
-        # 站上实测一半的结果只有标题链接（`1863914`、`2110084`），那几部照旧要取作品页。
-        self.assertIsNone(parse_search(search_page(picture=False), "FC2-PPV-4137487"))
-        self.assertIsNone(parse_search(search_page(), "FC2-PPV-1863914"))
-        self.assertIsNone(parse_search(search_page(video="41374870"), "FC2-PPV-4137487"))
-        self.assertIsNone(parse_search(search_page(), "ORETD-615"))
-
     def test_the_third_page_hands_back_the_same_shape_as_the_first_two(self):
-        self.assertEqual(sorted(parse_search(search_page(), "FC2-PPV-4137487")),
-                         sorted(parse_archive(archive_page(), "FC2-PPV-4137487")))
         self.assertEqual(sorted(parse_archive(archive_page(), "FC2-PPV-4137487")),
                          sorted(parse_mirror(mirror_page(), "FC2-PPV-3189161")))
         self.assertEqual(ARCHIVE_SOURCE, "javarchive")
