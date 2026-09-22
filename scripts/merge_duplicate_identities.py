@@ -819,13 +819,15 @@ def named_pairs(connection: sqlite3.Connection, pairs: list[str],
 
     写法 `保留id:丢弃id:证据`。方向不自动挑：作品数多的一侧不一定是名字对的一侧。
 
-    一条实体在整批 `--pair` 里只能出现一次。合并会删掉被丢弃的那一条，同一个 id 在
-    第二对里再被引用，就是合进（或合出）一条已经不存在的实体；一批十几对时这种重复
-    肉眼看不出来。
+    保留侧允许在一批里重复出现，丢弃侧不允许：一个人有几个旧艺名就有几条要并进来，
+    `香椎美铃` 同时收走 `みすず` 和 `加山優衣` 是常态。被丢弃的那条会被删掉，所以它
+    一旦出现过，后面无论摆在哪一侧都是引用一条已经不存在的实体——包括「先丢后留」这种
+    顺序写反的情形，一批十几对时肉眼看不出来。
     """
     connection.row_factory = sqlite3.Row
     engaged = engaged or set()
-    seen: set[int] = set()
+    kept: set[int] = set()
+    dropped: set[int] = set()
     plan: list[dict[str, object]] = []
     for pair in pairs:
         parts = pair.split(":", 2)
@@ -834,8 +836,14 @@ def named_pairs(connection: sqlite3.Connection, pairs: list[str],
         keep_id, drop_id, why = int(parts[0]), int(parts[1]), parts[2].strip()
         if keep_id == drop_id:
             raise SystemExit(f"--pair {pair}：两侧是同一条实体 {keep_id}，不合并")
-        if keep_id in seen or drop_id in seen:
-            raise SystemExit(f"--pair {pair}：这条实体已经出现在前面的 --pair 里")
+        if keep_id in dropped:
+            raise SystemExit(
+                f"--pair {pair}：保留侧 {keep_id} 在前面的 --pair 里已经被丢弃")
+        if drop_id in dropped:
+            raise SystemExit(f"--pair {pair}：丢弃侧 {drop_id} 在前面的 --pair 里已经被丢弃")
+        if drop_id in kept:
+            raise SystemExit(
+                f"--pair {pair}：丢弃侧 {drop_id} 在前面的 --pair 里是保留侧")
         sides = {}
         for name, entity_id in (("keep", keep_id), ("drop", drop_id)):
             row = connection.execute(
@@ -851,7 +859,8 @@ def named_pairs(connection: sqlite3.Connection, pairs: list[str],
             sides[name] = row
         if sides["keep"]["kind"] != sides["drop"]["kind"]:
             raise SystemExit(f"--pair {pair}：两侧 kind 不同，不合并")
-        seen.update((keep_id, drop_id))
+        kept.add(keep_id)
+        dropped.add(drop_id)
         plan.append({
             "normalized_name": sides["drop"]["normalized_name"],
             "match_evidence": why,

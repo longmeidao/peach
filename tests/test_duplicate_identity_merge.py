@@ -481,7 +481,8 @@ class NamedPairTests(unittest.TestCase):
             " VALUES(?,?,?,?,'t','t')",
             [(1, "performer", "五十岚星兰", "五十岚星兰"),
              (2, "performer", "五十嵐星蘭", "五十嵐星蘭"),
-             (3, "studio", "别的种类", "别的种类")])
+             (3, "studio", "别的种类", "别的种类"),
+             (6, "performer", "加山優衣", "加山優衣")])
         self.con.commit()
 
     def tearDown(self):
@@ -521,10 +522,25 @@ class NamedPairTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.pairs("1:1:证据")
 
-    def test_an_entity_named_twice_in_one_batch_is_refused(self):
-        """第一对合完 id 就没了，第二对再引用它就是合进一条不存在的实体。"""
+    def test_one_survivor_can_take_in_several_old_stage_names(self):
+        """一个人有几个旧艺名就有几条要并进来，保留侧当然会重复出现。"""
+        rows = self.pairs("1:2:javdb 同一页", "1:6:javdb 同一页")
+        self.assertEqual([(row["keep_id"], row["drop_id"]) for row in rows],
+                         [(1, 2), (1, 6)])
+
+    def test_an_entity_dropped_earlier_cannot_come_back_as_a_survivor(self):
+        """前一对已经把它删了，再拿它当保留侧就是往一条不存在的实体里搬东西。"""
         with self.assertRaises(SystemExit):
-            self.pairs("1:2:证据", "1:2:另一段证据")
+            self.pairs("1:2:证据", "2:6:另一段证据")
+
+    def test_an_entity_dropped_earlier_cannot_be_dropped_twice(self):
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2:证据", "6:2:另一段证据")
+
+    def test_a_survivor_cannot_turn_into_a_drop_later(self):
+        """顺序写反：先说留它，后面又要丢它，两条不可能同时成立。"""
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2:证据", "6:1:另一段证据")
 
     def test_merging_series_rewrites_the_flat_column(self):
         """只搬关系不改 `asset.series`，卡片上还写着被丢弃的系列名。"""
