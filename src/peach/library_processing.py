@@ -133,7 +133,8 @@ MAX_SOURCE_SECONDS = 4 * 3600
 
 
 class CoverKept(NotFound):
-    """来源给得出封面，但不比本机那张大。按「没有」记进记忆，一周内不再问，也不算问题项。"""
+    """每个来源都问成了，给得出的封面却不比本机那张宽。按「没有」记进记忆，一周内不再问，
+    也不算问题项。"""
 
 
 def cover_settled(path):
@@ -143,7 +144,7 @@ def cover_settled(path):
     `fetch_jav_covers.py --upgrade-existing` 那条批处理的事。不到这个宽度的多半是缩略图，
     发行方那里常常还留着原图：2026-09-23 实测梨奈名下 6 部 276×154 的 FC2，官方存储上
     都有 1180×2100 到 3360×1890 的原图。所以缩略图不算有了封面，采集照样去问，问来的
-    更大才换（`CoverKept`）；同目录的本地海报也一样，够大的才算定。
+    更宽才换（`CoverKept`）；同目录的本地海报也一样，够大的才算定。
     """
     size = measure_image_file(path)
     return size is not None and size[0] >= MIN_WIDTH
@@ -543,8 +544,13 @@ class LibraryMetadataProvider:
         if chosen is None:
             raise Unavailable('；'.join(problems)) if problems else NotFound('官方与社区来源都没有这部片的封面')
         candidate, size, data = chosen
-        if kept and size[0] * size[1] <= kept[0] * kept[1]:
-            raise CoverKept(f'来源给的封面 {size[0]}×{size[1]} 不比本机那张大')
+        # 比宽度，不比面积：同一张缩略图各处转存常差一行像素（276×154 与 276×155），
+        # 按面积判就会拿一张一样糊的图换掉另一张。
+        if kept and size[0] <= kept[0]:
+            if problems:
+                # 有来源这一趟没问成（冷却、配额、超时），它那里可能有原图：不能记成一周不问。
+                raise Unavailable('；'.join(problems))
+            raise CoverKept(f'来源给的封面 {size[0]}×{size[1]} 不比本机那张宽')
         from .cover_artwork import install_cover
         install_cover(target, code, data, size, evidence=dict(source=candidate.source,
             source_url=candidate.url, width=size[0], height=size[1], verified_by=list(verified_by),
