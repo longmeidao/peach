@@ -450,9 +450,8 @@ def crop(body: bytes, box: object) -> tuple[bytes, dict]:
                      "crop_source_px": [size[0], size[1]]}
 
 
-def install(providers_root: Path, avatar_root: Path, kind: str,
-            entity_id: int, body: bytes, origin: dict) -> dict:
-    """装上去，同时把这张图连同证据留在候选缓存里——换回来时就不必再取一次。"""
+def keep(providers_root: Path, entity_id: int, body: bytes, origin: dict) -> InspectedAvatar:
+    """把这张图连同证据留进候选缓存，不装。挑图弹层「取过的图」那一组列的就是这些。"""
     inspected = accept_image(body)
     cache = AvatarCandidateCache(
         providers_root / str(origin.get("provider") or "picker"))
@@ -467,6 +466,13 @@ def install(providers_root: Path, avatar_root: Path, kind: str,
         width=inspected.width, height=inspected.height,
         mime_type=inspected.mime_type, sha256=inspected.sha256,
         cache_path=f"objects/{inspected.sha256}{inspected.extension}"))
+    return inspected
+
+
+def install(providers_root: Path, avatar_root: Path, kind: str,
+            entity_id: int, body: bytes, origin: dict) -> dict:
+    """装上去，同时把这张图连同证据留在候选缓存里——换回来时就不必再取一次。"""
+    inspected = keep(providers_root, entity_id, body, origin)
     install_entity_avatar(avatar_root, kind, int(entity_id), body,
                           inspected.mime_type,
                           {**origin, "sha256": inspected.sha256,
