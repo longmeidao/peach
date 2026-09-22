@@ -328,6 +328,10 @@ class LibraryMetadataProvider:
         只有 FC2 和一本道走这里：别的番号的官方面 `best_cover` 自己会找（r18、MGS、
         Prestige），这两家它一处都不问。资料那步问过的档这里不再发请求，FC2 链上它没
         走到的那几档要补问：图源要凑齐了交给 `best_cover` 量，它才挑得出能用的那张。
+
+        一页上有几个图位就都交下去，不只交排头那张。JavArchive 的作品页收了两处——
+        `div.fisrst_sc` 那张排前，schema.org 的 `image` 排后——而转存者存的图会失效：
+        只交排头那张的话，它 404 就整条落空，同一页上还在的那张连量都没量过。
         """
         from functools import partial
 
@@ -347,9 +351,12 @@ class LibraryMetadataProvider:
             raise
         except Exception as error:  # noqa: BLE001 - 交给 `cover()` 汇总成一句话
             raise Unavailable(f'{SOURCE_LABELS[source]}：{describe_failure(error)}') from error
-        return tuple(Candidate(urlparse(payload['cover_url']).netloc.lower(),
-                               payload['cover_url'], referer)
-                     for _, payload in found if payload.get('cover_url'))
+        addresses = []
+        for _, payload in found:
+            for url in payload.get('cover_urls') or [payload.get('cover_url')]:
+                if url and url not in addresses:
+                    addresses.append(url)
+        return tuple(Candidate(urlparse(url).netloc.lower(), url, referer) for url in addresses)
 
     def query(self, code, source='r18dev', *, deadline=None):
         from .jav_cover_fetch import R18_DETAIL, _fetch

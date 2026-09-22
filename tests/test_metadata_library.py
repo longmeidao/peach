@@ -58,6 +58,9 @@ def _mirror_page(image='https://storage92000.contents.fc2.com/file/1.jpg', video
 #: `FC2PPV%203232110%20…`）；搜索结果那一步要 unquote 之后才认得出这个号。
 _ARCHIVE_LINK = '/859881-FC2PPV%203232110%20%E3%81%BF%E3%81%8A-pn.html'
 _ARCHIVE_COVER = 'https://img.javstore.net/images/2023/12/26/3232110pl.jpg'
+#: 同一页上的第二个图位（schema.org 的 `image`）。转存者存的图会失效，排头那张 404 时
+#: 只有这张还能用——2026-09-22 实测 `FC2-PPV-1021177` 那页排头的图就已经是 404。
+_ARCHIVE_COVER_SECOND = 'https://img.javstore.net/images/2023/12/26/FC2PPV-3232110-2.jpg'
 
 
 def _archive_pages(url):
@@ -66,6 +69,7 @@ def _archive_pages(url):
         return f'<div class="post"><a href="{_ARCHIVE_LINK}">FC2PPV 3232110</a></div>'
     return ('<h1><a href="' + _ARCHIVE_LINK + '">FC2PPV 3232110 みおちゃんが素人さん</a></h1>'
             f'<div class="fisrst_sc"><img src="{_ARCHIVE_COVER}" alt="x" /></div>'
+            f'<img itemprop="image" src="{_ARCHIVE_COVER_SECOND}" alt="x" />'
             '<div class="news">标签：素人 <br />日期：2023/03/23 <br />时长：45:12 <br /></div>')
 
 
@@ -679,6 +683,16 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(found[0][1]['cover_url'], '')
         self.assertEqual(found[0][1]['title'], '【無】コスプレシリーズ', '资料照旧带着走')
         self.assertEqual(found[1][1]['cover_url'], _ARCHIVE_COVER)
+
+    def test_every_image_slot_on_the_page_becomes_a_candidate(self):
+        """一页上收了几个图位就交几个：排头那张失效时，另一张还得有人量过。"""
+        asked = []
+        provider, pages = self._fc2_provider(asked)
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            candidates = provider._official_candidates('FC2-PPV-3232110')
+        self.assertEqual([candidate.url for candidate in candidates],
+                         ['https://storage92000.contents.fc2.com/file/1.jpg',
+                          _ARCHIVE_COVER, _ARCHIVE_COVER_SECOND])
 
     def test_javdb_keeps_its_own_host_interval_on_both_of_its_hosts(self):
         """这一档的节奏由用户定，改动要连图床一起改：页面与图分别落在两个主机上。"""
