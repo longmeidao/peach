@@ -566,6 +566,11 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(payload['genres'], ['Slender'], '日文页没取到时，英文那份仍然能投影')
         self.assertNotIn('translations', payload)
 
+    def test_javdb_keeps_its_own_host_interval_on_both_of_its_hosts(self):
+        """这一档的节奏由用户定，改动要连图床一起改：页面与图分别落在两个主机上。"""
+        from peach.library_processing import SOURCE_INTERVALS
+        self.assertEqual(SOURCE_INTERVALS, {'javdb.com': 3.0, 'jdbstatic.com': 3.0})
+
     def test_community_sources_are_asked_once_per_code_and_say_why_they_failed(self):
         """资料和封面两步都要社区来源的结果，javdb 的配额经不起同一部片问两遍。"""
         from peach.jav_cover_fetch import NotFound, Unavailable
