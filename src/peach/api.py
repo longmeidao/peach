@@ -34,7 +34,7 @@ from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddle
 from . import __version__, tunnel, web_contract, web_follow
 from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
 from .buildinfo import frozen_build
-from .config import PeachSettings
+from .config import LOCATION_ROOT_DECLARATIONS, PeachSettings
 from .ffmpeg import FFmpegResolver
 from .follow_scheduler import FollowUpdateScheduler
 from .follow_covers import FollowCoverService
@@ -49,7 +49,9 @@ from .media import (
 )
 from .mdns import create_mdns_publisher
 from .mp4repair import HeaderRepairStore
+from .platform import location_mounts
 from .previews import PhotoThumbnailService, PreviewService
+from .push_discovery import PushDiscoveryService
 from .providers import OpenCodeGoClient, default_registry
 from .repository import LedgerDatabase, LedgerRepository
 from .review_mirror import ReviewMirror
@@ -96,6 +98,11 @@ def _offline_response(exc: MediaOffline) -> JSONResponse:
     )
     response.headers["X-Peach-Offline"] = "1"
     return response
+
+
+def _writer(sync: LedgerSync | None) -> bool:
+    """这台是不是账本写入端。只读端不起任何会往账本里写的后台通道。"""
+    return sync is None or not sync.read_only
 
 
 def _resolve_tunnel_manager(
@@ -206,6 +213,14 @@ def create_app(
         lambda: web_follow.w_follow_check(contract, {"automatic": True}),
         available=sync is None or not sync.read_only,
     )
+    push_discovery = PushDiscoveryService(
+        state_root=settings.follow_state_root,
+        secrets_root=settings.secrets_root,
+        db_path=settings.db_path,
+        declared_roots=LOCATION_ROOT_DECLARATIONS,
+        mounts=location_mounts(),
+        available=_writer(sync),
+    )
     contract.follow_scheduler = follow_scheduler
     contract.header_repairs = header_repairs
     contract.transcode_service = transcode_service
@@ -244,6 +259,7 @@ def create_app(
         await asyncio.to_thread(_start_tunnel, settings, tunnel_manager)
         follow_scheduler.start()
         automatic_updates.start()
+        push_discovery.start()
         warmup = asyncio.create_task(warm_startup_entries())
         if mdns is not None:
             try:
@@ -257,6 +273,7 @@ def create_app(
             warmup.cancel()
             follow_scheduler.stop()
             automatic_updates.stop()
+            push_discovery.stop()
             # 死链检查和资源对账的后台线程是 daemon，本来挡不住进程退出；这里显式收
             # 一下，免得在途的那一轮在解释器拆卸期间还继续查库、往没人读的状态里写。
             contract.stop_background_jobs()
@@ -294,6 +311,7 @@ def create_app(
     app.state.follow_cover_service = follow_cover_service
     app.state.follow_scheduler = follow_scheduler
     app.state.automatic_updates = automatic_updates
+    app.state.push_discovery = push_discovery
     app.state.stream_sessions = StreamSessionRegistry()
     app.state.sync = sync
     app.state.tunnel = tunnel_manager

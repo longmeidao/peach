@@ -43,6 +43,7 @@ dependencies = [
   "socksio==1.0.0",
   "starlette==1.6.0",
   "uvicorn==0.52.4",
+  "watchdog==6.0.0",
   "zeroconf==0.151.3",
 ]
 

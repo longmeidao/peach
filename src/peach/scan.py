@@ -15,7 +15,8 @@
 字幕 sidecar 顺带在这里登记：遍历时每个目录的文件名已经在手上，配对判据只看同目录，
 `subtitles.py` 负责判定，本模块只负责把结论落进 `asset_subtitle`。
 
-`peach init` 的首次扫描与 `peach scan` 都调这里，
+`peach init` 的首次扫描与 `peach scan` 调 `scan_location` 遍历整个根；推送发现拿到一条
+路径时调 `ingest_path`，登记口径、不变量与 upsert 语句都是同一份。
 声明根和挂载表由调用方传入而不是读进程缓存：`init` 刚写完设置文件时缓存还是旧的。
 """
 from __future__ import annotations
@@ -127,6 +128,84 @@ def walk_root_for(
             f"✗ 来源 {location!r} 的第 {index + 1} 个声明根在本机没有挂载点；"
             f"先在 [media.mounts] 里按顺序声明它的落点")
     return Path(location_mounts[index]).joinpath(*tail)
+
+
+@dataclass(frozen=True)
+class IngestResult:
+    """单条路径的登记结果。`found` 为假表示那个文件此刻不在磁盘上，什么也没写。"""
+    location: str
+    path: str
+    found: bool
+    size: int = 0
+    subtitles: int = 0
+
+
+def _directory_stats(directory: Path) -> dict[str, tuple[int, str]]:
+    """一个目录里能 stat 到的文件名 → `(size, mtime)`，读不了的条目跳过。"""
+    stats: dict[str, tuple[int, str]] = {}
+    try:
+        with os.scandir(directory) as scanner:
+            entries = list(scanner)
+    except OSError:
+        return stats
+    for entry in entries:
+        try:
+            if entry.is_dir():
+                continue
+            found = entry.stat()
+        except OSError:
+            continue
+        stats[entry.name] = (
+            found.st_size, time.strftime("%Y-%m-%d", time.localtime(found.st_mtime)))
+    return stats
+
+
+def ingest_path(
+    db_path: str | os.PathLike[str], location: str, path: str, *,
+    declared_roots: Mapping[str, Sequence[str]],
+    mounts: Mapping[str, Sequence[str | Path]] | None = None,
+    windows: bool | None = None,
+) -> IngestResult:
+    """按扫描的同一口径登记一个文件。
+
+    `path` 是账本口径的绝对路径。两条不变量与 `scan_location` 共用同一段判定，upsert
+    也是同一条语句：推送发现拿到一条路径之后走的就是这里，账本里不会出现第二种
+    「新文件怎么变成一行」的写法。
+
+    文件不在就直接返回：事件到达与文件落地之间总有时间差，那不是错误；定期全量扫描
+    与资源同步对账各自会处理。字幕 sidecar 的配对按定义只看同一个目录，所以只有视频
+    或字幕才多列一次那个目录，别的类型连一次 `scandir` 都不发。
+    """
+    windows = os.name == "nt" if windows is None else windows
+    ledger_path = PureWindowsPath(path)
+    ledger_dir = ledger_path.parent
+    name = ledger_path.name
+    check_scan_target(location, str(ledger_dir), declared_roots=declared_roots)
+    directory = walk_root_for(
+        location, str(ledger_dir), declared_roots=declared_roots,
+        mounts=mounts or {}, windows=windows)
+    try:
+        stat = (directory / name).stat()
+    except OSError:
+        return IngestResult(location, str(ledger_path), False)
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    mtime = time.strftime("%Y-%m-%d", time.localtime(stat.st_mtime))
+    medium = medium_of(name)
+    tracks = 0
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute(_UPSERT, (location, str(ledger_path), name, medium,
+                                     stat.st_size, mtime, now, now))
+        if medium == "video" or subtitles.subtitle_format(name):
+            here = _directory_stats(directory)
+            tracks = subtitles.record(connection, location, subtitles.directory_sidecars(
+                ledger_dir, here,
+                [entry for entry in here if medium_of(entry) == "video"]), now)[0]
+        connection.commit()
+    finally:
+        connection.close()
+    return IngestResult(location, str(ledger_path), True, stat.st_size, tracks)
 
 
 @dataclass(frozen=True)

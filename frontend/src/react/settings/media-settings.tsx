@@ -24,6 +24,7 @@ import { queryClient } from '../query';
 import { CloudDriveGuide } from './clouddrive-guide';
 import { CONFIGURATION_KEY, fetchConfiguration } from './configuration';
 import { LibraryIconPicker } from './library-icon-picker';
+import { PushDiscoveryForm } from './push-discovery-settings';
 import {
   ErrorText, ExternalLink, Fact, FactList, FieldLabel, Footer, Help, Section, SourceMark, Stack,
 } from './section';
@@ -74,6 +75,9 @@ export function MediaSettings({ data, receipt }: ConfigurationGroupProps) {
     <div className="flex flex-col gap-6">
       {data.editable ? <MediaForm data={data} receipt={receipt} /> : <Note tone="neutral" title="只读">{data.notice}</Note>}
       <MountStatus data={data} />
+      {data.push_discovery
+        ? <PushDiscoveryForm initial={data.push_discovery} receipt={receipt} />
+        : null}
     </div>
   );
 }

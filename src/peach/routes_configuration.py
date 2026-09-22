@@ -156,6 +156,8 @@ def read_configuration(request: Request, _args=Depends(require_auth)):
     state = request.app.state.tunnel.snapshot()
     result["tunnel"] = tunnel_payload(config, state, config.tunnel.enabled)
     result["automatic_updates"] = request.app.state.automatic_updates.snapshot()
+    # 这一路已经过了 `local_only`，密钥可以给出来：用户要把它抄进 CloudDrive2。
+    result["push_discovery"] = request.app.state.push_discovery.snapshot(reveal=True)
     if result["automatic_updates"].get("result"):
         result["updates"] = result["automatic_updates"]["result"]
     return result
@@ -194,6 +196,27 @@ def save_entry_links(request: Request, body: dict = Body(...), _args=Depends(req
     try:
         return entry_links.save(settings_file.load_config().directory("state"), body)
     except (ValueError, OSError, Timeout) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/api/configuration/push-discovery")
+def save_push_discovery(request: Request, body: dict = Body(...), _args=Depends(require_auth)):
+    local_only(request)
+    same_origin(request)
+    try:
+        return request.app.state.push_discovery.save(body)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/api/configuration/push-discovery/secret")
+def rotate_push_discovery_secret(request: Request, _args=Depends(require_auth)):
+    """换一份共享密钥。换完之后 CloudDrive2 那一侧要跟着填新的，否则它推来的一律被拒。"""
+    local_only(request)
+    same_origin(request)
+    try:
+        return request.app.state.push_discovery.rotate_secret()
+    except (ValueError, OSError) as exc:
         raise HTTPException(400, str(exc)) from exc
 
 

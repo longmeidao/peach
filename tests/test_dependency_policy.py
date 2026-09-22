@@ -52,6 +52,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "resvg_py": "resvg-py",
             "starlette": "starlette",
             "uvicorn": "uvicorn",
+            "watchdog": "watchdog",
             "zeroconf": "zeroconf",
         }
         imported = set()

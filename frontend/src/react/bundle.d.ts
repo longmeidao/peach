@@ -48,6 +48,33 @@ export interface EntryLinkSite {
 
 export interface EntryLinksState { sites: EntryLinkSite[] }
 
+/** 一条「CloudDrive2 里的路径前缀 → 哪个媒体根」的对应。 */
+export interface PushDiscoveryPrefix { prefix: string; root: string }
+
+export interface PushDiscoveryQueue {
+  pending: number; submitted: number; ingested: number; missing: number;
+  dropped: number; timed_out: number; failed: number;
+  last_path?: string; last_ingested_at?: number; last_error?: string;
+}
+
+export interface PushDiscoveryState {
+  enabled: boolean;
+  watch_local: boolean;
+  cloud: boolean;
+  prefixes: PushDiscoveryPrefix[];
+  /** 这台机器是账本写入端才为真；只读端不起任何监听。 */
+  available: boolean;
+  secret: string;
+  secret_set: boolean;
+  endpoint: string;
+  local_running: boolean;
+  local_message: string;
+  local_roots: string[];
+  queue: PushDiscoveryQueue;
+  /** 可选的媒体根，前缀表里的下拉就从这里取。 */
+  media_roots: string[];
+}
+
 export interface AutomaticUpdateState {
   mode: string; interval_hours: number; available: boolean; download_available: boolean; error?: string;
 }
@@ -83,6 +110,7 @@ export interface ConfigurationData {
   uninstall?: UninstallState;
   peach_proxy?: PeachProxyState;
   entry_links?: EntryLinksState;
+  push_discovery?: PushDiscoveryState;
   updates?: ReleaseState;
   update_job?: UpdateJob;
   automatic_updates?: AutomaticUpdateState;
