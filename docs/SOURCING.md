@@ -1119,6 +1119,62 @@ av911.tv，三条候选已进复核队列。
   做完再一次性 LANCZOS 缩下来，成品尺寸 64 → 128（容器 32 px CSS，3x 屏要 96 px）。改了取图规则或合成
   方式必须同时加 `link_marks.RENDER_VERSION`：缓存保鲜期是 30 天，不换键的话代码换了用户看到的仍是旧那张。
 
+## 番号发现源（Feed）
+
+Feed 只回答一个问题：**最近出了哪些番号**。它不下载、不碰媒体文件，产物是一条番号加一个
+可点开的作品页地址，刮削仍走既有的来源链。取证在 2026-09-22 做完，脚本与原始结果留在仓库外的
+`attic/evidence/20260922-feed-sources-probe/`；每个来源最多问两次，JavDB 因为要落盘一份页面
+供离线分析多问了一次。
+
+### 可用的两类
+
+- **原生 RSS：sukebei.nyaa.si**（`https://sukebei.nyaa.si/?page=rss&c=2_2&f=0`，2026-09-22）。
+  HTTP 200、`application/xml`、84 KB、RSS 2.0，一页 75 条。`guid` 是条目永久链接
+  （`https://sukebei.nyaa.si/view/4719097`），`pubDate` 是 RFC 822 带时区的真实时间，**天然满足
+  两层去重里的条目身份那一层**。标题形如 `HMN-071 新人 帶來超稀有妹子…戶川步[有碼高清中文字幕]`，
+  番号在最前面。整段丢给 `catalog_rules.release_code_from_text` 只认出 3 条（75 条里），
+  先按空白与括号切词元再逐个试则认出 50 条（66.7%）——**这是 Feed 必须自己做词元扫描的直接理由**，
+  不能照搬「整段文本 → 番号」那条路径。认不出的多半是无码番号、素人片与合集，不是解析缺陷。
+  `c=2_2` 是分类，`f=0` 是不过滤；换分类或加 `q=` 关键词就是另一个订阅，形状不变。
+  **它不给 `ETag` 也不给 `Last-Modified`**，所以对它来说 304 那一层不生效，只能靠条目身份去重。
+- **伪 Feed：JavDB 演员页**（`https://javdb.com/actors/<javdb_id>`，2026-09-22）。
+  HTTP 200、78,466 字节，一页 40 部作品。每部是
+  `<a href="/v/5nr8mp" class="box" title="…">` 加 `<div class="video-title"><strong>PBD-528</strong>…</div>`
+  加 `<div class="meta">2026-10-20</div>`：`/v/<id>` 当条目身份、`<strong>` 里就是干净的番号、
+  `.meta` 是发行日。40 条里 39 条取得番号（97.5%），剩下一条是番号栏本身为空。
+  **它按发行日排在前面，所以「还没发行的作品」会先出现**——上面第一条的 2026-10-20 就在取证日之后，
+  空壳的发行日可以晚于今天，这不是脏数据。
+  账本里已经有 `entity_external_ref` 的 `javdb` id（`entry_links.provider_ids`），订阅不必让用户
+  手抄地址。限流按本文「可用来源实测结论」那一节：主机间隔 3 秒、403 就整源停下，冷却判据在
+  `scraping_access`，不要因为 Feed 是后台任务就另开一套。
+  **加 `?sort_type=4` 会拿到一份 27 KB 的页面，一条作品都解不出**；同一轮里不带参数的请求仍是
+  78 KB 的完整页。所以演员页伪 Feed 一律用不带查询串的地址。
+
+### 已核实不可用
+
+| 来源 | 地址 | 结果 |
+| --- | --- | --- |
+| FANZA / DMM | `/rss/-/digital-videoa/` | 404；`/rss/` 与新作列表页都 302 到年龄确认页 |
+| MGStage | `/rss/mgs.xml`、`/feed/` | 都 404，首页不声明任何 feed |
+| 一本道 / 10musume / カリビアンコム / パコパコママ | `/rss/movies.xml`、`dyn/phpauto/movie_lists/list_newest_30.json` | 全 404；首页不声明 feed。`dyn/phpauto/movie_details` 仍然可用（`peach.metadata_1pondo`），**但同族没有新作列表路径** |
+| Tokyo-Hot | `/product/rss/` | 404，首页不声明 feed |
+| RSSHub 公共实例 | `rsshub.app/javdb/...`、`rsshub.app/javbus/...` | 403，公共实例整站挡在 Cloudflare 后面。自建实例没有验证，不作为 Peach 的前置条件 |
+| javlibrary | `/cn/rss.xml` | 403（与本文既有结论一致：被 Cloudflare 拦，不绕） |
+| JavBus | `/rss` | 302 到 `driver-verify` 人机验证页 |
+| AVBase | `/rss.xml` | 404，首页不声明 feed |
+| javtrailers | `/rss` | 404 |
+| OneJAV | `/rss` | 500 |
+| 色花堂 | `forum.php?mod=rss&fid=36` | 200 但只有 1.8 KB 的 HTML，不是 feed |
+
+**DUGA 是个反例，值得单记**：`https://duga.jp/news.xml` 是这一轮里唯一由首页
+`<link rel="alternate">` 正经声明出来的 RSS，标题就叫「DUGA 新着作品」，13 条，`pubDate` 齐全——
+看起来完全可用。但条目标题一个番号都不带（`DOC はる`、`部下のOLがM性感で働いていたので（3）`），
+番号只能从链接里取，而链接里那个是 DUGA 的站内商品号：`ppv/doc-2376`、`ppv/paradisetv-5258`、
+`ppv/mousouzoku2-1625`。它们长得和厂牌番号一模一样，`release_code_from_text` 会照单全收，
+产出 `DOC-2376`、`PARADISETV-5258` 这类**在任何刮削来源上都不存在的假番号**。
+所以判据不是「这个源有没有 RSS」，而是「条目里那串东西是不是真的番号」——
+一个源在接进来之前必须先看一眼它的番号长什么样，不能只看解析成功率。
+
 ## 缓存与重试
 
 - 整页 HTML 缓存与限速走 `peach.page_cache.Site`（按 URL sha1 落盘，`cookies` 用来带过年龄门）。它放在
