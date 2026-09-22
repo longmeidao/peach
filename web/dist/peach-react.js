@@ -32210,24 +32210,21 @@ function DD({ initial: e, receipt: t }) {
 				r(e.sites), t("已保存配置");
 			});
 		},
-		children: [/* @__PURE__ */ (0, w.jsxs)(PS, {
-			divided: !0,
-			children: [
-				/* @__PURE__ */ (0, w.jsx)(IS, { children: "账本里没有这个站点 id 的人物不显示它那一枚入口，地址不会退回站内搜索。 JavDB 与 MISSAV 只收 JAV 女优，这两枚还要账本里有哪个 JAV 目录站给过她 id 才出现； FC2 个人摄那类创作者没有这种 id，资料页上也就没有这一行。 这两站的主域名连不上时，把能打开的那个镜像域名填在下面，后面的路径由 Peach 自己拼。" }),
-				n.map((e) => /* @__PURE__ */ (0, w.jsx)(eb, {
-					id: `entry-link-${e.key}`,
-					label: `${e.label} 地址`,
-					autoComplete: "off",
-					maxLength: 100,
-					value: e.host,
-					placeholder: e.default_host,
-					onChange: (t) => a(e.key, t),
-					validationBehavior: "aria",
-					hint: "只写域名本身，留空就是默认"
-				}, e.key)),
-				i.error ? /* @__PURE__ */ (0, w.jsx)(LS, { children: i.error }) : null
-			]
-		}), /* @__PURE__ */ (0, w.jsx)(FS, { children: /* @__PURE__ */ (0, w.jsx)(X, {
+		children: [/* @__PURE__ */ (0, w.jsxs)(PS, { children: [
+			/* @__PURE__ */ (0, w.jsx)(IS, { children: "账本里没有这个站点 id 的人物不显示它那一枚入口，地址不会退回站内搜索。 JavDB 与 MISSAV 只收 JAV 女优，这两枚还要账本里有哪个 JAV 目录站给过她 id 才出现； FC2 个人摄那类创作者没有这种 id，资料页上也就没有这一行。 这两站的主域名连不上时，把能打开的那个镜像域名填在下面，后面的路径由 Peach 自己拼。" }),
+			n.map((e) => /* @__PURE__ */ (0, w.jsx)(eb, {
+				id: `entry-link-${e.key}`,
+				label: `${e.label} 地址`,
+				autoComplete: "off",
+				maxLength: 100,
+				value: e.host,
+				placeholder: e.default_host,
+				onChange: (t) => a(e.key, t),
+				validationBehavior: "aria",
+				hint: "只写域名本身，留空就是默认"
+			}, e.key)),
+			i.error ? /* @__PURE__ */ (0, w.jsx)(LS, { children: i.error }) : null
+		] }), /* @__PURE__ */ (0, w.jsx)(FS, { children: /* @__PURE__ */ (0, w.jsx)(X, {
 			type: "submit",
 			...Z(i.busy === "save"),
 			children: "保存配置"

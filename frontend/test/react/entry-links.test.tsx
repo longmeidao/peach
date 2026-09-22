@@ -41,6 +41,17 @@ it('外部入口：能换镜像的两站各一个地址框，默认留空，保�
   expect(receipt).toHaveBeenCalledWith('已保存配置');
 });
 
+it('外部入口：说明就是卡里的头一块，它上面不画线', async () => {
+  const host = await mount(<GeneralSettings data={data({ entry_links: state })} receipt={vi.fn()} />);
+  const help = [...host.querySelectorAll('p')]
+    .find((node) => node.textContent?.startsWith('账本里没有这个站点 id'));
+  const block = help?.parentElement;
+  // 那道线是给排在设置行后面的块用的，分隔的是它和上面那组行。这张卡里它自己就是头一块，
+  // 线画出来上面什么也没有，读成分区标题自带一条下边线。
+  expect(block?.previousElementSibling).toBeNull();
+  expect(block?.className).not.toContain('border-t');
+});
+
 it('服务端没下发外部入口时通用组里不画这一节', async () => {
   // 站点清单由服务端给。前端自己兜一份默认的话，那份迟早和 `peach.entry_links` 分叉。
   const host = await mount(<GeneralSettings data={data()} receipt={vi.fn()} />);
