@@ -89,7 +89,8 @@ JAVBUS_PAGE = (f"<h3>ABW-358 {TITLE}</h3>\n"
 JAVDB_RESULTS = ('<a href="/v/Q1" class="box" title="別"><div class="video-title"><strong>ABW-3580</strong></div></a>'
                  '<a href="/v/Zb7mX" class="box" title="涼森れむ流"><div class="video-title"><strong>ABW-358</strong> '
                  + TITLE + "</div></a>").encode()
-#: 站上 2026-09-22 的写法：class 在前、src 在后，中间还夹着三个属性。下面那个是它上一版。
+#: 站上并存的两种封面标签写法：一种 class 在前、src 在后、中间夹着三个属性；另一种 src 在前。
+#: 解析器对两种都要认。
 JAVDB_COVER_TAG = (f'<div class="column column-video-cover"><img class="video-cover" width="600" '
                    f'height="404" fetchpriority="high" src="{JAVDB_COVER}" /></div>')
 JAVDB_COVER_TAG_EARLIER = f'<img src="{JAVDB_COVER}" class="video-cover" alt="">'
