@@ -503,17 +503,50 @@ def _settled_candidates(connection, field: str, code: str, candidates: list[dict
     return chosen, settled_by, overruled
 
 
+#: FC2 番号里的商品号。`FC2-PPV-4927200`、`FC2PPV 4927200`、`fc4592208` 都取那串数字。
+_FC2_PRODUCT = re.compile(r"^FC2[-_ ]*(?:PPV)?[-_ ]*(\d{5,})$", re.I)
+
+
 def _filename_carries_code(code: str, name: str) -> bool:
     """这个文件名认不认得出这个番号。
 
     逐字出现最直白，但盘里有大量不写连字符的名字（`MEYD911.mp4`）。编目规则本来就
     知道怎么从文件名读番号，读出来同号是比子串更强的身份证据——子串只是碰巧包含。
     两条任一成立即可：本机 2611 条有番号的视频里，逐字命中 1715 条，合起来 2012 条。
+
+    FC2 另算一条：它的身份就是商品号那串数字，前缀谁爱怎么写怎么写——账本存
+    `FC2-PPV-4927200`，盘里同一部片叫 `FC2-4927200-CD1.mp4`、`fc4592208.mp4`、
+    `1879920.mp4`，三种前两条都认不出（2026-09-22 实测队列里 12 行因此停住）。
+    数字本身足够长（5 位起），碰巧撞上的余地很小。
     """
     if code.casefold() in name.casefold():
         return True
+    product = _FC2_PRODUCT.search(code)
+    if product:
+        return bool(re.search(rf"(?<!\d){product.group(1)}(?!\d)", name))
     parsed = release_code_from_filename(name)
     return bool(parsed) and same_release_code(code, parsed)
+
+
+def _group_identifies_code(code: str, targets) -> bool:
+    """这一组资产是不是这个番号的片。
+
+    要求这组里**有**文件名认得出这个番号的，而认不出的那些也没有指向别的番号。
+
+    盗版包会往同一个番号目录里塞推广片：`259LUXU-902` 名下两条正片各 985 MB 和
+    2714 MB，旁边躺着 `免费手机看片.avi`（4.4 MB／26 秒）、`線上影片每天火熱更新中.avi`
+    和一条手游广告，三条的文件名读不出任何番号（2026-09-22 实测队列里 16 行是这一种）。
+    逐条都要认得出的话，这类组的元数据就一直空着。
+
+    身份保证仍然成立：读不出番号的文件证明不了这组是别的片；组里真混进别的番号时
+    那一条读得出来，照旧交回人工。
+    """
+    names = [str(target["name"] or "") for target in targets]
+    if not any(_filename_carries_code(code, name) for name in names):
+        return False
+    return not any(
+        (parsed := release_code_from_filename(name)) and not same_release_code(code, parsed)
+        for name in names if not _filename_carries_code(code, name))
 
 
 def pending_genres(candidates: list[dict]) -> list[str]:
@@ -559,9 +592,10 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     2. 目标字段当前为空，或者结算下来的来源不是兜底那一家——补空之外，链首那家的
        取值直接替换现值。发行方自己那页就是这部片的出处，账本里那个来路不明的旧值
        没有理由压住它；用户改过的格子归属受保护，仍然不碰；
-    3. 该番号名下**每一条**资产的文件名都认得出这个番号——逐字出现，或按编目规则
-       解析出来就是它。`MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是
-       `MEYD-911`；本机 2611 条有番号的视频里这样的有 297 条。
+    3. 该番号名下有资产的文件名认得出这个番号，认不出的那些也没有指向别的番号
+       （`_group_identifies_code`）——逐字出现，或按编目规则解析出来就是它。
+       `MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是 `MEYD-911`；本机
+       2611 条有番号的视频里这样的有 297 条。
 
     补空那一支不看来源是不是 official（用户 2026-09-04 决定）：补空不覆盖任何东西，
     唯一的风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住
@@ -612,7 +646,7 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     targets = _codes_matching(connection, [code, query], "code,name,field_owners")
     if not targets:
         return None
-    if not all(_filename_carries_code(code, str(target["name"] or "")) for target in targets):
+    if not _group_identifies_code(code, targets):
         return None
     # 归属是用户判断的字段不走自动落库。ADR-0018 第 1 条只看取值空不空，而用户可以
     # 把一个字段判成空——那也是判断。没有这一道，「清空再等自动补回来」就成了

@@ -371,6 +371,48 @@ class ReviewQueueTests(unittest.TestCase):
         finally:
             con.close()
 
+    def test_an_fc2_filename_is_read_by_its_product_number(self):
+        """FC2 的身份是商品号那串数字，前缀写法盘里有好几种。"""
+        self._asset(97, "FC2-PPV-4927200", "FC2-4927200-CD1.mp4")
+        self._asset(98, "FC2-PPV-4927200", "fc4927200.mp4")
+        self.write_metadata_rows([{"item_key": "FC2-PPV-4927200:release_date",
+                                   "field": "release_date", "current": "",
+                                   "candidates": ["2024-03-01"], "code": "FC2-PPV-4927200"}])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=97").fetchone()[0],
+                "2024-03-01")
+        finally:
+            con.close()
+
+    def test_a_promo_clip_in_the_same_group_does_not_stop_the_whole_code(self):
+        """盗版包塞进来的推广片读不出任何番号，它证明不了这组是别的片。"""
+        self._asset(99, "259LUXU-902", "259LUXU-902.mp4")
+        self._asset(100, "259LUXU-902", "免费手机看片.avi")
+        self.write_metadata_rows([{"item_key": "259LUXU-902:release_date",
+                                   "field": "release_date", "current": "",
+                                   "candidates": ["2018-05-02"], "code": "259LUXU-902"}])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT release_date FROM asset WHERE id=99").fetchone()[0],
+                "2018-05-02")
+        finally:
+            con.close()
+
+    def test_another_release_code_in_the_group_still_goes_to_a_person(self):
+        """组里混进的是另一部片时那条文件名读得出来，身份就不成立了。"""
+        self._asset(101, "259LUXU-902", "259LUXU-902.mp4")
+        self._asset(102, "259LUXU-902", "ABW-358.mp4")
+        self.write_metadata_rows([{"item_key": "259LUXU-902:release_date",
+                                   "field": "release_date", "current": "",
+                                   "candidates": ["2018-05-02"], "code": "259LUXU-902"}])
+        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self.queue_keys("metadata_fields"), ["259LUXU-902:release_date"])
+
     def _tag_row(self, item_key, code, genres, *, current=""):
         """一条标签候选。`value` 是投影后的标签，`unmapped_genres` 是没有去向的原文。"""
         tags, unmapped = map_genres(genres)
