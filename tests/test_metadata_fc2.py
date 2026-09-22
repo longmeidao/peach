@@ -4,8 +4,8 @@ import unittest
 
 from peach.metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_SOURCE, SOURCE, STUDIO, archive_link,
                                 archive_search_url, article_url, canonical_code, mirror_url,
-                                parse_archive, parse_article, parse_mirror, runtime_minutes,
-                                video_id)
+                                parse_archive, parse_article, parse_mirror, parse_search,
+                                runtime_minutes, video_id)
 
 COVER = "https://storage92000.contents.fc2.com/file/261/26076760/1711813737.76.jpg"
 TITLE = "みお(19)可愛い巨乳JDの初アナル貫通動画"
@@ -43,16 +43,24 @@ ARCHIVE_TITLE = "Gカップ・脅威 マジ凄いです！脅威のパイパーG
 ARCHIVE_PICTURES = "https://img.javstore.net/images/2023/12/26/"
 
 
-def search_page(video="4137487"):
-    """搜索结果。侧栏的本周热门与归档菜单用的是同一种地址形状，所以它们也在这一页里。"""
+def search_page(video="4137487", picture=True):
+    """搜索结果。侧栏的本周热门与归档菜单用的是同一种地址形状，所以它们也在这一页里。
+
+    第二条那部没有图，只有标题链接——站上实测一半的结果是这样（`1863914`、`2110084`）。
+    """
+    heading = f"FC2-PPV-{video} {ARCHIVE_TITLE}"
+    thumb = (f'<img src="{ARCHIVE_PICTURES}{video}ps.jpg" alt="{heading}" loading="lazy">'
+             if picture else "")
     return (
         '<ul><li><a href="/1000-featured-articles-cn.html">Featured</a></li>'
         '<li><a href="/4-av-censored-cn.html">AV Censored</a></li></ul>'
-        '<div class="box_list">'
-        f'<a href="/926949-FC2-PPV-{video}-Gカップ・脅威-マジ凄いです！脅威のパイパーGカップグラマラス!-pn.html">'
-        f'<img src="{ARCHIVE_PICTURES}{video}ps.jpg" /></a>'
-        '<a href="/735702-fc2-ppv-1863914-10代美少女、圧倒的透明感のしほちゃん。-pn.html">另一部</a>'
-        "</div>"
+        '<div class="news_1n"><ul><li>'
+        f'<a href="/926949-FC2-PPV-{video}-Gカップ・脅威-マジ凄いです！脅威のパイパーGカップグラマラス!-pn.html" '
+        f'title="{heading}">{thumb}</a>'
+        '</li><li>'
+        '<a href="/735702-fc2-ppv-1863914-10代美少女、圧倒的透明感のしほちゃん。-pn.html" '
+        'title="FC2 PPV 1863914 10代美少女、圧倒的透明感のしほちゃん。">另一部</a>'
+        "</li></ul></div>"
     )
 
 
@@ -220,7 +228,25 @@ class JavArchiveTests(unittest.TestCase):
         self.assertIsNone(parse_archive("<div class='news'></div>", "FC2-PPV-4137487"))
         self.assertIsNone(parse_archive(archive_page(), "ORETD-615"))
 
+    def test_a_result_that_carries_a_picture_needs_no_second_request(self):
+        found = parse_search(search_page(), "FC2-PPV-4137487")
+        self.assertEqual(found["title"], ARCHIVE_TITLE)
+        self.assertEqual(found["source_url"], "https://javarchive.com" + ARCHIVE_LINK)
+        # `pl` 是按命名规律推出来的，排在这一页确实给了的 `ps` 前面。
+        self.assertEqual(found["cover_urls"], [ARCHIVE_PICTURES + "4137487pl.jpg",
+                                               ARCHIVE_PICTURES + "4137487ps.jpg"])
+        self.assertEqual(found["cover_url"], found["cover_urls"][0])
+
+    def test_a_result_without_a_picture_falls_back_to_the_work_page(self):
+        # 站上实测一半的结果只有标题链接（`1863914`、`2110084`），那几部照旧要取作品页。
+        self.assertIsNone(parse_search(search_page(picture=False), "FC2-PPV-4137487"))
+        self.assertIsNone(parse_search(search_page(), "FC2-PPV-1863914"))
+        self.assertIsNone(parse_search(search_page(video="41374870"), "FC2-PPV-4137487"))
+        self.assertIsNone(parse_search(search_page(), "ORETD-615"))
+
     def test_the_third_page_hands_back_the_same_shape_as_the_first_two(self):
+        self.assertEqual(sorted(parse_search(search_page(), "FC2-PPV-4137487")),
+                         sorted(parse_archive(archive_page(), "FC2-PPV-4137487")))
         self.assertEqual(sorted(parse_archive(archive_page(), "FC2-PPV-4137487")),
                          sorted(parse_mirror(mirror_page(), "FC2-PPV-3189161")))
         self.assertEqual(ARCHIVE_SOURCE, "javarchive")

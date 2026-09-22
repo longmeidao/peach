@@ -64,6 +64,11 @@ _ARCHIVE_LINK = re.compile(r'href="(/\d+-[^"]+\.html)"')
 #: `_s.jpg` 那种是把多帧拼成的长条预览，不是封面，按后缀整条排除。
 _ARCHIVE_PICTURE = re.compile(
     r'src="(https?://img\d*\.javstore\.net/images/[\d/]+/(\d{5,})(pl|ps)\.(?:jpe?g|png))"', re.I)
+#: 搜索结果的一条：`<a href=… title="<完整标题>"><img src="…ps.jpg" …></a>`。`title` 和
+#: `alt` 里是带空格的原标题，地址里那份把空格换成了连字符，所以标题只认属性不认地址。
+_ARCHIVE_RESULT = re.compile(
+    r'<a\s+href="(/\d+-[^"]+\.html)"\s+title="([^"]*)"\s*>\s*'
+    r'<img\s+src="(https?://img\d*\.javstore\.net/images/[\d/]+/(\d{5,})(?:pl|ps)\.(?:jpe?g|png))"', re.I)
 
 
 def video_id(code: str) -> str:
@@ -184,6 +189,53 @@ def archive_link(html: str | bytes, code: str) -> str:
     return ""
 
 
+def parse_search(html: str | bytes, code: str) -> dict | None:
+    """搜索结果那一条本身够不够用；不够回 None，由调用方去取作品页。
+
+    带图的那条结果里已经有作品页要给的全部两样：`title` 属性是带空格的原标题，`img`
+    指着 javstore 上的 `ps` 小图，把文件名换成 `pl` 就是作品页上那张大图（实测
+    `4137487` 255×294 → 709×399、`835964` 510×690 → 1417×825）。省下的是一次同主机
+    请求——JavArchive 的间隔要等，作品页又是 150 KB。
+
+    一半的结果不带图（实测 4 部里 `1863914`、`2110084` 两部只有标题链接），那几部照旧
+    去取作品页。`cover_urls` 把 `pl` 排在 `ps` 前面：`pl` 是按命名规律推出来的，没有
+    在这一页上被证实过，取不到时后面那个是这一页确实给了的。
+    """
+    wanted = video_id(code)
+    if not wanted:
+        return None
+    text = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
+    boundary = re.compile(rf"(?<!\d){re.escape(wanted)}(?!\d)")
+    for href, title, picture, found in _ARCHIVE_RESULT.findall(text):
+        if found != wanted or not boundary.search(title):
+            continue
+        large = re.sub(r"ps(\.(?:jpe?g|png))$", r"pl\1", picture, flags=re.I)
+        covers = list(dict.fromkeys([large, picture]))
+        return {
+            "id": canonical_code(wanted),
+            "content_id": wanted,
+            "source_url": urllib.parse.urljoin(ARCHIVE_ROOT, href),
+            "title": _strip_code(title, wanted),
+            "description": "",
+            "release_date": "",
+            "runtime": None,
+            "actresses": [],
+            "maker": STUDIO,
+            "label": "",
+            "seller_url": "",
+            "genres": [],
+            "cover_url": covers[0],
+            "cover_urls": covers,
+        }
+    return None
+
+
+def _strip_code(title: str, wanted: str) -> str:
+    """标题开头那截番号剥掉：站上 `FC2-PPV-4137487`、`FC2PPV 1863914` 两种写法都有。"""
+    return re.sub(rf"^\s*FC2[-_. ]?(?:PPV)?[-_. ]?{re.escape(wanted)}\s*[-—:：]?\s*", "",
+                  str(title or ""), flags=re.I)
+
+
 def parse_archive(html: str | bytes, code: str) -> dict | None:
     """JavArchive 的作品页 → 同一份 payload 形状；对不上番号回 None。
 
@@ -212,7 +264,7 @@ def parse_archive(html: str | bytes, code: str) -> dict | None:
         "id": canonical_code(wanted),
         "content_id": wanted,
         "source_url": urllib.parse.urljoin(ARCHIVE_ROOT, link["href"]) if link else "",
-        "title": re.sub(rf"^\s*FC2[-_. ]?(?:PPV)?[-_. ]?{re.escape(wanted)}\s*[-—:：]?\s*", "", title, flags=re.I),
+        "title": _strip_code(title, wanted),
         "description": "",
         "release_date": "",
         "runtime": None,

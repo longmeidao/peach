@@ -52,8 +52,11 @@ ACTION_BUDGETS = {'querying_metadata': 90.0, 'fetching_cover': 240.0}
 #: 来源明确答复「没有」之后多久不再问。「没有」不是永久的：来源会补录，片子可能后来上架。
 MISS_TTL_SECONDS = 7 * 24 * 3600
 
-#: 主机间隔。默认 2 秒；javdb 按出口 IP 计配额，5 秒一页是它的来源下限（docs/SOURCING.md）。
-SOURCE_INTERVALS = {'javdb.com': 5.0, 'jdbstatic.com': 5.0}
+#: 主机间隔。默认 2 秒；javdb 按出口 IP 计配额，这一档由用户定（2026-09-22 定为 3 秒，
+#: 每分钟 20 页）。参照面：每分钟 40～50 页实测会招来 3～7 天的封 IP，`harvest_directory_links`
+#: 那条批量线仍按 5 秒跑。撞上 403 不再是盲等 24 小时——`scraping_access.FIRST_BLOCKED_PAUSE`
+#: 先停 15 分钟，连着再撞才翻倍，所以这一档收紧的代价是有限且可观测的（docs/SOURCING.md）。
+SOURCE_INTERVALS = {'javdb.com': 3.0, 'jdbstatic.com': 3.0}
 SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb',
                  'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
                  '1pondo': '一本道', 'local_nfo': '本地 NFO'}
@@ -219,16 +222,19 @@ class LibraryMetadataProvider:
         return cache[code]
 
     def _fc2_archive(self, code, *, deadline=None):
-        """JavArchive 那一档要先搜再取：作品地址里夹着站内文章号和标题，拼不出来。
+        """JavArchive 那一档要先搜：作品地址里夹着站内文章号和标题，拼不出来。
 
-        搜索页约 130 KB，比作品页还大一点；这一档只在前两处都说没有时才走到，所以一个
-        番号最多多花一次搜索。搜不着就是没有，不当抓取失败。
+        搜索结果带图的那条自己就够（`parse_search`），作品页那一跳省掉——同主机要等一次
+        间隔，页面又是 150 KB。不带图的才接着取作品页；搜不着就是没有，不当抓取失败。
         """
         from .jav_cover_fetch import _fetch
         from .metadata_fc2 import (ARCHIVE_ROOT, ARCHIVE_SOURCE, archive_link,
-                                   archive_search_url, parse_archive)
+                                   archive_search_url, parse_archive, parse_search)
         results = _fetch(self.transport, archive_search_url(code), referer=ARCHIVE_ROOT + '/',
                          limit=FC2_PAGE_LIMIT, deadline=deadline)
+        payload = parse_search(results, code)
+        if payload:
+            return [(ARCHIVE_SOURCE, payload)]
         link = archive_link(results, code)
         if not link:
             raise NotFound(f'{SOURCE_LABELS[ARCHIVE_SOURCE]} 上没有这个商品')
