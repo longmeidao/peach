@@ -152,9 +152,12 @@ def parse_notification(body) -> list[str]:
     return found
 
 
-#: CloudDrive2「通知设置」那个「配置内容」框里的整段 TOML。形状照它自带的默认模板，
+#: CloudDrive2「设置 → Webhooks」里一条 webhook 的整段 TOML。形状照它自带的默认模板，
 #: 三处按本机填：地址、端点路径、共享密钥。`{base_url}`、`{action}` 这些花括号是
 #: CloudDrive2 自己的占位符，Python 这边不碰，所以模板用 `%s` 代入。
+#:
+#: 两个 watcher 在它那边是同一个结构（`WebHookConfigItem`，5 个字段），五个字段一个
+#: 都不能省：关掉的那个只写 `enabled = false` 的话，整份配置在它的列表里标「无效」。
 _CLOUDDRIVE_CONFIG = """[global_params]
 base_url = "%s"
 enabled = true
@@ -184,7 +187,12 @@ body = '''
 %s = "%s"
 
 [mount_point_watcher]
+url = "{base_url}%s"
+method = "POST"
 enabled = false
+body = '{"data": []}'
+
+[mount_point_watcher.headers]
 """
 
 
@@ -201,7 +209,7 @@ def clouddrive_config(origin: str, secret: str) -> str:
     origin, secret = str(origin or "").strip().rstrip("/"), str(secret or "").strip()
     if not origin or not secret:
         return ""
-    return _CLOUDDRIVE_CONFIG % (origin, WEBHOOK_PATH, SECRET_HEADER, secret)
+    return _CLOUDDRIVE_CONFIG % (origin, WEBHOOK_PATH, SECRET_HEADER, secret, WEBHOOK_PATH)
 
 
 def normalise_prefix(raw: str) -> str:

@@ -32950,7 +32950,7 @@ function $D({ initial: e, receipt: t }) {
 					className: "flex flex-col gap-3",
 					children: [
 						/* @__PURE__ */ (0, w.jsx)(RS, { children: "CloudDrive2 配置内容" }),
-						/* @__PURE__ */ (0, w.jsx)(IS, { children: "在 CloudDrive2 的「系统设置 → 通知设置」里，复制这段配置贴进「配置内容」再保存。 地址、端点和密钥都已经填好了；换过密钥之后要重新贴一次。" }),
+						/* @__PURE__ */ (0, w.jsx)(IS, { children: "在 CloudDrive2 的「设置 → Webhooks」里添加一条，把这段配置贴进去保存。 地址、端点和密钥都已经填好了；换过密钥之后要重新贴一次。 Windows 桌面版的编辑框会把换行存坏，列表里标「无效」：那就把这段存成 .toml 文件，放进 %LOCALAPPDATA%\\CloudDrive.WinUI\\webhooks\\ 目录。" }),
 						d.config_toml ? /* @__PURE__ */ (0, w.jsxs)(w.Fragment, { children: [/* @__PURE__ */ (0, w.jsx)("div", { children: /* @__PURE__ */ (0, w.jsx)(X, {
 							size: "small",
 							onClick: () => {
