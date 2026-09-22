@@ -450,6 +450,22 @@ _DMM_CID = re.compile(
 #: 番号与 content_id 各自末尾那段数字。content_id 可能带 DVD 版尾缀（`49ha102r`）。
 _CODE_NUMBER = re.compile(r"(\d+)\D*$")
 _CID_NUMBER = re.compile(r"(\d+)[a-z]*$")
+#: 图床文件名里的作品号：五到七位的独立数字段。`pl1654160016.07k.gif` 那种十位的是
+#: 上传时间戳，不算作品号。
+_FILE_NUMBER = re.compile(r"(?<!\d)\d{5,7}(?!\d)")
+
+
+def _fc2_names_another_work(code: str, url: str) -> bool:
+    """FC2 番号的图，文件名写着别的作品号。
+
+    JavArchive 的图床 img.javstore.net 按作品号起文件名（`FC2PPV-2543627.gif`、
+    `1083921pl.jpg`）。页面上挂着相关作品时，取回的会是另一部的图：`FC2-PPV-1512205`
+    与 `FC2-PPV-1931440` 都拿到了 `2184960PL.gif`，本机同样对不上的共 10 张。
+    """
+    key = normalise_code_key(code)
+    wanted = _CODE_NUMBER.search(key) if key.startswith("FC2") else None
+    numbers = {int(one) for one in _FILE_NUMBER.findall(urlparse(url or "").path.rsplit("/", 1)[-1])}
+    return bool(wanted and numbers) and int(wanted.group(1)) not in numbers
 
 
 def is_cross_product_cover(code: str, url: str) -> bool:
@@ -464,6 +480,8 @@ def is_cross_product_cover(code: str, url: str) -> bool:
     再也没有机会被重探。判据落在 URL 上而不是抓取路径上，正是因为下一个引入
     错图的来源不会用同一个函数。
     """
+    if _fc2_names_another_work(code, url):
+        return True
     stem = code_letter_stem(code)
     match = _DMM_CID.search(urlparse(url or "").path)
     if not stem or match is None:

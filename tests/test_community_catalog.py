@@ -229,6 +229,23 @@ class VerifiedCoverTests(unittest.TestCase):
         with self.assertRaises(NotFound):
             verified_cover(serve({}), "ORETD-615", [("javdb", {"cover_urls": []})])
 
+    def test_an_animated_picture_or_another_works_picture_is_never_the_cover(self):
+        """JavArchive 的图床给 FC2 存 GIF 预览动画，页面上还挂着别的作品的图。"""
+        own_gif = "https://img.javstore.net/images/2022/01/03/FC2PPV-2543627.gif"
+        other = "https://img.javstore.net/images/2024/01/15/2184960PL.jpg"
+        frames = [Image.open(io.BytesIO(gradient(500, 282, rising))) for rising in (True, False)]
+        buffer = io.BytesIO()
+        frames[0].save(buffer, format="GIF", save_all=True, append_images=frames[1:])
+        works = [("javarchive", {"cover_urls": [own_gif, other]})]
+        pages = {own_gif: buffer.getvalue(), other: gradient(800, 450)}
+        with self.assertRaisesRegex(NotFound, "动图或太小"):
+            verified_cover(serve(pages), "FC2-PPV-2543627", works)
+        still = "https://img.javstore.net/images/2022/01/03/fc2ppv-2543627.jpg"
+        pages[still] = gradient(800, 450)
+        works = [("javarchive", {"cover_urls": [own_gif, other, still]})]
+        candidate, _size, _data, _origins = verified_cover(serve(pages), "FC2-PPV-2543627", works)
+        self.assertEqual(candidate.url, still)
+
 
 class SourceChoiceTests(unittest.TestCase):
     def test_an_fc2_product_number_only_goes_to_javdb(self):

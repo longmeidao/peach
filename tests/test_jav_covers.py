@@ -433,6 +433,19 @@ class CrossProductCoverTests(unittest.TestCase):
                 self.assertFalse(covers.is_cross_product_cover(
                     code, f"https://pics.dmm.co.jp/mono/movie/{cid}/{cid}pl.jpg"))
 
+    def test_an_fc2_image_named_after_another_work_is_cross_product(self):
+        # JavArchive 图床的文件名就是作品号；十位的 `1654160016` 是上传时间戳，说明不了归属。
+        for url in ("https://img.javstore.net/images/2024/01/15/2184960PL.gif",
+                    "http://img2.javstore.net/images/2026/04/27/4536228pl.jpg"):
+            with self.subTest(url=url):
+                self.assertTrue(covers.is_cross_product_cover("FC2-PPV-1512205", url))
+        for code, url in (
+                ("FC2-PPV-2653914", "https://img.javstore.net/images/2022/02/14/FC2PPV-2653914-1-1.gif"),
+                ("FC2-PPV-1083921", "https://img.javstore.net/images/2023/12/24/1083921pl.jpg"),
+                ("FC2-PPV-2935152", "https://img.javstore.net/images/2022/07/31/pl1654160016.07k.gif")):
+            with self.subTest(url=url):
+                self.assertFalse(covers.is_cross_product_cover(code, url))
+
     def test_a_carried_wrong_cover_loses_to_the_right_one(self):
         wrong = "https://pics.dmm.co.jp/mono/movie/adult/118sng021/118sng021pl.jpg"
         right = "https://image.mgstage.com/images/luxutv/259luxu/1475/pb_e_259luxu-1475.jpg"
