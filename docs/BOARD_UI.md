@@ -65,13 +65,13 @@ Peach 使用现有 313ms 玻璃弹簧（stiffness 1700、damping 46、mass 1）�
 | `/templates/ai-profile` | 身份概要与指标卡；不引入与文件整理无关的数据面板 |
 
 模板已逐页读取实时 DOM。
-Pro 模板只作为公开外观和信息层级参考。实现使用现有 Preact、共享 HTML 控件及 Board token，无新增依赖。
+Pro 模板只作为公开外观和信息层级参考。实现使用逐字复制的 BoardUI 源码、共享 HTML 控件及 Board token，无新增依赖。
 
 作用范围是 `/review`、`/quality-goals`、`/duplicates`、`/junk-files`、`/trash`。
 数据管理入口保持卡片导航。复核分类在桌面纵向排列，窄屏自动换行；分组、候选、批量动作和分页沿用既有实现。
 重复组提供文件预览及尺寸、时长、位置比较；高清版、垃圾文件和回收站共用预览卡片的版式。
 
-Peach 使用 Board 的视觉与组件语义，保留 Vite、Preact、FastAPI 和现有媒体行为。Board 的公开实现依赖 React Aria；组件名相同不等于 Preact 能直接替换。适配由共享 HTML 控件、原生键盘行为与 Preact 数值控件承担，没有新增 React 运行时。
+Peach 使用 Board 的视觉与组件语义，保留 Vite、FastAPI 和现有媒体行为。Board 的公开实现依赖 React Aria，按 ADR-0031 以 React 子树逐字复制进 `frontend/src/react/boardui/`；尚未迁移的遗留页由共享 HTML 控件与原生键盘行为承担适配。
 
 ## 控件对应
 
@@ -425,7 +425,7 @@ DatePicker 的内面板、候选草稿及取消／应用结构，候选不包含
 
 筛选栏通过「换一批」切到随机并更新种子；默认随机仍在浏览设置中选择。亮色玻璃用淡蓝灰与暖色光斑形成色差，光斑半径为画布的 32%／38%。媒体库选择弹层复用玻璃材质与现有菜单开合。窄屏设置导航与正文之间保留 16px 间距；这些样式的浏览器视觉验收未取得。
 
-内部正文导航复用 `LinkButton`，右箭头沿用本地共享图标；无底色、无描边、4px 图文间距、20px 图标、hover 下划线。来源为 https://www.boardui.com/components/link-button 的公开注册表 https://www.boardui.com/r/link-button.json ，2026-09-11 取得，SHA-256 `05eb37b3cf1334c153e0702de05fe4989e4359c9c74d5ba55cc552a58e4629bd`。保留 Peach 的 Preact 与蓝色令牌，不新增依赖。外链保持外链图标和蓝色文字；Note 统一带淡背景、图文垂直居中。封面采集反馈列出本机与候选尺寸或实际失败原因，不以网络推测代替来源结果。
+内部正文导航复用 `LinkButton`，右箭头沿用本地共享图标；无底色、无描边、4px 图文间距、20px 图标、hover 下划线。来源为 https://www.boardui.com/components/link-button 的公开注册表 https://www.boardui.com/r/link-button.json ，2026-09-11 取得，SHA-256 `05eb37b3cf1334c153e0702de05fe4989e4359c9c74d5ba55cc552a58e4629bd`。保留 Peach 的蓝色令牌，不新增依赖。外链保持外链图标和蓝色文字；Note 统一带淡背景、图文垂直居中。封面采集反馈列出本机与候选尺寸或实际失败原因，不以网络推测代替来源结果。
 
 搜索玻璃使用原生 `blur(22px)`，保留底色、光晕与描边。主题扩散快照期间，各玻璃表面以当前主题实底承接光晕，结束或跳过动画后恢复实时背景采样；媒体库顶层弹窗使用同一规则。离开页面后清理已移除面板的 SVG 滤镜和尺寸监听。浏览器视觉验收未取得。
 

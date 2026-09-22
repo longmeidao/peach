@@ -85,7 +85,7 @@ Media stays in its original folders by default; organizing is an explicit action
 
 Using Peach: [Windows testing](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sources](docs/SOURCING.md) · [Project status](docs/STATUS.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-Developing Peach: [Development agreement](AGENTS.md) · [Testing and dependencies](docs/TESTING.md) · [Frontend](docs/FRONTEND.md) · [Product backlog](docs/PRODUCT_BACKLOG.md) · [Handover notes](docs/HANDOFF.md) · [Reuse list](docs/REUSE.md) · [README maintenance](docs/README_MAINTENANCE.md) · [Architecture decisions](docs/adr/)
+Developing Peach: [Development agreement](AGENTS.md) · [Architecture](docs/ARCHITECTURE.md) · [Testing and dependencies](docs/TESTING.md) · [Frontend](docs/FRONTEND.md) · [Product backlog](docs/PRODUCT_BACKLOG.md) · [Handover notes](docs/HANDOFF.md) · [Reuse list](docs/REUSE.md) · [README maintenance](docs/README_MAINTENANCE.md) · [Architecture decisions](docs/adr/)
 
 Run development checks through `& .\scripts\test.ps1` on Windows or `./scripts/test.sh` on macOS/Linux. File issues with the version, the steps, and the expected and actual results; never attach a real ledger, media, cookies or private keys. Report security problems through the [security policy](SECURITY.md).
 
