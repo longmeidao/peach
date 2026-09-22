@@ -5,8 +5,12 @@
 写真封面，而她的经纪事务所那张正脸原图排第六；横宫七海更直接——她的头像是作品封面
 兜底装上的，gfriends 里那 9 张人像因为「文件已存在」从来没被看过一眼。
 
-所以这里的立场是：自动挑一张先用着，人随时能换成别的。可换的来源有三种——图库里
-同名的其他候选、本机的图片文件、一个 https 地址。
+所以这里的立场是：自动挑一张先用着，人随时能换成别的。可换的来源有四种——图库里
+同名的其他候选、这个人自己作品里的画面、本机的图片文件、一个 https 地址。
+
+作品那一路和其余三路的形状不一样：封面是横版封套，九宫格是十六比九的画面，里面
+常常还不止一个人。这种图整张装进圆框只会得到一块背景，所以它必须先框出一块再装
+（`crop` 那个参数）；人像候选本来就是方图，那三路照旧一点就换。
 
 **换过的图都留着。** 每一张取到的图都按内容哈希进候选缓存，换回去只是再装一次，
 不重新下载；被顶下来的那张也在里面，不会因为换了一次就永远找不回来。
@@ -17,10 +21,12 @@ import hashlib
 import json
 import sqlite3
 import urllib.parse
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import gfriends, images
+from .catalog_rules import normalise_code_key
 from .avatar_provider import (
     AvatarCandidateCache, InspectedAvatar, POLICY_VERSION, inspect_avatar,
     install_entity_avatar, provenance_now,
@@ -50,7 +56,13 @@ SOURCE_NAMES = {
     "babepedia": "Babepedia",
     "kmib": "官网",
     "picker": "自己挑的",
+    "asset": "作品画面",
 }
+#: 作品那一组一次最多列这么多部。这一组是拿来找一张能框出脸的画面的，不是作品列表；
+#: 一个人的作品动辄上百部，全列出来就把图库候选挤到看不见的地方去了。
+MAX_ASSET_CHOICES = 12
+#: 九宫格的格数。底图可以在这九格加封面之间换，框选在换底图之后重来。
+SHEET_CELLS = 9
 
 
 class PickerError(RuntimeError):
@@ -70,12 +82,17 @@ class Choice:
     #: 这一格是按哪个名字从图库里找到的。只有一个名字命中时留空。
     found_by: str = ""
     current: bool = False
+    #: 这一格必须先框一块再装。作品画面是横图，整张装进圆框只剩一块背景。
+    crop: bool = False
+    #: 框选时可以换的底图，按 `ref` 给。空表示这一格只有它自己那一张。
+    bases: tuple[str, ...] = ()
 
     def as_dict(self) -> dict:
         return {"ref": self.ref, "source": self.source, "label": self.label,
                 "width": self.width, "height": self.height,
                 "detail": self.detail, "found_by": self.found_by,
-                "current": self.current}
+                "current": self.current, "crop": self.crop,
+                "bases": list(self.bases)}
 
 
 def name_chain(connection: sqlite3.Connection, entity_id: int) -> list[str]:
@@ -150,8 +167,45 @@ def _history(providers_root: Path, entity_id: int, current: str) -> list[Choice]
     return out
 
 
+def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
+                  entity_id: int) -> list[Choice]:
+    """这个人的作品里能拿来框头像的那些画面。
+
+    一部作品只占一格，格上那张是它的封面（没有就是九宫格正中那一格）；点开之后
+    底图可以在封面和九宫格九格之间换。列的是作品而不是每一张图：一个人几十部作品
+    乘以十张图，摆出来是几百个格子，而人要找的是「哪一部里有一张正脸」。
+
+    没有封面也没铺过九宫格的作品不列：那种格子点开是一片空白。
+    """
+    rows = connection.execute(
+        "SELECT a.id,a.code,COALESCE(NULLIF(a.catalog_title,''),a.name),a.snapshot_path "
+        "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+        "WHERE ae.entity_id=? AND a.medium='video' "
+        "ORDER BY a.size DESC LIMIT ?",
+        (int(entity_id), MAX_ASSET_CHOICES * 3),
+    ).fetchall()
+    out: list[Choice] = []
+    for asset_id, code, title, snapshot in rows:
+        if len(out) >= MAX_ASSET_CHOICES:
+            break
+        key = normalise_code_key(code)
+        has_cover = bool(key) and (Path(cover_root) / f"{key}.jpg").is_file()
+        has_sheet = bool(snapshot)
+        if not has_cover and not has_sheet:
+            continue
+        bases = ([f"asset:{int(asset_id)}:cover"] if has_cover else [])
+        if has_sheet:
+            bases += [f"asset:{int(asset_id)}:cell{cell}" for cell in range(SHEET_CELLS)]
+        out.append(Choice(
+            ref=bases[0], source="asset",
+            label=str(code or title or f"作品 {asset_id}"),
+            detail=str(title or ""), crop=True, bases=tuple(bases)))
+    return out
+
+
 def choices(connection: sqlite3.Connection, providers_root: Path,
-            avatar_root: Path, kind: str, entity_id: int) -> dict:
+            avatar_root: Path, kind: str, entity_id: int,
+            cover_root: Path | None = None) -> dict:
     """页面要展示的一切：图库同名候选、取过的历史、当前装着的是哪一张。
 
     索引只读本地缓存。联网补索引是批处理的事——为一次点击同步拉 6 MB，页面会卡在
@@ -189,11 +243,16 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
     # 在用的那张排第一。它是这一屏唯一的参照物——别的候选好不好，是跟它比出来的；
     # 排在第十二个就得先把它找出来才能开始比。排序是稳定的，其余顺序不动。
     items.sort(key=lambda choice: not choice.current)
+    # 作品画面接在人像候选后面，而且不跟它们抢 `MAX_CHOICES` 那个名额：这一组要回答
+    # 的是「图库和历史里都没有合用的时候去哪找」，被截在名额外面就等于这条路不存在。
+    listed = items[:MAX_CHOICES]
+    if cover_root is not None:
+        listed += asset_artwork(connection, cover_root, entity_id)
     age = gfriends.index_age(index_dir)
     return {
         "kind": kind, "entity_id": int(entity_id),
         "names": names, "matched_names": list(match.names),
-        "choices": [choice.as_dict() for choice in items[:MAX_CHOICES]],
+        "choices": [choice.as_dict() for choice in listed],
         "index_age_hours": round(age / 3600, 1) if age is not None else None,
         "index_stale": age is None or age > gfriends.INDEX_MAX_AGE_SECONDS,
     }
@@ -260,9 +319,67 @@ def accept_image(body: bytes) -> InspectedAvatar:
     return inspected
 
 
+@dataclass(frozen=True)
+class ArtworkSource:
+    """作品画面从哪来。端点把这两样拼好递进来，这一层不认识预览服务。"""
+
+    cover_root: Path
+    #: `(asset_id, cell) -> 那一格的路径或 None`。九宫格没铺过时由它现抽一张。
+    frame: Callable[[int, int], Path | None]
+
+
+def _asset_image(ref: str, connection: sqlite3.Connection, entity_id: int,
+                 artwork: ArtworkSource | None) -> tuple[bytes, dict]:
+    """`asset:<id>:cover` / `asset:<id>:cell<n>` → 那张图的字节和来源记录。
+
+    作品必须真的挂在这个人身上才给。页面只会递自己刚列出来的那些，但这一层不能
+    依赖那一点：`asset:1:cover` 是个人都拼得出来，凭它就能把任意一部作品的封面
+    读出来，而资料页本来看不到那部作品。
+    """
+    if artwork is None:
+        raise PickerError("这一次取不到作品画面")
+    _, _, rest = ref.partition(":")
+    raw_id, _, what = rest.partition(":")
+    try:
+        asset_id = int(raw_id)
+    except ValueError as error:
+        raise PickerError("认不出这个候选") from error
+    row = connection.execute(
+        "SELECT a.code FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+        "WHERE ae.entity_id=? AND ae.asset_id=?",
+        (int(entity_id), asset_id)).fetchone()
+    if row is None:
+        raise PickerError("这部作品不在这个人名下")
+    if what == "cover":
+        key = normalise_code_key(row[0])
+        path = (Path(artwork.cover_root) / f"{key}.jpg") if key else None
+        label = "封面"
+    elif what.startswith("cell"):
+        try:
+            cell = int(what[len("cell"):])
+        except ValueError as error:
+            raise PickerError("认不出这个候选") from error
+        if not 0 <= cell < SHEET_CELLS:
+            raise PickerError("认不出这个候选")
+        path = artwork.frame(asset_id, cell)
+        label = f"第 {cell + 1} 格"
+    else:
+        raise PickerError("认不出这个候选")
+    if path is None or not Path(path).is_file():
+        raise PickerError(f"这部作品的{label}还没有落在本机")
+    try:
+        body = Path(path).read_bytes()
+    except OSError as error:
+        raise PickerError(f"读不出这部作品的{label}") from error
+    return body, {"source": "avatar picker", "provider": "asset",
+                  "external_id": f"{asset_id}:{what}",
+                  "asset_id": asset_id, "asset_code": str(row[0] or "")}
+
+
 def resolve(ref: str, connection: sqlite3.Connection, providers_root: Path,
             entity_id: int,
-            transport: HttpTransport | None) -> tuple[bytes, dict]:
+            transport: HttpTransport | None,
+            artwork: ArtworkSource | None = None) -> tuple[bytes, dict]:
     """把页面回递的 `ref` 换成图片字节和一份来源记录。
 
     `ref` 只认这里自己刚枚举出来的那些：图库候选要在索引里真的存在，历史候选要在
@@ -273,6 +390,8 @@ def resolve(ref: str, connection: sqlite3.Connection, providers_root: Path,
         body = _cached_object(providers_root, digest)
         return body, {"source": "avatar picker", "provider": "history",
                       "external_id": digest[:12]}
+    if ref.startswith("asset:"):
+        return _asset_image(ref, connection, entity_id, artwork)
     if not ref.startswith("gfriends:"):
         raise PickerError("认不出这个候选")
     category, _, filename = ref.split(":", 1)[1].partition("/")
@@ -293,6 +412,27 @@ def resolve(ref: str, connection: sqlite3.Connection, providers_root: Path,
                   "gfriends_category": category, "gfriends_file": filename,
                   "matched_name": matched, "name_source": "picker",
                   "external_id": f"{category}/{filename}", "upstream_url": url}
+
+
+def crop(body: bytes, box: object) -> tuple[bytes, dict]:
+    """按源图像素框切出头像那一块，连同一份记着框的来源补充。
+
+    原图不动：切出来的是新字节，被切的那张（作品封面、九宫格的一格）还在原处。
+    装上去之后这份新字节自己进候选缓存，所以同一个框换回来不必再切一次。
+    """
+    size = images.measure_image_size(body)
+    if size is None:
+        raise PickerError("这不是一张能识别的图片")
+    edges = images.clamp_box(box, size[0], size[1])
+    if edges is None:
+        raise PickerError("框选的区域不成立")
+    cropped = images.crop_to_box(
+        body, (edges["x0"], edges["y0"], edges["x1"], edges["y1"]))
+    if cropped is None:
+        raise PickerError("这一块裁不出来")
+    return cropped, {"source_kind": "user_cropped",
+                     "crop_box": [edges["x0"], edges["y0"], edges["x1"], edges["y1"]],
+                     "crop_source_px": [size[0], size[1]]}
 
 
 def install(providers_root: Path, avatar_root: Path, kind: str,

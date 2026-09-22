@@ -10,7 +10,7 @@ const AVATAR_CHOICE_IMAGE_URL = '/avatar-choice';
 
 export interface AvatarChoice {
   ref: string;
-  source: 'gfriends' | 'history';
+  source: 'gfriends' | 'history' | 'asset';
   label: string;
   width: number;
   height: number;
@@ -18,6 +18,10 @@ export interface AvatarChoice {
   /** 这一格是按哪个名字从图库里找到的。只有一个名字命中时是空串。 */
   found_by: string;
   current: boolean;
+  /** 这一格必须先框一块再装。作品画面是横图，整张装进圆框只剩一块背景。 */
+  crop: boolean;
+  /** 框选时可以换的底图，按 ref 给：封面加九宫格那九格。 */
+  bases: string[];
 }
 
 export interface AvatarChoices {
@@ -42,8 +46,14 @@ export const choiceImageUrl = (kind: string, id: number, ref: string) =>
 export const fetchAvatarChoices = (kind: string, id: number, signal?: AbortSignal) =>
   apiGet<AvatarChoices>(AVATAR_CHOICES_URL + query(kind, id), signal);
 
-/** 三条路交上去的东西不同，落点是同一个端点。 */
-export type AvatarSubmission = { ref: string } | { url: string } | { file: File };
+/** 框选出来的那一块，源图像素、右下开区间。后端按同一组整数裁。 */
+export interface AvatarCrop { x0: number; y0: number; x1: number; y1: number }
+
+/** 四条路交上去的东西不同，落点是同一个端点。`crop` 是其中三条共用的可选工序。 */
+export type AvatarSubmission =
+  | { ref: string; crop?: AvatarCrop }
+  | { url: string; crop?: AvatarCrop }
+  | { file: File };
 
 export async function sendAvatarPick(
   kind: string, id: number, submission: AvatarSubmission,
@@ -78,7 +88,17 @@ export function pickerNote(name: string, data: AvatarChoices | undefined): strin
 export const indexNotReady = (data: AvatarChoices | undefined): boolean =>
   !!data && data.index_stale && !data.choices.some((one) => one.source === 'gfriends');
 
-const SOURCE_LABELS: Record<string, string> = { gfriends: '图库', history: '用过的' };
+const SOURCE_LABELS: Record<string, string> = {
+  gfriends: '图库', history: '用过的', asset: '作品画面',
+};
+
+/** 底图那一排每一格的名字：封面一格，九宫格九格按位置数。 */
+export function baseLabel(ref: string): string {
+  const what = ref.split(':')[2] || '';
+  if (what === 'cover') return '封面';
+  const cell = Number(what.replace('cell', ''));
+  return Number.isFinite(cell) ? `第 ${cell + 1} 格` : what;
+}
 
 /** 一格的完整说明，进 `title`：哪儿来的、多大、按谁找到的。 */
 export const choiceDetail = (choice: AvatarChoice): string =>

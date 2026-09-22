@@ -9,11 +9,14 @@ JAV 的官方封套是「背面 | 书脊 | 正面」拼成的一整张横图，�
 正封整块摆进卡片。框里不另取固定形状的子区域，因为卡片的容器比例是页面的事，
 源图这一侧无从知道；在这里先按某个形状切一刀，只会把正封两侧各削掉一圈。
 
-三种取景方式，写在框的 `method` 里：
+四种取景方式，写在框的 `method` 里：
 
 - `fold`：Sobel 找到了书脊折痕那道竖直峭壁，正面从折痕右侧开始。
 - `ratio`：没找到折痕，按正封宽高比的先验从右缘量回去。
 - `none`：这张图不该裁。整图框原样返回，页面维持现有的封面取景。
+- `manual`：人在详情页自己框的。它压过上面三条，也不受算法版本号管辖——
+  框后面没有算法，改判据不构成重算它的理由。作废的唯一条件是封面换了张图
+  （`px` 对不上），那时框描述的是另一张图。
 
 折痕的判据是「切出来的正封形状对不对」，不是「折痕落在全宽的百分之几」：DVD 封套
 正面印刷面 135×190mm，宽高比 0.711；本机 637 张实测中位数 0.704、1% 分位 0.684、
@@ -43,6 +46,7 @@ import statistics
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
+from . import images
 from .catalog_rules import (
     is_jav_code,
     is_korean_mib_code,
@@ -86,6 +90,11 @@ PANEL_ASPECT = 0.704
 FOLD = "fold"
 RATIO = "ratio"
 NONE = "none"
+MANUAL = "manual"
+
+#: 手工框的来路，落在 sidecar 的 `source` 上。写死一个串是为了事后能一眼分清
+#: 「这张图的取景是算出来的还是人定的」：算出来的那三档没有 `source`。
+MANUAL_SOURCE = "user:crop"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
 ALGORITHM_VERSION = "poster-crop-v4"
@@ -253,6 +262,30 @@ def crop_record(code: str | None, width: int, height: int,
     return {"version": ALGORITHM_VERSION, "px": [width, height], "box": box}
 
 
+def manual_record(width: int, height: int, box: object) -> dict | None:
+    """人手框的那一块 → 可直接落盘的 sidecar；框不成立返回 None。
+
+    形状与算出来的那三档一模一样，只是 `method` 是 `manual` 且多一个 `source`。
+    同一份文件装得下两种来路，页面那一侧就不必分辨「读哪一个框」。
+
+    校验借 `images.clamp_box`：写 sidecar 的和读 sidecar 的必须认同一套形状，
+    `projection` 拒掉的框要是能写进去，页面会拿到一个永远读不出来的取景。
+    """
+    edges = images.clamp_box(box, width, height)
+    if edges is None:
+        return None
+    return {"version": ALGORITHM_VERSION, "px": [int(width), int(height)],
+            "box": {**edges, "method": MANUAL}, "source": MANUAL_SOURCE}
+
+
+def is_manual(record: dict | None) -> bool:
+    """这份 sidecar 里的框是人定的吗。"""
+    if not isinstance(record, dict):
+        return False
+    box = record.get("box")
+    return isinstance(box, dict) and box.get("method") == MANUAL
+
+
 def sidecar_path(image_path: Path | str) -> Path:
     return Path(image_path).with_suffix(SIDECAR_SUFFIX)
 
@@ -277,8 +310,12 @@ def is_current(record: dict | None, width: int, height: int) -> bool:
     尺寸也要对，是因为封面会被更大的那张原子替换（`jav_cover_fetch` 只升不降）。
     版本没变而图换了的话，框仍然是按旧尺寸算的，落在新图上是一块错位的区域——
     而错位在页面上和「这张图本来就该这么取景」看不出区别。
+
+    手工框只看尺寸：它后面没有算法，改判据不构成重算它的理由。
     """
-    if not isinstance(record, dict) or record.get("version") != ALGORITHM_VERSION:
+    if not isinstance(record, dict):
+        return False
+    if not is_manual(record) and record.get("version") != ALGORITHM_VERSION:
         return False
     return list(record.get("px") or []) == [int(width), int(height)]
 
@@ -286,10 +323,12 @@ def is_current(record: dict | None, width: int, height: int) -> bool:
 def projection(record: dict | None) -> dict | None:
     """sidecar → API 的 `poster_box` 字段；不该裁、算不出、读不出都是 None。
 
-    给出源图像素坐标加源图尺寸 `px`，消费方据此自己换算。页面只用到 `x0`：那是
-    折痕所在的列，`x0 / px[0]` 就是要从左边切掉的那一段占全宽的比例。
+    给出源图像素坐标加源图尺寸 `px`，消费方据此自己换算。算出来的那三档框永远
+    满高贴右缘，所以只有 `x0` 是活的；手工框四边都可能动，页面按整个框取景。
     """
-    if not isinstance(record, dict) or record.get("version") != ALGORITHM_VERSION:
+    if not isinstance(record, dict):
+        return None
+    if not is_manual(record) and record.get("version") != ALGORITHM_VERSION:
         return None
     box = record.get("box")
     size = record.get("px")

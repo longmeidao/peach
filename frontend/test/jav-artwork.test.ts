@@ -67,28 +67,44 @@ describe('JAV 默认封面', () => {
    引进来只会把整个页面壳拖进单测。 */
 const BIG_LAYOUT_RATIO = 0.75;
 
+/** 算出来的那两档框永远满高贴右缘，纵向两个轴因此恒为 0 与 100。 */
+const fullHeight = (left: number) => ({ top: 0, right: 0, bottom: 0, left });
+
 describe('正封取景框换算成卡片里的位置', () => {
   it('正封装得下就居中，两侧留白交给模糊背景', () => {
     // 1600×1000 的封套，折痕右侧那块正封从 887 开始。图片按卡片高度铺满后宽是
     // 卡片的 1.6/0.75≈2.1333 倍，正封占其中 (1−0.554375)×2.1333≈0.9507 倍卡片宽，
     // 装得下：左右各留 (1−0.9507)/2≈0.0247，图片左缘因此推到 −1.158。
-    const fold = { x0: 887, y0: 0, x1: 1553, y1: 999, method: 'fold', px: [1600, 1000] };
-    expect(panelFrame(fold, BIG_LAYOUT_RATIO)).toEqual({ clip: 55.44, left: -115.8 });
+    const fold = { x0: 887, y0: 0, x1: 1600, y1: 1000, method: 'fold', px: [1600, 1000] };
+    expect(panelFrame(fold, BIG_LAYOUT_RATIO))
+      .toEqual({ clip: fullHeight(55.44), left: -115.8, top: 0, height: 100 });
     // 容器换一个比例，图片的渲染宽度跟着变：同一个框算出的位置必须跟着动。
-    expect(panelFrame(fold, 0.5)).toEqual({ clip: 55.44, left: -220 });
+    expect(panelFrame(fold, 0.5))
+      .toEqual({ clip: fullHeight(55.44), left: -220, top: 0, height: 100 });
   });
 
   it('右半居中的框走同一套算术，方法只是它的来路', () => {
-    // 800×538 是本机封套最常见的尺寸；没找到折痕时正面从右半 400 开始，框宽 358。
-    const half = { x0: 421, y0: 0, x1: 779, y1: 537, method: 'ratio', px: [800, 538] };
-    expect(panelFrame(half, BIG_LAYOUT_RATIO)).toEqual({ clip: 52.63, left: -101.3 });
+    // 800×538 是本机封套最常见的尺寸；没找到折痕时正面从右半 421 开始，框宽 379。
+    const half = { x0: 421, y0: 0, x1: 800, y1: 538, method: 'ratio', px: [800, 538] };
+    expect(panelFrame(half, BIG_LAYOUT_RATIO))
+      .toEqual({ clip: fullHeight(52.63), left: -101.3, top: 0, height: 100 });
   });
 
   it('正封比卡片宽时贴右缘，从左边切', () => {
     // 800×500 的正封宽高比 0.800，是本机最宽的一档，比 0.75 的容器还宽 6.7%。
     // 居中会同时切掉两边，而标题、女优名和角标都压在右侧，只能让右缘对齐。
     expect(panelFrame({ x0: 400, px: [800, 500] }, BIG_LAYOUT_RATIO))
-      .toEqual({ clip: 50, left: -113.33 });
+      .toEqual({ clip: fullHeight(50), left: -113.33, top: 0, height: 100 });
+  });
+
+  it('人手工框的四条边都作数，横着切一刀就要放大再上移', () => {
+    // 800×538 里框出 (200,50)–(600,450)：框比容器宽，贴右缘从左边切；框高只有源图的
+    // 400/538，图片要放到卡片高的 134.5% 才能让框铺满，多出来的顶上那截靠 top 拉上去。
+    const manual = { x0: 200, y0: 50, x1: 600, y1: 450, method: 'manual', px: [800, 538] };
+    expect(panelFrame(manual, BIG_LAYOUT_RATIO)).toEqual({
+      clip: { top: 9.29, right: 25, bottom: 16.36, left: 25 },
+      left: -100, top: -12.5, height: 134.5,
+    });
   });
 
   it('没有框时返回 null，调用方退回贴右缘的取景', () => {
@@ -104,7 +120,7 @@ describe('正封取景框换算成卡片里的位置', () => {
   it('折痕夹回图片之内，切掉整幅的框没有正封可摆', () => {
     // 坏数据按整幅可见处理，比拿负宽度算下去安全。
     expect(panelFrame({ x0: -40, px: [1600, 1000] }, BIG_LAYOUT_RATIO))
-      .toEqual({ clip: 0, left: -113.33 });
+      .toEqual({ clip: fullHeight(0), left: -113.33, top: 0, height: 100 });
     // 折痕落在图片右缘上：折痕右边一个像素都不剩，这时没有正封可摆。
     expect(panelFrame({ x0: 1600, px: [1600, 1000] }, BIG_LAYOUT_RATIO)).toBeNull();
   });

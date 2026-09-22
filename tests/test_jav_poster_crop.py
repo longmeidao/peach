@@ -15,8 +15,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from peach import jav_poster_crop
-from peach.jav_poster_crop import FOLD, NONE, RATIO
+from peach import images, jav_poster_crop
+from peach.jav_poster_crop import FOLD, MANUAL, MANUAL_SOURCE, NONE, RATIO
 
 
 def sleeve(width: int, height: int, fold: int | None) -> Image.Image:
@@ -306,6 +306,83 @@ class ProjectionTests(unittest.TestCase):
                                                   "y1": 540, "method": RATIO}}):
             with self.subTest(record=record):
                 self.assertIsNone(jav_poster_crop.projection(record))
+
+
+class ManualBoxTests(unittest.TestCase):
+    """人在详情页自己框的那一块，与算出来的框共用同一份边车。"""
+
+    def test_a_hand_drawn_box_records_its_four_edges_and_its_source(self):
+        record = jav_poster_crop.manual_record(800, 540, {"x0": 200, "y0": 40,
+                                                          "x1": 600, "y1": 500})
+        self.assertEqual(record["box"], {"x0": 200, "y0": 40, "x1": 600, "y1": 500,
+                                         "method": MANUAL})
+        self.assertEqual(record["px"], [800, 540])
+        self.assertEqual(record["source"], MANUAL_SOURCE)
+        self.assertTrue(jav_poster_crop.is_manual(record))
+        self.assertEqual(jav_poster_crop.projection(record)["method"], MANUAL)
+
+    def test_a_box_that_is_not_a_box_is_refused_before_it_reaches_the_disk(self):
+        for box in (None, {}, {"x0": 0, "y0": 0, "x1": 0, "y1": 100},
+                    {"x0": "左", "y0": 0, "x1": 100, "y1": 100},
+                    # 夹回图里之后只剩一条线：整幅右侧之外的框没有内容可取。
+                    {"x0": 900, "y0": 0, "x1": 1000, "y1": 100}):
+            with self.subTest(box=box):
+                self.assertIsNone(jav_poster_crop.manual_record(800, 540, box))
+
+    def test_edges_outside_the_image_are_pulled_back_in(self):
+        record = jav_poster_crop.manual_record(800, 540, {"x0": -20, "y0": -5,
+                                                          "x1": 1200, "y1": 900})
+        self.assertEqual(record["box"]["x0"], 0)
+        self.assertEqual((record["box"]["x1"], record["box"]["y1"]), (800, 540))
+
+    def test_a_hand_drawn_box_survives_an_algorithm_bump_but_not_a_new_cover(self):
+        """手工框后面没有算法，改判据不构成重算它的理由；换了封面它就作废。"""
+        record = jav_poster_crop.manual_record(800, 540, {"x0": 200, "y0": 0,
+                                                          "x1": 600, "y1": 540})
+        stale = dict(record, version="poster-crop-v0")
+        self.assertTrue(jav_poster_crop.is_current(stale, 800, 540))
+        self.assertIsNotNone(jav_poster_crop.projection(stale))
+        # 算出来的框换个版本号就该重算，两档判据不能混。
+        computed = dict(jav_poster_crop.crop_record("ABW-232", 800, 540, [0.0] * 800),
+                        version="poster-crop-v0")
+        self.assertFalse(jav_poster_crop.is_current(computed, 800, 540))
+        self.assertIsNone(jav_poster_crop.projection(computed))
+        # 封面被更大的那张换掉：框描述的是另一张图，手工框也一样作废。
+        self.assertFalse(jav_poster_crop.is_current(record, 1600, 1080))
+
+
+class CropBytesTests(unittest.TestCase):
+    """按框切出新字节：原图不动，格式只在 PNG 与 JPEG 之间取一个。"""
+
+    @staticmethod
+    def payload(image: Image.Image, fmt: str) -> bytes:
+        buffer = io.BytesIO()
+        image.save(buffer, format=fmt)
+        return buffer.getvalue()
+
+    def test_a_jpeg_crop_comes_back_as_a_jpeg_of_the_boxed_size(self):
+        body = self.payload(Image.new("RGB", (800, 540), (10, 120, 200)), "JPEG")
+        cropped = images.crop_to_box(body, (200, 40, 600, 500))
+        self.assertEqual(images.measure_image_size(cropped), (400, 460))
+        with Image.open(io.BytesIO(cropped)) as opened:
+            self.assertEqual(opened.format, "JPEG")
+
+    def test_a_png_stays_a_png_and_transparency_lands_on_white(self):
+        source = Image.new("RGBA", (100, 100), (0, 0, 0, 0))
+        cropped = images.crop_to_box(self.payload(source, "PNG"), (0, 0, 50, 50))
+        with Image.open(io.BytesIO(cropped)) as opened:
+            self.assertEqual(opened.format, "PNG")
+        # 同一张透明图存成 JPEG 那一路要铺白底，否则透明处落成黑块。
+        flattened = images.crop_to_box(self.payload(source.convert("RGBA"), "WEBP"),
+                                       (0, 0, 50, 50))
+        with Image.open(io.BytesIO(flattened)) as opened:
+            self.assertEqual(opened.convert("RGB").getpixel((10, 10)), (255, 255, 255))
+
+    def test_a_box_outside_the_image_or_a_junk_payload_yields_nothing(self):
+        body = self.payload(Image.new("RGB", (100, 100)), "JPEG")
+        self.assertIsNone(images.crop_to_box(body, (0, 0, 200, 50)))
+        self.assertIsNone(images.crop_to_box(body, (50, 0, 50, 50)))
+        self.assertIsNone(images.crop_to_box(b"not an image", (0, 0, 10, 10)))
 
 
 class BatchScriptTests(unittest.TestCase):

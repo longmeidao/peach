@@ -81,6 +81,10 @@ PLATE_NOISE_FLOOR = 3
 # 上限用截断而不是四舍五入，就为了让占宽落在 0.6 这一侧。
 PLATE_MIN_SIDE = 64
 
+# 手工裁出来的头像重编时用的 JPEG 质量。头像框最大也就 512 CSS px，95 在这个尺寸
+# 上和无损肉眼无差，而下一档 85 会在脸部平滑区留下可见的块。
+CROP_JPEG_QUALITY = 95
+
 SVG_NS = "http://www.w3.org/2000/svg"
 XLINK_NS = "http://www.w3.org/1999/xlink"
 # 方底是外层 SVG 包出来的，标记记在它的根元素上：矢量没有像素可读，再跑一遍时
@@ -101,6 +105,61 @@ def measure_image_size(payload: bytes) -> tuple[int, int] | None:
     try:
         with Image.open(io.BytesIO(payload)) as image:
             return image.size
+    except Exception:
+        return None
+
+
+def clamp_box(box: object, width: int, height: int) -> dict | None:
+    """人递过来的框 → 落在源图里的整数框；形状不成立返回 None。
+
+    四边取整后夹回源图，再要求切出来的宽高都至少 1 像素。页面量的是显示像素、换算
+    回源图会带小数，所以取整在这里做一次，落盘和裁图用的就是同一组整数——两边各取
+    各的整，框会差出一个像素，而那一个像素在页面上看不出来，只在事后对不上账。
+    """
+    width, height = int(width or 0), int(height or 0)
+    if width <= 0 or height <= 0 or not isinstance(box, dict):
+        return None
+    try:
+        edges = {name: int(round(float(box[name]))) for name in ("x0", "y0", "x1", "y1")}
+    except (KeyError, TypeError, ValueError):
+        return None
+    for name, limit in (("x0", width), ("y0", height), ("x1", width), ("y1", height)):
+        edges[name] = max(0, min(edges[name], limit))
+    if edges["x1"] - edges["x0"] < 1 or edges["y1"] - edges["y0"] < 1:
+        return None
+    return edges
+
+
+def crop_to_box(payload: bytes, box: tuple[int, int, int, int]) -> bytes | None:
+    """按源图像素框切出一张新图；框不成立或图读不出来返回 None。
+
+    切出来的字节按源图的格式重编：头像那一路后面还要过 `inspect_avatar` 的格式门槛，
+    在这里换成第三种格式只会让那一关多一条分支。PNG 无损原样写，其余一律 JPEG——
+    带 alpha 的图先铺白底，JPEG 装不下透明通道，不铺的话透明处会落成黑块。
+
+    原图一个字节都不动：这个函数只产出新的字节，落盘是调用方的事。
+    """
+    try:
+        with Image.open(io.BytesIO(payload)) as opened:
+            width, height = opened.size
+            left, top, right, bottom = (int(value) for value in box)
+            if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+                return None
+            cropped = opened.crop((left, top, right, bottom))
+            if opened.format == "PNG":
+                buffer = io.BytesIO()
+                cropped.save(buffer, format="PNG")
+                return buffer.getvalue()
+            if cropped.mode in ("RGBA", "LA", "P"):
+                flat = Image.new("RGB", cropped.size, (255, 255, 255))
+                converted = cropped.convert("RGBA")
+                flat.paste(converted, mask=converted.split()[-1])
+                cropped = flat
+            elif cropped.mode != "RGB":
+                cropped = cropped.convert("RGB")
+            buffer = io.BytesIO()
+            cropped.save(buffer, format="JPEG", quality=CROP_JPEG_QUALITY)
+            return buffer.getvalue()
     except Exception:
         return None
 

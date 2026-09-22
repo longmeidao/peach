@@ -13,10 +13,11 @@ from unittest import mock
 
 from PIL import Image, ImageDraw
 
-from peach import avatar_picker, gfriends, http as peach_http
+from peach import avatar_picker, gfriends, http as peach_http, jav_poster_crop
 from peach.avatar_face import sidecar_path
 from peach.avatar_provider import AvatarCandidateCache, inspect_avatar, provenance_now
 from peach.http import HttpResponse
+from peach.jav_poster_crop import MANUAL
 
 from support.ledger import fresh_ledger
 
@@ -310,6 +311,104 @@ class ChoiceTests(PickerFixture):
         self.assertEqual(stale["index_age_hours"], round(old / 3600, 1))
 
 
+class AssetArtworkTests(PickerFixture):
+    """从本人作品的画面里框头像：列哪些作品、谁递得进来、切出来是什么。"""
+
+    def setUp(self):
+        super().setUp()
+        self.covers = self.folder / "covers"
+        self.covers.mkdir()
+        self.cells = self.folder / "cells"
+        self.cells.mkdir()
+        self.cover = self.covers / "ABW-232.jpg"
+        self.cover.write_bytes(picture(400, 260, "green"))
+        self.cell = self.cells / "abw232-4.jpg"
+        self.cell.write_bytes(picture(320, 180, "blue"))
+        self.artwork = avatar_picker.ArtworkSource(
+            cover_root=self.covers,
+            frame=lambda asset_id, cell: self.cell if cell == 4 else None)
+
+    def add_asset(self, asset_id: int, code: str, snapshot: str = "sheet.jpg",
+                  entity_id: int = 7792, size: int = 100) -> None:
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code,catalog_title,"
+                "size,snapshot_path) VALUES(?,'R:',?,?,'video',?,?,?,?)",
+                (asset_id, f"R:\\media\\{code}.mp4", f"{code}.mp4", code,
+                 f"{code} 的标题", size, snapshot))
+            self.connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
+                "VALUES(?,?,'performer','r18:performer')",
+                (asset_id, entity_id))
+
+    def test_one_work_takes_one_cell_and_carries_every_base_it_has(self):
+        self.add_asset(11, "ABW-232")
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        assets = [one for one in listed["choices"] if one["source"] == "asset"]
+        self.assertEqual([one["label"] for one in assets], ["ABW-232"])
+        # 封面加九宫格九格，底图在弹层里换，格子只占一个。
+        self.assertEqual(assets[0]["bases"],
+                         ["asset:11:cover"] + [f"asset:11:cell{n}" for n in range(9)])
+        self.assertTrue(assets[0]["crop"], "作品画面要先框一块才能当头像")
+
+    def test_a_work_with_neither_a_cover_nor_a_sheet_is_not_listed(self):
+        self.add_asset(12, "NOPE-001", snapshot="")
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        self.assertEqual([one for one in listed["choices"] if one["source"] == "asset"], [])
+
+    def test_a_cover_and_a_sheet_cell_both_come_back_as_bytes(self):
+        self.add_asset(11, "ABW-232")
+        body, origin = avatar_picker.resolve("asset:11:cover", self.connection,
+                                             self.providers, 7792, None, self.artwork)
+        self.assertEqual(body, self.cover.read_bytes())
+        self.assertEqual(origin["provider"], "asset")
+        self.assertEqual(origin["asset_code"], "ABW-232")
+        frame, _ = avatar_picker.resolve("asset:11:cell4", self.connection,
+                                         self.providers, 7792, None, self.artwork)
+        self.assertEqual(frame, self.cell.read_bytes())
+
+    def test_a_work_that_is_not_hers_is_refused_even_though_the_file_is_there(self):
+        """`asset:1:cover` 是个人都拼得出来；凭它读到别人作品的封面就是个枚举口子。"""
+        self.add_asset(13, "ABW-232", entity_id=9001)
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,"
+                "created_at,updated_at) VALUES(9001,'performer','别人','别人','t','t')")
+        with self.assertRaises(avatar_picker.PickerError):
+            avatar_picker.resolve("asset:13:cover", self.connection, self.providers,
+                                  7792, None, self.artwork)
+
+    def test_a_malformed_or_missing_frame_says_so_instead_of_guessing(self):
+        self.add_asset(11, "ABW-232")
+        for bad in ("asset:11:cell9", "asset:11:cell三", "asset:十一:cover",
+                    "asset:11:什么", "asset:11:cell7"):
+            with self.subTest(bad=bad), self.assertRaises(avatar_picker.PickerError):
+                avatar_picker.resolve(bad, self.connection, self.providers, 7792,
+                                      None, self.artwork)
+        # 端点没递作品来源时也不能猜一个。
+        with self.assertRaises(avatar_picker.PickerError):
+            avatar_picker.resolve("asset:11:cover", self.connection, self.providers,
+                                  7792, None, None)
+
+    def test_the_crop_makes_new_bytes_and_records_the_box(self):
+        body = picture(400, 260, "green")
+        cropped, origin = avatar_picker.crop(body, {"x0": 40, "y0": 20,
+                                                    "x1": 200, "y1": 180})
+        self.assertEqual(avatar_picker.accept_image(cropped).width, 160)
+        self.assertEqual(origin["crop_box"], [40, 20, 200, 180])
+        self.assertEqual(origin["crop_source_px"], [400, 260])
+        self.assertEqual(origin["source_kind"], "user_cropped")
+
+    def test_a_box_that_is_not_a_box_reads_as_a_failure(self):
+        for bad in (None, {}, {"x0": 0, "y0": 0, "x1": 0, "y1": 10}):
+            with self.subTest(bad=bad), self.assertRaises(avatar_picker.PickerError):
+                avatar_picker.crop(picture(400, 260, "green"), bad)
+        with self.assertRaises(avatar_picker.PickerError):
+            avatar_picker.crop(b"not an image", {"x0": 0, "y0": 0, "x1": 9, "y1": 9})
+
+
 class ResolveTests(PickerFixture):
     def test_a_library_candidate_is_downloaded_once(self):
         body = picture()
@@ -499,6 +598,68 @@ class AvatarPickerRouteTests(unittest.TestCase):
             response = self.client.post("/api/avatar-pick?t=secret", json=payload)
             self.assertEqual(response.status_code, 400, str(payload))
         self.assertFalse((self.avatars / "performer-7792.img").exists())
+
+
+@unittest.skipUnless(HAS_DEPS, "FastAPI/httpx 尚未安装")
+class CoverCropRouteTests(unittest.TestCase):
+    """详情页框正封：写的是边车里的框，封面原图一个字节都不动。"""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+        from peach.api import create_app
+        from peach.config import PeachSettings
+
+        self.folder = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        self.covers = self.folder / "covers"
+        self.covers.mkdir(parents=True)
+        self.cover = self.covers / "ABW-232.jpg"
+        # 1.48 的宽高比才落在封套那一档；正封的框就是从这张里框出来的。
+        self.cover.write_bytes(picture(800, 540, "teal"))
+        self.before = self.cover.read_bytes()
+        self.app = create_app(PeachSettings(
+            db_path=fresh_ledger(self.folder), configured=True, token="secret",
+            cover_root=self.covers))
+        self.client = TestClient(self.app)
+        self.addCleanup(self.client.close)
+
+    def sidecar(self) -> dict:
+        return json.loads(
+            jav_poster_crop.sidecar_path(self.cover).read_text(encoding="utf-8"))
+
+    def test_a_hand_drawn_box_is_written_as_the_framing_and_read_back(self):
+        response = self.client.post("/api/cover-crop?t=secret", json={
+            "code": "ABW-232", "box": {"x0": 300, "y0": 20, "x1": 700, "y1": 520}})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["poster_box"]["method"], MANUAL)
+        self.assertEqual(response.json()["poster_box"]["px"], [800, 540])
+        self.assertEqual(self.sidecar()["box"]["x0"], 300)
+        self.assertEqual(self.sidecar()["source"], "user:crop")
+        self.assertEqual(self.cover.read_bytes(), self.before,
+                         "取景是边车元数据，封面原图一个字节都不动")
+
+    def test_restoring_the_default_recomputes_instead_of_leaving_nothing(self):
+        self.client.post("/api/cover-crop?t=secret", json={
+            "code": "ABW-232", "box": {"x0": 300, "y0": 20, "x1": 700, "y1": 520}})
+        response = self.client.post("/api/cover-crop?t=secret",
+                                    json={"code": "ABW-232", "box": None})
+        self.assertEqual(response.status_code, 200)
+        # 边车删掉就没人再算一遍，算出来的那一档取景会跟着消失。
+        self.assertNotEqual(self.sidecar()["box"]["method"], MANUAL)
+        self.assertNotIn("source", self.sidecar())
+
+    def test_the_endpoint_needs_the_token(self):
+        response = self.client.post("/api/cover-crop", json={"code": "ABW-232"})
+        self.assertEqual(response.status_code, 401)
+
+    def test_a_missing_cover_or_an_impossible_box_says_which(self):
+        missing = self.client.post("/api/cover-crop?t=secret",
+                                   json={"code": "NOPE-001", "box": None})
+        self.assertEqual(missing.status_code, 404)
+        bad = self.client.post("/api/cover-crop?t=secret", json={
+            "code": "ABW-232", "box": {"x0": 300, "y0": 20, "x1": 300, "y1": 520}})
+        self.assertEqual(bad.status_code, 400)
+        self.assertFalse(jav_poster_crop.sidecar_path(self.cover).exists())
 
 
 if __name__ == "__main__":

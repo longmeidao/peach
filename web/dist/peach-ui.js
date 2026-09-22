@@ -246,7 +246,7 @@ function ee(e) {
 	});
 }
 var C = !1;
-async function w(e, t) {
+async function te(e, t) {
 	if (C) return;
 	if (!document.startViewTransition || matchMedia("(prefers-reduced-motion: reduce)").matches) {
 		t();
@@ -269,13 +269,13 @@ async function w(e, t) {
 }
 //#endregion
 //#region src/jobs.ts
-function te(e, t, n) {
+function w(e, t, n) {
 	if (!Number.isFinite(n) || n <= 0) return "";
 	let r = Math.max(0, Math.min(n, Number.isFinite(t) ? t : 0)), i = r / n * 100;
 	return `<div class="board-job-progress" role="progressbar" aria-label="${c(e)}" aria-valuemin="0" aria-valuemax="${n}" aria-valuenow="${r}"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle class="board-job-track" cx="18" cy="18" r="15"/><circle class="board-job-fill" cx="18" cy="18" r="15" pathLength="100" stroke-dasharray="${i} ${100 - i}" transform="rotate(-90 18 18)"/></svg><span>${c(e)}<small>${Math.round(i)}%</small></span></div>`;
 }
 function T(e, t = 0, r = 0) {
-	return r > 0 ? te(e, t, r) : n(e);
+	return r > 0 ? w(e, t, r) : n(e);
 }
 async function E(e) {
 	let t = e.pause || ((e) => new Promise((t) => setTimeout(t, e))), n = 0;
@@ -344,7 +344,7 @@ function oe({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1
 	e && (e.textContent = t), n && (n.checked = r.all, n.indeterminate = r.mixed);
 	for (let e of i) e.disabled = !r.count || a;
 }
-function D(e, t, n = 1) {
+function se(e, t, n = 1) {
 	let r = (e, t) => Array.from({ length: t - e + 1 }, (t, n) => e + n);
 	if (n * 2 + 5 >= t) return r(1, t);
 	let i = Math.max(e - n, 1), a = Math.min(e + n, t), o = i > 2, s = a < t - 2;
@@ -364,15 +364,15 @@ function D(e, t, n = 1) {
 		t
 	];
 }
-function O(e, t) {
+function D(e, t) {
 	return Math.max(1, Math.ceil(e / t));
 }
-function k(e, t) {
+function O(e, t) {
 	return Math.min(Math.max(1, Math.floor(e) || 1), t);
 }
-function A(e, t, n) {
+function k(e, t, n) {
 	if (t <= 1) return "";
-	let r = D(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
+	let r = se(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
 	return `<nav class="board-pagination" aria-label="${n}">
     <button type="button" class="geist-button" data-page="${e - 1}"${e <= 1 ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"></use></svg>上一页</button>
     <ul>${r}</ul>
@@ -381,10 +381,10 @@ function A(e, t, n) {
 }
 //#endregion
 //#region src/native-image.ts
-function j(e, t, n, r) {
+function A(e, t, n, r) {
 	return e > 0 && t > 0 && e === n && t === r;
 }
-function se(e, t, n, r, i = 1) {
+function j(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -442,7 +442,7 @@ var M = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, N = 
 function le() {
 	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${M("85%")}${M("65%")}${P(N(), 4)}</div></aside></div></div>`;
 }
-function ue(e, t = {}) {
+function K(e, t = {}) {
 	let n = "";
 	if (e === "/stats") n = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${M("38%")}</header>${F([
 		"馆藏视频",
@@ -487,7 +487,7 @@ function ue(e, t = {}) {
 }
 //#endregion
 //#region src/catalog-onboarding.ts
-var de = [
+var ue = [
 	"loc",
 	"creator",
 	"performer",
@@ -505,7 +505,7 @@ var de = [
 	"jav",
 	"thumb"
 ];
-function K() {
+function de() {
 	let e = (e) => Array(64).fill(e).join("");
 	return {
 		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
@@ -514,7 +514,7 @@ function K() {
 }
 async function fe(e, t) {
 	let n = new URLSearchParams();
-	for (let t of de) e[t] && n.set(t, e[t]);
+	for (let t of ue) e[t] && n.set(t, e[t]);
 	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
 		...r.creators || [],
 		...r.tagperformers || [],
@@ -662,12 +662,21 @@ function we(e, t) {
 function Te(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
-	let a = Math.min(1, Math.max(0, i / n)), o = n / r / t, s = (1 - a) * o;
-	if (!(s > 0)) return null;
-	let c = s <= 1 ? (1 - s) / 2 - a * o : 1 - o, l = (e) => Math.round(e * 1e4) / 100;
+	let a = (e, t, n) => Math.min(n, Math.max(0, Number.isFinite(Number(e)) ? Number(e) : t)), o = a(i, 0, n), s = Math.max(o, a(e?.x1, n, n)), c = a(e?.y0, 0, r), l = Math.max(c, a(e?.y1, r, r)), u = s - o, d = l - c;
+	if (!(u > 0 && d > 0)) return null;
+	let f = u / d / t;
+	if (!(f > 0)) return null;
+	let p = f <= 1 ? (1 - f) / 2 - o / d / t : 1 - s / d / t, m = (e) => (Math.round(e * 1e4) || 0) / 100;
 	return {
-		clip: l(a),
-		left: l(c)
+		clip: {
+			top: m(c / r),
+			right: m(1 - s / n),
+			bottom: m(1 - l / r),
+			left: m(o / n)
+		},
+		left: m(p),
+		top: m(-c / d),
+		height: m(r / d)
 	};
 }
 function Ee(e, t) {
@@ -680,6 +689,7 @@ function Ee(e, t) {
 //#region src/islands.ts
 var Z = {
 	"avatar-picker": { react: "avatar-picker" },
+	"cover-crop": { react: "cover-crop" },
 	"follow-manage": { react: "follow-manage" },
 	"library-processing": { react: "library-processing" },
 	scraping: { react: "scraping" },
@@ -722,4 +732,4 @@ function je(e) {
 	t && (t.controller.abort(), Q.delete(e), t.dispose?.());
 }
 //#endregion
-export { ue as boardPageSkeleton, f as boundedPreference, pe as catalogEmptyHtml, fe as catalogSuggestions, k as clampPage, ye as cleanupSkeletonHtml, _e as cloudLocations, ve as cloudPreferenceLocations, le as detailSkeletonHtml, K as emptyCatalogLayout, ce as entitySkeletonHtml, ne as followJobProgress, g as initBoardControls, Ae as islandMounted, De as islandNames, we as javImageKind, T as jobActivityHtml, j as matchesFaceSource, Oe as mountIsland, m as mountNumberSetting, se as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, Ce as normalizeJavPreferences, O as pageCount, A as paginationHtml, Te as panelFrame, u as preferredDirection, Se as resourceScanHtml, ae as selectGroup, re as selectRange, ie as selectionSummary, me as sidebarHasCatalogContent, S as sidebarSectionHtml, ge as sidebarTagCounts, h as syncBoardRange, Ee as syncJavImages, p as syncNumberSetting, oe as syncSelectionToolbar, he as syncSidebarSurface, w as transitionTheme, $ as unmountIsland, E as watchJob, ee as wireSidebarGroups };
+export { K as boardPageSkeleton, f as boundedPreference, pe as catalogEmptyHtml, fe as catalogSuggestions, O as clampPage, ye as cleanupSkeletonHtml, _e as cloudLocations, ve as cloudPreferenceLocations, le as detailSkeletonHtml, de as emptyCatalogLayout, ce as entitySkeletonHtml, ne as followJobProgress, g as initBoardControls, Ae as islandMounted, De as islandNames, we as javImageKind, T as jobActivityHtml, A as matchesFaceSource, Oe as mountIsland, m as mountNumberSetting, j as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, Ce as normalizeJavPreferences, D as pageCount, k as paginationHtml, Te as panelFrame, u as preferredDirection, Se as resourceScanHtml, ae as selectGroup, re as selectRange, ie as selectionSummary, me as sidebarHasCatalogContent, S as sidebarSectionHtml, ge as sidebarTagCounts, h as syncBoardRange, Ee as syncJavImages, p as syncNumberSetting, oe as syncSelectionToolbar, he as syncSidebarSurface, te as transitionTheme, $ as unmountIsland, E as watchJob, ee as wireSidebarGroups };

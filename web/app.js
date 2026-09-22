@@ -3173,16 +3173,19 @@ function coverAnchor(img){
    右缘的回退照旧生效。 */
 function posterPanel(img,ratio){
   if(img.dataset.frame!=='sleeve')return;
-  const [x0,imgW,imgH]=String(img.dataset.posterbox||'').split(' ').map(Number);
+  const [x0,imgW,imgH,y0,x1,y1]=String(img.dataset.posterbox||'').split(' ').map(Number);
   /* 框是按那一版源图的像素算的，而封面会被更大的那张原子替换。尺寸对不上就说明
      框描述的是另一张图，落在这张上是一块错位的区域——而错位在页面上和「本来就该
      这么取景」看不出区别，所以宁可退回回退值。 */
   if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH))return;
-  const frame=panelFrame({x0,px:[imgW,imgH]},ratio);
+  const frame=panelFrame({x0,y0,x1,y1,px:[imgW,imgH]},ratio);
   if(!frame)return;
   img.classList.add('panel');
-  img.style.setProperty('--panel-clip',`${frame.clip}%`);
+  img.style.setProperty('--panel-clip',
+    `${frame.clip.top}% ${frame.clip.right}% ${frame.clip.bottom}% ${frame.clip.left}%`);
   img.style.setProperty('--panel-left',`${frame.left}%`);
+  img.style.setProperty('--panel-top',`${frame.top}%`);
+  img.style.setProperty('--panel-height',`${frame.height}%`);
   /* 正封比卡片窄时左右各留一条，垫的是同一张封面的模糊放大版。挂在卡片上而不是
      图片上：图片那时已经被 `clip-path` 切成正封那一块，铺不到留白处。 */
   img.closest('.pic')?.style.setProperty('--cover-blur',`url("${img.currentSrc||img.src}")`);
@@ -3261,7 +3264,7 @@ function coverImage(it,layout,eager){
   /* 正封那一块的取景框，源图像素坐标加源图尺寸，由 `posterAnchor` 在加载后换算成
      百分比。`map(Number)` 既是校验也是转义：进到属性里的一定是数字。 */
   const pb=it.poster_box;
-  const box=pb?` data-posterbox="${[pb.x0,(pb.px||[])[0],(pb.px||[])[1]].map(Number).join(' ')}"`:'';
+  const box=pb?` data-posterbox="${[pb.x0,(pb.px||[])[0],(pb.px||[])[1],pb.y0,pb.x1,pb.y1].map(Number).join(' ')}"`:'';
   // 小图看整张（含剧照拼贴），大图只取右侧正封。
   return `<img class="poster cover ${layout==='small'?'whole':'front'}" src="${src}"
     alt="" loading="${eager?'eager':'lazy'}"${face}${box} data-drop="self">`;
@@ -9188,7 +9191,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
        :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
     </div>${queueContext?queueHtml(queueContext,it.id):''}
     <div class="side"><div class="sidecontent">
-      <div class="detailtitle"><div class="stitle" data-reveal-line><span class="stitletext" data-detail-title>${srcBadge(it.location,it.cost,'srcbig')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span><span class="srctools detailtitletools"><button type="button" data-title-fold hidden aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon('chevron-down')}</button>${it.location==='online'?'':sourceToolButtons(it.id)}</span></div></div>
+      <div class="detailtitle"><div class="stitle" data-reveal-line><span class="stitletext" data-detail-title>${srcBadge(it.location,it.cost,'srcbig')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span><span class="srctools detailtitletools"><button type="button" data-title-fold hidden aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon('chevron-down')}</button>${it.has_cover&&it.code?'<span data-cover-crop></span>':''}${it.location==='online'?'':sourceToolButtons(it.id)}</span></div></div>
       ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
       ${ratingHtml(it.rating)}
       <div class="smeta mono" data-reveal-line>
@@ -9239,6 +9242,13 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   // 对账删掉的可能就是当前这条；删了就没什么可停留的，直接退回列表。
   wireSourceTools($('#stage'),r=>{
     if(r.items.some(x=>x.id===it.id))closeDetail();});
+  /* 裁剪封面挂在标题旁那排键里。取景框存的是坐标不是图片，所以存完只要把这一页
+     重新画一遍：封面地址没变，变的是接口给的 `poster_box`。 */
+  const cropHost=$('#stage').querySelector('[data-cover-crop]');
+  if(cropHost)import('/dist/peach-ui.js').then(ui=>ui.mountIsland('cover-crop',cropHost,{
+    code:it.code||'',coverUrl:`/cover?code=${encodeURIComponent(it.code||'')}`,
+    box:it.poster_box||null,onSaved:()=>openItem(it.id,false,queueContext)},
+    {isCurrent:()=>$('#stage').contains(cropHost)}));
   /* 标题默认折成两行，真溢出才给展开键：折叠态下 scrollHeight 比 clientHeight 高，就是有
      行被裁掉了。展开与收起换字形——往下多看一截是 chevron-down，收回去是 chevron-up。
      展开键排在那排键最前面，紧挨着它管的标题。标题文字本身也接这一下：人想看全文时手

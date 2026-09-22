@@ -270,10 +270,23 @@ export interface AvatarPickerProps {
   onPicked(): void;
 }
 
+/** 裁剪封面：作品详情页标题旁那枚键，连同它点开的那一屏取景框。 */
+export interface CoverCropProps {
+  /** 归一前的番号，原样回递给写端点。 */
+  code: string;
+  /** 封面原图的地址（`/cover?code=`）。框量的是这张图的像素。 */
+  coverUrl: string;
+  /** 当前生效的取景框，没有就是 null。形状同接口的 `poster_box`。 */
+  box: { x0: number; y0: number; x1: number; y1: number; px: number[] } | null;
+  /** 存好之后让宿主重画封面。遗留层传的是「重新进这一页」。 */
+  onSaved(): void;
+}
+
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'avatar-picker': ReactPage<AvatarPickerProps>;
   configuration: ReactPage<ConfigurationProps>;
+  'cover-crop': ReactPage<CoverCropProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
