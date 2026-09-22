@@ -2235,6 +2235,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("${esc(siteName(x.url)||x.label)}")
         self.assertPageContains(
             "['nax-pro.com','NAX'],['t-powers.co.jp','T-POWERS'],['dmm.co.jp','DMM']")
+        # 同一家站在别处以账本链接出现时，写的名字要和入口那枚药丸一致。
+        self.assertPageContains("['minnano-av.com','みんなのAV']")
         self.assertPageContains(".entitylinks a.urllink{letter-spacing:.02em}")
         links = self.app_js[self.app_js.index("const siteLinks=(d.links||[]).map"):]
         links = links[:links.index(".join('');")]
@@ -2434,6 +2436,21 @@ class WebUiSourceTests(unittest.TestCase):
             ".entitylinkicon{width:20px;height:20px;border-radius:var(--badge-radius);"
             "background:transparent;")
 
+    def test_the_portrait_grows_with_the_identity_column_on_wide_screens(self):
+        """头像跟着右边那列的高度长，不再钉死一个尺寸。
+
+        身份列有几行是看这个人有多少东西：只有名字和别名是两行，加上外链和看片那一行
+        就是四行。钉住 120px 的话卡上下空出一截，圆框反倒比文字轻。下限保住原尺寸，
+        上限免得内容再多时圆框把这一页的主角抢了。
+        """
+        self.assertPageContains(
+            ".entityprofile{display:grid;grid-template-columns:auto minmax(0,1fr);")
+        self.assertPageContains(
+            ".entityprofile>.entityportraitwrap{align-self:stretch;"
+            "display:flex;align-items:center}")
+        self.assertPageContains(
+            ".entityportrait{height:100%;min-height:120px;max-height:160px;width:auto;")
+
     def test_the_entity_hero_is_a_centred_single_column_on_phones(self):
         # 左像右文那套是给宽屏的：手机上 96px 头像旁边只剩两百多像素，别名和链接被挤成
         # 两三行，头像下面又空着一大片。按 beeg 的资料页改成单列居中；卡还是那张卡，
@@ -2441,7 +2458,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".entityprofile{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px;"
             "justify-items:center;text-align:center}")
-        self.assertPageContains(".entityportrait{width:96px}")
+        # 单列时头像上下各占一整行，没有「右边那列有多高」可跟，尺寸仍是钉住的。
+        self.assertPageContains(
+            ".entityportrait{height:96px;min-height:96px;max-height:96px;width:96px}")
         self.assertPageContains(".entityidentity{width:100%}")
         self.assertPageContains(".entityhero .entitylinks{justify-content:safe center")
 
@@ -2451,11 +2470,16 @@ class WebUiSourceTests(unittest.TestCase):
         收成一行加横滑，跟筛选条一个做法。居中必须是 `safe center`：普通 `center`
         在溢出时把前半排推到滚动起点之前，那几条够不着。竖直方向被 `overflow-x`
         连带压成 hidden，焦点环靠上下各 4px 的内边距留位置、再由负外边距收回。
+        左右同样由负外边距撑到卡沿：滚动层收在卡的内边距里时，最后那枚药丸是在卡当中
+        被切一刀，看着像画坏了。
         """
         self.assertPageContains(
             ".entityhero .entitylinks{justify-content:safe center;flex-wrap:nowrap;")
         self.assertPageContains(
-            "margin-top:9px;margin-bottom:-4px;padding-block:4px;")
+            "margin-top:9px;margin-bottom:-4px;margin-inline:-16px;"
+            "padding-block:4px;padding-inline:16px;")
+        # 卡里那条 `max-width:100%` 会把撑出去的两侧又收回来，窄屏这一层得撤掉它。
+        self.assertPageContains("scroll-padding-inline:16px;max-width:none;")
         self.assertPageContains(
             "overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
             "overscroll-behavior-inline:contain}")

@@ -27,8 +27,9 @@ class EntryLinkAddressTests(unittest.TestCase):
         self.assertEqual([row["slot"] for row in rows], ["pill", "mark", "mark"])
         self.assertEqual(rows[0]["url"], "https://www.minnano-av.com/actress155084.html")
         self.assertEqual(rows[1]["url"], "https://javdb.com/actors/QDvG?sort_type=4")
+        # 药丸上写站点自己的名字，取自 minnano-av 官网的 title。
         self.assertEqual([row["label"] for row in rows],
-                         ["minnano-av", "JavDB", "MISSAV"])
+                         ["みんなのAV", "JavDB", "MISSAV"])
         # MISSAV 没有可用的图形标识，那一枚由前端按它站上的排版规则排字。
         self.assertEqual([row["mark"] for row in rows],
                          ["brand-minnano", "mark-javdb", ""])
@@ -60,6 +61,16 @@ class EntryLinkAddressTests(unittest.TestCase):
         rows = entry_links.build(entry_links.defaults(), "145cm色白お嬢様",
                                  [ref("stash", "912"),
                                   ref("r18", "145cm", kind="performer_name")])
+        self.assertEqual(rows, [])
+
+    def test_an_agency_roster_id_does_not_open_the_watch_row(self):
+        """K-MIB 那类事务所站收的是所属艺人，不是 JAV 的作品目录。
+
+        名册上有她，说明这家公司签了她；她拍的是不是商业 AV、JavDB 与 MISSAV 上有没有
+        她的页面，这条引用一个字都没说。
+        """
+        rows = entry_links.build(entry_links.defaults(), "神木ほのか",
+                                 [ref("kmib", "218")])
         self.assertEqual(rows, [])
 
     def test_missav_uses_the_japanese_stage_name(self):
