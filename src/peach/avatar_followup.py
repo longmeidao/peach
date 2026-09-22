@@ -6,9 +6,12 @@
 
 判据一个字都没新加：
 
-* **女优**走图库，规则与 `scripts/fill_portrait_gaps.py` 同一条——按她整条名字链在图库里
+* **女优**先走图库，规则与 `scripts/fill_portrait_gaps.py` 同一条——按她整条名字链在图库里
   只找出一张，且尺寸过 `acceptable_avatar` 那一档，才装。找出好几张一张都不装：`ななみ`
   这种单名在图库里命中二十几张，那是二十几个人，自动挑等于随便给她安一张别人的脸。
+* 图库给不出那一张时，从她单人作品的封面上截脸（`avatar_cover_face`）：挑脸像素最宽的
+  那张封面，最差是缩略图。这一档截的图、以及批处理用整张封面装上的头像，之后遇到更清楚的
+  脸会自动换掉；图库装的、人挑的一律不碰。
 * **厂牌**只登记缺口，不装图。厂牌 Logo 的采集要人先给出社交 handle
   （`scripts/fetch_studio_avatar_candidates.py`），猜出来的一律标 `needs_confirmation`，
   没有可以自动落图的那一档判据。
@@ -19,7 +22,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from . import avatar_picker
+from . import avatar_cover_face, avatar_picker
 from .avatar_provider import MIN_LONG_SIDE, MIN_SHORT_SIDE, acceptable_avatar
 from .followups import Followup, FollowupType, register
 
@@ -49,12 +52,15 @@ def parse_key(key: str) -> tuple[str, int]:
 
 
 def plan(connection: sqlite3.Connection, avatar_root, *,
-         since_entity_id: int) -> list[Followup]:
+         since_entity_id: int, covered_asset_ids=()) -> list[Followup]:
     """这一轮新登记、又没有头像的实体，一个一条后继。
 
     「新登记」按实体 id 的水位判：刮削开始前记一次 `max(id)`，比它大的就是这一轮建出来
     的。这比从落库结果里往回追要稳——实体可能由字段落库、别名归并或外部编号登记中的
     任何一条路建出来，而它们最终都表现为这张表上多了一行。
+
+    `covered_asset_ids` 是这一轮换上了新封面的作品。它们的女优也派一条：没头像的现在
+    可能截得出脸了，头像是从封面截的那些可能换得到更清楚的一张。
     """
     rows = connection.execute(
         "SELECT e.id,e.kind,e.canonical_name,"
@@ -62,10 +68,22 @@ def plan(connection: sqlite3.Connection, avatar_root, *,
         "  WHERE ae.entity_id=e.id) AS assets"
         " FROM entity e WHERE e.id>? AND e.kind IN (?,?) ORDER BY e.id",
         (int(since_entity_id), *KINDS)).fetchall()
+    covered = [int(asset_id) for asset_id in covered_asset_ids]
+    if covered:
+        marks = ",".join("?" * len(covered))
+        known = {int(row["id"]) for row in rows}
+        rows += [row for row in connection.execute(
+            "SELECT e.id,e.kind,e.canonical_name,"
+            " (SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae"
+            "  WHERE ae.entity_id=e.id) AS assets"
+            " FROM entity e WHERE e.kind='performer' AND e.id IN"
+            f" (SELECT entity_id FROM asset_entity WHERE asset_id IN ({marks}))"
+            " ORDER BY e.id", covered).fetchall() if int(row["id"]) not in known]
     found = []
     for row in rows:
         entity_id, kind = int(row["id"]), str(row["kind"])
-        if avatar_picker.installed_digest(avatar_root, kind, entity_id):
+        if (avatar_picker.installed_digest(avatar_root, kind, entity_id)
+                and avatar_cover_face.installed_face_px(avatar_root, kind, entity_id) is None):
             continue
         found.append((int(row["assets"] or 0), entity_id, kind,
                       str(row["canonical_name"] or "")))
@@ -83,7 +101,9 @@ def run(contract, key: str, handle) -> dict:
     kind, entity_id = parse_key(key)
     avatar_root = contract.avatar_root
     providers_root = contract.candidate_root / "provider-cache" / "performer-avatars"
-    if avatar_picker.installed_digest(avatar_root, kind, entity_id):
+    # 装着的是封面截的那一档时还要往下走：图库可能有了人像，封面可能换了更清楚的。
+    cropped_px = avatar_cover_face.installed_face_px(avatar_root, kind, entity_id)
+    if avatar_picker.installed_digest(avatar_root, kind, entity_id) and cropped_px is None:
         # 重跑、或者这中间人自己换过图。两种都不该再装一次。
         return {"outcome": "已有头像"}
     with contract.database.read_connection() as connection:
@@ -101,14 +121,16 @@ def run(contract, key: str, handle) -> dict:
                                         kind, entity_id)
         found = [choice for choice in listing["choices"]
                  if choice["source"] == "gfriends"]
-        if not found:
-            return {"name": name, "outcome": "图库里没有这个名字", "matched": 0}
-        if len(found) > 1:
-            return {"name": name, "outcome": "认不准，等人挑",
-                    "matched": len(found)}
         handle.progress(label=f"{TASK_LABEL}：{name}", throttle=0)
-        return _install(contract, connection, providers_root, avatar_root,
-                        kind, entity_id, name, found[0])
+        if len(found) == 1:
+            installed = _install(contract, connection, providers_root, avatar_root,
+                                 kind, entity_id, name, found[0])
+            if installed["outcome"] == "已装上":
+                return installed
+        gallery = ("图库里没有这个名字" if not found
+                   else "图库里认不准" if len(found) > 1 else "图库那张太小")
+        return _install_cover_face(contract, connection, providers_root, avatar_root,
+                                   kind, entity_id, name, gallery, len(found), cropped_px)
 
 
 def _install(contract, connection, providers_root, avatar_root, kind: str,
@@ -132,6 +154,36 @@ def _install(contract, connection, providers_root, avatar_root, kind: str,
     contract.cache_bust()
     return {"name": name, "outcome": "已装上", "matched": 1, "size": size,
             "source": choice["label"]}
+
+
+def _install_cover_face(contract, connection, providers_root, avatar_root, kind: str,
+                        entity_id: int, name: str, gallery: str, matched: int,
+                        cropped_px: int | None) -> dict:
+    """图库给不出那一张时，从她单人作品的封面上截一张脸装上。
+
+    `cropped_px` 是装着的那张封面截图当时的脸宽（没装、或不是这一档装的是 None）：
+    新挑出来的脸不比它宽就不换，免得每跑一次都把同一张图重写一遍。
+    """
+    from .avatar_face import FaceProbe
+
+    probe = FaceProbe()
+    face = avatar_cover_face.best(connection, contract.cover_root, entity_id, probe)
+    summary = {"name": name, "matched": matched}
+    if face is None:
+        reason = f"探针不可用：{probe.unavailable}" if probe.unavailable else "封面上没有能截的脸"
+        return {**summary, "outcome": f"{gallery}，{reason}"}
+    if cropped_px is not None and face.face_px <= cropped_px:
+        return {**summary, "outcome": "已是最清楚的封面人脸", "source": face.code}
+    cut = avatar_cover_face.cut(face)
+    if cut is None:
+        return {**summary, "outcome": "封面截不出这一块", "source": face.code}
+    body, origin = cut
+    inspected = avatar_picker.install(providers_root, avatar_root, kind, entity_id,
+                                      body, origin)
+    contract.cache_bust()
+    return {**summary, "outcome": "已装上",
+            "size": f"{inspected['width']}×{inspected['height']}",
+            "source": f"作品封面 {face.code}"}
 
 
 #: 不写账本：这条后继只往 `avatar_root` 与候选缓存里写文件。它照样一次只跑一条——

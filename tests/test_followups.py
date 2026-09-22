@@ -356,11 +356,149 @@ class AvatarFollowupTests(LedgerTestCase):
         self.assertEqual(summary, {"outcome": "实体已不存在"})
 
 
+class CoverFaceFollowupTests(LedgerTestCase):
+    """图库给不出那一张时，从她单人作品的封面上截脸。
+
+    人脸模型要下 ONNX，测试不出网：探针按封面宽度查一张表给出脸框，检脸本身由头像域
+    的用例覆盖。
+    """
+
+    STAMP = AvatarFollowupTests.STAMP
+    entity = AvatarFollowupTests.entity
+
+    #: 封面宽 → 脸框（相对宽度）。没列的宽度是一张检不出脸的封面，比如戴着面具的原图。
+    FACES = {600: 0.15, 276: 0.2, 1000: 0.3, 900: 0.5}
+
+    def setUp(self):
+        super().setUp()
+        self.avatars = self.root / "avatars"
+        self.avatars.mkdir()
+        self.covers = self.root / "covers"
+        self.covers.mkdir()
+        self.person = self.entity("performer", "梨奈")
+        faces = self.FACES
+
+        class Probe:
+            unavailable = ""
+
+            def on_bytes(self, body):
+                from peach.images import measure_image_size
+                width, height = measure_image_size(body)
+                share = faces.get(width)
+                face = ({"cx": 0.5, "cy": 0.4, "w": share, "h": share, "score": 0.9}
+                        if share else None)
+                return {"ratio": width / height, "px": [width, height], "face": face}
+
+        patcher = mock.patch("peach.avatar_face.FaceProbe", Probe)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        # 装图那一步会顺手算人脸边车，同样不出网。
+        sidecar = mock.patch("peach.avatar_provider.FaceProbe")
+        sidecar.start().return_value.return_value = None
+        self.addCleanup(sidecar.stop)
+
+    def work(self, asset_id: int, code: str, size: tuple[int, int] | None,
+             performers: tuple[int, ...] = ()) -> None:
+        from PIL import Image
+
+        if size:
+            Image.new("RGB", size, "gray").save(self.covers / f"{code}.jpg", format="JPEG")
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'R:',?,?,'video',?,100)",
+                (asset_id, f"R:\\media\\{code}.mp4", f"{code}.mp4", code))
+            for entity_id in performers or (self.person,):
+                connection.execute(
+                    "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
+                    "VALUES(?,?,'performer','test')", (asset_id, entity_id))
+
+    def contract(self):
+        return SimpleNamespace(
+            avatar_root=self.avatars, candidate_root=self.root / "generated",
+            cover_root=self.covers, database=self.database, task_runs=self.store,
+            cache_bust=lambda: None)
+
+    def run_followup(self) -> dict:
+        from peach.avatar_followup import run as avatar_run
+
+        return avatar_run(self.contract(), followup_key("performer", self.person), mock.Mock())
+
+    def provenance(self) -> dict:
+        return json.loads((self.avatars / f"performer-{self.person}.img.provenance.json")
+                          .read_text(encoding="utf-8"))
+
+    def test_the_widest_face_wins_over_the_biggest_cover(self):
+        """戴面具的大图检不出脸，对头像毫无用处；挑的是脸上有多少像素。"""
+        self.work(1, "FC2-PPV-1", (1800, 1000))
+        self.work(2, "FC2-PPV-2", (276, 154))
+        self.work(3, "FC2-PPV-3", (600, 400))
+        other = self.entity("performer", "别人")
+        self.work(4, "FC2-PPV-4", (900, 600), performers=(self.person, other))
+        summary = self.run_followup()
+        self.assertEqual((summary["outcome"], summary["source"]),
+                         ("已装上", "作品封面 FC2-PPV-3"))
+        record = self.provenance()
+        self.assertEqual((record["provider"], record["external_id"], record["face_px"]),
+                         ("cover-face", "FC2-PPV-3", 90))
+        self.assertFalse(record["identity_verified"])
+        # 90 像素的脸放大 2.4 倍是 216 的方框，以脸心为中心。
+        self.assertEqual(record["crop_box"], [192, 52, 408, 268])
+
+    def test_a_thumbnail_is_the_floor_not_nothing(self):
+        self.work(1, "FC2-PPV-1", (1800, 1000))
+        self.work(2, "FC2-PPV-2", (276, 154))
+        self.assertEqual(self.run_followup()["source"], "作品封面 FC2-PPV-2")
+        self.assertEqual(self.provenance()["face_px"], 55)
+
+    def test_a_clearer_cover_later_replaces_the_crop_and_nothing_else_does(self):
+        self.work(2, "FC2-PPV-2", (276, 154))
+        self.run_followup()
+        self.assertEqual(self.run_followup()["outcome"], "已是最清楚的封面人脸")
+        self.work(5, "FC2-PPV-5", (1000, 600))
+        self.assertEqual(self.run_followup()["source"], "作品封面 FC2-PPV-5")
+        self.assertEqual(self.provenance()["face_px"], 300)
+
+    def test_a_whole_cover_installed_earlier_gives_way_to_any_face(self):
+        self.work(2, "FC2-PPV-2", (276, 154))
+        (self.avatars / f"performer-{self.person}.img").write_bytes(b"jpeg")
+        (self.avatars / f"performer-{self.person}.img.provenance.json").write_text(
+            json.dumps({"provider": "cover-fallback"}), encoding="utf-8")
+        self.assertEqual(self.run_followup()["source"], "作品封面 FC2-PPV-2")
+        self.assertEqual(self.provenance()["provider"], "cover-face")
+
+    def test_a_picture_someone_chose_is_never_replaced(self):
+        self.work(5, "FC2-PPV-5", (1000, 600))
+        (self.avatars / f"performer-{self.person}.img").write_bytes(b"jpeg")
+        (self.avatars / f"performer-{self.person}.img.provenance.json").write_text(
+            json.dumps({"provider": "picker"}), encoding="utf-8")
+        self.assertEqual(self.run_followup(), {"outcome": "已有头像"})
+
+    def test_no_face_on_any_cover_installs_nothing(self):
+        self.work(1, "FC2-PPV-1", (1800, 1000))
+        summary = self.run_followup()
+        self.assertEqual(summary["outcome"], "图库里没有这个名字，封面上没有能截的脸")
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_a_new_cover_plans_her_again_only_while_her_picture_is_a_crop(self):
+        self.work(2, "FC2-PPV-2", (276, 154))
+        chosen = self.entity("performer", "人挑过")
+        self.work(6, "FC2-PPV-6", (600, 400), performers=(chosen,))
+        (self.avatars / f"performer-{chosen}.img").write_bytes(b"jpeg")
+        self.run_followup()
+        watermark = chosen
+        with self.database.read_connection() as connection:
+            found = plan(connection, self.avatars, since_entity_id=watermark,
+                         covered_asset_ids=[2, 6])
+        self.assertEqual([item.key for item in found],
+                         [followup_key("performer", self.person)])
+
+
 class ProcessLibraryTests(LedgerTestCase):
     """一整条链走通：刮削登记新女优 → 声明后继 → 派出 → 真的跑完。
 
     这里不桩 `avatar_followup`：跑的就是补头像那条后继本身。图库索引在临时数据根下是空的，
-    于是它给出「图库里没有这个名字」并正常收尾——判不准不装图，本来就是这条后继的判据。
+    封面目录也是空的，于是它两档都给不出图并正常收尾——判不准不装图，本来就是这条后继的判据。
     """
 
     def sample(self):
@@ -413,11 +551,12 @@ class ProcessLibraryTests(LedgerTestCase):
         contract = SimpleNamespace(
             task_runs=self.store, database=self.database,
             avatar_root=self.root / 'generated' / 'avatars',
-            candidate_root=self.root / 'generated', cache_bust=lambda: None)
+            candidate_root=self.root / 'generated', cover_root=self.root / 'covers',
+            cache_bust=lambda: None)
         self.assertEqual(FollowupRunner(contract).drain(), 1)
         done = self.store.get(queued[0])
         self.assertEqual(done.status, 'succeeded')
-        self.assertEqual(done.result_summary['outcome'], '图库里没有这个名字')
+        self.assertEqual(done.result_summary['outcome'], '图库里没有这个名字，封面上没有能截的脸')
         self.assertFalse((self.root / 'generated' / 'avatars'
                           / f'performer-{entity_id}.img').exists())
 

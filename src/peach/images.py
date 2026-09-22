@@ -109,6 +109,15 @@ def measure_image_size(payload: bytes) -> tuple[int, int] | None:
         return None
 
 
+def measure_image_file(path) -> tuple[int, int] | None:
+    """盘上那张图的像素尺寸；没有或读不出就是 None。只读图片头，不解码整张。"""
+    try:
+        with Image.open(path) as image:
+            return image.size
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None
+
+
 def clamp_box(box: object, width: int, height: int) -> dict | None:
     """人递过来的框 → 落在源图里的整数框；形状不成立返回 None。
 
