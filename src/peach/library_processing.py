@@ -136,17 +136,19 @@ class LibraryMetadataProvider:
             2.0, intervals=SOURCE_INTERVALS)
 
     def community(self, code, *, deadline=None):
-        """官方渠道落空时问 AVBase、JavBus 与 javdb，返回 `[(来源, 资料)]`。
+        """官方渠道落空时问社区来源，返回 `[(来源, 资料)]`。
 
-        资料和封面两步都可能要它，同一个番号只问一次：javdb 的配额经不起每部片问两遍。
+        问哪几家按 `community_catalog.community_sources_for`：厂牌番号问 AVBase、JavBus
+        与 javdb，FC2 的商品号只问 javdb。资料和封面两步都可能要它，同一个番号只问一次：
+        javdb 的配额经不起每部片问两遍。
         几家都明确说没有才是 `NotFound`；有一家出错且谁都没给资料时，带着原因报 `Unavailable`。
         """
-        from .community_catalog import COMMUNITY_SOURCES
+        from .community_catalog import community_sources_for
         from .jav_cover_fetch import Unavailable
         cache = self.__dict__.setdefault('_community', {})
         if code not in cache:
             found, problems = [], []
-            for source, fetch in COMMUNITY_SOURCES:
+            for source, fetch in community_sources_for(code):
                 try:
                     found.append((source, fetch(self.transport, code, deadline=deadline)))
                 except DeadlineExceeded:

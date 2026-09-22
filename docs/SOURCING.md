@@ -318,6 +318,11 @@ av911.tv，三条候选已进复核队列。
   javdb.com 抓得到，但它自己按出口 IP 封速率，判据见下文。
   既有库采集只在官方渠道落空时按番号问 AVBase、JavBus 与 javdb：javdb 主机间隔 5 秒，javdb 与 AVBase 回 403
   就整源停下，资料与封面的比对规则见 ADR-0030、ADR-0032。
+  **FC2 的商品号只问 javdb**（`community_catalog.community_sources_for`）：2026-09-22 清点本机 1213 份来源证据，
+  AVBase 那 86 份、JavBus 那 37 份全是厂牌番号，对 FC2 一份都没给过，javdb 给了 166 份。
+  一轮采集的长短等于 javdb 请求数乘 5 秒——`HostLimiter` 等的是「距上次满 5 秒」，别家的往返落在这个窗口里被吸收，
+  所以跳过两家省的是配额和撞 Cloudflare 的次数，不是时间；同理把几家改成并行也省不出时间。
+  2026-09-22 实测一轮 565 部走 3349 秒（5.93 秒/部），其中 javdb 约 731 次请求折合 3655 秒，两者相差 9%。
   停多久按次数翻倍：第一次 `scraping_access.FIRST_BLOCKED_PAUSE`（15 分钟），连着再撞才翻到 `SOURCES` 的
   `blocked_pause` 上限（javdb 24 小时、AVBase 6 小时），通了一趟就把记录清掉重新起算。
   **上限不能当首停时长**：实际封期常常短得多，2026-09-22 实测 javdb 记下的 24 小时才走了 6.6 小时，

@@ -5,7 +5,8 @@ import unittest
 
 from PIL import Image
 
-from peach.community_catalog import IMAGE_LIMIT, avbase_work, javbus_work, javdb_work, verified_cover
+from peach.community_catalog import (COMMUNITY_SOURCES, IMAGE_LIMIT, avbase_work, community_sources_for,
+                                     javbus_work, javdb_work, verified_cover)
 from peach.http import HttpResponse
 from peach.jav_cover_fetch import Candidate, NotFound, Unavailable, _fetch
 
@@ -202,6 +203,19 @@ class VerifiedCoverTests(unittest.TestCase):
             verified_cover(serve({}), "ORETD-615", works)
         with self.assertRaises(NotFound):
             verified_cover(serve({}), "ORETD-615", [("javdb", {"cover_urls": []})])
+
+
+class SourceChoiceTests(unittest.TestCase):
+    def test_an_fc2_product_number_only_goes_to_javdb(self):
+        """AVBase 与 JavBus 的目录里没有 FC2，问了只是各撞一次空搜索。"""
+        self.assertEqual([name for name, _ in community_sources_for("FC2-PPV-1233719")], ["javdb"])
+        self.assertEqual([name for name, _ in community_sources_for("fc2-ppv-1233719")], ["javdb"])
+
+    def test_a_studio_code_still_goes_to_all_three(self):
+        """厂牌番号三家都有产出，顺序也要保持 javdb 最后。"""
+        self.assertEqual([name for name, _ in community_sources_for("ORETD-615")],
+                         ["avbase", "javbus", "javdb"])
+        self.assertEqual(community_sources_for(""), COMMUNITY_SOURCES)
 
 
 if __name__ == "__main__":
