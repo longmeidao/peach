@@ -81,7 +81,10 @@ from .web_playlists import q_playlist, q_playlists, w_playlist
 from .web_resource_sync import w_purge_missing, w_resource_sync_apply, w_resource_sync_scan
 from .web_review import q_review, w_review_decision, w_review_genre
 from .web_settings import q_settings, w_settings
-from .web_scraping import q_scraping, w_scraping_settings, w_scraping_check, w_scraping_cover
+from .web_scraping import (
+    q_scraping, q_scraping_amane_bridge, w_scraping_amane_check, w_scraping_amane_rebuild,
+    w_scraping_check, w_scraping_cover, w_scraping_settings,
+)
 from .web_state import WebContract
 from .web_tasks import q_tasks
 from .web_timeline_thumbnails import q_thumbnail_jobs, q_timeline, w_thumbnail_jobs
@@ -290,6 +293,7 @@ GET_HANDLERS = {
     "/api/timeline": q_timeline,
     "/api/scraping": q_scraping,
     "/api/scraping/cover": lambda contract, args: contract.scraping_cover_job.snapshot() or {"status": "idle"},
+    "/api/scraping/amane-bridge": q_scraping_amane_bridge,
     "/api/settings": q_settings,
     "/api/feeds": q_feeds,
     "/api/feeds/check": q_feed_check,
@@ -338,6 +342,8 @@ POST_HANDLERS = {
     "/api/scraping/settings": w_scraping_settings,
     "/api/scraping/cover": w_scraping_cover,
     "/api/scraping/check": w_scraping_check,
+    "/api/scraping/amane-bridge/check": w_scraping_amane_check,
+    "/api/scraping/amane-bridge/rebuild": w_scraping_amane_rebuild,
     "/api/feeds/check": w_feed_check,
     "/api/feeds/source": w_feed_source,
     "/api/feeds/discovery": w_feed_discovery,

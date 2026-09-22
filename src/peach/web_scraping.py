@@ -192,3 +192,23 @@ def w_scraping_check(contract, body):
     finally:
         transport.close()
     return {"ok": True, "results": results, "session_verified": False}
+
+
+def q_scraping_amane_bridge(contract, args):
+    """amane 桥那张卡：钉的 sha、锁里的版本、venv 建没建、开了哪几站，外加重建任务的快照。"""
+    from . import metadata_amane
+    return {**metadata_amane.describe(contract.tools_root),
+            "job": contract.amane_bridge_job.snapshot() or {"status": "idle"}}
+
+
+def w_scraping_amane_check(contract, body):
+    """只读 GitHub API 问上游最新 release。取不到就是「未取得」；升不升级由人读 diff 决定。"""
+    from . import metadata_amane, peach_proxy
+    latest = metadata_amane.latest_upstream_tag(peach_proxy.client_options(contract.follow_secrets_root))
+    return {"ok": True, "latest": latest, "checked_at": time.time()}
+
+
+def w_scraping_amane_rebuild(contract, body):
+    """按锁重建桥的 venv。首次要下载约 98 MB，放后台跑，页面轮询 `q_scraping_amane_bridge` 那条读接口。"""
+    from . import metadata_amane
+    return contract.amane_bridge_job.start_result(lambda: metadata_amane.rebuild(contract.tools_root))

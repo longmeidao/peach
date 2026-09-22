@@ -232,5 +232,45 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertIn("python -m pip install --no-cache-dir wheelhouse/*.whl", workflow)
 
 
+class AmaneBridgeManifestTests(unittest.TestCase):
+    """amane 桥（`tools/amane-bridge/`，ADR-0043）是本策略的登记例外，理由与替代门槛写在这里。
+
+    它不并进主 `pyproject.toml`：amane 要求 Python 3.14、依赖全用 `>=` 下限，并进来会把
+    Peach 的下限从 3.12 抬到 3.14，并让「精确固定版本」那条对上游的一百来项传递依赖失效。
+    替代门槛是：清单唯一的直接依赖是 amane 的一个 40 位 sha；`uv.lock` 在且锁的正是那个
+    sha；桥脚本只 import 标准库、amane 与 structlog（amane 自己的日志库）。它不进 Dependabot：
+    Dependabot 推不动一个 git sha 钉，升级是人读上游 diff 之后改清单，见 ADR-0043。
+    """
+
+    BRIDGE = ROOT / "tools" / "amane-bridge"
+
+    def test_the_only_direct_dependency_is_one_pinned_sha_and_the_lock_matches(self):
+        manifest = tomllib.loads((self.BRIDGE / "pyproject.toml").read_text(encoding="utf-8"))
+        dependencies = manifest["project"]["dependencies"]
+        self.assertEqual(len(dependencies), 1)
+        matched = re.fullmatch(r"amane @ git\+https://github\.com/sqzw-x/amane@([0-9a-f]{40})",
+                               dependencies[0])
+        self.assertIsNotNone(matched, dependencies[0])
+        self.assertNotIn("optional-dependencies", manifest["project"])
+        self.assertFalse(manifest["tool"]["uv"]["package"])
+        lock = tomllib.loads((self.BRIDGE / "uv.lock").read_text(encoding="utf-8"))
+        amane = next(package for package in lock["package"] if package["name"] == "amane")
+        self.assertIn(matched.group(1), amane["source"]["git"])
+
+    def test_the_bridge_script_imports_only_the_stdlib_amane_and_its_logger(self):
+        tree = ast.parse((self.BRIDGE / "bridge.py").read_text(encoding="utf-8"))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        self.assertEqual(imported - sys.stdlib_module_names, {"amane", "structlog"})
+        # 只碰爬虫层与网络层：聚合层会把配置与数据库层一起拖进来，且失败原因不进返回值。
+        source = (self.BRIDGE / "bridge.py").read_text(encoding="utf-8")
+        self.assertNotIn("amane.aggregate", source.replace("`amane.aggregate`", ""))
+        self.assertNotRegex(source, r"^\s*(?:from|import) amane\.crawlers\.sites\b", "站点包整体不 import")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -38,6 +38,7 @@ def stub_provider():
     """
     provider = Mock()
     provider.community.side_effect = NotFound('社区来源都没有这个番号')
+    provider.amane.side_effect = NotFound('amane 桥问的几站都没有这个番号')
     return provider
 
 

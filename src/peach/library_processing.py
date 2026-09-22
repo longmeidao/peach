@@ -59,11 +59,16 @@ MISS_TTL_SECONDS = 7 * 24 * 3600
 SOURCE_INTERVALS = {'javdb.com': 3.0, 'jdbstatic.com': 3.0}
 SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb',
                  'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
-                 '1pondo': '一本道', 'local_nfo': '本地 NFO'}
+                 '1pondo': '一本道', 'local_nfo': '本地 NFO',
+                 # 经 amane 桥问的几站（`metadata_amane.SITES`）。
+                 'fc2ppvdb': 'FC2PPVDB', 'fc2club': 'FC2Club', 'freejavbt': 'FreeJavBT',
+                 'airav': 'AIRAV', 'avsox': 'AVSOX'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
                   'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
-                  '1pondo': '1pondo-json'}
+                  '1pondo': '1pondo-json',
+                  'fc2ppvdb': 'amane-fc2ppvdb', 'fc2club': 'amane-fc2club',
+                  'freejavbt': 'amane-freejavbt', 'airav': 'amane-airav', 'avsox': 'amane-avsox'}
 #: FC2 商品页实测 300～320 KB，fc2cmadb 那页 90 KB；说明与评论都在同一页里。
 FC2_PAGE_LIMIT = 2 * 1024 * 1024
 #: 一本道的作品 JSON 实测 6～8 KB，带样片清单也只有十几 KB。
@@ -133,13 +138,77 @@ class LibraryMetadataProvider:
     `CredentialStore` 自己会拼上那一层。多给一层的表现不是报错，是每个来源都读成
     「没有凭据」——采集设置里贴好的 JavBus、javdb Cookie 一条都不会被带上。
     """
-    def __init__(self, secrets_root):
+    def __init__(self, secrets_root, *, tools_root=None):
         from .scraping_access import SourceTransport
         from .jav_cover_fetch import HostLimitedTransport
+        self.secrets_root = Path(secrets_root)
+        #: amane 桥的 venv 所在的工具区（`<数据根>/tools`）；不给就用配置里的默认位置。
+        self.tools_root = Path(tools_root) if tools_root is not None else None
         self.transport = HostLimitedTransport(
             SourceTransport(secrets_root, max_requests=MAX_SOURCE_REQUESTS,
                             max_bytes=MAX_SOURCE_BYTES, max_seconds=MAX_SOURCE_SECONDS),
             2.0, intervals=SOURCE_INTERVALS)
+
+    def amane(self, code, *, deadline=None, route=()):
+        """经 amane 桥问 `route` 里那几站，一次子进程并发问完，返回 `[(来源, 资料)]`。
+
+        桥与映射在 `metadata_amane`（ADR-0043）。正在冷却的站不带进子进程；桥报的限流与
+        封禁按站写回 `scraping_access` 那份冷却记录，和 httpx 那条路读写同一份。几站都明确
+        说没有才是 `NotFound`；有一站出错且谁都没给资料时带着原因报 `Unavailable`；要问的
+        站全在冷却才报 `SourcePaused`——那不是没取到，是本趟没轮到。
+        """
+        from . import metadata_amane
+        from .scraping_access import SourcePaused, paused_until
+        cache = self.__dict__.setdefault('_amane', {})
+        key = (code, tuple(route))
+        if key not in cache:
+            sites = [site for site in route if site in metadata_amane.SITES]
+            open_sites = [site for site in sites if not paused_until(self.secrets_root, site)]
+            if not sites:
+                cache[key] = NotFound('这个番号的链上没有经 amane 桥问的站')
+            elif not open_sites:
+                cache[key] = SourcePaused('来源正在冷却，请稍后重试；已有图片保留')
+            else:
+                cache[key] = self._amane_query(code, open_sites, deadline)
+        if isinstance(cache[key], Exception):
+            raise type(cache[key])(str(cache[key]))
+        return cache[key]
+
+    def _amane_query(self, code, sites, deadline):
+        """起一次桥子进程并把报告翻成这一档的结果或异常（异常作为返回值，由调用方缓存后再抛）。"""
+        from . import metadata_amane, peach_proxy
+        from .config import TOOLS_DIR
+        from .jav_cover_fetch import Unavailable
+        from .scraping_access import SourcePaused, pause_source
+        timeout = None
+        if deadline is not None:
+            timeout = deadline - time.monotonic()
+            if timeout <= 1.0:
+                raise DeadlineExceeded('外部资料在预算时间内未取得')
+        try:
+            bridge = metadata_amane.AmaneBridge.create(
+                self.tools_root if self.tools_root is not None else TOOLS_DIR)
+            report = bridge.query(code, sites, timeout=timeout,
+                                  proxy_options=peach_proxy.client_options(self.secrets_root))
+        except Exception as error:  # noqa: BLE001 - 桥没装、venv 坏了、超时：整档未取得，原因给人看
+            return Unavailable(f'amane 桥：{str(error).strip() or describe_failure(error)}')
+        found, failures = metadata_amane.split_report(code, report)
+        problems, held = [], 0
+        for site, error in failures.items():
+            action = metadata_amane.cooldown_action(error)
+            if action:
+                pause_source(self.secrets_root, site, refused=action == 'blocked')
+                held += 1
+            if error.kind != 'not_found':
+                problems.append(str(error))
+        if found:
+            return found
+        if not problems:
+            return NotFound('amane 桥问的几站都没有这个番号')
+        # 出错的站全都进了冷却，这一档就是「本趟没轮到」；只要有一站是别的原因就是「未取得」。
+        if held and held == len(problems):
+            return SourcePaused('；'.join(problems))
+        return Unavailable('；'.join(problems))
 
     def community(self, code, *, deadline=None, route=None):
         """官方渠道落空时问综合索引那一档，返回 `[(来源, 资料)]`。
@@ -947,7 +1016,8 @@ class _RemoteSession:
     def provider(self):
         if self._provider is None:
             self._provider = (self._factory() if self._factory
-                              else LibraryMetadataProvider(self._config.directory('secrets')))
+                              else LibraryMetadataProvider(self._config.directory('secrets'),
+                                                           tools_root=self._config.directory('tools')))
         return self._provider
 
     def reset(self):
@@ -1039,6 +1109,10 @@ class _RemoteSession:
                     found = self.provider().fc2(code, deadline=deadline, route=chain)
                 elif source == '1pondo':
                     found = self.provider().one_pondo(code, deadline=deadline)
+                elif source == 'amane':
+                    found = self.provider().amane(
+                        code, deadline=deadline,
+                        route=metadata_routes.amane_route(code, *evidence, overrides=self._routes))
                 else:
                     found = self.provider().community(
                         code, deadline=deadline,
@@ -1056,7 +1130,7 @@ class _RemoteSession:
             except Exception as error:
                 # 社区那一档的原因里已经写明是哪一家了（`community()` 逐家拼过），再套一层
                 # 就成了「社区来源：javdb：…」。单家来源的原因不带来源名，这里补上。
-                problems.append(describe_failure(error) if source == 'community'
+                problems.append(describe_failure(error) if source in ('community', 'amane')
                                 else f'{SOURCE_LABELS.get(source, source)}：{describe_failure(error)}')
                 held.append(source_paused(error))
                 continue

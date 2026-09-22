@@ -9,7 +9,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { queryClient } from '../../src/react/query';
 import { ScrapingPage } from '../../src/react/scraping/scraping-page';
 import { prefetchScraping } from '../../src/react/scraping/scraping';
-import type { Check, CoverJob, Source } from '../../src/react/scraping/scraping';
+import type { AmaneBridge, Check, CoverJob, Source } from '../../src/react/scraping/scraping';
 
 import { buttonNamed, click, mount, mountRoot, section, settle, submit, type } from './render';
 
@@ -74,23 +74,39 @@ async function open(handlers: Record<string, (body: never) => Reply>) {
   return { ...served, toast, host: await mount(page(toast)) };
 }
 
-/** 一份只有一个来源、后台没有任务的首屏。 */
+/** amane 桥那张卡的事实：已装好、没有在跑的重建。 */
+const BRIDGE: AmaneBridge = {
+  repository: 'https://github.com/sqzw-x/amane', license: 'GPL-3.0',
+  revision: '79ecfa763cc786318e1964a3d7f4e244a7d5c96d', version: '0.16.1', installed: true,
+  python: 'T:/tools/amane-bridge/.venv/Scripts/python.exe',
+  sites: [{ source: 'fc2ppvdb', label: 'FC2PPVDB' }, { source: 'avsox', label: 'AVSOX' }],
+  job: { status: 'idle' },
+};
+
+/** 一份只有一个来源、后台没有任务、amane 桥已装好的首屏。 */
 const quiet = (overrides: Partial<Source> = {}) => ({
   'GET /api/scraping': () => ({ body: { sources: [source(overrides)] } }),
   'GET /api/scraping/cover': () => ({ body: { status: 'idle' } }),
+  'GET /api/scraping/amane-bridge': () => ({ body: BRIDGE }),
 });
+/** 首屏三份数据的请求顺序，和 `prefetchScraping` 里的一致。 */
+const FIRST_SCREEN = ['/api/scraping', '/api/scraping/cover', '/api/scraping/amane-bridge'];
 
 const password = (root: ParentNode) => root.querySelector<HTMLInputElement>('input[type=password]');
 const radio = (value: string) => document.querySelector<HTMLInputElement>(`input[type=radio][value="${value}"]`);
 /** 轮询是组件里的定时器，推进时钟会引起重画，得在 act 里推。 */
 const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms) });
 
-it('首屏用 prefetch 落进缓存的两份画出来，挂载时不再请求一次', async () => {
+it('首屏用 prefetch 落进缓存的三份画出来，挂载时不再请求一次', async () => {
   const { calls, host } = await open(quiet());
-  expect(calls.map((call) => call.path))
-    .toEqual(['/api/scraping', '/api/scraping/cover']);
+  expect(calls.map((call) => call.path)).toEqual(FIRST_SCREEN);
   expect(section(host, 'FC2CMADB')).not.toBeNull();
   expect(section(host, '高清封面')).not.toBeNull();
+  const bridge = section(host, 'amane 桥');
+  expect(bridge).not.toBeNull();
+  expect(bridge?.textContent).toContain('0.16.1 · 79ecfa763cc7');
+  expect(bridge?.textContent).toContain('FC2PPVDB、AVSOX');
+  expect(buttonNamed('重新安装', bridge!)).not.toBeNull();
   // 连接方式是 BoardUI 的 Select，画出来的是按钮；原生 select 是 React Aria 藏在后面
   // 供表单取值的那一个，不是这一行的长相。
   expect(host.querySelector('[aria-haspopup=listbox]')?.textContent?.trim()).toBe('Peach 代理');
@@ -108,7 +124,7 @@ it('保存后清空秘密输入，列表就地换成服务端回的那一条，�
   await submit(section(host, 'FC2CMADB'));
   await settle();
 
-  expect(calls[2]).toEqual({
+  expect(calls[FIRST_SCREEN.length]).toEqual({
     path: '/api/scraping/settings',
     method: 'POST',
     body: {
@@ -130,7 +146,7 @@ it('撤销走同一条写入，回执说的是撤销', async () => {
   });
   await click(buttonNamed('撤销 Cookie', host));
   await settle();
-  expect(calls[2]?.body).toMatchObject({ source: 'fc2cmadb', revoke: true });
+  expect(calls[FIRST_SCREEN.length]?.body).toMatchObject({ source: 'fc2cmadb', revoke: true });
   expect(toast).toHaveBeenCalledWith('Cookie 已撤销');
   expect(buttonNamed('撤销 Cookie', host), '撤销之后这颗键没有对象可撤了').toBeNull();
 });
@@ -180,7 +196,7 @@ it('Cookie 二选一：切过去的那一种才交，另一种连输入都不留
 
   await submit(section(host, 'FC2CMADB'));
   await settle();
-  expect(calls[2]?.body).toMatchObject({ cookie: '', cookies_text: '' });
+  expect(calls[FIRST_SCREEN.length]?.body).toMatchObject({ cookie: '', cookies_text: '' });
 
   await click(radio('paste'));
   expect(password(host)?.value).toBe('');
@@ -197,7 +213,7 @@ it('Cookie 文件超过上限时当场拦住，不拿它去占一次请求', asy
 
   expect(host.querySelector('[role=alert]')?.textContent).toBe('Cookie 文本超过 256 KiB');
   expect(host.textContent).toContain('未选择文件');
-  expect(calls).toHaveLength(2);
+  expect(calls).toHaveLength(FIRST_SCREEN.length);
 });
 
 it('首屏读到的旧结果不冒充新结果：不画、也不发回执', async () => {
@@ -225,7 +241,7 @@ it('抓封面跟到终态：跑的时候两秒一次，跑完发一次回执就�
   await type(host.querySelector<HTMLInputElement>('input[aria-label=馆藏番号]'), 'ABW-232');
   await click(buttonNamed('抓取封面', host));
   await settle();
-  expect(calls[2]).toMatchObject({ path: '/api/scraping/cover', method: 'POST', body: { code: 'ABW-232' } });
+  expect(calls[FIRST_SCREEN.length]).toMatchObject({ path: '/api/scraping/cover', method: 'POST', body: { code: 'ABW-232' } });
   expect(host.textContent).toContain('正在抓取封面');
 
   await tick(2000);
@@ -251,8 +267,40 @@ it('卸载之后不再敲后台：轮询跟着这棵根一起走', async () => {
 
   await tick(2000);
   const asked = calls.length;
-  expect(asked).toBeGreaterThan(2);
+  expect(asked).toBeGreaterThan(FIRST_SCREEN.length);
   await mounted.unmount();
   await tick(60_000);
   expect(calls.length, '卸载之后还在轮询').toBe(asked);
+});
+
+it('amane 桥：检查上游只填「上游最新版本」那一行，重建跟到终态并发一次回执', async () => {
+  vi.useFakeTimers();
+  const toast = vi.fn();
+  const bridgeStates = coverStates({ status: 'idle' }, { status: 'running' },
+    { status: 'complete', result: 'amane 桥已按 79ecfa763cc7 重建' });
+  const { calls } = serve({
+    ...quiet(),
+    'GET /api/scraping/amane-bridge': () => ({ body: { ...BRIDGE, job: bridgeStates().body } }),
+    'POST /api/scraping/amane-bridge/check': () => ({ body: { ok: true, latest: 'v0.17.0' } }),
+    'POST /api/scraping/amane-bridge/rebuild': () => ({ body: { status: 'running' } }),
+  });
+  await prefetchScraping(new AbortController().signal);
+  const host = await mount(page(toast));
+  const bridge = section(host, 'amane 桥')!;
+  expect(bridge.textContent).toContain('尚未检查');
+
+  await click(buttonNamed('检查上游版本', bridge));
+  await settle();
+  expect(calls[FIRST_SCREEN.length]).toMatchObject({ path: '/api/scraping/amane-bridge/check', method: 'POST' });
+  expect(bridge.textContent).toContain('v0.17.0');
+  expect(bridge.textContent, '钉住的版本不因上游有新版而改变').toContain('0.16.1 · 79ecfa763cc7');
+
+  await click(buttonNamed('重新安装', bridge));
+  await settle();
+  expect(calls[FIRST_SCREEN.length + 1]).toMatchObject({ path: '/api/scraping/amane-bridge/rebuild', method: 'POST' });
+  expect(bridge.textContent).toContain('正在重建运行环境');
+  await tick(2000);
+  expect(bridge.textContent).toContain('amane 桥已按 79ecfa763cc7 重建');
+  expect(toast).toHaveBeenCalledTimes(1);
+  expect(toast).toHaveBeenCalledWith('amane 桥已按 79ecfa763cc7 重建');
 });

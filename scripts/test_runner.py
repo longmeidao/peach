@@ -208,6 +208,8 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     ("scripts/scrape_codes.py", ("metadata", "tooling")),
     ("scripts/merge_studio_name_variants.py", ("metadata", "tooling")),
     ("scripts/harvest_", ("metadata", "tooling")),
+    # amane 桥（ADR-0043）：脚本由 metadata 域的单测装载，清单与锁由 checks 域的依赖策略核。
+    ("tools/amane-bridge/", ("metadata", "checks")),
     ("scripts/sync_brand_marks.py", ("catalog", "tooling")),
     ("scripts/detect_cover_faces.py", ("web", "tooling")),
     ("scripts/demo_dataset.py", ("web", "tooling")),

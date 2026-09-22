@@ -54,6 +54,13 @@ SOURCE_SPECS = {
         # 一本道的官网作品 JSON（`peach.metadata_1pondo`）。发行方自己那一份，不走
         # Javinizer-Go，所以同样不进 REGISTERED_SOURCES。
         "1pondo": "official",
+        # 经 amane 桥问到的几站（`peach.metadata_amane.SITES`，ADR-0043）。都是转载或索引站，
+        # 按社区来源对待；不走 Javinizer-Go，同样不进 REGISTERED_SOURCES。
+        "fc2ppvdb": "community",
+        "fc2club": "community",
+        "freejavbt": "community",
+        "airav": "community",
+        "avsox": "community",
     }.items()
 }
 

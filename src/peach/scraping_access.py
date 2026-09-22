@@ -64,6 +64,46 @@ class SourcePaused(RuntimeError):
     """来源冷却期内停止请求，保留已有图像。"""
 
 
+def cooldown_path(root: Path, source: str) -> Path:
+    """这个来源的冷却记录。键是来源名；没有来源名的请求按主机名散列，见 `SourceTransport`。"""
+    return Path(root) / ("scraping-" + source + ".cooldown.json")
+
+
+def cooldown_state(root: Path, source: str) -> tuple[float, int]:
+    """`(冷却到几点, 连着撞了几次)`；没有记录或记录坏了都按 `(0, 0)`。"""
+    try:
+        record = json.loads(cooldown_path(root, source).read_text(encoding="utf-8"))
+        return float(record["until"]), int(record.get("blocks") or 0)
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0.0, 0
+
+
+def paused_until(root: Path, source: str) -> float:
+    """来源还在冷却就返回到几点，否则 0。amane 桥那几站在起子进程前按它筛。"""
+    until, _ = cooldown_state(root, source)
+    return until if until > time.time() else 0.0
+
+
+def pause_source(root: Path, source: str, *, refused: bool = False,
+                 retry_after: float | None = None) -> float:
+    """按现成的两档把来源停下，返回冷却到几点。
+
+    `refused` 走 403 那一档：先停 `FIRST_BLOCKED_PAUSE`，连着再撞才翻倍，上限是
+    `SOURCES[source]['blocked_pause']`，没登记上限的来源按 24 小时。否则走 429 那一档：
+    停站方说的 `retry_after` 秒，没说就 15 分钟。不是 httpx 那条路（amane 桥）发现的
+    限流与封禁也从这里进，两条路读写的是同一份记录。
+    """
+    until, blocks = cooldown_state(root, source)
+    if refused:
+        blocks += 1
+        limit = SOURCES.get(source, {}).get("blocked_pause") or 24 * 3600
+        until = time.time() + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1), limit)
+    else:
+        until = time.time() + max(0.0, float(retry_after if retry_after is not None else 900))
+    _pause(cooldown_path(root, source), until, blocks)
+    return until
+
+
 def _pause(cooldown: Path, until: float, blocks: int = 0) -> None:
     with _LOCK:
         cooldown.parent.mkdir(parents=True, exist_ok=True)
@@ -228,12 +268,8 @@ class SourceTransport:
                 raise SourcePaused("本趟下载量已用完，再跑一次接着采；已有图片保留")
             max_bytes = min(max_bytes, remaining - 1)
         key = source or hashlib.sha256(hostname_of(request.url).encode()).hexdigest()
-        cooldown = self.root / ("scraping-" + key + ".cooldown.json")
-        try:
-            record = json.loads(cooldown.read_text(encoding="utf-8"))
-            until, blocks = float(record["until"]), int(record.get("blocks") or 0)
-        except (OSError, ValueError, KeyError, TypeError):
-            until, blocks = 0, 0
+        cooldown = cooldown_path(self.root, key)
+        until, blocks = cooldown_state(self.root, key)
         if until > time.time():
             raise SourcePaused("来源正在冷却，请稍后重试；已有图片保留")
         if source not in self.transports:
