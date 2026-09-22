@@ -89,9 +89,13 @@ JAVBUS_PAGE = (f"<h3>ABW-358 {TITLE}</h3>\n"
 JAVDB_RESULTS = ('<a href="/v/Q1" class="box" title="別"><div class="video-title"><strong>ABW-3580</strong></div></a>'
                  '<a href="/v/Zb7mX" class="box" title="涼森れむ流"><div class="video-title"><strong>ABW-358</strong> '
                  + TITLE + "</div></a>").encode()
+#: 站上 2026-09-22 的写法：class 在前、src 在后，中间还夹着三个属性。下面那个是它上一版。
+JAVDB_COVER_TAG = (f'<div class="column column-video-cover"><img class="video-cover" width="600" '
+                   f'height="404" fetchpriority="high" src="{JAVDB_COVER}" /></div>')
+JAVDB_COVER_TAG_EARLIER = f'<img src="{JAVDB_COVER}" class="video-cover" alt="">'
 JAVDB_PAGE = (f'<strong class="current-title">{TITLE}</strong>'
-              f'<img src="{JAVDB_COVER}" class="video-cover" alt="">'
-              '<div class="panel-block first-block"><strong>番號:</strong>&nbsp;<span class="value">'
+              + JAVDB_COVER_TAG
+              + '<div class="panel-block first-block"><strong>番號:</strong>&nbsp;<span class="value">'
               '<a href="/video_codes/ABW">ABW</a>-358</span></div>'
               '<div class="panel-block"><strong>日期:</strong>&nbsp;<span class="value">2023-05-23</span></div>'
               '<div class="panel-block"><strong>時長:</strong>&nbsp;<span class="value"> 210 分鍾</span></div>'
@@ -150,6 +154,14 @@ class CommunityCatalogTests(unittest.TestCase):
             [{"japanese_name": "涼森れむ", "profile_source": "javdb", "external_id": "a"}],
             "男优不进演员；女优带着她在 javdb 的演员 id")
         self.assertEqual((work["source_url"], work["cover_urls"]), ("https://javdb.com/v/Zb7mX", [JAVDB_COVER]))
+
+    def test_javdb_reads_the_cover_whichever_side_of_the_class_the_src_sits(self):
+        """站方在封面那个 img 上改过属性顺序，页面其余部分照常解析，缺的只是封面。"""
+        earlier = JAVDB_PAGE.replace(JAVDB_COVER_TAG.encode(), JAVDB_COVER_TAG_EARLIER.encode())
+        self.assertNotEqual(earlier, JAVDB_PAGE, '两种写法要真的不一样，否则这条用例什么也没测')
+        for page in (JAVDB_PAGE, earlier):
+            work = javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: page}), "ABW-358")
+            self.assertEqual(work["cover_url"], JAVDB_COVER)
 
     def test_javdb_reads_the_actor_id_whichever_side_of_the_class_it_sits(self):
         """属性的先后由站方模板决定，不该成为拿不到演员 id 的理由。"""
