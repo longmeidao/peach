@@ -1,12 +1,18 @@
 """人物资料页的外部入口：几个站点的直达地址，以及它们的本机开关与模板。
 
 入口只由后端拼：地址要用的东西都在服务端——`entity_external_ref` 里的站点 id、
-`entity.canonical_name` 和 `entity_alias`。前端拿到的是一串带栏位与图标的
-`{site, label, url, section, line, icon}`，没有模板也没有拼装规则，换一个站不必同时
-改两侧。
+`entity.canonical_name` 和 `entity_alias`。前端拿到的是一串带位置与标记的
+`{site, label, slot, mark, url}`，没有模板也没有拼装规则，换一个站不必同时改两侧。
 
 **没有 id 的站点不出现。** 退回搜索地址等于把「这个人在那边是谁」这件事交给站内检索
 去猜，而同名的人正是最需要点进去核对的那一批。
+
+**JavDB 与 MISSAV 只给 JAV 女优。** 账本里 `kind='performer'` 装着两种人：商业 AV 女优，
+和 `145cm色白お嬢様` 这样的 FC2 个人摄创作者。后者不在这两个站的收录范围里，而 MISSAV
+只按名字拼地址，不设门就会给每个创作者挂一条必然落空的链接。门槛是 `_JAV_DIRECTORIES`：
+账本里有没有哪个 JAV 目录站给过她 id——那是别人已经收录过她的现成证据，比猜名字是不是
+日文、比看标签都硬。`stash` 不算（那是本机 Stash 的 id，库里每个人都有），
+`r18:performer_name` 也不算（那是名字映射，不是目录页上的 id）。
 
 **MISSAV 按日文艺名拼。** 它的路径就是名字，而账本里 794 位 performer 有 601 位的规范名
 是中文译名，拿译名拼出来的是一个不存在的页面（实测 `/cn/actresses/释爱丽丝` 返回 404，
@@ -21,6 +27,9 @@
 
 **同一个站点可以有多枚入口。** 一位女优在 javdb 常有两个演员页，两边挂的作品不同，
 所以每个 id 各出一枚，第二枚起在标签后缀一个序号。
+
+**两种位置。** minnano-av 是一份资料页，和事务所官网、社媒是同一类东西，所以它排进上面
+那排链接里。JavDB 与 MISSAV 是「去看片」的入口，另起一行，用两站自己的标识。
 """
 from __future__ import annotations
 
@@ -38,19 +47,22 @@ FILENAME = "entry-links.json"
 #: `entity_external_ref.external_kind`：人物那一档。
 EXTERNAL_KIND = "performer"
 
-#: 三个栏位。资料页按这三个词给灰色小标题，站点归在它下面。
-SECTION_HOME = "演员主页"
-SECTION_WATCH = "在线观看"
-SECTION_LIBRARY = "在线片库"
+#: 入口在页面上的两个位置。`pill` 混进上面那排外链，`mark` 自己一行、用站点标识。
+SLOT_PILL = "pill"
+SLOT_MARK = "mark"
+
+#: JAV 目录站。实体在这些站里有 `performer` id，才算「这是一位 JAV 女优」。
+#: 判据见模块开头：这是别处已经收录过她的现成证据。
+JAV_DIRECTORIES = frozenset({"javdb", "minnano-av", "r18dev", "dmm", "kmib", "avbase"})
 
 
 @dataclass(frozen=True)
 class EntrySite:
     """一个入口站点。
 
-    `provider` 空串表示这一站按名字拼，不需要账本里的 id。`label` 是药丸上的字，
-    `title` 是配置页和报错里的站点名——同一个站在两个栏位各有一枚时，药丸靠栏位标题
-    说清是哪一枚，而配置页没有栏位标题，得自己把话说全。
+    `provider` 空串表示这一站按名字拼，不需要账本里的 id。`label` 是页面上那枚入口的
+    可读名字，`title` 是配置页和报错里的站点名。`mark` 是雪碧图里那枚标记的名字；
+    MISSAV 没有可用的图形标识，它的 `mark` 是空串，由前端按站点自己的排版规则排字。
     """
 
     key: str
@@ -59,24 +71,23 @@ class EntrySite:
     placeholder: str
     provider: str
     template: str
-    section: str
-    line: int
-    icon: str
+    slot: str
+    mark: str
+    jav_only: bool = False
 
 
 SITES: tuple[EntrySite, ...] = (
     EntrySite("minnano-av", "minnano-av", "minnano-av", "minnano_id", "minnano-av",
               "https://www.minnano-av.com/actress{minnano_id}.html",
-              SECTION_HOME, 1, "brand-minnano"),
-    EntrySite("javdb-home", "JavDB", "JavDB 演员主页", "javdb_id", "javdb",
-              "https://javdb.com/actors/{javdb_id}",
-              SECTION_HOME, 1, "brand-javdb"),
+              SLOT_PILL, "brand-minnano"),
+    # javdb 的演员页就是作品列表，`sort_type=4` 只是把它按发行日期排；两条地址落在同一页，
+    # 所以只留这一条，按用户平时点的那个排序走。
+    EntrySite("javdb", "JavDB", "JavDB", "javdb_id", "javdb",
+              "https://javdb.com/actors/{javdb_id}?sort_type=4",
+              SLOT_MARK, "mark-javdb", jav_only=True),
     EntrySite("missav", "MISSAV", "MISSAV", "name", "",
               "https://missav.ws/cn/actresses/{name}",
-              SECTION_WATCH, 1, "brand-missav"),
-    EntrySite("javdb", "JavDB", "JavDB 作品列表", "javdb_id", "javdb",
-              "https://javdb.com/actors/{javdb_id}?sort_type=4",
-              SECTION_LIBRARY, 2, "brand-javdb"),
+              SLOT_MARK, "", jav_only=True),
 )
 _BY_KEY = {site.key: site for site in SITES}
 #: 模板长度上限。地址栏塞得下的东西远不止这个数，但入口模板只有一个占位符要填。
@@ -216,35 +227,47 @@ def japanese_name(canonical_name: str, aliases) -> str:
     return chosen[1] if chosen else name
 
 
-def _numbered(label: str, index: int) -> str:
-    """同一个站点第二枚起带序号，否则两枚药丸读起来是同一条。"""
+def is_jav_performer(refs) -> bool:
+    """这条实体在 JAV 目录站里有身份吗。判据与理由见模块开头。"""
+    return any(provider in JAV_DIRECTORIES for provider in provider_ids(refs))
+
+
+def _ordinal(index: int) -> str:
+    """同一个站点第二枚起的序号，第一枚没有。
+
+    序号单独给一项而不是只拼进 `label`：标识那一行印的是站点自己的图形，没有位置放
+    整句话，序号得能单独摆在标识旁边。用完那几个字符退回括号数字，宁可长一点也不能
+    两枚长得一模一样。
+    """
     if index == 0:
-        return label
+        return ""
     if index <= len(_ORDINALS):
-        return f"{label} {_ORDINALS[index - 1]}"
-    return f"{label} ({index + 1})"
+        return _ORDINALS[index - 1]
+    return f"({index + 1})"
 
 
 def build(settings: dict, canonical_name: str, refs, aliases=()) -> list[dict]:
-    """这条人物实体能直达的地址，按栏位与行序排好。缺 id 的站点不出现在结果里。"""
+    """这条人物实体能直达的地址，按 SITES 的先后排好。缺 id 的站点不出现在结果里。"""
     ids = provider_ids(refs)
+    jav = is_jav_performer(refs)
     written = japanese_name(canonical_name, aliases)
     out: list[dict] = []
     for site in SITES:
         row = settings.get(site.key) or {}
-        if not row.get("enabled", True):
+        if not row.get("enabled", True) or (site.jav_only and not jav):
             continue
         values = ids.get(site.provider, []) if site.provider else ([written] if written else [])
         template = str(row.get("template") or site.template)
         if _template_problem(site, template):
             template = site.template
         for index, value in enumerate(values):
-            out.append({"site": site.key, "label": _numbered(site.label, index),
-                        "section": site.section, "line": site.line, "icon": site.icon,
+            ordinal = _ordinal(index)
+            out.append({"site": site.key,
+                        "label": f"{site.label} {ordinal}".strip(),
+                        "ordinal": ordinal, "slot": site.slot, "mark": site.mark,
                         "url": template.replace("{" + site.placeholder + "}",
                                                 quote(value, safe=""))})
-    # 稳定排序：行内仍按 SITES 的先后，而 SITES 的顺序就是栏位的顺序。
-    return sorted(out, key=lambda entry: entry["line"])
+    return out
 
 
 def entry_links(root: Path, canonical_name: str, refs, aliases=()) -> list[dict]:

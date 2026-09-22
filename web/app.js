@@ -7885,7 +7885,7 @@ async function openEntity(kind,name,push=true){
      真正有信息量的只有那个 X。图标本身就说明了去哪，名字留给官网那种「点之前看不出
      是谁」的链接。外链箭头一并去掉：`target="_blank"` 已经是外链，箭头只是重复，
      一排链接里还会挤掉本来就不多的横向空间。 */
-  const links=(d.links||[]).map(x=>{
+  const siteLinks=(d.links||[]).map(x=>{
     if(!(x.clickable&&/^https?:\/\//i.test(x.url||'')))
       return `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`;
     /* 社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——图标本身已经说明了去哪。 */
@@ -7903,29 +7903,30 @@ async function openEntity(kind,name,push=true){
        名称留在 `title` 里，点之前要看全称把指针停上去就有。 */
     return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(siteName(x.url)||x.label)}</span></a>`;
   }).join('');
-  /* 外部入口：同一个人在 minnano-av、JavDB 与 MISSAV 的那几页。地址、栏位、行号和图标
-     都由服务端下发（`peach.entry_links`），这里只排版——站点 id 缺席时那一枚根本不在
-     `entry_links` 里，页面上也就没有一个点过去落空的入口。
+  /* 外部入口：同一个人在 minnano-av、JavDB 与 MISSAV 的那几页。地址、位置和用哪枚标记
+     都由服务端下发（`peach.entry_links`），这里只排版——站点 id 缺席、或者这条实体不是
+     JAV 女优时，那一枚根本不在 `entry_links` 里，页面上也就没有一个点过去落空的入口。
 
-     按栏位分组：一枚入口说的是「去哪个站」，栏位说的是「去那儿干什么」，两句话都要有，
-     所以站名留在药丸上，「演员主页／在线观看／在线片库」写成栏位标题。同一个站在两个
-     栏位各有一枚，同一个栏位里同一个站也可能有两枚——javdb 上一位女优有两个演员页是
-     常事，服务端已经给第二枚编好号。
+     minnano-av 是一份资料页，和事务所官网、社媒同一类，所以它排进上面那排链接的最左边，
+     形状也跟着那排走；`/link-mark` 那条圆标认的是账本里的链接 id，这一枚不是账本链接，
+     图标于是取雪碧图里 minnano 自己那枚。
 
-     `/link-mark` 那条圆标认的是账本里的链接 id，这几条不是账本链接，所以图标用雪碧图里
-     各站自己那枚品牌标记，和上面那排社媒外链同一个形。 */
-  const entryLines=[];
-  (d.entry_links||[]).forEach(x=>{
-    let line=entryLines.at(-1);
-    if(!line||line.line!==x.line)entryLines.push(line={line:x.line,groups:[]});
-    let group=line.groups.at(-1);
-    if(!group||group.section!==x.section)line.groups.push(group={section:x.section,items:[]});
-    group.items.push(x);
-  });
-  const entryLinks=entryLines.map(line=>`<div class="entryrow">${line.groups.map(group=>
-    `<div class="entrygroup"><span class="entryhead">${esc(group.section)}</span><span class="entryentries">${
-      group.items.map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><span class="entitylinkicon brand">${icon(x.icon)}</span><span class="entitylinklabel">${esc(x.label)}</span></a>`).join('')
-    }</span></div>`).join('')}</div>`).join('');
+     JavDB 与 MISSAV 是「去看片」的入口，另起一行，印两站自己的标识：一行两枚横标识，
+     比两枚小圆标加两行栏位标题省掉整整两行，而认出是哪家更快。一位女优在 javdb 有两个
+     演员页是常事，第二枚在标识后面缀服务端编好的序号。 */
+  const entryLinks=d.entry_links||[];
+  const links=entryLinks.filter(x=>x.slot==='pill').map(x=>
+    `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon brand">${icon(x.mark)}</span><span class="entitylinklabel">${esc(x.label)}</span></a>`
+  ).join('')+siteLinks;
+  /* MISSAV 站上没有图形标识，它的标题就是排出来的字：Halant 500、`MISS` 用前景色、`AV`
+     用它的粉（`.text-primary` 的 rgb(254 98 142)）。这里照它那套规则重排，字体退回本机
+     衬线体——为一枚标识把一份第三方字体收进仓库，不值当。前景色那半在它站上是近白，
+     压在 Peach 的浅色面上会整块消失，所以跟着页面墨色走。 */
+  const entryMarks=entryLinks.filter(x=>x.slot==='mark').map(x=>
+    `<a class="entrymark" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${
+      x.mark?icon(x.mark):'<span class="missavmark"><span>MISS</span><span>AV</span></span>'
+    }${x.ordinal?`<span class="entryordinal">${esc(x.ordinal)}</span>`:''}<span class="sr-only">${esc(x.label)}</span></a>`
+  ).join('');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
@@ -8003,7 +8004,7 @@ async function openEntity(kind,name,push=true){
       <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
         <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
         ${links?`<div class="entitylinks">${links}</div>`:''}
-        ${entryLinks?`<div class="entryrows">${entryLinks}</div>`:''}</div></div>
+        ${entryMarks?`<div class="entrymarks">${entryMarks}</div>`:''}</div></div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>

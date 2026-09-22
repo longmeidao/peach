@@ -210,11 +210,8 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
   .entityhero .entitylinks::-webkit-scrollbar{display:none}
   .entityhero .entitylinks>*{flex:none}
-  /* 外部入口一行最多几枚，窄屏下换行就够，不值得再接一套横滑；整块跟着单列卡居中。
-     竖线在这里撤掉：栏位一换行，那条线划开的是上下两栏，不再是左右两栏。 */
-  .entityhero .entryrow,.entityhero .entryentries{justify-content:center}
-  .entityhero .entrygroup{align-items:center}
-  .entityhero .entrygroup+.entrygroup{padding-left:0;border-left:0}
+  /* 看片那一行至多几枚，窄屏下换行就够，不值得再接一套横滑；整行跟着单列卡居中。 */
+  .entityhero .entrymarks{justify-content:center}
   .stats h2{font-size:var(--fs-xl)}.stats .insightcopy h2{font-size:var(--fs-3xl)}
   /* 窄屏下标题也得一起缩。`/follow` 渲染在 `#stats` 里，上面那条 `.stats h2`
      会只把它打到 23px，而 `#manageTitle` 在 `#stats` 外面，手机上又变成两种大小。 */
