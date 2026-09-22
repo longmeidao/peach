@@ -152,6 +152,11 @@ class WebContract:
         #: 任务中心。每个后台任务的开始、进度与结束都写这一张表，`/activity` 只读它。
         #: 只读端由 `api` 关掉写入：那边的账本是复制来的，写一行就是一处合不回去的分叉。
         self.task_runs = TaskRunStore(self.database)
+        #: 后继调度（ADR-0040）。导入 `avatar_followup` 就是它的登记动作：调度器本身
+        #: 不认识任何一种后继，登记表在 `followups.REGISTRY` 里。
+        from . import avatar_followup  # noqa: F401  登记补头像后继
+        from .followups import FollowupRunner
+        self.followups = FollowupRunner(self)
         self.follow_job = self._job("PeachFollowCheckJob", "follow-check")
         self.follow_resolve_job = self._job("PeachFollowResolveJob", "follow-resolve")
         self.taste_refresh_job = self._job("PeachTasteRefreshJob", "taste-refresh")
@@ -180,7 +185,8 @@ class WebContract:
 
     def _job(self, name: str, task_key: str, *, id_key: str = "job_id") -> BackgroundJob:
         """建一个后台任务并接进任务中心。task_key 就是它在活动页上的身份。"""
-        return BackgroundJob(name, id_key=id_key, task_key=task_key, runs=self.task_runs)
+        return BackgroundJob(name, id_key=id_key, task_key=task_key,
+                             runs=self.task_runs, followup_runner=self.followups)
 
     def cached(self, key, fn):
         """带 TTL 的读缓存。`fn` 刻意在锁外算——它会读 CSV、查库，拿着锁算会把
@@ -248,6 +254,7 @@ class WebContract:
         self.link_prune_job.stop()
         self.resource_apply_job.stop()
         self.link_check.stop()
+        self.followups.stop()
 
     def cache_bust(self):
         with self.cache_lock:

@@ -72,6 +72,11 @@ def inspect_avatar(data: bytes) -> InspectedAvatar | None:
     )
 
 
+#: 自动装图的尺寸下限。竖构图人像不能套方图的短边门槛，所以长短边各判一次。
+#: 批量补图的脚本与刮削派出的补头像后继用同一档；散成两份，总有一边先漂。
+MIN_LONG_SIDE, MIN_SHORT_SIDE = 500, 300
+
+
 def acceptable_avatar(avatar: InspectedAvatar, min_long: int, min_short: int) -> bool:
     return max(avatar.width, avatar.height) >= min_long and min(
         avatar.width, avatar.height

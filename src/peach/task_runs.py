@@ -13,6 +13,10 @@
    时间窗正是「两轮同时开跑」的来源。
 3. **跳过也是一条记录**。定时触发撞上在跑的那轮会写一条 `cancelled`，带上挡路那条的
    id。跳过只留在内存里的话，「刚才那轮为什么没跑」就永远答不出来。
+
+后继（ADR-0040）也住在这张表里：一轮任务结束时声明「接下来该做什么」，`enqueue_followups`
+把它们写成 `pending` 行，父子关系落在 `parent_run_id` / `root_run_id` 上。真正去跑它们的是
+`followups.FollowupRunner`，这一层只负责入队、去重、领取和查询。
 """
 from __future__ import annotations
 
@@ -32,9 +36,10 @@ from .jobs import TaskRunConflict, process_alive
 from .repository import LedgerDatabase
 
 __all__ = [
-    "ACTIVE_STATUSES", "DEFAULT_KEEP", "LEASE_SECONDS", "PROGRESS_INTERVAL",
-    "TASK_LABELS", "TERMINAL_STATUSES", "TRIGGERS", "TaskRun", "TaskRunConflict",
-    "TaskRunHandle", "TaskRunStore", "cli_run", "stamp", "task_label",
+    "ACTIVE_STATUSES", "DEFAULT_KEEP", "LEASE_SECONDS", "MAX_FOLLOWUPS",
+    "MAX_FOLLOWUP_DEPTH", "PROGRESS_INTERVAL", "TASK_LABELS", "TERMINAL_STATUSES",
+    "TRIGGERS", "TaskRun", "TaskRunConflict", "TaskRunHandle", "TaskRunStore",
+    "cli_run", "inert_handle", "stamp", "task_label",
 ]
 
 #: 未结束的两种状态。部分唯一索引和每一条 CAS 的 WHERE 都用这一份。
@@ -55,6 +60,15 @@ PROGRESS_INTERVAL = 2.0
 #: 每个 task_key 默认保留多少条终态记录。活动页只看最近几轮，更早的属于日志。
 DEFAULT_KEEP = 20
 
+#: 一轮任务最多能派出多少条后继（ADR-0040 第五条）。多出来的在入队时截断，截断了几条
+#: 写进父任务的摘要——静默丢弃和无上限一样，都是事后查不出来的那一类。
+#: 64 是「一部片的出演者加厂牌」那个量级的十几倍，正常扇出撞不到它。
+MAX_FOLLOWUPS = 64
+
+#: 链深度上限。根任务是 0，它派出的后继是 1。允许到 2 是给「后继再派一次后继」留一层，
+#: 再往下就不是扇出而是递归了，而递归的规模在代码评审里看不出来。
+MAX_FOLLOWUP_DEPTH = 2
+
 #: 任务登记表：key → 给人看的名字。不在表里的 key 由界面原样显示，不猜。
 TASK_LABELS = {
     "follow-check": "追更检查",
@@ -72,6 +86,7 @@ TASK_LABELS = {
     "batch": "批量操作",
     "scrape-codes": "番号资料刮削",
     "jav-covers": "封面批量抓取",
+    "entity-avatar": "补实体头像",
 }
 
 
@@ -121,10 +136,21 @@ class TaskRun:
     progress_label: str
     result_summary: dict
     error: str
+    #: 派出这一轮的父任务；不是后继时为 None。
+    parent_run_id: int | None = None
+    #: 整条链的根。根任务指向自己，裸任务为 None（与 `parent_run_id` 同时为空）。
+    root_run_id: int | None = None
+    #: 这条后继要做的那件事的全名，同时是它的互斥键。不是后继时为空。
+    followup_key: str = ""
+    followup_depth: int = 0
 
     @property
     def active(self) -> bool:
         return self.status in ACTIVE_STATUSES
+
+    @property
+    def followup(self) -> bool:
+        return bool(self.followup_key)
 
     def payload(self) -> dict:
         """API 与页面共用的投影。派生字段在这里算一次，不让每个读者各算一份。"""
@@ -150,12 +176,16 @@ class TaskRun:
             "progress_label": self.progress_label,
             "result_summary": self.result_summary,
             "error": self.error,
+            "parent_run_id": self.parent_run_id,
+            "root_run_id": self.root_run_id,
+            "followup_key": self.followup_key,
+            "followup_depth": self.followup_depth,
         }
 
 
 _COLUMNS = ("id,task_key,trigger,status,mutex_key,pid,host,started_at,finished_at,"
             "heartbeat_at,progress_current,progress_total,progress_label,"
-            "result_summary,error")
+            "result_summary,error,parent_run_id,root_run_id,followup_key,followup_depth")
 
 
 def _row(row: sqlite3.Row) -> TaskRun:
@@ -172,6 +202,9 @@ def _row(row: sqlite3.Row) -> TaskRun:
         progress_label=row["progress_label"] or "",
         result_summary=summary if isinstance(summary, dict) else {},
         error=row["error"] or "",
+        parent_run_id=row["parent_run_id"], root_run_id=row["root_run_id"],
+        followup_key=row["followup_key"] or "",
+        followup_depth=int(row["followup_depth"] or 0),
     )
 
 
@@ -311,6 +344,121 @@ class TaskRunStore:
             self._last_write.pop(run_id, None)
         return done
 
+    # -- 后继（ADR-0040）--------------------------------------------------
+
+    def enqueue_followups(self, parent_run_id: int | None,
+                          followups) -> dict:
+        """把一轮任务声明的后继写成 `pending` 行，返回这次入队的结果。
+
+        `followups` 的每一项是 `(key, task_key, label)`：`key` 是这件事的全名，同时是
+        互斥键；`task_key` 决定谁来跑它、活动页上显示成什么。
+
+        三种没入队的情况分开计数，都不静默：`duplicates` 是同一件事已经在排或在跑
+        （同一次声明里重复的也算），`truncated` 是超出 `MAX_FOLLOWUPS` 被截掉的，
+        `depth_exceeded` 是这条链已经到 `MAX_FOLLOWUP_DEPTH` 层。调用方把这三个数
+        放进父任务的摘要，活动页因此看得见「派了几条、丢了几条」。
+        """
+        result = {"queued": [], "duplicates": 0, "truncated": 0, "depth_exceeded": 0}
+        items = list(followups or [])
+        if not self.enabled or parent_run_id is None or not items:
+            return result
+        parent = self.get(int(parent_run_id))
+        if parent is None:
+            return result
+        depth = parent.followup_depth + 1
+        if depth > MAX_FOLLOWUP_DEPTH:
+            result["depth_exceeded"] = len(items)
+            return result
+        seen: set[str] = set()
+        planned: list[tuple[str, str, str]] = []
+        for key, task_key, label in items:
+            key = str(key).strip()
+            if not key or key in seen:
+                result["duplicates"] += 1
+                continue
+            seen.add(key)
+            planned.append((key, str(task_key), str(label or "")))
+        if len(planned) > MAX_FOLLOWUPS:
+            result["truncated"] = len(planned) - MAX_FOLLOWUPS
+            planned = planned[:MAX_FOLLOWUPS]
+        root = parent.root_run_id or parent.id
+        moment = stamp()
+        with self.database.write_transaction(notify=False) as connection:
+            # 父任务是裸任务时它就是这条链的根。补在这里而不是 `start`：开工那一刻还
+            # 不知道这一轮会不会派后继，给每一行都填一个指向自己的 root 是无意义的噪声。
+            connection.execute(
+                "UPDATE task_run SET root_run_id=id WHERE id=? AND root_run_id IS NULL",
+                (parent.id,))
+            for key, task_key, label in planned:
+                try:
+                    cursor = connection.execute(
+                        "INSERT INTO task_run(task_key,trigger,status,mutex_key,pid,host,"
+                        "heartbeat_at,progress_label,result_summary,parent_run_id,"
+                        "root_run_id,followup_key,followup_depth) "
+                        "VALUES(?,?,'pending',?,?,?,?,?,'{}',?,?,?,?)",
+                        (task_key, parent.trigger, key, os.getpid(), self.host,
+                         moment, label, parent.id, root, key, depth))
+                except sqlite3.IntegrityError:
+                    # 活跃互斥索引拦下的：同一件事已经在排队或在跑，这一条不必再排。
+                    result["duplicates"] += 1
+                    continue
+                result["queued"].append(int(cursor.lastrowid))
+        return result
+
+    def claim_followup(self, task_keys) -> TaskRun | None:
+        """领走这几类里最早的一条待跑后继并标 `running`；没有就返回 None。
+
+        `task_keys` 是调用方这条通道负责的任务种类。按 id 升序领：后继之间没有优先级
+        （ADR-0040 未决），先声明的先跑是唯一说得清的顺序。
+        """
+        keys = tuple(dict.fromkeys(str(key) for key in task_keys or ()))
+        if not self.enabled or not keys:
+            return None
+        marks = ",".join("?" * len(keys))
+        moment = stamp()
+        with self.database.write_transaction(notify=False) as connection:
+            row = connection.execute(
+                f"SELECT id FROM task_run WHERE followup_key IS NOT NULL "
+                f"AND status='pending' AND task_key IN ({marks}) ORDER BY id LIMIT 1",
+                keys).fetchone()
+            if row is None:
+                return None
+            run_id = int(row["id"])
+            cursor = connection.execute(
+                "UPDATE task_run SET status='running',pid=?,host=?,started_at=?,"
+                "heartbeat_at=? WHERE id=? AND status='pending'",
+                (os.getpid(), self.host, moment, moment, run_id))
+        return self.get(run_id) if cursor.rowcount else None
+
+    def requeue_followups(self) -> list[int]:
+        """把停在 `running` 的后继改回 `pending`，服务启动时调用一次。
+
+        普通任务在这种情形下被判 `interrupted`（`recover_interrupted`），后继不能——
+        没跑完的后继冻在终态就再也没有重试机会，而续跑的判据是「只把成功判定当作已
+        完成」（`peach-batch-jobs`）。代价是后继必须幂等，这条写在 ADR-0040 第六条。
+        """
+        if not self.enabled:
+            return []
+        with self.database.write_transaction(notify=False) as connection:
+            rows = connection.execute(
+                "SELECT id FROM task_run WHERE followup_key IS NOT NULL "
+                "AND status='running'").fetchall()
+            if not rows:
+                return []
+            connection.execute(
+                "UPDATE task_run SET status='pending',started_at=NULL,heartbeat_at=?,"
+                "progress_current=0 WHERE followup_key IS NOT NULL AND status='running'",
+                (stamp(),))
+        return [int(row["id"]) for row in rows]
+
+    def children(self, parent_run_id: int) -> list[TaskRun]:
+        """这一轮派出的后继，按入队顺序。"""
+        with self.database.read_connection() as connection:
+            rows = connection.execute(
+                f"SELECT {_COLUMNS} FROM task_run WHERE parent_run_id=? ORDER BY id",
+                (int(parent_run_id),)).fetchall()
+        return [_row(row) for row in rows]
+
     def _due(self, run_id: int, throttle: float) -> bool:
         """节流闸门。放行的那一次也记时间——不记的话下一次拿 0 当基准，节流形同虚设。"""
         now = time.monotonic()
@@ -344,12 +492,16 @@ class TaskRunStore:
 
         写成 `interrupted` 而不是 `failed`：任务没有失败，是没跑完；两者在「要不要
         去查为什么」上是相反的结论。
+
+        后继不走这里，它们由 `requeue_followups` 重新排队（ADR-0040 第六条）。
         """
         if not self.enabled:
             return []
         deadline = datetime.now(timezone.utc) - timedelta(seconds=stale_after)
         recovered: list[int] = []
         for run in self.query(status="active", limit=1000):
+            if run.followup:
+                continue
             local = run.host == self.host
             alive = (local and run.pid is not None and run.pid != os.getpid()
                      and process_alive(run.pid))

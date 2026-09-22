@@ -59,7 +59,23 @@ def q_task(contract, run_id):
     if run is None:
         # KeyError 在 API 层被翻成 404；ValueError 会变成 400，那是参数错，不是这里的事。
         raise KeyError(f"没有第 {run_id} 轮任务")
-    return {"ok": True, "run": run.payload()}
+    # 父子两头都给：从后继那一行点进来的人要知道它是哪一轮派出来的，从父任务点进来的
+    # 要知道派出去的几条跑成什么样（ADR-0040）。父只给一层，链根在 `root_run_id` 上。
+    parent = (contract.task_runs.get(run.parent_run_id)
+              if run.parent_run_id else None)
+    followups = [child.payload() for child in contract.task_runs.children(run.id)]
+    return {"ok": True, "run": run.payload(),
+            "parent": parent.payload() if parent else None,
+            "followups": followups,
+            "followup_counts": _counts(followups)}
+
+
+def _counts(rows) -> dict:
+    """后继按状态数一遍。折叠着的父任务据此标出有没有失败，不必展开整层。"""
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+    return counts
 
 
 def _limit(args) -> int:

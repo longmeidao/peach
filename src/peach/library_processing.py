@@ -1047,6 +1047,37 @@ def _enrich_finished_performers(database, groups, config, candidate_root, remote
     )
 
 
+def _entity_watermark(database):
+    """刮削开工前实体表的水位。拿不到就返回 None，后面据此整段跳过。"""
+    if database is None:
+        return None
+    try:
+        with database.read_connection() as connection:
+            row = connection.execute("SELECT max(id) FROM entity").fetchone()
+    except sqlite3.Error:
+        return None
+    return int(row[0] or 0)
+
+
+def _avatar_followups(database, config, watermark):
+    """这一轮新登记又没有头像的实体，一个一条补头像后继（ADR-0040）。
+
+    只声明，不执行：派发在调用方结算这一轮时发生，真正去跑的是 `followups` 那一层。
+    这里出任何问题都只让这一轮不派后继，不影响刮削本身的结论。
+    """
+    if database is None or watermark is None:
+        return []
+    from .avatar_followup import plan
+    try:
+        with database.read_connection() as connection:
+            found = plan(connection, config.directory('generated') / 'avatars',
+                         since_entity_id=watermark)
+    except sqlite3.Error:
+        return []
+    return [{'key': item.key, 'task_key': item.task_key, 'label': item.label}
+            for item in found]
+
+
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES,
@@ -1082,7 +1113,10 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                      last_progress_at=time.time(), progress_seq=0,
                      current_asset_id=None, current_asset_name='', current_action='',
                      current_started_at=None, current_deadline_at=None,
+                     followups=[],
                      started_at=time.time(), error='')
+        # 实体表的水位在开工前记一次：比它大的实体就是这一轮建出来的（`_avatar_followups`）。
+        entity_watermark = _entity_watermark(database)
         log_path = issues_path(config, state['job_id'])
         # 界面只展示前 20 条，完整清单在这个文件里；地址跟着状态一起给出，
         # 不让人按 job_id 自己去拼路径。
@@ -1287,6 +1321,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 database, groups, config, candidate_root, remote, active, update, issue)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
+                   followups=_avatar_followups(database, config, entity_watermark),
                    auto_applied=auto_apply['applied'],
                    performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
                    performer_profile_conflicts=profiles['conflicts'],
