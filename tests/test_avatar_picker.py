@@ -329,12 +329,13 @@ class AssetArtworkTests(PickerFixture):
             frame=lambda asset_id, cell: self.cell if cell == 4 else None)
 
     def add_asset(self, asset_id: int, code: str, snapshot: str = "sheet.jpg",
-                  entity_id: int = 7792, size: int = 100) -> None:
+                  entity_id: int = 7792, size: int = 100, file: str = "") -> None:
+        file = file or f"{code}.mp4"
         with self.connection:
             self.connection.execute(
                 "INSERT INTO asset(id,location,path,name,medium,code,catalog_title,"
                 "size,snapshot_path) VALUES(?,'R:',?,?,'video',?,?,?,?)",
-                (asset_id, f"R:\\media\\{code}.mp4", f"{code}.mp4", code,
+                (asset_id, f"R:\\media\\{file}", file, code,
                  f"{code} 的标题", size, snapshot))
             self.connection.execute(
                 "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
@@ -351,6 +352,16 @@ class AssetArtworkTests(PickerFixture):
         self.assertEqual(assets[0]["bases"],
                          ["asset:11:cover"] + [f"asset:11:cell{n}" for n in range(9)])
         self.assertTrue(assets[0]["crop"], "作品画面要先框一块才能当头像")
+
+    def test_one_code_split_over_several_files_still_takes_one_cell(self):
+        # 分段与重复目录各是一条 asset 行，封面同一张；留最大那份，格子只占一个。
+        self.add_asset(11, "ABW-232", size=100, file="ABW-232-1.mp4")
+        self.add_asset(12, "ABW-232", size=300, file="ABW-232-2.mp4")
+        self.add_asset(13, "abw232", size=200, file="dup\\abw232.mp4")
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        assets = [one for one in listed["choices"] if one["source"] == "asset"]
+        self.assertEqual([one["ref"] for one in assets], ["asset:12:cover"])
 
     def test_a_work_with_neither_a_cover_nor_a_sheet_is_not_listed(self):
         self.add_asset(12, "NOPE-001", snapshot="")
