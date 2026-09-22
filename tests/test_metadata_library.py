@@ -41,17 +41,32 @@ def stub_provider():
     return provider
 
 
-def _mirror_page():
+def _mirror_page(image='https://storage92000.contents.fc2.com/file/1.jpg', video=3189161):
     """fc2cmadb 的作品页：Inertia 把整棵 props 树连同握手版本号放在一个 script 里。"""
     page = {'component': 'Articles/Show', 'version': 'fcb3b524d4c7f8f3d2c38e437b35b7a9',
-            'url': '/articles/3189161',
-            'props': {'article': {'video_id': 3189161, 'title': '【無】コスプレシリーズ',
+            'url': f'/articles/{video}',
+            'props': {'article': {'video_id': video, 'title': '【無】コスプレシリーズ',
                                   'release_date': '2023-02-19', 'duration': '46:06',
-                                  'image_url': 'https://storage92000.contents.fc2.com/file/1.jpg',
+                                  'image_url': image,
                                   'writer': {'slug': 'rina_vlog', 'name': '梨奈'},
                                   'tags': [{'name': 'ハメ撮り'}]}}}
     return (f'<script data-page="app" type="application/json">'
             f'{json.dumps(page, ensure_ascii=False)}</script><div id="app"></div>')
+
+
+#: JavArchive 的作品地址把商品号夹在标题里，站上真的用空格分隔（用户 2026-09-22 给的
+#: `FC2PPV%203232110%20…`）；搜索结果那一步要 unquote 之后才认得出这个号。
+_ARCHIVE_LINK = '/859881-FC2PPV%203232110%20%E3%81%BF%E3%81%8A-pn.html'
+_ARCHIVE_COVER = 'https://img.javstore.net/images/2023/12/26/3232110pl.jpg'
+
+
+def _archive_pages(url):
+    """JavArchive 那一档的两跳：先搜出站内地址，作品页上才有封面和正文那块资料。"""
+    if 'search' in url:
+        return f'<div class="post"><a href="{_ARCHIVE_LINK}">FC2PPV 3232110</a></div>'
+    return ('<h1><a href="' + _ARCHIVE_LINK + '">FC2PPV 3232110 みおちゃんが素人さん</a></h1>'
+            f'<div class="fisrst_sc"><img src="{_ARCHIVE_COVER}" alt="x" /></div>'
+            '<div class="news">标签：素人 <br />日期：2023/03/23 <br />时长：45:12 <br /></div>')
 
 
 class LibraryNfoTests(unittest.TestCase):
@@ -615,6 +630,45 @@ class LibraryNfoTests(unittest.TestCase):
             found = provider.fc2('FC2-PPV-3189161', route=('fc2', 'fc2cmadb'))
         self.assertEqual(found[0][1]['actresses'], [])
         self.assertEqual(found[0][1]['title'], '【無】コスプレシリーズ')
+
+    def test_a_source_that_answers_without_a_cover_does_not_end_the_chain(self):
+        """镜像站标着没有商品图时，后面那一档还留着一张转存封面，得问到它。"""
+        from peach.library_processing import LibraryMetadataProvider
+        def pages(transport, url, **kwargs):
+            if 'fc2cmadb.com' in url:
+                if kwargs.get('extra_headers'):
+                    return json.dumps({'props': {'actresses': []}})
+                return _mirror_page(image='/storage/images/article/no-image.jpg', video=3232110)
+            if 'javarchive.com' in url:
+                return _archive_pages(url)
+            raise NotFound('官方那一页已空')
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3232110')
+        self.assertEqual([source for source, _ in found], ['fc2cmadb', 'javarchive'])
+        self.assertEqual(found[0][1]['cover_url'], '', '站上那张占位件不是这部片的封面')
+        self.assertEqual(found[1][1]['cover_url'], _ARCHIVE_COVER)
+        self.assertEqual(found[0][1]['title'], '【無】コスプレシリーズ',
+                         '前面答过的资料照旧带着走')
+
+    def test_the_chain_stops_at_the_source_that_hands_over_a_cover(self):
+        """有图的那一档就够了：再往下问只是多花一份流量，图源已经有了。"""
+        from peach.library_processing import LibraryMetadataProvider
+        asked = []
+        def pages(transport, url, **kwargs):
+            asked.append(url)
+            if 'fc2cmadb.com' in url:
+                if kwargs.get('extra_headers'):
+                    return json.dumps({'props': {'actresses': []}})
+                return _mirror_page()
+            raise NotFound('官方那一页已空')
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3189161')
+        self.assertEqual([source for source, _ in found], ['fc2cmadb'])
+        self.assertFalse([url for url in asked if 'javarchive.com' in url])
 
     def test_javdb_keeps_its_own_host_interval_on_both_of_its_hosts(self):
         """这一档的节奏由用户定，改动要连图床一起改：页面与图分别落在两个主机上。"""

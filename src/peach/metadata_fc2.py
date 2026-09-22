@@ -62,6 +62,11 @@ _SOLD_ON = re.compile(r"販売日\s*[:：]\s*(\d{4})/(\d{2})/(\d{2})")
 #: 前半截是缩放服务，后半截就是原件地址。
 _THUMBNAIL_WRAPPER = re.compile(
     r"^https?://contents-thumbnail\d*\.fc2\.com/w\d+/(storage[\w.-]+\.fc2\.com/.+)$", re.I)
+#: 镜像站对没有商品图的条目回它自己那张占位件（`/storage/images/article/no-image.jpg`），
+#: 而且是站内相对地址。当封面交下去，抓取那侧连主机都拼不出来，报回来的是一句「来源连接
+#: 未取得」——看着像网络故障，其实是这部片在站上本来就没有图（2026-09-22 实测 21 个取不到
+#: 封面的番号里有 15 个是它）。
+_NO_IMAGE = re.compile(r"/no-image\.\w+$", re.I)
 #: JavArchive 的作品地址：`/926949-FC2-PPV-4137487-<标题>-pn.html`。开头那串是站内文章号，
 #: 商品号夹在标题里，所以地址拼不出来，只能先搜。
 _ARCHIVE_LINK = re.compile(r'href="(/\d+-[^"]+\.html)"')
@@ -282,9 +287,12 @@ def _archive_rows(soup: BeautifulSoup) -> dict:
 
 
 def _storage_original(url: str) -> str:
-    """缩略图地址 → 原件地址。已经是原件的原样返回。"""
-    found = _THUMBNAIL_WRAPPER.match(str(url or "").strip())
-    return f"https://{found.group(1)}" if found else str(url or "").strip()
+    """缩略图地址 → 原件地址。站方的占位件回空串，已经是原件的原样返回。"""
+    address = str(url or "").strip()
+    if _NO_IMAGE.search(urllib.parse.urlparse(address).path):
+        return ""
+    found = _THUMBNAIL_WRAPPER.match(address)
+    return f"https://{found.group(1)}" if found else address
 
 
 def _inertia_page(soup: BeautifulSoup) -> dict:
