@@ -23,8 +23,8 @@ import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
 import {
-  elapsedText, fetchTasks, momentText, pollInterval, statusLabel, summaryText,
-  TASKS_KEY, TRIGGER_LABELS, type TaskRunPayload,
+  elapsedText, fetchTasks, groupFollowups, momentText, pollInterval, statusLabel,
+  summaryText, TASKS_KEY, TRIGGER_LABELS, type TaskRunPayload,
 } from './tasks';
 
 /* 状态徽章只有三档颜色：成功是绿、失败是红、被叫停与被打断是黄，其余留中性底。
@@ -37,11 +37,39 @@ function StatusBadge({ status }: { status: string }) {
   return <Chip color={BADGE_COLORS[status] ?? 'neutral'}>{statusLabel(status)}</Chip>;
 }
 
+/** 一轮任务派出的后继（ADR-0040）。挂在父任务卡里，一条一行。
+ *
+ * 后继是独立的一轮，有自己的状态和结果，但单独摆出来就读不出「它是谁派的」——
+ * 而那恰恰是这一屏上唯一需要解释的东西：用户没点过补头像，它却在跑。
+ * 条间线写在每个 li 自己身上，第一条那根同时充当与卡片正文的分隔。 */
+function FollowupList({ rows }: { rows: TaskRunPayload[] }) {
+  return (
+    <ul className="flex min-w-0 flex-col">
+      {rows.map((row) => {
+        const detail = row.error || summaryText(row.result_summary) || row.progress_label;
+        return (
+          <li key={row.id} data-status={row.status} data-followup-key={row.followup_key}
+            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-separator-border px-5 py-2.5">
+            <span className="min-w-0 break-words text-caption-1-regular text-text-primary">
+              {row.progress_label || row.task_label}
+            </span>
+            <StatusBadge status={row.status} />
+            {detail
+              ? <span className="min-w-0 break-words text-caption-1-regular text-text-secondary">{detail}</span>
+              : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /** 一轮任务一张卡。失败时整张卡的框线换成 danger 色，不给结束原因那行字上色——
  *  一屏十几行里逐行读红字，比看一眼哪张卡的框是红的慢得多。 */
 function RunCard(
-  { run, meta, children, footer }:
-  { run: TaskRunPayload; meta: string; children?: ReactNode; footer?: string },
+  { run, meta, children, footer, followups }:
+  { run: TaskRunPayload; meta: string; children?: ReactNode; footer?: string;
+    followups?: TaskRunPayload[] },
 ) {
   return (
     <li data-status={run.status} data-task-key={run.task_key}
@@ -58,6 +86,7 @@ function RunCard(
         <p className="text-caption-1-regular text-text-secondary">{meta}</p>
         {children}
       </div>
+      {followups?.length ? <FollowupList rows={followups} /> : null}
       {footer
         ? <div className="flex min-h-14 flex-col justify-center rounded-b-2xl border-t border-separator-border bg-card-footer px-5 py-3">
             <p className="text-caption-1-regular text-text-secondary">{footer}</p>
@@ -67,7 +96,7 @@ function RunCard(
   );
 }
 
-function RunningRun({ run }: { run: TaskRunPayload }) {
+function RunningRun({ run, followups }: { run: TaskRunPayload; followups?: TaskRunPayload[] }) {
   const total = run.progress_total || 0;
   const current = run.progress_current || 0;
   const label = run.progress_label || '正在进行';
@@ -75,7 +104,7 @@ function RunningRun({ run }: { run: TaskRunPayload }) {
   const meta = [TRIGGER_LABELS[run.trigger] || run.trigger, elapsed && `已跑 ${elapsed}`]
     .filter(Boolean).join(' · ');
   return (
-    <RunCard run={run} meta={meta}>
+    <RunCard run={run} meta={meta} followups={followups}>
       {total > 0
         ? <div className="flex flex-col gap-1.5">
             <Progress label={label} value={current} max={total} />
@@ -86,13 +115,13 @@ function RunningRun({ run }: { run: TaskRunPayload }) {
   );
 }
 
-function SettledRun({ run }: { run: TaskRunPayload }) {
+function SettledRun({ run, followups }: { run: TaskRunPayload; followups?: TaskRunPayload[] }) {
   const summary = summaryText(run.result_summary);
   const elapsed = elapsedText(run.elapsed_seconds);
   const meta = [TRIGGER_LABELS[run.trigger] || run.trigger, momentText(run.finished_at),
                 elapsed && `用时 ${elapsed}`].filter(Boolean).join(' · ');
   return (
-    <RunCard run={run} meta={meta} footer={run.error}>
+    <RunCard run={run} meta={meta} footer={run.error} followups={followups}>
       {summary ? <p className="text-caption-1-regular text-text-secondary">{summary}</p> : null}
     </RunCard>
   );
@@ -125,10 +154,18 @@ export function ActivityPage(_props: ActivityProps) {
   // 首屏就没拿到数据：只剩这一条，不画空的三段。
   if (!data) return <Page><Note tone="error">{problem || '读取任务中心失败'}</Note></Page>;
 
-  const running = data.running || [];
-  const skipped = data.skipped || [];
+  const allRuns = [...(data.running || []), ...(data.skipped || []), ...(data.finished || [])];
+  // 后继挂到派出它的那张卡下面。父任务不在这一屏上（已经被 prune 掉、或翻页翻不到）时
+  // 照常单独摆出来——挂不上去就不显示，等于让一条在跑的任务凭空消失。
+  const byParent = groupFollowups(allRuns);
+  const visible = new Set(allRuns.map((run) => run.id));
+  const topLevel = (rows: TaskRunPayload[]) => rows.filter(
+    (run) => !(run.followup_key && run.parent_run_id != null && visible.has(run.parent_run_id)));
+  const running = topLevel(data.running || []);
+  const skipped = topLevel(data.skipped || []);
   // 同一轮不在「最近完成」里再出现一次：一屏两行说的是同一件事，读起来像跑了两轮。
-  const finished = (data.finished || []).filter((run) => !skipped.some((row) => row.id === run.id));
+  const finished = topLevel(data.finished || [])
+    .filter((run) => !skipped.some((row) => row.id === run.id));
   const quiet = !running.length && !skipped.length && !finished.length;
   return (
     <Page>
@@ -143,19 +180,22 @@ export function ActivityPage(_props: ActivityProps) {
         : <>
             <Section title="正在进行">
               {running.length
-                ? <RunList live>{running.map((run) => <RunningRun key={run.id} run={run} />)}</RunList>
+                ? <RunList live>{running.map((run) => (
+                    <RunningRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
                 : <Note tone="neutral">没有任务在跑。</Note>}
             </Section>
             {/* 「刚才那一轮为什么没跑」只有这一段答得出：定时触发撞上在跑的那一轮会
                 安静跳过，不留记录的话它在界面上和从没触发过一模一样。 */}
             {skipped.length
               ? <Section title="被挡下的">
-                  <RunList>{skipped.map((run) => <SettledRun key={run.id} run={run} />)}</RunList>
+                  <RunList>{skipped.map((run) => (
+                    <SettledRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
                 </Section>
               : null}
             {finished.length
               ? <Section title="最近完成">
-                  <RunList>{finished.map((run) => <SettledRun key={run.id} run={run} />)}</RunList>
+                  <RunList>{finished.map((run) => (
+                    <SettledRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
                 </Section>
               : null}
           </>}

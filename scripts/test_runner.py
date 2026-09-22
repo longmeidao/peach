@@ -44,7 +44,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_brand_marks.py", "test_studio_icon_variants.py",
                 "test_review_csv.py", "test_related.py",
                 "test_search_suggest.py", "test_subtitles.py",
-                "test_task_runs.py", "test_task_center_integration.py",
+                "test_task_runs.py", "test_followups.py", "test_task_center_integration.py",
                 "test_jav_code_domain.py",
                 "test_taste_history.py", "test_web_ui.py", "test_web_js.py",
                 "test_web_perf.py", "test_web_resource_sync.py",
@@ -52,7 +52,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
     # 任务中心的两个文件跟着 `test_jobs.py` 走：`jobs.py` 与 `task_runs.py` 是同一条
     # 接线的两端，改哪一端都要两边一起验。
     "media": ("test_runtime_consistency.py", "test_endcard.py", "test_fastapi_api.py", "test_jobs.py",
-              "test_task_runs.py", "test_task_center_integration.py",
+              "test_task_runs.py", "test_followups.py", "test_task_center_integration.py",
               "test_frame_capture.py", "test_timeline_sheets.py",
               "test_web_timeline_thumbnails.py",
               "test_interaction.py", "test_media.py", "test_mp4repair.py",
@@ -94,7 +94,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_buildinfo.py", "test_versioning.py",
                 "test_windows_update.py", "test_release_updates.py", "test_automatic_updates.py", "test_standalone_update.py", "test_certs.py", "test_config.py",
                 "test_fsutil.py", "test_desktop_settings.py",
-                "test_job_status.py", "test_jobs.py", "test_task_runs.py",
+                "test_job_status.py", "test_jobs.py", "test_task_runs.py", "test_followups.py",
                 "test_task_center_integration.py", "test_reference_updates.py",
                 "test_repo_hygiene.py",
                 "test_review_csv.py", "test_jav_code_domain.py", "test_organize.py",

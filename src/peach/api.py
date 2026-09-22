@@ -116,6 +116,24 @@ def _start_tunnel(settings: PeachSettings, manager: tunnel.TunnelManager) -> Non
         LOGGER.warning("Cloudflare Tunnel 未能启动", exc_info=True)
 
 
+def _restore_task_center(contract) -> None:
+    """开机时收拾任务中心。
+
+    上一次服务被强杀的话，表里会留下几行停在 `running` 的记录，它们还占着互斥键——不先
+    收掉，这一次开机后那几类任务一按就是 409。判据是 pid 还在不在与心跳有没有过期，两样
+    都不满足才算被打断。
+
+    后继是例外：它重新排队而不判 `interrupted`，冻在终态就再也没有重试的机会
+    （ADR-0040 第六条）。排着的那些也在这一步被叫醒，接着跑完。
+    """
+    recovered = contract.task_runs.recover_interrupted()
+    if recovered:
+        LOGGER.info("task center recovered %s interrupted run(s)", len(recovered))
+    requeued = contract.task_runs.enabled and contract.followups.resume()
+    if requeued:
+        LOGGER.info("task center requeued %s followup(s)", len(requeued))
+
+
 def create_app(
     settings: PeachSettings | None = None,
     sync: LedgerSync | None = None,
@@ -220,13 +238,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
-        # 上一次服务是被强杀的话，表里会留下几行永远停在 `running` 的记录，它们还占着
-        # 互斥键——不先收掉，这一次开机后那几类任务一按就是 409。判据是 pid 还在不在
-        # 与心跳有没有过期，两样都不满足才算被打断。
-        recovered = contract.task_runs.recover_interrupted()
-        if recovered:
-            logging.getLogger(__name__).info(
-                "task center recovered %s interrupted run(s)", len(recovered))
+        _restore_task_center(contract)
         # 启动握手要等 cloudflared 连上边缘，可以占到几十秒；和 mDNS 一样交给线程，
         # 不要在事件循环里卡住整条服务的启动。
         await asyncio.to_thread(_start_tunnel, settings, tunnel_manager)

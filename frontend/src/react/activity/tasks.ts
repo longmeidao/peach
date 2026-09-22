@@ -24,6 +24,12 @@ export interface TaskRunPayload {
   progress_label: string;
   result_summary: Record<string, unknown>;
   error: string;
+  /** 派出这一轮的父任务；不是后继时为 null（ADR-0040）。 */
+  parent_run_id: number | null;
+  root_run_id: number | null;
+  /** 这条后继要做的那件事的全名。不是后继时是空串，界面据此判断它挂不挂到父卡片下。 */
+  followup_key: string;
+  followup_depth: number;
 }
 
 export interface ActivityData {
@@ -66,7 +72,22 @@ const SUMMARY_LABELS: Record<string, string> = {
   candidates: '资料候选', covers: '封面', changed: '已改动', operation: '操作',
   ok: '取得', miss: '未取得', kept: '保留', planned: '计划', done: '已处理', added: '新增',
   written: '已写入', removed: '已移除', exit_code: '退出码', issue_count: '问题',
+  followups: '派出后继', followups_duplicate: '已在排队', followups_truncated: '超上限未派',
+  followups_depth_exceeded: '超深度未派', outcome: '结果', name: '实体',
+  matched: '图库命中', size: '尺寸', source: '来源',
 };
+
+/** 把一批任务按 `parent_run_id` 归到各自的父任务下。没有父的那些留在外面。 */
+export function groupFollowups(rows: TaskRunPayload[]): Map<number, TaskRunPayload[]> {
+  const grouped = new Map<number, TaskRunPayload[]>();
+  for (const row of rows) {
+    if (!row.followup_key || row.parent_run_id == null) continue;
+    const siblings = grouped.get(row.parent_run_id);
+    if (siblings) siblings.push(row);
+    else grouped.set(row.parent_run_id, [row]);
+  }
+  return grouped;
+}
 
 /** 秒数说成「几分几秒」。跑了几小时的批处理也要一眼读得出量级。 */
 export function elapsedText(seconds: number | null | undefined): string {

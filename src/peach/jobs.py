@@ -259,11 +259,12 @@ class BackgroundJob:
     #: 预览），要么是每一轮都会变的内部游标。摘要是给活动页一眼看完的一行。
     BULKY_STATE_KEYS = frozenset({
         "results", "rows", "issues", "issue_preview", "retryable_asset_ids",
-        "current", "progress_seq", "last_progress_at", "issues_log",
+        "current", "progress_seq", "last_progress_at", "issues_log", "followups",
     })
 
     def __init__(self, name: str, *, id_key: str = "job_id",
-                 task_key: str = "", runs=None, mutex_key: str | None = None):
+                 task_key: str = "", runs=None, mutex_key: str | None = None,
+                 followup_runner=None):
         #: 线程名，出现在崩溃栈和进程视图里，所以取和端点一致的名字。
         self.name = name
         #: 状态字典里存任务 id 的键名。域模块的公开投影直接下发它，所以沿用各域原有的
@@ -276,6 +277,9 @@ class BackgroundJob:
         #: 默认按任务自己互斥：同一个 BackgroundJob 本来就只跑一轮，写进表里之后，
         #: 命令行和调度器也能看见这把锁。
         self.mutex_key = mutex_key if mutex_key is not None else self.task_key
+        #: `followups.FollowupRunner`；为 None 时这个任务声明的后继照样入队，只是没有
+        #: 人当场去跑它们——服务启动时的 `resume()` 会把它们捡起来。
+        self.followup_runner = followup_runner
         self.lock = threading.Lock()
         self.state: dict | None = None
         self.thread: threading.Thread | None = None
@@ -503,7 +507,34 @@ class BackgroundJob:
             return
         # `fn` 正常返回就是跑完了。域没有把状态推到 `complete` 只说明它不靠状态报结果
         # （`w_links` 这类直接返回 payload），不代表这一轮失败。
-        self._close_run(job_id, "succeeded", summary=self._summary(state))
+        self._close_run(job_id, "succeeded",
+                        summary={**self._summary(state),
+                                 **self._dispatch_followups(job_id, state)})
+
+    def _dispatch_followups(self, job_id: str, state: dict) -> dict:
+        """把这一轮声明的后继交给任务中心，返回要并进摘要的那几个数。
+
+        只有成功收尾的那条路走到这里：父任务失败一条后继都不派（ADR-0040 第四条）。
+        没入队的三种情况各占摘要里的一行——静默丢弃和没有上限一样，事后都查不出来。
+        """
+        declared = state.get("followups")
+        run_id = self._run_ids.get(job_id)
+        if self.runs is None or run_id is None or not isinstance(declared, list):
+            return {}
+        rows = [(item.get("key"), item.get("task_key"), item.get("label", ""))
+                for item in declared if isinstance(item, dict) and item.get("key")]
+        if not rows:
+            return {}
+        result = self.runs.enqueue_followups(run_id, rows)
+        if self.followup_runner is not None:
+            self.followup_runner.wake()
+        summary: dict[str, object] = {"followups": len(result["queued"])}
+        for field, label in (("duplicates", "followups_duplicate"),
+                             ("truncated", "followups_truncated"),
+                             ("depth_exceeded", "followups_depth_exceeded")):
+            if result[field]:
+                summary[label] = result[field]
+        return summary
 
 
 def job_main(build_parser, run, argv: list[str] | None = None) -> int:

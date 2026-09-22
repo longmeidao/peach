@@ -37,7 +37,8 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach import avatar_picker   # noqa: E402
-from peach.avatar_provider import acceptable_avatar   # noqa: E402
+from peach.avatar_provider import (   # noqa: E402
+    MIN_LONG_SIDE, MIN_SHORT_SIDE, acceptable_avatar)
 from peach.config import (DATABASE_PATH, GENERATED_DIR, SERVE_PORT,   # noqa: E402
                           STATE_DIR)
 from peach.jobs import job_main   # noqa: E402
@@ -49,9 +50,6 @@ INSTALL, MANY, NONE, SMALL, FAILED = "装上", "多张（认不准）", "无候�
 
 FIELDS = ("entity_id", "name", "assets", "candidates", "action", "file", "size",
           "profile_url", "detail")
-
-#: 与 `audit_performer_portraits.py` 同一档。竖构图人像不能套方图的短边门槛。
-MIN_LONG_SIDE, MIN_SHORT_SIDE = 500, 300
 
 
 def targets(connection: sqlite3.Connection, avatar_root: Path) -> list[dict]:

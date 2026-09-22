@@ -35,8 +35,22 @@ const run = (overrides: Partial<TaskRunPayload> = {}): TaskRunPayload => ({
   progress_label: '正在查第三个来源',
   result_summary: {},
   error: '',
+  parent_run_id: null,
+  root_run_id: null,
+  followup_key: '',
+  followup_depth: 0,
   ...overrides,
 });
+
+/** 一条后继（ADR-0040）：跑完的一行，挂在 `parent` 那一轮下面。 */
+const followup = (parent: number, overrides: Partial<TaskRunPayload> = {}): TaskRunPayload =>
+  run({
+    id: 90, task_key: 'entity-avatar', task_label: '补实体头像', status: 'succeeded',
+    progress_total: null, progress_current: null, progress_label: '补实体头像：涼森れむ',
+    finished_at: '2026-09-11T10:04:00Z', parent_run_id: parent, root_run_id: parent,
+    followup_key: 'entity-avatar:performer:12', followup_depth: 1,
+    result_summary: { outcome: '已装上' }, ...overrides,
+  });
 
 const payload = (overrides: Partial<ActivityData> = {}): ActivityData => ({
   available: true, running: [], skipped: [], finished: [], ...overrides,
@@ -120,6 +134,25 @@ it('跑完那一轮显示摘要，失败那一轮显示原因', async () => {
   expect(host.querySelector('[data-status=succeeded] span')?.textContent).toBe('已完成');
   // 跑成功那张没有说明区：没有原因可写时不留一条空条子。
   expect(host.querySelectorAll('[data-status=succeeded] p')).toHaveLength(2);
+});
+
+it('后继挂在派出它的那一轮下面，不另占一张卡', async () => {
+  const parent = run({ id: 4, status: 'succeeded', task_label: '扫描与采集',
+                       progress_total: null, finished_at: '2026-09-11T10:03:00Z',
+                       result_summary: { followups: 1 } });
+  const { host } = await open(payload({ finished: [parent, followup(parent.id)] }));
+  expect(host.querySelectorAll('[data-task-key]')).toHaveLength(1);
+  const row = host.querySelector('[data-followup-key]')!;
+  expect(host.querySelector('[data-task-key=follow-check]')!.contains(row)).toBe(true);
+  expect(row.textContent).toContain('补实体头像：涼森れむ');
+  expect(row.textContent).toContain('已装上');
+  expect(host.textContent).toContain('派出后继 1');
+});
+
+it('父任务不在这一屏上时，后继照常单独摆出来', async () => {
+  const { host } = await open(payload({ finished: [followup(4)] }));
+  expect(host.querySelectorAll('[data-task-key=entity-avatar]')).toHaveLength(1);
+  expect(host.querySelector('[data-followup-key]')).toBeNull();
 });
 
 it('一条记录都没有时给空态，不是一片白', async () => {
