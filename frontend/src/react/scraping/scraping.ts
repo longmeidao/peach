@@ -1,4 +1,4 @@
-/* 来源和凭证页的数据契约与折算。四条端点在 `frontend/src` 里都只在这里声明一次
+/* 来源和凭证页的数据契约与折算。几条端点在 `frontend/src` 里都只在这里声明一次
  * （`tests/test_frontend_build.py` 盯着）。
  *
  * 这一页有两个键，因为屏幕上是两个不同节律的真相：来源列表由用户改、改完由写操作把
@@ -11,11 +11,16 @@ export const SCRAPING_URL = '/api/scraping';
 export const SCRAPING_SETTINGS_URL = '/api/scraping/settings';
 export const SCRAPING_CHECK_URL = '/api/scraping/check';
 export const SCRAPING_COVER_URL = '/api/scraping/cover';
+export const AMANE_BRIDGE_URL = '/api/scraping/amane-bridge';
+export const AMANE_BRIDGE_CHECK_URL = '/api/scraping/amane-bridge/check';
+export const AMANE_BRIDGE_REBUILD_URL = '/api/scraping/amane-bridge/rebuild';
 
 /** 来源列表共用这一个键。 */
 export const SCRAPING_KEY = ['scraping'] as const;
 /** 抓封面那一趟后台任务的状态。 */
 export const COVER_JOB_KEY = ['scraping', 'cover'] as const;
+/** amane 桥的事实与重建任务的状态（`q_scraping_amane_bridge`）。 */
+export const AMANE_BRIDGE_KEY = ['scraping', 'amane-bridge'] as const;
 
 /** 一个采集来源。字段以 `q_scraping`（`src/peach/web_scraping.py`）为准。 */
 export interface Source {
@@ -51,6 +56,20 @@ export interface CoverJob {
   height?: number;
 }
 
+/** amane 桥那张卡（ADR-0043）。`revision` 是清单里钉的 amane sha，`version` 是锁里那一条的
+ *  版本号；`installed` 是 venv 里有没有解释器；`sites` 是经桥开放给来源链的站。`job` 是重建
+ *  任务的快照，`status` 同 `CoverJob`。 */
+export interface AmaneBridge {
+  repository: string;
+  license: string;
+  revision: string;
+  version: string;
+  installed: boolean;
+  python: string;
+  sites: { source: string; label: string }[];
+  job: CoverJob;
+}
+
 /** 在跑的时候两秒问一次，和别的后台任务同一个节律；停了就不再问。 */
 export const COVER_POLL_MS = 2000;
 
@@ -59,15 +78,18 @@ export const COOKIE_TEXT_LIMIT = 256 * 1024;
 
 export const fetchSources = (signal?: AbortSignal) => apiGet<ScrapingData>(SCRAPING_URL, signal);
 export const fetchCoverJob = (signal?: AbortSignal) => apiGet<CoverJob>(SCRAPING_COVER_URL, signal);
+export const fetchAmaneBridge = (signal?: AbortSignal) => apiGet<AmaneBridge>(AMANE_BRIDGE_URL, signal);
 
-/** 首屏：两个键都取回来才画。
+/** 首屏：三个键都取回来才画。
  *
- * 抓封面的状态也算首屏——页面一上来就得知道有没有一趟正在跑，才接得上它的进度。
- * 中止时 `fetchQuery` 把 `AbortError` 抛回给挂载方，它据此放弃这一次。 */
+ * 抓封面的状态也算首屏——页面一上来就得知道有没有一趟正在跑，才接得上它的进度；amane 桥
+ * 那张卡同理，重建可能正在后台跑。中止时 `fetchQuery` 把 `AbortError` 抛回给挂载方，它据此
+ * 放弃这一次。 */
 export async function prefetchScraping(signal: AbortSignal): Promise<void> {
   await Promise.all([
     queryClient.fetchQuery({ queryKey: SCRAPING_KEY, queryFn: () => fetchSources(signal) }),
     queryClient.fetchQuery({ queryKey: COVER_JOB_KEY, queryFn: () => fetchCoverJob(signal) }),
+    queryClient.fetchQuery({ queryKey: AMANE_BRIDGE_KEY, queryFn: () => fetchAmaneBridge(signal) }),
   ]);
 }
 

@@ -31,13 +31,14 @@ import { Page } from '../components/page';
 import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
 import { queryClient } from '../query';
 import {
-  ErrorText, ExternalLink, FieldLabel, Footer, Rows, Section, Stack,
+  ErrorText, ExternalLink, Fact, FactList, FieldLabel, Footer, Help, Rows, Section, Stack,
 } from '../settings/section';
 import { busyProps } from '../settings/use-action';
 import {
-  checkText, COOKIE_TEXT_LIMIT, COVER_JOB_KEY, COVER_POLL_MS, fetchCoverJob, fetchSources,
-  SCRAPING_CHECK_URL, SCRAPING_COVER_URL, SCRAPING_KEY, SCRAPING_SETTINGS_URL,
-  type Check, type CoverJob, type ScrapingData, type Source,
+  AMANE_BRIDGE_CHECK_URL, AMANE_BRIDGE_KEY, AMANE_BRIDGE_REBUILD_URL,
+  checkText, COOKIE_TEXT_LIMIT, COVER_JOB_KEY, COVER_POLL_MS, fetchAmaneBridge, fetchCoverJob,
+  fetchSources, SCRAPING_CHECK_URL, SCRAPING_COVER_URL, SCRAPING_KEY, SCRAPING_SETTINGS_URL,
+  type AmaneBridge, type Check, type CoverJob, type ScrapingData, type Source,
 } from './scraping';
 
 const NETWORKS = [['peach', 'Peach 代理'], ['direct', '直接连接']] as const;
@@ -291,6 +292,81 @@ function CoverCard({ toast }: ScrapingProps) {
   );
 }
 
+/** amane 桥：钉在哪个 revision、venv 建没建、上游最新到哪。升级是人读 diff 之后改清单，
+ *  这张卡只做两件事：问一下上游最新版，和按钉住的版本重建 venv。 */
+function AmaneBridgeCard({ toast }: ScrapingProps) {
+  const [tracking, setTracking] = useState(false);
+  const [outcome, setOutcome] = useState<CoverJob | null>(null);
+  const bridge = useQuery({
+    queryKey: AMANE_BRIDGE_KEY,
+    queryFn: ({ signal }) => fetchAmaneBridge(signal),
+    refetchInterval: (query) => (query.state.data?.job.status === 'running' ? COVER_POLL_MS : false),
+  });
+  const check = useMutation({
+    mutationFn: () => apiSend<{ latest: string }>(AMANE_BRIDGE_CHECK_URL, {}),
+  });
+  const rebuild = useMutation({
+    mutationFn: () => apiSend<CoverJob>(AMANE_BRIDGE_REBUILD_URL, {}),
+    onSuccess: () => {
+      setTracking(true);
+      setOutcome(null);
+      void queryClient.invalidateQueries({ queryKey: AMANE_BRIDGE_KEY });
+    },
+  });
+
+  const data = bridge.data;
+  const job = data?.job;
+  const running = job?.status === 'running';
+  useEffect(() => {
+    if (!job) return;
+    if (job.status === 'running') {
+      if (!tracking) setTracking(true);
+      return;
+    }
+    if (!tracking) return;
+    setTracking(false);
+    setOutcome(job);
+    if (job.status === 'complete') toast(job.result || 'amane 桥已重建');
+  }, [job, tracking, toast]);
+
+  if (!data) {
+    return bridge.error
+      ? <Section title="amane 桥"><Stack><Note tone="error">{errorMessage(bridge.error)}</Note></Stack></Section>
+      : null;
+  }
+  const busy = running || rebuild.isPending || check.isPending;
+  const problem = rebuild.error ? errorMessage(rebuild.error)
+    : check.error ? errorMessage(check.error)
+    : outcome?.status === 'failed' ? (outcome.error || '重建未完成') : '';
+  return (
+    <Section title="amane 桥" aside={<ExternalLink href={data.repository}>{data.repository}</ExternalLink>}>
+      <FactList>
+        <Fact term="钉住的版本">{data.version ? `${data.version} · ` : ''}{data.revision.slice(0, 12)}</Fact>
+        <Fact term="上游最新版本">{check.data?.latest ?? '尚未检查'}</Fact>
+        <Fact term="运行环境">{data.installed ? '已安装' : '未安装'}</Fact>
+        <Fact term="开放的站">{data.sites.map((site) => site.label).join('、')}</Fact>
+      </FactList>
+      <Stack divided>
+        <Help>
+          这几站由 amane（{data.license}）的解析器经独立子进程回答，运行环境按钉住的版本单独安装，
+          不随上游自动升级；换版本要人读过上游改动再改清单。首次安装约需下载 98 MB。
+        </Help>
+        {running ? <LoadingDots label="正在重建运行环境" /> : null}
+        {problem ? <Note tone="error">{problem}</Note> : null}
+        {outcome?.status === 'complete' ? <Note tone="success">{outcome.result || 'amane 桥已重建'}</Note> : null}
+      </Stack>
+      <Footer>
+        <Button variant="secondary" onClick={() => { if (!busy) check.mutate() }} {...busyProps(check.isPending)}>
+          检查上游版本
+        </Button>
+        <Button onClick={() => { if (!busy) rebuild.mutate() }} {...busyProps(running || rebuild.isPending)}>
+          {data.installed ? '重新安装' : '安装'}
+        </Button>
+      </Footer>
+    </Section>
+  );
+}
+
 export function ScrapingPage({ toast }: ScrapingProps) {
   const sources = useQuery({ queryKey: SCRAPING_KEY, queryFn: ({ signal }) => fetchSources(signal) });
   const data = sources.data;
@@ -309,6 +385,7 @@ export function ScrapingPage({ toast }: ScrapingProps) {
       <CoverCard toast={toast} />
       {(data.sources || []).map(
         (source) => <SourceCard key={source.source} source={source} toast={toast} />)}
+      <AmaneBridgeCard toast={toast} />
     </Page>
   );
 }

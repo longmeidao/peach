@@ -364,7 +364,7 @@ class IslandSourceContractTests(unittest.TestCase):
 
 
 class ScrapingEndpointTests(unittest.TestCase):
-    """来源和凭证页的四条端点，声明处都只有这一页的数据模块。
+    """来源和凭证页的几条端点，声明处都只有这一页的数据模块。
 
     这一页除了读列表还有三个写操作，散着写最容易在第二处悄悄改一条路径。基址是另外三条
     的前缀，所以按带引号的字面量数，`'/api/scraping'` 不会把 `/settings` 那条也算进来。
@@ -375,7 +375,9 @@ class ScrapingEndpointTests(unittest.TestCase):
     def test_the_endpoints_are_declared_once(self):
         sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
         for endpoint in ("'/api/scraping'", "'/api/scraping/settings'",
-                         "'/api/scraping/check'", "'/api/scraping/cover'"):
+                         "'/api/scraping/check'", "'/api/scraping/cover'",
+                         "'/api/scraping/amane-bridge'", "'/api/scraping/amane-bridge/check'",
+                         "'/api/scraping/amane-bridge/rebuild'"):
             with self.subTest(endpoint=endpoint):
                 declared = [path for path in sources
                             if endpoint in path.read_text(encoding="utf-8")]

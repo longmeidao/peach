@@ -30,6 +30,7 @@ from .config import (
     SHARED_CREDENTIAL_ROOT,
     SOURCES_DIR,
     STATE_DIR,
+    TOOLS_DIR,
 )
 from . import avatar_face
 from . import brand_marks
@@ -82,6 +83,7 @@ class WebContract:
                  follow_state_root: Path | None = None,
                  follow_shared_root: Path | None = None,
                  entry_links_root: Path | None = None,
+                 tools_root: Path | None = None,
                  taste_history_root: Path | None = None,
                  taste_history_store: Path | None = None,
                  taste_history_import_root: Path | None = None,
@@ -121,6 +123,8 @@ class WebContract:
         # 落得进临时目录，不会读到这台机器真实的偏好。
         self.entry_links_root = (Path(entry_links_root)
                                  if entry_links_root is not None else STATE_DIR)
+        # 外部工具区（FFmpeg、amane 桥的 venv）。测试给临时目录，重建桥就不会碰真实工具区。
+        self.tools_root = Path(tools_root) if tools_root is not None else TOOLS_DIR
         # 共享副本只承载**声明为可同步**的凭据字段，见 follow_secrets.SYNCABLE_FIELDS。
         # 复制关掉时 SHARED_CREDENTIAL_ROOT 是 None，凭据只留在本机。
         self.follow_shared_root = (Path(follow_shared_root)
@@ -164,6 +168,7 @@ class WebContract:
         self.taste_refresh_job = self._job("PeachTasteRefreshJob", "taste-refresh")
         self.link_prune_job = self._job("PeachLinkPruneJob", "link-prune")
         self.scraping_cover_job = self._job("PeachScrapingCoverJob", "scraping-cover")
+        self.amane_bridge_job = self._job("PeachAmaneBridgeJob", "amane-bridge")
         self.library_processing_job = self._job(
             "PeachLibraryProcessingJob", "library-processing")
         self.thumbnail_job = self._job(

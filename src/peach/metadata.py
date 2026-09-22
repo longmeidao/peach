@@ -70,13 +70,17 @@ class MetadataProviderError(RuntimeError):
 
     def __init__(
         self, message: str, *, kind: str = "unknown", status_code: int = 0,
-        retryable: bool = False, temporary: bool = False,
+        retryable: bool = False, temporary: bool = False, detail: str = "",
     ) -> None:
         super().__init__(message)
         self.kind = kind
         self.status_code = status_code
         self.retryable = retryable
         self.temporary = temporary
+        #: 来源自己给的细档，比 `kind` 细一级。amane 桥把上游 `FailureReason`（如
+        #: `cloudflare_blocked`、`rate_limited`）原样放在这里，`metadata_amane.cooldown_action`
+        #: 据此决定冷却，不用再从 message 文本里猜。
+        self.detail = detail
 
 
 #: 站方在 HTTP 上直说「这份凭据不认」的状态码。401 的语义只有这一种。
@@ -143,11 +147,12 @@ def reason_blames_credentials(reason: str) -> bool:
     return bool(reason) and CREDENTIAL_ADVICE in reason
 
 
-def auth_error(source: str, reason: str, *, status_code: int = 0) -> MetadataProviderError:
+def auth_error(source: str, reason: str, *, status_code: int = 0,
+               detail: str = "") -> MetadataProviderError:
     """把一次鉴权失败包成 `kind="auth"` 的错误。措辞只有这一处。"""
     return MetadataProviderError(
         f"{source} 需要登录或已被拒绝：{reason}", kind="auth",
-        status_code=status_code, retryable=False, temporary=True,
+        status_code=status_code, retryable=False, temporary=True, detail=detail,
     )
 
 

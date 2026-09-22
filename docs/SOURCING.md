@@ -96,8 +96,8 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 | --- | --- | --- | --- |
 | censored | 其余厂牌番号 | r18dev → avbase → javbus → javdb | 1pondo（无码片商）、fc2（另一套商品号） |
 | amateur | `300MIUM-1239` 这类三位数字前缀，加 `SIRO`／`STP`／`STN` | 同 censored | mgstage——Peach 这条采集路还没有它的解析器 |
-| uncensored | 日期式番号、`HEYZO-1380`、Tokyo-Hot 的 `n0780` | （证据指着一本道时）1pondo → avbase → javbus → javdb | r18dev：无码番号在它上面没有 |
-| fc2 | `FC2` 开头的商品号 | fc2 → fc2cmadb → javarchive → javdb | r18dev（实测 85 条全空）、avbase 与 javbus（对 FC2 零产出） |
+| uncensored | 日期式番号、`HEYZO-1380`、Tokyo-Hot 的 `n0780` | （证据指着一本道时）1pondo → avbase → javbus → javdb → avsox | r18dev：无码番号在它上面没有 |
+| fc2 | `FC2` 开头的商品号 | fc2 → fc2cmadb → javarchive → fc2ppvdb → fc2club → javdb | r18dev（实测 85 条全空）、avbase 与 javbus（对 FC2 零产出） |
 | kmib | `KOREAN_MIB_PREFIXES` 里的前缀 | 一家都不问 | 全部：番号与日本片同形，问回来的是别的作品 |
 
 几处容易问错的地方：
@@ -125,6 +125,15 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 
 来源链的取舍参考了 amane 的 `docs/dev/content-routes.md`，证据登记在
 `docs/reference-sources.json` 的 `amane-content-routes`。
+
+fc2ppvdb、fc2club、avsox 三站（以及只能由覆盖点名的 freejavbt、airav）不是 Peach 自己的解析器，
+由 amane 经 `tools/amane-bridge/` 的子进程回答（ADR-0043）：链上它们合成一档 `amane`，一次子进程
+并发问完；上游报的 `rate_limited` 按 429 那一档、`cloudflare_*` 与 `ip_banned` 按 403 那一档写进
+同一份冷却记录，正在冷却的站不带进子进程。桥的 venv 在「来源和凭证」页那张卡重建，钉住的版本
+只由人改。2026-09-22 经代理实测：`HEYZO-1380` 经 avsox 7.3 秒走完桥 → 链 → 候选，标题、演员、
+厂牌、发行日与标签齐全；fc2ppvdb 对三个商品号都回 HTTP 526（站方证书问题，上游按 `server_error`
+报），fc2club 对 `FC2-PPV-4610638`／`1015014`／`3143302` 都说没有，freejavbt 对有码番号说没有，
+airav 的搜索地址当天回 404。记录在 `build/agent-verification/amane-chain-realtest.json`。
 
 ## FC2 作品资料与封面
 

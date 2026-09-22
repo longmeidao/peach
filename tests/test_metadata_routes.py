@@ -2,8 +2,8 @@
 import unittest
 
 from peach.metadata_policy import SOURCE_SPECS
-from peach.metadata_routes import (COMMUNITY_STAGE, CONTENT_TYPES, LIST_FIELD_DEPTH,
-                                   OFFICIAL_STAGE, ROUTES, classify, community_route,
+from peach.metadata_routes import (AMANE_STAGE, COMMUNITY_STAGE, CONTENT_TYPES, LIST_FIELD_DEPTH,
+                                   OFFICIAL_STAGE, ROUTES, amane_route, classify, community_route,
                                    official_route, parse_route_overrides, required_scalars,
                                    route, route_for_code, settles, stage_members,
                                    stages_for_code)
@@ -56,22 +56,33 @@ class RouteTableTests(unittest.TestCase):
         for code in ('040221-001', 'HEYZO-1380', 'n0780'):
             with self.subTest(code=code):
                 self.assertNotIn('r18dev', route_for_code(code))
-                self.assertEqual(route_for_code(code), ('avbase', 'javbus', 'javdb'))
+                self.assertEqual(route_for_code(code), ('avbase', 'javbus', 'javdb', 'avsox'))
 
     def test_a_dated_code_only_asks_1pondo_when_this_file_says_so(self):
         """一本道与カリビアンコム 的番号同形，问错那家答回来的是另一部片。"""
         self.assertEqual(
             route_for_code('112312_478', 'R:/media/1pon/112312_478-1pon-whole1_hd.mp4'),
-            ('1pondo', 'avbase', 'javbus', 'javdb'))
+            ('1pondo', 'avbase', 'javbus', 'javdb', 'avsox'))
         self.assertEqual(
             route_for_code('040221-001', 'R:/media/Carib-040221-001-FHD/040221-001-carib.mp4'),
-            ('avbase', 'javbus', 'javdb'))
+            ('avbase', 'javbus', 'javdb', 'avsox'))
 
-    def test_fc2_asks_the_shop_then_the_archives_then_javdb_only(self):
+    def test_fc2_asks_the_shop_then_the_archives_then_the_fc2_sites_then_javdb_only(self):
         """AVBase 与 JavBus 对 FC2 番号一份证据都没给过，问了只是各撞一次空搜索。"""
         self.assertEqual(route_for_code('FC2-PPV-1812235'),
-                         ('fc2', 'fc2cmadb', 'javarchive', 'javdb'))
+                         ('fc2', 'fc2cmadb', 'javarchive', 'fc2ppvdb', 'fc2club', 'javdb'))
         self.assertNotIn('r18dev', route_for_code('FC2-PPV-1812235'))
+
+    def test_the_amane_sites_peach_already_covers_are_not_on_any_default_chain(self):
+        """有码与素人的默认链不经桥：freejavbt 与 airav 只能由用户整条覆盖时点名。"""
+        self.assertEqual(amane_route('ABW-220'), ())
+        self.assertEqual(amane_route('300MIUM-1239'), ())
+        self.assertEqual(amane_route('FC2-PPV-1812235'), ('fc2ppvdb', 'fc2club'))
+        self.assertEqual(amane_route('HEYZO-1380'), ('avsox',))
+        self.assertEqual(amane_route('ABW-220', overrides={'censored': ('r18dev', 'freejavbt', 'airav')}),
+                         ('freejavbt', 'airav'))
+        self.assertEqual(set(AMANE_STAGE) & set(COMMUNITY_STAGE), set())
+        self.assertEqual(set(AMANE_STAGE) & set(OFFICIAL_STAGE), set())
 
     def test_korean_mib_and_a_missing_code_ask_nobody(self):
         self.assertEqual(route_for_code('YUJ-103'), ())
@@ -84,21 +95,23 @@ class RouteTableTests(unittest.TestCase):
         """免复核要两家一致、封面互证要两个图源，3 家是下限不是上限。"""
         self.assertEqual(len(community_route('ABW-220')), LIST_FIELD_DEPTH)
         self.assertEqual(community_route('FC2-PPV-1812235'), ('javdb',))
+        self.assertEqual(community_route('HEYZO-1380'), ('avbase', 'javbus', 'javdb'))
         self.assertEqual(official_route('FC2-PPV-1812235'),
                          ('fc2', 'fc2cmadb', 'javarchive'))
 
 
 class StageTests(unittest.TestCase):
     def test_stages_keep_the_official_sources_apart_and_fold_the_indexes(self):
-        """官方那几家逐个成档才短路得了；综合索引那一档整档一起问。"""
+        """官方那几家逐个成档才短路得了；综合索引那一档整档一起问，经桥的几站也合成一档。"""
         self.assertEqual(stages_for_code('ABW-220'), ('r18dev', 'community'))
-        self.assertEqual(stages_for_code('040221-001'), ('community',))
-        self.assertEqual(stages_for_code('FC2-PPV-1812235'), ('fc2', 'community'))
+        self.assertEqual(stages_for_code('040221-001'), ('community', 'amane'))
+        self.assertEqual(stages_for_code('FC2-PPV-1812235'), ('fc2', 'amane', 'community'))
         self.assertEqual(stages_for_code('YUJ-103'), ())
 
     def test_stage_members_name_the_sources_the_evidence_files_use(self):
         chain = route_for_code('FC2-PPV-1812235')
         self.assertEqual(stage_members('fc2', chain), ('fc2', 'fc2cmadb', 'javarchive'))
+        self.assertEqual(stage_members('amane', chain), ('fc2ppvdb', 'fc2club'))
         self.assertEqual(stage_members('community', chain), ('javdb',))
         self.assertEqual(stage_members('r18dev', chain), ())
 
