@@ -43,8 +43,15 @@ from .field_owners import (
 from .genre_decisions import load_genre_decisions
 from .genre_taxonomy import UNMAPPED, genres_in_warning, resolve_genre
 from .metadata import identifies_code
+from .metadata_alias_resolve import (
+    is_planning_alias as _is_planning_alias,
+    register_planning_alias,
+    resolve_planning_alias,
+    stage_name as _stage_name,
+)
 from .metadata_policy import (
-    FALLBACK_SOURCES, FIELD_SOURCE_ORDER, PREFERRED_COMMUNITY_SOURCE, SOURCE_SPECS,
+    CHAIN_OFFICIAL, FALLBACK_SOURCES, LOCAL_NFO_SOURCE, SOURCE_SPECS,
+    blacklisted, chain_rank, source_tier,
 )
 from .review_csv import read_candidates
 
@@ -209,42 +216,30 @@ def _performer_identity_keys(connection, names: list[str]) -> frozenset:
 #: 可以不经人判断直接落库的字段（ADR-0025 扩到 P0 全字段）。
 #:
 #: 标签是多值集合，「取值一致」对它的含义是整份集合逐字相同，而不是逐个标签比对；
-#: `_candidate_value_key` 拿的就是拼好的那一串，所以这条判据照样成立。真正需要人的
-#: 是未收录 genre——那几个词还没决定投影成什么，直接落库等于默默把它们丢掉，
-#: 所以 `_tags_are_fully_resolved` 另立一道闸。
+#: `_candidate_value_key` 拿的就是拼好的那一串，所以这条判据照样成立。三张表都不认的
+#: genre 不再扣住整条候选：认得出的那些先落库，剩下的词记进 `pending_genres` 单独等
+#: 人收录（ADR-0038）。
 AUTO_APPLY_FIELDS = frozenset({
     "title", "original_title", "performers", "studio", "series", "release_date", "tags",
 })
 
-#: 素人系官方页把年龄和职业写进出演者栏（`本庄美奈子 30歳 元カフェ店員`），照抄会把
-#: 整句变成实体名。艺名到年龄标记为止，后面是介绍；`はな/19歳/…` 用斜杠分段，同理。
-_PERFORMER_INTRO = re.compile(r"[\s　]*[（(]?\d+\s*歳.*$")
-_PERFORMER_SEGMENT = re.compile(r"[/／].*$")
-#: 剪完仍带空白、分隔符或敬称的不是艺名，是企划文案（`超バドミントン部あかりちゃん`、
-#: `まゆみさん`）。这类交回人工：剪到哪儿才对，本身就是个判断。
-_NOT_A_STAGE_NAME = re.compile(r"[\s　/／]|ちゃん$|さん$")
 
+def _planning_alias_resolver(connection, row: dict, snapshot_root):
+    """这一行的企划名义解析器：`艺名写法 -> (主艺名, 证据来源)`，解不出返回 None。
 
-def _stage_name(name: str) -> str | None:
-    """出演者栏里的艺名；认不出艺名边界时返回 None。"""
-    trimmed = _PERFORMER_INTRO.sub("", _PERFORMER_SEGMENT.sub("", str(name or ""))).strip()
-    if not trimmed or _NOT_A_STAGE_NAME.search(trimmed):
-        return None
-    return trimmed
-
-
-def _is_planning_alias(name: str) -> bool:
-    """这个写法是不是企划名义——这部片给她起的称呼，不是这个人的主艺名。
-
-    两种形态。一种是把年龄职业写在名字后面（`桜井奈々 28歳 某企業広報担当`）：介绍
-    这一段只在这部片里成立，带着它的那个名字同样只在这部片里成立。另一种是剪完仍
-    认不出艺名边界的（`佐倉井さん`、`超バドミントン部あかりちゃん`），`_stage_name`
-    本来就不收。
-
-    判的是写法不是人：同一个人在别处用主艺名登记，这里的一次性称呼跟那条记录对不上，
-    却不说明账本存错了。
+    按行缓存。同一行里多个来源常给同一个称呼，每次都去翻一遍快照目录和 `entity_alias`
+    是白做的重复 I/O，而这一层在整库落库时每条候选都要走。
     """
-    return bool(_PERFORMER_INTRO.search(name)) or _stage_name(name) is None
+    codes = (row.get("code"), row.get("query"))
+    cache: dict[str, tuple[str, str] | None] = {}
+
+    def resolve(name: str):
+        if name not in cache:
+            cache[name] = resolve_planning_alias(
+                connection, name, metadata_root=snapshot_root, codes=codes)
+        return cache[name]
+
+    return resolve
 
 
 def _offers_another_stage_name(candidate: dict) -> bool:
@@ -256,23 +251,38 @@ def _offers_another_stage_name(candidate: dict) -> bool:
     return not names or not all(_is_planning_alias(name) for name in names)
 
 
-def _stage_names(candidate: dict) -> list[str] | None:
-    """整条出演者候选剪成艺名列表；有一个剪不出来就整条回人工。"""
+def _stage_names(candidate: dict, resolve=None) -> tuple[list[str] | None, dict]:
+    """整条出演者候选剪成艺名列表，外加解出来的企划名义对照表。
+
+    返回 `(艺名列表, {艺名: (企划名义, 证据来源)})`。剪不出艺名、`resolve` 又给不出
+    主艺名的，整条回人工——`(None, {})`。
+
+    `resolve` 缺省是 None，也就是「不走企划名义那条路」。这是有意的默认：解析要读
+    本机快照目录，没人把那个目录交给这一层时就不该自己去猜一个（ADR-0038）。
+    """
     people = candidate.get("value")
     if not isinstance(people, list) or not people:
-        return None
-    names = []
+        return None, {}
+    names: list[str] = []
+    resolved: dict[str, tuple[str, str]] = {}
     for person in people:
         if not isinstance(person, dict):
-            return None
-        name = _stage_name(person.get("name"))
+            return None, {}
+        raw = str(person.get("name") or "")
+        name = _stage_name(raw)
         if name is None:
-            return None
+            # 剪得出边界的那些照旧按 ADR-0025 落剪好的艺名：`桜井奈々 28歳 某企業広報担当`
+            # 的艺名就是 `桜井奈々`，不必去别处求证。这条路只管剪完仍认不出的那些。
+            found = resolve(raw) if resolve is not None else None
+            if found is None:
+                return None, {}
+            name, source = found
+            resolved[name] = (raw.strip(), source)
         names.append(name)
-    return names or None
+    return (names or None), (resolved if names else {})
 
 
-def _candidate_value_key(connection, field: str, candidate: dict):
+def _candidate_value_key(connection, field: str, candidate: dict, resolve=None):
     """两个来源说的是不是同一件事；这条候选本身不可用时返回 None。
 
     出演者比的是人，不是写法。同一位在两家站上常挂着不同艺名，而账本早把它们登记在
@@ -285,30 +295,35 @@ def _candidate_value_key(connection, field: str, candidate: dict):
     比较——`FSEI-003` 两家给的是同一组六个人，只是排序不同。
     """
     if field == "performers":
-        names = _stage_names(candidate)
+        names, _resolved = _stage_names(candidate, resolve)
         return None if names is None else _performer_identity_keys(connection, names)
     value = str(candidate.get("display_value") or "").strip()
     return value or None
 
 
-def _normalised_candidate(field: str, candidate: dict) -> dict:
-    """落库用的候选。出演者写剪好的艺名，原文留在 `raw_display_value` 里备查。"""
+def _normalised_candidate(field: str, candidate: dict, resolve=None) -> dict:
+    """落库用的候选。出演者写剪好的艺名，原文留在 `raw_display_value` 里备查。
+
+    企划名义解出来的那几位，把原称呼挂在这个人自己身上（`planning_alias`）：落库
+    那一步要按它登记别名，而整条的 `raw_display_value` 分不出是哪一位。
+    """
     if field != "performers":
         return candidate
-    names = _stage_names(candidate) or []
-    people = [{**person, "name": name}
+    names, resolved = _stage_names(candidate, resolve)
+    names = names or []
+    people = [{**person, "name": name,
+               **({"planning_alias": resolved[name][0]} if name in resolved else {})}
               for person, name in zip(candidate.get("value") or [], names)]
     return {**candidate, "value": people, "display_value": "、".join(names),
-            "raw_display_value": str(candidate.get("display_value") or "").strip()}
+            "raw_display_value": str(candidate.get("display_value") or "").strip(),
+            **({"alias_source": sorted({source for _raw, source in resolved.values()})[0]}
+               if resolved else {})}
 
 
 def _preferred_candidate(field: str, candidates: list[dict]) -> dict:
-    """取值一致时由谁署名。字段来源优先级已经排好，落库记的出处就该是最靠前的那家。"""
-    order = FIELD_SOURCE_ORDER.get(field, ())
-    def rank(candidate: dict) -> tuple[int, str]:
-        source = str(candidate.get("source") or "").strip()
-        return (order.index(source) if source in order else len(order), source)
-    return min(candidates, key=rank)
+    """取值一致时由谁署名。字段优先级链已经排好，落库记的出处就该是链上最靠前的那家。"""
+    return min(candidates, key=lambda candidate: chain_rank(
+        field, str(candidate.get("source") or "").strip()))
 
 
 #: 韩国 MIB 番号唯一可信的来源：官网 k-mib.com（`metadata_kmib`）。
@@ -326,9 +341,6 @@ def _only_mib_official(row: dict) -> bool:
     sources = {str(c.get("source") or "").strip()
                for c in candidates if isinstance(c, dict)}
     return sources == {MIB_OFFICIAL_SOURCE}
-
-
-LOCAL_NFO_SOURCE = "local_nfo"
 
 
 def _candidate_identifies_code(code: str, candidate: dict) -> bool:
@@ -371,6 +383,10 @@ def _row_candidates(row: dict, decided) -> list[dict]:
 def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     """这条自动落库该记在哪条规则名下。
 
+    企划名义解析（ADR-0038）排最前：这一条改的是写进账本的那个名字本身，回溯时要先
+    认出它。按字段优先级链取舍过的排第二，规则名带上胜出那一家；被压下的取值另记在
+    note 的 `overruled` 里，两样合起来才答得出「为什么是它」。
+
     official 与 community 两类补空在 `review_decision` 里必须分得开：出了问题要回溯的
     是「哪些值是 community 源补的」，而 note 是唯一留着这个区别的地方。多来源一致
     （ADR-0025）与单来源（ADR-0018）同样要分得开：前者的证据强度不一样。来源之间有
@@ -378,6 +394,10 @@ def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     单独记名：它是唯一一条会改掉账本已有值的自动写入，回溯时第一个要捞出来的就是它。
     """
     source = str(candidate.get("source") or "").strip()
+    if candidate.get("alias_source"):
+        return f"adr-0038-planning-alias-resolved-{candidate['alias_source']}"
+    if candidate.get("chain_winner"):
+        return f"adr-0038-chain-{candidate['chain_winner']}"
     if candidate.get("replaces_current"):
         if agreed > 1:
             return f"adr-0035-official-replaces-{agreed}-agreed-sources"
@@ -393,33 +413,37 @@ def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     return f"adr-0018-empty-field-single-{kind}-source"
 
 
-def _evidence_candidates(row: dict) -> list[dict]:
-    """能当补空证据的候选：已登记来源与本地 NFO。
+def _evidence_candidates(row: dict, field: str = "") -> list[dict]:
+    """能当补空证据的候选：已登记来源与本地 NFO，去掉这个字段上被拉黑的来源。
 
     只剩一家社区来源也算：落库只补空格子（ADR-0033），空着的格子有一个值比没有强；
     补错的值用户改过一次就归 `user:manual`，自动写入不再碰它（ADR-0034）。
+
+    黑名单（ADR-0038）排在最前面，和 amane 的 `field_blacklist` 同一个位置：被拉黑的
+    来源在这个字段上连候选都不算，所以也不会因为「只剩它一家」而被采信。
     """
     return [c for c in row.get("candidates") or []
-            if str(c.get("source") or "").strip() in SOURCE_SPECS
-            or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE]
+            if (str(c.get("source") or "").strip() in SOURCE_SPECS
+                or str(c.get("source") or "").strip() == LOCAL_NFO_SOURCE)
+            and not blacklisted(field, str(c.get("source") or "").strip())]
 
 
-def _official_only(candidates: list[dict]) -> bool:
-    """这批候选是不是全部来自官方来源（含官方镜像）。"""
-    sources = {str(c.get("source") or "").strip() for c in candidates}
-    return bool(sources) and all(
-        source in SOURCE_SPECS and SOURCE_SPECS[source].official for source in sources)
-
-
-def _settled_candidates(connection, field: str, code: str,
-                        candidates: list[dict]) -> tuple[list[dict], str | None]:
-    """取值只剩一个的那组候选，和据以取舍的规则；取舍不了返回空列表。
+def _settled_candidates(connection, field: str, code: str, candidates: list[dict],
+                        resolve=None) -> tuple[list[dict], str | None, list[dict]]:
+    """取值只剩一个的那组候选、据以取舍的规则，以及被压下的那些取值。
 
     日期式番号的发行日期只认番号自己写的那天：候选里没有这一天就交给人。
     兜底来源（javbus）在这之后才降级：还有别家给了值就不看它（ADR-0035），而番号自带
     的那天是硬事实，谁报出来都算——`092415_001` 只有 javbus 报对，先降级就把它丢了。
-    其余字段取值不一、在场的全是社区来源时，取 javdb 那一侧；有官方来源或本地
-    NFO 在场的分歧照旧交给人（ADR-0034）。
+
+    取值仍然不一时按字段优先级链取第一位（ADR-0038）：本地 NFO、官方来源、javdb、
+    其余社区、兜底，同层之间用 `FIELD_SOURCE_ORDER` 再排。此前这里只处理「在场的全是
+    社区来源」那一种，官方之间的分歧一律交人工——而本机队列里那类分歧 60 条全是同一件
+    事：mgstage 是转售店，标题带着店铺加赠、系列写的是店内货架名，dmm 与 libredmm 那一
+    侧才是片商自己的口径。链上 dmm 本来就排在 mgstage 前面，让它说话就不必再问人。
+
+    被压下的取值原样返回，调用方写进 `review_decision.note`：自动结算的前提是事后
+    答得出「当时还有哪些说法、为什么没选它」，那句话只能落在这里。
     """
     settled_by = None
     date = code_release_date(code) if field == "release_date" else None
@@ -429,19 +453,25 @@ def _settled_candidates(connection, field: str, code: str,
         candidates = matching
     candidates = [c for c in candidates
                   if str(c.get("source") or "").strip() not in FALLBACK_SOURCES] or candidates
-    values = {_candidate_value_key(connection, field, candidate) for candidate in candidates}
+    keys = {id(c): _candidate_value_key(connection, field, c, resolve) for c in candidates}
+    values = set(keys.values())
     if None in values or not values:
-        return [], None
+        return [], None, []
     if len(values) == 1:
-        return candidates, settled_by
-    sources = {str(c.get("source") or "").strip() for c in candidates}
-    if any(source == LOCAL_NFO_SOURCE or SOURCE_SPECS[source].official for source in sources):
-        return [], None
-    preferred = [c for c in candidates
-                 if str(c.get("source") or "").strip() == PREFERRED_COMMUNITY_SOURCE]
-    if len({_candidate_value_key(connection, field, c) for c in preferred}) != 1:
-        return [], None
-    return preferred, f"{PREFERRED_COMMUNITY_SOURCE}-preferred"
+        return candidates, settled_by, []
+    ranks = {id(c): chain_rank(field, str(c.get("source") or "").strip())
+             for c in candidates}
+    winner = min(candidates, key=lambda candidate: ranks[id(candidate)])
+    # 同一家给出两个不同的值时，链上没有人能替它取舍：`ranks` 里它们分数相同，`min`
+    # 只会按列表顺序挑一个，而那个顺序不表达任何判断。这种行交回人工。
+    if any(ranks[id(c)] == ranks[id(winner)] and keys[id(c)] != keys[id(winner)]
+           for c in candidates):
+        return [], None, []
+    chosen = [c for c in candidates if keys[id(c)] == keys[id(winner)]]
+    overruled = [{"source": str(c.get("source") or "").strip(),
+                  "value": str(c.get("display_value") or "").strip()}
+                 for c in candidates if keys[id(c)] != keys[id(winner)]]
+    return chosen, settled_by, overruled
 
 
 def _filename_carries_code(code: str, name: str) -> bool:
@@ -457,30 +487,49 @@ def _filename_carries_code(code: str, name: str) -> bool:
     return bool(parsed) and same_release_code(code, parsed)
 
 
-def _tags_are_fully_resolved(candidates: list[dict]) -> bool:
-    """这批标签候选里还有没有没人判过的 genre。
+def pending_genres(candidates: list[dict]) -> list[str]:
+    """这批标签候选里三张表都不认的词。
 
     折叠已经按用户决定和当前静态表跑过一遍（`_fold_genre_decisions`），剩在
-    `unmapped_genres` 里的就是三张表都不认的词。这种候选直接落库，等于替用户判了
-    「这几个词不算内容」——而它们恰恰是这一类里唯一需要人的部分。
+    `unmapped_genres` 里的就是没人判过的那些。它们此前扣住整条候选：一行里认得出
+    的十几个标签陪着两个生词一起等人，而等来的判断只关乎那两个词（ADR-0038）。
+
+    认得出的标签照常落库，这几个词记进 `review_decision.note` 的 `pending_genres`，
+    复核页按它把这一行重新摆出来——要判的只剩「这个词收录成什么」。
     """
-    return not any(candidate.get("unmapped_genres") for candidate in candidates)
+    return list(dict.fromkeys(
+        str(genre).strip() for candidate in candidates
+        for genre in candidate.get("unmapped_genres") or [] if str(genre).strip()))
 
 
-def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
+def _may_replace_current(candidates: list[dict]) -> bool:
+    """这批候选能不能改掉账本已有的值：只有链上第一档可以。
+
+    第一档是本地 NFO 与官方来源（含官方镜像）——用户自己整理的那份，和发行方自己
+    写的那页。ADR-0035 让官方来源替换现值时用的就是这条界线，ADR-0038 只是把本地
+    NFO 一并纳进来：它在链上排在官方前面，没有理由反而不能替换。
+
+    社区来源仍然只补空（ADR-0033）。兜底来源连挑战都不算：javbus 搜不到就给首个
+    近似命中，`259LUXU-891` 它答的是 `259LUXU-1891`。
+    """
+    sources = {str(c.get("source") or "").strip() for c in candidates}
+    return bool(sources) and all(
+        source_tier(source) <= CHAIN_OFFICIAL for source in sources)
+
+
+def metadata_auto_apply_candidate(connection, row: dict, *,
+                                  snapshot_root=None) -> dict | None:
     """这一行能否不经复核直接落库；不能就返回 None。
 
     三项必须同时成立，缺一项就仍然走人工：
 
-    1. 目标字段当前为空，或者在场的候选全部来自官方来源——补空之外，官方来源的取值
-       直接替换现值（用户 2026-09-16 定，ADR-0035）。发行方自己那页就是这部片的出处，
-       账本里那个来路不明的旧值没有理由压住它；用户改过的格子归属受保护，仍然不碰；
-    2. 候选**取值**去重后只剩一个——有第二个取值才存在取舍，而取舍正是复核要做的事。
-       数的是取值不是候选条数（ADR-0025）：两家独立来源给出同一个值是这批候选里最强的
-       证据，按条数算却会被判成「有分歧」。实测 349 条这样被扣住，`259LUXU-1509` 的
-       厂牌、演员和发行日期都是 mgstage 与 libredmm 逐字相同却谁也没写进账本。两种取舍
-       不用人判（`_settled_candidates`，ADR-0034）：日期式番号的发行日期认番号自己写的
-       那天，全是社区来源的分歧取 javdb 那一侧；
+    1. 候选**取值**按字段优先级链结算后只剩一个（`_settled_candidates`）。取值一致
+       是最强的证据，数的是取值不是候选条数（ADR-0025）；取值不一时按链取第一位
+       （ADR-0038），被压下的说法记进 note。两种取舍走在链之前：日期式番号的发行日期
+       只认番号自己写的那天（ADR-0034），兜底来源在别家在场时退开（ADR-0035）；
+    2. 目标字段当前为空，或者结算下来的来源不是兜底那一家——补空之外，链首那家的
+       取值直接替换现值。发行方自己那页就是这部片的出处，账本里那个来路不明的旧值
+       没有理由压住它；用户改过的格子归属受保护，仍然不碰；
     3. 该番号名下**每一条**资产的文件名都认得出这个番号——逐字出现，或按编目规则
        解析出来就是它。`MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是
        `MEYD-911`；本机 2611 条有番号的视频里这样的有 297 条。
@@ -489,15 +538,16 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     唯一的风险是「这个值属不属于这部片」，而那由第 3 条管，与来源可信度无关。卡住
     official 这条的代价是实测 76 条 javbus 补空候选全部滞留人工，它们补的都是账本里
     空着的发行日期——没有可判断项，却要人逐条点过。落库时按来源实际级别记规则名，
-    回溯得出来。替换现值那一支反过来，只认官方来源：改掉一个已有的值是另一种风险。
+    回溯得出来。
 
     第 3 条是这条捷径唯一的身份保证。刮削按番号取值，番号错则值错；文件名认得出
     番号是本机可核验的证据，而复核界面其实给不了这个保证——它只并排显示番号和
     日期，并不告诉你番号跟这个文件对不对得上。
 
-    出演者多一道形态门槛：官方页把年龄职业写在艺名后面，剪不出艺名的交回人工。
-    第 2 条对它比的是人而不是写法：同一位在两家站上挂着不同艺名、账本已把这两个写法
-    登记在同一条实体名下时，那不是分歧（`_candidate_value_key`）。
+    出演者多一道形态门槛：官方页把年龄职业写在艺名后面，剪不出艺名的先按本机已有的
+    证据解一次企划名义（`snapshot_root` 给的快照目录与 `entity_alias`，ADR-0038），
+    解不出才交回人工。第 1 条对它比的是人而不是写法：同一位在两家站上挂着不同艺名、
+    账本已把这两个写法登记在同一条实体名下时，那不是分歧（`_candidate_value_key`）。
 
     未登记来源的候选先被剔除再比对取值：没进 `REGISTERED_SOURCES` 的来源不构成证据，
     留着它只会把「一个有效取值」算成分歧。
@@ -514,13 +564,13 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     code = str(row.get("code") or "").strip()
     if not code:
         return None
-    candidates, settled_by = _settled_candidates(connection, field, code, _evidence_candidates(row))
+    resolve = _planning_alias_resolver(connection, row, snapshot_root)
+    candidates, settled_by, overruled = _settled_candidates(
+        connection, field, code, _evidence_candidates(row, field), resolve)
     if not candidates:
         return None
     replaces_current = bool(str(row.get("current_value") or "").strip())
-    if replaces_current and not _official_only(candidates):
-        return None
-    if field == "tags" and not _tags_are_fully_resolved(candidates):
+    if replaces_current and not _may_replace_current(candidates):
         return None
     candidate = _preferred_candidate(field, candidates)
     query = str(row.get("query") or code).strip()
@@ -546,8 +596,12 @@ def metadata_auto_apply_candidate(connection, row: dict) -> dict | None:
     if column and any(is_protected(owner_of(target["field_owners"], column))
                       for target in targets):
         return None
-    return {**_normalised_candidate(field, candidate), "agreed_sources": len(candidates),
+    return {**_normalised_candidate(field, candidate, resolve),
+            "agreed_sources": len(candidates),
             **({"settled_by": settled_by} if settled_by else {}),
+            **({"chain_winner": str(candidate.get("source") or "").strip(),
+                "overruled": overruled} if overruled else {}),
+            **({"pending_genres": found} if (found := pending_genres(candidates)) else {}),
             **({"replaces_current": True} if replaces_current else {})}
 
 
@@ -578,6 +632,63 @@ METADATA_FIELD_COLUMNS = {
     "title": "catalog_title", "original_title": "original_title",
     "release_date": "release_date", "studio": "studio", "series": "series",
 }
+
+
+def _apply_performer_candidate(connection, asset_ids: list[int], candidate: dict, *,
+                               source: str, confidence: float, metadata: dict,
+                               now: str) -> None:
+    """把演员候选写成这些资产的 performer 实体与 `演员:` 标签。
+
+    演员是 performer 真相，不回写 `asset.creator`；两种身份混写正是重复名称事故的
+    来源之一。
+    """
+    raw_performers = candidate.get("value")
+    if not isinstance(raw_performers, list):
+        raise ValueError("演员候选必须是数组")
+    performers: list[dict] = []
+    seen: set[str] = set()
+    for raw in raw_performers:
+        if not isinstance(raw, dict):
+            raise ValueError("演员候选条目无效")
+        name = _approved_entity_name(raw.get("name"), "performer")
+        normalized = normalize_entity_name(name)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        performers.append({**raw, "name": name})
+    if not performers:
+        raise ValueError("演员候选为空")
+    marks = ",".join("?" * len(asset_ids))
+    connection.execute(
+        f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='performer' "
+        "AND source LIKE 'javinizer:%'", asset_ids,
+    )
+    connection.execute(
+        f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
+        "AND source LIKE 'javinizer:%:performer'", asset_ids,
+    )
+    for asset_id in asset_ids:
+        for performer in performers:
+            name = performer["name"]
+            external_id = str(performer.get("external_id") or "").strip()
+            connection.execute(
+                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
+                (asset_id, "演员:" + name, confidence, f"javinizer:{source}:performer"),
+            )
+            entity_id = upsert_asset_entity(
+                connection, kind="performer", name=name, asset_id=asset_id,
+                role="performer", source=f"javinizer:{source}:performer",
+                confidence=confidence,
+                external_provider=_performer_external_provider(
+                    performer, source, external_id),
+                external_id=(external_id or None), metadata=metadata, now=now,
+            )
+            # 企划名义解出主艺名时，把封面上印的那个称呼留成别名（ADR-0038）：
+            # 账本里写的是 `目黒めぐみ`，用户搜的多半是 `めぐみ 28歳 パパ活女子`
+            # 里那个 `めぐみ`，不登记就等于这次解析只落在一行 note 里。
+            if entity_id is not None and performer.get("planning_alias"):
+                register_planning_alias(
+                    connection, entity_id, str(performer["planning_alias"]))
 
 
 def _apply_metadata_candidate(
@@ -690,47 +801,9 @@ def _apply_metadata_candidate(
         return len(asset_ids)
 
     if field == "performers":
-        raw_performers = candidate.get("value")
-        if not isinstance(raw_performers, list):
-            raise ValueError("演员候选必须是数组")
-        performers: list[dict] = []
-        seen: set[str] = set()
-        for raw in raw_performers:
-            if not isinstance(raw, dict):
-                raise ValueError("演员候选条目无效")
-            name = _approved_entity_name(raw.get("name"), "performer")
-            normalized = normalize_entity_name(name)
-            if normalized in seen:
-                continue
-            seen.add(normalized)
-            performers.append({**raw, "name": name})
-        if not performers:
-            raise ValueError("演员候选为空")
-        connection.execute(
-            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='performer' "
-            "AND source LIKE 'javinizer:%'", asset_ids,
-        )
-        connection.execute(
-            f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
-            "AND source LIKE 'javinizer:%:performer'", asset_ids,
-        )
-        for asset_id in asset_ids:
-            for performer in performers:
-                name = performer["name"]
-                external_id = str(performer.get("external_id") or "").strip()
-                connection.execute(
-                    "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
-                    (asset_id, "演员:" + name, confidence, f"javinizer:{source}:performer"),
-                )
-                upsert_asset_entity(
-                    connection, kind="performer", name=name, asset_id=asset_id,
-                    role="performer", source=f"javinizer:{source}:performer",
-                    confidence=confidence,
-                    external_provider=_performer_external_provider(
-                        performer, source, external_id),
-                    external_id=(external_id or None), metadata=metadata, now=now,
-                )
-        # 演员是 performer 真相，不回写 asset.creator；两种身份混写正是重复名称事故的来源之一。
+        _apply_performer_candidate(
+            connection, asset_ids, candidate, source=source, confidence=confidence,
+            metadata=metadata, now=now)
         return len(asset_ids)
 
     raw_tags = candidate.get("value")
@@ -793,7 +866,7 @@ def _performer_external_provider(performer: dict, source: str,
 
 
 def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH,
-                        active=lambda: True):
+                        active=lambda: True, snapshot_root=None):
     """把确定的那部分直接落库，不占人工队列。
 
     ADR-0018：这是「刮削结果只作候选、不直接改写真相字段」的一个**窄例外**，
@@ -804,6 +877,10 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     `database` 是调用方已经在用的那一个 `LedgerDatabase`：写锁与提交后的缓存失效都挂在
     实例上，自己再 new 一个就绕开了两者。`active` 返回假时停在批与批之间，已经提交的
     那些保留。
+
+    `snapshot_root` 是本机落盘的来源快照目录，企划名义解析要读它（ADR-0038）。缺省
+    是 None，也就是只走 `entity_alias` 那一条路：这一层不去猜真实数据根在哪儿，
+    猜错的表现是测试悄悄读起了真实库。
     """
     rows, _source, _skipped = read_candidates("metadata_fields", Path(candidate_root))
     applied, skipped = [], 0
@@ -829,7 +906,8 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                 if str(row.get("status") or "").strip() != "candidate":
                     continue
                 row["candidates"] = _row_candidates(row, genres)
-                candidate = metadata_auto_apply_candidate(connection, row)
+                candidate = metadata_auto_apply_candidate(
+                    connection, row, snapshot_root=snapshot_root)
                 if candidate is None:
                     skipped += 1
                     continue
@@ -854,6 +932,15 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                         "candidate_key": candidate.get("candidate_key"),
                         "source": candidate.get("source"),
                         "value": candidate.get("display_value"),
+                        # 链上被压下的说法。自动结算的前提是事后答得出「当时还有哪些
+                        # 说法、为什么没选它」，而候选 CSV 会被下一批盖掉，这里是唯一
+                        # 跟着账本一起留下来的那一份（ADR-0038）。
+                        **({"overruled": candidate["overruled"]}
+                           if candidate.get("overruled") else {}),
+                        # 三张表都不认的 genre。标签已经落了认得出的那些，这几个词
+                        # 单独等人收录，复核页按它把这一行重新摆出来。
+                        **({"pending_genres": candidate["pending_genres"]}
+                           if candidate.get("pending_genres") else {}),
                         # 出演者写的是剪过的艺名，原文得留着：事后要答得出账本里这个名字
                         # 是从哪一句剪出来的。
                         **({"raw_value": candidate["raw_display_value"]}

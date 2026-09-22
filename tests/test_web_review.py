@@ -16,6 +16,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from peach import metadata_policy as rm_policy
 from peach import review_csv as rm_candidates
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
@@ -364,8 +365,12 @@ class ReviewQueueTests(unittest.TestCase):
             con.close()
         self.assertEqual(self.queue_keys("metadata_fields"), [])
 
-    def test_an_unresolved_genre_keeps_the_whole_tag_set_in_the_queue(self):
-        """未收录的那几个词还没决定投影成什么，直接落库等于替用户判它们不算内容。"""
+    def test_an_unresolved_genre_keeps_only_the_word_in_the_queue(self):
+        """认得出的标签先落库，没人判过的那个词单独留在队列里等收录（ADR-0038）。
+
+        它此前扣住整条候选：一行里认得出的十几个标签陪着一个生词一起等人，而等来的
+        判断只关乎那个词。
+        """
         self._asset(96, "MIAD-573", "MIAD573_01.wmv")
         # 素材必须是占位词，不能拿真实来源词：词表一收那个词，这条路径就没有未决的
         # 词可测，而扩词表的人跑不到 catalog 域。2026-09-21 先后拿 `シャワー` 和
@@ -373,8 +378,30 @@ class ReviewQueueTests(unittest.TestCase):
         row = self._tag_row("MIAD-573:tags", "MIAD-573", ["スレンダー", "まだ知らない分類"])
         self.assertEqual(row["candidates"][0]["unmapped_genres"], ["まだ知らない分類"])
         self.write_metadata_rows([row])
-        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            landed = sorted(tag[0] for tag in con.execute(
+                "SELECT tag FROM asset_tag WHERE asset_id=96"))
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key='MIAD-573:tags'"
+            ).fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual(landed, [map_genres(["スレンダー"])[0][0]])
+        self.assertEqual(note["pending_genres"], ["まだ知らない分類"])
+        # 那个词还没人收录，所以这一行照样摆在复核页上——要判的只剩这个词。
         self.assertEqual(self.queue_keys("metadata_fields"), ["MIAD-573:tags"])
+
+    def test_the_row_leaves_the_queue_once_the_pending_word_is_recorded(self):
+        """收录了那个词，这一行就没有可判的东西了，该自己消失。"""
+        self._asset(96, "MIAD-573", "MIAD573_01.wmv")
+        self.write_metadata_rows([self._tag_row(
+            "MIAD-573:tags", "MIAD-573", ["スレンダー", "まだ知らない分類"])])
+        self.assertEqual(self._auto()["applied"], 1)
+        rm_review.w_review_genre(
+            self.contract, {"genre": "まだ知らない分類", "tag": "苗条"})
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
 
     def test_a_community_value_or_a_choice_between_two_waits_for_review(self):
         self._asset(92, "AAA-1", "AAA-1.mp4")
@@ -473,8 +500,12 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(json.loads(note)["rule"],
                          "adr-0018-empty-field-single-community-source")
 
-    def test_auto_apply_takes_a_local_nfo_value_but_not_a_disagreeing_one(self):
-        """NFO 的番号已经和文件名对过，是补空证据；和在线来源写法不一时仍是一道取舍题。"""
+    def test_auto_apply_takes_a_local_nfo_value_and_lets_it_win_the_chain(self):
+        """NFO 的番号已经和文件名对过，是补空证据；和在线来源写法不一时它排在链首。
+
+        英文机翻对日文原题这道题此前每次都摆到人面前（ADR-0029 已经判过一次同样的
+        事），而链上 `local_nfo` 本来就在 r18dev 前面——让它说话就不必再问人。
+        """
         self._asset(90, "ABW-358", "ABW-358.mp4")
         self._asset(91, "ABW-359", "ABW-359.mp4")
         self.write_metadata_rows([
@@ -484,19 +515,181 @@ class ReviewQueueTests(unittest.TestCase):
              "candidates": ["涼森れむ流", {"value": "Remu Style", "source": "r18dev"}],
              "code": "ABW-359", "source": "local_nfo"},
         ])
-        self.assertEqual(self._auto()["applied"], 1)
+        self.assertEqual(self._auto()["applied"], 2)
         con = sqlite3.connect(self.db_path)
         try:
             title, owners = con.execute(
                 "SELECT catalog_title,field_owners FROM asset WHERE id=90").fetchone()
-            note = con.execute(
-                "SELECT note FROM review_decision WHERE item_key='ABW'").fetchone()[0]
+            notes = dict(con.execute(
+                "SELECT item_key,note FROM review_decision WHERE item_key IN ('ABW','ABX')"))
+            chained = con.execute(
+                "SELECT catalog_title FROM asset WHERE id=91").fetchone()[0]
         finally:
             con.close()
         self.assertEqual(title, "涼森れむ流 HOW TO SEX！！")
         self.assertEqual(owner_of(owners, "catalog_title"), "auto:local_nfo")
-        self.assertEqual(json.loads(note)["rule"], "adr-0029-empty-field-local-nfo")
-        self.assertEqual(self.queue_keys("metadata_fields"), ["ABX"])
+        self.assertEqual(json.loads(notes["ABW"])["rule"], "adr-0029-empty-field-local-nfo")
+        self.assertEqual(chained, "涼森れむ流")
+        # 被压下的说法要留痕：事后得答得出当时还有哪个值、为什么没选它。
+        self.assertEqual(json.loads(notes["ABX"])["rule"], "adr-0038-chain-local_nfo")
+        self.assertEqual(json.loads(notes["ABX"])["overruled"],
+                         [{"source": "r18dev", "value": "Remu Style"}])
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_the_chain_settles_a_disagreement_between_two_official_sources(self):
+        """转售店与片商的口径差不是「哪个对」，链上片商排在前面就该听它的（ADR-0038）。
+
+        本机队列里按链取舍的 60 行全是这一种：mgstage 的标题缀着店铺加赠、系列
+        写的是店内货架名，dmm 与 libredmm 那一侧才是片商自己的口径。
+        """
+        self._asset(120, "ABW-360", "ABW-360.mp4")
+        self.write_metadata_rows([
+            {"item_key": "SHOP", "field": "title", "current": "", "code": "ABW-360",
+             "candidates": [{"value": "圧倒的ケツ圧ピストン！！", "source": "dmm"},
+                            {"value": "圧倒的ケツ圧ピストン！！【MGSだけのおまけ映像付き】",
+                             "source": "mgstage"}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            title = con.execute(
+                "SELECT catalog_title FROM asset WHERE id=120").fetchone()[0]
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key='SHOP'").fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual(title, "圧倒的ケツ圧ピストン！！")
+        self.assertEqual(note["rule"], "adr-0038-chain-dmm")
+        # 被压下的说法要留痕：事后得答得出当时还有哪个值、为什么没选它。
+        self.assertEqual(
+            note["overruled"],
+            [{"source": "mgstage", "value": "圧倒的ケツ圧ピストン！！【MGSだけのおまけ映像付き】"}])
+
+    def test_one_source_giving_two_values_still_waits_for_a_human(self):
+        """链能排来源，排不了同一家自己给出的两个值：那里没有可依据的先后。"""
+        self._asset(121, "ABW-361", "ABW-361.mp4")
+        self.write_metadata_rows([
+            {"item_key": "TWO", "field": "title", "current": "", "code": "ABW-361",
+             "candidates": [{"value": "第一种说法", "source": "dmm"},
+                            {"value": "第二种说法", "source": "dmm"}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self.queue_keys("metadata_fields"), ["TWO"])
+
+    def test_a_blacklisted_source_does_not_speak_for_that_field(self):
+        """黑名单优先于一切：被拉黑的来源连「只剩它一家」都不算数（ADR-0038）。"""
+        self._asset(122, "ABW-362", "ABW-362.mp4")
+        self.write_metadata_rows([
+            {"item_key": "BLOCK", "field": "series", "current": "", "code": "ABW-362",
+             "candidates": [{"value": "店内货架名", "source": "mgstage"}]},
+        ])
+        with mock.patch.dict(rm_policy.FIELD_SOURCE_BLACKLIST,
+                             {"series": frozenset({"mgstage"})}, clear=True):
+            self.assertEqual(self._auto()["applied"], 0)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertIsNone(
+                con.execute("SELECT series FROM asset WHERE id=122").fetchone()[0])
+        finally:
+            con.close()
+
+    def test_a_field_priority_entry_lifts_a_source_to_the_head_of_the_chain(self):
+        """稀疏例外把某一家提到链首，只影响写在表里的那个字段。"""
+        self._asset(123, "ABW-363", "ABW-363.mp4")
+        self.write_metadata_rows([
+            {"item_key": "LIFT", "field": "series", "current": "", "code": "ABW-363",
+             "candidates": [{"value": "片商系列", "source": "dmm"},
+                            {"value": "店内货架名", "source": "mgstage"}]},
+        ])
+        with mock.patch.dict(rm_policy.FIELD_SOURCE_PRIORITY,
+                             {"series": ("mgstage",)}, clear=True):
+            self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT series FROM asset WHERE id=123").fetchone()[0],
+                "店内货架名")
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key='LIFT'").fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual(note["rule"], "adr-0038-chain-mgstage")
+
+    def test_a_fallback_source_does_not_challenge_a_value_the_ledger_has(self):
+        """兜底来源改不动账本已有的值，也不必让人看一眼（ADR-0038）。
+
+        本机队列里这样的行有 111 条（系列 41、出演者 37、厂牌 33），挑战方无一例外
+        是 javbus——它搜不到就返回首个近似命中。
+        """
+        self._asset(124, "TRE-080", "TRE-080.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET series='真实系列' WHERE id=124")
+        con.commit(); con.close()
+        self.write_metadata_rows([
+            {"item_key": "FALL", "field": "series", "current": "真实系列", "code": "TRE-080",
+             "candidates": [{"value": "别的片的系列", "source": "javbus"}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 0)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT series FROM asset WHERE id=124").fetchone()[0], "真实系列")
+        finally:
+            con.close()
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def _wiki_snapshot(self, code, names):
+        """本机落盘的 Seesaa 作品页快照：这部片写着的正式出演者名。"""
+        root = Path(self.tmp.name) / "snapshots"
+        folder = root / code
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "sougouwiki.json").write_text(json.dumps({
+            "provider": "javinizer-go", "code": code, "source": "sougouwiki",
+            "result": {"id": code, "actresses": [{"japanese_name": name} for name in names]},
+        }, ensure_ascii=False), encoding="utf-8")
+        return root
+
+    def test_a_planning_alias_resolves_to_the_stage_name_on_the_cached_wiki_page(self):
+        """企划名义解得出主艺名就落主艺名，原称呼留成别名（ADR-0038）。"""
+        self._asset(125, "200GANA-2245", "200GANA-2245.mp4")
+        self.write_metadata_rows([
+            {"item_key": "PLAN", "field": "performers", "current": "",
+             "code": "200GANA-2245", "source": "mgstage",
+             "candidates": [{"value": [{"name": "めぐみちゃん"}], "display": "めぐみちゃん"}]},
+        ])
+        result = auto_apply_metadata(
+            self.contract.database, self.candidates,
+            snapshot_root=self._wiki_snapshot("200GANA-2245", ["目黒めぐみ"]))
+        self.assertEqual(result["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            landed = [row[0] for row in con.execute(
+                "SELECT e.canonical_name FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id "
+                "WHERE ae.asset_id=125 AND ae.role='performer'")]
+            aliases = [row[0] for row in con.execute(
+                "SELECT alias FROM entity_alias WHERE source='javinizer:planning-alias'")]
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key='PLAN'").fetchone()[0])
+        finally:
+            con.close()
+        self.assertEqual(landed, ["目黒めぐみ"])
+        self.assertEqual(aliases, ["めぐみちゃん"],
+                         "封面上印的是那个称呼，不登记就等于这次解析搜不到")
+        self.assertEqual(note["rule"], "adr-0038-planning-alias-resolved-sougouwiki")
+
+    def test_a_planning_alias_with_no_evidence_still_goes_to_review(self):
+        """解不出就交人工。这一层不从宣传语里猜人名，ADR-0025 否决过那件事。"""
+        self._asset(126, "FC2-PPV-2486345", "FC2-PPV-2486345.mp4")
+        self.write_metadata_rows([
+            {"item_key": "NOPE", "field": "performers", "current": "",
+             "code": "FC2-PPV-2486345", "source": "javdb",
+             "candidates": [{"value": [{"name": "飛鳥ちゃん"}], "display": "飛鳥ちゃん"}]},
+        ])
+        result = auto_apply_metadata(
+            self.contract.database, self.candidates,
+            snapshot_root=Path(self.tmp.name) / "empty-snapshots")
+        self.assertEqual(result["applied"], 0)
+        self.assertEqual(self.queue_keys("metadata_fields"), ["NOPE"])
 
     def test_library_collection_fills_an_empty_field_from_a_lone_community_source(self):
         """官方落空时只有 javdb 一家也补空，note 里分得清是一家还是两家一致（ADR-0034）。"""
@@ -617,8 +810,9 @@ class ReviewQueueTests(unittest.TestCase):
             write_owned_fields(con, [100], {"studio": "用户写的"}, USER_MANUAL)
         con.close()
         self.write_metadata_rows([
+            # 兜底来源挑战已有值的行不进队列（ADR-0038），这里问的是卡片怎么说归属。
             {"item_key": "III-9:studio", "field": "studio", "current": "用户写的",
-             "candidates": ["别家厂牌"], "code": "III-9", "source": "javbus"},
+             "candidates": ["别家厂牌"], "code": "III-9", "source": "javdb"},
         ])
         rows, _source, _skipped = rm_review._review_rows(self.contract, "metadata_fields")
         row = next(item for item in rows if item["item_key"] == "III-9:studio")
@@ -656,19 +850,8 @@ class ReviewQueueTests(unittest.TestCase):
         # 署名给字段来源顺序里最靠前的那家，不是候选数组里排第一的那家。
         self.assertEqual(note["source"], "libredmm")
 
-    def test_sources_that_disagree_still_go_to_review(self):
-        """取值有第二种写法就是取舍，取舍是复核要做的事。"""
-        self._asset(121, "GGG-7", "GGG-7.mp4")
-        self.write_metadata_rows([{
-            "item_key": "GGG:title", "field": "title", "current": "", "code": "GGG-7",
-            "candidates": [{"source": "mgstage", "value": "ラグジュTV 1492 前半だけ"},
-                           {"source": "libredmm", "value": "ラグジュTV 1492 全文"}],
-        }])
-        self.assertEqual(self._auto()["applied"], 0)
-        self.assertEqual(self.queue_keys("metadata_fields"), ["GGG:title"])
-
-    def test_javdb_settles_a_disagreement_among_community_sources(self):
-        """全是社区来源时取 javdb 那一侧；有官方来源在场的分歧照旧交给人（ADR-0034）。"""
+    def test_the_chain_puts_javdb_over_other_community_and_official_over_javdb(self):
+        """社区之间听 javdb，官方在场时听官方——两件事在链上是同一条规则（ADR-0038）。"""
         self._asset(122, "MAAN-545", "MAAN-545.mp4")
         self._asset(123, "HHH-8", "HHH-8.mp4")
         self.write_metadata_rows([
@@ -680,17 +863,17 @@ class ReviewQueueTests(unittest.TestCase):
              "candidates": [{"source": "mgstage", "value": "官方厂牌"},
                             {"source": "javdb", "value": "社区厂牌"}]},
         ])
-        self.assertEqual(self._auto()["applied"], 1)
+        self.assertEqual(self._auto()["applied"], 2)
         con = sqlite3.connect(self.db_path)
         try:
-            studio = con.execute("SELECT studio FROM asset WHERE id=122").fetchone()[0]
+            studios = dict(con.execute("SELECT id,studio FROM asset WHERE id IN (122,123)"))
             note = json.loads(con.execute(
                 "SELECT note FROM review_decision WHERE item_key='MAAN:studio'").fetchone()[0])
         finally:
             con.close()
-        self.assertEqual((studio, note["source"], note["rule"]),
-                         ("プレステージプレミアム", "javdb", "adr-0034-empty-field-javdb-preferred"))
-        self.assertEqual(self.queue_keys("metadata_fields"), ["HHH:studio"])
+        self.assertEqual(studios, {122: "プレステージプレミアム", 123: "官方厂牌"})
+        self.assertEqual((note["source"], note["rule"]), ("javdb", "adr-0038-chain-javdb"))
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
 
     def test_a_studio_spelled_as_a_registered_alias_lands_under_its_canonical_name(self):
         """javdb 写 `Tokyo-Hot`，账本把它登记为 `东京热` 的别名，卡片上就该是 `东京热`。"""
@@ -839,7 +1022,6 @@ class ReviewQueueTests(unittest.TestCase):
         而要判的那个问题账本自己已经答过了。
         """
         self._asset(125, "N0646", "n0646.mp4")
-        self._asset(126, "N0647", "n0647.mp4")
         con = sqlite3.connect(self.db_path)
         con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,"
                     "updated_at) VALUES(60,'performer','美空彩香','美空彩香',"
@@ -856,24 +1038,23 @@ class ReviewQueueTests(unittest.TestCase):
                              "value": [{"name": "一ノ瀬アメリ"}]},
                             {"source": "javdb", "display": "美空あやか",
                              "value": [{"name": "美空あやか"}]}]},
-            # 账本不认识的两个名字仍然是两个取值；有官方来源在场，javdb 不替人取舍。
-            {"item_key": "N0647:performers", "field": "performers", "current": "",
-             "code": "N0647",
-             "candidates": [{"source": "tokyohot", "display": "新城由衣",
-                             "value": [{"name": "新城由衣"}]},
-                            {"source": "javdb", "display": "吉澤ひかり",
-                             "value": [{"name": "吉澤ひかり"}]}]},
         ])
         self.assertEqual(self._auto()["applied"], 1)
-        self.assertEqual(self.queue_keys("metadata_fields"), ["N0647:performers"])
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
         con = sqlite3.connect(self.db_path)
         try:
             # 落的是同一条实体，不是第三个新人。
             self.assertEqual(con.execute(
                 "SELECT ae.entity_id FROM asset_entity ae WHERE ae.asset_id=125 "
                 "AND ae.role='performer'").fetchall(), [(60,)])
+            note = json.loads(con.execute(
+                "SELECT note FROM review_decision WHERE item_key='N0646:performers'"
+            ).fetchone()[0])
         finally:
             con.close()
+        # 记的不是链上取舍：折叠之后这一行根本没有第二个取值可压。计数只剩一家，是
+        # 因为兜底那一家（javbus）在比之前就降过级（ADR-0035）。
+        self.assertEqual(note["rule"], "adr-0018-empty-field-single-community-source")
 
     def test_one_source_listing_the_cast_in_another_order_is_not_a_disagreement(self):
         """同一组人换个排序不是换人：`FSEI-003` 两家给的就是同样六个人，顺序不同。"""
@@ -1105,11 +1286,13 @@ class ReviewQueueTests(unittest.TestCase):
              "candidates": ["プレステージプレミアム"], "source": "javbus"},
             {"item_key": "BOTH", "field": "studio", "current": "Prestige",
              "candidates": ["プレステージプレミアム(PRESTIGE PREMIUM)"], "source": "libredmm"},
+            # 换成另一条实体是真的换了一家，要人判。来源不用兜底那一家：兜底挑战已有
+            # 值的行整条不进队列（ADR-0038），那样这两条就在空队列上断言了。
             {"item_key": "OTHER", "field": "studio", "current": "Prestige",
-             "candidates": ["Faleno"], "source": "javbus"},
+             "candidates": ["Faleno"], "source": "javdb"},
             # 两边都没登记过就没有「同一实体」可言，异议照常要人判。
             {"item_key": "UNKNOWN", "field": "studio", "current": "Prestige",
-             "candidates": ["某个没登记的牌子"], "source": "javbus"},
+             "candidates": ["某个没登记的牌子"], "source": "javdb"},
         ])
         self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["OTHER", "UNKNOWN"])
 
@@ -1392,7 +1575,9 @@ class ReviewQueueTests(unittest.TestCase):
         """
         self.write_metadata_rows([{
             "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
-            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+            # 来源不能是兜底那一家：兜底来源挑战账本已有的值已经不进队列（ADR-0038），
+            # 这几条用例问的是别的事，拿 javbus 当素材会让它们对着空队列断言。
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javdb",
         }])
         self._decide_with_note(
             "ABC-001:title",
@@ -1405,7 +1590,9 @@ class ReviewQueueTests(unittest.TestCase):
     def test_an_approval_still_pointing_at_a_live_candidate_stays_decided(self):
         self.write_metadata_rows([{
             "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
-            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+            # 来源不能是兜底那一家：兜底来源挑战账本已有的值已经不进队列（ADR-0038），
+            # 这几条用例问的是别的事，拿 javbus 当素材会让它们对着空队列断言。
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javdb",
         }])
         self._decide_with_note(
             "ABC-001:title",
@@ -1418,7 +1605,9 @@ class ReviewQueueTests(unittest.TestCase):
         """早期留痕是自由文本，读不出指向哪个候选就别把用户批过的翻出来。"""
         self.write_metadata_rows([{
             "item_key": "ABC-001:title", "code": "ABC-001", "field": "title",
-            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javbus",
+            # 来源不能是兜底那一家：兜底来源挑战账本已有的值已经不进队列（ADR-0038），
+            # 这几条用例问的是别的事，拿 javbus 当素材会让它们对着空队列断言。
+            "current": "English Title", "candidates": ["日本語タイトル"], "source": "javdb",
         }])
         self._decide_with_note("ABC-001:title", "手工核过，就用这个")
 

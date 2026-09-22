@@ -28,7 +28,7 @@ from .field_owners import (
 )
 from .fsutil import atomic_write_bytes
 from .genre_decisions import load_genre_decisions, record_genre_decision
-from .genre_taxonomy import CONTENT_GENRES
+from .genre_taxonomy import CONTENT_GENRES, UNMAPPED, resolve_genre
 # 判据与写入映射属于领域层（`metadata_auto_apply`）：命令行首扫、处理任务的自动落库和
 # 这里的「通过」按钮必须是同一套，复核域只负责把它们摆到人面前并记下决定。
 from .metadata_auto_apply import (
@@ -45,7 +45,7 @@ from .metadata_auto_apply import (
     _split_multi,
     refresh_current_values,
 )
-from .metadata_policy import SOURCE_SPECS
+from .metadata_policy import FALLBACK_SOURCES, SOURCE_SPECS
 from .previews import logo_key
 from .review_csv import CANDIDATE_PREFIX, read_candidates
 
@@ -249,6 +249,44 @@ def _attach_review_asset_context(connection, rows: list[dict]) -> None:
         ]
 
 
+def _drop_fallback_challenges(rows: list[dict]) -> list[dict]:
+    """兜底来源不挑战账本已有的值，这种行不该进队列（ADR-0038）。
+
+    javbus 搜不到就返回首个近似命中：`AR-101` 给 `STAR-101`、`259LUXU-891` 给
+    `259LUXU-1891`（ADR-0035）。本机队列里「现值非空、剔完兜底一家不剩」的 107 行
+    （系列 41、出演者 33、厂牌 33）全是这一种，没有一行值得让人看第二眼。
+
+    空着的格子不走这条：那里只有它一家给得出值，有一个比没有强（ADR-0034）。
+    """
+    def keep(row: dict) -> bool:
+        if not str(row.get("current_value") or "").strip():
+            return True
+        sources = {str(c.get("source") or "").strip() for c in row.get("candidates") or []}
+        return not sources or not sources <= set(FALLBACK_SOURCES)
+
+    return [row for row in rows if keep(row)]
+
+
+def _genres_still_pending(decisions: dict, decision: dict) -> bool:
+    """这条自动落库是不是还留着没人收录的 genre（ADR-0038）。
+
+    标签候选里认得出的那些已经落库了，`pending_genres` 记的是三张表都不认的词。
+    这一行重新摆回队列不是为了再判一次标签，是为了判那几个词——所以判据只看词，
+    收录一个就少一个，全收录完这一行就自己消失。
+
+    静态表也要重查：`genre_taxonomy` 随代码一直在补，落库那一刻不认的词，今天可能
+    已经在表里了（`_fold_genre_decisions` 的同一条理由）。
+    """
+    try:
+        note = json.loads(str(decision.get("note") or ""))
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(note, dict):
+        return False
+    return any(resolve_genre(str(genre), decisions) == UNMAPPED
+               for genre in note.get("pending_genres") or [])
+
+
 def _metadata_decision_is_stale(decision: dict, row: dict) -> bool:
     """旧批准是否已经不指向这一组里的任何一个现存候选。
 
@@ -298,7 +336,43 @@ def _queue_rows(contract: ReviewContract, category: str,
     return [row for row in rows if _needs_review(category, row)], source, skipped
 
 
+def _metadata_queue_rows(connection, rows: list[dict],
+                         decisions: dict) -> tuple[list[dict], dict[str, str | None]]:
+    """元数据字段队列真正该摆在人面前的那些行，以及用到的 genre 决定。
+
+    每一道都在回答同一个问题：这一行还有没有人能判、值得判的东西。
+    """
+    genre_decisions = load_genre_decisions(connection)
+    for row in rows:
+        row["candidates"] = _row_candidates(row, genre_decisions)
+    # 候选全是错配时整行消失：剔完一条不剩，就没有可判的东西了。本来就没有候选
+    # 的行照旧留着，它讲的是另一件事（这个番号问过、谁都没给值）。
+    rows = [row for row in rows if row["candidates"] or not _parsed_candidates(row)]
+    refresh_current_values(connection, rows)
+    # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
+    # 没有任何新信息：17 条与当前值逐字相同、7 条标签只是顺序不同。
+    # 例外是标签部分落库（ADR-0038）留下的行：认得出的标签已经写进账本，所以
+    # 它对账本「没有新信息」，可留在页面上要判的本来也不是标签，是那几个谁都
+    # 不认的词。按新信息剔掉它，那几个词就再没有出现的地方了。
+    rows = [row for row in rows
+            if _metadata_row_adds_information(connection, row)
+            or _genres_still_pending(genre_decisions, decisions.get(row["item_key"], {}))]
+    # 韩国 MIB 的番号不适用 JAV 规则，`allows_code` 已经拦在刮削入口。但候选件是
+    # 历史产物，闸门只管以后不再生成，管不了已经落盘的那些：2026-09-04 实测队列里
+    # 还有 214 条（title 51、studio 51、release_date 51、performers 39、series 22）。
+    # 这些值全是 JAV 目录站按错番号返回的别的作品，没有一条值得占用人的注意力。
+    # MIB 官网（kmib）的候选是例外：那是这批番号自己的发行方。
+    rows = [row for row in rows
+            if not is_korean_mib_code(str(row.get("code") or "")) or _only_mib_official(row)]
+    rows = _drop_community_challenges_to_official(connection, rows)
+    rows = _drop_shop_side_dissent(rows)
+    return _drop_fallback_challenges(rows), genre_decisions
+
+
 def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], str | None, int]:
+    #: 用户对来源 genre 的决定。判「这一行还有没有词等着收录」要用它，而那一步在库
+    #: 连接关掉之后才跑，所以先取出来。
+    genre_decisions: dict[str, str | None] = {}
     with contract.read_connection() as connection:
         rows, source, skipped = _queue_rows(contract, category, connection)
         decisions = {
@@ -318,26 +392,7 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
                 row["preview_assets"] = previews.get(name, [])
                 row["entity_id"] = entities.get(name, row.get("entity_id", ""))
         elif category == "metadata_fields":
-            decided = load_genre_decisions(connection)
-            for row in rows:
-                row["candidates"] = _row_candidates(row, decided)
-            # 候选全是错配时整行消失：剔完一条不剩，就没有可判的东西了。本来就没有候选
-            # 的行照旧留着，它讲的是另一件事（这个番号问过、谁都没给值）。
-            rows = [row for row in rows if row["candidates"] or not _parsed_candidates(row)]
-            refresh_current_values(connection, rows)
-            # 和账本已有的值比一遍，只把真差异留在队列里。实测 43 条候选里 24 条
-            # 没有任何新信息：17 条与当前值逐字相同、7 条标签只是顺序不同。
-            rows = [row for row in rows if _metadata_row_adds_information(connection, row)]
-            # 韩国 MIB 的番号不适用 JAV 规则，`allows_code` 已经拦在刮削入口。但候选件是
-            # 历史产物，闸门只管以后不再生成，管不了已经落盘的那些：2026-09-04 实测队列里
-            # 还有 214 条（title 51、studio 51、release_date 51、performers 39、series 22）。
-            # 这些值全是 JAV 目录站按错番号返回的别的作品，没有一条值得占用人的注意力。
-            # MIB 官网（kmib）的候选是例外：那是这批番号自己的发行方。
-            rows = [row for row in rows
-                    if not is_korean_mib_code(str(row.get("code") or ""))
-                    or _only_mib_official(row)]
-            rows = _drop_community_challenges_to_official(connection, rows)
-            rows = _drop_shop_side_dissent(rows)
+            rows, genre_decisions = _metadata_queue_rows(connection, rows, decisions)
         elif category == "performer_avatars":
             # 候选 CSV 里的 `current_name` 是抓取来源给的罗马音；账本早就有更好的
             # 规范名（`Alice Shaku` 的规范名是 `释爱丽丝`），罗马音本身也已经登记
@@ -350,7 +405,8 @@ def _review_rows(contract: ReviewContract, category: str) -> tuple[list[dict], s
             # 同一厂牌上游头像变化是新的事实；旧批次 approved 不得把变化静默藏掉。
             decision = {}
         if (category == "metadata_fields" and decision.get("status") == "approved"
-                and _metadata_decision_is_stale(decision, row)):
+                and (_metadata_decision_is_stale(decision, row)
+                     or _genres_still_pending(genre_decisions, decision))):
             decision = {}
         row["decision"] = decision.get("status", "pending")
         row["decision_note"] = decision.get("note", "")
