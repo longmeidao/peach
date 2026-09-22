@@ -13,11 +13,14 @@ import os
 import sqlite3
 import tempfile
 import time
+import tomllib
 import unittest
 from pathlib import Path, PureWindowsPath
+from types import SimpleNamespace
 
 
 from peach import push_discovery as push
+from peach import routes_configuration
 from peach import scan
 from support.ledger import fresh_ledger
 
@@ -84,6 +87,88 @@ class NotificationTests(unittest.TestCase):
         for body in ({}, {"data": "x"}, {"data": [1, "a"]}, {"data": [{}]}):
             with self.subTest(body=body):
                 self.assertEqual(push.parse_notification(body), [])
+
+
+class CloudDriveConfigTests(unittest.TestCase):
+    """页面给出的那段配置，是 CloudDrive2「配置内容」框要的整段 TOML。"""
+
+    def test_the_block_parses_and_points_at_this_machine(self):
+        config = tomllib.loads(push.clouddrive_config("https://192.0.2.10", "s3cret-token"))
+        self.assertEqual(config["global_params"]["base_url"], "https://192.0.2.10")
+        # 总开关关着的话，下面两节写什么都不会发出来。
+        self.assertIs(config["global_params"]["enabled"], True)
+        watcher = config["file_system_watcher"]
+        self.assertIs(watcher["enabled"], True)
+        self.assertEqual(watcher["method"], "POST")
+        self.assertEqual(watcher["url"], "{base_url}" + push.WEBHOOK_PATH)
+        self.assertEqual(watcher["headers"][push.SECRET_HEADER], "s3cret-token")
+        # 挂载点通知一条路径也给不出，收下来只是空转一次队列。
+        self.assertIs(config["mount_point_watcher"]["enabled"], False)
+        # 默认模板里那行 `authorization = "basic usernamepassword"` 不能留：它是示例值，
+        # 发出来只会在 Peach 的访问日志里留一串假凭据。
+        self.assertNotIn("authorization", config["global_params"]["default_headers"])
+
+    def test_a_trailing_slash_on_the_origin_does_not_double_up_the_path(self):
+        config = tomllib.loads(push.clouddrive_config("https://peach.local/", "t"))
+        self.assertEqual(config["global_params"]["base_url"], "https://peach.local")
+
+    def test_the_body_it_declares_is_what_the_parser_reads(self):
+        """配置里那段正文，按 CloudDrive2 代入占位符之后要能被本模块解析回路径。
+
+        两处各写一份的话，改了正文模板而没改解析器（或者反过来）是静默的：推送照发，
+        Peach 收下来解析出零条路径，看上去就是「推送没生效」。
+        """
+        body = tomllib.loads(push.clouddrive_config("https://h", "t"))["file_system_watcher"]["body"]
+        for placeholder, value in (("{action}", "create"), ("{is_dir}", "false"),
+                                   ("{source_file}", "/115/影视/a.mp4"),
+                                   ("{destination_file}", "")):
+            body = body.replace(placeholder, value)
+        self.assertEqual(push.parse_notification(json.loads(body)), ["/115/影视/a.mp4"])
+
+    def test_nothing_is_handed_out_before_there_is_an_address_and_a_secret(self):
+        for origin, secret in (("", "t"), ("https://h", ""), ("", ""), ("  ", " ")):
+            with self.subTest(origin=origin, secret=secret):
+                self.assertEqual(push.clouddrive_config(origin, secret), "")
+
+
+class ConfigPagePayloadTests(unittest.TestCase):
+    """配置页拿到的那份载荷里，CloudDrive2 要推去的地址是怎么定下来的。"""
+
+    @staticmethod
+    def _request(*, tls=True, published=None, declared="192.0.2.10", port=443):
+        state = SimpleNamespace(
+            mdns=None if published is None else SimpleNamespace(address=published),
+            settings=SimpleNamespace(tls_enabled=tls, mdns_address=declared, mdns_port=port))
+        return SimpleNamespace(app=SimpleNamespace(state=state))
+
+    def _payload(self, request, secret="tok"):
+        return routes_configuration.push_discovery_payload(request, {"secret": secret})
+
+    def test_the_address_is_the_one_this_machine_publishes_not_the_caller_origin(self):
+        """配置页多半是从回环地址打开的，而 TLS 那条服务只绑局域网地址。
+
+        照着这次请求的 origin 生成，抄进 CloudDrive2 的就是 `127.0.0.1`——同机也连不上，
+        因为 443 根本没绑在回环上。
+        """
+        payload = self._payload(self._request(published="198.51.100.7"))
+        self.assertEqual(payload["origin"], "https://198.51.100.7")
+        self.assertIn('base_url = "https://198.51.100.7"', payload["config_toml"])
+
+    def test_a_port_other_than_443_stays_in_the_address(self):
+        payload = self._payload(self._request(port=8443))
+        self.assertEqual(payload["origin"], "https://192.0.2.10:8443")
+
+    def test_without_tls_or_an_address_the_block_is_withheld_rather_than_guessed(self):
+        """HTTP 的地址发出去就是白发：80 口那条服务对写请求回 426，不替它转发。"""
+        for request in (self._request(tls=False), self._request(declared="", port=443)):
+            with self.subTest(request=request):
+                payload = self._payload(request)
+                self.assertEqual(payload["origin"], "")
+                self.assertEqual(payload["config_toml"], "")
+
+    def test_a_machine_that_never_published_an_address_falls_back_to_the_declared_one(self):
+        payload = self._payload(self._request(published=None))
+        self.assertEqual(payload["origin"], "https://192.0.2.10")
 
 
 class IgnoreAndSourceTests(unittest.TestCase):

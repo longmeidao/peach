@@ -32874,9 +32874,9 @@ function XD({ value: e, label: t, kind: n = "local", onChange: r }) {
 //#region src/react/settings/push-discovery-settings.tsx
 var ZD = "/api/configuration/push-discovery", QD = "/api/configuration/push-discovery/secret";
 function $D({ initial: e, receipt: t }) {
-	let [n, r] = (0, C.useState)(e), [i, a] = (0, C.useState)(e.prefixes), [o, s] = (0, C.useState)(""), c = _b(), l = n.media_roots, u = (e, n) => {
-		r(e), a(e.prefixes), s(""), t(n);
-	}, d = (e, t) => a((n) => n.map((n, r) => r === e ? {
+	let [n, r] = (0, C.useState)(e), [i, a] = (0, C.useState)(e.prefixes), [o, s] = (0, C.useState)(""), c = _b(), l = n.media_roots, [u, d] = (0, C.useState)(e), f = (e, n) => {
+		r(e), d(e), a(e.prefixes), s(""), t(n);
+	}, p = (e, t) => a((n) => n.map((n, r) => r === e ? {
 		...n,
 		...t
 	} : n));
@@ -32890,7 +32890,7 @@ function $D({ initial: e, receipt: t }) {
 				cloud: n.cloud,
 				prefixes: i
 			};
-			c.run("save", (e) => $m(ZD, t, "POST", e), (e) => u(e, "已保存配置"), (e) => s(q(e)));
+			c.run("save", (e) => $m(ZD, t, "POST", e), (e) => f(e, "已保存配置"), (e) => s(q(e)));
 		},
 		children: [
 			/* @__PURE__ */ (0, w.jsxs)(NS, { children: [
@@ -32934,30 +32934,40 @@ function $D({ initial: e, receipt: t }) {
 					})
 				})
 			] }),
-			/* @__PURE__ */ (0, w.jsx)(PS, {
+			u.enabled ? /* @__PURE__ */ (0, w.jsx)(PS, {
 				divided: !0,
-				children: /* @__PURE__ */ (0, w.jsxs)(BS, { children: [
-					/* @__PURE__ */ (0, w.jsx)(VS, {
-						term: "通知地址",
-						children: n.endpoint
-					}),
-					/* @__PURE__ */ (0, w.jsx)(VS, {
-						term: "共享密钥",
-						children: n.secret || "还没有生成"
-					}),
-					/* @__PURE__ */ (0, w.jsx)(VS, {
-						term: "本机文件夹监视",
-						children: n.local_running ? n.local_roots.join("、") : n.local_message || "没有运行"
-					}),
-					/* @__PURE__ */ (0, w.jsx)(VS, {
-						term: "已入库",
-						children: `${n.queue.ingested} 个文件，队列里还有 ${n.queue.pending} 条`
-					})
-				] })
-			}),
-			/* @__PURE__ */ (0, w.jsxs)(PS, {
+				children: /* @__PURE__ */ (0, w.jsxs)(BS, { children: [u.watch_local ? /* @__PURE__ */ (0, w.jsx)(VS, {
+					term: "本机文件夹监视",
+					children: u.local_running ? u.local_roots.join("、") : u.local_message || "没有运行"
+				}) : null, /* @__PURE__ */ (0, w.jsx)(VS, {
+					term: "已入库",
+					children: `${u.queue.ingested} 个文件，队列里还有 ${u.queue.pending} 条`
+				})] })
+			}) : null,
+			u.enabled && u.cloud ? /* @__PURE__ */ (0, w.jsx)(PS, {
 				divided: !0,
-				children: [/* @__PURE__ */ (0, w.jsxs)("div", {
+				children: /* @__PURE__ */ (0, w.jsxs)("div", {
+					className: "flex flex-col gap-3",
+					children: [
+						/* @__PURE__ */ (0, w.jsx)(RS, { children: "CloudDrive2 配置内容" }),
+						/* @__PURE__ */ (0, w.jsx)(IS, { children: "在 CloudDrive2 的「系统设置 → 通知设置」里，把下面这段整个贴进「配置内容」再保存。 地址、端点和密钥都已经填好了；换过密钥之后要重新贴一次。" }),
+						u.config_toml ? /* @__PURE__ */ (0, w.jsxs)(w.Fragment, { children: [/* @__PURE__ */ (0, w.jsx)("pre", {
+							tabIndex: 0,
+							className: "max-h-72 overflow-auto rounded-2xl bg-background-tertiary-default p-3 text-caption-1-regular whitespace-pre text-text-primary",
+							children: u.config_toml
+						}), /* @__PURE__ */ (0, w.jsx)("div", { children: /* @__PURE__ */ (0, w.jsx)(X, {
+							size: "small",
+							onClick: () => {
+								navigator.clipboard.writeText(u.config_toml).then(() => t("已复制 CloudDrive2 配置"), () => s("浏览器没让这一页写剪贴板，把上面那段选中自己复制。"));
+							},
+							children: "复制配置"
+						}) })] }) : /* @__PURE__ */ (0, w.jsx)(IS, { children: u.origin ? "还没有生成共享密钥，保存一次配置就会有。" : "这台机器还没有对外的 HTTPS 地址，配置里的地址填不出来。CloudDrive2 只能推到 HTTPS：80 口那条服务对写请求回的是 426，不会替它转发。" })
+					]
+				})
+			}) : null,
+			n.enabled && n.cloud ? /* @__PURE__ */ (0, w.jsx)(PS, {
+				divided: !0,
+				children: /* @__PURE__ */ (0, w.jsxs)("div", {
 					className: "flex flex-col gap-3",
 					children: [
 						/* @__PURE__ */ (0, w.jsx)(RS, { children: "云端路径前缀" }),
@@ -32976,13 +32986,13 @@ function $D({ initial: e, receipt: t }) {
 										autoComplete: "off",
 										maxLength: 200,
 										value: e.prefix,
-										onChange: (e) => d(t, { prefix: e })
+										onChange: (e) => p(t, { prefix: e })
 									}),
 									/* @__PURE__ */ (0, w.jsx)(Qw, {
 										"aria-label": `前缀 ${t + 1} 对应的媒体根`,
 										selectedKey: e.root,
 										onSelectionChange: (e) => {
-											e !== null && d(t, { root: String(e) });
+											e !== null && p(t, { root: String(e) });
 										},
 										children: l.map((e) => /* @__PURE__ */ (0, w.jsx)($w, {
 											id: e,
@@ -33006,18 +33016,22 @@ function $D({ initial: e, receipt: t }) {
 							children: "添加前缀"
 						}) })
 					]
-				}), o || c.error ? /* @__PURE__ */ (0, w.jsx)(LS, { children: o || c.error }) : null]
-			}),
+				})
+			}) : null,
+			o || c.error ? /* @__PURE__ */ (0, w.jsx)(PS, {
+				divided: !0,
+				children: /* @__PURE__ */ (0, w.jsx)(LS, { children: o || c.error })
+			}) : null,
 			/* @__PURE__ */ (0, w.jsxs)(FS, {
-				status: "CloudDrive2 那一侧要填的地址、密钥与设置步骤见帮助文档。",
-				children: [/* @__PURE__ */ (0, w.jsx)(X, {
+				status: u.enabled && u.cloud ? "换过密钥之后，CloudDrive2 那一侧要重新贴一次配置，否则它推来的一律被拒。" : void 0,
+				children: [u.enabled && u.cloud ? /* @__PURE__ */ (0, w.jsx)(X, {
 					onClick: () => {
-						c.run("secret", (e) => $m(QD, {}, "POST", e), (e) => u(e, "已更换共享密钥"), (e) => s(q(e)));
+						c.run("secret", (e) => $m(QD, {}, "POST", e), (e) => f(e, "已更换共享密钥"), (e) => s(q(e)));
 					},
 					disabled: !n.available,
 					...Z(c.busy === "secret"),
 					children: "更换密钥"
-				}), /* @__PURE__ */ (0, w.jsx)(X, {
+				}) : null, /* @__PURE__ */ (0, w.jsx)(X, {
 					type: "submit",
 					disabled: !n.available,
 					...Z(c.busy === "save"),

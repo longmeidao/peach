@@ -1,11 +1,17 @@
 /* 「推送发现」：新文件落地就进账本，不必等下一轮全量扫描。
  *
  * 两条通道各一个开关。本地那条订阅本机文件夹的文件系统事件；网盘那条等 CloudDrive2 往
- * Peach 推一条通知，所以要给出地址、共享密钥和一张「云端路径前缀 → 媒体根」的对应表。
- * 定期全量扫描不受这一页影响，它仍是漏发时的兜底。
+ * Peach 推一条通知，所以给出一段能整个贴进它「配置内容」的 TOML，外加一张「云端路径
+ * 前缀 → 媒体根」的对应表。定期全量扫描不受这一页影响，它仍是漏发时的兜底。
  *
- * 前缀怎么算合法、根是不是已声明过，都由服务端判（`peach.push_discovery`）；这一页只把
- * 那句原因显示出来，不在前端复制一份判定。 */
+ * 地址、密钥不单独列成读数：它们只在那段配置里有用，抄两处只会抄漏一处。整段由服务端
+ * 拼（`peach.push_discovery.clouddrive_config`），页面不在前端再拼一份。
+ *
+ * 前缀怎么算合法、根是不是已声明过，同样由服务端判；这一页只把那句原因显示出来。
+ *
+ * 读数与配置块跟着它们所属的那个开关收起。网盘通道关着时那段配置指向一件不会发生的事；
+ * 「本机文件夹监视」在总开关关着时读作「没有运行」，那一句分不出是没开还是坏了——而这
+ * 一整页此刻什么也没在跑。 */
 import { useState, type FormEvent } from 'react';
 import { RiCloseLine } from '@remixicon/react';
 
@@ -33,9 +39,14 @@ export function PushDiscoveryForm({ initial, receipt }: {
   const [failure, setFailure] = useState('');
   const action = useAction();
   const roots = state.media_roots;
+  /* 读数说的是服务端此刻在跑什么，所以按已保存的开关收放：拨一下开关它们就跟着出现的话，
+     写的还是上一次的状态，「本机文件夹监视 · 没有运行」会被读成「打开了也没用」。
+     要填的东西（前缀表）反过来跟着拨到哪儿走，否则得先保存一次才能填。 */
+  const [live, setLive] = useState(initial);
 
   const settle = (next: PushDiscoveryState, message: string) => {
     setState(next);
+    setLive(next);
     setRows(next.prefixes);
     setFailure('');
     receipt(message);
@@ -56,6 +67,12 @@ export function PushDiscoveryForm({ initial, receipt }: {
   const rotate = () => {
     void action.run('secret', (signal) => apiSend<PushDiscoveryState>(SECRET_URL, {}, 'POST', signal),
       (next) => settle(next, '已更换共享密钥'), (cause) => setFailure(errorMessage(cause)));
+  };
+
+  const copy = () => {
+    void navigator.clipboard.writeText(live.config_toml).then(
+      () => receipt('已复制 CloudDrive2 配置'),
+      () => setFailure('浏览器没让这一页写剪贴板，把上面那段选中自己复制。'));
   };
 
   return (
@@ -79,48 +96,84 @@ export function PushDiscoveryForm({ initial, receipt }: {
             onChange={(cloud) => setState({ ...state, cloud })} />
         </SettingsRow>
       </Rows>
-      <Stack divided>
-        <FactList>
-          <Fact term="通知地址">{state.endpoint}</Fact>
-          <Fact term="共享密钥">{state.secret || '还没有生成'}</Fact>
-          <Fact term="本机文件夹监视">
-            {state.local_running ? state.local_roots.join('、') : state.local_message || '没有运行'}
-          </Fact>
-          <Fact term="已入库">{`${state.queue.ingested} 个文件，队列里还有 ${state.queue.pending} 条`}</Fact>
-        </FactList>
-      </Stack>
-      <Stack divided>
-        <div className="flex flex-col gap-3">
-          <FieldLabel>云端路径前缀</FieldLabel>
-          <Help>左边填 CloudDrive2 里看到的那一层目录，右边选它对应哪个媒体根。
-            CloudDrive2 给的是它自己的路径，Peach 按这张表换算成账本里的盘符路径。</Help>
-          <div role="group" aria-label="云端路径前缀" className="flex flex-col gap-3">
-            {rows.map((row, index) => (
-              <div key={index} className="flex items-start gap-2">
-                <Input className="min-w-0 flex-1" aria-label={`云端路径前缀 ${index + 1}`}
-                  placeholder="/115" autoComplete="off" maxLength={200} value={row.prefix}
-                  onChange={(prefix) => edit(index, { prefix })} />
-                <Select aria-label={`前缀 ${index + 1} 对应的媒体根`} selectedKey={row.root}
-                  onSelectionChange={(key) => { if (key !== null) edit(index, { root: String(key) }); }}>
-                  {roots.map((root) => <SelectItem key={root} id={root}>{root}</SelectItem>)}
-                </Select>
-                <IconButton icon={RiCloseLine} aria-label="移除这一条"
-                  onClick={() => setRows((list) => list.filter((_row, i) => i !== index))} />
-              </div>
-            ))}
+      {live.enabled ? (
+        <Stack divided>
+          <FactList>
+            {live.watch_local ? (
+              <Fact term="本机文件夹监视">
+                {live.local_running ? live.local_roots.join('、') : live.local_message || '没有运行'}
+              </Fact>
+            ) : null}
+            <Fact term="已入库">{`${live.queue.ingested} 个文件，队列里还有 ${live.queue.pending} 条`}</Fact>
+          </FactList>
+        </Stack>
+      ) : null}
+      {live.enabled && live.cloud ? (
+        <Stack divided>
+          <div className="flex flex-col gap-3">
+            <FieldLabel>CloudDrive2 配置内容</FieldLabel>
+            <Help>在 CloudDrive2 的「系统设置 → 通知设置」里，把下面这段整个贴进「配置内容」再保存。
+              地址、端点和密钥都已经填好了；换过密钥之后要重新贴一次。</Help>
+            {live.config_toml ? (
+              <>
+                {/* 只读的一段文本，不做成输入框：它没有可编辑的部分，贴进 CloudDrive2 的
+                    是原样这一段。换行要保留，所以横向自己滚，不折行。 */}
+                <pre tabIndex={0}
+                  className="max-h-72 overflow-auto rounded-2xl bg-background-tertiary-default p-3 text-caption-1-regular whitespace-pre text-text-primary">
+                  {live.config_toml}
+                </pre>
+                <div>
+                  <Button size="small" onClick={copy}>复制配置</Button>
+                </div>
+              </>
+            ) : (
+              <Help>{live.origin
+                ? '还没有生成共享密钥，保存一次配置就会有。'
+                : '这台机器还没有对外的 HTTPS 地址，配置里的地址填不出来。CloudDrive2 只能推到 HTTPS：80 口那条服务对写请求回的是 426，不会替它转发。'}</Help>
+            )}
           </div>
-          <div>
-            <Button size="small"
-              onClick={() => setRows((list) => [...list, { prefix: '', root: roots[0] ?? '' }])}>
-              添加前缀
-            </Button>
+        </Stack>
+      ) : null}
+      {state.enabled && state.cloud ? (
+        <Stack divided>
+          <div className="flex flex-col gap-3">
+            <FieldLabel>云端路径前缀</FieldLabel>
+            <Help>左边填 CloudDrive2 里看到的那一层目录，右边选它对应哪个媒体根。
+              CloudDrive2 给的是它自己的路径，Peach 按这张表换算成账本里的盘符路径。</Help>
+            <div role="group" aria-label="云端路径前缀" className="flex flex-col gap-3">
+              {rows.map((row, index) => (
+                <div key={index} className="flex items-start gap-2">
+                  <Input className="min-w-0 flex-1" aria-label={`云端路径前缀 ${index + 1}`}
+                    placeholder="/115" autoComplete="off" maxLength={200} value={row.prefix}
+                    onChange={(prefix) => edit(index, { prefix })} />
+                  <Select aria-label={`前缀 ${index + 1} 对应的媒体根`} selectedKey={row.root}
+                    onSelectionChange={(key) => { if (key !== null) edit(index, { root: String(key) }); }}>
+                    {roots.map((root) => <SelectItem key={root} id={root}>{root}</SelectItem>)}
+                  </Select>
+                  <IconButton icon={RiCloseLine} aria-label="移除这一条"
+                    onClick={() => setRows((list) => list.filter((_row, i) => i !== index))} />
+                </div>
+              ))}
+            </div>
+            <div>
+              <Button size="small"
+                onClick={() => setRows((list) => [...list, { prefix: '', root: roots[0] ?? '' }])}>
+                添加前缀
+              </Button>
+            </div>
           </div>
-        </div>
-        {failure || action.error ? <ErrorText>{failure || action.error}</ErrorText> : null}
-      </Stack>
-      <Footer status="CloudDrive2 那一侧要填的地址、密钥与设置步骤见帮助文档。">
-        <Button onClick={rotate} disabled={!state.available}
-          {...busyProps(action.busy === 'secret')}>更换密钥</Button>
+        </Stack>
+      ) : null}
+      {/* 保存失败的原因归这一块，不跟着前缀表一起收起：域名或前缀写坏时那张表可能正好
+          没在屏上，而失败的正是刚按下的那颗「保存配置」。 */}
+      {failure || action.error
+        ? <Stack divided><ErrorText>{failure || action.error}</ErrorText></Stack> : null}
+      <Footer status={live.enabled && live.cloud
+        ? '换过密钥之后，CloudDrive2 那一侧要重新贴一次配置，否则它推来的一律被拒。' : undefined}>
+        {live.enabled && live.cloud ? (
+          <Button onClick={rotate} disabled={!state.available}
+            {...busyProps(action.busy === 'secret')}>更换密钥</Button>
+        ) : null}
         <Button type="submit" disabled={!state.available} {...busyProps(action.busy === 'save')}>
           保存配置
         </Button>
