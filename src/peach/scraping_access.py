@@ -29,7 +29,10 @@ SOURCES = {
     # FC2 的商品页、卖家页和图片存储（`storage*`、`contents-thumbnail*`）都在 fc2.com
     # 底下，一条域名就够。免登录可读，不收 Cookie。
     "fc2": {"label": "FC2", "domains": ("fc2.com",), "login": "https://adult.contents.fc2.com/"},
-    "fc2cmadb": {"label": "FC2CMADB", "domains": ("fc2cmadb.com",), "login": "https://fc2cmadb.com/", "cookie": True},
+    # 按 IP 限流，没登录连着问几页就一路 429 并把整个来源冷却掉，所以公开采集也带上
+    # 用户贴的 Cookie（`session`）。
+    "fc2cmadb": {"label": "FC2CMADB", "domains": ("fc2cmadb.com",), "login": "https://fc2cmadb.com/",
+                 "cookie": True, "session": True},
     # 下架 FC2 的最后一档。作品页在 javarchive.com、封面转存在 javstore.net 上，两边算同一个
     # 来源。免登录可读，不收 Cookie，`robots.txt` 是全站放行。
     "javarchive": {"label": "JavArchive", "domains": ("javarchive.com", "javstore.net"),

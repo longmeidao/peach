@@ -241,6 +241,21 @@ class ScrapingAccessTests(unittest.TestCase):
             self.assertIn("age=verified", client.build_request("GET", "https://www.javbus.com/MIDE-594").headers["cookie"])
             self.assertNotIn("cookie", client.build_request("GET", "https://pics.dmm.co.jp/x").headers)
 
+    def test_the_fc2_mirror_carries_the_pasted_cookie_too(self):
+        """它按 IP 限流：没登录连着问几页就一路 429，整个来源跟着冷却掉，FC2 那条链断在第二档。"""
+        save(self.root, "fc2cmadb", {"cookie": "peach_session=abc"})
+        transport = SourceTransport(self.root)
+        self.addCleanup(transport.close)
+        with patch("peach.scraping_access.client_for") as factory:
+            fake = factory.return_value
+            fake.stream.return_value.__enter__.return_value.iter_bytes.return_value = [b"ok"]
+            transport(HttpRequest("GET", "https://fc2cmadb.com/articles/4030617", {}), 1, 10)
+        self.assertEqual(factory.call_args.args[1], "fc2cmadb")
+        self.assertTrue(factory.call_args.kwargs["session"])
+        with httpx.Client(cookies=cookie_jar(values_for(self.root, "fc2cmadb"), "fc2cmadb")) as client:
+            self.assertIn("peach_session=abc", client.build_request(
+                "GET", "https://fc2cmadb.com/articles/4030617").headers["cookie"])
+
     def test_full_quality_bytes_are_installed_and_cache_avoids_download(self):
         from peach.web_scraping import _fetch_cover
         from peach.jav_cover_fetch import Candidate
