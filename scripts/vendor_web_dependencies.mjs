@@ -141,6 +141,8 @@ const handDrawnIcons = new Set([
   "check-check-outline", // 叠勾的空心状态，由用户指定保持勾形轮廓。
   "shuffle", // 两条带 pathLength 的动画路径由 Peach 维护。
   "alert", "pics", "jav", "theater-enter", "theater-exit",
+  // 外部入口那几个站的标记：上游图标集里没有，字形由 `<text>` 排出来。
+  "brand-minnano", "brand-javdb", "brand-missav",
   // 「换一批」：Lucide shuffle 的线条拆成 strand-a／strand-b 两条 path 供忙态逐条画出，
   // 上游一刷新就会把两条并回五条，所以由手工维护。
   "shuffle",

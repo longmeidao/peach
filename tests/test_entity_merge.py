@@ -69,19 +69,26 @@ class EntityMergeTests(unittest.TestCase):
         self.con.commit()
         self.assertEqual(moved["aliases"], 1, "source 的别名应被迁移并计数")
 
-    def test_conflicting_external_refs_are_dropped_not_overwritten(self):
-        """UNIQUE(entity_id,provider,external_kind) 决定同源只能留一条。"""
+    def test_two_pages_on_the_same_site_both_follow_the_merge(self):
+        """同一个站上的两个页面是两条引用，合并后都归目标实体（0032）。
+
+        这两条各自对应站上一个真实页面，挂的作品不同。旧的
+        `UNIQUE(entity_id,provider,external_kind)` 会丢掉其中一条，等于合并一次就少一个
+        能点进去的页面。
+        """
         self.con.executemany(
             "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
-            " VALUES(?,'stash','performer',?)", [(10, "450"), (11, "461")])
+            " VALUES(?,'javdb','performer',?)", [(10, "d45k9"), (11, "ZX5z7")])
         self.con.commit()
         moved = merge_entity(self.con, target_id=10, source_id=11,
                              source_name="新ありな", alias_source="r18:performer")
         self.con.commit()
-        self.assertEqual(moved["dropped_refs"], 1, "同 provider 的第二条要被丢弃并报告")
+        self.assertEqual(moved["refs"], 1)
+        self.assertEqual(moved["dropped_refs"], 0)
         kept = self.con.execute(
-            "SELECT external_id FROM entity_external_ref WHERE entity_id=10").fetchall()
-        self.assertEqual(kept, [("450",)], "保留目标实体原有的引用")
+            "SELECT external_id FROM entity_external_ref WHERE entity_id=10"
+            " ORDER BY external_id").fetchall()
+        self.assertEqual(kept, [("ZX5z7",), ("d45k9",)])
 
     def test_merge_leaves_no_dangling_rows(self):
         merge_entity(self.con, target_id=10, source_id=11,

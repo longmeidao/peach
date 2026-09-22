@@ -72,9 +72,29 @@ const ENTITY_ROUTES={performer:'performers',studio:'studios',creator:'creators',
 const ROUTE_ENTITIES={performers:'performer',studios:'studio',creators:'creator',series:'series',agencies:'agency'};
 const entityPath=(kind,name)=>`/${ENTITY_ROUTES[kind]||kind}/${encodeURIComponent(name)}`;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-/* 域名当名字：厂牌页的官网链接直接显示它，比一枚小图标说得清楚。大写跟着 beeg 的
-   资料页写法，`www.` 去掉——它不携带信息，只占宽度。 */
-const linkHost=url=>{try{return new URL(url).hostname.replace(/^www\./,'').toUpperCase()}catch{return ''}};
+/* 外链上写的是站点的短名：事务所和片商平时就被叫作 NAX、T-POWERS、DMM，而账本里的
+   label 是采集时抄下来的全称（`New Actor eXperience`、`DMM 检索`），域名又要人先在
+   `OFFICIAL.NAX-PRO.COM` 里认出哪一段是名字。两样都比短名难读，一排链接里尤其。
+
+   按主机名查表，末尾后缀也算（`official.nax-pro.com` 命中 `nax-pro.com`）。表里没有的
+   退回账本 label：这张表覆盖常来常往的那些站，剩下的长尾不值得逐条登记，而 label 至少
+   是人写过的。账本里的 label 不动——它是采集证据，显示是另一件事。 */
+const SITE_NAMES=[['nax-pro.com','NAX'],['t-powers.co.jp','T-POWERS'],['dmm.co.jp','DMM'],
+  ['mgstage.com','MGStage'],['av-event.jp','AV-EVENT'],['k-mib.com','K-MIB'],
+  ['km-produce.com','KMP'],['mousouzoku-av.com','妄想族'],['mines-pro.jp','マインズ'],
+  ['lightpro.jp','LIGHT'],['eltra.jp','ELTRA'],['linx.live','LINX'],['bambi.ne.jp','Bambi'],
+  ['prestige-av.com','Prestige'],['cmore.jp','C-more'],['so-agent.jp','SO MODEL'],
+  ['attractive-llc.net','Attractive'],['krone-web.jp','KRONE'],['actentertainment.jp','ACT'],
+  ['crusegroup.net','Cruse'],['prime-recruit.com','Prime'],['life-promotion.com','Life'],
+  ['8man.jp','Eightman'],['senzai.tv','Five'],['maxing.jp','MAXING'],['s1s1s1.com','S1'],
+  ['ideapocket.com','Idea Pocket'],['faleno.jp','FALENO'],['capsule.bz','Capsule'],
+  ['sod.co.jp','SOD'],['tokyo-hot.com','Tokyo-Hot'],['heyzo.com','HEYZO'],
+  ['dogma.co.jp','DOGMA'],['naturalhigh.co.jp','Natural High'],['bangbros.com','BangBros'],
+  ['dorcelclub.com','Dorcel']];
+const siteName=url=>{try{
+  const host=new URL(url).hostname.replace(/^www\./,'').toLowerCase();
+  return SITE_NAMES.find(([domain])=>host===domain||host.endsWith('.'+domain))?.[1]||'';
+}catch{return ''}};
 /* 服务端处理过的链接图标：单色字形的 favicon 会被做成「品牌色底 + 白色主体」，
    做不了就把原图按 32 px 转出来。放服务端有三个理由：它要读别人站点的图、要缓存，
    而且这样浏览器不再直接向对方站点发请求（也就不泄露正在看谁的资料页）。
@@ -137,7 +157,7 @@ export {
   entityPath,
   esc,
   brandIcon,
-  linkHost,
+  siteName,
   linkMarkUrl,
   siteMarkUrl,
   foldName,

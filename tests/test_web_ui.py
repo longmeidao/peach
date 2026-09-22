@@ -2225,14 +2225,16 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)
 
-    def test_an_official_link_shows_its_domain_next_to_the_sites_own_mark(self):
-        # 文字是域名——这条链接里唯一确定的东西；图标是站点自己那枚，说的是「这是哪家」。
-        # 两句话不重复，所以官网这一格两样都给。名字不在这里重复：公司页的标题就是它，
-        # 人物页的事务所名在别名行里，还带着通往那张资料页的链接。
+    def test_an_official_link_shows_the_sites_short_name_next_to_its_own_mark(self):
+        # 文字是这家站平时被叫的短名（NAX、T-POWERS、DMM），图标是站点自己那枚。
+        # 账本里的 label 是采集时抄的全称，域名又要人先认出哪一段是名字，两样都比短名
+        # 难读；全称留在 title 里。表里没有的站才退回 label。
         # 已知例外：事务所 ACT 的站标是旗下一位艺人的照片，那一条会在人物页上摆出一张
         # 别人的脸。取不到图时 `data-drop="self"` 撤掉 img，露出底下那枚地球。
         self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
-        self.assertPageContains("${esc(linkHost(x.url)||x.label)}")
+        self.assertPageContains("${esc(siteName(x.url)||x.label)}")
+        self.assertPageContains(
+            "['nax-pro.com','NAX'],['t-powers.co.jp','T-POWERS'],['dmm.co.jp','DMM']")
         self.assertPageContains(".entitylinks a.urllink{letter-spacing:.02em}")
         links = self.app_js[self.app_js.index("const links=(d.links||[]).map"):]
         links = links[:links.index(".join('');")]
@@ -2240,32 +2242,53 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('<img class="entityfavicon" src="${esc(linkMarkUrl(x))}"', official)
         self.assertIn('data-drop="self"', official)
 
-    def test_the_entry_row_only_prints_addresses_the_server_already_built(self):
-        """外部入口这一排是服务端拼好的地址，页面只负责排。
+    def test_the_entry_rows_only_print_what_the_server_already_built(self):
+        """外部入口是服务端拼好的地址、栏位、行号和图标，页面只负责排。
 
-        前端手里没有站点 id 也没有规范名，模板拼在这边等于再养一份规则；缺 id 的站点
-        根本不在 `entry_links` 里，页面上也就没有一枚点过去落空的入口。文字就写站名：
-        `/link-mark` 认的是账本里的链接 id，这几条不是账本链接，取不到圆标。
+        前端手里没有站点 id 也没有名字，模板拼在这边等于再养一份规则；缺 id 的站点根本
+        不在 `entry_links` 里，页面上也就没有一枚点过去落空的入口。栏位标题说「去那儿
+        干什么」，药丸上的站名说「去哪个站」，两句话都要有。
         """
-        self.assertPageContains("const entryLinks=(d.entry_links||[]).map(x=>")
+        self.assertPageContains("const entryLinks=entryLines.map(line=>")
+        self.assertCode("if(!line||line.line!==x.line)entryLines.push(line={line:x.line,groups:[]});")
+        self.assertCode(
+            "if(!group||group.section!==x.section)"
+            "line.groups.push(group={section:x.section,items:[]});")
         self.assertPageContains(
-            '<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.label)}</a>')
+            '<div class="entrygroup"><span class="entryhead">${esc(group.section)}</span>')
         self.assertPageContains(
-            '<div class="entryrow"><span class="entryhead">外部入口</span>'
-            '<span class="entryentries">${entryLinks}</span></div>')
-        entry = self.app_js[self.app_js.index("const entryLinks=(d.entry_links"):]
-        self.assertNotIn("http", entry[:entry.index(".join('');")], "地址由服务端拼，页面不许自己接")
+            '<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">'
+            '<span class="entitylinkicon brand">${icon(x.icon)}</span>'
+            '<span class="entitylinklabel">${esc(x.label)}</span></a>')
+        self.assertPageContains('<div class="entryrows">${entryLinks}</div>')
+        entry = self.app_js[self.app_js.index("const entryLines=[];"):]
+        self.assertNotIn("http", entry[:entry.index("const tags=")], "地址由服务端拼，页面不许自己接")
         self.assertPageContains(
-            ".entryrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;"
+            ".entryrows{display:flex;flex-direction:column;gap:12px;"
             "margin-top:14px;max-width:100%}")
-        self.assertPageContains(".entryentries{display:flex;flex-wrap:wrap;gap:12px;min-width:0}")
-        # 入口的形状归 Board 的站外文字链那条规则管，这里不再写一份药丸盖在它上面：
-        # 那份写了也不生效（`body a:is(...)` 的权重更高），只会让人以为改它有用。
-        entries = self.page[self.page.index(".entryentries{"):]
-        self.assertNotIn("border", entries[:entries.index(".entityskeletontext{")])
-        # 窄屏只换行不横滑：三枚最多堆两行，接一套横滑省不下什么，整行跟着单列卡居中。
+        self.assertPageContains(
+            ".entryrow{display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px;max-width:100%}")
+        self.assertPageContains(".entryentries{display:flex;flex-wrap:wrap;gap:8px;min-width:0}")
+        # 药丸的形状和上面那排外链共用一条规则，不另抄一份。
+        self.assertPageContains(".entitylinks a,.entryentries a,.entitylinks .private{")
+        # 栏与栏之间一条细竖线；窄屏换行后它划的是上下，所以在那里撤掉。
+        self.assertPageContains(
+            ".entrygroup+.entrygroup{padding-left:16px;border-left:1px solid var(--line-soft)}")
+        self.assertPageContains(
+            ".entityhero .entrygroup+.entrygroup{padding-left:0;border-left:0}")
         self.assertPageContains(
             ".entityhero .entryrow,.entityhero .entryentries{justify-content:center}")
+
+    def test_the_entry_sites_carry_their_own_brand_marks(self):
+        """三个站各有一枚自绘品牌标记，和社媒那几枚同形：场色铺满，字形留白。"""
+        for name, field in (("minnano", "#29ABE2"), ("javdb", "#2563EB"), ("missav", "#DC2626")):
+            self.assertPageContains(
+                f'<symbol id="i-brand-{name}" viewBox="0 0 24 24">'
+                f'<rect width="24" height="24" stroke="none" fill="{field}"/>')
+        # 雪碧图里的自绘件要在生成脚本的名单上，否则换上游版本时会被当成漏管的一枚。
+        generator = (Path(__file__).resolve().parents[1] / "scripts"
+                     / "vendor_web_dependencies.mjs").read_text(encoding="utf-8")
+        self.assertIn('"brand-minnano", "brand-javdb", "brand-missav",', generator)
 
     def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
         self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
@@ -6813,8 +6836,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode(":` · ${esc(agencyName)}`;")
         # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
         self.assertPageLacks("· 事务所 ${esc(agencyName)}")
-        # 链接标签写的是域名归谁，不是事务所名。
-        self.assertPageContains("linkHost(x.url)||x.label")
+        # 链接标签写的是那家站的短名，账本里的全称留在 title 里。
+        self.assertPageContains("siteName(x.url)||x.label")
 
     def test_the_agency_page_reuses_the_entity_route_table(self):
         """实体本来就只有 kind 不同，事务所加进同一张表就有了 `/agencies/<名字>`。"""
@@ -11039,14 +11062,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".combo:empty{height:0;margin-bottom:0}", base)
 
     def test_a_profile_website_link_shows_the_sites_own_mark(self):
-        """官网那一格的文字是域名，图标是站点自己的那枚；取不到才露出地球。"""
+        """官网那一格的文字是站点短名，图标是站点自己的那枚；取不到才露出地球。"""
         app = self.app_js
         self.assertIn("<a class=\"urllink\"", app)
         urllink = app[app.index("<a class=\"urllink\""):]
         urllink = urllink[:urllink.index("</a>")]
         self.assertIn("linkMarkUrl(x)", urllink)
         self.assertIn("data-drop=\"self\"", urllink)
-        self.assertIn("linkHost(x.url)", urllink)
+        self.assertIn("siteName(x.url)", urllink)
 
     def test_a_collapsed_ranking_shows_a_fixed_preview_and_one_way_back(self):
         """收起的排名只露前十，展开与收起共用同一颗图标按钮。

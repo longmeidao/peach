@@ -15,9 +15,16 @@
 两处都是磁盘上现成的东西，这个脚本一次网都不出。默认 dry-run，只产出复核 CSV；
 `--apply` 才写库，并且必须同时给 `--backup`。
 
-名字对不上就不登记：javdb 页那一侧按整条名字链（规范名加别名）精确匹配，同一页对上两条
-实体、或同一条实体对上两个 id 时都记 `冲突` 让人看，不挑一个。已经有同 provider 的 id 时
-不覆盖——那是另一件事，要先判哪个对。
+名字对不上就不登记：javdb 页那一侧按整条名字链（规范名加别名）精确匹配。
+
+判定按「这一条引用能不能落库」逐条给，可以重复跑：
+
+- `ok`：账本里没有这一行，可以写。同一位在一个站上对上几个 id 就出几行——javdb 上
+  同一位女优有两个演员页是常事，两边挂的作品不同，都要登记（0032 放宽了唯一约束）。
+- `已登记`：这一行账本里已经有了，跳过。
+- `id 已归他人`：这个 id 在账本里挂在另一位实体名下。站上的一个 id 只能属于一位，
+  写下去会被主键挡掉，所以点名占有者等人判，不靠 `INSERT OR IGNORE` 无声吞掉。
+- `冲突`：这一批证据里有两位实体认领同一个 id，同样不挑一个。
 """
 from __future__ import annotations
 
@@ -43,7 +50,8 @@ JAVDB, MINNANO = "javdb", "minnano-av"
 #: 复核 CSV 里这两列就是站点 id，列名由产出它们的脚本定下。
 CSV_COLUMNS = {"actor_id": JAVDB, "actress_id": MINNANO}
 
-OK, HAVE, CONFLICT, NOT_PERFORMER = "ok", "已有", "冲突", "不是女优实体"
+OK, HAVE, CONFLICT = "ok", "已登记", "冲突"
+TAKEN, NOT_PERFORMER = "id 已归他人", "不是女优实体"
 
 FIELDS = ("entity_id", "canonical_name", "provider", "external_id",
           "origin", "verdict", "evidence")
@@ -97,15 +105,16 @@ def from_csv(paths, provider_of: dict[str, str]) -> dict:
     return found
 
 
-def _existing(connection: sqlite3.Connection) -> dict[tuple[str, int], str]:
-    return {(str(provider), int(entity_id)): str(external_id)
+def _owner_of(connection: sqlite3.Connection) -> dict[tuple[str, str], int]:
+    """账本里 (站点, id) → 现在挂在哪位实体名下。主键保证一个 id 只有一位。"""
+    return {(str(provider), str(external_id)): int(entity_id)
             for entity_id, provider, external_id in connection.execute(
                 "SELECT entity_id,provider,external_id FROM entity_external_ref"
                 " WHERE external_kind=?", (EXTERNAL_KIND,))}
 
 
 def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]:
-    """每条候选一行。已有、冲突、实体不对的也留行：下一趟要看得出这一位查过。"""
+    """每条候选引用一行。已登记、冲突、实体不对的也留行：下一趟要看得出这一位查过。"""
     owners = name_owners(connection)
     candidates: dict[tuple[str, int], tuple[set[str], str]] = {}
     if args.javdb_cache and Path(args.javdb_cache).is_dir():
@@ -118,34 +127,51 @@ def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]
                 have | ids, f"{origin}；{Path(path).name}".strip("；"))
     names = {int(entity_id): str(written) for entity_id, written in connection.execute(
         "SELECT id,canonical_name FROM entity WHERE kind='performer'")}
-    saved = _existing(connection)
+    owner = _owner_of(connection)
+    # 这一批证据里谁认领了哪个 id。两位实体认领同一个是重名没解开，不挑一个。
+    claimants: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
+    for (provider, entity_id), (ids, _origin) in candidates.items():
+        for external_id in ids:
+            claimants[(provider, external_id)].add(entity_id)
     rows: list[dict] = []
     for (provider, entity_id), (ids, origin) in sorted(
             candidates.items(), key=lambda item: (item[0][0], item[0][1])):
-        row = {"entity_id": entity_id, "canonical_name": names.get(entity_id, ""),
-               "provider": provider, "external_id": "", "origin": origin,
-               "verdict": OK, "evidence": ""}
         if entity_id not in names:
-            row.update(verdict=NOT_PERFORMER, evidence="账本里这条实体不是女优")
-        elif len(ids) > 1:
-            row.update(verdict=CONFLICT,
-                       evidence=f"同一位对上 {len(ids)} 个 id：{'、'.join(sorted(ids))}")
-        elif (provider, entity_id) in saved:
-            row.update(external_id=saved[(provider, entity_id)],
-                       verdict=HAVE if saved[(provider, entity_id)] in ids else CONFLICT,
-                       evidence=(f"账本已有 {saved[(provider, entity_id)]}，"
-                                 f"证据给的是 {sorted(ids)[0]}"))
-        else:
-            row.update(external_id=sorted(ids)[0], evidence=f"{origin} 里只有这一个 id")
-        rows.append(row)
+            rows.append({"entity_id": entity_id, "canonical_name": "", "provider": provider,
+                         "external_id": "", "origin": origin, "verdict": NOT_PERFORMER,
+                         "evidence": "账本里这条实体不是女优"})
+            continue
+        for external_id in sorted(ids):
+            row = {"entity_id": entity_id, "canonical_name": names[entity_id],
+                   "provider": provider, "external_id": external_id, "origin": origin,
+                   "verdict": OK, "evidence": f"{origin} 给的 id"}
+            held = owner.get((provider, external_id))
+            others = claimants[(provider, external_id)] - {entity_id}
+            if held == entity_id:
+                row.update(verdict=HAVE, evidence="账本里已有这一行")
+            elif held is not None:
+                row.update(verdict=TAKEN,
+                           evidence=f"账本里这个 id 挂在实体 {held} 名下")
+            elif others:
+                row.update(verdict=CONFLICT,
+                           evidence="同一个 id 对上 "
+                                    f"{len(others) + 1} 位实体："
+                                    f"{'、'.join(str(x) for x in sorted(others | {entity_id}))}")
+            rows.append(row)
     return rows
 
 
-def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> int:
-    written = 0
+def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> tuple[int, int]:
+    """写入 `ok` 的那些，返回（打算写的条数，真的写进去的条数）。
+
+    两个数不相等就是判定和账本对不上——`OR IGNORE` 留着只为让这一趟跑完，不是让它
+    安静地少写几条：数量报出来，差值由人去看。
+    """
+    planned = written = 0
     for row in rows:
         if row["verdict"] != OK or not row["external_id"]:
             continue
+        planned += 1
         connection.execute(
             "INSERT OR IGNORE INTO entity_external_ref"
             "(entity_id,provider,external_kind,external_id,metadata_json)"
@@ -154,7 +180,7 @@ def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> int:
              '{"source": "backfill_performer_entry_ids"}'))
         written += connection.execute("SELECT changes()").fetchone()[0]
     connection.commit()
-    return written
+    return planned, written
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -180,13 +206,13 @@ def run(args: argparse.Namespace) -> int:
             str(row["provider"]) for row in rows if row["verdict"] == OK)
         print(f"外部入口 id 候选 {len(rows)} 行，复核 CSV：{args.out}")
         print("  判定分布：", dict(counts))
-        print("  可补的人物：", dict(by_site))
+        print("  可补的引用：", dict(by_site))
         if args.apply:
-            written = apply_rows(connection, rows)
+            planned, written = apply_rows(connection, rows)
             integrity, violations = verify_after_write(connection)
-            print(f"已写入 {written} 条 entity_external_ref；"
+            print(f"打算写 {planned} 条、实际写入 {written} 条 entity_external_ref；"
                   f"integrity_check={integrity}、外键违规 {violations} 条")
-            return 1 if violations or integrity != "ok" else 0
+            return 1 if violations or integrity != "ok" or planned != written else 0
     finally:
         connection.close()
     return 0

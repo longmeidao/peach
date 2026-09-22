@@ -196,9 +196,9 @@ def merge_entity(
     合并是不可逆的，只应在人工确认两个实体确为同一身份后调用——典型场景是
     同一位女优的旧艺名与现用艺名各自成了一个实体。
 
-    `entity_external_ref` 有 `UNIQUE(entity_id, provider, external_kind)`，
-    同一 provider 下只能留一条，所以 source 侧同类引用会被丢弃而不是覆盖；
-    丢弃数量在返回值里报告，便于人工回看。
+    `entity_external_ref` 的引用整批跟着走，同一个站点下的多条也一样（0032）：一位女优
+    在 javdb 有两个演员页是常事，两边挂的作品不同，丢掉一条就少一个能点进去的页面。
+    `UPDATE OR IGNORE` 与 `dropped_refs` 留作安全网，迁不动的条数在返回值里报告。
     """
     stamp = now or datetime.now(timezone.utc).isoformat()
     moved = {"assets": 0, "aliases": 0, "refs": 0, "links": 0, "terms": 0,
