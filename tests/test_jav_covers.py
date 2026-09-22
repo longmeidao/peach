@@ -82,6 +82,22 @@ class FetchRetryTests(unittest.TestCase):
                 covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0,
                                   prior_candidates=(candidate,), minimum_pixels=1000 * 700)
 
+    def test_an_animated_official_candidate_is_skipped_for_a_still_one(self):
+        """JavArchive 在 FC2 链末档，图床存的常是 GIF 预览动画，只读头部量不出它在动。"""
+        frames = [Image.new("RGB", (800, 450), color) for color in ("red", "blue")]
+        buffer = io.BytesIO()
+        frames[0].save(buffer, format="GIF", save_all=True, append_images=frames[1:])
+        moving = covers.Candidate("img.javstore.net", "https://img.javstore.net/images/FC2PPV-123456.gif")
+        still = covers.Candidate("img.javstore.net", "https://img.javstore.net/images/123456pl.jpg")
+        pages = {moving.url: (200, buffer.getvalue()), still.url: (200, jpeg(800, 450))}
+        with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                patch.object(covers, "probe_size", return_value=(800, 450)):
+            chosen, _size, _data = covers.best_cover(transport_for(pages), "FC2-PPV-123456", 0,
+                                                     prior_candidates=(moving, still))
+            self.assertEqual(chosen.url, still.url)
+            with self.assertRaisesRegex(covers.NotFound, "动图"):
+                covers.best_cover(transport_for(pages), "FC2-PPV-123456", 0, prior_candidates=(moving,))
+
     def test_transient_transport_errors_use_the_project_backoff_window(self):
         attempts = 0
 
