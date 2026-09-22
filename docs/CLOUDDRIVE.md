@@ -93,16 +93,18 @@ pikpak = ['/Volumes/CloudDrive/PikPak']
 
 先在 Peach 的设置页「媒体」分组里打开「新文件落地就入库」与「接收 CloudDrive2 通知」，
 按页面上的「云端路径前缀」把 CloudDrive2 里看到的目录对上媒体根（例如 `/115` 对 `B:\`），
-点「保存配置」。页面上会显示通知地址和共享密钥，下一步要抄过去。
+点「保存配置」。页面上会生成一整段 CloudDrive2 配置，地址、端点和密钥都已填好。
 
-再在 CloudDrive2 的配置目录里编辑 `webhook.toml`，填 `[file_system_watcher]` 一段：URL 写
-设置页给的那个地址，请求头加一行 `X-Peach-Secret`，值填设置页显示的密钥。CloudDrive2 只
-接受它自己的路径写法，所以 URL 里的主机用 Peach 所在这台机器的局域网地址；Peach 只收
-回环与私网来的请求，公网来的一律当作没有这个端点。改完按 CloudDrive2 的说明重载。
+点「复制配置」，在 CloudDrive2 的「设置 → Webhooks」里添加一条贴进去保存。地址用的是
+Peach 所在这台机器的局域网地址；Peach 只收回环与私网来的请求，公网来的一律当作没有这个端点。
+Windows 桌面版的编辑框会把换行存成裸 CR，列表里标「无效」：把这段存成 `.toml` 文件放进
+`%LOCALAPPDATA%\CloudDrive.WinUI\webhooks\`，再重启 CloudDrive2（Webhooks 页的「刷新」不重读磁盘）。
+CloudDrive2 发通知也走它自己的代理设置，代理要让局域网地址直连。
 
 验证：往网盘里放一个视频，几秒后它应该出现在 Peach 里。没出现就看设置页上那一段状态——
 「已入库」的计数不动说明请求没进来（地址或密钥不对），计数在动但文件没出现说明前缀表没对上。
-密钥泄露或想换，在同一处点「更换密钥」，然后把新值抄回 `webhook.toml`。
+列表显示有效却一条都没发，先看 CloudDrive2 账号是不是会员。
+密钥泄露或想换，在同一处点「更换密钥」，然后重新复制配置贴一次。
 
 ## 起步值来自哪里
 
