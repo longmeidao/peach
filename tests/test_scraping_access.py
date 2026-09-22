@@ -185,6 +185,45 @@ class ScrapingAccessTests(unittest.TestCase):
         self.assertEqual(transport(HttpRequest("GET", "https://pics.dmm.co.jp/x", {}), 1, 100).status, 403,
                          '官方来源的 403 照常交给调用方判断')
 
+    def test_the_pause_starts_short_and_only_doubles_on_a_second_refusal(self):
+        """第一次拒绝只停 `FIRST_BLOCKED_PAUSE`，`blocked_pause` 是连撞多次后的上限。
+
+        封期常常远短于上限，一次就记满等于让整个来源盲等一整天：2026-09-22 那轮 778 部片
+        的 1432 条失败全部写着「来源正在冷却」，而同一套 client 当时问 javdb 全回 200。
+        """
+        from peach.scraping_access import (FIRST_BLOCKED_PAUSE, SOURCES, SourcePaused)
+        cooldown = self.root / "scraping-javdb.cooldown.json"
+        request = HttpRequest("GET", "https://javdb.com/search?q=ABW-358", {})
+        waits = []
+        for _ in range(3):
+            transport = SourceTransport(self.root)
+            transport.transports["javdb"] = lambda *args: HttpResponse(403, {}, b"")
+            with self.assertRaises(SourcePaused):
+                transport(request, 1, 100)
+            record = json.loads(cooldown.read_text(encoding="utf-8"))
+            waits.append(round(record["until"] - time.time()))
+            cooldown.write_text(json.dumps({"until": 0, "blocks": record["blocks"]}), encoding="utf-8")
+        self.assertEqual(waits, [FIRST_BLOCKED_PAUSE, FIRST_BLOCKED_PAUSE * 2, FIRST_BLOCKED_PAUSE * 4])
+        self.assertLess(FIRST_BLOCKED_PAUSE * 4, SOURCES["javdb"]["blocked_pause"])
+
+    def test_one_request_that_gets_through_clears_the_pause(self):
+        """封解了就该从最短的一档重新起算，不然下一次拒绝直接跳到上限。"""
+        from peach.scraping_access import FIRST_BLOCKED_PAUSE, SourcePaused
+        cooldown = self.root / "scraping-javdb.cooldown.json"
+        request = HttpRequest("GET", "https://javdb.com/search?q=ABW-358", {})
+        cooldown.parent.mkdir(parents=True, exist_ok=True)
+        cooldown.write_text(json.dumps({"until": 0, "blocks": 6}), encoding="utf-8")
+        opened = SourceTransport(self.root)
+        opened.transports["javdb"] = lambda *args: HttpResponse(200, {}, b"ok")
+        self.assertEqual(opened(request, 1, 100).status, 200)
+        self.assertFalse(cooldown.exists())
+        refused = SourceTransport(self.root)
+        refused.transports["javdb"] = lambda *args: HttpResponse(403, {}, b"")
+        with self.assertRaises(SourcePaused):
+            refused(request, 1, 100)
+        self.assertEqual(round(json.loads(cooldown.read_text(encoding="utf-8"))["until"] - time.time()),
+                         FIRST_BLOCKED_PAUSE)
+
     def test_community_sources_carry_the_pasted_cookie_on_public_requests(self):
         """JavBus 的年龄门和 javdb 的登录墙靠用户贴的 Cookie 过；别的来源公开采集不带会话。"""
         self.assertTrue(describe(self.root, "javdb")["accepts_cookie"])
