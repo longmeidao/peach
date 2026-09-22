@@ -2,8 +2,9 @@
 import json
 import unittest
 
-from peach.metadata_fc2 import (MIRROR_SOURCE, SOURCE, STUDIO, article_url, canonical_code,
-                                mirror_url, parse_article, parse_mirror, runtime_minutes,
+from peach.metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_SOURCE, SOURCE, STUDIO, archive_link,
+                                archive_search_url, article_url, canonical_code, mirror_url,
+                                parse_archive, parse_article, parse_mirror, runtime_minutes,
                                 video_id)
 
 COVER = "https://storage92000.contents.fc2.com/file/261/26076760/1711813737.76.jpg"
@@ -35,6 +36,42 @@ def gone_page():
     """下架后站上仍回 200，只是正文里那份 Product 不见了。"""
     return ('<script type="application/ld+json">{"@type": "BreadcrumbList"}</script>'
             '<div class="items_notfound"><h3>見つかりませんでした</h3></div>')
+
+
+ARCHIVE_LINK = "/926949-FC2-PPV-4137487-Gカップ・脅威-マジ凄いです！脅威のパイパーGカップグラマラス!-pn.html"
+ARCHIVE_TITLE = "Gカップ・脅威 マジ凄いです！脅威のパイパーGカップグラマラス!"
+ARCHIVE_PICTURES = "https://img.javstore.net/images/2023/12/26/"
+
+
+def search_page(video="4137487"):
+    """搜索结果。侧栏的本周热门与归档菜单用的是同一种地址形状，所以它们也在这一页里。"""
+    return (
+        '<ul><li><a href="/1000-featured-articles-cn.html">Featured</a></li>'
+        '<li><a href="/4-av-censored-cn.html">AV Censored</a></li></ul>'
+        '<div class="box_list">'
+        f'<a href="/926949-FC2-PPV-{video}-Gカップ・脅威-マジ凄いです！脅威のパイパーGカップグラマラス!-pn.html">'
+        f'<img src="{ARCHIVE_PICTURES}{video}ps.jpg" /></a>'
+        '<a href="/735702-fc2-ppv-1863914-10代美少女、圧倒的透明感のしほちゃん。-pn.html">另一部</a>'
+        "</div>"
+    )
+
+
+def archive_page(video="4137487", title=None, large="{root}{video}pl.jpg",
+                 small="{root}{video}ps.jpg"):
+    """作品页。正文那几段是转载来的下载链接，解析用得上的只有标题和图。"""
+    heading = title if title is not None else f"FC2-PPV-{video} {ARCHIVE_TITLE}"
+    link = ARCHIVE_LINK if video == "4137487" else f"/926949-FC2-PPV-{video}-x-pn.html"
+    pictures = "".join(
+        f'<img src="{shape.format(root=ARCHIVE_PICTURES, video=video)}" alt="{heading}" />'
+        for shape in (large, small) if shape)
+    return (
+        f'<div class="menudd"><h1><a href="{link}" title="{heading}">{heading}</a></h1></div>'
+        f'<div class="news"><div class="first_des">{heading}</div>'
+        f'<div class="fisrst_sc">{pictures}</div>'
+        # 多帧拼成的长条预览，不是封面。
+        f'<img src="{ARCHIVE_PICTURES}fc2ppv-{video}_s.jpg" alt="{heading}" />'
+        '<div class="downloads">https://rapidgator.net/file/deadbeef/x.mp4.html</div></div>'
+    )
 
 
 def mirror_page(video="3189161", title="【無】コスプレシリーズ", image=COVER,
@@ -142,6 +179,54 @@ class Fc2MirrorPageTests(unittest.TestCase):
         self.assertEqual(sorted(parse_article(shop_page(), "FC2-PPV-4364209")),
                          sorted(parse_mirror(mirror_page(), "FC2-PPV-3189161")))
         self.assertEqual((SOURCE, MIRROR_SOURCE), ("fc2", "fc2cmadb"))
+
+
+class JavArchiveTests(unittest.TestCase):
+    def test_the_search_page_gives_up_the_link_that_carries_this_shop_number(self):
+        self.assertEqual(archive_link(search_page(), "FC2-PPV-4137487"), ARCHIVE_LINK)
+        self.assertEqual(archive_link(search_page().encode(), "fc2ppv4137487"), ARCHIVE_LINK)
+
+    def test_a_longer_number_that_merely_starts_the_same_is_not_this_one(self):
+        # 站上 `4137487` 与 `41374870` 都有；按子串比会把后者的标题和封面安到前者头上。
+        self.assertEqual(archive_link(search_page(video="41374870"), "FC2-PPV-4137487"), "")
+        self.assertEqual(archive_link(search_page(), "FC2-PPV-9999999"), "")
+        self.assertEqual(archive_link(search_page(), "ORETD-615"), "")
+
+    def test_one_search_page_holds_several_works_and_each_code_finds_its_own(self):
+        # 一页里既有别的作品，也有侧栏的热门与归档，挑的必须是这个商品号那一条。
+        self.assertTrue(archive_link(search_page(), "FC2-PPV-1863914").startswith("/735702-"))
+        self.assertTrue(archive_link(search_page(), "FC2-PPV-4137487").startswith("/926949-"))
+
+    def test_the_archive_page_gives_the_title_without_the_code_in_front_of_it(self):
+        found = parse_archive(archive_page(), "FC2-PPV-4137487")
+        self.assertEqual(found["title"], "Gカップ・脅威 マジ凄いです！脅威のパイパーGカップグラマラス!")
+        self.assertEqual((found["id"], found["content_id"], found["maker"]),
+                         ("FC2-PPV-4137487", "4137487", STUDIO))
+        self.assertEqual(found["source_url"], "https://javarchive.com" + ARCHIVE_LINK)
+        self.assertEqual(parse_archive(archive_page(title="FC2PPV 4137487 素顔"), "FC2-PPV-4137487")["title"],
+                         "素顔")
+
+    def test_the_big_transfer_wins_and_the_stitched_preview_is_never_a_cover(self):
+        # `_s.jpg` 是把多帧拼成的长条（实测 1024×2000），装上去就是一格拉长的马赛克。
+        found = parse_archive(archive_page(), "FC2-PPV-4137487")
+        self.assertEqual(found["cover_url"], "https://img.javstore.net/images/2023/12/26/4137487pl.jpg")
+        self.assertEqual(found["cover_urls"], [found["cover_url"]])
+        small = parse_archive(archive_page(large=""), "FC2-PPV-4137487")
+        self.assertEqual(small["cover_url"], "https://img.javstore.net/images/2023/12/26/4137487ps.jpg")
+        self.assertEqual(parse_archive(archive_page(large="", small=""), "FC2-PPV-4137487")["cover_urls"], [])
+
+    def test_another_products_archive_page_is_not_this_ones_data(self):
+        self.assertIsNone(parse_archive(archive_page(video="4364209"), "FC2-PPV-4137487"))
+        self.assertIsNone(parse_archive("<div class='news'></div>", "FC2-PPV-4137487"))
+        self.assertIsNone(parse_archive(archive_page(), "ORETD-615"))
+
+    def test_the_third_page_hands_back_the_same_shape_as_the_first_two(self):
+        self.assertEqual(sorted(parse_archive(archive_page(), "FC2-PPV-4137487")),
+                         sorted(parse_mirror(mirror_page(), "FC2-PPV-3189161")))
+        self.assertEqual(ARCHIVE_SOURCE, "javarchive")
+        self.assertEqual(archive_search_url("FC2-PPV-4137487"),
+                         "https://javarchive.com/search?q=FC2-PPV-4137487")
+        self.assertEqual(archive_search_url("ORETD-615"), "")
 
 
 if __name__ == "__main__":

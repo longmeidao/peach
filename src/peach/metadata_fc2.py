@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 
 from bs4 import BeautifulSoup
 
@@ -38,6 +39,10 @@ USER_URL = ROOT + "/users/{slug}/"
 MIRROR_ROOT = "https://fc2cmadb.com"
 MIRROR_SOURCE = "fc2cmadb"
 MIRROR_URL = MIRROR_ROOT + "/articles/{video_id}"
+
+ARCHIVE_ROOT = "https://javarchive.com"
+ARCHIVE_SOURCE = "javarchive"
+ARCHIVE_SEARCH_URL = ARCHIVE_ROOT + "/search?q={code}"
 
 #: 账本里 FC2 一律记在这个厂牌下（库内既有的 561 条就是它），新抓的跟着走，免得同一批
 #: 内容分裂成两个厂牌实体。卖家是另一回事，它走 `label`：那是只作证据的目录字段，
@@ -52,6 +57,13 @@ _SOLD_ON = re.compile(r"販売日\s*[:：]\s*(\d{4})/(\d{2})/(\d{2})")
 #: 前半截是缩放服务，后半截就是原件地址。
 _THUMBNAIL_WRAPPER = re.compile(
     r"^https?://contents-thumbnail\d*\.fc2\.com/w\d+/(storage[\w.-]+\.fc2\.com/.+)$", re.I)
+#: JavArchive 的作品地址：`/926949-FC2-PPV-4137487-<标题>-pn.html`。开头那串是站内文章号，
+#: 商品号夹在标题里，所以地址拼不出来，只能先搜。
+_ARCHIVE_LINK = re.compile(r'href="(/\d+-[^"]+\.html)"')
+#: 图转存在 javstore 上，沿用 FC2 自己的命名：`4137487pl.jpg` 是大图、`ps` 是小图。
+#: `_s.jpg` 那种是把多帧拼成的长条预览，不是封面，按后缀整条排除。
+_ARCHIVE_PICTURE = re.compile(
+    r'src="(https?://img\d*\.javstore\.net/images/[\d/]+/(\d{5,})(pl|ps)\.(?:jpe?g|png))"', re.I)
 
 
 def video_id(code: str) -> str:
@@ -147,6 +159,71 @@ def mirror_url(code: str) -> str:
     """这个番号在 fc2cmadb 上的地址；认不出商品号时回空串。"""
     found = video_id(code)
     return MIRROR_URL.format(video_id=found) if found else ""
+
+
+def archive_search_url(code: str) -> str:
+    """这个番号在 JavArchive 上的搜索地址；认不出商品号时回空串。"""
+    found = video_id(code)
+    return ARCHIVE_SEARCH_URL.format(code=urllib.parse.quote(canonical_code(found))) if found else ""
+
+
+def archive_link(html: str | bytes, code: str) -> str:
+    """搜索结果里这个商品号那一条的站内地址；没有回空串。
+
+    商品号要按数字边界比：`4137487` 不能命中 `41374870`，站上两个号真的都有。搜索页的
+    结果、侧栏的本周热门和归档菜单用的是同一种地址形状，所以只认地址里带着这个号的那条。
+    """
+    wanted = video_id(code)
+    if not wanted:
+        return ""
+    text = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
+    boundary = re.compile(rf"(?<!\d){re.escape(wanted)}(?!\d)")
+    for href in _ARCHIVE_LINK.findall(text):
+        if boundary.search(urllib.parse.unquote(href)):
+            return href
+    return ""
+
+
+def parse_archive(html: str | bytes, code: str) -> dict | None:
+    """JavArchive 的作品页 → 同一份 payload 形状；对不上番号回 None。
+
+    这一档只有标题和封面：页面没有販売日、卖家和商品标签，正文那几段是转载来的下载链接，
+    一概不取。封面走 javstore 上的转存件，命名沿用 FC2 自己的 `pl`（大）/`ps`（小），
+    实测 `4137487pl.jpg` 709×399、`ps` 255×294——比官方存储那份原图差一档，所以这一档
+    排在 fc2cmadb 后面，只在两处都没有时才用（2026-09-22 实测 4137487 在 fc2cmadb 是 404）。
+
+    标题以站内 `<h1>` 为准，开头那截番号剥掉：站上 `FC2-PPV-4137487`、`FC2PPV 1863914`
+    两种写法都有，留着就把番号写进了标题。`<h1>` 里认不出这个商品号就当没有这一页——
+    搜索结果挑错条、或者站点改版换了结构，两种都不该把别的片的标题安上来。
+    """
+    wanted = video_id(code)
+    if not wanted:
+        return None
+    text = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
+    soup = BeautifulSoup(text, "html.parser")
+    heading = soup.select_one("h1")
+    title = _text(heading)
+    if not title or not re.search(rf"(?<!\d){re.escape(wanted)}(?!\d)", title):
+        return None
+    link = heading.select_one("a[href]")
+    pictures = {kind.lower(): url for url, found, kind in _ARCHIVE_PICTURE.findall(text) if found == wanted}
+    cover = pictures.get("pl") or pictures.get("ps") or ""
+    return {
+        "id": canonical_code(wanted),
+        "content_id": wanted,
+        "source_url": urllib.parse.urljoin(ARCHIVE_ROOT, link["href"]) if link else "",
+        "title": re.sub(rf"^\s*FC2[-_. ]?(?:PPV)?[-_. ]?{re.escape(wanted)}\s*[-—:：]?\s*", "", title, flags=re.I),
+        "description": "",
+        "release_date": "",
+        "runtime": None,
+        "actresses": [],
+        "maker": STUDIO,
+        "label": "",
+        "seller_url": "",
+        "genres": [],
+        "cover_url": cover,
+        "cover_urls": [cover] if cover else [],
+    }
 
 
 def _storage_original(url: str) -> str:

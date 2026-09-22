@@ -54,10 +54,12 @@ MISS_TTL_SECONDS = 7 * 24 * 3600
 #: 主机间隔。默认 2 秒；javdb 按出口 IP 计配额，5 秒一页是它的来源下限（docs/SOURCING.md）。
 SOURCE_INTERVALS = {'javdb.com': 5.0, 'jdbstatic.com': 5.0}
 SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb',
-                 'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', '1pondo': '一本道', 'local_nfo': '本地 NFO'}
+                 'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
+                 '1pondo': '一本道', 'local_nfo': '本地 NFO'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
-                  'fc2cmadb': 'fc2cmadb-article', '1pondo': '1pondo-json'}
+                  'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
+                  '1pondo': '1pondo-json'}
 #: FC2 商品页实测 300～320 KB，fc2cmadb 那页 90 KB；说明与评论都在同一页里。
 FC2_PAGE_LIMIT = 2 * 1024 * 1024
 #: 一本道的作品 JSON 实测 6～8 KB，带样片清单也只有十几 KB。
@@ -165,13 +167,15 @@ class LibraryMetadataProvider:
         return cache[code]
 
     def fc2(self, code, *, deadline=None):
-        """FC2 自己那一页，下架了就问镜像站；返回 `[(来源, 资料)]`。
+        """FC2 自己那一页，下架了就依次问两个存档站；返回 `[(来源, 资料)]`。
 
         资料和封面两步都要它，同一个番号只问一次：商品页约 300 KB，问两遍白花一份流量。
         已下架的商品仍回 200，解析器认不出那份 Product 就回 None——那不是抓取失败，是这部
         片在站上没有了。本地这批没封面的 FC2 多数是这种，所以接着问 fc2cmadb：它留着下架
-        作品的标题、卖家、标签与封面原图。两处都没有才按 `NotFound` 交出去，记进「没有」
-        的记忆，一周内不再问。
+        作品的标题、卖家、标签与封面原图。它也没有的才落到 JavArchive，那一档只给标题和
+        一张转存封面，比官方原图差一档，所以排在最后（2026-09-22 实测 `FC2-PPV-4137487`
+        在 fc2cmadb 是 404，JavArchive 上有）。三处都没有才按 `NotFound` 交出去，记进
+        「没有」的记忆，一周内不再问。
         """
         from .metadata_fc2 import (MIRROR_ROOT, MIRROR_SOURCE, ROOT, SOURCE,
                                    article_url, mirror_url, parse_article, parse_mirror)
@@ -181,12 +185,14 @@ class LibraryMetadataProvider:
                 cache[code] = NotFound('这个番号认不出 FC2 商品号')
             else:
                 found, problems = None, []
-                for source, root, address, parse in (
-                        (SOURCE, ROOT, article_url, parse_article),
-                        (MIRROR_SOURCE, MIRROR_ROOT, mirror_url, parse_mirror)):
+                for attempt in (
+                        lambda: self._fc2_page(SOURCE, ROOT, article_url(code), parse_article,
+                                               code, deadline=deadline),
+                        lambda: self._fc2_page(MIRROR_SOURCE, MIRROR_ROOT, mirror_url(code),
+                                               parse_mirror, code, deadline=deadline),
+                        lambda: self._fc2_archive(code, deadline=deadline)):
                     try:
-                        found = self._fc2_page(source, root, address(code), parse, code,
-                                               deadline=deadline)
+                        found = attempt()
                     except DeadlineExceeded as error:
                         cache[code] = error
                         break
@@ -199,10 +205,27 @@ class LibraryMetadataProvider:
                 if code not in cache:
                     # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
                     cache[code] = found or (problems[0] if problems
-                                            else NotFound('FC2 与 fc2cmadb 上都没有这个商品'))
+                                            else NotFound('FC2、fc2cmadb 与 JavArchive 上都没有这个商品'))
         if isinstance(cache[code], Exception):
             raise type(cache[code])(str(cache[code]))
         return cache[code]
+
+    def _fc2_archive(self, code, *, deadline=None):
+        """JavArchive 那一档要先搜再取：作品地址里夹着站内文章号和标题，拼不出来。
+
+        搜索页约 130 KB，比作品页还大一点；这一档只在前两处都说没有时才走到，所以一个
+        番号最多多花一次搜索。搜不着就是没有，不当抓取失败。
+        """
+        from .jav_cover_fetch import _fetch
+        from .metadata_fc2 import (ARCHIVE_ROOT, ARCHIVE_SOURCE, archive_link,
+                                   archive_search_url, parse_archive)
+        results = _fetch(self.transport, archive_search_url(code), referer=ARCHIVE_ROOT + '/',
+                         limit=FC2_PAGE_LIMIT, deadline=deadline)
+        link = archive_link(results, code)
+        if not link:
+            raise NotFound(f'{SOURCE_LABELS[ARCHIVE_SOURCE]} 上没有这个商品')
+        return self._fc2_page(ARCHIVE_SOURCE, ARCHIVE_ROOT, ARCHIVE_ROOT + link,
+                              parse_archive, code, deadline=deadline)
 
     def _fc2_page(self, source, root, url, parse, code, *, deadline=None):
         """抓一页并解析成 `[(来源, 资料)]`；页面在、但那份数据对不上这个商品时报没有。"""
