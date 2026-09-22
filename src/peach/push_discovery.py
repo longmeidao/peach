@@ -158,6 +158,7 @@ def parse_notification(body) -> list[str]:
 #:
 #: 两个 watcher 在它那边是同一个结构（`WebHookConfigItem`，5 个字段），五个字段一个
 #: 都不能省：关掉的那个只写 `enabled = false` 的话，整份配置在它的列表里标「无效」。
+#: Webhook 是它的会员功能，非会员时配置照样显示有效，却一条也不发。
 _CLOUDDRIVE_CONFIG = """[global_params]
 base_url = "%s"
 enabled = true

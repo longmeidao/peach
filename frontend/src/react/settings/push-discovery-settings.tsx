@@ -116,6 +116,7 @@ export function PushDiscoveryForm({ initial, receipt }: {
             <FieldLabel>CloudDrive2 配置内容</FieldLabel>
             <Help>在 CloudDrive2 的「设置 → Webhooks」里添加一条，把这段配置贴进去保存。
               地址、端点和密钥都已经填好了；换过密钥之后要重新贴一次。
+              Webhook 是 CloudDrive2 的会员功能：不是会员时列表照样显示有效，但一条都不会发出来。
               Windows 桌面版的编辑框会把换行存坏，列表里标「无效」：那就把这段存成 .toml
               文件，放进 %LOCALAPPDATA%\CloudDrive.WinUI\webhooks\ 目录。</Help>
             {live.config_toml ? (
