@@ -1,7 +1,10 @@
 @import url('/vendor/inter/5.3.0/index.css');
 /* 右边这 16px 和设置行一样，是给覆盖式滑块让出的道；不留的话这一块会比上面几行宽出
-   一截，它那条上边线直贴到卡片边上。 */
-.settingscard .settingsscroll .sidebarsetting{padding:16px 12px 12px 0!important;margin:0 16px 0 0!important}
+   一截，它那条上边线直贴到卡片边上。
+   上下那两个数也和设置行同一份（`.settingsscroll .settingrow` 的 10px）：这一块是同一
+   列里的又一行，上面写 16 下面写 12 的话，它和前一行之间就比上面每两行之间宽出一截，
+   同一屏里读得出来。 */
+.settingscard .settingsscroll .sidebarsetting{padding:10px 12px 10px 0!important;margin:0 16px 0 0!important}
 .settingscard .settingsscroll .settingsortcontrols>[hidden]{display:none}
 .board-optional-number{display:flex;align-items:center;gap:12px;flex-direction:row-reverse}.board-number-fields[hidden]{display:none}
 .board-number-control input::-webkit-inner-spin-button,.board-number-control input::-webkit-outer-spin-button{appearance:none;margin:0}.board-number-control input{appearance:textfield;-moz-appearance:textfield}
@@ -1310,9 +1313,13 @@ body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;b
 .board-tooltip{box-sizing:border-box;max-width:240px;padding:6px 10px;border:1px solid var(--color-border-button-default);border-radius:8px;background:var(--color-background-primary-default);color:var(--color-text-primary);font:var(--board-caption);white-space:normal;box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d}
 .board-tooltip{position:fixed;z-index:var(--layer-tooltip);pointer-events:none}.board-tooltip[hidden]{display:none}
 body :is(.popmenu,.gselectmenu,.cardmenupanel){box-sizing:border-box;padding:10px;border:1px solid var(--color-border-button-default);border-radius:16px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:0 12px 24px -4px #0000001a,0 4px 8px -2px #0000000d}
-body :is(.popmenu,.gselectmenu,.cardmenupanel)>:is(button,[role=option],[role=menuitem]){min-height:36px;padding:8px;gap:8px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);font:var(--board-body);box-shadow:none}
+/* 每一项都在这里定死成「左起一行」，位置和形状写在同一条里。浮层看着浮在页面上方，
+   DOM 却长在触发它的那张卡里，于是页面分区给自家 button 写的本地外观照样命中它：整理卡
+   的 `.cleanupfieldset button` 带 `justify-content:center`，来源下拉每一项的站标就被推到
+   行正中，和触发器里那一枚不在同一列。这里只写形状不写位置的话，那个属性在菜单这一侧
+   无人竞争，页面那条就成了唯一声明者。 */
+body :is(.popmenu,.gselectmenu,.cardmenupanel)>:is(button,[role=option],[role=menuitem]){display:flex;align-items:center;justify-content:flex-start;width:100%;min-height:36px;padding:8px;gap:8px;border:0;border-radius:10px;background:transparent;color:var(--color-text-secondary);font:var(--board-body);text-align:left;box-shadow:none}
 body :is(.popmenu,.gselectmenu,.cardmenupanel)>:is(button,[role=option],[role=menuitem]):is(:hover,:focus-visible,[aria-selected=true]){background:var(--color-background-primary-hover);color:var(--color-text-primary)}
-body .popmenu[role=menu]>[role=menuitem]{display:flex;justify-content:flex-start;text-align:left;width:100%}
 /* 这一条只管「一句话就是一个链接」的那种外链：一行蓝字，没有边、没有底、不占按钮的位置。
    资料页那排外链不在此列——它是一圈药丸，边、底和 4px 内边距都是它自己的，被这里的
    `padding:0` 和 `border:0` 抹平之后那一排就只剩十个光秃秃的图标。

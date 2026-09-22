@@ -3691,17 +3691,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".gselectfield>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;color:var(--muted)}")
 
-    def test_a_dropdown_row_puts_its_mark_in_the_same_column_as_the_trigger(self):
-        """展开下拉时站标不挪位：面板每一行的图标和触发器里那一枚落在同一列。
+    def test_a_dropdown_row_starts_at_its_left_edge(self):
+        """下拉每一项都从行首起排：站标靠左，不被页面分区的本地按钮外观推到行正中。
 
-        选中态只有填充，行首不留勾的位置；行的 6px 内边距加上 `.popmenu` 自己的 6px 正好
-        等于触发器的 12px，两处图标于是对齐到一像素（复现页实测都是距左 13px，含 1px 边框）。
+        浮层的 DOM 长在触发它的那张卡里，整理卡的 `.cleanupfieldset button` 就照样命中
+        面板里的每一项，而它带着 `justify-content:center`。位置要和形状写在 board.css
+        同一条里，不能留给页面那侧当唯一声明者。选中态只有填充，行首也不留勾的位置。
         """
+        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertCode('aria-selected="${String(value)===String(chosen[0])}" tabindex="-1">'
                         '<span data-select-content>')
-        self.assertPageContains("padding:0 6px;border:0;border-radius:var(--control-radius);"
-                                "background:transparent;color:var(--ink-2);")
-        self.assertPageContains("height:var(--control-h);padding:0 10px 0 12px;")
+        self.assertIn("[role=menuitem]){display:flex;align-items:center;justify-content:flex-start;"
+                      "width:100%;min-height:36px;padding:8px;", board,
+                      "浮层菜单每一项的位置要和形状写在同一条里")
+        self.assertPageContains("justify-content:flex-start;gap:8px;width:100%;"
+                                "min-height:var(--control-h);")
         self.assertPageLacks('.popmenu.gselectmenu button[aria-selected="true"]>svg',
                              "选中项靠填充读出来，行首不画勾")
 
@@ -5119,11 +5123,14 @@ class WebUiSourceTests(unittest.TestCase):
         两侧各画各的时，一条 1px 的下边线和一条 1px 的上边线落在同一个 y 上，看着就是
         一道 2px 的粗线；而这一块不让出滑块那 16px 的话，它的线还会比上面几行长一截，
         一直贴到卡片边上。线归行的下沿，右边这一格跟着行走。
+
+        上下那两个数和设置行同为 10px：这一块是同一列里的又一行，写 16 和 12 的话它和
+        前一行之间就比上面每两行之间宽出一截。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".settingscard .settingsscroll .settingrow+.sidebarsetting{border-top:0}", board)
         self.assertIn(".settingscard .settingsscroll .sidebarsetting"
-                      "{padding:16px 12px 12px 0!important;margin:0 16px 0 0!important}", board)
+                      "{padding:10px 12px 10px 0!important;margin:0 16px 0 0!important}", board)
         self.assertIn(".settingscard .settingsscroll .settingrow{min-height:52px;"
                       "padding:10px 10px 10px 0;gap:16px;border-top:0;"
                       "border-bottom:1px solid var(--line-soft)}", board)
@@ -6742,6 +6749,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("min-width:0", rule, "网格列不许被内容顶宽")
         # 读数是定宽的，定宽列旁边的那一列必须能压缩，否则整行只会往外顶。
         self.assertIn(".glowfield .dial{flex:1;min-width:0}", css)
+
+    def test_the_glow_block_ends_on_the_same_rhythm_as_the_rows_above_it(self):
+        """这一块的下边距和同一列里每一行的一样。
+
+        竖向节奏整块读 `--glowrow-pad`，只有底下那一个数此前另写了 14px：加上后面那个
+        分区自己的上内边距，「恢复默认」到下一节标题之间比上面每两行之间宽出 10px，
+        同一屏里读得出这一处比别处松。
+        """
+        rule = stylesheet_source().split(".glowsetting{", 1)[1].split("}", 1)[0]
+        self.assertIn("padding:0 10px var(--glowrow-pad) 0", rule)
 
     def test_detail_deduplicates_identity_and_supports_tag_editing(self):
         self.assertPageContains("const identitySeen=new Set()")
@@ -8829,10 +8846,11 @@ class WebUiSourceTests(unittest.TestCase):
         # 手机上三枚圆撑到 44px 命中区。
         self.assertCode(
             "@media (max-width:760px){.iconswitch.themeswitch label{width:44px;height:44px}}")
-        # 分隔线属于整块卡片，铺到框边再断。
+        # 这里只给线：盒子的边距归 board.css 那条带 `!important` 的规则，在这里另写一份
+        # 只会留下一组读着像在生效、其实一个像素也没动的值。
         self.assertCode(
-            ".settinggroup :is(.settingrow,.glowsetting)+.sidebarsetting{margin:0;padding:14px 0 0;"
-            "border-top:1px solid var(--line-soft)}")
+            ".settinggroup :is(.settingrow,.glowsetting)+.sidebarsetting"
+            "{border-top:1px solid var(--line-soft)}")
 
     def test_search_menu_has_local_history_and_recommendations(self):
         self.assertPageContains("/api/search-history")
