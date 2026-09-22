@@ -29,6 +29,11 @@ def _stamp(moment: datetime | None = None) -> str:
         "+00:00", "Z")
 
 
+#: 订阅源拉取（ADR-0042）借用同一个实现，只是换一个 job id 与一份自己的状态文件。
+#: 间隔、退避、跳过与状态上报只有一份：第二套定时会长出第二种「上次什么时候跑的」。
+FEED_JOB_ID = "peach-feed-update"
+
+
 @dataclass(frozen=True)
 class FollowScheduleConfig:
     enabled: bool = True
@@ -38,8 +43,10 @@ class FollowScheduleConfig:
 class FollowScheduleStore:
     """Small replace-on-write state file; scheduling preferences are not ledger truth."""
 
-    def __init__(self, state_root: Path):
-        self.path = Path(state_root) / "follow-schedule.json"
+    def __init__(self, state_root: Path, filename: str = "follow-schedule.json",
+                 default: FollowScheduleConfig | None = None):
+        self.path = Path(state_root) / filename
+        self.default = default or FollowScheduleConfig()
 
     @staticmethod
     def validate(enabled: object, interval_minutes: object) -> FollowScheduleConfig:
@@ -56,12 +63,14 @@ class FollowScheduleStore:
     def load(self) -> FollowScheduleConfig:
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-            return self.validate(payload.get("enabled", True), payload.get("interval_minutes", 60))
+            return self.validate(payload.get("enabled", self.default.enabled),
+                                 payload.get("interval_minutes",
+                                             self.default.interval_minutes))
         except FileNotFoundError:
-            return FollowScheduleConfig()
+            return self.default
         except (OSError, TypeError, ValueError, json.JSONDecodeError):
             LOGGER.warning("invalid follow schedule preference at %s; using defaults", self.path)
-            return FollowScheduleConfig()
+            return self.default
 
     def save(self, config: FollowScheduleConfig) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,8 +84,14 @@ class FollowScheduleStore:
 class FollowUpdateScheduler:
     """Own one interval job and expose its state to the settings surface."""
 
-    def __init__(self, state_root: Path, run_check: Callable[[], dict], *, available: bool):
-        self.store = FollowScheduleStore(state_root)
+    def __init__(self, state_root: Path, run_check: Callable[[], dict], *, available: bool,
+                 job_id: str = JOB_ID, filename: str = "follow-schedule.json",
+                 default: FollowScheduleConfig | None = None,
+                 unavailable_message: str =
+                 "automatic follow updates are available only on the ledger writer"):
+        self.job_id = job_id
+        self.unavailable_message = unavailable_message
+        self.store = FollowScheduleStore(state_root, filename, default)
         self.run_check = run_check
         self.available = bool(available)
         self.config = self.store.load()
@@ -107,7 +122,7 @@ class FollowUpdateScheduler:
 
     def update(self, *, enabled: object, interval_minutes: object) -> dict:
         if not self.available:
-            raise ValueError("automatic follow updates are available only on the ledger writer")
+            raise ValueError(self.unavailable_message)
         self.config = self.store.validate(enabled, interval_minutes)
         self.store.save(self.config)
         if self._started:
@@ -116,14 +131,14 @@ class FollowUpdateScheduler:
 
     def _apply_job(self) -> None:
         if not self.config.enabled:
-            if self.scheduler.get_job(JOB_ID) is not None:
-                self.scheduler.remove_job(JOB_ID)
+            if self.scheduler.get_job(self.job_id) is not None:
+                self.scheduler.remove_job(self.job_id)
             return
         interval = self.config.interval_minutes
         self.scheduler.add_job(
             self._run,
             "interval",
-            id=JOB_ID,
+            id=self.job_id,
             minutes=interval,
             next_run_time=datetime.now(timezone.utc) + timedelta(minutes=interval),
             replace_existing=True,
@@ -203,7 +218,7 @@ class FollowUpdateScheduler:
             return
         try:
             self.scheduler.modify_job(
-                JOB_ID,
+                self.job_id,
                 next_run_time=datetime.now(timezone.utc) + timedelta(minutes=delay))
         except JobLookupError:
             # 任务在这一轮跑的过程中被关掉了。没什么要退避的。
@@ -213,7 +228,7 @@ class FollowUpdateScheduler:
         with self._state_lock:
             # 任务与本类的状态必须是同一张快照：分开读会出现「已经不在跑了，
             # 下次运行时间却还是上一轮的」这种自相矛盾的回答。
-            job = self.scheduler.get_job(JOB_ID) if self._started else None
+            job = self.scheduler.get_job(self.job_id) if self._started else None
             next_run = job.next_run_time if job is not None else None
             return {
                 "ok": True,

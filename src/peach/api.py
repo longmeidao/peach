@@ -31,12 +31,12 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
-from . import __version__, tunnel, web_contract, web_follow
+from . import __version__, feeds, tunnel, web_contract, web_feeds, web_follow
 from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
 from .buildinfo import frozen_build
 from .config import LOCATION_ROOT_DECLARATIONS, PeachSettings
 from .ffmpeg import FFmpegResolver
-from .follow_scheduler import FollowUpdateScheduler
+from .follow_scheduler import FEED_JOB_ID, FollowScheduleConfig, FollowUpdateScheduler
 from .follow_covers import FollowCoverService
 from .follow_stream import FollowMediaResolver
 from .http import HttpxTransport
@@ -228,6 +228,20 @@ def create_app(
         available=_writer(sync),
     )
     contract.follow_scheduler = follow_scheduler
+    # 订阅源拉取（ADR-0042）用同一个调度实现，只换 job id、状态文件与默认间隔。
+    # 默认 6 小时：两类可用来源一天更新几十条，比这更密只是把 JavDB 的配额花在
+    # 一张没变的页面上。
+    feed_scheduler = FollowUpdateScheduler(
+        settings.follow_state_root,
+        lambda: web_feeds.w_feed_check(contract, {"automatic": True}),
+        available=_writer(sync),
+        job_id=FEED_JOB_ID,
+        filename="feed-schedule.json",
+        default=FollowScheduleConfig(enabled=True,
+                                     interval_minutes=feeds.DEFAULT_INTERVAL_MINUTES),
+        unavailable_message="订阅源拉取只在写入端可用",
+    )
+    contract.feed_scheduler = feed_scheduler
     contract.header_repairs = header_repairs
     contract.transcode_service = transcode_service
     # 只读端不写任务中心：`task_run` 也在账本里，reader 往里写会造成无法自动合并的
@@ -264,6 +278,7 @@ def create_app(
         # 不要在事件循环里卡住整条服务的启动。
         await asyncio.to_thread(_start_tunnel, settings, tunnel_manager)
         follow_scheduler.start()
+        feed_scheduler.start()
         automatic_updates.start()
         push_discovery.start()
         warmup = asyncio.create_task(warm_startup_entries())
@@ -278,6 +293,7 @@ def create_app(
         finally:
             warmup.cancel()
             follow_scheduler.stop()
+            feed_scheduler.stop()
             automatic_updates.stop()
             push_discovery.stop()
             # 死链检查和资源对账的后台线程是 daemon，本来挡不住进程退出；这里显式收

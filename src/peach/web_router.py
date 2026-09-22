@@ -42,6 +42,14 @@ from .web_entity import (
     w_entity_alias,
     w_entity_name,
 )
+from .web_feeds import (
+    q_feed_check,
+    q_feed_discoveries,
+    q_feeds,
+    w_feed_check,
+    w_feed_discovery,
+    w_feed_source,
+)
 from .web_follow import (
     q_follow,
     q_follow_authors,
@@ -283,6 +291,9 @@ GET_HANDLERS = {
     "/api/scraping": q_scraping,
     "/api/scraping/cover": lambda contract, args: contract.scraping_cover_job.snapshot() or {"status": "idle"},
     "/api/settings": q_settings,
+    "/api/feeds": q_feeds,
+    "/api/feeds/check": q_feed_check,
+    "/api/feeds/discoveries": q_feed_discoveries,
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
     "/api/follow/tags": q_follow_tags,
@@ -327,6 +338,9 @@ POST_HANDLERS = {
     "/api/scraping/settings": w_scraping_settings,
     "/api/scraping/cover": w_scraping_cover,
     "/api/scraping/check": w_scraping_check,
+    "/api/feeds/check": w_feed_check,
+    "/api/feeds/source": w_feed_source,
+    "/api/feeds/discovery": w_feed_discovery,
     "/api/follow/check": w_follow_check,
     "/api/follow/schedule": w_follow_schedule,
     "/api/follow/source": w_follow_source,

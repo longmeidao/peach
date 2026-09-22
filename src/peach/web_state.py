@@ -155,9 +155,11 @@ class WebContract:
         #: 后继调度（ADR-0040）。导入 `avatar_followup` 就是它的登记动作：调度器本身
         #: 不认识任何一种后继，登记表在 `followups.REGISTRY` 里。
         from . import avatar_followup  # noqa: F401  登记补头像后继
+        from . import feed_followup  # noqa: F401  登记取新作资料后继
         from .followups import FollowupRunner
         self.followups = FollowupRunner(self)
         self.follow_job = self._job("PeachFollowCheckJob", "follow-check")
+        self.feed_job = self._job("PeachFeedCheckJob", "feed-check")
         self.follow_resolve_job = self._job("PeachFollowResolveJob", "follow-resolve")
         self.taste_refresh_job = self._job("PeachTasteRefreshJob", "taste-refresh")
         self.link_prune_job = self._job("PeachLinkPruneJob", "link-prune")
@@ -171,6 +173,9 @@ class WebContract:
         # 整理（ADR-0039）：同一时间只跑一批，互斥由这个任务自己的键提供。
         self.organize_job = self._job("PeachOrganizeJob", "organize")
         self.follow_scheduler = None
+        #: 订阅源的定时拉取（ADR-0042）。与追更共用 `follow_scheduler` 那一个实现，
+        #: 只是各占一个 job id 与一份状态文件；由 `api` 在装配时接上。
+        self.feed_scheduler = None
         #: 批量修 MP4 头要的两件东西，由 `api` 在装配时接上：它们属于播放链路，
         #: 建在 app 那一侧，契约这边只留接口。没接上时修复端点会说清楚。
         self.header_repairs = None
@@ -254,6 +259,7 @@ class WebContract:
         self.link_prune_job.stop()
         self.resource_apply_job.stop()
         self.link_check.stop()
+        self.feed_job.stop()
         self.followups.stop()
 
     def cache_bust(self):

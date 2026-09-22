@@ -39,6 +39,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_migrations.py",
                 "test_review_mirror.py", "test_rm_web.py",
                 "test_entity_link_install.py", "test_web_links.py", "test_entry_links.py",
+                "test_feeds.py", "test_feeds_web.py",
                 "test_link_marks.py", "test_site_icons.py", "test_site_logos.py",
                 "test_avatar_face.py",
                 "test_brand_marks.py", "test_studio_icon_variants.py",
@@ -213,6 +214,10 @@ AUTO_SCOPE_PREFIXES: tuple[tuple[str, str | tuple[str, ...]], ...] = (
     ("scripts/vendor_web_dependencies.mjs", ("web", "tooling")),
     ("scripts/audit_video_endcards.py", ("media", "tooling")),
     ("scripts/setup_macos_port80.sh", ("sync", "tooling")),
+    # 订阅源的解析与建壳验在 `test_feeds*.py`，两份都登记在 catalog：壳的边界是
+    # 「它不是 asset」，看得住这条的是目录域那批测试。
+    ("src/peach/feeds.py", "catalog"),
+    ("src/peach/feed_followup.py", "catalog"),
     ("src/peach/follow", "follow"),
     ("src/peach/fanbox.py", "follow"),
     ("src/peach/web_follow.py", "follow"),

@@ -4606,10 +4606,64 @@ function showHomeSurfaces(){
      上一页挂在里面的 React 根（换头像）就没人卸，留着一棵管着已经不在页面上的节点的根。 */
   unmountIsland($('#index'));
   $('#stats').hidden=true;$('#index').hidden=true;
+  // 新作那一行由 `load()` 按路径重画；这里先收起，换页时不会有上一页的内容留着。
+  $('#feedNew').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
+
+/* 「新作 · 未入库」：订阅源发现的番号，库里还没有文件（ADR-0042）。
+ *
+ * 这一块和网格里的卡片说的不是同一件事——那些是本机有文件的作品，这些只是「外面出了
+ * 这一部」。所以它自己一行，卡片上不出时长、大小、来源徽章：那几个读数对一条还没有
+ * 文件的番号全是空的，照着资产卡画会让人以为点开能看。
+ *
+ * 落点用发现时那条地址，不另拼。JavDB 演员页那类源给的就是作品页 `/v/…`，而按番号拼
+ * 搜索地址是把「这是哪一部」交给站内检索去猜——缺 id 就不给入口，全站同一条规矩。 */
+function feedNewCardHtml(item){
+  const label=[item.studio,item.release_date].filter(Boolean).join(' · ');
+  const cover=item.cover_url
+    ?`<img class="poster" src="${esc(item.cover_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
+    :'<span class="nopic">无封面</span>';
+  /* 点击区自己一个类，不共用 `.cardopenhit`：那一个是「在 Peach 里打开这条」的落点，
+     全站按它认站内跳转（`test_follow_web` 盯着它不许变成外链）。这一条通向别人的站。 */
+  const open=item.link
+    ?`<a class="feednewopen" href="${esc(item.link)}" target="_blank" rel="noreferrer" aria-label="打开 ${esc(item.code)} 的作品页"></a>`:'';
+  return `<article class="card feednewcard${item.read?' isread':''}" data-feed-id="${item.id}">
+    ${open}<div class="pic" style="--card-ratio:${COVER_FRONT_RATIO}">${cover}
+      <div class="hovertools feednewtools">
+        <button type="button" data-feed-action="ignore" title="不想看" aria-label="不想看 ${esc(item.code)}">${icon('x')}</button>
+        <button type="button" data-feed-action="read" title="标为已看过" aria-label="标为已看过 ${esc(item.code)}">${icon('check')}</button></div></div>
+    <div class="meta"><div class="mtext"><b class="t mono">${esc(item.code)}</b>
+      <div class="s mono">${esc(item.title||item.performers||'资料还没取到')}</div>
+      ${label?`<div class="s mono">${esc(label)}</div>`:''}</div></div></article>`;
+}
+
+/* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次
+   刷新都变成对别人服务器的一次拉取，而订阅的间隔本来就是按天算的。 */
+async function renderFeedNew(host,entityId){
+  if(!host)return;
+  const query=new URLSearchParams({limit:'12'});
+  if(entityId)query.set('entity',String(entityId));
+  const data=await api('/api/feeds/discoveries?'+query).catch(()=>null);
+  const items=data&&!data.error?(data.items||[]):[];
+  if(!items.length){host.hidden=true;host.innerHTML='';return}
+  host.hidden=false;
+  host.innerHTML=`<h3 class="feednewtitle disp">新作 · 未入库</h3>
+    <div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
+  host.querySelectorAll('[data-feed-action]').forEach(button=>button.onclick=async()=>{
+    const card=button.closest('[data-feed-id]');
+    const action=button.dataset.feedAction;
+    await api('/api/feeds/discovery',{method:'POST',
+      body:JSON.stringify({action,ids:[Number(card.dataset.feedId)]})}).catch(()=>null);
+    // 忽略的那条当场消失，已看过的留在原位只是变淡：已读是标记，不是关掉。
+    if(action==='ignore')card.remove();else card.classList.add('isread');
+    if(!host.querySelector('[data-feed-id]'))host.hidden=true;
+  });
+  wireDrag(host.querySelector('.feednewrow'));
+  wireHorizontalScroller(host.querySelector('.feednewrow'));
+}
 
 /* 外链是别人服务器上的东西，会在我们不知情的时候烂掉——实测 719 条里 152 条打不开，
    而它们在资料页上和好链接长得一模一样，只有点下去才知道。所以检查要能随时重跑，
@@ -8024,12 +8078,16 @@ async function openEntity(kind,name,push=true){
         ${links?`<div class="entitylinks">${links}</div>`:''}
         ${entryMarks?`<div class="entrymarks">${entryMarks}</div>`:''}</div></div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
+    <section class="feednew" data-feed-new aria-label="新作 · 未入库" hidden></section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
     <div class="entitysection"></div>`;
   /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
      不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的
      正脸原图。换完重进这一页——头像索引在服务端已经失效过一次，重画才读得到新图。 */
+  /* 关注的这位有新作、库里还没有文件时，那一行摆在资料卡和作品之间：它讲的是这个人，
+     但不是这一页的正文。一条都没有就整块不出（`renderFeedNew` 自己判）。 */
+  if(d.id)void renderFeedNew($('#index').querySelector('[data-feed-new]'),Number(d.id));
   const pickerHost=$('#index').querySelector('[data-avatar-picker]');
   if(pickerHost&&d.id)import('/dist/peach-ui.js').then(ui=>ui.mountIsland('avatar-picker',pickerHost,{
     kind,entityId:Number(d.id),name:d.canonical_name||name,
@@ -8659,6 +8717,13 @@ async function load(reset){
   // 已经挂着就让它接着跑：重挂要先清空容器，而它这一刻要说的话跟上一刻是同一句。
   if(reset&&isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))
     void mountIsland('library-processing',$('#libraryProcessingNotice'),{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});
+  /* 新作那一行只在目录路径上出现：管理页、回收站这些页面回答的是别的问题，一行「外面出了
+     什么」摆在那里只是噪音。离开目录时要显式收起——它是 `#main` 的固定子节点，没人收就
+     一直挂在那儿。 */
+  if(reset){
+    if(isCatalogPath(location.pathname))void renderFeedNew($('#feedNew'));
+    else{$('#feedNew').hidden=true;$('#feedNew').innerHTML=''}
+  }
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
   const pageOffset=reset?0:offset+appSettings.batchSize;
