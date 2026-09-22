@@ -405,10 +405,12 @@ export function TastePage(props: TasteProps) {
   });
   const refresh = useMutation({
     mutationFn: () => startTasteRefresh(range),
-    onSuccess: () => {
+    onSuccess: (started) => {
       setTracking(true);
       setOutcome(null);
-      // 起的那一次回的就是任务快照，但轮询的节律由这个键说了算：让它立刻重读一次接上。
+      /* 起的那一次回的就是这一趟的快照，先换进缓存再重读：缓存里还躺着上一趟的终态，重读
+         回来之前它会先被当成这一趟的回执报出去；这一趟在重读之前就跑完时，也会被它顶掉。 */
+      queryClient.setQueryData(TASTE_REFRESH_KEY, started);
       void queryClient.invalidateQueries({ queryKey: TASTE_REFRESH_KEY });
     },
   });

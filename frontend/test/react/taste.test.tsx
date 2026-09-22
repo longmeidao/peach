@@ -16,7 +16,7 @@ import {
 } from '../../src/react/taste/taste';
 import { TastePage } from '../../src/react/taste/taste-page';
 
-import { choose, click, mountRoot, settle } from './render';
+import { buttonNamed, choose, click, mountRoot, pending, settle } from './render';
 
 // 客户端是模块级的单例（所有 React 根共用一个），用例之间不清就互相喂数据。
 afterEach(() => queryClient.clear());
@@ -80,7 +80,8 @@ type TasteReply = TasteData | null | typeof HOLD;
 
 interface Plan {
   taste?: TasteReply[];
-  job?: TasteJob[];
+  /** 读取任务的快照队列。放一个还没兑现的 Promise，就是那一问还在路上。 */
+  job?: (TasteJob | Promise<TasteJob>)[];
   imported?: { dashboard: TasteData };
   removed?: { removed: number; dashboard: TasteData };
 }
@@ -95,7 +96,11 @@ function serve(plan: Plan) {
   const fetcher = vi.fn(async (input: string, init?: RequestInit) => {
     if (input === TASTE_IMPORT_URL) return ok(plan.imported ?? { dashboard: payload() });
     if (input === TASTE_SOURCE_URL) return ok(plan.removed ?? { removed: 1, dashboard: payload() });
-    if (input === TASTE_REFRESH_URL) return ok(next(jobs));
+    if (input === TASTE_REFRESH_URL) {
+      // 起一趟回的是这一趟 running 的快照，和 `BackgroundJob.start` 一致。
+      if (init?.method) return ok({ status: 'running', stage: 'discovering' });
+      return ok(await next(jobs));
+    }
     if (input.startsWith(TASTE_URL)) {
       const reply = next(tastes);
       if (reply === HOLD) return new Promise<never>(() => {});
@@ -179,6 +184,24 @@ it('本次亲眼见过它在跑，跑完才发回执并重取 dashboard', async 
   await settle();
   expect(props.toast.mock.calls).toEqual([['已更新口味分析']]);
   expect(tasteGets(fetcher).length).toBeGreaterThan(1);
+});
+
+it('点下读取到重读回来之间，缓存里上一趟的终态不冒充这一趟的回执', async () => {
+  const reread = pending<TasteJob>();
+  const { props, host } = await open({
+    job: [{ status: 'failed', error: '上一趟的失败' }, reread.answer],
+  });
+  await click(buttonNamed('读取浏览器历史', host));
+  await settle();
+  // 重读还没回来，但这一趟已经起了：既不该报回执，也不该把上一趟的失败铺成这一趟的。
+  expect(props.toast).not.toHaveBeenCalled();
+  expect(host.textContent).not.toContain('上一趟的失败');
+  expect(host.textContent).toContain('正在读取浏览记录并更新口味分析');
+
+  // 这一趟在第一次重读之前就跑完了：它的结果照样要接住。
+  await reread.release({ status: 'complete' });
+  await settle();
+  expect(props.toast.mock.calls).toEqual([['已更新口味分析']]);
 });
 
 it('导入按 octet-stream 发原文件，文件名走请求头，回来的那一份直接换进「全部时间」', async () => {

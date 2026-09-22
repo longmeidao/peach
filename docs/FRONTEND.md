@@ -250,7 +250,10 @@ BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选�
    `isPending`，进另一个动作前 `reset()` 掉上一个的结果，屏幕上不会同时挂着两次的结论。
    跟后台任务时 `refetchInterval` 按状态开关（`running` 才问），并且**首屏读到的旧结果
    不冒充新结果**：任务关掉页面照样在跑，状态里常年躺着上一趟的回执，只有本次启动过、
-   或者本次亲眼见过它在跑，终态才画成结果、发一次 toast。
+   或者本次亲眼见过它在跑，终态才画成结果、发一次 toast。启动成功时先把启动请求回的
+   `running` 快照 `setQueryData` 换进任务键，再 `invalidateQueries`：只重读的话，重读回来
+   之前缓存里的上一趟终态会被当成这一趟的回执，这一趟在重读前跑完时结果也会被它顶掉。
+   用例要用手动放行的 `pending()`（`frontend/test/react/render.tsx`）拖住那次重读。
 3. `frontend/src/react/entry.tsx`：在 `pages` 里登记 `{prefetch, mount: mounter(Page)}`，
    签名写进 `bundle.d.ts` 的 `ReactPages`；`frontend/src/islands.ts` 里 `IslandContracts`
    取 bundle 的 props 类型，`REGISTRY` 登记 `{react: '<page>'}`。

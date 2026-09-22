@@ -41,6 +41,14 @@ export const settle = () => act(async () => {
   for (let i = 0; i < 10; i += 1) await Promise.resolve();
 });
 
+/** 一问还在路上的服务端回话：用例手动放行，模拟真网络里「点下去」和「重读回来」之间那段空档。
+ *  假 fetch 在同一个 act 里就回话，会把这段空档里才看得见的缺陷盖住。 */
+export function pending<T>() {
+  let release!: (value: T) => void;
+  const answer = new Promise<T>((done) => { release = done });
+  return { answer, release: (value: T) => act(async () => { release(value) }) };
+}
+
 /** React 用自己记下的值判断输入有没有变，只派发事件不经过原生 setter 时它会忽略。 */
 export async function type(input: HTMLInputElement | null | undefined, value: string) {
   if (!input) throw new Error('输入框没有画出来');

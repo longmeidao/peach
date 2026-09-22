@@ -237,10 +237,12 @@ function CoverCard({ toast }: ScrapingProps) {
   });
   const start = useMutation({
     mutationFn: () => apiSend<CoverJob>(SCRAPING_COVER_URL, { code }),
-    onSuccess: () => {
+    onSuccess: (started) => {
       setTracking(true);
       setOutcome(null);
-      // 启动的那一次回的就是任务快照，但轮询的节律由这个键说了算：让它立刻重读一次接上。
+      /* 启动的那一次回的就是这一趟的快照，先换进缓存再重读：缓存里还躺着上一趟的终态，重读
+         回来之前它会先被当成这一趟的回执报出去；这一趟在重读之前就跑完时，也会被它顶掉。 */
+      queryClient.setQueryData(COVER_JOB_KEY, started);
       void queryClient.invalidateQueries({ queryKey: COVER_JOB_KEY });
     },
   });
@@ -307,9 +309,11 @@ function AmaneBridgeCard({ toast }: ScrapingProps) {
   });
   const rebuild = useMutation({
     mutationFn: () => apiSend<CoverJob>(AMANE_BRIDGE_REBUILD_URL, {}),
-    onSuccess: () => {
+    onSuccess: (started) => {
       setTracking(true);
       setOutcome(null);
+      // 同封面那一趟；这个键缓存的是整张卡，这一趟的快照只换进 `job` 那一格。
+      queryClient.setQueryData<AmaneBridge>(AMANE_BRIDGE_KEY, (current) => current && { ...current, job: started });
       void queryClient.invalidateQueries({ queryKey: AMANE_BRIDGE_KEY });
     },
   });
