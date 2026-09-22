@@ -138,6 +138,7 @@ def create_app(
         transcode_root=settings.transcode_root,
         stream_root=settings.stream_root,
         follow_state_root=settings.follow_state_root,
+        entry_links_root=settings.entry_links_root,
         taste_history_root=settings.taste_history_output_root,
         taste_history_store=settings.taste_history_store,
         taste_history_import_root=settings.taste_history_import_root,

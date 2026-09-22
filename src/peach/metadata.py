@@ -453,7 +453,9 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
                 aliases.append(cleaned)
         performer = {
             "name": name,
-            "external_id": str(item.get("dmm_id") or ""),
+            # `dmm_id` 是 r18/DMM 那一路的写法；别的来源给的是同一件东西的通用写法，
+            # 两个键在这里合成一个字段，落库时跟着 `profile_source` 走。
+            "external_id": str(item.get("dmm_id") or item.get("external_id") or ""),
             "thumb_url": str(item.get("thumb_url") or ""),
         }
         if aliases:

@@ -37,6 +37,18 @@ export interface UninstallState {
 
 export interface PeachProxyState { mode: string; proxy_saved: boolean; needs_selection: boolean }
 
+/** 人物资料页上的一枚外部入口。`placeholder` 是这一站的模板里该填的那个占位符。 */
+export interface EntryLinkSite {
+  key: string;
+  label: string;
+  placeholder: string;
+  enabled: boolean;
+  template: string;
+  default_template: string;
+}
+
+export interface EntryLinksState { sites: EntryLinkSite[] }
+
 export interface AutomaticUpdateState {
   mode: string; interval_hours: number; available: boolean; download_available: boolean; error?: string;
 }
@@ -71,6 +83,7 @@ export interface ConfigurationData {
   startup?: StartupState;
   uninstall?: UninstallState;
   peach_proxy?: PeachProxyState;
+  entry_links?: EntryLinksState;
   updates?: ReleaseState;
   update_job?: UpdateJob;
   automatic_updates?: AutomaticUpdateState;

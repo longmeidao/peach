@@ -81,6 +81,7 @@ class WebContract:
                  follow_secrets_root: Path | None = None,
                  follow_state_root: Path | None = None,
                  follow_shared_root: Path | None = None,
+                 entry_links_root: Path | None = None,
                  taste_history_root: Path | None = None,
                  taste_history_store: Path | None = None,
                  taste_history_import_root: Path | None = None,
@@ -116,6 +117,10 @@ class WebContract:
                                     if follow_secrets_root is not None else SECRETS_DIR)
         self.follow_state_root = (Path(follow_state_root)
                                   if follow_state_root is not None else STATE_DIR)
+        # 人物页外部入口的开关与地址模板。和上面几个同一个道理：走实例属性，测试才
+        # 落得进临时目录，不会读到这台机器真实的偏好。
+        self.entry_links_root = (Path(entry_links_root)
+                                 if entry_links_root is not None else STATE_DIR)
         # 共享副本只承载**声明为可同步**的凭据字段，见 follow_secrets.SYNCABLE_FIELDS。
         # 复制关掉时 SHARED_CREDENTIAL_ROOT 是 None，凭据只留在本机。
         self.follow_shared_root = (Path(follow_shared_root)

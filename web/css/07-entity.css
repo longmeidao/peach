@@ -71,6 +71,14 @@
 .entitylinks a.iconlink{width:36px;padding:0;gap:0;justify-content:center}
 /* 官网域名前显示站点自己那枚图标，取不到才露出地球；与带名称的链接共用间距。 */
 .entitylinks a.urllink{letter-spacing:.02em}
+/* 外部入口那一排：同一个人在别处的那一页。行首那个词说明这一排通向站外，不是馆藏里的
+   东西。入口本身不另写形状——Board 对不带圆标的站外链接已有一套文字链写法
+   （board.css 里 `a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon))`），
+   这三枚正落在里面；上面那排外链是药丸，因为它们每枚都带一个圆标撑着。
+   窄屏下整行换行，入口跟着往下排——三枚横滚一个都省不下，不值得再接一套拖动映射。 */
+.entryrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:14px;max-width:100%}
+.entryhead{flex:none;color:var(--muted);font-size:var(--fs-sm)}
+.entryentries{display:flex;flex-wrap:wrap;gap:12px;min-width:0}
 .entityskeletontext{width:100%}
 .entityskeletontext .entitytitle .skeleton{width:60%;height:auto}
 .entityskeletontext .alias .skeleton{display:block;width:40%;height:20px}

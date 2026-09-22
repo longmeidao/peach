@@ -2240,6 +2240,33 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('<img class="entityfavicon" src="${esc(linkMarkUrl(x))}"', official)
         self.assertIn('data-drop="self"', official)
 
+    def test_the_entry_row_only_prints_addresses_the_server_already_built(self):
+        """外部入口这一排是服务端拼好的地址，页面只负责排。
+
+        前端手里没有站点 id 也没有规范名，模板拼在这边等于再养一份规则；缺 id 的站点
+        根本不在 `entry_links` 里，页面上也就没有一枚点过去落空的入口。文字就写站名：
+        `/link-mark` 认的是账本里的链接 id，这几条不是账本链接，取不到圆标。
+        """
+        self.assertPageContains("const entryLinks=(d.entry_links||[]).map(x=>")
+        self.assertPageContains(
+            '<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer">${esc(x.label)}</a>')
+        self.assertPageContains(
+            '<div class="entryrow"><span class="entryhead">外部入口</span>'
+            '<span class="entryentries">${entryLinks}</span></div>')
+        entry = self.app_js[self.app_js.index("const entryLinks=(d.entry_links"):]
+        self.assertNotIn("http", entry[:entry.index(".join('');")], "地址由服务端拼，页面不许自己接")
+        self.assertPageContains(
+            ".entryrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;"
+            "margin-top:14px;max-width:100%}")
+        self.assertPageContains(".entryentries{display:flex;flex-wrap:wrap;gap:12px;min-width:0}")
+        # 入口的形状归 Board 的站外文字链那条规则管，这里不再写一份药丸盖在它上面：
+        # 那份写了也不生效（`body a:is(...)` 的权重更高），只会让人以为改它有用。
+        entries = self.page[self.page.index(".entryentries{"):]
+        self.assertNotIn("border", entries[:entries.index(".entityskeletontext{")])
+        # 窄屏只换行不横滑：三枚最多堆两行，接一套横滑省不下什么，整行跟着单列卡居中。
+        self.assertPageContains(
+            ".entityhero .entryrow,.entityhero .entryentries{justify-content:center}")
+
     def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
         self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
         self.assertPageContains('showEntityLoading(kind);')

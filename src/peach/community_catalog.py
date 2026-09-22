@@ -79,7 +79,10 @@ _JAVDB_PANEL = re.compile(r'<div class="panel-block[^"]*">\s*<strong>([^<:：]+)
                           r'<span class="value">(.*?)</span>', re.S)
 _JAVDB_TITLE = re.compile(r'<strong class="current-title">([^<]*)</strong>')
 _JAVDB_COVER = re.compile(r'<img src="(https://[^"]+)" class="video-cover"')
-_JAVDB_ACTRESS = re.compile(r'<a[^>]*class="actor-female"[^>]*>([^<]+)</a>')
+_JAVDB_ACTRESS = re.compile(r'<a\s([^>]*)>([^<]+)</a>')
+#: 演員一栏里每个人名都挂着自己的资料页。那串 id 正是人物页 JavDB 入口要的东西，
+#: 取名字时顺手带出来——另走一趟演员页只是把同一页再取一遍，而 javdb 的配额最紧。
+_JAVDB_ACTOR_HREF = re.compile(r'href="/actors/([A-Za-z0-9]+)"')
 _JAPANESE = re.compile(r"[぀-ヿ一-鿿]")
 
 
@@ -183,6 +186,22 @@ def javbus_work(transport, code: str, *, deadline: float | None = None) -> dict:
                 cover_urls=covers, cover_url=covers[0] if covers else "")
 
 
+def javdb_actresses(value: str) -> list[dict]:
+    """演員一栏里的女优：名字，以及她在 javdb 的演员 id。
+
+    男优挂的是同样的 `/actors/` 链接，靠 `actor-female` 分开。href 与 class 在标签里的
+    先后不固定，所以先取整段属性再判，不假设它们的次序。
+    """
+    found = []
+    for attributes, name in _JAVDB_ACTRESS.findall(value):
+        if "actor-female" not in attributes:
+            continue
+        actor = _JAVDB_ACTOR_HREF.search(attributes)
+        found.append({"japanese_name": clean(name), "profile_source": "javdb",
+                      "external_id": actor.group(1) if actor else ""})
+    return found
+
+
 def _javdb_page(transport, url: str, *, deadline: float | None) -> str:
     page = _text(_fetch(transport, url, referer=JAVDB_BASE + "/", limit=PAGE_LIMIT, deadline=deadline))
     if JAVDB_LOGIN.search(page):
@@ -211,7 +230,7 @@ def javdb_work(transport, code: str, *, deadline: float | None = None) -> dict:
     title = _JAVDB_TITLE.search(page)
     cover = _JAVDB_COVER.search(page)
     return dict(id=shown, source_url=url, title=clean(title.group(1)) if title else "",
-                actresses=[{"japanese_name": clean(name)} for name in _JAVDB_ACTRESS.findall(panel.get("演員", ""))],
+                actresses=javdb_actresses(panel.get("演員", "")),
                 maker=_maker_writing(clean(panel.get("片商", ""))), label=clean(panel.get("發行", "")),
                 series=clean(panel.get("系列", "")), director=clean(panel.get("導演", "")),
                 release_date=clean(panel.get("日期", "")), runtime=int(runtime.group()) if runtime else None,

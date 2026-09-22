@@ -13,7 +13,8 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from peach import desktop_startup, desktop_uninstall, peach_proxy, scraping_access, settings_file
+from peach import (desktop_startup, desktop_uninstall, entry_links, peach_proxy,
+                   scraping_access, settings_file)
 
 
 class DesktopSettingsTests(unittest.TestCase):
@@ -150,6 +151,15 @@ class DesktopSettingsTests(unittest.TestCase):
             remove.assert_called_once_with(self.config,False)
             self.assertEqual(client.post('/api/configuration/startup',json={'enabled':'false','silent':True}).status_code,400)
             self.assertEqual(client.post('/api/configuration/peach-proxy',json={'mode':'proxy','proxy':'invalid'}).status_code,400)
+            # 外部入口：模板缺占位符时整批不写，落下去的会是一枚点过去必然落空的入口。
+            sites = {site.key: {'enabled': True, 'template': site.template}
+                     for site in entry_links.SITES}
+            self.assertEqual(client.post('/api/configuration/entry-links',json={'sites':sites}).status_code,200)
+            broken = {key: dict(row) for key, row in sites.items()}
+            broken['javdb']['template'] = 'https://javdb.com/actors/'
+            self.assertEqual(client.post('/api/configuration/entry-links',json={'sites':broken}).status_code,400)
+            self.assertEqual(entry_links.read(self.config.directory('state'))['javdb']['template'],
+                             'https://javdb.com/actors/{javdb_id}?sort_type=4')
 
     def test_startup_does_not_overwrite_another_installation(self):
         with patch.object(desktop_startup, 'startup_directory', return_value=self.root), patch.object(desktop_startup, 'shortcut', side_effect=[
