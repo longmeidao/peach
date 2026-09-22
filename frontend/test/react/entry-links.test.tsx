@@ -2,7 +2,7 @@ import { expect, it, vi } from 'vitest';
 
 import { GeneralSettings } from '../../src/react/settings/general-settings';
 import type { ConfigurationData, EntryLinksState } from '../../src/react/bundle';
-import { buttonNamed, click, fetchMock, mount, sentBody, settle, submit, switches, type } from './render';
+import { buttonNamed, fetchMock, mount, sentBody, settle, submit, switches, type } from './render';
 
 const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
   editable: true, notice: '', revision: 'rev-1', media_dirs: [], port: 9123, facts: [], ...over,
@@ -10,35 +10,33 @@ const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
 
 const state: EntryLinksState = {
   sites: [
-    { key: 'javdb', label: 'JavDB', enabled: true, host: 'javdb.com', default_host: 'javdb.com' },
-    { key: 'minnano-av', label: 'minnano-av', enabled: true, host: null, default_host: null },
-    { key: 'missav', label: 'MISSAV', enabled: false, host: 'missav.ws', default_host: 'missav.ws' },
+    { key: 'javdb', label: 'JavDB', host: '', default_host: 'javdb.com' },
+    { key: 'missav', label: 'MISSAV', host: 'missav.ai', default_host: 'missav.ws' },
   ],
 };
 
-it('外部入口：三站各一颗开关，有镜像的两站各一个域名框，保存发出实际值', async () => {
+it('外部入口：能换镜像的两站各一个地址框，默认留空，保存发出框里的值', async () => {
   const fetcher = fetchMock(200, state);
   vi.stubGlobal('fetch', fetcher);
   const receipt = vi.fn();
   const host = await mount(<GeneralSettings data={data({ entry_links: state })} receipt={receipt} />);
-  expect(switches(host).map((input) => input.getAttribute('aria-label')))
-    .toEqual(['在资料页显示 JavDB 入口', '在资料页显示 minnano-av 入口', '在资料页显示 MISSAV 入口']);
-  expect(switches(host).map((input) => input.checked)).toEqual([true, true, false]);
-  // みんなのAV 只此一家，没有域名可换，那一行就不该出现一个填了也没用的框。
+  // 入口出不出现由账本里有没有站点 id 决定，三枚按钮自己就在资料页上，这里没有开关。
+  expect(switches(host)).toEqual([]);
+  // みんなのAV 只此一家，没有域名可换，它不出现在这一页上。
   expect(host.querySelector('#entry-link-minnano-av')).toBeNull();
-  expect(host.textContent).toContain('只写域名本身，默认 javdb.com');
-  await click(switches(host)[2]);
-  await type(host.querySelector('#entry-link-javdb'), 'javdb521.com');
+  const javdb = host.querySelector<HTMLInputElement>('#entry-link-javdb');
+  // 默认值不要人先抄一遍：框是空的，当前在用的那个域名写在占位符里。
+  expect(javdb?.value).toBe('');
+  expect(javdb?.placeholder).toBe('javdb.com');
+  expect(host.textContent).toContain('JavDB 地址');
+  expect(host.textContent).not.toContain('地址模板');
+  await type(javdb, 'javdb521.com');
   expect(fetcher).not.toHaveBeenCalled();
   await submit(host.querySelector('form'));
   await settle();
   expect(fetcher.mock.calls[0]?.[0]).toBe('/api/configuration/entry-links');
   expect(sentBody(fetcher)).toEqual({
-    sites: {
-      javdb: { enabled: true, host: 'javdb521.com' },
-      'minnano-av': { enabled: true },
-      missav: { enabled: true, host: 'missav.ws' },
-    },
+    sites: { javdb: { host: 'javdb521.com' }, missav: { host: 'missav.ai' } },
   });
   expect(receipt).toHaveBeenCalledWith('已保存配置');
 });

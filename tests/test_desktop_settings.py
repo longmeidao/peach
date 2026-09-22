@@ -152,9 +152,8 @@ class DesktopSettingsTests(unittest.TestCase):
             self.assertEqual(client.post('/api/configuration/startup',json={'enabled':'false','silent':True}).status_code,400)
             self.assertEqual(client.post('/api/configuration/peach-proxy',json={'mode':'proxy','proxy':'invalid'}).status_code,400)
             # 外部入口：域名不成形时整批不写，落下去的会是一排点过去必然落空的入口。
-            sites = {site.key: ({'enabled': True, 'host': site.host} if site.mirrored
-                                else {'enabled': True})
-                     for site in entry_links.SITES}
+            sites = {site.key: {'host': site.host}
+                     for site in entry_links.SITES if site.mirrored}
             self.assertEqual(client.post('/api/configuration/entry-links',json={'sites':sites}).status_code,200)
             broken = {key: dict(row) for key, row in sites.items()}
             broken['javdb']['host'] = 'javdb.com/actors'

@@ -1,4 +1,4 @@
-"""人物资料页的外部入口：几个站点的直达地址，以及它们的本机开关与镜像域名。
+"""人物资料页的外部入口：几个站点的直达地址，以及其中两站可换的镜像域名。
 
 入口只由后端拼：地址要用的东西都在服务端——`entity_external_ref` 里的站点 id、
 `entity.canonical_name` 和 `entity_alias`。前端拿到的是一串带位置与标记的
@@ -31,10 +31,13 @@
 **两种位置。** minnano-av 是一份资料页，和事务所官网、社媒是同一类东西，所以它排进上面
 那排链接里。JavDB 与 MISSAV 是「去看片」的入口，另起一行，用两站自己的标识。
 
-**能改的只有域名。** JavDB 与 MISSAV 各有一排可换的镜像域名，主域名连不上时得跟着换，
-所以配置页给这两站各留一个域名框；路径与占位符都由这里定死。整条模板不交给使用者填：
-占位符写错换来的是一排看着正常、点开全是 404 的入口，而域名对不对点一次就知道。
-みんなのAV 只此一家，它那一行只有开关。
+**配置页只有两个域名框。** JavDB 与 MISSAV 各有一排可换的镜像域名，主域名连不上时得跟着
+换，所以这两站各留一个框，留空就是上面那个默认域名；路径与占位符由这里定死。整条模板不
+交给使用者填：占位符写错换来的是一排看着正常、点开全是 404 的入口，而域名对不对点一次
+就知道。みんなのAV 只此一家，没有可换的东西，它不出现在配置页上。
+
+**没有开关。** 入口本来就按账本里有没有 id 决定出不出现，三枚按钮自己就在资料页上；
+再给每站一个开关，是让人到设置里关掉一枚他在页面上根本没见到过的入口。
 """
 from __future__ import annotations
 
@@ -112,24 +115,22 @@ _STAGE_NAME_SOURCES = ("avdb-actor-mapping", "javdb", "wiki")
 
 
 def defaults() -> dict:
-    """各站全开，域名即上面那几条。"""
-    return {site.key: {"enabled": True, "host": site.host} for site in SITES}
+    """一个域名都没换过：能换的那两站留空，读的时候各自退回自己的默认域名。"""
+    return {site.key: {"host": ""} for site in SITES if site.mirrored}
 
 
 def _clean(saved: object) -> dict:
-    """把读到的内容收敛成已知站点。坏值退回默认，不让一个手改坏的文件关掉整行入口。"""
+    """把读到的内容收敛成已知站点。坏值退回默认，不让一个手改坏的文件废掉整行入口。"""
     result = defaults()
     if not isinstance(saved, dict):
         return result
     rows = saved.get("sites")
     for key, value in (rows.items() if isinstance(rows, dict) else ()):
         site = _BY_KEY.get(str(key))
-        if site is None or not isinstance(value, dict):
+        if site is None or not site.mirrored or not isinstance(value, dict):
             continue
-        if isinstance(value.get("enabled"), bool):
-            result[site.key]["enabled"] = value["enabled"]
         host = _tidy_host(value.get("host"))
-        if site.mirrored and _host_problem(site, host) == "":
+        if _host_problem(site, host) == "":
             result[site.key]["host"] = host
     return result
 
@@ -143,15 +144,14 @@ def read(root: Path) -> dict:
 
 
 def snapshot(root: Path) -> dict:
-    """配置页要的形状：每站一行；能换域名的多给当前域名和可恢复的默认值。"""
+    """配置页要的形状：只有能换域名的那几站，各带当前值和留空时用的默认域名。"""
     saved = read(root)
     return {"sites": [{
         "key": site.key,
         "label": site.title,
-        "enabled": saved[site.key]["enabled"],
-        "host": saved[site.key]["host"] if site.mirrored else None,
-        "default_host": site.host if site.mirrored else None,
-    } for site in SITES]}
+        "host": saved[site.key]["host"],
+        "default_host": site.host,
+    } for site in SITES if site.mirrored]}
 
 
 def _tidy_host(written: object) -> str:
@@ -169,33 +169,34 @@ def _tidy_host(written: object) -> str:
 
 
 def _host_problem(site: EntrySite, host: str) -> str:
-    """域名不能用时的那一句原因；能用时是空串。"""
+    """域名不能用时的那一句原因；能用时是空串。
+
+    空串本身可用——它就是「没换过，走默认域名」。要回到默认值，清空这个框就行；逼人去
+    手抄一遍默认域名的话，抄错了还得他自己认。
+    """
     if not host:
-        return f"{site.title} 的镜像域名不能为空"
+        return ""
     if len(host) > _HOST_LIMIT:
-        return f"{site.title} 的镜像域名请控制在 {_HOST_LIMIT} 个字符以内"
+        return f"{site.title} 的地址请控制在 {_HOST_LIMIT} 个字符以内"
     if not _HOST_SHAPE.fullmatch(host):
         return f"{site.title} 这里只写域名本身，像 {site.host}"
     return ""
 
 
 def save(root: Path, body: dict) -> dict:
-    """写回各站的开关与镜像域名。任一项不合规就整批不写。"""
+    """写回可换的那几站的域名。任一项不合规就整批不写。"""
     rows = body.get("sites")
     if not isinstance(rows, dict):
-        raise ValueError("请提交每个站点的开关与镜像域名")
+        raise ValueError("请提交每个站点的地址")
     result = defaults()
     for site in SITES:
+        if not site.mirrored:
+            continue
         row = rows.get(site.key)
         if not isinstance(row, dict):
             raise ValueError(f"缺少 {site.title} 的设置")
-        if not isinstance(row.get("enabled"), bool):
-            raise ValueError(f"{site.title} 的开关必须是 true 或 false")
-        result[site.key]["enabled"] = row["enabled"]
-        if not site.mirrored:
-            continue
         if not isinstance(row.get("host"), str):
-            raise ValueError(f"{site.title} 的镜像域名必须是文字")
+            raise ValueError(f"{site.title} 的地址必须是文字")
         host = _tidy_host(row["host"])
         problem = _host_problem(site, host)
         if problem:
@@ -276,11 +277,11 @@ def build(settings: dict, canonical_name: str, refs, aliases=()) -> list[dict]:
     out: list[dict] = []
     for site in SITES:
         row = settings.get(site.key) or {}
-        if not row.get("enabled", True) or (site.jav_only and not jav):
+        if site.jav_only and not jav:
             continue
         values = ids.get(site.provider, []) if site.provider else ([written] if written else [])
         host = _tidy_host(row.get("host")) if site.mirrored else site.host
-        if _host_problem(site, host):
+        if not host or _host_problem(site, host):
             host = site.host
         for index, value in enumerate(values):
             ordinal = _ordinal(index)
