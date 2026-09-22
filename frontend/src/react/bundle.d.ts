@@ -37,14 +37,13 @@ export interface UninstallState {
 
 export interface PeachProxyState { mode: string; proxy_saved: boolean; needs_selection: boolean }
 
-/** 人物资料页上的一枚外部入口。`placeholder` 是这一站的模板里该填的那个占位符。 */
+/** 人物资料页上的一枚外部入口。只此一家的站点 `host` 与 `default_host` 都是 null。 */
 export interface EntryLinkSite {
   key: string;
   label: string;
-  placeholder: string;
   enabled: boolean;
-  template: string;
-  default_template: string;
+  host: string | null;
+  default_host: string | null;
 }
 
 export interface EntryLinksState { sites: EntryLinkSite[] }

@@ -1,8 +1,8 @@
 /* 「外部入口」：人物资料页上通向 みんなのAV、JavDB 与 MISSAV 的那三枚直达入口。
  *
- * 每站一个开关加一条地址模板。地址由服务端拼（`peach.entry_links`），这一页交的只是
- * 模板本身——站点 id 与规范名都在账本里，前端拿不到也不该拿。模板里的占位符由服务端
- * 按站点给（`{javdb_id}`、`{minnano_id}`、`{name}`），所以提示里直接写它那一个。
+ * 每站一个开关；JavDB 与 MISSAV 多一个镜像域名框，这两站主域名连不上时在这里换。地址
+ * 由服务端拼（`peach.entry_links`），路径与占位符都在它那边——站点 id 与规范名都在账本
+ * 里，前端拿不到也不该拿。`host` 是 null 的站点没有镜像可换，只画开关。
  *
  * 校验也只在服务端：哪种地址算得上一条入口是它说了算，前端复制一份判定只会漂。 */
 import { useState, type FormEvent } from 'react';
@@ -31,7 +31,8 @@ export function EntryLinksForm({ initial, receipt }: {
     event.preventDefault();
     const body = {
       sites: Object.fromEntries(sites.map((site) =>
-        [site.key, { enabled: site.enabled, template: site.template }])),
+        [site.key, site.host === null ? { enabled: site.enabled }
+          : { enabled: site.enabled, host: site.host }])),
     };
     void action.run('save', (signal) =>
       apiSend<EntryLinksState>('/api/configuration/entry-links', body, 'POST', signal),
@@ -55,13 +56,14 @@ export function EntryLinksForm({ initial, receipt }: {
       <Stack divided>
         <Help>账本里没有这个站点 id 的人物不显示它那一枚入口，地址不会退回站内搜索。
           JavDB 与 MISSAV 只收 JAV 女优，这两枚还要账本里有哪个 JAV 目录站给过她 id 才出现；
-          FC2 个人摄那类创作者没有这种 id，资料页上也就没有这一行。</Help>
-        {sites.map((site) => (
-          <Input key={site.key} id={`entry-link-${site.key}`} label={`${site.label} 地址模板`}
-            autoComplete="off" maxLength={300} value={site.template}
-            onChange={(template) => change(site.key, { template })}
+          FC2 个人摄那类创作者没有这种 id，资料页上也就没有这一行。
+          这两站的主域名连不上时，把能打开的那个镜像域名填在下面，后面的路径由 Peach 自己拼。</Help>
+        {sites.filter((site) => site.host !== null).map((site) => (
+          <Input key={site.key} id={`entry-link-${site.key}`} label={`${site.label} 镜像域名`}
+            autoComplete="off" maxLength={100} value={site.host ?? ''}
+            onChange={(host) => change(site.key, { host })}
             validationBehavior="aria"
-            hint={`用 {${site.placeholder}} 占位，默认 ${site.default_template}`} />
+            hint={`只写域名本身，默认 ${site.default_host}`} />
         ))}
         {action.error ? <ErrorText>{action.error}</ErrorText> : null}
       </Stack>

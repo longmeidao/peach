@@ -26,7 +26,7 @@ class EntryLinkAddressTests(unittest.TestCase):
         # minnano-av 是一份资料页，排进上面那排链接；看片那两枚自己一行。
         self.assertEqual([row["slot"] for row in rows], ["pill", "mark", "mark"])
         self.assertEqual(rows[0]["url"], "https://www.minnano-av.com/actress155084.html")
-        self.assertEqual(rows[1]["url"], "https://javdb.com/actors/QDvG?sort_type=4")
+        self.assertEqual(rows[1]["url"], "https://javdb.com/actors/QDvG")
         # 药丸上写站点自己的名字，取自 minnano-av 官网的 title。
         self.assertEqual([row["label"] for row in rows],
                          ["みんなのAV", "JavDB", "MISSAV"])
@@ -43,8 +43,8 @@ class EntryLinkAddressTests(unittest.TestCase):
         self.assertEqual([row["label"] for row in pages], ["JavDB", "JavDB ②"])
         self.assertEqual([row["ordinal"] for row in pages], ["", "②"])
         self.assertEqual([row["url"] for row in pages],
-                         ["https://javdb.com/actors/d45k9?sort_type=4",
-                          "https://javdb.com/actors/ZX5z7?sort_type=4"])
+                         ["https://javdb.com/actors/d45k9",
+                          "https://javdb.com/actors/ZX5z7"])
 
     def test_a_site_without_an_id_is_absent_instead_of_a_search_address(self):
         rows = entry_links.build(entry_links.defaults(), "深田えいみ",
@@ -126,11 +126,18 @@ class EntryLinkAddressTests(unittest.TestCase):
         rows = entry_links.build(settings, "七沢みあ", [ref("javdb", "NPD3")])
         self.assertEqual([row["site"] for row in rows], ["javdb"])
 
-    def test_a_custom_template_is_used_as_written(self):
+    def test_a_mirror_domain_replaces_only_the_host(self):
         settings = entry_links.defaults()
-        settings["javdb"]["template"] = "https://javdb.com/actors/{javdb_id}/reviews"
+        settings["javdb"]["host"] = "javdb521.com"
         rows = entry_links.build(settings, "七沢みあ", [ref("javdb", "NPD3")])
-        self.assertEqual(rows[0]["url"], "https://javdb.com/actors/NPD3/reviews")
+        self.assertEqual(rows[0]["url"], "https://javdb521.com/actors/NPD3")
+
+    def test_a_broken_domain_falls_back_to_the_default_site(self):
+        """手改坏的域名拼出来是个不存在的主机名，那比退回默认站更难看出问题。"""
+        settings = entry_links.defaults()
+        settings["javdb"]["host"] = "javdb.com/actors"
+        rows = entry_links.build(settings, "七沢みあ", [ref("javdb", "NPD3")])
+        self.assertEqual(rows[0]["url"], "https://javdb.com/actors/NPD3")
 
 
 class EntryLinkSettingsFileTests(unittest.TestCase):
@@ -139,47 +146,53 @@ class EntryLinkSettingsFileTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name).resolve()
 
+    def body(self, **changed: dict) -> dict:
+        """配置页提交的形状：每站一行，能换域名的带上域名。"""
+        sites = {site.key: ({"enabled": True, "host": site.host} if site.mirrored
+                            else {"enabled": True})
+                 for site in entry_links.SITES}
+        sites.update(changed)
+        return {"sites": sites}
+
     def test_an_absent_file_reads_as_every_site_open(self):
         saved = entry_links.read(self.root)
         self.assertEqual(sorted(saved), ["javdb", "minnano-av", "missav"])
         self.assertTrue(all(row["enabled"] for row in saved.values()))
 
     def test_saving_round_trips_through_the_snapshot(self):
-        body = {"sites": {site.key: {"enabled": True, "template": site.template}
-                          for site in entry_links.SITES}}
-        body["sites"]["javdb"] = {"enabled": False,
-                                  "template": "https://javdb.com/actors/{javdb_id}"}
-        entry_links.save(self.root, body)
+        entry_links.save(self.root, self.body(javdb={"enabled": False,
+                                                     "host": "javdb521.com"}))
         rows = {row["key"]: row for row in entry_links.snapshot(self.root)["sites"]}
         self.assertFalse(rows["javdb"]["enabled"])
-        self.assertEqual(rows["javdb"]["template"], "https://javdb.com/actors/{javdb_id}")
-        self.assertEqual(rows["javdb"]["default_template"],
-                         "https://javdb.com/actors/{javdb_id}?sort_type=4")
-        self.assertEqual(rows["missav"]["placeholder"], "name")
+        self.assertEqual(rows["javdb"]["host"], "javdb521.com")
+        self.assertEqual(rows["javdb"]["default_host"], "javdb.com")
         self.assertEqual(rows["javdb"]["label"], "JavDB")
+        # みんなのAV 没有镜像可换，配置页据此只给它一个开关。
+        self.assertIsNone(rows["minnano-av"]["host"])
+        self.assertIsNone(rows["minnano-av"]["default_host"])
 
-    def test_a_template_without_its_placeholder_is_refused(self):
-        body = {"sites": {site.key: {"enabled": True, "template": site.template}
-                          for site in entry_links.SITES}}
-        body["sites"]["javdb"]["template"] = "https://javdb.com/actors/"
-        with self.assertRaises(ValueError) as caught:
-            entry_links.save(self.root, body)
-        self.assertIn("{javdb_id}", str(caught.exception))
+    def test_a_pasted_address_is_trimmed_down_to_its_domain(self):
+        """镜像地址多半是整条复制过来的，前缀与末尾的斜杠不值得弹一条错误。"""
+        entry_links.save(self.root, self.body(missav={"enabled": True,
+                                                      "host": "https://missav.ai/"}))
+        self.assertEqual(entry_links.read(self.root)["missav"]["host"], "missav.ai")
 
-    def test_a_plain_http_template_is_refused(self):
-        body = {"sites": {site.key: {"enabled": True, "template": site.template}
-                          for site in entry_links.SITES}}
-        body["sites"]["missav"]["template"] = "http://missav.ws/cn/actresses/{name}"
+    def test_an_address_with_a_path_is_refused(self):
         with self.assertRaises(ValueError) as caught:
-            entry_links.save(self.root, body)
-        self.assertIn("https://", str(caught.exception))
+            entry_links.save(self.root, self.body(
+                javdb={"enabled": True, "host": "javdb.com/actors/{javdb_id}"}))
+        self.assertIn("只写域名本身", str(caught.exception))
+
+    def test_an_empty_domain_is_refused(self):
+        with self.assertRaises(ValueError) as caught:
+            entry_links.save(self.root, self.body(missav={"enabled": True, "host": " "}))
+        self.assertIn("不能为空", str(caught.exception))
 
     def test_a_hand_broken_file_falls_back_instead_of_emptying_the_row(self):
         (self.root / entry_links.FILENAME).write_text(
-            json.dumps({"sites": {"javdb": {"template": "not a url"}}}), encoding="utf-8")
+            json.dumps({"sites": {"javdb": {"host": "not a domain"}}}), encoding="utf-8")
         saved = entry_links.read(self.root)
-        self.assertEqual(saved["javdb"]["template"],
-                         "https://javdb.com/actors/{javdb_id}?sort_type=4")
+        self.assertEqual(saved["javdb"]["host"], "javdb.com")
         self.assertTrue(saved["javdb"]["enabled"])
 
 

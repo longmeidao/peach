@@ -1,4 +1,4 @@
-"""人物资料页的外部入口：几个站点的直达地址，以及它们的本机开关与模板。
+"""人物资料页的外部入口：几个站点的直达地址，以及它们的本机开关与镜像域名。
 
 入口只由后端拼：地址要用的东西都在服务端——`entity_external_ref` 里的站点 id、
 `entity.canonical_name` 和 `entity_alias`。前端拿到的是一串带位置与标记的
@@ -30,10 +30,16 @@
 
 **两种位置。** minnano-av 是一份资料页，和事务所官网、社媒是同一类东西，所以它排进上面
 那排链接里。JavDB 与 MISSAV 是「去看片」的入口，另起一行，用两站自己的标识。
+
+**能改的只有域名。** JavDB 与 MISSAV 各有一排可换的镜像域名，主域名连不上时得跟着换，
+所以配置页给这两站各留一个域名框；路径与占位符都由这里定死。整条模板不交给使用者填：
+占位符写错换来的是一排看着正常、点开全是 404 的入口，而域名对不对点一次就知道。
+みんなのAV 只此一家，它那一行只有开关。
 """
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
@@ -65,6 +71,7 @@ class EntrySite:
     `provider` 空串表示这一站按名字拼，不需要账本里的 id。`label` 是页面上那枚入口的
     可读名字，`title` 是配置页和报错里的站点名。`mark` 是雪碧图里那枚标记的名字；
     MISSAV 没有可用的图形标识，它的 `mark` 是空串，由前端按站点自己的排版规则排字。
+    `host` 是默认域名，`mirrored` 说这一站能不能在配置页换域名。
     """
 
     key: str
@@ -72,30 +79,32 @@ class EntrySite:
     title: str
     placeholder: str
     provider: str
-    template: str
+    host: str
+    path: str
     slot: str
     mark: str
     jav_only: bool = False
+    mirrored: bool = False
 
 
 SITES: tuple[EntrySite, ...] = (
     # 页面上写站点自己的名字「みんなのAV」，取自它官网的 title；`minnano-av` 是域名和
     # 账本里的 provider，留给设置项的 key 与 `entity_external_ref` 用。
     EntrySite("minnano-av", "みんなのAV", "みんなのAV", "minnano_id", "minnano-av",
-              "https://www.minnano-av.com/actress{minnano_id}.html",
+              "www.minnano-av.com", "/actress{minnano_id}.html",
               SLOT_PILL, "brand-minnano"),
-    # javdb 的演员页就是作品列表，`sort_type=4` 只是把它按发行日期排；两条地址落在同一页，
-    # 所以只留这一条，按用户平时点的那个排序走。
     EntrySite("javdb", "JavDB", "JavDB", "javdb_id", "javdb",
-              "https://javdb.com/actors/{javdb_id}?sort_type=4",
-              SLOT_MARK, "mark-javdb", jav_only=True),
+              "javdb.com", "/actors/{javdb_id}",
+              SLOT_MARK, "mark-javdb", jav_only=True, mirrored=True),
     EntrySite("missav", "MISSAV", "MISSAV", "name", "",
-              "https://missav.ws/cn/actresses/{name}",
-              SLOT_MARK, "", jav_only=True),
+              "missav.ws", "/cn/actresses/{name}",
+              SLOT_MARK, "", jav_only=True, mirrored=True),
 )
 _BY_KEY = {site.key: site for site in SITES}
-#: 模板长度上限。地址栏塞得下的东西远不止这个数，但入口模板只有一个占位符要填。
-_TEMPLATE_LIMIT = 300
+#: 域名长度上限与形状。只认域名本身：字母数字、连字符和点，至少一个点。
+_HOST_LIMIT = 100
+_HOST_SHAPE = re.compile(r"[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?"
+                         r"(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+")
 #: 第二枚起的序号。用完退回括号数字，标签宁可长一点也不能两枚长得一模一样。
 _ORDINALS = "②③④⑤⑥⑦⑧⑨"
 #: 艺名类的别名来源。按子串认：来源串后面还挂着采集批次。
@@ -103,8 +112,8 @@ _STAGE_NAME_SOURCES = ("avdb-actor-mapping", "javdb", "wiki")
 
 
 def defaults() -> dict:
-    """各站全开，模板即上面那几条。"""
-    return {site.key: {"enabled": True, "template": site.template} for site in SITES}
+    """各站全开，域名即上面那几条。"""
+    return {site.key: {"enabled": True, "host": site.host} for site in SITES}
 
 
 def _clean(saved: object) -> dict:
@@ -119,9 +128,9 @@ def _clean(saved: object) -> dict:
             continue
         if isinstance(value.get("enabled"), bool):
             result[site.key]["enabled"] = value["enabled"]
-        template = value.get("template")
-        if isinstance(template, str) and _template_problem(site, template.strip()) == "":
-            result[site.key]["template"] = template.strip()
+        host = _tidy_host(value.get("host"))
+        if site.mirrored and _host_problem(site, host) == "":
+            result[site.key]["host"] = host
     return result
 
 
@@ -134,41 +143,47 @@ def read(root: Path) -> dict:
 
 
 def snapshot(root: Path) -> dict:
-    """配置页要的形状：每站一行，带站名、占位符和可恢复的默认模板。"""
+    """配置页要的形状：每站一行；能换域名的多给当前域名和可恢复的默认值。"""
     saved = read(root)
     return {"sites": [{
         "key": site.key,
         "label": site.title,
-        "placeholder": site.placeholder,
         "enabled": saved[site.key]["enabled"],
-        "template": saved[site.key]["template"],
-        "default_template": site.template,
+        "host": saved[site.key]["host"] if site.mirrored else None,
+        "default_host": site.host if site.mirrored else None,
     } for site in SITES]}
 
 
-def _template_problem(site: EntrySite, template: str) -> str:
-    """模板不能用时的那一句原因；能用时是空串。"""
-    mark = "{" + site.placeholder + "}"
-    if not template:
-        return f"{site.title} 的地址模板不能为空"
-    if len(template) > _TEMPLATE_LIMIT:
-        return f"{site.title} 的地址模板请控制在 {_TEMPLATE_LIMIT} 个字符以内"
-    if any(char.isspace() for char in template):
-        return f"{site.title} 的地址模板里不能有空格"
-    if not template.startswith("https://"):
-        return f"{site.title} 的地址模板要以 https:// 开头"
-    if template.count(mark) != 1:
-        return f"{site.title} 的地址模板要且只要一个 {mark}"
-    if template.replace(mark, "").count("{") or template.replace(mark, "").count("}"):
-        return f"{site.title} 的地址模板里只认 {mark} 这一个占位符"
+def _tidy_host(written: object) -> str:
+    """把填进来的东西收成域名。
+
+    镜像地址多半是从别处整条复制过来的，带着 `https://` 和结尾的斜杠。这两样去掉就是
+    合法的域名，为它们弹一条错误只是让人手工删一遍。再往后的路径不收：那是在改地址
+    形状，不是换域名。
+    """
+    host = str(written or "").strip()
+    for scheme in ("https://", "http://"):
+        if host.lower().startswith(scheme):
+            host = host[len(scheme):]
+    return host.rstrip("/")
+
+
+def _host_problem(site: EntrySite, host: str) -> str:
+    """域名不能用时的那一句原因；能用时是空串。"""
+    if not host:
+        return f"{site.title} 的镜像域名不能为空"
+    if len(host) > _HOST_LIMIT:
+        return f"{site.title} 的镜像域名请控制在 {_HOST_LIMIT} 个字符以内"
+    if not _HOST_SHAPE.fullmatch(host):
+        return f"{site.title} 这里只写域名本身，像 {site.host}"
     return ""
 
 
 def save(root: Path, body: dict) -> dict:
-    """写回各站的开关与模板。任一项不合规就整批不写。"""
+    """写回各站的开关与镜像域名。任一项不合规就整批不写。"""
     rows = body.get("sites")
     if not isinstance(rows, dict):
-        raise ValueError("请提交每个站点的开关与地址模板")
+        raise ValueError("请提交每个站点的开关与镜像域名")
     result = defaults()
     for site in SITES:
         row = rows.get(site.key)
@@ -176,13 +191,16 @@ def save(root: Path, body: dict) -> dict:
             raise ValueError(f"缺少 {site.title} 的设置")
         if not isinstance(row.get("enabled"), bool):
             raise ValueError(f"{site.title} 的开关必须是 true 或 false")
-        template = row.get("template")
-        if not isinstance(template, str):
-            raise ValueError(f"{site.title} 的地址模板必须是文字")
-        problem = _template_problem(site, template.strip())
+        result[site.key]["enabled"] = row["enabled"]
+        if not site.mirrored:
+            continue
+        if not isinstance(row.get("host"), str):
+            raise ValueError(f"{site.title} 的镜像域名必须是文字")
+        host = _tidy_host(row["host"])
+        problem = _host_problem(site, host)
         if problem:
             raise ValueError(problem)
-        result[site.key] = {"enabled": row["enabled"], "template": template.strip()}
+        result[site.key]["host"] = host
     path = Path(root) / FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     with FileLock(str(path) + ".lock", timeout=5):
@@ -261,16 +279,16 @@ def build(settings: dict, canonical_name: str, refs, aliases=()) -> list[dict]:
         if not row.get("enabled", True) or (site.jav_only and not jav):
             continue
         values = ids.get(site.provider, []) if site.provider else ([written] if written else [])
-        template = str(row.get("template") or site.template)
-        if _template_problem(site, template):
-            template = site.template
+        host = _tidy_host(row.get("host")) if site.mirrored else site.host
+        if _host_problem(site, host):
+            host = site.host
         for index, value in enumerate(values):
             ordinal = _ordinal(index)
+            path = site.path.replace("{" + site.placeholder + "}", quote(value, safe=""))
             out.append({"site": site.key,
                         "label": f"{site.label} {ordinal}".strip(),
                         "ordinal": ordinal, "slot": site.slot, "mark": site.mark,
-                        "url": template.replace("{" + site.placeholder + "}",
-                                                quote(value, safe=""))})
+                        "url": f"https://{host}{path}"})
     return out
 
 

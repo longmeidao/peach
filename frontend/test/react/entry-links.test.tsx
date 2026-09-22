@@ -10,19 +10,13 @@ const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
 
 const state: EntryLinksState = {
   sites: [
-    { key: 'javdb', label: 'JavDB', placeholder: 'javdb_id', enabled: true,
-      template: 'https://javdb.com/actors/{javdb_id}?sort_type=4',
-      default_template: 'https://javdb.com/actors/{javdb_id}?sort_type=4' },
-    { key: 'minnano-av', label: 'minnano-av', placeholder: 'minnano_id', enabled: true,
-      template: 'https://www.minnano-av.com/actress{minnano_id}.html',
-      default_template: 'https://www.minnano-av.com/actress{minnano_id}.html' },
-    { key: 'missav', label: 'MISSAV', placeholder: 'name', enabled: false,
-      template: 'https://missav.ws/dm42/cn/actresses/{name}',
-      default_template: 'https://missav.ws/dm42/cn/actresses/{name}' },
+    { key: 'javdb', label: 'JavDB', enabled: true, host: 'javdb.com', default_host: 'javdb.com' },
+    { key: 'minnano-av', label: 'minnano-av', enabled: true, host: null, default_host: null },
+    { key: 'missav', label: 'MISSAV', enabled: false, host: 'missav.ws', default_host: 'missav.ws' },
   ],
 };
 
-it('外部入口：三站各一颗开关与一条模板，保存发出开关与模板的实际值', async () => {
+it('外部入口：三站各一颗开关，有镜像的两站各一个域名框，保存发出实际值', async () => {
   const fetcher = fetchMock(200, state);
   vi.stubGlobal('fetch', fetcher);
   const receipt = vi.fn();
@@ -30,21 +24,20 @@ it('外部入口：三站各一颗开关与一条模板，保存发出开关与�
   expect(switches(host).map((input) => input.getAttribute('aria-label')))
     .toEqual(['在资料页显示 JavDB 入口', '在资料页显示 minnano-av 入口', '在资料页显示 MISSAV 入口']);
   expect(switches(host).map((input) => input.checked)).toEqual([true, true, false]);
-  // 占位符按站给：提示里写错一个，改模板的人就会把服务端填不进去的名字写进地址。
-  expect(host.textContent).toContain('用 {javdb_id} 占位');
-  expect(host.textContent).toContain('用 {name} 占位');
+  // みんなのAV 只此一家，没有域名可换，那一行就不该出现一个填了也没用的框。
+  expect(host.querySelector('#entry-link-minnano-av')).toBeNull();
+  expect(host.textContent).toContain('只写域名本身，默认 javdb.com');
   await click(switches(host)[2]);
-  await type(host.querySelector('#entry-link-minnano-av'),
-    'https://www.minnano-av.com/actress{minnano_id}.html?x=1');
+  await type(host.querySelector('#entry-link-javdb'), 'javdb521.com');
   expect(fetcher).not.toHaveBeenCalled();
   await submit(host.querySelector('form'));
   await settle();
   expect(fetcher.mock.calls[0]?.[0]).toBe('/api/configuration/entry-links');
   expect(sentBody(fetcher)).toEqual({
     sites: {
-      javdb: { enabled: true, template: 'https://javdb.com/actors/{javdb_id}?sort_type=4' },
-      'minnano-av': { enabled: true, template: 'https://www.minnano-av.com/actress{minnano_id}.html?x=1' },
-      missav: { enabled: true, template: 'https://missav.ws/dm42/cn/actresses/{name}' },
+      javdb: { enabled: true, host: 'javdb521.com' },
+      'minnano-av': { enabled: true },
+      missav: { enabled: true, host: 'missav.ws' },
     },
   });
   expect(receipt).toHaveBeenCalledWith('已保存配置');
