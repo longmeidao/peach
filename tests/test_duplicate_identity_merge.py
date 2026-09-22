@@ -6,12 +6,15 @@ import unittest
 from pathlib import Path
 
 from peach.migrations import upgrade
+from peach.review_csv import read_rows
 from scripts.merge_duplicate_identities import (
     apply_repeated_projections,
     apply_rows,
+    build_parser,
     collect,
     collect_repeated_projections,
     named_pairs,
+    run,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -514,6 +517,15 @@ class NamedPairTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.pairs("1:99:证据")
 
+    def test_one_entity_on_both_sides_is_refused(self):
+        with self.assertRaises(SystemExit):
+            self.pairs("1:1:证据")
+
+    def test_an_entity_named_twice_in_one_batch_is_refused(self):
+        """第一对合完 id 就没了，第二对再引用它就是合进一条不存在的实体。"""
+        with self.assertRaises(SystemExit):
+            self.pairs("1:2:证据", "1:2:另一段证据")
+
     def test_merging_series_rewrites_the_flat_column(self):
         """只搬关系不改 `asset.series`，卡片上还写着被丢弃的系列名。"""
         self.con.executemany(
@@ -536,6 +548,128 @@ class NamedPairTests(unittest.TestCase):
         self.assertEqual(
             [row[0] for row in self.con.execute("SELECT series FROM asset ORDER BY id")],
             ["Night Safari", "Night Safari"])
+
+
+class PairsOnlyTests(unittest.TestCase):
+    """`--pairs-only` 只执行人工点名那批，自动判据整趟不跑。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.db = self.root / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,creator)"
+            " VALUES(?,'local',?,?,'video',?)",
+            [(1, "/x/1.mp4", "1.mp4", "小桃"), (2, "/x/2.mp4", "2.mp4", "小桃")])
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'t','t')",
+            [(10, "creator", "小桃", "小桃"),
+             (11, "performer", "小桃", "小桃"),
+             (20, "performer", "五十岚星兰", "五十岚星兰"),
+             (21, "performer", "五十嵐星蘭", "五十嵐星蘭")])
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,?,?,1.0)",
+            [(1, 10, "creator", "legacy:asset"), (2, 10, "creator", "legacy:asset"),
+             (1, 11, "performer", "performer"),
+             (1, 21, "performer", "performer")])
+        self.con.commit()
+        self.con.close()
+        self.review = self.root / "merge.csv"
+        self.projections = self.root / "projections.csv"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def invoke(self, *extra):
+        args = build_parser().parse_args([
+            "--db", str(self.db),
+            "--review-csv", str(self.review),
+            "--projection-review-csv", str(self.projections),
+            *extra,
+        ])
+        return run(args)
+
+    def entity_ids(self):
+        connection = sqlite3.connect(self.db)
+        try:
+            return [row[0] for row in connection.execute(
+                "SELECT id FROM entity ORDER BY id")]
+        finally:
+            connection.close()
+
+    def test_the_detectors_still_run_without_the_switch(self):
+        """对照：不给开关时，同名那组照旧进复核 CSV。"""
+        self.assertEqual(self.invoke(), 0)
+        self.assertIn("小桃", {row["drop_name"] for row in read_rows(self.review)})
+
+    def test_only_the_named_pair_reaches_the_review_file(self):
+        self.assertEqual(self.invoke("--pairs-only", "--pair", "20:21:javdb 同一页"), 0)
+        rows = read_rows(self.review)
+        self.assertEqual([row["drop_id"] for row in rows], ["21"])
+        self.assertEqual(rows[0]["evidence"], "人工指定")
+        self.assertEqual(read_rows(self.projections), [])
+
+    def test_the_detected_group_is_not_written_to_the_ledger(self):
+        self.assertEqual(self.invoke(
+            "--pairs-only", "--pair", "20:21:javdb 同一页",
+            "--apply", "--backup", str(self.root / "backup.db")), 0)
+        self.assertEqual(self.entity_ids(), [10, 11, 20])
+
+    def test_the_switch_without_a_pair_is_refused(self):
+        """只处理人工那批却一对也没给，跑下去就是一趟什么都不做的空写入。"""
+        with self.assertRaises(SystemExit) as caught:
+            self.invoke("--pairs-only")
+        self.assertNotEqual(caught.exception.code, 0)
+        self.assertEqual(self.entity_ids(), [10, 11, 20, 21])
+
+
+class ScrapedPerformerProvenanceTests(unittest.TestCase):
+    """刮削链新建的 performer 也是发行元数据，保留它而不是目录名投影出来的 creator。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,creator)"
+            " VALUES(1,'local','/x/1.mp4','1.mp4','video','三上悠亜')")
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,'三上悠亜','三上悠亜','t','t')",
+            [(1, "creator"), (2, "performer")])
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+        self.tmp.cleanup()
+
+    def link(self, source):
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,1,'creator','legacy:asset',1.0)")
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(1,2,'performer',?,1.0)", (source,))
+        self.con.commit()
+        return collect(self.con)[0]
+
+    def test_a_javinizer_source_keeps_the_performer(self):
+        for source in ("javinizer:javdb:performer", "javinizer:r18dev:performer",
+                       "javinizer:dmm:performer"):
+            with self.subTest(source=source):
+                self.con.execute("DELETE FROM asset_entity")
+                row = self.link(source)
+                self.assertEqual((row["keep_kind"], row["keep_id"]), ("performer", 2))
+                self.assertEqual(row["evidence"], "发行元数据")
+
+    def test_the_stash_flat_source_still_keeps_the_creator(self):
+        row = self.link("performer")
+        self.assertEqual((row["keep_kind"], row["keep_id"]), ("creator", 1))
 
 
 if __name__ == "__main__":

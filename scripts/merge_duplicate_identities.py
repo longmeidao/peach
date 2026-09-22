@@ -16,6 +16,7 @@ r"""同一个人被记成两条实体的去重（跨 kind 与同 kind 两类）�
 
     creator   ← source='legacy:asset'，从目录名投影出来（ADR-0013：目录名只是候选证据）
     performer ← source='r18:performer' / 'javbus:performer'（真实发行元数据）
+                或 'javinizer:<站点>:performer'（刮削链新建，同样是发行元数据）
                 或 'performer'（Stash 扁平模型）
 
 除了完全同名，还会处理一类高置信变体：两边关联的非空作品集合完全相同，且 performer
@@ -24,7 +25,8 @@ r"""同一个人被记成两条实体的去重（跨 kind 与同 kind 两类）�
 
 **保留哪一边只看 provenance，不看数量**：
 
-- performer 侧带 `r18:performer` / `javbus:performer` 的保留 performer。那是发行元数据，creator 侧只是
+- performer 侧带 `r18:performer` / `javbus:performer` / `javinizer:<站点>:performer` 的保留
+  performer。那是发行元数据，creator 侧只是
   网盘目录名恰好等于艺名，正是 ADR-0013 要防的那种误投影。
 - 否则保留 creator。剩下的 performer 断言全部来自 Stash 的扁平 performer 模型——
   `docs/STASH.md` 已把它判为已知缺陷（把上传者、合集和演员塞进同一个平面）——而
@@ -80,6 +82,14 @@ from peach.scripting import add_ledger_write_args, counts_of, open_for_write, ve
 
 #: 真实发行元数据的来源标记。只有这些能把一条断言判成「这是女优，不是上传者」。
 RELEASE_SOURCES = frozenset({"r18:performer", "javbus:performer"})
+
+#: 刮削链新建 performer 时写的来源整族：`javinizer:javdb:performer`、
+#: `javinizer:r18dev:performer`、`javinizer:dmm:performer` …… 站点还会增加，所以按形状认
+#: 而不是逐个登记。它们和 `r18:performer` 是同一类东西——发行方元数据，不是 Stash 那套
+#: 把上传者和演员塞进一个平面的扁平模型；漏掉这一族会让刚刮出来的 performer 被当成扁平
+#: 断言，合并时保留目录名投影出来的 creator 侧。
+RELEASE_SOURCE_PREFIX = "javinizer:"
+RELEASE_SOURCE_SUFFIX = ":performer"
 MERGE_ALIAS_SOURCE = "merge:duplicate-identity"
 
 #: 目录名里把两个称呼拼在一起的连接符。它们本身不是名字的一部分。
@@ -148,7 +158,11 @@ def _asset_relation(
 
 
 def _release_backed(sources: str) -> bool:
-    return bool(RELEASE_SOURCES.intersection(filter(None, sources.split(","))))
+    present = {source for source in str(sources or "").split(",") if source}
+    if RELEASE_SOURCES.intersection(present):
+        return True
+    return any(source.startswith(RELEASE_SOURCE_PREFIX)
+               and source.endswith(RELEASE_SOURCE_SUFFIX) for source in present)
 
 
 def _name_tokens(value: str) -> frozenset[str]:
@@ -804,15 +818,24 @@ def named_pairs(connection: sqlite3.Connection, pairs: list[str],
     落进复核 CSV，是这次合并唯一说得清来由的东西。
 
     写法 `保留id:丢弃id:证据`。方向不自动挑：作品数多的一侧不一定是名字对的一侧。
+
+    一条实体在整批 `--pair` 里只能出现一次。合并会删掉被丢弃的那一条，同一个 id 在
+    第二对里再被引用，就是合进（或合出）一条已经不存在的实体；一批十几对时这种重复
+    肉眼看不出来。
     """
     connection.row_factory = sqlite3.Row
     engaged = engaged or set()
+    seen: set[int] = set()
     plan: list[dict[str, object]] = []
     for pair in pairs:
         parts = pair.split(":", 2)
         if len(parts) != 3 or not parts[2].strip():
             raise SystemExit(f"--pair 要写成 保留id:丢弃id:证据，收到 {pair!r}")
         keep_id, drop_id, why = int(parts[0]), int(parts[1]), parts[2].strip()
+        if keep_id == drop_id:
+            raise SystemExit(f"--pair {pair}：两侧是同一条实体 {keep_id}，不合并")
+        if keep_id in seen or drop_id in seen:
+            raise SystemExit(f"--pair {pair}：这条实体已经出现在前面的 --pair 里")
         sides = {}
         for name, entity_id in (("keep", keep_id), ("drop", drop_id)):
             row = connection.execute(
@@ -828,6 +851,7 @@ def named_pairs(connection: sqlite3.Connection, pairs: list[str],
             sides[name] = row
         if sides["keep"]["kind"] != sides["drop"]["kind"]:
             raise SystemExit(f"--pair {pair}：两侧 kind 不同，不合并")
+        seen.update((keep_id, drop_id))
         plan.append({
             "normalized_name": sides["drop"]["normalized_name"],
             "match_evidence": why,
@@ -870,16 +894,22 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "repeated-identity-name-repair.csv")
     parser.add_argument("--pair", action="append", default=[], metavar="保留id:丢弃id:证据",
                         help="人工指定的一对，用于证据在站外、本地探测不出来的同一人")
+    parser.add_argument("--pairs-only", action="store_true",
+                        help="只处理 --pair 点名的对子，跳过全部自动判据")
     return parser
 
 
 def run(args: argparse.Namespace) -> int:
+    # 自动判据和人工点名各自成立，但一次只想执行一边：自动那几组的保留方常常另有争议，
+    # 人工那批却已经定下来了，捆在一起就只能连着争议一起写，或者一起不写。
+    if args.pairs_only and not args.pair:
+        raise SystemExit("--pairs-only 必须至少给一个 --pair")
     connection = open_for_write(args)
     try:
-        rows = collect(connection)
+        rows = [] if args.pairs_only else collect(connection)
         engaged = {int(row["keep_id"]) for row in rows} | {int(row["drop_id"]) for row in rows}
         rows.extend(named_pairs(connection, args.pair, engaged))
-        projection_rows = collect_repeated_projections(connection)
+        projection_rows = [] if args.pairs_only else collect_repeated_projections(connection)
         write_csv(args.review_csv, rows)
         write_projection_csv(args.projection_review_csv, projection_rows)
         print(f"高置信重复身份 {len(rows)} 组，复核 CSV：{args.review_csv}")
