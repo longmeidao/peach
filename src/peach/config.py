@@ -130,6 +130,8 @@ class PeachSettings:
     photo_root: Path = GENERATED_DIR / "photo-thumbs"
     # 官方封套按番号存一份原图；4:3 与 16:9 两种版式共用同一文件，靠 CSS 取景。
     cover_root: Path = COVER_DIR
+    # 推送发现的共享密钥住在这里。它和访问口令是两件事，轮换一份不影响另一份。
+    secrets_root: Path = SECRETS_DIR
     ffmpeg_root: Path = FFMPEG_DIR
     transcode_root: Path = TRANSCODE_DIR
     stream_root: Path = GENERATED_DIR / "stream-segments"

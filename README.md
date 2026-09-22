@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
     </tr>
     <tr>
       <td width="180" nowrap><strong>采集与补全</strong></td>
-      <td>扫描文件夹并识别 NFO、本地海报和已有资料；从来源补充封面、头像与元数据，确认后才写入馆藏。</td>
+      <td>扫描文件夹并识别 NFO、本地海报和已有资料；从来源补充封面、头像与元数据，确认后才写入馆藏。开启推送发现后，本机新文件与 CloudDrive2 通知到的网盘新文件几秒内入库，定期扫描仍在背后兜底。</td>
     </tr>
     <tr>
       <td width="180" nowrap><strong>多来源关注</strong></td>

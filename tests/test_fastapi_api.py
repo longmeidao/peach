@@ -2332,6 +2332,10 @@ PUBLIC_ROUTES = {
     ("GET,HEAD", "/peach-logo.png"),
     # 拒绝收录的声明。爬虫没有会话，被 401 挡住等于这份声明根本没被读到。
     ("GET,HEAD", "/robots.txt"),
+    # CloudDrive2 的文件通知。推送方是另一个进程，没有也不该有 Peach 的会话，所以它带的
+    # 是独立共享密钥（ADR-0041）。这一条因此不挂 require_*，但自己有三道门：通道没开、
+    # 来源不在回环与私网、密钥对不上，任意一条不成立都回 404，见 `test_push_discovery`。
+    ("POST", "/api/inbox/clouddrive"),
 }
 
 

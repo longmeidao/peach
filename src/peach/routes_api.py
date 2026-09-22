@@ -22,10 +22,10 @@ from typing import Any
 from urllib.parse import unquote
 
 from browserexport.common import BrowserexportError
-from fastapi import APIRouter, Body, Depends, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
-from . import web_contract, web_tasks
+from . import push_discovery, web_contract, web_tasks
 from .config import LOCATION_ROOT_DECLARATIONS
 from .field_owners import RevisionConflict
 from .interaction import reveal_path
@@ -267,6 +267,37 @@ def task_run_detail(request: Request, run_id: int,
     except KeyError as exc:
         # `str(KeyError(...))` 会把消息连引号一起带出来，取 args 才是那句话本身。
         return JSONResponse({"error": str(exc.args[0])}, status_code=404)
+
+
+@router.post(push_discovery.WEBHOOK_PATH, status_code=204)
+def clouddrive_inbox(request: Request, body: dict[str, Any] = Body(default_factory=dict)):
+    """CloudDrive2 的文件变更通知。
+
+    这条路不走 `require_auth`：推送方是一台服务，不是带着会话 cookie 的浏览器。三道门
+    换成各自更硬的判据——来源必须是回环或局域网，请求头里的共享密钥必须对上，云端路径
+    必须落在已配置的前缀表内。前两道不成立时回 404 而不是 401：这个端点对外不必承认
+    自己存在。
+
+    收下就返回，映射与登记都交给去抖队列。上游会等这个响应，在这里做任何遍历都可能把
+    它堵住（见 `docs/reference-snapshots/amane-watcher.md`）。
+    """
+    service = request.app.state.push_discovery
+    if not (service.available and service.config.enabled and service.config.cloud):
+        raise HTTPException(404, "这个地址下没有页面。")
+    host = request.client.host if request.client else ""
+    if not push_discovery.allowed_source(host):
+        LOGGER.warning("推送发现拒收来自 %s 的请求", host or "未知来源")
+        raise HTTPException(404, "这个地址下没有页面。")
+    if not service.secret.matches(request.headers.get(push_discovery.SECRET_HEADER, "")):
+        LOGGER.warning("推送发现拒收密钥不符的请求")
+        raise HTTPException(404, "这个地址下没有页面。")
+    for cloud_path in push_discovery.parse_notification(body):
+        try:
+            service.submit_cloud(cloud_path)
+        except push_discovery.CloudPathError as exc:
+            # 一条路径映射不出来，同一批里的其余条目照常登记。
+            LOGGER.info("推送发现跳过一条云端路径：%s", exc)
+    return Response(status_code=204)
 
 
 def _conflict(error: TaskRunConflict) -> JSONResponse:
