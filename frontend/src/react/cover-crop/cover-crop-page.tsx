@@ -9,7 +9,7 @@
  * 只是折痕落在哪一列。比例可以解锁，因为版式不规整的封套确实存在。
  */
 import { useRef, useState } from 'react';
-import { RiCloseLine, RiCropLine } from '@remixicon/react';
+import { RiCloseLine } from '@remixicon/react';
 import { useMutation } from '@tanstack/react-query';
 import { UNSAFE_PortalProvider } from 'react-aria';
 import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components';
@@ -34,6 +34,17 @@ import { sendCoverCrop } from './cover-crop';
  *  135×190mm，本机 637 张实测中位数也是它。 */
 export const PANEL_ASPECT = 0.704;
 
+/** 雪碧图里的 Lucide `crop`。这枚键和旧版工具条的定位、同步删除排在一行，那两枚是
+ *  15px、线宽 2 的线条字形；Remix 那枚是填充轮廓，并排看笔画粗一圈。 */
+function CropIcon({ className }: { className: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}
+      strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <use href="#i-crop" />
+    </svg>
+  );
+}
+
 export function CoverCrop({ code, coverUrl, box, onSaved }: CoverCropProps) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -43,7 +54,7 @@ export function CoverCrop({ code, coverUrl, box, onSaved }: CoverCropProps) {
         aria-label={`裁剪 ${code} 的封面`} title="裁剪封面：框出正封那一块"
         onClick={() => setOpen(true)}
         className="flex size-7 cursor-pointer items-center justify-center rounded-lg text-foreground-icon-secondary outline-none transition-colors hover:bg-background-primary-hover hover:text-foreground-icon-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring">
-        <RiCropLine aria-hidden className="size-4" />
+        <CropIcon className="size-3.75" />
       </button>
       {/* 详情页是 `showModal()` 开的原生 dialog，弹层要挂进同一层才盖得住它。 */}
       <UNSAFE_PortalProvider getContainer={() => overlayHost(anchor.current)}>
@@ -87,7 +98,7 @@ function CropBody({ code, coverUrl, box: saved, onSaved, close }: CoverCropProps
     <>
       <div className="flex shrink-0 items-start gap-4 p-5">
         <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-separator-border bg-background-secondary-default text-foreground-icon-secondary">
-          <RiCropLine className="size-6" />
+          <CropIcon className="size-6" />
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Heading slot="title" className="text-title-3-semibold text-text-primary">裁剪封面</Heading>
