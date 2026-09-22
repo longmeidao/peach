@@ -385,7 +385,8 @@ class LibraryNfoTests(unittest.TestCase):
         video.write_bytes(b'video')
         (media / 'ABW-358.nfo').write_text('<movie><title>Local title</title><sorttitle>ABW-358</sorttitle>'
             '<premiered>2023-05-26</premiered><actor><name>涼森れむ</name></actor><tag>自定义标签</tag></movie>', encoding='utf-8')
-        Image.new('RGB', (800, 1200), 'blue').save(media / 'ABW-358-poster.jpg')
+        # 竖版海报量长边：600×900 是一张清楚的正封，不必再去问来源。
+        Image.new('RGB', (600, 900), 'blue').save(media / 'ABW-358-poster.jpg')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
         provider = stub_provider()

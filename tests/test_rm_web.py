@@ -1419,6 +1419,23 @@ class WebDataTests(unittest.TestCase):
         row = related["items"][0]
         self.assertEqual(row["performer_total"], len(row["performer_entities"]))
 
+    def test_related_shows_a_multipart_release_once_and_never_the_source_s_own_parts(self):
+        con = sqlite3.connect(self.db_path)
+        con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,code,duration,width,height,first_seen) "
+            "VALUES(?,'local',?,?,'video',100,'FC2-PPV-2543627',3600,1920,1080,'2026-09-01')",
+            [(6, r"R:\Media\FC2-2543627-1.mp4", "FC2-2543627-1.mp4"),
+             (7, r"R:\Media\FC2-2543627-2.mp4", "FC2-2543627-2.mp4")])
+        con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+            "VALUES(?,11,'performer','test',1.0)", [(6,), (7,)])
+        con.commit()
+        con.close()
+
+        shown = [row for row in rm_web.q_related(self.contract, 1, 10)["items"] if row["id"] in (6, 7)]
+        self.assertEqual([(row["id"], row["part_group"]["count"]) for row in shown], [(6, 2)])
+        self.assertNotIn(6, [row["id"] for row in rm_web.q_related(self.contract, 7, 10)["items"]])
+
     def _add_unowned_and_performer_only_assets(self):
         con = sqlite3.connect(self.db_path)
         con.executemany(

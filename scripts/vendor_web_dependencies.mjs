@@ -126,6 +126,8 @@ const lucideIcons = new Map([
   ["folder-search", "folder-search"],
   // 数据管理页「空文件夹」那张卡的标识：说的是目录本身，既不是打开它，也不是去里面找。
   ["folder", "folder"],
+  // 详情标题旁的「裁剪封面」：和同一排的定位、同步删除同为线条字形、同一线宽。
+  ["crop", "crop"],
   ["sun", "sun"], ["moon", "moon"],
   // 小窗播放：右键菜单里「迷你播放器」是缩进角落的小屏，小窗上的「展开」是对角撑开；
   // `maximize` 归 JAV 大图版式，不兼任。「循环播放」与「复制视频网址」照 Lucide 本名。

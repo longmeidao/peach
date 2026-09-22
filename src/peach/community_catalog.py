@@ -305,7 +305,11 @@ def fingerprint(image: Image.Image) -> int:
 
 
 def picture(candidate: Candidate, data: bytes) -> Picture:
+    """下载到的一张图。动图不算封面：JavArchive 的图床给 FC2 存的常是 GIF 预览动画，
+    落进 `.jpg` 之后卡片就一直在动。"""
     with Image.open(io.BytesIO(data)) as image:
+        if getattr(image, "is_animated", False):
+            raise ValueError(f"{candidate.url} 是动图")
         image.load()
         return Picture(candidate, image.size, data, fingerprint(image))
 
@@ -316,26 +320,39 @@ def same_picture(one: Picture, other: Picture) -> bool:
             and bin(one.fingerprint ^ other.fingerprint).count("1") <= HASH_DISTANCE)
 
 
-def _pictures(transport, urls: dict[str, Candidate], reference, *, deadline: float | None) -> list[Picture]:
-    """官方小图（有的话）加上社区来源里下载得到、宽度够小图门槛的图。"""
+def _pictures(transport, urls: dict[str, Candidate], reference, *,
+              deadline: float | None) -> tuple[list[Picture], int]:
+    """官方小图（有的话）加上社区来源里下载得到、宽度够小图门槛的静态图；再报下载到了几张。
+
+    下载到了却不能用（动图、太窄）和没下载到是两回事：前者再问一遍还是这几张。
+    """
     pool = [picture(reference[0], reference[2])] if reference is not None else []
+    fetched = 0
     for url, candidate in urls.items():
         if reference is not None and url == reference[0].url:
             continue
         try:
-            found = picture(candidate, _fetch(transport, url, referer=candidate.referer,
-                                              limit=IMAGE_LIMIT, deadline=deadline))
-        except (NotFound, Unavailable, SourcePaused, httpx.TransportError, OSError, ValueError,
-                Image.DecompressionBombError):
+            data = _fetch(transport, url, referer=candidate.referer, limit=IMAGE_LIMIT, deadline=deadline)
+        except (NotFound, Unavailable, SourcePaused, httpx.TransportError, OSError):
+            continue
+        fetched += 1
+        try:
+            found = picture(candidate, data)
+        except (OSError, ValueError, Image.DecompressionBombError):
             continue
         if found.size[0] >= SMALL_MIN_WIDTH:
             pool.append(found)
-    return pool
+    return pool, fetched
 
 
-def _unverified(pool: list[Picture], downloaded: bool) -> tuple[Candidate, tuple[int, int], bytes, tuple[str, ...]]:
-    """没有两个图源对得上时的退路：图全出自一个图源就取最大那张，印证图源留空。"""
-    if not downloaded:
+def _unverified(pool: list[Picture], usable: int,
+                fetched: int) -> tuple[Candidate, tuple[int, int], bytes, tuple[str, ...]]:
+    """没有两个图源对得上时的退路：图全出自一个图源就取最大那张，印证图源留空。
+
+    `usable` 是池子里社区来源那几张，不算官方小图。"""
+    if not usable:
+        if fetched:
+            raise NotFound("社区来源给的封面都是动图或太小")
         raise Unavailable("社区来源的封面下载失败")
     origins = sorted({one.origin for one in pool})
     if len(origins) > 1:
@@ -352,15 +369,16 @@ def verified_cover(transport, code: str, works: list[tuple[str, dict]], *,
     `reference` 是官方渠道取到的小图，它也算一个图源：javdb 的大图和 DMM 的小图是同一张
     时，大图就有了官方印证。没有第二个图源可比时按 `_unverified` 取图，末尾为空。
     """
-    urls = {url: _candidate(url) for _source, payload in works for url in payload.get("cover_urls") or []}
+    urls = {url: _candidate(url) for _source, payload in works for url in payload.get("cover_urls") or []
+            if not is_cross_product_cover(code, url)}
     if not urls:
         raise NotFound("社区来源没有这部片的封面")
-    pool = _pictures(transport, urls, reference, deadline=deadline)
+    pool, fetched = _pictures(transport, urls, reference, deadline=deadline)
     best = None
     for one in pool:
         origins = {other.origin for other in pool if same_picture(one, other)}
         if len(origins) >= 2 and (best is None or one.pixels > best[0].pixels):
             best = (one, tuple(sorted(origins)))
     if best is None:
-        return _unverified(pool, downloaded=len(pool) > (reference is not None))
+        return _unverified(pool, len(pool) - (reference is not None), fetched)
     return best[0].candidate, best[0].size, best[0].data, best[1]

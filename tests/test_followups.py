@@ -444,6 +444,11 @@ class CoverFaceFollowupTests(LedgerTestCase):
         self.assertFalse(record["identity_verified"])
         # 90 像素的脸放大 2.4 倍是 216 的方框，以脸心为中心。
         self.assertEqual(record["crop_box"], [192, 52, 408, 268])
+        # 没装上的那张缩略图人脸也截好留作候选，挑图弹层里一点就换；双人作品照旧不碰。
+        kept = [json.loads(path.read_text(encoding="utf-8"))
+                for path in (self.root / "generated").rglob(f"evidence/performer-{self.person}-*.json")]
+        self.assertEqual(sorted((one["provider"], one["external_id"]) for one in kept),
+                         [("cover-face", "FC2-PPV-2"), ("cover-face", "FC2-PPV-3")])
 
     def test_a_thumbnail_is_the_floor_not_nothing(self):
         self.work(1, "FC2-PPV-1", (1800, 1000))

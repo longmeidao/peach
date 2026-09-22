@@ -10,7 +10,7 @@
   只找出一张，且尺寸过 `acceptable_avatar` 那一档，才装。找出好几张一张都不装：`ななみ`
   这种单名在图库里命中二十几张，那是二十几个人，自动挑等于随便给她安一张别人的脸。
 * 图库给不出那一张时，从她单人作品的封面上截脸（`avatar_cover_face`）：挑脸像素最宽的
-  那张封面，最差是缩略图。这一档截的图、以及批处理用整张封面装上的头像，之后遇到更清楚的
+  那张封面，最差是缩略图；其余检得出脸的封面也各截一张留作候选。这一档截的图、以及批处理用整张封面装上的头像，之后遇到更清楚的
   脸会自动换掉；图库装的、人挑的一律不碰。
 * **厂牌**只登记缺口，不装图。厂牌 Logo 的采集要人先给出社交 handle
   （`scripts/fetch_studio_avatar_candidates.py`），猜出来的一律标 `needs_confirmation`，
@@ -36,6 +36,9 @@ KINDS = ("performer", "studio")
 #: 一次刮削最多为这么多个新实体派后继。上限本身由 `task_runs.MAX_FOLLOWUPS` 判，
 #: 这里先按作品数排好序再交出去：截断真的发生时，留下的该是库里出现得最多的那些。
 PLAN_ORDER = "作品多的在前"
+
+#: 封面人脸最多截几张：装上的一张，加上留进挑图弹层的几张。
+MAX_KEPT_FACES = 8
 
 
 def followup_key(kind: str, entity_id: int) -> str:
@@ -167,11 +170,17 @@ def _install_cover_face(contract, connection, providers_root, avatar_root, kind:
     from .avatar_face import FaceProbe
 
     probe = FaceProbe()
-    face = avatar_cover_face.best(connection, contract.cover_root, entity_id, probe)
+    found = avatar_cover_face.faces(connection, contract.cover_root, entity_id, probe)
     summary = {"name": name, "matched": matched}
-    if face is None:
+    if not found:
         reason = f"探针不可用：{probe.unavailable}" if probe.unavailable else "封面上没有能截的脸"
         return {**summary, "outcome": f"{gallery}，{reason}"}
+    face = found[0]
+    # 装的只有脸最宽那一张；其余几张也截好留进候选缓存，挑图弹层里一点就能换，
+    # 不必再去整张封面上手框。
+    for other in found[1:MAX_KEPT_FACES]:
+        if (extra := avatar_cover_face.cut(other)) is not None:
+            avatar_picker.keep(providers_root, entity_id, *extra)
     if cropped_px is not None and face.face_px <= cropped_px:
         return {**summary, "outcome": "已是最清楚的封面人脸", "source": face.code}
     cut = avatar_cover_face.cut(face)

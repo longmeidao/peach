@@ -60,13 +60,17 @@ def single_performer_works(connection, entity_id: int) -> list[tuple[int, str]]:
         "ORDER BY a.id", (int(entity_id),))]
 
 
-def best(connection, cover_root: Path, entity_id: int, probe) -> CoverFace | None:
-    """脸最宽的那张封面；一张脸都检不出来就是 None。
+def faces(connection, cover_root: Path, entity_id: int, probe) -> list[CoverFace]:
+    """检得出脸的那些封面，脸最宽的在前；脸一样宽时像素多的在前。
 
     `probe` 是 `avatar_face.FaceProbe`：`on_bytes` 给出带 `px` 与脸框的记录。同一个番号
-    分几段、或在两个目录各有一份时封面只有一张，只检一次。脸一样宽时取像素多的那张。
+    分几段、或在两个目录各有一份时封面只有一张，只检一次。
+
+    面具、眼罩、脸贴照样算脸：梨奈的四张高清封面都戴着，YuNet 在默认门槛上全认了出来。
+    没认出来的那几张不靠降门槛去捞——同几张图上 0.2 到 0.45 分的框落在手、胸口和
+    身体上，比真脸还宽，按脸宽排序会排到最前面。
     """
-    found: CoverFace | None = None
+    found: list[CoverFace] = []
     seen: set[str] = set()
     for asset_id, code in single_performer_works(connection, entity_id):
         key = normalise_code_key(code)
@@ -80,11 +84,9 @@ def best(connection, cover_root: Path, entity_id: int, probe) -> CoverFace | Non
         record = probe.on_bytes(body)
         px = (record or {}).get("px") or [0, 0]
         candidate = CoverFace(asset_id, key, body, int(px[0]), int(px[1]), record or {})
-        if candidate.face_px <= 0:
-            continue
-        if found is None or ((candidate.face_px, candidate.width * candidate.height)
-                             > (found.face_px, found.width * found.height)):
-            found = candidate
+        if candidate.face_px > 0:
+            found.append(candidate)
+    found.sort(key=lambda face: (face.face_px, face.width * face.height), reverse=True)
     return found
 
 
@@ -106,7 +108,8 @@ def cut(face: CoverFace) -> tuple[bytes, dict] | None:
     if body is None:
         return None
     return body, {"source": "cover face", "provider": PROVIDER, "source_kind": SOURCE_KIND,
-                  "external_id": face.code, "asset_id": face.asset_id,
+                  "external_id": face.code, "upstream_url": f"peach:cover-face/{face.code}",
+                  "asset_id": face.asset_id,
                   "asset_code": face.code, "crop_box": list(box),
                   "crop_source_px": [face.width, face.height],
                   "face_px": face.face_px, "identity_verified": False}
