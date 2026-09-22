@@ -222,19 +222,17 @@ class LibraryMetadataProvider:
         return cache[code]
 
     def _fc2_archive(self, code, *, deadline=None):
-        """JavArchive 那一档要先搜：作品地址里夹着站内文章号和标题，拼不出来。
+        """JavArchive 那一档要先搜再取作品页：作品地址里夹着站内文章号和标题，拼不出来。
 
-        搜索结果带图的那条自己就够（`parse_search`），作品页那一跳省掉——同主机要等一次
-        间隔，页面又是 150 KB。不带图的才接着取作品页；搜不着就是没有，不当抓取失败。
+        搜索结果那一条只有标题和一张缩略图，作品页才有标签、发行日、时长和真正的封面
+        位。省掉这一跳换来的是三个字段全空、封面地址靠文件名硬推——站上的命名没有统一，
+        推出来的多半不存在。搜不着就是没有，不当抓取失败。
         """
         from .jav_cover_fetch import _fetch
         from .metadata_fc2 import (ARCHIVE_ROOT, ARCHIVE_SOURCE, archive_link,
-                                   archive_search_url, parse_archive, parse_search)
+                                   archive_search_url, parse_archive)
         results = _fetch(self.transport, archive_search_url(code), referer=ARCHIVE_ROOT + '/',
                          limit=FC2_PAGE_LIMIT, deadline=deadline)
-        payload = parse_search(results, code)
-        if payload:
-            return [(ARCHIVE_SOURCE, payload)]
         link = archive_link(results, code)
         if not link:
             raise NotFound(f'{SOURCE_LABELS[ARCHIVE_SOURCE]} 上没有这个商品')
