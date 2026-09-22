@@ -9,17 +9,19 @@ r18.dev 对 FC2 实测 85 条问了 85 条全空；AVBase 与 JavBus 对本地�
 那几项。下架的商品仍回 200，靠正文里没有 Product 判定，不当成抓取失败。
 
 下架的商品在 fc2cmadb 上还留着：它是个 Laravel + Inertia 的镜像站，整棵 props 树放在
-`<script type="application/json">` 里，免登录就能读，字段与商品页一一对得上——本地那批
-没封面的 FC2 多半只能从这里取（实测 `FC2-PPV-3189161` 官方页已空，镜像给出 3456×1942
-的原图）。两处的封面都指向 `storage*.contents.fc2.com` 上的同一个文件，镜像有时给的是
+`<script type="application/json">` 里，字段与商品页一一对得上——本地那批没封面的 FC2
+多半只能从这里取（实测 `FC2-PPV-3189161` 官方页已空，镜像给出 3456×1942 的原图）。它
+按 IP 限流，没登录连着问几页就一路 429，这一档要在「来源和凭证」里配一份登录 cookie
+才跑得动。两处的封面都指向 `storage*.contents.fc2.com` 上的同一个文件，镜像有时给的是
 `contents-thumbnail*.fc2.com/w276/` 包装过的缩略图地址，`_storage_original` 把包装拆掉。
 
 带分段后缀的番号（`FC2-PPV-3312576-1`）在这里一律认不出商品号，于是一处都不问。那是
 对的：合集的封面套给每个分段，屏幕上就是 21 个不同内容顶着同一张图。
 
-演员不取。商品页没有演员栏，标题里那个名字是卖家自己写的宣传语，`みお(19)` 这样的
-写法既不是艺名也没有第二处可以印证；FC2 的演员线索在 fc2cmadb 的评论区，那是另一条路
-（`scripts/fetch_fc2_metadata.py`）。
+官方那一页不取演员：它没有演员栏，标题里那个名字是卖家自己写的宣传语，`みお(19)`
+这样的写法既不是艺名也没有第二处可以印证。fc2cmadb 另有一栏对得上人的女優，那是
+Inertia 的延迟 prop——首屏那份 HTML 里没有，要带上这一页自报的握手版本号把这一栏单独
+再问一次才给（`mirror_partial_headers`），一次一千来字节，还附一串曾用名。
 
 只解析传进来的 HTML，不联网：抓取由 `library_processing` 那一侧负责。
 """
@@ -28,6 +30,7 @@ from __future__ import annotations
 import json
 import re
 import urllib.parse
+from collections.abc import Sequence
 
 from bs4 import BeautifulSoup
 
@@ -39,6 +42,8 @@ USER_URL = ROOT + "/users/{slug}/"
 MIRROR_ROOT = "https://fc2cmadb.com"
 MIRROR_SOURCE = "fc2cmadb"
 MIRROR_URL = MIRROR_ROOT + "/articles/{video_id}"
+#: 镜像站那一页的 Inertia 组件名；站上没有的商品回的是 `Error`。
+MIRROR_COMPONENT = "Articles/Show"
 
 ARCHIVE_ROOT = "https://javarchive.com"
 ARCHIVE_SOURCE = "javarchive"
@@ -282,22 +287,66 @@ def _storage_original(url: str) -> str:
     return f"https://{found.group(1)}" if found else str(url or "").strip()
 
 
-def _inertia_props(soup: BeautifulSoup) -> dict:
+def _inertia_page(soup: BeautifulSoup) -> dict:
     for node in soup.find_all("script", type="application/json"):
         try:
             data = json.loads(node.string or "")
         except ValueError:
             continue
         if isinstance(data, dict) and isinstance(data.get("props"), dict):
-            return data["props"]
+            return data
     return {}
 
 
-def parse_mirror(html: str | bytes, code: str) -> dict | None:
+def _inertia_props(soup: BeautifulSoup) -> dict:
+    return _inertia_page(soup).get("props") or {}
+
+
+def mirror_partial_headers(html: str | bytes) -> dict[str, str]:
+    """把女优那一栏单独再问一次要用的请求头；手里这一页不是作品页就回空。
+
+    版本号是站上那份前端资源的指纹，对不上就不给这一栏只给整页，所以每次都取自手里
+    这一页而不是记下来重用。只点名 `actresses`：连 `article` 一起要，回来的是同一份刚
+    读完的资料，白花三倍字节。站上没有的商品回的是错误页，那一页问也问不出人来。
+    """
+    page = _inertia_page(BeautifulSoup(html, "html.parser"))
+    version = str(page.get("version") or "").strip()
+    if not version or str(page.get("component") or "").strip() != MIRROR_COMPONENT:
+        return {}
+    return {
+        "X-Inertia": "true",
+        "X-Inertia-Version": version,
+        "X-Inertia-Partial-Component": MIRROR_COMPONENT,
+        "X-Inertia-Partial-Data": "actresses",
+        "Accept": "text/html, application/xhtml+xml",
+    }
+
+
+def parse_mirror_actresses(payload: str | bytes) -> list[str]:
+    """那一跳回来的 JSON → 女优名。
+
+    同名一位只留一个。`alias_name` 里那串曾用名不取：一位女优能挂十几个，摊进演员栏
+    就成了十几个人。
+    """
+    try:
+        data = json.loads(payload if isinstance(payload, str) else bytes(payload).decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return []
+    props = data.get("props") if isinstance(data, dict) else None
+    listed = props.get("actresses") if isinstance(props, dict) else None
+    if not isinstance(listed, list):
+        return []
+    names = [str((one or {}).get("name") or "").strip() if isinstance(one, dict) else ""
+             for one in listed]
+    return list(dict.fromkeys(name for name in names if name))
+
+
+def parse_mirror(html: str | bytes, code: str, *,
+                 actresses: Sequence[str] = ()) -> dict | None:
     """fc2cmadb 的作品页 → 同一份 payload 形状；对不上番号回 None。
 
-    站上没有的商品回 404，那一档由抓取那侧判成「没有」。演员同样不取：这一页正文里
-    也没有演员栏，评论区那条线另走 `scripts/fetch_fc2_metadata.py`。
+    站上没有的商品回 404，那一档由抓取那侧判成「没有」。女优不在这一页里，由抓取那
+    侧多问一跳拿到后传进来（`mirror_partial_headers`）。
     """
     wanted = video_id(code)
     if not wanted:
@@ -317,7 +366,7 @@ def parse_mirror(html: str | bytes, code: str) -> dict | None:
         "description": "",
         "release_date": str(article.get("release_date") or "").strip(),
         "runtime": runtime_minutes(article.get("duration")),
-        "actresses": [],
+        "actresses": [str(name).strip() for name in actresses if str(name).strip()],
         "maker": STUDIO,
         "label": str(writer.get("name") or "").strip(),
         # 镜像的 slug 与官方用户页的 slug 是同一个（实测 `otonakamenz` 两处一致），

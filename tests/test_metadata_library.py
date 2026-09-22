@@ -41,6 +41,19 @@ def stub_provider():
     return provider
 
 
+def _mirror_page():
+    """fc2cmadb 的作品页：Inertia 把整棵 props 树连同握手版本号放在一个 script 里。"""
+    page = {'component': 'Articles/Show', 'version': 'fcb3b524d4c7f8f3d2c38e437b35b7a9',
+            'url': '/articles/3189161',
+            'props': {'article': {'video_id': 3189161, 'title': '【無】コスプレシリーズ',
+                                  'release_date': '2023-02-19', 'duration': '46:06',
+                                  'image_url': 'https://storage92000.contents.fc2.com/file/1.jpg',
+                                  'writer': {'slug': 'rina_vlog', 'name': '梨奈'},
+                                  'tags': [{'name': 'ハメ撮り'}]}}}
+    return (f'<script data-page="app" type="application/json">'
+            f'{json.dumps(page, ensure_ascii=False)}</script><div id="app"></div>')
+
+
 class LibraryNfoTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -565,6 +578,43 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(_fields(payload)['title']['value'], 'Remu Style')
         self.assertEqual(payload['genres'], ['Slender'], '日文页没取到时，英文那份仍然能投影')
         self.assertNotIn('translations', payload)
+
+    def test_fc2cmadb_asks_a_second_time_for_the_women_that_page_holds_back(self):
+        """女优是那一页的延迟 prop：第一跳拿到的 HTML 里一个人也没有。"""
+        from peach.library_processing import LibraryMetadataProvider
+        asked = []
+        def pages(transport, url, **kwargs):
+            asked.append((url, kwargs.get('extra_headers') or {}))
+            if 'fc2cmadb.com' not in url:
+                raise NotFound('官方那一页已空')
+            if kwargs.get('extra_headers'):
+                return json.dumps({'props': {'actresses': [{'name': '野々宮すず'}]}})
+            return _mirror_page()
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3189161', route=('fc2', 'fc2cmadb'))
+        self.assertEqual(found, [('fc2cmadb', found[0][1])])
+        self.assertEqual(found[0][1]['actresses'], ['野々宮すず'])
+        second = [headers for url, headers in asked if headers]
+        self.assertEqual([headers['X-Inertia-Partial-Data'] for headers in second], ['actresses'])
+
+    def test_a_silent_second_ask_costs_the_women_and_nothing_else(self):
+        """那一跳撞上限流是常事，其余字段是站上最全的一份，不跟着一起丢。"""
+        from peach.jav_cover_fetch import Unavailable
+        from peach.library_processing import LibraryMetadataProvider
+        def pages(transport, url, **kwargs):
+            if 'fc2cmadb.com' not in url:
+                raise NotFound('官方那一页已空')
+            if kwargs.get('extra_headers'):
+                raise Unavailable('HTTP 429')
+            return _mirror_page()
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3189161', route=('fc2', 'fc2cmadb'))
+        self.assertEqual(found[0][1]['actresses'], [])
+        self.assertEqual(found[0][1]['title'], '【無】コスプレシリーズ')
 
     def test_javdb_keeps_its_own_host_interval_on_both_of_its_hosts(self):
         """这一档的节奏由用户定，改动要连图床一起改：页面与图分别落在两个主机上。"""
