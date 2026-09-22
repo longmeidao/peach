@@ -199,8 +199,8 @@ it('失败时把问题清单折叠进错误提示，重试只交失败的那些�
   expect(log.closest('.text-text-secondary')).not.toBeNull();
   expect(log.closest('.border-t')).not.toBeNull();
   expect(details.querySelector('button[aria-label="在资源管理器中显示"]')).not.toBeNull();
-  // 这一趟该做的事是把没做完的补上，页脚不再摆「重新跑一整批」。
-  expect(buttonNamed('扫描并补全资料', host)).toBeNull();
+  // 补上没做完的那些是这一趟的事，重新跑一整批是下一趟的事：页脚那颗留着，各答各的问题。
+  expect(buttonNamed('扫描并补全资料', host)?.textContent).toBe('扫描并补全资料');
 
   // 重试键是这条提示的主动作：和卡片一样摆在右边，不是正文底下一颗次级键。
   const retry = buttonNamed('重试未完成项')!;
@@ -211,6 +211,19 @@ it('失败时把问题清单折叠进错误提示，重试只交失败的那些�
 
   await click(retry);
   expect(served.posts()).toEqual([{ job_id: 'one', retry: [7, 8] }]);
+});
+
+it('有可重试项时页脚那颗发的仍是整批，不夹带上一趟的失败项', async () => {
+  /* 新入库的片子只有整批才扫得到。采集里网络超时几乎每趟都留下几项可重试的，页脚那颗要是
+     在这种时候让位给重试键，就等于再也回不到整批。 */
+  const served = await open({
+    status: 'failed', job_id: 'one', error: '2 项需要处理',
+    retryable_asset_ids: [7, 8], issue_preview: [],
+  }, () => ({ status: 'running', job_id: 'two' }));
+  const host = await mount(card({ toast: vi.fn() }));
+
+  await click(buttonNamed('扫描并补全资料', host));
+  expect(served.posts()).toEqual([{}]);
 });
 
 it('失败项都不可重试时仍能重新发起整批任务', async () => {
