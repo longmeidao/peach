@@ -242,6 +242,60 @@ const FAILED_JOB = {
   })),
 };
 
+/** 一条关注来源。字段以 `_source_payload`（`src/peach/web_follow.py`）为准。 */
+const followSource = (id: number, author: string, provider: string, label: string, status = 'ok') => ({
+  id, provider: provider.toLowerCase(), provider_label: provider, ref: `ref/${id}`, label,
+  url: `https://example.com/${id}`, enabled: true, last_status: status,
+  last_checked_at: '2026-09-01T00:00:00Z', created_at: '2026-08-01T00:00:00Z',
+  author_key: `name:${author}`, author_name: author,
+});
+
+/** 一个站的凭据状态。字段以 `/api/follow/credentials` 为准。 */
+const followCredential = (provider: string, requirement: string, present: boolean, missing: string[]) => ({
+  provider: provider.toLowerCase(), provider_label: provider, followable: true, requirement,
+  needs: missing, fields: present ? ['cookie'] : [], missing, present,
+});
+
+/** 关注管理页按一份造好的来源与凭据打开：演示库没有关注来源，也凑不齐四种凭据处境。
+ *  站标同 `openScraping`：造出来的来源取不到图标，给一张能加载完的图。 */
+async function openFollowManage(browser: Browser): Promise<Visit> {
+  const opened = await visit(browser, '/follow-manage', DESKTOP);
+  const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  await opened.page.route('**/api/follow?limit=1', (route) => route.fulfill(json({
+    sources: [
+      followSource(1, 'kou', 'Kemono', 'kou · Kemono'),
+      followSource(2, 'kou', 'Pawchive', 'kou · Pawchive'),
+      followSource(3, 'mira', 'Kemono', 'mira · Kemono', 'error'),
+    ],
+    counts: { new: 0, seen: 0, saved: 0, ignored: 0 },
+    author_aliases: [{ canonical_key: 'kou', canonical_name: 'kou', aliases: [{ key: 'kou_art', name: 'kou_art' }] }],
+    alias_suggestions: [],
+    suggestions: [],
+  })));
+  await opened.page.route('**/api/follow/credentials', (route) => route.fulfill(json({
+    root: 'C:\\peach\\creds',
+    providers: [
+      followCredential('Fanbox', 'required', false, ['FANBOXSESSID']),
+      followCredential('Patreon', 'optional', true, []),
+      followCredential('OnlyFans', 'blocked', false, []),
+      followCredential('Kemono', 'none', false, []),
+    ],
+  })));
+  await opened.page.route('**/source-icon**', (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('section[aria-label="kou 的关注来源"]').waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
+/** 切到关注管理页的另一栏。栏名后面可能挂着待配置的数目，按开头认。 */
+async function followTab(opened: Visit, name: string): Promise<void> {
+  await opened.page.locator('#stats').getByRole('tab', { name: new RegExp(`^${name}`) }).click({ timeout: 5_000 });
+  await settle(opened.page);
+}
+
 describe('设计决定', () => {
   let browser: Browser;
 
@@ -1085,6 +1139,82 @@ describe('设计决定', () => {
       assert.ok(row.filters > 0, '等待期间这一行没有分类切换');
       assert.equal(row.placeholder, 1, '占位没有落在读数那一格');
       assert.equal(row.sorts, 0, '等待期间摆着这一页没有的排序键');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('关注列表工具行里的主动作、版式开关、排序框和方向键同高', { timeout: 60_000 }, async () => {
+    const opened = await openFollowManage(browser);
+    try {
+      const page = opened.page;
+      const controls = {
+        检查全部: page.locator('button[aria-label="检查全部"]'),
+        // 两枚图标键拼成一组，对齐的是整组的外框，不是组里单个键。
+        版式开关: page.locator('[aria-label="关注列表版式"]'),
+        排序框: page.locator('button[aria-label="关注列表排序"]'),
+        方向键: page.locator('button[aria-label^="按检查时间"]'),
+      };
+      const heights: Record<string, number> = {};
+      for (const [name, control] of Object.entries(controls)) {
+        heights[name] = (await control.boundingBox())!.height;
+      }
+      assert.equal(new Set(Object.values(heights)).size, 1, `同一排控件高度不一：${JSON.stringify(heights)}`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('勾中的来源在卡片和表格里都铺 BoardUI 数据表那一档选中底色', { timeout: 60_000 }, async () => {
+    const opened = await openFollowManage(browser);
+    try {
+      const page = opened.page;
+      const selected = await tokenColor(page, '.peach-react', '--color-background-secondary-default');
+      await page.getByRole('checkbox', { name: '选择 kou · Kemono' }).check({ force: true, timeout: 5_000 });
+      const cardRow = page.locator('[data-source-divider] > [data-selected]');
+      assert.equal(await cardRow.count(), 1);
+      assert.equal(await cardRow.evaluate((row) => getComputedStyle(row).backgroundColor), selected,
+        '卡片里的选中行没有铺选中底色');
+
+      await page.locator('button[aria-label="表格视图"]').click({ timeout: 5_000 });
+      const tableRow = page.locator('[data-follow-selected]');
+      await tableRow.waitFor({ timeout: 5_000 });
+      assert.equal(await tableRow.evaluate((row) => getComputedStyle(row).backgroundColor), selected,
+        '表格里的选中行和卡片里的不是同一档');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('别名的组数是次要字色的读数，不借提醒或主按钮的颜色', { timeout: 60_000 }, async () => {
+    const opened = await openFollowManage(browser);
+    try {
+      await followTab(opened, '添加关注');
+      const count = opened.page.getByText('1 组', { exact: true });
+      const look = await count.evaluate((node) => ({
+        ink: getComputedStyle(node).color, face: getComputedStyle(node).backgroundColor,
+      }));
+      assert.equal(look.ink, await tokenColor(opened.page, '.peach-react', '--color-text-secondary'));
+      assert.equal(look.face, 'rgba(0, 0, 0, 0)', '组数画成了带底色的徽章');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('凭据的四种处境四副底色：待办和完成一眼分得开', { timeout: 60_000 }, async () => {
+    const opened = await openFollowManage(browser);
+    try {
+      await followTab(opened, '来源和凭证');
+      const faces: Record<string, string> = {};
+      for (const state of ['需要', '已配置', '接不进来', '不需要']) {
+        faces[state] = await opened.page.getByText(state, { exact: true }).first()
+          .evaluate((chip) => getComputedStyle(chip).backgroundColor);
+      }
+      assert.equal(new Set(Object.values(faces)).size, 4, `有两种处境同色：${JSON.stringify(faces)}`);
+      assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }
