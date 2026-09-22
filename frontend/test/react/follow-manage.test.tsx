@@ -18,7 +18,7 @@ import {
 } from '../../src/react/follow-manage/follow-manage';
 import { FollowManagePage } from '../../src/react/follow-manage/follow-manage-page';
 
-import { buttonNamed, choose, click, mountRoot, settle, type } from './render';
+import { buttonNamed, choose, click, mountRoot, pending, settle, type } from './render';
 
 // 客户端是模块级的单例（所有 React 根共用一个），用例之间不清就互相喂数据。
 afterEach(() => queryClient.clear());
@@ -375,13 +375,6 @@ it('首屏读到的旧终态不冒充这一次的结果', async () => {
   expect(props.toast).not.toHaveBeenCalled();
   expect(host.textContent).not.toContain('上一趟的失败');
 });
-
-/** 一问还在路上的服务端回话：用例手动放行，模拟真网络里「点下去」和「重读回来」之间那段空档。 */
-function pending<T>() {
-  let release!: (value: T) => void;
-  const answer = new Promise<T>((done) => { release = done });
-  return { answer, release: (value: T) => act(async () => { release(value) }) };
-}
 
 it('点下检查到重读回来之间，缓存里上一趟的终态不冒充这一趟的回执', async () => {
   const stale = { status: 'done', results: [{ ok: false, error: '上一趟的失败' }] } as CheckJob;

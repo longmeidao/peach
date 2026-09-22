@@ -31877,8 +31877,8 @@ function _D({ toast: e }) {
 		refetchInterval: (e) => e.state.data?.status === "running" && sD
 	}), c = ft({
 		mutationFn: () => $m(eD, { code: t }),
-		onSuccess: () => {
-			i(!0), o(null), ph.invalidateQueries({ queryKey: aD });
+		onSuccess: (e) => {
+			i(!0), o(null), ph.setQueryData(aD, e), ph.invalidateQueries({ queryKey: aD });
 		}
 	}), l = (s.data?.status ?? "idle") === "running";
 	(0, C.useEffect)(() => {
@@ -31940,8 +31940,11 @@ function vD({ toast: e }) {
 		refetchInterval: (e) => e.state.data?.job.status === "running" && sD
 	}), o = ft({ mutationFn: () => $m(nD, {}) }), s = ft({
 		mutationFn: () => $m(rD, {}),
-		onSuccess: () => {
-			n(!0), i(null), ph.invalidateQueries({ queryKey: oD });
+		onSuccess: (e) => {
+			n(!0), i(null), ph.setQueryData(oD, (t) => t && {
+				...t,
+				job: e
+			}), ph.invalidateQueries({ queryKey: oD });
 		}
 	}), c = a.data, l = c?.job, u = l?.status === "running";
 	if ((0, C.useEffect)(() => {
@@ -35651,8 +35654,8 @@ function ZA(e) {
 		refetchInterval: (e) => Qk(e.state.data)
 	}), v = ft({
 		mutationFn: () => qk(s),
-		onSuccess: () => {
-			f(!0), m(null), ph.invalidateQueries({ queryKey: Hk });
+		onSuccess: (e) => {
+			f(!0), m(null), ph.setQueryData(Hk, e), ph.invalidateQueries({ queryKey: Hk });
 		}
 	}), y = ft({
 		mutationFn: (e) => Yk(e),
