@@ -335,6 +335,23 @@ av911.tv，三条候选已进复核队列。
   用同一套 client 问首页和两条搜索全回 200，而那一轮 778 部片的 1432 条失败全部写着「来源正在冷却」。
   冷却期抛的是 `SourcePaused` 而不是 `NotFound`，所以「7 天内不再问」的记忆（`library-metadata-misses.json`）
   一条都不记——盲等期里跑的每一轮都白跑，下一轮从头再问同样这批。
+  **javdb 的 403 不是传输指纹造成的，所以不给它换 curl_cffi（2026-09-22 对照实验）。**
+  起因是 amane 的 POC（`docs/reference-snapshots/amane-crawlers-poc.md`）在同一个代理出口下用 curl_cffi
+  轮换浏览器指纹拿到了 javdb 完整详情页，据此怀疑 Peach 撞的 403 出在 HTTPX 的 TLS/HTTP2 指纹上。
+  实验取四页——SSIS-950 的搜索页与详情页（`/v/zK3x8E`）、深田えいみ 的演员搜索页与资料页（`/actors/pRMq`）——
+  四组配置各走一遍：HTTPX 带 Cookie（当前生产路径）、HTTPX 不带、curl_cffi `chrome136` 带 Cookie、
+  curl_cffi `chrome136` 不带；另有一组 curl_cffi 指纹硬写 Peach 的 UA 字符串只走两张搜索页。
+  全程走 `peach_proxy` 的 `mode=environment`（127.0.0.1:7897），按 5 秒主机间隔共发 28 次请求。
+  **十六个格子全部 HTTP 200，没有一张 Cloudflare 挑战页、没有一张登录页**：搜索页 27.8–49.3 KB，
+  详情页 89.2–90.1 KB（`community_catalog._JAVDB_PANEL` 各解出 8 个字段），资料页 78.5–79.4 KB
+  （`javdb.all_names` 各解出 `深田詠美 / 深田えいみ / 天海こころ`）。UA 与 TLS 指纹不一致的那一组也是 200。
+  两种 transport 的差别只剩响应体几百字节的抖动和界面语言：带 Cookie 的回简体，不带的回繁体。
+  实验时 `scraping-javdb.cooldown.json` 不存在，即 javdb 不在冷却期；amane 那次成功同样落在冷却已过的窗口里。
+  这与本节既有数字相互印证：一轮 565 部片打 731 次 javdb 请求能整轮跑完，封是打到一定量之后才来的——
+  这是按出口 IP 计的速率配额的形状，指纹识别会在第一次请求就拒。
+  **未取得**：封期之内两种 transport 的对照。要取得就得先把出口 IP 打进封锁，这一条不做，
+  所以「已经被封之后换指纹能不能立刻通」仍然未知。脚本与原始结果留在仓库外的
+  `attic/evidence/20260922-javdb-transport-fingerprint/`。
   失败原因分开说：官方各版本只回「准备中」占位图是作品多半已下架（MIDE-594）；两个图源各有图但 dHash 对不上是
   「不是同一张图」，不用。社区来源的图只出自一个图源时照样装上，`.scraping.json` 的 `verified_by` 为空即未经印证
   （IPX-060 只有 javdb）。JavBus 有年龄门，2026-09-15 实测番号页不带 Cookie 回答题式年龄验证页；javdb 有登录墙。

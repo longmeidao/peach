@@ -95,8 +95,9 @@ FC2 那一档另做了一次判因：换馆藏里的真实旧番号 `FC2-PPV-101
 
 一个意外但重要的观察：`docs/SOURCING.md` 与 `metadata_policy.py` 记着「javdb / javlibrary 在本机被
 Cloudflare 与 403 挡住」，而本次经 amane 的 curl_cffi 指纹轮换 + 同一个代理，**javdb 直接拿到了
-SSIS-950 的完整详情页**，且是该番号全部标量字段的来源。这条值得单独复验：如果稳定成立，
-Peach 现有的 javdb 封禁结论可能是传输指纹问题而不是出口 IP 问题。
+SSIS-950 的完整详情页**，且是该番号全部标量字段的来源。这条已单独复验：同日的 HTTPX 与 curl_cffi
+对照实验里十六个格子全回 200，两种传输没有差别，javdb 的 403 按出口 IP 计而不是按传输指纹，
+结论与实验表记在 `docs/SOURCING.md`。
 
 ## 字段缺口
 
@@ -182,6 +183,6 @@ sidecar 会把「一个二进制 + 一次子进程」换成「一个 Python 服�
 
 ## 建议
 
-先做路线一（借设计），不引依赖。同时单独验一件事：**用 curl_cffi 指纹重问 javdb，确认 Peach 现有的
-javdb 封禁结论是不是传输层问题**——如果是，这条收益比换整个刮削栈都大，且改动只在 `peach.http`。
+先做路线一（借设计），不引依赖。其中「curl_cffi 指纹能解 javdb 的封」这一条已单独验过并否定，
+判据与实验表在 `docs/SOURCING.md`，剩下可借的是字段级抓取图与 `FailureReason` 的 16 档。
 路线二与路线三在上游发布 PyPI 包、或 Peach 确实需要 r18.dev 离线镜像之前，都不划算。
