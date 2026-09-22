@@ -76,11 +76,11 @@
 
 版本与差异见 `docs/reference-sources.json`、`docs/reference-snapshots/`，流程见
 `.claude/skills/peach-reference-evidence/SKILL.md`。本节只索引快照，不复制测量值；给不出可重抓
-字节的实测不登记，理由写进快照正文——`tests/test_reference_updates.py` 会拒绝既没登记也没说明的快照。
+字节的实测不登记，理由写进快照正文（`tests/test_reference_updates.py` 拒收没说明的快照）。
 
 - 渐变参数模型、`in oklab` 插值与噪点叠层：`feralui-gradients-measured`；工作台与配色圆钮：`feralui-studio-boardui-accent-measured`。
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
-- 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略只用于路径、URL、ID、SHA 这类首尾都有信息的值，须显式 `data-middle-truncate`，标题、说明、人名和标签留末尾省略。
+- 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略的适用范围见 `docs/REUSE.md`。
 - 统计与口味层级，Note／Progress／Gauge／Context Card 等控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`。
 - 分类切换条属于 Tabs 的 secondary 变体而不是分段器：`vercel-geist-tabs-secondary-measured`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并用 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
@@ -89,6 +89,7 @@
 - 播放器控制栏、设置浮层与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；统计历史：`youtube-stats-buffer-measured`；小窗与右键菜单：`youtube-miniplayer-measured`；手机顶栏：`youtube-mobile-topbar-measured`。不复制字幕、睡眠定时与自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。
 - 通用评审清单与报告型页面版式：`vercel-web-interface-guidelines`、`vercel-report-design`。
+- 按内容类型的来源链与逐站取舍：`amane-content-routes`，链上只放 Peach 已接的解析器，候选复核与不落盘 NFO 是差异；同类馆藏管理器的信息组织：`readme-yingku`，源码未公开，据 README、5 张演示图与论坛 8 张截图测读。
 - 默认 Note、只读提示和 info 入口复用本地 Lucide 圆圈 `i`（2px 描边、圆端点），不复制未开放许可的 Geist 私有 SVG。
 - 原地换态动效的形态与参数（字形、读数、骨架、开关、成功、失败）：`transitions-dev-measured`。
 - 沉浸与详情播放每次加载都带独立 `session`，切片、关闭、失败和页面离开时取消旧会话：只清浏览器的 `src` 不足以停止 CloudDrive 预读或 FFmpeg。Mix 只按已解析且可播放的视频计数，不按回复数或网盘页数计数。

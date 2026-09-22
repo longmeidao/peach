@@ -16,6 +16,7 @@ from PIL import Image
 
 from peach.field_owners import auto_owner, owner_of, review_owner
 from peach.genre_taxonomy import map_genres
+from peach.jav_cover_fetch import NotFound
 from peach.http import HttpResponse
 from peach.library_nfo import read_nfo, sidecars, local_art
 from peach.library_processing import (STALL_AFTER_SECONDS, _candidate_identity, decorate,
@@ -27,6 +28,17 @@ from peach.review_csv import read_rows
 from peach.settings_file import PeachConfig
 from support.conditions import windows_ledger_roots
 from support.ledger import fresh_ledger
+
+
+def stub_provider():
+    """只关心官方那一档的用例用它：综合索引那一档按「没有」桩掉。
+
+    来源链在官方那一档没给全必填标量时会接着问综合索引（`peach.metadata_routes`）。
+    桩不给答复，那一问拿到的是 Mock 的自动属性，报出来的错和被测行为无关。
+    """
+    provider = Mock()
+    provider.community.side_effect = NotFound('社区来源都没有这个番号')
+    return provider
 
 
 class LibraryNfoTests(unittest.TestCase):
@@ -161,7 +173,7 @@ class LibraryNfoTests(unittest.TestCase):
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True,
                              locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'id': 'ABW-358'}
 
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
@@ -197,7 +209,7 @@ class LibraryNfoTests(unittest.TestCase):
         config = PeachConfig(self.root, self.root / 'config.toml', present=True,
                              locations={'local': (str(media),)})
         transport = Mock()
-        provider = Mock()
+        provider = stub_provider()
         provider.transport = transport
         provider.query.return_value = {'id': 'ABW-358'}
         # 采集跑完、收尾还没开始的那一刻按下停止。
@@ -267,7 +279,7 @@ class LibraryNfoTests(unittest.TestCase):
         transport = Mock(return_value=HttpResponse(
             200, {'content-type': 'image/jpeg'}, image.getvalue(),
             'https://pics.dmm.co.jp/mono/actjpgs/suzumori_remu.jpg'))
-        provider = Mock()
+        provider = stub_provider()
         provider.transport = transport
         provider.query.return_value = {
             'id': 'ABW-358',
@@ -343,7 +355,7 @@ class LibraryNfoTests(unittest.TestCase):
         Image.new('RGB', (40, 60), 'blue').save(media / 'ABW-358-poster.jpg')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'maker': 'Studio', 'id': 'ABW-358', 'director': 'Director', 'runtime': 210}
         factory = Mock(return_value=provider)
         result = process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
@@ -374,7 +386,7 @@ class LibraryNfoTests(unittest.TestCase):
         Image.new('RGB', (40, 60), 'blue').save(media / 'ABW-358-poster.jpg')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'id': 'ABW-358', 'title': 'Remu Style', 'maker': 'Prestige',
                                        'actresses': [{'japanese_name': 'Remu Suzumori'}]}
         process_library(config, db, self.root / 'generated', self.root / 'covers',
@@ -393,7 +405,7 @@ class LibraryNfoTests(unittest.TestCase):
         (media / 'DASS-468.mp4').write_bytes(b'video')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'id': 'DASS-468', 'title': 'I Was Spoiled To Death', 'maker': 'Das',
                                        'series': 'Spoiled To Death', 'release_date': '2024-09-10',
                                        'actresses': [{'japanese_name': '胡桃さくら'}]}
@@ -432,7 +444,7 @@ class LibraryNfoTests(unittest.TestCase):
         (media / 'MIDE-612.mp4').write_bytes(b'video')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'id': 'MIDE-612', 'title': '痴女秘書', 'maker': 'MOODYZ',
                                        'release_date': '2018-01-01', 'genres': ['淫語'],
                                        'actresses': [{'japanese_name': '本田岬'}]}
@@ -473,7 +485,7 @@ class LibraryNfoTests(unittest.TestCase):
             '<studio>Prestige</studio></movie>', encoding='utf-8')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'id': 'ABW-358'}
         factory = Mock(return_value=provider)
         candidates = self.root / 'generated/library-metadata-field-candidates.csv'
@@ -658,7 +670,7 @@ class LibraryNfoTests(unittest.TestCase):
             (media / name).write_bytes(b'video')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'maker': 'Studio', 'id': 'ABW-001', 'source_url': ''}
         provider.cover.return_value = False
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
@@ -677,7 +689,7 @@ class LibraryNfoTests(unittest.TestCase):
             (media / name).write_bytes(b'video')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'maker': 'Studio', 'id': 'ABW-001', 'source_url': ''}
         provider.fc2.return_value = [('fc2', {
             'id': 'FC2-PPV-1239052', 'content_id': '1239052', 'maker': 'FC2-PPV',
@@ -703,7 +715,11 @@ class LibraryNfoTests(unittest.TestCase):
 
     @windows_ledger_roots
     def test_a_dated_code_asks_1pondo_only_when_this_file_says_it_is_theirs(self):
-        """一本道与カリビアンコム 的番号同形：问错那家，答回来的是同一天发行的另一部片。"""
+        """一本道与カリビアンコム 的番号同形：问错那家，答回来的是同一天发行的另一部片。
+
+        指不着一本道的那条落到综合索引，不问 r18.dev：无码番号在它上面没有
+        （`peach.metadata_routes.ROUTES['uncensored']`）。
+        """
         media = self.root / 'media'
         (media / '1pon').mkdir(parents=True)
         (media / 'Carib-040221-001-FHD').mkdir()
@@ -711,20 +727,25 @@ class LibraryNfoTests(unittest.TestCase):
         (media / 'Carib-040221-001-FHD' / '040221-001-carib-1080p.mp4').write_bytes(b'video')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.one_pondo.return_value = [('1pondo', {
             'id': '112312_478', 'content_id': '112312_478', 'maker': '一本道',
             'title': '裸演奏 〜第5回演奏会・ホルン〜', 'series': '裸演奏',
             'release_date': '2012-11-23', 'genres': ['スレンダー'],
             'actresses': [{'japanese_name': '飯岡かなこ', 'name_romaji': 'Kanako Iioka'}],
             'source_url': 'https://www.1pondo.tv/movies/112312_478/'})]
-        provider.query.return_value = {'maker': 'Caribbean', 'id': '040221-001', 'source_url': ''}
+        provider.community.side_effect = None
+        provider.community.return_value = [('javdb', {
+            'id': '040221-001', 'maker': 'カリビアンコム', 'title': '未熟な僕と年上の彼女',
+            'release_date': '2021-04-02', 'actresses': [{'japanese_name': '倉本すみれ'}],
+            'source_url': 'https://javdb.com/v/carib'})]
         provider.cover.return_value = False
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
                                  provider_factory=Mock(return_value=provider))
         self.assertEqual(result['status'], 'complete')
         self.assertEqual([item.args[0] for item in provider.one_pondo.call_args_list], ['112312_478'])
-        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['040221-001'])
+        self.assertEqual([item.args[0] for item in provider.community.call_args_list], ['040221-001'])
+        provider.query.assert_not_called()
         rows = {(row['code'], row['field']): row
                 for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
         performers = json.loads(rows[('112312_478', 'performers')]['candidates_json'])
@@ -760,7 +781,7 @@ class LibraryNfoTests(unittest.TestCase):
         Image.new('RGB', (4, 6), 'teal').save(media / 'DTW003-放课后.png')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'id': 'DTW003', 'maker': 'Studio', 'source_url': ''}
         provider.cover.return_value = False
         process_library(config, db, self.root / 'generated', self.root / 'covers',
@@ -775,14 +796,21 @@ class LibraryNfoTests(unittest.TestCase):
 
     @windows_ledger_roots
     def test_a_tokyo_hot_code_written_with_the_site_name_is_asked_for(self):
-        """账本里按目录名落的 `TOKYO-HOT-N0762` 是真番号，要按规范写法去问来源。"""
+        """账本里按目录名落的 `TOKYO-HOT-N0762` 是真番号，要按规范写法去问来源。
+
+        Tokyo-Hot 的编号是无码那条链，问的是综合索引而不是 r18.dev。
+        """
         media = self.root / 'media'
         media.mkdir()
         (media / 'n0762.mp4').write_bytes(b'video')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
-        provider.query.return_value = {'id': 'n0762', 'maker': 'Tokyo-Hot', 'source_url': ''}
+        provider = stub_provider()
+        provider.community.side_effect = None
+        provider.community.return_value = [('javdb', {
+            'id': 'n0762', 'maker': 'Tokyo-Hot', 'title': '東京熱 n0762',
+            'release_date': '2011-09-30', 'actresses': [{'japanese_name': '倉本すみれ'}],
+            'source_url': 'https://javdb.com/v/n0762'})]
         provider.cover.return_value = False
         process_library(config, db, self.root / 'generated', self.root / 'covers',
                         stage='scan', provider_factory=lambda: provider)
@@ -790,7 +818,8 @@ class LibraryNfoTests(unittest.TestCase):
             connection.execute("UPDATE asset SET code='TOKYO-HOT-N0762'")
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
                                  stage='collect', provider_factory=lambda: provider)
-        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['n0762'])
+        self.assertEqual([item.args[0] for item in provider.community.call_args_list], ['n0762'])
+        provider.query.assert_not_called()
         self.assertEqual(result['issue_count'], 0)
 
     @windows_ledger_roots
@@ -807,7 +836,7 @@ class LibraryNfoTests(unittest.TestCase):
         (media / 'STP-26232.mp4').write_bytes(b'video')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
-        provider = Mock()
+        provider = stub_provider()
         provider.query.side_effect = NotFound('HTTP 404')
         provider.community.side_effect = NotFound('社区来源都没有这个番号')
         provider.cover.side_effect = Unavailable('HTTP 503')
@@ -856,6 +885,64 @@ class LibraryNfoTests(unittest.TestCase):
         cache = _MissCache(misses_path(config), now=lambda: time.time() + 8 * 24 * 3600)
         self.assertFalse(cache.fresh('r18dev', 'STP-26232'), '7 天后再问一次')
         self.assertFalse(_MissCache(self.root / 'missing.json').fresh('r18dev', 'STP-26232'))
+
+    @windows_ledger_roots
+    def test_a_source_that_already_answered_within_the_week_is_not_asked_again(self):
+        """上一趟存下的原始快照还新鲜就直接用，不发请求。
+
+        有效期与「说过没有」的记忆同一个（7 天）：两边同时到期，才不会出现「没有」
+        已经过期、「有」还压着旧值。「重试未完成项」要的就是新答复，强制重问。
+        """
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'DASS-468.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        snapshot_path = config.directory('sources') / 'library-metadata' / 'DASS-468-r18dev.json'
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(json.dumps({
+            'id': 'DASS-468', 'title': '甘やかされて', 'maker': 'Das', 'release_date': '2024-09-10',
+            'actresses': [{'japanese_name': '胡桃さくら'}], 'source_url': 'https://r18.dev/'}),
+            encoding='utf-8')
+        provider = stub_provider()
+        provider.query.return_value = json.loads(snapshot_path.read_text(encoding='utf-8'))
+        provider.cover.return_value = False
+        run = lambda **extra: process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                              provider_factory=Mock(return_value=provider), **extra)
+        result = run()
+        provider.query.assert_not_called()
+        provider.community.assert_not_called()
+        self.assertEqual((result['status'], result['issue_count']), ('complete', 0))
+        rows = {row['field']: json.loads(row['candidates_json'])
+                for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
+        self.assertEqual([entry['source'] for entry in rows['title']], ['r18dev'])
+
+        os.utime(snapshot_path, (time.time() - 8 * 24 * 3600,) * 2)
+        run(retry_ids=[1])
+        provider.query.assert_called_once()
+
+    @windows_ledger_roots
+    def test_a_route_override_decides_who_gets_asked(self):
+        """用户把有码那条链换成只问综合索引，r18.dev 就一次都不问。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'DASS-468.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        provider = stub_provider()
+        provider.community.side_effect = None
+        provider.community.return_value = [('javdb', {
+            'id': 'DASS-468', 'title': '甘やかされて', 'maker': 'Das', 'release_date': '2024-09-10',
+            'actresses': [{'japanese_name': '胡桃さくら'}], 'source_url': 'https://javdb.com/v/x'})]
+        provider.cover.return_value = False
+        result = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                 provider_factory=Mock(return_value=provider),
+                                 route_overrides='censored=javdb')
+        provider.query.assert_not_called()
+        self.assertEqual(provider.community.call_args.kwargs['route'], ('javdb',))
+        self.assertEqual((result['status'], result['issue_count']), ('complete', 0))
 
     def test_a_new_source_clears_what_the_old_lineup_said_it_did_not_have(self):
         """每条「没有」都是当时那批来源给的答案；接上一家新的，整份记忆就不作数了。
@@ -915,7 +1002,7 @@ class LibraryWatchdogTests(unittest.TestCase):
                            locations={'local': (str(media),)})
 
     def _provider(self):
-        provider = Mock()
+        provider = stub_provider()
         provider.query.return_value = {'id': 'code', 'maker': 'Studio', 'source_url': ''}
         provider.cover.return_value = False
         return provider

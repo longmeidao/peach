@@ -215,7 +215,16 @@ class SourceChoiceTests(unittest.TestCase):
         """厂牌番号三家都有产出，顺序也要保持 javdb 最后。"""
         self.assertEqual([name for name, _ in community_sources_for("ORETD-615")],
                          ["avbase", "javbus", "javdb"])
-        self.assertEqual(community_sources_for(""), COMMUNITY_SOURCES)
+        self.assertEqual([name for name, _ in COMMUNITY_SOURCES],
+                         ["avbase", "javbus", "javdb"])
+
+    def test_a_row_without_a_code_asks_nobody(self):
+        """番号是空的，三家搜什么都一样：搜索页第一条和这一行没有关系。"""
+        self.assertEqual(community_sources_for(""), ())
+
+    def test_a_korean_mib_code_asks_nobody(self):
+        """`YUJ-103` 在 JAV 目录站上是另一部片，问回来的值只能靠人一条条认出来。"""
+        self.assertEqual(community_sources_for("YUJ-103"), ())
 
 
 if __name__ == "__main__":
