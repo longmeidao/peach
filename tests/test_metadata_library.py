@@ -766,8 +766,8 @@ class LibraryNfoTests(unittest.TestCase):
                 self.assertRaises(NotFound):
             provider.cover('ORETD-618', covers)
 
-    def test_a_thumbnail_on_disk_is_asked_again_and_only_a_bigger_cover_replaces_it(self):
-        """缩略图不算有了封面：发行方那里常常还留着原图，问来的更大才换。"""
+    def test_a_thumbnail_on_disk_is_asked_again_and_only_a_wider_cover_replaces_it(self):
+        """缩略图不算有了封面：发行方那里常常还留着原图，问来的更宽才换。"""
         from peach.jav_cover_fetch import Candidate
         from peach.library_processing import CoverKept, LibraryMetadataProvider
         provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
@@ -795,12 +795,24 @@ class LibraryNfoTests(unittest.TestCase):
 
         picture(covers / 'FC2-PPV-3.jpg', (276, 154))
         before = (covers / 'FC2-PPV-3.jpg').read_bytes()
-        small = (Candidate('storage.contents.fc2.com', 'https://storage.contents.fc2.com/3.jpg'),
-                 (250, 140), b'small')
+        # 同一张缩略图转存到别处常差一行像素：面积大一点不算更清楚。
+        same = (Candidate('storage.contents.fc2.com', 'https://storage.contents.fc2.com/3.jpg'),
+                (276, 155), b'same')
         provider.community = Mock(side_effect=NotFound('社区来源都没有这个番号'))
-        with patch('peach.jav_cover_fetch.best_cover', return_value=small), \
+        with patch('peach.jav_cover_fetch.best_cover', return_value=same), \
                 self.assertRaises(CoverKept):
             provider.cover('FC2-PPV-3', covers)
+        self.assertEqual((covers / 'FC2-PPV-3.jpg').read_bytes(), before)
+
+        # 官方这一趟没问成时，镜像给的缩略图不能让这部片一周都不再问。
+        from peach.jav_cover_fetch import Unavailable
+        mirror = (Candidate('img.javstore.net', 'https://img.javstore.net/3.jpg'), (276, 155), b'mirror')
+        provider.community = Mock(return_value=[])
+        with patch('peach.jav_cover_fetch.best_cover', side_effect=Unavailable('FC2：来源正在冷却')), \
+                patch('peach.community_catalog.verified_cover', return_value=(*mirror, ())), \
+                self.assertRaises(Unavailable) as raised:
+            provider.cover('FC2-PPV-3', covers)
+        self.assertNotIsInstance(raised.exception, CoverKept)
         self.assertEqual((covers / 'FC2-PPV-3.jpg').read_bytes(), before)
 
     @windows_ledger_roots
