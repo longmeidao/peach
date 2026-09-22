@@ -61,13 +61,13 @@ SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'j
                  'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
                  '1pondo': '一本道', 'local_nfo': '本地 NFO',
                  # 经 amane 桥问的几站（`metadata_amane.SITES`）。
-                 'fc2ppvdb': 'FC2PPVDB', 'fc2club': 'FC2Club', 'freejavbt': 'FreeJavBT',
+                 'fc2club': 'FC2Club', 'freejavbt': 'FreeJavBT',
                  'airav': 'AIRAV', 'avsox': 'AVSOX'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
                   'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
                   '1pondo': '1pondo-json',
-                  'fc2ppvdb': 'amane-fc2ppvdb', 'fc2club': 'amane-fc2club',
+                  'fc2club': 'amane-fc2club',
                   'freejavbt': 'amane-freejavbt', 'airav': 'amane-airav', 'avsox': 'amane-avsox'}
 #: FC2 商品页实测 300～320 KB，fc2cmadb 那页 90 KB；说明与评论都在同一页里。
 FC2_PAGE_LIMIT = 2 * 1024 * 1024

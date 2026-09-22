@@ -63,13 +63,13 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # avsox 经 amane 桥（ADR-0043）垫在最后：它专收无码，但是转载索引，且要经 Cloudflare，
     # 三家综合索引都落空才轮到它。
     "uncensored": ("1pondo", "avbase", "javbus", "javdb", "avsox"),
-    # FC2：发行方商品页 → 下架作品的镜像站 → JavArchive → 两个 FC2 专站 → javdb。JavArchive
-    # 只给标题和一张转存封面，比官方原图差一档，所以排在两个存档站之后。fc2ppvdb 与
-    # fc2club 经 amane 桥问（ADR-0043），只收 FC2，所以排在综合索引 javdb 前面。
+    # FC2：发行方商品页 → 下架作品的镜像站 → JavArchive → FC2 专站 → javdb。JavArchive
+    # 只给标题和一张转存封面，比官方原图差一档，所以排在两个存档站之后。fc2club 经
+    # amane 桥问（ADR-0043），只收 FC2，所以排在综合索引 javdb 前面。
     # 不含 r18dev（实测 85 条全空）、不含 AVBase 与 JavBus（本机 1213 份来源证据里
     # 这两家对 FC2 番号一份都没给过，javdb 给了 166 份）。判据原文在
     # `community_catalog.community_sources_for` 与 `docs/SOURCING.md`。
-    "fc2": ("fc2", "fc2cmadb", "javarchive", "fc2ppvdb", "fc2club", "javdb"),
+    "fc2": ("fc2", "fc2cmadb", "javarchive", "fc2club", "javdb"),
     # 韩国 MIB 一家都不问：番号和日本番号同形，JAV 目录站按它去查返回的是别的作品，
     # 那份错值只能靠人一条条认出来。官网走 `scripts/harvest_kmib.py`，不在这条路上。
     "kmib": (),
@@ -87,7 +87,7 @@ COMMUNITY_STAGE = ("avbase", "javbus", "javdb")
 #: 这一档的几站，所以合成一档 `amane`；分级上都是社区来源，但不占 `COMMUNITY_STAGE`
 #: 的 `LIST_FIELD_DEPTH` 名额——那三家的互证样本不该被转载站挤掉。链上放在综合索引之前
 #: 还是之后由各类型的链自己定：FC2 专站在 javdb 前，无码的 avsox 在最后。
-AMANE_STAGE = ("fc2ppvdb", "fc2club", "freejavbt", "airav", "avsox")
+AMANE_STAGE = ("fc2club", "freejavbt", "airav", "avsox")
 
 #: 必填标量字段。一档把这几项（在这一行还缺的范围内）都给全了就不问下一档。
 SCALAR_FIELDS = ("title", "performers", "studio", "release_date")

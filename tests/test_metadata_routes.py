@@ -70,14 +70,14 @@ class RouteTableTests(unittest.TestCase):
     def test_fc2_asks_the_shop_then_the_archives_then_the_fc2_sites_then_javdb_only(self):
         """AVBase 与 JavBus 对 FC2 番号一份证据都没给过，问了只是各撞一次空搜索。"""
         self.assertEqual(route_for_code('FC2-PPV-1812235'),
-                         ('fc2', 'fc2cmadb', 'javarchive', 'fc2ppvdb', 'fc2club', 'javdb'))
+                         ('fc2', 'fc2cmadb', 'javarchive', 'fc2club', 'javdb'))
         self.assertNotIn('r18dev', route_for_code('FC2-PPV-1812235'))
 
     def test_the_amane_sites_peach_already_covers_are_not_on_any_default_chain(self):
         """有码与素人的默认链不经桥：freejavbt 与 airav 只能由用户整条覆盖时点名。"""
         self.assertEqual(amane_route('ABW-220'), ())
         self.assertEqual(amane_route('300MIUM-1239'), ())
-        self.assertEqual(amane_route('FC2-PPV-1812235'), ('fc2ppvdb', 'fc2club'))
+        self.assertEqual(amane_route('FC2-PPV-1812235'), ('fc2club',))
         self.assertEqual(amane_route('HEYZO-1380'), ('avsox',))
         self.assertEqual(amane_route('ABW-220', overrides={'censored': ('r18dev', 'freejavbt', 'airav')}),
                          ('freejavbt', 'airav'))
@@ -111,7 +111,7 @@ class StageTests(unittest.TestCase):
     def test_stage_members_name_the_sources_the_evidence_files_use(self):
         chain = route_for_code('FC2-PPV-1812235')
         self.assertEqual(stage_members('fc2', chain), ('fc2', 'fc2cmadb', 'javarchive'))
-        self.assertEqual(stage_members('amane', chain), ('fc2ppvdb', 'fc2club'))
+        self.assertEqual(stage_members('amane', chain), ('fc2club',))
         self.assertEqual(stage_members('community', chain), ('javdb',))
         self.assertEqual(stage_members('r18dev', chain), ())
 

@@ -39,7 +39,6 @@ SITES: dict[str, tuple[str, str]] = {
     "faleno": ("faleno", "FalenoCrawler"),
     "fc2": ("fc2", "FC2Crawler"),
     "fc2club": ("fc2club", "FC2ClubCrawler"),
-    "fc2ppvdb": ("fc2ppvdb", "FC2PPVDBCrawler"),
     "freejavbt": ("freejavbt", "FreejavbtCrawler"),
     "getchu": ("getchu", "GetchuCrawler"),
     "giga": ("giga", "GigaCrawler"),

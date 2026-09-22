@@ -37,7 +37,6 @@ DEFAULT_TIMEOUT = 60
 #: 经桥开放给 Peach 来源链的站，只列 Peach 自己没有解析器的：站名 → 界面上的名字。
 #: javdb / dmm / javbus 这些 Peach 已有的不经桥换——两条路径答同一站，分歧没人会去看。
 SITES: dict[str, str] = {
-    "fc2ppvdb": "FC2PPVDB",
     "fc2club": "FC2Club",
     "freejavbt": "FreeJavBT",
     "airav": "AIRAV",

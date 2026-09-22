@@ -56,7 +56,6 @@ SOURCE_SPECS = {
         "1pondo": "official",
         # 经 amane 桥问到的几站（`peach.metadata_amane.SITES`，ADR-0043）。都是转载或索引站，
         # 按社区来源对待；不走 Javinizer-Go，同样不进 REGISTERED_SOURCES。
-        "fc2ppvdb": "community",
         "fc2club": "community",
         "freejavbt": "community",
         "airav": "community",
