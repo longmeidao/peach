@@ -344,3 +344,79 @@ class PhotoThumbnailService:
             except (OSError, ValueError, Image.DecompressionBombError) as exc:
                 raise PreviewUnavailable("photo thumbnail failed") from exc
         return destination
+
+
+#: 索引页那一格的长边上限。大图版式一列 150–250 CSS px、竖幅 3:4，二倍屏最多要
+#: 500×666 设备像素，640 盖得住；实体图本身中位 600×783，这一档对多数图只是重编码。
+#: 只留一档：换版式不重拼列表，两档会让圆框和竖幅各取一张，同一个人下载两次。
+ENTITY_THUMB_EDGE = 640
+
+#: 派生图的格式与画质。索引页一屏 120 格，实测 182 张抽样：原件均 159 KB，
+#: 这一档均 26.7 KB，一屏从 18.7 MB 降到 3.1 MB。
+ENTITY_THUMB_FORMAT = "WEBP"
+ENTITY_THUMB_TYPE = "image/webp"
+ENTITY_THUMB_QUALITY = 80
+
+
+def entity_thumb_root(avatar_root: Path) -> Path:
+    """实体图派生件的目录：实体图旁边那一个。
+
+    跟着 `avatar_root` 走而不是各自读配置常量，是为了让「换了实体图目录」这一个动作
+    把派生件一起带走。临时目录里的测试和演示数据根都靠这一条：接线时各写各的默认值，
+    有一处忘了改就会把派生件写进本机真实的 generated 树。
+    """
+    return avatar_root.parent / "avatar-thumbs"
+
+
+class EntityThumbnailService:
+    """实体图的索引页派生件。
+
+    实体图是给资料页大位存的高清照片，本库 727 张合计 157 MB、均 221 KB；索引页把它
+    铺进 150 px 的格子，一屏 120 格就是二十多 MB，而屏幕上只要其中百分之几的像素。
+    所以索引页取的是这里缩好的一份，资料页照旧取原件。
+
+    落在自己的目录而不是 `avatar_root`：那个目录被 `web_state._scan_avatar_root` 逐次
+    扫描用来判「这个实体有没有图」，往里塞一倍数量的派生件等于给每次扫描加一倍成本。
+    目录由 `entity_thumb_root` 从实体图目录推出来，接线处不各写一份默认值。
+
+    换头像会原子替换原件，所以派生件按原件的修改时间复验：比原件旧就重做一张。
+    只比时间不比内容——复核批准落地时原件必然变新，而人手摆进去的文件也带自己的时间。
+    """
+
+    def __init__(self, root: Path, edge: int = ENTITY_THUMB_EDGE):
+        self.root = root.resolve()
+        self.edge = edge
+
+    def path_for(self, key: str) -> Path:
+        return self.root / f"{key}.{self.edge}.webp"
+
+    def thumbnail(self, key: str, source: Path) -> Path | None:
+        """这个实体图的索引页派生件；缩不出来就是 None。
+
+        None 而不是抛出：派生只是省流量，缺了它页面照样能显示，调用方退回原件即可。
+        矢量实体图走的就是这条路——PIL 打不开 SVG，而它本来也不需要缩。
+        """
+        destination = self.path_for(key)
+        try:
+            fresh = (destination.is_file()
+                     and destination.stat().st_mtime_ns >= source.stat().st_mtime_ns)
+        except OSError:
+            fresh = False
+        if fresh:
+            return destination
+        self.root.mkdir(parents=True, exist_ok=True)
+        try:
+            # 并发请求同一张图时各写各的临时文件，最后谁替换都是同一张。
+            with atomic_path(destination) as temporary:
+                with Image.open(source) as opened:
+                    image = ImageOps.exif_transpose(opened)
+                    if image.mode not in {"RGB", "L"}:
+                        image = image.convert("RGB")
+                    # `thumbnail` 只缩不放：本来就比这一档小的图原样重编码，不上采样。
+                    image.thumbnail((self.edge, self.edge), Image.LANCZOS)
+                    image.save(temporary, ENTITY_THUMB_FORMAT,
+                               quality=ENTITY_THUMB_QUALITY, method=4)
+        except (OSError, ValueError, Image.DecompressionBombError,
+                Image.UnidentifiedImageError):
+            return None
+        return destination

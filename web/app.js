@@ -15,7 +15,7 @@ import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
-import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -3020,11 +3020,14 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)releaseHove
 
    兜底链最后一环必须真的把 `<img>` 拿掉（`data-drop="self"`）：留着取不到图的
    `<img>`，`:has(img)` 仍然匹配，首字母垫底回不来，浏览器还会把 alt 画出来。 */
+/* `thumb` 要的是实体图缩到长边 640 的那一份。开给一屏几十格的位置用：实体图是给
+   资料页大位存的照片，本库 727 张均 221 KB，索引页一屏 120 格铺进 150 px 的格子就是
+   十几 MB，而屏幕上用得着的只有其中百分之几的像素。资料页仍取原件——那里就是要看清。 */
 function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=null,logo='',
                         logoVariant='logo',alt='',lazy=true,style='',dropStyle=false,
-                        focus=null}={}){
+                        focus=null,thumb=false}={}){
   const useEntity=!!(id&&hasImage);
-  const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';
+  const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}${thumb?'&thumb=1':''}`:'';
   // `rep` 由服务端的 has_avatar 决定有没有值，没有就不出这一环。
   const avatarSrc=rep?`/avatar?id=${rep}`:'';
   /* 公司的门面是它自己的标识，不是作品截图——那是某部片的画面，说的是别人的事。
@@ -3046,7 +3049,9 @@ function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=nu
   /* 贴了脸框就一定要能撤 style：放大是 avatarFrame 写进 img 内联 style 的，回落时
      不撤，那几个百分比会按上一张图的尺寸套在这一张上。调用点不必记得开这个开关——
      忘了开的代价是页面上一张明显错位的图，而它只在回落发生时才现形。 */
-  return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''}${framed?framedStyle:''} `+
+  /* `decoding="async"` 让解码离开主线程：一屏几十张图同时落地时，同步解码把滚动
+     和点击一起压住，而这些图一张都不参与首屏的排版——框的尺寸由 CSS 定死。 */
+  return `<img src="${src}" alt="${alt}"${lazy?' loading="lazy"':''} decoding="async"${framed?framedStyle:''} `+
     `${faceBox}${imageFallbackAttrs({dropStyle:(dropStyle||!!faceBox||!!framedStyle)&&framed,
                                      fallbacks})}>`;
 }
@@ -3060,13 +3065,13 @@ function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,mark=nu
    七个调用点要各记一次，而漏掉不报错也不掉图，只是几何居中——这种错只有对着页面
    一个个看才发现得了。公司那一格要的是「明确不取景」，传 `null` 覆盖掉。 */
 function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',logoVariant='icon',
-                     focus=undefined){
+                     focus=undefined,thumb=false){
   // 这一层大多是小圆框和窄格子，厂牌标识在那里要方形图标而不是横着的字标；索引页的
   // 厂牌大格是同一个模板里的例外，由调用方点名要 `large`。
   const hint=focus===undefined?(ref&&ref.avatar_focus)||null:focus;
   return `<span class="ini">${esc((name||'?').slice(0,1))}</span>`+
     entityFaceImg({kind,id:ref&&ref.id,hasImage:!!(ref&&ref.has_image),rep:repId,mark:markId,
-                   logo:logoName,logoVariant,focus:hint});
+                   logo:logoName,logoVariant,focus:hint,thumb});
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
@@ -3126,11 +3131,15 @@ function avatarFrame(img){
     return;
   }
   const [cx,cy,faceW,imgW,imgH]=String(img.dataset.facebox).split(' ').map(Number);
-  if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH)){
+  /* 索引页取的是实体图的派生件，边车记的是原件像素：等比缩过的仍是同一张图，按比例
+     换算就对得上。脸心是归一化的，不跟着缩；脸框和图的像素一起乘，`faceZoom` 里那条
+     无损上限才问得到手上这张真有多少像素。比例为 0 是换成了别的图，那时退回几何居中。 */
+  const scale=faceSourceScale(img.naturalWidth,img.naturalHeight,imgW,imgH);
+  if(!scale){
     img.style.objectPosition='50% 50%';
     return;
   }
-  const frame=faceFrame({cx,cy,faceW,imgW,imgH},
+  const frame=faceFrame({cx,cy,faceW:faceW*scale,imgW:imgW*scale,imgH:imgH*scale},
     {w:rect.width,h:rect.height},window.devicePixelRatio||1);
   // 放不大就一个字都不写：留下的是 CSS 里那份几何，`object-position` 照旧生效。
   if(!frame)return;
@@ -6874,7 +6883,7 @@ function personCellHtml(x,kind,countText){
       <span class="ring" data-fit-native="${company?'mark':'portrait'}"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
         ref?{id:ref,has_image:x.has_image}:null,
         x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
-        bigMark?'large':'icon', company?null:x.avatar_focus)}</span>
+        bigMark?'large':'icon', company?null:x.avatar_focus, true)}</span>
       <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
 }
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人，一位女优
@@ -7140,7 +7149,12 @@ async function openIndex(kind,q,push=true,refine=false){
     paintTagIndexSelection();
   }
   let indexOffset=d.items.length;
+  /* 按下去到下一批画出来之间要有东西在动：这一段是一次网络往返加一屏头像，光把键
+     按灰了说不出「还在走」和「点了没反应」的区别。换的是首页续载那一枚同样的点，
+     文字留在键里，所以键宽不变、下面的内容不跟着跳。 */
+  const MORE_LABEL='载入更多';
   $('#indexMore').onclick=async()=>{const more=$('#indexMore');more.disabled=true;
+    more.setAttribute('aria-busy','true');more.innerHTML=loadingDotsHtml('继续载入中…');
     try{const next=await api(indexApi(indexOffset));if(requestSeq!==indexRequestSeq)return;
       indexOffset+=next.items.length;d.has_more=next.has_more;
       if(people){d.items.push(...next.items);const grid=$('#indexBody .igrid');
@@ -7149,7 +7163,8 @@ async function openIndex(kind,q,push=true,refine=false){
         /* 分组多了几个首字，跳转那一排要跟上；浮层整块重画，读数也在里面。 */
         $('#indexFilters').innerHTML=tagFilters();wireIndexControls(kind);paintTagIndexSelection()}
       if(people)$('#indexCount').textContent=indexOffset+(next.has_more?'+':'')+' 项';more.hidden=!next.has_more}
-    finally{if(requestSeq===indexRequestSeq)more.disabled=false}};
+    finally{more.removeAttribute('aria-busy');more.textContent=MORE_LABEL;
+      if(requestSeq===indexRequestSeq)more.disabled=false}};
 }
 
 /* 「女优」只用于番号发行物。素人、创作者自制和网红内容里的出镜者是艺人，

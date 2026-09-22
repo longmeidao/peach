@@ -45,7 +45,7 @@ from .follow_stream import (
 )
 from .media import MediaUnavailable, normalized_path
 from .platform import within_root
-from .previews import PreviewUnavailable
+from .previews import ENTITY_THUMB_TYPE, PreviewUnavailable, entity_image_key
 from .routes_auth import require_auth
 from .segments import SegmentCancelled, SegmentUnavailable, build_hls_playlist
 from .streaming import BufferedFileResponse, CancellableFileResponse, SplicedMp4Response
@@ -996,11 +996,22 @@ def site_mark(request: Request, source: str = "", domain: str = "",
 
 
 @router.api_route("/entity-image", methods=["GET", "HEAD"])
-def entity_image(request: Request, kind: str, id: int, args: dict[str, str] = Depends(require_auth)):
+def entity_image(request: Request, kind: str, id: int, thumb: int = 0,
+                 args: dict[str, str] = Depends(require_auth)):
+    """实体图。`thumb=1` 要的是索引页那一档派生件，不带就是资料页用的原件。
+
+    开关是布尔而不是像素数：尺寸由服务端一处定死，页面递多少像素进来就等于让每个
+    调用点各存一份尺寸，改一次得追七处，而缓存目录里会长出一堆只差几十像素的派生件。
+    """
+    state = request.app.state
     try:
-        path, content_type = request.app.state.preview_service.entity_image(kind, id)
+        path, content_type = state.preview_service.entity_image(kind, id)
     except PreviewUnavailable:
         return JSONResponse({"error": "unavailable"}, status_code=404)
+    if thumb:
+        derived = state.entity_thumb_service.thumbnail(entity_image_key(kind, id), path)
+        if derived is not None:
+            path, content_type = derived, ENTITY_THUMB_TYPE
     return _image_response(request, path, media_type=content_type)
 
 

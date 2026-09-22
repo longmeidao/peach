@@ -50,7 +50,12 @@ from .media import (
 from .mdns import create_mdns_publisher
 from .mp4repair import HeaderRepairStore
 from .platform import location_mounts
-from .previews import PhotoThumbnailService, PreviewService
+from .previews import (
+    EntityThumbnailService,
+    PhotoThumbnailService,
+    PreviewService,
+    entity_thumb_root,
+)
 from .push_discovery import PushDiscoveryService
 from .providers import OpenCodeGoClient, default_registry
 from .repository import LedgerDatabase, LedgerRepository
@@ -187,6 +192,7 @@ def create_app(
         settings.avatar_root, settings.logo_root,
     )
     photo_service = PhotoThumbnailService(settings.photo_root)
+    entity_thumb_service = EntityThumbnailService(entity_thumb_root(settings.avatar_root))
     transcode_service = TranscodeService(resolver, settings.transcode_root)
     header_repairs = HeaderRepairStore(settings.transcode_root, resolver)
     hls_plan_executor = ThreadPoolExecutor(
@@ -298,6 +304,7 @@ def create_app(
     app.state.media_engine = media_engine
     app.state.preview_service = preview_service
     app.state.photo_service = photo_service
+    app.state.entity_thumb_service = entity_thumb_service
     app.state.transcode_service = transcode_service
     app.state.header_repairs = header_repairs
     app.state.hls_plan_executor = hls_plan_executor
