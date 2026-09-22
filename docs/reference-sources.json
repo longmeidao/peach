@@ -359,6 +359,44 @@
         "web/css/22-followmanage.css",
         "tests/test_web_ui.py"
       ]
+    },
+    {
+      "id": "amane-content-routes",
+      "name": "amane 内容路由与站点特性",
+      "url": "https://raw.githubusercontent.com/sqzw-x/amane/main/docs/dev/content-routes.md",
+      "snapshot": "docs/reference-snapshots/upstream/amane-content-routes.md",
+      "checked_on": "2026-09-22",
+      "sha256": "c6daa066caf7fdb19845f10ac6451a8d8e1bdfef986d9f4849ebfc1c0a010ab3",
+      "git": {
+        "repository": "https://github.com/sqzw-x/amane.git",
+        "ref": "refs/heads/main",
+        "revision": "79ecfa763cc786318e1964a3d7f4e244a7d5c96d"
+      },
+      "role": "按内容类型给一条有序来源链的原则，以及逐站的领域判断：javdb 没有国产分区且不解析 plot、javbus 欧美目录不可用、kin8 从任意番号抽数字拼详情会误匹配、mgstage 不进有码默认表否则有码号也会去问它、单厂牌 API 对每个候选 SKU 都发请求、DMM 与厂牌官网的日期是 SKU 分层不必相等。Peach 只取可迁移的原则与站点判断，链上成员限于自己已接解析器的来源；候选与人工复核的契约、不落盘 NFO 是 Peach 自己的边界，上游没有这两条。",
+      "consumers": [
+        "src/peach/metadata_routes.py",
+        "src/peach/library_processing.py",
+        "src/peach/community_catalog.py",
+        "docs/SOURCING.md",
+        "tests/test_metadata_routes.py"
+      ]
+    },
+    {
+      "id": "readme-yingku",
+      "name": "映库 Yingku 说明",
+      "url": "https://raw.githubusercontent.com/CChester36/Yingku/main/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-yingku.md",
+      "checked_on": "2026-09-22",
+      "sha256": "81c7c77e4f859727c4a0d4bbc443935c01dddf2971e17ca5eba7bfd778e4cb0c",
+      "git": {
+        "repository": "https://github.com/CChester36/Yingku.git",
+        "ref": "refs/heads/main",
+        "revision": "c3c0e41d21f4ae6538217a2c5d5dd12de0a2bb68"
+      },
+      "role": "同类本地馆藏管理器的信息组织：人物页三个直达入口、本地作品与作品总数并列、页头的数据质量计数。源码未公开（README 自己写着这一条），结论来自 README 与它挂的 5 张演示图，加上论坛帖里 8 张真实截图的测读；截图给不出可哈希的上游字节，登记的是 README 本体。Peach 不复制它的界面，只取这三处的组织方式。",
+      "consumers": [
+        "docs/HANDOFF.md"
+      ]
     }
   ]
 }

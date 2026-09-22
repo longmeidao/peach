@@ -44,6 +44,8 @@ class ReferenceUpdateTests(unittest.TestCase):
              "boardui-input",
              "boardui-theme",
              "boardui-auth-card",
+             "amane-content-routes",
+             "readme-yingku",
              "youtube-stats-buffer-20260829"},
         )
         self.assertNotEqual(
