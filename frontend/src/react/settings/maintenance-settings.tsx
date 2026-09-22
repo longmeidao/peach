@@ -1,4 +1,4 @@
-/* 「更新与维护」分组：自动更新、检查更新、播放兼容修复、运行信息、卸载与重开安装教程。 */
+/* 「更新与维护」分组：自动更新、检查更新、播放兼容修复、运行信息、重开安装教程，卸载排在最后。 */
 import { useState, type FormEvent } from 'react';
 import { confirmModal } from '@peach/legacy/ui';
 
@@ -29,8 +29,8 @@ export function MaintenanceSettings(
       {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
       <MediaRepair />
       <Facts facts={data.facts} />
-      {data.uninstall ? <UninstallSettings uninstall={data.uninstall} receipt={receipt} /> : null}
       <TutorialSettings receipt={receipt} reopenTutorial={reopenTutorial} />
+      {data.uninstall ? <UninstallSettings uninstall={data.uninstall} receipt={receipt} /> : null}
     </div>
   );
 }

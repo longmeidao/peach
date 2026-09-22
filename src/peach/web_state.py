@@ -117,7 +117,7 @@ class WebContract:
                                     if follow_secrets_root is not None else SECRETS_DIR)
         self.follow_state_root = (Path(follow_state_root)
                                   if follow_state_root is not None else STATE_DIR)
-        # 人物页外部入口的开关与地址模板。和上面几个同一个道理：走实例属性，测试才
+        # 人物页外部入口的开关与镜像域名。和上面几个同一个道理：走实例属性，测试才
         # 落得进临时目录，不会读到这台机器真实的偏好。
         self.entry_links_root = (Path(entry_links_root)
                                  if entry_links_root is not None else STATE_DIR)
