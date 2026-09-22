@@ -37,13 +37,12 @@ export interface UninstallState {
 
 export interface PeachProxyState { mode: string; proxy_saved: boolean; needs_selection: boolean }
 
-/** 人物资料页上的一枚外部入口。只此一家的站点 `host` 与 `default_host` 都是 null。 */
+/** 一个能换镜像域名的外部入口站点。`host` 为空串就是没换过，走 `default_host`。 */
 export interface EntryLinkSite {
   key: string;
   label: string;
-  enabled: boolean;
-  host: string | null;
-  default_host: string | null;
+  host: string;
+  default_host: string;
 }
 
 export interface EntryLinksState { sites: EntryLinkSite[] }

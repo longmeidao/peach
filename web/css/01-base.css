@@ -477,10 +477,10 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
 .gselectfield[aria-expanded="true"]{box-shadow:inset 0 0 0 2px var(--color-border-button-active)}
 .gselectfield:disabled{background:var(--surface);color:var(--muted);cursor:not-allowed}
 .gselectfield:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-/* 行的左内边距加上 .popmenu 自己的 6px 等于触发器的 12px：每一项的站标和触发器里那一枚
-   站在同一列上，下拉展开时图标不挪位。 */
-.popmenu.gselectmenu button{display:flex;align-items:center;gap:8px;width:100%;min-height:var(--control-h);
-  padding:0 6px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
+/* 行首是站标，不是勾：选中态只有填充，行里也就没有一枚勾要占位。几何以 board.css 那条
+   浮层菜单项为准，这里是遗留层自己的基线，两边的内边距写同一个值。 */
+.popmenu.gselectmenu button{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-height:var(--control-h);
+  padding:0 8px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink-2);
   font:inherit;font-size:var(--fs-md);text-align:left;cursor:pointer}
 .popmenu.gselectmenu button:hover{background:var(--hover);color:var(--ink)}
 .popmenu.gselectmenu button[aria-selected="true"]{background:var(--hover);color:var(--ink)}

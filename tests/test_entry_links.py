@@ -120,12 +120,6 @@ class EntryLinkAddressTests(unittest.TestCase):
                                  [ref("minnano-av", "110", kind="production")])
         self.assertEqual(rows, [])
 
-    def test_a_closed_site_drops_out(self):
-        settings = entry_links.defaults()
-        settings["missav"]["enabled"] = False
-        rows = entry_links.build(settings, "七沢みあ", [ref("javdb", "NPD3")])
-        self.assertEqual([row["site"] for row in rows], ["javdb"])
-
     def test_a_mirror_domain_replaces_only_the_host(self):
         settings = entry_links.defaults()
         settings["javdb"]["host"] = "javdb521.com"
@@ -139,6 +133,11 @@ class EntryLinkAddressTests(unittest.TestCase):
         rows = entry_links.build(settings, "七沢みあ", [ref("javdb", "NPD3")])
         self.assertEqual(rows[0]["url"], "https://javdb.com/actors/NPD3")
 
+    def test_an_empty_domain_means_the_default_one(self):
+        """配置页那个框默认就是空的：留空是「没换过」，不是「没有地址」。"""
+        rows = entry_links.build({"javdb": {"host": ""}}, "七沢みあ", [ref("javdb", "NPD3")])
+        self.assertEqual(rows[0]["url"], "https://javdb.com/actors/NPD3")
+
 
 class EntryLinkSettingsFileTests(unittest.TestCase):
     def setUp(self):
@@ -147,53 +146,48 @@ class EntryLinkSettingsFileTests(unittest.TestCase):
         self.root = Path(temporary.name).resolve()
 
     def body(self, **changed: dict) -> dict:
-        """配置页提交的形状：每站一行，能换域名的带上域名。"""
-        sites = {site.key: ({"enabled": True, "host": site.host} if site.mirrored
-                            else {"enabled": True})
-                 for site in entry_links.SITES}
+        """配置页提交的形状：能换域名的那几站各一行，值就是框里写的那串。"""
+        sites = {site.key: {"host": ""} for site in entry_links.SITES if site.mirrored}
         sites.update(changed)
         return {"sites": sites}
 
-    def test_an_absent_file_reads_as_every_site_open(self):
+    def test_an_absent_file_reads_as_no_domain_changed(self):
+        """配置页只管能换域名的那两站；みんなのAV 只此一家，不在这份设置里。"""
         saved = entry_links.read(self.root)
-        self.assertEqual(sorted(saved), ["javdb", "minnano-av", "missav"])
-        self.assertTrue(all(row["enabled"] for row in saved.values()))
+        self.assertEqual(sorted(saved), ["javdb", "missav"])
+        self.assertTrue(all(row["host"] == "" for row in saved.values()))
 
     def test_saving_round_trips_through_the_snapshot(self):
-        entry_links.save(self.root, self.body(javdb={"enabled": False,
-                                                     "host": "javdb521.com"}))
+        entry_links.save(self.root, self.body(javdb={"host": "javdb521.com"}))
         rows = {row["key"]: row for row in entry_links.snapshot(self.root)["sites"]}
-        self.assertFalse(rows["javdb"]["enabled"])
+        self.assertEqual(sorted(rows), ["javdb", "missav"])
         self.assertEqual(rows["javdb"]["host"], "javdb521.com")
         self.assertEqual(rows["javdb"]["default_host"], "javdb.com")
         self.assertEqual(rows["javdb"]["label"], "JavDB")
-        # みんなのAV 没有镜像可换，配置页据此只给它一个开关。
-        self.assertIsNone(rows["minnano-av"]["host"])
-        self.assertIsNone(rows["minnano-av"]["default_host"])
+        # 没动过的那一站留空：框里显示的是占位符，不是一串要人去认的默认值。
+        self.assertEqual(rows["missav"]["host"], "")
+        self.assertEqual(rows["missav"]["default_host"], "missav.ws")
 
     def test_a_pasted_address_is_trimmed_down_to_its_domain(self):
         """镜像地址多半是整条复制过来的，前缀与末尾的斜杠不值得弹一条错误。"""
-        entry_links.save(self.root, self.body(missav={"enabled": True,
-                                                      "host": "https://missav.ai/"}))
+        entry_links.save(self.root, self.body(missav={"host": "https://missav.ai/"}))
         self.assertEqual(entry_links.read(self.root)["missav"]["host"], "missav.ai")
 
     def test_an_address_with_a_path_is_refused(self):
         with self.assertRaises(ValueError) as caught:
             entry_links.save(self.root, self.body(
-                javdb={"enabled": True, "host": "javdb.com/actors/{javdb_id}"}))
+                javdb={"host": "javdb.com/actors/{javdb_id}"}))
         self.assertIn("只写域名本身", str(caught.exception))
 
-    def test_an_empty_domain_is_refused(self):
-        with self.assertRaises(ValueError) as caught:
-            entry_links.save(self.root, self.body(missav={"enabled": True, "host": " "}))
-        self.assertIn("不能为空", str(caught.exception))
+    def test_clearing_the_box_goes_back_to_the_default_domain(self):
+        entry_links.save(self.root, self.body(missav={"host": "missav.ai"}))
+        entry_links.save(self.root, self.body(missav={"host": "  "}))
+        self.assertEqual(entry_links.read(self.root)["missav"]["host"], "")
 
     def test_a_hand_broken_file_falls_back_instead_of_emptying_the_row(self):
         (self.root / entry_links.FILENAME).write_text(
             json.dumps({"sites": {"javdb": {"host": "not a domain"}}}), encoding="utf-8")
-        saved = entry_links.read(self.root)
-        self.assertEqual(saved["javdb"]["host"], "javdb.com")
-        self.assertTrue(saved["javdb"]["enabled"])
+        self.assertEqual(entry_links.read(self.root)["javdb"]["host"], "")
 
 
 if __name__ == "__main__":
