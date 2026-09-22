@@ -104,6 +104,10 @@ class CloudDriveConfigTests(unittest.TestCase):
         self.assertEqual(watcher["headers"][push.SECRET_HEADER], "s3cret-token")
         # 挂载点通知一条路径也给不出，收下来只是空转一次队列。
         self.assertIs(config["mount_point_watcher"]["enabled"], False)
+        # 两个 watcher 在 CloudDrive2 那边是同一个 5 字段结构，关着的那个也得写全：
+        # 只写 `enabled = false` 时整份配置在它的 Webhooks 列表里标「无效」。
+        for name in ("file_system_watcher", "mount_point_watcher"):
+            self.assertEqual(set(config[name]), {"url", "method", "enabled", "headers", "body"}, name)
         # 默认模板里那行 `authorization = "basic usernamepassword"` 不能留：它是示例值，
         # 发出来只会在 Peach 的访问日志里留一串假凭据。
         self.assertNotIn("authorization", config["global_params"]["default_headers"])
