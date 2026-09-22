@@ -2003,8 +2003,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "function entityFaceImg({kind='performer',id=null,hasImage=false,rep=null,")
         self.assertPageContains("const useEntity=!!(id&&hasImage);")
+        # `thumb` 那一档也只在这里拼：索引页一屏几十格取派生件，资料页大位取原件。
         self.assertPageContains(
-            "const entitySrc=useEntity?`/entity-image?kind=${kind}&id=${id}`:'';")
+            "const entitySrc=useEntity?"
+            "`/entity-image?kind=${kind}&id=${id}${thumb?'&thumb=1':''}`:'';")
         self.assertPageContains("const avatarSrc=rep?`/avatar?id=${rep}`:'';")
         self.assertCode(
             "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`\n"
@@ -2015,7 +2017,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 既有调用点不受影响。标识变体同理默认 icon：小圆框和窄格子是多数。
         self.assertCode(
             "function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',"
-            "logoVariant='icon',focus=undefined)")
+            "logoVariant='icon',focus=undefined,thumb=false)")
         # 兜底链声明在模板里，行为归 image-fallback 那条委托监听。
         self.assertCode("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)\n"
                         "    :(useEntity&&avatarSrc?[avatarSrc]:[]);")
@@ -2125,8 +2127,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 脸框得穿过它才到得了 img——平移挂容器、放大挂图，两件事各走各的。
         self.assertPageContains("focus:company?null:d.avatar_focus,")
         self.assertPageContains("style:facePos(x.avatar_focus),focus:x.avatar_focus}")
-        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
-        self.assertPageContains("logo:logoName,logoVariant,focus:hint}")
+        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus, true)")
+        self.assertPageContains("logo:logoName,logoVariant,focus:hint,thumb}")
         # 五个数挤一个属性，回落时只要摘一样东西。
         self.assertPageContains(
             "data-facebox=\"${[b.cx,b.cy,b.faceW,b.imgW,b.imgH].map(Number).join(' ')}\"")
@@ -6916,7 +6918,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_portrait_pixels_do_not_size_the_face_frame(self):
         self.assertPageContains(".entityportrait img{position:absolute;inset:0;grid-area:auto;")
-        self.assertPageContains("if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH)){")
+        # 索引页拿到的是等比缩过的派生件，先换算比例再判；比例为 0 才退回几何居中。
+        self.assertPageContains("const scale=faceSourceScale(img.naturalWidth,img.naturalHeight,imgW,imgH);")
         self.assertPageContains("img.style.objectPosition='50% 50%';")
 
     def test_the_agency_page_gets_the_same_loading_skeleton(self):
@@ -6933,6 +6936,36 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("mark:kind==='agency'?d.mark_link_id:null,")
         # 取图链最后一环是官网那条链接的站点圆标。
         self.assertPageContains("mark?`/link-mark?id=${mark}`")
+
+    def test_the_index_cell_takes_the_derived_entity_image(self):
+        """一屏几十格取的是缩好的那一份，不是资料页大位那张原件。
+
+        实体图是给大位存的照片，本库 727 张均 221 KB；铺进 150 px 的格子，一屏 120 格
+        就是十几 MB，而屏幕上用得着的只有其中百分之几的像素。
+        """
+        self.assertCode(
+            "        bigMark?'large':'icon', company?null:x.avatar_focus, true)}</span>")
+        # 解码离开主线程：几十张图同时落地时，同步解码把滚动和点击一起压住。
+        self.assertPageContains(
+            "`<img src=\"${src}\" alt=\"${alt}\"${lazy?' loading=\"lazy\"':''} decoding=\"async\"")
+
+    def test_the_index_face_frame_rescales_to_the_image_it_actually_got(self):
+        """边车记的是原件像素，索引页手上是派生件。
+
+        取景的几何在等比缩放下不变，唯独「放到多大就开始虚」那一条问的是真有多少像素；
+        拿原件的数去套派生件，算出来的倍数正好把一张图放糊。
+        """
+        self.assertPageContains(
+            "const scale=faceSourceScale(img.naturalWidth,img.naturalHeight,imgW,imgH);")
+        self.assertCode(
+            "  const frame=faceFrame({cx,cy,faceW:faceW*scale,imgW:imgW*scale,imgH:imgH*scale},\n"
+            "    {w:rect.width,h:rect.height},window.devicePixelRatio||1);")
+
+    def test_loading_more_index_entries_shows_that_it_is_working(self):
+        """这一段是一次往返加一屏头像；把键按灰说不出「还在走」和「点了没反应」。"""
+        self.assertPageContains(
+            "more.setAttribute('aria-busy','true');more.innerHTML=loadingDotsHtml('继续载入中…');")
+        self.assertPageContains("finally{more.removeAttribute('aria-busy');more.textContent=MORE_LABEL;")
 
     def test_the_agency_page_opens_on_its_roster(self):
         """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
@@ -7028,8 +7061,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
         # 变体由调用点决定：小圆框和窄格子要方形图标，索引页那格要 large。
-        self.assertPageContains("logo:logoName,logoVariant,focus:hint}")
-        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
+        self.assertPageContains("logo:logoName,logoVariant,focus:hint,thumb}")
+        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus, true)")
         # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
         self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
         # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
@@ -7046,7 +7079,7 @@ class WebUiSourceTests(unittest.TestCase):
         后缀说明不了清晰度：Prestige 的 `icon` 只有 42 px、MOODYZ 的只有 64 px，
         摆进 180 px 的大格就是一团糊，而它们的裸文件分别有 632 px 和 403 px。
         """
-        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus)")
+        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus, true)")
         self.assertPageContains(
             "logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',")
         # 小位仍要方形小标：卡片角标和顶栏那排只有二十来像素，取原图只是白下载。

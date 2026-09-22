@@ -22,7 +22,7 @@ import type * as ReactBundle from '@peach/react';
 export { watchJob, followJobProgress, jobActivityHtml } from './jobs';
 export { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './selection';
 export { paginationHtml, pageCount, clampPage } from './pagination';
-export { nativeImageFit, matchesFaceSource } from './native-image';
+export { nativeImageFit, matchesFaceSource, faceSourceScale } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';
 export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';

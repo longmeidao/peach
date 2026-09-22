@@ -9,11 +9,14 @@
 同一个答案，所以这里把两边摆在一处对照着测。
 """
 import contextlib
+import os
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+
+from PIL import Image
 
 from peach import previews
 from peach.avatar_provider import install_entity_avatar
@@ -349,3 +352,73 @@ class AvatarAvailabilityTests(unittest.TestCase):
         for asset_id in (None, "", "abc"):
             with self.subTest(asset_id=asset_id):
                 self.assertFalse(self.contract.has_avatar(asset_id, str(self.snapshot)))
+
+
+class EntityThumbnailTests(unittest.TestCase):
+    """索引页那一档派生件。
+
+    实体图是给资料页大位存的照片，索引页一屏几十格铺的是同一批文件；派生件要真的比
+    原件小、要跟着原件换、还要在缩不出来时让调用方拿得回原件。
+    """
+
+    KEY = "performer-11"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        root = Path(self.tmp.name).resolve()
+        self.source = root / "performer-11.img"
+        self.service = previews.EntityThumbnailService(root / "thumbs")
+        self.write_source(1600, 2000)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write_source(self, width, height, colour=(200, 120, 90)):
+        image = Image.new("RGB", (width, height), colour)
+        # 纯色图压出来只有几百字节，比不出「缩了没有」。噪声让体积跟着像素量走。
+        for y in range(0, height, 3):
+            for x in range(0, width, 3):
+                image.putpixel((x, y), ((x * 7) % 256, (y * 13) % 256, (x + y) % 256))
+        image.save(self.source, "JPEG", quality=92)
+
+    def test_the_derived_file_is_smaller_and_within_the_edge(self):
+        derived = self.service.thumbnail(self.KEY, self.source)
+        self.assertIsNotNone(derived)
+        self.assertLess(derived.stat().st_size, self.source.stat().st_size)
+        with Image.open(derived) as image:
+            self.assertEqual(image.format, "WEBP")
+            self.assertLessEqual(max(image.size), previews.ENTITY_THUMB_EDGE)
+
+    def test_an_image_below_the_edge_is_never_upscaled(self):
+        """比这一档还小的图原样重编码。放大只是把糊铺开，还白占一份缓存。"""
+        self.write_source(200, 260)
+        derived = self.service.thumbnail(self.KEY, self.source)
+        with Image.open(derived) as image:
+            self.assertEqual(image.size, (200, 260))
+
+    def test_a_second_call_reuses_the_cached_file(self):
+        first = self.service.thumbnail(self.KEY, self.source)
+        stamp = first.stat().st_mtime_ns
+        self.assertEqual(self.service.thumbnail(self.KEY, self.source), first)
+        self.assertEqual(first.stat().st_mtime_ns, stamp, "命中缓存不该重写文件")
+
+    def test_replacing_the_source_replaces_the_derived_file(self):
+        """换头像会原子替换原件。派生件不跟着换，页面就一直摆着另一张。"""
+        derived = self.service.thumbnail(self.KEY, self.source)
+        before = derived.read_bytes()
+        self.write_source(1600, 2000, colour=(20, 200, 40))
+        os.utime(self.source, ns=(derived.stat().st_mtime_ns + 10 ** 9,) * 2)
+        self.assertNotEqual(self.service.thumbnail(self.KEY, self.source).read_bytes(),
+                            before)
+
+    def test_a_file_pillow_cannot_open_yields_nothing(self):
+        """矢量实体图走这条路：缩不出来就让调用方退回原件，不是把这一格变空。"""
+        self.source.write_bytes(b"<svg xmlns='http://www.w3.org/2000/svg'/>")
+        self.assertIsNone(self.service.thumbnail(self.KEY, self.source))
+
+    def test_the_derived_directory_follows_the_entity_image_directory(self):
+        """接线各写一份默认值的话，临时实体图目录配上真实派生件目录，
+        测试和演示数据根就会往本机的 generated 树里写文件。"""
+        root = Path(self.tmp.name).resolve()
+        self.assertEqual(previews.entity_thumb_root(root / "generated" / "avatars"),
+                         root / "generated" / "avatar-thumbs")

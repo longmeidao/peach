@@ -1,10 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { nativeImageFit, matchesFaceSource } from '../src/native-image';
+import { nativeImageFit, matchesFaceSource, faceSourceScale } from '../src/native-image';
 
 it('544×724 的旧人像不能使用 2184×1468 封面的焦点', () => {
   expect(matchesFaceSource(544, 724, 2184, 1468)).toBe(false);
   expect(matchesFaceSource(544, 724, 544, 724)).toBe(true);
   expect(matchesFaceSource(0, 0, 0, 0)).toBe(false);
+});
+
+describe('派生件相对边车源图的比例', () => {
+  it('原件本身是 1', () => {
+    expect(faceSourceScale(1200, 1600, 1200, 1600)).toBe(1);
+  });
+  it('缩到长边 640 的那一份给出缩放比', () => {
+    expect(faceSourceScale(480, 640, 1200, 1600)).toBeCloseTo(0.4, 6);
+  });
+  it('取整带来的半像素误差仍算同一张图', () => {
+    expect(faceSourceScale(481, 640, 1203, 1600)).toBeGreaterThan(0);
+  });
+  it('换了比例就是另一张图', () => {
+    expect(faceSourceScale(544, 724, 2184, 1468)).toBe(0);
+  });
+  it('比源图还大的必然不是它缩出来的', () => {
+    expect(faceSourceScale(2400, 3200, 1200, 1600)).toBe(0);
+  });
+  it('尺寸缺失时不取景', () => {
+    expect(faceSourceScale(0, 0, 1200, 1600)).toBe(0);
+    expect(faceSourceScale(480, 640, 0, 0)).toBe(0);
+  });
 });
 
 describe('头像和标识的小图补底', () => {
