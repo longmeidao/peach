@@ -29688,7 +29688,7 @@ function cT(e) {
 	(0, C.useEffect)(() => {
 		i && n?.();
 	}, [i, n]);
-	let s = r.data ?? { status: "idle" }, c = o.error ? q(o.error) : r.isError ? r.data ? Uw : q(r.error) : "", l = o.isPending || s.status === "running", u = s.status === "failed" && !!s.retryable_asset_ids?.length, d = Jw(s), f = (e) => {
+	let s = r.data ?? { status: "idle" }, c = o.error ? q(o.error) : r.isError ? r.data ? Uw : q(r.error) : "", l = o.isPending || s.status === "running", u = Jw(s), d = (e) => {
 		l || (o.reset(), o.mutate(e));
 	};
 	return /* @__PURE__ */ (0, w.jsxs)("div", {
@@ -29712,20 +29712,20 @@ function cT(e) {
 					s.status === "running" ? /* @__PURE__ */ (0, w.jsx)("div", {
 						className: "flex flex-col gap-1.5",
 						children: s.total ? /* @__PURE__ */ (0, w.jsxs)(w.Fragment, { children: [/* @__PURE__ */ (0, w.jsx)(dh, {
-							label: d,
+							label: u,
 							value: s.checked || 0,
 							max: s.total
 						}), /* @__PURE__ */ (0, w.jsxs)("p", {
 							className: "text-caption-1-regular text-text-secondary",
 							children: [
-								d,
+								u,
 								" · ",
 								s.checked || 0,
 								" / ",
 								s.total,
 								" 个视频"
 							]
-						})] }) : /* @__PURE__ */ (0, w.jsx)(lh, { label: d })
+						})] }) : /* @__PURE__ */ (0, w.jsx)(lh, { label: u })
 					}) : null
 				]
 			}), /* @__PURE__ */ (0, w.jsxs)("footer", {
@@ -29743,9 +29743,9 @@ function cT(e) {
 						trailingIcon: Mf,
 						children: "复核资料"
 					}) : null,
-					u ? null : /* @__PURE__ */ (0, w.jsx)(oT, {
+					/* @__PURE__ */ (0, w.jsx)(oT, {
 						busy: l,
-						onRun: f
+						onRun: d
 					})
 				]
 			})]
@@ -29754,7 +29754,7 @@ function cT(e) {
 			problem: c,
 			settled: i,
 			onRetry: () => {
-				!s.job_id || !s.retryable_asset_ids?.length || f({
+				!s.job_id || !s.retryable_asset_ids?.length || d({
 					job_id: s.job_id,
 					retry: s.retryable_asset_ids
 				});

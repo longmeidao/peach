@@ -207,7 +207,6 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
     : job.isError ? (job.data ? DISCONNECTED_TEXT : errorMessage(job.error))
     : '';
   const busy = start.isPending || state.status === 'running';
-  const retryable = state.status === 'failed' && !!state.retryable_asset_ids?.length;
   const line = currentLine(state);
 
   const run = (command: LibraryProcessingCommand) => {
@@ -244,8 +243,10 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
           {state.candidates
             ? <LinkButton href="/review" size="small" trailingIcon={RiArrowRightLine}>复核资料</LinkButton>
             : null}
-          {/* 失败且有可重试项时，这一趟该做的事是「重试未完成项」，它在下面那条错误提示里。 */}
-          {retryable ? null : <ScanActions busy={busy} onRun={run} />}
+          {/* 两个入口并存，各自答的不是一个问题：这里是「重新跑一整批」，下面那条错误提示里
+              的「重试未完成项」只补上一趟没做完的那些。采集里网络超时几乎每趟都留下几项可
+              重试的，页脚要是让位给重试键，新入库的片子就再也没有入口被扫到。 */}
+          <ScanActions busy={busy} onRun={run} />
         </footer>
       </section>
       <Outcome state={state} problem={problem} settled={settled} onRetry={retry} toast={toast} />
