@@ -85,7 +85,7 @@ FFmpeg 与 ffprobe 需自行安装：缺少时仍可浏览和播放浏览器兼�
 
 使用：[Windows 测试版](docs/TESTING_DESKTOP.md) · [运行与配置](docs/OPERATIONS.md) · [来源采集](docs/SOURCING.md) · [项目状态](docs/STATUS.md) · [变更日志](CHANGELOG.md) · [安全政策](SECURITY.md)
 
-开发：[开发约定](AGENTS.md) · [测试与依赖](docs/TESTING.md) · [前端开发](docs/FRONTEND.md) · [产品待办](docs/PRODUCT_BACKLOG.md) · [交接说明](docs/HANDOFF.md) · [复用清单](docs/REUSE.md) · [README 维护](docs/README_MAINTENANCE.md) · [架构决策](docs/adr/)
+开发：[开发约定](AGENTS.md) · [总体架构](docs/ARCHITECTURE.md) · [测试与依赖](docs/TESTING.md) · [前端开发](docs/FRONTEND.md) · [产品待办](docs/PRODUCT_BACKLOG.md) · [交接说明](docs/HANDOFF.md) · [复用清单](docs/REUSE.md) · [README 维护](docs/README_MAINTENANCE.md) · [架构决策](docs/adr/)
 
 开发验证统一使用 Windows `& .\scripts\test.ps1` 或 macOS/Linux `./scripts/test.sh`。提交问题请附版本、操作步骤、预期与实际结果，不要附带真实账本、媒体、Cookie 或私钥；安全问题按[安全政策](SECURITY.md)报告。
 

@@ -5,8 +5,8 @@ description: 在用户说抽帧、九宫格、probe、sheets、creator_boards、
 
 # 长跑批处理与流量边界
 
-最后复核：2026-09-16
-证据来源：`scripts/probe.py`、`scripts/sheets.py`、`src/peach/jobs.py`、相关单元测试与 ADR-0015。
+最后复核：2026-09-23
+证据来源：`scripts/probe.py`、`scripts/sheets.py`、`scripts/traffic_watch.py`、`src/peach/jobs.py`、相关单元测试与 ADR-0015。
 
 ## 领哪些行
 
@@ -69,3 +69,20 @@ description: 在用户说抽帧、九宫格、probe、sheets、creator_boards、
 修大小写敏感挂载层的失败必须先把 `peach.media.resolve_case_insensitive` 接入这两个 worker。
 `sheets.py` 遇 `prim:reserved` 非法色彩元数据会带 bt709 声明重试，只在失败帧重试，不得无条件
 给所有输入加色彩覆盖。
+
+## 真实库批次的预检与验收
+
+- 真实批次只在 ledger writer 上跑（`/healthz` 回 `ledger_sync=writer`、`db=available`）；reader 只做
+  代码验证和副本抽样。起跑前逐项核对，缺一项就不接管写入端：工作区干净且已纳入 master、全量测试
+  通过、`peach migrate status` 正常、目标网盘盘符能列目录、没有同类 `probe`／`sheets`／
+  `traffic_watch` 进程、系统盘余量高于 `--min-free`，并按 `peach-ledger-write` 用 SQLite backup API
+  备份账本。队列数字开跑前用 `scripts/job_status.py` 现算，不抄进文档：写死的基线只在生成那一刻成立。
+- 先在独立窗口起流量守卫（`scripts/traffic_watch.py --limit 200 --warn 120`，PikPak 要加
+  `--count-direct`），再按封面 → `probe` → `sheets` 的顺序跑；`probe` 非零退出就不进九宫格。
+  同一晚只跑一个来源，期间不做 Ledger 同步、接管、托盘重启或别的真实库批处理。
+- 全量缩略图不承诺一夜完成：按代理样本线性外推超过 1 TiB。触发流量或磁盘闸门是安全中止不算失败，
+  下次用原命令续跑，不为完成率调高预算。
+- 次日先 `scripts/job_status.py` 打印实时队列，读两类任务的最新日志，再跑 `PRAGMA integrity_check`
+  与 `PRAGMA foreign_key_check`；任何一项不过就不同步共享副本。报告固定给：完成／仍失败／待处理、
+  守卫累计下载、实际出口 chain、系统盘余量、备份路径、退出码、是否触发闸门；少一项就判不了下一晚
+  该续跑还是先查问题。
