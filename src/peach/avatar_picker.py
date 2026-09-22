@@ -53,6 +53,7 @@ SOURCE_NAMES = {
     "social-web": "社交主页",
     "cover": "作品封面",
     "cover-fallback": "作品封面",
+    "cover-face": "封面人脸",
     "babepedia": "Babepedia",
     "kmib": "官网",
     "picker": "自己挑的",
@@ -179,36 +180,42 @@ def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
 
     同一个番号分了几段、或在两个目录各有一份时，账本里是几条 asset 行，封面却是同一
     张：只留文件最大的那一份，其余几行不再各占一格。
+
+    **封面像素多的排前面**，只有九宫格的排在所有封面之后。同一个人的封面有 3360×1890
+    的官方原图，也有 276×154 的缩略图；框出来的头像清不清楚只看底图有多少像素。格上的
+    宽高就是封面的，页面照常把它标出来。
     """
     rows = connection.execute(
         "SELECT a.id,a.code,COALESCE(NULLIF(a.catalog_title,''),a.name),a.snapshot_path "
         "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
         "WHERE ae.entity_id=? AND a.medium='video' "
-        "ORDER BY a.size DESC LIMIT ?",
-        (int(entity_id), MAX_ASSET_CHOICES * 3),
+        "ORDER BY a.size DESC",
+        (int(entity_id),),
     ).fetchall()
-    out: list[Choice] = []
+    found: list[tuple[int, int, Choice]] = []
     seen_codes: set[str] = set()
-    for asset_id, code, title, snapshot in rows:
-        if len(out) >= MAX_ASSET_CHOICES:
-            break
+    for order, (asset_id, code, title, snapshot) in enumerate(rows):
         key = normalise_code_key(code)
         if key:
             if key in seen_codes:
                 continue
             seen_codes.add(key)
-        has_cover = bool(key) and (Path(cover_root) / f"{key}.jpg").is_file()
+        size = (images.measure_image_file(Path(cover_root) / f"{key}.jpg")
+                if key else None)
         has_sheet = bool(snapshot)
-        if not has_cover and not has_sheet:
+        if size is None and not has_sheet:
             continue
-        bases = ([f"asset:{int(asset_id)}:cover"] if has_cover else [])
+        bases = ([f"asset:{int(asset_id)}:cover"] if size else [])
         if has_sheet:
             bases += [f"asset:{int(asset_id)}:cell{cell}" for cell in range(SHEET_CELLS)]
-        out.append(Choice(
+        width, height = size or (0, 0)
+        found.append((width * height, order, Choice(
             ref=bases[0], source="asset",
             label=str(code or title or f"作品 {asset_id}"),
-            detail=str(title or ""), crop=True, bases=tuple(bases)))
-    return out
+            width=width, height=height,
+            detail=str(title or ""), crop=True, bases=tuple(bases))))
+    found.sort(key=lambda item: (-item[0], item[1]))
+    return [choice for _area, _order, choice in found[:MAX_ASSET_CHOICES]]
 
 
 def choices(connection: sqlite3.Connection, providers_root: Path,

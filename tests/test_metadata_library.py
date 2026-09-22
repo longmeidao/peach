@@ -385,7 +385,7 @@ class LibraryNfoTests(unittest.TestCase):
         video.write_bytes(b'video')
         (media / 'ABW-358.nfo').write_text('<movie><title>Local title</title><sorttitle>ABW-358</sorttitle>'
             '<premiered>2023-05-26</premiered><actor><name>涼森れむ</name></actor><tag>自定义标签</tag></movie>', encoding='utf-8')
-        Image.new('RGB', (40, 60), 'blue').save(media / 'ABW-358-poster.jpg')
+        Image.new('RGB', (800, 1200), 'blue').save(media / 'ABW-358-poster.jpg')
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
         provider = stub_provider()
@@ -765,6 +765,43 @@ class LibraryNfoTests(unittest.TestCase):
         with patch('peach.jav_cover_fetch.best_cover', side_effect=NotFound('所有渠道都没有候选')), \
                 self.assertRaises(NotFound):
             provider.cover('ORETD-618', covers)
+
+    def test_a_thumbnail_on_disk_is_asked_again_and_only_a_bigger_cover_replaces_it(self):
+        """缩略图不算有了封面：发行方那里常常还留着原图，问来的更大才换。"""
+        from peach.jav_cover_fetch import Candidate
+        from peach.library_processing import CoverKept, LibraryMetadataProvider
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        provider._official_candidates = Mock(return_value=())
+        covers = self.root / 'covers'
+        covers.mkdir()
+
+        def picture(path, size):
+            buffer = io.BytesIO()
+            Image.new('RGB', size, 'gray').save(buffer, format='JPEG')
+            path.write_bytes(buffer.getvalue())
+
+        picture(covers / 'FC2-PPV-1.jpg', (800, 450))
+        with patch('peach.jav_cover_fetch.best_cover') as official:
+            self.assertFalse(provider.cover('FC2-PPV-1', covers))
+        official.assert_not_called()
+
+        picture(covers / 'FC2-PPV-2.jpg', (276, 154))
+        big = (Candidate('storage.contents.fc2.com', 'https://storage.contents.fc2.com/2.jpg'),
+               (1180, 2100), b'big')
+        with patch('peach.jav_cover_fetch.best_cover', return_value=big):
+            self.assertTrue(provider.cover('FC2-PPV-2', covers))
+        self.assertEqual((covers / 'FC2-PPV-2.jpg').read_bytes(), b'big')
+
+        picture(covers / 'FC2-PPV-3.jpg', (276, 154))
+        before = (covers / 'FC2-PPV-3.jpg').read_bytes()
+        small = (Candidate('storage.contents.fc2.com', 'https://storage.contents.fc2.com/3.jpg'),
+                 (250, 140), b'small')
+        provider.community = Mock(side_effect=NotFound('社区来源都没有这个番号'))
+        with patch('peach.jav_cover_fetch.best_cover', return_value=small), \
+                self.assertRaises(CoverKept):
+            provider.cover('FC2-PPV-3', covers)
+        self.assertEqual((covers / 'FC2-PPV-3.jpg').read_bytes(), before)
 
     @windows_ledger_roots
     def test_codes_r18_does_not_know_are_collected_from_the_community_sources(self):
@@ -1409,7 +1446,7 @@ class LibraryWatchdogTests(unittest.TestCase):
             asset_id = connection.execute("UPDATE asset SET code='ABW-205', catalog_title='t', studio='s', "
                                           "release_date='2024-01-01' RETURNING id").fetchone()[0]
         (self.root / 'covers').mkdir()
-        (self.root / 'covers' / 'ABW-205.jpg').write_bytes(b'jpg')
+        Image.new('RGB', (800, 538), 'gray').save(self.root / 'covers' / 'ABW-205.jpg', format='JPEG')
         blank = {field: '' for field in FIELDS}
         write_rows(self.root / 'generated' / 'library-metadata-field-candidates.csv', FIELDS,
                    [dict(blank, item_key=f'asset:{asset_id}:{field}') for field in ('performers', 'tags')])

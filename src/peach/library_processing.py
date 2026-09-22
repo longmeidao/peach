@@ -18,7 +18,8 @@ from PIL import Image
 from .catalog_rules import (is_jav_code, is_korean_mib_code, normalise_code_key,
                             release_code_from_filename, same_release_code, scrapes_as_jav)
 from .field_owners import SCAN_FILENAME, write_owned_fields
-from .jav_cover_fetch import DeadlineExceeded, NotFound
+from .images import measure_image_file
+from .jav_cover_fetch import MIN_WIDTH, DeadlineExceeded, NotFound
 from .library_nfo import directory_files, read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
 from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
@@ -129,6 +130,23 @@ COLUMN_OF = {'title': 'catalog_title'}
 MAX_SOURCE_REQUESTS = 6000
 MAX_SOURCE_BYTES = 1024 * 1024 * 1024
 MAX_SOURCE_SECONDS = 4 * 3600
+
+
+class CoverKept(NotFound):
+    """来源给得出封面，但不比本机那张大。按「没有」记进记忆，一周内不再问，也不算问题项。"""
+
+
+def cover_settled(path):
+    """本机那张封面够不够大，大到这一轮不必再问来源。
+
+    宽度到 `jav_cover_fetch.MIN_WIDTH`（700）就算定了，再往上换是
+    `fetch_jav_covers.py --upgrade-existing` 那条批处理的事。不到这个宽度的多半是缩略图，
+    发行方那里常常还留着原图：2026-09-23 实测梨奈名下 6 部 276×154 的 FC2，官方存储上
+    都有 1180×2100 到 3360×1890 的原图。所以缩略图不算有了封面，采集照样去问，问来的
+    更大才换（`CoverKept`）；同目录的本地海报也一样，够大的才算定。
+    """
+    size = measure_image_file(path)
+    return size is not None and size[0] >= MIN_WIDTH
 
 
 class LibraryMetadataProvider:
@@ -498,10 +516,11 @@ class LibraryMetadataProvider:
         两处都是发行方，没有第二个图源可印证也不该被扣住。`evidence` 见 `_sources_for`。
         """
         from .community_catalog import verified_cover
-        from .jav_cover_fetch import MIN_WIDTH, SMALL_MIN_WIDTH, Unavailable, best_cover
+        from .jav_cover_fetch import SMALL_MIN_WIDTH, Unavailable, best_cover
         target = cover_root / (code + '.jpg')
-        if target.is_file():
+        if cover_settled(target):
             return False
+        kept = measure_image_file(target)
         official, verified_by, problems = None, (), []
         try:
             official = best_cover(self.transport, code, 0, deadline=deadline,
@@ -524,6 +543,8 @@ class LibraryMetadataProvider:
         if chosen is None:
             raise Unavailable('；'.join(problems)) if problems else NotFound('官方与社区来源都没有这部片的封面')
         candidate, size, data = chosen
+        if kept and size[0] * size[1] <= kept[0] * kept[1]:
+            raise CoverKept(f'来源给的封面 {size[0]}×{size[1]} 不比本机那张大')
         from .cover_artwork import install_cover
         install_cover(target, code, data, size, evidence=dict(source=candidate.source,
             source_url=candidate.url, width=size[0], height=size[1], verified_by=list(verified_by),
@@ -1040,7 +1061,7 @@ class _RemoteSession:
         if missing and _sources_for(code, *_studio_evidence(row),
                                     route_overrides=self._routes):
             entries = self._metadata(row, code, missing, update=update, issue=issue)
-        if _asks_cover(code) and not (cover_root / (code + '.jpg')).is_file():
+        if _asks_cover(code) and not cover_settled(cover_root / (code + '.jpg')):
             covers = self._cover(row, code, cover_root, update=update, issue=issue)
         return entries, covers
 
@@ -1150,7 +1171,9 @@ class _RemoteSession:
     def _cover(self, row, code, cover_root, *, update, issue):
         action = 'fetching_cover'
         if self._consult and self.misses.fresh('cover', code):
-            issue(row, MISS_MESSAGES[action], action=action, retryable=True)
+            # 已经有一张小图的不算问题项：卡片上有封面，只是还没换到更大的。
+            if measure_image_file(cover_root / (code + '.jpg')) is None:
+                issue(row, MISS_MESSAGES[action], action=action, retryable=True)
             return 0
         budget = ACTION_BUDGETS[action]
         update(stage='采集缺失封面', current_action=action,
@@ -1161,6 +1184,8 @@ class _RemoteSession:
         except DeadlineExceeded:
             self.reset()
             issue(row, '封面在预算时间内未取得，可稍后重试', action=action, retryable=True)
+        except CoverKept:
+            self.misses.record('cover', code)
         except NotFound:
             self.misses.record('cover', code)
             issue(row, MISS_MESSAGES[action], action=action, retryable=True)
@@ -1222,8 +1247,10 @@ def _entity_watermark(database):
     return int(row[0] or 0)
 
 
-def _avatar_followups(database, config, watermark):
+def _avatar_followups(database, config, watermark, covered=()):
     """这一轮新登记又没有头像的实体，一个一条补头像后继（ADR-0040）。
+
+    `covered` 是每行换上的封面张数；换上了的作品，它们的女优也算进来（`avatar_followup.plan`）。
 
     只声明，不执行：派发在调用方结算这一轮时发生，真正去跑的是 `followups` 那一层。
     这里出任何问题都只让这一轮不派后继，不影响刮削本身的结论。
@@ -1234,7 +1261,8 @@ def _avatar_followups(database, config, watermark):
     try:
         with database.read_connection() as connection:
             found = plan(connection, config.directory('generated') / 'avatars',
-                         since_entity_id=watermark)
+                         since_entity_id=watermark,
+                         covered_asset_ids=[asset_id for asset_id, count in covered if count])
     except sqlite3.Error:
         return []
     return [{'key': item.key, 'task_key': item.task_key, 'label': item.label}
@@ -1280,6 +1308,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                      started_at=time.time(), error='')
         # 实体表的水位在开工前记一次：比它大的实体就是这一轮建出来的（`_avatar_followups`）。
         entity_watermark = _entity_watermark(database)
+        # 每行这一轮换上了几张封面，`(asset_id, 张数)`：换上了的作品，女优可能截得出更清楚的脸。
+        covered = []
         log_path = issues_path(config, state['job_id'])
         # 界面只展示前 20 条，完整清单在这个文件里；地址跟着状态一起给出，
         # 不让人按 job_id 自己去拼路径。
@@ -1399,10 +1429,11 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                        current_action='reading_local', current_started_at=time.time(),
                        current_deadline_at=None)
                 target_key = f"asset:{row['id']}"
-                # 番号早已落库、字段都有着落、封面在位的行没有可采集的东西，连磁盘都不碰。
-                # 重跑「只采集」时这是绝大多数行，每行省下的是网盘上的一次 stat 和一次列目录。
+                # 番号早已落库、字段都有着落、封面够大的行没有可采集的东西，连网盘都不碰。
+                # 重跑「只采集」时这是绝大多数行，每行省下的是网盘上的一次 stat 和一次列目录；
+                # 量封面只读本机那张的图片头。
                 if row['code'] and not _missing_fields(row, target_key, groups) and (
-                        is_korean_mib_code(row['code']) or (cover_root / (row['code'] + '.jpg')).is_file()):
+                        is_korean_mib_code(row['code']) or cover_settled(cover_root / (row['code'] + '.jpg'))):
                     update(checked=index + 1, candidates=len(groups),
                            current_asset_id=None, current_asset_name='', current_action='',
                            current_started_at=None, current_deadline_at=None)
@@ -1464,6 +1495,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 found, covers = remote.collect(row, code, missing, cover_root, update=update, issue=issue)
                 entries.extend(found)
                 state['covers'] += covers
+                covered.append((row['id'], covers))
                 update(stage='保存资料候选', current_action='writing_candidates',
                        current_started_at=time.time(), current_deadline_at=None)
                 for source, document, evidence_path in entries:
@@ -1483,7 +1515,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 database, groups, config, candidate_root, remote, active, update, issue)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
-                   followups=_avatar_followups(database, config, entity_watermark),
+                   followups=_avatar_followups(database, config, entity_watermark, covered),
                    auto_applied=auto_apply['applied'],
                    performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
                    performer_profile_conflicts=profiles['conflicts'],

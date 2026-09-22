@@ -369,6 +369,21 @@ class AssetArtworkTests(PickerFixture):
                                        "performer", 7792, cover_root=self.covers)
         self.assertEqual([one for one in listed["choices"] if one["source"] == "asset"], [])
 
+    def test_the_sharpest_cover_comes_first_and_a_bare_sheet_last(self):
+        """框出来的头像清不清楚只看底图的像素，跟片子文件多大无关。"""
+        (self.covers / "FC2-PPV-1.jpg").write_bytes(picture(276, 154, "blue"))
+        (self.covers / "FC2-PPV-2.jpg").write_bytes(picture(1180, 2100, "red"))
+        self.add_asset(21, "FC2-PPV-1", size=900)
+        self.add_asset(22, "FC2-PPV-2", size=100)
+        self.add_asset(23, "SHEET-001", size=5000)
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        assets = [one for one in listed["choices"] if one["source"] == "asset"]
+        self.assertEqual([one["label"] for one in assets],
+                         ["FC2-PPV-2", "FC2-PPV-1", "SHEET-001"])
+        self.assertEqual([(one["width"], one["height"]) for one in assets],
+                         [(1180, 2100), (276, 154), (0, 0)])
+
     def test_a_cover_and_a_sheet_cell_both_come_back_as_bytes(self):
         self.add_asset(11, "ABW-232")
         body, origin = avatar_picker.resolve("asset:11:cover", self.connection,
