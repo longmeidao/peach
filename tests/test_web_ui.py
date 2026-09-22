@@ -5167,23 +5167,30 @@ class WebUiSourceTests(unittest.TestCase):
         """字形按条目自己的名字取，不按它排第几。
 
         这一列的条数会变——「这台电脑」挂上配置页之后一条变四条——按下标取字形只会
-        整排错位。两套字形也混在一排：`ri-` 实心靠 `fill` 画，`i-` 是线条靠 `stroke` 画，
-        给线条件套上 `fill:currentColor` 会填成一坨黑块。
-        下面四枚各说各的名词：`monitor` 是这台设备（和「跟随系统」同一个意思），
-        `folder` 是媒体文件夹，`globe` 是网址那一类，`download` 是把更新下下来。
+        整排错位。
+
+        整列取自 Remix，这是这一排唯一能做到笔画一样粗的办法：Lucide 的描边是 2，
+        Remix 的轮廓约 1.2，两家并排时下半列每一枚都比上半列重一档。Remix 的线条件
+        是靠 `fill` 画出的轮廓不是描边，全站默认的 `stroke:currentColor;fill:none`
+        会让它整枚消失，所以这一列反过来写。
+        下面四枚各说各的名词：`computer` 是这台设备（和「跟随系统」同一个意思），
+        `folder` 是媒体文件夹，`global` 是网址那一类，`download` 是把更新下下来。
         """
         self.assertPageContains(
             "const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line',"
             "'播放':'ri-play-circle-line',\n"
             "  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line',"
-            "'这台电脑':'i-hard-drive',\n"
-            "  '通用':'i-monitor','媒体':'i-folder','网络与访问':'i-globe','更新与维护':'i-download'};")
-        self.assertPageContains(
-            "const solid=item.icon.startsWith('ri-');")
-        self.assertPageContains(
-            "svg.style.fill=solid?'currentColor':'none';svg.style.stroke=solid?'none':'currentColor';")
-        for symbol in ("i-hard-drive", "i-monitor", "i-folder", "i-globe", "i-download"):
-            self.assertPageContains(f'<symbol id="{symbol}" viewBox="0 0 24 24">')
+            "'这台电脑':'ri-hard-drive-line',\n"
+            "  '通用':'ri-computer-line','媒体':'ri-folder-line','网络与访问':'ri-global-line',"
+            "'更新与维护':'ri-download-line'};")
+        self.assertPageContains("svg.style.fill='currentColor';svg.style.stroke='none';")
+        self.assertIn(
+            ".settingscard.settingscard>.board-local-nav button svg"
+            "{width:20px;height:20px;fill:currentColor;stroke:none;flex:none}",
+            (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"))
+        for symbol in ("ri-hard-drive-line", "ri-computer-line", "ri-folder-line",
+                       "ri-global-line", "ri-download-line"):
+            self.assertPageContains(f'<symbol viewBox="0 0 24 24" id="{symbol}">')
 
     def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
         """管理区那一项叫「关注管理」：它开的是 /follow-manage，不是关注更新流。

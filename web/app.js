@@ -10334,9 +10334,9 @@ function localTabs(root,sections,host=root){
       const i=buttons.length;
       const button=document.createElement('button');button.type='button';button.role='tab';button.id=`${prefix}-tab-${i}`;button.textContent=item.title;
       item.nodes.forEach((node,j)=>{node.dataset.boardGroup=String(i);node.id||=`${prefix}-panel-${i}-${j}`;node.setAttribute('role','tabpanel');node.setAttribute('aria-labelledby',button.id)});
-      /* 两套字形混在一排：`ri-` 是实心的、靠 `fill` 画，`i-` 是 lucide 那套线条的、靠
-         `stroke` 画。给线条件套上 `fill:currentColor` 会填成一坨黑块，按前缀分开设。 */
-      if(item.icon){const solid=item.icon.startsWith('ri-');const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.style.fill=solid?'currentColor':'none';svg.style.stroke=solid?'none':'currentColor';svg.innerHTML=`<use href="#${item.icon}"/>`;button.prepend(svg)}
+      /* 这一排都是 Remix：它那套线条件是靠 `fill` 画出来的轮廓，不是描边。全站默认的
+         `stroke:currentColor;fill:none` 会让它整枚消失，所以在这里反过来写。 */
+      if(item.icon){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.style.fill='currentColor';svg.style.stroke='none';svg.innerHTML=`<use href="#${item.icon}"/>`;button.prepend(svg)}
       button.setAttribute('aria-controls',item.nodes.map(node=>node.id).join(' '));button.onclick=()=>choose(i);
       button.onkeydown=event=>{let next=i;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(i+1)%items.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(i+items.length-1)%items.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;else return;event.preventDefault();choose(next);buttons[next].focus()};
       buttons.push(button);nav.append(button);
@@ -10367,11 +10367,13 @@ const configTabItems=page=>{
 };
 /* 字形按条目自己的名字取，不按它排第几：这一列的条数会变（「这台电脑」挂上配置页之后
    一条变四条），按下标取字形只会整排错位。
-   下面四枚各说各的名词：`monitor` 是这台设备（跟「跟随系统」同一个意思），`folder` 是
-   媒体文件夹，`globe` 是网址那一类，`download` 是把更新下下来。 */
+   整列取自 Remix，一家画的笔画才一样粗：Lucide 的描边是 2，Remix 的轮廓约 1.2，两家
+   并排时下半列每一枚都比上半列重一档，看上去像是颜色不一致。
+   下面四枚各说各的名词：`computer` 是这台设备（跟「跟随系统」同一个意思），`folder` 是
+   媒体文件夹，`global` 是网址那一类，`download` 是把更新下下来。 */
 const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line','播放':'ri-play-circle-line',
-  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'i-hard-drive',
-  '通用':'i-monitor','媒体':'i-folder','网络与访问':'i-globe','更新与维护':'i-download'};
+  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'ri-hard-drive-line',
+  '通用':'ri-computer-line','媒体':'ri-folder-line','网络与访问':'ri-global-line','更新与维护':'ri-download-line'};
 let settingsTabs=null;
 function buildSettingsTabs(){
   const settings=document.querySelector('.settingsscroll');

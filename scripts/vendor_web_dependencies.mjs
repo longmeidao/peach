@@ -257,7 +257,9 @@ index = index.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${ver
 // `palette-line` 有两个使用者，它们说的是同一件事：设置分区的「界面」页签，和侧栏底部
 // 那枚配色钮——那枚钮的弹层底部「详细设置」开的正是「界面」页。一枚字形一个意思，同一个
 // 意思也只有一枚字形，所以这里不给配色钮另备一枚。
-const remixIcons = ["palette-line", "layout-grid-line", "play-circle-line", "search-line", "rss-line", "shield-check-line"];
+// 后五枚同样只给设置导航：那一列整列必须同一家，Lucide 与 Remix 的笔画差一档。
+const remixIcons = ["palette-line", "layout-grid-line", "play-circle-line", "search-line", "rss-line", "shield-check-line",
+  "hard-drive-line", "computer-line", "folder-line", "global-line", "download-line"];
 const remixSprite = lfText("node_modules", "remixicon", "fonts", "remixicon.symbol.svg");
 for (const name of remixIcons) {
   const pattern = new RegExp(`<symbol[^>]*id="ri-${name}"[^>]*>[\\s\\S]*?<\\/symbol>`);
@@ -266,7 +268,7 @@ for (const name of remixIcons) {
   index = index.replace(pattern, symbol);
 }
 stage("web/vendor/remixicon-LICENSE.txt", lfText("node_modules", "remixicon", "License"));
-stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航六枚内联 symbol，其中 \`palette-line\` 同时给侧栏底部那枚配色钮。完整候选由本地 HTML 审查。\n`);
+stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航十一枚内联 symbol，其中 \`palette-line\` 同时给侧栏底部那枚配色钮。完整候选由本地 HTML 审查。\n`);
 stage("web/index.html", index);
 
 let app = text("web", "app.js");
