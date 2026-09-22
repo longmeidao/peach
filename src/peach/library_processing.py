@@ -173,7 +173,7 @@ class LibraryMetadataProvider:
         return cache[code]
 
     def fc2(self, code, *, deadline=None, route=None):
-        """FC2 自己那一页，下架了就依次问两个存档站；返回 `[(来源, 资料)]`。
+        """FC2 自己那一页，下架了就依次问两个存档站；返回沿路答上的每一档 `[(来源, 资料)]`。
 
         资料和封面两步都要它，同一个番号只问一次：商品页约 300 KB，问两遍白花一份流量。
         已下架的商品仍回 200，解析器认不出那份 Product 就回 None——那不是抓取失败，是这部
@@ -182,6 +182,11 @@ class LibraryMetadataProvider:
         一张转存封面，比官方原图差一档，所以排在最后（2026-09-22 实测 `FC2-PPV-4137487`
         在 fc2cmadb 是 404，JavArchive 上有）。三处都没有才按 `NotFound` 交出去，记进
         「没有」的记忆，一周内不再问。
+
+        哪一档给出封面地址才停：答上的那一档常常有资料而没有图——站上标着没有商品图，
+        或者地址还在、FC2 的存储上那张已经删了。停在它那里，后面真有图的那一档就再也
+        没机会（2026-09-22 实测 `FC2-PPV-3232110` 在 fc2cmadb 拿到的地址是 404，JavArchive
+        上有一张）。前面答过的资料照旧带着走：多一档就多一批标签和一个图源（ADR-0030）。
 
         `route` 是这个番号的完整来源链（`metadata_routes.route_for_code`）：链上摘掉哪一处
         就不问哪一处，不给就三处按上面的顺序都问。
@@ -193,7 +198,7 @@ class LibraryMetadataProvider:
             if not article_url(code):
                 cache[code] = NotFound('这个番号认不出 FC2 商品号')
             else:
-                found, problems = None, []
+                found, problems = [], []
                 attempts = [attempt for name, attempt in (
                     (SOURCE, lambda: self._fc2_page(SOURCE, ROOT, article_url(code), parse_article,
                                                     code, deadline=deadline)),
@@ -202,16 +207,19 @@ class LibraryMetadataProvider:
                     if route is None or name in route]
                 for attempt in attempts:
                     try:
-                        found = attempt()
+                        found += attempt()
                     except DeadlineExceeded as error:
-                        cache[code] = error
+                        # 前面已经答上时预算用尽只是「没再往下问」，不是这个番号没取到。
+                        if not found:
+                            cache[code] = error
                         break
                     except NotFound:
                         continue
                     except Exception as error:  # noqa: BLE001 - 原因由调用方汇总成一句话
                         problems.append(error)
                         continue
-                    break
+                    if any(payload.get('cover_url') for _, payload in found):
+                        break
                 if code not in cache:
                     # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
                     cache[code] = found or (problems[0] if problems

@@ -235,6 +235,15 @@ class Fc2MirrorPageTests(unittest.TestCase):
         self.assertEqual(found["cover_url"], COVER)
         self.assertEqual(found["cover_urls"], [COVER])
 
+    def test_the_mirrors_own_placeholder_is_not_a_cover(self):
+        # 站上没有商品图的条目挂的是镜像自己那张占位件，还是个站内相对地址。当封面交
+        # 下去，抓取那侧连主机都拼不出来，报回来的是一句「来源连接未取得」。
+        found = parse_mirror(mirror_page(image="/storage/images/article/no-image.jpg"),
+                             "FC2-PPV-3189161")
+        self.assertEqual(found["cover_url"], "")
+        self.assertEqual(found["cover_urls"], [])
+        self.assertEqual(found["title"], "【無】コスプレシリーズ")
+
     def test_another_products_mirror_page_is_not_this_ones_data(self):
         self.assertIsNone(parse_mirror(mirror_page(video="4364209"), "FC2-PPV-3189161"))
         self.assertIsNone(parse_mirror("<div id='app'></div>", "FC2-PPV-3189161"))
