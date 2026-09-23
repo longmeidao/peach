@@ -121,7 +121,9 @@ class MethodTests(unittest.TestCase):
         self.assertIsNotNone(profile)
         found = jav_poster_crop.fold_column(width, height, profile)
         self.assertIsNotNone(found, "画上去的折痕没被找到")
-        self.assertLessEqual(abs(found - fold), 2, found)
+        # 那条三列宽的黑线整条留在框外，正封从它右边开始。
+        self.assertGreaterEqual(found, fold + 3, found)
+        self.assertLessEqual(found - (fold + 3), 2, found)
         box = jav_poster_crop.front_panel_box(width, height, profile)
         self.assertEqual(box["method"], FOLD)
         self.assertEqual((box["x0"], box["x1"], box["y0"], box["y1"]),
@@ -231,6 +233,34 @@ class MethodTests(unittest.TestCase):
         for column in range(419, 500):
             profile[column] = 0.5               # 斜坡右边一直不落回基线
         self.assertEqual(jav_poster_crop.fold_column(800, 539, profile), 426)
+
+    @staticmethod
+    def banded_fold(closing_edge: int) -> list[float]:
+        """ABF-328 的折痕照着量出来的梯度：书脊边、七列灰色阴影、另一道边才到正封。"""
+        profile = [0.3] * 2184
+        profile[1139], profile[1140] = 0.73, 0.56
+        for column in range(1141, 1147):
+            profile[column] = 0.2
+        profile[closing_edge - 1], profile[closing_edge] = 0.56, 0.59
+        profile[closing_edge + 1] = 0.06
+        return profile
+
+    def test_a_shadow_band_beside_the_fold_stays_outside_the_front(self):
+        """两道边之间梯度短暂落回基线；停在那儿，卡片左缘就留下一道灰线。"""
+        self.assertEqual(jav_poster_crop.fold_column(2184, 1477, self.banded_fold(1148)), 1149)
+
+    def test_an_edge_well_inside_the_front_is_content_not_the_band(self):
+        """离折痕超过一道边的宽度，那是正封里的标题字或人物边缘，不是阴影带的另一侧。"""
+        self.assertEqual(jav_poster_crop.fold_column(2184, 1477, self.banded_fold(1160)), 1141)
+
+    def test_a_busy_front_beside_a_weak_fold_is_not_mistaken_for_the_band(self):
+        """折痕本身偏弱时，正封里一片花哨的画面处处都和它相当，那些边都不够峭壁。"""
+        profile = [0.1] * 2184
+        profile[100] = 1.0                      # 窗外画面里最强的那道边
+        profile[1139] = 0.4
+        for column in range(1141, 1150):
+            profile[column] = 0.3 if column % 2 else 0.32
+        self.assertEqual(jav_poster_crop.fold_column(2184, 1477, profile), 1140)
 
     def test_a_thick_spine_puts_both_of_its_edges_in_the_window(self):
         """书脊厚到两条边都落进窗里时按形状挑：左边那条更强，右边那条才是折痕。"""

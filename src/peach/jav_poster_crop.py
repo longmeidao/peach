@@ -112,7 +112,7 @@ MANUAL = "manual"
 MANUAL_SOURCE = "user:crop"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v5"
+ALGORITHM_VERSION = "poster-crop-v6"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -245,11 +245,11 @@ def fold_column(width: int, height: int,
     top = max(window, key=profile.__getitem__)
     if profile[top] < peak * FOLD_MIN_STRENGTH:
         return None
-    edges = _rival_edges(profile, window, profile[top],
-                         round(width * FOLD_EDGE_SPAN))
+    span = round(width * FOLD_EDGE_SPAN)
+    edges = _rival_edges(profile, window, profile[top], span)
     found = min(edges, key=lambda column: abs((width - column) / height - PANEL_ASPECT))
     baseline = statistics.median(profile[low:high + 1])
-    return _settled(profile, found, baseline, round(width * FOLD_SETTLE_LIMIT))
+    return _settled(profile, found, baseline, round(width * FOLD_SETTLE_LIMIT), span)
 
 
 def center_panel(width: int, height: int, seams: Sequence[float] | None) -> dict | None:
@@ -292,10 +292,22 @@ def _rival_edges(profile: list[float], window: range, top: float,
     return kept
 
 
-def _settled(profile: list[float], found: int, baseline: float, limit: int) -> int:
-    """从斜坡最陡的那一列往右走到梯度落回基线，书脊的最后几列留在框外。"""
+def _settled(profile: list[float], found: int, baseline: float, limit: int,
+             band: int = 0) -> int:
+    """从斜坡最陡的那一列往右走到梯度落回基线，书脊的最后几列留在框外。
+
+    折痕常常是一条带：书脊边、几列灰色的折线阴影、再一道边才到正封。两道边之间梯度
+    会短暂落回基线，停在那里就把阴影带进了框，卡片左缘留一道细线（ABF-328：1139 与
+    1148 两道边，中间 7 列灰）。所以先找 `band` 列内最后一道和折痕相当的边，从它再往右
+    走。阴影带只有几列宽；放到整个走程，正封里紧挨折痕的标题字与人物边缘也会被当成
+    带的另一侧（DVDMS-996 会切进画面 20 列）。另一侧那道边自己也得过峭壁那一关
+    （`FOLD_MIN_STRENGTH`）：折痕本身偏弱的封套，正封里一片花哨的画面处处都和它相当。
+    """
     stop = min(found + limit, len(profile) - 1)
-    for column in range(found + 1, stop + 1):
+    closing = max(profile[found] * FOLD_RIVAL_RATIO, max(profile) * FOLD_MIN_STRENGTH)
+    edge = max((column for column in range(found + 1, min(found + band, stop) + 1)
+                if profile[column] >= closing), default=found)
+    for column in range(edge + 1, stop + 1):
         if profile[column] <= baseline:
             return column
     return stop
