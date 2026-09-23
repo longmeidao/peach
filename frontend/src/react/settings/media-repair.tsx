@@ -3,7 +3,7 @@
  * 一轮要跑几十分钟到几小时，所以这里只负责起停和看进度；跑到哪一步由服务自己记，
  * 页面关掉再回来照样接得上。跑动时两秒问一次，空闲时不问。 */
 import { useEffect, useState } from 'react';
-import { confirmModal } from '@peach/legacy/ui';
+import { confirmModal, MEDIA_SOURCE_ICONS } from '@peach/legacy/ui';
 
 import { SettingsRow } from '@/components/application/settings/settings-rows';
 import { Button } from '@/components/base/buttons/button';
@@ -12,7 +12,7 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { apiGet, apiSend } from '../../api';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
-import { ErrorText, Footer, Rows, Section, Stack } from './section';
+import { ErrorText, Footer, Rows, Section, SourceMark, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 export interface MediaRepairState {
@@ -33,8 +33,12 @@ export interface MediaRepairState {
 export interface RepairLibrary {
   id: string;
   name: string;
+  /** 媒体库图标：来源名（`115`、`pikpak`、`local`）或雪碧图字形名，与侧栏媒体库切换器同一份。 */
+  icon: string;
   metered: boolean;
 }
+
+const libraryMark = (icon: string) => MEDIA_SOURCE_ICONS[icon] || icon;
 
 const IDLE: MediaRepairState = {
   status: 'idle', library: '', stage: '', checked: 0, total: 0, found: 0,
@@ -134,7 +138,11 @@ export function MediaRepair({ initial, initialLibraries }: {
           description="修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。">
           <Select aria-label="媒体库" selectedKey={selected?.id ?? null} isDisabled={running || !libraries.length}
             onSelectionChange={(key) => { if (key !== null) setChosen(String(key)); }}>
-            {libraries.map((row) => <SelectItem key={row.id} id={row.id}>{row.name}</SelectItem>)}
+            {libraries.map((row) => (
+              <SelectItem key={row.id} id={row.id} textValue={row.name}>
+                <SourceMark mark={libraryMark(row.icon)} />{row.name}
+              </SelectItem>
+            ))}
           </Select>
         </SettingsRow>
       </Rows>

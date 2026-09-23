@@ -9,9 +9,24 @@ const idle: MediaRepairState = {
   repaired: 0, failed: 0, missing_tool: 0, skipped: 0, message: '',
 };
 const libraries: RepairLibrary[] = [
-  { id: '网盘', name: '网盘', metered: false },
-  { id: 'PikPak', name: 'PikPak', metered: true },
+  { id: '网盘', name: '网盘', icon: '115', metered: false },
+  { id: 'PikPak', name: 'PikPak', icon: 'heart', metered: true },
+  { id: '本机', name: '本机', icon: 'local', metered: false },
 ];
+
+it('下拉框里每个库都带着它的媒体库图标，选中的那个连图标一起显示在框里', async () => {
+  vi.stubGlobal('fetch', fetchMock(200, idle));
+  const host = await mount(<MediaRepair initial={idle} initialLibraries={libraries} />);
+  const trigger = host.querySelector('[aria-haspopup="listbox"]')!;
+  expect(trigger.querySelector('use')?.getAttribute('href')).toBe('#i-fixture-115');
+  await click(trigger);
+  const options = [...document.querySelectorAll('[role="option"]')];
+  expect(options.map((option) => option.querySelector('use')?.getAttribute('href')))
+    .toEqual(['#i-fixture-115', '#i-heart', '#i-hard-drive']);
+  await click(options[1]);
+  expect(trigger.querySelector('use')?.getAttribute('href')).toBe('#i-heart');
+  expect(trigger.textContent).toBe('PikPak');
+});
 
 type Confirmation = Parameters<typeof legacyUi.confirmModal>[0];
 
