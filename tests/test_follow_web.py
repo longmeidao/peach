@@ -3408,8 +3408,7 @@ class FollowWebSourceTests(unittest.TestCase):
                 source_row("kemono", "fanbox/30917150")),
             "/follow-avatar?service=fanbox&id=30917150",
         )
-        # 论坛来源没有这种 ref，身份只能来自首楼名片：FANBOX 的创作者 id 一步到位，
-        # pixiv 的数字 id 要多绕一次官方页，所以排在后面。
+        # 论坛来源没有这种 ref，身份只能来自首楼名片：FANBOX 的创作者 id 一步到位。
         self.assertEqual(
             web_follow._official_avatar_url(source_row(
                 "f95zone", "87212",
@@ -3417,13 +3416,16 @@ class FollowWebSourceTests(unittest.TestCase):
                 '{"service":"fanbox","handle":"jul3dnsfw"}]}')),
             "/follow-avatar?service=fanbox&id=jul3dnsfw",
         )
+        # 有 pixiv 不等于开了 FANBOX：flim13 名片上是 X 加 pixiv，pixiv 换不到头像，
+        # 所以它和 X 并排递给服务端，不单独占住这一格把 X 挡在外面。
         self.assertEqual(
             web_follow._official_avatar_url(source_row(
-                "f95zone", "50685",
-                '{"official_links":[{"service":"pixiv","handle":"30917150"}]}')),
-            "/follow-avatar?service=fanbox&id=30917150",
+                "f95zone", "155903",
+                '{"official_links":[{"service":"twitter","handle":"Flim_13a"},'
+                '{"service":"pixiv","handle":"14934767"}]}')),
+            "/follow-avatar?service=profile&id=twitter%3AFlim_13a%2Cpixiv%3A14934767",
         )
-        # 没有 FANBOX 时交给 X 与 Patreon：几家都递给服务端去比谁更清楚，
+        # 没有 FANBOX 时交给 X、Patreon 与 pixiv：几家都递给服务端去比谁更清楚，
         # 取不到头像的 SubscribeStar 和形状不对的手柄不进这串。
         self.assertEqual(
             web_follow._official_avatar_url(source_row(

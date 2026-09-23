@@ -560,7 +560,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
 
     两种都由服务端取回存在本机再交给页面，浏览器不直接碰对方站点。地址只从固定主机
     拼：官方那条由 `resolve_official_avatar` 认 pixiv.pximg.net 一个主机、
-    `profile_avatar_tiers` 认 X 与 Patreon 各自的图床，归档那条由
+    `profile_avatar_tiers` 认 X、Patreon 与 FANBOX 各自的图床，归档那条由
     `follow_assets.mirror_avatar_url` 按 provider 查表；前端递不进任何 URL。
     """
     state = request.app.state
@@ -574,7 +574,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
         def fetch():
             return follow_assets.fetch_image(client, target)
     elif service == "profile":
-        # 名片上的 X 与 Patreon：每家取到能用的最大一档，几家之间留像素最多的那张。
+        # 名片上的 X、Patreon 与 pixiv：每家取到能用的最大一档，几家之间留像素最多的那张。
         identities = profile_identities(id)
         if not identities:
             return _asset_response(request, None)

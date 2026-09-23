@@ -80,6 +80,13 @@ class OfficialAvatarTests(unittest.TestCase):
         self.assertEqual(len(transport.requests), 1)
         self.assertIn("creatorId=lazyprocrast", transport.requests[0].url)
 
+    def test_a_pixiv_profile_link_resolves_through_the_same_fanbox_lookup(self):
+        transport = _Transport(self._responses())
+        self.assertEqual(profile_avatar_tiers("pixiv", "30917150", transport=transport),
+                         ["https://pixiv.pximg.net/c/160x160/icon.jpeg"])
+        self.assertEqual(transport.requests[0].url,
+                         "https://www.pixiv.net/fanbox/creator/30917150")
+
     def test_a_creator_id_still_needs_a_real_user_behind_it(self):
         # 没有可核对的数字 id 时，身份以官方资料回的为准；回不出就是没有头像。
         with self.assertRaises(FollowSourceError):
@@ -88,7 +95,7 @@ class OfficialAvatarTests(unittest.TestCase):
 
 
 class ProfileAvatarTests(unittest.TestCase):
-    """论坛名片上的 X 与 Patreon：各给一串从原图到小图的地址，主机写死。"""
+    """论坛名片上的 X、Patreon 与 pixiv：各给一串从原图到小图的地址，主机写死。"""
 
     @staticmethod
     def _page(image):
@@ -135,9 +142,11 @@ class ProfileAvatarTests(unittest.TestCase):
                 profile_avatar_tiers("patreon", "sharkarts", transport=_Transport([response]))
 
     def test_profile_identities_accept_only_known_services_and_handle_shapes(self):
-        self.assertEqual(profile_identities("twitter:Rekin3D,patreon:sharkarts"),
-                         (("twitter", "Rekin3D"), ("patreon", "sharkarts")))
-        for value in ("", "twitter:../x", "fanbox:jul3dnsfw", "twitter:Rekin3D,patreon:a/b",
+        self.assertEqual(profile_identities("twitter:Rekin3D,patreon:sharkarts,pixiv:14934767"),
+                         (("twitter", "Rekin3D"), ("patreon", "sharkarts"),
+                          ("pixiv", "14934767")))
+        for value in ("", "twitter:../x", "fanbox:jul3dnsfw", "pixiv:flim13",
+                      "twitter:Rekin3D,patreon:a/b",
                       ",".join(f"patreon:user{index}" for index in range(5))):
             with self.subTest(value=value):
                 self.assertEqual(profile_identities(value), ())

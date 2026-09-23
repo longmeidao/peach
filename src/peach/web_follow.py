@@ -1107,23 +1107,23 @@ def _avatar_url(provider: str, ref: str) -> str | None:
 
 
 def _official_fanbox_identity(metadata: dict) -> str:
-    """名片链接里那个能换到官方头像的 FANBOX 身份，没有就回空串。
+    """名片链接里的 FANBOX 创作者 id，没有就回空串。
 
-    FANBOX 的创作者 id 直接就是 `creator.get` 的参数，一个请求到头像；pixiv 的数字
-    id 还要先过一次官方页换算，所以排在后面。X 与 Patreon 由
-    `_official_profile_identities` 接着找；SubscribeStar 没有不带凭据就能读的头像
-    接口，**未取得**，只当身份证据用。
+    它直接就是 `creator.get` 的参数，一个请求到头像，所以单独走一格。pixiv 的数字
+    id 不在这里：有 pixiv 不等于开了 FANBOX，由 `_official_profile_identities` 和
+    X、Patreon 并排试。SubscribeStar 没有不带凭据就能读的头像接口，**未取得**，
+    只当身份证据用。
     """
     links = metadata.get("official_links")
     if not isinstance(links, list):
         return ""
     handles = {str(link.get("service") or ""): str(link.get("handle") or "")
                for link in links if isinstance(link, dict)}
-    return handles.get("fanbox") or handles.get("pixiv") or ""
+    return handles.get("fanbox") or ""
 
 
 def _official_profile_identities(metadata: dict) -> str:
-    """名片上 X 与 Patreon 的手柄，拼成 `/follow-avatar?service=profile` 的 id。
+    """名片上 X、Patreon 与 pixiv 的手柄，拼成 `/follow-avatar?service=profile` 的 id。
 
     几家都交给服务端，由它各取最大一档再留像素最多的那张；形状不合法的那条直接略过。
     """

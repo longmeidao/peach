@@ -262,7 +262,7 @@ class OperationalScriptTests(unittest.TestCase):
         """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
 
         常规检查只看第一页，补不到历史条目。抓取判据不重写，直接复用连接器的
-        `_detail_tag_types`；备份先做、分批提交，中断一次不至于白跑五十分钟。
+        `_detail`；备份先做、分批提交，中断一次不至于白跑五十分钟。
         """
         backfill = load_script("backfill_rule34_tag_types")
         # 连接与备份走共享的 `open_for_write`／`open_readonly`，WAL 正确性由

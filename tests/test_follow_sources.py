@@ -1375,6 +1375,26 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertEqual(types["lazyprocrastinator"], "artist")
         self.assertEqual(types["reverse_cowgirl_position"], "general")
         self.assertNotIn("api_key", seen[1].url)
+        # 详情页没有 `#stats` 时，dapi 的 `change` 留作占位。
+        self.assertEqual(result.candidates[0].published_at, "2026-08-23T00:36:13Z")
+
+    def test_upload_time_comes_from_the_post_page_not_the_last_edit(self):
+        """dapi 的 `change` 是最后修改时间：17361475 五月上传、九月改过标签就显示成九月。"""
+        detail = RULE34XXX_DETAIL_HTML.replace(b"</ul>", (
+            b'</ul><div id="stats"><ul><li>Id: 18534395</li>'
+            b"<li>Posted: 2026-05-01 16:32:21<br> by <a>rekin3d</a></li></ul></div>"))
+
+        def transport(request, timeout, max_bytes):
+            body = RULE34XXX_JSON if request.url.startswith("https://api.rule34.xxx/") \
+                else detail
+            return HttpResponse(200, {}, body)
+
+        result = Rule34XxxConnector(
+            transport=transport, max_items=1,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+        ).fetch("lazyprocrastinator")
+        self.assertEqual(result.candidates[0].published_at, "2026-05-01T16:32:21Z")
+        self.assertFalse(result.candidates[0].partial)
 
     def test_a_throttled_detail_page_is_retried_not_read_as_no_types(self):
         """站方公布的是每 60 秒 60 次，而列表页一页 24 条、每条都要单独打一次详情页。
