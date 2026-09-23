@@ -92,10 +92,12 @@ const SITE_NAMES=[['nax-pro.com','NAX'],['t-powers.co.jp','T-POWERS'],['dmm.co.j
   ['sod.co.jp','SOD'],['tokyo-hot.com','Tokyo-Hot'],['heyzo.com','HEYZO'],
   ['dogma.co.jp','DOGMA'],['naturalhigh.co.jp','Natural High'],['bangbros.com','BangBros'],
   ['dorcelclub.com','Dorcel']];
-const siteName=url=>{try{
-  const host=new URL(url).hostname.replace(/^www\./,'').toLowerCase();
-  return SITE_NAMES.find(([domain])=>host===domain||host.endsWith('.'+domain))?.[1]||'';
-}catch{return ''}};
+const bareHost=host=>String(host).replace(/^www\./,'').toLowerCase();
+const linkHost=url=>{try{return bareHost(new URL(url).hostname)}catch{return ''}};
+const siteName=url=>{
+  const host=linkHost(url);
+  return host&&SITE_NAMES.find(([domain])=>host===domain||host.endsWith('.'+domain))?.[1]||'';
+};
 /* 服务端处理过的链接图标：单色字形的 favicon 会被做成「品牌色底 + 白色主体」，
    做不了就把原图按 32 px 转出来。放服务端有三个理由：它要读别人站点的图、要缓存，
    而且这样浏览器不再直接向对方站点发请求（也就不泄露正在看谁的资料页）。
@@ -120,25 +122,28 @@ const BRAND_ICONS=[[['x.com','twitter.com'],'brand-x'],[['instagram.com'],'brand
   [['threads.com','threads.net'],'brand-threads'],[['tiktok.com'],'brand-tiktok'],
   [['youtube.com','youtu.be'],'brand-youtube'],[['facebook.com','fb.com'],'brand-facebook'],
   [['linktr.ee','linktree.com'],'brand-linktree']];
-const brandIcon=url=>{try{
-  const host=new URL(url).hostname.replace(/^www\./,'').toLowerCase();
-  return BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';
-}catch{return ''}};
+const brandIcon=url=>{
+  const host=linkHost(url);
+  return host&&BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';
+};
 const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
 /* 官网链接上那行字。人物页写站点短名（`siteName`），表里没有就用账本 label。
 
    公司页上指回自家站的一律写「官方网站」：页头已经是公司名，链接再写一遍 LIGHT、
    C-more 只是重复，同一排里有的写名字、有的写「官方网站」还会看着像两类链接。名字是
    别家的（Jackson 页上链到 Prestige 的名录页）才保留，那说的是另一家。自家的判据是
-   短名或 label 与规范名、别名互相包含：`C-more` 之于 `C-more Entertainment`。 */
+   短名或 label 与规范名、别名互相包含：`C-more` 之于 `C-more Entertainment`，短名是缩写
+   时看 label（`NAX` 那条的 label 是 `New Actor eXperience`）。label 只是这条链接自己的
+   主机名（`www.ran-maru.com`）等于没起名，也算自家。 */
 const officialLinkText=(link,kind,names=[])=>{
   const text=siteName(link.url)||link.label||'';
   if(kind!=='studio'&&kind!=='agency')return text;
-  const shown=foldName(text);
-  const own=!shown||text==='官方网站'||names.some(name=>{
-    const folded=foldName(name);
-    return Boolean(folded)&&(folded.includes(shown)||shown.includes(folded));
-  });
+  const said=[text,link.label].map(foldName).filter(Boolean);
+  const own=!said.length||said.includes('官方网站')||said.some(shown=>
+    bareHost(shown)===linkHost(link.url)||names.some(name=>{
+      const folded=foldName(name);
+      return Boolean(folded)&&(folded.includes(shown)||shown.includes(folded));
+    }));
   return own?'官方网站':text;
 };
 /* 什么才算一个真时长——只有这一处说了算。
