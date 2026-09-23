@@ -3,7 +3,7 @@ name: peach-jav-cover-workflow
 description: 在用户说 JAV 封面、高清封面、缺封面、封面刮削、重探、来源比较或继续抓取时使用。
 ---
 
-最后复核：2026-09-12
+最后复核：2026-09-23
 证据来源：`scripts/fetch_jav_covers.py`、`scripts/detect_cover_faces.py`、`tests/test_jav_covers.py`、`docs/REUSE.md` 与 ABW-232 官方来源实测。
 
 # JAV 封面获取流程
@@ -70,8 +70,8 @@ description: 在用户说 JAV 封面、高清封面、缺封面、封面刮削�
 & .\.venv\Scripts\python.exe .\scripts\poster_crop_boxes.py --apply
 ```
 
-- 判据在 `peach.jav_poster_crop`：Sobel 列梯度找书脊折痕，HEYZO／FC2／六位日期／
-  韩国 MIB／16:9 剧照不裁。原图一个字节都不动。
+- 判据在 `peach.jav_poster_crop`：Sobel 列梯度找书脊折痕，HEYZO／FC2／六位日期／韩国 MIB
+  不裁；16:9 只认满高拼接缝（覆盖 ≥75% 行）夹出的居中正封（PASN 等），原图不动。
 - **折痕按「切出来的正封形状对不对」认，不按它落在全宽的百分之几**。正封宽高比是印刷
   面的物理常数（DVD 135×190mm ＝ 0.711），本机 637 张实测中位 0.704、1% 分位 0.684、
   99% 分位 0.725；折痕在全宽里的位置则随背面留白与书脊厚度飘。所以只在 0.68～0.76

@@ -197,4 +197,86 @@ describe('路由冒烟', () => {
       await opened.close();
     }
   });
+
+  /* 首页那一行新作只属于目录页：从首页进统计页要收起清空，取数还没回来就离开的那一轮
+     也不许回头把它画到管理区上。演示库没有订阅，新作由拦截的接口给一条。 */
+  it('离开首页之后新作那一行收起，晚到的取数也不画回来', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/stats', DESKTOP);
+    try {
+      let hold: Promise<void> | null = null;
+      let served = 0;
+      await opened.page.route(/\/api\/feeds\/discoveries\?/, async (route) => {
+        if (hold) await hold;
+        // 请求可能已随换页撤掉，那时回包会报错；要核对的只是回包之后页面长什么样。
+        await route.fulfill({ json: { ok: true, more: false, items: [{
+          id: 1, code: 'MCSR-191', title: 'MCSR-191 示例作品', link: null, cover_url: null,
+          has_cover: false, cover_frame: null, poster_box: null, release_date: '2025-07-19',
+          studio: null, performers: null, read: false, ignored: false, scrape_error: null,
+        }] } }).catch(() => undefined);
+        served += 1;
+      });
+      const go = (path: string) => opened.page.evaluate((target) => {
+        history.pushState({}, '', target);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }, path);
+      const feedCards = opened.page.locator('#feedNew article.feednewcard');
+      await expectBody(opened.page, '/stats', [statsInventoryTab(opened.page)]);
+
+      await go('/');
+      await expectBody(opened.page, '/', [feedCards.first()]);
+      await go('/stats');
+      await expectBody(opened.page, '/stats', [statsInventoryTab(opened.page)]);
+      assert.equal(await opened.page.locator('#feedNew').isHidden(), true, '进统计页之后新作那一行还露着');
+      assert.equal(await feedCards.count(), 0, '进统计页之后新作那一行没有清空');
+
+      let release!: () => void;
+      hold = new Promise((resolve) => { release = resolve; });
+      const asked = opened.page.waitForRequest(/\/api\/feeds\/discoveries\?/);
+      await go('/');
+      await asked;
+      await go('/stats');
+      await expectBody(opened.page, '/stats', [statsInventoryTab(opened.page)]);
+      const before = served;
+      release();
+      for (let step = 0; step < 40 && served === before; step += 1) await opened.page.waitForTimeout(100);
+      assert.ok(served > before, '压住的那一次新作取数没有放行');
+      // 回包之后页面只剩一次同步重画；这里不用 `settle`，它还会等被切走的目录区那份加载态。
+      await opened.page.waitForTimeout(500);
+      assert.equal(await feedCards.count(), 0, '晚到的新作取数画到了统计页上');
+      await assertHolds(opened.page, opened.problems, '首页与统计页往返');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  /* 还没装进本机的新作只有来源给的封套地址，没有边车。贴右缘的话 0.75 的卡片比正封宽，
+     左边带进一条书脊；按正封先验比例 0.704 从右缘量回去才只剩正封。 */
+  it('远程封套按正封先验比例切，不带进书脊', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/stats', DESKTOP);
+    try {
+      const remote = 'https://covers.example.test/sleeve.svg';
+      await opened.page.route(remote, (route) => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1000">'
+          + '<rect width="1500" height="1000" fill="#888"/></svg>',
+      }));
+      await opened.page.route(/\/api\/feeds\/discoveries\?/, (route) => route.fulfill({ json: {
+        ok: true, more: false, items: [{
+          id: 1, code: 'ABF-348', title: 'ABF-348 示例作品', link: null, cover_url: remote,
+          has_cover: false, cover_frame: null, poster_box: null, release_date: '2026-09-30',
+          studio: null, performers: null, read: false, ignored: false, scrape_error: null,
+        }] } }));
+      await opened.page.evaluate(() => {
+        history.pushState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      const cover = opened.page.locator('#feedNew img.cover.panel');
+      await expectBody(opened.page, '/', [cover]);
+      // 1500×1000 的封套，正封宽 704，左缘在 796 列：切掉左边 53.07%，右缘不动。
+      assert.equal(await cover.evaluate((img) => img.style.getPropertyValue('--panel-clip')),
+        '0% 0% 0% 53.07%');
+    } finally {
+      await opened.close();
+    }
+  });
 });

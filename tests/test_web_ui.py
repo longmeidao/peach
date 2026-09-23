@@ -2867,8 +2867,9 @@ class WebUiSourceTests(unittest.TestCase):
             ".poster.cover.front.panel{inset:var(--panel-top,0%) auto auto var(--panel-left,0%)",
             "正封的位置靠元素自身定位，不是 object-position")
         self.assertPageContains("clip-path:inset(var(--panel-clip,0 0 0 0))")
-        # 只有整张封套才有正封可切；竖版正封和 16:9 剧照走各自那条 object-position。
-        self.assertPageContains("if(img.dataset.frame!=='sleeve')return;")
+        # 竖版正封本身就是正封，没有可切的；封套与 16:9 居中拼图有框就按框取景，
+        # 16:9 剧照拿不到框，走自己那条 object-position。
+        self.assertPageContains("if(img.dataset.frame==='front')return;")
         # 没有框就一个字都不写，CSS 里那份贴右缘的回退照旧生效。
         self.assertPageContains("if(!frame)return;")
         # 框按那一版源图算：等比缩小的派生档照用，封面被另一张换掉之后它描述的是另一张图。

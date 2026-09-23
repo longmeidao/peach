@@ -16,7 +16,7 @@ from pathlib import Path
 from PIL import Image
 
 from peach import images, jav_poster_crop
-from peach.jav_poster_crop import FOLD, MANUAL, MANUAL_SOURCE, NONE, RATIO
+from peach.jav_poster_crop import CENTER, FOLD, MANUAL, MANUAL_SOURCE, NONE, RATIO
 
 
 def sleeve(width: int, height: int, fold: int | None) -> Image.Image:
@@ -30,6 +30,15 @@ def sleeve(width: int, height: int, fold: int | None) -> Image.Image:
     for x in range(min(fold + 3, width), width):
         for y in range(height):
             image.putpixel((x, y), (150, 150, 150))
+    return image
+
+
+def centred(width: int, height: int, x0: int, x1: int,
+            right: tuple[int, int, int] = (60, 60, 60)) -> Image.Image:
+    """16:9 拼图：左右两块剧照，正中 `x0`～`x1` 是正封。"""
+    image = Image.new("RGB", (width, height), (90, 90, 90))
+    image.paste((200, 200, 200), (x0, 0, x1, height))
+    image.paste(right, (x1, 0, width, height))
     return image
 
 
@@ -103,7 +112,7 @@ class CropShapeTests(unittest.TestCase):
 
 
 class MethodTests(unittest.TestCase):
-    """三档各自的触发条件。"""
+    """各档各自的触发条件。"""
 
     @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
     def test_a_visible_spine_is_found_and_the_front_starts_there(self):
@@ -144,6 +153,41 @@ class MethodTests(unittest.TestCase):
         """整幅都是画面的官方剧照没有「正面那一块」，按先验切会裁出半张背景。"""
         box = jav_poster_crop.front_panel_box(1920, 1080)
         self.assertEqual(box["method"], NONE)
+
+    @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
+    def test_a_centred_front_panel_in_a_still_is_framed_between_its_seams(self):
+        """「剧照 | 正封 | 剧照」的 16:9 拼图：框在两条满高拼接缝之间，满高。"""
+        width, height = 1348, 758
+        box = jav_poster_crop.front_panel_box(
+            width, height, gradient_of(centred(width, height, 408, 940)))
+        self.assertEqual(box["method"], CENTER)
+        self.assertEqual((box["y0"], box["y1"]), (0, height))
+        self.assertLessEqual(abs(box["x0"] - 408), 1, box)
+        self.assertLessEqual(abs(box["x1"] - 940), 1, box)
+
+    @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
+    def test_one_full_height_seam_is_enough_and_the_other_side_mirrors_it(self):
+        """一侧剧照压暗后和正封边缘同色，那一侧没有缝；居中是版式本身，按对称补上。"""
+        width, height = 1348, 758
+        box = jav_poster_crop.front_panel_box(
+            width, height, gradient_of(centred(width, height, 408, 940, right=(200, 200, 200))))
+        self.assertEqual(box["method"], CENTER)
+        self.assertEqual(box["x1"], width - box["x0"])
+
+    @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
+    def test_a_strong_edge_that_stops_short_is_content_not_a_seam(self):
+        """边位上的强边只占半截高度：那是画面里的人或物，不是拼接缝。"""
+        width, height = 1348, 758
+        image = Image.new("RGB", (width, height), (200, 200, 200))
+        image.paste((20, 20, 20), (0, 0, 408, height // 2))
+        box = jav_poster_crop.front_panel_box(width, height, gradient_of(image))
+        self.assertEqual(box["method"], NONE)
+
+    def test_a_still_without_seam_evidence_is_not_cropped(self):
+        """只给列梯度、没有接缝覆盖率的调用方，16:9 那一档照旧不给框。"""
+        profile = [0.0] * 1348
+        profile[408] = 1.0
+        self.assertEqual(jav_poster_crop.front_panel_box(1348, 758, profile)["method"], NONE)
 
     def test_the_window_peak_must_be_a_real_cliff(self):
         """窗里总有一个最大值，它不够陡就只是噪声的最高点，按它切会切进画面。"""

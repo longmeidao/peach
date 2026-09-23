@@ -16,7 +16,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 from .catalog_rules import normalise_code_key, release_code_from_text
 from .entities import normalize_entity_name
@@ -158,9 +158,10 @@ def _published(value: str) -> str | None:
 def parse_javdb_actor(html: str, base_url: str) -> ParsedFeed | None:
     """JavDB 演员页 → 条目。一条作品都解不出时返回 None。
 
-    解不出不等于这个人没作品：同一轮里带查询串的地址会回一份 27 KB、一条作品都没有的
-    页面（2026-09-22 实测），而不带参数的仍是 78 KB 的完整页。所以这种情况按拉取失败
-    报出来，而不是当成「这次没有新作」——后者会把一个坏掉的源伪装成安静的源。
+    解不出不等于这个人没作品：带查询串的地址回过一份 27 KB、一条作品都没有的页面
+    （2026-09-22 实测；09-23 同一种 `?t=s` 地址回的是 85 KB、40 条的完整页），不带参数
+    的是 78 KB 的完整页。所以这种情况按拉取失败报出来，而不是当成「这次没有新作」——
+    后者会把一个坏掉的源伪装成安静的源。
     """
     if not html:
         return None
@@ -175,6 +176,12 @@ def parse_javdb_actor(html: str, base_url: str) -> ParsedFeed | None:
     if not rows:
         return None
     return ParsedFeed(None, tuple(rows))
+
+
+def solo_works_url(url: str) -> str:
+    """演员页换到「單體作品」筛选：同一个人，合集少得多，能翻到更早的正片。"""
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "t=s", ""))
 
 
 def parse(kind: str, body: bytes, url: str) -> ParsedFeed | None:
