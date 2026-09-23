@@ -155,15 +155,21 @@ fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书�
 | fc2club、freejavbt、airav、avsox | 已套契约（经桥） | `metadata_amane.py` | amane 的十六档 reason 经 `AMANE_REASONS` 一对一翻成契约细档，桥的一站先套进 `SiteRecord` 再投影；`SITE_CONFIGS` 只持有站名、界面名与档位，主域与 Cookie 由 amane 管 |
 | AVBase | 已套契约 | `sources/avbase.py` | 搜索页一跳，`__NEXT_DATA__` 里挑出本作与它自己的商品条目；搜索无命中归 `not_found`，Cloudflare 验证页归 `cloudflare_challenge`，别的结构对不上归 `parse_error`；不给时长，`runtime` 留空 |
 | r18.dev | 已套契约 | `sources/r18dev.py` | 作品 JSON 与 combined 页两跳，日文写法、女优头像模板与 genre 取日文原词都在这一站里；`content_id` 对不上归 `parse_error`；档位 `official_mirror`，页面上限 2 MiB |
-| 一本道、FC2、fc2cmadb、JavArchive | 待迁 | `library_processing`、`metadata_1pondo`、`metadata_fc2` | 官方档，取页与解析目前各自散在 provider 方法里 |
-| Seesaa 作品表 | 待迁 | `metadata_seesaa.py` | 只由 `scrape_codes --profile seesaa` 走 |
+| 一本道 | 已套契约 | `sources/onepondo.py` | 作品 JSON 一跳；认不出作品号、404 与 `MovieID` 对不上归 `not_found`，回的不是 JSON 归 `parse_error`；档位 `official`，页面上限 1 MiB 进配置 |
+| FC2 | 已套契约 | `sources/fc2.py` | 商品页一跳，下架页与 `sku` 对不上归 `not_found`；番号、时长、原件地址与占位件判定是三站共用的函数，也在这里；页面上限 2 MiB |
+| fc2cmadb | 已套契约 | `sources/fc2cmadb.py` | 作品页之后在 `query()` 里带握手头点名 `actresses` 再问一跳，那一跳失败按没有女优交回；评论区的演员、等价与合集解析也在这里，`scripts/fetch_fc2_metadata.py` 从这里取 |
+| JavArchive | 已套契约 | `sources/javarchive.py` | 搜索页加作品页两跳；`records()` 把搜索命中的每一条转存各交一份记录，某一条 404 或对不上就跳过 |
+| Seesaa 作品表 | 待迁 | `metadata_seesaa.py` | 只由 `scrape_codes --profile seesaa` 走；这张表里唯一没套契约的一站 |
+
+FC2 三站先后问、资料取齐即停、封面问到底的流程仍在 `LibraryMetadataProvider.fc2`，按 `metadata_routes.FC2_STAGE`
+逐站调 `records()`；各站只管自己的取页与解析。
 
 ## FC2 作品资料与封面
 
 FC2 不是 JAV：番号是卖家自己的投稿号，JAV 目录站按它去查要么没有、要么撞上别的片。实测
 r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「没有这个番号」，javdb 收了
-一部分但配额紧。库内采集（`peach.library_processing`）对 FC2 番号因此只问两处，解析器在
-`peach.metadata_fc2`，都不要凭据：
+一部分但配额紧。库内采集（`peach.library_processing`）对 FC2 番号因此只问下面三处，解析器在
+`peach.sources.fc2`、`peach.sources.fc2cmadb` 与 `peach.sources.javarchive`，都不要凭据：
 
 - 发行方自己那一页 `adult.contents.fc2.com/article/<video_id>/`，资料在 `ld+json` 的 Product
   里，一次请求给标题、说明、卖家、商品标签、时长、販売日和封面原图（实测 2350×2352）。
@@ -217,7 +223,7 @@ r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「
 无码番号在 r18.dev 上没有，目录站给日期式番号的发行日是转售商的上架日（`092415_001` javdb 报
 2016-06-16，而番号自己写着 2015-09-24）。一本道的前端读的就是一份公开 JSON，不用解析 HTML、
 不要凭据：`www.1pondo.tv/dyn/phpauto/movie_details/movie_id/<id>.json`，一次给标题、说明、
-女优（日文与罗马字）、系列、发行日、时长和站内标签。解析器在 `peach.metadata_1pondo`，
+女优（日文与罗马字）、系列、发行日、时长和站内标签。解析器在 `peach.sources.onepondo`，
 下架的作品直接 404，落到社区来源（javdb 收了一部分）。
 
 **问哪一家由本机证据决定。** 一本道与カリビアンコム 都按 `MMDDYY_nnn` 编号，番号本身分不出
@@ -1193,7 +1199,7 @@ Feed 只回答一个问题：**最近出了哪些番号**。它不下载、不�
 | --- | --- | --- |
 | FANZA / DMM | `/rss/-/digital-videoa/` | 404；`/rss/` 与新作列表页都 302 到年龄确认页 |
 | MGStage | `/rss/mgs.xml`、`/feed/` | 都 404，首页不声明任何 feed |
-| 一本道 / 10musume / カリビアンコム / パコパコママ | `/rss/movies.xml`、`dyn/phpauto/movie_lists/list_newest_30.json` | 全 404；首页不声明 feed。`dyn/phpauto/movie_details` 仍然可用（`peach.metadata_1pondo`），**但同族没有新作列表路径** |
+| 一本道 / 10musume / カリビアンコム / パコパコママ | `/rss/movies.xml`、`dyn/phpauto/movie_lists/list_newest_30.json` | 全 404；首页不声明 feed。`dyn/phpauto/movie_details` 仍然可用（`peach.sources.onepondo`），**但同族没有新作列表路径** |
 | Tokyo-Hot | `/product/rss/` | 404，首页不声明 feed |
 | RSSHub 公共实例 | `rsshub.app/javdb/...`、`rsshub.app/javbus/...` | 403，公共实例整站挡在 Cloudflare 后面。自建实例没有验证，不作为 Peach 的前置条件 |
 | javlibrary | `/cn/rss.xml` | 403（与本文既有结论一致：被 Cloudflare 拦，不绕） |

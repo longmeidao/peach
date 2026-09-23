@@ -42,7 +42,7 @@ SOURCE_SPECS = {
         # r18.dev 是 DMM 数字版目录的镜像，采集链有码与素人的第一档
         # （`library_processing.LibraryMetadataProvider.query`）。
         "r18dev": "official_mirror",
-        # FC2 发行方自己的商品页（`peach.metadata_fc2`）。
+        # FC2 发行方自己的商品页（`peach.sources.fc2`）。
         "fc2": "official",
         # 历史来源身份，见 `HISTORICAL_SOURCES`。
         "libredmm": "official_mirror",
@@ -50,12 +50,12 @@ SOURCE_SPECS = {
         "aventertainment": "official", "caribbeancom": "official",
         "dlgetchu": "official",
         "javlibrary": "community", "jav321": "community", "javstash": "community",
-        # Peach 自写解析器的社区站（`peach.javdb`、`peach.community_catalog`）。
+        # Peach 自写解析器的社区站（`peach.sources.javdb`、`peach.sources.javbus`）。
         "javdb": "community", "javbus": "community",
         # Seesaa 作品表（`peach.metadata_seesaa`，`scrape_codes --profile seesaa`）。
         "sougouwiki": "community",
         # AVBase 汇总各店铺的商品条目，采集任务在官方渠道落空时直接请求它
-        # （peach.community_catalog）。
+        # （`peach.sources.avbase`）。
         "avbase": "community",
         # 韩国 MIB 的官网（scripts/harvest_kmib.py）。登记在这里是为了复核与自动批准
         # 按官方来源对待它。
@@ -63,12 +63,12 @@ SOURCE_SPECS = {
         # FC2 下架作品的镜像站。它转载的是发行方那一页，但标题和标签由站方用户维护，
         # 所以按社区来源对待：取值进复核，不当官方证据。
         "fc2cmadb": "community",
-        # fc2cmadb 也没有的下架 FC2 的最后一档（`peach.metadata_fc2.parse_archive`）。
+        # fc2cmadb 也没有的下架 FC2 的最后一档（`peach.sources.javarchive`）。
         # 转载站，标题由发布者写，封面是转存件，按社区来源对待。登记在这里还有一层作用：
         # 「没有」的记忆按 `sources_fingerprint` 作废，接上这一档，此前压着「三处都没有」
         # 的番号下一轮就会重问一遍，不必等 TTL 走完。
         "javarchive": "community",
-        # 一本道的官网作品 JSON（`peach.metadata_1pondo`）。发行方自己那一份。
+        # 一本道的官网作品 JSON（`peach.sources.onepondo`）。发行方自己那一份。
         "1pondo": "official",
         # 经 amane 桥问到的几站（`peach.metadata_amane.SITES`，ADR-0043）。都是转载或索引站，
         # 按社区来源对待。

@@ -93,4 +93,13 @@ Javinizer-Go 那一路还要求本机装一份特定大版本的二进制并单�
 `library_processing.is_missing` 与传输层的 `NotFound` 一并认，别档措辞经 `describe_failure` 原样交出。
 payload 的差别只有契约统一带的键：AVBase 多一个留空的 `runtime`，r18.dev 多一列 `cover_urls`，站上没给的
 标量留空串而不是 `None`——候选那一路对两种写法同样处理。
+第三步迁了一本道与 FC2 三站（`sources/onepondo.py`、`sources/fc2.py`、`sources/fc2cmadb.py`、`sources/javarchive.py`），
+`metadata_1pondo` 与 `metadata_fc2` 两个模块删除，`ONE_PONDO_LIMIT`、`FC2_PAGE_LIMIT` 进了各站的 `SiteConfig.page_limit`。
+多站接力那一档要的东西补进契约：`SiteSource.records()` 交出一站对一个番号的全部记录，默认就是 `query()` 那一条，
+JavArchive 把搜索命中的每一条转存各交一份；`Session.get` 可以为一次请求指定 `referer` 与额外请求头，fc2cmadb 点名
+`actresses` 的那一跳靠它；`SiteRecord.runtime` 按分钟记、允许两位小数。先后问、资料取齐即停、封面问到底的流程仍在
+`LibraryMetadataProvider.fc2`，按 `metadata_routes.FC2_STAGE` 逐站调 `records()`。评论区的演员、等价与合集解析在
+`sources/fc2cmadb.py`，`scripts/fetch_fc2_metadata.py` 从那里取。payload 的差别：FC2 三站多出契约统一带的
+`series`、`director` 空串键，一本道多出 `label`、`director`；fc2cmadb 的女优写成 `{japanese_name}`，与别站同形，候选那一路
+据此读出演员；一本道回的不是 JSON 归 `parse_error`。
 迁移状态表在 `docs/SOURCING.md`「站点解析器契约」。

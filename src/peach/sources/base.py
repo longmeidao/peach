@@ -8,8 +8,8 @@ ADR-0044 收敛刮削栈之后，自写解析器与 amane 桥的站都套这一�
 - `SiteConfig`：站名、主域与图床、请求间隔、是否带 Cookie、页面大小上限、所属档位。它是数据，
   `scraping_access.SOURCES`、`library_processing.SOURCE_INTERVALS` 这几张表与它逐项一致，由测试守住。
 - `SiteSource`：`fetch(code, session=)` 取到作品页，`parse(page, code)` 从页面读出 `SiteRecord`，
-  `query()` 把两步串起来并把 `_fetch` 抛出的 HTTP 分档翻成 `SourceFailure`。测试只喂 `parse` 一张
-  页面就能覆盖解析，不必起假传输。
+  `query()` 把两步串起来并把 `_fetch` 抛出的 HTTP 分档翻成 `SourceFailure`，`records()` 交出这一站的全部
+  记录（多数站就是 `query()` 那一条）。测试只喂 `parse` 一张页面就能覆盖解析，不必起假传输。
 - `SiteRecord`：一种返回模型。`payload()` 投影成来源快照那份 dict（`id`、`maker`、`actresses[].japanese_name`、
   `cover_urls`……），`extract_peach_fields`、`verified_cover` 与复核那一路认的就是它。
 - `FailureReason`：一张失败原因表，取 amane 那十六档里 Peach 用得上的十二档。`REASON_KINDS` 把它映到
@@ -193,9 +193,12 @@ class Session:
     transport: Any
     deadline: float | None = None
 
-    def get(self, url: str, *, config: SiteConfig) -> Page:
-        return Page(url, jav_cover_fetch._fetch(self.transport, url, referer=config.referer,
-                                                limit=config.page_limit, deadline=self.deadline))
+    def get(self, url: str, *, config: SiteConfig, referer: str = "",
+            headers: Mapping[str, str] | None = None) -> Page:
+        """取一页。`referer` 默认是站的主域；`headers` 是这一次要多带的请求头（fc2cmadb 点名要女优那一栏）。"""
+        options = {"extra_headers": dict(headers)} if headers else {}
+        return Page(url, jav_cover_fetch._fetch(self.transport, url, referer=referer or config.referer,
+                                                limit=config.page_limit, deadline=self.deadline, **options))
 
 
 @dataclass(frozen=True)
@@ -216,7 +219,8 @@ class SiteRecord:
     series: str = ""
     director: str = ""
     release_date: str = ""
-    runtime: int | None = None
+    #: 分钟。站上按秒或 `41:50` 记的，换算后可能带两位小数。
+    runtime: float | None = None
     #: `None` 表示这一站不给标签；空元组表示给了但为空。
     tags: tuple[str, ...] | None = None
     cover_urls: tuple[str, ...] = ()
@@ -268,3 +272,8 @@ class SiteSource:
             raise
         except Unavailable as error:
             raise http_failure(error) from None
+
+    def records(self, code: str, *, session: Session) -> list[SiteRecord]:
+        """这一站对这个番号给出的全部记录。多数站只有一条；同一部作品在站上有几条各自独立的页面时
+        （JavArchive 上几位转存者各发一次，图各存各的）子类逐条交出，封面层要的是每一条的图源。"""
+        return [self.query(code, session=session)]

@@ -8,16 +8,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from peach.sources.fc2cmadb import collection_parts, page_comments, parse_equivalences, parse_performers
 from scripts.fetch_fc2_metadata import (
     backfill,
-    collection_parts,
     harvest,
     harvest_rows,
     high_resolution_cover_url,
     metadata_candidate_rows,
-    page_comments,
-    parse_equivalences,
-    parse_performers,
     summarise,
     translated_tags,
 )
