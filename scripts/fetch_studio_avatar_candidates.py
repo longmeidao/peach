@@ -33,6 +33,7 @@ from peach.logo_provider import (  # noqa: E402
     provenance_now,
 )
 from peach.config import GENERATED_DIR  # noqa: E402
+from peach.previews import logo_key  # noqa: E402
 from peach.social_links import twimg_tiers  # noqa: E402
 from peach.review_csv import read_rows, write_rows
 from peach.scripting import USER_AGENT, RateLimiter
@@ -53,7 +54,13 @@ HEALTH_FIELDS = (
 
 
 def safe_name(studio: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_-]", "_", studio)[:60]
+    """候选图的落盘名，与已装标识同一套规则（`logo_key`）。
+
+    只留 ASCII 的话日文厂牌全折成下划线：`セレブの友` 与 `親父の個撮` 同为 `_____`，
+    同一批里后取的那张盖掉先取的，复核页上两家挂着同一张图；已装标识按 `logo_key`
+    落盘，拿 ASCII 名去比也永远比不上。
+    """
+    return logo_key(studio)
 
 
 def guess_handle(studio: str) -> str:

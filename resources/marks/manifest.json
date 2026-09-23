@@ -14,8 +14,8 @@
       "imported_at": "2026-08-14T23:40:00+08:00"
     },
     {
-      "file": "ABC___Mousouzoku.icon.png",
-      "studio": "ABC___Mousouzoku",
+      "file": "ABC_妄想族.icon.png",
+      "studio": "ABC_妄想族",
       "variant": "icon",
       "source": "studio icon harvest",
       "source_url": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
@@ -25,8 +25,8 @@
       "imported_at": "2026-09-04T05:09:33Z"
     },
     {
-      "file": "ABC___Mousouzoku.logo.png",
-      "studio": "ABC___Mousouzoku",
+      "file": "ABC_妄想族.logo.png",
+      "studio": "ABC_妄想族",
       "variant": "logo",
       "source": "studio icon harvest",
       "source_url": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
@@ -36,8 +36,8 @@
       "imported_at": "2026-09-04T05:09:33Z"
     },
     {
-      "file": "ABC___Mousouzoku.png",
-      "studio": "ABC___Mousouzoku",
+      "file": "ABC_妄想族.png",
+      "studio": "ABC_妄想族",
       "variant": "",
       "source": "studio icon harvest",
       "source_url": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
@@ -113,19 +113,8 @@
       "imported_at": "2026-08-24T11:11:44Z"
     },
     {
-      "file": "Aroma_Planning.png",
-      "studio": "Aroma_Planning",
-      "variant": "",
-      "source": "studio logo review",
-      "source_url": "https://pbs.twimg.com/profile_images/1757620851715997696/PiXXNSPa_200x200.png",
-      "sha256": "3535758d02e9a25ca9e19c48389a2029cde3960cd62d0990daf218d7ff050d39",
-      "bytes": 15632,
-      "content_type": "image/png",
-      "imported_at": "2026-08-24T11:11:44Z"
-    },
-    {
-      "file": "Asia___Mousouzoku.icon.png",
-      "studio": "Asia___Mousouzoku",
+      "file": "Asia_妄想族.icon.png",
+      "studio": "Asia_妄想族",
       "variant": "icon",
       "source": "studio icon harvest",
       "source_url": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
@@ -135,8 +124,8 @@
       "imported_at": "2026-09-04T05:09:33Z"
     },
     {
-      "file": "Asia___Mousouzoku.logo.png",
-      "studio": "Asia___Mousouzoku",
+      "file": "Asia_妄想族.logo.png",
+      "studio": "Asia_妄想族",
       "variant": "logo",
       "source": "studio icon harvest",
       "source_url": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
@@ -146,8 +135,8 @@
       "imported_at": "2026-09-04T05:09:33Z"
     },
     {
-      "file": "Asia___Mousouzoku.png",
-      "studio": "Asia___Mousouzoku",
+      "file": "Asia_妄想族.png",
+      "studio": "Asia_妄想族",
       "variant": "",
       "source": "studio icon harvest",
       "source_url": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
@@ -194,22 +183,22 @@
       "studio": "BAZOOKA",
       "variant": "icon",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/009.png",
-      "sha256": "b4ada8b15adbe1bdda5e8d9accc936e0fbaf9f7af5f18fc5933edc8c0502861c",
-      "bytes": 21266,
+      "source_url": "https://www.km-produce.com/img2018/label/bazooka/logo.svg",
+      "sha256": "7aca99c70d2e83790d013975e8f2858b8c2c8b7f1258e5a3dfb5c33b15cf2088",
+      "bytes": 15160,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "BAZOOKA.logo.png",
       "studio": "BAZOOKA",
       "variant": "logo",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/009.png",
-      "sha256": "b4ada8b15adbe1bdda5e8d9accc936e0fbaf9f7af5f18fc5933edc8c0502861c",
-      "bytes": 21266,
+      "source_url": "https://www.km-produce.com/img2018/label/bazooka/logo.svg",
+      "sha256": "7aca99c70d2e83790d013975e8f2858b8c2c8b7f1258e5a3dfb5c33b15cf2088",
+      "bytes": 15160,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "BAZOOKA.png",
@@ -751,28 +740,6 @@
       "imported_at": "2026-09-04T05:09:17Z"
     },
     {
-      "file": "Hon_Naka.icon.png",
-      "studio": "Hon_Naka",
-      "variant": "icon",
-      "source": "studio icon harvest",
-      "source_url": "https://honnaka.jp/",
-      "sha256": "176254ee1d70733afbcfaf831b33f805ab594755aef7d5467731f59cd566fca3",
-      "bytes": 1414,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T08:04:33Z"
-    },
-    {
-      "file": "Hon_Naka.png",
-      "studio": "Hon_Naka",
-      "variant": "",
-      "source": "studio icon harvest",
-      "source_url": "https://honnaka.jp/",
-      "sha256": "176254ee1d70733afbcfaf831b33f805ab594755aef7d5467731f59cd566fca3",
-      "bytes": 1414,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T08:04:33Z"
-    },
-    {
       "file": "Hunter.png",
       "studio": "Hunter",
       "variant": "",
@@ -828,8 +795,8 @@
       "imported_at": "2026-09-04T05:09:17Z"
     },
     {
-      "file": "JET_Eizo.icon.png",
-      "studio": "JET_Eizo",
+      "file": "JET映像.icon.png",
+      "studio": "JET映像",
       "variant": "icon",
       "source": "studio icon harvest",
       "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
@@ -839,8 +806,8 @@
       "imported_at": "2026-09-03T18:00:32Z"
     },
     {
-      "file": "JET_Eizo.logo.png",
-      "studio": "JET_Eizo",
+      "file": "JET映像.logo.png",
+      "studio": "JET映像",
       "variant": "logo",
       "source": "studio icon harvest",
       "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
@@ -850,8 +817,8 @@
       "imported_at": "2026-09-03T18:00:32Z"
     },
     {
-      "file": "JET_Eizo.png",
-      "studio": "JET_Eizo",
+      "file": "JET映像.png",
+      "studio": "JET映像",
       "variant": "",
       "source": "studio icon harvest",
       "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
@@ -865,22 +832,22 @@
       "studio": "Jackson",
       "variant": "icon",
       "source": "studio icon harvest",
-      "source_url": "https://static.mgstage.com/mgs/img/pc/jackson.gif",
-      "sha256": "334d33736a0f7132f8bff500e6d58069118335472cc24469e766e7c851feeab8",
-      "bytes": 4510,
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-jackson.jpg",
+      "sha256": "6af36eefbaed36e157fe6aabde52d30f35c887dedbd6a5ff6e3f5e12ceb993c4",
+      "bytes": 186134,
       "content_type": "image/png",
-      "imported_at": "2026-09-04T05:09:17Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "Jackson.logo.png",
       "studio": "Jackson",
       "variant": "logo",
       "source": "studio icon harvest",
-      "source_url": "https://static.mgstage.com/mgs/img/pc/jackson.gif",
-      "sha256": "334d33736a0f7132f8bff500e6d58069118335472cc24469e766e7c851feeab8",
-      "bytes": 4510,
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-jackson.jpg",
+      "sha256": "6af36eefbaed36e157fe6aabde52d30f35c887dedbd6a5ff6e3f5e12ceb993c4",
+      "bytes": 186134,
       "content_type": "image/png",
-      "imported_at": "2026-09-04T05:09:17Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "Jackson.png",
@@ -1158,50 +1125,6 @@
       "imported_at": "2026-08-24T11:11:44Z"
     },
     {
-      "file": "Momotaro_Eizo.icon.png",
-      "studio": "Momotaro_Eizo",
-      "variant": "icon",
-      "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
-      "sha256": "83355abcacea6cf015c6f8583bcb2093224c3660a2adb46ed71d7e521c5c363f",
-      "bytes": 11432,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
-    },
-    {
-      "file": "Momotaro_Eizo.logo.png",
-      "studio": "Momotaro_Eizo",
-      "variant": "logo",
-      "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
-      "sha256": "83355abcacea6cf015c6f8583bcb2093224c3660a2adb46ed71d7e521c5c363f",
-      "bytes": 11432,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
-    },
-    {
-      "file": "Momotaro_Eizo.png",
-      "studio": "Momotaro_Eizo",
-      "variant": "",
-      "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
-      "sha256": "83355abcacea6cf015c6f8583bcb2093224c3660a2adb46ed71d7e521c5c363f",
-      "bytes": 11432,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
-    },
-    {
-      "file": "Muku.jpg",
-      "studio": "Muku",
-      "variant": "",
-      "source": "studio logo review",
-      "source_url": "https://pbs.twimg.com/profile_images/2046923235988819968/6nB7mP4M_400x400.jpg",
-      "sha256": "8c7e7af49989a5298c635eb9e329cf2584c77db91e033fad6dcecd7f1c5437ad",
-      "bytes": 7823,
-      "content_type": "image/jpeg",
-      "imported_at": "2026-08-24T11:11:44Z"
-    },
-    {
       "file": "Natural_High.icon.png",
       "studio": "Natural_High",
       "variant": "icon",
@@ -1365,39 +1288,6 @@
       "bytes": 10443,
       "content_type": "image/png",
       "imported_at": "2026-09-04T05:09:17Z"
-    },
-    {
-      "file": "Ranmaru.icon.png",
-      "studio": "Ranmaru",
-      "variant": "icon",
-      "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
-      "sha256": "16ed6d0ed022afe9ae27dd3a66268b8a2282e8f5bd6c27213f6fb35b9bcc641e",
-      "bytes": 23026,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
-    },
-    {
-      "file": "Ranmaru.logo.png",
-      "studio": "Ranmaru",
-      "variant": "logo",
-      "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
-      "sha256": "16ed6d0ed022afe9ae27dd3a66268b8a2282e8f5bd6c27213f6fb35b9bcc641e",
-      "bytes": 23026,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
-    },
-    {
-      "file": "Ranmaru.png",
-      "studio": "Ranmaru",
-      "variant": "",
-      "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
-      "sha256": "16ed6d0ed022afe9ae27dd3a66268b8a2282e8f5bd6c27213f6fb35b9bcc641e",
-      "bytes": 23026,
-      "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
     },
     {
       "file": "S-Cute.icon.png",
@@ -1609,17 +1499,6 @@
       "imported_at": "2026-08-24T11:11:44Z"
     },
     {
-      "file": "Tameike_Goro.icon.png",
-      "studio": "Tameike_Goro",
-      "variant": "icon",
-      "source": "studio icon harvest",
-      "source_url": "https://tameikegoro.jp/",
-      "sha256": "1ec6bc7d02d08e2543418f395e982fcb434606e0958a542ded6ff5a03c7db91e",
-      "bytes": 3941,
-      "content_type": "image/png",
-      "imported_at": "2026-09-02T14:48:50Z"
-    },
-    {
       "file": "VIP.icon.png",
       "studio": "VIP",
       "variant": "icon",
@@ -1778,22 +1657,22 @@
       "studio": "million",
       "variant": "icon",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/011.png",
-      "sha256": "4fbf91128151c11853ee11256349233601fa23e9722551fb5b00a5c006240ad7",
-      "bytes": 12574,
+      "source_url": "https://www.km-produce.com/img2018/label/million/logo.svg",
+      "sha256": "e0c95bc0269b3b5319384aca9baa53608eff33891d2a76afd1b534969bc026c8",
+      "bytes": 7063,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "million.logo.png",
       "studio": "million",
       "variant": "logo",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/011.png",
-      "sha256": "4fbf91128151c11853ee11256349233601fa23e9722551fb5b00a5c006240ad7",
-      "bytes": 12574,
+      "source_url": "https://www.km-produce.com/img2018/label/million/logo.svg",
+      "sha256": "e0c95bc0269b3b5319384aca9baa53608eff33891d2a76afd1b534969bc026c8",
+      "bytes": 7063,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "million.png",
@@ -1851,6 +1730,39 @@
       "imported_at": "2026-09-04T05:09:17Z"
     },
     {
+      "file": "えむっ娘ラボ.icon.png",
+      "studio": "えむっ娘ラボ",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://cdn.up-timely.com/image/16/site_design/base/logo_image/agm4a2ESultyKGcW2F3tWNjLS0VTjbjzXuueyhai.png",
+      "sha256": "f5ecb38a290cb904165fd17a8fede52d37a4c3f84fb18652febada1c700dedf9",
+      "bytes": 28723,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:37:47Z"
+    },
+    {
+      "file": "えむっ娘ラボ.logo.png",
+      "studio": "えむっ娘ラボ",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://cdn.up-timely.com/image/16/site_design/base/logo_image/agm4a2ESultyKGcW2F3tWNjLS0VTjbjzXuueyhai.png",
+      "sha256": "f5ecb38a290cb904165fd17a8fede52d37a4c3f84fb18652febada1c700dedf9",
+      "bytes": 28723,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:37:47Z"
+    },
+    {
+      "file": "えむっ娘ラボ.png",
+      "studio": "えむっ娘ラボ",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://cdn.up-timely.com/image/16/site_design/base/logo_image/agm4a2ESultyKGcW2F3tWNjLS0VTjbjzXuueyhai.png",
+      "sha256": "f5ecb38a290cb904165fd17a8fede52d37a4c3f84fb18652febada1c700dedf9",
+      "bytes": 28723,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:37:47Z"
+    },
+    {
       "file": "まんまんランド.icon.png",
       "studio": "まんまんランド",
       "variant": "icon",
@@ -1884,6 +1796,17 @@
       "imported_at": "2026-09-04T05:09:17Z"
     },
     {
+      "file": "アロマ企画.png",
+      "studio": "アロマ企画",
+      "variant": "",
+      "source": "studio logo review",
+      "source_url": "https://pbs.twimg.com/profile_images/1757620851715997696/PiXXNSPa_200x200.png",
+      "sha256": "3535758d02e9a25ca9e19c48389a2029cde3960cd62d0990daf218d7ff050d39",
+      "bytes": 15632,
+      "content_type": "image/png",
+      "imported_at": "2026-08-24T11:11:44Z"
+    },
+    {
       "file": "エスワン_ナンバーワンスタイル.png",
       "studio": "エスワン_ナンバーワンスタイル",
       "variant": "",
@@ -1893,6 +1816,39 @@
       "bytes": 18375,
       "content_type": "image/png",
       "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "カリビアンコム.icon.png",
+      "studio": "カリビアンコム",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://www.caribbeancom.com/",
+      "sha256": "d6d6826acbf5fa3269ccbac517d3ca46817e2d73cb1566ca91d8e29fc23c12f8",
+      "bytes": 1562,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "カリビアンコム.logo.png",
+      "studio": "カリビアンコム",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://www.caribbeancom.com/images/cc-logo--enter.svg",
+      "sha256": "b3cfc751a8fc8bad1fbeb0b5946f9e51b3099bb17da4286b6249addeef56979a",
+      "bytes": 8396,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "カリビアンコム.png",
+      "studio": "カリビアンコム",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://www.caribbeancom.com/",
+      "sha256": "d6d6826acbf5fa3269ccbac517d3ca46817e2d73cb1566ca91d8e29fc23c12f8",
+      "bytes": 1562,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
     },
     {
       "file": "ゲッツ__ボンボン_妄想族.icon.png",
@@ -1932,11 +1888,11 @@
       "studio": "シロウトTV",
       "variant": "icon",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/034.png",
-      "sha256": "5a79940e5e4d4c971edfb75fc6e3a97ad25de22419dc744ac0d64fe62731677c",
-      "bytes": 11950,
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-shiroutotv.jpg",
+      "sha256": "417ba3eb28645b8c217b788785a130462b2712508e471ef89794222aa1d0b54b",
+      "bytes": 4195,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "シロウトTV.logo.png",
@@ -1947,7 +1903,7 @@
       "sha256": "5a79940e5e4d4c971edfb75fc6e3a97ad25de22419dc744ac0d64fe62731677c",
       "bytes": 11950,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "シロウトTV.png",
@@ -1992,6 +1948,39 @@
       "bytes": 16815,
       "content_type": "image/png",
       "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "ナンパTV.icon.png",
+      "studio": "ナンパTV",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-nanpa.jpg",
+      "sha256": "e459e7238066e5178056e2a002b7dee66744dadec01db0e47796e849d05e1314",
+      "bytes": 10122,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T18:32:05Z"
+    },
+    {
+      "file": "ナンパTV.logo.png",
+      "studio": "ナンパTV",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-nanpa.jpg",
+      "sha256": "e459e7238066e5178056e2a002b7dee66744dadec01db0e47796e849d05e1314",
+      "bytes": 10122,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T18:32:05Z"
+    },
+    {
+      "file": "ナンパTV.png",
+      "studio": "ナンパTV",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-nanpa.jpg",
+      "sha256": "e459e7238066e5178056e2a002b7dee66744dadec01db0e47796e849d05e1314",
+      "bytes": 10122,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T18:32:05Z"
     },
     {
       "file": "ヒビノ.icon.png",
@@ -2119,22 +2108,22 @@
       "studio": "ラグジュTV",
       "variant": "icon",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/036.png",
-      "sha256": "af31baadcde06cdc56f595ba1954be389ca0038f7b52eea05800b2ddf0699446",
-      "bytes": 14631,
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-lux.jpg",
+      "sha256": "b0f65eaf9b8cd0675cdc135619038f57fb4bc7792c14748421cac03be0060057",
+      "bytes": 15011,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "ラグジュTV.logo.png",
       "studio": "ラグジュTV",
       "variant": "logo",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/036.png",
-      "sha256": "af31baadcde06cdc56f595ba1954be389ca0038f7b52eea05800b2ddf0699446",
-      "bytes": 14631,
+      "source_url": "https://www.prestige-av.com/api/media/maker/banner-lux.jpg",
+      "sha256": "b0f65eaf9b8cd0675cdc135619038f57fb4bc7792c14748421cac03be0060057",
+      "bytes": 15011,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "ラグジュTV.png",
@@ -2148,26 +2137,125 @@
       "imported_at": "2026-09-03T18:00:32Z"
     },
     {
+      "file": "一本道.icon.png",
+      "studio": "一本道",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://www.1pondo.tv/",
+      "sha256": "f4d103faad9ee120591814de1aaabb0024991f1b0565cda7e86fc29c36affd47",
+      "bytes": 15808,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "一本道.logo.png",
+      "studio": "一本道",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://www.1pondo.tv/",
+      "sha256": "f4d103faad9ee120591814de1aaabb0024991f1b0565cda7e86fc29c36affd47",
+      "bytes": 15808,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "一本道.png",
+      "studio": "一本道",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://www.1pondo.tv/",
+      "sha256": "f4d103faad9ee120591814de1aaabb0024991f1b0565cda7e86fc29c36affd47",
+      "bytes": 15808,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "东京热.icon.png",
+      "studio": "东京热",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://www.tokyo-hot.com/",
+      "sha256": "3399763d6403e71db8b8fba95f5ecd14e26abecafe09f86f5f895837d979d443",
+      "bytes": 14009,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "东京热.logo.png",
+      "studio": "东京热",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://www.tokyo-hot.com/",
+      "sha256": "3399763d6403e71db8b8fba95f5ecd14e26abecafe09f86f5f895837d979d443",
+      "bytes": 14009,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "东京热.png",
+      "studio": "东京热",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://www.tokyo-hot.com/",
+      "sha256": "3399763d6403e71db8b8fba95f5ecd14e26abecafe09f86f5f895837d979d443",
+      "bytes": 14009,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "乱丸.icon.png",
+      "studio": "乱丸",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
+      "sha256": "16ed6d0ed022afe9ae27dd3a66268b8a2282e8f5bd6c27213f6fb35b9bcc641e",
+      "bytes": 23026,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "乱丸.logo.png",
+      "studio": "乱丸",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
+      "sha256": "16ed6d0ed022afe9ae27dd3a66268b8a2282e8f5bd6c27213f6fb35b9bcc641e",
+      "bytes": 23026,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "乱丸.png",
+      "studio": "乱丸",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
+      "sha256": "16ed6d0ed022afe9ae27dd3a66268b8a2282e8f5bd6c27213f6fb35b9bcc641e",
+      "bytes": 23026,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
       "file": "俺の素人.icon.png",
       "studio": "俺の素人",
       "variant": "icon",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/018.png",
-      "sha256": "cb04f52ed48b77dce354cdba8fa876d9e403a0963a34e1069cbd8da4dba47fd0",
-      "bytes": 30425,
+      "source_url": "https://www.km-produce.com/img2018/label/oreshiro/logo.svg",
+      "sha256": "41f8a900bd9ed49c639df1112cca827e3a8fe048cb64e2b3c27865d2fdf6671d",
+      "bytes": 16201,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:32Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "俺の素人.logo.png",
       "studio": "俺の素人",
       "variant": "logo",
       "source": "studio icon harvest",
-      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/018.png",
-      "sha256": "cb04f52ed48b77dce354cdba8fa876d9e403a0963a34e1069cbd8da4dba47fd0",
-      "bytes": 30425,
+      "source_url": "https://www.km-produce.com/img2018/label/oreshiro/logo.svg",
+      "sha256": "41f8a900bd9ed49c639df1112cca827e3a8fe048cb64e2b3c27865d2fdf6671d",
+      "bytes": 16201,
       "content_type": "image/png",
-      "imported_at": "2026-09-03T18:00:33Z"
+      "imported_at": "2026-09-21T18:58:18Z"
     },
     {
       "file": "俺の素人.png",
@@ -2179,6 +2267,116 @@
       "bytes": 30425,
       "content_type": "image/png",
       "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "本中.icon.png",
+      "studio": "本中",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://honnaka.jp/",
+      "sha256": "176254ee1d70733afbcfaf831b33f805ab594755aef7d5467731f59cd566fca3",
+      "bytes": 1414,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T08:04:33Z"
+    },
+    {
+      "file": "本中.png",
+      "studio": "本中",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://honnaka.jp/",
+      "sha256": "176254ee1d70733afbcfaf831b33f805ab594755aef7d5467731f59cd566fca3",
+      "bytes": 1414,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T08:04:33Z"
+    },
+    {
+      "file": "桃太郎映像出版.icon.png",
+      "studio": "桃太郎映像出版",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
+      "sha256": "83355abcacea6cf015c6f8583bcb2093224c3660a2adb46ed71d7e521c5c363f",
+      "bytes": 11432,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "桃太郎映像出版.logo.png",
+      "studio": "桃太郎映像出版",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
+      "sha256": "83355abcacea6cf015c6f8583bcb2093224c3660a2adb46ed71d7e521c5c363f",
+      "bytes": 11432,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "桃太郎映像出版.png",
+      "studio": "桃太郎映像出版",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
+      "sha256": "83355abcacea6cf015c6f8583bcb2093224c3660a2adb46ed71d7e521c5c363f",
+      "bytes": 11432,
+      "content_type": "image/png",
+      "imported_at": "2026-09-03T18:00:32Z"
+    },
+    {
+      "file": "溜池ゴロー.icon.png",
+      "studio": "溜池ゴロー",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://tameikegoro.jp/",
+      "sha256": "1ec6bc7d02d08e2543418f395e982fcb434606e0958a542ded6ff5a03c7db91e",
+      "bytes": 3941,
+      "content_type": "image/png",
+      "imported_at": "2026-09-02T14:48:50Z"
+    },
+    {
+      "file": "無垢.jpg",
+      "studio": "無垢",
+      "variant": "",
+      "source": "studio logo review",
+      "source_url": "https://pbs.twimg.com/profile_images/2046923235988819968/6nB7mP4M_400x400.jpg",
+      "sha256": "8c7e7af49989a5298c635eb9e329cf2584c77db91e033fad6dcecd7f1c5437ad",
+      "bytes": 7823,
+      "content_type": "image/jpeg",
+      "imported_at": "2026-08-24T11:11:44Z"
+    },
+    {
+      "file": "痴女ヘブン.icon.png",
+      "studio": "痴女ヘブン",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/1069428094983786496/9ToOvYno.jpg",
+      "sha256": "7f2b79a152cb13e22ce60c395499a373f3a532811ed34a0a957441485dd995f0",
+      "bytes": 225334,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "痴女ヘブン.logo.png",
+      "studio": "痴女ヘブン",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/1069428094983786496/9ToOvYno.jpg",
+      "sha256": "7f2b79a152cb13e22ce60c395499a373f3a532811ed34a0a957441485dd995f0",
+      "bytes": 225334,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
+    },
+    {
+      "file": "痴女ヘブン.png",
+      "studio": "痴女ヘブン",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/1069428094983786496/9ToOvYno.jpg",
+      "sha256": "7f2b79a152cb13e22ce60c395499a373f3a532811ed34a0a957441485dd995f0",
+      "bytes": 225334,
+      "content_type": "image/png",
+      "imported_at": "2026-09-21T17:31:41Z"
     }
   ]
 }
