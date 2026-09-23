@@ -26,7 +26,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import gfriends, images, jav_poster_crop
-from .avatar_cover_face import face_square
+from .avatar_cover_face import WHOLE_COVER_PROVIDERS, face_square
 from .avatar_face import read_sidecar
 from .catalog_rules import normalise_code_key
 from .avatar_provider import (
@@ -143,7 +143,8 @@ def installed_digest(avatar_root: Path, kind: str, entity_id: int) -> str:
         return ""
 
 
-def _history(providers_root: Path, entity_id: int, current: str) -> list[Choice]:
+def _history(providers_root: Path, entity_id: int, current: str,
+             cover_root: Path | None = None) -> list[Choice]:
     """这个人取过的图。证据文件按 `performer-<id>-<sha>.json` 存，天然是一份历史。
 
     这里给的是「换回去不用重下」的那一批：装过又被顶掉的、批处理下过但没装的，
@@ -152,6 +153,9 @@ def _history(providers_root: Path, entity_id: int, current: str) -> list[Choice]
     两种记录不列出来：对象已经不在缓存里的（列了也只能点出一句「不在本机缓存里」），
     和整张只有一个颜色的（`images.is_flat`）。后者是来源取不到人像时给的占位底色，
     尺寸格式都合规，摆进候选里就是一块白格子。
+
+    批处理整张存下的作品封面（`WHOLE_COVER_PROVIDERS`）和作品画面同形：横版封套，
+    整张装进圆框只剩一块背景。它们同样先框再装，按证据里的番号在封面边车上取景。
     """
     out: list[Choice] = []
     seen: set[str] = set()
@@ -170,12 +174,22 @@ def _history(providers_root: Path, entity_id: int, current: str) -> list[Choice]
         if body is None or images.is_flat(body):
             continue
         provider = str(record.get("provider") or "")
+        label = SOURCE_NAMES.get(provider, provider or "取过的图")
+        width, height = int(record.get("width") or 0), int(record.get("height") or 0)
+        whole = provider in WHOLE_COVER_PROVIDERS
+        focus = None
+        if whole:
+            key = normalise_code_key(record.get("external_id"))
+            label = f"{label} {key}".strip()
+            cover = Path(cover_root) / f"{key}.jpg" if cover_root is not None and key else None
+            if width and height:
+                focus = cover_focus(key, cover, read_sidecar(cover) if cover else None,
+                                    width, height)
         out.append(Choice(
-            ref=f"sha256:{digest}", source="history",
-            label=SOURCE_NAMES.get(provider, provider or "取过的图"),
-            width=int(record.get("width") or 0), height=int(record.get("height") or 0),
+            ref=f"sha256:{digest}", source="history", label=label,
+            width=width, height=height,
             detail=str(record.get("upstream_url") or ""),
-            current=digest == current))
+            current=digest == current, crop=whole, focus=focus))
     return out
 
 
@@ -334,7 +348,7 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
             found_by=match.finder.get((category, filename), "") if tell_finder else "",
             width=int(shot.get("width") or 0), height=int(shot.get("height") or 0),
             current=bool(digest) and digest == current))
-    for choice in _history(providers_root, entity_id, current):
+    for choice in _history(providers_root, entity_id, current, cover_root):
         if choice.ref.split(":", 1)[1] not in taken:
             items.append(choice)
     # 在用的那张排第一。它是这一屏唯一的参照物——别的候选好不好，是跟它比出来的；
