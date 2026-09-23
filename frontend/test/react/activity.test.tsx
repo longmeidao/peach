@@ -8,10 +8,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 
 import { ActivityPage } from '../../src/react/activity/activity-page';
 import { elapsedText, prefetchTasks, summaryText, TASKS_URL } from '../../src/react/activity/tasks';
-import type { ActivityData, TaskRunPayload } from '../../src/react/activity/tasks';
+import type { ActivityData, FinishedPage, TaskRunPayload } from '../../src/react/activity/tasks';
 import { queryClient } from '../../src/react/query';
 
-import { mount, mountRoot } from './render';
+import { buttonNamed, click, mount, mountRoot, settle } from './render';
 
 // 客户端是模块级的单例（所有 React 根共用一个），用例之间不清就互相喂数据。
 afterEach(() => queryClient.clear());
@@ -215,6 +215,105 @@ it('卸载之后不再敲库：轮询跟着这棵根一起走', async () => {
   await mounted.unmount();
   await tick(60_000);
   expect(fetcher, '卸载之后还在轮询').toHaveBeenCalledTimes(2);
+});
+
+/** 结束于 10:mm 的一轮。分钟越大越新，id 顺着分钟走。 */
+const done = (minute: number, overrides: Partial<TaskRunPayload> = {}) => run({
+  id: minute, status: 'succeeded', progress_total: null, progress_current: null,
+  finished_at: `2026-09-11T10:${String(minute).padStart(2, '0')}:00.000Z`, ...overrides,
+});
+
+/** 轮询与往前翻各有一串回话：地址里带游标的走 `pages`，其余走 `polls`。`null` 那一份回 500。 */
+function route(polls: ActivityData[], pages: (FinishedPage | null)[]) {
+  let polled = 0, paged = 0;
+  const fetcher = vi.fn(async (input: string, _init?: RequestInit) => {
+    if (!input.includes('before_id=')) {
+      const body = polls[Math.min(polled, polls.length - 1)];
+      polled += 1;
+      return { ok: true, status: 200, json: async () => body };
+    }
+    const body = pages[Math.min(paged, pages.length - 1)] ?? null;
+    paged += 1;
+    return body
+      ? { ok: true, status: 200, json: async () => body }
+      : { ok: false, status: 500, json: async () => ({ message: '账本当前只能浏览' }) };
+  });
+  vi.stubGlobal('fetch', fetcher);
+  return fetcher;
+}
+
+const shownIds = (host: HTMLElement) =>
+  [...host.querySelectorAll('[data-run-id]')].map((node) => Number(node.getAttribute('data-run-id')));
+
+const cursorOf = (fetcher: ReturnType<typeof route>, call: number) =>
+  new URL(fetcher.mock.calls[call]![0], 'http://peach').searchParams;
+
+it('「加载更早」以最旧那一行为游标往后接一页，到头就不再给这个键', async () => {
+  const fetcher = route(
+    [payload({ finished: [done(9), done(8)], finished_has_more: true })],
+    [{ finished: [done(7), done(6)], finished_has_more: true },
+     { finished: [done(5)], finished_has_more: false }]);
+  await prefetchTasks(new AbortController().signal);
+  const host = await mount(page());
+  expect(shownIds(host)).toEqual([9, 8]);
+
+  await click(buttonNamed('加载更早', host));
+  await settle();
+  expect(cursorOf(fetcher, 1).get('before_id')).toBe('8');
+  expect(cursorOf(fetcher, 1).get('before_finished_at')).toBe('2026-09-11T10:08:00.000Z');
+  expect(shownIds(host)).toEqual([9, 8, 7, 6]);
+
+  await click(buttonNamed('加载更早', host));
+  await settle();
+  expect(cursorOf(fetcher, 2).get('before_id')).toBe('6');
+  expect(shownIds(host)).toEqual([9, 8, 7, 6, 5]);
+  expect(buttonNamed('加载更早', host), '已经到头还留着「加载更早」').toBeNull();
+});
+
+it('第一页之后没有更早的就不给「加载更早」', async () => {
+  const { host } = await open(payload({ finished: [done(9)], finished_has_more: false }));
+  expect(buttonNamed('加载更早', host)).toBeNull();
+});
+
+it('轮询刷新之后翻过的行还在，被新完成挤出第一页的那一轮也不丢、不重复', async () => {
+  vi.useFakeTimers();
+  route(
+    [payload({ finished: [done(9), done(8)], finished_has_more: true }),
+     // 10:10 又结束了一轮，第一页末尾的 8 被挤了出去。
+     payload({ finished: [done(10), done(9)], finished_has_more: true }),
+     payload({ finished: [done(11), done(10)], finished_has_more: true }),
+     // 翻页之后才进第一页的 10 也要留住：它被挤出去时，哪一页的回话里都没有它。
+     payload({ finished: [done(12), done(11)], finished_has_more: true })],
+    [{ finished: [done(7), done(6)], finished_has_more: true }]);
+  await prefetchTasks(new AbortController().signal);
+  const host = await mount(page());
+  await click(buttonNamed('加载更早', host));
+  await settle();
+  expect(shownIds(host)).toEqual([9, 8, 7, 6]);
+
+  await tick(10_000);
+  expect(shownIds(host)).toEqual([10, 9, 8, 7, 6]);
+  await tick(10_000);
+  await tick(10_000);
+  expect(shownIds(host)).toEqual([12, 11, 10, 9, 8, 7, 6]);
+  expect(buttonNamed('加载更早', host), '刷新一次就把往前翻的进度丢了').not.toBeNull();
+});
+
+it('往前翻失败时原位说原因，已有的行不动，再点一次照常接上', async () => {
+  route([payload({ finished: [done(9)], finished_has_more: true })],
+        [null, { finished: [done(7)], finished_has_more: false }]);
+  await prefetchTasks(new AbortController().signal);
+  const host = await mount(page());
+
+  await click(buttonNamed('加载更早', host));
+  await settle();
+  expect(host.querySelector('[role=alert]')?.textContent).toContain('账本当前只能浏览');
+  expect(shownIds(host)).toEqual([9]);
+
+  await click(buttonNamed('加载更早', host));
+  await settle();
+  expect(host.querySelector('[role=alert]')).toBeNull();
+  expect(shownIds(host)).toEqual([9, 7]);
 });
 
 it('时长与摘要的折算各自成立', () => {

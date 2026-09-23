@@ -577,6 +577,27 @@ class TaskRunStore:
                 [*values, max(1, min(int(limit), 500))]).fetchall()
         return [_row(row) for row in rows]
 
+    def finished_page(self, *, before: tuple[str, int] | None = None,
+                      limit: int = 50) -> tuple[list[TaskRun], bool]:
+        """终态行按结束时刻从新到旧取一页，返回这一页和它后面还有没有更早的。
+
+        排序键是 `(finished_at, id)` 而不是 `id`：开跑早、结束晚的长任务按 id 会落进
+        早已翻过的那几页，活动页「最近完成」上就再也看不到它。终态一次性，结束时刻落地
+        后不再变，所以游标之后的行不会再挪到它前面去。`before` 是上一页最旧那一行的
+        `(finished_at, id)`，这一页只取严格排在它后面的行。
+        """
+        size = max(1, min(int(limit), 500))
+        marks = ",".join(f"'{name}'" for name in TERMINAL_STATUSES)
+        where, values = f"status IN ({marks})", []
+        if before is not None:
+            where += " AND (finished_at<? OR (finished_at=? AND id<?))"
+            values = [before[0], before[0], int(before[1])]
+        with self.database.read_connection() as connection:
+            rows = connection.execute(
+                f"SELECT {_COLUMNS} FROM task_run WHERE {where} "
+                "ORDER BY finished_at DESC, id DESC LIMIT ?", [*values, size + 1]).fetchall()
+        return [_row(row) for row in rows[:size]], len(rows) > size
+
     # -- 调用方的便利入口 --------------------------------------------------
 
     @contextmanager

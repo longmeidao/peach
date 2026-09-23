@@ -38,6 +38,33 @@ export interface ActivityData {
   running: TaskRunPayload[];
   skipped: TaskRunPayload[];
   finished: TaskRunPayload[];
+  /** 「最近完成」这一页后面还有更早的。 */
+  finished_has_more?: boolean;
+}
+
+/** 往前翻的一页：只有「最近完成」，在跑与被挡下的由轮询那一份负责。 */
+export interface FinishedPage {
+  finished: TaskRunPayload[];
+  finished_has_more: boolean;
+}
+
+/** 以 `oldest` 为游标取它之前的一页。游标是它的结束时刻加 id，与服务端的排序键一致。 */
+export const fetchEarlier = (oldest: TaskRunPayload, signal?: AbortSignal) => {
+  const query = new URLSearchParams({
+    before_finished_at: oldest.finished_at || '', before_id: String(oldest.id) });
+  return apiGet<FinishedPage>(`${TASKS_URL}?${query}`, signal);
+};
+
+/** 几批终态行并成一列：同一轮只留一条，按结束时刻从新到旧、同一时刻按 id 从大到小，
+ *  和服务端翻页的排序键同一个，拼接处才不会乱序。终态落地后不再变，重复的哪一份都一样。 */
+export function mergeFinished(...batches: TaskRunPayload[][]): TaskRunPayload[] {
+  const byId = new Map<number, TaskRunPayload>();
+  for (const batch of batches) for (const row of batch) if (!byId.has(row.id)) byId.set(row.id, row);
+  return [...byId.values()].sort((a, b) => {
+    const left = a.finished_at || '', right = b.finished_at || '';
+    if (left !== right) return left < right ? 1 : -1;
+    return b.id - a.id;
+  });
 }
 
 /** 有东西在跑就两秒一次（和进度写库的节流同一个数），全是终态时十秒一次。 */
