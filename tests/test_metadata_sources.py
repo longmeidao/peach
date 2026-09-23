@@ -140,15 +140,6 @@ class FailureReasonTests(unittest.TestCase):
                          ("unavailable", True, True, "curl 28"))
         self.assertEqual(PERMANENT_REASONS, {FailureReason.PARSE_ERROR})
 
-    def test_legacy_exceptions_split_on_the_not_found_tier(self):
-        for reason in FailureReason:
-            with self.subTest(reason=reason):
-                legacy = SourceFailure(reason, "原话").legacy()
-                self.assertIsInstance(legacy, NotFound if REASON_KINDS[reason] == "not_found" else Unavailable)
-                self.assertEqual(str(legacy), "原话")
-                if REASON_KINDS[reason] != "not_found":
-                    self.assertNotIsInstance(legacy, NotFound)
-
     def test_only_bans_and_rate_limits_pause_a_whole_site(self):
         self.assertEqual(COOLDOWN_ACTIONS, {FailureReason.CLOUDFLARE_CHALLENGE: "blocked",
                                             FailureReason.IP_BANNED: "blocked",
@@ -182,11 +173,22 @@ class ConfigConsistencyTests(unittest.TestCase):
                     if scraping_access.source_for("https://" + host + "/") == name:
                         self.assertEqual(interval, config.interval, f"{host} 的主机间隔与配置不一致")
 
-    def test_javdb_keeps_the_user_set_interval_and_javbus_the_default(self):
+    def test_javdb_keeps_the_user_set_interval_and_the_other_sites_the_default(self):
         self.assertEqual(SITE_SOURCES["javdb"].DEFAULT.interval, 3.0)
-        self.assertEqual(SITE_SOURCES["javbus"].DEFAULT.interval, 2.0)
+        for name in ("javbus", "avbase", "r18dev"):
+            self.assertEqual(SITE_SOURCES[name].DEFAULT.interval, 2.0, name)
         self.assertEqual({host for host in SOURCE_INTERVALS if scraping_access.source_for("https://" + host + "/") == "javdb"},
                          set(SOURCE_INTERVALS), "SOURCE_INTERVALS 里只有 javdb 的主机单独设间隔")
+
+    def test_the_four_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
+        self.assertEqual(set(SITE_SOURCES), {"r18dev", "avbase", "javbus", "javdb"})
+        shape = {name: (site.DEFAULT.stage, site.DEFAULT.cookie, site.DEFAULT.page_limit)
+                 for name, site in SITE_SOURCES.items()}
+        self.assertEqual(shape, {"r18dev": ("official_mirror", False, 2 * 1024 * 1024),
+                                 "avbase": ("community", False, 4 * 1024 * 1024),
+                                 "javbus": ("community", True, 4 * 1024 * 1024),
+                                 "javdb": ("community", True, 4 * 1024 * 1024)})
+        self.assertTrue(all(SOURCE_SPECS[name].official is (name == "r18dev") for name in SITE_SOURCES))
 
 
 if __name__ == "__main__":

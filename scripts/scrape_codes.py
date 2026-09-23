@@ -130,13 +130,14 @@ def _is_explicit_code(code: str) -> bool:
 def translate_failure(source: str, error: Exception) -> MetadataProviderError:
     """把正式链抛的异常翻成本脚本的错误分档。
 
-    链那一侧分四种：`NotFound` 是来源明确说没有（可冻成定论），`SourcePaused` 是限流或
-    冷却（可重试、临时），`DeadlineExceeded` 是预算用尽，其余 `Unavailable` 与传输错误是
-    这次没问到。401/403 单列成 `auth`：`SourceTransport` 撞上 403 会自己把来源停下并抛
-    `SourcePaused`，措辞里带着状态码，这里认出来后本批不再问它——限流会过去，凭据不会。
+    链那一侧分四种：来源明确说没有（`NotFound`，或契约 `not_found` 那一档的 `SourceFailure`）可冻成
+    定论，`SourcePaused` 是限流或冷却（可重试、临时），`DeadlineExceeded` 是预算用尽，其余
+    `Unavailable`、别档的 `SourceFailure` 与传输错误是这次没问到。401/403 单列成 `auth`：
+    `SourceTransport` 撞上 403 会自己把来源停下并抛 `SourcePaused`，措辞里带着状态码，
+    这里认出来后本批不再问它——限流会过去，凭据不会。
     """
-    from peach.jav_cover_fetch import DeadlineExceeded, NotFound
-    from peach.library_processing import describe_failure
+    from peach.jav_cover_fetch import DeadlineExceeded
+    from peach.library_processing import describe_failure, is_missing
     from peach.scraping_access import SourcePaused
     if isinstance(error, MetadataProviderError):
         return error
@@ -146,7 +147,7 @@ def translate_failure(source: str, error: Exception) -> MetadataProviderError:
     reason = auth_wall_reason(status_code=code) if code in {401, 403} else ""
     if reason:
         return auth_error(source, reason, status_code=code)
-    if isinstance(error, NotFound):
+    if is_missing(error):
         return MetadataProviderError(text, kind="not_found", status_code=404)
     if isinstance(error, SourcePaused):
         return MetadataProviderError(text, kind="rate_limited", status_code=code or 429,
@@ -162,7 +163,7 @@ class ChainAdapter:
 
     返回 `(取到的 {来源: 资料}, 失败的 {来源: 错误})`。一档一次问完是正式链的形状：FC2
     三处在同一次 `fc2()` 里先后问，amane 那几站一次子进程并发问；综合索引那一档这里逐家
-    直接调 `community_catalog` 的取数函数，不经 `community()` 的按番号缓存——本脚本要的
+    直接经契约问 `SITE_SOURCES` 里的站，不经 `community()` 的按番号缓存——本脚本要的
     是每家各自的结果与失败，用来记快照和健康，而那份缓存只记整档的结论。
 
     provider 按需才建：`--profile seesaa` 一次都不会碰到它。
@@ -209,9 +210,9 @@ class ChainAdapter:
     def _community(self, code: str, members: tuple[str, ...]):
         from peach.community_catalog import community_sources_for
         found, errors = {}, {}
-        for source, ask in community_sources_for(code, route=members):
+        for source in community_sources_for(code, route=members):
             try:
-                found[source] = ask(self.inner.transport, code)
+                found[source] = self.inner.site(source, code)
             except Exception as error:  # noqa: BLE001 - 同上
                 errors[source] = translate_failure(source, error)
         return found, errors

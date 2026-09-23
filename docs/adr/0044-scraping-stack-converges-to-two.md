@@ -87,4 +87,10 @@ Javinizer-Go 那一路还要求本机装一份特定大版本的二进制并单�
 经 `metadata_amane.to_record` 套进 `SiteRecord`，十六档 reason 经 `AMANE_REASONS` 一对一翻成契约细档，
 上游原样的 reason 仍留在 `detail` 里。对外零变化：provenance 串、候选形状、来源链与结算、封面层、账本一律不动；
 唯一多出的键是桥 payload 的 `cover_urls`（amane 的整列 `thumb_urls`），`cover_url` 仍是第一张。
+第二步迁了 AVBase 与 r18.dev（`sources/avbase.py`、`sources/r18dev.py`）：`SITE_SOURCES` 成为四站唯一的取站入口，
+`LibraryMetadataProvider.site` 与 `scrape_codes` 都经它问站，`COMMUNITY_SOURCES` 只剩来源名的顺序，
+`community_catalog` 里的取数函数与 `SourceFailure.legacy()` 这层翻译随之删除；`not_found` 一档由
+`library_processing.is_missing` 与传输层的 `NotFound` 一并认，别档措辞经 `describe_failure` 原样交出。
+payload 的差别只有契约统一带的键：AVBase 多一个留空的 `runtime`，r18.dev 多一列 `cover_urls`，站上没给的
+标量留空串而不是 `None`——候选那一路对两种写法同样处理。
 迁移状态表在 `docs/SOURCING.md`「站点解析器契约」。
