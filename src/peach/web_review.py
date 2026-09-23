@@ -839,14 +839,14 @@ def _install_studio_logo(contract: ReviewContract, studio: str) -> int:
         raise ValueError("候选不在当前批次，无法批准")
     saved = str(candidate.get("saved") or "").strip()
     if not saved:
-        raise ValueError("该候选没有落盘的图片，无法装载")
+        raise ValueError("该候选没有已下载的图片，无法装载")
     source = contract.candidate_root / "studio-logos" / PurePosixPath(
         saved.replace("\\", "/")).name
     if not source.is_file():
         raise ValueError(f"候选图片不在本机：{source.name}")
     key = studio_logo_key(studio)
     if not key:
-        raise ValueError("厂牌名无法生成落盘名")
+        raise ValueError("厂牌名无法生成存盘文件名")
     content_type = LOGO_CONTENT_TYPES.get(source.suffix.lower())
     if content_type is None:
         raise ValueError(f"不支持的图片格式：{source.suffix}")

@@ -47,7 +47,7 @@ https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
     </tr>
     <tr>
       <td width="180" nowrap><strong>Collection and enrichment</strong></td>
-      <td>Scan folders for NFO files, local posters and existing metadata; fetch missing covers, portraits and metadata, then write reviewed results to the library. Turn on push discovery and new files reach the library within seconds — local folders through filesystem events, cloud mounts through CloudDrive2 notifications — while periodic scans keep running as the backstop.</td>
+      <td>Scan folders for NFO files, local posters and existing metadata; fetch missing covers, portraits and metadata, then write reviewed results to the library. Turn on push discovery and new files reach the library within seconds — local folders through filesystem events, cloud mounts through CloudDrive2 notifications — and periodic scans pick up any file the push missed.</td>
     </tr>
     <tr>
       <td width="180" nowrap><strong>Multi-source following</strong></td>

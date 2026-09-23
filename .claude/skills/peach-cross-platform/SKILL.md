@@ -37,7 +37,7 @@ CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，这层不�
 
 - **授权根比较不能只看字面**。账本写 `R:\Media`，macOS 侧授权根是
   `/Volumes/RESOURCES/media`；pathlib 区分大小写而 exFAT/NTFS 不区分，字面比较会把
-  全部本地资产判成越权。`within_root` 在字面不匹配时用 inode 比较兜底，交给文件系统
+  全部本地资产判成越权。`within_root` 在字面不匹配时改用 inode 比较，交给文件系统
   判定。
 - **挂载点「在不在」的判据是能否列出第一个条目**，不是 `is_dir()`。CloudDrive 掉线后
   挂载点目录仍然存在，读一个条目才会报 `Device not configured`。见 `root_online`。
@@ -74,7 +74,7 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 ## 账本复制
 
 目标是两台机器各持本地工作副本，Windows 内置盘上的专用 SMB 目录提供共享传输副本。
-**不是多主实时同步**——SQLite 没有安全的自动三方合并。见 ADR-0017、`src/peach/sync.py`
+**不是多主实时同步**，因为 SQLite 没有安全的自动三方合并。见 ADR-0017、`src/peach/sync.py`
 与 README「数据属于自己」。
 
 - 服务启动只观察世代和写入端，不自动拉取或推送，也没有定时同步；marker 的 `device` 是唯一写入端、另一台只读，复制与「接管 Ledger 写入」只能由托盘显式执行，两边都动过就转只读报冲突、由人选一边。
@@ -90,7 +90,7 @@ macOS 的 FFmpeg 走 PATH（`brew install ffmpeg`）；Windows 的 FFmpeg bundle
 
 代码在 `origin` 指向的那个仓库，两台机器手动 push/pull，**不自动推送**。
 开工前先 `sh scripts/sync_status.sh`：落后远端就先 `git pull --rebase`，别在旧代码上接着
-写；账本是另一条链路（`peach.sync`），同一个脚本会一并报告。
+写；账本走另一套同步（`peach.sync`），同一个脚本会一并报告。
 
 worktree 目录不跨机器复制。需要交接的任务分支先 commit/push，另一台 fetch 后重新创建本机
 worktree；`.venv`、`peach-data`、构建产物和 worktree 的 `.git` 指针都不进 GitHub。
@@ -110,8 +110,8 @@ macOS 固定 `peach.local`，Windows 固定 `peach-writer.local`；`check_mdns.p
 ## Git 陷阱
 - **换行**由 `.gitattributes` 的 `* text=auto eol=lf` 固定，不要依赖各自的
   `core.autocrlf`。2026-08 之前 Windows 侧把 105 个已跟踪文件整体改写成 CRLF，
-  `git status` 长期显示 117 个文件被修改、16213 行增删，而真正有实质改动的只有 1 个
-  ——未提交的工作被假 diff 完全埋掉。
+  `git status` 长期显示 117 个文件被修改、16213 行增删，而真正有实质改动的只有 1 个，
+  未提交的工作被假 diff 完全埋掉。
 - **从 exFAT 复制过来的文件权限是 `rwx------`**（exFAT 没有 POSIX 权限位，macOS 挂载时
   统一合成）。这会让 git 的 stat 缓存长期对不上：`git status` 显示上百个文件被修改，
   `git diff` 却是空的，`git hash-object` 和 HEAD 逐字节相同。

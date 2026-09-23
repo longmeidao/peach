@@ -22,6 +22,6 @@ Peach 的代码已经完全不连 Stash：服务运行期的 adapter 按 ADR-002
 Stash v0.31.1 是 AGPL-3.0。Peach 从未复制它的 Go 实现，历史上只通过公开协议调用过独立进程。
 当前 Peach-managed FFmpeg 是从本机既有构建复制的 GPLv3/x264/x265 shared bundle，完整
 `LICENSE.txt` 已保留且仅供此个人实例运行；它不进入 Git，也不能在未处理源码、许可证和通知
-义务前作为 Peach 安装包分发——ADR-0023 的发布准备阶段要先解决这一条。
+义务前作为 Peach 安装包分发，ADR-0023 的发布准备阶段要先解决这一条。
 
 官方依据：[Stash 架构](https://github.com/stashapp/stash/blob/develop/docs/ARCHITECTURE.md)、[Scene schema](https://github.com/stashapp/stash/blob/v0.31.1/graphql/schema/types/scene.graphql)、[AGPL-3.0](https://raw.githubusercontent.com/stashapp/stash/v0.31.1/LICENSE)、[FFmpeg 法律说明](https://www.ffmpeg.org/legal.html)。

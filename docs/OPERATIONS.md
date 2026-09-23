@@ -39,7 +39,7 @@ Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive
 - 设置文件固定是 `<数据根>/config.toml`。数据根按三步找：环境变量 `PEACH_DATA_ROOT`、
   项目根同级（含上溯四层，覆盖主检出、`peach-worktrees/<任务>` 和打包后 EXE 所在的 `dist/Peach`）
   的 `peach-data/`、都没有就是「未配置」。优先级是环境变量 > 设置文件 > 内建默认。
-- 全新机器只跑 `peach init`。不带参数且 stdin 是终端时进问答（题目、默认值与落盘逻辑在
+- 全新机器只跑 `peach init`。不带参数且 stdin 是终端时进问答（题目、默认值与写文件逻辑在
   `src/peach/onboarding.py`，托盘设置页复用同一组函数）：问数据根、一个或几个已存在的本地媒体
   目录（问完第一个接着问「再加一个」，回车结束；互相重复或嵌套的目录会被退回）、谁可以访问
   （只有这台电脑／同一局域网的设备）、端口、局域网访问地址，每题回车取默认，连续三次无效即退出且
@@ -61,7 +61,7 @@ Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive
   这一整段在 `onboarding.apply()`，CLI 与设置页调的是同一个函数，只在打印方式上不同。
 - 不进终端的那条路是托盘首启的引导服务。`peach-tray` 启动时新鲜读一次设置文件，判据在
   `tray.needs_setup()`：**没有 `config.toml` 且没有账本**才算需要设置。刻意不用
-  `PeachConfig.configured`——托盘的单实例锁一启动就在数据根下建出 `state/`，而数据根的发现
+  `PeachConfig.configured`：托盘的单实例锁一启动就在数据根下建出 `state/`，而数据根的发现
   只看目录在不在，只用 `configured` 的话一次失败的启动就足以让下一次误判成已配置；反过来
   还没生成过 `config.toml` 的老部署账本是在的，不能被拖进首次设置。
 - 需要设置时托盘不构建正常规格（全新机器上 `build_service_specs()` 会因为缺 TLS 材料抛
@@ -79,7 +79,7 @@ Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive
   `127.0.0.1` 且不发布 mDNS，局域网模式绑定 `0.0.0.0` 并发布 `<mdns_name>.local:<端口>`；托盘打开与
   健康检查始终走回环。源码部署仍由 `build_service_specs(tls_dir=..., mdns_hostname=...)` 构建 HTTP
   跳转与 HTTPS 入口，TLS 材料没齐就原地等下一轮。mDNS 名由这里传进规格，不读 import 期旧值。
-- 首扫不跑在引导服务里——那个进程在切换的那一刻就被停掉了。表单勾了「现在扫描」只写一个
+- 首扫不跑在引导服务里，因为那个进程在切换的那一刻就被停掉了。表单勾了「现在扫描」只写一个
   一次性标记 `<数据根>/state/first-scan.request`（内容是来源 ID），托盘切换完成后读走并删除它，
   用子进程跑 `peach scan <来源>`，输出落在 `<数据根>/logs/tray-scan.out.log`。标记只消费一次。
 - 给了任何参数、加了 `--no-input`、或 stdin 不是终端，`peach init` 走非交互路径：按内建默认
@@ -89,9 +89,9 @@ Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive
 - `peach scan <来源ID> [根目录]` 把一个目录的文件元数据 upsert 进账本，只新增行与刷新
   `size`／`mtime`／`last_seen`，不改真相字段、不删行。根目录省略时逐个扫该来源在
   `[media.locations]` 的全部声明根，本机目录按 `[media.mounts]` 取；给了目录则必须落在某个声明根
-  （macOS 上是挂载点）之内，否则拒绝——写进去的行否则翻译不回本机路径。
+  （macOS 上是挂载点）之内，否则拒绝，因为写进去的行翻译不回本机路径。
 - 已经在跑的机器用 `peach init --from-existing`：只写设置文件，不建库、不动 `peach-data/`
-  下任何现有文件。它把当前实际生效的配置原样落盘，猜不出来的坐标（局域网 writer 地址、
+  下任何现有文件。它把当前实际生效的配置原样写进设置文件，猜不出来的坐标（局域网 writer 地址、
   SMB 主机与账号）留空并逐条打印出来，用 `--writer-origin`／`--smb-host`／`--smb-user`
   等参数在同一条命令里给全，不要事后手改再忘了另一台。
 - 设置文件已存在时 `init` 一律拒绝并返回 3，`--force` 才覆盖。覆盖前自己留一份副本：
@@ -110,11 +110,11 @@ Peach 这一侧的行为：首启页与配置页按本机系统检测 CloudDrive
   `PEACH_DRIVE_MAP` 已删除，键空间不同，别再用）。
 - 第一阶段写下的 `[media] R = '...'` 是盘符键，第二阶段起是硬错误：`serve` 会拒绝启动
   并直接给出改写成 `[media.mounts]` 的提示。用 `init --from-existing --force` 重写时注意
-  它落盘的是**内建默认加环境变量**，不继承那个读不出来的旧文件——命令会先把这件事打印
+  它写出的是**内建默认加环境变量**，不继承那个读不出来的旧文件；命令会先把这件事打印
   出来，旧文件里自定义过的 mDNS 名、writer 地址和 SMB 坐标要在同一条命令里重新给一遍。
 - `replication.enabled` 决定这台机器做不做单写者复制，默认 `false`。关闭时不建同步
   观察器、不探测也不挂载 SMB、托盘不出两个 Ledger 菜单项、追更凭据不往共享副本写，
-  `/healthz` 的 `ledger_sync` 是 `disabled`（不是 `writer`），写接口全开——没有第二台
+  `/healthz` 的 `ledger_sync` 是 `disabled`（不是 `writer`），写接口全开：没有第二台
   机器就没有「读者」，服务按独立写者跑。开启时上面这些逐项生效。
   `--from-existing` 写 `true`、全新 `init` 写 `false`。
 - 不跑 `--from-existing` 就会掉回内建默认，两台机器上会变的至少有：mDNS 名、macOS 的
@@ -155,7 +155,7 @@ launchctl kickstart -k gui/$(id -u)/io.github.longmeidao.peach.tray
 菜单栏里「同步 Ledger」还在。单机用户跳过 `--mount` 之外的所有参数，并让
 `replication.enabled` 保持 `false`。
 
-回退：把 `config.toml.bak` 改回 `config.toml` 再重启即可——设置文件是唯一改动面，
+回退：把 `config.toml.bak` 改回 `config.toml` 再重启即可。设置文件是唯一改动面，
 账本、媒体和凭据都没有被这次切换碰过。第 2 阶段不重写任何账本行，所以没有数据可回滚。
 
 ## 桌面入口与发布
@@ -177,20 +177,20 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 ```
 
   验收四项：菜单栏只出现一个 Peach 图标且 `status` 报「已加载」；`launchctl print` 的 pid 就是那个菜单栏进程；`pfctl -s nat` 列出 80 → 8900、443 → 8443 两条 rdr；两条 `/healthz`（探活口径见「初始化与托盘」首条）都回 200。`peach.local` 换成本机 `[server].mdns_name` 的值。
-- 发布入口是 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 生成方形 Logo 与多尺寸 `.ico`，再构建单一 `dist/Peach/Peach.exe`；无参数运行托盘，`serve`／`migrate` 运行 CLI。桌面快捷方式和开机自启都在配置页的「开机自启」一组里开关，由 `src/peach/desktop_startup.py` 落盘；`scripts/manage_tray_startup.ps1` 只作发布包的排障入口。
+- 发布入口是 `scripts/build_windows.ps1`：先用 `scripts/generate_brand_assets.py` 生成方形 Logo 与多尺寸 `.ico`，再构建单一 `dist/Peach/Peach.exe`；无参数运行托盘，`serve`／`migrate` 运行 CLI。桌面快捷方式和开机自启都在配置页的「开机自启」一组里开关，由 `src/peach/desktop_startup.py` 写入；`scripts/manage_tray_startup.ps1` 只作发布包的排障入口。
 - Cloudflare Quick Tunnel 分源码和独立包两条 origin：源码托盘取实际 HTTPS 子服务（Windows 是局域网 `:443`，macOS/手工服务按实际 TLS 端口），附项目 CA 与 mDNS SNI；独立包只取回环 HTTP `127.0.0.1:<server.port>`，不能拿源码的 443 或明文跳转口代替。`https://try.cloudflare.com/` 是介绍页，真正入口是 cloudflared 输出的随机 `https://<id>.trycloudflare.com`。开关默认关闭，只有 Peach 已设置访问密码时才允许启动；随机 URL 只写数据根状态文件，停止服务会清理子进程和状态。
 - 独立包构建把固定版本的官方 `cloudflared-windows-amd64.exe` 作为旁路文件放在 `Peach.exe` 旁边，并用 `scripts/cloudflared-windows.json` 的 SHA-256 校验；构建前运行 `scripts/fetch_cloudflared.ps1`，或给 `build_windows.ps1 -CloudflaredPath` 一个同哈希文件。源码运行不携带二进制，按设置文件、`PEACH_CLOUDFLARED`、PATH 顺序查找。Quick Tunnel 还需要出站 TCP/UDP `7844`，被防火墙或代理阻断时必须显示失败，不得把已申请 URL 当作可用入口。
 - 命名隧道（Named Tunnel）是源码开发环境专用的第二种形态，地址固定、重启不变。独立包读到 `tunnel.mode = "named"` 会拒绝启动隧道并报「独立包只支持临时链接」，配置页在那里也不渲染这一块。四步：
   1. 在 Cloudflare Zero Trust 的 Networks → Tunnels 里新建一条 Cloudflared 隧道，拿到它的隧道令牌（Token）。
-  2. 给这条隧道加一个 Public hostname，主机名选自己的域名，Service 填本机 origin——形态与临时链接那条一致：源码部署是局域网 `https://<局域网 IP>:443`（macOS 按实际 TLS 端口），并在 Additional settings 里把 Origin Server Name 填成 `<mdns_name>.local`、把项目 CA 交给 CA Pool，否则本机自签证书过不了校验。
+  2. 给这条隧道加一个 Public hostname，主机名选自己的域名，Service 填本机 origin，形态与临时链接那条一致：源码部署是局域网 `https://<局域网 IP>:443`（macOS 按实际 TLS 端口），并在 Additional settings 里把 Origin Server Name 填成 `<mdns_name>.local`、把项目 CA 交给 CA Pool，否则本机自签证书过不了校验。
   3. 在配置页的「Cloudflare 公网入口」里切到「命名隧道」，填公开主机名和隧道令牌，按「保存配置」。令牌只写进设置文件的 `[tunnel] token`，页面不回显，账本、日志与 `/healthz` 都没有它；换令牌就填一个新的，留空表示沿用已存的那份。
   4. 建议在 Cloudflare Access 里给这个主机名配一条身份策略。那一层完全在 Cloudflare 后台，Peach 不读也不管；Peach 自己的访问密码仍是启动隧道的前提，两道门并存。
 - 整站拒绝搜索引擎收录：每个响应都带 `X-Robots-Tag: noindex, nofollow, noarchive`（页面、静态资源与 API 一视同仁），`/robots.txt` 不要求登录地回 `Disallow: /`，主页面与登录页另有 `<meta name="robots">`。不提供关闭开关。
 - 对外测试包由 `.github/workflows/release.yml` 承担：`build_windows.ps1 -Standalone` 用 PyInstaller onedir 生成完整 Windows 程序目录，压缩后由不检出源码的消费任务运行 `scripts/smoke_desktop.py`；冒烟会完成首启、以 `0.0.0.0` 重启、从本机局域网地址读取 `/healthz`、核对 mDNS 已装配并用访问密码登录。`v<__version__>` tag 与版本不一致会失败，通过制品验收才创建 GitHub 预发布并附 SHA256；`workflow_dispatch` 只生成和验收 artifact。macOS 源码菜单栏构建入口是 `build_macos_app.py`。
 - `dist/Peach/Peach.exe` 是本机打包入口而不是可移动的独立发行版：托盘只打包了自己，服务进程仍由项目 venv 的 `peach.exe` 承担，`_peach_executable()` 从 exe 位置逐级向上找 `.venv\Scripts\peach.exe`，所以不要按「单文件绿色版」对外描述。
 - 每个包都带构建身份：`build_windows.ps1` 在调用 PyInstaller 前把 `{commit, version, built_at}` 写进 `build/windows/build-info.json`，再用 `--add-data` 放到包根，本机托盘与独立测试包两种模式共用这一行。构建机没有 git 或源码不是检出时 `commit` 写 `null`，构建照常。`peach.buildinfo.frozen_build()` 只在 `sys.frozen` 时读它；文件缺失或格式坏一律返回 `None`，托盘照常启动，只是把自己当作身份未取得。
-- 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差——这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，独立测试包使用配置页的在线更新流程，源码入口提示源码已是最新。
-- 发布流程——定版、变更日志、打标签与「什么时候该发」的判据——见「版本、更新与自我重启」。
+- 本机托盘自己发现「我比检出旧」并重建：判据是构建提交与检出的差，不是与 GitHub 的差：这台机器提交先落本地再推远端，「落后远端」永远不成立。`VersionManager.build_age()` 用 `rev-list --count <构建提交>..HEAD` 数出落后多少，版本菜单显示成 `master@<HEAD> · 托盘构建 <构建提交>，落后 N 个提交`；数不出来（身份未取得、提交不在本检出历史里）按陈旧处理，重建范围退化为 `src/peach/`。「同步开发进度」在 `ahead`／`current`／`error`／`unconfigured` 下改走本地重建，健康轮询另按 5 分钟一轮读本地 HEAD 自动触发，同一个 HEAD 只自动试一次，首次设置未完成时不触发。重建走的仍是既有流程：完整测试 → 暂存构建 → 打包迁移资源检查 → 备份 → 替换助手，任一步失败都只发通知，旧托盘和服务保持运行。失败表现是托盘停在旧版本、通知里写明卡在哪一步，日志见 `<数据根>/logs/windows-source-sync.log`。独立测试包与源码运行的托盘不进这条路径，独立测试包使用配置页的在线更新流程，源码入口提示源码已是最新。
+- 发布流程（定版、变更日志、打标签与「什么时候该发」的判据）见「版本、更新与自我重启」。
 - PyInstaller 的资源直接位于 `sys._MEIPASS`，没有源码树的 `src/` 层；打包后的 `migrate`、Web 与品牌资源必须从这里解析，不能对 `config.py` 固定取 `parents[2]`。
 
 ### 刷新源码运行态：`restart_windows_tray.py`
@@ -199,7 +199,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 
 - 不要用 Computer Use 点托盘。`python scripts/restart_windows_tray.py` 按精确 EXE 路径找到 pystray 隐藏窗口、发送正常停止消息、等托盘自行关闭子服务，再静默启动并核对新托盘重新拥有两个服务。
 - 找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。
-- `--swap-from <暂存包>` 让它在旧托盘退出后、新托盘启动前顺手换掉二进制，那是整条链路上唯一一个目标文件没有进程持有的窗口。换生产二进制走 `deploy_windows_tray.py`，不要单独调它。
+- `--swap-from <暂存包>` 让它在旧托盘退出后、新托盘启动前顺手换掉二进制，那是整个换包过程中唯一一个目标文件没有进程持有的窗口。换生产二进制走 `deploy_windows_tray.py`，不要单独调它。
 - 打包托盘窗口不在时命令自动改走源码托盘：`find_source_tray_windows()` 按同一窗口类名加「命令行含 `peach.tray`」认源码托盘，`restart_source_tray()` 照抄原命令行（含 `--show`／数据根）等托盘退出后自起，不换包不备份；`--source` 显式跳过打包入口。
 
 ### 换掉生产托盘二进制：`deploy_windows_tray.py`
@@ -207,7 +207,7 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 什么时候用这条：生产入口那个 EXE 本身要换成新构建。换生产入口是发布动作，执行前需人工确认；脚本不代替这次确认。
 
 - `python scripts/deploy_windows_tray.py` 在主检出里用项目 venv 的 Python 跑，步骤是：拒绝脏检出 → 按 HEAD 提交号在 `<数据根>/state/source-sync-build/<commit>/` 构建 → 让暂存包自己跑一次 `migrate status` → 停旧托盘、原地换 `dist/Peach/Peach.exe`（旧的留成 `Peach.pre-source-sync-<时间>.exe`）、起新托盘 → 用项目 CA 严格校验读生产 HTTPS 口的 `/healthz`。
-- 验收按回话的是谁分成两条。独立发行版里回话的就是冻结进程自己，核对它报的 `build_commit` 等于这次打包的提交。本机这套形态下回话的是 venv 里的源码进程——托盘刻意把两个子服务交回项目 venv（`src/peach/tray.py` 的 `_peach_executable()`），那个进程没有第二个版本，`build_commit` 结构上恒为 None——这时核对生产入口那个文件的 sha256 等于这次打出来的暂存包，而托盘正是换完之后才从这个文件起来并拿到两个子服务的。
+- 验收按回话的是谁分成两条。独立发行版里回话的就是冻结进程自己，核对它报的 `build_commit` 等于这次打包的提交。本机这套形态下回话的是 venv 里的源码进程：托盘刻意把两个子服务交回项目 venv（`src/peach/tray.py` 的 `_peach_executable()`），那个进程没有第二个版本，`build_commit` 结构上恒为 None。这时核对生产入口那个文件的 sha256 等于这次打出来的暂存包，而托盘正是换完之后才从这个文件起来并拿到两个子服务的。
 - 两条都不认版本号：版本号一次发布才推一格，同一个号下有很多个构建，只比版本号证明不了二进制换掉了。
 - 结果打印成一份 JSON，`step` 说明停在哪一步。新托盘起不来或拿不到两个子服务时自动换回备份并重开旧托盘；`--staged <路径>` 复用已经打好的包、跳过构建。
 - 不要就地构建 `dist/Peach/`：运行中的托盘持有那个文件，PyInstaller 清目录会撞上 WinError 5。
@@ -219,24 +219,24 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - 补挂走 `osascript` 的 `mount volume`，并且必须先查一次钥匙串：没有对应记录时 NetFS 不报错，而是弹认证框一直等，一次后台点击既卡到超时又在用户面前推出密码框。钥匙串记录按主机名存，同一台机器的 IP 和 mDNS 名是两条不同记录。
 - 补挂后仍是 `offline`，以及 `conflict`／`in-sync`，一律直接回话并且不停服务；确定会复制时才停止自己创建的服务，用 SQLite backup API 与原子替换复制，最后恢复服务。
 - 「接管 Ledger 写入」只在共享盘不可达时短路：共享源在 macOS smbfs 上必须以 immutable 已关闭快照读取，共享目标不能由 SQLite 直接打开事务连接，健康端口不归本托盘时拒绝接管。
-- 生成产物走 Syncthing 单向同步，和账本、和 Git 是三条互不兜底的通道：Windows send-only、Mac receive-only，五个文件夹 `snapshots`／`posters`／`avatars`／`logos`／`covers`，Mac 侧根目录在 `peach-data/artifacts/`（不要把指向它的符号链接设成同步目录），Trash Can 版本保留 30 天。
+- 生成产物走 Syncthing 单向同步，和账本、和 Git 是三条互不替代的通道：Windows send-only、Mac receive-only，五个文件夹 `snapshots`／`posters`／`avatars`／`logos`／`covers`，Mac 侧根目录在 `peach-data/artifacts/`（不要把指向它的符号链接设成同步目录），Trash Can 版本保留 30 天。
 - `.stignore` 不跨设备同步，两端每个目录各放一份；方向是固定的，在 Mac 上生成的图片不会回到 Windows。
 
 ## 版本、更新与自我重启
 
 - `src/peach/__init__.py::__version__` 是版本唯一来源，采用 pre-1.0 SemVer；Git commit 是构建标识，`vX.Y.Z` tag 是发布点，推到 GitHub 即触发 Release 工作流（见「桌面入口与发布」）。
 - 版本号在发布点动，一次发布一格，所以每个 `X.Y.Z` 都对应一份能下载到的制品。发布准备是 `python scripts/release_tag.py --bump auto --apply`，从干净的 master 主检出跑：按上一个版本标签到 HEAD 这段区间定档（`bump_part_for()`：主题以 `feat` 开头或带破坏性标记 `!`、或 `migrations/` 有新增文件推 minor，其余推 patch；1.0 手工 `--bump major` 并另立 ADR，见 ADR-0012），写 `__version__`，并把 `CHANGELOG.md` 的未发布节定版成这个号。区间只碰了文档、技能与测试时它直接拒绝：那样打出来的包和上一个标签逐字节相同。不带 `--apply` 只打印计划。
-- `--bump` 只落盘不提交，并把定版那一节原样打印出来供人过目。
+- `--bump` 只写文件不提交，并把定版那一节原样打印出来供人过目。
 - 确认之后 `python scripts/release_tag.py --ship --apply` 一次做完剩下四步：提交 `src/peach/__init__.py` 与 `CHANGELOG.md`（消息 `chore(release): 版本 <新版本>`）、推送 master、每 30 秒查一次这个提交的 Test 工作流、转绿后创建并推送 annotated tag。默认最多等 30 分钟，`--timeout` 改。不带 `--apply` 只打印它打算做哪几步。
-- `--ship` 的判据都在动手之前：不在 master 上、变更日志缺这一节、标签已被占用、工作区除了那两份定版文件还有别的改动，任何一条成立就拒绝。最后一条是因为标签指向发布提交，夹带什么就等于发出去什么。Test 跑完不是绿的立刻停，不耗到超时——红的等多久都不会变绿，而且这时标签还没打。
+- `--ship` 的判据都在动手之前：不在 master 上、变更日志缺这一节、标签已被占用、工作区除了那两份定版文件还有别的改动，任何一条成立就拒绝。最后一条是因为标签指向发布提交，夹带什么就等于发出去什么。Test 跑完不是绿的立刻停，不耗到超时：红的等多久都不会变绿，而且这时标签还没打。
 - 中途停下（网络断、CI 还在跑、等超时）就再跑一次同一条命令：每一步都先看当下状态再决定做不做，已提交的不重提，已推送的不重推，Test 没绿绝不打标签。
 - `scripts/agent_worktree.py integrate` 不碰版本号，只在结果里报当前值；主线上跑着的是哪一份由 commit 与 `build-info.json` 认定。
 - `integrate` 输出 `release` 字段（`scripts/changelog.py` 的 `due()`），`due` 为真时提出发布，理由在 `why`。节奏是每周一次、攒够提前、破坏性变化与安全修复不等周期（`DUE_DAYS = 7`、`DUE_ENTRIES = 10`）。判据只数使用者看得见的条目，不数提交：一百个重构提交对使用者是零，那正是这份判据要跟「集成了多少次」分开的地方。
 - 时间那一半有先例可依（Firefox 四周、Ubuntu 与 GNOME 半年都把「要不要发」交给日历）；条数那一半没有可靠样本，`DUE_ENTRIES` 是没有样本时的保守起点。`due()` 每次都报出实际条目数与分组，积累几次真实发布之后拿那几个数回来校准。
-- 同一份判断还挂在每次会话收尾上：`scripts/release_due.py --hook-event` 由 Claude 的 `.claude/settings.json` 与 Codex 的 `.codex/hooks.json` 里的 `Stop` 钩子调用。两家的钩子约定一致——stdin 收 JSON、stdout 回 `systemMessage`、退出码 0，所以一个脚本供两边。挂在这里才覆盖得到「一周没集成」的那几天，而那正是最容易忘的时候。四道门先挡住不该出声的场合：不在主检出、不在 master、工作区不干净、这个 master sha 已经问过；四条全过且 `due` 为真才说话，其余情形一个字都不打印。闩记在 `<数据根>/state/release-due.json`，master 前进了才会再问。人手查用不带参数的 `python scripts/release_due.py`，那条只读，不动闩。
-- 钩子的解释器交给 `uv run --no-project` 解析，所以一条命令通吃两个平台，配置里不出现 `.venv/Scripts` 或 `.venv/bin`。钩子配置不支持按操作系统分支（`if` 只对工具事件生效，也不认平台），写死平台子目录的话另一台上解释器根本不存在，钩子每轮报一次错；挂两条让错的那条自然失败同样不行，报错本身就是每轮一行的噪音，而这条提醒的全部价值在于不该说的时候一个字都不说。`--no-project` 不是随手加的开关：`release_due.py` 整条导入链都是标准库，不需要项目的 venv；一旦让 `uv` 认项目，它在一个有 `pyproject.toml` 却还没建 venv 的检出里会顺手建一个空的，`scripts/test.ps1` 随后优先选中它，那棵树的测试连 `filelock` 都导不进来——钩子每轮都跑，这种副作用会落到每一个新工作树上。`tests/test_release_due.py` 里那条测试把配置中的命令原样执行一遍，并检查工作目录跑完没有多出 `.venv`，耗时 0.6 秒，`timeout` 给的 30 秒绰绰有余。需要 `uv` 在 PATH 上；推荐用 winget 安装（`winget install --id astral-sh.uv`），不要把远端脚本管道进 shell。
+- 同一份判断还挂在每次会话收尾上：`scripts/release_due.py --hook-event` 由 Claude 的 `.claude/settings.json` 与 Codex 的 `.codex/hooks.json` 里的 `Stop` 钩子调用。两家的钩子约定一致：stdin 收 JSON、stdout 回 `systemMessage`、退出码 0，所以一个脚本供两边。挂在这里才覆盖得到「一周没集成」的那几天，而那正是最容易忘的时候。四道门先挡住不该出声的场合：不在主检出、不在 master、工作区不干净、这个 master sha 已经问过；四条全过且 `due` 为真才说话，其余情形一个字都不打印。闩记在 `<数据根>/state/release-due.json`，master 前进了才会再问。人手查用不带参数的 `python scripts/release_due.py`，那条只读，不动闩。
+- 钩子的解释器交给 `uv run --no-project` 解析，所以一条命令通吃两个平台，配置里不出现 `.venv/Scripts` 或 `.venv/bin`。钩子配置不支持按操作系统分支（`if` 只对工具事件生效，也不认平台），写死平台子目录的话另一台上解释器根本不存在，钩子每轮报一次错；挂两条让错的那条自然失败同样不行，报错本身就是每轮一行的噪音，而这条提醒的全部价值在于不该说的时候一个字都不说。`--no-project` 不是随手加的开关：`release_due.py` 整条导入链都是标准库，不需要项目的 venv；一旦让 `uv` 认项目，它在一个有 `pyproject.toml` 却还没建 venv 的检出里会顺手建一个空的，`scripts/test.ps1` 随后优先选中它，那棵树的测试连 `filelock` 都导不进来。钩子每轮都跑，这种副作用会落到每一个新工作树上。`tests/test_release_due.py` 里那条测试把配置中的命令原样执行一遍，并检查工作目录跑完没有多出 `.venv`，耗时 0.6 秒，`timeout` 给的 30 秒绰绰有余。需要 `uv` 在 PATH 上；推荐用 winget 安装（`winget install --id astral-sh.uv`），不要把远端脚本管道进 shell。
 - 打标签常规走 `--ship`。单独补打标签用 `python scripts/release_tag.py`：默认只检查本地与 GitHub master 一致、该提交最新 Test 全绿、`CHANGELOG.md` 里有这个版本号的一节、标签不存在；加 `--apply` 创建 annotated tag 并只推送该标签。发布提交已经推上去、只差标签时用它。变更日志那一节是门槛：缺了就等于发一个没有说明的版本，先跑 `--bump` 起草再润色。版本标签不覆盖，下一版先修改 `__version__`。推送失败若留下本地标签，先检查归属再人工恢复，不强推。Release 工作流再次检查标签提交属于 master 历史且同提交 Test 已通过，随后构建、制品验收、创建预发布；手动 `workflow_dispatch` 仍只验收制品。打标签代表公开预发布，不等于替换本机生产入口。
-- 「检查更新」只 fetch 和比较；「同步开发进度」只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`——并行工作树和主检出共用同一个对象库与 reflog，任何改写历史的「顺手解决」都会把别的分支一起拖下去。工作区脏或两边分叉时原样报出来交给人。本地不落后远端、或者根本连不上远端时，它转为按构建身份判断打包托盘要不要重建（见「桌面入口与发布」）；那条路径不拦脏工作区，因为构建跑的就是检出里的这一份代码。
+- 「检查更新」只 fetch 和比较；「同步开发进度」只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，因为并行工作树和主检出共用同一个对象库与 reflog，任何改写历史的「顺手解决」都会把别的分支一起拖下去。工作区脏或两边分叉时原样报出来交给人。本地不落后远端、或者根本连不上远端时，它转为按构建身份判断打包托盘要不要重建（见「桌面入口与发布」）；那条路径不拦脏工作区，因为构建跑的就是检出里的这一份代码。
 - 快进动到 `tray.py`／`menubar.py`／`versioning.py`／`certs.py`／`netwatch.py`／`config.py`／`pyproject.toml` 时只重启子服务追不上，托盘要靠 `launchctl kickstart -k` 重启自己，顺序必须先 `stop_owned()` 再 kickstart，且前提是 launchd 报的 pid 等于自己的 pid。
 
 ## 网络、证书与 mDNS
@@ -280,12 +280,12 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 - `<数据根>/logs` 里的 `*.log` 统一保留半年、大小不设限（`peach.log_retention.sweep`，托盘在起任何子进程之前跑）：半年没再写过的文件整份删掉；还在写的文件按自然月切段，上次写入落在更早月份就改名成 `<名字>.until-<最后写入日期>.log`，段再等半年被删。子进程是直接追加 stdout，不经 `logging`，所以按文件而不是按行处理。
 - 更新与打包的产物自带清退：托盘每次启动只保留最近 2 份 `dist/Peach/Peach.pre-source-sync-*.exe` 备份，并删掉 `<数据根>/state/source-sync-build/` 里不属于待应用记录的暂存构建（`WindowsUpdateInstaller.sweep_artifacts`）；`build_windows.ps1` 成功后删掉 PyInstaller 工作目录 `build/windows/app`；单文件托盘每次启动还会删掉 `%TEMP%` 里超过一天、不属于自己的 `_MEI*` 解压残留（`sweep_onefile_extractions`，托盘被结束进程时 PyInstaller 不会自清，每份 40–80 MB）。自动边界只认这几个命名：`Peach.exe` 本体、手工放进 `dist/` 的目录、`build/release-*`、`attic/` 都不碰，手工构建的残留自己删。
 - 已应用的迁移文件不得修改，任何后续变更必须新增版本：`0007` 曾在应用后被改写格式导致校验和漂移，只能用迁移前备份重放、逐条比对差异为 0 后才校正 `schema_migration`。
-- 导入运维脚本不得触发文件、网络或数据库副作用；`scrape_codes.py` 默认写可续跑复核 CSV，`clean_names.py` 先预览，`--apply` 必须同时给出 `--backup <路径>`，备份落盘后当场校验完整性（`peach.scripting.open_for_write`）。
+- 导入运维脚本不得触发文件、网络或数据库副作用；`scrape_codes.py` 默认写可续跑复核 CSV，`clean_names.py` 先预览，`--apply` 必须同时给出 `--backup <路径>`，备份写完后当场校验完整性（`peach.scripting.open_for_write`）。
 - 追更的合集判据只作用于新抓到的候选，收紧阈值后跑 `scripts/prune_follow_compilations.py` 扫存量：缺省只列清单并落一份复核 CSV，`--apply` 先备份成 `ledger.pre-follow-compilations-*.db` 再删，已保存成 asset 的条目一律不动。没探过详情页的旧行拿不到署名，判据数不到它们。
 - 文件名只按 ledger 已确认的番号规范化，不从名称重新猜番号；大小写单改走同目录临时名，去广告后撞名用 `(2)` 起的后缀保留两份媒体。
 - `generated/cover-fetch-log.csv` 是来源、尺寸和结果证据，不随图片清理；图片丢失时用 `scripts/fetch_jav_covers.py --restore-successes` 按成功记录的原 URL 恢复并原子替换，失败保留为失败，不拿缩略图冒充封面。
 - 封面候选必须限定在当前作品的主封面节点：作品页混有数百张关联作品、剧照和演员头像，禁止对整页图片 URL 逐张量尺寸。
-- FC2CMADB 的文章存档只作官方商品页镜像证据：标题与保守翻译后的标签写候选 CSV 并与最新 JAV 元数据批次一起进入 `/review`，不自动写 ledger；封面把列表 `w276` 换成实测存在的 `w1200`，再走 `fetch_jav_covers.py --fc2-only` 的解码、宽度、磁盘和原子落盘门槛，失败留逐条日志。
+- FC2CMADB 的文章存档只作官方商品页镜像证据：标题与保守翻译后的标签写候选 CSV 并与最新 JAV 元数据批次一起进入 `/review`，不自动写 ledger；封面把列表 `w276` 换成实测存在的 `w1200`，再走 `fetch_jav_covers.py --fc2-only` 的解码、宽度、磁盘和原子写入门槛，失败留逐条日志。
 - 批准官方标签时必须用 `(asset_id, tag)` 冲突更新来源与置信度：`asset_tag` 的唯一约束会让 `INSERT OR IGNORE` 保留旧来源，导致值已存在却不显示「官方」。
 
 ## 前端与验证口径

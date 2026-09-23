@@ -41,8 +41,8 @@ Windows 与 macOS 各自在内置盘持有代码、`peach-data`、`.venv` 和 wo
 `R:\media` / `/Volumes/RESOURCES/media`。代码与任务分支走私有 GitHub，worktree 目录本机重建；
 账本走 Peach 单写者复制，其他运行数据按 durable artifact 与本机状态拆分，禁止整体同步。
 Windows 内置盘环境、共享账本传输点、显式 writer/reader 和生成产物的跨机同步已在生产；
-durable artifact 拆分的进度见 ADR-0017 与 `docs/STATUS.md`。三条链路各走各的：代码走 Git，
-账本走 Peach 单写者复制，图片产物走 Syncthing 单向同步，互不兜底。
+durable artifact 拆分的进度见 ADR-0017 与 `docs/STATUS.md`。三条通道各走各的：代码走 Git，
+账本走 Peach 单写者复制，图片产物走 Syncthing 单向同步，一条出故障不由另一条代替。
 
 `peach-data` 与代码仓库刻意分离（默认取仓库同级的 `peach-data/`，`peach init --data-root`
 可改，环境变量 `PEACH_DATA_ROOT` 覆盖它；本机坐标写在 `<数据根>/config.toml`）：

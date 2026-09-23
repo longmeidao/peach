@@ -47,7 +47,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - 字重只有 400／500／600 三档，标题也是 600；圆角只用 `--badge-radius`／`--control-radius`／`--surface-radius`／`--floating-radius`／`--pill-radius` 加 `50%` 与 `0`，带边框容器里的头尾条用 `calc(… - 1px)` 保持同心。两者的字面值由 `tests/test_web_ui.py` 拒绝，归属判据见 `:root` 注释。
 - 单色优先：`--tungsten` 只给焦点环、链接、进度／数据与 Toggle 开态。主动作用 `--ink` 底 `--ground` 字且每屏最多一个。标题悬停下划线不变蓝，计数徽章中性灰。其它选择器引用 `--tungsten` 由 `tests/test_web_ui.py` 拒绝；实测见 `vercel-geist-semantics-measured.md`「选中态与开关色」「Button 全变体与状态」。
 - 选中态只有填充：一律 `--hover` 底 `--ink` 字，不加边框、不加 `inset` 一圈线、不加字重（Geist Switch／Tabs 的类名里三样都没有）。填充既然专属选中，**同一排横向**互斥选项的未选中项悬停就只提文字色到 `--ink`；没有选中态的按钮和没有并排邻居的孤立开关悬停照旧抬填充。侧栏导航（`.edge`／`.dnav`）分工相反：实测 Geist 左栏是悬停抬填充、当前项握着文字与图标色，别把横排那条推广过去。清单见同一份快照的「选中态与它的悬停」和「侧栏导航是例外」。
-- 按钮悬停只抬填充：次级到 `color-mix(in srgb,var(--ink) 8%,var(--ground))`（Geist gray-200 那一档，全站同一个值），主动作到 `color-mix(in srgb,var(--ink) 88%,var(--ground))`，边框与文字色都不动——主动作那条悬停规则要自己写上 `color:var(--ground)`，否则同组更宽的通用 hover 里那句 `color:var(--ink)` 无人竞争，浅色实底上落成白字白底。禁用走 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；按下不加 `scale`。三条都有 Geist Button 源规则佐证。
+- 按钮悬停只抬填充：次级到 `color-mix(in srgb,var(--ink) 8%,var(--ground))`（Geist gray-200 那一档，全站同一个值），主动作到 `color-mix(in srgb,var(--ink) 88%,var(--ground))`，边框与文字色都不动。主动作那条悬停规则要自己写上 `color:var(--ground)`，否则同组更宽的通用 hover 里那句 `color:var(--ink)` 无人竞争，浅色实底上落成白字白底。禁用走 `--surface` 底、`--border-15` 边、`--muted` 字，不用 `opacity`；按下不加 `scale`。三条都有 Geist Button 源规则佐证。
 - `outline:0`／`outline:none` 只允许出现在同一规则给出替代焦点样式的地方（`box-shadow` 或子元素 outline），或输入框由带 `:focus-within` 的容器接管焦点时；reduced motion 由全局 `@media (prefers-reduced-motion:reduce)` 统一关闭，不逐处补。
 - Progress 必须有真实 `value/max`、可见单位与 `aria-valuemin/max/now`；分隔线放在完整指标（含进度条）之后。
 - Switch 必须共享 radio `name`、初始一个 `checked`、键盘可用；布尔状态继续使用 Toggle。
@@ -58,7 +58,7 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
   涉及的两个值，主按钮是与标题同一动词的「动词+名词」，取消键就写「取消」，成功 Toast 与主
   按钮的动词一一对应。写入交给 `onConfirm`，忙态落在主按钮上，失败时弹层不关、原因留在正文
   下方等重试。形状与文案判据见 `docs/reference-snapshots/vercel-geist-modal-measured.md`。
-- 用户写操作只在服务端终态成功后调用共享 `actionReceipt()` 发一条过去时 Toast；可由安全逆操作完整恢复的状态提供 8 秒“撤销”，永久删除、凭据、保存到账本等不伪造撤销。仅打开面板／菜单／Dialog 不算操作完成，不发 Toast；失败除短 Toast 外仍在原位置保留原因与重试入口。
+- 用户写操作只在服务端终态成功后调用共享 `actionReceipt()` 发一条过去时 Toast；可由安全逆操作完整恢复的状态提供 8 秒「撤销」，永久删除、凭据、保存到账本等不伪造撤销。仅打开面板／菜单／Dialog 不算操作完成，不发 Toast；失败除短 Toast 外仍在原位置保留原因与重试入口。
 - 同一次页面进入只呈现一段等待态；深链启动与页面取数复用同一个 Skeleton，禁止 Spinner 再切换成 Loading Dots 或 Skeleton。
 - Skeleton 只覆盖真正等待的内容区；静态标题、导航和能同步得到的筛选控件立即显示。骨架必须复用最终容器的宽度、列数与对齐方式：卡片网格横向铺满，居中面板仍居中，不得用一列通用占位替代不同页面结构。
 - 关注来源标签先服从来源记录的类型：只有明确标为 `general` 的标签才能进入卡片、顶部筛选和在线标签页，`artist`／`character`／`copyright`／`metadata` 与未知类型不得靠词形猜成 `general`。通用词清理是第二道门槛，只处理已经确认的 `general`；详情可显示全部来源标签，并按真实类型着色。
@@ -68,14 +68,14 @@ description: 在新增、修改或复核 Peach 页面、控件、提示、错误
 - 同一行里的输入框和按钮共用 `--control-h`，不各写一个像素数：两个控件差 3px 就不是一行了，而差值往往来自窄屏那条防放大规则只抬其中一个。
 - 一枚字形只代表一个意思，同一个意思也只有一枚字形。取字形先问它指的是哪个名词或哪个方向：文件类型取 `file-*`，本地取 `hard-drive`、订阅源取 `rss`，往下接一页取 `chevron-down`，原地换一批取 `shuffle`，`refresh-cw` 只归「去问一遍来源有没有更新」；筛不出结果和一次比对没有发现是两个空态，不能共用一枚。归属由 `tests/test_web_ui.py` 的 `test_each_glyph_names_the_thing_it_sits_next_to` 逐枚钉住，换掉哪一处就在那里同步。没有使用者的 symbol 一律从 `scripts/vendor_web_dependencies.mjs` 的名单和雪碧图里一起删，用户点名留的备用件在同一个测试里写明。
 - 播放器控制条的窄屏折叠按播放器自身宽度判定（`ResizeObserver` 观察 `player.el()`），不用媒体查询：同一个视口下影院模式和普通视图的播放器宽度差一大截，用视口判据会在影院模式下白折叠、在普通视图下继续超框。门槛与提示外观见 `youtube-player-controls-user-screenshot.md`。
-- 分页末尾、空页和“没有更多内容”是中性终止状态，用可关闭 Note；只有需要恢复或处理的故障才能进入红色 error Note。
+- 分页末尾、空页和「没有更多内容」是中性终止状态，用可关闭 Note；只有需要恢复或处理的故障才能进入红色 error Note。
 - 弹层标题栏与滚动正文分层：标题分隔线属于卡片全宽，滚动条只属于正文。
 - 没有直接证据不得新增动效。菜单开合的证据是 boardui `menu-styles.ts`（`docs/BOARD_UI.md`），已落在 board.css 的共用规则里；旧版 Geist 层仍无动画。
 - Fieldset 的正文统一 20px 内边距；标题条与底部操作条同为 `--fieldset-bar-h`（52px）、竖直居中、左 20px 右 16px。标题放在框体里，不用原生 `<legend>`：它会在上边框上开缺口，同组卡片内容高度不同时缺口位置也跟着不齐。同组卡片必须同高，变化内容只放一个纵向 Scroller。
-- 界面不解释数字是怎么算出来的。口径、免责、隐私声明、「不会做什么」和「按什么汇总」都不写：这个库只有一个用户，定口径的就是他本人。只留他要据以决定或操作的东西——读数本身、不可逆动作的作用范围、正在发生的事。单位跟着数字走（`497 项`），不另起一行说明。
+- 界面不解释数字是怎么算出来的。口径、免责、隐私声明、「不会做什么」和「按什么汇总」都不写：这个库只有一个用户，定口径的就是他本人。只留他要据以决定或操作的东西：读数本身、不可逆动作的作用范围、正在发生的事。单位跟着数字走（`497 项`），不另起一行说明。
 - 上一次跑完的结果不常态显示。它是那一刻的快照，进页面就铺开会被读成现在的状态，而页面上没有任何东西说它是旧的；只有仍在进行的任务才自动接管页面。
 - Empty State 的标题和说明必须同处组件内；全页空态与上方工具条统一留 16px，不得再套一层空卡片。
-- 任何先请求再重绘整页的入口都必须绑定导航代际；只比较 `location.pathname` 不能防住“离开后快速返回同一路径”的旧响应。
+- 任何先请求再重绘整页的入口都必须绑定导航代际；只比较 `location.pathname` 不能防住「离开后快速返回同一路径」的旧响应。
 
 ## 验收门槛
 

@@ -59,7 +59,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 - 分支上每个提交都要署名，形态是 `Co-Authored-By: 工具 (模型 版本) <厂商 noreply>`：
   `Claude Code (Opus 5) <noreply@anthropic.com>`、`Codex (GPT-5.5) <noreply@openai.com>`。
-  括号里那一段是重点——事后翻这一行是要知道哪个模型写的，同一个工具换代模型，写出来的
+  括号里那一段是重点：事后翻这一行是要知道哪个模型写的，同一个工具换代模型，写出来的
   代码差别比换工具本身还大。工具与地址的名单在 `scripts/co_author.py` 的 `VENDORS`，
   `ready` / `integrate` 逐个提交判（合进来的 merge 不算），拒收缺失、形态不对、工具未
   登记和地址与工具不配四种。
@@ -84,7 +84,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
   判据不看目录名，只看 `git rev-parse --show-toplevel`；等于 `peach-app` 就是在主检出里。
   实测入口：`git worktree list` 里没有你那一行，就是已经没了。
 - 健康检查端点是 `/healthz`，不是 `/health`。
-- Windows 源码改动生效时，禁止用 Computer Use 操作系统托盘。只用与托盘“重启服务”等价的项目命令；入口必须让现有托盘执行重启，或完整重启托盘并重新取得子服务所有权。直接强杀／另启 `.venv\Scripts\peach.exe` 会让 `_owned` 失真，不算等价；仓库缺少安全命令时先补入口，不能退回托盘 UI。
+- Windows 源码改动生效时，禁止用 Computer Use 操作系统托盘。只用与托盘「重启服务」等价的项目命令；入口必须让现有托盘执行重启，或完整重启托盘并重新取得子服务所有权。直接强杀／另启 `.venv\Scripts\peach.exe` 会让 `_owned` 失真，不算等价；仓库缺少安全命令时先补入口，不能退回托盘 UI。
 - PowerShell 变量必须用任务专属名称，禁止声明 `$HOME`、`$home`、`$CODEX_HOME` 的任何大小写
   变体；`foreach {}` 结果先存入任务专属数组再单独接管道，禁止在闭合花括号后直接写管道。
 - 工作者报 `ready` 前必须 rebase 到当前 `master`。落后十天的分支不要指望协调者去 merge：
@@ -100,7 +100,7 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
 
 一个工作树失败不影响其它工作树：`residue` 是连脚本也删不掉的目录（多半有进程占着句柄），
 按它报的路径手工清，分支照样删；`failed` 是注册还没摘掉，分支保留。未登记的目录归 `swept`：`peach-worktrees/`
-与 `.claude/worktrees/` 两处都扫，只删空的，有文件的进 `kept` 等人确认——那种目录和真
+与 `.claude/worktrees/` 两处都扫，只删空的，有文件的进 `kept` 等人确认，因为那种目录和真
 工作树长得一模一样，在里面跑 git 全作用于主检出的 master，门槛在 `tests/test_repo_hygiene.py`。
 
 `prune` 保留锁定的活动工作树。不要手动解锁正在编辑的工作树；任务中止时先核对任务归属、

@@ -52,9 +52,9 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 
 高清候选聚合本身有充分复用证据：REUSE 已登记 Javinizer-Go 固定 revision 的 DMM 映射和 MDCX 的 Prestige 协议模型。离线快照、严格番号核对、Range 尺寸探测和像素比较属于 Peach 质量策略，保留。
 
-### 厂牌图标：重复取数器需要收口
+### 厂牌图标：重复取数器需要合并
 
-`harvest_studio_icons.Fetcher` 自行实现连接请求、固定间隔、重试、内存缓存；`page_cache.Site`、共享 HTTP 和来源限流器已有对应基础。它直接 `client.get` 全量读取，也没有统一响应上限。保留一次首页解析产生多个候选、图片判形和候选质量策略；下载、错误分类、字节上限和缓存作用域收口。
+`harvest_studio_icons.Fetcher` 自行实现连接请求、固定间隔、重试、内存缓存；`page_cache.Site`、共享 HTTP 和来源限流器已有对应基础。它直接 `client.get` 全量读取，也没有统一响应上限。保留一次首页解析产生多个候选、图片判形和候选质量策略；下载、错误分类、字节上限和缓存作用域改用共享实现。
 
 `Site` 本身只适合当前公共页面缓存，不能不加作用域和 TTL 就拿来缓存登录资料。统一不是把所有调用生硬塞进现有类，而是在这些已用模块上补齐共用契约。
 
@@ -75,7 +75,7 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 - `fetch_studio_avatar_candidates.py` 使用 unavatar 解析地址、平台 CDN 下载及 `LogoCandidateCache`。unavatar 是公共服务，随时可能改规则或收费，所以要有无 API key 的可用性测试和服务失败测试。
 - Gfriends 索引与头像审计复用原始索引、Pillow 和 `AvatarCandidateCache`；目录名录／本地化入口复用 `page_cache.Site`、`minnano_av`、`javdb`、名字链和 OpenCC。事务所名册的同名 `Site` 是脚本自有类，计入上面的内部重复。身份消歧仍需 Peach 承担。
 - FANBOX 已使用 curl_cffi 和 PixivUtil2 固定正文模型；Rule34Video 已部分使用 yt-dlp；其余归档／booru 官方接口及 Gofile 边界已在 REUSE 登记。这里只核对复用入口，没有对在线 provider 做端到端验收。
-- Git 中可指认的基础收口包括 `80b04d2`（UA／主机限流）、`053aed5`（番号归一化）、`c374601`（CSV）、`bdeddbc`（头像档位）。存在历史重复与后续收口证据，但不能把已删除实现重复算进当前 17 个入口。 <!-- copy-lint-disable-line -->
+- Git 中可指认的共享基础设施合并包括 `80b04d2`（UA／主机限流）、`053aed5`（番号归一化）、`c374601`（CSV）、`bdeddbc`（头像档位）。存在历史重复与后续合并证据，但不能把已删除实现重复算进当前 17 个入口。 <!-- copy-lint-disable-line -->
 
 ## 无代理刮削的实际机制
 
