@@ -81,7 +81,7 @@ TASK_LABELS = {
     "resource-apply": "资源对账执行",
     "empty-folders": "空文件夹与失效条目清理",
     "scraping-cover": "封面采集",
-    "media-repair": "播放兼容修复",
+    "media-repair": "媒体修复",
     "organize": "按模板整理",
     "batch": "批量操作",
     "scrape-codes": "番号资料刮削",
