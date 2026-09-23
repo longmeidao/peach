@@ -2112,7 +2112,7 @@ class JavModeAndCoverTests(unittest.TestCase):
             "痴女に犯される")
 
     def test_uncensored_studios_get_the_badge_without_a_filename_marker(self):
-        """无码厂商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen`。
+        """无码片商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen`。
 
         番号形状（`040221-001`、`HEYZO-1380`）和文件名里的发行站都是本机可核验
         的证据，不依赖抓取——这些番号在 r18.dev 永远 404，等元数据到齐再判，

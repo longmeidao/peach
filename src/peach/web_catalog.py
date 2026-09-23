@@ -710,9 +710,9 @@ def q_parts(contract: WebContract, args):
     return {"title": code or str(seed["code"]), "count": len(items), "items": items}
 
 def label_makers(contract: WebContract, c, aid) -> dict[int, dict]:
-    """这部作品上哪些厂牌是某家厂商旗下的 label（ADR-0049），键是 label 的实体 id。
+    """这部作品上哪些厂牌是某家片商旗下的 label（ADR-0049），键是 label 的实体 id。
 
-    值是要并进那条厂牌引用的 `{"maker": {...}}`：详情里厂牌组旁多一组「厂商」，只是
+    值是要并进那条厂牌引用的 `{"maker": {...}}`：详情里厂牌组旁多一组「片商」，只是
     一格链接，作品仍挂在 label 上。
     """
     return {label_id: {"maker": {"id": maker_id, "name": name,

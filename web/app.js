@@ -8232,8 +8232,8 @@ async function openEntity(kind,name,push=true){
      几个人」这个它唯一独有的读数消失。 */
   const memberHtml=kind==='agency'
     ?` · <b>${(d.member_count||0).toLocaleString()}</b> 位艺人`:'';
-  /* label 一层（ADR-0049）：label 页在归属那一格给出所属厂商，厂商页另起一行列旗下
-     label。两边都只是去处，作品数各算各的——label 不是厂商的另一种写法。 */
+  /* label 一层（ADR-0049）：label 页在归属那一格给出所属片商，片商页另起一行列旗下
+     label。两边都只是去处，作品数各算各的——label 不是片商的另一种写法。 */
   const studioLink=target=>`<a class="entitylink" href="${esc(entityPath('studio',target))}"
       data-studio-link="${esc(target)}">${esc(target)}</a>`;
   const makerHtml=d.maker?` · ${studioLink(d.maker.name)}`:'';
@@ -9390,7 +9390,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const studioFallback=studioRef?[]
     :(it.studio?[{id:null,name:it.studio,has_logo:it.has_studio_logo}]:[]);
   const studioList=[...(refs.studio||[]),...studioFallback].filter(ref=>fresh(ref.name));
-  // 厂牌是某家厂商旗下的 label 时（ADR-0049），厂商另起一组摆在它旁边；作品仍只挂在 label 上。
+  // 厂牌是某家片商旗下的 label 时（ADR-0049），片商另起一组摆在它旁边；作品仍只挂在 label 上。
   const makerList=studioList.map(ref=>ref.maker).filter(maker=>maker&&fresh(maker.name));
   const creatorList=(refs.creator||[]).filter(ref=>fresh(ref.name));
   const seriesList=(refs.series||[]).filter(ref=>fresh(ref.name));
@@ -9443,7 +9443,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
       :idGroup(performerLabel(it),'performer',castList,
         castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:''))
     +idGroup('厂牌','studio',studioList)
-    +idGroup('厂商','studio',makerList);
+    +idGroup('片商','studio',makerList);
   const identityRows=
     (primaryIdentity?`<div class="identityprimary">${primaryIdentity}</div>`:'')
     +idGroup('创作者','creator',creatorList)

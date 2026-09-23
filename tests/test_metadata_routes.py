@@ -49,7 +49,7 @@ class RouteTableTests(unittest.TestCase):
                     self.assertIn(source, SOURCE_SPECS)
 
     def test_censored_asks_the_maker_then_the_official_mirror_and_javdb_last(self):
-        """厂商官网是发行方口径，排在官方镜像前；javdb 按出口 IP 计配额，排最后。"""
+        """片商官网是发行方口径，排在官方镜像前；javdb 按出口 IP 计配额，排最后。"""
         self.assertEqual(ROUTES['censored'],
                          ('prestige', 'faleno', 'dahlia', 'makers', 'r18dev', 'avbase', 'javbus', 'javdb'))
         self.assertEqual(route_for_code('ABW-220'),
@@ -196,7 +196,7 @@ class ShortCircuitTests(unittest.TestCase):
         self.assertTrue(settles((), ()))
 
     def test_the_maker_stage_settles_the_chain_when_it_covers_the_scalars(self):
-        """厂商官网把标题、演员、厂牌、发行日给全了，r18.dev 与综合索引都不再问。"""
+        """片商官网把标题、演员、厂牌、发行日给全了，r18.dev 与综合索引都不再问。"""
         self.assertTrue(settles(('title', 'performers', 'studio', 'release_date'),
                                 ('title', 'performers', 'studio', 'release_date', 'tags'),
                                 wants_tags=True, then='r18dev'))

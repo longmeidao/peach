@@ -613,7 +613,7 @@ class LogoSourceTests(unittest.TestCase):
                 self.assertEqual(sorted(keys), sorted(set(keys)))
 
     def test_the_expo_directory_is_the_source_for_the_studios_with_no_image(self):
-        """用户 2026-09-04 指定 jae.tokyo：名录每届各带一套厂商自己交的 logo。
+        """用户 2026-09-04 指定 jae.tokyo：名录每届各带一套片商自己交的 logo。
 
         2016 那届只有图没有名字，认不出是谁家的，所以表里没有 jae2016。
         """
@@ -783,7 +783,7 @@ class WordmarkSourceTests(unittest.TestCase):
 
     #: 名录之外的来源，各有各的理由，逐条另有用例。整表只允许这几家走别的地址：
     #: 漏写一家就意味着有人往表里加了一条没人解释过的来源。
-    NAMED_EXCEPTIONS = {"えむっ娘ラボ"}
+    NAMED_EXCEPTIONS = {"えむっ娘ラボ", "妄想族"}
 
     def test_every_wordmark_comes_from_a_maker_directory_or_a_named_exception(self):
         """用户 2026-09-04 与 09-22 指定的是那三个厂牌名录，不是随便哪张网图。"""
@@ -809,6 +809,13 @@ class WordmarkSourceTests(unittest.TestCase):
         """
         self.assertRegex(MODULE.WORDMARK_SOURCES["えむっ娘ラボ"],
                          r"^https://cdn\.up-timely\.com/image/16/site_design/")
+
+    def test_a_maker_whose_works_all_sit_on_its_labels_takes_its_own_site_header(self):
+        """妄想族是片商实体，作品全挂在旗下 label 上（ADR-0049）：展会名录没有它，
+        它自家的 `maker/list` 列的是旗下 label。门面上那张字标只在官网 header 里。
+        """
+        self.assertRegex(MODULE.WORDMARK_SOURCES["妄想族"],
+                         r"^https://www\.mousouzoku-av\.com/pc/images/pages/common/")
 
     def test_a_label_without_a_site_of_its_own_is_pinned_to_its_parent_directory(self):
         """ナンパTV 自己没有站，账本里也一条链接都没有——自动发现那四条链全都从

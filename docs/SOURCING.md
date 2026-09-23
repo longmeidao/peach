@@ -1144,7 +1144,7 @@ av911.tv，三条候选已进复核队列。
   `www.monstersofcock.com` 是同一套 Aylo 壳（favicon 同样是「1」、无 apple-touch-icon），所以它记
   **未取得**、继续回落现有的 `MonstersOfCock.img`，不用推测顶替。
 - **展会名录**（人工指定来源 `jae.tokyo`，Japan Adult Expo 的参展厂牌名录）：2014／2015／2017
-  三届各带一套厂商自己交的 logo，页面结构每届不同：2014 是 `exhibitor/` 里 `<li><a><h2>名字</h2>` 加
+  三届各带一套片商自己交的 logo，页面结构每届不同：2014 是 `exhibitor/` 里 `<li><a><h2>名字</h2>` 加
   `images/logo/*.jpg`（270×180，`alt` 不可靠），2015 是 `maker.html` 里 `offMaker` 弹层的
   `makerLogo`／`makerRightTitle`／`makerLinkBtn`（188×188），2017 是 `maker.html` 的 `alt` 加详情页
   `makaer/NNN.html` 的 `name_area` 与 `class="pop"` 官网链接（320×320）。2016 那届 `exhibition.html`
@@ -1168,7 +1168,7 @@ av911.tv，三条候选已进复核队列。
   已装的 60 张都是 ASCII 名，键一个都没变。
 - **同一批详情页的官网链接照厂牌自称对回账本，逐条判 kind。** 211 条名录里 125 条带官网，按名字与别名
   （NFKC 归一、去掉空白与 `・.,'"()[]/&+*!?:-`）对上账本 33 家。目录站与配信平台不是官网：`mgstage.com`、
-  `indies-av.co.jp`、`dmm.co.jp`、`fanza.com` 四个主机，以及路径里带 `/works/list/` 的按厂商筛出来的作品
+  `indies-av.co.jp`、`dmm.co.jp`、`fanza.com` 四个主机，以及路径里带 `/works/list/` 的按片商筛出来的作品
   列表，都进 `catalog`：JET映像 那条指向 `mousouzoku-av.com`，而那个域名是妄想族自己的官网。母公司站内的
   厂牌页（`km-produce.com/l_06_bazooka.php`、`/million/`）算 official，它就是这个厂牌在网上唯一的门面；
   站内搜索串（`?s=OREA`）、配信站筛选列表（`ppv_advanced.php?`）、周边商品列表（`goods_list.php?`）和

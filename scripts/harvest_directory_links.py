@@ -22,7 +22,7 @@ profile_images 才算活。Instagram / TikTok / YouTube 登出页给不出可靠
 `<stem>-review.csv` 含全部判定，是复核产物。
 
 jae.tokyo 是第三个这样的来源：Japan Adult Expo 的参展女优名录，2014／2015／2017 三届
-各一套厂商自己交的资料，页面上写明本人的博客与官网（`公式ブログ`／`ツイッター`）。
+各一套片商自己交的资料，页面上写明本人的博客与官网（`公式ブログ`／`ツイッター`）。
 名录同时带一张人像，所以这个来源多产一份 `<stem>-portraits.csv`，由
 harvest_social_avatars.py 的名录路线接着走——头像与链接出自同一批页面、同一次名字判定。
 

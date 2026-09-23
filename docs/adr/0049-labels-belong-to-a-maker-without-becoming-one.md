@@ -1,4 +1,4 @@
-# ADR-0049：label 归属厂商，但不当厂商处理
+# ADR-0049：label 归属片商，但不当片商处理
 
 - 状态：Accepted
 - 日期：2026-09-23
@@ -19,21 +19,21 @@
 
 新增表 `label_maker(label_id, maker_id, source, confidence, checked_at)`，迁移为 `0035`。
 
-- **label 仍是厂牌**：作品照旧挂在 label 自己身上，不改名，不合并，也不改写作品上的厂牌字段。这张表只多记一件事：label 归哪家厂商。
-- **只有一层**：label 不能再挂 label，厂商自己也不能是别家的 label。装入脚本遇到这两种情况会拒收。
-- **主键在 label 一侧**：一个 label 只有一家现役厂商。label 转手时覆盖原来那一行，不新增一行；做法与 `entity_membership` 相同。
-- **厂商可以没有作品**：`妄想族` 的作品全挂在旗下 label 上，它自己是一条没有作品的 `studio` 实体，由装入脚本加 `--create-makers` 新建。
-- **合并时关系跟着走**：`merge_entity` 两个方向都迁移。label 并入自己的厂商时，那一行会变成自己指向自己，直接删掉。
+- **label 仍是厂牌**：作品照旧挂在 label 自己身上，不改名，不合并，也不改写作品上的厂牌字段。这张表只多记一件事：label 归哪家片商。
+- **只有一层**：label 不能再挂 label，片商自己也不能是别家的 label。装入脚本遇到这两种情况会拒收。
+- **主键在 label 一侧**：一个 label 只有一家现役片商。label 转手时覆盖原来那一行，不新增一行；做法与 `entity_membership` 相同。
+- **片商可以没有作品**：`妄想族` 的作品全挂在旗下 label 上，它自己是一条没有作品的 `studio` 实体，由装入脚本加 `--create-makers` 新建。
+- **合并时关系跟着走**：`merge_entity` 两个方向都迁移。label 并入自己的片商时，那一行会变成自己指向自己，直接删掉。
 - **页面上只是链接**：
-  - 作品详情里，厂牌一组旁边多一组「厂商」；
-  - label 的资料页，在归属那一格链到厂商；
-  - 厂商的资料页，另起一行「旗下」列出 label。
+  - 作品详情里，厂牌一组旁边多一组「片商」；
+  - label 的资料页，在归属那一格链到片商；
+  - 片商的资料页，另起一行「旗下」列出 label。
 
-  作品数各算各的，厂商页不把 label 的作品算进来。
+  作品数各算各的，片商页不把 label 的作品算进来。
 
 数据来源是各家母公司的官方名录：KMP 的 `km-produce.com/label`、Prestige 的 `prestige-av.com`、妄想族的 `mousouzoku-av.com`。复核 CSV 的列为 `label,maker,evidence`，由 `scripts/install_label_makers.py` 装入。脚本默认 dry-run，`--apply` 必须同时给 `--backup`。
 
 ## 不做的事
 
-- 不按厂商聚合筛选作品。需要时另开一条查询，把 label 并起来，不去改动归属本身。
+- 不按片商聚合筛选作品。需要时另开一条查询，把 label 并起来，不去改动归属本身。
 - 不把已经作为别名并进母公司的 label（如 `PRESTIGE PREMIUM`）拆出来。拆分需要逐部作品判断归属，属于另一项任务。

@@ -30,7 +30,7 @@ r"""社媒存在感扩张：从已核实的 X 账号走到集链页，扩张全�
   X          profile_images 原图（无尺寸后缀），失败退 _400x400 / _200x200
   lit.link   creators/<uuid>/icons/<uuid>.jpe
   babepedia  /pics/<Babe>.jpg —— creator 实体走 babepedia-candidates.csv 的命中行
-  jae        Japan Adult Expo 名录里厂商自己交的人像 —— 走
+  jae        Japan Adult Expo 名录里片商自己交的人像 —— 走
              harvest_directory_links.py 产的 jae-performer-links-portraits.csv 命中行
 Instagram 登出页拿不到头像图；TikTok 的 oembed 头像只有百来像素——都只记链接。
 
