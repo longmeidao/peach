@@ -10,6 +10,7 @@ from peach.jav_cover_fetch import DeadlineExceeded, NotFound, Unavailable
 from peach.library_processing import PROVIDER_NAMES, SOURCE_INTERVALS, SOURCE_LABELS
 from peach.metadata import MetadataProviderError
 from peach.metadata_policy import SOURCE_SPECS
+from peach.metadata_routes import FC2_STAGE
 from peach.scraping_access import SourcePaused
 from peach.sources import (COOLDOWN_ACTIONS, PERMANENT_REASONS, REASON_KINDS, SITE_SOURCES, FailureReason, Page,
                            Session, SiteConfig, SiteRecord, SiteSource, SourceFailure, http_failure)
@@ -66,6 +67,26 @@ class ContractTests(unittest.TestCase):
         DemoSource(mirror).query("ABC-001", session=Session(transport))
         self.assertEqual(transport.calls, [("https://mirror.test/ABC-001", "https://mirror.test/", 1024)])
         self.assertIs(DemoSource().config, DEMO)
+
+    def test_one_request_can_name_its_own_referer_and_extra_headers(self):
+        seen = []
+
+        def transport(request, timeout, limit):
+            seen.append((request.headers.get("Referer"), request.headers.get("X-Inertia")))
+            return HttpResponse(200, {}, b"x", request.url)
+
+        session = Session(transport)
+        session.get("https://demo.test/ABC-001", config=DEMO)
+        session.get("https://demo.test/ABC-001", config=DEMO, referer="https://demo.test/ABC-001",
+                    headers={"X-Inertia": "true"})
+        self.assertEqual(seen, [("https://demo.test/", None), ("https://demo.test/ABC-001", "true")])
+
+    def test_records_default_to_the_single_query_result(self):
+        transport = serve({"https://demo.test/ABC-001": "標題".encode()})
+        found = DemoSource().records("ABC-001", session=Session(transport))
+        self.assertEqual([record.title for record in found], ["標題"])
+        with self.assertRaises(SourceFailure):
+            DemoSource().records("ABC-002", session=Session(transport))
 
     def test_query_translates_http_tiers_into_reasons_and_keeps_the_wording(self):
         with self.assertRaises(SourceFailure) as caught:
@@ -175,20 +196,25 @@ class ConfigConsistencyTests(unittest.TestCase):
 
     def test_javdb_keeps_the_user_set_interval_and_the_other_sites_the_default(self):
         self.assertEqual(SITE_SOURCES["javdb"].DEFAULT.interval, 3.0)
-        for name in ("javbus", "avbase", "r18dev"):
+        for name in ("javbus", "avbase", "r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive"):
             self.assertEqual(SITE_SOURCES[name].DEFAULT.interval, 2.0, name)
         self.assertEqual({host for host in SOURCE_INTERVALS if scraping_access.source_for("https://" + host + "/") == "javdb"},
                          set(SOURCE_INTERVALS), "SOURCE_INTERVALS 里只有 javdb 的主机单独设间隔")
 
-    def test_the_four_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
-        self.assertEqual(set(SITE_SOURCES), {"r18dev", "avbase", "javbus", "javdb"})
+    def test_the_eight_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
         shape = {name: (site.DEFAULT.stage, site.DEFAULT.cookie, site.DEFAULT.page_limit)
                  for name, site in SITE_SOURCES.items()}
         self.assertEqual(shape, {"r18dev": ("official_mirror", False, 2 * 1024 * 1024),
+                                 "1pondo": ("official", False, 1024 * 1024),
+                                 "fc2": ("official", False, 2 * 1024 * 1024),
+                                 "fc2cmadb": ("community", False, 2 * 1024 * 1024),
+                                 "javarchive": ("community", False, 2 * 1024 * 1024),
                                  "avbase": ("community", False, 4 * 1024 * 1024),
                                  "javbus": ("community", True, 4 * 1024 * 1024),
                                  "javdb": ("community", True, 4 * 1024 * 1024)})
-        self.assertTrue(all(SOURCE_SPECS[name].official is (name == "r18dev") for name in SITE_SOURCES))
+        self.assertEqual({name for name in SITE_SOURCES if SOURCE_SPECS[name].official}, {"r18dev", "1pondo", "fc2"})
+        self.assertEqual(tuple(name for name in SITE_SOURCES if name in FC2_STAGE), FC2_STAGE,
+                         "FC2 三站按链上先后登记")
 
 
 if __name__ == "__main__":

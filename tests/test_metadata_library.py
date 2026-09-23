@@ -43,7 +43,10 @@ def stub_provider():
 
 
 def _mirror_page(image='https://storage92000.contents.fc2.com/file/1.jpg', video=3189161):
-    """fc2cmadb 的作品页：Inertia 把整棵 props 树连同握手版本号放在一个 script 里。"""
+    """fc2cmadb 的作品页：Inertia 把整棵 props 树连同握手版本号放在一个 script 里。
+
+    和真的 `_fetch` 一样交字节。
+    """
     page = {'component': 'Articles/Show', 'version': 'fcb3b524d4c7f8f3d2c38e437b35b7a9',
             'url': f'/articles/{video}',
             'props': {'article': {'video_id': video, 'title': '【無】コスプレシリーズ',
@@ -52,7 +55,7 @@ def _mirror_page(image='https://storage92000.contents.fc2.com/file/1.jpg', video
                                   'writer': {'slug': 'rina_vlog', 'name': '梨奈'},
                                   'tags': [{'name': 'ハメ撮り'}]}}}
     return (f'<script data-page="app" type="application/json">'
-            f'{json.dumps(page, ensure_ascii=False)}</script><div id="app"></div>')
+            f'{json.dumps(page, ensure_ascii=False)}</script><div id="app"></div>').encode()
 
 
 #: JavArchive 的作品地址把商品号夹在标题里，站上真的用空格分隔（用户 2026-09-22 给的
@@ -65,13 +68,13 @@ _ARCHIVE_COVER_SECOND = 'https://img.javstore.net/images/2023/12/26/FC2PPV-32321
 
 
 def _archive_pages(url):
-    """JavArchive 那一档的两跳：先搜出站内地址，作品页上才有封面和正文那块资料。"""
+    """JavArchive 那一档的两跳：先搜出站内地址，作品页上才有封面和正文那块资料。和真的 `_fetch` 一样交字节。"""
     if 'search' in url:
-        return f'<div class="post"><a href="{_ARCHIVE_LINK}">FC2PPV 3232110</a></div>'
+        return f'<div class="post"><a href="{_ARCHIVE_LINK}">FC2PPV 3232110</a></div>'.encode()
     return ('<h1><a href="' + _ARCHIVE_LINK + '">FC2PPV 3232110 みおちゃんが素人さん</a></h1>'
             f'<div class="fisrst_sc"><img src="{_ARCHIVE_COVER}" alt="x" /></div>'
             f'<img itemprop="image" src="{_ARCHIVE_COVER_SECOND}" alt="x" />'
-            '<div class="news">标签：素人 <br />日期：2023/03/23 <br />时长：45:12 <br /></div>')
+            '<div class="news">标签：素人 <br />日期：2023/03/23 <br />时长：45:12 <br /></div>').encode()
 
 
 class LibraryNfoTests(unittest.TestCase):
@@ -609,16 +612,18 @@ class LibraryNfoTests(unittest.TestCase):
             if 'fc2cmadb.com' not in url:
                 raise NotFound('官方那一页已空')
             if kwargs.get('extra_headers'):
-                return json.dumps({'props': {'actresses': [{'name': '野々宮すず'}]}})
+                return json.dumps({'props': {'actresses': [{'name': '野々宮すず'}]}}).encode()
             return _mirror_page()
         provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
         provider.transport = Mock()
         with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
             found = provider.fc2('FC2-PPV-3189161', route=('fc2', 'fc2cmadb'))
         self.assertEqual(found, [('fc2cmadb', found[0][1])])
-        self.assertEqual(found[0][1]['actresses'], ['野々宮すず'])
+        self.assertEqual(found[0][1]['actresses'], [{'japanese_name': '野々宮すず'}])
         second = [headers for url, headers in asked if headers]
         self.assertEqual([headers['X-Inertia-Partial-Data'] for headers in second], ['actresses'])
+        self.assertEqual(_fields(found[0][1])['performers']['display_value'], '野々宮すず',
+                         '点名问来的女优进演员候选')
 
     def test_a_silent_second_ask_costs_the_women_and_nothing_else(self):
         """那一跳撞上限流是常事，其余字段是站上最全的一份，不跟着一起丢。"""
@@ -644,7 +649,7 @@ class LibraryNfoTests(unittest.TestCase):
             if 'fc2cmadb.com' in url:
                 if kwargs.get('extra_headers'):
                     # 女优那一栏点名再问一次，问的还是这一页，不算又问了一档。
-                    return json.dumps({'props': {'actresses': []}})
+                    return json.dumps({'props': {'actresses': []}}).encode()
                 asked.append(url)
                 return _mirror_page(image=image, video=3232110)
             asked.append(url)

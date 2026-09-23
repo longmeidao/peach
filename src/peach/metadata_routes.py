@@ -58,7 +58,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # 问错一家答回来的是同一天发行的另一部片。
     # **不含 r18dev**：无码番号在 r18.dev 上没有（`docs/SOURCING.md`「一本道作品
     # 资料与封面」、`catalog_rules.is_uncensored_release` 的实测注释、
-    # 与 `metadata_1pondo` 的模块说明）。留着它等于每个
+    # 与 `sources/onepondo.py` 的模块说明）。留着它等于每个
     # 无码番号白等一次主机间隔，再把「问了都没有」读成「上游没有」。
     # avsox 经 amane 桥（ADR-0043）垫在最后：它专收无码，但是转载索引，且要经 Cloudflare，
     # 三家综合索引都落空才轮到它。
@@ -178,12 +178,12 @@ def route_for_code(code: str | None, *hints: str | None,
     """这个番号的来源链，已按本机证据裁过。
 
     无码那条链上的 `1pondo` 要证据：日期式番号本身不带片商，只有路径、文件名或账本
-    厂牌指着一本道时才问它，问不着的照旧落到综合索引（`metadata_1pondo`
+    厂牌指着一本道时才问它，问不着的照旧落到综合索引（`sources/onepondo.py`
     的模块说明）。
     """
     chain = route(classify(code, *hints), overrides=overrides)
     if "1pondo" in chain:
-        from .metadata_1pondo import movie_id, names_this_studio
+        from .sources.onepondo import movie_id, names_this_studio
         if not (movie_id(str(code or "")) and names_this_studio(*hints)):
             chain = tuple(source for source in chain if source != "1pondo")
     return chain

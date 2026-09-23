@@ -1,11 +1,14 @@
-"""FC2 商品页与 fc2cmadb 镜像页的解析。"""
+"""FC2 三站：发行方商品页、fc2cmadb 镜像页与 JavArchive 转载页的取页与解析。"""
 import json
 import unittest
+import urllib.parse
 
-from peach.metadata_fc2 import (ARCHIVE_SOURCE, MIRROR_COMPONENT, MIRROR_SOURCE, SOURCE, STUDIO,
-                                archive_links, archive_search_url, article_url, canonical_code,
-                                mirror_partial_headers, mirror_url, parse_archive, parse_article,
-                                parse_mirror, parse_mirror_actresses, runtime_minutes, video_id)
+from peach.http import HttpResponse
+from peach.sources import FailureReason, Page, Session, SourceFailure
+from peach.sources.fc2 import FC2, STUDIO, UNRECOGNISED, Fc2Source, canonical_code, runtime_minutes, video_id
+from peach.sources.fc2cmadb import COMPONENT as MIRROR_COMPONENT
+from peach.sources.fc2cmadb import FC2CMADB, Fc2cmadbSource, parse_actresses, partial_headers
+from peach.sources.javarchive import JAVARCHIVE, JavArchiveSource, links
 
 #: 站上那份前端资源的指纹，2026-09-22 实测形态。
 MIRROR_VERSION = "fcb3b524d4c7f8f3d2c38e437b35b7a9"
@@ -131,23 +134,67 @@ def mirror_actresses(*named):
                        "props": {"errors": {}, "actresses": listed}}, ensure_ascii=False)
 
 
+def page(html, url="https://example.test/"):
+    """站上回的是字节，解析器按 UTF-8 读。"""
+    return Page(url, html.encode() if isinstance(html, str) else html)
+
+
+def article(html, code):
+    return Fc2Source().parse(page(html), code).payload()
+
+
+def mirror(html, code):
+    return Fc2cmadbSource().parse(page(html), code).payload()
+
+
+def archive(html, code):
+    return JavArchiveSource().parse(page(html), code).payload()
+
+
+def serve(pages):
+    """按地址回页面的假传输。键是解码后的地址；值可以是按请求头挑页面的函数。缺的回 404。"""
+    calls = []
+
+    def call(request, timeout, limit):
+        url = urllib.parse.unquote(request.url)
+        calls.append((url, request.headers.get("Referer"), limit, request.headers.get("X-Inertia-Partial-Data")))
+        body = pages.get(url)
+        if callable(body):
+            body = body(request.headers)
+        if isinstance(body, str):
+            body = body.encode()
+        return HttpResponse(200 if body is not None else 404, {}, body or b"", request.url)
+
+    call.calls = calls
+    return call
+
+
 class Fc2CodeTests(unittest.TestCase):
     def test_a_ledger_code_becomes_the_shop_number_in_every_writing_it_wears(self):
         for code in ("FC2-PPV-4364209", "FC2PPV-4364209", "fc2_ppv_4364209",
                      "FC2 PPV 4364209", "FC2-4364209"):
             self.assertEqual(video_id(code), "4364209", code)
         self.assertEqual(canonical_code("4364209"), "FC2-PPV-4364209")
-        self.assertEqual(article_url("FC2PPV-4364209"),
+        self.assertEqual(Fc2Source().article_url("FC2PPV-4364209"),
                          "https://adult.contents.fc2.com/article/4364209/")
-        self.assertEqual(mirror_url("FC2PPV-4364209"), "https://fc2cmadb.com/articles/4364209")
+        self.assertEqual(Fc2cmadbSource().article_url("FC2PPV-4364209"), "https://fc2cmadb.com/articles/4364209")
 
     def test_a_collection_part_asks_nowhere(self):
         # `FC2-PPV-3312576-1` 是 21 段合集里的一段，两个站都只有整份合集那一页。
         # 认出商品号就意味着把合集封面套给每一段，屏幕上是 21 个内容顶着同一张图。
         for code in ("FC2-PPV-3312576-1", "FC2-PPV-3312576_4", "", "ABW-358"):
             self.assertEqual(video_id(code), "", code)
-            self.assertEqual(article_url(code), "", code)
-            self.assertEqual(mirror_url(code), "", code)
+            self.assertEqual(Fc2Source().article_url(code), "", code)
+            self.assertEqual(Fc2cmadbSource().article_url(code), "", code)
+            self.assertEqual(JavArchiveSource().search_url(code), "", code)
+
+    def test_a_code_without_a_shop_number_fails_every_site_before_any_request(self):
+        for site in (Fc2Source(), Fc2cmadbSource(), JavArchiveSource()):
+            transport = serve({})
+            with self.subTest(site=site.config.name), self.assertRaises(SourceFailure) as caught:
+                site.records("FC2-PPV-3312576-1", session=Session(transport))
+            self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NOT_FOUND, UNRECOGNISED))
+            self.assertEqual(transport.calls, [])
 
     def test_both_runtime_writings_read_as_minutes(self):
         self.assertEqual(runtime_minutes("41:50"), 41.83)
@@ -158,7 +205,7 @@ class Fc2CodeTests(unittest.TestCase):
 
 class Fc2ShopPageTests(unittest.TestCase):
     def test_the_shop_page_gives_every_field_the_review_card_shows(self):
-        found = parse_article(shop_page(), "FC2-PPV-4364209")
+        found = article(shop_page(), "FC2-PPV-4364209")
         self.assertEqual(found["id"], "FC2-PPV-4364209")
         self.assertEqual(found["content_id"], "4364209")
         self.assertEqual(found["source_url"], "https://adult.contents.fc2.com/article/4364209/")
@@ -172,28 +219,50 @@ class Fc2ShopPageTests(unittest.TestCase):
         self.assertEqual(found["cover_url"], COVER)
         self.assertEqual(found["cover_urls"], [COVER])
 
+    def test_the_whole_payload_matches_the_snapshot_shape_key_by_key(self):
+        self.assertEqual(article(shop_page(), "FC2-PPV-4364209"), {
+            "id": "FC2-PPV-4364209", "content_id": "4364209",
+            "source_url": "https://adult.contents.fc2.com/article/4364209/", "title": TITLE,
+            "description": "本編と別アングルの2本立て。", "actresses": [], "maker": "FC2-PPV",
+            "label": "大人仮面Z", "seller_url": "https://adult.contents.fc2.com/users/otonakamenz/",
+            "series": "", "director": "", "release_date": "2024-03-31", "runtime": 41.83,
+            "genres": ["おっぱい", "お尻", "素人"], "cover_urls": [COVER], "cover_url": COVER})
+
     def test_the_shop_page_names_no_performers(self):
         # 标题里那个 `みお(19)` 是卖家自己写的宣传语，没有第二处可以印证；FC2 的演员
         # 线索在 fc2cmadb 的评论区，走 `scripts/fetch_fc2_metadata.py`。
-        self.assertEqual(parse_article(shop_page(), "FC2-PPV-4364209")["actresses"], [])
+        self.assertEqual(article(shop_page(), "FC2-PPV-4364209")["actresses"], [])
 
     def test_another_products_page_is_not_this_ones_data(self):
         # 站上的商品号会被复用给别的投稿，不核 sku 就把另一部片的资料写到这个番号头上。
-        self.assertIsNone(parse_article(shop_page(video="4470851"), "FC2-PPV-4364209"))
+        with self.assertRaises(SourceFailure) as caught:
+            article(shop_page(video="4470851"), "FC2-PPV-4364209")
+        self.assertEqual((caught.exception.reason, str(caught.exception)),
+                         (FailureReason.NOT_FOUND, "FC2 上没有这个商品"))
 
     def test_a_delisted_product_reads_as_absent_not_as_a_broken_page(self):
-        self.assertIsNone(parse_article(gone_page(), "FC2-PPV-4364209"))
+        with self.assertRaises(SourceFailure) as caught:
+            article(gone_page(), "FC2-PPV-4364209")
+        self.assertEqual((caught.exception.kind, str(caught.exception)), ("not_found", "FC2 上没有这个商品"))
 
     def test_a_seller_without_a_name_keeps_the_page_that_identifies_it(self):
-        page = shop_page(seller="").replace(
+        html = shop_page(seller="").replace(
             '<a href="https://adult.contents.fc2.com/users/otonakamenz/"></a>', "")
-        found = parse_article(page, "FC2-PPV-4364209")
+        found = article(html, "FC2-PPV-4364209")
         self.assertEqual(found["label"], "https://adult.contents.fc2.com/users/otonakamenz/")
+
+    def test_the_shop_is_asked_once_on_its_own_host_with_the_fc2_page_limit(self):
+        transport = serve({"https://adult.contents.fc2.com/article/4364209/": shop_page()})
+        found = Fc2Source().records("FC2-PPV-4364209", session=Session(transport))
+        self.assertEqual([record.title for record in found], [TITLE])
+        self.assertEqual(transport.calls, [("https://adult.contents.fc2.com/article/4364209/",
+                                            "https://adult.contents.fc2.com/", 2 * 1024 * 1024, None)])
+        self.assertEqual(FC2.page_limit, 2 * 1024 * 1024)
 
 
 class Fc2MirrorPageTests(unittest.TestCase):
     def test_the_mirror_carries_what_the_shop_has_dropped(self):
-        found = parse_mirror(mirror_page(), "FC2-PPV-3189161")
+        found = mirror(mirror_page(), "FC2-PPV-3189161")
         self.assertEqual(found["id"], "FC2-PPV-3189161")
         self.assertEqual(found["source_url"], "https://fc2cmadb.com/articles/3189161")
         self.assertEqual(found["title"], "【無】コスプレシリーズ")
@@ -204,140 +273,215 @@ class Fc2MirrorPageTests(unittest.TestCase):
         self.assertEqual(found["seller_url"], "https://adult.contents.fc2.com/users/rina_vlog/")
         self.assertEqual(found["genres"], ["ハメ撮り", "フェラ"])
 
+    def test_the_whole_payload_matches_the_snapshot_shape_key_by_key(self):
+        self.assertEqual(mirror(mirror_page(), "FC2-PPV-3189161"), {
+            "id": "FC2-PPV-3189161", "content_id": "3189161",
+            "source_url": "https://fc2cmadb.com/articles/3189161", "title": "【無】コスプレシリーズ",
+            "description": "", "actresses": [], "maker": "FC2-PPV", "label": "梨奈の射精動画＠個人撮影",
+            "seller_url": "https://adult.contents.fc2.com/users/rina_vlog/", "series": "", "director": "",
+            "release_date": "2023-02-19", "runtime": 46.1, "genres": ["ハメ撮り", "フェラ"],
+            "cover_urls": [COVER], "cover_url": COVER})
+
     def test_the_named_women_come_from_the_second_ask_not_from_this_page(self):
         # 女优是这一页的延迟 prop：首屏那份 HTML 里一个人也没有，点名要过才有。
-        self.assertEqual(parse_mirror(mirror_page(), "FC2-PPV-3189161")["actresses"], [])
-        found = parse_mirror(mirror_page(), "FC2-PPV-3189161",
-                             actresses=parse_mirror_actresses(mirror_actresses("野々宮すず")))
-        self.assertEqual(found["actresses"], ["野々宮すず"])
+        self.assertEqual(mirror(mirror_page(), "FC2-PPV-3189161")["actresses"], [])
+        url = "https://fc2cmadb.com/articles/3189161"
+        transport = serve({url: lambda headers: (mirror_actresses("野々宮すず") if headers.get("X-Inertia")
+                                                 else mirror_page())})
+        found = Fc2cmadbSource().query("FC2-PPV-3189161", session=Session(transport))
+        self.assertEqual(found.payload()["actresses"], [{"japanese_name": "野々宮すず"}])
+        self.assertEqual(transport.calls, [(url, "https://fc2cmadb.com/", 2 * 1024 * 1024, None),
+                                           (url, url, 2 * 1024 * 1024, "actresses")])
+
+    def test_a_failed_second_ask_keeps_everything_else_the_mirror_gave(self):
+        # 那一跳撞上限流是常事，其余字段是站上最全的一份，不跟着丢。
+        url = "https://fc2cmadb.com/articles/3189161"
+        transport = serve({url: lambda headers: None if headers.get("X-Inertia") else mirror_page()})
+        found = Fc2cmadbSource().query("FC2-PPV-3189161", session=Session(transport))
+        self.assertEqual((found.title, found.performers), ("【無】コスプレシリーズ", ()))
+        self.assertEqual(len(transport.calls), 2)
 
     def test_the_second_ask_names_this_page_and_only_the_column_it_wants(self):
-        headers = mirror_partial_headers(mirror_page())
+        headers = partial_headers(mirror_page())
         self.assertEqual(headers["X-Inertia-Version"], MIRROR_VERSION)
         self.assertEqual(headers["X-Inertia-Partial-Component"], MIRROR_COMPONENT)
         self.assertEqual(headers["X-Inertia-Partial-Data"], "actresses")
 
     def test_a_page_that_is_not_a_product_page_is_never_asked_a_second_time(self):
         # 站上没有的商品回的是错误页，它照样带着版本号，问下去只会白花一趟配额。
-        self.assertEqual(mirror_partial_headers(mirror_page(component="Error")), {})
-        self.assertEqual(mirror_partial_headers(mirror_page(version="")), {})
-        self.assertEqual(mirror_partial_headers("<div id='app'></div>"), {})
+        self.assertEqual(partial_headers(mirror_page(component="Error")), {})
+        self.assertEqual(partial_headers(mirror_page(version="")), {})
+        self.assertEqual(partial_headers("<div id='app'></div>"), {})
+        transport = serve({"https://fc2cmadb.com/articles/3189161": mirror_page(video="4364209")})
+        with self.assertRaises(SourceFailure):
+            Fc2cmadbSource().query("FC2-PPV-3189161", session=Session(transport))
+        self.assertEqual(len(transport.calls), 1)
 
     def test_the_stage_names_a_woman_has_worn_are_not_more_women(self):
         # `alias_name` 那一串是同一个人的曾用名，一位女优挂着十几个。
-        self.assertEqual(parse_mirror_actresses(mirror_actresses("野々宮すず", "ゆうか")),
+        self.assertEqual(parse_actresses(mirror_actresses("野々宮すず", "ゆうか")),
                          ["野々宮すず", "ゆうか"])
-        self.assertEqual(parse_mirror_actresses(mirror_actresses()), [])
-        self.assertEqual(parse_mirror_actresses("<html>429</html>"), [])
+        self.assertEqual(parse_actresses(mirror_actresses()), [])
+        self.assertEqual(parse_actresses("<html>429</html>"), [])
 
     def test_the_mirror_cover_points_at_the_file_itself(self):
         # 镜像有时给的是缩放服务的地址。w276 只有 276 像素宽，连封面的最低宽度都过不了，
         # 而它后半截就是原件地址（实测同一个文件 2350×2352）。
         wrapped = "https://contents-thumbnail2.fc2.com/w276/" + COVER.removeprefix("https://")
-        found = parse_mirror(mirror_page(image=wrapped), "FC2-PPV-3189161")
+        found = mirror(mirror_page(image=wrapped), "FC2-PPV-3189161")
         self.assertEqual(found["cover_url"], COVER)
         self.assertEqual(found["cover_urls"], [COVER])
 
     def test_the_mirrors_own_placeholder_is_not_a_cover(self):
         # 站上没有商品图的条目挂的是镜像自己那张占位件，还是个站内相对地址。当封面交
         # 下去，抓取那侧连主机都拼不出来，报回来的是一句「来源连接未取得」。
-        found = parse_mirror(mirror_page(image="/storage/images/article/no-image.jpg"),
-                             "FC2-PPV-3189161")
+        found = mirror(mirror_page(image="/storage/images/article/no-image.jpg"), "FC2-PPV-3189161")
         self.assertEqual(found["cover_url"], "")
         self.assertEqual(found["cover_urls"], [])
         self.assertEqual(found["title"], "【無】コスプレシリーズ")
 
     def test_another_products_mirror_page_is_not_this_ones_data(self):
-        self.assertIsNone(parse_mirror(mirror_page(video="4364209"), "FC2-PPV-3189161"))
-        self.assertIsNone(parse_mirror("<div id='app'></div>", "FC2-PPV-3189161"))
+        for html in (mirror_page(video="4364209"), "<div id='app'></div>"):
+            with self.subTest(html=html[:40]), self.assertRaises(SourceFailure) as caught:
+                mirror(html, "FC2-PPV-3189161")
+            self.assertEqual((caught.exception.reason, str(caught.exception)),
+                             (FailureReason.NOT_FOUND, "FC2CMADB 上没有这个商品"))
 
     def test_the_two_pages_hand_back_the_same_shape(self):
         # 两处的资料落进同一条候选流水线，字段少一个就是复核卡上少一格。
-        self.assertEqual(sorted(parse_article(shop_page(), "FC2-PPV-4364209")),
-                         sorted(parse_mirror(mirror_page(), "FC2-PPV-3189161")))
-        self.assertEqual((SOURCE, MIRROR_SOURCE), ("fc2", "fc2cmadb"))
+        self.assertEqual(sorted(article(shop_page(), "FC2-PPV-4364209")),
+                         sorted(mirror(mirror_page(), "FC2-PPV-3189161")))
+        self.assertEqual((FC2.name, FC2CMADB.name), ("fc2", "fc2cmadb"))
 
 
 class JavArchiveTests(unittest.TestCase):
     def test_the_search_page_gives_up_the_link_that_carries_this_shop_number(self):
-        self.assertEqual(archive_links(search_page(), "FC2-PPV-4137487"), [ARCHIVE_LINK])
-        self.assertEqual(archive_links(search_page().encode(), "fc2ppv4137487"), [ARCHIVE_LINK])
+        self.assertEqual(links(search_page(), "FC2-PPV-4137487"), [ARCHIVE_LINK])
+        self.assertEqual(links(search_page().encode(), "fc2ppv4137487"), [ARCHIVE_LINK])
 
     def test_a_longer_number_that_merely_starts_the_same_is_not_this_one(self):
         # 站上 `4137487` 与 `41374870` 都有；按子串比会把后者的标题和封面安到前者头上。
-        self.assertEqual(archive_links(search_page(video="41374870"), "FC2-PPV-4137487"), [])
-        self.assertEqual(archive_links(search_page(), "FC2-PPV-9999999"), [])
-        self.assertEqual(archive_links(search_page(), "ORETD-615"), [])
+        self.assertEqual(links(search_page(video="41374870"), "FC2-PPV-4137487"), [])
+        self.assertEqual(links(search_page(), "FC2-PPV-9999999"), [])
+        self.assertEqual(links(search_page(), "ORETD-615"), [])
 
     def test_one_search_page_holds_several_works_and_each_code_finds_its_own(self):
         # 一页里既有别的作品，也有侧栏的热门与归档，挑的必须是这个商品号那一条。
-        self.assertTrue(archive_links(search_page(), "FC2-PPV-1863914")[0].startswith("/735702-"))
-        self.assertTrue(archive_links(search_page(), "FC2-PPV-4137487")[0].startswith("/926949-"))
+        self.assertTrue(links(search_page(), "FC2-PPV-1863914")[0].startswith("/735702-"))
+        self.assertTrue(links(search_page(), "FC2-PPV-4137487")[0].startswith("/926949-"))
 
     def test_every_repost_of_the_same_work_is_handed_over(self):
         # 不同转存者各发一次，图也各存各的：`1436028` 的 `/641159-` 那条是 404，
         # `/800025-` 那条有 1280×720。先后没有质量含义，所以两条都要。
-        found = archive_links(search_page(reposted=True), "FC2-PPV-4137487")
+        found = links(search_page(reposted=True), "FC2-PPV-4137487")
         self.assertEqual([link.split("-")[0] for link in found], ["/926949", "/800025"])
 
+    def test_every_repost_becomes_its_own_record_and_a_dead_one_is_skipped(self):
+        search = "https://javarchive.com/search?q=FC2-PPV-4137487"
+        repost = "https://javarchive.com/800025-fc2ppv-4137487-離婚の後遺症で性欲が止まらない変態女-pn.html"
+        both = serve({search: search_page(reposted=True), "https://javarchive.com" + ARCHIVE_LINK: archive_page(),
+                      repost: archive_page(large="{root}FC2PPV-{video}.jpg", small="")})
+        found = JavArchiveSource().records("FC2-PPV-4137487", session=Session(both))
+        self.assertEqual([record.cover_urls for record in found],
+                         [(ARCHIVE_PICTURES + "4137487pl.jpg", ARCHIVE_PICTURES + "4137487ps.jpg"),
+                          (ARCHIVE_PICTURES + "FC2PPV-4137487.jpg",)])
+        self.assertEqual([call[:3] for call in both.calls],
+                         [(search, "https://javarchive.com/", 2 * 1024 * 1024),
+                          ("https://javarchive.com" + ARCHIVE_LINK, "https://javarchive.com/", 2 * 1024 * 1024),
+                          (repost, "https://javarchive.com/", 2 * 1024 * 1024)])
+        # 第一条 404、第二条对不上番号时，只剩还在的那一条。
+        one = serve({search: search_page(reposted=True), repost: archive_page()})
+        self.assertEqual(len(JavArchiveSource().records("FC2-PPV-4137487", session=Session(one))), 1)
+        stray = serve({search: search_page(reposted=True), repost: archive_page(video="4364209")})
+        with self.assertRaises(SourceFailure) as caught:
+            JavArchiveSource().records("FC2-PPV-4137487", session=Session(stray))
+        self.assertEqual((caught.exception.reason, str(caught.exception)),
+                         (FailureReason.NOT_FOUND, "JavArchive 上没有这个商品"))
+
+    def test_a_search_without_this_shop_number_is_absent_and_a_refusal_keeps_its_tier(self):
+        search = "https://javarchive.com/search?q=FC2-PPV-4137487"
+        with self.assertRaises(SourceFailure) as caught:
+            JavArchiveSource().records("FC2-PPV-4137487",
+                                       session=Session(serve({search: search_page(video="41374870")})))
+        self.assertEqual(str(caught.exception), "JavArchive 上没有这个商品")
+
+        def refused(request, timeout, limit):
+            return HttpResponse(403, {}, b"", request.url)
+
+        with self.assertRaises(SourceFailure) as caught:
+            JavArchiveSource().records("FC2-PPV-4137487", session=Session(refused))
+        self.assertEqual((caught.exception.reason, str(caught.exception)),
+                         (FailureReason.AUTH_REQUIRED, "HTTP 403"))
+
     def test_the_archive_page_gives_the_title_without_the_code_in_front_of_it(self):
-        found = parse_archive(archive_page(), "FC2-PPV-4137487")
+        found = archive(archive_page(), "FC2-PPV-4137487")
         self.assertEqual(found["title"], "Gカップ・脅威 マジ凄いです！脅威のパイパーGカップグラマラス!")
         self.assertEqual((found["id"], found["content_id"], found["maker"]),
                          ("FC2-PPV-4137487", "4137487", STUDIO))
         self.assertEqual(found["source_url"], "https://javarchive.com" + ARCHIVE_LINK)
-        self.assertEqual(parse_archive(archive_page(title="FC2PPV 4137487 素顔"), "FC2-PPV-4137487")["title"],
+        self.assertEqual(archive(archive_page(title="FC2PPV 4137487 素顔"), "FC2-PPV-4137487")["title"],
                          "素顔")
+
+    def test_the_whole_payload_matches_the_snapshot_shape_key_by_key(self):
+        self.assertEqual(archive(archive_page(), "FC2-PPV-4137487"), {
+            "id": "FC2-PPV-4137487", "content_id": "4137487", "source_url": "https://javarchive.com" + ARCHIVE_LINK,
+            "title": ARCHIVE_TITLE, "description": "", "actresses": [], "maker": "FC2-PPV", "label": "",
+            "seller_url": "", "series": "", "director": "", "release_date": "2023-11-21", "runtime": 50.05,
+            "genres": ["ハメ撮り", "素人", "爆乳"],
+            "cover_urls": [ARCHIVE_PICTURES + "4137487pl.jpg", ARCHIVE_PICTURES + "4137487ps.jpg"],
+            "cover_url": ARCHIVE_PICTURES + "4137487pl.jpg"})
 
     def test_the_cover_is_read_from_its_slot_whatever_the_transferrer_named_the_file(self):
         """封面认位置不认文件名：站上三种命名都有，按名字认的话两种一张都取不到。"""
-        found = parse_archive(archive_page(), "FC2-PPV-4137487")
+        found = archive(archive_page(), "FC2-PPV-4137487")
         self.assertEqual(found["cover_url"], ARCHIVE_PICTURES + "4137487pl.jpg")
         self.assertEqual(found["cover_urls"], [ARCHIVE_PICTURES + "4137487pl.jpg",
                                                ARCHIVE_PICTURES + "4137487ps.jpg"])
         # 转存者自己起的名字：`FC2PPV-4030617.jpg`、`FC2PPV835964-2.jpg`，都不带 `pl`/`ps`。
-        named = parse_archive(archive_page(large="{root}FC2PPV-{video}.jpg",
-                                           small="{root}FC2PPV{video}-2.jpg"), "FC2-PPV-4137487")
+        named = archive(archive_page(large="{root}FC2PPV-{video}.jpg",
+                                     small="{root}FC2PPV{video}-2.jpg"), "FC2-PPV-4137487")
         self.assertEqual(named["cover_urls"], [ARCHIVE_PICTURES + "FC2PPV-4137487.jpg",
                                                ARCHIVE_PICTURES + "FC2PPV4137487-2.jpg"])
         # 只有 schema.org 那个图位时它就是封面（实测 `835964` 的页面就少了前一个）。
-        self.assertEqual(parse_archive(archive_page(large=""), "FC2-PPV-4137487")["cover_url"],
+        self.assertEqual(archive(archive_page(large=""), "FC2-PPV-4137487")["cover_url"],
                          ARCHIVE_PICTURES + "4137487ps.jpg")
-        self.assertEqual(parse_archive(archive_page(large="", small=""),
-                                       "FC2-PPV-4137487")["cover_urls"], [])
+        self.assertEqual(archive(archive_page(large="", small=""), "FC2-PPV-4137487")["cover_urls"], [])
 
     def test_the_stitched_preview_is_never_a_cover(self):
         # `_s.jpg` 是把多帧拼成的长条（实测 1024×2000），装上去就是一格拉长的马赛克。
-        found = parse_archive(archive_page(large="", small=""), "FC2-PPV-4137487")
+        found = archive(archive_page(large="", small=""), "FC2-PPV-4137487")
         self.assertEqual(found["cover_urls"], [])
-        self.assertNotIn("_s.jpg", str(parse_archive(archive_page(), "FC2-PPV-4137487")["cover_urls"]))
+        self.assertNotIn("_s.jpg", str(archive(archive_page(), "FC2-PPV-4137487")["cover_urls"]))
 
     def test_the_body_block_gives_up_the_tags_the_date_and_the_runtime(self):
         """转存者填了就取。2026-09-22 实测 4 部里只有 `4030617` 这块是齐的。"""
-        found = parse_archive(archive_page(), "FC2-PPV-4137487")
+        found = archive(archive_page(), "FC2-PPV-4137487")
         self.assertEqual(found["genres"], ["ハメ撮り", "素人", "爆乳"])
         self.assertEqual(found["release_date"], "2023-11-21")
         self.assertEqual(found["runtime"], 50.05)
 
     def test_an_empty_block_stays_empty_instead_of_taking_the_truncated_meta_line(self):
         """`<head>` 那条 description 里有同一段话的截断版，取回来就是半截标签加一串属性。"""
-        bare = parse_archive(archive_page(tags="", release="", runtime=""), "FC2-PPV-4137487")
+        bare = archive(archive_page(tags="", release="", runtime=""), "FC2-PPV-4137487")
         self.assertEqual((bare["genres"], bare["release_date"], bare["runtime"]), ([], "", None))
         # 站上没填标签时那一行写成 `--`，当成一个标签就入了库。
-        self.assertEqual(parse_archive(archive_page(tags="--"), "FC2-PPV-4137487")["genres"], [])
+        self.assertEqual(archive(archive_page(tags="--"), "FC2-PPV-4137487")["genres"], [])
 
     def test_another_products_archive_page_is_not_this_ones_data(self):
-        self.assertIsNone(parse_archive(archive_page(video="4364209"), "FC2-PPV-4137487"))
-        self.assertIsNone(parse_archive("<div class='news'></div>", "FC2-PPV-4137487"))
-        self.assertIsNone(parse_archive(archive_page(), "ORETD-615"))
+        for html, code, wording in ((archive_page(video="4364209"), "FC2-PPV-4137487", "JavArchive 上没有这个商品"),
+                                    ("<div class='news'></div>", "FC2-PPV-4137487", "JavArchive 上没有这个商品"),
+                                    (archive_page(), "ORETD-615", UNRECOGNISED)):
+            with self.subTest(code=code, html=html[:40]), self.assertRaises(SourceFailure) as caught:
+                archive(html, code)
+            self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NOT_FOUND, wording))
 
     def test_the_third_page_hands_back_the_same_shape_as_the_first_two(self):
-        self.assertEqual(sorted(parse_archive(archive_page(), "FC2-PPV-4137487")),
-                         sorted(parse_mirror(mirror_page(), "FC2-PPV-3189161")))
-        self.assertEqual(ARCHIVE_SOURCE, "javarchive")
-        self.assertEqual(archive_search_url("FC2-PPV-4137487"),
+        self.assertEqual(sorted(archive(archive_page(), "FC2-PPV-4137487")),
+                         sorted(mirror(mirror_page(), "FC2-PPV-3189161")))
+        self.assertEqual(JAVARCHIVE.name, "javarchive")
+        self.assertEqual(JavArchiveSource().search_url("FC2-PPV-4137487"),
                          "https://javarchive.com/search?q=FC2-PPV-4137487")
-        self.assertEqual(archive_search_url("ORETD-615"), "")
+        self.assertEqual(JavArchiveSource().search_url("ORETD-615"), "")
 
 
 if __name__ == "__main__":
