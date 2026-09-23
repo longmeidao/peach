@@ -315,7 +315,7 @@ class AgencyLedgerTests(unittest.TestCase):
         self.con.execute("DELETE FROM entity_link WHERE entity_id=?", (agency_id,))
         self.con.execute(
             "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,created_at,updated_at)"
-            " VALUES(?,'official','Capsule Agency 官网存档（2020-01）',"
+            " VALUES(?,'official','官网存档（2020-01）',"
             "'https://web.archive.org/web/20200101000000/https://capsule.bz/','web.archive.org',"
             "'t','t')", (agency_id,))
         self.con.commit()

@@ -37,6 +37,8 @@ from peach.scripting import (   # noqa: E402
 
 LINK_KINDS = {"official", "social", "catalog", "source_reference"}
 FIELDS = ("entity_id", "kind", "name", "link_kind", "label", "url", "evidence")
+#: 计划清单每行开头那一格：`+` 新写入，`~` 改 label，空格是跳过。
+ACTION_MARKS = {"insert": "+", "relabel": "~"}
 
 
 def normalise_url(url: str) -> str:
@@ -84,6 +86,9 @@ def plan(connection: sqlite3.Connection, rows: list[dict]) -> list[dict]:
 
     不合法的行不会被悄悄跳过——它们照样出现在计划里，动作写成 skip 并说明原因。
     静默丢行会让「装了 40 条」和「表里有 40 条」这两个数字对不上，而没人知道差在哪。
+
+    已在库里的链接按复核表的 label 对齐（`relabel`）：label 是资料页上的链接文字，
+    复核表是它唯一的出处，表里改了字重跑就该生效，而不是报「已存在」后原样留着。
     """
     planned: list[dict] = []
     for row in rows:
@@ -95,21 +100,34 @@ def plan(connection: sqlite3.Connection, rows: list[dict]) -> list[dict]:
         entity_id, note = resolve_entity(connection, row)
         item.update(entity_id=entity_id, link_kind=link_kind, url=url,
                     label=str(row.get("label") or "").strip())
-        if entity_id is None:
-            item["reason"] = note
-        elif link_kind not in LINK_KINDS:
-            item["reason"] = f"link_kind 「{link_kind}」不在 {sorted(LINK_KINDS)} 内"
-        elif not url or urlsplit(url).scheme not in {"http", "https"}:
-            item["reason"] = f"URL 不可用：{url or '空'}"
-        elif not item["label"]:
-            item["reason"] = "没有 label；资料页要拿它当链接文字"
-        elif connection.execute("SELECT 1 FROM entity_link WHERE entity_id=? AND url=?",
-                                (entity_id, url)).fetchone():
-            item["reason"] = "已存在，跳过"
-        else:
+        invalid = row_problem(entity_id, note, link_kind, url, item["label"])
+        stored = None if invalid else connection.execute(
+            "SELECT label FROM entity_link WHERE entity_id=? AND url=?",
+            (entity_id, url)).fetchone()
+        if invalid:
+            item["reason"] = invalid
+        elif stored is None:
             item.update(action="insert", reason=note)
+        elif stored[0] != item["label"]:
+            item.update(action="relabel", reason=f"已存在，label 对齐复核表（库内「{stored[0]}」）")
+        else:
+            item["reason"] = "已存在，跳过"
         planned.append(item)
     return planned
+
+
+def row_problem(entity_id: int | None, note: str, link_kind: str, url: str,
+                label: str) -> str:
+    """这一行写不进库的原因；能写就是空串。"""
+    if entity_id is None:
+        return note
+    if link_kind not in LINK_KINDS:
+        return f"link_kind 「{link_kind}」不在 {sorted(LINK_KINDS)} 内"
+    if not url or urlsplit(url).scheme not in {"http", "https"}:
+        return f"URL 不可用：{url or '空'}"
+    if not label:
+        return "没有 label；资料页要拿它当链接文字"
+    return ""
 
 
 #: 「这个页面没了」——上游明确这么说了，才算确证。
@@ -226,6 +244,20 @@ def install(connection: sqlite3.Connection, planned: list[dict], source: str) ->
     return written
 
 
+def relabel(connection: sqlite3.Connection, planned: list[dict]) -> int:
+    """把 `relabel` 那几行的链接文字写成复核表里的 label，返回改了几条。"""
+    now = datetime.now(timezone.utc).isoformat()
+    changed = 0
+    for item in planned:
+        if item["action"] != "relabel":
+            continue
+        connection.execute(
+            "UPDATE entity_link SET label=?,updated_at=? WHERE entity_id=? AND url=?",
+            (item["label"], now, item["entity_id"], item["url"]))
+        changed += connection.execute("SELECT changes()").fetchone()[0]
+    return changed
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     add_ledger_write_args(parser)
@@ -303,23 +335,27 @@ def main(argv: list[str] | None = None) -> int:
         else:
             check_links(planned)
         for item in planned:
-            mark = "+" if item["action"] == "insert" else " "
+            mark = ACTION_MARKS.get(item["action"], " ")
             print(f" {mark} {str(item['studio'])[:18]:<18} {item['link_kind']:<8} "
                   f"{str(item['url'])[:44]:<44} {item['reason']}")
         inserts = [item for item in planned if item["action"] == "insert"]
-        print({"输入": len(rows), "将写入": len(inserts),
-               "跳过": len(planned) - len(inserts), "写入前 entity_link": before})
+        relabels = [item for item in planned if item["action"] == "relabel"]
+        print({"输入": len(rows), "将写入": len(inserts), "将改 label": len(relabels),
+               "跳过": len(planned) - len(inserts) - len(relabels),
+               "写入前 entity_link": before})
         if not args.apply:
             print("dry-run；确认无误后加 --apply --backup <路径>")
             return 0
 
         with connection:
             written = install(connection, planned, source=args.input.name)
+            renamed = relabel(connection, planned)
         after = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
         integrity, orphans = verify_after_write(connection)
-        print({"实际写入": written, "写入后 entity_link": after, "差值": after - before,
-               "integrity_check": integrity, "foreign_key_check": orphans})
-        if after - before != written or integrity != "ok" or orphans:
+        print({"实际写入": written, "实际改 label": renamed, "写入后 entity_link": after,
+               "差值": after - before, "integrity_check": integrity,
+               "foreign_key_check": orphans})
+        if after - before != written or renamed != len(relabels) or integrity != "ok" or orphans:
             print("[warn] 前后差值、完整性或外键与预期不符，请人工核对")
             return 1
     finally:

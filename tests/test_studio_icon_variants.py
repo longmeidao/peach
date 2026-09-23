@@ -1709,11 +1709,19 @@ class StudioLinkTests(unittest.TestCase):
         """存档快照上取到的是存档站的图标；只剩存档时照样轮到社媒顶上。"""
         self.connection.executemany(
             "INSERT INTO entity_link(entity_id, link_kind, label, url) VALUES(?,?,?,?)",
-            [(2, "official", "Fitch 官网存档（2015-01）",
+            [(2, "official", "官网存档（2015-01）",
               "https://web.archive.org/web/20150101000000/http://www.fitch-av.com/"),
              (2, "social", "X", "https://x.com/fitch_av")])
         links = MODULE.studio_links(self.connection)
         self.assertEqual([item["url"] for item in links["Fitch"]], ["https://x.com/fitch_av"])
+
+    def test_a_company_left_with_only_an_archive_stays_on_the_list(self):
+        """关门的公司官网只剩存档快照：链接不当图源，公司照样在名单里，指定字标按名字取。"""
+        self.connection.execute(
+            "INSERT INTO entity_link(entity_id, link_kind, label, url) VALUES(?,?,?,?)",
+            (2, "official", "官网存档（2015-01）",
+             "https://web.archive.org/web/20150101000000/http://www.fitch-av.com/"))
+        self.assertEqual(MODULE.studio_links(self.connection)["Fitch"], [])
 
     def test_a_platform_keeps_its_catalog_link_as_an_icon_source(self):
         """发行平台按 `docs/SOURCING.md` 不登记 official——它不是厂牌，没有厂牌官网。
