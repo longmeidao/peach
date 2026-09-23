@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.config import REVIEW_DIR, STATE_DIR   # noqa: E402
 from peach.entities import (   # noqa: E402
-    FORMER_PREFIX, name_chain, normalize_entity_name, split_name,
+    FORMER_PREFIX, agency_key, agency_rejections, name_chain, normalize_entity_name, split_name,
 )
 from peach.http import HttpRequest, HttpxTransport   # noqa: E402
 from peach.jobs import job_main   # noqa: E402
@@ -60,6 +60,8 @@ PROVIDER, PRODUCTION = "minnano-av", "production"
 
 NEW, KNOWN, MOVED = "新增归属", "已归属", "另有归属"
 AMBIGUOUS, ABSENT, MISSING = "重名", "不在库", "未取得"
+#: 名册收了这个人，而她驳回过这一家（`peach.entities.AGENCY_REJECTED`）。
+REJECTED = "已驳回"
 #: 会被 `--apply` 写进账本的判词。只有这一个。
 INSTALLABLE = (NEW,)
 
@@ -230,6 +232,7 @@ def fetch_roster(site: Site, production: str, max_pages: int
 def plan(site: Site, connection, args) -> list[dict[str, object]]:
     index, names = performer_index(connection)
     current = memberships(connection)
+    rejected = agency_rejections(connection)
 
     def aliases_of(entity_id: int) -> list[str]:
         return [row["alias"] for row in connection.execute(
@@ -282,7 +285,9 @@ def plan(site: Site, connection, args) -> list[dict[str, object]]:
             member_id = matched[0]
             row.update(entity_id=member_id, performer=names[member_id])
             held = current.get(member_id)
-            if held is None:
+            if agency_key(str(agency["name"])) in rejected.get(member_id, ()):
+                rows.append({**row, "verdict": REJECTED})
+            elif held is None:
                 rows.append({**row, "verdict": NEW})
             elif held[0] == agency["id"]:
                 rows.append({**row, "verdict": KNOWN, "current_agency": held[1]})

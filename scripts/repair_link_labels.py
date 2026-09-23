@@ -34,6 +34,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import GENERATED_DIR   # noqa: E402
+from peach.entities import agency_key, rejected_agencies   # noqa: E402
 from peach.review_csv import write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
     add_ledger_write_args, counts_of, open_for_write, verify_after_write,
@@ -129,13 +130,14 @@ def apply_rows(connection: sqlite3.Connection,
                 metadata = json.loads(current[0] or "{}")
             except (TypeError, ValueError):
                 metadata = {}
-            metadata["agency"] = {"name": str(row["agency"]),
-                                  "source": "minnano-av 资料表「所属事務所」",
-                                  "checked_at": stamp}
-            connection.execute(
-                "UPDATE entity SET metadata_json=?,updated_at=? WHERE id=?",
-                (json.dumps(metadata, ensure_ascii=False), stamp, entity_id))
-            agencies += 1
+            if agency_key(str(row["agency"])) not in rejected_agencies(metadata):
+                metadata["agency"] = {"name": str(row["agency"]),
+                                      "source": "minnano-av 资料表「所属事務所」",
+                                      "checked_at": stamp}
+                connection.execute(
+                    "UPDATE entity SET metadata_json=?,updated_at=? WHERE id=?",
+                    (json.dumps(metadata, ensure_ascii=False), stamp, entity_id))
+                agencies += 1
         if row["verdict"] not in {"auto"}:
             continue
         connection.execute(

@@ -29,7 +29,7 @@ if str(SRC_DIR) not in sys.path:
 
 # 括号写法的拆分是实体名字的规则，不是本脚本的：名册采集器按同一条核对站上写的名字。
 from peach.entities import (   # noqa: E402,F401
-    FORMER_PREFIX, normalize_entity_name, split_name,
+    FORMER_PREFIX, agency_key, normalize_entity_name, rejected_agencies, split_name,
 )
 from peach.review_csv import write_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
@@ -75,11 +75,12 @@ def collect(connection) -> list[dict]:
             " AND json_extract(metadata_json,'$.agency.name') IS NOT NULL"
             " ORDER BY id"):
         try:
-            agency = json.loads(row["metadata_json"] or "{}").get("agency") or {}
+            metadata = json.loads(row["metadata_json"] or "{}")
         except (TypeError, ValueError):
             continue
+        agency = metadata.get("agency") or {}
         raw = str(agency.get("name") or "").strip()
-        if not raw:
+        if not raw or agency_key(raw) in rejected_agencies(metadata):
             continue
         canonical, aliases = split_name(raw)
         item = found.setdefault(canonical, {
