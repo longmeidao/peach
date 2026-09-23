@@ -1600,4 +1600,42 @@ describe('设计决定', () => {
       await opened.close();
     }
   });
+
+  /* ADR-0050：设置弹层只放一行一个值、改完就生效的控件；带「保存配置」的表单在配置页，
+     要确认、要看进度的长任务在数据管理页，订阅源在关注管理页。 */
+  it('设置弹层「这台电脑」只有摘要卡，按钮直达配置页；媒体修复与订阅源都不在设置和配置页里', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      const { page } = opened;
+      await settle(page);
+      await page.locator('#settingsBtn').click();
+      const panel = page.locator('#settingsPanel');
+      await panel.getByRole('tab', { name: '这台电脑' }).click({ timeout: 10_000 });
+      const machine = panel.locator('#machineSettings');
+      const go = machine.getByRole('button', { name: '打开配置页', exact: true });
+      await go.waitFor({ state: 'visible', timeout: 10_000 });
+      assert.deepEqual(await machine.locator('dt').allTextContents(), ['媒体库', '端口', '更新']);
+      assert.equal(await machine.locator('input, textarea, select, form, [role="switch"], [aria-haspopup="listbox"]').count(), 0,
+        '摘要卡里出现了可编辑的控件');
+      assert.equal(await panel.locator('.configpage').count(), 0, '设置弹层里又挂了一份配置页');
+      for (const text of ['媒体修复', '订阅源', '保持登录时间']) {
+        assert.equal(await panel.getByText(text, { exact: true }).count(), 0, `设置弹层里还有「${text}」`);
+      }
+
+      await go.click();
+      await expectBody(page, '/configuration', configurationBody(page));
+      assert.equal(new URL(page.url()).pathname, '/configuration');
+      assert.equal(await panel.isHidden(), true, '去配置页之后设置弹层没有关');
+      await settle(page);
+      for (const text of ['媒体修复', '订阅源']) {
+        assert.equal(await page.locator('#stats').getByText(text, { exact: true }).count(), 0, `配置页上还有「${text}」`);
+      }
+      const entry = page.locator('#managebar [data-manage="configuration"]');
+      await entry.waitFor({ state: 'attached', timeout: 10_000 });
+      assert.equal(await entry.getAttribute('aria-pressed'), 'true', '管理菜单里的「配置」没有标成当前页');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 });

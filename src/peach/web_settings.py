@@ -42,6 +42,9 @@ METADATA_REFRESH_DAYS = (0, 7, 30, 90)
 DEFAULT_METADATA_REFRESH_DAYS = 30
 FOLLOW_INITIAL_DAYS = (0, 7, 30, 90)
 DEFAULT_FOLLOW_INITIAL_DAYS = 30
+#: 搜索框下拉里列几条最近搜索；0 是不记录。记录本身就在账本里（`/api/search-history`），
+#: 上限跟着它走，否则同一份记录在两台设备上显示的条数不一样。
+SEARCH_HISTORY_LIMIT_MAX = 50
 
 #: 只有这些键跟着账本走。白名单而不是黑名单：将来往设置里加字段的人必须显式表态
 #: 它该不该跨机同步，而不是默认就同步过去。
@@ -53,7 +56,7 @@ DEFAULT_FOLLOW_INITIAL_DAYS = 30
 SYNCED_SETTING_KEYS = frozenset({
     "sidebarOrder", "metadataRefreshDays", "followInitialDays", "postSetupTutorialDone",
     "organizeTemplates", "feedHideGroupCompilations", "feedHideSoloCompilations",
-    "feedHideExcerpts",
+    "feedHideExcerpts", "searchHistoryLimit",
 })
 #: 三个收起开关的键与各自对应的那一类，缺省值取 `feeds.DEFAULT_HIDDEN_COMPILATIONS`。
 FEED_COMPILATION_SWITCHES = (
@@ -122,6 +125,22 @@ def follow_initial_days(contract: SettingsContract) -> int:
     return normalise_follow_initial_days(_stored(contract).get("followInitialDays"))
 
 
+def normalise_search_history_limit(raw) -> int | None:
+    """0 到上限之间的整数原样收下，其余一律当没设置过。
+
+    没设置过读出来是 None 而不是默认值：前端据此把各浏览器本地记着的那个数同步上来一次。
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
+        return None
+    if isinstance(raw, float) and not raw.is_integer():
+        return None
+    try:
+        limit = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return limit if 0 <= limit <= SEARCH_HISTORY_LIMIT_MAX else None
+
+
 def normalise_organize_templates(raw) -> dict:
     """收敛整理模板：`{来源: {"file": 模板, "dir": 模板}}`。
 
@@ -187,6 +206,7 @@ def q_settings(contract: SettingsContract, _args=None) -> dict:
         "postSetupTutorialDone": payload.get("postSetupTutorialDone") is True,
         "organizeTemplates": normalise_organize_templates(payload.get("organizeTemplates")),
         **_feed_switches(payload),
+        "searchHistoryLimit": normalise_search_history_limit(payload.get("searchHistoryLimit")),
     }
 
 
@@ -216,6 +236,11 @@ def w_settings(contract: SettingsContract, body) -> dict:
         merged["postSetupTutorialDone"] = body["postSetupTutorialDone"] is True
     if "organizeTemplates" in body:
         merged["organizeTemplates"] = normalise_organize_templates(body["organizeTemplates"])
+    if "searchHistoryLimit" in body:
+        limit = normalise_search_history_limit(body["searchHistoryLimit"])
+        if limit is None:
+            raise ValueError(f"searchHistoryLimit 只收 0 到 {SEARCH_HISTORY_LIMIT_MAX} 的整数")
+        merged["searchHistoryLimit"] = limit
     for key, _kind in FEED_COMPILATION_SWITCHES:
         if key in body:
             if not isinstance(body[key], bool):

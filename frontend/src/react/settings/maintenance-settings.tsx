@@ -1,4 +1,4 @@
-/* 「更新与维护」分组：自动更新、检查更新、媒体修复、运行信息、重开安装教程，卸载排在最后。 */
+/* 「更新与维护」分组：自动更新、检查更新、运行信息、重开安装教程，卸载排在最后。 */
 import { useState, type FormEvent } from 'react';
 import { confirmModal } from '@peach/legacy/ui';
 
@@ -13,7 +13,6 @@ import type {
   AutomaticUpdateState, ConfigurationFact, ConfigurationGroupProps, ConfigurationProps, UninstallState,
 } from '../bundle';
 import { PathLine } from '../components/path-line';
-import { MediaRepair } from './media-repair';
 import { ReleaseUpdates } from './release-updates';
 import { Disclosure, ErrorText, ExternalLink, Fact, FactList, Footer, Help, Rows, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
@@ -27,7 +26,6 @@ export function MaintenanceSettings(
     <div className="flex flex-col gap-6">
       {data.automatic_updates ? <AutomaticUpdates initial={data.automatic_updates} receipt={receipt} /> : null}
       {data.updates ? <ReleaseUpdates initial={data.updates} initialJob={data.update_job} /> : null}
-      <MediaRepair />
       <Facts facts={data.facts} />
       <TutorialSettings receipt={receipt} reopenTutorial={reopenTutorial} />
       {data.uninstall ? <UninstallSettings uninstall={data.uninstall} receipt={receipt} /> : null}

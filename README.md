@@ -75,7 +75,7 @@ uv sync --locked --python 3.14
 
 macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.venv/bin/peach-tray`。托盘会打开首次设置页，在那里选媒体文件夹、访问范围和端口。
 
-FFmpeg 与 ffprobe 需自行安装：缺少时仍可浏览和播放浏览器兼容格式，转码、探测与缩略图不可用。源码部署的数据默认在仓库同级的 `peach-data/`，独立测试包放在 `%LOCALAPPDATA%\Peach\peach-data`，`PEACH_DATA_ROOT` 可指定其他位置。局域网与 HTTPS 访问见 [运行与配置](docs/OPERATIONS.md)；更新与卸载在「设置 → 这台电脑 → 更新与维护」，独立包的步骤见 [Windows 测试版](docs/TESTING_DESKTOP.md)。
+FFmpeg 与 ffprobe 需自行安装：缺少时仍可浏览和播放浏览器兼容格式，转码、探测与缩略图不可用。源码部署的数据默认在仓库同级的 `peach-data/`，独立测试包放在 `%LOCALAPPDATA%\Peach\peach-data`，`PEACH_DATA_ROOT` 可指定其他位置。局域网与 HTTPS 访问见 [运行与配置](docs/OPERATIONS.md)；更新与卸载在管理菜单「配置 → 更新与维护」，独立包的步骤见 [Windows 测试版](docs/TESTING_DESKTOP.md)。
 
 ## 数据边界
 

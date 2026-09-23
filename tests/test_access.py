@@ -74,8 +74,10 @@ class AccessTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Max-Age", session_header)
         self.assertEqual((await self.login(days=366)).status_code, 400)
         html = routes_auth.login_html("/")
-        self.assertIn('type="checkbox" name="days"', html)
+        self.assertIn('type="checkbox" name="days" value="30" checked', html)
         self.assertNotIn('type="radio"', html)
+        # 勾上就是 30 天：没有哪一处本地设置能把它改成别的数。
+        self.assertNotIn("loginDays", html)
 
     def test_the_login_page_is_the_auth_card_in_its_single_field_form(self):
         """登录页与首启页是同一张 Auth Card：样式整份取 `entry_page_style()`，控件同一副。

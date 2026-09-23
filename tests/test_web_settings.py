@@ -96,7 +96,19 @@ class SettingsRoundTripTests(unittest.TestCase):
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
                           "followInitialDays": 30, "postSetupTutorialDone": False,
                           "organizeTemplates": {}, "feedHideGroupCompilations": True,
-                          "feedHideSoloCompilations": False, "feedHideExcerpts": True})
+                          "feedHideSoloCompilations": False, "feedHideExcerpts": True,
+                          "searchHistoryLimit": None})
+
+    def test_the_search_history_limit_stays_unset_until_a_device_writes_it(self):
+        """没写过读出 None，前端据此把本机记着的那个数同步上来一次；写过之后各端读同一个数。"""
+        self.assertIsNone(q_settings(self.contract)["searchHistoryLimit"])
+        for limit in (0, 5, 50, "20"):
+            w_settings(self.contract, {"searchHistoryLimit": limit})
+            self.assertEqual(q_settings(self.contract)["searchHistoryLimit"], int(limit))
+        for odd in (-1, 51, True, None, "many", 3.5, [5]):
+            with self.assertRaises(ValueError, msg=repr(odd)):
+                w_settings(self.contract, {"searchHistoryLimit": odd})
+        self.assertEqual(self._stored_json(), {"searchHistoryLimit": 20})
 
     def test_the_compilation_switches_take_only_booleans(self):
         with self.assertRaises(ValueError):
@@ -131,7 +143,8 @@ class SettingsRoundTripTests(unittest.TestCase):
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
                           "followInitialDays": 30, "postSetupTutorialDone": False,
                           "organizeTemplates": {}, "feedHideGroupCompilations": True,
-                          "feedHideSoloCompilations": False, "feedHideExcerpts": True})
+                          "feedHideSoloCompilations": False, "feedHideExcerpts": True,
+                          "searchHistoryLimit": None})
         self.assertEqual(q_settings(self.contract)["sidebarOrder"], order)
         self.assertEqual(self._stored_json()["sidebarOrder"], order)
 

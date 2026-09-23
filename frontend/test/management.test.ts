@@ -17,7 +17,7 @@ describe('网盘功能范围', () => {
 });
 
 describe('数据管理首屏', () => {
-  it('读数卡与两张任务卡复用最终排版，静态标题、图标与按钮文本立即呈现', () => {
+  it('读数卡与三张任务卡复用最终排版，静态标题、图标与按钮文本立即呈现', () => {
     const root = document.createElement('div');
     root.innerHTML = cleanupSkeletonHtml();
     const stats = root.querySelectorAll('.cleanupstats > .board-plain-stat');
@@ -32,7 +32,7 @@ describe('数据管理首屏', () => {
       expect(card.querySelector('.cleanupmeta > .cleanup-count-skeleton')).not.toBeNull();
     }
     const cards = root.querySelectorAll('.cleanupgrid > .cleanupfieldset');
-    expect(cards).toHaveLength(2);
+    expect(cards).toHaveLength(3);
     for (const card of cards) {
       expect(card.querySelector('.geist-fieldset-content > .geist-fieldset-title')).not.toBeNull();
       expect(card.querySelector('.geist-fieldset-footer > button')?.textContent).not.toBe('');
@@ -44,8 +44,11 @@ describe('数据管理首屏', () => {
     expect(cards[0]?.querySelector('.board-link-button use')?.getAttribute('href')).toBe('#i-arrow-up');
     expect(cards[0]?.querySelector('.splitmain use')?.getAttribute('href')).toBe('#i-database');
     expect(cards[0]?.querySelector('.geist-fieldset-footer .splitbutton button.splitmain')?.hasAttribute('disabled')).toBe(true);
-    expect(cards[1]?.classList.contains('cleanupemptyfolders')).toBe(true);
-    expect(cards[1]?.querySelector('.geist-fieldset-footer use')?.getAttribute('href')).toBe('#i-scan-search');
+    // 媒体修复和扫描与采集排在同一列，紧跟在它后面。
+    expect(cards[1]?.querySelector('.geist-fieldset-title')?.textContent).toBe('媒体修复');
+    expect(cards[1]?.querySelector('.geist-fieldset-footer > button')?.hasAttribute('disabled')).toBe(true);
+    expect(cards[2]?.classList.contains('cleanupemptyfolders')).toBe(true);
+    expect(cards[2]?.querySelector('.geist-fieldset-footer use')?.getAttribute('href')).toBe('#i-scan-search');
     expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(18);
     expect(Array.from(root.querySelectorAll('.resourcesync > h2'), title => title.textContent)).toEqual(['链接管理', '资源同步']);
     expect(root.querySelectorAll('.linkstats > div')).toHaveLength(5);

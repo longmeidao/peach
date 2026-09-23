@@ -7,12 +7,6 @@ function d(e, t, n) {
 //#endregion
 //#region src/number-setting.ts
 var f = {
-	loginDaysSetting: {
-		min: 1,
-		max: 365,
-		unit: "天",
-		fallback: 30
-	},
 	batchSizeSetting: {
 		min: 1,
 		max: 200,
@@ -470,6 +464,7 @@ function de(e, t = {}) {
 		].map((e) => `<div><span>${e}</span><b>${N()}</b></div>`).join("")}</div>${R([
 			"关注列表",
 			"添加关注",
+			"订阅源",
 			"来源和凭证"
 		], "follow-workspace-switch")}<div class="fmain"><section class="fsec follow-skeleton-surface" data-follow-workspace-panel="list">${V(e)}${e ? "" : `<div class="board-follow-selection follow-skeleton-select-all">${H()}<span>全选本页</span></div>`}<div class="frows fsources" data-layout="${e ? "table" : "default"}">${r}<footer class="followpagefooter follow-skeleton-footer"><span class="followpageinfo">${N("116px")}</span><span>${N("96px")}</span><span class="follow-skeleton-pages"><i></i><i></i><i></i></span></footer></div></section></div></div>`;
 	} else if (e === "/configuration") n = `<div class="configpage">${L([
@@ -595,6 +590,11 @@ function be() {
           <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="board-link-button" href="/scraping"><span>来源和凭证</span><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-up"></use></svg></a><div class="splitbutton board-button-group primary"><button type="button" class="splitmain geist-button primary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-database"></use></svg>扫描并补全资料</button><button type="button" class="splittoggle geist-button primary" disabled aria-label="更多扫描与采集方式"><svg aria-hidden="true"><use href="#i-chevron-down"></use></svg></button></div></footer>
       </section>
+      <section class="cleanupfieldset cleanupprocessing board-processing-skeleton" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-repair">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-repair">媒体修复</h3>
+          <p>修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>开始修复</button></footer>
+      </section>
       <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹</h3>
           <strong>${t}</strong><p class="cleanupmeta">${t}</p></div>
@@ -696,10 +696,12 @@ var Z = {
 	"cover-crop": { react: "cover-crop" },
 	"follow-manage": { react: "follow-manage" },
 	"library-processing": { react: "library-processing" },
+	"media-repair": { react: "media-repair" },
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },
 	review: { react: "review" },
 	configuration: { react: "configuration" },
+	"configuration-summary": { react: "configuration-summary" },
 	activity: { react: "activity" },
 	stats: { react: "stats" },
 	taste: { react: "taste" }

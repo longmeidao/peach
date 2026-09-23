@@ -64,6 +64,11 @@ def q_thumbnail_jobs(contract, _args):
             'failed': state.get('failed') or 0, 'stopped': state.get('stopped') or ''}
 
 
+def _with_progress(fields: dict) -> dict:
+    """任务中心（活动页）按 `checked` / `total` 画进度条，这条链自己的计数叫 `done`。"""
+    return {**fields, 'checked': fields['done']} if 'done' in fields else fields
+
+
 def w_thumbnail_jobs(contract, body):
     """选档位。选 `off` 只是停手，已经生成的图留在盘上——几 GB 的产物删不删是另一件
     事，走数据管理页那条清理链，不在切换开关时顺手做掉。"""
@@ -85,19 +90,20 @@ def w_thumbnail_jobs(contract, body):
         result = timeline_sheets.generate_library(
             contract.db_path, root, interval, ffmpeg=str(choice.path),
             active=lambda: (contract.thumbnail_job.snapshot() or {}).get('job_id') == job_id,
-            report=lambda **fields: contract.thumbnail_job.update(job_id, **fields),
+            report=lambda **fields: contract.thumbnail_job.update(job_id, **_with_progress(fields)),
             guard=guard)
         # 磁盘触线停下来的那一轮不能记成完成：队列后面还剩几千部，而页面上「完成」
         # 和「跑完了」是同一个意思。按停是用户自己做的，不算故障。
         stopped = str(result.get('stopped') or '')
         failed = bool(stopped) and stopped != timeline_sheets.STOPPED_BY_USER
         contract.thumbnail_job.update(
-            job_id, **result, completed_at=time.time(),
+            job_id, **_with_progress(result), completed_at=time.time(),
             status='failed' if failed else 'complete',
             error=stopped if failed else '')
 
     contract.thumbnail_job.start(work, restart=True,
                                  initial={'mode': mode, 'interval': interval,
+                                          'stage': '采集缩略图', 'checked': 0,
                                           'total': 0, 'done': 0, 'made': 0,
                                           'skipped': 0, 'failed': 0, 'stopped': ''})
     return q_thumbnail_jobs(contract, {})

@@ -1,6 +1,6 @@
-/* 关注管理页：加来源、检查更新、移除来源、看凭据状态。
+/* 关注管理页：加来源、检查更新、移除来源、管订阅源、看凭据状态。
  *
- * 三栏是三件事，所以整块切换而不是一屏铺开：看的那一页（`/follow`）不联网，联网只发生
+ * 四栏是四件事，所以整块切换而不是一屏铺开：看的那一页（`/follow`）不联网，联网只发生
  * 在这里点「检查更新」的那一刻。
  *
  * 地址栏与个人偏好各管各的（ADR-0031「迁移桥接」）：
@@ -28,6 +28,7 @@ import { STAT_STRIP } from '../components/stat-card';
 import { AddSource } from './add-source';
 import { AliasManager } from './alias-manager';
 import { Credentials } from './credentials';
+import { FeedSources } from './feed-sources';
 import {
   credentialDone, DEFAULT_SORT, fetchCredentials, fetchFollow, FOLLOW_CREDENTIALS_KEY,
   FOLLOW_MANAGE_KEY, groupByAuthor, isBroken, isLayout, isSortKey, keepSelected, pageSizeOf,
@@ -35,7 +36,9 @@ import {
 } from './follow-manage';
 import { SourceList } from './source-list';
 
-const TABS = [['list', '关注列表'], ['add', '添加关注'], ['source', '来源和凭证']] as const;
+const TABS = [
+  ['list', '关注列表'], ['add', '添加关注'], ['feeds', '订阅源'], ['source', '来源和凭证'],
+] as const;
 type TabKey = (typeof TABS)[number][0];
 
 const isTab = (value: unknown): value is TabKey => TABS.some(([key]) => key === value);
@@ -133,7 +136,7 @@ export function FollowManagePage(props: FollowManageProps) {
         setTab(next);
         go({ tab: next });
       }} className="flex flex-col gap-6">
-        {/* 旧 `.follow-workspace-switch`：三块互斥面板，形态是分段控件不是三枚裸按钮。 */}
+        {/* 旧 `.follow-workspace-switch`：几块互斥面板，形态是分段控件不是三枚裸按钮。 */}
         <TabList aria-label="关注管理区域" className={SEGMENTED_TRACK}>
           {TABS.map(([key, name]) => (
             <Tab key={key} id={key} className={SEGMENT}>
@@ -173,6 +176,10 @@ export function FollowManagePage(props: FollowManageProps) {
             openCredentials={() => { setTab('source'); go({ tab: 'source' }) }} />
           <AliasManager groups={data.author_aliases || []} readOnly={readOnly} toast={toast}
             suggestions={data.alias_suggestions || []} sources={data.sources} />
+        </TabPanel>
+
+        <TabPanel id="feeds" className="flex flex-col gap-4">
+          <FeedSources readOnly={readOnly} />
         </TabPanel>
 
         <TabPanel id="source" className="flex flex-col gap-4">

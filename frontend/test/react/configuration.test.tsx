@@ -29,7 +29,7 @@ const startup = {
   available: true, enabled: false, silent: true, message: '', desktop: false, desktop_message: '',
 };
 
-/** 除了配置本身，页面上还有按自己节律问的块（媒体修复）。按路径应答，别的路径直接空转。 */
+/** 按路径应答：配置快照照给，别的路径回一份空闲状态，不让哪一块的自取拖住断言。 */
 function serve(config: ConfigurationData) {
   const calls: string[] = [];
   const fetcher = vi.fn(async (path: string) => {
@@ -65,11 +65,12 @@ it('四个分区各有小标题，标题和分区交替排在 `.configpage` 的�
     .toEqual([true, false, true, false, true, false, true, false]);
 });
 
-/* 「通用」不在这条规则里：那一组装着订阅源，而订阅源不看配置快照，哪份配置下它都有内容。 */
 it('没有内容的组连标题一起省略', async () => {
   const host = await open(data());
-  expect(groups(host)).toEqual(['通用', '媒体', '更新与维护']);
+  expect(groups(host)).toEqual(['媒体', '更新与维护']);
   expect(host.textContent).not.toContain('开机自启');
+  expect(host.textContent).not.toContain('订阅源');
+  expect(host.textContent).not.toContain('媒体修复');
   expect(host.textContent).not.toContain('Peach 代理');
 });
 

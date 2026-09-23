@@ -231,10 +231,7 @@ def login_html(next_path: str, *, invalid: bool = False) -> str:
         f'{error}</div>'
         f'<input name="next" type="hidden" value="{safe_next}">'
         + check_html("days", "保持登录", checked=True, value="30")
-        + '<button type="submit">登录</button></form></section></main><script>'
-        'try{const d=JSON.parse(localStorage.getItem("peach.settings.v1")||"{}").loginDays;'
-        'if(Number.isInteger(d)&&d>=1&&d<=365)document.querySelector("[name=days]").value=String(d)}catch{}'
-        '</script></body></html>'
+        + '<button type="submit">登录</button></form></section></main></body></html>'
     )
 
 

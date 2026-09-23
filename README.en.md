@@ -75,7 +75,7 @@ uv sync --locked --python 3.14
 
 On macOS replace the last two commands with `uv sync --locked --python 3.14 --extra macos` and `./.venv/bin/peach-tray`. The tray opens the first-run setup page, where you pick media folders, access scope and port.
 
-FFmpeg and ffprobe are installed separately: without them you can still browse and play browser-compatible formats, while transcoding, probing and thumbnails stay unavailable. Source deployments keep data in `peach-data/` next to the repository, the standalone package uses `%LOCALAPPDATA%\Peach\peach-data`, and `PEACH_DATA_ROOT` points either one elsewhere. LAN and HTTPS access are covered in [operations](docs/OPERATIONS.md); updates and uninstall live under Settings → This computer → Updates, with the standalone steps in [Windows testing](docs/TESTING_DESKTOP.md).
+FFmpeg and ffprobe are installed separately: without them you can still browse and play browser-compatible formats, while transcoding, probing and thumbnails stay unavailable. Source deployments keep data in `peach-data/` next to the repository, the standalone package uses `%LOCALAPPDATA%\Peach\peach-data`, and `PEACH_DATA_ROOT` points either one elsewhere. LAN and HTTPS access are covered in [operations](docs/OPERATIONS.md); updates and uninstall live under Manage → Configuration → Updates and maintenance, with the standalone steps in [Windows testing](docs/TESTING_DESKTOP.md).
 
 ## Data boundaries
 

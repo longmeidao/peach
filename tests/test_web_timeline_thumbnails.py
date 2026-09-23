@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from peach import timeline_sheets, web_timeline_thumbnails
+from peach import task_runs, timeline_sheets, web_timeline_thumbnails
 
 
 class ModeFileTests(unittest.TestCase):
@@ -70,6 +70,28 @@ class ThumbnailJobEndpointTests(unittest.TestCase):
         started = self.contract.thumbnail_job.start.call_args
         self.assertTrue(started.kwargs["restart"])
         self.assertEqual(started.kwargs["initial"]["interval"], 30)
+
+    def test_the_run_reports_its_count_where_the_activity_page_reads_it(self):
+        """进度只在活动页上看：任务中心读 `checked` / `total` 和那一行 `stage`。"""
+        resolver = MagicMock()
+        resolver.return_value.ffmpeg.return_value.path = "ffmpeg"
+        with patch.object(web_timeline_thumbnails, "FFmpegResolver", resolver):
+            web_timeline_thumbnails.w_thumbnail_jobs(self.contract, {"mode": "coarse"})
+        started = self.contract.thumbnail_job.start.call_args
+        self.assertEqual((started.kwargs["initial"]["checked"], started.kwargs["initial"]["stage"]),
+                         (0, "采集缩略图"))
+        work = started.args[0]
+
+        def generate(*_args, report, **_kwargs):
+            report(total=12, done=5, made=5, skipped=0, failed=0, stopped="")
+            return {"total": 12, "done": 12, "made": 11, "skipped": 1, "failed": 0, "stopped": ""}
+
+        with patch.object(timeline_sheets, "generate_library", side_effect=generate),                 patch.object(web_timeline_thumbnails, "DiskGuard"):
+            work("job-1")
+        updates = [call.kwargs for call in self.contract.thumbnail_job.update.call_args_list]
+        self.assertEqual([(u["checked"], u["total"]) for u in updates], [(5, 12), (12, 12)])
+        self.assertEqual(updates[-1]["status"], "complete")
+        self.assertEqual(task_runs.task_label("timeline-thumbnails"), "视频缩略图采集")
 
     def test_without_ffmpeg_the_density_cannot_be_turned_on(self):
         resolver = MagicMock()

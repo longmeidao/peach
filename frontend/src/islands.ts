@@ -37,10 +37,12 @@ export interface IslandContracts {
   'cover-crop': ReactBundle.CoverCropProps;
   'follow-manage': ReactBundle.FollowManageProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
+  'media-repair': ReactBundle.MediaRepairProps;
   'scraping': ReactBundle.ScrapingProps;
   'quality-goals': ReactBundle.QualityGoalsProps;
   review: ReactBundle.ReviewProps;
   configuration: ReactBundle.ConfigurationProps;
+  'configuration-summary': ReactBundle.ConfigurationSummaryProps;
   activity: ReactBundle.ActivityProps;
   stats: ReactBundle.StatsProps;
   taste: ReactBundle.TasteProps;
@@ -60,10 +62,12 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'cover-crop': { react: 'cover-crop' },
   'follow-manage': { react: 'follow-manage' },
   'library-processing': { react: 'library-processing' },
+  'media-repair': { react: 'media-repair' },
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
   review: { react: 'review' },
   configuration: { react: 'configuration' },
+  'configuration-summary': { react: 'configuration-summary' },
   activity: { react: 'activity' },
   stats: { react: 'stats' },
   taste: { react: 'taste' },

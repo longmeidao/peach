@@ -42,17 +42,11 @@
 .settingscard .settingshead button{width:24px;height:24px;border-radius:50%;background:var(--surface)}
 .settingscard .settingshead button svg{width:16px;height:16px}
 .settingscard.settingscard .settingsscroll{padding:var(--settings-gap) 32px 32px;min-height:0;overflow-y:auto}
-/* 右侧这一栏和「这台电脑」下的配置页是同一套分区：标题与页底是 `--page`，每组开关行坐在
-   一张 `--ground` 灰卡上，16px 圆角、左内边距 12px，行的分隔线在卡片左沿内 12px 收住——
-   即 BoardUI `SettingsCard` 的尺寸。「这台电脑」那一格的外壳不铺底：卡片由里面的配置页
-   自己画，外壳再铺一层就是灰卡外面套灰卡。 */
+/* 右侧这一栏和配置页是同一套分区：标题与页底是 `--page`，每组开关行坐在一张 `--ground`
+   灰卡上，16px 圆角、左内边距 12px，行的分隔线在卡片左沿内 12px 收住——即 BoardUI
+   `SettingsCard` 的尺寸。「这台电脑」那张摘要卡也坐在这张灰卡上。 */
 .settingscard .settingsscroll>.settinggroup{background:var(--ground);border-radius:16px;padding:0 0 0 12px}
-.settingscard .settingsscroll>.settinggroup:has(>.machinesettings){background:none;border-radius:0;padding:0}
 .settingscard .settingsscroll>.settinggroup>h3{display:none}
-/* 「这台电脑」那一格装的是整张配置页，不是一列开关行；它的外壳不是面板，面板是里面
-   那几段配置。里面没有一段亮着，就是用户在看左栏上半段的某一项，这时整个外壳都不该
-   占位置。 */
-.settingscard .settingsscroll>.settinggroup:has(>.machinesettings):not(:has(.board-group-active)){display:none}
 .settingscard .settingsscroll .settingrow{min-height:52px;padding:10px 10px 10px 0;gap:16px;border-top:0;border-bottom:1px solid var(--line-soft)}
 .settingscard .settingsscroll .settingrow:last-child{border-bottom:0}
 /* 一组里排在设置行后面的分区（「左侧导航」是唯一一处）不自己画上边线：这一层的线挂在

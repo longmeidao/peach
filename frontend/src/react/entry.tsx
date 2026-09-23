@@ -15,6 +15,8 @@ import { CoverCrop } from './cover-crop/cover-crop-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
 import { FollowManagePage } from './follow-manage/follow-manage-page';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
+import { prefetchMediaRepair } from './media-repair/media-repair';
+import { MediaRepairCard } from './media-repair/media-repair-card';
 import { LibraryProcessingCard } from './library-processing/library-processing-card';
 import { LibraryProcessingNotice } from './library-processing/library-processing-notice';
 import { QualityGoalsPage } from './quality-goals/quality-goals-page';
@@ -26,6 +28,7 @@ import { ScrapingPage } from './scraping/scraping-page';
 import { prefetchScraping } from './scraping/scraping';
 import { prefetchConfiguration } from './settings/configuration';
 import { ConfigurationPage } from './settings/configuration-page';
+import { ConfigurationSummary } from './settings/configuration-summary';
 import { prefetchStats } from './stats/stats';
 import { StatsPage } from './stats/stats-page';
 import { DEFAULT_WINDOW, prefetchTaste } from './taste/taste';
@@ -49,8 +52,9 @@ function overlayContainer(): HTMLElement {
  * 组件挂上去就直接读到，同一份数据不会因为挂在哪棵根上而各取一次。
  *
  * 第一帧用 `flushSync` 同步落到 DOM 上：遗留壳挂完这一页紧接着就读它画出来的结构
- * （设置弹层按 `.configgroup` 小标题拆左栏那一列），而 `root.render` 自己是排进下一次
- * 渲染的。往后的 `update` 照常异步。 */
+ * （配置页按 `.configgroup` 小标题切页签，再按地址里的 `#peachProxy` 滚过去），而
+ * `root.render` 自己是排进下一次渲染的；骨架已经清掉，晚一帧画就是一帧空白。往后的
+ * `update` 照常异步。 */
 function mounter<P extends object>(Component: ComponentType<P>) {
   return (el: Element, props: P): Bundle.ReactMount<P> => {
     const root = createRoot(el);
@@ -81,15 +85,20 @@ export const pages: Bundle.ReactPages = {
   configuration: {
     prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationPage),
   },
-  /* 首屏只取来源清单与凭据状态。检查更新与查找那两趟后台任务的快照不在首屏里：它们
-     常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */
+  /* 摘要卡读配置页同一份快照：从这里点进配置页时，首屏已经在缓存里。 */
+  'configuration-summary': {
+    prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationSummary),
+  },
+  /* 首屏只取来源清单与凭据状态，地址栏指着「订阅源」时连它一起取。检查更新与查找那两趟
+     后台任务的快照不在首屏里：它们常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */
   'follow-manage': {
-    prefetch: (_props, signal) => prefetchFollowManage(signal), mount: mounter(FollowManagePage),
+    prefetch: (props, signal) => prefetchFollowManage(signal, props.tab), mount: mounter(FollowManagePage),
   },
   'library-processing': {
     prefetch: (_props, signal) => prefetchLibraryProcessing(signal),
     mount: mounter(LibraryProcessing),
   },
+  'media-repair': { prefetch: (_props, signal) => prefetchMediaRepair(signal), mount: mounter(MediaRepairCard) },
   'quality-goals': {
     prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
   },
