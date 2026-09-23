@@ -20,8 +20,7 @@ fc2cmadb 的价值不在正文而在**评论区**：那里有用户长期维护�
 `cover_url` 留空并在 note 里写明，让分片回落到自己的缩略图。
 
 页面是 Laravel + Inertia，数据在 `<script type="application/json">` 里，
-不用解析 HTML。需要登录：cookie 走 `--cookies` 传入沙盒里的 Netscape 文件，
-绝不入库入仓。
+不用解析 HTML。游客就能读到评论，不带 Cookie。
 
 评论是匿名用户写的，一律只作候选：产出 CSV 交人工复核，不碰真相字段。
 同一个演员名被两条以上独立评论提到时置信度更高，写在 `performer_votes` 里。
@@ -36,7 +35,6 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import http.cookiejar
 import json
 import re
 import time
@@ -52,7 +50,7 @@ if str(SRC_DIR) not in sys.path:
 
 from peach.catalog_rules import normalise_code_key
 from peach.config import SECRETS_DIR
-from peach.scraping_access import client_for, cookie_jar, values_for
+from peach.scraping_access import client_for
 from peach.genre_decisions import load_genre_decisions
 from peach.genre_taxonomy import map_genres
 from peach.review_csv import read_rows, write_rows
@@ -89,12 +87,6 @@ METADATA_FIELDS = (
 def high_resolution_cover_url(url: str) -> str:
     """Use FC2's measured 1200px CDN rendition instead of the 276px listing thumb."""
     return re.sub(r"(/w)\d+(/)", rf"\g<1>{FC2_COVER_WIDTH}\2", str(url or ""), count=1)
-
-
-def load_cookies(path: Path) -> http.cookiejar.MozillaCookieJar:
-    jar = http.cookiejar.MozillaCookieJar(str(path))
-    jar.load(ignore_discard=True, ignore_expires=False)
-    return jar
 
 
 def parse_performers(body: str) -> dict[str, list[str]]:
@@ -411,8 +403,6 @@ def pending(database: Path, limit: int) -> list[tuple[str, str]]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
-    parser.add_argument("--cookies", type=Path,
-                        help="Netscape 格式 cookie 文件，放沙盒，别入仓")
     parser.add_argument("--log", type=Path,
                         default=GENERATED_DIR / "fc2-candidate-log.csv")
     parser.add_argument("--harvest", type=Path,
@@ -441,10 +431,6 @@ def run(args: argparse.Namespace) -> int:
         write_rows(args.metadata_log, METADATA_FIELDS, candidates)
         print(f"完成：{len(candidates)} 个 FC2 元数据字段候选 -> {args.metadata_log}")
         return 0
-    jar = (load_cookies(args.cookies) if args.cookies else
-           cookie_jar(values_for(SECRETS_DIR, "fc2cmadb"), "fc2cmadb"))
-    if not list(jar):
-        raise SystemExit("请在 /scraping 提供 FC2 Cookie，或传 --cookies；离线重建用 --rebuild-metadata-only")
     todo = pending(args.db, args.limit)
     owned = {video_id for _, video_id in todo}
     rows: list[dict] = []
@@ -453,7 +439,7 @@ def run(args: argparse.Namespace) -> int:
     args.raw.parent.mkdir(parents=True, exist_ok=True)
     raw_log = args.raw.open("w", encoding="utf-8")
     print(f"待抓 {len(todo)} 个 FC2 作品", flush=True)
-    with client_for(SECRETS_DIR, "fc2cmadb", cookies=jar) as client:
+    with client_for(SECRETS_DIR, "fc2cmadb") as client:
         for index, (code, video_id) in enumerate(todo, 1):
             try:
                 props = fetch_article(client, video_id)

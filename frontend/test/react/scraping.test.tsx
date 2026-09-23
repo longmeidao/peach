@@ -23,9 +23,9 @@ afterEach(() => queryClient.clear());
 notifyManager.setScheduler((notify) => notify());
 
 const source = (overrides: Partial<Source> = {}): Source => ({
-  source: 'fc2cmadb',
-  label: 'FC2CMADB',
-  login: 'https://fc2cmadb.com/',
+  source: 'javbus',
+  label: 'JavBus',
+  login: 'https://www.javbus.com/',
   accepts_cookie: true,
   network: 'peach',
   cookie_saved: false,
@@ -103,7 +103,7 @@ const tick = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync
 it('首屏用 prefetch 落进缓存的三份画出来，挂载时不再请求一次', async () => {
   const { calls, host } = await open(quiet());
   expect(calls.map((call) => call.path)).toEqual(FIRST_SCREEN);
-  expect(section(host, 'FC2CMADB')).not.toBeNull();
+  expect(section(host, 'JavBus')).not.toBeNull();
   expect(section(host, '高清封面')).not.toBeNull();
   const bridge = section(host, 'amane 桥');
   expect(bridge).not.toBeNull();
@@ -115,7 +115,7 @@ it('首屏用 prefetch 落进缓存的三份画出来，挂载时不再请求一
   expect(host.querySelector('[aria-haspopup=listbox]')?.textContent?.trim()).toBe('Peach 代理');
   expect(host.querySelector<HTMLAnchorElement>('a[href="/configuration#peachProxy"]')?.textContent)
     .toContain('配置 Peach 代理');
-  expect(host.querySelector<HTMLAnchorElement>('a[href="https://fc2cmadb.com/"]')?.target).toBe('_blank');
+  expect(host.querySelector<HTMLAnchorElement>('a[href="https://www.javbus.com/"]')?.target).toBe('_blank');
 });
 
 it('保存后清空秘密输入，列表就地换成服务端回的那一条，撤销随之可操作', async () => {
@@ -124,14 +124,14 @@ it('保存后清空秘密输入，列表就地换成服务端回的那一条，�
     'POST /api/scraping/settings': () => ({ body: { saved: source({ cookie_saved: true }) } }),
   });
   await type(password(host), 'session=fixture');
-  await submit(section(host, 'FC2CMADB'));
+  await submit(section(host, 'JavBus'));
   await settle();
 
   expect(calls[FIRST_SCREEN.length]).toEqual({
     path: '/api/scraping/settings',
     method: 'POST',
     body: {
-      source: 'fc2cmadb', network: 'peach', cookie: 'session=fixture', cookies_text: '', revoke: false,
+      source: 'javbus', network: 'peach', cookie: 'session=fixture', cookies_text: '', revoke: false,
     },
   });
   expect(password(host)?.value, '保存回来之后页面上不再留着刚交上去的那一份').toBe('');
@@ -149,7 +149,7 @@ it('撤销走同一条写入，回执说的是撤销', async () => {
   });
   await click(buttonNamed('撤销 Cookie', host));
   await settle();
-  expect(calls[FIRST_SCREEN.length]?.body).toMatchObject({ source: 'fc2cmadb', revoke: true });
+  expect(calls[FIRST_SCREEN.length]?.body).toMatchObject({ source: 'javbus', revoke: true });
   expect(toast).toHaveBeenCalledWith('Cookie 已撤销');
   expect(buttonNamed('撤销 Cookie', host), '撤销之后这颗键没有对象可撤了').toBeNull();
 });
@@ -160,7 +160,7 @@ it('保存失败时原因留在卡内，列表和刚填的内容都不动', asyn
     'POST /api/scraping/settings': () => ({ ok: false, status: 400, body: { message: 'Cookie 不是 Netscape 格式' } }),
   });
   await type(password(host), 'session=fixture');
-  await submit(section(host, 'FC2CMADB'));
+  await submit(section(host, 'JavBus'));
   await settle();
 
   expect(host.querySelector('[role=alert]')?.textContent).toContain('Cookie 不是 Netscape 格式');
@@ -181,8 +181,8 @@ it('连接结果按来源名称与这一跳查的是什么说成一句话', asyn
   await click(buttonNamed('检查连接', host));
   await settle();
 
-  expect(host.querySelector('[role=status]')?.textContent).toBe('FC2CMADB：可连接 · 800 × 538');
-  expect(host.querySelector('[role=alert]')?.textContent).toBe('FC2CMADB 高清图片：不能连接。需要登录');
+  expect(host.querySelector('[role=status]')?.textContent).toBe('JavBus：可连接 · 800 × 538');
+  expect(host.querySelector('[role=alert]')?.textContent).toBe('JavBus 高清图片：不能连接。需要登录');
 });
 
 it('Cookie 二选一：切过去的那一种才交，另一种连输入都不留', async () => {
@@ -197,7 +197,7 @@ it('Cookie 二选一：切过去的那一种才交，另一种连输入都不留
   expect(host.querySelector('input[type=file]')).not.toBeNull();
   expect(host.textContent).toContain('未选择文件');
 
-  await submit(section(host, 'FC2CMADB'));
+  await submit(section(host, 'JavBus'));
   await settle();
   expect(calls[FIRST_SCREEN.length]?.body).toMatchObject({ cookie: '', cookies_text: '' });
 
