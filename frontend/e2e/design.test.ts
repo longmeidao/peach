@@ -1295,6 +1295,17 @@ describe('设计决定', () => {
           const pic = skeleton.querySelector('.feednewskeleton .pic.imgwait');
           first.sheen = pic ? getComputedStyle(pic, '::after').opacity : '';
         }).observe(document, { childList: true, subtree: true });
+        // 真实库上启动脚本发出名单请求后还要连续跑四五百毫秒，名单的响应就在这段时间里到、
+        // 排在队里。这里在发请求的同一个任务末尾占住主线程 700ms，把那一段复现出来。
+        const fetch = window.fetch;
+        let blocked = false;
+        window.fetch = (...args) => {
+          if (!blocked && String(args[0]).includes('/api/entity/shapes')) {
+            blocked = true;
+            queueMicrotask(() => { const end = performance.now() + 700; while (performance.now() < end); });
+          }
+          return fetch(...args);
+        };
       });
       let release = () => {};
       const held = new Promise<void>((resolve) => { release = resolve; });

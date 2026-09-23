@@ -352,6 +352,21 @@ const wantsDiscoveryBars=()=>$('#tiers').style.display!=='none';
 /* 资料页形状名单（`loadEntityShapes`）的在途请求，和画骨架前最多等它多久。 */
 let entityShapesReady=null;
 const ENTITY_SHAPES_WAIT=400;
+/* 那 400ms 只算页面能画东西的时间。启动脚本发出名单请求后还要连续跑几百毫秒，响应这时
+   已经到了、只是排在队里；按墙钟算的话计时器常常先于它被处理，骨架就画成了没有那两块的
+   样子。所以每 50ms 醒一次，被长任务拖住的那一截只记 50ms。 */
+function waitEntityShapes(){
+  const deadline=new Promise(resolve=>{
+    let left=ENTITY_SHAPES_WAIT,last=performance.now();
+    const tick=()=>{
+      const now=performance.now();
+      left-=Math.min(now-last,50);last=now;
+      if(left>0)setTimeout(tick,Math.min(left,50));else resolve();
+    };
+    setTimeout(tick,50);
+  });
+  return Promise.race([entityShapesReady||=loadEntityShapes(),deadline]);
+}
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
   /* 骨架画的就是这个表面，所以先把 `data-surface` 写上：深链冷启动时 `restoreRoute()`
@@ -388,7 +403,7 @@ function renderInitialSurfaceLoading(){
     $('#index').hidden=false;$('#grid').innerHTML='';
     // 形状名单这时刚发出去：等它一下再画，骨架第一帧就带着这一位有的那两块。
     const kind=ROUTE_ENTITIES[path.split('/')[1]],name=path.split('/').slice(2).join('/');
-    void Promise.race([entityShapesReady,new Promise(resolve=>setTimeout(resolve,ENTITY_SHAPES_WAIT))]).then(()=>{
+    void waitEntityShapes().then(()=>{
       if($('#index').firstElementChild||decodeURIComponent(location.pathname)!==path)return;
       showEntityLoading(kind,name);
       fitSkeleton($('#index'));
@@ -8230,7 +8245,7 @@ async function openEntity(kind,name,push=true){
   /* 名单启动时就在取；深链直接落在资料页时它可能还在路上，稍等一下再画骨架，画出来
      就是最终的形状。等不到就先画，名单到了再补那两块。 */
   if(!entityShapes){
-    await Promise.race([entityShapesReady||=loadEntityShapes(),new Promise(resolve=>setTimeout(resolve,ENTITY_SHAPES_WAIT))]);
+    await waitEntityShapes();
     if(seq!==entityRequestSeq)return;
   }
   showEntityLoading(kind,name);
