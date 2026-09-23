@@ -360,8 +360,8 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "siteName", ["不是网址"], ""),
         ])
 
-    def test_a_studio_page_calls_its_own_site_the_official_site(self):
-        """厂牌页上指回自家站的链接写「官方网站」，指向别家的保留那家的名字；事务所页与人物页照旧写名字。"""
+    def test_a_company_page_calls_its_own_site_the_official_site(self):
+        """厂牌页与事务所页上指回自家站的链接写「官方网站」，指向别家的保留那家的名字；人物页照旧写名字。"""
         light = {"url": "https://lightpro.jp/", "label": "LIGHT"}
         nax = {"url": "https://official.nax-pro.com/", "label": "New Actor eXperience"}
         self.assertJsResults([
@@ -388,8 +388,13 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "officialLinkText",
              [{"url": "https://www.prestige-av.com/goods/", "label": "Prestige"}, "studio",
               ["Jackson"]], "Prestige"),
-            ("core.js", "officialLinkText", [light, "agency", ["LIGHT", "RIGHT"]], "LIGHT"),
-            ("core.js", "officialLinkText", [nax, "agency", ["New Actor eXperience"]], "NAX"),
+            ("core.js", "officialLinkText", [light, "agency", ["LIGHT", "RIGHT"]], "官方网站"),
+            ("core.js", "officialLinkText", [nax, "agency", ["New Actor eXperience"]], "官方网站"),
+            ("core.js", "officialLinkText",
+             [{"url": "https://old-crew.blog.jp/", "label": "官方博客"}, "agency",
+              ["Office Old Crew"]], "官方博客"),
+            # 事务所页上链到别家（拆分出来的 EST 链着 LIGHT 的旧站）保留那家的名字。
+            ("core.js", "officialLinkText", [light, "agency", ["EST", "エスト"]], "LIGHT"),
             ("core.js", "officialLinkText", [light, "performer", ["松本一香"]], "LIGHT"),
             # 存档快照照写 label，厂牌页上也不改写成「官方网站」。
             ("core.js", "officialLinkText",
