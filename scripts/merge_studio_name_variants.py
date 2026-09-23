@@ -22,7 +22,10 @@ PREMIUM)`。整串匹配不到已有实体，落库那一刻就自己立了一�
 （`300MIUM`），class B 在这里一个前缀都取不到，所以它接不住这一类。
 
 保留哪一边：写法变体保留纯 ASCII 的那一个（用户 2026-09-04 定的口径「统一为英文、
-罗马音」），两边都是或都不是 ASCII 时保留作品多的一侧；日文名／罗马字名一律保留罗马字侧；
+罗马音」），两边都是或都不是 ASCII 时保留作品多的一侧；日文名／罗马字名看日文侧：
+含汉字或平假名的保留日文侧（`セレブの友` 顶掉 `Celeb no Tomo`：罗马音是番号站的转写，
+不算英文，用户 2026-09-23 定的口径），纯片假名的保留罗马字侧（`MOODYZ` 不让给
+`ムーディーズ`，那是英文品牌的外来语写法）；
 并写名保留被括号两边指到的那一条，也就是已经规范化过的那一侧。
 被丢弃的名字降为别名，扁平 `asset.studio` 一并改写成保留名（ADR-0005：兼容投影跟着
 规范关系走）。只改实体不改投影的话，下一次刮削会照着投影里的旧名把实体再建一遍。
@@ -60,6 +63,8 @@ SYMBOL_FOLD = str.maketrans({
 })
 #: 假名、汉字与全角片假名。判「这个名字是日文写法」只看有没有这些字符。
 JAPANESE = re.compile(r"[぀-ヿ㐀-䶿一-鿿]")
+#: 汉字或平假名。日文名含它们，对面的拉丁名就是罗马音转写；只有片假名的是外来语写法。
+NATIVE_JAPANESE = re.compile(r"[぀-ゟ㐀-䶿一-鿿]")
 #: 番号前缀：连字符前那一段字母数字。`336KBI-042` 的前缀是 `336KBI`。
 CODE_PREFIX = re.compile(r"^([A-Za-z][A-Za-z0-9]*)-\d")
 #: 两种写法并在一串里：`プレステージプレミアム(PRESTIGE PREMIUM)`。括号里不许再套括号，
@@ -146,8 +151,13 @@ def script_variants(names: dict[int, str], counts: dict[int, int],
             # 两种都交人工——这条捷径唯一的身份保证就是前缀，它不成立就没有别的。
             continue
         other, common = hits[0]
-        rows.append(_pair(other, entity_id, names, counts, "日文名／罗马字名",
-                          f"共用番号前缀 {'、'.join(common)}"))
+        evidence = f"共用番号前缀 {'、'.join(common)}"
+        if NATIVE_JAPANESE.search(name):
+            rows.append(_pair(entity_id, other, names, counts, "日文名／罗马字名",
+                              evidence + "；日文名含汉字或平假名，罗马字名是转写"))
+        else:
+            rows.append(_pair(other, entity_id, names, counts, "日文名／罗马字名",
+                              evidence + "；日文名是纯片假名，保留英文品牌名"))
     return rows
 
 

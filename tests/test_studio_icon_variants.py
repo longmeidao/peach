@@ -758,6 +758,20 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertEqual([row["verdict"] for row in rows], [MODULE.PADDED, MODULE.OK])
         self.assertEqual(fetch.asked, [self.url])
 
+    def test_an_agency_pass_reads_only_the_agency_table(self):
+        """同名的事务所不能拿到厂牌指好的图：两边共用 `logo_key` 落盘名。"""
+        agency_url = "https://agency.example/logo.svg"
+        fetch = Fetch({self.url: block_png((400, 80)), agency_url: block_png((400, 80))})
+        rows = MODULE.harvest({"Jackson": self.target}, {}, fetch, self.candidates,
+                              wordmarks={"Jackson": agency_url})
+        self.assertEqual({row["url"] for row in rows}, {agency_url})
+        self.assertNotIn(self.url, fetch.asked)
+
+    def test_the_agency_table_keys_are_ledger_names_on_their_own_file_names(self):
+        keys = [MODULE.safe_name(name) for name in MODULE.AGENCY_WORDMARK_SOURCES]
+        self.assertEqual(sorted(keys), sorted(MODULE.AGENCY_WORDMARK_SOURCES_BY_SAFE))
+        self.assertIn("Diaz Group", MODULE.AGENCY_WORDMARK_SOURCES)
+
     #: `harvest_maker_directories.py` 那三个名录各自的地址形态。表里的每一条都得落在
     #: 这里面，或者落在下面那份点名清单里。
     DIRECTORY_URLS = (
