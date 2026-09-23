@@ -46,27 +46,36 @@ it('导航代际变化或卸载后不接受在途结果，卸载断开观察器'
   expect(disconnects[0]).toHaveBeenCalledOnce();expect(apply).not.toHaveBeenCalled();
 });
 
-it('横向滚动滚到头只吃掉惯性尾巴，鼠标滚轮与下一次手势交还页面，重复绑定与移除都释放资源', async () => {
+it('在横排上开头的滚轮手势整段归这一排，鼠标一格逐帧走完、半路接着加，拦不住的留给页面，重复绑定与移除都释放资源', async () => {
   const node=button();let left=0,now=1000;const disconnect=vi.fn();
   vi.stubGlobal('ResizeObserver',class {observe(){}disconnect=disconnect});
+  const frames:FrameRequestCallback[]=[];
+  vi.stubGlobal('requestAnimationFrame',(callback:FrameRequestCallback)=>frames.push(callback));
+  vi.stubGlobal('cancelAnimationFrame',()=>{frames.length=0});
+  const step=()=>{now+=16;frames.shift()!(now)};
+  const flush=()=>{for(let i=0;i<200&&frames.length;i+=1)step()};
   const clock=vi.spyOn(performance,'now').mockImplementation(()=>now);
   const clamp=(value:number)=>Math.max(0,Math.min(100,value));
   Object.defineProperties(node,{clientWidth:{value:100},scrollWidth:{value:200},scrollLeft:{get:()=>left,set:value=>{left=clamp(value)}}});
-  const smooth=vi.fn(({left:value}:{left:number})=>{left=clamp(value)});node.scrollTo=smooth as never;
+  node.animate=(()=>({cancel(){},onfinish:null})) as never;
   const control=wireHorizontalScroller(node,{drag:true});
   expect(wireHorizontalScroller(node)).toBe(control);
   const wheel=(deltaY=100,cancelable=true)=>new WheelEvent('wheel',{deltaY,cancelable});
-  // 鼠标一格走平滑动画，不是一下跳过去。
-  const moving=wheel();node.dispatchEvent(moving);node.dispatchEvent(new Event('scroll'));
-  expect(moving.defaultPrevented).toBe(true);expect(smooth).toHaveBeenLastCalledWith({left:100,behavior:'smooth'});
-  expect(node.dataset.overflowRight).toBe('false');
-  // 顶到头后一格比一格小的是惯性，吃掉；一样大的是人还在滚，交还页面。
-  now+=40;const tail=wheel(60);node.dispatchEvent(tail);expect(tail.defaultPrevented).toBe(true);
-  now+=40;const still=wheel(60);node.dispatchEvent(still);expect(still.defaultPrevented).toBe(false);
-  now+=1000;const next=wheel(40);node.dispatchEvent(next);expect(next.defaultPrevented).toBe(false);
+  // 鼠标一格逐帧走，不是一下跳过去。
+  const moving=wheel(60);node.dispatchEvent(moving);
+  expect(moving.defaultPrevented).toBe(true);expect(left).toBe(0);
+  step();expect(left).toBeGreaterThan(0);expect(left).toBeLessThan(60);
+  // 半路再来一格，从上一格的终点接着算，一路走到头停下。
+  now+=40;node.dispatchEvent(wheel(60));flush();
+  expect(left).toBe(100);expect(frames).toHaveLength(0);
+  node.dispatchEvent(new Event('scroll'));expect(node.dataset.overflowRight).toBe('false');
+  // 到头以后还在转、隔一会再转，都不交给页面：要滚整页得把指针挪出这一排。
+  now+=40;const still=wheel(60);node.dispatchEvent(still);expect(still.defaultPrevented).toBe(true);
+  now+=1000;const next=wheel(60);node.dispatchEvent(next);expect(next.defaultPrevented).toBe(true);
+  expect(left).toBe(100);
   // 触控板的小步直接跟手，不套动画。
-  left=50;now+=1000;smooth.mockClear();node.dispatchEvent(wheel(-10));
-  expect(left).toBe(40);expect(smooth).not.toHaveBeenCalled();
+  left=50;now+=1000;node.dispatchEvent(wheel(-10));
+  expect(left).toBe(40);expect(frames).toHaveLength(0);
   // 页面那边开了头的手势拦不住，这一排也不跟着动。
   left=0;now+=1000;node.dispatchEvent(wheel(100,false));expect(left).toBe(0);
   clock.mockRestore();
@@ -74,7 +83,7 @@ it('横向滚动滚到头只吃掉惯性尾巴，鼠标滚轮与下一次手势�
   left=0;node.dispatchEvent(wheel());expect(left).toBe(0);
 });
 
-it('横排推过头按橡皮筋收敛，一次滚轮手势只弹一下，拖过头松手弹回', () => {
+it('横排推过头按橡皮筋收敛，顶在边上再推也弹，一次滚轮手势只弹一下，拖过头松手弹回', () => {
   expect(rubberBand(0,400)).toBe(0);
   expect(rubberBand(100,400)).toBeGreaterThan(0);expect(rubberBand(100,400)).toBeLessThan(100);
   expect(rubberBand(-100,400)).toBe(-rubberBand(100,400));
@@ -88,15 +97,17 @@ it('横排推过头按橡皮筋收敛，一次滚轮手势只弹一下，拖过�
   const animate=vi.fn(()=>({cancel(){},onfinish:null}));node.animate=animate as never;
   wireHorizontalScroller(node,{drag:true});
   const wheel=(deltaY:number)=>new WheelEvent('wheel',{deltaY,cancelable:true});
-  // 已经在最右，再推交还页面，不弹：那时候动的是整页。
-  node.dispatchEvent(wheel(30));expect(animate).not.toHaveBeenCalled();
-  // 这一排自己吃下的手势滚过头：弹一下，往左。惯性尾巴接着撞边也不再弹。
-  left=90;now+=1000;node.dispatchEvent(wheel(30));
-  expect(animate).toHaveBeenCalledOnce();
+  // 顶在最右还往前推：这一格也归这一排，弹一下，往左。
+  const push=wheel(30);node.dispatchEvent(push);
+  expect(push.defaultPrevented).toBe(true);expect(animate).toHaveBeenCalledOnce();
   const [frames]=animate.mock.calls[0] as unknown as [Record<string,string>[]];
   expect(parseFloat(frames[1]!['--edge-pull']!)).toBeLessThan(0);
+  // 惯性尾巴接着撞边，同一次手势不再弹。
   now+=40;node.dispatchEvent(wheel(20));now+=40;node.dispatchEvent(wheel(10));
   expect(animate).toHaveBeenCalledOnce();
+  // 下一次手势从半路滚过头，再弹一次。
+  left=90;now+=1000;node.dispatchEvent(wheel(30));
+  expect(left).toBe(100);expect(animate).toHaveBeenCalledTimes(2);
   // 拖过左端：内容跟手右移、比手少走；松手从那里弹回原位。
   // happy-dom 的 `pageX` 恒为 0，照浏览器的样子补上。
   const mouse=(type:string,pageX=0)=>Object.defineProperty(new MouseEvent(type,{button:0}),'pageX',{value:pageX});
@@ -107,7 +118,7 @@ it('横排推过头按橡皮筋收敛，一次滚轮手势只弹一下，拖过�
   expect(node.classList.contains('edgepull')).toBe(true);
   window.dispatchEvent(new MouseEvent('mouseup'));
   expect(node.style.getPropertyValue('--edge-pull')).toBe('');
-  expect(animate).toHaveBeenCalledTimes(2);
+  expect(animate).toHaveBeenCalledTimes(3);
   clock.mockRestore();
 });
 

@@ -3855,7 +3855,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(app.count("window.addEventListener('mouseup'"), 0,
                          "拖动监听归共享控件生命周期")
         self.assertPageContains("signal:abort.signal")
-        self.assertPageContains("destroy(){abort.abort();resize.disconnect();horizontalControls.delete(el)")
+        self.assertPageContains("destroy(){abort.abort();stopGlide();resize.disconnect();horizontalControls.delete(el)")
         drag = app[app.index("function wireDrag(el){"):]
         drag = drag[:drag.index("function wireAllDrag")]
         self.assertNotIn("window.addEventListener", drag,

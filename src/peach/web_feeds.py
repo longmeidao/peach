@@ -11,7 +11,7 @@ import time
 import uuid
 from datetime import timedelta
 
-from . import entities, entry_links, feed_followup, feeds
+from . import entities, entry_links, feed_followup, feeds, web_settings
 from .jobs import TaskRunConflict
 from .http import HttpRequest, public_https_url
 
@@ -133,10 +133,11 @@ def _execute_check(contract, body, job_id: str) -> dict:
     # 新发现的先排，余下名额给还缺资料或封面的旧壳：同一批一条后继。定时那一轮只带
     # 到了重试时间的，手动点的那一轮全带。
     retry_after = feed_followup.RETRY_AFTER if body.get("automatic") else timedelta(0)
+    hidden = web_settings.hidden_compilations(contract.database)
     with contract.database.read_connection() as connection:
         batch = codes + feed_followup.backlog(
             connection, contract.cover_root, exclude=codes, retry_after=retry_after,
-            limit=max(0, feed_followup.MAX_BATCH - len(codes)))
+            limit=max(0, feed_followup.MAX_BATCH - len(codes)), hidden=hidden)
     return {"ok": True, "checked": len(rows), "total": len(rows), "results": results,
             "added": len(codes),
             # 后继由结果声明，调度端统一派（ADR-0040）：这里只把清单交出去。
@@ -176,8 +177,9 @@ def q_feed_check(contract, args) -> dict:
 
 def q_feeds(contract, args) -> dict:
     """设置页「订阅源」小节的首屏。"""
+    hidden = web_settings.hidden_compilations(contract.database)
     with contract.database.read_connection() as connection:
-        feeds.register_functions(connection)
+        feeds.register_functions(connection, hidden)
         rows = feeds.sources(connection)
         pending = connection.execute(
             "SELECT count(*) FROM feed_discovery d WHERE d.ignored_at IS NULL"
@@ -249,13 +251,13 @@ def _follow_entity(contract, body) -> dict:
 #: 列表一次给多少条。首页那一块只放一行，人物页给一屏。
 DISCOVERY_LIMIT = 24
 
-#: 哪些壳算「新作」。已经入库的不算——那条新作的使命已经完成了；大合集不算——
-#: 合集里的每一段都早就出过（`feeds.is_compilation`）。两条都是读的时候现算。
-#: 用到它的连接要先 `feeds.register_functions`。
+#: 哪些壳算「新作」。已经入库的不算——那条新作的使命已经完成了；设置里收起的那几类
+#: 合集不算（`feeds.compilation_kind`）。两条都是读的时候现算。
+#: 用到它的连接要先按设置 `feeds.register_functions`。
 LISTED = (
     "NOT EXISTS (SELECT 1 FROM asset a WHERE a.code IS NOT NULL"
     " AND normalise_code_key(a.code)=normalise_code_key(d.code))",
-    "NOT is_feed_compilation(d.title,d.performers)",
+    "NOT is_feed_hidden(d.title,d.performers)",
 )
 
 
@@ -280,8 +282,9 @@ def q_feed_discoveries(contract, args) -> dict:
         where.append("EXISTS (SELECT 1 FROM feed_discovery_entity de"
                      " WHERE de.discovery_id=d.id AND de.entity_id=?)")
         params.append(int(entity_id))
+    hidden = web_settings.hidden_compilations(contract.database)
     with contract.database.read_connection() as connection:
-        feeds.register_functions(connection)
+        feeds.register_functions(connection, hidden)
         rows = connection.execute(
             "SELECT d.*, s.name AS source_name, s.kind AS source_kind"
             " FROM feed_discovery d LEFT JOIN feed_source s ON s.id=d.source_id"

@@ -18,6 +18,8 @@ import json
 import time
 from typing import Protocol
 
+from .feeds import DEFAULT_HIDDEN_COMPILATIONS, GROUP_COMPILATION, SOLO_COMPILATION
+
 DEFAULT_PROFILE_ID = "local-default"
 
 #: 默认就在侧栏里的入口，顺序即默认顺序。首页之后是关注（每天有新东西的那一屏），
@@ -46,10 +48,17 @@ DEFAULT_FOLLOW_INITIAL_DAYS = 30
 #: `postSetupTutorialDone` 说的是「这套馆藏已经装完了」，不是「这台设备看过教程」——
 #: 装完就是装完，换台设备打开不该再被教一遍，所以它也跟着账本走。
 #: 整理模板（ADR-0039）同理：它是「我要我的库长什么样」，不是这台设备上的顺手。
+#: 新作那一行收不收合集（`feeds.compilation_kind`）同样是服务端行为：列表、未读数和
+#: 替哪些壳补封面都按它算，所以跟着账本走。
 SYNCED_SETTING_KEYS = frozenset({
     "sidebarOrder", "metadataRefreshDays", "followInitialDays", "postSetupTutorialDone",
-    "organizeTemplates",
+    "organizeTemplates", "feedHideGroupCompilations", "feedHideSoloCompilations",
 })
+#: 两个合集开关的键与各自对应的那一类，缺省值取 `feeds.DEFAULT_HIDDEN_COMPILATIONS`。
+FEED_COMPILATION_SWITCHES = (
+    ("feedHideGroupCompilations", GROUP_COMPILATION),
+    ("feedHideSoloCompilations", SOLO_COMPILATION),
+)
 
 
 class SettingsContract(Protocol):
@@ -138,6 +147,18 @@ def organize_templates(contract: SettingsContract) -> dict:
     return normalise_organize_templates(_stored(contract).get("organizeTemplates"))
 
 
+def _feed_switches(payload: dict) -> dict[str, bool]:
+    return {key: payload[key] if isinstance(payload.get(key), bool)
+            else kind in DEFAULT_HIDDEN_COMPILATIONS
+            for key, kind in FEED_COMPILATION_SWITCHES}
+
+
+def hidden_compilations(contract: SettingsContract) -> frozenset[str]:
+    """新作那一行收起哪几类合集。"""
+    switches = _feed_switches(_stored(contract))
+    return frozenset(kind for key, kind in FEED_COMPILATION_SWITCHES if switches[key])
+
+
 def _stored(contract: SettingsContract) -> dict:
     with contract.read_connection() as connection:
         row = connection.execute(
@@ -163,6 +184,7 @@ def q_settings(contract: SettingsContract, _args=None) -> dict:
         "followInitialDays": normalise_follow_initial_days(payload.get("followInitialDays")),
         "postSetupTutorialDone": payload.get("postSetupTutorialDone") is True,
         "organizeTemplates": normalise_organize_templates(payload.get("organizeTemplates")),
+        **_feed_switches(payload),
     }
 
 
@@ -192,6 +214,11 @@ def w_settings(contract: SettingsContract, body) -> dict:
         merged["postSetupTutorialDone"] = body["postSetupTutorialDone"] is True
     if "organizeTemplates" in body:
         merged["organizeTemplates"] = normalise_organize_templates(body["organizeTemplates"])
+    for key, _kind in FEED_COMPILATION_SWITCHES:
+        if key in body:
+            if not isinstance(body[key], bool):
+                raise ValueError(f"{key} 只收 true 或 false")
+            merged[key] = body[key]
     stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     with contract.write_transaction() as connection:
         updated = connection.execute(

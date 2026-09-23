@@ -215,6 +215,10 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 /* 预览图：单格，contain 放进固定 16:9 框 —— 不拉伸、不裁切、不改框体大小 */
 .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;
   display:block;background:#000}
+/* 装着封面的格子底下不垫黑：封面和黑底各按圆角裁一次，边缘那圈半透明像素里黑底会
+   透出来，浅色封面的圆角上就是一圈灰边（纯白图实测边缘最暗压到 175）。封面自己的黑底
+   在 `19-immersive.css` 里一并清掉；留白由 `::before` 的模糊底垫，悬停预览层自带黑底。 */
+.pic:has(.poster.cover){background:none}
 .cardopenhit{position:absolute;inset:0;z-index:1;border:0;border-radius:inherit;background:transparent;padding:0;cursor:pointer}
 .cardopenhit:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .card>.pic,.card>.partstack,.card>.meta{position:relative;z-index:2}

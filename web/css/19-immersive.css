@@ -269,8 +269,10 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 .pcheck:has(input:disabled)>span{background:var(--ground)}
 /* 取景：正封模式下，整张封套要把镜头推到右半边；本身就是竖版正封的则整张用；
    16:9 官方剧照没有「正封那一块」，只能按人脸取。
-   判据是图片自己的宽高比，由 onload 写进 data-frame。 */
-.poster.cover{width:100%;height:100%;object-fit:cover;display:block}
+   判据是图片自己的宽高比，由 onload 写进 data-frame。
+   封面不垫底色：`.poster` 的黑底铺满整格，会盖住 `.pic::before` 那层模糊底，还会从圆角
+   边缘的半透明像素里透出一圈灰边（`12-cards.css` 里 `.pic` 那一条同理）。 */
+.poster.cover{width:100%;height:100%;object-fit:cover;display:block;background:none}
 /* --cover-x / --cover-y 都由人脸检出写入。哪个轴生效取决于容器和图片谁更竖：
    `object-fit:cover` 只裁一个轴，另一个轴的锚点是死值。 */
 /* 没有折痕数据的封套只能贴最右边缘：那是「正封顶着封套右缘」这条规律的最小假设。 */
@@ -288,9 +290,8 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 /* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
    居中：那是取不到人脸时唯一站得住的猜测。 */
 .poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%) var(--cover-y,22%)}
-/* 整张放进卡片，图片自己不垫底色：两侧留白透出 `.pic::before` 那层模糊底，没写模糊底时
-   是 `.pic` 自己的黑。`.poster` 的黑底铺满整张卡，不清掉就把模糊层整层盖住。 */
-.poster.cover.whole{object-fit:contain;object-position:50% 50%;background:none}
+/* 整张放进卡片：两侧留白透出 `.pic::before` 那层模糊底。 */
+.poster.cover.whole{object-fit:contain;object-position:50% 50%}
 
 
 /* 版式按钮嵌在排序行里，必须比 `.sorts button` 更具体，否则那条规则的内边距和

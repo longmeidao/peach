@@ -82,12 +82,14 @@ def has_local_cover(cover_root: Path, code: str) -> bool:
 
 
 def backlog(connection, cover_root: Path, *, exclude=(), now: datetime | None = None,
-            limit: int = MAX_BATCH, retry_after: timedelta = RETRY_AFTER) -> list[str]:
+            limit: int = MAX_BATCH, retry_after: timedelta = RETRY_AFTER,
+            hidden: frozenset[str] = feeds.DEFAULT_HIDDEN_COMPILATIONS) -> list[str]:
     """还缺资料或本机封面、上次尝试已经过了 `retry_after` 的壳。
 
     已忽略的不算：人说了不想看，就不再替它花配额。已经入库的壳本来就不在表里
     （入库即从列表里消失，ADR-0042 第三条），这里同样用番号键排除掉。取回标题后认出是
-    大合集的也不算：页面上不列它，替它补封面的配额是白花的。
+    设置里收起的那类合集（`hidden`）也不算：页面上不列它，替它补封面的配额是白花的；
+    开关打开后下一轮就轮到它。
     """
     moment = now or datetime.now(timezone.utc)
     cutoff = feeds.stamp(moment - retry_after)
@@ -102,7 +104,7 @@ def backlog(connection, cover_root: Path, *, exclude=(), now: datetime | None = 
     found: list[str] = []
     for row in rows:
         code = row["code"]
-        if code in skip or feeds.is_compilation(row["title"], row["performers"]):
+        if code in skip or feeds.compilation_kind(row["title"], row["performers"]) in hidden:
             continue
         needs_fields = row["scraped_at"] is None or row["scrape_error"] is not None
         if needs_fields or not has_local_cover(cover_root, code):

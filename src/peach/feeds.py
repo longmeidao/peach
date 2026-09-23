@@ -50,7 +50,7 @@ _JAVDB_BOX = re.compile(
     re.S)
 _TAGS = re.compile(r"<[^>]+>")
 
-#: 大合集的标题记号：精选、总集、连发。`BEST` 前后不许紧挨字母，`BESTIE` 那种词不算。
+#: 合集的标题记号：精选、总集、连发。`BEST` 前后不许紧挨字母，`BESTIE` 那种词不算。
 _COMPILATION_TITLE = re.compile(
     r"(?<![A-Za-z])BEST(?![A-Za-z])|ベスト|総集編|傑作選|\d+\s*連発")
 _HOURS = re.compile(r"(\d+)\s*時間")
@@ -61,28 +61,39 @@ COMPILATION_MINUTES = 240
 COMPILATION_PERFORMERS = 8
 
 
-def is_compilation(title: str | None, performers: str | None) -> bool:
-    """这部新作是不是把旧片剪到一起的大合集。
+#: 合集的两类。单人合集是一位女优自己的精选（「涼森れむ 8時間 BEST」），订阅她的人
+#: 可能正想要；大合集是一串人的片段拼起来卖。两类各有一个开关，默认只收起大合集。
+SOLO_COMPILATION = "solo"
+GROUP_COMPILATION = "group"
+DEFAULT_HIDDEN_COMPILATIONS = frozenset({GROUP_COMPILATION})
 
-    新作那一行是给「她出了什么新片」看的，合集里的每一段都早就看过了。判据只看壳上已有
-    的标题与出演名单，读的时候现算，壳上不存（ADR-0042）：规则改了，已经取回的壳跟着变，
-    不用重刮。只凭名单长度也够不着单人合集（「涼森れむ 8時間 BEST」只有一个名字），所以
-    标题记号和片长各算一条。
+
+def compilation_kind(title: str | None, performers: str | None) -> str | None:
+    """这部新作是哪一类合集：`solo`、`group`，不是合集为 None。
+
+    新作那一行是给「她出了什么新片」看的，合集里的片段多半早就出过。判据只看壳上已有
+    的标题与出演名单，读的时候现算，壳上不存（ADR-0042）：规则或开关改了，已经取回的壳
+    跟着变，不用重刮。名单只列一个人、标题带精选记号或片长到四小时的是单人合集；名单
+    没取到时按记号与片长算大合集，名单到八人起不看标题也是大合集。
     """
-    text = title or ""
-    if _COMPILATION_TITLE.search(text):
-        return True
-    if any(int(hours) * 60 >= COMPILATION_MINUTES for hours in _HOURS.findall(text)):
-        return True
-    if any(int(minutes) >= COMPILATION_MINUTES for minutes in _MINUTES.findall(text)):
-        return True
     names = [name for name in (performers or "").split("、") if name.strip()]
-    return len(names) >= COMPILATION_PERFORMERS
+    text = title or ""
+    marked = (bool(_COMPILATION_TITLE.search(text))
+              or any(int(hours) * 60 >= COMPILATION_MINUTES for hours in _HOURS.findall(text))
+              or any(int(minutes) >= COMPILATION_MINUTES for minutes in _MINUTES.findall(text)))
+    if len(names) == 1:
+        return SOLO_COMPILATION if marked else None
+    if marked or len(names) >= COMPILATION_PERFORMERS:
+        return GROUP_COMPILATION
+    return None
 
 
-def register_functions(connection: sqlite3.Connection) -> None:
-    """把合集判据挂到这条连接上，SQL 里按同一份实现筛，分页的条数才对得上。"""
-    connection.create_function("is_feed_compilation", 2, is_compilation, deterministic=True)
+def register_functions(connection: sqlite3.Connection,
+                       hidden: frozenset[str] = DEFAULT_HIDDEN_COMPILATIONS) -> None:
+    """把「这条收起不列」挂到这条连接上，SQL 里按同一份实现筛，分页的条数才对得上。"""
+    connection.create_function(
+        "is_feed_hidden", 2, lambda title, performers: compilation_kind(title, performers) in hidden,
+        deterministic=True)
 
 
 def stamp(moment: datetime | None = None) -> str:

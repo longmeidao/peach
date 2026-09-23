@@ -543,6 +543,12 @@ appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.miniplayer=appSettings.miniplayer!==false;
 appSettings.uiSounds=appSettings.uiSounds!==false;
 appSettings.feedAutoScroll=appSettings.feedAutoScroll!==false;
+/* 新作那一行收不收合集由服务端按账本里的设置筛（列表、未读数、补封面同一份），这里只是
+   镜像：开关的真相在 `/api/settings`。默认收起大合集、单人合集照列。 */
+const FEED_COMPILATION_SWITCHES=[['feedHideGroupSetting','feedHideGroupCompilations','大合集'],
+  ['feedHideSoloSetting','feedHideSoloCompilations','单人合集']];
+appSettings.feedHideGroupCompilations=appSettings.feedHideGroupCompilations!==false;
+appSettings.feedHideSoloCompilations=appSettings.feedHideSoloCompilations===true;
 appSettings.searchHistoryLimit=boundedPreference(+appSettings.searchHistoryLimit,0,50,10);
 appSettings.relatedLimit=boundedPreference(+appSettings.relatedLimit,0,60,20);
 const METADATA_REFRESH_DAYS=[0,7,30,90];
@@ -828,6 +834,7 @@ function renderSettingSelects(){
 function syncSettingsPanel(){
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
   $('#feedAutoScrollSetting').checked=appSettings.feedAutoScroll;
+  for(const [id,key] of FEED_COMPILATION_SWITCHES)$('#'+id).checked=appSettings[key];
   $('#detailAutoplaySetting').checked=appSettings.detailAutoplay;
   $('#miniplayerSetting').checked=appSettings.miniplayer;
   $('#uiSoundsSetting').checked=appSettings.uiSounds;
@@ -1086,6 +1093,17 @@ const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>{
 };
 const actionFailure=(message,error)=>toast(
   {text:`${message}失败：${error?.message||'请重试'}`},{warn:true});
+/* 合集开关由服务端判，列表、未读数和补封面排队都跟着它，所以先存到服务端再重画。 */
+for(const [id,key,label] of FEED_COMPILATION_SWITCHES)$('#'+id).onchange=async e=>{
+  const box=e.target,on=box.checked;
+  setActionBusy(box);
+  try{
+    const saved=await api('/api/settings',{method:'POST',body:JSON.stringify({[key]:on})});
+    appSettings[key]=saved[key];saveSettings();refreshFeedRows();
+    actionReceipt(on?`新作已收起${label}`:`新作已列出${label}`);
+  }catch(error){box.checked=!on;actionFailure(`保存${label}开关`,error)}
+  finally{setActionBusy(box,false)}
+};
 
 async function saveFollowInitialDays(value){
   const field=$('#followInitialDaysSetting .gselect'),state=$('#followInitialDaysState');
@@ -4730,6 +4748,7 @@ function feedNewCardHtml(item){
    刷新都变成对别人服务器的一次拉取，而订阅的间隔本来就是按天算的。 */
 async function renderFeedNew(host,entityId){
   if(!host)return;
+  host.dataset.feedEntity=entityId?String(entityId):'';
   const query=new URLSearchParams({limit:'12'});
   if(entityId)query.set('entity',String(entityId));
   const data=await api('/api/feeds/discoveries?'+query).catch(()=>null);
@@ -4749,6 +4768,14 @@ async function renderFeedNew(host,entityId){
   const row=host.querySelector('.feednewrow');
   wireDrag(row);
   if(appSettings.feedAutoScroll)wireAutoScroll(row);
+}
+/* 合集开关改了，页面上已经画过的那几行照新的筛法重取一遍。 */
+function refreshFeedRows(){
+  // 首页那一行只在目录页出现，人不在那儿时不替它重取，否则会在别的页面上冒出来。
+  document.querySelectorAll('.feednew[data-feed-entity]').forEach(host=>{
+    if(host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
+    void renderFeedNew(host,Number(host.dataset.feedEntity)||undefined);
+  });
 }
 /* 设置里开关自动滚动，页面上已经摆着的那几行当场跟着停或走，不等下一次重画。 */
 function syncFeedAutoScroll(){
@@ -8386,6 +8413,10 @@ async function loadSyncedSettings(){
   if(METADATA_REFRESH_DAYS.includes(days)&&days!==appSettings.metadataRefreshDays){
     appSettings.metadataRefreshDays=days;saveSettings();
     const field=$('#metadataRefreshSetting .gselect');if(field)field.value=String(days);
+  }
+  for(const [id,key] of FEED_COMPILATION_SWITCHES){
+    if(typeof remote?.[key]!=='boolean'||remote[key]===appSettings[key])continue;
+    appSettings[key]=remote[key];saveSettings();$('#'+id).checked=remote[key];
   }
   const order=Array.isArray(remote&&remote.sidebarOrder)?remote.sidebarOrder:null;
   if(!order||!order.length||order.join(',')===appSettings.sidebarOrder.join(','))return;
