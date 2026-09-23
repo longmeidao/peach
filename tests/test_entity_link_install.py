@@ -85,6 +85,17 @@ class InstallTests(unittest.TestCase):
         self.assertEqual(
             self.connection.execute("SELECT count(*) FROM entity_link").fetchone()[0], 1)
 
+    def test_a_label_edited_in_the_review_table_reaches_the_ledger_on_rerun(self):
+        """label 是资料页上的链接文字，复核表是它的出处：表里改了字，重跑就对齐，不另建一行。"""
+        self.module.install(self.connection, self.module.plan(self.connection, [self.row()]),
+                            "review.csv")
+        again = self.module.plan(self.connection, [self.row(label="官网存档（2022-05）")])
+        self.assertEqual([p["action"] for p in again], ["relabel"])
+        self.assertEqual(self.module.install(self.connection, again, "review.csv"), 0)
+        self.assertEqual(self.module.relabel(self.connection, again), 1)
+        self.assertEqual(self.connection.execute("SELECT label FROM entity_link").fetchall(),
+                         [("官网存档（2022-05）",)])
+
     def test_a_url_without_scheme_does_not_become_a_second_row(self):
         """复核表是人和脚本混写的，`moodyz.com` 和 `https://moodyz.com/` 都会出现。
 

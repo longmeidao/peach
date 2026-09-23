@@ -569,8 +569,10 @@ av911.tv，三条候选已进复核队列。
 - 官网取成员 official 链接里标签等于本家名字的那些，用它们的域名根地址，不用某位女优的个人页：
   那是她的页面，不是这家公司的首页。名字拆过之后要按原文再查一次，否则 `ACT(アクト)` 这类明明有站却查不到。
 - 现站打不开的公司，官网可以登记 Wayback 快照：link_kind 仍是 `official`，url 写完整的
-  `web.archive.org/web/<时间戳>/<原址>`，label 写 `<公司名> 官网存档（YYYY-MM）`，优先所属名单页。
-  `peach.social_links.ARCHIVE_HOSTS` 让域名归属、事务所门面圆标和厂牌标识采集都跳过它。
+  `web.archive.org/web/<时间戳>/<原址>`，label 写 `官网存档（YYYY-MM）`，优先所属名单页。label 不带
+  公司名：这条链接只挂在这家自己的资料页上，页头就是名字。`peach.social_links.ARCHIVE_HOSTS` 让域名
+  归属、事务所门面圆标和厂牌标识采集都跳过它；标识要从快照取，把快照里那张图的 `id_` 原件地址登记
+  进 `harvest_studio_icons.py` 的指定来源表。复核表改了 label 重跑 `install_entity_links.py` 即对齐。
 - 判词四种：`ok` 进装入队列、`已有`（同平台同 handle，不分主机写法与大小写）、`conflict`（账本同平台是
   另一个 handle）、`未取得`（页面失败或没有社媒）。
 - 来源本身可能是过期数据：目录站抄的 X 账号很多已封停、本人早换新号，所以 X 的 `ok`／`conflict` 行都用

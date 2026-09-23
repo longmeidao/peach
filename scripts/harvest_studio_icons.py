@@ -290,9 +290,14 @@ ICON_SOURCES: dict[str, str] = {
 #: `Luminous Promotion`：2022 年由 BELLTECH 改屋号，账本 official 里旧站
 #: `belltech-pro.com` 排在前面，自动发现取到的是旧屋号字标。新站 header 是 1741×532
 #: 的透明底字标（2026-09-23 实测）。
+#:
+#: `ONE'S DOUBLE`：现站 SSL 连不上，官网只剩 Wayback 快照。字标是快照页脚那张 216×30
+#: 的黑色 SVG，取 `id_` 原件，不带存档站注入的工具栏（2026-09-24 实测）。
 AGENCY_WORDMARK_SOURCES: dict[str, str] = {
     "Diaz Group": "https://diaz-g.com/assets/img/diaz_logo.svg",
     "Luminous Promotion": "https://luminous-pro.tokyo/img/logo.png",
+    "ONE'S DOUBLE": "https://web.archive.org/web/20220130000436id_/"
+                    "https://ones-double.com/wp/assets/img/footer-logo.svg",
 }
 
 
@@ -477,10 +482,12 @@ def studio_links(connection: sqlite3.Connection,
         " ORDER BY e.canonical_name, l.id", (kind, *kinds)).fetchall()
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
-        # 存档快照上取到的是存档站自己的图标。
+        entries = grouped.setdefault(safe_name(row["canonical_name"]), [])
+        # 存档快照上取到的是存档站自己的图标，这条链接不当图源；公司照样留在名单里，
+        # 关门的公司官网只剩这一份，指定字标还要按名字去取。
         if is_archive(row["url"]):
             continue
-        grouped.setdefault(safe_name(row["canonical_name"]), []).append(
+        entries.append(
             {"entity_id": row["id"], "studio": row["canonical_name"],
              "link_kind": row["link_kind"], "url": row["url"]})
     return {safe: [entry for entry in entries if entry["link_kind"] in ICON_LINK_KINDS]
@@ -885,7 +892,7 @@ def icon_row(safe: str, target: dict[str, str], entries: list[dict[str, str]],
     """
     if not entries:
         return _row(safe, target, None, ICON, SKIP,
-                    evidence="账本里这个厂牌一条链接都没有"), None
+                    evidence="账本里这个厂牌没有能取图的链接（存档快照不算）"), None
     attempts: list[str] = []
     reachable = False
     policy = SquareMark(faces)
