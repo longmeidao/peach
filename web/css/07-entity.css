@@ -101,6 +101,18 @@
 .entryfeed:has(:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
 .entryfeed:has([aria-busy="true"]){cursor:progress;opacity:.6}
 .entryfeed svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2}
+/* 没订的时候那枚图标在墨色和订阅橙之间慢慢呼吸：一枚墨色小图标排在两枚彩色标识后面，
+   不提醒就没人知道它能点。只动颜色，重绘只落在这 22px 上；订上就停在橙色。 */
+@keyframes entryfeed-breathe{0%,100%{color:var(--ink)}50%{color:var(--feed-mark)}}
+.entryfeed:not(:has(:checked)){animation:entryfeed-breathe 2.4s ease-in-out infinite}
+.entryfeed:not(:has(:checked)):is(:hover,:has(:focus-visible)){animation:none;color:var(--feed-mark)}
+/* 图标的说明走 Tooltip（Geist 实测：最宽 250px、8px 圆角、内边距 8／6px、13px 字、
+   1.3 行高），不复制箭头与淡入。悬停和键盘聚焦都出，Escape 收起。 */
+.entryfeedtip{position:absolute;z-index:var(--layer-tooltip);top:calc(100% + 8px);left:0;
+  display:none;width:max-content;max-width:250px;padding:6px 8px;border-radius:var(--surface-radius);
+  background:var(--ink);color:var(--ground);font-size:var(--fs-sm);font-weight:400;line-height:1.3;
+  white-space:normal;pointer-events:none}
+.entryfeed:is(:hover,:has(:focus-visible)):not([data-tip-dismissed])>.entryfeedtip{display:block}
 /* 两枚标识按字母的高度对齐，不按外框：JavDB 那枚里 `Jav` 三个字母占 viewBox 高的
    71/111，高 22px 时是 14.1px；MISSAV 是排出来的字，衬线体的大写字母高约 0.71em，
    `--fs-xl` 时是 14.2px。外框对齐的话 MISSAV 的字母比 `Jav` 高出两成，一眼看过去它大一号。
