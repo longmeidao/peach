@@ -475,6 +475,24 @@ class CoverFocusTests(AssetArtworkTests):
         self.add_asset(21, "FC2-PPV-1")
         self.assertIsNone(self.focus_of())
 
+    def whole_cover_history(self) -> dict:
+        self.remember(picture(400, 260, "green"), provider="cover-fallback",
+                      external_id="ABW-232")
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        return next(one for one in listed["choices"] if one["source"] == "history")
+
+    def test_a_whole_cover_kept_by_the_batch_is_framed_like_the_work_itself(self):
+        """封面兜底存下的是整张封套；点下去不框就把书脊和封底一起装进圆框。"""
+        sidecar_path(self.cover).write_text(json.dumps(face_record(400, 260)), "utf-8")
+        choice = self.whole_cover_history()
+        self.assertEqual((choice["label"], choice["crop"]), ("作品封面 ABW-232", True))
+        self.assertEqual(choice["focus"], {"x0": 296, "y0": 54, "x1": 344, "y1": 102})
+
+    def test_a_whole_cover_without_a_face_record_falls_back_to_the_front_panel(self):
+        self.assertEqual(self.whole_cover_history()["focus"],
+                         {"x0": 217, "y0": 0, "x1": 400, "y1": 260})
+
 
 class CodeCoverTests(PickerFixture):
     """按番号取一张封面来框：本机有就不出网，取过一次就不再取。"""
