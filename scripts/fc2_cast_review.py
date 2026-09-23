@@ -11,9 +11,13 @@ FC2 的演员栏在资料链上首选 fc2cmadb（`metadata_policy.FIELD_SOURCE_P
 分段一起改，只替换机器写入的演员关联，用户自己加的保留（`metadata_auto_apply`）。
 
 只读账本。fc2cmadb 那一页优先取本机快照（`sources/library-metadata/<番号>-fc2cmadb.json`，
-资料采集任务也读写这一份），没有才联网问，问到的照样存成快照，重跑不再发请求。站上说没有的
-番号记在 `state/fc2-cast-misses.json`，一周内不再问。联网时两问之间停 `--interval` 秒：
-2026-09-23 不停顿连问，第 19 个番号上被限流 15 分钟。`--offline` 只看快照。有一位演员关联不是机器写入的番号整条跳过：那是用户判断过的。
+资料采集任务也读写这一份），没有才联网问，问到的照样存成快照，重跑不再发请求。女优栏空着的
+快照也重问一次：那一栏要单独再问一跳，2026-09-23 之前存下的快照没问过它（`2629971` 的快照
+是空的，站上是 `あんな`）。站上说没有的番号、重问过女优栏仍空的番号记在
+`state/fc2-cast-misses.json`，一周内不再问。联网时两问之间停 `--interval` 秒：2026-09-23
+不停顿连问，第 19 个番号上被限流 15 分钟。`--offline` 只看快照。
+
+有一位演员关联不是机器写入的番号整条跳过：那是用户判断过的。
 """
 from __future__ import annotations
 
@@ -46,6 +50,8 @@ FIELDS = (
 )
 #: 机器写入的演员关联：采集与自动落库都记成 `javinizer:<来源>:performer`。
 MACHINE_SOURCE = "javinizer:"
+#: 「没有」记忆里的另一栏：快照在、女优栏重问过仍是空的番号。
+CAST_UNKNOWN = SOURCE + "-cast"
 
 
 def current_cast(connection) -> dict[str, list[str]]:
@@ -69,23 +75,42 @@ def snapshot_path(snapshots: Path, code: str) -> Path:
     return snapshots / f"{code}-{SOURCE}.json"
 
 
-def mirror_payload(code: str, snapshots: Path, provider=None, misses=None) -> dict | None:
-    """fc2cmadb 那一页的快照；站上没有、离线且没存过时回 None。"""
-    path = snapshot_path(snapshots, code)
-    if path.is_file():
+def offered_cast(payload: dict) -> list[dict]:
+    return (extract_peach_fields(payload).get("performers") or {}).get("value") or []
+
+
+def _stored(path: Path) -> dict | None:
+    try:
         return json.loads(path.read_text(encoding="utf-8"))
-    if provider is None or (misses is not None and misses.fresh(SOURCE, code)):
+    except (OSError, ValueError):
         return None
+
+
+def needs_asking(code: str, snapshots: Path, misses) -> bool:
+    """这个番号要不要联网问：没有快照、或快照的女优栏空着，且一周内没问过。"""
+    stored = _stored(snapshot_path(snapshots, code))
+    if stored is None:
+        return not misses.fresh(SOURCE, code)
+    return not offered_cast(stored) and not misses.fresh(CAST_UNKNOWN, code)
+
+
+def mirror_payload(code: str, snapshots: Path, provider, misses) -> dict | None:
+    """fc2cmadb 那一页；站上没有、离线且没存过时回 None。"""
+    path = snapshot_path(snapshots, code)
+    stored = _stored(path)
+    if provider is None or not needs_asking(code, snapshots, misses):
+        return stored
     try:
         payload = provider.site(SOURCE, code)
     except Exception as error:  # noqa: BLE001 - 「没有」之外的原因原样抛给调用方
         if is_missing(error):
-            if misses is not None:
-                misses.record(SOURCE, code)
-            return None
+            misses.record(SOURCE if stored is None else CAST_UNKNOWN, code)
+            return stored
         raise
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    if not offered_cast(payload):
+        misses.record(CAST_UNKNOWN, code)
     return payload
 
 
@@ -147,8 +172,7 @@ def run(args: argparse.Namespace, provider=None, sleep=time.sleep) -> dict:
         misses = _MissCache(args.misses)
         rows, absent, agreed, stopped, asked = [], 0, 0, "", False
         for code in codes:
-            live = (not args.offline and not snapshot_path(args.snapshots, code).is_file()
-                    and not misses.fresh(SOURCE, code))
+            live = not args.offline and needs_asking(code, args.snapshots, misses)
             if live and asked:
                 sleep(args.interval)
             asked = asked or live
@@ -160,7 +184,7 @@ def run(args: argparse.Namespace, provider=None, sleep=time.sleep) -> dict:
             if payload is None:
                 absent += 1
                 continue
-            offered = (extract_peach_fields(payload).get("performers") or {}).get("value") or []
+            offered = offered_cast(payload)
             if not offered or same_people(connection, cast[code],
                                           [person["name"] for person in offered]):
                 agreed += 1

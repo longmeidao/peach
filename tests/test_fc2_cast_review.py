@@ -129,6 +129,20 @@ class Fc2CastReviewTests(unittest.TestCase):
         # 三个番号里一个有快照，剩下两次联网之间停一次。
         self.assertEqual(self.pauses, [7.0])
 
+    def test_a_snapshot_without_the_cast_column_is_asked_once_more(self):
+        """女优栏要单独再问一跳，没问过那一跳的快照是空的（`2629971` 站上是 `あんな`）。"""
+        self._snapshot("FC2-PPV-2629971")
+        self._snapshot("FC2-PPV-3518061")
+        mirror = _Mirror({"FC2-PPV-2629971": _page("FC2-PPV-2629971", "あんな"),
+                          "FC2-PPV-3518061": _page("FC2-PPV-3518061")})
+        self._run(provider=mirror)
+        self.assertEqual([row["code"] for row in read_rows(self.output)], ["FC2-PPV-2629971"])
+        asked = len(mirror.asked)
+        self._run(provider=mirror)
+        # 重问过仍空的一周内不再问；有了女优栏的读快照。
+        self.assertNotIn("FC2-PPV-3518061", [code for _, code in mirror.asked[asked:]])
+        self.assertNotIn("FC2-PPV-2629971", [code for _, code in mirror.asked[asked:]])
+
     def test_a_failure_other_than_absence_stops_and_keeps_what_was_found(self):
         mirror = _Mirror({"FC2-PPV-1449453": _page("FC2-PPV-1449453", "大村阿美香"),
                           "FC2-PPV-2629971": TimeoutError("read timed out")})
