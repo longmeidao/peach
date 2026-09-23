@@ -4,14 +4,20 @@
 端点意味着三次轮询、三份各自可能过期的快照，还得在前端再拼一次时间线。所以
 `/api/tasks` 不带筛选时直接把这三段一起下发；带 `status`／`task_key` 时才退回成一张
 普通的筛选列表，留给排查用。
+
+「最近完成」按结束时刻从新到旧排，`finished_has_more` 说它后面还有没有更早的。往前翻
+带上当前最旧那一行的 `before_finished_at` 与 `before_id`，只回 `finished` 与
+`finished_has_more` 这一页：在跑那段和被挡下那段由轮询那一份负责，翻页时再下发一遍
+只会让两份快照互相打架。
 """
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 
 from .task_runs import ACTIVE_STATUSES, TERMINAL_STATUSES
 
-#: 不带筛选时「最近完成」那一段的默认条数。一屏看得完，再多就该去筛了。
+#: 不带筛选时「最近完成」那一段每页的默认条数。一屏看得完，更早的往前翻。
 RECENT_LIMIT = 20
 
 #: 账本还没跑到 0028 时页面上显示这一句。迁移是单独一步，升级后第一次打开活动页
@@ -26,6 +32,7 @@ def q_tasks(contract, args):
         # 只可能是这张表还不存在——这个函数别的地方不碰库。
         return {"ok": True, "filtered": False, "available": False,
                 "message": NO_TABLE, "running": [], "skipped": [], "finished": [],
+                "finished_has_more": False,
                 "statuses": {"active": list(ACTIVE_STATUSES),
                              "finished": list(TERMINAL_STATUSES)}}
 
@@ -34,12 +41,19 @@ def _tasks(contract, args):
     status = str((args or {}).get("status") or "").strip()
     task_key = str((args or {}).get("task_key") or "").strip()
     limit = _limit(args)
+    before = _before(args)
+    if before is not None and (status or task_key):
+        raise ValueError("before_finished_at／before_id 只用于最近完成那一段，不和 status、task_key 同用")
     if status or task_key:
         rows = contract.task_runs.query(status=status, task_key=task_key, limit=limit)
         return {"ok": True, "filtered": True, "available": True,
                 "runs": [row.payload() for row in rows]}
+    finished, has_more = contract.task_runs.finished_page(before=before, limit=limit)
+    if before is not None:
+        return {"ok": True, "filtered": False, "available": True,
+                "finished": [row.payload() for row in finished],
+                "finished_has_more": has_more}
     running = contract.task_runs.query(status="active", limit=limit)
-    finished = contract.task_runs.query(status="finished", limit=limit)
     return {
         "ok": True,
         "filtered": False,
@@ -50,6 +64,7 @@ def _tasks(contract, args):
         "skipped": [row.payload() for row in finished
                     if row.status == "cancelled" and "blocked_by" in row.result_summary],
         "finished": [row.payload() for row in finished],
+        "finished_has_more": has_more,
         "statuses": {"active": list(ACTIVE_STATUSES), "finished": list(TERMINAL_STATUSES)},
     }
 
@@ -76,6 +91,22 @@ def _counts(rows) -> dict:
     for row in rows:
         counts[row["status"]] = counts.get(row["status"], 0) + 1
     return counts
+
+
+def _before(args) -> tuple[str, int] | None:
+    """往前翻的游标：两个参数成对出现，缺一个就是参数错，不悄悄退回第一页。"""
+    moment = str((args or {}).get("before_finished_at") or "").strip()
+    raw_id = str((args or {}).get("before_id") or "").strip()
+    if not moment and not raw_id:
+        return None
+    if not moment or not raw_id:
+        raise ValueError("before_finished_at 与 before_id 要一起给")
+    # 只核对写法；比较仍用原文，与库里 `stamp()` 写下的文本逐字对齐。
+    datetime.fromisoformat(moment.replace("Z", "+00:00"))
+    run_id = int(raw_id)
+    if run_id < 1:
+        raise ValueError("before_id 必须是正整数")
+    return moment, run_id
 
 
 def _limit(args) -> int:

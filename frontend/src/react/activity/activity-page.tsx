@@ -6,13 +6,17 @@
  * 轮询交给 Query 的 `refetchInterval`：间隔按上一次拿到的内容算，有东西在跑两秒一次，
  * 全是终态十秒一次。它是后台刷新，不写 `aria-busy`——页面上的内容一直是完整的，写了
  * 等于告诉辅助技术和冒烟用例「这一屏还没好」。取数失败只在页内报一条，上一份数据留着：
- * 服务重启的那几秒里，把整页换成一句错误比留着十秒前的进度更难用。 */
-import { useId } from 'react';
+ * 服务重启的那几秒里，把整页换成一句错误比留着十秒前的进度更难用。
+ *
+ * 「最近完成」末尾的「加载更早」往前接一页，接上的行留在组件里，与轮询那一份按 id 合并：
+ * 轮询只管第一页，翻过的那些不会被下一次刷新冲掉。 */
+import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
-import { RiHistoryLine } from '@remixicon/react';
-import { useQuery } from '@tanstack/react-query';
+import { RiArrowDownSLine, RiHistoryLine } from '@remixicon/react';
+import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { Chip } from '@/components/base/badges/chip';
+import { Button } from '@/components/base/buttons/button';
 
 import { errorMessage } from '../../api';
 import type { ActivityProps } from '../bundle';
@@ -22,9 +26,10 @@ import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
+import { busyProps } from '../settings/use-action';
 import {
-  elapsedText, fetchTasks, groupFollowups, momentText, pollInterval, statusLabel,
-  summaryText, TASKS_KEY, TRIGGER_LABELS, type TaskRunPayload,
+  elapsedText, fetchEarlier, fetchTasks, groupFollowups, mergeFinished, momentText,
+  pollInterval, statusLabel, summaryText, TASKS_KEY, TRIGGER_LABELS, type TaskRunPayload,
 } from './tasks';
 
 /* 状态徽章只有三档颜色：成功是绿、失败是红、被叫停与被打断是黄，其余留中性底。
@@ -72,7 +77,7 @@ function RunCard(
     followups?: TaskRunPayload[] },
 ) {
   return (
-    <li data-status={run.status} data-task-key={run.task_key}
+    <li data-status={run.status} data-task-key={run.task_key} data-run-id={run.id}
       className={cardClass({
         padding: 'none',
         bordered: 'line',
@@ -150,11 +155,37 @@ export function ActivityPage(_props: ActivityProps) {
     refetchInterval: (query) => pollInterval(query.state.data),
   });
   const data = tasks.data;
+  const top = data?.finished;
+  // 往前翻接上的行。没翻过时一直是空的，页面和只有第一页时完全一样。
+  const [earlier, setEarlier] = useState<TaskRunPayload[]>([]);
+  const [earlierMore, setEarlierMore] = useState(false);
+  const [seenTop, setSeenTop] = useState(top);
+  if (top !== seenTop) {
+    setSeenTop(top);
+    // 翻过页之后，新完成的几轮会把第一页末尾的挤出去；把上一份第一页并进已翻过的部分，
+    // 不然被挤出去的那几轮夹在两段之间，哪一段都不再有它们。
+    if (earlier.length && seenTop) setEarlier(mergeFinished(earlier, seenTop));
+  }
+  const more = useMutation({
+    mutationFn: ({ oldest }: { oldest: TaskRunPayload; shown: TaskRunPayload[] }) => fetchEarlier(oldest),
+    onSuccess: (page, { shown }) => {
+      setEarlier((current) => mergeFinished(current, shown, page.finished || []));
+      setEarlierMore(Boolean(page.finished_has_more));
+    },
+  });
   const problem = tasks.error ? errorMessage(tasks.error) : '';
   // 首屏就没拿到数据：只剩这一条，不画空的三段。
   if (!data) return <Page><Note tone="error">{problem || '读取任务中心失败'}</Note></Page>;
 
-  const allRuns = [...(data.running || []), ...(data.skipped || []), ...(data.finished || [])];
+  // 游标取合并后最旧的那一行，后继与被挡下的也算：服务端翻页数的是全部终态行。
+  const allFinished = mergeFinished(data.finished || [], earlier);
+  const oldest = allFinished[allFinished.length - 1];
+  const hasEarlier = Boolean(oldest) && (earlier.length ? earlierMore : Boolean(data.finished_has_more));
+  const loadEarlier = () => {
+    if (!more.isPending && oldest) more.mutate({ oldest, shown: allFinished });
+  };
+
+  const allRuns = [...(data.running || []), ...(data.skipped || []), ...allFinished];
   // 后继挂到派出它的那张卡下面。父任务不在这一屏上（已经被 prune 掉、或翻页翻不到）时
   // 照常单独摆出来——挂不上去就不显示，等于让一条在跑的任务凭空消失。
   const byParent = groupFollowups(allRuns);
@@ -164,7 +195,7 @@ export function ActivityPage(_props: ActivityProps) {
   const running = topLevel(data.running || []);
   const skipped = topLevel(data.skipped || []);
   // 同一轮不在「最近完成」里再出现一次：一屏两行说的是同一件事，读起来像跑了两轮。
-  const finished = topLevel(data.finished || [])
+  const finished = topLevel(allFinished)
     .filter((run) => !skipped.some((row) => row.id === run.id));
   const quiet = !running.length && !skipped.length && !finished.length;
   return (
@@ -192,10 +223,19 @@ export function ActivityPage(_props: ActivityProps) {
                     <SettledRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
                 </Section>
               : null}
-            {finished.length
+            {finished.length || hasEarlier
               ? <Section title="最近完成">
-                  <RunList>{finished.map((run) => (
-                    <SettledRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
+                  {finished.length
+                    ? <RunList>{finished.map((run) => (
+                        <SettledRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
+                    : null}
+                  {more.error ? <Note tone="error">{errorMessage(more.error)}</Note> : null}
+                  {hasEarlier
+                    ? <Button variant="secondary" size="small" leadingIcon={RiArrowDownSLine}
+                        className="self-start" {...busyProps(more.isPending)} onClick={loadEarlier}>
+                        加载更早
+                      </Button>
+                    : null}
                 </Section>
               : null}
           </>}

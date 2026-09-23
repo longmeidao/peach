@@ -231,6 +231,61 @@ class TasksEndpointTests(unittest.TestCase):
         self.assertTrue(payload["filtered"])
         self.assertEqual([row["task_key"] for row in payload["runs"]], ["batch"])
 
+    def _settled(self, finished_at: str) -> int:
+        """跑完一轮并把结束时刻钉成给定值：同一毫秒里结算的几轮分不出先后。"""
+        run = self.store.start("batch", trigger="manual")
+        self.store.finish(run.id, "succeeded")
+        with self.store.database.write_transaction(notify=False) as connection:
+            connection.execute("UPDATE task_run SET finished_at=? WHERE id=?",
+                               (finished_at, run.id))
+        return run.id
+
+    def test_recent_runs_page_back_by_finish_time_without_repeats_or_gaps(self):
+        early = [self._settled(f"2026-09-11T10:0{minute}:00.000Z") for minute in range(5)]
+        # 开跑最早、结束最晚的那一轮：按 id 排它会沉到最后一页，按结束时刻它排第一。
+        slow = self.store.start("batch", trigger="manual")
+        late = self._settled("2026-09-11T10:05:00.000Z")
+        self.store.finish(slow.id, "succeeded")
+        with self.store.database.write_transaction(notify=False) as connection:
+            connection.execute("UPDATE task_run SET finished_at=? WHERE id=?",
+                               ("2026-09-11T10:06:00.000Z", slow.id))
+
+        first = web_tasks.q_tasks(self.contract, {"limit": "3"})
+        self.assertEqual([row["id"] for row in first["finished"]], [slow.id, late, early[4]])
+        self.assertTrue(first["finished_has_more"])
+        seen = [row["id"] for row in first["finished"]]
+        page = first
+        while page["finished_has_more"]:
+            oldest = page["finished"][-1]
+            page = web_tasks.q_tasks(self.contract, {
+                "limit": "3", "before_finished_at": oldest["finished_at"],
+                "before_id": str(oldest["id"])})
+            self.assertNotIn("running", page, "往前翻的那一页不该再带一份在跑的快照")
+            seen += [row["id"] for row in page["finished"]]
+        self.assertEqual(seen, [slow.id, late, *reversed(early)])
+
+    def test_a_short_history_says_there_is_nothing_earlier(self):
+        self._settled("2026-09-11T10:00:00.000Z")
+        self.assertFalse(web_tasks.q_tasks(self.contract, {})["finished_has_more"])
+
+    def test_runs_sharing_a_finish_moment_are_split_by_id(self):
+        same = "2026-09-11T10:00:00.000Z"
+        ids = [self._settled(same) for _ in range(3)]
+        page = web_tasks.q_tasks(self.contract, {
+            "before_finished_at": same, "before_id": str(ids[2])})
+        self.assertEqual([row["id"] for row in page["finished"]], [ids[1], ids[0]])
+        self.assertFalse(page["finished_has_more"])
+
+    def test_a_malformed_cursor_is_a_bad_request(self):
+        for args in ({"before_id": "3"},
+                     {"before_finished_at": "2026-09-11T10:00:00.000Z"},
+                     {"before_finished_at": "昨天", "before_id": "3"},
+                     {"before_finished_at": "2026-09-11T10:00:00.000Z", "before_id": "0"},
+                     {"before_finished_at": "2026-09-11T10:00:00.000Z", "before_id": "3",
+                      "task_key": "batch"}):
+            with self.subTest(args=args), self.assertRaises(ValueError):
+                web_tasks.q_tasks(self.contract, args)
+
     def test_an_unknown_status_is_a_bad_request_not_an_empty_list(self):
         with self.assertRaises(ValueError):
             web_tasks.q_tasks(self.contract, {"status": "沉睡"})
