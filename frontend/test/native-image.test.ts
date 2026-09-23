@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { nativeImageFit, matchesFaceSource, faceSourceScale } from '../src/native-image';
+import { nativeImageFit, faceSourceScale } from '../src/native-image';
 
 it('544×724 的旧人像不能使用 2184×1468 封面的焦点', () => {
-  expect(matchesFaceSource(544, 724, 2184, 1468)).toBe(false);
-  expect(matchesFaceSource(544, 724, 544, 724)).toBe(true);
-  expect(matchesFaceSource(0, 0, 0, 0)).toBe(false);
+  expect(faceSourceScale(544, 724, 2184, 1468)).toBe(0);
+  expect(faceSourceScale(544, 724, 544, 724)).toBe(1);
+  expect(faceSourceScale(0, 0, 0, 0)).toBe(0);
 });
 
 describe('派生件相对边车源图的比例', () => {

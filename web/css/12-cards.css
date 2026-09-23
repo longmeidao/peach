@@ -470,7 +470,9 @@ body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
  * 两种卡长得不一样的地方只应该是它们真的不一样的地方。 */
 .feednew{margin:0 0 18px}
 .feednewtitle{margin:0 0 10px;font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted)}
-.feednewrow{padding-bottom:7px}
+/* 卡片悬停时底色向四周多铺 8px（`box-shadow` 的 spread），而横滚容器把纵向溢出一并
+   裁掉：四边各留 8px 内边距，再用同样的负外边距收回来，卡片落点不动。 */
+.feednewrow{padding:8px;margin:-8px -8px 0}
 /* 往右翻时卡片从侧栏底下穿过去，和首页那几排（`board.css` 的 `#tiers .tier`）同一个
    理由、同一种写法：让出轨道宽度加 `main` 的 16px 内边距，再原样加回内边距，第一张
    仍站在这一屏的左对齐线上。首页与人物页的这一行都直接住在 `main` 里，所以让出的是

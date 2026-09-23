@@ -1,5 +1,6 @@
 import csv
 import importlib.util
+import io
 import json
 import sqlite3
 import tempfile
@@ -2218,6 +2219,33 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(again.status_code, 200)
         self.assertEqual(cached.stat().st_mtime_ns, stamp, "第二次只读缓存")
         full = await self.client.get("/photo?id=9", headers=headers)
+        self.assertEqual(full.content, source.read_bytes())
+
+    async def test_the_card_grade_cover_is_a_smaller_webp_beside_the_cover_directory(self):
+        """卡片网格取 `/cover?thumb=1`，详情与裁切取原件。
+
+        派生件不进封面目录：`cover_index` 逐次扫它判「有没有封面」，混进派生件就多判一倍。
+        """
+        from PIL import Image
+
+        self.cover_root.mkdir(parents=True, exist_ok=True)
+        source = self.cover_root / "ABC-123.jpg"
+        image = Image.new("RGB", (2400, 1620), (200, 120, 90))
+        # 纯色图压出来只有几百字节，比不出「缩了没有」。噪声让体积跟着像素量走。
+        for y in range(0, 1620, 4):
+            for x in range(0, 2400, 4):
+                image.putpixel((x, y), ((x * 7) % 256, (y * 13) % 256, (x + y) % 256))
+        image.save(source, "JPEG", quality=95)
+        headers = {"X-Token": "secret"}
+        card = await self.client.get("/cover?code=ABC-123&thumb=1", headers=headers)
+        self.assertEqual(card.status_code, 200)
+        self.assertEqual(card.headers["content-type"], "image/webp")
+        self.assertLess(len(card.content), source.stat().st_size)
+        with Image.open(io.BytesIO(card.content)) as derived:
+            self.assertEqual(derived.size, (1600, 1080))
+        self.assertEqual(sorted(path.name for path in self.cover_root.iterdir()), ["ABC-123.jpg"])
+        self.assertTrue(any((self.cover_root.parent / "cover-thumbs").iterdir()))
+        full = await self.client.get("/cover?code=ABC-123", headers=headers)
         self.assertEqual(full.content, source.read_bytes())
 
     async def test_a_warm_photo_thumbnail_answers_without_resolving_the_original(self):

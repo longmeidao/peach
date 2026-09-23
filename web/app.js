@@ -15,7 +15,7 @@ import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
-import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, matchesFaceSource, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -3186,7 +3186,8 @@ function posterPanel(img,ratio){
   /* 框是按那一版源图的像素算的，而封面会被更大的那张原子替换。尺寸对不上就说明
      框描述的是另一张图，落在这张上是一块错位的区域——而错位在页面上和「本来就该
      这么取景」看不出区别，所以宁可退回回退值。 */
-  if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH))return;
+  // 卡片先取的是等比缩小的派生档，框的百分比在等比缩放下不变，所以认缩小，不认别的图。
+  if(!faceSourceScale(img.naturalWidth,img.naturalHeight,imgW,imgH))return;
   const frame=panelFrame({x0,y0,x1,y1,px:[imgW,imgH]},ratio);
   if(!frame)return;
   img.classList.add('panel');
@@ -3196,8 +3197,23 @@ function posterPanel(img,ratio){
   img.style.setProperty('--panel-top',`${frame.top}%`);
   img.style.setProperty('--panel-height',`${frame.height}%`);
   /* 正封比卡片窄时左右各留一条，垫的是同一张封面的模糊放大版。挂在卡片上而不是
-     图片上：图片那时已经被 `clip-path` 切成正封那一块，铺不到留白处。 */
-  img.closest('.pic')?.style.setProperty('--cover-blur',`url("${img.currentSrc||img.src}")`);
+     图片上：图片那时已经被 `clip-path` 切成正封那一块，铺不到留白处。糊成一片的底
+     用不着原件的像素，换回原件之后这一层仍取派生档。 */
+  img.closest('.pic')?.style.setProperty('--cover-blur',
+    `url("${img.dataset.thumbSrc||img.currentSrc||img.src}")`);
+}
+/* 卡片先取封面的派生档（`/cover?thumb=1`）：高清原件一张解码 38 MB，一页几十张挤爆
+   解码缓存，来回滚动时滚走的被清掉、滚回来现解，那一段是空白。取景落定之后量这张图在
+   屏幕上铺开多大：一个源像素要占不止一个设备像素，就是派生档不够清楚，换回原件。
+   单列、大图这些真用得上像素的地方照旧是原件，多列时屏幕本来就放不下那么多像素。 */
+function upgradeCover(img){
+  if(!/[?&]thumb=1(&|$)/.test(img.src)||!img.naturalWidth)return;
+  const {width,height}=img.getBoundingClientRect();
+  const pick=getComputedStyle(img).objectFit==='contain'?Math.min:Math.max;
+  const scale=pick(width/img.naturalWidth,height/img.naturalHeight)*(window.devicePixelRatio||1);
+  if(!(scale>1.01))return;
+  img.dataset.thumbSrc=img.src;
+  img.src=img.src.replace(/[?&]thumb=1(?=&|$)/,'');
 }
 /* 容器比例只有 `.pic` 的 `--card-ratio` 知道：竖屏开关、JAV 大图和普通卡片各写一个
    值，在这里按 layout 重算迟早会和它分叉。自定义属性会继承，直接从图片上读；
@@ -3219,7 +3235,7 @@ document.addEventListener('load',event=>{
   if(!(img instanceof HTMLImageElement))return;
   settleImage(img);
   fitNativeImage(img);
-  if(img.classList.contains('cover'))coverAnchor(img);
+  if(img.classList.contains('cover')){coverAnchor(img);upgradeCover(img)}
   // 头像走同一条路，理由也同一个：倍数要等图和框都落地才算得出来。
   else if(img.dataset.facebox)avatarFrame(img);
 },true);
@@ -3289,7 +3305,15 @@ function refitNativeImages(root){
     if(img.dataset.facebox)avatarFrame(img);
   });
 }
-window.addEventListener('resize',()=>refitNativeImages($('#index')),{passive:true});
+let coverRecheck=0;
+window.addEventListener('resize',()=>{
+  refitNativeImages($('#index'));
+  // 窗口放大后卡片跟着变大，先前够用的派生档可能就不够了；只增不减，换回来的原件留着。
+  // 等拖动停下再量：逐张量尺寸要读样式和盒子，跟着每一帧 resize 跑就是一次次强制排版。
+  clearTimeout(coverRecheck);
+  coverRecheck=setTimeout(()=>$('#index').querySelectorAll('img.cover').forEach(img=>{
+    if(img.complete)upgradeCover(img)}),200);
+},{passive:true});
 /* 大图卡片的容器比例。本机 1014 张封面实测，683 张判定有正封，正封自己的宽高比
    从 0.667 到 0.749 都有，中位数 0.704、99% 分位 0.725——一行卡片必须等高，容器
    只能取一个数，所以它对不上其中大多数。0.75 比最宽的那张还宽：683 张一张都不用
@@ -3302,7 +3326,7 @@ const COVER_FRONT_RATIO=0.75;
    （`.poster` 本来就是 contain + 黑底）。 */
 const PORTRAIT_RATIO=9/16;
 function coverImage(it,layout,eager){
-  const src=`/cover?code=${encodeURIComponent(it.code||'')}`;
+  const src=`/cover?code=${encodeURIComponent(it.code||'')}&thumb=1`;
   // 人脸位置原样交给页面，锚点由 `coverAnchor` 在加载后算：哪个轴被裁、要推多远，
   // 只有同时拿到图片和容器的比例才知道。人物在画面里的位置差别很大，写死的锚点会把
   // 一部分作品裁掉下巴或整个切出画外；取不到人脸就退回固定取景。
@@ -3321,7 +3345,7 @@ function coverImage(it,layout,eager){
 function javArtwork(it,layout,eager=false){
   const kind=javImageKind(it,appSettings.javImage);
   if(!kind)return '<span class="nopic">无预览</span>';
-  const cover=it.has_cover&&it.code?`/cover?code=${encodeURIComponent(it.code)}`:'';
+  const cover=it.has_cover&&it.code?`/cover?code=${encodeURIComponent(it.code)}&thumb=1`:'';
   const thumb=(it.has_thumb||it.has_local_poster)?`/poster?id=${it.id}&c=4`:'';
   const coverHtml=coverImage(it,layout==='big'?'big':'small',eager);
   // 取景数据要跟着元素走：换回官方封面时 `syncJavImages` 换的是同一个 <img>，
@@ -8086,8 +8110,8 @@ async function openEntity(kind,name,push=true){
     `<a class="entrymark" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${
       x.mark?icon(x.mark):'<span class="missavmark"><span>MISS</span><span>AV</span></span>'
     }${x.ordinal?`<span class="entryordinal">${esc(x.ordinal)}</span>`:''}<span class="sr-only">${esc(x.label)}</span></a>`
-  ).join('')+(d.feed?`<label class="entryfeed">${icon('rss')}<span>订阅新作</span><input type="checkbox"
-      class="ptoggle" role="switch" data-entity-feed ${d.feed.following?'checked':''}></label>`:'');
+  ).join('')+(d.feed?`<label class="entryfeed" title="订阅新作">${icon('rss')}<input type="checkbox"
+      class="sr-only" role="switch" aria-label="订阅新作" data-entity-feed ${d.feed.following?'checked':''}></label>`:'');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */

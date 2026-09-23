@@ -397,24 +397,46 @@ def entity_thumb_root(avatar_root: Path) -> Path:
     return avatar_root.parent / "avatar-thumbs"
 
 
-class EntityThumbnailService:
-    """实体图的索引页派生件。
+#: 卡片网格那一档封面的长边上限。封面按正封取景，图宽约是卡宽的两倍：桌面一列
+#: 200–250 CSS px，二倍屏要 800–1000 设备像素，1600 盖得住，也仍比馆里普通封面的
+#: 1024 宽。高清封面原件 3762×2535、单张 8–10 MB，解码一张就是 38 MB：一页几十张
+#: 挤爆解码缓存，来回滚动时滚走的被清掉、滚回来现解，那一段就是空白。这一档实测
+#: 一张 429 KB、解码约 7 MB，首次现缩约 0.35 秒。这一档只在它的像素铺满屏幕还有富余时
+#: 才被留用（页面按实际显示尺寸决定要不要换回原件），画质取 90 而不是实体图的 80。
+#: 原件不另转 WebP：原尺寸那一份能小到六分之一，解码却慢 2.5 倍，滚回来等的正是解码。
+COVER_THUMB_EDGE = 1600
+COVER_THUMB_QUALITY = 90
+
+
+def cover_thumb_root(cover_root: Path) -> Path:
+    """封面派生件的目录：封面目录旁边那一个，理由同 `entity_thumb_root`。
+
+    不放进封面目录本身：`web_state.cover_index` 逐次扫它来判「这个番号有没有封面」。
+    """
+    return cover_root.parent / "cover-thumbs"
+
+
+class DerivedImageService:
+    """原件的缩小派生件：实体图给索引页，封面给卡片网格。
 
     实体图是给资料页大位存的高清照片，本库 727 张合计 157 MB、均 221 KB；索引页把它
     铺进 150 px 的格子，一屏 120 格就是二十多 MB，而屏幕上只要其中百分之几的像素。
-    所以索引页取的是这里缩好的一份，资料页照旧取原件。
+    所以索引页取的是这里缩好的一份，资料页照旧取原件。封面同理，详情与裁切取原件。
 
-    落在自己的目录而不是 `avatar_root`：那个目录被 `web_state._scan_avatar_root` 逐次
-    扫描用来判「这个实体有没有图」，往里塞一倍数量的派生件等于给每次扫描加一倍成本。
-    目录由 `entity_thumb_root` 从实体图目录推出来，接线处不各写一份默认值。
+    落在自己的目录而不是原件目录：`web_state._scan_avatar_root` 与 `cover_index` 逐次
+    扫描原件目录来判「有没有图」，往里塞一倍数量的派生件等于给每次扫描加一倍成本。
+    目录由 `entity_thumb_root` 与 `cover_thumb_root` 从原件目录推出来，接线处不各写
+    一份默认值。
 
-    换头像会原子替换原件，所以派生件按原件的修改时间复验：比原件旧就重做一张。
+    换头像、换封面都会原子替换原件，所以派生件按原件的修改时间复验：比原件旧就重做一张。
     只比时间不比内容——复核批准落地时原件必然变新，而人手摆进去的文件也带自己的时间。
     """
 
-    def __init__(self, root: Path, edge: int = ENTITY_THUMB_EDGE):
+    def __init__(self, root: Path, edge: int = ENTITY_THUMB_EDGE,
+                 quality: int = ENTITY_THUMB_QUALITY):
         self.root = root.resolve()
         self.edge = edge
+        self.quality = quality
 
     def path_for(self, key: str) -> Path:
         return self.root / f"{key}.{self.edge}.webp"
@@ -444,7 +466,7 @@ class EntityThumbnailService:
                     # `thumbnail` 只缩不放：本来就比这一档小的图原样重编码，不上采样。
                     image.thumbnail((self.edge, self.edge), Image.LANCZOS)
                     image.save(temporary, ENTITY_THUMB_FORMAT,
-                               quality=ENTITY_THUMB_QUALITY, method=4)
+                               quality=self.quality, method=4)
         except (OSError, ValueError, Image.DecompressionBombError,
                 Image.UnidentifiedImageError):
             return None

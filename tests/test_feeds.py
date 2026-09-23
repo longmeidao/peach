@@ -15,40 +15,6 @@ from peach.repository import LedgerDatabase  # noqa: E402
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "migrations"
 
-RSS = b"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0"><channel>
-  <title>Sukebei - Home - Torrent File RSS</title>
-  <item>
-    <title>HMN-071 \xe6\x96\xb0\xe4\xba\xba \xe6\x88\xb6\xe5\xb7\x9d\xe6\xad\xa5[\xe6\x9c\x89\xe7\xa2\xbc]</title>
-    <link>https://sukebei.nyaa.si/download/4719097.torrent</link>
-    <guid>https://sukebei.nyaa.si/view/4719097</guid>
-    <pubDate>Tue, 22 Sep 2026 10:36:13 -0000</pubDate>
-  </item>
-  <item>
-    <title>[H265 1080p] DSOD-114 \xe8\x8a\xb1\xe5\xae\xae\xe4\xba\xac\xe5\xad\x90</title>
-    <link>https://sukebei.nyaa.si/download/4719080.torrent</link>
-    <guid>https://sukebei.nyaa.si/view/4719080</guid>
-    <pubDate>Tue, 22 Sep 2026 09:12:00 -0000</pubDate>
-  </item>
-  <item>
-    <title>\xe5\x90\x88\xe9\x9b\x86 30 \xe9\x83\xa8\xe6\x89\x93\xe5\x8c\x85</title>
-    <link>https://sukebei.nyaa.si/download/4719001.torrent</link>
-    <guid>https://sukebei.nyaa.si/view/4719001</guid>
-    <pubDate>Tue, 22 Sep 2026 08:00:00 -0000</pubDate>
-  </item>
-</channel></rss>"""
-
-ATOM = b"""<?xml version="1.0" encoding="UTF-8"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>example</title>
-  <entry>
-    <id>tag:example,2026:1</id>
-    <title>SSIS-950 sample</title>
-    <link href="https://example.test/a"/>
-    <published>2026-09-20T03:00:00Z</published>
-  </entry>
-</feed>"""
-
 JAVDB_ACTOR = """
 <div class="movie-list h cols-4 vcols-8">
   <div class="item">
@@ -70,6 +36,15 @@ JAVDB_ACTOR = """
       </div>
     </a>
   </div>
+  <div class="item">
+    <a href="/v/Zx9Qa1" class="box" title="ignored">
+      <div class="cover"><img src="z.jpg" /></div>
+      <div class="video-title"><strong></strong> 合集 30 部打包</div>
+      <div class="meta">
+        2026-10-01
+      </div>
+    </a>
+  </div>
 </div>
 """
 
@@ -81,27 +56,6 @@ def _database(root: Path) -> LedgerDatabase:
 
 
 class FeedParsingTest(unittest.TestCase):
-    def test_rss_entries_take_guid_as_item_key(self):
-        parsed = feeds.parse_feed(RSS)
-        self.assertIsNotNone(parsed)
-        self.assertEqual(parsed.title, "Sukebei - Home - Torrent File RSS")
-        self.assertEqual([entry.item_key for entry in parsed.entries],
-                         ["https://sukebei.nyaa.si/view/4719097",
-                          "https://sukebei.nyaa.si/view/4719080",
-                          "https://sukebei.nyaa.si/view/4719001"])
-        self.assertEqual(parsed.entries[0].published_at, "2026-09-22T10:36:13.000Z")
-
-    def test_atom_entries_take_id_and_link(self):
-        parsed = feeds.parse_feed(ATOM)
-        self.assertEqual(len(parsed.entries), 1)
-        self.assertEqual(parsed.entries[0].item_key, "tag:example,2026:1")
-        self.assertEqual(parsed.entries[0].link, "https://example.test/a")
-        self.assertEqual(parsed.entries[0].code, "SSIS-950")
-
-    def test_not_a_feed_is_none(self):
-        self.assertIsNone(feeds.parse_feed(b"<html><body>hi</body></html>"))
-        self.assertIsNone(feeds.parse_feed(b""))
-
     def test_code_is_found_inside_a_title_full_of_prose(self):
         # 整段丢给 `release_code_from_text` 认不出来，词元扫描才认得出。
         title = "HMN-071 新人 帶來超稀有妹子 戶川步[有碼高清中文字幕]"
@@ -112,10 +66,16 @@ class FeedParsingTest(unittest.TestCase):
     def test_javdb_actor_page_reads_code_and_release_date(self):
         parsed = feeds.parse_javdb_actor(JAVDB_ACTOR, "https://javdb.com/actors/pRMq")
         self.assertEqual([entry.item_key for entry in parsed.entries],
-                         ["/v/5nr8mp", "/v/RkPb5z"])
+                         ["/v/5nr8mp", "/v/RkPb5z", "/v/Zx9Qa1"])
         self.assertEqual(parsed.entries[0].code, "PBD-528")
         self.assertEqual(parsed.entries[0].link, "https://javdb.com/v/5nr8mp")
         self.assertEqual(parsed.entries[0].published_at, "2026-10-20T00:00:00.000Z")
+        self.assertIsNone(parsed.entries[2].code)
+
+    def test_an_unknown_kind_is_a_parse_failure(self):
+        # 账本里若留着别的类型，拉取把原因写在那一行上，不拿演员页的解析器硬读。
+        self.assertIsNone(feeds.parse("rss", JAVDB_ACTOR.encode("utf-8"),
+                                      "https://example.test/rss"))
 
     def test_a_page_without_any_work_is_a_failure_not_an_empty_poll(self):
         # 带查询串的演员页会回一份不含作品的页面。当成「这次没有新作」会让一个坏掉的
@@ -133,12 +93,12 @@ class FeedStoreTest(unittest.TestCase):
 
     def _source(self, **kwargs) -> int:
         with self.database.write_transaction() as connection:
-            return feeds.add_source(connection, kind=feeds.KIND_RSS,
-                                    url=kwargs.pop("url", "https://example.test/rss"),
+            return feeds.add_source(connection,
+                                    url=kwargs.pop("url", "https://javdb.com/actors/pRMq"),
                                     **kwargs)
 
-    def _poll(self, source_id: int, body: bytes = RSS) -> dict:
-        parsed = feeds.parse_feed(body)
+    def _poll(self, source_id: int) -> dict:
+        parsed = feeds.parse_javdb_actor(JAVDB_ACTOR, "https://javdb.com/actors/pRMq")
         with self.database.write_transaction() as connection:
             source = connection.execute("SELECT * FROM feed_source WHERE id=?",
                                         (source_id,)).fetchone()
@@ -161,7 +121,7 @@ class FeedStoreTest(unittest.TestCase):
         # 解不出番号的条目照样记一行，只是不建壳。
         self.assertEqual(outcome["without_code"], 1)
         self.assertEqual(sorted(code for _id, code in outcome["created"]),
-                         ["DSOD-114", "HMN-071"])
+                         ["BBSS-106", "PBD-528"])
         with self.database.read_connection() as connection:
             self.assertEqual(connection.execute(
                 "SELECT count(*) FROM feed_item").fetchone()[0], 3)
@@ -174,8 +134,8 @@ class FeedStoreTest(unittest.TestCase):
         self.assertEqual(outcome["created"], [])
 
     def test_two_sources_reporting_one_code_share_a_single_shell(self):
-        first = self._source(url="https://example.test/a.xml")
-        second = self._source(url="https://example.test/b.xml")
+        first = self._source(url="https://javdb.com/actors/pRMq")
+        second = self._source(url="https://javdb.com/actors/d45k9")
         self._poll(first)
         outcome = self._poll(second)
         # 源内那一层是各自的，所以第二个源仍然把三条都记成新条目……
@@ -192,11 +152,11 @@ class FeedStoreTest(unittest.TestCase):
         with self.database.write_transaction() as connection:
             connection.execute(
                 "INSERT INTO asset(location,path,name,medium,code) "
-                "VALUES('R','R:\\\\media\\\\hmn071.mp4','hmn071.mp4','video','hmn00071')")
+                "VALUES('R','R:\\\\media\\\\pbd528.mp4','pbd528.mp4','video','pbd00528')")
         source_id = self._source()
         outcome = self._poll(source_id)
-        # 归一化之后 `hmn00071` 与 `HMN-071` 是同一部片。
-        self.assertEqual([code for _id, code in outcome["created"]], ["DSOD-114"])
+        # 归一化之后 `pbd00528` 与 `PBD-528` 是同一部片。
+        self.assertEqual([code for _id, code in outcome["created"]], ["BBSS-106"])
 
     def test_read_and_ignore_are_independent_and_do_not_touch_dedupe(self):
         source_id = self._source()
@@ -222,7 +182,7 @@ class FeedStoreTest(unittest.TestCase):
         self.assertIsNotNone(row["ignored_at"])
 
     def test_settle_writes_the_next_time_on_every_path(self):
-        source_id = self._source(interval_minutes=60)
+        source_id = self._source()
         with self.database.write_transaction() as connection:
             feeds.settle(connection, source_id, error="来源回了 HTTP 503",
                          interval_minutes=60)
@@ -259,13 +219,16 @@ class ShellBoundaryTest(unittest.TestCase):
         self.database = _database(Path(self._tmp.name))
         self.addCleanup(self._tmp.cleanup)
 
+    def _poll_once(self, connection) -> int:
+        source_id = feeds.add_source(connection, url="https://javdb.com/actors/pRMq")
+        feeds.poll(connection, connection.execute(
+            "SELECT * FROM feed_source WHERE id=?", (source_id,)).fetchone(),
+            feeds.parse_javdb_actor(JAVDB_ACTOR, "https://javdb.com/actors/pRMq"))
+        return source_id
+
     def test_a_shell_adds_no_asset_row(self):
         with self.database.write_transaction() as connection:
-            source_id = feeds.add_source(connection, kind=feeds.KIND_RSS,
-                                         url="https://example.test/rss")
-            feeds.poll(connection, connection.execute(
-                "SELECT * FROM feed_source WHERE id=?", (source_id,)).fetchone(),
-                feeds.parse_feed(RSS))
+            self._poll_once(connection)
         with self.database.read_connection() as connection:
             self.assertEqual(connection.execute(
                 "SELECT count(*) FROM asset").fetchone()[0], 0)
@@ -282,12 +245,7 @@ class ShellBoundaryTest(unittest.TestCase):
         # 壳是「这个番号还没入库」，它不该随着某个订阅被删而消失。
         with self.database.write_transaction() as connection:
             connection.execute("PRAGMA foreign_keys=ON")
-            source_id = feeds.add_source(connection, kind=feeds.KIND_RSS,
-                                         url="https://example.test/rss")
-            feeds.poll(connection, connection.execute(
-                "SELECT * FROM feed_source WHERE id=?", (source_id,)).fetchone(),
-                feeds.parse_feed(RSS))
-            feeds.remove_source(connection, source_id)
+            feeds.remove_source(connection, self._poll_once(connection))
         with self.database.read_connection() as connection:
             self.assertEqual(connection.execute(
                 "SELECT count(*) FROM feed_item").fetchone()[0], 0)

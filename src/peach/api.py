@@ -51,9 +51,12 @@ from .mdns import create_mdns_publisher
 from .mp4repair import HeaderRepairStore
 from .platform import location_mounts
 from .previews import (
-    EntityThumbnailService,
+    COVER_THUMB_EDGE,
+    COVER_THUMB_QUALITY,
+    DerivedImageService,
     PhotoThumbnailService,
     PreviewService,
+    cover_thumb_root,
     entity_thumb_root,
 )
 from .push_discovery import PushDiscoveryService
@@ -185,7 +188,9 @@ def create_app(
         settings.avatar_root, settings.logo_root,
     )
     photo_service = PhotoThumbnailService(settings.photo_root)
-    entity_thumb_service = EntityThumbnailService(entity_thumb_root(settings.avatar_root))
+    entity_thumb_service = DerivedImageService(entity_thumb_root(settings.avatar_root))
+    cover_thumb_service = DerivedImageService(cover_thumb_root(settings.cover_root),
+                                              edge=COVER_THUMB_EDGE, quality=COVER_THUMB_QUALITY)
     transcode_service = TranscodeService(resolver, settings.transcode_root)
     header_repairs = HeaderRepairStore(settings.transcode_root, resolver)
     hls_plan_executor = ThreadPoolExecutor(
@@ -223,8 +228,8 @@ def create_app(
     )
     contract.follow_scheduler = follow_scheduler
     # 订阅源拉取（ADR-0042）用同一个调度实现，只换 job id、状态文件与默认间隔。
-    # 默认 6 小时：两类可用来源一天更新几十条，比这更密只是把 JavDB 的配额花在
-    # 一张没变的页面上。
+    # 默认 6 小时：一位女优的 JavDB 演员页一天更新几条，比这更密只是把 JavDB 的配额
+    # 花在一张没变的页面上。
     feed_scheduler = FollowUpdateScheduler(
         settings.follow_state_root,
         lambda: web_feeds.w_feed_check(contract, {"automatic": True}),
@@ -315,6 +320,7 @@ def create_app(
     app.state.preview_service = preview_service
     app.state.photo_service = photo_service
     app.state.entity_thumb_service = entity_thumb_service
+    app.state.cover_thumb_service = cover_thumb_service
     app.state.transcode_service = transcode_service
     app.state.header_repairs = header_repairs
     app.state.hls_plan_executor = hls_plan_executor

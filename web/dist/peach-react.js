@@ -32201,48 +32201,38 @@ function zD() {
 		let e = new AbortController();
 		return i(e.signal), () => e.abort();
 	}, [i]);
-	let a = e?.kinds ?? [], [o, s] = (0, C.useState)(""), [c, l] = (0, C.useState)(""), [u, d] = (0, C.useState)(""), [f, p] = (0, C.useState)("6"), m = mh(), h = (e) => {
-		e.preventDefault();
-		let t = Math.round(Number(f) * 60);
-		m.run("add", (e) => J("/api/feeds/source", {
-			action: "add",
-			kind: o || a[0]?.value,
-			url: c.trim(),
-			name: u.trim(),
-			interval_minutes: Number.isFinite(t) ? t : void 0
-		}, "POST", e), () => {
-			l(""), d(""), i();
-		});
-	}, g = (e, t) => {
-		m.run(`enabled-${e.id}`, (n) => J("/api/feeds/source", {
+	let a = mh(), o = (e, t) => {
+		a.run(`enabled-${e.id}`, (n) => J("/api/feeds/source", {
 			action: "enabled",
 			id: e.id,
 			enabled: t
 		}, "POST", n), () => void i());
-	}, _ = (e) => {
-		m.run(`remove-${e.id}`, (t) => J("/api/feeds/source", {
+	}, s = (e) => {
+		a.run(`remove-${e.id}`, (t) => J("/api/feeds/source", {
 			action: "remove",
 			id: e.id
 		}, "POST", t), () => void i());
 	};
 	return e ? /* @__PURE__ */ (0, w.jsxs)(KS, {
 		title: "订阅源",
-		onSubmit: h,
 		children: [
 			e.sources.length ? /* @__PURE__ */ (0, w.jsx)(qS, { children: e.sources.map((e) => /* @__PURE__ */ (0, w.jsx)(US, {
 				label: e.name || e.url,
 				description: RD(e),
 				children: /* @__PURE__ */ (0, w.jsxs)("div", {
-					className: "flex items-center gap-1",
+					className: "flex items-center gap-2",
 					children: [/* @__PURE__ */ (0, w.jsx)(qb, {
 						"aria-label": `启用 ${e.name || e.url}`,
 						isSelected: e.enabled,
-						onChange: (t) => g(e, t)
-					}), /* @__PURE__ */ (0, w.jsx)(Xy, {
-						icon: Bf,
+						onChange: (t) => o(e, t)
+					}), /* @__PURE__ */ (0, w.jsx)(K, {
+						variant: "danger",
+						size: "xs",
+						iconOnly: !0,
+						leadingIcon: Bf,
 						"aria-label": `移除 ${e.name || e.url}`,
-						onClick: () => _(e),
-						...X(m.busy === `remove-${e.id}`)
+						onClick: () => s(e),
+						...X(a.busy === `remove-${e.id}`)
 					})]
 				})
 			}, e.id)) }) : null,
@@ -32254,61 +32244,19 @@ function zD() {
 						title: `${e.name || e.url} 拉取失败`,
 						children: e.last_error
 					}, e.id)),
-					/* @__PURE__ */ (0, w.jsxs)("div", {
-						className: "inline-grid grid-cols-1 gap-3 @lg:grid-cols-2",
-						children: [/* @__PURE__ */ (0, w.jsxs)("div", {
-							className: "flex flex-col gap-1.5",
-							children: [/* @__PURE__ */ (0, w.jsx)(QS, { children: "来源类型" }), /* @__PURE__ */ (0, w.jsx)(fT, {
-								"aria-label": "来源类型",
-								selectedKey: o || a[0]?.value,
-								onSelectionChange: (e) => {
-									e !== null && s(String(e));
-								},
-								children: a.map((e) => /* @__PURE__ */ (0, w.jsx)(pT, {
-									id: e.value,
-									textValue: e.label,
-									children: e.label
-								}, e.value))
-							})]
-						}), /* @__PURE__ */ (0, w.jsx)(rb, {
-							label: "拉取间隔（小时）",
-							inputMode: "decimal",
-							value: f,
-							onChange: p,
-							hint: `最短 ${e.min_interval_minutes} 分钟。`
-						})]
-					}),
-					/* @__PURE__ */ (0, w.jsx)(rb, {
-						label: "订阅地址",
-						placeholder: "https://",
-						value: c,
-						onChange: l,
-						hint: "RSS/Atom 的地址，或 JavDB 的演员页地址。只收 HTTPS。"
-					}),
-					/* @__PURE__ */ (0, w.jsx)(rb, {
-						label: "名称",
-						maxLength: 80,
-						placeholder: "不填就用地址",
-						value: u,
-						onChange: d
-					}),
-					m.error ? /* @__PURE__ */ (0, w.jsx)(ZS, { children: m.error }) : null,
-					/* @__PURE__ */ (0, w.jsx)(XS, { children: "订阅只发现番号、建一条「未入库」的新作，不下载任何文件。新作在首页和人物页里看。" })
+					a.error ? /* @__PURE__ */ (0, w.jsx)(ZS, { children: a.error }) : null,
+					/* @__PURE__ */ (0, w.jsx)(XS, { children: "在人物页点「订阅新作」就会加到这里。订阅只发现番号、建一条「未入库」的新作，不下载任何文件；新作在首页和人物页里看。" })
 				]
 			}),
-			/* @__PURE__ */ (0, w.jsxs)(YS, {
+			/* @__PURE__ */ (0, w.jsx)(YS, {
 				status: e.unread ? `有 ${e.unread} 条新作还没看` : "新作都看过了",
-				children: [/* @__PURE__ */ (0, w.jsx)(K, {
+				children: /* @__PURE__ */ (0, w.jsx)(K, {
 					onClick: () => {
-						m.run("check", (e) => J("/api/feeds/check", { all: !0 }, "POST", e), () => void i());
+						a.run("check", (e) => J("/api/feeds/check", { all: !0 }, "POST", e), () => void i());
 					},
-					...X(m.busy === "check"),
+					...X(a.busy === "check"),
 					children: "立即拉取"
-				}), /* @__PURE__ */ (0, w.jsx)(K, {
-					type: "submit",
-					...X(m.busy === "add"),
-					children: "添加订阅"
-				})]
+				})
 			})
 		]
 	}) : /* @__PURE__ */ (0, w.jsx)(KS, {

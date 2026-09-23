@@ -484,11 +484,20 @@ def timeline(request: Request, id: int, s: int = 0, args: dict[str, str] = Depen
 
 
 @router.api_route("/cover", methods=["GET", "HEAD"])
-def cover(request: Request, code: str = "", args: dict[str, str] = Depends(require_auth)):
-    """官方封套原图。存原图不裁：4:3 与 16:9 两种版式在界面上按比例取景。"""
+def cover(request: Request, code: str = "", thumb: int = 0,
+          args: dict[str, str] = Depends(require_auth)):
+    """官方封套原图。存原图不裁：4:3 与 16:9 两种版式在界面上按比例取景。
+
+    `thumb=1` 要的是卡片网格那一档派生件（`COVER_THUMB_EDGE`），详情与裁切取原件。
+    开关是布尔而不是像素数，理由同 `/entity-image`。
+    """
     path = request.app.state.web_contract.cover_path(code)
     if path is None:
         return JSONResponse({"error": "no cover"}, status_code=404)
+    if thumb:
+        derived = request.app.state.cover_thumb_service.thumbnail(path.stem, path)
+        if derived is not None:
+            return _image_response(request, derived, media_type=ENTITY_THUMB_TYPE)
     return _image_response(request, path, media_type="image/jpeg")
 
 
