@@ -86,13 +86,14 @@ def backlog(connection, cover_root: Path, *, exclude=(), now: datetime | None = 
     """还缺资料或本机封面、上次尝试已经过了 `retry_after` 的壳。
 
     已忽略的不算：人说了不想看，就不再替它花配额。已经入库的壳本来就不在表里
-    （入库即从列表里消失，ADR-0042 第三条），这里同样用番号键排除掉。
+    （入库即从列表里消失，ADR-0042 第三条），这里同样用番号键排除掉。取回标题后认出是
+    大合集的也不算：页面上不列它，替它补封面的配额是白花的。
     """
     moment = now or datetime.now(timezone.utc)
     cutoff = feeds.stamp(moment - retry_after)
     skip = set(exclude)
     rows = connection.execute(
-        "SELECT d.code,d.scraped_at,d.scrape_error FROM feed_discovery d"
+        "SELECT d.code,d.title,d.performers,d.scraped_at,d.scrape_error FROM feed_discovery d"
         " WHERE d.ignored_at IS NULL AND (d.scraped_at IS NULL OR d.scraped_at<?)"
         " AND NOT EXISTS (SELECT 1 FROM asset a WHERE a.code IS NOT NULL"
         " AND normalise_code_key(a.code)=normalise_code_key(d.code))"
@@ -101,7 +102,7 @@ def backlog(connection, cover_root: Path, *, exclude=(), now: datetime | None = 
     found: list[str] = []
     for row in rows:
         code = row["code"]
-        if code in skip:
+        if code in skip or feeds.is_compilation(row["title"], row["performers"]):
             continue
         needs_fields = row["scraped_at"] is None or row["scrape_error"] is not None
         if needs_fields or not has_local_cover(cover_root, code):
@@ -151,12 +152,16 @@ def collect(provider, code: str) -> tuple[dict, str | None]:
     return fields, cover
 
 
-def fetch_cover(contract, code: str) -> tuple[bytes, tuple[int, int], dict]:
+def fetch_cover(contract, code: str,
+                cover_url: str | None = None) -> tuple[bytes, tuple[int, int], dict]:
     """官方渠道里这个番号最大的那张封面，连同写进 `.scraping.json` 的来路。
 
+    `cover_url` 是取资料那一步来源给的地址，它是官方图路径时一起参与择优。`DAZD-308`
+    这类番号 r18 与本机快照里都没有，官方渠道一条候选也列不出来，来源给的却正是 DMM 那张
+    封套；不收它，这部就只能在页面上拿远程图按固定比例切，书脊切不干净。
     取不到就抛；原因交给调用方记账，一部取不到不影响同批其余几部。
     """
-    from .jav_cover_fetch import HostLimitedTransport, best_cover
+    from .jav_cover_fetch import HostLimitedTransport, best_cover, official_image_candidates
     from .scraping_access import SourceTransport
 
     raw = SourceTransport(contract.follow_secrets_root, max_requests=40,
@@ -166,6 +171,7 @@ def fetch_cover(contract, code: str) -> tuple[bytes, tuple[int, int], dict]:
         candidate, size, data = best_cover(
             transport, code, 0,
             metadata_root=contract.follow_sources_root / "metadata" / "javinizer-go",
+            prior_candidates=tuple(official_image_candidates(cover_url or "")),
             deadline=time.monotonic() + COVER_SECONDS)
     finally:
         transport.close()
@@ -177,7 +183,7 @@ def fetch_cover(contract, code: str) -> tuple[bytes, tuple[int, int], dict]:
     return data, size, evidence
 
 
-def _install_cover(contract, code: str) -> bool:
+def _install_cover(contract, code: str, cover_url: str | None = None) -> bool:
     """本机还没有这个番号的封面就去取来装上。返回这一部现在有没有封面。"""
     from .catalog_rules import is_korean_mib_code
     from .cover_artwork import install_cover
@@ -187,7 +193,7 @@ def _install_cover(contract, code: str) -> bool:
         return False
     if has_local_cover(contract.cover_root, key):
         return True
-    data, size, evidence = fetch_cover(contract, key)
+    data, size, evidence = fetch_cover(contract, key, cover_url)
     install_cover(Path(contract.cover_root) / f"{key}.jpg", key, data, size, evidence=evidence)
     return True
 
@@ -247,8 +253,12 @@ def run(contract, key: str, handle) -> dict:
                 fetched += 1
             else:
                 missed += 1
+        # 封面地址在取资料那一步才写上壳，所以取完再读一遍，不用循环开头那份。
+        with contract.database.read_connection() as connection:
+            cover_url = connection.execute(
+                "SELECT cover_url FROM feed_discovery WHERE id=?", (int(row["id"]),)).fetchone()
         try:
-            covers += _install_cover(contract, code)
+            covers += _install_cover(contract, code, cover_url[0] if cover_url else None)
         except Exception:  # noqa: BLE001 - 取不到封面这一部照样有资料，下一轮再试
             pass
         # 封面取没取到都记下这一次尝试，`backlog` 按它隔 `RETRY_AFTER` 再试。

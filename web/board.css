@@ -379,7 +379,7 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
 .configfieldset.configfieldset:not([data-fieldset-type])>.geist-fieldset-footer,.cleanupfieldset.cleanupfieldset>.geist-fieldset-footer{background:var(--board-card-foot)}
 .followmanage .fmain>.fsec>.frows{padding:8px 24px}
 @media(max-width:760px){.followmanage .fmain>.fsec>.fsechead{padding:16px}.followmanage .fmain>.fsec>.frows{padding:8px 16px}}
-.gridstack .card:not(.junkcard) .pic{border-radius:12px;overflow:hidden}
+.gridstack .card:not(.junkcard) .pic{border-radius:var(--surface-radius);overflow:hidden}
 .top{isolation:isolate}
 body.board-scrolled .top{box-shadow:none;border-bottom:0}
 /* 吸顶那一刻这块板离开纸面往上抬一档，三层影跟着加重：它盖住内容滚过去，两层之间

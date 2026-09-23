@@ -177,10 +177,11 @@ def q_feed_check(contract, args) -> dict:
 def q_feeds(contract, args) -> dict:
     """设置页「订阅源」小节的首屏。"""
     with contract.database.read_connection() as connection:
+        feeds.register_functions(connection)
         rows = feeds.sources(connection)
         pending = connection.execute(
-            "SELECT count(*) FROM feed_discovery WHERE ignored_at IS NULL"
-            " AND read_at IS NULL").fetchone()[0]
+            "SELECT count(*) FROM feed_discovery d WHERE d.ignored_at IS NULL"
+            f" AND d.read_at IS NULL AND {' AND '.join(LISTED)}").fetchone()[0]
     return {"ok": True, "sources": rows, "unread": int(pending or 0)}
 
 
@@ -248,12 +249,20 @@ def _follow_entity(contract, body) -> dict:
 #: 列表一次给多少条。首页那一块只放一行，人物页给一屏。
 DISCOVERY_LIMIT = 24
 
+#: 哪些壳算「新作」。已经入库的不算——那条新作的使命已经完成了；大合集不算——
+#: 合集里的每一段都早就出过（`feeds.is_compilation`）。两条都是读的时候现算。
+#: 用到它的连接要先 `feeds.register_functions`。
+LISTED = (
+    "NOT EXISTS (SELECT 1 FROM asset a WHERE a.code IS NOT NULL"
+    " AND normalise_code_key(a.code)=normalise_code_key(d.code))",
+    "NOT is_feed_compilation(d.title,d.performers)",
+)
+
 
 def q_feed_discoveries(contract, args) -> dict:
     """未入库的新作。`entity` 限定到某个人，`state` 切换忽略视图。
 
     「已入库」是现算的：壳上不存这个布尔，它的真相在 `asset` 那一侧（ADR-0042 第三条）。
-    已经入库的番号不出现在列表里——那条新作的使命已经完成了。
     """
     entity_id = args.get("entity")
     state = str(args.get("state") or "active")
@@ -261,8 +270,7 @@ def q_feed_discoveries(contract, args) -> dict:
         limit = min(int(args.get("limit") or DISCOVERY_LIMIT), 100)
     except (TypeError, ValueError):
         limit = DISCOVERY_LIMIT
-    where = ["NOT EXISTS (SELECT 1 FROM asset a WHERE a.code IS NOT NULL"
-             " AND normalise_code_key(a.code)=normalise_code_key(d.code))"]
+    where = list(LISTED)
     params: list[object] = []
     if state == "ignored":
         where.append("d.ignored_at IS NOT NULL")
@@ -273,6 +281,7 @@ def q_feed_discoveries(contract, args) -> dict:
                      " WHERE de.discovery_id=d.id AND de.entity_id=?)")
         params.append(int(entity_id))
     with contract.database.read_connection() as connection:
+        feeds.register_functions(connection)
         rows = connection.execute(
             "SELECT d.*, s.name AS source_name, s.kind AS source_kind"
             " FROM feed_discovery d LEFT JOIN feed_source s ON s.id=d.source_id"

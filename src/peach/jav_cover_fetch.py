@@ -365,6 +365,23 @@ def dmm_cdn_images(url: str) -> list[Candidate]:
     return _unique_candidates(candidates)
 
 
+def official_image_candidates(url: str) -> list[Candidate]:
+    """别处给的一个封面地址里，能当官方候选的那几条。
+
+    只认 DMM 与 MGS 的官方图路径：DMM 路径带 content_id，`is_cross_product_cover` 能按它
+    核对是不是这一部；MGS 按商品目录存图。社区站图床的地址不认——那边搜不到原番号时会给
+    别的作品，和 `cached_metadata` 不收社区快照里的图是同一条理由。
+    """
+    clean = (url or "").split("?", 1)[0].strip()
+    if not IMAGE_URL.fullmatch(clean):
+        return []
+    if _DMM_CID.search(urlparse(clean).path):
+        return dmm_cdn_images(clean)
+    if urlparse(clean).netloc.lower().endswith("mgstage.com"):
+        return [candidate_for(clean)]
+    return []
+
+
 def content_id_images(content_id: str) -> list[Candidate]:
     candidates: list[Candidate] = []
     for cid in cid_variants(content_id):

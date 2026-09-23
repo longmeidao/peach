@@ -84,6 +84,31 @@ class FeedParsingTest(unittest.TestCase):
                                                   "https://javdb.com/actors/pRMq"))
 
 
+class CompilationTest(unittest.TestCase):
+    """标题与名单取自一份订阅实际抓回的壳。"""
+
+    def test_marked_titles_and_long_cast_lists_are_compilations(self):
+        cast = "、".join(f"女優{index}" for index in range(8))
+        for title, performers in (
+                ("ひくひくアナル丸見え！デカ尻バック激ピストンBEST", "一人"),
+                ("乱交ベスト", ""),
+                ("主観手コキ50連発", ""),
+                ("涼森れむ 8時間 BEST PRESTIGE PREMIUM RESTRICTED vol.12", "涼森れむ"),
+                ("季刊性年KMP 花火 ノーカット 1397分", ""),
+                ("レス界隈奥さん他人棒で淫乱覚醒する巨乳人妻", cast)):
+            with self.subTest(title=title):
+                self.assertTrue(feeds.is_compilation(title, performers))
+
+    def test_a_few_co_stars_and_ordinary_titles_stay(self):
+        for title, performers in (
+                ("初めてのセックスが大優勝 ～神女優で童貞卒業～", "鈴村あいり、涼森れむ、八掛うみ"),
+                ("月刊ハメ撮り 本能剥き出し3本番 涼森れむ", "涼森れむ"),
+                ("BESTIE と過ごす2時間", ""),
+                (None, None)):
+            with self.subTest(title=title):
+                self.assertFalse(feeds.is_compilation(title, performers))
+
+
 class FeedStoreTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

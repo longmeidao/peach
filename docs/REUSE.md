@@ -10,6 +10,8 @@
 
 - 搜索玻璃复用 `glideEase()` 的采样弹簧；`web/js/search-morph.js` 只负责视口边界与轮廓关键帧，证据与差异见 `BOARD_UI.md`，无新增依赖。
 
+- 横排滚到头的回弹由 `wireHorizontalScroller` 内的 `edgeBounce` 承载，头像排、厂牌排、新作排、筛选条共用。transitions.dev 的配方里没有这一条（2026-09-23 核对过全部 43 条）。越界位移借 UIScrollView 的橡皮筋公式 `(1 - 1/(x·c/d + 1))·d`，c = 0.55，与 use-gesture 的 `rubberband` 同一条（MIT，https://github.com/pmndrs/use-gesture ）。回弹走 `--spring-pane`。只抄了公式，不引依赖：use-gesture 管的是手势识别，而这几排的拖动与滚轮归属已经由 `wireHorizontalScroller` 判定。新作排的自动滚动是同一文件里的 `wireAutoScroll`，同样没有新增依赖。
+
 - 浮层筛选由 `web/js/ui-components.js` 的 `mountFilterFrame()` 承载：首页与实体资料页共用视图、标签、读数、控件四个槽位。外框负责玻璃与吸顶，页面负责查询状态和事件；视频、照片与名册更新只替换底行。复用现有 Board 控件及原生 DOM，不新增依赖；身份与观看状态的组合沿用 `/api/items`。
 
 - 组件映射、官方公开注册表证据与许可证见 [Board 界面](BOARD_UI.md)。`web/board.css` 共用正式页面结构，设置可关闭该视觉层；登录、首启与错误页共用 `web_entry.entry_page_style()`，登录页是首启 Auth Card 的单字段形态。

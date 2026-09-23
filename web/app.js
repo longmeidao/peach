@@ -22,7 +22,7 @@ import {
   dissolveValue, popBadges, popCount, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
   postSetupTutorialSkipped, setPostSetupTutorialSkipped, postSetupTutorialSignature,
   nextPostSetupTutorialRequest, isCurrentPostSetupTutorialRequest, resetPostSetupTutorialState,
@@ -542,6 +542,7 @@ appSettings.groupCollapse=appSettings.groupCollapse!==false;
 appSettings.detailAutoplay=appSettings.detailAutoplay!==false;
 appSettings.miniplayer=appSettings.miniplayer!==false;
 appSettings.uiSounds=appSettings.uiSounds!==false;
+appSettings.feedAutoScroll=appSettings.feedAutoScroll!==false;
 appSettings.searchHistoryLimit=boundedPreference(+appSettings.searchHistoryLimit,0,50,10);
 appSettings.relatedLimit=boundedPreference(+appSettings.relatedLimit,0,60,20);
 const METADATA_REFRESH_DAYS=[0,7,30,90];
@@ -826,6 +827,7 @@ function renderSettingSelects(){
 }
 function syncSettingsPanel(){
   $('#groupCollapseSetting').checked=appSettings.groupCollapse;
+  $('#feedAutoScrollSetting').checked=appSettings.feedAutoScroll;
   $('#detailAutoplaySetting').checked=appSettings.detailAutoplay;
   $('#miniplayerSetting').checked=appSettings.miniplayer;
   $('#uiSoundsSetting').checked=appSettings.uiSounds;
@@ -886,6 +888,7 @@ $('#settingsPanel').onkeydown=e=>{
    时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
 $('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
 $('#detailAutoplaySetting').onchange=e=>{appSettings.detailAutoplay=e.target.checked;saveSettings()};
+$('#feedAutoScrollSetting').onchange=e=>{appSettings.feedAutoScroll=e.target.checked;saveSettings();syncFeedAutoScroll()};
 /* 开这一格时立刻响一声开关音，人才知道它开了。关的那一声由 document 上的 change 监听
    发出：捕获阶段排在这个处理器前面，那时开关还没关掉，最后一声还能响出来。 */
 $('#uiSoundsSetting').onchange=e=>{
@@ -3175,6 +3178,9 @@ function coverAnchor(img){
   center('--cover-x',coverFace(img,'cx'),car/r);
   center('--cover-y',coverFace(img,'cy'),r/car);
   posterPanel(img,car);
+  /* 小图版式整张放进卡片（`.whole`）：FC2 那种方图、竖版正封放进横卡片，两侧同样留出
+     两条，垫模糊底而不是黑边。比例差不到 2% 的那一丝留白看不出来，不必多解一张图。 */
+  if(img.classList.contains('whole')&&Math.abs(r/car-1)>.02)coverBackdrop(img);
 }
 /* 只把折痕右边那块正封摆进卡片，封底一个像素都不露。折痕位置在 `data-posterbox` 里，
    换算要的容器比例只有页面知道，两边在这里才凑齐。只有整张封套才有正封可切；没有框
@@ -3196,9 +3202,12 @@ function posterPanel(img,ratio){
   img.style.setProperty('--panel-left',`${frame.left}%`);
   img.style.setProperty('--panel-top',`${frame.top}%`);
   img.style.setProperty('--panel-height',`${frame.height}%`);
-  /* 正封比卡片窄时左右各留一条，垫的是同一张封面的模糊放大版。挂在卡片上而不是
-     图片上：图片那时已经被 `clip-path` 切成正封那一块，铺不到留白处。糊成一片的底
-     用不着原件的像素，换回原件之后这一层仍取派生档。 */
+  coverBackdrop(img);
+}
+/* 封面比卡片窄或宽时留出的那两条，垫同一张封面的模糊放大版。挂在卡片上而不是图片上：
+   正封那时已经被 `clip-path` 切成一块，铺不到留白处。糊成一片的底用不着原件的像素，
+   换回原件之后这一层仍取派生档。 */
+function coverBackdrop(img){
   img.closest('.pic')?.style.setProperty('--cover-blur',
     `url("${img.dataset.thumbSrc||img.currentSrc||img.src}")`);
 }
@@ -4677,11 +4686,12 @@ function showHomeSurfaces(){
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
 
-/* 「新作 · 未入库」：订阅源发现的番号，库里还没有文件（ADR-0042）。
+/* 未入库的新作：订阅源发现的番号，库里还没有文件（ADR-0042）。
  *
  * 这一块和网格里的卡片说的不是同一件事——那些是本机有文件的作品，这些只是「外面出了
  * 这一部」。所以它自己一行，卡片上不出时长、大小、来源徽章：那几个读数对一条还没有
- * 文件的番号全是空的，照着资产卡画会让人以为点开能看。
+ * 文件的番号全是空的，照着资产卡画会让人以为点开能看。这一行不另起标题：它就排在
+ * 筛选栏下面、作品网格上面，卡片的形状和那枚外链已经说清楚它是什么。
  *
  * 落点用发现时那条地址，不另拼。JavDB 演员页那类源给的就是作品页 `/v/…`，而按番号拼
  * 搜索地址是把「这是哪一部」交给站内检索去猜——缺 id 就不给入口，全站同一条规矩。 */
@@ -4726,8 +4736,7 @@ async function renderFeedNew(host,entityId){
   const items=data&&!data.error?(data.items||[]):[];
   if(!items.length){host.hidden=true;host.innerHTML='';return}
   host.hidden=false;
-  host.innerHTML=`<h3 class="feednewtitle disp">新作 · 未入库</h3>
-    <div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
+  host.innerHTML=`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
   host.querySelectorAll('[data-feed-action]').forEach(button=>button.onclick=async()=>{
     const card=button.closest('[data-feed-id]');
     const action=button.dataset.feedAction;
@@ -4737,12 +4746,18 @@ async function renderFeedNew(host,entityId){
     if(action==='ignore')card.remove();else card.classList.add('isread');
     if(!host.querySelector('[data-feed-id]'))host.hidden=true;
   });
-  wireDrag(host.querySelector('.feednewrow'));
-  wireHorizontalScroller(host.querySelector('.feednewrow'));
+  const row=host.querySelector('.feednewrow');
+  wireDrag(row);
+  if(appSettings.feedAutoScroll)wireAutoScroll(row);
+}
+/* 设置里开关自动滚动，页面上已经摆着的那几行当场跟着停或走，不等下一次重画。 */
+function syncFeedAutoScroll(){
+  document.querySelectorAll('.feednewrow').forEach(row=>
+    appSettings.feedAutoScroll?wireAutoScroll(row):stopAutoScroll(row));
 }
 
 /* 人物页「订阅新作」开关。地址不经页面：服务端按这位的 JavDB 演员页现拼，页面只送
-   开或关。打开时服务端当场在后台拉一轮，拉完这里把「新作 · 未入库」那一行重画一次；
+   开或关。打开时服务端当场在后台拉一轮，拉完这里把未入库的新作那一行重画一次；
    等的上限是那一轮自己的时长量级，页面换走了就不再等。 */
 const ENTITY_FEED_WAIT_TRIES=40;
 function wireEntityFeed(entityId){
@@ -8191,9 +8206,9 @@ async function openEntity(kind,name,push=true){
         ${links?`<div class="entitylinks">${links}</div>`:''}
         ${entryMarks?`<div class="entrymarks">${entryMarks}</div>`:''}</div></div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
-    <section class="feednew" data-feed-new aria-label="新作 · 未入库" hidden></section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
+    <section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>
     <div class="entitysection"></div>`;
   /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
      不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的

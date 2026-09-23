@@ -288,7 +288,9 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 /* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
    居中：那是取不到人脸时唯一站得住的猜测。 */
 .poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%) var(--cover-y,22%)}
-.poster.cover.whole{object-fit:contain;background:#000;object-position:50% 50%}
+/* 整张放进卡片，图片自己不垫底色：两侧留白透出 `.pic::before` 那层模糊底，没写模糊底时
+   是 `.pic` 自己的黑。 */
+.poster.cover.whole{object-fit:contain;object-position:50% 50%}
 
 
 /* 版式按钮嵌在排序行里，必须比 `.sorts button` 更具体，否则那条规则的内边距和

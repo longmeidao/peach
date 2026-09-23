@@ -79,11 +79,13 @@ class FeedWebFixture(unittest.TestCase):
         # 封面装进临时封面目录；取图那一步同样替掉，换成一张现画的横版封套。
         self.contract.cover_root = Path(self.temporary.name) / "covers"
         self.cover_misses: set[str] = set()
+        self.cover_urls: dict[str, str | None] = {}
         self._fetch_cover = feed_followup.fetch_cover
         feed_followup.fetch_cover = self._fake_cover
         self.addCleanup(lambda: setattr(feed_followup, "fetch_cover", self._fetch_cover))
 
-    def _fake_cover(self, contract, code):
+    def _fake_cover(self, contract, code, cover_url=None):
+        self.cover_urls[code] = cover_url
         if code in self.cover_misses:
             raise RuntimeError("官方渠道没有这个番号的封面")
         from PIL import Image
@@ -204,6 +206,21 @@ class FeedWebTest(FeedWebFixture):
         listing = dispatch_api_get(self.contract, "/api/feeds/discoveries", {})
         self.assertEqual([item["code"] for item in listing["items"]], ["HMN-071"])
 
+    def test_a_compilation_is_neither_listed_counted_nor_rescheduled(self):
+        self._add()
+        self._check()
+        self._drain(1)
+        with self.contract.database.write_transaction() as connection:
+            connection.execute("UPDATE feed_discovery SET title='波多野結衣となかまたち。BEST',"
+                               "scraped_at=NULL WHERE code='SSIS-950'")
+        listing = dispatch_api_get(self.contract, "/api/feeds/discoveries", {"limit": 1})
+        # 分页按筛过的条数算：合集排在前面，要一条也还是拿到下一部，不是空页。
+        self.assertEqual([item["code"] for item in listing["items"]], ["HMN-071"])
+        self.assertFalse(listing["more"])
+        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds", {})["unread"], 1)
+        with self.contract.database.read_connection() as connection:
+            self.assertEqual(feed_followup.backlog(connection, self.contract.cover_root), [])
+
     def test_the_entity_filter_only_returns_that_person(self):
         with self.contract.database.write_transaction() as connection:
             cursor = connection.execute(
@@ -297,6 +314,15 @@ class FeedWebTest(FeedWebFixture):
         self.assertEqual(items["SSIS-950"]["poster_box"]["px"], [800, 538])
         self.assertFalse(items["HMN-071"]["has_cover"])
         self.assertIsNone(items["HMN-071"]["poster_box"])
+
+    def test_the_cover_step_gets_the_address_the_scrape_just_wrote(self):
+        """封面地址是同一轮取资料才写上壳的，取图那一步拿到的得是它，不是空的。"""
+        self._add()
+        self._check()
+        self._drain(1)
+        self.assertEqual(self.cover_urls, {
+            "SSIS-950": "https://images.example.test/cover.jpg",
+            "HMN-071": "https://images.example.test/cover.jpg"})
 
     def test_a_shell_still_missing_its_cover_rejoins_a_batch_after_the_retry_window(self):
         self.cover_misses.add("HMN-071")

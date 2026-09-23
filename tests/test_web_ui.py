@@ -4755,7 +4755,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_card_hover_and_view_glide_can_extend_outside_content(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".card{overflow:visible;border-radius:var(--surface-radius)}", board)
-        self.assertIn(".gridstack .card:not(.junkcard) .pic{border-radius:12px;overflow:hidden}", board)
+        self.assertIn(".gridstack .card:not(.junkcard) .pic{border-radius:var(--surface-radius);overflow:hidden}", board)
         self.assertIn(".card:hover .pic::after,.card.selected .pic::after{box-sizing:border-box;border-radius:inherit}", board)
         self.assertIn(".board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}", board)
         self.assertPageContains("const host=pill.closest(within);if(!host)return null;")

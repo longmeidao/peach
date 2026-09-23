@@ -97,7 +97,7 @@
 .entryfeed{position:relative;display:inline-flex;align-items:center;color:var(--ink);cursor:pointer;
   border-radius:var(--control-radius);padding:4px;margin:-4px}
 .entryfeed:hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
-.entryfeed:has(:checked){color:#F78422}
+.entryfeed:has(:checked){color:var(--feed-mark)}
 .entryfeed:has(:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
 .entryfeed:has([aria-busy="true"]){cursor:progress;opacity:.6}
 .entryfeed svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2}
