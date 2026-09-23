@@ -2287,7 +2287,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const WIDE_ICONS={'text-aa':1.435,'mark-javdb':326/111};")
         self.assertPageContains(
             ".missavmark{font-family:Halant,Georgia,\"Times New Roman\",serif;"
-            "font-weight:500;\n  font-size:var(--fs-2xl);line-height:22px;")
+            "font-weight:500;\n  font-size:var(--fs-xl);line-height:22px;")
         self.assertPageContains(".missavmark span:last-child{color:#FE628E}")
         # minnano-av 的圆标取自它自己的标识文件左半，viewBox 因此是 70×70。
         self.assertPageContains(

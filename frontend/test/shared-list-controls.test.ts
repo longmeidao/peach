@@ -46,16 +46,21 @@ it('导航代际变化或卸载后不接受在途结果，卸载断开观察器'
   expect(disconnects[0]).toHaveBeenCalledOnce();expect(apply).not.toHaveBeenCalled();
 });
 
-it('横向滚动在边缘交还滚轮，重复绑定与移除都释放资源', async () => {
-  const node=button();let left=0;const disconnect=vi.fn();
+it('横向滚动滚到头吃掉同一次手势的余量，下一次手势交还页面，重复绑定与移除都释放资源', async () => {
+  const node=button();let left=0,now=1000;const disconnect=vi.fn();
   vi.stubGlobal('ResizeObserver',class {observe(){}disconnect=disconnect});
+  const clock=vi.spyOn(performance,'now').mockImplementation(()=>now);
   Object.defineProperties(node,{clientWidth:{value:100},scrollWidth:{value:200},scrollLeft:{get:()=>left,set:value=>{left=Math.max(0,Math.min(100,value))}}});
   const control=wireHorizontalScroller(node,{drag:true});
   expect(wireHorizontalScroller(node)).toBe(control);
-  const wheel=()=>new WheelEvent('wheel',{deltaY:100,cancelable:true});
+  const wheel=(cancelable=true)=>new WheelEvent('wheel',{deltaY:100,cancelable});
   const moving=wheel();node.dispatchEvent(moving);node.dispatchEvent(new Event('scroll'));
   expect(moving.defaultPrevented).toBe(true);expect(node.dataset.overflowRight).toBe('false');
-  const edge=wheel();node.dispatchEvent(edge);expect(edge.defaultPrevented).toBe(false);
+  now+=40;const tail=wheel();node.dispatchEvent(tail);expect(tail.defaultPrevented).toBe(true);
+  now+=1000;const next=wheel();node.dispatchEvent(next);expect(next.defaultPrevented).toBe(false);
+  // 页面那边开了头的手势拦不住，这一排也不跟着动。
+  left=0;now+=1000;node.dispatchEvent(wheel(false));expect(left).toBe(0);
+  clock.mockRestore();
   node.remove();await vi.waitFor(()=>expect(disconnect).toHaveBeenCalledOnce());
   left=0;node.dispatchEvent(wheel());expect(left).toBe(0);
 });

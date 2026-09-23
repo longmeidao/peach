@@ -4621,11 +4621,21 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
  *
  * 落点用发现时那条地址，不另拼。JavDB 演员页那类源给的就是作品页 `/v/…`，而按番号拼
  * 搜索地址是把「这是哪一部」交给站内检索去猜——缺 id 就不给入口，全站同一条规矩。 */
+/* 封面和资产卡同一套取景：取资料那一轮把封面装进本机封面目录，书脊折痕与人脸位置
+   随它落在边车里，这里照 `coverImage` 读出来。还没装上的只有来源给的地址，没有边车，
+   `coverAnchor` 按图片自己的宽高比认出封套，正封贴右缘，一样不留上下黑边。 */
+function feedNewCoverHtml(item){
+  if(item.has_cover)return coverImage(item,'big');
+  if(!item.cover_url)return '<span class="nopic">无封面</span>';
+  return coverImage({code:item.code},'big').replace(/ src="[^"]*"/,
+    ` src="${esc(item.cover_url)}" referrerpolicy="no-referrer"`);
+}
 function feedNewCardHtml(item){
   const label=[item.studio,item.release_date].filter(Boolean).join(' · ');
-  const cover=item.cover_url
-    ?`<img class="poster" src="${esc(item.cover_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
-    :'<span class="nopic">无封面</span>';
+  const cover=feedNewCoverHtml(item);
+  // 番号与标题排在同一个两行的标题块里，和资产卡一样：番号加粗打头，标题接在后面截断。
+  const heading=javTitleHtml({is_jav:true,code:item.code,name:item.code,
+    display_title:item.title||item.performers||''});
   /* 点击区自己一个类，不共用 `.cardopenhit`：那一个是「在 Peach 里打开这条」的落点，
      全站按它认站内跳转（`test_follow_web` 盯着它不许变成外链）。这一条通向别人的站。 */
   const open=item.link
@@ -4635,9 +4645,8 @@ function feedNewCardHtml(item){
       <div class="hovertools feednewtools">
         <button type="button" data-feed-action="ignore" title="不想看" aria-label="不想看 ${esc(item.code)}">${icon('x')}</button>
         <button type="button" data-feed-action="read" title="标为已看过" aria-label="标为已看过 ${esc(item.code)}">${icon('check')}</button></div></div>
-    <div class="meta"><div class="mtext"><b class="t mono">${esc(item.code)}</b>
-      <div class="s mono">${esc(item.title||item.performers||'资料还没取到')}</div>
-      ${label?`<div class="s mono">${esc(label)}</div>`:''}</div></div></article>`;
+    <div class="meta"><div class="mtext"><span class="t">${heading}</span>
+      <div class="s mono">${esc(label||(item.title||item.performers?'':'资料还没取到'))}</div></div></div></article>`;
 }
 
 /* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次

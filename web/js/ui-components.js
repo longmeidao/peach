@@ -220,20 +220,29 @@ export function revealTexts(root,selector='[data-reveal-line]'){
 
 const horizontalControls=new Map();
 let horizontalCleanup;
-/** 同一容器只绑定一次，滚到边缘后将滚轮交还页面。 */
+/* 两次滚轮事件隔多久算下一次手势。触控板的惯性尾巴一格一格地来，间隔在几十毫秒；
+   人停下来再滚一次，中间隔的比这长得多。 */
+const WHEEL_GESTURE_GAP=240;
+/** 同一容器只绑定一次，滚到边缘后将下一次滚轮手势交还页面。 */
 export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
   if(!el)return;
   const existing=horizontalControls.get(el);
   if(existing){existing.options.drag ||= drag;existing.options.fade ||= fade;existing.update();return existing}
   const options={drag,fade},abort=new AbortController();
-  let start=null,moved=0;
+  let start=null,moved=0,heldUntil=0;
   const update=()=>{if(options.fade){el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)}};
   const listen=(target,event,handler,extra={})=>target.addEventListener(event,handler,{...extra,signal:abort.signal});
   listen(el,'scroll',update,{passive:true});
+  /* 滚轮按手势归属，一次手势只动一处。Chrome 把一串滚轮事件认作同一次手势，第一下
+     没被拦下，后面那些就再也拦不住：页面滚着滚着让这一排经过指针底下，这时候再改
+     `scrollLeft`，结果是一排和整页一起走。所以拦不住的那些原样留给页面。反过来，一次
+     手势在这一排上开了头，滚到头时剩下那截（多半是惯性）也吃掉，不甩给页面——否则还没
+     看清最后一张，整页已经往下走了。 */
   listen(el,'wheel',event=>{
-    if(event.defaultPrevented||Math.abs(event.deltaY)<=Math.abs(event.deltaX)||el.scrollWidth<=el.clientWidth)return;
-    const before=el.scrollLeft;el.scrollLeft+=event.deltaY;
-    if(before!==el.scrollLeft)event.preventDefault();
+    if(event.defaultPrevented||!event.cancelable||Math.abs(event.deltaY)<=Math.abs(event.deltaX)||el.scrollWidth<=el.clientWidth)return;
+    const now=performance.now(),before=el.scrollLeft;el.scrollLeft+=event.deltaY;
+    if(before===el.scrollLeft&&now>heldUntil)return;
+    heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();
   },{passive:false});
   listen(el,'mousedown',event=>{if(!options.drag||event.button!==0||el.scrollWidth-el.clientWidth<=1)return;event.stopPropagation();start={x:event.pageX,left:el.scrollLeft};moved=0;el.style.cursor='grabbing'});
   listen(window,'mousemove',event=>{if(!start)return;const dx=event.pageX-start.x;moved=Math.max(moved,Math.abs(dx));el.scrollLeft=start.left-dx;event.preventDefault()});

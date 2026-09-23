@@ -130,11 +130,16 @@ def _execute_check(contract, body, job_id: str) -> dict:
         if close:
             close()
     contract.cache_bust()
+    # 新发现的先排，余下名额给还缺资料或封面、到了重试时间的旧壳：同一批一条后继。
+    with contract.database.read_connection() as connection:
+        batch = codes + feed_followup.backlog(
+            connection, contract.cover_root, exclude=codes,
+            limit=max(0, feed_followup.MAX_BATCH - len(codes)))
     return {"ok": True, "checked": len(rows), "total": len(rows), "results": results,
             "added": len(codes),
             # 后继由结果声明，调度端统一派（ADR-0040）：这里只把清单交出去。
             "followups": [dict(key=item.key, task_key=item.task_key, label=item.label)
-                          for item in feed_followup.plan(codes)]}
+                          for item in feed_followup.plan(batch)]}
 
 
 def w_feed_check(contract, body) -> dict:
@@ -289,6 +294,10 @@ def q_feed_discoveries(contract, args) -> dict:
         "title": row["title"],
         "link": row["link"],
         "cover_url": row["cover_url"],
+        # 本机封面与它的两份边车，形状和资产卡的同名字段一致，页面按同一套取景。
+        "has_cover": contract.has_cover(row["code"]),
+        "cover_frame": contract.cover_frame(row["code"]),
+        "poster_box": contract.poster_box(row["code"]),
         "release_date": row["release_date"],
         "studio": row["studio"],
         "performers": row["performers"],

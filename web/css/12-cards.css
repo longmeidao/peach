@@ -471,6 +471,13 @@ body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
 .feednew{margin:0 0 18px}
 .feednewtitle{margin:0 0 10px;font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted)}
 .feednewrow{padding-bottom:7px}
+/* 往右翻时卡片从侧栏底下穿过去，和首页那几排（`board.css` 的 `#tiers .tier`）同一个
+   理由、同一种写法：让出轨道宽度加 `main` 的 16px 内边距，再原样加回内边距，第一张
+   仍站在这一屏的左对齐线上。首页与人物页的这一行都直接住在 `main` 里，所以让出的是
+   同一个数；窄屏的抽屉盖在内容上面，没有这条常驻的边，那一档不让。 */
+@media(min-width:761px){
+  .feednewrow{margin-left:calc(-1 * (var(--railW) + 16px));padding-left:calc(var(--railW) + 16px)}
+}
 .feednewcard{flex:none;width:168px}
 /* 已看过的不移走，只退到背景里：已读是标记，不是关掉。 */
 .feednewcard.isread{opacity:.55}

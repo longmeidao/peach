@@ -1,10 +1,12 @@
 """番号发现源的契约层：拉取一轮、建壳、列表、已读与忽略（ADR-0042）。"""
 from __future__ import annotations
 
+import io
 import sys
 import tempfile
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -86,6 +88,22 @@ class FeedWebFixture(unittest.TestCase):
              "performers": [{"name": "深田えいみ"}]},
             "https://images.example.test/cover.jpg")
         self.addCleanup(lambda: setattr(feed_followup, "collect", self._collect))
+        # 封面装进临时封面目录；取图那一步同样替掉，换成一张现画的横版封套。
+        self.contract.cover_root = Path(self.temporary.name) / "covers"
+        self.cover_misses: set[str] = set()
+        self._fetch_cover = feed_followup.fetch_cover
+        feed_followup.fetch_cover = self._fake_cover
+        self.addCleanup(lambda: setattr(feed_followup, "fetch_cover", self._fetch_cover))
+
+    def _fake_cover(self, contract, code):
+        if code in self.cover_misses:
+            raise RuntimeError("官方渠道没有这个番号的封面")
+        from PIL import Image
+        image = Image.new("RGB", (800, 538), (40, 40, 40))
+        image.paste((200, 120, 150), (420, 0, 800, 538))
+        buffer = io.BytesIO()
+        image.save(buffer, format="JPEG")
+        return buffer.getvalue(), (800, 538), {"code": code, "source": "test"}
 
     def _fetch(self, transport, url, *, etag=None, last_modified=None):
         # 真实路径上的 SSRF 闸门要做 DNS，这里替换掉的正是那一层；条件请求头仍原样传下去。
@@ -127,9 +145,9 @@ class FeedWebTest(FeedWebFixture):
         self.assertEqual(result["checked"], 1)
         self.assertEqual(result["results"][0]["error"], None)
         self.assertEqual(result["added"], 2)
-        # 后继由结果声明，调度端统一派（ADR-0040）。
-        self.assertEqual([item["task_key"] for item in result["followups"]],
-                         ["feed-scrape", "feed-scrape"])
+        # 后继由结果声明，调度端统一派（ADR-0040）；同一轮发现的合成一条。
+        self.assertEqual([(item["task_key"], item["key"]) for item in result["followups"]],
+                         [("feed-scrape", "feed-scrape:SSIS-950,HMN-071")])
         listing = dispatch_api_get(self.contract, "/api/feeds/discoveries", {})
         self.assertEqual([item["code"] for item in listing["items"]],
                          ["SSIS-950", "HMN-071"])
@@ -237,7 +255,7 @@ class FeedWebTest(FeedWebFixture):
                 (feeds.stamp(), feeds.stamp()))
         self._add()
         self._check()
-        self.assertEqual(self._drain(2), 2)
+        self.assertEqual(self._drain(1), 1)
         items = {row["code"]: row for row in dispatch_api_get(
             self.contract, "/api/feeds/discoveries", {})["items"]}
         item = items["SSIS-950"]
@@ -247,6 +265,46 @@ class FeedWebTest(FeedWebFixture):
         # 壳只认已有的人，不新建实体；关联上了人物页那一块才看得到。
         self.assertEqual(len(dispatch_api_get(
             self.contract, "/api/feeds/discoveries", {"entity": 1})["items"]), 2)
+
+    def test_one_batch_installs_each_cover_with_the_sidecars_the_cards_frame_by(self):
+        self.cover_misses.add("HMN-071")
+        self._add()
+        self._check()
+        self.assertEqual(self._drain(1), 1)
+        [run] = self.contract.task_runs.query(task_key=feed_followup.TASK_KEY)
+        self.assertEqual(run.result_summary, {"total": 2, "ok": 2, "miss": 0, "covers": 1})
+        covers = self.contract.cover_root
+        self.assertTrue((covers / "SSIS-950.jpg").is_file())
+        self.assertTrue((covers / "SSIS-950.poster.json").is_file())
+        self.contract.cache_bust()
+        items = {row["code"]: row for row in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]}
+        # 装上的那部带着正封框，页面按资产卡同一套取景；没装上的只有来源地址。
+        self.assertTrue(items["SSIS-950"]["has_cover"])
+        self.assertEqual(items["SSIS-950"]["poster_box"]["px"], [800, 538])
+        self.assertFalse(items["HMN-071"]["has_cover"])
+        self.assertIsNone(items["HMN-071"]["poster_box"])
+
+    def test_a_shell_still_missing_its_cover_rejoins_a_batch_after_the_retry_window(self):
+        self.cover_misses.add("HMN-071")
+        self._add()
+        self._check()
+        self._drain(1)
+        self.transport.responses[self.url] = HttpResponse(304, {}, b"", self.url)
+        # 刚试过的不再排；已经有封面、资料也齐的那部永远不再排。
+        self.assertEqual(self._check()["followups"], [])
+        earlier = feeds.stamp(datetime.now(timezone.utc)
+                              - feed_followup.RETRY_AFTER - timedelta(minutes=1))
+        with self.contract.database.write_transaction() as connection:
+            connection.execute("UPDATE feed_discovery SET scraped_at=?", (earlier,))
+        self.assertEqual([item["key"] for item in self._check()["followups"]],
+                         ["feed-scrape:HMN-071"])
+        # 人说了不想看的，不再替它花配额。
+        first = {row["code"]: row for row in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {})["items"]}["HMN-071"]
+        dispatch_api_post(self.contract, "/api/feeds/discovery",
+                          {"action": "ignore", "ids": [first["id"]]})
+        self.assertEqual(self._check()["followups"], [])
 
     def test_an_unknown_action_is_refused(self):
         with self.assertRaises(ValueError):
