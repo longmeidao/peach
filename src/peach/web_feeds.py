@@ -298,9 +298,13 @@ DISCOVERY_LIMIT = 24
 #: 哪些壳算「新作」。已经入库的不算——那条新作的使命已经完成了；设置里收起的那几类
 #: 合集不算（`feeds.compilation_kind`）。两条都是读的时候现算。
 #: 用到它的连接要先按设置 `feeds.register_functions`。
+#: 已入库那一条写成不相关子查询：库里的番号键只算一遍、建成临时索引，每条壳再去查它。
+#: 相关子查询的写法要给每条壳把整张 `asset` 的番号重算一遍（60 条壳 × 2881 部是 486ms），
+#: 资料页的形状名单和新作列表都等在它上面。判空与 `=` 一致：键算不出来的壳照常列出。
 LISTED = (
-    "NOT EXISTS (SELECT 1 FROM asset a WHERE a.code IS NOT NULL"
-    " AND normalise_code_key(a.code)=normalise_code_key(d.code))",
+    "(normalise_code_key(d.code) IS NULL OR normalise_code_key(d.code) NOT IN"
+    " (SELECT key FROM (SELECT normalise_code_key(a.code) AS key FROM asset a"
+    " WHERE a.code IS NOT NULL) WHERE key IS NOT NULL))",
     "NOT is_feed_hidden(d.title,d.performers,d.studio)",
 )
 
