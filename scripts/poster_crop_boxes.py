@@ -83,8 +83,9 @@ def run(args: argparse.Namespace) -> int:
     print(f"封面 {len(covers)} 张，待处理 {len(todo)} 张"
           f"（{'写入边车' if args.apply else '只看不写'}）", flush=True)
 
-    counts = {jav_poster_crop.FOLD: 0, jav_poster_crop.RATIO: 0,
-              jav_poster_crop.NONE: 0, "unreadable": 0}
+    methods = (jav_poster_crop.FOLD, jav_poster_crop.RATIO, jav_poster_crop.CENTER,
+               jav_poster_crop.NONE)
+    counts = {**dict.fromkeys(methods, 0), "unreadable": 0}
     samples: dict[str, list[str]] = {}
     for index, (path, size) in enumerate(todo, 1):
         width, height = size
@@ -108,10 +109,12 @@ def run(args: argparse.Namespace) -> int:
                   + "，".join(f"{key} {value}" for key, value in counts.items()),
                   flush=True)
 
-    print("\n折痕 {fold}，右半居中 {ratio}，不裁 {none}，读图失败 {unreadable}".format(
-        fold=counts[jav_poster_crop.FOLD], ratio=counts[jav_poster_crop.RATIO],
-        none=counts[jav_poster_crop.NONE], unreadable=counts["unreadable"]))
-    for method in (jav_poster_crop.FOLD, jav_poster_crop.RATIO, jav_poster_crop.NONE):
+    print("\n折痕 {fold}，右半居中 {ratio}，16:9 居中正封 {center}，不裁 {none}，"
+          "读图失败 {unreadable}".format(
+              fold=counts[jav_poster_crop.FOLD], ratio=counts[jav_poster_crop.RATIO],
+              center=counts[jav_poster_crop.CENTER], none=counts[jav_poster_crop.NONE],
+              unreadable=counts["unreadable"]))
+    for method in methods:
         for line in samples.get(method, []):
             print(f"  {method}: {line}")
     if not args.apply:
