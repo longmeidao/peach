@@ -46,7 +46,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # 不进这条链：1pondo（无码片商，有码番号一律 404）、fc2（商品号体系不同）。
     "censored": ("r18dev", "avbase", "javbus", "javdb"),
     # 素人：链和有码相同，理由是 Peach 这条采集路上**没有** mgstage 适配器——
-    # mgstage 只在 Javinizer-Go 那一侧（`metadata_policy.PROFILE_SOURCES`）。
+    # mgstage 的解析器 Peach 还没有（ADR-0044：官方站由 Peach 自己解析，等它接进来）。
     # amane 把 MGS 放素人第一源、并且明确不让它进有码默认表（否则 MIDV 也会去问
     # MGS）；Peach 这里的等价做法是把素人单列成一种类型，等 mgstage 解析器接进来
     # 直接加在链首，而不是现在就往有码链里塞一个对多数番号必然落空的站。
@@ -58,7 +58,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # 问错一家答回来的是同一天发行的另一部片。
     # **不含 r18dev**：无码番号在 r18.dev 上没有（`docs/SOURCING.md`「一本道作品
     # 资料与封面」、`catalog_rules.is_uncensored_release` 的实测注释、
-    # `metadata_policy.PROFILE_SOURCES['uncensored']` 同样不列它）。留着它等于每个
+    # 与 `metadata_1pondo` 的模块说明）。留着它等于每个
     # 无码番号白等一次主机间隔，再把「问了都没有」读成「上游没有」。
     # avsox 经 amane 桥（ADR-0043）垫在最后：它专收无码，但是转载索引，且要经 Cloudflare，
     # 三家综合索引都落空才轮到它。
@@ -79,6 +79,8 @@ ROUTES: dict[str, tuple[str, ...]] = {
 #: 发行方与专站那一档。链上排在综合索引前面，取到必填标量字段就短路。FC2 的两个存档站
 #: 按来源分级是 community，但在链上属于这一档：它们只收 FC2，不是综合索引。
 OFFICIAL_STAGE = ("r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive")
+#: FC2 那三处是同一次 `LibraryMetadataProvider.fc2()` 里先后问的，合成一档 `fc2`。
+FC2_STAGE = ("fc2", "fc2cmadb", "javarchive")
 #: 综合索引那一档。这一档**不**逐家短路：免复核要两家取值一致（ADR-0030、
 #: ADR-0034），封面互证要两个不同图源（ADR-0032），问到第一家就停等于把这两条
 #: 判据的样本降到一家。
@@ -127,7 +129,7 @@ def classify(code: str | None, *hints: str | None) -> str:
 def parse_route_overrides(raw: str | Mapping[str, Sequence[str] | str] | None):
     """用户给的每类型覆盖。文本写法 `censored=r18dev,javdb;fc2=fc2`。
 
-    形状与用途跟 `metadata_policy.parse_sources` 同一套：来源名必须在
+    形状与用途跟 `scrape_codes --sources` 同一套：来源名必须在
     `SOURCE_SPECS` 里登记过，类型名必须是 `CONTENT_TYPES` 之一，不认识的直接报错
     而不是静默忽略——静默忽略的表现是「设置改了没生效」，比报错难查得多。
     空链合法，意思是这类内容一家都不问。
@@ -203,14 +205,25 @@ def stages_for_code(code: str | None, *hints: str | None,
     逐个成档，取到必填标量就不问下一档。FC2 那三家是同一次
     `LibraryMetadataProvider.fc2()` 里先后问的三处，合成一档 `fc2`。
     """
-    chain = route_for_code(code, *hints, overrides=overrides)
+    return stages_for_chain(route_for_code(code, *hints, overrides=overrides))
+
+
+def stage_name(source: str) -> str:
+    """这个来源在采集任务里属于哪一档。合档的三组见 `FC2_STAGE`、`COMMUNITY_STAGE`、`AMANE_STAGE`。"""
+    if source in FC2_STAGE:
+        return "fc2"
+    if source in COMMUNITY_STAGE:
+        return "community"
+    if source in AMANE_STAGE:
+        return "amane"
+    return source
+
+
+def stages_for_chain(chain: Sequence[str]):
+    """任意一条有序来源链按档摊开，顺序同链。`scrape_codes --sources` 点名的链也走这里。"""
     stages: list[str] = []
     for source in chain:
-        name = "fc2" if source in ("fc2", "fc2cmadb", "javarchive") else source
-        if source in COMMUNITY_STAGE:
-            name = "community"
-        if source in AMANE_STAGE:
-            name = "amane"
+        name = stage_name(source)
         if name not in stages:
             stages.append(name)
     return tuple(stages)
@@ -218,14 +231,7 @@ def stages_for_code(code: str | None, *hints: str | None,
 
 def stage_members(stage: str, chain: Sequence[str]):
     """这一档在链上对应哪几个来源名。缓存与证据文件都按来源名存，不按档名。"""
-    if stage == "community":
-        return tuple(source for source in chain if source in COMMUNITY_STAGE)
-    if stage == "fc2":
-        return tuple(source for source in chain
-                     if source in ("fc2", "fc2cmadb", "javarchive"))
-    if stage == "amane":
-        return tuple(source for source in chain if source in AMANE_STAGE)
-    return (stage,) if stage in chain else ()
+    return tuple(source for source in chain if stage_name(source) == stage)
 
 
 def amane_route(code: str | None, *hints: str | None,

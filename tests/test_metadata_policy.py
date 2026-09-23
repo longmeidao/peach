@@ -1,148 +1,95 @@
 import unittest
 
+from peach import metadata_routes
+from peach.catalog_rules import is_uncensored_code
 from peach.metadata_policy import (
-    is_uncensored_code,
+    CHAIN_COMMUNITY,
+    CHAIN_FALLBACK,
+    CHAIN_OFFICIAL,
+    CHAIN_PREFERRED,
+    CHAIN_UNKNOWN,
     FIELD_SOURCE_ORDER,
+    HISTORICAL_SOURCES,
+    PEACH_FIELDS,
     POLICY_VERSION,
-    PROFILE_SOURCES,
-    REGISTERED_SOURCES,
-    resolve_policy,
+    SOURCE_SPECS,
+    chain_rank,
+    field_rank,
     sort_candidates,
+    source_tier,
 )
 
 
 class MetadataPolicyTests(unittest.TestCase):
-    def test_registry_matches_pinned_javinizer_v151_sources(self):
-        self.assertEqual(set(REGISTERED_SOURCES), {
-            "r18dev", "libredmm", "dmm", "javlibrary", "javdb", "javbus",
-            "jav321", "mgstage", "tokyohot", "aventertainment",
-            "caribbeancom", "dlgetchu", "fc2", "javstash",
-        })
+    def test_every_source_the_chain_can_ask_is_registered_once(self):
+        """链上每一档的成员都要在 `SOURCE_SPECS` 里有级别，否则候选算不出 official。"""
+        chain_sources = {source for chain in metadata_routes.ROUTES.values() for source in chain}
+        chain_sources |= set(metadata_routes.AMANE_STAGE) | {"sougouwiki"}
+        self.assertLessEqual(chain_sources, set(SOURCE_SPECS))
         self.assertTrue(POLICY_VERSION.startswith("metadata-source-policy-"))
 
-    def test_default_and_named_profiles_are_explicit(self):
-        self.assertEqual(resolve_policy().sources, ("r18dev",))
-        for profile in ("baseline", "censored", "uncensored", "fc2"):
-            self.assertEqual(resolve_policy(profile=profile).sources, PROFILE_SOURCES[profile])
+    def test_historical_sources_keep_their_tier_but_are_not_on_any_chain(self):
+        """账本里 `javinizer:mgstage:tag` 这类 provenance 还在，级别要认得；请求不再发。"""
+        chain_sources = {source for chain in metadata_routes.ROUTES.values() for source in chain}
+        chain_sources |= set(metadata_routes.AMANE_STAGE)
+        for source in HISTORICAL_SOURCES:
+            self.assertIn(source, SOURCE_SPECS, source)
+            self.assertNotIn(source, chain_sources, source)
+        self.assertTrue(SOURCE_SPECS["mgstage"].official)
+        self.assertEqual(source_tier("mgstage"), CHAIN_OFFICIAL)
+        self.assertFalse(SOURCE_SPECS["javlibrary"].official)
 
-    def test_unknown_source_and_conflicting_inputs_fail_early(self):
-        with self.assertRaisesRegex(ValueError, "未知 Javinizer-Go source"):
-            resolve_policy(sources="r18dev,imaginary")
-        with self.assertRaisesRegex(ValueError, "不能同时"):
-            resolve_policy(profile="baseline", sources="r18dev")
+    def test_field_order_covers_every_peach_field(self):
+        self.assertEqual(set(FIELD_SOURCE_ORDER), set(PEACH_FIELDS))
+        for field, order in FIELD_SOURCE_ORDER.items():
+            self.assertEqual(len(order), len(set(order)), field)
+            for source in order:
+                self.assertIn(source, SOURCE_SPECS, f"{field} 排了未登记的 {source}")
 
-    def test_fc2_scope_is_never_guessed_for_other_profiles(self):
-        baseline = resolve_policy(profile="baseline")
-        self.assertFalse(baseline.allows_code("FC2-PPV-1234567"))
-        self.assertTrue(resolve_policy(profile="fc2").allows_code("FC2-PPV-1234567"))
-        self.assertFalse(resolve_policy(profile="fc2").allows_code("ABW-232"))
-        custom = resolve_policy(sources="r18dev,fc2")
-        self.assertTrue(custom.allows_code(
-            "FC2-PPV-1234567", explicit_sources=True,
-        ))
-
-    def test_korean_mib_codes_are_refused_by_every_profile(self):
-        """韩国 MIB 不适用 JAV 规则，任何 profile、任何 `--sources` 都不问。
-
-        这些番号的形状和厂牌番号一样，只有前缀能把它们分出来。放行一次的代价是
-        整批错值落进候选队列，再靠人一条条认出来。
-        """
-        for profile in ("baseline", "censored", "uncensored", "fc2"):
-            policy = resolve_policy(profile=profile)
-            for code in ("WX-017", "AR-301", "JI-103", "SA-104", "MY-102",
-                         "ar-301", "AR301",
-                         # 三字母前缀同属这套命名，`B:\MVP\MIB\` 下共 40 条。
-                         "MIN-102", "SUY-101", "YUJ-103", "CHU-101", "ERI-102",
-                         "SIA-104", "HNL-101", "SYN-103", "ENS-101"):
-                self.assertFalse(policy.allows_code(code), f"{profile} 放行了 {code}")
-        # 显式点名来源也不能绕过：这不是「这次不想问」，是「问了必错」。
-        self.assertFalse(resolve_policy(sources="javbus").allows_code(
-            "AR-301", explicit_sources=True,
-        ))
-
-    def test_two_letter_prefix_alone_never_blocks_a_real_jav_studio(self):
-        """判据是实测出来的前缀表，不是「两字母前缀就不是 JAV」那条形状。
-
-        2026-09-04 实测的 24 种两字母前缀里有三个例外：BeFree 的 `BF-366` 是真作品，
-        `TZ` 来自转载站水印 `[ThZu.Cc]`，`FC-437689` 是 FC2 变体。按形状一刀切会
-        把 BeFree 一起拦掉，而它的片子就在 `B:\\番号\\BeFree\\` 下。
-        """
-        baseline = resolve_policy(profile="baseline")
-        for code in ("BF-366", "ARM-123", "JILL-002", "300MIUM-1239", "ABW-232"):
-            self.assertTrue(baseline.allows_code(code), f"baseline 误拦了 {code}")
+    def test_field_rank_counts_from_one_and_puts_unknown_sources_last(self):
+        self.assertEqual(field_rank("tags", "mgstage"), 1)
+        self.assertEqual(field_rank("tags", "r18dev"), 10)
+        self.assertEqual(field_rank("tags", "imaginary"), len(FIELD_SOURCE_ORDER["tags"]) + 1)
 
     def test_every_field_uses_policy_order_and_explicit_official_metadata(self):
-        policy = resolve_policy(profile="censored")
         candidates = [
             {"source": "javbus", "confidence": 0.99},
             {"source": "r18dev", "confidence": 0.8},
             {"source": "dmm", "confidence": 0.7},
         ]
         for field in FIELD_SOURCE_ORDER:
-            ordered = sort_candidates(field, candidates, policy)
+            ordered = sort_candidates(field, candidates)
             self.assertEqual(ordered[0]["source"], "dmm", field)
             self.assertEqual(
                 [row["field_rank"] for row in ordered],
                 sorted(row["field_rank"] for row in ordered),
             )
-
-    def test_tag_backfill_profile_stays_official_and_reachable(self):
-        # 这个 profile 的成本全在网络往返上。放宽任何一条都要有实测支撑：
-        # 加社区来源等于让未经复核的值排进官方前面；加无码来源等于给每个有码
-        # 番号多两次稳定 404。
-        policy = resolve_policy(profile="official-backfill")
-        self.assertEqual(policy.sources, (
-            "mgstage", "dmm", "libredmm", "aventertainment",
-        ))
-        for source in policy.sources:
-            self.assertTrue(policy.source(source).official, source)
-        self.assertNotIn("tokyohot", policy.sources)
-        self.assertNotIn("caribbeancom", policy.sources)
-        self.assertNotIn("dlgetchu", policy.sources)
+        with self.assertRaisesRegex(ValueError, "未知 Peach 元数据字段"):
+            sort_candidates("runtime", candidates)
 
     def test_tags_prefer_mgstage_over_the_dmm_dvd_page(self):
         # ABW-220 实测：mgstage 给 8 项内容标签，dmm/libredmm/r18dev 都只给
         # 「AV女優・単体作品・サンプル動画」。厂牌与日期仍以 dmm 为准。
-        policy = resolve_policy(profile="censored")
         candidates = [{"source": "dmm"}, {"source": "mgstage"}, {"source": "r18dev"}]
-        self.assertEqual(sort_candidates("tags", candidates, policy)[0]["source"], "mgstage")
-        self.assertEqual(sort_candidates("studio", candidates, policy)[0]["source"], "dmm")
-        self.assertEqual(sort_candidates("release_date", candidates, policy)[0]["source"], "dmm")
+        self.assertEqual(sort_candidates("tags", candidates)[0]["source"], "mgstage")
+        self.assertEqual(sort_candidates("studio", candidates)[0]["source"], "dmm")
+        self.assertEqual(sort_candidates("release_date", candidates)[0]["source"], "dmm")
 
-    def test_uncensored_codes_are_routed_to_sources_that_carry_them(self):
-        """番号形状就能确定发行面，不必先有元数据证明。
-
-        语料实测 8 个无码番号（carib 2、1pon 4、HEYZO 2），官方 tag 全为 0：
-        它们一直按有码番号去问 mgstage/dmm，那几家根本不发行这些片，
-        「问了都没有」于是被读成「上游没有」。
-        """
+    def test_uncensored_codes_are_told_apart_by_shape(self):
+        """番号形状就能确定发行面，不必先有元数据证明。"""
         self.assertTrue(is_uncensored_code("040221-001"))
         self.assertTrue(is_uncensored_code("HEYZO-1380"))
         self.assertFalse(is_uncensored_code("ABW-220"))
         self.assertFalse(is_uncensored_code("259LUXU-1475"))
-        policy = resolve_policy(profile="backfill")
-        self.assertEqual(policy.sources_for_code("040221-001"),
-                         ("caribbeancom", "tokyohot", "javbus"))
-        self.assertEqual(policy.sources_for_code("HEYZO-1380"),
-                         ("caribbeancom", "tokyohot", "javbus"))
-        self.assertEqual(policy.sources_for_code("ABW-220"),
-                         ("mgstage", "dmm", "libredmm", "aventertainment", "javdb"))
-        # 来源健康表要覆盖两边，所以 sources 是并集。
-        self.assertEqual(set(policy.sources), {
-            "caribbeancom", "tokyohot", "javbus",
-            "mgstage", "dmm", "libredmm", "aventertainment", "javdb"})
-
-    def test_unrouted_profiles_keep_asking_every_source(self):
-        for profile in ("baseline", "censored", "uncensored", "fc2", "official-backfill"):
-            policy = resolve_policy(profile=profile)
-            self.assertEqual(policy.sources_for_code("ABW-220"), policy.sources, profile)
 
     def test_javbus_stays_community_so_its_values_need_review(self):
-        # 1Pondo 与 HEYZO 没有官方 adapter，javbus 是唯一问得到的一家；
-        # 它取到的值只能进人工复核，不能走免复核写入。
-        policy = resolve_policy(profile="backfill")
-        self.assertFalse(policy.source("javbus").official)
-        self.assertTrue(policy.source("caribbeancom").official)
+        # javbus 取到的值只能进人工复核，不能走免复核写入；它还是兜底那一层。
+        self.assertFalse(SOURCE_SPECS["javbus"].official)
+        self.assertEqual(source_tier("javbus"), CHAIN_FALLBACK)
+        self.assertEqual(source_tier("javdb"), CHAIN_PREFERRED)
+        self.assertEqual(source_tier("avbase"), CHAIN_COMMUNITY)
+        self.assertEqual(source_tier("caribbeancom"), CHAIN_OFFICIAL)
+        self.assertEqual(source_tier("imaginary"), CHAIN_UNKNOWN)
 
     def test_publisher_outranks_the_overseas_reseller(self):
         """aventertainment 是转售商，不是发行方。
@@ -152,12 +99,10 @@ class MetadataPolicyTests(unittest.TestCase):
         标签同理——`040221-001` 它给的是英文页的改写版，caribbeancom 给的是
         发行方原页。
         """
-        policy = resolve_policy(profile="censored")
         candidates = [{"source": "aventertainment"}, {"source": "caribbeancom"}]
         for field in ("tags", "release_date"):
-            self.assertEqual(
-                sort_candidates(field, candidates, policy)[0]["source"],
-                "caribbeancom", field)
+            self.assertEqual(sort_candidates(field, candidates)[0]["source"], "caribbeancom", field)
+            self.assertLess(chain_rank(field, "caribbeancom"), chain_rank(field, "aventertainment"))
 
 
 if __name__ == "__main__":

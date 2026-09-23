@@ -228,8 +228,8 @@ class SeesaaProvider:
 
 
 class RoutedMetadataProvider:
-    def __init__(self, javinizer, wiki):
-        self.javinizer, self.wiki = javinizer, wiki
+    def __init__(self, chain, wiki):
+        self.chain, self.wiki = chain, wiki
 
     def query(self, code, source):
-        return (self.wiki if source == 'sougouwiki' else self.javinizer).query(code, source)
+        return (self.wiki if source == "sougouwiki" else self.chain).query(code, source)

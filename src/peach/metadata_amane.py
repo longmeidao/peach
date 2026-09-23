@@ -29,7 +29,7 @@ AMANE_LICENSE = "GPL-3.0"
 #: 桥的源码目录：清单、锁与脚本都在仓库里，随 Peach 分发的只有这三个文件，不含 amane 源码。
 BRIDGE_ROOT = Path(__file__).resolve().parents[2] / "tools" / "amane-bridge"
 BRIDGE_SCRIPT = BRIDGE_ROOT / "bridge.py"
-#: 桥的 venv 建在数据目录的工具区，和 Javinizer-Go、FFmpeg 同一层；名字与源码目录一致。
+#: 桥的 venv 建在数据目录的工具区，和 FFmpeg 同一层；名字与源码目录一致。
 BRIDGE_TOOL_NAME = "amane-bridge"
 #: 一次子进程的默认超时。桥内每站并发、单请求 30 秒、最多两次重试，60 秒够一站走完。
 DEFAULT_TIMEOUT = 60
@@ -201,7 +201,7 @@ def proxy_argument(proxy_options: Mapping[str, object]) -> tuple[list[str], dict
 
 @dataclass(frozen=True)
 class AmaneBridge:
-    """起一次桥子进程。形状同 `JavinizerGoProvider`：可注入 runner，单测不起真进程。"""
+    """起一次桥子进程：一次 `--output json`、stdout 一行 JSON；可注入 runner，单测不起真进程。"""
 
     python: Path
     script: Path = BRIDGE_SCRIPT
@@ -288,7 +288,7 @@ def _first(values: object) -> str:
 def to_payload(site: str, code: str, metadata: Mapping[str, object]) -> dict:
     """amane `MediaMetadata` → `extract_peach_fields` / `extract_catalog_evidence` 认得的形状。
 
-    键名沿用 Javinizer-Go 快照的写法（`maker`、`label`、`actresses[].japanese_name`、`genres`），
+    键名沿用来源快照的写法（`maker`、`label`、`actresses[].japanese_name`、`genres`），
     这样候选、复核与自动落库那一路一行不用改。amane 的 `publisher` 是レーベル，对应 `label`
     而不是 `studio`；`external_id` 实测填的是详情页地址，不当 `content_id`——那一栏放站上
     读回的番号写法，`identifies_code` 拿它核身份。男演员不进 `actresses`：账本那一栏是出演女优。
@@ -336,7 +336,7 @@ def split_report(code: str, report: Mapping[str, object]) -> tuple[list[tuple[st
     """桥的报告拆成两份：取到的 `[(站, payload)]`，与每站的失败。
 
     取回的商品必须认得出这个番号（`identifies_code`），否则按 `not_found` 记：站内搜索首条
-    命中常常是别的片，这道闸和 Javinizer-Go 那一路是同一道。
+    命中常常是别的片，这道闸和 r18.dev 那一路是同一道。
     """
     found: list[tuple[str, dict]] = []
     failures: dict[str, MetadataProviderError] = {}

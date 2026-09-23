@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Fetch per-source JAV metadata into field-level Peach review candidates.
+"""按番号批量取多来源资料，产出逐字段的 Peach 复核候选。
 
-Javinizer-Go is used only as a query adapter. Peach sends a normalized movie code,
-stores every raw source response, and never invokes Javinizer's organizer or DB flow.
-The generated CSV is a review queue; this command has no ledger write mode.
+走的是采集任务那条正式链（ADR-0044）：一个番号问谁、什么顺序、何时停由
+`peach.metadata_routes` 决定，来源解析器与凭据、限流、冷却都复用
+`peach.library_processing.LibraryMetadataProvider`。这里只做批量：按账本番号排队、
+逐来源落原始快照、统计来源健康、把取值排成字段候选 CSV。
+CSV 是复核队列；本命令没有写 ledger 的模式。
 """
 from __future__ import annotations
 
@@ -26,32 +28,29 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from peach import __version__ as PEACH_VERSION
+from peach import metadata_routes
 from peach.catalog_rules import (code_query_variants, is_jav_code, normalise_code_key,
                                  same_release_code)
 from peach.scripting import open_readonly
-from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SOURCES_DIR, STATE_DIR
+from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SECRETS_DIR, SOURCES_DIR, TOOLS_DIR
 from peach.genre_decisions import load_genre_decisions
 from peach.genre_taxonomy import CONTENT_GENRES, map_genres
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.task_runs import cli_run
 from peach.metadata import (
     CATALOG_EVIDENCE_FIELDS,
-    JAVINIZER_GO_MIN_VERSION,
-    JavinizerGoProvider,
     MetadataProviderError,
+    auth_error,
+    auth_wall_reason,
     extract_catalog_evidence,
     extract_peach_fields,
     identifies_code,
 )
-from peach.metadata_policy import (
-    PEACH_FIELDS,
-    MetadataPolicy,
-    resolve_policy,
-    sort_candidates,
-)
+from peach.metadata_policy import PEACH_FIELDS, POLICY_VERSION, SOURCE_SPECS, field_rank, sort_candidates
 from peach.platform import system_volume
 from peach.review_csv import ENCODING, write_rows
-from peach.metadata_seesaa import SeesaaProvider, RoutedMetadataProvider
+from peach.metadata_seesaa import SeesaaProvider
 
 
 _logf = None
@@ -74,6 +73,20 @@ HEALTH_FIELDS = [
     *dict.fromkeys((*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)),
     "last_error_kind", "last_error_status", "last_error_message",
 ]
+
+#: Seesaa 作品表那一档。它不在任何内容类型的链上（`metadata_routes.ROUTES`），只由
+#: `--profile seesaa` 或 `--sources sougouwiki` 点名，走 `SeesaaProvider`。
+WIKI_SOURCE = "sougouwiki"
+#: `--sources` 能点名的来源：链上每一档的成员，加 Seesaa。别的名字在 `SOURCE_SPECS` 里
+#: 只是历史来源身份（`metadata_policy.HISTORICAL_SOURCES`），当前没有解析器可问。
+CHAIN_SOURCES = tuple(dict.fromkeys((
+    *(source for chain in metadata_routes.ROUTES.values() for source in chain),
+    *metadata_routes.AMANE_STAGE,
+)))
+QUERYABLE_SOURCES = (*CHAIN_SOURCES, WIKI_SOURCE)
+#: 三种取来源的方式，写进 CSV 的 `source_profile`：按番号内容类型走链、只问 Seesaa、
+#: `--sources` 点名。
+CHAIN_PROFILE, WIKI_PROFILE, CUSTOM_PROFILE = "chain", "seesaa", "custom"
 
 
 def configure_log(log_dir: str | Path) -> None:
@@ -114,47 +127,152 @@ def _is_explicit_code(code: str) -> bool:
     return is_jav_code(normalise_code_key(code))
 
 
-def _adapter_version(adapter: object) -> str:
-    """快照里记的是实际取回这条结果的那个二进制的版本，不是仓库声明的最低版本。
+def translate_failure(source: str, error: Exception) -> MetadataProviderError:
+    """把正式链抛的异常翻成本脚本的错误分档。
 
-    版本策略从「必须等于」改成「最低版本 + 同一大版本」之后，本机装的可能是更高的
-    小版本；继续把常量写进 `provider_version`，快照就会声称是另一份二进制取回来的，
-    而快照正是事后判断「这条证据出自哪一版解析器」的唯一依据。
+    链那一侧分四种：`NotFound` 是来源明确说没有（可冻成定论），`SourcePaused` 是限流或
+    冷却（可重试、临时），`DeadlineExceeded` 是预算用尽，其余 `Unavailable` 与传输错误是
+    这次没问到。401/403 单列成 `auth`：`SourceTransport` 撞上 403 会自己把来源停下并抛
+    `SourcePaused`，措辞里带着状态码，这里认出来后本批不再问它——限流会过去，凭据不会。
     """
-    provider = getattr(adapter, "javinizer", adapter)
-    return str(getattr(provider, "version", "") or JAVINIZER_GO_MIN_VERSION)
+    from peach.jav_cover_fetch import DeadlineExceeded, NotFound
+    from peach.library_processing import describe_failure
+    from peach.scraping_access import SourcePaused
+    if isinstance(error, MetadataProviderError):
+        return error
+    text = describe_failure(error)
+    status = re.search(r"\b(40[13]|429|503)\b", text)
+    code = int(status.group(1)) if status else 0
+    reason = auth_wall_reason(status_code=code) if code in {401, 403} else ""
+    if reason:
+        return auth_error(source, reason, status_code=code)
+    if isinstance(error, NotFound):
+        return MetadataProviderError(text, kind="not_found", status_code=404)
+    if isinstance(error, SourcePaused):
+        return MetadataProviderError(text, kind="rate_limited", status_code=code or 429,
+                                     retryable=True, temporary=True)
+    if isinstance(error, DeadlineExceeded):
+        return MetadataProviderError(text, kind="timeout", retryable=True, temporary=True)
+    return MetadataProviderError(text, kind="unavailable", status_code=code,
+                                 retryable=True, temporary=True)
 
 
-def _fetch_source(adapter, *, query: str, source: str, snapshot: Path,
-                  refresh: bool,
-                  health: dict) -> tuple[dict | None, MetadataProviderError | None, bool]:
-    """取一个写法一个来源：优先复用快照，失败也落盘，返回 (payload, error, reused)。
+class ChainAdapter:
+    """把 `LibraryMetadataProvider` 的按档接口摊成 `fetch(code, stage, members)`。
 
-    单独拆出来是因为一个番号要问的写法可能不止一个，而每个写法的快照、限流计数和
-    错误落盘规则完全一样。`JavinizerGoProvider.query` 和 `_read_snapshot` 各自也用
-    `identifies_code` 过一遍，但注入的 provider 不经过那条路，所以身份校验在调用方
-    单独再做一次（`_identity_mismatch`）。
+    返回 `(取到的 {来源: 资料}, 失败的 {来源: 错误})`。一档一次问完是正式链的形状：FC2
+    三处在同一次 `fc2()` 里先后问，amane 那几站一次子进程并发问；综合索引那一档这里逐家
+    直接调 `community_catalog` 的取数函数，不经 `community()` 的按番号缓存——本脚本要的
+    是每家各自的结果与失败，用来记快照和健康，而那份缓存只记整档的结论。
+
+    provider 按需才建：`--profile seesaa` 一次都不会碰到它。
     """
-    payload = None if refresh else _read_snapshot(snapshot, query)
-    settled = None if refresh else _read_settled_error(snapshot)
-    reused = payload is not None or settled is not None
-    try:
-        if reused:
-            health["snapshot_reused"] += 1
-            if settled is not None:
-                raise settled
+
+    def __init__(self, factory, wiki=None):
+        self._factory = factory
+        self._inner = None
+        self.wiki = wiki
+
+    @property
+    def inner(self):
+        if self._inner is None:
+            self._inner = self._factory()
+        return self._inner
+
+    def fetch(self, code: str, stage: str, members: tuple[str, ...]):
+        found: dict[str, dict] = {}
+        if stage == "community":
+            return self._community(code, members)
+        try:
+            if stage == "r18dev":
+                pairs = [("r18dev", self.inner.query(code, "r18dev"))]
+            elif stage == "1pondo":
+                pairs = self.inner.one_pondo(code)
+            elif stage == "fc2":
+                # `covers=True` 让链上点到的每一处都问，不在第一处答上时停：这里要的是
+                # 每来源各自的证据，不是「这一档有没有答上」。
+                pairs = self.inner.fc2(code, route=members, covers=True)
+            elif stage == "amane":
+                pairs = self.inner.amane(code, route=members)
+            elif stage == WIKI_SOURCE:
+                pairs = [(WIKI_SOURCE, self.wiki.query(code, WIKI_SOURCE))]
+            else:
+                raise ValueError(f"链上没有这一档：{stage}")
+        except Exception as error:  # noqa: BLE001 - 每种失败都翻成本脚本的分档
+            translated = translate_failure(stage, error)
+            return found, {member: translated for member in members}
+        for name, payload in pairs:
+            if name in members:
+                found.setdefault(name, payload)
+        return found, {}
+
+    def _community(self, code: str, members: tuple[str, ...]):
+        from peach.community_catalog import community_sources_for
+        found, errors = {}, {}
+        for source, ask in community_sources_for(code, route=members):
+            try:
+                found[source] = ask(self.inner.transport, code)
+            except Exception as error:  # noqa: BLE001 - 同上
+                errors[source] = translate_failure(source, error)
+        return found, errors
+
+    def close(self) -> None:
+        if self._inner is not None:
+            self._inner.close()
+        if self.wiki is not None:
+            self.wiki.close()
+
+
+class PerSourceAdapter:
+    """给只会 `query(code, source)` 的 provider（测试桩）套上同一个 `fetch` 形状。"""
+
+    def __init__(self, provider):
+        self.provider = provider
+
+    def fetch(self, code: str, stage: str, members: tuple[str, ...]):
+        found, errors = {}, {}
+        for source in members:
+            try:
+                found[source] = self.provider.query(code, source)
+            except MetadataProviderError as error:
+                errors[source] = error
+        return found, errors
+
+    def close(self) -> None:
+        close = getattr(self.provider, "close", None)
+        if close:
+            close()
+
+
+def _stage_results(adapter, *, query: str, stage: str, members: tuple[str, ...],
+                   raw_dir: Path, refresh: bool, health: dict) -> dict:
+    """一档内每个来源：优先复用快照，剩下的一次问完，失败也落盘。
+
+    返回 `{来源: (资料或 None, 错误或 None, 是否复用快照)}`。一个来源既没资料也没
+    错误（链答了别家、没答这家）按 `empty` 记：那不是「没有」的定论，下一轮照问。
+    """
+    results: dict[str, tuple] = {}
+    pending: list[str] = []
+    for source in members:
+        snapshot = raw_dir / query / f"{source}.json"
+        payload = None if refresh else _read_snapshot(snapshot, query)
+        settled = None if refresh else _read_settled_error(snapshot)
+        if payload is not None or settled is not None:
+            health[source]["snapshot_reused"] += 1
+            results[source] = (payload, settled, True)
         else:
-            health["fetched"] += 1
-            payload = adapter.query(query, source)
-        if not snapshot.is_file() or refresh:
-            _write_snapshot(snapshot, code=query, source=source, result=payload,
-                            version=_adapter_version(adapter))
-    except MetadataProviderError as error:
-        if not reused or refresh:
-            _write_snapshot(snapshot, code=query, source=source, error=error,
-                            version=_adapter_version(adapter))
-        return None, error, reused
-    return payload, None, reused
+            pending.append(source)
+    if pending:
+        found, errors = adapter.fetch(query, stage, tuple(pending))
+        for source in pending:
+            health[source]["fetched"] += 1
+            payload, error = found.get(source), errors.get(source)
+            if payload is None and error is None:
+                error = MetadataProviderError("no result", kind="empty")
+            _write_snapshot(raw_dir / query / f"{source}.json", code=query, source=source,
+                            result=payload, error=error)
+            results[source] = (payload, error, False)
+    return results
 
 
 def _identity_mismatch(query: str, payload: dict) -> MetadataProviderError | None:
@@ -254,11 +372,10 @@ def _read_snapshot(path: Path, code: str) -> dict | None:
     return result
 
 
-#: 只有来源明确答「没有这部片」才算定论。`unknown` 是「这次没问出结果」，
-#: 把它当定论复用过一次真实代价：2026-08-30 前 javinizer config 还没启用
-#: mgstage/libredmm/dlgetchu/aventertainment，那一轮的错误快照全是
-#: `scraper "mgstage" is not enabled`，本机配置问题被冻结成来源判决，之后
-#: 每次续跑都直接跳过，10 个番号再也没被问过。
+#: 只有来源明确答「没有这部片」才算定论。`unknown`、`empty`、`unavailable` 都是
+#: 「这次没问出结果」：把它们当定论复用过一次真实代价——2026-08-30 前一批错误快照
+#: 记的是本机配置问题，被冻结成来源判决后，之后每次续跑都直接跳过，10 个番号再也
+#: 没被问过。
 SETTLED_ERROR_KINDS = frozenset({"not_found"})
 
 #: 鉴权失败这一档。它比冷却更早也更硬：冷却是「先歇 300 秒再说」，这里是「本批
@@ -273,6 +390,9 @@ AUTH_ERROR_KIND = "auth"
 #: 必须会过期——长批次里一次抖动不该决定后面几百个番号的命运。
 COOLDOWN_AFTER_FAILURES = 3
 COOLDOWN_SECONDS = 300.0
+
+#: 限流、封禁与站方过载的状态码。撞上它们换个写法只是再撞一次墙，也算进冷却计数。
+BLOCKING_STATUS_CODES = frozenset({403, 429, 503})
 
 
 def _read_settled_error(path: Path) -> MetadataProviderError | None:
@@ -297,12 +417,20 @@ def _read_settled_error(path: Path) -> MetadataProviderError | None:
         return None
 
 
+def _provider_name(source: str) -> str:
+    """快照与候选里记的解析器名，和采集任务写的同一份（`library_processing.PROVIDER_NAMES`）。"""
+    from peach.library_processing import PROVIDER_NAMES
+    return PROVIDER_NAMES.get(source, source)
+
+
 def _write_snapshot(path: Path, *, code: str, source: str, result: dict | None = None,
-                    error: MetadataProviderError | None = None,
-                    version: str = JAVINIZER_GO_MIN_VERSION) -> None:
+                    error: MetadataProviderError | None = None) -> None:
+    """原始快照：`result` 的形状与采集任务的证据文件一致，`jav_cover_fetch` 离线复用它的
+    `cover_url` 与 `content_id`。`provider` 记解析器名，`provider_version` 记 Peach 版本——
+    事后判断「这条证据出自哪一版解析器」靠的是这两项。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     wrapper: dict[str, object] = {
-        "provider": "javinizer-go", "provider_version": version,
+        "provider": _provider_name(source), "provider_version": PEACH_VERSION,
         "code": code, "source": source,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -322,22 +450,37 @@ def _default_output() -> Path:
     return GENERATED_DIR / time.strftime("metadata-field-candidates-%Y%m%d-%H%M%S.csv")
 
 
+def parse_sources(raw: str) -> tuple[str, ...]:
+    """`--sources` 的来源名：去重、保序，必须是链上能问的来源。"""
+    sources = tuple(dict.fromkeys(part.strip() for part in raw.split(",") if part.strip()))
+    if not sources:
+        raise ValueError("至少指定一个来源")
+    unknown = [source for source in sources if source not in QUERYABLE_SOURCES]
+    if unknown:
+        historical = [source for source in unknown if source in SOURCE_SPECS]
+        if historical:
+            raise ValueError("这些来源只是历史来源身份，当前没有解析器可问：" + ", ".join(historical))
+        raise ValueError("未知来源：" + ", ".join(unknown))
+    return sources
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="fetch field-level metadata review candidates")
     parser.add_argument("--db", type=Path, default=DATABASE_PATH)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--errors", type=Path, default=None)
-    parser.add_argument("--raw-dir", type=Path, default=SOURCES_DIR / "metadata" / "javinizer-go")
+    parser.add_argument("--raw-dir", type=Path, default=SOURCES_DIR / "metadata" / "javinizer-go",
+                        help="原始快照目录；默认沿用历史快照所在的目录，离线复用与封面获取都读它")
     parser.add_argument("--log-dir", type=Path, default=LOG_DIR)
-    parser.add_argument("--config", type=Path, default=STATE_DIR / "javinizer-provider" / "config.yaml")
-    parser.add_argument("--binary", type=Path)
+    parser.add_argument("--secrets-root", type=Path, default=SECRETS_DIR,
+                        help="凭据根（采集设置里贴的 Cookie 与冷却记录都在这里）")
+    parser.add_argument("--tools-root", type=Path, default=TOOLS_DIR,
+                        help="工具区（amane 桥的 venv 在这里）")
     source_group = parser.add_mutually_exclusive_group()
     source_group.add_argument(
-        "--profile",
-        choices=("baseline", "censored", "uncensored", "fc2",
-                 "official-backfill", "backfill", "seesaa"),
-        help="explicit Peach source preset; default baseline")
-    source_group.add_argument("--sources", help="compatible comma-separated Javinizer scraper names")
+        "--profile", choices=(CHAIN_PROFILE, WIKI_PROFILE), default=CHAIN_PROFILE,
+        help="chain：按番号内容类型走正式来源链（默认）；seesaa：只问 Seesaa 作品表")
+    source_group.add_argument("--sources", help="逗号分隔的来源名，按给的顺序全部问，不短路")
     parser.add_argument("--health", type=Path, default=None)
     parser.add_argument("--unmapped", type=Path, default=None,
                         help="未收录 genre 清单；不写这个文件等于把来源给过的值悄悄丢掉")
@@ -355,7 +498,6 @@ def build_parser() -> argparse.ArgumentParser:
                         help="系统盘最低可用 GiB；运行中每隔一段时间复查")
     parser.add_argument("--disk-check-secs", type=float, default=20.0)
     parser.add_argument("--refresh", action="store_true", help="ignore reusable raw snapshots")
-    parser.add_argument("--include-fc2", action="store_true")
     parser.add_argument("--wiki-pages-file", type=Path, help="预取 Wiki 作品目录页，每行一个 URL")
     parser.add_argument("--wiki-max-requests", type=int, default=80,
                         help="Wiki 本批 HTTP 请求上限；每个请求最多 4 MiB，间隔至少 2 秒")
@@ -376,20 +518,16 @@ def _requested_codes(path: Path) -> list[str]:
     return requested
 
 
-def _select_requested_codes(
-    codes: list[tuple[str, float, int]], path: Path,
-) -> list[tuple[str, float, int]]:
+def _select_requested_codes(codes: list[tuple], path: Path) -> list[tuple]:
     requested = _requested_codes(path)
-    available: dict[str, tuple[str, float, int]] = {}
-    for code, size_gb, videos in codes:
-        query = normalise_code_key(code)
+    available: dict[str, tuple] = {}
+    for row in codes:
+        query = normalise_code_key(row[0])
         previous = available.get(query)
         if previous is None:
-            available[query] = (code, size_gb, videos)
+            available[query] = row
         else:
-            available[query] = (
-                previous[0], previous[1] + size_gb, previous[2] + videos,
-            )
+            available[query] = (previous[0], previous[1] + row[1], previous[2] + row[2], *previous[3:])
     missing = [query for query in requested if query not in available]
     if missing:
         preview = "、".join(missing[:10])
@@ -402,7 +540,7 @@ _JAPANESE_TEXT_RE = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 _LATIN_TEXT_RE = re.compile(r"[A-Za-z]")
 
 
-def _select_english_title_codes(connection, codes: list[tuple[str, float, int]]) -> list[tuple[str, float, int]]:
+def _select_english_title_codes(connection, codes: list[tuple]) -> list[tuple]:
     """Select codes whose recorded titles are Latin-only and have no Japanese alternative."""
     titles: dict[str, list[str]] = {}
     for code, catalog_title, original_title in connection.execute(
@@ -446,22 +584,207 @@ def _health_output(output: Path) -> Path:
     return output.with_name(name)
 
 
-def _health_rows(policy: MetadataPolicy) -> dict[str, dict[str, object]]:
+def _health_rows(sources, profile: str) -> dict[str, dict[str, object]]:
     return {source: {
-        "source": source, "profile": policy.profile, "attempted": 0,
+        "source": source, "profile": profile, "attempted": 0,
         "snapshot_reused": 0, "fetched": 0, "succeeded": 0, "empty": 0,
         "errors": 0, "retryable_errors": 0, "cooldown_skips": 0, "auth_skips": 0,
         "blocked": 0, "elapsed_ms": 0,
         **{field: 0 for field in (*PEACH_FIELDS, *CATALOG_EVIDENCE_FIELDS)},
         "last_error_kind": "", "last_error_status": "", "last_error_message": "",
-    } for source in policy.sources}
+    } for source in sources}
 
 
 def _write_health(path: Path, rows: dict[str, dict[str, object]]) -> None:
     write_rows(path, HEALTH_FIELDS, rows.values(), atomic=True)
 
 
-def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None = None) -> int:
+def _load_codes(connection, args, parser) -> list[tuple]:
+    """账本里要问的番号，每条 `(番号, 大小 GiB, 视频数, 路径, 文件名, 厂牌)`。
+
+    后三项是路由要的本机证据（`metadata_routes.route_for_code`）：日期式番号只有路径、
+    文件名或账本厂牌指着一本道时才问它。韩国 MIB 一律不问——JAV 目录站对这些番号只会
+    返回别的作品，链上它是空的，`--sources` 点名也不放行。
+    """
+    codes = [
+        (str(row[0]).strip(), float(row[1]), int(row[2]), row[3], row[4], row[5])
+        for row in connection.execute(
+            "SELECT code,COALESCE(sum(size),0)/1073741824.0,count(*),max(path),max(name),max(studio) "
+            "FROM asset WHERE medium='video' AND code IS NOT NULL AND trim(code)<>'' "
+            "GROUP BY code ORDER BY 2 DESC"
+        )
+        if _is_explicit_code(str(row[0]))
+        and metadata_routes.classify(normalise_code_key(str(row[0]))) not in ("kmib", "unknown")
+    ]
+    if args.codes_file:
+        try:
+            codes = _select_requested_codes(codes, args.codes_file)
+        except (OSError, UnicodeError, ValueError) as error:
+            parser.error(str(error))
+    if args.english_title_only:
+        codes = _select_english_title_codes(connection, codes)
+    if args.limit:
+        codes = codes[:max(args.limit, 0)]
+    return codes
+
+
+class _Throttle:
+    """来源级的冷却与鉴权阻断，整批共享。"""
+
+    def __init__(self, health: dict) -> None:
+        self.health = health
+        self.cooldown_until: dict[str, float] = {}
+        self.consecutive_failures: dict[str, int] = {}
+        #: 本批已判定鉴权失败的来源 → 第一条说明。进了这张表就不再对它发请求。
+        self.auth_blocked: dict[str, str] = {}
+
+    def open_members(self, members) -> tuple[str, ...]:
+        """这一档里本轮还能问的来源；被挡的记进健康表。"""
+        allowed = []
+        for source in members:
+            self.health[source]["attempted"] += 1
+            if source in self.auth_blocked:
+                self.health[source]["auth_skips"] += 1
+            elif time.monotonic() < self.cooldown_until.get(source, 0.0):
+                self.health[source]["cooldown_skips"] += 1
+            else:
+                allowed.append(source)
+        return tuple(allowed)
+
+    def record_failure(self, source: str, error: MetadataProviderError) -> None:
+        row = self.health[source]
+        row["errors"] += 1
+        row["retryable_errors"] += int(error.retryable)
+        row["last_error_kind"] = error.kind
+        row["last_error_status"] = error.status_code or ""
+        row["last_error_message"] = str(error)[:500]
+        if source == WIKI_SOURCE and (error.kind == "budget" or error.status_code in {403, 429}):
+            self.cooldown_until[source] = float("inf")
+            row["blocked"] += 1
+            log("sougouwiki 本批联网停止；已取得的候选已保留")
+        if error.kind == AUTH_ERROR_KIND:
+            self.auth_blocked[source] = str(error)
+            self.consecutive_failures[source] = 0
+            row["blocked"] += 1
+            # 下一步由错误消息自己带着：判据明确就说换凭据，只剩状态码
+            # 可看的 403 则不替用户断成因。这里再补一句通用建议会盖掉那份
+            # 区分，把撞上 IP 封禁的人引去反复换 Cookie。
+            log(f"{source} 鉴权失败，本批不再向它发请求：{error}")
+        elif error.retryable or error.status_code in BLOCKING_STATUS_CODES:
+            self.consecutive_failures[source] = self.consecutive_failures.get(source, 0) + 1
+            if self.consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
+                self.cooldown_until[source] = time.monotonic() + COOLDOWN_SECONDS
+                self.consecutive_failures[source] = 0
+                row["blocked"] += 1
+                log(f"{source} 连续 {COOLDOWN_AFTER_FAILURES} 次可重试失败，"
+                    f"冷却 {COOLDOWN_SECONDS:.0f} 秒后自动恢复：{error}")
+        else:
+            self.consecutive_failures[source] = 0
+
+    def record_success(self, source: str) -> None:
+        self.consecutive_failures[source] = 0
+
+
+def _ask_stage(adapter, *, query: str, variants, stage: str, members, args, health) -> tuple[dict, bool]:
+    """一档按写法逐轮问：来源明确说没有或答了别的片，就换下一种写法再问一次。
+
+    `259LUXU-1642` 与 `LUXU-1642` 是同一部作品的两种写法，来源站各只索引其中一种；
+    限流、封禁、鉴权和网络抖动与写法无关，换个写法只是再撞一次墙，所以那几种不换。
+    返回 `({来源: (资料, 错误, 命中的写法)}, 是否发过网络请求)`。
+    """
+    collected: dict[str, tuple] = {}
+    pending = list(members)
+    used_network = False
+    for attempt in variants:
+        started = time.perf_counter()
+        results = _stage_results(adapter, query=attempt, stage=stage, members=tuple(pending),
+                                 raw_dir=args.raw_dir, refresh=args.refresh, health=health)
+        elapsed = round((time.perf_counter() - started) * 1000)
+        pending = []
+        for source, (payload, error, reused) in results.items():
+            health[source]["elapsed_ms"] += elapsed
+            used_network = used_network or not reused
+            if payload is not None:
+                error = _identity_mismatch(query, payload)
+                payload = None if error is not None else payload
+            if payload is not None and attempt != query:
+                log(f"{query} 在 {source} 改用 {attempt} 命中")
+            if payload is None and error is not None and not (
+                    error.retryable or error.kind == AUTH_ERROR_KIND
+                    or error.status_code in BLOCKING_STATUS_CODES):
+                pending.append(source)
+            collected[source] = (payload, error, attempt)
+        if not pending:
+            break
+    return collected, used_network
+
+
+def _candidates_from(payload: dict, *, query: str, source: str, profile: str, snapshot: Path,
+                     genre_decisions, health: dict, unmapped_genres: dict, code: str) -> dict[str, dict]:
+    """一份来源资料摊成各字段的候选，顺带记健康计数与未收录 genre。"""
+    extracted_fields = extract_peach_fields(payload, genre_decisions)
+    catalog_evidence = extract_catalog_evidence(payload)
+    for genre in map_genres(payload.get("genres") or [], genre_decisions)[1]:
+        entry = unmapped_genres.setdefault((source, genre), [0, code])
+        entry[0] += 1
+    row = health[source]
+    row["succeeded"] += 1
+    if not extracted_fields and not catalog_evidence:
+        row["empty"] += 1
+    for field in set(catalog_evidence) | set(extracted_fields):
+        row[field] += 1
+    spec = SOURCE_SPECS[source]
+    return {field: {
+        "candidate_key": _candidate_key(query, field, source, extracted["value"]),
+        "source": source,
+        "provider": _provider_name(source),
+        "source_url": str(payload.get("source_url") or ""),
+        "confidence": 0.9 if source == "r18dev" else 0.75,
+        "profile": profile,
+        "policy_version": POLICY_VERSION,
+        "field_rank": field_rank(field, source),
+        "source_kind": spec.kind,
+        "official": spec.official,
+        "provider_id": str(payload.get("id") or ""),
+        "content_id": str(payload.get("content_id") or ""),
+        "value": extracted["value"],
+        "display_value": extracted["display_value"],
+        "warnings": [*extracted["warnings"], *payload.get("source_warnings", [])],
+        "catalog_evidence": catalog_evidence,
+        "wiki_evidence": payload.get("wiki_evidence", {}),
+        "raw_snapshot": str(snapshot),
+    } for field, extracted in extracted_fields.items()}
+
+
+def _chain_for(row, *, profile: str, sources) -> tuple[str, ...]:
+    """这个番号问哪几家、什么顺序。点名的照单全问；否则按内容类型与本机证据取链。"""
+    if sources is not None:
+        return tuple(sources)
+    if profile == WIKI_PROFILE:
+        return (WIKI_SOURCE,)
+    return metadata_routes.route_for_code(normalise_code_key(row[0]), *row[3:6])
+
+
+def _build_adapter(args, sources, provider=None):
+    """来源适配器：注入的 provider 优先（测试桩），否则按需建正式链的 provider 与 Wiki。"""
+    if provider is not None:
+        return provider if hasattr(provider, "fetch") else PerSourceAdapter(provider)
+    wiki = None
+    if WIKI_SOURCE in sources:
+        pages = ([line.strip() for line in args.wiki_pages_file.read_text(encoding=ENCODING).splitlines()
+                  if line.strip() and not line.lstrip().startswith("#")]
+                 if args.wiki_pages_file else [])
+        wiki = SeesaaProvider(args.raw_dir / "seesaa-pages", pages=pages,
+                              max_requests=max(0, args.wiki_max_requests), refresh=args.refresh)
+
+    def factory():
+        from peach.library_processing import LibraryMetadataProvider
+        return LibraryMetadataProvider(args.secrets_root, tools_root=args.tools_root)
+
+    return ChainAdapter(factory, wiki)
+
+
+def main(argv: list[str] | None = None, *, provider=None) -> int:
     """入口只负责把这一趟登记进任务中心，正文在 `_scrape` 里。
 
     退出码非 0 是「提前收工」（磁盘触线、来源熔断），不是崩溃：记成 `cancelled`
@@ -477,14 +800,14 @@ def main(argv: list[str] | None = None, *, provider: JavinizerGoProvider | None 
         return code
 
 
-def _scrape(parser, args, handle, *, provider: JavinizerGoProvider | None = None) -> int:
-    try:
-        policy = resolve_policy(profile=args.profile, sources=args.sources)
-    except ValueError as error:
-        parser.error(str(error))
-    explicit_sources = args.sources is not None
-    if args.profile == "fc2" and args.include_fc2:
-        parser.error("fc2 profile 已只处理 FC2，不能再加 --include-fc2")
+def _scrape(parser, args, handle, *, provider=None) -> int:
+    sources = None
+    if args.sources is not None:
+        try:
+            sources = parse_sources(args.sources)
+        except ValueError as error:
+            parser.error(str(error))
+    profile = CUSTOM_PROFILE if sources is not None else args.profile
     output = args.out or _default_output()
     error_name = output.name.replace("metadata-field-candidates-", "metadata-source-errors-", 1)
     if error_name == output.name:
@@ -503,54 +826,19 @@ def _scrape(parser, args, handle, *, provider: JavinizerGoProvider | None = None
         close_log()
         return error.exit_code
     log(f"系统盘可用 {free_gb:.1f} GiB，运行期阈值 {args.min_free:.1f} GiB")
-    sources = list(policy.sources)
-    health = _health_rows(policy)
+    # 健康表覆盖这一趟可能问到的全部来源：点名的就是那几家，走链的是所有链的并集。
+    covered = sources or ((WIKI_SOURCE,) if profile == WIKI_PROFILE else CHAIN_SOURCES)
+    health = _health_rows(covered, profile)
     unmapped_genres: dict[tuple[str, str], list] = {}
-    wiki = None
-    if provider is not None:
-        adapter = provider
-    elif 'sougouwiki' in sources:
-        pages = ([line.strip() for line in args.wiki_pages_file.read_text(encoding=ENCODING).splitlines()
-                  if line.strip() and not line.lstrip().startswith('#')]
-                 if args.wiki_pages_file else [])
-        wiki = SeesaaProvider(args.raw_dir / 'seesaa-pages', pages=pages,
-                              max_requests=max(0, args.wiki_max_requests), refresh=args.refresh)
-        javinizer = (JavinizerGoProvider.create(args.binary, args.config)
-                     if any(source != 'sougouwiki' for source in sources) else None)
-        adapter = RoutedMetadataProvider(javinizer, wiki)
-    else:
-        adapter = JavinizerGoProvider.create(args.binary, args.config)
+    adapter = _build_adapter(args, covered, provider)
 
     connection = open_readonly(args.db)
     # 用户在复核页收录过的 genre 这一批就当已知词，不再作为未收录回来问一遍。
     genre_decisions = load_genre_decisions(connection)
-    codes = [
-        (str(row[0]).strip(), float(row[1]), int(row[2]))
-        for row in connection.execute(
-            "SELECT code,COALESCE(sum(size),0)/1073741824.0,count(*) FROM asset "
-            "WHERE medium='video' AND code IS NOT NULL AND trim(code)<>'' "
-            "GROUP BY code ORDER BY 2 DESC"
-        )
-        if _is_explicit_code(str(row[0]))
-    ]
-    codes = [row for row in codes if policy.allows_code(
-        row[0], include_fc2=args.include_fc2, explicit_sources=explicit_sources,
-    )]
-    if args.codes_file:
-        try:
-            codes = _select_requested_codes(codes, args.codes_file)
-        except (OSError, UnicodeError, ValueError) as error:
-            parser.error(str(error))
-    if args.english_title_only:
-        codes = _select_english_title_codes(connection, codes)
-    if args.limit:
-        codes = codes[:max(args.limit, 0)]
-    log(f"字段候选批次：profile {policy.profile}，番号 {len(codes)}，来源 {','.join(sources)}；只读查询，不写 ledger")
+    codes = _load_codes(connection, args, parser)
+    log(f"字段候选批次：profile {profile}，番号 {len(codes)}，来源 {','.join(covered)}；只读查询，不写 ledger")
 
-    cooldown_until: dict[str, float] = {}
-    consecutive_failures: dict[str, int] = {}
-    #: 本批已判定鉴权失败的来源 → 第一条说明。进了这张表就不再对它发请求。
-    auth_blocked: dict[str, str] = {}
+    throttle = _Throttle(health)
     groups_written = errors_written = 0
     stopped: JobPolicyError | None = None
     # 流式写：两个文件同时开着，行在长循环里边跑边落盘，中途还有 guard.check()
@@ -560,7 +848,8 @@ def _scrape(parser, args, handle, *, provider: JavinizerGoProvider | None = None
         candidate_writer = csv.DictWriter(candidate_handle, fieldnames=FIELDS)
         error_writer = csv.DictWriter(error_handle, fieldnames=ERROR_FIELDS)
         candidate_writer.writeheader(); error_writer.writeheader()
-        for index, (code, size_gb, videos) in enumerate(codes, 1):
+        for index, row in enumerate(codes, 1):
+            code, size_gb, videos = row[0], row[1], row[2]
             try:
                 guard.check()
             except JobPolicyError as error:
@@ -568,136 +857,59 @@ def _scrape(parser, args, handle, *, provider: JavinizerGoProvider | None = None
                 log(f"[stop] {error}")
                 break
             query = normalise_code_key(code)
-            # `259LUXU-1642` 与 `LUXU-1642` 是同一部作品的两种写法，来源站各只索引
-            # 其中一种。账本存哪种就只查哪种，会把「这个站没收录这种写法」误判成
-            # 「这部作品查不到」。第一个永远是账本的规范写法，评审键不随回退漂移。
+            # 第一个永远是账本的规范写法，评审键不随回退漂移。
             variants = code_query_variants(code) or (query,)
+            chain = _chain_for(row, profile=profile, sources=sources)
             by_field: dict[str, list[dict]] = {}
+            given: set[str] = set()
             fetched_at = datetime.now(timezone.utc).isoformat()
-            # 每个番号问哪几家由 policy 按发行面决定：日期形和 HEYZO 是无码站
-            # 的编号法，拿去问 mgstage/dmm 只会得到「问了都没有」。
-            for source in policy.sources_for_code(query):
-                source_health = health[source]
-                source_health["attempted"] += 1
-                if source in auth_blocked:
-                    source_health["auth_skips"] += 1
+            for stage in metadata_routes.stages_for_chain(chain):
+                members = throttle.open_members(metadata_routes.stage_members(stage, chain))
+                if not members:
                     continue
-                if time.monotonic() < cooldown_until.get(source, 0.0):
-                    source_health["cooldown_skips"] += 1
-                    continue
-                started = time.perf_counter()
-                snapshot = args.raw_dir / query / f"{source}.json"
-                payload = error = None
-                used_network = False
-                for attempt in variants:
-                    snapshot = args.raw_dir / attempt / f"{source}.json"
-                    payload, error, reused = _fetch_source(
-                        adapter, query=attempt, source=source, snapshot=snapshot,
-                        refresh=args.refresh, health=source_health)
-                    used_network = used_network or not reused
-                    if payload is not None:
-                        error = _identity_mismatch(query, payload)
-                        if error is not None:
-                            payload = None
-                    if payload is not None:
-                        if attempt != query:
-                            log(f"{query} 在 {source} 改用 {attempt} 命中")
-                        break
-                    # 限流、封禁、鉴权和网络抖动与写法无关，换个写法只是再撞一次墙。
-                    if error is not None and (error.retryable
-                                              or error.kind == AUTH_ERROR_KIND
-                                              or error.status_code in {403, 429, 503}):
-                        break
-                source_health["elapsed_ms"] += round((time.perf_counter() - started) * 1000)
-                if payload is None:
-                    error = error or MetadataProviderError("no result", kind="empty")
-                    error_writer.writerow({
-                        "code": code, "query": query, "source": source, "kind": error.kind,
-                        "status_code": error.status_code, "retryable": int(error.retryable),
-                        "message": str(error),
-                    })
-                    error_handle.flush(); errors_written += 1
-                    source_health["errors"] += 1
-                    source_health["retryable_errors"] += int(error.retryable)
-                    source_health["last_error_kind"] = error.kind
-                    source_health["last_error_status"] = error.status_code or ""
-                    source_health["last_error_message"] = str(error)[:500]
-                    if source == 'sougouwiki' and (error.kind == 'budget' or error.status_code in {403, 429}):
-                        cooldown_until[source] = float('inf')
-                        source_health['blocked'] += 1
-                        log('sougouwiki 本批联网停止；已取得的候选已保留')
-                    if error.kind == AUTH_ERROR_KIND:
-                        auth_blocked[source] = str(error)
-                        consecutive_failures[source] = 0
-                        source_health["blocked"] += 1
-                        # 下一步由错误消息自己带着：判据明确就说换凭据，只剩状态码
-                        # 可看的 403 则不替用户断成因。这里再补一句通用建议会盖掉那份
-                        # 区分，把撞上 IP 封禁的人引去反复换 Cookie。
-                        log(f"{source} 鉴权失败，本批不再向它发请求：{error}")
-                    elif error.retryable or error.status_code in {403, 429, 503}:
-                        consecutive_failures[source] = consecutive_failures.get(source, 0) + 1
-                        if consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
-                            cooldown_until[source] = time.monotonic() + COOLDOWN_SECONDS
-                            consecutive_failures[source] = 0
-                            source_health["blocked"] += 1
-                            log(f"{source} 连续 {COOLDOWN_AFTER_FAILURES} 次可重试失败，"
-                                f"冷却 {COOLDOWN_SECONDS:.0f} 秒后自动恢复：{error}")
-                    else:
-                        consecutive_failures[source] = 0
-                    # 失败那几次也真的发出去了，占的是同一个限流窗口：跳过间隔直接
-                    # 问下一个番号，等于把重试挤在一起，来源只会更快把我们关掉。
-                    if args.delay > 0 and used_network and error.kind != 'budget':
-                        time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
-                    continue
-                consecutive_failures[source] = 0
-                extracted_fields = extract_peach_fields(payload, genre_decisions)
-                catalog_evidence = extract_catalog_evidence(payload)
-                for genre in map_genres(payload.get("genres") or [], genre_decisions)[1]:
-                    entry = unmapped_genres.setdefault((source, genre), [0, code])
-                    entry[0] += 1
-                source_health["succeeded"] += 1
-                if not extracted_fields and not catalog_evidence:
-                    source_health["empty"] += 1
-                for field in set(catalog_evidence) | set(extracted_fields):
-                    source_health[field] += 1
-                for field, extracted in extracted_fields.items():
-                    source_spec = policy.source(source)
-                    candidate = {
-                        "candidate_key": _candidate_key(query, field, source, extracted["value"]),
-                        "source": source,
-                        "source_url": str(payload.get("source_url") or ""),
-                        "confidence": 0.9 if source == "r18dev" else 0.75,
-                        "profile": policy.profile,
-                        "policy_version": policy.version,
-                        "field_rank": policy.field_rank(field, source),
-                        "source_kind": source_spec.kind,
-                        "official": source_spec.official,
-                        "provider_id": str(payload.get("id") or ""),
-                        "content_id": str(payload.get("content_id") or ""),
-                        "value": extracted["value"],
-                        "display_value": extracted["display_value"],
-                        "warnings": [*extracted["warnings"], *payload.get("source_warnings", [])],
-                        "catalog_evidence": catalog_evidence,
-                        "wiki_evidence": payload.get("wiki_evidence", {}),
-                        "raw_snapshot": str(snapshot),
-                    }
-                    by_field.setdefault(field, []).append(candidate)
+                results, used_network = _ask_stage(
+                    adapter, query=query, variants=variants, stage=stage, members=members,
+                    args=args, health=health)
+                for source, (payload, error, attempt) in results.items():
+                    if payload is None:
+                        error = error or MetadataProviderError("no result", kind="empty")
+                        error_writer.writerow({
+                            "code": code, "query": query, "source": source, "kind": error.kind,
+                            "status_code": error.status_code, "retryable": int(error.retryable),
+                            "message": str(error),
+                        })
+                        error_handle.flush(); errors_written += 1
+                        throttle.record_failure(source, error)
+                        continue
+                    throttle.record_success(source)
+                    candidates = _candidates_from(
+                        payload, query=query, source=source, profile=profile,
+                        snapshot=args.raw_dir / attempt / f"{source}.json",
+                        genre_decisions=genre_decisions, health=health,
+                        unmapped_genres=unmapped_genres, code=code)
+                    for field, candidate in candidates.items():
+                        by_field.setdefault(field, []).append(candidate)
+                        if candidate["value"]:
+                            given.add(field)
                 # 续跑重建候选时会读取数百个本地快照；它们没有网络请求，不该
-                # 消耗来源限流窗口。只给本次真实 fetch 留间隔，既保持 r18dev
-                # 的长跑节流，也让熔断后的恢复立即越过已完成部分。
+                # 消耗来源限流窗口。只给本次真实 fetch 留间隔。
                 if args.delay > 0 and used_network:
                     time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
+                # 走链才短路：官方那一档把必填标量给全了就不问下一档，与采集任务同一判据
+                # （`metadata_routes.settles`）；点名的来源用户要的就是每家都问。
+                if sources is None and metadata_routes.settles(metadata_routes.SCALAR_FIELDS, given):
+                    break
             for field, candidates in by_field.items():
                 if args.english_title_only and field != "title":
                     continue
-                candidates = sort_candidates(field, candidates, policy)
+                candidates = sort_candidates(field, candidates)
                 candidate_writer.writerow({
                     "item_key": f"{query}:{field}", "code": code, "query": query,
                     "field": field, "field_label": FIELD_LABELS[field],
                     "current_value": "、".join(_current_values(connection, code, field)),
                     "candidates_json": json.dumps(candidates, ensure_ascii=False, separators=(",", ":")),
-                    "source_count": len(candidates), "source_profile": policy.profile,
-                    "policy_version": policy.version, "status": "candidate",
+                    "source_count": len(candidates), "source_profile": profile,
+                    "policy_version": POLICY_VERSION, "status": "candidate",
                     "size_gb": round(size_gb, 2), "videos": videos, "fetched_at": fetched_at,
                 })
                 groups_written += 1
@@ -708,8 +920,7 @@ def _scrape(parser, args, handle, *, provider: JavinizerGoProvider | None = None
                 log(f"{index}/{len(codes)}：已落 {groups_written} 个字段组，错误 {errors_written}")
             handle.progress(index, len(codes), f"{query}")
     connection.close()
-    if wiki is not None:
-        wiki.close()
+    adapter.close()
     _write_health(health_path, health)
     _write_unmapped(unmapped_path, unmapped_genres)
     log(f"完成：{groups_written} 个字段候选组 → {output}")
@@ -719,9 +930,9 @@ def _scrape(parser, args, handle, *, provider: JavinizerGoProvider | None = None
         log(f"来源错误 {errors_written} 条 → {errors_path}")
     # 鉴权失败单列。混在错误总数里看不出「这一批有几家其实一条都没问到」，
     # 而它决定的是下一步做什么：补凭据重跑，而不是等限流过去。
-    if auth_blocked:
-        log(f"鉴权失败的来源 {len(auth_blocked)} 家，本批已停止请求；按各自的说明处理后重跑："
-            + "；".join(f"{source}（{detail}）" for source, detail in auth_blocked.items()))
+    if throttle.auth_blocked:
+        log(f"鉴权失败的来源 {len(throttle.auth_blocked)} 家，本批已停止请求；按各自的说明处理后重跑："
+            + "；".join(f"{source}（{detail}）" for source, detail in throttle.auth_blocked.items()))
     close_log()
     return stopped.exit_code if stopped is not None else 0
 

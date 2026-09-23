@@ -11,7 +11,6 @@ import httpx
 
 from peach.http import HttpResponse
 from peach.metadata import MetadataProviderError
-from peach.metadata_policy import resolve_policy
 from peach.metadata_seesaa import ROOT, SeesaaProvider, parse_page, page_url
 
 
@@ -137,7 +136,7 @@ class SeesaaMetadataTests(unittest.TestCase):
             self.assertEqual(provider._match('390JAC-040')['id'], '390JAC-040')
             self.assertEqual(provider._match('JAC-040')['id'], 'JAC-040')
 
-    def test_cli_outputs_community_candidates_without_javinizer_or_ledger_changes(self):
+    def test_cli_outputs_community_candidates_without_the_chain_provider_or_ledger_changes(self):
         path = Path(__file__).resolve().parents[1] / 'scripts/scrape_codes.py'
         spec = importlib.util.spec_from_file_location('seesaa_scrape_test', path)
         script = importlib.util.module_from_spec(spec)
@@ -146,13 +145,14 @@ class SeesaaMetadataTests(unittest.TestCase):
             root = Path(tmp).resolve()
             db = root/'ledger.db'
             with sqlite3.connect(db) as c:
-                c.executescript("CREATE TABLE asset(id INTEGER, medium TEXT, code TEXT, size INTEGER, catalog_title TEXT, original_title TEXT, studio TEXT, series TEXT, release_date TEXT); CREATE TABLE entity(id INTEGER, kind TEXT, canonical_name TEXT); CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER, role TEXT); CREATE TABLE genre_decision(source_genre TEXT PRIMARY KEY, raw_genre TEXT NOT NULL, peach_tag TEXT, decided_at TEXT NOT NULL); INSERT INTO asset VALUES(1,'video','ABC-007',1,NULL,NULL,NULL,NULL,NULL);")
+                c.executescript("CREATE TABLE asset(id INTEGER, medium TEXT, code TEXT, size INTEGER, path TEXT, name TEXT, catalog_title TEXT, original_title TEXT, studio TEXT, series TEXT, release_date TEXT); CREATE TABLE entity(id INTEGER, kind TEXT, canonical_name TEXT); CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER, role TEXT); CREATE TABLE genre_decision(source_genre TEXT PRIMARY KEY, raw_genre TEXT NOT NULL, peach_tag TEXT, decided_at TEXT NOT NULL); INSERT INTO asset VALUES(1,'video','ABC-007',1,'one.mp4','one.mp4',NULL,NULL,NULL,NULL,NULL);")
             c.close()
             before = db.read_bytes()
             pages = root/'pages.txt'
             pages.write_text(ROOT+'d/Label', encoding='utf8')
             output = root/'metadata-field-candidates-test.csv'
-            with patch('peach.metadata_seesaa.HttpxTransport', return_value=Mock(return_value=HttpResponse(200, {}, fixture()))), patch.object(script.JavinizerGoProvider, 'create', side_effect=AssertionError('not required')):
+            # 只问 Seesaa 时正式链的 provider 一次都不该建：它会读凭据根、起 amane 桥。
+            with patch('peach.metadata_seesaa.HttpxTransport', return_value=Mock(return_value=HttpResponse(200, {}, fixture()))), patch('peach.library_processing.LibraryMetadataProvider', side_effect=AssertionError('not required')):
                 self.assertEqual(script.main(['--db', str(db), '--out', str(output), '--raw-dir', str(root/'raw'), '--log-dir', str(root/'logs'), '--profile', 'seesaa', '--wiki-pages-file', str(pages), '--delay', '0', '--min-free', '0']), 0)
             with output.open(encoding='utf-8-sig') as handle:
                 rows = list(csv.DictReader(handle))
@@ -162,4 +162,5 @@ class SeesaaMetadataTests(unittest.TestCase):
             self.assertTrue(candidate['wiki_evidence']['performers_complete'])
             self.assertTrue(candidate['warnings'])
             self.assertEqual(before, db.read_bytes())
-            self.assertEqual(resolve_policy(profile='seesaa').sources, ('sougouwiki',))
+            self.assertEqual(script._chain_for(('ABC-007', 1.0, 1, None, None, None), profile='seesaa', sources=None),
+                             ('sougouwiki',))

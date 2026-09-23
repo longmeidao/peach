@@ -254,8 +254,8 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertIn("鉴权失败的来源", printed.getvalue())
 
     def test_only_not_found_counts_as_a_settled_source_verdict(self):
-        # 本机 javinizer 没启用某个 scraper 时返回的是 unknown 错误。把它当定论
-        # 复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。
+        # 本机配置问题（凭据没贴、桥没装）返回的是 unknown / unavailable 错误。把它当
+        # 定论复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。
         self.assertEqual(self.scrape_codes.SETTLED_ERROR_KINDS, frozenset({"not_found"}))
 
     def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
@@ -1918,7 +1918,7 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertEqual(normalise("abw123"), "ABW-123")
         self.assertEqual(normalise("ipvr00296"), "IPVR-296")
 
-    def test_javinizer_scrape_writes_field_candidates_and_raw_evidence_only(self):
+    def test_explicit_sources_write_field_candidates_and_raw_evidence_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             db = root / "ledger.db"
@@ -2021,7 +2021,7 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(asset, (None, None, None))
             self.assertEqual(relation_count, 0)
 
-    def test_javinizer_scrape_codes_file_limits_batch_in_file_order(self):
+    def test_scrape_codes_file_limits_batch_in_file_order(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             db = root / "ledger.db"
@@ -2062,7 +2062,7 @@ class OperationalScriptTests(unittest.TestCase):
                 rows = list(csv.DictReader(handle))
             self.assertEqual({row["query"] for row in rows}, {"BBB-002"})
 
-    def test_javinizer_resume_throttles_only_real_network_queries(self):
+    def test_resume_throttles_only_real_network_queries(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             db = root / "ledger.db"
@@ -2233,7 +2233,7 @@ class OperationalScriptTests(unittest.TestCase):
     def test_scrape_rejects_a_source_result_for_a_different_release(self):
         """javbus 搜不到就返回首个近似命中：`259LUXU-164` 会取回 `259LUXU-1642`。
 
-        韩国 MIB 那批番号由 `allows_code` 拦在刮削入口，走不到这里；这道守卫管的是
+        韩国 MIB 那批番号由 `metadata_routes.classify` 拦在刮削入口，走不到这里；这道守卫管的是
         剩下那些形状相近的误配，它们没有前缀表可依，只能靠比对来源自报的番号认出来。
         """
         with tempfile.TemporaryDirectory() as tmp:
@@ -2295,6 +2295,131 @@ class OperationalScriptTests(unittest.TestCase):
             {"id": "JAC-040", "source_url": mgs.replace("www.mgstage.com", "mgstage.com.example.org")},
         ):
             self.assertEqual(check("390JAC-040", payload).kind, "identity_mismatch")
+
+    def _chain_ledger(self, root, codes):
+        db = root / "ledger.db"
+        sqlite3.connect(db).close(); upgrade(db, MIGRATIONS)
+        connection = sqlite3.connect(db)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code,size) "
+            "VALUES(?,'local',?,?,'video',?,?)",
+            # 体积递减：批次按体积倒序排队，给定的顺序就是处理顺序。
+            [(i, f"{i}.mp4", f"{i}.mp4", code, 10_000 - i) for i, code in enumerate(codes, 1)],
+        )
+        connection.commit(); connection.close()
+        return db
+
+    @staticmethod
+    def _full_payload(code, source):
+        return {"source": source, "id": code, "title": "Catalog title",
+                "actresses": [{"japanese_name": "木村さん"}], "maker": "Studio A",
+                "release_date": "2020-09-13T00:00:00Z"}
+
+    def test_chain_profile_stops_at_the_first_stage_that_settles_the_scalars(self):
+        """默认走正式链：官方那一档把必填标量给全就停，落空才问综合索引那一档。
+
+        判据与采集任务同一份（`metadata_routes.settles`），停手的单位是「档」不是
+        「家」：综合索引那一档的三家一起问，谁都不因为前一家答上而被跳过。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = self._chain_ledger(root, ["ABC-001", "DEF-002"])
+            self_error = self.scrape_codes.MetadataProviderError
+
+            class Staged:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append((code, source))
+                    if code == "DEF-002" and source == "r18dev":
+                        raise self_error("status 404", kind="not_found", status_code=404)
+                    if code == "DEF-002":
+                        return {"source": source, "id": code, "maker": "Studio B"}
+                    return OperationalScriptTests._full_payload(code, source)
+
+            provider = Staged()
+            output = root / "metadata-field-candidates-chain.csv"
+            with redirect_stdout(io.StringIO()):
+                result = self.scrape_codes.main([
+                    "--db", str(db), "--out", str(output), "--raw-dir", str(root / "raw"),
+                    "--log-dir", str(root / "logs"), "--delay", "0", "--min-free", "0",
+                ], provider=provider)
+            self.assertEqual(result, 0)
+            self.assertEqual(provider.calls, [
+                ("ABC-001", "r18dev"),
+                ("DEF-002", "r18dev"), ("DEF-002", "avbase"), ("DEF-002", "javbus"),
+                ("DEF-002", "javdb"),
+            ])
+            with output.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            self.assertTrue(rows)
+            self.assertTrue(all(row["source_profile"] == "chain" for row in rows))
+            studio = next(row for row in rows if row["code"] == "DEF-002" and row["field"] == "studio")
+            candidates = json.loads(studio["candidates_json"])
+            # 同一档三家的取值并排进候选，排序按字段来源表：javdb 在前，表里没有的
+            # avbase 排到末尾之后。
+            self.assertEqual([c["source"] for c in candidates], ["javdb", "javbus", "avbase"])
+            # 候选记的解析器名与采集任务的证据文件同一份（`PROVIDER_NAMES`）。
+            from peach.library_processing import PROVIDER_NAMES
+            self.assertEqual(candidates[0]["provider"], PROVIDER_NAMES["javdb"])
+            health = output.with_name("metadata-source-health-chain.csv")
+            with health.open(encoding="utf-8-sig", newline="") as handle:
+                health_rows = {row["source"]: row for row in csv.DictReader(handle)}
+            # 走链时健康表覆盖所有链的并集，没轮到的档计数为 0 而不是缺行。
+            self.assertEqual(set(health_rows), set(self.scrape_codes.CHAIN_SOURCES))
+            self.assertEqual(health_rows["r18dev"]["attempted"], "2")
+            self.assertEqual(health_rows["javdb"]["attempted"], "1")
+            self.assertEqual(health_rows["fc2"]["attempted"], "0")
+
+    def test_explicit_sources_ask_every_named_source_and_refuse_retired_names(self):
+        """`--sources` 点名的每一家都问，官方答全了也不停；历史来源名当场拒绝。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = self._chain_ledger(root, ["ABC-001"])
+
+            class Everything:
+                def __init__(self): self.calls = []
+                def query(self, code, source):
+                    self.calls.append((code, source))
+                    return OperationalScriptTests._full_payload(code, source)
+
+            provider = Everything()
+            with redirect_stdout(io.StringIO()):
+                result = self.scrape_codes.main([
+                    "--db", str(db), "--out", str(root / "c.csv"), "--raw-dir", str(root / "raw"),
+                    "--log-dir", str(root / "logs"), "--delay", "0", "--min-free", "0",
+                    "--sources", "r18dev,javbus,fc2club",
+                ], provider=provider)
+            self.assertEqual(result, 0)
+            self.assertEqual(provider.calls, [
+                ("ABC-001", "r18dev"), ("ABC-001", "javbus"), ("ABC-001", "fc2club")])
+            for names, message in (("mgstage", "历史来源身份"), ("imaginary", "未知来源"),
+                                   ("r18dev", "不能同时")):
+                argv = ["--db", str(db), "--sources", names]
+                if names == "r18dev":
+                    argv += ["--profile", "seesaa"]
+                with redirect_stdout(io.StringIO()), self.assertRaises(SystemExit), \
+                        mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+                    self.scrape_codes.main(argv)
+                if message != "不能同时":
+                    self.assertIn(message, stderr.getvalue())
+
+    def test_chain_failures_are_translated_into_the_script_error_kinds(self):
+        """正式链的四种异常各落一档：没有是定论，限流与预算是临时，401/403 是鉴权。"""
+        from peach.jav_cover_fetch import DeadlineExceeded, NotFound, Unavailable
+        from peach.scraping_access import SourcePaused
+        translate = self.scrape_codes.translate_failure
+        self.assertEqual((translate("javdb", NotFound("没有")).kind,
+                          translate("javdb", NotFound("没有")).retryable), ("not_found", False))
+        paused = translate("javdb", SourcePaused("来源正在冷却"))
+        self.assertEqual((paused.kind, paused.status_code, paused.retryable), ("rate_limited", 429, True))
+        walled = translate("javdb", SourcePaused("javdb 返回 403，已冷却"))
+        self.assertEqual((walled.kind, walled.status_code, walled.retryable), ("auth", 403, False))
+        self.assertEqual(translate("fc2", DeadlineExceeded("预算用尽")).kind, "timeout")
+        flaky = translate("fc2", Unavailable("HTTP 503 upstream"))
+        self.assertEqual((flaky.kind, flaky.status_code, flaky.temporary), ("unavailable", 503, True))
+        # 已经是本脚本分档的错误原样返回，不再套一层。
+        own = self.scrape_codes.MetadataProviderError("x", kind="identity_mismatch")
+        self.assertIs(translate("javdb", own), own)
 
     def test_creator_tag_review_queue_requires_approval_and_backup(self):
         with tempfile.TemporaryDirectory() as tmp:

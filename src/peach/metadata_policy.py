@@ -1,20 +1,19 @@
-"""Pure Javinizer-Go source policy owned by Peach."""
+"""来源分级与字段结算策略，由 Peach 自己持有。
+
+查询侧（一个番号问谁、什么顺序、何时停）在 `metadata_routes`；这里只管取回来的值
+怎么分级、怎么排序、分歧听谁的（ADR-0038）。两套刮削栈的归属见 ADR-0044：官方与半官方
+站由 Peach 自己解析，社区站经 amane 桥；来源名在这里登记一次，链、候选、复核与账本的
+provenance 都用同一个名字。
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
-
-from .catalog_rules import is_korean_mib_code, is_uncensored_code
+from typing import Iterable, Mapping
 
 
 POLICY_VERSION = "metadata-source-policy-v4"
 PEACH_FIELDS = (
     "title", "original_title", "performers", "studio", "series", "release_date", "tags",
-)
-REGISTERED_SOURCES = (
-    "r18dev", "libredmm", "dmm", "javlibrary", "javdb", "javbus", "jav321",
-    "mgstage", "tokyohot", "aventertainment", "caribbeancom", "dlgetchu",
-    "fc2", "javstash",
 )
 
 
@@ -28,34 +27,51 @@ class SourceSpec:
         return self.kind in {"official", "official_mirror"}
 
 
+#: 历史来源身份。这十家当年经 Javinizer-Go 取回过资料，账本里仍有
+#: `javinizer:<站>:<字段>` 的 provenance（mgstage 的标签近 800 行、libredmm 的厂牌
+#: 一百多行），旧快照也还在 `sources/metadata/javinizer-go/` 下。当前链不再向它们发
+#: 请求（ADR-0044），名字留着是让结算与复核页仍认得这些行的级别；删掉名字的表现是
+#: 已落库的官方标签在复核页变成「未登记来源」。
+HISTORICAL_SOURCES = (
+    "dmm", "libredmm", "mgstage", "tokyohot", "aventertainment", "caribbeancom",
+    "dlgetchu", "javlibrary", "jav321", "javstash",
+)
+
 SOURCE_SPECS = {
     name: SourceSpec(name, kind) for name, kind in {
-        "r18dev": "official_mirror", "libredmm": "official_mirror",
+        # r18.dev 是 DMM 数字版目录的镜像，采集链有码与素人的第一档
+        # （`library_processing.LibraryMetadataProvider.query`）。
+        "r18dev": "official_mirror",
+        # FC2 发行方自己的商品页（`peach.metadata_fc2`）。
+        "fc2": "official",
+        # 历史来源身份，见 `HISTORICAL_SOURCES`。
+        "libredmm": "official_mirror",
         "dmm": "official", "mgstage": "official", "tokyohot": "official",
         "aventertainment": "official", "caribbeancom": "official",
-        "dlgetchu": "official", "fc2": "official",
-        "javlibrary": "community", "javdb": "community", "javbus": "community",
-        "jav321": "community", "javstash": "community",
+        "dlgetchu": "official",
+        "javlibrary": "community", "jav321": "community", "javstash": "community",
+        # Peach 自写解析器的社区站（`peach.javdb`、`peach.community_catalog`）。
+        "javdb": "community", "javbus": "community",
+        # Seesaa 作品表（`peach.metadata_seesaa`，`scrape_codes --profile seesaa`）。
         "sougouwiki": "community",
         # AVBase 汇总各店铺的商品条目，采集任务在官方渠道落空时直接请求它
-        # （peach.community_catalog）。同样不走 Javinizer-Go。
+        # （peach.community_catalog）。
         "avbase": "community",
-        # 韩国 MIB 的官网（scripts/harvest_kmib.py）。不走 Javinizer-Go，所以不进
-        # REGISTERED_SOURCES；登记在这里是为了复核与自动批准按官方来源对待它。
+        # 韩国 MIB 的官网（scripts/harvest_kmib.py）。登记在这里是为了复核与自动批准
+        # 按官方来源对待它。
         "kmib": "official",
         # FC2 下架作品的镜像站。它转载的是发行方那一页，但标题和标签由站方用户维护，
-        # 所以按社区来源对待：取值进复核，不当官方证据。同样不走 Javinizer-Go。
+        # 所以按社区来源对待：取值进复核，不当官方证据。
         "fc2cmadb": "community",
         # fc2cmadb 也没有的下架 FC2 的最后一档（`peach.metadata_fc2.parse_archive`）。
         # 转载站，标题由发布者写，封面是转存件，按社区来源对待。登记在这里还有一层作用：
         # 「没有」的记忆按 `sources_fingerprint` 作废，接上这一档，此前压着「三处都没有」
         # 的番号下一轮就会重问一遍，不必等 TTL 走完。
         "javarchive": "community",
-        # 一本道的官网作品 JSON（`peach.metadata_1pondo`）。发行方自己那一份，不走
-        # Javinizer-Go，所以同样不进 REGISTERED_SOURCES。
+        # 一本道的官网作品 JSON（`peach.metadata_1pondo`）。发行方自己那一份。
         "1pondo": "official",
         # 经 amane 桥问到的几站（`peach.metadata_amane.SITES`，ADR-0043）。都是转载或索引站，
-        # 按社区来源对待；不走 Javinizer-Go，同样不进 REGISTERED_SOURCES。
+        # 按社区来源对待。
         "fc2club": "community",
         "freejavbt": "community",
         "airav": "community",
@@ -132,54 +148,6 @@ def blacklisted(field: str, source: str) -> bool:
     """这个字段上这家来源是不是被判了不听。"""
     return str(source or "").strip() in FIELD_SOURCE_BLACKLIST.get(field, frozenset())
 
-PROFILE_SOURCES = {
-    "seesaa": ("sougouwiki",),
-    "baseline": ("r18dev",),
-    "censored": (
-        "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
-        "dlgetchu", "javlibrary", "javdb", "javbus", "jav321", "javstash",
-    ),
-    "uncensored": (
-        "tokyohot", "caribbeancom", "javdb", "javlibrary", "javstash",
-    ),
-    "fc2": ("fc2",),
-    # 官方与官方镜像的补抓组合，用于 r18dev 落空或只给泛化类别的有码番号。
-    # 两条约束决定了这五个：
-    # 一、只列 javinizer config 当前启用的 scraper。没启用的来源不返回「查无此片」，
-    #     而是返回 unknown 错误，一旦落进快照就会被当成确定失败长期复用。
-    # 二、不含 tokyohot 与 caribbeancom。它们只认无码番号形状，对有码番号是稳定
-    #     404，放进来等于每个番号多两次白跑的网络请求；无码走 `uncensored`。
-    # 三、不含 dlgetchu。它是同人商店，对 JAV 番号从来搜不到对应商品，却会把站内
-    #     首条命中当结果返回——`identifies_code` 现在拦得住，但每个番号仍要为一次
-    #     必然作废的往返付钱。
-    "official-backfill": (
-        "mgstage", "dmm", "libredmm", "aventertainment",
-    ),
-}
-
-#: 番号形状就能确定发行面，不必先有元数据证明。判据本身是纯规则，和徽章共用
-#: `catalog_rules.is_uncensored_code` 一份——两处各写一份迟早会漂移。
-#: 语料实测：8 个这种番号——carib 2、1pon 4、HEYZO 2，官方 tag 全为 0。它们此前
-#: 一直按有码番号去问 mgstage/dmm，那几家根本不发行这些片，于是「问了都没有」
-#: 被读成「上游没有」。caribbeancom 实测取得到 `040221-001` 的完整标题、日期
-#: 和 10 个 genre。
-
-#: 按发行面分流的 profile。`sources` 是并集（来源健康表要覆盖全部），
-#: 每个番号实际问哪几家由 `sources_for_code` 决定。
-ROUTED_PROFILE_SOURCES = {
-    "backfill": {
-        # 1Pondo 与 HEYZO 没有官方 adapter，javdb/javlibrary 在本机被
-        # Cloudflare 与 403 挡住（不绕机器人检测），javbus 是唯一问得到的一家；
-        # 它是 community，取值只能进人工复核，不进免复核写入。
-        "uncensored": ("caribbeancom", "tokyohot", "javbus"),
-        "censored": ("mgstage", "dmm", "libredmm", "aventertainment", "javdb"),
-    },
-}
-for _name, _routes in ROUTED_PROFILE_SOURCES.items():
-    PROFILE_SOURCES[_name] = tuple(dict.fromkeys(
-        source for group in _routes.values() for source in group))
-
-
 FIELD_SOURCE_ORDER = {
     "title": (
         "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
@@ -227,77 +195,22 @@ FIELD_SOURCE_ORDER = {
 }
 
 
-@dataclass(frozen=True)
-class MetadataPolicy:
-    profile: str
-    sources: tuple[str, ...]
-    version: str = POLICY_VERSION
-
-    def field_rank(self, field: str, source: str) -> int:
-        order = FIELD_SOURCE_ORDER[field]
-        try:
-            return order.index(source) + 1
-        except ValueError:
-            return len(order) + 1
-
-    def source(self, name: str) -> SourceSpec:
-        return SOURCE_SPECS[name]
-
-    def sources_for_code(self, code: str) -> tuple[str, ...]:
-        """这个番号该问哪几家。未分流的 profile 一律返回全部来源。"""
-        routes = ROUTED_PROFILE_SOURCES.get(self.profile)
-        if not routes:
-            return self.sources
-        group = "uncensored" if is_uncensored_code(code) else "censored"
-        return tuple(source for source in self.sources if source in routes[group])
-
-    def allows_code(self, code: str, *, include_fc2: bool = False,
-                    explicit_sources: bool = False) -> bool:
-        # 韩国 MIB 不适用 JAV 规则，任何 profile 都不问：JAV 目录站对这些番号只会
-        # 返回别的作品，而那份错值一旦落进候选队列，就要靠人一条条认出来。
-        # 这道拦截优先于 profile 与 `--sources`——它不是「这次不想问」，是「问了必错」。
-        if is_korean_mib_code(code):
-            return False
-        is_fc2 = str(code or "").upper().startswith("FC2")
-        if self.profile == "fc2":
-            return is_fc2
-        if not is_fc2:
-            return True
-        return include_fc2 or (explicit_sources and "fc2" in self.sources)
+def field_rank(field: str, source: str) -> int:
+    """这家来源在这个字段的顺序表里排第几，从 1 起；表里没有的排在末尾之后。"""
+    order = FIELD_SOURCE_ORDER[field]
+    try:
+        return order.index(source) + 1
+    except ValueError:
+        return len(order) + 1
 
 
-def parse_sources(raw: str | Sequence[str]) -> tuple[str, ...]:
-    values = raw.split(",") if isinstance(raw, str) else list(raw)
-    sources = tuple(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
-    if not sources:
-        raise ValueError("至少指定一个 Javinizer-Go source")
-    unknown = [source for source in sources if source not in SOURCE_SPECS]
-    if unknown:
-        raise ValueError("未知 Javinizer-Go source：" + ", ".join(unknown))
-    return sources
-
-
-def resolve_policy(*, profile: str | None = None,
-                   sources: str | Sequence[str] | None = None) -> MetadataPolicy:
-    if profile and sources is not None:
-        raise ValueError("--profile 与 --sources 不能同时使用")
-    if profile:
-        if profile not in PROFILE_SOURCES:
-            raise ValueError("未知 metadata source profile：" + profile)
-        return MetadataPolicy(profile, PROFILE_SOURCES[profile])
-    if sources is not None:
-        return MetadataPolicy("custom", parse_sources(sources))
-    return MetadataPolicy("baseline", PROFILE_SOURCES["baseline"])
-
-
-def sort_candidates(field: str, candidates: Iterable[Mapping[str, object]],
-                    policy: MetadataPolicy) -> list[dict]:
+def sort_candidates(field: str, candidates: Iterable[Mapping[str, object]]) -> list[dict]:
+    """同一字段的候选按来源顺序表排，同位次按置信度，再按来源名兜底保证确定。"""
     if field not in PEACH_FIELDS:
         raise ValueError("未知 Peach 元数据字段：" + field)
     rows = [dict(candidate) for candidate in candidates]
     for row in rows:
-        source = str(row.get("source") or "")
-        row["field_rank"] = policy.field_rank(field, source)
+        row["field_rank"] = field_rank(field, str(row.get("source") or ""))
     rows.sort(key=lambda row: (
         int(row["field_rank"]),
         -float(row.get("confidence") or 0),
