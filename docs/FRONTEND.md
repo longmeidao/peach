@@ -48,8 +48,8 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 （`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。
 
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
-缓存由服务端兜住：`/dist/` 与 `/app.js`、`/app.css`、`/js/` 同一档，回
-`Cache-Control: no-cache` 加一个 mtime＋字节数的 ETag——每次都回源问，没变时回 304
+缓存由服务端控制：`/dist/` 与 `/app.js`、`/app.css`、`/js/` 同一档，回
+`Cache-Control: no-cache` 加一个 mtime＋字节数的 ETag：每次都回源问，没变时回 304
 零传输，更新语义与 `no-store` 等价。只有 `index.html` 用 `no-store`：所有资产
 URL 都从它来，它被缓存住就没人看得到新产物。
 
@@ -57,7 +57,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 
 样式表按界面分区拆在 `web/css/` 下，`/app.css` 把它们按文件名顺序拼成一份交付
 （`src/peach/routes_pages.py` 的 `stylesheet_response()`）。拆分只为让两处改动落在不同
-文件上——一整份两千七百行的样式表，两个分支各改一处几乎必然撞在一起。页面仍然只取
+文件上：一整份两千七百行的样式表，两个分支各改一处几乎必然撞在一起。页面仍然只取
 一份 `/app.css`：不给首屏加二十来个阻塞请求，层叠顺序也不必写进 `index.html`。
 
 两条规则：
@@ -209,7 +209,7 @@ const job = useQuery({
 **遗留层里的读者等它所在的页面迁过来再接**，不为它在产物上另开一个通知入口。
 
 端点字符串在 `frontend/src` 里只许出现一次，就在这一页的数据模块里
-（`src/react/quality-goals/quality-goals.ts`）——要拦的是「两个地方各写一遍这条 URL」。
+（`src/react/quality-goals/quality-goals.ts`）。要拦的是「两个地方各写一遍这条 URL」。
 
 首屏要不要吃缓存看路由表：`/quality-goals` 是 `refresh:'reopen'`，刷新就是重新进这一页，
 所以它的 `prefetch` 不给 `staleTime`，每次进来都重取。要按节律更新的页面写
@@ -224,7 +224,7 @@ BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选�
 只把标签键交回去（`onTag`）。
 
 口味页（`src/react/taste/`）把「同一份真相换一个范围看」写进键里：`['taste', window]`，换范围
-就是换键，上一份靠 `placeholderData: keepPreviousData` 留在屏幕上。范围是组件状态而不是 URL——
+就是换键，上一份靠 `placeholderData: keepPreviousData` 留在屏幕上。范围是组件状态而不是 URL：
 它不进路由表，壳只按 `/taste` 一条路由挂岛，刷新回到默认的「全部」。服务端的 `_get_taste` 自己
 按 `taste:{window}` 缓存，演示库上一趟往返十几毫秒，所以这一页不设 `staleTime`。后台重算是另
 一个键 `['taste','refresh']`，`running` 时两秒问一次、闲时十秒，终态按下面第 2 条的判据认。
@@ -237,15 +237,15 @@ BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选�
 写法已经定型，见下面第 2 条。
 
 1. `frontend/src/react/<page>/<page>.ts`：端点常量、`queryKey`、数据类型和纯折算函数，
-   外加一个 `prefetch<Page>(signal)`——`queryClient.fetchQuery` 包住 `src/api.ts` 的
+   外加一个 `prefetch<Page>(signal)`，用 `queryClient.fetchQuery` 包住 `src/api.ts` 的
    `apiGet`，信号透到真正的 `fetch` 上。同一份真相只用一个 `queryKey`：一屏里的几段要是
-   分开取，就会出现这一段是新的、那一段是旧的。节律不同的两份才分键——来源和凭证页的
+   分开取，就会出现这一段是新的、那一段是旧的。节律不同的两份才分键：来源和凭证页的
    来源列表由用户改，抓封面的任务状态由后台推进，合成一个键的话每两秒的一轮轮询都会把
    用户正在填的那张卡重画一遍。
 2. `frontend/src/react/<page>/<page>-page.tsx`：组件用 `useQuery` 读同一个 `queryKey`，
    要轮询就写 `refetchInterval`，间隔按上一次拿到的内容算，不另起 `setInterval`。
    写操作是 `useMutation`，不进 Query 的缓存节律：成功后用 `setQueryData` 把服务端回的
-   那一条换进列表，而不是把整页重取一遍——用户可能正在填同一屏的另一张卡；失败只在卡内
+   那一条换进列表，而不是把整页重取一遍，因为用户可能正在填同一屏的另一张卡；失败只在卡内
    留一句原因，缓存里的上一份不动，刚填的内容也不清。同一张卡上互斥的动作共用一个
    `isPending`，进另一个动作前 `reset()` 掉上一个的结果，屏幕上不会同时挂着两次的结论。
    跟后台任务一律用 `frontend/src/react/background-job.ts` 的 `useBackgroundJob`，不在页面里
@@ -271,7 +271,7 @@ BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选�
    外观决定进 `frontend/e2e/design.test.ts`：`page.route` 造出真实数据里凑不齐的状态，
    断言读 `getComputedStyle`。
 6. `web/app.js` 的挂载块不变；`web/css/` 与 `web/board.css` 里只服务这一页正文的规则删掉，
-   遗留骨架还要用的留着——骨架仍然用旧类名（`boardPageSkeleton`），它要的那几条不能一起删。
+   遗留骨架还要用的留着：骨架仍然用旧类名（`boardPageSkeleton`），它要的那几条不能一起删。
    遗留层只在 `app.js` 里有的助手（`javTitleHtml`、`srcBadge` 这类返回 HTML 的）继续由
    props 递进来，用 `dangerouslySetInnerHTML` 插；它们是全站语义契约的唯一实现，在页面里
    重写一份就会漂。而 `emptyStateHtml`、`noteHtml`、`collectionSummaryHtml` 这类只是

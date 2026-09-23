@@ -75,7 +75,7 @@ Codex 完全不自动加载 `.claude/skills`，只能靠 `AGENTS.md` 索引表�
 ## 文案只写最终状态
 
 界面字串、注释、docstring、测试名与文档只描述现在成立的行为和约束，不叙述被否掉的做法，
-也不做改动前后对比——版本演进由 Git 记录，读者要的是当前这一份怎么用。
+也不做改动前后对比，因为版本演进由 Git 记录，读者要的是当前这一份怎么用。
 
 - 门槛是 `scripts/check_copy_final_state.py`，由 `tests/test_copy_final_state.py` 在 tooling
   与 web 两个域执行；词表、覆盖面与临时例外文件清单都在脚本顶部，改判据就改那里。
@@ -112,6 +112,6 @@ Codex 完全不自动加载 `.claude/skills`，只能靠 `AGENTS.md` 索引表�
 1. 运行 `python scripts/check_context_budget.py`：退出码 0 通过，1 有超预算或结构错误，3 只有 `最后复核` 超过 180 天的条目。
 
 2. 逐条问：这条规则的事故或证据还能指认吗？对应实现还在吗？已经有门槛了吗？
-3. 该删就整段删除，不留「已废弃」注释——Git 是归档。被 ADR 取代的段落只留一行指向 ADR。
+3. 该删就整段删除，不留「已废弃」注释，Git 就是归档。被 ADR 取代的段落只留一行指向 ADR。
 4. 复核但保留的技能更新 `最后复核` 日期。
 5. 结构与预算由 `tests/test_context_budget.py` 在 `& .\scripts\test.ps1` 中强制执行。

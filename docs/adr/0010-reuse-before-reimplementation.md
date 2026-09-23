@@ -9,8 +9,8 @@
 
 2026-08 的 FANBOX 追更又暴露了同类缺陷：Peach 先围绕 User-Agent、Cookie 与错误状态反复补丁，后来
 用成熟的 `curl_cffi` 传输立即解决站点指纹问题；继续审计时还发现自写正文解析只覆盖 article 的
-段落与图片，而 PixivUtil2 已处理 image、file、article、video、embed 等公开数据形态。这说明“查当前
-仓库”仍不够，外部成熟轮子和参考实现必须进入新增或重写前的强制路径。
+段落与图片，而 PixivUtil2 已处理 image、file、article、video、embed 等公开数据形态。这说明「查当前
+仓库」仍不够，外部成熟轮子和参考实现必须进入新增或重写前的强制路径。
 
 ## 决策
 

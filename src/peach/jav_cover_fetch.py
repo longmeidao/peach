@@ -1042,7 +1042,7 @@ def run(args: argparse.Namespace, handle: TaskRunHandle | None = None) -> int:
                       if args.upgrade_max_width else "")
         print(f"待重探已有封套 {len(todo)} 个{width_note}；只在像素更多时替换")
     else:
-        print(f"待抓番号 {len(todo)} 个（已落盘的跳过，"
+        print(f"待抓番号 {len(todo)} 个（本机已有的跳过，"
               f"上轮确认没有的跳过 {len(skipped)} 个，--retry-misses 可重试）")
 
     transport = HostLimitedTransport(SourceTransport(SECRETS_DIR), args.delay)

@@ -8,7 +8,7 @@
 - 2026-08-18 实测 asset 22716（115 的 HEVC 重制 MP4）在 `/item/22716` 黑屏：HLS 分片全部 200
   返回、111 MB 进入缓冲、时间轴推进，但 `videoWidth=0`、解码帧数为 0、无任何 error 事件。
   ffprobe 确认源与分片都是 `hevc`；同浏览器实测
-  `MediaSource.isTypeSupported('video/mp2t; codecs="hvc1…"')` 为 `false`——Chromium 的 MSE
+  `MediaSource.isTypeSupported('video/mp2t; codecs="hvc1…"')` 为 `false`：Chromium 的 MSE
   管线不支持 MPEG-TS 里的 HEVC，`-c copy` 分片把 HEVC 原样装进 TS，数据能进缓冲却一帧都解
   不出来，因此是静默黑屏而不是报错。文件名含 `HEVC` 的 115 视频有 248 条（PikPak 2 条），
   全部受同一缺陷影响。

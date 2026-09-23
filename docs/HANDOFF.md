@@ -30,7 +30,7 @@
 - reader 只通过 Peach CA 严格校验的 HTTPS 读 writer 已归一化的 JSON 并原子缓存到本机，先确认目标 `/healthz` 是 `ledger_sync=writer`，writer 离线只展示上次缓存；reader 永久禁用批准、跳过、拒绝和关注管理的写入，不得为修空页面而同步整个 `generated`、SQLite/WAL 或放宽写端点白名单。
 - 转载站水印域名不是番号：剥掉 TLD 后与 `IPX219C`、`MEYD911` 同形，`normalise_code_key` 会替它补连字符（`HHD800` → `HHD-800`），JAV 过滤、`display_code` 和 `clean_names` 重命名就全把水印当成作品标识。形态分不开，只有实证名单 `catalog_rules.REPOST_SITE_LABELS` 能分，存压缩形让 `BEI88` 与 `BEI-088` 同命中；加条目先用 `scripts/audit_domain_codes.py` 在真实 ledger 取 `<label>.<tld>` 或 `<label>@` 的路径证据。
 - 「什么算番号」只在 `catalog_rules` 一份，脚本一律 import，同一条排除规则只加在其中一份上等于没加；改 `code` 走 `audit_domain_codes.py --apply --backup`，只写复核过的那份 CSV、按原值 `WHERE` 挡住漂移、存疑档不写，FTS 由 `AFTER UPDATE OF name,code` 触发器重建但要核对真跑过。
-- 日文标题只认官方源会漏掉 DMM 未收录的作品，这类番号用 `--sources javbus` 单独补候选并写进分区文件，不另起通用批次——复核页只读最新一个通用批次，新文件会把上一批未复核的行挤掉。
+- 日文标题只认官方源会漏掉 DMM 未收录的作品，这类番号用 `--sources javbus` 单独补候选并写进分区文件，不另起通用批次：复核页只读最新一个通用批次，新文件会把上一批未复核的行挤掉。
 
 ## 无摩擦接手
 
@@ -89,7 +89,7 @@
 - 播放器控制栏、设置浮层与全屏几何：`youtube-player-controls-user-screenshot`；沉浸页版式：`youtube-shorts-immersive-user-screenshot`；统计历史：`youtube-stats-buffer-measured`；小窗与右键菜单：`youtube-miniplayer-measured`；手机顶栏：`youtube-mobile-topbar-measured`。不复制字幕、睡眠定时与自动播放按钮。
 - 追更与文件站的凭据与解析边界：`f95-masked-gofile-media`、`follow-fanbox-gofile-paheal`、`fanbox-browser-transport`、`rule34-follow-tags-and-collections`；厂牌 Logo 候选发现：`fiu758-studio-logo-discovery`，只作发现来源不作真相源。
 - 通用评审清单与报告型页面版式：`vercel-web-interface-guidelines`、`vercel-report-design`。
-- 按内容类型的来源链与逐站取舍：`amane-content-routes`，链上只放 Peach 已接的解析器，候选复核与不落盘 NFO 是差异；同类馆藏管理器的信息组织：`readme-yingku`，源码未公开，据 README、5 张演示图与论坛 8 张截图测读。
+- 按内容类型的来源链与逐站取舍：`amane-content-routes`，链上只放 Peach 已接的解析器，候选复核与不生成 NFO 是差异；同类馆藏管理器的信息组织：`readme-yingku`，源码未公开，据 README、5 张演示图与论坛 8 张截图测读。
 - 默认 Note、只读提示和 info 入口复用本地 Lucide 圆圈 `i`（2px 描边、圆端点），不复制未开放许可的 Geist 私有 SVG。
 - 原地换态动效的形态与参数（字形、读数、骨架、开关、成功、失败）：`transitions-dev-measured`。
 - 沉浸与详情播放每次加载都带独立 `session`，切片、关闭、失败和页面离开时取消旧会话：只清浏览器的 `src` 不足以停止 CloudDrive 预读或 FFmpeg。Mix 只按已解析且可播放的视频计数，不按回复数或网盘页数计数。
@@ -140,8 +140,8 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 - 源码部署由项目 venv 持有服务，刷新入口 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。
 - 两台机器可同时跑服务，但同时写入会很快冲突转只读；「接管 Ledger 写入」的短路与拒绝条件见 OPERATIONS。
-- `src/peach/__init__.py::__version__` 是版本唯一来源；自动更新只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，工作区脏或两边分叉就原样报出来交给人——并行工作树和主检出共用同一个对象库。
-- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP。`[media.mounts]` 按 `asset.location` 给本机落点，Windows 上整表为空；`replication.enabled` 默认关，关掉即整条复制链路不装配。首启问答与扫描是 `peach.onboarding`／`peach.scan` 的纯逻辑，CLI 与托盘设置页共用。
+- `src/peach/__init__.py::__version__` 是版本唯一来源；自动更新只做 `merge --ff-only`，不 stash、不 rebase、不 `--force`，工作区脏或两边分叉就原样报出来交给人，因为并行工作树和主检出共用同一个对象库。
+- 本机坐标在 `<数据根>/config.toml`（环境变量 > 它 > 内建默认），`src/peach/` 不写死本机字面量或家庭 IP。`[media.mounts]` 按 `asset.location` 给本机落点，Windows 上整表为空；`replication.enabled` 默认关，关掉即整套复制组件不装配。首启问答与扫描是 `peach.onboarding`／`peach.scan` 的纯逻辑，CLI 与托盘设置页共用。
 - `.local` 用本机 CA 而不是 Let's Encrypt，证书与私钥留在本机 `peach-data/secrets` 且按设计不跨机共享；FastAPI 是唯一 Web server，探测本机服务必须绕过系统代理，否则代理会替服务回 503。
 - 网盘目录整理后必须经「管理 → 资源同步」显式对账，不做后台静默删除；源文件缺失的 asset 和垃圾文件候选都先进回收站，清空回收站才永久删除账本行。
 - 长任务只停止自己拥有且命令行匹配的 Python/FFmpeg 进程树，禁止全机终止 FFmpeg；转码只写缓存，永不改写原媒体。

@@ -19,7 +19,7 @@ ADR-0002 把 Stash 定为「可关闭的 adapter」，路线图（`docs/STASH.md
 
 2546 个资产的 `asset.stash_scene_id` 从未迁进 `media_binding`，所以第一条判据对
 全部 75499 个资产都成立。也就是说播放路径一直只有 `FilesystemBackend`，而这一点
-在读代码时看不出来——backend 列表的写法明示「这里有两个来源」。
+在读代码时看不出来：backend 列表的写法明示「这里有两个来源」。
 
 ## 决策
 
@@ -27,7 +27,7 @@ ADR-0002 把 Stash 定为「可关闭的 adapter」，路线图（`docs/STASH.md
   `MediaCapabilities`、`StreamCandidate`、`FilesystemBackend.capabilities/stream_candidates`、
   `MediaEngine.capabilities/stream_candidates` 与 `adapters` 构造参数。
 - 删除 `MediaAsset.bindings` 与 `external_id()`，以及 `media_asset()` 里那条按资产查
-  `media_binding` 的 SELECT——它只服务这个 adapter，且必然返回 0 行。
+  `media_binding` 的 SELECT，它只服务这个 adapter，且必然返回 0 行。
 - `MediaEngine` 保留 `repository + filesystem`：解析媒体只有一条路径，谁决定了这个
   路径可以直接读出来。
 - **不动数据**：`media_binding` 表、`asset.stash_scene_id` 列和 `source='stash:*'` 的
@@ -40,7 +40,7 @@ ADR-0002 把 Stash 定为「可关闭的 adapter」，路线图（`docs/STASH.md
 - FastAPI 服务运行期不再向 `127.0.0.1:9999` 发任何请求。是否卸载 Stash 变成纯粹的
   本机运维决定，与 Peach 无关。
 - 每次 `media_asset()` 少一次 SQLite 查询。
-- 转码、预览和搜索都不受影响：它们本来就是 Peach 自己的实现——`TranscodeService`、
+- 转码、预览和搜索都不受影响：它们本来就是 Peach 自己的实现：`TranscodeService`、
   `PreviewService` 加 `scripts/sheets.py` 的 FFmpeg 九宫格、SQLite 查询，从不经过
   Stash。`MediaCapabilities` 里的 `transcode`/`search` 只是声明字段，没有任何调用方
   读过。

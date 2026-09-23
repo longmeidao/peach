@@ -86,7 +86,7 @@ export function PushDiscoveryForm({ initial, receipt }: {
             onChange={(enabled) => setState({ ...state, enabled })} />
         </SettingsRow>
         <SettingsRow label="监视本机文件夹"
-          description="订阅本地来源的文件系统事件。网盘挂载不监视——遍历它就是走网络。">
+          description="订阅本地来源的文件系统事件。网盘挂载不监视，因为遍历它就是走网络。">
           <Switch aria-label="监视本机文件夹" isSelected={state.watch_local}
             isDisabled={!state.available || !state.enabled}
             onChange={(watchLocal) => setState({ ...state, watch_local: watchLocal })} />

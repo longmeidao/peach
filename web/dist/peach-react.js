@@ -32925,7 +32925,7 @@ function tO({ initial: e, receipt: t }) {
 				}),
 				/* @__PURE__ */ (0, w.jsx)(jS, {
 					label: "监视本机文件夹",
-					description: "订阅本地来源的文件系统事件。网盘挂载不监视——遍历它就是走网络。",
+					description: "订阅本地来源的文件系统事件。网盘挂载不监视，因为遍历它就是走网络。",
 					children: /* @__PURE__ */ (0, w.jsx)(Fb, {
 						"aria-label": "监视本机文件夹",
 						isSelected: n.watch_local,

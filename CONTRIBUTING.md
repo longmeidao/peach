@@ -9,7 +9,7 @@ Each platform has exactly one test entry point: `& .\scripts\test.ps1` on Window
 AGPL-3.0-or-later. The rest of this document is in Chinese.
 
 Peach 是单人自托管应用，维护规模很小。Issue 与 PR 都欢迎。小修（缺陷修复、文案、文档、测试）
-直接提 PR；大改动——新页面、新连接器、改契约或数据层、被 ADR 涉及的方向——建议先开 issue
+直接提 PR；大改动（新页面、新连接器、改契约或数据层、被 ADR 涉及的方向）建议先开 issue
 讨论，免得做完才发现与既定边界冲突。提交贡献即同意以 AGPL-3.0-or-later 授权。
 
 ## 开 Issue
@@ -50,7 +50,7 @@ Peach 是单人自托管应用，维护规模很小。Issue 与 PR 都欢迎。�
 
 ## 前端改动
 
-`frontend/` 需要 Node 24 或更高版本。构建产物 `web/dist/` 进 Git——运行时没有 Node，
+`frontend/` 需要 Node 24 或更高版本。构建产物 `web/dist/` 进 Git，因为运行时没有 Node，
 Python 服务与打包件直接读它。改了 `frontend/src` 就在同一个 PR 里跑
 `npm --prefix frontend run build` 并提交 `web/dist/`，CI 的 `web-bundle` job 会核对产物与源码一致。
 目录、样式表分区与挂载契约见 [`docs/FRONTEND.md`](docs/FRONTEND.md)。

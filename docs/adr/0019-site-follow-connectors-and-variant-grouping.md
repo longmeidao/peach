@@ -7,7 +7,7 @@
 ## 背景
 
 ADR-0007 定下第一类追更连接器复用 RSS/Atom，并把「只发现候选、不写真相」立成边界。
-真正要追的七个来源里，**没有一个提供可用的 RSS/Atom**——f95zone 的
+真正要追的七个来源里，**没有一个提供可用的 RSS/Atom**：f95zone 的
 `/threads/{id}/index.rss` 实测返回 `The requested page cannot be represented in this
 format.`，其余站点根本没有 feed 入口。继续等 feed 等于这条能力永远不落地。
 
@@ -40,7 +40,7 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
   `isRestricted=false` 的帖子；SubscribeStar 与 Patreon 只读官网公开创作者页，不登录、
   不穿过付费墙。Patreon 的正式 posts API 需要创作者 OAuth scope，因此不能拿它读取任意
   外部作者，公开页解析是有意的边界。
-- `follow_source.enabled` 由来源行左侧的渠道复选框维护；“检查全部”只读取启用来源。
+- `follow_source.enabled` 由来源行左侧的渠道复选框维护；「检查全部」只读取启用来源。
   关闭渠道不删除来源或既有条目。
 
 ### 作者别名
@@ -61,14 +61,14 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 | 同作品的另一次动态 | 来源语义为 `release` | f95 线程的 9 条回复 |
 | 跨站的同一作品 | 归一化标题相同、来源不同 | rule34video ↔ rule34.xxx |
 
-- `semantics` 区分两类来源：`work`（rule34、kemono——每条是独立作品，`v2` 判为 alt）
-  与 `release`（f95、simpcity——每条是同一作品的一次发布，版本从标题摘出并排除在分组键外）。
+- `semantics` 区分两类来源：`work`（rule34、kemono：每条是独立作品，`v2` 判为 alt）
+  与 `release`（f95、simpcity：每条是同一作品的一次发布，版本从标题摘出并排除在分组键外）。
 - 来源自己声明的关系优先于标题判据。`group_hint` 是一个**全局字符串**，同一个值的条目
   归为一组，**跨站点成立**：rule34.xxx 从 `source` 归一出的 `fanbox:12304831`，与 kemono
   上同一帖子的键完全相同，同一个作品在两个站上因此精确合并，不必靠标题去猜。booru 的
-  父子帖也走这条——父帖用自己的 id、子帖用 `parent_id`，拼出来是同一个键。
+  父子帖也走这条：父帖用自己的 id、子帖用 `parent_id`，拼出来是同一个键。
 - **booru 没有标题，标签拼出来的标签不是名字。** 这类候选带 `title_is_name=False`，
-  `release_key` 附上 `external_id` 使其各自成组，只允许 `group_hint` 合并——否则同一作者
+  `release_key` 附上 `external_id` 使其各自成组，只允许 `group_hint` 合并，否则同一作者
   标签相似的两个作品会被并掉。
 - 判据保守，宁可少合并：括号只在命中已知标记、创作者别名或版本模式时才剥离；标题末尾的
   裸数字算作品序号而不是版本；`work` 语义下同一来源出现两个都没有变体标记的 main 就整组
@@ -79,7 +79,7 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 - rule34video 列表页只给「1 周前」。换算值写成 `published_precision='approximate'`，
   界面显示为「约 …」，**不冒充站点给出的精确发布时间**。
 - f95zone 的发现不需要 cookies（实测 `/threads/{id}/latest` 无凭据完整返回回复正文与
-  外链），但取媒体需要——附件和 `masked` 跳转都要会话，正文里就写着
+  外链），但取媒体需要：附件和 `masked` 跳转都要会话，正文里就写着
   `You must be registered to see the links`。候选因此带 `media_needs_credential`，
   下载动作必须先看这个标志，不能拿 403 的附件冒充「已保存」。
 
@@ -120,7 +120,7 @@ rule34.xxx 上。不区分这三种关系，界面就只是一堆重复条目。
 `source` 归一后的跨站键，取不到才退回站内父帖链。同一个 fanbox 帖在 `source` 里有两种
 写法（`lazyprocrast.fanbox.cc/posts/12304831` 与 `www.fanbox.cc/@lazyprocrast/posts/12304831`），
 必须归一到同一个键；而那串数字正是 kemono 上同一帖子的 post id，两侧因此落在同一个
-命名空间里。实测 12 条候选中 6 条收敛成 `fanbox:12304831`——一个 fanbox 帖在 rule34.xxx
+命名空间里。实测 12 条候选中 6 条收敛成 `fanbox:12304831`：一个 fanbox 帖在 rule34.xxx
 上被切成了 6 段。
 
 lazyp 的跨站身份链已核实：ledger `entity` 6405 `LazyProcrast` ← pixiv 用户 30917150
@@ -148,7 +148,7 @@ Bearer 头，不进 URL、候选或快照。
 - 求解 Turnstile / DDoS-Guard 质询，或用无头浏览器执行验证脚本。
 - 把站点专用 HTML 规则塞进 `FeedAdapter`。
 - 抓取结果直接写 ledger 真相字段或自动升级为 `approved`。
-- 靠标题相似度做跨站合并的模糊匹配——两个作品并成一张卡片比多出一张卡片糟糕得多，
+- 靠标题相似度做跨站合并的模糊匹配：两个作品并成一张卡片比多出一张卡片糟糕得多，
   所以只在归一化标题**完全相同**时才判为同一作品。同一作者名下的受限放宽见 ADR-0028。
 - 用相对时间换算值冒充精确发布时间。
 

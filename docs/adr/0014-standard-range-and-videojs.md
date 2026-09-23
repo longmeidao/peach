@@ -3,7 +3,7 @@
 - 状态：已接受（HLS 默认化部分已被 ADR-0016 撤销）
 - 日期：2026-08-15
 - 取代说明（2026-08-29 补记）：决策里「2026-08-17 起，已知时长的 115/PikPak 原生 MP4 由
-  `MediaEngine.stream_plan` 选择 HLS VOD」一段已被 ADR-0016 撤销——远端 MP4 默认恢复标准
+  `MediaEngine.stream_plan` 选择 HLS VOD」一段已被 ADR-0016 撤销：远端 MP4 默认恢复标准
   Range `/stream`，HLS 改为 `/api/stream-plan?mode=hls` 显式按需模式。其余标准 Range 语义、
   Video.js 选型与 session 取消边界仍然有效。
 

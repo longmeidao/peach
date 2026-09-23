@@ -32,15 +32,15 @@ heredoc 转义损坏的那几次补丁，以及 `scripts/test_runner.py` 的外�
   不先在沙箱里制造一次 `WinError 5`。
 - `_winapi.CreateProcess` 或 `.git/**/index.lock` 返回拒绝访问时，原样重跑统一入口；不拆成单测、
   不改断言、不跳过用例。`scripts/test.ps1` 会在分片前报告无法启动的外部工具。
-- `danger-full-access` 是取消隔离，不是“提权沙箱”。除非用户明确要求承担全局风险，否则保留沙箱，
+- `danger-full-access` 是取消隔离，不是「提权沙箱」。除非用户明确要求承担全局风险，否则保留沙箱，
   只给当前项目入口所需的命令授权。
 - Windows 全量测试若外套 `resource_run.py`，给 `scripts/test.ps1` 传 `-Jobs 1`；外层 Job Object
   与入口的四路并发叠加会让 Git Bash、Python 和临时 Git 进程出现 I/O 或进程创建错误。
   npm／PyInstaller、FFmpeg 与媒体批处理仍按资源预算使用外层守卫。
 
-## 多行内容一律落盘
+## 多行内容一律先写成文件
 
-多行内容用写入工具或脚本文件落盘，再让命令读那个文件，不要用 heredoc。反斜杠会被吃掉一层，
+多行内容用写入工具或脚本写成文件，再让命令读那个文件，不要用 heredoc。反斜杠会被吃掉一层，
 换成带引号的定界符也挡不住所有情形，而损坏是静默的：命令照常退出 0，写进去的内容已经变形。
 提交消息同理，写进临时文件再 `git commit -F`。
 

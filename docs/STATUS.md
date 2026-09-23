@@ -19,7 +19,7 @@
 - 文件检查覆盖本地与网盘，来源等分，确认用共享弹层；CloudDrive 分档建议共用首启与配置入口；来源接口需登录（401）。
 - 可选密码已上线：首启可跳过，配置页可改可关，登录可记住设备；旧安装保留口令。
 - macOS 是 reader，代码与 `peach-data` 在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入返回 409。
-- 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片走 Syncthing，三条链路互不兜底。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已在 Windows 生效。
+- 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片走 Syncthing，三条通道互不替代。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已在 Windows 生效。
 - Windows 真实 ledger `peach-data/database/ledger.db`，2026-09-13 已应用到 `0031`；`asset_subtitle` 195 行（孤立 19），175 部带字幕轨，`asset` 80,761 行。
 - Mac ledger 已授权从共享副本显式拉取并恢复 `in-sync`；`sources` 已迁内置盘，`archive`、`tools` 仍可指向外置盘。
 - 前端按 ADR-0031 逐页迁往 `frontend/` 的 React + Tailwind + BoardUI 源码，只有 React 一档；产物进 Git，经 `/dist/{name}` 提供；改前端需 Node 24+（`docs/FRONTEND.md`）。

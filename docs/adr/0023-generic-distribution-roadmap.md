@@ -10,7 +10,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 
 - `src/peach/config.py` 用 `Path.home()/Desktop/peach`、`Desktop/<用户目录>/peach`、写者主机的 mDNS 名、SMB 账号名等字面量给默认值；代理与局域网 IP 散在 HANDOFF、STATUS 与技能文件里。
 - ledger 路径固定写成 Windows 盘符形状（`R:\Media\...`、`A:\`、`B:\`），由 `peach.platform` 在读取时翻译成本机挂载点；盘符含义只在文档里说明。
-- Windows 写者 / macOS 读者的单写者复制（SMB 共享、mDNS 名、钥匙串账号）是默认开启的必经链路，而多数用户只有一台机器。
+- Windows 写者 / macOS 读者的单写者复制（SMB 共享、mDNS 名、钥匙串账号）默认开启、无法绕开，而多数用户只有一台机器。
 - `docs/STATUS.md`、`docs/HANDOFF.md` 与多份技能文件记录了个人运行态、真实 IP、备份文件名与磁盘布局。
 
 不属于本 ADR 的事：多用户与账号系统、云托管、第三方登录。它们改变产品形态，另立 ADR。
@@ -29,7 +29,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
    - ledger 中的路径形状不动（迁移成本与风险最高，且现有翻译层可用），但每个盘符前缀在设置文件里声明为「挂载点 ID → 本机路径」的映射，`peach.platform` 按映射翻译。
    - 新导入的资产用挂载点 ID 前缀写入；现有行的重写是一次真实迁移，需备份与前后计数，单独授权。
 
-3. **复制链路可关闭**
+3. **复制功能可关闭**
    - 单写者复制（ADR-0017/0020）改为设置项 `replication.enabled`，默认关闭；关闭时不启动同步线程、不探测 SMB、不发布 mDNS。
    - 托盘与 macOS 端的挂载逻辑只在开启时装配。
 
