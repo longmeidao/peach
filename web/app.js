@@ -8219,6 +8219,13 @@ async function openEntity(kind,name,push=true){
      几个人」这个它唯一独有的读数消失。 */
   const memberHtml=kind==='agency'
     ?` · <b>${(d.member_count||0).toLocaleString()}</b> 位艺人`:'';
+  /* label 一层（ADR-0049）：label 页在归属那一格给出所属厂商，厂商页另起一行列旗下
+     label。两边都只是去处，作品数各算各的——label 不是厂商的另一种写法。 */
+  const studioLink=target=>`<a class="entitylink" href="${esc(entityPath('studio',target))}"
+      data-studio-link="${esc(target)}">${esc(target)}</a>`;
+  const makerHtml=d.maker?` · ${studioLink(d.maker.name)}`:'';
+  const labelsHtml=(d.labels||[]).length
+    ?`<div class="alias entitylabels">旗下 ${d.labels.map(label=>studioLink(label.name)).join(' / ')}</div>`:'';
   const nameChoices=[d.canonical_name,...(d.aliases||[])]
     .filter((option,index,all)=>option&&all.indexOf(option)===index);
   /* 这枚下拉恒在。只有一个名字时整块不画的话，「她还叫过别的」这件事在页面上就没有
@@ -8245,7 +8252,8 @@ async function openEntity(kind,name,push=true){
       <div class="entityprofile"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
         people?'<span data-avatar-picker></span>':''}</div>
       <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
-        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}</div>
+        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}${makerHtml}</div>
+        ${labelsHtml}
         ${links?`<div class="entitylinks">${links}</div>`:''}
         ${entryMarks?`<div class="entrymarks">${entryMarks}</div>`:''}</div></div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
@@ -8273,6 +8281,8 @@ async function openEntity(kind,name,push=true){
   // 站内跳转走同一个 SPA 入口，不让浏览器整页重载。
   $('#index').querySelectorAll('[data-agency]').forEach(a=>a.onclick=event=>{
     event.preventDefault();openEntity('agency',a.dataset.agency)});
+  $('#index').querySelectorAll('[data-studio-link]').forEach(a=>a.onclick=event=>{
+    event.preventDefault();openEntity('studio',a.dataset.studioLink)});
   /* 同台艺人、标签和窄屏那排外链都是 `overflow-x:auto` 加隐藏滚动条：能滚，但鼠标没有
      一个够得着的入口——滚轮是竖向的，滚动条不画出来，于是第 8 位之后的人和标签看得见
      够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。外链那排宽屏下
@@ -9365,6 +9375,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   const studioFallback=studioRef?[]
     :(it.studio?[{id:null,name:it.studio,has_logo:it.has_studio_logo}]:[]);
   const studioList=[...(refs.studio||[]),...studioFallback].filter(ref=>fresh(ref.name));
+  // 厂牌是某家厂商旗下的 label 时（ADR-0049），厂商另起一组摆在它旁边；作品仍只挂在 label 上。
+  const makerList=studioList.map(ref=>ref.maker).filter(maker=>maker&&fresh(maker.name));
   const creatorList=(refs.creator||[]).filter(ref=>fresh(ref.name));
   const seriesList=(refs.series||[]).filter(ref=>fresh(ref.name));
 
@@ -9415,7 +9427,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     (unowned?unownedGroup
       :idGroup(performerLabel(it),'performer',castList,
         castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:''))
-    +idGroup('厂牌','studio',studioList);
+    +idGroup('厂牌','studio',studioList)
+    +idGroup('厂商','studio',makerList);
   const identityRows=
     (primaryIdentity?`<div class="identityprimary">${primaryIdentity}</div>`:'')
     +idGroup('创作者','creator',creatorList)

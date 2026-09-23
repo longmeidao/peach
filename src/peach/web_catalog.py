@@ -709,6 +709,20 @@ def q_parts(contract: WebContract, args):
         items.append(item)
     return {"title": code or str(seed["code"]), "count": len(items), "items": items}
 
+def label_makers(contract: WebContract, c, aid) -> dict[int, dict]:
+    """这部作品上哪些厂牌是某家厂商旗下的 label（ADR-0049），键是 label 的实体 id。
+
+    值是要并进那条厂牌引用的 `{"maker": {...}}`：详情里厂牌组旁多一组「厂商」，只是
+    一格链接，作品仍挂在 label 上。
+    """
+    return {label_id: {"maker": {"id": maker_id, "name": name,
+                                 "has_logo": contract.has_logo(name)}}
+            for label_id, maker_id, name in c.execute(
+                "SELECT lm.label_id,e.id,e.canonical_name FROM asset_entity ae "
+                "JOIN label_maker lm ON lm.label_id=ae.entity_id "
+                "JOIN entity e ON e.id=lm.maker_id WHERE ae.asset_id=?", (aid,))}
+
+
 def q_item(contract: WebContract, aid):
     """按 id 直取。
     ⚠️ 没有这个接口时，前端只能用「带筛选条件再查一遍然后 find」的绕法：
@@ -760,6 +774,7 @@ def q_item(contract: WebContract, aid):
             + tag_not_hidden("ae.asset_id", "e.normalized_name") + ") "
             "ORDER BY e.kind,e.canonical_name", (aid,),
         ))
+        makers = label_makers(contract, c, aid)
     legacy = [row[0] for row in legacy_rows]
     official_tag_names = {
         normalize_entity_name(tag)
@@ -817,6 +832,7 @@ def q_item(contract: WebContract, aid):
     # 后者会从「本来能取到图」退化成永远首字母。
     for ref in d["entity_refs"]["studio"]:
         ref["has_logo"] = contract.has_logo(ref["name"])
+        ref.update(makers.get(ref["id"], {}))
     d["has_studio_logo"] = contract.has_logo(d.get("studio"))
     # 「女优」是番号发行物的行业称谓；creator clip 即使长得像番号也仍是普通内容。
     attach_jav_display_fields(

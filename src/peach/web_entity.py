@@ -69,6 +69,25 @@ def _performer_entries(contract: WebContract, c, d: dict, alias_rows) -> dict:
     return out
 
 
+def label_layer(contract: WebContract, c, kind: str, entity_id: int) -> tuple[dict | None, list[dict]]:
+    """厂牌资料页的 label 一层（ADR-0049）：它归哪家厂商，和它旗下有哪些 label。
+
+    两边都只是链接，作品、计数和头像各算各的——label 不是厂商的另一种写法。
+    """
+    if kind != "studio":
+        return None, []
+    maker = c.execute(
+        "SELECT e.id,e.canonical_name name FROM label_maker lm "
+        "JOIN entity e ON e.id=lm.maker_id WHERE lm.label_id=?", (entity_id,)).fetchone()
+    refs = ([dict(maker)] if maker else []) + [dict(row) for row in c.execute(
+        "SELECT e.id,e.canonical_name name FROM label_maker lm "
+        "JOIN entity e ON e.id=lm.label_id WHERE lm.maker_id=? "
+        "ORDER BY e.canonical_name", (entity_id,))]
+    for ref in refs:
+        ref["has_logo"] = contract.has_logo(ref["name"])
+    return (refs[0], refs[1:]) if maker else (None, refs)
+
+
 def q_entity(contract: WebContract, args):
     """女优、厂牌、事务所等实体的资料页。
 
@@ -204,6 +223,7 @@ def q_entity(contract: WebContract, args):
             "WHERE m.member_id=?", (d["id"],)).fetchone()
         if home:
             d["agency"] = dict(home)
+        d["maker"], d["labels"] = label_layer(contract, c, kind, d["id"])
     # 公司那个大位先取 `/logo`、取不到才退到别的图。没装标识时直接跳过这一环，省掉
     # 必然 404 的那一跳。标识按名字落盘，厂牌和事务所是同一个仓、同一条取图链。
     if kind in ("studio", "agency"):
