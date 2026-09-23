@@ -793,12 +793,27 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertEqual(sorted(keys), sorted(MODULE.AGENCY_WORDMARK_SOURCES_BY_SAFE))
         self.assertIn("Diaz Group", MODULE.AGENCY_WORDMARK_SOURCES)
 
-    #: `harvest_maker_directories.py` 那三个名录各自的地址形态。表里的每一条都得落在
-    #: 这里面，或者落在下面那份点名清单里。
+    #: Wayback 快照里的原件：`id_` 让存档站原样吐出当年那张图，不带它注入的工具栏。
+    ARCHIVE_ORIGINAL = r"^https://web\.archive\.org/web/\d{14}id_/https?://"
+
+    def test_a_logo_taken_from_a_snapshot_is_the_raw_original(self):
+        """官网只剩快照的公司，标识从快照里取。少了 `id_`，取回来的是存档站包了一层的
+        页面或改写过地址的图，落盘的就不是那家当年挂的那张。
+        """
+        for table in (MODULE.WORDMARK_SOURCES, MODULE.AGENCY_WORDMARK_SOURCES,
+                      MODULE.LOGO_SOURCES, MODULE.ICON_SOURCES):
+            for name, url in table.items():
+                if "web.archive.org" in url:
+                    with self.subTest(name=name):
+                        self.assertRegex(url, self.ARCHIVE_ORIGINAL)
+
+    #: `harvest_maker_directories.py` 那三个名录各自的地址形态，加上官网只剩快照时的
+    #: 存档原件。表里的每一条都得落在这里面，或者落在下面那份点名清单里。
     DIRECTORY_URLS = (
         r"^https://static\.mgstage\.com/mgs/img/pc/",
         r"^https://www\.prestige-av\.com/api/media/maker/",
         r"^https://www\.km-produce\.com/img2018/label/[^/]+/logo\.svg$",
+        ARCHIVE_ORIGINAL,
     )
 
     #: 名录之外的来源，各有各的理由，逐条另有用例。整表只允许这几家走别的地址：

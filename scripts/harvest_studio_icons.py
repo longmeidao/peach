@@ -258,6 +258,11 @@ WORDMARK_SOURCES: dict[str, str] = {
     # 妄想族是片商实体，作品全挂在旗下 label 上（ADR-0049），没有展会图也没有名录那一格。
     # 自家站 header 的字标 332×187（2026-09-23 实测），就是它现在挂在门面上的那一枚。
     "妄想族": "https://www.mousouzoku-av.com/pc/images/pages/common/logo_mousouzoku.png",
+    # 下面两家官网只剩 Wayback 快照，名录里也没有它们。取快照 header 的字标 `id_` 原件：
+    # アキノリ 142×81、Janes 200×60（2026-09-24 实测，用户看过候选拼图后按推荐指定）。
+    "アキノリ": "https://web.archive.org/web/20170426023131id_/"
+               "http://www.aknr.com/wp/wp-content/images/post/1/logo.png",
+    "Janes": "https://web.archive.org/web/20131222105818id_/http://www.jns-grp.net/images/jns-logo.gif",
 }
 
 
@@ -293,11 +298,49 @@ ICON_SOURCES: dict[str, str] = {
 #:
 #: `ONE'S DOUBLE`：现站 SSL 连不上，官网只剩 Wayback 快照。字标是快照页脚那张 216×30
 #: 的黑色 SVG，取 `id_` 原件，不带存档站注入的工具栏（2026-09-24 实测）。
+#:
+#: `ONE'S DOUBLE` 之后那 11 家同样只剩快照（链接见复核表
+#: `entity-archive-links-20260924.csv`）。每家在各自快照里取了一到三张候选，用户看过
+#: 拼图后按推荐指定，尺寸是 2026-09-24 实测的原件。GRANZPRO、Office Old Crew、
+#: Zerosum Production 不在表里：它们已装 X 头像，存档那张要么缺字、要么只有
+#: 186×32，并排比过不如现装的。
 AGENCY_WORDMARK_SOURCES: dict[str, str] = {
     "Diaz Group": "https://diaz-g.com/assets/img/diaz_logo.svg",
     "Luminous Promotion": "https://luminous-pro.tokyo/img/logo.png",
     "ONE'S DOUBLE": "https://web.archive.org/web/20220130000436id_/"
                     "https://ones-double.com/wp/assets/img/footer-logo.svg",
+    # 450×450 站点图标
+    "ALL PROMOTION": "https://web.archive.org/web/20221014110606id_/"
+                     "https://all-p.jp/wp-content/themes/allpro/common/img/icon.png",
+    # 300×300，站内上传的 X 头像
+    "ARROWS": "https://web.archive.org/web/20211123045707id_/"
+              "https://arrowsweb.net/wp-content/uploads/2020/08/HQ60jaia_400x400-300x300.jpg",
+    # 180×180 apple-touch-icon
+    "Wish": "https://web.archive.org/web/20220814134735id_/"
+            "https://wish-promotion.jp/favicon/apple-touch-icon-180x180.png",
+    # 883×568
+    "Fourty Four Management":
+        "https://web.archive.org/web/20220313105746id_/https://i0.wp.com/management.ffgh.jp"
+        "/wp/wp-content/uploads/2017/01/e136d1b4d7acb7fa49e166d6012814e6.png?fit=883%2C568",
+    # 154×50 字标
+    "Five Promotion": "https://web.archive.org/web/20160117041833id_/"
+                      "http://5promotion.com/img/menu-company2-logo_sp.png",
+    # 216×60 字标
+    "AINA": "https://web.archive.org/web/20130421093131id_/http://www.aina.co.jp/img/rogo-2.png",
+    # 270×270 站点图标
+    "AI Production": "https://web.archive.org/web/20180903004018id_/"
+                     "http://ai-p.love/wp/wp-content/uploads/2018/03/cropped-ai_R-270x270.png",
+    # 250×145 字标
+    "Ys Promotion": "https://web.archive.org/web/20130423061648id_/"
+                    "http://www.ys-promotion.jp/images/base/top.jpg",
+    # 145×90
+    "Sun Production": "https://web.archive.org/web/20150101194914id_/http://sunpro.tv/media/43.png",
+    # 600×611
+    "New Gate": "https://web.archive.org/web/20150416061609id_/"
+                "http://newgate.ne.jp/images/newgate_logo2.jpg",
+    # 274×112 字标
+    "Z-Earth Entertainment": "https://web.archive.org/web/20160308205119id_/"
+                             "http://z-earth2.crusegroup.net/images/logo.gif",
 }
 
 
