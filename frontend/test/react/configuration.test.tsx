@@ -29,7 +29,7 @@ const startup = {
   available: true, enabled: false, silent: true, message: '', desktop: false, desktop_message: '',
 };
 
-/** 除了配置本身，页面上还有按自己节律问的块（播放兼容修复）。按路径应答，别的路径直接空转。 */
+/** 除了配置本身，页面上还有按自己节律问的块（媒体修复）。按路径应答，别的路径直接空转。 */
 function serve(config: ConfigurationData) {
   const calls: string[] = [];
   const fetcher = vi.fn(async (path: string) => {

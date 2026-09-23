@@ -220,9 +220,11 @@ def runtime_facts(config) -> tuple[tuple[str, str], ...]:
     from . import __version__
     import platform as system_platform
     from .ffmpeg import FFmpegResolver
+    from .mp4recover import untrunc_path
 
     available = FFmpegResolver(config.directory("tools") / "ffmpeg").ffmpeg() is not None
     ffmpeg = "可用" if available else "未安装；MP4 可直接播放，转码和缩略图需要安装 FFmpeg。"
+    untrunc = "可用" if untrunc_path(config.directory("tools")) else "未安装；缺索引的 MP4 需要它才修得了。"
     return (
         ("版本", __version__),
         ("操作系统", system_platform.system()),
@@ -230,6 +232,7 @@ def runtime_facts(config) -> tuple[tuple[str, str], ...]:
         ("设置文件", str(config.path)),
         ("日志目录", str(config.directory("logs"))),
         ("FFmpeg", ffmpeg),
+        ("untrunc", untrunc),
     )
 
 
@@ -244,4 +247,9 @@ def runtime_fact_entries(config) -> list[dict[str, str]]:
         entry = next(row for row in entries if row["term"] == "FFmpeg")
         entry.update(value="未找到 " + "、".join(missing) + "；转码、媒体信息与缩略图需要 FFmpeg 工具包。",
                      download_url="https://ffmpeg.org/download.html", download_label="下载 FFmpeg")
+    untrunc = next(row for row in entries if row["term"] == "untrunc")
+    if untrunc["value"] != "可用":
+        untrunc.update(value=untrunc["value"] + f"解压到 {config.directory('tools') / 'untrunc'}。",
+                       download_url="https://github.com/anthwlock/untrunc/releases",
+                       download_label="下载 untrunc")
     return entries

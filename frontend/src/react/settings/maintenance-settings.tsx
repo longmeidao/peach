@@ -1,4 +1,4 @@
-/* 「更新与维护」分组：自动更新、检查更新、播放兼容修复、运行信息、重开安装教程，卸载排在最后。 */
+/* 「更新与维护」分组：自动更新、检查更新、媒体修复、运行信息、重开安装教程，卸载排在最后。 */
 import { useState, type FormEvent } from 'react';
 import { confirmModal } from '@peach/legacy/ui';
 

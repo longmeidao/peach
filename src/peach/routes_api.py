@@ -92,7 +92,10 @@ def source_health(request: Request, args: dict[str, str] = Depends(require_auth)
 @router.get("/api/libraries")
 def media_library_list(request: Request, args: dict[str, str] = Depends(require_auth)):
     from . import media_libraries, settings_file
-    return {"libraries": [{"id": row["id"], "name": row["name"], "icon": row["icon"], "folders": len(row["roots"])}
+    from .jobs import SourceAccessPolicy
+    metered = SourceAccessPolicy().metered_locations
+    return {"libraries": [{"id": row["id"], "name": row["name"], "icon": row["icon"], "folders": len(row["roots"]),
+                           "metered": any(root["location"] in metered for root in row["roots"])}
                           for row in media_libraries.libraries(settings_file.active())]}
 
 

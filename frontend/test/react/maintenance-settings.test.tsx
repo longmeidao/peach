@@ -16,7 +16,9 @@ const release: ReleaseState = {
 };
 const uninstall = { available: true, full_available: true, message: '', data_root: 'fixture', directories: ['fixture', 'fixture/cache'] };
 
-it('分区依次是自动更新、检查更新、播放兼容修复、运行信息、安装教程、卸载；缺依赖的那条运行信息带下载链接', async () => {
+it('分区依次是自动更新、检查更新、媒体修复、运行信息、安装教程、卸载；缺依赖的那条运行信息带下载链接', async () => {
+  // 媒体修复一挂上就去问有哪些库，这里只看分区顺序，给它一个空库表。
+  vi.stubGlobal('fetch', fetchMock(200, { libraries: [] }));
   const data: ConfigurationData = {
     editable: true, notice: '', revision: 'r', media_dirs: [], port: 9123,
     automatic_updates: automatic, updates: release, uninstall,
@@ -27,7 +29,7 @@ it('分区依次是自动更新、检查更新、播放兼容修复、运行信�
   };
   const host = await mount(<MaintenanceSettings data={data} receipt={vi.fn()} reopenTutorial={vi.fn()} />);
   expect([...host.firstElementChild!.children].map((node) => node.getAttribute('aria-label')))
-    .toEqual(['自动更新', '检查更新', '播放兼容修复', '运行信息', '安装教程', '卸载 Peach']);
+    .toEqual(['自动更新', '检查更新', '媒体修复', '运行信息', '安装教程', '卸载 Peach']);
   const facts = section(host, '运行信息')!;
   expect([...facts.querySelectorAll('dt')].map((dt) => dt.textContent)).toEqual(['版本', 'FFmpeg']);
   const link = facts.querySelector('a[href="https://ffmpeg.org/download.html"]');

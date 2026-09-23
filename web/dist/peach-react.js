@@ -32285,12 +32285,14 @@ function AD({ startup: e, receipt: t }) {
 //#region src/react/settings/media-repair.tsx
 var jD = {
 	status: "idle",
+	library: "",
 	stage: "",
 	checked: 0,
 	total: 0,
 	found: 0,
 	repaired: 0,
 	failed: 0,
+	missing_tool: 0,
 	skipped: 0,
 	message: ""
 }, MD = (e) => Number(e).toLocaleString();
@@ -32301,59 +32303,92 @@ function ND(e) {
 	}
 	return e.status === "complete" && (e.repaired || e.failed) ? e.failed ? `修好 ${MD(e.repaired)} 部，${MD(e.failed)} 部修不了` : `修好 ${MD(e.repaired)} 部` : "";
 }
-function PD({ initial: e }) {
-	let [t, n] = (0, C.useState)(e || jD), [r, i] = (0, C.useState)(!1), a = gb(), o = t.status === "running";
+function PD({ initial: e, initialLibraries: t }) {
+	let [n, r] = (0, C.useState)(e || jD), [i, a] = (0, C.useState)(t || []), [o, s] = (0, C.useState)(""), l = gb(), u = n.status === "running";
 	(0, C.useEffect)(() => {
-		let e = new AbortController(), t, r = async () => {
+		if (t) return;
+		let e = new AbortController();
+		return Qm("/api/libraries", e.signal).then((t) => {
+			e.signal.aborted || a(t.libraries || []);
+		}).catch(() => void 0), () => e.abort();
+	}, [t]), (0, C.useEffect)(() => {
+		let e = new AbortController(), t, n = async () => {
 			try {
 				let i = await Qm("/api/media-repair", e.signal);
 				if (e.signal.aborted) return;
-				n(i), i.status === "running" && (t = setTimeout(r, 2e3));
+				r(i), i.status === "running" && (t = setTimeout(n, 2e3));
 			} catch {}
 		};
-		return t = setTimeout(r, o ? 2e3 : 0), () => {
+		return t = setTimeout(n, u ? 2e3 : 0), () => {
 			e.abort(), clearTimeout(t);
 		};
-	}, [o]);
-	let s = () => void a.run("start", (e) => q("/api/media-repair", {
-		allow_metered: r,
-		restart: !0
-	}, "POST", e), n), c = () => void a.run("stop", (e) => q("/api/media-repair", { stop: !0 }, "POST", e), n), l = t.total ? Math.round(t.checked / t.total * 100) : 0;
+	}, [u]);
+	let d = i.find((e) => e.id === (u ? n.library : o)) ?? i.find((e) => e.id === n.library) ?? i[0], f = () => {
+		d && c({
+			title: `修复媒体库「${d.name}」`,
+			body: "缺时间戳表的片子另存一份修好的头，原文件不动；缺索引的片子重建后替换原文件，坏原件改名成同目录的隐藏文件（.文件名.peach-original）留着。" + (d.metered ? "这个库在计费来源上，每修一部都要把片子完整拉一遍。" : ""),
+			confirmLabel: "修复媒体库",
+			onConfirm: async () => r(await q("/api/media-repair", {
+				library: d.id,
+				restart: !0
+			}))
+		});
+	}, p = () => void l.run("stop", (e) => q("/api/media-repair", { stop: !0 }, "POST", e), r), m = n.total ? Math.round(n.checked / n.total * 100) : 0, h = n.status === "complete", g = [
+		u ? /* @__PURE__ */ (0, w.jsx)(dh, {
+			label: "修复进度",
+			value: m
+		}, "progress") : null,
+		h && !n.repaired && !n.failed ? /* @__PURE__ */ (0, w.jsx)(J, {
+			tone: "info",
+			title: "没有要修的",
+			children: "这个库里的片子都能直接播。"
+		}, "clean") : null,
+		h && n.missing_tool ? /* @__PURE__ */ (0, w.jsx)(J, {
+			tone: "warning",
+			title: "缺少 untrunc",
+			children: `${MD(n.missing_tool)} 部缺索引的片子要装上 untrunc 才修得了，下载入口在「运行信息」里。`
+		}, "tool") : null,
+		l.error || n.error ? /* @__PURE__ */ (0, w.jsx)(zS, { children: l.error || n.error }, "error") : null
+	].filter(Boolean);
 	return /* @__PURE__ */ (0, w.jsxs)(PS, {
-		title: "播放兼容修复",
-		children: [/* @__PURE__ */ (0, w.jsxs)(IS, { children: [
-			/* @__PURE__ */ (0, w.jsx)(RS, { children: "有些 MP4 少了一张时间戳表，浏览器按容器给的时刻排帧，会把其中一部分丢掉，看着就是卡顿。 修好之后这类片子起播直接用原片，不再实时转码。原始文件不改动，修好的头另存在缓存里。" }),
-			/* @__PURE__ */ (0, w.jsx)(yS, {
-				isSelected: r,
-				isDisabled: o,
-				onChange: i,
-				children: "连 PikPak 上的一起修（要把片子完整拉一遍，走流量）"
-			}),
-			o ? /* @__PURE__ */ (0, w.jsx)(dh, {
-				label: "修复进度",
-				value: l
+		title: "媒体修复",
+		children: [
+			/* @__PURE__ */ (0, w.jsx)(FS, { children: /* @__PURE__ */ (0, w.jsx)(jS, {
+				label: "媒体库",
+				description: "修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。",
+				children: /* @__PURE__ */ (0, w.jsx)(eT, {
+					"aria-label": "媒体库",
+					selectedKey: d?.id ?? null,
+					isDisabled: u || !i.length,
+					onSelectionChange: (e) => {
+						e !== null && s(String(e));
+					},
+					children: i.map((e) => /* @__PURE__ */ (0, w.jsx)(tT, {
+						id: e.id,
+						children: e.name
+					}, e.id))
+				})
+			}) }),
+			g.length ? /* @__PURE__ */ (0, w.jsx)(IS, {
+				divided: !0,
+				children: g
 			}) : null,
-			t.status === "complete" && !t.repaired && !t.failed ? /* @__PURE__ */ (0, w.jsx)(J, {
-				tone: "info",
-				title: "没有要修的",
-				children: "库里的片子都能直接播，没找到缺时间戳表的。"
-			}) : null,
-			a.error || t.error ? /* @__PURE__ */ (0, w.jsx)(zS, { children: a.error || t.error }) : null
-		] }), /* @__PURE__ */ (0, w.jsx)(LS, {
-			status: ND(t) ? /* @__PURE__ */ (0, w.jsx)("p", {
-				role: "status",
-				children: ND(t)
-			}) : null,
-			children: o ? /* @__PURE__ */ (0, w.jsx)(X, {
-				onClick: c,
-				...Z(a.busy === "stop"),
-				children: "停止"
-			}) : /* @__PURE__ */ (0, w.jsx)(X, {
-				onClick: s,
-				...Z(a.busy === "start"),
-				children: "开始修复"
+			/* @__PURE__ */ (0, w.jsx)(LS, {
+				status: ND(n) ? /* @__PURE__ */ (0, w.jsx)("p", {
+					role: "status",
+					children: ND(n)
+				}) : null,
+				children: u ? /* @__PURE__ */ (0, w.jsx)(X, {
+					onClick: p,
+					...Z(l.busy === "stop"),
+					children: "停止"
+				}) : /* @__PURE__ */ (0, w.jsx)(X, {
+					onClick: f,
+					disabled: !d,
+					children: "开始修复"
+				})
 			})
-		})]
+		]
 	});
 }
 //#endregion
