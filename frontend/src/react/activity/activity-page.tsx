@@ -78,7 +78,7 @@ function RunCard(
         bordered: 'line',
         className: run.status === 'failed' ? 'flex flex-col border-border-error-default' : 'flex flex-col',
       })}>
-      <div className="flex min-h-30 flex-col gap-1.5 px-5 pt-5 pb-4">
+      <div className="flex flex-col gap-1.5 px-5 pt-5 pb-4">
         <div className="flex flex-wrap items-center gap-2">
           <strong className="min-w-0 break-words text-title-1-medium text-text-primary">{run.task_label}</strong>
           <StatusBadge status={run.status} />

@@ -1258,4 +1258,133 @@ describe('设计决定', () => {
       await opened.close();
     }
   });
+
+  it('卡片悬停面不顶到邻卡，三处卡片网格同一副列距', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      const card = opened.page.locator('#grid .grid > article.card').first();
+      await card.hover();
+      const geometry = await card.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const neighbor = [...element.parentElement!.children].find((other) => other !== element
+          && Math.abs(other.getBoundingClientRect().top - box.top) < 1)!;
+        const spread = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(getComputedStyle(element).boxShadow)?.[1]);
+        // 人物页的作品网格和关注页的视频列表不在首页这叠卡里：各挂一个同类名的空壳读列距。
+        const columnGap = (className: string) => {
+          const probe = document.createElement('div');
+          probe.className = className;
+          document.querySelector('#main')!.append(probe);
+          const gap = parseFloat(getComputedStyle(probe).columnGap);
+          probe.remove();
+          return gap;
+        };
+        return {
+          spread, clearance: neighbor.getBoundingClientRect().left - (box.right + spread),
+          home: parseFloat(getComputedStyle(element.parentElement!).columnGap),
+          entity: columnGap('grid'), follow: columnGap('followlist'),
+        };
+      });
+      assert.ok(geometry.spread > 0, '卡片悬停面没有往盒外铺');
+      assert.ok(geometry.clearance >= geometry.spread,
+        `悬停面离邻卡只剩 ${geometry.clearance}px，比它自己往外铺的 ${geometry.spread}px 还窄`);
+      assert.equal(geometry.entity, geometry.home, '人物页作品网格的列距和首页不一样');
+      assert.equal(geometry.follow, geometry.home, '关注页视频列表的列距和首页不一样');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('跳过渲染的卡片不裁掉贴着左缘的头像悬停描边', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      /* 视口外跳过渲染连带 paint containment，卡里画出卡片盒的像素一律裁掉；几何照算，
+         所以这里比的是描边外沿与裁切边，不是与卡片盒。 */
+      const avatar = opened.page.locator('#grid .grid > article.card .meta > .mav').first();
+      await avatar.hover();
+      const edges = await avatar.evaluate((element) => {
+        const card = element.closest('article.card')!;
+        const style = getComputedStyle(card);
+        const ring = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(getComputedStyle(element).boxShadow)?.[1]);
+        return {
+          contained: style.contentVisibility === 'auto',
+          ring, ringLeft: element.getBoundingClientRect().left - ring,
+          clipLeft: card.getBoundingClientRect().left - parseFloat(style.overflowClipMargin || '0'),
+        };
+      });
+      assert.ok(edges.contained, '首页卡片不再跳过渲染：这条用例守的裁切前提变了，改用例');
+      assert.ok(edges.ring > 0, '头像悬停没有描边');
+      assert.ok(edges.ringLeft >= edges.clipLeft - .5,
+        `头像描边外沿 ${edges.ringLeft}px 越过了裁切边 ${edges.clipLeft}px，左半圈会被裁掉`);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('暗色下 React 卡片和旧样式表控件的阴影都换成看得见的那一档', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/stats', DESKTOP);
+    try {
+      const card = opened.page.locator('#main [class~="shadow-card"]').first();
+      await card.waitFor({ timeout: 15_000 });
+      await settle(opened.page);
+      /* Tailwind 把阴影 token 的字面值抄进工具类，`.dark` 里改 `--shadow-*` 够不着它；
+         旧样式表里写死的浅色阴影同样不跟主题走。读三类来源各一处的计算值。 */
+      const alphas = () => opened.page.evaluate(() => {
+        const strongest = (shadow: string) => Math.max(0, ...[...shadow.matchAll(
+          /rgba\(0, 0, 0, ([\d.]+)\)|rgb\(0, 0, 0\)/g)].map((match) => (match[1] ? Number(match[1]) : 1)));
+        const probe = (html: string) => {
+          const holder = document.createElement('div');
+          holder.innerHTML = html;
+          const element = holder.firstElementChild!;
+          // 挂在 React 岛外面：岛里的重置会把旧样式表的按钮阴影清掉。
+          document.body.append(element);
+          const shadow = getComputedStyle(element).boxShadow;
+          element.remove();
+          return strongest(shadow);
+        };
+        return {
+          card: strongest(getComputedStyle(document.querySelector('#main [class~="shadow-card"]')!).boxShadow),
+          button: probe('<button class="geist-button" type="button">键</button>'),
+          toast: probe('<div class="toast">回执</div>'),
+        };
+      });
+      await opened.page.evaluate(() => {
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.classList.remove('dark');
+      });
+      const light = await alphas();
+      // `web/app.js` 的 `applyTheme('dark')` 就是这两句；这里只借它换一次配色。
+      await opened.page.evaluate(() => {
+        document.documentElement.dataset.theme = 'dark';
+        document.documentElement.classList.add('dark');
+      });
+      const dark = await alphas();
+      for (const key of Object.keys(light) as Array<keyof typeof light>) {
+        assert.ok(light[key] > 0 && light[key] < .2, `浅色下 ${key} 的阴影 ${light[key]} 不在浅色那一档`);
+        // #111 的页面底上，黑影再淡就压不出比底更暗的一圈。
+        assert.ok(dark[key] >= .4, `暗色下 ${key} 的阴影只有 ${dark[key]}，在 #111 底上看不见`);
+      }
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('被打断的那一轮只有结束原因，卡片正文下面不留空行', { timeout: 60_000 }, async () => {
+    const opened = await openActivity(browser, [
+      { ...settledRun(1, 'interrupted', '追更检查'), error: '服务重启，这一轮没有跑完' },
+    ]);
+    try {
+      const body = await opened.page.locator('li[data-status="interrupted"] > div').first()
+        .evaluate((element) => ({
+          trailing: element.getBoundingClientRect().bottom - element.lastElementChild!.getBoundingClientRect().bottom,
+          padding: parseFloat(getComputedStyle(element).paddingBottom),
+        }));
+      assert.ok(Math.abs(body.trailing - body.padding) <= .5,
+        `正文最后一行下面空出 ${body.trailing}px，底边距只有 ${body.padding}px`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 });

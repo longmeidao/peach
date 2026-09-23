@@ -452,7 +452,7 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
 .popmenu{position:fixed;z-index:var(--layer-popover);max-height:calc(100dvh - 16px);
   padding:6px;border:1px solid var(--border-15);border-radius:var(--floating-radius);
   background:var(--ground);display:grid;gap:2px;
-  box-shadow:0 1px 1px rgba(0,0,0,.02),0 4px 8px -4px rgba(0,0,0,.04),0 16px 24px -8px rgba(0,0,0,.06);
+  box-shadow:0 1px 1px light-dark(rgba(0,0,0,.02),rgba(0,0,0,.4)),0 4px 8px -4px light-dark(rgba(0,0,0,.04),rgba(0,0,0,.45)),0 16px 24px -8px light-dark(rgba(0,0,0,.06),rgba(0,0,0,.55));
   overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
 .popmenu[hidden]{display:none}
 /* 进顶层的那几个要把 popover 的默认盒子拆掉：浏览器给 `[popover]` 的是 inset:0 加

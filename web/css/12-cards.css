@@ -136,17 +136,24 @@ body.refreshing #batchAction svg,
 /* 目录列表是一叠卡：连续的一段视频合成一个 `.grid`，竖屏带插进来时把那一段从行边界
    剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+/* 列距 16px 是给悬停面留的：卡片悬停时底色往盒外多铺 8px（见下方 `:hover`），列距再窄，
+   两张卡的悬停面就顶到邻卡上。关注页的视频列表 `.followlist` 用同一副间距。 */
+.grid,.followlist:not(.followphotowall){gap:24px 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;border-radius:var(--surface-radius);
   position:relative;transition:transform .18s ease,filter .18s ease,background-color .15s ease,box-shadow .15s ease;transform-origin:center}
 /* 视口外的卡片跳过渲染：一屏滚动要算的只剩屏上那几十张，连续加载到一千五百张时帧间隔
    仍在预算附近（实测见 ADR-0031「馆藏网格连续加载的实测」）。`auto 320px` 是占位高度，
    没渲染过的卡先按 320px 排进来，渲染过的记住自己的实际尺寸。
-   四类卡不在其内：Mix 卡和分卷／版次卡的叠层纸边靠 transform 抬到卡片盒外 7px，跳过渲染
-   连带的 paint containment 会把那一截裁掉；垃圾文件卡自己声明了更高的占位值；竖屏带的卡
-   横着排在 `.srow` 里，320px 与 9:16 的封面对不上。 */
+   跳过渲染连带 paint containment：卡里任何画到卡片盒外的东西都会被裁掉，贴着卡片左缘的
+   头像一悬停，那圈 2px 焦点环的左半边就没了。`overflow-clip-margin` 把裁切边往外放到
+   8px，和整张卡的悬停面同宽；卡里的东西不要画出这一圈，`frontend/e2e/design.test.ts`
+   按几何检查。
+   四类卡不在其内：Mix 卡和分卷／版次卡的叠层纸边靠 transform 抬到卡片盒外 7px，Safari
+   不认 `overflow-clip-margin`，那一截在它上面照样被裁；垃圾文件卡自己声明了更高的占位值；
+   竖屏带的卡横着排在 `.srow` 里，320px 与 9:16 的封面对不上。 */
 #grid article.card:not(.mixcard,.partcard,.junkcard,.scard){
-  content-visibility:auto;contain-intrinsic-size:auto 320px}
+  content-visibility:auto;contain-intrinsic-size:auto 320px;overflow-clip-margin:8px}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
    整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
    邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。 */

@@ -28,7 +28,7 @@
    封面与下面那组之间是 8px：行距 3px 由 .mtext 的行距定，剩下 5px 记在头像格和
    标题格的上边距里，两格一起加才不会把头像顶偏。
    首页和关注页是同一种卡，所以共用这一块；关注页只差归属行高一点，见下面那条。 */
-.postercard-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}
+.postercard-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));gap:24px 16px}
 .postercard-skeleton .skeletoncard{grid-template-columns:38px minmax(0,1fr);column-gap:10px;row-gap:3px;
   align-content:start}
 .postercard-skeleton .skeletoncard i{grid-column:1/-1}
@@ -101,7 +101,7 @@
    保留真实列表的语义类名，再由下面这些专用规则固定尺寸，接管时卡面、列线和行高不跳。 */
 .follow-list-skeleton{display:flex;flex-direction:column;gap:24px}
 .follow-skeleton-surface{display:flex;min-width:0;flex-direction:column;gap:16px;padding:20px 24px;
-  border-radius:var(--floating-radius);background:var(--color-background-secondary-default);box-shadow:var(--shadow-card)}
+  border-radius:var(--floating-radius);background:var(--color-background-secondary-default);box-shadow:var(--elevation-card)}
 .follow-skeleton-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .follow-skeleton-toolbar h3{margin:0 auto 0 0;color:var(--color-text-primary);font:var(--board-heading)}
 .follow-skeleton-count{flex:none}.follow-skeleton-count>.skeleton{height:18px}
@@ -130,7 +130,7 @@
 /* 同上，压着作者卡的是 `.followmanage .fauthor`：面与内边距一起在这一条里给够，不然骨架
    长着旧列表盒子的 16px 内边距，接管成 React 的 `p-2` 卡时整列往里跳一次。圆角是唯一一处
    不用自己写的：那条规则给的 16px 正是 React 卡的值，圆角 token 里没有这一档。 */
-.followmanage.follow-list-skeleton .follow-skeleton-author{overflow:hidden;padding:8px;background:var(--color-background-primary-default);box-shadow:var(--shadow-card)}
+.followmanage.follow-list-skeleton .follow-skeleton-author{overflow:hidden;padding:8px;background:var(--color-background-primary-default);box-shadow:var(--elevation-card)}
 .follow-skeleton-author>.fauthorhead{display:flex;min-height:44px;align-items:center;gap:12px;padding:6px 8px 10px;
   border-bottom:1px solid var(--color-border-button-default)}
 .follow-skeleton-avatar{width:32px;height:32px;flex:none;border-radius:50%}

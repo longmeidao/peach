@@ -226,4 +226,9 @@ it('时长与摘要的折算各自成立', () => {
   // 明细与「谁挡的」不进这一行：前者太长，后者已经写在错误那一句里了。
   expect(summaryText({ checked: 7, operation: 'like', rows: [1], blocked_by: 3 }))
     .toBe('已检查 7 · 操作 like');
+  // 追更检查结算时带着整份状态字典，簿记字段不能漏到卡片上。
+  expect(summaryText({
+    status: 'complete', run_id: 351, started_at: 1790138114.86, checked: 83, total: 83,
+    request_id: '417dab8d', completed_at: 1790138495.48,
+  })).toBe('已检查 83 · 总数 83');
 });

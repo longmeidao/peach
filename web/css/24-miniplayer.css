@@ -21,7 +21,7 @@
 }
 @keyframes miniplayer-fade-in{from{opacity:0}to{opacity:1}}
 .miniplayercard{display:flex;flex-direction:column;overflow:hidden;border-radius:var(--floating-radius);background:var(--surface);
-  box-shadow:0 2px 5px rgba(0,0,0,.16),0 3px 6px rgba(0,0,0,.2);cursor:grab}
+  box-shadow:0 2px 5px light-dark(rgba(0,0,0,.16),rgba(0,0,0,.5)),0 3px 6px light-dark(rgba(0,0,0,.2),rgba(0,0,0,.55));cursor:grab}
 .miniplayerframe{position:relative;width:100%;aspect-ratio:var(--miniplayer-aspect,16/9);max-height:calc(100dvh - 32px - 76px);background:#000;overflow:hidden}
 /* Video.js 的壳整块搬进来，几何全由这一格给：控件条只剩底部那条进度。 */
 .miniplayerframe .video-js{position:absolute;inset:0;width:100%!important;height:100%!important;padding-top:0!important;background:#000;font-family:inherit}

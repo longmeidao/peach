@@ -108,10 +108,17 @@ export function momentText(stamp: string | null | undefined): string {
     { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
+/* 不进摘要的键：「谁挡的」已经写在错误那一句里；其余是域状态字典里的簿记——状态、
+   起止时间戳、请求号和任务号，卡片标题、徽章和时间那一行已经说过，原样摆出来只是一串
+   英文键和纪元秒。 */
+const SUMMARY_HIDDEN = new Set([
+  'blocked_by', 'status', 'run_id', 'request_id', 'started_at', 'completed_at', 'finished_at',
+]);
+
 /** 摘要压成一行。只取标量：明细留在各域自己的页面和日志里。 */
 export function summaryText(summary: Record<string, unknown>): string {
   return Object.entries(summary || {})
-    .filter(([key, value]) => key !== 'blocked_by'
+    .filter(([key, value]) => !SUMMARY_HIDDEN.has(key)
       && (typeof value === 'number' || typeof value === 'string')
       && String(value) !== '')
     .map(([key, value]) => `${SUMMARY_LABELS[key] || key} ${value}`)

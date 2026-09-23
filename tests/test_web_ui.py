@@ -3480,8 +3480,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<div class="tier followauthors" aria-label="按创作者筛选">')
         self.assertPageContains('''<div class="tagbar followfilters" aria-label="${mediaControl?'媒体与关注筛选':'关注筛选'}">''')
         self.assertPageContains(
-            ".followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));"
-            "gap:16px 8px}")
+            ".followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}")
 
     def test_a_deep_link_to_a_management_page_does_not_promise_the_home_bars(self):
         """顶部三层只属于首页：深链启动先画一遍再由路由收起来，等于承诺永不到货的横条。
@@ -3612,9 +3611,8 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(
             ".postercard-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr));"
-            "gap:16px 8px}")
-        self.assertPageContains(".grid{display:grid;grid-template-columns:"
-                                "repeat(auto-fill,minmax(var(--tile),1fr));gap:16px 8px}")
+            "gap:24px 16px}")
+        self.assertPageContains(".grid,.followlist:not(.followphotowall){gap:24px 16px}")
         self.assertPageContains(
             ".postercard-skeleton .skeletoncard{grid-template-columns:38px minmax(0,1fr);"
             "column-gap:10px;row-gap:3px;\n  align-content:start}")
@@ -4268,7 +4266,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".miniplayer{position:fixed;z-index:var(--layer-miniplayer);width:min(400px,calc(100vw - 32px))")
         self.assertPageContains('.miniplayer[data-corner="tr"]{right:16px;top:calc(var(--topH) + 16px)}')
         self.assertPageContains(".miniplayer.miniplayer-snapping{transition:transform .5s cubic-bezier(.05,0,0,1)}")
-        self.assertPageContains("box-shadow:0 2px 5px rgba(0,0,0,.16),0 3px 6px rgba(0,0,0,.2)")
+        self.assertPageContains("box-shadow:0 2px 5px light-dark(rgba(0,0,0,.16),rgba(0,0,0,.5)),"
+                                "0 3px 6px light-dark(rgba(0,0,0,.2),rgba(0,0,0,.55))")
         self.assertPageContains("min-height:76px")
         # 播放器搬家而不是销毁：只有显式关闭、换详情和删条目传 miniplayer:false。
         self.assertPageContains("function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={})")
@@ -10586,7 +10585,7 @@ class WebUiSourceTests(unittest.TestCase):
         「不限 — 不限」则是同一件事说第二遍，而且滑块不动时它永远是那句话。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("white-space:nowrap;box-shadow:0 1px 2px #0000000d;pointer-events:none}", board)
+        self.assertIn("white-space:nowrap;box-shadow:var(--elevation-xs);pointer-events:none}", board)
         self.assertNotIn(".board-range-tip[data-range-end=max]{opacity:1}", board)
         # 两端拖到一起时它们会叠，刚动过的那枚压在上面：底下那枚报的是自己停下的位置。
         self.assertIn(".board-range-tip[data-range-active]{z-index:2}", board)
@@ -10724,7 +10723,7 @@ class WebUiSourceTests(unittest.TestCase):
         rules = primary_rules(board)
         face = [rule for rule in rules if "background:var(--board-blue)" in rule.partition("{")[2]]
         self.assertEqual(len(face), 1, "强调档那一面只该有一条规则")
-        for declaration in ("border:0", "color:#fff", "box-shadow:0 1px 2px #0000000d",
+        for declaration in ("border:0", "color:#fff", "box-shadow:var(--elevation-xs)",
                             "position:relative", "isolation:isolate"):
             self.assertIn(declaration, face[0])
         for rule in rules:
@@ -10762,7 +10761,7 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         roster = "body :is(button.danger,.batchbar button.danger):not(:disabled)"
         self.assertIn(roster + "{position:relative;isolation:isolate;background:var(--board-red);"
-                      "border:0;color:#fff;box-shadow:0 1px 2px #0000000d;", board)
+                      "border:0;color:#fff;box-shadow:var(--elevation-xs);", board)
         self.assertIn(roster + "::before{content:\"\";position:absolute;inset:0;z-index:-1;"
                       "pointer-events:none;border-radius:inherit;background:var(--board-red-hover);"
                       "opacity:0;transition:opacity .15s ease}", board)
@@ -10796,7 +10795,7 @@ class WebUiSourceTests(unittest.TestCase):
         primary = rules[rules.index(".primary:not(:disabled){"):]
         primary = primary[:primary.index("}")]
         for declaration in ("background:var(--board-blue)", "border:0",
-                            "color:#fff", "box-shadow:0 1px 2px #0000000d",
+                            "color:#fff", "box-shadow:var(--elevation-xs)",
                             "isolation:isolate"):
             self.assertIn(declaration, primary)
         self.assertIn("height:36px", rules, "尺寸那条也一起取过去")
@@ -10959,7 +10958,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-filter-frame.board-filter-frame .sorts .batchaction,"
                       ".entitycollectionhead.entitycollectionhead .sorts .batchaction"
                       "{color:#fff;background:var(--board-blue);border:0;border-radius:7px;"
-                      "box-shadow:0 1px 2px #0000000d}", board)
+                      "box-shadow:var(--elevation-xs)}", board)
         # 选中态归排序键，换一批只有悬停。
         self.assertIn(".board-filter-frame.board-filter-frame .sorts .batchaction:hover,"
                       ".entitycollectionhead.entitycollectionhead .sorts .batchaction:hover"
