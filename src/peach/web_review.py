@@ -321,8 +321,8 @@ def _code_creator_rows(connection) -> list[dict]:
     return rows
 
 
-#: 现算类别取行的函数。写成表而不是分支：`_review_rows` 已经顶着复杂度基线，
-#: 每加一类都往里塞一个 if 的话，最先撑不住的是那个函数而不是这张表。
+#: 现算类别各自的取行函数，键与 `LIVE_CATEGORIES` 一一对应。加一个现算类别就是在
+#: 这里登一行，读队列的 `_queue_rows` 不用跟着改。
 LIVE_CATEGORY_ROWS = {"code_creators": _code_creator_rows}
 
 

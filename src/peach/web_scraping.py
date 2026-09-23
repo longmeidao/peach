@@ -11,16 +11,19 @@ from .http import HttpRequest
 from .scraping_access import SOURCES, SourcePaused, SourceTransport, describe, save
 
 
-def _installed_candidate(installed, previous, candidate_for):
-    if isinstance(installed, dict) and installed.get("source_url"):
-        return candidate_for(str(installed["source_url"]))
-    return previous[0] if previous is not None else None
+def _kept_cover_size(target, incoming, incoming_size, installed, previous):
+    """本机封面不比来源这张差时回它的尺寸；该换、或本机还没有封面时回 `None`。
 
-
-def _kept_cover_size(target, incoming, incoming_size, current,
-                     candidate_improves, candidate_quality):
+    本机那张的图片角色按装它时的来源认：边车记着来源地址就按它，否则按采集日志里
+    上一次成功的那条。比较口径与批处理脚本同一个 `candidate_improves`。
+    """
+    from .jav_cover_fetch import candidate_for, candidate_improves, candidate_quality
     if not target.is_file():
         return None
+    if isinstance(installed, dict) and installed.get("source_url"):
+        current = candidate_for(str(installed["source_url"]))
+    else:
+        current = previous[0] if previous is not None else None
     with Image.open(target) as image:
         current_size = image.size
     if candidate_improves(
@@ -28,6 +31,7 @@ def _kept_cover_size(target, incoming, incoming_size, current,
             candidate_quality(current), current_size[0] * current_size[1]):
         return None
     return current_size
+
 
 def w_scraping_cover(contract, body):
     """仅处理用户指定且馆藏命中的番号；完整解码后才允许升级封面。"""
@@ -45,8 +49,7 @@ def w_scraping_cover(contract, body):
 
 def _fetch_cover(contract, code):
     from .cover_artwork import install_cover
-    from .jav_cover_fetch import (best_cover, candidate_for, candidate_improves,
-                                 candidate_quality,
+    from .jav_cover_fetch import (best_cover,
                                  HostLimitedTransport, NO_USABLE_OFFICIAL,
                                  OFFICIAL_PLACEHOLDER_ONLY, Unavailable,
                                  fc2_cover_candidates, logged_success_evidence)
@@ -86,10 +89,7 @@ def _fetch_cover(contract, code):
         candidate, size, data = best_cover(observed, code, 0, diagnostics=diagnostics,
                                           prior_candidates=prior,
                                           metadata_root=contract.follow_sources_root / "metadata" / "javinizer-go")
-        current_candidate = _installed_candidate(installed, previous, candidate_for)
-        kept_size = _kept_cover_size(
-            target, candidate, size, current_candidate,
-            candidate_improves, candidate_quality)
+        kept_size = _kept_cover_size(target, candidate, size, installed, previous)
         if kept_size is not None:
             suffix = "部分来源连接失败，未能完成全部来源比较。" if network_failed or any(s >= 400 and s != 404 for s in statuses) else "没有找到更大或更合适的封面。"
             return {"ok": True, "code": code, "reason": "kept_existing",

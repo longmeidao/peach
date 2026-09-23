@@ -110,14 +110,6 @@ def _writer(sync: LedgerSync | None) -> bool:
     return sync is None or not sync.read_only
 
 
-def _resolve_tunnel_manager(
-    settings: PeachSettings, manager: tunnel.TunnelManager | None,
-) -> tunnel.TunnelManager:
-    return manager if manager is not None else tunnel.TunnelManager(
-        settings.tunnel_state_root, settings.tunnel_log_root,
-    )
-
-
 def _start_tunnel(settings: PeachSettings, manager: tunnel.TunnelManager) -> None:
     """公网入口只按本次启动注入的设置开；不回头读设置文件里的当前值。"""
     if not (settings.tunnel_enabled and settings.configured):
@@ -154,7 +146,8 @@ def create_app(
 ) -> FastAPI:
     """`sync` 由 CLI 注入。测试直接建 app 时不传，复制与只读闸门整体不参与。"""
     settings = settings or PeachSettings()
-    tunnel_manager = _resolve_tunnel_manager(settings, tunnel_manager)
+    if tunnel_manager is None:
+        tunnel_manager = tunnel.TunnelManager(settings.tunnel_state_root, settings.tunnel_log_root)
     database = LedgerDatabase(settings.db_path)
     contract = web_contract.WebContract(
         settings.db_path, settings.snapshot_root,
