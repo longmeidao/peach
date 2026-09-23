@@ -116,6 +116,14 @@ class MetadataPolicyTests(unittest.TestCase):
             self.assertEqual(sort_candidates(field, candidates)[0]["source"], "caribbeancom", field)
             self.assertLess(chain_rank(field, "caribbeancom"), chain_rank(field, "aventertainment"))
 
+    def test_the_fc2_mirror_names_the_cast_ahead_of_javdb(self):
+        """FC2 的演员栏以 fc2cmadb 为准：`FC2-PPV-2629971` javdb 写 `安娜`，它写原名 `あんな`。
+
+        提前只限演员栏，标题上 javdb 仍排在它前面。
+        """
+        self.assertLess(chain_rank("performers", "fc2cmadb"), chain_rank("performers", "javdb"))
+        self.assertLess(chain_rank("title", "javdb"), chain_rank("title", "fc2cmadb"))
+
 
 if __name__ == "__main__":
     unittest.main()
