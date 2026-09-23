@@ -32,6 +32,8 @@ export declare function moveGlidePane(
   box: { x: number; y: number; w: number; h: number },
   axis?: 'x' | 'y',
 ): void;
+/** 这一下滚动会不会把 `anchor` 带走：滚的是整页，或者是装着它的那一层滚动容器。 */
+export declare function scrollMovesAnchor(event: Event, anchor: Node): boolean;
 export declare const MEDIA_SOURCE_ICONS: Record<string, string>;
 export declare function selectOptionIconHtml(mark?: string): string;
 

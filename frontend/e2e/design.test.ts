@@ -1496,4 +1496,92 @@ describe('设计决定', () => {
       await opened.close();
     }
   });
+
+  /* 首页「未入库的新作」那一排会自己横着走，每一帧都发一次 scroll。手机上侧栏是抽屉，
+     两枚弹层一打开就碰上它；演示库没有订阅，这一排由拦下的 `/api/feeds/discoveries`
+     画出来（字段以 `src/peach/web_feeds.py` 为准）。夹具关了动效，自动滚动不起步，
+     所以这里亲手滚它，发出的是同一种 scroll。 */
+  it('390px 下侧栏两枚弹层不随别处那一排横滚收起，整页滚动才收', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', MOBILE);
+    try {
+      const items = Array.from({ length: 12 }, (_, index) => ({
+        id: index + 1, code: `DEMO-${String(index + 1).padStart(3, '0')}`, title: `演示新作 ${index + 1}`,
+        studio: '演示厂牌', release_date: '2026-09-01', has_cover: false, cover_url: '', link: '', read: false,
+      }));
+      await opened.page.route((url) => url.pathname === '/api/feeds/discoveries', (route) => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ items }),
+      }));
+      await opened.page.reload({ waitUntil: 'load' });
+      const row = opened.page.locator('#feedNew .feednewrow');
+      await row.waitFor({ state: 'visible', timeout: 15_000 });
+      await settle(opened.page);
+      assert.ok(await row.evaluate((element) => element.scrollWidth > element.clientWidth + 120),
+        '新作那一排在 390px 下没有可横滚的余量，这条用例量不到东西');
+      await opened.page.locator('#filterBtn').tap();
+      await opened.page.waitForFunction(() => document.querySelector('#drawer')?.classList.contains('open'));
+      for (const [trigger, menuId] of [['#brandHome', 'boardLibraryMenu'], ['#boardGlowBtn', 'boardGlowMenu']] as const) {
+        const menu = opened.page.locator(`#${menuId}`);
+        await opened.page.locator(trigger).tap();
+        await menu.waitFor({ state: 'visible', timeout: 5_000 });
+        for (let step = 0; step < 4; step += 1) {
+          await row.evaluate((element) => { element.scrollLeft += 30; });
+          await opened.page.waitForTimeout(100);
+        }
+        assert.ok(await menu.isVisible(), `${trigger} 打开的弹层随新作那一排横滚收起了`);
+        // 菜单装不下时本来就要在内部滚；捕获阶段的 scroll 连它自己的也收得到。
+        await menu.evaluate((element) => element.dispatchEvent(new Event('scroll')));
+        await opened.page.waitForTimeout(100);
+        assert.ok(await menu.isVisible(), `${trigger} 打开的弹层随它自己的内部滚动收起了`);
+        assert.equal(await opened.page.locator(trigger).getAttribute('aria-expanded'), 'true');
+        await opened.page.evaluate(() => document.dispatchEvent(new Event('scroll')));
+        await menu.waitFor({ state: 'hidden', timeout: 5_000 });
+      }
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('设置里的光晕配色和侧栏配色卡是同一组预设色块，键盘选一档两处一起换', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      await settle(opened.page);
+      await opened.page.locator('#settingsBtn').click();
+      const grid = opened.page.locator('#homeGlowControls [data-glow-grid]');
+      await grid.waitFor({ state: 'visible', timeout: 10_000 });
+      const chips = (root: string) => opened.page.locator(`${root} [data-glow-preset]`).evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          key: (node as HTMLElement).dataset.glowPreset,
+          label: node.getAttribute('aria-label'),
+          pressed: node.getAttribute('aria-pressed'),
+          ball: getComputedStyle(node.querySelector('.board-glow-ball')!).backgroundImage,
+        })));
+      const inSettings = await chips('#homeGlowControls');
+      assert.ok(inSettings.length >= 2, '设置里没有预设色块');
+      assert.deepEqual(inSettings, await chips('#boardGlowMenu'), '设置里的预设色块和侧栏配色卡不是同一组');
+      const size = await grid.locator('.board-glow-ball').first().evaluate((node) => node.getBoundingClientRect().width);
+      assert.equal(size, 28, '设置里的色块和侧栏那一枚不是同一副尺寸');
+      assert.equal(await grid.getAttribute('role'), 'group');
+      assert.ok(await grid.getAttribute('aria-label'), '预设色块那一组没有无障碍名称');
+
+      const target = inSettings.find((chip) => chip.pressed === 'false')!;
+      const chip = grid.locator(`[data-glow-preset="${target.key}"]`);
+      await chip.focus();
+      await opened.page.keyboard.press('Space');
+      await opened.page.waitForFunction((key) => document.querySelector(
+        `#homeGlowControls [data-glow-preset="${key}"]`)?.getAttribute('aria-pressed') === 'true', target.key);
+      assert.equal(await grid.locator('[aria-pressed="true"]').count(), 1);
+      assert.equal(await opened.page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.glowPreset
+        && document.activeElement!.closest('#homeGlowControls [data-glow-grid]') ? (document.activeElement as HTMLElement).dataset.glowPreset : null),
+        target.key, '选完之后焦点离开了刚选的那一枚色块');
+      assert.equal(await opened.page.locator(`#boardGlowMenu [data-glow-preset="${target.key}"]`)
+        .getAttribute('aria-pressed'), 'true', '侧栏配色卡没有跟着换到同一档');
+      assert.equal(await opened.page.locator('#homeGlowControls [data-glow-preset-name]').textContent(), target.label);
+      assert.equal(await opened.page.evaluate(() => JSON.parse(localStorage.getItem('peach.settings.v1')!).homeGlow.preset),
+        target.key, '选中的那一档没有写进设置');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 });

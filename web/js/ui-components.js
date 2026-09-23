@@ -1279,6 +1279,15 @@ export function dismissMenu(menu,finish){
    会被它压掉半截，而且看不出是被压住的——只是第一项凭空不见了。 */
 const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)
   .getPropertyValue('--topH'))||0);
+/**
+ * 这一下滚动会不会把 `anchor` 带走：滚的是整页，或者是装着它的那一层滚动容器。
+ * 挂在视口上的浮层（锚定菜单、播放器菜单、提示框）只该在这时收起。别处的滚动挪不动
+ * 锚点——首页新作那一排自己横着走，每一帧都发一次 scroll，捕获阶段照样收得到，按「浮层
+ * 之外」算的话，浮层刚开就被它收掉。浮层自己的滚动也不装着锚点，自然不算。
+ */
+export function scrollMovesAnchor(event,anchor){
+  return event.target instanceof Node&&event.target.contains(anchor);
+}
 export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
   const position=()=>{
     // 宽度读 offsetWidth：进场动画起手是 scale(.95)，getBoundingClientRect 量到的是缩过的框。
@@ -1304,11 +1313,10 @@ export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
     const preferredLeft=menu.classList.contains('context-card')?anchor.left:anchor.right-width;
     menu.style.left=Math.max(8,Math.min(preferredLeft,innerWidth-width-8))+'px';
     menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};
-  /* 页面滚走了就关掉：菜单固定在视口里，锚点跟着内容跑，留着就悬在半空。
+  /* 触发钮被滚走了就关掉：菜单固定在视口里，锚点跟着内容跑，留着就悬在半空。
      菜单自己的滚动不算——它装不下时本来就要在内部滚，滚一下就关等于底下那几项
-     根本够不着。捕获阶段连菜单内部的滚动一并收得到，所以这里必须自己分开。 */
-  const closeFromViewport=event=>{
-    if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)};
+     根本够不着；别处那一排横滚也不算，判据见 `scrollMovesAnchor`。 */
+  const closeFromViewport=event=>{if(scrollMovesAnchor(event,toggle))setOpen(false)};
   /* 带 popover 的菜单进顶层。`position:fixed` 只在没有被祖先接管时才相对视口：祖先上
      一个 transform、filter 或 backdrop-filter 就会成为它的包含块，算好的视口坐标于是
      整体偏移，还要被那个祖先的 overflow 裁掉。设置面板的卡片正是这种祖先——入场动画的
