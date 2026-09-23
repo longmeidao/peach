@@ -126,6 +126,13 @@ class EntryLinkAddressTests(unittest.TestCase):
         rows = entry_links.build(settings, "七沢みあ", [ref("javdb", "NPD3")])
         self.assertEqual(rows[0]["url"], "https://javdb521.com/actors/NPD3")
 
+    def test_the_feed_address_stays_on_javdb_whatever_the_mirror(self):
+        """订阅地址按主机计限流预算，跟着镜像走就绕开了 `javdb.com` 那份预算。"""
+        self.assertEqual(entry_links.javdb_actor_pages("七沢みあ", [ref("javdb", "NPD3")]),
+                         ["https://javdb.com/actors/NPD3"])
+        self.assertEqual(entry_links.javdb_actor_pages(
+            "145cm色白お嬢様", [ref("stash", "12")]), [])
+
     def test_a_broken_domain_falls_back_to_the_default_site(self):
         """手改坏的域名拼出来是个不存在的主机名，那比退回默认站更难看出问题。"""
         settings = entry_links.defaults()

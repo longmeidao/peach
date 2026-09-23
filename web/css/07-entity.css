@@ -79,8 +79,9 @@
 .entitylinks a.urllink{letter-spacing:.02em}
 /* 看片的那一行：两站自己的横向标识排在一起，不套药丸。标识本身已经说清是哪家，再画
    一圈框、再写一遍站名，说的是同一件事，占的却是三倍高度。
-   高度统一 22px、按标识自己的比例定宽；hover 用 Board 那块 `--hover` 垫一层，圆角走
-   `--control-radius`，负外边距让垫层不把这一行撑开；32px 的间距减掉左右各 8px 的垫层，
+   高度统一 22px、按标识自己的比例定宽；hover 垫一层与上面那排外链同一档的填充，圆角走
+   `--control-radius`，负外边距让垫层不把这一行撑开。`--hover` 用不得：浅色下它和资料卡
+   的 `--ground` 同是 #f5f5f5，垫上去看不见。32px 的间距减掉左右各 8px 的垫层，
    两枚标识之间还剩 16px，看着才是两条链接而不是一长条。
    选择器写得这么长是为了压过 board.css 里「一句话就是一个链接」那条：它按 `[target=_blank]`
    收所有外链，把字染蓝、抹平内边距，标识里跟着墨色走的那半会一起变蓝。那条算三个类，
@@ -88,7 +89,12 @@
 .entrymarks{display:flex;flex-wrap:wrap;align-items:center;gap:32px;margin-top:14px;max-width:100%}
 .entityhero .entrymarks a.entrymark:any-link{display:inline-flex;align-items:center;gap:6px;min-width:0;
   text-decoration:none;color:var(--ink);border-radius:var(--control-radius);padding:4px 8px;margin:-4px -8px}
-.entityhero .entrymarks a.entrymark:any-link:hover{background:var(--hover);text-decoration:none}
+.entityhero .entrymarks a.entrymark:any-link:hover{
+  background:color-mix(in srgb,var(--ink) 8%,var(--ground));text-decoration:none}
+/* 「订阅新作」开关排在两枚标识后面：它订的就是左边那个 JavDB 演员页。 */
+.entryfeed{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-size:var(--fs-sm);
+  cursor:pointer}
+.entryfeed svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 /* 标识自己带着 fill：蓝块和白字是站点的配色，`currentColor` 那半跟页面墨色走。
    这里只定高，宽度由外层 viewBox 的比例推出来。 */
 .entrymark svg{height:22px;width:auto}

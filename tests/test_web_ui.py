@@ -2274,11 +2274,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".entrymarks{display:flex;flex-wrap:wrap;align-items:center;gap:32px;"
             "margin-top:14px;max-width:100%}")
-        # 标识自己就说清了是哪家，不套药丸；hover 用 Board 那块 --hover。
-        # 选择器要压过 board.css 里按 [target=_blank] 把外链染蓝、抹平内边距的那条。
-        self.assertPageContains(
-            ".entityhero .entrymarks a.entrymark:any-link:hover"
-            "{background:var(--hover);text-decoration:none}")
+        # 悬停底色是设计决定，按计算值量在 `frontend/e2e/design.test.ts`。
         self.assertPageContains(".entrymark svg{height:22px;width:auto}")
         self.assertPageContains(".entityhero .entrymarks{justify-content:center}")
 

@@ -10,7 +10,8 @@ import threading
 import time
 import uuid
 
-from . import feed_followup, feeds
+from . import entry_links, feed_followup, feeds
+from .jobs import TaskRunConflict
 from .http import HttpRequest, public_https_url
 
 #: 一次拉取的超时与体积上限。一份 RSS 正常几十到几百 KB；JavDB 演员页 78 KB。
@@ -197,6 +198,8 @@ def w_feed_source(contract, body) -> dict:
         with contract.database.write_transaction() as connection:
             feeds.set_enabled(connection, source_id, enabled)
         return {"ok": True, "source": source_id, "enabled": enabled}
+    if action == "follow":
+        return _follow_entity(contract, body)
     if action != "add":
         raise ValueError(f"unknown feed source action: {action}")
     entity_id = body.get("entity_id")
@@ -207,6 +210,42 @@ def w_feed_source(contract, body) -> dict:
             entity_id=int(entity_id) if isinstance(entity_id, int) else None,
             interval_minutes=body.get("interval_minutes", feeds.DEFAULT_INTERVAL_MINUTES))
     return {"ok": True, "source": source_id}
+
+
+def _follow_entity(contract, body) -> dict:
+    """人物页「订阅新作」开关。地址按这位的 JavDB 演员页现拼，不收页面传来的地址。
+
+    打开后当场在后台拉这几条：人物页上点开关的人要的是马上看到她有哪些新作，
+    而不是等下一轮到期扫描。已有一轮在跑时就交给那一轮之后的到期扫描——
+    新源 `next_fetch_at` 为空，下一轮一定带上它。
+    """
+    entity_id, enabled = body.get("entity_id"), body.get("enabled")
+    if not isinstance(entity_id, int) or not isinstance(enabled, bool):
+        raise ValueError("entity_id must be an integer and enabled must be a boolean")
+    with contract.database.write_transaction() as connection:
+        row = connection.execute(
+            "SELECT canonical_name FROM entity WHERE id=? AND kind='performer'",
+            (entity_id,)).fetchone()
+        if row is None:
+            raise ValueError("找不到这位女优")
+        if not enabled:
+            feeds.unfollow_entity(connection, entity_id)
+            ids: list[int] = []
+        else:
+            refs = [dict(ref) for ref in connection.execute(
+                "SELECT provider,external_kind,external_id FROM entity_external_ref"
+                " WHERE entity_id=?", (entity_id,))]
+            pages = entry_links.javdb_actor_pages(row["canonical_name"], refs)
+            if not pages:
+                raise ValueError("这位在 JavDB 上没有演员页编号")
+            ids = feeds.follow_entity(connection, entity_id, pages)
+    contract.cache_bust()
+    if ids:
+        try:
+            w_feed_check(contract, {"sources": ids, "background": True})
+        except TaskRunConflict:
+            pass
+    return {"ok": True, "entity_id": entity_id, "following": enabled, "sources": ids}
 
 
 #: 列表一次给多少条。首页那一块只放一行，人物页给一屏。

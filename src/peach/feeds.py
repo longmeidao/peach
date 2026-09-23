@@ -260,6 +260,40 @@ def add_source(connection: sqlite3.Connection, *, kind: str, url: str, name: str
     return int(cursor.lastrowid)
 
 
+def follow_entity(connection: sqlite3.Connection, entity_id: int, urls) -> list[int]:
+    """人物页那枚开关打开：这位的每个 JavDB 演员页各一条源，全部启用。
+
+    地址已经登记过的（设置页手动加过、或者之前关掉过）原地启用并补上人物，不另建一条：
+    `feed_item` 的去重记忆挂在那条源上，重建一条等于让整页历史再被当成新作一遍。
+    """
+    ids: list[int] = []
+    for url in urls:
+        address = normalize_url(url)
+        row = connection.execute(
+            "SELECT id FROM feed_source WHERE url=?", (address,)).fetchone()
+        if row is None:
+            ids.append(add_source(connection, kind=KIND_JAVDB_ACTOR, url=address,
+                                  entity_id=int(entity_id)))
+            continue
+        connection.execute(
+            "UPDATE feed_source SET enabled=1, entity_id=coalesce(entity_id, ?) WHERE id=?",
+            (int(entity_id), int(row["id"])))
+        ids.append(int(row["id"]))
+    return ids
+
+
+def unfollow_entity(connection: sqlite3.Connection, entity_id: int) -> None:
+    """开关关掉：只停用不删除，再打开时这几条的去重记忆接着用。"""
+    connection.execute("UPDATE feed_source SET enabled=0 WHERE entity_id=? AND kind=?",
+                       (int(entity_id), KIND_JAVDB_ACTOR))
+
+
+def entity_following(connection: sqlite3.Connection, entity_id: int) -> bool:
+    return connection.execute(
+        "SELECT 1 FROM feed_source WHERE entity_id=? AND kind=? AND enabled=1",
+        (int(entity_id), KIND_JAVDB_ACTOR)).fetchone() is not None
+
+
 def remove_source(connection: sqlite3.Connection, source_id: int) -> None:
     connection.execute("DELETE FROM feed_source WHERE id=?", (int(source_id),))
 

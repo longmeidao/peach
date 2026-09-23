@@ -4665,6 +4665,42 @@ async function renderFeedNew(host,entityId){
   wireHorizontalScroller(host.querySelector('.feednewrow'));
 }
 
+/* 人物页「订阅新作」开关。地址不经页面：服务端按这位的 JavDB 演员页现拼，页面只送
+   开或关。打开时服务端当场在后台拉一轮，拉完这里把「新作 · 未入库」那一行重画一次；
+   等的上限是那一轮自己的时长量级，页面换走了就不再等。 */
+const ENTITY_FEED_WAIT_TRIES=40;
+function wireEntityFeed(entityId){
+  const toggle=$('#index').querySelector('[data-entity-feed]');
+  if(!toggle||!entityId)return;
+  const onPage=()=>$('#index').contains(toggle);
+  const write=async on=>{
+    setActionBusy(toggle);
+    try{
+      await api('/api/feeds/source',{method:'POST',
+        body:JSON.stringify({action:'follow',entity_id:entityId,enabled:on})});
+      toggle.checked=on;
+      return true;
+    }catch(error){
+      toggle.checked=!on;actionFailure(on?'订阅新作':'取消订阅新作',error);
+      return false;
+    }finally{setActionBusy(toggle,false)}
+  };
+  const refreshAfterCheck=async()=>{
+    for(let tries=0;tries<ENTITY_FEED_WAIT_TRIES&&onPage();tries+=1){
+      await new Promise(resolve=>setTimeout(resolve,3000));
+      const job=await api('/api/feeds/check').catch(()=>null);
+      if(!job||job.status!=='running')break;
+    }
+    if(onPage())void renderFeedNew($('#index').querySelector('[data-feed-new]'),entityId);
+  };
+  toggle.onchange=async()=>{
+    const on=toggle.checked;
+    if(!await write(on))return;
+    actionReceipt(on?'已订阅新作':'已取消订阅新作',{undo:async()=>{await write(!on)}});
+    if(on)void refreshAfterCheck();
+  };
+}
+
 /* 外链是别人服务器上的东西，会在我们不知情的时候烂掉——实测 719 条里 152 条打不开，
    而它们在资料页上和好链接长得一模一样，只有点下去才知道。所以检查要能随时重跑，
    不是一次性脚本。放在资源同步上面：两块都是「把库里的记录和外部现实对齐」。 */
@@ -7998,7 +8034,8 @@ async function openEntity(kind,name,push=true){
     `<a class="entrymark" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${
       x.mark?icon(x.mark):'<span class="missavmark"><span>MISS</span><span>AV</span></span>'
     }${x.ordinal?`<span class="entryordinal">${esc(x.ordinal)}</span>`:''}<span class="sr-only">${esc(x.label)}</span></a>`
-  ).join('');
+  ).join('')+(d.feed?`<label class="entryfeed">${icon('rss')}<span>订阅新作</span><input type="checkbox"
+      class="ptoggle" role="switch" data-entity-feed ${d.feed.following?'checked':''}></label>`:'');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
@@ -8115,6 +8152,7 @@ async function openEntity(kind,name,push=true){
   wireHorizontalScroller($('#index').querySelector('.entitytags'));
   wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));
   wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);
+  wireEntityFeed(Number(d.id));
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);
