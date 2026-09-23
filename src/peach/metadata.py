@@ -228,6 +228,10 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
     warnings: list[str] = []
     seen: set[str] = set()
     for item in raw if isinstance(raw, list) else []:
+        # 只有一个名字的来源交的是一串字符串（fc2cmadb 2026-09-22 存下的快照就是 `["梨奈"]`），
+        # 和只带 `japanese_name` 的那一格是同一件事。
+        if isinstance(item, str):
+            item = {"japanese_name": item}
         if not isinstance(item, dict):
             continue
         preferred = item.get("japanese_name") or " ".join(

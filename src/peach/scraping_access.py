@@ -29,9 +29,10 @@ SOURCES = {
     # FC2 的商品页、卖家页和图片存储（`storage*`、`contents-thumbnail*`）都在 fc2.com
     # 底下，一条域名就够。免登录可读，不收 Cookie。
     "fc2": {"label": "FC2", "domains": ("fc2.com",), "login": "https://adult.contents.fc2.com/"},
-    # 免登录可读，不收 Cookie：游客页的 props 里照样有标题、标签、封面地址和评论。429 按出口
-    # IP 计，换出口比带登录态管用；借用户的登录态采集，反倒会把他浏览器里那份会话挤掉。
-    "fc2cmadb": {"label": "FC2CMADB", "domains": ("fc2cmadb.com",), "login": "https://fc2cmadb.com/"},
+    # 女優那一栏在浏览器里只对登录用户显示，公开采集也带上用户贴的 Cookie（`session`），
+    # 按登录用户看到的那一页取；游客补问这一栏眼下也回，见 `sources/fc2cmadb.py`。
+    "fc2cmadb": {"label": "FC2CMADB", "domains": ("fc2cmadb.com",), "login": "https://fc2cmadb.com/",
+                 "cookie": True, "session": True},
     # 下架 FC2 的最后一档。作品页在 javarchive.com、封面转存在 javstore.net 上，两边算同一个
     # 来源。免登录可读，不收 Cookie，`robots.txt` 是全站放行。
     "javarchive": {"label": "JavArchive", "domains": ("javarchive.com", "javstore.net"),

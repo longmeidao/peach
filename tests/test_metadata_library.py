@@ -669,6 +669,63 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual([source for source, _ in found], ['fc2cmadb'])
         self.assertFalse([url for url in asked if 'javarchive.com' in url])
 
+    def _live_fc2_provider(self, asked, *, mirror=True):
+        """官方商品页还在：它答上了标题、卖家和发行日，却没有演员栏。"""
+        from peach.library_processing import LibraryMetadataProvider
+        product = {'@type': 'Product', '@id': 'article:3232110', 'sku': '3232110', 'name': '在售的那一部',
+                   'image': {'url': 'https://storage92000.contents.fc2.com/file/1.jpg'},
+                   'brand': {'url': 'https://adult.contents.fc2.com/users/rina_vlog/'}}
+        shop = (f'<script type="application/ld+json">{json.dumps(product, ensure_ascii=False)}</script>'
+                '<div class="items_article_headerInfo"><h3>在售的那一部</h3>'
+                '<a href="https://adult.contents.fc2.com/users/rina_vlog/">梨奈</a></div>'
+                '<div class="items_article_Releasedate"><p>販売日 : 2022/04/28</p></div>')
+        def pages(transport, url, **kwargs):
+            if 'fc2cmadb.com' in url:
+                if not mirror:
+                    asked.append(url)
+                    raise NotFound('镜像站上没有这一部')
+                if kwargs.get('extra_headers'):
+                    return json.dumps({'props': {'actresses': [{'name': '梨奈'}]}}).encode()
+                asked.append(url)
+                return _mirror_page(video=3232110)
+            asked.append(url)
+            if 'javarchive.com' in url:
+                return _archive_pages(url)
+            return shop.encode()
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        return provider, pages
+
+    def test_a_live_product_without_women_still_asks_the_mirror_for_them(self):
+        """发行方商品页没有演员栏，镜像站那一栏是 FC2 链上唯一对得上人的地方。"""
+        asked = []
+        provider, pages = self._live_fc2_provider(asked)
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3232110', required=('title', 'performers'))
+        self.assertEqual([source for source, _ in found], ['fc2', 'fc2cmadb'])
+        self.assertEqual(found[1][1]['actresses'], [{'japanese_name': '梨奈'}])
+        self.assertFalse([url for url in asked if 'javarchive.com' in url], 'JavArchive 不给演员，不为演员去问它')
+
+    def test_a_row_that_already_has_its_cast_stops_at_the_product_page(self):
+        asked = []
+        provider, pages = self._live_fc2_provider(asked)
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3232110', required=('title',))
+        self.assertEqual([source for source, _ in found], ['fc2'])
+        self.assertFalse([url for url in asked if 'fc2cmadb.com' in url])
+
+    def test_a_cached_product_page_counts_as_answered(self):
+        """缓存里已有官方那页：只为演员去问镜像，镜像也没有就交空，不把整档记成「没有」。"""
+        known = [{'id': 'FC2-PPV-3232110', 'title': '在售的那一部', 'actresses': []}]
+        for mirror, sources in ((True, ['fc2cmadb']), (False, [])):
+            asked = []
+            provider, pages = self._live_fc2_provider(asked, mirror=mirror)
+            with self.subTest(mirror=mirror), patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+                found = provider.fc2('FC2-PPV-3232110', required=('performers',),
+                                     route=('fc2cmadb', 'javarchive'), known=known)
+                self.assertEqual([source for source, _ in found], sources)
+                self.assertFalse([url for url in asked if 'fc2cmadb.com' not in url], '官方页与 JavArchive 都不再问')
+
     def test_the_cover_step_asks_the_rest_of_the_chain_for_more_image_sources(self):
         """答上的那一档给的地址下不下得来图，这一层判不出来，所以图源要凑齐再挑。"""
         asked = []
@@ -1145,6 +1202,35 @@ class LibraryNfoTests(unittest.TestCase):
         os.utime(snapshot_path, (time.time() - 8 * 24 * 3600,) * 2)
         run(retry_ids=[1])
         provider.query.assert_called_once()
+
+    @windows_ledger_roots
+    def test_a_cached_product_page_still_sends_the_row_to_the_mirror_for_its_cast(self):
+        """缓存里只有官方商品页、那一页没有演员栏：这一行缺的演员照样去镜像站要，官方页不再问。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'FC2-PPV-2851534.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        product = {'id': 'FC2-PPV-2851534', 'title': 'キュートなバニーメイド', 'maker': 'rina_vlog',
+                   'release_date': '2022-04-28', 'actresses': [], 'source_url': 'https://adult.contents.fc2.com/'}
+        snapshot_path = config.directory('sources') / 'library-metadata' / 'FC2-PPV-2851534-fc2.json'
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(json.dumps(product, ensure_ascii=False), encoding='utf-8')
+        provider = stub_provider()
+        provider.fc2.return_value = [('fc2cmadb', {'id': 'FC2-PPV-2851534', 'actresses': [{'japanese_name': '梨奈'}],
+                                                   'source_url': 'https://fc2cmadb.com/articles/2851534'})]
+        provider.cover.return_value = False
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        provider_factory=Mock(return_value=provider))
+        provider.fc2.assert_called_once()
+        kwargs = provider.fc2.call_args.kwargs
+        self.assertNotIn('fc2', kwargs['route'])
+        self.assertEqual(kwargs['known'], [product])
+        rows = {row['field']: json.loads(row['candidates_json'])
+                for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
+        self.assertEqual([(entry['source'], entry['display_value']) for entry in rows['performers']],
+                         [('fc2cmadb', '梨奈')])
 
     @windows_ledger_roots
     def test_a_route_override_decides_who_gets_asked(self):

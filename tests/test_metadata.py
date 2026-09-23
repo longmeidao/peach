@@ -111,6 +111,11 @@ class MetadataProviderTests(unittest.TestCase):
             "profile_source": "r18dev",
         }])
 
+    def test_a_bare_name_list_is_read_as_performers(self):
+        """只给名字的快照（fc2cmadb 2026-09-22 存下的 `["梨奈"]`）也要进演员候选，不能静默丢掉。"""
+        fields = extract_peach_fields({"actresses": ["梨奈", {"japanese_name": "梨奈"}]})
+        self.assertEqual(fields["performers"]["value"], [{"name": "梨奈", "external_id": "", "thumb_url": ""}])
+
     def test_series_and_studio_take_the_japanese_original(self):
         payload = {
             "maker": "Prestige",

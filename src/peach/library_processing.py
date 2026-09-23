@@ -257,7 +257,7 @@ class LibraryMetadataProvider:
             raise type(cache[code])(str(cache[code]))
         return cache[code]
 
-    def fc2(self, code, *, deadline=None, route=None, covers=False):
+    def fc2(self, code, *, deadline=None, route=None, covers=False, required=(), known=()):
         """FC2 自己那一页，下架了就依次问两个存档站；返回沿路答上的每一档 `[(来源, 资料)]`。
 
         三站各是契约下的一站（`sources/fc2.py`、`sources/fc2cmadb.py`、`sources/javarchive.py`），
@@ -269,7 +269,12 @@ class LibraryMetadataProvider:
         在 fc2cmadb 是 404，JavArchive 上有）；它的每一条转存各交一份（`records()`）。三处都
         没有才按 `NotFound` 交出去，记进「没有」的记忆，一周内不再问。
 
-        资料那一步答上就停，封面那一步（`covers`）把链问到底。给出地址的那一档常常下不来
+        资料那一步答上就停，只有一处例外：这一行还缺演员（`required`）而答上的几档都没给，
+        就接着问 fc2cmadb。发行方商品页没有演员栏，镜像站那一栏是这条链上唯一对得上人的地方；
+        JavArchive 只给标题和转存封面，照旧不问。`known` 是缓存里已经答过的几档快照，算作答上，
+        但不再交出去；有它在时这一档问不出东西就交空列表，不报「没有」。
+
+        封面那一步（`covers`）把链问到底。给出地址的那一档常常下不来
         图：站上标着没有商品图，或者地址还在、FC2 的存储上那张已经删了——而这一层判不出
         来，能不能用要等 `best_cover` 量过才知道（2026-09-22 实测 `FC2-PPV-3232110` 从
         fc2cmadb 拿到的地址是 404，JavArchive 上另有一张 1417×829）。所以封面要的是链上
@@ -288,7 +293,8 @@ class LibraryMetadataProvider:
         for name in metadata_routes.FC2_STAGE:
             if (route is not None and name not in route) or name in state['asked']:
                 continue
-            if state['found'] and not covers:
+            answered = [*known, *(payload for _, payload in state['found'])]
+            if answered and not covers and not (name == 'fc2cmadb' and _lacks_performers(required, answered)):
                 break
             state['asked'].add(name)
             try:
@@ -302,7 +308,7 @@ class LibraryMetadataProvider:
             except Exception as error:  # noqa: BLE001 - 原因由调用方汇总成一句话
                 if not is_missing(error):
                     state['problems'].append(error)
-        if state['found']:
+        if state['found'] or known:
             return state['found']
         # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
         if state['problems']:
@@ -797,6 +803,12 @@ def _sources_for(code, *evidence, route_overrides=None):
     return metadata_routes.stages_for_code(code, *evidence, overrides=route_overrides)
 
 
+def _lacks_performers(required, payloads):
+    """这一行要演员，而手上这几份快照一个人也没给。"""
+    return 'performers' in required and not any(
+        extract_peach_fields(payload).get('performers') for payload in payloads)
+
+
 def _given_fields(entries):
     """这些证据条目一共给出了哪几个非空 Peach 字段。链上何时停手按它判。"""
     return {field for _, payload, _ in entries
@@ -999,12 +1011,18 @@ class _RemoteSession:
                 entries.extend(cached)
                 if metadata_routes.settles(required, _given_fields(entries)):
                     break
-                continue
+                # FC2 那一档缓存里只有官方那页时，缺的演员还得去镜像站问（见 `fc2()`）。
+                if source != 'fc2':
+                    continue
             try:
                 if source == 'r18dev':
                     found = [('r18dev', self.provider().query(code, 'r18dev', deadline=deadline))]
                 elif source == 'fc2':
-                    found = self.provider().fc2(code, deadline=deadline, route=chain)
+                    answered = {name for name, _, _ in cached}
+                    found = self.provider().fc2(
+                        code, deadline=deadline, required=required,
+                        route=tuple(name for name in chain if name not in answered),
+                        known=[payload for _, payload, _ in cached])
                 elif source == '1pondo':
                     found = self.provider().one_pondo(code, deadline=deadline)
                 elif source == 'amane':

@@ -241,11 +241,9 @@ class ScrapingAccessTests(unittest.TestCase):
             self.assertIn("age=verified", client.build_request("GET", "https://www.javbus.com/MIDE-594").headers["cookie"])
             self.assertNotIn("cookie", client.build_request("GET", "https://pics.dmm.co.jp/x").headers)
 
-    def test_the_fc2_mirror_is_read_as_a_guest(self):
-        """游客页就有标题、封面与评论；带用户的登录态采集会把他浏览器里那份会话挤掉。"""
-        with self.assertRaisesRegex(ValueError, "不接受登录 Cookie"):
-            save(self.root, "fc2cmadb", {"cookie": "peach_session=abc"})
-        self.assertFalse(describe(self.root, "fc2cmadb")["accepts_cookie"])
+    def test_the_fc2_mirror_carries_the_pasted_cookie_too(self):
+        """女優那一栏在浏览器里只对登录用户显示，采集按登录用户看到的那一页取。"""
+        save(self.root, "fc2cmadb", {"cookie": "peach_session=abc"})
         transport = SourceTransport(self.root)
         self.addCleanup(transport.close)
         with patch("peach.scraping_access.client_for") as factory:
@@ -253,7 +251,10 @@ class ScrapingAccessTests(unittest.TestCase):
             fake.stream.return_value.__enter__.return_value.iter_bytes.return_value = [b"ok"]
             transport(HttpRequest("GET", "https://fc2cmadb.com/articles/4030617", {}), 1, 10)
         self.assertEqual(factory.call_args.args[1], "fc2cmadb")
-        self.assertFalse(factory.call_args.kwargs["session"])
+        self.assertTrue(factory.call_args.kwargs["session"])
+        with httpx.Client(cookies=cookie_jar(values_for(self.root, "fc2cmadb"), "fc2cmadb")) as client:
+            self.assertIn("peach_session=abc", client.build_request(
+                "GET", "https://fc2cmadb.com/articles/4030617").headers["cookie"])
 
     def test_full_quality_bytes_are_installed_and_cache_avoids_download(self):
         from peach.web_scraping import _fetch_cover
