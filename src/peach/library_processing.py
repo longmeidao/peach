@@ -996,7 +996,8 @@ class _RemoteSession:
         （ADR-0030、ADR-0034）、封面互证要两个图源（ADR-0032）。唯一的例外是缺标签的行
         在官方档之间多问一家（`metadata_routes.settles` 的 `wants_tags`）。
 
-        社区那一档的值照常进候选，只剩一家也补空，几家不一时取 javdb 的（ADR-0034）。
+        社区那一档的值照常进候选，只剩一家也补空，几家不一时按字段优先级链取：FC2 的演员栏
+        取 fc2cmadb，其余取 javdb（ADR-0034、ADR-0038）。
         每档各自记「没有」的记忆：说过没有的番号，一周内直接问下一档。
         """
         action = 'querying_metadata'

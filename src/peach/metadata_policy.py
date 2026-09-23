@@ -107,8 +107,14 @@ CHAIN_COMMUNITY, CHAIN_FALLBACK, CHAIN_UNKNOWN = 3, 4, 5
 #: 稀疏例外：某个字段上把几家来源提到链首，顺序就是这里写的顺序（对应 amane 的
 #: `field_priority`）。整条链已经按「谁更接近发行方」排好，这张表只用来记录逐条
 #: 核对后发现的反例，不是第二份来源顺序表——每加一行都要能说出是哪个番号上看出来的。
-#: 本机当前一条例外都没有，空表就是「链本身够用」的如实记录。
-FIELD_SOURCE_PRIORITY: dict[str, tuple[str, ...]] = {}
+#:
+#: 演员栏的 fc2cmadb：只有 FC2 番号会问到它，它的女优栏按片中人逐条整理，javdb 那一侧
+#: 常是转载站起的称呼。2026-09-23 逐条对照：`FC2-PPV-1449453` 与 `FC2-PPV-1464245`
+#: javdb 写 `Chisa`、fc2cmadb 写 `大村阿美香`；`FC2-PPV-2629971` javdb 写中文 `安娜`、
+#: fc2cmadb 写日文原名 `あんな`。
+FIELD_SOURCE_PRIORITY: dict[str, tuple[str, ...]] = {
+    "performers": ("fc2cmadb",),
+}
 
 #: 字段级黑名单（对应 amane 的 `field_blacklist`），优先于一切：列进来的来源在这个
 #: 字段上连候选都不算，不参与取值比对，也不会因为「只剩它一家」而被采信。它和兜底
