@@ -628,9 +628,10 @@ class LogoSourceTests(unittest.TestCase):
         """妄想族名录给的是 200×200 真方标，所以进这一张表而不是字标那张。
 
         `AVS collector's` 的弯撇号写法是别名，过 `safe_name` 落到同一个键。
+        用户 2026-09-23 点名补齐 ティーチャー、下半身タイガース、ゆりえっち、山と空 四家。
         """
         directory = [url for url in MODULE.LOGO_SOURCES.values() if "mousouzoku-av" in url]
-        self.assertEqual(len(directory), 3)
+        self.assertEqual(len(directory), 7)
         for url in directory:
             with self.subTest(url=url):
                 self.assertRegex(
@@ -821,11 +822,12 @@ class WordmarkSourceTests(unittest.TestCase):
 
         名录版未必更大：`ラグジュTV` 落地 200×200，展会那份是 413×413。这条约束防的
         是往表里顺手多塞一家——那一家没人比过两版，装上去可能是降级。
+        `S級素人`、`Real Works` 没有展会版可比，用户 2026-09-23 点名取 KMP 名录字标。
         """
         picked = {"Jackson", "ラグジュTV", "million", "BAZOOKA", "俺の素人"}
         from_parent = {studio for studio, url in MODULE.WORDMARK_SOURCES.items()
                        if "prestige-av.com" in url or "km-produce.com" in url}
-        self.assertEqual(from_parent, picked | {"ナンパTV"})
+        self.assertEqual(from_parent, picked | {"ナンパTV", "S級素人", "Real Works"})
 
 
 class IconSourceTests(unittest.TestCase):

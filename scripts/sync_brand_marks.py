@@ -89,8 +89,27 @@ def collect(source: Path) -> tuple[list[dict], list[dict]]:
             "imported_at": meta.get("imported_at") or meta.get("cached_at", ""),
             "_data": data,
         })
+    taken, same = _drop_copies_of_base(taken)
+    skipped.extend(same)
     taken.sort(key=lambda row: row["file"])
     return taken, skipped
+
+
+def _drop_copies_of_base(taken: list[dict]) -> tuple[list[dict], list[dict]]:
+    """和同名裸文件字节相同的 `icon`／`logo` 不收。
+
+    指定来源表一张图管两位，装的时候大位、小位和裸文件各落一份同样的字节；2026-09-23
+    量过，按内容去重前 9.9 MB，去重后 5.2 MB。`PreviewService.logo` 找不到变体就回落到
+    裸文件，所以少了这份副本，每个位置取到的仍是同一张图。
+    """
+    base_sha = {row["studio"]: row["sha256"] for row in taken if not row["variant"]}
+    kept, same = [], []
+    for row in taken:
+        if row["variant"] and base_sha.get(row["studio"]) == row["sha256"]:
+            same.append({"name": row["file"], "reason": "same_as_base"})
+        else:
+            kept.append(row)
+    return kept, same
 
 
 def write(taken: list[dict], target: Path) -> dict:

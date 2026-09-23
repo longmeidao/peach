@@ -172,13 +172,21 @@ LOGO_SOURCES: dict[str, str] = {
     # 妄想族自家发行目录 `mousouzoku-av.com/maker/list/<50音>/`（用户 2026-09-04 指定），
     # 213 家一律 `contents/maker/id<N>/logo_l.jpg`、200×200 真方标——这一位要的正是方的，
     # 不必烤。目录里 173 家挂 妄想族、39 家挂 エマニエル，都是同人／独立厂牌，
-    # 和账本只交出 4 家：`ゲッツ！！ボンボン/妄想族` 已有 jae.tokyo 的图，其余三家在这里。
-    # 名录写的日文名就是账本 canonical_name（`Asia/妄想族`），按整名对。
+    # 和账本对上 8 家：`ゲッツ！！ボンボン/妄想族` 已有 jae.tokyo 的图，其余七家在这里。
+    # 名录写的日文名就是账本 canonical_name（`Asia/妄想族`），按整名对；后四家的
+    # catalog 链接指向同一个 maker id（用户 2026-09-23 授权）。
     "ABC/妄想族": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
     "Asia/妄想族": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
+    "ティーチャー/妄想族": "https://www.mousouzoku-av.com/contents/maker/id360/logo_l.jpg",
+    "下半身タイガース/妄想族": "https://www.mousouzoku-av.com/contents/maker/id367/logo_l.jpg",
+    "ゆりえっち/妄想族": "https://www.mousouzoku-av.com/contents/maker/id403/logo_l.jpg",
+    "山と空/妄想族": "https://www.mousouzoku-av.com/contents/maker/id416/logo_l.jpg",
     # 直撇号是账本 canonical_name 的写法；弯撇号那一份是别名，过 `safe_name` 同样落到
     # `AVS_collector_s`，按哪一种写都取得到同一个文件。
     "AVS collector's": "https://www.mousouzoku-av.com/contents/maker/id358/logo_l.jpg",
+    # 官网 `ks-p.com` 上的 120×120 方标。同站另有一张 376×82 的横版字标 `ks_logo.jpg`，
+    # 烤成方图后字只占中间一窄条；X 头像只有 96 px（2026-09-23 实测）。
+    "OFFICE K'S": "https://ks-p.com/wp-content/uploads/2019/10/label001.jpg",
 }
 
 
@@ -235,12 +243,15 @@ WORDMARK_SOURCES: dict[str, str] = {
     # 落地 200×200，展会那份是 413×413。用户 2026-09-22 看过两版后仍指定名录版——
     # 展会图是 2017 年那一届交的，名录版是厂牌现在挂在自己站上的那一枚。
     "ラグジュTV": "https://www.prestige-av.com/api/media/maker/banner-lux.jpg",
-    # 下面三家是 KMP 旗下 label，`/label` 名录给的是 SVG。矢量没有固有像素，栅格到
+    # 下面五家是 KMP 旗下 label，`/label` 名录给的是 SVG。矢量没有固有像素，栅格到
     # `link_marks.VECTOR_RASTER_SIZE` 就是 512×192，烤方落地 512×512，比展会那批
     # 416～421 的位图大且是矢量源（2026-09-22 实测）。白字标由 `bake_square` 配深底。
+    # 后两家此前没有图，账本 catalog 链接即名录的 `?works=sq`／`?works=real`。
     "million": "https://www.km-produce.com/img2018/label/million/logo.svg",
     "BAZOOKA": "https://www.km-produce.com/img2018/label/bazooka/logo.svg",
     "俺の素人": "https://www.km-produce.com/img2018/label/oreshiro/logo.svg",
+    "S級素人": "https://www.km-produce.com/img2018/label/sq/logo.svg",
+    "Real Works": "https://www.km-produce.com/img2018/label/real/logo.svg",
 }
 
 
@@ -269,8 +280,13 @@ ICON_SOURCES: dict[str, str] = {
 #: `Diaz Group`：名录只给了招募站 `diaz-recruit.com`，那是 STUDIO 建站、JS 渲染的
 #: 页面，静态 HTML 不链集团官网，站点图标是建站平台的「/S」。集团官网 `diaz-g.com`
 #: header 里是一张 147×27 的矢量字标（用户 2026-09-23 指定）。
+#:
+#: `Luminous Promotion`：2022 年由 BELLTECH 改屋号，账本 official 里旧站
+#: `belltech-pro.com` 排在前面，自动发现取到的是旧屋号字标。新站 header 是 1741×532
+#: 的透明底字标（2026-09-23 实测）。
 AGENCY_WORDMARK_SOURCES: dict[str, str] = {
     "Diaz Group": "https://diaz-g.com/assets/img/diaz_logo.svg",
+    "Luminous Promotion": "https://luminous-pro.tokyo/img/logo.png",
 }
 
 
