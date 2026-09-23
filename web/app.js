@@ -548,11 +548,13 @@ appSettings.miniplayer=appSettings.miniplayer!==false;
 appSettings.uiSounds=appSettings.uiSounds!==false;
 appSettings.feedAutoScroll=appSettings.feedAutoScroll!==false;
 /* 新作那一行收不收合集由服务端按账本里的设置筛（列表、未读数、补封面同一份），这里只是
-   镜像：开关的真相在 `/api/settings`。默认收起大合集、单人合集照列。 */
+   镜像：开关的真相在 `/api/settings`。默认收起大合集与切片、单人合集照列。 */
 const FEED_COMPILATION_SWITCHES=[['feedHideGroupSetting','feedHideGroupCompilations','大合集'],
-  ['feedHideSoloSetting','feedHideSoloCompilations','单人合集']];
+  ['feedHideSoloSetting','feedHideSoloCompilations','单人合集'],
+  ['feedHideExcerptSetting','feedHideExcerpts','切片']];
 appSettings.feedHideGroupCompilations=appSettings.feedHideGroupCompilations!==false;
 appSettings.feedHideSoloCompilations=appSettings.feedHideSoloCompilations===true;
+appSettings.feedHideExcerpts=appSettings.feedHideExcerpts!==false;
 appSettings.searchHistoryLimit=boundedPreference(+appSettings.searchHistoryLimit,0,50,10);
 appSettings.relatedLimit=boundedPreference(+appSettings.relatedLimit,0,60,20);
 const METADATA_REFRESH_DAYS=[0,7,30,90];

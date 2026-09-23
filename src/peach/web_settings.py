@@ -18,7 +18,7 @@ import json
 import time
 from typing import Protocol
 
-from .feeds import DEFAULT_HIDDEN_COMPILATIONS, GROUP_COMPILATION, SOLO_COMPILATION
+from .feeds import DEFAULT_HIDDEN_COMPILATIONS, EXCERPT, GROUP_COMPILATION, SOLO_COMPILATION
 
 DEFAULT_PROFILE_ID = "local-default"
 
@@ -53,11 +53,13 @@ DEFAULT_FOLLOW_INITIAL_DAYS = 30
 SYNCED_SETTING_KEYS = frozenset({
     "sidebarOrder", "metadataRefreshDays", "followInitialDays", "postSetupTutorialDone",
     "organizeTemplates", "feedHideGroupCompilations", "feedHideSoloCompilations",
+    "feedHideExcerpts",
 })
-#: 两个合集开关的键与各自对应的那一类，缺省值取 `feeds.DEFAULT_HIDDEN_COMPILATIONS`。
+#: 三个收起开关的键与各自对应的那一类，缺省值取 `feeds.DEFAULT_HIDDEN_COMPILATIONS`。
 FEED_COMPILATION_SWITCHES = (
     ("feedHideGroupCompilations", GROUP_COMPILATION),
     ("feedHideSoloCompilations", SOLO_COMPILATION),
+    ("feedHideExcerpts", EXCERPT),
 )
 
 

@@ -65,18 +65,26 @@ COMPILATION_PERFORMERS = 8
 #: 可能正想要；大合集是一串人的片段拼起来卖。两类各有一个开关，默认只收起大合集。
 SOLO_COMPILATION = "solo"
 GROUP_COMPILATION = "group"
-DEFAULT_HIDDEN_COMPILATIONS = frozenset({GROUP_COMPILATION})
+#: 切片：把已经出过的正片剪成十几分钟单卖。ハイライト 的 HIGM-218 就是 MRSS-124 里的
+#: 一段，122 分钟剪成 13 分钟、封面印着「¥99」（2026-09-23 对过 DMM 的片长与封面）。
+#: 片名照抄原片的剧情名，标题记号认不出来，只能按厂牌认。
+EXCERPT = "excerpt"
+EXCERPT_STUDIOS = frozenset({"ハイライト"})
+DEFAULT_HIDDEN_COMPILATIONS = frozenset({GROUP_COMPILATION, EXCERPT})
 
 
-def compilation_kind(title: str | None, performers: str | None) -> str | None:
-    """这部新作是哪一类合集：`solo`、`group`，不是合集为 None。
+def compilation_kind(title: str | None, performers: str | None,
+                     studio: str | None = None) -> str | None:
+    """这部新作是哪一类合集：`solo`、`group`、`excerpt`，不是合集为 None。
 
     新作那一行是给「她出了什么新片」看的，合集里的片段多半早就出过。判据只看壳上已有
     的标题与出演名单，读的时候现算，壳上不存（ADR-0042）：规则或开关改了，已经取回的壳
     跟着变，不用重刮。名单只列一个人、标题带精选记号或片长到四小时的是单人合集；名单
-    没取到时按记号与片长算大合集，名单到八人起不看标题也是大合集。
+    没取到时按记号与片长算大合集，名单到八人起不看标题也是大合集。切片厂牌先于这些判。
     """
-    names = [name for name in (performers or "").split("、") if name.strip()]
+    if str(studio or "").strip() in EXCERPT_STUDIOS:
+        return EXCERPT
+    names =[name for name in (performers or "").split("、") if name.strip()]
     text = title or ""
     marked = (bool(_COMPILATION_TITLE.search(text))
               or any(int(hours) * 60 >= COMPILATION_MINUTES for hours in _HOURS.findall(text))
@@ -92,7 +100,8 @@ def register_functions(connection: sqlite3.Connection,
                        hidden: frozenset[str] = DEFAULT_HIDDEN_COMPILATIONS) -> None:
     """把「这条收起不列」挂到这条连接上，SQL 里按同一份实现筛，分页的条数才对得上。"""
     connection.create_function(
-        "is_feed_hidden", 2, lambda title, performers: compilation_kind(title, performers) in hidden,
+        "is_feed_hidden", 3,
+        lambda title, performers, studio: compilation_kind(title, performers, studio) in hidden,
         deterministic=True)
 
 

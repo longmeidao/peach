@@ -301,7 +301,7 @@ DISCOVERY_LIMIT = 24
 LISTED = (
     "NOT EXISTS (SELECT 1 FROM asset a WHERE a.code IS NOT NULL"
     " AND normalise_code_key(a.code)=normalise_code_key(d.code))",
-    "NOT is_feed_hidden(d.title,d.performers)",
+    "NOT is_feed_hidden(d.title,d.performers,d.studio)",
 )
 
 
