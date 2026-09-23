@@ -168,11 +168,8 @@ export async function importTasteExport(file: File): Promise<{ dashboard: TasteD
   return payload as { dashboard: TasteData };
 }
 
-/** 任务在跑时两秒一次，闲着十秒一次——这一趟可以从别的页面或上一次会话里起来。 */
-export const RUNNING_POLL_MS = 2000;
+/** 读取闲着时十秒问一次——这一趟可以从别的页面或上一次会话里起来。 */
 export const IDLE_POLL_MS = 10_000;
-export const jobPollInterval = (job: TasteJob | undefined): number =>
-  (job?.status === 'running' ? RUNNING_POLL_MS : IDLE_POLL_MS);
 
 export const tasteDate = (value: string | null | undefined): string =>
   (value ? new Date(value).toLocaleDateString('zh-CN') : '—');

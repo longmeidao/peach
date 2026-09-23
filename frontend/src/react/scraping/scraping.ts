@@ -70,9 +70,6 @@ export interface AmaneBridge {
   job: CoverJob;
 }
 
-/** 在跑的时候两秒问一次，和别的后台任务同一个节律；停了就不再问。 */
-export const COVER_POLL_MS = 2000;
-
 /** Netscape Cookie 文件的上限。再大的多半不是 Cookie 文件，先拦住再说。 */
 export const COOKIE_TEXT_LIMIT = 256 * 1024;
 

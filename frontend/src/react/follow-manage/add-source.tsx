@@ -20,16 +20,16 @@ import { Input } from '@/components/base/input/input';
 import { cx } from '@/utils/cx';
 
 import { errorMessage } from '../../api';
+import { useBackgroundJob } from '../background-job';
 import { cardClass } from '../components/card';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
-import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import { ExternalLink, FieldLabel, Help } from '../settings/section';
 import {
   addSource, fetchResolveJob, fetchSuggestions, FOLLOW_RESOLVE_KEY, followSuggestKey,
-  jobPollInterval, reloadFollowManage, startCheck, startResolve, SUGGEST_DEBOUNCE_MS,
+  reloadFollowManage, startCheck, startResolve, SUGGEST_DEBOUNCE_MS,
   type CredentialData, type FollowData, type ResolveCandidate, type ResolveJob, type ResolveRow,
 } from './follow-manage';
 import { SourceIcon } from './source-view';
@@ -201,8 +201,6 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set<string>());
   const [unpicked, setUnpicked] = useState<ReadonlySet<string>>(new Set<string>());
   const [problem, setProblem] = useState('');
-  const [tracking, setTracking] = useState(false);
-  const [outcome, setOutcome] = useState<ResolveJob | null>(null);
   const [added, setAdded] = useState(0);
 
   /* 每一下输入都排一次建议，但只发一次请求：250ms 内继续敲就换掉上一次的排期。
@@ -224,36 +222,16 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
     group.items.map((item) => ({ value: item.value, label: item.matched || item.value, group: group.label }))
   )), [suggest.data]);
 
-  const job = useQuery({
+  const { job, running, outcome, start: resolve, dismiss } = useBackgroundJob<ResolveJob, string>({
     queryKey: FOLLOW_RESOLVE_KEY,
     queryFn: ({ signal }) => fetchResolveJob(signal),
-    refetchInterval: (query) => jobPollInterval(query.state.data),
-  });
-  const running = job.data?.status === 'running';
-
-  const resolve = useMutation({
-    mutationFn: (text: string) => startResolve([text]),
-    onSuccess: (started) => {
-      setTracking(true);
-      setOutcome(null);
-      setUnpicked(new Set());
-      /* 同检查那一趟：先把这一趟的快照换进缓存，上一趟的终态才不会在重读回来之前冒充结果，
-         这一趟在重读之前就跑完时也不会被那份旧快照顶掉。 */
-      queryClient.setQueryData(FOLLOW_RESOLVE_KEY, started);
-      void queryClient.invalidateQueries({ queryKey: FOLLOW_RESOLVE_KEY, exact: true });
-    },
+    start: (text) => startResolve([text]),
+    onStarted: () => setUnpicked(new Set()),
     onError: (cause) => setProblem(errorMessage(cause)),
+    onFinish: (state) => {
+      if (state.status === 'failed') setProblem(state.error || '查找失败');
+    },
   });
-
-  useEffect(() => {
-    const state = job.data;
-    if (!state) return;
-    if (state.status === 'running') { if (!tracking) setTracking(true); return }
-    if (!tracking) return;
-    setTracking(false);
-    setOutcome(state);
-    if (state.status === 'failed') setProblem(state.error || '查找失败');
-  }, [job.data, tracking]);
 
   const search = (text: string) => {
     const query = text.trim();
@@ -318,7 +296,7 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
       void reloadFollowManage();
       if (result.failures.length) { setProblem(result.failures.join('；')); return }
       setProblem('');
-      setOutcome(null);
+      dismiss();
       toast(`已添加 ${result.sources.length} 个关注来源`);
     },
     onError: (cause) => setProblem(errorMessage(cause)),
@@ -355,9 +333,9 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
       </div>
 
       <div aria-live="polite" className="flex flex-col gap-3 empty:hidden">
-        {running || resolve.isPending ? (job.data?.total
-          ? <Progress label={job.data.message || `查找中：${job.data.checked || 0}/${job.data.total}`}
-              value={job.data.checked || 0} max={job.data.total} />
+        {running || resolve.isPending ? (job?.total
+          ? <Progress label={job.message || `查找中：${job.checked || 0}/${job.total}`}
+              value={job.checked || 0} max={job.total} />
           : <LoadingDots label={byName ? BY_NAME_HINT : BY_LINK_HINT} />) : null}
         {problem ? <Note tone="error" title="这一次没有完成">{problem}</Note> : null}
       </div>
@@ -378,7 +356,7 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
               {...busyProps(register.isPending)}
               onClick={() => register.mutate(picked)}>{`添加选中（${picked.length}）`}</Button>
             <Button variant="secondary" size="small"
-              onClick={() => setOutcome(null)}>关闭</Button>
+              onClick={() => dismiss()}>关闭</Button>
             {register.isPending ? (
               <span role="status" className="text-body-2-regular text-text-secondary">
                 {`添加中… ${added}/${picked.length}`}

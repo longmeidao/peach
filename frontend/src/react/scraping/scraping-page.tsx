@@ -4,13 +4,9 @@
  * - **写操作是 `useMutation`**，不进 Query 的缓存节律。保存成功后用 `setQueryData` 把服务端
  *   回的那一条换进列表，而不是把整页重取一遍：用户可能正在填另一张卡，重取会把它一起重画。
  *   失败只在卡内留一句原因，缓存里的上一份数据不动。
- * - **后台任务是按状态开关的 `refetchInterval`**：跑起来两秒一次，停了就不问。轮询跟着组件走，
- *   遗留壳换页时卸根，它自己就停了。
- *
- * 还有一条只在有后台任务的页面才成立：**首屏读到的旧结果不冒充新结果**。抓封面关掉页面
- * 照样在跑，所以任务状态里常年躺着上一趟的回执；它是那一刻的快照，铺开会被读成刚刚跑完。
- * 只有本次启动过、或者本次亲眼见过它在跑，终态才画成结果并发回执。 */
-import { useEffect, useRef, useState } from 'react';
+ * - **后台任务走 `useBackgroundJob`**：跑起来两秒一次，停了就不问，首屏读到的旧终态不冒充
+ *   新结果。轮询跟着组件走，遗留壳换页时卸根，它自己就停了。 */
+import { useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { RiArrowRightLine } from '@remixicon/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -24,6 +20,7 @@ import { Input } from '@/components/base/input/input';
 import { Select, SelectItem } from '@/components/base/select/select';
 
 import { apiSend, errorMessage } from '../../api';
+import { useBackgroundJob } from '../background-job';
 import type { ScrapingProps } from '../bundle';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
@@ -36,7 +33,7 @@ import {
 import { busyProps } from '../settings/use-action';
 import {
   AMANE_BRIDGE_CHECK_URL, AMANE_BRIDGE_KEY, AMANE_BRIDGE_REBUILD_URL,
-  checkText, COOKIE_TEXT_LIMIT, COVER_JOB_KEY, COVER_POLL_MS, fetchAmaneBridge, fetchCoverJob,
+  checkText, COOKIE_TEXT_LIMIT, COVER_JOB_KEY, fetchAmaneBridge, fetchCoverJob,
   fetchSources, SCRAPING_CHECK_URL, SCRAPING_COVER_URL, SCRAPING_KEY, SCRAPING_SETTINGS_URL,
   type AmaneBridge, type Check, type CoverJob, type ScrapingData, type Source,
 } from './scraping';
@@ -225,42 +222,14 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
 /** 按番号补一张高清封面。这一趟在后台跑，页面上留状态。 */
 function CoverCard({ toast }: ScrapingProps) {
   const [code, setCode] = useState('');
-  /** 本次是不是在跟一趟：启动过，或者本次见过它在跑。 */
-  const [tracking, setTracking] = useState(false);
-  /** 本次跟完的那一趟。首屏读到的旧终态不算，它不会走到这里。 */
-  const [outcome, setOutcome] = useState<CoverJob | null>(null);
-
-  const job = useQuery({
+  const { running, outcome, start } = useBackgroundJob<CoverJob>({
     queryKey: COVER_JOB_KEY,
     queryFn: ({ signal }) => fetchCoverJob(signal),
-    refetchInterval: (query) => (query.state.data?.status === 'running' ? COVER_POLL_MS : false),
-  });
-  const start = useMutation({
-    mutationFn: () => apiSend<CoverJob>(SCRAPING_COVER_URL, { code }),
-    onSuccess: (started) => {
-      setTracking(true);
-      setOutcome(null);
-      /* 启动的那一次回的就是这一趟的快照，先换进缓存再重读：缓存里还躺着上一趟的终态，重读
-         回来之前它会先被当成这一趟的回执报出去；这一趟在重读之前就跑完时，也会被它顶掉。 */
-      queryClient.setQueryData(COVER_JOB_KEY, started);
-      void queryClient.invalidateQueries({ queryKey: COVER_JOB_KEY });
+    start: () => apiSend<CoverJob>(SCRAPING_COVER_URL, { code }),
+    onFinish: (state) => {
+      if (state.status === 'complete') toast(state.result || '封面采集完成');
     },
   });
-
-  const status = job.data?.status ?? 'idle';
-  const running = status === 'running';
-  useEffect(() => {
-    const state = job.data;
-    if (!state) return;
-    if (state.status === 'running') {
-      if (!tracking) setTracking(true);
-      return;
-    }
-    if (!tracking) return;
-    setTracking(false);
-    setOutcome(state);
-    if (state.status === 'complete') toast(state.result || '封面采集完成');
-  }, [job.data, tracking, toast]);
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -297,41 +266,22 @@ function CoverCard({ toast }: ScrapingProps) {
 /** amane 桥：钉在哪个 revision、venv 建没建、上游最新到哪。升级是人读 diff 之后改清单，
  *  这张卡只做两件事：问一下上游最新版，和按钉住的版本重建 venv。 */
 function AmaneBridgeCard({ toast }: ScrapingProps) {
-  const [tracking, setTracking] = useState(false);
-  const [outcome, setOutcome] = useState<CoverJob | null>(null);
-  const bridge = useQuery({
+  const { query: bridge, running, outcome, start: rebuild } = useBackgroundJob<CoverJob, void, AmaneBridge>({
     queryKey: AMANE_BRIDGE_KEY,
     queryFn: ({ signal }) => fetchAmaneBridge(signal),
-    refetchInterval: (query) => (query.state.data?.job.status === 'running' ? COVER_POLL_MS : false),
+    start: () => apiSend<CoverJob>(AMANE_BRIDGE_REBUILD_URL, {}),
+    // 这个键缓存的是整张卡，这一趟的快照只换进 `job` 那一格。
+    jobOf: (card) => card.job,
+    withJob: (card, started) => card && { ...card, job: started },
+    onFinish: (state) => {
+      if (state.status === 'complete') toast(state.result || 'amane 桥已重建');
+    },
   });
   const check = useMutation({
     mutationFn: () => apiSend<{ latest: string }>(AMANE_BRIDGE_CHECK_URL, {}),
   });
-  const rebuild = useMutation({
-    mutationFn: () => apiSend<CoverJob>(AMANE_BRIDGE_REBUILD_URL, {}),
-    onSuccess: (started) => {
-      setTracking(true);
-      setOutcome(null);
-      // 同封面那一趟；这个键缓存的是整张卡，这一趟的快照只换进 `job` 那一格。
-      queryClient.setQueryData<AmaneBridge>(AMANE_BRIDGE_KEY, (current) => current && { ...current, job: started });
-      void queryClient.invalidateQueries({ queryKey: AMANE_BRIDGE_KEY });
-    },
-  });
 
   const data = bridge.data;
-  const job = data?.job;
-  const running = job?.status === 'running';
-  useEffect(() => {
-    if (!job) return;
-    if (job.status === 'running') {
-      if (!tracking) setTracking(true);
-      return;
-    }
-    if (!tracking) return;
-    setTracking(false);
-    setOutcome(job);
-    if (job.status === 'complete') toast(job.result || 'amane 桥已重建');
-  }, [job, tracking, toast]);
 
   if (!data) {
     return bridge.error
