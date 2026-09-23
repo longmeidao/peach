@@ -27,6 +27,10 @@ SOCIAL_HOSTS = ("x.com", "twitter.com", "instagram.com", "tiktok.com", "youtube.
 #: `blog.dmm.co.jp` 同样是博客托管——它们不在表里时都走了 official 分支，被贴上事务所名。
 BLOG_HOSTS = ("ameblo.jp", "lineblog.me", "note.com", "livedoor.jp", "livedoor.biz",
               "hatenablog.com", "plaza.rakuten.co.jp", "blog.dmm.co.jp")
+#: 网页存档。关门的公司（ONE'S DOUBLE、AINA）官网只剩快照，那一条照样记成 official，
+#: 可它的主机是存档站自己：拿它认域名归属，存档站就成了最后写入那家公司的站；拿它
+#: 取标识，每一家都会顶着 Internet Archive 的图标。认归属、取标识的地方都先问这里。
+ARCHIVE_HOSTS = ("web.archive.org",)
 PLATFORM_NAMES = {("x.com", "twitter.com"): "X", ("instagram.com",): "Instagram",
                   ("tiktok.com",): "TikTok", ("youtube.com",): "YouTube",
                   ("facebook.com",): "Facebook", ("linktr.ee",): "Linktree"}
@@ -65,6 +69,11 @@ def under(host: str, domains: tuple[str, ...]) -> bool:
 
 def host_of(url: str) -> str:
     return (urlsplit(url).hostname or "").casefold().removeprefix("www.")
+
+
+def is_archive(url: str) -> bool:
+    """这条链接是不是指向网页存档里的快照。"""
+    return under(host_of(url), ARCHIVE_HOSTS)
 
 
 def canonical_url(url: str) -> str:
@@ -180,6 +189,8 @@ def host_owners(connection: sqlite3.Connection) -> dict[str, str]:
         " WHERE e.kind='performer' AND l.link_kind='official' AND l.hostname<>''"
     ):
         host = owner_key(host)
+        if under(host, ARCHIVE_HOSTS):
+            continue
         votes.setdefault(host, {})[label] = votes.setdefault(host, {}).get(label, 0) + 1
     for host, tally in votes.items():
         label, count = max(tally.items(), key=lambda item: item[1])
@@ -192,7 +203,8 @@ def host_owners(connection: sqlite3.Connection) -> dict[str, str]:
         "SELECT hostname,canonical_name FROM entity_link l JOIN entity e ON e.id=l.entity_id"
         " WHERE e.kind='studio' AND l.link_kind='official' AND l.hostname<>''"
     ):
-        owners[owner_key(host)] = name
+        if not under(owner_key(host), ARCHIVE_HOSTS):
+            owners[owner_key(host)] = name
     return owners
 
 

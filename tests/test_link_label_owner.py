@@ -74,6 +74,12 @@ class HostOwnerTests(LedgerFixture):
         self.assertEqual(owner_key("www.prestige-av.com"), "prestige-av.com")
         self.assertNotIn("www.prestige-av.com", owners)
 
+    def test_an_archived_official_site_does_not_hand_the_archive_to_a_studio(self):
+        """关门厂牌的官网只剩存档快照，存档站本身不归任何一家。"""
+        self.link(1, "official", "Prestige 官网存档（2015-01）",
+                  "https://web.archive.org/web/20150101000000/http://www.prestige-av.com/")
+        self.assertNotIn("web.archive.org", host_owners(self.con))
+
 
 class LabelRepairTests(LedgerFixture):
     def test_an_agency_label_on_a_studio_domain_is_rewritten(self):

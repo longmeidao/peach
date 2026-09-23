@@ -83,6 +83,7 @@ from peach.http import HttpRequest, HttpxTransport
 from peach.scripting import RateLimiter
 from peach.config import GENERATED_DIR, REVIEW_DIR, STATE_DIR
 from peach.review_csv import write_rows
+from peach.social_links import is_archive
 
 
 FIELDS = ("entity_id", "studio", "safe", "variant", "installed", "original_size",
@@ -476,6 +477,9 @@ def studio_links(connection: sqlite3.Connection,
         " ORDER BY e.canonical_name, l.id", (kind, *kinds)).fetchall()
     grouped: dict[str, list[dict[str, str]]] = {}
     for row in rows:
+        # 存档快照上取到的是存档站自己的图标。
+        if is_archive(row["url"]):
+            continue
         grouped.setdefault(safe_name(row["canonical_name"]), []).append(
             {"entity_id": row["id"], "studio": row["canonical_name"],
              "link_kind": row["link_kind"], "url": row["url"]})
