@@ -2299,7 +2299,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('"brand-minnano", "mark-javdb",', generator)
 
     def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
-        self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
+        self.assertPageContains("const kind=ROUTE_ENTITIES[path.split('/')[1]],name=path.split('/').slice(2).join('/');")
         self.assertPageContains('showEntityLoading(kind,name);')
         self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
         self.assertPageContains('mountDetailPlayer(it,vv,appSettings.detailAutoplay)')
@@ -6973,7 +6973,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_agency_page_opens_on_its_roster(self):
         """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
         self.assertPageContains("let agencyRosterView='people',agencyRoster=[];")
-        self.assertCode("  agencyRosterView='people';\n  const seq=++entityRequestSeq;")
+        self.assertCode("  entityJavLayout=false;\n  agencyRosterView='people';")
         self.assertCode("if(entityViewNow(kind)==='people')renderAgencyRoster(roster);")
 
     def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):

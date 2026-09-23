@@ -338,7 +338,11 @@ def q_feed_discoveries(contract, args) -> dict:
         studios = {name: _studio_name(connection, name)
                    for name in {row["studio"] for row in rows[:limit]} if name}
     more = len(rows) > limit
-    return {"ok": True, "more": more, "items": [{
+    # 最近一轮取新作资料里封面断在连接上的部数。只看最近这一轮：换了线路之后下一轮取到，
+    # 提示就该跟着消失，而不是让一次旧故障一直挂在页面上。
+    last = contract.task_runs.query(status="succeeded", task_key=feed_followup.TASK_KEY, limit=1)
+    cover_network = int(last[0].result_summary.get("cover_network") or 0) if last else 0
+    return {"ok": True, "more": more, "cover_network": cover_network, "items": [{
         "id": int(row["id"]),
         "code": row["code"],
         "title": row["title"],
@@ -358,33 +362,13 @@ def q_feed_discoveries(contract, args) -> dict:
     } for row in rows[:limit]]}
 
 
-def q_feed_rows(contract, args) -> dict:
-    """资料页上会出现新作那一行的实体，连同规范名与全部别名。
-
-    骨架在资料到达之前就要知道这一页有没有那一行：不留位，整页画出来时那一行从中间
-    顶进来；每页都留，没有新作的又得在画出来时收掉。判据和按人取新作的那一份同一套
-    （`LISTED`、未忽略），名单放在服务端，换一台设备打开也是同一份。页面按地址里的
-    名字比对，所以别名一起给：从别名链接进来的那一页也认得出是同一位。
-    """
-    hidden = web_settings.hidden_compilations(contract.database)
-    with contract.database.read_connection() as connection:
-        feeds.register_functions(connection, hidden)
-        rows = connection.execute(
-            "SELECT e.id, e.kind, e.canonical_name FROM entity e WHERE e.id IN ("
-            "SELECT de.entity_id FROM feed_discovery_entity de"
-            " JOIN feed_discovery d ON d.id=de.discovery_id"
-            f" WHERE d.ignored_at IS NULL AND {' AND '.join(LISTED)})"
-            " ORDER BY e.id").fetchall()
-        names = {int(row["id"]): [row["canonical_name"]] for row in rows}
-        for alias in connection.execute(
-                "SELECT entity_id, alias FROM entity_alias WHERE entity_id IN"
-                f" ({','.join('?' * len(names))}) ORDER BY entity_id, alias",
-                tuple(names)).fetchall() if names else ():
-            if alias["alias"] not in names[int(alias["entity_id"])]:
-                names[int(alias["entity_id"])].append(alias["alias"])
-    return {"ok": True, "entities": [
-        {"id": int(row["id"]), "kind": row["kind"], "names": names[int(row["id"])]}
-        for row in rows]}
+def feed_row_entity_ids(contract, connection) -> set[int]:
+    """资料页上会出现新作那一行的实体：判据和按人取新作的那一份同一套（`LISTED`、未忽略）。"""
+    feeds.register_functions(connection, web_settings.hidden_compilations(contract.database))
+    return {int(row[0]) for row in connection.execute(
+        "SELECT DISTINCT de.entity_id FROM feed_discovery_entity de"
+        " JOIN feed_discovery d ON d.id=de.discovery_id"
+        f" WHERE d.ignored_at IS NULL AND {' AND '.join(LISTED)}")}
 
 
 def _studio_name(connection, name: str) -> str:

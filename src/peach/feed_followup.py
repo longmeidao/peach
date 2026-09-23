@@ -234,12 +234,19 @@ def _scrape_fields(contract, provider, row) -> bool:
 
 
 def run(contract, key: str, handle) -> dict:
-    """跑一批取资料。返回的摘要就是活动页上那一行：几部、取到几部、装上几张封面。"""
+    """跑一批取资料。返回的摘要就是活动页上那一行：几部、取到几部、装上几张封面。
+
+    封面断在连接上的几部另记 `cover_network`：这一类换条线路就能取到，新作页据此提示
+    去配来源的连接方式，而不是让人以为官方没出图。
+    """
+    import httpx
+
+    from .jav_cover_fetch import CoverConnectError
     from .library_processing import LibraryMetadataProvider
 
     codes = parse_key(key)
     provider = None
-    fetched = missed = covers = 0
+    fetched = missed = covers = unreachable = 0
     for index, code in enumerate(codes):
         handle.progress(current=index, total=len(codes),
                         label=f"{TASK_LABEL}：{code}", throttle=0)
@@ -262,6 +269,8 @@ def run(contract, key: str, handle) -> dict:
                 "SELECT cover_url FROM feed_discovery WHERE id=?", (int(row["id"]),)).fetchone()
         try:
             covers += _install_cover(contract, code, cover_url[0] if cover_url else None)
+        except (CoverConnectError, httpx.TransportError):
+            unreachable += 1
         except Exception:  # noqa: BLE001 - 取不到封面这一部照样有资料，下一轮再试
             pass
         # 封面取没取到都记下这一次尝试，`backlog` 按它隔 `RETRY_AFTER` 再试。
@@ -270,7 +279,10 @@ def run(contract, key: str, handle) -> dict:
                                (feeds.stamp(), int(row["id"])))
     handle.progress(current=len(codes), total=len(codes), label=TASK_LABEL, throttle=0)
     contract.cache_bust()
-    return {"total": len(codes), "ok": fetched, "miss": missed, "covers": covers}
+    summary = {"total": len(codes), "ok": fetched, "miss": missed, "covers": covers}
+    if unreachable:
+        summary["cover_network"] = unreachable
+    return summary
 
 
 #: 写账本：壳与实体关联都在 `ledger.db` 里，所以它走串行那条通道。

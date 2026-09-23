@@ -344,3 +344,22 @@ class ScrapingAccessTests(unittest.TestCase):
             self.assertEqual(result["reason"], reason)
             self.assertNotIn("secret", json.dumps(result))
             self.assertNotIn("可能需要代理", result["error"])
+
+    def test_unreachable_dmm_image_hosts_point_at_the_connection_setting(self):
+        """中国移动宽带直连 DMM 图片主机大多在握手后被断开：封面比较和连接检查都要把人
+        指到 DMM / FANZA 的连接方式上，而不是说官方没有图、或让人去官网登录。"""
+        from peach.web_scraping import MOBILE_BROADBAND_HINT, _fetch_cover
+        from peach.jav_cover_fetch import HOSTS_UNREACHABLE, CoverConnectError
+        contract = SimpleNamespace(cover_root=self.root, candidate_root=self.root,
+                                   follow_secrets_root=self.root / "secrets", follow_sources_root=self.root)
+        with patch("peach.jav_cover_fetch.best_cover", side_effect=CoverConnectError(HOSTS_UNREACHABLE)), \
+                patch("peach.web_scraping.SourceTransport"):
+            result = _fetch_cover(contract, "ABW-232")
+        self.assertEqual(result["reason"], "network")
+        self.assertIn(MOBILE_BROADBAND_HINT, result["error"])
+        with patch("peach.web_scraping.SourceTransport") as factory:
+            factory.return_value.side_effect = httpx.ConnectError("EOF occurred in violation of protocol")
+            checks = {item["label"]: item for item in
+                      w_scraping_check(SimpleNamespace(follow_secrets_root=self.root), {"source": "dmm"})["results"]}
+        self.assertIn(MOBILE_BROADBAND_HINT, checks["高清图片 CDN"]["message"])
+        self.assertNotIn(MOBILE_BROADBAND_HINT, checks["来源页面"]["message"])

@@ -79,6 +79,7 @@ class FeedWebFixture(unittest.TestCase):
         # 封面装进临时封面目录；取图那一步同样替掉，换成一张现画的横版封套。
         self.contract.cover_root = Path(self.temporary.name) / "covers"
         self.cover_misses: set[str] = set()
+        self.cover_unreachable: set[str] = set()
         self.cover_urls: dict[str, str | None] = {}
         self._fetch_cover = feed_followup.fetch_cover
         feed_followup.fetch_cover = self._fake_cover
@@ -88,6 +89,9 @@ class FeedWebFixture(unittest.TestCase):
         self.cover_urls[code] = cover_url
         if code in self.cover_misses:
             raise RuntimeError("官方渠道没有这个番号的封面")
+        if code in self.cover_unreachable:
+            from peach.jav_cover_fetch import HOSTS_UNREACHABLE, CoverConnectError
+            raise CoverConnectError(HOSTS_UNREACHABLE)
         from PIL import Image
         image = Image.new("RGB", (800, 538), (40, 40, 40))
         image.paste((200, 120, 150), (420, 0, 800, 538))
@@ -280,7 +284,7 @@ class FeedWebTest(FeedWebFixture):
                                   {"entity": entity_id + 1})
         self.assertEqual(nobody["items"], [])
 
-    def test_the_row_list_names_whoever_still_has_a_listed_new_release(self):
+    def test_the_shape_list_names_whoever_still_has_a_listed_new_release(self):
         with self.contract.database.write_transaction() as connection:
             entity_id = int(connection.execute(
                 "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
@@ -289,17 +293,20 @@ class FeedWebTest(FeedWebFixture):
             connection.execute(
                 "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
                 " VALUES(?,'Eimi Fukada',peach_normalize('Eimi Fukada'),'test')", (entity_id,))
-        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds/rows", {})["entities"], [])
+        def rows():
+            return [entity for entity in dispatch_api_get(
+                self.contract, "/api/entity/shapes", {})["entities"] if "feed" in entity["parts"]]
+
+        self.assertEqual(rows(), [])
         self._add(entity_id=entity_id)
         self._check()
-        rows = dispatch_api_get(self.contract, "/api/feeds/rows", {})["entities"]
-        self.assertEqual(rows, [{"id": entity_id, "kind": "performer",
-                                 "names": ["深田えいみ", "Eimi Fukada"]}])
+        self.assertEqual(rows(), [{"id": entity_id, "kind": "performer",
+                                   "names": ["深田えいみ", "Eimi Fukada"], "parts": ["feed"]}])
         # 那几部都忽略掉，她的页面上就没有那一行了，名单跟着不再有她。
         ids = [item["id"] for item in dispatch_api_get(
             self.contract, "/api/feeds/discoveries", {"entity": entity_id})["items"]]
         dispatch_api_post(self.contract, "/api/feeds/discovery", {"action": "ignore", "ids": ids})
-        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds/rows", {})["entities"], [])
+        self.assertEqual(rows(), [])
 
     def test_removing_a_source_keeps_the_new_releases_it_found(self):
         self._add()
@@ -378,6 +385,20 @@ class FeedWebTest(FeedWebFixture):
         self.assertEqual(items["SSIS-950"]["poster_box"]["px"], [800, 538])
         self.assertFalse(items["HMN-071"]["has_cover"])
         self.assertIsNone(items["HMN-071"]["poster_box"])
+
+    def test_covers_cut_off_at_the_connection_are_counted_for_the_new_release_row(self):
+        """连不上图片主机的几部单独记数，列表把最近一轮的数带给页面去提示换线路；
+        官方没图的那几部不算进去。"""
+        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds/discoveries", {})["cover_network"], 0)
+        self.cover_unreachable.add("SSIS-950")
+        self.cover_misses.add("HMN-071")
+        self._add()
+        self._check()
+        self.assertEqual(self._drain(1), 1)
+        [run] = self.contract.task_runs.query(task_key=feed_followup.TASK_KEY)
+        self.assertEqual(run.result_summary,
+                         {"total": 2, "ok": 2, "miss": 0, "covers": 0, "cover_network": 1})
+        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds/discoveries", {})["cover_network"], 1)
 
     def test_the_cover_step_gets_the_address_the_scrape_just_wrote(self):
         """封面地址是同一轮取资料才写上壳的，取图那一步拿到的得是它，不是空的。"""

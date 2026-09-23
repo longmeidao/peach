@@ -101,7 +101,7 @@ const SUMMARY_LABELS: Record<string, string> = {
   written: '已写入', removed: '已移除', exit_code: '退出码', issue_count: '问题',
   followups: '派出后继', followups_duplicate: '已在排队', followups_truncated: '超上限未派',
   followups_depth_exceeded: '超深度未派', outcome: '结果', name: '实体',
-  matched: '图库命中', size: '尺寸', source: '来源',
+  matched: '图库命中', size: '尺寸', source: '来源', cover_network: '封面连不上图片主机',
 };
 
 /** 把一批任务按 `parent_run_id` 归到各自的父任务下。没有父的那些留在外面。 */

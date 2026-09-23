@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
-from peach import catalog_rules, jav_poster_crop, web_batch, web_catalog, web_stats
+from peach import catalog_rules, jav_poster_crop, web_batch, web_catalog, web_entity, web_stats
 from peach import web_contract as rm_web
 from peach.previews import entity_image_key, logo_key
 from support.ledger import fresh_ledger
@@ -891,7 +891,7 @@ class WebDataTests(unittest.TestCase):
             "/api/library-processing/issues",
             "/api/thumbnail-jobs", "/api/timeline", "/api/media-repair",
             "/api/scraping", "/api/scraping/cover", "/api/scraping/amane-bridge",
-            "/api/items", "/api/item", "/api/entity", "/api/photos", "/api/photo-set",
+            "/api/items", "/api/item", "/api/entity", "/api/entity/shapes", "/api/photos", "/api/photo-set",
             "/api/index", "/api/parts", "/api/editions", "/api/duplicates", "/api/quality-goals",
             "/api/stats", "/api/tops", "/api/ads", "/api/related", "/api/facets",
             "/api/suggest",
@@ -903,7 +903,7 @@ class WebDataTests(unittest.TestCase):
             "/api/links/prune", "/api/resource-sync/apply",
             "/api/follow/tags", "/api/follow/authors",
             "/api/taste", "/api/settings", "/api/links", "/api/organize",
-            "/api/feeds", "/api/feeds/check", "/api/feeds/discoveries", "/api/feeds/rows",
+            "/api/feeds", "/api/feeds/check", "/api/feeds/discoveries",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
             "/api/library-processing", "/api/thumbnail-jobs", "/api/media-repair",
@@ -1546,6 +1546,11 @@ class WebDataTests(unittest.TestCase):
         # 那排共演者是同一条两级取图链，取景也走同一份 sidecar。键必须在：没算过时
         # 是 None，页面据此维持几何居中，而键缺席会让页面读到 undefined。
         self.assertIn("avatar_focus", page["related_performers"][0])
+        # 骨架照这份名单给卡底留出同台艺人那一条，名单与资料页用同一条判据。
+        shapes = {entry["id"]: entry for entry in web_entity.q_entity_shapes(self.contract, {})["entities"]}
+        self.assertEqual(shapes[11], {"id": 11, "kind": "performer",
+                                      "names": ["Canonical Alice", "Alice"], "parts": ["costars"]})
+        self.assertEqual(shapes[15]["parts"], ["costars"])
         self.assertTrue(page["links"][0]["clickable"])
         self.assertFalse(page["links"][1]["clickable"])
         self.assertIsNone(page["links"][1]["url"])

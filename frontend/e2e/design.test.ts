@@ -1276,20 +1276,33 @@ describe('设计决定', () => {
     }
   });
 
-  it('有新作的人物页整页骨架里就留着新作那一行，数据到了一次换齐、行高不变、封面不再等第二遍', { timeout: 60_000 }, async () => {
+  it('人物页骨架第一帧就带着这一位有的新作行与同台艺人，数据到了一次换齐、高度不变、封面不再等第二遍', { timeout: 60_000 }, async () => {
     const name = '七沢みあ';
     const opened = await visit(browser, '/', DESKTOP);
     try {
-      await opened.page.route(/\/api\/feeds\/rows/, (route) => route.fulfill({ json: {
-        ok: true, entities: [{ id: 90_001, kind: 'performer', names: [name] }] } }));
+      await opened.page.route(/\/api\/entity\/shapes/, (route) => route.fulfill({ json: {
+        ok: true, entities: [{ id: 90_001, kind: 'performer', names: [name], parts: ['feed', 'costars'] }] } }));
+      // 骨架插进页面的那一刻就记下它带着哪几块：之后才补进去的，就是在骨架里跳了一下。
+      await opened.page.addInitScript(() => {
+        const first = { feed: null as boolean | null, foot: null as boolean | null };
+        (window as unknown as { skeletonFirst: typeof first }).skeletonFirst = first;
+        new MutationObserver(() => {
+          const skeleton = document.querySelector('[data-skeleton="entity/performer"]');
+          if (!skeleton || first.feed !== null) return;
+          first.feed = !!skeleton.querySelector('.feednew');
+          first.foot = !!skeleton.querySelector('.entityfoot');
+        }).observe(document, { childList: true, subtree: true });
+      });
       let release = () => {};
       const held = new Promise<void>((resolve) => { release = resolve; });
       await opened.page.route(/\/api\/entity\?/, async (route) => {
         await held;
         await route.fulfill({ json: {
           id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
-          user_aliases: [], asset_count: 0, tags: [], related_performers: [], links: [],
-          metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
+          user_aliases: [], asset_count: 0, tags: [],
+          related_performers: [{ id: 90_002, k: '共演者', n: 1, rep: null, has_image: false,
+            has_avatar: false, avatar_focus: null }],
+          links: [], metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
           representative_asset_id: null, entry_links: [], feed: { following: true },
         } });
       });
@@ -1310,11 +1323,24 @@ describe('设计决定', () => {
       await skeleton.locator('.feednew .feednewskeleton').first().waitFor({ timeout: 15_000 });
       const before = await skeleton.evaluate((element) => {
         const row = element.querySelector('.feednew')!;
+        const foot = element.querySelector('.entityhero > .entityfoot');
+        // 同一个 `.pic.imgwait` 放在新作那一行外面，它的微光就是全站等待态那一种。
+        const probe = document.createElement('div');
+        probe.className = 'pic imgwait';
+        document.querySelector('#main')!.append(probe);
+        const plain = getComputedStyle(probe, '::after').backgroundImage;
+        probe.remove();
         return { height: row.getBoundingClientRect().height,
+          footHeight: foot?.getBoundingClientRect().height ?? 0,
           between: !!row.previousElementSibling?.matches('[data-filter-frame]')
-            && !!row.nextElementSibling?.matches('.entitysection') };
+            && !!row.nextElementSibling?.matches('.entitysection'),
+          sheen: getComputedStyle(row.querySelector('.pic.imgwait')!, '::after').backgroundImage, plain,
+          first: (window as unknown as { skeletonFirst: { feed: boolean; foot: boolean } }).skeletonFirst };
       });
       assert.ok(before.between, '骨架里的新作那一行不在筛选框和作品之间');
+      assert.deepEqual(before.first, { feed: true, foot: true }, '骨架先画了一版，新作行或同台艺人是后来才补进去的');
+      assert.ok(before.footHeight > 0, '骨架的资料卡底没有同台艺人那一条');
+      assert.equal(before.sheen, before.plain, '新作骨架的微光另起了一种颜色');
       // 画好的页面上那一行一出现就得是真卡：再露一回它自己的骨架，就是同一行等了两遍。
       await opened.page.evaluate(() => {
         const seen = { second: false };
@@ -1329,8 +1355,10 @@ describe('设计决定', () => {
       const after = await row.evaluate((element) => ({
         height: element.getBoundingClientRect().height, busy: element.getAttribute('aria-busy'),
         waiting: element.querySelectorAll('[data-feed-id] .pic.imgwait').length,
+        footHeight: document.querySelector('.entityhero > .entityfoot')?.getBoundingClientRect().height ?? 0,
         second: (window as unknown as { feedSeen: { second: boolean } }).feedSeen.second }));
       assert.equal(after.height, before.height, '占位行和到货的那一行不一样高，下面的作品网格会跳');
+      assert.equal(after.footHeight, before.footHeight, '同台艺人那一条占位和真的不一样高，资料卡会伸缩');
       assert.equal(after.busy, null);
       assert.equal(after.second, false, '整页画出来之后新作那一行又单独骨架了一轮');
       assert.equal(after.waiting, 0, '骨架退场后封面格里又微光了一遍');

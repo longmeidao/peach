@@ -281,4 +281,29 @@ describe('路由冒烟', () => {
       await opened.close();
     }
   });
+
+  /* 最近一轮取封面断在连接上、这一行又还有没封面的卡时，行上方挂一条 Note 指去采集页。
+     一排「无封面」自己说不清是官方没出还是线路不通。 */
+  it('封面连不上图片主机时新作那一行上方指去配连接方式', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/stats', DESKTOP);
+    try {
+      await opened.page.route(/\/api\/feeds\/discoveries\?/, (route) => route.fulfill({ json: {
+        ok: true, more: false, cover_network: 3, items: [{
+          id: 1, code: 'MCSR-191', title: 'MCSR-191 示例作品', link: null, cover_url: null,
+          has_cover: false, cover_frame: null, poster_box: null, release_date: '2025-07-19',
+          studio: null, performers: null, read: false, ignored: false, scrape_error: null,
+        }] } }));
+      await opened.page.evaluate(() => {
+        history.pushState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      });
+      const note = opened.page.locator('#feedNew .feednetwork');
+      await expectBody(opened.page, '/', [note]);
+      assert.match(await note.innerText(), /3 部新作的封面连不上 DMM 图片主机/);
+      assert.equal(await note.locator('a').getAttribute('href'), '/scraping');
+      await assertHolds(opened.page, opened.problems, '新作连不上图片主机的提示');
+    } finally {
+      await opened.close();
+    }
+  });
 });
