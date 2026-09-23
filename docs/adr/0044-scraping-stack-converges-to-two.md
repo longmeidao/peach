@@ -102,4 +102,14 @@ JavArchive 把搜索命中的每一条转存各交一份；`Session.get` 可以�
 `sources/fc2cmadb.py`，`scripts/fetch_fc2_metadata.py` 从那里取。payload 的差别：FC2 三站多出契约统一带的
 `series`、`director` 空串键，一本道多出 `label`、`director`；fc2cmadb 的女优写成 `{japanese_name}`，与别站同形，候选那一路
 据此读出演员；一本道回的不是 JSON 归 `parse_error`。
+第四步迁了 Seesaa 作品表（`sources/seesaa.py`），`metadata_seesaa` 模块删除，没有调用方的 `RoutedMetadataProvider` 随之删除，
+契约迁移至此完成：自写的九站全部登记在 `SITE_SOURCES`，经桥的四站在 `metadata_amane`。这一站的形状与别站不同：一页作品表
+几十上百行，`rows()` 把每一行各读成一份记录，实例记着读过的表，后面的番号先在那里找，找不到才走站内搜索、人物页与厂牌页；
+`fetch` 交出载有这一行的那一页，`parse` 从页上取这一行，几张表对同一个番号说法不一报 `ambiguous`。取页层 `WikiPages` 是它的
+`Session.transport`：页缓存键、本批请求限额与撞墙停网都在这一层，不经 `SourceTransport`，所以它不在 `scraping_access.SOURCES`，
+采集设置页也没有它的卡片。失败沿用原有的 `budget`、`blocked`、`size_limit`、`redirect`、`ambiguous`、`incomplete_search` 等分档，
+不折成 `FailureReason` 的三档：这些分档落进 `scrape_codes` 的错误表与健康表，`budget` 与 403/429 还决定本批停网；搜索范围内
+没找到是可重试的 `incomplete_search`，按 `not_found` 冻成定论就违背「未取得不冻结」。provenance 仍是 `sougouwiki`，
+`SOURCE_LABELS`、`PROVIDER_NAMES` 补上这一行。payload 的差别只有契约统一带的 `maker`、`label`、`series`、`director` 空串键、
+`runtime` 空值与 `cover_urls`，没给标题或日期列的表按空串交出；冲突判定比较标题、出演与日期时，表上没有那一列与那一格为空同样按空串比。
 迁移状态表在 `docs/SOURCING.md`「站点解析器契约」。

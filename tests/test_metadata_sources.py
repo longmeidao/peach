@@ -12,8 +12,9 @@ from peach.metadata import MetadataProviderError
 from peach.metadata_policy import SOURCE_SPECS
 from peach.metadata_routes import FC2_STAGE
 from peach.scraping_access import SourcePaused
-from peach.sources import (COOLDOWN_ACTIONS, PERMANENT_REASONS, REASON_KINDS, SITE_SOURCES, FailureReason, Page,
-                           Session, SiteConfig, SiteRecord, SiteSource, SourceFailure, http_failure)
+from peach.sources import (COOLDOWN_ACTIONS, PERMANENT_REASONS, REASON_KINDS, SEESAA, SITE_SOURCES, FailureReason,
+                           Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure, http_failure)
+from peach.sources.seesaa import WikiPages
 
 DEMO = SiteConfig(name="demo", label="Demo", provider="demo-page", base_url="https://demo.test",
                   domains=("demo.test",), stage="community")
@@ -185,6 +186,8 @@ class ConfigConsistencyTests(unittest.TestCase):
                 self.assertEqual(config.stage, SOURCE_SPECS[name].kind)
                 self.assertEqual(config.label, SOURCE_LABELS[name])
                 self.assertEqual(config.provider, PROVIDER_NAMES[name])
+                if name == SEESAA.name:
+                    continue
                 access = scraping_access.SOURCES[name]
                 self.assertEqual(set(config.domains), set(access["domains"]))
                 self.assertEqual(config.cookie, bool(access.get("cookie")))
@@ -194,14 +197,26 @@ class ConfigConsistencyTests(unittest.TestCase):
                     if scraping_access.source_for("https://" + host + "/") == name:
                         self.assertEqual(interval, config.interval, f"{host} 的主机间隔与配置不一致")
 
+    def test_seesaa_brings_its_own_transport_and_keeps_its_source_identity(self):
+        """Seesaa 作品表不经 `SourceTransport`：不收 Cookie、采集设置页没有它的卡片，冷却只在本批内，
+        取页、缓存与限额在 `WikiPages`，间隔与页面上限取自配置；provenance 是账本里已有的 `sougouwiki`。"""
+        self.assertNotIn(SEESAA.name, scraping_access.SOURCES)
+        self.assertIsNone(scraping_access.source_for(SEESAA.base_url))
+        self.assertEqual((SEESAA.provider, SEESAA.cookie, SEESAA.interval, SEESAA.page_limit),
+                         ("sougouwiki", False, 2.0, 4 * 1024 * 1024))
+        with patch("peach.sources.seesaa.HostLimiter") as limiter:
+            pages = WikiPages("unused", transport=object())
+        limiter.assert_called_once_with({}, default_interval=SEESAA.interval)
+        self.assertIs(pages.config, SEESAA)
+
     def test_javdb_keeps_the_user_set_interval_and_the_other_sites_the_default(self):
         self.assertEqual(SITE_SOURCES["javdb"].DEFAULT.interval, 3.0)
-        for name in ("javbus", "avbase", "r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive"):
+        for name in ("javbus", "avbase", "r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive", "sougouwiki"):
             self.assertEqual(SITE_SOURCES[name].DEFAULT.interval, 2.0, name)
         self.assertEqual({host for host in SOURCE_INTERVALS if scraping_access.source_for("https://" + host + "/") == "javdb"},
                          set(SOURCE_INTERVALS), "SOURCE_INTERVALS 里只有 javdb 的主机单独设间隔")
 
-    def test_the_eight_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
+    def test_the_nine_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
         shape = {name: (site.DEFAULT.stage, site.DEFAULT.cookie, site.DEFAULT.page_limit)
                  for name, site in SITE_SOURCES.items()}
         self.assertEqual(shape, {"r18dev": ("official_mirror", False, 2 * 1024 * 1024),
@@ -211,7 +226,8 @@ class ConfigConsistencyTests(unittest.TestCase):
                                  "javarchive": ("community", False, 2 * 1024 * 1024),
                                  "avbase": ("community", False, 4 * 1024 * 1024),
                                  "javbus": ("community", True, 4 * 1024 * 1024),
-                                 "javdb": ("community", True, 4 * 1024 * 1024)})
+                                 "javdb": ("community", True, 4 * 1024 * 1024),
+                                 "sougouwiki": ("community", False, 4 * 1024 * 1024)})
         self.assertEqual({name for name in SITE_SOURCES if SOURCE_SPECS[name].official}, {"r18dev", "1pondo", "fc2"})
         self.assertEqual(tuple(name for name in SITE_SOURCES if name in FC2_STAGE), FC2_STAGE,
                          "FC2 三站按链上先后登记")
