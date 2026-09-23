@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from peach import feed_followup, feeds, web_feeds  # noqa: E402
+from peach import feed_followup, feeds, web_feeds, web_settings  # noqa: E402
 from peach.http import HttpResponse  # noqa: E402
 from peach.web_contract import WebContract  # noqa: E402
 from peach.web_router import dispatch_api_get, dispatch_api_post  # noqa: E402
@@ -206,20 +206,52 @@ class FeedWebTest(FeedWebFixture):
         listing = dispatch_api_get(self.contract, "/api/feeds/discoveries", {})
         self.assertEqual([item["code"] for item in listing["items"]], ["HMN-071"])
 
-    def test_a_compilation_is_neither_listed_counted_nor_rescheduled(self):
+    def _compilation(self, performers: str) -> None:
         self._add()
         self._check()
         self._drain(1)
         with self.contract.database.write_transaction() as connection:
-            connection.execute("UPDATE feed_discovery SET title='波多野結衣となかまたち。BEST',"
-                               "scraped_at=NULL WHERE code='SSIS-950'")
+            connection.execute("UPDATE feed_discovery SET title='8時間 BEST',performers=?,"
+                               "scraped_at=NULL WHERE code='SSIS-950'", (performers,))
+
+    def _listed(self) -> list[str]:
+        return [item["code"] for item in
+                dispatch_api_get(self.contract, "/api/feeds/discoveries", {})["items"]]
+
+    def _backlog(self) -> list[str]:
+        hidden = web_settings.hidden_compilations(self.contract.database)
+        with self.contract.database.read_connection() as connection:
+            return feed_followup.backlog(connection, self.contract.cover_root, hidden=hidden)
+
+    def test_a_group_compilation_is_neither_listed_counted_nor_rescheduled(self):
+        self._compilation("波多野結衣、篠田ゆう")
         listing = dispatch_api_get(self.contract, "/api/feeds/discoveries", {"limit": 1})
         # 分页按筛过的条数算：合集排在前面，要一条也还是拿到下一部，不是空页。
         self.assertEqual([item["code"] for item in listing["items"]], ["HMN-071"])
         self.assertFalse(listing["more"])
         self.assertEqual(dispatch_api_get(self.contract, "/api/feeds", {})["unread"], 1)
-        with self.contract.database.read_connection() as connection:
-            self.assertEqual(feed_followup.backlog(connection, self.contract.cover_root), [])
+        self.assertEqual(self._backlog(), [])
+
+    def test_the_two_switches_each_decide_their_own_kind(self):
+        self._compilation("深田えいみ")
+        # 单人合集默认照列，也照样补资料与封面。
+        self.assertCountEqual(self._listed(), ["SSIS-950", "HMN-071"])
+        self.assertEqual(self._backlog(), ["SSIS-950"])
+        dispatch_api_post(self.contract, "/api/settings", {"feedHideSoloCompilations": True})
+        self.assertEqual(self._listed(), ["HMN-071"])
+        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds", {})["unread"], 1)
+        self.assertEqual(self._backlog(), [])
+        # 换成大合集：默认收起；关掉大合集那个开关就回来，单人那个开关不管它。
+        with self.contract.database.write_transaction() as connection:
+            connection.execute("UPDATE feed_discovery SET performers='波多野結衣、篠田ゆう'"
+                               " WHERE code='SSIS-950'")
+        self.assertEqual(self._listed(), ["HMN-071"])
+        dispatch_api_post(self.contract, "/api/settings", {"feedHideGroupCompilations": False})
+        settings = dispatch_api_get(self.contract, "/api/settings", {})
+        self.assertEqual((settings["feedHideGroupCompilations"],
+                          settings["feedHideSoloCompilations"]), (False, True))
+        self.assertCountEqual(self._listed(), ["SSIS-950", "HMN-071"])
+        self.assertEqual(self._backlog(), ["SSIS-950"])
 
     def test_the_entity_filter_only_returns_that_person(self):
         with self.contract.database.write_transaction() as connection:

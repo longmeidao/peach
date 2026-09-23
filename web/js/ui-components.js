@@ -227,6 +227,10 @@ const WHEEL_GESTURE_GAP=240;
    改 `scrollLeft` 会一格一格地跳，而页面自己滚的时候每一格都是一段动画；触控板一次只
    给几个像素、一秒几十次，本来就是连续的，再套动画只会拖慢跟手。 */
 const WHEEL_SMOOTH_STEP=50;
+/* 平滑那一段由这一排自己逐帧走，不用 `scrollTo({behavior:'smooth'})`：那条动画每接一格
+   都从零速重新起步，连续转滚轮时一格一顿，实测每两格之间有两三帧完全停住。这里每帧
+   朝终点走剩下距离的一截（时间常数 70ms），新的一格只把终点往前挪，速度连着走，不断档。 */
+const WHEEL_GLIDE_MS=70;
 /* 横排滚到头还往前推，内容多走一小段再弹回来。transitions.dev 没有这一条配方，越界位移
    借 UIScrollView 那条橡皮筋公式 `(1 - 1/(x·c/d + 1))·d`（c = 0.55，use-gesture 的
    `rubberband` 是同一条）：推得越远越推不动，怎么推也到不了容器那么宽。弹回走站内那条
@@ -278,49 +282,56 @@ function edgeBounce(el){
     },
   };
 }
-/** 同一容器只绑定一次，滚到边缘后将下一次滚轮手势交还页面。 */
+/** 同一容器只绑定一次。指针在这一排上时滚轮只滚这一排，滚到头弹一下，不带着整页走。 */
 export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
   if(!el)return;
   const existing=horizontalControls.get(el);
   if(existing){existing.options.drag ||= drag;existing.options.fade ||= fade;existing.update();return existing}
   const options={drag,fade},abort=new AbortController(),bounce=edgeBounce(el);
-  let start=null,moved=0,heldUntil=0,lastStep=0,target=0,kicked=false;
+  let start=null,moved=0,heldUntil=0,target=0,kicked=false,glide=0,glideAt=0,pos=0,pending=0;
   /* 值没变就不写：自动滚动每一帧都触发一次 `scroll`，同值重写属性照样让样式重算一遍。 */
   const mark=(key,value)=>{if(el.dataset[key]!==value)el.dataset[key]=value};
   const update=()=>{if(options.fade){mark('overflowLeft',String(el.scrollLeft>1));mark('overflowRight',String(el.scrollLeft+el.clientWidth<el.scrollWidth-1))}};
-  /* 平滑滚动还在半路时弹，看起来是没到头就先弹了；等它停下再弹。 */
-  const afterScroll=fn=>{if('onscrollend' in el)el.addEventListener('scrollend',fn,{once:true,signal:abort.signal});else setTimeout(fn,300)};
   const listen=(target,event,handler,extra={})=>target.addEventListener(event,handler,{...extra,signal:abort.signal});
   listen(el,'scroll',update,{passive:true});
-  /* 滚轮按手势归属，一次手势只动一处。Chrome 把一串滚轮事件认作同一次手势，第一下
-     没被拦下，后面那些就再也拦不住：页面滚着滚着让这一排经过指针底下，这时候再改
-     `scrollLeft`，结果是一排和整页一起走。所以拦不住的那些原样留给页面。反过来，一次
-     手势在这一排上开了头，滚到头时剩下那截惯性也吃掉，不甩给页面——否则还没看清最后
-     一张，整页已经往下走了。惯性是一格比一格小的；鼠标滚轮每格一样大，那是人还在往下
-     滚，顶到头就立刻交还页面，不然转着滚轮的时候整页停在这一排上。
-     平滑滚动时 `scrollLeft` 还在半路，下一格要从上一格的终点接着算，所以同一次手势里
-     记着终点。
-     这一排自己吃下的手势推过了头就弹一下，一次手势只弹一次：触控板的惯性尾巴一格一格
-     地撞在边上，每格都弹就是一串抖动。交还页面的那些不弹，那时候动的是整页。 */
+  const kick=delta=>{if(!kicked){kicked=true;bounce.kick(delta)}};
+  const stopGlide=()=>{cancelAnimationFrame(glide);glide=0;pending=0};
+  /* 位置自己记一份小数：一帧只走零点几个像素时，`scrollLeft` 读回来是取整后的值。
+     推过头的那一下等走到头再弹，半路就弹看起来是没到头先弹了。 */
+  const frame=now=>{
+    const dt=Math.min(Math.max(now-glideAt,0),64);glideAt=now;
+    pos+=(target-pos)*(1-Math.exp(-dt/WHEEL_GLIDE_MS));
+    if(Math.abs(target-pos)<.5)pos=target;
+    el.scrollLeft=pos;
+    if(pos!==target){glide=requestAnimationFrame(frame);return}
+    glide=0;
+    if(pending){const delta=pending;pending=0;kick(delta)}
+  };
+  /* 页面那边开了头的手势拦不住：Chrome 把一串滚轮事件认作同一次手势，第一下没被拦下，
+     后面那些就再也拦不住。页面滚着滚着让这一排经过指针底下时，这些原样留给页面。
+     在这一排上开头的手势整段都归这一排：还没滚完、滚到头以后，都不把剩下的交给页面；
+     要滚整页，指针挪到这一排外面去。推过头就弹一下，一次手势只弹一次：触控板的惯性
+     尾巴一格一格地撞在边上，每格都弹就是一串抖动。 */
   listen(el,'wheel',event=>{
     const max=el.scrollWidth-el.clientWidth;
     if(event.defaultPrevented||!event.cancelable||Math.abs(event.deltaY)<=Math.abs(event.deltaX)||max<=0)return;
-    const now=performance.now(),step=Math.abs(event.deltaY),held=now<=heldUntil;
-    if(!held)kicked=false;
-    const from=held?target:el.scrollLeft,want=from+event.deltaY,next=Math.min(max,Math.max(0,want));
-    const easing=step<lastStep;lastStep=step;
-    const kick=()=>{if(!kicked){kicked=true;bounce.kick(event.deltaY)}};
-    if(next===from){
-      if(!held||!easing)return;
-      heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();kick();return;
+    event.preventDefault();
+    const now=performance.now(),step=Math.abs(event.deltaY);
+    if(now>heldUntil)kicked=false;
+    heldUntil=now+WHEEL_GESTURE_GAP;
+    // 平滑那一段还在半路时，下一格从上一格的终点接着算。
+    const from=glide?target:el.scrollLeft,want=from+event.deltaY;
+    target=Math.min(max,Math.max(0,want));
+    const over=want===target?0:event.deltaY;
+    if(step<WHEEL_SMOOTH_STEP||target===from){
+      if(target!==from){stopGlide();el.scrollLeft=target}
+      if(over&&!glide)kick(over);else if(over)pending=over;
+      return;
     }
-    target=next;heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();
-    const smooth=step>=WHEEL_SMOOTH_STEP&&typeof el.scrollTo==='function';
-    if(smooth)el.scrollTo({left:next,behavior:'smooth'});
-    else el.scrollLeft=next;
-    if(want!==next){if(smooth)afterScroll(kick);else kick()}
+    if(over)pending=over;
+    if(!glide){pos=el.scrollLeft;glideAt=performance.now();glide=requestAnimationFrame(frame)}
   },{passive:false});
-  listen(el,'mousedown',event=>{if(!options.drag||event.button!==0||el.scrollWidth-el.clientWidth<=1)return;event.stopPropagation();start={x:event.pageX,left:el.scrollLeft};moved=0;el.style.cursor='grabbing'});
+  listen(el,'mousedown',event=>{if(!options.drag||event.button!==0||el.scrollWidth-el.clientWidth<=1)return;event.stopPropagation();stopGlide();start={x:event.pageX,left:el.scrollLeft};moved=0;el.style.cursor='grabbing'});
   listen(window,'mousemove',event=>{
     if(!start)return;
     const dx=event.pageX-start.x,want=start.left-dx,max=el.scrollWidth-el.clientWidth;
@@ -331,7 +342,7 @@ export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
   listen(window,'mouseup',()=>{if(start)bounce.release();start=null;el.style.cursor=''});
   listen(el,'click',event=>{if(moved>6){event.stopPropagation();event.preventDefault();moved=0}},{capture:true});
   const resize=new ResizeObserver(update);resize.observe(el);
-  const control={options,update,destroy(){abort.abort();resize.disconnect();horizontalControls.delete(el);el.style.cursor='';if(!horizontalControls.size){horizontalCleanup?.disconnect();horizontalCleanup=null}}};
+  const control={options,update,destroy(){abort.abort();stopGlide();resize.disconnect();horizontalControls.delete(el);el.style.cursor='';if(!horizontalControls.size){horizontalCleanup?.disconnect();horizontalCleanup=null}}};
   horizontalControls.set(el,control);
   if(!horizontalCleanup){horizontalCleanup=new MutationObserver(()=>{for(const [node,item] of horizontalControls)if(!node.isConnected)item.destroy()});horizontalCleanup.observe(document.body,{childList:true,subtree:true})}
   update();return control;
