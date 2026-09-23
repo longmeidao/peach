@@ -223,26 +223,41 @@ let horizontalCleanup;
 /* 两次滚轮事件隔多久算下一次手势。触控板的惯性尾巴一格一格地来，间隔在几十毫秒；
    人停下来再滚一次，中间隔的比这长得多。 */
 const WHEEL_GESTURE_GAP=240;
+/* 一格滚轮至少这么大才平滑着走。鼠标滚轮一格是整整一段（Windows 上 100px 起），直接
+   改 `scrollLeft` 会一格一格地跳，而页面自己滚的时候每一格都是一段动画；触控板一次只
+   给几个像素、一秒几十次，本来就是连续的，再套动画只会拖慢跟手。 */
+const WHEEL_SMOOTH_STEP=50;
 /** 同一容器只绑定一次，滚到边缘后将下一次滚轮手势交还页面。 */
 export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
   if(!el)return;
   const existing=horizontalControls.get(el);
   if(existing){existing.options.drag ||= drag;existing.options.fade ||= fade;existing.update();return existing}
   const options={drag,fade},abort=new AbortController();
-  let start=null,moved=0,heldUntil=0;
+  let start=null,moved=0,heldUntil=0,lastStep=0,target=0;
   const update=()=>{if(options.fade){el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)}};
   const listen=(target,event,handler,extra={})=>target.addEventListener(event,handler,{...extra,signal:abort.signal});
   listen(el,'scroll',update,{passive:true});
   /* 滚轮按手势归属，一次手势只动一处。Chrome 把一串滚轮事件认作同一次手势，第一下
      没被拦下，后面那些就再也拦不住：页面滚着滚着让这一排经过指针底下，这时候再改
      `scrollLeft`，结果是一排和整页一起走。所以拦不住的那些原样留给页面。反过来，一次
-     手势在这一排上开了头，滚到头时剩下那截（多半是惯性）也吃掉，不甩给页面——否则还没
-     看清最后一张，整页已经往下走了。 */
+     手势在这一排上开了头，滚到头时剩下那截惯性也吃掉，不甩给页面——否则还没看清最后
+     一张，整页已经往下走了。惯性是一格比一格小的；鼠标滚轮每格一样大，那是人还在往下
+     滚，顶到头就立刻交还页面，不然转着滚轮的时候整页停在这一排上。
+     平滑滚动时 `scrollLeft` 还在半路，下一格要从上一格的终点接着算，所以同一次手势里
+     记着终点。 */
   listen(el,'wheel',event=>{
-    if(event.defaultPrevented||!event.cancelable||Math.abs(event.deltaY)<=Math.abs(event.deltaX)||el.scrollWidth<=el.clientWidth)return;
-    const now=performance.now(),before=el.scrollLeft;el.scrollLeft+=event.deltaY;
-    if(before===el.scrollLeft&&now>heldUntil)return;
-    heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();
+    const max=el.scrollWidth-el.clientWidth;
+    if(event.defaultPrevented||!event.cancelable||Math.abs(event.deltaY)<=Math.abs(event.deltaX)||max<=0)return;
+    const now=performance.now(),step=Math.abs(event.deltaY),held=now<=heldUntil;
+    const from=held?target:el.scrollLeft,next=Math.min(max,Math.max(0,from+event.deltaY));
+    const easing=step<lastStep;lastStep=step;
+    if(next===from){
+      if(!held||!easing)return;
+      heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();return;
+    }
+    target=next;heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();
+    if(step>=WHEEL_SMOOTH_STEP&&typeof el.scrollTo==='function')el.scrollTo({left:next,behavior:'smooth'});
+    else el.scrollLeft=next;
   },{passive:false});
   listen(el,'mousedown',event=>{if(!options.drag||event.button!==0||el.scrollWidth-el.clientWidth<=1)return;event.stopPropagation();start={x:event.pageX,left:el.scrollLeft};moved=0;el.style.cursor='grabbing'});
   listen(window,'mousemove',event=>{if(!start)return;const dx=event.pageX-start.x;moved=Math.max(moved,Math.abs(dx));el.scrollLeft=start.left-dx;event.preventDefault()});
@@ -586,7 +601,7 @@ const SKELETON_SLOT_WIDTHS={
 /* 低于这一段的请求直接显示内容。Peach 的数据多在本机，立即把占位画出来会让几十毫秒的
    正常读取看成一次闪烁；超过门槛才说明页面确实需要等待。只藏最外层占位，内部结构仍先
    参与布局和 fit 计算，因此真正出现时不会再重排。 */
-const SKELETON_REVEAL_DELAY=180;
+export const SKELETON_REVEAL_DELAY=180;
 const SKELETON_REVEAL_SELECTOR='[data-skeleton],[data-skeleton-tier],.countskeleton';
 function armSkeletonReveal(root){
   if(!root)return;

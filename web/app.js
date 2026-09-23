@@ -21,7 +21,7 @@ import {
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   dissolveValue, popBadges, popCount, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
-  setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
+  SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
   postSetupTutorialSkipped, setPostSetupTutorialSkipped, postSetupTutorialSignature,
@@ -3217,10 +3217,50 @@ function coverFace(img,axis){
 document.addEventListener('load',event=>{
   const img=event.target;
   if(!(img instanceof HTMLImageElement))return;
+  settleImage(img);
   fitNativeImage(img);
   if(img.classList.contains('cover'))coverAnchor(img);
   // 头像走同一条路，理由也同一个：倍数要等图和框都落地才算得出来。
   else if(img.dataset.facebox)avatarFrame(img);
+},true);
+/* 封面与头像的加载态，和换头像那一格同一形态：图还在路上时框上铺一层微光，到手后
+   微光淡出并糊掉（`09-skeleton.css` 的 `.imgwait`）。图是模板字符串拼进来的，逐张挂
+   监听做不到，所以在插进页面时看一眼：已经 `complete` 的（缓存里直接解码的那种）
+   什么都不标，页面每次重绘都不会闪一下微光。标上之后 `load` 一定会来——图已经挂在
+   文档上，捕获阶段的监听收得到；取不到图的 `error` 同样收尾，不让微光盖住首字母。
+   收尾后类名一并摘掉：没到门槛就到手的直接摘，淡出过的等淡出完再摘，封面上平时不留
+   那层 `::after`。 */
+const PENDING_IMAGES='.pic>img.poster,.ring>img,.entityportrait>img';
+const pendingSince=new WeakMap();
+function watchPendingImages(node){
+  const found=node.matches(PENDING_IMAGES)?[node]:node.querySelectorAll(PENDING_IMAGES);
+  for(const img of found)if(!img.complete){
+    img.parentElement.classList.add('imgwait');pendingSince.set(img.parentElement,performance.now());
+  }
+}
+function settleImage(img){
+  const box=img.parentElement;
+  if(!box?.classList.contains('imgwait'))return;
+  if(performance.now()-pendingSince.get(box)<SKELETON_REVEAL_DELAY){box.classList.remove('imgwait');return}
+  box.classList.replace('imgwait','imgdone');
+  let timer=null;
+  const drop=event=>{
+    if(event&&(event.target!==box||event.pseudoElement!=='::after'))return;
+    box.removeEventListener('transitionend',drop);clearTimeout(timer);box.classList.remove('imgdone');
+  };
+  box.addEventListener('transitionend',drop);
+  // 兜底：面板藏在后台或动效归零时 `transitionend` 不会来。
+  timer=setTimeout(drop,1000);
+}
+new MutationObserver(records=>{
+  for(const record of records)for(const node of record.addedNodes)
+    if(node.nodeType===Node.ELEMENT_NODE)watchPendingImages(node);
+}).observe(document.body,{childList:true,subtree:true});
+// 挂在 document 上，比 body 上那条兜底链先收到：图被摘掉之前框还找得到。兜底链里还有
+// 下一张时微光留着，换上的那张到手才收。
+document.addEventListener('error',event=>{
+  const img=event.target;
+  if(img instanceof HTMLImageElement&&!img.dataset.fallbacks)settleImage(img);
 },true);
 /* 图比框还小时不再拉伸：原尺寸居中摆，空出来的一圈拿同一张图放大模糊补底。
 
@@ -4631,7 +4671,10 @@ function feedNewCoverHtml(item){
     ` src="${esc(item.cover_url)}" referrerpolicy="no-referrer"`);
 }
 function feedNewCardHtml(item){
-  const label=[item.studio,item.release_date].filter(Boolean).join(' · ');
+  // 厂牌与发行日各占一段：放不下时只收厂牌，日期整段留着。
+  const label=[item.studio&&`<span class="feednewstudio">${esc(item.studio)}</span>`,
+    item.release_date&&`<span>${esc(item.release_date)}</span>`].filter(Boolean)
+    .join('<span aria-hidden="true">·</span>');
   const cover=feedNewCoverHtml(item);
   // 番号与标题排在同一个两行的标题块里，和资产卡一样：番号加粗打头，标题接在后面截断。
   const heading=javTitleHtml({is_jav:true,code:item.code,name:item.code,
@@ -4646,7 +4689,7 @@ function feedNewCardHtml(item){
         <button type="button" data-feed-action="ignore" title="不想看" aria-label="不想看 ${esc(item.code)}">${icon('x')}</button>
         <button type="button" data-feed-action="read" title="标为已看过" aria-label="标为已看过 ${esc(item.code)}">${icon('check')}</button></div></div>
     <div class="meta"><div class="mtext"><span class="t">${heading}</span>
-      <div class="s mono">${esc(label||(item.title||item.performers?'':'资料还没取到'))}</div></div></div></article>`;
+      <div class="s mono">${label||(item.title||item.performers?'':'资料还没取到')}</div></div></div></article>`;
 }
 
 /* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次

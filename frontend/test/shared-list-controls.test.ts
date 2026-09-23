@@ -46,20 +46,29 @@ it('导航代际变化或卸载后不接受在途结果，卸载断开观察器'
   expect(disconnects[0]).toHaveBeenCalledOnce();expect(apply).not.toHaveBeenCalled();
 });
 
-it('横向滚动滚到头吃掉同一次手势的余量，下一次手势交还页面，重复绑定与移除都释放资源', async () => {
+it('横向滚动滚到头只吃掉惯性尾巴，鼠标滚轮与下一次手势交还页面，重复绑定与移除都释放资源', async () => {
   const node=button();let left=0,now=1000;const disconnect=vi.fn();
   vi.stubGlobal('ResizeObserver',class {observe(){}disconnect=disconnect});
   const clock=vi.spyOn(performance,'now').mockImplementation(()=>now);
-  Object.defineProperties(node,{clientWidth:{value:100},scrollWidth:{value:200},scrollLeft:{get:()=>left,set:value=>{left=Math.max(0,Math.min(100,value))}}});
+  const clamp=(value:number)=>Math.max(0,Math.min(100,value));
+  Object.defineProperties(node,{clientWidth:{value:100},scrollWidth:{value:200},scrollLeft:{get:()=>left,set:value=>{left=clamp(value)}}});
+  const smooth=vi.fn(({left:value}:{left:number})=>{left=clamp(value)});node.scrollTo=smooth as never;
   const control=wireHorizontalScroller(node,{drag:true});
   expect(wireHorizontalScroller(node)).toBe(control);
-  const wheel=(cancelable=true)=>new WheelEvent('wheel',{deltaY:100,cancelable});
+  const wheel=(deltaY=100,cancelable=true)=>new WheelEvent('wheel',{deltaY,cancelable});
+  // 鼠标一格走平滑动画，不是一下跳过去。
   const moving=wheel();node.dispatchEvent(moving);node.dispatchEvent(new Event('scroll'));
-  expect(moving.defaultPrevented).toBe(true);expect(node.dataset.overflowRight).toBe('false');
-  now+=40;const tail=wheel();node.dispatchEvent(tail);expect(tail.defaultPrevented).toBe(true);
-  now+=1000;const next=wheel();node.dispatchEvent(next);expect(next.defaultPrevented).toBe(false);
+  expect(moving.defaultPrevented).toBe(true);expect(smooth).toHaveBeenLastCalledWith({left:100,behavior:'smooth'});
+  expect(node.dataset.overflowRight).toBe('false');
+  // 顶到头后一格比一格小的是惯性，吃掉；一样大的是人还在滚，交还页面。
+  now+=40;const tail=wheel(60);node.dispatchEvent(tail);expect(tail.defaultPrevented).toBe(true);
+  now+=40;const still=wheel(60);node.dispatchEvent(still);expect(still.defaultPrevented).toBe(false);
+  now+=1000;const next=wheel(40);node.dispatchEvent(next);expect(next.defaultPrevented).toBe(false);
+  // 触控板的小步直接跟手，不套动画。
+  left=50;now+=1000;smooth.mockClear();node.dispatchEvent(wheel(-10));
+  expect(left).toBe(40);expect(smooth).not.toHaveBeenCalled();
   // 页面那边开了头的手势拦不住，这一排也不跟着动。
-  left=0;now+=1000;node.dispatchEvent(wheel(false));expect(left).toBe(0);
+  left=0;now+=1000;node.dispatchEvent(wheel(100,false));expect(left).toBe(0);
   clock.mockRestore();
   node.remove();await vi.waitFor(()=>expect(disconnect).toHaveBeenCalledOnce());
   left=0;node.dispatchEvent(wheel());expect(left).toBe(0);

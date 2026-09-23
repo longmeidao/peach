@@ -481,8 +481,11 @@ body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
 .feednewcard{flex:none;width:168px}
 /* 已看过的不移走，只退到背景里：已读是标记，不是关掉。 */
 .feednewcard.isread{opacity:.55}
-/* 通向作品页的点击区。形态同 `.cardopenhit`，但那一个的语义是站内落点，这一条是外链。 */
+/* 通向作品页的点击区。形态同 `.cardopenhit`，但那一个的语义是站内落点，这一条是外链。
+   资产卡的 `.pic` 与 `.meta` 压在点击区上面（z-index 2），那边的点击由卡片自己的脚本
+   接；这张卡只有这条外链，所以两块放行指针，落到下面的链接上，悬浮键自己再收回来。 */
 .feednewopen{position:absolute;inset:0;z-index:1;border-radius:inherit}
+.feednewcard>.pic,.feednewcard>.meta{pointer-events:none}
 .feednewopen:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 /* 两颗动作键沿用 `.hovertools` 的磨砂圆底，只换尺寸和落点。`.hovertools` 默认
    `pointer-events:none`——那是为了让指针落到底下的预览上，而这两颗是这张卡唯一能按的
@@ -493,3 +496,7 @@ body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
 .feednewtools button{width:32px;height:32px}
 .feednewtools button svg{width:17px;height:17px}
 .feednewcard .meta .t{font-size:var(--fs-sm)}
+/* 厂牌加发行日一行放完，放不下截掉厂牌的尾巴：折成两行时断在日期中间，读成两个数。 */
+.feednewcard .meta .s{flex-wrap:nowrap;white-space:nowrap}
+.feednewcard .meta .s>span{flex:none}
+.feednewcard .meta .s>.feednewstudio{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
