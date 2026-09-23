@@ -292,7 +292,7 @@ async function E(e) {
 		await t(2e3);
 	}
 }
-function D(e) {
+function ne(e) {
 	let t = e.note || ((e) => i(e, {
 		label: "任务状态",
 		variant: "error"
@@ -325,11 +325,11 @@ function D(e) {
 }
 //#endregion
 //#region src/selection.ts
-function O(e, t, n, r, i, a = i || !e.has(r)) {
+function re(e, t, n, r, i, a = i || !e.has(r)) {
 	let o = n === null ? -1 : t.indexOf(n), s = t.indexOf(r);
 	return i && o >= 0 && s >= 0 ? t.slice(Math.min(o, s), Math.max(o, s) + 1).forEach((t) => e.add(t)) : a ? e.add(r) : e.delete(r), r;
 }
-function k(e, t) {
+function ie(e, t) {
 	let n = t.filter((t) => e.has(t)).length;
 	return {
 		count: n,
@@ -337,14 +337,14 @@ function k(e, t) {
 		mixed: n > 0 && n < t.length
 	};
 }
-function ne(e, t, n) {
+function ae(e, t, n) {
 	t.forEach((t) => n ? e.add(t) : e.delete(t));
 }
-function re({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
+function oe({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
 	e && (e.textContent = t), n && (n.checked = r.all, n.indeterminate = r.mixed);
 	for (let e of i) e.disabled = !r.count || a;
 }
-function ie(e, t, n = 1) {
+function se(e, t, n = 1) {
 	let r = (e, t) => Array.from({ length: t - e + 1 }, (t, n) => e + n);
 	if (n * 2 + 5 >= t) return r(1, t);
 	let i = Math.max(e - n, 1), a = Math.min(e + n, t), o = i > 2, s = a < t - 2;
@@ -364,15 +364,15 @@ function ie(e, t, n = 1) {
 		t
 	];
 }
-function ae(e, t) {
+function D(e, t) {
 	return Math.max(1, Math.ceil(e / t));
 }
-function oe(e, t) {
+function O(e, t) {
 	return Math.min(Math.max(1, Math.floor(e) || 1), t);
 }
-function se(e, t, n) {
+function k(e, t, n) {
 	if (t <= 1) return "";
-	let r = ie(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
+	let r = se(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
 	return `<nav class="board-pagination" aria-label="${n}">
     <button type="button" class="geist-button" data-page="${e - 1}"${e <= 1 ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"></use></svg>上一页</button>
     <ul>${r}</ul>
@@ -382,14 +382,11 @@ function se(e, t, n) {
 //#endregion
 //#region src/native-image.ts
 function A(e, t, n, r) {
-	return e > 0 && t > 0 && e === n && t === r;
-}
-function j(e, t, n, r) {
 	if (!(e > 0 && t > 0 && n > 0 && r > 0)) return 0;
 	let i = e / n, a = t / r;
 	return i > 1.001 || a > 1.001 || Math.abs(i - a) > Math.max(i, a) * .01 ? 0 : i;
 }
-function M(e, t, n, r, i = 1) {
+function j(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -420,16 +417,16 @@ function ce(e, t, n) {
 }
 //#endregion
 //#region src/board-skeleton.ts
-var N = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, P = () => `${N("80%")}${N("48%")}`, F = (e, t) => e.repeat(t), I = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${N("45%")}</b><small class="board-stat-footer">${N("60%")}</small></div>`).join("")}</div>`, L = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, R = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, z = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${F(P(), 3)}</div></section>`, B = (e, t, n = "") => `<button class="fbtn follow-skeleton-button ${n}" type="button" disabled>${l(t)}${e ? `<span>${e}</span>` : ""}</button>`, V = (e) => `<div class="fsechead follow-skeleton-toolbar" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta follow-skeleton-count">${N("132px")}</span><div class="followtoolbaractions">${B("检查全部", "refresh-cw", "primary followcheckall")}<span class="board-button-group follow-skeleton-button-group">${B("", "layout-grid", "selected")}${B("", "table")}</span><span class="fmanagesort" data-collapse-field>${l("sort")}${a([["checked", "检查时间"]], "checked", {
+var M = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, N = () => `${M("80%")}${M("48%")}`, P = (e, t) => e.repeat(t), F = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${M("45%")}</b><small class="board-stat-footer">${M("60%")}</small></div>`).join("")}</div>`, I = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, L = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, R = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${P(N(), 3)}</div></section>`, z = (e, t, n = "") => `<button class="fbtn follow-skeleton-button ${n}" type="button" disabled>${l(t)}${e ? `<span>${e}</span>` : ""}</button>`, B = (e) => `<div class="fsechead follow-skeleton-toolbar" data-collapse-toolbar><h3>关注列表</h3><span class="fmeta follow-skeleton-count">${M("132px")}</span><div class="followtoolbaractions">${z("检查全部", "refresh-cw", "primary followcheckall")}<span class="board-button-group follow-skeleton-button-group">${z("", "layout-grid", "selected")}${z("", "table")}</span><span class="fmanagesort" data-collapse-field>${l("sort")}${a([["checked", "检查时间"]], "checked", {
 	label: "关注列表排序",
 	attr: "disabled"
-})}</span>${B("", "arrow-down", "square fmanagedir")}${e ? "" : B("全部收起", "chevron-up")}</div></div>`, H = () => "<span class=\"fchannelcheck follow-skeleton-check\" aria-hidden=\"true\"></span>", U = () => `<div class="fsource frow follow-skeleton-source">${H()}<b class="follow-skeleton-source-name">${N("72%")}</b><span class="fprovider follow-skeleton-provider skeleton"></span><span class="follow-skeleton-status skeleton"></span><span class="fmeta fchecked follow-skeleton-date">${N("100%")}</span><span class="fsourceactions follow-skeleton-row-actions"><i></i><i></i></span></div>`, W = (e = 3) => `<details class="fauthor follow-skeleton-author" open><summary class="fauthorhead"><span class="favatar follow-skeleton-avatar skeleton"></span><b>${N("92px")}</b><span class="fmeta follow-skeleton-author-meta skeleton"></span><span class="board-author-actions follow-skeleton-author-actions"><i></i><button type="button" class="fbtn small" data-follow-author-select disabled>${l("check-check")}<span data-author-select-label>全选</span></button><i></i></span></summary><div class="fauthorsources follow-skeleton-sources">${F(U(), e)}</div></details>`, G = () => {
+})}</span>${z("", "arrow-down", "square fmanagedir")}${e ? "" : z("全部收起", "chevron-up")}</div></div>`, V = () => "<span class=\"fchannelcheck follow-skeleton-check\" aria-hidden=\"true\"></span>", H = () => `<div class="fsource frow follow-skeleton-source">${V()}<b class="follow-skeleton-source-name">${M("72%")}</b><span class="fprovider follow-skeleton-provider skeleton"></span><span class="follow-skeleton-status skeleton"></span><span class="fmeta fchecked follow-skeleton-date">${M("100%")}</span><span class="fsourceactions follow-skeleton-row-actions"><i></i><i></i></span></div>`, U = (e = 3) => `<details class="fauthor follow-skeleton-author" open><summary class="fauthorhead"><span class="favatar follow-skeleton-avatar skeleton"></span><b>${M("92px")}</b><span class="fmeta follow-skeleton-author-meta skeleton"></span><span class="board-author-actions follow-skeleton-author-actions"><i></i><button type="button" class="fbtn small" data-follow-author-select disabled>${l("check-check")}<span data-author-select-label>全选</span></button><i></i></span></summary><div class="fauthorsources follow-skeleton-sources">${P(H(), e)}</div></details>`, W = () => {
 	try {
 		return Number(JSON.parse(localStorage.getItem("peach.settings.v1") || "{}").followPageSize) || 20;
 	} catch {
 		return 20;
 	}
-}, le = (e) => `<div class="ftableframe follow-skeleton-table"><div class="ftablewrap"><div class="ftable follow-skeleton-table-row head">${[
+}, G = (e) => `<div class="ftableframe follow-skeleton-table"><div class="ftablewrap"><div class="ftable follow-skeleton-table-row head">${[
 	"",
 	"创作者",
 	"来源",
@@ -437,62 +434,62 @@ var N = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, P = 
 	"状态",
 	"上次检查",
 	""
-].map((e) => `<span>${e}</span>`).join("")}</div>${F(`<div class="follow-skeleton-table-row">${H()}${[
+].map((e) => `<span>${e}</span>`).join("")}</div>${P(`<div class="follow-skeleton-table-row">${V()}${[
 	"74%",
 	"88%",
 	"62%",
 	"54%",
 	"78%"
-].map((e) => `<span>${N(e)}</span>`).join("")}<span class="fsourceactions follow-skeleton-row-actions"><i></i><i></i></span></div>`, e)}</div></div>`;
-function ue() {
-	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${N("85%")}${N("65%")}${F(P(), 4)}</div></aside></div></div>`;
+].map((e) => `<span>${M(e)}</span>`).join("")}<span class="fsourceactions follow-skeleton-row-actions"><i></i><i></i></span></div>`, e)}</div></div>`;
+function le() {
+	return `<div data-skeleton="detail" role="status" aria-label="正在读取作品详情"><div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${M("85%")}${M("65%")}${P(N(), 4)}</div></aside></div></div>`;
 }
-function de(e, t = {}) {
+function K(e, t = {}) {
 	let n = "";
-	if (e === "/stats") n = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${N("38%")}</header>${I([
+	if (e === "/stats") n = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${M("38%")}</header>${F([
 		"馆藏视频",
 		"看过",
 		"内容标签",
 		"使用空间"
-	])}${z("馆藏视频")}${z("内容标签")}</div>`;
-	else if (e === "/taste") n = `<div class="tastepage"><header class="tastehead">${R(["浏览器记录", "Peach 内部"], "insightswitch")}${N("24%")}</header><div class="tastestate"></div>${I([
+	])}${R("馆藏视频")}${R("内容标签")}</div>`;
+	else if (e === "/taste") n = `<div class="tastepage"><header class="tastehead">${L(["浏览器记录", "Peach 内部"], "insightswitch")}${M("24%")}</header><div class="tastestate"></div>${F([
 		"浏览记录",
 		"口味维度",
 		"浏览候选",
 		"私有导出"
-	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${F(P(), 4)}</div></section>${z("口味分析")}<div class="board-activity-charts">${z("浏览活动")}${z("时间分布")}</div>${z("标签")}</div>`;
+	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${P(N(), 4)}</div></section>${R("口味分析")}<div class="board-activity-charts">${R("浏览活动")}${R("时间分布")}</div>${R("标签")}</div>`;
 	else if (e === "/follow-manage") {
-		let e = t.followLayout === "table", r = e ? le(t.followPageSize || G()) : `<div class="follow-skeleton-authors">${W(3)}${W(4)}${W(3)}</div>`;
+		let e = t.followLayout === "table", r = e ? G(t.followPageSize || W()) : `<div class="follow-skeleton-authors">${U(3)}${U(4)}${U(3)}</div>`;
 		n = `<div class="follow followmanage follow-list-skeleton"><div class="fmanageoverview">${[
 			"关注创作者",
 			"启用来源",
 			"检查失败",
 			"未看更新"
-		].map((e) => `<div><span>${e}</span><b>${N()}</b></div>`).join("")}</div>${R([
+		].map((e) => `<div><span>${e}</span><b>${M()}</b></div>`).join("")}</div>${L([
 			"关注列表",
 			"添加关注",
 			"来源和凭证"
-		], "follow-workspace-switch")}<div class="fmain"><section class="fsec follow-skeleton-surface" data-follow-workspace-panel="list">${V(e)}${e ? "" : `<div class="board-follow-selection follow-skeleton-select-all">${H()}<span>全选本页</span></div>`}<div class="frows fsources" data-layout="${e ? "table" : "default"}">${r}<footer class="followpagefooter follow-skeleton-footer"><span class="followpageinfo">${N("116px")}</span><span>${N("96px")}</span><span class="follow-skeleton-pages"><i></i><i></i><i></i></span></footer></div></section></div></div>`;
-	} else if (e === "/configuration") n = `<div class="configpage">${L([
+		], "follow-workspace-switch")}<div class="fmain"><section class="fsec follow-skeleton-surface" data-follow-workspace-panel="list">${B(e)}${e ? "" : `<div class="board-follow-selection follow-skeleton-select-all">${V()}<span>全选本页</span></div>`}<div class="frows fsources" data-layout="${e ? "table" : "default"}">${r}<footer class="followpagefooter follow-skeleton-footer"><span class="followpageinfo">${M("116px")}</span><span>${M("96px")}</span><span class="follow-skeleton-pages"><i></i><i></i><i></i></span></footer></div></section></div></div>`;
+	} else if (e === "/configuration") n = `<div class="configpage">${I([
 		"通用",
 		"媒体",
 		"网络与访问",
 		"更新与维护"
-	])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${F(`<div class="skeleton-setting">${N("35%")}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${N("100px")}</footer></section></div>`;
+	])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${P(`<div class="skeleton-setting">${M("35%")}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${M("100px")}</footer></section></div>`;
 	else if (e === "/activity") n = `<div class="activitypage">${[
 		"正在进行",
 		"被挡下的",
 		"最近完成"
-	].map((e) => `<section class="activitysection"><h3 class="geist-fieldset-title">${e}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${N("35%")}${P()}</div></article></div></section>`).join("")}</div>`;
-	else if (e === "/duplicates") n = `<div class="review"><div class="collection-summary">${N("38%")}</div><div class="fsechead dupactions"><h3>批量保留</h3>${N("40%")}</div>${F(`<section class="dupgroup"><div class="duphead">${N("45%")}</div><div class="duplist">${F(`<div class="duprow"><span class="dupcover skeleton"></span><span class="dupmarks">${N()}</span><span class="dupname">${N("90%")}</span>${N()}${N()}${N()}<span class="duppath">${N("70%")}</span></div>`, 2)}</div></section>`, 2)}</div>`;
-	else if (e === "/quality-goals") n = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${N("20%")}</div><div class="qualitylist">${F(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${P()}</div><footer class="qualityactions">${N("80%")}</footer></article>`, 6)}</div></div>`;
-	else if (e === "/playlists") n = `<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><div class="playlistcreate skeleton-lines"><span>新播放列表</span>${N("200px")}</div></header><div class="playlistcards">${F(`<article class="card playlistcard"><div class="mixstack"><div class="pic skeleton"></div></div><div class="mixmeta"><span class="mav skeleton"></span><div class="mixcopy skeleton-lines">${P()}</div></div></article>`, 6)}</div></section>`;
+	].map((e) => `<section class="activitysection"><h3 class="geist-fieldset-title">${e}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${M("35%")}${N()}</div></article></div></section>`).join("")}</div>`;
+	else if (e === "/duplicates") n = `<div class="review"><div class="collection-summary">${M("38%")}</div><div class="fsechead dupactions"><h3>批量保留</h3>${M("40%")}</div>${P(`<section class="dupgroup"><div class="duphead">${M("45%")}</div><div class="duplist">${P(`<div class="duprow"><span class="dupcover skeleton"></span><span class="dupmarks">${M()}</span><span class="dupname">${M("90%")}</span>${M()}${M()}${M()}<span class="duppath">${M("70%")}</span></div>`, 2)}</div></section>`, 2)}</div>`;
+	else if (e === "/quality-goals") n = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${M("20%")}</div><div class="qualitylist">${P(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${N()}</div><footer class="qualityactions">${M("80%")}</footer></article>`, 6)}</div></div>`;
+	else if (e === "/playlists") n = `<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><div class="playlistcreate skeleton-lines"><span>新播放列表</span>${M("200px")}</div></header><div class="playlistcards">${P(`<article class="card playlistcard"><div class="mixstack"><div class="pic skeleton"></div></div><div class="mixmeta"><span class="mav skeleton"></span><div class="mixcopy skeleton-lines">${N()}</div></div></article>`, 6)}</div></section>`;
 	else return "";
 	return `<div class="board-page-skeleton" data-skeleton="board${e}" role="status" aria-label="正在读取页面"><div aria-hidden="true" inert>${n}</div></div>`;
 }
 //#endregion
 //#region src/catalog-onboarding.ts
-var fe = [
+var ue = [
 	"loc",
 	"creator",
 	"performer",
@@ -510,16 +507,16 @@ var fe = [
 	"jav",
 	"thumb"
 ];
-function pe() {
+function de() {
 	let e = (e) => Array(64).fill(e).join("");
 	return {
 		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
 		tags: "<span class=\"catalog-placeholder placeholder-tags\" aria-hidden=\"true\">" + e("<span class=\"pill\">&nbsp;</span>") + "</span>"
 	};
 }
-async function K(e, t) {
+async function fe(e, t) {
 	let n = new URLSearchParams();
-	for (let t of fe) e[t] && n.set(t, e[t]);
+	for (let t of ue) e[t] && n.set(t, e[t]);
 	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
 		...r.creators || [],
 		...r.tagperformers || [],
@@ -530,7 +527,7 @@ async function K(e, t) {
 		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
 	}))).filter(Boolean);
 }
-function me({ kind: e = "catalog", filtered: n = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
+function pe({ kind: e = "catalog", filtered: n = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
 	let o = i ? "<button class=\"geist-button primary\" data-empty-settings>添加内容</button>" : "", s = "<a class=\"geist-button" + (!i || a ? " primary" : "") + "\" href=\"/follow-manage?tab=add\">添加关注</a>";
 	if (n || r) return t("search", r ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", r ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" });
 	if (e !== "catalog") {
@@ -551,7 +548,7 @@ function me({ kind: e = "catalog", filtered: n = !1, jav: r = !1, configurable: 
 }
 //#endregion
 //#region src/sidebar.ts
-function he(e) {
+function me(e) {
 	return [
 		"/",
 		"/unseen",
@@ -561,23 +558,23 @@ function he(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function ge(e, t) {
+function he(e, t) {
 	return e.dataset.surface?.split("?")[0] === t.split("?")[0] && e.querySelector(".dnav") ? (e.dataset.surface = t, !1) : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function _e(e) {
+function ge(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-function ve(e) {
+function _e(e) {
 	return e.filter((e) => ["115", "pikpak"].includes(e.location) && (e.roots === void 0 || e.roots.length > 0)).map((e) => e.location);
 }
-function ye(e, t) {
+function ve(e, t) {
 	return t.filter((t) => e.some((e) => e.location === t));
 }
-function be() {
+function ye() {
 	let e = [
 		["人工复核", "square-check-big"],
 		["高清版", "sparkles"],
@@ -624,20 +621,20 @@ function be() {
 }
 //#endregion
 //#region src/resource-sync.ts
-var q = (e = 0) => Number(e).toLocaleString(), xe = {
+var q = (e = 0) => Number(e).toLocaleString(), be = {
 	local: "本地磁盘",
 	115: "115",
 	pikpak: "PikPak"
-}, Se = (t) => o(e[t] ?? "database"), J = (e, t, n) => `<article class="board-plain-stat resourcestat">
+}, xe = (t) => o(e[t] ?? "database"), J = (e, t, n) => `<article class="board-plain-stat resourcestat">
     <span class="board-plain-stat-head">${e}</span>
     <strong>${t}</strong>
     <span class="cleanupmeta">${n}</span></article>`;
-function Ce(e, t) {
+function Se(e, t) {
 	let n = e.cache || {
 		files: 0,
 		bytes: 0
 	}, r = !!(e.missing || n.files);
-	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => J(`<span class="board-stat-tile resourcestat-tile">${Se(e.location)}</span>${xe[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${q(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${q(e.checked)} 项` : `馆藏中有 ${q(e.total)} 项`, e.unreadable ? `${q(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
+	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => J(`<span class="board-stat-tile resourcestat-tile">${xe(e.location)}</span>${be[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${q(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${q(e.checked)} 项` : `馆藏中有 ${q(e.total)} 项`, e.unreadable ? `${q(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
     ${J("待移入回收站", `${q(e.missing)} 项`, "")}
     ${J("可清理的缓存", `${q(n.files)} 个`, n.files ? t(n.bytes) : "")}</div>
     ${r ? i(`将把找不到文件的 ${q(e.missing)} 项馆藏记录移入回收站，并清理 ${q(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
@@ -652,7 +649,7 @@ function Y(e) {
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function we(e) {
+function Ce(e) {
 	return {
 		javLayout: Y(e.javLayout),
 		javImage: X(e.javLayout === "preview" ? "thumbnail" : e.javImage)
@@ -661,10 +658,10 @@ function we(e) {
 function X(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function Te(e, t) {
+function we(e, t) {
 	return e.is_jav && e.code && e.has_cover && (X(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function Ee(e, t) {
+function Te(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
 	let a = (e, t, n) => Math.min(n, Math.max(0, Number.isFinite(Number(e)) ? Number(e) : t)), o = a(i, 0, n), s = Math.max(o, a(e?.x1, n, n)), c = a(e?.y0, 0, r), l = Math.max(c, a(e?.y1, r, r)), u = s - o, d = l - c;
@@ -684,7 +681,7 @@ function Ee(e, t) {
 		height: m(r / d)
 	};
 }
-function De(e, t) {
+function Ee(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (X(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
@@ -704,8 +701,8 @@ var Z = {
 	activity: { react: "activity" },
 	stats: { react: "stats" },
 	taste: { react: "taste" }
-}, Oe = () => Object.keys(Z), Q = /* @__PURE__ */ new Map();
-async function ke(e, t, n, r = {}) {
+}, De = () => Object.keys(Z), Q = /* @__PURE__ */ new Map();
+async function Oe(e, t, n, r = {}) {
 	let i = Z[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
 	$(t);
@@ -717,7 +714,7 @@ async function ke(e, t, n, r = {}) {
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!Ae(t, a, r)) return;
+	if (!ke(t, a, r)) return;
 	let s = t.ownerDocument.createElement("div");
 	s.className = "peach-react", t.append(s);
 	let c = o.mount(s, n);
@@ -725,16 +722,16 @@ async function ke(e, t, n, r = {}) {
 		c.unmount(), s.remove();
 	};
 }
-function Ae(e, t, n) {
+function ke(e, t, n) {
 	return Q.get(e) === t ? n.isCurrent && !n.isCurrent() ? (Q.delete(e), !1) : (e.textContent = "", !0) : !1;
 }
-var je = (e) => !!e && Q.has(e);
+var Ae = (e) => !!e && Q.has(e);
 function $(e) {
-	for (let t of [...Q.keys()]) (t === e || e.contains(t)) && Me(t);
+	for (let t of [...Q.keys()]) (t === e || e.contains(t)) && je(t);
 }
-function Me(e) {
+function je(e) {
 	let t = Q.get(e);
 	t && (t.controller.abort(), Q.delete(e), t.dispose?.());
 }
 //#endregion
-export { de as boardPageSkeleton, f as boundedPreference, me as catalogEmptyHtml, K as catalogSuggestions, oe as clampPage, be as cleanupSkeletonHtml, ve as cloudLocations, ye as cloudPreferenceLocations, ue as detailSkeletonHtml, pe as emptyCatalogLayout, ce as entitySkeletonHtml, j as faceSourceScale, D as followJobProgress, g as initBoardControls, je as islandMounted, Oe as islandNames, Te as javImageKind, T as jobActivityHtml, A as matchesFaceSource, ke as mountIsland, m as mountNumberSetting, M as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, we as normalizeJavPreferences, ae as pageCount, se as paginationHtml, Ee as panelFrame, u as preferredDirection, Ce as resourceScanHtml, ne as selectGroup, O as selectRange, k as selectionSummary, he as sidebarHasCatalogContent, S as sidebarSectionHtml, _e as sidebarTagCounts, h as syncBoardRange, De as syncJavImages, p as syncNumberSetting, re as syncSelectionToolbar, ge as syncSidebarSurface, te as transitionTheme, $ as unmountIsland, E as watchJob, ee as wireSidebarGroups };
+export { K as boardPageSkeleton, f as boundedPreference, pe as catalogEmptyHtml, fe as catalogSuggestions, O as clampPage, ye as cleanupSkeletonHtml, _e as cloudLocations, ve as cloudPreferenceLocations, le as detailSkeletonHtml, de as emptyCatalogLayout, ce as entitySkeletonHtml, A as faceSourceScale, ne as followJobProgress, g as initBoardControls, Ae as islandMounted, De as islandNames, we as javImageKind, T as jobActivityHtml, Oe as mountIsland, m as mountNumberSetting, j as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, Ce as normalizeJavPreferences, D as pageCount, k as paginationHtml, Te as panelFrame, u as preferredDirection, Se as resourceScanHtml, ae as selectGroup, re as selectRange, ie as selectionSummary, me as sidebarHasCatalogContent, S as sidebarSectionHtml, ge as sidebarTagCounts, h as syncBoardRange, Ee as syncJavImages, p as syncNumberSetting, oe as syncSelectionToolbar, he as syncSidebarSurface, te as transitionTheme, $ as unmountIsland, E as watchJob, ee as wireSidebarGroups };

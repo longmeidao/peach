@@ -10,7 +10,7 @@ r"""给已落盘的实体图缩出索引页那一档派生件。
 服务端本来就会在第一次请求时现缩，这个脚本只是把那一次挪到没人等的时候：现缩一张
 实测 68 ms，一屏一百来张全没缩过的话，第一个打开索引页的人要替后来所有人等这一遍。
 
-缩法与判据都在 `peach.previews.EntityThumbnailService`，这里只是批量入口；可反复
+缩法与判据都在 `peach.previews.DerivedImageService`，这里只是批量入口；可反复
 运行，已经缩好且不比原件旧的默认跳过。派生件缺了不影响显示，页面退回原件。
 """
 from __future__ import annotations
@@ -25,7 +25,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.config import GENERATED_DIR
-from peach.previews import EntityThumbnailService, entity_thumb_root
+from peach.previews import DerivedImageService, entity_thumb_root
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def run(args: argparse.Namespace) -> int:
     # 派生件目录跟着实体图目录走，和服务端同一条推导，不在这里另写一个默认值。
-    service = EntityThumbnailService(entity_thumb_root(args.avatars))
+    service = DerivedImageService(entity_thumb_root(args.avatars))
     images = sorted(args.avatars.glob("*.img"))
     if args.limit:
         images = images[:args.limit]

@@ -15,8 +15,8 @@ from . import entities, entry_links, feed_followup, feeds
 from .jobs import TaskRunConflict
 from .http import HttpRequest, public_https_url
 
-#: 一次拉取的超时与体积上限。一份 RSS 正常几十到几百 KB；JavDB 演员页 78 KB。
-#: 2 MiB 之外的东西不是 feed，是被替换成了别的页面。
+#: 一次拉取的超时与体积上限。JavDB 演员页 78 KB；2 MiB 之外的东西不是演员页，
+#: 是被替换成了别的页面。
 FETCH_TIMEOUT = 30.0
 FETCH_MAX_BYTES = 2 * 1024 * 1024
 
@@ -40,8 +40,7 @@ def fetch(transport, url: str, *, etag: str | None = None,
     """取一次订阅地址。304 不是失败，原样交给调用方判。"""
     if not public_https_url(url):
         raise ValueError("订阅地址必须是解析到公网的 HTTPS 地址")
-    headers = {"Accept": "application/rss+xml, application/atom+xml, application/xml,"
-                         " text/xml;q=0.9, text/html;q=0.8"}
+    headers = {"Accept": "text/html"}
     if etag:
         headers["If-None-Match"] = etag
     if last_modified:
@@ -182,16 +181,15 @@ def q_feeds(contract, args) -> dict:
         pending = connection.execute(
             "SELECT count(*) FROM feed_discovery WHERE ignored_at IS NULL"
             " AND read_at IS NULL").fetchone()[0]
-    return {"ok": True, "sources": rows, "unread": int(pending or 0),
-            "kinds": [{"value": kind, "label": feeds.KIND_LABELS[kind]}
-                      for kind in feeds.KINDS],
-            "min_interval_minutes": feeds.MIN_INTERVAL_MINUTES,
-            "max_interval_minutes": feeds.MAX_INTERVAL_MINUTES}
+    return {"ok": True, "sources": rows, "unread": int(pending or 0)}
 
 
 def w_feed_source(contract, body) -> dict:
-    """增删订阅与开关。新增不当场拉取：第一轮由到期扫描带上，错误显示在那一行。"""
-    action = str(body.get("action") or "add")
+    """订阅的移除与开关，以及人物页的「订阅新作」。
+
+    这里不收页面送来的地址：订阅只从人物页进，地址由服务端按这位的 JavDB 身份现拼（ADR-0047）。
+    """
+    action = str(body.get("action") or "")
     if action == "remove":
         source_id = body.get("id")
         if not isinstance(source_id, int):
@@ -208,16 +206,7 @@ def w_feed_source(contract, body) -> dict:
         return {"ok": True, "source": source_id, "enabled": enabled}
     if action == "follow":
         return _follow_entity(contract, body)
-    if action != "add":
-        raise ValueError(f"unknown feed source action: {action}")
-    entity_id = body.get("entity_id")
-    with contract.database.write_transaction() as connection:
-        source_id = feeds.add_source(
-            connection, kind=str(body.get("kind") or feeds.KIND_RSS),
-            url=body.get("url"), name=str(body.get("name") or ""),
-            entity_id=int(entity_id) if isinstance(entity_id, int) else None,
-            interval_minutes=body.get("interval_minutes", feeds.DEFAULT_INTERVAL_MINUTES))
-    return {"ok": True, "source": source_id}
+    raise ValueError(f"unknown feed source action: {action}")
 
 
 def _follow_entity(contract, body) -> dict:

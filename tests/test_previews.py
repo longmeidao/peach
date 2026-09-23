@@ -367,7 +367,7 @@ class EntityThumbnailTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         root = Path(self.tmp.name).resolve()
         self.source = root / "performer-11.img"
-        self.service = previews.EntityThumbnailService(root / "thumbs")
+        self.service = previews.DerivedImageService(root / "thumbs")
         self.write_source(1600, 2000)
 
     def tearDown(self):

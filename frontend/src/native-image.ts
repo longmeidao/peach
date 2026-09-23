@@ -1,8 +1,3 @@
-/** 焦点只适用于生成它的源图尺寸，缓存中的另一张图不得借用。 */
-export function matchesFaceSource(width: number, height: number, sourceWidth: number, sourceHeight: number) {
-  return width > 0 && height > 0 && width === sourceWidth && height === sourceHeight;
-}
-
 /** 手上这张相对边车那张源图缩了多少；换成了别的图就是 0。
  *
  *  索引页取的是实体图缩到长边 640 的派生件，人脸边车记的仍是原件的像素。取景的几何

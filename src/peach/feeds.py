@@ -4,8 +4,8 @@ Feed 只回答一个问题——最近出了哪些番号。一次拉取的全部
 的记录和一条「这个番号还没入库」的记录；不下载种子、不下载 enclosure、不建目录、
 不碰任何媒体文件。
 
-解析用标准库 `xml.etree`，不为这件事引 feedparser：这里只需要 RSS 2.0 与 Atom 里的四个
-字段，而多一个依赖要一直跟着升级和审计。代价是日期格式与命名空间得自己认，都在本模块里。
+订阅只有一类：JavDB 演员页当伪 Feed 抓，由人物页的「订阅新作」开关按这位的 JavDB 身份
+现拼地址（ADR-0047）。页面不送地址，所以这里没有「任意地址」这条入口。
 
 **解析只吃已下载的字节**，地址由调用方自己取（`peach.http` 的 transport 加主机限流）。
 把地址交给一个会自己发 HTTP 的解析器，等于绕过项目的代理、限流、超时与预算闸门。
@@ -16,25 +16,17 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin
-from xml.etree import ElementTree
 
 from .catalog_rules import normalise_code_key, release_code_from_text
 from .entities import normalize_entity_name
 
-#: 原生 RSS/Atom。
-KIND_RSS = "rss"
 #: JavDB 演员页当伪 Feed 抓。它按发行日排在前面，所以「还没发行的作品」会先出现。
 KIND_JAVDB_ACTOR = "javdb-actor"
-KINDS = (KIND_RSS, KIND_JAVDB_ACTOR)
 
-KIND_LABELS = {KIND_RSS: "RSS / Atom", KIND_JAVDB_ACTOR: "JavDB 演员页"}
+KIND_LABELS = {KIND_JAVDB_ACTOR: "JavDB 演员页"}
 
-#: 拉取间隔的上下界。下界 30 分钟不是性能考虑：JavDB 按出口 IP 计配额，比这更密只会
-#: 把配额花在一个一天才更新几条的页面上。
-MIN_INTERVAL_MINUTES = 30
-MAX_INTERVAL_MINUTES = 7 * 24 * 60
+#: 拉取间隔。JavDB 按出口 IP 计配额，一张一天才更新几条的页面拉得再密也只是花配额。
 DEFAULT_INTERVAL_MINUTES = 360
 
 #: 一次拉取最多解析多少条。源正常一页几十条，异常的那种（被替换成别的页面、
@@ -45,10 +37,8 @@ MAX_ENTRIES = 200
 #: 这里先截一刀是为了让第一次订阅不至于把整页历史都排成任务。
 MAX_NEW_PER_POLL = 20
 
-_ATOM = "{http://www.w3.org/2005/Atom}"
-
-#: 切词元用的分隔符。标题里的番号被中文剧情简介夹着，整段丢给
-#: `release_code_from_text` 认不出来（2026-09-22 实测 sukebei 75 条里只认出 3 条）。
+#: 切词元用的分隔符。标题里的番号被剧情简介夹着时，整段丢给
+#: `release_code_from_text` 认不出来（2026-09-22 实测一份种子站标题 75 条里只认出 3 条）。
 _TOKEN = re.compile(r"[^\s\[\]()（）【】{}、,，/|_+]+")
 
 #: JavDB 演员页的一部作品：`/v/<id>` 是条目身份，`<strong>` 里是干净的番号，
@@ -106,84 +96,18 @@ class ParsedFeed:
     entries: tuple[FeedEntry, ...]
 
 
-def _text(node, *paths: str) -> str | None:
-    for path in paths:
-        value = node.findtext(path)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
+def _published(value: str) -> str | None:
+    """`.meta` 里的发行日按 UTC 零点读，认不出就当没有。
 
-
-def _as_utc(moment: datetime) -> str:
-    """没带时区的时间按 UTC 读，不按本机时区。
-
-    两种来源都会给出这种值：RSS 的 `-0000` 按 RFC 5322 表示「时区未知」，
-    `parsedate_to_datetime` 于是返回 naive；JavDB 的 `.meta` 只有一个日期。
-    naive 值交给 `astimezone` 会被当成本机时间，于是同一份 feed 在 UTC+8 的机器上
-    整体前移八小时——发行日 2026-10-20 变成 10-19，而排序和「这一天发了什么」都按它算。
-    """
-    return stamp(moment if moment.tzinfo is not None
-                 else moment.replace(tzinfo=timezone.utc))
-
-
-def _published(value: str | None) -> str | None:
-    """RSS 的 RFC 822 与 Atom 的 ISO-8601 都认，认不出就当没有。
-
+    它只有日期、没有时区。按本机时区读的话，同一页在 UTC+8 的机器上整体前移八小时，
+    发行日 2026-10-20 变成 10-19，而排序和「这一天发了什么」都按它算。
     发布时间是排序真值：拿不到它才回退到首次见到的时间。把认不出的日期当成「现在」
     会让一整页历史条目全部挤在同一秒，那之后就再也分不出先后了。
     """
-    if not value:
-        return None
-    raw = value.strip()
     try:
-        return _as_utc(parsedate_to_datetime(raw))
-    except (TypeError, ValueError):
-        pass
-    try:
-        return _as_utc(datetime.fromisoformat(raw.replace("Z", "+00:00")))
+        return stamp(datetime.fromisoformat(value).replace(tzinfo=timezone.utc))
     except ValueError:
         return None
-
-
-def parse_feed(body: bytes) -> ParsedFeed | None:
-    """RSS 2.0 或 Atom 的字节 → 条目。不是 feed 时返回 None。
-
-    条目为空但文档本身合法不算失败：源这一刻确实没有新东西。
-    """
-    if not body or not body.strip():
-        return None
-    try:
-        root = ElementTree.fromstring(body)
-    except ElementTree.ParseError:
-        return None
-    tag = root.tag.split("}")[-1]
-    rows: list[FeedEntry] = []
-    if tag == "rss":
-        channel = root.find("channel")
-        if channel is None:
-            return None
-        for item in channel.findall("item")[:MAX_ENTRIES]:
-            title = _text(item, "title") or ""
-            link = _text(item, "link")
-            key = _text(item, "guid") or link or title
-            if not key:
-                continue
-            rows.append(FeedEntry(key, title, link,
-                                  _published(_text(item, "pubDate"))))
-        return ParsedFeed(_text(channel, "title"), tuple(rows))
-    if tag == "feed":
-        for item in root.findall(f"{_ATOM}entry")[:MAX_ENTRIES]:
-            title = _text(item, f"{_ATOM}title") or ""
-            anchor = item.find(f"{_ATOM}link")
-            link = anchor.get("href") if anchor is not None else None
-            key = _text(item, f"{_ATOM}id") or link or title
-            if not key:
-                continue
-            rows.append(FeedEntry(key, title, link,
-                                  _published(_text(item, f"{_ATOM}published",
-                                                   f"{_ATOM}updated"))))
-        return ParsedFeed(_text(root, f"{_ATOM}title"), tuple(rows))
-    return None
 
 
 def parse_javdb_actor(html: str, base_url: str) -> ParsedFeed | None:
@@ -209,9 +133,10 @@ def parse_javdb_actor(html: str, base_url: str) -> ParsedFeed | None:
 
 
 def parse(kind: str, body: bytes, url: str) -> ParsedFeed | None:
+    """认不出的类型当解析失败，原因落到那一行的 `last_error` 上。"""
     if kind == KIND_JAVDB_ACTOR:
         return parse_javdb_actor(body.decode("utf-8", "replace"), url)
-    return parse_feed(body)
+    return None
 
 
 # -- 订阅 ------------------------------------------------------------------
@@ -220,9 +145,8 @@ def parse(kind: str, body: bytes, url: str) -> ParsedFeed | None:
 def normalize_url(value: object) -> str:
     """订阅地址只收 HTTPS。
 
-    明文地址在这里没有可用的场景：两类可用来源都是 HTTPS，而 Feed 拉回来的东西会直接
-    变成用户看见的新作——中途被改写的内容没有任何一步会被察觉。地址解析到内网的那一层
-    由 `http.public_https_url` 在真正发请求时挡住。
+    JavDB 是 HTTPS，而 Feed 拉回来的东西会直接变成用户看见的新作——中途被改写的内容
+    没有任何一步会被察觉。地址解析到内网的那一层由 `http.public_https_url` 在真正发请求时挡住。
     """
     url = str(value or "").strip()
     if not url.startswith("https://"):
@@ -230,40 +154,24 @@ def normalize_url(value: object) -> str:
     return url
 
 
-def normalize_interval(value: object) -> int:
-    try:
-        minutes = int(value)
-    except (TypeError, ValueError) as error:
-        raise ValueError("拉取间隔必须是整数分钟") from error
-    if not MIN_INTERVAL_MINUTES <= minutes <= MAX_INTERVAL_MINUTES:
-        raise ValueError(
-            f"拉取间隔必须在 {MIN_INTERVAL_MINUTES} 到 {MAX_INTERVAL_MINUTES} 分钟之间")
-    return minutes
-
-
-def add_source(connection: sqlite3.Connection, *, kind: str, url: str, name: str = "",
-               entity_id: int | None = None,
-               interval_minutes: int = DEFAULT_INTERVAL_MINUTES,
-               enabled: bool = True) -> int:
-    """登记一条订阅。地址重复直接拒绝——同一个源订两遍只会让同一条新作出现两次。"""
-    if kind not in KINDS:
-        raise ValueError(f"认不出这种订阅源：{kind}")
+def add_source(connection: sqlite3.Connection, *, url: str, name: str = "",
+               entity_id: int | None = None) -> int:
+    """登记一条 JavDB 演员页订阅。地址重复直接拒绝——同一个源订两遍只会让同一条新作出现两次。"""
     address = normalize_url(url)
-    minutes = normalize_interval(interval_minutes)
     if connection.execute("SELECT 1 FROM feed_source WHERE url=?", (address,)).fetchone():
         raise ValueError("这个订阅地址已经在列表里了")
     cursor = connection.execute(
         "INSERT INTO feed_source(kind,name,url,entity_id,enabled,interval_minutes,"
-        "created_at) VALUES(?,?,?,?,?,?,?)",
-        (kind, str(name or "").strip(), address, entity_id, 1 if enabled else 0,
-         minutes, stamp()))
+        "created_at) VALUES(?,?,?,?,1,?,?)",
+        (KIND_JAVDB_ACTOR, str(name or "").strip(), address, entity_id,
+         DEFAULT_INTERVAL_MINUTES, stamp()))
     return int(cursor.lastrowid)
 
 
 def follow_entity(connection: sqlite3.Connection, entity_id: int, urls) -> list[int]:
     """人物页那枚开关打开：这位的每个 JavDB 演员页各一条源，全部启用。
 
-    地址已经登记过的（设置页手动加过、或者之前关掉过）原地启用并补上人物，不另建一条：
+    地址已经登记过的（之前关掉过，或者登记时还没挂上人物）原地启用并补上人物，不另建一条：
     `feed_item` 的去重记忆挂在那条源上，重建一条等于让整页历史再被当成新作一遍。
     """
     ids: list[int] = []
@@ -272,7 +180,7 @@ def follow_entity(connection: sqlite3.Connection, entity_id: int, urls) -> list[
         row = connection.execute(
             "SELECT id FROM feed_source WHERE url=?", (address,)).fetchone()
         if row is None:
-            ids.append(add_source(connection, kind=KIND_JAVDB_ACTOR, url=address,
+            ids.append(add_source(connection, url=address,
                                   entity_id=int(entity_id)))
             continue
         connection.execute(

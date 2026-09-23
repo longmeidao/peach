@@ -2871,9 +2871,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(img.dataset.frame!=='sleeve')return;")
         # 没有框就一个字都不写，CSS 里那份贴右缘的回退照旧生效。
         self.assertPageContains("if(!frame)return;")
-        # 框按那一版源图算；封面被更大的那张换掉之后，它描述的是另一张图。
+        # 框按那一版源图算：等比缩小的派生档照用，封面被另一张换掉之后它描述的是另一张图。
         self.assertPageContains(
-            "if(!matchesFaceSource(img.naturalWidth,img.naturalHeight,imgW,imgH))return;")
+            "if(!faceSourceScale(img.naturalWidth,img.naturalHeight,imgW,imgH))return;")
 
     def test_narrow_front_cover_fills_the_gap_with_a_blurred_backdrop(self):
         """正封窄于卡片时两侧的留白垫同一张封面的模糊放大版，不留黑边也不露封底。
@@ -2883,8 +2883,8 @@ class WebUiSourceTests(unittest.TestCase):
         另一个元素上的自定义属性，所以 `syncJavImages` 里单写了一句。
         """
         self.assertPageContains(
-            "img.closest('.pic')?.style.setProperty('--cover-blur',"
-            "`url(\"${img.currentSrc||img.src}\")`);")
+            "img.closest('.pic')?.style.setProperty('--cover-blur',\n"
+            "    `url(\"${img.dataset.thumbSrc||img.currentSrc||img.src}\")`);")
         self.assertPageContains(
             ".pic::before{content:\"\";position:absolute;inset:-8%;pointer-events:none;")
         self.assertPageContains("background:var(--cover-blur,none) center/cover no-repeat;"
@@ -2932,7 +2932,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<script type="module" src="/app.js"></script>')
         self.assertPageContains("document.addEventListener('load',event=>{")
         self.assertPageContains(
-            "if(img.classList.contains('cover'))coverAnchor(img);")
+            "if(img.classList.contains('cover')){coverAnchor(img);upgradeCover(img)}")
         self.assertPageContains("else if(img.dataset.facebox)avatarFrame(img);")
         self.assertPageContains("  fitNativeImage(img);")
         self.assertPageLacks('onload="', "模块作用域的函数在内联属性里取不到")

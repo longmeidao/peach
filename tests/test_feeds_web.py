@@ -20,28 +20,16 @@ from support.ledger import fresh_ledger  # noqa: E402
 
 #: 端到端那一趟读的是临时数据根里的这份文件：拉取只吃已下载的字节，
 #: 字节从网络来还是从盘上来与解析、去重、建壳那几步无关。
-SAMPLE = """<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0"><channel>
-  <title>示例新作</title>
-  <item>
-    <title>SSIS-950 作品标题</title>
-    <link>https://feeds.example.test/view/2</link>
-    <guid>https://feeds.example.test/view/2</guid>
-    <pubDate>Mon, 21 Sep 2026 03:00:00 +0000</pubDate>
-  </item>
-  <item>
-    <title>HMN-071 另一部作品[有碼高清中文字幕]</title>
-    <link>https://feeds.example.test/view/1</link>
-    <guid>https://feeds.example.test/view/1</guid>
-    <pubDate>Sun, 20 Sep 2026 03:00:00 +0000</pubDate>
-  </item>
-  <item>
-    <title>合集 30 部打包</title>
-    <link>https://feeds.example.test/view/0</link>
-    <guid>https://feeds.example.test/view/0</guid>
-    <pubDate>Sat, 19 Sep 2026 03:00:00 +0000</pubDate>
-  </item>
-</channel></rss>
+SAMPLE = """
+<a href="/v/Ab2" class="box" title="x"><div class="video-title"><strong>SSIS-950</strong>
+ 作品标题</div><div class="meta">
+ 2026-09-21</div></a>
+<a href="/v/Ab1" class="box" title="x"><div class="video-title"><strong>HMN-071</strong>
+ 另一部作品</div><div class="meta">
+ 2026-09-20</div></a>
+<a href="/v/Ab0" class="box" title="x"><div class="video-title"><strong></strong>
+ 合集 30 部打包</div><div class="meta">
+ 2026-09-19</div></a>
 """
 
 
@@ -70,11 +58,11 @@ class FeedWebFixture(unittest.TestCase):
         # assert 之后才写完，也可能在临时目录删掉之后才醒。这里关掉自动领取，
         # 要跑后继的用例自己 `drain()`。
         self.contract.followups.stop()
-        self.url = "https://feeds.example.test/new.xml"
-        sample = Path(self.temporary.name) / "feed-sample.xml"
+        self.url = "https://javdb.com/actors/Smp1"
+        sample = Path(self.temporary.name) / "feed-sample.html"
         sample.write_text(SAMPLE, encoding="utf-8")
         self.transport = FakeTransport({self.url: HttpResponse(
-            200, {"ETag": 'W/"abc"', "Content-Type": "application/xml"},
+            200, {"ETag": 'W/"abc"', "Content-Type": "text/html"},
             sample.read_bytes(), self.url)})
         self._patched = web_feeds.fetch
         web_feeds.fetch = self._fetch
@@ -115,10 +103,10 @@ class FeedWebFixture(unittest.TestCase):
         from peach.http import HttpRequest
         return transport(HttpRequest("GET", url, headers), 30.0, 1 << 21)
 
-    def _add(self, **body):
-        return dispatch_api_post(self.contract, "/api/feeds/source",
-                                 {"action": "add", "url": self.url, "name": "示例源",
-                                  **body})
+    def _add(self, entity_id=None):
+        with self.contract.database.write_transaction() as connection:
+            return feeds.add_source(connection, url=self.url, name="示例源",
+                                    entity_id=entity_id)
 
     def _check(self, **body):
         original = web_feeds._transport
@@ -130,14 +118,20 @@ class FeedWebFixture(unittest.TestCase):
 
 
 class FeedWebTest(FeedWebFixture):
-    def test_settings_snapshot_lists_the_source_and_its_kinds(self):
+    def test_settings_snapshot_lists_the_source(self):
         self._add()
         snapshot = dispatch_api_get(self.contract, "/api/feeds", {})
         self.assertEqual(len(snapshot["sources"]), 1)
         self.assertEqual(snapshot["sources"][0]["name"], "示例源")
+        self.assertEqual(snapshot["sources"][0]["kind_label"], "JavDB 演员页")
         self.assertTrue(snapshot["sources"][0]["enabled"])
-        self.assertEqual([kind["value"] for kind in snapshot["kinds"]],
-                         list(feeds.KINDS))
+
+    def test_the_source_endpoint_takes_no_address_from_the_page(self):
+        # 订阅只从人物页进，地址由服务端现拼（ADR-0047）；页面送来的地址一律不收。
+        with self.assertRaises(ValueError):
+            dispatch_api_post(self.contract, "/api/feeds/source",
+                              {"action": "add", "url": "https://example.test/rss"})
+        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds", {})["sources"], [])
 
     def test_one_round_turns_a_local_feed_into_unfiled_new_releases(self):
         self._add()
@@ -419,9 +413,9 @@ class PerformerFeedSwitchTest(FeedWebFixture):
         self.assertEqual(again["id"], paused["id"])
         self.assertTrue(again["enabled"])
 
-    def test_a_page_added_by_hand_is_adopted_instead_of_duplicated(self):
-        dispatch_api_post(self.contract, "/api/feeds/source", {
-            "action": "add", "kind": feeds.KIND_JAVDB_ACTOR, "url": self.page})
+    def test_a_listed_page_without_a_person_is_adopted_instead_of_duplicated(self):
+        with self.contract.database.write_transaction() as connection:
+            feeds.add_source(connection, url=self.page)
         self._switch(True)
         self._settled()
         [source] = self._sources()

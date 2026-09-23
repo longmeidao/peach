@@ -91,11 +91,16 @@
   text-decoration:none;color:var(--ink);border-radius:var(--control-radius);padding:4px 8px;margin:-4px -8px}
 .entityhero .entrymarks a.entrymark:any-link:hover{
   background:color-mix(in srgb,var(--ink) 8%,var(--ground));text-decoration:none}
-/* 「订阅新作」开关排在两枚标识后面：它订的就是左边那个 JavDB 演员页。字和图标跟两枚
-   标识同一个量级——同一行里三样东西，这一样要是小一号，读起来就成了挂在后面的注脚。 */
-.entryfeed{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-size:var(--fs-lg);
-  font-weight:500;line-height:24px;cursor:pointer}
-.entryfeed svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+/* 「订阅新作」开关排在两枚标识后面：它订的就是左边那个 JavDB 演员页。只摆一枚 RSS 图标，
+   高度跟两枚标识一样是 22px；关着跟页面墨色，订上了换成 RSS 自己的橙。开关本身藏给读屏
+   与键盘，悬停垫底与两枚标识同一档。 */
+.entryfeed{position:relative;display:inline-flex;align-items:center;color:var(--ink);cursor:pointer;
+  border-radius:var(--control-radius);padding:4px;margin:-4px}
+.entryfeed:hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
+.entryfeed:has(:checked){color:#F78422}
+.entryfeed:has(:focus-visible){outline:2px solid var(--tungsten);outline-offset:2px}
+.entryfeed:has([aria-busy="true"]){cursor:progress;opacity:.6}
+.entryfeed svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2}
 /* 两枚标识按字母的高度对齐，不按外框：JavDB 那枚里 `Jav` 三个字母占 viewBox 高的
    71/111，高 22px 时是 14.1px；MISSAV 是排出来的字，衬线体的大写字母高约 0.71em，
    `--fs-xl` 时是 14.2px。外框对齐的话 MISSAV 的字母比 `Jav` 高出两成，一眼看过去它大一号。

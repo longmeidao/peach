@@ -1,24 +1,21 @@
-/* 「订阅源」小节：增删、开关、上次拉取时间与错误（ADR-0042）。
+/* 「订阅源」小节：列表、开关、移除、上次拉取时间与错误（ADR-0042）。
  *
- * 数据不在 `/api/configuration` 那份快照里：订阅源有自己的写接口，增删开关之后要重取的
+ * 数据不在 `/api/configuration` 那份快照里：订阅源有自己的写接口，开关与移除之后要重取的
  * 只是这一节。自己收自己的状态，不进共用的 `QueryClient`——这一节是「通用」组里唯一
  * 不看配置快照的内容，而它的几个兄弟分区在用例里是脱离 Provider 单独挂的。
  *
- * 这一节只管「订阅什么、多久拉一次」。拉回来的新作在首页与人物页的「新作 · 未入库」里，
- * 不在设置里列——设置页列一遍就成了第二个入口，两处的已读状态会各说各话。 */
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+ * 订阅只从人物页的「订阅新作」进，这里不收地址（ADR-0047）。拉回来的新作在首页与人物页的
+ * 「新作 · 未入库」里，不在设置里列——设置页列一遍就成了第二个入口，两处的已读状态会各说各话。 */
+import { useCallback, useEffect, useState } from 'react';
 import { RiCloseLine } from '@remixicon/react';
 
 import { SettingsRow } from '@/components/application/settings/settings-rows';
 import { Button } from '@/components/base/buttons/button';
-import { IconButton } from '@/components/base/buttons/icon-button';
-import { Input } from '@/components/base/input/input';
-import { Select, SelectItem } from '@/components/base/select/select';
 import { Switch } from '@/components/base/switch/switch';
 
 import { apiGet, apiSend, errorMessage } from '../../api';
 import { Note } from '../components/note';
-import { ErrorText, FieldLabel, Footer, Help, Rows, Section, Stack } from './section';
+import { ErrorText, Footer, Help, Rows, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';
 
 interface FeedSource {
@@ -39,9 +36,6 @@ interface FeedSource {
 interface FeedsData {
   sources: FeedSource[];
   unread: number;
-  kinds: { value: string; label: string }[];
-  min_interval_minutes: number;
-  max_interval_minutes: number;
 }
 
 /** 一行订阅源在名称下面那句话：上次什么时候拉的、拉到几条。没拉过就直说还没拉过。 */
@@ -58,8 +52,7 @@ function describe(source: FeedSource): string {
 export function FeedSettings() {
   const [data, setData] = useState<FeedsData | null>(null);
   const [failure, setFailure] = useState('');
-  /* 服务端是唯一真相：增删开关之后重取整份，不在前端按响应拼一份新的本地状态。
-     拉取间隔会被后端按上下限收窄，拼出来的那份和库里的从第一次保存起就不一样。 */
+  /* 服务端是唯一真相：开关与移除之后重取整份，不在前端按响应拼一份新的本地状态。 */
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
       const payload = await apiGet<FeedsData>('/api/feeds', signal);
@@ -75,25 +68,7 @@ export function FeedSettings() {
     void reload(controller.signal);
     return () => controller.abort();
   }, [reload]);
-  const kinds = data?.kinds ?? [];
-  const [kind, setKind] = useState('');
-  const [url, setUrl] = useState('');
-  const [name, setName] = useState('');
-  const [hours, setHours] = useState('6');
   const action = useAction();
-
-  const add = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const minutes = Math.round(Number(hours) * 60);
-    void action.run('add', (signal) => apiSend('/api/feeds/source', {
-      action: 'add', kind: kind || kinds[0]?.value, url: url.trim(), name: name.trim(),
-      interval_minutes: Number.isFinite(minutes) ? minutes : undefined,
-    }, 'POST', signal), () => {
-      setUrl('');
-      setName('');
-      void reload();
-    });
-  };
 
   const toggle = (source: FeedSource, enabled: boolean) => {
     void action.run(`enabled-${source.id}`, (signal) => apiSend('/api/feeds/source',
@@ -124,15 +99,17 @@ export function FeedSettings() {
   }
 
   return (
-    <Section title="订阅源" onSubmit={add}>
+    <Section title="订阅源">
       {data.sources.length ? (
         <Rows>
           {data.sources.map((source) => (
             <SettingsRow key={source.id} label={source.name || source.url} description={describe(source)}>
-              <div className="flex items-center gap-1">
+              {/* 移除键取 xs 那一档：和开关一样 24px 高，两样并排才读成同一行的两个控件。 */}
+              <div className="flex items-center gap-2">
                 <Switch aria-label={`启用 ${source.name || source.url}`} isSelected={source.enabled}
                   onChange={(enabled) => toggle(source, enabled)} />
-                <IconButton icon={RiCloseLine} aria-label={`移除 ${source.name || source.url}`}
+                <Button variant="danger" size="xs" iconOnly leadingIcon={RiCloseLine}
+                  aria-label={`移除 ${source.name || source.url}`}
                   onClick={() => remove(source)} {...busyProps(action.busy === `remove-${source.id}`)} />
               </div>
             </SettingsRow>
@@ -146,28 +123,11 @@ export function FeedSettings() {
             {source.last_error}
           </Note>
         ))}
-        <div className="inline-grid grid-cols-1 gap-3 @lg:grid-cols-2">
-          <div className="flex flex-col gap-1.5">
-            <FieldLabel>来源类型</FieldLabel>
-            <Select aria-label="来源类型" selectedKey={kind || kinds[0]?.value}
-              onSelectionChange={(key) => { if (key !== null) setKind(String(key)); }}>
-              {kinds.map((item) => (
-                <SelectItem key={item.value} id={item.value} textValue={item.label}>{item.label}</SelectItem>
-              ))}
-            </Select>
-          </div>
-          <Input label="拉取间隔（小时）" inputMode="decimal" value={hours} onChange={setHours}
-            hint={`最短 ${data.min_interval_minutes} 分钟。`} />
-        </div>
-        <Input label="订阅地址" placeholder="https://" value={url} onChange={setUrl}
-          hint="RSS/Atom 的地址，或 JavDB 的演员页地址。只收 HTTPS。" />
-        <Input label="名称" maxLength={80} placeholder="不填就用地址" value={name} onChange={setName} />
         {action.error ? <ErrorText>{action.error}</ErrorText> : null}
-        <Help>订阅只发现番号、建一条「未入库」的新作，不下载任何文件。新作在首页和人物页里看。</Help>
+        <Help>在人物页点「订阅新作」就会加到这里。订阅只发现番号、建一条「未入库」的新作，不下载任何文件；新作在首页和人物页里看。</Help>
       </Stack>
       <Footer status={data.unread ? `有 ${data.unread} 条新作还没看` : '新作都看过了'}>
         <Button onClick={check} {...busyProps(action.busy === 'check')}>立即拉取</Button>
-        <Button type="submit" {...busyProps(action.busy === 'add')}>添加订阅</Button>
       </Footer>
     </Section>
   );
