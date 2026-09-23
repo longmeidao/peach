@@ -47,6 +47,9 @@ CREATE TABLE entity_search_term(
 CREATE TABLE entity_membership(
   member_id INTEGER PRIMARY KEY, agency_id INTEGER, source TEXT,
   confidence REAL DEFAULT 1.0, checked_at TEXT);
+CREATE TABLE label_maker(
+  label_id INTEGER PRIMARY KEY, maker_id INTEGER, source TEXT,
+  confidence REAL DEFAULT 1.0, checked_at TEXT);
 """
 
 

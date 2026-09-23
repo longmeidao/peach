@@ -202,7 +202,7 @@ def merge_entity(
     """
     stamp = now or datetime.now(timezone.utc).isoformat()
     moved = {"assets": 0, "aliases": 0, "refs": 0, "links": 0, "terms": 0,
-             "dropped_refs": 0, "memberships": 0, "members": 0}
+             "dropped_refs": 0, "memberships": 0, "members": 0, "labels": 0}
 
     # 被并入的名字本身留作别名，否则按旧名搜索会落空。
     connection.execute(
@@ -263,6 +263,19 @@ def merge_entity(
     connection.execute(
         "UPDATE entity_membership SET agency_id=? WHERE agency_id=?", (target_id, source_id))
     moved["members"] = connection.execute("SELECT changes()").fetchone()[0]
+
+    # label 的母公司（ADR-0049）同理：label 一侧一条现役，母公司一侧整批改指向。label 并进
+    # 自己的母公司时那一条会变成自己指自己，表上的 CHECK 不收，先删掉。
+    connection.execute(
+        "INSERT OR IGNORE INTO label_maker(label_id,maker_id,source,confidence,checked_at)"
+        " SELECT ?,maker_id,source,confidence,checked_at FROM label_maker"
+        " WHERE label_id=? AND maker_id<>?", (target_id, source_id, target_id))
+    connection.execute("DELETE FROM label_maker WHERE label_id=?", (source_id,))
+    connection.execute("DELETE FROM label_maker WHERE label_id=? AND maker_id=?",
+                       (target_id, source_id))
+    connection.execute(
+        "UPDATE label_maker SET maker_id=? WHERE maker_id=?", (target_id, source_id))
+    moved["labels"] = connection.execute("SELECT changes()").fetchone()[0]
 
     connection.execute("UPDATE entity SET updated_at=? WHERE id=?", (stamp, target_id))
     connection.execute("DELETE FROM entity WHERE id=?", (source_id,))
