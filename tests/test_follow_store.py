@@ -3,6 +3,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -476,6 +477,57 @@ class GroupingTests(_StoreCase):
         groups = self._record_booru(
             self._booru_post("1", 0),
             self._booru_post("2", 1, source="https://www.fanbox.cc/@lazy/posts/1"))
+        self.assertEqual(len(groups), 2)
+
+    def test_a_stored_hint_is_recomputed_from_the_recorded_source(self):
+        # 落库时缺协议头的出处没认出来，键退回了帖子自己的 id；读时按出处重算后并组。
+        stale = self._booru_post("2", 1, character="ahri",
+                                 source="x.com/vileclipse/status/2101310844021928089")
+        groups = self._record_booru(
+            self._booru_post("1", 0, source="https://x.com/vileclipse/status/2101310844021928089"),
+            replace(stale, group_hint="rule34xxx:post:2"))
+        self.assertEqual(len(groups), 1)
+
+    def _clip(self, video_id, title, *, duration=20.0, character="angel (kof)",
+              work="King of Fighters", **extra_tags):
+        tag_types = {"beach": "general", character: "general", work: "copyright",
+                     "LazyProcrastinator": "artist", **extra_tags}
+        return FollowCandidate(provider="rule34video", external_id=str(video_id),
+                               title=title, duration=duration,
+                               extra={"tag_types": tag_types})
+
+    def _record_clips(self, *clips):
+        source_id = self._source(provider="rule34video", ref="lazyprocrastinator")
+        self.store.record(source_id, _fetch(clips), moment=MOMENT)
+        return sorted(sorted(m.title for m in (g.primary, *g.variants, *g.duplicates))
+                      for g in self.store.group(self.store.items()))
+
+    def test_a_batch_of_clips_folds_per_character(self):
+        # 同一段 KOF 动画导出成几条 20 秒短片连着传；Angel 与 Mai 是两个角色，分成两组。
+        mai = "mai shiranui (dead or alive)"
+        groups = self._record_clips(
+            self._clip(4608755, "Angel-riding hugging"), self._clip(4608759, "Angel-missionary"),
+            self._clip(4608779, "Angel-handjob"), self._clip(4608787, "Mai-blowjob", character=mai),
+            self._clip(4608795, "Mai-doggy", character=mai))
+        self.assertEqual(groups, [["Angel-handjob", "Angel-missionary", "Angel-riding hugging"],
+                                  ["Mai-blowjob", "Mai-doggy"]])
+
+    def test_clips_far_apart_or_of_another_length_stay_apart(self):
+        groups = self._record_clips(
+            self._clip(4608755, "Angel-riding hugging"), self._clip(4609755, "Angel-missionary"),
+            self._clip(4609759, "Angel-handjob", duration=45.0))
+        self.assertEqual(len(groups), 3)
+
+    def test_a_series_title_does_not_fold_different_characters(self):
+        # 标题开头是系列名，角色在后半截；带括号的角色标签对不上就拆开。配音演员
+        # `Chloeangelva (VA)` 两边都有，但它归 artist，不算角色。
+        groups = self._record_clips(
+            self._clip(4454645, "Summer Fantasy – Cindy & Lunafreya", duration=97.0,
+                       character="cindy aurum (final fantasy)", work="Final Fantasy",
+                       **{"Chloeangelva (VA)": "artist"}),
+            self._clip(4454649, "Summer Fantasy – Tifa & Aerith", duration=97.0,
+                       character="tifa lockhart (final fantasy)", work="Final Fantasy",
+                       **{"Chloeangelva (VA)": "artist"}))
         self.assertEqual(len(groups), 2)
 
     def test_wip_is_surfaced_on_the_group(self):

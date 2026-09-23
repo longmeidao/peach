@@ -1765,6 +1765,13 @@ class OriginGroupKeyTests(unittest.TestCase):
         self.assertEqual(origin_group_key("https://lazyprocrast.fanbox.cc/posts/12304831"),
                          origin_group_key("https://www.fanbox.cc/@lazyprocrast/posts/12304831"))
 
+    def test_a_source_without_a_scheme_still_normalizes(self):
+        # rule34.xxx 实测：同一条推文，一帖写 `https://x.com/…`，另一帖只写 `x.com/…`。
+        self.assertEqual(origin_group_key("x.com/vileclipse/status/2101310844021928089"),
+                         "x:2101310844021928089")
+        self.assertEqual(origin_group_key("lazyprocrast.fanbox.cc/posts/12304831"),
+                         origin_group_key("https://www.fanbox.cc/@lazyprocrast/posts/12304831"))
+
     def test_known_platforms_get_their_own_prefix(self):
         self.assertEqual(origin_group_key("https://x.com/a/status/20861277667730761"),
                          "x:20861277667730761")
