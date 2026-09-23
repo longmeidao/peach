@@ -14,7 +14,7 @@ import time
 
 from urllib.parse import urlsplit
 
-from . import entry_links, feeds
+from . import entry_links, feeds, web_feeds
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .web_catalog import (
@@ -247,6 +247,34 @@ def q_entity(contract: WebContract, args):
         d["mark_link_id"] = next(
             (link["link_id"] for link in d["links"] if link["link_kind"] == "official"), None)
     return d
+
+
+def q_entity_shapes(contract, args) -> dict:
+    """资料页上可有可无的那几块，哪些实体有：新作那一行（`feed`）、卡底的同台艺人（`costars`）。
+
+    骨架在资料到达之前就要照最终形状画：不留位，那一块画出来时从中间顶进来；每页都
+    留，没有的那一页又得在画出来时收掉。两块各有一半上下的页面有，猜哪一边都有一半在
+    跳。同台艺人的判据与 `q_entity` 那一份同一套；事务所那份名单走名册，不在卡底。
+    名单放在服务端，几台设备看到的是同一份。页面按地址里的名字比对，所以别名一起给。
+    """
+    with contract.database.read_connection() as connection:
+        parts = {entity_id: ["feed"] for entity_id in web_feeds.feed_row_entity_ids(contract, connection)}
+        for row in connection.execute(
+                "SELECT DISTINCT scope.entity_id FROM asset_entity scope"
+                " JOIN entity e ON e.id=scope.entity_id AND e.kind<>'agency'"
+                " JOIN asset a ON a.id=scope.asset_id AND a.medium='video'"
+                " JOIN asset_entity co ON co.asset_id=scope.asset_id AND co.entity_id<>scope.entity_id"
+                " JOIN entity person ON person.id=co.entity_id AND person.kind='performer'"):
+            parts.setdefault(int(row[0]), []).append("costars")
+        entities = {int(row["id"]): {"id": int(row["id"]), "kind": row["kind"],
+                                     "names": [row["canonical_name"]], "parts": parts[int(row["id"])]}
+                    for row in connection.execute("SELECT id, kind, canonical_name FROM entity ORDER BY id")
+                    if int(row["id"]) in parts}
+        for alias in connection.execute("SELECT entity_id, alias FROM entity_alias ORDER BY entity_id, alias"):
+            names = entities.get(int(alias["entity_id"]), {}).get("names")
+            if names is not None and alias["alias"] not in names:
+                names.append(alias["alias"])
+    return {"ok": True, "entities": list(entities.values())}
 
 # ────────────────────────────── 照片 ──────────────────────────────
 # 图集就是目录：账本没有图集实体，一个目录下的图片本来就是一份图集，

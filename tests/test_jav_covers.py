@@ -73,6 +73,28 @@ class FetchRetryTests(unittest.TestCase):
                 covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0, prior_candidates=(candidate,))
         self.assertNotIsInstance(raised.exception, covers.NotFound)
 
+    def test_every_candidate_cut_off_at_the_connection_is_a_route_problem(self):
+        """中国移动宽带直连 DMM 图片主机时，每一张候选都断在握手上：这说的是线路，
+        不是官方没有图；只要有一家回过话，就仍按来源的回答判。"""
+        candidates = (covers.Candidate("a", "https://pics.dmm.co.jp/a.jpg"),
+                      covers.Candidate("b", "https://awsimgsrc.dmm.co.jp/b.jpg"))
+        cut = covers.httpx.ConnectError("EOF occurred in violation of protocol")
+
+        def best(side_effect):
+            with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                    patch.object(covers, "probe_size", side_effect=side_effect):
+                covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0, prior_candidates=candidates)
+
+        with self.assertRaisesRegex(covers.CoverConnectError, f"^{covers.HOSTS_UNREACHABLE}$"):
+            best([cut, cut])
+        with self.assertRaises(covers.CoverConnectError):
+            best([cut, covers.DeadlineExceeded("预算用尽")])
+        with self.assertRaises(covers.Unavailable) as raised:
+            best([cut, covers.Unavailable("HTTP 503")])
+        self.assertNotIsInstance(raised.exception, covers.CoverConnectError)
+        with self.assertRaises(covers.DeadlineExceeded):
+            best([covers.Unavailable("HTTP 503"), covers.DeadlineExceeded("预算用尽")])
+
     def test_full_download_dimensions_must_match_probe_and_exceed_existing_image(self):
         candidate = covers.Candidate("test", "https://example.test/large.jpg")
         with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
@@ -773,7 +795,9 @@ class SettledMissTests(unittest.TestCase):
         self._log([{"code": "SSNI-001", "result": "未取得",
                     "note": "ConnectError: [SSL: UNEXPECTED_EOF_WHILE_READING]"},
                    {"code": "SSNI-002", "result": "未取得",
-                    "note": "ReadTimeout: timed out"}])
+                    "note": "ReadTimeout: timed out"},
+                   {"code": "SSNI-003", "result": "未取得",
+                    "note": f"CoverConnectError: {covers.HOSTS_UNREACHABLE}"}])
         self.assertEqual(covers.settled_misses(self.log), set())
 
     def test_a_successful_row_is_not_treated_as_a_miss(self):

@@ -162,6 +162,19 @@ class DeadlineExceeded(RuntimeError):
     """动作预算已用尽：调用方记录当前项目后继续下一项。"""
 
 
+#: 候选一张都没连上时的说法。
+HOSTS_UNREACHABLE = "官方图片主机都连不上"
+
+
+class CoverConnectError(Unavailable):
+    """量尺寸时每一张候选都断在连接上，没有一家回过话：不是来源说没有，是这条线路到不了。
+
+    中国移动宽带直连 DMM 图片主机，九成监测点在握手后被断开（2026-09 实测），配了代理
+    就好。所以这一类单独报出来，界面据此提示去配来源的连接方式；类名里的 Connect 也让
+    续跑的 `TRANSIENT` 把它算作可重试，不当成「官方没有封面」。
+    """
+
+
 class HostLimitedTransport:
     """把请求间隔按主机分别计算；不同官方站点互不阻塞。"""
 
@@ -697,27 +710,54 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
     def record(key):
         diagnostics[key] = diagnostics.get(key, 0) + 1
 
-    measured: list[tuple[int, Candidate, tuple[int, int]]] = []
-    for candidate in candidates:
-        try:
-            width, height = probe_size(transport, candidate, deadline=deadline)
-        except (Unavailable, httpx.TransportError) as error:
-            record(_probe_failure(error))
-            continue
-        except (UnidentifiedImageError, OSError):
-            record("invalid_image")
-            continue
-        finally:
-            _sleep_within(delay, deadline)
-        if width >= minimum_width:
-            measured.append((width * height, candidate, (width, height)))
-        else:
-            record("too_small")
+    measured = _measure(transport, candidates, record, minimum_width=minimum_width,
+                        delay=delay, deadline=deadline)
     if not measured:
         raise Unavailable(_no_usable_official(diagnostics))
     return _download_best(transport, measured, record, minimum_width=minimum_width,
                           minimum_quality=minimum_quality, minimum_pixels=minimum_pixels,
                           deadline=deadline)
+
+
+def _measure(transport: HttpTransport, candidates, record, *, minimum_width: int,
+             delay: float, deadline: float | None) -> list[tuple[int, Candidate, tuple[int, int]]]:
+    """逐张量候选的尺寸，留下够宽的那些；量不出的原因记进诊断。
+
+    断在连接上的几张与来源回过话的几张分开数：一张都没回过话时，候选用完也好、
+    预算在重试里耗尽也好，说的都是线路不通，抛 `CoverConnectError`。
+    """
+    measured: list[tuple[int, Candidate, tuple[int, int]]] = []
+    unreachable = answered = 0
+    try:
+        for candidate in candidates:
+            try:
+                width, height = probe_size(transport, candidate, deadline=deadline)
+            except httpx.TransportError as error:
+                record(_probe_failure(error))
+                unreachable += 1
+                continue
+            except Unavailable as error:
+                record(_probe_failure(error))
+                answered += 1
+                continue
+            except (UnidentifiedImageError, OSError):
+                record("invalid_image")
+                answered += 1
+                continue
+            finally:
+                _sleep_within(delay, deadline)
+            answered += 1
+            if width >= minimum_width:
+                measured.append((width * height, candidate, (width, height)))
+            else:
+                record("too_small")
+    except DeadlineExceeded:
+        if unreachable and not answered:
+            raise CoverConnectError(HOSTS_UNREACHABLE) from None
+        raise
+    if unreachable and not answered:
+        raise CoverConnectError(HOSTS_UNREACHABLE)
+    return measured
 
 
 def _download_best(transport: HttpTransport, measured, record, *, minimum_width: int,

@@ -473,16 +473,9 @@ body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
  * 这里只定宽度、淡出已读那一档，以及那两颗悬浮动作键——其余形态跟着资产卡走，
  * 两种卡长得不一样的地方只应该是它们真的不一样的地方。 */
 .feednew{margin:0 0 18px}
-/* RSS 自己的橙：人物页「订阅新作」开关订上时是这个色，新作卡等封面时的微光也染这个色。 */
+/* RSS 自己的橙：只给人物页「订阅新作」开关订上时用。新作卡等封面时的微光与全站等待态
+   同一种灰，骨架不另起一种颜色。 */
 :root{--feed-mark:#F78422}
-/* 封面还在路上时铺的那层微光染上订阅橙：首页与人物页上新作卡和资产卡上下挨着，同一种
-   灰色微光分不出哪几张是订阅来的、哪几张是本机有文件的。只换颜色，时长、180ms 的淡入
-   门槛与到手后的淡出仍是 `09-skeleton.css` 里 `.imgwait` 那一套。 */
-.feednewcard .pic:is(.imgwait,.imgdone)::after{
-  --feed-wait:color-mix(in srgb,var(--feed-mark) 16%,var(--hover));
-  background:linear-gradient(to right,var(--feed-wait),
-    color-mix(in srgb,var(--feed-mark) 28%,var(--skeleton-sheen)) 50%,var(--feed-wait)) 0 0/50% 100%,
-    var(--ground)}
 /* 卡片悬停时底色向四周多铺 8px（`box-shadow` 的 spread），而横滚容器把纵向溢出一并
    裁掉：四边各留 8px 内边距，再用同样的负外边距收回来，卡片落点不动。 */
 .feednewrow{padding:8px;margin:-8px -8px 0}
@@ -493,6 +486,8 @@ body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
 @media(min-width:761px){
   .feednewrow{margin-left:calc(-1 * (var(--railW) + 16px));padding-left:calc(var(--railW) + 16px)}
 }
+/* 连不上图片主机那条 Note 与下面一行隔 12px：横排自己往上收了 8px，这里先垫回来。 */
+.feednetwork{margin-bottom:20px}
 .feednewcard{flex:none;width:168px}
 /* 已看过的不移走，只退到背景里：已读是标记，不是关掉。 */
 .feednewcard.isread{opacity:.55}

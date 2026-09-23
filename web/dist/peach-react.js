@@ -21134,7 +21134,8 @@ var Th = {
 	name: "实体",
 	matched: "图库命中",
 	size: "尺寸",
-	source: "来源"
+	source: "来源",
+	cover_network: "封面连不上图片主机"
 };
 function kh(e) {
 	let t = /* @__PURE__ */ new Map();

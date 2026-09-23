@@ -349,6 +349,9 @@ const hideDiscoveryBars=()=>{$('#tiers').style.display='none';$('#tagbar').style
 /* 启动那一屏收没收横条，就是这一次启动要不要那两个聚合查询。问屏幕不问路径：
    判断只写在上面那个函数里一份，两边各抄一张路径表迟早会对不上。 */
 const wantsDiscoveryBars=()=>$('#tiers').style.display!=='none';
+/* 资料页形状名单（`loadEntityShapes`）的在途请求，和画骨架前最多等它多久。 */
+let entityShapesReady=null;
+const ENTITY_SHAPES_WAIT=400;
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
   /* 骨架画的就是这个表面，所以先把 `data-surface` 写上：深链冷启动时 `restoreRoute()`
@@ -383,8 +386,13 @@ function renderInitialSurfaceLoading(){
   if(/^\/(?:performers|creators|studios|agencies)\//.test(path)){
     hideDiscoveryBars();
     $('#index').hidden=false;$('#grid').innerHTML='';
-    showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]]);
-    fitSkeleton($('#index'));
+    // 形状名单这时刚发出去：等它一下再画，骨架第一帧就带着这一位有的那两块。
+    const kind=ROUTE_ENTITIES[path.split('/')[1]],name=path.split('/').slice(2).join('/');
+    void Promise.race([entityShapesReady,new Promise(resolve=>setTimeout(resolve,ENTITY_SHAPES_WAIT))]).then(()=>{
+      if($('#index').firstElementChild||decodeURIComponent(location.pathname)!==path)return;
+      showEntityLoading(kind,name);
+      fitSkeleton($('#index'));
+    });
     return;
   }
   /* 未匹配的地址没有随后的读取，不能留一张永远不会被替换的目录骨架。合法的目录、
@@ -4762,7 +4770,7 @@ function feedNewCardHtml(item){
 
 /* 订阅了这位时，新作那一行先按真卡的轮廓占住位置：取数回来再整行换掉，没有就收起。
    不占的话，那一行在资料卡和作品之间凭空插进来，把下面整个作品网格往下推一截。
-   封面格直接挂 `imgwait`，微光与真卡等封面时同一种订阅橙。 */
+   封面格直接挂 `imgwait`，微光与真卡等封面时是同一层。 */
 const FEED_SKELETON_CARDS=8;
 const FEED_COVER_WAIT=1500;
 /* 把一段 HTML 里头 `count` 张图先取进缓存，最多等 `ms` 毫秒。插进页面时它们已经
@@ -4783,18 +4791,31 @@ const feedNewSkeletonHtml=()=>`<div class="feednewrow srow" aria-hidden="true">$
     <div class="meta"><div class="mtext"><span class="t"><span class="skeleton"></span></span>
       <div class="s mono"><span class="skeleton">&#8203;</span></div></div></div></article>`
     .repeat(FEED_SKELETON_CARDS)}</div>`;
-/* 资料页上会有新作那一行的那几位，名单由服务端给（`/api/feeds/rows`），几台设备看到的
-   是同一份。资料页的骨架照它留出那一行，资料回来时那一行不会从中间顶进来。 */
-let feedRowNames=null;
-async function loadFeedRowNames(){
-  const data=await api('/api/feeds/rows').catch(()=>null);
-  if(data&&!data.error)feedRowNames=new Set((data.entities||[])
-    .flatMap(entity=>entity.names.map(name=>`${entity.kind}/${foldName(name)}`)));
-  return feedRowNames;
+/* 资料页上可有可无的两块——新作那一行（`feed`）和卡底的同台艺人（`costars`）——哪几位
+   有，名单由服务端给（`/api/entity/shapes`），几台设备看到的是同一份。页面一启动就取，
+   第一次进资料页时骨架已经照它画成最终的形状，资料回来时哪一块都不从中间顶进来。 */
+let entityShapes=null;
+async function loadEntityShapes(){
+  const data=await api('/api/entity/shapes').catch(()=>null);
+  if(data&&!data.error)entityShapes=new Map((data.entities||[])
+    .flatMap(entity=>entity.names.map(name=>[`${entity.kind}/${foldName(name)}`,entity.parts])));
+  return entityShapes;
 }
-const hasFeedRow=(kind,name)=>!!name&&!!feedRowNames?.has(`${kind}/${foldName(name)}`);
+const hasEntityPart=(kind,name,part)=>!!name&&!!entityShapes?.get(`${kind}/${foldName(name)}`)?.includes(part);
 const feedNewSkeletonSection=()=>`<section class="feednew">${feedNewSkeletonHtml()}</section>`;
+const COSTAR_SKELETON_PEOPLE=12;
+const costarSkeletonFoot=()=>`<div class="entityfoot"><div class="relatedpeople">${
+  '<span class="relatedperson avskeleton"><span class="ring"></span><span class="nm">&#8203;</span></span>'
+    .repeat(COSTAR_SKELETON_PEOPLE)}</div></div>`;
 
+/* 最近一轮取封面断在连接上、这一行又还有没封面的卡时，行上方挂一条 Note 指去配连接方式。
+   中国移动宽带直连 DMM 图片主机大多在握手后被断开，官方其实有图；不说清楚的话，一排
+   「无封面」看起来就像官方没出。 */
+function feedNetworkNote(unreachable,items){
+  if(!(unreachable>0)||!items.some(item=>!item.has_cover))return '';
+  return noteHtml(`${unreachable} 部新作的封面连不上 DMM 图片主机，中国移动宽带常见。把 DMM / FANZA 的连接方式设成 Peach 代理，下一轮会自动重取。`,
+    {variant:'warning',className:'feednetwork',actionLabel:'配置连接方式',actionHref:'/scraping'});
+}
 /* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次
    刷新都变成对别人服务器的一次拉取，而订阅的间隔本来就是按天算的。 */
 async function loadFeedNew(entityId,preload){
@@ -4802,7 +4823,8 @@ async function loadFeedNew(entityId,preload){
   if(entityId)query.set('entity',String(entityId));
   const data=await api('/api/feeds/discoveries?'+query).catch(()=>null);
   const items=data&&!data.error?(data.items||[]):[];
-  const html=`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
+  const html=feedNetworkNote(data?.cover_network,items)
+    +`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
   // 骨架还占着时，先把头几张封面取到手再整行换掉：否则骨架退场、真卡进来，封面格里
   // 又是一轮微光，同一行等了两遍。慢的那几张不等满，到点照换，剩下的留给卡片自己的等待态。
   if(preload&&items.length)await preloadImages(html,FEED_SKELETON_CARDS,FEED_COVER_WAIT);
@@ -8126,18 +8148,20 @@ function showEntityLoading(kind,name){
   const placeholder=entitySkeletonHtml(kind,head,body);
   if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
     $('#index').innerHTML=placeholder;
-    syncEntitySkeletonFeed(kind,name);
+    syncEntitySkeletonParts(kind,name);
     fitSkeleton($('#index'));
-  }else syncEntitySkeletonFeed(kind,name);
+  }else syncEntitySkeletonParts(kind,name);
 }
-/* 新作那一行在骨架里的位置和画好的页面一样：筛选框之下、作品之上。名单晚到或换了
-   一位时只增删这一段，骨架其余部分不重画，微光不从头再闪。 */
-function syncEntitySkeletonFeed(kind,name){
+/* 两块在骨架里的位置和画好的页面一样：同台艺人在资料卡底，新作那一行在筛选框之下、
+   作品之上。名单晚到或换了一位时只增删这两段，骨架其余部分不重画，微光不从头再闪。 */
+function syncEntitySkeletonParts(kind,name){
   const skeleton=$('#index').firstElementChild;
   if(skeleton?.dataset.skeleton!==`entity/${kind}`)return;
-  const row=skeleton.querySelector('.feednew'),wanted=hasFeedRow(kind,name);
-  if(wanted&&!row)skeleton.querySelector('.entitysection')?.insertAdjacentHTML('beforebegin',feedNewSkeletonSection());
-  else if(!wanted&&row)row.remove();
+  const sync=(present,wanted,insert)=>{if(wanted&&!present)insert();else if(!wanted&&present)present.remove()};
+  sync(skeleton.querySelector('.entityfoot'),kind!=='agency'&&hasEntityPart(kind,name,'costars'),
+    ()=>skeleton.querySelector('.entityhero')?.insertAdjacentHTML('beforeend',costarSkeletonFoot()));
+  sync(skeleton.querySelector('.feednew'),hasEntityPart(kind,name,'feed'),
+    ()=>skeleton.querySelector('.entitysection')?.insertAdjacentHTML('beforebegin',feedNewSkeletonSection()));
 }
 /* 名字对不上任何一位时 `/api/entity` 回 `{error}`：骨架不换掉就一直在闪，读起来是还在取。 */
 function showEntityMissing(kind){
@@ -8160,13 +8184,19 @@ async function openEntity(kind,name,push=true){
   document.body.classList.add('entity-open');
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
+  const seq=++entityRequestSeq;
+  /* 名单启动时就在取；深链直接落在资料页时它可能还在路上，稍等一下再画骨架，画出来
+     就是最终的形状。等不到就先画，名单到了再补那两块。 */
+  if(!entityShapes){
+    await Promise.race([entityShapesReady||=loadEntityShapes(),new Promise(resolve=>setTimeout(resolve,ENTITY_SHAPES_WAIT))]);
+    if(seq!==entityRequestSeq)return;
+  }
   showEntityLoading(kind,name);
   detailReturnBarsContext=null;
   entityJavLayout=false;
   agencyRosterView='people';
-  const seq=++entityRequestSeq;
-  // 名单每进一页重取一遍，下一页用的就是服务端的现状；第一次进页时手里还没有，到了照它补齐骨架。
-  void loadFeedRowNames().then(()=>{if(seq===entityRequestSeq)syncEntitySkeletonFeed(kind,name)});
+  // 名单每进一页重取一遍，下一页用的就是服务端的现状。
+  void loadEntityShapes().then(()=>{if(seq===entityRequestSeq)syncEntitySkeletonParts(kind,name)});
   const [d,items,photos]=await Promise.all([
     // 新作那一行跟资料一起到：资料一回来就接着取这一页的新作和头几张封面，和作品、图集并行，
     // 三样齐了整页一次画出，不再是整页先出来、那一行再单独等一轮。
@@ -10514,6 +10544,7 @@ window.addEventListener('popstate',restoreRoute);
    挂在下面那条链上时它们排在 /api/sources 和 /api/facets 后面，实测让骨架先顶着
    一个没有标题的空壳站了约半秒。buildManageBar() 内部会一并建好左侧导航，
    所以这里不再单独调 buildEdge()。 */
+entityShapesReady=loadEntityShapes();
 renderInitialSurfaceLoading();
 buildManageBar();
 /* 那两个聚合查询喂的是首页顶部三条横条。深链进管理页或索引页时横条一开始就收着，

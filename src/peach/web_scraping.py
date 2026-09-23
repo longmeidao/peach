@@ -10,6 +10,10 @@ from PIL import Image
 from .http import HttpRequest
 from .scraping_access import SOURCES, SourcePaused, SourceTransport, describe, save
 
+#: 连不上 DMM 图片主机时给的那句去处：2026-09 实测中国移动宽带直连大多在握手后被断开，
+#: 电信、联通直连正常，所以不是站点挂了，换条线路就好。
+MOBILE_BROADBAND_HINT = "中国移动宽带直连 DMM 图片主机常在握手后被断开，请把 DMM / FANZA 的连接方式设成 Peach 代理。"
+
 
 def _kept_cover_size(target, incoming, incoming_size, installed, previous):
     """本机封面不比来源这张差时回它的尺寸；该换、或本机还没有封面时回 `None`。
@@ -47,11 +51,31 @@ def w_scraping_cover(contract, body):
     return contract.scraping_cover_job.start_result(lambda: _fetch_cover(contract, code))
 
 
+def _unavailable_reason(exc, network_failed: bool, statuses: set[int]) -> tuple[str, str]:
+    """一次封面比较没取到图时，页面上那一格的原因键与说法：先看线路，再看来源回了什么。"""
+    from .jav_cover_fetch import (CoverConnectError, HOSTS_UNREACHABLE, NO_USABLE_OFFICIAL,
+                                 OFFICIAL_PLACEHOLDER_ONLY)
+    if isinstance(exc, CoverConnectError):
+        return "network", f"{HOSTS_UNREACHABLE}，未能完成封面比较；{MOBILE_BROADBAND_HINT}"
+    if network_failed:
+        return "network", "来源连接失败，未能完成封面比较；请检查来源连接设置。"
+    if statuses & {401, 403}:
+        codes = "/".join(str(s) for s in sorted(statuses & {401, 403}))
+        return "access_denied", f"来源拒绝访问（HTTP {codes}），请检查登录或来源验证状态。"
+    if any(s >= 500 for s in statuses):
+        return "source_error", "来源服务异常（HTTP 5xx），请稍后重试。"
+    if str(exc) == "所有渠道都没有候选":
+        return "no_candidate", "来源没有返回这个番号的封面候选，无法判断是否有高清版。"
+    return {
+        OFFICIAL_PLACEHOLDER_ONLY: ("placeholder_only", f"{OFFICIAL_PLACEHOLDER_ONLY}。"),
+        **dict.fromkeys(NO_USABLE_OFFICIAL, (
+            "unusable_candidate", "候选封面未通过检查：图片未取得、无法解码或宽度不足 700px。")),
+    }.get(str(exc), ("download_failed", "候选封面完整下载或图片校验失败，未取得可保存的图片。"))
+
+
 def _fetch_cover(contract, code):
     from .cover_artwork import install_cover
-    from .jav_cover_fetch import (best_cover,
-                                 HostLimitedTransport, NO_USABLE_OFFICIAL,
-                                 OFFICIAL_PLACEHOLDER_ONLY, Unavailable,
+    from .jav_cover_fetch import (best_cover, HostLimitedTransport, Unavailable,
                                  fc2_cover_candidates, logged_success_evidence)
     from .review_csv import read_rows
     target = contract.cover_root / (code + ".jpg")
@@ -103,21 +127,7 @@ def _fetch_cover(contract, code):
         return {"ok": True, "code": code, "result": "高清封面已保存", "width": size[0],
                 "height": size[1], "requests": raw.requests, "bytes": raw.bytes}
     except Unavailable as exc:
-        if network_failed:
-            reason, message = "network", "来源连接失败，未能完成封面比较；请检查来源连接设置。"
-        elif statuses & {401, 403}:
-            codes = "/".join(str(s) for s in sorted(statuses & {401, 403}))
-            reason, message = "access_denied", f"来源拒绝访问（HTTP {codes}），请检查登录或来源验证状态。"
-        elif any(s >= 500 for s in statuses):
-            reason, message = "source_error", "来源服务异常（HTTP 5xx），请稍后重试。"
-        elif str(exc) == "所有渠道都没有候选":
-            reason, message = "no_candidate", "来源没有返回这个番号的封面候选，无法判断是否有高清版。"
-        else:
-            reason, message = {
-                OFFICIAL_PLACEHOLDER_ONLY: ("placeholder_only", f"{OFFICIAL_PLACEHOLDER_ONLY}。"),
-                **dict.fromkeys(NO_USABLE_OFFICIAL, (
-                    "unusable_candidate", "候选封面未通过检查：图片未取得、无法解码或宽度不足 700px。")),
-            }.get(str(exc), ("download_failed", "候选封面完整下载或图片校验失败，未取得可保存的图片。"))
+        reason, message = _unavailable_reason(exc, network_failed, statuses)
         labels = {"placeholder": "「准备中」占位图", "probe_failed": "图片头请求失败", "invalid_image": "图片无法解码",
                   "too_small": "图片宽度不足 700px", "download_failed": "完整下载失败",
                   "dimension_mismatch": "完整图片尺寸与探测结果不一致"}
@@ -186,7 +196,8 @@ def w_scraping_check(contract, body):
                         result["message"] = f"{reason}。" if reason else "来源暂不可用，请稍后重试。"
             except Exception as exc:
                 result.update(ok=False, kind="unavailable",
-                              message="连接未取得；此来源可能需要代理，请检查来源连接方式。",
+                              message=(f"连接未取得；{MOBILE_BROADBAND_HINT}" if label == "高清图片 CDN"
+                                       else "连接未取得；此来源可能需要代理，请检查来源连接方式。"),
                               error_type=type(exc).__name__)
             results.append(result)
     finally:
