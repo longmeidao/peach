@@ -433,6 +433,10 @@ const claimSurface=path=>{
      二十来毫秒后落回原处，比它要说的那句话显眼得多。目录页之间它一直挂着，自己在轮询
      库那边的进度；离开目录页才收起，那些页面本来就不该有它。 */
   if(!isCatalogPath(path))unmountIsland($('#libraryProcessingNotice'));
+  /* 首页那一行新作同样只属于目录页。管理区的入口不经过 `showHomeSurfaces`，离开目录页时
+     在这里收起并清空，连同它的自动滚动一起停掉。 */
+  if(!isCatalogPath(path)){const feed=$('#feedNew');
+    feed.querySelectorAll('.feednewrow').forEach(stopAutoScroll);feed.hidden=true;feed.innerHTML=''}
   /* 管理区正文的容器每次换页都经过这里，所以卸载也落在这里。React 档的页面是一棵自己
      管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的页面照着原节律继续敲库。
      没挂过东西的容器 unmountIsland 直接返回，逐页判断反而会漏掉新迁过来的那一页。 */
@@ -3201,12 +3205,21 @@ function coverAnchor(img){
   if(img.classList.contains('whole')&&Math.abs(r/car-1)>.02)coverBackdrop(img);
 }
 /* 只把折痕右边那块正封摆进卡片，封底一个像素都不露。折痕位置在 `data-posterbox` 里，
-   换算要的容器比例只有页面知道，两边在这里才凑齐。只有整张封套才有正封可切；没有框
-   （本机 1014 张封面里 331 张判定为不裁，永远拿不到）就一个字都不写，CSS 里那份贴
-   右缘的回退照旧生效。 */
+   换算要的容器比例只有页面知道，两边在这里才凑齐。整张封套和「剧照 | 正封 | 剧照」
+   的 16:9 拼图才有正封可切；没有框（本机 1516 张封面里 771 张判定为不裁，永远拿不到）
+   就一个字都不写，CSS 里那份贴右缘或按人脸的回退照旧生效。 */
+/* 正封的宽高比先验，与 `jav_poster_crop.PANEL_ASPECT` 同一个数。只给还没装进本机的
+   远程封套用：它没有边车，贴右缘时 0.75 的卡片比正封宽，会带进一条书脊。 */
+const PANEL_ASPECT=0.704;
 function posterPanel(img,ratio){
-  if(img.dataset.frame!=='sleeve')return;
-  const [x0,imgW,imgH,y0,x1,y1]=String(img.dataset.posterbox||'').split(' ').map(Number);
+  if(img.dataset.frame==='front')return;
+  let [x0,imgW,imgH,y0,x1,y1]=String(img.dataset.posterbox||'').split(' ').map(Number);
+  /* 本机封面没有框是判定过「不该裁」，照回退走；远程封套是还没判过，按先验从右缘量回去，
+     和服务端折痕找不到时的 `ratio` 那一档同一个框。 */
+  if(!img.dataset.posterbox&&img.dataset.panelPrior&&img.dataset.frame==='sleeve'){
+    imgW=img.naturalWidth;imgH=img.naturalHeight;
+    x0=Math.round(imgW-PANEL_ASPECT*imgH);y0=0;x1=imgW;y1=imgH;
+  }
   /* 框是按那一版源图的像素算的，而封面会被更大的那张原子替换。尺寸对不上就说明
      框描述的是另一张图，落在这张上是一块错位的区域——而错位在页面上和「本来就该
      这么取景」看不出区别，所以宁可退回回退值。 */
@@ -4715,12 +4728,13 @@ function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
  * 搜索地址是把「这是哪一部」交给站内检索去猜——缺 id 就不给入口，全站同一条规矩。 */
 /* 封面和资产卡同一套取景：取资料那一轮把封面装进本机封面目录，书脊折痕与人脸位置
    随它落在边车里，这里照 `coverImage` 读出来。还没装上的只有来源给的地址，没有边车，
-   `coverAnchor` 按图片自己的宽高比认出封套，正封贴右缘，一样不留上下黑边。 */
+   `coverAnchor` 按图片自己的宽高比认出封套，`data-panel-prior` 让它按正封先验比例切，
+   不带进书脊，也不留上下黑边。 */
 function feedNewCoverHtml(item){
   if(item.has_cover)return coverImage(item,'big');
   if(!item.cover_url)return '<span class="nopic">无封面</span>';
   return coverImage({code:item.code},'big').replace(/ src="[^"]*"/,
-    ` src="${esc(item.cover_url)}" referrerpolicy="no-referrer"`);
+    ` src="${esc(item.cover_url)}" referrerpolicy="no-referrer" data-panel-prior="1"`);
 }
 function feedNewCardHtml(item){
   // 厂牌与发行日各占一段：放不下时只收厂牌，日期整段留着。
@@ -4752,6 +4766,8 @@ async function renderFeedNew(host,entityId){
   const query=new URLSearchParams({limit:'12'});
   if(entityId)query.set('entity',String(entityId));
   const data=await api('/api/feeds/discoveries?'+query).catch(()=>null);
+  // 取数期间人已经离开了这一页：首页那一行不画到管理区上，人物页那一行的容器已经换掉。
+  if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
   const items=data&&!data.error?(data.items||[]):[];
   if(!items.length){host.hidden=true;host.innerHTML='';return}
   host.hidden=false;

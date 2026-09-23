@@ -73,6 +73,7 @@ def poll_source(contract, transport, source) -> dict:
         with contract.database.write_transaction() as connection:
             feeds.settle(connection, source_id, error=None, interval_minutes=interval)
         report["not_modified"] = True
+        _backfill_solo_works(contract, transport, source, report)
         return report
     if response.status != 200:
         message = f"来源回了 HTTP {response.status}"
@@ -100,7 +101,50 @@ def poll_source(contract, transport, source) -> dict:
                   without_code=outcome["without_code"],
                   added=len(outcome["created"]),
                   codes=[code for _id, code in outcome["created"]])
+    _backfill_solo_works(contract, transport, source, report)
     return report
+
+
+#: 人物页那一行能列出的新作少于这个数，就再拉她的「單體作品」页补一批。隐退的人主页
+#: 最近几十条全是合集，收起合集后那一行是空的；在役的人主页就够，不多花配额。
+BACKFILL_BELOW = 12
+
+
+def _backfill_solo_works(contract, transport, source, report: dict) -> None:
+    """关联了人物的演员页列不满一行时，补拉「單體作品」页，用同一个源落库。
+
+    条目身份是 `/v/<id>`，和主页同一套，已经见过的自动跳过。补拉失败不算这个源失败：
+    主页那一轮已经成了，原因记在 `backfill_error` 上。
+    """
+    entity_id = source["entity_id"]
+    if source["kind"] != feeds.KIND_JAVDB_ACTOR or not entity_id:
+        return
+    hidden = web_settings.hidden_compilations(contract.database)
+    with contract.database.read_connection() as connection:
+        feeds.register_functions(connection, hidden)
+        listed = connection.execute(
+            "SELECT count(*) FROM feed_discovery d WHERE d.ignored_at IS NULL"
+            f" AND {' AND '.join(LISTED)} AND EXISTS (SELECT 1 FROM feed_discovery_entity de"
+            " WHERE de.discovery_id=d.id AND de.entity_id=?)", (int(entity_id),)).fetchone()[0]
+    if int(listed or 0) >= BACKFILL_BELOW:
+        return
+    url = feeds.solo_works_url(source["url"])
+    try:
+        response = fetch(transport, url)
+        if response.status != 200:
+            raise ValueError(f"来源回了 HTTP {response.status}")
+        parsed = feeds.parse(source["kind"], response.body, url)
+        if parsed is None:
+            raise ValueError("这一页解不出任何条目")
+    except Exception as error:  # noqa: BLE001 - 主页已经落库，补拉只记原因
+        report["backfill_error"] = str(error)
+        return
+    with contract.database.write_transaction() as connection:
+        outcome = feeds.poll(connection, source, parsed)
+    codes = [code for _id, code in outcome["created"]]
+    report["backfilled"] = len(codes)
+    report["added"] = int(report.get("added") or 0) + len(codes)
+    report["codes"] = list(report.get("codes") or []) + codes
 
 
 def _execute_check(contract, body, job_id: str) -> dict:

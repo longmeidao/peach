@@ -403,6 +403,24 @@ JAVDB_PAGE = """
  2026-10-13</div></a>
 """
 
+#: 隐退的人：主页最近只剩大合集，「單體作品」页才翻得到她自己的正片。
+RETIRED_PAGE = """
+<a href="/v/Rt0001" class="box" title="x"><div class="video-title"><strong>JKSR-736</strong>
+ デカパイ奥様 16人4時間</div><div class="meta">
+ 2026-05-23</div></a>
+"""
+SOLO_PAGE = """
+<a href="/v/Rt0001" class="box" title="x"><div class="video-title"><strong>JKSR-736</strong>
+ デカパイ奥様 16人4時間</div><div class="meta">
+ 2026-05-23</div></a>
+<a href="/v/Rt0002" class="box" title="x"><div class="video-title"><strong>MCSR-191</strong>
+ 欲情不倫妻</div><div class="meta">
+ 2025-07-19</div></a>
+<a href="/v/Rt0003" class="box" title="x"><div class="video-title"><strong>CLO-350</strong>
+ 今晩、何回シテくれるか</div><div class="meta">
+ 2025-06-06</div></a>
+"""
+
 
 class PerformerFeedSwitchTest(FeedWebFixture):
     """人物页「订阅新作」开关：地址由服务端按 JavDB 演员页拼，页面只送开和关。"""
@@ -458,6 +476,28 @@ class PerformerFeedSwitchTest(FeedWebFixture):
         mine = dispatch_api_get(self.contract, "/api/feeds/discoveries",
                                 {"entity": self.performer})
         self.assertEqual([item["code"] for item in mine["items"]], ["PBD-528", "BBSS-106"])
+
+    def test_a_page_of_only_compilations_is_backfilled_from_her_solo_works(self):
+        retired = self._performer("篠田ゆう", ["WE4e"])
+        page = "https://javdb.com/actors/WE4e"
+        self.transport.responses[page] = HttpResponse(
+            200, {"Content-Type": "text/html"}, RETIRED_PAGE.encode("utf-8"), page)
+        self.transport.responses[page + "?t=s"] = HttpResponse(
+            200, {"Content-Type": "text/html"}, SOLO_PAGE.encode("utf-8"), page + "?t=s")
+        self._switch(True, retired)
+        state = self._settled()
+        [report] = state["results"]
+        self.assertTrue(report["ok"])
+        self.assertEqual(report["backfilled"], 2)
+        mine = dispatch_api_get(self.contract, "/api/feeds/discoveries", {"entity": retired})
+        self.assertEqual([item["code"] for item in mine["items"]], ["MCSR-191", "CLO-350"])
+
+    def test_a_missing_solo_page_leaves_the_round_itself_successful(self):
+        self._switch(True)
+        [report] = self._settled()["results"]
+        self.assertTrue(report["ok"])
+        self.assertIn("backfill_error", report)
+        self.assertIsNone(report["error"])
 
     def test_switching_off_pauses_and_switching_on_again_reuses_the_source(self):
         self._switch(True)

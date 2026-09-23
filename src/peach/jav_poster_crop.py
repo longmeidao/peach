@@ -9,12 +9,13 @@ JAV 的官方封套是「背面 | 书脊 | 正面」拼成的一整张横图，�
 正封整块摆进卡片。框里不另取固定形状的子区域，因为卡片的容器比例是页面的事，
 源图这一侧无从知道；在这里先按某个形状切一刀，只会把正封两侧各削掉一圈。
 
-四种取景方式，写在框的 `method` 里：
+五种取景方式，写在框的 `method` 里：
 
 - `fold`：Sobel 找到了书脊折痕那道竖直峭壁，正面从折痕右侧开始。
 - `ratio`：没找到折痕，按正封宽高比的先验从右缘量回去。
+- `center`：16:9 拼图正中的正封，左右两侧是剧照，框在两条拼接缝之间。
 - `none`：这张图不该裁。整图框原样返回，页面维持现有的封面取景。
-- `manual`：人在详情页自己框的。它压过上面三条，也不受算法版本号管辖——
+- `manual`：人在详情页自己框的。它压过上面四条，也不受算法版本号管辖——
   框后面没有算法，改判据不构成重算它的理由。作废的唯一条件是封面换了张图
   （`px` 对不上），那时框描述的是另一张图。
 
@@ -60,8 +61,9 @@ from .catalog_rules import (
 #: `tests/test_web_ui.py` 的 `CoverSleeveThresholdTests` 守住。
 SLEEVE_RATIO_MIN = 1.2
 #: 上限之外是 16:9 官方剧照。整幅都是画面，没有「正面那一块」可推，按先验切会裁出
-#: 半张背景，所以这一档不给框。NeoAVDC 对 HEYZO、FC2 与欧美片标 `posterNoCrop`
-#: 是同一条判据的另一面：那些封面本身就是成品横版剧照。
+#: 半张背景，所以这一档只认一种版式（`center_panel`），别的不给框。NeoAVDC 对
+#: HEYZO、FC2 与欧美片标 `posterNoCrop` 是同一条判据的另一面：那些封面本身就是
+#: 成品横版剧照。
 SLEEVE_RATIO_MAX = 1.65
 
 #: 正封宽高比的可信区间，折痕只在切出这个形状的那几十列里找。区间取自本机 637 张
@@ -87,17 +89,30 @@ FOLD_SETTLE_LIMIT = 0.01
 #: 封套总宽在 0.60～0.82 之间飘。
 PANEL_ASPECT = 0.704
 
+#: 16:9 里的居中正封：「剧照 | 正封 | 剧照」拼成一张，正封宽 `PANEL_ASPECT` 倍高、
+#: 正好居中（mgstage 给 Prestige PASN 的 `pake-03_`／`pb_e_`，MOON FORCE 的素人封套）。
+#: 认它靠拼接缝：缝是一条从上贯到下的直线，画面里的边再强也很少在同一列满高。
+#: 一行算「有落差」要求这一列左右两侧的灰度差过这个数。
+SEAM_STEP = 12
+#: 缝要覆盖这么多行才算。本机 149 张 16:9 封面实测：PASN-027 0.95、PASN-031 0.84、
+#: 435MFC-135 0.80，其余最高 0.61（259LUXU-1371 人物边缘）。只要一侧成立：PASN-031
+#: 右侧剧照压暗后和正封边缘几乎同色，那一侧只有 0.08。
+SEAM_MIN_COVERAGE = 0.75
+#: 缝只在居中正封的两个边位附近找，左右各容这个比例的源图宽。PASN 两张实测偏差 1 列。
+SEAM_TOLERANCE = 0.005
+
 FOLD = "fold"
 RATIO = "ratio"
+CENTER = "center"
 NONE = "none"
 MANUAL = "manual"
 
 #: 手工框的来路，落在 sidecar 的 `source` 上。写死一个串是为了事后能一眼分清
-#: 「这张图的取景是算出来的还是人定的」：算出来的那三档没有 `source`。
+#: 「这张图的取景是算出来的还是人定的」：算出来的那几档没有 `source`。
 MANUAL_SOURCE = "user:crop"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v4"
+ALGORITHM_VERSION = "poster-crop-v5"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -125,7 +140,20 @@ def crops_to_portrait(code: str | None) -> bool:
     return not (is_uncensored_code(key) or is_korean_mib_code(key))
 
 
-def column_gradient(image) -> list[float] | None:
+class ColumnProfile(list):
+    """按列的横向梯度（列表本身），外加每列满高接缝的覆盖率 `seams`。
+
+    两样出自同一次解码：折痕看梯度的列和，居中正封看一条缝贯穿了多少行。列和分不开
+    「一条满高的缝」和「几段强边碰巧落在同一列」，覆盖率分得开。只给梯度的调用方
+    没有 `seams`，16:9 那一档照旧不给框。
+    """
+
+    def __init__(self, gradient: Sequence[float], seams: Sequence[float] | None = None):
+        super().__init__(gradient)
+        self.seams = list(seams) if seams is not None else None
+
+
+def column_gradient(image) -> ColumnProfile | None:
     """一张 BGR 图按列求和的横向 Sobel 梯度，归一化到 0～1；量不出来返回 None。
 
     竖直的折痕在横向梯度上是一整列的强响应，按列求和之后它是一根尖峰；横向的构图
@@ -143,12 +171,16 @@ def column_gradient(image) -> list[float] | None:
     peak = float(columns.max()) if columns.size else 0.0
     if peak <= 0:
         return None
-    return (columns / peak).tolist()
+    # 第 c 列的落差取 c-1 与 c+1 两列之差：缝在 JPEG 里常糊成两列宽，隔一列比才量得到。
+    signed = gray.astype(numpy.int16)
+    crossing = (numpy.abs(signed[:, 2:] - signed[:, :-2]) > SEAM_STEP).mean(axis=0)
+    seams = [0.0, *crossing.tolist(), 0.0] if gray.shape[1] >= 3 else [0.0] * gray.shape[1]
+    return ColumnProfile((columns / peak).tolist(), seams)
 
 
-def file_gradient(path: Path | str) -> Callable[[], list[float] | None]:
+def file_gradient(path: Path | str) -> Callable[[], ColumnProfile | None]:
     """把一张封面包成惰性的列梯度来源：真要用到时才解码。"""
-    def source() -> list[float] | None:
+    def source() -> ColumnProfile | None:
         try:
             import cv2
         except ImportError:                     # pragma: no cover - 缺 vision 依赖组
@@ -162,15 +194,19 @@ def front_panel_box(width: int, height: int,
     """源图尺寸加列梯度 → 正封那一块的取景框。纯函数，不碰文件也不碰 OpenCV。
 
     返回 `{"x0", "y0", "x1", "y1", "method"}`，坐标是源图像素，右下开区间。
-    框的右下角永远是源图的右下角，`x0` 就是折痕所在的列——正封是「折痕右边的全部」，
-    不是它里面某个形状的子区域。`method` 为 `none` 时框是整张图：没有可裁的形状，
-    调用方照原图处理。
+    封套的框右下角就是源图的右下角，`x0` 就是折痕所在的列——正封是「折痕右边的全部」，
+    不是它里面某个形状的子区域。16:9 的居中正封左右两条缝之间就是框。`method` 为
+    `none` 时框是整张图：没有可裁的形状，调用方照原图处理。
     """
     width, height = int(width or 0), int(height or 0)
     if width <= 0 or height <= 0:
         return {"x0": 0, "y0": 0, "x1": 0, "y1": 0, "method": NONE}
     ratio = width / height
-    if not SLEEVE_RATIO_MIN <= ratio < SLEEVE_RATIO_MAX:
+    if ratio >= SLEEVE_RATIO_MAX:
+        profile = gradient_source() if callable(gradient_source) else gradient_source
+        return (center_panel(width, height, getattr(profile, "seams", None))
+                or _whole(width, height))
+    if ratio < SLEEVE_RATIO_MIN:
         return _whole(width, height)
     fold = fold_column(width, height, gradient_source)
     start = fold if fold is not None else round(width - PANEL_ASPECT * height)
@@ -214,6 +250,33 @@ def fold_column(width: int, height: int,
     found = min(edges, key=lambda column: abs((width - column) / height - PANEL_ASPECT))
     baseline = statistics.median(profile[low:high + 1])
     return _settled(profile, found, baseline, round(width * FOLD_SETTLE_LIMIT))
+
+
+def center_panel(width: int, height: int, seams: Sequence[float] | None) -> dict | None:
+    """16:9 拼图正中那块正封的框；不是这种版式返回 None。
+
+    缝只在「宽 `PANEL_ASPECT` 倍高、正好居中」的两个边位附近找，一侧够满高就成立，
+    另一侧按居中对称补上。缝那一列本身是过渡带，留在框外。
+    """
+    if seams is None or len(seams) != int(width) or width < 3:
+        return None
+    width, height = int(width), int(height)
+    half = PANEL_ASPECT * height / 2
+    reach = max(1, round(width * SEAM_TOLERANCE))
+
+    def seam_near(edge: float) -> int | None:
+        span = range(max(1, round(edge) - reach), min(width - 1, round(edge) + reach + 1))
+        found = max(span, key=seams.__getitem__, default=None)
+        return found if found is not None and seams[found] >= SEAM_MIN_COVERAGE else None
+
+    left, right = seam_near(width / 2 - half), seam_near(width / 2 + half)
+    if left is None and right is None:
+        return None
+    x0 = left + 1 if left is not None else width - right
+    x1 = right if right is not None else width - (left + 1)
+    if x1 <= x0:
+        return None
+    return {"x0": x0, "y0": 0, "x1": x1, "y1": height, "method": CENTER}
 
 
 def _rival_edges(profile: list[float], window: range, top: float,
@@ -265,7 +328,7 @@ def crop_record(code: str | None, width: int, height: int,
 def manual_record(width: int, height: int, box: object) -> dict | None:
     """人手框的那一块 → 可直接落盘的 sidecar；框不成立返回 None。
 
-    形状与算出来的那三档一模一样，只是 `method` 是 `manual` 且多一个 `source`。
+    形状与算出来的那几档一模一样，只是 `method` 是 `manual` 且多一个 `source`。
     同一份文件装得下两种来路，页面那一侧就不必分辨「读哪一个框」。
 
     校验借 `images.clamp_box`：写 sidecar 的和读 sidecar 的必须认同一套形状，
@@ -323,8 +386,9 @@ def is_current(record: dict | None, width: int, height: int) -> bool:
 def projection(record: dict | None) -> dict | None:
     """sidecar → API 的 `poster_box` 字段；不该裁、算不出、读不出都是 None。
 
-    给出源图像素坐标加源图尺寸 `px`，消费方据此自己换算。算出来的那三档框永远
-    满高贴右缘，所以只有 `x0` 是活的；手工框四边都可能动，页面按整个框取景。
+    给出源图像素坐标加源图尺寸 `px`，消费方据此自己换算。算出来的框永远满高，封套
+    那两档还贴右缘、只有 `x0` 是活的；居中正封与手工框的左右两边都可能动，页面一律按
+    整个框取景。
     """
     if not isinstance(record, dict):
         return None
