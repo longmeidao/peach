@@ -62,7 +62,7 @@
 
 - 全部中文内容（README、`docs/`、ADR、技能正文、界面文案）按用户级技能 tech-doc-style-chinese 写作：
   事实优先、可扫读、不新增原文没有的数字与结论；规则只作用于可见正文，代码、路径、字段和命令原样保留。
-- 来源 https://github.com/Fenng/Tech-Doc-Style-Chinese （MIT），本机装在用户级 `skills/tech-doc-style-chinese`（upstream `29461ab`，2026-09-13）；Codex 自行安装到 `$CODEX_HOME/skills/` 同名目录。
+- 来源 https://github.com/Fenng/Tech-Doc-Style-Chinese （MIT），每台机器用 `npx skills add Fenng/Tech-Doc-Style-Chinese -g` 装一份，Claude 与 Codex 共用，`npx skills update -g` 升级。
 - 检查器只有一层：`scripts/check_copy_final_state.py` 是门槛，判据与放行标记见 `peach-context-rules`；
   技能正文的风格要求靠人工复读，没有自动检查器。
 - Peach 覆盖上游默认三处：智能体入口文件保留称呼「你」（术语表已定义其含义）；`DOM/CSS/JS` 是证据 <!-- copy-lint-disable-line -->
