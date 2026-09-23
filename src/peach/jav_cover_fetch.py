@@ -139,16 +139,6 @@ def candidate_improves(candidate: Candidate, pixels: int,
     return candidate_quality(candidate) > baseline_quality or pixels > baseline_pixels
 
 
-def _previous_quality(previous) -> int:
-    return candidate_quality(previous[0] if previous is not None else None)
-
-
-def _keep_upgrade_existing(upgrade: bool, candidate: Candidate, pixels: int,
-                           baseline_quality: int, baseline_pixels: int) -> bool:
-    return upgrade and not candidate_improves(
-        candidate, pixels, baseline_quality, baseline_pixels)
-
-
 @dataclass(frozen=True)
 class MetadataEvidence:
     candidates: tuple[Candidate, ...] = ()
@@ -1087,10 +1077,10 @@ def run(args: argparse.Namespace, handle: TaskRunHandle | None = None) -> int:
                     except (UnidentifiedImageError, OSError):
                         pass
                 previous = logged_success_evidence(previous_rows, code)
-                baseline_quality = _previous_quality(previous)
-                prior = tuple(candidate for candidate in (
-                    fc2_candidates.get(code), previous[0] if previous is not None else None,
-                ) if candidate is not None)
+                last = previous[0] if previous is not None else None
+                baseline_quality = candidate_quality(last)
+                prior = tuple(candidate for candidate in (fc2_candidates.get(code), last)
+                              if candidate is not None)
                 known_sizes = ({previous[0].url: previous[1]}
                                if previous is not None else {})
                 winner, (width, height), data = best_cover(
@@ -1119,8 +1109,8 @@ def run(args: argparse.Namespace, handle: TaskRunHandle | None = None) -> int:
                     print(f"[{index}/{len(todo)}] 未取得 {code}："
                           f"{type(exc).__name__} {exc}", flush=True)
             else:
-                if _keep_upgrade_existing(
-                        args.upgrade_existing, winner, width * height,
+                if args.upgrade_existing and not candidate_improves(
+                        winner, width * height,
                         baseline_quality, current_size[0] * current_size[1]):
                     stats["kept"] += 1
                     print(f"[{index}/{len(todo)}] 保留 {code}  "

@@ -1,4 +1,4 @@
-"""函数复杂度棘轮：已经很复杂的函数不许再长，新函数不许长到那个程度。
+"""函数复杂度棘轮：函数变复杂必须有人判断过，不许「顺手加一个 if」悄悄堆上去。
 
 2026-09-13 全仓盘点，`src/peach/` 与 `scripts/` 里分支数达到 30 的函数有 42 个，
 最大的两个（`library_processing.process_library`、`web_batch.q_ads`）分别是 91 与 85。
@@ -8,8 +8,18 @@
 每个推导式子句、每个 `and`／`or`、每个 `case` 与条件表达式各计 1，嵌套函数算进
 外层。数值只和它自己比，不和别的工具比。
 
-基线只能降：函数变简单了就把基线改小，降到限值以下就把它从表里删掉；想调大要么
-拆函数，要么在同一次改动里写明为什么这一处非长不可。
+两张表，数都必须与代码一致：
+
+- `BASELINE` 是盘点留下的存量，只能降。函数变简单了就把数改小，降到限值以下就删掉。
+- `ACCEPTED` 是判过「就该这么长」的函数，每条带一句理由：顺序流水线、按类型分派、
+  逐字段解析这类，拆开只会把一路传下去的状态散进几个只调用一次的函数里。它长了就在
+  同一次改动里改数，理由跟着再看一遍还成不成立。
+
+函数超过自己的数时先判断，再二选一。一是拆：拆出去的那块要能独立命名，有自己的前提
+和结果，比如 `jav_cover_fetch._download_best`「按档次完整下载，挑第一张静态图」。二是
+挪进 `ACCEPTED` 写理由。下面几种不算拆，只是把分支数藏起来，评审一律退回：只转发一个
+表达式的包装；把模块函数当参数传给 helper；为了少一个 if 建只有一项的分派表；在注释里
+拿这道门槛当设计理由。
 """
 import ast
 import pathlib
@@ -23,9 +33,8 @@ SOURCE_ROOTS = (REPO / "src" / "peach", REPO / "scripts")
 #: 达到这个分支数的函数进入基线；基线之外的函数不许长到这里。
 LIMIT = 30
 
-#: 键是 `<仓库相对路径>:<限定名>`，值是盘点当天的分支数。
+#: 键是 `<仓库相对路径>:<限定名>`，值是当前的分支数，只能往下改。
 BASELINE: dict[str, int] = {
-    "src/peach/library_processing.py:process_library": 65,
     "src/peach/web_batch.py:q_ads": 85,
     "scripts/scrape_codes.py:_scrape": 77,
     "scripts/localize_performer_names.py:collect": 64,
@@ -34,7 +43,6 @@ BASELINE: dict[str, int] = {
     "src/peach/fanbox.py:normalize_fanbox_post": 59,
     "src/peach/web_follow.py:q_follow": 52,
     "scripts/merge_duplicate_identities.py:collect": 50,
-    "src/peach/jav_cover_fetch.py:run": 49,
     "src/peach/metadata_auto_apply.py:_apply_metadata_candidate": 38,
     "src/peach/web_review.py:_attach_review_asset_context": 46,
     "src/peach/web_review.py:w_review_decision": 46,
@@ -47,7 +55,6 @@ BASELINE: dict[str, int] = {
     "src/peach/taste_history.py:_taste_analysis": 40,
     "src/peach/web_catalog.py:catalog_filter": 40,
     "scripts/audit_domain_codes.py:collect": 39,
-    "src/peach/api.py:create_app": 39,
     "src/peach/web_catalog.py:q_items": 38,
     "scripts/harvest_social_avatars.py:harvest_entity": 37,
     "scripts/probe.py:run": 36,
@@ -61,6 +68,23 @@ BASELINE: dict[str, int] = {
     "src/peach/media_configuration.py:validate": 30,
     "src/peach/resource_identification.py:ingest_results": 30,
 }
+
+#: 判过就该这么长的函数：`(分支数, 为什么拆开更差)`。键与 `BASELINE` 同形、不重叠。
+ACCEPTED: dict[str, tuple[int, str]] = {
+    "src/peach/api.py:create_app": (
+        40, "应用工厂：按启动顺序构造账本、各项后台服务与路由并接成一个 app，每个可注入的"
+            "依赖各带一个缺省；拆开只是把同一条构造顺序分散到几处"),
+    "src/peach/library_processing.py:process_library": (
+        65, "顺序流水线：扫描、探时长、读本地资料、联网采集、写候选、收尾共用一份进度状态"
+            "与问题记录；能独立命名的段已经拆出（`_RemoteSession`、`_merge_candidates`、"
+            "`_record_issue`），剩下的是编排本身"),
+    "src/peach/jav_cover_fetch.py:run": (
+        50, "批处理的主循环：每个番号依次量本机尺寸、择优、比较、落盘、记日志，统计、日志行"
+            "和出错后换新的连接池在整轮里共用，逐段拆开只是把这几样来回传"),
+}
+
+#: 一句理由至少要说清「是哪种形状、拆开差在哪」，短于这个长度的多半只是占位。
+MIN_REASON = 20
 
 BRANCHES = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler,
             ast.With, ast.AsyncWith, ast.Assert, ast.IfExp, ast.match_case)
@@ -104,6 +128,11 @@ def survey() -> dict[str, int]:
     return found
 
 
+def recorded() -> dict[str, int]:
+    """两张表里记下的数合在一起。"""
+    return {**BASELINE, **{key: value for key, (value, _reason) in ACCEPTED.items()}}
+
+
 class ComplexityRatchetTests(unittest.TestCase):
     def test_the_counter_counts_the_shapes_it_names(self):
         source = (
@@ -120,29 +149,36 @@ class ComplexityRatchetTests(unittest.TestCase):
         # 1 + for + if + and + or + except + 推导式 + 推导式的 if
         self.assertEqual(complexity(node), 8)
 
-    def test_no_function_grew_past_its_baseline(self):
-        current = survey()
+    def test_no_function_grew_past_its_recorded_count(self):
+        current, limits = survey(), recorded()
         grown = sorted(
-            f"{key}: {value}（基线 {BASELINE.get(key, LIMIT - 1)}）"
+            f"{key}: {value}（记录 {limits.get(key, LIMIT - 1)}）"
             for key, value in current.items()
-            if value > BASELINE.get(key, LIMIT - 1))
+            if value > limits.get(key, LIMIT - 1))
         self.assertEqual(grown, [],
-                         "这些函数的分支数超过了基线，拆出去或在同一次改动里说明理由：\n  "
-                         + "\n  ".join(grown))
+                         "这些函数的分支数超过了记录。拆出能独立命名的一块，或判过它就该"
+                         "这么长后挪进 ACCEPTED 写理由；转发包装、把函数当参数传、单项分派表"
+                         "都不算拆：\n  " + "\n  ".join(grown))
 
-    def test_the_baseline_only_ratchets_down(self):
+    def test_the_recorded_counts_match_the_code(self):
         current = survey()
         stale = sorted(
-            f"{key}: 现在 {current.get(key, '不存在')}，基线 {value}"
-            for key, value in BASELINE.items()
+            f"{key}: 现在 {current.get(key, '不存在')}，记录 {value}"
+            for key, value in recorded().items()
             if key not in current or current[key] < value)
         self.assertEqual(stale, [],
-                         "基线落后于代码：函数变简单或删掉了就把这里改小或删掉，"
-                         "基线不能替将来的增长留余量：\n  " + "\n  ".join(stale))
+                         "记录落后于代码：函数变简单或删掉了就把这里改小或删掉，"
+                         "记录不能替将来的增长留余量：\n  " + "\n  ".join(stale))
 
-    def test_the_baseline_holds_only_functions_at_or_over_the_limit(self):
-        below = sorted(key for key, value in BASELINE.items() if value < LIMIT)
-        self.assertEqual(below, [], f"低于 {LIMIT} 的函数不该进基线：{below}")
+    def test_the_tables_hold_only_functions_at_or_over_the_limit(self):
+        below = sorted(key for key, value in recorded().items() if value < LIMIT)
+        self.assertEqual(below, [], f"低于 {LIMIT} 的函数不该进表：{below}")
+
+    def test_an_accepted_function_says_why_splitting_is_worse(self):
+        self.assertEqual(sorted(set(BASELINE) & set(ACCEPTED)), [], "一个函数只能在一张表里")
+        thin = sorted(key for key, (_value, reason) in ACCEPTED.items()
+                      if len(reason.strip()) < MIN_REASON)
+        self.assertEqual(thin, [], f"这些条目的理由不足 {MIN_REASON} 字：{thin}")
 
 
 if __name__ == "__main__":
