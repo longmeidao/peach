@@ -94,8 +94,8 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 
 | 类型 | 判据 | 链（从左到右） | 这条链为什么不含 |
 | --- | --- | --- | --- |
-| censored | 其余厂牌番号 | r18dev → avbase → javbus → javdb | 1pondo（无码片商）、fc2（另一套商品号） |
-| amateur | `300MIUM-1239` 这类三位数字前缀，加 `SIRO`／`STP`／`STN` | 同 censored | mgstage（Peach 这条采集路还没有它的解析器） |
+| censored | 其余厂牌番号 | （本机证据认得时）prestige／faleno／dahlia，都不认时 makers → r18dev → avbase → javbus → javdb | 1pondo（无码片商）、fc2（另一套商品号）、mgstage（对有码号是转售店） |
+| amateur | `300MIUM-1239` 这类三位数字前缀，加 `SIRO`／`STP`／`STN` | mgstage → r18dev → avbase → javbus → javdb | makers 与三家片商站（素人号不归它们） |
 | uncensored | 日期式番号、`HEYZO-1380`、Tokyo-Hot 的 `n0780` | （证据指着一本道时）1pondo → avbase → javbus → javdb → avsox | r18dev：无码番号在它上面没有 |
 | fc2 | `FC2` 开头的商品号 | fc2 → fc2cmadb → javarchive → fc2club → javdb | r18dev（实测 85 条全空）、avbase 与 javbus（对 FC2 零产出） |
 | kmib | `KOREAN_MIB_PREFIXES` 里的前缀 | 一家都不问 | 全部：番号与日本片同形，问回来的是别的作品 |
@@ -106,13 +106,17 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
   会把整个 Prestige 判成素人。素人只认三位数字前缀与 MGS 那三个字母前缀。
 - **一本道要本机证据。** 日期式番号本身不带片商，一本道与カリビアンコム 同形，问错那家
   答回来的是同一天发行的另一部片。指不着就直接落到综合索引。
+- **三家片商站只问自家番号。** Prestige、FALENO、DAHLIA 对任何番号都发请求，番号字母前缀在
+  `metadata_routes.MAKER_EVIDENCE` 里、或账本厂牌与路径写着这家才问它；有一家认了就不再问 `makers`。
+  `makers` 按 amane 自带的片商表路由，前缀不在表里桥内零 HTTP，只花一次子进程（实测 0.8 秒）。
 - **国产、欧美、里番没有链。** Peach 一家对应来源都没接，写一条空链只会让人以为问过了。
 
 何时停：官方与发行方那几家逐个成档，一档把**这一行还缺的必填标量**（标题、演员、厂牌、
 发行日期）给全了就不问下一档；只给了一半照旧往下问，否则那一行只能等人工去填。综合索引
 那一档整档一起问，不逐家短路，因为免复核要两家取值一致（ADR-0030、ADR-0034），封面互证要两个
 不同图源（ADR-0032），问到第一家就停等于把这两条判据的样本降到下限。这一行要的本来就只有
-标签或封面时，第一家给了就停（ADR-0033）。
+标签或封面时，第一家给了就停（ADR-0033）。例外只有一条：FALENO、DAHLIA 官网不给类别，缺标签的行
+在片商站答完标量后再问一次 r18.dev；下一档是综合索引就照样停。
 
 上一趟存下的原始快照（`<数据根>/sources/library-metadata/<番号>-<来源>.json`）还新鲜就
 直接用，不发请求。有效期与「说过没有」的记忆同一个（7 天），两边同时到期才不会出现
@@ -135,6 +139,13 @@ fc2club、avsox 两站（以及只能由覆盖点名的 freejavbt、airav）不�
 对有码番号说没有，airav 的搜索地址当天回 404。记录在 `build/agent-verification/amane-chain-realtest.json`。
 fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书问题），用户判定该站已不可访问（ADR-0043 修订）。
 
+有码与素人链的官方档第一家也经桥（ADR-0048，每个站只有一个归属）：`makers`（amane 的 `official`，二十九家
+片商官网）、`prestige`、`faleno`、`dahlia`、`mgstage` 合成一档 `amane_official`，分级是 official，结算上片商站
+排在 dmm 与 r18.dev 之前。Prestige 回的日期是 MGS 配信开始日（ABW-032 答 2020-11-11，发行日 2020-12-11），
+只记在 `extra['delivery_date']`，发行日留给 r18.dev。地区限制与站方裸回的 401/403 都算「被挡」：归 `auth` 一档、
+整站按 403 那一档冷却，不冻进「没有」的记忆。2026-09-23 经代理实测五站都取到自家番号，
+dmm、giga、kin8 不进链，理由与数据见 ADR-0048 与 `build/agent-verification/amane-official-stage.md`。
+
 ## 站点解析器契约
 
 自写解析器与 amane 桥的站套同一个形状（`src/peach/sources/`，ADR-0044「实施：解析器契约」）：
@@ -143,18 +154,19 @@ fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书�
 返回只有一种 `SiteRecord`，`payload()` 投影成来源快照那份 dict，候选、来源链结算、封面层与账本
 读到的东西不变；失败只有一张 `FailureReason` 表（十二档），`REASON_KINDS` 把它映到
 `MetadataProviderError` 的 `auth` / `unavailable` / `not_found` 三档，`COOLDOWN_ACTIONS` 说哪几档要把
-整站写进 `scraping_access` 的冷却记录（`cloudflare_challenge`、`ip_banned` 按 403 那一档翻倍，
+整站写进 `scraping_access` 的冷却记录（`cloudflare_challenge`、`ip_banned`、`geo_restricted` 按 403 那一档翻倍，
 `rate_limited` 按 429 那一档）。冷却期（`SourcePaused`）、动作预算与连接失败由传输层抛出，契约原样放过，
 所以按站的限流与封禁表现由传输层一处决定。配置与 `SOURCE_SPECS`、`SOURCE_LABELS`、`PROVIDER_NAMES`、
 `scraping_access.SOURCES`、`SOURCE_INTERVALS` 里同一站的那几行由 `tests/test_metadata_sources.py` 守住一致。
 
-下表各站全部已套契约：自写的九站登记在 `sources.SITE_SOURCES`，经桥的四站在 `metadata_amane`。
+下表各站全部已套契约：自写的九站登记在 `sources.SITE_SOURCES`，经桥的九站在 `metadata_amane`。
 
 | 站 | 状态 | 位置 | 说明 |
 | --- | --- | --- | --- |
 | JavBus | 已套契约 | `sources/javbus.py` | 年龄门归 `auth_required`；404 与番号对不上归 `not_found` |
 | javdb | 已套契约 | `sources/javdb.py` | 搜索页与详情页两跳都在 `fetch` 里；登录页归 `auth_required`，详情页番号与搜索结果不一致归 `parse_error`；主机间隔 3 秒进配置 |
 | fc2club、freejavbt、airav、avsox | 已套契约（经桥） | `metadata_amane.py` | amane 的十六档 reason 经 `AMANE_REASONS` 一对一翻成契约细档，桥的一站先套进 `SiteRecord` 再投影；`SITE_CONFIGS` 只持有站名、界面名与档位，主域与 Cookie 由 amane 管 |
+| makers、prestige、faleno、dahlia、mgstage | 已套契约（经桥） | `metadata_amane.py` | 档位 `official`（`OFFICIAL_SITES`）；`http_error` 带 401/403 经 `contract_reason` 归 `auth_required`；prestige 的 `release` 进 `extra['delivery_date']` |
 | AVBase | 已套契约 | `sources/avbase.py` | 搜索页一跳，`__NEXT_DATA__` 里挑出本作与它自己的商品条目；搜索无命中归 `not_found`，Cloudflare 验证页归 `cloudflare_challenge`，别的结构对不上归 `parse_error`；不给时长，`runtime` 留空 |
 | r18.dev | 已套契约 | `sources/r18dev.py` | 作品 JSON 与 combined 页两跳，日文写法、女优头像模板与 genre 取日文原词都在这一站里；`content_id` 对不上归 `parse_error`；档位 `official_mirror`，页面上限 2 MiB |
 | 一本道 | 已套契约 | `sources/onepondo.py` | 作品 JSON 一跳；认不出作品号、404 与 `MovieID` 对不上归 `not_found`，回的不是 JSON 归 `parse_error`；档位 `official`，页面上限 1 MiB 进配置 |
