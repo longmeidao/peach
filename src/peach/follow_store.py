@@ -697,7 +697,8 @@ class FollowStore:
         """把条目折叠成作品分组。
 
         先按来源自带的 `group_hint` 合并（booru 的 `parent_id` 比标题可靠），
-        再按标题推出的 `release_key` 合并，最后同一组里选主条目。
+        再按标题推出的 `release_key` 合并，最后同一组里选主条目。booru 上没有标题也
+        没有出处的帖子，按角色、上传时间与标签重合度认出同一作品的连发（ADR-0044）。
 
         `authors` 把来源 id 映射到（作者键, 这位作者的全部名字写法）。给了它，标题里
         夹着的作者名在分组前剥掉，相似标题的版本也跨同一作者的各个来源去对。
@@ -715,8 +716,9 @@ class FollowStore:
             for item in items
         )
         stripped = _strip_author_names(split_posts, authors or {})
-        aligned = _align_by_group_hint(_align_title_families(
-            _split_ambiguous_works(stripped, _hint_linked(stripped)), authors))
+        linked = _hint_linked(stripped)
+        aligned = _align_by_group_hint(_align_tag_bursts(_align_title_families(
+            _split_ambiguous_works(stripped, linked), authors), linked))
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):
@@ -1276,6 +1278,75 @@ def _published_near(left: FollowItemRow, right: FollowItemRow) -> bool:
     except (TypeError, ValueError):
         return False
     return abs(gap) <= _FAMILY_WINDOW
+
+
+#: 标签连发归组的边界：相邻两条至多隔多久、一般标签至少重合多少，以及哪些角色标签
+#: 不算身份——rule34.xxx 把 POV 视角里的观众标成角色 `you`，几乎每条都有。
+_BURST_GAP = timedelta(hours=3)
+_BURST_MIN_OVERLAP = 0.5
+_BURST_PSEUDO_CHARACTERS = frozenset({"you"})
+
+
+def _align_tag_bursts(items: tuple[FollowItemRow, ...],
+                      linked: frozenset[tuple[str, str]] = frozenset(),
+                      ) -> tuple[FollowItemRow, ...]:
+    """booru 上同一作品连着上传的几帖归到一个键下。
+
+    booru 帖子没有标题，也常常既没有 `source` 也没有父帖：LazyProcrastinator 在
+    rule34.xxx 上把 Angel (KOF) 的同一段动画按横屏、竖屏和几个机位拆成 6 帖，几分钟内
+    连着发，除了角色和标签之外没有任何字段把它们连起来。
+
+    四个条件同时成立才归组：同一来源；作品与角色标签的集合完全相同；按发布时间排开，
+    相邻两条相隔不超过 `_BURST_GAP`；一般标签与组里某一条的 Jaccard 重合度不低于
+    `_BURST_MIN_OVERLAP`。只处理标签拼标题、没有出处、来源也没声明同组的条目：
+    出处与父帖是来源自己给的关系，比这里的推断可靠，不拿推断去改它。
+    """
+    buckets: dict[tuple[int, frozenset[str]], list[tuple[datetime, frozenset[str],
+                                                         FollowItemRow]]] = {}
+    for item in items:
+        metadata = item.metadata or {}
+        tag_types = metadata.get("tag_types")
+        if (metadata.get("title_from") != "tags" or metadata.get("source")
+                or not isinstance(tag_types, dict) or not item.release_key
+                or (item.provider, item.external_id) in linked):
+            continue
+        identity = frozenset(
+            tag for tag, kind in tag_types.items()
+            if kind in ("copyright", "character") and tag not in _BURST_PSEUDO_CHARACTERS)
+        try:
+            moment = datetime.fromisoformat(str(item.published_at).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            continue
+        if not identity:
+            continue
+        general = frozenset(tag for tag, kind in tag_types.items() if kind == "general")
+        buckets.setdefault((item.source_id, identity), []).append((moment, general, item))
+    renamed: dict[int, str] = {}
+    for members in buckets.values():
+        members.sort(key=lambda entry: (entry[0], entry[2].external_id))
+        run = [members[0]]
+        for entry in [*members[1:], None]:
+            if entry is not None and entry[0] - run[-1][0] <= _BURST_GAP and any(
+                    _overlap(entry[1], other[1]) >= _BURST_MIN_OVERLAP for other in run):
+                run.append(entry)
+                continue
+            if len(run) > 1:
+                key = min(member[2].release_key for member in run)
+                renamed.update((member[2].id, key) for member in run)
+            if entry is not None:
+                run = [entry]
+    if not renamed:
+        return items
+    return tuple(
+        FollowItemRow(**{**item.__dict__, "release_key": renamed[item.id]})
+        if item.id in renamed else item
+        for item in items
+    )
+
+
+def _overlap(left: frozenset[str], right: frozenset[str]) -> float:
+    union = left | right
+    return len(left & right) / len(union) if union else 0.0
 
 
 def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:

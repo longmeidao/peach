@@ -429,6 +429,55 @@ class GroupingTests(_StoreCase):
         ], provider="rule34xxx", ref="lazyprocrastinator"), moment=MOMENT)
         self.assertEqual(len(self.store.group(self.store.items())), 2)
 
+    def _booru_post(self, external_id, minutes, *, character="angel_(kof)",
+                    general=("cowgirl_position", "blush", "nude", "pov"), **extra):
+        tag_types = {"king_of_fighters": "copyright", character: "character",
+                     "you": "character", "lazyprocrastinator": "artist",
+                     **{tag: "general" for tag in general}}
+        return FollowCandidate(
+            provider="rule34xxx", external_id=external_id,
+            title=f"{character} · {general[0]}", title_is_name=False,
+            published_at=(MOMENT + timedelta(minutes=minutes)).isoformat(),
+            group_hint=f"rule34xxx:post:{external_id}",
+            extra={"title_from": "tags", "tag_types": tag_types, **extra})
+
+    def _record_booru(self, *posts):
+        source_id = self._source(provider="rule34xxx", ref="lazyprocrastinator")
+        self.store.record(source_id, _fetch(posts, provider="rule34xxx"), moment=MOMENT)
+        return self.store.group(self.store.items())
+
+    def test_posts_uploaded_in_one_burst_fold_into_one_work(self):
+        # 同一段动画按横屏、竖屏和机位拆成几帖连着发：角色相同、标签几乎一样。
+        groups = self._record_booru(
+            self._booru_post("1", 0), self._booru_post("2", 1),
+            self._booru_post("3", 2, general=("cowgirl_position", "blush", "nude", "boobjob")),
+            self._booru_post("4", 150))
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0].primary.external_id, "1")
+        self.assertEqual(len(groups[0].variants), 3)
+
+    def test_a_burst_needs_the_same_characters(self):
+        groups = self._record_booru(
+            self._booru_post("1", 0), self._booru_post("2", 1, character="lavinia_voda"))
+        self.assertEqual(len(groups), 2)
+
+    def test_a_long_pause_starts_a_new_work(self):
+        groups = self._record_booru(self._booru_post("1", 0), self._booru_post("2", 60 * 4))
+        self.assertEqual(len(groups), 2)
+
+    def test_posts_with_little_tag_overlap_stay_apart(self):
+        groups = self._record_booru(
+            self._booru_post("1", 0),
+            self._booru_post("2", 1, general=("standing_sex", "against_wall", "hat", "nude")))
+        self.assertEqual(len(groups), 2)
+
+    def test_a_post_with_a_declared_origin_is_not_pulled_into_a_burst(self):
+        # 出处是来源自己给的关系，推断出来的连发不去改它。
+        groups = self._record_booru(
+            self._booru_post("1", 0),
+            self._booru_post("2", 1, source="https://www.fanbox.cc/@lazy/posts/1"))
+        self.assertEqual(len(groups), 2)
+
     def test_wip_is_surfaced_on_the_group(self):
         source_id = self._source()
         self.store.record(source_id, _fetch([
