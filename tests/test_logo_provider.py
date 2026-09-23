@@ -145,6 +145,26 @@ class StudioLogoScriptTests(unittest.TestCase):
         self.assertNotEqual(row["sha256"], "")
         self.assertLessEqual(int(row["visual_distance"]), 4)
 
+    def test_japanese_studios_get_their_own_file_names(self):
+        """只留 ASCII 时这两家同为 `_____`，同一批里后取的那张盖掉先取的。"""
+        from peach.previews import logo_key
+
+        names = [self.module.safe_name(studio) for studio in ("セレブの友", "親父の個撮")]
+        self.assertEqual(names, [logo_key("セレブの友"), logo_key("親父の個撮")])
+        self.assertNotEqual(names[0], names[1])
+
+    def test_an_installed_japanese_studio_mark_is_recognised(self):
+        """已装标识按 `logo_key` 落盘；候选拿另一套名字去比，同一张图也会被当成新图。"""
+        self.source.write_text("studio\nセレブの友\n", encoding="utf-8-sig")
+        self.handles.write_text("studio,handle\nセレブの友,webhakusui\n", encoding="utf-8-sig")
+        (self.installed / "セレブの友.img").write_bytes(
+            bake_square(pattern_png(size=(400, 400))))
+        refreshed = pattern_png(size=(200, 200))
+        self.assertEqual(self.module.main(self.args(), transport=FakeTransport([refreshed])), 0)
+        row = self.rows()[0]
+        self.assertEqual(row["saved"].rsplit(".", 1)[0], "セレブの友")
+        self.assertEqual(row["content_state"], "unchanged")
+
     def test_upload_original_is_preferred_over_the_resolver_thumbnail(self):
         """unavatar 会给缩小档：セレブの友 拿到的是 200×200，原图其实 242×242。"""
         stem = "https://pbs.twimg.com/profile_images/562462783950700545/abc"
