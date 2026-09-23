@@ -5,7 +5,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from peach.mp4index import composition_offsets_present, keyframe_seconds, segment_plan
+from peach.mp4index import (
+    composition_offsets_present, keyframe_seconds, movie_seconds, segment_plan,
+)
 from peach.segments import HlsSegmentService, StreamSessionRegistry, build_hls_playlist
 from support.mp4 import minimal_mp4
 
@@ -55,6 +57,17 @@ class Mp4IndexTests(unittest.TestCase):
         """读不出 moov 就不知道有没有这张表；猜「没有」会把好片源推去转码。"""
         self.assertIsNone(composition_offsets_present(self.write(b"not an mp4 at all")))
         self.assertIsNone(composition_offsets_present(self.root / "missing.mp4"))
+
+    def test_movie_duration_is_read_from_a_truncated_file_head(self):
+        """远端视频只取文件头：`moov` 被截在一半也读得出 `mvhd`，放在结尾的读不出。"""
+        full = minimal_mp4(timescale=1000, sample_delta=40, samples=250, keyframe_every=25)
+        head = full[:full.index(b"mvhd") + 120]
+        self.assertEqual(movie_seconds(head), 10.0)
+        moov_start = full.index(b"moov") - 4
+        moov_size = int.from_bytes(full[moov_start:moov_start + 4], "big")
+        tail_moov = full[:moov_start] + full[moov_start + moov_size:] + full[moov_start:][:moov_size]
+        self.assertIsNone(movie_seconds(tail_moov[:len(head)]))
+        self.assertIsNone(movie_seconds(b"<html>not a video</html>"))
 
     def test_plan_snaps_to_keyframes_and_covers_the_whole_duration(self):
         keyframes = [round(value * 8.33, 2) for value in range(12)]

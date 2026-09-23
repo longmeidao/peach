@@ -12,6 +12,7 @@ MP4 把关键帧表（`stss`）和时长表（`stts`）都放在 `moov` 里，�
 """
 from __future__ import annotations
 
+import io
 import struct
 from pathlib import Path
 
@@ -161,6 +162,25 @@ def _moov_of(path: Path | str, probe_bytes: int) -> bytes | None:
             return _read_moov(handle, probe_bytes)
     except OSError:
         return None
+
+
+def movie_seconds(head: bytes) -> float | None:
+    """文件开头这一段里 `mvhd` 声明的整片时长（秒），读不出就是 None。
+
+    给只取得到文件头的远端视频用：`mvhd` 是 `moov` 的第一个子盒，faststart 的文件
+    开头几百字节就有它，`moov` 其余部分被截在这一段之外也不影响。`moov` 在文件结尾
+    的读不出，交给调用方记作未取得。
+    """
+    moov = _read_moov(io.BytesIO(head), HEADER_PROBE_BYTES)
+    found = _find(moov, 0, len(moov), b"mvhd") if moov else None
+    if not found:
+        return None
+    box = moov[found[0]:found[1]]
+    if box[:1] == b"\x01":
+        scale, length = int.from_bytes(box[20:24], "big"), int.from_bytes(box[24:32], "big")
+    else:
+        scale, length = int.from_bytes(box[12:16], "big"), int.from_bytes(box[16:20], "big")
+    return round(length / scale, 3) if scale and length else None
 
 
 def composition_offsets_present(

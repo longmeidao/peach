@@ -24,6 +24,7 @@ from peach.follow_sources import (
     _iso_from_relative, origin_group_key, parse_source_url,
 )
 from peach.http import HttpResponse
+from support.mp4 import minimal_mp4
 
 
 def _transport(status=200, headers=None, body=b"", record=None):
@@ -1396,6 +1397,29 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertEqual(result.candidates[0].published_at, "2026-05-01T16:32:21Z")
         self.assertFalse(result.candidates[0].partial)
 
+    def test_video_duration_comes_from_the_original_file_head(self):
+        """接口和帖子页都不给时长，原文件头的 `mvhd` 有；只取头上一段，不拉整片。"""
+        video = minimal_mp4(timescale=1000, sample_delta=40, samples=250, keyframe_every=25)
+        seen = []
+
+        def transport(request, timeout, max_bytes):
+            seen.append((request, max_bytes))
+            if request.url.startswith("https://api.rule34.xxx/"):
+                return HttpResponse(200, {}, RULE34XXX_JSON)
+            if request.url.startswith("https://api-cdn-mp4.rule34.xxx/"):
+                return HttpResponse(206, {}, video)
+            return HttpResponse(200, {}, RULE34XXX_DETAIL_HTML)
+
+        result = Rule34XxxConnector(
+            transport=transport, max_items=1,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+        ).fetch("lazyprocrastinator")
+        self.assertEqual(result.candidates[0].duration, 10.0)
+        head, budget = next((request, size) for request, size in seen
+                            if request.url.endswith(".mp4"))
+        self.assertEqual(head.headers["Range"], f"bytes=0-{budget - 1}")
+        self.assertLessEqual(budget, 65536)
+
     def test_a_throttled_detail_page_is_retried_not_read_as_no_types(self):
         """站方公布的是每 60 秒 60 次，而列表页一页 24 条、每条都要单独打一次详情页。
 
@@ -1408,6 +1432,8 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         def transport(request, timeout, max_bytes):
             if request.url.startswith("https://api.rule34.xxx/"):
                 return HttpResponse(200, {}, RULE34XXX_JSON)
+            if "page=post" not in request.url:
+                return HttpResponse(404, {}, b"")
             attempts.append(request.url)
             if len(attempts) < 3:
                 return HttpResponse(503, {}, b"slow down")

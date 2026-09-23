@@ -66,7 +66,7 @@ class OperationalScriptTests(unittest.TestCase):
         cls.rehome_unknown = load_script("rehome_unknown_jav")
 
     def tmp_ledger(self) -> Path:
-        """一份只含 rule34xxx 追更条目的临时账本：一条已有类型、一条还没有。
+        """一份只含 rule34xxx 追更条目的临时账本：一条已有类型和时长、一条都还没有。
 
         临时目录先 `.resolve()`：CI runner 的临时目录都是别名（macOS `/var` 软链到
         `/private/var`，Windows `RUNNER~1` 展开成 `runneradmin`），不 resolve 的路径
@@ -78,13 +78,16 @@ class OperationalScriptTests(unittest.TestCase):
         connection.executescript(
             "CREATE TABLE follow_source(id INTEGER PRIMARY KEY, provider TEXT);"
             "CREATE TABLE follow_item(id INTEGER PRIMARY KEY, source_id INTEGER,"
-            " external_id TEXT, url TEXT, metadata_json TEXT);")
+            " external_id TEXT, url TEXT, media_url TEXT, published_at TEXT,"
+            " published_precision TEXT, duration REAL, metadata_json TEXT);")
         connection.execute("INSERT INTO follow_source VALUES(1,'rule34xxx')")
         connection.executemany(
-            "INSERT INTO follow_item VALUES(?,1,?,?,?)",
+            "INSERT INTO follow_item VALUES(?,1,?,?,?,?,'exact',?,?)",
             [(1, "18622796", "https://rule34.xxx/index.php?id=18622796",
+              "https://api-cdn-mp4.rule34.xxx/images/1/a.mp4", "2026-09-14T03:02:05Z", 20.0,
               json.dumps({"tag_types": {"nier": "copyright"}})),
              (2, "18622794", "https://rule34.xxx/index.php?id=18622794",
+              "https://api-cdn-mp4.rule34.xxx/images/1/b.mp4", "2026-09-14T03:02:05Z", None,
               json.dumps({"tag_types": {}}))])
         connection.commit()
         connection.close()
@@ -258,13 +261,13 @@ class OperationalScriptTests(unittest.TestCase):
         # 定论复用，会让配置问题被冻结成来源判决，续跑再也不问这个番号。
         self.assertEqual(self.scrape_codes.SETTLED_ERROR_KINDS, frozenset({"not_found"}))
 
-    def test_rule34_tag_type_backfill_reuses_the_connector_and_is_resumable(self):
-        """rule34xxx 的标签类型只在帖子页上，2152 条里当时只有 40 条带着它。
+    def test_rule34_detail_backfill_reuses_the_connector_and_is_resumable(self):
+        """标签类型、上传时间在帖子页上，视频时长在原文件头里，存量行靠常规检查补不到。
 
-        常规检查只看第一页，补不到历史条目。抓取判据不重写，直接复用连接器的
-        `_detail`；备份先做、分批提交，中断一次不至于白跑五十分钟。
+        抓取判据不重写，直接复用连接器的 `_detail` 与 `_video_seconds`；备份先做、
+        分批提交，续跑只跳过上一趟真正写入的条目。
         """
-        backfill = load_script("backfill_rule34_tag_types")
+        backfill = load_script("backfill_rule34_details")
         # 连接与备份走共享的 `open_for_write`／`open_readonly`，WAL 正确性由
         # `scripting` 那条回归测试守住；这里只钉「用的是那一份」。断言源码里有没有
         # `reader.backup(writer)` 这串字符的话，脚本一改成调用共享实现就会红——
@@ -279,16 +282,39 @@ class OperationalScriptTests(unittest.TestCase):
             ["--db", str(database), "--apply"])
         self.assertEqual(backfill.run(args), 2)
 
-        # `--limit` 之外的两条判据也用真实数据钉住：已经有 tag_types 的条目不再排队，
-        # 取不到的条目不写空字典冒充已补（下一轮还要再问）。
+        # 上传时间错没错要问过才知道，所以每条都排队；续跑只扣掉已经写入的。
         connection = sqlite3.connect(database)
         self.addCleanup(connection.close)
         connection.row_factory = sqlite3.Row
         pending = backfill.pending_rows(connection, 0)
-        self.assertEqual([row["external_id"] for row in pending], ["18622794"])
-        self.assertEqual(
-            json.loads(backfill.merge_tag_types({"tags": "a b"}, {"a": "artist"})),
-            {"tags": "a b", "tag_types": {"a": "artist"}})
+        self.assertEqual([row["external_id"] for row in pending], ["18622796", "18622794"])
+        self.assertEqual([row["external_id"] for row in backfill.pending_rows(connection, 0, {1})],
+                         ["18622794"])
+
+        # 只补不抹：已有的类型与时长不覆盖，帖子页没给上传时间就不动它。
+        typed, untyped = pending
+        detail = {"tag_types": {"a": "artist"}, "published_at": "2026-05-01T16:32:21Z"}
+        self.assertEqual(backfill.plan_update(typed, detail, 60.054),
+                         {"published_at": "2026-05-01T16:32:21Z"})
+        plan = backfill.plan_update(untyped, detail, 60.054)
+        self.assertEqual((plan["published_at"], plan["duration"]),
+                         ("2026-05-01T16:32:21Z", 60.054))
+        self.assertEqual(json.loads(plan["metadata_json"]), {"tag_types": {"a": "artist"}})
+        self.assertIsNone(backfill.plan_update(
+            typed, {"tag_types": {"a": "artist"}, "published_at": None}, None))
+
+        # 写入与续跑：写过的条目在 CSV 里记 `written=是`，下一趟 `--resume` 跳过它。
+        writer = sqlite3.connect(database)
+        self.addCleanup(writer.close)
+        backfill._apply(writer, [(2, plan)])
+        row = connection.execute(
+            "SELECT published_at, duration, published_precision FROM follow_item WHERE id=2"
+        ).fetchone()
+        self.assertEqual(tuple(row), ("2026-05-01T16:32:21Z", 60.054, "exact"))
+        out = database.parent / "log.csv"
+        backfill.write_rows(out, backfill.FIELDS, [{"item_id": 2, "written": "是"},
+                                          {"item_id": 1, "written": "否"}], fill_missing=True)
+        self.assertEqual(backfill.written_ids(out), {2})
 
     def test_follow_image_dims_backfill_reads_archives_first_and_probes_headers_for_the_rest(self):
         """图片墙的比例占位要每张图都有宽高；存量行里只有 fanbox 记过。
@@ -2798,7 +2824,7 @@ class ScriptingConventionTests(unittest.TestCase):
 
     #: 会真写 ledger、已经收口到本模块的脚本。
     LEDGER_WRITERS = (
-        "backfill_rule34_tag_types",
+        "backfill_rule34_details",
         "clean_names",
         "install_entity_links",
         "localize_performer_names",
