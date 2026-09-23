@@ -47,6 +47,35 @@ def logo_key(studio: str) -> str:
     return re.sub(r"[^\w-]", "_", studio, flags=re.UNICODE)[:60]
 
 
+def relink_logo_files(old_name: str, new_name: str, logo_root: Path
+                      ) -> tuple[list[str], list[str]]:
+    """厂牌规范名换了之后，把旧名下的标识文件挪到新名下，返回（挪了的, 留在原地的）。
+
+    标识按 `logo_key(canonical_name)` 落盘，账本里名字一换，旧文件就没人认领了。
+    只补新名下缺的变体，已有的一个字节都不动；挪不动的留在原地并列出来：孤儿文件
+    不会被读到，删它需要单独的授权。`.ct`、`.provenance.json` 这些边车跟着图走。
+    """
+    old, new = logo_key(old_name), logo_key(new_name)
+    moved: list[str] = []
+    left: list[str] = []
+    if old == new:
+        return moved, left
+    for suffix in (*(f".{variant}.img" for variant in LOGO_VARIANTS), ".img"):
+        source, target = logo_root / f"{old}{suffix}", logo_root / f"{new}{suffix}"
+        if not source.is_file():
+            continue
+        if target.exists():
+            left.append(source.name)
+            continue
+        source.replace(target)
+        moved.append(f"{source.name} -> {target.name}")
+        for sidecar in logo_root.glob(f"{old}{suffix}.*"):
+            companion = logo_root / f"{new}{suffix}{sidecar.name[len(source.name):]}"
+            if not companion.exists():
+                sidecar.replace(companion)
+    return moved, left
+
+
 #: `/entity-image` 认得的实体种类。取图和可用性判定必须认同一份清单：这边多认一种，
 #: 页面就会为一个必然 404 的地址出 `<img>`；少认一种，装好的图从此不显示。
 ENTITY_IMAGE_KINDS = ("performer", "studio", "creator", "series", "agency")

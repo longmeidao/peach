@@ -3,7 +3,7 @@
 已安装的厂牌图里有一部分源图是宽条字标，`normalize_studio_logos.py` 的边车记着它们。
 补方让这些字标在 160px 的厂牌页大位上好看，但塞进筛选片那种 28px 的小圆里只剩一条糊字，
 所以小位要另找一枚方标。社媒头像早就分 icon / logo 两用，厂牌按同一条判断走。另有一批
-厂牌连一张图都没有（账本里现在是 Hon Naka），它们不在那份名单里，可两个位置一样空着，
+厂牌连一张图都没有（账本里现在是 本中），它们不在那份名单里，可两个位置一样空着，
 所以也纳进来。第三批是**取回来过、但取小了**的：已装方标的短边不够小圆片的实像素，
 `cover` 铺满就是在放大它（见 `INSTALLED_SHORT_EDGE`）。
 
@@ -150,7 +150,7 @@ ASPECT_SLACK = 1.1
 LOGO_SOURCES: dict[str, str] = {
     "FC2-PPV": "https://images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png",
     "Prestige": "http://www.jae.tokyo/jae2017/images/maker/maker_image/023.png",
-    "JET Eizo": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
+    "JET映像": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
     "MOODYZ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/054.png",
     "MARRION": "http://www.jae.tokyo/jae2017/images/maker/maker_image/050.png",
     "V&R PRODUCE": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/vr_logo.jpg",
@@ -162,8 +162,8 @@ LOGO_SOURCES: dict[str, str] = {
     "Baltan": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/baltan_logo.jpg",
     "BeFree": "http://www.jae.tokyo/jae2015/images/maker/17_befree.png",
     "Dogma": "http://www.jae.tokyo/jae2015/images/maker/34_dogma.png",
-    "Momotaro Eizo": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
-    "Ranmaru": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
+    "桃太郎映像出版": "http://www.jae.tokyo/jae2017/images/maker/maker_image/022.png",
+    "乱丸": "http://www.jae.tokyo/jae2015/images/maker/21_ran.png",
     "TEPPAN": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/teppan_logo.jpg",
     "kira*kira": "http://www.jae.tokyo/jae2014/exhibitor/images/logo/kirakira_logo.jpg",
     "ゲッツ！！ボンボン/妄想族": "http://www.jae.tokyo/jae2017/images/maker/maker_image/029.png",
@@ -173,9 +173,9 @@ LOGO_SOURCES: dict[str, str] = {
     # 213 家一律 `contents/maker/id<N>/logo_l.jpg`、200×200 真方标——这一位要的正是方的，
     # 不必烤。目录里 173 家挂 妄想族、39 家挂 エマニエル，都是同人／独立厂牌，
     # 和账本只交出 4 家：`ゲッツ！！ボンボン/妄想族` 已有 jae.tokyo 的图，其余三家在这里。
-    # 名录写日文、账本写罗马字（`Asia/妄想族` 对 `Asia / Mousouzoku`），按斜杠左半对。
-    "ABC / Mousouzoku": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
-    "Asia / Mousouzoku": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
+    # 名录写的日文名就是账本 canonical_name（`Asia/妄想族`），按整名对。
+    "ABC/妄想族": "https://www.mousouzoku-av.com/contents/maker/id001/logo_l.jpg",
+    "Asia/妄想族": "https://www.mousouzoku-av.com/contents/maker/id003/logo_l.jpg",
     # 直撇号是账本 canonical_name 的写法；弯撇号那一份是别名，过 `safe_name` 同样落到
     # `AVS_collector_s`，按哪一种写都取得到同一个文件。
     "AVS collector's": "https://www.mousouzoku-av.com/contents/maker/id358/logo_l.jpg",
@@ -224,7 +224,7 @@ WORDMARK_SOURCES: dict[str, str] = {
     # 字标（2026-09-22 实测）。指定它是为了挡住自动发现给小位挑的那一枚：页面上挂的
     # X 账号头像是一张项圈的照片，400×400、内容比 1.04，够大也够方，人像闸也过——
     # 里面没有脸——装上去厂牌页顶着一条项圈。照片不是标识，这一点闸门判不出来。
-    "M Girls' Lab":
+    "えむっ娘ラボ":
         "https://cdn.up-timely.com/image/16/site_design/base/logo_image"
         "/agm4a2ESultyKGcW2F3tWNjLS0VTjbjzXuueyhai.png",
     # ナンパTV 是 Prestige 旗下 label，自己没有站，账本里也一条链接都没有——自动发现
@@ -377,7 +377,7 @@ def harvest_targets(padded: dict[str, dict[str, object]],
     logo 来源的。
 
     后两半不在补白名单里——`normalize_studio_logos.py` 从来没处理过它们，因为没有可处理
-    的文件。可它们在页面上占的位置和别人一样，两个变体都是空的（账本里现在是 Hon Naka）。
+    的文件。可它们在页面上占的位置和别人一样，两个变体都是空的（账本里现在是 本中）。
     只看补白名单等于承认「没图的就一直没图」。
 
     装着的方标太小同样是入场理由：那一位的图取回来过，只是取小了，而站点上还挂着更大
