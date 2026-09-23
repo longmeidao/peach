@@ -1,10 +1,12 @@
 """amane 桥的 Peach 一侧：起子进程、翻 payload、失败分档、冷却动作，以及采集链上那一档。"""
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -15,7 +17,7 @@ from peach.jav_cover_fetch import NotFound, Unavailable
 from peach.library_processing import LibraryMetadataProvider, PROVIDER_NAMES, SOURCE_LABELS
 from peach.metadata import MetadataProviderError, extract_peach_fields
 from peach.metadata_policy import SOURCE_SPECS
-from peach.metadata_routes import AMANE_STAGE
+from peach.metadata_routes import AMANE_OFFICIAL_STAGE, AMANE_STAGE
 from peach.scraping_access import SourcePaused, cooldown_state, paused_until, pause_source
 from peach.sources import REASON_KINDS, FailureReason, SiteRecord
 
@@ -49,18 +51,31 @@ class ManifestTests(unittest.TestCase):
         lock = (metadata_amane.BRIDGE_ROOT / "uv.lock").read_text(encoding="utf-8")
         self.assertIn(revision, lock)
 
-    def test_every_opened_site_is_a_registered_community_source_and_a_bridge_site(self):
-        bridge_sites = set(__import__("re").findall(r'^\s+"([a-z0-9]+)": \("', (
-            metadata_amane.BRIDGE_SCRIPT).read_text(encoding="utf-8"), flags=__import__("re").M))
-        for site in metadata_amane.SITES:
-            with self.subTest(site=site):
-                self.assertEqual(SOURCE_SPECS[site].kind, "community")
-                self.assertIn(site, bridge_sites)
-                self.assertIn(site, SOURCE_LABELS)
-                self.assertIn(site, PROVIDER_NAMES)
-        self.assertEqual(set(AMANE_STAGE), set(metadata_amane.SITES))
-        for own in ("javdb", "javbus", "dmm"):
-            self.assertNotIn(own, metadata_amane.SITES)
+    def test_every_opened_site_is_a_registered_source_of_its_tier_and_a_bridge_site(self):
+        spec = importlib.util.spec_from_file_location("amane_bridge_sites", metadata_amane.BRIDGE_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        BRIDGE_SITES = module.SITES
+        for sites, kind, stage in ((metadata_amane.COMMUNITY_SITES, "community", AMANE_STAGE),
+                                   (metadata_amane.OFFICIAL_SITES, "official", AMANE_OFFICIAL_STAGE)):
+            names = {name for name, _ in sites}
+            self.assertEqual(names, set(stage))
+            for site in names:
+                with self.subTest(site=site):
+                    self.assertEqual(SOURCE_SPECS[site].kind, kind)
+                    self.assertIn(site, BRIDGE_SITES)
+                    self.assertIn(site, SOURCE_LABELS)
+                    self.assertIn(site, PROVIDER_NAMES)
+        self.assertEqual(set(AMANE_STAGE) | set(AMANE_OFFICIAL_STAGE), set(metadata_amane.SITES))
+
+    def test_each_site_has_one_owner(self):
+        """自写解析器已经答的站不经桥再问一遍（ADR-0048）。"""
+        from peach.sources import SITE_SOURCES
+        for own in ("r18dev", "fc2", "javdb", "javbus", "avbase", "1pondo", "dmm"):
+            with self.subTest(site=own):
+                self.assertNotIn(own, metadata_amane.SITES)
+        self.assertEqual(set(SITE_SOURCES) & set(metadata_amane.SITES), set())
 
     def test_every_upstream_failure_reason_maps_onto_one_contract_reason(self):
         reasons = set(__import__("re").findall(r'"([a-z_]+)",?\s', (
@@ -86,11 +101,23 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual({upstream: REASON_KINDS[reason] for upstream, reason in metadata_amane.AMANE_REASONS.items()},
                          expected)
 
+    def test_a_bare_401_or_403_is_the_site_turning_this_exit_away(self):
+        """Prestige 在非日本出口上回 CloudFront 403，正文里没有地区那句话，上游归 `http_error`。"""
+        for status in (401, 403):
+            with self.subTest(status=status):
+                self.assertEqual(metadata_amane.contract_reason("http_error", status), FailureReason.AUTH_REQUIRED)
+        self.assertEqual(metadata_amane.contract_reason("http_error", 500), FailureReason.SERVER_ERROR)
+        self.assertEqual(metadata_amane.contract_reason("http_error"), FailureReason.SERVER_ERROR)
+        self.assertEqual(metadata_amane.contract_reason("geo_restricted", 403), FailureReason.GEO_RESTRICTED)
+        self.assertEqual(metadata_amane.contract_reason("something_new"), FailureReason.NETWORK)
+
     def test_bridge_sites_carry_the_same_config_shape_as_self_written_sites(self):
+        official = {name for name, _ in metadata_amane.OFFICIAL_SITES}
         for site, config in metadata_amane.SITE_CONFIGS.items():
             with self.subTest(site=site):
                 self.assertEqual((config.name, config.label, config.provider, config.stage),
-                                 (site, SOURCE_LABELS[site], PROVIDER_NAMES[site], "amane"))
+                                 (site, SOURCE_LABELS[site], PROVIDER_NAMES[site],
+                                  "official" if site in official else "amane"))
         self.assertEqual(metadata_amane.SITES, {site: config.label for site, config in metadata_amane.SITE_CONFIGS.items()})
 
 
@@ -284,6 +311,22 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(failures["avsox"].status_code, 429)
         self.assertEqual(failures["airav"].kind, "not_found")
 
+    def test_prestige_release_is_a_delivery_date_not_a_release_date_candidate(self):
+        """Prestige 回的是 MGS 配信开始日（ABW-032 回 2020-11-11，发行日 2020-12-11）。"""
+        metadata = {**FOUND["metadata"], "number": "ABW-032", "release": "2020-11-11",
+                    "source_url": "https://www.prestige-av.com/goods/x"}
+        payload = metadata_amane.to_payload("prestige", "ABW-032", metadata)
+        self.assertEqual((payload["release_date"], payload["delivery_date"]), ("", "2020-11-11"))
+        self.assertNotIn("release_date", {field for field, row in extract_peach_fields(payload).items()
+                                          if row["value"]})
+        makers = metadata_amane.to_payload("makers", "ABW-032", metadata)
+        self.assertEqual(makers["release_date"], "2020-11-11")
+        self.assertNotIn("delivery_date", makers)
+
+    def test_official_hits_keep_their_own_provenance(self):
+        record = metadata_amane.to_record("makers", {**FOUND["metadata"], "number": "SSIS-057"})
+        self.assertEqual((record.source, record.provenance), ("makers", "amane-makers"))
+
 
 class FailureMappingTests(unittest.TestCase):
     def test_reasons_map_onto_the_three_existing_kinds_and_keep_the_detail(self):
@@ -316,6 +359,20 @@ class FailureMappingTests(unittest.TestCase):
             self.assertEqual(metadata_amane.cooldown_action(
                 metadata_amane.failure_error("avsox", {"reason": reason})), "")
         self.assertEqual(metadata_amane.cooldown_action(MetadataProviderError("plain")), "")
+
+    def test_a_region_lock_or_a_bare_403_pauses_the_site_but_is_not_a_miss(self):
+        """被挡与没有要分开：地区限制和裸 403 让整站冷却，不冻进「没有」的记忆。"""
+        for record in ({"reason": "geo_restricted"}, {"reason": "http_error", "http_status": 403}):
+            with self.subTest(record=record):
+                error = metadata_amane.failure_error("prestige", record)
+                self.assertEqual(error.kind, "auth")
+                self.assertEqual(metadata_amane.cooldown_action(error), "blocked")
+        refused = metadata_amane.failure_error("prestige", {"reason": "http_error", "http_status": 403})
+        self.assertIn("HTTP 403", str(refused))
+        self.assertEqual(metadata_amane.cooldown_action(
+            metadata_amane.failure_error("prestige", {"reason": "http_error", "http_status": 500})), "")
+        missing = metadata_amane.failure_error("prestige", {"reason": "not_found", "http_status": 404})
+        self.assertEqual((missing.kind, metadata_amane.cooldown_action(missing)), ("not_found", ""))
 
 
 class CooldownHelperTests(unittest.TestCase):

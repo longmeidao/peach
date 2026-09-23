@@ -28,9 +28,12 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
-#: 桥认得的站点：站名 → （`amane.crawlers.sites` 下的模块名，类名）。
-#: 不列 `r18dev`（要本地 PostgreSQL 镜像）、`official`（要番号前缀 → 片商域名的路由表）、
-#: `theporndb`（要 API token）：三者没有 `SiteConfig` 就跑不起来，而桥刻意不带配置。
+#: 桥认得的站点：站名 → （`amane.crawlers.sites` 下的模块名，类名）。站名是 Peach 的来源名，
+#: 多数与 amane 同名；`makers` 是 amane 的 `official`：它按番号的系列前缀查自带的片商表
+#: （`MANUFACTURER_SERIES`），路由到二十九家片商官网的作品页，前缀不在表里就不发请求、直接答没有，
+#: 所以不带 `SiteConfig` 也跑得起来。Peach 那边 `official` 是来源分级的名字，换个站名免得两义。
+#: 不列 `r18dev`（要本地 PostgreSQL 镜像）与 `theporndb`（要 API token）：两者没有 `SiteConfig`
+#: 就跑不起来，而桥刻意不带配置。
 SITES: dict[str, tuple[str, str]] = {
     "airav": ("airav", "AiravCrawler"),
     "avsox": ("avsox", "AvsoxCrawler"),
@@ -48,6 +51,7 @@ SITES: dict[str, tuple[str, str]] = {
     "javdb": ("javdb", "JavDBCrawler"),
     "javlibrary": ("javlibrary", "JavLibraryCrawler"),
     "kin8": ("kin8", "Kin8Crawler"),
+    "makers": ("official", "OfficialCrawler"),
     "mgstage": ("mgstage", "MGStageCrawler"),
     "prestige": ("prestige", "PrestigeCrawler"),
     "xcity": ("xcity", "XCityCrawler"),

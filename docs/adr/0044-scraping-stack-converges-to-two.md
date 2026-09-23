@@ -113,3 +113,5 @@ JavArchive 把搜索命中的每一条转存各交一份；`Session.get` 可以�
 `SOURCE_LABELS`、`PROVIDER_NAMES` 补上这一行。payload 的差别只有契约统一带的 `maker`、`label`、`series`、`director` 空串键、
 `runtime` 空值与 `cover_urls`，没给标题或日期列的表按空串交出；冲突判定比较标题、出演与日期时，表上没有那一列与那一格为空同样按空串比。
 迁移状态表在 `docs/SOURCING.md`「站点解析器契约」。
+
+归属判据由 ADR-0048 修订。 <!-- copy-lint-disable-line -->

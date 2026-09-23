@@ -520,6 +520,7 @@ class ProcessLibraryTests(LedgerTestCase):
 
     def provider(self):
         provider = mock.Mock()
+        provider.amane.side_effect = NotFound('厂商官网没有这个番号')
         provider.community.side_effect = NotFound('社区来源都没有这个番号')
         provider.cover.return_value = False
         provider.query.return_value = {

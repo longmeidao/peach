@@ -165,6 +165,7 @@ class FailureReasonTests(unittest.TestCase):
     def test_only_bans_and_rate_limits_pause_a_whole_site(self):
         self.assertEqual(COOLDOWN_ACTIONS, {FailureReason.CLOUDFLARE_CHALLENGE: "blocked",
                                             FailureReason.IP_BANNED: "blocked",
+                                            FailureReason.GEO_RESTRICTED: "blocked",
                                             FailureReason.RATE_LIMITED: "rate_limited"})
         for reason in FailureReason:
             with self.subTest(reason=reason):
@@ -196,6 +197,22 @@ class ConfigConsistencyTests(unittest.TestCase):
                 for host, interval in SOURCE_INTERVALS.items():
                     if scraping_access.source_for("https://" + host + "/") == name:
                         self.assertEqual(interval, config.interval, f"{host} 的主机间隔与配置不一致")
+
+    def test_every_bridge_site_agrees_with_the_same_tables(self):
+        """经 amane 桥的站同样逐项一致；每个站只有一个归属，桥站与自写站不重名（ADR-0048）。"""
+        from peach import metadata_amane
+        self.assertEqual(set(metadata_amane.SITE_CONFIGS) & set(SITE_SOURCES), set())
+        for name, config in metadata_amane.SITE_CONFIGS.items():
+            with self.subTest(site=name):
+                self.assertEqual(config.name, name)
+                self.assertEqual(SOURCE_SPECS[name].kind, "community" if config.stage == "amane" else config.stage)
+                self.assertEqual(config.label, SOURCE_LABELS[name])
+                self.assertEqual(config.provider, PROVIDER_NAMES[name])
+                # Prestige 与 MGStage 的冷却记录和封面那一路同键：同一个出口对同一站只有一份冷却。
+                if name in scraping_access.SOURCES:
+                    self.assertEqual(scraping_access.SOURCES[name]["label"], config.label)
+        self.assertEqual({name for name, config in metadata_amane.SITE_CONFIGS.items() if config.stage == "official"},
+                         {"makers", "prestige", "faleno", "dahlia", "mgstage"})
 
     def test_seesaa_brings_its_own_transport_and_keeps_its_source_identity(self):
         """Seesaa 作品表不经 `SourceTransport`：不收 Cookie、采集设置页没有它的卡片，冷却只在本批内，

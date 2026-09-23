@@ -498,6 +498,46 @@ class LibraryNfoTests(unittest.TestCase):
         process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
         self.assertIn('tags', {row['field'] for row in read_rows(candidates, missing_ok=True)})
 
+    def _collect_with_maker(self, code, maker, payload, r18dev=None):
+        """一部有码片走采集，官方档由经桥的片商站 `maker` 答 `payload`；返回 (provider, 候选行)。"""
+        media = self.root / 'media'
+        media.mkdir()
+        (media / f'{code}.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = stub_provider()
+        provider.amane.side_effect = None
+        provider.amane.return_value = [(maker, {'id': code, 'content_id': code, 'source': maker, **payload})]
+        provider.query.return_value = r18dev or {'id': code}
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        provider_factory=Mock(return_value=provider))
+        return provider, read_rows(self.root / 'generated/library-metadata-field-candidates.csv')
+
+    @windows_ledger_roots
+    def test_a_maker_site_answering_every_scalar_settles_the_chain_before_r18dev(self):
+        """厂商官网是官方档第一家：标量与标签都给全了，r18.dev 与综合索引都不再问。"""
+        provider, rows = self._collect_with_maker('SSIS-057', 'makers', {
+            'title': '標題', 'maker': 'エスワン ナンバーワンスタイル', 'release_date': '2021-05-07',
+            'genres': ['巨乳'], 'actresses': [{'japanese_name': '葵つかさ'}]})
+        self.assertEqual(provider.amane.call_args.kwargs['route'], ('makers',))
+        provider.query.assert_not_called()
+        provider.community.assert_not_called()
+        title = next(row for row in rows if row['field'] == 'title')
+        self.assertEqual([candidate['source'] for candidate in json.loads(title['candidates_json'])], ['makers'])
+
+    @windows_ledger_roots
+    def test_a_maker_site_without_tags_leaves_them_to_r18dev_but_not_to_the_indexes(self):
+        """FALENO 官网不给类别：缺标签的行再问 r18.dev 一次，综合索引照样不问。"""
+        provider, rows = self._collect_with_maker('FSDSS-437', 'faleno', {
+            'title': '標題', 'maker': 'FALENO', 'release_date': '2022-07-07',
+            'actresses': [{'japanese_name': '女優'}]},
+            r18dev={'id': 'FSDSS-437', 'genres': ['巨乳']})
+        self.assertEqual(provider.amane.call_args.kwargs['route'], ('faleno',))
+        provider.query.assert_called_once()
+        provider.community.assert_not_called()
+        tags = next(row for row in rows if row['field'] == 'tags')
+        self.assertEqual({candidate['source'] for candidate in json.loads(tags['candidates_json'])}, {'r18dev'})
+
     def test_the_collector_carries_the_cookies_saved_in_scraping_settings(self):
         """采集设置里贴的 JavBus Cookie 要真的跟着采集走。
 
@@ -890,6 +930,7 @@ class LibraryNfoTests(unittest.TestCase):
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
         provider = Mock()
+        provider.amane.side_effect = NotFound('厂商官网没有这个番号')
         provider.query.side_effect = NotFound('HTTP 404')
         provider.community.return_value = [
             ('avbase', {'id': 'ORETD-615', 'title': 'たまき', 'release_date': '2024-01-05',
@@ -1129,7 +1170,8 @@ class LibraryNfoTests(unittest.TestCase):
                          ['封面未取得：来源返回 HTTP 503'], '来源说没有只报一个数，不占问题清单')
         self.assertEqual(first['notes'], {'querying_metadata': 1})
         recorded = json.loads(misses_path(config).read_text(encoding='utf-8'))
-        self.assertEqual(list(recorded['misses']), ['r18dev', 'community'])
+        self.assertEqual(list(recorded['misses']), ['amane_official', 'r18dev', 'community'])
+        self.assertEqual(provider.amane.call_args.kwargs['route'], ('mgstage',))
         self.assertEqual(list(recorded['misses']['r18dev']), ['STP-26232'])
 
         provider.cover.side_effect = NotFound('所有渠道都没有候选')

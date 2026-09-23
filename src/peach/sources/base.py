@@ -76,11 +76,13 @@ REASON_KINDS: dict[FailureReason, str] = {
     FailureReason.SERVER_ERROR: "unavailable",
     FailureReason.NETWORK: "unavailable",
 }
-#: 这几档说明的是「这个出口对这一站发得太多或已被封」，整站要进冷却，不只是这一部片。
+#: 这几档说明的是「这个出口对这一站发得太多、已被封或不在站方的服务地区」，整站要进冷却，不只是这一部片。
 #: 用的是 `scraping_access.pause_source` 现成的两档：`blocked` 按 403 那一档翻倍，`rate_limited` 按 429 那一档。
+#: 地区限制与封禁同档：只收日本出口的站（Prestige、DMM）换一部片问结果不变，换出口才会变。
 COOLDOWN_ACTIONS: dict[FailureReason, str] = {
     FailureReason.CLOUDFLARE_CHALLENGE: "blocked",
     FailureReason.IP_BANNED: "blocked",
+    FailureReason.GEO_RESTRICTED: "blocked",
     FailureReason.RATE_LIMITED: "rate_limited",
 }
 #: 重试没有意义的细档。

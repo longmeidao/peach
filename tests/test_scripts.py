@@ -2017,10 +2017,10 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertTrue(tag_candidates[0]["official"])
             self.assertEqual(tag_candidates[0]["profile"], "custom")
             self.assertEqual(tag_candidates[0]["policy_version"],
-                             "metadata-source-policy-v4")
+                             "metadata-source-policy-v5")
             # 位次跟着 `metadata_policy.FIELD_SOURCE_ORDER` 里 tags 那一行走：
             # 前面每插进一个来源，r18dev 就往后挪一格。
-            self.assertEqual(tag_candidates[0]["field_rank"], 10)
+            self.assertEqual(tag_candidates[0]["field_rank"], 12)
             self.assertEqual(tag_candidates[0]["source_kind"], "official_mirror")
             self.assertTrue(all(row["source_profile"] == "custom" for row in rows))
             self.assertTrue((raw / "ABC-001" / "r18dev.json").is_file())
@@ -2356,7 +2356,7 @@ class OperationalScriptTests(unittest.TestCase):
                 def __init__(self): self.calls = []
                 def query(self, code, source):
                     self.calls.append((code, source))
-                    if code == "DEF-002" and source == "r18dev":
+                    if source == "makers" or (code == "DEF-002" and source == "r18dev"):
                         raise self_error("status 404", kind="not_found", status_code=404)
                     if code == "DEF-002":
                         return {"source": source, "id": code, "maker": "Studio B"}
@@ -2371,8 +2371,8 @@ class OperationalScriptTests(unittest.TestCase):
                 ], provider=provider)
             self.assertEqual(result, 0)
             self.assertEqual(provider.calls, [
-                ("ABC-001", "r18dev"),
-                ("DEF-002", "r18dev"), ("DEF-002", "avbase"), ("DEF-002", "javbus"),
+                ("ABC-001", "makers"), ("ABC-001", "r18dev"),
+                ("DEF-002", "makers"), ("DEF-002", "r18dev"), ("DEF-002", "avbase"), ("DEF-002", "javbus"),
                 ("DEF-002", "javdb"),
             ])
             with output.open(encoding="utf-8-sig", newline="") as handle:
@@ -2418,7 +2418,7 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(result, 0)
             self.assertEqual(provider.calls, [
                 ("ABC-001", "r18dev"), ("ABC-001", "javbus"), ("ABC-001", "fc2club")])
-            for names, message in (("mgstage", "历史来源身份"), ("imaginary", "未知来源"),
+            for names, message in (("libredmm", "历史来源身份"), ("imaginary", "未知来源"),
                                    ("r18dev", "不能同时")):
                 argv = ["--db", str(db), "--sources", names]
                 if names == "r18dev":

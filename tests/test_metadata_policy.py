@@ -24,20 +24,31 @@ class MetadataPolicyTests(unittest.TestCase):
     def test_every_source_the_chain_can_ask_is_registered_once(self):
         """链上每一档的成员都要在 `SOURCE_SPECS` 里有级别，否则候选算不出 official。"""
         chain_sources = {source for chain in metadata_routes.ROUTES.values() for source in chain}
-        chain_sources |= set(metadata_routes.AMANE_STAGE) | {"sougouwiki"}
+        chain_sources |= set(metadata_routes.AMANE_STAGE) | set(metadata_routes.AMANE_OFFICIAL_STAGE)
+        chain_sources |= {"sougouwiki"}
         self.assertLessEqual(chain_sources, set(SOURCE_SPECS))
         self.assertTrue(POLICY_VERSION.startswith("metadata-source-policy-"))
 
     def test_historical_sources_keep_their_tier_but_are_not_on_any_chain(self):
-        """账本里 `javinizer:mgstage:tag` 这类 provenance 还在，级别要认得；请求不再发。"""
+        """账本里 `javinizer:libredmm:studio` 这类 provenance 还在，级别要认得；请求不再发。"""
         chain_sources = {source for chain in metadata_routes.ROUTES.values() for source in chain}
-        chain_sources |= set(metadata_routes.AMANE_STAGE)
+        chain_sources |= set(metadata_routes.AMANE_STAGE) | set(metadata_routes.AMANE_OFFICIAL_STAGE)
         for source in HISTORICAL_SOURCES:
             self.assertIn(source, SOURCE_SPECS, source)
             self.assertNotIn(source, chain_sources, source)
-        self.assertTrue(SOURCE_SPECS["mgstage"].official)
-        self.assertEqual(source_tier("mgstage"), CHAIN_OFFICIAL)
         self.assertFalse(SOURCE_SPECS["javlibrary"].official)
+
+    def test_the_amane_official_sites_rank_as_official_ahead_of_the_mirror(self):
+        """经桥的厂商官网与 MGStage 是官方来源；片商站在每个字段上排在 dmm 与 r18.dev 之前。"""
+        for source in metadata_routes.AMANE_OFFICIAL_STAGE:
+            with self.subTest(source=source):
+                self.assertEqual(source_tier(source), CHAIN_OFFICIAL)
+        for field in ("title", "performers", "studio", "series"):
+            with self.subTest(field=field):
+                self.assertLess(field_rank(field, "makers"), field_rank(field, "dmm"))
+                self.assertLess(field_rank(field, "prestige"), field_rank(field, "r18dev"))
+        self.assertLess(field_rank("release_date", "faleno"), field_rank("release_date", "r18dev"))
+        self.assertNotIn("prestige", FIELD_SOURCE_ORDER["release_date"])
 
     def test_field_order_covers_every_peach_field(self):
         self.assertEqual(set(FIELD_SOURCE_ORDER), set(PEACH_FIELDS))
@@ -48,7 +59,7 @@ class MetadataPolicyTests(unittest.TestCase):
 
     def test_field_rank_counts_from_one_and_puts_unknown_sources_last(self):
         self.assertEqual(field_rank("tags", "mgstage"), 1)
-        self.assertEqual(field_rank("tags", "r18dev"), 10)
+        self.assertEqual(field_rank("tags", "r18dev"), 12)
         self.assertEqual(field_rank("tags", "imaginary"), len(FIELD_SOURCE_ORDER["tags"]) + 1)
 
     def test_every_field_uses_policy_order_and_explicit_official_metadata(self):
@@ -56,10 +67,11 @@ class MetadataPolicyTests(unittest.TestCase):
             {"source": "javbus", "confidence": 0.99},
             {"source": "r18dev", "confidence": 0.8},
             {"source": "dmm", "confidence": 0.7},
+            {"source": "makers", "confidence": 0.6},
         ]
         for field in FIELD_SOURCE_ORDER:
             ordered = sort_candidates(field, candidates)
-            self.assertEqual(ordered[0]["source"], "dmm", field)
+            self.assertEqual(ordered[0]["source"], "makers", field)
             self.assertEqual(
                 [row["field_rank"] for row in ordered],
                 sorted(row["field_rank"] for row in ordered),

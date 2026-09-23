@@ -145,5 +145,42 @@ class BridgeContractTests(unittest.TestCase):
         self.assertEqual(seen, {"proxy": "http://127.0.0.1:7897", "timeout": 12.0, "rate": 1.5})
 
 
+class OfficialSiteTests(unittest.TestCase):
+    """官方档的五站（ADR-0048）走同一份 JSON 契约；`makers` 是 amane 的 `official` 模块。"""
+
+    def test_the_official_sites_name_their_amane_crawlers(self):
+        self.assertEqual(bridge.SITES["makers"], ("official", "OfficialCrawler"))
+        self.assertEqual(bridge.SITES["prestige"], ("prestige", "PrestigeCrawler"))
+        self.assertEqual(bridge.SITES["faleno"], ("faleno", "FalenoCrawler"))
+        self.assertEqual(bridge.SITES["dahlia"], ("dahlia", "DahliaCrawler"))
+        self.assertEqual(bridge.SITES["mgstage"], ("mgstage", "MGStageCrawler"))
+        self.assertNotIn("official", bridge.SITES)
+
+    def test_each_official_site_reports_hit_miss_and_refusal_on_its_own(self):
+        runtime = make_runtime({
+            "makers": FakeMetadata(number="SSIS-057", title="標題", studio="S1 NO.1 STYLE", release="2021-05-07"),
+            "prestige": FakeSourceError("http_error", http_status=403, detail="Forbidden",
+                                        url="https://www.prestige-av.com/api/product/search"),
+            "faleno": None,
+            "dahlia": FakeSourceError("geo_restricted", http_status=403, detail="not available in your region"),
+            "mgstage": FakeSourceError("age_verification", detail="adc cookie"),
+        })
+        code, lines = run_main(["--number", "SSIS-057", "--sites", "makers,prestige,faleno,dahlia,mgstage"],
+                               runtime)
+        self.assertEqual(code, bridge.EXIT_FOUND)
+        sites = json.loads(lines[0])["sites"]
+        self.assertEqual(sites["makers"]["metadata"]["studio"], "S1 NO.1 STYLE")
+        self.assertEqual((sites["prestige"]["reason"], sites["prestige"]["http_status"]), ("http_error", 403))
+        self.assertEqual(sites["faleno"]["status"], "not_found")
+        self.assertEqual(sites["dahlia"]["reason"], "geo_restricted")
+        self.assertEqual(sites["mgstage"]["reason"], "age_verification")
+
+    def test_a_refused_maker_site_alone_is_a_failure_not_a_miss(self):
+        """被挡与没有分开报：只问 Prestige 且被 403 挡住时退出码是 3，不是 2。"""
+        runtime = make_runtime({"prestige": FakeSourceError("http_error", http_status=403)})
+        code, _ = run_main(["--number", "ABW-032", "--sites", "prestige"], runtime)
+        self.assertEqual(code, bridge.EXIT_FAILED)
+
+
 if __name__ == "__main__":
     unittest.main()
