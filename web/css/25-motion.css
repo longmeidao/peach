@@ -147,3 +147,9 @@
 .revealline.revealing{opacity:1;transform:none;filter:blur(0);
   transition:opacity var(--motion-reveal),transform var(--motion-reveal),filter var(--motion-reveal);
   transition-delay:calc(var(--motion-stagger) * var(--reveal-at,0))}
+
+/* 横排滚到头的回弹：`wireHorizontalScroller` 在越界那一下给这一排挂 `.edgepull`，逐帧改
+   `--edge-pull`，子元素整排跟着平移。属性要注册成长度，Web Animations 才插得了值；
+   没注册的自定义属性只会在两端之间硬跳。 */
+@property --edge-pull{syntax:'<length>';inherits:true;initial-value:0px}
+.edgepull>*{translate:var(--edge-pull) 0}

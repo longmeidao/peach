@@ -227,14 +227,69 @@ const WHEEL_GESTURE_GAP=240;
    改 `scrollLeft` 会一格一格地跳，而页面自己滚的时候每一格都是一段动画；触控板一次只
    给几个像素、一秒几十次，本来就是连续的，再套动画只会拖慢跟手。 */
 const WHEEL_SMOOTH_STEP=50;
+/* 横排滚到头还往前推，内容多走一小段再弹回来。transitions.dev 没有这一条配方，越界位移
+   借 UIScrollView 那条橡皮筋公式 `(1 - 1/(x·c/d + 1))·d`（c = 0.55，use-gesture 的
+   `rubberband` 是同一条）：推得越远越推不动，怎么推也到不了容器那么宽。弹回走站内那条
+   采样弹簧 `--spring-pane`，冲过原位再荡回来，和筛选条那块底板一个手感。 */
+const RUBBER_BAND=.55;
+/* 滚轮没有「手还按着」那一段，推到头的那一下按这一格的力度弹一次：一格滚轮当作手拖了它
+   的三成半，放在最多 480px 宽的橡皮筋上算。宽屏上一整排一千多像素，按整排算，一格
+   推出去的量会大到像是整排滑脱了。 */
+const WHEEL_PULL=.35;
+const WHEEL_PULL_SPAN=480;
+export function rubberBand(distance,dimension){
+  if(!distance||!(dimension>0))return 0;
+  return Math.sign(distance)*(1-1/(Math.abs(distance)*RUBBER_BAND/dimension+1))*dimension;
+}
+/* 位移挂在这一排的子元素上（`.edgepull>*`，读 `--edge-pull`），不挂在容器自己身上：容器
+   一挪，贴着它的渐隐遮罩和外面那一层的边界跟着一起走，右移时还会把整页撑出横向滚动条。
+   动画只在越界那一下挂类名，平时子元素上什么都不多。 */
+function edgeBounce(el){
+  let spring=null,pulled=0;
+  const idle=()=>typeof el.animate!=='function'||matchMedia('(prefers-reduced-motion:reduce)').matches;
+  const settle=()=>{spring=null;if(!pulled)el.classList.remove('edgepull')};
+  const play=(frames,duration)=>{
+    spring?.cancel();el.classList.add('edgepull');
+    spring=el.animate(frames,{duration});
+    spring.onfinish=settle;
+  };
+  return {
+    /* 拖动跟手：越界多少就按橡皮筋收成多少，松手 `release` 弹回。 */
+    drag(excess){
+      if(idle())return;
+      spring?.cancel();spring=null;
+      pulled=-rubberBand(excess,el.clientWidth);
+      el.classList.toggle('edgepull',!!pulled);
+      if(pulled)el.style.setProperty('--edge-pull',`${pulled}px`);else el.style.removeProperty('--edge-pull');
+    },
+    release(){
+      if(!pulled)return;
+      const from=pulled,ease=glideEase();pulled=0;el.style.removeProperty('--edge-pull');
+      play([{'--edge-pull':`${from}px`,easing:ease.easing},{'--edge-pull':'0px'}],ease.duration);
+    },
+    /* 滚轮顶到头：冲出去那一段减速，荡回来那段走弹簧。一次手势只弹一下，调用方判。 */
+    kick(delta){
+      if(idle()||pulled)return;
+      const peak=-rubberBand(delta*WHEEL_PULL,Math.min(el.clientWidth,WHEEL_PULL_SPAN));
+      if(!peak)return;
+      const ease=glideEase();
+      play([{'--edge-pull':'0px',easing:'cubic-bezier(.2,.8,.4,1)'},
+        {'--edge-pull':`${peak}px`,offset:.3,easing:ease.easing},{'--edge-pull':'0px'}],ease.duration*1.6);
+    },
+  };
+}
 /** 同一容器只绑定一次，滚到边缘后将下一次滚轮手势交还页面。 */
 export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
   if(!el)return;
   const existing=horizontalControls.get(el);
   if(existing){existing.options.drag ||= drag;existing.options.fade ||= fade;existing.update();return existing}
-  const options={drag,fade},abort=new AbortController();
-  let start=null,moved=0,heldUntil=0,lastStep=0,target=0;
-  const update=()=>{if(options.fade){el.dataset.overflowLeft=String(el.scrollLeft>1);el.dataset.overflowRight=String(el.scrollLeft+el.clientWidth<el.scrollWidth-1)}};
+  const options={drag,fade},abort=new AbortController(),bounce=edgeBounce(el);
+  let start=null,moved=0,heldUntil=0,lastStep=0,target=0,kicked=false;
+  /* 值没变就不写：自动滚动每一帧都触发一次 `scroll`，同值重写属性照样让样式重算一遍。 */
+  const mark=(key,value)=>{if(el.dataset[key]!==value)el.dataset[key]=value};
+  const update=()=>{if(options.fade){mark('overflowLeft',String(el.scrollLeft>1));mark('overflowRight',String(el.scrollLeft+el.clientWidth<el.scrollWidth-1))}};
+  /* 平滑滚动还在半路时弹，看起来是没到头就先弹了；等它停下再弹。 */
+  const afterScroll=fn=>{if('onscrollend' in el)el.addEventListener('scrollend',fn,{once:true,signal:abort.signal});else setTimeout(fn,300)};
   const listen=(target,event,handler,extra={})=>target.addEventListener(event,handler,{...extra,signal:abort.signal});
   listen(el,'scroll',update,{passive:true});
   /* 滚轮按手势归属，一次手势只动一处。Chrome 把一串滚轮事件认作同一次手势，第一下
@@ -244,24 +299,36 @@ export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
      一张，整页已经往下走了。惯性是一格比一格小的；鼠标滚轮每格一样大，那是人还在往下
      滚，顶到头就立刻交还页面，不然转着滚轮的时候整页停在这一排上。
      平滑滚动时 `scrollLeft` 还在半路，下一格要从上一格的终点接着算，所以同一次手势里
-     记着终点。 */
+     记着终点。
+     这一排自己吃下的手势推过了头就弹一下，一次手势只弹一次：触控板的惯性尾巴一格一格
+     地撞在边上，每格都弹就是一串抖动。交还页面的那些不弹，那时候动的是整页。 */
   listen(el,'wheel',event=>{
     const max=el.scrollWidth-el.clientWidth;
     if(event.defaultPrevented||!event.cancelable||Math.abs(event.deltaY)<=Math.abs(event.deltaX)||max<=0)return;
     const now=performance.now(),step=Math.abs(event.deltaY),held=now<=heldUntil;
-    const from=held?target:el.scrollLeft,next=Math.min(max,Math.max(0,from+event.deltaY));
+    if(!held)kicked=false;
+    const from=held?target:el.scrollLeft,want=from+event.deltaY,next=Math.min(max,Math.max(0,want));
     const easing=step<lastStep;lastStep=step;
+    const kick=()=>{if(!kicked){kicked=true;bounce.kick(event.deltaY)}};
     if(next===from){
       if(!held||!easing)return;
-      heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();return;
+      heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();kick();return;
     }
     target=next;heldUntil=now+WHEEL_GESTURE_GAP;event.preventDefault();
-    if(step>=WHEEL_SMOOTH_STEP&&typeof el.scrollTo==='function')el.scrollTo({left:next,behavior:'smooth'});
+    const smooth=step>=WHEEL_SMOOTH_STEP&&typeof el.scrollTo==='function';
+    if(smooth)el.scrollTo({left:next,behavior:'smooth'});
     else el.scrollLeft=next;
+    if(want!==next){if(smooth)afterScroll(kick);else kick()}
   },{passive:false});
   listen(el,'mousedown',event=>{if(!options.drag||event.button!==0||el.scrollWidth-el.clientWidth<=1)return;event.stopPropagation();start={x:event.pageX,left:el.scrollLeft};moved=0;el.style.cursor='grabbing'});
-  listen(window,'mousemove',event=>{if(!start)return;const dx=event.pageX-start.x;moved=Math.max(moved,Math.abs(dx));el.scrollLeft=start.left-dx;event.preventDefault()});
-  listen(window,'mouseup',()=>{start=null;el.style.cursor=''});
+  listen(window,'mousemove',event=>{
+    if(!start)return;
+    const dx=event.pageX-start.x,want=start.left-dx,max=el.scrollWidth-el.clientWidth;
+    moved=Math.max(moved,Math.abs(dx));el.scrollLeft=want;
+    bounce.drag(want<0?want:want>max?want-max:0);
+    event.preventDefault();
+  });
+  listen(window,'mouseup',()=>{if(start)bounce.release();start=null;el.style.cursor=''});
   listen(el,'click',event=>{if(moved>6){event.stopPropagation();event.preventDefault();moved=0}},{capture:true});
   const resize=new ResizeObserver(update);resize.observe(el);
   const control={options,update,destroy(){abort.abort();resize.disconnect();horizontalControls.delete(el);el.style.cursor='';if(!horizontalControls.size){horizontalCleanup?.disconnect();horizontalCleanup=null}}};
@@ -269,6 +336,57 @@ export function wireHorizontalScroller(el,{drag=false,fade=true}={}){
   if(!horizontalCleanup){horizontalCleanup=new MutationObserver(()=>{for(const [node,item] of horizontalControls)if(!node.isConnected)item.destroy()});horizontalCleanup.observe(document.body,{childList:true,subtree:true})}
   update();return control;
 }
+
+/* 一排横卡自己缓缓往前走，走到头停一下再往回走。一秒 24px 是看得出在动、又不催人读的
+   速度：一张 168px 的卡七秒走过去。两端各停两秒，最后一张和第一张都看得清。 */
+const AUTO_SCROLL_SPEED=24;
+const AUTO_SCROLL_DWELL=2000;
+/* 人手动过之后隔多久再接着走：刚滚到想看的那张，这一排马上又自己挪走，等于跟人抢。 */
+const AUTO_SCROLL_RESUME=3000;
+const autoScrollers=new Map();
+/**
+ * 横排自动滚动。指针停在上面、焦点在里面、这一排不在屏幕上、页面切到后台时都停；
+ * 人滚过或拖过之后从人停下的位置接着走。系统要求减少动态效果时不动。
+ */
+export function wireAutoScroll(el){
+  if(!el||autoScrollers.has(el))return;
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  const abort=new AbortController();
+  let pos=el.scrollLeft,dir=1,last=0,frame=0,hovered=false,holdUntil=0;
+  const listen=(target,type,fn)=>target.addEventListener(type,fn,{passive:true,signal:abort.signal});
+  /* 在不在屏幕上每帧量一次，不另挂观察器：页面观察器只留给「载入更多」那一份。
+     滚出屏幕后循环停下，页面再滚动时由下面的捕获监听叫醒。 */
+  const onscreen=()=>{const r=el.getBoundingClientRect();return r.width>0&&r.bottom>0&&r.top<innerHeight};
+  const running=()=>el.isConnected&&!hovered&&!document.hidden&&!el.matches(':focus-within')&&onscreen();
+  const tick=now=>{
+    frame=0;
+    if(!el.isConnected){stop();return}
+    if(!running())return;
+    frame=requestAnimationFrame(tick);
+    const dt=last?Math.min(now-last,64):0;last=now;
+    const max=el.scrollWidth-el.clientWidth;
+    if(now<holdUntil||max<=1)return;
+    /* 位置自己记一份小数：一帧只走零点几个像素，`scrollLeft` 读回来是取整后的值，
+       拿它接着加会一直原地不动。 */
+    pos=Math.min(max,Math.max(0,pos+dir*AUTO_SCROLL_SPEED*dt/1000));
+    el.scrollLeft=pos;
+    if(pos>=max||pos<=0){dir=pos>=max?-1:1;holdUntil=now+AUTO_SCROLL_DWELL}
+  };
+  // 重画换掉了这一排时，挂在 document 上的监听要在下一次叫醒时跟着撤掉。
+  const wake=()=>{if(!el.isConnected)stop();else if(!frame&&running()){last=0;frame=requestAnimationFrame(tick)}};
+  const hold=()=>{holdUntil=performance.now()+AUTO_SCROLL_RESUME};
+  // 读回来和自己记的差不到一个像素就是自己那一帧；差得多是人滚的，从人停下的地方接着走。
+  listen(el,'scroll',()=>{if(Math.abs(el.scrollLeft-pos)>1){pos=el.scrollLeft;hold()}});
+  listen(el,'pointerenter',()=>{hovered=true});
+  listen(el,'pointerleave',()=>{hovered=false;hold();wake()});
+  listen(el,'focusout',()=>setTimeout(wake,0));
+  listen(document,'visibilitychange',wake);
+  document.addEventListener('scroll',wake,{capture:true,passive:true,signal:abort.signal});
+  wake();
+  function stop(){cancelAnimationFrame(frame);frame=0;abort.abort();autoScrollers.delete(el)}
+  autoScrollers.set(el,stop);
+}
+export function stopAutoScroll(el){autoScrollers.get(el)?.()}
 
 /* 一排里标出「当前是哪一个」的那块底板，全站只有这一种动法：滑过去、冲过落点、荡回来。
    筛选条上那块玻璃、抽屉那一列、分段控件里那块白底，在人眼里是同一件事，各写一段就会

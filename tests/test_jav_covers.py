@@ -229,6 +229,31 @@ class ContentIdTests(unittest.TestCase):
             urls,
         )
 
+    def test_an_address_from_elsewhere_counts_only_on_an_official_image_path(self):
+        dmm = "https://pics.dmm.co.jp/digital/video/dazd00308/dazd00308pl.jpg"
+        self.assertEqual({candidate.url for candidate in covers.official_image_candidates(dmm)},
+                         {candidate.url for candidate in covers.dmm_cdn_images(dmm)})
+        mgs = "https://image.mgstage.com/images/prestige/sp/pasn/031/pake-03_sp-pasn-031.jpg"
+        self.assertEqual([candidate.url for candidate in covers.official_image_candidates(mgs)],
+                         [mgs])
+        # 社区站图床给的地址核对不了是哪一部，不当官方候选。
+        self.assertEqual(covers.official_image_candidates(
+            "https://c0.jdbstatic.com/covers/xe/XeVp0e.jpg"), [])
+        self.assertEqual(covers.official_image_candidates(""), [])
+
+    def test_a_listed_address_is_installed_when_no_official_channel_knows_the_code(self):
+        """r18 与本机快照都没有这部时，来源给的 DMM 封套就是唯一的候选，照样量尺寸、下载。"""
+        url = "https://pics.dmm.co.jp/digital/video/dazd00308/dazd00308pl.jpg"
+        body = jpeg(800, 538)
+
+        def transport(request, timeout, limit):
+            return _Response(200, body) if request.url == url else _Response(404, b"")
+
+        candidate, size, data = covers.best_cover(
+            transport, "DAZD-308", 0,
+            prior_candidates=tuple(covers.official_image_candidates(url)))
+        self.assertEqual((candidate.url, size, data), (url, (800, 538), body))
+
 
 class OfficialSourceTests(unittest.TestCase):
     def test_fc2_archive_cover_is_upgraded_to_the_measured_hires_rendition(self):

@@ -235,7 +235,7 @@
 <main id="main" tabindex="-1">
   <div id="libraryProcessingNotice"></div>
   <!-- 订阅源发现的新作（ADR-0042）。只在首页那几条目录路径上出现，由 app.js 按路径开合。 -->
-  <section class="feednew" id="feedNew" aria-label="新作 · 未入库" hidden></section>
+  <section class="feednew" id="feedNew" aria-label="未入库的新作" hidden></section>
   <dialog class="stage" id="stage" aria-label="作品详情" hidden></dialog>
   <div class="combo" id="combo"></div>
   <section class="index" id="index" hidden></section>
@@ -320,6 +320,7 @@
       <label class="settingrow"><span><b>合并分卷与版本</b><small>同一番号的多个分卷或版次只占一张卡，展示第一个。</small></span><input type="checkbox" id="groupCollapseSetting" class="ptoggle" role="switch"></label>
       <div class="settingrow"><span><b>JAV 默认封面</b><small>首页、接着看和 Mix 等位置共用；缺图时使用另一种封面。</small></span><div id="javImageSetting"></div></div>
       <div class="settingrow settingrelated"><span><b>JAV 封面默认大小</b><small>JAV 作品列表的默认版式；小图使用所选封面。</small></span><div id="javSizeSetting"></div></div>
+      <label class="settingrow"><span><b>新作自动滚动</b><small id="feedAutoScrollDescription">首页和人物页那一行未入库的新作缓缓向前滚，到头停一下再往回；指针移上去或手动滚过时停下。</small></span><input class="ptoggle" type="checkbox" id="feedAutoScrollSetting" role="switch" aria-describedby="feedAutoScrollDescription"></label>
       </section>
       <section class="settinggroup"><h3>播放</h3>
       <div class="settingrow"><span><b>悬停放大</b><small>转圈完成后进入放大预览。</small></span><div id="hoverDelaySetting"></div></div>

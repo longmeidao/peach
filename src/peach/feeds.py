@@ -50,6 +50,40 @@ _JAVDB_BOX = re.compile(
     re.S)
 _TAGS = re.compile(r"<[^>]+>")
 
+#: 大合集的标题记号：精选、总集、连发。`BEST` 前后不许紧挨字母，`BESTIE` 那种词不算。
+_COMPILATION_TITLE = re.compile(
+    r"(?<![A-Za-z])BEST(?![A-Za-z])|ベスト|総集編|傑作選|\d+\s*連発")
+_HOURS = re.compile(r"(\d+)\s*時間")
+_MINUTES = re.compile(r"(\d{3,})\s*分")
+#: 片长到这个数就是剪辑合集：单部新片两到三小时，四小时起是把旧片拼起来卖。
+COMPILATION_MINUTES = 240
+#: 出演人数到这个数就是合集：正常共演两三人，合集一列就是十几二十个名字。
+COMPILATION_PERFORMERS = 8
+
+
+def is_compilation(title: str | None, performers: str | None) -> bool:
+    """这部新作是不是把旧片剪到一起的大合集。
+
+    新作那一行是给「她出了什么新片」看的，合集里的每一段都早就看过了。判据只看壳上已有
+    的标题与出演名单，读的时候现算，壳上不存（ADR-0042）：规则改了，已经取回的壳跟着变，
+    不用重刮。只凭名单长度也够不着单人合集（「涼森れむ 8時間 BEST」只有一个名字），所以
+    标题记号和片长各算一条。
+    """
+    text = title or ""
+    if _COMPILATION_TITLE.search(text):
+        return True
+    if any(int(hours) * 60 >= COMPILATION_MINUTES for hours in _HOURS.findall(text)):
+        return True
+    if any(int(minutes) >= COMPILATION_MINUTES for minutes in _MINUTES.findall(text)):
+        return True
+    names = [name for name in (performers or "").split("、") if name.strip()]
+    return len(names) >= COMPILATION_PERFORMERS
+
+
+def register_functions(connection: sqlite3.Connection) -> None:
+    """把合集判据挂到这条连接上，SQL 里按同一份实现筛，分页的条数才对得上。"""
+    connection.create_function("is_feed_compilation", 2, is_compilation, deterministic=True)
+
 
 def stamp(moment: datetime | None = None) -> str:
     """ISO-8601 UTC 文本，与 `task_run`、`entity` 同一种写法。"""
