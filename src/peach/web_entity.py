@@ -14,7 +14,7 @@ import time
 
 from urllib.parse import urlsplit
 
-from . import entry_links
+from . import entry_links, feeds
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .web_catalog import (
@@ -53,6 +53,20 @@ def scope_predicate(kind: str, column: str, subject: str = "?") -> str:
 #: 名下没有关系的几十家等于只能靠猜地址。标签不在这里，它走另一条分支。
 INDEX_ENTITY_KINDS = {"performers": "performer", "creators": "creator",
                       "studios": "studio", "agencies": "agency"}
+
+
+def _performer_entries(contract: WebContract, c, d: dict, alias_rows) -> dict:
+    """女优资料卡上的外部入口，和「订阅新作」开关。
+
+    入口下发的是拼好的地址，不是模板：拼它要的站点 id、规范名和别名都在服务端，
+    前端再拼一遍就会有两份规则。缺 id 的站点不出现在这个列表里。开关只在她有
+    JavDB 演员页时出现，订阅地址同样由服务端拼，页面只管开和关。
+    """
+    out = {"entry_links": entry_links.entry_links(
+        contract.entry_links_root, d["canonical_name"], d["external_refs"], alias_rows)}
+    if entry_links.javdb_actor_pages(d["canonical_name"], d["external_refs"]):
+        out["feed"] = {"following": feeds.entity_following(c, d["id"])}
+    return out
 
 
 def q_entity(contract: WebContract, args):
@@ -115,12 +129,8 @@ def q_entity(contract: WebContract, args):
             "ORDER BY provider,external_kind,external_id",
             (d["id"],),
         )]
-        # 外部入口下发的是拼好的地址，不是模板：拼它要的站点 id、规范名和别名都在服务端，
-        # 前端再拼一遍就会有两份规则。缺 id 的站点不出现在这个列表里。
-        d["entry_links"] = (
-            entry_links.entry_links(contract.entry_links_root, d["canonical_name"],
-                                    d["external_refs"], alias_rows)
-            if kind == "performer" else [])
+        d.update(_performer_entries(contract, c, d, alias_rows) if kind == "performer"
+                 else {"entry_links": []})
         scope = scope_predicate(kind, "ae.entity_id")
         count, rep = c.execute(
             "SELECT count(DISTINCT ae.asset_id),"

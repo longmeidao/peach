@@ -1219,4 +1219,43 @@ describe('设计决定', () => {
       await opened.close();
     }
   });
+
+  it('浅色下看片那两枚标识悬停时有底，资料卡上带订阅新作开关', { timeout: 60_000 }, async () => {
+    // 演示库里没有人物实体：资料由这里给，入口与开关字段照服务端拼好下发的形状写。
+    const name = '七沢みあ';
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      await opened.page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+        id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
+        user_aliases: [], asset_count: 0, tags: [], related_performers: [], links: [],
+        metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
+        representative_asset_id: null,
+        entry_links: [{ site: 'javdb', label: 'JavDB', ordinal: '', slot: 'mark',
+          mark: 'mark-javdb', url: 'https://javdb.com/actors/NPD3' }],
+        feed: { following: false },
+      } }));
+      await opened.page.goto(new URL(`/performers/${encodeURIComponent(name)}`,
+        opened.page.url()).href, { waitUntil: 'load' });
+      const mark = opened.page.locator('.entrymarks a.entrymark').first();
+      await mark.waitFor({ timeout: 15_000 });
+      await settle(opened.page);
+      // 浅色下 `--hover` 与资料卡的 `--ground` 同是 #f5f5f5，垫上去等于没垫。
+      await opened.page.evaluate(() => {
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.classList.remove('dark');
+      });
+      await mark.hover();
+      const faces = await mark.evaluate((element) => ({
+        mark: getComputedStyle(element).backgroundColor,
+        card: getComputedStyle(element.closest('.entityhero')!).backgroundColor,
+      }));
+      assert.notEqual(faces.mark, 'rgba(0, 0, 0, 0)', '悬停没有垫底');
+      assert.notEqual(faces.mark, faces.card, '悬停底色和资料卡同色，看不出来');
+      const toggle = opened.page.getByRole('switch', { name: '订阅新作' });
+      assert.equal(await toggle.count(), 1, '资料卡上没有订阅新作开关');
+      assert.equal(await toggle.isChecked(), false);
+    } finally {
+      await opened.close();
+    }
+  });
 });

@@ -296,3 +296,14 @@ def build(settings: dict, canonical_name: str, refs, aliases=()) -> list[dict]:
 def entry_links(root: Path, canonical_name: str, refs, aliases=()) -> list[dict]:
     """读设置并拼出入口。资料页只调这一个。"""
     return build(read(root), canonical_name, refs, aliases)
+
+
+def javdb_actor_pages(canonical_name: str, refs) -> list[str]:
+    """这位在 JavDB 上的演员页，人物页「订阅新作」拉的就是这几页（ADR-0042）。
+
+    和页面上那枚入口同一套判据，只是域名不跟配置页的镜像走：拉取按主机计间隔与冷却，
+    预算登记在 `javdb.com` 名下，换了镜像就绕开了那份预算；镜像日后换掉，存下来的订阅
+    地址也不必跟着改。
+    """
+    return [row["url"] for row in build(defaults(), canonical_name, refs)
+            if row["site"] == "javdb"]

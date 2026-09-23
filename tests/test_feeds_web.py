@@ -55,7 +55,9 @@ class FakeTransport:
         return self.responses[request.url]
 
 
-class FeedWebTest(unittest.TestCase):
+class FeedWebFixture(unittest.TestCase):
+    """临时账本、本地 feed 字节和替掉的取资料一步。不带用例，两个套件共用。"""
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -108,6 +110,8 @@ class FeedWebTest(unittest.TestCase):
         finally:
             web_feeds._transport = original
 
+
+class FeedWebTest(FeedWebFixture):
     def test_settings_snapshot_lists_the_source_and_its_kinds(self):
         self._add()
         snapshot = dispatch_api_get(self.contract, "/api/feeds", {})
@@ -248,6 +252,121 @@ class FeedWebTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             dispatch_api_post(self.contract, "/api/feeds/discovery",
                               {"action": "delete", "ids": [1]})
+
+
+#: JavDB 演员页里两部作品，形状照 `test_feeds.JAVDB_ACTOR` 那份抓回来的 HTML。
+JAVDB_PAGE = """
+<a href="/v/5nr8mp" class="box" title="x"><div class="video-title"><strong>PBD-528</strong>
+ 気高きお姉さん達</div><div class="meta">
+ 2026-10-20</div></a>
+<a href="/v/RkPb5z" class="box" title="x"><div class="video-title"><strong>BBSS-106</strong>
+ 別の作品</div><div class="meta">
+ 2026-10-13</div></a>
+"""
+
+
+class PerformerFeedSwitchTest(FeedWebFixture):
+    """人物页「订阅新作」开关：地址由服务端按 JavDB 演员页拼，页面只送开和关。"""
+
+    def setUp(self):
+        super().setUp()
+        self.page = "https://javdb.com/actors/pRMq"
+        self.transport.responses[self.page] = HttpResponse(
+            200, {"Content-Type": "text/html"}, JAVDB_PAGE.encode("utf-8"), self.page)
+        original = web_feeds._transport
+        web_feeds._transport = lambda contract: self.transport
+        self.addCleanup(lambda: setattr(web_feeds, "_transport", original))
+        self.performer = self._performer("凉森れむ", ["pRMq"])
+
+    def _performer(self, name, javdb_ids):
+        with self.contract.database.write_transaction() as connection:
+            entity_id = int(connection.execute(
+                "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES('performer',?,peach_normalize(?),?,?)",
+                (name, name, feeds.stamp(), feeds.stamp())).lastrowid)
+            for external_id in javdb_ids:
+                connection.execute(
+                    "INSERT INTO entity_external_ref(entity_id,provider,external_kind,"
+                    "external_id) VALUES(?,'javdb','performer',?)", (entity_id, external_id))
+        return entity_id
+
+    def _switch(self, enabled, entity_id=None):
+        return dispatch_api_post(self.contract, "/api/feeds/source", {
+            "action": "follow", "entity_id": entity_id or self.performer,
+            "enabled": enabled})
+
+    def _settled(self):
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            state = self.contract.feed_job.snapshot() or {}
+            if state.get("status") not in ("running", None):
+                return state
+            time.sleep(0.02)
+        self.fail("订阅拉取没有在 5 秒内跑完")
+
+    def _sources(self):
+        return dispatch_api_get(self.contract, "/api/feeds", {})["sources"]
+
+    def test_switching_on_subscribes_her_javdb_page_and_fetches_it_now(self):
+        result = self._switch(True)
+        self.assertTrue(result["following"])
+        [source] = self._sources()
+        self.assertEqual((source["kind"], source["url"], source["entity_id"]),
+                         (feeds.KIND_JAVDB_ACTOR, self.page, self.performer))
+        # 名字不另存，跟着人物走。
+        self.assertEqual(source["name"], "凉森れむ")
+        self.assertEqual(self._settled()["added"], 2)
+        mine = dispatch_api_get(self.contract, "/api/feeds/discoveries",
+                                {"entity": self.performer})
+        self.assertEqual([item["code"] for item in mine["items"]], ["PBD-528", "BBSS-106"])
+
+    def test_switching_off_pauses_and_switching_on_again_reuses_the_source(self):
+        self._switch(True)
+        self._settled()
+        self._switch(False)
+        [paused] = self._sources()
+        self.assertFalse(paused["enabled"])
+        self._switch(True)
+        self._settled()
+        [again] = self._sources()
+        self.assertEqual(again["id"], paused["id"])
+        self.assertTrue(again["enabled"])
+
+    def test_a_page_added_by_hand_is_adopted_instead_of_duplicated(self):
+        dispatch_api_post(self.contract, "/api/feeds/source", {
+            "action": "add", "kind": feeds.KIND_JAVDB_ACTOR, "url": self.page})
+        self._switch(True)
+        self._settled()
+        [source] = self._sources()
+        self.assertEqual(source["entity_id"], self.performer)
+
+    def test_every_javdb_page_of_hers_gets_its_own_source(self):
+        twice = self._performer("释爱丽丝", ["d45k9", "ZX5z7"])
+        result = self._switch(True, twice)
+        self._settled()
+        self.assertEqual(len(result["sources"]), 2)
+        self.assertEqual(sorted(source["url"] for source in self._sources()),
+                         ["https://javdb.com/actors/ZX5z7", "https://javdb.com/actors/d45k9"])
+
+    def test_the_profile_carries_the_switch_only_when_she_has_a_javdb_page(self):
+        profile = dispatch_api_get(self.contract, "/api/entity",
+                                   {"kind": "performer", "name": "凉森れむ"})
+        self.assertEqual(profile["feed"], {"following": False})
+        self._switch(True)
+        self._settled()
+        profile = dispatch_api_get(self.contract, "/api/entity",
+                                   {"kind": "performer", "name": "凉森れむ"})
+        self.assertEqual(profile["feed"], {"following": True})
+        self._performer("無名の人", [])
+        bare = dispatch_api_get(self.contract, "/api/entity",
+                                {"kind": "performer", "name": "無名の人"})
+        self.assertNotIn("feed", bare)
+
+    def test_a_performer_without_a_javdb_page_is_refused(self):
+        bare = self._performer("無名の人", [])
+        with self.assertRaises(ValueError):
+            self._switch(True, bare)
+        self.assertEqual(self._sources(), [])
 
 
 if __name__ == "__main__":  # pragma: no cover
