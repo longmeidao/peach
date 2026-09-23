@@ -1,4 +1,4 @@
-import { moveGlidePane } from '@peach/legacy/ui';
+import { moveGlidePane, scrollMovesAnchor } from '@peach/legacy/ui';
 
 /** Board 控件的共享展示层；范围输入保留浏览器原生键盘语义。 */
 export function syncBoardRange(input: HTMLInputElement) {
@@ -51,7 +51,8 @@ export function initBoardControls() {
   document.addEventListener('focusin',event=>show(event.target,0));
   document.addEventListener('focusout',hide);
   document.addEventListener('keydown',event=>{if(event.key==='Escape')hide()});
-  document.addEventListener('scroll',hide,true);window.addEventListener('resize',hide);
+  // 只在提示所指的那一枚被滚走时收：首页新作那一排每一帧都在横滚，任何 scroll 都收的话提示一出来就没了。
+  document.addEventListener('scroll',event=>{if(target&&scrollMovesAnchor(event,target))hide()},true);window.addEventListener('resize',hide);
 }
 
 const tabPositions=new Map<string,{left:number;width:number}>();

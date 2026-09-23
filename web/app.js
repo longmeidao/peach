@@ -22,7 +22,7 @@ import {
   dissolveValue, popBadges, popCount, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
   postSetupTutorialSkipped, setPostSetupTutorialSkipped, postSetupTutorialSignature,
   nextPostSetupTutorialRequest, isCurrentPostSetupTutorialRequest, resetPostSetupTutorialState,
@@ -645,10 +645,49 @@ function renderJavImageSetting(){
 /* 侧栏光晕的详细设置照 feralui.dev/gradients 的工作台面板来：参数行是「84px 标签 +
    自绘拉条 + 右侧等宽读数」，颜色行点开在自己下方弹一张色板。
    取证见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。
-   预设不在这一屏选——它在侧栏底部那枚配色钮上，这里只留一行只读的当前档名，否则同一件
-   事有两个入口，用户得先弄清哪一个说了算。
-   当前档名和五条参数同属「配色」这一组，组名与下面「颜色」同一档式样：这一屏在设置里
-   排在「侧栏光晕」那一行之后，没有组名的话它读起来是散在上一行底下的几条控件。 */
+   预设在这一屏和侧栏底部那枚配色钮上各有一份，是同一组色块、同一份写入：两处读的都是
+   `appSettings.homeGlow`，点哪一边另一边当场对齐，所以不存在「哪一个说了算」。
+   当前档名、预设色块和五条参数同属「配色」这一组，组名与下面「颜色」同一档式样：这一屏
+   在设置里排在「侧栏光晕」那一行之后，没有组名的话它读起来是散在上一行底下的几条控件。 */
+/* 预设色块照 feralui 的预设 chip 做：三枚光晕色等分一圈 conic-gradient，再叠 BoardUI 那
+   三层白色高光。「玻璃原色」那一格的球不带颜色：它画的是当前主题下玻璃自带的那两团
+   反光，两个主题各一套，值只有样式表里一份，所以这里交出一个标记、由 CSS 去取。 */
+const glowSpotColors=glow=>HOME_GLOW_SPOTS.map(key=>glow[key].color);
+const glowChipHtml=(key,label,colors,chosen)=>`<button type="button" class="board-glow-chip" data-glow-preset="${key}"
+  aria-pressed="${key===chosen}" title="${esc(label)}" aria-label="${esc(label)}"><span class="board-glow-ball"
+  aria-hidden="true" ${isNativeGlass(key)?'data-glow-native':`style="--glow-chip:${glowChipFill(colors)}"`}></span></button>`;
+const glowChipsHtml=()=>{
+  const glow=appSettings.homeGlow;
+  const chips=HOME_GLOW_PRESETS.map(([key,label,palette])=>
+    glowChipHtml(key,label,HOME_GLOW_SPOTS.map(spot=>palette[spot].color),glow.preset));
+  /* 「自定义」只有在用户真手调过颜色之后才占一格：没调过时那一格里是一份和默认档
+     一模一样的球，点它什么也不会变，读起来却像还有一档没试过。 */
+  if(glow.preset==='custom')chips.push(glowChipHtml('custom','自定义',glowSpotColors(glow),'custom'));
+  return chips.join('');
+};
+/* 整格重画：「自定义」那一格会出现或消失。焦点正落在某一枚上时，画完落回同一档那一枚——
+   键盘选完一档，焦点不该掉回页面开头。 */
+function renderGlowPresetGrid(grid){
+  const focused=grid.contains(document.activeElement)?document.activeElement.dataset.glowPreset:'';
+  grid.innerHTML=glowChipsHtml();
+  if(focused)grid.querySelector(`[data-glow-preset="${focused}"]`)?.focus();
+}
+/* 换一档光晕连强调色一起换：一档配色就是一副面，光晕暖着、按钮还是蓝的，读起来是两套
+   皮叠在一起。侧栏卡下面那一排强调色可以单独点，点完只改强调色、不动光晕——先给一套
+   搭配好的，要拆开也拆得开。
+   一个监听接整格：那一排球会因为「自定义」出现或消失而重画，逐枚绑事件的话，重画之后
+   绑的是上一批已经不在文档里的按钮。 */
+function wireGlowPresetGrid(grid){
+  grid.addEventListener('click',event=>{
+    const chip=event.target.closest?.('[data-glow-preset]');
+    if(!chip)return;
+    const glow=appSettings.homeGlow,key=chip.dataset.glowPreset;
+    if(key==='custom')return;
+    glow.preset=key;Object.assign(glow,glowPalette(key));
+    appSettings.accent=glowAccent(key);
+    saveSettings();applyHomeGlow();applyGlassFaces();applyAccent();syncGlowChrome();
+  });
+}
 const glowSwatchesHtml=()=>GLOW_SWATCHES.map(([family,name,hex])=>
   `<button type="button" class="glowswatch" role="radio" aria-checked="false" data-glow-swatch="${hex}"
     data-glow-family="${family}" style="--glow-swatch:${hex}" title="${esc(name)}" aria-label="${esc(name)}"></button>`).join('');
@@ -675,6 +714,7 @@ const glowFieldRowHtml=(field,label,max)=>`<div class="glowfield" data-glow-fiel
    要能一步回到出厂那一套，所以它排在分组外面。 */
 const homeGlowControlsHtml=()=>`<section class="glowgroup"><h4>配色</h4>
   <p class="glowcurrent">当前配色<b data-glow-preset-name></b></p>
+  <div class="board-glow-grid" data-glow-grid role="group" aria-label="光晕配色"></div>
   <p class="glownative" data-glow-native-note hidden>这一档用每块玻璃自带的反光，颜色跟着明暗主题走。</p>
   <div class="glowfields">
     ${glowFieldRowHtml('strength','强度',100)}${glowFieldRowHtml('noise','颗粒',60)}${
@@ -692,6 +732,7 @@ function syncHomeGlowSetting(){
   if(!mount||mount.dataset.glowWired!=='true')return;
   const glow=appSettings.homeGlow,native=isNativeGlass(glow.preset);
   mount.querySelector('[data-glow-preset-name]').textContent=glowPresetName(glow.preset);
+  renderGlowPresetGrid(mount.querySelector('[data-glow-grid]'));
   mount.querySelector('[data-glow-native-note]').hidden=!native;
   mount.querySelectorAll('[data-glow-field]').forEach(row=>
     row.hidden=native&&row.dataset.glowField!=='speed');
@@ -708,6 +749,7 @@ function syncHomeGlowSetting(){
 function syncGlowChrome(){syncHomeGlowSetting();syncGlowSidebar()}
 function wireHomeGlowControls(mount){
   const glow=()=>appSettings.homeGlow;
+  wireGlowPresetGrid(mount.querySelector('[data-glow-grid]'));
   mount.querySelectorAll('[data-glow-dial]').forEach(node=>{
     const field=node.dataset.glowDial;
     /* 拖动中只改参数、只排一帧重画；落盘留给松手那一下。每一步都 saveSettings() 的话，
@@ -1935,11 +1977,11 @@ function openPlayerMenu(player,x,y){
     const current=buttons.indexOf(document.activeElement);
     buttons[(current+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();
   };
-  const onScroll=()=>closePlayerMenu();
+  const onScroll=event=>{if(scrollMovesAnchor(event,player.el()))closePlayerMenu()};
   setTimeout(()=>{
     document.addEventListener('pointerdown',onDown,true);
     document.addEventListener('keydown',onKey,true);
-    window.addEventListener('scroll',onScroll,{capture:true,once:true});
+    window.addEventListener('scroll',onScroll,{capture:true,passive:true});
   },0);
   playerMenuCleanup=()=>{
     document.removeEventListener('pointerdown',onDown,true);
@@ -10806,29 +10848,14 @@ applyTheme();
 /* 侧栏的光晕配色弹层照 boardui.com 右下角那枚「Accent color」：钮上不画字形，画的就是
    它管的那两样——左上一枚光晕色的圆、右下一枚强调色的圆叠在它上面，卡里两组球各取一枚；
    点开是一张 248px 的卡，头部一行标题加「重置」文字键，主体是两组 6 列圆球——上面一组
-   光晕、下面一组强调色，底部一枚全宽主按钮通到详细设置。圆球本身按 feralui 的预设 chip
-   做：三枚光晕色等分一圈 conic-gradient，再叠 BoardUI 那三层白色高光；强调色那一组换成
-   BoardUI 自己那颗 radial-gradient 的球。卡的材质与媒体库选择弹层同一条规则。
+   光晕、下面一组强调色，底部一枚全宽主按钮通到详细设置。光晕那一组球和设置里「配色」
+   那一组是同一份（`glowChipsHtml`）；强调色那一组换成 BoardUI 自己那颗 radial-gradient
+   的球。卡的材质与媒体库选择弹层同一条规则。
    实测见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。 */
-const glowSpotColors=glow=>HOME_GLOW_SPOTS.map(key=>glow[key].color);
-/* 「玻璃原色」那一格的球不带颜色：它画的是当前主题下玻璃自带的那两团反光，两个主题各
-   一套，值只有样式表里一份，所以这里交出一个标记、由 CSS 去取。 */
-const glowChipHtml=(key,label,colors,current)=>`<button type="button" class="board-glow-chip" data-glow-preset="${key}"
-  aria-pressed="${key===current}" title="${esc(label)}" aria-label="${esc(label)}"><span class="board-glow-ball"
-  aria-hidden="true" ${isNativeGlass(key)?'data-glow-native':`style="--glow-chip:${glowChipFill(colors)}"`}></span></button>`;
 /* 强调色那一排同样不带颜色：球拿的就是这一档真会写上去的 400 与 600 两级。 */
 const accentChipHtml=([key,label],current)=>`<button type="button" class="board-glow-chip" data-accent="${key}"
   aria-pressed="${key===current}" title="${esc(label)}" aria-label="${esc(label)}"><span class="board-glow-ball"
   aria-hidden="true" data-accent-ball="${key}"></span></button>`;
-const glowChipsHtml=()=>{
-  const glow=appSettings.homeGlow;
-  const chips=HOME_GLOW_PRESETS.map(([key,label,palette])=>
-    glowChipHtml(key,label,HOME_GLOW_SPOTS.map(spot=>palette[spot].color),glow.preset));
-  /* 「自定义」只有在用户真手调过颜色之后才占一格：没调过时那一格里是一份和默认档
-     一模一样的球，点它什么也不会变，读起来却像还有一档没试过。 */
-  if(glow.preset==='custom')chips.push(glowChipHtml('custom','自定义',glowSpotColors(glow),'custom'));
-  return chips.join('');
-};
 const glowPicker=document.createElement('div');
 glowPicker.className='popmenu board-glow-menu';glowPicker.id='boardGlowMenu';glowPicker.hidden=true;
 glowPicker.setAttribute('popover','manual');glowPicker.setAttribute('role','dialog');
@@ -10851,24 +10878,11 @@ syncGlowSidebar=()=>{
   glowButton.toggleAttribute('data-glow-native',glow.on&&isNativeGlass(glow.preset));
   glowButton.toggleAttribute('data-glow-off',!glow.on);
   glowPicker.querySelectorAll('[data-glow-presets],[data-glow-grid]').forEach(node=>node.hidden=!glow.on);
-  glowPicker.querySelector('[data-glow-grid]').innerHTML=glowChipsHtml();
+  renderGlowPresetGrid(glowPicker.querySelector('[data-glow-grid]'));
   glowPicker.querySelector('[data-accent-grid]').innerHTML=
     ACCENTS.map(accent=>accentChipHtml(accent,appSettings.accent)).join('');
 };
-/* 一个监听接整格：那一排球会因为「自定义」出现或消失而重画，逐枚绑事件的话，重画之后
-   绑的是上一批已经不在文档里的按钮。 */
-/* 换一档光晕连强调色一起换：一档配色就是一副面，光晕暖着、按钮还是蓝的，读起来是两套
-   皮叠在一起。下面那一排强调色可以单独点，点完只改强调色、不动光晕——先给一套搭配好的，
-   要拆开也拆得开。 */
-glowPicker.querySelector('[data-glow-grid]').addEventListener('click',event=>{
-  const chip=event.target.closest?.('[data-glow-preset]');
-  if(!chip)return;
-  const glow=appSettings.homeGlow,key=chip.dataset.glowPreset;
-  if(key==='custom')return;
-  glow.preset=key;Object.assign(glow,glowPalette(key));
-  appSettings.accent=glowAccent(key);
-  saveSettings();applyHomeGlow();applyGlassFaces();applyAccent();syncGlowChrome();
-});
+wireGlowPresetGrid(glowPicker.querySelector('[data-glow-grid]'));
 glowPicker.querySelector('[data-accent-grid]').addEventListener('click',event=>{
   const chip=event.target.closest?.('[data-accent]');
   if(!chip)return;

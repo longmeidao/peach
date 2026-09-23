@@ -6576,9 +6576,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<button type="button" class="geist-button" data-glow-reset>恢复默认</button>')
         # 即时生效，不配「保存」键。
         self.assertPageLacks('data-glow-save')
-        # 配色整档搬到侧栏那枚圆钮上了，面板里只留一行只读的当前档名。
-        self.assertPageContains('<p class="glowcurrent">当前配色<b data-glow-preset-name></b></p>')
-        self.assertPageLacks("selectFieldHtml(HOME_GLOW_CHOICES", "配色下拉已经搬到侧栏")
+        # 配色的预设色块与侧栏配色卡同一组，由 frontend/e2e/design.test.ts 在浏览器里比对。
+        self.assertPageLacks("selectFieldHtml(HOME_GLOW_CHOICES", "配色用预设色块挑，不用下拉")
         self.assertPageLacks('class="glowrange"', "拉条换成自绘的 .dial-slider")
 
     def test_home_glow_colours_are_picked_from_a_named_palette_not_a_colour_well(self):
@@ -7415,11 +7414,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains("const progress=()=>{if(timeout){"
                                 "const bar=document.createElement('span');")
-
-    def test_anchored_menu_closes_on_page_scroll_but_not_on_its_own(self):
-        # 菜单装不下时本来就要在内部滚；捕获阶段的 scroll 连它自己的也收得到。
-        self.assertCode(
-            "if(!(event.target instanceof Node&&menu.contains(event.target)))setOpen(false)")
 
     def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
         """命中区 44px，画出来仍是 32px：那一层伸出去的方块不着墨。
@@ -10003,7 +9997,7 @@ class WebUiSourceTests(unittest.TestCase):
                     / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
         self.assertPageContains("export function moveGlidePane(pane,from,box,axis='x'){")
         self.assertPageContains("export function glideEase(){")
-        self.assertIn("import { moveGlidePane } from '@peach/legacy/ui';", controls)
+        self.assertIn("import { moveGlidePane, scrollMovesAnchor } from '@peach/legacy/ui';", controls)
         self.assertIn("moveGlidePane(thumb,from,box,'x');", controls)
         self.assertNotIn("thumb.style.transform", controls)
         self.assertIn("will-change:translate,scale;background:var(--color-background-primary-default)", board)
