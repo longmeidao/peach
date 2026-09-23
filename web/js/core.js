@@ -127,17 +127,17 @@ const brandIcon=url=>{
   return host&&BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';
 };
 const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
-/* 官网链接上那行字。人物页写站点短名（`siteName`），表里没有就用账本 label。
+/* 官网链接上那行字。写站点短名（`siteName`），表里没有就用账本 label。
 
-   公司页上指回自家站的一律写「官方网站」：页头已经是公司名，链接再写一遍 LIGHT、
-   C-more 只是重复，同一排里有的写名字、有的写「官方网站」还会看着像两类链接。名字是
-   别家的（Jackson 页上链到 Prestige 的名录页）才保留，那说的是另一家。自家的判据是
+   只有厂牌页上指回自家站的写「官方网站」：页头已经是厂牌名，链接再写一遍 S1、
+   KMP 只是重复。事务所页和人物页照旧写名字，那里的名字就是要看的信息。名字是
+   别家的（Jackson 页上链到 Prestige 的名录页）也保留，那说的是另一家。自家的判据是
    短名或 label 与规范名、别名互相包含：`C-more` 之于 `C-more Entertainment`，短名是缩写
    时看 label（`NAX` 那条的 label 是 `New Actor eXperience`）。label 只是这条链接自己的
    主机名（`www.ran-maru.com`）等于没起名，也算自家。 */
 const officialLinkText=(link,kind,names=[])=>{
   const text=siteName(link.url)||link.label||'';
-  if(kind!=='studio'&&kind!=='agency')return text;
+  if(kind!=='studio')return text;
   const said=[text,link.label].map(foldName).filter(Boolean);
   const own=!said.length||said.includes('官方网站')||said.some(shown=>
     bareHost(shown)===linkHost(link.url)||names.some(name=>{
