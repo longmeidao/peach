@@ -11,7 +11,7 @@ from pathlib import Path
 from peach.entities import normalize_entity_name
 from peach.migrations import upgrade
 from scripts.resync_performer_agency import (
-    GONE, MISSING, MOVED, SAME, apply_rows, ask, plan, search_url, targets,
+    GONE, MISSING, MOVED, REJECTED, SAME, apply_rows, ask, plan, search_url, targets,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -184,6 +184,15 @@ class PlanTests(LedgerFixture):
                               "小泉日向": ""})
         self.assertEqual({str(row["performer"]): str(row["verdict"]) for row in rows},
                          {"松本一香": MOVED, "宫西光": SAME, "小泉日向": GONE})
+
+    def test_the_agency_she_rejected_is_not_a_move(self):
+        """站上那一格写的是她驳回过的那家（个人经纪公司），不当移籍写回元数据。"""
+        self.con.execute("UPDATE entity SET metadata_json=? WHERE id=11", (json.dumps(
+            {"agency_rejected": [{"name": "株式会社Miss"}]}, ensure_ascii=False),))
+        rows = self.run_plan({"松本一香": "株式会社Miss", "宫西光": "LIGHT", "小泉日向": ""})
+        self.assertEqual(str(rows[0]["verdict"]), REJECTED)
+        apply_rows(self.con, rows, "later")
+        self.assertEqual(self.agency_of(11), {})
 
     def test_a_page_that_never_arrived_is_not_a_departure(self):
         """取不到和「这一格是空的」必须分得开，否则重跑一次就把人清空了。"""

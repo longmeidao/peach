@@ -9,7 +9,7 @@ from pathlib import Path
 from peach.entities import normalize_entity_name
 from peach.migrations import upgrade
 from scripts.harvest_agency_rosters import (
-    ABSENT, AMBIGUOUS, KNOWN, MISSING, MOVED, NEW, PRODUCTION, PROVIDER,
+    ABSENT, AMBIGUOUS, INSTALLABLE, KNOWN, MISSING, MOVED, NEW, PRODUCTION, PROVIDER, REJECTED,
     apply_rows, fetch_roster, find_production, plan, roster_key, roster_url, search_url,
     shown_keys,
 )
@@ -214,6 +214,14 @@ class RosterPlanTests(LedgerFixture):
         self.assertEqual(found["篠田ゆう"], NEW)
         self.assertEqual(found["神ユキ"], MOVED)
         self.assertEqual(found["明日花キララ"], AMBIGUOUS)
+
+    def test_a_rejected_agency_is_not_offered_back_to_her(self):
+        """她驳回过这一家，名册再收她也只记一行，`--apply` 不装。"""
+        self.con.execute("UPDATE entity SET metadata_json=? WHERE id=12", (json.dumps(
+            {"agency_rejected": [{"name": "KRONE(クローネ)"}]}, ensure_ascii=False),))
+        found = self.verdicts(plan(self.site, self.con, self.args()))
+        self.assertEqual(found["篠田ゆう"], REJECTED)
+        self.assertNotIn(REJECTED, INSTALLABLE)
 
     def test_people_the_ledger_does_not_have_collapse_into_one_counted_row(self):
         """名册的绝大多数是库里没有的人，而这些行没有任何可执行的下一步。"""

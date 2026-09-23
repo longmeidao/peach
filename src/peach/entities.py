@@ -38,6 +38,39 @@ def split_name(raw: str) -> tuple[str, list[str]]:
     return (canonical or raw), aliases
 
 
+#: 人工驳回过的事务所，记在女优自己的元数据上。minnano-av 的「所属事務所」只记她现在
+#: 签在谁名下，退役后转进个人经纪公司的人（三上悠亜 → 株式会社Miss），那一格写的就不是
+#: AV 事务所。驳回记在人身上，事务所实体删掉以后这条判断还在；写元数据、建实体、补名册
+#: 这几条路径都照它跳过，重跑哪一个都不会把它写回来。
+AGENCY_REJECTED = "agency_rejected"
+
+
+def agency_key(raw: str) -> str:
+    """比对事务所用的键：拆掉括号里的读音和旧称，只比现用名。"""
+    return normalize_entity_name(split_name(raw)[0])
+
+
+def rejected_agencies(metadata: object) -> set[str]:
+    """这个人驳回过的事务所，按 `agency_key` 给。"""
+    items = metadata.get(AGENCY_REJECTED) if isinstance(metadata, dict) else None
+    keys = {agency_key(str(item.get("name") or "")) for item in items or []
+            if isinstance(item, dict)}
+    keys.discard("")
+    return keys
+
+
+def agency_rejections(connection: Connection) -> dict[int, set[str]]:
+    """performer id → 她驳回过的事务所键；只列有驳回记录的人。"""
+    found: dict[int, set[str]] = {}
+    for entity_id, raw in connection.execute(
+            "SELECT id, metadata_json FROM entity WHERE kind='performer'"
+            f" AND json_extract(metadata_json,'$.{AGENCY_REJECTED}') IS NOT NULL"):
+        keys = rejected_agencies(json.loads(raw or "{}"))
+        if keys:
+            found[int(entity_id)] = keys
+    return found
+
+
 def name_rank(name: str) -> int:
     """这个写法对日文站有多可用，越小越先试。
 
