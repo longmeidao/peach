@@ -224,6 +224,8 @@ WORDMARK_SOURCES: dict[str, str] = {
     "Jackson": "https://www.prestige-av.com/api/media/maker/banner-jackson.jpg",
     "まんまんランド": "https://static.mgstage.com/mgs/img/pc/manmanland.gif",
     "Planet Plus": "https://static.mgstage.com/mgs/img/pc/planetplus.gif",
+    # Prestige 旗下只在 MGStage 发行的 label（ADR-0049），母公司 `/api/maker` 那 11 家里没有它。
+    "PRESTIGE PREMIUM": "https://static.mgstage.com/mgs/img/pc/prestigepremium.gif",
     "Radix": "https://static.mgstage.com/mgs/img/pc/radix.gif",
     "S-Cute": "https://static.mgstage.com/mgs/img/pc/scute.gif",
     "VIP": "https://static.mgstage.com/mgs/img/pc/vip.gif",

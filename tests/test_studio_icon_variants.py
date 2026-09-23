@@ -20,7 +20,9 @@ from types import SimpleNamespace
 from PIL import Image
 
 from peach import web_review
-from peach.previews import LOGO_VARIANTS, PreviewService, PreviewUnavailable, logo_key
+from peach.previews import (
+    LOGO_VARIANTS, RING_MIN_EDGE, PreviewService, PreviewUnavailable, logo_key,
+)
 from peach.web_state import WebContract
 
 
@@ -155,6 +157,24 @@ class VariantResolutionTests(unittest.TestCase):
         self.assertEqual(self.service.logo("Fitch", "large")[0], self.logos / "Fitch.img")
         self.write("Fitch.icon.img", png_bytes((900, 900)), "image/png")
         self.assertEqual(self.service.logo("Fitch", "large")[0], icon)
+
+    def test_ring_keeps_an_icon_big_enough_to_fill_the_circle(self):
+        """索引圆框要的是方标。够大的方标比更大的字标更贴合圆框，不该被换掉。"""
+        self.write("ACT.logo.img", png_bytes((800, 800)), "image/png")
+        icon = self.write("ACT.icon.img", png_bytes((RING_MIN_EDGE, RING_MIN_EDGE)), "image/png")
+        self.assertEqual(self.service.logo("ACT", "ring")[0], icon)
+
+    def test_ring_swaps_a_stamp_sized_icon_for_the_sharpest_file(self):
+        """Prestige 的方标 42 px，按原尺寸摆在圆心只剩一枚邮票，圆框改拿最清晰的那份。"""
+        base = self.write("Prestige.img", png_bytes((632, 632)), "image/png")
+        self.write("Prestige.logo.img", png_bytes((413, 413)), "image/png")
+        self.write("Prestige.icon.img", png_bytes((42, 42)), "image/png")
+        self.assertEqual(self.service.logo("Prestige", "ring"), (base, "image/png"))
+
+    def test_ring_without_an_icon_serves_what_the_studio_has(self):
+        """绝大多数厂牌只有一份裸文件，圆框照旧拿到它。"""
+        base = self.write("Fitch.img")
+        self.assertEqual(self.service.logo("Fitch", "ring")[0], base)
 
     def test_an_unknown_variant_falls_back_instead_of_404(self):
         """缓存下来的旧页面可能带着别的参数；那也该出图，不该把厂牌页开出个空位。"""

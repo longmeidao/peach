@@ -2127,7 +2127,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 脸框得穿过它才到得了 img——平移挂容器、放大挂图，两件事各走各的。
         self.assertPageContains("focus:company?null:d.avatar_focus,")
         self.assertPageContains("style:facePos(x.avatar_focus),focus:x.avatar_focus}")
-        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus, true)")
+        self.assertPageContains("bigMark?'large':'ring', company?null:x.avatar_focus, true)")
         self.assertPageContains("logo:logoName,logoVariant,focus:hint,thumb}")
         # 五个数挤一个属性，回落时只要摘一样东西。
         self.assertPageContains(
@@ -2234,7 +2234,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 已知例外：事务所 ACT 的站标是旗下一位艺人的照片，那一条会在人物页上摆出一张
         # 别人的脸。取不到图时 `data-drop="self"` 撤掉 img，露出底下那枚地球。
         self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
-        self.assertPageContains("${esc(siteName(x.url)||x.label)}")
+        self.assertPageContains("${esc(officialLinkText(x,kind,[d.canonical_name,...(d.aliases||[])]))}")
         self.assertPageContains(
             "['nax-pro.com','NAX'],['t-powers.co.jp','T-POWERS'],['dmm.co.jp','DMM']")
         # 同一家站在别处以账本链接出现时，写的名字要和入口那枚药丸一致。
@@ -6911,8 +6911,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode(":` · ${esc(agencyName)}`;")
         # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
         self.assertPageLacks("· 事务所 ${esc(agencyName)}")
-        # 链接标签写的是那家站的短名，账本里的全称留在 title 里。
-        self.assertPageContains("siteName(x.url)||x.label")
+        # 链接标签写的是那家站的短名（公司页上自家站写「官方网站」），全称留在 title 里。
+        self.assertPageContains("officialLinkText(x,kind,")
 
     def test_the_agency_page_reuses_the_entity_route_table(self):
         """实体本来就只有 kind 不同，事务所加进同一张表就有了 `/agencies/<名字>`。"""
@@ -6947,7 +6947,7 @@ class WebUiSourceTests(unittest.TestCase):
         就是十几 MB，而屏幕上用得着的只有其中百分之几的像素。
         """
         self.assertCode(
-            "        bigMark?'large':'icon', company?null:x.avatar_focus, true)}</span>")
+            "        bigMark?'large':'ring', company?null:x.avatar_focus, true)}</span>")
         # 解码离开主线程：几十张图同时落地时，同步解码把滚动和点击一起压住。
         self.assertPageContains(
             "`<img src=\"${src}\" alt=\"${alt}\"${lazy?' loading=\"lazy\"':''} decoding=\"async\"")
@@ -7065,7 +7065,7 @@ class WebUiSourceTests(unittest.TestCase):
             "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
         # 变体由调用点决定：小圆框和窄格子要方形图标，索引页那格要 large。
         self.assertPageContains("logo:logoName,logoVariant,focus:hint,thumb}")
-        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus, true)")
+        self.assertPageContains("bigMark?'large':'ring', company?null:x.avatar_focus, true)")
         # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
         self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
         # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
@@ -7082,7 +7082,7 @@ class WebUiSourceTests(unittest.TestCase):
         后缀说明不了清晰度：Prestige 的 `icon` 只有 42 px、MOODYZ 的只有 64 px，
         摆进 180 px 的大格就是一团糊，而它们的裸文件分别有 632 px 和 403 px。
         """
-        self.assertPageContains("bigMark?'large':'icon', company?null:x.avatar_focus, true)")
+        self.assertPageContains("bigMark?'large':'ring', company?null:x.avatar_focus, true)")
         self.assertPageContains(
             "logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',")
         # 小位仍要方形小标：卡片角标和顶栏那排只有二十来像素，取原图只是白下载。
@@ -7097,7 +7097,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const bigMark=company&&peopleIndexLayout()==='big';")
         self.assertPageContains("function retargetCompanyMarks(root){")
         self.assertPageContains(
-            "const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'icon'}`);")
+            "const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'ring'}`);")
         # 已经回落到实体图的格子不在 `/logo` 这条链上，改它的地址只会指向不存在的东西。
         self.assertPageContains("if(!src.startsWith('/logo?'))return;")
         # 圆框不按原尺寸摆，上一档留在容器上的三个度量要跟着撤，否则字标的尺寸会
@@ -11178,7 +11178,7 @@ class WebUiSourceTests(unittest.TestCase):
         urllink = urllink[:urllink.index("</a>")]
         self.assertIn("linkMarkUrl(x)", urllink)
         self.assertIn("data-drop=\"self\"", urllink)
-        self.assertIn("siteName(x.url)", urllink)
+        self.assertIn("officialLinkText(x,kind,", urllink)
 
     def test_a_collapsed_ranking_shows_a_fixed_preview_and_one_way_back(self):
         """收起的排名只露前十，展开与收起共用同一颗图标按钮。

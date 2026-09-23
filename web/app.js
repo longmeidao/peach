@@ -1,5 +1,5 @@
 import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, siteName, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, siteName, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, officialLinkText, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
@@ -7114,7 +7114,7 @@ function retargetCompanyMarks(root){
     ring.setAttribute('data-fit-native','mark');
     const img=ring.querySelector('img'),src=(img&&img.getAttribute('src'))||'';
     if(!src.startsWith('/logo?'))return;
-    const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'icon'}`);
+    const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'ring'}`);
     if(next!==src)img.setAttribute('src',next);
   });
 }
@@ -7141,15 +7141,15 @@ function personCellHtml(x,kind,countText){
      摆在公司名下就是替它拿别人的脸当门面，同一个厂牌两个页面还会各出各的图。 */
   const company=kind==='studio'||kind==='agency';
   /* 公司这一格摆的是标识而不是脸，而两个版式要的不是同一份：180 px 的大格要
-     `large`（这个厂牌手上最清晰的那份）并且允许小图按原尺寸摆，圆框要的仍是方标——
-     完整字标横过来塞进圆里，能看清的部分比方标还少。两档各发各的请求：服务端就在
-     本机，为省一次取图让圆框挂上字标不划算。度量在 fitNativeImage 里。 */
+     `large`（这个厂牌手上最清晰的那份）并且允许小图按原尺寸摆，圆框要 `ring`：方标
+     够填满圆框就用方标，只有邮票大小的才换最清晰那份，免得圆里只剩一粒糊点。
+     判据在服务端 `_ring_variant`。度量在 fitNativeImage 里。 */
   const bigMark=company&&peopleIndexLayout()==='big';
   return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
       <span class="ring" data-fit-native="${company?'mark':'portrait'}"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
         ref?{id:ref,has_image:x.has_image}:null,
         x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
-        bigMark?'large':'icon', company?null:x.avatar_focus, true)}</span>
+        bigMark?'large':'ring', company?null:x.avatar_focus, true)}</span>
       <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
 }
 /* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人，一位女优
@@ -8184,8 +8184,8 @@ async function openEntity(kind,name,push=true){
        撤掉，露出底下那枚地球。
 
        文字是这家站平时被叫的那个短名（`siteName`），人物页和厂牌页同一张表。完整的
-       名称留在 `title` 里，点之前要看全称把指针停上去就有。 */
-    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(siteName(x.url)||x.label)}</span></a>`;
+       名称留在 `title` 里，点之前要看全称把指针停上去就有。公司页见 `officialLinkText`。 */
+    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(officialLinkText(x,kind,[d.canonical_name,...(d.aliases||[])]))}</span></a>`;
   }).join('');
   /* 外部入口：同一个人在 minnano-av、JavDB 与 MISSAV 的那几页。地址、位置和用哪枚标记
      都由服务端下发（`peach.entry_links`），这里只排版——站点 id 缺席、或者这条实体不是

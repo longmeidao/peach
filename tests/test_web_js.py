@@ -360,6 +360,26 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "siteName", ["不是网址"], ""),
         ])
 
+    def test_a_company_page_calls_its_own_site_the_official_site(self):
+        """公司页上指回自家站的链接写「官方网站」，指向别家的保留那家的名字；人物页照旧写短名。"""
+        light = {"url": "https://lightpro.jp/", "label": "LIGHT"}
+        self.assertJsResults([
+            ("core.js", "officialLinkText", [light, "agency", ["LIGHT", "RIGHT"]], "官方网站"),
+            ("core.js", "officialLinkText",
+             [{"url": "https://cmore.jp/", "label": "C-more Entertainment"}, "agency",
+              ["C-more Entertainment"]], "官方网站"),
+            ("core.js", "officialLinkText",
+             [{"url": "https://www.gg1produce.com/", "label": "官方网站"}, "agency", ["GG"]], "官方网站"),
+            # 别名也算自家：合并进来的旧名下装的链接。
+            ("core.js", "officialLinkText",
+             [{"url": "https://example.jp/", "label": "Production CLAP"}, "agency",
+              ["C-more Entertainment", "Production CLAP"]], "官方网站"),
+            ("core.js", "officialLinkText",
+             [{"url": "https://www.prestige-av.com/goods/", "label": "Prestige"}, "studio",
+              ["Jackson"]], "Prestige"),
+            ("core.js", "officialLinkText", [light, "performer", ["松本一香"]], "LIGHT"),
+        ])
+
     def test_a_site_mark_carries_a_key_and_never_a_url(self):
         """站点圆标的地址里只出现服务端认得的键，任何一段都不是对方站点的地址。
 

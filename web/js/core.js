@@ -125,6 +125,22 @@ const brandIcon=url=>{try{
   return BRAND_ICONS.find(([hosts])=>hosts.some(d=>host===d||host.endsWith('.'+d)))?.[1]||'';
 }catch{return ''}};
 const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
+/* 官网链接上那行字。人物页写站点短名（`siteName`），表里没有就用账本 label。
+
+   公司页上指回自家站的一律写「官方网站」：页头已经是公司名，链接再写一遍 LIGHT、
+   C-more 只是重复，同一排里有的写名字、有的写「官方网站」还会看着像两类链接。名字是
+   别家的（Jackson 页上链到 Prestige 的名录页）才保留，那说的是另一家。自家的判据是
+   短名或 label 与规范名、别名互相包含：`C-more` 之于 `C-more Entertainment`。 */
+const officialLinkText=(link,kind,names=[])=>{
+  const text=siteName(link.url)||link.label||'';
+  if(kind!=='studio'&&kind!=='agency')return text;
+  const shown=foldName(text);
+  const own=!shown||text==='官方网站'||names.some(name=>{
+    const folded=foldName(name);
+    return Boolean(folded)&&(folded.includes(shown)||shown.includes(folded));
+  });
+  return own?'官方网站':text;
+};
 /* 什么才算一个真时长——只有这一处说了算。
 
    账本里 `-1` 是 probe 的「硬失败」哨兵（见 scripts/probe.py：抽帧的 duration>2 门槛
@@ -162,6 +178,7 @@ export {
   linkMarkUrl,
   siteMarkUrl,
   foldName,
+  officialLinkText,
   fmtDur,
   fmtClock,
   fmtSize,

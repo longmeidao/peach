@@ -30,6 +30,13 @@ LOGO_VARIANTS = ("icon", "logo")
 #: 按后缀选等于按名字猜清晰度，所以这里按文件本身的像素量选。
 LOGO_LARGEST = "large"
 
+#: 索引页的圆框要的是方标，可方标太小时圆里只剩一枚邮票：Prestige 的 `icon` 42 px，
+#: 按原尺寸摆在 140 px 的圆里，四周全是空的。`ring` 也是语义变体：方标短边够
+#: `RING_MIN_EDGE` 就用它，不够就退到 `large`。门槛取 128：圆框在 1x 屏上约 140 px，
+#: 128 以上按原尺寸摆也填得满大半个圆，再小就是那枚邮票。
+LOGO_RING = "ring"
+RING_MIN_EDGE = 128
+
 
 def logo_key(studio: str) -> str:
     r"""厂牌标识的落盘名。
@@ -201,25 +208,18 @@ class PreviewService:
 
         小地方（筛选片、卡片、来源角标）要的是方形小标 `icon`。大位（索引页的厂牌大格、
         厂牌资料页那个 160px 的位置）要 `large`：按文件的像素量在这个厂牌的所有份里挑
-        最清晰的一张，见 `LOGO_LARGEST`。但绝大多数厂牌只有一份图：任何变体都回落到
-        `<safe>.img`，任何位置都照旧显示它。变体文件是 `<safe>.icon.img` /
-        `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
+        最清晰的一张，见 `LOGO_LARGEST`。索引页的圆框要 `ring`，见 `LOGO_RING`。但绝大多数
+        厂牌只有一份图：任何变体都回落到 `<safe>.img`，任何位置都照旧显示它。变体文件是
+        `<safe>.icon.img` / `<safe>.logo.img`，没有它们时行为和加这个参数之前一模一样。
         """
         safe = logo_key(studio)
         if not safe:
             raise PreviewUnavailable("empty studio")
         listing = list(self.logo_root.iterdir()) if self.logo_root.is_dir() else []
+        if variant == LOGO_RING:
+            variant = self._ring_variant(listing, safe)
         if variant == LOGO_LARGEST:
-            #: 顺序即同分时的偏好：字标、方标、裸文件。`max` 取第一个最大值，所以
-            #: 三份一样清晰时拿到的仍是最贴合大位的那份。
-            found = []
-            for name in (f"{safe}.logo.img", f"{safe}.icon.img", f"{safe}.img"):
-                path = self._logo_file(listing, name)
-                if path is not None:
-                    found.append(path)
-            if not found:
-                raise PreviewUnavailable("logo unavailable")
-            best = max(found, key=self._logo_clarity)
+            best = self._largest_logo(listing, safe)
             return best, self._logo_content_type(best)
         names = [f"{safe}.img"]
         if variant in LOGO_VARIANTS:
@@ -231,6 +231,27 @@ class PreviewService:
             if path is not None:
                 return path, self._logo_content_type(path)
         raise PreviewUnavailable("logo unavailable")
+
+    def _largest_logo(self, listing: list[Path], safe: str) -> Path:
+        """这个厂牌手上最清晰的那份（`LOGO_LARGEST`）。
+
+        顺序即同分时的偏好：字标、方标、裸文件。`max` 取第一个最大值，所以三份一样
+        清晰时拿到的仍是最贴合大位的那份。
+        """
+        names = (f"{safe}.logo.img", f"{safe}.icon.img", f"{safe}.img")
+        found = [path for path in (self._logo_file(listing, name) for name in names) if path]
+        if not found:
+            raise PreviewUnavailable("logo unavailable")
+        return max(found, key=self._logo_clarity)
+
+    def _ring_variant(self, listing: list[Path], safe: str) -> str:
+        """圆框该取哪一份：方标够大取方标，不够或没有方标就取最清晰的那份。
+
+        装进来的方标都烤成了方图（`images.bake_square`），面积开方就是边长。
+        """
+        icon = self._logo_file(listing, f"{safe}.icon.img")
+        vector, area = self._logo_clarity(icon) if icon else (0, 0)
+        return "icon" if vector or area >= RING_MIN_EDGE ** 2 else LOGO_LARGEST
 
     def _logo_file(self, listing: list[Path], name: str) -> Path | None:
         """叫这个名字的标识；本机缓存找不到才回落到随仓库分发的那份（ADR-0026）。
