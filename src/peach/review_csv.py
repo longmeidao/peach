@@ -126,11 +126,22 @@ CANDIDATE_KEY = {
 }
 
 
+def _batch_files(base: Path, prefix: str) -> list[Path]:
+    """某一类的候选批次文件，不含抓取脚本顺手写在旁边的健康报告。
+
+    `fetch_studio_avatar_candidates.py` 默认把报告写成 `<输出名>-health.csv`，和候选
+    同一个前缀、同一秒落盘。按修改时间挑最新一份时挑中的是报告，它没有 `studio` 列，
+    整个「厂牌 Logo」队列就空了。
+    """
+    return [path for path in base.glob(f"{prefix}*.csv")
+            if path.is_file() and not path.stem.endswith("-health")]
+
+
 def latest_candidate_file(category: str, root: Path | None = None) -> Path | None:
     prefix = CANDIDATE_PREFIX.get(category)
     if not prefix:
         return None
-    matches = list((root or GENERATED_DIR).glob(f"{prefix}*.csv"))
+    matches = _batch_files(root or GENERATED_DIR, prefix)
     if not matches:
         return None
     return max(matches, key=lambda path: (path.stat().st_mtime_ns, path.name))
@@ -158,7 +169,7 @@ def candidate_files(category: str, root: Path | None = None) -> list[Path]:
     if category in MULTI_BATCH_CATEGORIES:
         prefix = CANDIDATE_PREFIX.get(category)
         batches = sorted(
-            (path for path in base.glob(f"{prefix}*.csv") if path.is_file()),
+            _batch_files(base, prefix),
             key=lambda path: (path.stat().st_mtime_ns, path.name), reverse=True,
         ) if prefix else []
     else:

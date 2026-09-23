@@ -160,7 +160,7 @@ class SyncScriptTests(unittest.TestCase):
             source, target = base / "logos", base / "marks"
             source.mkdir()
             self._fixture(source, "Good", png, {"source_url": "https://x.test/a.png"})
-            self._fixture(source, "Good.icon", png, {"source_url": "https://x.test/b.png"})
+            self._fixture(source, "Good.icon", png + b"1", {"source_url": "https://x.test/b.png"})
             self._fixture(source, "NoSource", png, None)
             self._fixture(source, "Oversize", png + b"0" * brand_marks.MAX_FILE_BYTES,
                           {"source_url": "https://x.test/c.png"})
@@ -195,6 +195,25 @@ class SyncScriptTests(unittest.TestCase):
             self.assertEqual(["OldName.png"], result["removed"])
             self.assertEqual({"NewName.png"},
                              {p.name for p in (target / "studios").iterdir()})
+
+    def test_a_variant_with_the_bare_files_bytes_is_not_shipped_twice(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+        with tempfile.TemporaryDirectory() as raw:
+            base = pathlib.Path(raw)
+            source, target = base / "logos", base / "marks"
+            source.mkdir()
+            for name in ("Baked", "Baked.icon", "Baked.logo"):
+                self._fixture(source, name, png, {"source_url": "https://x.test/a.png"})
+            result = self._run(source, target, "--apply")
+            self.assertEqual(["same_as_base"], result["reasons"])
+            self.assertEqual({"Baked.png"}, {p.name for p in (target / "studios").iterdir()})
+
+            service = PreviewService.__new__(PreviewService)
+            service.logo_root = base / "empty"
+            service.marks_root = target / "studios"
+            for variant in LOGO_VARIANTS:
+                found, _type = service.logo("Baked", variant)
+                self.assertEqual(target / "studios" / "Baked.png", found)
 
     def test_dry_run_writes_nothing(self):
         png = b"\x89PNG\r\n\x1a\n" + b"0" * 64

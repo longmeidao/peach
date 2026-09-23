@@ -196,6 +196,19 @@ class ReviewQueueTests(unittest.TestCase):
             rm_candidates.latest_candidate_file("metadata_fields", self.candidates), newer,
         )
 
+    def test_a_health_report_written_beside_the_batch_is_not_the_latest_batch(self):
+        batch = self.candidates / "studio-logo-candidate-20260923.csv"
+        health = self.candidates / "studio-logo-candidate-20260923-health.csv"
+        batch.write_text("studio,saved\nFALENO,FALENO.jpg\n", encoding="utf-8")
+        health.write_text("attempted,resolved\n12,12\n", encoding="utf-8")
+        # 报告在候选之后落盘，修改时间晚几毫秒。
+        os.utime(batch, (2000, 2000))
+        os.utime(health, (2001, 2001))
+
+        rows, _source, _skipped = rm_candidates.read_candidates("studio_logos", self.candidates)
+
+        self.assertEqual([row["item_key"] for row in rows], ["FALENO"])
+
     def test_older_batches_keep_their_undecided_rows_in_the_queue(self):
         """跑了新批次不该让上一批未复核的行消失。
 
