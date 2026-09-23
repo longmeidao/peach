@@ -8139,6 +8139,12 @@ function syncEntitySkeletonFeed(kind,name){
   if(wanted&&!row)skeleton.querySelector('.entitysection')?.insertAdjacentHTML('beforebegin',feedNewSkeletonSection());
   else if(!wanted&&row)row.remove();
 }
+/* 名字对不上任何一位时 `/api/entity` 回 `{error}`：骨架不换掉就一直在闪，读起来是还在取。 */
+function showEntityMissing(kind){
+  const index=ENTITY_ROUTES[kind]||kind,title=INDEX_TITLES[index]||'条目';
+  const actions=INDEX_TITLES[index]?`<a class="geist-button primary" href="/${index}">返回${title}列表</a>`:'';
+  $('#index').innerHTML=emptyState('search-x',`找不到这个${title}`,'名字可能拼错了，或者已经合并到别的名字下；回列表里重新找。',{actions});
+}
 async function openEntity(kind,name,push=true){
   releaseHoverPreviews();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
@@ -8169,8 +8175,9 @@ async function openEntity(kind,name,push=true){
       return d}),
     fetchEntityItems(kind,name,filters),
     api(`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`)]);
-  if(d.error||seq!==entityRequestSeq||
+  if(seq!==entityRequestSeq||
      decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath))return;
+  if(d.error){showEntityMissing(kind);return}
   /* 直达或刷新资料页时 URL 没有 `jav=1`。以返回作品的真实 `is_jav` 恢复女优／厂牌
      语境，避免大图／小图／预览图按钮只在从 JAV 首页点进来时偶然存在。 */
   entityJavLayout=(kind==='performer'||kind==='studio')&&
