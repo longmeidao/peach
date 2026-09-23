@@ -12,7 +12,7 @@
 靠前、综合索引垫后；对不匹配番号仍发 HTTP 的站不进默认链；会把无关番号拼成
 「看起来像详情页」的站一概不进。成员只取 Peach 已经接好的那几家（自写解析器或经 amane 桥），
 每个站只有一个归属（ADR-0048）；上游表里 kin8、giga、theporndb、getchu 这些没接的不写进来占位。
-对不匹配番号仍发 HTTP 的厂商站（Prestige、FALENO、DAHLIA）由 `route_for_code` 按本机证据裁掉。
+对不匹配番号仍发 HTTP 的片商站（Prestige、FALENO、DAHLIA）由 `route_for_code` 按本机证据裁掉。
 
 链上没有国产、欧美与里番三条：Peach 一家对应来源都没接，写一条空链只会让人以为
 问过了。真要接的时候按同一张表加类型，判据写在这里。
@@ -41,7 +41,7 @@ _MGS_AMATEUR = re.compile(r"^(?:" + "|".join(MGS_AMATEUR_PREFIXES) + r")-?\d+$",
 #: 每种内容类型问哪几家，从左到右。每条链后面的注释回答两件事：为什么是这个顺序，
 #: 以及为什么某一家**不**在这条链上——后者才是省请求的地方。
 ROUTES: dict[str, tuple[str, ...]] = {
-    # 有码：厂商官网先问，经 amane 桥一次子进程（ADR-0048）。片商自己那一页是发行方口径，
+    # 有码：片商官网先问，经 amane 桥一次子进程（ADR-0048）。片商自己那一页是发行方口径，
     # 比官方镜像 r18.dev 更近一层：2026-09-23 实测 S1、MOODYZ 官网的发売日与账本一致，
     # DMM 数字版给的是配信开始日。四家里一个番号只问一家：Prestige、FALENO、DAHLIA 按本机
     # 证据认自家番号（`MAKER_EVIDENCE`），都不认的交给 `makers`——amane 按系列前缀路由到
@@ -80,7 +80,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
     "unknown": (),
 }
 
-#: 厂商官网与发行方自营店那一档，经 amane 桥（`metadata_amane.OFFICIAL_SITES`，ADR-0048）。一次
+#: 片商官网与发行方自营店那一档，经 amane 桥（`metadata_amane.OFFICIAL_SITES`，ADR-0048）。一次
 #: 子进程并发问链上属于这一档的几站，所以合成一档 `amane_official`；按 `route_for_code` 裁过之后，
 #: 有码番号在这一档只剩一家片商，素人番号只剩 mgstage。
 AMANE_OFFICIAL_STAGE = ("prestige", "faleno", "dahlia", "makers", "mgstage")
@@ -92,7 +92,7 @@ FC2_STAGE = ("fc2", "fc2cmadb", "javarchive")
 #: 官方档在采集任务里摊成的档名（`stage_name` 的取值）。缺标签的行在这几档之间多问一家，见 `settles`。
 OFFICIAL_STAGE_NAMES = ("amane_official", "r18dev", "1pondo", "fc2")
 
-#: 对任何番号都发请求的三家厂商站各认哪些番号：（字母前缀，指着这家的写法）。前缀取自本机账本
+#: 对任何番号都发请求的三家片商站各认哪些番号：（字母前缀，指着这家的写法）。前缀取自本机账本
 #: 2026-09-23 的只读统计——厂牌列写着这一家、同一前缀至少两行；FALENO 另加 amane 标注的同站
 #: 厂牌 maryGOLD 与 JimmyScandal。写法在账本厂牌、路径与文件名里找，不分大小写。前缀或写法命中
 #: 一条才问，别的番号一个请求都不发；这三家都不认的番号交给 `makers`，由 amane 的片商表判。
@@ -203,7 +203,7 @@ def route_for_code(code: str | None, *hints: str | None,
     厂牌指着一本道时才问它，问不着的照旧落到综合索引（`sources/onepondo.py`
     的模块说明）。
 
-    有码链上的厂商站同理：Prestige、FALENO、DAHLIA 只在本机证据认得是自家番号时才问
+    有码链上的片商站同理：Prestige、FALENO、DAHLIA 只在本机证据认得是自家番号时才问
     （`maker_sites`），一个番号只属于一家片商，所以三家有一家认了就不再问 `makers`。
     """
     chain = route(classify(code, *hints), overrides=overrides)
@@ -220,7 +220,7 @@ def route_for_code(code: str | None, *hints: str | None,
 
 
 def maker_sites(code: str | None, *hints: str | None) -> tuple[str, ...]:
-    """`MAKER_EVIDENCE` 里认这个番号的厂商站：字母前缀在表里，或账本厂牌、路径、文件名指着这家。"""
+    """`MAKER_EVIDENCE` 里认这个番号的片商站：字母前缀在表里，或账本厂牌、路径、文件名指着这家。"""
     matched = _LETTER_PREFIX.match(str(code or "").strip().upper())
     prefix = matched.group(1) if matched else ""
     text = " ".join(str(hint or "") for hint in hints).casefold()
@@ -243,7 +243,7 @@ def stages_for_code(code: str | None, *hints: str | None,
     综合索引合成一档是因为那一档不逐家短路（见 `COMMUNITY_STAGE`）；官方那几家
     逐个成档，取到必填标量就不问下一档。FC2 那三家是同一次
     `LibraryMetadataProvider.fc2()` 里先后问的三处，合成一档 `fc2`；经 amane 桥的
-    厂商站与转载站各是一次子进程，分别合成 `amane_official` 与 `amane`。
+    片商站与转载站各是一次子进程，分别合成 `amane_official` 与 `amane`。
     """
     return stages_for_chain(route_for_code(code, *hints, overrides=overrides))
 
@@ -298,7 +298,7 @@ def settles(required: Sequence[str], provided: Iterable[str], *,
     再问下一档只会拿回一堆和账本现值相同的候选（ADR-0033）。
 
     `wants_tags` 是这一行还缺标签，`then` 是链上下一档的档名。FALENO 与 DAHLIA 官网的
-    作品资料没有类别，标量给全了也一个标签都没有；下一档仍是官方档（有码链上厂商官网之后
+    作品资料没有类别，标量给全了也一个标签都没有；下一档仍是官方档（有码链上片商官网之后
     的 r18.dev）时再问它一次换一批标签。下一档是综合索引或转载站就照样停：javdb 按出口 IP
     计配额，不为标签多问。
     """

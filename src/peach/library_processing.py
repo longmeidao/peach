@@ -65,7 +65,7 @@ SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'j
                  'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
                  '1pondo': '一本道', 'local_nfo': '本地 NFO',
                  # 经 amane 桥问的几站（`metadata_amane.SITES`）。
-                 'makers': '厂商官网', 'prestige': 'Prestige', 'faleno': 'FALENO',
+                 'makers': '片商官网', 'prestige': 'Prestige', 'faleno': 'FALENO',
                  'dahlia': 'DAHLIA', 'mgstage': 'MGStage',
                  'fc2club': 'FC2Club', 'freejavbt': 'FreeJavBT',
                  'airav': 'AIRAV', 'avsox': 'AVSOX',
@@ -986,7 +986,7 @@ class _RemoteSession:
     def _metadata(self, row, code, missing, *, update, issue):
         """按内容类型的来源链逐档问，必填标量字段够了就不问下一档。
 
-        链在 `metadata_routes`：有码先问厂商官网、素人先问 MGStage（经 amane 桥，ADR-0048），
+        链在 `metadata_routes`：有码先问片商官网、素人先问 MGStage（经 amane 桥，ADR-0048），
         再问 r18.dev；无码问一本道官网（本机证据指着它时），FC2 问发行方商品页与下架镜像，
         问不着才落到 AVBase、JavBus 与 javdb 那一档。
 

@@ -41,12 +41,12 @@ DEFAULT_TIMEOUT = 60
 #: 经桥开放给 Peach 来源链的站，套 `peach.sources` 同一份配置形状。每个站只有一个归属（ADR-0048）：
 #: 自写解析器已经答的站（r18dev、fc2、javbus、javdb）不经桥再问一遍，两条路径答同一站，分歧没人会去看。
 #: 主域与 Cookie 由 amane 自己管，Peach 不持有，所以 `base_url` 与 `domains` 留空。档位两种：
-#: 转载与索引站是 `amane`；厂商官网与发行方自营店是 `official`，与 `SOURCE_SPECS` 里的分级同值，
+#: 转载与索引站是 `amane`；片商官网与发行方自营店是 `official`，与 `SOURCE_SPECS` 里的分级同值，
 #: 链上排在官方镜像 r18.dev 之前（`metadata_routes.AMANE_OFFICIAL_STAGE`）。
 COMMUNITY_SITES = (("fc2club", "FC2Club"), ("freejavbt", "FreeJavBT"), ("airav", "AIRAV"), ("avsox", "AVSOX"))
 #: `makers` 是 amane 的 `official`：按系列前缀路由到二十九家片商官网（S1、MOODYZ、IDEA POCKET……），
 #: 前缀不在它的表里就不发请求。另外三家片商各有自己的解析器；MGStage 是 MGS 素人系的发行渠道。
-OFFICIAL_SITES = (("makers", "厂商官网"), ("prestige", "Prestige"), ("faleno", "FALENO"),
+OFFICIAL_SITES = (("makers", "片商官网"), ("prestige", "Prestige"), ("faleno", "FALENO"),
                   ("dahlia", "DAHLIA"), ("mgstage", "MGStage"))
 SITE_CONFIGS: dict[str, SiteConfig] = {
     name: SiteConfig(name=name, label=label, provider="amane-" + name, base_url="", domains=(), stage=stage)

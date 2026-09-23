@@ -515,7 +515,7 @@ class LibraryNfoTests(unittest.TestCase):
 
     @windows_ledger_roots
     def test_a_maker_site_answering_every_scalar_settles_the_chain_before_r18dev(self):
-        """厂商官网是官方档第一家：标量与标签都给全了，r18.dev 与综合索引都不再问。"""
+        """片商官网是官方档第一家：标量与标签都给全了，r18.dev 与综合索引都不再问。"""
         provider, rows = self._collect_with_maker('SSIS-057', 'makers', {
             'title': '標題', 'maker': 'エスワン ナンバーワンスタイル', 'release_date': '2021-05-07',
             'genres': ['巨乳'], 'actresses': [{'japanese_name': '葵つかさ'}]})
@@ -930,7 +930,7 @@ class LibraryNfoTests(unittest.TestCase):
         db = fresh_ledger(self.root)
         config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
         provider = Mock()
-        provider.amane.side_effect = NotFound('厂商官网没有这个番号')
+        provider.amane.side_effect = NotFound('片商官网没有这个番号')
         provider.query.side_effect = NotFound('HTTP 404')
         provider.community.return_value = [
             ('avbase', {'id': 'ORETD-615', 'title': 'たまき', 'release_date': '2024-01-05',

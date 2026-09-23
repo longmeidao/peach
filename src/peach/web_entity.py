@@ -70,9 +70,9 @@ def _performer_entries(contract: WebContract, c, d: dict, alias_rows) -> dict:
 
 
 def label_layer(contract: WebContract, c, kind: str, entity_id: int) -> tuple[dict | None, list[dict]]:
-    """厂牌资料页的 label 一层（ADR-0049）：它归哪家厂商，和它旗下有哪些 label。
+    """厂牌资料页的 label 一层（ADR-0049）：它归哪家片商，和它旗下有哪些 label。
 
-    两边都只是链接，作品、计数和头像各算各的——label 不是厂商的另一种写法。
+    两边都只是链接，作品、计数和头像各算各的——label 不是片商的另一种写法。
     """
     if kind != "studio":
         return None, []

@@ -1,4 +1,4 @@
-"""label 属于厂商，但不当厂商处理（ADR-0049）。"""
+"""label 属于片商，但不当片商处理（ADR-0049）。"""
 import sqlite3
 import tempfile
 import unittest
@@ -79,7 +79,7 @@ class LabelMakerTests(unittest.TestCase):
         self.assertEqual(self.maker_of(5569), "妄想族")
 
     def test_only_one_layer_is_accepted(self):
-        """label 不能再挂 label，厂商自己也不能是别家的 label。"""
+        """label 不能再挂 label，片商自己也不能是别家的 label。"""
         self.apply()
         planned = plan(self.con, [
             {"label": "K M Produce", "maker": "妄想族", "evidence": "x"},

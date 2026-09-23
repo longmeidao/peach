@@ -744,9 +744,9 @@ def _jav_code_pattern(code: str | None) -> str:
     return ""
 
 
-#: 无码厂商自己的编号法：Caribbeancom／1Pondo／10musume／Pacopacomama 走日期式
+#: 无码片商自己的编号法：Caribbeancom／1Pondo／10musume／Pacopacomama 走日期式
 #: （形状与分隔符含义见 `_CODE_DATE`，同一份实现），HEYZO 用 `HEYZO-1380`，
-#: Tokyo-Hot 用 `n1234`（见 `_TOKYO_HOT_BODY`）。有码厂商不用这三种形状。
+#: Tokyo-Hot 用 `n1234`（见 `_TOKYO_HOT_BODY`）。有码片商不用这三种形状。
 UNCENSORED_CODE_SHAPES = (
     _CODE_DATE,
     re.compile(r"^HEYZO-\d{2,5}$", re.I),
@@ -782,7 +782,7 @@ def code_release_date(code: str | None) -> str | None:
 
 
 def is_uncensored_release(name: str | None, code: str | None) -> bool:
-    """番号形状或文件名里的发行站，两者有一个成立就是无码厂商的片。
+    """番号形状或文件名里的发行站，两者有一个成立就是无码片商的片。
 
     这两条都是本机可核验的证据，不依赖抓取结果——`040221-001` 这类番号在
     r18.dev 永远 404，等元数据到齐再判，徽章就永远不会出现。
@@ -812,7 +812,7 @@ def jav_edition_badges(name: str | None, code: str | None,
     uncensored = (
         cracked
         or "无码" in tag_set
-        # 无码厂商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen` 标记。
+        # 无码片商的片本身就是无码，不需要文件名里另有 `-U`／`Uncen` 标记。
         or is_uncensored_release(name, code)
         # `un` 和 `u`／`uc` 是同一个意思。此前它没进这张表，`ABF-158-UN.mp4`
         # 既拿不到徽章，`UN` 又被当标题显示；现在标题判空了，不认它就等于把

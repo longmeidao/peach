@@ -39,7 +39,7 @@ class MetadataPolicyTests(unittest.TestCase):
         self.assertFalse(SOURCE_SPECS["javlibrary"].official)
 
     def test_the_amane_official_sites_rank_as_official_ahead_of_the_mirror(self):
-        """经桥的厂商官网与 MGStage 是官方来源；片商站在每个字段上排在 dmm 与 r18.dev 之前。"""
+        """经桥的片商官网与 MGStage 是官方来源；片商站在每个字段上排在 dmm 与 r18.dev 之前。"""
         for source in metadata_routes.AMANE_OFFICIAL_STAGE:
             with self.subTest(source=source):
                 self.assertEqual(source_tier(source), CHAIN_OFFICIAL)
