@@ -261,6 +261,19 @@ ICON_SOURCES: dict[str, str] = {
 }
 
 
+#: 事务所的指定**字标**来源，按 canonical_name，用法同 `WORDMARK_SOURCES`。
+#:
+#: 单列一张而不并进厂牌那张：`--kind agency` 那一趟只查这一张，厂牌表一条都不看。
+#: 两种实体共用 `logo_key` 落盘名，同名的事务所去查厂牌表，就会装上那家厂牌指好的图。
+#:
+#: `Diaz Group`：名录只给了招募站 `diaz-recruit.com`，那是 STUDIO 建站、JS 渲染的
+#: 页面，静态 HTML 不链集团官网，站点图标是建站平台的「/S」。集团官网 `diaz-g.com`
+#: header 里是一张 147×27 的矢量字标（用户 2026-09-23 指定）。
+AGENCY_WORDMARK_SOURCES: dict[str, str] = {
+    "Diaz Group": "https://diaz-g.com/assets/img/diaz_logo.svg",
+}
+
+
 def safe_name(studio: str) -> str:
     """和 `PreviewService.logo` 同一套文件名规则，两边必须一致。"""
     return re.sub(r"[^\w-]", "_", studio, flags=re.UNICODE)[:60]
@@ -272,6 +285,9 @@ LOGO_SOURCES_BY_SAFE = {safe_name(name): url for name, url in LOGO_SOURCES.items
 
 WORDMARK_SOURCES_BY_SAFE = {safe_name(name): url
                             for name, url in WORDMARK_SOURCES.items()}
+
+AGENCY_WORDMARK_SOURCES_BY_SAFE = {safe_name(name): url
+                                   for name, url in AGENCY_WORDMARK_SOURCES.items()}
 
 ICON_SOURCES_BY_SAFE = {safe_name(name): url for name, url in ICON_SOURCES.items()}
 
@@ -997,15 +1013,17 @@ def icon_from_logo(safe: str, target: dict[str, str], logo: dict[str, object],
                 evidence=f'与 logo 位同一份指定来源（{logo["mark_size"]}）烤成方图')
 
 
-def wordmark_source_rows(safe: str, target: dict[str, str], fetch, candidate_dir: Path
+def wordmark_source_rows(safe: str, target: dict[str, str], fetch, candidate_dir: Path,
+                         table: dict[str, str] | None = None
                          ) -> tuple[dict[str, object] | None, dict[str, object] | None]:
     """指定字标来源的 `icon` + `logo` 两行；这个厂牌没有指定字标来源就返回 `(None, None)`。
 
     宽扁字标只有烤成方图这一条用法，两个位置装的是同一张——和官网字标补白同一条口径
     （`icon_row` 的补白分支），区别只在源图来自名录而不是站点自己的 `<img>`。
     失败也出行：复核件不丢失败记录，`--install` 只认带候选文件的行。
+    `table` 缺省是厂牌那张；事务所那一趟传 `AGENCY_WORDMARK_SOURCES_BY_SAFE`。
     """
-    url = WORDMARK_SOURCES_BY_SAFE.get(safe)
+    url = (WORDMARK_SOURCES_BY_SAFE if table is None else table).get(safe)
     if not url:
         return None, None
     kind = "wordmark-source"
@@ -1085,7 +1103,8 @@ def icon_source_row(safe: str, target: dict[str, str], fetch, candidate_dir: Pat
 def harvest(targets: dict[str, dict[str, str]],
             links: dict[str, list[dict[str, str]]],
             fetch, candidate_dir: Path, faces=None,
-            avatars: dict[str, str] | None = None) -> list[dict[str, object]]:
+            avatars: dict[str, str] | None = None,
+            wordmarks: dict[str, str] | None = None) -> list[dict[str, object]]:
     """每个目标厂牌出一行 `icon`；有指定 logo 来源或走了字标补白的再出 `logo` 行。
 
     有指定字标来源的厂牌只走那一条，两行都从同一张方图出（`wordmark_source_rows`）。
@@ -1102,7 +1121,8 @@ def harvest(targets: dict[str, dict[str, str]],
     for safe in sorted(targets):
         target = targets[safe]
         entries = links.get(safe, [])
-        marked, marked_logo = wordmark_source_rows(safe, target, fetch, candidate_dir)
+        marked, marked_logo = wordmark_source_rows(safe, target, fetch, candidate_dir,
+                                                   wordmarks)
         if marked is not None:
             # 指定字标来源就是这个厂牌的答案，不再去链接上碰运气：这 12 家账本里
             # 本来就一条 official／catalog 链接都没有，走发现流程只会多记一行
@@ -1216,11 +1236,14 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         connection.close()
 
     # 补白名单和那两张指定来源表都是厂牌那一趟的历史遗留，事务所一条都不该收：
-    # 按名字撞上就会给一家事务所装上同名厂牌指好的图。事务所的入场理由只有链接。
+    # 按名字撞上就会给一家事务所装上同名厂牌指好的图。事务所的入场理由只有链接，
+    # 指定字标只查它自己那张 `AGENCY_WORDMARK_SOURCES`。
+    wordmarks = None
     if args.kind == "studio":
         targets = harvest_targets(padded_studios(logo_root), links, logo_root)
     else:
         targets = {safe: {"original_size": "", "installed": ""} for safe in links}
+        wordmarks = AGENCY_WORDMARK_SOURCES_BY_SAFE
     if args.only:
         wanted = {safe_name(name) for name in args.only}
         targets = {key: value for key, value in targets.items() if key in wanted}
@@ -1229,7 +1252,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     client = httpx.Client(trust_env=True, follow_redirects=True)
     try:
         rows = harvest(targets, links, Fetcher(client, args.timeout, args.interval),
-                       args.candidate_dir.resolve(), faces, named_avatars(args.avatars))
+                       args.candidate_dir.resolve(), faces, named_avatars(args.avatars),
+                       wordmarks)
     finally:
         client.close()
 

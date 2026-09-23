@@ -97,10 +97,18 @@ class ScriptVariantTests(unittest.TestCase):
                          [("MOODYZ", "ムーディーズ")])
         self.assertIn("MIDV", str(rows[0]["evidence"]))
 
-    def test_the_latin_side_is_kept_regardless_of_asset_count(self):
+    def test_an_english_brand_beats_its_katakana_spelling_regardless_of_asset_count(self):
         rows = self.module.script_variants(
             self.names, {1: 1, 2: 999}, {1: {"MIDV"}, 2: {"MIDV"}}, set())
         self.assertEqual(rows[0]["keep_name"], "MOODYZ")
+
+    def test_a_japanese_name_beats_its_romaji_transliteration(self):
+        """罗马音不算英文：`Celeb no Tomo` 是番号站的转写，厂牌自己写 `セレブの友`。"""
+        names = {1: "Celeb no Tomo", 2: "セレブの友"}
+        rows = self.module.script_variants(
+            names, {1: 40, 2: 3}, {1: {"CESD"}, 2: {"CESD"}}, set())
+        self.assertEqual([(row["keep_name"], row["drop_name"]) for row in rows],
+                         [("セレブの友", "Celeb no Tomo")])
 
     def test_no_shared_prefix_means_no_pair(self):
         """名字读起来像不算证据。这条捷径唯一的身份保证就是前缀。"""
