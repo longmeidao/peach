@@ -74,10 +74,11 @@ class Fc2CastReviewTests(unittest.TestCase):
             json.dumps(_page(code, *names), ensure_ascii=False), encoding="utf-8")
 
     def _run(self, *extra, provider=None):
+        self.pauses = []
         args = build_parser().parse_args(
             ["--db", str(self.db), "--snapshots", str(self.snapshots),
-             "--output", str(self.output), *extra])
-        return run(args, provider=provider)
+             "--output", str(self.output), "--misses", str(self.root / "misses.json"), *extra])
+        return run(args, provider=provider, sleep=self.pauses.append)
 
     def test_a_different_name_on_the_mirror_becomes_one_review_row(self):
         self._snapshot("FC2-PPV-2629971", "あんな")
@@ -113,6 +114,20 @@ class Fc2CastReviewTests(unittest.TestCase):
         asked = len(mirror.asked)
         self._run(provider=mirror)
         self.assertNotIn(("fc2cmadb", "FC2-PPV-1449453"), mirror.asked[asked:])
+
+    def test_a_code_the_mirror_does_not_have_is_not_asked_again(self):
+        mirror = _Mirror({})
+        self._run(provider=mirror)
+        self.assertEqual(len(mirror.asked), 3)
+        result = self._run(provider=mirror)
+        self.assertEqual(len(mirror.asked), 3)
+        self.assertEqual(result["not_on_mirror"], 3)
+
+    def test_live_questions_are_spaced_but_snapshots_are_not(self):
+        self._snapshot("FC2-PPV-1449453", "大村阿美香")
+        self._run("--interval", "7", provider=_Mirror({}))
+        # 三个番号里一个有快照，剩下两次联网之间停一次。
+        self.assertEqual(self.pauses, [7.0])
 
     def test_a_failure_other_than_absence_stops_and_keeps_what_was_found(self):
         mirror = _Mirror({"FC2-PPV-1449453": _page("FC2-PPV-1449453", "大村阿美香"),

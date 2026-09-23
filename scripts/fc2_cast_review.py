@@ -11,8 +11,9 @@ FC2 的演员栏在资料链上首选 fc2cmadb（`metadata_policy.FIELD_SOURCE_P
 分段一起改，只替换机器写入的演员关联，用户自己加的保留（`metadata_auto_apply`）。
 
 只读账本。fc2cmadb 那一页优先取本机快照（`sources/library-metadata/<番号>-fc2cmadb.json`，
-资料采集任务也读写这一份），没有才联网问，问到的照样存成快照，重跑不再发请求。
-`--offline` 只看快照。有一位演员关联不是机器写入的番号整条跳过：那是用户判断过的。
+资料采集任务也读写这一份），没有才联网问，问到的照样存成快照，重跑不再发请求。站上说没有的
+番号记在 `state/fc2-cast-misses.json`，一周内不再问。联网时两问之间停 `--interval` 秒：
+2026-09-23 不停顿连问，第 19 个番号上被限流 15 分钟。`--offline` 只看快照。有一位演员关联不是机器写入的番号整条跳过：那是用户判断过的。
 """
 from __future__ import annotations
 
@@ -28,11 +29,11 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from peach.config import DATABASE_PATH, GENERATED_DIR, SECRETS_DIR, SOURCES_DIR  # noqa: E402
+from peach.config import DATABASE_PATH, GENERATED_DIR, SECRETS_DIR, SOURCES_DIR, STATE_DIR  # noqa: E402
 from peach.entities import normalize_entity_name, resolve_entity  # noqa: E402
 from peach.metadata import extract_catalog_evidence, extract_peach_fields  # noqa: E402
 from peach.library_processing import (LibraryMetadataProvider, PROVIDER_NAMES,  # noqa: E402
-                                      _candidate_identity, is_missing)
+                                      _candidate_identity, _MissCache, is_missing)
 from peach.review_csv import write_rows  # noqa: E402
 from peach.scripting import open_readonly  # noqa: E402
 
@@ -68,17 +69,19 @@ def snapshot_path(snapshots: Path, code: str) -> Path:
     return snapshots / f"{code}-{SOURCE}.json"
 
 
-def mirror_payload(code: str, snapshots: Path, provider=None) -> dict | None:
+def mirror_payload(code: str, snapshots: Path, provider=None, misses=None) -> dict | None:
     """fc2cmadb 那一页的快照；站上没有、离线且没存过时回 None。"""
     path = snapshot_path(snapshots, code)
     if path.is_file():
         return json.loads(path.read_text(encoding="utf-8"))
-    if provider is None:
+    if provider is None or (misses is not None and misses.fresh(SOURCE, code)):
         return None
     try:
         payload = provider.site(SOURCE, code)
     except Exception as error:  # noqa: BLE001 - 「没有」之外的原因原样抛给调用方
         if is_missing(error):
+            if misses is not None:
+                misses.record(SOURCE, code)
             return None
         raise
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -129,19 +132,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, default=GENERATED_DIR / OUTPUT_NAME)
     parser.add_argument("--offline", action="store_true", help="只看本机快照，不联网")
     parser.add_argument("--limit", type=int, default=0, help="最多看几个番号，0 为不限")
+    parser.add_argument("--misses", type=Path, default=STATE_DIR / "fc2-cast-misses.json",
+                        help="站上说没有的番号记在这里，一周内不再问")
+    parser.add_argument("--interval", type=float, default=5.0, help="两次联网询问之间停几秒")
     return parser
 
 
-def run(args: argparse.Namespace, provider=None) -> dict:
+def run(args: argparse.Namespace, provider=None, sleep=time.sleep) -> dict:
     with closing(open_readonly(args.db)) as connection:
         cast = current_cast(connection)
         codes = sorted(cast)[:args.limit] if args.limit else sorted(cast)
         if provider is None and not args.offline:
             provider = LibraryMetadataProvider(SECRETS_DIR)
-        rows, absent, agreed, stopped = [], 0, 0, ""
+        misses = _MissCache(args.misses)
+        rows, absent, agreed, stopped, asked = [], 0, 0, "", False
         for code in codes:
+            live = (not args.offline and not snapshot_path(args.snapshots, code).is_file()
+                    and not misses.fresh(SOURCE, code))
+            if live and asked:
+                sleep(args.interval)
+            asked = asked or live
             try:
-                payload = mirror_payload(code, args.snapshots, None if args.offline else provider)
+                payload = mirror_payload(code, args.snapshots, None if args.offline else provider, misses)
             except Exception as error:  # noqa: BLE001 - 冷却、限流或断网：停下，已问到的快照留着
                 stopped = f"{code}：{error}"
                 break
