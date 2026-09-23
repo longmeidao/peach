@@ -135,6 +135,28 @@ fc2club、avsox 两站（以及只能由覆盖点名的 freejavbt、airav）不�
 对有码番号说没有，airav 的搜索地址当天回 404。记录在 `build/agent-verification/amane-chain-realtest.json`。
 fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书问题），用户判定该站已不可访问（ADR-0043 修订）。
 
+## 站点解析器契约
+
+自写解析器与 amane 桥的站套同一个形状（`src/peach/sources/`，ADR-0044「实施：解析器契约」）：
+一个站一个类，`fetch(code, session=)` 取到作品页、`parse(page, code)` 读出记录、`query()` 串起来；
+站名、主域与图床、请求间隔、是否带 Cookie、页面上限与档位全在 `SiteConfig` 里，是数据不是常量；
+返回只有一种 `SiteRecord`，`payload()` 投影成来源快照那份 dict，候选、来源链结算、封面层与账本
+读到的东西不变；失败只有一张 `FailureReason` 表（十二档），`REASON_KINDS` 把它映到
+`MetadataProviderError` 的 `auth` / `unavailable` / `not_found` 三档，`COOLDOWN_ACTIONS` 说哪几档要把
+整站写进 `scraping_access` 的冷却记录（`cloudflare_challenge`、`ip_banned` 按 403 那一档翻倍，
+`rate_limited` 按 429 那一档）。冷却期（`SourcePaused`）、动作预算与连接失败由传输层抛出，契约原样放过，
+所以按站的限流与封禁表现由传输层一处决定。配置与 `SOURCE_SPECS`、`SOURCE_LABELS`、`PROVIDER_NAMES`、
+`scraping_access.SOURCES`、`SOURCE_INTERVALS` 里同一站的那几行由 `tests/test_metadata_sources.py` 守住一致。
+
+| 站 | 状态 | 位置 | 说明 |
+| --- | --- | --- | --- |
+| JavBus | 已套契约 | `sources/javbus.py` | 年龄门归 `auth_required`；404 与番号对不上归 `not_found` |
+| javdb | 已套契约 | `sources/javdb.py` | 搜索页与详情页两跳都在 `fetch` 里；登录页归 `auth_required`，详情页番号与搜索结果不一致归 `parse_error`；主机间隔 3 秒进配置 |
+| fc2club、freejavbt、airav、avsox | 已套契约（经桥） | `metadata_amane.py` | amane 的十六档 reason 经 `AMANE_REASONS` 一对一翻成契约细档，桥的一站先套进 `SiteRecord` 再投影；`SITE_CONFIGS` 只持有站名、界面名与档位，主域与 Cookie 由 amane 管 |
+| AVBase | 待迁 | `community_catalog.avbase_work` | 与契约共存：`COMMUNITY_SOURCES` 里三家都是 `(来源, 取数函数)`，形状相同 |
+| r18.dev、一本道、FC2、fc2cmadb、JavArchive | 待迁 | `library_processing`、`metadata_1pondo`、`metadata_fc2` | 官方档，取页与解析目前各自散在 provider 方法里 |
+| Seesaa 作品表 | 待迁 | `metadata_seesaa.py` | 只由 `scrape_codes --profile seesaa` 走 |
+
 ## FC2 作品资料与封面
 
 FC2 不是 JAV：番号是卖家自己的投稿号，JAV 目录站按它去查要么没有、要么撞上别的片。实测
@@ -421,7 +443,7 @@ av911.tv，三条候选已进复核队列。
   curl_cffi `chrome136` 不带；另有一组 curl_cffi 指纹硬写 Peach 的 UA 字符串只走两张搜索页。
   全程走 `peach_proxy` 的 `mode=environment`（127.0.0.1:7897），按 5 秒主机间隔共发 28 次请求。
   **十六个格子全部 HTTP 200，没有一张 Cloudflare 挑战页、没有一张登录页**：搜索页 27.8–49.3 KB，
-  详情页 89.2–90.1 KB（`community_catalog._JAVDB_PANEL` 各解出 8 个字段），资料页 78.5–79.4 KB
+  详情页 89.2–90.1 KB（`sources/javdb.py` 的面板正则各解出 8 个字段），资料页 78.5–79.4 KB
   （`javdb.all_names` 各解出 `深田詠美 / 深田えいみ / 天海こころ`）。UA 与 TLS 指纹不一致的那一组也是 200。
   两种 transport 的差别只剩响应体几百字节的抖动和界面语言：带 Cookie 的回简体，不带的回繁体。
   实验时 `scraping-javdb.cooldown.json` 不存在，即 javdb 不在冷却期；amane 那次成功同样落在冷却已过的窗口里。
@@ -603,7 +625,7 @@ av911.tv，三条候选已进复核队列。
   身份。名字链要整条搜完再放弃，因为账本的规范名多是简体（`三上悠亚`），javdb 上是 `三上悠亜`／`三上悠亞`，
   `name_key()` 不做简繁转换，只搜规范名一个都搜不到（`harvest_directory_links.collect_javdb`）。
 - **javdb 的演员 id 在作品详情页就拿得到，不必另走一趟资料页。** 演員一栏每个名字都挂着
-  `/actors/<id>`，`community_catalog.javdb_actresses` 取名字时顺手带出来，名字精确匹配到这条
+  `/actors/<id>`，`sources.javdb.actresses` 取名字时顺手带出来，名字精确匹配到这条
   资产已关联的人物实体才登记成 `entity_external_ref(provider='javdb', external_kind='performer')`。
   人物页的 JavDB 入口就是靠它拼的（`peach.entry_links`），另开一页只是把同一页再取一遍，
   而 javdb 的配额最紧。历史数据走 `scripts/backfill_performer_entry_ids.py`：javdb 页面缓存与
