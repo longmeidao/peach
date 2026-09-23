@@ -1254,12 +1254,29 @@ describe('设计决定', () => {
       const toggle = opened.page.getByRole('switch', { name: '订阅新作' });
       assert.equal(await toggle.count(), 1, '资料卡上没有订阅新作开关');
       assert.equal(await toggle.isChecked(), false);
+      const feed = opened.page.locator('.entryfeed');
+      await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
+      assert.equal(await feed.evaluate((element) => getComputedStyle(element).animationName),
+        'entryfeed-breathe', '没订的那枚图标不呼吸，一枚墨色小图标没人注意到');
+      const tip = opened.page.locator('#entityFeedTip');
+      assert.equal(await tip.isVisible(), false);
+      await feed.hover();
+      assert.equal(await tip.isVisible(), true, '悬停没有说明这枚图标是干嘛的');
+      assert.match(await tip.innerText(), /JavDB/);
+      const placed = await tip.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return box.left >= 0 && box.right <= innerWidth && box.bottom <= innerHeight;
+      });
+      assert.ok(placed, '说明浮层越出了视口');
+      await toggle.focus();
+      await opened.page.keyboard.press('Escape');
+      assert.equal(await tip.isVisible(), false, 'Escape 收不起说明浮层');
     } finally {
       await opened.close();
     }
   });
 
-  it('订阅了的人物页先按真卡轮廓占住新作那一行，数据到了行高不变', { timeout: 60_000 }, async () => {
+  it('订阅了的人物页先按真卡轮廓占住新作那一行，数据到了行高不变、封面不再等第二遍', { timeout: 60_000 }, async () => {
     const name = '七沢みあ';
     const opened = await visit(browser, '/', DESKTOP);
     try {
@@ -1275,9 +1292,14 @@ describe('设计决定', () => {
         await held;
         await route.fulfill({ json: { ok: true, more: false, items: [{
           id: 1, code: 'ABC-001', title: '标题', link: 'https://javdb.com/v/x', cover_url: null,
-          has_cover: false, cover_frame: null, poster_box: null, release_date: '2026-09-01',
+          has_cover: true, cover_frame: null, poster_box: null, release_date: '2026-09-01',
           studio: '厂牌', performers: name, source_name: '', read: false, ignored: false,
           scrape_error: null }] } });
+      });
+      // 封面比数据晚到一截：骨架要等它，而不是先换上真卡、再在封面格里微光一遍。
+      await opened.page.route(/\/cover\?code=ABC-001/, async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        await route.fulfill({ contentType: 'image/png', body: Buffer.from(PIXEL, 'base64') });
       });
       await opened.page.goto(new URL(`/performers/${encodeURIComponent(name)}`,
         opened.page.url()).href, { waitUntil: 'load' });
@@ -1287,9 +1309,11 @@ describe('设计决定', () => {
       release();
       await row.locator('[data-feed-id]').waitFor({ timeout: 15_000 });
       const after = await row.evaluate((element) => ({
-        height: element.getBoundingClientRect().height, busy: element.getAttribute('aria-busy') }));
+        height: element.getBoundingClientRect().height, busy: element.getAttribute('aria-busy'),
+        waiting: element.querySelectorAll('[data-feed-id] .pic.imgwait').length }));
       assert.equal(after.height, before, '占位行和到货的那一行不一样高，下面的作品网格会跳');
       assert.equal(after.busy, null);
+      assert.equal(after.waiting, 0, '骨架退场后封面格里又微光了一遍');
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

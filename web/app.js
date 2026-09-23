@@ -4764,6 +4764,20 @@ function feedNewCardHtml(item){
    不占的话，那一行在资料卡和作品之间凭空插进来，把下面整个作品网格往下推一截。
    封面格直接挂 `imgwait`，微光与真卡等封面时同一种订阅橙。 */
 const FEED_SKELETON_CARDS=8;
+const FEED_COVER_WAIT=1500;
+/* 把一段 HTML 里头 `count` 张图先取进缓存，最多等 `ms` 毫秒。插进页面时它们已经
+   `complete`，`watchPendingImages` 不再给它们挂微光。 */
+function preloadImages(html,count,ms){
+  const probe=document.createElement('template');
+  probe.innerHTML=html;
+  const loads=[...probe.content.querySelectorAll('img[src]')].slice(0,count).map(source=>{
+    const img=new Image();
+    img.referrerPolicy=source.getAttribute('referrerpolicy')||'';
+    img.src=source.getAttribute('src');
+    return img.decode().catch(()=>{});
+  });
+  return Promise.race([Promise.all(loads),new Promise(resolve=>setTimeout(resolve,ms))]);
+}
 const feedNewSkeletonHtml=()=>`<div class="feednewrow srow" aria-hidden="true">${
   `<article class="card feednewcard feednewskeleton"><div class="pic imgwait" style="--card-ratio:${COVER_FRONT_RATIO}"></div>
     <div class="meta"><div class="mtext"><span class="t"><span class="skeleton"></span></span>
@@ -4781,10 +4795,17 @@ async function renderFeedNew(host,entityId){
   // 取数期间人已经离开了这一页：首页那一行不画到管理区上，人物页那一行的容器已经换掉。
   if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
   const items=data&&!data.error?(data.items||[]):[];
+  const html=`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
+  // 骨架还占着时，先把头几张封面取到手再整行换掉：否则骨架退场、真卡进来，封面格里
+  // 又是一轮微光，同一行等了两遍。慢的那几张不等满，到点照换，剩下的留给卡片自己的等待态。
+  if(items.length&&host.getAttribute('aria-busy')==='true'){
+    await preloadImages(html,FEED_SKELETON_CARDS,FEED_COVER_WAIT);
+    if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
+  }
   host.removeAttribute('aria-busy');
   if(!items.length){host.hidden=true;host.innerHTML='';return}
   host.hidden=false;
-  host.innerHTML=`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
+  host.innerHTML=html;
   host.querySelectorAll('[data-feed-action]').forEach(button=>button.onclick=async()=>{
     const card=button.closest('[data-feed-id]');
     const action=button.dataset.feedAction;
@@ -4816,10 +4837,18 @@ function syncFeedAutoScroll(){
    开或关。打开时服务端当场在后台拉一轮，拉完这里把未入库的新作那一行重画一次；
    等的上限是那一轮自己的时长量级，页面换走了就不再等。 */
 const ENTITY_FEED_WAIT_TRIES=40;
+const entityFeedTip=on=>on
+  ?'已订阅新作：库里还没有的新片排在资料卡下面。再点一下取消订阅。'
+  :'订阅新作：定时去 JavDB 查这位有没有出新片，库里还没有的排在资料卡下面。';
 function wireEntityFeed(entityId){
   const toggle=$('#index').querySelector('[data-entity-feed]');
   if(!toggle||!entityId)return;
   const onPage=()=>$('#index').contains(toggle);
+  const label=toggle.closest('.entryfeed'),tip=label.querySelector('.entryfeedtip');
+  // Escape 只收起这一次；指针离开或焦点移走后，下一次悬停照常出现。
+  toggle.addEventListener('keydown',event=>{if(event.key==='Escape')label.dataset.tipDismissed=''});
+  const restore=()=>delete label.dataset.tipDismissed;
+  label.addEventListener('pointerleave',restore);toggle.addEventListener('blur',restore);
   const write=async on=>{
     setActionBusy(toggle);
     try{
@@ -4830,7 +4859,7 @@ function wireEntityFeed(entityId){
     }catch(error){
       toggle.checked=!on;actionFailure(on?'订阅新作':'取消订阅新作',error);
       return false;
-    }finally{setActionBusy(toggle,false)}
+    }finally{setActionBusy(toggle,false);tip.textContent=entityFeedTip(toggle.checked)}
   };
   const refreshAfterCheck=async()=>{
     for(let tries=0;tries<ENTITY_FEED_WAIT_TRIES&&onPage();tries+=1){
@@ -8181,8 +8210,9 @@ async function openEntity(kind,name,push=true){
     `<a class="entrymark" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${
       x.mark?icon(x.mark):'<span class="missavmark"><span>MISS</span><span>AV</span></span>'
     }${x.ordinal?`<span class="entryordinal">${esc(x.ordinal)}</span>`:''}<span class="sr-only">${esc(x.label)}</span></a>`
-  ).join('')+(d.feed?`<label class="entryfeed" title="订阅新作">${icon('rss')}<input type="checkbox"
-      class="sr-only" role="switch" aria-label="订阅新作" data-entity-feed ${d.feed.following?'checked':''}></label>`:'');
+  ).join('')+(d.feed?`<label class="entryfeed">${icon('rss')}<input type="checkbox"
+      class="sr-only" role="switch" aria-label="订阅新作" aria-describedby="entityFeedTip" data-entity-feed ${d.feed.following?'checked':''}><span
+      class="entryfeedtip" role="tooltip" id="entityFeedTip">${entityFeedTip(d.feed.following)}</span></label>`:'');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。 */
