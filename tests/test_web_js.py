@@ -360,24 +360,23 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "siteName", ["不是网址"], ""),
         ])
 
-    def test_a_company_page_calls_its_own_site_the_official_site(self):
-        """公司页上指回自家站的链接写「官方网站」，指向别家的保留那家的名字；人物页照旧写短名。"""
+    def test_a_studio_page_calls_its_own_site_the_official_site(self):
+        """厂牌页上指回自家站的链接写「官方网站」，指向别家的保留那家的名字；事务所页与人物页照旧写名字。"""
         light = {"url": "https://lightpro.jp/", "label": "LIGHT"}
+        nax = {"url": "https://official.nax-pro.com/", "label": "New Actor eXperience"}
         self.assertJsResults([
-            ("core.js", "officialLinkText", [light, "agency", ["LIGHT", "RIGHT"]], "官方网站"),
             ("core.js", "officialLinkText",
-             [{"url": "https://cmore.jp/", "label": "C-more Entertainment"}, "agency",
+             [{"url": "https://www.km-produce.com/", "label": "K M Produce"}, "studio",
+              ["K M Produce", "KMP"]], "官方网站"),
+            ("core.js", "officialLinkText",
+             [{"url": "https://cmore.jp/", "label": "C-more Entertainment"}, "studio",
               ["C-more Entertainment"]], "官方网站"),
-            ("core.js", "officialLinkText",
-             [{"url": "https://www.gg1produce.com/", "label": "官方网站"}, "agency", ["GG"]], "官方网站"),
             # 别名也算自家：合并进来的旧名下装的链接。
             ("core.js", "officialLinkText",
-             [{"url": "https://example.jp/", "label": "Production CLAP"}, "agency",
-              ["C-more Entertainment", "Production CLAP"]], "官方网站"),
+             [{"url": "https://example.jp/", "label": "Studio CLAP"}, "studio",
+              ["C-more Entertainment", "Studio CLAP"]], "官方网站"),
             # 短名是缩写时认 label；label 只是主机名等于没起名。
-            ("core.js", "officialLinkText",
-             [{"url": "https://official.nax-pro.com/", "label": "New Actor eXperience"}, "agency",
-              ["New Actor eXperience"]], "官方网站"),
+            ("core.js", "officialLinkText", [nax, "studio", ["New Actor eXperience"]], "官方网站"),
             ("core.js", "officialLinkText",
              [{"url": "http://www.ran-maru.com", "label": "www.ran-maru.com"}, "studio", ["乱丸"]], "官方网站"),
             ("core.js", "officialLinkText",
@@ -389,6 +388,8 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "officialLinkText",
              [{"url": "https://www.prestige-av.com/goods/", "label": "Prestige"}, "studio",
               ["Jackson"]], "Prestige"),
+            ("core.js", "officialLinkText", [light, "agency", ["LIGHT", "RIGHT"]], "LIGHT"),
+            ("core.js", "officialLinkText", [nax, "agency", ["New Actor eXperience"]], "NAX"),
             ("core.js", "officialLinkText", [light, "performer", ["松本一香"]], "LIGHT"),
         ])
 
