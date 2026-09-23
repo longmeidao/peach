@@ -120,7 +120,6 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   /* 说明行右端的动作在手机上要够手指点：桌面 32px 是 Geist 的控件高度，触摸区按本项目
      的 44px 命中区来。 */
   .pagelede-actions .batchaction{height:44px;padding-inline:16px}
-  .grid{gap:16px 8px}
   .count{align-items:center;flex-direction:row;gap:10px;padding-block:8px;
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;overscroll-behavior-inline:contain}
   .count::-webkit-scrollbar{display:none}

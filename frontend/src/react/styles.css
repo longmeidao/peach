@@ -167,6 +167,61 @@
   --font-inter: "Inter Variable", "Inter";
 }
 
+/* 阴影 token 改由 `--elevation-*` 给值。Tailwind v4 为了让 `shadow-<颜色>` 能换色，把
+ * `--shadow-*` 的字面值抄进工具类，`theme.css` 在 `.dark` 里重定的 `--shadow-*` 于是够不着
+ * `shadow-card` 这类工具类，暗色下全站卡片还是浅色那一档 5% 的黑影。这里把 token 接到
+ * 变量上，工具类就带着 `var(--elevation-*)` 出去，深浅两档的真值写在下面两块。Tailwind 只
+ * 输出自己源码用到的 `--shadow-*`，`web/` 下的旧样式表因此直接读 `--elevation-*`。 */
+@theme {
+  --shadow-2xs: var(--elevation-2xs);
+  --shadow-xs: var(--elevation-xs);
+  --shadow-sm: var(--elevation-sm);
+  --shadow-md: var(--elevation-md);
+  --shadow-lg: var(--elevation-lg);
+  --shadow-xl: var(--elevation-xl);
+  --shadow-card: var(--elevation-card);
+  --shadow-dropdown: var(--elevation-dropdown);
+  --shadow-sidebar: var(--elevation-sidebar);
+  --shadow-waitlist: var(--elevation-waitlist);
+}
+
+/* 浅色逐字取 `theme.css` 的 `@theme` 原值，2xs、xs 是 Tailwind v4 的默认值。 */
+:root {
+  --elevation-2xs: 0 1px rgb(0 0 0 / 0.05);
+  --elevation-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --elevation-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06), 0 1px 3px 0 rgb(0 0 0 / 0.10);
+  --elevation-md: 0 2px 4px -1px rgb(0 0 0 / 0.06), 0 4px 6px -1px rgb(0 0 0 / 0.10);
+  --elevation-lg: 0 4px 6px -2px rgb(0 0 0 / 0.05), 0 10px 15px -3px rgb(0 0 0 / 0.10);
+  --elevation-xl: 0 10px 10px -5px rgb(0 0 0 / 0.04), 0 20px 25px -5px rgb(0 0 0 / 0.10);
+  --elevation-card: 0 1px 1px 0 rgb(0 0 0 / 0.05);
+  --elevation-dropdown: 0 1px 1px 0 rgb(0 0 0 / 0.04), 0 4px 4px 0 rgb(0 0 0 / 0.02);
+  --elevation-sidebar:
+    0 1px 0 0 rgb(0 0 0 / 0.0196), 0 1px 12px 0 rgb(0 0 0 / 0.0588), 0 0 1px 0 rgb(0 0 0 / 0.3216);
+  --elevation-waitlist:
+    0 0 6px 0 rgb(0 0 0 / 0.06), 0 0 64px 0 rgb(0 0 0 / 0.16), 0 0 1px 0 rgb(0 0 0 / 0.32),
+    0 1px 12px 0 rgb(0 0 0 / 0.06), 0 1px 0 0 rgb(0 0 0 / 0.02);
+}
+
+/* 深色不取 `theme.css` 那组 0.1–0.2 的值：黑影落在 #111 的页面底上，能压暗的只剩到纯黑
+ * 那几级，那组值在截图里和没有一样。贴边的接触影保留浅色的几何、alpha 抬几倍；卡片和
+ * 浮层再加一层短的环境影，近黑的底上只有这一层还读得出高度。取值按统计页与活动页的
+ * 卡片截图定。 */
+.dark {
+  --elevation-2xs: 0 1px rgb(0 0 0 / 0.5);
+  --elevation-xs: 0 1px 2px 0 rgb(0 0 0 / 0.55);
+  --elevation-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 2px 6px 0 rgb(0 0 0 / 0.4);
+  --elevation-md: 0 2px 4px -1px rgb(0 0 0 / 0.5), 0 4px 10px -1px rgb(0 0 0 / 0.45);
+  --elevation-lg: 0 4px 6px -2px rgb(0 0 0 / 0.45), 0 10px 20px -3px rgb(0 0 0 / 0.55);
+  --elevation-xl: 0 10px 10px -5px rgb(0 0 0 / 0.4), 0 20px 30px -5px rgb(0 0 0 / 0.6);
+  --elevation-card: 0 1px 2px 0 rgb(0 0 0 / 0.6), 0 2px 8px 0 rgb(0 0 0 / 0.45);
+  --elevation-dropdown: 0 1px 2px 0 rgb(0 0 0 / 0.6), 0 4px 12px 0 rgb(0 0 0 / 0.45);
+  --elevation-sidebar:
+    0 1px 0 0 rgb(0 0 0 / 0.3), 0 1px 12px 0 rgb(0 0 0 / 0.45), 0 0 1px 0 rgb(0 0 0 / 0.7);
+  --elevation-waitlist:
+    0 0 6px 0 rgb(0 0 0 / 0.3), 0 0 64px 0 rgb(0 0 0 / 0.5), 0 0 1px 0 rgb(0 0 0 / 0.7),
+    0 1px 12px 0 rgb(0 0 0 / 0.35), 0 1px 0 0 rgb(0 0 0 / 0.2);
+}
+
 /* 上游 globals.css 里 html、body 的基线，落在 React 子树的容器上。 */
 .peach-react {
   font-family: var(--font-sans);
