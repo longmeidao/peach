@@ -220,8 +220,8 @@ Cookie 复制到新用户电脑。已有成功元数据快照优先，缺快照�
 - 429 的 Retry-After 冷却落本机文件，新 transport 也遵守；失败不删除已有封面。
   程序重启不自动重放写入任务，未完成任务由用户重新发起。
 
-该配置覆盖封面 HTTP 与 FC2 CLI。Javinizer-Go 子进程、其它采集脚本与 curl_cffi 连接器
-仍使用各自配置。Instagram 的 Instaloader 匿名 POC 对 Bambi、LINX 返回 ConnectionException；
+该配置覆盖封面 HTTP 与 FC2 CLI。amane 桥子进程、其它采集脚本与 curl_cffi 连接器
+各用自己的配置。Instagram 的 Instaloader 匿名 POC 对 Bambi、LINX 返回 ConnectionException；
 独立用户登录会话未取得。自动适配器不进入正式依赖。
 
 测试步骤见 [Windows 测试版](TESTING_DESKTOP.md)，架构完整要求见
@@ -434,7 +434,7 @@ av911.tv，三条候选已进复核队列。
   「不是同一张图」，不用。社区来源的图只出自一个图源时照样装上，`.scraping.json` 的 `verified_by` 为空即未经印证
   （IPX-060 只有 javdb）。JavBus 有年龄门，2026-09-15 实测番号页不带 Cookie 回答题式年龄验证页；javdb 有登录墙。
   两家的 Cookie 由用户在浏览器里过门或登录后贴进采集设置，公开采集随请求带上。MIDE-594 在 JavBus 有封面
-  （2026-09-15 人工核对），IPX-060 在 JavBus 是 404。Javinizer-Go 的 JavBus、javdb 快照只借厂牌选官方渠道，
+  （2026-09-15 人工核对），IPX-060 在 JavBus 是 404。`sources/metadata/javinizer-go/` 下的 JavBus、javdb 旧快照只借厂牌选官方渠道，
   封面不当官方候选：JavBus 搜不到原番号时返回的是别的作品。
   Gfriends 只按 `Filetree.json` 和单张 raw 媒体当外部 Provider 用，不克隆图库、不把图片放进 Git。
   索引缓存按 mtime 计龄（一天），取不到新索引就退回旧缓存并在输出里告警；那一轮的「未收录」

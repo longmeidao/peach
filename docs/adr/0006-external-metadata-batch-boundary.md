@@ -33,3 +33,5 @@ Peach 需要在线补充番号的 performer、studio、series 和内容分类，
 ## 影响
 
 元数据到达存在延迟，并需维护来源解析器；换来的是可追溯、可重跑、可限速和可逐源替换，外部故障不会影响本地播放。
+
+「默认查询适配器」与 `REGISTERED_SOURCES` 登记位那一条被 ADR-0044 取代：来源级别登记在 `metadata_policy.SOURCE_SPECS`，链的成员由 `metadata_routes.ROUTES` 决定，Javinizer-Go 已退场。 <!-- copy-lint-disable-line -->
