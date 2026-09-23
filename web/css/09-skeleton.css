@@ -230,6 +230,22 @@ body.refreshing #tiers .brandpill::after{content:'';position:absolute;inset:0;ri
 .cleanup-skeleton .skeletoncard em::after,
 .review-skeleton .skeletoncard em::after,
 .followmanage-skeleton .skeletoncard i::after{content:none}
+/* 封面与头像还在路上：框上铺同一条微光，到手后淡出并糊掉，和换头像那一格
+   （`reveal-skeleton`）同一形态。类名由 app.js 的 `watchPendingImages` 标、`settleImage`
+   收。微光晚 180ms 才淡入，门槛与 `.skeleton-awaiting` 同一个数：本地图多半在这之前
+   就到了，那种一帧都不该看见它。底色垫 `--ground`，否则半透明的微光落在 `.pic` 的
+   黑底上只剩一片黑。收尾后转 `visibility:hidden`，淡出完就不再占合成层。 */
+.imgwait::after,.imgdone::after{content:'';position:absolute;inset:0;right:-200%;z-index:5;
+  pointer-events:none;border-radius:inherit;
+  background:linear-gradient(to right,var(--hover),var(--skeleton-sheen) 50%,var(--hover)) 0 0/50% 100%,
+    var(--ground);
+  opacity:0;filter:blur(2px);visibility:hidden;
+  transition:opacity var(--motion-reveal),filter var(--motion-reveal),visibility 0s var(--motion-reveal)}
+.imgwait::after{opacity:1;filter:none;visibility:visible;transition-delay:180ms;
+  animation:skeleton-sweep 1.5s ease-in-out infinite reverse}
+@starting-style{.imgwait::after{opacity:0;filter:blur(2px)}}
+/* 首页刷新那一层微光也画在头像圈的 `::after` 上；已经收尾的圈别把它一起藏掉。 */
+body.refreshing #tiers .av .ring.imgdone::after{opacity:1;filter:none;visibility:visible}
 
 
 /* 计数骨架的宽高定死：跟着真实文本走的话，数字回来那一刻整行会横向弹一下。

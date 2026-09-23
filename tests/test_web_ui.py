@@ -8060,7 +8060,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".nrow{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;")
         # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
         self.assertPageContains("event.button!==0||el.scrollWidth-el.clientWidth<=1")
-        self.assertPageContains("Math.abs(event.deltaY)<=Math.abs(event.deltaX)||el.scrollWidth<=el.clientWidth")
+        self.assertPageContains("Math.abs(event.deltaY)<=Math.abs(event.deltaX)||max<=0")
 
     def test_entity_collection_posters_and_titles_open_item_details(self):
         self.assertPageContains('type="button" class="cardopenhit" data-open')
@@ -9351,7 +9351,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".followpageaction .fmeta",
             ".fsechead .fmeta",
             ".frow>b",
-            ".fvkind", ".idname",
+            ".feednewcard .meta .s>.feednewstudio", ".fvkind", ".idname",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",

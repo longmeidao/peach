@@ -41,8 +41,9 @@ WANTED = ("title", "performers", "studio", "release_date")
 #: 一批最多带几部。新发现的先排，余下的名额给还缺资料或封面、到了重试时间的旧壳。
 MAX_BATCH = 24
 
-#: 缺封面或上次没取到资料的壳，隔多久再试一次。新片的封面常常晚于番号出现，
-#: 所以不是试一次就放弃；但也不该每拉一轮源就把同一批再问一遍。
+#: 缺封面或上次没取到资料的壳，定时拉取隔多久再试一次。新片的封面常常晚于番号出现，
+#: 所以不是试一次就放弃；但也不该每拉一轮源就把同一批再问一遍。人手点的那一次不等：
+#: 点「检查」本身就是要现在取。
 RETRY_AFTER = timedelta(hours=12)
 
 #: 一部封面最多等多久。后继在写账本那条串行通道上，一部卡住不能拖住后面整批。
@@ -81,14 +82,14 @@ def has_local_cover(cover_root: Path, code: str) -> bool:
 
 
 def backlog(connection, cover_root: Path, *, exclude=(), now: datetime | None = None,
-            limit: int = MAX_BATCH) -> list[str]:
-    """还缺资料或本机封面、上次尝试已经过了 `RETRY_AFTER` 的壳。
+            limit: int = MAX_BATCH, retry_after: timedelta = RETRY_AFTER) -> list[str]:
+    """还缺资料或本机封面、上次尝试已经过了 `retry_after` 的壳。
 
     已忽略的不算：人说了不想看，就不再替它花配额。已经入库的壳本来就不在表里
     （入库即从列表里消失，ADR-0042 第三条），这里同样用番号键排除掉。
     """
     moment = now or datetime.now(timezone.utc)
-    cutoff = feeds.stamp(moment - RETRY_AFTER)
+    cutoff = feeds.stamp(moment - retry_after)
     skip = set(exclude)
     rows = connection.execute(
         "SELECT d.code,d.scraped_at,d.scrape_error FROM feed_discovery d"

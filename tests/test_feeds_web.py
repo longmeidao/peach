@@ -120,11 +120,11 @@ class FeedWebFixture(unittest.TestCase):
                                  {"action": "add", "url": self.url, "name": "示例源",
                                   **body})
 
-    def _check(self):
+    def _check(self, **body):
         original = web_feeds._transport
         web_feeds._transport = lambda contract: self.transport
         try:
-            return dispatch_api_post(self.contract, "/api/feeds/check", {"all": True})
+            return dispatch_api_post(self.contract, "/api/feeds/check", {"all": True, **body})
         finally:
             web_feeds._transport = original
 
@@ -266,6 +266,25 @@ class FeedWebTest(FeedWebFixture):
         self.assertEqual(len(dispatch_api_get(
             self.contract, "/api/feeds/discoveries", {"entity": 1})["items"]), 2)
 
+    def test_the_card_names_the_studio_the_way_the_library_does(self):
+        """来源给的是日文厂牌名，卡片上写账本里那个厂牌的规范名；壳上仍存原文。"""
+        with self.contract.database.write_transaction() as connection:
+            connection.execute(
+                "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES('studio','Sample Studio',peach_normalize('Sample Studio'),?,?)",
+                (feeds.stamp(), feeds.stamp()))
+            connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+                " VALUES(last_insert_rowid(),'示例厂牌',peach_normalize('示例厂牌'),'test')")
+        self._add()
+        self._check()
+        self._drain(1)
+        items = dispatch_api_get(self.contract, "/api/feeds/discoveries", {})["items"]
+        self.assertEqual({item["studio"] for item in items}, {"Sample Studio"})
+        with self.contract.database.read_connection() as connection:
+            self.assertEqual({row[0] for row in connection.execute(
+                "SELECT studio FROM feed_discovery")}, {"示例厂牌"})
+
     def test_one_batch_installs_each_cover_with_the_sidecars_the_cards_frame_by(self):
         self.cover_misses.add("HMN-071")
         self._add()
@@ -291,13 +310,13 @@ class FeedWebTest(FeedWebFixture):
         self._check()
         self._drain(1)
         self.transport.responses[self.url] = HttpResponse(304, {}, b"", self.url)
-        # 刚试过的不再排；已经有封面、资料也齐的那部永远不再排。
-        self.assertEqual(self._check()["followups"], [])
+        # 定时那一轮：刚试过的不再排；已经有封面、资料也齐的那部永远不再排。
+        self.assertEqual(self._check(automatic=True)["followups"], [])
         earlier = feeds.stamp(datetime.now(timezone.utc)
                               - feed_followup.RETRY_AFTER - timedelta(minutes=1))
         with self.contract.database.write_transaction() as connection:
             connection.execute("UPDATE feed_discovery SET scraped_at=?", (earlier,))
-        self.assertEqual([item["key"] for item in self._check()["followups"]],
+        self.assertEqual([item["key"] for item in self._check(automatic=True)["followups"]],
                          ["feed-scrape:HMN-071"])
         # 人说了不想看的，不再替它花配额。
         first = {row["code"]: row for row in dispatch_api_get(
@@ -305,6 +324,16 @@ class FeedWebTest(FeedWebFixture):
         dispatch_api_post(self.contract, "/api/feeds/discovery",
                           {"action": "ignore", "ids": [first["id"]]})
         self.assertEqual(self._check()["followups"], [])
+
+    def test_a_manual_check_retries_a_missing_cover_without_waiting_out_the_window(self):
+        """人手点的那一轮不等重试窗口：点「检查」就是要现在取。"""
+        self.cover_misses.add("HMN-071")
+        self._add()
+        self._check()
+        self._drain(1)
+        self.transport.responses[self.url] = HttpResponse(304, {}, b"", self.url)
+        self.assertEqual([item["key"] for item in self._check()["followups"]],
+                         ["feed-scrape:HMN-071"])
 
     def test_an_unknown_action_is_refused(self):
         with self.assertRaises(ValueError):

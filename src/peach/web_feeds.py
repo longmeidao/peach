@@ -9,8 +9,9 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from datetime import timedelta
 
-from . import entry_links, feed_followup, feeds
+from . import entities, entry_links, feed_followup, feeds
 from .jobs import TaskRunConflict
 from .http import HttpRequest, public_https_url
 
@@ -130,10 +131,12 @@ def _execute_check(contract, body, job_id: str) -> dict:
         if close:
             close()
     contract.cache_bust()
-    # 新发现的先排，余下名额给还缺资料或封面、到了重试时间的旧壳：同一批一条后继。
+    # 新发现的先排，余下名额给还缺资料或封面的旧壳：同一批一条后继。定时那一轮只带
+    # 到了重试时间的，手动点的那一轮全带。
+    retry_after = feed_followup.RETRY_AFTER if body.get("automatic") else timedelta(0)
     with contract.database.read_connection() as connection:
         batch = codes + feed_followup.backlog(
-            connection, contract.cover_root, exclude=codes,
+            connection, contract.cover_root, exclude=codes, retry_after=retry_after,
             limit=max(0, feed_followup.MAX_BATCH - len(codes)))
     return {"ok": True, "checked": len(rows), "total": len(rows), "results": results,
             "added": len(codes),
@@ -287,6 +290,8 @@ def q_feed_discoveries(contract, args) -> dict:
             f" WHERE {' AND '.join(where)}"
             " ORDER BY COALESCE(d.release_date,d.discovered_at) DESC, d.id DESC"
             " LIMIT ?", (*params, limit + 1)).fetchall()
+        studios = {name: _studio_name(connection, name)
+                   for name in {row["studio"] for row in rows[:limit]} if name}
     more = len(rows) > limit
     return {"ok": True, "more": more, "items": [{
         "id": int(row["id"]),
@@ -299,13 +304,23 @@ def q_feed_discoveries(contract, args) -> dict:
         "cover_frame": contract.cover_frame(row["code"]),
         "poster_box": contract.poster_box(row["code"]),
         "release_date": row["release_date"],
-        "studio": row["studio"],
+        "studio": studios.get(row["studio"], row["studio"]),
         "performers": row["performers"],
         "source_name": row["source_name"],
         "read": bool(row["read_at"]),
         "ignored": bool(row["ignored_at"]),
         "scrape_error": row["scrape_error"],
     } for row in rows[:limit]]}
+
+
+def _studio_name(connection, name: str) -> str:
+    """来源给的厂牌名换成账本里那个厂牌的规范名，和资产卡上写的是同一个。
+
+    壳上存的是来源原文（多半是日文），投影现算、不回写：壳没有真相字段，认不出或撞名
+    就照原文显示。
+    """
+    found = entities.resolve_entity(connection, "studio", name)
+    return found["canonical_name"] if found is not None else name
 
 
 #: 允许的状态动作。已读与忽略彼此正交，各写各的列，都不改变去重（ADR-0042 第五条）。
