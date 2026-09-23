@@ -361,13 +361,13 @@ class DesktopSettingsTests(unittest.TestCase):
         media = self.root / 'media'
         media.mkdir()
         (media / 'video.mp4').write_text('preserve')
-        job = desktop_uninstall.plan(self.config, delete_data=True, program=self.program)
-        shell = Path(os.environ.get('SystemRoot', r'C:\Windows')) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
-        result = subprocess.run([str(shell), '-NoProfile', '-NonInteractive', '-EncodedCommand',
-                                 base64.b64encode(desktop_uninstall._SCRIPT.encode('utf-16-le')).decode('ascii')],
-                                input=json.dumps(dict(job, pid=2147483647)).encode('utf-8'), capture_output=True, timeout=25,
-                                creationflags=subprocess.CREATE_NO_WINDOW)
-        self.assertEqual(result.returncode, 0, result.stderr)
+        # 走带 `quiet` 的那条：脚本一旦进 catch，不带它就在桌面上弹一个真的模态框。
+        log = self.root / 'uninstall.log'
+        result = self._run_native_uninstall(
+            desktop_uninstall.plan(self.config, delete_data=True, program=self.program), log=log)
+        self.assertEqual(result.returncode, 0,
+                         result.stderr.decode(errors='replace')
+                         + (log.read_text(encoding='utf-8') if log.exists() else ''))
         self.assertFalse(self.program.exists())
         self.assertFalse(self.config.path.exists())
         self.assertFalse(generated_backup.exists())

@@ -96,14 +96,15 @@ class SettingsRoundTripTests(unittest.TestCase):
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
                           "followInitialDays": 30, "postSetupTutorialDone": False,
                           "organizeTemplates": {}, "feedHideGroupCompilations": True,
-                          "feedHideSoloCompilations": False})
+                          "feedHideSoloCompilations": False, "feedHideExcerpts": True})
 
     def test_the_compilation_switches_take_only_booleans(self):
         with self.assertRaises(ValueError):
             w_settings(self.contract, {"feedHideSoloCompilations": "yes"})
-        self.assertEqual(web_settings.hidden_compilations(self.contract), frozenset({"group"}))
+        self.assertEqual(web_settings.hidden_compilations(self.contract),
+                         frozenset({"group", "excerpt"}))
         w_settings(self.contract, {"feedHideSoloCompilations": True,
-                                   "feedHideGroupCompilations": False})
+                                   "feedHideGroupCompilations": False, "feedHideExcerpts": False})
         self.assertEqual(web_settings.hidden_compilations(self.contract), frozenset({"solo"}))
 
     def test_the_metadata_refresh_period_round_trips_and_rejects_odd_values(self):
@@ -130,7 +131,7 @@ class SettingsRoundTripTests(unittest.TestCase):
                           "metadataRefreshDays": web_settings.DEFAULT_METADATA_REFRESH_DAYS,
                           "followInitialDays": 30, "postSetupTutorialDone": False,
                           "organizeTemplates": {}, "feedHideGroupCompilations": True,
-                          "feedHideSoloCompilations": False})
+                          "feedHideSoloCompilations": False, "feedHideExcerpts": True})
         self.assertEqual(q_settings(self.contract)["sidebarOrder"], order)
         self.assertEqual(self._stored_json()["sidebarOrder"], order)
 

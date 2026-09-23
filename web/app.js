@@ -548,11 +548,13 @@ appSettings.miniplayer=appSettings.miniplayer!==false;
 appSettings.uiSounds=appSettings.uiSounds!==false;
 appSettings.feedAutoScroll=appSettings.feedAutoScroll!==false;
 /* 新作那一行收不收合集由服务端按账本里的设置筛（列表、未读数、补封面同一份），这里只是
-   镜像：开关的真相在 `/api/settings`。默认收起大合集、单人合集照列。 */
+   镜像：开关的真相在 `/api/settings`。默认收起大合集与切片、单人合集照列。 */
 const FEED_COMPILATION_SWITCHES=[['feedHideGroupSetting','feedHideGroupCompilations','大合集'],
-  ['feedHideSoloSetting','feedHideSoloCompilations','单人合集']];
+  ['feedHideSoloSetting','feedHideSoloCompilations','单人合集'],
+  ['feedHideExcerptSetting','feedHideExcerpts','切片']];
 appSettings.feedHideGroupCompilations=appSettings.feedHideGroupCompilations!==false;
 appSettings.feedHideSoloCompilations=appSettings.feedHideSoloCompilations===true;
+appSettings.feedHideExcerpts=appSettings.feedHideExcerpts!==false;
 appSettings.searchHistoryLimit=boundedPreference(+appSettings.searchHistoryLimit,0,50,10);
 appSettings.relatedLimit=boundedPreference(+appSettings.relatedLimit,0,60,20);
 const METADATA_REFRESH_DAYS=[0,7,30,90];
@@ -4758,6 +4760,16 @@ function feedNewCardHtml(item){
       <div class="s mono">${label||(item.title||item.performers?'':'资料还没取到')}</div></div></div></article>`;
 }
 
+/* 订阅了这位时，新作那一行先按真卡的轮廓占住位置：取数回来再整行换掉，没有就收起。
+   不占的话，那一行在资料卡和作品之间凭空插进来，把下面整个作品网格往下推一截。
+   封面格直接挂 `imgwait`，微光与真卡等封面时同一种订阅橙。 */
+const FEED_SKELETON_CARDS=8;
+const feedNewSkeletonHtml=()=>`<div class="feednewrow srow" aria-hidden="true">${
+  `<article class="card feednewcard feednewskeleton"><div class="pic imgwait" style="--card-ratio:${COVER_FRONT_RATIO}"></div>
+    <div class="meta"><div class="mtext"><span class="t"><span class="skeleton"></span></span>
+      <div class="s mono"><span class="skeleton">&#8203;</span></div></div></div></article>`
+    .repeat(FEED_SKELETON_CARDS)}</div>`;
+
 /* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次
    刷新都变成对别人服务器的一次拉取，而订阅的间隔本来就是按天算的。 */
 async function renderFeedNew(host,entityId){
@@ -4769,6 +4781,7 @@ async function renderFeedNew(host,entityId){
   // 取数期间人已经离开了这一页：首页那一行不画到管理区上，人物页那一行的容器已经换掉。
   if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
   const items=data&&!data.error?(data.items||[]):[];
+  host.removeAttribute('aria-busy');
   if(!items.length){host.hidden=true;host.innerHTML='';return}
   host.hidden=false;
   host.innerHTML=`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
@@ -8259,7 +8272,9 @@ async function openEntity(kind,name,push=true){
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
-    <section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>
+    ${d.feed?.following
+      ?`<section class="feednew" data-feed-new aria-label="未入库的新作" aria-busy="true">${feedNewSkeletonHtml()}</section>`
+      :'<section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>'}
     <div class="entitysection"></div>`;
   /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
      不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的

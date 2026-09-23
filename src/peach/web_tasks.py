@@ -5,7 +5,8 @@
 `/api/tasks` 不带筛选时直接把这三段一起下发；带 `status`／`task_key` 时才退回成一张
 普通的筛选列表，留给排查用。
 
-「最近完成」按结束时刻从新到旧排，`finished_has_more` 说它后面还有没有更早的。往前翻
+「最近完成」按结束时刻从新到旧排，一页数的是顶层那几轮，后继随父任务一起下发；
+`finished_has_more` 说它后面还有没有更早的。往前翻
 带上当前最旧那一行的 `before_finished_at` 与 `before_id`，只回 `finished` 与
 `finished_has_more` 这一页：在跑那段和被挡下那段由轮询那一份负责，翻页时再下发一遍
 只会让两份快照互相打架。
@@ -54,6 +55,9 @@ def _tasks(contract, args):
                 "finished": [row.payload() for row in finished],
                 "finished_has_more": has_more}
     running = contract.task_runs.query(status="active", limit=limit)
+    # 还在跑的那一轮已经跑完的后继：它们挂在「正在进行」那张卡下面，不在哪一页里。
+    finished += contract.task_runs.settled_followups(
+        [row.id for row in running if not row.followup])
     return {
         "ok": True,
         "filtered": False,

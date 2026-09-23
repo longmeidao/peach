@@ -144,9 +144,43 @@ it('后继挂在派出它的那一轮下面，不另占一张卡', async () => {
   expect(host.querySelectorAll('[data-task-key]')).toHaveLength(1);
   const row = host.querySelector('[data-followup-key]')!;
   expect(host.querySelector('[data-task-key=follow-check]')!.contains(row)).toBe(true);
-  expect(row.textContent).toContain('补实体头像：涼森れむ');
-  expect(row.textContent).toContain('已装上');
+  expect([...row.querySelectorAll('span')].map((node) => node.textContent))
+    .toEqual(['补实体头像', '已完成', '涼森れむ · 结果 已装上']);
   expect(host.textContent).toContain('派出后继 1');
+});
+
+it('后继还在跑时，派出它的那一轮整张卡留在正在进行，那一行只说做到哪一部', async () => {
+  const parent = run({ id: 4, status: 'succeeded', task_label: '订阅源拉取',
+                       progress_total: null, finished_at: '2026-09-11T10:03:00Z',
+                       result_summary: { followups: 1 } });
+  const scraping = followup(parent.id, {
+    task_key: 'feed-scrape', task_label: '取新作资料', status: 'running', finished_at: null,
+    progress_label: '取新作资料：MIZD-441', progress_current: 13, progress_total: 22,
+    followup_key: 'feed-scrape:MIZD-441', result_summary: {} });
+  const { host } = await open(payload({ running: [scraping], finished: [parent] }));
+  expect(sections(host)).toEqual(['正在进行']);
+  const row = host.querySelector('[data-followup-key]')!;
+  expect([...row.querySelectorAll('span')].map((node) => node.textContent))
+    .toEqual(['取新作资料', '进行中', 'MIZD-441 · 13 / 22 项']);
+});
+
+it('连着几轮什么也没发生的定时任务按种类各并成一张卡，有事的那一轮截断并单独摆', async () => {
+  const hourly = (id: number, overrides: Partial<TaskRunPayload> = {}) => done(id, {
+    trigger: 'scheduled', result_summary: { checked: 83, total: 83 }, ...overrides });
+  const feed = (id: number, overrides: Partial<TaskRunPayload> = {}) => hourly(id, {
+    task_key: 'feed-check', task_label: '订阅源拉取', result_summary: { checked: 2, added: 0 }, ...overrides });
+  const { host } = await open(payload({ finished: [
+    hourly(9), feed(8), hourly(7), feed(6), hourly(5),
+    feed(4, { result_summary: { checked: 2, added: 3 } }),
+    hourly(3), hourly(2),
+  ] }));
+  expect(shownIds(host)).toEqual([9, 8, 4, 3]);
+  const first = host.querySelector('[data-run-id="9"]')!;
+  expect(first.textContent).toContain('定时 · 近 3 轮 · ');
+  expect(first.textContent).toContain('已检查 83 · 总数 83');
+  expect(host.querySelector('[data-run-id="8"]')!.textContent).toContain('近 2 轮');
+  expect(host.querySelector('[data-run-id="4"]')!.textContent).toContain('新增 3');
+  expect(host.querySelector('[data-run-id="3"]')!.textContent).toContain('近 2 轮');
 });
 
 it('父任务不在这一屏上时，后继照常单独摆出来', async () => {

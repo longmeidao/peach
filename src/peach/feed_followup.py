@@ -95,7 +95,7 @@ def backlog(connection, cover_root: Path, *, exclude=(), now: datetime | None = 
     cutoff = feeds.stamp(moment - retry_after)
     skip = set(exclude)
     rows = connection.execute(
-        "SELECT d.code,d.title,d.performers,d.scraped_at,d.scrape_error FROM feed_discovery d"
+        "SELECT d.code,d.title,d.performers,d.studio,d.scraped_at,d.scrape_error FROM feed_discovery d"
         " WHERE d.ignored_at IS NULL AND (d.scraped_at IS NULL OR d.scraped_at<?)"
         " AND NOT EXISTS (SELECT 1 FROM asset a WHERE a.code IS NOT NULL"
         " AND normalise_code_key(a.code)=normalise_code_key(d.code))"
@@ -104,7 +104,8 @@ def backlog(connection, cover_root: Path, *, exclude=(), now: datetime | None = 
     found: list[str] = []
     for row in rows:
         code = row["code"]
-        if code in skip or feeds.compilation_kind(row["title"], row["performers"]) in hidden:
+        if code in skip or feeds.compilation_kind(
+                row["title"], row["performers"], row["studio"]) in hidden:
             continue
         needs_fields = row["scraped_at"] is None or row["scrape_error"] is not None
         if needs_fields or not has_local_cover(cover_root, code):

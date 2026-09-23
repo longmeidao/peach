@@ -28,8 +28,8 @@ import { Page } from '../components/page';
 import { Progress } from '../components/progress';
 import { busyProps } from '../settings/use-action';
 import {
-  elapsedText, fetchEarlier, fetchTasks, groupFollowups, mergeFinished, momentText,
-  pollInterval, statusLabel, summaryText, TASKS_KEY, TRIGGER_LABELS, type TaskRunPayload,
+  elapsedText, fetchEarlier, fetchTasks, foldRoutine, followupDetail, groupFollowups, isActive,
+  isRoutine, mergeFinished, momentText, pollInterval, statusLabel, summaryText, TASKS_KEY, TRIGGER_LABELS, type TaskRunPayload,
 } from './tasks';
 
 /* 状态徽章只有三档颜色：成功是绿、失败是红、被叫停与被打断是黄，其余留中性底。
@@ -51,12 +51,12 @@ function FollowupList({ rows }: { rows: TaskRunPayload[] }) {
   return (
     <ul className="flex min-w-0 flex-col">
       {rows.map((row) => {
-        const detail = row.error || summaryText(row.result_summary) || row.progress_label;
+        const detail = followupDetail(row);
         return (
           <li key={row.id} data-status={row.status} data-followup-key={row.followup_key}
             className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-separator-border px-5 py-2.5">
             <span className="min-w-0 break-words text-caption-1-regular text-text-primary">
-              {row.progress_label || row.task_label}
+              {row.task_label}
             </span>
             <StatusBadge status={row.status} />
             {detail
@@ -120,11 +120,19 @@ function RunningRun({ run, followups }: { run: TaskRunPayload; followups?: TaskR
   );
 }
 
-function SettledRun({ run, followups }: { run: TaskRunPayload; followups?: TaskRunPayload[] }) {
+/** 跑完的一轮。`runs` 多于一条时是折叠起来的几轮例行任务：时间写成从最早到最新那一段，
+ *  摘要取最新那一轮——例行轮次的摘要本来就一样，逐条列出来只是同一行抄 N 遍。 */
+function SettledRun(
+  { run, followups, runs }: { run: TaskRunPayload; followups?: TaskRunPayload[]; runs?: TaskRunPayload[] },
+) {
   const summary = summaryText(run.result_summary);
   const elapsed = elapsedText(run.elapsed_seconds);
-  const meta = [TRIGGER_LABELS[run.trigger] || run.trigger, momentText(run.finished_at),
-                elapsed && `用时 ${elapsed}`].filter(Boolean).join(' · ');
+  const oldest = runs && runs.length > 1 ? runs[runs.length - 1] : undefined;
+  const meta = (oldest
+    ? [TRIGGER_LABELS[run.trigger] || run.trigger, `近 ${runs!.length} 轮`,
+       `${momentText(oldest.finished_at)} – ${momentText(run.finished_at)}`]
+    : [TRIGGER_LABELS[run.trigger] || run.trigger, momentText(run.finished_at),
+       elapsed && `用时 ${elapsed}`]).filter(Boolean).join(' · ');
   return (
     <RunCard run={run} meta={meta} footer={run.error} followups={followups}>
       {summary ? <p className="text-caption-1-regular text-text-secondary">{summary}</p> : null}
@@ -177,27 +185,32 @@ export function ActivityPage(_props: ActivityProps) {
   // 首屏就没拿到数据：只剩这一条，不画空的三段。
   if (!data) return <Page><Note tone="error">{problem || '读取任务中心失败'}</Note></Page>;
 
-  // 游标取合并后最旧的那一行，后继与被挡下的也算：服务端翻页数的是全部终态行。
   const allFinished = mergeFinished(data.finished || [], earlier);
-  const oldest = allFinished[allFinished.length - 1];
-  const hasEarlier = Boolean(oldest) && (earlier.length ? earlierMore : Boolean(data.finished_has_more));
-  const loadEarlier = () => {
-    if (!more.isPending && oldest) more.mutate({ oldest, shown: allFinished });
-  };
-
   const allRuns = [...(data.running || []), ...(data.skipped || []), ...allFinished];
-  // 后继挂到派出它的那张卡下面。父任务不在这一屏上（已经被 prune 掉、或翻页翻不到）时
-  // 照常单独摆出来——挂不上去就不显示，等于让一条在跑的任务凭空消失。
+  // 后继挂到派出它的那张卡下面。父任务不在这一屏上（已经被 prune 掉）时照常单独摆出来
+  // ——挂不上去就不显示，等于让一条在跑的任务凭空消失。
   const byParent = groupFollowups(allRuns);
   const visible = new Set(allRuns.map((run) => run.id));
   const topLevel = (rows: TaskRunPayload[]) => rows.filter(
     (run) => !(run.followup_key && run.parent_run_id != null && visible.has(run.parent_run_id)));
+  const settled = topLevel(allFinished);
+  // 游标取最旧的顶层那一轮：服务端一页数的是顶层行，后继跟着父任务走。
+  const oldest = settled[settled.length - 1];
+  const hasEarlier = Boolean(oldest) && (earlier.length ? earlierMore : Boolean(data.finished_has_more));
+  const loadEarlier = () => {
+    if (!more.isPending && oldest) more.mutate({ oldest, shown: allFinished });
+  };
+  // 自己跑完、派出的后继还在跑的那一轮算「正在进行」：整件事还没完，放进「最近完成」
+  // 就是一张卡上一个已完成、一个进行中。
+  const working = settled.filter((run) => byParent.get(run.id)?.some(isActive));
   const running = topLevel(data.running || []);
   const skipped = topLevel(data.skipped || []);
   // 同一轮不在「最近完成」里再出现一次：一屏两行说的是同一件事，读起来像跑了两轮。
-  const finished = topLevel(allFinished)
-    .filter((run) => !skipped.some((row) => row.id === run.id));
-  const quiet = !running.length && !skipped.length && !finished.length;
+  const finished = settled.filter((run) => !working.includes(run)
+    && !skipped.some((row) => row.id === run.id));
+  // 每小时一轮的定时检查什么也没发生时一条条摆出来，一页就被同一句「已检查 83」占满。
+  const folds = foldRoutine(finished, (run) => isRoutine(run) && !byParent.get(run.id)?.length);
+  const quiet = !running.length && !working.length && !skipped.length && !finished.length;
   return (
     <Page>
       {problem ? <Note tone="error">{problem}</Note> : null}
@@ -210,9 +223,13 @@ export function ActivityPage(_props: ActivityProps) {
           </EmptyState>
         : <>
             <Section title="正在进行">
-              {running.length
-                ? <RunList live>{running.map((run) => (
-                    <RunningRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
+              {running.length || working.length
+                ? <RunList live>
+                    {running.map((run) => (
+                      <RunningRun key={run.id} run={run} followups={byParent.get(run.id)} />))}
+                    {working.map((run) => (
+                      <SettledRun key={run.id} run={run} followups={byParent.get(run.id)} />))}
+                  </RunList>
                 : <Note tone="neutral">没有任务在跑。</Note>}
             </Section>
             {/* 「刚才那一轮为什么没跑」只有这一段答得出：定时触发撞上在跑的那一轮会
@@ -226,8 +243,9 @@ export function ActivityPage(_props: ActivityProps) {
             {finished.length || hasEarlier
               ? <Section title="最近完成">
                   {finished.length
-                    ? <RunList>{finished.map((run) => (
-                        <SettledRun key={run.id} run={run} followups={byParent.get(run.id)} />))}</RunList>
+                    ? <RunList>{folds.map(({ run, runs }) => (
+                        <SettledRun key={run.id} run={run} runs={runs}
+                          followups={byParent.get(run.id)} />))}</RunList>
                     : null}
                   {more.error ? <Note tone="error">{errorMessage(more.error)}</Note> : null}
                   {hasEarlier

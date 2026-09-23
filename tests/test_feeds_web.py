@@ -253,6 +253,17 @@ class FeedWebTest(FeedWebFixture):
         self.assertCountEqual(self._listed(), ["SSIS-950", "HMN-071"])
         self.assertEqual(self._backlog(), ["SSIS-950"])
 
+    def test_a_highlight_excerpt_is_hidden_by_studio_until_its_switch_is_off(self):
+        self._compilation("篠田ゆう")
+        with self.contract.database.write_transaction() as connection:
+            connection.execute("UPDATE feed_discovery SET title='愛する妻が…',studio='ハイライト'"
+                               " WHERE code='SSIS-950'")
+        self.assertEqual(self._listed(), ["HMN-071"])
+        self.assertEqual(self._backlog(), [])
+        dispatch_api_post(self.contract, "/api/settings", {"feedHideExcerpts": False})
+        self.assertCountEqual(self._listed(), ["SSIS-950", "HMN-071"])
+        self.assertEqual(self._backlog(), ["SSIS-950"])
+
     def test_the_entity_filter_only_returns_that_person(self):
         with self.contract.database.write_transaction() as connection:
             cursor = connection.execute(

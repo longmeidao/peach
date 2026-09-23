@@ -114,6 +114,13 @@ class CompilationTest(unittest.TestCase):
             with self.subTest(title=title):
                 self.assertIsNone(feeds.compilation_kind(title, performers))
 
+    def test_the_highlight_studio_is_an_excerpt_whatever_the_title_says(self):
+        self.assertEqual(feeds.compilation_kind("愛する妻が…", "篠田ゆう", "ハイライト"),
+                         feeds.EXCERPT)
+        self.assertEqual(feeds.compilation_kind("涼森れむ 480分 総集編", "涼森れむ", "ハイライト"),
+                         feeds.EXCERPT)
+        self.assertIsNone(feeds.compilation_kind("愛する妻が…", "篠田ゆう", "マドンナ"))
+
 
 class FeedStoreTest(unittest.TestCase):
     def setUp(self):
