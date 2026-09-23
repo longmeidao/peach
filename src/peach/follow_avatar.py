@@ -21,6 +21,7 @@ _CREATOR_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,80}$")
 _PROFILE_HANDLE_RES = {
     "twitter": re.compile(r"[A-Za-z0-9_]{1,15}"),
     "patreon": re.compile(r"[A-Za-z0-9_.-]{1,64}"),
+    "pixiv": _USER_ID_RE,
 }
 _PATREON_AVATAR_HOST_RE = re.compile(r"c\d+\.patreonusercontent\.com")
 #: 一个头像请求最多带几份社交资料。名片上同一个人通常一两个账号。
@@ -47,9 +48,11 @@ def profile_avatar_tiers(service: str, handle: str, *,
                          transport: HttpTransport | None = None) -> list[str]:
     """一份社交资料的头像地址，从原图到小图排好。取不到抛 `FollowSourceError`。
 
-    两家都不带凭据：X 的登出页用 og:image 声明本人头像（`_200x200` 那档），
+    几家都不带凭据：X 的登出页用 og:image 声明本人头像（`_200x200` 那档），
     `social_links.twimg_tiers` 把它展开成原图、400、200 三档；Patreon 的公开
-    campaigns 接口按 vanity 查，`avatar_photo_image_urls` 里 `original` 是上传原图。
+    campaigns 接口按 vanity 查，`avatar_photo_image_urls` 里 `original` 是上传原图；
+    pixiv 数字 id 走 `resolve_official_profile` 换 FANBOX 头像。有 pixiv 不等于开了
+    FANBOX（flim13 实测换不到），所以它和别家并排试，不单独占住这一格。
     主机写死在这里，返回的地址不会指向别处。
     """
     pattern = _PROFILE_HANDLE_RES.get(service)
@@ -58,6 +61,8 @@ def profile_avatar_tiers(service: str, handle: str, *,
     request = transport or HttpxTransport()
     if service == "twitter":
         return _x_avatar_tiers(handle, request)
+    if service == "pixiv":
+        return [resolve_official_avatar("fanbox", handle, transport=request)]
     return _patreon_avatar_tiers(handle, request)
 
 
