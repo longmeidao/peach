@@ -76,7 +76,7 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   下载入口核验于 2026-09-06：[CloudDrive](https://www.clouddrive2.com/download.html)、[WinFsp](https://winfsp.dev/rel/)、
   [macFUSE](https://macfuse.github.io/)、[FFmpeg](https://ffmpeg.org/download.html)、[OpenSSL](https://openssl-library.org/source/)。
 
-- 发行身份继续复用 Javinizer-Go v1.5.2 与 Seesaa 原始 DTO；数字前缀等价属于 Peach 领域 policy，不新增依赖。
+- 发行身份复用各来源解析器与 Seesaa 的原始 DTO；数字前缀等价属于 Peach 领域 policy，不新增依赖。
   真实 r18dev 快照中请求 `390JAC-040` 却返回 `JAC-040`／`118jac040`；Jackson 表中两者是不同商品行。
   查询回退不能承担身份确认；所有响应按原始查询检查，MGStage 官方详情路径可佐证展示编号别名。
   外部适配器负责取值，不采用其首条搜索命中作为 ledger 身份断言。
@@ -86,7 +86,7 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   2026-09-06 检查 Javinizer-Go `d9724f239d7e127afcb747fa8ce4358685912f50`（MIT）及 MetaTube
   `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）的来源目录，均无 Seesaa 适配器；
   两者分别于 2026-09-05、2026-07-12 有仓库更新。本站例外由 `metadata_seesaa` 承担 EUC-JP、
-  作品表列映射、精确行身份与未知名单保护；Javinizer 继续负责其支持的来源。
+  作品表列映射、精确行身份与未知名单保护；别的来源按 ADR-0044 归到自写解析器或 amane 桥。
   真实 Flower 页 HTTPX 取得 200／253975 字节，FKOS-007 解析出 10 位出演者；公开搜索亦可发现
   对应表格。`scrape_codes --profile seesaa` 是正式消费者，不另建刮削 CLI。详见 [来源采集](SOURCING.md#seesaa-wiki-作品证据)。
 
@@ -96,7 +96,7 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
 ### 播放、身份与控件实证
 
 - 2026-09-05 手工截图的 PNG 像素统计：页面 `#04060A`、框体 `#080A0D`、操作条 `#141619`、选中项 `#191B1E`。操作条复用 `--overlay-5`，骨架与最终控件共用灰阶。截图是静态证据，不登记为可重抓上游资源。
-- [JavDB JBS-023](https://javdb.com/v/6gzM)：项目取页器与 Javinizer-Go v1.5.1 均取得 `風見あゆむ`。本机 provider 配置的 `scrapers.javdb.enabled` 必须开启；源码有码补抓列表包含 JavDB。候选保留 community 来源性质，不自动写真相字段。
+- [JavDB JBS-023](https://javdb.com/v/6gzM)：项目取页器取得 `風見あゆむ`，与 2026-09 之前经 Javinizer-Go 留下的快照一致。javdb 是有码与素人链社区那一档的成员；候选保留 community 来源性质，不自动写真相字段。
 - 编码边界依据 [MDN 视频编码说明](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Video_codecs) 与 [ffprobe 流探测文档](https://ffmpeg.org/ffprobe.html)。复用当前 FFmpeg，无新增依赖；Peach 仅持有兼容格式判定与缓存策略。
 
 CloudDrive 引导复用现有 `settings_file`、`platform.root_online`、`scan_location` 和 React
@@ -113,7 +113,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
   `suffix_list_urls=()`、`cache_dir=None`、`include_psl_private_domains=True`；106 kB wheel，依赖
   requests、requests-file、filelock、idna；日本二级后缀与 GitHub Pages／Blogspot 租户 POC 通过。
   Instaloader 4.15.3（MIT）匿名解析 Bambi／LINX 均为 ConnectionException；独立登录会话未取得，
-  它和 browser_cookie3 均不进入正式依赖。Javinizer-Go、HTTPX、curl_cffi、Pillow 和现有候选缓存是正式基础；
+  它和 browser_cookie3 均不进入正式依赖。HTTPX、curl_cffi、Pillow、amane 桥和现有候选缓存是正式基础；
   各脚本的请求节拍应复用 `scripting.RateLimiter`／`HostLimiter`，不为同一职责再装一套框架。
 
 - 采集 GUI 复用 React island、CredentialStore、HTTPX、Pillow 和 BackgroundJob；
@@ -246,10 +246,11 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 头像写入 | `src/peach/avatar_provider.install_entity_avatar` | 采集脚本、复核页与换头像共用这一份：`.img` 经临时文件原子替换，`.ct`、`.provenance.json` 与人脸 `.face.json` 四件套一起换。检不出脸要删 sidecar 而不是留着，因为上一张图的脸框会被页面拿去给这一张取景，放大到一个空位置上，而这在界面上与「本来就该这么显示」看不出区别 |
 | 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
 | 厂牌字标名录 | 发行商与发行平台自己的厂牌名录，入口登记在 `harvest_maker_directories.DIRECTORIES`：MGStage `/ppv/makers.php` 十一页 351 家、Prestige `/api/maker` 11 家、KMP `/label` 42 家（大半是 SVG）；另有 jae.tokyo 展会名录 20 家 | slug↔账本对账（四路判据、空罗马字形当不可比）、按形状分三张指定表（方标原样装大位、字标烤方两位共用、方标只管小位）、改地址后靠 provenance 边车重新收人、复核 CSV 与安装闸门。存入口不存图片地址：KMP 的文件名带时间戳，厂牌换一次标识地址就变。不推导 URL、不猜名字：名录给什么用什么 |
-| JAV 元数据查询 | Javinizer-Go v1.5.2 单来源 JSON CLI（MIT），版本策略是「不低于 v1.5.2 且同为 1.x」而非逐字相等：`scrape` 的 JSON 与错误对象在同一大版本内是上游的兼容承诺，比对到小版本只会让上游每发一次补丁就停摆一次；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考 | 只发送规范番号；Peach 管 source profile、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影。amane 的 POC 判据、字段缺口与三条路线的前提见 `docs/reference-snapshots/amane-crawlers-poc.md`，采纳结果见下一行 |
+| JAV 元数据查询 | 官方与半官方站由 Peach 自写解析器持有（r18.dev、一本道、FC2、fc2cmadb、JavArchive），社区站经 amane 桥（ADR-0043、ADR-0044）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考 | 只发送规范番号；Peach 管来源链（`metadata_routes`）、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影。amane 的 POC 判据、字段缺口与三条路线的前提见 `docs/reference-snapshots/amane-crawlers-poc.md`，采纳结果见下一行 |
+| Javinizer-Go 历史快照 | `sources/metadata/javinizer-go/<番号>/<来源>.json`，由 Javinizer-Go v1.5.x（MIT，`dd56998328d078c9baf68ff4fde2e6fcaa2a691a`）在 2026-09 之前取回；二进制与快照留在磁盘，不再有调用路径（ADR-0044） | 只作离线证据：封面层读它的 `cover_url` 与 `content_id`，别名解析读企划名义，账本里 `javinizer:<站>:<字段>` 的 provenance 按 `metadata_policy.HISTORICAL_SOURCES` 认级别。`scrape_codes` 写进同一目录的新快照 `provider` 记解析器名、`provider_version` 记 Peach 版本 |
 | amane 刮削站点（fc2club、freejavbt、airav、avsox） | amane `79ecfa763cc786318e1964a3d7f4e244a7d5c96d`（v0.16.1，GPL-3.0），经 `tools/amane-bridge/` 薄桥子进程接入（ADR-0043）：独立 `pyproject.toml`／`uv.lock` 钉 sha，venv 建在 `<数据根>/tools/amane-bridge/.venv`，桥只用 `amane.crawlers.sites.<站>` 与 `amane.net.*`，不碰 `aggregate` | 许可义务：amane 为 GPL-3.0，Peach 为 AGPL-3.0-or-later，两者以进程边界相接；仓库与分发件只含清单、锁与桥脚本（Peach 自己的文件），amane 源码由用户机器上的 uv 按锁下载，不随 Peach 分发；清单、桥脚本与设置页都写明上游地址与许可。升级是人做的：改 sha → `uv lock --project tools/amane-bridge` → 读上游 diff 核字段语义 → 同批改 `peach.metadata_amane.REASON_KINDS`／`SITES` 与本行。已知性质：上游 `WebClient` 以 `verify=False` 发请求，只取公开页面、不带凭据；`amane.crawlers` 包 `__init__` 连带 SQLAlchemy，每次子进程约 0.6～1 秒 import。Peach 管来源链位置、身份核对、失败分档与冷却、候选与结算 |
-| 已确认厂牌的目录归位 | Javinizer-Go v1.5.2 organizer 只作冲突预检、模板化目录和回滚边界参考，不让它持有 Peach ledger | `rehome_unknown_jav.py` 只消费人工确认映射；先出逐文件 CSV，拒绝扁平化重名与厂牌冲突，SQLite 备份后移动文件并同步 Peach 路径／实体 provenance |
-| FC2 目录元数据与跨号证据 | 已缓存的 fc2cmadb Inertia `article`／评论收获；Javinizer-Go v1.5.2 的 FC2 解析器只作官方商品页字段边界参考 | 2026-08-31 登录态实测旧文章仍提供标题、原始标签、日期、时长、卖家、FC2 CDN 封面与 `comments`；Peach 只把无歧义标签翻译成现有词表，标题／标签进入 `/review`，实测 `w1200` 封面经尺寸与解码门槛落生成产物；稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核仍由 Peach 管，不依赖 FC2-Leak-Detector/JavSP，也不把镜像候选直写 ledger |
+| 已确认厂牌的目录归位 | Javinizer-Go v1.5.2 organizer（MIT）只作冲突预检、模板化目录和回滚边界的协议参考，不调用它，不让它持有 Peach ledger | `rehome_unknown_jav.py` 只消费人工确认映射；先出逐文件 CSV，拒绝扁平化重名与厂牌冲突，SQLite 备份后移动文件并同步 Peach 路径／实体 provenance |
+| FC2 目录元数据与跨号证据 | 已缓存的 fc2cmadb Inertia `article`／评论收获；Javinizer-Go v1.5.2 的 FC2 解析器（MIT）只作官方商品页字段边界的协议参考 | 2026-08-31 登录态实测旧文章仍提供标题、原始标签、日期、时长、卖家、FC2 CDN 封面与 `comments`；Peach 只把无歧义标签翻译成现有词表，标题／标签进入 `/review`，实测 `w1200` 封面经尺寸与解码门槛落生成产物；稳定 pair、合集/分片保护、hash/时长/尺寸佐证、库外 evidence、健康统计和人工复核仍由 Peach 管，不依赖 FC2-Leak-Detector/JavSP，也不把镜像候选直写 ledger |
 | 缺索引 MP4 重建 | untrunc（anthwlock，GPL-2.0，用户自行解压到 `<数据根>/tools/untrunc/`，也认 `PEACH_UNTRUNC` 与 PATH），按 `-n -s -dst` 借一部同编码器的完整片子当参照切 `mdat`；不随 Peach 分发，「运行信息」给下载入口 | `src/peach/mp4recover.py` 挑参照（同目录按文件名挨得最近的先试，最多 4 部）、验收（解码错误不超过 3 行、音视频时长差不超过 5%）、换回原路径并把坏原件改名成同目录的 `.文件名.peach-original` 留着；缺整个 `moov` 的片子在任何播放器里都打不开，所以结果替换原文件，不像缺 `ctts` 那样另存头。2026-09-23 实测 115 上 5 部：同日期、同分辨率的邻居参照能整部或 73%～100% 切回，参照分辨率不对时每帧报宏块错误，找不到同编码参数的参照就修不了 |
 | 媒体探测/转码 | Peach 管理的 FFmpeg/ffprobe；Windows 已实测 FFmpeg 9.0.1 full build 的 CUDA/NVDEC、`scale_cuda` 与 NVENC，现有二进制启用 GPL/version3。CI 复用 `FedericoCarboni/setup-ffmpeg@v3`（MIT）并固定 FFmpeg 9.0.1；Gyan 官方 x64 full build 的 7z 为 165,742,351 字节，Python 3.12/3.14 的 Windows runner 共用同一版本。默认 `release` 会访问 Gyan 易失的 `release-version` 端点，2026-09-19 实测返回空响应并让两组 Windows 测试在执行前失败；固定版本改从 GyanD/codexffmpeg 的精确 GitHub release 资产下载。 | 任务策略和 Media Engine 编排：容器与内部编码分别检查，MP4/M4V 的 H.264 8-bit 与兼容音轨可直出；其余容器中的 H.264 8-bit 优先只换 MP4 封装；其余 Windows 输入依次尝试 CUDA→H.264 NVENC、软件解码→NVENC、原 `libx264` 回退，macOS 保持封装复制或软件转码。2026-09-05 的 JBS-023 原片为 MPEG-4 Part 2/AAC，12 秒样本经既有 FFmpeg 流程在 2.42 秒输出 H.264/AAC 并通过画面解码；兼容性依据为 MDN Web video codec guide 与 ffprobe 官方 stream 文档。真实 CloudDrive POC 中，H.264/AAC 的 30 秒片段封装耗时 0.64 秒，1080p HEVC 的 30 秒 CUDA/NVENC 转码耗时 1.60 秒；不新增 Python 依赖，不改生产、原媒体或 ledger。 |
 | HTML5/HLS/DASH 播放 | Video.js 8.24.1 + 内置 VHS（Apache-2.0，本地固定版本） | 流方案、授权、稳定时长、回退顺序和统计面板；详情不兼容片源复用 HlsSegmentService 与 FFmpeg 按六秒编码 H.264/AAC，独立缓存、绝对时间轴及会话取消；JBS-023 首段 0.67 秒、十分钟处 1.96 秒，YRH-097 首段 1.01 秒，无整片预转码 |
@@ -307,12 +308,12 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 
 ## 当前替换队列
 
-本地库导入复用 Kodi/Jellyfin NFO 协议（2026-09-06 核对 [Kodi](https://kodi.wiki/view/NFO_files/Movies)、[Jellyfin](https://jellyfin.org/docs/general/server/metadata/nfo/)），XML 解析复用 Python 3.12+ 标准库 ElementTree（PSF，无新增依赖），图片复用项目固定版 Pillow。只适配影片、单集与音乐视频的字段；整剧、音乐专辑、播放记录及远端图片引用保留在原文件，不作为影片资料套用。拒绝 DTD、超大输入与越目录图片引用。同名边车优先，`movie.nfo` 和通用海报只用于单影片目录；正片和图片同属一组连号（`(1).mp4` 配 `(1).jpg`…`(119).jpg`）时同名图是图集的一张，不当海报。真实 JavBoss NFO 与同番号 R18 JSON 的只读 POC 已取得：本地保留原标题、演员和词表未收录的自定义标签；已知内容词统一投影为 Peach 中文标签，明确的画质、促销、发行属性与演员编成丢弃。远端能补厂牌、导演、发行商、时长和图片出处；NFO 与远端人物主名精确一致时还补 DMM id、假名、罗马字与首次头像，不替换演员真值。网络复用现有 R18 JSON 入口、SourceTransport、头像缓存与封面解析器；独立包无需另装 Go。Javinizer-Go 仍服务多来源离线查询，本适配不新增站点 HTML 解析器。候选按资产 ID 与路径定位，批准时复核目标；时长证据不覆盖媒体探测时长。
+本地库导入复用 Kodi/Jellyfin NFO 协议（2026-09-06 核对 [Kodi](https://kodi.wiki/view/NFO_files/Movies)、[Jellyfin](https://jellyfin.org/docs/general/server/metadata/nfo/)），XML 解析复用 Python 3.12+ 标准库 ElementTree（PSF，无新增依赖），图片复用项目固定版 Pillow。只适配影片、单集与音乐视频的字段；整剧、音乐专辑、播放记录及远端图片引用保留在原文件，不作为影片资料套用。拒绝 DTD、超大输入与越目录图片引用。同名边车优先，`movie.nfo` 和通用海报只用于单影片目录；正片和图片同属一组连号（`(1).mp4` 配 `(1).jpg`…`(119).jpg`）时同名图是图集的一张，不当海报。真实 JavBoss NFO 与同番号 R18 JSON 的只读 POC 已取得：本地保留原标题、演员和词表未收录的自定义标签；已知内容词统一投影为 Peach 中文标签，明确的画质、促销、发行属性与演员编成丢弃。远端能补厂牌、导演、发行商、时长和图片出处；NFO 与远端人物主名精确一致时还补 DMM id、假名、罗马字与首次头像，不替换演员真值。网络复用现有 R18 JSON 入口、SourceTransport、头像缓存与封面解析器；独立包无需另装 Go。本适配不新增站点 HTML 解析器。候选按资产 ID 与路径定位，批准时复核目标；时长证据不覆盖媒体探测时长。
 
 已完成：共享 Media/Job/HTTP 边界、feedparser、Pillow、Beautiful Soup、FTS5、可安全导入的批处理脚本和按任务范围终止进程。
 
 1. Video.js 已接管详情播放；`MediaEngine.stream_plan` 已让 115/PikPak 原生 MP4 使用 HLS 临时短片段，仍需补自适应码率、多路清单和生产验收。CloudDrive 的虚拟盘固定块预取仍属于来源层成本。
-2. Javinizer-Go 已接管番号元数据查询适配；来源扩展只加入 Peach policy 白名单/profile 与健康统计，优先启用其现有 scraper，不在 Peach 分叉站点解析器。
+2. 番号元数据查询收敛成两套（ADR-0044）：官方与半官方站由 Peach 自写解析器持有，社区站经 amane 桥；来源扩展先按归属判据定一边，再登记进 `metadata_policy.SOURCE_SPECS` 与 `metadata_routes.ROUTES`，不为社区站写第二份解析器。
 3. `status.py` 已并入 `peach status`，`suggest.py` 已由 `taste_history.py` 与馆藏页取代，`ledger.py` 已由 `peach init`／`peach scan` 取代。只剩 `sync_sha1_115.py` 还没有备份闸门（`tests/test_script_policy.py` 的例外表已记账）。
 4. Peach 不做 token/成本日志扫描器，也不绑定 T3 Code 私有 RPC；使用其界面、CodexBar 和官方实时配额入口。
 5. 「模仿/参考/对齐」不等于允许凭记忆近似。先取得并登记可复现证据；否则标记 `未取得`，不得作为忠实复刻发布。2026-08-17 的 YouTube 详情与 Shorts 动作栏参考已登记在 `docs/HANDOFF.md`，Peach 只复用可测量的层级、尺寸和状态语义。
@@ -320,10 +321,10 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 7. JAV 封面固定参考 Javinizer-Go `dd56998328d078c9baf68ff4fde2e6fcaa2a691a`（MIT）的 DMM
    modern `awsimgsrc.dmm.com/dig/...` 映射与尺寸门槛；Prestige 公开 API 的查询模型参考 MDCX
    `58e3f930f2e864fceb8a53ceef818716e2a6413d`（GPL-3.0，只作协议证据，不复制代码）。Peach 先离线复用
-   Javinizer-Go 原始快照，再汇总 DMM 新旧 CDN、MGS `EnlargeImage`、Prestige `packageImage` 与历史成功
+   `sources/metadata/javinizer-go/` 下的历史快照，再汇总 DMM 新旧 CDN、MGS `EnlargeImage`、Prestige `packageImage` 与历史成功
    URL，仍由 Range 量尺寸、像素面积最大者胜出和仅更大才原子升级。2026-08-31 真实 POC 中 `ABW-232`
    的 Prestige 官方图为 1024×690、DUGA 为 1000×674、MGS 为 840×563、DMM mono 为 800×539。
-   批量流程不请求社区来源，Javinizer-Go 的社区站快照只借厂牌；既有库采集在官方渠道落空时经
+   批量流程不请求社区来源，历史快照里的社区站记录只借厂牌；既有库采集在官方渠道落空时经
    `peach.community_catalog` 查 AVBase、JavBus 与 javdb（AVBase 搜索页 `/works?q=` 的 `__NEXT_DATA__`，
    2026-09-14 实测可取；资料取商品号认得出这个番号的那条店铺条目，名寄せ的作品标题可能来自收录本作的
    合集），封面按 dHash 先求两个图源一致，只有一个图源时照用并留空 `verified_by`，

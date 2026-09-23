@@ -357,7 +357,7 @@ def _metadata_queue_rows(connection, rows: list[dict],
     rows = [row for row in rows
             if _metadata_row_adds_information(connection, row)
             or _genres_still_pending(genre_decisions, decisions.get(row["item_key"], {}))]
-    # 韩国 MIB 的番号不适用 JAV 规则，`allows_code` 已经拦在刮削入口。但候选件是
+    # 韩国 MIB 的番号不适用 JAV 规则，`metadata_routes` 给它的链是空的。但候选件是
     # 历史产物，闸门只管以后不再生成，管不了已经落盘的那些：2026-09-04 实测队列里
     # 还有 214 条（title 51、studio 51、release_date 51、performers 39、series 22）。
     # 这些值全是 JAV 目录站按错番号返回的别的作品，没有一条值得占用人的注意力。

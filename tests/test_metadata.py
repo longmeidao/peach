@@ -1,18 +1,9 @@
-import json
-import subprocess
-import tempfile
 import unittest
-from pathlib import Path
-from unittest import mock
 
-from peach import metadata
 from peach.metadata import (
     identifies_code,
     CATALOG_EVIDENCE_FIELDS,
     CREDENTIAL_ADVICE,
-    JAVINIZER_GO_MIN_VERSION,
-    JavinizerGoProvider,
-    MetadataProviderError,
     auth_error,
     auth_wall_reason,
     collapse_repeated_phrase,
@@ -23,74 +14,7 @@ from peach.metadata import (
 
 
 class MetadataProviderTests(unittest.TestCase):
-    def _create_with_reported_version(self, reported: str) -> JavinizerGoProvider:
-        with tempfile.TemporaryDirectory() as tmp:
-            binary = Path(tmp) / "javinizer"
-            binary.touch()
-            def runner(command, **kwargs):
-                return subprocess.CompletedProcess(command, 0, f"{reported}\n", "")
-            return JavinizerGoProvider.create(
-                binary, Path(tmp) / "config.yaml", runner=runner)
-
-    def test_create_refuses_a_binary_below_the_minimum_version(self):
-        with self.assertRaises(MetadataProviderError) as caught:
-            self._create_with_reported_version("v1.5.1")
-        message = str(caught.exception)
-        self.assertIn("版本过低", message)
-        self.assertIn(JAVINIZER_GO_MIN_VERSION, message)
-        self.assertIn("装一份到", message)
-
-    def test_create_refuses_a_different_major_version(self):
-        """更高的大版本也拒绝：JSON 形状和错误对象可能整体换过，比旧版更危险。"""
-        with self.assertRaises(MetadataProviderError) as caught:
-            self._create_with_reported_version("v2.0.0")
-        self.assertIn("大版本不符", str(caught.exception))
-
-    def test_create_accepts_a_higher_minor_of_the_same_major(self):
-        """同一大版本里更高的小版本放行，并把实际版本带进 provenance。
-
-        逐字相等那一版的代价是：上游每发一次补丁，本机装好的新二进制都会被判成
-        版本不匹配，整条查询链停摆，而那一版补丁多半根本没碰 `scrape`。
-        """
-        provider = self._create_with_reported_version("v1.9.0")
-        self.assertEqual(provider.version, "1.9.0")
-
-    @unittest.skipIf(metadata._platform_tool_name() is None, "本平台没有工具目录布局")
-    def test_bundled_paths_prefer_the_verified_version_then_newer_minors(self):
-        """最低版本排第一，同大版本更新的排它后面，别的大版本不进候选。"""
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp) / "javinizer"
-            for name in (f"v{JAVINIZER_GO_MIN_VERSION}", "v1.6.0", "v1.7.1", "v2.0.0", "notes"):
-                (root / name).mkdir(parents=True)
-            with mock.patch.object(metadata, "TOOLS_DIR", Path(tmp).resolve()):
-                versions = [path.parent.parent.name for path in metadata.bundled_tool_paths()]
-        self.assertEqual(versions, [f"v{JAVINIZER_GO_MIN_VERSION}", "v1.7.1", "v1.6.0"])
-
-    def test_create_reports_an_unreadable_version(self):
-        with self.assertRaises(MetadataProviderError) as caught:
-            self._create_with_reported_version("javinizer, but not a version")
-        self.assertIn("读不出", str(caught.exception))
-
-    def test_provider_sends_only_normalized_code_and_one_source(self):
-        calls = []
-        def runner(command, **kwargs):
-            calls.append((command, kwargs))
-            return subprocess.CompletedProcess(command, 0, json.dumps({
-                "source": "r18dev", "id": "IPX-535", "actresses": [],
-            }), "diagnostic")
-        with tempfile.TemporaryDirectory() as tmp:
-            provider = JavinizerGoProvider(
-                Path("/bin/javinizer"), Path(tmp) / "config.yaml", runner=runner,
-            )
-            result = provider.query("IPX-535", "r18dev")
-        self.assertEqual(result["id"], "IPX-535")
-        command, options = calls[0]
-        self.assertEqual(command[-5:], ["IPX-535", "--output", "json", "--scrapers", "r18dev"])
-        self.assertFalse(options["shell"])
-        self.assertEqual(options["encoding"], "utf-8")
-        self.assertEqual(options["errors"], "strict")
-
-    def test_provider_rejects_paths_and_urls_before_subprocess(self):
+    def test_the_gate_rejects_paths_and_urls(self):
         for unsafe in ("/media/IPX-535.mp4", r"R:\media\IPX-535.mp4", "https://x/IPX-535"):
             with self.subTest(unsafe=unsafe), self.assertRaises(ValueError):
                 validate_provider_code(unsafe)
@@ -107,21 +31,6 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertEqual(validate_provider_code("N0646"), "n0646")
         self.assertEqual(validate_provider_code("n646"), "n0646")
         self.assertEqual(validate_provider_code("RED123"), "red-123")
-
-    def test_structured_error_is_preserved(self):
-        def runner(command, **kwargs):
-            return subprocess.CompletedProcess(command, 1, json.dumps({"error": {
-                "kind": "rate_limited", "message": "slow down", "status_code": 429,
-                "retryable": True, "temporary": True,
-            }}), "")
-        with tempfile.TemporaryDirectory() as tmp:
-            provider = JavinizerGoProvider(
-                Path("/bin/javinizer"), Path(tmp) / "config.yaml", runner=runner,
-            )
-            with self.assertRaises(MetadataProviderError) as caught:
-                provider.query("IPX-535", "r18dev")
-        self.assertEqual(caught.exception.status_code, 429)
-        self.assertTrue(caught.exception.retryable)
 
     def test_an_authentication_wall_is_its_own_error_kind(self):
         """401、403 与「跳到登录页」都判成 auth，别的失败不许蹭这一档。"""
@@ -168,23 +77,6 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertFalse(error.retryable)
         self.assertTrue(error.temporary)
         self.assertIn("mgstage", str(error))
-
-    def test_the_adapter_promotes_an_upstream_401_to_the_auth_kind(self):
-        """Javinizer-Go 没有鉴权这一档，把 401/403 混在自己的通用错误里。"""
-        def runner(command, **kwargs):
-            return subprocess.CompletedProcess(command, 1, json.dumps({"error": {
-                "kind": "request_failed", "message": "unexpected status",
-                "status_code": 401, "retryable": True, "temporary": True,
-            }}), "")
-        with tempfile.TemporaryDirectory() as tmp:
-            provider = JavinizerGoProvider(
-                Path("/bin/javinizer"), Path(tmp) / "config.yaml", runner=runner,
-            )
-            with self.assertRaises(MetadataProviderError) as caught:
-                provider.query("IPX-535", "javdb")
-        self.assertEqual(caught.exception.kind, "auth")
-        self.assertFalse(caught.exception.retryable)
-        self.assertIn("javdb", str(caught.exception))
 
     def test_repeated_performer_is_collapsed_before_candidate_creation(self):
         self.assertEqual(collapse_repeated_phrase("木村さん 木村さん"), ("木村さん", True))
@@ -346,23 +238,6 @@ class SourceIdentityTests(unittest.TestCase):
                 "id": returned, "content_id": returned,
                 "source_url": f"https://www.javbus.com/ja/{returned}"}), f"{code} <- {returned}")
 
-    def test_provider_turns_a_mismatched_product_into_not_found(self):
-        def runner(command, **kwargs):
-            if "version" in command:
-                return subprocess.CompletedProcess(
-                    command, 0, f"v{JAVINIZER_GO_MIN_VERSION}", "")
-            return subprocess.CompletedProcess(command, 0, json.dumps({
-                "source": "dlgetchu", "id": "33938", "content_id": "33938",
-                "source_url": "https://dl.getchu.com/i/item33938",
-                "genres": ["コスプレ一般"],
-            }), "")
-        with tempfile.TemporaryDirectory() as tmp:
-            provider = JavinizerGoProvider(
-                Path("/bin/javinizer"), Path(tmp) / "config.yaml", runner=runner,
-            )
-            with self.assertRaises(MetadataProviderError) as caught:
-                provider.query("ABW-220", "dlgetchu")
-        self.assertEqual(caught.exception.kind, "not_found")
 
 
 if __name__ == "__main__":
