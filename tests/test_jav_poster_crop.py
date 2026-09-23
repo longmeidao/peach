@@ -455,6 +455,14 @@ class BatchScriptTests(unittest.TestCase):
         self.assertEqual(self.cover.read_bytes(), self.before,
                          "取景是边车元数据，原图一个字节都不动")
 
+    @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
+    def test_a_centred_still_is_counted_in_its_own_bucket(self):
+        """16:9 居中拼图是单独一档，批处理照样计数、写边车，不因为认不得这档停下。"""
+        still = self.root / "PASN-027.jpg"
+        centred(1348, 758, 408, 940).save(still)
+        self.assertEqual(self.run_script("--apply"), 0)
+        self.assertEqual(jav_poster_crop.read_sidecar(still)["box"]["method"], CENTER)
+
     def test_a_current_sidecar_is_skipped_and_a_stale_one_is_redone(self):
         self.run_script("--apply")
         self.assertEqual(self.script.pending([self.cover], False), [])
