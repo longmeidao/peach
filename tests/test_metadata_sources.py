@@ -222,7 +222,7 @@ class ConfigConsistencyTests(unittest.TestCase):
         self.assertEqual(shape, {"r18dev": ("official_mirror", False, 2 * 1024 * 1024),
                                  "1pondo": ("official", False, 1024 * 1024),
                                  "fc2": ("official", False, 2 * 1024 * 1024),
-                                 "fc2cmadb": ("community", False, 2 * 1024 * 1024),
+                                 "fc2cmadb": ("community", True, 2 * 1024 * 1024),
                                  "javarchive": ("community", False, 2 * 1024 * 1024),
                                  "avbase": ("community", False, 4 * 1024 * 1024),
                                  "javbus": ("community", True, 4 * 1024 * 1024),

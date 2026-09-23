@@ -20,7 +20,7 @@ fc2cmadb 的价值不在正文而在**评论区**：那里有用户长期维护�
 `cover_url` 留空并在 note 里写明，让分片回落到自己的缩略图。
 
 页面是 Laravel + Inertia，数据在 `<script type="application/json">` 里，
-不用解析 HTML。游客就能读到评论，不带 Cookie。页面地址、props 与评论标记的解析
+不用解析 HTML。请求带用户在采集设置里贴的 Cookie，按登录用户看到的那一页取。页面地址、props 与评论标记的解析
 在站点解析器 `peach.sources.fc2cmadb`，本脚本只管汇总、收获表与复核候选。
 
 评论是匿名用户写的，一律只作候选：产出 CSV 交人工复核，不碰真相字段。
@@ -346,7 +346,7 @@ def run(args: argparse.Namespace) -> int:
     args.raw.parent.mkdir(parents=True, exist_ok=True)
     raw_log = args.raw.open("w", encoding="utf-8")
     print(f"待抓 {len(todo)} 个 FC2 作品", flush=True)
-    with client_for(SECRETS_DIR, "fc2cmadb") as client:
+    with client_for(SECRETS_DIR, "fc2cmadb", session=True) as client:
         for index, (code, video_id) in enumerate(todo, 1):
             try:
                 props = fetch_article(client, video_id)

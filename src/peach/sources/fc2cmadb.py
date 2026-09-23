@@ -2,14 +2,16 @@
 
 下架的商品在 fc2cmadb 上还留着：它是个 Laravel + Inertia 的镜像站，整棵 props 树放在
 `<script type="application/json">` 里，字段与商品页一一对得上——本地那批没封面的 FC2
-多半只能从这里取（实测 `FC2-PPV-3189161` 官方页已空，镜像给出 3456×1942 的原图）。游客
-就能读，不带 Cookie：429 按出口 IP 计，换出口比带登录态管用。封面指向 `storage*.contents.fc2.com`
+多半只能从这里取（实测 `FC2-PPV-3189161` 官方页已空，镜像给出 3456×1942 的原图）。请求带用户
+在采集设置里贴的 Cookie，按登录用户看到的那一页取（见下一段）。封面指向 `storage*.contents.fc2.com`
 上与商品页同一个文件，镜像有时给的是 `contents-thumbnail*.fc2.com/w276/` 包装过的缩略图地址，
 `storage_original` 把包装拆掉；站上没有商品图时挂的是它自己那张占位件，判成没有图。
 
 这一站另有一栏对得上人的女優，那是 Inertia 的延迟 prop——首屏那份 HTML 里没有，要带上
 这一页自报的握手版本号把这一栏单独再问一次才给（`partial_headers`），一次一千来字节，还附
-一串曾用名。`query()` 在解析出作品之后补这一跳；问不出来就按没有女优落。
+一串曾用名。`query()` 在解析出作品之后补这一跳；问不出来就按没有女优落。浏览器里这一栏只对
+登录用户显示；2026-09-23 实测游客补问也照样回（`2851534`、`3518061` 两边一致），带 Cookie
+是为站方收紧游客访问时不断档。
 
 评论区那条线（`scripts/fetch_fc2_metadata.py`）读同一页的 props：演员标记 `2724256　未歩なな`、
 「一行名字 + 若干作品链接」，以及把同一段内容在不同 video_id 下的发布对应起来的等价标记
@@ -32,7 +34,7 @@ from .fc2 import PAGE_LIMIT, fc2_record, runtime_minutes, seller_page, storage_o
 #: 按社区来源登记：它转载的是发行方那一页，但标题和标签由站方用户维护。主机间隔用默认的 2 秒。
 FC2CMADB = SiteConfig(name="fc2cmadb", label="FC2CMADB", provider="fc2cmadb-article",
                       base_url="https://fc2cmadb.com", domains=("fc2cmadb.com",), stage="community",
-                      page_limit=PAGE_LIMIT)
+                      cookie=True, page_limit=PAGE_LIMIT)
 ARTICLE_PATH = "/articles/{video_id}"
 #: 作品页的 Inertia 组件名；站上没有的商品回的是 `Error`。
 COMPONENT = "Articles/Show"

@@ -1,6 +1,6 @@
 script,classification,evidence,reuse_or_action,reproduction_gap
 audit_performer_portraits.py,未发现明显重复,AvatarCandidateCache与Gfriends索引及Pillow,保留身份和质量策略,候选导出与GUI入口
-fetch_fc2_metadata.py,复现缺口,HTTPX共用来源网络配置,游客可读、不带凭据,网络错误、预算、续跑与完整批量GUI待实施
+fetch_fc2_metadata.py,复现缺口,HTTPX共用来源网络配置与GUI凭据,女优栏只对登录用户显示、带用户贴的Cookie,会话有效性、网络错误、预算、续跑与完整批量GUI待实施
 fetch_jav_covers.py,内部重复已收口,CLI与GUI共用jav_cover_fetch和HostLimiter,保留全候选Range并复核完整图片及像素升级,标准模式及跨用户实测待完成
 fetch_studio_avatar_candidates.py,内部重复已收口,RateLimiter与unavatar及LogoCandidateCache,保留平台CDN与身份复核,公共服务可用性和确认handle
 harvest_agency_rosters.py,内部重复已收口,RateLimiter与minnano_av,保留成员关系与重名复核,来源身份映射与GUI编排
