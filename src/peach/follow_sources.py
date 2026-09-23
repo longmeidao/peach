@@ -30,6 +30,7 @@ from .follow_secrets import Credential, CredentialError
 from .follow_gofile import GofileExpander, folder_labels
 from .follow_image_dims import positive_dims
 from .http import CurlCffiTransport, HttpRequest, HttpResponse, HttpTransport, HttpxTransport
+from .mp4index import movie_seconds
 
 
 #: 默认连接器共用的 UA。只有 ADR-0019 明确登记的 FANBOX 详情传输例外。
@@ -1410,7 +1411,31 @@ class Rule34XxxConnector(_BaseConnector):
             return candidate
         return replace(candidate, partial=False,
                        published_at=detail.get("published_at") or candidate.published_at,
+                       duration=self._video_seconds(candidate.media_url),
                        extra={**candidate.extra, "tag_types": tag_types})
+
+    #: 读时长只取文件开头这么多字节。站方转码出的 mp4 都是 faststart，`mvhd` 在开头
+    #: 几百字节里；实测随机 12 条全部读出，64 KiB 留足 `ftyp` 之后夹杂别的盒的余量。
+    _VIDEO_HEAD_BYTES = 65536
+
+    def _video_seconds(self, media_url: str | None) -> float | None:
+        """原文件头里 `mvhd` 声明的时长。接口和详情页都不给时长，只有文件本身有。
+
+        只问 mp4：rule34.xxx 的视频实测全是 mp4。取不到（状态码不对、`moov` 在文件
+        结尾）就是 None，落库时 `COALESCE` 保留上一轮的值，不写 0 冒充测过。
+        """
+        url = str(media_url or "")
+        if not urllib.parse.urlsplit(url).path.lower().endswith(".mp4"):
+            return None
+        headers = {"User-Agent": USER_AGENT, "Range": f"bytes=0-{self._VIDEO_HEAD_BYTES - 1}"}
+        try:
+            response = self.transport(HttpRequest("GET", url, headers),
+                                      self.timeout, self._VIDEO_HEAD_BYTES)
+        except (OSError, httpx.HTTPError):
+            return None
+        if response.status not in (200, 206):
+            return None
+        return movie_seconds(response.body[:self._VIDEO_HEAD_BYTES])
 
     #: 自动补全项的形状：`ria-neearts (248)`，括号里是该标签下的帖子数。
     _AUTOCOMPLETE_COUNT_RE = re.compile(r"\((\d[\d,]*)\)\s*$")
