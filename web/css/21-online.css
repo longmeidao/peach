@@ -34,7 +34,8 @@
    就把留白翻成黑的，所以两层一起换。 */
 .followitem.imagecard :is(.mixfaces,.mixface .poster){background:var(--sunk)}
 .followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
-.followitem[data-status="ignored"],.followitem[data-status="seen"]{opacity:.62}
+/* 已看的卡片保持原样：看过不等于不想再看，只有忽略的才淡下去。 */
+.followitem[data-status="ignored"]{opacity:.62}
 .followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
 .followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .fnothumb{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:var(--fs-xs)}
