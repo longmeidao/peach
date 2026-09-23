@@ -91,18 +91,21 @@
   text-decoration:none;color:var(--ink);border-radius:var(--control-radius);padding:4px 8px;margin:-4px -8px}
 .entityhero .entrymarks a.entrymark:any-link:hover{
   background:color-mix(in srgb,var(--ink) 8%,var(--ground));text-decoration:none}
-/* 「订阅新作」开关排在两枚标识后面：它订的就是左边那个 JavDB 演员页。 */
-.entryfeed{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-size:var(--fs-sm);
-  cursor:pointer}
-.entryfeed svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
-/* 标识自己带着 fill：蓝块和白字是站点的配色，`currentColor` 那半跟页面墨色走。
+/* 「订阅新作」开关排在两枚标识后面：它订的就是左边那个 JavDB 演员页。字和图标跟两枚
+   标识同一个量级——同一行里三样东西，这一样要是小一号，读起来就成了挂在后面的注脚。 */
+.entryfeed{display:inline-flex;align-items:center;gap:8px;color:var(--ink);font-size:var(--fs-lg);
+  font-weight:500;line-height:24px;cursor:pointer}
+.entryfeed svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
+/* 两枚标识按字母的高度对齐，不按外框：JavDB 那枚里 `Jav` 三个字母占 viewBox 高的
+   71/111，高 22px 时是 14.1px；MISSAV 是排出来的字，衬线体的大写字母高约 0.71em，
+   `--fs-xl` 时是 14.2px。外框对齐的话 MISSAV 的字母比 `Jav` 高出两成，一眼看过去它大一号。
+   标识自己带着 fill：蓝块和白字是站点的配色，`currentColor` 那半跟页面墨色走。
    这里只定高，宽度由外层 viewBox 的比例推出来。 */
 .entrymark svg{height:22px;width:auto}
 .entryordinal{color:var(--muted);font-size:var(--fs-sm)}
-/* MISSAV 那枚是排出来的字，规则照它站上那套：Halant 500、`MISS` 跟页面墨色、`AV`
-   用它的粉。字号按它 36px 里 22px 帽高的比例落到这一行的高度上。 */
+/* MISSAV 那枚的规则照它站上那套：Halant 500、`MISS` 跟页面墨色、`AV` 用它的粉。 */
 .missavmark{font-family:Halant,Georgia,"Times New Roman",serif;font-weight:500;
-  font-size:var(--fs-2xl);line-height:22px;letter-spacing:.01em;white-space:nowrap}
+  font-size:var(--fs-xl);line-height:22px;letter-spacing:.01em;white-space:nowrap}
 .missavmark span:last-child{color:#FE628E}
 .entityskeletontext{width:100%}
 .entityskeletontext .entitytitle .skeleton{width:60%;height:auto}
