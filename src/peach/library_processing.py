@@ -28,7 +28,9 @@ from .metadata_policy import SOURCE_SPECS
 from .platform import root_online, translate_ledger_path
 from .review_csv import read_rows, write_rows
 from .scan import scan_location
+from .ffmpeg import FFmpegResolver
 from .jobs import DiskGuard
+from .media_probe import probe_unmeasured
 
 FIELDS = ('item_key', 'code', 'query', 'asset_id', 'asset_path', 'field', 'field_label', 'current_value',
           'candidates_json', 'source_count', 'source_profile', 'policy_version', 'status',
@@ -1276,6 +1278,12 @@ def _avatar_followups(database, config, watermark, covered=()):
             for item in found]
 
 
+def _ffprobe_path(config):
+    """数据目录里那份 ffprobe，没有就退到 PATH；都没有回 `None`，扫描照常、只是不探。"""
+    choice = FFmpegResolver(config.directory('tools') / 'ffmpeg').ffprobe()
+    return str(choice.path) if choice else None
+
+
 def process_library(config, db_path, candidate_root, cover_root, *, location='configured',
                     report=lambda state: None, provider_factory=None, job_id=None,
                     retry_ids=None, active=lambda: True, stage=ALL_STAGES,
@@ -1305,7 +1313,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
     with FileLock(str(path) + '.lock', timeout=0):
         state = dict(job_id=job_id or uuid.uuid4().hex, status='running',
                      stage='读取本地资料' if retrying else '扫描文件',
-                     checked=0, total=0, scanned=0, identified=0, candidates=0, covers=0,
+                     checked=0, total=0, scanned=0, probed=0, identified=0, candidates=0, covers=0,
                      issue_count=0, paused_count=0, issue_preview=[], issues_truncated=False,
                      notes={}, retryable_asset_ids=[],
                      last_progress_at=time.time(), progress_seq=0,
@@ -1371,6 +1379,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
             guard.check(force=True)
             locations = config.locations if location == 'configured' else {location: config.locations[location]}
             mounts = {key: tuple(str(value) for value in values) for key, values in config.mounts.items()}
+            ffprobe = _ffprobe_path(config)
             online_roots = []
             for source, roots in locations.items():
                 for root in roots:
@@ -1383,9 +1392,13 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                         result = scan_location(db_path, source, root, declared_roots=config.locations,
                                                mounts=mounts, report=lambda line: update(stage='扫描文件'))
                         state['scanned'] += result.files
+                        state['probed'] += probe_unmeasured(
+                            db_path, ffprobe, source, root,
+                            report=lambda done, total: update(stage='读取时长与分辨率', checked=done, total=total))
             if stage == SCAN_STAGE:
+                # `checked`／`total` 在探时长时借给进度条用过；只扫描这一段没有采集，读数归零。
                 update(status='failed' if state['issue_count'] else 'complete',
-                       stage='处理结束', completed_at=time.time(),
+                       stage='处理结束', completed_at=time.time(), checked=0, total=0,
                        error=issue_summary(state['issue_count'], state['paused_count']))
                 return state
             # 演员和标签是另外两张表，`asset` 上没有这两列。不带上它们，采集就把每部片都

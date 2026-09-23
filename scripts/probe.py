@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""全库 ffprobe：可续跑、单写者、显式计费授权。"""
+"""全库 ffprobe：可续跑、单写者、显式计费授权。
+
+新文件入库时已经探过一次（`peach.media_probe`），这里补的是历史空缺、失败重探和点名
+重探，以及入库时不碰的计费来源。
+"""
 from __future__ import annotations
 
 import argparse
-import json
 import queue
 import sqlite3
-import subprocess
 import threading
 import time
 import sys
@@ -31,6 +33,7 @@ from peach.jobs import (
 )
 from peach.platform import system_volume
 from peach.media import resolve_case_insensitive
+from peach.media_probe import UPDATE, context_fields, probe_file
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -67,21 +70,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def context_fields(width: int, height: int, duration: float) -> tuple[str | None, str | None, str | None]:
-    orientation = quality = length = None
-    if width and height:
-        orientation = "竖屏" if height > width else "横屏"
-        longest = max(width, height)
-        quality = (
-            "4K" if longest >= 3000 else "2K" if longest >= 1900
-            else "1080P" if longest >= 1300 else "720P" if longest >= 900
-            else "低画质"
-        )
-    if duration and duration > 0:
-        length = "速食" if duration < 300 else "短" if duration < 900 else "中" if duration < 2400 else "长"
-    return length, orientation, quality
-
-
 def duration_selection(redo: str) -> str:
     """未探测和"探测过但没拿到时长"是两种状态；后者必须显式要求才重跑。
 
@@ -94,39 +82,6 @@ def duration_selection(redo: str) -> str:
         "failed": "(duration IS NULL OR duration<0)",
         "all": "(duration IS NULL OR duration<=0)",
     }[redo]
-
-
-def probe_file(ffprobe: str, path: str, timeout: float = 20.0) -> tuple:
-    result = subprocess.run(
-        [
-            ffprobe, "-v", "error", "-rw_timeout", "8000000",
-            "-select_streams", "v:0", "-show_entries",
-            "format=duration:stream=width,height,codec_name,avg_frame_rate",
-            "-of", "json", path,
-        ],
-        capture_output=True,
-        timeout=timeout,
-    )
-    payload = json.loads(result.stdout or b"{}")
-    duration = float((payload.get("format") or {}).get("duration") or 0)
-    if duration <= 0:
-        # 拿不到时长就是失败，不能写 0 —— 0 会被后续步骤当成"已探测"而永久跳过。
-        duration = -1.0
-    stream = (payload.get("streams") or [{}])[0]
-    fps = 0.0
-    try:
-        numerator, denominator = (stream.get("avg_frame_rate") or "0/1").split("/")
-        fps = float(numerator) / float(denominator) if float(denominator) else 0.0
-    except (TypeError, ValueError, ZeroDivisionError):
-        pass
-    return (
-        duration,
-        int(stream.get("width") or 0),
-        int(stream.get("height") or 0),
-        stream.get("codec_name"),
-        fps,
-        None,
-    )
 
 
 def run(args: argparse.Namespace) -> int:
@@ -237,10 +192,7 @@ def run(args: argparse.Namespace) -> int:
         connection = sqlite3.connect(args.db, timeout=120)
         connection.execute("PRAGMA journal_mode=WAL")
         connection.execute("PRAGMA busy_timeout=120000")
-        update = (
-            "UPDATE asset SET duration=?,width=?,height=?,vcodec=?,fps=?,has_audio=?,"
-            "ctx_length=?,ctx_orient=?,ctx_quality=? WHERE id=?"
-        )
+        update = UPDATE
         buffer = []
         while any(thread.is_alive() for thread in threads) or not results.empty():
             try:

@@ -66,7 +66,7 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 
 ## 两个独立缺口
 
-- `fetch_fc2_metadata.py` 已复用 HTTPX 和标准库 `MozillaCookieJar`；评论里的跨号关系与分片判断是领域逻辑，未发现成熟依赖完整覆盖的证据。问题是它的 `--cookies`、网络错误、预算和续跑没有接入 GUI／共享服务，不能因此称其整套解析是在造轮子。
+- `fetch_fc2_metadata.py` 已复用 HTTPX 与按来源的连接配置；评论里的跨号关系与分片判断是领域逻辑，未发现成熟依赖完整覆盖的证据。问题是它的网络错误、预算和续跑没有接入 GUI／共享服务，不能因此称其整套解析是在造轮子。
 - `harvest_studio_sites.probe` 创建 `HttpxTransport(crawler_client())`，finally 调 `http.close()`；共享 `HttpxTransport` 对注入 client 设置 `_owns_client=False`，因此这次 close 不会关闭实际 client，调用者又未关闭它。当前实现不能保证每个请求立即释放连接。先修正所有权并复测原失败序列，再判断是否需要每请求独立 client；不能依据现有文字断言 HTTPX 池会必然泄漏。
 
 ## 已有复用与历史证据

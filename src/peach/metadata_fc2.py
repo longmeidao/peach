@@ -10,9 +10,8 @@ r18.dev 对 FC2 实测 85 条问了 85 条全空；AVBase 与 JavBus 对本地�
 
 下架的商品在 fc2cmadb 上还留着：它是个 Laravel + Inertia 的镜像站，整棵 props 树放在
 `<script type="application/json">` 里，字段与商品页一一对得上——本地那批没封面的 FC2
-多半只能从这里取（实测 `FC2-PPV-3189161` 官方页已空，镜像给出 3456×1942 的原图）。它
-按 IP 限流，没登录连着问几页就一路 429，这一档要在「来源和凭证」里配一份登录 cookie
-才跑得动。两处的封面都指向 `storage*.contents.fc2.com` 上的同一个文件，镜像有时给的是
+多半只能从这里取（实测 `FC2-PPV-3189161` 官方页已空，镜像给出 3456×1942 的原图）。游客
+就能读，它按出口 IP 限流，撞上 429 换出口。两处的封面都指向 `storage*.contents.fc2.com` 上的同一个文件，镜像有时给的是
 `contents-thumbnail*.fc2.com/w276/` 包装过的缩略图地址，`_storage_original` 把包装拆掉。
 
 带分段后缀的番号（`FC2-PPV-3312576-1`）在这里一律认不出商品号，于是一处都不问。那是

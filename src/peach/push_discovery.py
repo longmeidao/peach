@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import secrets
+import sqlite3
 import threading
 import time
 from dataclasses import dataclass, field
@@ -596,8 +597,11 @@ class PushDiscoveryService:
         self, *, state_root: Path, secrets_root: Path, db_path: Path,
         declared_roots, mounts, available: bool = True,
         debounce: float = DEBOUNCE_SECONDS, settle: float = SETTLE_SECONDS,
+        ffprobe: Callable[[], object] | None = None,
     ):
         self.settings = PushDiscoverySettings(state_root)
+        #: 取 ffprobe 的回调，登记完视频当场探时长用；每次现取，装上 FFmpeg 不必重启。
+        self.ffprobe = ffprobe
         self.secret = WebhookSecret(secrets_root)
         self.db_path = Path(db_path)
         self.declared_roots = {key: tuple(value) for key, value in declared_roots.items()}
@@ -627,8 +631,20 @@ class PushDiscoveryService:
 
     def _ingest(self, location: str, path: str) -> bool:
         from .scan import ingest_path
-        return ingest_path(self.db_path, location, path,
-                           declared_roots=self.declared_roots, mounts=self.mounts).found
+        found = ingest_path(self.db_path, location, path,
+                            declared_roots=self.declared_roots, mounts=self.mounts).found
+        if found:
+            self._measure(location, path)
+        return found
+
+    def _measure(self, location: str, path: str) -> None:
+        """登记完顺手探时长与分辨率。探不成不影响这一条已经入库，全量扫描还会再补。"""
+        from .media_probe import probe_path
+        choice = self.ffprobe() if self.ffprobe else None
+        try:
+            probe_path(self.db_path, str(choice.path) if choice else None, location, path)
+        except sqlite3.Error:
+            LOGGER.exception("推送发现探测时长失败：%s", path)
 
     def submit(self, location: str, path: str) -> bool:
         if ignored(PureWindowsPath(path).name):

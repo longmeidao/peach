@@ -226,6 +226,7 @@ def create_app(
         declared_roots=LOCATION_ROOT_DECLARATIONS,
         mounts=location_mounts(),
         available=_writer(sync),
+        ffprobe=resolver.ffprobe,
     )
     contract.follow_scheduler = follow_scheduler
     # 订阅源拉取（ADR-0042）用同一个调度实现，只换 job id、状态文件与默认间隔。

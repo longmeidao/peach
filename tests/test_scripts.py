@@ -1781,7 +1781,7 @@ class OperationalScriptTests(unittest.TestCase):
 
     def test_probe_never_records_an_unknown_duration_as_zero(self):
         """0 会同时躲过 probe 的 `duration IS NULL` 和抽帧的 `duration>2`，永久卡住。"""
-        module = self.probe
+        from peach import media_probe as module
 
         class _Empty:
             stdout = b'{"format":{},"streams":[{"width":0,"height":0}]}'
