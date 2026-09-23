@@ -45,6 +45,7 @@ from .web_entity import (
 from .web_feeds import (
     q_feed_check,
     q_feed_discoveries,
+    q_feed_rows,
     q_feeds,
     w_feed_check,
     w_feed_discovery,
@@ -298,6 +299,7 @@ GET_HANDLERS = {
     "/api/feeds": q_feeds,
     "/api/feeds/check": q_feed_check,
     "/api/feeds/discoveries": q_feed_discoveries,
+    "/api/feeds/rows": q_feed_rows,
     "/api/follow": q_follow,
     "/api/follow/credentials": q_follow_credentials,
     "/api/follow/tags": q_follow_tags,

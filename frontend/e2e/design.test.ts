@@ -1276,43 +1276,63 @@ describe('设计决定', () => {
     }
   });
 
-  it('订阅了的人物页先按真卡轮廓占住新作那一行，数据到了行高不变、封面不再等第二遍', { timeout: 60_000 }, async () => {
+  it('有新作的人物页整页骨架里就留着新作那一行，数据到了一次换齐、行高不变、封面不再等第二遍', { timeout: 60_000 }, async () => {
     const name = '七沢みあ';
     const opened = await visit(browser, '/', DESKTOP);
     try {
-      await opened.page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
-        id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
-        user_aliases: [], asset_count: 0, tags: [], related_performers: [], links: [],
-        metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
-        representative_asset_id: null, entry_links: [], feed: { following: true },
-      } }));
+      await opened.page.route(/\/api\/feeds\/rows/, (route) => route.fulfill({ json: {
+        ok: true, entities: [{ id: 90_001, kind: 'performer', names: [name] }] } }));
       let release = () => {};
       const held = new Promise<void>((resolve) => { release = resolve; });
-      await opened.page.route(/\/api\/feeds\/discoveries\?/, async (route) => {
+      await opened.page.route(/\/api\/entity\?/, async (route) => {
         await held;
-        await route.fulfill({ json: { ok: true, more: false, items: [{
+        await route.fulfill({ json: {
+          id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
+          user_aliases: [], asset_count: 0, tags: [], related_performers: [], links: [],
+          metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
+          representative_asset_id: null, entry_links: [], feed: { following: true },
+        } });
+      });
+      await opened.page.route(/\/api\/feeds\/discoveries\?/, (route) => route.fulfill({ json: {
+        ok: true, more: false, items: [{
           id: 1, code: 'ABC-001', title: '标题', link: 'https://javdb.com/v/x', cover_url: null,
           has_cover: true, cover_frame: null, poster_box: null, release_date: '2026-09-01',
           studio: '厂牌', performers: name, source_name: '', read: false, ignored: false,
-          scrape_error: null }] } });
-      });
-      // 封面比数据晚到一截：骨架要等它，而不是先换上真卡、再在封面格里微光一遍。
+          scrape_error: null }] } }));
+      // 封面比数据晚到一截：整页要等它，而不是先换上真卡、再在封面格里微光一遍。
       await opened.page.route(/\/cover\?code=ABC-001/, async (route) => {
         await new Promise((resolve) => setTimeout(resolve, 400));
         await route.fulfill({ contentType: 'image/png', body: Buffer.from(PIXEL, 'base64') });
       });
       await opened.page.goto(new URL(`/performers/${encodeURIComponent(name)}`,
         opened.page.url()).href, { waitUntil: 'load' });
-      const row = opened.page.locator('[data-feed-new]');
-      await row.locator('.feednewskeleton').first().waitFor({ timeout: 15_000 });
-      const before = await row.evaluate((element) => element.getBoundingClientRect().height);
+      const skeleton = opened.page.locator('[data-skeleton="entity/performer"]');
+      await skeleton.locator('.feednew .feednewskeleton').first().waitFor({ timeout: 15_000 });
+      const before = await skeleton.evaluate((element) => {
+        const row = element.querySelector('.feednew')!;
+        return { height: row.getBoundingClientRect().height,
+          between: !!row.previousElementSibling?.matches('[data-filter-frame]')
+            && !!row.nextElementSibling?.matches('.entitysection') };
+      });
+      assert.ok(before.between, '骨架里的新作那一行不在筛选框和作品之间');
+      // 画好的页面上那一行一出现就得是真卡：再露一回它自己的骨架，就是同一行等了两遍。
+      await opened.page.evaluate(() => {
+        const seen = { second: false };
+        (window as unknown as { feedSeen: typeof seen }).feedSeen = seen;
+        new MutationObserver(() => {
+          if (document.querySelector('[data-feed-new] .feednewskeleton')) seen.second = true;
+        }).observe(document.querySelector('#index')!, { childList: true, subtree: true });
+      });
       release();
+      const row = opened.page.locator('[data-feed-new]');
       await row.locator('[data-feed-id]').waitFor({ timeout: 15_000 });
       const after = await row.evaluate((element) => ({
         height: element.getBoundingClientRect().height, busy: element.getAttribute('aria-busy'),
-        waiting: element.querySelectorAll('[data-feed-id] .pic.imgwait').length }));
-      assert.equal(after.height, before, '占位行和到货的那一行不一样高，下面的作品网格会跳');
+        waiting: element.querySelectorAll('[data-feed-id] .pic.imgwait').length,
+        second: (window as unknown as { feedSeen: { second: boolean } }).feedSeen.second }));
+      assert.equal(after.height, before.height, '占位行和到货的那一行不一样高，下面的作品网格会跳');
       assert.equal(after.busy, null);
+      assert.equal(after.second, false, '整页画出来之后新作那一行又单独骨架了一轮');
       assert.equal(after.waiting, 0, '骨架退场后封面格里又微光了一遍');
       assert.deepEqual(opened.problems, []);
     } finally {
