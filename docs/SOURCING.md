@@ -148,6 +148,8 @@ fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书�
 所以按站的限流与封禁表现由传输层一处决定。配置与 `SOURCE_SPECS`、`SOURCE_LABELS`、`PROVIDER_NAMES`、
 `scraping_access.SOURCES`、`SOURCE_INTERVALS` 里同一站的那几行由 `tests/test_metadata_sources.py` 守住一致。
 
+下表各站全部已套契约：自写的九站登记在 `sources.SITE_SOURCES`，经桥的四站在 `metadata_amane`。
+
 | 站 | 状态 | 位置 | 说明 |
 | --- | --- | --- | --- |
 | JavBus | 已套契约 | `sources/javbus.py` | 年龄门归 `auth_required`；404 与番号对不上归 `not_found` |
@@ -159,7 +161,7 @@ fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书�
 | FC2 | 已套契约 | `sources/fc2.py` | 商品页一跳，下架页与 `sku` 对不上归 `not_found`；番号、时长、原件地址与占位件判定是三站共用的函数，也在这里；页面上限 2 MiB |
 | fc2cmadb | 已套契约 | `sources/fc2cmadb.py` | 作品页之后在 `query()` 里带握手头点名 `actresses` 再问一跳，那一跳失败按没有女优交回；评论区的演员、等价与合集解析也在这里，`scripts/fetch_fc2_metadata.py` 从这里取 |
 | JavArchive | 已套契约 | `sources/javarchive.py` | 搜索页加作品页两跳；`records()` 把搜索命中的每一条转存各交一份记录，某一条 404 或对不上就跳过 |
-| Seesaa 作品表 | 待迁 | `metadata_seesaa.py` | 只由 `scrape_codes --profile seesaa` 走；这张表里唯一没套契约的一站 |
+| Seesaa 作品表 | 已套契约 | `sources/seesaa.py` | 只由 `scrape_codes --profile seesaa` 或 `--sources sougouwiki` 点名，provenance 是 `sougouwiki`；`rows()` 把一页作品表的每一行各读成一份记录，读过的表记在实例里供后面的番号先找；会话的传输是 `WikiPages`（页缓存、本批请求限额、撞墙停网），不在 `scraping_access.SOURCES` 里；失败沿用 `budget`、`blocked`、`ambiguous`、`incomplete_search` 等分档，不折成三档：它们落进批处理的错误表与健康表，`budget` 与 403/429 还决定本批停网 |
 
 FC2 三站先后问、资料取齐即停、封面问到底的流程仍在 `LibraryMetadataProvider.fc2`，按 `metadata_routes.FC2_STAGE`
 逐站调 `records()`；各站只管自己的取页与解析。

@@ -106,8 +106,8 @@ class HttpTransport(Protocol):
 
 #: 从响应开头扫多少字节找 `<meta>` 里的字符集声明。
 #: 参考实现（NeoAVDC `src/main/net/httpClient.ts` 的 `bodyToText`）只扫 1 KB；这里取
-#: 4 KiB，因为 seesaawiki 的声明落在 1 KB 之后——`metadata_seesaa` 此前自己扫前 3000
-#: 字节才认得出 UTF-8 页，扫 1 KB 会把那些页全部按回落编码解。
+#: 4 KiB，因为 seesaawiki 的声明落在 1 KB 之后，要扫到前 3000 字节才认得出 UTF-8 页，
+#: 扫 1 KB 会把那些页全部按回落编码解。
 META_SNIFF_BYTES = 4096
 
 _CHARSET_IN_HEADER = re.compile(r"charset\s*=\s*[\"']?\s*([\w.:-]+)", re.IGNORECASE)

@@ -66,13 +66,16 @@ SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'j
                  '1pondo': '一本道', 'local_nfo': '本地 NFO',
                  # 经 amane 桥问的几站（`metadata_amane.SITES`）。
                  'fc2club': 'FC2Club', 'freejavbt': 'FreeJavBT',
-                 'airav': 'AIRAV', 'avsox': 'AVSOX'}
+                 'airav': 'AIRAV', 'avsox': 'AVSOX',
+                 # Seesaa 作品表，只由 `scrape_codes` 点名（`sources.seesaa`）。
+                 'sougouwiki': '素人系総合 Wiki'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
                   'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
                   '1pondo': '1pondo-json',
                   'fc2club': 'amane-fc2club',
-                  'freejavbt': 'amane-freejavbt', 'airav': 'amane-airav', 'avsox': 'amane-avsox'}
+                  'freejavbt': 'amane-freejavbt', 'airav': 'amane-airav', 'avsox': 'amane-avsox',
+                  'sougouwiki': 'sougouwiki'}
 
 
 def is_missing(error):

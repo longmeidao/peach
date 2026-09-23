@@ -52,7 +52,7 @@ SOURCE_SPECS = {
         "javlibrary": "community", "jav321": "community", "javstash": "community",
         # Peach 自写解析器的社区站（`peach.sources.javdb`、`peach.sources.javbus`）。
         "javdb": "community", "javbus": "community",
-        # Seesaa 作品表（`peach.metadata_seesaa`，`scrape_codes --profile seesaa`）。
+        # Seesaa 作品表（`peach.sources.seesaa`，`scrape_codes --profile seesaa`）。
         "sougouwiki": "community",
         # AVBase 汇总各店铺的商品条目，采集任务在官方渠道落空时直接请求它
         # （`peach.sources.avbase`）。

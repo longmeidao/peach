@@ -87,8 +87,8 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   `HostLimiter`、番号规范化、字段候选和快照协议；不新增依赖，沿用 Python 3.12+ 与 Windows/macOS。
   2026-09-06 检查 Javinizer-Go `d9724f239d7e127afcb747fa8ce4358685912f50`（MIT）及 MetaTube
   `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）的来源目录，均无 Seesaa 适配器；
-  两者分别于 2026-09-05、2026-07-12 有仓库更新。本站例外由 `metadata_seesaa` 承担 EUC-JP、
-  作品表列映射、精确行身份与未知名单保护；别的来源按 ADR-0044 归到自写解析器或 amane 桥。
+  两者分别于 2026-09-05、2026-07-12 有仓库更新。本站例外由 `peach.sources.seesaa` 承担 EUC-JP、
+  作品表列映射、精确行身份与未知名单保护，套的是站点解析器契约；别的来源按 ADR-0044 归到自写解析器或 amane 桥。
   真实 Flower 页 HTTPX 取得 200／253975 字节，FKOS-007 解析出 10 位出演者；公开搜索亦可发现
   对应表格。`scrape_codes --profile seesaa` 是正式消费者，不另建刮削 CLI。详见 [来源采集](SOURCING.md#seesaa-wiki-作品证据)。
 

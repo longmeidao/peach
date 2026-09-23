@@ -50,7 +50,8 @@ from peach.metadata import (
 from peach.metadata_policy import PEACH_FIELDS, POLICY_VERSION, SOURCE_SPECS, field_rank, sort_candidates
 from peach.platform import system_volume
 from peach.review_csv import ENCODING, write_rows
-from peach.metadata_seesaa import SeesaaProvider
+from peach.sources import Session
+from peach.sources.seesaa import SEESAA, SeesaaSource, WikiPages
 
 
 _logf = None
@@ -75,8 +76,8 @@ HEALTH_FIELDS = [
 ]
 
 #: Seesaa 作品表那一档。它不在任何内容类型的链上（`metadata_routes.ROUTES`），只由
-#: `--profile seesaa` 或 `--sources sougouwiki` 点名，走 `SeesaaProvider`。
-WIKI_SOURCE = "sougouwiki"
+#: `--profile seesaa` 或 `--sources sougouwiki` 点名，经契约问 `sources.seesaa`。
+WIKI_SOURCE = SEESAA.name
 #: `--sources` 能点名的来源：链上每一档的成员，加 Seesaa。别的名字在 `SOURCE_SPECS` 里
 #: 只是历史来源身份（`metadata_policy.HISTORICAL_SOURCES`），当前没有解析器可问。
 CHAIN_SOURCES = tuple(dict.fromkeys((
@@ -166,13 +167,15 @@ class ChainAdapter:
     直接经契约问 `SITE_SOURCES` 里的站，不经 `community()` 的按番号缓存——本脚本要的
     是每家各自的结果与失败，用来记快照和健康，而那份缓存只记整档的结论。
 
-    provider 按需才建：`--profile seesaa` 一次都不会碰到它。
+    provider 按需才建：`--profile seesaa` 一次都不会碰到它。Seesaa 那一档经契约问 `wiki`
+    （`SeesaaSource`），会话 `wiki_session` 的传输是带页缓存与请求限额的 `WikiPages`，整批共用。
     """
 
-    def __init__(self, factory, wiki=None):
+    def __init__(self, factory, wiki=None, wiki_session=None):
         self._factory = factory
         self._inner = None
         self.wiki = wiki
+        self.wiki_session = wiki_session
 
     @property
     def inner(self):
@@ -196,7 +199,7 @@ class ChainAdapter:
             elif stage == "amane":
                 pairs = self.inner.amane(code, route=members)
             elif stage == WIKI_SOURCE:
-                pairs = [(WIKI_SOURCE, self.wiki.query(code, WIKI_SOURCE))]
+                pairs = [(WIKI_SOURCE, self.wiki.query(code, session=self.wiki_session).payload())]
             else:
                 raise ValueError(f"链上没有这一档：{stage}")
         except Exception as error:  # noqa: BLE001 - 每种失败都翻成本脚本的分档
@@ -220,8 +223,8 @@ class ChainAdapter:
     def close(self) -> None:
         if self._inner is not None:
             self._inner.close()
-        if self.wiki is not None:
-            self.wiki.close()
+        if self.wiki_session is not None:
+            self.wiki_session.transport.close()
 
 
 class PerSourceAdapter:
@@ -770,19 +773,20 @@ def _build_adapter(args, sources, provider=None):
     """来源适配器：注入的 provider 优先（测试桩），否则按需建正式链的 provider 与 Wiki。"""
     if provider is not None:
         return provider if hasattr(provider, "fetch") else PerSourceAdapter(provider)
-    wiki = None
+    wiki = wiki_session = None
     if WIKI_SOURCE in sources:
         pages = ([line.strip() for line in args.wiki_pages_file.read_text(encoding=ENCODING).splitlines()
                   if line.strip() and not line.lstrip().startswith("#")]
                  if args.wiki_pages_file else [])
-        wiki = SeesaaProvider(args.raw_dir / "seesaa-pages", pages=pages,
-                              max_requests=max(0, args.wiki_max_requests), refresh=args.refresh)
+        wiki = SeesaaSource(pages=pages)
+        wiki_session = Session(WikiPages(args.raw_dir / "seesaa-pages", refresh=args.refresh,
+                                         max_requests=max(0, args.wiki_max_requests)))
 
     def factory():
         from peach.library_processing import LibraryMetadataProvider
         return LibraryMetadataProvider(args.secrets_root, tools_root=args.tools_root)
 
-    return ChainAdapter(factory, wiki)
+    return ChainAdapter(factory, wiki, wiki_session)
 
 
 def main(argv: list[str] | None = None, *, provider=None) -> int:
