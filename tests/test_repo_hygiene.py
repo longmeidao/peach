@@ -17,6 +17,7 @@ import unittest
 
 import peach
 from peach import appid
+from scripts import test_runner
 
 REPO = pathlib.Path(peach.__file__).resolve().parents[2]
 DOCS = REPO / "docs"
@@ -612,6 +613,79 @@ class SectionReferenceTests(unittest.TestCase):
                         broken.append(f"{source.relative_to(REPO).as_posix()} -> {target}「{name}」")
         self.assertEqual(broken, [],
                          "这些引用指向的节已经不存在，改标题时请一起改引用：\n  " + "\n  ".join(broken))
+
+
+#: ADR 文件名 `NNNN-主题.md` 与首行标题 `# ADR-NNNN：…`。
+_ADR_FILE = re.compile(r"^(\d{4})-[^/\\]+\.md$")
+_ADR_TITLE = re.compile(r"^# ADR-(\d{4})(?!\d)")
+
+
+def _adr_numbering_problems(adr_dir: pathlib.Path) -> list[str]:
+    """`docs/adr/` 里编号不唯一、文件名与标题编号不符的文件，一条一行。"""
+    problems: list[str] = []
+    by_number: dict[str, list[str]] = {}
+    for path in sorted(adr_dir.glob("*.md")):
+        named = _ADR_FILE.match(path.name)
+        if named is None:
+            problems.append(f"{path.name}：文件名不是 NNNN-主题.md")
+            continue
+        number = named.group(1)
+        by_number.setdefault(number, []).append(path.name)
+        first = next(iter(path.read_text(encoding="utf-8").splitlines()), "")
+        titled = _ADR_TITLE.match(first)
+        if titled is None or titled.group(1) != number:
+            problems.append(f"{path.name}：首行标题应以 `# ADR-{number}` 开头，实际是 {first[:40]!r}")
+    for number, names in sorted(by_number.items()):
+        if len(names) > 1:
+            problems.append(f"ADR-{number} 重号：{'、'.join(names)}")
+    return problems
+
+
+class AdrNumberingTests(unittest.TestCase):
+    """ADR 编号全树唯一，文件名编号与首行标题编号一致。
+
+    编号由新建 ADR 的人自己取「当前最大号加一」，两个并行工作树各取一次就会撞号，
+    而没有任何门槛看编号，ready 与 integrate 两边都放行：2026-09-23 两份 ADR-0044
+    就是这样先后合进 master 的。编号是别处引用 ADR 的唯一钥匙，撞号后「见 ADR-0044」
+    指向哪一份说不清。后合入的一方 ready 前必须纳入 master 重跑选测，本门槛就在那一步拦住。
+    """
+
+    ADR_DIR = DOCS / "adr"
+
+    def test_every_adr_number_is_unique_and_matches_its_title(self):
+        problems = _adr_numbering_problems(self.ADR_DIR)
+        self.assertEqual(
+            problems, [],
+            "ADR 编号有冲突：后合入的那份改用当前最大号加一，文件名与首行标题一起改，"
+            "再全树搜旧编号的引用：\n  " + "\n  ".join(problems),
+        )
+
+    def test_the_guard_catches_the_shape_it_describes(self):
+        """门槛自身也要能被证伪：重号、标题错号、文件名不合形状都要报出来。"""
+        with tempfile.TemporaryDirectory() as raw:
+            sample = pathlib.Path(raw)
+            for name, title in (("0044-scraping.md", "# ADR-0044：甲"),
+                                ("0044-booru.md", "# ADR-0044：乙"),
+                                ("0045-packs.md", "# ADR-0046：丙"),
+                                ("0046-bursts.md", "# ADR-00460：丁"),
+                                ("0047-fine.md", "# ADR-0047：戊"),
+                                ("notes.md", "# 笔记")):
+                (sample / name).write_text(title + "\n正文\n", encoding="utf-8")
+            problems = _adr_numbering_problems(sample)
+        self.assertEqual(problems, [
+            "0045-packs.md：首行标题应以 `# ADR-0045` 开头，实际是 '# ADR-0046：丙'",
+            "0046-bursts.md：首行标题应以 `# ADR-0046` 开头，实际是 '# ADR-00460：丁'",
+            "notes.md：文件名不是 NNNN-主题.md",
+            "ADR-0044 重号：0044-booru.md、0044-scraping.md",
+        ])
+
+    def test_adding_an_adr_selects_this_guard(self):
+        """新建 ADR 的分支按改动选测时必须跑到本门槛，否则撞号照样能过 ready。"""
+        scopes, _ = test_runner.scopes_for_changes(["docs/adr/0099-example.md"])
+        self.assertTrue(
+            any("test_repo_hygiene.py" in test_runner.SCOPES.get(scope, ()) for scope in scopes),
+            f"改 docs/adr/ 选到的域 {scopes} 都没有登记 test_repo_hygiene.py",
+        )
 
 
 if __name__ == "__main__":
