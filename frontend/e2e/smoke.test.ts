@@ -91,6 +91,8 @@ const ROUTES: readonly Route[] = [
     path: '/scraping',
     body: (page) => [heading(page, '#main', '来源和凭证'), page.locator('#stats form[aria-label="高清封面"]')],
   },
+  // 名字对不上任何一家时要换成空态；骨架一直留着，读起来就是还在取。
+  { path: '/agencies/不存在的事务所', body: (page) => [heading(page, '#index', '找不到这个事务所')] },
   { path: '/configuration', body: configurationBody },
   { path: '/activity', body: (page) => [heading(page, '#main', '活动'), heading(page, '#stats', '还没有任务记录')] },
   {
