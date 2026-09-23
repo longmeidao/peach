@@ -493,11 +493,6 @@ export function dropSources(ids: number[]): void {
 export const reloadFollowManage = (): Promise<void> =>
   queryClient.invalidateQueries({ queryKey: FOLLOW_MANAGE_KEY, exact: true });
 
-/** 后台任务在跑的时候两秒一次，和别的后台任务同一个节律；停了就不再问。 */
-export const JOB_POLL_MS = 2000;
-export const jobPollInterval = (job: { status?: string } | undefined): number | false =>
-  (job?.status === 'running' ? JOB_POLL_MS : false);
-
 /** 敲字建议的防抖。这一路要打一次站点的公开补全，250ms 让连着敲的人停手之后才打一枪。 */
 export const SUGGEST_DEBOUNCE_MS = 250;
 

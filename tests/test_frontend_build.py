@@ -507,11 +507,6 @@ class TasteEndpointTests(unittest.TestCase):
         self.assertIn("tasteKey = (window: string) => ['taste', window]", self.source)
         self.assertIn("placeholderData: keepPreviousData", self.source)
 
-    def test_the_background_run_only_counts_when_this_session_saw_it(self):
-        """首屏读到的旧终态不发回执：只有本次点过或见过它在跑才算数。"""
-        self.assertIn("refetchInterval", self.source)
-        self.assertIn("已更新口味分析", self.source)
-
     def test_the_import_keeps_the_filename_header(self):
         """文件原样当请求体发，文件名走请求头，服务端不必多接一个 multipart 解析器。"""
         self.assertIn("'Content-Type': 'application/octet-stream'", self.source)
@@ -597,17 +592,6 @@ class FollowManageEndpointTests(unittest.TestCase):
         self.assertIn("queryClient.setQueryData<FollowData>(FOLLOW_MANAGE_KEY", self.data)
         self.assertIn("export function patchSource(", self.data)
         self.assertIn("export function dropSources(", self.data)
-
-    def test_the_poll_only_runs_while_the_job_runs(self):
-        """跑起来两秒一问，停了就不问：节律取自任务状态本身。"""
-        self.assertIn("export const JOB_POLL_MS = 2000", self.data)
-        self.assertIn("job?.status === 'running' ? JOB_POLL_MS : false", self.data)
-        self.assertIn("refetchInterval: (query) => jobPollInterval(query.state.data)", self.source)
-
-    def test_a_stale_terminal_snapshot_is_not_this_run(self):
-        """首屏读到的旧终态不发回执：只有这一次点过或见过它在跑才算数。"""
-        self.assertIn("setTracking(true)", self.source)
-        self.assertIn("if (!tracking) return;", self.source)
 
     def test_row_identity_is_the_source_id(self):
         """行的身份是来源 ID：换页、换排序、换视图之后勾选的还是同一批来源。"""

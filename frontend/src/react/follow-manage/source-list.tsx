@@ -12,7 +12,7 @@ import {
   RiArrowDownLine, RiArrowDownSLine, RiArrowUpLine, RiArrowUpSLine, RiCheckDoubleLine,
   RiDeleteBinLine, RiLayoutGridLine, RiRefreshLine, RiRssLine, RiTableLine,
 } from '@remixicon/react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import {
   createColumnHelper, flexRender, getCoreRowModel, getPaginationRowModel, useReactTable,
   type RowSelectionState, type SortingState,
@@ -31,6 +31,7 @@ import { ChevronSortDown } from '@/components/foundations/icons/chevrons';
 
 import { errorMessage } from '../../api';
 import { DOTS, paginationRange } from '../../pagination';
+import { useBackgroundJob } from '../background-job';
 import { cardClass } from '../components/card';
 import { DataTableFrame } from '../components/data-table-frame';
 import { EmptyState } from '../components/empty-state';
@@ -38,12 +39,11 @@ import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
 import { SelectionDock } from '../components/selection-dock';
-import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import {
   authorGroups, authorName, checkedText, checkEvidenceGap, checkFailures, checkSummary,
   COLUMN_SORT, dropSources, fetchCheckJob, fetchPending, FOLLOW_CHECK_KEY, isBroken,
-  jobPollInterval, LAYOUTS, markItem, PAGE_SIZES, pageWindow, patchSource, removeSource,
+  LAYOUTS, markItem, PAGE_SIZES, pageWindow, patchSource, removeSource,
   reloadFollowManage, selectionState, setSourceEnabled, SORT_DEFAULT_DIR, SORT_OPTIONS,
   sortLabel, startCheck, tableRows, toggleGroup,
   type CheckJob, type FollowData, type FollowSource, type Layout, type SortDir, type SortKey,
@@ -242,48 +242,21 @@ export function SourceList(props: SourceListProps) {
   const counts = data.counts || {};
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set<string>());
   const [toolbar, compact] = useCompactToolbar();
-  /** 本次是不是在跟一趟检查：点过检查，或者本次见过它在跑。 */
-  const [tracking, setTracking] = useState(false);
-  /** 本次跟完的那一趟。首屏读到的旧终态不算，它不会走到这里。 */
-  const [outcome, setOutcome] = useState<CheckJob | null>(null);
   const [problem, setProblem] = useState('');
 
   const groups = useMemo(() => authorGroups(sources, sort, dir, aliases), [sources, sort, dir, aliases]);
   const rows = useMemo(() => tableRows(groups, sort, dir, aliases), [groups, sort, dir, aliases]);
 
-  const job = useQuery({
+  const { job, running, outcome, start: check } = useBackgroundJob<CheckJob, number[]>({
     queryKey: FOLLOW_CHECK_KEY,
     queryFn: ({ signal }) => fetchCheckJob(signal),
-    refetchInterval: (query) => jobPollInterval(query.state.data),
-  });
-  const running = job.data?.status === 'running';
-
-  const check = useMutation({
-    mutationFn: (ids: number[]) => startCheck(ids),
-    onSuccess: (started) => {
-      setTracking(true);
-      setOutcome(null);
-      /* 起的那一次回的就是这一趟的快照，先换进缓存再重读：缓存里还躺着上一趟的终态，重读
-         回来之前它会先被当成这一趟的回执报出去。 */
-      queryClient.setQueryData(FOLLOW_CHECK_KEY, started);
-      void queryClient.invalidateQueries({ queryKey: FOLLOW_CHECK_KEY, exact: true });
-    },
+    start: (ids) => startCheck(ids),
     onError: (cause) => setProblem(errorMessage(cause)),
+    onFinish: (state) => {
+      void reloadFollowManage();
+      toast(state.status === 'failed' ? (state.error || '检查失败') : checkSummary(state));
+    },
   });
-
-  useEffect(() => {
-    const state = job.data;
-    if (!state) return;
-    if (state.status === 'running') {
-      if (!tracking) setTracking(true);
-      return;
-    }
-    if (!tracking) return;
-    setTracking(false);
-    setOutcome(state);
-    void reloadFollowManage();
-    toast(state.status === 'failed' ? (state.error || '检查失败') : checkSummary(state));
-  }, [job.data, tracking, toast]);
 
   const startChecking = (ids: number[]) => {
     if (running || check.isPending) return;
@@ -559,11 +532,11 @@ export function SourceList(props: SourceListProps) {
 
       {/* 这一趟在后台跑，关掉页面还在继续，所以状态留在页面上而不是只让按钮转一下。 */}
       <div aria-live="polite" className="flex flex-col gap-3 empty:hidden">
-        {running ? (job.data?.total
-          ? <Progress label={job.data.message
-              || `${job.data.older ? '抓取历史' : '检查更新'}：已完成 ${job.data.checked || 0}/${job.data.total} 个来源`}
-              value={job.data.checked || 0} max={job.data.total} />
-          : <LoadingDots label={job.data?.message || '正在准备检查任务'} />) : null}
+        {running ? (job?.total
+          ? <Progress label={job.message
+              || `${job.older ? '抓取历史' : '检查更新'}：已完成 ${job.checked || 0}/${job.total} 个来源`}
+              value={job.checked || 0} max={job.total} />
+          : <LoadingDots label={job?.message || '正在准备检查任务'} />) : null}
         {problem ? <Note tone="error" title="操作未完成">{problem}</Note> : null}
         {failures.length ? (
           <Note tone="error" title={`${failures.length} 个来源检查失败`}

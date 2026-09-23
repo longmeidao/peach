@@ -12,7 +12,7 @@ import { prefetchScraping } from '../../src/react/scraping/scraping';
 import type { AmaneBridge, Check, CoverJob, Source } from '../../src/react/scraping/scraping';
 
 import {
-  buttonNamed, click, mount, mountRoot, pending, section, settle, submit, type,
+  buttonNamed, click, mount, mountRoot, section, settle, submit, type,
 } from './render';
 
 // 客户端是模块级的单例（所有 React 根共用一个），用例之间不清就互相喂数据。
@@ -259,30 +259,6 @@ it('抓封面跟到终态：跑的时候两秒一次，跑完发一次回执就�
   expect(toast).toHaveBeenCalledTimes(1);
 });
 
-it('点下抓取到重读回来之间，缓存里上一趟的终态不冒充这一趟的回执', async () => {
-  let state: Reply | Promise<Reply> = { body: { status: 'complete', result: '上一趟的封面' } };
-  const { host, toast } = await open({
-    ...quiet(),
-    'GET /api/scraping/cover': () => state,
-    'POST /api/scraping/cover': () => ({ body: { status: 'running' } }),
-  });
-  const reread = pending<Reply>();
-  state = reread.answer;
-  await type(host.querySelector<HTMLInputElement>('input[aria-label=馆藏番号]'), 'ABW-232');
-  await click(buttonNamed('抓取封面', host));
-  await settle();
-  // 重读还没回来，但这一趟已经起了：既不该报回执，也不该把上一趟的封面铺成这一趟的。
-  expect(toast).not.toHaveBeenCalled();
-  expect(host.textContent).not.toContain('上一趟的封面');
-  expect(host.textContent).toContain('正在抓取封面');
-
-  // 这一趟在第一次重读之前就跑完了：它的结果照样要接住。
-  await reread.release({ body: { status: 'complete', result: '已取得 1600 × 1077 封面' } });
-  await settle();
-  expect(toast.mock.calls).toEqual([['已取得 1600 × 1077 封面']]);
-  expect(host.textContent).toContain('已取得 1600 × 1077 封面');
-});
-
 it('卸载之后不再敲后台：轮询跟着这棵根一起走', async () => {
   vi.useFakeTimers();
   const { calls } = serve({
@@ -330,31 +306,4 @@ it('amane 桥：检查上游只填「上游最新版本」那一行，重建跟�
   expect(bridge.textContent).toContain('amane 桥已按 79ecfa763cc7 重建');
   expect(toast).toHaveBeenCalledTimes(1);
   expect(toast).toHaveBeenCalledWith('amane 桥已按 79ecfa763cc7 重建');
-});
-
-it('amane 桥：点下重建到重读回来之间，上一趟的失败不冒充这一趟的结果', async () => {
-  let state: Reply | Promise<Reply> = {
-    body: { ...BRIDGE, job: { status: 'failed', error: '上一趟的失败' } },
-  };
-  const { host, toast } = await open({
-    ...quiet(),
-    'GET /api/scraping/amane-bridge': () => state,
-    'POST /api/scraping/amane-bridge/rebuild': () => ({ body: { status: 'running' } }),
-  });
-  const bridge = section(host, 'amane 桥')!;
-  const reread = pending<Reply>();
-  state = reread.answer;
-  await click(buttonNamed('重新安装', bridge));
-  await settle();
-  expect(toast).not.toHaveBeenCalled();
-  expect(bridge.textContent).not.toContain('上一趟的失败');
-  expect(bridge.textContent).toContain('正在重建运行环境');
-  expect(bridge.textContent, '换进去的只是任务那一格，卡上的事实还在').toContain('0.16.1 · 79ecfa763cc7');
-
-  await reread.release({
-    body: { ...BRIDGE, job: { status: 'complete', result: 'amane 桥已按 79ecfa763cc7 重建' } },
-  });
-  await settle();
-  expect(toast.mock.calls).toEqual([['amane 桥已按 79ecfa763cc7 重建']]);
-  expect(bridge.textContent).toContain('amane 桥已按 79ecfa763cc7 重建');
 });

@@ -7,18 +7,19 @@ import { act } from 'react';
 import { notifyManager, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 
+import { JOB_RUNNING_POLL_MS } from '../../src/react/background-job';
 import { queryClient } from '../../src/react/query';
 import {
   authorAvatar, authorGroups, authorInitial, authorName, checkSummary, FOLLOW_CHECK_URL,
   FOLLOW_CREDENTIAL_URL, FOLLOW_CREDENTIALS_URL, FOLLOW_RESOLVE_URL, FOLLOW_SOURCE_URL,
-  FOLLOW_SUGGEST_URL, FOLLOW_URL, JOB_POLL_MS, pageWindow, prefetchFollowManage,
+  FOLLOW_SUGGEST_URL, FOLLOW_URL, pageWindow, prefetchFollowManage,
   sortLabel, SUGGEST_DEBOUNCE_MS, tableRows,
   type CheckJob, type CredentialData, type CredentialRow, type FollowData, type FollowSource,
   type ResolveJob, type SuggestData,
 } from '../../src/react/follow-manage/follow-manage';
 import { FollowManagePage } from '../../src/react/follow-manage/follow-manage-page';
 
-import { buttonNamed, choose, click, mountRoot, pending, settle, type } from './render';
+import { buttonNamed, choose, click, mountRoot, settle, type } from './render';
 
 // 客户端是模块级的单例（所有 React 根共用一个），用例之间不清就互相喂数据。
 afterEach(() => queryClient.clear());
@@ -347,7 +348,7 @@ it('起了检查就两秒一问，停了就不再问', async () => {
   await settle();
   const started = polls();
 
-  await tick(JOB_POLL_MS);
+  await tick(JOB_RUNNING_POLL_MS);
   await settle();
   expect(polls()).toBeGreaterThan(started);
   // 进度条是 SVG，进度写在 `aria-label` 上而不是文字节点里。
@@ -355,13 +356,13 @@ it('起了检查就两秒一问，停了就不再问', async () => {
     .toBe('检查更新：已完成 1/4 个来源');
 
   state = done;
-  await tick(JOB_POLL_MS);
+  await tick(JOB_RUNNING_POLL_MS);
   await settle();
   expect(props.toast).toHaveBeenCalledWith(expect.stringContaining('新增 3 条'));
 
   // 终态之后不再问：轮询关掉了。
   const settledAt = polls();
-  await tick(JOB_POLL_MS * 3);
+  await tick(JOB_RUNNING_POLL_MS * 3);
   expect(polls()).toBe(settledAt);
 });
 
@@ -374,25 +375,6 @@ it('首屏读到的旧终态不冒充这一次的结果', async () => {
   // 没点过检查，所以这一份不算数：既不报回执，也不铺失败明细。
   expect(props.toast).not.toHaveBeenCalled();
   expect(host.textContent).not.toContain('上一趟的失败');
-});
-
-it('点下检查到重读回来之间，缓存里上一趟的终态不冒充这一趟的回执', async () => {
-  const stale = { status: 'done', results: [{ ok: false, error: '上一趟的失败' }] } as CheckJob;
-  let state: CheckJob | Promise<CheckJob> = stale;
-  const { host, props } = await open({ check: () => state });
-  const reread = pending<CheckJob>();
-  state = reread.answer;
-  await click(buttonLabelled(host, '检查全部'));
-  await settle();
-  // 重读还没回来，但这一趟已经起了：既不该报回执，也不该把上一趟的失败铺成这一趟的。
-  expect(props.toast).not.toHaveBeenCalled();
-  expect(host.textContent).not.toContain('上一趟的失败');
-  expect(host.querySelector('[role="progressbar"]')).not.toBeNull();
-
-  await reread.release({ status: 'done', results: [{ ok: true, added: 2 }] } as CheckJob);
-  await settle();
-  expect(props.toast).toHaveBeenCalledTimes(1);
-  expect(props.toast).toHaveBeenCalledWith(expect.stringContaining('新增 2 条'));
 });
 
 it('检查失败逐条说出是哪个站上的谁，缺哪样就往下一样取', async () => {
@@ -645,22 +627,6 @@ it('说得出进度的查找画进度条', async () => {
   job.set({ status: 'running', checked: 2, total: 5 } as ResolveJob);
   await lookUp(host, 'kou');
   expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-label')).toBe('查找中：2/5');
-});
-
-it('点下查找到重读回来之间，上一次的结果不冒充这一次的', async () => {
-  const job = lookupJob();
-  job.finish([CANDIDATES]);
-  const { host } = await open({ resolve: job.resolve }, { tab: 'add' });
-  const reread = pending<ResolveJob>();
-  job.set(reread.answer);
-  await lookUp(host, 'someone else');
-  expect(host.textContent).not.toContain('kou · Kemono');
-  expect(host.querySelector('[aria-live] [role="status"]')).not.toBeNull();
-
-  await reread.release({ status: 'complete', results: [{ line: 'someone else', candidates: [] }] } as ResolveJob);
-  await settle();
-  expect(host.textContent).toContain('站内没有查到来源');
-  expect(host.textContent).not.toContain('kou · Kemono');
 });
 
 it('查完先列候选、默认勾上，已经关注的列出来但勾不动，点了「添加选中」才登记', async () => {

@@ -12,7 +12,7 @@
  *
  * 「读取浏览器历史」是后台任务，关掉页面照样在跑。首屏读到的旧终态不冒充新结果：只有本次
  * 点过读取、或者本次亲眼见过它在跑，终态才发回执并让 dashboard 重取（ADR-0031）。 */
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import {
   RiArrowDownSLine, RiArrowRightSLine, RiCompassLine, RiDatabase2Line, RiDeleteBinLine,
@@ -33,6 +33,7 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { cx } from '@/utils/cx';
 
 import { errorMessage } from '../../api';
+import { useBackgroundJob } from '../background-job';
 import type { TasteProps } from '../bundle';
 import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
@@ -48,7 +49,7 @@ import { Disclosure } from '../settings/section';
 import { busyProps } from '../settings/use-action';
 import { ActivityCharts, CreatorSankey, RankedBars, TasteRadar } from './charts';
 import {
-  DEFAULT_WINDOW, fetchTaste, fetchTasteJob, importTasteExport, jobPollInterval, rankDetail,
+  DEFAULT_WINDOW, fetchTaste, fetchTasteJob, IDLE_POLL_MS, importTasteExport, rankDetail,
   rankShares, removeTasteSource, startTasteRefresh, tasteDate, tasteHours, tasteKey,
   TASTE_REFRESH_KEY, TASTE_WINDOWS, type RankRow, type TasteData, type TasteJob,
 } from './taste';
@@ -385,10 +386,6 @@ export function TastePage(props: TasteProps) {
   const { onSignal, navigate, toast, avatarInner, onboarding } = props;
   const [range, setRange] = useState(DEFAULT_WINDOW);
   const [evidence, setEvidence] = useState('browser');
-  /** 本次是不是在跟一趟读取：点过读取，或者本次见过它在跑。 */
-  const [tracking, setTracking] = useState(false);
-  /** 本次跟完的那一趟。首屏读到的旧终态不算，它不会走到这里。 */
-  const [outcome, setOutcome] = useState<TasteJob | null>(null);
   const file = useRef<HTMLInputElement>(null);
 
   const taste = useQuery({
@@ -398,20 +395,16 @@ export function TastePage(props: TasteProps) {
        收走再放回来，而服务端那一层缓存多半立刻就回来了。 */
     placeholderData: keepPreviousData,
   });
-  const job = useQuery({
+  const { job, running, outcome, start: refresh } = useBackgroundJob<TasteJob>({
     queryKey: TASTE_REFRESH_KEY,
     queryFn: ({ signal }) => fetchTasteJob(signal),
-    refetchInterval: (query) => jobPollInterval(query.state.data),
-  });
-  const refresh = useMutation({
-    mutationFn: () => startTasteRefresh(range),
-    onSuccess: (started) => {
-      setTracking(true);
-      setOutcome(null);
-      /* 起的那一次回的就是这一趟的快照，先换进缓存再重读：缓存里还躺着上一趟的终态，重读
-         回来之前它会先被当成这一趟的回执报出去；这一趟在重读之前就跑完时，也会被它顶掉。 */
-      queryClient.setQueryData(TASTE_REFRESH_KEY, started);
-      void queryClient.invalidateQueries({ queryKey: TASTE_REFRESH_KEY });
+    start: () => startTasteRefresh(range),
+    /* 读取可以从引导页或上一次会话里起来，闲着也隔一会儿问一次。 */
+    idlePollMs: IDLE_POLL_MS,
+    onFinish: (state) => {
+      if (state.status === 'failed') return;
+      void queryClient.invalidateQueries({ queryKey: ['taste'] });
+      toast('已更新口味分析');
     },
   });
   const load = useMutation({
@@ -426,23 +419,6 @@ export function TastePage(props: TasteProps) {
       toast('已导入口味数据');
     },
   });
-
-  const running = job.data?.status === 'running';
-  useEffect(() => {
-    const state = job.data;
-    if (!state) return;
-    if (state.status === 'running') {
-      if (!tracking) setTracking(true);
-      return;
-    }
-    if (!tracking) return;
-    setTracking(false);
-    setOutcome(state);
-    if (state.status !== 'failed') {
-      void queryClient.invalidateQueries({ queryKey: ['taste'] });
-      toast('已更新口味分析');
-    }
-  }, [job.data, tracking, toast]);
 
   const pickFile = (event: ChangeEvent<HTMLInputElement>) => {
     const chosen = event.currentTarget.files?.[0];
@@ -506,15 +482,15 @@ export function TastePage(props: TasteProps) {
           done={!!(summary.history_sources || data.updated_at)} />
         {/* 这一趟在后台跑，关掉页面还在继续，所以状态留在页面上而不是只让按钮转一下。 */}
         <div aria-live="polite" className="flex flex-col gap-3 empty:hidden">
-          {running ? (job.data?.total
+          {running ? (job?.total
             ? <div className="flex flex-col gap-1.5">
-                <Progress label={job.data.message || '正在读取浏览记录'}
-                  value={job.data.checked || 0} max={job.data.total} />
+                <Progress label={job.message || '正在读取浏览记录'}
+                  value={job.checked || 0} max={job.total} />
                 <p className="text-caption-1-regular text-text-secondary">
-                  {`${job.data.message || '正在读取浏览记录'} · ${job.data.checked || 0} / ${job.data.total}`}
+                  {`${job.message || '正在读取浏览记录'} · ${job.checked || 0} / ${job.total}`}
                 </p>
               </div>
-            : <LoadingDots label={job.data?.message || '正在读取浏览记录并更新口味分析'} />) : null}
+            : <LoadingDots label={job?.message || '正在读取浏览记录并更新口味分析'} />) : null}
           {load.isPending ? <LoadingDots label="正在导入历史文件" /> : null}
           {problem ? <Note tone="error">{problem}</Note> : null}
         </div>

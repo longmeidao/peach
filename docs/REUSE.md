@@ -16,7 +16,7 @@
 - `frontend/src/number-setting.ts` 共用带单位输入、可选 Switch、整数边界和锚定错误提示。关闭保留上次合法值，异步读取后切换也恢复实际值；业务保存仍由调用方负责。
 - 筛选内层复用 `filterChipHtml`、`sortControlsHtml`、`collectionHeaderHtml`，首页、关注和资料页提供查询键及读数。横向行复用 `wireHorizontalScroller`，拖动、滚轮、渐隐与卸载清理归同一个生命周期。
 - 选择范围与工具条复用 `frontend/src/selection.ts`；馆藏、关注与复核保持各自身份、可见顺序、默认选择及写入权限。批量失败项的保留由业务负责。
-- React 设置分区复用 `frontend/src/react/settings/section.tsx`：`Section` 提供标题、卡片与表单外壳，`Footer`、`Note`、`ErrorText`、`FactList`、`Progress`、`Disclosure` 补齐 BoardUI 注册表没有的底栏、行内提示、读数、进度与折叠。`use-action.ts` 的 `useAction` 负责提交互斥、卸载取消与原位错误，`busyProps` 写忙态。密码字段校验与服务端回执仍归各分区，不自动重试写入。
+- React 设置分区复用 `frontend/src/react/settings/section.tsx`：`Section` 提供标题、卡片与表单外壳，`Footer`、`Note`、`ErrorText`、`FactList`、`Progress`、`Disclosure` 补齐 BoardUI 注册表没有的底栏、行内提示、读数、进度与折叠。`use-action.ts` 的 `useAction` 负责提交互斥、卸载取消与原位错误，`busyProps` 写忙态。密码字段校验与服务端回执仍归各分区，不自动重试写入。后台任务（口味读取、封面采集、amane 桥重建、关注检查与查找）共用 `frontend/src/react/background-job.ts` 的 `useBackgroundJob`。
 - 增量列表复用 `wireLoadMore` 的请求锁、原位重试与卸载清理；页面注入读取、追加、代际判定和可用条件。首页页码在读取成功后推进，照片沿用随机种子，关注合并分组。显式页码继续使用 `pagination.ts`。
 - 在图上框一块由 `frontend/src/crop-geometry.ts`（纯算术）加 `react/crop/crop-frame.tsx`（一张图、四块压暗、一个可拖可缩的框）承担，换头像与裁封面共用；坐标一律是源图像素、右下开区间，显示像素只在进出这一层时换算。不引 `react-image-crop` 那类库：要的就是一个能拖能缩的矩形，换到的只有把手样式，代价是一条新依赖和一套它自己的坐标约定。详情页仍是遗留壳，所以裁封面做成 island 从 `web/app.js` 挂（ADR-0031），交互不写两遍。
 - 后台任务复用 `watchJob`、`followJobProgress` 默认面板及 `jobActivityHtml` 的真实计数／未知总量显示；关注、来源扫描、链接检查和扫描采集共用渲染。业务保留启动、终态回执和结果面板，不新增轮询循环。
