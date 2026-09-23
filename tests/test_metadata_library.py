@@ -709,7 +709,9 @@ class LibraryNfoTests(unittest.TestCase):
         provider.transport = Mock()
         avbase = Mock(side_effect=NotFound('AVBase 没有这个番号'))
         javdb = Mock(return_value={'id': 'ORETD-615'})
-        with patch('peach.community_catalog.COMMUNITY_SOURCES', (('avbase', avbase), ('javdb', javdb))):
+        asks = {'avbase': avbase, 'javdb': javdb}
+        provider.site = lambda source, code, deadline=None: asks[source](provider.transport, code, deadline=deadline)
+        with patch('peach.community_catalog.COMMUNITY_SOURCES', ('avbase', 'javdb')):
             self.assertEqual(provider.community('ORETD-615'), [('javdb', {'id': 'ORETD-615'})])
             provider.community('ORETD-615')
             javdb.side_effect = TimeoutError()

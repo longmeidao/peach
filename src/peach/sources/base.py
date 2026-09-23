@@ -26,7 +26,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping
 
-from ..jav_cover_fetch import NotFound, Unavailable, _fetch
+from .. import jav_cover_fetch
+from ..jav_cover_fetch import NotFound, Unavailable
 from ..metadata import MetadataProviderError, auth_error
 
 
@@ -124,12 +125,6 @@ class SourceFailure(RuntimeError):
         return MetadataProviderError(self.message, kind="unavailable", status_code=self.status_code,
                                      detail=self.detail, retryable=transient, temporary=transient)
 
-    def legacy(self) -> Unavailable:
-        """翻成采集任务那一路认的两个异常：`not_found` 一档是 `NotFound`，其余是 `Unavailable`。"""
-        if self.kind == "not_found":
-            return NotFound(self.message)
-        return Unavailable(self.message)
-
 
 def http_failure(error: Unavailable) -> SourceFailure:
     """`_fetch` 抛出的 HTTP 分档（`HTTP 403`、`HTTP 429`、`HTTP 503`）→ 细档。措辞保留原文。"""
@@ -164,7 +159,8 @@ class SiteConfig:
     base_url: str
     #: 主域、镜像与图床的域名后缀，`scraping_access.SOURCES[name]['domains']` 与它一致。
     domains: tuple[str, ...]
-    #: 链上的档位：`official` / `community` / `amane`。
+    #: 链上的档位，与 `metadata_policy.SOURCE_SPECS[name].kind` 同值：`official` / `official_mirror` /
+    #: `community` / `amane`。
     stage: str
     #: 同主机两次请求的最短间隔（秒），`library_processing.SOURCE_INTERVALS` 里这一站的主机与它一致。
     interval: float = DEFAULT_INTERVAL
@@ -198,8 +194,8 @@ class Session:
     deadline: float | None = None
 
     def get(self, url: str, *, config: SiteConfig) -> Page:
-        return Page(url, _fetch(self.transport, url, referer=config.referer,
-                                limit=config.page_limit, deadline=self.deadline))
+        return Page(url, jav_cover_fetch._fetch(self.transport, url, referer=config.referer,
+                                                limit=config.page_limit, deadline=self.deadline))
 
 
 @dataclass(frozen=True)

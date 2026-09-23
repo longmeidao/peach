@@ -153,8 +153,9 @@ fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书�
 | JavBus | 已套契约 | `sources/javbus.py` | 年龄门归 `auth_required`；404 与番号对不上归 `not_found` |
 | javdb | 已套契约 | `sources/javdb.py` | 搜索页与详情页两跳都在 `fetch` 里；登录页归 `auth_required`，详情页番号与搜索结果不一致归 `parse_error`；主机间隔 3 秒进配置 |
 | fc2club、freejavbt、airav、avsox | 已套契约（经桥） | `metadata_amane.py` | amane 的十六档 reason 经 `AMANE_REASONS` 一对一翻成契约细档，桥的一站先套进 `SiteRecord` 再投影；`SITE_CONFIGS` 只持有站名、界面名与档位，主域与 Cookie 由 amane 管 |
-| AVBase | 待迁 | `community_catalog.avbase_work` | 与契约共存：`COMMUNITY_SOURCES` 里三家都是 `(来源, 取数函数)`，形状相同 |
-| r18.dev、一本道、FC2、fc2cmadb、JavArchive | 待迁 | `library_processing`、`metadata_1pondo`、`metadata_fc2` | 官方档，取页与解析目前各自散在 provider 方法里 |
+| AVBase | 已套契约 | `sources/avbase.py` | 搜索页一跳，`__NEXT_DATA__` 里挑出本作与它自己的商品条目；搜索无命中归 `not_found`，Cloudflare 验证页归 `cloudflare_challenge`，别的结构对不上归 `parse_error`；不给时长，`runtime` 留空 |
+| r18.dev | 已套契约 | `sources/r18dev.py` | 作品 JSON 与 combined 页两跳，日文写法、女优头像模板与 genre 取日文原词都在这一站里；`content_id` 对不上归 `parse_error`；档位 `official_mirror`，页面上限 2 MiB |
+| 一本道、FC2、fc2cmadb、JavArchive | 待迁 | `library_processing`、`metadata_1pondo`、`metadata_fc2` | 官方档，取页与解析目前各自散在 provider 方法里 |
 | Seesaa 作品表 | 待迁 | `metadata_seesaa.py` | 只由 `scrape_codes --profile seesaa` 走 |
 
 ## FC2 作品资料与封面

@@ -5,11 +5,12 @@ import unittest
 
 from PIL import Image
 
-from peach.community_catalog import (COMMUNITY_SOURCES, IMAGE_LIMIT, avbase_work, community_sources_for,
-                                     javbus_work, javdb_actresses, javdb_work, verified_cover)
+from peach.community_catalog import COMMUNITY_SOURCES, IMAGE_LIMIT, community_sources_for, verified_cover
 from peach.http import HttpResponse
 from peach.jav_cover_fetch import Candidate, NotFound, Unavailable, _fetch
-from peach.sources import FailureReason, JavBusSource, JavDBSource, Page, Session, SourceFailure
+from peach.sources import (SITE_SOURCES, AVBaseSource, FailureReason, JavBusSource, JavDBSource, Page, Session,
+                           SourceFailure)
+from peach.sources.javdb import actresses as javdb_actresses
 
 
 def gradient(width, height, rising=True):
@@ -27,6 +28,11 @@ def serve(pages):
         found = request.url in pages
         return HttpResponse(200 if found else 404, {}, pages.get(request.url, b""), request.url)
     return call
+
+
+def work(site, pages, code):
+    """走完取页与解析，交出来源快照那份 dict：采集任务与 `scrape_codes` 拿到的就是它。"""
+    return site.query(code, session=Session(serve(pages))).payload()
 
 
 TITLE = "涼森れむ流 HOW TO SEX！！"
@@ -109,61 +115,89 @@ JAVDB_PAGE = (f'<strong class="current-title">{TITLE}</strong>'
 
 class CommunityCatalogTests(unittest.TestCase):
     def test_avbase_takes_the_fanza_listing_and_skips_compilations(self):
-        work = avbase_work(serve({AVBASE_SEARCH: avbase_page(AVBASE_DATA)}), "ABW-358")
-        self.assertEqual((work["id"], work["title"], work["maker"], work["label"], work["director"]),
+        found = work(AVBaseSource(), {AVBASE_SEARCH: avbase_page(AVBASE_DATA)}, "ABW-358")
+        self.assertEqual((found["id"], found["title"], found["maker"], found["label"], found["director"]),
                          ("ABW-358", TITLE, "プレステージ", "ABSOLUTELY WONDERFUL", "監督A"))
-        self.assertEqual(work["release_date"], "2023-05-26")
-        self.assertEqual(work["actresses"], [{"japanese_name": "涼森れむ"}])
-        self.assertEqual(work["cover_urls"], [DMM_COVER, MGS_COVER])
-        self.assertEqual(work["source_url"], "https://www.avbase.net/works/prestige:ABW-358")
+        self.assertEqual(found["release_date"], "2023-05-26")
+        self.assertEqual(found["actresses"], [{"japanese_name": "涼森れむ"}])
+        self.assertEqual(found["cover_urls"], [DMM_COVER, MGS_COVER])
+        self.assertEqual(found["source_url"], "https://www.avbase.net/works/prestige:ABW-358")
 
     def test_avbase_keeps_the_shop_listing_whose_product_number_is_this_code(self):
         """合集顶着作品标题时也不算本作：商品号认得出番号的那条说了算。"""
-        work = avbase_work(serve({LUXU_SEARCH: avbase_page(LUXU_DATA)}), "259LUXU-1514")
-        self.assertEqual((work["title"], work["maker"], work["series"], work["release_date"]),
+        found = work(AVBaseSource(), {LUXU_SEARCH: avbase_page(LUXU_DATA)}, "259LUXU-1514")
+        self.assertEqual((found["title"], found["maker"], found["series"], found["release_date"]),
                          (LUXU_TITLE, "ラグジュTV", "ラグジュTV", "2021-11-19"))
-        self.assertEqual(work["cover_urls"], [LUXU_COVER])
+        self.assertEqual(found["cover_urls"], [LUXU_COVER])
 
     def test_avbase_tells_an_unknown_code_apart_from_a_page_it_cannot_read(self):
+        """搜索无命中是没有；Cloudflare 验证页与站点改版都是「页面结构未识别」，细档分开记。"""
         empty = {"props": {"pageProps": {"works": []}}}
-        with self.assertRaises(NotFound):
-            avbase_work(serve({AVBASE_SEARCH: avbase_page(empty)}), "ABW-358")
-        with self.assertRaisesRegex(Unavailable, "AVBase 页面结构未识别"):
-            avbase_work(serve({AVBASE_SEARCH: b"<html><title>Just a moment...</title></html>"}), "ABW-358")
+        with self.assertRaises(SourceFailure) as caught:
+            work(AVBaseSource(), {AVBASE_SEARCH: avbase_page(empty)}, "ABW-358")
+        self.assertEqual((caught.exception.reason, str(caught.exception)),
+                         (FailureReason.NOT_FOUND, "AVBase 没有这个番号"))
+        with self.assertRaisesRegex(SourceFailure, "AVBase 页面结构未识别") as caught:
+            work(AVBaseSource(), {AVBASE_SEARCH: b"<html><title>Just a moment...</title></html>"}, "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.CLOUDFLARE_CHALLENGE)
+        with self.assertRaisesRegex(SourceFailure, "AVBase 页面结构未识别") as caught:
+            work(AVBaseSource(), {AVBASE_SEARCH: b"<html><body>redesigned</body></html>"}, "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.PARSE_ERROR)
+
+    def test_avbase_payload_equals_the_snapshot_shape_field_for_field(self):
+        """`AVBaseSource` 交出的 dict 逐键钉住。AVBase 不给时长，`runtime` 留 `None`，候选那一路对它按没有处理。"""
+        expected = {
+            "id": "ABW-358", "source_url": "https://www.avbase.net/works/prestige:ABW-358", "title": TITLE,
+            "actresses": [{"japanese_name": "涼森れむ"}], "maker": "プレステージ", "label": "ABSOLUTELY WONDERFUL",
+            "series": "", "director": "監督A", "release_date": "2023-05-26", "runtime": None,
+            "cover_urls": [DMM_COVER, MGS_COVER], "cover_url": DMM_COVER}
+        self.assertEqual(work(AVBaseSource(), {AVBASE_SEARCH: avbase_page(AVBASE_DATA)}, "ABW-358"), expected)
+        record = AVBaseSource().parse(Page(AVBASE_SEARCH, avbase_page(AVBASE_DATA)), "ABW-358")
+        self.assertEqual((record.source, record.provenance, record.code), ("avbase", "avbase-search", "ABW-358"))
+        self.assertEqual(record.payload(), expected, "只喂 parse 一张页面，得到的与走完 fetch 的一样")
+        luxu = {
+            "id": "259LUXU-1514", "source_url": "https://www.avbase.net/works/259LUXU-1514", "title": LUXU_TITLE,
+            "actresses": [{"japanese_name": "東條なつ"}], "maker": "ラグジュTV", "label": "", "series": "ラグジュTV",
+            "director": "", "release_date": "2021-11-19", "runtime": None,
+            "cover_urls": [LUXU_COVER], "cover_url": LUXU_COVER}
+        self.assertEqual(work(AVBaseSource(), {LUXU_SEARCH: avbase_page(LUXU_DATA)}, "259LUXU-1514"), luxu)
 
     def test_javbus_reads_the_work_page_fields_and_the_big_cover(self):
-        work = javbus_work(serve({JAVBUS_WORK: JAVBUS_PAGE}), "ABW-358")
-        self.assertEqual((work["id"], work["title"], work["maker"], work["label"], work["release_date"], work["runtime"]),
+        found = work(JavBusSource(), {JAVBUS_WORK: JAVBUS_PAGE}, "ABW-358")
+        self.assertEqual((found["id"], found["title"], found["maker"], found["label"], found["release_date"], found["runtime"]),
                          ("ABW-358", TITLE, "プレステージ", "ABSOLUTELY WONDERFUL", "2023-05-26", 210))
-        self.assertEqual(work["actresses"], [{"japanese_name": "涼森れむ"}])
-        self.assertEqual((work["source_url"], work["cover_urls"]), (JAVBUS_WORK, [JAVBUS_COVER]))
+        self.assertEqual(found["actresses"], [{"japanese_name": "涼森れむ"}])
+        self.assertEqual((found["source_url"], found["cover_urls"]), (JAVBUS_WORK, [JAVBUS_COVER]))
 
     def test_javbus_tells_a_missing_code_apart_from_its_age_gate(self):
         """番号页 404 是没有；年龄门回 200 却没有「識別碼」，要让人去贴 Cookie，而不是记成没有。"""
-        with self.assertRaisesRegex(NotFound, "JavBus 没有这个番号"):
-            javbus_work(serve({}), "ABW-358")
-        with self.assertRaisesRegex(NotFound, "JavBus 没有这个番号"):
-            javbus_work(serve({JAVBUS_WORK: JAVBUS_PAGE.replace(b">ABW-358</span>", b">ABW-359</span>")}), "ABW-358")
-        with self.assertRaisesRegex(Unavailable, "贴上浏览器里的 Cookie"):
-            javbus_work(serve({JAVBUS_WORK: b"<html><title>Age Verification JavBus</title></html>"}), "ABW-358")
+        with self.assertRaisesRegex(SourceFailure, "JavBus 没有这个番号") as caught:
+            work(JavBusSource(), {}, "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.NOT_FOUND)
+        with self.assertRaisesRegex(SourceFailure, "JavBus 没有这个番号") as caught:
+            work(JavBusSource(), {JAVBUS_WORK: JAVBUS_PAGE.replace(b">ABW-358</span>", b">ABW-359</span>")}, "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.NOT_FOUND)
+        with self.assertRaisesRegex(SourceFailure, "贴上浏览器里的 Cookie") as caught:
+            work(JavBusSource(), {JAVBUS_WORK: b"<html><title>Age Verification JavBus</title></html>"}, "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.AUTH_REQUIRED)
 
     def test_javdb_opens_the_exact_code_and_keeps_the_japanese_maker(self):
-        work = javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE}), "ABW-358")
-        self.assertEqual((work["id"], work["title"], work["maker"], work["release_date"], work["runtime"]),
+        found = work(JavDBSource(), {JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE}, "ABW-358")
+        self.assertEqual((found["id"], found["title"], found["maker"], found["release_date"], found["runtime"]),
                          ("ABW-358", TITLE, "プレステージ", "2023-05-23", 210))
         self.assertEqual(
-            work["actresses"],
+            found["actresses"],
             [{"japanese_name": "涼森れむ", "profile_source": "javdb", "external_id": "a"}],
             "男优不进演员；女优带着她在 javdb 的演员 id")
-        self.assertEqual((work["source_url"], work["cover_urls"]), ("https://javdb.com/v/Zb7mX", [JAVDB_COVER]))
+        self.assertEqual((found["source_url"], found["cover_urls"]), ("https://javdb.com/v/Zb7mX", [JAVDB_COVER]))
 
     def test_javdb_reads_the_cover_whichever_side_of_the_class_the_src_sits(self):
         """站方在封面那个 img 上改过属性顺序，页面其余部分照常解析，缺的只是封面。"""
         earlier = JAVDB_PAGE.replace(JAVDB_COVER_TAG.encode(), JAVDB_COVER_TAG_EARLIER.encode())
         self.assertNotEqual(earlier, JAVDB_PAGE, '两种写法要真的不一样，否则这条用例什么也没测')
         for page in (JAVDB_PAGE, earlier):
-            work = javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: page}), "ABW-358")
-            self.assertEqual(work["cover_url"], JAVDB_COVER)
+            found = work(JavDBSource(), {JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: page}, "ABW-358")
+            self.assertEqual(found["cover_url"], JAVDB_COVER)
 
     def test_javdb_reads_the_actor_id_whichever_side_of_the_class_it_sits(self):
         """属性的先后由站方模板决定，不该成为拿不到演员 id 的理由。"""
@@ -175,19 +209,21 @@ class CommunityCatalogTests(unittest.TestCase):
             [{"japanese_name": "名字没挂链接", "profile_source": "javdb", "external_id": ""}])
 
     def test_javdb_reports_a_missing_code_and_a_login_wall_differently(self):
-        with self.assertRaises(NotFound):
-            javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS.replace(b"<strong>ABW-358</strong>", b"<strong>ABW-359</strong>")}),
-                       "ABW-358")
-        with self.assertRaisesRegex(Unavailable, "javdb 要求登录"):
-            javdb_work(serve({JAVDB_SEARCH: "<title>登入 | JavDB</title>".encode()}), "ABW-358")
+        with self.assertRaises(SourceFailure) as caught:
+            work(JavDBSource(), {JAVDB_SEARCH: JAVDB_RESULTS.replace(b"<strong>ABW-358</strong>", b"<strong>ABW-359</strong>")},
+                 "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.NOT_FOUND)
+        with self.assertRaisesRegex(SourceFailure, "javdb 要求登录") as caught:
+            work(JavDBSource(), {JAVDB_SEARCH: "<title>登入 | JavDB</title>".encode()}, "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.AUTH_REQUIRED)
 
     def test_javbus_payload_equals_the_snapshot_shape_field_for_field(self):
-        """`javbus_work` 交出的 dict 逐键钉住：它是 `JavBusSource` 的记录投影，采集任务与批量脚本认的就是这份。"""
+        """`JavBusSource` 交出的 dict 逐键钉住：采集任务与批量脚本认的就是这份。"""
         expected = {
             "id": "ABW-358", "source_url": JAVBUS_WORK, "title": TITLE, "actresses": [{"japanese_name": "涼森れむ"}],
             "maker": "プレステージ", "label": "ABSOLUTELY WONDERFUL", "series": "", "director": "",
             "release_date": "2023-05-26", "runtime": 210, "cover_urls": [JAVBUS_COVER], "cover_url": JAVBUS_COVER}
-        self.assertEqual(javbus_work(serve({JAVBUS_WORK: JAVBUS_PAGE}), "ABW-358"), expected)
+        self.assertEqual(work(JavBusSource(), {JAVBUS_WORK: JAVBUS_PAGE}, "ABW-358"), expected)
         record = JavBusSource().parse(Page(JAVBUS_WORK, JAVBUS_PAGE), "ABW-358")
         self.assertEqual((record.source, record.provenance, record.code), ("javbus", "javbus-page", "ABW-358"))
         self.assertEqual(record.payload(), expected, "只喂 parse 一张页面，得到的与走完 fetch 的一样")
@@ -198,13 +234,13 @@ class CommunityCatalogTests(unittest.TestCase):
             "actresses": [{"japanese_name": "涼森れむ", "profile_source": "javdb", "external_id": "a"}],
             "maker": "プレステージ", "label": "", "series": "", "director": "", "release_date": "2023-05-23",
             "runtime": 210, "cover_urls": [JAVDB_COVER], "cover_url": JAVDB_COVER}
-        self.assertEqual(javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE}), "ABW-358"), expected)
+        self.assertEqual(work(JavDBSource(), {JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE}, "ABW-358"), expected)
         record = JavDBSource().parse(Page("https://javdb.com/v/Zb7mX", JAVDB_PAGE), "ABW-358")
         self.assertEqual((record.source, record.provenance, record.code), ("javdb", "javdb-page", "ABW-358"))
         self.assertEqual(record.payload(), expected)
 
     def test_the_two_sites_report_failures_through_the_shared_reason_table(self):
-        """`query` 抛的是细档，`javbus_work` / `javdb_work` 再翻成采集任务认的两个异常。"""
+        """`query` 抛的是细档；`LibraryMetadataProvider` 与 `scrape_codes` 按 `kind` 分「没有」与「未取得」。"""
         with self.assertRaises(SourceFailure) as caught:
             JavBusSource().query("ABW-358", session=Session(serve({JAVBUS_WORK: b"<html>Age Verification</html>"})))
         self.assertEqual(caught.exception.reason, FailureReason.AUTH_REQUIRED)
@@ -220,9 +256,8 @@ class CommunityCatalogTests(unittest.TestCase):
         mismatched = JAVDB_PAGE.replace(b'<a href="/video_codes/ABW">ABW</a>-358', b'<a href="/video_codes/ABW">ABW</a>-359')
         with self.assertRaises(SourceFailure) as caught:
             JavDBSource().parse(Page("https://javdb.com/v/Zb7mX", mismatched), "ABW-358")
-        self.assertEqual(caught.exception.reason, FailureReason.PARSE_ERROR)
-        with self.assertRaisesRegex(Unavailable, "番号与搜索结果不一致"):
-            javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: mismatched}), "ABW-358")
+        self.assertEqual((caught.exception.reason, caught.exception.kind, str(caught.exception)),
+                         (FailureReason.PARSE_ERROR, "unavailable", "javdb 详情页的番号与搜索结果不一致"))
 
     def test_a_redirect_to_the_now_printing_placeholder_is_not_a_cover(self):
         """DMM 没图时 302 到 590×800 的「准备中」，尺寸够门槛，只能按最终地址认。"""
@@ -294,15 +329,14 @@ class VerifiedCoverTests(unittest.TestCase):
 class SourceChoiceTests(unittest.TestCase):
     def test_an_fc2_product_number_only_goes_to_javdb(self):
         """AVBase 与 JavBus 的目录里没有 FC2，问了只是各撞一次空搜索。"""
-        self.assertEqual([name for name, _ in community_sources_for("FC2-PPV-1233719")], ["javdb"])
-        self.assertEqual([name for name, _ in community_sources_for("fc2-ppv-1233719")], ["javdb"])
+        self.assertEqual(community_sources_for("FC2-PPV-1233719"), ("javdb",))
+        self.assertEqual(community_sources_for("fc2-ppv-1233719"), ("javdb",))
 
     def test_a_studio_code_still_goes_to_all_three(self):
-        """厂牌番号三家都有产出，顺序也要保持 javdb 最后。"""
-        self.assertEqual([name for name, _ in community_sources_for("ORETD-615")],
-                         ["avbase", "javbus", "javdb"])
-        self.assertEqual([name for name, _ in COMMUNITY_SOURCES],
-                         ["avbase", "javbus", "javdb"])
+        """厂牌番号三家都有产出，顺序也要保持 javdb 最后；三家都登记在契约的 `SITE_SOURCES` 里。"""
+        self.assertEqual(community_sources_for("ORETD-615"), ("avbase", "javbus", "javdb"))
+        self.assertEqual(COMMUNITY_SOURCES, ("avbase", "javbus", "javdb"))
+        self.assertTrue(set(COMMUNITY_SOURCES) <= set(SITE_SOURCES))
 
     def test_a_row_without_a_code_asks_nobody(self):
         """番号是空的，三家搜什么都一样：搜索页第一条和这一行没有关系。"""

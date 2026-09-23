@@ -3,7 +3,7 @@
 """把历史证据里的 javdb 演员 id 与 minnano-av 女优 id 落成 `entity_external_ref`。
 
 人物资料页的外部入口按 `entity_external_ref` 里的站点 id 拼地址，没有 id 的站点不出现。
-采集作品页时 id 跟着名字一起回来（`community_catalog.javdb_actresses`）；账本里已有的
+采集作品页时 id 跟着名字一起回来（`sources.javdb.actresses`）；账本里已有的
 几百位女优，她们的 id 散在两处**已经取回来的**证据里：
 
 - **javdb 的页面缓存**（`peach.page_cache.Site` 落盘的整页 HTML）。资料页里有

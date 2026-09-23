@@ -20,9 +20,10 @@ from .catalog_rules import (is_jav_code, is_korean_mib_code, normalise_code_key,
 from .field_owners import SCAN_FILENAME, write_owned_fields
 from .images import measure_image_file
 from .jav_cover_fetch import MIN_WIDTH, DeadlineExceeded, NotFound
+from .sources.base import SourceFailure
 from .library_nfo import directory_files, read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
-from .metadata import extract_catalog_evidence, extract_peach_fields, identifies_code, validate_provider_code
+from .metadata import extract_catalog_evidence, extract_peach_fields, validate_provider_code
 from . import metadata_routes
 from .metadata_policy import SOURCE_SPECS
 from .platform import root_online, translate_ledger_path
@@ -76,24 +77,11 @@ PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avb
 FC2_PAGE_LIMIT = 2 * 1024 * 1024
 #: 一本道的作品 JSON 实测 6～8 KB，带样片清单也只有十几 KB。
 ONE_PONDO_LIMIT = 1024 * 1024
-R18_ACTRESS_IMAGE = "https://pics.dmm.co.jp/mono/actjpgs/{filename}"
 
 
-def _r18_actresses(rows):
-    actresses = []
-    for row in rows or []:
-        image = str(row.get('image_url') or '').strip()
-        thumb_url = (R18_ACTRESS_IMAGE.format(filename=quote(image, safe=''))
-                     if image and '/' not in image and '\\' not in image else '')
-        actresses.append({
-            'japanese_name': row.get('name_kanji') or row.get('name_romaji') or '',
-            'name_kana': row.get('name_kana') or '',
-            'name_romaji': row.get('name_romaji') or '',
-            'dmm_id': row.get('id') or '',
-            'thumb_url': thumb_url,
-            'profile_source': 'r18dev',
-        })
-    return actresses
+def is_missing(error):
+    """来源明确说「没有」：传输层的 `NotFound`，或契约里 `not_found` 那一档的 `SourceFailure`。"""
+    return isinstance(error, NotFound) or (isinstance(error, SourceFailure) and error.kind == 'not_found')
 
 
 def describe_failure(error):
@@ -103,10 +91,10 @@ def describe_failure(error):
     from .jav_cover_fetch import Unavailable
     from .scraping_access import SourcePaused
     text = str(error).strip()
-    if isinstance(error, Unavailable) and text.startswith('HTTP '):
+    if isinstance(error, (Unavailable, SourceFailure)) and text.startswith('HTTP '):
         return f'来源返回 {text}'
     # 这几个的消息本来就是写给人看的，原样用；别的只报类型，免得把内部细节贴到界面上。
-    if isinstance(error, (Unavailable, SourcePaused, PickerError, httpx.TransportError)) and text:
+    if isinstance(error, (Unavailable, SourceFailure, SourcePaused, PickerError, httpx.TransportError)) and text:
         return text
     return f'处理出错（{type(error).__name__}）'
 #: 来源说「没有」不是待办：馆藏里本来就有大量独立资源和创作者作品，任何目录站都收不到
@@ -154,7 +142,7 @@ def cover_settled(path):
 
 
 class LibraryMetadataProvider:
-    """复用封面采集的 R18 JSON 入口与按来源配置的传输。
+    """来源链各档的入口：按来源配置的传输，站经 `sources.SITE_SOURCES` 问（`site`），封面走 `cover`。
 
     `secrets_root` 是凭据根本身（`peach-data/secrets`），不是它底下的 `follow`：
     `CredentialStore` 自己会拼上那一层。多给一层的表现不是报错，是每个来源都读成
@@ -247,14 +235,14 @@ class LibraryMetadataProvider:
         cache = self.__dict__.setdefault('_community', {})
         if code not in cache:
             found, problems = [], []
-            for source, fetch in community_sources_for(code, route=route):
+            for source in community_sources_for(code, route=route):
                 try:
-                    found.append((source, fetch(self.transport, code, deadline=deadline)))
+                    found.append((source, self.site(source, code, deadline=deadline)))
                 except DeadlineExceeded:
                     raise
-                except NotFound:
-                    continue
                 except Exception as error:
+                    if is_missing(error):
+                        continue
                     text = describe_failure(error)
                     problems.append(text if text.startswith(SOURCE_LABELS[source]) else f'{SOURCE_LABELS[source]}：{text}')
             cache[code] = (found or (Unavailable('；'.join(problems)) if problems
@@ -449,65 +437,18 @@ class LibraryMetadataProvider:
                     addresses.append(url)
         return tuple(Candidate(urlparse(url).netloc.lower(), url, referer) for url in addresses)
 
-    def query(self, code, source='r18dev', *, deadline=None):
-        from .jav_cover_fetch import R18_DETAIL, _fetch
-        from urllib.parse import quote
-        url = R18_DETAIL.format(code=quote(code))
-        raw = json.loads(_fetch(self.transport, url, referer='https://r18.dev/',
-                                limit=2 * 1024 * 1024, deadline=deadline))
-        if not identifies_code(code, {'content_id': raw.get('content_id')}):
-            raise ValueError('来源返回的番号不匹配')
-        name = lambda key: (raw.get(key) or {}).get('name', '')
-        payload = dict(id=code, content_id=raw.get('content_id'), source_url=url,
-                       title=raw.get('title'), maker=name('maker'), series=name('series'),
-                       release_date=raw.get('release_date'),
-                       director=raw.get('director'), label=name('label'), runtime=raw.get('runtime_minutes'),
-                       cover_url=(raw.get('images') or {}).get('jacket_image'),
-                       actresses=[{'japanese_name': row.get('name', '')} for row in raw.get('actresses', [])],
-                       genres=[row.get('name', '') for row in raw.get('categories', [])], raw=raw)
-        return self._with_japanese(payload, deadline=deadline)
+    def site(self, source, code, *, deadline=None):
+        """经契约问 `SITE_SOURCES` 里的一站，交出来源快照那份 dict（`SiteRecord.payload()`）。
 
-    def _with_japanese(self, payload, *, deadline=None):
-        """补上 r18 combined 页的日文写法，形状与 Javinizer-Go 快照的 `translations` 一致。
-
-        `dvd_id` 入口只给英文，标题和系列多是机翻（ABW-358 的 `title_en_is_machine_translation`
-        为真），演员只有罗马字。日文在 `combined=<content_id>` 那一页：`title_ja`、
-        `series_name_ja`、演员 `name_kanji`。厂牌不取日文——账本的厂牌实体用品牌名
-        （`Prestige`、`MOODYZ`），换成 `プレステージ` 会另起一个实体。
-        这一页取不到时照旧交英文，不让一次失败吞掉整条资料。
-
-        genre 取 `categories[].name_ja`，也就是 DMM 自己那套词。英文是 r18 在它上面
-        再译一层，词根在那一层会丢：`その他フェチ` 一眼看得出是「フェチ」那一格的兜底，
-        从 `Other Fetishes` 反推不回去。取日文原词，一个词只登记一次就覆盖整个来源；
-        取英文则每个写法都得另外逐条登记才追得平。
+        没取到抛的是 `SourceFailure`：`not_found` 那一档由 `is_missing` 认，其余由 `describe_failure`
+        写成一句。冷却、动作预算与连接失败由传输层抛出、原样放过。
         """
-        from .jav_cover_fetch import R18_COMBINED, Unavailable, _fetch
-        from urllib.parse import quote
-        import httpx
-        content_id = str(payload.get('content_id') or '')
-        if not content_id:
-            return payload
-        try:
-            combined = json.loads(_fetch(self.transport, R18_COMBINED.format(content_id=quote(content_id)),
-                                         referer='https://r18.dev/', limit=2 * 1024 * 1024, deadline=deadline))
-        except (Unavailable, ValueError, httpx.TransportError):
-            return payload
-        if not isinstance(combined, dict) or combined.get('content_id') != content_id:
-            return payload
-        directors = [row.get('name_kanji') for row in combined.get('directors') or [] if row.get('name_kanji')]
-        payload['translations'] = [dict(language='ja', title=combined.get('title_ja') or '',
-                                        series=combined.get('series_name_ja') or '',
-                                        label=combined.get('label_name_ja') or '',
-                                        director=directors[0] if directors else '')]
-        actresses = _r18_actresses(combined.get('actresses'))
-        if any(row['japanese_name'] for row in actresses):
-            payload['actresses'] = actresses
-        japanese = [row.get('name_ja') or row.get('name_en') or ''
-                    for row in combined.get('categories') or []]
-        if any(japanese):
-            payload['genres'] = [name for name in japanese if name]
-        payload['combined'] = combined
-        return payload
+        from .sources import SITE_SOURCES, Session
+        return SITE_SOURCES[source]().query(code, session=Session(self.transport, deadline)).payload()
+
+    def query(self, code, source='r18dev', *, deadline=None):
+        """有码与素人来源链的第一档：r18.dev 的作品 JSON 加 combined 页的日文写法（`sources/r18dev.py`）。"""
+        return self.site(source, code, deadline=deadline)
 
     def cover(self, code, cover_root, *, deadline=None, evidence=()):
         """官方大图优先；没有就用社区来源里两个图源对得上的那张；再没有就用官方小图。
@@ -1154,10 +1095,10 @@ class _RemoteSession:
                     break
                 issue(row, '外部资料在预算时间内未取得，可稍后重试', action=action, retryable=True)
                 return []
-            except NotFound:
-                self.misses.record(source, code)
-                continue
             except Exception as error:
+                if is_missing(error):
+                    self.misses.record(source, code)
+                    continue
                 # 社区那一档的原因里已经写明是哪一家了（`community()` 逐家拼过），再套一层
                 # 就成了「社区来源：javdb：…」。单家来源的原因不带来源名，这里补上。
                 problems.append(describe_failure(error) if source in ('community', 'amane')
