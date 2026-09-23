@@ -180,7 +180,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("postSetupTutorialDone", app)
         # 重开教程那枚键归配置页的「更新与维护」，遗留层只给它一个可调用的入口。
         self.assertNotIn("tutorialReopen", html)
-        self.assertIn("reopenTutorial:reopenTutorialFromSettings", app)
+        self.assertIn("reopenTutorial:reopenPostSetupTutorial", app)
         self.assertIn("reopenPostSetupTutorial()", app)
         self.assertIn(".post-setup-notification", board)
         self.assertIn(".post-setup-task[data-state=checked]", board)
@@ -4700,7 +4700,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("moveGlidePane(libraryGlide,animate?from:null,box,'y');")
         self.assertPageContains('<footer><button type="button" class="geist-button primary" '
                                 'data-library-manage>管理媒体库</button></footer>')
-        self.assertPageContains("libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);openSettings(true,'媒体')};")
+        self.assertPageContains("libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);openConfigurationSection('媒体')};")
         self.assertPageContains("findIndex(item=>item.title===settingsRequestedSection)")
         self.assertPageContains("settingsTabs?.select(requested>=0?requested:keep);")
 
@@ -5021,86 +5021,46 @@ class WebUiSourceTests(unittest.TestCase):
             "身份注册表保留全部管理页，删掉哪一个就等于让它的标题和直达 URL 一起失效",
         )
         self.assertPageContains(
-            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','activity'];")
+            "const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','activity','configuration'];")
         self.assertPageContains("manageMenuSections().map(([k,label,ic])=>")
 
-    def test_this_computers_configuration_lives_in_the_settings_modal(self):
-        """配置页讲的是这台电脑怎么跑 Peach，和「我的界面偏好」同一类，进设置弹层。
+    def test_configuration_is_the_one_editing_page_and_sits_in_the_manage_menu(self):
+        """配置页是唯一的配置编辑页，管理菜单列它；设置弹层那一格只是一张摘要卡（ADR-0050）。
 
-        管理菜单因此不再列它，判断也就不必再摊到菜单上。`/configuration` 这条 URL 留着：
-        媒体库选单和首次配置引导都指向它，身份注册表也保留这一项。
-        别的设备打开设置照样看得见这一格，里面换成一句话说清在哪儿改——服务端回过话之后
-        它一定在列里，只是内容不同。判据是 `/healthz` 的 `configurable`。
+        只对运行 Peach 的这台电脑列：判据是 `/healthz` 的 `configurable`，答复回来之后
+        管理条重画一次。别的设备打开设置，那一格换成一句话说清在哪儿改。
+        设置弹层里没有配置页，弹层可见时的读数、按钮与跳转由 `frontend/e2e/design.test.ts` 量。
         """
         self.assertPageContains("['configuration','配置','folder-cog'],")
-        self.assertPageContains(
-            "const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));")
-        self.assertPageContains('<section class="settinggroup" id="machineGroup" hidden><h3>这台电脑</h3>')
-        self.assertPageContains('<div id="machineSettings" class="machinesettings"></div>')
+        self.assertPageContains("&&(key!=='configuration'||runtimeConfigurable===true));")
+        self.assertPageContains("if(runtimeConfigurable&&manageSection())buildManageBar();")
         # 每次打开都重新问一遍：这一格的答案随「从哪台设备打开」变，缓存下来就会骗人。
         self.assertPageContains("syncSettingsPanel();void syncMachineSettings();")
         self.assertPageContains("const runtime=await api('/healthz').catch(()=>null);")
         self.assertPageContains("if(runtime)runtimeConfigurable=!!runtime.configurable;")
-        self.assertPageContains(
-            "await mountIsland('configuration',host,\n"
-            "    {receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings},{isCurrent:open});")
+        self.assertPageContains("await mountIsland('configuration-summary',host,")
         self.assertPageContains("{label:'在服务端设备修改'}")
-        # 弹层里那一份配置页已经由外面那圈分区页签管着，别再给它自己叠一排。
         self.assertPageContains("const config=document.querySelector('#stats .configpage');")
         # `runtimeConfigurable` 还有第二个用处：馆藏空态按它决定给不给「去配置媒体文件夹」。
         self.assertPageContains("let runtimeConfigurable=null;")
         self.assertPageContains("  bar.hidden=!current;\n  probeConfigurable();")
-        self.assertPageContains(
-            "api('/healthz').then(runtime=>{runtimeConfigurable=!!runtime.configurable}).catch(()=>{});")
         # 它不进可钉到侧栏的候选：侧栏顺序跨机同步，钉在手机上就是死链接。
         self.assertPageContains(
             "const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration')")
-        self.assertPageLacks('href="/configuration"')
         self.assertPageLacks("媒体文件夹与服务配置")
 
-    def test_this_computer_joins_the_rail_once_and_never_as_a_placeholder(self):
-        """「这台电脑」在服务端回话之前不占位，回话之后一次性列出它最终的样子。
-
-        它是「四个分区」还是「一句话」由服务端决定。先摆一条占位再改写的话，左栏那一列
-        会先长出一条「这台电脑」、随后变成四条，弹层跟着跳一次高度——用户看到的是一次
-        无缘无故的重排，而那一刻并没有任何新东西可读。
-
-        两处配合：这一格开局就是 `hidden`，左栏只收不带 `hidden` 的那几格。少一边都不行——
-        只藏内容而左栏照收，那一条就成了点不开的空壳。
-        """
-        self.assertPageContains('<section class="settinggroup" id="machineGroup" hidden>')
-        self.assertPageContains(
-            "const host=$('#machineSettings'),group=$('#machineGroup');")
-        self.assertPageContains(
-            "const list=()=>{if(group)group.hidden=false;refreshSettingsTabs?.()};")
-        self.assertPageContains(
-            "const groups=[...settings.querySelectorAll(':scope > .settinggroup:not([hidden])')];")
-        # 两条分支各自列出来：读不到服务端时那一句话也得有人能看见。
-        self.assertPageContains("{label:'在服务端设备修改'}")
-        self.assertPageContains("    list();\n    return;\n  }")
-        # 挂到一半被关掉的那次不算数，否则留下的是一条点开什么都没有的「这台电脑」。
-        self.assertPageContains("if(!open()){machineSettingsMounted=false;return}")
-        # 等待期间不铺占位文案：整格不在列里，没有地方放它。
-        self.assertPageLacks("正在读取这台电脑的配置")
-
     def test_the_settings_rail_is_split_into_captioned_sections(self):
-        """左栏按分区分块：一个小标题带一组条目，「设置」在上、「这台电脑」在下。
+        """左栏按分区分块：一个小标题带一组条目。
 
         形状照 BoardUI 的设置弹层。它的组件页只写怎么装，间距、字号与颜色未取得，
         小标题用本站自己那一档：13px、`--muted`。
-        整块仍是一个 tablist：拆成两个之后方向键只在自己那一段里走，从「安全」按下去
-        到不了「通用」，而这两段在用户眼里就是一列，所以小标题写成 presentation。
-        配置页挂不上来时那一条排回上面一列的末尾——小标题和它下面唯一那一条同名，
-        等于把一句话说两遍。
+        分块时整块仍是一个 tablist：方向键在整列上走，小标题写成 presentation。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains("const items=sections.flatMap(section=>section.items);")
         self.assertPageContains(
             "caption.className='board-local-nav-caption';caption.setAttribute('role','presentation');")
-        self.assertPageContains("if(parts?.length)sections.push({caption:machine.querySelector('h3')"
-                                ".textContent.trim(),items:parts});")
-        self.assertPageContains("const sections=[{caption:'设置',items:groups.filter(node=>node!==machine)"
-                                ".map(item)}];")
+        self.assertPageContains("const sections=[{caption:'设置',items:groups.map(item)}];")
         # 方向键在整列上循环，不在某一段里打转。
         self.assertPageContains("next=(i+1)%items.length;")
         self.assertPageContains("next=(i+items.length-1)%items.length;")
@@ -5149,44 +5109,25 @@ class WebUiSourceTests(unittest.TestCase):
                   / "web/css/08-photos.css").read_text(encoding="utf-8")
         self.assertIn("body.photolight-open{overflow:hidden}", photos)
 
-    def test_the_this_computer_group_is_a_page_not_a_row_list(self):
-        """「这台电脑」那一格装的是整张配置页，外壳自己不是面板。
-
-        面板是里面那几段配置；里面没有一段亮着就说明用户在看上半列的某一项，这时整个
-        外壳都不该占位置。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
-                      ":not(:has(.board-group-active)){display:none}", board)
-
     def test_each_settings_tab_takes_its_glyph_from_its_own_name(self):
-        """字形按条目自己的名字取，不按它排第几。
-
-        这一列的条数会变——「这台电脑」挂上配置页之后一条变四条——按下标取字形只会
-        整排错位。
+        """字形按条目自己的名字取，不按它排第几：这一列的条数会变，按下标取只会整排错位。
 
         整列取自 Remix，这是这一排唯一能做到笔画一样粗的办法：Lucide 的描边是 2，
-        Remix 的轮廓约 1.2，两家并排时下半列每一枚都比上半列重一档。Remix 的线条件
+        Remix 的轮廓约 1.2，两家并排时总有一枚比别的重一档。Remix 的线条件
         是靠 `fill` 画出的轮廓不是描边，全站默认的 `stroke:currentColor;fill:none`
         会让它整枚消失，所以这一列反过来写。
-        下面四枚各说各的名词：`computer` 是这台设备（和「跟随系统」同一个意思），
-        `folder` 是媒体文件夹，`global` 是网址那一类，`download` 是把更新下下来。
         """
         self.assertPageContains(
             "const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line',"
             "'播放':'ri-play-circle-line',\n"
             "  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line',"
-            "'这台电脑':'ri-hard-drive-line',\n"
-            "  '通用':'ri-computer-line','媒体':'ri-folder-line','网络与访问':'ri-global-line',"
-            "'更新与维护':'ri-download-line'};")
+            "'这台电脑':'ri-hard-drive-line'};")
         self.assertPageContains("svg.style.fill='currentColor';svg.style.stroke='none';")
         self.assertIn(
             ".settingscard.settingscard>.board-local-nav button svg"
             "{width:20px;height:20px;fill:currentColor;stroke:none;flex:none}",
             (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"))
-        for symbol in ("ri-hard-drive-line", "ri-computer-line", "ri-folder-line",
-                       "ri-global-line", "ri-download-line"):
-            self.assertPageContains(f'<symbol viewBox="0 0 24 24" id="{symbol}">')
+        self.assertPageContains('<symbol viewBox="0 0 24 24" id="ri-hard-drive-line">')
 
     def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
         """管理区那一项叫「关注管理」：它开的是 /follow-manage，不是关注更新流。
@@ -5866,7 +5807,7 @@ class WebUiSourceTests(unittest.TestCase):
         一样打得开。已经在这一页上时也走同一条路——壳接住这次点击，换地址、重挂岛。
         """
         self.assertPageContains('href="/follow-manage?tab=add">添加关注</a>')
-        self.assertPageContains("const FOLLOW_MANAGE_TABS=['list','add','source'];")
+        self.assertPageContains("const FOLLOW_MANAGE_TABS=['list','add','feeds','source'];")
         self.assertPageContains("if(params.tab&&params.tab!=='list')search.set('tab',params.tab)")
         self.assertPageContains("""a[href="/follow-manage?tab=add"]""")
         self.assertPageContains("void openFollowManage(true,'add')")
@@ -8774,6 +8715,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_thumbnail_density_is_this_machines_state_not_this_browsers(self):
         """档位跟着服务端走。跑的是这台机器上的一条长任务，从另一台设备打开设置要看到
         的是它正在按什么密度采集，所以这一行既不进 `appSettings` 也不进 localStorage。
+        设置行只写一句状态，不轮询；进度在活动页（任务中心，ADR-0050）。
         """
         self.assertPageContains('id="videoThumbnailSetting"')
         self.assertPageContains('id="videoThumbnailState" aria-live="polite"')
@@ -8783,7 +8725,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("()=>'off',value=>saveVideoThumbnailMode(value)]")
         self.assertPageContains("const status=await api('/api/thumbnail-jobs');")
         self.assertPageContains("api('/api/thumbnail-jobs',{method:'POST',body:JSON.stringify({mode})})")
-        self.assertPageContains("if(status.status==='running')void watchVideoThumbnailJob(request)")
+        self.assertPageLacks("watchVideoThumbnailJob")
         # 采集只覆盖本机磁盘上的片子，网盘上的每张都要回源拉一次。这一条是功能范围，
         # 说明里必须写出来，否则页面上「视频缩略图采集」读起来是全库。
         self.assertPageContains("只采集本机磁盘上的片子")
@@ -9040,7 +8982,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "await ui.mountIsland('stats',$('#stats'),{\n"
             "    tagLabel,onTag:k=>{closeStats();toggleTag(k)},\n"
-            "    openMediaSettings:()=>openSettings(true,'媒体'),configurable:!!runtimeConfigurable,\n"
+            "    openMediaSettings:()=>openConfigurationSection('媒体'),configurable:!!runtimeConfigurable,\n"
             "  },{isCurrent:()=>surfaceCurrent(surface)});")
         # 正文归 React 子树：读数卡、环形图与排行用 BoardUI 的源码加 Tailwind，
         # 遗留样式表里只剩骨架要的那几条。
@@ -9062,7 +9004,7 @@ class WebUiSourceTests(unittest.TestCase):
             "await ui.mountIsland('configuration',$('#stats'),props,"
             "{isCurrent:()=>surfaceCurrent(surface)})")
         self.assertPageContains(
-            "const props={receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings};")
+            "const props={receipt:message=>actionReceipt(message),reopenTutorial:reopenPostSetupTutorial};")
         self.assertPageContains(
             "document.body.classList.toggle('configuration-layout',current==='configuration');")
         self.assertPageContains("'/configuration':()=>configurationSkeletonHtml()")
@@ -10428,12 +10370,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);")
 
     def test_the_data_management_page_opens_with_a_row_of_stat_cards(self):
-        """数据管理页照 Board 的 dashboard 模板：一排读数卡打头，下面两张任务卡各占一行。
+        """数据管理页照 Board 的 dashboard 模板：一排读数卡打头，下面三张任务卡各占一行。
 
         读数卡是 stat-cards.tsx 的 plain 变体做成按钮（132px、圆角 16、secondary 底、内边距 16、
         32px 图标格里 20px 字形、读数 24/34），整张卡就是那一页的入口；五张在 1120 内一行摆下，
-        窄了折两列、再折一列。扫描与采集和空文件夹是要做的事，不是读数，各占一整行、左说明右按钮；
-        下方四张任务卡同样用 secondary 灰底，浅色主题不会退回白卡。
+        窄了折两列、再折一列。扫描与采集、媒体修复和空文件夹是要做的事，不是读数，各占一整行、左说明右按钮；
+        下方每张任务卡同样用 secondary 灰底，浅色主题不会退回白卡。
         骨架复用同一套结构，页首因此和读数卡直接接上：同样五个入口再排一条链接条，是同一件事
         画两遍，而那条链接条连选中态都没有。
         """
@@ -10442,7 +10384,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;')
         self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
         self.assertPageLacks('cleanup-workspace-switch')
-        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}'
+        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}${cleanupCards.empty}'
                                 '${organizeCardMarkup(organizeState)}</div>')
         # 样式也一起走：没有使用者的选择器留在 board.css 里，下一个人会当它是现役版式去改。
         self.assertNotIn("cleanup-workspace-switch",
@@ -10466,8 +10408,8 @@ class WebUiSourceTests(unittest.TestCase):
         skeleton = (root / "frontend/src/management.ts").read_text(encoding="utf-8")
         self.assertIn('<div class="cleanupstats">${stats.map(([title, glyph]) => `', skeleton)
         self.assertIn('<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">', skeleton)
-        self.assertEqual(skeleton.count("data-cleanup-task"), 4,
-                         "数据管理骨架要同步画出两张任务卡和两块 BoardUI 操作区")
+        self.assertEqual(skeleton.count("data-cleanup-task"), 5,
+                         "数据管理骨架要同步画出三张任务卡和两块 BoardUI 操作区")
 
     def test_the_toast_glyph_is_stroked_and_sits_level_with_its_line(self):
         """Toast 里那枚勾是描边件，和文字同一条中线。
@@ -10849,17 +10791,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("animation:none", contrast, "高对比下那层漂移的光晕要停")
 
     def test_the_settings_groups_sit_on_the_same_card_as_the_machine_pages(self):
-        """设置弹层上半列的每组开关行和「这台电脑」下的配置页坐在同一种卡上。
+        """设置弹层的每组开关行和配置页坐在同一种卡上。
 
         配置页走 BoardUI `SettingsCard`：灰底、16px 圆角、左内边距 12px，行的分隔线在卡片
-        左沿内收住。上半列照这张卡的尺寸画，标题与页底仍是 `--page`；「这台电脑」那一格的
-        外壳不铺底，否则配置页自己的灰卡外面又套一层灰。
+        左沿内收住。设置弹层每一组照这张卡的尺寸画，标题与页底仍是 `--page`；「这台电脑」
+        那张摘要卡也由这一组的灰卡承托。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".settingscard .settingsscroll>.settinggroup"
                       "{background:var(--ground);border-radius:16px;padding:0 0 0 12px}", board)
-        self.assertIn(".settingscard .settingsscroll>.settinggroup:has(>.machinesettings)"
-                      "{background:none;border-radius:0;padding:0}", board)
         self.assertIn(".settingscard.settingscard>.settingshead,"
                       ".settingscard.settingscard>.settingsscroll{background:var(--page)}", board)
         self.assertIn(".settingscard .settingsscroll .settingrow{min-height:52px;"

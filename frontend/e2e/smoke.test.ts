@@ -59,6 +59,12 @@ const ROUTES: readonly Route[] = [
       page.locator('#stats').getByRole('tab', { name: '添加关注', exact: true })],
   },
   {
+    // 订阅源页签由地址参数直达；演示库没有订阅源，等到的是那一节的页脚按钮。
+    path: '/follow-manage?tab=feeds',
+    body: (page) => [page.locator('#stats').getByRole('tab', { name: '订阅源', exact: true, selected: true }),
+      page.locator('#stats').getByRole('button', { name: '立即拉取', exact: true })],
+  },
+  {
     // 骨架里那条指标带也写着「馆藏视频」，认不出画完没有；只有真页面把四张读数卡做成页签。
     path: '/stats',
     body: (page) => [heading(page, '#main', '统计'), statsInventoryTab(page)],
@@ -79,7 +85,8 @@ const ROUTES: readonly Route[] = [
     path: '/data-cleanup',
     // 挂载前的遗留骨架用 heading，最终 React 卡片用带名字的 section；等最终语义才能证明挂载完成。
     body: (page) => [heading(page, '#main', '数据管理'),
-      page.locator('#stats section[aria-label="扫描与采集"]')],
+      page.locator('#stats section[aria-label="扫描与采集"]'),
+      page.locator('#stats section[aria-label="媒体修复"]')],
   },
   {
     path: '/quality-goals',

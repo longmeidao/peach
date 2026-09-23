@@ -562,7 +562,7 @@ appSettings.batchSize=boundedPreference(+appSettings.batchSize,1,200,60);
 appSettings.defaultSort=allowedSetting(appSettings.defaultSort,SORT_KEYS,'seed');
 appSettings.hoverDelaySeconds=boundedPreference(+appSettings.hoverDelaySeconds,0,60,5);
 appSettings.seekSeconds=boundedPreference(+appSettings.seekSeconds,1,300,10);
-appSettings.loginDays=boundedPreference(+appSettings.loginDays,1,365,30);
+delete appSettings.loginDays;
 appSettings.ambientMode=appSettings.ambientMode!==false;
 appSettings.theaterMode=appSettings.theaterMode===true;
 appSettings.groupCollapse=appSettings.groupCollapse!==false;
@@ -830,8 +830,6 @@ function renderThemeSetting(){
    一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
    一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
 const SETTING_SELECTS=[
-  ['loginDaysSetting','保持登录时间',[['30','30 天']],()=>appSettings.loginDays,
-    value=>{appSettings.loginDays=+value;saveSettings()}],
   ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
     ()=>appSettings.batchSize,
     value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
@@ -859,9 +857,10 @@ const SETTING_SELECTS=[
   ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
     ()=>appSettings.relatedLimit,
     value=>{appSettings.relatedLimit=+value;saveSettings()}],
+  /* 条数跟着账本走（/api/settings），所有访问端看到同一个数；本地那份只是镜像。 */
   ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
     ()=>appSettings.searchHistoryLimit,
-    value=>{appSettings.searchHistoryLimit=+value;saveSettings();writeSearchHistory(readSearchHistory())}],
+    value=>{applySearchHistoryLimit(+value);postSearchHistoryLimit()}],
   ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
     ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
     ()=>'0',value=>saveFollowSchedule(+value)],
@@ -1007,15 +1006,14 @@ async function saveFollowSchedule(minutes){
   }catch(error){state.textContent=error.message||'保存失败'}
   finally{const status=followScheduleStatus;syncNumberSetting($('#followScheduleSetting'),status?(status.enabled?status.interval_minutes:0):null,status?!status.available:false)}
 }
-/* 视频缩略图采集。档位和进度都在服务端，这一整段只负责把它读回来画在设置行上；
-   同一个 `videoThumbnailRequest` 兼作过期判据，面板关掉或又点了一次就丢弃在途的那一轮。 */
+/* 视频缩略图采集。档位在服务端，设置行只读回档位和一句状态；采集进度在活动页（任务中心），
+   这里不轮询。同一个 `videoThumbnailRequest` 兼作过期判据，又点了一次就丢弃在途的那一轮。 */
 let videoThumbnailRequest=0;
 function videoThumbnailField(){return $('#videoThumbnailSetting .gselect')}
 function videoThumbnailCopy(status){
-  const counts=`${status.done||0} / ${status.total||0} 部 · 新生成 ${status.made||0} · 已有 ${status.skipped||0} · 未取得 ${status.failed||0}`;
-  if(status.status==='running')return `正在采集：${counts}`;
-  if(status.status==='failed')return `采集停在 ${counts}：${status.stopped||'原因未取得'}`;
-  if(status.status==='complete')return status.stopped?`已按停：${counts}`:`采集完成：${counts}`;
+  if(status.status==='running')return '正在采集，进度在活动页查看。';
+  if(status.status==='failed')return `上一轮采集停下了：${status.stopped||'原因未取得'}`;
+  if(status.status==='complete')return status.stopped?'上一轮采集已按停。':'上一轮采集已完成。';
   return status.mode==='off'
     ?'关闭时不采集；已经生成的图留在盘上，清理走数据管理页。'
     :'选定档位后从最近看过的片子开始采集。';
@@ -1024,14 +1022,6 @@ function applyVideoThumbnailStatus(status){
   const field=videoThumbnailField(),state=$('#videoThumbnailState');
   if(field){field.disabled=false;field.value=status.mode||'off'}
   if(state)state.textContent=videoThumbnailCopy(status);
-}
-async function watchVideoThumbnailJob(request){
-  const ui=await import('/dist/peach-ui.js');
-  await ui.watchJob({
-    active:()=>request===videoThumbnailRequest&&!$('#settingsPanel').hidden,
-    read:signal=>api('/api/thumbnail-jobs',{signal}),
-    render:status=>applyVideoThumbnailStatus(status),
-    disconnected:()=>{const state=$('#videoThumbnailState');if(state)state.textContent='状态未取得，正在重试…'}});
 }
 async function loadVideoThumbnailSetting(){
   const state=$('#videoThumbnailState');if(!state)return;
@@ -1042,7 +1032,6 @@ async function loadVideoThumbnailSetting(){
     const status=await api('/api/thumbnail-jobs');
     if(request!==videoThumbnailRequest)return;
     applyVideoThumbnailStatus(status);
-    if(status.status==='running')void watchVideoThumbnailJob(request);
   }catch(error){
     if(request!==videoThumbnailRequest)return;
     if(field)field.disabled=false;
@@ -1058,7 +1047,6 @@ async function saveVideoThumbnailMode(mode){
     const status=await api('/api/thumbnail-jobs',{method:'POST',body:JSON.stringify({mode})});
     if(request!==videoThumbnailRequest)return;
     applyVideoThumbnailStatus(status);
-    if(status.status==='running')void watchVideoThumbnailJob(request);
   }catch(error){
     if(request!==videoThumbnailRequest)return;
     if(field)field.disabled=false;
@@ -1188,38 +1176,30 @@ async function saveFollowInitialDays(value){
   finally{setActionBusy(field,false)}
 }
 
-/* 设置弹层最后一格装的是配置页：媒体文件夹、端口、代理、更新，讲的都是跑着 Peach
-   的那台电脑，不是这个浏览器。别的设备打开设置照样看得见这一格，里面换成一句话说清
-   在哪儿改——判据是 `/healthz` 的 `configurable`（服务由托盘管、已完成配置、请求来自
-   本机三条同时成立）。
-   这一格到底是「四个分区」还是「一句话」，得等服务端回话才知道，所以它一开始就 hidden
-   （见 index.html），知道了再一次性列出来。先摆一条占位再改写的话，左栏那一列会先长出
-   一条「这台电脑」、随后又变成四条，整个弹层跟着跳一次高度。
+/* 设置弹层最后一格「这台电脑」只放一张摘要卡：媒体库数、端口、更新状态，加一颗「打开
+   配置页」。要改的东西都在 `/configuration`（ADR-0050）。别的设备打开设置照样看得见这一格，
+   里面换成一句话说清在哪儿改——判据是 `/healthz` 的 `configurable`（服务由托盘管、已完成
+   配置、请求来自本机三条同时成立）。
    写在这儿是因为它要用上面那两个模块级绑定；`openSettings` 靠函数声明提升调到它。 */
 let machineSettingsMounted=false;
-/* 左栏由 Board 外壳那段（`buildSettingsTabs`）画，它在自己的闭包里。这一格列出来之后
-   左栏要多一块，得让它重画一遍，所以留这个口子。 */
 async function syncMachineSettings(){
-  const host=$('#machineSettings'),group=$('#machineGroup');
+  const host=$('#machineSettings');
   if(!host||machineSettingsMounted)return;
   const open=()=>!$('#settingsPanel').hidden;
-  const list=()=>{if(group)group.hidden=false;refreshSettingsTabs?.()};
   const runtime=await api('/healthz').catch(()=>null);
   if(!open())return;
   if(runtime)runtimeConfigurable=!!runtime.configurable;
   if(!runtime||!runtimeConfigurable){
-    host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新只能在运行 Peach 服务的那台设备上改：在它的浏览器里打开设置。',
+    host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新只能在运行 Peach 服务的那台设备上改：在它的浏览器里打开配置页。',
       {label:'在服务端设备修改'});
-    list();
     return;
   }
   machineSettingsMounted=true;
-  await mountIsland('configuration',host,
-    {receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings},{isCurrent:open});
+  await mountIsland('configuration-summary',host,
+    {openConfiguration:()=>{openSettings(false);void openConfiguration(true)}},{isCurrent:open});
   /* 挂到一半用户把弹层关了：island 认出自己过期，不会画，这一格里一样东西都没有。
-     退回未挂状态让下次重来，别留一条点开是空白的「这台电脑」。 */
-  if(!open()){machineSettingsMounted=false;return}
-  list();
+     退回未挂状态让下次重来，别留一格点开是空白的「这台电脑」。 */
+  if(!open())machineSettingsMounted=false;
 }
 
 /* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
@@ -1451,7 +1431,9 @@ const openTutorialTarget=task=>{
   if(task.setupEntry)cameFromSetup=true;
   route(task.href);void restoreRoute();
 };
-/** 重新打开安装教程：本地三个键归位，服务端标记同时撤回。 */
+/** 重新打开安装教程：本地三个键归位，服务端标记同时撤回。
+ *  重开键在配置页的「更新与维护」里，忙态、失败原因和回执都由那一侧给；教程卡是固定定位的，
+ *  在配置页上就露出来。写入失败就把原因抛回去。 */
 async function reopenPostSetupTutorial(){
   resetPostSetupTutorialState();
   await writePostSetupTutorialDone(false);
@@ -1527,13 +1509,6 @@ async function syncPostSetupTutorial(){
     };
     root.querySelector('[data-tutorial-dismiss]').onclick=hide;
   }
-}
-/* 教程关掉之后没有别的入口能把它叫回来。那枚键画在配置页的「更新与维护」里，忙态、
-   失败原因和回执都由那一侧给；这里只做本地状态归位、撤回账本标记，再把设置弹层关掉，
-   让重新出现的那张卡露出来。写入失败就把原因抛回去。 */
-async function reopenTutorialFromSettings(){
-  await reopenPostSetupTutorial();
-  openSettings(false);
 }
 const ENTITY_FILTER_KEYS=['loc','creator','tag','state','dur_min','dur_max','orient','sort','dir'];
 const emptyEntityFilters=()=>Object.fromEntries(
@@ -4765,7 +4740,7 @@ async function openStats(push=true){
   /* 点一个内容标签是「回目录并按它筛选」：整页换成目录仍归遗留壳，页面只说点了哪个键。 */
   await ui.mountIsland('stats',$('#stats'),{
     tagLabel,onTag:k=>{closeStats();toggleTag(k)},
-    openMediaSettings:()=>openSettings(true,'媒体'),configurable:!!runtimeConfigurable,
+    openMediaSettings:()=>openConfigurationSection('媒体'),configurable:!!runtimeConfigurable,
   },{isCurrent:()=>surfaceCurrent(surface)});
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -5621,17 +5596,28 @@ async function openDataCleanup(push=true){
         <p class="cleanupmeta">${sourceLine}</p><div class="cleanupstate" aria-live="polite"></div></div>
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="geist-button primary" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>检查来源</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>清理</span></button></footer>
     </section>`,
+    /* 媒体修复是一轮几十分钟起步的长任务，要确认、要看进度，所以和扫描与采集排在同一列
+       （ADR-0050）。卡片由 island 画，这里是它取数期间的那一版。 */
+    mediaRepair:`<div id="mediaRepair">
+      <section class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupRepairTitle">
+        <div class="geist-fieldset-content">${fieldsetTitle('cleanupRepairTitle','媒体修复')}
+          <p>修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>开始修复</button></footer>
+      </section></div>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
     ${DATA_MANAGEMENT_STATS.map(section=>cleanupCards[section]).join('')}
-  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.empty}${organizeCardMarkup(organizeState)}</div>
+  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}${cleanupCards.empty}${organizeCardMarkup(organizeState)}</div>
   ${linkManagerMarkup()}
   ${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
   const processingUi=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface))return;
-  await processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,monitor:true,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)});
+  await Promise.all([
+    processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,monitor:true,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)}),
+    processingUi.mountIsland('media-repair',$('#mediaRepair'),{},{isCurrent:()=>surfaceCurrent(surface)}),
+  ]);
   if(surfaceCurrent(surface)&&location.hash==='#libraryProcessing')$('#libraryProcessing')?.scrollIntoView({block:'start'});
   if(!surfaceCurrent(surface))return;
   $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
@@ -5875,19 +5861,28 @@ async function openActivity(push=true){
 /* 配置页（这台电脑的媒体文件夹与端口）同样是 island。它只在运行 Peach 的这台电脑上
    有意义：服务端按回环地址与独立包两道门放行，手机上的管理菜单也不列它
    （见 runtimeConfigurable）。保存成功的回执由遗留层的 Toast 发，island 只管表单。 */
+/* 配置页要选中的那一组页签名。页签由 `decorate` 按 `.configgroup` 切出来，它读这个名字
+   选中对应的那一格，选中之后清空。 */
+let configurationRequestedSection='';
 async function openConfiguration(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/configuration');
   const surface=claimSurface('/configuration');
   showManagementBody({placeholder:managementPlaceholder('/configuration')});
+  if(location.hash==='#peachProxy')configurationRequestedSection='网络与访问';
   const ui=await import('/dist/peach-ui.js');
-  const props={receipt:message=>actionReceipt(message),reopenTutorial:reopenTutorialFromSettings};
+  const props={receipt:message=>actionReceipt(message),reopenTutorial:reopenPostSetupTutorial};
   await ui.mountIsland('configuration',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface)){
     if(location.hash==='#libraryProcessing'){history.replaceState(null,'','/data-cleanup#libraryProcessing');await openDataCleanup(false);return}
     if(location.hash==='#peachProxy')$('#peachProxy')?.scrollIntoView({block:'start'});
     else window.scrollTo({top:0,behavior:'smooth'});
   }
+}
+/* 从别处点「管理媒体库」「添加媒体文件夹」进来：落到配置页并直接选中那一组页签。 */
+function openConfigurationSection(section){
+  configurationRequestedSection=section;
+  void openConfiguration(true);
 }
 
 async function openScraping(push=true){
@@ -7008,7 +7003,7 @@ function followAuthorName(group){
    地址栏归这里写，偏好存在 appSettings 里，实时状态在 island 手里——三样东西各只有
    一份。哪几项该进地址栏由 island 说：它把默认值传成空串，这里就不写进去，分享出去的
    地址不会挂一串和默认完全一样的参数。 */
-const FOLLOW_MANAGE_TABS=['list','add','source'];
+const FOLLOW_MANAGE_TABS=['list','add','feeds','source'];
 /* 这两样偏好只有骨架和挂载这两个读者，值都在 appSettings 里。 */
 function followListLayout(){return appSettings.followLayout==='table'?'table':'default'}
 function followListPageSize(){return Number(appSettings.followPageSize)||20}
@@ -7059,7 +7054,7 @@ async function openFollowManage(push=true,workspace=''){
 }
 /* 空态里那条「添加关注」：已经在这一页上时也走同一条路，页签跟着地址一起换。 */
 document.addEventListener('click',event=>{
-  if(event.target.closest?.('[data-empty-settings]')){openSettings(true,'媒体');return}
+  if(event.target.closest?.('[data-empty-settings]')){openConfigurationSection('媒体');return}
   const link=event.target.closest?.('a[href="/follow-manage?tab=add"]');
   if(!link||event.defaultPrevented||event.button||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
   event.preventDefault();
@@ -8556,21 +8551,27 @@ const MANAGE_SECTIONS=[
   // 这台电脑的媒体文件夹与端口，字形是一个待配置的文件夹；`settings` 归右上角的设置弹层。
   ['configuration','配置','folder-cog'],
 ];
-/* 管理菜单只留五项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
+/* 管理菜单只留这几项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
    和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
    统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。
    活动页进这张菜单：它横跨所有这些页面（扫描、追更、批量都在它上面出现），
-   从其中任何一页进都会像是那一页的下一步，而它不是。 */
-const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','activity'];
-/* 「配置」不在管理菜单里，它是设置弹层的最后一格（见 syncMachineSettings）：那一页讲的
-   是这台电脑怎么跑 Peach，和「我的界面偏好」是同一类东西，不是库里的一堆内容。
-   `runtimeConfigurable` 仍要问，馆藏空态按它决定是给「去配置媒体文件夹」还是给一句解释。 */
+   从其中任何一页进都会像是那一页的下一步，而它不是。
+   「配置」是唯一的配置编辑页（ADR-0050）：带「保存配置」的多字段表单都在它上面，
+   设置弹层只留一张摘要卡指过来。 */
+const MANAGE_MENU_SECTIONS=['stats','taste','cleanup','follow','activity','configuration'];
+/* 「配置」只对运行 Peach 的这台电脑有意义：服务端按调用方回 `/healthz` 的 `configurable`，
+   手机和另一台电脑的菜单里不列它。第一次画管理条时问一次，答复回来后重画。
+   馆藏空态也按它决定是给「去配置媒体文件夹」还是给一句解释。 */
 function probeConfigurable(){
   if(runtimeConfigurable!==null)return;
   runtimeConfigurable=false;
-  api('/healthz').then(runtime=>{runtimeConfigurable=!!runtime.configurable}).catch(()=>{});
+  api('/healthz').then(runtime=>{
+    runtimeConfigurable=!!runtime.configurable;
+    if(runtimeConfigurable&&manageSection())buildManageBar();
+  }).catch(()=>{});
 }
-const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key));
+const manageMenuSections=()=>MANAGE_SECTIONS.filter(([key])=>MANAGE_MENU_SECTIONS.includes(key)
+  &&(key!=='configuration'||runtimeConfigurable===true));
 /* 配置页绑定这台机器，不进跨机同步的侧栏顺序：钉到手机的侧栏上只会得到一句「请在运行
    Peach 的电脑上打开」。 */
 const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration').map(([key,label,ic])=>
@@ -8611,6 +8612,14 @@ async function loadSyncedSettings(){
     if(typeof remote?.[key]!=='boolean'||remote[key]===appSettings[key])continue;
     appSettings[key]=remote[key];saveSettings();$('#'+id).checked=remote[key];
   }
+  /* 账本里还没有条数时，这台设备本地改过的那个数替所有访问端先定下来，只送这一次。 */
+  const limit=remote&&remote.searchHistoryLimit;
+  if(Number.isInteger(limit)&&limit>=0&&limit<=50){
+    if(limit!==appSettings.searchHistoryLimit){
+      applySearchHistoryLimit(limit);
+      const mount=$('#searchHistoryLimitSetting');if(mount)syncNumberSetting(mount,limit,false);
+    }
+  }else if(remote&&remote.searchHistoryLimit===null&&appSettings.searchHistoryLimit!==DEFAULT_SETTINGS.searchHistoryLimit)postSearchHistoryLimit();
   const order=Array.isArray(remote&&remote.sidebarOrder)?remote.sidebarOrder:null;
   if(!order||!order.length||order.join(',')===appSettings.sidebarOrder.join(','))return;
   appSettings.sidebarOrder=order;
@@ -9181,6 +9190,12 @@ let searchHistory=[];
 function readSearchHistory(){return searchHistory.slice(0,appSettings.searchHistoryLimit)}
 const loadSearchHistory=()=>!appSettings.searchHistoryLimit?Promise.resolve([]):api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
 function writeSearchHistory(list){searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory}
+function applySearchHistoryLimit(limit){
+  appSettings.searchHistoryLimit=boundedPreference(limit,0,50,10);saveSettings();writeSearchHistory(readSearchHistory());
+}
+function postSearchHistoryLimit(){
+  return api('/api/settings',{method:'POST',body:JSON.stringify({searchHistoryLimit:appSettings.searchHistoryLimit})}).catch(()=>{});
+}
 // 搜索本身是只读能力；账本暂时只读时，历史记录降级为本次页面内存，不能让一个
 // 非关键 POST 变成未处理异常或妨碍搜索结果。
 const rememberSearch=async query=>{if(!query||!appSettings.searchHistoryLimit)return;
@@ -10678,8 +10693,8 @@ function localTabs(root,sections,host=root){
            那一次标题没换，跟着放就成了开面板时莫名其妙飘一下。 */
         if(moved)revealTexts(heading.parentElement,'h2');}
       root.scrollTop=0}
-    /* 先全清再点亮当前这一条。同一个节点可能挂在好几条下面（「这台电脑」那一格的外壳
-       就是），一条一条 toggle 的话后面那条会把前面点亮的又抹掉。 */
+    /* 先全清再点亮当前这一条。一条可以带好几个节点，逐条 toggle 的话节点之间有重叠时，
+       后面那条会把前面点亮的又抹掉。 */
     items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));
     items[index].nodes.forEach(node=>node.classList.add('board-group-active'));
     buttons.forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1});
@@ -10722,15 +10737,11 @@ const configTabItems=page=>{
   [...page.children].forEach(node=>{if(node.matches('.configgroup'))items.push({title:node.textContent.trim(),nodes:[]});else if(items.length)items.at(-1).nodes.push(node)});
   return items.filter(item=>item.nodes.length);
 };
-/* 字形按条目自己的名字取，不按它排第几：这一列的条数会变（「这台电脑」挂上配置页之后
-   一条变四条），按下标取字形只会整排错位。
+/* 字形按条目自己的名字取，不按它排第几：分组增删时按下标取字形只会整排错位。
    整列取自 Remix，一家画的笔画才一样粗：Lucide 的描边是 2，Remix 的轮廓约 1.2，两家
-   并排时下半列每一枚都比上半列重一档，看上去像是颜色不一致。
-   下面四枚各说各的名词：`computer` 是这台设备（跟「跟随系统」同一个意思），`folder` 是
-   媒体文件夹，`global` 是网址那一类，`download` 是把更新下下来。 */
+   并排时下半列每一枚都比上半列重一档，看上去像是颜色不一致。 */
 const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line','播放':'ri-play-circle-line',
-  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'ri-hard-drive-line',
-  '通用':'ri-computer-line','媒体':'ri-folder-line','网络与访问':'ri-global-line','更新与维护':'ri-download-line'};
+  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'ri-hard-drive-line'};
 let settingsTabs=null;
 function buildSettingsTabs(){
   const settings=document.querySelector('.settingsscroll');
@@ -10741,21 +10752,9 @@ function buildSettingsTabs(){
       node.classList.remove('board-group-active');node.removeAttribute('role');node.removeAttribute('aria-labelledby')});
   }
   const keep=settingsTabs?settingsTabs.index:0;
-  /* `[hidden]` 的那一格不进这一列。「这台电脑」在服务端回话之前就是这个状态：算进来会
-     先画出一条，等回话再改画成四条，等于让左栏跳两次。 */
-  const groups=[...settings.querySelectorAll(':scope > .settinggroup:not([hidden])')];
-  const machine=groups.find(node=>node.querySelector(':scope > .machinesettings'));
+  const groups=[...settings.querySelectorAll(':scope > .settinggroup')];
   const item=node=>{const title=node.querySelector('h3').textContent.trim();return{title,icon:SETTINGS_TAB_ICONS[title],nodes:[node]}};
-  const sections=[{caption:'设置',items:groups.filter(node=>node!==machine).map(item)}];
-  if(machine){
-    const page=machine.querySelector('.configpage');
-    const parts=page?configTabItems(page).map(part=>({...part,icon:SETTINGS_TAB_ICONS[part.title]})):null;
-    /* 配置页挂上来了才单独起一块，小标题是「这台电脑」。挂不上来（别的设备）时里面只有
-       一句话，那就仍旧排在上面那一列的末尾——小标题和它下面唯一那一条同名，等于把一句话
-       说两遍。 */
-    if(parts?.length)sections.push({caption:machine.querySelector('h3').textContent.trim(),items:parts});
-    else sections[0].items.push({...item(machine),nodes:[machine.querySelector('.machinesettings')]});
-  }
+  const sections=[{caption:'设置',items:groups.map(item)}];
   settingsTabs=localTabs(settings,sections,settings.parentElement);
   const requested=sections.flatMap(section=>section.items).findIndex(item=>item.title===settingsRequestedSection);
   settingsTabs?.select(requested>=0?requested:keep);
@@ -10764,10 +10763,17 @@ function buildSettingsTabs(){
 refreshSettingsTabs=buildSettingsTabs;
 function decorate(){
   installUISetting();
-  /* 只认管理区那一份配置页。它现在还长在设置弹层的「这台电脑」里，那一份已经由外面
-     那圈设置分区页签管着，再给它自己叠一排页签就是页签套页签。 */
   const config=document.querySelector('#stats .configpage');
-  if(config&&!config.querySelector(':scope > .board-local-nav'))localTabs(config,[{items:configTabItems(config)}]);
+  if(config&&!config.querySelector(':scope > .board-local-nav')){
+    const items=configTabItems(config);
+    const tabs=localTabs(config,[{items}]);
+    /* 骨架也带 `.configpage`，但切不出页签；真页签画出来之后才消费这次请求。 */
+    if(tabs){
+      const requested=items.findIndex(item=>item.title===configurationRequestedSection);
+      if(requested>=0)tabs.select(requested);
+      configurationRequestedSection='';
+    }
+  }
   const settings=document.querySelector('.settingsscroll');
   if(settings){if(!settingsTabs)buildSettingsTabs();
     /* 标题下那道影子的门槛是那段留白自己：它长在这一栏的上内边距上，滚掉它就等于两块
@@ -10831,7 +10837,7 @@ api('/api/libraries').then(data=>{
   mark.innerHTML=libraryMark(choices.find(row=>row[0]===current)?.[2]||'database');boardBrand.querySelector('.mark').replaceWith(mark);
   libraryPicker.innerHTML=`<p>媒体库</p><div class="board-library-rows">${choices.map(([id,name,glyph])=>`<button type="button" data-library="${esc(id)}" aria-pressed="${id===current}"><span class="board-library-avatar">${libraryMark(glyph)}</span><span>${esc(name)}</span></button>`).join('')}</div><footer><button type="button" class="geist-button primary" data-library-manage>管理媒体库</button></footer>`;
   libraryPicker.querySelectorAll('[data-library]').forEach(button=>button.onclick=()=>{sessionStorage.setItem('peach.library',button.dataset.library);location.assign('/')});
-  libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);openSettings(true,'媒体')};
+  libraryPicker.querySelector('[data-library-manage]').onclick=()=>{libraryFloating.setOpen(false);openDrawer(false);openConfigurationSection('媒体')};
   /* 委托在这一列上，不挂在每个按钮身上：菜单每次取回媒体库都整块重画。
      `pointerover`／`pointerout` 而不是 enter／leave，后两个不冒泡，委托接不到。 */
   const libraryRows=libraryPicker.querySelector('.board-library-rows');

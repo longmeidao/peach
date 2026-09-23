@@ -52,7 +52,8 @@ describe('Board 页面骨架', () => {
     wireBoardSegments(root);
     expect(root.querySelector('.board-segment-thumb')).toBeNull();
     expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('关注列表');
-    expect(root.querySelectorAll('.skeleton-segments > span')).toHaveLength(3);
+    expect([...root.querySelectorAll('.skeleton-segments > span')].map((span) => span.textContent))
+      .toEqual(['关注列表', '添加关注', '订阅源', '来源和凭证']);
     expect(root.querySelectorAll('.follow-skeleton-button-group > button')).toHaveLength(2);
     expect(root.querySelector('.follow-skeleton-surface')).not.toBeNull();
     expect(root.querySelectorAll('.follow-skeleton-authors .follow-skeleton-author')).toHaveLength(3);

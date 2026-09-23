@@ -10,11 +10,12 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { JOB_RUNNING_POLL_MS } from '../../src/react/background-job';
 import { queryClient } from '../../src/react/query';
 import {
-  authorAvatar, authorGroups, authorInitial, authorName, checkSummary, FOLLOW_CHECK_URL,
+  authorAvatar, authorGroups, authorInitial, authorName, checkSummary, FEEDS_CHECK_URL, FEED_SOURCE_URL,
+  FEEDS_URL, FOLLOW_CHECK_URL,
   FOLLOW_CREDENTIAL_URL, FOLLOW_CREDENTIALS_URL, FOLLOW_RESOLVE_URL, FOLLOW_SOURCE_URL,
   FOLLOW_SUGGEST_URL, FOLLOW_URL, pageWindow, prefetchFollowManage,
   sortLabel, SUGGEST_DEBOUNCE_MS, tableRows,
-  type CheckJob, type CredentialData, type CredentialRow, type FollowData, type FollowSource,
+  type CheckJob, type CredentialData, type CredentialRow, type FeedsData, type FollowData, type FollowSource,
   type ResolveJob, type SuggestData,
 } from '../../src/react/follow-manage/follow-manage';
 import { FollowManagePage } from '../../src/react/follow-manage/follow-manage-page';
@@ -85,6 +86,8 @@ interface Plan {
   suggest?: (q: string) => SuggestData | Promise<SuggestData>;
   /** 登记一条来源。回 `refuse(...)` 就是这一条被服务端挡回来。 */
   add?: (body: { url: string; label: string }) => unknown;
+  /** 订阅源清单。 */
+  feeds?: FeedsData;
 }
 
 /** 按端点分流的假 fetch。写操作各回一个最小成功体。 */
@@ -93,6 +96,8 @@ function serve(plan: Plan = {}) {
   const fetcher = vi.fn(async (input: string, init?: RequestInit) => {
     const url = String(input);
     const body = init?.body ? JSON.parse(String(init.body)) : null;
+    if (url === FEEDS_URL) return ok(plan.feeds ?? { sources: [], unread: 0 });
+    if (url === FEED_SOURCE_URL || url === FEEDS_CHECK_URL) return ok({ ok: true });
     if (url === FOLLOW_CREDENTIALS_URL) return ok(plan.creds ?? credentials());
     if (url === FOLLOW_CREDENTIAL_URL) return ok({});
     if (url === FOLLOW_CHECK_URL) {
@@ -136,7 +141,7 @@ const shellProps = (over: Partial<Props> = {}): Props => ({
 async function open(plan: Plan = {}, over: Partial<Props> = {}) {
   const fetcher = serve(plan);
   const props = shellProps(over);
-  await prefetchFollowManage(new AbortController().signal).catch(() => {});
+  await prefetchFollowManage(new AbortController().signal, props.tab).catch(() => {});
   const mounted = await mountRoot(
     <QueryClientProvider client={queryClient}><FollowManagePage {...props} /></QueryClientProvider>);
   await settle();
@@ -506,10 +511,54 @@ it('一条来源都没有时说清这里会显示什么', async () => {
 
 // ── 页签与只读 ──────────────────────────────────────────────────────────────
 
-it('三栏按做事的先后排，缺凭据的数挂在最后一栏上', async () => {
+it('各栏按做事的先后排，缺凭据的数挂在最后一栏上', async () => {
   const { host } = await open({ creds: { root: 'C:\\creds', providers: [credential({ provider: 'fanbox' })] } });
   expect([...host.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent))
-    .toEqual(['关注列表', '添加关注', '来源和凭证（1）']);
+    .toEqual(['关注列表', '添加关注', '订阅源', '来源和凭证（1）']);
+});
+
+const FEEDS: FeedsData = {
+  unread: 3,
+  sources: [
+    { id: 4, kind: 'performer', kind_label: '女优新作', name: '甲 的新作', url: 'https://feeds.test/a',
+      entity_name: '甲', enabled: true, interval_minutes: 720, last_fetched_at: null, last_error: null,
+      last_new_count: 0, seen: 2 },
+    { id: 5, kind: 'performer', kind_label: '女优新作', name: '乙 的新作', url: 'https://feeds.test/b',
+      entity_name: '乙', enabled: false, interval_minutes: 30, last_fetched_at: null, last_error: '站点 503',
+      last_new_count: 0, seen: 0 },
+  ],
+};
+
+const feedReads = (fetcher: ReturnType<typeof serve>) =>
+  fetcher.mock.calls.filter(([input, init]) => String(input) === FEEDS_URL && !(init as RequestInit | undefined)?.method).length;
+
+it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即拉取都落到订阅源的接口上', async () => {
+  const { host, fetcher } = await open({ feeds: FEEDS }, { tab: 'feeds' });
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('订阅源');
+  expect(host.textContent).toContain('女优新作 · 每 12 小时一次 · 还没拉过 · 上次新增 0 条');
+  expect(host.textContent).toContain('乙 的新作 拉取失败');
+  expect(host.textContent).toContain('有 3 条新作还没看');
+  expect(host.textContent).not.toContain('正在读订阅源');
+  expect(feedReads(fetcher)).toBe(1);
+  await click(host.querySelector('[aria-label="启用 乙 的新作"]'));
+  await settle();
+  await click(buttonLabelled(host, '移除 甲 的新作'));
+  await settle();
+  await click(buttonNamed('立即拉取', host));
+  await settle();
+  expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([
+    { action: 'enabled', id: 5, enabled: true }, { action: 'remove', id: 4 },
+  ]);
+  expect(sentBody(fetcher, FEEDS_CHECK_URL)).toEqual([{ all: true }]);
+  expect(feedReads(fetcher)).toBeGreaterThan(1);
+});
+
+it('订阅源页签不收地址，只读的这台开关、移除与拉取都停用', async () => {
+  const { host } = await open({ feeds: FEEDS }, { tab: 'feeds', readOnly: true });
+  expect(host.querySelector('input[type="url"], input[type="text"]')).toBeNull();
+  expect(buttonNamed('立即拉取', host)?.disabled).toBe(true);
+  expect(buttonLabelled(host, '移除 甲 的新作')?.disabled).toBe(true);
+  expect(host.querySelector<HTMLInputElement>('input[aria-label="启用 甲 的新作"]')?.disabled).toBe(true);
 });
 
 it('只读的这台说清楚、指向写入端，写操作一律停用', async () => {

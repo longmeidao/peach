@@ -137,8 +137,14 @@ export interface ConfigurationData {
 export interface ConfigurationProps {
   /** 保存成功后的过去时回执（遗留层的 Toast）。 */
   receipt(message: string): void;
-  /** 让安装教程重新出现：跳过与折叠归位、撤回账本标记，再关掉设置弹层。 */
+  /** 让安装教程重新出现：跳过与折叠归位、撤回账本标记。 */
   reopenTutorial(): Promise<void>;
+}
+
+/** 设置弹层「这台电脑」那张摘要卡。读的是配置页同一份快照，要改的都去配置页。 */
+export interface ConfigurationSummaryProps {
+  /** 关掉设置弹层、换到 `/configuration`。整页换成哪一屏归遗留壳。 */
+  openConfiguration(): void;
 }
 
 /** 配置页的一个分组（「通用」「媒体」「网络与访问」「更新与维护」）。
@@ -166,6 +172,9 @@ export interface ReactPage<P> {
 /** 活动页没有来自遗留层的助手：整页的数据都来自 `/api/tasks`。 */
 export type ActivityProps = Record<string, never>;
 
+/** 数据管理页上的「媒体修复」卡片。起停与进度都走 `/api/media-repair`，遗留层什么也不用给。 */
+export type MediaRepairProps = Record<string, never>;
+
 /** 高清版目标页仍由遗留层提供的能力。全是纯函数或导航，页面不持有它们的状态。 */
 export interface QualityGoalsProps {
   /** 打开作品详情（遗留层的整页视图，含播放器与队列）。 */
@@ -184,7 +193,7 @@ export interface StatsProps {
   tagLabel(key: string): string;
   /** 点一个内容标签：回目录并按它筛选。整页换成目录由遗留壳做。 */
   onTag(key: string): void;
-  /** 打开媒体文件夹设置。没有视频或没有存储来源时空态里的那个去处。 */
+  /** 打开配置页的「媒体」页签。没有视频或没有存储来源时空态里的那个去处。 */
   openMediaSettings(): void;
   /** 这台机器能不能改配置。不能改时空态不给「添加媒体文件夹」。 */
   configurable: boolean;
@@ -221,7 +230,7 @@ export interface ScrapingProps {
  *  走；`pageSize`／`layout` 是这台浏览器的习惯，跟着 `appSettings` 走。两组都由壳持有存储、
  *  React 持有实时状态，各只有一份。 */
 export interface FollowManageProps {
-  /** 地址栏此刻带着的页签（`list`／`add`／`source`）。 */
+  /** 地址栏此刻带着的页签（`list`／`add`／`feeds`／`source`）。 */
   tab: string;
   page: number;
   sort: string;
@@ -316,9 +325,11 @@ export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'avatar-picker': ReactPage<AvatarPickerProps>;
   configuration: ReactPage<ConfigurationProps>;
+  'configuration-summary': ReactPage<ConfigurationSummaryProps>;
   'cover-crop': ReactPage<CoverCropProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
+  'media-repair': ReactPage<MediaRepairProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   review: ReactPage<ReviewProps>;
   scraping: ReactPage<ScrapingProps>;

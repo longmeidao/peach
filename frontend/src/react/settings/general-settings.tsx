@@ -1,5 +1,4 @@
-/* 「通用」分组里看配置快照的那两节：开机自启与桌面快捷方式，人物资料页那三枚外部入口。
- * 同一组里还有「订阅源」，它读自己的端点，由 `configuration-page.tsx` 排在这两节后面。 */
+/* 「通用」分组：开机自启与桌面快捷方式，人物资料页那三枚外部入口。 */
 import { useState, type FormEvent } from 'react';
 
 import { SettingsRow } from '@/components/application/settings/settings-rows';

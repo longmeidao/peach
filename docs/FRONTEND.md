@@ -34,15 +34,17 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 `configuration-page.tsx`）：一条窄列里排「通用 / 媒体 / 网络与访问 / 更新与维护」四组，每组一个
 `h2.configgroup` 小标题，没有内容的组连标题一起省略。数据契约是 `/api/configuration`
 （`src/peach/routes_configuration.py`），端点字符串只在 `frontend/src/configuration-endpoints.ts`
-声明一次，整页和挂载状态那一块读同一个 `queryKey`。「通用」里的「订阅源」是例外：它读自己的
-`/api/feeds`（`feed-settings.tsx`），开关与移除之后只重取这一节，这一组因此总有内容、标题不省略。
-日常入口是右上角的设置弹层：同一个 island 挂进 `#machineSettings`，左栏「这台电脑」
-那一块按 `.configgroup` 标题拆成四条（`web/app.js` 的 `configTabItems`）。壳挂完这一页紧接着
+声明一次，整页和设置弹层的摘要卡读同一个 `queryKey`。
+`/configuration` 是唯一的编辑页，进管理菜单；媒体库选单、统计页与首次配置引导都指向它。
+左栏页签按 `.configgroup` 标题切（`web/app.js` 的 `configTabItems`）。壳挂完这一页紧接着
 就读它画出来的结构，所以第一帧要同步落到 DOM 上：`react/entry.tsx` 的 `mounter` 用 `flushSync`
 画第一帧，往后的更新照常异步。小标题和分区因此必须是 `.configpage` 的直接子节点、交替排列。
-`/configuration` 这条路由保留，媒体库选单和首次配置引导都指向它。
+设置弹层「这台电脑」一格只挂 `configuration-summary`（`configuration-summary.tsx`）：媒体库数、
+端口、更新状态和「打开配置页」，不放可编辑的控件（ADR-0050）。媒体修复是数据管理页上的
+`media-repair` island（`frontend/src/react/media-repair/`），订阅源是关注管理页的「订阅源」页签
+（`follow-manage/feed-sources.tsx`，读 `/api/feeds`）。
 服务端按两道门放行：托盘管理的服务、发起连接的是本机；并在 `/healthz` 里按调用方回
-`configurable`，遗留层据此决定这一块是挂 island 还是换成一句「该配置需在服务端设备修改」。
+`configurable`，遗留层据此决定管理菜单列不列「配置」，摘要卡挂 island 还是换成一句「该配置需在服务端设备修改」。
 表单校验的原因由服务端按字段给（400 的 `errors`），页面写回原位，不在前端复制判定。
 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页
 （`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。

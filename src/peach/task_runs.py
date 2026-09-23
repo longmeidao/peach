@@ -89,6 +89,7 @@ TASK_LABELS = {
     "entity-avatar": "补实体头像",
     "feed-check": "订阅源拉取",
     "feed-scrape": "取新作资料",
+    "timeline-thumbnails": "视频缩略图采集",
 }
 
 

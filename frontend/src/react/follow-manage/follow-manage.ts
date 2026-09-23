@@ -8,6 +8,8 @@
  *   互不影响，合成一个键就会让每次开关来源都顺带重问一遍每个站的凭据文件。
  * - `['follow-manage','check']` 与 `['follow-manage','resolve']` 是两趟后台任务的快照，
  *   节律由后台推进：跑起来两秒一次，停了就不问。
+ * - `['follow-manage','feeds']` 是订阅源（ADR-0042）。它和关注来源是两张表，开关与移除之后
+ *   只重取这一份。
  *
  * 分组、排序、分页都是纯函数：两种视图（创作者卡片与表格）必须给出同一套顺序，比较器
  * 写在两处的话，同一份数据在两种视图里的先后就会不一样。 */
@@ -25,6 +27,9 @@ export const FOLLOW_SUGGEST_URL = '/api/follow/suggest';
 export const FOLLOW_ALIAS_URL = '/api/follow/author-alias';
 export const FOLLOW_CREDENTIAL_URL = '/api/follow/credential';
 export const FOLLOW_STATUS_URL = '/api/follow/status';
+export const FEEDS_URL = '/api/feeds';
+export const FEED_SOURCE_URL = '/api/feeds/source';
+export const FEEDS_CHECK_URL = '/api/feeds/check';
 
 /** 来源清单、创作者别名与推荐共用这一个键。 */
 export const FOLLOW_MANAGE_KEY = ['follow-manage'] as const;
@@ -34,6 +39,8 @@ export const FOLLOW_CREDENTIALS_KEY = ['follow-manage', 'credentials'] as const;
 export const FOLLOW_CHECK_KEY = ['follow-manage', 'check'] as const;
 /** 查找关注来源那一趟后台任务。 */
 export const FOLLOW_RESOLVE_KEY = ['follow-manage', 'resolve'] as const;
+/** 订阅源清单与未读数。 */
+export const FEEDS_KEY = ['follow-manage', 'feeds'] as const;
 /** 敲字建议按词各存一份：同一个词回头再敲不必再打一趟站点的公开补全。 */
 export const followSuggestKey = (term: string) => ['follow-manage', 'suggest', term] as const;
 
@@ -457,14 +464,52 @@ export const fetchPending = () =>
   apiGet<{ groups?: { primary: { id: number; status: string }; variants: { id: number; status: string }[];
     duplicates: { id: number; status: string }[] }[] }>(`${FOLLOW_URL}?status=new&limit=1000`);
 
-/** 首屏：来源清单与凭据状态取回来才画。
+/** 一条订阅源。字段以 `feeds.sources`（`src/peach/feeds.py`）为准。 */
+export interface FeedSource {
+  id: number;
+  kind: string;
+  kind_label: string;
+  name: string;
+  url: string;
+  entity_name: string | null;
+  enabled: boolean;
+  interval_minutes: number;
+  last_fetched_at: string | null;
+  last_error: string | null;
+  last_new_count: number;
+  seen: number;
+}
+
+export interface FeedsData {
+  sources: FeedSource[];
+  unread: number;
+}
+
+/** 认不出的响应当读失败：没有 sources 的那份不是订阅源的数据，画出来只会在第一次取长度时炸掉。 */
+export async function fetchFeeds(signal?: AbortSignal): Promise<FeedsData> {
+  const payload = await apiGet<FeedsData>(FEEDS_URL, signal);
+  if (!Array.isArray(payload?.sources)) throw new Error('没有读到订阅源');
+  return payload;
+}
+
+export const setFeedEnabled = (id: number, enabled: boolean, signal?: AbortSignal) =>
+  apiSend(FEED_SOURCE_URL, { action: 'enabled', id, enabled }, 'POST', signal);
+
+export const removeFeed = (id: number, signal?: AbortSignal) =>
+  apiSend(FEED_SOURCE_URL, { action: 'remove', id }, 'POST', signal);
+
+/** 立即拉取走的是和定时同一条路，只是把到期判断换成「全部启用的源」。 */
+export const checkFeeds = (signal?: AbortSignal) => apiSend(FEEDS_CHECK_URL, { all: true }, 'POST', signal);
+
+/** 首屏：来源清单与凭据状态取回来才画；地址栏直接指着「订阅源」时连它一起取。
  *
  * 两趟后台任务不在首屏里：它们的快照常年躺着上一趟的回执，等它们只会让首屏多等一个
  * 往返，而它们自己的键挂上去就会读。中止时 `fetchQuery` 把 `AbortError` 抛回挂载方。 */
-export async function prefetchFollowManage(signal: AbortSignal): Promise<void> {
+export async function prefetchFollowManage(signal: AbortSignal, tab = ''): Promise<void> {
   await Promise.all([
     queryClient.fetchQuery({ queryKey: FOLLOW_MANAGE_KEY, queryFn: () => fetchFollow(signal) }),
     queryClient.fetchQuery({ queryKey: FOLLOW_CREDENTIALS_KEY, queryFn: () => fetchCredentials(signal) }),
+    tab === 'feeds' ? queryClient.fetchQuery({ queryKey: FEEDS_KEY, queryFn: () => fetchFeeds(signal) }) : null,
   ]);
 }
 

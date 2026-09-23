@@ -2849,13 +2849,13 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn("params.set('provider',[...followProviders].join(','))", self.page)
 
     def test_the_manage_page_is_ordered_by_what_you_do_first(self):
-        """三栏按做事的先后排：关注列表在最前，其次添加关注，最后才是来源和凭证。
+        """各栏按做事的先后排：关注列表在最前，其次添加关注与订阅源，最后才是来源和凭证。
 
         凭据是出问题时才去配的东西，摆在第一栏就等于每次进来都先看一眼跟这次无关的
         表单。栏的顺序同时也是地址栏里 `tab` 的取值顺序，壳那边照着同一份；页面画出来的
         次序由 `frontend/test/react/follow-manage.test.tsx` 判。
         """
-        self.assertPageContains("const FOLLOW_MANAGE_TABS=['list','add','source'];")
+        self.assertPageContains("const FOLLOW_MANAGE_TABS=['list','add','feeds','source'];")
 
     def test_the_page_is_one_narrow_column_with_credentials_inline(self):
         """侧栏在哪个宽度上都不对：宽屏把凭据推出视线，窄屏又整个塌到最底下。

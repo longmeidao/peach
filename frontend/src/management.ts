@@ -10,7 +10,7 @@ export function cloudPreferenceLocations(files: readonly { location: string }[],
   return configured.filter(location => files.some(file => file.location === location));
 }
 
-/** 首屏复用读数卡、扫描、链接管理与资源同步的内容容器。 */
+/** 首屏复用读数卡、扫描、媒体修复、链接管理与资源同步的内容容器。 */
 export function cleanupSkeletonHtml(): string {
   const stats = [['人工复核', 'square-check-big'], ['高清版', 'sparkles'], ['重复文件', 'file-stack'], ['垃圾文件', 'file-archive'], ['回收站', 'trash']];
   const bar = '<span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span>';
@@ -24,6 +24,11 @@ export function cleanupSkeletonHtml(): string {
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-scan">扫描与采集</h3>
           <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
         <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="board-link-button" href="/scraping"><span>来源和凭证</span><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-up"></use></svg></a><div class="splitbutton board-button-group primary"><button type="button" class="splitmain geist-button primary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-database"></use></svg>扫描并补全资料</button><button type="button" class="splittoggle geist-button primary" disabled aria-label="更多扫描与采集方式"><svg aria-hidden="true"><use href="#i-chevron-down"></use></svg></button></div></footer>
+      </section>
+      <section class="cleanupfieldset cleanupprocessing board-processing-skeleton" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-repair">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-repair">媒体修复</h3>
+          <p>修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。</p></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>开始修复</button></footer>
       </section>
       <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹</h3>
