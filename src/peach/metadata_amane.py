@@ -2,9 +2,11 @@
 
 桥本体在 `tools/amane-bridge/bridge.py`，运行环境由同目录的 `pyproject.toml` / `uv.lock`
 钉死，venv 建在数据目录 `<tools>/amane-bridge/.venv`，不进 Peach 主 venv。这里只做三件事：
-找到 venv 里的解释器并起子进程；把 amane 的 `MediaMetadata` 映成 `extract_peach_fields`
-认得的 payload；把 amane 的 `FailureReason` 映到 `MetadataProviderError` 现有的
-`auth` / `unavailable` / `not_found` 三档，细档留在 `detail` 里给冷却用。
+找到 venv 里的解释器并起子进程；把 amane 的 `MediaMetadata` 套进 `peach.sources` 契约的
+`SiteRecord`，再投影成 `extract_peach_fields` 认得的 payload；把 amane 的 `FailureReason` 一对一映到
+契约的 `FailureReason`，由它翻成 `MetadataProviderError` 现有的 `auth` / `unavailable` / `not_found`
+三档，上游原样的 reason 留在 `detail` 里给冷却与快照回溯用。链上 `LibraryMetadataProvider` 拿到的
+形状因此与自写站一致。
 
 聚合不在这里：一站一份 payload 交给 `metadata_policy` / ADR-0038 的结算，不复制 amane 的
 `aggregate`。升级也不在这里：钉的 sha 只在 `pyproject.toml` 一处，本模块读它，不另存一份。
@@ -21,7 +23,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from .metadata import MetadataProviderError, auth_error, identifies_code, validate_provider_code
+from .metadata import MetadataProviderError, identifies_code, validate_provider_code
+from .sources.base import (COOLDOWN_ACTIONS, REASON_KINDS, FailureReason, SiteConfig, SiteRecord,
+                           SourceFailure)
 from .user_agent import USER_AGENT
 
 AMANE_REPOSITORY = "https://github.com/sqzw-x/amane"
@@ -34,43 +38,47 @@ BRIDGE_TOOL_NAME = "amane-bridge"
 #: 一次子进程的默认超时。桥内每站并发、单请求 30 秒、最多两次重试，60 秒够一站走完。
 DEFAULT_TIMEOUT = 60
 
-#: 经桥开放给 Peach 来源链的站，只列 Peach 自己没有解析器的：站名 → 界面上的名字。
+#: 经桥开放给 Peach 来源链的站，只列 Peach 自己没有解析器的，套 `peach.sources` 同一份配置形状。
+#: 主域与 Cookie 由 amane 自己管，Peach 不持有，所以 `base_url` 与 `domains` 留空；档位统一是 `amane`。
 #: javdb / dmm / javbus 这些 Peach 已有的不经桥换——两条路径答同一站，分歧没人会去看。
-SITES: dict[str, str] = {
-    "fc2club": "FC2Club",
-    "freejavbt": "FreeJavBT",
-    "airav": "AIRAV",
-    "avsox": "AVSOX",
+SITE_CONFIGS: dict[str, SiteConfig] = {
+    name: SiteConfig(name=name, label=label, provider="amane-" + name, base_url="", domains=(), stage="amane")
+    for name, label in (("fc2club", "FC2Club"), ("freejavbt", "FreeJavBT"), ("airav", "AIRAV"), ("avsox", "AVSOX"))
 }
+#: 站名 → 界面上的名字，设置页那张卡与来源链按它取。
+SITES: dict[str, str] = {name: config.label for name, config in SITE_CONFIGS.items()}
 
-#: amane 的 `FailureReason` → Peach 的 `MetadataProviderError.kind`。
-#: `auth` 一档收「站方把我们挡在门外」的几种：年龄闸要 Cookie，Cloudflare 与出口 IP 封禁要等
-#: 或换出口，地区限制要换出口——同一份请求再发一次结果不变，正是 `auth` 的语义
-#: （`retryable=False`、`temporary=True`）。`parse_error` 是站点改版，重试无用但也不是这部片没有。
-REASON_KINDS: dict[str, str] = {
-    "not_found": "not_found",
-    "no_usable_metadata": "not_found",
-    "rate_limited": "unavailable",
-    "server_error": "unavailable",
-    "timeout": "unavailable",
-    "network": "unavailable",
-    "http_error": "unavailable",
-    "empty_response": "unavailable",
-    "unexpected": "unavailable",
-    "crawler_unavailable": "unavailable",
-    "parse_error": "unavailable",
-    "cloudflare_challenge": "auth",
-    "cloudflare_blocked": "auth",
-    "ip_banned": "auth",
-    "geo_restricted": "auth",
-    "age_verification": "auth",
+#: amane 的 `FailureReason`（桥脚本 `FAILURE_REASONS` 那十六档）→ 契约的 `FailureReason`，一对一。
+#: 三档分类、冷却动作与可否重试都由契约那张表定（`sources.base.REASON_KINDS` 等），这里只做名字翻译：
+#: `cloudflare_blocked`（Ray ID 拦截页）与 `ip_banned` 同属出口被封；`age_verification` 是要 Cookie 的门；
+#: `http_error`、`empty_response`、`crawler_unavailable` 都是「桥那一侧这次没答上」，归服务端错误；
+#: `unexpected` 归连接层，与它一样可重试。
+AMANE_REASONS: dict[str, FailureReason] = {
+    "not_found": FailureReason.NOT_FOUND,
+    "no_usable_metadata": FailureReason.NO_USABLE_METADATA,
+    "rate_limited": FailureReason.RATE_LIMITED,
+    "server_error": FailureReason.SERVER_ERROR,
+    "timeout": FailureReason.TIMEOUT,
+    "network": FailureReason.NETWORK,
+    "http_error": FailureReason.SERVER_ERROR,
+    "empty_response": FailureReason.SERVER_ERROR,
+    "unexpected": FailureReason.NETWORK,
+    "crawler_unavailable": FailureReason.SERVER_ERROR,
+    "parse_error": FailureReason.PARSE_ERROR,
+    "cloudflare_challenge": FailureReason.CLOUDFLARE_CHALLENGE,
+    "cloudflare_blocked": FailureReason.IP_BANNED,
+    "ip_banned": FailureReason.IP_BANNED,
+    "geo_restricted": FailureReason.GEO_RESTRICTED,
+    "age_verification": FailureReason.AUTH_REQUIRED,
 }
-#: 这几档说明的是「这个出口对这一站发得太多或已被封」，整站要进冷却，不只是这一部片。
-#: 用的是 `scraping_access` 已有的两档：限流按 429 那一档停，封禁按 403 那一档翻倍。
-RATE_LIMITED_REASONS = frozenset({"rate_limited"})
-BLOCKED_REASONS = frozenset({"cloudflare_challenge", "cloudflare_blocked", "ip_banned"})
-#: 这几档重试没有意义：不是这部片没有，也不是等一会儿就好。
-PERMANENT_REASONS = frozenset({"parse_error"})
+#: `auth` 一档的措辞，按上游 reason 写。
+AUTH_MESSAGES: dict[str, str] = {
+    "age_verification": "站方要求年龄验证",
+    "geo_restricted": "站方按地区拒绝了这个出口",
+    "cloudflare_challenge": "撞上 Cloudflare 挑战页",
+    "cloudflare_blocked": "被 Cloudflare 拦下",
+    "ip_banned": "出口 IP 已被站方封禁",
+}
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
 
@@ -255,28 +263,27 @@ class AmaneBridge:
 
 
 def failure_error(site: str, record: Mapping[str, object]) -> MetadataProviderError:
-    """桥记录里一站的失败 → Peach 的错误对象。细档留在 `detail`，措辞里也带着。"""
+    """桥记录里一站的失败 → Peach 的错误对象。上游 reason 留在 `detail`，措辞里也带着。"""
+    return site_failure(site, record).provider_error(SITES.get(site, site))
+
+
+def site_failure(site: str, record: Mapping[str, object]) -> SourceFailure:
+    """桥记录里一站的失败 → 契约的 `SourceFailure`。分档、冷却与可否重试都由契约那张表定。"""
     reason = str(record.get("reason") or "unexpected")
     status = int(record.get("http_status") or 0)
     label = SITES.get(site, site)
-    kind = REASON_KINDS.get(reason, "unavailable")
+    translated = AMANE_REASONS.get(reason, FailureReason.NETWORK)
+    kind = REASON_KINDS[translated]
     if kind == "auth":
-        return auth_error(label, {
-            "age_verification": "站方要求年龄验证",
-            "geo_restricted": "站方按地区拒绝了这个出口",
-            "cloudflare_challenge": "撞上 Cloudflare 挑战页",
-            "cloudflare_blocked": "被 Cloudflare 拦下",
-            "ip_banned": "出口 IP 已被站方封禁",
-        }[reason] + f"（{reason}）", status_code=status, detail=reason)
-    if kind == "not_found":
-        return MetadataProviderError(f"{label} 上没有这个番号（{reason}）", kind="not_found",
-                                     status_code=status, detail=reason)
-    text = str(record.get("detail") or "").strip()
-    message = f"{label} 未取得资料（{reason}" + (f"，HTTP {status}" if status else "") + "）"
-    return MetadataProviderError(
-        message + (f"：{text[:160]}" if text and reason in {"unexpected", "parse_error"} else ""),
-        kind="unavailable", status_code=status, detail=reason,
-        retryable=reason not in PERMANENT_REASONS, temporary=reason not in PERMANENT_REASONS)
+        message = AUTH_MESSAGES.get(reason, "站方拒绝了这个出口") + f"（{reason}）"
+    elif kind == "not_found":
+        message = f"{label} 上没有这个番号（{reason}）"
+    else:
+        text = str(record.get("detail") or "").strip()
+        message = f"{label} 未取得资料（{reason}" + (f"，HTTP {status}" if status else "") + "）"
+        if text and reason in {"unexpected", "parse_error"}:
+            message += f"：{text[:160]}"
+    return SourceFailure(translated, message, status_code=status, detail=reason)
 
 
 def _first(values: object) -> str:
@@ -285,17 +292,17 @@ def _first(values: object) -> str:
     return str(values or "")
 
 
-def to_payload(site: str, code: str, metadata: Mapping[str, object]) -> dict:
-    """amane `MediaMetadata` → `extract_peach_fields` / `extract_catalog_evidence` 认得的形状。
+def to_record(site: str, metadata: Mapping[str, object]) -> SiteRecord:
+    """amane `MediaMetadata` → 契约的 `SiteRecord`，与自写站交出的是同一种模型。
 
-    键名沿用来源快照的写法（`maker`、`label`、`actresses[].japanese_name`、`genres`），
-    这样候选、复核与自动落库那一路一行不用改。amane 的 `publisher` 是レーベル，对应 `label`
-    而不是 `studio`；`external_id` 实测填的是详情页地址，不当 `content_id`——那一栏放站上
-    读回的番号写法，`identifies_code` 拿它核身份。男演员不进 `actresses`：账本那一栏是出演女优。
-    `code` 只用于 `raw` 之外的调用方对账，payload 里的身份字段一律取站上读回的值。
+    amane 的 `publisher` 是レーベル，对应 `label` 而不是 `studio`；`external_id` 实测填的是详情页
+    地址，不当身份——`code` 放站上读回的番号写法，`identifies_code` 拿它核身份，填成问的番号等于
+    把这道闸拆掉，搜索首条命中的别的片会被当成这一部。男演员不进 `performers`：账本那一栏是出演
+    女优。`thumb_urls` 整列进 `cover_urls`；只有 amane 才给的 `poster_url`、`screenshot_urls`、
+    `trailer_url`、`plot` 与整份 `raw` 放 `extra`，随 `payload()` 原样带出。
     """
     actors = metadata.get("actors") if isinstance(metadata.get("actors"), list) else []
-    actresses = []
+    performers = []
     for actor in actors:
         if isinstance(actor, str):
             actor = {"name": actor}
@@ -303,33 +310,42 @@ def to_payload(site: str, code: str, metadata: Mapping[str, object]) -> dict:
             continue
         name = str(actor.get("name") or "").strip()
         if name:
-            actresses.append({"japanese_name": name})
+            performers.append({"japanese_name": name})
     directors = metadata.get("directors") if isinstance(metadata.get("directors"), list) else []
-    # `id` 与 `content_id` 都填站上读回的番号写法，不填问的那个：`identifies_code` 靠它们
-    # 认身份，填成问的番号等于把这道闸拆掉，搜索首条命中的别的片会被当成这一部。
     returned = str(metadata.get("number") or "")
-    payload = {
-        "id": returned,
-        "content_id": returned,
-        "source": site,
-        "source_url": str(metadata.get("source_url") or metadata.get("external_id") or ""),
-        "title": str(metadata.get("title") or ""),
-        "maker": str(metadata.get("studio") or ""),
-        "label": str(metadata.get("publisher") or ""),
-        "series": str(metadata.get("series") or ""),
-        "release_date": str(metadata.get("release") or ""),
-        "runtime": metadata.get("runtime"),
-        "director": _first(directors),
-        "cover_url": _first(metadata.get("thumb_urls")),
-        "poster_url": _first(metadata.get("poster_urls")),
-        "screenshot_urls": [str(url) for url in (metadata.get("extrafanart") or []) if url],
-        "trailer_url": _first(metadata.get("trailer_urls")),
-        "actresses": actresses,
-        "genres": [str(tag) for tag in (metadata.get("tags") or []) if tag],
-        "plot": str(metadata.get("plot") or ""),
-        "raw": dict(metadata),
-    }
-    return payload
+    return SiteRecord(
+        source=site, provenance=SITE_CONFIGS[site].provider if site in SITE_CONFIGS else "amane-" + site,
+        code=returned,
+        source_url=str(metadata.get("source_url") or metadata.get("external_id") or ""),
+        title=str(metadata.get("title") or ""),
+        performers=tuple(performers),
+        studio=str(metadata.get("studio") or ""),
+        label=str(metadata.get("publisher") or ""),
+        series=str(metadata.get("series") or ""),
+        director=_first(directors),
+        release_date=str(metadata.get("release") or ""),
+        runtime=metadata.get("runtime"),
+        tags=tuple(str(tag) for tag in (metadata.get("tags") or []) if tag),
+        cover_urls=tuple(str(url) for url in (metadata.get("thumb_urls") or []) if url),
+        extra={
+            "content_id": returned,
+            "source": site,
+            "poster_url": _first(metadata.get("poster_urls")),
+            "screenshot_urls": [str(url) for url in (metadata.get("extrafanart") or []) if url],
+            "trailer_url": _first(metadata.get("trailer_urls")),
+            "plot": str(metadata.get("plot") or ""),
+            "raw": dict(metadata),
+        })
+
+
+def to_payload(site: str, code: str, metadata: Mapping[str, object]) -> dict:
+    """amane `MediaMetadata` → `extract_peach_fields` / `extract_catalog_evidence` 认得的形状。
+
+    键名沿用来源快照的写法（`maker`、`label`、`actresses[].japanese_name`、`genres`），
+    这样候选、复核与自动落库那一路一行不用改。`code` 只用于调用方对账，payload 里的身份字段
+    一律取站上读回的值（见 `to_record`）。
+    """
+    return to_record(site, metadata).payload()
 
 
 def split_report(code: str, report: Mapping[str, object]) -> tuple[list[tuple[str, dict]], dict[str, MetadataProviderError]]:
@@ -358,10 +374,9 @@ def split_report(code: str, report: Mapping[str, object]) -> tuple[list[tuple[st
 
 
 def cooldown_action(error: MetadataProviderError) -> str:
-    """这次失败要不要把整站停下：`blocked` 按 403 那一档翻倍，`rate_limited` 按 429 那一档，空串不停。"""
-    reason = str(getattr(error, "detail", "") or "")
-    if reason in BLOCKED_REASONS:
-        return "blocked"
-    if reason in RATE_LIMITED_REASONS:
-        return "rate_limited"
-    return ""
+    """这次失败要不要把整站停下：`blocked` 按 403 那一档翻倍，`rate_limited` 按 429 那一档，空串不停。
+
+    `detail` 里是上游原样的 reason，先按 `AMANE_REASONS` 翻成契约细档，再查契约的 `COOLDOWN_ACTIONS`。
+    """
+    reason = AMANE_REASONS.get(str(getattr(error, "detail", "") or ""))
+    return COOLDOWN_ACTIONS.get(reason, "") if reason else ""

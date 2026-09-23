@@ -9,6 +9,7 @@ from peach.community_catalog import (COMMUNITY_SOURCES, IMAGE_LIMIT, avbase_work
                                      javbus_work, javdb_actresses, javdb_work, verified_cover)
 from peach.http import HttpResponse
 from peach.jav_cover_fetch import Candidate, NotFound, Unavailable, _fetch
+from peach.sources import FailureReason, JavBusSource, JavDBSource, Page, Session, SourceFailure
 
 
 def gradient(width, height, rising=True):
@@ -179,6 +180,49 @@ class CommunityCatalogTests(unittest.TestCase):
                        "ABW-358")
         with self.assertRaisesRegex(Unavailable, "javdb 要求登录"):
             javdb_work(serve({JAVDB_SEARCH: "<title>登入 | JavDB</title>".encode()}), "ABW-358")
+
+    def test_javbus_payload_equals_the_snapshot_shape_field_for_field(self):
+        """`javbus_work` 交出的 dict 逐键钉住：它是 `JavBusSource` 的记录投影，采集任务与批量脚本认的就是这份。"""
+        expected = {
+            "id": "ABW-358", "source_url": JAVBUS_WORK, "title": TITLE, "actresses": [{"japanese_name": "涼森れむ"}],
+            "maker": "プレステージ", "label": "ABSOLUTELY WONDERFUL", "series": "", "director": "",
+            "release_date": "2023-05-26", "runtime": 210, "cover_urls": [JAVBUS_COVER], "cover_url": JAVBUS_COVER}
+        self.assertEqual(javbus_work(serve({JAVBUS_WORK: JAVBUS_PAGE}), "ABW-358"), expected)
+        record = JavBusSource().parse(Page(JAVBUS_WORK, JAVBUS_PAGE), "ABW-358")
+        self.assertEqual((record.source, record.provenance, record.code), ("javbus", "javbus-page", "ABW-358"))
+        self.assertEqual(record.payload(), expected, "只喂 parse 一张页面，得到的与走完 fetch 的一样")
+
+    def test_javdb_payload_equals_the_snapshot_shape_field_for_field(self):
+        expected = {
+            "id": "ABW-358", "source_url": "https://javdb.com/v/Zb7mX", "title": TITLE,
+            "actresses": [{"japanese_name": "涼森れむ", "profile_source": "javdb", "external_id": "a"}],
+            "maker": "プレステージ", "label": "", "series": "", "director": "", "release_date": "2023-05-23",
+            "runtime": 210, "cover_urls": [JAVDB_COVER], "cover_url": JAVDB_COVER}
+        self.assertEqual(javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: JAVDB_PAGE}), "ABW-358"), expected)
+        record = JavDBSource().parse(Page("https://javdb.com/v/Zb7mX", JAVDB_PAGE), "ABW-358")
+        self.assertEqual((record.source, record.provenance, record.code), ("javdb", "javdb-page", "ABW-358"))
+        self.assertEqual(record.payload(), expected)
+
+    def test_the_two_sites_report_failures_through_the_shared_reason_table(self):
+        """`query` 抛的是细档，`javbus_work` / `javdb_work` 再翻成采集任务认的两个异常。"""
+        with self.assertRaises(SourceFailure) as caught:
+            JavBusSource().query("ABW-358", session=Session(serve({JAVBUS_WORK: b"<html>Age Verification</html>"})))
+        self.assertEqual(caught.exception.reason, FailureReason.AUTH_REQUIRED)
+        with self.assertRaises(SourceFailure) as caught:
+            JavBusSource().query("ABW-358", session=Session(serve({})))
+        self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NOT_FOUND, "JavBus 没有这个番号"))
+        with self.assertRaises(SourceFailure) as caught:
+            JavDBSource().query("ABW-358", session=Session(serve({JAVDB_SEARCH: "<title>登入 | JavDB</title>".encode()})))
+        self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.AUTH_REQUIRED, "javdb 要求登录"))
+        with self.assertRaises(SourceFailure) as caught:
+            JavDBSource().query("ABW-358", session=Session(serve({JAVDB_SEARCH: JAVDB_RESULTS})))
+        self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NOT_FOUND, "HTTP 404"))
+        mismatched = JAVDB_PAGE.replace(b'<a href="/video_codes/ABW">ABW</a>-358', b'<a href="/video_codes/ABW">ABW</a>-359')
+        with self.assertRaises(SourceFailure) as caught:
+            JavDBSource().parse(Page("https://javdb.com/v/Zb7mX", mismatched), "ABW-358")
+        self.assertEqual(caught.exception.reason, FailureReason.PARSE_ERROR)
+        with self.assertRaisesRegex(Unavailable, "番号与搜索结果不一致"):
+            javdb_work(serve({JAVDB_SEARCH: JAVDB_RESULTS, JAVDB_DETAIL: mismatched}), "ABW-358")
 
     def test_a_redirect_to_the_now_printing_placeholder_is_not_a_cover(self):
         """DMM 没图时 302 到 590×800 的「准备中」，尺寸够门槛，只能按最终地址认。"""

@@ -62,3 +62,29 @@ Javinizer-Go 那一路还要求本机装一份特定大版本的二进制并单�
 - `scrape_codes` 默认按番号内容类型走链并逐档短路，与采集任务同一判据；官方一档取齐必填标量后
   不再向社区站发请求，批量的社区站请求数因此下降，代价是官方答全的番号不再有社区候选并排比对——
   需要比对时用 `--sources` 点名。
+
+## 实施：解析器契约
+
+用户 2026-09-23 决定自写解析器改用统一形状，amane 桥的站套同一形状：一个站一个类，取页与解析分开，
+按站配置进数据，一种返回模型，一张失败原因表。契约在 `src/peach/sources/base.py`：
+
+- `SiteSource`：`fetch(code, *, session) -> Page` 与 `parse(page, code) -> SiteRecord` 分开，`query()` 串起来并把
+  `_fetch` 的 HTTP 分档翻成 `SourceFailure`；配置经构造函数注入，测试只喂 `parse` 一张页面就能覆盖解析。
+- `SiteConfig`：站名、界面名、解析器名（provenance）、主域与图床、请求间隔、是否带 Cookie、页面上限、档位。
+  它与 `SOURCE_SPECS`、`SOURCE_LABELS`、`PROVIDER_NAMES`、`scraping_access.SOURCES`、`SOURCE_INTERVALS` 里同一站
+  的那几行逐项一致，由测试守住；这几张表仍是各自消费者的真相，契约不替代它们。
+- `SiteRecord`：`source`、`provenance`、`code`、`source_url`、`title`、`performers`、`studio`、`label`、`series`、
+  `director`、`release_date`、`runtime`、`tags`、`cover_urls`、`confidence`、`extra`；`payload()` 投影成来源快照那份
+  dict（`id`、`maker`、`actresses[].japanese_name`、`genres`……），候选、来源链结算、封面层与账本读到的东西不变。
+- `FailureReason`：从 amane 的十六档里取 Peach 用得上的十二档（`cloudflare_challenge`、`ip_banned`、`geo_restricted`、
+  `auth_required`、`not_found`、`gone`、`parse_error`、`no_usable_metadata`、`rate_limited`、`timeout`、`server_error`、
+  `network`）。`REASON_KINDS` 映到 `MetadataProviderError` 现有的三档，`COOLDOWN_ACTIONS` 定哪几档把整站写进
+  `scraping_access` 的冷却记录，`PERMANENT_REASONS` 定哪几档不重试。传输层自己的信号（`SourcePaused`、
+  `DeadlineExceeded`、`httpx.TransportError`）不经这张表，`query()` 原样放过，冷却行为由传输层一处决定。
+
+第一步迁了 JavBus 与 javdb（`sources/javbus.py`、`sources/javdb.py`），`community_catalog.javbus_work` /
+`javdb_work` 只剩投影与异常翻译，`COMMUNITY_SOURCES` 的形状不变，AVBase 暂留原处与之共存；amane 桥的站
+经 `metadata_amane.to_record` 套进 `SiteRecord`，十六档 reason 经 `AMANE_REASONS` 一对一翻成契约细档，
+上游原样的 reason 仍留在 `detail` 里。对外零变化：provenance 串、候选形状、来源链与结算、封面层、账本一律不动；
+唯一多出的键是桥 payload 的 `cover_urls`（amane 的整列 `thumb_urls`），`cover_url` 仍是第一张。
+迁移状态表在 `docs/SOURCING.md`「站点解析器契约」。

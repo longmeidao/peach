@@ -9,15 +9,10 @@
 不必再进作品页。商品里可能混着收录这段内容的合集（素人系常见），合集的标题和番号
 都对不上本作，按这两条筛掉。
 
-**JavBus**：作品页就是 `/<番号>`（厂牌回查留下的 126 页缓存为证），字段在
-`<p><span class="header">識別碼:</span> …</p>` 这样的行里，封面是 `bigImage` 链接
-（`/pics/cover/<id>_b.jpg`），女优在 `star-name`。它有年龄门，要带用户在采集设置里贴的
-Cookie；门页上没有「識別碼」，按这一点报错。
-
-**javdb**：搜索页 `/search?q=<番号>&f=all` 的结果卡片带番号，番号一致的那张进详情页；
-详情页 `?locale=zh` 下面板字段是 `番號`、`日期`、`片商`、`發行`、`系列`、`導演`、`演員`，
-演员里女优带 `actor-female`。它按出口 IP 计配额，限速与封禁的处理在 `scraping_access`
-和调用方的主机间隔里，这里只管解析。几家的值常有出入：ABW-358 在 javdb 上发行日期是
+**JavBus** 与 **javdb** 各是 `peach.sources` 契约下的一个站（`sources/javbus.py`、`sources/javdb.py`）：
+取页、解析、防封间隔、Cookie 与页面上限都在那里；本模块的 `javbus_work`、`javdb_work` 只是把
+`SiteRecord` 投影成来源快照那份 dict、把 `SourceFailure` 翻成 `NotFound` / `Unavailable`，采集任务与
+`scripts/scrape_codes.py` 拿到的形状不变。几家的值常有出入：ABW-358 在 javdb 上发行日期是
 MGS 的 5/23、标题带 MGS 附注、演员里有男优，所以社区来源的资料一律要两家一致才免复核。
 
 封面比对用 dHash：两张图宽高比相差不超过 4%、64 位指纹相差不超过 10 位就算同一张。
@@ -39,17 +34,14 @@ from PIL import Image
 from .catalog_rules import same_release_code
 from .jav_cover_fetch import (SMALL_MIN_WIDTH, THUMBNAIL, Candidate, NotFound, Unavailable,
                               _fetch, candidate_for, is_cross_product_cover)
-from .javdb import LOGIN as JAVDB_LOGIN, clean
 from .metadata import identifies_code
 from .scraping_access import SourcePaused
 from .scripting import host_under, hostname_of
+from .sources import JAVBUS, JAVDB, JavBusSource, JavDBSource, Session, SiteSource, SourceFailure
+from .sources.javdb import actresses as javdb_actresses  # noqa: F401 - 人物页入口与脚本按这个名字取它
 
 AVBASE_SEARCH = "https://www.avbase.net/works?q={code}"
 AVBASE_WORK = "https://www.avbase.net/works/{key}"
-JAVBUS_BASE = "https://www.javbus.com"
-JAVBUS_WORK = JAVBUS_BASE + "/{code}"
-JAVDB_BASE = "https://javdb.com"
-JAVDB_SEARCH = JAVDB_BASE + "/search?q={code}&f=all"
 PAGE_LIMIT = 4 * 1024 * 1024
 IMAGE_LIMIT = 16 * 1024 * 1024
 
@@ -59,10 +51,9 @@ IMAGE_LIMIT = 16 * 1024 * 1024
 AVBASE_PRODUCT_ORDER = ("fanza", "mgstage", "duga")
 #: 图源按店铺算，不按主机名：`pics.dmm.co.jp` 与 `awsimgsrc.dmm.co.jp` 是同一家的两条路径。
 IMAGE_ORIGINS = (("dmm", ("dmm.co.jp", "dmm.com")), ("duga", ("duga.jp",)),
-                 ("mgstage", ("mgstage.com",)), ("javbus", ("javbus.com",)),
-                 ("javdb", ("jdbstatic.com", "jdbimgs.com", "javdb.com")))
+                 ("mgstage", ("mgstage.com",)), (JAVBUS.name, JAVBUS.domains), (JAVDB.name, JAVDB.domains))
 #: 社区站自己的图要带站内 Referer；店铺的图按 `candidate_for` 取官方 Referer。
-ORIGIN_REFERERS = {"javbus": JAVBUS_BASE + "/", "javdb": JAVDB_BASE + "/"}
+ORIGIN_REFERERS = {JAVBUS.name: JAVBUS.referer, JAVDB.name: JAVDB.referer}
 ASPECT_TOLERANCE = 0.04
 HASH_DISTANCE = 10
 
@@ -70,24 +61,6 @@ _NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(.*
 _AVBASE_DATE = re.compile(r"^[A-Za-z]{3} ([A-Za-z]{3}) (\d{1,2}) (\d{4})")
 _MONTHS = {name: index for index, name in enumerate(
     ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1)}
-_JAVBUS_FIELD = re.compile(r'<p><span class="header">([^<:：]+)[:：]</span>(.*?)</p>', re.S)
-_JAVBUS_TITLE = re.compile(r"<h3>([^<]*)</h3>")
-_JAVBUS_COVER = re.compile(r'<a class="bigImage" href="([^"]+)"')
-_JAVBUS_ACTRESS = re.compile(r'<div class="star-name"><a[^>]*>([^<]+)</a>')
-_JAVDB_BOX = re.compile(r'<a href="(/v/[A-Za-z0-9]+)" class="box" title="[^"]*">.*?<strong>([^<]+)</strong>', re.S)
-_JAVDB_PANEL = re.compile(r'<div class="panel-block[^"]*">\s*<strong>([^<:：]+)[:：]</strong>\s*(?:&nbsp;)?\s*'
-                          r'<span class="value">(.*?)</span>', re.S)
-_JAVDB_TITLE = re.compile(r'<strong class="current-title">([^<]*)</strong>')
-#: 详情页那张封面。认标签、再从标签里取 `src`，不把属性挨着写死：站上的顺序变过，
-#: 2026-09-22 实测是 `class` 在前、`src` 在后，中间还夹着 `width`、`height` 与
-#: `fetchpriority`，按旧顺序写的正则一张都取不到，而页面其余部分照常解析，缺的只是封面。
-_JAVDB_COVER = re.compile(r'<img\b[^>]*\bclass="video-cover"[^>]*>')
-_IMG_SRC = re.compile(r'\bsrc="(https://[^"]+)"')
-_JAVDB_ACTRESS = re.compile(r'<a\s([^>]*)>([^<]+)</a>')
-#: 演員一栏里每个人名都挂着自己的资料页。那串 id 正是人物页 JavDB 入口要的东西，
-#: 取名字时顺手带出来——另走一趟演员页只是把同一页再取一遍，而 javdb 的配额最紧。
-_JAVDB_ACTOR_HREF = re.compile(r'href="/actors/([A-Za-z0-9]+)"')
-_JAPANESE = re.compile(r"[぀-ヿ一-鿿]")
 
 
 def _text(body: bytes) -> str:
@@ -165,81 +138,24 @@ def avbase_work(transport, code: str, *, deadline: float | None = None) -> dict:
                 cover_urls=covers, cover_url=covers[0] if covers else "")
 
 
-def javbus_work(transport, code: str, *, deadline: float | None = None) -> dict:
-    url = JAVBUS_WORK.format(code=urllib.parse.quote(code))
-    try:
-        page = _text(_fetch(transport, url, referer=JAVBUS_BASE + "/", limit=PAGE_LIMIT, deadline=deadline))
-    except NotFound:
-        raise NotFound("JavBus 没有这个番号") from None
-    fields = {clean(label): clean(value) for label, value in _JAVBUS_FIELD.findall(page)}
-    shown = fields.get("識別碼", "").replace(" ", "")
-    if not shown:
-        raise Unavailable("JavBus 回的不是作品页，多半是年龄确认页：到采集设置给 JavBus 贴上浏览器里的 Cookie")
-    if not same_release_code(code, shown):
-        raise NotFound("JavBus 没有这个番号")
-    heading = _JAVBUS_TITLE.search(page)
-    cover = _JAVBUS_COVER.search(page)
-    covers = [urllib.parse.urljoin(JAVBUS_BASE, cover.group(1))] if cover else []
-    runtime = re.search(r"\d+", fields.get("長度", ""))
-    return dict(id=shown, source_url=url,
-                title=clean(heading.group(1)).removeprefix(shown).strip() if heading else "",
-                actresses=[{"japanese_name": clean(name)} for name in _JAVBUS_ACTRESS.findall(page)],
-                maker=fields.get("製作商", ""), label=fields.get("發行商", ""),
-                series=fields.get("系列", ""), director=fields.get("導演", ""),
-                release_date=fields.get("發行日期", ""), runtime=int(runtime.group()) if runtime else None,
-                cover_urls=covers, cover_url=covers[0] if covers else "")
+def _work(site: SiteSource, transport, code: str, *, deadline: float | None = None) -> dict:
+    """经契约问一站，交出来源快照那份 dict；`SourceFailure` 翻成采集任务认的 `NotFound` / `Unavailable`。
 
-
-def javdb_actresses(value: str) -> list[dict]:
-    """演員一栏里的女优：名字，以及她在 javdb 的演员 id。
-
-    男优挂的是同样的 `/actors/` 链接，靠 `actor-female` 分开。href 与 class 在标签里的
-    先后不固定，所以先取整段属性再判，不假设它们的次序。
+    冷却（`SourcePaused`）、动作预算（`DeadlineExceeded`）与连接失败（`httpx.TransportError`）
+    由传输层抛出、原样放过，调用方按原有语义处理。
     """
-    found = []
-    for attributes, name in _JAVDB_ACTRESS.findall(value):
-        if "actor-female" not in attributes:
-            continue
-        actor = _JAVDB_ACTOR_HREF.search(attributes)
-        found.append({"japanese_name": clean(name), "profile_source": "javdb",
-                      "external_id": actor.group(1) if actor else ""})
-    return found
+    try:
+        return site.query(code, session=Session(transport, deadline)).payload()
+    except SourceFailure as failure:
+        raise failure.legacy() from None
 
 
-def _javdb_page(transport, url: str, *, deadline: float | None) -> str:
-    page = _text(_fetch(transport, url, referer=JAVDB_BASE + "/", limit=PAGE_LIMIT, deadline=deadline))
-    if JAVDB_LOGIN.search(page):
-        raise Unavailable("javdb 要求登录")
-    return page
-
-
-def _maker_writing(value: str) -> str:
-    """片商一栏并列英文与日文（`PRESTIGE,プレステージ`），取日文那一种。"""
-    parts = [part.strip() for part in value.split(",") if part.strip()]
-    return next((part for part in parts if _JAPANESE.search(part)), parts[0] if parts else "")
+def javbus_work(transport, code: str, *, deadline: float | None = None) -> dict:
+    return _work(JavBusSource(), transport, code, deadline=deadline)
 
 
 def javdb_work(transport, code: str, *, deadline: float | None = None) -> dict:
-    search = _javdb_page(transport, JAVDB_SEARCH.format(code=urllib.parse.quote(code)), deadline=deadline)
-    path = next((path for path, shown in _JAVDB_BOX.findall(search) if same_release_code(code, clean(shown))), None)
-    if path is None:
-        raise NotFound("javdb 没有这个番号")
-    url = JAVDB_BASE + path
-    page = _javdb_page(transport, url + "?locale=zh", deadline=deadline)
-    panel = {clean(label): value for label, value in _JAVDB_PANEL.findall(page)}
-    shown = clean(panel.get("番號", "")).replace(" ", "")
-    if not same_release_code(code, shown):
-        raise Unavailable("javdb 详情页的番号与搜索结果不一致")
-    runtime = re.search(r"\d+", clean(panel.get("時長", "")))
-    title = _JAVDB_TITLE.search(page)
-    tag = _JAVDB_COVER.search(page)
-    cover = _IMG_SRC.search(tag.group(0)) if tag else None
-    return dict(id=shown, source_url=url, title=clean(title.group(1)) if title else "",
-                actresses=javdb_actresses(panel.get("演員", "")),
-                maker=_maker_writing(clean(panel.get("片商", ""))), label=clean(panel.get("發行", "")),
-                series=clean(panel.get("系列", "")), director=clean(panel.get("導演", "")),
-                release_date=clean(panel.get("日期", "")), runtime=int(runtime.group()) if runtime else None,
-                cover_urls=[cover.group(1)] if cover else [], cover_url=cover.group(1) if cover else "")
+    return _work(JavDBSource(), transport, code, deadline=deadline)
 
 
 #: 采集任务问社区来源的顺序。AVBase 与 JavBus 各一次请求，javdb 两次且配额紧，排在最后。

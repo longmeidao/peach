@@ -17,6 +17,7 @@ from peach.metadata import MetadataProviderError, extract_peach_fields
 from peach.metadata_policy import SOURCE_SPECS
 from peach.metadata_routes import AMANE_STAGE
 from peach.scraping_access import SourcePaused, cooldown_state, paused_until, pause_source
+from peach.sources import REASON_KINDS, FailureReason, SiteRecord
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -61,13 +62,36 @@ class ManifestTests(unittest.TestCase):
         for own in ("javdb", "javbus", "dmm"):
             self.assertNotIn(own, metadata_amane.SITES)
 
-    def test_every_upstream_failure_reason_has_a_kind(self):
+    def test_every_upstream_failure_reason_maps_onto_one_contract_reason(self):
         reasons = set(__import__("re").findall(r'"([a-z_]+)",?\s', (
             metadata_amane.BRIDGE_SCRIPT).read_text(encoding="utf-8").split("FAILURE_REASONS = (", 1)[1]
             .split(")", 1)[0]))
         self.assertEqual(len(reasons), 16)
-        self.assertEqual(reasons - set(metadata_amane.REASON_KINDS), set())
-        self.assertEqual(set(metadata_amane.REASON_KINDS.values()), {"auth", "unavailable", "not_found"})
+        self.assertEqual(reasons - set(metadata_amane.AMANE_REASONS), set())
+        for upstream, reason in metadata_amane.AMANE_REASONS.items():
+            with self.subTest(upstream=upstream):
+                self.assertIsInstance(reason, FailureReason)
+                self.assertIn(REASON_KINDS[reason], {"auth", "unavailable", "not_found"})
+
+    def test_the_three_tier_classification_of_every_upstream_reason(self):
+        """十六档各落到哪一档是冷却与重试的依据，逐条钉住；契约表改了这里要跟着改。"""
+        expected = {
+            "not_found": "not_found", "no_usable_metadata": "not_found",
+            "rate_limited": "unavailable", "server_error": "unavailable", "timeout": "unavailable",
+            "network": "unavailable", "http_error": "unavailable", "empty_response": "unavailable",
+            "unexpected": "unavailable", "crawler_unavailable": "unavailable", "parse_error": "unavailable",
+            "cloudflare_challenge": "auth", "cloudflare_blocked": "auth", "ip_banned": "auth",
+            "geo_restricted": "auth", "age_verification": "auth",
+        }
+        self.assertEqual({upstream: REASON_KINDS[reason] for upstream, reason in metadata_amane.AMANE_REASONS.items()},
+                         expected)
+
+    def test_bridge_sites_carry_the_same_config_shape_as_self_written_sites(self):
+        for site, config in metadata_amane.SITE_CONFIGS.items():
+            with self.subTest(site=site):
+                self.assertEqual((config.name, config.label, config.provider, config.stage),
+                                 (site, SOURCE_LABELS[site], PROVIDER_NAMES[site], "amane"))
+        self.assertEqual(metadata_amane.SITES, {site: config.label for site, config in metadata_amane.SITE_CONFIGS.items()})
 
 
 class RebuildTests(unittest.TestCase):
@@ -224,6 +248,28 @@ class PayloadTests(unittest.TestCase):
         self.assertEqual(fields["studio"]["value"], "卖家")
         self.assertEqual(fields["release_date"]["value"], "2024-01-02")
 
+    def test_the_bridge_payload_is_the_contract_record_projected_field_for_field(self):
+        """桥的一站先套进 `SiteRecord`，再投影成快照那份 dict；每个键的值逐个钉住。
+
+        `cover_urls` 收 amane 的整列 `thumb_urls`，`cover_url` 仍是第一张；其余键与自写站的
+        `payload()` 同名同义，只有 amane 才给的几个键（`poster_url`、`raw`……）经 `extra` 原样带出。
+        """
+        record = metadata_amane.to_record("fc2club", FOUND["metadata"])
+        self.assertIsInstance(record, SiteRecord)
+        self.assertEqual((record.source, record.provenance, record.code), ("fc2club", "amane-fc2club", "FC2-PPV-1234567"))
+        self.assertEqual(record.performers, ({"japanese_name": "女優"},))
+        self.assertEqual(record.tags, ("a", "b"))
+        payload = metadata_amane.to_payload("fc2club", "FC2-PPV-1234567", FOUND["metadata"])
+        self.assertEqual(payload.pop("raw"), FOUND["metadata"])
+        self.assertEqual(payload, {
+            "id": "FC2-PPV-1234567", "content_id": "FC2-PPV-1234567", "source": "fc2club",
+            "source_url": "https://fc2club.top/html/FC2-PPV-1234567.html", "title": "標題",
+            "maker": "卖家", "label": "レーベル", "series": "", "release_date": "2024-01-02", "runtime": 61,
+            "director": "監督", "cover_url": "https://x/t.jpg", "cover_urls": ["https://x/t.jpg"],
+            "poster_url": "https://x/p.jpg", "screenshot_urls": ["https://x/1.jpg"], "trailer_url": "",
+            "actresses": [{"japanese_name": "女優"}], "genres": ["a", "b"], "plot": "",
+        })
+
     def test_split_report_keeps_hits_that_identify_the_code_and_files_the_rest(self):
         wrong = {"status": "found", "metadata": {**FOUND["metadata"], "number": "FC2-PPV-7654321", "source_url": "https://freejavbt.com/FC2-PPV-7654321"}}
         found, failures = metadata_amane.split_report("FC2-PPV-1234567", json.loads(report(
@@ -241,12 +287,16 @@ class PayloadTests(unittest.TestCase):
 
 class FailureMappingTests(unittest.TestCase):
     def test_reasons_map_onto_the_three_existing_kinds_and_keep_the_detail(self):
-        for reason, kind in metadata_amane.REASON_KINDS.items():
+        for reason, translated in metadata_amane.AMANE_REASONS.items():
             with self.subTest(reason=reason):
+                failure = metadata_amane.site_failure("avsox", {"reason": reason, "http_status": 0})
+                self.assertEqual((failure.reason, failure.detail), (translated, reason))
                 error = metadata_amane.failure_error("avsox", {"reason": reason, "http_status": 0})
-                self.assertEqual(error.kind, kind)
+                self.assertEqual(error.kind, REASON_KINDS[translated])
                 self.assertEqual(error.detail, reason)
                 self.assertIn("AVSOX", str(error))
+        unknown = metadata_amane.failure_error("avsox", {"reason": "something_new"})
+        self.assertEqual((unknown.kind, unknown.detail, unknown.retryable), ("unavailable", "something_new", True))
         auth = metadata_amane.failure_error("airav", {"reason": "cloudflare_blocked", "http_status": 403})
         self.assertFalse(auth.retryable)
         self.assertTrue(auth.temporary)
