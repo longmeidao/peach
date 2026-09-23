@@ -327,12 +327,16 @@ def origin_group_key(source_url: str | None) -> str | None:
     实测（2026-08-25）同一个 fanbox 帖在 rule34.xxx 上有两种写法——
     `lazyprocrast.fanbox.cc/posts/12304831` 和
     `www.fanbox.cc/@lazyprocrast/posts/12304831`——必须归一到同一个键，
-    而那串数字正是 kemono 上同一帖子的 post id。
+    而那串数字正是 kemono 上同一帖子的 post id。出处常常省掉协议头
+    （`x.com/vileclipse/status/…`），缺了就按 https 补上再解析。
     """
     if not source_url or not isinstance(source_url, str):
         return None
+    text = source_url.strip()
+    if "://" not in text and not text.startswith("//"):
+        text = "https://" + text.lstrip("/")
     try:
-        parsed = urllib.parse.urlsplit(source_url.strip())
+        parsed = urllib.parse.urlsplit(text)
     except ValueError:
         return None
     host = (parsed.hostname or "").lower()

@@ -22,7 +22,7 @@ from .follow import FollowSourceError, write_immutable
 from .follow_image_dims import positive_dims
 from .follow_sources import (
     FollowCandidate, Rule34VideoConnector, SourceFetch, canonical_source_ref,
-    official_profile_handle, profile_link_identity,
+    official_profile_handle, origin_group_key, profile_link_identity,
 )
 from .follow_variants import classify, group_duplicates
 
@@ -107,6 +107,7 @@ _OFFICIAL_IDENTITY_PROVIDERS = follow_providers.official_identity_providers()
 #: 每个条目都是一次独立发布的来源。论坛线程的标题只是容器名，同一线程里每个带
 #: 资源的楼层各自成组；这条口径登记在 `follow_providers`，不在这里点名站点。
 _RELEASE_KEY_PER_POST = follow_providers.release_key_per_post()
+_SEQUENTIAL_UPLOADS = follow_providers.sequential_upload_providers()
 
 #: 完整候选（列表 + 详情都取到了）更新已有行时用的 SET 子句。
 _FULL_UPDATE = (
@@ -698,7 +699,8 @@ class FollowStore:
 
         先按来源自带的 `group_hint` 合并（booru 的 `parent_id` 比标题可靠），
         再按标题推出的 `release_key` 合并，最后同一组里选主条目。booru 上没有标题也
-        没有出处的帖子，按角色、上传时间与标签重合度认出同一作品的连发（ADR-0044）。
+        没有出处的帖子，按角色、上传时间与标签重合度认出同一作品的连发（ADR-0044）；
+        站内 id 连号上传的同一批短片按角色认成一包（ADR-0045）。
 
         `authors` 把来源 id 映射到（作者键, 这位作者的全部名字写法）。给了它，标题里
         夹着的作者名在分组前剥掉，相似标题的版本也跨同一作者的各个来源去对。
@@ -713,12 +715,13 @@ class FollowStore:
             if item.provider in _RELEASE_KEY_PER_POST
             and not item.release_key.endswith(f"\u0000{item.external_id}")
             else item
-            for item in items
+            for item in map(_with_origin_hint, items)
         )
         stripped = _strip_author_names(split_posts, authors or {})
         linked = _hint_linked(stripped)
-        aligned = _align_by_group_hint(_align_tag_bursts(_align_title_families(
-            _split_ambiguous_works(stripped, linked), authors), linked))
+        aligned = _align_by_group_hint(_align_upload_packs(_align_tag_bursts(
+            _align_title_families(_split_ambiguous_works(stripped, linked), authors),
+            linked)))
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):
@@ -1347,6 +1350,99 @@ def _align_tag_bursts(items: tuple[FollowItemRow, ...],
 def _overlap(left: frozenset[str], right: frozenset[str]) -> float:
     union = left | right
     return len(left & right) / len(union) if union else 0.0
+
+
+#: 一包短片的边界：相邻两条站内 id 至多差多少、时长至多差几秒，以及标题开头的
+#: 角色名至多几个词。
+_PACK_ID_GAP = 30
+_PACK_DURATION_SLACK = 1.0
+_PACK_NAME_MAX_WORDS = 3
+_PACK_NAME_SEPARATOR_RE = re.compile(r"\s+[-–—|:]\s+|[-–—]|[\[(『【|:]")
+_PACK_LEADING_ARTICLES = frozenset({"the", "a", "an"})
+_PACK_CHARACTER_TAG_RE = re.compile(r"\S.*\s\(.+\)$")
+
+
+def _pack_name(title: str) -> str:
+    """标题开头的角色名：`Angel-handjob` 是 `angel`，`Barney's Mom - Paizuri` 是
+    `barney's mom`，`Luna Doggy` 是 `luna`。含数字的词（日期、序号）不算名字。"""
+    def words(text: str) -> list[str]:
+        cleaned = (word.strip(".,!?&\"'’").lower() for word in text.split()
+                   if not any(char.isdigit() for char in word))
+        return [word for word in cleaned if word]
+
+    match = _PACK_NAME_SEPARATOR_RE.search(title or "")
+    head = words(title[:match.start()]) if match else []
+    if 1 <= len(head) <= _PACK_NAME_MAX_WORDS:
+        return " ".join(head)
+    rest = [word for word in words(title or "") if word not in _PACK_LEADING_ARTICLES]
+    return rest[0] if rest else ""
+
+
+def _align_upload_packs(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:
+    """站内 id 连号上传的同一批短片、同一个角色的几条归到一个键下。
+
+    rule34video 的视频 id 是全站递增的上传序号。LazyProcrastinator 把一段 KOF 沙滩
+    动画导出成 7 条 20 秒的短片连着传（`Angel-handjob`、`Mai-blowjob` ……），id 只差
+    4 到 20，标题各不相同，站点也不给出处。只看连号太宽：有人一口气补传几十部旧作，
+    id 同样连着。所以五个条件同时成立才归组：同一来源；标题开头的角色名相同
+    （Angel 与 Mai 是两组）；按 id 排开相邻两条相差不超过 `_PACK_ID_GAP`；时长相差不超过
+    `_PACK_DURATION_SLACK` 秒（同一个工程导出的一批长度一样）；作品分类有交集。两条都带
+    `名字 (作品)` 形式的角色标签却对不上时也拆开。
+
+    归组按键合并：一条并进来，和它同键的别站副本也一起跟过来。
+    """
+    buckets: dict[tuple[int, str], list[tuple[int, FollowItemRow, frozenset[str],
+                                              frozenset[str]]]] = {}
+    for item in items:
+        if (item.provider not in _SEQUENTIAL_UPLOADS or not item.release_key
+                or not str(item.external_id).isdigit() or not item.duration):
+            continue
+        name = _pack_name(item.title)
+        tag_types = (item.metadata or {}).get("tag_types")
+        if not name or not isinstance(tag_types, dict):
+            continue
+        works = frozenset(tag for tag, kind in tag_types.items() if kind == "copyright")
+        # 角色在 rule34video 上归 general；artist 类里的 `Chloeangelva (VA)` 是配音演员。
+        characters = frozenset(tag.lower() for tag, kind in tag_types.items()
+                               if kind == "general" and _PACK_CHARACTER_TAG_RE.fullmatch(tag))
+        buckets.setdefault((item.source_id, name), []).append(
+            (int(item.external_id), item, works, characters))
+    parent: dict[str, str] = {}
+
+    def root(key: str) -> str:
+        while parent.get(key, key) != key:
+            key = parent[key]
+        return key
+
+    for members in buckets.values():
+        members.sort(key=lambda entry: entry[0])
+        for previous, current in zip(members, members[1:]):
+            if (current[0] - previous[0] <= _PACK_ID_GAP
+                    and abs(current[1].duration - previous[1].duration) <= _PACK_DURATION_SLACK
+                    and current[2] & previous[2]
+                    and not (current[3] and previous[3] and not current[3] & previous[3])):
+                left, right = root(previous[1].release_key), root(current[1].release_key)
+                if left != right:
+                    parent[max(left, right)] = min(left, right)
+    if not parent:
+        return items
+    return tuple(
+        FollowItemRow(**{**item.__dict__, "release_key": root(item.release_key)})
+        if item.release_key and root(item.release_key) != item.release_key else item
+        for item in items
+    )
+
+
+def _with_origin_hint(item: FollowItemRow) -> FollowItemRow:
+    """按条目记下的出处重算 `group_hint`。
+
+    落库的 `group_hint` 是抓取那一刻按出处算的。读时按当前的 `origin_group_key` 重算，
+    归一规则认出的新写法（例如缺协议头的 `x.com/…`）不必重抓就能生效。
+    """
+    origin = origin_group_key((item.metadata or {}).get("source"))
+    if origin is None or origin == item.group_hint:
+        return item
+    return FollowItemRow(**{**item.__dict__, "group_hint": origin})
 
 
 def _align_by_group_hint(items: tuple[FollowItemRow, ...]) -> tuple[FollowItemRow, ...]:
