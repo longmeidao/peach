@@ -1259,6 +1259,43 @@ describe('设计决定', () => {
     }
   });
 
+  it('订阅了的人物页先按真卡轮廓占住新作那一行，数据到了行高不变', { timeout: 60_000 }, async () => {
+    const name = '七沢みあ';
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      await opened.page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+        id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
+        user_aliases: [], asset_count: 0, tags: [], related_performers: [], links: [],
+        metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
+        representative_asset_id: null, entry_links: [], feed: { following: true },
+      } }));
+      let release = () => {};
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      await opened.page.route(/\/api\/feeds\/discoveries\?/, async (route) => {
+        await held;
+        await route.fulfill({ json: { ok: true, more: false, items: [{
+          id: 1, code: 'ABC-001', title: '标题', link: 'https://javdb.com/v/x', cover_url: null,
+          has_cover: false, cover_frame: null, poster_box: null, release_date: '2026-09-01',
+          studio: '厂牌', performers: name, source_name: '', read: false, ignored: false,
+          scrape_error: null }] } });
+      });
+      await opened.page.goto(new URL(`/performers/${encodeURIComponent(name)}`,
+        opened.page.url()).href, { waitUntil: 'load' });
+      const row = opened.page.locator('[data-feed-new]');
+      await row.locator('.feednewskeleton').first().waitFor({ timeout: 15_000 });
+      const before = await row.evaluate((element) => element.getBoundingClientRect().height);
+      release();
+      await row.locator('[data-feed-id]').waitFor({ timeout: 15_000 });
+      const after = await row.evaluate((element) => ({
+        height: element.getBoundingClientRect().height, busy: element.getAttribute('aria-busy') }));
+      assert.equal(after.height, before, '占位行和到货的那一行不一样高，下面的作品网格会跳');
+      assert.equal(after.busy, null);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('卡片悬停面不顶到邻卡，三处卡片网格同一副列距', { timeout: 60_000 }, async () => {
     const opened = await openCatalog(browser);
     try {

@@ -515,3 +515,8 @@ body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
 .feednewcard .meta .s{flex-wrap:nowrap;white-space:nowrap}
 .feednewcard .meta .s>span{flex:none}
 .feednewcard .meta .s>.feednewstudio{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 占位卡直接套真卡的 `.t` 与 `.s`：标题块是两行 2.7em，下面那行放一个零宽字符，行高
+   跟真卡那行字同一套规则，到货那一下整行不跳。 */
+.feednewskeleton{pointer-events:none}
+.feednewskeleton .t>.skeleton{height:2.7em}
+.feednewskeleton .s>.skeleton{width:72%;height:auto}
