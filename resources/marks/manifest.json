@@ -355,6 +355,39 @@
       "imported_at": "2026-09-03T18:00:32Z"
     },
     {
+      "file": "Belltech_Production.icon.png",
+      "studio": "Belltech_Production",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://www.belltech-pro.com/",
+      "sha256": "db333b396ee22094b4edddb4d009116a0838da7a9f04eb53bce072f245f5b27f",
+      "bytes": 14651,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Belltech_Production.logo.png",
+      "studio": "Belltech_Production",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://www.belltech-pro.com/",
+      "sha256": "db333b396ee22094b4edddb4d009116a0838da7a9f04eb53bce072f245f5b27f",
+      "bytes": 14651,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Belltech_Production.png",
+      "studio": "Belltech_Production",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://www.belltech-pro.com/",
+      "sha256": "db333b396ee22094b4edddb4d009116a0838da7a9f04eb53bce072f245f5b27f",
+      "bytes": 14651,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
       "file": "C-more_Entertainment.icon.png",
       "studio": "C-more_Entertainment",
       "variant": "icon",
@@ -553,6 +586,39 @@
       "imported_at": "2026-09-08T01:47:41Z"
     },
     {
+      "file": "Duo_Entertainment.icon.png",
+      "studio": "Duo_Entertainment",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/580602566398083072/cUldt7V_.jpg",
+      "sha256": "6f25072527f5d896ca536d67a2ac0081169e8107166d93b40059e40ce75b93f4",
+      "bytes": 118555,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Duo_Entertainment.logo.png",
+      "studio": "Duo_Entertainment",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/580602566398083072/cUldt7V_.jpg",
+      "sha256": "4b25f5e607e6f633378ac9d5b5756486f732d510f636cc7b9c2dbf4d4d94d375",
+      "bytes": 133935,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Duo_Entertainment.png",
+      "studio": "Duo_Entertainment",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/580602566398083072/cUldt7V_.jpg",
+      "sha256": "6f25072527f5d896ca536d67a2ac0081169e8107166d93b40059e40ce75b93f4",
+      "bytes": 118555,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
       "file": "E-BODY.jpg",
       "studio": "E-BODY",
       "variant": "",
@@ -661,6 +727,39 @@
       "bytes": 16907,
       "content_type": "image/png",
       "imported_at": "2026-09-05T05:24:56Z"
+    },
+    {
+      "file": "Eve-Rest_Model_Agency.icon.png",
+      "studio": "Eve-Rest_Model_Agency",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://eve-rest.net/wp/wp-content/uploads/eve-rest-logo.png",
+      "sha256": "8f226eedfaf84cb622c28807f8c156ec181e1c44a7b3a4dcec80e5697b3a33e2",
+      "bytes": 44973,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Eve-Rest_Model_Agency.logo.png",
+      "studio": "Eve-Rest_Model_Agency",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://eve-rest.net/wp/wp-content/uploads/eve-rest-logo.png",
+      "sha256": "61022ba114100dc2030e95047f70f3b804e2e47577208dab8a35ea2b64af2a2f",
+      "bytes": 45700,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Eve-Rest_Model_Agency.png",
+      "studio": "Eve-Rest_Model_Agency",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://eve-rest.net/wp/wp-content/uploads/eve-rest-logo.png",
+      "sha256": "8f226eedfaf84cb622c28807f8c156ec181e1c44a7b3a4dcec80e5697b3a33e2",
+      "bytes": 44973,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
     },
     {
       "file": "FC2-PPV.icon.png",
@@ -804,6 +903,39 @@
       "bytes": 1580,
       "content_type": "image/png",
       "imported_at": "2026-09-23T08:53:28Z"
+    },
+    {
+      "file": "GRANZPRO.icon.png",
+      "studio": "GRANZPRO",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/900192307755966464/XCSKUkFr.jpg",
+      "sha256": "1760d43207c2d144485129d515d46de5a6ac8e9fcd9abcc4672926eeac54efc4",
+      "bytes": 91078,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "GRANZPRO.logo.png",
+      "studio": "GRANZPRO",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/900192307755966464/XCSKUkFr.jpg",
+      "sha256": "1760d43207c2d144485129d515d46de5a6ac8e9fcd9abcc4672926eeac54efc4",
+      "bytes": 91078,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "GRANZPRO.png",
+      "studio": "GRANZPRO",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/900192307755966464/XCSKUkFr.jpg",
+      "sha256": "1760d43207c2d144485129d515d46de5a6ac8e9fcd9abcc4672926eeac54efc4",
+      "bytes": 91078,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
     },
     {
       "file": "Glory_Quest.jpg",
@@ -1378,6 +1510,39 @@
       "imported_at": "2026-09-05T00:57:33Z"
     },
     {
+      "file": "Office_Old_Crew.icon.png",
+      "studio": "Office_Old_Crew",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/3693733348/7ecd7f92b4be68db929569b019753d6f.jpeg",
+      "sha256": "081a549e13557daa9bb85e5bb278b938684e4c4189824955f34343ca8c5f967e",
+      "bytes": 23670,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Office_Old_Crew.logo.png",
+      "studio": "Office_Old_Crew",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/3693733348/7ecd7f92b4be68db929569b019753d6f.jpeg",
+      "sha256": "081a549e13557daa9bb85e5bb278b938684e4c4189824955f34343ca8c5f967e",
+      "bytes": 23670,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Office_Old_Crew.png",
+      "studio": "Office_Old_Crew",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/3693733348/7ecd7f92b4be68db929569b019753d6f.jpeg",
+      "sha256": "081a549e13557daa9bb85e5bb278b938684e4c4189824955f34343ca8c5f967e",
+      "bytes": 23670,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
       "file": "PREMIUM.icon.png",
       "studio": "PREMIUM",
       "variant": "icon",
@@ -1631,6 +1796,39 @@
       "imported_at": "2026-09-05T00:57:33Z"
     },
     {
+      "file": "STARTUP.icon.png",
+      "studio": "STARTUP",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://www.startup0701.net/",
+      "sha256": "289572cff2307866cf713d44e5fa7e1a9531ca66606ea27c13e2ff41d01f3fb3",
+      "bytes": 31399,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "STARTUP.logo.png",
+      "studio": "STARTUP",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://www.startup0701.net/",
+      "sha256": "289572cff2307866cf713d44e5fa7e1a9531ca66606ea27c13e2ff41d01f3fb3",
+      "bytes": 31399,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "STARTUP.png",
+      "studio": "STARTUP",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://www.startup0701.net/",
+      "sha256": "289572cff2307866cf713d44e5fa7e1a9531ca66606ea27c13e2ff41d01f3fb3",
+      "bytes": 31399,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
       "file": "T-POWERS.icon.png",
       "studio": "T-POWERS",
       "variant": "icon",
@@ -1849,6 +2047,39 @@
       "bytes": 25401,
       "content_type": "image/png",
       "imported_at": "2026-09-23T08:53:28Z"
+    },
+    {
+      "file": "Zerosum_Production.icon.png",
+      "studio": "Zerosum_Production",
+      "variant": "icon",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/1367860947/Zerosum-logo.jpg",
+      "sha256": "097a28062c903f2f5f273368eef8f190e23ebdc78f91f11900abb5d132307452",
+      "bytes": 62433,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Zerosum_Production.logo.png",
+      "studio": "Zerosum_Production",
+      "variant": "logo",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/1367860947/Zerosum-logo.jpg",
+      "sha256": "106df71602a2048b03589098547762de6b86df0a92891dbe6e14819722c58787",
+      "bytes": 58786,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
+    },
+    {
+      "file": "Zerosum_Production.png",
+      "studio": "Zerosum_Production",
+      "variant": "",
+      "source": "studio icon harvest",
+      "source_url": "https://pbs.twimg.com/profile_images/1367860947/Zerosum-logo.jpg",
+      "sha256": "097a28062c903f2f5f273368eef8f190e23ebdc78f91f11900abb5d132307452",
+      "bytes": 62433,
+      "content_type": "image/png",
+      "imported_at": "2026-09-23T09:32:14Z"
     },
     {
       "file": "kawaii.png",
