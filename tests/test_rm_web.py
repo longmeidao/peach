@@ -903,7 +903,7 @@ class WebDataTests(unittest.TestCase):
             "/api/links/prune", "/api/resource-sync/apply",
             "/api/follow/tags", "/api/follow/authors",
             "/api/taste", "/api/settings", "/api/links", "/api/organize",
-            "/api/feeds", "/api/feeds/check", "/api/feeds/discoveries",
+            "/api/feeds", "/api/feeds/check", "/api/feeds/discoveries", "/api/feeds/rows",
         })
         self.assertEqual(set(rm_web.POST_HANDLERS), {
             "/api/library-processing", "/api/thumbnail-jobs", "/api/media-repair",

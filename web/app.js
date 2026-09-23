@@ -4783,25 +4783,38 @@ const feedNewSkeletonHtml=()=>`<div class="feednewrow srow" aria-hidden="true">$
     <div class="meta"><div class="mtext"><span class="t"><span class="skeleton"></span></span>
       <div class="s mono"><span class="skeleton">&#8203;</span></div></div></div></article>`
     .repeat(FEED_SKELETON_CARDS)}</div>`;
+/* 资料页上会有新作那一行的那几位，名单由服务端给（`/api/feeds/rows`），几台设备看到的
+   是同一份。资料页的骨架照它留出那一行，资料回来时那一行不会从中间顶进来。 */
+let feedRowNames=null;
+async function loadFeedRowNames(){
+  const data=await api('/api/feeds/rows').catch(()=>null);
+  if(data&&!data.error)feedRowNames=new Set((data.entities||[])
+    .flatMap(entity=>entity.names.map(name=>`${entity.kind}/${foldName(name)}`)));
+  return feedRowNames;
+}
+const hasFeedRow=(kind,name)=>!!name&&!!feedRowNames?.has(`${kind}/${foldName(name)}`);
+const feedNewSkeletonSection=()=>`<section class="feednew">${feedNewSkeletonHtml()}</section>`;
 
 /* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次
    刷新都变成对别人服务器的一次拉取，而订阅的间隔本来就是按天算的。 */
-async function renderFeedNew(host,entityId){
-  if(!host)return;
-  host.dataset.feedEntity=entityId?String(entityId):'';
+async function loadFeedNew(entityId,preload){
   const query=new URLSearchParams({limit:'12'});
   if(entityId)query.set('entity',String(entityId));
   const data=await api('/api/feeds/discoveries?'+query).catch(()=>null);
-  // 取数期间人已经离开了这一页：首页那一行不画到管理区上，人物页那一行的容器已经换掉。
-  if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
   const items=data&&!data.error?(data.items||[]):[];
   const html=`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
   // 骨架还占着时，先把头几张封面取到手再整行换掉：否则骨架退场、真卡进来，封面格里
   // 又是一轮微光，同一行等了两遍。慢的那几张不等满，到点照换，剩下的留给卡片自己的等待态。
-  if(items.length&&host.getAttribute('aria-busy')==='true'){
-    await preloadImages(html,FEED_SKELETON_CARDS,FEED_COVER_WAIT);
-    if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
-  }
+  if(preload&&items.length)await preloadImages(html,FEED_SKELETON_CARDS,FEED_COVER_WAIT);
+  return {items,html};
+}
+/* `loaded` 是随资料页整页一起取好的那一份，给了就不再取。 */
+async function renderFeedNew(host,entityId,loaded){
+  if(!host)return;
+  host.dataset.feedEntity=entityId?String(entityId):'';
+  const {items,html}=loaded||await loadFeedNew(entityId,host.getAttribute('aria-busy')==='true');
+  // 取数期间人已经离开了这一页：首页那一行不画到管理区上，人物页那一行的容器已经换掉。
+  if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
   host.removeAttribute('aria-busy');
   if(!items.length){host.hidden=true;host.innerHTML='';return}
   host.hidden=false;
@@ -8105,15 +8118,26 @@ function wireNamePicker(kind,current,mine){
    也看不出右边还有。首页筛选条本来就这么做，资料页的标签行是同一条，用同一段。 */
 /* 等着的这一下浮层也得是整块的：下半要到列表回来才画的话，上半的下沿在等的那几秒里
    留着两个直角，读起来是这块浮层缺了一半。这一页的作品多时那几秒不算短。 */
-function showEntityLoading(kind){
+function showEntityLoading(kind,name){
   const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});
   const body=kind==='agency'
     ?indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()})
     :pageSkeletonHtml('正在读取作品',{cards:true,className:'catalog-skeleton postercard-skeleton'});
   const placeholder=entitySkeletonHtml(kind,head,body);
   if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
-    $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
-  }
+    $('#index').innerHTML=placeholder;
+    syncEntitySkeletonFeed(kind,name);
+    fitSkeleton($('#index'));
+  }else syncEntitySkeletonFeed(kind,name);
+}
+/* 新作那一行在骨架里的位置和画好的页面一样：筛选框之下、作品之上。名单晚到或换了
+   一位时只增删这一段，骨架其余部分不重画，微光不从头再闪。 */
+function syncEntitySkeletonFeed(kind,name){
+  const skeleton=$('#index').firstElementChild;
+  if(skeleton?.dataset.skeleton!==`entity/${kind}`)return;
+  const row=skeleton.querySelector('.feednew'),wanted=hasFeedRow(kind,name);
+  if(wanted&&!row)skeleton.querySelector('.entitysection')?.insertAdjacentHTML('beforebegin',feedNewSkeletonSection());
+  else if(!wanted&&row)row.remove();
 }
 async function openEntity(kind,name,push=true){
   releaseHoverPreviews();
@@ -8130,13 +8154,19 @@ async function openEntity(kind,name,push=true){
   document.body.classList.add('entity-open');
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
-  showEntityLoading(kind);
+  showEntityLoading(kind,name);
   detailReturnBarsContext=null;
   entityJavLayout=false;
   agencyRosterView='people';
   const seq=++entityRequestSeq;
+  // 名单每进一页重取一遍，下一页用的就是服务端的现状；第一次进页时手里还没有，到了照它补齐骨架。
+  void loadFeedRowNames().then(()=>{if(seq===entityRequestSeq)syncEntitySkeletonFeed(kind,name)});
   const [d,items,photos]=await Promise.all([
-    api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
+    // 新作那一行跟资料一起到：资料一回来就接着取这一页的新作和头几张封面，和作品、图集并行，
+    // 三样齐了整页一次画出，不再是整页先出来、那一行再单独等一轮。
+    api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`).then(async d=>{
+      if(d&&!d.error&&d.id)d.feedNew=await loadFeedNew(d.id,true);
+      return d}),
     fetchEntityItems(kind,name,filters),
     api(`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`)]);
   if(d.error||seq!==entityRequestSeq||
@@ -8302,16 +8332,14 @@ async function openEntity(kind,name,push=true){
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
-    ${d.feed?.following
-      ?`<section class="feednew" data-feed-new aria-label="未入库的新作" aria-busy="true">${feedNewSkeletonHtml()}</section>`
-      :'<section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>'}
+    <section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>
     <div class="entitysection"></div>`;
   /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
      不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的
      正脸原图。换完重进这一页——头像索引在服务端已经失效过一次，重画才读得到新图。 */
   /* 关注的这位有新作、库里还没有文件时，那一行摆在资料卡和作品之间：它讲的是这个人，
      但不是这一页的正文。一条都没有就整块不出（`renderFeedNew` 自己判）。 */
-  if(d.id)void renderFeedNew($('#index').querySelector('[data-feed-new]'),Number(d.id));
+  if(d.id)void renderFeedNew($('#index').querySelector('[data-feed-new]'),Number(d.id),d.feedNew);
   const pickerHost=$('#index').querySelector('[data-avatar-picker]');
   if(pickerHost&&d.id)import('/dist/peach-ui.js').then(ui=>ui.mountIsland('avatar-picker',pickerHost,{
     kind,entityId:Number(d.id),name:d.canonical_name||name,

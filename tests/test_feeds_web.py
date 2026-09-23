@@ -280,6 +280,27 @@ class FeedWebTest(FeedWebFixture):
                                   {"entity": entity_id + 1})
         self.assertEqual(nobody["items"], [])
 
+    def test_the_row_list_names_whoever_still_has_a_listed_new_release(self):
+        with self.contract.database.write_transaction() as connection:
+            entity_id = int(connection.execute(
+                "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES('performer','深田えいみ',peach_normalize('深田えいみ'),?,?)",
+                (feeds.stamp(), feeds.stamp())).lastrowid)
+            connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+                " VALUES(?,'Eimi Fukada',peach_normalize('Eimi Fukada'),'test')", (entity_id,))
+        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds/rows", {})["entities"], [])
+        self._add(entity_id=entity_id)
+        self._check()
+        rows = dispatch_api_get(self.contract, "/api/feeds/rows", {})["entities"]
+        self.assertEqual(rows, [{"id": entity_id, "kind": "performer",
+                                 "names": ["深田えいみ", "Eimi Fukada"]}])
+        # 那几部都忽略掉，她的页面上就没有那一行了，名单跟着不再有她。
+        ids = [item["id"] for item in dispatch_api_get(
+            self.contract, "/api/feeds/discoveries", {"entity": entity_id})["items"]]
+        dispatch_api_post(self.contract, "/api/feeds/discovery", {"action": "ignore", "ids": ids})
+        self.assertEqual(dispatch_api_get(self.contract, "/api/feeds/rows", {})["entities"], [])
+
     def test_removing_a_source_keeps_the_new_releases_it_found(self):
         self._add()
         self._check()

@@ -2300,7 +2300,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_entity_loading_and_detail_autoplay_share_their_entry_contracts(self):
         self.assertPageContains("showEntityLoading(ROUTE_ENTITIES[path.split('/')[1]])")
-        self.assertPageContains('showEntityLoading(kind);')
+        self.assertPageContains('showEntityLoading(kind,name);')
         self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
         self.assertPageContains('mountDetailPlayer(it,vv,appSettings.detailAutoplay)')
         self.assertPageContains('mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{')
