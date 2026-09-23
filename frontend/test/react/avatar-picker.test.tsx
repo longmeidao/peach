@@ -28,6 +28,7 @@ const choice = (over: Partial<AvatarChoice> = {}): AvatarChoice => ({
   current: false,
   crop: false,
   bases: [],
+  focus: null,
   ...over,
 });
 
@@ -185,6 +186,104 @@ it('图库索引还没取过时只剩手填那两条路', async () => {
 const artwork = () => choice({
   ref: 'asset:11:cover', source: 'asset', label: 'ABW-232', detail: '',
   crop: true, bases: ['asset:11:cover', 'asset:11:cell4'],
+});
+
+it('候选回来之前网格里是同一种格子的骨架，回来之后换成真格子', async () => {
+  let answer: (value: unknown) => void = () => {};
+  vi.stubGlobal('fetch', vi.fn(() => new Promise((resolve) => { answer = resolve })));
+  await openPicker();
+  const grid = document.querySelector('[role="listbox"]');
+  expect(grid?.getAttribute('aria-busy')).toBe('true');
+  expect(document.querySelectorAll('[data-avatar-skeleton]').length).toBeGreaterThan(0);
+  // 骨架只给辅助技术一个忙态，不再另写一句「正在读取」。
+  expect(dialog()?.textContent).not.toContain('正在');
+  await act(async () => answer({ ok: true, status: 200, json: async () => listing([choice()]) }));
+  await settle();
+  expect(grid?.getAttribute('aria-busy')).toBeNull();
+  expect(document.querySelectorAll('[data-avatar-skeleton]')).toHaveLength(0);
+  expect(cells()).toHaveLength(1);
+});
+
+it('一格的图到了才揭开，取不到也揭开', async () => {
+  server(listing([choice(), choice({ ref: 'sha256:abc', source: 'history', label: 'twitter' })]));
+  await openPicker();
+  const [first, second] = cells();
+  const layers = (cell: HTMLElement | undefined) =>
+    [...(cell?.querySelectorAll('img, [aria-hidden]') ?? [])];
+  expect(layers(first).map((one) => one.hasAttribute('data-revealed'))).toEqual([false, false]);
+  await act(async () => { first?.querySelector('img')?.dispatchEvent(new Event('load')) });
+  expect(layers(first).map((one) => one.hasAttribute('data-revealed'))).toEqual([true, true]);
+  await act(async () => { second?.querySelector('img')?.dispatchEvent(new Event('error')) });
+  expect(second?.querySelector('img')?.hasAttribute('data-revealed')).toBe(true);
+});
+
+it('封面格子在取景区里取一块 3:4，图库人像照旧铺满', async () => {
+  server(listing([
+    choice(),
+    choice({ ref: 'asset:11:cover', source: 'asset', label: 'ABW-232', crop: true,
+      width: 800, height: 540, bases: ['asset:11:cover'],
+      focus: { x0: 592, y0: 114, x1: 688, y1: 210 } }),
+  ]));
+  await openPicker();
+  const [portrait, cover] = cells().map((cell) => cell.querySelector('img'));
+  expect(portrait?.style.getPropertyValue('--tile-width')).toBe('');
+  // 96px 的方块里装得下的 3:4 是 72×96，居中在 (640, 162)：左上角 (604, 114)。
+  expect({
+    left: cover?.style.getPropertyValue('--tile-left'),
+    top: cover?.style.getPropertyValue('--tile-top'),
+    width: cover?.style.getPropertyValue('--tile-width'),
+    height: cover?.style.getPropertyValue('--tile-height'),
+  }).toEqual({
+    left: `${(-604 / 72) * 100}%`, top: `${(-114 / 96) * 100}%`,
+    width: `${(800 / 72) * 100}%`, height: `${(540 / 96) * 100}%`,
+  });
+});
+
+it('按番号取来的封面直接进框选，默认框就是脸那一块', async () => {
+  const code = choice({
+    ref: 'cover:ABW-999', source: 'code', label: 'ABW-999', crop: true,
+    width: 800, height: 540, bases: ['cover:ABW-999'],
+    focus: { x0: 592, y0: 114, x1: 688, y1: 210 },
+  });
+  const calls: Call[] = [];
+  vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+    calls.push([input, init || {}]);
+    const answer = input === '/api/avatar-code-cover' ? code
+      : init?.method === 'POST' ? { ok: true } : listing([]);
+    return { ok: true, status: 200, json: async () => answer };
+  }));
+  await openPicker();
+  expect(buttonNamed('取封面来框')?.disabled).toBe(true);
+  const input = document.querySelector<HTMLInputElement>('input[aria-label="番号"]');
+  await type(input, ' abw-999 ');
+  // 回车就能交，和按那枚键是同一件事。
+  await act(async () => { input?.form?.requestSubmit() });
+  await settle();
+  expect(sent(calls, 1)[0]).toBe('/api/avatar-code-cover');
+  expect(body(calls, 1)).toEqual({ code: 'abw-999' });
+  expect(dialog()?.textContent).toContain('框出头像那一块');
+  expect([...document.querySelectorAll('[data-crop-base]')]).toHaveLength(0);
+  await reportSize(800, 540);
+  await click(buttonNamed('用这一块'));
+  await settle();
+  expect(body(calls, 2)).toEqual({
+    kind: 'performer', id: 7792, ref: 'cover:ABW-999',
+    crop: { x0: 592, y0: 114, x1: 688, y1: 210 },
+  });
+});
+
+it('番号取不到封面时原因留在弹层里', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (input: string) => (
+    input === '/api/avatar-code-cover'
+      ? { ok: false, status: 400, json: async () => ({ error: '官方渠道没有这个番号的封面' }) }
+      : { ok: true, status: 200, json: async () => listing([]) }
+  )));
+  await openPicker();
+  await type(document.querySelector<HTMLInputElement>('input[aria-label="番号"]'), 'ABW-999');
+  await click(buttonNamed('取封面来框'));
+  await settle();
+  expect(dialog()?.querySelector('[role="alert"]')?.textContent).toContain('官方渠道没有这个番号的封面');
+  expect(dialog()?.textContent).toContain('更换头像');
 });
 
 /** happy-dom 不真取图，所以自己报一次尺寸：框的一切都从这一步开始。 */

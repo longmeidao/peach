@@ -122,6 +122,45 @@
   animation-delay: calc(--value(integer) * 150ms);
 }
 
+/* Skeleton 的微光，与遗留层 `web/css/09-skeleton.css` 同一套实测值（Geist Skeleton，
+ * `docs/reference-snapshots/vercel-geist-skeleton.md`）：宿主不改自己的不透明度，
+ * `::after` 铺一条三倍宽的渐变左右扫。全局的减少动效规则只选得中元素、选不中伪元素，
+ * 所以这里自己关。定位不归这里：宿主自己写 `relative` 或 `absolute`，两条定位类放在
+ * 同一个元素上时谁生效只看生成顺序。 */
+@keyframes peach-skeleton-sweep {
+  to { transform: translateX(-50%); }
+}
+@utility skeleton-sheen {
+  overflow: hidden;
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    right: -200%;
+    border-radius: inherit;
+    background: linear-gradient(to right, var(--hover), var(--skeleton-sheen) 50%, var(--hover));
+    background-size: 50% 100%;
+    animation: peach-skeleton-sweep 1.5s ease-in-out infinite reverse;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::after { animation: none; }
+  }
+}
+
+/* 占位换成真内容，与遗留层 `web/css/25-motion.css` 的 `.skelreveal` 同一形态：骨架淡出
+ * 并糊掉，内容从 2px 模糊里清晰起来，两层叠在同一处坐标。元素带上 `data-revealed`
+ * 就是揭开之后那一态。时长读 board.css 的 `--motion-reveal`，减少动效时它是 0s。 */
+@utility reveal-skeleton {
+  transition: opacity var(--motion-reveal), filter var(--motion-reveal);
+  &[data-revealed] { opacity: 0; filter: blur(2px); }
+}
+@utility reveal-content {
+  opacity: 0;
+  filter: blur(2px);
+  transition: opacity var(--motion-reveal), filter var(--motion-reveal);
+  &[data-revealed] { opacity: 1; filter: none; }
+}
+
 /* 上游 `--font-sans` 引用 Next.js 字体加载器注入的 `--font-inter`；Peach 的 Inter 由
  * board.css 引入的 `/vendor/inter/` 提供。 */
 :root {

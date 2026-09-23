@@ -25,7 +25,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import gfriends, images
+from . import gfriends, images, jav_poster_crop
+from .avatar_cover_face import face_square
+from .avatar_face import read_sidecar
 from .catalog_rules import normalise_code_key
 from .avatar_provider import (
     AvatarCandidateCache, InspectedAvatar, POLICY_VERSION, inspect_avatar,
@@ -58,7 +60,11 @@ SOURCE_NAMES = {
     "kmib": "官网",
     "picker": "自己挑的",
     "asset": "作品画面",
+    "code-cover": "番号封面",
 }
+#: 按番号取来的封面放在这个来源目录里。它不属于任何人，所以只存对象、不写证据：
+#: 证据按 `performer-<id>-*` 存，写了就会冒充成某个人「取过的图」。
+CODE_COVER_CACHE = "code-cover"
 #: 作品那一组一次最多列这么多部。这一组是拿来找一张能框出脸的画面的，不是作品列表；
 #: 一个人的作品动辄上百部，全列出来就把图库候选挤到看不见的地方去了。
 MAX_ASSET_CHOICES = 12
@@ -87,13 +93,18 @@ class Choice:
     crop: bool = False
     #: 框选时可以换的底图，按 `ref` 给。空表示这一格只有它自己那一张。
     bases: tuple[str, ...] = ()
+    #: 封面上该取景的那一块，源图像素、右下开区间（`cover_focus`）。格子围着它取景，
+    #: 框选围着它落默认框；None 时两边都居中。
+    focus: tuple[int, int, int, int] | None = None
 
     def as_dict(self) -> dict:
+        focus = (dict(zip(("x0", "y0", "x1", "y1"), self.focus))
+                 if self.focus else None)
         return {"ref": self.ref, "source": self.source, "label": self.label,
                 "width": self.width, "height": self.height,
                 "detail": self.detail, "found_by": self.found_by,
                 "current": self.current, "crop": self.crop,
-                "bases": list(self.bases)}
+                "bases": list(self.bases), "focus": focus}
 
 
 def name_chain(connection: sqlite3.Connection, entity_id: int) -> list[str]:
@@ -200,8 +211,8 @@ def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
             if key in seen_codes:
                 continue
             seen_codes.add(key)
-        size = (images.measure_image_file(Path(cover_root) / f"{key}.jpg")
-                if key else None)
+        cover = Path(cover_root) / f"{key}.jpg"
+        size = images.measure_image_file(cover) if key else None
         has_sheet = bool(snapshot)
         if size is None and not has_sheet:
             continue
@@ -213,9 +224,80 @@ def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
             ref=bases[0], source="asset",
             label=str(code or title or f"作品 {asset_id}"),
             width=width, height=height,
-            detail=str(title or ""), crop=True, bases=tuple(bases))))
+            detail=str(title or ""), crop=True, bases=tuple(bases),
+            focus=cover_focus(key, cover, read_sidecar(cover), width, height)
+            if size else None)))
     found.sort(key=lambda item: (-item[0], item[1]))
     return [choice for _area, _order, choice in found[:MAX_ASSET_CHOICES]]
+
+
+def cover_focus(key: str, cover: Path | None, face: dict | None,
+                width: int, height: int) -> tuple[int, int, int, int] | None:
+    """一张封面上该围着取景的那一块：检出脸就是脸周围的方图，没检出脸的横版封套是
+    正封，别的是 None。
+
+    脸那一块和批处理从封面截头像是同一块（`avatar_cover_face.face_square`），弹层里
+    看到的就是批处理真会装上去的样子。正封交给 `jav_poster_crop`：封套版式的判据只有
+    那一份，边车里有算过（或人框过）的框就用它，没有就按正封比例从右缘量回去。
+    """
+    square = face_square(face, width, height)
+    if square or not jav_poster_crop.crops_to_portrait(key):
+        return square
+    sidecar = jav_poster_crop.read_sidecar(cover) if cover is not None else None
+    box = ((jav_poster_crop.projection(sidecar)
+            if jav_poster_crop.is_current(sidecar, width, height) else None)
+           or jav_poster_crop.front_panel_box(width, height))
+    if box.get("method") == jav_poster_crop.NONE:
+        return None
+    return int(box["x0"]), int(box["y0"]), int(box["x1"]), int(box["y1"])
+
+
+def _code_cover_url(key: str) -> str:
+    return f"peach:code-cover/{key}"
+
+
+def _code_cover_bytes(key: str, cover_root: Path | None,
+                      providers_root: Path) -> tuple[bytes | None, Path | None]:
+    """这个番号的封面在本机哪儿有：馆藏封面目录优先，其次是按番号取过的那一份。
+
+    馆藏里那张连同它的路径一起给，它旁边的人脸与正封边车省一次检测；取来的那份没有。
+    """
+    if cover_root is not None:
+        path = Path(cover_root) / f"{key}.jpg"
+        try:
+            return path.read_bytes(), path
+        except OSError:
+            pass
+    return AvatarCandidateCache(providers_root / CODE_COVER_CACHE).lookup(_code_cover_url(key)), None
+
+
+def code_cover(code: str, cover_root: Path | None, providers_root: Path,
+               fetch: Callable[[str], bytes],
+               probe: Callable[[bytes], dict | None]) -> Choice:
+    """按番号拿一张封面来框头像，番号不必在馆藏里。
+
+    同一个人的作品未必都在本机：图库和本机作品都给不出正脸时，人常常记得她哪一部的
+    封面拍得好。本机封面目录里有就用它；没有就由 `fetch` 去官方渠道取最大的那张，
+    取到的按番号进候选缓存，框选、确认时都从缓存读，不再出网。
+    """
+    key = normalise_code_key(code)
+    if not key:
+        raise PickerError("认不出这个番号")
+    body, cover = _code_cover_bytes(key, cover_root, providers_root)
+    if body is None:
+        body = fetch(key)
+        AvatarCandidateCache(providers_root / CODE_COVER_CACHE).store(
+            _code_cover_url(key), body, accept_image(body))
+    size = images.measure_image_size(body)
+    if size is None:
+        raise PickerError("这个番号的封面不是一张能识别的图片")
+    face = read_sidecar(cover) if cover is not None else None
+    if face_square(face, *size) is None:
+        face = probe(body)
+    focus = cover_focus(key, cover, face, *size)
+    ref = f"cover:{key}"
+    return Choice(ref=ref, source="code", label=key, width=size[0], height=size[1],
+                  crop=True, bases=(ref,), focus=focus)
 
 
 def choices(connection: sqlite3.Connection, providers_root: Path,
@@ -407,6 +489,16 @@ def resolve(ref: str, connection: sqlite3.Connection, providers_root: Path,
                       "external_id": digest[:12]}
     if ref.startswith("asset:"):
         return _asset_image(ref, connection, entity_id, artwork)
+    if ref.startswith("cover:"):
+        # 只读本机：出网那一步在 `code_cover` 里，由人输入番号时显式触发。来源记录里
+        # 不写 `upstream_url`——`keep` 拿它当缓存键，写了会让框出来的那一块顶掉整张封面。
+        key = normalise_code_key(ref.split(":", 1)[1])
+        body, _path = _code_cover_bytes(
+            key, artwork.cover_root if artwork else None, providers_root) if key else (None, None)
+        if body is None:
+            raise PickerError("这个番号的封面还没有取过")
+        return body, {"source": "avatar picker", "provider": "code-cover",
+                      "external_id": key, "asset_code": key}
     if not ref.startswith("gfriends:"):
         raise PickerError("认不出这个候选")
     category, _, filename = ref.split(":", 1)[1].partition("/")

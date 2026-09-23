@@ -66,6 +66,21 @@ export function defaultPanelBox(size: CropSize, aspect: number): CropBox {
   return round({ x0: size.width - width, y0: 0, x1: size.width, y1: size.height });
 }
 
+/** `focus` 里按 `aspect` 装得下的最大的框，中心对齐 `focus` 的中心。
+ *
+ *  `focus` 是后端给的「该取景的那一块」（脸周围的方图或正封），形状不一定是
+ *  `aspect`。取装得下的而不是围得住的：围住竖长的正封要带进书脊，围住脸那块方图
+ *  的 3:4 格子会带进一截胸口，而这一块本来就是按「装进头像刚好」量出来的。 */
+export function frameWithin(focus: CropBox, size: CropSize, aspect: number): CropBox {
+  if (!isUsableSize(size) || !(aspect > 0)) return whole(size);
+  const inside = clampBox(focus, size);
+  const box = centeredBox({ width: inside.x1 - inside.x0, height: inside.y1 - inside.y0 }, aspect);
+  return {
+    x0: inside.x0 + box.x0, y0: inside.y0 + box.y0,
+    x1: inside.x0 + box.x1, y1: inside.y0 + box.y1,
+  };
+}
+
 /** 把框收进源图里，并保证它还算一个框。
  *
  *  `aspect` 给了就锁比例：先按 `anchor` 那一边定尺寸，装不下再换另一边定，仍然
@@ -152,6 +167,24 @@ export function previewStyle(box: CropBox, size: CropSize): {
   return {
     size: `${(size.width / width) * 100}% ${(size.height / height) * 100}%`,
     position: `${spare(box.x0, size.width, width)}% ${spare(box.y0, size.height, height)}%`,
+  };
+}
+
+/** 框里那一块摆满一个同比例容器时，整张 `<img>` 按绝对定位该放在哪、放多大。
+ *
+ *  和 `previewStyle` 是同一件事，给的是图片元素而不是背景：图片元素才有 `load`
+ *  事件可接，淡入要等它。`left`／`width` 的百分比量的是容器宽，`top`／`height`
+ *  量的是容器高，容器与框同比例，所以两个轴各按各的边长换算。 */
+export function windowStyle(box: CropBox, size: CropSize): {
+  left: string; top: string; width: string; height: string;
+} {
+  const width = Math.max(1, box.x1 - box.x0);
+  const height = Math.max(1, box.y1 - box.y0);
+  return {
+    left: `${(-box.x0 / width) * 100}%`,
+    top: `${(-box.y0 / height) * 100}%`,
+    width: `${(size.width / width) * 100}%`,
+    height: `${(size.height / height) * 100}%`,
   };
 }
 

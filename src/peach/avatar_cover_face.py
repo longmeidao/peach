@@ -90,15 +90,30 @@ def faces(connection, cover_root: Path, entity_id: int, probe) -> list[CoverFace
     return found
 
 
+def face_square(record: dict | None, width: int, height: int) -> tuple[int, int, int, int] | None:
+    """一份人脸记录在 `width`×`height` 那张图上框出的方图；没有脸，或记录说的是另一张图，
+    就是 None。
+
+    批处理截头像和挑图弹层给封面预设的框都走这里：两边框得不一样，人在弹层里看到的
+    「这张封面截出来的样子」就不是批处理真会装上去的那一块。记录里的 `px` 对不上这张
+    图时不用它——封面会被更大的那张原子替换，旧记录的脸心落在新图上是一块错位的区域。
+    """
+    detail = (record or {}).get("face")
+    px = (record or {}).get("px") or [0, 0]
+    face_px = face_px_width(record)
+    if not isinstance(detail, dict) or face_px <= 0 or list(px) != [width, height]:
+        return None
+    side = max(1, min(round(face_px * FACE_SPAN), width, height))
+    left = round(float(detail["cx"]) * width - side / 2)
+    top = round(float(detail["cy"]) * height - side / 2)
+    left = max(0, min(left, width - side))
+    top = max(0, min(top, height - side))
+    return left, top, left + side, top + side
+
+
 def crop_box(face: CoverFace) -> tuple[int, int, int, int]:
     """脸周围那块方图在封面上的像素框。边长夹在封面短边以内，整块推回画面里。"""
-    detail = face.record["face"]
-    side = max(1, min(round(face.face_px * FACE_SPAN), face.width, face.height))
-    left = round(float(detail["cx"]) * face.width - side / 2)
-    top = round(float(detail["cy"]) * face.height - side / 2)
-    left = max(0, min(left, face.width - side))
-    top = max(0, min(top, face.height - side))
-    return left, top, left + side, top + side
+    return face_square(face.record, face.width, face.height) or (0, 0, face.width, face.height)
 
 
 def cut(face: CoverFace) -> tuple[bytes, dict] | None:

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  boxPercent, centeredBox, clampBox, defaultPanelBox, MIN_CROP_EDGE, moveBox, previewStyle,
-  resizeFromCorner, scaleBox, toNatural,
+  boxPercent, centeredBox, clampBox, defaultPanelBox, frameWithin, MIN_CROP_EDGE, moveBox,
+  previewStyle, resizeFromCorner, scaleBox, toNatural, windowStyle,
 } from '../src/crop-geometry';
 
 /** 本机封套最常见的尺寸。 */
@@ -31,6 +31,30 @@ describe('默认框', () => {
 
   it('尺寸还没量出来时不硬算', () => {
     expect(centeredBox({ width: 0, height: 0 }, 1)).toEqual({ x0: 0, y0: 0, x1: 0, y1: 0 });
+  });
+});
+
+describe('围着取景区取景', () => {
+  it('脸那块方图里取方框就是它自己，取 3:4 是削掉两侧、上下不动', () => {
+    const face = { x0: 592, y0: 114, x1: 688, y1: 210 };
+    expect(frameWithin(face, SLEEVE, 1)).toEqual(face);
+    expect(frameWithin(face, SLEEVE, 3 / 4)).toEqual({ x0: 604, y0: 114, x1: 676, y1: 210 });
+  });
+
+  it('竖长的正封里取方框按它的宽，居中不带进书脊', () => {
+    const panel = { x0: 421, y0: 0, x1: 800, y1: 538 };
+    expect(frameWithin(panel, SLEEVE, 1)).toEqual({ x0: 421, y0: 80, x1: 800, y1: 459 });
+  });
+
+  it('越出图外的取景区先收回图里', () => {
+    expect(frameWithin({ x0: 700, y0: -40, x1: 900, y1: 160 }, SLEEVE, 1))
+      .toEqual({ x0: 600, y0: 0, x1: 800, y1: 200 });
+  });
+
+  it('整张图按绝对定位摆，让框里那一块正好摆满同比例的格子', () => {
+    expect(windowStyle({ x0: 200, y0: 100, x1: 400, y1: 300 }, { width: 800, height: 600 })).toEqual({
+      left: '-100%', top: '-50%', width: '400%', height: '300%',
+    });
   });
 });
 

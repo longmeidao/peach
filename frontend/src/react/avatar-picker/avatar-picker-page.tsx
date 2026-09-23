@@ -19,7 +19,9 @@ import { IconButton } from '@/components/base/buttons/icon-button';
 import { Input } from '@/components/base/input/input';
 
 import { errorMessage } from '../../api';
-import { centeredBox, isUsableSize, previewStyle, type CropBox, type CropSize } from '../../crop-geometry';
+import {
+  centeredBox, isUsableSize, previewStyle, windowStyle, type CropBox, type CropSize,
+} from '../../crop-geometry';
 import type { AvatarPickerProps } from '../bundle';
 import { Note } from '../components/note';
 import { useOverlayScrollbar } from '../components/overlay-scrollbar';
@@ -27,9 +29,15 @@ import { CropFrame } from '../crop/crop-frame';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import {
-  avatarChoicesKey, baseLabel, choiceDetail, choiceImageUrl, fetchAvatarChoices, indexNotReady,
-  pickerNote, sendAvatarPick, type AvatarChoice, type AvatarSubmission,
+  avatarChoicesKey, baseLabel, choiceDetail, choiceFrame, choiceImageUrl, fetchAvatarChoices,
+  fetchCodeCover, framesItself, indexNotReady, pickerNote, sendAvatarPick,
+  type AvatarChoice, type AvatarSubmission,
 } from './avatar-picker';
+
+/** 候选还没回来时摆几格占位：一排四格摆两排，和最常见的一屏候选差不多高。 */
+const SKELETON_TILES = 8;
+/** 格子的比例，与 `--aspect-avatar-choice` 同一个数。 */
+const TILE_ASPECT = 3 / 4;
 
 export function AvatarPicker({ kind, entityId, name, onPicked }: AvatarPickerProps) {
   const [open, setOpen] = useState(false);
@@ -69,6 +77,7 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
   const file = useRef<HTMLInputElement>(null);
   const grid = useOverlayScrollbar<HTMLDivElement>();
   const [url, setUrl] = useState('');
+  const [code, setCode] = useState('');
   const [fileProblem, setFileProblem] = useState('');
   /* 作品画面那一组点开的是框选，不是当场换图。整屏换掉而不是再叠一层弹层：这一步
      要的是尽可能大的底图，而弹层套弹层只会让底图更小。 */
@@ -97,6 +106,11 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
       onPicked();
     },
   });
+  /* 按番号取来的封面和作品画面一样先进框选：它也是一张横版封面。 */
+  const cover = useMutation({
+    mutationFn: (wanted: string) => fetchCodeCover(wanted),
+    onSuccess: (choice) => setCropping(choice),
+  });
 
   function pickFile(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
@@ -110,7 +124,9 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
   const choices = data?.choices ?? [];
   const problem = fileProblem
     || (submit.error ? errorMessage(submit.error) : '')
+    || (!cropping && cover.error ? errorMessage(cover.error) : '')
     || (listing.error ? errorMessage(listing.error) : '');
+  const busy = submit.isPending || cover.isPending;
   return (
     <>
       {/* 头部：左边一个方图标槽，右边标题加一句说明，右上角是关闭键。 */}
@@ -148,19 +164,27 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
           轨道，它按 `absolute` 铺，得有一个只裹着滚动块本身的定位祖先。 */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         <div ref={grid} className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-separator-border px-5 py-4">
-          <div role="listbox" aria-label="候选头像"
+          {/* 候选回来之前摆同一种格子的占位，格子外框、比例与标签那一行都和真格子一样，
+              换上真格子时网格不跳。 */}
+          <div role="listbox" aria-label="候选头像" aria-busy={listing.isPending || undefined}
+            data-skeleton={listing.isPending ? 'avatar-choices' : undefined}
             className="inline-grid grid-cols-3 content-start gap-2 sm:grid-cols-4">
-            {choices.map((choice) => (
+            {listing.isPending ? Array.from({ length: SKELETON_TILES }, (_, index) => (
+              <span key={index} aria-hidden data-avatar-skeleton
+                className="flex flex-col gap-1 overflow-hidden rounded-2lg border border-separator-border bg-background-secondary-default pb-1 text-caption-1-regular">
+                <span className="relative block w-full aspect-avatar-choice skeleton-sheen" />
+                <span className="relative mx-auto w-2/3 rounded-sm skeleton-sheen">&nbsp;</span>
+              </span>
+            )) : choices.map((choice) => (
               <button type="button" key={choice.ref} role="option" data-avatar-choice
-                aria-selected={choice.current} title={choiceDetail(choice)} {...busyProps(submit.isPending)}
+                aria-selected={choice.current} title={choiceDetail(choice)} {...busyProps(busy)}
                 onClick={() => {
-                  if (submit.isPending) return;
+                  if (busy) return;
                   if (choice.crop) setCropping(choice);
                   else submit.mutate({ ref: choice.ref });
                 }}
                 className="relative flex cursor-pointer flex-col gap-1 overflow-hidden rounded-2lg border border-separator-border bg-background-secondary-default pb-1 text-center text-caption-1-regular text-text-secondary outline-none hover:border-border-button-hover hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring aria-selected:border-border-focus-ring aria-selected:bg-background-tertiary-default aria-selected:text-text-primary aria-disabled:cursor-progress aria-disabled:opacity-60">
-                <img loading="lazy" alt="" src={choiceImageUrl(kind, entityId, choice.ref)}
-                  className="block w-full aspect-avatar-choice object-cover" />
+                <ChoiceImage src={choiceImageUrl(kind, entityId, choice.ref)} choice={choice} />
                 <span className="truncate px-1">{choice.label}</span>
                 {choice.current
                   ? <span className="absolute top-1 left-1"><Chip variant="caption" color="gray">在用</Chip></span>
@@ -170,25 +194,72 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
           </div>
         </div>
       </div>
-      {/* 手填地址和本机文件跟候选是并列的三条路，不是候选看完之后的补充，所以摆在固定
-          的那一排里：网格再长也不会把它们推到看不见的地方。 */}
-      <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-separator-border p-5">
-        <Button variant="secondary" onClick={() => file.current?.click()}
-          {...busyProps(submit.isPending)}>从本机选图片</Button>
-        {/* 原生文件选择器长相不可控，按钮归 BoardUI，输入框只留着接文件。 */}
-        <input ref={file} type="file" accept="image/png,image/jpeg" tabIndex={-1} aria-hidden
-          className="hidden" onChange={pickFile} />
-        <div className="flex min-w-0 flex-1 items-center gap-2">
+      {/* 番号、手填地址和本机文件跟候选是并列的几条路，不是候选看完之后的补充，所以摆在
+          固定的那一块里：网格再长也不会把它们推到看不见的地方。 */}
+      <div className="flex shrink-0 flex-col gap-3 border-t border-separator-border p-5">
+        {/* 番号那一条会出网，是有副作用的提交，所以配按钮；回车照样能交。 */}
+        <form className="flex min-w-0 items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (code.trim() && !busy) cover.mutate(code.trim());
+          }}>
           <div className="min-w-0 flex-1">
-            <Input type="url" aria-label="图片地址" placeholder="https://…" value={url} onChange={setUrl} />
+            <Input aria-label="番号" placeholder="番号，如 ABW-232" value={code} onChange={setCode} />
           </div>
-          <Button disabled={!url.trim()} {...busyProps(submit.isPending)}
-            onClick={() => { if (!submit.isPending) submit.mutate({ url: url.trim() }) }}>用这个地址</Button>
+          <Button type="submit" variant="secondary" disabled={!code.trim()}
+            {...busyProps(cover.isPending)}>取封面来框</Button>
+        </form>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={() => file.current?.click()}
+            {...busyProps(submit.isPending)}>从本机选图片</Button>
+          {/* 原生文件选择器长相不可控，按钮归 BoardUI，输入框只留着接文件。 */}
+          <input ref={file} type="file" accept="image/png,image/jpeg" tabIndex={-1} aria-hidden
+            className="hidden" onChange={pickFile} />
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <Input type="url" aria-label="图片地址" placeholder="https://…" value={url} onChange={setUrl} />
+            </div>
+            <Button disabled={!url.trim()} {...busyProps(submit.isPending)}
+              onClick={() => { if (!submit.isPending) submit.mutate({ url: url.trim() }) }}>用这个地址</Button>
+          </div>
         </div>
       </div>
       </>
       )}
     </>
+  );
+}
+
+/** 一格候选的图。图到之前那一格是 Skeleton 微光，到了骨架淡出、图从模糊里清晰起来。
+ *
+ *  要框的横图（作品画面、番号封面）不整张铺满居中：封面正中常常是书脊或背景，格子
+ *  在后端给的取景区里取一块 3:4，看到的就是框选那一步默认框住的那张脸。竖的图库
+ *  人像照旧 `object-cover`。 */
+function ChoiceImage({ src, choice }: { src: string; choice: AvatarChoice }) {
+  const image = useRef<HTMLImageElement>(null);
+  const [revealed, setRevealed] = useState(false);
+  /* 缓存里的图可能在挂上 `onLoad` 之前就已经解码完，那一次 `load` 不会再来。 */
+  useEffect(() => {
+    if (image.current?.complete && image.current.naturalWidth) setRevealed(true);
+  }, []);
+  const size = { width: choice.width, height: choice.height };
+  const place = framesItself(choice) ? windowStyle(choiceFrame(choice, size, TILE_ASPECT), size) : null;
+  const shown = revealed ? true : undefined;
+  return (
+    <span className="relative block w-full aspect-avatar-choice overflow-hidden">
+      {/* 取不到图也要揭开：骨架停在那儿就读成还在等。 */}
+      <img ref={image} loading="lazy" alt="" src={src} data-revealed={shown}
+        onLoad={() => setRevealed(true)} onError={() => setRevealed(true)}
+        className={place
+          ? 'reveal-content absolute max-w-none top-(--tile-top) left-(--tile-left) h-(--tile-height) w-(--tile-width)'
+          : 'reveal-content absolute inset-0 size-full object-cover'}
+        style={place ? {
+          '--tile-top': place.top, '--tile-left': place.left,
+          '--tile-height': place.height, '--tile-width': place.width,
+        } as CSSProperties : undefined} />
+      <span aria-hidden data-revealed={shown}
+        className="reveal-skeleton pointer-events-none absolute inset-0 skeleton-sheen" />
+    </span>
   );
 }
 
@@ -221,7 +292,11 @@ function CropStep({ kind, entityId, choice, busy, back, confirm }: {
           label={`${choice.label} 的头像取景框`}
           onSize={(next) => {
             setSize(next);
-            if (isUsableSize(next)) setBox(centeredBox(next, 1));
+            /* 这一格自己那张图从取景区里落默认框：检出脸就正好是批处理会截的那一块。
+               换成九宫格的某一格就居中，取景区只对它自己那张作数。 */
+            if (isUsableSize(next)) {
+              setBox(base === choice.ref ? choiceFrame(choice, next, 1) : centeredBox(next, 1));
+            }
           }}
           onBox={setBox} />
         {/* 底图那一排：封面加九宫格九格。一部作品里哪一格有正脸，只能看着换。 */}
