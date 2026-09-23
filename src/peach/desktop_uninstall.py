@@ -112,8 +112,11 @@ function Stop-PeachProgramProcesses {
   # 托盘退出时被硬杀的服务会留下自己的子进程：扫描、转码用的可执行文件可能就在
   # `_internal` 里。按镜像路径清场，只匹配程序目录前缀加一个分隔符，不误伤名字
   # 相近的其它解压目录。
+  # `Path` 每读一次都现查一次进程：判空和比前缀各读一次的话，进程恰好在两次之间退出，
+  # 第二次读到的就是 Null。只读一次。
   $peachStrays = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
-    $_.Path -and $_.Path.StartsWith($peachProgram + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
+    $peachImage = $_.Path
+    $peachImage -and $peachImage.StartsWith($peachProgram + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
   })
   foreach ($peachStray in $peachStrays) {
     Stop-Process -Id $peachStray.Id -Force -ErrorAction SilentlyContinue
@@ -154,10 +157,12 @@ try {
   }
 } catch {
   $peachReason = $_.Exception.Message
+  # 弹窗只说原因；日志另记出错的那一行，「不能对 Null 值表达式调用方法」单看查不出是哪一步。
+  $peachWhere = $_.InvocationInfo.PositionMessage
   $peachLog = if ($peachJob.log) { $peachJob.log } else { Join-Path ([IO.Path]::GetTempPath()) 'peach-uninstall.log' }
   $peachDetail = '原因：' + $peachReason
   try {
-    Add-Content -LiteralPath $peachLog -Value ((Get-Date -Format s) + '  ' + $peachReason) -Encoding UTF8
+    Add-Content -LiteralPath $peachLog -Value ((Get-Date -Format s) + '  ' + $peachReason + [Environment]::NewLine + $peachWhere) -Encoding UTF8
     $peachDetail += [Environment]::NewLine + '详情记录在 ' + $peachLog
   } catch { }
   if (-not $peachJob.quiet) {
