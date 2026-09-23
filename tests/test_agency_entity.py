@@ -307,6 +307,23 @@ class AgencyLedgerTests(unittest.TestCase):
         self.assertEqual(page["mark_link_id"],
                          next(link["link_id"] for link in page["links"]))
 
+    def test_an_archived_official_site_is_listed_but_not_used_as_the_mark(self):
+        """关门事务所的官网只剩存档快照：链接照列，门面不取存档站的圆标。"""
+        agency_id = self.con.execute(
+            "SELECT id FROM entity WHERE kind='agency' AND canonical_name='Capsule Agency'"
+        ).fetchone()[0]
+        self.con.execute("DELETE FROM entity_link WHERE entity_id=?", (agency_id,))
+        self.con.execute(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,created_at,updated_at)"
+            " VALUES(?,'official','Capsule Agency 官网存档（2020-01）',"
+            "'https://web.archive.org/web/20200101000000/https://capsule.bz/','web.archive.org',"
+            "'t','t')", (agency_id,))
+        self.con.commit()
+        page = self.page("agency", "Capsule Agency")
+        self.assertEqual([link["hostname"] for link in page["links"]], ["web.archive.org"])
+        self.assertIsNone(page["mark_link_id"])
+        self.assertIsNone(self.index("agencies")["Capsule Agency"]["mark"])
+
     def test_the_agency_roster_carries_the_focus_the_big_layout_needs(self):
         """名册摆的是竖幅大图，几何居中会切掉脸，取景要随资料一起下发。"""
         roster = self.page("agency", "Capsule Agency")["related_performers"]

@@ -391,6 +391,11 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "officialLinkText", [light, "agency", ["LIGHT", "RIGHT"]], "LIGHT"),
             ("core.js", "officialLinkText", [nax, "agency", ["New Actor eXperience"]], "NAX"),
             ("core.js", "officialLinkText", [light, "performer", ["松本一香"]], "LIGHT"),
+            # 存档快照照写 label，厂牌页上也不改写成「官方网站」。
+            ("core.js", "officialLinkText",
+             [{"url": "https://web.archive.org/web/20220512171503/https://ones-double.com/people/",
+               "label": "ONE'S DOUBLE 官网存档（2022-05）"}, "studio", ["ONE'S DOUBLE"]],
+             "ONE'S DOUBLE 官网存档（2022-05）"),
         ])
 
     def test_a_site_mark_carries_a_key_and_never_a_url(self):

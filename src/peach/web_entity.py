@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 from . import entry_links, feeds, web_feeds
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
+from .social_links import ARCHIVE_HOSTS, is_archive
 from .web_catalog import (
     COST,
     VISIBLE_CATALOG_ASSET,
@@ -241,12 +242,19 @@ def q_entity(contract: WebContract, args):
         person["avatar_focus"] = contract.avatar_focus("performer", person["id"])
     attach_avatar_availability(contract, d["related_performers"])
     if kind == "agency":
-        # 事务所的门面是它自己的标识。没装实体图时给出官网那条链接的 id，页面拿它去
-        # `/link-mark` 取站点圆标；两样都没有就只剩首字母。作品截图不参加——那是
-        # 某位成员某部片的画面，和这家公司没有关系。
-        d["mark_link_id"] = next(
-            (link["link_id"] for link in d["links"] if link["link_kind"] == "official"), None)
+        d["mark_link_id"] = agency_mark_link(d["links"])
     return d
+
+
+def agency_mark_link(links: list[dict]) -> int | None:
+    """事务所门面圆标取哪一条链接。
+
+    事务所的门面是它自己的标识。没装实体图时给出官网那条链接的 id，页面拿它去
+    `/link-mark` 取站点圆标；两样都没有就只剩首字母。作品截图不参加——那是某位成员
+    某部片的画面，和这家公司没有关系。存档快照那条也不参加：它的站点圆标是存档站的。
+    """
+    return next((link["link_id"] for link in links if link["link_kind"] == "official"
+                 and not is_archive(link.get("url") or "")), None)
 
 
 def q_entity_shapes(contract, args) -> dict:
@@ -424,7 +432,9 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
                    " JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND "
                    + scope_predicate("agency", "ae.entity_id", "e.id") + ") n,"
                    "(SELECT l.id FROM entity_link l WHERE l.entity_id=e.id"
-                   " AND l.link_kind='official' ORDER BY l.id LIMIT 1) mark "
+                   " AND l.link_kind='official' AND l.hostname NOT IN ("
+                   + ",".join(f"'{host}'" for host in ARCHIVE_HOSTS) + ")"
+                   " ORDER BY l.id LIMIT 1) mark "
                    "FROM entity e WHERE e.kind='agency' ")
             par: list = []
             if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")

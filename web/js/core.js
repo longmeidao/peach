@@ -134,10 +134,15 @@ const foldName=s=>String(s??'').normalize('NFKC').trim().toLocaleLowerCase();
    别家的（Jackson 页上链到 Prestige 的名录页）也保留，那说的是另一家。自家的判据是
    短名或 label 与规范名、别名互相包含：`C-more` 之于 `C-more Entertainment`，短名是缩写
    时看 label（`NAX` 那条的 label 是 `New Actor eXperience`）。label 只是这条链接自己的
-   主机名（`www.ran-maru.com`）等于没起名，也算自家。 */
+   主机名（`www.ran-maru.com`）等于没起名，也算自家。
+
+   存档快照（`web.archive.org`）一律照写 label：公司关门后官网只剩这一份，label 里写着
+   它是哪一年的存档，改写成「官方网站」就读不出点过去看到的是旧页面。 */
+const ARCHIVE_HOSTS=['web.archive.org'];
+const isArchiveLink=url=>ARCHIVE_HOSTS.includes(linkHost(url));
 const officialLinkText=(link,kind,names=[])=>{
   const text=siteName(link.url)||link.label||'';
-  if(kind!=='studio')return text;
+  if(kind!=='studio'||isArchiveLink(link.url))return text;
   const said=[text,link.label].map(foldName).filter(Boolean);
   const own=!said.length||said.includes('官方网站')||said.some(shown=>
     bareHost(shown)===linkHost(link.url)||names.some(name=>{
