@@ -19,8 +19,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from filelock import FileLock, Timeout
 
-from . import (access, distribution, entry_links, folder_picker, onboarding, push_discovery,
-               settings_file, media_configuration, tunnel)
+from . import (access, distribution, entry_links, folder_picker, media_libraries, onboarding,
+               push_discovery, settings_file, media_configuration, tunnel)
 from .routes_auth import require_auth, same_origin
 from .web_entry import runtime_fact_entries
 from . import release_updates, standalone_update, peach_proxy, desktop_startup, desktop_uninstall
@@ -117,6 +117,9 @@ def snapshot(config) -> dict[str, Any]:
         "revision": revision(config),
         "media_dirs": list(media),
         "media_sources": media_configuration.rows(config, windows=os.name == "nt", probe=True),
+        # 媒体库按 `media_libraries.libraries` 数：同名的几个声明根是一个库，和侧栏切换器、
+        # `/api/libraries` 同一份分组，页面不自己再归并一遍。
+        "library_count": len(media_libraries.libraries(config)),
         "mount_dependencies": media_configuration.mount_dependencies(),
         "windows": os.name == "nt",
         "port": config.server.port,

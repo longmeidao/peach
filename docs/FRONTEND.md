@@ -40,7 +40,8 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 就读它画出来的结构，所以第一帧要同步落到 DOM 上：`react/entry.tsx` 的 `mounter` 用 `flushSync`
 画第一帧，往后的更新照常异步。小标题和分区因此必须是 `.configpage` 的直接子节点、交替排列。
 设置弹层「这台电脑」一格只挂 `configuration-summary`（`configuration-summary.tsx`）：媒体库数、
-端口、更新状态和「打开配置页」，不放可编辑的控件（ADR-0050）。媒体修复是数据管理页上的
+端口、更新状态和「打开配置页」，不放可编辑的控件（ADR-0050）。媒体库数取 `/api/configuration` 的
+`library_count`，由服务端按 `media_libraries.libraries` 分组数好，页面不自己归并。媒体修复是数据管理页上的
 `media-repair` island（`frontend/src/react/media-repair/`），订阅源是关注管理页的「订阅源」页签
 （`follow-manage/feed-sources.tsx`，读 `/api/feeds`）。
 服务端按两道门放行：托盘管理的服务、发起连接的是本机；并在 `/healthz` 里按调用方回

@@ -1577,6 +1577,16 @@ describe('设计决定', () => {
       assert.deepEqual(inSettings, await chips('#boardGlowMenu'), '设置里的预设色块和侧栏配色卡不是同一组');
       const size = await grid.locator('.board-glow-ball').first().evaluate((node) => node.getBoundingClientRect().width);
       assert.equal(size, 28, '设置里的色块和侧栏那一枚不是同一副尺寸');
+      /* 设置这一行有整块设置那么宽：列宽跟着行宽走的话，六枚球会散成相隔八十来像素的
+         一排点。列宽收成球本身，每行六枚、间距与侧栏那条 `.board-glow-grid` 同一个值。 */
+      const gridStyle = (root: string) => opened.page.locator(`${root} [data-glow-grid]`).evaluate((node) => {
+        const style = getComputedStyle(node);
+        return { tracks: style.gridTemplateColumns, gap: style.columnGap, inline: style.paddingLeft };
+      });
+      const settingsGrid = await gridStyle('#homeGlowControls');
+      assert.deepEqual(settingsGrid.tracks.split(' '), Array(6).fill('28px'), '设置里的色块列宽没有收成球本身');
+      assert.equal(settingsGrid.gap, (await gridStyle('#boardGlowMenu')).gap, '设置里的色块间距和侧栏配色卡不同');
+      assert.equal(settingsGrid.inline, '0px', '设置里的色块没有从这一行的内容左缘起');
       assert.equal(await grid.getAttribute('role'), 'group');
       assert.ok(await grid.getAttribute('aria-label'), '预设色块那一组没有无障碍名称');
 

@@ -561,6 +561,15 @@ it('订阅源页签不收地址，只读的这台开关、移除与拉取都停�
   expect(host.querySelector<HTMLInputElement>('input[aria-label="启用 甲 的新作"]')?.disabled).toBe(true);
 });
 
+it('没有订阅源时那张卡里是空态，分区名由页签给、卡上没有同名标题', async () => {
+  const { host } = await open({}, { tab: 'feeds' });
+  const panel = host.querySelector('[role="tabpanel"]')!;
+  expect(panel.querySelector('h3')?.textContent).toBe('还没有订阅源');
+  expect(panel.textContent).toContain('在人物页点「订阅新作」添加。');
+  expect(panel.querySelector('section[aria-label="订阅源"]')).toBeNull();
+  expect(buttonNamed('立即拉取', host)).not.toBeNull();
+});
+
 it('只读的这台说清楚、指向写入端，写操作一律停用', async () => {
   const writer = 'https://writer.example/follow-manage';
   const list = await open({}, { readOnly: true, readOnlyMessage: '本机是只读副本', writerUrl: writer });

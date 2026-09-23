@@ -8,7 +8,7 @@ import { MediaSettings } from '../../src/react/settings/media-settings';
 import { buttonNamed, choose, click, fetchMock, mount, section, sentBody, settle, submit, type } from './render';
 
 const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
-  editable: true, notice: '', revision: 'rev-1', media_dirs: ['D:\\Media'], port: 9123, facts: [], ...over,
+  editable: true, notice: '', revision: 'rev-1', media_dirs: ['D:\\Media'], library_count: 1, port: 9123, facts: [], ...over,
 });
 
 const open = (over: Partial<ConfigurationData> = {}, receipt = vi.fn()) =>

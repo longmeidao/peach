@@ -103,6 +103,11 @@ body.settings-open{overflow:hidden}
 .glowcurrent{display:flex;align-items:center;gap:8px;margin:0;min-height:var(--glowrow-min);
   padding-block:var(--glowrow-pad);color:var(--muted);font-size:var(--fs-sm)}
 .glowcurrent b{color:var(--ink);font-weight:500}
+/* 预设色块和侧栏配色卡同一组、同一条 `.board-glow-grid`：那张卡 248px 宽，六个 `1fr`
+   分下来一格刚好装一枚球。这一行有整块设置那么宽，六个 `1fr` 会把球拉成一排相隔八十
+   来像素的点，所以列宽收成球本身，每行仍是六枚、间距仍是那条规则里的 6px，读起来和
+   侧栏那一张同一副排布。左边不留那 4px：这一行的字从内容左缘起，球也从那里起。 */
+.glowsetting .board-glow-grid{grid-template-columns:repeat(6,max-content);padding:0}
 .glowgroup{display:grid;gap:0;min-width:0}
 /* 「玻璃原色」那一档下面这行字顶替被收走的几条拉条和三行颜色。和上面那行「当前配色」
    同一档字色与行高，读起来是同一列里的一句话，不是插进来的提示条。 */

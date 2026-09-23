@@ -4,16 +4,17 @@
  * 筛选栏下面那一行，不在这里列——这里再列一遍就成了第二个入口，两处的已读状态会各说各话。
  * 服务端是唯一真相：开关与移除之后重取这一份，不在前端按响应拼一份新的本地状态。 */
 import { useQuery } from '@tanstack/react-query';
-import { RiCloseLine } from '@remixicon/react';
+import { RiDeleteBinLine, RiRssLine } from '@remixicon/react';
 
-import { SettingsRow } from '@/components/application/settings/settings-rows';
+import { SettingsCard, SettingsRow } from '@/components/application/settings/settings-rows';
 import { Button } from '@/components/base/buttons/button';
 import { Switch } from '@/components/base/switch/switch';
 
 import { errorMessage } from '../../api';
+import { EmptyState } from '../components/empty-state';
 import { Note } from '../components/note';
 import { queryClient } from '../query';
-import { ErrorText, Footer, Help, Rows, Section, Stack } from '../settings/section';
+import { ErrorText, Footer, Help, Rows, Stack } from '../settings/section';
 import { busyProps, useAction } from '../settings/use-action';
 import {
   checkFeeds, FEEDS_KEY, fetchFeeds, removeFeed, setFeedEnabled, type FeedSource,
@@ -39,13 +40,13 @@ export function FeedSources({ readOnly }: { readOnly: boolean }) {
 
   if (!data) {
     return (
-      <Section title="订阅源">
+      <SettingsCard>
         <Stack>
           {feeds.error
             ? <Note tone="error" title="打不开订阅源">{errorMessage(feeds.error)}</Note>
             : <Help>正在读订阅源。</Help>}
         </Stack>
-      </Section>
+      </SettingsCard>
     );
   }
 
@@ -55,37 +56,46 @@ export function FeedSources({ readOnly }: { readOnly: boolean }) {
     (signal) => removeFeed(source.id, signal), () => void reload());
   const check = () => void action.run('check', (signal) => checkFeeds(signal), () => void reload());
 
+  const failing = data.sources.filter((source) => source.last_error);
+
+  /* 分区名由页签「订阅源」给，卡片上面没有同名的小标题。 */
   return (
-    <Section title="订阅源">
+    <SettingsCard>
       {data.sources.length ? (
         <Rows>
           {data.sources.map((source) => (
             <SettingsRow key={source.id} label={source.name || source.url} description={describe(source)}>
-              {/* 移除键取 xs 那一档：和开关一样 24px 高，两样并排才读成同一行的两个控件。 */}
+              {/* 移除键和关注列表那一枚同一个写法：次级描边、垃圾桶字形。取 xs 那一档，
+                  和开关一样 24px 高，两样并排才读成同一行的两个控件。 */}
               <div className="flex items-center gap-2">
                 <Switch aria-label={`启用 ${source.name || source.url}`} isSelected={source.enabled}
                   isDisabled={readOnly} onChange={(enabled) => toggle(source, enabled)} />
-                <Button variant="danger" size="xs" iconOnly leadingIcon={RiCloseLine}
+                <Button variant="secondary" size="xs" iconOnly leadingIcon={RiDeleteBinLine}
                   aria-label={`移除 ${source.name || source.url}`} disabled={readOnly}
                   onClick={() => remove(source)} {...busyProps(action.busy === `remove-${source.id}`)} />
               </div>
             </SettingsRow>
           ))}
         </Rows>
+      ) : (
+        <EmptyState icon={RiRssLine} title="还没有订阅源" shell="plain">
+          在人物页点「订阅新作」添加。
+        </EmptyState>
+      )}
+      {failing.length || action.error ? (
+        <Stack divided>
+          {/* 拉不动的源各自把原因摆在自己那一行下面：一条源坏掉不该让整节看起来都坏了。 */}
+          {failing.map((source) => (
+            <Note key={source.id} tone="error" title={`${source.name || source.url} 拉取失败`}>
+              {source.last_error}
+            </Note>
+          ))}
+          {action.error ? <ErrorText>{action.error}</ErrorText> : null}
+        </Stack>
       ) : null}
-      <Stack divided={data.sources.length > 0}>
-        {/* 拉不动的源各自把原因摆在自己那一行下面：一条源坏掉不该让整节看起来都坏了。 */}
-        {data.sources.filter((source) => source.last_error).map((source) => (
-          <Note key={source.id} tone="error" title={`${source.name || source.url} 拉取失败`}>
-            {source.last_error}
-          </Note>
-        ))}
-        {action.error ? <ErrorText>{action.error}</ErrorText> : null}
-        <Help>在人物页点「订阅新作」就会加到这里。订阅只发现番号、建一条「未入库」的新作，不下载任何文件；新作在首页和人物页里看。</Help>
-      </Stack>
       <Footer status={data.unread ? `有 ${data.unread} 条新作还没看` : '新作都看过了'}>
         <Button onClick={check} disabled={readOnly} {...busyProps(action.busy === 'check')}>立即拉取</Button>
       </Footer>
-    </Section>
+    </SettingsCard>
   );
 }
