@@ -435,6 +435,105 @@ class AssetArtworkTests(PickerFixture):
             avatar_picker.crop(b"not an image", {"x0": 0, "y0": 0, "x1": 9, "y1": 9})
 
 
+def face_record(width: int, height: int, cx: float = 0.8, cy: float = 0.3,
+                w: float = 0.05) -> dict:
+    """`avatar_face` 边车的形状：`px` 是检测时那张图的尺寸，脸框按比例给。"""
+    return {"ratio": width / height, "px": [width, height],
+            "face": {"cx": cx, "cy": cy, "w": w, "h": w * 1.2, "score": 0.9}}
+
+
+class CoverFocusTests(AssetArtworkTests):
+    """格子与框选默认框围着哪一块取景。"""
+
+    def focus_of(self) -> dict | None:
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        return next(one for one in listed["choices"] if one["source"] == "asset")["focus"]
+
+    def test_a_detected_face_frames_the_same_square_the_batch_would_cut(self):
+        self.add_asset(11, "ABW-232")
+        sidecar_path(self.cover).write_text(json.dumps(face_record(400, 260)), "utf-8")
+        # 脸宽 20px，方框 48px，脸心在 (320, 78)。
+        self.assertEqual(self.focus_of(), {"x0": 296, "y0": 54, "x1": 344, "y1": 102})
+
+    def test_a_face_found_on_another_size_of_the_cover_is_not_trusted(self):
+        """封面换成更大的那张之后，旧记录的脸心落在新图上是一块错位的区域。"""
+        self.add_asset(11, "ABW-232")
+        sidecar_path(self.cover).write_text(json.dumps(face_record(200, 130)), "utf-8")
+        # 退回正封：400×260 是封套，正封按比例从右缘量回去 0.704 倍高。
+        self.assertEqual(self.focus_of(), {"x0": 217, "y0": 0, "x1": 400, "y1": 260})
+
+    def test_a_sleeve_with_a_framed_front_panel_uses_that_panel(self):
+        self.add_asset(11, "ABW-232")
+        jav_poster_crop.write_sidecar(
+            self.cover, jav_poster_crop.manual_record(400, 260, {"x0": 230, "y0": 0,
+                                                                  "x1": 400, "y1": 260}))
+        self.assertEqual(self.focus_of(), {"x0": 230, "y0": 0, "x1": 400, "y1": 260})
+
+    def test_a_cover_that_is_not_a_sleeve_has_nothing_to_frame_on(self):
+        (self.covers / "FC2-PPV-1.jpg").write_bytes(picture(400, 260, "blue"))
+        self.add_asset(21, "FC2-PPV-1")
+        self.assertIsNone(self.focus_of())
+
+
+class CodeCoverTests(PickerFixture):
+    """按番号取一张封面来框：本机有就不出网，取过一次就不再取。"""
+
+    def setUp(self):
+        super().setUp()
+        self.covers = self.folder / "covers"
+        self.covers.mkdir()
+        self.fetched: list[str] = []
+        self.body = picture(800, 540, "maroon")
+
+    def fetch(self, key: str) -> bytes:
+        self.fetched.append(key)
+        return self.body
+
+    def take(self, code: str, probe=lambda body: None):
+        return avatar_picker.code_cover(code, self.covers, self.providers, self.fetch, probe)
+
+    def test_a_code_outside_the_library_is_fetched_once_and_then_read_back(self):
+        first = self.take("abw-999")
+        self.assertEqual((first.ref, first.source, first.label), ("cover:ABW-999", "code", "ABW-999"))
+        self.assertEqual((first.width, first.height, first.crop), (800, 540, True))
+        self.take("ABW-999")
+        self.assertEqual(self.fetched, ["ABW-999"])
+        body, origin = avatar_picker.resolve("cover:ABW-999", self.connection,
+                                             self.providers, 7792, None)
+        self.assertEqual(body, self.body)
+        self.assertEqual(origin["provider"], "code-cover")
+        # `keep` 拿 `upstream_url` 当缓存键；写了它，框出来的那一块会顶掉整张封面。
+        self.assertNotIn("upstream_url", origin)
+
+    def test_a_fetched_cover_never_poses_as_something_she_took(self):
+        self.take("ABW-999")
+        self.assertEqual([one for one in self.listed()["choices"]
+                          if one["source"] == "history"], [])
+
+    def test_a_cover_on_this_machine_is_used_without_the_network(self):
+        (self.covers / "ABW-232.jpg").write_bytes(self.body)
+        sidecar_path(self.covers / "ABW-232.jpg").write_text(
+            json.dumps(face_record(800, 540)), "utf-8")
+        probed: list[bytes] = []
+        chosen = self.take("ABW-232", probe=lambda body: probed.append(body))
+        self.assertEqual(self.fetched, [])
+        self.assertEqual(probed, [], "边车里已经有这张图的脸")
+        self.assertEqual(chosen.focus, (592, 114, 688, 210))
+
+    def test_a_fetched_cover_is_probed_for_a_face(self):
+        chosen = self.take("ABW-999", probe=lambda body: face_record(800, 540, cx=0.2))
+        self.assertEqual(chosen.focus, (112, 114, 208, 210))
+
+    def test_a_code_never_fetched_is_refused_instead_of_going_out(self):
+        """出网只在人输入番号那一步；预览和确认递来的 `cover:` 只读本机。"""
+        with self.assertRaises(avatar_picker.PickerError):
+            avatar_picker.resolve("cover:ABW-999", self.connection, self.providers, 7792, None)
+        with self.assertRaises(avatar_picker.PickerError):
+            self.take("  ")
+        self.assertEqual(self.fetched, [])
+
+
 class ResolveTests(PickerFixture):
     def test_a_library_candidate_is_downloaded_once(self):
         body = picture()
@@ -558,7 +657,8 @@ class AvatarPickerRouteTests(unittest.TestCase):
         self.addCleanup(mock.patch.stopall)
         self.app = create_app(PeachSettings(
             db_path=database, configured=True, token="secret",
-            avatar_root=self.avatars, candidate_root=self.candidates))
+            avatar_root=self.avatars, candidate_root=self.candidates,
+            cover_root=self.folder / "covers"))
         self.picture = picture(colour="navy")
         self.app.state.http_transport = transport_of(self.picture)
         self.client = TestClient(self.app)
@@ -618,6 +718,37 @@ class AvatarPickerRouteTests(unittest.TestCase):
         self.assertEqual(accepted.status_code, 200)
         self.assertEqual((self.avatars / "performer-7792.img").read_bytes(),
                          self.picture)
+
+    def test_a_typed_code_brings_back_a_cover_that_then_frames_and_installs(self):
+        from peach import routes_media
+
+        cover = picture(800, 540, "maroon")
+        with mock.patch.object(routes_media, "_official_cover", return_value=cover) as fetched, \
+                mock.patch.object(routes_media._WORK_FACE_PROBE, "on_bytes", return_value=None):
+            response = self.client.post("/api/avatar-code-cover?t=secret",
+                                        json={"code": "abw-999"})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["ref"], "cover:ABW-999")
+            self.assertEqual(fetched.call_args.args[1], "ABW-999")
+            preview = self.client.get("/avatar-choice", params={
+                "kind": "performer", "id": 7792, "ref": "cover:ABW-999", "t": "secret"})
+            self.assertEqual(preview.content, cover)
+            picked = self.client.post("/api/avatar-pick?t=secret", json={
+                "kind": "performer", "id": 7792, "ref": "cover:ABW-999",
+                "crop": {"x0": 400, "y0": 0, "x1": 800, "y1": 400}})
+        self.assertEqual(picked.status_code, 200)
+        self.assertEqual(avatar_picker.accept_image(
+            (self.avatars / "performer-7792.img").read_bytes()).width, 400)
+
+    def test_a_code_that_is_not_a_code_never_reaches_the_sources(self):
+        from peach import routes_media
+
+        with mock.patch.object(routes_media, "_official_cover") as fetched:
+            for bad in ("../etc/passwd", "https://example.com/a.jpg", ""):
+                response = self.client.post("/api/avatar-code-cover?t=secret",
+                                            json={"code": bad})
+                self.assertEqual(response.status_code, 400, bad)
+        fetched.assert_not_called()
 
     def test_a_request_without_a_picture_or_an_id_is_refused(self):
         for payload in ({"id": 7792}, {"ref": LIBRARY_REF}, {"id": 0}):

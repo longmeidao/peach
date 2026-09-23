@@ -3,14 +3,18 @@
  * 候选图走 `/avatar-choice?ref=`：页面只递服务端自己列出来的 ref，地址由服务端按索引拼。
  * 手填地址那一条是唯一的例外，它在服务端有自己的公网判据。 */
 import { ApiError, apiGet, apiSend } from '../../api';
+import {
+  centeredBox, frameWithin, isUsableSize, type CropBox, type CropSize,
+} from '../../crop-geometry';
 
 export const AVATAR_CHOICES_URL = '/api/avatar-choices';
 export const AVATAR_PICK_URL = '/api/avatar-pick';
+export const AVATAR_CODE_COVER_URL = '/api/avatar-code-cover';
 const AVATAR_CHOICE_IMAGE_URL = '/avatar-choice';
 
 export interface AvatarChoice {
   ref: string;
-  source: 'gfriends' | 'history' | 'asset';
+  source: 'gfriends' | 'history' | 'asset' | 'code';
   label: string;
   width: number;
   height: number;
@@ -22,6 +26,9 @@ export interface AvatarChoice {
   crop: boolean;
   /** 框选时可以换的底图，按 ref 给：封面加九宫格那九格。 */
   bases: string[];
+  /** 封面上该取景的那一块（脸周围的方图，没检出脸的封套是正封），源图像素。
+   *  只对 `ref` 那一张、`width`×`height` 那个尺寸作数。 */
+  focus: CropBox | null;
 }
 
 export interface AvatarChoices {
@@ -45,6 +52,22 @@ export const choiceImageUrl = (kind: string, id: number, ref: string) =>
 
 export const fetchAvatarChoices = (kind: string, id: number, signal?: AbortSignal) =>
   apiGet<AvatarChoices>(AVATAR_CHOICES_URL + query(kind, id), signal);
+
+/** 按番号取一张封面来框。番号不必在馆藏里：本机没有时服务端去官方渠道取。 */
+export const fetchCodeCover = (code: string) =>
+  apiSend<AvatarChoice>(AVATAR_CODE_COVER_URL, { code });
+
+/** 一张候选按 `aspect` 取景的那一块：有取景区就在它里面取，没有就整张图居中。
+ *  `size` 不是这一格自己那张图时（换了底图）一律居中：取景区只对它自己的像素作数。 */
+export function choiceFrame(choice: AvatarChoice, size: CropSize, aspect: number): CropBox {
+  const own = size.width === choice.width && size.height === choice.height;
+  return choice.focus && own ? frameWithin(choice.focus, size, aspect) : centeredBox(size, aspect);
+}
+
+/** 格子要不要自己取景：只有要框的那几路（作品画面、番号封面）是横图。竖的图库
+ *  人像照旧 `object-cover`，尺寸不知道的也是。 */
+export const framesItself = (choice: AvatarChoice): boolean =>
+  choice.crop && isUsableSize({ width: choice.width, height: choice.height });
 
 /** 框选出来的那一块，源图像素、右下开区间。后端按同一组整数裁。 */
 export interface AvatarCrop { x0: number; y0: number; x1: number; y1: number }
@@ -76,7 +99,8 @@ export async function sendAvatarPick(
 /** 说明只留一句：这一屏已经用图说清了在选什么，多一行字就是多一行要读的东西。
  *  按哪个名字找到的要说——找错人是这里唯一会出的大错，而名字是唯一的线索。 */
 export function pickerNote(name: string, data: AvatarChoices | undefined): string {
-  if (!data) return '正在找可用的图…';
+  // 候选在路上时网格里是 Skeleton，这里不再另写一句「正在读取」。
+  if (!data) return name;
   const elsewhere = data.matched_names.filter((one) => one !== name);
   if (elsewhere.length) return `${name}：图库里按「${elsewhere.join('」「')}」找到的。`;
   return data.choices.length
@@ -89,11 +113,12 @@ export const indexNotReady = (data: AvatarChoices | undefined): boolean =>
   !!data && data.index_stale && !data.choices.some((one) => one.source === 'gfriends');
 
 const SOURCE_LABELS: Record<string, string> = {
-  gfriends: '图库', history: '用过的', asset: '作品画面',
+  gfriends: '图库', history: '用过的', asset: '作品画面', code: '番号封面',
 };
 
 /** 底图那一排每一格的名字：封面一格，九宫格九格按位置数。 */
 export function baseLabel(ref: string): string {
+  if (ref.startsWith('cover:')) return '封面';
   const what = ref.split(':')[2] || '';
   if (what === 'cover') return '封面';
   const cell = Number(what.replace('cell', ''));

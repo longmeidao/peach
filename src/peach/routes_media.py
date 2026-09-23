@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import time
 from functools import partial
 from pathlib import Path
 from typing import Iterable
@@ -620,8 +621,9 @@ def source_icon(request: Request, provider: str = "", args: dict[str, str] = Dep
     return _asset_response(request, path)
 
 
-#: 题材头像的人脸探针。YuNet 的模型是个 232 KB 的 ONNX，首次用到时才去取；取不到就
-#: 一直回 None，那时圆标退回样式表里的默认取景——没网不该等于这一排一张图都没有。
+#: 人脸探针，题材头像与换头像按番号取的封面共用。YuNet 的模型是个 232 KB 的 ONNX，
+#: 首次用到时才去取；取不到就一直回 None，那时圆标退回样式表里的默认取景、封面退回
+#: 正封取景——没网不该等于这一排一张图都没有。
 _WORK_FACE_PROBE = avatar_face.FaceProbe()
 
 
@@ -1141,3 +1143,67 @@ async def avatar_pick(request: Request, args: dict[str, str] = Depends(require_a
     # 页面按这份索引决定「出 `<img>` 还是首字母垫底」，换完不失效就看不到新图。
     state.cache_bust()
     return JSONResponse({"ok": True, "kind": kind, "id": entity_id, **result})
+
+
+#: 按番号去官方渠道取一张封面的预算。人在弹层里等着，挑不出就报原因，不能一直转。
+CODE_COVER_SECONDS = 60
+
+
+def _official_cover(contract, key: str) -> bytes:
+    """官方渠道里这个番号最大的那张封面，和重探封面走同一个 `best_cover`。"""
+    from .catalog_rules import is_korean_mib_code
+    from .jav_cover_fetch import (
+        MIB_NOT_JAV, DeadlineExceeded, HostLimitedTransport, NotFound, Unavailable, best_cover,
+    )
+    from .scraping_access import SourcePaused, SourceTransport
+
+    if is_korean_mib_code(key):
+        raise avatar_picker.PickerError(MIB_NOT_JAV)
+    raw = SourceTransport(contract.follow_secrets_root, max_requests=40,
+                          max_bytes=32 * 1024 * 1024, max_seconds=CODE_COVER_SECONDS)
+    transport = HostLimitedTransport(raw, 1.0)
+    try:
+        _candidate, _size, data = best_cover(
+            transport, key, 0,
+            metadata_root=contract.follow_sources_root / "metadata" / "javinizer-go",
+            deadline=time.monotonic() + CODE_COVER_SECONDS)
+    except NotFound as error:
+        raise avatar_picker.PickerError("官方渠道没有这个番号的封面") from error
+    except Unavailable as error:
+        raise avatar_picker.PickerError(f"取不到这个番号的封面：{error}") from error
+    except DeadlineExceeded as error:
+        raise avatar_picker.PickerError(
+            f"{CODE_COVER_SECONDS} 秒内没取到这个番号的封面，稍后再试") from error
+    except SourcePaused as error:
+        raise avatar_picker.PickerError(str(error)) from error
+    except httpx.TransportError as error:
+        raise avatar_picker.PickerError("来源连接失败，请检查来源连接设置") from error
+    finally:
+        transport.close()
+    return data
+
+
+@router.post("/api/avatar-code-cover")
+async def avatar_code_cover(request: Request, args: dict[str, str] = Depends(require_auth)):
+    """按番号拿一张封面给换头像框选，番号不必在馆藏里。
+
+    本机有就读本机，没有才去官方渠道取，取到的留在候选缓存里；这里只取图，装不装由
+    框选之后的 `/api/avatar-pick` 决定。
+    """
+    from .metadata import validate_provider_code
+
+    state = request.app.state.web_contract
+    providers_root, _ = _picker_roots(state)
+    sent = await request.json()
+    payload = sent if isinstance(sent, dict) else {}
+    try:
+        code = validate_provider_code(str(payload.get("code") or ""))
+    except ValueError:
+        return JSONResponse({"error": "认不出这个番号"}, status_code=400)
+    try:
+        choice = await asyncio.to_thread(
+            avatar_picker.code_cover, code, state.cover_root, providers_root,
+            partial(_official_cover, state), _WORK_FACE_PROBE.on_bytes)
+    except avatar_picker.PickerError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+    return JSONResponse(choice.as_dict())

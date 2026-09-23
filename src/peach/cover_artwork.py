@@ -24,7 +24,12 @@ def _default_detector() -> FaceDetector:
 
 
 def face_record(image, detector) -> dict | None:
-    """已解码的封面 → 页面取景记录；无法解码时不生成记录。"""
+    """已解码的封面 → 页面取景记录；无法解码时不生成记录。
+
+    脸框宽高与源图尺寸 `px` 也记下，形状与头像边车（`avatar_face.face_record_of`）
+    一致：卡片取景只用脸心，换头像要按脸宽在封面上框出一块方图
+    （`avatar_cover_face.face_square`），而 `px` 对不上当前这张图时那一块不作数。
+    """
     if image is None or not getattr(image, "size", 0):
         return None
     height, width = image.shape[:2]
@@ -34,8 +39,9 @@ def face_record(image, detector) -> dict | None:
         faces = [face for face in faces if face.cx >= FRONT_START]
     faces = [face for face in faces if MIN_FACE_Y <= face.cy <= MAX_FACE_Y]
     best = main_face(faces)
-    return {"ratio": round(ratio, 3), "face": (
-        {"cx": best.cx, "cy": best.cy, "score": best.score} if best else None)}
+    return {"ratio": round(ratio, 3), "px": [int(width), int(height)], "face": (
+        {"cx": best.cx, "cy": best.cy, "w": best.width, "h": best.height,
+         "score": best.score} if best else None)}
 
 
 def _sidecars(code: str, payload: bytes, size: tuple[int, int], detector=None) -> dict[str, bytes]:

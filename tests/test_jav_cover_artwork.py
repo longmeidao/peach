@@ -37,6 +37,8 @@ class CoverArtworkTests(unittest.TestCase):
         face = json.loads(self.target.with_suffix(".face.json").read_text(encoding="utf-8"))
         poster = jav_poster_crop.read_sidecar(self.target)
         self.assertEqual(face["face"]["cx"], .72)
+        # 换头像按脸宽在封面上框方图，`px` 用来判这份记录是不是这张图的。
+        self.assertEqual((face["px"], face["face"]["w"]), ([840, 472], .1))
         self.assertTrue(jav_poster_crop.is_current(poster, 840, 472))
 
     def test_missing_face_model_removes_stale_focus_but_keeps_new_cover(self):
