@@ -13,7 +13,7 @@ copyright／metadata）只在帖子页的 `#tag-sidebar` 上。连接器早就�
 - 详情标签全是中性色。按类型着色和按 rule34 分类排序都要有类型才成立。
 
 常规「检查更新」只看第一页，补不到历史条目，所以要这一趟。抓取逻辑不重写，
-直接复用连接器的 `_detail_tag_types`：判据只能有一处。
+直接复用连接器的 `_detail`：判据只能有一处。
 
 默认 dry-run。`--apply` 必须同时给 `--backup`，与本仓库其它真实写入脚本一致。
 可反复运行：已经有类型的条目直接跳过，中断后接着跑就是。
@@ -43,7 +43,7 @@ FIELDS = ("item_id", "external_id", "url", "result", "tag_types", "note")
 
 #: 同一主机的最小请求间隔。rule34.xxx 自己公布的口径是每 60 秒 60 次，也就是
 #: 每次至少 1 秒；留一点余量。首轮按 0.35 秒跑过一次：400 条里 372 条「帖子页
-#: 没有解析出类型」——不是这些帖子没有类型，是被限流挡了，`_detail_tag_types`
+#: 没有解析出类型」——不是这些帖子没有类型，是被限流挡了，`_detail`
 #: 把非 200 吞成了空字典。速度换来的全是白跑的请求。
 DEFAULT_DELAY = 1.1
 #: 连续这么多条取不到就认定是被限流，而不是这一段恰好都没类型。
@@ -140,7 +140,7 @@ def run(args: argparse.Namespace) -> int:
                         "result": "跳过", "tag_types": "", "note": "external_id 不是帖子号"})
             continue
         try:
-            tag_types = connector._detail_tag_types(post_id)
+            tag_types = connector._detail(post_id).get("tag_types") or {}
         except (FollowSourceError, OSError) as error:
             log.append({"item_id": row["id"], "external_id": post_id, "url": row["url"],
                         "result": "未取得", "tag_types": "",

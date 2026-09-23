@@ -1402,12 +1402,14 @@ class Rule34XxxConnector(_BaseConnector):
                            raw_body=response.body, **common)
 
     def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
-        tag_types = self._detail_tag_types(str(candidate.external_id))
+        detail = self._detail(str(candidate.external_id))
+        tag_types = detail.get("tag_types")
         if not tag_types:
             # 详情页这次没给出分类。保持 partial：上一轮取到的分类还在库里，
             # 覆盖成空会让「这条没有分类」和「这次没问到」在数据里长得一样。
             return candidate
         return replace(candidate, partial=False,
+                       published_at=detail.get("published_at") or candidate.published_at,
                        extra={**candidate.extra, "tag_types": tag_types})
 
     #: 自动补全项的形状：`ria-neearts (248)`，括号里是该标签下的帖子数。
@@ -1447,7 +1449,7 @@ class Rule34XxxConnector(_BaseConnector):
         return tuple(rows)
 
     #: dapi 的 tag 接口用数字表示分类。名字取站方自己在详情页 `#tag-sidebar` 上用的
-    #: 那套（`_detail_tag_types` 读的就是它），两条路认出来的类型才是同一个词。
+    #: 那套（`_detail` 读的就是它），两条路认出来的类型才是同一个词。
     _TAG_TYPE_NAMES = {0: "general", 1: "artist", 3: "copyright",
                        4: "character", 5: "metadata"}
     #: dapi 的 tag 接口只回 XML，`json=1` 实测被忽略。
@@ -1492,14 +1494,16 @@ class Rule34XxxConnector(_BaseConnector):
     })
     #: 详情页取不到时的退避节奏，与外网退避规则同一套。
     _DETAIL_RETRY_DELAYS = (1.5, 4.0, 9.0)
+    #: 详情页 `#stats` 里的上传时间：`Posted: 2026-09-11 00:48:20 by mhzw666`。
+    _POSTED_RE = re.compile(r"Posted:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
 
-    def _detail_tag_types(self, post_id: str) -> dict[str, str]:
-        """Read rule34.xxx's own tag taxonomy from the public post page.
+    def _detail(self, post_id: str) -> dict[str, object]:
+        """帖子详情页上才有的两样：标签分类和上传时间。取不到就是空字典。
 
-        The posts DAPI only returns one flat tag string.  The post page is the
-        authoritative surface that marks each tag as general, artist,
-        copyright, character or metadata.  If that optional enrichment is
-        unavailable we keep the post, but we do not guess types from words.
+        dapi 只给一串扁平标签，分类要读详情页 `#tag-sidebar`，取不到就不给，不按词形
+        猜。dapi 也不给上传时间：它的 `change` 是最后一次修改，实测 17361475 在
+        2026-05-01 上传、09-14 被改过标签，`change` 就是 09-14。详情页 `#stats` 的
+        Posted 才是上传时间；没被改过的帖子两者逐秒相同，所以它和 `change` 一样是 UTC。
         """
         url = ("https://rule34.xxx/index.php?page=post&s=view&id="
                f"{urllib.parse.quote(post_id)}")
@@ -1538,7 +1542,10 @@ class Rule34XxxConnector(_BaseConnector):
             name = html.unescape(str((query.get("tags") or [""])[0])).strip()
             if name:
                 result[name] = tag_type
-        return result
+        stats = soup.select_one("#stats")
+        posted = self._POSTED_RE.search(stats.get_text(" ") if stats is not None else "")
+        return {"tag_types": result,
+                "published_at": _iso_from_text(posted.group(1)) if posted else None}
 
     def _candidate(self, post: dict, tag: str) -> FollowCandidate:
         post_id = str(post.get("id") or "")
@@ -1580,6 +1587,7 @@ class Rule34XxxConnector(_BaseConnector):
             # 对图片则是站点选定的样图。gallery-dl 的 booru 抽取器也把这三层
             # 作为可配置回退链，不能把最小 preview 固定成 Peach 封面。
             thumb_url=str(post.get("sample_url") or post.get("preview_url") or "") or None,
+            # `change` 是最后修改时间，只在详情页取不到时占位；上传时间由 `_detail` 给。
             published_at=_iso_from_epoch(post.get("change")),
             group_hint=hint,
             title_is_name=title_is_name,
