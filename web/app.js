@@ -10984,7 +10984,10 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
       const width=Math.round(node.clientWidth),height=Math.round(node.clientHeight);if(!width||!height)return;
       const radius=Math.min(parseFloat(getComputedStyle(node).borderRadius)||22,width/2,height/2);const key=`${width}:${height}:${radius}`;if(previous===key)return;previous=key;
       const ratio=Math.min(1,600/width,600/height);const w=Math.max(2,Math.round(width*ratio)),h=Math.max(2,Math.round(height*ratio));
-      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d');const pixels=ctx.createImageData(w,h);
+      /* 画布只拿来写一次像素、读一次 PNG，走 CPU 那一种：默认的 GPU 画布在 toDataURL 时要把
+         像素读回来，第一次还得先建 GPU 上下文，冷启动实测单这一下就是一百毫秒上下，之后的
+         重画也时不时要和合成抢 GPU 等几十毫秒。 */
+      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;const ctx=canvas.getContext('2d',{willReadFrequently:true});const pixels=ctx.createImageData(w,h);
       const distance=(x,y)=>{const qx=Math.abs(x-width/2)-(width/2-radius),qy=Math.abs(y-height/2)-(height/2-radius);return Math.hypot(Math.max(qx,0),Math.max(qy,0))+Math.min(Math.max(qx,qy),0)-radius};
       const depth=Math.min(24,Math.min(width,height)/3);
       for(let y=0;y<h;y++)for(let x=0;x<w;x++){
