@@ -3,7 +3,7 @@
 - 状态：Accepted
 - 日期：2026-09-23
 - 关系：与 [ADR-0028](0028-follow-groups-fold-within-an-author.md)、
-  [ADR-0044](0044-follow-booru-bursts-fold-into-one-work.md) 同为读时计算
+  [ADR-0046](0046-follow-booru-bursts-fold-into-one-work.md) 同为读时计算
 
 ## 背景
 
