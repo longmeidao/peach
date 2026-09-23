@@ -2,11 +2,17 @@
 import unittest
 
 from peach.metadata_policy import SOURCE_SPECS
-from peach.metadata_routes import (AMANE_STAGE, COMMUNITY_STAGE, CONTENT_TYPES, LIST_FIELD_DEPTH,
-                                   OFFICIAL_STAGE, ROUTES, amane_route, classify, community_route,
-                                   official_route, parse_route_overrides, required_scalars,
-                                   route, route_for_code, settles, stage_members,
+from peach.metadata_routes import (AMANE_OFFICIAL_STAGE, AMANE_STAGE, COMMUNITY_STAGE, CONTENT_TYPES,
+                                   LIST_FIELD_DEPTH, MAKER_EVIDENCE, OFFICIAL_STAGE, ROUTES, classify,
+                                   community_route, maker_sites, official_route, parse_route_overrides,
+                                   required_scalars, route, route_for_code, settles, stage_members,
                                    stages_for_code)
+
+
+def amane_sites(code, *hints, overrides=None):
+    """这个番号在经桥的两档各问哪几站：(官方档, 转载站那一档)。"""
+    chain = route_for_code(code, *hints, overrides=overrides)
+    return stage_members('amane_official', chain), stage_members('amane', chain)
 
 
 class ClassifyTests(unittest.TestCase):
@@ -42,14 +48,27 @@ class RouteTableTests(unittest.TestCase):
                 with self.subTest(content=content, source=source):
                     self.assertIn(source, SOURCE_SPECS)
 
-    def test_censored_asks_the_official_mirror_first_and_javdb_last(self):
-        """javdb 按出口 IP 计配额、主机间隔 5 秒，先问便宜的那两家。"""
+    def test_censored_asks_the_maker_then_the_official_mirror_and_javdb_last(self):
+        """厂商官网是发行方口径，排在官方镜像前；javdb 按出口 IP 计配额，排最后。"""
+        self.assertEqual(ROUTES['censored'],
+                         ('prestige', 'faleno', 'dahlia', 'makers', 'r18dev', 'avbase', 'javbus', 'javdb'))
         self.assertEqual(route_for_code('ABW-220'),
-                         ('r18dev', 'avbase', 'javbus', 'javdb'))
+                         ('prestige', 'r18dev', 'avbase', 'javbus', 'javdb'))
+        self.assertEqual(route_for_code('SSIS-057'),
+                         ('makers', 'r18dev', 'avbase', 'javbus', 'javdb'))
 
-    def test_amateur_keeps_the_same_chain_until_mgstage_is_wired_in(self):
-        """MGS 素人第一源要等适配器；现在就往链首塞一个不存在的站只会是空洞。"""
-        self.assertEqual(route_for_code('300MIUM-1239'), route_for_code('ABW-220'))
+    def test_amateur_asks_mgstage_first_and_never_the_makers(self):
+        """MGS 素人系由 MGS 自己发行；片商官网对素人号一个请求都不发。"""
+        for code in ('300MIUM-1239', '259LUXU-1475', 'SIRO-4630'):
+            with self.subTest(code=code):
+                self.assertEqual(route_for_code(code),
+                                 ('mgstage', 'r18dev', 'avbase', 'javbus', 'javdb'))
+
+    def test_mgstage_is_not_asked_for_censored_codes(self):
+        """mgstage 对有码号是转售店，标题缀着店铺特典，片商官网才是发行方。"""
+        for code in ('ABW-220', 'SSIS-057', 'FSDSS-437'):
+            with self.subTest(code=code):
+                self.assertNotIn('mgstage', route_for_code(code))
 
     def test_uncensored_never_asks_r18dev(self):
         """无码番号在 r18.dev 上没有，留着它等于每条白等一次主机间隔。"""
@@ -73,16 +92,59 @@ class RouteTableTests(unittest.TestCase):
                          ('fc2', 'fc2cmadb', 'javarchive', 'fc2club', 'javdb'))
         self.assertNotIn('r18dev', route_for_code('FC2-PPV-1812235'))
 
-    def test_the_amane_sites_peach_already_covers_are_not_on_any_default_chain(self):
-        """有码与素人的默认链不经桥：freejavbt 与 airav 只能由用户整条覆盖时点名。"""
-        self.assertEqual(amane_route('ABW-220'), ())
-        self.assertEqual(amane_route('300MIUM-1239'), ())
-        self.assertEqual(amane_route('FC2-PPV-1812235'), ('fc2club',))
-        self.assertEqual(amane_route('HEYZO-1380'), ('avsox',))
-        self.assertEqual(amane_route('ABW-220', overrides={'censored': ('r18dev', 'freejavbt', 'airav')}),
-                         ('freejavbt', 'airav'))
+    def test_the_amane_reprint_sites_are_not_on_the_censored_or_amateur_chains(self):
+        """有码与素人的默认链只经桥问官方档：freejavbt 与 airav 只能由用户整条覆盖时点名。"""
+        self.assertEqual(amane_sites('ABW-220'), (('prestige',), ()))
+        self.assertEqual(amane_sites('300MIUM-1239'), (('mgstage',), ()))
+        self.assertEqual(amane_sites('FC2-PPV-1812235'), ((), ('fc2club',)))
+        self.assertEqual(amane_sites('HEYZO-1380'), ((), ('avsox',)))
+        self.assertEqual(amane_sites('ABW-220', overrides={'censored': ('r18dev', 'freejavbt', 'airav')}),
+                         ((), ('freejavbt', 'airav')))
         self.assertEqual(set(AMANE_STAGE) & set(COMMUNITY_STAGE), set())
         self.assertEqual(set(AMANE_STAGE) & set(OFFICIAL_STAGE), set())
+        self.assertLessEqual(set(AMANE_OFFICIAL_STAGE), set(OFFICIAL_STAGE))
+
+
+class MakerEvidenceTests(unittest.TestCase):
+    """Prestige、FALENO、DAHLIA 对任何番号都发请求，只问本机证据认得的自家番号。"""
+
+    def test_each_maker_site_only_gets_its_own_prefixes(self):
+        for code, expected in (('ABW-032', ('prestige',)), ('ABF-246', ('prestige',)),
+                               ('FSDSS-437', ('faleno',)), ('DLDSS-480', ('dahlia',)),
+                               ('SSIS-057', ()), ('MIDE-845', ()), ('IPX-060', ())):
+            with self.subTest(code=code):
+                self.assertEqual(maker_sites(code), expected)
+
+    def test_a_claimed_code_skips_makers_and_an_unclaimed_one_asks_only_makers(self):
+        """一个番号只属于一家片商：三家有一家认了，就不再起 amane 的片商表。"""
+        for code, official in (('ABW-032', ('prestige',)), ('FSDSS-437', ('faleno',)),
+                               ('DLDSS-480', ('dahlia',)), ('SSIS-057', ('makers',)),
+                               ('MIDE-845', ('makers',))):
+            with self.subTest(code=code):
+                self.assertEqual(amane_sites(code)[0], official)
+
+    def test_the_studio_or_path_can_claim_a_code_the_prefix_table_misses(self):
+        """前缀表取自账本统计，新前缀先由厂牌列或路径认出来。"""
+        self.assertEqual(maker_sites('XYZ-001', 'プレステージ'), ('prestige',))
+        self.assertEqual(maker_sites('XYZ-001', r'R:\media\FALENO\XYZ-001.mp4'), ('faleno',))
+        self.assertEqual(amane_sites('XYZ-001', 'DAHLIA')[0], ('dahlia',))
+        self.assertEqual(amane_sites('XYZ-001')[0], ('makers',))
+
+    def test_the_prefix_must_match_whole_not_as_a_substring(self):
+        """ABWX 不是 ABW：只认番号开头那一整段字母。"""
+        self.assertEqual(maker_sites('ABWX-001'), ())
+        self.assertEqual(maker_sites('ABW032'), ('prestige',))
+
+    def test_the_evidence_table_only_names_maker_sites_on_the_censored_chain(self):
+        self.assertLessEqual(set(MAKER_EVIDENCE), set(ROUTES['censored']))
+        for site, (prefixes, names) in MAKER_EVIDENCE.items():
+            with self.subTest(site=site):
+                self.assertTrue(prefixes and names)
+
+    def test_an_override_naming_a_maker_site_still_goes_through_the_evidence(self):
+        overrides = {'censored': ('prestige', 'r18dev')}
+        self.assertEqual(route_for_code('SSIS-057', overrides=overrides), ('r18dev',))
+        self.assertEqual(route_for_code('ABW-032', overrides=overrides), ('prestige', 'r18dev'))
 
     def test_korean_mib_and_a_missing_code_ask_nobody(self):
         self.assertEqual(route_for_code('YUJ-103'), ())
@@ -103,7 +165,8 @@ class RouteTableTests(unittest.TestCase):
 class StageTests(unittest.TestCase):
     def test_stages_keep_the_official_sources_apart_and_fold_the_indexes(self):
         """官方那几家逐个成档才短路得了；综合索引那一档整档一起问，经桥的几站也合成一档。"""
-        self.assertEqual(stages_for_code('ABW-220'), ('r18dev', 'community'))
+        self.assertEqual(stages_for_code('ABW-220'), ('amane_official', 'r18dev', 'community'))
+        self.assertEqual(stages_for_code('300MIUM-1239'), ('amane_official', 'r18dev', 'community'))
         self.assertEqual(stages_for_code('040221-001'), ('community', 'amane'))
         self.assertEqual(stages_for_code('FC2-PPV-1812235'), ('fc2', 'amane', 'community'))
         self.assertEqual(stages_for_code('YUJ-103'), ())
@@ -114,6 +177,9 @@ class StageTests(unittest.TestCase):
         self.assertEqual(stage_members('amane', chain), ('fc2club',))
         self.assertEqual(stage_members('community', chain), ('javdb',))
         self.assertEqual(stage_members('r18dev', chain), ())
+        chain = route_for_code('SSIS-057')
+        self.assertEqual(stage_members('amane_official', chain), ('makers',))
+        self.assertEqual(stage_members('r18dev', chain), ('r18dev',))
 
 
 class ShortCircuitTests(unittest.TestCase):
@@ -128,6 +194,25 @@ class ShortCircuitTests(unittest.TestCase):
     def test_a_row_that_only_misses_list_fields_stops_at_the_first_answer(self):
         """要的本来就不是标量，再问下一档只会拿回一堆和现值相同的候选（ADR-0033）。"""
         self.assertTrue(settles((), ()))
+
+    def test_the_maker_stage_settles_the_chain_when_it_covers_the_scalars(self):
+        """厂商官网把标题、演员、厂牌、发行日给全了，r18.dev 与综合索引都不再问。"""
+        self.assertTrue(settles(('title', 'performers', 'studio', 'release_date'),
+                                ('title', 'performers', 'studio', 'release_date', 'tags'),
+                                wants_tags=True, then='r18dev'))
+
+    def test_a_row_missing_tags_asks_one_more_official_stage_when_the_maker_gave_none(self):
+        """FALENO、DAHLIA 官网不给类别：缺标签的行再问 r18.dev 一次，但不为标签去问 javdb。"""
+        scalars = ('title', 'performers', 'studio', 'release_date')
+        self.assertFalse(settles(scalars, scalars, wants_tags=True, then='r18dev'))
+        self.assertTrue(settles(scalars, scalars, wants_tags=True, then='community'))
+        self.assertTrue(settles(scalars, scalars, wants_tags=True, then=''))
+        self.assertTrue(settles(scalars, scalars, wants_tags=False, then='r18dev'))
+
+    def test_prestige_leaves_the_release_date_to_the_next_stage(self):
+        """Prestige 给的是配信开始日，不当发行日：缺发行日的行照样问 r18.dev。"""
+        self.assertFalse(settles(('title', 'release_date'), ('title', 'studio', 'tags'),
+                                 then='r18dev'))
 
 
 class OverrideTests(unittest.TestCase):

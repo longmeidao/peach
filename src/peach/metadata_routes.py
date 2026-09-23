@@ -10,8 +10,9 @@
 链的取舍参考 amane 的 `docs/dev/content-routes.md`（证据登记在
 `docs/reference-sources.json` 的 `amane-content-routes`），原则照搬三条：类型专属源
 靠前、综合索引垫后；对不匹配番号仍发 HTTP 的站不进默认链；会把无关番号拼成
-「看起来像详情页」的站一概不进。成员只取 Peach 已经接好解析器的那几家，上游表里
-kin8、mgstage、theporndb、getchu 这些 Peach 没有适配器，不写进来占位。
+「看起来像详情页」的站一概不进。成员只取 Peach 已经接好的那几家（自写解析器或经 amane 桥），
+每个站只有一个归属（ADR-0048）；上游表里 kin8、giga、theporndb、getchu 这些没接的不写进来占位。
+对不匹配番号仍发 HTTP 的厂商站（Prestige、FALENO、DAHLIA）由 `route_for_code` 按本机证据裁掉。
 
 链上没有国产、欧美与里番三条：Peach 一家对应来源都没接，写一条空链只会让人以为
 问过了。真要接的时候按同一张表加类型，判据写在这里。
@@ -40,19 +41,22 @@ _MGS_AMATEUR = re.compile(r"^(?:" + "|".join(MGS_AMATEUR_PREFIXES) + r")-?\d+$",
 #: 每种内容类型问哪几家，从左到右。每条链后面的注释回答两件事：为什么是这个顺序，
 #: 以及为什么某一家**不**在这条链上——后者才是省请求的地方。
 ROUTES: dict[str, tuple[str, ...]] = {
-    # 有码：官方镜像 r18.dev 先问，一次请求给标题、厂牌、系列、发行日与演员；它没有
-    # 或出错才落到三家综合索引。AVBase 与 JavBus 各一次请求，javdb 两次且按出口 IP
-    # 计配额（`SOURCE_INTERVALS` 里 5 秒一页），所以 javdb 排最后。
-    # 不进这条链：1pondo（无码片商，有码番号一律 404）、fc2（商品号体系不同）。
-    "censored": ("r18dev", "avbase", "javbus", "javdb"),
-    # 素人：链和有码相同，理由是 Peach 这条采集路上**没有** mgstage 适配器——
-    # mgstage 的解析器 Peach 还没有（ADR-0044：官方站由 Peach 自己解析，等它接进来）。
-    # amane 把 MGS 放素人第一源、并且明确不让它进有码默认表（否则 MIDV 也会去问
-    # MGS）；Peach 这里的等价做法是把素人单列成一种类型，等 mgstage 解析器接进来
-    # 直接加在链首，而不是现在就往有码链里塞一个对多数番号必然落空的站。
+    # 有码：厂商官网先问，经 amane 桥一次子进程（ADR-0048）。片商自己那一页是发行方口径，
+    # 比官方镜像 r18.dev 更近一层：2026-09-23 实测 S1、MOODYZ 官网的发売日与账本一致，
+    # DMM 数字版给的是配信开始日。四家里一个番号只问一家：Prestige、FALENO、DAHLIA 按本机
+    # 证据认自家番号（`MAKER_EVIDENCE`），都不认的交给 `makers`——amane 按系列前缀路由到
+    # 二十九家片商官网，前缀不在它的表里就不发请求。官网没有或出错再问 r18.dev，一次请求
+    # 给标题、厂牌、系列、发行日与演员；再落空才到三家综合索引。AVBase 与 JavBus 各一次
+    # 请求，javdb 两次且按出口 IP 计配额（`SOURCE_INTERVALS` 里 5 秒一页），所以 javdb 排最后。
+    # 不进这条链：1pondo（无码片商，有码番号一律 404）、fc2（商品号体系不同）、mgstage
+    # （它同时卖有码号，但对有码号它是转售店，标题缀着店铺特典，片商官网才是发行方）。
+    "censored": ("prestige", "faleno", "dahlia", "makers", "r18dev", "avbase", "javbus", "javdb"),
+    # 素人：MGStage 先问。MGS 素人系（`259LUXU`、`300MIUM`、`SIRO`……）由 MGS 自己发行，
+    # mgstage 那一页就是发行方口径；amane 同样把 MGS 放素人第一源、不让它进有码默认表
+    # （否则 MIDV 也会去问 MGS），Peach 的等价做法是把素人单列成一种类型。
     # r18.dev 留着：素人号在 DMM 数字版目录上有没有，本机没有实测，凭「大概没有」
-    # 把官方那一档摘掉，省一次请求换来的是整类番号再也拿不到官方值。
-    "amateur": ("r18dev", "avbase", "javbus", "javdb"),
+    # 把官方镜像摘掉，省一次请求换来的是 mgstage 落空时整类番号再也拿不到官方值。
+    "amateur": ("mgstage", "r18dev", "avbase", "javbus", "javdb"),
     # 无码：发行方自己那份作品 JSON 先问，但只在本机证据指着一本道时才问
     # （见 `route_for_code`）——日期式番号不带片商，カリビアンコム 与一本道同形，
     # 问错一家答回来的是同一天发行的另一部片。
@@ -76,16 +80,34 @@ ROUTES: dict[str, tuple[str, ...]] = {
     "unknown": (),
 }
 
+#: 厂商官网与发行方自营店那一档，经 amane 桥（`metadata_amane.OFFICIAL_SITES`，ADR-0048）。一次
+#: 子进程并发问链上属于这一档的几站，所以合成一档 `amane_official`；按 `route_for_code` 裁过之后，
+#: 有码番号在这一档只剩一家片商，素人番号只剩 mgstage。
+AMANE_OFFICIAL_STAGE = ("prestige", "faleno", "dahlia", "makers", "mgstage")
 #: 发行方与专站那一档。链上排在综合索引前面，取到必填标量字段就短路。FC2 的两个存档站
 #: 按来源分级是 community，但在链上属于这一档：它们只收 FC2，不是综合索引。
-OFFICIAL_STAGE = ("r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive")
+OFFICIAL_STAGE = (*AMANE_OFFICIAL_STAGE, "r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive")
 #: FC2 那三处是同一次 `LibraryMetadataProvider.fc2()` 里先后问的，合成一档 `fc2`。
 FC2_STAGE = ("fc2", "fc2cmadb", "javarchive")
+#: 官方档在采集任务里摊成的档名（`stage_name` 的取值）。缺标签的行在这几档之间多问一家，见 `settles`。
+OFFICIAL_STAGE_NAMES = ("amane_official", "r18dev", "1pondo", "fc2")
+
+#: 对任何番号都发请求的三家厂商站各认哪些番号：（字母前缀，指着这家的写法）。前缀取自本机账本
+#: 2026-09-23 的只读统计——厂牌列写着这一家、同一前缀至少两行；FALENO 另加 amane 标注的同站
+#: 厂牌 maryGOLD 与 JimmyScandal。写法在账本厂牌、路径与文件名里找，不分大小写。前缀或写法命中
+#: 一条才问，别的番号一个请求都不发；这三家都不认的番号交给 `makers`，由 amane 的片商表判。
+MAKER_EVIDENCE: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "prestige": (("ABF", "ABP", "ABS", "ABW", "AKA", "DIC", "DOCP", "FIR", "FIV", "HRV", "JBS", "KBI",
+                  "LXVS", "ONEZ", "PPT", "PXH", "SGA", "TRE", "YRH", "YRZ"), ("prestige", "プレステージ")),
+    "faleno": (("FSDSS", "FCDSS", "FNS", "MGOLD", "JIMMY"), ("faleno",)),
+    "dahlia": (("DLDSS",), ("dahlia",)),
+}
+_LETTER_PREFIX = re.compile(r"^([A-Z]+)-?\d")
 #: 综合索引那一档。这一档**不**逐家短路：免复核要两家取值一致（ADR-0030、
 #: ADR-0034），封面互证要两个不同图源（ADR-0032），问到第一家就停等于把这两条
 #: 判据的样本降到一家。
 COMMUNITY_STAGE = ("avbase", "javbus", "javdb")
-#: 经 amane 桥问的那一档（`metadata_amane.SITES`，ADR-0043）。一次子进程并发问链上属于
+#: 经 amane 桥问的转载站那一档（`metadata_amane.COMMUNITY_SITES`，ADR-0043）。一次子进程并发问链上属于
 #: 这一档的几站，所以合成一档 `amane`；分级上都是社区来源，但不占 `COMMUNITY_STAGE`
 #: 的 `LIST_FIELD_DEPTH` 名额——那三家的互证样本不该被转载站挤掉。链上放在综合索引之前
 #: 还是之后由各类型的链自己定：FC2 专站在 javdb 前，无码的 avsox 在最后。
@@ -180,13 +202,30 @@ def route_for_code(code: str | None, *hints: str | None,
     无码那条链上的 `1pondo` 要证据：日期式番号本身不带片商，只有路径、文件名或账本
     厂牌指着一本道时才问它，问不着的照旧落到综合索引（`sources/onepondo.py`
     的模块说明）。
+
+    有码链上的厂商站同理：Prestige、FALENO、DAHLIA 只在本机证据认得是自家番号时才问
+    （`maker_sites`），一个番号只属于一家片商，所以三家有一家认了就不再问 `makers`。
     """
     chain = route(classify(code, *hints), overrides=overrides)
     if "1pondo" in chain:
         from .sources.onepondo import movie_id, names_this_studio
         if not (movie_id(str(code or "")) and names_this_studio(*hints)):
             chain = tuple(source for source in chain if source != "1pondo")
+    if any(source in MAKER_EVIDENCE for source in chain):
+        claimed = maker_sites(code, *hints)
+        chain = tuple(source for source in chain
+                      if (source not in MAKER_EVIDENCE or source in claimed)
+                      and not (source == "makers" and claimed))
     return chain
+
+
+def maker_sites(code: str | None, *hints: str | None) -> tuple[str, ...]:
+    """`MAKER_EVIDENCE` 里认这个番号的厂商站：字母前缀在表里，或账本厂牌、路径、文件名指着这家。"""
+    matched = _LETTER_PREFIX.match(str(code or "").strip().upper())
+    prefix = matched.group(1) if matched else ""
+    text = " ".join(str(hint or "") for hint in hints).casefold()
+    return tuple(site for site, (prefixes, names) in MAKER_EVIDENCE.items()
+                 if prefix in prefixes or any(name.casefold() in text for name in names))
 
 
 def community_route(code: str | None, *hints: str | None,
@@ -203,17 +242,21 @@ def stages_for_code(code: str | None, *hints: str | None,
 
     综合索引合成一档是因为那一档不逐家短路（见 `COMMUNITY_STAGE`）；官方那几家
     逐个成档，取到必填标量就不问下一档。FC2 那三家是同一次
-    `LibraryMetadataProvider.fc2()` 里先后问的三处，合成一档 `fc2`。
+    `LibraryMetadataProvider.fc2()` 里先后问的三处，合成一档 `fc2`；经 amane 桥的
+    厂商站与转载站各是一次子进程，分别合成 `amane_official` 与 `amane`。
     """
     return stages_for_chain(route_for_code(code, *hints, overrides=overrides))
 
 
 def stage_name(source: str) -> str:
-    """这个来源在采集任务里属于哪一档。合档的三组见 `FC2_STAGE`、`COMMUNITY_STAGE`、`AMANE_STAGE`。"""
+    """这个来源在采集任务里属于哪一档。合档的四组见 `FC2_STAGE`、`COMMUNITY_STAGE`、
+    `AMANE_OFFICIAL_STAGE`、`AMANE_STAGE`。"""
     if source in FC2_STAGE:
         return "fc2"
     if source in COMMUNITY_STAGE:
         return "community"
+    if source in AMANE_OFFICIAL_STAGE:
+        return "amane_official"
     if source in AMANE_STAGE:
         return "amane"
     return source
@@ -234,13 +277,6 @@ def stage_members(stage: str, chain: Sequence[str]):
     return tuple(source for source in chain if stage_name(source) == stage)
 
 
-def amane_route(code: str | None, *hints: str | None,
-                overrides: Mapping[str, Sequence[str]] | None = None):
-    """这个番号经 amane 桥问哪几站，顺序同链。一次子进程把它们并发问完。"""
-    chain = route_for_code(code, *hints, overrides=overrides)
-    return tuple(source for source in chain if source in AMANE_STAGE)
-
-
 def official_route(code: str | None, *hints: str | None,
                    overrides: Mapping[str, Sequence[str]] | None = None):
     """链上属于官方／发行方那一档的成员，顺序同链。"""
@@ -254,13 +290,21 @@ def required_scalars(missing: Iterable[str]):
     return tuple(field for field in SCALAR_FIELDS if field in wanted)
 
 
-def settles(required: Sequence[str], provided: Iterable[str]) -> bool:
+def settles(required: Sequence[str], provided: Iterable[str], *,
+            wants_tags: bool = False, then: str = "") -> bool:
     """这一档给的字段够不够停手。
 
     `required` 空时任何一档只要给出资料就停——这一行要的本来就不是标量字段，
     再问下一档只会拿回一堆和账本现值相同的候选（ADR-0033）。
+
+    `wants_tags` 是这一行还缺标签，`then` 是链上下一档的档名。FALENO 与 DAHLIA 官网的
+    作品资料没有类别，标量给全了也一个标签都没有；下一档仍是官方档（有码链上厂商官网之后
+    的 r18.dev）时再问它一次换一批标签。下一档是综合索引或转载站就照样停：javdb 按出口 IP
+    计配额，不为标签多问。
     """
+    given = set(str(field) for field in provided)
+    if wants_tags and "tags" not in given and then in OFFICIAL_STAGE_NAMES:
+        return False
     if not required:
         return True
-    given = set(str(field) for field in provided)
     return all(field in given for field in required)

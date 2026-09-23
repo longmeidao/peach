@@ -82,7 +82,7 @@ WIKI_SOURCE = SEESAA.name
 #: 只是历史来源身份（`metadata_policy.HISTORICAL_SOURCES`），当前没有解析器可问。
 CHAIN_SOURCES = tuple(dict.fromkeys((
     *(source for chain in metadata_routes.ROUTES.values() for source in chain),
-    *metadata_routes.AMANE_STAGE,
+    *metadata_routes.AMANE_OFFICIAL_STAGE, *metadata_routes.AMANE_STAGE,
 )))
 QUERYABLE_SOURCES = (*CHAIN_SOURCES, WIKI_SOURCE)
 #: 三种取来源的方式，写进 CSV 的 `source_profile`：按番号内容类型走链、只问 Seesaa、
@@ -196,7 +196,7 @@ class ChainAdapter:
                 # `covers=True` 让链上点到的每一处都问，不在第一处答上时停：这里要的是
                 # 每来源各自的证据，不是「这一档有没有答上」。
                 pairs = self.inner.fc2(code, route=members, covers=True)
-            elif stage == "amane":
+            elif stage in ("amane", "amane_official"):
                 pairs = self.inner.amane(code, route=members)
             elif stage == WIKI_SOURCE:
                 pairs = [(WIKI_SOURCE, self.wiki.query(code, session=self.wiki_session).payload())]
@@ -868,7 +868,8 @@ def _scrape(parser, args, handle, *, provider=None) -> int:
             by_field: dict[str, list[dict]] = {}
             given: set[str] = set()
             fetched_at = datetime.now(timezone.utc).isoformat()
-            for stage in metadata_routes.stages_for_chain(chain):
+            stages = metadata_routes.stages_for_chain(chain)
+            for stage, then in zip(stages, (*stages[1:], "")):
                 members = throttle.open_members(metadata_routes.stage_members(stage, chain))
                 if not members:
                     continue
@@ -901,8 +902,10 @@ def _scrape(parser, args, handle, *, provider=None) -> int:
                 if args.delay > 0 and used_network:
                     time.sleep(args.delay + random.uniform(0, min(0.4, args.delay / 3)))
                 # 走链才短路：官方那一档把必填标量给全了就不问下一档，与采集任务同一判据
-                # （`metadata_routes.settles`）；点名的来源用户要的就是每家都问。
-                if sources is None and metadata_routes.settles(metadata_routes.SCALAR_FIELDS, given):
+                # （`metadata_routes.settles`）；点名的来源用户要的就是每家都问。这里不对照账本
+                # 现值，标签一律算「还缺」。
+                if sources is None and metadata_routes.settles(
+                        metadata_routes.SCALAR_FIELDS, given, wants_tags=True, then=then):
                     break
             for field, candidates in by_field.items():
                 if args.english_title_only and field != "title":

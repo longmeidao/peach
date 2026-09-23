@@ -38,21 +38,33 @@ BRIDGE_TOOL_NAME = "amane-bridge"
 #: 一次子进程的默认超时。桥内每站并发、单请求 30 秒、最多两次重试，60 秒够一站走完。
 DEFAULT_TIMEOUT = 60
 
-#: 经桥开放给 Peach 来源链的站，只列 Peach 自己没有解析器的，套 `peach.sources` 同一份配置形状。
-#: 主域与 Cookie 由 amane 自己管，Peach 不持有，所以 `base_url` 与 `domains` 留空；档位统一是 `amane`。
-#: javdb / dmm / javbus 这些 Peach 已有的不经桥换——两条路径答同一站，分歧没人会去看。
+#: 经桥开放给 Peach 来源链的站，套 `peach.sources` 同一份配置形状。每个站只有一个归属（ADR-0048）：
+#: 自写解析器已经答的站（r18dev、fc2、javbus、javdb）不经桥再问一遍，两条路径答同一站，分歧没人会去看。
+#: 主域与 Cookie 由 amane 自己管，Peach 不持有，所以 `base_url` 与 `domains` 留空。档位两种：
+#: 转载与索引站是 `amane`；厂商官网与发行方自营店是 `official`，与 `SOURCE_SPECS` 里的分级同值，
+#: 链上排在官方镜像 r18.dev 之前（`metadata_routes.AMANE_OFFICIAL_STAGE`）。
+COMMUNITY_SITES = (("fc2club", "FC2Club"), ("freejavbt", "FreeJavBT"), ("airav", "AIRAV"), ("avsox", "AVSOX"))
+#: `makers` 是 amane 的 `official`：按系列前缀路由到二十九家片商官网（S1、MOODYZ、IDEA POCKET……），
+#: 前缀不在它的表里就不发请求。另外三家片商各有自己的解析器；MGStage 是 MGS 素人系的发行渠道。
+OFFICIAL_SITES = (("makers", "厂商官网"), ("prestige", "Prestige"), ("faleno", "FALENO"),
+                  ("dahlia", "DAHLIA"), ("mgstage", "MGStage"))
 SITE_CONFIGS: dict[str, SiteConfig] = {
-    name: SiteConfig(name=name, label=label, provider="amane-" + name, base_url="", domains=(), stage="amane")
-    for name, label in (("fc2club", "FC2Club"), ("freejavbt", "FreeJavBT"), ("airav", "AIRAV"), ("avsox", "AVSOX"))
+    name: SiteConfig(name=name, label=label, provider="amane-" + name, base_url="", domains=(), stage=stage)
+    for sites, stage in ((COMMUNITY_SITES, "amane"), (OFFICIAL_SITES, "official"))
+    for name, label in sites
 }
 #: 站名 → 界面上的名字，设置页那张卡与来源链按它取。
 SITES: dict[str, str] = {name: config.label for name, config in SITE_CONFIGS.items()}
+#: 这几站给的 `release` 不是发行日。Prestige 的作品 API 回的是 `mgsStartAt`（MGS 配信开始日），
+#: 2026-09-23 实测比发行日早一个月：ABW-032 回 2020-11-11、ABF-246 回 2025-06-18，r18.dev 与账本
+#: 都是 2020-12-11、2025-07-18。它不当 `release_date` 候选，只记在 `extra['delivery_date']`，发行日留给链上下一档。
+DELIVERY_DATE_SITES = frozenset({"prestige"})
 
 #: amane 的 `FailureReason`（桥脚本 `FAILURE_REASONS` 那十六档）→ 契约的 `FailureReason`，一对一。
 #: 三档分类、冷却动作与可否重试都由契约那张表定（`sources.base.REASON_KINDS` 等），这里只做名字翻译：
 #: `cloudflare_blocked`（Ray ID 拦截页）与 `ip_banned` 同属出口被封；`age_verification` 是要 Cookie 的门；
 #: `http_error`、`empty_response`、`crawler_unavailable` 都是「桥那一侧这次没答上」，归服务端错误；
-#: `unexpected` 归连接层，与它一样可重试。
+#: `unexpected` 归连接层，与它一样可重试。`http_error` 带 401/403 另算，见 `contract_reason`。
 AMANE_REASONS: dict[str, FailureReason] = {
     "not_found": FailureReason.NOT_FOUND,
     "no_usable_metadata": FailureReason.NO_USABLE_METADATA,
@@ -78,9 +90,23 @@ AUTH_MESSAGES: dict[str, str] = {
     "cloudflare_challenge": "撞上 Cloudflare 挑战页",
     "cloudflare_blocked": "被 Cloudflare 拦下",
     "ip_banned": "出口 IP 已被站方封禁",
+    "http_error": "站方拒绝了这个出口",
 }
 
 Runner = Callable[..., subprocess.CompletedProcess[str]]
+
+
+def contract_reason(reason: str, status: int = 0) -> FailureReason:
+    """上游 reason 与状态码 → 契约细档。
+
+    amane 只按正文认地区限制（「not available in your region」）；正文认不出、只回一个 401/403 的站，
+    上游归 `http_error`。Prestige 在非日本出口上就是这样：CloudFront 回 403，正文里没有那句话。
+    这种回答是「站方把这个出口挡在门外」，按 `auth_required` 记，不当成「这次没答上」去重试，
+    也不当成「站上没有」冻进记忆。
+    """
+    if reason == "http_error" and status in (401, 403):
+        return FailureReason.AUTH_REQUIRED
+    return AMANE_REASONS.get(reason, FailureReason.NETWORK)
 
 
 def pinned_revision(root: Path = BRIDGE_ROOT) -> str:
@@ -272,10 +298,11 @@ def site_failure(site: str, record: Mapping[str, object]) -> SourceFailure:
     reason = str(record.get("reason") or "unexpected")
     status = int(record.get("http_status") or 0)
     label = SITES.get(site, site)
-    translated = AMANE_REASONS.get(reason, FailureReason.NETWORK)
+    translated = contract_reason(reason, status)
     kind = REASON_KINDS[translated]
     if kind == "auth":
-        message = AUTH_MESSAGES.get(reason, "站方拒绝了这个出口") + f"（{reason}）"
+        message = AUTH_MESSAGES.get(reason, "站方拒绝了这个出口") + f"（{reason}" + (
+            f"，HTTP {status}" if status else "") + "）"
     elif kind == "not_found":
         message = f"{label} 上没有这个番号（{reason}）"
     else:
@@ -284,6 +311,14 @@ def site_failure(site: str, record: Mapping[str, object]) -> SourceFailure:
         if text and reason in {"unexpected", "parse_error"}:
             message += f"：{text[:160]}"
     return SourceFailure(translated, message, status_code=status, detail=reason)
+
+
+def _dates(site: str, metadata: Mapping[str, object]) -> tuple[str, dict[str, str]]:
+    """amane 的 `release` 落在哪：（`release_date`，放进 `extra` 的配信日）。见 `DELIVERY_DATE_SITES`。"""
+    released = str(metadata.get("release") or "")
+    if site in DELIVERY_DATE_SITES:
+        return "", {"delivery_date": released}
+    return released, {}
 
 
 def _first(values: object) -> str:
@@ -299,7 +334,8 @@ def to_record(site: str, metadata: Mapping[str, object]) -> SiteRecord:
     地址，不当身份——`code` 放站上读回的番号写法，`identifies_code` 拿它核身份，填成问的番号等于
     把这道闸拆掉，搜索首条命中的别的片会被当成这一部。男演员不进 `performers`：账本那一栏是出演
     女优。`thumb_urls` 整列进 `cover_urls`；只有 amane 才给的 `poster_url`、`screenshot_urls`、
-    `trailer_url`、`plot` 与整份 `raw` 放 `extra`，随 `payload()` 原样带出。
+    `trailer_url`、`plot` 与整份 `raw` 放 `extra`，随 `payload()` 原样带出。`DELIVERY_DATE_SITES`
+    那几站的 `release` 是配信开始日，记进 `extra['delivery_date']`，`release_date` 留空。
     """
     actors = metadata.get("actors") if isinstance(metadata.get("actors"), list) else []
     performers = []
@@ -313,6 +349,7 @@ def to_record(site: str, metadata: Mapping[str, object]) -> SiteRecord:
             performers.append({"japanese_name": name})
     directors = metadata.get("directors") if isinstance(metadata.get("directors"), list) else []
     returned = str(metadata.get("number") or "")
+    release_date, delivered = _dates(site, metadata)
     return SiteRecord(
         source=site, provenance=SITE_CONFIGS[site].provider if site in SITE_CONFIGS else "amane-" + site,
         code=returned,
@@ -323,7 +360,7 @@ def to_record(site: str, metadata: Mapping[str, object]) -> SiteRecord:
         label=str(metadata.get("publisher") or ""),
         series=str(metadata.get("series") or ""),
         director=_first(directors),
-        release_date=str(metadata.get("release") or ""),
+        release_date=release_date,
         runtime=metadata.get("runtime"),
         tags=tuple(str(tag) for tag in (metadata.get("tags") or []) if tag),
         cover_urls=tuple(str(url) for url in (metadata.get("thumb_urls") or []) if url),
@@ -334,6 +371,7 @@ def to_record(site: str, metadata: Mapping[str, object]) -> SiteRecord:
             "screenshot_urls": [str(url) for url in (metadata.get("extrafanart") or []) if url],
             "trailer_url": _first(metadata.get("trailer_urls")),
             "plot": str(metadata.get("plot") or ""),
+            **delivered,
             "raw": dict(metadata),
         })
 
@@ -376,7 +414,12 @@ def split_report(code: str, report: Mapping[str, object]) -> tuple[list[tuple[st
 def cooldown_action(error: MetadataProviderError) -> str:
     """这次失败要不要把整站停下：`blocked` 按 403 那一档翻倍，`rate_limited` 按 429 那一档，空串不停。
 
-    `detail` 里是上游原样的 reason，先按 `AMANE_REASONS` 翻成契约细档，再查契约的 `COOLDOWN_ACTIONS`。
+    `detail` 里是上游原样的 reason，先按 `contract_reason` 翻成契约细档，再查契约的 `COOLDOWN_ACTIONS`。
+    细档不停而站方回的是 HTTP 403 时照样按 `blocked` 停：自写站那一路 `SourceTransport` 撞上 403 就是
+    这么停的，两条路对同一种回答给同一种冷却。
     """
-    reason = AMANE_REASONS.get(str(getattr(error, "detail", "") or ""))
-    return COOLDOWN_ACTIONS.get(reason, "") if reason else ""
+    detail = str(getattr(error, "detail", "") or "")
+    if detail not in AMANE_REASONS:
+        return ""
+    status = int(getattr(error, "status_code", 0) or 0)
+    return COOLDOWN_ACTIONS.get(contract_reason(detail, status), "") or ("blocked" if status == 403 else "")

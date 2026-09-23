@@ -65,6 +65,8 @@ SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'j
                  'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
                  '1pondo': '一本道', 'local_nfo': '本地 NFO',
                  # 经 amane 桥问的几站（`metadata_amane.SITES`）。
+                 'makers': '厂商官网', 'prestige': 'Prestige', 'faleno': 'FALENO',
+                 'dahlia': 'DAHLIA', 'mgstage': 'MGStage',
                  'fc2club': 'FC2Club', 'freejavbt': 'FreeJavBT',
                  'airav': 'AIRAV', 'avsox': 'AVSOX',
                  # Seesaa 作品表，只由 `scrape_codes` 点名（`sources.seesaa`）。
@@ -73,6 +75,8 @@ PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avb
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
                   'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
                   '1pondo': '1pondo-json',
+                  'makers': 'amane-makers', 'prestige': 'amane-prestige',
+                  'faleno': 'amane-faleno', 'dahlia': 'amane-dahlia', 'mgstage': 'amane-mgstage',
                   'fc2club': 'amane-fc2club',
                   'freejavbt': 'amane-freejavbt', 'airav': 'amane-airav', 'avsox': 'amane-avsox',
                   'sougouwiki': 'sougouwiki'}
@@ -380,7 +384,7 @@ class LibraryMetadataProvider:
         return SITE_SOURCES[source]().query(code, session=Session(self.transport, deadline)).payload()
 
     def query(self, code, source='r18dev', *, deadline=None):
-        """有码与素人来源链的第一档：r18.dev 的作品 JSON 加 combined 页的日文写法（`sources/r18dev.py`）。"""
+        """有码与素人来源链上的官方镜像：r18.dev 的作品 JSON 加 combined 页的日文写法（`sources/r18dev.py`）。"""
         return self.site(source, code, deadline=deadline)
 
     def cover(self, code, cover_root, *, deadline=None, evidence=()):
@@ -982,13 +986,15 @@ class _RemoteSession:
     def _metadata(self, row, code, missing, *, update, issue):
         """按内容类型的来源链逐档问，必填标量字段够了就不问下一档。
 
-        链在 `metadata_routes`：有码与素人先问 r18.dev，无码问一本道官网（本机证据指着
-        它时），FC2 问发行方商品页与下架镜像，问不着才落到 AVBase、JavBus 与 javdb 那一档。
+        链在 `metadata_routes`：有码先问厂商官网、素人先问 MGStage（经 amane 桥，ADR-0048），
+        再问 r18.dev；无码问一本道官网（本机证据指着它时），FC2 问发行方商品页与下架镜像，
+        问不着才落到 AVBase、JavBus 与 javdb 那一档。
 
         短路判据是**这一行还缺的必填标量**（标题、演员、厂牌、发行日期），不是「有人答了
         就算」：r18.dev 少给演员时照旧往下问，否则那一行只能等人工去填。列表字段（标签、
         封面）不参与短路——多一家就多一批标签和一个图源，而免复核本来就要两家一致
-        （ADR-0030、ADR-0034）、封面互证要两个图源（ADR-0032）。
+        （ADR-0030、ADR-0034）、封面互证要两个图源（ADR-0032）。唯一的例外是缺标签的行
+        在官方档之间多问一家（`metadata_routes.settles` 的 `wants_tags`）。
 
         社区那一档的值照常进候选，只剩一家也补空，几家不一时取 javdb 的（ADR-0034）。
         每档各自记「没有」的记忆：说过没有的番号，一周内直接问下一档。
@@ -1001,15 +1007,18 @@ class _RemoteSession:
         evidence = _studio_evidence(row)
         chain = metadata_routes.route_for_code(code, *evidence, overrides=self._routes)
         required = list(metadata_routes.required_scalars(missing))
+        wants_tags = 'tags' in missing
         problems, held, entries = [], [], []
-        for source in _sources_for(code, *evidence, route_overrides=self._routes):
+        stages = _sources_for(code, *evidence, route_overrides=self._routes)
+        for source, then in zip(stages, (*stages[1:], '')):
             if self._consult and self.misses.fresh(source, code):
                 continue
             cached = (self._cached_evidence(metadata_routes.stage_members(source, chain), code)
                       if self._consult else [])
             if cached:
                 entries.extend(cached)
-                if metadata_routes.settles(required, _given_fields(entries)):
+                if metadata_routes.settles(required, _given_fields(entries),
+                                           wants_tags=wants_tags, then=then):
                     break
                 # FC2 那一档缓存里只有官方那页时，缺的演员还得去镜像站问（见 `fc2()`）。
                 if source != 'fc2':
@@ -1025,10 +1034,9 @@ class _RemoteSession:
                         known=[payload for _, payload, _ in cached])
                 elif source == '1pondo':
                     found = self.provider().one_pondo(code, deadline=deadline)
-                elif source == 'amane':
+                elif source in ('amane', 'amane_official'):
                     found = self.provider().amane(
-                        code, deadline=deadline,
-                        route=metadata_routes.amane_route(code, *evidence, overrides=self._routes))
+                        code, deadline=deadline, route=metadata_routes.stage_members(source, chain))
                 else:
                     found = self.provider().community(
                         code, deadline=deadline,
@@ -1046,13 +1054,15 @@ class _RemoteSession:
                     continue
                 # 社区那一档的原因里已经写明是哪一家了（`community()` 逐家拼过），再套一层
                 # 就成了「社区来源：javdb：…」。单家来源的原因不带来源名，这里补上。
-                problems.append(describe_failure(error) if source in ('community', 'amane')
+                problems.append(describe_failure(error)
+                                if source in ('community', 'amane', 'amane_official')
                                 else f'{SOURCE_LABELS.get(source, source)}：{describe_failure(error)}')
                 held.append(source_paused(error))
                 continue
             update(stage='保存资料候选')
             entries.extend(self._evidence(name, code, payload) for name, payload in found)
-            if metadata_routes.settles(required, _given_fields(entries)):
+            if metadata_routes.settles(required, _given_fields(entries),
+                                       wants_tags=wants_tags, then=then):
                 break
         if entries:
             return entries

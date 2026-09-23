@@ -1,9 +1,9 @@
 """来源分级与字段结算策略，由 Peach 自己持有。
 
 查询侧（一个番号问谁、什么顺序、何时停）在 `metadata_routes`；这里只管取回来的值
-怎么分级、怎么排序、分歧听谁的（ADR-0038）。两套刮削栈的归属见 ADR-0044：官方与半官方
-站由 Peach 自己解析，社区站经 amane 桥；来源名在这里登记一次，链、候选、复核与账本的
-provenance 都用同一个名字。
+怎么分级、怎么排序、分歧听谁的（ADR-0038）。两套刮削栈的归属见 ADR-0044 与 ADR-0048：
+每个站只有一个归属，Peach 自写的站只问自写解析器，其余经 amane 桥；来源名在这里登记一次，
+链、候选、复核与账本的 provenance 都用同一个名字。
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Iterable, Mapping
 
 
-POLICY_VERSION = "metadata-source-policy-v4"
+POLICY_VERSION = "metadata-source-policy-v5"
 PEACH_FIELDS = (
     "title", "original_title", "performers", "studio", "series", "release_date", "tags",
 )
@@ -27,26 +27,26 @@ class SourceSpec:
         return self.kind in {"official", "official_mirror"}
 
 
-#: 历史来源身份。这十家当年经 Javinizer-Go 取回过资料，账本里仍有
-#: `javinizer:<站>:<字段>` 的 provenance（mgstage 的标签近 800 行、libredmm 的厂牌
-#: 一百多行），旧快照也还在 `sources/metadata/javinizer-go/` 下。当前链不再向它们发
-#: 请求（ADR-0044），名字留着是让结算与复核页仍认得这些行的级别；删掉名字的表现是
-#: 已落库的官方标签在复核页变成「未登记来源」。
+#: 历史来源身份。这九家当年经 Javinizer-Go 取回过资料，账本里仍有
+#: `javinizer:<站>:<字段>` 的 provenance（libredmm 的厂牌一百多行），旧快照也还在
+#: `sources/metadata/javinizer-go/` 下。当前链不再向它们发请求（ADR-0044），名字留着是
+#: 让结算与复核页仍认得这些行的级别；删掉名字的表现是已落库的官方值在复核页变成
+#: 「未登记来源」。mgstage 同样有近 800 行历史标签，它现在经 amane 桥在素人链上（ADR-0048）。
 HISTORICAL_SOURCES = (
-    "dmm", "libredmm", "mgstage", "tokyohot", "aventertainment", "caribbeancom",
+    "dmm", "libredmm", "tokyohot", "aventertainment", "caribbeancom",
     "dlgetchu", "javlibrary", "jav321", "javstash",
 )
 
 SOURCE_SPECS = {
     name: SourceSpec(name, kind) for name, kind in {
-        # r18.dev 是 DMM 数字版目录的镜像，采集链有码与素人的第一档
+        # r18.dev 是 DMM 数字版目录的镜像，采集链有码与素人排在片商站之后的那一档
         # （`library_processing.LibraryMetadataProvider.query`）。
         "r18dev": "official_mirror",
         # FC2 发行方自己的商品页（`peach.sources.fc2`）。
         "fc2": "official",
         # 历史来源身份，见 `HISTORICAL_SOURCES`。
         "libredmm": "official_mirror",
-        "dmm": "official", "mgstage": "official", "tokyohot": "official",
+        "dmm": "official", "tokyohot": "official",
         "aventertainment": "official", "caribbeancom": "official",
         "dlgetchu": "official",
         "javlibrary": "community", "jav321": "community", "javstash": "community",
@@ -70,8 +70,13 @@ SOURCE_SPECS = {
         "javarchive": "community",
         # 一本道的官网作品 JSON（`peach.sources.onepondo`）。发行方自己那一份。
         "1pondo": "official",
-        # 经 amane 桥问到的几站（`peach.metadata_amane.SITES`，ADR-0043）。都是转载或索引站，
-        # 按社区来源对待。
+        # 经 amane 桥问到的官方站（`peach.metadata_amane.OFFICIAL_SITES`，ADR-0048）：
+        # makers 是按番号前缀路由到的片商官网，其余是各家发行方自己的站，mgstage 是
+        # Prestige 系的配信店，素人番号的发行方那一页就在它上面。
+        "makers": "official", "prestige": "official", "faleno": "official",
+        "dahlia": "official", "mgstage": "official",
+        # 经 amane 桥问到的社区站（`peach.metadata_amane.COMMUNITY_SITES`，ADR-0043）。都是
+        # 转载或索引站，按社区来源对待。
         "fc2club": "community",
         "freejavbt": "community",
         "airav": "community",
@@ -148,29 +153,34 @@ def blacklisted(field: str, source: str) -> bool:
     """这个字段上这家来源是不是被判了不听。"""
     return str(source or "").strip() in FIELD_SOURCE_BLACKLIST.get(field, frozenset())
 
+#: 片商自己的站（`makers` 与三家单列的发行方）排在每个字段的最前：它们就是发行方那一页，
+#: 镜像与配信店都从这里转来。一个番号至多问到其中一家（`metadata_routes.route_for_code`），
+#: 四者之间的先后不会真的比出高下。
+MAKER_SOURCES = ("makers", "prestige", "faleno", "dahlia")
+
 FIELD_SOURCE_ORDER = {
     "title": (
-        "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
+        *MAKER_SOURCES, "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
         "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javlibrary",
         "javbus", "javstash", "jav321", "dlgetchu",
     ),
     "original_title": (
-        "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
+        *MAKER_SOURCES, "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
         "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javlibrary",
         "javbus", "javstash", "jav321", "dlgetchu",
     ),
     "performers": (
-        "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
+        *MAKER_SOURCES, "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
         "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javbus",
         "javlibrary", "javstash", "jav321", "dlgetchu",
     ),
     "studio": (
-        "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
+        *MAKER_SOURCES, "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
         "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javbus",
         "javlibrary", "javstash", "jav321", "dlgetchu",
     ),
     "series": (
-        "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
+        *MAKER_SOURCES, "dmm", "libredmm", "r18dev", "mgstage", "aventertainment",
         "caribbeancom", "1pondo", "tokyohot", "fc2", "javdb", "javlibrary",
         "javbus", "javstash", "jav321", "dlgetchu",
     ),
@@ -178,8 +188,10 @@ FIELD_SOURCE_ORDER = {
     # `071213-625` 它答 2017-12-28，而这个番号本身就是发行日 2013-07-12
     # （javbus 与番号一致）；`092415-001` 同样差了 9 个月。发行方站点排在
     # 转售商前面，两个字段都要改——只改 tags 会留下一个照样写错日期的路径。
+    # prestige 不在这张表上：它给的是配信开始日，只记在资料的 `extra['delivery_date']`，
+    # 不当发行日候选（`metadata_amane.DELIVERY_DATE_SITES`）。
     "release_date": (
-        "dmm", "libredmm", "mgstage", "tokyohot", "caribbeancom", "1pondo",
+        "makers", "faleno", "dahlia", "dmm", "libredmm", "mgstage", "tokyohot", "caribbeancom", "1pondo",
         "aventertainment", "dlgetchu", "fc2", "r18dev", "javdb",
         "javlibrary", "javbus", "jav321", "javstash",
     ),
@@ -187,8 +199,9 @@ FIELD_SOURCE_ORDER = {
     # 「性教育・中出し・巨乳・スレンダー」等 8 项，dmm 走的 mono/dvd 页和
     # libredmm 都只给「AV女優・単体作品・サンプル動画」3 项泛化类别，r18dev
     # 同样只有 3 项。厂牌、系列、日期这些字段仍以 dmm 为准，不跟着改。
+    # 片商站里只有 makers 与 prestige 给标签，FALENO、DAHLIA 的作品页没有。
     "tags": (
-        "mgstage", "dmm", "libredmm", "tokyohot", "caribbeancom", "1pondo",
+        "mgstage", "makers", "prestige", "dmm", "libredmm", "tokyohot", "caribbeancom", "1pondo",
         "aventertainment", "dlgetchu", "fc2", "r18dev", "javstash",
         "javdb", "javlibrary", "javbus", "jav321",
     ),
