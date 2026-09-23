@@ -116,6 +116,52 @@ export function groupFollowups(rows: TaskRunPayload[]): Map<number, TaskRunPaylo
   return grouped;
 }
 
+/** 连着的几轮收成一张卡：`runs[0]` 是最新那一轮。 */
+export interface RunFold { run: TaskRunPayload; runs: TaskRunPayload[] }
+
+/** 「最近完成」按时间顺序折叠：一段连续的例行轮次里，同一种任务并成一张卡，摆在它
+ *  最新那一轮的位置上。任何一轮不是例行的（手动、失败、有新增或派了后继）都会截断这一段
+ *  ——折叠只收「按时跑了、什么也没发生」的那些，有事的那一轮必须单独看得见。 */
+export function foldRoutine(rows: TaskRunPayload[],
+                            routine: (run: TaskRunPayload) => boolean): RunFold[] {
+  const folds: RunFold[] = [];
+  let open = new Map<string, RunFold>();
+  for (const run of rows) {
+    if (!routine(run)) {
+      open = new Map();
+      folds.push({ run, runs: [run] });
+      continue;
+    }
+    const fold = open.get(run.task_key);
+    if (fold) fold.runs.push(run);
+    else {
+      const started = { run, runs: [run] };
+      open.set(run.task_key, started);
+      folds.push(started);
+    }
+  }
+  return folds;
+}
+
+/** 按时跑完、什么也没发生的一轮：定时触发、成功、没有新增也没派后继。 */
+export const isRoutine = (run: TaskRunPayload) => run.trigger === 'scheduled'
+  && run.status === 'succeeded' && !run.error
+  && !(Number(run.result_summary?.added) > 0) && !(Number(run.result_summary?.followups) > 0);
+
+export const isActive = (run: TaskRunPayload) => run.status === 'pending' || run.status === 'running';
+
+/** 后继那一行的说明：它在做哪一件（标签去掉与任务名重复的前缀）、做到第几项或结果如何。
+ *  标题已经是任务名，这里再写一遍「取新作资料：」读起来就是同一句话说了两次。 */
+export function followupDetail(row: TaskRunPayload): string {
+  const prefix = `${row.task_label}：`;
+  const label = row.progress_label || '';
+  const item = label.startsWith(prefix) ? label.slice(prefix.length) : label === row.task_label ? '' : label;
+  const total = row.progress_total || 0;
+  const tail = row.error || summaryText(row.result_summary)
+    || (isActive(row) && total > 0 ? `${row.progress_current || 0} / ${total} 项` : '');
+  return [item, tail].filter(Boolean).join(' · ');
+}
+
 /** 秒数说成「几分几秒」。跑了几小时的批处理也要一眼读得出量级。 */
 export function elapsedText(seconds: number | null | undefined): string {
   if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return '';

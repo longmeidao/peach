@@ -585,18 +585,40 @@ class TaskRunStore:
         早已翻过的那几页，活动页「最近完成」上就再也看不到它。终态一次性，结束时刻落地
         后不再变，所以游标之后的行不会再挪到它前面去。`before` 是上一页最旧那一行的
         `(finished_at, id)`，这一页只取严格排在它后面的行。
+
+        一页数的是顶层那几轮，它们已结束的后继跟着一起回来：一轮拉取派出二十条后继时，
+        按行数翻页会让后继占满这一页、把派出它们的那一轮挤到下一页，页面上就只剩一串
+        没有父卡片可挂的散行。父行已被 `prune` 掉的后继自己算顶层。
         """
         size = max(1, min(int(limit), 500))
         marks = ",".join(f"'{name}'" for name in TERMINAL_STATUSES)
-        where, values = f"status IN ({marks})", []
+        where = (f"t.status IN ({marks}) AND (t.parent_run_id IS NULL OR NOT EXISTS "
+                 "(SELECT 1 FROM task_run p WHERE p.id=t.parent_run_id))")
+        values: list[object] = []
         if before is not None:
-            where += " AND (finished_at<? OR (finished_at=? AND id<?))"
+            where += " AND (t.finished_at<? OR (t.finished_at=? AND t.id<?))"
             values = [before[0], before[0], int(before[1])]
+        columns = ",".join(f"t.{name}" for name in _COLUMNS.split(","))
         with self.database.read_connection() as connection:
             rows = connection.execute(
-                f"SELECT {_COLUMNS} FROM task_run WHERE {where} "
-                "ORDER BY finished_at DESC, id DESC LIMIT ?", [*values, size + 1]).fetchall()
-        return [_row(row) for row in rows[:size]], len(rows) > size
+                f"SELECT {columns} FROM task_run t WHERE {where} "
+                "ORDER BY t.finished_at DESC, t.id DESC LIMIT ?", [*values, size + 1]).fetchall()
+        page = [_row(row) for row in rows[:size]]
+        return page + self.settled_followups([run.id for run in page]), len(rows) > size
+
+    def settled_followups(self, root_ids) -> list[TaskRun]:
+        """这几轮派出的、已经结束的后继，整条链上的都算。"""
+        ids = [int(run_id) for run_id in root_ids]
+        if not self.enabled or not ids:
+            return []
+        marks = ",".join(f"'{name}'" for name in TERMINAL_STATUSES)
+        holes = ",".join("?" * len(ids))
+        with self.database.read_connection() as connection:
+            rows = connection.execute(
+                f"SELECT {_COLUMNS} FROM task_run WHERE root_run_id IN ({holes}) "
+                f"AND id NOT IN ({holes}) AND status IN ({marks}) ORDER BY id",
+                [*ids, *ids]).fetchall()
+        return [_row(row) for row in rows]
 
     # -- 调用方的便利入口 --------------------------------------------------
 

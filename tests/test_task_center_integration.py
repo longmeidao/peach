@@ -264,6 +264,29 @@ class TasksEndpointTests(unittest.TestCase):
             seen += [row["id"] for row in page["finished"]]
         self.assertEqual(seen, [slow.id, late, *reversed(early)])
 
+    def test_a_page_counts_top_level_runs_and_brings_their_followups_along(self):
+        """一轮派出二十条后继时，按行数翻页会让后继把派出它们的那一轮挤出第一页。"""
+        parent = self.store.start("feed-check", trigger="manual")
+        self.store.finish(parent.id, "succeeded")
+        queued = self.store.enqueue_followups(
+            parent.id, [(f"feed-scrape:C-{n}", "feed-scrape", f"C-{n}") for n in range(4)])["queued"]
+        for run_id in queued:
+            self.store.finish(run_id, "succeeded")
+        newer = self._settled("2999-01-01T00:00:00.000Z")
+
+        first = web_tasks.q_tasks(self.contract, {"limit": "2"})
+        self.assertEqual([row["id"] for row in first["finished"]], [newer, parent.id, *queued])
+        self.assertFalse(first["finished_has_more"])
+
+    def test_a_running_parent_brings_its_settled_followups(self):
+        parent = self.store.start("follow-check", trigger="manual")
+        queued = self.store.enqueue_followups(
+            parent.id, [("entity-avatar:performer:1", "entity-avatar", "补头像")])["queued"]
+        self.store.finish(queued[0], "succeeded")
+        payload = web_tasks.q_tasks(self.contract, {})
+        self.assertEqual([row["id"] for row in payload["running"]], [parent.id])
+        self.assertEqual([row["id"] for row in payload["finished"]], queued)
+
     def test_a_short_history_says_there_is_nothing_earlier(self):
         self._settled("2026-09-11T10:00:00.000Z")
         self.assertFalse(web_tasks.q_tasks(self.contract, {})["finished_has_more"])
