@@ -482,23 +482,20 @@ class ConfirmedSiteTests(unittest.TestCase):
             confirmed=reason)
         self.assertEqual(verdict, "未取得")
 
-    def test_m_girls_lab_is_confirmed_because_the_site_uses_another_brand_name(self):
-        """第二种形状：账本记的拉丁写法在站上根本不用，而账本也没有对应别名。
+    def test_a_studio_under_its_japanese_name_verifies_on_its_own_title(self):
+        """番号站转写的罗马音在厂牌自己站上不出现；账本记日文原名，页面自述就对得上。
 
         实测 `https://mko-labo.net/top` 返回 200、55 KB、标题
-        `トップ | 調教、全身奉仕、醜態...M女専門のAVメーカー【えむっ娘ラボ】公式`——
-        `M Girls' Lab` 这个串整站不出现，别名表里也没有「えむっ娘ラボ」可以对上，
-        所以 `aliases` 那条能查证的路走不通，只剩用户确认。
+        `トップ | 調教、全身奉仕、醜態...M女専門のAVメーカー【えむっ娘ラボ】公式`。
+        罗马音 `M Girls' Lab` 判未取得，那是账本名字的问题，不该靠白名单补。
         """
-        url, reason = self.module.CONFIRMED_SITES["M Girls' Lab"]
-        self.assertEqual(url, "https://mko-labo.net/top")
-        self.assertIn("えむっ娘ラボ", reason)
+        url = "https://mko-labo.net/top"
         title = "トップ | 調教、全身奉仕、醜態...M女専門のAVメーカー【えむっ娘ラボ】公式"
-        without, _ = self.module.site_verdict(
+        self.assertNotIn("えむっ娘ラボ", self.module.CONFIRMED_SITES)
+        romanized, _ = self.module.site_verdict(
             "M Girls' Lab", 200, page(title), title, url)
-        self.assertEqual(without, "未取得")
-        verdict, _ = self.module.site_verdict(
-            "M Girls' Lab", 200, page(title), title, url, confirmed=reason)
+        self.assertEqual(romanized, "未取得")
+        verdict, _ = self.module.site_verdict("えむっ娘ラボ", 200, page(title), title, url)
         self.assertEqual(verdict, "ok")
 
     def test_studios_outside_the_whitelist_are_judged_exactly_as_before(self):

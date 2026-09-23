@@ -225,27 +225,14 @@ def relink_logos(rows: list[dict], logo_root: Path) -> dict[str, list[str]]:
     只补保留方缺的变体，已有的一个字节都不动（和 `harvest_studio_icons.install` 同一条
     口径）。挪不动的留在原地并列出来：孤儿文件不会被读到，删它需要单独的授权。
     """
-    from peach.previews import logo_key
+    from peach.previews import relink_logo_files
 
     moved: list[str] = []
     left: list[str] = []
     for row in rows:
-        drop, keep = logo_key(str(row["drop_name"])), logo_key(str(row["keep_name"]))
-        if drop == keep:
-            continue
-        for suffix in (".icon.img", ".logo.img", ".img"):
-            source, target = logo_root / f"{drop}{suffix}", logo_root / f"{keep}{suffix}"
-            if not source.is_file():
-                continue
-            if target.exists():
-                left.append(source.name)
-                continue
-            source.replace(target)
-            moved.append(f"{source.name} -> {target.name}")
-            for sidecar in logo_root.glob(f"{drop}{suffix}.*"):
-                companion = logo_root / f"{keep}{suffix}{sidecar.name[len(source.name):]}"
-                if not companion.exists():
-                    sidecar.replace(companion)
+        done, stayed = relink_logo_files(str(row["drop_name"]), str(row["keep_name"]), logo_root)
+        moved += done
+        left += stayed
     return {"moved": moved, "left": left}
 
 

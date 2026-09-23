@@ -697,16 +697,19 @@ av911.tv，三条候选已进复核队列。
   FC2-PPV 记「不适用（非番号体系）」，把这 17 个写成「未取得」等于拿不适用伪装取证失败；两个番号给出
   不同製作商记「不一致」交人处理：`K M Produce` 出 ケイ・エム・プロデュース 与 スクープ，那是一个
   账本名底下混了两家。
+- 番号站转写的罗马音不算英文，优先级低于日文原名（用户 2026-09-23）。判「改名」的行由
+  `scripts/apply_studio_name_localization.py` 落库：规范名、旧写法降别名、扁平 `asset.studio` 与
+  `--logo-root` 下的标识一起改；复核件过期（现名已变、实体已合并）或日文名撞上别家的行只报不改。
 - 番号页 404 是那一页的事，不是这家厂牌查不到。印证只能靠跨前缀，但顶替 404 要靠同前缀：`code_groups`
   因此一个前缀一组、组内最多 `--depth`（默认 3）个，组内第二、三个不参与印证、只在前一个取不到时接手。
   少了这一层，`Alice JAPAN` 就会被 `DVAJ-185` 一页 404 判成「未取得」，而 `DVAJ-495` 直接给出
   `アリスJAPAN`。反过来说，一个厂牌所有前缀的多个番号都 404 时，先怀疑账本而不是 javbus：那批英文
   文件名、韩国演员的片子被刮削器套上了同前缀的 JAV 厂牌名（`Kichu`／CHU、`Crystal Eizo`／HA），
   查不到是因为那个厂牌名本来就不属于这些片子。
-- 「搜不到就去 Google 加 `公式`／`official`」这条路目前未取得：内置 WebSearch 只回美国过滤结果，
-  `CHU-101 AV メーカー 公式` 返回航空公司与收缩包装机；脚本化爬搜索引擎撞不绕过机器人识别的门槛。
-  javbus `/search/` 只给模糊前后缀命中，javdatabase `/movies/<code>/` 对这几个番号全 404。要走这条路
-  得先有一个能用的搜索出口，别再重试同一组工具。
+- 搜官网与 X 账号用日文名，不用罗马音：内置浏览器打开
+  `html.duckduckgo.com/html/?kl=jp-jp&q=<日文名> AVメーカー 公式`，2026-09-23 这样查到 20 多家的官网或
+  账号（证据在 `peach-data/review/studio-site-seeds-20260923.csv`）。Google 弹机器人验证，不绕过；内置
+  WebSearch 只回美国过滤结果，拿番号或罗马音搜返回的是航空公司与收缩包装机。
 - AV 厂牌 Logo 的来源是厂牌自己的社交账号头像：社交头像天然是正方形且由品牌本人发布。取证顺序是
   handle → `unavatar.io` 解析出平台 CDN 真实地址 → 从 CDN 下载 → 实测，unavatar 只用于解析地址，
   provenance 两者都记（`scripts/fetch_studio_avatar_candidates.py`）。候选使用内容寻址缓存、SHA-256、
@@ -786,10 +789,10 @@ av911.tv，三条候选已进复核队列。
   （`一本道 | 美を追求する高画質アダルト動画サイト`）厂牌名自述得清清楚楚的真官网只能判 weak，原因仅仅
   是站上用的是「動画」而不是「ビデオ」。这两个词同样不会出现在 Hunter Engineering、Bazooka、麦当娜
   那三个同名站上，成人语境这条判据的分辨力没有变松。
-- `CONFIRMED_SITES` 的第二种形状：账本记的写法站上根本不用，而账本也没有对应别名。`M Girls' Lab` 在
-  自己站上叫「えむっ娘ラボ」（`https://mko-labo.net/top`，实测 200、55 KB、标题
-  `トップ | 調教、全身奉仕、醜態...M女専門のAVメーカー【えむっ娘ラボ】公式`），`M Girls' Lab` 这个串整站
-  不出现。加白名单前要先确认别名表里没有能对上的写法；有别名就走 `aliases`，那是页面上能查证的路。
+- 账本记罗马音、站上只用日文原名的，不进 `CONFIRMED_SITES`：那是账本名字错了。`えむっ娘ラボ` 在账本里
+  曾记作 `M Girls' Lab`，这个串整站不出现（`https://mko-labo.net/top`，标题
+  `トップ | 調教、全身奉仕、醜態...M女専門のAVメーカー【えむっ娘ラボ】公式`）；换回日文名后页面自述就对得上。
+  白名单只留「厂牌属于哪家公司」这种页面上没有的信息；有别名就走 `aliases`，那是页面上能查证的路。
 - 2026-09-21 定点跑了四家无码厂牌（`--only 一本道 东京热 カリビアンコム "M Girls' Lab"` 加一份 seeds），
   四行全 ok：`www.1pondo.tv`、`www.tokyo-hot.com`、`www.caribbeancom.com`、`mko-labo.net/top`。复核件在
   `peach-data/review/studio-sites-20260921.csv`，seeds 在同目录 `studio-site-seeds-20260921.csv`。

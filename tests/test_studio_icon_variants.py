@@ -768,7 +768,7 @@ class WordmarkSourceTests(unittest.TestCase):
 
     #: 名录之外的来源，各有各的理由，逐条另有用例。整表只允许这几家走别的地址：
     #: 漏写一家就意味着有人往表里加了一条没人解释过的来源。
-    NAMED_EXCEPTIONS = {"M Girls' Lab"}
+    NAMED_EXCEPTIONS = {"えむっ娘ラボ"}
 
     def test_every_wordmark_comes_from_a_maker_directory_or_a_named_exception(self):
         """用户 2026-09-04 与 09-22 指定的是那三个厂牌名录，不是随便哪张网图。"""
@@ -788,11 +788,11 @@ class WordmarkSourceTests(unittest.TestCase):
                 self.assertNotIn(studio, MODULE.ICON_SOURCES)
 
     def test_a_studio_whose_own_site_carries_the_wordmark_is_pinned_to_that_site(self):
-        """自动发现给 M Girls' Lab 小位挑的是它 X 账号那张项圈照片：400×400、内容比
+        """自动发现给 えむっ娘ラボ 小位挑的是它 X 账号那张项圈照片：400×400、内容比
         1.04，够大够方，里面没有脸所以人像闸也过。「照片不是标识」闸门判不出来，
         只能指定官网 header 里那张字标，两个位置都从它烤。
         """
-        self.assertRegex(MODULE.WORDMARK_SOURCES["M Girls' Lab"],
+        self.assertRegex(MODULE.WORDMARK_SOURCES["えむっ娘ラボ"],
                          r"^https://cdn\.up-timely\.com/image/16/site_design/")
 
     def test_a_label_without_a_site_of_its_own_is_pinned_to_its_parent_directory(self):

@@ -8,7 +8,7 @@ handle，但它要求先有一份 `studio,site` 的表，而账本里 114 个有
 `moodyz.com` 若是抢注页，标题只会是域名或「域名出售」，过不了这一关。规则化推域名的好处是
 可复现：换个人跑同样的输入得到同样的候选，而不是凭记忆写一张表。
 
-推不出来的（`无码厂标`、`Fetish Box / Mousouzoku` 这类）通过 `--seeds` 单独喂，
+推不出来的（`无码厂标`、`FetishBox/妄想族` 这类）通过 `--seeds` 单独喂，
 让人工查到的地址和自动推出来的走同一条验证，而不是绕过验证直接采信。
 """
 from __future__ import annotations
@@ -78,11 +78,11 @@ FIELDS = ("entity_id", "studio", "assets", "candidate_url", "final_url", "status
 
 #: 用户当场确认的厂牌官网。**这不是放宽通用判据，是补一条页面上没有的信息。**
 #:
-#: 两种形状都是「账本这边的名字和站上那个牌子对不起来，而对应关系只有人知道」：厂牌属于
-#: 哪家公司（`SOD Create` → Soft On Demand），或者账本记的是个站上根本不用的写法
-#: （`M Girls' Lab` → 站上叫「えむっ娘ラボ」）。第二种要先确认账本 `entity_alias` 里也没有
-#: 能对上的别名——有别名就该走 `site_verdict` 的 `aliases`，那是页面上能查证的路，
-#: 不该拿白名单顶掉（`东京热` 就是这样自证的）。
+#: 适用的形状是「账本这边的名字和站上那个牌子对不起来，而对应关系只有人知道」：厂牌属于
+#: 哪家公司（`SOD Create` → Soft On Demand）。账本记的是番号站转写的罗马音、站上只用日文
+#: 原名的，不进这张表：那是账本名字错了，按 `apply_studio_name_localization.py` 换回日文名，
+#: 旧写法降为别名，页面自述就对得上。有别名的同样走 `site_verdict` 的 `aliases`，那是页面上
+#: 能查证的路，不该拿白名单顶掉（`东京热` 就是这样自证的）。
 #:
 #: `SOD Create` 是 Soft On Demand 的厂牌。母公司官网 `www.sod.co.jp` 实测 200、是成人站，
 #: 标题却是 `SOFT ON DEMAND（ソフト・オン・デマンド）`——标题和正文里都不会出现
@@ -97,11 +97,6 @@ CONFIRMED_SITES: dict[str, tuple[str, str]] = {
         "https://www.sod.co.jp/",
         "用户 2026-09-03 确认：SOD Create 是 Soft On Demand 的厂牌，"
         "sod.co.jp 是母公司官网",
-    ),
-    "M Girls' Lab": (
-        "https://mko-labo.net/top",
-        "用户 2026-09-21 指定：厂牌在自己站上叫「えむっ娘ラボ」，"
-        "`M Girls' Lab` 是账本这边的拉丁写法，整站不出现，账本也没有对应别名",
     ),
 }
 
