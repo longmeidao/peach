@@ -1284,13 +1284,16 @@ describe('设计决定', () => {
         ok: true, entities: [{ id: 90_001, kind: 'performer', names: [name], parts: ['feed', 'costars'] }] } }));
       // 骨架插进页面的那一刻就记下它带着哪几块：之后才补进去的，就是在骨架里跳了一下。
       await opened.page.addInitScript(() => {
-        const first = { feed: null as boolean | null, foot: null as boolean | null };
+        const first = { feed: null as boolean | null, foot: null as boolean | null, sheen: '' };
         (window as unknown as { skeletonFirst: typeof first }).skeletonFirst = first;
         new MutationObserver(() => {
           const skeleton = document.querySelector('[data-skeleton="entity/performer"]');
           if (!skeleton || first.feed !== null) return;
           first.feed = !!skeleton.querySelector('.feednew');
           first.foot = !!skeleton.querySelector('.entityfoot');
+          // 骨架卡的微光和骨架同一帧就在：晚一步的话，那一步里露出来的是封面格的黑底。
+          const pic = skeleton.querySelector('.feednewskeleton .pic.imgwait');
+          first.sheen = pic ? getComputedStyle(pic, '::after').opacity : '';
         }).observe(document, { childList: true, subtree: true });
       });
       let release = () => {};
@@ -1335,10 +1338,12 @@ describe('设计决定', () => {
           between: !!row.previousElementSibling?.matches('[data-filter-frame]')
             && !!row.nextElementSibling?.matches('.entitysection'),
           sheen: getComputedStyle(row.querySelector('.pic.imgwait')!, '::after').backgroundImage, plain,
-          first: (window as unknown as { skeletonFirst: { feed: boolean; foot: boolean } }).skeletonFirst };
+          first: (window as unknown as { skeletonFirst: { feed: boolean; foot: boolean; sheen: string } }).skeletonFirst };
       });
       assert.ok(before.between, '骨架里的新作那一行不在筛选框和作品之间');
-      assert.deepEqual(before.first, { feed: true, foot: true }, '骨架先画了一版，新作行或同台艺人是后来才补进去的');
+      const { sheen, ...parts } = before.first;
+      assert.deepEqual(parts, { feed: true, foot: true }, '骨架先画了一版，新作行或同台艺人是后来才补进去的');
+      assert.equal(sheen, '1', '新作骨架卡的微光晚于骨架出现，中间露出封面格的黑底');
       assert.ok(before.footHeight > 0, '骨架的资料卡底没有同台艺人那一条');
       assert.equal(before.sheen, before.plain, '新作骨架的微光另起了一种颜色');
       // 画好的页面上那一行一出现就得是真卡：再露一回它自己的骨架，就是同一行等了两遍。
