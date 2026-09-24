@@ -1195,6 +1195,15 @@ def solo_performer_clause(asset: str, entity: str) -> str:
 
 #: FC2 站方替敏感词打的码：一个星号顶一个字（`10代**生` 原文是 `10代現役生`）。
 MASKED_TITLE_CHARS = "*＊"
+#: javdb 往 FC2 标题里插的混淆串：两个星号后接一串小写字母与星号（`**pp*jonsoo`、
+#: `**zs*yj*ospn`），卖家原文里没有这一段。卖家自己打的码后面接的是日文（`都立**超`、
+#: `THE LAST**】`），不会被它带走。2026-09-24 本机 37 条带码标题里六种，都是 9～10 位。
+SCRAPE_MARK = re.compile(r"\*\*[a-z*]{8,}[ 　]?")
+
+
+def strip_scrape_mark(title: str) -> str:
+    """去掉 javdb 插进标题的混淆串（`SCRAPE_MARK`）。"""
+    return SCRAPE_MARK.sub("", str(title or "")).strip()
 
 
 def fill_masked_title(masked: str, originals) -> str | None:
