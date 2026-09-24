@@ -3232,5 +3232,111 @@ class AwaitTestTests(unittest.TestCase):
                                     sleep=lambda _: None, clock=iter([0, 30, 60]).__next__)
 
 
+class Fc2SellerAndDescriptiveNameRepairTests(unittest.TestCase):
+    """存量修正：FC2 卖家厂牌改挂 `FC2-PPV`，描述性称呼女优删掉（ADR-0054）。"""
+
+    STAMP = "2026-09-24T00:00:00Z"
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name).resolve()
+        self.db = fresh_ledger(self.root)
+        self.generated = self.root / "generated"
+        (self.generated / "avatars").mkdir(parents=True)
+        con = sqlite3.connect(self.db)
+        entities = [(1, "studio", "FC2-PPV"), (2, "studio", "プライベートアーカイブ管理人"),
+                    (3, "performer", "145cm色白お嬢様"), (4, "performer", "wink的美女"),
+                    (5, "performer", "音あずさ")]
+        for entity_id, kind, name in entities:
+            con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,"
+                        "updated_at) VALUES(?,?,?,?,?,?)",
+                        (entity_id, kind, name, name.casefold(), self.STAMP, self.STAMP))
+        for asset_id, code, studio in [(10, "FC2-PPV-4927200", "プライベートアーカイブ管理人"),
+                                       (11, "FC2-PPV-1785524", "FC2-PPV"),
+                                       (12, "ABP-001", "プライベートアーカイブ管理人")]:
+            con.execute("INSERT INTO asset(id,location,path,name,medium,code,studio,field_owners)"
+                        " VALUES(?,'local',?,?,'video',?,?,?)",
+                        (asset_id, f"/x/{code}.mp4", f"{code}.mp4", code, studio,
+                         json.dumps({"studio": "auto:local_nfo"})))
+        relations = [(10, 2, "studio", "javinizer:local_nfo:studio"),
+                     (11, 1, "studio", "javinizer:fc2:studio"),
+                     (12, 2, "studio", "javinizer:local_nfo:studio"),
+                     (11, 3, "performer", "javinizer:javdb:performer"),
+                     (11, 4, "performer", "stash"),
+                     (11, 5, "performer", "javinizer:javdb:performer")]
+        for asset_id, entity_id, role, source in relations:
+            con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source) VALUES(?,?,?,?)",
+                        (asset_id, entity_id, role, source))
+        con.execute("INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(11,?,0.6,?)",
+                    ("演员:145cm色白お嬢様", "javinizer:javdb:performer"))
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+                    " VALUES(3,'色白お嬢様','色白お嬢様','test',1.0)")
+        con.execute("INSERT INTO review_decision(category,item_key,status,reviewer,note,updated_at)"
+                    " VALUES('metadata_fields','asset:11:performers','approved','local-default',?,?)",
+                    (json.dumps({"auto_applied": True, "value": "145cm色白お嬢様"},
+                                ensure_ascii=False), self.STAMP))
+        con.commit()
+        con.close()
+        for suffix in (".img", ".img.provenance.json"):
+            (self.generated / "avatars" / f"performer-3{suffix}").write_bytes(b"x")
+        (self.generated / "avatars" / "performer-5.img").write_bytes(b"x")
+
+    def run_repair(self, *extra):
+        output = io.StringIO()
+        with redirect_stdout(output):
+            code = load_script("repair_fc2_sellers_and_descriptive_names").main(
+                ["--db", str(self.db), "--generated-root", str(self.generated), *extra])
+        return code, output.getvalue()
+
+    def query(self, sql, *params):
+        con = sqlite3.connect(self.db)
+        try:
+            return con.execute(sql, params).fetchall()
+        finally:
+            con.close()
+
+    def test_a_dry_run_writes_nothing(self):
+        code, output = self.run_repair()
+        self.assertEqual(code, 0)
+        self.assertIn("厂牌 1 部，女优 1 位，头像文件 2 个", output)
+        self.assertEqual(self.query("SELECT studio FROM asset WHERE id=10"),
+                         [("プライベートアーカイブ管理人",)])
+        self.assertTrue((self.generated / "avatars" / "performer-3.img").exists())
+
+    def test_apply_moves_sellers_under_fc2_ppv_and_drops_descriptive_performers(self):
+        code, output = self.run_repair("--apply", "--backup", str(self.root / "backup.db"))
+        self.assertEqual(code, 0, output)
+        self.assertTrue((self.root / "backup.db").exists())
+        self.assertEqual(self.query("SELECT id,studio FROM asset ORDER BY id"),
+                         [(10, "FC2-PPV"), (11, "FC2-PPV"), (12, "プライベートアーカイブ管理人")])
+        self.assertEqual(self.query(
+            "SELECT asset_id,entity_id FROM asset_entity WHERE role='studio' ORDER BY asset_id"),
+            [(10, 1), (11, 1), (12, 2)])
+        # 非 FC2 作品还挂着它，卖家实体这回不删。
+        self.assertEqual(self.query("SELECT count(*) FROM entity WHERE id=2"), [(1,)])
+        self.assertEqual(self.query("SELECT id FROM entity WHERE kind='performer' ORDER BY id"),
+                         [(4,), (5,)], "人工来源挂着的与真艺名都留下")
+        self.assertEqual(self.query("SELECT count(*) FROM asset_tag"), [(0,)])
+        self.assertEqual(self.query("SELECT count(*) FROM entity_alias"), [(0,)])
+        self.assertEqual(self.query("SELECT count(*) FROM review_decision"), [(0,)])
+        self.assertEqual(sorted(path.name for path in (self.generated / "avatars").iterdir()),
+                         ["performer-5.img"])
+        self.assertEqual(
+            sorted(path.name for path in (self.generated / "avatars-superseded").iterdir()),
+            ["performer-3.img", "performer-3.img.provenance.json"])
+        self.assertIn("integrity_check=ok foreign_key_check=0", output)
+
+    def test_a_seller_left_with_no_works_is_dropped(self):
+        con = sqlite3.connect(self.db)
+        con.execute("DELETE FROM asset_entity WHERE asset_id=12")
+        con.execute("DELETE FROM asset WHERE id=12")
+        con.commit()
+        con.close()
+        code, output = self.run_repair("--apply", "--backup", str(self.root / "backup.db"))
+        self.assertEqual(code, 0, output)
+        self.assertEqual(self.query("SELECT count(*) FROM entity WHERE id=2"), [(0,)])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -54,6 +54,7 @@ from .metadata_policy import (
     blacklisted, chain_rank, source_tier,
 )
 from .review_csv import read_candidates
+from .sources import fc2
 
 #: 一个写事务里最多落多少条。整批一个事务在本机实测是几千条候选压着写锁不放，
 #: 页面上任何一次写入都得等它跑完；分批之后每段只占一小会儿，被停止时也只丢这一段。
@@ -400,11 +401,37 @@ def _parsed_candidates(row: dict) -> list[dict]:
             and str(candidate.get("candidate_key") or "").strip()]
 
 
+#: FC2 番号，带不带分段后缀都算：`FC2-PPV-3312576-1` 也是同一个平台上卖的。
+_FC2_CODE = re.compile(r"^FC2(?:[-_. ]?PPV)?[-_. ]?\d{5,}", re.I)
+#: 平台自己的几种写法，它们本来就是厂牌，不是卖家。
+_FC2_PLATFORM = re.compile(r"^fc2(?:[-_. ]?ppv)?$", re.I)
+
+
+def _fc2_seller_as_label(field: str, code: str, candidate: dict) -> dict:
+    """FC2 番号的厂牌一律是 `FC2-PPV`，来源给的其他名字是卖家，改记进 `label`。
+
+    amane 的 FC2 爬虫把卖家填进 studio，它写的 NFO 又经本地 NFO 那条规则落库，javdb
+    的片商栏同样是卖家：2026-09-24 账本里 `プライベートアーカイブ管理人` 就这样成了
+    一个只有 11 部作品的厂牌实体。Peach 自己的 FC2 解析器早把厂牌钉成 `FC2-PPV`、卖家
+    放 `label`（`sources/fc2.py`）；这里对所有来源做同一件事，入口再多也只有这一处。
+    """
+    if field != "studio" or not _FC2_CODE.match(code):
+        return candidate
+    seller = str(candidate.get("value") or "").strip()
+    if not seller:
+        return candidate
+    platform = {**candidate, "value": fc2.STUDIO, "display_value": fc2.STUDIO}
+    if _FC2_PLATFORM.fullmatch(seller):
+        return platform
+    return {**platform, "label": str(candidate.get("label") or "").strip() or seller}
+
+
 def _row_candidates(row: dict, decided) -> list[dict]:
-    """把一行的 `candidates_json` 解析成候选列表：折叠 genre 决定、剔掉番号对不上的。"""
+    """把一行的 `candidates_json` 解析成候选列表：折叠 genre 决定、FC2 卖家改记 label、
+    剔掉番号对不上的。"""
     field = str(row.get("field") or "").strip()
     code = str(row.get("code") or "").strip()
-    return [_fold_genre_decisions(field, candidate, decided)
+    return [_fc2_seller_as_label(field, code, _fold_genre_decisions(field, candidate, decided))
             for candidate in _parsed_candidates(row)
             if _candidate_identifies_code(code, candidate)]
 
@@ -839,6 +866,7 @@ def _apply_metadata_candidate(
         return len(asset_ids)
 
     if field in {"studio", "series"}:
+        candidate = _fc2_seller_as_label(field, code, candidate)
         name = _registered_entity_name(
             connection, field, _approved_entity_name(candidate.get("value"), field))
         write_owned_fields(

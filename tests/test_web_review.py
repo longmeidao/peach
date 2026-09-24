@@ -21,7 +21,7 @@ from peach import review_csv as rm_candidates
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
 from peach.genre_taxonomy import map_genres
-from peach.metadata_auto_apply import auto_apply_metadata
+from peach.metadata_auto_apply import _fc2_seller_as_label, auto_apply_metadata
 from peach.field_owners import (
     EXPECTED_REVISION_FIELD,
     USER_MANUAL,
@@ -778,6 +778,62 @@ class ReviewQueueTests(unittest.TestCase):
             snapshot_root=Path(self.tmp.name) / "empty-snapshots")
         self.assertEqual(result["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["NOPE"])
+
+    def test_a_descriptive_name_is_not_landed_as_a_performer(self):
+        """`145cm色白お嬢様` 是标题里的称呼，不是艺名：交人工，不建女优实体。"""
+        self._asset(128, "FC2-PPV-1785524", "FC2-PPV-1785524.mp4")
+        self._asset(129, "FC2-PPV-1785525", "FC2-PPV-1785525.mp4")
+        self.write_metadata_rows([
+            {"item_key": "DESC", "field": "performers", "current": "",
+             "code": "FC2-PPV-1785524", "source": "javdb",
+             "candidates": [{"value": [{"name": "145cm色白お嬢様"}], "display": "145cm色白お嬢様"}]},
+            {"item_key": "CROWD", "field": "performers", "current": "",
+             "code": "FC2-PPV-1785525", "source": "fc2cmadb",
+             "candidates": [{"value": [{"name": "人気焼肉店の看板娘"}],
+                             "display": "人気焼肉店の看板娘"}]},
+        ])
+        result = auto_apply_metadata(
+            self.contract.database, self.candidates,
+            snapshot_root=Path(self.tmp.name) / "empty-snapshots")
+        self.assertEqual(result["applied"], 0)
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["CROWD", "DESC"])
+        con = sqlite3.connect(self.db_path)
+        try:
+            performers = con.execute(
+                "SELECT count(*) FROM entity WHERE kind='performer' AND canonical_name IN (?,?)",
+                ("145cm色白お嬢様", "人気焼肉店の看板娘")).fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(performers, 0)
+
+    def test_an_fc2_seller_lands_as_the_label_under_the_fc2_ppv_studio(self):
+        """FC2 番号上来源给的厂牌是卖家：厂牌落 `FC2-PPV`，卖家记在候选的 `label` 上。
+
+        本地 NFO 与 javdb 给的是两个卖家写法，归一之后说的是同一件事，照常一致落库。
+        """
+        self._asset(130, "FC2-PPV-4927200", "FC2-PPV-4927200.mp4")
+        self.write_metadata_rows([
+            {"item_key": "SELLER:studio", "field": "studio", "current": "",
+             "code": "FC2-PPV-4927200",
+             "candidates": [{"source": "local_nfo", "value": "プライベートアーカイブ管理人"},
+                            {"source": "javdb", "value": "FC2"}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            studio = con.execute("SELECT studio FROM asset WHERE id=130").fetchone()[0]
+            entities = [row[0] for row in con.execute(
+                "SELECT canonical_name FROM entity WHERE kind='studio'")]
+        finally:
+            con.close()
+        self.assertEqual(studio, "FC2-PPV")
+        self.assertEqual(entities, ["FC2-PPV"])
+        folded = _fc2_seller_as_label(
+            "studio", "FC2-PPV-4927200-1", {"value": "プライベートアーカイブ管理人"})
+        self.assertEqual((folded["value"], folded["label"]),
+                         ("FC2-PPV", "プライベートアーカイブ管理人"))
+        self.assertEqual(_fc2_seller_as_label("studio", "ABP-001", {"value": "Prestige"}),
+                         {"value": "Prestige"})
 
     def test_library_collection_fills_an_empty_field_from_a_lone_community_source(self):
         """官方落空时只有 javdb 一家也补空，note 里分得清是一家还是两家一致（ADR-0034）。"""
