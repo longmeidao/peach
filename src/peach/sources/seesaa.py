@@ -478,6 +478,82 @@ class AvNameSource(NameWikiSource):
     root = AV_NAME.base_url + '/av_name/'
 
 
+#: av_neme 人物页「プロフィール」一节里的名字栏。两种排法并存：`<pre>` 里逐行写
+#: 「名前(女優名)：主名」「旧名義&別名：甲・乙」，或一张表的「名前(別名)」一格写「主名／甲／乙」。
+#: 作品小节里的「別名：そら 18歳 本屋の店員」是那部片给她起的素人名义，标签不同，不在这里。
+PERSON_MAIN_LABEL = '名前(女優名)'
+PERSON_NAME_LABELS = ('旧名義&別名', '名前(別名)')
+_LABEL_FOLD = str.maketrans({'（': '(', '）': ')', '＆': '&', '：': ':'})
+_PROFILE_LINE = re.compile(r'^([^:]{2,12}):(.+)$')
+_NAME_SPLIT = re.compile(r'[／/、,，]')
+#: 名字后面的读音与注记：`美雲そら（みくもそら）`、`雫つむぎ(FC2)`、`美雲そら【旧名】`。
+_ANNOTATION = re.compile(r'[（(【][^（()）【】]*[）)】]')
+_KATAKANA_ONLY = re.compile(r'^[゠-ヿ]+$')
+
+
+def _label(text: str) -> str:
+    return re.sub(r'\s+', '', str(text or '')).translate(_LABEL_FOLD)
+
+
+def split_names(value: str) -> list[str]:
+    """名字栏的一格 → 逐个写法，读音与注记剥掉。
+
+    分隔符有 `・`、`／`、`、` 几种。`・` 在外国人名里是名字的一部分（`キラ・クィーン`），
+    两侧都是纯片假名时不拆。
+    """
+    names = []
+    for chunk in _NAME_SPLIT.split(_ANNOTATION.sub('', str(value or ''))):
+        merged: list[str] = []
+        for piece in (part.strip() for part in chunk.split('・')):
+            if merged and _KATAKANA_ONLY.match(piece) and _KATAKANA_ONLY.match(merged[-1]):
+                merged[-1] += '・' + piece
+            elif piece:
+                merged.append(piece)
+        names.extend(merged)
+    return names
+
+
+def search_results(body: bytes) -> list[tuple[str, str]]:
+    """站内搜索结果页 → [(页面地址, 页名)]，按站给的顺序。"""
+    found = []
+    for anchor in _soup(body).select('.result-box .body h3 a[href]'):
+        found.append((str(anchor['href']), anchor.get_text(strip=True)))
+    return found
+
+
+def person_profile(page: Page) -> tuple[str, list[str]]:
+    """人物页 → (主名, 名字栏列出的全部写法，主名在内)。不是人物页返回 ("", [])。
+
+    是不是人物页看两件事：第一节标题是「プロフィール」，且名字栏里的主名就是这一页的页名。
+    系列页与月份页的作品小节里也有「名前(女優名)：某某」，但那一页的页名不是她。
+    """
+    area = _soup(page.body).select_one('#page-body .user-area')
+    block = area.select_one('.wiki-section-1') if area is not None else None
+    title = block.select_one('.title-1') if block is not None else None
+    if title is None or 'プロフィール' not in title.get_text():
+        return '', []
+    fields: dict[str, str] = {}
+    for row in block.select('tr'):
+        head, cell = row.find('th'), row.find('td')
+        if head is not None and cell is not None:
+            fields.setdefault(_label(head.get_text()), cell.get_text(' ', strip=True))
+    for br in block.find_all('br'):
+        br.replace_with('\n')
+    for line in block.get_text('').splitlines():
+        match = _PROFILE_LINE.match(line.strip().translate(_LABEL_FOLD))
+        if match:
+            fields.setdefault(_label(match.group(1)), match.group(2).strip())
+    names = split_names(fields.get(PERSON_MAIN_LABEL, ''))[:1]
+    for label in PERSON_NAME_LABELS:
+        names.extend(split_names(fields.get(label, '')))
+    names = list(dict.fromkeys(names))
+    page_name = unquote(urlsplit(page.url).path.rsplit('/d/', 1)[-1], encoding='euc_jp',
+                        errors='replace')
+    if not names or re.sub(r'\s+', '', names[0]) != re.sub(r'\s+', '', page_name):
+        return '', []
+    return names[0], names
+
+
 #: 来源名 → 站的类。`scrape_codes` 按它给每个点名的 Wiki 建一个实例与一个 `WikiPages`。
 WIKI_SOURCES: dict[str, type[SeesaaSource]] = {
     SEESAA.name: SeesaaSource, AV_NEME.name: AvNemeSource, AV_NAME.name: AvNameSource,

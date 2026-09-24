@@ -1,0 +1,557 @@
+"""同一位女优在别处用过的艺名，证据确定的登记成别名（ADR-0055）。
+
+一位女优换过几次艺名、在不同发行渠道挂着不同名字，是常事：`神山ももか` 在 minnano-av 上
+是 `雲母そら` 那一页的一个别名，同一页还列着 `美雲そら`、`朝霧いのり`、`雫つむぎ`。账本没登记
+这些写法时，按名字链找头像、搜作品、判合并都只拿着一个名字在走。
+
+判据是确定性的，所以按 ADR-0052 直接落库，不产生候选：
+
+1. **入口**：minnano-av 走账本里已有的外部编号，或按账本名字检索唯一命中（结果表里对得上
+   这个写法的行只指向一个编号）；av_neme 按账本名字站内搜索，读到的人物页里恰好一张列着她。
+2. **双向核对**：账本里她的某个名字（规范名或已有别名，本身得是收得下的写法）必须出现在那一页的
+   主名或别名栏里。
+3. **只收名字栏**：minnano-av 资料表的「別名」行，av_neme 人物页的「名前(女優名)」「旧名義&別名」
+   「名前(別名)」。读音与 `(FC2)`、`【旧名】` 这类注记剥掉。作品小节里的素人名义不读；
+   `いちかちゃん` 这种带敬称的一次性称呼、`145cm色白お嬢様` 这种描述性称呼按
+   `metadata_alias_resolve` 的判据不收，也不拿去检索。
+4. **短单名不收**：三个字以内的纯假名（`そら`、`みく`）会命中别人；罗马字写法也不收，日文站和
+   图库都用不上它。
+5. **四种不写**，与 `scripts/apply_alias_candidates.py` 同一口径：已有、被另一条实体占用、
+   统称已变、查无此人。占用的记进复核产物，那是两条该不该合并的问题。
+
+每条写入的 `entity_alias.source` 是这一轮的批次号 `auto:performer-alias@<任务行 id>`，
+`scripts/revert_auto_landing.py --source auto:performer-alias` 按它整批撤回。每一轮的判词
+（写了什么、为什么没写）逐条写进 `generated/performer-alias-landing.csv`。
+
+外部请求走页面缓存与站间隔；撞上 429、403 或机器人验证就把这一站记进 `scraping_access`
+的冷却记录，本轮与之后的后继在冷却期内都不再问它，结论写「未取得」。
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sqlite3
+import time
+from pathlib import Path
+from urllib.parse import quote
+
+from . import minnano_av
+from .entities import name_chain, name_rank, normalize_entity_name
+from .followups import Attempts, Followup, FollowupType, attempts_root, register
+from .kanji import fold_glyphs
+from .metadata_alias_resolve import is_descriptive, is_planning_alias
+from .scripting import HostLimiter
+from .social_links import name_key
+
+#: 这类后继在任务中心的身份，也是活动页上那一行的名字来源。
+TASK_KEY = "performer-alias"
+TASK_LABEL = "补女优别名"
+
+#: 这条后继写下的别名都以它开头，后面接 `@<任务行 id>`；撤回按它认。
+SOURCE = "auto:performer-alias"
+
+#: 每轮处理任务给存量的名额（`task_runs.MAX_FOLLOWUPS` 的四分之一）。一条要问两站、
+#: 十来秒，走写账本那条串行通道；给多了会把厂牌那几条挤到很后面。
+STOCK_SHARE = 16
+
+MINNANO, AV_NEME = "minnano-av", "av_neme"
+AV_NEME_ROOT = "https://seesaawiki.jp/av_neme/"
+#: 每站最多拿几个名字去检索、av_neme 一次搜索最多读几张人物页、一站一条后继最多几次请求。
+MAX_KEYS, MAX_PERSON_PAGES, MAX_REQUESTS = 3, 3, 8
+#: minnano-av 的间隔与超时：与链接采集那一趟同一档，再放宽一点，这条后继不赶时间。
+MINNANO_INTERVAL, TIMEOUT = 3.0, 25.0
+#: 进程内共用：一轮里几十条后继一条接一条跑，每条各起一个限速器等于没有间隔。
+_LIMITER = HostLimiter({"minnano-av.com": MINNANO_INTERVAL, "seesaawiki.jp": 2.0})
+#: 机器人验证页的记号。它常以 200 回来，不认出来就会被当成正文缓存下去。
+_CHALLENGE = ("Just a moment", "cf-chl-", "challenge-platform")
+
+#: av_neme 搜索结果里明显不是人物页的页名：月份归档、番号页、厂牌与一览。
+_NOT_A_PERSON = re.compile(r"\d{4}年|[A-Za-z]+-?\d{3,}|一覧|レーベル|メーカー")
+_BRACKETS = re.compile(r"[（(【\[][^（()）【】\[\]]*[）)】\]]")
+_KANA_ONLY = re.compile(r"^[぀-ゟ゠-ヿ]+$")
+_UNCERTAIN = re.compile(r"[?？▲�]|不明|未確認")
+
+WRITE, HAVE, TAKEN, STALE, GONE, SKIP = "写入", "已有", "占用", "已变", "查无此人", "不收"
+REVIEW_FILE = "performer-alias-landing.csv"
+FIELDS = ("entity_id", "canonical_name", "alias", "site", "page", "action", "detail", "batch")
+
+
+class Blocked(RuntimeError):
+    """这一站拒绝了请求或还在冷却：本轮不再问它。"""
+
+
+class Unavailable(RuntimeError):
+    """这一页没取到（网络、非 200、本条请求数用完）。"""
+
+
+# -- 名字 --------------------------------------------------------------------
+
+
+def clean(raw: str) -> str:
+    """站上一格名字 → 写法本身：剥掉读音、`(FC2)`、`【旧名】` 这类括号注记。"""
+    text = str(raw or "")
+    while True:
+        stripped = _BRACKETS.sub("", text)
+        if stripped == text:
+            break
+        text = stripped
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def rejection(name: str) -> str:
+    """这个写法不收的原因；收得下返回空串。"""
+    if not name:
+        return "空名"
+    if _UNCERTAIN.search(name):
+        return "带不确定标记"
+    if name_rank(name) >= 3:
+        return "罗马字写法"
+    if _KANA_ONLY.match(name) and len(name) <= 3:
+        return "短单名，会命中别人"
+    if is_planning_alias(name):
+        return "一次性称呼"
+    if is_descriptive(name):
+        return "描述性称呼"
+    return ""
+
+
+def match_key(name: str) -> str:
+    """比名字用的键：全半角、空白、大小写与日本字形都折掉（`涼森` 与 `凉森` 同键）。"""
+    return fold_glyphs(name_key(name))
+
+
+# -- 账本 --------------------------------------------------------------------
+
+
+def followup_key(entity_id: int) -> str:
+    return f"{TASK_KEY}:{int(entity_id)}"
+
+
+def parse_key(key: str) -> int:
+    """把后继 key 拆回女优 id。形状不对就抛——那说明排队的行不是这个版本写的。"""
+    prefix, _, raw = str(key).partition(":")
+    if prefix != TASK_KEY or not raw.isdigit():
+        raise ValueError(f"认不出这条补别名后继：{key}")
+    return int(raw)
+
+
+def _names(connection: sqlite3.Connection, entity_id: int, *, own: bool = True):
+    """(规范名, [别名])；实体不在或不是女优返回 None。`own=False` 时不算这条后继自己写的。"""
+    row = connection.execute("SELECT canonical_name FROM entity WHERE id=? AND kind='performer'",
+                             (int(entity_id),)).fetchone()
+    if row is None:
+        return None
+    aliases = [str(alias) for alias, source in connection.execute(
+        "SELECT alias,source FROM entity_alias WHERE entity_id=? ORDER BY alias", (int(entity_id),))
+        if own or not _ours(str(source))]
+    return str(row[0] or ""), aliases
+
+
+def _ours(source: str) -> bool:
+    return source == SOURCE or source.startswith(SOURCE + "@")
+
+
+def _refs(connection: sqlite3.Connection, entity_id: int) -> list[str]:
+    return [str(row[0]) for row in connection.execute(
+        "SELECT external_id FROM entity_external_ref WHERE entity_id=? AND provider=?"
+        " AND external_kind='performer' ORDER BY external_id", (int(entity_id), MINNANO))]
+
+
+def search_keys(canonical: str, aliases) -> list[str]:
+    """拿去检索的写法：名字链里收得下的那些，日文写法在前。"""
+    return [name for name in name_chain(canonical, list(aliases)) if not rejection(name)]
+
+
+def has_entry(connection: sqlite3.Connection, entity_id: int) -> bool:
+    """有没有路进得去：账本里有 minnano-av 编号，或名字链里有一个能拿去检索的写法。"""
+    names = _names(connection, entity_id)
+    return names is not None and bool(_refs(connection, entity_id) or search_keys(*names))
+
+
+def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
+    """会让结论变的量：她的名字链与 minnano-av 编号。这条后继自己写的别名不算在内——
+
+    算进去的话，撤回一批之后指纹又变回来，下一轮就把刚撤掉的原样再写一遍。
+    """
+    names = _names(connection, entity_id, own=False) or ("", [])
+    keys = sorted({match_key(name) for name in [names[0], *names[1]] if name})
+    raw = json.dumps([keys, _refs(connection, entity_id)], ensure_ascii=False)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _label(name: str) -> str:
+    return f"{TASK_LABEL}：{name}" if name else TASK_LABEL
+
+
+def plan(connection: sqlite3.Connection, *, since_entity_id: int) -> list[Followup]:
+    """这一轮新登记、又有路进得去的女优，一人一条，作品多的在前。"""
+    rows = connection.execute(
+        "SELECT e.id,e.canonical_name,"
+        " (SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae WHERE ae.entity_id=e.id)"
+        " FROM entity e WHERE e.id>? AND e.kind='performer' ORDER BY e.id",
+        (int(since_entity_id),)).fetchall()
+    found = sorted(((int(row[2] or 0), int(row[0]), str(row[1] or "")) for row in rows
+                    if has_entry(connection, int(row[0]))), key=lambda item: (-item[0], item[1]))
+    return [Followup(key=followup_key(entity_id), task_key=TASK_KEY, label=_label(name))
+            for _assets, entity_id, name in found]
+
+
+def stock(connection: sqlite3.Connection, attempts, *, limit: int, skip=()) -> list[Followup]:
+    """库里早就登记的女优，作品多的在前，最多 `limit` 条（ADR-0053）。
+
+    跑过一次、名字链与编号都没变的不再派（`attempts`）。
+    """
+    if limit <= 0:
+        return []
+    skip, found = set(skip), []
+    for row in connection.execute(
+            "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) AS assets"
+            " FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id"
+            " WHERE e.kind='performer' GROUP BY e.id ORDER BY assets DESC, e.id"):
+        entity_id, key = int(row[0]), followup_key(int(row[0]))
+        if key in skip or not has_entry(connection, entity_id):
+            continue
+        if attempts.settled(key, fingerprint(connection, entity_id)):
+            continue
+        found.append(Followup(key=key, task_key=TASK_KEY, label=_label(str(row[1] or ""))))
+        if len(found) >= limit:
+            break
+    return found
+
+
+# -- 取页 --------------------------------------------------------------------
+
+
+class MinnanoPages:
+    """minnano-av 的取页：成功页落盘缓存，一条后继至多 `MAX_REQUESTS` 次请求。
+
+    缓存记着跳转后的最终地址：检索唯一命中会直接跳到资料页，判「这是谁的页」要看那个地址。
+    撞上 429、403 或机器人验证就记冷却并抛 `Blocked`，不重试。
+    """
+
+    def __init__(self, cache_dir: Path, cooldown_root: Path, transport=None, *,
+                 limiter=_LIMITER, max_requests: int = MAX_REQUESTS):
+        from .http import HttpxTransport
+
+        self.cache_dir, self.cooldown_root = Path(cache_dir), Path(cooldown_root)
+        self.transport = transport or HttpxTransport()
+        self.limiter, self.max_requests, self.requests = limiter, max_requests, 0
+
+    def get(self, url: str) -> tuple[str, str]:
+        from .http import HttpRequest
+        from .scraping_access import pause_source, paused_until
+
+        path = self.cache_dir / (hashlib.sha256(url.encode("utf-8")).hexdigest() + ".json")
+        try:
+            cached = json.loads(path.read_text(encoding="utf-8"))
+            return str(cached["final_url"]), str(cached["body"])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        if paused_until(self.cooldown_root, MINNANO):
+            raise Blocked("来源正在冷却")
+        if self.requests >= self.max_requests:
+            raise Unavailable("这一条的请求数用完了")
+        self.limiter.wait(url)
+        self.requests += 1
+        try:
+            response = self.transport(HttpRequest("GET", url, {"Accept": "text/html"}),
+                                      TIMEOUT, 4 << 20)
+        except Exception as error:  # noqa: BLE001 - 网络层失败都是「这一页没取到」
+            raise Unavailable(f"网络请求失败：{type(error).__name__}") from None
+        body = response.body.decode("utf-8", "replace")
+        if response.status == 429:
+            pause_source(self.cooldown_root, MINNANO)
+            raise Blocked("来源限流（429）")
+        if response.status == 403 or any(mark in body for mark in _CHALLENGE):
+            pause_source(self.cooldown_root, MINNANO, refused=True)
+            raise Blocked("来源拒绝访问或要求机器人验证")
+        if response.status != 200:
+            raise Unavailable(f"HTTP {response.status}")
+        final_url = response.url or url
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"url": url, "final_url": final_url, "body": body},
+                                   ensure_ascii=False), encoding="utf-8")
+        return final_url, body
+
+    def close(self) -> None:
+        close = getattr(self.transport, "close", None)
+        if close:
+            close()
+
+
+class AvNemePages:
+    """av_neme 的取页：缓存、请求上限与撞墙判定都是 `sources.seesaa.WikiPages` 那一份，
+    这里只把它撞墙的那一下记进冷却，并在冷却期内一次都不问。"""
+
+    def __init__(self, cache_dir: Path, cooldown_root: Path, transport=None):
+        from .sources.seesaa import AV_NEME as CONFIG, WikiPages
+
+        self.pages = WikiPages(cache_dir, config=CONFIG, transport=transport, limiter=_LIMITER,
+                               max_requests=MAX_REQUESTS)
+        self.cooldown_root = Path(cooldown_root)
+
+    def get(self, url: str):
+        from .metadata import MetadataProviderError
+        from .scraping_access import pause_source, paused_until
+
+        if paused_until(self.cooldown_root, AV_NEME):
+            raise Blocked("来源正在冷却")
+        try:
+            return self.pages.get(url)
+        except MetadataProviderError as error:
+            if not self.pages.blocked:
+                raise Unavailable(str(error)) from None
+            limited = error.status_code == 429
+            pause_source(self.cooldown_root, AV_NEME, refused=not limited)
+            raise Blocked("来源限流（429）" if limited else "来源拒绝访问或要求机器人验证") from None
+
+    def close(self) -> None:
+        self.pages.close()
+
+
+def open_sites(contract) -> dict:
+    """这一条后继用的两站取页器。测试把这一步整个换掉，网络就一次都不出。"""
+    cache = Path(contract.candidate_root) / "provider-cache"
+    cooldown = _cooldown_root(contract)
+    return {MINNANO: MinnanoPages(cache / "minnano-av-pages", cooldown),
+            AV_NEME: AvNemePages(cache / "seesaa-pages", cooldown)}
+
+
+def _cooldown_root(contract) -> Path:
+    root = getattr(contract, "follow_secrets_root", None)
+    return Path(root) if root is not None else Path(contract.candidate_root) / "provider-cache"
+
+
+# -- 读页 --------------------------------------------------------------------
+
+
+def _anchored(names: list[str], mine: set[str]) -> bool:
+    """这一页列出的写法里，有没有一个是账本里她自己的、而且本身收得下的名字。"""
+    return any(match_key(name) in mine for name in names if not rejection(name))
+
+
+def minnano_page(pages: MinnanoPages, keys: list[str], refs: list[str]) -> tuple[list, str]:
+    """([(页面地址, 页上全部写法)], 说明)。先按账本里的编号进，没有才检索。"""
+    notes = []
+    profiles = [pages.get(f"{minnano_av.SITE}actress{ref}.html") for ref in refs]
+    for key in [] if refs else keys[:MAX_KEYS]:
+        final_url, html = pages.get(minnano_av.search_url(key))
+        if minnano_av.page_actress_id(html):
+            # 唯一命中时站点直接跳到资料页。
+            profiles = [(final_url, html)]
+            break
+        hits = {found_id for found_id, shown in minnano_av.search_hits(html)
+                if match_key(clean(shown)) == match_key(key)}
+        if len(hits) == 1:
+            profiles = [pages.get(f"{minnano_av.SITE}actress{hits.pop()}.html")]
+            break
+        notes.append(f"「{key}」{'对上多个人' if hits else '检索未命中'}")
+    found = []
+    for url, html in profiles:
+        main, aliases = minnano_av.profile_names(html)
+        if main:
+            found.append((url, [clean(main), *(clean(alias) for alias in aliases)]))
+    return found, "；".join(notes)
+
+
+def av_neme_page(pages, keys: list[str], mine: set[str]) -> tuple[list, str]:
+    """([(页面地址, 页上全部写法)], 说明)。搜到的人物页里恰好一张列着她才算。"""
+    from .sources.seesaa import person_profile, search_results
+
+    notes = []
+    for key in keys[:MAX_KEYS]:
+        try:
+            encoded = quote(key.encode("euc_jp"))
+        except UnicodeEncodeError:
+            notes.append(f"「{key}」写不成站上的编码")
+            continue
+        listed = pages.get(AV_NEME_ROOT + "search?keywords=" + encoded)
+        candidates = [url for url, title in search_results(listed.body)
+                      if url.startswith(AV_NEME_ROOT + "d/") and not _NOT_A_PERSON.search(title)]
+        matched = []
+        for url in candidates[:MAX_PERSON_PAGES]:
+            _main, names = person_profile(pages.get(url))
+            names = [clean(name) for name in names]
+            if names and _anchored(names, mine):
+                matched.append((url, names))
+        if len(matched) == 1:
+            return matched, ""
+        notes.append(f"「{key}」{'有 %d 张人物页都列着' % len(matched) if matched else '没有人物页列着'}")
+        if matched:
+            break
+    return [], "；".join(notes)
+
+
+# -- 落库 --------------------------------------------------------------------
+
+
+def _owners(connection: sqlite3.Connection) -> dict[str, set[int]]:
+    """折叠键 → 用着这个写法的女优实体。"""
+    owners: dict[str, set[int]] = {}
+    for entity_id, written in connection.execute(
+            "SELECT id,canonical_name FROM entity WHERE kind='performer'"
+            " UNION SELECT a.entity_id,a.alias FROM entity_alias a"
+            " JOIN entity e ON e.id=a.entity_id WHERE e.kind='performer'"):
+        if written:
+            owners.setdefault(match_key(str(written)), set()).add(int(entity_id))
+    return owners
+
+
+def land(connection: sqlite3.Connection, entity_id: int, expected_name: str, site: str,
+         url: str, names: list[str], batch: str) -> list[dict]:
+    """把一页上的写法逐个判完，该写的写进 `entity_alias`。返回每个写法一行判词。"""
+    base = {"entity_id": entity_id, "canonical_name": expected_name, "site": site,
+            "page": url, "batch": ""}
+    current = _names(connection, entity_id)
+    if current is None:
+        return [{**base, "alias": name, "action": GONE, "detail": "实体不在或不是女优"}
+                for name in names]
+    if normalize_entity_name(current[0]) != normalize_entity_name(expected_name):
+        return [{**base, "alias": name, "action": STALE,
+                 "detail": f"账本里这条实体现在叫 {current[0]}"} for name in names]
+    have = {normalize_entity_name(name) for name in [current[0], *current[1]]}
+    owners, rows = _owners(connection), []
+    for name in dict.fromkeys(names):
+        reason = rejection(name)
+        others = sorted(owners.get(match_key(name), set()) - {entity_id})
+        if reason:
+            rows.append({**base, "alias": name, "action": SKIP, "detail": reason})
+        elif normalize_entity_name(name) in have:
+            rows.append({**base, "alias": name, "action": HAVE, "detail": "已经有这个写法"})
+        elif others:
+            owner = connection.execute("SELECT canonical_name FROM entity WHERE id=?",
+                                       (others[0],)).fetchone()
+            rows.append({**base, "alias": name, "action": TAKEN,
+                         "detail": f"{owner[0] if owner else ''}（实体 {others[0]}）已经用着这个写法"})
+        else:
+            connection.execute(
+                "INSERT OR IGNORE INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                "confidence) VALUES(?,?,?,?,1.0)",
+                (entity_id, name, normalize_entity_name(name), batch))
+            have.add(normalize_entity_name(name))
+            owners.setdefault(match_key(name), set()).add(entity_id)
+            rows.append({**base, "alias": name, "action": WRITE, "batch": batch,
+                         "detail": f"{site} 页面列着账本里她的名字"})
+    return rows
+
+
+def _record_review(root: Path, entity_id: int, rows: list[dict]) -> None:
+    """复核产物里这位的那几行换成这一轮的判词；别人的行原样留着。"""
+    from .review_csv import read_rows, write_rows
+
+    path = Path(root) / REVIEW_FILE
+    kept = [row for row in read_rows(path, missing_ok=True)
+            if str(row.get("entity_id")) != str(entity_id)]
+    write_rows(path, FIELDS, kept + rows, atomic=True, fill_missing=True)
+
+
+# -- 执行 --------------------------------------------------------------------
+
+
+def run(contract, key: str, handle) -> dict:
+    """跑一条补别名后继，再把她当时的指纹记进 `Attempts`，存量补派按它判。"""
+    summary = _run(contract, key, handle)
+    with contract.database.read_connection() as connection:
+        current = fingerprint(connection, parse_key(key))
+    Attempts(attempts_root(contract.candidate_root)).record(
+        key, current, str(summary.get("outcome", "")))
+    return summary
+
+
+def _run(contract, key: str, handle) -> dict:
+    entity_id = parse_key(key)
+    batch = f"{SOURCE}@{getattr(handle, 'run_id', None) or time.strftime('%Y%m%dT%H%M%S')}"
+    with contract.database.read_connection() as connection:
+        names = _names(connection, entity_id)
+        refs = _refs(connection, entity_id)
+    if names is None:
+        return {"outcome": "实体已不存在"}
+    canonical = names[0]
+    if handle is not None:
+        handle.progress(label=_label(canonical), throttle=0)
+    sites = open_sites(contract)
+    try:
+        reports, rows = _visit(contract, sites, entity_id, canonical, refs, batch)
+    finally:
+        for pages in sites.values():
+            pages.close()
+    written = [row["alias"] for row in rows if row["action"] == WRITE]
+    if written:
+        contract.cache_bust()
+    if rows:
+        _record_review(contract.candidate_root, entity_id, rows)
+    taken = sum(1 for row in rows if row["action"] == TAKEN)
+    if written:
+        outcome = f"登记 {len(written)} 个别名"
+    elif rows:
+        outcome = "没有新写法"
+    elif any(report.startswith("未取得") for report in reports.values()):
+        outcome = "未取得"
+    else:
+        outcome = "两站都没对上她"
+    summary = {"name": canonical, "outcome": outcome, "sites": reports}
+    if written:
+        summary["aliases"] = written[:12]
+    if taken:
+        summary["taken"] = taken
+    return summary
+
+
+def _visit(contract, sites: dict, entity_id: int, canonical: str, refs: list[str],
+           batch: str) -> tuple[dict[str, str], list[dict]]:
+    """两站各找她那一页，找到就当场落库。返回（每站一句结论, 每个写法一行判词）。
+
+    走两圈：第一圈用账本里现有的名字；某一站没命中、而另一站登记了新写法时，第二圈拿新写法
+    再搜那一站——`神山ももか` 在 av_neme 上搜得到 `雲母そら` 那一页，登记之后 minnano-av 才搜得到。
+    """
+    reports: dict[str, str] = {}
+    rows: list[dict] = []
+    visited: set[str] = set()
+    tried: dict[str, set[str]] = {MINNANO: set(), AV_NEME: set()}
+    for turn in range(2):
+        wrote = False
+        for site in (MINNANO, AV_NEME):
+            if turn and not reports.get(site, "").startswith("未命中"):
+                continue
+            with contract.database.read_connection() as connection:
+                current = _names(connection, entity_id)
+            if current is None:
+                reports[site] = "未命中：实体已不存在"
+                continue
+            mine = {match_key(name) for name in [current[0], *current[1]] if not rejection(name)}
+            keys = [name for name in search_keys(*current) if name not in tried[site]][:MAX_KEYS]
+            entry_refs = refs if site == MINNANO and not turn else []
+            if not keys and not entry_refs:
+                reports.setdefault(site, "未命中：没有能拿去检索的名字")
+                continue
+            if not entry_refs:
+                tried[site].update(keys)
+            try:
+                if site == MINNANO:
+                    pages, note = minnano_page(sites[site], keys, entry_refs)
+                else:
+                    pages, note = av_neme_page(sites[site], keys, mine)
+            except (Blocked, Unavailable) as error:
+                reports[site] = f"未取得：{error}"
+                continue
+            pages = [(url, found) for url, found in pages
+                     if url not in visited and _anchored(found, mine)]
+            if not pages:
+                reports[site] = f"未命中：{note or '页面上没有账本里她的名字'}"
+                continue
+            for url, found in pages:
+                visited.add(url)
+                with contract.database.write_transaction() as connection:
+                    landed = land(connection, entity_id, canonical, site, url, found, batch)
+                rows.extend(landed)
+                wrote = wrote or any(row["action"] == WRITE for row in landed)
+            reports[site] = "命中 " + "、".join(url for url, _found in pages)
+        if not wrote:
+            break
+    return reports, rows
+
+
+#: 写账本：别名进 `entity_alias`。取页在事务外做，写的那一下很短，
+#: 但照样走写账本那一条串行通道（ADR-0040 第二条）。
+TYPE = register(FollowupType(task_key=TASK_KEY, label=TASK_LABEL, writes_ledger=True, run=run))

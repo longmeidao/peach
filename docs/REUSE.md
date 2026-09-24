@@ -92,6 +92,13 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   真实 Flower 页 HTTPX 取得 200／253975 字节，FKOS-007 解析出 10 位出演者；公开搜索亦可发现
   对应表格。`scrape_codes --profile seesaa` 是正式消费者，不另建刮削 CLI。详见 [来源采集](SOURCING.md#seesaa-wiki-作品证据)。
 
+- 补女优别名后继（ADR-0055）复用 `minnano_av` 的检索与资料表解析、`sources.seesaa.WikiPages` 取页层、
+  `HostLimiter`、`scraping_access` 冷却、`metadata_alias_resolve.is_planning_alias` 与
+  `apply_alias_candidates.py` 的四种不写口径，撤回复用 `revert_auto_landing.py`。minnano-av 那一站没用
+  `page_cache.Site`：它只返回正文、丢了跳转后的最终地址（复核产物要记她那一页的真实地址），限速器按实例
+  各起一个，几十条后继接连跑等于没有间隔，还会把以 200 回来的机器人验证页当正文缓存下去。取页器
+  `MinnanoPages` 另记最终地址、共用一个 `HostLimiter`、认出验证页不缓存并记冷却。
+
 测试与集成复用 `test_runner.py`、`agent_worktree.py`；进程互斥采用开发依赖
 `filelock==3.32.4` 的 `FileLock`（[官方用法](https://py-filelock.readthedocs.io/en/stable/tutorials.html)）。
 跨进程占锁与释放由临时 Git 仓库回归验证；代码、环境和范围记录属于 Peach 的集成约束。
