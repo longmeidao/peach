@@ -3415,10 +3415,7 @@ class WebUiSourceTests(unittest.TestCase):
         写死的话宽屏最后一行留一截豁口——用户实测首页第二行只有一张卡；窄屏和手机端
         又多出一堆要横滑才看得见的占位。算出来就不必再为断点各写一套。
         """
-        self.assertPageContains("export function fillSkeletonTier(row,kind){")
-        self.assertPageContains(
-            "    row.insertAdjacentHTML('beforeend',slot(widths[i%widths.length]));\n"
-            "    if(row.scrollWidth>row.clientWidth)break;")
+        # 横排铺到右缘、整批只布局几次，由 `frontend/test/skeleton-tier-fill.test.ts` 守。
         self.assertPageContains("export function fitSkeleton(root){")
         self.assertPageContains(
             "    const columns=style.gridTemplateColumns.split(' ').filter(Boolean).length;")

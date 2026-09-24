@@ -751,22 +751,40 @@ function armSkeletonReveal(root){
   }
 }
 
-/** 一行横向骨架：逐枚追加到溢出容器右缘为止。上限只是死循环的护栏。 */
-export function fillSkeletonTier(row,kind){
-  const slot=SKELETON_SLOT[kind],widths=SKELETON_SLOT_WIDTHS[kind];
-  if(!slot||!row)return;
-  for(let i=0;i<64;i++){
-    row.insertAdjacentHTML('beforeend',slot(widths[i%widths.length]));
-    if(row.scrollWidth>row.clientWidth)break;
+const SKELETON_TIER_LIMIT=64;
+/* 横向骨架铺到溢出容器右缘为止。每量一次宽度就是一次整页布局，逐枚追加、逐枚量的话一排
+   要布局十几二十次，冷启动实测一排一百多毫秒。所以按轮来：先铺一轮宽度序列，量一次，按
+   量到的平均宽度把缺的那截一次补齐，再量一次确认。几排走同一轮，先全量再全写，合起来也
+   只布局这几次。上限只是死循环的护栏。 */
+function fillSkeletonTiers(jobs){
+  /* 同一排会再补一次（名单到了、容器改宽）：已经越过右缘的那排不再追加。空排不必先量。 */
+  jobs=jobs.filter(job=>job.row&&SKELETON_SLOT[job.kind]&&(!job.row.children.length||job.row.scrollWidth<=job.row.clientWidth))
+    .map(job=>({...job,start:job.row.children.length,added:0}));
+  const add=(job,count)=>{
+    const slot=SKELETON_SLOT[job.kind],widths=SKELETON_SLOT_WIDTHS[job.kind];
+    let html='';
+    for(const end=Math.min(SKELETON_TIER_LIMIT,job.added+count);job.added<end;job.added++)html+=slot(widths[job.added%widths.length]);
+    job.row.insertAdjacentHTML('beforeend',html);
+  };
+  for(const job of jobs)add(job,SKELETON_SLOT_WIDTHS[job.kind].length);
+  for(let round=0;round<4;round++){
+    const short=jobs.filter(job=>job.added<SKELETON_TIER_LIMIT&&job.row.scrollWidth<=job.row.clientWidth).map(job=>{
+      const first=job.row.children[job.start].getBoundingClientRect(),last=job.row.lastElementChild.getBoundingClientRect();
+      const each=Math.max(1,(last.right-first.left)/job.added);
+      return [job,Math.ceil((job.row.getBoundingClientRect().right-last.right)/each)+1];
+    });
+    if(!short.length)break;
+    for(const [job,count] of short)add(job,Math.max(1,count));
   }
-  armSkeletonReveal(row);
+  for(const job of jobs)armSkeletonReveal(job.row);
 }
+export function fillSkeletonTier(row,kind){fillSkeletonTiers([{row,kind}])}
 
 /** 骨架落进 DOM 之后按实际尺寸补齐：横向一行铺满，卡片网格补到整行且盖住视口余量。 */
 export function fitSkeleton(root){
   if(!root)return;
   const scoped=selector=>[...(root.matches?.(selector)?[root]:[]),...root.querySelectorAll(selector)];
-  for(const row of scoped('[data-skeleton-tier]'))fillSkeletonTier(row,row.dataset.skeletonTier);
+  fillSkeletonTiers(scoped('[data-skeleton-tier]').map(row=>({row,kind:row.dataset.skeletonTier})));
   for(const grid of scoped('.skeletonpanel[data-fill]>div,.index-skeleton[data-fill]>section>div')){
     const first=grid.firstElementChild,style=getComputedStyle(grid);
     /* 横排的推荐行不是网格，列数无从谈起，按整行补会把它裁成一张。 */
