@@ -487,6 +487,27 @@ class ApplyAliasTests(unittest.TestCase):
     def test_a_row_pointing_at_nobody_is_not_written(self):
         self.assertEqual(self.plan(entity_id=404)["action"], "查无此人")
 
+    def test_a_writing_from_another_site_records_that_site_as_its_source(self):
+        rows = self.module.plan(self.con, [self.candidate()])
+        self.module.apply_rows(self.con, rows, "namewikis-20260924", base="av_name")
+        self.assertEqual(self.aliases_of(1), [("新有菜", "av_name@namewikis-20260924")])
+
+    def test_a_writing_judged_wrong_is_taken_off_whatever_wrote_it(self):
+        """javdb 与 Wiki 的別名栏都混有共演男优名，人看过判「删除」就摘掉，来源留在复核 CSV。"""
+        self.con.execute("INSERT INTO entity_alias VALUES(1,'島修也',?,'javdb-actor-page@x',1.0)",
+                         (normalize_entity_name("島修也"),))
+        rows = self.module.plan(self.con, [self.candidate(alias="島修也", verdict="删除")])
+        self.assertEqual(rows[0]["action"], "删除")
+        self.assertIn("javdb-actor-page@x", rows[0]["detail"])
+        self.assertEqual(self.module.apply_rows(self.con, rows, "r"), 0)
+        self.assertEqual(self.module.remove_rows(self.con, rows), 1)
+        self.assertEqual(self.aliases_of(1), [])
+
+    def test_removing_a_writing_the_entity_does_not_have_changes_nothing(self):
+        row = self.plan(alias="島修也", verdict="删除")
+        self.assertEqual(row["action"], "名下没有")
+        self.assertEqual(self.module.remove_rows(self.con, [row]), 0)
+
     def test_only_the_verdicts_named_on_the_command_line_are_taken(self):
         rows = [self.candidate(), self.candidate(verdict="占用（另一条实体已有这个名字）"),
                 self.candidate(alias="")]
