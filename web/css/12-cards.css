@@ -157,10 +157,12 @@ body.refreshing #batchAction svg,
      同理（`.fbadge` 一行字加上下 2px 内边距和 1px 边框）。密集一档的高度是 `.mtext` 固定的
      三行，同一个变量。
    叠层纸边画在 `.pic` 外面，不在裁切范围里，Mix 卡、分卷／版次卡和竖屏带的卡一并适用。
-   跳过渲染连带 paint containment：元信息区里画出盒外的像素会被裁掉，贴着左缘的头像一
-   悬停，那圈 2px 焦点环就缺一截。`overflow-clip-margin` 把裁切边往外放 8px，和整张卡的
-   悬停面同宽，`frontend/e2e/design.test.ts` 按几何检查；Safari 不认这个属性，那边贴边的
-   描边和焦点环仍会被裁掉一截。
+   跳过渲染连带 paint containment，裁切边是元信息区的 padding box：贴着左缘的头像悬停
+   描边、头像与标签的 2px 焦点环都画在内容盒外面。所以元信息区四周垫 8px 内边距、再用
+   -8px 外边距抵消，裁切边往外扩 8px（和整张卡的悬停面同宽），内容盒、卡片尺寸和它与
+   封面的间距一个像素不动；`frontend/e2e/design.test.ts` 按几何检查。垫出来的那一圈伸到
+   卡片盒外面，元信息区自己因此不接指针，只有它的子元素接：卡片的悬停面、点击区和悬停
+   预览的触发范围仍是卡片盒本身。元信息区没有背景，垫出来的一圈不画任何东西。
    图片墙不在其内：它的封面没有固定比例，高度取自图片本身，跳过渲染时会按零高排版。
    资料页的照片墙 `.photowall` 与名册 `.igrid` 同理不在其内，它们也不是 `.card`。资料页
    新作那一行（`.feednew`）和详情页的接着看（`#nrow`）只有一行、往横向排，屏外的卡不改变
@@ -173,9 +175,11 @@ body.refreshing #batchAction svg,
 :is(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card :is(.pic,.meta){content-visibility:auto}
 /* `flex-shrink:0`：跳过渲染时元信息区的内容不参与最小尺寸，卡里有别的子元素要抢空间时它会
    被压扁。关注卡的 `.fstate` 是 `flex:1 1 100%`，不钉住的话屏外关注卡的元信息区只剩 21px。
-   渲染时它本来就压不动（自动最小尺寸就是内容高度），钉住不改变屏上的排版。 */
+   渲染时它本来就压不动（自动最小尺寸就是内容高度），钉住不改变屏上的排版。
+   估计高度作用在内容盒上，内边距另外加在外面，所以 `--card-meta-block` 只估内容。 */
 :is(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card .meta{flex-shrink:0;
-  contain-intrinsic-block-size:auto var(--card-meta-block);overflow-clip-margin:8px}
+  margin:-8px;padding:8px;pointer-events:none;contain-intrinsic-block-size:auto var(--card-meta-block)}
+:where(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card .meta>*{pointer-events:auto}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
    整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
    邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。
@@ -446,10 +450,15 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
    也认不出原来是哪一个。所以这一行改成可换行、只有一颗标签那么高——放不下的整颗
    落到第二行，被容器整颗切掉，切掉的是标签本身，不是它的名字。行高按 .tg 的三个
    token 算出来，改字号或内边距时不用回来对第二个数。
+   裁切边是 padding box：四周垫 4px 内边距再用 -4px 外边距抵消，标签 2px 偏移加 2px 线宽
+   的焦点环整圈落在裁切边以内，这一行占的位置和标签的排布一个像素不动；第二行离第一行
+   隔着 5px 行距，仍整颗落在裁切边外面。垫出来的一圈伸到卡片盒外面，这一行自己不接指针，
+   只有标签接。
    .tg 只留 max-width:100% 这一层兜底：一颗标签自己就比整张卡还宽时，横着溢出会
    压到卡片外面，这时候省略号是唯一的出路。 */
 .ctags{display:flex;flex-wrap:wrap;align-content:flex-start;gap:5px;min-width:0;overflow:hidden;
-  height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)}
+  margin:-4px;padding:4px;height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px + 8px);pointer-events:none}
+.ctags>*{pointer-events:auto}
 .tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font:inherit;font-size:var(--fs-xs);border:1px solid var(--line);
   line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:100%;
   background:var(--tag-fill)}
@@ -461,18 +470,22 @@ body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
 body[data-density="dense"] .card .ctags .tg{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 /* 顶栏的密集模式固定为标题、身份、标签三行。缺少标签时第三行仍保留，
    同一网格不会再被大小、观看次数或长身份撑成四行。分卷卡已有 7px 叠层空间，
-   密集网格的普通卡也保留同一高度，避免每行是否出现分卷卡决定整行高度。 */
+   密集网格的普通卡也保留同一高度，避免每行是否出现分卷卡决定整行高度。
+   三行由 `.mtext` 裁住，它和 `.ctags` 一样四周垫 4px 再用 -4px 抵消、自己不接指针，标签的
+   焦点环不被这一层裁掉。子元素把指针接回来，标签行由它自己那条规则管；资料页新作那一行
+   的卡整块放行指针（见 `.feednewcard`），不接回来。 */
 body[data-density="dense"] .grid>.card{padding-top:7px}
 body[data-density="dense"] .card .meta{--card-meta-block:calc(2.7em + 36px)}
 body[data-density="dense"] .card .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px;
-  gap:3px;height:var(--card-meta-block);overflow:hidden}
+  gap:3px;margin:-4px;padding:4px;height:calc(var(--card-meta-block) + 8px);overflow:hidden;pointer-events:none}
+body[data-density="dense"] .card:not(.feednewcard) .mtext>:not(.ctags){pointer-events:auto}
 body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;
   -webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis}
 body[data-density="dense"] .card .meta .s{height:1.35em;min-height:0;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
 body[data-density="dense"] .card .meta .who{flex:0 1 auto}
 body[data-density="dense"] .card .meta .whomore,
 body[data-density="dense"] .card .meta .size{flex:none;white-space:nowrap}
-body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}
+body[data-density="dense"] .card .ctags{height:38px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}
 body[data-density="dense"] .card .meta .why,
 body[data-density="dense"] .card .meta .watchcount{display:none}
 

@@ -1579,32 +1579,51 @@ describe('设计决定', () => {
     }
   });
 
-  it('跳过渲染的元信息区不裁掉贴着边的头像悬停描边', { timeout: 60_000 }, async () => {
-    const opened = await openCatalog(browser);
+  it('跳过渲染的元信息区不裁掉贴着边的头像悬停描边和焦点环', { timeout: 60_000 }, async () => {
+    /* 演示库的作品都未归属，头像是不可聚焦的 `<span>`；首张卡归给一位女优，头像才是按钮。 */
+    const opened = await openCatalogFixture(browser, (payload) => {
+      const item = payload.items[0];
+      if (!item) throw new Error('演示目录没有可替换的卡片');
+      item.creator = '';
+      item.performers = ['演示演员'];
+      item.performer_total = 1;
+      item.performer_entities = [{ id: 90_000, name: '演示演员', has_image: false }];
+    });
     try {
-      /* 视口外跳过渲染连带 paint containment，元信息区里画出盒外的像素一律裁掉；几何照算，
-         所以这里比的是描边外沿与裁切边，不是与元信息区的盒子。头像贴着它的左缘和上缘。 */
-      const avatar = opened.page.locator('#grid .grid > article.card .meta > .mav').first();
-      await avatar.hover();
-      const edges = await avatar.evaluate((element) => {
+      /* 视口外跳过渲染连带 paint containment，元信息区里画出 padding box 的像素一律裁掉；
+         几何照算，所以这里比的是描边外沿与 padding box，不是与内容盒。头像贴着内容盒的
+         左缘和上缘。这条不读 `overflow-clip-margin`：Safari 不认它，裁切边只能靠盒子本身。 */
+      const { page } = opened;
+      const avatar = page.locator('#grid .grid > article.card .meta > button.mav').first();
+      const edges = () => avatar.evaluate((element) => {
         const meta = element.closest('.meta')!;
-        const style = getComputedStyle(meta);
-        const ring = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(getComputedStyle(element).boxShadow)?.[1]);
-        const margin = parseFloat(style.overflowClipMargin || '0');
+        const style = getComputedStyle(element);
+        const shadow = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(style.boxShadow)?.[1] ?? 0);
+        const outline = style.outlineStyle === 'none' ? 0
+          : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+        const ring = Math.max(shadow, outline);
         const box = element.getBoundingClientRect();
         const clip = meta.getBoundingClientRect();
+        const left = clip.left + meta.clientLeft, top = clip.top + meta.clientTop;
         return {
-          contained: style.contentVisibility === 'auto',
-          ring, ringLeft: box.left - ring, ringTop: box.top - ring,
-          clipLeft: clip.left - margin, clipTop: clip.top - margin,
+          contained: getComputedStyle(meta).contentVisibility === 'auto',
+          focused: element.matches(':focus-visible'), ring,
+          // 描边外沿到裁切边还剩多少，四边取最小的那一边。
+          room: Math.min(box.left - ring - left, box.top - ring - top,
+            left + meta.clientWidth - (box.right + ring), top + meta.clientHeight - (box.bottom + ring)),
         };
       });
-      assert.ok(edges.contained, '首页卡片的元信息区不再跳过渲染：这条用例守的裁切前提变了，改用例');
-      assert.ok(edges.ring > 0, '头像悬停没有描边');
-      assert.ok(edges.ringLeft >= edges.clipLeft - .5,
-        `头像描边外沿 ${edges.ringLeft}px 越过了裁切边 ${edges.clipLeft}px，左半圈会被裁掉`);
-      assert.ok(edges.ringTop >= edges.clipTop - .5,
-        `头像描边上沿 ${edges.ringTop}px 越过了裁切边 ${edges.clipTop}px，上半圈会被裁掉`);
+      await avatar.hover();
+      const hovered = await edges();
+      assert.ok(hovered.contained, '首页卡片的元信息区不再跳过渲染：这条用例守的裁切前提变了，改用例');
+      assert.ok(hovered.ring > 0, '头像悬停没有描边');
+      assert.ok(hovered.room >= -.5, `头像悬停描边越过了元信息区的裁切边 ${-hovered.room}px，那一截会被裁掉`);
+      await page.mouse.move(0, 0);
+      await page.keyboard.press('Tab');
+      await avatar.focus();
+      const focused = await edges();
+      assert.ok(focused.focused && focused.ring > 0, '键盘聚焦的头像没有焦点环');
+      assert.ok(focused.room >= -.5, `头像焦点环越过了元信息区的裁切边 ${-focused.room}px，那一截会被裁掉`);
     } finally {
       await opened.close();
     }
