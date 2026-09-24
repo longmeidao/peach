@@ -32,7 +32,7 @@ from peach import __version__ as PEACH_VERSION
 from peach import metadata_routes
 from peach.catalog_rules import (code_query_variants, is_jav_code, normalise_code_key,
                                  same_release_code)
-from peach.scripting import open_readonly
+from peach.scripting import HostLimiter, open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SECRETS_DIR, SOURCES_DIR, TOOLS_DIR
 from peach.genre_decisions import load_genre_decisions
 from peach.genre_taxonomy import CONTENT_GENRES, map_genres
@@ -51,7 +51,7 @@ from peach.metadata_policy import PEACH_FIELDS, POLICY_VERSION, SOURCE_SPECS, fi
 from peach.platform import system_volume
 from peach.review_csv import ENCODING, write_rows
 from peach.sources import Session
-from peach.sources.seesaa import SEESAA, SeesaaSource, WikiPages
+from peach.sources.seesaa import SEESAA, WIKI_SOURCES as WIKI_SITES, WikiPages
 
 
 _logf = None
@@ -75,16 +75,18 @@ HEALTH_FIELDS = [
     "last_error_kind", "last_error_status", "last_error_message",
 ]
 
-#: Seesaa 作品表那一档。它不在任何内容类型的链上（`metadata_routes.ROUTES`），只由
-#: `--profile seesaa` 或 `--sources sougouwiki` 点名，经契约问 `sources.seesaa`。
+#: Seesaa 作品表那一档，`--profile seesaa` 只问它。
 WIKI_SOURCE = SEESAA.name
-#: `--sources` 能点名的来源：链上每一档的成员，加 Seesaa。别的名字在 `SOURCE_SPECS` 里
+#: Seesaa 上的几个 Wiki（`sources.seesaa.WIKI_SOURCES`）。它们不在任何内容类型的链上
+#: （`metadata_routes.ROUTES`），只由 `--profile seesaa` 或 `--sources` 点名，各自一档，经契约问。
+WIKI_SOURCES = tuple(WIKI_SITES)
+#: `--sources` 能点名的来源：链上每一档的成员，加 Seesaa 的几个 Wiki。别的名字在 `SOURCE_SPECS` 里
 #: 只是历史来源身份（`metadata_policy.HISTORICAL_SOURCES`），当前没有解析器可问。
 CHAIN_SOURCES = tuple(dict.fromkeys((
     *(source for chain in metadata_routes.ROUTES.values() for source in chain),
     *metadata_routes.AMANE_OFFICIAL_STAGE, *metadata_routes.AMANE_STAGE,
 )))
-QUERYABLE_SOURCES = (*CHAIN_SOURCES, WIKI_SOURCE)
+QUERYABLE_SOURCES = (*CHAIN_SOURCES, *WIKI_SOURCES)
 #: 三种取来源的方式，写进 CSV 的 `source_profile`：按番号内容类型走链、只问 Seesaa、
 #: `--sources` 点名。
 CHAIN_PROFILE, WIKI_PROFILE, CUSTOM_PROFILE = "chain", "seesaa", "custom"
@@ -167,15 +169,14 @@ class ChainAdapter:
     直接经契约问 `SITE_SOURCES` 里的站，不经 `community()` 的按番号缓存——本脚本要的
     是每家各自的结果与失败，用来记快照和健康，而那份缓存只记整档的结论。
 
-    provider 按需才建：`--profile seesaa` 一次都不会碰到它。Seesaa 那一档经契约问 `wiki`
-    （`SeesaaSource`），会话 `wiki_session` 的传输是带页缓存与请求限额的 `WikiPages`，整批共用。
+    provider 按需才建：`--profile seesaa` 一次都不会碰到它。Seesaa 的每个 Wiki 一档，`wikis` 是
+    `{来源名: (站, 会话)}`，会话的传输是带页缓存与请求限额的 `WikiPages`，整批共用。
     """
 
-    def __init__(self, factory, wiki=None, wiki_session=None):
+    def __init__(self, factory, wikis=None):
         self._factory = factory
         self._inner = None
-        self.wiki = wiki
-        self.wiki_session = wiki_session
+        self.wikis = dict(wikis or {})
 
     @property
     def inner(self):
@@ -198,8 +199,9 @@ class ChainAdapter:
                 pairs = self.inner.fc2(code, route=members, covers=True)
             elif stage in ("amane", "amane_official"):
                 pairs = self.inner.amane(code, route=members)
-            elif stage == WIKI_SOURCE:
-                pairs = [(WIKI_SOURCE, self.wiki.query(code, session=self.wiki_session).payload())]
+            elif stage in self.wikis:
+                wiki, session = self.wikis[stage]
+                pairs = [(stage, wiki.query(code, session=session).payload())]
             else:
                 raise ValueError(f"链上没有这一档：{stage}")
         except Exception as error:  # noqa: BLE001 - 每种失败都翻成本脚本的分档
@@ -223,8 +225,8 @@ class ChainAdapter:
     def close(self) -> None:
         if self._inner is not None:
             self._inner.close()
-        if self.wiki_session is not None:
-            self.wiki_session.transport.close()
+        for _, session in self.wikis.values():
+            session.transport.close()
 
 
 class PerSourceAdapter:
@@ -397,6 +399,8 @@ COOLDOWN_SECONDS = 300.0
 
 #: 限流、封禁与站方过载的状态码。撞上它们换个写法只是再撞一次墙，也算进冷却计数。
 BLOCKING_STATUS_CODES = frozenset({403, 429, 503})
+#: Seesaa 的 Wiki 搜索范围内没找到（`sources.seesaa`）。可重试，但不算进冷却计数。
+SEARCH_MISS_KIND = "incomplete_search"
 
 
 def _read_settled_error(path: Path) -> MetadataProviderError | None:
@@ -504,7 +508,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--refresh", action="store_true", help="ignore reusable raw snapshots")
     parser.add_argument("--wiki-pages-file", type=Path, help="预取 Wiki 作品目录页，每行一个 URL")
     parser.add_argument("--wiki-max-requests", type=int, default=80,
-                        help="Wiki 本批 HTTP 请求上限；每个请求最多 4 MiB，间隔至少 2 秒")
+                        help="每个 Wiki 本批 HTTP 请求上限；每个请求最多 4 MiB，同主机几个 Wiki 合计间隔至少 2 秒")
     return parser
 
 
@@ -662,10 +666,10 @@ class _Throttle:
         row["last_error_kind"] = error.kind
         row["last_error_status"] = error.status_code or ""
         row["last_error_message"] = str(error)[:500]
-        if source == WIKI_SOURCE and (error.kind == "budget" or error.status_code in {403, 429}):
+        if source in WIKI_SOURCES and (error.kind == "budget" or error.status_code in {403, 429}):
             self.cooldown_until[source] = float("inf")
             row["blocked"] += 1
-            log("sougouwiki 本批联网停止；已取得的候选已保留")
+            log(f"{source} 本批联网停止；已取得的候选已保留")
         if error.kind == AUTH_ERROR_KIND:
             self.auth_blocked[source] = str(error)
             self.consecutive_failures[source] = 0
@@ -674,6 +678,10 @@ class _Throttle:
             # 可看的 403 则不替用户断成因。这里再补一句通用建议会盖掉那份
             # 区分，把撞上 IP 封禁的人引去反复换 Cookie。
             log(f"{source} 鉴权失败，本批不再向它发请求：{error}")
+        elif error.kind == SEARCH_MISS_KIND:
+            # 站答了，只是搜索范围内没有这部片：不是限流信号。FC2 排在前面的一批里连着几个
+            # 没收录，就会把整站冷却掉，后面收录了的番号一个都问不到。
+            self.consecutive_failures[source] = 0
         elif error.retryable or error.status_code in BLOCKING_STATUS_CODES:
             self.consecutive_failures[source] = self.consecutive_failures.get(source, 0) + 1
             if self.consecutive_failures[source] >= COOLDOWN_AFTER_FAILURES:
@@ -773,20 +781,27 @@ def _build_adapter(args, sources, provider=None):
     """来源适配器：注入的 provider 优先（测试桩），否则按需建正式链的 provider 与 Wiki。"""
     if provider is not None:
         return provider if hasattr(provider, "fetch") else PerSourceAdapter(provider)
-    wiki = wiki_session = None
-    if WIKI_SOURCE in sources:
-        pages = ([line.strip() for line in args.wiki_pages_file.read_text(encoding=ENCODING).splitlines()
-                  if line.strip() and not line.lstrip().startswith("#")]
-                 if args.wiki_pages_file else [])
-        wiki = SeesaaSource(pages=pages)
-        wiki_session = Session(WikiPages(args.raw_dir / "seesaa-pages", refresh=args.refresh,
-                                         max_requests=max(0, args.wiki_max_requests)))
+    wikis = {}
+    names = [name for name in sources if name in WIKI_SITES]
+    pages = ([line.strip() for line in args.wiki_pages_file.read_text(encoding=ENCODING).splitlines()
+              if line.strip() and not line.lstrip().startswith("#")]
+             if args.wiki_pages_file and names else [])
+    stray = [url for url in pages if not any(url.startswith(WIKI_SITES[name].root) for name in names)]
+    if stray:
+        raise ValueError("预取页不属于本批点名的 Wiki：" + "、".join(stray[:3]))
+    # 几个 Wiki 都在 seesaawiki.jp 上：共用一个主机间隔，合起来仍是每 2 秒至多一次请求。
+    limiter = HostLimiter({}, default_interval=SEESAA.interval)
+    for name in names:
+        site = WIKI_SITES[name]
+        wiki = site(pages=[url for url in pages if url.startswith(site.root)])
+        wikis[name] = (wiki, Session(WikiPages(args.raw_dir / "seesaa-pages", config=site.DEFAULT, limiter=limiter,
+                                               refresh=args.refresh, max_requests=max(0, args.wiki_max_requests))))
 
     def factory():
         from peach.library_processing import LibraryMetadataProvider
         return LibraryMetadataProvider(args.secrets_root, tools_root=args.tools_root)
 
-    return ChainAdapter(factory, wiki, wiki_session)
+    return ChainAdapter(factory, wikis)
 
 
 def main(argv: list[str] | None = None, *, provider=None) -> int:

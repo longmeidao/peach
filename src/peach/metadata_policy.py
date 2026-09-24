@@ -54,6 +54,8 @@ SOURCE_SPECS = {
         "javdb": "community", "javbus": "community",
         # Seesaa 作品表（`peach.sources.seesaa`，`scrape_codes --profile seesaa`）。
         "sougouwiki": "community",
+        # Seesaa 上的两个认人 Wiki（同一模块，`scrape_codes --sources av_neme,av_name`）。
+        "av_neme": "community", "av_name": "community",
         # AVBase 汇总各店铺的商品条目，采集任务在官方渠道落空时直接请求它
         # （`peach.sources.avbase`）。
         "avbase": "community",

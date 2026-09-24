@@ -32,20 +32,26 @@
 原文证据；冲突行报告错误。`TITLE`、`RELEASE` 可出标题／日期候选；`SUBTITLE` 不冒充完整标题。
 封面 URL、人物页链接、备注和跨平台编号保留在原始快照及候选证据中，不下载图片、不自动合并人物或作品。
 
+两个认人 Wiki 用 `--sources av_neme,av_name` 点名，同一模块、同一套取页层；每站各有
+`--wiki-max-requests` 的额度，同主机合计仍是每 2 秒至多一次请求。它们只产出演候选：标题、日期、
+素人名义只进 `wiki_evidence`（av_name 厂牌页上的 MGS 标题是截断的）。出演规则同上：精确番号回配，
+名单带 `？`、`▲`、`--`、没有人物页的名字或写坏的空链接时整份只留原文。两站的站内搜索都是全文子串
+匹配，`AR-101` 会带回 `GAR-101`、`STAR-101`，靠精确回配挡掉。页面结构的实测细节在模块 docstring。
+
 Seesaa 是托管平台，以下 Wiki 由各自维护者编辑，不能按平台名当成互相独立的印证：
 
 | 来源 | 已核验的用途 |
 | --- | --- |
 | [素人系総合 Wiki](https://seesaawiki.jp/w/sougouwiki/) | 厂牌作品表、合集名单、名义与人物页链接、日期、图片及跨平台线索；已接入脚本 |
-| [このAV女優の名前教えてwiki](https://seesaawiki.jp/av_neme/) | DMM、MGS、S-Cute、舞ワイフ出演名义核验 |
+| [このAV女優の名前教えてwiki](https://seesaawiki.jp/av_neme/) | DMM、MGS、S-Cute、舞ワイフ出演名义核验；不用表格，系列页与月份归档页一部一个 `h5` 小节（「品番\| 系列名」加「名前(女優名)」），实测 300MIUM 可查，FC2-PPV 与 MIB 查不到；已接入脚本（`av_neme`） |
 | [AV女優大辞典wiki](https://av-help.memo.wiki/) | 女优与出演作品索引 |
-| [AV女優の名前特定wiki](https://seesaawiki.jp/av_name/) | FANZA 素人作品番号与出演者对应 |
+| [AV女優の名前特定wiki](https://seesaawiki.jp/av_name/) | FANZA 素人与 FANZAビデオ 一个品番一页（键值表），MGS 挂在厂牌页 `h5` 小节里且只列最新约 1100 件；实测 300MIUM、FKOS 可查，FC2-PPV、476MLA 与 MIB 查不到；已接入脚本（`av_name`） |
 | [AV女優パーフェクトWiki](https://seesaawiki.jp/av_video/) | 作品、厂牌、系列索引及出演者线索 |
 | [シロウトTV・ナンパTV](https://seesaawiki.jp/pre_shiro/) | MGS 相关作品的出演名义核验 |
 | [人妻系まとめ](https://hitoduma-matome.memo.wiki/)／[素人AV女優名鑑](https://shiroutoav.memo.wiki/) | 特定类别人物与作品线索 |
 | [VR作品](https://seesaawiki.jp/vr_video/)／[成人映画](https://seesaawiki.jp/nikkatsu/)／[NHpedia](https://seesaawiki.jp/nhpedia/) | VR、成人电影、跨性别演员等分领域索引 |
 
-表内入口取页于 2026-09-06。平台首页的游戏、小说、生成模型教程和场所服务 Wiki
+表内入口取页于 2026-09-06，两个已接入的认人 Wiki 于 2026-09-24 复测。平台首页的游戏、小说、生成模型教程和场所服务 Wiki
 不适用于现有视频作品元数据补全。
 
 ## K-MIB 官网作品与演员
@@ -173,7 +179,7 @@ dmm、giga、kin8 不进链，理由与数据见 ADR-0048 与 `build/agent-verif
 | FC2 | 已套契约 | `sources/fc2.py` | 商品页一跳，下架页与 `sku` 对不上归 `not_found`；番号、时长、原件地址与占位件判定是三站共用的函数，也在这里；页面上限 2 MiB |
 | fc2cmadb | 已套契约 | `sources/fc2cmadb.py` | 作品页之后在 `query()` 里带握手头点名 `actresses` 再问一跳，那一跳失败按没有女优交回；评论区的演员、等价与合集解析也在这里，`scripts/fetch_fc2_metadata.py` 从这里取 |
 | JavArchive | 已套契约 | `sources/javarchive.py` | 搜索页加作品页两跳；`records()` 把搜索命中的每一条转存各交一份记录，某一条 404 或对不上就跳过 |
-| Seesaa 作品表 | 已套契约 | `sources/seesaa.py` | 只由 `scrape_codes --profile seesaa` 或 `--sources sougouwiki` 点名，provenance 是 `sougouwiki`；`rows()` 把一页作品表的每一行各读成一份记录，读过的表记在实例里供后面的番号先找；会话的传输是 `WikiPages`（页缓存、本批请求限额、撞墙停网），不在 `scraping_access.SOURCES` 里；失败沿用 `budget`、`blocked`、`ambiguous`、`incomplete_search` 等分档，不折成三档：它们落进批处理的错误表与健康表，`budget` 与 403/429 还决定本批停网 |
+| Seesaa 的三个 Wiki | 已套契约 | `sources/seesaa.py` | 只由 `scrape_codes --profile seesaa` 或 `--sources sougouwiki,av_neme,av_name` 点名，provenance 就是来源名；两个认人 Wiki 的类共用 `NameWikiSource`，读 `h5` 作品小节与单品番键值表；`rows()` 把一页作品表的每一行各读成一份记录，读过的表记在实例里供后面的番号先找；会话的传输是 `WikiPages`（页缓存、本批请求限额、撞墙停网），不在 `scraping_access.SOURCES` 里；失败沿用 `budget`、`blocked`、`ambiguous`、`incomplete_search` 等分档，不折成三档：它们落进批处理的错误表与健康表，`budget` 与 403/429 还决定本批停网 |
 
 FC2 三站先后问、资料取齐即停、封面问到底的流程仍在 `LibraryMetadataProvider.fc2`，按 `metadata_routes.FC2_STAGE`
 逐站调 `records()`；各站只管自己的取页与解析。
