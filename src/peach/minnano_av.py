@@ -37,6 +37,14 @@ _PRODUCTION = re.compile(r'href=["\'][^"\']*production=(\d+)[^"\']*["\'][^>]*>(.
 _LD_JSON = re.compile(
     r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
 _NEXT = re.compile(r'<link[^>]+rel=["\']next["\'][^>]+href=["\']([^"\']+)["\']', re.I)
+_CANONICAL = re.compile(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']', re.I)
+_H1 = re.compile(r"<h1[^>]*>(.*?)</h1>", re.S)
+_SPAN = re.compile(r"<span[^>]*>.*?</span>", re.S)
+_ACT_PROFILE = re.compile(r'<div[^>]+class=["\']act-profile["\'][^>]*>(.*?)</table>', re.S)
+_RESULT_TABLE = re.compile(r'<table[^>]+class=["\']tbllist actress["\'][^>]*>(.*?)</table>', re.S)
+_RESULT_NAME = re.compile(
+    r'<h2[^>]+class=["\']ttl["\'][^>]*>\s*<a[^>]+href=["\'][^"\']*actress(\d+)\.html["\'][^>]*>(.*?)</a>',
+    re.S)
 
 
 def search_url(name: str) -> str:
@@ -69,6 +77,52 @@ def profile_fields(html: str) -> dict[str, list[str]]:
         if external:
             found.setdefault(label, []).extend(external)
     return found
+
+
+def _text(fragment: str) -> str:
+    return re.sub(r"\s+", " ", html_entities.unescape(re.sub(r"<[^>]+>", " ", fragment))).strip()
+
+
+def page_actress_id(html: str) -> str:
+    """这一页是某位女优的资料页时，它自报的编号；不是就返回空。
+
+    检索唯一命中时站点直接跳到资料页，缓存里存的是跳过去之后的正文，发出去的检索地址
+    说明不了这是谁的页。页面头里的 canonical 才说得清。
+    """
+    found = _CANONICAL.search(html or "")
+    return actress_id(found.group(1)) if found else ""
+
+
+def search_hits(html: str) -> list[tuple[str, str]]:
+    """检索结果表 → [(女优编号, 这一行显示的写法)]。
+
+    只读结果表那一张：页面其余位置的 `actressNNN.html` 是推荐与相关女优。同一位女优的
+    几个别名各占一行（「神山ももか」「神山ももか(天然むすめ)」都指 699633），
+    所以判唯一要按编号去重，不能数行。
+    """
+    table = _RESULT_TABLE.search(html or "")
+    if not table:
+        return []
+    return [(found, _text(name)) for found, name in _RESULT_NAME.findall(table.group(1))]
+
+
+def profile_names(html: str) -> tuple[str, list[str]]:
+    """资料页 → (主名, 资料表里每一行「別名」的原文)。不是资料页返回 ("", [])。
+
+    主名取 `<h1>` 里 `<span>` 之前那段（`<span>` 里是读音与罗马字）。别名只读资料表
+    `act-profile` 那一块：作品列表与评论里也有人名，那些不是她的名字。原文带着站上的注记
+    （`雫つむぎ(FC2) （しずくつむぎ / SizukuTsumugi）`），注记怎么剥由调用方决定。
+    """
+    if not page_actress_id(html):
+        return "", []
+    heading = _H1.search(html)
+    main = _text(_SPAN.sub("", heading.group(1))) if heading else ""
+    block = _ACT_PROFILE.search(html)
+    aliases = []
+    for match in FIELD.finditer(block.group(1) if block else ""):
+        if _text(match.group(1)) == "別名":
+            aliases.append(_text(match.group(2)))
+    return main, [alias for alias in aliases if alias]
 
 
 def profile_text(html: str, label: str) -> str:

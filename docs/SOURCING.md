@@ -333,6 +333,13 @@ av911.tv，三条候选已进复核队列。
   长这样的记录，不给一次点击删掉。自由文本进的是别名表而不是 `canonical_name`，因为那是真相字段，
   只在这条实体已有的名字里挑（`/api/entity-name`）。头像图库按整条名字链逐个查并取并集，所以少一行
   别名就少一批候选：同一个人常按好几种写法各存一批，命中即停会让排在后面那几个名下的图整批出不来。
+- 女优的其他艺名由补别名后继自动登记（`peach.performer_alias_followup`，ADR-0055），`source` 是批次号
+  `auto:performer-alias@<任务行 id>`，`revert_auto_landing.py --source auto:performer-alias` 整批撤回。
+  只读 minnano-av 资料表的「別名」行与 av_neme 人物页「プロフィール」一节的名字栏：minnano-av 检索页
+  同一人几个别名各占一行，判唯一按编号去重；唯一命中时站点直接跳到资料页，编号看页头 canonical。
+  av_neme 的系列页、月份页也写「名前(女優名)」，页名等于主名才算人物页；改过名的旧页只剩一句
+  「女優名が【甲】から【乙】へ変更」，第一节不是「プロフィール」，不读。判词写进
+  `generated/performer-alias-landing.csv`，被别的实体占用的写法只记不写。
 - 上游名字里的零宽字符在 `canonicalize_entity_name` 一处剥掉，不在各脚本里各修一遍。
   `str.strip()` 不认它们是空白，`normalized_name` 于是带着一个看不见的字符：界面上和普通名字
   一模一样，但 `upsert_asset_entity` 按 `normalized_name` 找不到已有实体，同一个人存成两条，
