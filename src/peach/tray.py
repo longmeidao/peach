@@ -222,6 +222,8 @@ class ServiceManager:
         self._last_health: dict[str, tuple[bool, str]] = {
             spec.name: (False, "未检测") for spec in specs
         }
+        self._seen_attention: set[str] = set()
+        self._pending_attention: list[str] = []
         self._lock = threading.RLock()
 
     def healthy(self, spec: ServiceSpec) -> bool:
@@ -229,17 +231,29 @@ class ServiceManager:
         # HTTP 代理，httpx 默认读它（urllib.getproxies 在 macOS 走系统配置），于是
         # 探测 http://127.0.0.1 的请求被送进代理、由代理回 503——服务明明活着，
         # 状态却显示「未运行」。实测 Stash 开着时就是这样，HTTPS 探测不受影响。
+        attention: list = []
         try:
             response = self._health_get(
                 spec.health_url, timeout=0.5, verify=spec.verify, trust_env=False,
             )
-            ok = response.status_code == 200 and response.json().get("ok") is True
+            payload = response.json()
+            ok = response.status_code == 200 and payload.get("ok") is True
             detail = "" if ok else f"状态码 {response.status_code}"
-        except (httpx.HTTPError, OSError, ValueError):
+            attention = [str(item) for item in payload.get("attention") or []]
+        except (httpx.HTTPError, OSError, ValueError, AttributeError):
             ok, detail = False, "无响应"
         with self._lock:
             self._last_health[spec.name] = (ok, detail)
+            # 服务报的「等人点验证」按条去重：同一条只在第一次探到时提醒一次，消失后再出现算新的一条。
+            self._pending_attention.extend(item for item in attention if item not in self._seen_attention)
+            self._seen_attention = set(attention)
         return ok
+
+    def take_attention(self) -> list[str]:
+        """自上次取走之后新出现的提醒。托盘每轮探测完健康后取一次，逐条弹系统通知。"""
+        with self._lock:
+            taken, self._pending_attention = self._pending_attention, []
+        return taken
 
     @property
     def log_dir(self) -> Path:
@@ -1068,6 +1082,8 @@ class PeachTray:
             self.gate.poll()
             for spec in self.manager.specs:
                 self.manager.healthy(spec)
+            for message in self.manager.take_attention():
+                self.icon.notify(message, "Peach 采集")
             self.icon.update_menu()
             self.poll_build_age()
 
@@ -1284,6 +1300,8 @@ def run_macos_menu_bar(manager: "ServiceManager", gate: "SetupGate | None" = Non
             gate.poll()
             for spec in manager.specs:
                 manager.healthy(spec)
+            for message in manager.take_attention():
+                notify(message, "Peach 采集")
 
     def refresh_certificate() -> bool:
         """本机地址变了就补签证书并重启 HTTPS。成功返回 True。

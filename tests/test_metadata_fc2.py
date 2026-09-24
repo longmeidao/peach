@@ -594,6 +594,13 @@ class Fc2ppvdbTests(unittest.TestCase):
             with self.subTest(code=code, html=html[:40]), self.assertRaises(SourceFailure) as caught:
                 database(html, code)
             self.assertEqual((caught.exception.reason, str(caught.exception)), (reason, wording))
+        gate = page("<html><head><title>年齢確認 | FC2PPV Database</title></head><body><h1>年齢確認</h1></body></html>",
+                    "https://fc2ppv-db.com/ja/age-verify?returnTo=%2Fja%2Fvideos%2F4898837")
+        with self.assertRaises(SourceFailure) as caught:
+            Fc2ppvdbSource().parse(gate, "FC2-PPV-4898837")
+        self.assertEqual((caught.exception.reason, str(caught.exception)),
+                         (FailureReason.AUTH_REQUIRED, "FC2PPV-DB 送到了年齢確認页，浏览器没有点过去"),
+                         "年龄门是会话状态不是这部片没有，不落 not_found")
 
     def test_the_database_is_asked_once_on_its_own_host_and_hands_back_the_same_shape(self):
         url = "https://fc2ppv-db.com/ja/videos/4898837"

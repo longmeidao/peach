@@ -23,6 +23,10 @@ class ScrapingAccessTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
+        # 这台机器上装着 Edge 的话，两个 Cloudflare 来源会真的拉起浏览器；测试里当作没有浏览器。
+        finder = patch("peach.browser_transport.find_browser", return_value=None)
+        finder.start()
+        self.addCleanup(finder.stop)
 
     def test_independent_installations_never_share_session_or_proxy(self):
         peach_proxy.save(self.root, {"mode": "proxy", "proxy": "http://user:private-proxy@127.0.0.1:7890"})
@@ -260,8 +264,9 @@ class ScrapingAccessTests(unittest.TestCase):
         """`cf_clearance` 绑着解题那台浏览器的 UA：整站 UA 与用户的 Chrome 一致，Cookie 由用户贴，卡上不另收 UA。"""
         from peach.user_agent import USER_AGENT
         shown = save(self.root, "fc2ppvdb", {"cookie": "cf_clearance=abc"})
-        self.assertEqual(set(shown), {"source", "label", "login", "accepts_cookie", "network", "cookie_saved"})
+        self.assertEqual(set(shown), {"source", "label", "login", "accepts_cookie", "network", "cookie_saved", "browser"})
         self.assertTrue(shown["cookie_saved"])
+        self.assertFalse(shown["browser"], "没有浏览器的机器上这张卡照旧收 Cookie")
         for name in ("fc2ppvdb", "javten"):
             with client_for(self.root, name) as client:
                 self.assertEqual(client.headers["user-agent"], USER_AGENT, name)
@@ -274,6 +279,58 @@ class ScrapingAccessTests(unittest.TestCase):
             transport(HttpRequest("GET", "https://javten.com/search?kw=4898837", {}), 1, 10)
         self.assertEqual([(call.args[1], call.kwargs["session"]) for call in factory.call_args_list],
                          [("fc2ppvdb", True), ("javten", True)])
+
+    def test_the_cloudflare_sources_go_through_the_local_browser_when_there_is_one(self):
+        """有浏览器的机器上两站的请求在浏览器页面里发（ADR-0065）：连接方式换成启动参数，Cookie 不再是必需的。"""
+        save(self.root, "fc2ppvdb", {"network": "direct"})
+        peach_proxy.save(self.root, {"mode": "proxy", "proxy": "socks5://127.0.0.1:7890"})
+        fake = lambda request, timeout, max_bytes: HttpResponse(200, {}, b"page", request.url)
+        fake.close = lambda: self.fail("浏览器是进程共用的，SourceTransport.close 不许关它")
+        transport = SourceTransport(self.root)
+        with patch("peach.browser_transport.shared", return_value=fake) as shared:
+            transport(HttpRequest("GET", "https://fc2ppv-db.com/ja/videos/1", {}), 1, 100)
+            transport(HttpRequest("GET", "https://javten.com/search?kw=1", {}), 1, 100)
+        self.assertEqual([(call.kwargs["direct"], call.kwargs["proxy"]) for call in shared.call_args_list],
+                         [(True, ""), (False, "socks5://127.0.0.1:7890")])
+        self.assertEqual(shared.call_args.args, (self.root / "browser",))
+        self.assertEqual(shared.call_args_list[0].kwargs["gates"],
+                         {"fc2ppv-db.com": {"path": "/age-verify", "button": r"18|はい|入場|同意|以上|Enter|Yes"}},
+                         "FC2PPV-DB 的年龄门交给浏览器传输去点")
+        self.assertEqual(shared.call_args_list[1].kwargs["gates"], {}, "JAVten 没有门")
+        transport.close()
+        self.assertFalse(describe(self.root, "javten")["browser"])
+        with patch("peach.browser_transport.find_browser", return_value="C:/edge.exe"):
+            self.assertTrue(describe(self.root, "javten")["browser"])
+        with patch("peach.scraping_access.client_for") as factory, \
+                patch("peach.browser_transport.shared", return_value=None):
+            factory.return_value.stream.return_value.__enter__.return_value.iter_bytes.return_value = [b"ok"]
+            SourceTransport(self.root)(HttpRequest("GET", "https://javten.com/", {}), 1, 10)
+        self.assertEqual(factory.call_args.kwargs["session"], True, "没有浏览器就退回带 Cookie 的直连")
+
+    def test_an_unsolved_challenge_pauses_the_source_and_a_lost_browser_reads_as_a_connection_failure(self):
+        from peach import browser_transport
+        from peach.scraping_access import SourcePaused
+        cooldown = self.root / "scraping-fc2ppvdb.cooldown.json"
+        request = HttpRequest("GET", "https://fc2ppv-db.com/ja/videos/1", {})
+
+        def unsolved(*args):
+            raise browser_transport.ChallengeUnsolved("fc2ppv-db.com 的人机验证在 150 秒内没有通过")
+
+        transport = SourceTransport(self.root)
+        transport.transports["fc2ppvdb"] = unsolved
+        with self.assertRaises(SourcePaused) as caught:
+            transport(request, 1, 100)
+        self.assertIn("点一下验证", str(caught.exception))
+        self.assertTrue(cooldown.exists())
+        cooldown.unlink()
+
+        def lost(*args):
+            raise browser_transport.BrowserUnavailable("浏览器请求未取得")
+
+        transport.transports["fc2ppvdb"] = lost
+        with self.assertRaises(httpx.TransportError):
+            transport(request, 1, 100)
+        self.assertFalse(cooldown.exists(), "浏览器断了是连接问题，不记来源的账")
 
     def test_a_new_cookie_lifts_the_pause_the_old_one_earned(self):
         """过期的 `cf_clearance` 撞出 403 后整站冷却；用户换了新 Cookie 就该立刻再试，不等旧账到期。"""

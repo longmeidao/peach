@@ -32187,7 +32187,7 @@ function oO({ source: e, toast: t }) {
 			p("Cookie 文件未读取，请重新选择");
 		}
 	}
-	let T = f || (g.error ? q(g.error) : "") || (_.error ? q(_.error) : ""), E = _.data?.results ?? [], D = n === "peach" || e.accepts_cookie || !!T || E.length > 0;
+	let T = f || (g.error ? q(g.error) : "") || (_.error ? q(_.error) : ""), E = _.data?.results ?? [], D = n === "peach" || e.accepts_cookie || e.browser || !!T || E.length > 0;
 	return /* @__PURE__ */ (0, w.jsxs)(aC, {
 		title: e.label,
 		onSubmit: y,
@@ -32225,7 +32225,11 @@ function oO({ source: e, toast: t }) {
 							children: "配置 Peach 代理"
 						})
 					}) : null,
-					e.accepts_cookie ? /* @__PURE__ */ (0, w.jsxs)(w.Fragment, { children: [
+					e.browser ? /* @__PURE__ */ (0, w.jsx)("p", {
+						className: "text-body-2-regular text-text-secondary",
+						children: "人机验证由本机浏览器自动完成；需要点击时窗口会弹出，托盘同时提醒。这台机器上不需要 Cookie。"
+					}) : null,
+					e.accepts_cookie && !e.browser ? /* @__PURE__ */ (0, w.jsxs)(w.Fragment, { children: [
 						/* @__PURE__ */ (0, w.jsx)("p", {
 							className: "text-body-2-regular text-text-secondary",
 							children: e.cookie_saved ? "Cookie 已保存；登录是否有效要到抓取时才知道。" : "需要登录时，任选一种方式提供 Cookie。"

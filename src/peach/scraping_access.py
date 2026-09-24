@@ -16,7 +16,7 @@ from urllib.parse import urlsplit, urljoin
 import httpx
 
 from .follow_secrets import CredentialStore
-from . import peach_proxy
+from . import browser_transport, peach_proxy
 from .http import HttpRequest, HttpxTransport
 from .scripting import USER_AGENT, host_under, hostname_of
 
@@ -35,12 +35,16 @@ SOURCES = {
                  "cookie": True, "session": True},
     # FC2 商品的两个存档站都在 Cloudflare 的 JS 验证后面：httpx 与模拟 Chrome 指纹的直连都回 403，
     # 只有浏览器过完验证发下的 `cf_clearance` 能进，而它绑着解题那台浏览器的 User-Agent 与出口。
-    # 整站 UA（`peach.user_agent`）与用户的 Chrome 保持一致就够了，Cookie 由用户贴；连接方式由用户
-    # 选成与浏览器同一个出口。Cookie 过期后回 403，按 `blocked_pause` 停下等用户换新的，不反复撞。
+    # `browser`：请求在本机 Edge/Chrome 的页面里发，验证由它自己过（ADR-0065）；这台机器没有可驱动的
+    # 浏览器时才退回下面这条路——整站 UA 与用户的 Chrome 一致、Cookie 由用户贴、连接方式选成与浏览器
+    # 同一个出口。验证没过或 Cookie 过期都按 `blocked_pause` 停下，不反复撞。
+    # `browser_gate`：新 profile 第一次进站会被送到年龄确认页（`/ja/age-verify?returnTo=…`），点那颗
+    # 「18 岁以上」的按钮才回到要看的页；浏览器传输落到这个路径就替用户点。
     "fc2ppvdb": {"label": "FC2PPV-DB", "domains": ("fc2ppv-db.com",), "login": "https://fc2ppv-db.com/",
-                 "cookie": True, "session": True, "blocked_pause": 6 * 3600},
+                 "cookie": True, "session": True, "browser": True, "blocked_pause": 6 * 3600,
+                 "browser_gate": {"path": "/age-verify", "button": r"18|はい|入場|同意|以上|Enter|Yes"}},
     "javten": {"label": "JAVten", "domains": ("javten.com",), "login": "https://javten.com/",
-               "cookie": True, "session": True, "blocked_pause": 6 * 3600},
+               "cookie": True, "session": True, "browser": True, "blocked_pause": 6 * 3600},
     # 下架 FC2 的最后一档。作品页在 javarchive.com、封面转存在 javstore.net 上，两边算同一个
     # 来源。免登录可读，不收 Cookie，`robots.txt` 是全站放行。
     "javarchive": {"label": "JavArchive", "domains": ("javarchive.com", "javstore.net"),
@@ -222,7 +226,14 @@ def describe(root: Path, source: str) -> dict:
     return {"source": source, "label": SOURCES[source]["label"],
             "login": SOURCES[source]["login"], "accepts_cookie": bool(SOURCES[source].get("cookie")),
             "network": "direct" if values.get("network") == "direct" else "peach",
-            "cookie_saved": bool(values.get("cookie") or values.get("cookies_text"))}
+            "cookie_saved": bool(values.get("cookie") or values.get("cookies_text")),
+            # 这台机器上这个来源是不是由本机浏览器过验证：登记了 `browser` 且找得到浏览器。
+            "browser": bool(SOURCES[source].get("browser")) and browser_transport.find_browser() is not None}
+
+
+def browser_profile(root: Path) -> Path:
+    """浏览器 profile 放在凭据根下：里面是 `cf_clearance` 与站点会话，和贴进来的 Cookie 一个性质。"""
+    return Path(root) / "browser"
 
 
 def client_for(root: Path, source: str, *, session: bool = False, **kwargs) -> httpx.Client:
@@ -283,15 +294,18 @@ class SourceTransport:
         if until > time.time():
             raise SourcePaused("来源正在冷却，请稍后重试；已有图片保留")
         if source not in self.transports:
-            client = (client_for(self.root, source, session=bool(SOURCES[source].get("session")),
-                                 follow_redirects=False) if source else
-                      httpx.Client(**peach_proxy.client_options(self.root), follow_redirects=False, headers={"User-Agent": USER_AGENT}))
-            self.transports[source] = HttpxTransport(client, owns_client=True)
+            self.transports[source] = self._transport_for(source)
         self.requests += 1
         try:
             response = self.transports[source](request, timeout, max_bytes)
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, browser_transport.BrowserUnavailable):
             raise httpx.TransportError("来源连接未取得，请检查该来源的网络设置") from None
+        except browser_transport.ChallengeUnsolved:
+            blocks += 1
+            _pause(cooldown, time.time() + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1),
+                                               SOURCES[source]["blocked_pause"]), blocks)
+            raise SourcePaused("来源的人机验证没有在限时内通过，暂停向它请求一段时间；"
+                               "浏览器窗口再弹出时点一下验证即可；已有图片保留")
         self.bytes += len(response.body)
         if response.status == 429:
             retry = response.headers.get("retry-after", "")
@@ -318,10 +332,31 @@ class SourceTransport:
             cooldown.unlink(missing_ok=True)
         return response
 
+    def _transport_for(self, source: str | None):
+        """这个来源的请求走哪条路：登记了 `browser` 且本机有浏览器就走浏览器页面，否则 httpx。"""
+        if source and SOURCES[source].get("browser"):
+            values = values_for(self.root, source)
+            direct = values.get("network") == "direct"
+            proxy = "" if direct else peach_proxy.client_options(self.root).get("proxy", "")
+            gate = SOURCES[source].get("browser_gate")
+            gates = {domain: gate for domain in SOURCES[source]["domains"]} if gate else {}
+            browser = browser_transport.shared(browser_profile(self.root), direct=direct, proxy=proxy, gates=gates)
+            if browser is not None:
+                return browser
+        if source:
+            client = client_for(self.root, source, session=bool(SOURCES[source].get("session")),
+                                follow_redirects=False)
+        else:
+            client = httpx.Client(**peach_proxy.client_options(self.root), follow_redirects=False,
+                                  headers={"User-Agent": USER_AGENT})
+        return HttpxTransport(client, owns_client=True)
+
     def renew(self):
         self.close()
 
     def close(self):
+        # 浏览器是整个进程共用的，空闲后自己关；这里只关自己开的连接池。
         for transport in self.transports.values():
-            transport.close()
+            if isinstance(transport, HttpxTransport):
+                transport.close()
         self.transports.clear()

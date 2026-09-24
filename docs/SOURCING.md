@@ -226,10 +226,15 @@ r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「
   站上的中文是机器翻译（用户判定），只收日文原页，`og:url` 带 `/tw/`、`/en/`、`/ko/` 归 `parse_error`。
 - 这两站都在 Cloudflare 的 JS 验证后面：httpx 与模拟 Chrome 指纹的 curl_cffi 直连都回 403、标题
   `Just a moment...`（`sources.base.challenge_page`），只有浏览器过完验证发下的 `cf_clearance` 能进，而它绑着
-  解题那台浏览器的 User-Agent 与出口 IP。整站 UA（`peach.user_agent.USER_AGENT`）与用户这台机器的 Chrome
-  保持一致，Chrome 大版本升了就改那一处；「来源和凭证」里这两张卡只收 Cookie，连接方式要选与那台浏览器
-  同一个出口。没配或过期时回 403，按 `blocked_pause` 整站冷却（15 分钟起翻倍到 6 小时），链照常往下走；
-  保存新 Cookie 清冷却。JAVten 搜索一跳的 Location 是 `http://`，HTTP 层把同主机的明文跳转升回 https 再带 Cookie 去。
+  解题那台浏览器的 User-Agent 与出口 IP，且只活 30 分钟。所以这两站的页由本机浏览器打开
+  （`peach.browser_transport`，ADR-0065）：Peach 拉起用户机器上的 Chrome（没有才用 Edge，InPrivate；独立
+  profile 放在 `peach-data/secrets/browser/`，窗口在屏幕外），导航到地址，落到验证页就等它自己过（实测 3～25
+  秒，无人点），过了把最终地址、状态码与文档读回来；40 秒没过窗口顶到前面、托盘弹通知让人点一下，再等两分钟
+  没过按 `blocked_pause` 整站冷却（15 分钟起翻倍到 6 小时），链照常往下走。FC2PPV-DB 第一次进站落年龄确认页
+  （`/age-verify`），传输按 `SOURCES` 里的 `browser_gate` 替人点那颗按钮。浏览器 10 分钟不用自己退出。这台机器
+  没有 Chrome／Edge（`find_browser`）时退回旧路：整站 UA（`peach.user_agent.USER_AGENT`）与用户的 Chrome 一致、
+  「来源和凭证」里贴 Cookie、连接方式选与那台浏览器同一个出口，403 同样冷却、保存新 Cookie 清冷却。JAVten 搜索
+  一跳的 Location 是 `http://`，HTTP 层把同主机的明文跳转升回 https 再带 Cookie 去；浏览器路径里由浏览器自己跟跳。
 - 几处都没有的落到 JavArchive。它的作品地址里夹着站内文章号和标题（`/926949-FC2-PPV-4137487-…-pn.html`），
   拼不出来，所以先问 `/search?q=<番号>` 再取那一条作品页；商品号按数字边界比，`4137487` 不能
   命中 `41374870`。搜索结果只有标题和一张缩略图，作品页才有标签、发行日、时长和封面位，所以这一跳

@@ -29,6 +29,8 @@ FC2PPVDB = SiteConfig(name="fc2ppvdb", label="FC2PPV-DB", provider="fc2ppvdb-pag
                       base_url="https://fc2ppv-db.com", domains=("fc2ppv-db.com",), stage="community",
                       cookie=True, page_limit=PAGE_LIMIT)
 VIDEO_PATH = "/ja/videos/{video_id}"
+#: 新会话第一次进站被送到的年齢確認页；`scraping_access.SOURCES["fc2ppvdb"]["browser_gate"]` 让浏览器传输替人点。
+AGE_GATE_PATH = "/age-verify"
 
 #: `<meta name="description">` 末尾那三项。
 _META_TAIL = re.compile(r"販売者:\s*(?P<seller>.*?)\s*/\s*公開日:\s*(?P<date>[^/]*?)\s*/\s*再生時間:\s*(?P<runtime>[\d:]+)\s*$")
@@ -150,6 +152,9 @@ class Fc2ppvdbSource(SiteSource):
             raise SourceFailure(FailureReason.CLOUDFLARE_CHALLENGE,
                                 f"{self.config.label} 要求 Cloudflare 验证，请在采集设置里更新 Cookie",
                                 status_code=403)
+        if AGE_GATE_PATH in page.url:
+            # 新会话第一次进站被送到年齢確認页（200）；浏览器传输按 `browser_gate` 替人点，点不过去时页面原样到这里。
+            raise SourceFailure(FailureReason.AUTH_REQUIRED, f"{self.config.label} 送到了年齢確認页，浏览器没有点过去")
         soup = BeautifulSoup(page.text, "html.parser")
         heading = soup.select_one("main h1") or soup.select_one("h1")
         title = text_of(heading)

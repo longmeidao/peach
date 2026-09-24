@@ -30,6 +30,8 @@ export interface Source {
   accepts_cookie: boolean;
   network: string;
   cookie_saved: boolean;
+  /** 这台机器上这个来源的请求由本机浏览器发、验证由它自己过（ADR-0065）；为真时不需要 Cookie。 */
+  browser: boolean;
 }
 
 export interface ScrapingData {

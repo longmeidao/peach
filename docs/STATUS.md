@@ -7,7 +7,6 @@
 ## 运行态
 
 - 女优头像 545 张，脸宽中位数 320px，37 张带水印待复核；被顶掉的整套留在 `avatars-superseded/`（见 `SOURCING.md`）。
-- 小图、资料骨架、官网图标、社媒品牌色与自动播放开关已实现；厂牌标识 198 张随仓库分发（ADR-0026）。
 - 数据管理页的「整理」按模板预览、执行、回滚上一批，只动视频、同卷内（ADR-0039），真实库未执行过。
 - 产地是独立维度，JAV 是它的投影：`region` 为空时按厂牌、创作者、番号逐层推断，不落库；韩国 MIB 已不算 JAV。
 
@@ -28,6 +27,7 @@
 - 发行名 `peach`，目录名 `peach-app`。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完前别重启菜单栏：无口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
 - 扫描与采集显示项目、动作与等待时长；无进展 120 秒预警，单项外部动作（资料 90 秒、封面 240 秒）超预算跳过该项计入可重试，「重试未完成项」重跑原任务失败集合。问题写入 `state/library-processing-<job_id>.issues.jsonl`，接口按 `job_id` 分页，页面折叠给前 20 条与日志地址。
 - Cloudflare 公网入口默认关闭，配置页启停，须先设访问密码；临时链接地址只写状态文件，命名隧道限源码环境、令牌只存设置文件。整站 `X-Robots-Tag: noindex` 加 `/robots.txt`。
+- FC2PPV-DB 与 JAVten 经本机 Chrome 过 Cloudflare 验证（ADR-0065），profile 在 `secrets/browser/`，不再贴 Cookie。
 
 ## 批处理进度
 
