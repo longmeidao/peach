@@ -100,8 +100,8 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 
 | 类型 | 判据 | 链（从左到右） | 这条链为什么不含 |
 | --- | --- | --- | --- |
-| censored | 其余厂牌番号 | （本机证据认得时）prestige／faleno／dahlia，都不认时 makers → r18dev → avbase → javbus → javdb | 1pondo（无码片商）、fc2（另一套商品号）、mgstage（对有码号是转售店） |
-| amateur | `300MIUM-1239` 这类三位数字前缀，加 `SIRO`／`STP`／`STN` | mgstage → r18dev → avbase → javbus → javdb | makers 与三家片商站（素人号不归它们） |
+| censored | 其余厂牌番号 | （本机证据认得时）prestige／faleno／dahlia，都不认时 makers → r18dev → dmm → avbase → javbus → javdb | 1pondo（无码片商）、fc2（另一套商品号）、mgstage（对有码号是转售店） |
+| amateur | `300MIUM-1239` 这类三位数字前缀，加 `SIRO`／`STP`／`STN` | mgstage → r18dev → avbase → javbus → javdb | makers 与三家片商站（素人号不归它们）；dmm（搜 `MIUM 1239`、`LUXU 1475` 零结果） |
 | uncensored | 日期式番号、`HEYZO-1380`、Tokyo-Hot 的 `n0780` | （证据指着一本道时）1pondo → avbase → javbus → javdb → avsox | r18dev：无码番号在它上面没有 |
 | fc2 | `FC2` 开头的商品号 | fc2 → fc2cmadb → javarchive → fc2club → javdb | r18dev（实测 85 条全空）、avbase 与 javbus（对 FC2 零产出） |
 | kmib | `KOREAN_MIB_PREFIXES` 里的前缀 | 一家都不问 | 全部：番号与日本片同形，问回来的是别的作品 |
@@ -122,7 +122,14 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 那一档整档一起问，不逐家短路，因为免复核要两家取值一致（ADR-0030、ADR-0034），封面互证要两个
 不同图源（ADR-0032），问到第一家就停等于把这两条判据的样本降到下限。这一行要的本来就只有
 标签或封面时，第一家给了就停（ADR-0033）。例外只有一条：FALENO、DAHLIA 官网不给类别，缺标签的行
-在片商站答完标量后再问一次 r18.dev；下一档是综合索引就照样停。
+在片商站答完标量后再问一次 r18.dev；下一档是综合索引就照样停。r18.dev 答了就不再为标签问 dmm，两家是同一份目录。
+
+有码链上 r18.dev 之后的 dmm 是 DMM／FANZA 自己的 GraphQL 目录（`sources/dmm.py`，ADR-0059），答 r18.dev
+漏收的那部分：2026-09-24 实测当月新片 START-640、START-639 与 FKOS-006、FNS-061、SUKE-073 在 r18.dev 是
+404，DMM 都有。接口只收 POST，从中国电信直连也回 200、一次 0.3～1 秒，不需要日本出口，没有年龄门。cid 先按
+`{字母}{五位数字}` 猜、猜不中再搜，搜索结果只收字母段与数字都对得上的，再用 `makerContentId` 核身份；
+`makerReleasedAt` 是发售日（以 UTC 写日本时间零点，换成日本时间取日期）。厂牌是日文名，靠 `entity_alias`
+归一到账本实体。Prestige 已从 FANZA 撤下、MGS 素人号不在这份目录上，所以它只在有码链。
 
 上一趟存下的原始快照（`<数据根>/sources/library-metadata/<番号>-<来源>.json`）还新鲜就
 直接用，不发请求。有效期与「说过没有」的记忆同一个（7 天），两边同时到期才不会出现
@@ -165,7 +172,7 @@ dmm、giga、kin8 不进链，理由与数据见 ADR-0048 与 `build/agent-verif
 所以按站的限流与封禁表现由传输层一处决定。配置与 `SOURCE_SPECS`、`SOURCE_LABELS`、`PROVIDER_NAMES`、
 `scraping_access.SOURCES`、`SOURCE_INTERVALS` 里同一站的那几行由 `tests/test_metadata_sources.py` 守住一致。
 
-下表各站全部已套契约：自写的九站登记在 `sources.SITE_SOURCES`，经桥的九站在 `metadata_amane`。
+下表各站全部已套契约：自写的十站登记在 `sources.SITE_SOURCES`，经桥的九站在 `metadata_amane`。
 
 | 站 | 状态 | 位置 | 说明 |
 | --- | --- | --- | --- |
@@ -175,6 +182,7 @@ dmm、giga、kin8 不进链，理由与数据见 ADR-0048 与 `build/agent-verif
 | makers、prestige、faleno、dahlia、mgstage | 已套契约（经桥） | `metadata_amane.py` | 档位 `official`（`OFFICIAL_SITES`）；`http_error` 带 401/403 经 `contract_reason` 归 `auth_required`；prestige 的 `release` 进 `extra['delivery_date']` |
 | AVBase | 已套契约 | `sources/avbase.py` | 搜索页一跳，`__NEXT_DATA__` 里挑出本作与它自己的商品条目；搜索无命中归 `not_found`，Cloudflare 验证页归 `cloudflare_challenge`，别的结构对不上归 `parse_error`；不给时长，`runtime` 留空 |
 | r18.dev | 已套契约 | `sources/r18dev.py` | 作品 JSON 与 combined 页两跳，日文写法、女优头像模板与 genre 取日文原词都在这一站里；`content_id` 对不上归 `parse_error`；档位 `official_mirror`，页面上限 2 MiB |
+| DMM / FANZA | 已套契约 | `sources/dmm.py` | GraphQL 接口经 `Session.post` 一到三跳（猜 cid → 搜索 → 详情）；`ppvContent` 为 null 与搜索无命中归 `not_found`，回的不是 JSON 或接口拒绝查询（只有 `errors`）归 `parse_error`；档位 `official`，页面上限 1 MiB |
 | 一本道 | 已套契约 | `sources/onepondo.py` | 作品 JSON 一跳；认不出作品号、404 与 `MovieID` 对不上归 `not_found`，回的不是 JSON 归 `parse_error`；档位 `official`，页面上限 1 MiB 进配置 |
 | FC2 | 已套契约 | `sources/fc2.py` | 商品页一跳，下架页与 `sku` 对不上归 `not_found`；番号、时长、原件地址与占位件判定是三站共用的函数，也在这里；页面上限 2 MiB |
 | fc2cmadb | 已套契约 | `sources/fc2cmadb.py` | 作品页之后在 `query()` 里带握手头点名 `actresses` 再问一跳，那一跳失败按没有女优交回；评论区的演员、等价与合集解析也在这里，`scripts/fetch_fc2_metadata.py` 从这里取 |

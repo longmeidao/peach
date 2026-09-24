@@ -48,21 +48,29 @@ class RouteTableTests(unittest.TestCase):
                 with self.subTest(content=content, source=source):
                     self.assertIn(source, SOURCE_SPECS)
 
-    def test_censored_asks_the_maker_then_the_official_mirror_and_javdb_last(self):
-        """片商官网是发行方口径，排在官方镜像前；javdb 按出口 IP 计配额，排最后。"""
+    def test_censored_asks_the_maker_then_the_official_mirror_then_dmm_and_javdb_last(self):
+        """片商官网是发行方口径，排在官方镜像前；镜像漏收的再问 DMM 自己；javdb 按出口 IP 计配额，排最后。"""
         self.assertEqual(ROUTES['censored'],
-                         ('prestige', 'faleno', 'dahlia', 'makers', 'r18dev', 'avbase', 'javbus', 'javdb'))
+                         ('prestige', 'faleno', 'dahlia', 'makers', 'r18dev', 'dmm', 'avbase', 'javbus', 'javdb'))
         self.assertEqual(route_for_code('ABW-220'),
-                         ('prestige', 'r18dev', 'avbase', 'javbus', 'javdb'))
+                         ('prestige', 'r18dev', 'dmm', 'avbase', 'javbus', 'javdb'))
         self.assertEqual(route_for_code('SSIS-057'),
-                         ('makers', 'r18dev', 'avbase', 'javbus', 'javdb'))
+                         ('makers', 'r18dev', 'dmm', 'avbase', 'javbus', 'javdb'))
 
-    def test_amateur_asks_mgstage_first_and_never_the_makers(self):
-        """MGS 素人系由 MGS 自己发行；片商官网对素人号一个请求都不发。"""
+    def test_amateur_asks_mgstage_first_and_never_the_makers_nor_dmm(self):
+        """MGS 素人系由 MGS 自己发行；片商官网对素人号一个请求都不发，DMM 的目录上也没有它们。"""
         for code in ('300MIUM-1239', '259LUXU-1475', 'SIRO-4630'):
             with self.subTest(code=code):
                 self.assertEqual(route_for_code(code),
                                  ('mgstage', 'r18dev', 'avbase', 'javbus', 'javdb'))
+
+    def test_dmm_is_only_on_the_censored_chain(self):
+        """DMM 是有码链上 r18.dev 之后的兜底；无码与 FC2 的番号不在它的目录上。"""
+        for content, chain in ROUTES.items():
+            with self.subTest(content=content):
+                self.assertEqual('dmm' in chain, content == 'censored')
+        self.assertEqual(ROUTES['censored'].index('dmm'), ROUTES['censored'].index('r18dev') + 1)
+        self.assertIn('dmm', OFFICIAL_STAGE)
 
     def test_mgstage_is_not_asked_for_censored_codes(self):
         """mgstage 对有码号是转售店，标题缀着店铺特典，片商官网才是发行方。"""
@@ -165,7 +173,7 @@ class MakerEvidenceTests(unittest.TestCase):
 class StageTests(unittest.TestCase):
     def test_stages_keep_the_official_sources_apart_and_fold_the_indexes(self):
         """官方那几家逐个成档才短路得了；综合索引那一档整档一起问，经桥的几站也合成一档。"""
-        self.assertEqual(stages_for_code('ABW-220'), ('amane_official', 'r18dev', 'community'))
+        self.assertEqual(stages_for_code('ABW-220'), ('amane_official', 'r18dev', 'dmm', 'community'))
         self.assertEqual(stages_for_code('300MIUM-1239'), ('amane_official', 'r18dev', 'community'))
         self.assertEqual(stages_for_code('040221-001'), ('community', 'amane'))
         self.assertEqual(stages_for_code('FC2-PPV-1812235'), ('fc2', 'amane', 'community'))
@@ -180,6 +188,7 @@ class StageTests(unittest.TestCase):
         chain = route_for_code('SSIS-057')
         self.assertEqual(stage_members('amane_official', chain), ('makers',))
         self.assertEqual(stage_members('r18dev', chain), ('r18dev',))
+        self.assertEqual(stage_members('dmm', chain), ('dmm',))
 
 
 class ShortCircuitTests(unittest.TestCase):
@@ -205,6 +214,8 @@ class ShortCircuitTests(unittest.TestCase):
         """FALENO、DAHLIA 官网不给类别：缺标签的行再问 r18.dev 一次，但不为标签去问 javdb。"""
         scalars = ('title', 'performers', 'studio', 'release_date')
         self.assertFalse(settles(scalars, scalars, wants_tags=True, then='r18dev'))
+        # DMM 与 r18.dev 是同一份目录：r18.dev 答了标量没给标签，再问 DMM 拿回的还是那一套 genre。
+        self.assertTrue(settles(scalars, scalars, wants_tags=True, then='dmm'))
         self.assertTrue(settles(scalars, scalars, wants_tags=True, then='community'))
         self.assertTrue(settles(scalars, scalars, wants_tags=True, then=''))
         self.assertTrue(settles(scalars, scalars, wants_tags=False, then='r18dev'))

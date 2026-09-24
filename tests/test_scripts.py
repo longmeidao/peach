@@ -2397,7 +2397,8 @@ class OperationalScriptTests(unittest.TestCase):
                 def __init__(self): self.calls = []
                 def query(self, code, source):
                     self.calls.append((code, source))
-                    if source == "makers" or (code == "DEF-002" and source == "r18dev"):
+                    # DEF-002 在 r18.dev 与它兜底的 DMM 都没有，链才走到综合索引那一档。
+                    if source == "makers" or (code == "DEF-002" and source in ("r18dev", "dmm")):
                         raise self_error("status 404", kind="not_found", status_code=404)
                     if code == "DEF-002":
                         return {"source": source, "id": code, "maker": "Studio B"}
@@ -2413,8 +2414,8 @@ class OperationalScriptTests(unittest.TestCase):
             self.assertEqual(result, 0)
             self.assertEqual(provider.calls, [
                 ("ABC-001", "makers"), ("ABC-001", "r18dev"),
-                ("DEF-002", "makers"), ("DEF-002", "r18dev"), ("DEF-002", "avbase"), ("DEF-002", "javbus"),
-                ("DEF-002", "javdb"),
+                ("DEF-002", "makers"), ("DEF-002", "r18dev"), ("DEF-002", "dmm"), ("DEF-002", "avbase"),
+                ("DEF-002", "javbus"), ("DEF-002", "javdb"),
             ])
             with output.open(encoding="utf-8-sig", newline="") as handle:
                 rows = list(csv.DictReader(handle))

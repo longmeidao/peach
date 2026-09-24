@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import DEFAULT, Mock, patch
 from contextlib import closing
 
 from filelock import FileLock
@@ -31,12 +31,20 @@ from support.ledger import fresh_ledger
 
 
 def stub_provider():
-    """只关心官方那一档的用例用它：综合索引那一档按「没有」桩掉。
+    """只关心 r18.dev 那一档的用例用它：DMM 兜底与综合索引那两档按「没有」桩掉。
 
-    来源链在官方那一档没给全必填标量时会接着问综合索引（`peach.metadata_routes`）。
-    桩不给答复，那一问拿到的是 Mock 的自动属性，报出来的错和被测行为无关。
+    来源链在 r18.dev 没给全必填标量时会接着问 DMM，再问综合索引（`peach.metadata_routes`）。
+    桩不给答复，那几问拿到的是 Mock 的自动属性，报出来的错和被测行为无关。
+    `provider.query.return_value` 与 `side_effect` 仍由各用例设，只对 r18.dev 那一问生效。
     """
     provider = Mock()
+
+    def dmm_has_nothing(code, source='r18dev', **_):
+        if source == 'dmm':
+            raise NotFound('HTTP 404')
+        return DEFAULT
+
+    provider.query.side_effect = dmm_has_nothing
     provider.community.side_effect = NotFound('社区来源都没有这个番号')
     provider.amane.side_effect = NotFound('amane 桥问的几站都没有这个番号')
     return provider
@@ -1017,7 +1025,9 @@ class LibraryNfoTests(unittest.TestCase):
                                  provider_factory=Mock(return_value=provider))
         self.assertEqual(result['status'], 'complete')
         self.assertEqual(result['identified'], 2)
-        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['ABW-001'])
+        # r18.dev 只答了厂牌，链接着问 DMM 兜底；两问都只为 ABW-001 发。
+        self.assertEqual([item.args[:2] for item in provider.query.call_args_list],
+                         [('ABW-001', 'r18dev'), ('ABW-001', 'dmm')])
         self.assertEqual([item.args[0] for item in provider.cover.call_args_list], ['ABW-001'])
 
     @windows_ledger_roots
@@ -1040,7 +1050,8 @@ class LibraryNfoTests(unittest.TestCase):
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
                                  provider_factory=Mock(return_value=provider))
         self.assertEqual(result['status'], 'complete')
-        self.assertEqual([item.args[0] for item in provider.query.call_args_list], ['ABW-001'])
+        self.assertEqual([item.args[:2] for item in provider.query.call_args_list],
+                         [('ABW-001', 'r18dev'), ('ABW-001', 'dmm')])
         self.assertEqual([item.args[0] for item in provider.fc2.call_args_list], ['FC2-PPV-1239052'])
         self.assertEqual(sorted(item.args[0] for item in provider.cover.call_args_list),
                          ['ABW-001', 'FC2-PPV-1239052'])
@@ -1545,14 +1556,16 @@ class LibraryWatchdogTests(unittest.TestCase):
         db = fresh_ledger(self.root)
         config = self._config(media)
         provider = self._provider()
-        provider.query.side_effect = [DeadlineExceeded('预算'), provider.query.return_value]
+        # ABW-101 在 r18.dev 那一问就用尽预算；ABW-102 的 r18.dev 只答厂牌，接着问 DMM 兜底。
+        provider.query.side_effect = [DeadlineExceeded('预算'), provider.query.return_value, NotFound('HTTP 404')]
         result = process_library(config, db, self.root / 'generated', self.root / 'covers',
                                  provider_factory=lambda: provider)
         with closing(sqlite3.connect(db)) as connection:
             ids = {name: row_id for name, row_id in connection.execute('SELECT name, id FROM asset')}
         self.assertEqual(result['retryable_asset_ids'], [ids['ABW-101.mp4']])
         self.assertEqual(result['status'], 'failed')
-        self.assertEqual(provider.query.call_count, 2)
+        self.assertEqual([item.args for item in provider.query.call_args_list],
+                         [('ABW-101', 'r18dev'), ('ABW-102', 'r18dev'), ('ABW-102', 'dmm')])
         self.assertEqual(provider.reset.call_count, 1)
 
     @windows_ledger_roots

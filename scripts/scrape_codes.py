@@ -189,8 +189,8 @@ class ChainAdapter:
         if stage == "community":
             return self._community(code, members)
         try:
-            if stage == "r18dev":
-                pairs = [("r18dev", self.inner.query(code, "r18dev"))]
+            if stage in ("r18dev", "dmm"):
+                pairs = [(stage, self.inner.query(code, stage))]
             elif stage == "1pondo":
                 pairs = self.inner.one_pondo(code)
             elif stage == "fc2":

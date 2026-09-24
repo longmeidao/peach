@@ -244,14 +244,16 @@ def _sleep_within(delay: float, deadline: float | None) -> None:
 def _fetch(transport: HttpTransport, url: str, *, referer: str,
            limit: int, ranged: bool = False,
            extra_headers: dict[str, str] | None = None,
-           deadline: float | None = None) -> bytes:
+           deadline: float | None = None, method: str = "GET",
+           body: bytes | None = None) -> bytes:
+    """取一页。`method` 与 `body` 给只收 POST 的接口（DMM 的 GraphQL）；重试、预算与分档同 GET。"""
     headers = {"User-Agent": USER_AGENT, "Referer": referer,
                "Accept-Language": "ja,en;q=0.9"}
     if extra_headers:
         headers.update(extra_headers)
     if ranged:
         headers["Range"] = f"bytes=0-{PROBE_BYTES - 1}"
-    request = HttpRequest("GET", url, headers)
+    request = HttpRequest(method, url, headers, body)
     for attempt in range(len(NETWORK_RETRY_DELAYS) + 1):
         remaining = _remaining(deadline)
         if remaining is not None and remaining <= 0:

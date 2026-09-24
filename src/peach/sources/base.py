@@ -202,6 +202,14 @@ class Session:
         return Page(url, jav_cover_fetch._fetch(self.transport, url, referer=referer or config.referer,
                                                 limit=config.page_limit, deadline=self.deadline, **options))
 
+    def post(self, url: str, *, config: SiteConfig, body: bytes, referer: str = "",
+             headers: Mapping[str, str] | None = None) -> Page:
+        """POST 一份请求体，交回响应页。只收 POST 的接口（DMM 的 GraphQL）走这里；重试、预算与失败分档同 `get`。"""
+        options = {"extra_headers": dict(headers)} if headers else {}
+        return Page(url, jav_cover_fetch._fetch(self.transport, url, referer=referer or config.referer,
+                                                limit=config.page_limit, deadline=self.deadline,
+                                                method="POST", body=body, **options))
+
 
 @dataclass(frozen=True)
 class SiteRecord:

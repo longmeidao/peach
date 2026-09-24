@@ -46,16 +46,20 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # DMM 数字版给的是配信开始日。四家里一个番号只问一家：Prestige、FALENO、DAHLIA 按本机
     # 证据认自家番号（`MAKER_EVIDENCE`），都不认的交给 `makers`——amane 按系列前缀路由到
     # 二十九家片商官网，前缀不在它的表里就不发请求。官网没有或出错再问 r18.dev，一次请求
-    # 给标题、厂牌、系列、发行日与演员；再落空才到三家综合索引。AVBase 与 JavBus 各一次
-    # 请求，javdb 两次且按出口 IP 计配额（`SOURCE_INTERVALS` 里 5 秒一页），所以 javdb 排最后。
+    # 给标题、厂牌、系列、发行日与演员；r18.dev 也没有再问 DMM 自己的 GraphQL 目录（ADR-0059）：
+    # 它是 r18.dev 镜像的源头，2026-09-24 实测当月新片与 FKOS、FNS、SUKE 这些小厂 r18.dev 都是
+    # 404 而 DMM 有，一部片一到三次请求、不需要日本出口；再落空才到三家综合索引。AVBase 与
+    # JavBus 各一次请求，javdb 两次且按出口 IP 计配额（`SOURCE_INTERVALS` 里 5 秒一页），所以 javdb 排最后。
     # 不进这条链：1pondo（无码片商，有码番号一律 404）、fc2（商品号体系不同）、mgstage
     # （它同时卖有码号，但对有码号它是转售店，标题缀着店铺特典，片商官网才是发行方）。
-    "censored": ("prestige", "faleno", "dahlia", "makers", "r18dev", "avbase", "javbus", "javdb"),
+    "censored": ("prestige", "faleno", "dahlia", "makers", "r18dev", "dmm", "avbase", "javbus", "javdb"),
     # 素人：MGStage 先问。MGS 素人系（`259LUXU`、`300MIUM`、`SIRO`……）由 MGS 自己发行，
     # mgstage 那一页就是发行方口径；amane 同样把 MGS 放素人第一源、不让它进有码默认表
     # （否则 MIDV 也会去问 MGS），Peach 的等价做法是把素人单列成一种类型。
     # r18.dev 留着：素人号在 DMM 数字版目录上有没有，本机没有实测，凭「大概没有」
     # 把官方镜像摘掉，省一次请求换来的是 mgstage 落空时整类番号再也拿不到官方值。
+    # dmm 不进：2026-09-24 实测 DMM 的搜索对 `MIUM 1239`、`LUXU 1475` 零结果，MGS 素人号
+    # 不在它的目录上，多问一家只多两次白请求。
     "amateur": ("mgstage", "r18dev", "avbase", "javbus", "javdb"),
     # 无码：发行方自己那份作品 JSON 先问，但只在本机证据指着一本道时才问
     # （见 `route_for_code`）——日期式番号不带片商，カリビアンコム 与一本道同形，
@@ -86,10 +90,11 @@ ROUTES: dict[str, tuple[str, ...]] = {
 AMANE_OFFICIAL_STAGE = ("prestige", "faleno", "dahlia", "makers", "mgstage")
 #: 发行方与专站那一档。链上排在综合索引前面，取到必填标量字段就短路。FC2 的两个存档站
 #: 按来源分级是 community，但在链上属于这一档：它们只收 FC2，不是综合索引。
-OFFICIAL_STAGE = (*AMANE_OFFICIAL_STAGE, "r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive")
+OFFICIAL_STAGE = (*AMANE_OFFICIAL_STAGE, "r18dev", "dmm", "1pondo", "fc2", "fc2cmadb", "javarchive")
 #: FC2 那三处是同一次 `LibraryMetadataProvider.fc2()` 里先后问的，合成一档 `fc2`。
 FC2_STAGE = ("fc2", "fc2cmadb", "javarchive")
-#: 官方档在采集任务里摊成的档名（`stage_name` 的取值）。缺标签的行在这几档之间多问一家，见 `settles`。
+#: 缺标签的行在这几档之间多问一家，见 `settles`。dmm 不在这里：它与 r18.dev 是同一份目录，
+#: r18.dev 答了标量却没给标签时再问 DMM 拿回的还是那一套 genre；它只在 r18.dev 落空时被问。
 OFFICIAL_STAGE_NAMES = ("amane_official", "r18dev", "1pondo", "fc2")
 
 #: 对任何番号都发请求的三家片商站各认哪些番号：（字母前缀，指着这家的写法）。前缀取自本机账本
