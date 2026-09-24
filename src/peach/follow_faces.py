@@ -35,7 +35,8 @@
   图。「Tifa」一帖里的两对差分，色块差只有 1.67 与 2.0，放到 32×32 网格上最大格差却有
   26–27。8×8 签名看不见局部改动，跨站同一文件各自重压缩后的色块差也有 0.7–2.7，
   差分落在真重复的区间里，没有阈值能把两群隔开。
-- 同站的 alt、WIP 与 main 即便哈希相同也不合并（实测 3 对，都是 remake 帖子附了原图）。
+- 版本标签（alt、WIP）不挡哈希：标签是各站按标题判的，同一个文件挂在 alt 帖下也还是
+  那一个文件（实测 3 对，都是 remake 帖子附了原图）。
 
 签名在服务端按缩略图算，缓存在 `peach-data/generated/posters/follow-faces/`，不进
 ledger。`/api/follow` 只查缓存，缺的交给后台线程逐张补，下一次打开就用得上；
@@ -136,14 +137,12 @@ class Signature:
 
 @dataclass(frozen=True)
 class Face:
-    """一份媒体的比对依据。`content` 是文件内容哈希（`算法:十六进制`），取不到为 None；
-    `variant` 是所属成员的 `variant_kind`。"""
+    """一份媒体的比对依据。`content` 是文件内容哈希（`算法:十六进制`），取不到为 None。"""
     provider: str
     url: str
     duration: float | None
     signature: Signature | None
     content: str | None = None
-    variant: str = "main"
 
 
 def _duration(value) -> float | None:
@@ -199,11 +198,8 @@ def face_clusters(faces: list[Face]) -> list[int]:
 
 
 def _joins_by_file(members: list[Face], face: Face) -> bool:
-    """按内容哈希并进这一簇：簇里有同一个文件，且不把同站的 alt／WIP 与 main 并在一起。"""
-    if not any(same_file(member, face) for member in members):
-        return False
-    return all(member.provider != face.provider or (member.variant == "main") == (face.variant == "main")
-               for member in members)
+    """按内容哈希并进这一簇：簇里有同一个文件。"""
+    return any(same_file(member, face) for member in members)
 
 
 def _joins_by_face(members: list[Face], face: Face) -> bool:
@@ -262,17 +258,16 @@ def annotate_group(group: dict, index: "FollowFaceIndex | None" = None,
     merged: list[tuple[dict, Face, str]] = []
     for member in _members(group):
         provider = str(member.get("provider") or "")
-        variant = str(member.get("variant_kind") or "main")
         ident = member.get("id")
         own = Face(provider, str(member.get("thumb_url") or ""), _duration(member.get("duration")),
-                   None, hashes.get((ident, None)), variant)
+                   None, hashes.get((ident, None)))
         if own.url:
             thumbs.append((member, own))
         media = [entry for entry in member.get("media_items") or ()
                  if entry.get("media_kind") in MEDIA_KINDS]
         for entry in media:
             face = Face(provider, str(entry.get("thumb_url") or ""), None, None,
-                        hashes.get((ident, entry.get("index"))), variant)
+                        hashes.get((ident, entry.get("index"))))
             if face.url:
                 thumbs.append((entry, face))
             merged.append((entry, face, str(entry["media_kind"])))
