@@ -57,10 +57,14 @@ class Attempts:
     不再派；多了一部作品、多了一条链接，指纹变了，自然再试一次。
 
     任务记录每类只留最近 20 行，存不住这份记性，所以落在候选缓存里，一件事一个文件。
+
+    有些结论不取决于实体，只取决于那一天：来源在冷却、请求失败。这种记号带 `retry_after`
+    记下有效期（`retry_until`），过期就当没跑过，不必等实体变。
     """
 
-    def __init__(self, root):
+    def __init__(self, root, clock=time.time):
         self.root = Path(root)
+        self.clock = clock
 
     def _path(self, key: str):
         return self.root / f"{str(key).replace(':', '-')}.json"
@@ -70,14 +74,19 @@ class Attempts:
             record = json.loads(self._path(key).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return False
-        return isinstance(record, dict) and record.get("fingerprint") == fingerprint
+        if not isinstance(record, dict) or record.get("fingerprint") != fingerprint:
+            return False
+        until = record.get("retry_until")
+        return until is None or float(until) > self.clock()
 
-    def record(self, key: str, fingerprint: str, outcome: str) -> None:
+    def record(self, key: str, fingerprint: str, outcome: str, *,
+               retry_after: float | None = None) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
-        self._path(key).write_text(json.dumps(
-            {"key": key, "fingerprint": fingerprint, "outcome": outcome,
-             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
-            ensure_ascii=False), encoding="utf-8")
+        entry = {"key": key, "fingerprint": fingerprint, "outcome": outcome,
+                 "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(self.clock()))}
+        if retry_after is not None:
+            entry["retry_until"] = self.clock() + float(retry_after)
+        self._path(key).write_text(json.dumps(entry, ensure_ascii=False), encoding="utf-8")
 
 
 def attempts_root(generated_root):

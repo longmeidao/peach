@@ -7,7 +7,8 @@
 判据是确定性的，所以按 ADR-0052 直接落库，不产生候选：
 
 1. **入口**：minnano-av 走账本里已有的外部编号，或按账本名字检索唯一命中（结果表里对得上
-   这个写法的行只指向一个编号）；av_neme 按账本名字站内搜索，读到的人物页里恰好一张列着她。
+   这个写法的行只指向一个编号）；av_neme 先按页名直取（改名页跟到现页），没有再站内搜索，
+   检索结果按摘要把资料页排在归档页前面，读到的人物页里恰好一张列着她。
 2. **双向核对**：账本里她的某个名字（规范名或已有别名，本身得是收得下的写法）必须出现在那一页的
    主名或别名栏里。
 3. **只收名字栏**：minnano-av 资料表的「別名」行，av_neme 人物页的「名前(女優名)」「旧名義&別名」
@@ -29,7 +30,8 @@
 （写了什么、为什么没写）逐条写进 `generated/performer-alias-landing.csv`。
 
 外部请求走页面缓存与站间隔；撞上 429、403 或机器人验证就把这一站记进 `scraping_access`
-的冷却记录，本轮与之后的后继在冷却期内都不再问它，结论写「未取得」。
+的冷却记录，本轮与之后的后继在冷却期内都不再问它，结论写「未取得」。这种结论的记号
+只保 `RETRY_UNFETCHED`，过了再派一次；其余结论照 ADR-0053 记指纹，名字链不变不再派。
 """
 from __future__ import annotations
 
@@ -56,9 +58,14 @@ TASK_LABEL = "补女优别名"
 #: 这条后继写下的别名都以它开头，后面接 `@<任务行 id>`；撤回按它认。
 SOURCE = "auto:performer-alias"
 
-#: 每轮处理任务给存量的名额（`task_runs.MAX_FOLLOWUPS` 的四分之一）。一条要问两站、
-#: 十来秒，走写账本那条串行通道；给多了会把厂牌那几条挤到很后面。
-STOCK_SHARE = 16
+#: 每轮处理任务给存量的名额（`task_runs.MAX_FOLLOWUPS` 的一半）。一条要问两站、
+#: 十来秒，走写账本那条串行通道；给多了会把厂牌那几条挤到很后面。九百多位女优按 16 条
+#: 一轮要跑六十轮才轮遍，一半的名额把它压到三十轮以内。
+STOCK_SHARE = 32
+#: 结论是「未取得」（站在冷却、请求失败）时，记号只保这么久：那一轮的结论取决于站那天
+#: 让不让进，不取决于她的名字。过了这段再派一次；不设期限的话，minnano-av 一次长冷却
+#: 就让这一批女优永远停在「未取得」上。
+RETRY_UNFETCHED = 24 * 3600
 
 MINNANO, AV_NEME, FC2CMADB = "minnano-av", "av_neme", "fc2cmadb"
 AV_NEME_ROOT = "https://seesaawiki.jp/av_neme/"
@@ -77,6 +84,11 @@ _CHALLENGE = ("Just a moment", "cf-chl-", "challenge-platform")
 
 #: av_neme 搜索结果里明显不是人物页的页名：月份归档、番号页、厂牌与一览。
 _NOT_A_PERSON = re.compile(r"\d{4}年|[A-Za-z]+-?\d{3,}|一覧|レーベル|メーカー")
+#: 检索摘要里人物页与归档页各自的记号。人物页开头是资料栏（`旧名義&別名`、`生年月日`）；
+#: 系列页、厂牌页与月份页的摘要是作品小节（`名前(女優名)：[[…]]`），一页几十部、搜谁都命中，
+#: 常把她那一张人物页挤到第五、第六位之后。
+_PROFILE_HINT = re.compile(r"プロフィール|旧名義|別名|生年月日|身長")
+_LISTING_HINT = re.compile(r"名前[（(]女優名[）)]")
 _BRACKETS = re.compile(r"[（(【\[][^（()）【】\[\]]*[）)】\]]")
 _KANA_ONLY = re.compile(r"^[぀-ゟ゠-ヿ]+$")
 _UNCERTAIN = re.compile(r"[?？▲�]|不明|未確認")
@@ -306,7 +318,13 @@ class MinnanoPages:
 
 class AvNemePages:
     """av_neme 的取页：缓存、请求上限与撞墙判定都是 `sources.seesaa.WikiPages` 那一份，
-    这里只把它撞墙的那一下记进冷却，并在冷却期内一次都不问。"""
+    这里只把它撞墙的那一下记进冷却，并在冷却期内一次都不问。
+
+    站上没有的页（404）也记下（`missing.json`，保 `MISSING_TTL`）：按页名直取会问到不存在的页，
+    同一位女优下一轮再跑不该为它再发一次请求。
+    """
+
+    MISSING_TTL = 30 * 86400
 
     def __init__(self, cache_dir: Path, cooldown_root: Path, transport=None):
         from .sources.seesaa import AV_NEME as CONFIG, WikiPages
@@ -314,6 +332,14 @@ class AvNemePages:
         self.pages = WikiPages(cache_dir, config=CONFIG, transport=transport, limiter=_LIMITER,
                                max_requests=MAX_REQUESTS)
         self.cooldown_root = Path(cooldown_root)
+        self.missing_path = Path(cache_dir) / "missing.json"
+
+    def _missing(self) -> dict[str, float]:
+        try:
+            found = json.loads(self.missing_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return found if isinstance(found, dict) else {}
 
     def get(self, url: str):
         from .metadata import MetadataProviderError
@@ -321,10 +347,17 @@ class AvNemePages:
 
         if paused_until(self.cooldown_root, AV_NEME):
             raise Blocked("来源正在冷却")
+        missing = self._missing()
+        if time.time() - float(missing.get(url, 0)) < self.MISSING_TTL:
+            raise Unavailable("站上没有这一页")
         try:
             return self.pages.get(url)
         except MetadataProviderError as error:
             if not self.pages.blocked:
+                if error.status_code == 404:
+                    missing[url] = time.time()
+                    self.missing_path.parent.mkdir(parents=True, exist_ok=True)
+                    self.missing_path.write_text(json.dumps(missing), encoding="utf-8")
                 raise Unavailable(str(error)) from None
             limited = error.status_code == 429
             pause_source(self.cooldown_root, AV_NEME, refused=not limited)
@@ -447,8 +480,55 @@ def minnano_page(pages: MinnanoPages, keys: list[str], refs: list[str]) -> tuple
     return found, "；".join(notes)
 
 
+def search_order(hits: list[tuple[str, str, str]]) -> list[str]:
+    """检索结果里该先读哪几页：摘要像资料栏的在前，像作品小节的在后，其余按站给的顺序。
+
+    `叶芽ゆきな` 搜出八页，她的人物页 `桜美ゆきな` 排第六，前五页是 `ガチ素人`、`Girl's Blue`
+    这些厂牌页与月份页。只读前 `MAX_PERSON_PAGES` 页的话，读到的全是归档页，
+    结论就成了「没有人物页列着」。页名明显不是人物的（`_NOT_A_PERSON`）一开始就不要。
+    """
+    ranked = []
+    for position, (url, title, text) in enumerate(hits):
+        if not url.startswith(AV_NEME_ROOT + "d/") or _NOT_A_PERSON.search(title):
+            continue
+        if _PROFILE_HINT.search(text):
+            tier = 0
+        elif _LISTING_HINT.search(text):
+            tier = 2
+        else:
+            tier = 1
+        ranked.append((tier, position, url))
+    return [url for _tier, _position, url in sorted(ranked)]
+
+
+def _page_named(pages, key: str, mine: set[str]) -> tuple[str, list[str]] | None:
+    """站上就叫她这个名字的那一页，是人物页且列着她就交回来。
+
+    av_neme 的页面按页名寻址，人物页就叫她的名字：`初川みなみ` 的页在站内检索二十条结果里
+    排不进去（每条都是提到她的别人的页和月份页），按页名直取一次就到。她改过艺名的话，
+    旧名那一页是一句改名说明（`renamed_to`），跟一跳到现在那一页。页不存在、
+    取不到就交 None，回到站内检索；站拒绝访问照样抛 `Blocked`。
+    """
+    from .sources.seesaa import person_profile, renamed_to
+
+    title = key
+    for _hop in range(2):
+        try:
+            page = pages.get(AV_NEME_ROOT + "d/" + quote(title.encode("euc_jp")))
+        except (Unavailable, UnicodeEncodeError):
+            return None
+        names = [clean(name) for name in person_profile(page)[1]]
+        if names and _anchored(names, mine):
+            return page.url, names
+        title = renamed_to(page)
+        if not title:
+            return None
+    return None
+
+
 def av_neme_page(pages, keys: list[str], mine: set[str]) -> tuple[list, str]:
-    """([(页面地址, 页上全部写法)], 说明)。搜到的人物页里恰好一张列着她才算。"""
+    """([(页面地址, 页上全部写法)], 说明)。先按页名直取，没有再站内检索；
+    读到的人物页里恰好一张列着她才算。"""
     from .sources.seesaa import person_profile, search_results
 
     notes = []
@@ -458,9 +538,11 @@ def av_neme_page(pages, keys: list[str], mine: set[str]) -> tuple[list, str]:
         except UnicodeEncodeError:
             notes.append(f"「{key}」写不成站上的编码")
             continue
+        named = _page_named(pages, key, mine)
+        if named is not None:
+            return [named], ""
         listed = pages.get(AV_NEME_ROOT + "search?keywords=" + encoded)
-        candidates = [url for url, title in search_results(listed.body)
-                      if url.startswith(AV_NEME_ROOT + "d/") and not _NOT_A_PERSON.search(title)]
+        candidates = search_order(search_results(listed.body))
         matched = []
         for url in candidates[:MAX_PERSON_PAGES]:
             _main, names = person_profile(pages.get(url))
@@ -583,8 +665,9 @@ def run(contract, key: str, handle) -> dict:
     summary = _run(contract, key, handle)
     with contract.database.read_connection() as connection:
         current = fingerprint(connection, parse_key(key))
+    outcome = str(summary.get("outcome", ""))
     Attempts(attempts_root(contract.candidate_root)).record(
-        key, current, str(summary.get("outcome", "")))
+        key, current, outcome, retry_after=RETRY_UNFETCHED if outcome == "未取得" else None)
     return summary
 
 
