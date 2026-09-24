@@ -14,8 +14,8 @@
 站上的中文是机器翻译（用户判定），只收日文原页：`fetch` 只取不带语言前缀的地址，`parse` 见到
 `og:url` 带 `/tw/`、`/en/`、`/ko/` 就按结构对不上处置，不把译文写进标题。
 
-站前是 Cloudflare 的 JS 验证，进法与 `fc2ppvdb` 相同：请求带用户在采集设置里贴的 Cookie 与浏览器 UA
-（`scraping_access.SOURCES['javten']`）。
+站前是 Cloudflare 的 JS 验证，进法与 `fc2ppvdb` 相同：请求带用户在采集设置里贴的 Cookie
+（`scraping_access.SOURCES['javten']`），整站 UA 与用户的 Chrome 保持一致。
 """
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ class JavtenSource(SiteSource):
             raise unrecognised()
         if challenge_page(page.body):
             raise SourceFailure(FailureReason.CLOUDFLARE_CHALLENGE,
-                                f"{self.config.label} 要求 Cloudflare 验证，请在采集设置里更新 Cookie 与浏览器 User-Agent",
+                                f"{self.config.label} 要求 Cloudflare 验证，请在采集设置里更新 Cookie",
                                 status_code=403)
         soup = BeautifulSoup(page.text, "html.parser")
         heading = text_of(soup.select_one("h1.fc2-id"))

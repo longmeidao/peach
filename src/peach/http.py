@@ -218,6 +218,11 @@ class HttpxTransport:
                         str(response.url),
                     )
                 target = response.url.join(location)
+            if url.scheme == "https" and target.scheme == "http" and target.host == url.host:
+                # 反向代理后面的站点常把 Location 写成 `http://`：源站看到的是明文连接（2026-09-24 实测
+                # javten.com 搜索一跳）。浏览器靠 HSTS 升回 https，这里也升：明文地址不带 Secure Cookie，
+                # 站前的 Cloudflare 会把这一跳当成陌生人。只升不降，https 落到别的主机照旧按跨源处理。
+                target = target.copy_with(scheme="https", port=None)
             if not _same_origin(url, target):
                 headers = _without(headers, _CREDENTIAL_HEADERS)
             # 303 一律改成 GET；301/302 只把非 GET 改成 GET，和浏览器与 httpx 的做法一致。

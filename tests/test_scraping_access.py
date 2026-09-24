@@ -256,44 +256,24 @@ class ScrapingAccessTests(unittest.TestCase):
             self.assertIn("peach_session=abc", client.build_request(
                 "GET", "https://fc2cmadb.com/articles/4030617").headers["cookie"])
 
-    def test_a_cloudflare_source_sends_the_browser_user_agent_the_cookie_was_issued_to(self):
-        """`cf_clearance` 绑着解题那台浏览器的 UA：请求头写整站 UA 的话，Cookie 对了也进不去。"""
-        browser = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36"
-        shown = save(self.root, "fc2ppvdb", {"cookie": "cf_clearance=abc", "user_agent": f"  {browser}\n"})
-        self.assertEqual((shown["accepts_user_agent"], shown["user_agent"], shown["cookie_saved"]),
-                         (True, browser, True))
-        self.assertFalse(describe(self.root, "javdb")["accepts_user_agent"])
-        seen = []
-
-        def record(request, timeout, limit):
-            seen.append(request.headers)
-            return HttpResponse(200, {}, b"ok")
-
+    def test_the_cloudflare_sources_carry_the_pasted_cookie_under_the_shared_browser_user_agent(self):
+        """`cf_clearance` 绑着解题那台浏览器的 UA：整站 UA 与用户的 Chrome 一致，Cookie 由用户贴，卡上不另收 UA。"""
+        from peach.user_agent import USER_AGENT
+        shown = save(self.root, "fc2ppvdb", {"cookie": "cf_clearance=abc"})
+        self.assertEqual(set(shown), {"source", "label", "login", "accepts_cookie", "network", "cookie_saved"})
+        self.assertTrue(shown["cookie_saved"])
+        for name in ("fc2ppvdb", "javten"):
+            with client_for(self.root, name) as client:
+                self.assertEqual(client.headers["user-agent"], USER_AGENT, name)
         transport = SourceTransport(self.root)
-        transport.transports["fc2ppvdb"] = record
-        transport.agents["fc2ppvdb"] = browser
-        transport(HttpRequest("GET", "https://fc2ppv-db.com/ja/videos/4898837",
-                              {"User-Agent": "Peach/1.0", "Referer": "https://fc2ppv-db.com/"}), 1, 100)
-        self.assertEqual(seen[0]["User-Agent"], browser)
-        self.assertEqual(seen[0]["Referer"], "https://fc2ppv-db.com/")
-        # 连接池按来源建的那一刻把 UA 一起定下；client 自己的默认头也是它。
+        self.addCleanup(transport.close)
         with patch("peach.scraping_access.client_for") as factory:
             fake = factory.return_value
             fake.stream.return_value.__enter__.return_value.iter_bytes.return_value = [b"ok"]
-            fresh = SourceTransport(self.root)
-            self.addCleanup(fresh.close)
-            fresh(HttpRequest("GET", "https://javten.com/search?kw=4898837", {"User-Agent": "Peach/1.0"}), 1, 10)
-            self.assertEqual(fresh.agents["javten"], "")
-            save(self.root, "javten", {"user_agent": browser})
-            fresh(HttpRequest("GET", "https://fc2ppv-db.com/ja/videos/1", {"User-Agent": "Peach/1.0"}), 1, 10)
-            self.assertEqual(fresh.agents["fc2ppvdb"], browser)
-        self.assertEqual(client_for(self.root, "javten").headers["user-agent"], browser)
-        self.assertNotEqual(client_for(self.root, "javdb").headers["user-agent"], browser)
-        with self.assertRaises(ValueError):
-            save(self.root, "javdb", {"user_agent": browser})
-        with self.assertRaises(ValueError):
-            save(self.root, "javten", {"user_agent": "x" * 513})
-        self.assertEqual(save(self.root, "javten", {"user_agent": ""})["user_agent"], "")
+            transport(HttpRequest("GET", "https://fc2ppv-db.com/ja/videos/4898837", {}), 1, 10)
+            transport(HttpRequest("GET", "https://javten.com/search?kw=4898837", {}), 1, 10)
+        self.assertEqual([(call.args[1], call.kwargs["session"]) for call in factory.call_args_list],
+                         [("fc2ppvdb", True), ("javten", True)])
 
     def test_a_new_cookie_lifts_the_pause_the_old_one_earned(self):
         """过期的 `cf_clearance` 撞出 403 后整站冷却；用户换了新 Cookie 就该立刻再试，不等旧账到期。"""
@@ -304,7 +284,7 @@ class ScrapingAccessTests(unittest.TestCase):
         refused.transports["javten"] = lambda *args: HttpResponse(403, {}, b"")
         with self.assertRaises(SourcePaused) as caught:
             refused(request, 1, 100)
-        self.assertIn("Cookie 与浏览器 User-Agent", str(caught.exception))
+        self.assertIn("更新它的 Cookie", str(caught.exception))
         self.assertTrue(cooldown.exists())
         save(self.root, "javten", {"network": "peach"})
         self.assertTrue(cooldown.exists(), "只改连接方式不算换了 Cookie")

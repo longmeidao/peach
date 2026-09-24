@@ -226,9 +226,10 @@ r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「
   站上的中文是机器翻译（用户判定），只收日文原页，`og:url` 带 `/tw/`、`/en/`、`/ko/` 归 `parse_error`。
 - 这两站都在 Cloudflare 的 JS 验证后面：httpx 与模拟 Chrome 指纹的 curl_cffi 直连都回 403、标题
   `Just a moment...`（`sources.base.challenge_page`），只有浏览器过完验证发下的 `cf_clearance` 能进，而它绑着
-  解题那台浏览器的 User-Agent 与出口 IP。所以「来源和凭证」里这两张卡除 Cookie 外还收浏览器 User-Agent
-  （`scraping_access.SOURCES[...]['user_agent']`），请求头照它发，连接方式要选与那台浏览器同一个出口。
-  没配或过期时回 403，按 `blocked_pause` 整站冷却（15 分钟起翻倍到 6 小时），链照常往下走；保存新 Cookie 清冷却。
+  解题那台浏览器的 User-Agent 与出口 IP。整站 UA（`peach.user_agent.USER_AGENT`）与用户这台机器的 Chrome
+  保持一致，Chrome 大版本升了就改那一处；「来源和凭证」里这两张卡只收 Cookie，连接方式要选与那台浏览器
+  同一个出口。没配或过期时回 403，按 `blocked_pause` 整站冷却（15 分钟起翻倍到 6 小时），链照常往下走；
+  保存新 Cookie 清冷却。JAVten 搜索一跳的 Location 是 `http://`，HTTP 层把同主机的明文跳转升回 https 再带 Cookie 去。
 - 几处都没有的落到 JavArchive。它的作品地址里夹着站内文章号和标题（`/926949-FC2-PPV-4137487-…-pn.html`），
   拼不出来，所以先问 `/search?q=<番号>` 再取那一条作品页；商品号按数字边界比，`4137487` 不能
   命中 `41374870`。搜索结果只有标题和一张缩略图，作品页才有标签、发行日、时长和封面位，所以这一跳

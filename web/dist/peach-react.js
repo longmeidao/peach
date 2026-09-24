@@ -32145,53 +32145,52 @@ function aO({ source: e }) {
 	});
 }
 function oO({ source: e, toast: t }) {
-	let [n, r] = (0, C.useState)(e.network), [i, a] = (0, C.useState)(""), [o, s] = (0, C.useState)(""), [c, l] = (0, C.useState)(e.user_agent), [u, d] = (0, C.useState)(iO[0][0]), [f, p] = (0, C.useState)(""), [m, h] = (0, C.useState)(""), g = (0, C.useRef)(null);
-	function _() {
-		a(""), s(""), p(""), h(""), g.current && (g.current.value = "");
+	let [n, r] = (0, C.useState)(e.network), [i, a] = (0, C.useState)(""), [o, s] = (0, C.useState)(""), [c, l] = (0, C.useState)(iO[0][0]), [u, d] = (0, C.useState)(""), [f, p] = (0, C.useState)(""), m = (0, C.useRef)(null);
+	function h() {
+		a(""), s(""), d(""), p(""), m.current && (m.current.value = "");
 	}
-	let v = mt({
+	let g = mt({
 		mutationFn: (t) => J(UD, {
 			source: e.source,
 			network: n,
 			cookie: i,
 			cookies_text: o,
-			revoke: t,
-			...e.accepts_user_agent ? { user_agent: c } : {}
+			revoke: t
 		}),
 		onSuccess: (e, n) => {
 			hh.setQueryData(YD, (t) => t && {
 				...t,
 				sources: t.sources.map((t) => t.source === e.saved.source ? e.saved : t)
-			}), _(), t(n ? "Cookie 已撤销" : "来源设置已保存");
+			}), h(), t(n ? "Cookie 已撤销" : "来源设置已保存");
 		}
-	}), y = mt({ mutationFn: () => J(WD, { source: e.source }) }), b = v.isPending || y.isPending, x = (e) => {
-		e.preventDefault(), !b && (y.reset(), v.mutate(!1));
-	}, S = () => {
-		b || (y.reset(), v.mutate(!0));
-	}, T = () => {
-		b || (v.reset(), y.mutate());
+	}), _ = mt({ mutationFn: () => J(WD, { source: e.source }) }), v = g.isPending || _.isPending, y = (e) => {
+		e.preventDefault(), !v && (_.reset(), g.mutate(!1));
+	}, b = () => {
+		v || (_.reset(), g.mutate(!0));
+	}, x = () => {
+		v || (g.reset(), _.mutate());
 	};
-	async function E(e) {
+	async function S(e) {
 		let t = e.currentTarget, n = t.files?.[0];
-		if (s(""), h(""), !n) {
-			p("");
+		if (s(""), p(""), !n) {
+			d("");
 			return;
 		}
 		if (n.size > 262144) {
-			t.value = "", p(""), h("Cookie 文本超过 256 KiB");
+			t.value = "", d(""), p("Cookie 文本超过 256 KiB");
 			return;
 		}
 		try {
 			let e = await n.text();
-			s(e), p(n.name);
+			s(e), d(n.name);
 		} catch {
-			h("Cookie 文件未读取，请重新选择");
+			p("Cookie 文件未读取，请重新选择");
 		}
 	}
-	let D = m || (v.error ? q(v.error) : "") || (y.error ? q(y.error) : ""), O = y.data?.results ?? [], k = n === "peach" || e.accepts_cookie || !!D || O.length > 0;
+	let T = f || (g.error ? q(g.error) : "") || (_.error ? q(_.error) : ""), E = _.data?.results ?? [], D = n === "peach" || e.accepts_cookie || !!T || E.length > 0;
 	return /* @__PURE__ */ (0, w.jsxs)(aC, {
 		title: e.label,
-		onSubmit: x,
+		onSubmit: y,
 		aside: /* @__PURE__ */ (0, w.jsxs)("span", {
 			className: "flex min-w-0 items-center gap-1",
 			children: [/* @__PURE__ */ (0, w.jsx)(aO, { source: e.source }), /* @__PURE__ */ (0, w.jsx)(fC, {
@@ -32214,7 +32213,7 @@ function oO({ source: e, toast: t }) {
 					}, e))
 				})
 			}) }),
-			k ? /* @__PURE__ */ (0, w.jsxs)(sC, {
+			D ? /* @__PURE__ */ (0, w.jsxs)(sC, {
 				divided: !0,
 				children: [
 					n === "peach" ? /* @__PURE__ */ (0, w.jsx)("span", {
@@ -32233,9 +32232,9 @@ function oO({ source: e, toast: t }) {
 						}),
 						/* @__PURE__ */ (0, w.jsx)(Ev, {
 							"aria-label": "提供 Cookie 的方式（二选一）",
-							value: u,
+							value: c,
 							onChange: (e) => {
-								d(e), _();
+								l(e), h();
 							},
 							className: FS,
 							children: iO.map(([e, t]) => /* @__PURE__ */ (0, w.jsx)(Dv, {
@@ -32244,7 +32243,7 @@ function oO({ source: e, toast: t }) {
 								children: t
 							}, e))
 						}),
-						u === "paste" ? /* @__PURE__ */ (0, w.jsx)(sb, {
+						c === "paste" ? /* @__PURE__ */ (0, w.jsx)(sb, {
 							type: "password",
 							label: "Cookie",
 							autoComplete: "off",
@@ -32258,37 +32257,29 @@ function oO({ source: e, toast: t }) {
 									className: "flex flex-wrap items-center gap-3",
 									children: [/* @__PURE__ */ (0, w.jsx)(K, {
 										variant: "secondary",
-										onClick: () => g.current?.click(),
+										onClick: () => m.current?.click(),
 										children: "选择文件"
 									}), /* @__PURE__ */ (0, w.jsx)("span", {
 										className: "min-w-0 text-body-2-regular break-all text-text-secondary",
-										children: f || "未选择文件"
+										children: u || "未选择文件"
 									})]
 								}),
 								/* @__PURE__ */ (0, w.jsx)("input", {
-									ref: g,
+									ref: m,
 									type: "file",
 									accept: ".txt",
 									tabIndex: -1,
 									"aria-hidden": !0,
 									className: "hidden",
 									onChange: (e) => {
-										E(e);
+										S(e);
 									}
 								})
 							]
-						}),
-						e.accepts_user_agent ? /* @__PURE__ */ (0, w.jsx)(sb, {
-							label: "浏览器 User-Agent",
-							autoComplete: "off",
-							value: c,
-							onChange: l,
-							placeholder: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) …",
-							hint: "过验证的那台浏览器的 User-Agent；Chrome 在地址栏输入 chrome://version 可以复制到。"
-						}) : null
+						})
 					] }) : null,
-					D ? /* @__PURE__ */ (0, w.jsx)(uC, { children: D }) : null,
-					O.map((t) => /* @__PURE__ */ (0, w.jsx)(Y, {
+					T ? /* @__PURE__ */ (0, w.jsx)(uC, { children: T }) : null,
+					E.map((t) => /* @__PURE__ */ (0, w.jsx)(Y, {
 						tone: t.ok ? "success" : "error",
 						children: nO(t, e.label)
 					}, t.label))
@@ -32297,19 +32288,19 @@ function oO({ source: e, toast: t }) {
 			/* @__PURE__ */ (0, w.jsxs)(cC, { children: [
 				e.accepts_cookie && e.cookie_saved ? /* @__PURE__ */ (0, w.jsx)(K, {
 					variant: "secondary",
-					onClick: S,
-					...X(b),
+					onClick: b,
+					...X(v),
 					children: "撤销 Cookie"
 				}) : null,
 				/* @__PURE__ */ (0, w.jsx)(K, {
 					variant: "secondary",
-					onClick: T,
-					...X(b),
+					onClick: x,
+					...X(v),
 					children: "检查连接"
 				}),
 				/* @__PURE__ */ (0, w.jsx)(K, {
 					type: "submit",
-					...X(b),
+					...X(v),
 					children: "保存"
 				})
 			] })

@@ -157,6 +157,34 @@ class HttpTransportTests(unittest.TestCase):
             ("https://cdn.example/x", None, None),
         ])
 
+    def test_a_plain_http_redirect_back_to_the_same_host_is_lifted_to_https_and_keeps_the_cookie(self):
+        """反向代理后面的站点把 Location 写成 `http://`，浏览器靠 HSTS 升回去。
+
+        真实用例：javten.com 的搜索 302 到 `http://javten.com/tw/video/...`（2026-09-24 实测）；
+        照明文地址请求，Secure 的 `cf_clearance` 不随请求发出，Cloudflare 回验证页。
+        换了主机的 `http://` 不升，仍按跨源丢凭据。
+        """
+        seen = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append((str(request.url), request.headers.get("Cookie")))
+            if request.url.path == "/search":
+                return httpx.Response(302, headers={"Location": "http://javten.test/tw/video/1"})
+            if request.url.path == "/tw/video/1":
+                return httpx.Response(302, headers={"Location": "http://mirror.test/video/1"})
+            return httpx.Response(200, content=b"ok")
+
+        with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+            response = HttpxTransport(client)(
+                HttpRequest("GET", "https://javten.test/search?kw=1", {"Cookie": "cf_clearance=x"}),
+                timeout=2, max_bytes=64)
+        self.assertEqual(response.url, "http://mirror.test/video/1")
+        self.assertEqual(seen, [
+            ("https://javten.test/search?kw=1", "cf_clearance=x"),
+            ("https://javten.test/tw/video/1", "cf_clearance=x"),
+            ("http://mirror.test/video/1", None),
+        ])
+
     def test_a_303_turns_the_post_into_a_get_without_its_body(self):
         seen = []
 

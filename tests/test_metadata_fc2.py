@@ -590,7 +590,7 @@ class Fc2ppvdbTests(unittest.TestCase):
                 (db_page(video="48988370"), "FC2-PPV-4898837", FailureReason.NOT_FOUND, "FC2PPV-DB 上没有这个商品"),
                 (db_page(), "ORETD-615", FailureReason.NOT_FOUND, UNRECOGNISED),
                 (CHALLENGE, "FC2-PPV-4898837", FailureReason.CLOUDFLARE_CHALLENGE,
-                 "FC2PPV-DB 要求 Cloudflare 验证，请在采集设置里更新 Cookie 与浏览器 User-Agent")):
+                 "FC2PPV-DB 要求 Cloudflare 验证，请在采集设置里更新 Cookie")):
             with self.subTest(code=code, html=html[:40]), self.assertRaises(SourceFailure) as caught:
                 database(html, code)
             self.assertEqual((caught.exception.reason, str(caught.exception)), (reason, wording))
