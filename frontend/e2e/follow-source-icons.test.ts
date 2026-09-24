@@ -42,11 +42,25 @@ const GROUP = {
   stack: null,
 };
 
+/** 主条目在 Fanbox 却没有视频：卡面换成组里最新那条 Rule34.xxx，另见就该列 Fanbox 与 Pawchive。 */
+const FRONTED = {
+  ...GROUP,
+  release_key: 'demo-fronted',
+  primary: { ...followVideo(11, 'fanbox', 'pixivFANBOX', '2026-09-15T00:20:00Z'),
+    has_media: false, media_kind: null, playable: false, duration: null },
+  duplicates: [
+    followVideo(12, 'rule34xxx', 'Rule34.xxx', '2026-09-15T00:19:00Z'),
+    followVideo(13, 'pawchive', 'Pawchive', '2026-09-15T00:16:00Z'),
+  ],
+  providers: ['fanbox', 'pawchive', 'rule34xxx'],
+  newest_at: '2026-09-15T00:20:00Z',
+};
+
 async function stubFollow(page: Page): Promise<void> {
   const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   await page.route((url) => url.pathname === '/api/follow', (route) => route.fulfill(json({
-    groups: [GROUP], sources: [], counts: { new: 1, seen: 0, saved: 0, ignored: 0 },
-    facets: { authors: [], providers: ['fanbox', 'rule34xxx'] }, has_more: false,
+    groups: [GROUP, FRONTED], sources: [], counts: { new: 2, seen: 0, saved: 0, ignored: 0 },
+    facets: { authors: [], providers: ['fanbox', 'pawchive', 'rule34xxx'] }, has_more: false,
   })));
   await page.route('**/api/follow/credentials', (route) => route.fulfill(json({ providers: [] })));
   /* 服务端的定时检查可能正在跑，那一趟会让检查键挂着 aria-busy，settle 等不到头。 */
@@ -131,6 +145,20 @@ describe('关注的出处用站点图标', () => {
       assert.equal(badge.text, '另见');
       assert.equal(badge.alt, 'Rule34.xxx');
       assert.ok(Math.abs(badge.icon! - badge.line!) <= 1, `图标偏离徽章中线 ${Math.abs(badge.icon! - badge.line!)}px`);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('卡面换成别的站那条时，另见列主条目的站、不列卡面自己的站', { timeout: 60_000 }, async () => {
+    const opened = await openFollow(browser, '/follow', '[data-follow-item="12"] .fbadge.dup');
+    try {
+      const card = opened.page.locator('[data-follow-item="12"]');
+      const shown = await card.locator('.pic > .badge').getAttribute('title');
+      const alts = await card.locator('.fbadge.dup img').evaluateAll((icons) =>
+        icons.map((icon) => icon.getAttribute('alt')));
+      assert.equal(shown, 'Rule34.xxx', '卡面没有换成有视频的那条');
+      assert.deepEqual(alts, ['pixivFANBOX', 'Pawchive'], `另见列的站不对：${JSON.stringify(alts)}`);
     } finally {
       await opened.close();
     }

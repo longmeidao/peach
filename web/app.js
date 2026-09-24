@@ -5968,7 +5968,7 @@ function followDetailTags(item){
 }
 
 /* 正文不报组里有几条：条数只由封面角标报一次，数的是合并了几个媒体（`followStack`）。 */
-function followBadges(group){
+function followBadges(group,shown=group.primary){
   const badges=[];
   /* WIP 说的是这一条，不是这一组。`2B Camp [4K]` 判的是 alt，只因为同组还有一条
      `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」。同组有 WIP 仍然要
@@ -5976,9 +5976,13 @@ function followBadges(group){
   if(group.primary.variant_kind==='wip')badges.push('<span class="fbadge wip">WIP</span>');
   else if(group.has_wip)badges.push('<span class="fbadge wip partial">含 WIP</span>');
   if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
-  /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。 */
-  if(group.duplicates.length){
-    const sites=new Map(group.duplicates.map(d=>[d.provider,d.provider_label||d.provider]));
+  /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。
+     「另见」相对卡面这一条（`shown`）说：主条目没有当前视图的媒体时，卡面换成组里别的站
+     那条，这时主条目的站才是另见，卡面自己的站不再列。 */
+  const sites=new Map([group.primary,...group.variants,...group.duplicates]
+    .filter(member=>member.provider!==shown.provider)
+    .map(member=>[member.provider,member.provider_label||member.provider]));
+  if(sites.size){
     const marks=[...sites].map(([provider,label])=>
       sourceIcon(provider,label)||`<span>${esc(label)}</span>`).join('');
     badges.push(`<span class="fbadge dup" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`);
@@ -6407,7 +6411,7 @@ function followCard(group,authorSources=[]){
   /* 角标与翻卡都取服务端对整组的判定（`group.stack`）：同一个画面只翻一次，跨站重复算来源。 */
   const {isMix,label:mixLabel,glyph:mixGlyph,faces:faceUrls}=followStack({cover:thumbUrl,
     coverFace:(selectedMedia?.thumb_url?selectedMedia:item).face,stack:group.stack,imageView,limit:MIX_FLIP_FACES});
-  const badges=followBadges(group);
+  const badges=followBadges(group,item);
   const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
   const when=followWhen(item),compactWhen=/^\d{4}-/.test(when)
     ?(when.startsWith(String(new Date().getFullYear()))?when.slice(5,10):when.slice(0,10)):when;
