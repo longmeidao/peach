@@ -126,6 +126,8 @@ export interface ConfigurationData {
   revision: string;
   media_dirs: string[];
   media_sources?: MediaSource[];
+  /** 媒体库个数，服务端按侧栏媒体库切换器那一份分组数好（同名的文件夹算一个）。 */
+  library_count: number;
   windows?: boolean;
   port: number;
   port_editable?: boolean;

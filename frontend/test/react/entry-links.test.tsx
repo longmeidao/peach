@@ -5,7 +5,7 @@ import type { ConfigurationData, EntryLinksState } from '../../src/react/bundle'
 import { buttonNamed, fetchMock, mount, sentBody, settle, submit, switches, type } from './render';
 
 const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
-  editable: true, notice: '', revision: 'rev-1', media_dirs: [], port: 9123, facts: [], ...over,
+  editable: true, notice: '', revision: 'rev-1', media_dirs: [], library_count: 0, port: 9123, facts: [], ...over,
 });
 
 const state: EntryLinksState = {

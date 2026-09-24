@@ -18,7 +18,7 @@ const release: ReleaseState = {
 };
 
 const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
-  editable: true, notice: '', revision: 'r', media_dirs: [], port: 9123, facts: [], ...over,
+  editable: true, notice: '', revision: 'r', media_dirs: [], library_count: 0, port: 9123, facts: [], ...over,
 });
 
 async function open(config: ConfigurationData, openConfiguration = vi.fn()) {
@@ -34,13 +34,15 @@ async function open(config: ConfigurationData, openConfiguration = vi.fn()) {
 const facts = (host: ParentNode) =>
   [...host.querySelectorAll('dt')].map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
 
-it('三行读数：同名文件夹算一个媒体库，端口，当前版本连同检查结果', async () => {
+it('三行读数：媒体库数照服务端给的写，端口，当前版本连同检查结果', async () => {
+  /* 三个文件夹、三个不同的库名，服务端说两个库：摘要卡不按文件夹自己再数一遍。 */
   const { host } = await open(data({
     updates: release,
+    library_count: 2,
     media_sources: [
-      { location: 'R:', root: 'R:\\Media', path: 'R:\\Media\\a', library: '网盘' },
-      { location: 'R:', root: 'R:\\Media', path: 'R:\\Media\\b', library: '网盘' },
-      { location: 'D:', root: 'D:\\Local', path: 'D:\\Local' },
+      { location: 'local', root: 'R:\\Media', path: 'R:\\Media', library: '电影' },
+      { location: '115', root: 'B:\\Media', path: 'B:\\Media', library: '网盘' },
+      { location: 'local', root: 'D:\\Local', path: 'D:\\Local', library: 'Local' },
     ],
   }));
   expect(facts(host)).toEqual([['媒体库', '2 个'], ['端口', '9123'], ['更新', '0.9.0 · 尚未检查']]);

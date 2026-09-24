@@ -935,6 +935,20 @@ class StandaloneConfigurationTests(_Case):
             self.assertTrue((self.config.directory("state") / RELOAD_NAME).is_file())
             self.assertFalse((self.config.directory("database") / "ledger.db").exists())
 
+    def test_the_snapshot_counts_libraries_the_way_the_library_switcher_groups_them(self):
+        """摘要卡的「媒体库」由服务端给：同名的声明根算一个库，跨来源也一样。"""
+        from dataclasses import replace
+        from peach import media_libraries
+        first, second, third = (str(self.media / name) for name in ("a", "b", "c"))
+        self.config = replace(self.config, locations={"local": (first, second), "115": (third,)},
+                              library_names={first: "电影", third: "电影"})
+        settings_file.write(self.config, force=True)
+        with self.client() as client:
+            snapshot = client.get("/api/configuration", headers={"X-Token": "test-token"}).json()
+        self.assertEqual(len(snapshot["media_sources"]), 3)
+        self.assertEqual(snapshot["library_count"], 2)
+        self.assertEqual(snapshot["library_count"], len(media_libraries.libraries(self.config)))
+
     def test_field_errors_come_back_per_row_and_nothing_is_written(self):
         from peach.routes_configuration import revision
         before = self.config.path.read_bytes()

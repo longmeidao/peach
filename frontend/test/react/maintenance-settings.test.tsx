@@ -18,7 +18,7 @@ const uninstall = { available: true, full_available: true, message: '', data_roo
 
 it('分区依次是自动更新、检查更新、运行信息、安装教程、卸载；缺依赖的那条运行信息带下载链接', async () => {
   const data: ConfigurationData = {
-    editable: true, notice: '', revision: 'r', media_dirs: [], port: 9123,
+    editable: true, notice: '', revision: 'r', media_dirs: [], library_count: 0, port: 9123,
     automatic_updates: automatic, updates: release, uninstall,
     facts: [
       { term: '版本', value: '0.7.25' },

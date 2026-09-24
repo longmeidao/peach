@@ -22,7 +22,7 @@ afterEach(() => { queryClient.clear() });
 notifyManager.setScheduler((notify) => notify());
 
 const data = (over: Partial<ConfigurationData> = {}): ConfigurationData => ({
-  editable: true, notice: '', revision: 'rev-1', media_dirs: ['D:\\Media'], port: 9123, facts: [], ...over,
+  editable: true, notice: '', revision: 'rev-1', media_dirs: ['D:\\Media'], library_count: 1, port: 9123, facts: [], ...over,
 });
 
 const startup = {

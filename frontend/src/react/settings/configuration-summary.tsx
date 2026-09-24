@@ -13,10 +13,6 @@ import { Note } from '../components/note';
 import { CONFIGURATION_KEY, fetchConfiguration } from './configuration';
 import { Fact, FactList, Footer, Stack } from './section';
 
-/** 媒体库按名字归并：同名的几个文件夹是同一个库，和侧栏媒体库切换器同一个口径。 */
-export const libraryCount = (data: ConfigurationData) =>
-  new Set((data.media_sources || []).map((row) => row.library || row.root)).size;
-
 const updateLine = (data: ConfigurationData) => {
   const updates = data.updates;
   if (!updates) return '未取得';
@@ -32,7 +28,7 @@ export function ConfigurationSummary({ openConfiguration }: ConfigurationSummary
     <div className="flex flex-col">
       {data
         ? <FactList>
-            <Fact term="媒体库">{`${libraryCount(data)} 个`}</Fact>
+            <Fact term="媒体库">{`${data.library_count} 个`}</Fact>
             <Fact term="端口">{String(data.port)}</Fact>
             <Fact term="更新">{updateLine(data)}</Fact>
           </FactList>
