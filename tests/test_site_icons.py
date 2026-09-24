@@ -261,7 +261,7 @@ class ArchiveViewTests(unittest.TestCase):
 
     def test_an_address_already_inside_the_archive_is_fetched_as_is(self):
         _, locate = social_links.archive_view(self.SNAPSHOT)
-        pinned = site_icons.overrides_for("https://ones-double.com/")[0].url
+        pinned = "https://web.archive.org/web/20220130000436id_/https://ones-double.com/logo.svg"
         self.assertEqual(locate(pinned), pinned)
 
     def test_a_live_link_is_left_alone(self):

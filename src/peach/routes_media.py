@@ -952,9 +952,15 @@ def _site_mark_response(state, url: str, root: Path):
                 return None
             return upstream.content, upstream.headers.get("content-type", "")
 
-        # 两条通道都不适用时退回原样缩图：糊一点也好过露出地球图标。
+        # 两条通道都不适用时退回原样缩图：糊一点也好过露出地球图标。存档链接例外：原站
+        # 给不出合格的圆标就用存档站自己的图标，点过去本来就是存档。原站那张不合格的图
+        # 原样缩进来是变形的：ONE'S DOUBLE 只留下 7:1 的横排字标。
+        archived = page != url
         made = site_icons.best_mark(page, fetch, link_marks.render_mark,
-                                    fallback=link_marks.plain_mark)
+                                    fallback=None if archived else link_marks.plain_mark)
+        if made is None and archived:
+            made = site_icons.best_mark(url, fetch, link_marks.render_mark,
+                                        fallback=link_marks.plain_mark)
         if made:
             root.mkdir(parents=True, exist_ok=True)
             cached.write_bytes(made)

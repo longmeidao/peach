@@ -845,8 +845,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.client.get("/site-mark?t=secret&domain=kemono.cr")
         self.assertTrue(any(host.endswith("kemono.cr") for host in hosts[reached:]), hosts)
 
-    async def test_archived_links_of_two_sites_get_two_marks(self):
-        """存档链接的圆标按快照保存的原站缓存，两家关了门的公司不共用 web.archive.org 那一枚。"""
+    def _archive_links(self, colour_of):
+        """两条存档链接；上游按 `colour_of(url)` 给一枚圆形图标，给 None 就 404。返回请求过的地址。"""
         from PIL import Image, ImageDraw
 
         from peach import routes_media
@@ -855,19 +855,16 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         routes_media.GENERATED_DIR = self.root / "generated"
         asked = []
 
-        def icon(colour):
+        def upstream(request):
+            asked.append(str(request.url))
+            colour = colour_of(str(request.url)) if request.url.path.endswith(".png") else None
+            if colour is None:
+                return httpx.Response(404, request=request)
             buffer = io.BytesIO()
             image = Image.new("RGBA", (180, 180), (255, 255, 255, 0))
             ImageDraw.Draw(image).ellipse((20, 20, 160, 160), fill=colour)
             image.save(buffer, format="PNG")
-            return buffer.getvalue()
-
-        def upstream(request):
-            asked.append(str(request.url))
-            if not request.url.path.endswith(".png"):
-                return httpx.Response(404, request=request)
-            colour = "red" if "ones-double.com" in str(request.url) else "blue"
-            return httpx.Response(200, content=icon(colour), request=request,
+            return httpx.Response(200, content=buffer.getvalue(), request=request,
                                   headers={"content-type": "image/png"})
         self._swap_http_client(upstream)
         with closing(sqlite3.connect(self.db)) as connection, connection:
@@ -876,12 +873,28 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                 " VALUES(?,1,'official','官网存档（2022-05）',?,'web.archive.org')",
                 [(901, "https://web.archive.org/web/20220512171500/https://ones-double.com/people/a/"),
                  (902, "https://web.archive.org/web/20221013093626/https://all-p.jp/talent/")])
+        return asked
+
+    async def test_archived_links_of_two_sites_get_two_marks(self):
+        """存档链接的圆标按快照保存的原站缓存，两家关了门的公司不共用 web.archive.org 那一枚。"""
+        asked = self._archive_links(lambda url: "red" if "ones-double.com" in url else "blue")
         answers = [await self.client.get(f"/link-mark?t=secret&id={link_id}")
                    for link_id in (901, 902)]
         self.assertEqual([answer.status_code for answer in answers], [200, 200])
         self.assertNotEqual(answers[0].content, answers[1].content)
         self.assertEqual(len(list((self.root / "generated" / "link-marks").iterdir())), 2)
         self.assertTrue(all(url.startswith("https://web.archive.org/") for url in asked), asked)
+
+    async def test_an_archived_site_without_a_usable_icon_shows_the_archive_one(self):
+        """原站在快照里给不出合格的圆标，就用存档站自己的：点过去本来就是存档。"""
+        from PIL import Image
+
+        self._archive_links(lambda url: None if "id_/" in url else "green")
+        answer = await self.client.get("/link-mark?t=secret&id=901")
+        self.assertEqual(answer.status_code, 200)
+        # 单色透明的图标做成品牌色圆底白字，圆底那一圈就是存档站给的绿。
+        red, green, blue, _alpha = Image.open(io.BytesIO(answer.content)).convert("RGBA").getpixel((64, 6))
+        self.assertGreater(green, max(red, blue))
 
     async def test_unauthorized_keeps_three_shapes_grouped_by_route_class(self):
         """401 三种形态按路由类分组，收敛到 Depends 之后也不许并成一种。
