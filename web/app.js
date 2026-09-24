@@ -5967,27 +5967,15 @@ function followDetailTags(item){
   return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));
 }
 
-/* 角标上的数和点开后真能看到的条数必须来自同一个集合。
-   实测两处对不上：paheal 一组 9 条里有 1 张图，卡上写「9 个版本」、播放角标写
-   「8 个视频」，点开也是 8 条；`2B Camp [4K]` 更极端——卡上写「2 个版本」，同组
-   另一条不是可播视频，`collection` 因此整个为 null，点开只有 1 条。 */
-function followOpenableItems(group){
-  if(followMediaView==='videos')return followVideoItems(group);
-  return followCollectionItems(group)
-    .filter(item=>followItemMediaKinds(item).has('image'));
-}
-/* `count:false`：封面角标已经报过这一组的条数（`followStack` 判定），正文不再说第二遍。 */
-function followBadges(group,openable=null,{count:showCount=true}={}){
+/* 正文不报组里有几条：条数只由封面角标报一次，数的是合并了几个媒体（`followStack`）。 */
+function followBadges(group){
   const badges=[];
-  const count=showCount?(openable||followOpenableItems(group)).length:0;
   /* WIP 说的是这一条，不是这一组。`2B Camp [4K]` 判的是 alt，只因为同组还有一条
      `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」。同组有 WIP 仍然要
      说，但要说成「含」。 */
   if(group.primary.variant_kind==='wip')badges.push('<span class="fbadge wip">WIP</span>');
   else if(group.has_wip)badges.push('<span class="fbadge wip partial">含 WIP</span>');
   if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
-  if(count>1)badges.push(`<span class="fbadge">${
-    `${count} ${group.is_release?'条动态':'个版本'}`}</span>`);
   if(group.duplicates.length)badges.push(`<span class="fbadge dup">另见 ${
     esc([...new Set(group.duplicates.map(d=>d.provider_label))].join('、'))}</span>`);
   return badges.join('');
@@ -6406,13 +6394,11 @@ function followCard(group,authorSources=[]){
     ? `<img${dims}${learn} src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
     : `<span class="fnothumb">${sourceIcon(item.resource_provider||item.provider)}</span>`;
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
-  const groupedOwner=followMediaView==='videos'?followGroupedMediaOwner(group):null;
-  const groupedVideos=(groupedOwner?.media_items||[]).filter(media=>media.media_kind==='video');
   const mixTarget=embedded.length>1?item.id:(videos[0]?.id||item.id);
-  /* 翻动用的几张来自角标数的那一组，否则卡上写「9 个视频」翻的却是别处的图。 */
-  const {isMix,mixCount,mixKind,faces:faceUrls,showCount}=followStack({cover:thumbUrl,embedded,
-    groupedVideos,videos,imageView,openable:followOpenableItems(group).length,limit:MIX_FLIP_FACES});
-  const badges=followBadges(group,null,{count:showCount});
+  /* 角标与翻卡都取服务端对整组的判定（`group.stack`）：同一个画面只翻一次，跨站重复算来源。 */
+  const {isMix,label:mixLabel,glyph:mixGlyph,faces:faceUrls}=followStack({cover:thumbUrl,
+    coverFace:(selectedMedia?.thumb_url?selectedMedia:item).face,stack:group.stack,imageView,limit:MIX_FLIP_FACES});
+  const badges=followBadges(group);
   const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
   const when=followWhen(item),compactWhen=/^\d{4}-/.test(when)
     ?(when.startsWith(String(new Date().getFullYear()))?when.slice(5,10):when.slice(0,10)):when;
@@ -6424,7 +6410,7 @@ function followCard(group,authorSources=[]){
       ${open}${thumb}${faceUrls.length>1?`<div class="mixfaces" data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:''}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
       <span class="selectionMark">${icon('check')}</span>${realDuration(item.duration)?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
-      ${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon('play')}${mixCount} 个${mixKind}</button>`:''}
+      ${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon(mixGlyph)}${esc(mixLabel)}</button>`:''}
       <div class="factions">
         <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button data-follow-status="${item.id}" data-to="seen" title="标记已看" aria-label="标记已看"${item.status==='seen'?' disabled':''}>${icon('eye')}</button>

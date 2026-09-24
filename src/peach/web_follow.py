@@ -20,6 +20,7 @@ from pathlib import Path
 
 from . import avatar_face, follow_assets, follow_providers
 from .follow import FollowSourceError
+from .follow_faces import annotate_group
 from .follow_check import plan_check, run_check
 from .follow_covers import fanbox_video_indexes
 from .web_settings import follow_initial_days
@@ -1695,7 +1696,10 @@ def q_follow(contract, args) -> dict:
             ranked = _sorted_groups(store.group(page, by_author), sort, direction, seed)
             has_more = len(ranked) > offset + limit
             ranked = ranked[offset:offset + limit]
-        groups = [_group_payload(group, credential_providers) for group in ranked]
+        # 翻卡与封面计数要知道组里哪几张是同一个画面，判据与缓存见 `follow_faces`。
+        faces = getattr(contract, "follow_faces", None)
+        groups = [annotate_group(_group_payload(group, credential_providers), faces)
+                  for group in ranked]
         facets = _follow_facets(store, everything, by_source, alias_map,
                                 work_icon_root(contract))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，

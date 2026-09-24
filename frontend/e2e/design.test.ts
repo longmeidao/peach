@@ -917,6 +917,7 @@ describe('设计决定', () => {
         const stack = element.querySelector('.partstack,.mixstack')!;
         return {
           cover: getComputedStyle(element.querySelector('.pic')!).borderTopLeftRadius,
+          ground: getComputedStyle(element.querySelector('.pic')!).backgroundColor,
           layers: ['::before', '::after'].map((pseudo) => getComputedStyle(stack, pseudo).borderTopLeftRadius),
           faces: element.querySelectorAll('[data-mix-faces]').length,
           preview: Boolean(element.querySelector('.previewcounter')),
@@ -926,6 +927,8 @@ describe('设计决定', () => {
       const part = await shapeOf('article.card.partcard');
       assert.notEqual(part.cover, '0px', '封面没有圆角，比对失去意义');
       assert.deepEqual(part.layers, [part.cover, part.cover], '分卷卡的叠层纸边和封面不是同一档圆角');
+      // 封面格背后压着纸边：格子是空的，纸边线条就从封面没盖住的地方透出来。
+      assert.notEqual(part.ground, 'rgba(0, 0, 0, 0)', '叠层卡的封面格是透明的，纸边会透进封面');
       assert.equal(part.faces, 0, '分卷卡仍挂着翻卡面板');
       assert.ok(part.preview, '分卷卡悬停没有分段预览入口');
       if (await opened.page.locator('article.mixcard').count()) {

@@ -1742,6 +1742,25 @@ class FollowContractTests(unittest.TestCase):
                           for group in page["groups"]], [["1", "3"]])
         self.assertFalse(self._get(limit=2)["has_more"])
 
+    def test_each_group_says_how_many_media_it_merged(self):
+        """封面角标数的是组里合并了几个媒体（`follow_faces.annotate_group`）。
+
+        裸契约不联网：没有画面签名时只按缩略图地址认同一张，两个版本各算一个。
+        """
+        self._seed(candidates=(
+            FollowCandidate(provider="rule34video", external_id="1", title="Sunset [4K]",
+                            published_at="2026-08-20T00:00:00Z"),
+            FollowCandidate(provider="rule34video", external_id="2", title="Beach",
+                            published_at="2026-08-19T00:00:00Z"),
+            FollowCandidate(provider="rule34video", external_id="3", title="Sunset [1080p]",
+                            published_at="2026-08-18T00:00:00Z"),
+        ))
+        stacks = {",".join(sorted(row["external_id"] for row in (group["primary"], *group["variants"]))):
+                  group["stack"] for group in self._get()["groups"]}
+        self.assertEqual(stacks["2"], None)
+        self.assertEqual({key: stacks["1,3"][key] for key in ("media", "copies", "kind")},
+                         {"media": 2, "copies": 2, "kind": "video"})
+
     def test_one_work_the_author_uploaded_to_two_sites_is_one_card(self):
         """rule34video 的标题里夹着作者名，FANBOX 镜像上没有；两条来源都没绑实体。"""
         self._seed(candidates=(FollowCandidate(
@@ -3242,18 +3261,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const body=group.is_release")
         self.assertPageContains("'（仅附件）'")
 
-    def test_thread_activity_is_not_called_a_version(self):
-        """线程动态叫「条动态」，作品版本叫「个版本」，两者都含主条目。
-
-        两种计数共用一个表达式，只有量词不同。分开写成 release 记
-        `variants.length+1`、work 记 `variants.length` 的话，同一份数据两种口径，
-        两个视频的组会显示成「1 个版本」。
-        """
-        self.assertPageContains("`${count} ${group.is_release?'条动态':'个版本'}`")
-        self.assertPageLacks(
-            "`${group.variants.length} 个版本`",
-            "版本数必须含主条目，否则两个视频显示成 1 个版本")
-
     def test_cross_site_duplicates_are_shown_as_another_source(self):
         self.assertPageContains("另见 ")
         self.assertPageContains("fbadge dup")
@@ -3494,20 +3501,6 @@ class FollowWebSourceTests(unittest.TestCase):
         # 来源没记类型的排最后、保持中性色：不按词形猜类型是关注标签的既有门槛。
         self.assertPageContains(".followdetailtags .r34-unknown{--r34-tag:var(--muted)}")
 
-    def test_version_badge_counts_what_opening_the_card_actually_shows(self):
-        """角标数和点开后能看到的条数必须来自同一个集合。
-
-        实测两处对不上：paheal 一组 9 条里有 1 张图，卡上写「9 个版本」、播放角标
-        写「8 个视频」；`2B Camp [4K]` 卡上写「2 个版本」，同组另一条不是可播视频，
-        `collection` 因此为 null，点开只有 1 条。两个数一致之后，封面角标已经报过的
-        那一组，正文就不再报第二遍（`web/js/stack-cards.js`，行为验收在 `test_web_js.py`）。
-        """
-        self.assertPageContains("function followOpenableItems(group)")
-        self.assertPageContains("if(followMediaView==='videos')return followVideoItems(group);")
-        self.assertPageContains("const count=showCount?(openable||followOpenableItems(group)).length:0;")
-        self.assertPageContains("if(count>1)badges.push(")
-        self.assertPageLacks("${group.variants.length+1} ${group.is_release?'条动态':'个版本'}")
-
     def test_wip_badge_describes_this_item_not_its_siblings(self):
         """`2B Camp [4K]` 判的是 alt，只因为同组还有一条 `[WIP]` 就挂上 WIP。
 
@@ -3553,7 +3546,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('class="card followitem${isMix?\' collection\':\'\'}${imageView?\' imagecard\':\'\'}"')
         self.assertPageContains("isMix?'mixstack '")
         self.assertPageContains('class="mixbadge" data-follow-collection=')
-        self.assertPageContains("${mixCount} 个${mixKind}")
         self.assertPageContains("function followEmbeddedQueueHtml(item,mediaIndex)")
         self.assertPageContains("data-follow-media-item=")
         self.assertPageContains("const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null")

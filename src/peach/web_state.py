@@ -180,6 +180,9 @@ class WebContract:
         # 整理（ADR-0039）：同一时间只跑一批，互斥由这个任务自己的键提供。
         self.organize_job = self._job("PeachOrganizeJob", "organize")
         self.follow_scheduler = None
+        #: 关注卡缩略图的画面签名缓存（`follow_faces.FollowFaceIndex`），由 `api` 接上；
+        #: 裸契约不联网，组里只按缩略图地址认同一张。
+        self.follow_faces = None
         #: 订阅源的定时拉取（ADR-0042）。与追更共用 `follow_scheduler` 那一个实现，
         #: 只是各占一个 job id 与一份状态文件；由 `api` 在装配时接上。
         self.feed_scheduler = None
