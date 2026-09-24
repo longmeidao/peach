@@ -32227,7 +32227,7 @@ function oO({ source: e, toast: t }) {
 					}) : null,
 					e.browser ? /* @__PURE__ */ (0, w.jsx)("p", {
 						className: "text-body-2-regular text-text-secondary",
-						children: "人机验证由本机浏览器自动完成；需要点击时窗口会弹出，托盘同时提醒。这台机器上不需要 Cookie。"
+						children: "人机验证由本机浏览器自动完成；需要点击时窗口会弹出。这台机器上不需要 Cookie。"
 					}) : null,
 					e.accepts_cookie && !e.browser ? /* @__PURE__ */ (0, w.jsxs)(w.Fragment, { children: [
 						/* @__PURE__ */ (0, w.jsx)("p", {
