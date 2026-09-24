@@ -191,11 +191,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".post-setup-task>a:hover{background:var(--hover)}", board)
         self.assertIn("border-radius:8px;color:var(--ink);text-decoration:none}", board)
         self.assertNotIn(".post-setup-task:hover{", board)
-        # 右下角同时住着 Toast 栈和窄屏的批量选择条，教程按它们占的高度抬起来；
-        # 真实几何由 `frontend/e2e/design.test.ts` 在 390×844 下量。
-        self.assertIn("--post-setup-reserve:82px;position:fixed;right:12px;"
-                      "bottom:calc(12px + var(--post-setup-reserve));z-index:100", board)
-        self.assertIn("@media(max-width:639px){#postSetupTutorial{--post-setup-reserve:150px}}", board)
+        # 教程贴右下角、压在 Toast 与批量选择条之下，由 `frontend/e2e/design.test.ts`
+        # 在 390×844 下量几何与层叠。
         self.assertIn("width:min(400px,calc(100vw - 24px))", board)
         self.assertIn("pointer-events:none", board)
         self.assertIn(".post-setup-notification{pointer-events:auto", board)
