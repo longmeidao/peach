@@ -4829,7 +4829,7 @@ const hasEntityPart=(kind,name,part)=>!!name&&!!entityShapes?.get(`${kind}/${fol
 const feedNewSkeletonSection=()=>`<section class="feednew">${feedNewSkeletonHtml()}</section>`;
 const COSTAR_SKELETON_PEOPLE=12;
 const costarSkeletonFoot=()=>`<div class="entityfoot"><div class="relatedpeople">${
-  '<span class="relatedperson avskeleton"><span class="ring"></span><span class="nm">&#8203;</span></span>'
+  '<span class="av avskeleton"><span class="ring"></span><span class="nm">&#8203;</span></span>'
     .repeat(COSTAR_SKELETON_PEOPLE)}</div></div>`;
 
 /* 最近一轮取封面断在连接上、这一行又还有没封面的卡时，行上方挂一条 Note 指去配连接方式。
@@ -4904,10 +4904,33 @@ function wireEntityFeed(entityId){
   if(!toggle||!entityId)return;
   const onPage=()=>$('#index').contains(toggle);
   const label=toggle.closest('.entryfeed'),tip=label.querySelector('.entryfeedtip');
+  /* 说明浮层开着时在顶层，按视口定位：默认贴图标下方，下面放不下才翻到上方，左右夹在视口
+     内 8px。开着的时候页面滚动或窗口改宽就重算，关掉或页面换走后那条监听自己摘掉。 */
+  const open=()=>tip.matches(':popover-open');
+  const place=()=>{
+    const anchor=label.getBoundingClientRect(),box=tip.getBoundingClientRect();
+    tip.style.left=`${Math.max(8,Math.min(innerWidth-box.width-8,anchor.left))}px`;
+    const below=anchor.bottom+8;
+    tip.style.top=`${below+box.height<=innerHeight-8?below:Math.max(8,anchor.top-box.height-8)}px`;
+  };
+  const follow=()=>{
+    if(tip.isConnected&&open()){place();return}
+    removeEventListener('scroll',follow,true);removeEventListener('resize',follow);
+  };
   // Escape 只收起这一次；指针离开或焦点移走后，下一次悬停照常出现。
-  toggle.addEventListener('keydown',event=>{if(event.key==='Escape')label.dataset.tipDismissed=''});
-  const restore=()=>delete label.dataset.tipDismissed;
-  label.addEventListener('pointerleave',restore);toggle.addEventListener('blur',restore);
+  let dismissed=false;
+  const showTip=()=>{
+    if(dismissed||open())return;
+    tip.showPopover();place();
+    addEventListener('scroll',follow,{capture:true,passive:true});addEventListener('resize',follow,{passive:true});
+  };
+  const hideTip=()=>{if(open())tip.hidePopover()};
+  const restore=()=>{dismissed=false;hideTip()};
+  toggle.addEventListener('keydown',event=>{if(event.key==='Escape'){dismissed=true;hideTip()}});
+  label.addEventListener('pointerenter',showTip);
+  toggle.addEventListener('focus',()=>{if(toggle.matches(':focus-visible'))showTip()});
+  label.addEventListener('pointerleave',()=>{if(!toggle.matches(':focus-visible'))restore()});
+  toggle.addEventListener('blur',restore);
   const write=async on=>{
     setActionBusy(toggle);
     try{
@@ -4918,7 +4941,7 @@ function wireEntityFeed(entityId){
     }catch(error){
       toggle.checked=!on;actionFailure(on?'订阅新作':'取消订阅新作',error);
       return false;
-    }finally{setActionBusy(toggle,false);tip.textContent=entityFeedTip(toggle.checked)}
+    }finally{setActionBusy(toggle,false);tip.textContent=entityFeedTip(toggle.checked);if(open())place()}
   };
   const refreshAfterCheck=async()=>{
     for(let tries=0;tries<ENTITY_FEED_WAIT_TRIES&&onPage();tries+=1){
@@ -8316,15 +8339,15 @@ async function openEntity(kind,name,push=true){
     }${x.ordinal?`<span class="entryordinal">${esc(x.ordinal)}</span>`:''}<span class="sr-only">${esc(x.label)}</span></a>`
   ).join('')+(d.feed?`<label class="entryfeed">${icon('rss')}<input type="checkbox"
       class="sr-only" role="switch" aria-label="订阅新作" aria-describedby="entityFeedTip" data-entity-feed ${d.feed.following?'checked':''}><span
-      class="entryfeedtip" role="tooltip" id="entityFeedTip">${entityFeedTip(d.feed.following)}</span></label>`:'');
+      class="entryfeedtip" role="tooltip" id="entityFeedTip" popover="manual">${entityFeedTip(d.feed.following)}</span></label>`:'');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
   /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
      的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。
      片商页的名册是旗下 label（`d.labels`），同台艺人那排照旧留在卡底。 */
   const roster=kind==='agency'?(d.related_performers||[]):kind==='studio'?(d.labels||[]):[];
   entityRoster=roster;entityRosterKind=kind==='studio'?'studio':'performer';
-  const related=kind==='agency'?'':(d.related_performers||[]).map(x=>`<button class="relatedperson" data-related-performer="${esc(x.k)}">
-      <span class="ring"><span>${esc(x.k.slice(0,1))}</span>${entityFaceImg(
+  const related=kind==='agency'?'':(d.related_performers||[]).map(x=>`<button class="av" data-related-performer="${esc(x.k)}">
+      <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${entityFaceImg(
         {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
          style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');

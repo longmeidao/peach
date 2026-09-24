@@ -1659,18 +1659,13 @@ class WebUiSourceTests(unittest.TestCase):
         由 aria-label 给。数据管理页「扫描与采集」卡与口味页的同一颗都归 React
         （`LibraryProcessingCard`、`HistoryActions`），那张卡的骨架照同一副 `data-split-button`
         画（`frontend/src/management.ts`，行为由 `frontend/test/management.test.ts` 守）。
+        两半各自悬停、中缝那条线的几何由 `frontend/e2e/design.test.ts` 量 computed style 守。
         """
         scan = self.read_react("library-processing/library-processing-card.tsx")
         self.assertIn('<span data-button-group data-split-button data-variant="primary">', scan)
         self.assertIn("{ label: '扫描并补全资料', icon: RiDatabase2Line, command: {} },", scan)
         taste = self.read_react("taste/taste-page.tsx")
         self.assertIn('<span data-button-group data-split-button data-variant="primary">', taste)
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("[data-split-button][data-button-group]>button+button::after{content:\"\";", board)
-        self.assertIn("inset-block:0;left:0;width:1px;background:#fff", board)
-        self.assertIn("[data-split-button][data-button-group]>button{position:relative;z-index:1;"
-                      "height:36px;border:0;border-radius:0;background:none!important", board)
-        self.assertNotIn("[data-split-button][data-variant=primary]:hover", board)
 
     def test_the_progress_bar_can_be_grabbed_well_above_the_coloured_line(self):
         """彩条 6px，命中区 18px，多出来的 12px 全在条上方。
@@ -5597,9 +5592,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("followWorks=one('work');")
         self.assertPageContains("wireDrag($('#stats').querySelector('.followworks'));")
         # 两排的形归 board.css 同一份规则，关注页那两排跟着一起写进选择器。
-        self.assertIn("#tiers .av,:is(.followauthors,.followworks) .av{display:flex;"
+        self.assertIn("#tiers .av,:is(.followauthors,.followworks,.relatedpeople) .av{display:flex;"
                       "flex-direction:column;align-items:center;gap:6px;width:76px;", board)
-        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks) .av .ring"
+        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks,.relatedpeople) .av .ring"
                       "{width:48px;height:48px;", board)
         self.assertIn(".followauthors .av .ring .favatar"
                       "{width:100%;height:100%;border-radius:0;object-fit:cover}", board)
@@ -6707,7 +6702,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_people_and_tags_match_home_vertical_rhythm(self):
         # 同台艺人那条带是资料卡的卡脚：横滚的轨道吃掉整条宽度。
         self.assertPageContains(".entityfoot{display:flex;align-items:center;gap:16px;min-width:0;padding:12px 20px;")
-        self.assertPageContains(".relatedpeople{display:flex;flex:1;min-width:0;gap:12px;overflow-x:auto;scrollbar-width:none")
+        self.assertPageContains(".relatedpeople{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none")
         self.assertPageContains("height:var(--filterH);margin:0 -16px;padding:9px 16px")
 
     def test_horizontal_avatar_rails_leave_room_for_the_hover_ring(self):
@@ -7268,11 +7263,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));", board)
         # 首页顶上两排：女优是竖排人像格（48px 圆头像在上、名字在下），厂牌是 40px 的灰 Pill（28px 圆标识在左）。
         # 关注页那两排是同一个控件，所以每条规则都把它们一起写进选择器。
-        self.assertIn("#tiers .av,:is(.followauthors,.followworks) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
+        self.assertIn("#tiers .av,:is(.followauthors,.followworks,.relatedpeople) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
         self.assertIn("#tiers .brandpill,:is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}", board)
-        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks) .av .ring{width:48px;height:48px;", board)
+        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks,.relatedpeople) .av .ring{width:48px;height:48px;", board)
         self.assertIn("#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;", board)
-        self.assertIn("#tiers .av .nm,:is(.followauthors,.followworks) .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
+        self.assertIn("#tiers .av .nm,:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
         self.assertPageContains("const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));")
 
     def test_toasts_leave_like_a_boardui_notification(self):
@@ -9180,7 +9175,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".playerstats dd", ".playerstatsmetric>span",
             # 详情标题折成两行，尾部省略；溢出时旁边那枚展开键给出全文。
             ".stitletext",
-            ".relatedperson .nm", ".searchoption span",
+            ".searchoption span",
             ".sgrid.mixgrid>.mixqueue .mixqueuehead span", ".sidebarorderlabel>b",
             ".tastesummary>small",
             ".gselectfield>span",
@@ -9911,7 +9906,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".dnav button:active,.pill:active,.sorts button:active,.edge button:active{"
                       "scale:.96;transition:scale .06s ease-out}", board)
         self.assertIn("#tiers .av:active,#tiers .brandpill:active,\n"
-                      ":is(.followauthors,.followworks) .av:active,"
+                      ":is(.followauthors,.followworks,.relatedpeople) .av:active,"
                       ":is(.followauthors,.followworks) .brandpill:active"
                       "{scale:.96;transition:scale .06s ease-out}", board)
         self.assertIn("cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) "

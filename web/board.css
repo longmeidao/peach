@@ -1358,21 +1358,30 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 @media(prefers-reduced-motion:reduce){[data-board-tabs].board-tabs-ready::before{transition:none}}
 .followmanage .fsource:has([data-follow-select]){background:var(--color-background-primary-default)}
 .followmanage .fsource.selected:has([data-follow-select]){border-color:var(--color-border-focus-ring)}
-/* 两半之间的线独立盖在右半左缘，上下顶满；两颗 Button 自己不再画悬停层，
-   整组 hover 保持原蓝色，鼠标跨过中缝也不会一明一暗。 */
+/* Split Button 照 Geist 实测（`vercel-geist-split-button.md`「悬停」）：两半各是一颗
+   带自己填充的按钮，整组只管并排和外圆角，悬停只抬指针下那一半——抬的那一层就是
+   `bg-button-primary` 自己的 `::before` 淡入。中缝那条 1px 线是触发档的 `::after`，
+   `left:-1px` 盖在主动作最后一列上、上下顶满；它排在后面的那颗里，所以谁在悬停都压在
+   两半上面，颜色也不跟着变。线取悬停那一档的起始色（Geist 的线与它的悬停填充同一档灰）。
+   主动作那条要自己写底色与字色：同组更宽的通用 hover 会把底换成灰、字换成墨色。
+   BoardUI 的 Button 自带 `overflow-hidden`，会把伸出左缘那 1px 裁掉，两半都放开；外圆角
+   由按钮组那一层裁。 */
 [data-split-button][data-button-group]{position:relative;isolation:isolate}
-[data-split-button][data-button-group]>button{position:relative;z-index:1;height:36px;border:0;border-radius:0;background:none!important;box-shadow:none}
-[data-split-button][data-button-group]>button::before{display:none!important}
-[data-split-button][data-button-group]>button+button{position:relative;border-left:0}
-[data-split-button][data-button-group]>button+button::after{content:"";position:absolute;z-index:2;inset-block:0;left:0;width:1px;background:#fff;pointer-events:none}
-[data-split-button][data-variant=primary]{border:0;background:var(--board-blue);box-shadow:none}
-[data-split-button][data-variant=primary]:has(>button:active){background:var(--board-blue-active)}
-[data-split-button][data-variant=primary]>button{color:#fff}
+[data-split-button][data-button-group]>button{position:relative;z-index:1;height:36px;border:0;border-radius:0;box-shadow:none;overflow:visible}
+[data-split-button][data-button-group]>button+button{border-left:0}
+[data-split-button][data-button-group]>button+button::after{content:"";position:absolute;z-index:2;inset-block:0;left:-1px;width:1px;background:var(--split-seam);pointer-events:none}
+[data-split-button][data-variant=primary]{--split-seam:var(--color-accent-400);border:0;background:none;box-shadow:none}
+[data-split-button][data-variant=primary]>button:not(:disabled){background:var(--board-blue);color:#fff}
+[data-split-button][data-variant=primary]>button:not(:disabled,[aria-disabled=true]):active{background:var(--board-blue-active)}
 [data-split-button][data-variant=primary]>button:last-child{width:36px;padding:8px}
-/* React 卡片骨架里等数据的主按钮：`bg-button-primary` 遇到 `aria-disabled` 换成禁用渐变，
-   骨架要的是接管后那一档静止面，数据一到只是解锁，不换颜色。选择器只认属性不认类名：
-   旧样式表里写 React 的工具类名会被 legacy-class-names 拒收。 */
-.peach-react [data-skeleton-action][aria-disabled]{background-image:var(--gradient-button-primary-default);color:var(--color-text-white)}
+/* 骨架里等数据的键（`data-skeleton-action`，原生 `disabled`）不管哪一档都是同一副禁用面：
+   `--surface` 底、一圈 `--border-15`、`--muted` 字，不靠 opacity。属性写两遍是为了压过
+   同组更宽的 hover 与各档自己的 `:disabled`，这一类规则都排在它前面。
+   拆分按钮那一圈画在整组上，两半各自不描边，中缝退成同一色的线。 */
+body [data-skeleton-action][data-skeleton-action]:disabled{background:var(--surface);border-color:transparent;box-shadow:0 0 0 1px var(--border-15);color:var(--muted);cursor:not-allowed;opacity:1}
+body [data-skeleton-action][data-skeleton-action]:disabled::before{display:none}
+body [data-split-button]>[data-skeleton-action][data-skeleton-action]:disabled{box-shadow:none}
+[data-split-button]:has(>[data-skeleton-action]:disabled){--split-seam:var(--border-15);box-shadow:0 0 0 1px var(--border-15)}
 body [data-cleanup-empty][hidden]{display:none}
 body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:var(--elevation-xs);font:var(--board-body-medium)}
 body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
@@ -1499,25 +1508,26 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 /* 关注页顶上那两排跟首页这两排是同一个控件，所以规则一份写全：那边是「谁出的」加
    「哪个厂牌」，这边是「谁发的」加「哪部作品」，人在两页看到的该是同一种东西。它们
    住在 `#stats` 里而不是 `#tiers` 里，只按 id 写的话关注页拿不到这一整套，落回 flat
-   层那份 64px 头像加一圈描边，同一个人在两页大小和选中样子都不一样。 */
+   层那份 64px 头像加一圈描边，同一个人在两页大小和选中样子都不一样。人物页资料卡底
+   那排同台艺人也是这一枚女优头像，同一套规则：悬停抬整格底色，不在圆上描圈。 */
 #tiers .av,#tiers .brandpill,
-:is(.followauthors,.followworks) .av,:is(.followauthors,.followworks) .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:transform var(--lift-motion,var(--board-motion)),scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
+:is(.followauthors,.followworks,.relatedpeople) .av,:is(.followauthors,.followworks) .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:transform var(--lift-motion,var(--board-motion)),scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
 #tiers .av:active,#tiers .brandpill:active,
-:is(.followauthors,.followworks) .av:active,:is(.followauthors,.followworks) .brandpill:active{scale:.96;transition:scale .06s ease-out}
-#tiers .av,:is(.followauthors,.followworks) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
+:is(.followauthors,.followworks,.relatedpeople) .av:active,:is(.followauthors,.followworks) .brandpill:active{scale:.96;transition:scale .06s ease-out}
+#tiers .av,:is(.followauthors,.followworks,.relatedpeople) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
 #tiers .brandpill,:is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
 #tiers .av:hover,#tiers .brandpill:hover,
-:is(.followauthors,.followworks) .av:hover,:is(.followauthors,.followworks) .brandpill:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary);border-color:transparent}
+:is(.followauthors,.followworks,.relatedpeople) .av:hover,:is(.followauthors,.followworks) .brandpill:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary);border-color:transparent}
 #tiers .av[aria-pressed="true"],#tiers .brandpill[aria-pressed="true"],
-:is(.followauthors,.followworks) .av[aria-pressed="true"],:is(.followauthors,.followworks) .brandpill[aria-pressed="true"]{background:var(--color-background-tertiary-default);color:var(--color-text-primary);border-color:transparent}
+:is(.followauthors,.followworks,.relatedpeople) .av[aria-pressed="true"],:is(.followauthors,.followworks) .brandpill[aria-pressed="true"]{background:var(--color-background-tertiary-default);color:var(--color-text-primary);border-color:transparent}
 #tiers .av .ring,#tiers .brandpill .mk,
-:is(.followauthors,.followworks) .av .ring,:is(.followauthors,.followworks) .brandpill .mk{position:relative;flex:none;margin:0;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
-#tiers .av .ring,:is(.followauthors,.followworks) .av .ring{width:48px;height:48px;font:600 18px/24px var(--board-font)}
+:is(.followauthors,.followworks,.relatedpeople) .av .ring,:is(.followauthors,.followworks) .brandpill .mk{position:relative;flex:none;margin:0;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
+#tiers .av .ring,:is(.followauthors,.followworks,.relatedpeople) .av .ring{width:48px;height:48px;font:600 18px/24px var(--board-font)}
 #tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;font:600 12px/16px var(--board-font)}
-#tiers .av .ring .ini,:is(.followauthors,.followworks) .av .ring .ini{font:inherit;color:inherit}
+#tiers .av .ring .ini,:is(.followauthors,.followworks,.relatedpeople) .av .ring .ini{font:inherit;color:inherit}
 #tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring,
-:is(.followauthors,.followworks) .av:hover .ring,:is(.followauthors,.followworks) .av[aria-pressed="true"] .ring{box-shadow:none}
-#tiers .av .nm,:is(.followauthors,.followworks) .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
+:is(.followauthors,.followworks,.relatedpeople) .av:hover .ring,:is(.followauthors,.followworks,.relatedpeople) .av[aria-pressed="true"] .ring{box-shadow:none}
+#tiers .av .nm,:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
 /* 关注页的头像是张外站图，自己带着 64px 的身量；圆头像的尺寸归上面那一格，它只负责
    把那一格填满。 */
 .followauthors .av .ring .favatar{width:100%;height:100%;border-radius:0;object-fit:cover}
@@ -1526,7 +1536,7 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
    一个 28px 的圆出来常常只剩一截身子。检出了脸的图由服务端把取景写进 img 自己的
    style，这里这一档只管没检出脸的那些——上四分之一是人像里头最常落的位置。 */
 .followworks .brandpill .mk img{object-position:50% 25%}
-:is(.followauthors,.followworks){gap:4px;align-items:center}
+:is(.followauthors,.followworks,.relatedpeople){gap:4px;align-items:center}
 .followworks{padding:0 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 
 /* ── 关注列表整段进框，与「添加关注」同一只卡：头 20/24/8，选择栏与列表左右 24，脚是卡片脚 ──

@@ -8,7 +8,7 @@ import { after, before, describe, it } from 'node:test';
 
 import type { Browser, Locator, Page } from 'playwright-core';
 
-import { configurationBody, expectBody, launch, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
+import { configurationBody, expectBody, launch, layout, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 const MOBILE = VIEWPORTS.find((viewport) => viewport.mobile)!;
@@ -324,6 +324,67 @@ async function controlFaces(page: Page, selectors: Record<string, string>) {
   })), selectors);
 }
 
+/** 打开一位订了新作、有一排同台艺人的人物页。演示库里没有人物实体，资料照服务端下发的形状写。 */
+async function openPerformer(browser: Browser, viewport = DESKTOP): Promise<Visit> {
+  const name = '七沢みあ';
+  const opened = await visit(browser, '/', viewport);
+  const costar = (id: number, k: string) => ({ id, k, n: 1, rep: null, has_image: false, has_avatar: false, avatar_focus: null });
+  await opened.page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+    id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
+    user_aliases: [], asset_count: 0, tags: [],
+    related_performers: ['本田愛华', '枢木葵', '美谷朱音', '高杉麻里', '高桥圣子', '今井夏帆'].map((k, at) => costar(90_002 + at, k)),
+    links: [], metadata: {}, has_image: false, has_avatar: false, avatar_focus: null, representative_asset_id: null,
+    entry_links: [
+      { site: 'javdb', label: 'JavDB', ordinal: '', slot: 'mark', mark: 'mark-javdb', url: 'https://javdb.com/actors/NPD3' },
+      { site: 'missav', label: 'MISSAV', ordinal: '', slot: 'mark', mark: '', url: 'https://missav.ai/actresses/x' },
+    ],
+    feed: { following: true },
+  } }));
+  await opened.page.goto(new URL(`/performers/${encodeURIComponent(name)}`, opened.page.url()).href, { waitUntil: 'load' });
+  await opened.page.locator('.entryfeed').waitFor({ timeout: 15_000 });
+  await opened.page.locator('.entityfoot [data-related-performer]').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  await opened.page.evaluate(() => {
+    document.documentElement.dataset.theme = 'light';
+    document.documentElement.classList.remove('dark');
+  });
+  return opened;
+}
+
+/** 禁用档的三样颜色（peach-web-ui「按钮悬停只抬填充」那条）：`--surface` 底、`--border-15` 边、`--muted` 字。 */
+async function disabledTokens(page: Page) {
+  return {
+    face: await tokenColor(page, '#main', '--surface'),
+    ink: await tokenColor(page, '#main', '--muted'),
+    ring: await tokenColor(page, '#main', '--border-15'),
+  };
+}
+
+/** 骨架里等数据的操作键此刻的长相与状态，按文档顺序。 */
+async function waitingActionFaces(page: Page, selector: string) {
+  return page.locator(selector).evaluateAll((buttons) => buttons.map((button) => {
+    const style = getComputedStyle(button);
+    return {
+      name: (button.getAttribute('aria-label') || button.textContent || '').trim(),
+      disabled: (button as HTMLButtonElement).disabled, cursor: style.cursor, opacity: style.opacity,
+      face: style.backgroundColor, image: style.backgroundImage, ink: style.color, ring: style.boxShadow,
+      split: !!button.closest('[data-split-button]'),
+    };
+  }));
+}
+
+function assertDisabledFace(face: Awaited<ReturnType<typeof waitingActionFaces>>[number],
+  expected: Awaited<ReturnType<typeof disabledTokens>>): void {
+  assert.equal(face.disabled, true, `${face.name} 在骨架里没有禁用`);
+  assert.equal(face.cursor, 'not-allowed', `${face.name} 在骨架里的光标不是禁用那一种`);
+  assert.equal(face.opacity, '1', `${face.name} 的禁用态靠透明度，而不是换颜色`);
+  assert.equal(face.face, expected.face, `${face.name} 在骨架里不是禁用底色`);
+  assert.equal(face.image, 'none', `${face.name} 在骨架里还铺着渐变`);
+  assert.equal(face.ink, expected.ink, `${face.name} 在骨架里不是禁用字色`);
+  // 分体键的外圈画在整组上，两半各画一圈的话中缝会出现两道线。
+  if (!face.split) assert.ok(face.ring.includes(expected.ring), `${face.name} 在骨架里没有禁用描边：${face.ring}`);
+}
+
 /** 切到关注管理页的另一栏。栏名后面可能挂着待配置的数目，按开头认。 */
 async function followTab(opened: Visit, name: string): Promise<void> {
   await opened.page.locator('#stats').getByRole('tab', { name: new RegExp(`^${name}`) }).click({ timeout: 5_000 });
@@ -561,16 +622,56 @@ describe('设计决定', () => {
       });
       assert.equal(divider.width, '1px', '拆分按钮分隔线宽度不对');
       assert.notEqual(divider.color, 'rgba(0, 0, 0, 0)', '拆分按钮分隔线没有颜色');
-      const base = await split.evaluate((element) => getComputedStyle(element).backgroundImage);
-      for (const part of [parts.first(), parts.last()]) {
-        await part.hover();
-        assert.equal(await split.evaluate(
-          (element) => getComputedStyle(element).backgroundImage), base,
-        '拆分按钮悬停时改变了整组底色');
-        assert.deepEqual(await parts.evaluateAll((buttons) => buttons.map(
-          (button) => getComputedStyle(button).backgroundColor)),
-        ['rgba(0, 0, 0, 0)', 'rgba(0, 0, 0, 0)'], '按钮自己仍在切换底色');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('拆分按钮两半各自抬填充：悬停哪半只有哪半变，中缝那条线不动', { timeout: 60_000 }, async () => {
+    // Geist 实测（`vercel-geist-split-button.md`「悬停」）：两半各是一颗有自己底色的按钮，
+    // 悬停只抬指针下那一颗；分隔线是触发档 `::before`，`left:-1px` 盖在主动作最后一列上，
+    // 高度顶满、颜色不随悬停变。
+    const opened = await openProcessing(browser, '/data-cleanup', { status: 'idle' });
+    try {
+      // 骨架那张卡同名同结构，等到 React 接管、两半不再带骨架标记才量。
+      const split = opened.page.locator('section[aria-label="扫描与采集"] [data-split-button]:not(:has(> [data-skeleton-action]))');
+      await split.waitFor({ state: 'visible', timeout: 15_000 });
+      await settle(opened.page);
+      const parts = split.locator(':scope > button');
+      const faces = () => parts.evaluateAll((buttons) => buttons.map((button) => {
+        const style = getComputedStyle(button), lift = getComputedStyle(button, '::before');
+        return { fill: style.backgroundImage, lift: lift.opacity, ink: style.color };
+      }));
+      const seam = () => parts.nth(1).evaluate((element) => {
+        const line = getComputedStyle(element, '::after');
+        return { color: line.backgroundColor, width: line.width, left: line.left,
+          height: line.height, full: `${element.getBoundingClientRect().height}px`,
+          clip: getComputedStyle(element).overflowX };
+      });
+      assert.equal(await split.evaluate((element) => getComputedStyle(element).backgroundImage), 'none',
+        '底色画在整组上，两半就没法各自抬填充');
+      await opened.page.mouse.move(0, 0);
+      const rest = await faces();
+      assert.match(rest[0]!.fill, /gradient/, '主动作那半没有自己的蓝色填充');
+      assert.equal(rest[1]!.fill, rest[0]!.fill, '两半静止时不是同一档填充');
+      assert.deepEqual(rest.map((face) => face.lift), ['0', '0'], '没悬停就抬了填充');
+      const line = await seam();
+      assert.equal(line.width, '1px');
+      assert.equal(line.left, '-1px', '分隔线该盖在主动作最后一列上，不占触发档的宽度');
+      assert.equal(line.height, line.full, '分隔线没有上下顶满');
+      assert.equal(line.clip, 'visible', '触发档把伸到左邻上的分隔线裁掉了，屏幕上看不见');
+      assert.notEqual(line.color, 'rgba(0, 0, 0, 0)');
+      for (const [at, other] of [[0, 1], [1, 0]] as const) {
+        await parts.nth(at).hover();
+        // 悬停层按 150ms 淡入淡出，直接读会落在半路；走到终点再比。
+        await opened.page.evaluate(() => document.getAnimations().forEach((animation) => animation.finish()));
+        const hovered = await faces();
+        assert.equal(hovered[at]!.lift, '1', `悬停第 ${at + 1} 半没有抬填充`);
+        assert.equal(hovered[other]!.lift, '0', `悬停第 ${at + 1} 半时另一半也跟着变了`);
+        assert.deepEqual(hovered.map((face) => face.ink), rest.map((face) => face.ink), '悬停改了字色');
+        assert.deepEqual(await seam(), line, '悬停时分隔线变了');
       }
+      assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }
@@ -1252,8 +1353,9 @@ describe('设计决定', () => {
   });
 
   for (const viewport of [DESKTOP, MOBILE]) {
-    it(`关注列表骨架的工具行与行内操作键和接管后同一副长相（${viewport.name}）`, { timeout: 60_000 }, async () => {
-      /* 骨架与真页面各量一遍：主按钮的面色、按钮组的选中项、排序框与方向键、行尾的移除键。
+    it(`关注列表骨架的偏好控件和接管后同一副长相，等数据的操作键是禁用态（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      /* 骨架与真页面各量一遍。版式、排序和方向是这台浏览器的偏好，骨架里就是最终那一档；
+         检查全部、全部收起和行尾的移除键要等名单，骨架里是禁用态，只有尺寸与接管后一致。
          窄屏上工具行收成纯图标，两边按同一条线收，尺寸也要对得上。 */
       const opened = await visit(browser, '/follow-manage', viewport);
       try {
@@ -1272,6 +1374,10 @@ describe('设计决定', () => {
           全部收起: `${toolbar} > button:nth-of-type(3)`,
           移除来源: '[data-skeleton] .follow-skeleton-source > span:last-child > button:last-child',
         });
+        const expected = await disabledTokens(page);
+        const waiting = await waitingActionFaces(page, '[data-skeleton] [data-skeleton-action]');
+        assert.ok(waiting.length >= 3, '关注列表骨架里没有标出等数据的操作键');
+        for (const face of waiting) assertDisabledFace(face, expected);
         release();
         await page.locator('section[aria-label="kou 的关注来源"]').waitFor({ timeout: 15_000 });
         await settle(page);
@@ -1284,8 +1390,13 @@ describe('设计决定', () => {
           全部收起: 'button[aria-label="全部收起"]',
           移除来源: '[data-source-divider] > div > span:last-child > button:last-child',
         });
+        const waitsForData = new Set(['检查全部', '全部收起', '移除来源']);
         for (const name of Object.keys(final)) {
           assert.ok(final[name], `接管后找不到 ${name}`);
+          if (waitsForData.has(name)) {
+            assert.equal(skeleton[name]!.size, final[name]!.size, `${name} 接管时尺寸跳了`);
+            continue;
+          }
           assert.deepEqual(skeleton[name], final[name], `${name} 在骨架里和接管后长得不一样`);
         }
         assert.equal(final['默认视图']!.pressed, 'true', '默认版式下选中的不是网格那颗');
@@ -1295,7 +1406,7 @@ describe('设计决定', () => {
     });
   }
 
-  it('数据管理骨架里的扫描键是蓝色主按钮，等数据时只挡操作不换长相', { timeout: 60_000 }, async () => {
+  it('数据管理骨架里等数据的操作键是禁用态，数据到了才换回蓝色主按钮', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/data-cleanup', DESKTOP);
     try {
       const page = opened.page;
@@ -1306,22 +1417,95 @@ describe('设计决定', () => {
       const release = await holdApi(page);
       await page.reload({ waitUntil: 'load' });
       await page.locator('[data-skeleton="cleanup"] .cleanupscraping [data-split-button]').waitFor({ timeout: 15_000 });
-      const split = {
-        分体键: '.cleanupscraping [data-split-button]',
+      const expected = await disabledTokens(page);
+      const waiting = await waitingActionFaces(page, '[data-skeleton="cleanup"] [data-skeleton-action]');
+      assert.deepEqual(waiting.map((face) => face.name),
+        ['扫描并补全资料', '更多扫描与采集方式', '开始修复', '检查来源', '预览', '检查死链', '检查文件']);
+      for (const face of waiting) assertDisabledFace(face, expected);
+      const ring = await page.locator('[data-skeleton="cleanup"] [data-split-button]')
+        .evaluate((element) => getComputedStyle(element).boxShadow);
+      assert.ok(ring.includes(expected.ring), `骨架里的分体键外圈不是禁用那一档描边：${ring}`);
+      const sizes = await controlFaces(page, {
         扫描并补全资料: '.cleanupscraping [data-split-button] > button:first-child',
         更多方式: '.cleanupscraping [data-split-button] > button:last-child',
-      };
-      const waiting = await page.locator('[data-skeleton="cleanup"] .cleanupscraping [data-split-button] > button')
-        .evaluateAll((buttons) => buttons.map((button) => [button.hasAttribute('disabled'), button.getAttribute('aria-disabled')]));
-      assert.deepEqual(waiting, [[false, 'true'], [false, 'true']], '骨架里的扫描键该用 aria-disabled 挡住，不是原生禁用');
-      const skeleton = await controlFaces(page, split);
+        开始修复: '.cleanupmediarepair footer > button',
+      });
       release();
       await page.locator('[data-skeleton="cleanup"]').waitFor({ state: 'detached', timeout: 15_000 });
       await page.locator('.cleanupscraping [data-split-button]').waitFor({ timeout: 15_000 });
-      const final = await controlFaces(page, split);
-      assert.deepEqual(skeleton, final, '扫描键在骨架里和接管后长得不一样');
+      await settle(page);
+      const final = await controlFaces(page, {
+        扫描并补全资料: '.cleanupscraping [data-split-button] > button:first-child',
+        更多方式: '.cleanupscraping [data-split-button] > button:last-child',
+        开始修复: 'section[aria-label="媒体修复"] footer > button',
+      });
+      for (const name of Object.keys(sizes)) {
+        assert.equal(sizes[name]!.size, final[name]!.size, `${name} 接管时尺寸跳了`);
+        assert.match(final[name]!.face, /gradient/, `${name} 接管后没换回蓝色主按钮`);
+      }
+      const enabled = await page.locator('.cleanupscraping [data-split-button] > button')
+        .evaluateAll((buttons) => buttons.map((button) => (button as HTMLButtonElement).disabled));
+      assert.deepEqual(enabled, [false, false], '数据到了扫描键还是禁用的');
     } finally {
       await opened.close();
+    }
+  });
+
+  it('骨架里的占位和按键悬停不给任何反馈，也点不中', { timeout: 120_000 }, async () => {
+    const name = '七沢みあ';
+    const pages: { path: string; ready: string; targets: string[]; prepare?: (page: Page) => Promise<void> }[] = [
+      { path: `/performers/${encodeURIComponent(name)}`, ready: '[data-skeleton="entity/performer"] .entityfoot .avskeleton',
+        targets: ['[data-skeleton] .entityfoot .avskeleton'],
+        prepare: (page) => page.route(/\/api\/entity\/shapes/, (route) => route.fulfill({ json: {
+          ok: true, entities: [{ id: 90_001, kind: 'performer', names: [name], parts: ['costars'] }] } })) },
+      { path: '/data-cleanup', ready: '[data-skeleton="cleanup"] [data-skeleton-action]',
+        targets: ['[data-skeleton] .board-plain-stat', '[data-skeleton] a[href="/scraping"]',
+          '[data-skeleton] [data-skeleton-action]', '[data-skeleton] .cleanupfieldset [data-skeleton-action]'] },
+      { path: '/review', ready: '[data-skeleton="review"] .reviewtabs button',
+        targets: ['[data-skeleton] .reviewtabs button', '[data-skeleton] .skeletoncard'] },
+      { path: '/follow', ready: '.followauthors .avskeleton',
+        targets: ['.followauthors .avskeleton', '.followworks .brandskeleton', '[data-skeleton^="cards/"] > div > *'] },
+      { path: '/follow-manage', ready: '[data-skeleton="board/follow-manage"] .follow-skeleton-toolbar',
+        targets: ['[data-skeleton] .follow-skeleton-toolbar > button:nth-of-type(2)',
+          '[data-skeleton] .follow-skeleton-toolbar > button:nth-of-type(1)'] },
+    ];
+    for (const { path, ready, targets, prepare } of pages) {
+      const opened = await visit(browser, '/', DESKTOP);
+      try {
+        const page = opened.page;
+        // 后登记的路由先拿到请求：桩要排在挂住 /api/ 那条之后，不然它也被挂住。
+        await holdApi(page);
+        await prepare?.(page);
+        await page.goto(new URL(path, page.url()).href, { waitUntil: 'load' });
+        await page.locator(ready).first().waitFor({ state: 'visible', timeout: 15_000 });
+        for (const target of targets) {
+          const node = page.locator(target).first();
+          await node.waitFor({ state: 'visible', timeout: 5_000 });
+          const box = (await node.boundingBox())!;
+          const look = () => node.evaluate((element) => [element, ...element.querySelectorAll('*')].slice(0, 6).map((part) => {
+            const style = getComputedStyle(part);
+            return [style.borderColor, style.boxShadow, style.backgroundColor, style.backgroundImage,
+              style.outlineStyle, style.color, style.scale, style.transform].join(' | ');
+          }));
+          await page.mouse.move(0, 0);
+          const rest = await look();
+          const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+          await page.mouse.move(x, y);
+          assert.deepEqual(await look(), rest, `${path} ${target} 悬停时变了样子`);
+          // 分层骨架那一排（`data-skeleton-tier`）是最终那条轨道本身，点中它等于点在页面底上；
+          // 要问的是指针有没有落在某一枚占位或整块骨架里。
+          const hit = await page.evaluate(([px, py]) => {
+            const at = document.elementFromPoint(px!, py!);
+            return { cursor: at ? getComputedStyle(at).cursor : '',
+              inside: !!at?.closest('[data-skeleton],.avskeleton,.brandskeleton,.tagskeleton,.skeletoncard'),
+              disabled: !!at?.closest('button:disabled') };
+          }, [x, y]);
+          assert.ok(['auto', 'default', 'not-allowed'].includes(hit.cursor), `${path} ${target} 悬停换了光标：${hit.cursor}`);
+          assert.ok(!hit.inside || hit.disabled, `${path} ${target} 在骨架里还能点中`);
+        }
+      } finally {
+        await opened.close();
+      }
     }
   });
 
@@ -1430,6 +1614,84 @@ describe('设计决定', () => {
       await toggle.focus();
       await opened.page.keyboard.press('Escape');
       assert.equal(await tip.isVisible(), false, 'Escape 收不起说明浮层');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`订阅新作的说明浮层整块露在外面：不被资料卡裁掉，也不被同台艺人那条盖住（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openPerformer(browser, viewport);
+      try {
+        const page = opened.page;
+        const feed = page.locator('.entryfeed');
+        await feed.hover();
+        const tip = page.locator('#entityFeedTip');
+        await tip.waitFor({ state: 'visible', timeout: 5_000 });
+        const placement = await tip.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const clippedBy: string[] = [];
+          // 顶层里的元素不受祖先 overflow 裁切，只有写在文档流里的浮层才要逐层量。
+          const topLayer = element.matches(':popover-open');
+          for (let node = topLayer ? null : element.parentElement; node; node = node.parentElement) {
+            const style = getComputedStyle(node);
+            if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+            const clip = node.getBoundingClientRect();
+            if (box.left < clip.left - 0.5 || box.right > clip.right + 0.5
+              || box.top < clip.top - 0.5 || box.bottom > clip.bottom + 0.5) clippedBy.push(node.className || node.tagName);
+          }
+          // 浮层本身不接指针；临时放开再问四条边和正中最上面是谁，盖在它上面的东西就现形了。
+          // 取样点离角 16px：圆角外那一小块本来就不属于它。
+          element.style.pointerEvents = 'auto';
+          const [midX, midY] = [box.left + box.width / 2, box.top + box.height / 2];
+          const covered = [[box.left + 16, box.top + 2], [box.right - 16, box.top + 2], [box.left + 16, box.bottom - 2],
+            [box.right - 16, box.bottom - 2], [box.left + 2, midY], [box.right - 2, midY], [midX, midY]]
+            .map(([x, y]) => document.elementFromPoint(x!, y!))
+            .filter((hit) => !hit || !element.contains(hit)).map((hit) => hit?.className || 'null');
+          element.style.pointerEvents = '';
+          return { inView: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+            clippedBy, covered, below: box.top >= document.querySelector('.entryfeed')!.getBoundingClientRect().bottom };
+        });
+        assert.ok(placement.inView, '说明浮层越出了视口');
+        assert.deepEqual(placement.clippedBy, [], '说明浮层被外层容器裁掉了一截');
+        assert.deepEqual(placement.covered, [], '说明浮层被别的东西盖住了');
+        assert.ok(placement.below, '视口下方放得下时说明浮层应该在图标下面');
+        const page_ = await layout(page);
+        assert.ok(page_.scrollWidth <= page_.viewportWidth, '说明浮层把页面撑出了横向滚动');
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  it('人物页同台艺人的头像悬停和首页顶栏女优头像同一副：抬整格填充、不描圈', { timeout: 60_000 }, async () => {
+    const opened = await openPerformer(browser, DESKTOP);
+    try {
+      const page = opened.page;
+      const person = page.locator('.entityfoot [data-related-performer]').first();
+      const face = () => person.evaluate((element) => {
+        const style = getComputedStyle(element), ring = getComputedStyle(element.querySelector('.ring')!);
+        return { fill: style.backgroundColor, ink: style.color, radius: style.borderRadius, padding: style.padding,
+          width: style.width, ring: ring.boxShadow, size: ring.width };
+      });
+      await page.mouse.move(0, 0);
+      const rest = await face();
+      await person.hover();
+      const hovered = await face();
+      // 首页那一格（board.css「首页顶部两排」）：76px 宽、6/4px 内边距、12px 圆角，悬停铺
+      // primary-hover、字换主文字色，48px 圆头像不另描圈。
+      const home = {
+        fill: await tokenColor(page, '#main', '--color-background-primary-hover'),
+        ink: await tokenColor(page, '#main', '--color-text-primary'),
+      };
+      assert.equal(rest.fill, 'rgba(0, 0, 0, 0)', '没悬停就垫了底');
+      assert.deepEqual({ radius: hovered.radius, padding: hovered.padding, width: hovered.width, size: hovered.size },
+        { radius: '12px', padding: '6px 4px', width: '76px', size: '48px' }, '同台艺人那一格和首页头像格不是同一副几何');
+      assert.equal(hovered.fill, home.fill, '悬停没有铺首页那一档填充');
+      assert.equal(hovered.ink.replace(/\s/g, ''), home.ink.replace(/\s/g, ''), '悬停没有换成主文字色');
+      assert.equal(hovered.ring, 'none', '悬停还在给圆头像描圈');
+      assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }
