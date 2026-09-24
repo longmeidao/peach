@@ -8,6 +8,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -137,6 +138,33 @@ class NoWait:
         pass
 
 
+CMADB_ARTICLE = ('<html><body><script type="application/json">{"component": "Articles/Show",'
+                 ' "version": "v1", "props": {"article": {"video_id": "%s"}}}</script></body></html>')
+
+
+class Fc2cmadbTransport:
+    """fc2cmadb 替身：同一个地址，不带 `X-Inertia` 回作品页，带了回女优栏。"""
+
+    def __init__(self, listed: dict[str, list[dict]], status: int = 200):
+        self.listed, self.status, self.calls = listed, status, []
+
+    def __call__(self, request, _timeout, _limit):
+        self.calls.append((request.url, bool(request.headers.get("X-Inertia"))))
+        video = request.url.rsplit("/", 1)[-1]
+        if self.status != 200:
+            return HttpResponse(self.status, {}, b"", request.url)
+        if video not in self.listed:
+            return HttpResponse(404, {}, b"", request.url)
+        if not request.headers.get("X-Inertia"):
+            return HttpResponse(200, {}, (CMADB_ARTICLE % video).encode("utf-8"), request.url)
+        body = json.dumps({"component": "Articles/Show", "props": {"actresses": self.listed[video]}},
+                          ensure_ascii=False)
+        return HttpResponse(200, {}, body.encode("utf-8"), request.url)
+
+    def close(self):
+        pass
+
+
 class Case(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
@@ -159,6 +187,9 @@ class Case(unittest.TestCase):
             wiki_url("雲母そら"): (200, AV_NEME_KIRARA.encode("euc_jp")),
             wiki_url("神山ももか"): (200, AV_NEME_MOVED.encode("euc_jp")),
         }, wiki_search().encode("euc_jp"))
+        self.fc2cmadb = Fc2cmadbTransport({"1234567": [
+            {"id": 9186, "name": "神山ももか",
+             "alias_name": "たぬき顔サラサラ黒髪ロング ちっぱいリクルーター"}]})
 
     def entity(self, name: str, *aliases: str, kind: str = "performer") -> int:
         with self.database.write_transaction(notify=False) as connection:
@@ -172,11 +203,11 @@ class Case(unittest.TestCase):
                     " VALUES(?,?,?,'manual')", (entity_id, written, normalize_entity_name(written)))
         return entity_id
 
-    def work(self, asset_id: int, *performers: int) -> None:
+    def work(self, asset_id: int, *performers: int, code: str | None = None) -> None:
         with self.database.write_transaction(notify=False) as connection:
-            connection.execute("INSERT INTO asset(id,location,path,name,medium)"
-                               " VALUES(?,'local',?,?,'video')",
-                               (asset_id, f"R:\\media\\{asset_id}.mp4", f"{asset_id}.mp4"))
+            connection.execute("INSERT INTO asset(id,location,path,name,medium,code)"
+                               " VALUES(?,'local',?,?,'video',?)",
+                               (asset_id, f"R:\\media\\{asset_id}.mp4", f"{asset_id}.mp4", code))
             for entity_id in performers:
                 connection.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source)"
                                    " VALUES(?,?,'performer','test')", (asset_id, entity_id))
@@ -190,7 +221,9 @@ class Case(unittest.TestCase):
         cache = self.generated / "provider-cache"
         return {alias.MINNANO: alias.MinnanoPages(cache / "minnano", self.cooldown, self.minnano,
                                                   limiter=NoWait()),
-                alias.AV_NEME: alias.AvNemePages(cache / "seesaa", self.cooldown, self.av_neme)}
+                alias.AV_NEME: alias.AvNemePages(cache / "seesaa", self.cooldown, self.av_neme),
+                alias.FC2CMADB: alias.Fc2cmadbPages(cache / "fc2cmadb", self.cooldown, self.fc2cmadb,
+                                                    limiter=NoWait())}
 
     def run_followup(self, entity_id: int, run_id: int = 7) -> dict:
         handle = SimpleNamespace(run_id=run_id, progress=lambda **_kwargs: None)
@@ -314,6 +347,73 @@ class LandingTests(Case):
             gone = alias.land(connection, 999, "神山ももか", alias.MINNANO, "page", ["雲母そら"], "b")
         self.assertEqual([row["action"] for row in stale + gone], [alias.STALE, alias.GONE])
         self.assertEqual(self.aliases(momoka), {})
+
+
+class Fc2cmadbTests(Case):
+    NICKNAME = "たぬき顔サラサラ黒髪ロング"
+
+    def nicknamed(self, *listed: dict) -> int:
+        """账本里只有卖家那句称呼的一位，挂着一部 FC2 作品。"""
+        her = self.entity(self.NICKNAME)
+        self.work(1, her, code="FC2-PPV-1234567")
+        if listed:
+            self.fc2cmadb.listed["1234567"] = list(listed)
+        return her
+
+    def test_the_site_name_behind_a_nickname_is_registered_and_searched_the_same_round(self):
+        her = self.nicknamed()
+        with self.database.read_connection() as connection:
+            self.assertTrue(alias.has_entry(connection, her))
+        summary = self.run_followup(her)
+        names = self.aliases(her)
+        batch = f"{alias.SOURCE}@7"
+        self.assertEqual(names["神山ももか"], batch)
+        self.assertEqual(names["雲母そら"], batch)
+        self.assertNotIn("ちっぱいリクルーター", names)
+        self.assertEqual(summary["sites"][alias.FC2CMADB],
+                         "命中 " + alias.FC2CMADB_ACTRESS.format(id=9186))
+        self.assertTrue(summary["sites"][alias.MINNANO].startswith("命中 " + PROFILE_URL))
+        self.assertEqual([partial for _url, partial in self.fc2cmadb.calls], [False, True])
+
+    def test_a_cast_list_of_someone_else_writes_nothing(self):
+        her = self.nicknamed({"id": 77, "name": "佐々木ゆうか", "alias_name": "別の人"})
+        summary = self.run_followup(her)
+        self.assertEqual(self.aliases(her), {})
+        self.assertEqual(summary["outcome"], "三站都没对上她")
+        self.assertIn("FC2-PPV-1234567 的女优栏是 佐々木ゆうか", summary["sites"][alias.FC2CMADB])
+
+    def test_two_people_on_the_cast_list_claiming_her_is_ambiguous(self):
+        her = self.nicknamed({"id": 1, "name": "神山ももか", "alias_name": self.NICKNAME},
+                             {"id": 2, "name": "雲母そら", "alias_name": self.NICKNAME})
+        summary = self.run_followup(her)
+        self.assertEqual(self.aliases(her), {})
+        self.assertIn("不止一位", summary["sites"][alias.FC2CMADB])
+
+    def test_a_site_name_another_entity_uses_is_left_for_review(self):
+        other = self.entity("神山ももか")
+        her = self.nicknamed()
+        self.run_followup(her)
+        self.assertNotIn("神山ももか", self.aliases(her))
+        taken = [row for row in self.review() if row["site"] == alias.FC2CMADB]
+        self.assertEqual([row["action"] for row in taken], [alias.TAKEN])
+        self.assertIn(f"实体 {other}", taken[0]["detail"])
+
+    def test_a_refusal_pauses_the_site(self):
+        her = self.nicknamed()
+        self.fc2cmadb.status = 403
+        summary = self.run_followup(her)
+        self.assertEqual(summary["outcome"], "未取得")
+        self.assertTrue(paused_until(self.cooldown, alias.FC2CMADB))
+        asked = len(self.fc2cmadb.calls)
+        self.run_followup(her, run_id=8)
+        self.assertEqual(len(self.fc2cmadb.calls), asked)
+
+    def test_a_performer_without_fc2_works_is_not_asked(self):
+        momoka = self.entity("神山ももか")
+        self.work(1, momoka, code="ABP-968")
+        summary = self.run_followup(momoka)
+        self.assertEqual(self.fc2cmadb.calls, [])
+        self.assertNotIn(alias.FC2CMADB, summary["sites"])
 
 
 class RepeatTests(Case):

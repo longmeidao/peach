@@ -92,7 +92,8 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   真实 Flower 页 HTTPX 取得 200／253975 字节，FKOS-007 解析出 10 位出演者；公开搜索亦可发现
   对应表格。`scrape_codes --profile seesaa` 是正式消费者，不另建刮削 CLI。详见 [来源采集](SOURCING.md#seesaa-wiki-作品证据)。
 
-- 补女优别名后继（ADR-0055）复用 `minnano_av` 的检索与资料表解析、`sources.seesaa.WikiPages` 取页层、
+- 补女优别名后继（ADR-0055、0061）复用 `minnano_av` 的检索与资料表解析、`sources.seesaa.WikiPages` 取页层、
+  `sources.fc2cmadb` 的女优栏握手与解析、
   `HostLimiter`、`scraping_access` 冷却、`metadata_alias_resolve.is_planning_alias` 与
   `apply_alias_candidates.py` 的四种不写口径，撤回复用 `revert_auto_landing.py`。minnano-av 那一站没用
   `page_cache.Site`：它只返回正文、丢了跳转后的最终地址（复核产物要记她那一页的真实地址），限速器按实例
