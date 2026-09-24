@@ -122,6 +122,35 @@ class PlanTests(StudioFollowupCase):
         self.assertEqual(found[0].task_key, studio_followup.TASK_KEY)
         self.assertTrue(found[0].label.endswith("NEWLABEL"))
 
+    def test_stock_skips_a_studio_once_tried_until_it_gains_a_link(self):
+        from peach.followups import Attempts, attempts_root
+
+        studio = self.entity("studio", "OLDLABEL")
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute("INSERT INTO asset(id,location,path,name,medium,code,size)"
+                               " VALUES(1,'R:','R:\\media\\a.mp4','a.mp4','video','OLD-1',1)")
+            connection.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source)"
+                               " VALUES(1,?,'studio','test')", (studio,))
+        attempts = Attempts(attempts_root(self.contract.candidate_root))
+
+        def planned():
+            with self.database.read_connection() as connection:
+                return [item.key for item in
+                        studio_followup.stock(connection, self.logos, attempts, limit=10)]
+
+        key = studio_followup.followup_key(studio)
+        self.assertEqual(planned(), [key])
+        with mock.patch.object(studio_followup.studio_sites, "discover",
+                               return_value=(site_row("weak"), 0.0)):
+            self.run_followup(studio)
+        self.assertEqual(planned(), [])
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute(
+                "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive,"
+                "metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,0,'{}',?,?)",
+                (studio, "official", "官方网站", "https://old.jp/", "old.jp", STAMP, STAMP))
+        self.assertEqual(planned(), [key])
+
 
 class SiteTests(StudioFollowupCase):
     def test_an_ok_site_is_linked_with_its_source_and_batch(self):

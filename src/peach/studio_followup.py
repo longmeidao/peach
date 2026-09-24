@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from . import studio_icons, studio_sites
-from .followups import Followup, FollowupType, register
+from .followups import Attempts, Followup, FollowupType, attempts_root, register
 
 #: 这类后继在任务中心的身份，也是活动页上那一行的名字来源。
 TASK_KEY = "studio-mark"
@@ -82,7 +82,55 @@ def plan(connection: sqlite3.Connection, logo_root, *, since_entity_id: int) -> 
             for _assets, entity_id, name in found]
 
 
+def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
+    """会让这条后继结论变的量：作品数与官网、目录链接数。人补上一条链接就该再试。"""
+    assets = connection.execute(
+        "SELECT count(DISTINCT asset_id) FROM asset_entity WHERE entity_id=?",
+        (int(entity_id),)).fetchone()[0]
+    links = connection.execute(
+        "SELECT count(*) FROM entity_link WHERE entity_id=? AND link_kind IN (?,?)",
+        (int(entity_id), *studio_icons.ICON_LINK_KINDS)).fetchone()[0]
+    return f"{assets}/{links}"
+
+
+def stock(connection: sqlite3.Connection, logo_root, attempts, *, limit: int,
+          skip=()) -> list[Followup]:
+    """库里早就登记、盘上至今没有图的厂牌，作品多的在前，最多 `limit` 条（ADR-0053）。
+
+    跑过一次、作品数与链接数都没变的不再派（`attempts`）。
+    """
+    if limit <= 0:
+        return []
+    skip = set(skip)
+    found = []
+    for row in connection.execute(
+            "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) AS assets"
+            " FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id"
+            " WHERE e.kind='studio' GROUP BY e.id ORDER BY assets DESC, e.id"):
+        entity_id, name = int(row[0]), str(row[1] or "")
+        key = followup_key(entity_id)
+        if key in skip or has_mark(logo_root, name):
+            continue
+        if attempts.settled(key, fingerprint(connection, entity_id)):
+            continue
+        found.append(Followup(key=key, task_key=TASK_KEY,
+                              label=f"{TASK_LABEL}：{name}" if name else TASK_LABEL))
+        if len(found) >= limit:
+            break
+    return found
+
+
 def run(contract, key: str, handle) -> dict:
+    """跑一条补厂牌后继，再把厂牌当时的指纹记进 `Attempts`，存量补派按它判。"""
+    summary = _run(contract, key, handle)
+    with contract.database.read_connection() as connection:
+        current = fingerprint(connection, parse_key(key))
+    Attempts(attempts_root(contract.candidate_root)).record(
+        key, current, str(summary.get("outcome", "")))
+    return summary
+
+
+def _run(contract, key: str, handle) -> dict:
     """跑一条补厂牌后继。返回的摘要就是活动页上那一行。"""
     entity_id = parse_key(key)
     logo_root = contract.logo_root

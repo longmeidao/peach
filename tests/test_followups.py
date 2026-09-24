@@ -277,6 +277,16 @@ class BackgroundJobDispatchTests(LedgerTestCase):
         self.assertEqual(run.status, "failed")
         self.assertEqual(self.store.children(run.id), [])
 
+    def test_a_run_that_settles_with_open_issues_still_dispatches(self):
+        job = self.job()
+        job.start(lambda job_id: job.update(
+            job_id, status="failed", error="3 项需要处理", followups=self.declared()))
+        job.thread.join(5)
+        run = self.store.query(task_key="library-processing", limit=1)[0]
+        self.assertEqual(run.status, "failed")
+        self.assertEqual(run.result_summary["followups"], 1)
+        self.assertEqual(len(self.store.children(run.id)), 1)
+
     def test_the_runner_is_woken_once_the_followups_are_queued(self):
         runner = mock.Mock()
         job = self.job(runner)
@@ -440,6 +450,27 @@ class CoverFaceFollowupTests(LedgerTestCase):
                 for path in (self.root / "generated").rglob(f"evidence/performer-{self.person}-*.json")]
         self.assertEqual(sorted((one["provider"], one["external_id"]) for one in kept),
                          [("cover-face", "FC2-PPV-2"), ("cover-face", "FC2-PPV-3")])
+
+    def test_stock_skips_her_once_tried_until_her_works_change(self):
+        from peach.avatar_followup import stock
+        from peach.followups import Attempts, attempts_root
+
+        self.work(1, "FC2-PPV-1", (1800, 1000))
+        chosen = self.entity("performer", "人挑过")
+        self.work(6, "FC2-PPV-6", (600, 400), performers=(chosen,))
+        (self.avatars / f"performer-{chosen}.img").write_bytes(b"jpeg")
+        attempts = Attempts(attempts_root(self.root / "generated"))
+
+        def planned():
+            with self.database.read_connection() as connection:
+                return [item.key for item in stock(connection, self.avatars, attempts,
+                                                   limit=10)]
+
+        self.assertEqual(planned(), [followup_key("performer", self.person)])
+        self.run_followup()
+        self.assertEqual(planned(), [])
+        self.work(2, "FC2-PPV-2", (276, 154))
+        self.assertEqual(planned(), [followup_key("performer", self.person)])
 
     def test_a_thumbnail_is_the_floor_not_nothing(self):
         self.work(1, "FC2-PPV-1", (1800, 1000))

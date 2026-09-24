@@ -1161,13 +1161,19 @@ def _entity_followups(database, config, watermark, covered=()):
     女优也算进来（`avatar_followup.plan`）。厂牌盘上没有图的派补厂牌后继
     （`studio_followup.plan`），官网与标识在那一条里一起补。
 
+    这一轮的名额（`MAX_FOLLOWUPS`）先给新登记的，余下的给库里早就登记、至今缺图的存量
+    （ADR-0053）：女优在前，厂牌补满。存量每轮往前推一截，跑过又没变的不再派。
+
     只声明，不执行：派发在调用方结算这一轮时发生，真正去跑的是 `followups` 那一层。
     这里出任何问题都只让这一轮不派后继，不影响刮削本身的结论。
     """
     if database is None or watermark is None:
         return []
     from . import avatar_followup, studio_followup
+    from .followups import Attempts, attempts_root
+    from .task_runs import MAX_FOLLOWUPS
     generated = config.directory('generated')
+    attempts = Attempts(attempts_root(generated))
     try:
         with database.read_connection() as connection:
             found = avatar_followup.plan(
@@ -1175,6 +1181,11 @@ def _entity_followups(database, config, watermark, covered=()):
                 covered_asset_ids=[asset_id for asset_id, count in covered if count])
             found += studio_followup.plan(connection, generated / 'logos',
                                           since_entity_id=watermark)
+            taken = {item.key for item in found}
+            found += avatar_followup.stock(connection, generated / 'avatars', attempts,
+                                           limit=MAX_FOLLOWUPS - len(found), skip=taken)
+            found += studio_followup.stock(connection, generated / 'logos', attempts,
+                                           limit=MAX_FOLLOWUPS - len(found), skip=taken)
     except sqlite3.Error:
         return []
     return [{'key': item.key, 'task_key': item.task_key, 'label': item.label}

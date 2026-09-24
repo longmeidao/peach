@@ -22,7 +22,7 @@ import sqlite3
 
 from . import avatar_cover_face, avatar_picker
 from .avatar_provider import MIN_LONG_SIDE, MIN_SHORT_SIDE, acceptable_avatar
-from .followups import Followup, FollowupType, register
+from .followups import Attempts, Followup, FollowupType, attempts_root, register
 
 #: 这类后继在任务中心的身份，也是活动页上那一行的名字来源。
 TASK_KEY = "entity-avatar"
@@ -83,8 +83,7 @@ def plan(connection: sqlite3.Connection, avatar_root, *,
     found = []
     for row in rows:
         entity_id, kind = int(row["id"]), str(row["kind"])
-        if (avatar_picker.installed_digest(avatar_root, kind, entity_id)
-                and avatar_cover_face.installed_face_px(avatar_root, kind, entity_id) is None):
+        if not _needs_avatar(avatar_root, kind, entity_id):
             continue
         found.append((int(row["assets"] or 0), entity_id, kind,
                       str(row["canonical_name"] or "")))
@@ -94,7 +93,58 @@ def plan(connection: sqlite3.Connection, avatar_root, *,
             for _assets, entity_id, kind, name in found]
 
 
+def _needs_avatar(avatar_root, kind: str, entity_id: int) -> bool:
+    """没有头像，或者装着的是封面截的那一档（还可能换到更清楚的）。"""
+    return (not avatar_picker.installed_digest(avatar_root, kind, entity_id)
+            or avatar_cover_face.installed_face_px(avatar_root, kind, entity_id) is not None)
+
+
+def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
+    """会让这条后继结论变的量：她名下的作品数。多一部就多一批封面可截。"""
+    return str(connection.execute(
+        "SELECT count(DISTINCT asset_id) FROM asset_entity WHERE entity_id=?",
+        (int(entity_id),)).fetchone()[0])
+
+
+def stock(connection: sqlite3.Connection, avatar_root, attempts, *, limit: int,
+          skip=()) -> list[Followup]:
+    """库里早就登记、至今缺头像的女优，作品多的在前，最多 `limit` 条（ADR-0053）。
+
+    跑过一次、作品数也没变的不再派（`attempts`）：图库和封面都没变，结论也不会变。
+    """
+    if limit <= 0:
+        return []
+    skip = set(skip)
+    found = []
+    for row in connection.execute(
+            "SELECT e.id,e.kind,e.canonical_name,count(DISTINCT ae.asset_id) AS assets"
+            " FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id"
+            " WHERE e.kind='performer' GROUP BY e.id ORDER BY assets DESC, e.id"):
+        entity_id, kind = int(row["id"]), str(row["kind"])
+        key = followup_key(kind, entity_id)
+        if (key in skip or not _needs_avatar(avatar_root, kind, entity_id)
+                or attempts.settled(key, str(row["assets"]))):
+            continue
+        name = str(row["canonical_name"] or "")
+        found.append(Followup(key=key, task_key=TASK_KEY,
+                              label=f"{TASK_LABEL}：{name}" if name else TASK_LABEL))
+        if len(found) >= limit:
+            break
+    return found
+
+
 def run(contract, key: str, handle) -> dict:
+    """跑一条补头像后继，再把实体当时的指纹记进 `Attempts`，存量补派按它判。"""
+    summary = _run(contract, key, handle)
+    _kind, entity_id = parse_key(key)
+    with contract.database.read_connection() as connection:
+        current = fingerprint(connection, entity_id)
+    Attempts(attempts_root(contract.candidate_root)).record(
+        key, current, str(summary.get("outcome", "")))
+    return summary
+
+
+def _run(contract, key: str, handle) -> dict:
     """跑一条补头像后继。返回的摘要就是活动页上那一行。
 
     实体身份不进摘要——它已经在这条后继的 key 里，写两遍只是让那一行更难读。

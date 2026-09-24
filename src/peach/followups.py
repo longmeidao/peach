@@ -17,9 +17,12 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Callable
 
 from .task_runs import TaskRunHandle, TaskRunStore
@@ -44,6 +47,42 @@ class Followup:
 
     def as_row(self) -> tuple[str, str, str]:
         return (self.key, self.task_key, self.label)
+
+
+class Attempts:
+    """存量补派时的记性：一条后继跑过之后，它的实体当时是什么样子（ADR-0053）。
+
+    存量里缺图的实体每轮都还缺图，光看「缺不缺」会让同一批找不到图的实体每轮都把
+    名额占满。跑完就记下实体的指纹（作品数、链接数这类会让结论变的量），指纹没变就
+    不再派；多了一部作品、多了一条链接，指纹变了，自然再试一次。
+
+    任务记录每类只留最近 20 行，存不住这份记性，所以落在候选缓存里，一件事一个文件。
+    """
+
+    def __init__(self, root):
+        self.root = Path(root)
+
+    def _path(self, key: str):
+        return self.root / f"{str(key).replace(':', '-')}.json"
+
+    def settled(self, key: str, fingerprint: str) -> bool:
+        try:
+            record = json.loads(self._path(key).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return False
+        return isinstance(record, dict) and record.get("fingerprint") == fingerprint
+
+    def record(self, key: str, fingerprint: str, outcome: str) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._path(key).write_text(json.dumps(
+            {"key": key, "fingerprint": fingerprint, "outcome": outcome,
+             "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())},
+            ensure_ascii=False), encoding="utf-8")
+
+
+def attempts_root(generated_root):
+    """`Attempts` 落在哪：数据目录 `generated/provider-cache/followup-attempts`。"""
+    return Path(generated_root) / "provider-cache" / "followup-attempts"
 
 
 @dataclass(frozen=True)
