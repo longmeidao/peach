@@ -1,4 +1,4 @@
-"""FC2 三站：发行方商品页、fc2cmadb 镜像页与 JavArchive 转载页的取页与解析。"""
+"""FC2 五站：发行方商品页、fc2cmadb 镜像页、FC2PPV-DB、JAVten 与 JavArchive 转载页的取页与解析。"""
 import json
 import unittest
 import urllib.parse
@@ -8,7 +8,13 @@ from peach.sources import FailureReason, Page, Session, SourceFailure
 from peach.sources.fc2 import FC2, STUDIO, UNRECOGNISED, Fc2Source, canonical_code, runtime_minutes, video_id
 from peach.sources.fc2cmadb import COMPONENT as MIRROR_COMPONENT
 from peach.sources.fc2cmadb import FC2CMADB, Fc2cmadbSource, parse_actresses, partial_headers
+from peach.sources.fc2ppvdb import FC2PPVDB, Fc2ppvdbSource, japanese_date
 from peach.sources.javarchive import JAVARCHIVE, JavArchiveSource, links
+from peach.sources import javten as javten_module
+from peach.sources.javten import JAVTEN, JavtenSource
+
+CHALLENGE = ('<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title></head>'
+             '<body><div id="challenge-body-text">Verifying you are human.</div></body></html>')
 
 #: 站上那份前端资源的指纹，2026-09-22 实测形态。
 MIRROR_VERSION = "fcb3b524d4c7f8f3d2c38e437b35b7a9"
@@ -482,6 +488,206 @@ class JavArchiveTests(unittest.TestCase):
         self.assertEqual(JavArchiveSource().search_url("FC2-PPV-4137487"),
                          "https://javarchive.com/search?q=FC2-PPV-4137487")
         self.assertEqual(JavArchiveSource().search_url("ORETD-615"), "")
+
+
+DB_COVER = "https://d39jz7pbpqkw9s.cloudfront.net/thumbnails/48/4898837.webp"
+
+
+def db_page(video="4898837", title="ふたりの巨乳美少女と3P。", seller="ぷにぷに製作所", slug="punipuni",
+            sold="2026年5月10日", runtime="55:00", performers=("川北すずね",), leaked="流出なし",
+            tags=("巨乳", "3P")):
+    """fc2ppv-db.com 的作品页：Next.js 服务端渲染，「動画詳細情報」那块是嵌套的 div 与 p。
+
+    PR 位与関連動画也链到女优页，放进来看解析只认出演女優那一块。
+    """
+    cast = ("".join(f'<a href="/ja/actresses/{at}-uuid"><span><img alt="{name}" src="/a.webp"></span>'
+                    f"<span>{name}</span></a>" for at, name in enumerate(performers))
+            if performers else "<p>情報がありません</p>")
+    marks = "".join(f'<a href="/ja/videos?tags={tag}">{tag}</a>' for tag in tags)
+    return (
+        '<html><head><meta name="description" content="'
+        f'FC2-PPV-{video} {title} - 販売者: {seller} / 公開日: 2026年5月9日 / 再生時間: {runtime}">'
+        f'<meta property="og:image" content="{DB_COVER}"><meta property="og:image:width" content="800"></head>'
+        '<body><nav><a href="/ja/actresses/pr-uuid">今日の女優</a></nav><main>'
+        f"<h1>FC2-PPV-{video} {title}</h1>"
+        f'<img src="{DB_COVER}" alt="">'
+        "<section><h2>動画詳細情報</h2>"
+        f"<div><div><p>動画ID</p></div><div><p>{video}</p></div></div>"
+        f"<div><p>販売日</p><p>{sold}</p></div>"
+        f"<div><span>{leaked}</span><span>モザイクあり</span></div>"
+        f"<div><div><p>出演女優</p></div><div>{cast}</div></div>"
+        f'<div><a href="/ja/sellers/{slug}"><span><img alt="{seller}" src="/s.webp"></span>'
+        f"<span><span>販売者</span><span>{seller}</span></span></a></div>"
+        f"<div><div><span>タグ</span></div><div>{marks}</div></div>"
+        "</section></main>"
+        '<aside><h2>関連動画</h2><a href="/ja/actresses/other-uuid"><span>別の人</span></a></aside>'
+        "</body></html>"
+    )
+
+
+def db_missing_page():
+    """站上没有的商品回的也是 200，正文是它自己的 404 页。"""
+    return "<html><head><title>404</title></head><body><main><h1>404</h1><p>ページが見つかりません</p></main></body></html>"
+
+
+def database(html, code):
+    return Fc2ppvdbSource().parse(page(html, "https://fc2ppv-db.com/ja/videos/4898837"), code).payload()
+
+
+class Fc2ppvdbTests(unittest.TestCase):
+    def test_the_database_page_gives_the_women_the_seller_the_date_and_the_leak_mark(self):
+        found = database(db_page(), "FC2-PPV-4898837")
+        self.assertEqual(found["title"], "ふたりの巨乳美少女と3P。")
+        self.assertEqual(found["actresses"], [{"japanese_name": "川北すずね"}])
+        self.assertEqual((found["label"], found["seller_url"]),
+                         ("ぷにぷに製作所", "https://adult.contents.fc2.com/users/punipuni/"))
+        self.assertEqual((found["release_date"], found["runtime"]), ("2026-05-10", 55.0))
+        self.assertEqual(found["genres"], ["巨乳", "3P"])
+        self.assertEqual(found["leaked"], False)
+        self.assertEqual(database(db_page(leaked="流出あり"), "FC2-PPV-4898837")["leaked"], True)
+        self.assertEqual((found["id"], found["content_id"], found["maker"], found["source_url"]),
+                         ("FC2-PPV-4898837", "4898837", STUDIO, "https://fc2ppv-db.com/ja/videos/4898837"))
+
+    def test_the_thumbnail_is_not_handed_over_as_a_cover(self):
+        # 站上那张是 360×360 的 CloudFront 缩略图（`og:image:width` 写 800，实测 360），封面留给存储原件那几档。
+        found = database(db_page(), "FC2-PPV-4898837")
+        self.assertEqual((found["cover_urls"], found["cover_url"]), ([], ""))
+
+    def test_only_the_cast_block_names_the_women_of_this_film(self):
+        # PR 位与関連動画也链到女优页，那些不是这部片的人；站上没有女优时那一栏写「情報がありません」。
+        self.assertEqual(database(db_page(performers=("A", "B")), "FC2-PPV-4898837")["actresses"],
+                         [{"japanese_name": "A"}, {"japanese_name": "B"}])
+        self.assertEqual(database(db_page(performers=()), "FC2-PPV-4898837")["actresses"], [])
+
+    def test_the_sale_date_falls_back_to_the_meta_line_and_japanese_dates_read_as_iso(self):
+        self.assertEqual(japanese_date("2026年9月21日"), "2026-09-21")
+        self.assertEqual(japanese_date("いつか"), "")
+        missing = db_page().replace("<div><p>販売日</p><p>2026年5月10日</p></div>", "")
+        self.assertEqual(database(missing, "FC2-PPV-4898837")["release_date"], "2026-05-09")
+
+    def test_a_missing_product_and_a_challenge_page_each_keep_their_tier(self):
+        for html, code, reason, wording in (
+                (db_missing_page(), "FC2-PPV-99999999", FailureReason.NOT_FOUND, "FC2PPV-DB 上没有这个商品"),
+                (db_page(video="48988370"), "FC2-PPV-4898837", FailureReason.NOT_FOUND, "FC2PPV-DB 上没有这个商品"),
+                (db_page(), "ORETD-615", FailureReason.NOT_FOUND, UNRECOGNISED),
+                (CHALLENGE, "FC2-PPV-4898837", FailureReason.CLOUDFLARE_CHALLENGE,
+                 "FC2PPV-DB 要求 Cloudflare 验证，请在采集设置里更新 Cookie 与浏览器 User-Agent")):
+            with self.subTest(code=code, html=html[:40]), self.assertRaises(SourceFailure) as caught:
+                database(html, code)
+            self.assertEqual((caught.exception.reason, str(caught.exception)), (reason, wording))
+
+    def test_the_database_is_asked_once_on_its_own_host_and_hands_back_the_same_shape(self):
+        url = "https://fc2ppv-db.com/ja/videos/4898837"
+        pages = serve({url: db_page()})
+        found = Fc2ppvdbSource().query("FC2-PPV-4898837", session=Session(pages))
+        self.assertEqual(found.title, "ふたりの巨乳美少女と3P。")
+        self.assertEqual([call[:3] for call in pages.calls], [(url, "https://fc2ppv-db.com/", 2 * 1024 * 1024)])
+        self.assertEqual(FC2PPVDB.name, "fc2ppvdb")
+        self.assertEqual(sorted(set(database(db_page(), "FC2-PPV-4898837")) - {"leaked"}),
+                         sorted(mirror(mirror_page(), "FC2-PPV-3189161")))
+        self.assertEqual(Fc2ppvdbSource().video_url("ORETD-615"), "")
+
+
+#: 假传输按解码后的地址找页，夹具地址就写原字。
+TEN_ORIGINAL = "https://javten.com/video/1234567/id4898837/ふたり"
+TEN_STORAGE = "https://storage200000.contents.fc2.com/file/393/39269295/1778420440.09.png"
+TEN_GALLERY = "//contents-thumbnail2.fc2.com/w1280/storage200000.contents.fc2.com/file/393/39269295/1778420440.53.png"
+
+
+def ten_page(video="4898837", title="ふたりの巨乳美少女と3P。", seller="ぷにぷに製作所", runtime="55:00",
+             published="2026-05-10T22:02:04+07:00", tags=("巨乳", "3P"), url=TEN_ORIGINAL, gallery=TEN_GALLERY):
+    """javten.com 的作品页：番号在 `h1.fc2-id`，卖家与时长只在 description 里。"""
+    marks = "".join(f'<a class="badge badge-primary" href="https://javten.com/tag/{at}/{tag}/newest">{tag}</a>'
+                    for at, tag in enumerate(tags))
+    picture = (f'<a data-fancybox="gallery" href="{gallery}"><img data-src="{gallery.replace("w1280", "w500")}"></a>'
+               if gallery else "")
+    return (
+        f'<html><head><meta property="og:title" content="[FC2-PPV-{video}]{title}">'
+        f'<meta name="description" content="[FC2-PPV-{video}] | {title} | By {seller} | {runtime} | Free Sample Video">'
+        f'<meta property="og:url" content="{url}"><link rel="canonical" href="{url}">'
+        f'<meta property="og:image" content="{TEN_STORAGE}">'
+        f'<meta property="videos:published_time" content="{published}"></head>'
+        f'<body><h1 class="card-title fc2-id">FC2-PPV-{video}</h1><h2 class="card-title">{title}</h2>'
+        f"{picture}{marks}"
+        f'<a href="https://javten.com/seller/99/{seller}">この売り手からのすべてのビデオ</a>'
+        '<a href="https://javten.com/tw/video/1234567/id4898837/x">繁體</a>'
+        "</body></html>"
+    )
+
+
+def ten_results(*videos, lang=""):
+    """搜索结果页：同一部片的日文原页与几个译文版都列着，还有标题里带数字的别的片。"""
+    rows = "".join(f'<a href="https://javten.com/{lang}video/{1000 + at}/id{video}/title-{video}">FC2-PPV-{video}</a>'
+                   f'<a href="https://javten.com/en/video/{1000 + at}/id{video}/title-{video}">EN</a>'
+                   for at, video in enumerate(videos))
+    return f"<html><body>{rows}<a href='https://javten.com/video/7/id7777777/about-4898837'>别的片</a></body></html>"
+
+
+def ten(html, code):
+    return JavtenSource().parse(page(html, TEN_ORIGINAL), code).payload()
+
+
+class JavtenTests(unittest.TestCase):
+    def test_the_work_page_gives_the_japanese_title_the_seller_the_tags_and_the_storage_originals(self):
+        found = ten(ten_page(), "FC2-PPV-4898837")
+        self.assertEqual(found["title"], "ふたりの巨乳美少女と3P。")
+        self.assertEqual((found["label"], found["seller_url"]), ("ぷにぷに製作所", ""))
+        self.assertEqual((found["release_date"], found["runtime"]), ("2026-05-10", 55.0))
+        self.assertEqual(found["genres"], ["巨乳", "3P"])
+        self.assertEqual(found["cover_urls"], [
+            TEN_STORAGE, "https://storage200000.contents.fc2.com/file/393/39269295/1778420440.53.png"])
+        self.assertEqual((found["id"], found["content_id"], found["maker"], found["source_url"], found["actresses"]),
+                         ("FC2-PPV-4898837", "4898837", STUDIO, TEN_ORIGINAL, []))
+        self.assertEqual(ten(ten_page(gallery=""), "FC2-PPV-4898837")["cover_urls"], [TEN_STORAGE])
+
+    def test_the_search_page_gives_up_only_this_shop_numbers_japanese_page(self):
+        found = javten_module.links(ten_results("4898837", "1111111"), "FC2-PPV-4898837")
+        self.assertEqual(found, ["https://javten.com/video/1000/id4898837/title-4898837"])
+        # 标题里带着这个号的别的片、以及 `id48988370` 都不是它。
+        self.assertEqual(javten_module.links(ten_results("48988370"), "FC2-PPV-4898837"), [])
+        self.assertEqual(javten_module.links(ten_results("4898837"), "ORETD-615"), [])
+
+    def test_a_single_hit_lands_on_the_work_page_and_a_translated_landing_fetches_the_original(self):
+        search = "https://javten.com/search?kw=4898837"
+        direct = serve({search: ten_page()})
+        found = JavtenSource().query("FC2-PPV-4898837", session=Session(direct))
+        self.assertEqual((found.title, found.source_url), ("ふたりの巨乳美少女と3P。", TEN_ORIGINAL))
+        self.assertEqual([call[0] for call in direct.calls], [search])
+        translated = "https://javten.com/tw/video/1234567/id4898837/ふたり"
+        via_tw = serve({search: ten_page(url=translated), TEN_ORIGINAL: ten_page()})
+        JavtenSource().query("FC2-PPV-4898837", session=Session(via_tw))
+        self.assertEqual([call[:2] for call in via_tw.calls], [(search, "https://javten.com/"), (TEN_ORIGINAL, search)])
+        listed = serve({search: ten_results("4898837"), "https://javten.com/video/1000/id4898837/title-4898837": ten_page()})
+        JavtenSource().query("FC2-PPV-4898837", session=Session(listed))
+        self.assertEqual(len(listed.calls), 2)
+
+    def test_a_translated_page_is_never_read_as_the_title(self):
+        # 站上的中文是机器翻译，只收日文原页。
+        with self.assertRaises(SourceFailure) as caught:
+            ten(ten_page(url="https://javten.com/tw/video/1234567/id4898837/x", title="兩個巨乳美少女的3P"), "FC2-PPV-4898837")
+        self.assertEqual((caught.exception.reason, str(caught.exception)),
+                         (FailureReason.PARSE_ERROR, "JAVten 回的是译文页，只收日文原页"))
+
+    def test_a_missing_product_and_a_challenge_page_each_keep_their_tier(self):
+        search = "https://javten.com/search?kw=4898837"
+        with self.assertRaises(SourceFailure) as caught:
+            JavtenSource().query("FC2-PPV-4898837", session=Session(serve({search: ten_results("1111111")})))
+        self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NOT_FOUND, "JAVten 上没有这个商品"))
+        with self.assertRaises(SourceFailure) as caught:
+            JavtenSource().query("FC2-PPV-4898837", session=Session(serve({search: CHALLENGE})))
+        self.assertEqual((caught.exception.reason, caught.exception.status_code),
+                         (FailureReason.CLOUDFLARE_CHALLENGE, 403))
+        for html, code, wording in ((ten_page(video="48988370"), "FC2-PPV-4898837", "JAVten 上没有这个商品"),
+                                    (ten_page(), "ORETD-615", UNRECOGNISED)):
+            with self.subTest(code=code), self.assertRaises(SourceFailure) as caught:
+                ten(html, code)
+            self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NOT_FOUND, wording))
+
+    def test_the_fifth_page_hands_back_the_same_shape_as_the_others(self):
+        self.assertEqual(sorted(ten(ten_page(), "FC2-PPV-4898837")), sorted(mirror(mirror_page(), "FC2-PPV-3189161")))
+        self.assertEqual(JAVTEN.name, "javten")
+        self.assertEqual(JavtenSource().search_url("FC2-PPV-4898837"), "https://javten.com/search?kw=4898837")
+        self.assertEqual(JavtenSource().search_url("ORETD-615"), "")
 
 
 if __name__ == "__main__":

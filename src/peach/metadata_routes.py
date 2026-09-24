@@ -71,13 +71,16 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # avsox 经 amane 桥（ADR-0043）垫在最后：它专收无码，但是转载索引，且要经 Cloudflare，
     # 三家综合索引都落空才轮到它。
     "uncensored": ("1pondo", "avbase", "javbus", "javdb", "avsox"),
-    # FC2：发行方商品页 → 下架作品的镜像站 → JavArchive → FC2 专站 → javdb。JavArchive
-    # 只给标题和一张转存封面，比官方原图差一档，所以排在两个存档站之后。fc2club 经
-    # amane 桥问（ADR-0043），只收 FC2，所以排在综合索引 javdb 前面。
+    # FC2：发行方商品页 → 下架作品的镜像站 → FC2PPV-DB → JAVten → JavArchive → FC2 专站 → javdb。
+    # fc2cmadb 给下架作品的原图与女优栏，排在前；FC2PPV-DB 给女优、卖家、販売日与流出标记，
+    # 不给封面；JAVten 给日文标题、标签与 FC2 存储原件的地址（ADR-0060）。这两站都在 Cloudflare
+    # 验证后面，没配 Cookie 时各自回 403 后整站冷却，链照常往下走。JavArchive 只给标题和一张
+    # 转存封面，比官方原图差一档，所以排在几个存档站之后。fc2club 经 amane 桥问（ADR-0043），
+    # 只收 FC2，所以排在综合索引 javdb 前面。
     # 不含 r18dev（实测 85 条全空）、不含 AVBase 与 JavBus（本机 1213 份来源证据里
     # 这两家对 FC2 番号一份都没给过，javdb 给了 166 份）。判据原文在
     # `community_catalog.community_sources_for` 与 `docs/SOURCING.md`。
-    "fc2": ("fc2", "fc2cmadb", "javarchive", "fc2club", "javdb"),
+    "fc2": ("fc2", "fc2cmadb", "fc2ppvdb", "javten", "javarchive", "fc2club", "javdb"),
     # 韩国 MIB 一家都不问：番号和日本番号同形，JAV 目录站按它去查返回的是别的作品，
     # 那份错值只能靠人一条条认出来。官网走 `scripts/harvest_kmib.py`，不在这条路上。
     "kmib": (),
@@ -88,11 +91,15 @@ ROUTES: dict[str, tuple[str, ...]] = {
 #: 子进程并发问链上属于这一档的几站，所以合成一档 `amane_official`；按 `route_for_code` 裁过之后，
 #: 有码番号在这一档只剩一家片商，素人番号只剩 mgstage。
 AMANE_OFFICIAL_STAGE = ("prestige", "faleno", "dahlia", "makers", "mgstage")
-#: 发行方与专站那一档。链上排在综合索引前面，取到必填标量字段就短路。FC2 的两个存档站
+#: 发行方与专站那一档。链上排在综合索引前面，取到必填标量字段就短路。FC2 的四个存档站
 #: 按来源分级是 community，但在链上属于这一档：它们只收 FC2，不是综合索引。
-OFFICIAL_STAGE = (*AMANE_OFFICIAL_STAGE, "r18dev", "dmm", "1pondo", "fc2", "fc2cmadb", "javarchive")
-#: FC2 那三处是同一次 `LibraryMetadataProvider.fc2()` 里先后问的，合成一档 `fc2`。
-FC2_STAGE = ("fc2", "fc2cmadb", "javarchive")
+OFFICIAL_STAGE = (*AMANE_OFFICIAL_STAGE, "r18dev", "dmm", "1pondo", "fc2", "fc2cmadb", "fc2ppvdb", "javten",
+                  "javarchive")
+#: FC2 那五处是同一次 `LibraryMetadataProvider.fc2()` 里先后问的，合成一档 `fc2`。
+FC2_STAGE = ("fc2", "fc2cmadb", "fc2ppvdb", "javten", "javarchive")
+#: FC2 链上有女优栏的几站。发行方商品页没有演员栏，这一行还缺演员时前面几档答上了也接着问它们；
+#: JAVten 与 JavArchive 不给演员，不为演员去问。
+FC2_CAST_SITES = ("fc2cmadb", "fc2ppvdb")
 #: 缺标签的行在这几档之间多问一家，见 `settles`。dmm 不在这里：它与 r18.dev 是同一份目录，
 #: r18.dev 答了标量却没给标签时再问 DMM 拿回的还是那一套 genre；它只在 r18.dev 落空时被问。
 OFFICIAL_STAGE_NAMES = ("amane_official", "r18dev", "1pondo", "fc2")

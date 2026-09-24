@@ -250,12 +250,13 @@ class ConfigConsistencyTests(unittest.TestCase):
 
     def test_javdb_keeps_the_user_set_interval_and_the_other_sites_the_default(self):
         self.assertEqual(SITE_SOURCES["javdb"].DEFAULT.interval, 3.0)
-        for name in ("javbus", "avbase", "r18dev", "1pondo", "fc2", "fc2cmadb", "javarchive", *WIKI_SOURCES):
+        for name in ("javbus", "avbase", "r18dev", "1pondo", "fc2", "fc2cmadb", "fc2ppvdb", "javten", "javarchive",
+                     *WIKI_SOURCES):
             self.assertEqual(SITE_SOURCES[name].DEFAULT.interval, 2.0, name)
         self.assertEqual({host for host in SOURCE_INTERVALS if scraping_access.source_for("https://" + host + "/") == "javdb"},
                          set(SOURCE_INTERVALS), "SOURCE_INTERVALS 里只有 javdb 的主机单独设间隔")
 
-    def test_the_twelve_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
+    def test_the_fourteen_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
         shape = {name: (site.DEFAULT.stage, site.DEFAULT.cookie, site.DEFAULT.page_limit)
                  for name, site in SITE_SOURCES.items()}
         self.assertEqual(shape, {"r18dev": ("official_mirror", False, 2 * 1024 * 1024),
@@ -263,6 +264,8 @@ class ConfigConsistencyTests(unittest.TestCase):
                                  "1pondo": ("official", False, 1024 * 1024),
                                  "fc2": ("official", False, 2 * 1024 * 1024),
                                  "fc2cmadb": ("community", True, 2 * 1024 * 1024),
+                                 "fc2ppvdb": ("community", True, 2 * 1024 * 1024),
+                                 "javten": ("community", True, 2 * 1024 * 1024),
                                  "javarchive": ("community", False, 2 * 1024 * 1024),
                                  "avbase": ("community", False, 4 * 1024 * 1024),
                                  "javbus": ("community", True, 4 * 1024 * 1024),
@@ -273,7 +276,14 @@ class ConfigConsistencyTests(unittest.TestCase):
         self.assertEqual({name for name in SITE_SOURCES if SOURCE_SPECS[name].official},
                          {"r18dev", "dmm", "1pondo", "fc2"})
         self.assertEqual(tuple(name for name in SITE_SOURCES if name in FC2_STAGE), FC2_STAGE,
-                         "FC2 三站按链上先后登记")
+                         "FC2 五站按链上先后登记")
+        # 在 Cloudflare 验证后面的两站：Cookie 绑着浏览器的 UA，采集设置里两样都收，403 时整站冷却。
+        for name in ("fc2ppvdb", "javten"):
+            self.assertEqual({key: scraping_access.SOURCES[name].get(key) for key in ("cookie", "session", "user_agent")},
+                             {"cookie": True, "session": True, "user_agent": True}, name)
+            self.assertTrue(scraping_access.SOURCES[name]["blocked_pause"], name)
+        self.assertEqual({name for name, spec in scraping_access.SOURCES.items() if spec.get("user_agent")},
+                         {"fc2ppvdb", "javten"})
 
 
 if __name__ == "__main__":

@@ -19,7 +19,8 @@ from bs4 import BeautifulSoup
 from ..jav_cover_fetch import NotFound, Unavailable
 from .base import (FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure,
                    http_failure)
-from .fc2 import PAGE_LIMIT, canonical_code, fc2_record, runtime_minutes, text_of, unrecognised, video_id
+from .fc2 import (PAGE_LIMIT, canonical_code, fc2_record, runtime_minutes, strip_code, text_of, unrecognised,
+                  video_id)
 
 #: 转载站，标题由发布者写，封面是转存件，按社区来源登记。主机间隔用默认的 2 秒。
 JAVARCHIVE = SiteConfig(name="javarchive", label="JavArchive", provider="javarchive-page",
@@ -64,12 +65,6 @@ def links(html: str | bytes, code: str) -> list[str]:
     boundary = _number(wanted)
     return list(dict.fromkeys(href for href in _LINK.findall(text)
                               if boundary.search(urllib.parse.unquote(href))))
-
-
-def _strip_code(title: str, wanted: str) -> str:
-    """标题开头那截番号剥掉：站上 `FC2-PPV-4137487`、`FC2PPV 1863914` 两种写法都有。"""
-    return re.sub(rf"^\s*FC2[-_. ]?(?:PPV)?[-_. ]?{re.escape(wanted)}\s*[-—:：]?\s*", "",
-                  str(title or ""), flags=re.I)
 
 
 def _rows(soup: BeautifulSoup) -> dict:
@@ -155,7 +150,7 @@ class JavArchiveSource(SiteSource):
         rows = _rows(soup)
         return fc2_record(
             self.config, wanted, urllib.parse.urljoin(self.config.base_url, link["href"]) if link else "",
-            title=_strip_code(title, wanted), release_date=rows["release_date"],
+            title=strip_code(title, wanted), release_date=rows["release_date"],
             runtime=runtime_minutes(rows["runtime"]), tags=rows["genres"], cover_urls=covers)
 
     def records(self, code: str, *, session: Session) -> list[SiteRecord]:
