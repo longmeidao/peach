@@ -101,10 +101,12 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 | 类型 | 判据 | 链（从左到右） | 这条链为什么不含 |
 | --- | --- | --- | --- |
 | censored | 其余厂牌番号 | （本机证据认得时）prestige／faleno／dahlia，都不认时 makers → r18dev → dmm → avbase → javbus → javdb | 1pondo（无码片商）、fc2（另一套商品号）、mgstage（对有码号是转售店） |
-| amateur | `300MIUM-1239` 这类三位数字前缀，加 `SIRO`／`STP`／`STN` | mgstage → r18dev → avbase → javbus → javdb | makers 与三家片商站（素人号不归它们）；dmm（搜 `MIUM 1239`、`LUXU 1475` 零结果） |
+| amateur | `300MIUM-1239` 这类三位数字前缀，加 `SIRO`／`STP`／`STN`；本机证据写着带三位前缀的同一个号（`LUXU-688` 的文件是 `259LUXU-688.mp4`） | mgstage → avbase → javbus → javdb → r18dev | makers 与三家片商站（素人号不归它们）；dmm（搜 `MIUM 1239`、`LUXU 1475` 零结果）。r18dev 垫底：本机快照里它一份素人号都没给过 |
 | uncensored | 日期式番号、`HEYZO-1380`、Tokyo-Hot 的 `n0780` | （证据指着一本道时）1pondo → avbase → javbus → javdb → avsox | r18dev：无码番号在它上面没有 |
-| fc2 | `FC2` 开头的商品号 | fc2 → fc2cmadb → javarchive → fc2club → javdb | r18dev（实测 85 条全空）、avbase 与 javbus（对 FC2 零产出） |
+| fc2 | `FC2` 开头的商品号，与没归一的 `FC-43768` 这种短写法 | fc2 → fc2cmadb → fc2ppvdb → javten → javarchive → javdb | r18dev（实测 85 条全空）、avbase 与 javbus（对 FC2 零产出）、fc2club（本机快照零产出，还回 429 进冷却） |
 | kmib | `KOREAN_MIB_PREFIXES` 里的前缀 | 一家都不问 | 全部：番号与日本片同形，问回来的是别的作品 |
+| other | 有码形状，但路径带国产标记（`OTHER_SYSTEM_MARKS`：国产、网红、兔子先生、麻豆……）或文件名是欧美片站写法（`wankzvr-elena-koshka-GFE-180`） | 一家都不问，也不问封面 | 全部：Peach 没接这些体系的来源 |
+| unsure | 有码形状，本机证据里有字母段却没有这个号的完整写法（`UWFr85dczsVeysGg.mp4` 读成 `UWFR-085`） | avbase → javbus → javdb，一遍 | 片商站、r18dev、dmm：号多半读错了，官方档只会查空 |
 
 几处容易问错的地方：
 
@@ -115,7 +117,8 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 - **三家片商站只问自家番号。** Prestige、FALENO、DAHLIA 对任何番号都发请求，番号字母前缀在
   `metadata_routes.MAKER_EVIDENCE` 里、或账本厂牌与路径写着这家才问它；有一家认了就不再问 `makers`。
   `makers` 按 amane 自带的片商表路由，前缀不在表里桥内零 HTTP，只花一次子进程（实测 0.8 秒）。
-- **国产、欧美、里番没有链。** Peach 一家对应来源都没接，写一条空链只会让人以为问过了。
+- **国产、欧美归 `other`，一家都不问。** Peach 没接这些体系的来源；认得出的按 `other` 停在这里，
+  认不出的仍按有码问。里番没有判据，不单列。
 
 何时停：官方与发行方那几家逐个成档，一档把**这一行还缺的必填标量**（标题、演员、厂牌、
 发行日期）给全了就不问下一档；只给了一半照旧往下问，否则那一行只能等人工去填。综合索引
@@ -143,7 +146,7 @@ cosplay 105 部、`sunwall` 的剪辑 19 部），真番号零误伤；同一天
 来源链的取舍参考了 amane 的 `docs/dev/content-routes.md`，证据登记在
 `docs/reference-sources.json` 的 `amane-content-routes`。
 
-fc2club、avsox 两站（以及只能由覆盖点名的 freejavbt、airav）不是 Peach 自己的解析器，
+avsox（以及只能由覆盖点名的 fc2club、freejavbt、airav）不是 Peach 自己的解析器，
 由 amane 经 `tools/amane-bridge/` 的子进程回答（ADR-0043）：链上它们合成一档 `amane`，一次子进程
 并发问完；上游报的 `rate_limited` 按 429 那一档、`cloudflare_*` 与 `ip_banned` 按 403 那一档写进
 同一份冷却记录，正在冷却的站不带进子进程。桥的 venv 在「来源和凭证」页那张卡重建，钉住的版本

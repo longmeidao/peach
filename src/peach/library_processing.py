@@ -854,9 +854,10 @@ def _given_fields(entries):
             for field, value in extract_peach_fields(payload).items() if value}
 
 
-def _asks_cover(code):
-    """这个番号要不要问外部封面。MIB 同样不问，理由见 `_sources_for`。"""
-    return bool(code) and not is_korean_mib_code(code)
+def _asks_cover(code, *evidence):
+    """这个番号要不要问外部封面。韩国 MIB 与国产、欧美（`metadata_routes` 的 `other`）不问：
+    JAV 的封面来源按这种号查，要么查空，要么取回同号的另一部日本片。"""
+    return bool(code) and metadata_routes.classify(code, *evidence) not in ('kmib', 'other')
 
 
 def _scrapes_as_jav(row, code):
@@ -989,7 +990,7 @@ class _RemoteSession:
         if missing and _sources_for(code, *_studio_evidence(row),
                                     route_overrides=self._routes):
             entries = self._metadata(row, code, missing, update=update, issue=issue)
-        if _asks_cover(code) and not cover_settled(cover_root / (code + '.jpg')):
+        if _asks_cover(code, *_studio_evidence(row)) and not cover_settled(cover_root / (code + '.jpg')):
             covers = self._cover(row, code, cover_root, update=update, issue=issue)
         return entries, covers
 

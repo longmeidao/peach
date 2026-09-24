@@ -1057,6 +1057,32 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual([item.args[0] for item in provider.cover.call_args_list], ['ABW-001'])
 
     @windows_ledger_roots
+    def test_codes_of_other_systems_ask_nobody_and_misread_ones_ask_only_the_indexes(self):
+        """国产的 `兔子先生TZ-105` 形状和有码一样，按有码链问是每一家都白问一遍、封面还可能取回同号日本片。
+
+        文件名被读错了号的（`UWFr85dczsVeysGg` 读成 `UWFR-085`）只问综合索引一遍。
+        """
+        media = self.root / 'media'
+        (media / '兔子先生TZ-105').mkdir(parents=True)
+        (media / '兔子先生TZ-105' / '兔子先生TZ-105K杯.mp4').write_bytes(b'video')
+        (media / 'UWFr85dczsVeysGg.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True, locations={'local': (str(media),)})
+        provider = stub_provider()
+        provider.cover.return_value = False
+        process_library(config, db, self.root / 'generated', self.root / 'covers', stage='scan',
+                        provider_factory=lambda: provider)
+        with closing(sqlite3.connect(db)) as connection, connection:
+            connection.execute("UPDATE asset SET code='TZ-105' WHERE name LIKE '%TZ-105%'")
+            connection.execute("UPDATE asset SET code='UWFR-085' WHERE name LIKE 'UWF%'")
+        process_library(config, db, self.root / 'generated', self.root / 'covers', stage='collect',
+                        provider_factory=lambda: provider)
+        provider.query.assert_not_called()
+        provider.amane.assert_not_called()
+        self.assertEqual([item.args[0] for item in provider.community.call_args_list], ['UWFR-085'])
+        self.assertEqual([item.args[0] for item in provider.cover.call_args_list], ['UWFR-085'])
+
+    @windows_ledger_roots
     def test_fc2_codes_ask_the_shop_itself_and_never_r18(self):
         """r18.dev 没有 FC2，问一次就是白等一次主机间隔；发行方自己那一页才有这批番号。"""
         media = self.root / 'media'
@@ -1258,7 +1284,7 @@ class LibraryNfoTests(unittest.TestCase):
                          ['封面未取得：来源返回 HTTP 503'], '来源说没有只报一个数，不占问题清单')
         self.assertEqual(first['notes'], {'querying_metadata': 1})
         recorded = json.loads(misses_path(config).read_text(encoding='utf-8'))
-        self.assertEqual(list(recorded['misses']), ['amane_official', 'r18dev', 'community'])
+        self.assertEqual(list(recorded['misses']), ['amane_official', 'community', 'r18dev'])
         self.assertEqual(provider.amane.call_args.kwargs['route'], ('mgstage',))
         self.assertEqual(list(recorded['misses']['r18dev']), ['STP-26232'])
 
