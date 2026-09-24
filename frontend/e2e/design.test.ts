@@ -920,7 +920,7 @@ describe('设计决定', () => {
     }
   });
 
-  it('390px 下教程浮窗不压住 Toast 和批量选择条', { timeout: 60_000 }, async () => {
+  it('390px 下教程浮窗贴着右下角，Toast 和批量选择条盖在它上面', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/', MOBILE);
     try {
       await opened.page.evaluate(() => {
@@ -936,32 +936,40 @@ describe('设计决定', () => {
         opened.page.locator('#postSetupTutorial .post-setup-notification'),
       ]);
       await settle(opened.page);
-      /* 回执和批量条平时不在 DOM 里，用它们各自的正式类名放一份进去再量。留白按
-         一枚回执算，所以演示库自己弹出来的那几枚先清掉，量的才是这条判据。
+      /* 回执和批量条平时不在 DOM 里，用它们各自的正式类名放一份进去，再在各自中心点
+         取最上层元素。演示库自己弹出来的回执先清掉，栈里只剩这一枚。
          清空、放入和量取必须在同一次同步执行里做完：演示库刚跑完扫描，「扫描与资料采集
-         已完成」的回执随状态轮询随时会到，只要它落在放入与量取之间，栈顶就被推高一枚；
-         重画网格的 paintSelection 也能在这个空当里把批量条收回去。 */
-      const tops = await opened.page.evaluate(() => {
+         已完成」的回执随状态轮询随时会到；重画网格的 paintSelection 也能在这个空当里
+         把批量条收回去。 */
+      const probe = await opened.page.evaluate(() => {
         const toasts = document.getElementById('toasts')!;
         toasts.replaceChildren();
         const toast = document.createElement('div');
         toast.className = 'toast';
         toast.innerHTML = '<p>已保存配置</p>';
         toasts.append(toast);
-        document.getElementById('batchbar')!.hidden = false;
-        const top = (selector: string) => Math.min(...[...document.querySelectorAll(selector)]
-          .map((node) => node.getBoundingClientRect().top));
-        const card = document.querySelector('#postSetupTutorial .post-setup-notification')!
-          .getBoundingClientRect();
-        return { tutorial: card.top, bottom: card.bottom, left: card.left, right: card.right,
-          toast: top('#toasts .toast'), dock: top('#batchbar') };
+        const dock = document.getElementById('batchbar')!;
+        dock.hidden = false;
+        const tutorial = document.querySelector('#postSetupTutorial .post-setup-notification')!;
+        const card = tutorial.getBoundingClientRect();
+        const hit = (node: Element) => {
+          const box = node.getBoundingClientRect();
+          const x = box.left + box.width / 2;
+          const y = box.top + box.height / 2;
+          const top = document.elementFromPoint(x, y);
+          return { overlaps: x >= card.left && x <= card.right && y >= card.top && y <= card.bottom,
+            tutorialOnTop: !!top && tutorial.contains(top) };
+        };
+        return { top: card.top, bottom: card.bottom, left: card.left, right: card.right,
+          toast: hit(toast), dock: hit(dock) };
       });
-      for (const [name, top] of [['Toast', tops.toast], ['批量选择条', tops.dock]] as const) {
-        assert.ok(Number.isFinite(top), `${name}没有出现在页面上`);
-        assert.ok(tops.bottom <= top + 1,
-          `教程浮窗盖住了${name}：教程下沿 ${tops.bottom}，${name} 上沿 ${top}`);
+      assert.ok(Math.abs(probe.bottom - (MOBILE.height - 12)) <= 1,
+        `教程浮窗没有贴着右下角：下沿 ${probe.bottom}，应为 ${MOBILE.height - 12}`);
+      for (const [name, spot] of [['Toast', probe.toast], ['批量选择条', probe.dock]] as const) {
+        assert.ok(spot.overlaps, `${name}的中心没落在教程浮窗上，这条判据没有量到重叠`);
+        assert.ok(!spot.tutorialOnTop, `教程浮窗盖住了${name}`);
       }
-      assert.ok(tops.tutorial >= 0 && tops.left >= 0 && tops.right <= MOBILE.width,
+      assert.ok(probe.top >= 0 && probe.left >= 0 && probe.right <= MOBILE.width,
         '教程浮窗越出了 390px 视口');
     } finally {
       await opened.close();
