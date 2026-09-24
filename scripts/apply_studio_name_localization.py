@@ -70,7 +70,8 @@ def plan(connection: sqlite3.Connection, review_rows: list[dict]) -> list[dict]:
         else:
             row["reason"] = _clash(connection, entity_id, target)
             if not row["reason"]:
-                row["action"], row["reason"] = RENAME, "javbus 製作商为日文原名"
+                row["action"] = RENAME
+                row["reason"] = str(review.get("evidence") or "").strip() or "javbus 製作商为日文原名"
     return rows
 
 
@@ -90,7 +91,8 @@ def _clash(connection: sqlite3.Connection, entity_id: int, target: str) -> str:
     return ""
 
 
-def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> Counter:
+def apply_rows(connection: sqlite3.Connection, rows: list[dict], *,
+               alias_source: str = ALIAS_SOURCE) -> Counter:
     counts: Counter = Counter()
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     for row in rows:
@@ -104,7 +106,7 @@ def apply_rows(connection: sqlite3.Connection, rows: list[dict]) -> Counter:
         connection.execute(
             "INSERT OR IGNORE INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
             " VALUES(?,?,?,?,1.0)",
-            (entity_id, old, normalize_entity_name(old), ALIAS_SOURCE))
+            (entity_id, old, normalize_entity_name(old), alias_source))
         counts["aliases"] += connection.execute("SELECT changes()").fetchone()[0]
         counts["flat_rewritten"] += rewrite_flat_projection(
             connection, "studio", entity_id, old, new)
@@ -129,6 +131,9 @@ def build_parser() -> argparse.ArgumentParser:
                         default=GENERATED_DIR / "studio-name-localization-apply.csv")
     parser.add_argument("--logo-root", type=Path,
                         help="随 --apply 一起把旧名下的标识文件挪到新名下")
+    # 复核件不是 javbus 那一轮出的时候（官方名录、人工复核），旧名降为别名要记真实来源。
+    parser.add_argument("--alias-source", default=ALIAS_SOURCE,
+                        help="旧名降为别名时记的来源")
     return parser
 
 
@@ -149,7 +154,7 @@ def run(args: argparse.Namespace) -> int:
         print(f"  已备份到 {args.backup}")
         before = counts_of(connection, EXTRA_COUNTS)
         with connection:
-            changed = apply_rows(connection, rows)
+            changed = apply_rows(connection, rows, alias_source=args.alias_source)
         after = counts_of(connection, EXTRA_COUNTS)
         integrity, violations = verify_after_write(connection)
         print("  写入结果：", dict(changed))

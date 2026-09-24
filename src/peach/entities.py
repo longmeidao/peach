@@ -309,6 +309,14 @@ def merge_entity(
     connection.execute(
         "UPDATE label_maker SET maker_id=? WHERE maker_id=?", (target_id, source_id))
     moved["labels"] = connection.execute("SELECT changes()").fetchone()[0]
+    # 上级可以一级套一级（ADR-0051）。把链条顶上那家并进底下某一级时，底下那级的上级
+    # 会绕回它自己：它吞掉的就是链条的顶层，它自己那一行上级该删。新造的环一定经过 target。
+    if connection.execute(
+            "WITH RECURSIVE up(id,depth) AS (SELECT maker_id,1 FROM label_maker WHERE label_id=?"
+            " UNION ALL SELECT lm.maker_id,up.depth+1 FROM up JOIN label_maker lm"
+            " ON lm.label_id=up.id WHERE up.id<>? AND up.depth<64)"
+            " SELECT 1 FROM up WHERE id=? LIMIT 1", (target_id, target_id, target_id)).fetchone():
+        connection.execute("DELETE FROM label_maker WHERE label_id=?", (target_id,))
 
     connection.execute("UPDATE entity SET updated_at=? WHERE id=?", (stamp, target_id))
     connection.execute("DELETE FROM entity WHERE id=?", (source_id,))

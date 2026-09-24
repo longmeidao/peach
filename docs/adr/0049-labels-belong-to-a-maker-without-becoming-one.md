@@ -1,6 +1,6 @@
 # ADR-0049：label 归属片商，但不当片商处理
 
-- 状态：Accepted
+- 状态：Accepted；「只有一层」由 [ADR-0051](0051-labels-can-sit-under-a-label.md) 修订
 - 日期：2026-09-23
 
 ## 背景

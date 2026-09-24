@@ -648,10 +648,11 @@ class LogoSourceTests(unittest.TestCase):
         """妄想族名录给的是 200×200 真方标，所以进这一张表而不是字标那张。
 
         `AVS collector's` 的弯撇号写法是别名，过 `safe_name` 落到同一个键。
-        用户 2026-09-23 点名补齐 ティーチャー、下半身タイガース、ゆりえっち、山と空 四家。
+        用户 2026-09-23 点名补齐 ティーチャー、下半身タイガース、ゆりえっち、山と空 四家；
+        2026-09-24 按 ADR-0051 补上中间那一级 素人ホイホイ。
         """
         directory = [url for url in MODULE.LOGO_SOURCES.values() if "mousouzoku-av" in url]
-        self.assertEqual(len(directory), 7)
+        self.assertEqual(len(directory), 8)
         for url in directory:
             with self.subTest(url=url):
                 self.assertRegex(

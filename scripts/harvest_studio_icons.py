@@ -185,6 +185,9 @@ LOGO_SOURCES: dict[str, str] = {
     # 直撇号是账本 canonical_name 的写法；弯撇号那一份是别名，过 `safe_name` 同样落到
     # `AVS_collector_s`，按哪一种写都取得到同一个文件。
     "AVS collector's": "https://www.mousouzoku-av.com/contents/maker/id358/logo_l.jpg",
+    # 素人ホイホイ是妄想族与旗下 power、sweet！ 等配信品牌之间的那一级（ADR-0051），
+    # 自己没有作品；名录里 `素人ホイホイ/妄想族` 那一格的方标（2026-09-24 实测 200×200）。
+    "素人ホイホイ": "https://www.mousouzoku-av.com/contents/maker/id379/logo_l.jpg",
     # 官网 `ks-p.com` 上的 120×120 方标。同站另有一张 376×82 的横版字标 `ks_logo.jpg`，
     # 烤成方图后字只占中间一窄条；X 头像只有 96 px（2026-09-23 实测）。
     "OFFICE K'S": "https://ks-p.com/wp-content/uploads/2019/10/label001.jpg",

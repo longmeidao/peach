@@ -9558,7 +9558,8 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     :(it.studio?[{id:null,name:it.studio,has_logo:it.has_studio_logo}]:[]);
   const studioList=[...(refs.studio||[]),...studioFallback].filter(ref=>fresh(ref.name));
   // 厂牌是某家片商旗下的 label 时（ADR-0049），片商另起一组摆在它旁边；作品仍只挂在 label 上。
-  const makerList=studioList.map(ref=>ref.maker).filter(maker=>maker&&fresh(maker.name));
+  // 上级一级套一级时（ADR-0051）整条链从近到远都在这一组里。
+  const makerList=studioList.flatMap(ref=>ref.makers||[]).filter(maker=>fresh(maker.name));
   const creatorList=(refs.creator||[]).filter(ref=>fresh(ref.name));
   const seriesList=(refs.series||[]).filter(ref=>fresh(ref.name));
 

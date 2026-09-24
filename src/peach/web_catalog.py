@@ -712,15 +712,23 @@ def q_parts(contract: WebContract, args):
 def label_makers(contract: WebContract, c, aid) -> dict[int, dict]:
     """这部作品上哪些厂牌是某家片商旗下的 label（ADR-0049），键是 label 的实体 id。
 
-    值是要并进那条厂牌引用的 `{"maker": {...}}`：详情里厂牌组旁多一组「片商」，只是
-    一格链接，作品仍挂在 label 上。
+    值是要并进那条厂牌引用的 `{"makers": [...]}`：详情里厂牌组旁多一组「片商」，只是
+    链接，作品仍挂在 label 上。上级可以一级套一级（ADR-0051），列表从近到远排，
+    素人ホイホイpower 的作品列出「素人ホイホイ、妄想族」。深度上限只防坏数据成环。
     """
-    return {label_id: {"maker": {"id": maker_id, "name": name,
-                                 "has_logo": contract.has_logo(name)}}
-            for label_id, maker_id, name in c.execute(
-                "SELECT lm.label_id,e.id,e.canonical_name FROM asset_entity ae "
-                "JOIN label_maker lm ON lm.label_id=ae.entity_id "
-                "JOIN entity e ON e.id=lm.maker_id WHERE ae.asset_id=?", (aid,))}
+    chains: dict[int, dict] = {}
+    for label_id, maker_id, name in c.execute(
+            "WITH RECURSIVE up(label_id,maker_id,depth) AS ("
+            "SELECT lm.label_id,lm.maker_id,1 FROM label_maker lm WHERE lm.label_id IN "
+            "(SELECT entity_id FROM asset_entity WHERE asset_id=?) "
+            "UNION ALL SELECT up.label_id,lm.maker_id,up.depth+1 FROM up "
+            "JOIN label_maker lm ON lm.label_id=up.maker_id WHERE up.depth<8) "
+            "SELECT up.label_id,e.id,e.canonical_name FROM up JOIN entity e ON e.id=up.maker_id "
+            "ORDER BY up.label_id,up.depth", (aid,)):
+        makers = chains.setdefault(label_id, {"makers": []})["makers"]
+        if all(maker["id"] != maker_id for maker in makers):
+            makers.append({"id": maker_id, "name": name, "has_logo": contract.has_logo(name)})
+    return chains
 
 
 def q_item(contract: WebContract, aid):
