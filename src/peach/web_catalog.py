@@ -198,10 +198,13 @@ def catalog_filter(contract: WebContract, args):
             "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "WHERE e.kind='performer' AND e.canonical_name=?)"
         ); par.append(args["performer"])
+    # 片商连同旗下每一级 label 出的片（ADR-0051 修订），和资料页上那个合计是同一批。
     if args.get("studio"):
         where.append(
-            "a.id IN (SELECT ae.asset_id FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
-            "WHERE e.kind='studio' AND e.canonical_name=?)"
+            "a.id IN (SELECT ae.asset_id FROM asset_entity ae WHERE ae.entity_id IN ("
+            "WITH RECURSIVE down(id) AS (SELECT id FROM entity WHERE kind='studio' AND canonical_name=?"
+            " UNION SELECT lm.label_id FROM label_maker lm JOIN down ON lm.maker_id=down.id)"
+            " SELECT id FROM down))"
         ); par.append(args["studio"])
     if args.get("series"):
         where.append(

@@ -1,4 +1,4 @@
-"""label 属于片商，但不当片商处理（ADR-0049）；上级可以一级套一级（ADR-0051）。"""
+"""label 属于片商（ADR-0049）；上级可以一级套一级，片商合计旗下每一级的作品（ADR-0051）。"""
 import sqlite3
 import tempfile
 import unittest
@@ -132,12 +132,33 @@ class LabelMakerTests(unittest.TestCase):
         self.assertEqual(page["asset_count"], 1)
         self.assertEqual(page["labels"], [])
 
-    def test_the_maker_page_lists_its_labels_without_absorbing_their_works(self):
+    def test_the_maker_page_counts_its_labels_works_as_its_own(self):
+        """ADR-0051 修订：旗下 label 出的片都归片商，名册每格的数是那个 label 的合计。"""
         self.apply()
         page = rm_web.q_entity(self.contract, {"kind": "studio", "name": "K M Produce"})
-        self.assertEqual([label["name"] for label in page["labels"]], ["BAZOOKA", "S級素人"])
-        self.assertEqual(page["asset_count"], 1)
+        self.assertEqual([(label["k"], label["n"]) for label in page["labels"]],
+                         [("BAZOOKA", 1), ("S級素人", 0)])
+        self.assertEqual(page["asset_count"], 2)
         self.assertIsNone(page["maker"])
+        items = rm_web.q_items(self.contract, {"studio": "K M Produce"})
+        self.assertEqual(sorted(item["id"] for item in items["items"]), [1, 2])
+
+    def test_a_maker_with_no_works_of_its_own_counts_every_layer_below(self):
+        """妄想族 → K M Produce → BAZOOKA：妄想族自己一部片都没挂，合计是三层的并集。"""
+        self.apply(self.rows + [{"label": "K M Produce", "maker": "妄想族", "evidence": "x"}])
+        top = rm_web.q_entity(self.contract, {"kind": "studio", "name": "妄想族"})
+        self.assertEqual(top["asset_count"], 3)
+        self.assertEqual([(label["k"], label["n"]) for label in top["labels"]],
+                         [("K M Produce", 2), ("ABC/妄想族", 1)])
+
+    def test_the_index_lists_makers_with_their_totals_and_folds_labels_in(self):
+        """索引页只列最上层，数的是合计；搜名字时 label 照常搜得到。"""
+        self.apply()
+        index = rm_web.q_index(self.contract, "studios")
+        self.assertEqual([(row["k"], row["n"]) for row in index["items"]],
+                         [("K M Produce", 2), ("妄想族", 1)])
+        found = rm_web.q_index(self.contract, "studios", q="BAZOOKA")
+        self.assertEqual([(row["k"], row["n"]) for row in found["items"]], [("BAZOOKA", 1)])
 
     def test_the_detail_carries_the_maker_beside_the_label(self):
         self.apply()

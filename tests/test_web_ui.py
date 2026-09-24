@@ -6906,9 +6906,10 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_agency_page_opens_on_its_roster(self):
         """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
-        self.assertPageContains("let agencyRosterView='people',agencyRoster=[];")
-        self.assertCode("  entityJavLayout=false;\n  agencyRosterView='people';")
-        self.assertCode("if(entityViewNow(kind)==='people')renderAgencyRoster(roster);")
+        self.assertPageContains(
+            "let entityRosterView='people',entityRoster=[],entityRosterKind='performer';")
+        self.assertCode("  entityJavLayout=false;\n  entityRosterView='people';")
+        self.assertCode("if(entityViewNow(kind)==='people')renderEntityRoster(roster);")
 
     def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
         """名册和艺人索引摆的是同一格人，模板与版式设置都只有一份。"""
@@ -6916,11 +6917,13 @@ class WebUiSourceTests(unittest.TestCase):
         # 索引页那批行的实体 id 叫 entity_id，名册那批叫 id，取图链只认一个。
         self.assertPageContains("const ref=x.entity_id||x.id;")
         self.assertCode(
-            '<div class="igrid" data-layout="${peopleIndexLayout()}">${\n'
-            "      people.map(x=>personCellHtml(x,'performer',x.n.toLocaleString())).join('')}</div>")
-        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像。
-        self.assertCode("const roster=kind==='agency'?(d.related_performers||[]):[];")
-        self.assertCode("const related=roster.length?'':(d.related_performers||[]).map(")
+            '<div class="igrid" data-cells="${cells}" data-layout="${peopleIndexLayout()}">${\n'
+            "      people.map(x=>personCellHtml(x,cellKind,x.n.toLocaleString())).join('')}</div>")
+        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像；片商页的
+        # 名册是旗下 label，同台艺人照旧留在卡底。
+        self.assertCode("const roster=kind==='agency'?(d.related_performers||[])"
+                        ":kind==='studio'?(d.labels||[]):[];")
+        self.assertCode("const related=kind==='agency'?'':(d.related_performers||[]).map(")
         # 圆框越小越需要取景：一张 3762×2535 的封面塞进 44px 的圆里，几何居中给出的是
         # 封面正中那块版式，脸在不在里面全看运气。
         self.assertPageContains(
@@ -6945,16 +6948,16 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_roster_and_the_media_keys_are_one_button_group(self):
         """三个键问的是同一件事——这一页现在显示什么，所以在同一组里、同一个尺寸。"""
         self.assertCode(
-            "${peopleValue?control(peopleValue,peopleLabel,peopleCount,'user-round','people'):''}")
+            "${peopleValue?control(peopleValue,peopleLabel,peopleCount,peopleIcon,'people'):''}")
         self.assertPageContains("peopleValue:roster.length?'people':'',peopleCount:roster.length,")
         # 当前视图只有一个来源，按下哪个键、下面画什么都读它。
-        self.assertPageContains("function entityViewNow(kind){return kind==='agency'"
-                                "&&agencyRosterView==='people'&&agencyRoster.length")
+        self.assertPageContains("function entityViewNow(kind){return (kind==='agency'||kind==='studio')"
+                                "&&entityRosterView==='people'&&entityRoster.length")
         self.assertCode("button.setAttribute('aria-pressed',String(now===media));")
         # 没有照片的实体不出照片键，不是出一个按下去什么都不显示的键。
         self.assertPageContains("imageValue:photoCount?'photos':'',imageLabel:'照片',")
         # 标签筛的是作品，点了就回到视频视图，否则开关和内容各说各的。
-        self.assertCode("agencyRosterView='videos';")
+        self.assertCode("entityRosterView='videos';")
 
     def test_the_profile_rows_that_overflow_get_the_shared_drag_and_wheel(self):
         """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
