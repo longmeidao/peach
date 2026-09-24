@@ -359,8 +359,10 @@ class BrowserTransport:
 
     一个实例管一个浏览器进程，请求串行，只发 GET。导航后每秒看一次标题、`readyState` 与页头：不是
     验证页且 DOM 解析完就读文档；验证 `auto_seconds` 内没过，窗口顶到前面并登记 `attention`；再等
-    `click_seconds` 还没过就报 `ChallengeUnsolved`。`gates` 是按主机登记的「点一下就过」的页
-    （年龄门）：落到那个路径就点匹配的按钮，等它跳回去。
+    `click_seconds` 还没过就报 `ChallengeUnsolved`。同一站弹过窗口没点过去，之后再撞验证只等
+    `auto_seconds` 就报，不再弹窗，直到哪次页面正常打开为止：验证转圈时页上常常没有可点的框，
+    一直弹只会打扰。`gates` 是按主机登记的「点一下就过」的页（年龄门）：落到那个路径就点匹配的
+    按钮，等它跳回去。
     """
 
     def __init__(self, executable: str, profile: Path, flags: tuple[str, ...] = (), *,
@@ -378,6 +380,8 @@ class BrowserTransport:
         self._browser: _Browser | None = None
         self._timer: threading.Timer | None = None
         self._last_used = 0.0
+        #: 弹过窗口却没点过去的站。再撞验证只等自动时限、不再弹窗，直到哪次页面正常打开。
+        self._unsolved: set[str] = set()
         atexit.register(self.close)
 
     def __call__(self, request: HttpRequest, timeout: float, max_bytes: int) -> HttpResponse:
@@ -432,11 +436,16 @@ class BrowserTransport:
                 # DOM 解析完（`interactive`）就够：验证页的标记在页头里，此时已经看得到；不等外部
                 # 资源全加载完——JAVten 作品页挂着统计脚本，到 `complete` 要 25 秒以上。
                 if state["ready"] in ("interactive", "complete") and not challenged and state["title"]:
+                    self._unsolved.discard(host)
                     return state
                 elapsed = self._clock() - started
                 if elapsed >= self.auto_seconds + self.click_seconds:
+                    self._unsolved.add(host)
                     raise ChallengeUnsolved(f"{host} 的人机验证在 {int(elapsed)} 秒内没有通过")
                 if elapsed >= self.auto_seconds and not shown:
+                    if host in self._unsolved:
+                        raise ChallengeUnsolved(f"{host} 的人机验证在 {int(elapsed)} 秒内没有自动通过；"
+                                                "窗口上次弹出后没点过去，这次不再弹")
                     shown = True
                     browser.place(visible=True)
                     _set_attention(host, f"{host} 的人机验证需要点一下，浏览器窗口已打开")
