@@ -333,16 +333,73 @@ class LandingTests(Case):
                    if row["action"] == alias.SKIP}
         self.assertEqual(skipped, {"未来ちゃん": "一次性称呼", "いちかちゃん": "一次性称呼"})
 
-    def test_a_name_another_entity_already_uses_is_left_for_review(self):
+    def test_a_name_another_entity_already_uses_merges_the_two(self):
+        """两站名字栏把 `神山ももか` 与 `雫つむぎ` 列成同一个人：作品一样多、页上主名都不是她们，先登记的留下。"""
         momoka = self.entity("神山ももか")
         other = self.entity("雫つむぎ")
         summary = self.run_followup(momoka)
-        self.assertNotIn("雫つむぎ", self.aliases(momoka))
-        self.assertEqual(summary["taken"], 2)
+        self.assertEqual(summary["outcome"], "雫つむぎ 并入 神山ももか")
+        self.assertEqual(summary["merged"]["into"], momoka)
+        self.assertEqual(summary["merged"]["from"], other)
+        self.assertNotIn("taken", summary)
+        self.assertFalse(self.exists(other))
+        names = self.aliases(momoka)
+        self.assertEqual(names["雫つむぎ"], f"merge:{alias.SOURCE}@7")
+        self.assertEqual(names["雲母そら"], f"{alias.SOURCE}@7")
+        merged = [row for row in self.review() if row["action"] == alias.MERGE]
+        self.assertEqual({row["alias"] for row in merged}, {"雫つむぎ"})
+        self.assertEqual({row["site"] for row in merged}, {alias.MINNANO, alias.AV_NEME})
+        self.assertIn(f"雫つむぎ（实体 {other}）并入 神山ももか（实体 {momoka}）", merged[0]["detail"])
+        self.assertEqual(merged[0]["batch"], f"{alias.SOURCE}@7")
+        self.assertEqual(len(self.merge_backups()), 1)
+        self.assertTrue(self.merge_backups()[0].endswith(f"-{other}.db"))
+        with self.database.read_connection() as connection:
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+
+    def exists(self, entity_id: int) -> bool:
+        with self.database.read_connection() as connection:
+            return connection.execute("SELECT 1 FROM entity WHERE id=?", (entity_id,)).fetchone() is not None
+
+    def merge_backups(self) -> list[str]:
+        return sorted(path.name for path in self.db.parent.glob("ledger.pre-alias-merge-*.db"))
+
+    def test_the_side_with_more_works_survives_a_merge(self):
+        momoka = self.entity("神山ももか")
+        other = self.entity("雫つむぎ")
+        self.work(1, momoka)
+        self.work(2, other)
+        self.work(3, other)
+        summary = self.run_followup(momoka)
+        self.assertEqual(summary["outcome"], "神山ももか 并入 雫つむぎ")
+        self.assertFalse(self.exists(momoka))
+        names = self.aliases(other)
+        self.assertEqual(names["神山ももか"], f"merge:{alias.SOURCE}@7")
+        # 这一轮先落在她名下的写法跟着并过去。
+        self.assertEqual(names["雲母そら"], f"{alias.SOURCE}@7")
+        with self.database.read_connection() as connection:
+            self.assertEqual(alias._works(connection, other), 3)
+        self.assertEqual(self.run_followup(momoka, run_id=8)["outcome"], "实体已不存在")
+
+    def test_the_page_main_name_breaks_a_tie(self):
+        momoka = self.entity("神山ももか")
+        kirara = self.entity("雲母そら")
+        summary = self.run_followup(momoka)
+        self.assertEqual(summary["outcome"], "神山ももか 并入 雲母そら")
+        self.assertFalse(self.exists(momoka))
+        self.assertIn("神山ももか", self.aliases(kirara))
+
+    def test_two_other_entities_on_one_page_are_left_for_review(self):
+        momoka = self.entity("神山ももか")
+        first = self.entity("雫つむぎ")
+        second = self.entity("美雲そら")
+        summary = self.run_followup(momoka)
+        self.assertEqual(summary["taken"], 4)
+        self.assertNotIn("merged", summary)
+        self.assertTrue(self.exists(first) and self.exists(second))
         taken = [row for row in self.review() if row["action"] == alias.TAKEN]
-        self.assertEqual({row["alias"] for row in taken}, {"雫つむぎ"})
-        self.assertIn(f"实体 {other}", taken[0]["detail"])
-        self.assertEqual(self.aliases(other), {})
+        self.assertEqual({row["alias"] for row in taken}, {"雫つむぎ", "美雲そら"})
+        self.assertIn(f"实体 {first}", next(row["detail"] for row in taken if row["alias"] == "雫つむぎ"))
+        self.assertEqual(self.merge_backups(), [])
 
     def test_a_short_single_name_is_neither_searched_nor_registered(self):
         sora = self.entity("そら")

@@ -46,7 +46,8 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
 - 合并走 `peach.entities.merge_entity`：保留作品多的一侧，迁移关系、别名、外部引用、链接和
   搜索词，旧称全部留作别名。`entity_external_ref` 每个 provider 只保留一条，同源第二条丢弃
   并报告，不静默覆盖。
-- 合并不可逆：先取得用户授权并备份。
+- 合并不可逆：先取得用户授权并备份。唯一的自动路径是补别名后继（ADR-0064）：minnano-av 或
+  av_neme 名字栏把两条女优实体列成同一个人时，后继自己备份到数据库目录再合；别的判据不得照搬。
 - 两条实现陷阱：sqlite 连接默认 `foreign_keys=OFF`，子表行必须在函数内显式 DELETE，否则留下
   孤儿 `entity_alias` / `entity_external_ref`；计数用 `SELECT changes()`，不能用
   `total_changes`（连接累计值，会虚报数百倍）。
