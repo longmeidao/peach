@@ -77,7 +77,8 @@ CACHE_TTL = 30 * 24 * 3600
 #: 再显示一个月划算。
 #: 4：用户否决了 App Store 那枚 FC2 图标（背景带胶片图案），`fc2.com` 换成用户指定的
 #: 400×400 纯独角兽，取图规则又变了一次。
-RENDER_VERSION = 4
+#: 5：透明底的纯黑或纯白字形也做成圆底白字（`single_tone`），此前原样放行，深色页面上看不见。
+RENDER_VERSION = 5
 
 
 def cache_key(url: str) -> str:
@@ -180,6 +181,26 @@ def brand_colour(image, body) -> tuple[tuple[int, int, int], int]:
     return max(buckets, key=buckets.get), len(buckets)
 
 
+#: 黑白字形没有品牌色可取，圆底用这个中性深灰（与 `brand_colour` 取不到色时给的同一个）。
+NEUTRAL_DISC = (60, 60, 64)
+#: 主体像素有这么多落在同一头（都黑或都白），才算单一深浅的字形。
+SINGLE_TONE_SHARE = 0.95
+
+
+def single_tone(image, body) -> bool:
+    """主体是不是一种深浅：全黑或全白。
+
+    ONE'S DOUBLE 页脚那枚字标是透明底上的纯黑字，原样贴在深色页面上看不见。黑白两色都有的
+    （threads 那种黑底白字）不算：那是设计好的图标，归 `designed_mark`。
+    """
+    pixels = image.load()
+    shades = [sum(weight * channel for weight, channel in zip((299, 587, 114), pixels[x, y][:3]))
+              / 255000 for x, y in body]
+    share = SINGLE_TONE_SHARE * len(shades)
+    return (sum(shade < 0.25 for shade in shades) >= share
+            or sum(shade > 0.75 for shade in shades) >= share)
+
+
 def _circle(side: int):
     from PIL import Image, ImageDraw
 
@@ -199,7 +220,9 @@ def glyph_mark(image, size: int = MARK_SIZE) -> bytes | None:
     if not body or not from_alpha:
         return None
     colour, clusters = brand_colour(image, body)
-    if clusters == 0 or clusters > MAX_HUE_BUCKETS:
+    if clusters == 0 and single_tone(image, body):
+        colour = NEUTRAL_DISC
+    elif clusters == 0 or clusters > MAX_HUE_BUCKETS:
         return None
 
     alpha = image.getchannel("A")

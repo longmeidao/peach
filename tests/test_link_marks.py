@@ -51,6 +51,20 @@ class RenderTests(unittest.TestCase):
         edge = image.getpixel((image.width // 2, 3))
         self.assertGreater(edge[1], edge[0], "圆底应当是那个绿")
 
+    def test_a_black_glyph_on_transparency_gets_a_neutral_disc(self):
+        """ONE'S DOUBLE 的页脚字标是透明底纯黑字：原样贴在深色页面上看不见，做成深灰圆底白字。"""
+        made = link_marks.render_mark(glyph((0, 0, 0)))
+        image = Image.open(io.BytesIO(made)).convert("RGBA")
+        self.assertEqual(image.getpixel((image.width // 2, image.height // 2))[:3],
+                         (255, 255, 255))
+        self.assertEqual(image.getpixel((image.width // 2, 3))[:3], link_marks.NEUTRAL_DISC)
+
+    def test_a_black_and_white_glyph_is_not_flattened(self):
+        """黑白两色都有的字形不是一种深浅：压成一色白字会把里面那层白抹掉。"""
+        pixels = {(x, y): (0, 0, 0, 255) if x < 16 else (255, 255, 255, 255)
+                  for x in range(8, 24) for y in range(8, 24)}
+        self.assertIsNone(link_marks.glyph_mark(Image.open(io.BytesIO(ico(pixels))).convert("RGBA")))
+
     def test_an_opaque_favicon_is_left_alone(self):
         """HEYZO 是白底 + 多色字形。
 
