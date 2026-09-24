@@ -18,7 +18,11 @@
 4. **短单名不收**：三个字以内的纯假名（`そら`、`みく`）会命中别人；罗马字写法也不收，日文站和
    图库都用不上它。
 5. **四种不写**，与 `scripts/apply_alias_candidates.py` 同一口径：已有、被另一条实体占用、
-   统称已变、查无此人。占用的记进复核产物，那是两条该不该合并的问题。
+   统称已变、查无此人。
+6. **两条实体合成一条**（ADR-0064）：minnano-av 或 av_neme 的名字栏把她和账本里另一条女优
+   实体列成同一个人，且被占用的写法全指向那一条时，两条合并。保留作品多的一侧，一样多保留
+   页上主名那一侧，再一样保留先登记的；被并入的名字与别名全留作别名。合并前先把账本备份到
+   数据库目录（`ledger.pre-alias-merge-*`）。fc2cmadb 的曾用名栏混着卖家起的商品名，只记占用。
 
 有 FC2 作品的女优先问第三站 fc2cmadb（ADR-0061）：从她自己作品页的女优栏进到站上那位
 人物，那位人物的主名或曾用名栏里得有账本里她的名字，才收下站上的主名。曾用名栏那一串
@@ -44,10 +48,11 @@ from pathlib import Path
 from urllib.parse import quote
 
 from . import minnano_av
-from .entities import name_chain, name_rank, normalize_entity_name
+from .entities import merge_entity, name_chain, name_rank, normalize_entity_name
 from .followups import Attempts, Followup, FollowupType, attempts_root, register
 from .kanji import fold_glyphs
 from .metadata_alias_resolve import is_descriptive, is_planning_alias
+from .migrations import sqlite_backup
 from .scripting import HostLimiter
 from .social_links import name_key
 
@@ -97,6 +102,9 @@ _KANA_ONLY = re.compile(r"^[぀-ゟ゠-ヿ]+$")
 _UNCERTAIN = re.compile(r"[?？▲�]|不明|未確認")
 
 WRITE, HAVE, TAKEN, STALE, GONE, SKIP = "写入", "已有", "占用", "已变", "查无此人", "不收"
+MERGE = "合并"
+#: 名字栏能当合并证据的站：这两站的人物页由编辑维护，一页一个人。
+MERGE_SITES = (MINNANO, AV_NEME)
 REVIEW_FILE = "performer-alias-landing.csv"
 FIELDS = ("entity_id", "canonical_name", "alias", "site", "page", "action", "detail", "batch")
 
@@ -639,8 +647,12 @@ def land(connection: sqlite3.Connection, entity_id: int, expected_name: str, sit
         elif others:
             owner = connection.execute("SELECT canonical_name FROM entity WHERE id=?",
                                        (others[0],)).fetchone()
+            # `owner` 与 `listed` 给合并判定看，不进复核产物：占用者恰好一条才算得清是哪一对，
+            # `listed` 为 0 说明这个写法是页上的主名。
             rows.append({**base, "alias": name, "action": TAKEN,
-                         "detail": f"{owner[0] if owner else ''}（实体 {others[0]}）已经用着这个写法"})
+                         "detail": f"{owner[0] if owner else ''}（实体 {others[0]}）已经用着这个写法",
+                         "owner": others[0] if len(others) == 1 else 0,
+                         "listed": names.index(name)})
         else:
             connection.execute(
                 "INSERT OR IGNORE INTO entity_alias(entity_id,alias,normalized_alias,source,"
@@ -661,6 +673,56 @@ def _record_review(root: Path, entity_id: int, rows: list[dict]) -> None:
     kept = [row for row in read_rows(path, missing_ok=True)
             if str(row.get("entity_id")) != str(entity_id)]
     write_rows(path, FIELDS, kept + rows, atomic=True, fill_missing=True)
+
+
+def _works(connection: sqlite3.Connection, entity_id: int) -> int:
+    return int(connection.execute("SELECT count(DISTINCT asset_id) FROM asset_entity"
+                                  " WHERE entity_id=?", (int(entity_id),)).fetchone()[0])
+
+
+def merge_one_person(contract, entity_id: int, rows: list[dict], batch: str) -> dict | None:
+    """名字栏把她和另一条实体列成同一个人时，把两条合成一条（ADR-0064）；合不了返回 None。
+
+    只在被占用的写法全指向同一条另外的实体时合：指向两条以上，页上的人比账本里多，
+    那不是一对。保留作品多的一侧；一样多保留页上主名那一侧，再一样保留先登记的。
+    合并不可逆，先按 `peach-ledger-write` 把账本备到数据库目录，托盘按备份保留规则清退；
+    合并后外键校验不为 0 就抛错让事务回滚。占用行改判成「合并」。
+    """
+    taken = [row for row in rows if row["action"] == TAKEN and row["site"] in MERGE_SITES]
+    owners = {int(row.get("owner") or 0) for row in taken} - {0}
+    if len(owners) != 1 or any(not row.get("owner") for row in taken):
+        return None
+    other = owners.pop()
+    with contract.database.read_connection() as connection:
+        mine, theirs = _names(connection, entity_id), _names(connection, other)
+        works = (_works(connection, entity_id), _works(connection, other)) if theirs else (0, 0)
+    if mine is None or theirs is None:
+        return None
+    theirs_is_main = any(row["listed"] == 0 for row in taken if int(row["owner"]) == other)
+    if works[1] > works[0] or (works[1] == works[0] and theirs_is_main):
+        target_id, source_id, kept, absorbed = other, entity_id, theirs[0], mine[0]
+    else:
+        target_id, source_id, kept, absorbed = entity_id, other, mine[0], theirs[0]
+    db_path = Path(contract.database.db_path)
+    backup = db_path.with_name(
+        f"ledger.pre-alias-merge-{time.strftime('%Y%m%d-%H%M%S')}-{source_id}.db")
+    sqlite_backup(db_path, backup)
+    with contract.database.write_transaction() as connection:
+        if _names(connection, source_id) is None or _names(connection, target_id) is None:
+            return None
+        moved = merge_entity(connection, target_id=target_id, source_id=source_id,
+                             source_name=absorbed, alias_source=f"merge:{batch}")
+        broken = connection.execute("PRAGMA foreign_key_check").fetchall()
+        if broken:
+            raise RuntimeError(f"合并实体 {source_id} 进 {target_id} 后外键校验有 {len(broken)} 条违规")
+    contract.cache_bust()
+    sites = "、".join(dict.fromkeys(row["site"] for row in taken))
+    for row in taken:
+        row.update(action=MERGE, batch=batch,
+                   detail=f"{sites} 名字栏把两条实体列成同一个人：{absorbed}（实体 {source_id}）"
+                          f"并入 {kept}（实体 {target_id}），迁 {moved['assets']} 部作品")
+    return {"into": target_id, "from": source_id, "kept": kept, "absorbed": absorbed,
+            "assets": moved["assets"], "backup": backup.name}
 
 
 # -- 执行 --------------------------------------------------------------------
@@ -702,10 +764,13 @@ def _run(contract, key: str, handle) -> dict:
     written = [row["alias"] for row in rows if row["action"] == WRITE]
     if written:
         contract.cache_bust()
+    merged = merge_one_person(contract, entity_id, rows, batch)
     if rows:
         _record_review(contract.candidate_root, entity_id, rows)
     taken = sum(1 for row in rows if row["action"] == TAKEN)
-    if written:
+    if merged:
+        outcome = f"{merged['absorbed']} 并入 {merged['kept']}"
+    elif written:
         outcome = f"登记 {len(written)} 个别名"
     elif rows:
         outcome = "没有新写法"
@@ -718,6 +783,8 @@ def _run(contract, key: str, handle) -> dict:
         summary["aliases"] = written[:12]
     if taken:
         summary["taken"] = taken
+    if merged:
+        summary["merged"] = merged
     return summary
 
 

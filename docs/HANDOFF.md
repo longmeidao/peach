@@ -112,7 +112,7 @@
 
 - 采集脚本一律只产出复核 CSV；写 `entity.canonical_name`、`asset.studio`、`entity_link` 或头像字节都是另一次授权。
 - 规范名优先用有出处的简体中文通行名，旧艺名、罗马字、假名和繁体名降为别名；`no_avatar` 只表示没取得合格图片，不阻止已核实姓名落库。
-- 实体合并不可逆：走 `peach.entities.merge_entity`，须当场授权并先备份，合并后 `PRAGMA foreign_key_check` 应为 0；改写 `entity.canonical_name` 与迁移同级，`--apply` 必须同时给 `--backup`。
+- 实体合并不可逆：走 `peach.entities.merge_entity`，先备份，合并后 `PRAGMA foreign_key_check` 应为 0；人工合并当场授权，两站名字栏列成同一人的由补别名后继自动合（ADR-0064）。
 - 「这一页只有一位女优」「这个 handle 存在」「站上没有」都不是证据：精确回配优先于任何唯一性推断，二手结论要自己请求一次才算取证，查不到就写「未取得」。
 - 名字与厂牌名都由站点给出，不由罗马音或 slug 推定；一律跨来源同证，单页 404 只说明那一页取不到。
 - 被 Cloudflare 拦或有验证墙的站一律放弃，不绕过机器人检测。
