@@ -159,6 +159,49 @@ class PosixShapeTests(_ScanCase):
         self.assertIn("挂载点", str(caught.exception))
 
 
+class SidecarTests(_ScanCase):
+    """刮削器与截图工具写在正片旁边的附属文件不登记，图集里同名的图照常登记。"""
+
+    DECLARED = {"local": (r"R:\media",)}
+
+    def _layout(self, files):
+        for name in files:
+            path = self.media.joinpath(*name.split("/"))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"0")
+
+    def test_a_kodi_movie_folder_registers_only_the_video(self):
+        self._layout(["FC2-1/FC2-1-CD1.mp4", "FC2-1/FC2-1-CD1.nfo", "FC2-1/poster.jpg",
+                      "FC2-1/fanart.jpg", "FC2-1/thumb.jpg", "FC2-1/extrafanart/1.jpg",
+                      "FC2-1/FC2-1-CD1-landscape.jpg",
+                      "thumbs_new/detailed/FC2-1_4x4_thumb.jpg", "ABC-1.mp4_thumbs.jpg"])
+        result, output = self._scan(r"R:\media", declared_roots=self.DECLARED,
+                                    mounts={"local": (self.media,)}, windows=False)
+        self.assertEqual(result.sidecars, 8)
+        self.assertIn("附属文件未登记 8 个", output)
+        self.assertEqual(set(self._paths()), {
+            r"R:\media\FC2-1\FC2-1-CD1.mp4", r"R:\media\创作者\sub\a.mp4",
+            r"R:\media\cover.jpg", r"R:\media\notes.txt"})
+
+    def test_artwork_names_without_a_video_beside_them_are_photos(self):
+        self._layout(["写真/cover.jpg", "写真/extrafanart/1.jpg", "写真/poster-1.jpg"])
+        self._scan(r"R:\media\写真", declared_roots=self.DECLARED,
+                   mounts={"local": (self.media,)}, windows=False)
+        self.assertEqual(set(self._paths()), {
+            r"R:\media\写真\cover.jpg", r"R:\media\写真\extrafanart\1.jpg",
+            r"R:\media\写真\poster-1.jpg"})
+
+    def test_the_rule_reads_names_only(self):
+        videos = scan.video_stems(["ABC-1.mp4", "notes.txt"])
+        self.assertEqual(videos, frozenset({"abc-1"}))
+        sidecar = {name: scan.is_sidecar(name, videos) for name in (
+            "x.NFO", "Poster.JPG", "ABC-1-fanart.jpg", "ABC-1.jpg", "OTHER-fanart.jpg",
+            "a.png.thumb.png", "ABC-1_3x3_thumbs.jpg", "ABC-1.srt", "001.jpg")}
+        self.assertEqual({name for name, hit in sidecar.items() if hit}, {
+            "x.NFO", "Poster.JPG", "ABC-1-fanart.jpg", "a.png.thumb.png",
+            "ABC-1_3x3_thumbs.jpg"})
+
+
 class ScanTargetTests(unittest.TestCase):
     """写入侧门槛：`location` 与扫描根必须对得上（ADR-0023 第 2 阶段），口径与脚本时期一致。"""
 
