@@ -495,6 +495,26 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual([row["rep"] for row in tops], [1], "代表作仍会被选出来")
         self.assertEqual([row["has_avatar"] for row in tops], [False])
 
+    def test_a_work_with_several_performers_is_nobodys_representative(self):
+        """代表作头像是从接触印相里裁脸：多人作品的每个出演者都会拿到同一张脸。"""
+        con = sqlite3.connect(self.db_path)
+        con.execute("UPDATE asset SET snapshot_path='one.jpg' WHERE id IN (1,2)")
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                    "VALUES(14,'performer','Carol','carol','2026-01-01','2026-01-01')")
+        con.executemany("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence) "
+                        "VALUES(?,?,'performer','test',1.0)", [(1, 14), (2, 11)])
+        con.commit()
+        con.close()
+        self.contract.cache_bust()
+        tops = {row["k"]: row["rep"] for row in rm_web.q_tops(self.contract, 30)["performers"]}
+        self.assertEqual(tops, {"Canonical Alice": 2, "Carol": None})
+        pages = {name: rm_web.q_entity(self.contract, {"kind": "performer", "name": name})
+                 for name in ("Carol", "Canonical Alice")}
+        self.assertEqual({name: page["representative_asset_id"] for name, page in pages.items()},
+                         {"Carol": None, "Canonical Alice": 2})
+        studios = {row["k"]: row["rep"] for row in rm_web.q_tops(self.contract, 30)["studios"]}
+        self.assertIsNotNone(studios["Canonical Studio"], "厂牌不看出演人数")
+
     def _install_snapshot(self, asset_id=1):
         """给一条作品配一份真的印相文件，让它的代表作头像变成取得到。"""
         snapshot = Path(self.tmp.name).resolve() / f"snapshot-{asset_id}.jpg"

@@ -20,6 +20,7 @@ from pathlib import Path
 from .catalog_rules import (
     code_release_date,
     collapse_superseded_taste_tags,
+    fill_masked_title,
     is_korean_mib_code,
     normalise_code_key,
     release_code_from_filename,
@@ -484,6 +485,25 @@ def _evidence_candidates(row: dict, field: str = "") -> list[dict]:
             and not blacklisted(field, str(c.get("source") or "").strip())]
 
 
+def _unmasked_titles(field: str, candidates: list[dict], current: str = "") -> list[dict]:
+    """标题候选里被站方打了码的，用别家原文或账本现值补上（`fill_masked_title`）。
+
+    FC2 官方页与镜像 fc2cmadb 把敏感词换成星号，JavArchive、javdb 给的是原文；链上
+    fc2 排在前面，不补的话打码那份就压过原文落进账本。账本现值也算一份原文：存量补好
+    之后下一轮只剩打码那一家时，补出来的还是现值，不会被星号覆盖回去。
+    """
+    if field not in {"title", "original_title"}:
+        return candidates
+    originals = [str(c.get("display_value") or "") for c in candidates] + [current]
+    rows = []
+    for candidate in candidates:
+        filled = fill_masked_title(str(candidate.get("display_value") or ""), originals)
+        rows.append(candidate if filled is None else {
+            **candidate, "value": filled, "display_value": filled,
+            "masked_value": str(candidate.get("display_value") or "")})
+    return rows
+
+
 def _settled_candidates(connection, field: str, code: str, candidates: list[dict],
                         resolve=None) -> tuple[list[dict], str | None, list[dict]]:
     """取值只剩一个的那组候选、据以取舍的规则，以及被压下的那些取值。
@@ -656,7 +676,8 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
         return None
     resolve = _planning_alias_resolver(connection, row, snapshot_root)
     candidates, settled_by, overruled = _settled_candidates(
-        connection, field, code, _evidence_candidates(row, field), resolve)
+        connection, field, code, _unmasked_titles(
+            field, _evidence_candidates(row, field), str(row.get("current_value") or "")), resolve)
     if not candidates:
         return None
     replaces_current = bool(str(row.get("current_value") or "").strip())

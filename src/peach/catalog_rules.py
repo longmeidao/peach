@@ -1181,3 +1181,38 @@ def photo_set_title(directory: str) -> str:
     if leaf.casefold() in GENERIC_PHOTO_DIRS and len(parts) > 1:
         return parts[-2]
     return leaf
+
+
+def solo_performer_clause(asset: str, entity: str) -> str:
+    """`asset` 这部作品的出演者只有 `entity` 这一位。
+
+    代表作头像是从接触印相里裁脸：多人作品的那一帧不一定是她，而同一部作品的每个
+    出演者都会拿到同一张脸——HOISW-002 的三位在首页顶排就是三个一样的头像。
+    """
+    return (f"NOT EXISTS(SELECT 1 FROM asset_entity solo WHERE solo.asset_id={asset} "
+            f"AND solo.role='performer' AND solo.entity_id<>{entity})")
+
+
+#: FC2 站方替敏感词打的码：一个星号顶一个字（`10代**生` 原文是 `10代現役生`）。
+MASKED_TITLE_CHARS = "*＊"
+
+
+def fill_masked_title(masked: str, originals) -> str | None:
+    """用别家的原文补上 `masked` 里的码，补不上返回 None。
+
+    每个星号按一个字配，其余字逐字对齐；原文里只取配上的那一段，镜像站在标题前后加的
+    促销语（`初撮影・顔出し！3日間限定1980pt！！`）不跟着进来。几份原文补出的结果不一致
+    时不补：那说明对齐落到了不同的地方，没有一份能单独作数。
+    """
+    text = str(masked or "")
+    if not any(char in text for char in MASKED_TITLE_CHARS):
+        return None
+    if not "".join(char for char in text if char not in MASKED_TITLE_CHARS).strip():
+        return None
+    pattern = re.compile("".join(
+        "[^*＊]" if char in MASKED_TITLE_CHARS else re.escape(char) for char in text))
+    filled = {found.group(0) for original in originals
+              if (candidate := str(original or ""))
+              and not any(char in candidate for char in MASKED_TITLE_CHARS)
+              and (found := pattern.search(candidate))}
+    return filled.pop() if len(filled) == 1 else None

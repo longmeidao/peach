@@ -152,6 +152,32 @@ def cover_settled(path):
     return size is not None and max(size) >= MIN_WIDTH
 
 
+def _corrects_kept_cover(target, candidate, data, verified_by):
+    """本机那张更宽，却是没经印证的另一张图，而问来的这张经过了印证：照样换。
+
+    官方那一档只按尺寸挑图，挑中的可能是正片截图：`FC2-PPV-3264420` 装上的是 JavArchive
+    转存的 605×364 截图，真正的商品图是同页 510×616 那张竖版，javdb 的方图与它对得上。
+    按宽度比，截图永远留着。所以本机那张 `.scraping.json` 里没有印证图源、和问来的这张
+    又不是同一张图时，印证过的这张胜出；FC2 官方存储上的图是卖家自己传的商品图，不当错图换，
+    没有来路记录的也不动。
+    """
+    from .community_catalog import picture, same_picture
+    from .scripting import host_under, hostname_of
+    if not verified_by:
+        return False
+    try:
+        evidence = json.loads(target.with_suffix('.scraping.json').read_text(encoding='utf-8'))
+        kept = picture(candidate, target.read_bytes())
+        fresh = picture(candidate, data)
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return False
+    if not isinstance(evidence, dict) or evidence.get('verified_by'):
+        return False
+    if host_under(hostname_of(str(evidence.get('source_url') or '')), ('contents.fc2.com',)):
+        return False
+    return not same_picture(kept, fresh)
+
+
 class LibraryMetadataProvider:
     """来源链各档的入口：按来源配置的传输，站经 `sources.SITE_SOURCES` 问（`site`），封面走 `cover`。
 
@@ -404,10 +430,10 @@ class LibraryMetadataProvider:
         if cover_settled(target):
             return False
         kept = measure_image_file(target)
-        official, verified_by, problems = None, (), []
+        official, verified_by, problems, siblings = None, (), [], ()
         try:
-            official = best_cover(self.transport, code, 0, deadline=deadline,
-                                  prior_candidates=self._official_candidates(code, evidence, deadline=deadline),
+            siblings = self._official_candidates(code, evidence, deadline=deadline)
+            official = best_cover(self.transport, code, 0, deadline=deadline, prior_candidates=siblings,
                                   minimum_width=SMALL_MIN_WIDTH)
         except NotFound:
             pass
@@ -417,7 +443,8 @@ class LibraryMetadataProvider:
         if official is None or official[1][0] < MIN_WIDTH:
             try:
                 *picked, verified_by = verified_cover(self.transport, code, self.community(code, deadline=deadline),
-                                                      reference=official, deadline=deadline)
+                                                      reference=official, siblings=siblings if official else (),
+                                                      deadline=deadline)
                 chosen = tuple(picked)
             except NotFound:
                 pass
@@ -428,7 +455,7 @@ class LibraryMetadataProvider:
         candidate, size, data = chosen
         # 比宽度，不比面积：同一张缩略图各处转存常差一行像素（276×154 与 276×155），
         # 按面积判就会拿一张一样糊的图换掉另一张。
-        if kept and size[0] <= kept[0]:
+        if kept and size[0] <= kept[0] and not _corrects_kept_cover(target, candidate, data, verified_by):
             if problems:
                 # 有来源这一趟没问成（冷却、配额、超时），它那里可能有原图：不能记成一周不问。
                 raise Unavailable('；'.join(problems))

@@ -7,6 +7,8 @@
 MGS 的 5/23、标题带 MGS 附注、演员里有男优，所以社区来源的资料一律要两家一致才免复核。
 
 封面比对用 dHash：两张图宽高比相差不超过 4%、64 位指纹相差不超过 10 位就算同一张。
+对不上时再比一次特征点（`same_scene`）：javdb 给 FC2 的封面是同一张商品图另取景的
+276×276 方图，JavArchive 转存的是竖版，整图指纹两边差 39 位，特征点却有近三百个对得上。
 同一张图出现在两个不同的图源（DMM、DUGA、MGS、JavBus、javdb 各算一个）就算印证；官方渠道
 只取到小图时，那张小图也参加比对。可用的图全出自一个图源、没有别家可比时，取其中最大的
 那张，印证图源留空（ADR-0032）；两个图源各给了图却对不上，是有证据的冲突，不用。
@@ -34,6 +36,12 @@ IMAGE_ORIGINS = (("dmm", ("dmm.co.jp", "dmm.com")), ("duga", ("duga.jp",)),
 ORIGIN_REFERERS = {JAVBUS.name: JAVBUS.referer, JAVDB.name: JAVDB.referer}
 ASPECT_TOLERANCE = 0.04
 HASH_DISTANCE = 10
+#: 两张图按一个相似变换对上的特征点至少这么多才算同一张。2026-09-24 实测：同一张商品图
+#: 的方图、竖图与水印框缩略图两两 275～301 个；本机 FC2 封面同卖家 28 张、随机 60 张两两
+#: 比下来最高 28 个（同一场拍摄拼成的两张图，共用一帧），其余不过 10 个。
+SCENE_INLIERS = 60
+#: 算特征点前把长边缩到这么长：几百像素已经够认，原图 3000 多像素只是白算。
+SCENE_SIDE = 400
 
 #: 采集任务问社区来源的顺序。AVBase 与 JavBus 各一次请求，javdb 两次且配额紧，排在最后。
 COMMUNITY_SOURCES = (AVBASE.name, JAVBUS.name, JAVDB.name)
@@ -109,40 +117,96 @@ def picture(candidate: Candidate, data: bytes) -> Picture:
 
 def same_picture(one: Picture, other: Picture) -> bool:
     ratio, other_ratio = one.size[0] / one.size[1], other.size[0] / other.size[1]
-    return (abs(ratio - other_ratio) <= ASPECT_TOLERANCE * ratio
-            and bin(one.fingerprint ^ other.fingerprint).count("1") <= HASH_DISTANCE)
+    if (abs(ratio - other_ratio) <= ASPECT_TOLERANCE * ratio
+            and bin(one.fingerprint ^ other.fingerprint).count("1") <= HASH_DISTANCE):
+        return True
+    return same_scene(one.data, other.data)
 
 
-def _pictures(transport, urls: dict[str, Candidate], reference, *,
-              deadline: float | None) -> tuple[list[Picture], int]:
-    """官方小图（有的话）加上社区来源里下载得到、宽度够小图门槛的静态图；再报下载到了几张。
+def _scene_features(data: bytes):
+    import cv2
+    import numpy
+
+    image = cv2.imdecode(numpy.frombuffer(data, numpy.uint8), cv2.IMREAD_GRAYSCALE)
+    if image is None or not image.size:
+        return None
+    scale = SCENE_SIDE / max(image.shape)
+    if scale < 1:
+        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    return cv2.ORB_create(1000).detectAndCompute(image, None)
+
+
+def same_scene(data: bytes, other: bytes) -> bool:
+    """两张图是不是同一张照片的不同取景：ORB 特征点按相似变换对上 `SCENE_INLIERS` 个以上。
+
+    整图指纹管不了取景不同：裁成方图、缩成竖图、套上水印框，dHash 就全变了。相似变换
+    只许平移、等比缩放与旋转，两张不同的照片凑不出几十个同时满足它的点；同一场拍摄的
+    两帧会有少量重合（背景、床单），所以门槛远高于实测的那几个。缺 vision 依赖组时退回
+    只认整图指纹。
+    """
+    try:
+        import cv2
+        import numpy
+    except ImportError:                         # pragma: no cover - 缺 vision 依赖组
+        return False
+    first, second = _scene_features(data), _scene_features(other)
+    if not first or not second or first[1] is None or second[1] is None:
+        return False
+    (points, descriptors), (other_points, other_descriptors) = first, second
+    pairs = cv2.BFMatcher(cv2.NORM_HAMMING).knnMatch(descriptors, other_descriptors, k=2)
+    good = [best for best, runner in (pair for pair in pairs if len(pair) == 2)
+            if best.distance < 0.75 * runner.distance]
+    if len(good) < SCENE_INLIERS:
+        return False
+    source = numpy.float32([points[match.queryIdx].pt for match in good])
+    target = numpy.float32([other_points[match.trainIdx].pt for match in good])
+    _, mask = cv2.estimateAffinePartial2D(source, target, method=cv2.RANSAC,
+                                          ransacReprojThreshold=4)
+    return mask is not None and int(mask.sum()) >= SCENE_INLIERS
+
+
+def _download(transport, candidate: Candidate, *, deadline: float | None) -> tuple[Picture | None, bool]:
+    """一张候选图：下载得到、宽度够小图门槛的静态图，再报下载到没有。"""
+    try:
+        data = _fetch(transport, candidate.url, referer=candidate.referer, limit=IMAGE_LIMIT, deadline=deadline)
+    except (NotFound, Unavailable, SourcePaused, httpx.TransportError, OSError):
+        return None, False
+    try:
+        found = picture(candidate, data)
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None, True
+    return (found if found.size[0] >= SMALL_MIN_WIDTH else None), True
+
+
+def _pictures(transport, urls: dict[str, Candidate], reference, siblings: tuple[Candidate, ...], *,
+              deadline: float | None) -> tuple[list[Picture], int, int]:
+    """官方小图与它的同页图（有的话）加上社区来源里能用的图；再报社区来源下载到了几张、能用几张。
 
     下载到了却不能用（动图、太窄）和没下载到是两回事：前者再问一遍还是这几张。
     """
     pool = [picture(reference[0], reference[2])] if reference is not None else []
+    seen = {pool[0].candidate.url} if pool else set()
+    for candidate in siblings:
+        if candidate.url not in seen and candidate.url not in urls:
+            seen.add(candidate.url)
+            found, _ = _download(transport, candidate, deadline=deadline)
+            pool += [found] if found else []
+    official = len(pool)
     fetched = 0
     for url, candidate in urls.items():
-        if reference is not None and url == reference[0].url:
+        if url in seen:
             continue
-        try:
-            data = _fetch(transport, url, referer=candidate.referer, limit=IMAGE_LIMIT, deadline=deadline)
-        except (NotFound, Unavailable, SourcePaused, httpx.TransportError, OSError):
-            continue
-        fetched += 1
-        try:
-            found = picture(candidate, data)
-        except (OSError, ValueError, Image.DecompressionBombError):
-            continue
-        if found.size[0] >= SMALL_MIN_WIDTH:
-            pool.append(found)
-    return pool, fetched
+        found, downloaded = _download(transport, candidate, deadline=deadline)
+        fetched += downloaded
+        pool += [found] if found else []
+    return pool, fetched, len(pool) - official
 
 
 def _unverified(pool: list[Picture], usable: int,
                 fetched: int) -> tuple[Candidate, tuple[int, int], bytes, tuple[str, ...]]:
     """没有两个图源对得上时的退路：图全出自一个图源就取最大那张，印证图源留空。
 
-    `usable` 是池子里社区来源那几张，不算官方小图。"""
+    `usable` 是池子里社区来源那几张，不算官方小图与它的同页图。"""
     if not usable:
         if fetched:
             raise NotFound("社区来源给的封面都是动图或太小")
@@ -156,22 +220,28 @@ def _unverified(pool: list[Picture], usable: int,
 
 def verified_cover(transport, code: str, works: list[tuple[str, dict]], *,
                    reference: tuple[Candidate, tuple[int, int], bytes] | None = None,
+                   siblings: tuple[Candidate, ...] = (),
                    deadline: float | None = None) -> tuple[Candidate, tuple[int, int], bytes, tuple[str, ...]]:
     """社区来源给的封面里，至少两个图源对得上的最大那张；返回值末尾是参与印证的图源。
 
     `reference` 是官方渠道取到的小图，它也算一个图源：javdb 的大图和 DMM 的小图是同一张
     时，大图就有了官方印证。没有第二个图源可比时按 `_unverified` 取图，末尾为空。
+
+    `siblings` 是官方渠道同一页上的其余几张，也下下来参加比对。官方那一档按尺寸挑出来的
+    未必是封面：JavArchive 给 `FC2-PPV-3264420` 转存了 605×364 的正片截图、菱形水印框、
+    GIF 预览和 510×616 的竖版商品图，最宽的是截图，和 javdb 那张方图对得上的是竖版。
     """
     urls = {url: _candidate(url) for _source, payload in works for url in payload.get("cover_urls") or []
             if not is_cross_product_cover(code, url)}
     if not urls:
         raise NotFound("社区来源没有这部片的封面")
-    pool, fetched = _pictures(transport, urls, reference, deadline=deadline)
+    siblings = tuple(one for one in siblings if not is_cross_product_cover(code, one.url))
+    pool, fetched, usable = _pictures(transport, urls, reference, siblings, deadline=deadline)
     best = None
     for one in pool:
         origins = {other.origin for other in pool if same_picture(one, other)}
         if len(origins) >= 2 and (best is None or one.pixels > best[0].pixels):
             best = (one, tuple(sorted(origins)))
     if best is None:
-        return _unverified(pool, len(pool) - (reference is not None), fetched)
+        return _unverified(pool, usable, fetched)
     return best[0].candidate, best[0].size, best[0].data, best[1]

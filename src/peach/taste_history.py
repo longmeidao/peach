@@ -693,6 +693,19 @@ def _epoch(value: object) -> float | None:
             return None
 
 
+def _solo_representatives(linked: list[tuple[int, int, str, str]]) -> dict[str, int]:
+    """女优的代表作只取她单独出演的片：多人作品的封面裁脸，每个出演者都会拿到同一张脸。"""
+    performers: dict[int, set[int]] = defaultdict(set)
+    for aid, entity_id, kind, _ in linked:
+        if kind == "performer":
+            performers[aid].add(entity_id)
+    chosen: dict[str, int] = {}
+    for aid, _, kind, normalized in linked:
+        if kind == "performer" and len(performers[aid]) == 1:
+            chosen.setdefault(normalized, aid)
+    return chosen
+
+
 def _peach_dashboard_evidence(connection: sqlite3.Connection, since: str | None) -> dict[str, object]:
     since_epoch = datetime.fromisoformat(since).timestamp() if since else None
     rows = connection.execute(
@@ -735,6 +748,7 @@ def _peach_dashboard_evidence(connection: sqlite3.Connection, since: str | None)
     representatives: dict[str, dict[str, int]] = defaultdict(dict)
     if assets:
         ids = list(assets)
+        linked: list[tuple[int, int, str, str]] = []
         for offset in range(0, len(ids), 800):
             batch = ids[offset:offset + 800]
             placeholders = ",".join("?" for _ in batch)
@@ -750,10 +764,12 @@ def _peach_dashboard_evidence(connection: sqlite3.Connection, since: str | None)
                 labels[kind][normalized] = str(entity["canonical_name"])
                 entity_ids[kind][normalized] = int(entity["entity_id"])
                 representatives[kind].setdefault(normalized, aid)
+                linked.append((aid, int(entity["entity_id"]), kind, normalized))
                 entity_kinds[aid].add(kind)
                 if assets[aid]["positive"]:
                     scores[kind][normalized] += float(assets[aid]["positive"])
                     items[kind][normalized].add(aid)
+        representatives["performer"] = _solo_representatives(linked)
 
         for aid, asset in assets.items():
             for kind, column in (("creator", "creator"), ("studio", "studio")):

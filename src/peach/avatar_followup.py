@@ -391,7 +391,8 @@ def _install_cover_face(contract, providers_root, avatar_root, kind: str,
 
     `found` 是 `avatar_cover_face.faces` 的结果，按脸宽排好；图库比对用的也是这一份。
     `cropped_px` 是装着的那张封面截图当时的脸宽（没装、或不是这一档装的是 None）：
-    新挑出来的脸不比它宽就不换，免得每跑一次都把同一张图重写一遍。
+    新挑出来的脸不比它宽就不换，免得每跑一次都把同一张图重写一遍。装着的那张上检不出
+    脸时按 0 算：那是从打了模糊的封面上截的，脸再宽也认不出是谁。
     """
     summary = {"name": name, "matched": matched}
     if not found:
@@ -403,6 +404,8 @@ def _install_cover_face(contract, providers_root, avatar_root, kind: str,
     for other in found[1:MAX_KEPT_FACES]:
         if (extra := avatar_cover_face.cut(other)) is not None:
             avatar_picker.keep(providers_root, entity_id, *extra)
+    if cropped_px and not avatar_cover_face.installed_face_readable(avatar_root, kind, entity_id, probe):
+        cropped_px = 0
     if cropped_px is not None and face.face_px <= cropped_px:
         return {**summary, "outcome": "已是最清楚的封面人脸", "source": face.code}
     cut = avatar_cover_face.cut(face)

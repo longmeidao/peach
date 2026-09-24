@@ -15,7 +15,7 @@ import time
 from urllib.parse import urlsplit
 
 from . import entry_links, feeds, web_feeds
-from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, tag_cat
+from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, solo_performer_clause, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .social_links import ARCHIVE_HOSTS, is_archive
 from .web_catalog import (
@@ -170,7 +170,8 @@ def q_entity(contract: WebContract, args):
             "SELECT count(DISTINCT ae.asset_id),"
             "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
             " WHERE " + scope_predicate(kind, "ae2.entity_id") +
-            " AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+            " AND a2.medium='video' AND a2.snapshot_path IS NOT NULL " +
+            (" AND " + solo_performer_clause("a2.id", "ae2.entity_id") if kind == "performer" else "") +
             " ORDER BY a2.size DESC LIMIT 1) "
             "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
             "WHERE " + scope + " AND a.medium='video'", (d["id"], d["id"]),
@@ -203,7 +204,7 @@ def q_entity(contract: WebContract, args):
                 " WHERE ae.entity_id=person.id AND a.medium='video') n,"
                 "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
                 " WHERE ae2.entity_id=person.id AND a2.medium='video' "
-                " AND a2.snapshot_path IS NOT NULL "
+                " AND a2.snapshot_path IS NOT NULL AND " + solo_performer_clause("a2.id", "person.id") +
                 " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
                 " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
                 "FROM entity_membership m JOIN entity person ON person.id=m.member_id "
@@ -214,7 +215,7 @@ def q_entity(contract: WebContract, args):
                 "SELECT person.id,person.canonical_name k,count(DISTINCT scope.asset_id) n,"
                 "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
                 " WHERE ae2.entity_id=person.id AND a2.medium='video' "
-                " AND a2.snapshot_path IS NOT NULL "
+                " AND a2.snapshot_path IS NOT NULL AND " + solo_performer_clause("a2.id", "person.id") +
                 " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
                 " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
                 "FROM asset_entity scope "
@@ -485,7 +486,8 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
             entity_kind = INDEX_ENTITY_KINDS[kind]
             sql = ("SELECT e.id entity_id,e.canonical_name k,count(DISTINCT ae.asset_id) n,"
                    "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
-                   " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+                   " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL " +
+                   (" AND " + solo_performer_clause("a2.id", "e.id") if entity_kind == "performer" else "") +
                    " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
                    " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
                    "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "

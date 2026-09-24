@@ -368,7 +368,9 @@ class CoverFaceFollowupTests(LedgerTestCase):
     entity = AvatarFollowupTests.entity
 
     #: 封面宽 → 脸框（相对宽度）。没列的宽度是一张检不出脸的封面，比如戴着面具的原图。
+    #: 截出来的方图脸在正中；绿底的是卖家打了模糊的封面，截出来那块检不出脸。
     FACES = {600: 0.15, 276: 0.2, 1000: 0.3, 900: 0.5}
+    BLURRED = (40, 200, 40)
 
     def setUp(self):
         super().setUp()
@@ -383,9 +385,14 @@ class CoverFaceFollowupTests(LedgerTestCase):
             unavailable = ""
 
             def on_bytes(self, body):
-                from peach.images import measure_image_size
-                width, height = measure_image_size(body)
+                import io
+
+                from PIL import Image
+                image = Image.open(io.BytesIO(body)).convert("RGB")
+                width, height = image.size
                 share = faces.get(width)
+                if width == height:
+                    share = None if image.getpixel((width // 2, height // 2))[1] > 150 else 0.4
                 face = ({"cx": 0.5, "cy": 0.4, "w": share, "h": share, "score": 0.9}
                         if share else None)
                 return {"ratio": width / height, "px": [width, height], "face": face}
@@ -399,11 +406,11 @@ class CoverFaceFollowupTests(LedgerTestCase):
         self.addCleanup(sidecar.stop)
 
     def work(self, asset_id: int, code: str, size: tuple[int, int] | None,
-             performers: tuple[int, ...] = ()) -> None:
+             performers: tuple[int, ...] = (), colour="gray") -> None:
         from PIL import Image
 
         if size:
-            Image.new("RGB", size, "gray").save(self.covers / f"{code}.jpg", format="JPEG")
+            Image.new("RGB", size, colour).save(self.covers / f"{code}.jpg", format="JPEG")
         with self.database.write_transaction(notify=False) as connection:
             connection.execute(
                 "INSERT INTO asset(id,location,path,name,medium,code,size) "
@@ -485,6 +492,22 @@ class CoverFaceFollowupTests(LedgerTestCase):
         self.work(5, "FC2-PPV-5", (1000, 600))
         self.assertEqual(self.run_followup()["source"], "作品封面 FC2-PPV-5")
         self.assertEqual(self.provenance()["face_px"], 300)
+
+    def test_a_blurred_cover_is_passed_over_even_with_the_widest_face(self):
+        """卖家打了模糊的商品图：整张检得出很宽的脸，截出来那块认不出人，挑下一张。"""
+        self.work(1, "FC2-PPV-1", (900, 600), colour=self.BLURRED)
+        self.work(2, "FC2-PPV-2", (276, 154))
+        self.assertEqual(self.run_followup()["source"], "作品封面 FC2-PPV-2")
+
+    def test_an_unreadable_crop_installed_earlier_gives_way_to_a_narrower_face(self):
+        self.work(2, "FC2-PPV-2", (276, 154))
+        (self.avatars / f"performer-{self.person}.img.provenance.json").write_text(
+            json.dumps({"provider": "cover-face", "face_px": 450}), encoding="utf-8")
+        from PIL import Image
+        Image.new("RGB", (400, 400), self.BLURRED).save(
+            self.avatars / f"performer-{self.person}.img", format="JPEG")
+        self.assertEqual(self.run_followup()["source"], "作品封面 FC2-PPV-2")
+        self.assertEqual(self.provenance()["face_px"], 55)
 
     def test_a_whole_cover_installed_earlier_gives_way_to_any_face(self):
         self.work(2, "FC2-PPV-2", (276, 154))
