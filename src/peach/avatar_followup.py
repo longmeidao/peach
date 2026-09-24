@@ -17,15 +17,20 @@
 * 图库给不出认得准的那一张时，从她单人作品的封面上截脸（`avatar_cover_face`）：挑脸像素最宽的
   那张封面，最差是缩略图；其余检得出脸的封面也各截一张留作候选。这一档截的图、以及批处理用整张封面装上的头像，之后遇到更清楚的
   脸会自动换掉；图库装的、人挑的一律不碰。
+* 两档都落空、图库里只有没过尺寸门槛的小图时，装认得准的那张小图（ADR-0066）：只有一张
+  就装它，好几张照同一套互证判据挑，认定的几张里挑像素最大的。小图同样可以在上面几档里
+  作证，只是不当那张被装上的图。这一档装的图之后有了过门槛的图或封面人脸就换掉。
 * **厂牌**不走这条：官网和标识由补厂牌后继（`studio_followup`）按厂牌那套判据补。
 
 这条后继是幂等的（ADR-0040 第六条要求）：第一件事就是看盘上有没有那张图，有就当场返回。
 """
 from __future__ import annotations
 
+import json
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from . import avatar_cover_face, avatar_picker, face_match
 from .avatar_provider import (
@@ -57,6 +62,8 @@ MAX_MATCH_CANDIDATES = 24
 #: 2026-09-24 实测：同一张图缩到一半或三分之一再放大重压，SFace 给 0.94～0.97；
 #: 石川祐奈在 Digigra、Moodyz、DAS 三家的三张不同照片两两 0.59～0.66。
 NEAR_DUPLICATE = 0.9
+#: 小图兜底那一档装上的图，头像边车里记的 `source_kind`。
+SMALL_SOURCE_KIND = "gallery_small"
 
 
 def followup_key(kind: str, entity_id: int) -> str:
@@ -114,17 +121,31 @@ def plan(connection: sqlite3.Connection, avatar_root, *,
 
 
 def _needs_avatar(avatar_root, kind: str, entity_id: int) -> bool:
-    """没有头像，或者装着的是封面截的那一档（还可能换到更清楚的）。"""
+    """没有头像，或者装着的是封面截的、小图兜底的那一档（还可能换到更清楚的）。"""
     return (not avatar_picker.installed_digest(avatar_root, kind, entity_id)
-            or avatar_cover_face.installed_face_px(avatar_root, kind, entity_id) is not None)
+            or avatar_cover_face.installed_face_px(avatar_root, kind, entity_id) is not None
+            or _installed_small(avatar_root, kind, entity_id))
+
+
+def _installed_small(avatar_root, kind: str, entity_id: int) -> bool:
+    """装着的那张是不是小图兜底那一档装的。"""
+    from .previews import entity_image_key
+
+    path = Path(avatar_root) / f"{entity_image_key(kind, int(entity_id))}.img.provenance.json"
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(record, dict) and record.get("source_kind") == SMALL_SOURCE_KIND
 
 
 #: 指纹里的两个量：作品数与别名数。别名 SQL 与 `stock` 那条共用。
 _ALIAS_COUNT = "(SELECT count(*) FROM entity_alias al WHERE al.entity_id=e.id)"
 
 #: 认人判据的版本，进指纹。改了判据就加一：存量里缺图的女优按新判据各重比一次。
-#: 2 是 ADR-0057 的图库互证，3 是 ADR-0062 没有封面参照时的图库自证。
-MATCH_RULE = 3
+#: 2 是 ADR-0057 的图库互证，3 是 ADR-0062 没有封面参照时的图库自证，4 是 ADR-0066 的
+#: 小图作证与兜底。
+MATCH_RULE = 4
 
 
 def _fingerprint(works, aliases) -> str:
@@ -199,7 +220,9 @@ def _run(contract, key: str, handle) -> dict:
     providers_root = contract.candidate_root / "provider-cache" / "performer-avatars"
     # 装着的是封面截的那一档时还要往下走：图库可能有了人像，封面可能换了更清楚的。
     cropped_px = avatar_cover_face.installed_face_px(avatar_root, kind, entity_id)
-    if avatar_picker.installed_digest(avatar_root, kind, entity_id) and cropped_px is None:
+    small = _installed_small(avatar_root, kind, entity_id)
+    if (avatar_picker.installed_digest(avatar_root, kind, entity_id) and cropped_px is None
+            and not small):
         # 重跑、或者这中间人自己换过图。两种都不该再装一次。
         return {"outcome": "已有头像"}
     with contract.database.read_connection() as connection:
@@ -236,9 +259,15 @@ def _run(contract, key: str, handle) -> dict:
                      if key == "face_match_unavailable"}
         else:
             gallery = "图库里没有这个名字" if not found else "图库那张太小"
-        return {**_install_cover_face(contract, providers_root, avatar_root, kind,
-                                      entity_id, name, gallery, len(found), cropped_px,
-                                      covers, probe), **extra}
+        fallen = {**_install_cover_face(contract, providers_root, avatar_root, kind,
+                                        entity_id, name, gallery, len(found), cropped_px,
+                                        covers, probe), **extra}
+        # 封面截的那张装着时不退回小图：那一档自己会判要不要换。
+        if (fallen["outcome"] == "已装上" or not found or extra or cropped_px is not None
+                or (avatar_picker.installed_digest(avatar_root, kind, entity_id) and not small)):
+            return fallen
+        return _install_small(contract, connection, providers_root, avatar_root, kind,
+                              entity_id, found, covers, fallen)
 
 
 @dataclass(frozen=True)
@@ -266,7 +295,8 @@ class GalleryMatch:
 
 
 def match_gallery(found: list[dict], covers: list, matcher,
-                  fetch: Callable[[dict], Candidate | None]) -> GalleryMatch:
+                  fetch: Callable[[dict], Candidate | None], *,
+                  allow_small: bool = False) -> GalleryMatch:
     """图库里这几张候选，哪一张是她本人（ADR-0056）。只读：取图交给 `fetch`，不写任何东西。
 
     参照是她单人作品封面上截到的脸，按脸宽取前 `MATCH_COVERS` 张；候选要和其中
@@ -274,8 +304,10 @@ def match_gallery(found: list[dict], covers: list, matcher,
     才算她。只要一张参照的话，一张认错人的封面就能让她装上别人的脸；要两张，封面和
     候选得在两部不同的作品上都对得上。
 
-    挑哪一张：没过尺寸门槛的不比（认出来了也装不上），照图库的先后比，第一张过线的就是
-    她，后面的不再取。不按像素挑：图库靠后的大库（`y-Minnano`、`z-DMM(骑)`）原图只有两三百
+    挑哪一张：照图库的先后比，第一张过线、又过了尺寸门槛的就是她，后面的不再取。没过尺寸
+    门槛的小图照样比，只当证人不当胜者（ADR-0066）：`桃咲ゆり菜` 名下 832×1249 那张和
+    399×393 那张余弦 0.49，小图不作证，大图就只剩自己一张、认不准。`allow_small` 是小图
+    兜底那一档：小图也能当胜者，认定的几张里挑像素最大的。不按像素挑：图库靠后的大库（`y-Minnano`、`z-DMM(骑)`）原图只有两三百
     像素、靠 AI 放大到五百以上，按像素排它们反而抢到前面；片商与事务所的原生图排在前头
     （`gfriends` 模块头）。
 
@@ -311,10 +343,13 @@ def match_gallery(found: list[dict], covers: list, matcher,
             "candidates": len(found), "compared": len(scores), **extra,
         }
 
+    def eligible(candidate: Candidate) -> bool:
+        return allow_small or acceptable_avatar(candidate.inspected, MIN_LONG_SIDE,
+                                                MIN_SHORT_SIDE)
+
     for choice in found[:MAX_MATCH_CANDIDATES]:
         candidate = fetch(choice)
-        if candidate is None or not acceptable_avatar(candidate.inspected, MIN_LONG_SIDE,
-                                                      MIN_SHORT_SIDE):
+        if candidate is None:
             continue
         vector = matcher.embedding(candidate.body)
         if matcher.unavailable:
@@ -325,12 +360,27 @@ def match_gallery(found: list[dict], covers: list, matcher,
         row = [round(face_match.cosine(vector, reference), 3)
                for _face, reference in references]
         scores[choice["ref"]] = row
-        if references and sum(score >= threshold for score in row) >= required:
+        if (references and not allow_small and eligible(candidate)
+                and sum(score >= threshold for score in row) >= required):
             return GalleryMatch(winner=candidate, evidence=evidence(row), scores=scores)
         compared.append((candidate, vector, row))
+    # 兜底那一档按像素从大到小挑胜者；证人还是全部候选。
+    order = sorted(compared, key=lambda item: -_area(item[0])) if allow_small else compared
     if not references:
-        return _gallery_agrees(found, compared, scores, evidence)
-    for candidate, vector, row in compared:
+        return _gallery_agrees(found, compared, scores, evidence, order, eligible)
+    for candidate, _vector, row in order:
+        if eligible(candidate) and sum(score >= threshold for score in row) >= required:
+            return GalleryMatch(winner=candidate, evidence=evidence(row), scores=scores)
+    return _covers_corroborate(found, compared, scores, evidence, order, eligible)
+
+
+def _covers_corroborate(found: list[dict], compared: list, scores: dict, evidence,
+                        order: list, eligible: Callable[[Candidate], bool]) -> GalleryMatch:
+    """没有一张候选过够参照时，两张候选对上同一张参照、彼此也过线就算她（ADR-0057）。"""
+    threshold = face_match.COSINE_THRESHOLD
+    for candidate, vector, row in order:
+        if not eligible(candidate):
+            continue
         for other, other_vector, other_row in compared:
             pair = face_match.cosine(vector, other_vector)
             if other is candidate or not threshold <= pair < NEAR_DUPLICATE:
@@ -348,7 +398,12 @@ def _directory(choice: dict) -> str:
     return ref.partition(":")[2].partition("/")[0] or str(choice.get("label", ""))
 
 
-def _gallery_agrees(found: list[dict], compared: list, scores: dict, evidence) -> GalleryMatch:
+def _area(candidate: Candidate) -> int:
+    return candidate.inspected.width * candidate.inspected.height
+
+
+def _gallery_agrees(found: list[dict], compared: list, scores: dict, evidence,
+                    order: list, eligible: Callable[[Candidate], bool]) -> GalleryMatch:
     """没有封面参照时，图库候选之间互相作证（ADR-0062）。
 
     `叶芽ゆきな` 四部作品都是多人封面，截不出参照；图库里 Javrave 与 DMM 各存她一张，
@@ -362,12 +417,15 @@ def _gallery_agrees(found: list[dict], compared: list, scores: dict, evidence) -
       `星野千紗` 名下 GRAPHIS 那张是另一个人（和谁都不到 0.26），Warashi 与 Javrave 两张
       认得，二比三，装 Warashi 那张。
 
-    照图库先后，第一张满足的装上；证据里 `covers` 为空、`required` 为 0，
-    `corroborated_by` 记作证那张与分数，`agreeing`/`faces` 记多数是怎么数出来的。
+    按 `order` 的先后，第一张 `eligible` 且满足的装上；证人与多数数的是全部 `compared`。
+    证据里 `covers` 为空、`required` 为 0，`corroborated_by` 记作证那张与分数，
+    `agreeing`/`faces` 记多数是怎么数出来的。
     """
     threshold = face_match.COSINE_THRESHOLD
     faces = len(compared)
-    for candidate, vector, row in compared:
+    for candidate, vector, row in order:
+        if not eligible(candidate):
+            continue
         peers = [(other, face_match.cosine(vector, other_vector))
                  for other, other_vector, _row in compared if other is not candidate]
         agreeing = [(other, pair) for other, pair in peers if pair >= threshold]
@@ -457,6 +515,44 @@ def _install(contract, connection, providers_root, avatar_root, kind: str,
     contract.cache_bust()
     return {"name": name, "outcome": "已装上", "matched": 1, "size": size,
             "source": choice["label"]}
+
+
+def _install_small(contract, connection, providers_root, avatar_root, kind: str,
+                   entity_id: int, found: list[dict], covers: list, fallen: dict) -> dict:
+    """图库和封面都给不出过门槛的那一张时，装认得准的那张小图（ADR-0066）。
+
+    `柊木なな` 两部作品都是多人封面，图库里只有 199×299 与 470×470 两张，余弦 0.42：
+    两张认得同一个人，装 470×470 那张，比首字母占位强。`fallen` 是上一档的摘要，这一档
+    也落空时原样交回。
+    """
+    from .http import HttpxTransport
+
+    transport = HttpxTransport()
+    try:
+        fetch = gallery_fetcher(connection, providers_root, entity_id, transport)
+        if len(found) == 1:
+            winner, evidence = fetch(found[0]), {}
+        else:
+            result = match_gallery(found, covers, face_match.FaceMatcher(), fetch,
+                                   allow_small=True)
+            if result.unavailable:
+                return {**fallen, "face_match_unavailable": True}
+            winner, evidence = result.winner, result.evidence
+    finally:
+        close = getattr(transport, "close", None)
+        if close:
+            close()
+    if winner is None:
+        return fallen
+    size = f"{winner.inspected.width}×{winner.inspected.height}"
+    if winner.inspected.sha256 == avatar_picker.installed_digest(avatar_root, kind, entity_id):
+        return {**fallen, "outcome": "已装着认得准的小图", "size": size}
+    origin = {**winner.origin, "source_kind": SMALL_SOURCE_KIND,
+              **({"name_source": "face-match", "face_match": evidence} if evidence else {})}
+    avatar_picker.install(providers_root, avatar_root, kind, entity_id, winner.body, origin)
+    contract.cache_bust()
+    return {"name": fallen.get("name", ""), "matched": len(found), "outcome": "已装上",
+            "size": size, "source": f"{winner.choice['label']}（小图兜底）"}
 
 
 def _install_cover_face(contract, providers_root, avatar_root, kind: str,

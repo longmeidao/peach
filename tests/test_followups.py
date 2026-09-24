@@ -655,7 +655,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
     provenance = CoverFaceFollowupTests.provenance
 
     def test_several_pictures_of_her_install_the_first_big_enough_in_gallery_order(self):
-        """太小的那张认出来也装不上，不比；其余照图库先后，第一张认定是她的就装。"""
+        """太小的那张认出来也不当胜者；其余照图库先后，第一张认定是她的就装。"""
         self.candidate("0-Hand-Storage", (200, 300), self.HER)
         first = self.candidate("1-S1", (400, 600), self.HER)
         self.candidate("y-Minnano", (800, 1000), self.HER)
@@ -674,7 +674,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
         self.assertEqual(sorted(cover["code"] for cover in match["covers"]),
                          ["IPX-001", "SSIS-002"])
         self.assertTrue(all(cover["score"] >= 0.363 for cover in match["covers"]))
-        self.assertEqual((match["candidates"], match["compared"]), (3, 1))
+        self.assertEqual((match["candidates"], match["compared"]), (3, 2))
 
     def test_only_her_pictures_are_eligible_when_someone_else_shares_the_name(self):
         """同名的另一个人那张更大、排得更前，照样落选；检不出脸的那张不算她。"""
@@ -805,7 +805,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                                                    limit=10)]
 
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:0:r3")
+            self.assertEqual(fingerprint(connection, self.person), "1:0:r4")
         self.run_followup()
         self.assertEqual(planned(), [])
         with self.database.write_transaction(notify=False) as connection:
@@ -813,8 +813,51 @@ class FaceMatchFollowupTests(LedgerTestCase):
                 "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
                 " VALUES(?,?,?,'test')", (self.person, "りな", "りな"))
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:1:r3")
+            self.assertEqual(fingerprint(connection, self.person), "1:1:r4")
         self.assertEqual(planned(), [followup_key("performer", self.person)])
+
+    def test_a_small_picture_vouches_for_a_big_one_without_a_cover(self):
+        """没有单人封面：大图只有自己一张，另一家目录里她的小图作证，装大图（ADR-0066）。"""
+        big = self.candidate("0-Hand-Storage", (832, 1249), self.HER)
+        small = self.candidate("y-Minnano", (399, 393), self.HER_AGAIN)
+        summary = self.run_followup()
+        self.assertEqual((summary["outcome"], summary["source"]),
+                         ("已装上", "Hand-Storage（按图库互证认定）"))
+        record = self.provenance()
+        self.assertEqual(f"gfriends:{record['external_id']}", big)
+        self.assertEqual(record["face_match"]["corroborated_by"], {"ref": small, "score": 0.8})
+
+    def test_only_small_pictures_install_the_biggest_agreeing_one(self):
+        """图库只有小图、封面截不出脸：两张彼此认得，装像素大的那张，标成小图兜底。"""
+        self.candidate("y-AVDC", (199, 299), self.HER)
+        bigger = self.candidate("y-Minnano", (470, 470), self.HER_AGAIN)
+        summary = self.run_followup()
+        self.assertEqual((summary["outcome"], summary["size"]), ("已装上", "470×470"))
+        record = self.provenance()
+        self.assertEqual(record["source_kind"], "gallery_small")
+        self.assertEqual(f"gfriends:{record['external_id']}", bigger)
+        self.assertTrue(self.run_followup()["outcome"].endswith("已装着认得准的小图"))
+
+    def test_small_pictures_of_different_people_install_nothing(self):
+        self.candidate("y-AVDC", (199, 299), self.HER)
+        self.candidate("y-Minnano", (470, 470), self.OTHER)
+        self.run_followup()
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_a_cover_face_replaces_a_small_picture_later(self):
+        from peach.avatar_followup import stock
+        from peach.followups import Attempts, attempts_root
+
+        self.candidate("y-AVDC", (199, 299), self.HER)
+        self.run_followup()
+        self.assertEqual(self.provenance()["source_kind"], "gallery_small")
+        self.work(1, "IPX-001", self.HER)
+        with self.database.read_connection() as connection:
+            planned = stock(connection, self.avatars,
+                            Attempts(attempts_root(self.root / "generated")), limit=10)
+        self.assertEqual([item.key for item in planned], [followup_key("performer", self.person)])
+        self.run_followup()
+        self.assertEqual(self.provenance()["provider"], "cover-face")
 
 
 class ProcessLibraryTests(LedgerTestCase):
