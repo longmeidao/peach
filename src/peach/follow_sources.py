@@ -1291,8 +1291,9 @@ class Rule34XxxConnector(_BaseConnector):
     provider = "rule34xxx"
     #: 一页 24 条时整页都能补上；额度存在是为了页面变长时请求数不跟着长。
     DEFAULT_ENRICH_BUDGET = 24
-    #: 详情页给的就是标签分类，所以补齐过的行 metadata 里一定有 `tag_types`。
-    ENRICHED_MARK = "tag_types"
+    #: 第二阶段补两样：帖子页的标签分类（metadata 的 `tag_types`）和原文件头的时长。
+    #: mp4 缺时长的行下次检查还会进第二阶段，判据在 `follow_store._ENRICHED_PREDICATES`。
+    ENRICHED_MARK = "tag_types_duration"
     _TAG_RE = re.compile(r"^[^\s&?#]{1,100}$")
     #: 历史行存的是 250px 的 preview。官方 dapi 的 `sample_url` 与它用同一
     #: bucket/hash；2026-08-28 对生产历史行实测推导，结果是 1920x1080。
@@ -1404,14 +1405,17 @@ class Rule34XxxConnector(_BaseConnector):
 
     def _enrich_one(self, candidate: FollowCandidate) -> FollowCandidate:
         detail = self._detail(str(candidate.external_id))
+        # 文件头在另一个主机上，帖子页被限流挡回来不影响它，所以不论分类取没取到都问。
+        duration = self._video_seconds(candidate.media_url)
         tag_types = detail.get("tag_types")
         if not tag_types:
             # 详情页这次没给出分类。保持 partial：上一轮取到的分类还在库里，
             # 覆盖成空会让「这条没有分类」和「这次没问到」在数据里长得一样。
-            return candidate
+            # partial 行落库时时长只补空，所以读到的时长照样带上。
+            return replace(candidate, duration=duration) if duration else candidate
         return replace(candidate, partial=False,
                        published_at=detail.get("published_at") or candidate.published_at,
-                       duration=self._video_seconds(candidate.media_url),
+                       duration=duration,
                        extra={**candidate.extra, "tag_types": tag_types})
 
     #: 读时长只取文件开头这么多字节。站方转码出的 mp4 都是 faststart，`mvhd` 在开头

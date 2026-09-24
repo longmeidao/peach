@@ -48,6 +48,20 @@ class FollowCoverUnavailable(RuntimeError):
     pass
 
 
+def fanbox_video_indexes(item: FollowItemRow) -> list[int]:
+    """fanbox 帖子里站内托管的视频在媒体清单中的序号，能由 FFmpeg 抽帧的就是这些。"""
+    return [index for index, media in enumerate(item.metadata.get("media_items") or [])
+            if isinstance(media, dict) and media.get("media_kind") == "video"
+            and media.get("resource_provider") == "fanbox"]
+
+
+def _cache_slot(name: str, item_id: int) -> str:
+    """缓存文件名里视频那一格：第一个视频是空串，点名的其他视频是 `m<序号>-`。"""
+    rest = name[len(f"{item_id}-"):]
+    head, dash, _ = rest.partition("-")
+    return f"{head}-" if dash and head.startswith("m") else ""
+
+
 class FollowCoverService:
     """Create a bounded, cached still without exposing the upstream media URL."""
 
@@ -63,13 +77,23 @@ class FollowCoverService:
         # first screen responsive without turning the source CDN into a batch job.
         self._slots = threading.BoundedSemaphore(2)
 
-    def cover(self, item: FollowItemRow) -> Path:
+    def cover(self, item: FollowItemRow, media: int | None = None) -> Path:
+        """条目的视频封面；`media` 点名 fanbox 帖子里的某一个视频，缺省是第一个。
+
+        卡面要的是第一个视频，详情里的多媒体清单每个视频各要一张。第一个视频不论
+        是否点名都落在同一份缓存上，卡面和清单里那一格共用一次抽帧。
+        """
         media_index = None
+        slot = ""
         if item.provider == "fanbox":
-            media_index = next((index for index, media in enumerate(
-                item.metadata.get("media_items") or []) if isinstance(media, dict)
-                and media.get("media_kind") == "video"
-                and media.get("resource_provider") == "fanbox"), None)
+            videos = fanbox_video_indexes(item)
+            media_index = videos[0] if videos else None
+            if media is not None and media != media_index:
+                if media not in videos:
+                    raise FollowCoverUnavailable("点名的媒体不是这篇帖子里的视频")
+                media_index, slot = media, f"m{media}-"
+        elif media is not None:
+            raise FollowCoverUnavailable("只有 fanbox 帖子能按媒体取视频封面")
         if not (item.provider == "fanbox" and media_index is not None) and (
                 item.provider != "rule34paheal"
                 or str(item.metadata.get("media_kind") or "") != "video"):
@@ -86,7 +110,9 @@ class FollowCoverService:
         fingerprint = hashlib.sha256(
             f"{_CACHE_VERSION}\0{target.url}".encode("utf-8")
         ).hexdigest()[:16]
-        destination = self.root / f"{item.id}-{fingerprint}.jpg"
+        # 点名的其他视频在文件名里带 `m<序号>-`；指纹是十六进制，不会以 m 开头，
+        # 所以下面按名字清旧帧时，各个视频只清自己那一格。
+        destination = self.root / f"{item.id}-{slot}{fingerprint}.jpg"
         if destination.is_file():
             return destination
         lock = self._lock_for(destination.name)
@@ -120,9 +146,9 @@ class FollowCoverService:
                 raise FollowCoverUnavailable("视频封面生成失败") from exc
             finally:
                 temporary.unlink(missing_ok=True)
-            # URL 变化时留下旧帧没有价值；只清理同一条目的旧缓存。
+            # URL 变化时留下旧帧没有价值；只清理同一条目、同一个视频的旧缓存。
             for stale in self.root.glob(f"{item.id}-*.jpg"):
-                if stale != destination:
+                if stale != destination and _cache_slot(stale.name, item.id) == slot:
                     stale.unlink(missing_ok=True)
             return destination
 

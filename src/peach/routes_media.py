@@ -891,15 +891,19 @@ def follow_stream(request: Request, id: int, media: int | None = None,
 
 
 @router.api_route("/follow-cover", methods=["GET", "HEAD"])
-def follow_cover(request: Request, id: int, args: dict[str, str] = Depends(require_auth)):
-    """Return a cached clear still for a follow video; keep its URL server-side."""
+def follow_cover(request: Request, id: int, media: int | None = None,
+                 args: dict[str, str] = Depends(require_auth)):
+    """Return a cached clear still for a follow video; keep its URL server-side.
+
+    `media` 与 `/follow-stream` 同义，按原始媒体清单的序号点名帖子里的某个视频。
+    """
     state = request.app.state
     with state.database.read_connection() as connection:
         item = FollowStore(lambda: connection).item(id)
     if item is None:
         return JSONResponse({"error": "no such follow item"}, status_code=404)
     try:
-        path = state.follow_cover_service.cover(item)
+        path = state.follow_cover_service.cover(item, media)
     except FollowCoverUnavailable:
         # 这里不 302 到 `item.thumb_url`：那等于把上游主机和地址交回浏览器，
         # 而这个端点存在的全部理由就是不让它外露。FFmpeg 或网络的临时失败一律回

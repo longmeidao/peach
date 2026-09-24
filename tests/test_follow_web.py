@@ -715,6 +715,33 @@ class FollowContractTests(unittest.TestCase):
             self.assertEqual(items[key]["thumb_url"], f"/follow-cover?id={items[key]['id']}")
         self.assertEqual(items["3"]["thumb_url"], image)
 
+    def test_fanbox_videos_in_the_media_list_show_a_frame_not_nothing(self):
+        """fanbox 站内视频不带缩略图，清单那一格给抽帧地址，不留空让页面退回站点图标。"""
+        cover = "https://pixiv.pximg.net/c/1200x630_90_a2_g5/fanbox/public/images/post/1/cover/a.jpeg"
+        self._seed(candidates=(FollowCandidate(
+            provider="fanbox", external_id="1", title="Clip", thumb_url=cover,
+            url="https://creator.fanbox.cc/posts/1",
+            extra={"media_items": [
+                {"id": "v1", "name": "first", "media_kind": "video", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/files/post/1/v1.mp4", "thumb_url": None},
+                {"id": "cover", "name": "封面", "media_kind": "image", "resource_provider": "fanbox",
+                 "url": cover, "thumb_url": cover},
+                {"id": "v2", "name": "second", "media_kind": "video", "resource_provider": "fanbox",
+                 "url": "https://downloads.fanbox.cc/files/post/1/v2.mp4", "thumb_url": None},
+                {"id": "g", "name": "elsewhere", "media_kind": "video", "resource_provider": "gofile",
+                 "url": "https://gofile.io/d/abc", "thumb_url": None},
+            ]},
+        ),), provider="fanbox", ref="creator")
+        item = self._get()["groups"][0]["primary"]
+        thumbs = {media["name"]: media["thumb_url"] for media in item["media_items"]}
+        self.assertEqual(thumbs, {
+            "first": f"/follow-cover?id={item['id']}",
+            "封面": cover,
+            "second": f"/follow-cover?id={item['id']}&media=2",
+            # 抽帧只对 fanbox 站内视频成立；别处托管的视频没有画面就留空，由页面给中性占位。
+            "elsewhere": None,
+        })
+
     def test_fanbox_card_thumb_prefers_the_author_cover(self):
         chart = "https://downloads.fanbox.cc/images/post/1/w/1200/chart.jpeg"
         art = "https://downloads.fanbox.cc/images/post/1/w/1200/art.jpeg"

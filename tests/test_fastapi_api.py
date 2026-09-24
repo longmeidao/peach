@@ -1825,7 +1825,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             def __init__(self):
                 self.fail = False
 
-            def cover(self, _item):
+            def cover(self, _item, _media=None):
                 if self.fail:
                     from peach.follow_covers import FollowCoverUnavailable
                     raise FollowCoverUnavailable("test")

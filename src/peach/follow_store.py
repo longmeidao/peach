@@ -174,13 +174,16 @@ def _carry_image_dims(metadata: dict, previous_json: str | None) -> dict:
 
 #: `partial=True` 的候选（只有列表视图、详情这次没取）更新已有行时用的 SET 子句。
 #: 列表本来就权威的那几列照常更新；详情才能给出的 media_url、thumb_url、
-#: published_at、duration、group_hint 一概不动，metadata 用 `json_patch` 并进去而
+#: published_at、group_hint 一概不动，metadata 用 `json_patch` 并进去而
 #: 不是整块替换——否则跳过第二阶段就等于把上一轮取到的细节抹掉，而抹掉之后
 #: 「详情本来就没有」和「这次没去问」在数据里长得一模一样。
+#: 时长只补空：rule34xxx 的时长读自原文件头，帖子页被限流挡回来时它照样取得到，
+#: 这时候选仍是 partial，已有的时长不覆盖，空着的补上。
 _PARTIAL_UPDATE = (
     "  title=excluded.title, url=excluded.url, version=excluded.version,"
     "  release_key=excluded.release_key, variant_kind=excluded.variant_kind,"
     "  variant_label=excluded.variant_label,"
+    "  duration=COALESCE(follow_item.duration, excluded.duration),"
     "  metadata_json=json_patch(follow_item.metadata_json, excluded.metadata_json),"
     "  last_seen_at=excluded.last_seen_at"
 )
@@ -190,7 +193,12 @@ _PARTIAL_UPDATE = (
 #: 由 `tests/test_follow_sources.py` 反过来核对每个连接器声明的键都在这里。
 _ENRICHED_PREDICATES = {
     "published_at": "published_at IS NOT NULL AND published_at<>''",
-    "tag_types": "json_extract(metadata_json,'$.tag_types') IS NOT NULL",
+    # rule34xxx：分类只有帖子页给，时长只有原文件头给，两样都有才算补齐。只看分类的话，
+    # 时长功能上线前补过分类的行、文件头那次没读到的行，常规检查永远不会再问。
+    "tag_types_duration": (
+        "json_extract(metadata_json,'$.tag_types') IS NOT NULL"
+        " AND (duration IS NOT NULL OR (lower(COALESCE(media_url,'')) NOT LIKE '%.mp4'"
+        " AND lower(COALESCE(media_url,'')) NOT LIKE '%.mp4?%'))"),
     "post_type": "json_extract(metadata_json,'$.post_type') IS NOT NULL",
     "media_dims": "json_extract(metadata_json,'$.media_dims') IS NOT NULL",
 }

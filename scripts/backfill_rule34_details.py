@@ -15,6 +15,10 @@ posts DAPI 只回扁平标签和最后修改时间，三样东西要另外问：
 
 默认 dry-run，只写复核 CSV。`--apply` 必须同时给 `--backup`，与本仓库其它真实写入
 脚本一致。`--resume` 跳过同一份 CSV 里已经写入的条目，中断后用原命令加它接着跑。
+
+`--duration-only` 只补 mp4 缺的时长：只挑 `duration` 为空的 mp4 条目，不问帖子页，
+只读原文件头，也只写 `duration`。时长在视频 CDN 上，不受帖子页每秒一次的限流牵连，
+授权只覆盖时长时用它，别的列一格不动。
 """
 from __future__ import annotations
 
@@ -64,6 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--delay", type=float, default=DEFAULT_DELAY)
     parser.add_argument("--resume", action="store_true",
                         help="跳过 --out 里已经写入的条目，接着上一趟跑")
+    parser.add_argument("--duration-only", action="store_true",
+                        help="只补 mp4 缺的时长：不问帖子页，只读原文件头，只写 duration")
     return parser
 
 
@@ -74,20 +80,23 @@ def written_ids(path: Path) -> set[int]:
 
 
 def pending_rows(connection: sqlite3.Connection, limit: int,
-                 done: set[int] = frozenset()) -> list[dict]:
+                 done: set[int] = frozenset(), *, duration_only: bool = False) -> list[dict]:
     """待补条目：rule34xxx 来源的全部条目，扣掉上一趟已经写入的。
 
     上传时间错没错，不问帖子页就看不出来——被改过的帖子 `change` 晚于上传，没改过的
     两者逐秒相同，账本里长得一样。所以每条都要问一遍，续跑靠 CSV 而不是账本里的值。
+    只补时长时缺不缺看账本就知道，只挑 `duration` 为空的 mp4。
     """
     rows = []
     query = (
         "SELECT i.id, i.external_id, i.media_url, i.published_at, i.duration,"
         " i.metadata_json FROM follow_item i JOIN follow_source s ON s.id=i.source_id"
-        " WHERE s.provider='rule34xxx' ORDER BY i.id"
+        " WHERE s.provider='rule34xxx'"
+        + (" AND i.duration IS NULL" if duration_only else "")
+        + " ORDER BY i.id"
     )
     for row in connection.execute(query):
-        if row["id"] in done:
+        if row["id"] in done or (duration_only and not _is_mp4(row["media_url"])):
             continue
         try:
             metadata = json.loads(row["metadata_json"] or "{}")
@@ -156,6 +165,23 @@ def inspect_row(connector, row: dict) -> tuple[dict, dict | None]:
     return entry, update or None
 
 
+def inspect_duration(connector, row: dict) -> tuple[dict, dict | None]:
+    """只补时长：读一次原文件头，读到就只写 `duration`。
+
+    读不到记「未取得」而不是写空：`moov` 在文件结尾、CDN 一时不通都会这样，
+    留给下一趟再问，不冒充测过。
+    """
+    entry = {"item_id": row["id"], "external_id": row["external_id"], "result": "",
+             "published_before": row["published_at"] or "", "published_after": "",
+             "duration": "", "tag_types_added": "", "written": "否", "note": ""}
+    seconds = connector._video_seconds(row["media_url"])
+    if not seconds:
+        entry.update(result="未取得", note="时长未取得")
+        return entry, None
+    entry.update(result="取得", duration=seconds)
+    return entry, {"duration": seconds}
+
+
 def _is_mp4(url: str | None) -> bool:
     return str(url or "").lower().split("?")[0].endswith(".mp4")
 
@@ -182,7 +208,7 @@ def run(args: argparse.Namespace) -> int:
     previous = [row for row in read_rows(args.out, missing_ok=True)
                 if row.get("written") == "是"] if args.resume else []
     with open_readonly(args.db) as reader:
-        rows = pending_rows(reader, args.limit, done)
+        rows = pending_rows(reader, args.limit, done, duration_only=args.duration_only)
         total = reader.execute(
             "SELECT COUNT(*) FROM follow_item i JOIN follow_source s ON s.id=i.source_id"
             " WHERE s.provider='rule34xxx'").fetchone()[0]
@@ -195,6 +221,8 @@ def run(args: argparse.Namespace) -> int:
     if args.apply:
         # 备份在任何写入之前由 `open_for_write` 落；分批提交，中断一次不至于整趟白跑。
         writer = open_for_write(args)
+        # 服务的关注检查同时在写 follow_item；它的事务很短，等它提交而不是 5 秒就报锁。
+        writer.execute("PRAGMA busy_timeout=60000")
         print(f"备份：{args.backup}", flush=True)
         before = writer.execute("SELECT COUNT(*) FROM follow_item").fetchone()[0]
 
@@ -220,7 +248,7 @@ def run(args: argparse.Namespace) -> int:
         # 间隔按帖子页请求的起点算：文件头在另一个主机上，问它的时间落在这段间隔里。
         time.sleep(max(0.0, next_detail - time.monotonic()))
         next_detail = time.monotonic() + args.delay
-        entry, update = inspect_row(connector, row)
+        entry, update = (inspect_duration if args.duration_only else inspect_row)(connector, row)
         log.append(entry)
         if entry["result"] == "未取得":
             counts["未取得"] += 1

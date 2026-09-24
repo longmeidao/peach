@@ -130,6 +130,40 @@ class FollowCoverServiceTests(unittest.TestCase):
         resolver.resolve.assert_called_with(item, 1)
         self.assertEqual(ffmpeg.call_count, 1)
 
+    def test_each_fanbox_video_in_a_post_gets_its_own_cached_still(self):
+        """多媒体清单里每个视频各要一格画面；第一个视频点不点名都落在卡面那份缓存上。"""
+        item = self._item("fanbox")
+        item.metadata = {"media_items": [
+            {"media_kind": "video", "resource_provider": "fanbox"},
+            {"media_kind": "image", "resource_provider": "fanbox"},
+            {"media_kind": "video", "resource_provider": "fanbox"},
+        ]}
+        resolver = mock.Mock()
+        resolver.resolve.side_effect = lambda _item, index: ResolvedFollowMedia(
+            f"https://downloads.fanbox.cc/files/video-{index}.mp4", item.url)
+        service = FollowCoverService(_FFmpeg(), resolver, self.root)
+
+        def run(command, **kwargs):
+            Path(command[-1]).write_bytes(b"jpeg")
+            return subprocess.CompletedProcess(command, 0, b"", b"")
+
+        with mock.patch("peach.follow_covers.subprocess.run", side_effect=run) as ffmpeg:
+            card = service.cover(item)
+            self.assertEqual(service.cover(item, 0), card)
+            second = service.cover(item, 2)
+            # 生成第二个视频的画面不能把第一个视频那份当旧帧清掉，反之亦然。
+            self.assertEqual(service.cover(item), card)
+        self.assertNotEqual(second, card)
+        self.assertTrue(card.is_file() and second.is_file())
+        self.assertEqual(ffmpeg.call_count, 2)
+        for media in (1, 5):
+            with self.subTest(media=media), self.assertRaises(FollowCoverUnavailable):
+                service.cover(item, media)
+
+    def test_only_fanbox_posts_accept_a_media_index(self):
+        with self.assertRaises(FollowCoverUnavailable):
+            self.service.cover(self._item(), 0)
+
     def test_only_supported_videos_enter_the_generator(self):
         for provider, kind in (("rule34xxx", "video"),
                                ("rule34paheal", "image")):

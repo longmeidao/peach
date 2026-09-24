@@ -6087,6 +6087,12 @@ function followCollectionCopy(group,item,mark=''){
   return {label,title:group.is_release&&item.author?`${item.author}：${body}`:body};
 }
 
+/* 队列里没有画面的那一格放中性图形，不放站点图标：格子里的图一律按画面铺满，
+   48px 的 favicon 会被拉成整格，看上去就像这条视频的缩略图。 */
+function followQueueNoThumb(kind){
+  return `<span class="fnothumb">${icon(kind==='image'?'image-off':'play')}</span>`;
+}
+
 function followQueueHtml(group,itemId){
   const groupedOwner=followGroupedMediaOwner(group);
   if(groupedOwner)return followEmbeddedQueueHtml(groupedOwner,null);
@@ -6096,7 +6102,7 @@ function followQueueHtml(group,itemId){
       const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
       const thumb=item.thumb_url
         ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
-        :`<span class="fnothumb">${sourceIcon(item.provider)}</span>`;
+        :followQueueNoThumb('video');
       return `<div class="mixrow"><button class="mixitem ${item.id===itemId?'current':''}" data-follow-queue-item="${item.id}" aria-current="${item.id===itemId?'true':'false'}">
         <span class="mixitempic">${thumb}${realDuration(item.duration)?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
         <span class="mixitemtext"><b data-truncate-end>${esc(copy.title)}</b><span data-truncate-end><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${followWhen(item)}</span></span></button></div>`;
@@ -6115,7 +6121,7 @@ function followEmbeddedQueueHtml(item,mediaIndex){
   const rows=groups.map(group=>`${group.label?`<h3 class="mixgrouplabel">${esc(group.label)} <span>${group.items.length}</span></h3>`:''}${group.items.map(media=>{
       const thumb=media.thumb_url
         ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
-        :`<span class="fnothumb">${sourceIcon(media.resource_provider||item.provider)}</span>`;
+        :followQueueNoThumb(media.media_kind);
       return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-owner="${item.id}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
         <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b data-middle-truncate>${esc(javDisplayName(media))}</b><span data-truncate-end>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
     }).join('')}`).join('');
