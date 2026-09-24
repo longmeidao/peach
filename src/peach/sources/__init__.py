@@ -11,11 +11,11 @@ from .javbus import JAVBUS, JavBusSource
 from .javdb import JAVDB, JavDBSource
 from .onepondo import ONEPONDO, OnePondoSource
 from .r18dev import R18DEV, R18DevSource
-from .seesaa import SEESAA, SeesaaSource
+from .seesaa import SEESAA, WIKI_SOURCES, SeesaaSource
 
 #: 来源名 → 站的类。`LibraryMetadataProvider` 与 `scripts/scrape_codes.py` 按它取站，
-#: 测试按它核配置与 `SOURCE_SPECS` 等表的一致。Seesaa 作品表不在任何链上，只由
-#: `scrape_codes` 点名，会话的传输是它自己的 `seesaa.WikiPages`。
+#: 测试按它核配置与 `SOURCE_SPECS` 等表的一致。Seesaa 的几个 Wiki（`seesaa.WIKI_SOURCES`）不在
+#: 任何链上，只由 `scrape_codes` 点名，会话的传输是它们自己的 `seesaa.WikiPages`。
 SITE_SOURCES: dict[str, type[SiteSource]] = {
     R18DEV.name: R18DevSource,
     ONEPONDO.name: OnePondoSource,
@@ -25,7 +25,7 @@ SITE_SOURCES: dict[str, type[SiteSource]] = {
     AVBASE.name: AVBaseSource,
     JAVBUS.name: JavBusSource,
     JAVDB.name: JavDBSource,
-    SEESAA.name: SeesaaSource,
+    **WIKI_SOURCES,
 }
 
 __all__ = ["COOLDOWN_ACTIONS", "PERMANENT_REASONS", "REASON_KINDS", "SITE_SOURCES", "FailureReason", "Page",

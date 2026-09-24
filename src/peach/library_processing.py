@@ -69,8 +69,9 @@ SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'j
                  'dahlia': 'DAHLIA', 'mgstage': 'MGStage',
                  'fc2club': 'FC2Club', 'freejavbt': 'FreeJavBT',
                  'airav': 'AIRAV', 'avsox': 'AVSOX',
-                 # Seesaa 作品表，只由 `scrape_codes` 点名（`sources.seesaa`）。
-                 'sougouwiki': '素人系総合 Wiki'}
+                 # Seesaa 的几个 Wiki，只由 `scrape_codes` 点名（`sources.seesaa`）。
+                 'sougouwiki': '素人系総合 Wiki', 'av_neme': 'このAV女優の名前教えてwiki',
+                 'av_name': 'AV女優の名前特定wiki'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
                   'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
@@ -79,7 +80,7 @@ PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avb
                   'faleno': 'amane-faleno', 'dahlia': 'amane-dahlia', 'mgstage': 'amane-mgstage',
                   'fc2club': 'amane-fc2club',
                   'freejavbt': 'amane-freejavbt', 'airav': 'amane-airav', 'avsox': 'amane-avsox',
-                  'sougouwiki': 'sougouwiki'}
+                  'sougouwiki': 'sougouwiki', 'av_neme': 'av_neme', 'av_name': 'av_name'}
 
 
 def is_missing(error):

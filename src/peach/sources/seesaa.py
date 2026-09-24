@@ -1,6 +1,24 @@
-"""Seesaa 上的素人系総合 Wiki：厂牌作品表里的精确番号证据。
+"""Seesaa 上三个认人 Wiki：作品条目里的精确番号出演证据。
 
-厂牌页是一张 `NO` / `PHOTO` / `TITLE` / `ACTRESS` / `RELEASE` / `NOTE` 的作品表，一页几十上百行，
+三站同一主机、同一套页面骨架（`#page-body .user-area`、站内搜索 `search?keywords=`、EUC-JP），
+各有一份 `SiteConfig` 与一个类，取页层 `WikiPages`、缓存、限额与撞墙停网共用：
+
+- 素人系総合 Wiki（`sougouwiki`，`/w/sougouwiki/`）：厂牌作品表，见下文。
+- このAV女優の名前教えてwiki（`av_neme`，`/av_neme/`）：不用表格。系列页与月份归档页
+  （`d/2021年4月`，一页 1.3 MB）里一部作品一个 `h5` 小节，标题是「品番| 系列名」，正文
+  `<b>名前(女優名)</b>：<a>艺名</a>`，后面是 MGS 标题链接与「別名：素人名义 年龄 职业」。人物页
+  的作品小节没有这一行。站方说明写着名字旁带「？」或「▲」是不确定。
+- AV女優の名前特定wiki（`av_name`，`/av_name/`）：FANZA 素人与 FANZAビデオ 一个品番一页
+  （`d/HISYO%2d005`，`-` 按 EUC-JP 页名编成 `%2d`），键值表「品番／配信品番／素人名義／
+  出演女優／配信開始日／レーベル」；MGS 作品只挂在厂牌页上，一部一个 `h5` 小节加
+  「出演女優: … ／タイトル: … ／配信日: …」列表，厂牌页只挂最新约 1100 件。没特定的写 `--`；
+  没有人物页的名字后面跟一个指向 `e/add` 的「?」。人物页的作品小节没有「出演女優」行。
+
+两个认人 Wiki 的站内搜索是全文子串匹配（`AR-101` 会命中 `GAR-101`、`STAR-101`），结果里
+单品番页排最前，其余按站给的顺序读；只认带出演行的小节或键值表，人物页的履历不算。
+2026-09-24 实测两站都查不到 FC2-PPV 与韩国 MIB（`AR-101` 两站均无该作品）。
+
+素人系総合 Wiki 的厂牌页是一张 `NO` / `PHOTO` / `TITLE` / `ACTRESS` / `RELEASE` / `NOTE` 的作品表，一页几十上百行，
 一行一部作品。`rows()` 把一页的每一行各读成一份 `SiteRecord`，读过的页记在 `tables` 里，后面的番号
 先在那里找：`--wiki-pages-file` 预取的目录页上全部作品复用同一次请求。找不到才问站内搜索，结果页
 逐页读，人物页上「レーベル一覧」链到的厂牌页再读。
@@ -22,7 +40,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from urllib.parse import urlencode, urljoin, urlsplit
+from urllib.parse import unquote, urlencode, urljoin, urlsplit
 
 import httpx
 from bs4 import BeautifulSoup
@@ -38,6 +56,11 @@ from .base import Page, Session, SiteConfig, SiteRecord, SiteSource
 SEESAA = SiteConfig(name="sougouwiki", label="素人系総合 Wiki", provider="sougouwiki",
                     base_url="https://seesaawiki.jp", domains=("seesaawiki.jp",), stage="community")
 ROOT = SEESAA.base_url + "/w/sougouwiki/"
+#: 两个认人 Wiki。与素人系総合 Wiki 同主机，`scrape_codes` 让几站共用一个主机间隔。
+AV_NEME = SiteConfig(name="av_neme", label="このAV女優の名前教えてwiki", provider="av_neme",
+                     base_url="https://seesaawiki.jp", domains=("seesaawiki.jp",), stage="community")
+AV_NAME = SiteConfig(name="av_name", label="AV女優の名前特定wiki", provider="av_name",
+                     base_url="https://seesaawiki.jp", domains=("seesaawiki.jp",), stage="community")
 #: 本批 HTTP 请求上限的默认值（`scrape_codes --wiki-max-requests`）。
 MAX_REQUESTS = 80
 #: 单次请求的超时（秒）。
@@ -49,20 +72,27 @@ LABEL_PAGES = 4
 REVIEW_WARNING = '社区 Wiki 的出演断言需要人工复核；人物页链接不自动合并艺名'
 INCOMPLETE_WARNING = '出演栏含未识别或不确定内容，完整出演名单未取得'
 NOT_IN_SEARCH = 'Wiki 搜索范围内未取得精确作品表格行'
-#: 出演栏里这些写法说明名单不确定，整份名单只留原文证据。
-_UNCERTAIN_NAME = re.compile(r'[?？�]|不明|未確認')
+NOT_IN_ENTRIES = 'Wiki 搜索范围内未取得精确番号的作品条目'
+#: 出演栏里这些写法说明名单不确定，整份名单只留原文证据。`▲` 是 av_neme 站方说明里的不确定标记。
+_UNCERTAIN_NAME = re.compile(r'[?？�▲]|不明|未確認')
 #: 链接名摘掉之后剩下的分隔符与「出演順」不算未识别内容。
 _SEPARATORS = re.compile(r'[\s／/、,・]+|出演順')
 _PHOTO = re.compile(r'\.(?:jpg|png|webp)(?:\?|$)', re.I)
+#: 认人 Wiki 的出演行开头：av_name 写「出演女優:」，av_neme 写「名前(女優名)：」。
+_CAST_LABEL = re.compile(r'^\s*(?:出演女優|名前\s*[(（]女優名[)）])\s*[:：]?')
+#: av_name 在名字后面标假名读音（`玉木くるみ（たまき くるみ）`），不算未识别内容。
+_READING = re.compile(r'[（(][ぁ-ゟー\s]+[）)]')
+#: av_name 的人物页名带另一种写法（`羽生アリサ（羽生ありさ）`），艺名取括号前那段。
+_ALT_SPELLING = re.compile(r'^(.+?)\s*[（(][^（）()]+[）)]$')
 
 
-def page_url(url: str) -> str:
-    """仅接受这个 Wiki 的公开详情页，保留 EUC-JP 百分号编码。"""
-    absolute = urljoin(ROOT, url).split('#', 1)[0]
+def page_url(url: str, root: str = ROOT) -> str:
+    """仅接受 `root` 这个 Wiki 的公开详情页，保留 EUC-JP 百分号编码。"""
+    absolute = urljoin(root, url).split('#', 1)[0]
     parsed = urlsplit(absolute)
     if (parsed.scheme != 'https' or parsed.netloc != 'seesaawiki.jp'
-            or not parsed.path.startswith('/w/sougouwiki/d/') or parsed.query):
-        raise ValueError('需要素人系総合 Wiki 公开详情页')
+            or not parsed.path.startswith(urlsplit(root).path + 'd/') or parsed.query):
+        raise ValueError('需要这个 Wiki 的公开详情页')
     return absolute
 
 
@@ -162,20 +192,58 @@ class SeesaaSource(SiteSource):
     """
 
     DEFAULT = SEESAA
+    #: 这个 Wiki 的根地址；详情页都在它下面的 `d/`。
+    root = ROOT
+    #: 人物页上「レーベル一覧」链到的厂牌页至多再读几页。
+    label_pages = LABEL_PAGES
+    #: 搜索范围内没找到时的措辞。
+    not_found = NOT_IN_SEARCH
 
     def __init__(self, config: SiteConfig | None = None, *, pages=()) -> None:
         super().__init__(config)
-        self.pages = tuple(page_url(url) for url in pages)
+        self.pages = tuple(self.page_url(url) for url in pages)
         #: 读过的页 → 页上作品表的每一行。
         self.tables: dict[str, list[SiteRecord]] = {}
         self._read: dict[str, Page] = {}
 
+    def page_url(self, url: str) -> str:
+        return page_url(url, self.root)
+
     def search_url(self, code: str) -> str:
-        return ROOT + 'search?' + urlencode({'keywords': code})
+        return self.root + 'search?' + urlencode({'keywords': code})
+
+    def _rank(self, code: str, links: list[str]) -> list[str]:
+        """搜索结果的读取顺序：地址不带百分号编码的是厂牌目录，排在前面。"""
+        return sorted(links, key=lambda url: '%' in url)
+
+    def _stage_name(self, name: str) -> str:
+        return name
+
+    def _residual(self, text: str) -> str:
+        return text
+
+    def _cast(self, cell) -> tuple[list[dict], list[dict], str]:
+        """出演栏里带本站人物页链接的名字、它们的链接，和摘掉这些名字之后剩下的未识别内容。"""
+        performers, person_links = [], []
+        residual = BeautifulSoup(str(cell), 'html.parser')
+        for anchor in cell.select('a[href]'):
+            name = anchor.get_text(' ', strip=True)
+            try:
+                target = self.page_url(anchor['href'])
+            except ValueError:
+                continue
+            if not name or _UNCERTAIN_NAME.search(name):
+                continue
+            performers.append({'japanese_name': self._stage_name(name)})
+            person_links.append({'name': name, 'source_url': target})
+            for link in residual.select('a'):
+                if link.get_text(' ', strip=True) == name:
+                    link.decompose()
+        return performers, person_links, _SEPARATORS.sub('', self._residual(residual.get_text()))
 
     def rows(self, page: Page) -> list[SiteRecord]:
         """页上作品表的每一行各一份记录。只认带 `NO` 与 `ACTRESS` 列名的表，合并单元格的行不取。"""
-        url = page_url(page.url)
+        url = self.page_url(page.url)
         area = _soup(page.body).select_one('#page-body .user-area')
         if area is None:
             return []
@@ -201,23 +269,8 @@ class SeesaaSource(SiteSource):
             code = validate_provider_code(normalise_code_key(by_name['NO'].get_text(' ', strip=True)))
         except ValueError:
             return None
-        performers, person_links = [], []
         actress = by_name['ACTRESS']
-        residual = BeautifulSoup(str(actress), 'html.parser')
-        for anchor in actress.select('a[href]'):
-            name = anchor.get_text(' ', strip=True)
-            try:
-                target = page_url(anchor['href'])
-            except ValueError:
-                continue
-            if not name or _UNCERTAIN_NAME.search(name):
-                continue
-            performers.append({'japanese_name': name})
-            person_links.append({'name': name, 'source_url': target})
-            for link in residual.select('a'):
-                if link.get_text(' ', strip=True) == name:
-                    link.decompose()
-        remainder = _SEPARATORS.sub('', residual.get_text())
+        performers, person_links, remainder = self._cast(actress)
         warnings = [REVIEW_WARNING]
         if remainder:
             warnings.append(INCOMPLETE_WARNING)
@@ -241,14 +294,14 @@ class SeesaaSource(SiteSource):
 
     def remember(self, page: Page) -> list[SiteRecord]:
         """把一页的作品表记进 `tables`，后面的番号先在这里找。"""
-        url = page_url(page.url)
+        url = self.page_url(page.url)
         self._read[url] = page
         self.tables[url] = self.rows(page)
         return self.tables[url]
 
     def load(self, url: str, *, session: Session) -> list[SiteRecord]:
         """读一页作品表；读过的不再取。"""
-        url = page_url(url)
+        url = self.page_url(url)
         if url not in self.tables:
             self.remember(session.transport.get(url))
         return self.tables[url]
@@ -277,10 +330,10 @@ class SeesaaSource(SiteSource):
         links = []
         for anchor in _soup(session.transport.get(self.search_url(code)).body).select('.result-box .body h3 a[href]'):
             try:
-                links.append(page_url(anchor['href']))
+                links.append(self.page_url(anchor['href']))
             except ValueError:
                 continue
-        links = sorted(dict.fromkeys(links), key=lambda url: '%' in url)
+        links = self._rank(code, list(dict.fromkeys(links)))
         label_visits = 0
         for url in links[:SEARCH_PAGES]:
             page = session.transport.get(url)
@@ -292,25 +345,140 @@ class SeesaaSource(SiteSource):
                 if 'レーベル一覧' not in anchor.get_text():
                     continue
                 try:
-                    target = page_url(anchor['href'])
+                    target = self.page_url(anchor['href'])
                 except ValueError:
                     continue
                 if target not in self.tables:
-                    if label_visits >= LABEL_PAGES:
+                    if label_visits >= self.label_pages:
                         break
                     label_visits += 1
                     self.load(target, session=session)
                 found = self._located(code)
                 if found:
                     return found
-        raise MetadataProviderError(NOT_IN_SEARCH, kind='incomplete_search', retryable=True)
+        raise MetadataProviderError(self.not_found, kind='incomplete_search', retryable=True)
 
     def parse(self, page: Page, code: str) -> SiteRecord:
         """页上这个番号的那一行。"""
         code = validate_provider_code(code)
-        url = page_url(page.url)
+        url = self.page_url(page.url)
         rows = self.tables[url] if self._read.get(url) is page else self.rows(page)
         found = _one(code, rows)
         if found is None:
-            raise MetadataProviderError(NOT_IN_SEARCH, kind='incomplete_search', retryable=True)
+            raise MetadataProviderError(self.not_found, kind='incomplete_search', retryable=True)
         return found
+
+
+def _cast_line(body):
+    """一个作品小节里的出演行；没有出演行（人物页的履历小节）回 `None`。
+
+    av_name 是列表里「出演女優:」那一项；av_neme 是 `<b>名前(女優名)</b>` 所在的那一段，
+    一直读到下一个 `<br>`，名字后面跟的「？」「▲」也在这一段里。
+    """
+    for item in body.find_all('li'):
+        if _CAST_LABEL.match(item.get_text()):
+            return item
+    for bold in body.find_all('b'):
+        if not _CAST_LABEL.match(bold.get_text()):
+            continue
+        top = bold
+        while top.parent is not None and top.parent is not body:
+            top = top.parent
+        parts = [str(top)]
+        for sibling in top.next_siblings:
+            if getattr(sibling, 'name', None) == 'br':
+                break
+            parts.append(str(sibling))
+        return BeautifulSoup(''.join(parts), 'html.parser')
+    return None
+
+
+class NameWikiSource(SeesaaSource):
+    """两个认人 Wiki 的共同读法：单品番页的键值表，与厂牌、系列、月份页上的 `h5` 作品小节。
+
+    只产出出演候选：标题、日期、素人名义这些都只进证据（`wiki_evidence`），`TITLE` 在 av_name
+    厂牌页上是截断的，拿它当标题候选只会添乱。人物页不跟读——站内搜索是全文检索，载有这个番号的
+    系列页与月份页本身就在结果里。
+    """
+
+    label_pages = 0
+    not_found = NOT_IN_ENTRIES
+
+    def _page_name(self, url: str) -> str:
+        return unquote(urlsplit(url).path.rsplit('/d/', 1)[-1], encoding='euc_jp', errors='replace')
+
+    def _rank(self, code: str, links: list[str]) -> list[str]:
+        """页名就是这个番号的单品番页排最前，其余照站给的顺序。"""
+        return sorted(links, key=lambda url: not same_release_code(code, self._page_name(url)))
+
+    def _stage_name(self, name: str) -> str:
+        match = _ALT_SPELLING.match(name)
+        return match.group(1) if match else name
+
+    def _residual(self, text: str) -> str:
+        return _READING.sub('', _CAST_LABEL.sub('', text))
+
+    def rows(self, page: Page) -> list[SiteRecord]:
+        url = self.page_url(page.url)
+        area = _soup(page.body).select_one('#page-body .user-area')
+        if area is None:
+            return []
+        records = []
+        for table in area.select('table'):
+            fields = {}
+            for row in table.find_all('tr'):
+                head, cell = row.find('th'), row.find('td')
+                if head is not None and cell is not None:
+                    fields.setdefault(head.get_text(strip=True), cell)
+            if '品番' in fields and '出演女優' in fields:
+                details = {key: cell.get_text(' ', strip=True) for key, cell in fields.items() if key != '出演女優'}
+                record = self._entry(url, fields['品番'].get_text(' ', strip=True), fields['出演女優'],
+                                     {'table': str(table.get('id') or ''), 'details': details})
+                if record is not None:
+                    records.append(record)
+        for block in area.select('.wiki-section-3'):
+            heading, body = block.select_one('.title-3 h5'), block.select_one('.wiki-section-body-3')
+            cast = _cast_line(body) if heading is not None and body is not None else None
+            if cast is None:
+                continue
+            record = self._entry(url, heading.get_text(' ', strip=True).split('|', 1)[0], cast,
+                                 {'section': str(heading.get('id') or ''),
+                                  'entry_text': body.get_text(' ', strip=True)[:1000]})
+            if record is not None:
+                records.append(record)
+        return records
+
+    def _entry(self, url: str, code_text: str, cast, evidence: dict) -> SiteRecord | None:
+        try:
+            code = validate_provider_code(normalise_code_key(re.sub(r'\s+', '', code_text)))
+        except ValueError:
+            return None
+        performers, person_links, remainder = self._cast(cast)
+        warnings = [REVIEW_WARNING]
+        if remainder:
+            warnings.append(INCOMPLETE_WARNING)
+        evidence = {**evidence, 'performer_links': person_links, 'performers_complete': not bool(remainder),
+                    'actress_text': _CAST_LABEL.sub('', cast.get_text(' ', strip=True)).strip()}
+        return SiteRecord(source=self.config.name, provenance=self.config.provider, code=code, source_url=url,
+                          performers=tuple(performers) if not remainder else (),
+                          extra={'source_warnings': warnings, 'wiki_evidence': evidence})
+
+
+class AvNemeSource(NameWikiSource):
+    """このAV女優の名前教えてwiki。"""
+
+    DEFAULT = AV_NEME
+    root = AV_NEME.base_url + '/av_neme/'
+
+
+class AvNameSource(NameWikiSource):
+    """AV女優の名前特定wiki。"""
+
+    DEFAULT = AV_NAME
+    root = AV_NAME.base_url + '/av_name/'
+
+
+#: 来源名 → 站的类。`scrape_codes` 按它给每个点名的 Wiki 建一个实例与一个 `WikiPages`。
+WIKI_SOURCES: dict[str, type[SeesaaSource]] = {
+    SEESAA.name: SeesaaSource, AV_NEME.name: AvNemeSource, AV_NAME.name: AvNameSource,
+}

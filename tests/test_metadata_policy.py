@@ -25,7 +25,7 @@ class MetadataPolicyTests(unittest.TestCase):
         """链上每一档的成员都要在 `SOURCE_SPECS` 里有级别，否则候选算不出 official。"""
         chain_sources = {source for chain in metadata_routes.ROUTES.values() for source in chain}
         chain_sources |= set(metadata_routes.AMANE_STAGE) | set(metadata_routes.AMANE_OFFICIAL_STAGE)
-        chain_sources |= {"sougouwiki"}
+        chain_sources |= {"sougouwiki", "av_neme", "av_name"}
         self.assertLessEqual(chain_sources, set(SOURCE_SPECS))
         self.assertTrue(POLICY_VERSION.startswith("metadata-source-policy-"))
 
