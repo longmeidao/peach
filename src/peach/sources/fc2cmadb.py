@@ -91,11 +91,16 @@ def partial_headers(html: str | bytes) -> dict[str, str]:
     }
 
 
-def parse_actresses(payload: str | bytes) -> list[str]:
-    """那一跳回来的 JSON → 女优名。
+def parse_actresses(payload: str | bytes) -> list[dict]:
+    """那一跳回来的 JSON → 每位女优一份 `{japanese_name, external_id, alias_names}`。
 
-    同名一位只留一个。`alias_name` 里那串曾用名不取：一位女优能挂十几个，摊进演员栏
-    就成了十几个人。
+    同名一位只留一个。`external_id` 是站上人物页的编号：同一个人在站上只有一页，落库时
+    登记成外部编号，她以后的作品按编号挂回同一条实体，不看站上这次给她起了什么称呼。
+
+    `alias_name` 那一串按空白拆开放进 `alias_names`，不放 `aliases`：一位女优能挂十几个，
+    摊进演员栏就成了十几个人；而这一串里混着卖家起的商品名（`お隣のスレンダー美女`），
+    放进 `aliases` 会跟着资料页证据被直接登记成别名。它只进来源快照，由补别名后继按
+    自己的判据读（ADR-0061）。
     """
     try:
         data = json.loads(payload if isinstance(payload, str) else bytes(payload).decode("utf-8"))
@@ -105,9 +110,26 @@ def parse_actresses(payload: str | bytes) -> list[str]:
     listed = props.get("actresses") if isinstance(props, dict) else None
     if not isinstance(listed, list):
         return []
-    names = [str((one or {}).get("name") or "").strip() if isinstance(one, dict) else ""
-             for one in listed]
-    return list(dict.fromkeys(name for name in names if name))
+    found: dict[str, dict] = {}
+    for one in listed:
+        if not isinstance(one, dict):
+            continue
+        name = str(one.get("name") or "").strip()
+        if not name or name in found:
+            continue
+        person = {"japanese_name": name}
+        if str(one.get("id") or "").strip().isdigit():
+            person["external_id"] = str(one["id"]).strip()
+        aliases = alias_names(one.get("alias_name"))
+        if aliases:
+            person["alias_names"] = aliases
+        found[name] = person
+    return list(found.values())
+
+
+def alias_names(raw) -> list[str]:
+    """人物页 `alias_name` 那一格 → 写法列表。站上用空白分隔，全角半角都有。"""
+    return list(dict.fromkeys(part for part in re.split(r"[\s　]+", str(raw or "")) if part))
 
 
 def page_comments(props: Mapping) -> list[dict]:
@@ -242,8 +264,7 @@ class Fc2cmadbSource(SiteSource):
             partial = session.get(page.url, config=self.config, referer=page.url, headers=headers).body
         except (SourcePaused, Unavailable):
             return record
-        names = parse_actresses(partial)
-        return replace(record, performers=tuple({"japanese_name": name} for name in names))
+        return replace(record, performers=tuple(parse_actresses(partial)))
 
     def query(self, code: str, *, session: Session) -> SiteRecord:
         try:

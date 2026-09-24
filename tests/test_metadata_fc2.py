@@ -295,7 +295,9 @@ class Fc2MirrorPageTests(unittest.TestCase):
         transport = serve({url: lambda headers: (mirror_actresses("野々宮すず") if headers.get("X-Inertia")
                                                  else mirror_page())})
         found = Fc2cmadbSource().query("FC2-PPV-3189161", session=Session(transport))
-        self.assertEqual(found.payload()["actresses"], [{"japanese_name": "野々宮すず"}])
+        self.assertEqual(found.payload()["actresses"], [{
+            "japanese_name": "野々宮すず", "external_id": "3667",
+            "alias_names": ["ののみやすず", "逢坂りの", "きたのあや"]}])
         self.assertEqual(transport.calls, [(url, "https://fc2cmadb.com/", 2 * 1024 * 1024, None),
                                            (url, url, 2 * 1024 * 1024, "actresses")])
 
@@ -325,8 +327,12 @@ class Fc2MirrorPageTests(unittest.TestCase):
 
     def test_the_stage_names_a_woman_has_worn_are_not_more_women(self):
         # `alias_name` 那一串是同一个人的曾用名，一位女优挂着十几个。
-        self.assertEqual(parse_actresses(mirror_actresses("野々宮すず", "ゆうか")),
-                         ["野々宮すず", "ゆうか"])
+        found = parse_actresses(mirror_actresses("野々宮すず", "ゆうか"))
+        self.assertEqual([one["japanese_name"] for one in found], ["野々宮すず", "ゆうか"])
+        self.assertEqual([one["external_id"] for one in found], ["3667", "3668"])
+        # 放在 `alias_names` 而不是 `aliases`：后者会跟着资料页证据被直接登记成别名。
+        self.assertNotIn("aliases", found[0])
+        self.assertEqual(found[0]["alias_names"], ["ののみやすず", "逢坂りの", "きたのあや"])
         self.assertEqual(parse_actresses(mirror_actresses()), [])
         self.assertEqual(parse_actresses("<html>429</html>"), [])
 

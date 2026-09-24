@@ -19,6 +19,11 @@
 5. **四种不写**，与 `scripts/apply_alias_candidates.py` 同一口径：已有、被另一条实体占用、
    统称已变、查无此人。占用的记进复核产物，那是两条该不该合并的问题。
 
+有 FC2 作品的女优先问第三站 fc2cmadb（ADR-0061）：从她自己作品页的女优栏进到站上那位
+人物，那位人物的主名或曾用名栏里得有账本里她的名字，才收下站上的主名。曾用名栏那一串
+混着卖家起的商品名，一个也不收；站上主名登记之后，本轮再拿它去搜另外两站，那两站的
+名字栏照上面的判据补齐其余写法。
+
 每条写入的 `entity_alias.source` 是这一轮的批次号 `auto:performer-alias@<任务行 id>`，
 `scripts/revert_auto_landing.py --source auto:performer-alias` 按它整批撤回。每一轮的判词
 （写了什么、为什么没写）逐条写进 `generated/performer-alias-landing.csv`。
@@ -55,14 +60,18 @@ SOURCE = "auto:performer-alias"
 #: 十来秒，走写账本那条串行通道；给多了会把厂牌那几条挤到很后面。
 STOCK_SHARE = 16
 
-MINNANO, AV_NEME = "minnano-av", "av_neme"
+MINNANO, AV_NEME, FC2CMADB = "minnano-av", "av_neme", "fc2cmadb"
 AV_NEME_ROOT = "https://seesaawiki.jp/av_neme/"
+FC2CMADB_ACTRESS = "https://fc2cmadb.com/actresses/{id}"
 #: 每站最多拿几个名字去检索、av_neme 一次搜索最多读几张人物页、一站一条后继最多几次请求。
 MAX_KEYS, MAX_PERSON_PAGES, MAX_REQUESTS = 3, 3, 8
+#: fc2cmadb 最多翻她几部作品的女优栏：一部两次请求（作品页、女优栏），同一个人每部都一样。
+MAX_WORKS = 3
 #: minnano-av 的间隔与超时：与链接采集那一趟同一档，再放宽一点，这条后继不赶时间。
 MINNANO_INTERVAL, TIMEOUT = 3.0, 25.0
 #: 进程内共用：一轮里几十条后继一条接一条跑，每条各起一个限速器等于没有间隔。
-_LIMITER = HostLimiter({"minnano-av.com": MINNANO_INTERVAL, "seesaawiki.jp": 2.0})
+_LIMITER = HostLimiter({"minnano-av.com": MINNANO_INTERVAL, "seesaawiki.jp": 2.0,
+                        "fc2cmadb.com": 2.0})
 #: 机器人验证页的记号。它常以 200 回来，不认出来就会被当成正文缓存下去。
 _CHALLENGE = ("Just a moment", "cf-chl-", "challenge-platform")
 
@@ -158,25 +167,40 @@ def _refs(connection: sqlite3.Connection, entity_id: int) -> list[str]:
         " AND external_kind='performer' ORDER BY external_id", (int(entity_id), MINNANO))]
 
 
+def fc2_codes(connection: sqlite3.Connection, entity_id: int) -> list[str]:
+    """她出演的 FC2 作品番号，按番号排，最多 `MAX_WORKS` 部：fc2cmadb 那一站的入口。"""
+    return [str(row[0]) for row in connection.execute(
+        "SELECT DISTINCT a.code FROM asset a JOIN asset_entity ae ON ae.asset_id=a.id"
+        " WHERE ae.entity_id=? AND ae.role='performer' AND a.code LIKE 'FC2%'"
+        " ORDER BY a.code LIMIT ?", (int(entity_id), MAX_WORKS))]
+
+
 def search_keys(canonical: str, aliases) -> list[str]:
     """拿去检索的写法：名字链里收得下的那些，日文写法在前。"""
     return [name for name in name_chain(canonical, list(aliases)) if not rejection(name)]
 
 
 def has_entry(connection: sqlite3.Connection, entity_id: int) -> bool:
-    """有没有路进得去：账本里有 minnano-av 编号，或名字链里有一个能拿去检索的写法。"""
+    """有没有路进得去：账本里有 minnano-av 编号、名字链里有一个能拿去检索的写法，或她有 FC2 作品。"""
     names = _names(connection, entity_id)
-    return names is not None and bool(_refs(connection, entity_id) or search_keys(*names))
+    return names is not None and bool(_refs(connection, entity_id) or search_keys(*names)
+                                      or fc2_codes(connection, entity_id))
 
 
 def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
-    """会让结论变的量：她的名字链与 minnano-av 编号。这条后继自己写的别名不算在内——
+    """会让结论变的量：她的名字链与 minnano-av 编号，有 FC2 作品的再加上 fc2cmadb 那一站。
+    这条后继自己写的别名不算在内——算进去的话，撤回一批之后指纹又变回来，下一轮就把刚撤掉的
+    原样再写一遍。
 
-    算进去的话，撤回一批之后指纹又变回来，下一轮就把刚撤掉的原样再写一遍。
+    fc2cmadb 那一项只在她有 FC2 作品时进指纹：没有 FC2 作品的，指纹只有名字链与编号两项，
+    存量不会因为多了一站整库重派；有的那些各重跑一次，把站上的主名补上。
     """
     names = _names(connection, entity_id, own=False) or ("", [])
     keys = sorted({match_key(name) for name in [names[0], *names[1]] if name})
-    raw = json.dumps([keys, _refs(connection, entity_id)], ensure_ascii=False)
+    parts: list = [keys, _refs(connection, entity_id)]
+    if fc2_codes(connection, entity_id):
+        parts.append(FC2CMADB)
+    raw = json.dumps(parts, ensure_ascii=False)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
 
@@ -310,12 +334,80 @@ class AvNemePages:
         self.pages.close()
 
 
+class Fc2cmadbPages:
+    """fc2cmadb 的取页：一部作品的女优栏（作品页一次、点名 `actresses` 再一次）。
+
+    按作品号缓存解析结果，站上没有这部的也记下，下一轮不再问。Cookie、429 冷却走来源层的
+    `SourceTransport`；403 与验证页它不记，这里补记，站在冷却期内一次都不问。
+    """
+
+    def __init__(self, cache_dir: Path, cooldown_root: Path, transport=None, *,
+                 limiter=_LIMITER, max_requests: int = MAX_REQUESTS):
+        from .scraping_access import SourceTransport
+
+        self.cache_dir, self.cooldown_root = Path(cache_dir), Path(cooldown_root)
+        self.transport = transport or SourceTransport(self.cooldown_root)
+        self.limiter, self.max_requests, self.requests = limiter, max_requests, 0
+
+    def actresses(self, video: str) -> list[dict]:
+        from .sources.fc2cmadb import FC2CMADB as CONFIG, ARTICLE_PATH, parse_actresses, partial_headers
+
+        path = self.cache_dir / f"{video}.json"
+        try:
+            return list(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError, TypeError):
+            pass
+        url = CONFIG.base_url + ARTICLE_PATH.format(video_id=video)
+        page = self._get(url, {"Accept": "text/html"})
+        headers = partial_headers(page) if page is not None else {}
+        found = parse_actresses(self._get(url, {**headers, "Referer": url}) or b"") if headers else []
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(found, ensure_ascii=False), encoding="utf-8")
+        return found
+
+    def _get(self, url: str, headers: dict) -> bytes | None:
+        """一页的正文；站上没有（404）回 None。"""
+        from .http import HttpRequest
+        from .scraping_access import SourcePaused, pause_source, paused_until
+
+        if paused_until(self.cooldown_root, FC2CMADB):
+            raise Blocked("来源正在冷却")
+        if self.requests >= self.max_requests:
+            raise Unavailable("这一条的请求数用完了")
+        self.limiter.wait(url)
+        self.requests += 1
+        try:
+            response = self.transport(HttpRequest("GET", url, headers), TIMEOUT, 4 << 20)
+        except SourcePaused as error:
+            raise Blocked(str(error)) from None
+        except Exception as error:  # noqa: BLE001 - 网络层失败都是「这一页没取到」
+            raise Unavailable(f"网络请求失败：{type(error).__name__}") from None
+        text = response.body[:4096].decode("utf-8", "replace")
+        if response.status == 429:
+            pause_source(self.cooldown_root, FC2CMADB)
+            raise Blocked("来源限流（429）")
+        if response.status == 403 or any(mark in text for mark in _CHALLENGE):
+            pause_source(self.cooldown_root, FC2CMADB, refused=True)
+            raise Blocked("来源拒绝访问或要求机器人验证")
+        if response.status == 404:
+            return None
+        if response.status != 200:
+            raise Unavailable(f"HTTP {response.status}")
+        return response.body
+
+    def close(self) -> None:
+        close = getattr(self.transport, "close", None)
+        if close:
+            close()
+
+
 def open_sites(contract) -> dict:
-    """这一条后继用的两站取页器。测试把这一步整个换掉，网络就一次都不出。"""
+    """这一条后继用的三站取页器。测试把这一步整个换掉，网络就一次都不出。"""
     cache = Path(contract.candidate_root) / "provider-cache"
     cooldown = _cooldown_root(contract)
     return {MINNANO: MinnanoPages(cache / "minnano-av-pages", cooldown),
-            AV_NEME: AvNemePages(cache / "seesaa-pages", cooldown)}
+            AV_NEME: AvNemePages(cache / "seesaa-pages", cooldown),
+            FC2CMADB: Fc2cmadbPages(cache / "fc2cmadb-actresses", cooldown)}
 
 
 def _cooldown_root(contract) -> Path:
@@ -381,6 +473,43 @@ def av_neme_page(pages, keys: list[str], mine: set[str]) -> tuple[list, str]:
         if matched:
             break
     return [], "；".join(notes)
+
+
+def fc2cmadb_page(pages: Fc2cmadbPages, codes: list[str], mine: set[str]) -> tuple[list, str]:
+    """([(人物页地址, [站上主名])], 说明)。她作品页女优栏里对得上她的那位，站上的主名。
+
+    对得上：那位人物的主名或曾用名栏里有账本里她的名字。这里的「她的名字」不按
+    `rejection` 筛——入口是她自己那部作品，账本里她叫 `たぬき顔サラサラ黒髪ロング`，站上
+    那一格也叫这个，这就是同一位；筛掉了，站上替她记着的真名就永远接不上。
+
+    交回去的只有站上主名。曾用名栏里混着卖家起的商品名（`ちっぱいリクルーター`、
+    `製菓専門生`），现有判据挡不住，所以一个也不收；她的其余写法由另外两站的名字栏补。
+    女优栏里不止一位列着她时判歧义，一个也不交。
+    """
+    from .sources.fc2 import video_id
+
+    found: dict[str, tuple[str, str]] = {}
+    notes = []
+    for code in codes:
+        video = video_id(code)
+        if not video:
+            continue
+        listed = pages.actresses(video)
+        matched = [one for one in listed if str(one.get("external_id") or "")
+                   and any(match_key(name) in mine
+                           for name in [one.get("japanese_name"), *(one.get("alias_names") or [])]
+                           if name)]
+        for one in matched:
+            found[str(one["external_id"])] = (FC2CMADB_ACTRESS.format(id=one["external_id"]),
+                                              clean(str(one["japanese_name"])))
+        if matched:
+            # 一部就够：同一个人在站上只有一页，再翻别的作品只是多花两次请求。
+            break
+        shown = "、".join(str(one.get("japanese_name") or "") for one in listed)
+        notes.append(f"{code} 的女优栏{'是 ' + shown if shown else '是空的'}")
+    if len(found) > 1:
+        return [], "女优栏里不止一位列着她：" + "、".join(url for url, _name in found.values())
+    return [(url, [name]) for url, name in found.values()], "；".join(notes)
 
 
 # -- 落库 --------------------------------------------------------------------
@@ -465,6 +594,7 @@ def _run(contract, key: str, handle) -> dict:
     with contract.database.read_connection() as connection:
         names = _names(connection, entity_id)
         refs = _refs(connection, entity_id)
+        codes = fc2_codes(connection, entity_id)
     if names is None:
         return {"outcome": "实体已不存在"}
     canonical = names[0]
@@ -472,7 +602,11 @@ def _run(contract, key: str, handle) -> dict:
         handle.progress(label=_label(canonical), throttle=0)
     sites = open_sites(contract)
     try:
-        reports, rows = _visit(contract, sites, entity_id, canonical, refs, batch)
+        reports: dict[str, str] = {}
+        rows = _visit_fc2cmadb(contract, sites, entity_id, canonical, codes, batch, reports)
+        more_reports, more_rows = _visit(contract, sites, entity_id, canonical, refs, batch)
+        reports.update(more_reports)
+        rows += more_rows
     finally:
         for pages in sites.values():
             pages.close()
@@ -489,13 +623,40 @@ def _run(contract, key: str, handle) -> dict:
     elif any(report.startswith("未取得") for report in reports.values()):
         outcome = "未取得"
     else:
-        outcome = "两站都没对上她"
+        outcome = f"{'三' if codes else '两'}站都没对上她"
     summary = {"name": canonical, "outcome": outcome, "sites": reports}
     if written:
         summary["aliases"] = written[:12]
     if taken:
         summary["taken"] = taken
     return summary
+
+
+def _visit_fc2cmadb(contract, sites: dict, entity_id: int, canonical: str, codes: list[str],
+                    batch: str, reports: dict[str, str]) -> list[dict]:
+    """先问 fc2cmadb：站上主名登记之后，另外两站这一轮就能拿它去搜。没有 FC2 作品就不问。"""
+    if not codes or FC2CMADB not in sites:
+        return []
+    with contract.database.read_connection() as connection:
+        current = _names(connection, entity_id)
+    if current is None:
+        reports[FC2CMADB] = "未命中：实体已不存在"
+        return []
+    mine = {match_key(name) for name in [current[0], *current[1]] if name}
+    try:
+        pages, note = fc2cmadb_page(sites[FC2CMADB], codes, mine)
+    except (Blocked, Unavailable) as error:
+        reports[FC2CMADB] = f"未取得：{error}"
+        return []
+    if not pages:
+        reports[FC2CMADB] = f"未命中：{note or '女优栏里没有她'}"
+        return []
+    rows: list[dict] = []
+    for url, found in pages:
+        with contract.database.write_transaction() as connection:
+            rows.extend(land(connection, entity_id, canonical, FC2CMADB, url, found, batch))
+    reports[FC2CMADB] = "命中 " + "、".join(url for url, _found in pages)
+    return rows
 
 
 def _visit(contract, sites: dict, entity_id: int, canonical: str, refs: list[str],
