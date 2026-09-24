@@ -10962,6 +10962,20 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
   const svg=document.createElementNS(ns,'svg');svg.setAttribute('width','0');svg.setAttribute('height','0');svg.setAttribute('aria-hidden','true');svg.style.position='fixed';svg.style.pointerEvents='none';
   const defs=document.createElementNS(ns,'defs');svg.append(defs);document.body.append(svg);
   const attached=new Map();let sequence=0;
+  /* 侧栏开合那 300ms 里（`body` 的 `padding-left` 与抽屉的 `width` 在过渡），抽屉和主区里的
+     玻璃宽度逐帧在变，贴图不跟着画：一张是几毫秒 JS 加一次 PNG 编码，写回 `--glass-optic`
+     又让排在后面的观察器每次读尺寸都强制重排一遍，关注页实测一次开合要画十到十六张，
+     观察器回调合计 95–126ms。过渡期间尺寸变了的那几块先退成同一档的纯模糊，全部停下来
+     再按终态尺寸补画一次。 */
+  let sizing=0;const stale=new Set();
+  const sizingEvent=event=>(event.target===document.body&&event.propertyName==='padding-left')
+    ||(attached.has(event.target)&&(event.propertyName==='width'||event.propertyName==='height'));
+  document.addEventListener('transitionrun',event=>{if(sizingEvent(event))sizing++},true);
+  const settleSizing=event=>{
+    if(!sizingEvent(event)||!sizing||--sizing)return;
+    const nodes=[...stale];stale.clear();nodes.forEach(node=>attached.get(node)?.draw());
+  };
+  document.addEventListener('transitionend',settleSizing,true);document.addEventListener('transitioncancel',settleSizing,true);
   function attach(node){
     if(attached.has(node))return;
     const id=`peach-optic-${++sequence}`;const filter=document.createElementNS(ns,'filter');filter.id=id;filter.setAttribute('filterUnits','userSpaceOnUse');filter.setAttribute('color-interpolation-filters','sRGB');
@@ -10970,7 +10984,12 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
     let previous='';
     const draw=()=>{
       const width=Math.round(node.clientWidth),height=Math.round(node.clientHeight);if(!width||!height)return;
-      const radius=Math.min(parseFloat(getComputedStyle(node).borderRadius)||22,width/2,height/2);const key=`${width}:${height}:${radius}`;if(previous===key)return;previous=key;
+      const radius=Math.min(parseFloat(getComputedStyle(node).borderRadius)||22,width/2,height/2);const key=`${width}:${height}:${radius}`;if(previous===key)return;
+      if(sizing){
+        if(node.dataset.opticGlass&&node.style.getPropertyValue('--glass-optic')!=='blur(14px)')node.style.setProperty('--glass-optic','blur(14px)');
+        previous='';stale.add(node);return;
+      }
+      previous=key;
       const ratio=Math.min(1,600/width,600/height);const w=Math.max(2,Math.round(width*ratio)),h=Math.max(2,Math.round(height*ratio));
       /* 画布只拿来写一次像素、读一次 PNG，走 CPU 那一种：默认的 GPU 画布在 toDataURL 时要把
          像素读回来，第一次还得先建 GPU 上下文，冷启动实测单这一下就是一百毫秒上下，之后的
@@ -10990,7 +11009,7 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
       node.style.setProperty('--glass-optic',`blur(14px) url("#${id}")`);node.dataset.opticGlass='true';
     };
     const observer=new ResizeObserver(draw);observer.observe(node);
-    attached.set(node,{observer,filter});draw();
+    attached.set(node,{observer,filter,draw});draw();
   }
   const sync=()=>{
     for(const [node,{observer,filter}] of attached){
