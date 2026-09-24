@@ -34,6 +34,8 @@ _META_TAIL = re.compile(r"販売者:\s*(?P<seller>.*?)\s*/\s*公開日:\s*(?P<da
 _JAPANESE_DATE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
 #: 站上没有女优时那一栏写的话。
 _NO_INFORMATION = "情報がありません"
+#: 女优页地址末尾那段 uuid。
+_ACTRESS_ID = re.compile(r"/actresses/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/?(?:[?#]|$)")
 
 
 def _number(wanted: str) -> re.Pattern:
@@ -68,16 +70,27 @@ def _block_after(soup: BeautifulSoup, label: str):
     return None
 
 
-def _performers(soup: BeautifulSoup) -> list[str]:
+def _performers(soup: BeautifulSoup) -> list[dict]:
+    """出演女優那一块 → 每位一份 `{japanese_name, external_id?}`，同名只留一个。
+
+    `external_id` 是站内女优页 `/ja/actresses/<uuid>` 的 uuid：同一个人在站上只有一页，落库时登记成外部
+    编号，她以后的作品按编号挂回同一条实体（ADR-0061）。女优页自己的别名栏几乎是空的，不去读它。
+    """
     block = _block_after(soup, "出演女優")
     if block is None:
         return []
-    names = []
+    found: dict[str, dict] = {}
     for link in block.select('a[href*="/actresses/"]'):
         picture = link.select_one("img[alt]")
-        name = str(picture.get("alt") or "").strip() if picture is not None else ""
-        names.append(name or text_of(link))
-    return list(dict.fromkeys(name for name in names if name and name != _NO_INFORMATION))
+        name = (str(picture.get("alt") or "").strip() if picture is not None else "") or text_of(link)
+        if not name or name == _NO_INFORMATION or name in found:
+            continue
+        person = {"japanese_name": name}
+        uuid = _ACTRESS_ID.search(str(link.get("href") or ""))
+        if uuid:
+            person["external_id"] = uuid.group(1).lower()
+        found[name] = person
+    return list(found.values())
 
 
 def _seller(soup: BeautifulSoup) -> tuple[str, str]:
@@ -149,7 +162,7 @@ class Fc2ppvdbSource(SiteSource):
             title=strip_code(title, wanted),
             release_date=japanese_date(_labelled(soup, "販売日") or (tail.group("date") if tail else "")),
             runtime=runtime_minutes(tail.group("runtime")) if tail else None,
-            performers=({"japanese_name": name} for name in _performers(soup)),
+            performers=_performers(soup),
             label=seller or (tail.group("seller").strip() if tail else ""),
             seller_url=seller_page(slug) if slug else "",
             tags=_tags(soup))
