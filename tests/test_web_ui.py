@@ -1942,8 +1942,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("flex-wrap:wrap", row, "放不下的整颗换行，不横着截断")
         self.assertIn("align-content:flex-start", row)
         self.assertIn("overflow:hidden", row)
-        self.assertIn("height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px)", row,
-                      "行高按 .tg 的三个 token 算，改字号时不用回来对第二个数")
+        self.assertIn("height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px + 8px)", row,
+                      "行高按 .tg 的三个 token 算，另加给焦点环垫的上下 4px，改字号时不用回来对第二个数")
         start = css.index(chr(10) + ".tg{")
         tag = css[start:css.index("}", start)]
         self.assertIn("max-width:100%", tag, "只兜底一颗标签比整张卡还宽的情形")
@@ -1957,9 +1957,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 不再给其中一种额外加一行高度。
         self.assertPageContains('body[data-density="dense"] .grid>.card{padding-top:7px}')
         self.assertPageContains('body[data-density="dense"] .card .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px;')
-        self.assertPageContains('gap:3px;height:var(--card-meta-block);overflow:hidden}')
+        self.assertPageContains('gap:3px;margin:-4px;padding:4px;height:calc(var(--card-meta-block) + 8px);overflow:hidden;')
         self.assertPageContains('body[data-density="dense"] .card .meta .s{height:1.35em;min-height:0;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}')
-        self.assertPageContains('body[data-density="dense"] .card .ctags{height:30px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}')
+        self.assertPageContains('body[data-density="dense"] .card .ctags{height:38px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}')
         self.assertPageContains('body[data-density="dense"] .card .meta .watchcount{display:none}')
         self.assertPageContains('小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。')
         self.assertPageLacks("jav-small")

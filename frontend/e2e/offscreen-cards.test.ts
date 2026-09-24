@@ -21,6 +21,8 @@ interface CatalogPayload {
 }
 
 /** `/api/items` 的首页换成 `CLONES` 条：每三条有一条带标签，最后一条带一枚独有的标签给查找用。
+ * 带标签的那几条同时归给一位女优：演示库的作品都未归属，头像是不可聚焦的 `<span>`，归属之后
+ * 才是按钮，焦点环那条用例要聚焦它。
  * 克隆源是去掉 `performer` 筛选之后的目录首页：演示库里没有人物实体，资料页按名字筛出来是空的。 */
 async function serveLongItems(page: Page): Promise<void> {
   const original = new Map<number, number>();
@@ -39,6 +41,10 @@ async function serveLongItems(page: Page): Promise<void> {
       original.set(CLONE_BASE + index, Number(item.id));
       item.id = CLONE_BASE + index;
       item.tags = index === CLONES - 1 ? [PROBE_TAG] : index % 3 === 0 ? ['演示'] : [];
+      if (index % 3 === 0) {
+        Object.assign(item, { creator: '', performers: ['演示演员'], performer_total: 1,
+          performer_entities: [{ id: 90_100, name: '演示演员', has_image: false }] });
+      }
       return item;
     });
     await route.fulfill({ status: 200, contentType: 'application/json',
@@ -51,10 +57,11 @@ async function serveLongItems(page: Page): Promise<void> {
   });
 }
 
-async function openLongCatalog(browser: Browser): Promise<Visit> {
+async function openLongCatalog(browser: Browser, density = 'big'): Promise<Visit> {
   const opened = await visit(browser, '/', DESKTOP);
   const { page } = opened;
   await serveLongItems(page);
+  await page.evaluate((value) => localStorage.setItem('density', value), density);
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction((count) => document.querySelectorAll('#grid .card').length >= count, CLONES,
     { timeout: 15_000 });
@@ -187,6 +194,7 @@ describe('视口外的卡片', () => {
 
   for (const [where, open, selector] of [
     ['馆藏', openLongCatalog, '#grid .card'],
+    ['馆藏密集一档', (b: Browser) => openLongCatalog(b, 'dense'), '#grid .card'],
     ['女优资料页', openLongEntity, '.entitysection>.grid>.card'],
     ['关注', openLongFollow, '.followlist>.card'],
   ] as const) {
@@ -229,6 +237,119 @@ describe('视口外的卡片', () => {
         assert.equal(back.y, parked.y, '回不到原来的滚动位置');
         assert.ok(Math.abs(back.view - parked.view) <= 1,
           `回到同一滚动位置后那张卡在视口里从 ${parked.view} 挪到 ${back.view}`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  /* 关注卡的头像和标签是 `<span>`，不可聚焦，焦点环那一半只在作品卡上查。 */
+  for (const [where, open, selector, focusable] of [
+    ['馆藏', openLongCatalog, '#grid .card', true],
+    ['馆藏密集一档', (b: Browser) => openLongCatalog(b, 'dense'), '#grid .card', true],
+    ['女优资料页', openLongEntity, '.entitysection>.grid>.card', true],
+    ['关注', openLongFollow, '.followlist>.card', false],
+  ] as const) {
+    it(`${where}：元信息区垫出的裁切余量不改排版、不接指针，头像和标签的焦点环整圈可见`, { timeout: 60_000 }, async () => {
+      const opened = await open(browser);
+      try {
+        const { page } = opened;
+        /* 元信息区四周垫内边距再用负外边距抵消，裁切边（padding box）往外扩，内容盒原地不动。
+           内容盒要贴着卡片左右缘、封面下方隔一道卡片行距，外边距盒的下沿就是内容盒下沿；
+           同一行里最高的那张卡，内容盒下面到卡片下缘（关注卡是到 `.fstate`）不留空，卡高
+           于是仍是封面、行距与内容三项之和。头像和文字列贴着内容盒。垫出去的那一圈伸出
+           卡片盒，指针落在那里不能算进这张卡。 */
+        const frames = await page.evaluate((cardSelector) => {
+          const inFlow = (element: Element | null, step: 'previousElementSibling' | 'nextElementSibling') => {
+            let node = element?.[step] ?? null;
+            while (node && getComputedStyle(node).position === 'absolute') node = node[step];
+            return node;
+          };
+          return [...document.querySelectorAll(cardSelector)].filter((card) => {
+            const box = card.getBoundingClientRect();
+            return card.querySelector(':scope>.meta') && box.top >= 0 && box.bottom <= innerHeight;
+          }).map((card) => {
+            const meta = card.querySelector(':scope>.meta')!;
+            const style = getComputedStyle(meta);
+            const border = meta.getBoundingClientRect();
+            const content = {
+              left: border.left + meta.clientLeft + parseFloat(style.paddingLeft),
+              top: border.top + meta.clientTop + parseFloat(style.paddingTop),
+              right: border.left + meta.clientLeft + meta.clientWidth - parseFloat(style.paddingRight),
+              bottom: border.top + meta.clientTop + meta.clientHeight - parseFloat(style.paddingBottom),
+            };
+            const cardBox = card.getBoundingClientRect();
+            const cardStyle = getComputedStyle(card);
+            const gap = parseFloat(cardStyle.rowGap);
+            const above = inFlow(meta, 'previousElementSibling')!.getBoundingClientRect();
+            const below = inFlow(meta, 'nextElementSibling');
+            const floor = below ? below.getBoundingClientRect().top - gap
+              : cardBox.bottom - parseFloat(cardStyle.paddingBottom);
+            const mav = meta.querySelector(':scope>.mav')?.getBoundingClientRect();
+            const mtext = meta.querySelector(':scope>.mtext')!;
+            const textStyle = getComputedStyle(mtext);
+            const textBox = mtext.getBoundingClientRect();
+            /* 探的是垫出来的那几圈（元信息区 8px、标签行与密集一档的文字列 4px）里面的点。 */
+            const tags = meta.querySelector('.ctags')?.getBoundingClientRect();
+            const probes = [...[content.top + 10, (content.top + content.bottom) / 2, content.bottom - 4]
+              .flatMap((y) => [[cardBox.left - 2, y], [cardBox.right + 2, y]]),
+            [(content.left + content.right) / 2, cardBox.bottom + 2],
+            ...(tags ? [[tags.left + 10, cardBox.bottom + 2], [cardBox.right + 2, (tags.top + tags.bottom) / 2]] : [])];
+            const outside = probes.map(([x, y]) => document.elementFromPoint(x, y));
+            return {
+              row: Math.round(cardBox.top), slack: floor - content.bottom,
+              padded: [parseFloat(style.paddingLeft), parseFloat(style.paddingTop)],
+              offsets: [content.left - cardBox.left, cardBox.right - content.right,
+                content.top - (above.bottom + gap), border.bottom + parseFloat(style.marginBottom) - content.bottom,
+                mav ? mav.left - content.left : 0,
+                textBox.top - parseFloat(textStyle.marginTop) - content.top,
+                content.right - (textBox.right + parseFloat(textStyle.marginRight))].map((n) => Math.round(n * 100) / 100),
+              background: style.backgroundColor,
+              claimed: outside.filter((hit) => hit && card.contains(hit)).length,
+            };
+          });
+        }, selector);
+        assert.ok(frames.length > 0, `${where}没有整张落在视口里的卡`);
+        for (const frame of frames) {
+          assert.ok(frame.padded.every((value) => value > 0), `${where}的元信息区没有垫裁切余量`);
+          assert.ok(frame.offsets.every((value) => Math.abs(value) <= .5),
+            `${where}的元信息区内容盒偏离了卡片与封面：${frame.offsets.join(', ')}`);
+          assert.equal(frame.background, 'rgba(0, 0, 0, 0)', `${where}的元信息区有背景，垫出来的一圈会画在卡片外面`);
+          assert.equal(frame.claimed, 0, `${where}卡片盒外 2px 处的指针落进了这张卡`);
+          assert.ok(frame.slack >= -.5, `${where}的元信息区内容盒越过了卡片下缘 ${-frame.slack}px`);
+        }
+        for (const row of new Set(frames.map((frame) => frame.row))) {
+          const least = Math.min(...frames.filter((frame) => frame.row === row).map((frame) => frame.slack));
+          assert.ok(least <= .5, `${where}同一行最高的卡在元信息区下面还空着 ${least}px，卡片被撑高了`);
+        }
+
+        /* 焦点环画在元素外面，逐层往上找会裁切的祖先（`overflow` 不是 visible，或跳过渲染带来的
+           paint containment），环的外沿必须落在每一层的 padding box 以内。 */
+        const room = (target: string) => page.locator(`${selector} ${target}`).first().evaluate((element) => {
+          const style = getComputedStyle(element);
+          const ring = style.outlineStyle === 'none' ? 0 : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
+          const box = element.getBoundingClientRect();
+          let least = Infinity, clips = 0;
+          for (let clip = element.parentElement; clip && !clip.matches('.card'); clip = clip.parentElement) {
+            const clipStyle = getComputedStyle(clip);
+            if (clipStyle.overflow === 'visible' && clipStyle.contentVisibility !== 'auto') continue;
+            clips++;
+            const edge = clip.getBoundingClientRect();
+            const left = edge.left + clip.clientLeft, top = edge.top + clip.clientTop;
+            least = Math.min(least, box.left - ring - left, box.top - ring - top,
+              left + clip.clientWidth - (box.right + ring), top + clip.clientHeight - (box.bottom + ring));
+          }
+          return { focused: element.matches(':focus-visible'), ring, least, clips };
+        });
+        for (const target of focusable ? ['.meta>button.mav', '.ctags>button.tg'] : []) {
+          await page.keyboard.press('Tab');
+          await page.locator(`${selector} ${target}`).first().focus();
+          const edge = await room(target);
+          assert.ok(edge.focused && edge.ring > 0, `${where}键盘聚焦的 ${target} 没有焦点环`);
+          assert.ok(edge.clips > 0, `${where}的 ${target} 上面没有会裁切的祖先：这条用例守的前提变了，改用例`);
+          assert.ok(edge.least >= -.5, `${where}的 ${target} 焦点环越过裁切边 ${-edge.least}px，那一截会被裁掉`);
+        }
         assert.deepEqual(opened.problems, []);
       } finally {
         await opened.close();
