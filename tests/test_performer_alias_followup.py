@@ -301,6 +301,13 @@ class ParsingTests(unittest.TestCase):
     def test_a_middle_dot_between_katakana_stays_inside_one_name(self):
         self.assertEqual(split_names("キラ・クィーン・美雲そら"), ["キラ・クィーン", "美雲そら"])
 
+    def test_a_reading_and_an_ampersand_both_end_a_name(self):
+        """篠田ゆう那页：读音后面没写分隔符，`&` 连着同一渠道的两个艺名。"""
+        self.assertEqual(
+            split_names("篠崎ゆう子（しのざきゆうこ）橋本真紀&桧山彩音（舞ワイフ名義）・高木早希"
+                        "（ラグジュTV名義）・城田優子"),
+            ["篠崎ゆう子", "橋本真紀", "桧山彩音", "高木早希", "城田優子"])
+
     def test_names_that_would_hit_someone_else_are_rejected(self):
         for name in ("そら", "みく", "Kirara Sora", "いちかちゃん", "未来ちゃん", "名前不明", "145cm色白お嬢様"):
             self.assertTrue(alias.rejection(alias.clean(name)), name)

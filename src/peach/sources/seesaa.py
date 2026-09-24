@@ -485,7 +485,8 @@ PERSON_MAIN_LABEL = '名前(女優名)'
 PERSON_NAME_LABELS = ('旧名義&別名', '名前(別名)')
 _LABEL_FOLD = str.maketrans({'（': '(', '）': ')', '＆': '&', '：': ':'})
 _PROFILE_LINE = re.compile(r'^([^:]{2,12}):(.+)$')
-_NAME_SPLIT = re.compile(r'[／/、,，]')
+#: `&` 连的是两个名字：`橋本真紀&桧山彩音（舞ワイフ名義）` 是她在同一渠道用过的两个艺名。
+_NAME_SPLIT = re.compile(r'[／/、,，&＆]')
 #: 名字后面的读音与注记：`美雲そら（みくもそら）`、`雫つむぎ(FC2)`、`美雲そら【旧名】`。
 _ANNOTATION = re.compile(r'[（(【][^（()）【】]*[）)】]')
 _KATAKANA_ONLY = re.compile(r'^[゠-ヿ]+$')
@@ -498,11 +499,13 @@ def _label(text: str) -> str:
 def split_names(value: str) -> list[str]:
     """名字栏的一格 → 逐个写法，读音与注记剥掉。
 
-    分隔符有 `・`、`／`、`、` 几种。`・` 在外国人名里是名字的一部分（`キラ・クィーン`），
-    两侧都是纯片假名时不拆。
+    分隔符有 `・`、`／`、`、`、`&` 几种。`・` 在外国人名里是名字的一部分（`キラ・クィーン`），
+    两侧都是纯片假名时不拆。注记本身也是边界：篠田ゆう那页写成
+    `篠崎ゆう子（しのざきゆうこ）橋本真紀&桧山彩音（舞ワイフ名義）・高木早希`，读音后面站方
+    没写分隔符，只剥掉注记会把前后两个名字粘成一个。
     """
     names = []
-    for chunk in _NAME_SPLIT.split(_ANNOTATION.sub('', str(value or ''))):
+    for chunk in _NAME_SPLIT.split(_ANNOTATION.sub('/', str(value or ''))):
         merged: list[str] = []
         for piece in (part.strip() for part in chunk.split('・')):
             if merged and _KATAKANA_ONLY.match(piece) and _KATAKANA_ONLY.match(merged[-1]):
