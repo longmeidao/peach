@@ -59,6 +59,7 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
   const [network, setNetwork] = useState(source.network);
   const [cookie, setCookie] = useState('');
   const [cookieText, setCookieText] = useState('');
+  const [userAgent, setUserAgent] = useState(source.user_agent);
   const [method, setMethod] = useState<string>(COOKIE_METHODS[0][0]);
   const [fileName, setFileName] = useState('');
   const [fileProblem, setFileProblem] = useState('');
@@ -77,6 +78,7 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
   const save = useMutation({
     mutationFn: (revoke: boolean) => apiSend<{ saved: Source }>(SCRAPING_SETTINGS_URL, {
       source: source.source, network, cookie, cookies_text: cookieText, revoke,
+      ...(source.accepts_user_agent ? { user_agent: userAgent } : {}),
     }),
     onSuccess: (result, revoke) => {
       // 服务端回的就是这一条的新样子，换进列表即可，不为一次保存把整页重取一遍。
@@ -198,6 +200,13 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
                 <input ref={file} type="file" accept=".txt" tabIndex={-1} aria-hidden
                   className="hidden" onChange={(event) => { void pickFile(event) }} />
               </div>}
+          {/* Cloudflare 发下的 Cookie 绑着解题那台浏览器的 UA，请求头要照它发。UA 不是秘密，
+              明文显示，保存后留在框里让用户看到现在发的是哪一个。 */}
+          {source.accepts_user_agent
+            ? <Input label="浏览器 User-Agent" autoComplete="off" value={userAgent} onChange={setUserAgent}
+                placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64) …"
+                hint="过验证的那台浏览器的 User-Agent；Chrome 在地址栏输入 chrome://version 可以复制到。" />
+            : null}
         </> : null}
         {problem ? <ErrorText>{problem}</ErrorText> : null}
         {results.map((result) => (

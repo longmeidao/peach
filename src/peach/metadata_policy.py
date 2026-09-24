@@ -69,7 +69,11 @@ SOURCE_SPECS = {
         # FC2 下架作品的镜像站。它转载的是发行方那一页，但标题和标签由站方用户维护，
         # 所以按社区来源对待：取值进复核，不当官方证据。
         "fc2cmadb": "community",
-        # fc2cmadb 也没有的下架 FC2 的最后一档（`peach.sources.javarchive`）。
+        # FC2 商品的元数据库（`peach.sources.fc2ppvdb`）与转载站 JAVten（`peach.sources.javten`），
+        # 女优、卖家、标签由站方用户维护，都按社区来源对待（ADR-0060）。
+        "fc2ppvdb": "community",
+        "javten": "community",
+        # 几个存档站也没有的下架 FC2 的最后一档（`peach.sources.javarchive`）。
         # 转载站，标题由发布者写，封面是转存件，按社区来源对待。登记在这里还有一层作用：
         # 「没有」的记忆按 `sources_fingerprint` 作废，接上这一档，此前压着「三处都没有」
         # 的番号下一轮就会重问一遍，不必等 TTL 走完。
@@ -117,9 +121,10 @@ CHAIN_COMMUNITY, CHAIN_FALLBACK, CHAIN_UNKNOWN = 3, 4, 5
 #: 演员栏的 fc2cmadb：只有 FC2 番号会问到它，它的女优栏按片中人逐条整理，javdb 那一侧
 #: 常是转载站起的称呼。2026-09-23 逐条对照：`FC2-PPV-1449453` 与 `FC2-PPV-1464245`
 #: javdb 写 `Chisa`、fc2cmadb 写 `大村阿美香`；`FC2-PPV-2629971` javdb 写中文 `安娜`、
-#: fc2cmadb 写日文原名 `あんな`。
+#: fc2cmadb 写日文原名 `あんな`。FC2PPV-DB 的女优栏同样按片中人整理、写日文原名
+#: （2026-09-24 `FC2-PPV-4898837` 写 `川北すずね`），排在 fc2cmadb 之后、javdb 之前。
 FIELD_SOURCE_PRIORITY: dict[str, tuple[str, ...]] = {
-    "performers": ("fc2cmadb",),
+    "performers": ("fc2cmadb", "fc2ppvdb"),
 }
 
 #: 字段级黑名单（对应 amane 的 `field_blacklist`），优先于一切：列进来的来源在这个

@@ -150,7 +150,8 @@ fc2club、avsox 两站（以及只能由覆盖点名的 freejavbt、airav）不�
 只由人改。2026-09-22 经代理实测：`HEYZO-1380` 经 avsox 7.3 秒走完桥 → 链 → 候选，标题、演员、
 厂牌、发行日与标签齐全；fc2club 对 `FC2-PPV-4610638`／`1015014`／`3143302` 都说没有，freejavbt
 对有码番号说没有，airav 的搜索地址当天回 404。记录在 `build/agent-verification/amane-chain-realtest.json`。
-fc2ppvdb 不在链上：同日对三个商品号都回 HTTP 526（站方证书问题），用户判定该站已不可访问（ADR-0043 修订）。
+旧域 fc2ppvdb.com 同日对三个商品号都回 HTTP 526，用户判定已关（ADR-0043 修订）；新站 fc2ppv-db.com 由 Peach
+自写解析器接回 FC2 链（ADR-0060），不经桥。
 
 有码与素人链的官方档第一家也经桥（ADR-0048，每个站只有一个归属）：`makers`（amane 的 `official`，二十九家
 片商官网）、`prestige`、`faleno`、`dahlia`、`mgstage` 合成一档 `amane_official`，分级是 official，结算上片商站
@@ -172,7 +173,7 @@ dmm、giga、kin8 不进链，理由与数据见 ADR-0048 与 `build/agent-verif
 所以按站的限流与封禁表现由传输层一处决定。配置与 `SOURCE_SPECS`、`SOURCE_LABELS`、`PROVIDER_NAMES`、
 `scraping_access.SOURCES`、`SOURCE_INTERVALS` 里同一站的那几行由 `tests/test_metadata_sources.py` 守住一致。
 
-下表各站全部已套契约：自写的十站登记在 `sources.SITE_SOURCES`，经桥的九站在 `metadata_amane`。
+下表各站全部已套契约：自写的十二站登记在 `sources.SITE_SOURCES`，经桥的九站在 `metadata_amane`。
 
 | 站 | 状态 | 位置 | 说明 |
 | --- | --- | --- | --- |
@@ -186,18 +187,21 @@ dmm、giga、kin8 不进链，理由与数据见 ADR-0048 与 `build/agent-verif
 | 一本道 | 已套契约 | `sources/onepondo.py` | 作品 JSON 一跳；认不出作品号、404 与 `MovieID` 对不上归 `not_found`，回的不是 JSON 归 `parse_error`；档位 `official`，页面上限 1 MiB 进配置 |
 | FC2 | 已套契约 | `sources/fc2.py` | 商品页一跳，下架页与 `sku` 对不上归 `not_found`；番号、时长、原件地址与占位件判定是三站共用的函数，也在这里；页面上限 2 MiB |
 | fc2cmadb | 已套契约 | `sources/fc2cmadb.py` | 作品页之后在 `query()` 里带握手头点名 `actresses` 再问一跳，那一跳失败按没有女优交回；评论区的演员、等价与合集解析也在这里，`scripts/fetch_fc2_metadata.py` 从这里取 |
+| FC2PPV-DB | 已套契约 | `sources/fc2ppvdb.py` | 作品页一跳 `/ja/videos/<id>`；`<h1>` 里认不出番号（含站方 200 的 404 页）归 `not_found`，Cloudflare 验证页归 `cloudflare_challenge`；女优只在出演女優块里取，「流出」标记进 `extra['leaked']`，不交封面（缩略图 360×360） |
+| JAVten | 已套契约 | `sources/javten.py` | `/search?kw=<id>` 一跳，单命中站方直接跳作品页，落到译文页再取日文原页；`h1.fc2-id` 对不上归 `not_found`，`og:url` 带语言前缀归 `parse_error`（中文是机翻，只收日文原页）；封面是 `og:image` 与 fancybox 那两处的 FC2 存储原件地址 |
 | JavArchive | 已套契约 | `sources/javarchive.py` | 搜索页加作品页两跳；`records()` 把搜索命中的每一条转存各交一份记录，某一条 404 或对不上就跳过 |
 | Seesaa 的三个 Wiki | 已套契约 | `sources/seesaa.py` | 只由 `scrape_codes --profile seesaa` 或 `--sources sougouwiki,av_neme,av_name` 点名，provenance 就是来源名；两个认人 Wiki 的类共用 `NameWikiSource`，读 `h5` 作品小节与单品番键值表；`rows()` 把一页作品表的每一行各读成一份记录，读过的表记在实例里供后面的番号先找；会话的传输是 `WikiPages`（页缓存、本批请求限额、撞墙停网），不在 `scraping_access.SOURCES` 里；失败沿用 `budget`、`blocked`、`ambiguous`、`incomplete_search` 等分档，不折成三档：它们落进批处理的错误表与健康表，`budget` 与 403/429 还决定本批停网 |
 
-FC2 三站先后问、资料取齐即停、封面问到底的流程仍在 `LibraryMetadataProvider.fc2`，按 `metadata_routes.FC2_STAGE`
+FC2 五站先后问、资料取齐即停、封面问到底的流程仍在 `LibraryMetadataProvider.fc2`，按 `metadata_routes.FC2_STAGE`
 逐站调 `records()`；各站只管自己的取页与解析。
 
 ## FC2 作品资料与封面
 
 FC2 不是 JAV：番号是卖家自己的投稿号，JAV 目录站按它去查要么没有、要么撞上别的片。实测
 r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「没有这个番号」，javdb 收了
-一部分但配额紧。库内采集（`peach.library_processing`）对 FC2 番号因此只问下面三处，解析器在
-`peach.sources.fc2`、`peach.sources.fc2cmadb` 与 `peach.sources.javarchive`，都不要凭据：
+一部分但配额紧。库内采集（`peach.library_processing`）对 FC2 番号因此只问下面五处，解析器在
+`peach.sources.fc2`、`peach.sources.fc2cmadb`、`peach.sources.fc2ppvdb`、`peach.sources.javten` 与
+`peach.sources.javarchive`；前两处与最后一处不要凭据，中间两处要用户浏览器的 Cookie 与 User-Agent：
 
 - 发行方自己那一页 `adult.contents.fc2.com/article/<video_id>/`，资料在 `ld+json` 的 Product
   里，一次请求给标题、说明、卖家、商品标签、时长、販売日和封面原图（实测 2350×2352）。
@@ -208,7 +212,24 @@ r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「
   站方用户维护，按社区来源登记，取值进复核。女優那一栏在浏览器里只对登录用户显示，采集带上
   「来源和凭证」里配的登录 Cookie；游客补问这一栏眼下也回（2026-09-23 实测 `2851534`、`3518061`）。
   官方商品页没有演员栏，所以官方页答上而这一行还缺演员时，也接着问镜像要这一栏。
-- 镜像也没有的落到 JavArchive。它的作品地址里夹着站内文章号和标题（`/926949-FC2-PPV-4137487-…-pn.html`），
+- 镜像之后是 FC2PPV-DB（`fc2ppv-db.com/ja/videos/<video_id>`，Next.js 服务端渲染）。它是 FC2 商品的元数据库：
+  出演女優链到站内女优页、販売者链到卖家页（slug 与发行方用户页同名）、販売日、タグ，以及「流出あり／なし」
+  那枚标记（进 `extra['leaked']`），时长只在 `<meta name="description">` 末尾。站上那张是 360×360 的 CloudFront
+  缩略图，不交封面。站上没有的商品回 200 的 404 页，`<h1>` 里没有番号，归 `not_found`。它的女优栏按片中人整理、
+  写日文原名（2026-09-24 `FC2-PPV-4898837` 写 `川北すずね`），演员栏优先级排在 fc2cmadb 之后、javdb 之前；
+  官方页答上而这一行还缺演员时，也接着问它（`FC2_CAST_SITES`）。
+- 再往下是 JAVten（`javten.com`，前身 fc2hub.com）。作品地址 `/video/<站内号>/id<video_id>/<标题>` 拼不出来，
+  先问 `/search?kw=<video_id>`：单命中站方直接跳作品页（Chrome 下跳到了 `/tw/` 译文页，解析器认出后再取日文
+  原页），多命中挑 `id<video_id>` 那一条。给日文标题、标签、卖家名与時長（description）、販売日
+  （`videos:published_time`，与 FC2PPV-DB 的販売日一致），封面是 `og:image` 与 fancybox 那两处指向
+  `storage*.contents.fc2.com` 的存储原件地址，与发行方商品页同一个文件，下架后可能已删，由封面层量过才知道。
+  站上的中文是机器翻译（用户判定），只收日文原页，`og:url` 带 `/tw/`、`/en/`、`/ko/` 归 `parse_error`。
+- 这两站都在 Cloudflare 的 JS 验证后面：httpx 与模拟 Chrome 指纹的 curl_cffi 直连都回 403、标题
+  `Just a moment...`（`sources.base.challenge_page`），只有浏览器过完验证发下的 `cf_clearance` 能进，而它绑着
+  解题那台浏览器的 User-Agent 与出口 IP。所以「来源和凭证」里这两张卡除 Cookie 外还收浏览器 User-Agent
+  （`scraping_access.SOURCES[...]['user_agent']`），请求头照它发，连接方式要选与那台浏览器同一个出口。
+  没配或过期时回 403，按 `blocked_pause` 整站冷却（15 分钟起翻倍到 6 小时），链照常往下走；保存新 Cookie 清冷却。
+- 几处都没有的落到 JavArchive。它的作品地址里夹着站内文章号和标题（`/926949-FC2-PPV-4137487-…-pn.html`），
   拼不出来，所以先问 `/search?q=<番号>` 再取那一条作品页；商品号按数字边界比，`4137487` 不能
   命中 `41374870`。搜索结果只有标题和一张缩略图，作品页才有标签、发行日、时长和封面位，所以这一跳
   省不得。这一档给标题、封面，以及正文那块资料里转存者填了的标签、発行日与时长：填不填是他的自由，
@@ -224,7 +245,7 @@ r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「
   `best_cover` 与社区档的 `picture()` 下完整张后一律不收，卡片封面只要静态图。
 - 同一个商品站上常有好几条，不同转存者各发一次，文章号、番号写法、标题和图都各不相同，先后没有
   质量含义。搜索命中的每一条都取：第一条那张未必还在（2026-09-22 实测 `1436028` 的 `/641159-` 是
-  404，`/800025-` 上有 1280×720）。走到这一档时前两处已经都说没有，多那一两页换的是这个番号有没有
+  404，`/800025-` 上有 1280×720）。走到这一档时前几处已经都说没有，多那一两页换的是这个番号有没有
   封面。地址里的标题有的已经是 `%e3%80%90` 这种编码、有的是原字，拼之前统一编一遍。
 
 资料那一步答上就停，封面那一步把链问到底。给出地址的那一档常常下不来图：站上标着没有商品图，
@@ -233,7 +254,7 @@ r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「
 1417×829）。所以封面要的是链上全部图源，由它择优；资料那步问过的档不再问第二遍，多问那一档
 顺带多一批标签（ADR-0030）。
 
-前两处的封面都指向 `storage*.contents.fc2.com` 上卖家自己传的那个文件，所以按官方图对待，不走
+官方页、镜像与 JAVten 的封面都指向 `storage*.contents.fc2.com` 上卖家自己传的那个文件，所以按官方图对待，不走
 社区来源的两图源印证（ADR-0030）。镜像有时给的是 `contents-thumbnail*.fc2.com/w276/` 包装过的
 地址，解析器把包装拆掉取原件；站上没有商品图的条目它挂的是自己那张 `no-image.jpg` 占位件，还是
 个站内相对地址，当封面交下去只会换来一句「来源连接未取得」，所以解析时就判成没有图（2026-09-22

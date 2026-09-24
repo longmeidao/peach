@@ -22,6 +22,7 @@ ADR-0044 收敛刮削栈之后，自写解析器与 amane 桥的站都套这一�
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping
@@ -87,6 +88,15 @@ COOLDOWN_ACTIONS: dict[FailureReason, str] = {
 }
 #: 重试没有意义的细档。
 PERMANENT_REASONS = frozenset({FailureReason.PARSE_ERROR})
+
+#: Cloudflare 的验证页：JS 挑战与托管挑战都顶着这个标题，正文是给浏览器跑的脚本。
+CHALLENGE_TITLE = re.compile(r"<title>Just a moment\.\.\.</title>")
+
+
+def challenge_page(html: str | bytes) -> bool:
+    """这一页是不是 Cloudflare 的验证页。站上有没有这部片，这一页说不了。"""
+    text = html.decode("utf-8", "replace") if isinstance(html, bytes) else str(html)
+    return bool(CHALLENGE_TITLE.search(text[:4096]))
 
 #: 作品页的默认大小上限。javdb 详情页实测 90 KB、JavBus 作品页百余 KB，4 MiB 留的是改版余量。
 DEFAULT_PAGE_LIMIT = 4 * 1024 * 1024

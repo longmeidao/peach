@@ -62,7 +62,8 @@ MISS_TTL_SECONDS = 7 * 24 * 3600
 #: 先停 15 分钟，连着再撞才翻倍，所以这一档收紧的代价是有限且可观测的（docs/SOURCING.md）。
 SOURCE_INTERVALS = {'javdb.com': 3.0, 'jdbstatic.com': 3.0}
 SOURCE_LABELS = {'r18dev': 'r18.dev', 'dmm': 'DMM / FANZA', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb',
-                 'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
+                 'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'fc2ppvdb': 'FC2PPV-DB', 'javten': 'JAVten',
+                 'javarchive': 'JavArchive',
                  '1pondo': '一本道', 'local_nfo': '本地 NFO',
                  # 经 amane 桥问的几站（`metadata_amane.SITES`）。
                  'makers': '片商官网', 'prestige': 'Prestige', 'faleno': 'FALENO',
@@ -74,7 +75,8 @@ SOURCE_LABELS = {'r18dev': 'r18.dev', 'dmm': 'DMM / FANZA', 'avbase': 'AVBase', 
                  'av_name': 'AV女優の名前特定wiki'}
 PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'dmm': 'dmm-graphql', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
-                  'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
+                  'fc2cmadb': 'fc2cmadb-article', 'fc2ppvdb': 'fc2ppvdb-page', 'javten': 'javten-page',
+                  'javarchive': 'javarchive-page',
                   '1pondo': '1pondo-json',
                   'makers': 'amane-makers', 'prestige': 'amane-prestige',
                   'faleno': 'amane-faleno', 'dahlia': 'amane-dahlia', 'mgstage': 'amane-mgstage',
@@ -289,21 +291,24 @@ class LibraryMetadataProvider:
         return cache[code]
 
     def fc2(self, code, *, deadline=None, route=None, covers=False, required=(), known=()):
-        """FC2 自己那一页，下架了就依次问两个存档站；返回沿路答上的每一档 `[(来源, 资料)]`。
+        """FC2 自己那一页，下架了就依次问几个存档站；返回沿路答上的每一档 `[(来源, 资料)]`。
 
-        三站各是契约下的一站（`sources/fc2.py`、`sources/fc2cmadb.py`、`sources/javarchive.py`），
-        先后问、取齐即停由这里管。资料和封面两步都要它，同一档只问一次：商品页约 300 KB，
-        问两遍白花一份流量。已下架的商品仍回 200，站里认不出那份 Product 就归 `not_found`——
-        那不是抓取失败，是这部片在站上没有了。本地这批没封面的 FC2 多数是这种，所以接着问 fc2cmadb：它留着下架
-        作品的标题、卖家、标签与封面原图。它也没有的才落到 JavArchive，那一档只给标题和
-        一张转存封面，比官方原图差一档，所以排在最后（2026-09-22 实测 `FC2-PPV-4137487`
-        在 fc2cmadb 是 404，JavArchive 上有）；它的每一条转存各交一份（`records()`）。三处都
+        五站各是契约下的一站（`sources/fc2.py`、`sources/fc2cmadb.py`、`sources/fc2ppvdb.py`、
+        `sources/javten.py`、`sources/javarchive.py`），先后问、取齐即停由这里管。资料和封面两步都要它，
+        同一档只问一次：商品页约 300 KB，问两遍白花一份流量。已下架的商品仍回 200，站里认不出那份
+        Product 就归 `not_found`——那不是抓取失败，是这部片在站上没有了。本地这批没封面的 FC2 多数是
+        这种，所以接着问 fc2cmadb：它留着下架作品的标题、卖家、标签与封面原图。再往下是 FC2PPV-DB
+        （女优、卖家、販売日与流出标记，不给封面）与 JAVten（日文标题、标签与存储原件地址），这两站
+        在 Cloudflare 验证后面，没配 Cookie 时回 403、整站冷却，链照常往下走。最后才落到 JavArchive，
+        那一档只给标题和一张转存封面，比官方原图差一档（2026-09-22 实测 `FC2-PPV-4137487`
+        在 fc2cmadb 是 404，JavArchive 上有）；它的每一条转存各交一份（`records()`）。几处都
         没有才按 `NotFound` 交出去，记进「没有」的记忆，一周内不再问。
 
         资料那一步答上就停，只有一处例外：这一行还缺演员（`required`）而答上的几档都没给，
-        就接着问 fc2cmadb。发行方商品页没有演员栏，镜像站那一栏是这条链上唯一对得上人的地方；
-        JavArchive 只给标题和转存封面，照旧不问。`known` 是缓存里已经答过的几档快照，算作答上，
-        但不再交出去；有它在时这一档问不出东西就交空列表，不报「没有」。
+        就接着问有女优栏的那几站（`metadata_routes.FC2_CAST_SITES`）。发行方商品页没有演员栏，
+        镜像站与 FC2PPV-DB 那一栏是这条链上对得上人的地方；JAVten 与 JavArchive 不给演员，照旧不问。
+        `known` 是缓存里已经答过的几档快照，算作答上，但不再交出去；有它在时这一档问不出东西就交空列表，
+        不报「没有」。
 
         封面那一步（`covers`）把链问到底。给出地址的那一档常常下不来
         图：站上标着没有商品图，或者地址还在、FC2 的存储上那张已经删了——而这一层判不出
@@ -312,7 +317,7 @@ class LibraryMetadataProvider:
         全部图源，由它择优；多问那一档顺带多一批标签（ADR-0030）。
 
         `route` 是这个番号的完整来源链（`metadata_routes.route_for_code`）：链上摘掉哪一处
-        就不问哪一处，不给就三处按 `metadata_routes.FC2_STAGE` 的顺序都问。
+        就不问哪一处，不给就按 `metadata_routes.FC2_STAGE` 的顺序都问。
         """
         from .sources import SITE_SOURCES, Session
         from .sources.fc2 import UNRECOGNISED, video_id
@@ -325,7 +330,8 @@ class LibraryMetadataProvider:
             if (route is not None and name not in route) or name in state['asked']:
                 continue
             answered = [*known, *(payload for _, payload in state['found'])]
-            if answered and not covers and not (name == 'fc2cmadb' and _lacks_performers(required, answered)):
+            if answered and not covers and not (name in metadata_routes.FC2_CAST_SITES
+                                                and _lacks_performers(required, answered)):
                 break
             state['asked'].add(name)
             try:
@@ -344,7 +350,7 @@ class LibraryMetadataProvider:
         # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
         if state['problems']:
             raise _again(state['problems'][0])
-        raise NotFound('FC2、fc2cmadb 与 JavArchive 上都没有这个商品')
+        raise NotFound('FC2 与四个存档站上都没有这个商品')
 
     def one_pondo(self, code, *, deadline=None):
         """一本道自己那份作品 JSON（`sources/onepondo.py`），返回 `[('1pondo', 资料)]`。

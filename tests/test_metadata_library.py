@@ -754,6 +754,32 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(found[1][1]['actresses'], [{'japanese_name': '梨奈'}])
         self.assertFalse([url for url in asked if 'javarchive.com' in url], 'JavArchive 不给演员，不为演员去问它')
 
+    def test_the_database_is_asked_for_the_women_the_mirror_does_not_name_and_javten_is_not(self):
+        """镜像那一栏空着时接着问 FC2PPV-DB，它也有女优栏；JAVten 不给演员，不为演员去问它。"""
+        from peach.library_processing import LibraryMetadataProvider
+        asked = []
+        database = ('<html><body><main><h1>FC2-PPV-3232110 在售的那一部</h1>'
+                    '<div><div><p>出演女優</p></div><div><a href="/ja/actresses/x"><span><img alt="梨奈"></span>'
+                    '<span>梨奈</span></a></div></div></main></body></html>')
+
+        def pages(transport, url, **kwargs):
+            asked.append(url)
+            if 'fc2cmadb.com' in url:
+                if kwargs.get('extra_headers'):
+                    return json.dumps({'props': {'actresses': []}}).encode()
+                return _mirror_page(video=3232110)
+            if 'fc2ppv-db.com' in url:
+                return database.encode()
+            raise NotFound('别处都没有')
+
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
+            found = provider.fc2('FC2-PPV-3232110', required=('title', 'performers'))
+        self.assertEqual([source for source, _ in found], ['fc2cmadb', 'fc2ppvdb'])
+        self.assertEqual(found[1][1]['actresses'], [{'japanese_name': '梨奈'}])
+        self.assertFalse([url for url in asked if 'javten.com' in url or 'javarchive.com' in url])
+
     def test_a_row_that_already_has_its_cast_stops_at_the_product_page(self):
         asked = []
         provider, pages = self._live_fc2_provider(asked)

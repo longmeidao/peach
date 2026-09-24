@@ -92,6 +92,7 @@ async function openQualityGoals(browser: Browser, items: unknown[]): Promise<Vis
 const scrapingSource = (source: string, label: string, cookie: boolean) => ({
   source, label, login: `https://${source}.example/login`,
   accepts_cookie: cookie, network: 'peach', cookie_saved: cookie,
+  accepts_user_agent: false, user_agent: '',
 });
 
 /** 来源和凭证页按给定的一份 `/api/scraping` 打开：演示库里未必同时有收 Cookie 和不收的来源。

@@ -96,6 +96,13 @@ def text_of(node) -> str:
     return " ".join(node.get_text(" ", strip=True).split()) if node is not None else ""
 
 
+def strip_code(title: str, wanted: str) -> str:
+    """标题开头那截番号剥掉：各站写法不一，`FC2-PPV-4137487`、`FC2PPV 1863914`、`[FC2-PPV-4898837]` 都有。
+    留着就把番号写进了标题。"""
+    return re.sub(rf"^\s*\[?\s*FC2[-_. ]?(?:PPV)?[-_. ]?{re.escape(wanted)}\s*\]?\s*[-—:：]?\s*", "",
+                  str(title or ""), flags=re.I)
+
+
 def unrecognised() -> SourceFailure:
     return SourceFailure(FailureReason.NOT_FOUND, UNRECOGNISED)
 
