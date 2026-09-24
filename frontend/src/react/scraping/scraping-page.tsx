@@ -142,7 +142,7 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
     || (check.error ? errorMessage(check.error) : '');
   const results = check.data?.results ?? [];
   // 这一块空着时连同它那道分隔线一起不画：直连、又不收 Cookie 的来源只有一行连接方式。
-  const detailed = network === 'peach' || source.accepts_cookie || !!problem || results.length > 0;
+  const detailed = network === 'peach' || source.accepts_cookie || source.browser || !!problem || results.length > 0;
 
   return (
     <Section title={source.label} onSubmit={submit} aside={
@@ -167,7 +167,13 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
               </LinkButton>
             </span>
           : null}
-        {source.accepts_cookie ? <>
+        {/* 由本机浏览器过验证的来源不收 Cookie：浏览器自己带着会话。留着「撤销 Cookie」让人清掉旧的。 */}
+        {source.browser
+          ? <p className="text-body-2-regular text-text-secondary">
+              人机验证由本机浏览器自动完成；需要点击时窗口会弹出，托盘同时提醒。这台机器上不需要 Cookie。
+            </p>
+          : null}
+        {source.accepts_cookie && !source.browser ? <>
           <p className="text-body-2-regular text-text-secondary">
             {source.cookie_saved
               ? 'Cookie 已保存；登录是否有效要到抓取时才知道。'

@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.gzip import DEFAULT_EXCLUDED_CONTENT_TYPES, GZipMiddleware
 
-from . import __version__, feeds, tunnel, web_contract, web_feeds, web_follow
+from . import __version__, browser_transport, feeds, tunnel, web_contract, web_feeds, web_follow
 from . import routes_api, routes_auth, routes_configuration, routes_media, routes_pages
 from .buildinfo import frozen_build
 from .config import LOCATION_ROOT_DECLARATIONS, PeachSettings
@@ -453,6 +453,8 @@ def create_app(
                 "ledger_read_only_message": sync.read_only_message if read_only else None,
                 "ledger_writer_origin": settings.review_writer_origin if read_only else None,
                 "scheme": "https" if settings.tls_enabled else "http",
+                # 采集用的浏览器窗口正等着人点验证的站；托盘每次探测健康时据此提醒（ADR-0065）。
+                "attention": browser_transport.attention(),
                 # 健康检查可能被公网探针访问，不能在这里回传随机 Tunnel URL。
                 "tunnel": {"enabled": settings.tunnel_enabled, "state": tunnel_state.state},
         }
