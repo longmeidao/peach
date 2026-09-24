@@ -4,6 +4,7 @@ from __future__ import annotations
 from .avbase import AVBASE, AVBaseSource
 from .base import (COOLDOWN_ACTIONS, PERMANENT_REASONS, REASON_KINDS, FailureReason, Page, Session,
                    SiteConfig, SiteRecord, SiteSource, SourceFailure, http_failure)
+from .dmm import DMM, DmmSource
 from .fc2 import FC2, Fc2Source
 from .fc2cmadb import FC2CMADB, Fc2cmadbSource
 from .javarchive import JAVARCHIVE, JavArchiveSource
@@ -18,6 +19,7 @@ from .seesaa import SEESAA, WIKI_SOURCES, SeesaaSource
 #: 任何链上，只由 `scrape_codes` 点名，会话的传输是它们自己的 `seesaa.WikiPages`。
 SITE_SOURCES: dict[str, type[SiteSource]] = {
     R18DEV.name: R18DevSource,
+    DMM.name: DmmSource,
     ONEPONDO.name: OnePondoSource,
     FC2.name: Fc2Source,
     FC2CMADB.name: Fc2cmadbSource,
@@ -30,6 +32,6 @@ SITE_SOURCES: dict[str, type[SiteSource]] = {
 
 __all__ = ["COOLDOWN_ACTIONS", "PERMANENT_REASONS", "REASON_KINDS", "SITE_SOURCES", "FailureReason", "Page",
            "Session", "SiteConfig", "SiteRecord", "SiteSource", "SourceFailure", "http_failure",
-           "AVBASE", "FC2", "FC2CMADB", "JAVARCHIVE", "JAVBUS", "JAVDB", "ONEPONDO", "R18DEV", "SEESAA",
-           "AVBaseSource", "Fc2Source", "Fc2cmadbSource", "JavArchiveSource", "JavBusSource", "JavDBSource",
-           "OnePondoSource", "R18DevSource", "SeesaaSource"]
+           "AVBASE", "DMM", "FC2", "FC2CMADB", "JAVARCHIVE", "JAVBUS", "JAVDB", "ONEPONDO", "R18DEV", "SEESAA",
+           "AVBaseSource", "DmmSource", "Fc2Source", "Fc2cmadbSource", "JavArchiveSource", "JavBusSource",
+           "JavDBSource", "OnePondoSource", "R18DevSource", "SeesaaSource"]

@@ -61,7 +61,7 @@ MISS_TTL_SECONDS = 7 * 24 * 3600
 #: 那条批量线仍按 5 秒跑。撞上 403 不再是盲等 24 小时——`scraping_access.FIRST_BLOCKED_PAUSE`
 #: 先停 15 分钟，连着再撞才翻倍，所以这一档收紧的代价是有限且可观测的（docs/SOURCING.md）。
 SOURCE_INTERVALS = {'javdb.com': 3.0, 'jdbstatic.com': 3.0}
-SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb',
+SOURCE_LABELS = {'r18dev': 'r18.dev', 'dmm': 'DMM / FANZA', 'avbase': 'AVBase', 'javbus': 'JavBus', 'javdb': 'javdb',
                  'fc2': 'FC2', 'fc2cmadb': 'FC2CMADB', 'javarchive': 'JavArchive',
                  '1pondo': '一本道', 'local_nfo': '本地 NFO',
                  # 经 amane 桥问的几站（`metadata_amane.SITES`）。
@@ -72,7 +72,7 @@ SOURCE_LABELS = {'r18dev': 'r18.dev', 'avbase': 'AVBase', 'javbus': 'JavBus', 'j
                  # Seesaa 的几个 Wiki，只由 `scrape_codes` 点名（`sources.seesaa`）。
                  'sougouwiki': '素人系総合 Wiki', 'av_neme': 'このAV女優の名前教えてwiki',
                  'av_name': 'AV女優の名前特定wiki'}
-PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'avbase': 'avbase-search',
+PROVIDER_NAMES = {'local_nfo': 'local-nfo', 'r18dev': 'r18-json', 'dmm': 'dmm-graphql', 'avbase': 'avbase-search',
                   'javbus': 'javbus-page', 'javdb': 'javdb-page', 'fc2': 'fc2-article',
                   'fc2cmadb': 'fc2cmadb-article', 'javarchive': 'javarchive-page',
                   '1pondo': '1pondo-json',
@@ -411,7 +411,8 @@ class LibraryMetadataProvider:
         return SITE_SOURCES[source]().query(code, session=Session(self.transport, deadline)).payload()
 
     def query(self, code, source='r18dev', *, deadline=None):
-        """有码与素人来源链上的官方镜像：r18.dev 的作品 JSON 加 combined 页的日文写法（`sources/r18dev.py`）。"""
+        """有码与素人链上逐个成档的官方来源：默认是 r18.dev（`sources/r18dev.py`），有码链上它之后是 DMM 的
+        GraphQL（`sources/dmm.py`，ADR-0059）。"""
         return self.site(source, code, deadline=deadline)
 
     def cover(self, code, cover_root, *, deadline=None, evidence=()):
@@ -1053,8 +1054,8 @@ class _RemoteSession:
                 if source != 'fc2':
                     continue
             try:
-                if source == 'r18dev':
-                    found = [('r18dev', self.provider().query(code, 'r18dev', deadline=deadline))]
+                if source in ('r18dev', 'dmm'):
+                    found = [(source, self.provider().query(code, source, deadline=deadline))]
                 elif source == 'fc2':
                     answered = {name for name, _, _ in cached}
                     found = self.provider().fc2(

@@ -69,7 +69,7 @@ amane 的失败原因经 `metadata_amane.AMANE_REASONS` 进契约。`geo_restric
 
 | 站 | 原因 |
 | --- | --- |
-| dmm | 与 r18.dev 是同一份目录，发行日给配信开始日（SSIS-057 答 2021-05-01，账本 2021-05-07），ABW-032 答的是蓝光 BOD 版，一次 3～14 秒；再问一遍只多一次请求，不多一层口径 |
+| dmm（amane 的 HTML 爬虫） | 与 r18.dev 是同一份目录，发行日给配信开始日（SSIS-057 答 2021-05-01，账本 2021-05-07），ABW-032 答的是蓝光 BOD 版，一次 3～14 秒；再问一遍只多一次请求，不多一层口径。DMM 自己的 GraphQL 接口另由 Peach 自写解析器接入（ADR-0059），不经桥 |
 | giga | 实测站内搜索 `/top/search?keyword=` 两次都回 HTTP 404，未取得 |
 | kin8 | 爬虫从 `KIN8-3500` 里取到 8，拼出 `/moviepages/8/`；换纯数字 3500 仍是没有，未取得 |
 | r18dev、fc2、javbus、javdb | 已有自写解析器，只有一个归属 |

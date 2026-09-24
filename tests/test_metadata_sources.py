@@ -82,6 +82,23 @@ class ContractTests(unittest.TestCase):
                     headers={"X-Inertia": "true"})
         self.assertEqual(seen, [("https://demo.test/", None), ("https://demo.test/ABC-001", "true")])
 
+    def test_post_sends_the_body_with_the_same_referer_limit_and_extra_headers(self):
+        """只收 POST 的接口（DMM 的 GraphQL）走 `post`：方法与请求体进 `HttpRequest`，其余与 `get` 同一条路。"""
+        seen = []
+
+        def transport(request, timeout, limit):
+            seen.append((request.method, request.url, request.body, request.headers.get("Referer"),
+                         request.headers.get("Content-Type"), limit))
+            return HttpResponse(200, {}, b'{"data": {}}', request.url)
+
+        page = Session(transport).post("https://demo.test/graphql", config=DEMO, body=b'{"query": "x"}',
+                                       headers={"Content-Type": "application/json"})
+        self.assertEqual(seen, [("POST", "https://demo.test/graphql", b'{"query": "x"}', "https://demo.test/",
+                                 "application/json", DEMO.page_limit)])
+        self.assertEqual((page.url, page.body), ("https://demo.test/graphql", b'{"data": {}}'))
+        Session(transport).get("https://demo.test/ABC-001", config=DEMO)
+        self.assertEqual(seen[-1][:3], ("GET", "https://demo.test/ABC-001", None))
+
     def test_records_default_to_the_single_query_result(self):
         transport = serve({"https://demo.test/ABC-001": "標題".encode()})
         found = DemoSource().records("ABC-001", session=Session(transport))
@@ -238,10 +255,11 @@ class ConfigConsistencyTests(unittest.TestCase):
         self.assertEqual({host for host in SOURCE_INTERVALS if scraping_access.source_for("https://" + host + "/") == "javdb"},
                          set(SOURCE_INTERVALS), "SOURCE_INTERVALS 里只有 javdb 的主机单独设间隔")
 
-    def test_the_eleven_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
+    def test_the_twelve_sites_are_registered_with_their_stage_cookie_and_page_limit(self):
         shape = {name: (site.DEFAULT.stage, site.DEFAULT.cookie, site.DEFAULT.page_limit)
                  for name, site in SITE_SOURCES.items()}
         self.assertEqual(shape, {"r18dev": ("official_mirror", False, 2 * 1024 * 1024),
+                                 "dmm": ("official", False, 1024 * 1024),
                                  "1pondo": ("official", False, 1024 * 1024),
                                  "fc2": ("official", False, 2 * 1024 * 1024),
                                  "fc2cmadb": ("community", True, 2 * 1024 * 1024),
@@ -252,7 +270,8 @@ class ConfigConsistencyTests(unittest.TestCase):
                                  "sougouwiki": ("community", False, 4 * 1024 * 1024),
                                  "av_neme": ("community", False, 4 * 1024 * 1024),
                                  "av_name": ("community", False, 4 * 1024 * 1024)})
-        self.assertEqual({name for name in SITE_SOURCES if SOURCE_SPECS[name].official}, {"r18dev", "1pondo", "fc2"})
+        self.assertEqual({name for name in SITE_SOURCES if SOURCE_SPECS[name].official},
+                         {"r18dev", "dmm", "1pondo", "fc2"})
         self.assertEqual(tuple(name for name in SITE_SOURCES if name in FC2_STAGE), FC2_STAGE,
                          "FC2 三站按链上先后登记")
 
