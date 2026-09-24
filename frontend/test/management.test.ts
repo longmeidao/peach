@@ -48,7 +48,7 @@ describe('数据管理首屏', () => {
     expect(scan.querySelector('footer > a')?.getAttribute('href')).toBe('/scraping');
     expect(grid.querySelector('.cleanupmediarepair p')?.textContent).toBe(REPAIR_CARD_TEXT);
   });
-  it('等数据才能执行的键保持最终变体，用 aria-disabled 挡住而不是原生禁用', () => {
+  it('等数据才能执行的键保持最终变体与尺寸，用原生 disabled 挡住并标成骨架操作键', () => {
     const root = skeleton();
     const split = root.querySelector('.cleanupscraping [data-split-button]')!;
     expect(split.getAttribute('data-variant')).toBe('primary');
@@ -62,11 +62,12 @@ describe('数据管理首屏', () => {
     const legacy = root.querySelectorAll('.cleanupfieldset footer > button, .resourcesyncfooter > button');
     expect([...legacy].map(button => button.textContent)).toEqual(['检查来源', '预览', '检查死链', '检查文件']);
     for (const button of legacy) expect(button.classList.contains('primary')).toBe(true);
-    const actions = root.querySelectorAll('button:not(.board-plain-stat)');
-    expect(actions.length).toBeGreaterThan(0);
+    const actions = root.querySelectorAll('button:not(.board-plain-stat, [aria-haspopup="listbox"])');
+    expect([...actions].map(button => button.textContent || button.getAttribute('aria-label')))
+      .toEqual(['扫描并补全资料', '更多扫描与采集方式', '开始修复', '检查来源', '预览', '检查死链', '检查文件']);
     for (const button of actions) {
-      expect(button.hasAttribute('disabled')).toBe(false);
-      expect(button.getAttribute('aria-disabled')).toBe('true');
+      expect(button.hasAttribute('disabled')).toBe(true);
+      expect(button.hasAttribute('data-skeleton-action')).toBe(true);
     }
   });
   it('链接管理与资源同步的标题、正文立即呈现，不预留同步面板', () => {

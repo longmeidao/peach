@@ -206,6 +206,13 @@ body.refreshing #tiers .av .ring.imgdone::after{opacity:1;filter:none;visibility
 /* 顶部三层第一次填内容之前只有 18px 的内边距，内容到位后长到一百多，
    每次冷启动都把整页往下推一截；标签条有固定高度不塌，但空着一整条。 */
 .tiers[aria-busy="true"],.tagbar[aria-busy="true"]{pointer-events:none}
+/* 占位不是控件：整块骨架和每一枚占位都不接指针，套在最终形状上的 hover 描边、底色和
+   手型光标也就一条都触发不了，点下去落到后面的页面上。占位直接借用 `.av`、`.pill` 这些
+   最终类名画形状，所以只能在这里一处关掉，不能逐条给 hover 规则补 `:not()`。
+   分层骨架只认每一枚占位：`data-skeleton-tier` 那一排数据到了还留在原地装真头像。
+   等数据的键（`data-skeleton-action`）是例外，它要亮出 not-allowed 光标说明「现在按不了」。 */
+:is([data-skeleton],.avskeleton,.brandskeleton),:is([data-skeleton],.avskeleton,.brandskeleton) *,.tagskeleton,.countskeleton,.skeletoncard,.skeleton{pointer-events:none}
+[data-skeleton-action]:disabled{pointer-events:auto}
 
 /* 换一批时标签条走 Geist 的 wrap-children 变体：真实胶囊留在 DOM 里，用 visibility
    藏起来，微光画在 ::after 上并单独 visible。框就是胶囊自己的框，所以零位移；

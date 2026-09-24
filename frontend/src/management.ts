@@ -21,13 +21,14 @@ export const SCAN_CARD_TEXT = '扫描媒体文件夹，导入已有资料，采�
 export const REPAIR_CARD_TEXT = '修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。';
 
 const bar = '<span class="skeleton skeleton-text" aria-hidden="true"></span>';
-/* 要等数据才能执行的键用 `aria-disabled`，外观仍是它最终的那一档：原生 `disabled` 会把
-   主按钮压成灰底，数据一到又跳回蓝色，同一颗键在一次进入里换两种长相。 */
-const waiting = 'type="button" aria-disabled="true"';
+/* 要等数据才能执行的键是真的按不了：原生 `disabled` 挡住点击与聚焦，`data-skeleton-action`
+   让各档按键在骨架里统一成同一副禁用面（`board.css`），尺寸仍是最终那一档，数据一到只换颜色。 */
+const waiting = 'type="button" disabled data-skeleton-action';
 
-/* 两张 React 卡的骨架包在同一层 `.peach-react` 里，按键与下拉照 Board UI 的静止态画（见
+/* 两张 React 卡的骨架包在同一层 `.peach-react` 里，按键与下拉照 Board UI 的尺寸画（见
    `island-skeleton.ts`）。卡片这一层的结构照 React 那两张卡抄：外面一列 `gap-4`，标题与正文
-   同一对字级。 */
+   同一对字级。下拉框里只是一截占位条，不是控件，留 `aria-disabled` 就够。 */
+const waitingAction = 'disabled data-skeleton-action';
 const unavailable = 'aria-disabled="true"';
 const island = (card: string) => `<div class="peach-react"><div class="flex flex-col gap-4">${card}</div></div>`;
 const cardText = (title: string, text: string) => `<div data-geist-fieldset-content>
@@ -39,16 +40,16 @@ const cardText = (title: string, text: string) => `<div data-geist-fieldset-cont
 export function scanCardSkeletonHtml(): string {
   return island(`<section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing>
         ${cardText('扫描与采集', SCAN_CARD_TEXT)}
-        <footer data-geist-fieldset-footer><a href="/scraping" class="inline-flex items-center justify-center gap-1 whitespace-nowrap font-sans rounded-sm text-body-medium text-accent-600"><span>来源和凭证</span>${islandGlyph('arrow-up', 'size-[18px] shrink-0 rotate-90')}</a><span data-button-group data-split-button data-variant="primary">${islandButton({ glyph: 'database', label: '扫描并补全资料', attrs: unavailable })}${islandButton({ glyph: 'chevron-down', attrs: `${unavailable} aria-label="更多扫描与采集方式"` })}</span></footer>
+        <footer data-geist-fieldset-footer><a href="/scraping" class="inline-flex items-center justify-center gap-1 whitespace-nowrap font-sans rounded-sm text-body-medium text-accent-600"><span>来源和凭证</span>${islandGlyph('arrow-up', 'size-[18px] shrink-0 rotate-90')}</a><span data-button-group data-split-button data-variant="primary">${islandButton({ glyph: 'database', label: '扫描并补全资料', attrs: waitingAction })}${islandButton({ glyph: 'chevron-down', attrs: `${waitingAction} aria-label="更多扫描与采集方式"` })}</span></footer>
       </section>`);
 }
 
-/** 「媒体修复」卡：页脚的媒体库下拉框先按最终尺寸画出来，库名要等数据。`bg-button-primary`
- *  遇到 `aria-disabled` 会换成禁用渐变，`data-skeleton-action` 让它停在静止那一档。 */
+/** 「媒体修复」卡：页脚的媒体库下拉框先按最终尺寸画出来，库名要等数据；「开始修复」要等选定
+ *  媒体库，骨架里是禁用态。 */
 export function repairCardSkeletonHtml(): string {
   return island(`<section aria-label="媒体修复" data-geist-fieldset data-cleanup-task data-cleanup-processing>
         ${cardText('媒体修复', REPAIR_CARD_TEXT)}
-        <footer data-geist-fieldset-footer>${islandSelect(bar, { className: 'w-48', attrs: unavailable })}${islandButton({ label: '开始修复', attrs: `data-skeleton-action ${unavailable}` })}</footer>
+        <footer data-geist-fieldset-footer>${islandSelect(bar, { className: 'w-48', attrs: unavailable })}${islandButton({ label: '开始修复', attrs: waitingAction })}</footer>
       </section>`);
 }
 

@@ -107,12 +107,15 @@
 .entryfeed:not(:has(:checked)){animation:entryfeed-breathe 2.4s ease-in-out infinite}
 .entryfeed:not(:has(:checked)):is(:hover,:has(:focus-visible)){animation:none;color:var(--feed-mark)}
 /* 图标的说明走 Tooltip（Geist 实测：最宽 250px、8px 圆角、内边距 8／6px、13px 字、
-   1.3 行高），不复制箭头与淡入。悬停和键盘聚焦都出，Escape 收起。 */
-.entryfeedtip{position:absolute;z-index:var(--layer-tooltip);top:calc(100% + 8px);left:0;
-  display:none;width:max-content;max-width:250px;padding:6px 8px;border-radius:var(--surface-radius);
+   1.3 行高），不复制箭头与淡入。悬停和键盘聚焦都出，Escape 收起。
+   它是 `popover`，开着的时候进顶层：资料卡为了裁底带直角带着 `overflow:hidden`，写在卡里的
+   绝对定位浮层在窄屏上会被右缘切掉一截，顶层既不受祖先裁切，也不会被下方同台艺人那条
+   压住。位置由 `wireEntityFeed` 按视口算：默认贴图标下方 8px、左右夹在视口内 8px。
+   浏览器给 `[popover]` 的居中盒子在这里拆掉。 */
+.entryfeedtip{position:fixed;z-index:var(--layer-tooltip);inset:auto;margin:0;border:0;overflow:visible;
+  width:max-content;max-width:250px;padding:6px 8px;border-radius:var(--surface-radius);
   background:var(--ink);color:var(--ground);font-size:var(--fs-sm);font-weight:400;line-height:1.3;
   white-space:normal;pointer-events:none}
-.entryfeed:is(:hover,:has(:focus-visible)):not([data-tip-dismissed])>.entryfeedtip{display:block}
 /* 两枚标识按字母的高度对齐，不按外框：JavDB 那枚里 `Jav` 三个字母占 viewBox 高的
    71/111，高 22px 时是 14.1px；MISSAV 是排出来的字，衬线体的大写字母高约 0.71em，
    `--fs-xl` 时是 14.2px。外框对齐的话 MISSAV 的字母比 `Jav` 高出两成，一眼看过去它大一号。
@@ -158,13 +161,10 @@
 .mediaviewbuttons .mediaviewbutton[data-media-icon="image"] svg{fill:currentColor;stroke:none}
 .mediaviewbuttons .mediaviewbutton:hover{color:var(--ink)}
 .mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
-.relatedpeople{display:flex;flex:1;min-width:0;gap:12px;overflow-x:auto;scrollbar-width:none;overscroll-behavior-inline:contain}
-.relatedpeople::-webkit-scrollbar{display:none}.relatedperson{flex:0 0 64px;border:0;background:transparent;color:inherit;
-  padding:0;cursor:pointer;text-align:center}.relatedperson .ring{display:grid;place-items:center;width:48px;height:48px;
-  margin:0 auto 5px;border-radius:50%;overflow:hidden;background:var(--overlay-5);color:var(--muted);position:relative}
-.relatedperson img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}.relatedperson .nm{display:block;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--fs-xs)}
-.relatedperson:hover .ring{box-shadow:0 0 0 1px var(--border-15)}
+/* 每一枚就是首页那枚 `.av` 女优头像，尺寸、间距与悬停都归 `board.css` 那套共享规则；
+   这里只管横滚轨道本身。 */
+.relatedpeople{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;overscroll-behavior-inline:contain}
+.relatedpeople::-webkit-scrollbar{display:none}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitycollectionhead{position:sticky;top:var(--topH);z-index:60;display:flex;align-items:center;gap:10px;
   min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;
