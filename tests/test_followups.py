@@ -554,7 +554,10 @@ class FaceMatchFollowupTests(LedgerTestCase):
     STAMP = AvatarFollowupTests.STAMP
     entity = AvatarFollowupTests.entity
     HER, OTHER, BLANK = (200, 40, 40), (40, 40, 200), (128, 128, 128)
-    VECTORS = {HER: (1.0, 0.0, 0.0), OTHER: (0.0, 1.0, 0.0), BLANK: None}
+    #: 她的另一张照片（和 HER 余弦 0.8，过线又不到近重复）与一张截错了人的封面。
+    HER_AGAIN, STRANGER = (250, 120, 0), (40, 200, 40)
+    VECTORS = {HER: (1.0, 0.0, 0.0), OTHER: (0.0, 1.0, 0.0), BLANK: None,
+               HER_AGAIN: (0.8, 0.0, 0.6), STRANGER: (0.0, 0.0, -1.0)}
 
     def setUp(self):
         super().setUp()
@@ -694,6 +697,36 @@ class FaceMatchFollowupTests(LedgerTestCase):
         self.assertEqual(f"gfriends:{record['external_id']}", hers)
         self.assertEqual(record["face_match"]["required"], 1)
 
+    def test_two_gallery_pictures_and_one_cover_agreeing_are_enough(self):
+        """一张参照截错了人：她在两家的两张不同照片对上另一张参照、彼此也对上，就是她（ADR-0057）。"""
+        self.candidate("1-S1", (400, 600), self.OTHER)
+        hers = self.candidate("2-Ideapocket", (400, 600), self.HER)
+        again = self.candidate("3-Moodyz", (400, 600), self.HER_AGAIN)
+        self.work(1, "IPX-001", self.HER)
+        self.work(2, "SSIS-002", self.STRANGER)
+        self.assertEqual(self.run_followup()["outcome"], "已装上")
+        record = self.provenance()
+        self.assertEqual(f"gfriends:{record['external_id']}", hers)
+        self.assertEqual(record["face_match"]["required"], 2)
+        self.assertEqual(record["face_match"]["corroborated_by"], {"ref": again, "score": 0.8})
+
+    def test_one_gallery_picture_matching_one_of_two_covers_is_not_enough(self):
+        self.candidate("1-S1", (400, 600), self.OTHER)
+        self.candidate("2-Ideapocket", (400, 600), self.HER)
+        self.work(1, "IPX-001", self.HER)
+        self.work(2, "SSIS-002", self.STRANGER)
+        self.run_followup()
+        self.assertEqual(self.provenance()["provider"], "cover-face")
+
+    def test_the_same_photo_stored_twice_is_one_piece_of_evidence(self):
+        """同一张照片在两个目录各存一份（放大、重压过），不算两份互证。"""
+        self.candidate("2-Ideapocket", (400, 600), self.HER)
+        self.candidate("x-DAS", (800, 1200), self.HER)
+        self.work(1, "IPX-001", self.HER)
+        self.work(2, "SSIS-002", self.STRANGER)
+        self.run_followup()
+        self.assertEqual(self.provenance()["provider"], "cover-face")
+
     def test_nothing_is_installed_without_a_cover_to_compare_against(self):
         self.candidate("1-S1", (400, 600), self.HER)
         self.candidate("2-Ideapocket", (400, 600), self.HER)
@@ -740,7 +773,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                                                    limit=10)]
 
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:0")
+            self.assertEqual(fingerprint(connection, self.person), "1:0:r2")
         self.run_followup()
         self.assertEqual(planned(), [])
         with self.database.write_transaction(notify=False) as connection:
@@ -748,7 +781,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                 "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
                 " VALUES(?,?,?,'test')", (self.person, "りな", "りな"))
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:1")
+            self.assertEqual(fingerprint(connection, self.person), "1:1:r2")
         self.assertEqual(planned(), [followup_key("performer", self.person)])
 
 

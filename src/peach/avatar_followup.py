@@ -52,6 +52,10 @@ MATCH_COVERS = 3
 MATCH_REQUIRED = 2
 #: 一个人最多拿这么多张图库候选去比，每张都要取一次图。
 MAX_MATCH_CANDIDATES = 24
+#: 两张图库候选的余弦到这一档就当是同一张照片（缩放、重压、AI 放大），不算两份证据。
+#: 2026-09-24 实测：同一张图缩到一半或三分之一再放大重压，SFace 给 0.94～0.97；
+#: 石川祐奈在 Digigra、Moodyz、DAS 三家的三张不同照片两两 0.59～0.66。
+NEAR_DUPLICATE = 0.9
 
 
 def followup_key(kind: str, entity_id: int) -> str:
@@ -117,18 +121,25 @@ def _needs_avatar(avatar_root, kind: str, entity_id: int) -> bool:
 #: 指纹里的两个量：作品数与别名数。别名 SQL 与 `stock` 那条共用。
 _ALIAS_COUNT = "(SELECT count(*) FROM entity_alias al WHERE al.entity_id=e.id)"
 
+#: 认人判据的版本，进指纹。改了判据就加一：存量里缺图的女优按新判据各重比一次。
+#: 2 是 ADR-0057 的图库互证。
+MATCH_RULE = 2
+
+
+def _fingerprint(works, aliases) -> str:
+    return f"{int(works or 0)}:{int(aliases or 0)}:r{MATCH_RULE}"
+
 
 def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
-    """会让这条后继结论变的量：她名下的作品数与别名数，写成 `作品数:别名数`。
+    """会让这条后继结论变的量：作品数、别名数与判据版本，写成 `作品数:别名数:r版本`。
 
     多一部作品就多一张封面可截、可比；多一个别名就多一个名字去图库里找（`神山ももか`
-    补上别名后才命中 `美雲そら` 与 `朝霧いのり` 两张）。
+    补上别名后才命中 `美雲そら` 与 `朝霧いのり` 两张）；判据换了，同一份证据也可能认得出。
     """
     row = connection.execute(
         "SELECT (SELECT count(DISTINCT asset_id) FROM asset_entity WHERE entity_id=e.id),"
         f" {_ALIAS_COUNT} FROM entity e WHERE e.id=?", (int(entity_id),)).fetchone()
-    works, aliases = (row[0], row[1]) if row else (0, 0)
-    return f"{int(works or 0)}:{int(aliases or 0)}"
+    return _fingerprint(*(row if row else (0, 0)))
 
 
 def stock(connection: sqlite3.Connection, avatar_root, attempts, *, limit: int,
@@ -148,7 +159,7 @@ def stock(connection: sqlite3.Connection, avatar_root, attempts, *, limit: int,
             " WHERE e.kind='performer' GROUP BY e.id ORDER BY assets DESC, e.id"):
         entity_id, kind = int(row["id"]), str(row["kind"])
         key = followup_key(kind, entity_id)
-        current = f"{int(row['assets'] or 0)}:{int(row['aliases'] or 0)}"
+        current = _fingerprint(row["assets"], row["aliases"])
         if (key in skip or not _needs_avatar(avatar_root, kind, entity_id)
                 or attempts.settled(key, current)):
             continue
@@ -266,6 +277,10 @@ def match_gallery(found: list[dict], covers: list, matcher,
     她，后面的不再取。不按像素挑：图库靠后的大库（`y-Minnano`、`z-DMM(骑)`）原图只有两三百
     像素、靠 AI 放大到五百以上，按像素排它们反而抢到前面；片商与事务所的原生图排在前头
     （`gfriends` 模块头）。
+
+    没有一张过够参照时再看互证（ADR-0057）：一张候选对上某张参照，名下另一张不是同一
+    张照片的候选也对上同一张参照、两张彼此也过线，三方互相认得，就算她。石川祐奈的两张
+    参照里有一张截的不是她（和谁都只有 0.0x），另一张和三家图库各 0.55～0.61。
     """
     if not covers:
         return GalleryMatch(reason=f"图库 {len(found)} 张认不准")
@@ -285,6 +300,16 @@ def match_gallery(found: list[dict], covers: list, matcher,
     required = min(MATCH_REQUIRED, len(references))
     threshold = face_match.COSINE_THRESHOLD
     scores: dict = {}
+    compared: list[tuple[Candidate, object, list[float]]] = []
+
+    def evidence(row, **extra):
+        return {
+            "model": face_match.MODEL_NAME, "threshold": threshold, "required": required,
+            "covers": [{"code": face.code, "asset_id": face.asset_id, "score": score}
+                       for (face, _vector), score in zip(references, row)],
+            "candidates": len(found), "compared": len(scores), **extra,
+        }
+
     for choice in found[:MAX_MATCH_CANDIDATES]:
         candidate = fetch(choice)
         if candidate is None or not acceptable_avatar(candidate.inspected, MIN_LONG_SIDE,
@@ -300,13 +325,17 @@ def match_gallery(found: list[dict], covers: list, matcher,
                for _face, reference in references]
         scores[choice["ref"]] = row
         if sum(score >= threshold for score in row) >= required:
-            evidence = {
-                "model": face_match.MODEL_NAME, "threshold": threshold, "required": required,
-                "covers": [{"code": face.code, "asset_id": face.asset_id, "score": score}
-                           for (face, _vector), score in zip(references, row)],
-                "candidates": len(found), "compared": len(scores),
-            }
-            return GalleryMatch(winner=candidate, evidence=evidence, scores=scores)
+            return GalleryMatch(winner=candidate, evidence=evidence(row), scores=scores)
+        compared.append((candidate, vector, row))
+    for candidate, vector, row in compared:
+        for other, other_vector, other_row in compared:
+            pair = face_match.cosine(vector, other_vector)
+            if other is candidate or not threshold <= pair < NEAR_DUPLICATE:
+                continue
+            if any(mine >= threshold and theirs >= threshold
+                   for mine, theirs in zip(row, other_row)):
+                return GalleryMatch(winner=candidate, scores=scores, evidence=evidence(
+                    row, corroborated_by={"ref": other.choice["ref"], "score": round(pair, 3)}))
     return GalleryMatch(reason=f"图库 {len(found)} 张里比不出她", scores=scores)
 
 
