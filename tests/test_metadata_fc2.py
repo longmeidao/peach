@@ -499,6 +499,11 @@ class JavArchiveTests(unittest.TestCase):
 DB_COVER = "https://d39jz7pbpqkw9s.cloudfront.net/thumbnails/48/4898837.webp"
 
 
+def db_actress(at: int) -> str:
+    """站内女优页的编号：标准写法的 uuid，实测 `5fb206c2-f8a0-4447-8e6e-c33869f54ea3`。"""
+    return f"5fb206c2-f8a0-4447-8e6e-{at:012d}"
+
+
 def db_page(video="4898837", title="ふたりの巨乳美少女と3P。", seller="ぷにぷに製作所", slug="punipuni",
             sold="2026年5月10日", runtime="55:00", performers=("川北すずね",), leaked="流出なし",
             tags=("巨乳", "3P")):
@@ -506,7 +511,7 @@ def db_page(video="4898837", title="ふたりの巨乳美少女と3P。", seller
 
     PR 位与関連動画也链到女优页，放进来看解析只认出演女優那一块。
     """
-    cast = ("".join(f'<a href="/ja/actresses/{at}-uuid"><span><img alt="{name}" src="/a.webp"></span>'
+    cast = ("".join(f'<a href="/ja/actresses/{db_actress(at)}"><span><img alt="{name}" src="/a.webp"></span>'
                     f"<span>{name}</span></a>" for at, name in enumerate(performers))
             if performers else "<p>情報がありません</p>")
     marks = "".join(f'<a href="/ja/videos?tags={tag}">{tag}</a>' for tag in tags)
@@ -544,7 +549,7 @@ class Fc2ppvdbTests(unittest.TestCase):
     def test_the_database_page_gives_the_women_the_seller_the_date_and_the_leak_mark(self):
         found = database(db_page(), "FC2-PPV-4898837")
         self.assertEqual(found["title"], "ふたりの巨乳美少女と3P。")
-        self.assertEqual(found["actresses"], [{"japanese_name": "川北すずね"}])
+        self.assertEqual(found["actresses"], [{"japanese_name": "川北すずね", "external_id": db_actress(0)}])
         self.assertEqual((found["label"], found["seller_url"]),
                          ("ぷにぷに製作所", "https://adult.contents.fc2.com/users/punipuni/"))
         self.assertEqual((found["release_date"], found["runtime"]), ("2026-05-10", 55.0))
@@ -562,8 +567,16 @@ class Fc2ppvdbTests(unittest.TestCase):
     def test_only_the_cast_block_names_the_women_of_this_film(self):
         # PR 位与関連動画也链到女优页，那些不是这部片的人；站上没有女优时那一栏写「情報がありません」。
         self.assertEqual(database(db_page(performers=("A", "B")), "FC2-PPV-4898837")["actresses"],
-                         [{"japanese_name": "A"}, {"japanese_name": "B"}])
+                         [{"japanese_name": "A", "external_id": db_actress(0)},
+                          {"japanese_name": "B", "external_id": db_actress(1)}])
         self.assertEqual(database(db_page(performers=()), "FC2-PPV-4898837")["actresses"], [])
+
+    def test_each_woman_carries_her_actress_page_id_once(self):
+        # 同一位在栏里列两次只留一个；链接不是站内女优页的 uuid 时只交名字，不拿半截地址当编号。
+        doubled = database(db_page(performers=("A", "A")), "FC2-PPV-4898837")["actresses"]
+        self.assertEqual(doubled, [{"japanese_name": "A", "external_id": db_actress(0)}])
+        odd = db_page(performers=("A",)).replace(f"/ja/actresses/{db_actress(0)}", "/ja/actresses/a-page")
+        self.assertEqual(database(odd, "FC2-PPV-4898837")["actresses"], [{"japanese_name": "A"}])
 
     def test_the_sale_date_falls_back_to_the_meta_line_and_japanese_dates_read_as_iso(self):
         self.assertEqual(japanese_date("2026年9月21日"), "2026-09-21")
