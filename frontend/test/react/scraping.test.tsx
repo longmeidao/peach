@@ -29,8 +29,6 @@ const source = (overrides: Partial<Source> = {}): Source => ({
   accepts_cookie: true,
   network: 'peach',
   cookie_saved: false,
-  accepts_user_agent: false,
-  user_agent: '',
   ...overrides,
 });
 

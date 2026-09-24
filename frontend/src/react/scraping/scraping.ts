@@ -30,9 +30,6 @@ export interface Source {
   accepts_cookie: boolean;
   network: string;
   cookie_saved: boolean;
-  /** 在 Cloudflare 验证后面的来源还收用户浏览器的 User-Agent：Cookie 绑着解题那台浏览器。 */
-  accepts_user_agent: boolean;
-  user_agent: string;
 }
 
 export interface ScrapingData {

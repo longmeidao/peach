@@ -1,4 +1,4 @@
-# ADR-0060：FC2 链接上 FC2PPV-DB 与 JAVten，Cloudflare 后面的站用浏览器的 Cookie 与 User-Agent 进
+# ADR-0060：FC2 链接上 FC2PPV-DB 与 JAVten，Cloudflare 后面的站用浏览器的 Cookie 进
 
 - 状态：Accepted
 - 日期：2026-09-24
@@ -21,6 +21,7 @@ javten.com（fc2hub.com 的后继，OpenAver issue #186 的 FC2 刮削经验点�
 | 给什么 | 女优（链到站内女优页）、卖家（slug 与发行方用户页同名）、販売日、タグ、時長、「流出あり／なし」 | 日文标题、标签、卖家名、時長、販売日（`videos:published_time`）、FC2 存储原件封面地址两处 |
 | 封面 | 360×360 的 CloudFront 缩略图（`og:image:width` 写 800，实测 360），不合封面最低宽度 | `storage*.contents.fc2.com` 原件，与发行方商品页同一文件，下架后可能已删 |
 | 没有 | 回 200 的 404 页，`<h1>` 写 `404` | 搜索结果里没有 `id<号>` 那一条 |
+| 跳转 | 无 | 搜索单命中 302 的 Location 写成 `http://`，且带着用户会话时落到用户上次选的语言版（`/tw/`） |
 | 语言 | 日文原页 `/ja/` | 有 `/tw/`、`/en/`、`/ko/` 译文版，中文是机器翻译（用户判定） |
 | 演员 | `FC2-PPV-4898837` 写 `川北すずね`，日文原名 | 不给演员 |
 
@@ -37,17 +38,18 @@ Cloudflare 验证页由 `sources.base.challenge_page` 认，归 `cloudflare_chal
 排在 fc2cmadb 之后、javdb 之前。
 
 **三、JAVten 只收日文原页。** `fetch` 只取不带语言前缀的地址，落到译文页再取原页；`parse` 见 `og:url` 带语言前缀
-归 `parse_error`，不把机翻写进标题。
+归 `parse_error`，不把机翻写进标题。搜索那一跳的 Location 是 `http://`：`HttpxTransport` 跟跳时把同主机的
+`http://` 升回 `https://`（浏览器靠 HSTS 做同一件事），否则 Secure 的 `cf_clearance` 不随明文地址发出，
+Cookie 对了也回验证页。只升不降，换了主机的明文地址仍按跨源丢凭据。
 
 **四、FC2PPV-DB 不交封面。** 缩略图连最低宽度都过不了，交下去只是白花一次请求；封面留给链上前后指着存储原件的几档。
 「流出」标记进 `extra['leaked']`，只作证据，不投影到账本字段。
 
-**五、来源设置加浏览器 User-Agent。** `scraping_access.SOURCES` 里这两站 `cookie`、`session`、`user_agent` 三样都收，
-`blocked_pause` 6 小时。`save` 存 `user_agent`（压空白、512 字符上限，不收的来源报错）；`describe` 回
-`accepts_user_agent` 与明文 `user_agent`；`client_for` 的默认头与 `SourceTransport._request` 都把请求头的 UA 换成
-用户存的那一个（调用方在 `_fetch` 里写的是整站 UA，会压过 client 默认头，所以要在传输层换）。
-保存新 Cookie 时清掉该来源的冷却：冷却记的是旧 Cookie 撞出来的账。403 时的暂停措辞指向「更新 Cookie 与浏览器
-User-Agent」。「来源和凭证」页在收 UA 的卡上多一个明文输入框。
+**五、UA 走整站那一份，不按来源另收。** `cf_clearance` 绑着解题那台浏览器的 UA，但 Peach 是单人自托管应用，
+浏览器就是用户这一台 Chrome：`peach.user_agent.USER_AGENT` 按它的 `chrome://version` 定（2026-09-24 为
+Chrome 153），Chrome 大版本升了就改那一处，全部对外请求一起换。用户的判据是「不要我单独输 UA」。
+`scraping_access.SOURCES` 里这两站收 `cookie`、`session`，`blocked_pause` 6 小时；保存新 Cookie 时清掉该来源的
+冷却：冷却记的是旧 Cookie 撞出来的账。收 Cookie 的来源 403 时的暂停措辞指向「更新它的 Cookie」。
 
 **六、bigboobs.pink 不接。** 可直接抓（WordPress，无 Cloudflare），但只有按女优聚合的文章，没有 FC2 号入口，
 作女优别名与作品聚合的参考，不进链。
@@ -58,5 +60,6 @@ User-Agent」。「来源和凭证」页在收 UA 的卡上多一个明文输入
   链照常往下走，不影响别的档。
 - `cf_clearance` 有效期短（站方一般数小时到一天），过期就要用户重新贴。这是这两站的固有成本，不是 Peach 的缺陷；
   自动过验证（无头浏览器、第三方解题服务）不做。
-- UA 与 Cookie 必须来自同一台浏览器，连接方式必须选与那台浏览器同一个出口；配错的表现是 Cookie 对了仍 403。
+- Cookie 必须来自 UA 所指的那台 Chrome，连接方式必须选与它同一个出口；Chrome 升了大版本而 `USER_AGENT` 没跟上，
+  表现是 Cookie 对了仍 403。
 - 演员栏多一处日文原名来源；两站的女优名不一致时按现有的候选与复核流程处理。

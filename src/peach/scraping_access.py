@@ -35,12 +35,12 @@ SOURCES = {
                  "cookie": True, "session": True},
     # FC2 商品的两个存档站都在 Cloudflare 的 JS 验证后面：httpx 与模拟 Chrome 指纹的直连都回 403，
     # 只有浏览器过完验证发下的 `cf_clearance` 能进，而它绑着解题那台浏览器的 User-Agent 与出口。
-    # 所以这两个来源除 Cookie 外还收用户浏览器的 UA（`user_agent`），请求头照它发；连接方式由用户
+    # 整站 UA（`peach.user_agent`）与用户的 Chrome 保持一致就够了，Cookie 由用户贴；连接方式由用户
     # 选成与浏览器同一个出口。Cookie 过期后回 403，按 `blocked_pause` 停下等用户换新的，不反复撞。
     "fc2ppvdb": {"label": "FC2PPV-DB", "domains": ("fc2ppv-db.com",), "login": "https://fc2ppv-db.com/",
-                 "cookie": True, "session": True, "user_agent": True, "blocked_pause": 6 * 3600},
+                 "cookie": True, "session": True, "blocked_pause": 6 * 3600},
     "javten": {"label": "JAVten", "domains": ("javten.com",), "login": "https://javten.com/",
-               "cookie": True, "session": True, "user_agent": True, "blocked_pause": 6 * 3600},
+               "cookie": True, "session": True, "blocked_pause": 6 * 3600},
     # 下架 FC2 的最后一档。作品页在 javarchive.com、封面转存在 javstore.net 上，两边算同一个
     # 来源。免登录可读，不收 Cookie，`robots.txt` 是全站放行。
     "javarchive": {"label": "JavArchive", "domains": ("javarchive.com", "javstore.net"),
@@ -200,16 +200,6 @@ def save(root: Path, source: str, body: dict) -> dict:
             values.update(supplied)
             # 新 Cookie 多半是为了解开 403 才换的；冷却记的是旧 Cookie 撞出来的账，别让它压着新的等到期。
             cooldown_path(root, source).unlink(missing_ok=True)
-        if "user_agent" in body:
-            agent = " ".join(str(body.get("user_agent") or "").split())
-            if agent and not SOURCES[source].get("user_agent"):
-                raise ValueError("此来源不接受浏览器 User-Agent")
-            if len(agent) > 512:
-                raise ValueError("User-Agent 超过 512 字符")
-            if agent:
-                values["user_agent"] = agent
-            else:
-                values.pop("user_agent", None)
         path = _store(root).path_for("scraping-" + source)
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = None
@@ -232,22 +222,14 @@ def describe(root: Path, source: str) -> dict:
     return {"source": source, "label": SOURCES[source]["label"],
             "login": SOURCES[source]["login"], "accepts_cookie": bool(SOURCES[source].get("cookie")),
             "network": "direct" if values.get("network") == "direct" else "peach",
-            "cookie_saved": bool(values.get("cookie") or values.get("cookies_text")),
-            "accepts_user_agent": bool(SOURCES[source].get("user_agent")),
-            # UA 不是秘密，回给页面让用户看到现在发的是哪一个浏览器的。
-            "user_agent": user_agent_for(values, source)}
-
-
-def user_agent_for(values: dict, source: str) -> str:
-    """这个来源的请求该报的 User-Agent：收 UA 的来源用用户存的那一个，其余与整站一致。"""
-    return str(values.get("user_agent") or "") if SOURCES.get(source, {}).get("user_agent") else ""
+            "cookie_saved": bool(values.get("cookie") or values.get("cookies_text"))}
 
 
 def client_for(root: Path, source: str, *, session: bool = False, **kwargs) -> httpx.Client:
     values = values_for(root, source)
     network = {"trust_env": False} if values.get("network") == "direct" else peach_proxy.client_options(root)
     options = {**network, "follow_redirects": True,
-               "headers": {"User-Agent": user_agent_for(values, source) or USER_AGENT}}
+               "headers": {"User-Agent": USER_AGENT}}
     if session:
         options["cookies"] = cookie_jar(values, source)
     options.update(kwargs)
@@ -261,8 +243,6 @@ class SourceTransport:
                  max_bytes: int = 0, max_seconds: float = 0):
         self.root = secrets_root
         self.transports: dict[str | None, HttpxTransport] = {}
-        #: 来源 → 用户存的浏览器 UA；与连接池同时定下，采集一趟里不换。
-        self.agents: dict[str | None, str] = {}
         self.max_requests, self.max_bytes = max_requests, max_bytes
         self.deadline = time.monotonic() + max_seconds if max_seconds else 0
         self.requests = self.bytes = 0
@@ -307,12 +287,6 @@ class SourceTransport:
                                  follow_redirects=False) if source else
                       httpx.Client(**peach_proxy.client_options(self.root), follow_redirects=False, headers={"User-Agent": USER_AGENT}))
             self.transports[source] = HttpxTransport(client, owns_client=True)
-            self.agents[source] = user_agent_for(values_for(self.root, source), source) if source else ""
-        if self.agents.get(source):
-            # 调用方在请求头里写了整站的 UA，它压过 client 那一份；收 UA 的来源要发的是用户浏览器的。
-            headers = {key: value for key, value in request.headers.items() if key.lower() != "user-agent"}
-            request = HttpRequest(request.method, request.url, {**headers, "User-Agent": self.agents[source]},
-                                  request.body)
         self.requests += 1
         try:
             response = self.transports[source](request, timeout, max_bytes)
@@ -335,9 +309,9 @@ class SourceTransport:
             blocks += 1
             _pause(cooldown, time.time()
                    + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1), blocked_pause), blocks)
-            if SOURCES[source].get("user_agent"):
-                raise SourcePaused("来源要求浏览器验证，暂停向它请求一段时间；"
-                                   "请在采集设置里更新它的 Cookie 与浏览器 User-Agent；已有图片保留")
+            if SOURCES[source].get("cookie"):
+                raise SourcePaused("来源拒绝访问，暂停向它请求一段时间；"
+                                   "请在采集设置里更新它的 Cookie；已有图片保留")
             raise SourcePaused("来源拒绝访问，暂停向它请求一段时间；已有图片保留")
         if blocks and response.status < 400:
             # 这一趟通了，封已经解除：清掉记录，下次撞上从最短的一档重新起算。

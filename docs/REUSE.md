@@ -345,7 +345,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
    只复用成功日志的精确 URL。MDC-NG 公共仓库只证明 Amazon 日本渠道存在，后端匹配逻辑未公开，故只留
    POC 候选。该流程不新增依赖、不写 ledger，操作步骤见 `peach-jav-cover-workflow`。
 
-- 对外请求的 UA 统一取 `peach.user_agent.USER_AGENT`（标准桌面 Chrome）；HTTPX、来源连接器、FFmpeg 抽帧与脚本共用。复用现有 transport、限速和证书校验，无新增依赖；标准 UA 不保证站点放行。FANBOX 浏览器传输使用已安装 curl_cffi 的 Chrome 150 配置。
+- 对外请求的 UA 统一取 `peach.user_agent.USER_AGENT`（与用户这台机器的 Chrome 同大版本，ADR-0060）；HTTPX、来源连接器、FFmpeg 抽帧与脚本共用。复用现有 transport、限速和证书校验，无新增依赖；标准 UA 不保证站点放行。FANBOX 浏览器传输使用已安装 curl_cffi 的 Chrome 150 配置。
 - 整张作品封面不装成头像：单人作品关联不证明画面中的人物身份，`cover_fallback` 显式标记身份未核实，采集脚本的安装闸门拒绝这类来源。图库给不出唯一人像时，补头像后继（`peach.avatar_followup`）从单人作品封面截脸周围一块方图（`peach.avatar_cover_face`，YuNet 脸框放大 2.4 倍），按脸宽像素挑封面，最差是缩略图；其余检得出脸的封面各截一张进候选缓存（至多 8 张），挑图弹层里一点就换。面具、眼罩照样算脸，检不出的不降门槛去捞：低分框多落在手和身体上。来源记 `cover-face` 与 `identity_verified: false`。图库同名多张时先按脸认人（`peach.face_match`，ADR-0056；一张参照截错人时，两张不同照片与另一张参照三方互证也算，ADR-0057），认不出才截封面。整张封面装的旧头像和截过的脸遇到更宽的脸自动替换，图库装的与人挑的不碰。头像选择器的作品组按封面像素面积排序。
 - 复核页面上下文复用原生 CSS sticky、主导航 `--topH` 与既有滚动/尺寸调度，分类及筛选栏合为同一吸附区，分组标题按实测栏高接续吸附。仅吸附时显示通栏背景，全选本组紧邻标题；桌面、手机、换组、尺寸变化及返回顶部均用隔离候选验证。卡片以 flex 分开标题、既有 Scroller、当前信息和操作；只有资料滚动，当前信息过长时可聚焦滚动阅读。多选计数共用 `selectiondockcount`，保留首页的文字口径；不新增依赖，不改变候选与提交协议。
 - 复核分类复用 `selectFieldHtml`、`wireSelectField` 和现有 `list-filter` 图标；图标只在筛选入口显示，选项保留文字与选中标记。按当前候选数据提供字段及来源选项，批量决定复用既有协议。字段次级分类采用具名 Listbox 分区，依据见 `reference-snapshots/vercel-review-actions.md`。人工复核与馆藏、关注、标签、垃圾文件和回收站共用 `selectiondock` 浮窗布局，保留各自操作与提交协议；复核卡片内作品样本选择仍属于单条候选，不混入页面级多选。没有新增依赖。Shift 连选使用原生 `mousedown.preventDefault()` 防止文字选区；实际浏览器验证覆盖亮暗主题、宽屏和 390px。

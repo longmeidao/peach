@@ -8,7 +8,8 @@
 站上没有的商品回一张 200 的「404 ページが見つかりません」页，`<h1>` 里没有番号。
 
 站前是 Cloudflare 的 JS 验证：httpx 与模拟 Chrome 指纹的 curl_cffi 直连都回 403，只有浏览器过完验证发下的
-`cf_clearance` 能进（`scraping_access.SOURCES['fc2ppvdb']`），所以请求带用户在采集设置里贴的 Cookie 与浏览器 UA。
+`cf_clearance` 能进（`scraping_access.SOURCES['fc2ppvdb']`），所以请求带用户在采集设置里贴的 Cookie；它绑着解题
+那台浏览器的 UA，整站 UA（`peach.user_agent`）与用户的 Chrome 保持一致。
 
 不交封面：站上那张是 360×360 的 CloudFront 缩略图（`og:image:width` 写 800，实测 360），连封面的最低宽度都
 过不了，下回来只是白花一次请求；封面留给链上前后指着 FC2 存储原件的几档。
@@ -147,7 +148,7 @@ class Fc2ppvdbSource(SiteSource):
             raise unrecognised()
         if challenge_page(page.body):
             raise SourceFailure(FailureReason.CLOUDFLARE_CHALLENGE,
-                                f"{self.config.label} 要求 Cloudflare 验证，请在采集设置里更新 Cookie 与浏览器 User-Agent",
+                                f"{self.config.label} 要求 Cloudflare 验证，请在采集设置里更新 Cookie",
                                 status_code=403)
         soup = BeautifulSoup(page.text, "html.parser")
         heading = soup.select_one("main h1") or soup.select_one("h1")

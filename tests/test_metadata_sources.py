@@ -277,13 +277,11 @@ class ConfigConsistencyTests(unittest.TestCase):
                          {"r18dev", "dmm", "1pondo", "fc2"})
         self.assertEqual(tuple(name for name in SITE_SOURCES if name in FC2_STAGE), FC2_STAGE,
                          "FC2 五站按链上先后登记")
-        # 在 Cloudflare 验证后面的两站：Cookie 绑着浏览器的 UA，采集设置里两样都收，403 时整站冷却。
+        # 在 Cloudflare 验证后面的两站：公开采集带用户贴的 Cookie，403 时整站冷却。
         for name in ("fc2ppvdb", "javten"):
-            self.assertEqual({key: scraping_access.SOURCES[name].get(key) for key in ("cookie", "session", "user_agent")},
-                             {"cookie": True, "session": True, "user_agent": True}, name)
+            self.assertEqual({key: scraping_access.SOURCES[name].get(key) for key in ("cookie", "session")},
+                             {"cookie": True, "session": True}, name)
             self.assertTrue(scraping_access.SOURCES[name]["blocked_pause"], name)
-        self.assertEqual({name for name, spec in scraping_access.SOURCES.items() if spec.get("user_agent")},
-                         {"fc2ppvdb", "javten"})
 
 
 if __name__ == "__main__":
