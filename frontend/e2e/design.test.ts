@@ -1576,27 +1576,32 @@ describe('设计决定', () => {
     }
   });
 
-  it('跳过渲染的卡片不裁掉贴着左缘的头像悬停描边', { timeout: 60_000 }, async () => {
+  it('跳过渲染的元信息区不裁掉贴着边的头像悬停描边', { timeout: 60_000 }, async () => {
     const opened = await openCatalog(browser);
     try {
-      /* 视口外跳过渲染连带 paint containment，卡里画出卡片盒的像素一律裁掉；几何照算，
-         所以这里比的是描边外沿与裁切边，不是与卡片盒。 */
+      /* 视口外跳过渲染连带 paint containment，元信息区里画出盒外的像素一律裁掉；几何照算，
+         所以这里比的是描边外沿与裁切边，不是与元信息区的盒子。头像贴着它的左缘和上缘。 */
       const avatar = opened.page.locator('#grid .grid > article.card .meta > .mav').first();
       await avatar.hover();
       const edges = await avatar.evaluate((element) => {
-        const card = element.closest('article.card')!;
-        const style = getComputedStyle(card);
+        const meta = element.closest('.meta')!;
+        const style = getComputedStyle(meta);
         const ring = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(getComputedStyle(element).boxShadow)?.[1]);
+        const margin = parseFloat(style.overflowClipMargin || '0');
+        const box = element.getBoundingClientRect();
+        const clip = meta.getBoundingClientRect();
         return {
           contained: style.contentVisibility === 'auto',
-          ring, ringLeft: element.getBoundingClientRect().left - ring,
-          clipLeft: card.getBoundingClientRect().left - parseFloat(style.overflowClipMargin || '0'),
+          ring, ringLeft: box.left - ring, ringTop: box.top - ring,
+          clipLeft: clip.left - margin, clipTop: clip.top - margin,
         };
       });
-      assert.ok(edges.contained, '首页卡片不再跳过渲染：这条用例守的裁切前提变了，改用例');
+      assert.ok(edges.contained, '首页卡片的元信息区不再跳过渲染：这条用例守的裁切前提变了，改用例');
       assert.ok(edges.ring > 0, '头像悬停没有描边');
       assert.ok(edges.ringLeft >= edges.clipLeft - .5,
         `头像描边外沿 ${edges.ringLeft}px 越过了裁切边 ${edges.clipLeft}px，左半圈会被裁掉`);
+      assert.ok(edges.ringTop >= edges.clipTop - .5,
+        `头像描边上沿 ${edges.ringTop}px 越过了裁切边 ${edges.clipTop}px，上半圈会被裁掉`);
     } finally {
       await opened.close();
     }
