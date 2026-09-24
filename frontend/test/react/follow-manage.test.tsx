@@ -6,6 +6,7 @@
 import { act } from 'react';
 import { notifyManager, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
+import * as legacyUi from '@peach/legacy/ui';
 
 import { JOB_RUNNING_POLL_MS } from '../../src/react/background-job';
 import { queryClient } from '../../src/react/query';
@@ -88,6 +89,8 @@ interface Plan {
   add?: (body: { url: string; label: string }) => unknown;
   /** 订阅源清单。 */
   feeds?: FeedsData;
+  /** 订阅源的开关与移除。回 `refuse(...)` 就是这一次被服务端挡回来。 */
+  feedWrite?: (body: { action: string; id: number }) => unknown;
 }
 
 /** 按端点分流的假 fetch。写操作各回一个最小成功体。 */
@@ -97,6 +100,7 @@ function serve(plan: Plan = {}) {
     const url = String(input);
     const body = init?.body ? JSON.parse(String(init.body)) : null;
     if (url === FEEDS_URL) return ok(plan.feeds ?? { sources: [], unread: 0 });
+    if (url === FEED_SOURCE_URL && plan.feedWrite) return plan.feedWrite(body);
     if (url === FEED_SOURCE_URL || url === FEEDS_CHECK_URL) return ok({ ok: true });
     if (url === FOLLOW_CREDENTIALS_URL) return ok(plan.creds ?? credentials());
     if (url === FOLLOW_CREDENTIAL_URL) return ok({});
@@ -532,7 +536,26 @@ const FEEDS: FeedsData = {
 const feedReads = (fetcher: ReturnType<typeof serve>) =>
   fetcher.mock.calls.filter(([input, init]) => String(input) === FEEDS_URL && !(init as RequestInit | undefined)?.method).length;
 
+type Confirmation = Parameters<typeof legacyUi.confirmModal>[0];
+
+/** 确认弹层记下写了什么；`accept` 为真就替人点主按钮。`outcomes` 是每次写入的结局：
+ *  成功为 null，失败是弹层会摆在正文下面的那句原因。 */
+function stubConfirm(accept: boolean) {
+  const asked: Confirmation[] = [];
+  const outcomes: Promise<string | null>[] = [];
+  vi.spyOn(legacyUi, 'confirmModal').mockImplementation((async (options: Confirmation) => {
+    asked.push(options);
+    if (!accept) return { confirmed: false };
+    const outcome = Promise.resolve(options.onConfirm?.())
+      .then(() => null, (cause: Error) => cause.message);
+    outcomes.push(outcome);
+    return { confirmed: (await outcome) === null };
+  }) as typeof legacyUi.confirmModal);
+  return { asked, outcomes };
+}
+
 it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即拉取都落到订阅源的接口上', async () => {
+  stubConfirm(true);
   const { host, fetcher } = await open({ feeds: FEEDS }, { tab: 'feeds' });
   expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('订阅源');
   expect(host.textContent).toContain('女优新作 · 每 12 小时一次 · 还没拉过 · 上次新增 0 条');
@@ -551,6 +574,45 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
   ]);
   expect(sentBody(fetcher, FEEDS_CHECK_URL)).toEqual([{ all: true }]);
   expect(feedReads(fetcher)).toBeGreaterThan(1);
+});
+
+it('点移除先弹确认：标题与主按钮同一个动词，正文点名这条源，取消就什么都不发', async () => {
+  const { asked } = stubConfirm(false);
+  const { host, fetcher, props } = await open({ feeds: FEEDS }, { tab: 'feeds' });
+  await click(buttonLabelled(host, '移除 甲 的新作'));
+  await settle();
+  expect(asked).toHaveLength(1);
+  const [modal] = asked;
+  expect(modal).toMatchObject({ title: '移除订阅源', confirmLabel: '移除订阅源', danger: true });
+  expect(modal!.cancelLabel ?? '取消').toBe('取消');
+  expect(modal!.body).toBe('将移除订阅源「甲 的新作」，之后不再拉取它的新作；已经拉到的新作保留。');
+  expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([]);
+  expect(props.toast).not.toHaveBeenCalled();
+});
+
+it('确认移除后才写入，Toast 与主按钮同一个动词并点名这条源，清单随后重取', async () => {
+  const { outcomes } = stubConfirm(true);
+  const { host, fetcher, props } = await open({ feeds: FEEDS }, { tab: 'feeds' });
+  const before = feedReads(fetcher);
+  await click(buttonLabelled(host, '移除 甲 的新作'));
+  expect(await outcomes[0]).toBeNull();
+  await settle();
+  expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([{ action: 'remove', id: 4 }]);
+  expect(props.toast).toHaveBeenCalledWith('已移除订阅源「甲 的新作」');
+  expect(feedReads(fetcher)).toBeGreaterThan(before);
+});
+
+it('移除被服务端挡回时把原因交给弹层，不发 Toast、不重取清单', async () => {
+  const { outcomes } = stubConfirm(true);
+  const { host, fetcher, props } = await open(
+    { feeds: FEEDS, feedWrite: () => refuse('订阅源正在拉取') }, { tab: 'feeds' });
+  const before = feedReads(fetcher);
+  await click(buttonLabelled(host, '移除 甲 的新作'));
+  expect(await outcomes[0]).toBe('订阅源正在拉取');
+  await settle();
+  expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([{ action: 'remove', id: 4 }]);
+  expect(props.toast).not.toHaveBeenCalled();
+  expect(feedReads(fetcher)).toBe(before);
 });
 
 it('订阅源页签不收地址，只读的这台开关、移除与拉取都停用', async () => {

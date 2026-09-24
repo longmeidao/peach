@@ -179,7 +179,7 @@ export function FollowManagePage(props: FollowManageProps) {
         </TabPanel>
 
         <TabPanel id="feeds" className="flex flex-col gap-4">
-          <FeedSources readOnly={readOnly} />
+          <FeedSources readOnly={readOnly} toast={toast} />
         </TabPanel>
 
         <TabPanel id="source" className="flex flex-col gap-4">

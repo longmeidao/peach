@@ -5,6 +5,7 @@
  * 服务端是唯一真相：开关与移除之后重取这一份，不在前端按响应拼一份新的本地状态。 */
 import { useQuery } from '@tanstack/react-query';
 import { RiDeleteBinLine, RiRssLine } from '@remixicon/react';
+import { confirmModal } from '@peach/legacy/ui';
 
 import { SettingsCard, SettingsRow } from '@/components/application/settings/settings-rows';
 import { Button } from '@/components/base/buttons/button';
@@ -33,7 +34,9 @@ function describe(source: FeedSource): string {
 
 const reload = () => queryClient.invalidateQueries({ queryKey: FEEDS_KEY, exact: true });
 
-export function FeedSources({ readOnly }: { readOnly: boolean }) {
+const feedName = (source: FeedSource) => source.name || source.url;
+
+export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(message: string): void }) {
   const feeds = useQuery({ queryKey: FEEDS_KEY, queryFn: ({ signal }) => fetchFeeds(signal) });
   const action = useAction();
   const data = feeds.data;
@@ -52,8 +55,18 @@ export function FeedSources({ readOnly }: { readOnly: boolean }) {
 
   const toggle = (source: FeedSource, enabled: boolean) => void action.run(`enabled-${source.id}`,
     (signal) => setFeedEnabled(source.id, enabled, signal), () => void reload());
-  const remove = (source: FeedSource) => void action.run(`remove-${source.id}`,
-    (signal) => removeFeed(source.id, signal), () => void reload());
+  /* 移除和关注列表那一行同一套确认：删的是这条源和它的去重记忆，拉回来的新作留着
+     （`feed_discovery.source_id` 置空）。写入交给弹层，忙态和失败原因都落在弹层里。 */
+  const remove = (source: FeedSource) => void confirmModal({
+    title: '移除订阅源',
+    body: `将移除订阅源「${feedName(source)}」，之后不再拉取它的新作；已经拉到的新作保留。`,
+    confirmLabel: '移除订阅源', danger: true,
+    onConfirm: async () => {
+      await removeFeed(source.id);
+      toast(`已移除订阅源「${feedName(source)}」`);
+      void reload();
+    },
+  });
   const check = () => void action.run('check', (signal) => checkFeeds(signal), () => void reload());
 
   const failing = data.sources.filter((source) => source.last_error);
@@ -64,15 +77,15 @@ export function FeedSources({ readOnly }: { readOnly: boolean }) {
       {data.sources.length ? (
         <Rows>
           {data.sources.map((source) => (
-            <SettingsRow key={source.id} label={source.name || source.url} description={describe(source)}>
+            <SettingsRow key={source.id} label={feedName(source)} description={describe(source)}>
               {/* 移除键和关注列表那一枚同一个写法：次级描边、垃圾桶字形。取 xs 那一档，
                   和开关一样 24px 高，两样并排才读成同一行的两个控件。 */}
               <div className="flex items-center gap-2">
-                <Switch aria-label={`启用 ${source.name || source.url}`} isSelected={source.enabled}
+                <Switch aria-label={`启用 ${feedName(source)}`} isSelected={source.enabled}
                   isDisabled={readOnly} onChange={(enabled) => toggle(source, enabled)} />
                 <Button variant="secondary" size="xs" iconOnly leadingIcon={RiDeleteBinLine}
-                  aria-label={`移除 ${source.name || source.url}`} disabled={readOnly}
-                  onClick={() => remove(source)} {...busyProps(action.busy === `remove-${source.id}`)} />
+                  aria-label={`移除 ${feedName(source)}`} disabled={readOnly}
+                  onClick={() => remove(source)} />
               </div>
             </SettingsRow>
           ))}
@@ -86,7 +99,7 @@ export function FeedSources({ readOnly }: { readOnly: boolean }) {
         <Stack divided>
           {/* 拉不动的源各自把原因摆在自己那一行下面：一条源坏掉不该让整节看起来都坏了。 */}
           {failing.map((source) => (
-            <Note key={source.id} tone="error" title={`${source.name || source.url} 拉取失败`}>
+            <Note key={source.id} tone="error" title={`${feedName(source)} 拉取失败`}>
               {source.last_error}
             </Note>
           ))}

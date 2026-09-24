@@ -1577,16 +1577,39 @@ describe('设计决定', () => {
       assert.deepEqual(inSettings, await chips('#boardGlowMenu'), '设置里的预设色块和侧栏配色卡不是同一组');
       const size = await grid.locator('.board-glow-ball').first().evaluate((node) => node.getBoundingClientRect().width);
       assert.equal(size, 28, '设置里的色块和侧栏那一枚不是同一副尺寸');
-      /* 设置这一行有整块设置那么宽：列宽跟着行宽走的话，六枚球会散成相隔八十来像素的
-         一排点。列宽收成球本身，每行六枚、间距与侧栏那条 `.board-glow-grid` 同一个值。 */
+      /* 设置这一行有整块设置那么宽：列数跟着可用宽度走，每格就是一枚球，挨着排满再换行，
+         间距与侧栏那条 `.board-glow-grid` 同一个值；侧栏那张卡仍是六列。 */
       const gridStyle = (root: string) => opened.page.locator(`${root} [data-glow-grid]`).evaluate((node) => {
         const style = getComputedStyle(node);
         return { tracks: style.gridTemplateColumns, gap: style.columnGap, inline: style.paddingLeft };
       });
+      const swatchLayout = () => grid.evaluate((node) => {
+        const box = node.getBoundingClientRect();
+        const chips = [...node.querySelectorAll('[data-glow-preset]')].map((chip) => chip.getBoundingClientRect());
+        const firstTop = chips[0]!.top;
+        return {
+          count: chips.length,
+          firstRow: chips.filter((chip) => chip.top === firstTop).length,
+          rows: new Set(chips.map((chip) => chip.top)).size,
+          steps: chips.slice(1).filter((chip) => chip.top === firstTop).map((chip, index) => chip.left - chips[index]!.left),
+          startsAt: chips[0]!.left - box.left,
+          overflow: node.scrollWidth > node.clientWidth || chips.some((chip) => chip.right > box.right + 0.5),
+          viewportOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
       const settingsGrid = await gridStyle('#homeGlowControls');
-      assert.deepEqual(settingsGrid.tracks.split(' '), Array(6).fill('28px'), '设置里的色块列宽没有收成球本身');
-      assert.equal(settingsGrid.gap, (await gridStyle('#boardGlowMenu')).gap, '设置里的色块间距和侧栏配色卡不同');
+      const sidebarGrid = await gridStyle('#boardGlowMenu');
+      assert.ok(settingsGrid.tracks.split(' ').every((track) => track === '28px'), '设置里的色块每格不是一枚球的宽度');
+      assert.equal(settingsGrid.gap, sidebarGrid.gap, '设置里的色块间距和侧栏配色卡不同');
       assert.equal(settingsGrid.inline, '0px', '设置里的色块没有从这一行的内容左缘起');
+      // 侧栏配色卡此刻收着，计算值停在声明式 `repeat(6, 1fr)`；展开时是六个解析后的宽度。
+      assert.ok(sidebarGrid.tracks === 'repeat(6, 1fr)' || sidebarGrid.tracks.split(' ').length === 6,
+        `侧栏配色卡不再是每行六枚：${sidebarGrid.tracks}`);
+      const wide = await swatchLayout();
+      assert.ok(wide.firstRow > 6, `桌面宽度下第一行只排了 ${wide.firstRow} 枚，右边的空间没用上`);
+      assert.ok(wide.steps.every((step) => step === 34), `设置里的色块没有挨着排：步长 ${wide.steps.join('/')}`);
+      assert.equal(wide.startsAt, 0, '设置里的第一枚色块没有从这一行的内容左缘起');
+      assert.equal(wide.overflow, false, '桌面宽度下色块越出了这一行');
       assert.equal(await grid.getAttribute('role'), 'group');
       assert.ok(await grid.getAttribute('aria-label'), '预设色块那一组没有无障碍名称');
 
@@ -1605,6 +1628,15 @@ describe('设计决定', () => {
       assert.equal(await opened.page.locator('#homeGlowControls [data-glow-preset-name]').textContent(), target.label);
       assert.equal(await opened.page.evaluate(() => JSON.parse(localStorage.getItem('peach.settings.v1')!).homeGlow.preset),
         target.key, '选中的那一档没有写进设置');
+
+      await opened.page.setViewportSize({ width: MOBILE.width, height: MOBILE.height });
+      await grid.waitFor({ state: 'visible', timeout: 10_000 });
+      const narrow = await swatchLayout();
+      assert.ok(narrow.firstRow < narrow.count && narrow.rows > 1, `${MOBILE.width}px 下色块没有换行`);
+      assert.ok(narrow.steps.every((step) => step === 34), `${MOBILE.width}px 下色块没有挨着排`);
+      assert.equal(narrow.startsAt, 0, `${MOBILE.width}px 下第一枚色块没有从内容左缘起`);
+      assert.equal(narrow.overflow, false, `${MOBILE.width}px 下色块越出了这一行`);
+      assert.equal(narrow.viewportOverflow, false, `${MOBILE.width}px 下页面出现横向溢出`);
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
