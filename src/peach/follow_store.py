@@ -727,9 +727,11 @@ class FollowStore:
         )
         stripped = _strip_author_names(split_posts, authors or {})
         linked = _hint_linked(stripped)
-        aligned = _align_by_group_hint(_align_upload_packs(_align_tag_bursts(
-            _align_title_families(_split_ambiguous_works(stripped, linked), authors),
-            linked)))
+        # 连发判据排在出处对齐之后：没有出处的帖子要挂到同批有出处的那组上，得先让
+        # 那组共用一个键。
+        aligned = _align_tag_bursts(_align_by_group_hint(_align_upload_packs(
+            _align_title_families(_split_ambiguous_works(stripped, linked), authors))),
+            linked)
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):
@@ -1291,9 +1293,10 @@ def _published_near(left: FollowItemRow, right: FollowItemRow) -> bool:
     return abs(gap) <= _FAMILY_WINDOW
 
 
-#: 标签连发归组的边界：相邻两条至多隔多久、一般标签至少重合多少，以及哪些角色标签
-#: 不算身份——rule34.xxx 把 POV 视角里的观众标成角色 `you`，几乎每条都有。
+#: 标签连发归组的边界：相邻两条至多隔多久、站内 id 至多差多少、一般标签至少重合多少，
+#: 以及哪些角色标签不算身份——rule34.xxx 把 POV 视角里的观众标成角色 `you`，几乎每条都有。
 _BURST_GAP = timedelta(hours=3)
+_BURST_ID_GAP = 3000
 _BURST_MIN_OVERLAP = 0.5
 _BURST_PSEUDO_CHARACTERS = frozenset({"you"})
 
@@ -1307,23 +1310,26 @@ def _align_tag_bursts(items: tuple[FollowItemRow, ...],
     rule34.xxx 上把 Angel (KOF) 的同一段动画按横屏、竖屏和几个机位拆成 6 帖，几分钟内
     连着发，除了角色和标签之外没有任何字段把它们连起来。
 
-    四个条件同时成立才归组：同一来源；作品与角色标签的集合完全相同；按发布时间排开，
-    相邻两条相隔不超过 `_BURST_GAP`；一般标签与组里某一条的 Jaccard 重合度不低于
-    `_BURST_MIN_OVERLAP`。只处理标签拼标题、没有出处、来源也没声明同组的条目：
-    出处与父帖是来源自己给的关系，比这里的推断可靠，不拿推断去改它。
+    四个条件同时成立才算连发：同一来源；身份标签的集合完全相同（见 `_burst_identity`）；
+    按发布时间排开，相邻两条相隔不超过 `_BURST_GAP`；一般标签与组里某一条的 Jaccard
+    重合度不低于 `_BURST_MIN_OVERLAP`。
+
+    只改没有出处、来源也没声明同组的条目的键：出处与父帖是来源自己给的关系，比这里的
+    推断可靠，不拿推断去改它。有出处的条目只当锚：InitialA 在 rule34.paheal 上一口气
+    传了 9 帖，8 帖写着同一个 subscribestar 出处，剩下一帖没写。没出处的一串帖子前后
+    `_BURST_GAP` 内、按同样的身份与重合度能对上的锚全在同一组时，这一串归进那一组；
+    对上两组以上说明来源自己把它们分成了几个作品，挂哪一组都是猜，只在这一串里互相归。
+    这一步排在 `_align_by_group_hint` 之后，锚所在的那组已经共用一个键。
     """
-    buckets: dict[tuple[int, frozenset[str]], list[tuple[datetime, frozenset[str],
+    buckets: dict[tuple[int, frozenset[str]], list[tuple[datetime, frozenset[str], bool,
                                                          FollowItemRow]]] = {}
     for item in items:
         metadata = item.metadata or {}
         tag_types = metadata.get("tag_types")
-        if (metadata.get("title_from") != "tags" or metadata.get("source")
-                or not isinstance(tag_types, dict) or not item.release_key
-                or (item.provider, item.external_id) in linked):
+        if (metadata.get("title_from") != "tags" or not isinstance(tag_types, dict)
+                or not item.release_key):
             continue
-        identity = frozenset(
-            tag for tag, kind in tag_types.items()
-            if kind in ("copyright", "character") and tag not in _BURST_PSEUDO_CHARACTERS)
+        identity = _burst_identity(tag_types)
         try:
             moment = datetime.fromisoformat(str(item.published_at).replace("Z", "+00:00"))
         except (TypeError, ValueError):
@@ -1331,21 +1337,24 @@ def _align_tag_bursts(items: tuple[FollowItemRow, ...],
         if not identity:
             continue
         general = frozenset(tag for tag, kind in tag_types.items() if kind == "general")
-        buckets.setdefault((item.source_id, identity), []).append((moment, general, item))
+        anchor = bool(metadata.get("source")) or (item.provider, item.external_id) in linked
+        buckets.setdefault((item.source_id, identity), []).append(
+            (moment, general, anchor, item))
     renamed: dict[int, str] = {}
     for members in buckets.values():
-        members.sort(key=lambda entry: (entry[0], entry[2].external_id))
-        run = [members[0]]
-        for entry in [*members[1:], None]:
-            if entry is not None and entry[0] - run[-1][0] <= _BURST_GAP and any(
-                    _overlap(entry[1], other[1]) >= _BURST_MIN_OVERLAP for other in run):
-                run.append(entry)
+        members.sort(key=lambda entry: (entry[0], entry[3].external_id))
+        anchors = [entry for entry in members if entry[2]]
+        for run in _burst_runs([entry for entry in members if not entry[2]]):
+            keys = {anchor[3].release_key for anchor in anchors if any(
+                _burst_near(anchor, entry)
+                and _overlap(anchor[1], entry[1]) >= _BURST_MIN_OVERLAP for entry in run)}
+            if len(keys) == 1:
+                key = keys.pop()
+            elif len(run) > 1:
+                key = min(entry[3].release_key for entry in run)
+            else:
                 continue
-            if len(run) > 1:
-                key = min(member[2].release_key for member in run)
-                renamed.update((member[2].id, key) for member in run)
-            if entry is not None:
-                run = [entry]
+            renamed.update((entry[3].id, key) for entry in run)
     if not renamed:
         return items
     return tuple(
@@ -1355,6 +1364,49 @@ def _align_tag_bursts(items: tuple[FollowItemRow, ...],
     )
 
 
+def _burst_identity(tag_types: dict) -> frozenset[str]:
+    """连发判据里的身份：作品与角色标签的集合。
+
+    rule34.paheal 不给标签分类，`tag_types` 里全是 general，身份就退到整组标签（小写）：
+    那里一帖只有几个标签（中位数 7 个），作者、角色、作品和 `animated` 这类形态词都在里面，
+    整组相同才算同一作品，比按词形猜哪个是角色更窄。
+    """
+    kinds = set(tag_types.values())
+    if kinds == {"general"}:
+        return frozenset(str(tag).lower() for tag in tag_types)
+    return frozenset(
+        tag for tag, kind in tag_types.items()
+        if kind in ("copyright", "character") and tag not in _BURST_PSEUDO_CHARACTERS)
+
+
+def _burst_runs(members: list) -> list[list]:
+    """按时间排好的条目切成连发串：相邻两条时间与站内 id 都挨着，标签与串里某一条够重合。"""
+    runs: list[list] = []
+    for entry in members:
+        if runs and _burst_near(entry, runs[-1][-1]) and any(
+                _overlap(entry[1], other[1]) >= _BURST_MIN_OVERLAP for other in runs[-1]):
+            runs[-1].append(entry)
+        else:
+            runs.append([entry])
+    return runs
+
+
+def _burst_near(left: tuple, right: tuple) -> bool:
+    """两帖的发布时间相隔不超过 `_BURST_GAP`，站内 id 相差不超过 `_BURST_ID_GAP`。
+
+    时间不够：rule34.xxx 早年落库的行，`published_at` 是 dapi 的 `change`（最后修改时间）。
+    有人一次改一批旧帖的标签，几个月前各自上传的帖子就「在同一分钟发布」——Rekin3D 的
+    17361475（05-01 上传）与 17559518（05-20 上传）都记成 09-14 03:0x。帖子 id 是全站
+    递增的上传序号，改标签不动它，所以连发还要 id 挨着。id 不是纯数字的站只看时间。
+    """
+    if abs(left[0] - right[0]) > _BURST_GAP:
+        return False
+    try:
+        return abs(int(left[3].external_id) - int(right[3].external_id)) <= _BURST_ID_GAP
+    except (TypeError, ValueError):
+        return True
+
+
 def _overlap(left: frozenset[str], right: frozenset[str]) -> float:
     union = left | right
     return len(left & right) / len(union) if union else 0.0
@@ -1362,7 +1414,7 @@ def _overlap(left: frozenset[str], right: frozenset[str]) -> float:
 
 #: 一包短片的边界：相邻两条站内 id 至多差多少、时长至多差几秒，以及标题开头的
 #: 角色名至多几个词。
-_PACK_ID_GAP = 30
+_PACK_ID_GAP = 100
 _PACK_DURATION_SLACK = 1.0
 _PACK_NAME_MAX_WORDS = 3
 _PACK_NAME_SEPARATOR_RE = re.compile(r"\s+[-–—|:]\s+|[-–—]|[\[(『【|:]")
