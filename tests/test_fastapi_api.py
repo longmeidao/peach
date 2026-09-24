@@ -845,6 +845,44 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.client.get("/site-mark?t=secret&domain=kemono.cr")
         self.assertTrue(any(host.endswith("kemono.cr") for host in hosts[reached:]), hosts)
 
+    async def test_archived_links_of_two_sites_get_two_marks(self):
+        """存档链接的圆标按快照保存的原站缓存，两家关了门的公司不共用 web.archive.org 那一枚。"""
+        from PIL import Image, ImageDraw
+
+        from peach import routes_media
+
+        self.addCleanup(setattr, routes_media, "GENERATED_DIR", routes_media.GENERATED_DIR)
+        routes_media.GENERATED_DIR = self.root / "generated"
+        asked = []
+
+        def icon(colour):
+            buffer = io.BytesIO()
+            image = Image.new("RGBA", (180, 180), (255, 255, 255, 0))
+            ImageDraw.Draw(image).ellipse((20, 20, 160, 160), fill=colour)
+            image.save(buffer, format="PNG")
+            return buffer.getvalue()
+
+        def upstream(request):
+            asked.append(str(request.url))
+            if not request.url.path.endswith(".png"):
+                return httpx.Response(404, request=request)
+            colour = "red" if "ones-double.com" in str(request.url) else "blue"
+            return httpx.Response(200, content=icon(colour), request=request,
+                                  headers={"content-type": "image/png"})
+        self._swap_http_client(upstream)
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            connection.executemany(
+                "INSERT INTO entity_link(id,entity_id,link_kind,label,url,hostname)"
+                " VALUES(?,1,'official','官网存档（2022-05）',?,'web.archive.org')",
+                [(901, "https://web.archive.org/web/20220512171500/https://ones-double.com/people/a/"),
+                 (902, "https://web.archive.org/web/20221013093626/https://all-p.jp/talent/")])
+        answers = [await self.client.get(f"/link-mark?t=secret&id={link_id}")
+                   for link_id in (901, 902)]
+        self.assertEqual([answer.status_code for answer in answers], [200, 200])
+        self.assertNotEqual(answers[0].content, answers[1].content)
+        self.assertEqual(len(list((self.root / "generated" / "link-marks").iterdir())), 2)
+        self.assertTrue(all(url.startswith("https://web.archive.org/") for url in asked), asked)
+
     async def test_unauthorized_keeps_three_shapes_grouped_by_route_class(self):
         """401 三种形态按路由类分组，收敛到 Depends 之后也不许并成一种。
 

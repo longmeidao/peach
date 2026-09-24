@@ -934,12 +934,13 @@ def _site_mark_response(state, url: str, root: Path):
     地址一律由服务端自己从某张表或账本解析，函数本身不判断来路——但它是唯一会
     真的去连对方站点的地方，所以每个调用方都得先说清自己的地址从哪来。
     """
-    cached = link_marks.cached_path(root, url)
+    # 存档链接按快照保存的原站找图标，缓存也按原站存：缓存键只看主机，按存档地址存，
+    # 所有存档链接就共用 web.archive.org 那一枚。
+    page, locate = social_links.archive_view(url)
+    cached = link_marks.cached_path(root, page)
     if cached is None:
         return JSONResponse({"error": "unavailable"}, status_code=404)
     if not link_marks.is_fresh(cached, ttl=_metadata_ttl(state)):
-        page, locate = social_links.archive_view(url)
-
         def fetch(target: str):
             try:
                 upstream = state.http_transport.client.get(
