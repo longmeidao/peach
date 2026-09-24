@@ -5976,8 +5976,13 @@ function followBadges(group){
   if(group.primary.variant_kind==='wip')badges.push('<span class="fbadge wip">WIP</span>');
   else if(group.has_wip)badges.push('<span class="fbadge wip partial">含 WIP</span>');
   if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
-  if(group.duplicates.length)badges.push(`<span class="fbadge dup">另见 ${
-    esc([...new Set(group.duplicates.map(d=>d.provider_label))].join('、'))}</span>`);
+  /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。 */
+  if(group.duplicates.length){
+    const sites=new Map(group.duplicates.map(d=>[d.provider,d.provider_label||d.provider]));
+    const marks=[...sites].map(([provider,label])=>
+      sourceIcon(provider,label)||`<span>${esc(label)}</span>`).join('');
+    badges.push(`<span class="fbadge dup" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`);
+  }
   return badges.join('');
 }
 
@@ -6080,13 +6085,17 @@ function followQueueHtml(group,itemId){
   const items=followVideoItems(group);
   return `<aside class="mixqueue followqueue" data-queue-kind="collection"><div class="mixqueuehead"><div><h2>视频合集</h2><span>${esc(group.primary.title||'未命名合集')} · ${items.length} 个视频</span></div><div class="mixqueueactions">
     <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(item=>{
-      const copy=followCollectionCopy(group,item,group.duplicates.includes(item)?item.provider_label:'');
+      const duplicate=group.duplicates.includes(item);
+      const copy=followCollectionCopy(group,item,duplicate?item.provider_label:'');
+      // 另一站的同一条由站点图标报出处，图标的 alt 就是站名；没登记图标的站仍写站名。
+      const mark=duplicate&&sourceIcon(item.provider,item.provider_label)
+        ||`<i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>`;
       const thumb=item.thumb_url
         ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
         :followQueueNoThumb('video');
       return `<div class="mixrow"><button class="mixitem ${item.id===itemId?'current':''}" data-follow-queue-item="${item.id}" aria-current="${item.id===itemId?'true':'false'}">
         <span class="mixitempic">${thumb}${realDuration(item.duration)?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
-        <span class="mixitemtext"><b data-truncate-end>${esc(copy.title)}</b><span data-truncate-end><i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>${followWhen(item)}</span></span></button></div>`;
+        <span class="mixitemtext"><b data-truncate-end>${esc(copy.title)}</b><span class="fqmeta">${mark}<time datetime="${esc(item.published_at||'')}">${esc(followWhen(item))}</time></span></span></button></div>`;
     }).join('')}</div></aside>`;
 }
 
@@ -6892,11 +6901,12 @@ async function openFollow(push=true,renderForDetail=false){
 }
 
 /* 有站点图标的来源。图标由服务端按 follow_assets.SOURCE_ICON_URLS 取回、保存在本机，
-   页面只认这张名单：没登记的来源直接不出 <img>，取不到的由 data-drop 摘掉退回纯文字。 */
+   页面只认这张名单：没登记的来源直接不出 <img>，取不到的由 data-drop 摘掉退回纯文字。
+   图标独自代表站名时传 label，alt 与 title 写站名；外层已经带名字的传空，图只作装饰。 */
 const SOURCE_ICON_PROVIDERS=new Set(['fanbox','patreon','subscribestar','kemono','coomer','pawchive',
   'rule34video','rule34xxx','rule34paheal','gofile','f95zone','simpcity']);
-function sourceIcon(provider){return SOURCE_ICON_PROVIDERS.has(provider)
-  ? `<img class="ficon" src="/source-icon?provider=${encodeURIComponent(provider)}" alt="" loading="lazy" data-drop="self">`
+function sourceIcon(provider,label=''){return SOURCE_ICON_PROVIDERS.has(provider)
+  ? `<img class="ficon" src="/source-icon?provider=${encodeURIComponent(provider)}" alt="${esc(label)}"${label?` title="${esc(label)}"`:''} loading="lazy" data-drop="self">`
   : ''}
 
 function followAvatarInitial(group){

@@ -3087,7 +3087,8 @@ class FollowWebSourceTests(unittest.TestCase):
             self.assertIn(f"'{provider}'", icons)
         self.assertNotIn("https://", icons)
         self.assertPageContains(
-            'src="/source-icon?provider=${encodeURIComponent(provider)}" alt="" loading="lazy" data-drop="self"')
+            'src="/source-icon?provider=${encodeURIComponent(provider)}" alt="${esc(label)}"'
+            '${label?` title="${esc(label)}"`:\'\'} loading="lazy" data-drop="self"')
         # 取不到图标就把 <img> 摘掉，露出纯文字；收场动作由 image-fallback 的
         # 委托监听执行，模板里只声明 `data-drop`。
         self.assertPageContains('data-drop="self"')
