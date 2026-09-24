@@ -59,7 +59,7 @@
 .fbadge.wip{border-color:var(--meter);color:var(--meter)}
 /* 「含 WIP」说的是同组里还有一条半成品，这一条本身不是；配色要弱于 WIP 本体。 */
 .fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}
-.fbadge.dup{border-style:dashed}
+.fbadge.dup{border-style:dashed;display:inline-flex;align-items:center;gap:4px}.fbadge.dup .ficon{margin:0}
 .fnote{font-size:var(--fs-xs);color:var(--muted)}
 .followitem .mixbadge{border:0;cursor:pointer;font:inherit}
 .factions{position:absolute;right:10px;top:10px;z-index:7;display:flex;gap:6px;align-items:center;
@@ -79,6 +79,12 @@
 .followdetailside .fstate{flex:none}
 .fvkind{display:inline-block;max-width:120px;margin-right:6px;padding:1px 7px;border-radius:var(--badge-radius);overflow:hidden;text-overflow:ellipsis;vertical-align:-2px;background:var(--overlay-5);color:var(--muted);font-size:var(--fs-xs);font-style:normal}
 .fvkind.wip{color:var(--meter)}.fvkind.alt{color:var(--ink-2)}
+/* 合集队列卡的出处与时间：标记、站点图标和时间按盒子居中成一行，不靠基线偏移去凑。
+   标记可收窄（自带尾部省略），时间不收。 */
+.followqueue .fqmeta{display:flex;align-items:center;gap:6px}
+.followqueue .fqmeta .ficon{flex:none;margin:0}
+.followqueue .fqmeta .fvkind{flex:0 1 auto;min-width:0;margin:0}
+.followqueue .fqmeta time{flex:none;white-space:nowrap}
 /* 媒体框不设视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在 vh 上，
    两个量朝相反方向走——414×913 的视口给出 566px 的框装 208px 的画面，上下各空 179px；
    1280×900 的宽屏给出 558px 的框装 435px 的画面，多出的 123px 就是画面之外那层黑边。

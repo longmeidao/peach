@@ -9149,7 +9149,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="dupname" data-middle-truncate data-middle-truncate-within')
         self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
-        self.assertEqual(self.app_js.count("data-truncate-end"), 4)
+        # 关注合集队列卡的出处行是 flex 一行（`.fqmeta`），时间不收窄，不走尾部省略。
+        self.assertEqual(self.app_js.count("data-truncate-end"), 3)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
         self.assertPageContains("resizeObserver=new ResizeObserver")
         self.assertPageContains("context.font=style.font||`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`")
