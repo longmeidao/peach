@@ -93,7 +93,7 @@
    悬停得按标签自己那个类型色加深，不能回到中性的 `--hover`。 */
 .followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent);
   background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}
-.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}
+.followqueue .mixitempic>.fnothumb{position:static;width:100%;height:100%}.followqueue .fnothumb svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2}
 .fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}.followresources{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 16px}.followresources a{align-items:center;gap:2px;height:34px;padding:0 11px;border:1px solid var(--border-15);border-radius:var(--control-radius);color:var(--ink-2);text-decoration:none}.followresources a:hover{background:var(--hover);color:var(--ink);text-decoration:none}.followresources svg{width:15px;height:15px;stroke:currentColor;fill:none}.followdetailactions{margin-top:2px}
 /* 标签沉到侧栏最后：来源站的标签动辄几十个，夹在正文和操作之间就得先滚过整片
    标签云才够得着「已看／忽略」。 */

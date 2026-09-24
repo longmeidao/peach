@@ -21,6 +21,7 @@ from pathlib import Path
 from . import avatar_face, follow_assets, follow_providers
 from .follow import FollowSourceError
 from .follow_check import plan_check, run_check
+from .follow_covers import fanbox_video_indexes
 from .web_settings import follow_initial_days
 from .follow_discovery import (
     MAX_SUGGESTIONS, PROFILE_ALIAS_SKIP_SERVICES, archive_suggestions, discover,
@@ -685,6 +686,7 @@ def _media_projection(item) -> tuple[list[dict], list[dict]]:
     hidden = frozenset(item.hidden_media or ())
     visible, concealed = [], []
     skip_poll_chart = _skips_poll_chart(item)
+    covered = fanbox_video_indexes(item) if item.provider == "fanbox" else []
     for index, media in enumerate(_raw_media_items(item)):
         if not isinstance(media, dict):
             continue
@@ -696,13 +698,19 @@ def _media_projection(item) -> tuple[list[dict], list[dict]]:
         if skip_poll_chart and index == 0 and kind == "image":
             continue
         thumb = str(media.get("thumb_url") or "")
+        thumb = thumb if thumb.startswith("https://") else None
+        if thumb is None and index in covered:
+            # fanbox 站内视频不带缩略图，画面由 /follow-cover 抽帧。第一个视频用卡面那条
+            # 地址，两处共用一次抽帧和同一份浏览器缓存。
+            thumb = (f"/follow-cover?id={item.id}" if index == covered[0]
+                     else f"/follow-cover?id={item.id}&media={index}")
         projected = {
             "index": index,
             "name": str(media.get("name") or f"{kind} {index + 1}"),
             "media_kind": kind,
             "media_type": _video_media_type(media.get("name") or media.get("url"))
                           if kind == "video" else None,
-            "thumb_url": thumb if thumb.startswith("https://") else None,
+            "thumb_url": thumb,
             "size": media.get("size"),
             # 固有宽高给瀑布流预留比例用：fanbox 的 imageMap 带原尺寸，没有的
             # 来源保持 None，前端按无尺寸那套占位。
