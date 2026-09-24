@@ -12,7 +12,8 @@
   个人，`ななみ` 这种单名命中的二十几张却是二十几个人，名字答不了这件事。所以拿每张候选上的
   脸和她单人作品封面上截到的脸比（`face_match`，SFace），和 `MATCH_REQUIRED` 张封面（封面
   只截得出一张时就是那一张）都过官方阈值的才算她本人；过尺寸门槛的候选照图库先后比，第一张
-  认定是她的装上。模型取不到、没有单人封面、封面检不出脸，一张都不比，照下一条退回。
+  认定是她的装上。没有单人封面、封面检不出脸时图库自己作证（ADR-0062）：两个来源目录里她的
+  两张不同照片彼此过线、且认得的候选占多数才算。模型取不到一张都不比，照下一条退回。
 * 图库给不出认得准的那一张时，从她单人作品的封面上截脸（`avatar_cover_face`）：挑脸像素最宽的
   那张封面，最差是缩略图；其余检得出脸的封面也各截一张留作候选。这一档截的图、以及批处理用整张封面装上的头像，之后遇到更清楚的
   脸会自动换掉；图库装的、人挑的一律不碰。
@@ -122,8 +123,8 @@ def _needs_avatar(avatar_root, kind: str, entity_id: int) -> bool:
 _ALIAS_COUNT = "(SELECT count(*) FROM entity_alias al WHERE al.entity_id=e.id)"
 
 #: 认人判据的版本，进指纹。改了判据就加一：存量里缺图的女优按新判据各重比一次。
-#: 2 是 ADR-0057 的图库互证。
-MATCH_RULE = 2
+#: 2 是 ADR-0057 的图库互证，3 是 ADR-0062 没有封面参照时的图库自证。
+MATCH_RULE = 3
 
 
 def _fingerprint(works, aliases) -> str:
@@ -281,9 +282,11 @@ def match_gallery(found: list[dict], covers: list, matcher,
     没有一张过够参照时再看互证（ADR-0057）：一张候选对上某张参照，名下另一张不是同一
     张照片的候选也对上同一张参照、两张彼此也过线，三方互相认得，就算她。石川祐奈的两张
     参照里有一张截的不是她（和谁都只有 0.0x），另一张和三家图库各 0.55～0.61。
+
+    一张参照都没有（没有单人封面、封面上截不出脸、截出的脸提不出特征）时，图库自己作证
+    （ADR-0062，`_gallery_agrees`）：两个不同来源目录里她名下的两张不同照片彼此过线，
+    而且和这一张认得的候选在全部候选里占多数，就算她。
     """
-    if not covers:
-        return GalleryMatch(reason=f"图库 {len(found)} 张认不准")
     references = []
     for face in covers:
         if len(references) >= MATCH_COVERS:
@@ -295,8 +298,6 @@ def match_gallery(found: list[dict], covers: list, matcher,
                                        f"{matcher.unavailable}", unavailable=True)
         if vector is not None:
             references.append((face, vector))
-    if not references:
-        return GalleryMatch(reason=f"图库 {len(found)} 张，封面人脸提不出特征")
     required = min(MATCH_REQUIRED, len(references))
     threshold = face_match.COSINE_THRESHOLD
     scores: dict = {}
@@ -324,9 +325,11 @@ def match_gallery(found: list[dict], covers: list, matcher,
         row = [round(face_match.cosine(vector, reference), 3)
                for _face, reference in references]
         scores[choice["ref"]] = row
-        if sum(score >= threshold for score in row) >= required:
+        if references and sum(score >= threshold for score in row) >= required:
             return GalleryMatch(winner=candidate, evidence=evidence(row), scores=scores)
         compared.append((candidate, vector, row))
+    if not references:
+        return _gallery_agrees(found, compared, scores, evidence)
     for candidate, vector, row in compared:
         for other, other_vector, other_row in compared:
             pair = face_match.cosine(vector, other_vector)
@@ -337,6 +340,48 @@ def match_gallery(found: list[dict], covers: list, matcher,
                 return GalleryMatch(winner=candidate, scores=scores, evidence=evidence(
                     row, corroborated_by={"ref": other.choice["ref"], "score": round(pair, 3)}))
     return GalleryMatch(reason=f"图库 {len(found)} 张里比不出她", scores=scores)
+
+
+def _directory(choice: dict) -> str:
+    """这张候选出自图库哪个来源目录（`gfriends:1-S1/她.jpg` → `1-S1`）。"""
+    ref = str(choice.get("ref", ""))
+    return ref.partition(":")[2].partition("/")[0] or str(choice.get("label", ""))
+
+
+def _gallery_agrees(found: list[dict], compared: list, scores: dict, evidence) -> GalleryMatch:
+    """没有封面参照时，图库候选之间互相作证（ADR-0062）。
+
+    `叶芽ゆきな` 四部作品都是多人封面，截不出参照；图库里 Javrave 与 DMM 各存她一张，
+    两张余弦 0.56。同名下几家片商各存一张的多半是同一个人，`ななみ` 这种单名命中的
+    二十几张却是二十几个人——所以要两件事同时成立：
+
+    * **两个目录、两张照片。** 作证的那张出自另一个来源目录，余弦过线而低于
+      `NEAR_DUPLICATE`（同一张照片在几个目录各存一份只是一份证据，ADR-0057 第二条）。
+    * **占多数。** 和这一张过线的候选（含它自己，近重复也算）在全部提得出脸的候选里
+      过半。二十几个人的名下偶然有某一位的两张，两张对二十几张过不了这一条；
+      `星野千紗` 名下 GRAPHIS 那张是另一个人（和谁都不到 0.26），Warashi 与 Javrave 两张
+      认得，二比三，装 Warashi 那张。
+
+    照图库先后，第一张满足的装上；证据里 `covers` 为空、`required` 为 0，
+    `corroborated_by` 记作证那张与分数，`agreeing`/`faces` 记多数是怎么数出来的。
+    """
+    threshold = face_match.COSINE_THRESHOLD
+    faces = len(compared)
+    for candidate, vector, row in compared:
+        peers = [(other, face_match.cosine(vector, other_vector))
+                 for other, other_vector, _row in compared if other is not candidate]
+        agreeing = [(other, pair) for other, pair in peers if pair >= threshold]
+        witnesses = [(other, pair) for other, pair in agreeing
+                     if pair < NEAR_DUPLICATE and _directory(other.choice) != _directory(candidate.choice)]
+        if not witnesses or (len(agreeing) + 1) * 2 <= faces:
+            continue
+        other, pair = witnesses[0]
+        return GalleryMatch(winner=candidate, scores=scores, evidence=evidence(
+            row, corroborated_by={"ref": other.choice["ref"], "score": round(pair, 3)},
+            agreeing=len(agreeing) + 1, faces=faces))
+    if faces < 2:
+        return GalleryMatch(reason=f"图库 {len(found)} 张认不准", scores=scores)
+    return GalleryMatch(reason=f"图库 {len(found)} 张彼此认不出同一个人", scores=scores)
 
 
 def gallery_fetcher(connection, providers_root, entity_id: int, transport,
@@ -385,9 +430,10 @@ def _install_matched(contract, connection, providers_root, avatar_root, kind: st
               "name_source": "face-match", "face_match": result.evidence}
     avatar_picker.install(providers_root, avatar_root, kind, entity_id, winner.body, origin)
     contract.cache_bust()
+    how = "按封面人脸认定" if result.evidence.get("covers") else "按图库互证认定"
     return {**summary, "outcome": "已装上",
             "size": f"{winner.inspected.width}×{winner.inspected.height}",
-            "source": f"{winner.choice['label']}（按封面人脸认定）"}
+            "source": f"{winner.choice['label']}（{how}）"}
 
 
 def _install(contract, connection, providers_root, avatar_root, kind: str,

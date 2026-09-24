@@ -727,9 +727,41 @@ class FaceMatchFollowupTests(LedgerTestCase):
         self.run_followup()
         self.assertEqual(self.provenance()["provider"], "cover-face")
 
-    def test_nothing_is_installed_without_a_cover_to_compare_against(self):
+    def test_two_directories_agreeing_stand_in_for_a_missing_cover(self):
+        """没有单人封面：两家目录里她的两张不同照片彼此认得，就装图库先后靠前的那张（ADR-0062）。"""
+        hers = self.candidate("1-S1", (400, 600), self.HER)
+        again = self.candidate("3-Moodyz", (400, 600), self.HER_AGAIN)
+        summary = self.run_followup()
+        self.assertEqual((summary["outcome"], summary["source"]), ("已装上", "S1（按图库互证认定）"))
+        record = self.provenance()
+        self.assertEqual((record["provider"], record["source_kind"]),
+                         ("gfriends", "gallery_face_matched"))
+        self.assertEqual(f"gfriends:{record['external_id']}", hers)
+        match = record["face_match"]
+        self.assertEqual((match["covers"], match["required"], match["agreeing"], match["faces"]),
+                         ([], 0, 2, 2))
+        self.assertEqual(match["corroborated_by"], {"ref": again, "score": 0.8})
+
+    def test_the_same_photo_in_two_directories_does_not_stand_in_for_a_cover(self):
         self.candidate("1-S1", (400, 600), self.HER)
         self.candidate("2-Ideapocket", (400, 600), self.HER)
+        summary = self.run_followup()
+        self.assertEqual(summary["outcome"], "图库 2 张彼此认不出同一个人，封面上没有能截的脸")
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_a_pair_among_strangers_is_a_minority_and_installs_nothing(self):
+        """单名命中的一堆人里偶然有某一位的两张：二对四不过半，不装。"""
+        self.candidate("1-S1", (400, 600), self.HER)
+        self.candidate("2-Ideapocket", (400, 600), self.OTHER)
+        self.candidate("3-Moodyz", (400, 600), self.STRANGER)
+        self.candidate("4-Fitch", (400, 600), self.HER_AGAIN)
+        summary = self.run_followup()
+        self.assertEqual(summary["outcome"], "图库 4 张彼此认不出同一个人，封面上没有能截的脸")
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_one_picture_alone_is_still_not_enough_without_a_cover(self):
+        self.candidate("1-S1", (400, 600), self.HER)
+        self.candidate("2-Ideapocket", (400, 600), self.BLANK)
         summary = self.run_followup()
         self.assertEqual(summary["outcome"], "图库 2 张认不准，封面上没有能截的脸")
         self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
@@ -773,7 +805,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                                                    limit=10)]
 
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:0:r2")
+            self.assertEqual(fingerprint(connection, self.person), "1:0:r3")
         self.run_followup()
         self.assertEqual(planned(), [])
         with self.database.write_transaction(notify=False) as connection:
@@ -781,7 +813,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                 "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
                 " VALUES(?,?,?,'test')", (self.person, "りな", "りな"))
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:1:r2")
+            self.assertEqual(fingerprint(connection, self.person), "1:1:r3")
         self.assertEqual(planned(), [followup_key("performer", self.person)])
 
 

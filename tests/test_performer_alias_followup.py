@@ -10,6 +10,7 @@ import importlib.util
 import io
 import json
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,7 +26,7 @@ from peach.repository import LedgerDatabase
 from peach.review_csv import read_rows
 from peach.scraping_access import paused_until
 from peach.sources.base import Page
-from peach.sources.seesaa import person_profile, search_results, split_names
+from peach.sources.seesaa import person_profile, renamed_to, search_results, split_names
 from support.ledger import fresh_ledger
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -107,10 +108,31 @@ AV_NEME_ARIMOTO = wiki_page(wiki_section("プロフィール", (
     "</tbody></table>")))
 
 
-def wiki_search(*titles: str) -> str:
-    hits = "".join(f'<div class="body"><h3 class="keyword"><a href="{wiki_url(title)}">{title}'
-                   '</a></h3><p class="text">…</p></div>' for title in titles)
-    return f'<html><body><div class="result-box">{hits}</div></body></html>'
+def wiki_search(*hits) -> str:
+    """检索结果页。每条是页名，或 (页名, 摘要)。"""
+    blocks = []
+    for hit in hits:
+        title, text = hit if isinstance(hit, tuple) else (hit, "…")
+        blocks.append(f'<div class="body"><h3 class="keyword"><a href="{wiki_url(title)}">{title}'
+                      f'</a></h3><p class="text">{text}</p></div>')
+    return f'<html><body><div class="result-box">{"".join(blocks)}</div></body></html>'
+
+
+#: `叶芽ゆきな` 在 av_neme 的真实检索结果：五页厂牌页与月份页排在她的人物页 `桜美ゆきな` 前面。
+LISTING_TEXT = "&amp;size(18){''名前(女優名)''：[[ 叶芽ゆきな ]]} 仮名：[[ゆきな]]"
+YUKINA_SEARCH = (
+    ("ガチ素人", LISTING_TEXT), ("Girl’s Blue", LISTING_TEXT), ("2024年11月", LISTING_TEXT),
+    ("ぐちょぐちょ素人娘", LISTING_TEXT), ("2020年2月", "完璧な男 叶芽ゆきな"),
+    ("桜美ゆきな", "ゆきな（さくらみゆきな） 旧名義&amp;別名：叶芽ゆきな（かなめゆきな）・夢原まみ・尾上さら"
+                  " 生年月日：1999年1月8日"),
+    ("叶芽ゆきな", "女優名が【叶芽ゆきな】から【桜美ゆきな】へ変更になりました。"),
+)
+AV_NEME_SAKURAMI = wiki_page(wiki_section("プロフィール", """<pre class="BOX">
+名前(女優名)：桜美ゆきな（さくらみゆきな）
+旧名義&amp;別名：叶芽ゆきな（かなめゆきな）・夢原まみ・尾上さら
+生年月日：1999年1月8日
+</pre>"""))
+AV_NEME_LISTING = wiki_page(wiki_section("gsiro018| ガチ素人", "名前(女優名)：叶芽ゆきな<br />", level=3))
 
 
 class Transport:
@@ -260,9 +282,21 @@ class ParsingTests(unittest.TestCase):
         self.assertEqual(person_profile(Page(wiki_url("神山ももか"),
                                              AV_NEME_MOVED.encode("euc_jp"))), ("", []))
 
+    def test_a_renamed_page_names_her_current_page(self):
+        self.assertEqual(renamed_to(Page(wiki_url("神山ももか"), AV_NEME_MOVED.encode("euc_jp"))),
+                         "美雲そら")
+        self.assertEqual(renamed_to(Page(wiki_url("雲母そら"), AV_NEME_KIRARA.encode("euc_jp"))), "")
+
     def test_av_neme_search_lists_hits_in_order(self):
-        body = wiki_search("雲母そら", "神山ももか").encode("euc_jp")
-        self.assertEqual([title for _url, title in search_results(body)], ["雲母そら", "神山ももか"])
+        body = wiki_search("雲母そら", ("神山ももか", "旧名義：雲母そら")).encode("euc_jp")
+        self.assertEqual([(title, text) for _url, title, text in search_results(body)],
+                         [("雲母そら", "…"), ("神山ももか", "旧名義：雲母そら")])
+
+    def test_profile_pages_are_read_before_label_and_month_pages(self):
+        hits = search_results(wiki_search(*YUKINA_SEARCH).encode("euc_jp"))
+        self.assertEqual(alias.search_order(hits),
+                         [wiki_url("桜美ゆきな"), wiki_url("叶芽ゆきな"), wiki_url("ガチ素人"),
+                          wiki_url("Girl’s Blue"), wiki_url("ぐちょぐちょ素人娘")])
 
     def test_a_middle_dot_between_katakana_stays_inside_one_name(self):
         self.assertEqual(split_names("キラ・クィーン・美雲そら"), ["キラ・クィーン", "美雲そら"])
@@ -321,6 +355,39 @@ class LandingTests(Case):
                               ["そら", "Kirara Sora", "美雲そら"], "batch@1")
         self.assertEqual([row["action"] for row in rows], [alias.SKIP, alias.SKIP, alias.WRITE])
         self.assertEqual(self.aliases(momoka), {"美雲そら": "batch@1"})
+
+    def test_the_page_named_after_her_is_read_before_any_search(self):
+        """站上人物页就叫她的名字，直取一次；改名页跟一跳到现页。两种都不检索。"""
+        momoka = self.entity("神山ももか")
+        self.assertEqual(self.run_followup(momoka)["outcome"], "登记 4 个别名")
+        # 改名页指向的 `美雲そら` 站上没有这一页：回到检索，站上没有的页记下，下一轮不再问。
+        self.assertEqual(self.av_neme.calls[:3], [wiki_url("神山ももか"), wiki_url("美雲そら"),
+                                                  wiki_search_url("神山ももか")])
+        asked = len(self.av_neme.calls)
+        self.assertEqual(self.run_followup(momoka, run_id=8)["outcome"], "没有新写法")
+        self.assertEqual(len(self.av_neme.calls), asked)
+        minami = self.entity("初川みなみ")
+        self.av_neme.pages[wiki_url("初川みなみ")] = (200, wiki_page(wiki_section(
+            "プロフィール", '<pre class="BOX">\n名前(女優名)：初川みなみ（はつかわみなみ）\n生年月日：\n</pre>'
+        )).encode("euc_jp"))
+        summary = self.run_followup(minami)
+        self.assertEqual(summary["outcome"], "没有新写法")
+        self.assertTrue(summary["sites"][alias.AV_NEME].startswith("命中 " + wiki_url("初川みなみ")))
+        self.assertNotIn(wiki_search_url("初川みなみ"), self.av_neme.calls)
+
+    def test_her_profile_page_is_found_behind_five_archive_pages(self):
+        """站上没有叫她名字的页；检索结果前五页是厂牌页与月份页，只读前三页就永远读不到她那一页。"""
+        yukina = self.entity("叶芽ゆきな")
+        self.av_neme.pages[wiki_search_url("叶芽ゆきな")] = (
+            200, wiki_search(*YUKINA_SEARCH[:6]).encode("euc_jp"))
+        self.av_neme.pages[wiki_url("桜美ゆきな")] = (200, AV_NEME_SAKURAMI.encode("euc_jp"))
+        for title, _text in YUKINA_SEARCH[:5]:
+            self.av_neme.pages[wiki_url(title)] = (200, AV_NEME_LISTING.encode("euc_jp"))
+        summary = self.run_followup(yukina)
+        self.assertEqual(summary["outcome"], "登记 3 个别名")
+        self.assertEqual(set(self.aliases(yukina)), {"桜美ゆきな", "夢原まみ", "尾上さら"})
+        self.assertIn(wiki_url("叶芽ゆきな"), self.av_neme.calls)
+        self.assertNotIn(wiki_url("2020年2月"), self.av_neme.calls)
 
     def test_a_page_that_does_not_list_her_is_not_used(self):
         stranger = self.entity("佐々木ゆうか")
@@ -458,6 +525,27 @@ class RepeatTests(Case):
         self.assertEqual(self.run_followup(momoka, run_id=8)["outcome"], "未取得")
         self.assertEqual(len(self.minnano.calls) + len(self.av_neme.calls), requests)
         self.assertEqual(self.aliases(momoka), {})
+
+    def test_an_unfetched_conclusion_is_dispatched_again_after_a_day(self):
+        """站在冷却时的「未取得」说的是那一天，不是她；名字链没变也要再试，其余结论照旧不再派。"""
+        momoka = self.entity("神山ももか")
+        self.work(1, momoka)
+        settled = self.entity("有本紗世")
+        self.work(2, settled)
+        self.assertEqual(self.run_followup(settled)["outcome"], "两站都没对上她")
+        self.minnano.pages[minnano_av.search_url("神山ももか")] = (429, b"")
+        self.av_neme.pages[wiki_url("神山ももか")] = (429, b"")
+        self.assertEqual(self.run_followup(momoka)["outcome"], "未取得")
+        now = time.time()
+
+        def planned(clock):
+            attempts = Attempts(attempts_root(self.generated), clock=lambda: clock)
+            with self.database.read_connection() as connection:
+                return [item.key for item in alias.stock(connection, attempts, limit=5)]
+
+        self.assertEqual(planned(now), [])
+        self.assertEqual(planned(now + alias.RETRY_UNFETCHED + 1), [alias.followup_key(momoka)])
+        self.assertEqual(planned(now + 365 * 86400), [alias.followup_key(momoka)])
 
     def test_a_challenge_page_is_not_cached_as_her_profile(self):
         momoka = self.entity("神山ももか")

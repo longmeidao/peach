@@ -513,12 +513,38 @@ def split_names(value: str) -> list[str]:
     return names
 
 
-def search_results(body: bytes) -> list[tuple[str, str]]:
-    """站内搜索结果页 → [(页面地址, 页名)]，按站给的顺序。"""
+def search_results(body: bytes) -> list[tuple[str, str, str]]:
+    """站内搜索结果页 → [(页面地址, 页名, 摘要)]，按站给的顺序。
+
+    摘要是站给的那几行正文（`p.text`），带 Wiki 标记原文。人物页的摘要开头是资料
+    （`旧名義&別名`、`生年月日`），系列页与月份页的是作品小节（`名前(女優名)：[[…]]`），
+    只看页名分不出的靠它分。
+    """
     found = []
-    for anchor in _soup(body).select('.result-box .body h3 a[href]'):
-        found.append((str(anchor['href']), anchor.get_text(strip=True)))
+    for block in _soup(body).select('.result-box .body'):
+        anchor = block.select_one('h3 a[href]')
+        if anchor is None:
+            continue
+        text = block.select_one('p.text')
+        found.append((str(anchor['href']), anchor.get_text(strip=True),
+                      text.get_text(' ', strip=True) if text is not None else ''))
     return found
+
+
+_RENAMED = re.compile(r'から【([^【】]+)】へ変更')
+
+
+def renamed_to(page: Page) -> str:
+    """改名页 → 她现在那一页的页名；不是改名页返回空串。
+
+    她改艺名后，旧名那一页只剩一句「女優名が【旧名】から【新名】へ変更になりました」和一个
+    去新页的链接（`叶芽ゆきな` → `桜美ゆきな`，`雪代一鳳` → `雪代美鳳`）。
+    """
+    area = _soup(page.body).select_one('#page-body .user-area')
+    if area is None:
+        return ''
+    found = _RENAMED.search(area.get_text(' ', strip=True))
+    return found.group(1).strip() if found else ''
 
 
 def person_profile(page: Page) -> tuple[str, list[str]]:
