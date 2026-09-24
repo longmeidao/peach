@@ -45,8 +45,8 @@ Cookie、User-Agent 与出口三者天然一致，不再要用户贴 Cookie；�
 
 **二、验证页三态。** 导航落到验证页（标题 `Just a moment...`／`请稍候…`，页头含 `cf-chl-`、`challenge-platform`）
 时接着等：`AUTO_SECONDS`（40 秒）内过了就读文档，窗口不动；没过就把窗口放回屏幕内并顶到前面（先
-`windowState: normal` 再给坐标，两步），同时登记到 `browser_transport.attention()`，`/healthz` 带出去，托盘每
-5～10 秒探测健康时对新出现的那一条弹系统通知「<站> 的人机验证需要点一下，浏览器窗口已打开」；再等
+`windowState: normal` 再给坐标，两步），同时登记到 `browser_transport.attention()`，`/healthz` 带出去供排查。
+窗口顶到前面本身就是提醒，托盘不再弹系统通知：验证转圈时页上常常没有可点的框，通知只会打扰；再等
 `CLICK_SECONDS`（120 秒）还没过就报 `ChallengeUnsolved`，`SourceTransport` 按拒绝访问那一档冷却
 （`FIRST_BLOCKED_PAUSE` 起翻倍到 `blocked_pause`），措辞写「浏览器窗口再弹出时点一下验证即可」。过了或放弃
 都把窗口最小化收起（挪回负坐标会被系统钳住，最小化确定不占屏幕）。不用无头模式，不伪造指纹，不接解题

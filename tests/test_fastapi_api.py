@@ -322,7 +322,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         response = await self.client.get("/healthz")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["version"], __version__)
-        # 采集浏览器等人点验证的站列在这里，托盘据此提醒（ADR-0065）；平时是空表。
+        # 采集浏览器等人点验证的站列在这里，供排查（ADR-0065）；平时是空表。
         self.assertEqual(response.json()["attention"], [])
 
     async def test_health_reports_the_build_commit_the_deploy_check_needs(self):

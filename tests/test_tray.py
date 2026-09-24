@@ -208,29 +208,6 @@ class ServiceStatusTests(unittest.TestCase):
             "HTTP 异常（状态码 503） · HTTPS 正常",
         )
 
-    def test_attention_from_the_service_is_reported_once_per_appearance(self):
-        """服务在 `/healthz` 里报「等人点验证」；托盘每轮探测取新出现的那几条弹通知，同一条不重复弹。"""
-        message = "fc2ppv-db.com 的人机验证需要点一下，浏览器窗口已打开"
-        payloads = iter([[message], [message], [], [message]])
-
-        class Health:
-            status_code = 200
-
-            @staticmethod
-            def json():
-                return {"ok": True, "attention": next(payloads)}
-
-        spec = ServiceSpec("http", "http://127.0.0.1/healthz", ("noop",), True)
-        manager = ServiceManager((spec,), popen=Mock(), health_get=lambda *args, **kwargs: Health())
-        taken = []
-        for _ in range(4):
-            self.assertTrue(manager.healthy(spec))
-            taken.append(manager.take_attention())
-        self.assertEqual(taken, [[message], [], [], [message]])
-        plain = ServiceManager((spec,), popen=Mock(), health_get=lambda *args, **kwargs: Response())
-        self.assertTrue(plain.healthy(spec), "没有 attention 字段的服务照常探测")
-        self.assertEqual(plain.take_attention(), [])
-
     def test_health_check_never_goes_through_a_proxy(self):
         """健康检查必须绕过代理：Stash 等客户端设置系统级 HTTP 代理后，httpx 默认
         把 127.0.0.1 的探测送进代理、由代理回 503，服务活着却被判成「未运行」。"""

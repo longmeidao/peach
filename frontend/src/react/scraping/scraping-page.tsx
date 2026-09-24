@@ -170,7 +170,7 @@ function SourceCard({ source, toast }: { source: Source } & ScrapingProps) {
         {/* 由本机浏览器过验证的来源不收 Cookie：浏览器自己带着会话。留着「撤销 Cookie」让人清掉旧的。 */}
         {source.browser
           ? <p className="text-body-2-regular text-text-secondary">
-              人机验证由本机浏览器自动完成；需要点击时窗口会弹出，托盘同时提醒。这台机器上不需要 Cookie。
+              人机验证由本机浏览器自动完成；需要点击时窗口会弹出。这台机器上不需要 Cookie。
             </p>
           : null}
         {source.accepts_cookie && !source.browser ? <>
