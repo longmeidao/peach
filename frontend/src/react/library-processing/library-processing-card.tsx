@@ -21,6 +21,7 @@ import {
 import { cx } from '@/utils/cx';
 
 import { apiSend, errorMessage } from '../../api';
+import { SCAN_CARD_TEXT } from '../../management';
 import type { LibraryProcessingProps } from '../bundle';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
@@ -45,9 +46,8 @@ const PARTIAL_RUNS = [
 
 const MENU_ROW = cx(MENU_ITEM, MENU_ITEM_INTERACTIVE, 'text-body-2-medium');
 
-/* 中文正文写成常量：JSX 里换行的文字会在接缝处多出一个空格，中文句子里看得见。 */
-const CARD_TEXT = '扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，'
-  + '几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。';
+/* 中文正文写成常量：JSX 里换行的文字会在接缝处多出一个空格，中文句子里看得见。
+   卡片正文与首屏骨架共用 `SCAN_CARD_TEXT`（`management.ts`）。 */
 const STALLED_TEXT = '这一项耗时较长，暂时没有新进展。任务结束后可以重试未完成的部分。';
 /* 补齐女优资料是落库之后的一步，一趟里常常什么都不用补，那时这句话不出现：
    四个读数全是 0 还写一句「别名 0 个」，读的人分不清是没得补还是这一步没跑。 */
@@ -226,7 +226,7 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
       <section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing>
         <div data-geist-fieldset-content>
           <h3 className="text-title-2-medium text-text-primary">扫描与采集</h3>
-          <p className="text-body-2-regular text-text-secondary">{CARD_TEXT}</p>
+          <p className="text-body-2-regular text-text-secondary">{SCAN_CARD_TEXT}</p>
           {state.status === 'running'
             ? <div className="flex flex-col gap-1.5">
                 {state.total

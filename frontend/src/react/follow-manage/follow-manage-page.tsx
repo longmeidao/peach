@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
 
+import { resolveFollowSort } from '../../follow-sort';
 import type { FollowManageProps } from '../bundle';
 import { cardClass } from '../components/card';
 import { Note } from '../components/note';
@@ -31,7 +32,7 @@ import { Credentials } from './credentials';
 import { FeedSources } from './feed-sources';
 import {
   credentialDone, DEFAULT_SORT, fetchCredentials, fetchFollow, FOLLOW_CREDENTIALS_KEY,
-  FOLLOW_MANAGE_KEY, groupByAuthor, isBroken, isLayout, isSortKey, keepSelected, pageSizeOf,
+  FOLLOW_MANAGE_KEY, groupByAuthor, isBroken, isLayout, keepSelected, pageSizeOf,
   SORT_DEFAULT_DIR, type CredentialData, type FollowData, type Layout, type SortDir, type SortKey,
 } from './follow-manage';
 import { SourceList } from './source-list';
@@ -61,11 +62,8 @@ export function FollowManagePage(props: FollowManageProps) {
   } = props;
   const [tab, setTab] = useState<TabKey>(isTab(props.tab) ? props.tab : 'list');
   const [page, setPage] = useState(Math.max(1, Math.floor(props.page) || 1));
-  const [sort, setSort] = useState<SortKey>(isSortKey(props.sort) ? props.sort : DEFAULT_SORT);
-  const [dir, setDir] = useState<SortDir>(
-    props.dir === 'asc' || props.dir === 'desc'
-      ? props.dir
-      : SORT_DEFAULT_DIR[isSortKey(props.sort) ? props.sort : DEFAULT_SORT]);
+  const [sort, setSort] = useState<SortKey>(() => resolveFollowSort(props.sort, props.dir).sort);
+  const [dir, setDir] = useState<SortDir>(() => resolveFollowSort(props.sort, props.dir).dir);
   const [layout, setLayout] = useState<Layout>(isLayout(props.layout) ? props.layout : 'default');
   const [pageSize, setPageSize] = useState(pageSizeOf(props.pageSize));
   /* 勾选跨页也跨视图，身份是来源 ID：换页、换排序、从卡片切到表格，选中的仍是同一批。

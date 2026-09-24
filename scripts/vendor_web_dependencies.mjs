@@ -115,8 +115,7 @@ const lucideIcons = new Map([
   ["captions-off", "captions-off"],
   // 关注详情的「隐藏这张图」：划掉的是当前这一张，不是整个条目（那是 eye-off）。
   ["image-off", "image-off"],
-  // 名字和上游对不上的只有排序键：Peach 叫 `sort`，Lucide 叫 `sort-desc`。
-  ["sort", "sort-desc"], ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
+  ["arrow-up", "arrow-up"], ["arrow-down", "arrow-down"],
   ["calendar", "calendar"], ["download", "download"], ["monitor", "monitor"],
   // 侧栏「管理」那一层：收拾库里的东西。`settings` 只归右上角的界面偏好。
   ["wrench", "wrench"],
@@ -124,8 +123,6 @@ const lucideIcons = new Map([
   ["folder-cog", "folder-cog"],
   // 配置页每行文件夹的「选择文件夹」：弹系统对话框去挑。`folder-open` 归「打开位置」，不兼任。
   ["folder-search", "folder-search"],
-  // 数据管理页「空文件夹」那张卡的标识：说的是目录本身，既不是打开它，也不是去里面找。
-  ["folder", "folder"],
   // 详情标题旁的「裁剪封面」：和同一排的定位、同步删除同为线条字形、同一线宽。
   ["crop", "crop"],
   ["sun", "sun"], ["moon", "moon"],
@@ -259,9 +256,10 @@ index = index.replaceAll(/\/vendor\/videojs\/[0-9.]+\//g, `/vendor/videojs/${ver
 // `palette-line` 有两个使用者，它们说的是同一件事：设置分区的「界面」页签，和侧栏底部
 // 那枚配色钮——那枚钮的弹层底部「详细设置」开的正是「界面」页。一枚字形一个意思，同一个
 // 意思也只有一枚字形，所以这里不给配色钮另备一枚。
-// 后五枚同样只给设置导航：那一列整列必须同一家，Lucide 与 Remix 的笔画差一档。
+// 其余六枚同样只给设置导航：那一列整列必须同一家，Lucide 与 Remix 的笔画差一档。
+// 「这台电脑」取 `macbook-line`：Remix 的笔记本电脑就叫这个名字，没有 `laptop-*`。
 const remixIcons = ["palette-line", "layout-grid-line", "play-circle-line", "search-line", "rss-line", "shield-check-line",
-  "hard-drive-line", "computer-line", "folder-line", "global-line", "download-line"];
+  "macbook-line"];
 const remixSprite = lfText("node_modules", "remixicon", "fonts", "remixicon.symbol.svg");
 for (const name of remixIcons) {
   const pattern = new RegExp(`<symbol[^>]*id="ri-${name}"[^>]*>[\\s\\S]*?<\\/symbol>`);
@@ -270,7 +268,7 @@ for (const name of remixIcons) {
   index = index.replace(pattern, symbol);
 }
 stage("web/vendor/remixicon-LICENSE.txt", lfText("node_modules", "remixicon", "License"));
-stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航十一枚内联 symbol，其中 \`palette-line\` 同时给侧栏底部那枚配色钮。完整候选由本地 HTML 审查。\n`);
+stage("web/vendor/remixicon-ORIGIN.md", `# Remix Icon ${versions.remixicon}\n\n- npm 包：\`remixicon@${versions.remixicon}\`\n- npm lock integrity：\`${integrity("remixicon")}\`\n- 许可证：Remix Icon License v1.0，见 \`remixicon-LICENSE.txt\`。\n- 消费者：设置导航七枚内联 symbol，其中 \`palette-line\` 同时给侧栏底部那枚配色钮。完整候选由本地 HTML 审查。\n`);
 stage("web/index.html", index);
 
 let app = text("web", "app.js");

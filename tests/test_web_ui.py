@@ -1352,28 +1352,19 @@ class WebUiSourceTests(unittest.TestCase):
         评审的选片头、首页的标签选择条、垃圾卡的三颗动作、沉浸浮条。
         它们填的都是 `--ground`，又坐在同为 `--ground` 的卡片和面板上，暗色一档
         `#080A0D` 压在 `#080A0D` 上，整颗键化在面里。所以这里不数名单，直接扫。
-
-        `.splitbutton>button` 是唯一的例外，环挂在 `.splitbutton` 盒子上——两半各挂
-        一圈会在交界处与那根竖线叠成两条。
         """
         css = re.sub(r"/\*.*?\*/", "", stylesheet_source(), flags=re.S)
-        exempt = {".splitbutton>button"}
         scanned = []
         for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
             selector = rule.group(1).strip().splitlines()[-1].strip()
             body = rule.group(2)
             if "background:var(--ground)" not in body or "cursor:pointer" not in body:
                 continue
-            if selector in exempt:
-                continue
             self.assertTrue(
                 "box-shadow:0 0 0 1px" in body or "border:1px solid" in body,
                 f"{selector} 填 --ground 又没有边，坐在同色的面上就看不见了")
             scanned.append(selector)
         self.assertIn(".fbtn", scanned, "扫描要真的覆盖到关注页那组")
-        start = css.index(".splitbutton{")
-        self.assertIn("box-shadow:0 0 0 1px var(--line-soft)",
-                      css[start:css.index("}", start)], "拆分按钮的环挂在盒子上")
 
     def test_disabled_controls_show_the_forbidden_cursor(self):
         """禁用的控件移上去是禁止符号，不是普通箭头。
@@ -1652,43 +1643,23 @@ class WebUiSourceTests(unittest.TestCase):
         作者名长短不一，站标跟着名字走就每行一个位置，一列扫下来得逐行找。按钮上的字只写
         「全选」——它就在这位作者那一行里，说到底选的是谁由所在的行回答；完整的表述留在
         `aria-label` 上，读屏那边脱离了行的上下文。正文归 React（ADR-0031）：作者卡是
-        `follow-manage/source-list.tsx` 的 `AuthorCard`，遗留层只剩同形状的骨架。
+        `follow-manage/source-list.tsx` 的 `AuthorCard`，骨架用的也是它那副类名。
         """
         root = Path(__file__).resolve().parents[1]
         card = (root / "frontend/src/react/follow-manage/source-list.tsx").read_text(encoding="utf-8")
-        board = (root / "web/board.css").read_text(encoding="utf-8")
-        skeleton = (root / "frontend/src/board-skeleton.ts").read_text(encoding="utf-8")
         self.assertIn("aria-label={`${state.all ? '取消全选' : '全选'} ${name} 的来源`}", card)
         self.assertIn(">{state.all ? '取消全选' : '全选'}</Button>", card)
         self.assertIn("aria-label={`${open ? '收起' : '展开'} ${name} 的来源`}", card)
-        self.assertIn('<span data-author-select-label>全选</span>', skeleton)
-        self.assertIn('class="followtoolbaractions"', skeleton)
-        self.assertIn(".fauthorhead>.fmeta{margin-left:auto}", board)
-        self.assertIn(".fauthorhead>.fmeta~.fmeta,.fauthorhead>.fmeta~.board-author-actions"
-                      "{margin-left:0}", board, "撑开的空当只交给第一个 .fmeta")
 
     def test_history_actions_are_one_split_button_with_the_primary_mirrored(self):
         """一件事的两种做法合成一个 Split Button，不摊成两颗地位相同的按钮。
 
         实测记在 `docs/reference-snapshots/vercel-geist-split-button.md`：主动作占左半、
         触发档占右半，两半拼成一个盒子，交界处一条 1px 竖线；触发档里只有一枚箭头，读屏名
-        由 aria-label 给。这份几何现在的读者是数据管理页那张「扫描与采集」卡的骨架
-        （`frontend/src/management.ts`），口味页的同一颗归 React（`HistoryActions`）。
+        由 aria-label 给。数据管理页「扫描与采集」卡与口味页的同一颗都归 React
+        （`LibraryProcessingCard`、`HistoryActions`），那张卡的骨架照同一副 `data-split-button`
+        画（`frontend/src/management.ts`，行为由 `frontend/test/management.test.ts` 守）。
         """
-        skeleton = (Path(__file__).resolve().parents[1]
-                    / "frontend/src/management.ts").read_text(encoding="utf-8")
-        self.assertIn('<div class="splitbutton board-button-group primary">', skeleton)
-        self.assertIn('class="splitmain geist-button primary"', skeleton)
-        css = stylesheet_source()
-        main_rule = css[css.index(".splitbutton>.splitmain{"):]
-        self.assertIn("border-radius:var(--control-radius) 0 0 var(--control-radius)",
-                      main_rule[:main_rule.index("}")])
-        toggle_rule = css[css.index(".splitbutton>.splittoggle{"):]
-        toggle_rule = toggle_rule[:toggle_rule.index("}")]
-        self.assertIn("border-radius:0 var(--control-radius) var(--control-radius) 0",
-                      toggle_rule)
-        # 遗留骨架仍由右半的左边界画线；React 两颗主按钮会各画悬停层，交界线另盖在最上面。
-        self.assertIn("border-left:1px solid var(--border-15)", toggle_rule)
         scan = self.read_react("library-processing/library-processing-card.tsx")
         self.assertIn('<span data-button-group data-split-button data-variant="primary">', scan)
         self.assertIn("{ label: '扫描并补全资料', icon: RiDatabase2Line, command: {} },", scan)
@@ -3318,7 +3289,6 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(f'class="resourceaction primary" type="button" {needle}', self.app_js)
         self.assertIn('class="geist-button primary" data-cleanup-empty-scan', self.app_js)
         self.assertIn('class="danger" data-cleanup-empty hidden', self.app_js)
-        self.assertIn("body .splitbutton.primary{border:0;box-shadow:none}", board)
         # 顶栏密度键跟筛选框的版式开关取同一份字形映射。
         self.assertPageContains("button.innerHTML=iconSwapHtml(big[2],small[2],")
         self.assertPageContains("}else setIconSwap(button,size===small[0]?'b':'a');")
@@ -5115,13 +5085,13 @@ class WebUiSourceTests(unittest.TestCase):
             "const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line',"
             "'播放':'ri-play-circle-line',\n"
             "  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line',"
-            "'这台电脑':'ri-hard-drive-line'};")
+            "'这台电脑':'ri-macbook-line'};")
         self.assertPageContains("svg.style.fill='currentColor';svg.style.stroke='none';")
         self.assertIn(
             ".settingscard.settingscard>.board-local-nav button svg"
             "{width:20px;height:20px;fill:currentColor;stroke:none;flex:none}",
             (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"))
-        self.assertPageContains('<symbol viewBox="0 0 24 24" id="ri-hard-drive-line">')
+        self.assertPageContains('<symbol viewBox="0 0 24 24" id="ri-macbook-line">')
 
     def test_the_follow_management_section_is_named_after_the_page_it_opens(self):
         """管理区那一项叫「关注管理」：它开的是 /follow-manage，不是关注更新流。
@@ -5809,7 +5779,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_follow_author_actions_stay_in_the_heading_row(self):
         board = (Path(__file__).resolve().parents[1] / 'web/board.css').read_text(encoding='utf-8')
-        self.assertIn('.followmanage .board-follow-list .fauthorhead{flex-wrap:nowrap}', board)
         self.assertIn('.followmanage .board-follow-list .board-author-actions{width:auto;flex:none}', board)
         self.assertNotIn('.board-author-actions{width:100%', board)
 
@@ -7245,7 +7214,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-sidebar-head #brandHome .mark{width:32px;height:32px;border-radius:50%;background:var(--color-background-tertiary-default)}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{width:20px;height:20px;padding:0;background:none;box-shadow:none}", board)
         self.assertIn(".drawer:not(.open) .board-sidebar-head #filterBtn{width:36px;height:20px}", board)
-        self.assertIn(".cleanupgrid>.board-processing-skeleton{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:114px}", board)
         self.assertPageContains("${icon(alert?'circle-alert':'check')}")
         self.assertPageContains('<symbol id="i-circle-alert" viewBox="0 0 24 24">')
 
@@ -7271,12 +7239,8 @@ class WebUiSourceTests(unittest.TestCase):
         勾 200ms 从零画出。分区标题行里的视图开关与同排按钮同高，图标与 fbtn 的字形同粗。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertNotIn(".followmanage .fmain>.fsec:has(.fsources){background:none}", board)
-        self.assertIn(".followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:20px 24px 8px}", board)
         self.assertIn(".followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}"
                       ".followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}", board)
-        self.assertIn(".followmanage .fmain>.fsec>.fsources{padding:0 24px 24px;grid-template-columns:minmax(0,1fr);gap:16px}", board)
-        self.assertIn(".followmanage .board-follow-list .fauthor{background:var(--color-background-primary-default);border-radius:var(--surface-radius);padding:16px}", board)
         self.assertIn(".followmanage .board-follow-list .fsource.frow{min-height:0;margin:0;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);"
                       "border-radius:10px;background:var(--color-background-primary-default);transition:background-color .15s ease,border-color .15s ease}", board)
         self.assertIn(".followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}", board)
@@ -7324,7 +7288,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".stage .vwrap{border-radius:var(--surface-radius) 0 0 0}", board)
         self.assertIn(".stage .vwrap>.gate{height:100%;aspect-ratio:auto;border-radius:inherit}", board)
         self.assertIn(".idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));", board)
-        self.assertIn(".cleanupgrid>.board-processing-skeleton>.geist-fieldset-footer{background:none}", board)
         # 首页顶上两排：女优是竖排人像格（48px 圆头像在上、名字在下），厂牌是 40px 的灰 Pill（28px 圆标识在左）。
         # 关注页那两排是同一个控件，所以每条规则都把它们一起写进选择器。
         self.assertIn("#tiers .av,:is(.followauthors,.followworks) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
@@ -8221,31 +8184,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 关注更新流仍是同质卡片流，它那张骨架不受影响。
         self.assertPageContains("pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})")
 
-    def test_follow_list_skeleton_matches_both_react_layouts(self):
-        """关注列表的等待态按偏好画卡片或表格，不借迁移前的列表盒子凑形状。"""
-        root = Path(__file__).resolve().parents[1]
-        source = (root / "frontend/src/board-skeleton.ts").read_text(encoding="utf-8")
-        skeleton = (root / "web/css/09-skeleton.css").read_text(encoding="utf-8")
-
-        self.assertIn("const table=options.followLayout==='table';", source)
-        self.assertIn('follow-skeleton-surface', source)
-        self.assertIn('class="follow-skeleton-authors"', source)
-        self.assertIn('follow-skeleton-table', source)
-        self.assertIn('class="ftableframe follow-skeleton-table"', source)
-        self.assertIn('class="fauthor follow-skeleton-author"', source)
-
-        self.assertIn("background:var(--color-background-secondary-default)", skeleton)
-        # 作者卡与主动作键都被 `.followmanage` 那一档压着，特异性一次给够，不并列两条同样的规则。
-        self.assertIn(".followmanage.follow-list-skeleton .follow-skeleton-author{overflow:hidden;padding:8px;"
-                      "background:var(--color-background-primary-default)", skeleton)
-        self.assertEqual(skeleton.count(".follow-skeleton-author{"), 1)
-        self.assertEqual(skeleton.count(".follow-skeleton-button.primary{"), 1)
-        # 来源行照 React 的 `SourceRow` 排，不借迁移前那套网格列。
-        self.assertIn(".followmanage.follow-list-skeleton .fauthor .follow-skeleton-source{display:flex;", skeleton)
-        self.assertIn(".follow-skeleton-table{width:100%;min-width:0;overflow-x:auto;", skeleton)
-        self.assertIn(".follow-skeleton-source+.follow-skeleton-source{border-top:1px solid", skeleton)
-        self.assertIn("@media(max-width:1023px){.followmanage.follow-list-skeleton .fmanageoverview", skeleton)
-
     def test_loading_actions_are_inert_and_dimmed_without_losing_focus(self):
         """用户触发的等待态统一走 Geist loading button，而不是各页自造半套状态。"""
         self.assertPageContains("control.setAttribute('aria-busy','true')")
@@ -9053,7 +8991,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("junk:statCard('垃圾文件','file-archive',")
         self.assertPageContains("duplicates:statCard('重复文件','file-stack',")
         self.assertPageLacks("<legend>垃圾文件</legend>")
-        self.assertPageContains('class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby=')
         self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task')
         self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
         self.assertPageContains("保留来源根目录")
@@ -9249,7 +9186,6 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm",
             ".entitylinklabel",
-            ".fauthor .fsource.frow>b", ".fauthorhead b",
             # 作者是展示名，尾部省略；完整身份保留在 title。
             ".followbyline .followauthor",
             ".followpageaction .fmeta",
@@ -9667,8 +9603,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("leadingIcon={RiRefreshLine}", source_list)
         self.assertIn("aria-label={`检查 ${name} 的全部来源`}", source_list)
         self.assertIn("leadingIcon={RiCheckDoubleLine}", source_list)
-        # 骨架照着画，等数据时占的是同一块地方。
-        self.assertIn("<span data-author-select-label>全选</span>", self.markup)
         # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
         self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
         self.assertPageContains("emptyState('file-stack','没有找到重复文件'")
@@ -9694,9 +9628,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-folder-cog" viewBox="0 0 24 24">')
         # 配置页每行文件夹的「选择文件夹」弹系统对话框去挑：`folder-search`。`folder-open` 归「打开位置」。
         self.assertPageContains('<symbol id="i-folder-search" viewBox="0 0 24 24">')
-        # 数据管理页「空文件夹」那张卡说的是目录本身：不是打开它，也不是去里面找。
-        self.assertPageContains("'空文件夹':'folder',")
-        self.assertPageContains('<symbol id="i-folder" viewBox="0 0 24 24">')
+        # 设置左栏「这台电脑」指的是运行 Peach 的那台机器，字形是一台笔记本电脑；
+        # 硬盘归「本地」这个来源，不兼任机器本身。
+        self.assertPageContains("'这台电脑':'ri-macbook-line'}")
         self.assertIn('href="#i-folder-search"', (Path(__file__).resolve().parents[1] / "frontend" / "src" / "react" / "settings" / "media-settings.tsx")
                       .read_text(encoding="utf-8"))
         # 主题三档各归各的：太阳是浅色、月亮是深色；跟随系统那档说的是「照这台设备走」，
@@ -9717,8 +9651,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol viewBox="0 0 24 24" id="ri-palette-line">')
         self.assertPageLacks("swatch-book", "换下来的这一枚没有别的使用者，雪碧图里也不留")
         for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building",
-                     "i-sliders-horizontal", "i-computer"):
-            self.assertPageLacks(f'<symbol id="{gone}"')
+                     "i-sliders-horizontal", "i-computer", "i-folder", "ri-hard-drive-line"):
+            self.assertPageLacks(f' id="{gone}"')
         self.assertPageContains("${icon('star')}</button>")
         self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')
 
@@ -10191,14 +10125,10 @@ class WebUiSourceTests(unittest.TestCase):
     def test_a_selectable_follow_row_keeps_its_own_border_on_every_edge(self):
         """关注列表进选择态后，行与行之间那条线是卡片自己的上边框。
 
-        卡片模式下作者卡内还有一条 `--line-soft` 的分隔线，选择器比卡片边框更长，
-        压掉的正是第二行起的上边框——在深色底上 `--line-soft` 几乎看不见，读起来
-        就是「横线没了」。表格模式下行是 `tr`，卡片那套边框圆角落上去会和外框画出
-        两条重叠的竖线，所以那套只给非 `tr`。
+        表格模式下行是 `tr`，卡片那套边框圆角落上去会和外框画出两条重叠的竖线，
+        所以那套只给非 `tr`。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".followmanage .fauthor .fsource.frow:not(:has([data-follow-select]))"
-                      "+.fsource.frow:not(:has([data-follow-select])){border-top:1px solid var(--line-soft)}", board)
         self.assertIn(".followmanage .fsource:has([data-follow-select]):not(tr){"
                       "border:1px solid var(--color-border-button-default);border-radius:10px;", board)
         # 表格外框自己收口：它离卡片脚还有一层内边距，去掉下边框就没有收尾。
@@ -10244,7 +10174,6 @@ class WebUiSourceTests(unittest.TestCase):
         结果、故障与重试怎么说由 `frontend/test/react/library-processing.test.tsx` 守。
         """
         self.assertPageContains('<div class="cleanupscraping" id="libraryProcessing">')
-        self.assertPageContains('<section class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupScrapingTitle">')
         card = self.read_react("library-processing/library-processing-card.tsx")
         # 提示排在任务卡之后，两块由外面这一层的 `gap` 分开。
         self.assertIn(
@@ -10257,7 +10186,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 进度条留在卡片里，和那颗按钮同一格。
         self.assertIn("<Progress label={line} value={state.checked || 0} max={state.total} />", card)
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".cleanupgrid>#libraryProcessing{grid-column:1/-1;display:grid;gap:16px}", board)
+        self.assertIn(".cleanupgrid>:is(.cleanupscraping,.cleanupmediarepair){grid-column:1/-1;display:grid;gap:16px}", board)
 
     def test_a_failed_scan_folds_its_issue_list_into_the_error_note(self):
         """处理失败先给一句结论，逐条明细收在这条 Note 自己的 details 里，默认折叠。
@@ -10367,7 +10296,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-plain-stat>.cleanupmeta{display:block;min-height:16px;margin:0;font:var(--board-caption);color:var(--color-text-tertiary);", board)
         self.assertIn("@media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}", board)
         self.assertIn("@media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}", board)
-        self.assertIn(".cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
+        self.assertIn(".cleanupgrid :is(.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
         self.assertIn(".cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-secondary-default);", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{align-self:stretch;justify-content:flex-end;min-height:0;padding:24px;border:0;background:none}", board)
@@ -10375,8 +10304,8 @@ class WebUiSourceTests(unittest.TestCase):
         skeleton = (root / "frontend/src/management.ts").read_text(encoding="utf-8")
         self.assertIn('<div class="cleanupstats">${stats.map(([title, glyph]) => `', skeleton)
         self.assertIn('<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">', skeleton)
-        self.assertEqual(skeleton.count("data-cleanup-task"), 5,
-                         "数据管理骨架要同步画出三张任务卡和两块 BoardUI 操作区")
+        self.assertEqual(skeleton.count("data-cleanup-task"), 6,
+                         "数据管理骨架要同步画出四张任务卡和两块 BoardUI 操作区")
 
     def test_the_toast_glyph_is_stroked_and_sits_level_with_its_line(self):
         """Toast 里那枚勾是描边件，和文字同一条中线。
@@ -11695,40 +11624,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("rounded-lg bg-background-secondary-default px-2 py-3", source_list)
         self.assertIn('<Select aria-label="关注列表排序" selectedKey={sort}', source_list)
         self.assertNotIn('aria-label="关注列表排序" size="sm"', source_list)
-        self.assertIn("""<span class="fmanagesort" data-collapse-field>"""
-                      """${icon('sort')}${selectFieldHtml(""", self.markup)
-        self.assertPageContains('id="i-sort"')
-        self.assertPageContains(".fmanagesort{position:relative;display:inline-flex;align-items:center")
-        self.assertPageContains(".fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px")
-        self.assertPageContains(".fmanagesort .gselectfield{height:var(--control-h);padding:0 12px 0 33px")
         # 无障碍名称只剩 aria-label 一处，去掉标签后它必须留着；它由组件写到触发器上。
-        self.assertIn("{label:'关注列表排序',attr:'disabled'}", self.markup)
         self.assertCode('aria-expanded="false" aria-label="${esc(label)}"')
-        # 标题行里三个可缩项只有说明文字，排序框和动作键都保持完整宽度。
-        self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
+        # 标题行里三个可缩项只有说明文字，动作键保持完整宽度。
+        self.assertPageContains(".fsechead .fbtn{flex:none}")
         # 允许换行的一行里，说明文字必须以基准 0 参与排线，否则先断行再谈缩放。
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
         self.assertPageContains("  .fsechead .fmeta{display:none}")
 
     def test_manage_sort_field_stays_in_the_page_palette(self):
-        """排序框的选项列表由站内自绘，配色跟着当前主题走。
+        """选项列表由站内自绘，配色跟着当前主题走。
 
         原生下拉的弹出层由操作系统画，不认站内色板；控件各自钉一档 `color-scheme`，
         浅色主题下就是闭合的框浅底、展开的列表深底浅字两套配色。这里的面板底色就是
         页面底色，两条主题选择路径（prefers-color-scheme 与 `[data-theme]`）都落在
         `html` 上，控件靠继承拿到它。
         """
-        css = stylesheet_source()
-        start = css.index(".fmanagesort .gselectfield{")
-        rule = css[start:css.index("}", start)]
-        self.assertNotIn("color-scheme", rule, ".fmanagesort 的触发器不声明 color-scheme")
         self.assertPageContains("html{color-scheme:light")
         self.assertPageContains(
             '@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}')
         self.assertPageContains('html[data-theme="dark"]{color-scheme:dark}')
-        # 这一行的三个控件——版式开关、排序框、动作键——共用 --control-h。下拉单独缩一档
-        # 就是同一行里出现两种「同一种控件」，而缩的偏偏是唯一能改变列表内容的那个。
-        self.assertIn("height:var(--control-h)", rule, ".fmanagesort 的触发器与标题行同高")
+        # 标题行的版式开关与动作键共用 --control-h。
         self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
         self.assertPageContains(".fsechead .fbtn{height:var(--control-h)}")
 
@@ -11864,7 +11780,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("confirmLabel: '删除所选来源', danger: true,", source_list)
         # 分区标题行是同一种行：一行里唯一可以缩的是说明文字，动作键要完整读出来。
         self.assertPageContains(".fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden")
-        self.assertPageContains(".fsechead .fbtn,.fsechead .fmanagesort{flex:none}")
 
     def test_react_selection_uses_the_home_dock_and_review_filters_keep_their_height(self):
         """复核和关注的勾选动作都落到底部悬浮框，筛选条不因勾选而变高。"""

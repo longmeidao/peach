@@ -27,7 +27,9 @@ export { entitySkeletonHtml } from './entity-skeleton';
 export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
-export { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './management';
+export {
+  cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, repairCardSkeletonHtml, scanCardSkeletonHtml,
+} from './management';
 export { resourceScanHtml } from './resource-sync';
 
 /** 每个 island 的 props。新增 island 时在这里登记，注册表随之要求实现；
