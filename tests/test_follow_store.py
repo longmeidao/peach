@@ -472,12 +472,56 @@ class GroupingTests(_StoreCase):
             self._booru_post("2", 1, general=("standing_sex", "against_wall", "hat", "nude")))
         self.assertEqual(len(groups), 2)
 
-    def test_a_post_with_a_declared_origin_is_not_pulled_into_a_burst(self):
-        # 出处是来源自己给的关系，推断出来的连发不去改它。
+    def test_a_post_without_an_origin_joins_the_declared_work_it_was_uploaded_with(self):
+        # LazyProcrastinator 的 Aerith 一批 6 帖，5 帖写了出处，夹在中间的一帖没写。
+        origin = "https://www.fanbox.cc/@lazy/posts/12304831"
         groups = self._record_booru(
-            self._booru_post("1", 0),
-            self._booru_post("2", 1, source="https://www.fanbox.cc/@lazy/posts/1"))
+            self._booru_post("15101361", 0, source=origin),
+            self._booru_post("15101385", 3),
+            self._booru_post("15101390", 4, source=origin))
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(len(groups[0].variants), 2)
+
+    def test_two_declared_works_are_not_joined_through_a_post_between_them(self):
+        # 来源把两帖分成了两个作品，中间那帖挂哪一组都是猜，三帖各自成卡。
+        groups = self._record_booru(
+            self._booru_post("1", 0, source="https://www.fanbox.cc/@lazy/posts/12304831"),
+            self._booru_post("2", 1),
+            self._booru_post("3", 2, source="https://www.fanbox.cc/@lazy/posts/12304832"))
+        self.assertEqual(len(groups), 3)
+
+    def test_posts_retagged_together_are_not_a_burst(self):
+        # Rekin3D 的两帖分别在 05-01 与 05-20 上传，09-14 一起被改了标签，落库时间都是
+        # 改标签那一分钟。帖子 id 相差近 20 万，不是连着传的。
+        groups = self._record_booru(
+            self._booru_post("17361475", 1), self._booru_post("17559518", 0))
         self.assertEqual(len(groups), 2)
+
+    def test_an_untagged_booru_post_joins_its_batch_by_the_whole_tag_set(self):
+        # rule34.paheal 不给标签分类。InitialA 一口气传的 Lily 动画里，8 帖写着同一个
+        # subscribestar 出处，最后一帖没写；整组标签相同，归进那一组。
+        source_id = self._source(provider="rule34paheal", ref="initiala", label="initiala")
+        tags = {tag: "general" for tag in
+                ("InitialA", "Lily_Artemis_II", "Stellar_Blade", "animated", "blender")}
+
+        def post(external_id, seconds, **extra):
+            return FollowCandidate(
+                provider="rule34paheal", external_id=external_id,
+                title="lily artemis ii · stellar blade", title_is_name=False,
+                published_at=(MOMENT + timedelta(seconds=seconds)).isoformat(),
+                group_hint="subscribestar:2685233" if "source" in extra
+                else f"rule34paheal:post:{external_id}",
+                extra={"title_from": "tags", "tag_types": tags, **extra})
+
+        origin = "https://subscribestar.adult/posts/2685233"
+        self.store.record(source_id, _fetch([
+            post("7452299", 0, source=origin), post("7452300", 1, source=origin),
+            post("7452301", 25),
+            post("7452302", 30, tag_types={**tags, "Eve": "general"}),
+        ], provider="rule34paheal", ref="initiala"), moment=MOMENT)
+        groups = sorted(sorted(m.external_id for m in (g.primary, *g.variants, *g.duplicates))
+                        for g in self.store.group(self.store.items()))
+        self.assertEqual(groups, [["7452299", "7452300", "7452301"], ["7452302"]])
 
     def test_a_stored_hint_is_recomputed_from_the_recorded_source(self):
         # 落库时缺协议头的出处没认出来，键退回了帖子自己的 id；读时按出处重算后并组。
@@ -511,6 +555,23 @@ class GroupingTests(_StoreCase):
             self._clip(4608795, "Mai-doggy", character=mai))
         self.assertEqual(groups, [["Angel-handjob", "Angel-missionary", "Angel-riding hugging"],
                                   ["Mai-blowjob", "Mai-doggy"]])
+
+    def test_a_clip_a_few_dozen_uploads_earlier_joins_its_pack(self):
+        # Barney's Mom 一包 8 条 20 秒短片，Riding 比下一条早 64 个 id，中间夹着别人的上传。
+        freyja = {"freyja (final fantasy)": "general"}
+        groups = self._record_clips(
+            self._clip(4608531, "Barney's Mom - Riding", work="Final Fantasy", **freyja),
+            self._clip(4608595, "Barney's Mom - Doggy 3", work="Final Fantasy", **freyja),
+            self._clip(4608599, "Barney's Mom - Sitting Blowjob", work="Final Fantasy",
+                       **freyja))
+        self.assertEqual(len(groups), 1)
+
+    def test_the_same_character_uploaded_the_next_day_stays_apart(self):
+        # LazyProcrastinator 的 Lavinia 两条隔天上传，id 相差 300，是两部。
+        groups = self._record_clips(
+            self._clip(4600000, "Lavinia-cowgirl", character="lavinia (zzz)"),
+            self._clip(4600300, "Lavinia-doggystyle", character="lavinia (zzz)"))
+        self.assertEqual(len(groups), 2)
 
     def test_clips_far_apart_or_of_another_length_stay_apart(self):
         groups = self._record_clips(
