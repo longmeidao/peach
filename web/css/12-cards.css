@@ -142,18 +142,34 @@ body.refreshing #batchAction svg,
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;border-radius:var(--surface-radius);
   position:relative;transition:transform .18s ease,filter .18s ease,background-color .15s ease,box-shadow .15s ease;transform-origin:center}
-/* 视口外的卡片跳过渲染：一屏滚动要算的只剩屏上那几十张，连续加载到一千五百张时帧间隔
-   仍在预算附近（实测见 ADR-0031「馆藏网格连续加载的实测」）。`auto 320px` 是占位高度，
-   没渲染过的卡先按 320px 排进来，渲染过的记住自己的实际尺寸。
-   跳过渲染连带 paint containment：卡里任何画到卡片盒外的东西都会被裁掉，贴着卡片左缘的
-   头像一悬停，那圈 2px 焦点环的左半边就没了。`overflow-clip-margin` 把裁切边往外放到
-   8px，和整张卡的悬停面同宽；卡里的东西不要画出这一圈，`frontend/e2e/design.test.ts`
-   按几何检查。
-   四类卡不在其内：Mix 卡和分卷／版次卡的叠层纸边靠 transform 抬到卡片盒外 7px，Safari
-   不认 `overflow-clip-margin`，那一截在它上面照样被裁；垃圾文件卡自己声明了更高的占位值；
-   竖屏带的卡横着排在 `.srow` 里，320px 与 9:16 的封面对不上。 */
-#grid article.card:not(.mixcard,.partcard,.junkcard,.scard){
-  content-visibility:auto;contain-intrinsic-size:auto 320px;overflow-clip-margin:8px}
+/* 馆藏和关注网格里，视口外的卡片跳过渲染：滚动和侧栏开合时要算的只剩屏上那几十张。
+   跳过的是卡里的两块，封面 `.pic` 和元信息区 `.meta`；卡片盒本身照常排版，所以屏外卡的
+   高度里只有元信息区一项是估计值。
+   - 封面高度由 `aspect-ratio` 从列宽推出，跳过渲染时照样成立，列宽随视口和侧栏开合怎么
+     变都与真实渲染一致。卡高随列宽在 270～590px 之间变（JAV 大图一档最高），整张卡
+     跳过就只能给一个固定占位，对不上所有版式，没渲染过的卡越多滚动条漂得越远。
+   - 元信息区高度不随列宽变，由它自己的排版 token 推出，见 `--card-meta-block`：两行标题
+     （`.meta .t` 的 2.7em）、一行归属（1lh，关注卡另有 21px 的最小高度）、`.mtext` 的 3px
+     行距；有标签的卡再加一行标签（`.ctags` 的高度）和一道行距，关注卡的徽章行 `.fbadges`
+     同理（`.fbadge` 一行字加上下 2px 内边距和 1px 边框）。密集一档的高度是 `.mtext` 固定的
+     三行，同一个变量。
+   叠层纸边画在 `.pic` 外面，不在裁切范围里，Mix 卡、分卷／版次卡和竖屏带的卡一并适用。
+   跳过渲染连带 paint containment：元信息区里画出盒外的像素会被裁掉，贴着左缘的头像一
+   悬停，那圈 2px 焦点环就缺一截。`overflow-clip-margin` 把裁切边往外放 8px，和整张卡的
+   悬停面同宽，`frontend/e2e/design.test.ts` 按几何检查；Safari 不认这个属性，那边贴边的
+   描边和焦点环仍会被裁掉一截。
+   图片墙不在其内：它的封面没有固定比例，高度取自图片本身，跳过渲染时会按零高排版。 */
+.meta{--card-meta-byline:1lh;--card-meta-tags:0px;--card-meta-badges:0px;
+  --card-meta-block:calc(var(--fs-md)*2.7 + 3px + var(--card-meta-byline) + var(--card-meta-badges) + var(--card-meta-tags))}
+.meta:has(>.mtext>.ctags){--card-meta-tags:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px + 3px)}
+.followitem .meta{--card-meta-byline:max(1lh,21px)}
+.followitem .meta:has(>.mtext>.fbadges){--card-meta-badges:calc(1lh + 6px + 3px)}
+:is(#grid,.followlist:not(.followphotowall)) .card :is(.pic,.meta){content-visibility:auto}
+/* `flex-shrink:0`：跳过渲染时元信息区的内容不参与最小尺寸，卡里有别的子元素要抢空间时它会
+   被压扁。关注卡的 `.fstate` 是 `flex:1 1 100%`，不钉住的话屏外关注卡的元信息区只剩 21px。
+   渲染时它本来就压不动（自动最小尺寸就是内容高度），钉住不改变屏上的排版。 */
+:is(#grid,.followlist:not(.followphotowall)) .card .meta{flex-shrink:0;
+  contain-intrinsic-block-size:auto var(--card-meta-block);overflow-clip-margin:8px}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
    整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
    邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。
@@ -437,8 +453,9 @@ body[data-density="dense"] .card .ctags .tg{max-width:100%;overflow:hidden;text-
    同一网格不会再被大小、观看次数或长身份撑成四行。分卷卡已有 7px 叠层空间，
    密集网格的普通卡也保留同一高度，避免每行是否出现分卷卡决定整行高度。 */
 body[data-density="dense"] .grid>.card{padding-top:7px}
+body[data-density="dense"] .card .meta{--card-meta-block:calc(2.7em + 36px)}
 body[data-density="dense"] .card .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px;
-  gap:3px;height:calc(2.7em + 36px);overflow:hidden}
+  gap:3px;height:var(--card-meta-block);overflow:hidden}
 body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;
   -webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis}
 body[data-density="dense"] .card .meta .s{height:1.35em;min-height:0;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
