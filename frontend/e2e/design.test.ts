@@ -870,6 +870,40 @@ describe('设计决定', () => {
     }
   });
 
+  it('分卷卡不翻卡、悬停走分段预览，叠层纸边和封面同一档圆角', { timeout: 60_000 }, async () => {
+    /* 各卷共用同一个番号的封套，翻过去还是那张图。演示库没有分卷，给首张卡挂一个。 */
+    const opened = await openCatalogFixture(browser, (payload) => {
+      const [first, second] = payload.items;
+      payload.items[0] = { ...first, part_group: {
+        key: 'DEMO-PART', title: 'DEMO-PART', count: 2, seed_id: first.id,
+        item_ids: [first.id, second.id], total_duration: 120, total_size: 1 } };
+    });
+    try {
+      const shapeOf = (selector: string) => opened.page.locator(selector).first().evaluate((element) => {
+        const stack = element.querySelector('.partstack,.mixstack')!;
+        return {
+          cover: getComputedStyle(element.querySelector('.pic')!).borderTopLeftRadius,
+          layers: ['::before', '::after'].map((pseudo) => getComputedStyle(stack, pseudo).borderTopLeftRadius),
+          faces: element.querySelectorAll('[data-mix-faces]').length,
+          preview: Boolean(element.querySelector('.previewcounter')),
+        };
+      });
+      await opened.page.locator('article.card.partcard').first().waitFor({ timeout: 10_000 });
+      const part = await shapeOf('article.card.partcard');
+      assert.notEqual(part.cover, '0px', '封面没有圆角，比对失去意义');
+      assert.deepEqual(part.layers, [part.cover, part.cover], '分卷卡的叠层纸边和封面不是同一档圆角');
+      assert.equal(part.faces, 0, '分卷卡仍挂着翻卡面板');
+      assert.ok(part.preview, '分卷卡悬停没有分段预览入口');
+      if (await opened.page.locator('article.mixcard').count()) {
+        const mix = await shapeOf('article.mixcard');
+        assert.deepEqual(mix.layers, [mix.cover, mix.cover], 'Mix 卡的叠层纸边和封面不是同一档圆角');
+      }
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('抬起与推开只属于作品卡的共演头像', { timeout: 60_000 }, async () => {
     const opened = await openCatalog(browser);
     try {

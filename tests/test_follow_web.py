@@ -208,6 +208,21 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual([row['k'] for row in online['follow_tags']], follow['tags'])
         self.assertEqual(self._get('/api/facets', loc='local')['follow_tags'], [])
 
+    def test_every_card_member_says_whether_it_is_a_version_or_a_piece(self):
+        """卡片据 `variant_kind` 决定叠层翻不翻：alt 与 WIP 是同一段的另一版，翻过去
+        还是那张图；main 是独立的一段。同站版本和跨站成员都得带上这个字段。"""
+        self._seed()
+        self._seed(provider="pawchive", ref="lazy", candidates=(FollowCandidate(
+            provider="pawchive", external_id="p1", title="Fiona - Paizuri",
+            url="https://pawchive.test/p1", published_at="2026-08-19T00:00:00Z"),))
+        groups = [group for group in self._get()["groups"]
+                  if group["primary"]["title"].startswith("Fiona")]
+        self.assertEqual(len(groups), 1)
+        group = groups[0]
+        members = [group["primary"], *group["variants"], *group["duplicates"]]
+        self.assertEqual(sorted((item["provider"], item["variant_kind"]) for item in members),
+                         [("pawchive", "main"), ("rule34video", "alt"), ("rule34video", "main")])
+
     def test_unsaved_follow_tags_do_not_enter_catalog_facets(self):
         self._seed(candidates=(FollowCandidate(
             provider='rule34video', external_id='unsaved', title='Demo video',
@@ -3221,8 +3236,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks(
             "`${group.variants.length} 个版本`",
             "版本数必须含主条目，否则两个视频显示成 1 个版本")
-        # 计数来源换成了「点开真能看到的那一组」，量词的分工不变。
-        self.assertPageContains("const count=(openable||followOpenableItems(group)).length;")
 
     def test_cross_site_duplicates_are_shown_as_another_source(self):
         self.assertPageContains("另见 ")
@@ -3469,11 +3482,12 @@ class FollowWebSourceTests(unittest.TestCase):
 
         实测两处对不上：paheal 一组 9 条里有 1 张图，卡上写「9 个版本」、播放角标
         写「8 个视频」；`2B Camp [4K]` 卡上写「2 个版本」，同组另一条不是可播视频，
-        `collection` 因此为 null，点开只有 1 条。
+        `collection` 因此为 null，点开只有 1 条。两个数一致之后，封面角标已经报过的
+        那一组，正文就不再报第二遍（`web/js/stack-cards.js`，行为验收在 `test_web_js.py`）。
         """
         self.assertPageContains("function followOpenableItems(group)")
         self.assertPageContains("if(followMediaView==='videos')return followVideoItems(group);")
-        self.assertPageContains("const count=(openable||followOpenableItems(group)).length;")
+        self.assertPageContains("const count=showCount?(openable||followOpenableItems(group)).length:0;")
         self.assertPageContains("if(count>1)badges.push(")
         self.assertPageLacks("${group.variants.length+1} ${group.is_release?'条动态':'个版本'}")
 

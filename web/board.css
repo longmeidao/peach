@@ -786,7 +786,7 @@ body>.board-filter-frame{margin-inline:16px}
 .iconswitch label{border-radius:8px}
 .iconswitch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px light-dark(#0002,#0009)}
 .card{overflow:visible;border-radius:var(--surface-radius)}
-.card .pic{border-radius:var(--surface-radius)}
+.card :is(.pic,.mixstack,.partstack){border-radius:var(--surface-radius)}
 .card .info{background:transparent}
 @media(max-width:760px){.sidecontent{padding:16px}.stage{border-radius:12px}.stage .side{border-left:0;border-top:1px solid var(--line-soft)}}
 /* 单列时媒体、详情栏和队列上下排成一列，总高超过浮窗，滚的是里面那一格内容：`<dialog>`

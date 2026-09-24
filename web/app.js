@@ -11,6 +11,7 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
+import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection } from './dist/peach-ui.js';
@@ -3543,9 +3544,7 @@ function cardHtml(it,cls){
   const tgs=(it.follow_tags||it.tags||[]).slice(0,3).map(x=>`<button type="button" class="tg general"${it.follow_item_id?' disabled':` data-tag="${esc(x)}"`}>${esc(tagLabel(x))}</button>`).join('');
   const laterTool=`<div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
       ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>`;
-  /* 分卷卡悬浮翻的是各卷首帧，没有可控的视频：倒计时环和快退／快进那三颗留着的话，
-     按下去找不到 `video.hv`，等于三颗空按钮压在正在翻的画面上。 */
-  const tools=parts?laterTool:`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
+  const tools=`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
       <svg viewBox="-18 -18 36 36"><circle r="17"></circle><circle r="17"></circle></svg>${icon('play','ringplay')}</button>
     ${laterTool}
     <div class="hovertools seektools">
@@ -3554,11 +3553,13 @@ function cardHtml(it,cls){
       <button data-open title="打开详情" aria-label="打开详情">${icon('expand')}</button></div>`;
   /* 小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。 */
   /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。只给分卷的话，
-     同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。 */
+     同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。
+     两种都不翻卡：各卷与各版次共用同一个番号的封套，翻过去还是那张图，看着像卡住了。
+     悬停照普通卡走分段视频预览。 */
   const stacked=parts||editions;
   return `<article class="card ${stacked?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
     <button type="button" class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
-    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}
+    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}
       <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
       <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
       ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${stacked?'</div>':''}
@@ -3893,7 +3894,7 @@ function wireMixFlip(el,seedId){
       .map(x=>mixFacePoster(x,layout,true));
   });
 }
-/* 分卷组每个 seed 只取一次：悬浮翻动和点开后的分卷队列用的是同一份。 */
+/* 分卷组每个 seed 只取一次：同一组的分卷队列反复打开不再发第二个请求。 */
 const partGroupCache=new Map();
 function partGroup(seedId){
   if(!partGroupCache.has(seedId))
@@ -3901,17 +3902,6 @@ function partGroup(seedId){
       .then(group=>{if(group.error)throw new Error(group.error);cache(group.items);return group})
       .catch(error=>{partGroupCache.delete(seedId);throw error}));
   return partGroupCache.get(seedId);
-}
-/* 分卷卡悬浮翻的是同一部片各卷的画面，和 Mix 用同一套时序与门槛。版次组不翻：
-   有码、中字、无码是同一段画面的几个来源，翻过去前后两张几乎一样，看着像图卡住了，
-   那种卡继续用分段视频预览。第一张是卡片自己的静止封面，翻进来的才不会跳取景。 */
-function wirePartFlip(el,it){
-  wireStackFlip(el,async()=>{
-    const items=await partGroup(it.part_group.seed_id).then(group=>group.items),layout=javLayout();
-    return [it,...items.filter(x=>x.id!==it.id)]
-      .filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)
-      .map(x=>mixFacePoster(x,layout,true));
-  });
 }
 /* 关注页的合集翻的是卡片渲染时就写进 DOM 的那几张缩略图：同一组媒体已经在
    手上，悬浮不该再为动画发一次请求。第一张必须是静止封面本身，否则一翻就
@@ -3986,8 +3976,7 @@ function wireCards(root,onClick){
       opener.dataset.openWired='1';
       opener.onclick=e=>{e.stopPropagation();if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}openCard(+el.dataset.id,el)};
     });
-    if(it?.part_group)wirePartFlip(el,it);
-    else if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);
+    if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);
   });
 }
 
@@ -5994,9 +5983,10 @@ function followOpenableItems(group){
   return followCollectionItems(group)
     .filter(item=>followItemMediaKinds(item).has('image'));
 }
-function followBadges(group,openable=null){
+/* `count:false`：封面角标已经报过这一组的条数（`followStack` 判定），正文不再说第二遍。 */
+function followBadges(group,openable=null,{count:showCount=true}={}){
   const badges=[];
-  const count=(openable||followOpenableItems(group)).length;
+  const count=showCount?(openable||followOpenableItems(group)).length:0;
   /* WIP 说的是这一条，不是这一组。`2B Camp [4K]` 判的是 alt，只因为同组还有一条
      `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」。同组有 WIP 仍然要
      说，但要说成「含」。 */
@@ -6419,18 +6409,11 @@ function followCard(group,authorSources=[]){
   const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
   const groupedOwner=followMediaView==='videos'?followGroupedMediaOwner(group):null;
   const groupedVideos=(groupedOwner?.media_items||[]).filter(media=>media.media_kind==='video');
-  const isMix=embedded.length>1||groupedVideos.length>1||videos.length>1;
-  const mixCount=embedded.length>1?embedded.length:(groupedVideos.length||videos.length);
-  const mixKind=embedded.length&&embedded.every(media=>media.media_kind==='image')?'图片'
-    :embedded.length&&embedded.some(media=>media.media_kind==='image')?'媒体':'视频';
   const mixTarget=embedded.length>1?item.id:(videos[0]?.id||item.id);
-  /* 翻动用的几张必须来自角标数的那一组，否则卡上写「9 个视频」翻的却是别处的图。
-     图片视图里只翻图片：这一叠说的就是这几张图。 */
-  const faceSource=embedded.length>1?embedded:(groupedVideos.length>1?groupedVideos:videos);
-  const faceUrls=isMix?[...new Set([thumbUrl,...faceSource
-    .filter(entry=>!imageView||entry.media_kind==='image')
-    .map(entry=>entry.thumb_url)].filter(Boolean))].slice(0,MIX_FLIP_FACES):[];
-  const badges=followBadges(group);
+  /* 翻动用的几张来自角标数的那一组，否则卡上写「9 个视频」翻的却是别处的图。 */
+  const {isMix,mixCount,mixKind,faces:faceUrls,showCount}=followStack({cover:thumbUrl,embedded,
+    groupedVideos,videos,imageView,openable:followOpenableItems(group).length,limit:MIX_FLIP_FACES});
+  const badges=followBadges(group,null,{count:showCount});
   const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
   const when=followWhen(item),compactWhen=/^\d{4}-/.test(when)
     ?(when.startsWith(String(new Date().getFullYear()))?when.slice(5,10):when.slice(0,10)):when;

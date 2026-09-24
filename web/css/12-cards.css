@@ -156,9 +156,10 @@ body.refreshing #batchAction svg,
   content-visibility:auto;contain-intrinsic-size:auto 320px;overflow-clip-margin:8px}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
    整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
-   邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。 */
-.mixstack,.partstack{position:relative;isolation:isolate}
-.mixstack::before,.mixstack::after,.partstack::before,.partstack::after{content:"";position:absolute;border-radius:var(--badge-radius);
+   邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。
+   纸边与封面是同一种表面，圆角同一档：容器取封面那一档，纸边继承容器。 */
+.mixstack,.partstack{position:relative;isolation:isolate;border-radius:var(--badge-radius)}
+.mixstack::before,.mixstack::after,.partstack::before,.partstack::after{content:"";position:absolute;border-radius:inherit;
   border:1px solid var(--border-15);background:color-mix(in srgb,var(--surface) 84%,var(--video-glow,#15202a));z-index:0}
 .mixstack::before,.partstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
 .mixstack::after,.partstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
