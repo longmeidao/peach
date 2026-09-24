@@ -168,21 +168,25 @@ class AnnotateGroupTests(unittest.TestCase):
         self.assertEqual((stack["media"], stack["copies"]), (2, 2))
         self.assertEqual(len(stack["faces"]), 1)
 
-    def test_an_alt_or_wip_never_merges_with_main_on_the_same_site(self):
-        members = [self.member(1, "pawchive", None, None, "image"),
-                   self.member(2, "pawchive", None, None, "image", variant="alt"),
-                   self.member(3, "pawchive", None, None, "image", variant="wip"),
-                   self.member(4, "pawchive", None, None, "image", variant="alt")]
-        hashes = {(ident, None): "sha256:aa" for ident in (1, 2, 3, 4)}
-        # main 自成一个；alt 与 WIP 都不是 main，同一个文件并成一个。
-        self.assertEqual(self.annotate(members, {}, hashes)["media"], 2)
+    def test_the_same_file_joins_regardless_of_version_labels(self):
+        # 版本标签是各站按标题判的：remake 帖子（alt）附了原图，同站跨站都还是那一个文件。
+        same_site = [self.member(1, "pawchive", None, None, "image"),
+                     self.member(2, "pawchive", None, None, "image", variant="alt"),
+                     self.member(3, "pawchive", None, None, "image", variant="wip")]
+        hashes = {(ident, None): "sha256:aa" for ident in (1, 2, 3)}
+        stack = self.annotate(same_site, {}, hashes)
+        self.assertEqual((stack["media"], stack["copies"]), (1, 3))
+        cross_site = self.annotate([self.member(1, "kemono", None, None, "image"),
+                                    self.member(2, "pawchive", None, None, "image", variant="alt")],
+                                   {}, {(1, None): "sha256:aa", (2, None): "sha256:aa"})
+        self.assertEqual((cross_site["media"], cross_site["copies"]), (1, 2))
 
-    def test_the_same_file_on_another_site_joins_regardless_of_version_labels(self):
-        # 版本标签是各站按标题判的，同一个文件在另一个站被标成 alt 不改变它是同一个文件。
-        stack = self.annotate([self.member(1, "kemono", None, None, "image"),
+    def test_an_alt_with_its_own_file_stays_a_separate_medium(self):
+        # 标签不促成合并：alt 自己的文件与 main 哈希不同，就是另一个媒体。
+        stack = self.annotate([self.member(1, "pawchive", None, None, "image"),
                                self.member(2, "pawchive", None, None, "image", variant="alt")],
-                              {}, {(1, None): "sha256:aa", (2, None): "sha256:aa"})
-        self.assertEqual((stack["media"], stack["copies"]), (1, 2))
+                              {}, {(1, None): "sha256:aa", (2, None): "sha256:bb"})
+        self.assertEqual((stack["media"], stack["copies"]), (2, 2))
 
     def test_one_video_on_two_sites_is_one_medium_from_two_sources(self):
         stack = self.annotate([self.member(1, "rule34video", "https://a/1.jpg"),
