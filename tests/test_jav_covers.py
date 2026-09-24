@@ -505,7 +505,9 @@ class CrossProductCoverTests(unittest.TestCase):
         for code, url in (
                 ("FC2-PPV-2653914", "https://img.javstore.net/images/2022/02/14/FC2PPV-2653914-1-1.gif"),
                 ("FC2-PPV-1083921", "https://img.javstore.net/images/2023/12/24/1083921pl.jpg"),
-                ("FC2-PPV-2935152", "https://img.javstore.net/images/2022/07/31/pl1654160016.07k.gif")):
+                ("FC2-PPV-2935152", "https://img.javstore.net/images/2022/07/31/pl1654160016.07k.gif"),
+                # 十六进制上传串里夹着的五位数不是作品号：这张是 3264420 真正的竖版商品图。
+                ("FC2-PPV-3264420", "https://img.javstore.net/images/2025/10/07/5dd29b14380eaPS.jpg")):
             with self.subTest(url=url):
                 self.assertFalse(covers.is_cross_product_cover(code, url))
 

@@ -473,6 +473,9 @@ _CID_NUMBER = re.compile(r"(\d+)[a-z]*$")
 #: 图床文件名里的作品号：五到七位的独立数字段。`pl1654160016.07k.gif` 那种十位的是
 #: 上传时间戳，不算作品号。
 _FILE_NUMBER = re.compile(r"(?<!\d)\d{5,7}(?!\d)")
+#: 图床给上传起的十六进制串（PHP `uniqid`，13 位）。`5dd29b14380eaPS.jpg` 里夹着的
+#: `14380` 是串的一截，不是作品号。
+_UPLOAD_HASH = re.compile(r"[0-9a-f]{13,}", re.I)
 
 
 def _fc2_names_another_work(code: str, url: str) -> bool:
@@ -484,7 +487,8 @@ def _fc2_names_another_work(code: str, url: str) -> bool:
     """
     key = normalise_code_key(code)
     wanted = _CODE_NUMBER.search(key) if key.startswith("FC2") else None
-    numbers = {int(one) for one in _FILE_NUMBER.findall(urlparse(url or "").path.rsplit("/", 1)[-1])}
+    name = _UPLOAD_HASH.sub("", urlparse(url or "").path.rsplit("/", 1)[-1])
+    numbers = {int(one) for one in _FILE_NUMBER.findall(name)}
     return bool(wanted and numbers) and int(wanted.group(1)) not in numbers
 
 
