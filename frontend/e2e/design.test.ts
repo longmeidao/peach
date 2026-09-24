@@ -929,11 +929,19 @@ describe('设计决定', () => {
         localStorage.removeItem('peach.post-setup-tutorial-skipped.v1');
       });
       await opened.page.reload({ waitUntil: 'load' });
-      const card = opened.page.locator('#postSetupTutorial .post-setup-notification');
-      await card.waitFor({ state: 'visible', timeout: 20_000 });
+      /* 目录网格画出来时 paintSelection 已经按当前页收好批量条的按钮；教程卡取数期间的
+         占位带 aria-busy，settle 等到的是最终那张卡。 */
+      await expectBody(opened.page, '/', [
+        opened.page.locator('article.card[data-id]').first(),
+        opened.page.locator('#postSetupTutorial .post-setup-notification'),
+      ]);
+      await settle(opened.page);
       /* 回执和批量条平时不在 DOM 里，用它们各自的正式类名放一份进去再量。留白按
-         一枚回执算，所以演示库自己弹出来的那几枚先清掉，量的才是这条判据。 */
-      await opened.page.evaluate(() => {
+         一枚回执算，所以演示库自己弹出来的那几枚先清掉，量的才是这条判据。
+         清空、放入和量取必须在同一次同步执行里做完：演示库刚跑完扫描，「扫描与资料采集
+         已完成」的回执随状态轮询随时会到，只要它落在放入与量取之间，栈顶就被推高一枚；
+         重画网格的 paintSelection 也能在这个空当里把批量条收回去。 */
+      const tops = await opened.page.evaluate(() => {
         const toasts = document.getElementById('toasts')!;
         toasts.replaceChildren();
         const toast = document.createElement('div');
@@ -941,8 +949,6 @@ describe('设计决定', () => {
         toast.innerHTML = '<p>已保存配置</p>';
         toasts.append(toast);
         document.getElementById('batchbar')!.hidden = false;
-      });
-      const tops = await opened.page.evaluate(() => {
         const top = (selector: string) => Math.min(...[...document.querySelectorAll(selector)]
           .map((node) => node.getBoundingClientRect().top));
         const card = document.querySelector('#postSetupTutorial .post-setup-notification')!
