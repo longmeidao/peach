@@ -189,7 +189,7 @@ def normalize(root: Path, *, apply: bool = False,
         if baked == installed:
             # 已经摆好的不透明方图，一个字节都不用动。
             continue
-        # 动作按原图走的那条分支记，不按结果长相认：`harvest_studio_icons.padded_studios`
+        # 动作按原图走的那条分支记，不按结果长相认：`studio_icons.padded_studios`
         # 靠 PAD_ACTION 认「这一张的源图是条状字标」，把重新摆位记成补方等于污染那份名单。
         if kind == MARK:
             planned, done, sidecar_action = "would-bake", "baked", BAKE_ACTION

@@ -12,9 +12,7 @@
 * 图库给不出那一张时，从她单人作品的封面上截脸（`avatar_cover_face`）：挑脸像素最宽的
   那张封面，最差是缩略图；其余检得出脸的封面也各截一张留作候选。这一档截的图、以及批处理用整张封面装上的头像，之后遇到更清楚的
   脸会自动换掉；图库装的、人挑的一律不碰。
-* **厂牌**只登记缺口，不装图。厂牌 Logo 的采集要人先给出社交 handle
-  （`scripts/fetch_studio_avatar_candidates.py`），猜出来的一律标 `needs_confirmation`，
-  没有可以自动落图的那一档判据。
+* **厂牌**不走这条：官网和标识由补厂牌后继（`studio_followup`）按厂牌那套判据补。
 
 这条后继是幂等的（ADR-0040 第六条要求）：第一件事就是看盘上有没有那张图，有就当场返回。
 """
@@ -30,8 +28,8 @@ from .followups import Followup, FollowupType, register
 TASK_KEY = "entity-avatar"
 TASK_LABEL = "补实体头像"
 
-#: 会被派后继的实体种类。别的种类（系列、标签）没有头像位，派了也无事可做。
-KINDS = ("performer", "studio")
+#: 会被派后继的实体种类。厂牌的图是标识，归 `studio_followup`；系列、标签没有头像位。
+KINDS = ("performer",)
 
 #: 一次刮削最多为这么多个新实体派后继。上限本身由 `task_runs.MAX_FOLLOWUPS` 判，
 #: 这里先按作品数排好序再交出去：截断真的发生时，留下的该是库里出现得最多的那些。
@@ -69,8 +67,8 @@ def plan(connection: sqlite3.Connection, avatar_root, *,
         "SELECT e.id,e.kind,e.canonical_name,"
         " (SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae"
         "  WHERE ae.entity_id=e.id) AS assets"
-        " FROM entity e WHERE e.id>? AND e.kind IN (?,?) ORDER BY e.id",
-        (int(since_entity_id), *KINDS)).fetchall()
+        " FROM entity e WHERE e.id>? AND e.kind='performer' ORDER BY e.id",
+        (int(since_entity_id),)).fetchall()
     covered = [int(asset_id) for asset_id in covered_asset_ids]
     if covered:
         marks = ",".join("?" * len(covered))
@@ -117,8 +115,6 @@ def run(contract, key: str, handle) -> dict:
             # 实体被合并或删掉了。这不是失败：那件事已经不存在了。
             return {"outcome": "实体已不存在"}
         name = str(row[0] or "")
-        if kind != "performer":
-            return {"name": name, "outcome": "等人复核", "matched": 0}
         # 图库索引只读本地缓存，这一步不联网；联网只发生在真的要装那一张的时候。
         listing = avatar_picker.choices(connection, providers_root, avatar_root,
                                         kind, entity_id)

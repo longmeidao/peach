@@ -53,7 +53,7 @@
 
 - 只有 `peach-app` 同步到 GitHub；数据、工作树、构建输出、媒体与 CloudDrive 挂载不进 Git，目录边界见 ADR-0017。
 - ledger 路径统一为 Windows 形态（`R:\Media\...`、`A:\...`、`B:\...`），由 `src/peach/platform.py` 读取时转换；不得改写成 POSIX 路径或在 macOS 写 `asset.path`。
-- `peach-data/database/ledger.db` 是真相源，真实写入按 `peach-ledger-write`。AI 结果只产生带来源与置信度的候选；测试只用临时数据库，可直接运行并修复本次改动造成的失败。
+- `peach-data/database/ledger.db` 是真相源，真实写入按 `peach-ledger-write`。代码判据确定、可按来源整批撤回的结果直接落库（ADR-0052）；LLM 输出、打分、冲突与多候选只产生带来源与置信度的候选。测试只用临时数据库，可直接运行并修复本次改动造成的失败。
 - 保留真实媒体、ledger 行、行为历史、凭据、网络与防火墙状态及无关长跑任务。
 - 编辑前核对 `git status`；涉及服务、端口或重启时核对监听与进程归属。生产结论须有实际切换与核验证据。
 - Peach 是单人自托管应用；替代实现验证通过后移除无用代码和兼容层，历史由 Git 保存。

@@ -61,7 +61,7 @@ BASELINE: dict[str, int] = {
     "scripts/merge_duplicate_identities.py:collect_repeated_projections": 34,
     "src/peach/fc2_similarity.py:media_evidence": 34,
     "scripts/clean_names.py:run": 33,
-    "scripts/harvest_studio_icons.py:icon_row": 32,
+    "src/peach/studio_icons.py:icon_row": 32,
     "scripts/find_ads.py:find_candidates": 31,
     "scripts/rehome_unknown_jav.py:build_plan": 31,
     "src/peach/media_configuration.py:validate": 30,

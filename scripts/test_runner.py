@@ -48,6 +48,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_review_csv.py", "test_related.py",
                 "test_search_suggest.py", "test_subtitles.py",
                 "test_task_runs.py", "test_followups.py", "test_task_center_integration.py",
+                "test_studio_followup.py",
                 "test_jav_code_domain.py",
                 "test_taste_history.py", "test_web_ui.py", "test_web_js.py",
                 "test_web_perf.py", "test_web_resource_sync.py",
@@ -80,6 +81,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_duplicate_identity_merge.py", "test_entity_merge.py",
                  "test_migrations.py",
                  "test_entity_link_install.py", "test_studio_site_harvest.py",
+                 "test_studio_followup.py",
                  "test_performer_link_harvest.py", "test_directory_link_harvest.py",
                  "test_minnano_av.py", "test_agency_roster_harvest.py",
                  "test_performer_agency_resync.py",
@@ -167,6 +169,13 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     # `test_stale_candidates.py` 在 metadata，`test_web_e2e.py` 在 web 里整条跑它。
     # 模块名与测试文件名对不上，按名字推不出来，不指明就退化成 full。
     "src/peach/library_processing.py": ("metadata", "web"),
+    # 刮削后继：主体测试 `test_followups.py` 与 `test_studio_followup.py`，按名字推不出来。
+    "src/peach/avatar_followup.py": ("catalog", "media", "tooling"),
+    "src/peach/studio_followup.py": ("catalog", "metadata"),
+    # 厂牌判据由命令行与后继共用，两边的测试分住 catalog、metadata 与 web。
+    "src/peach/studio_icons.py": ("catalog", "metadata", "web"),
+    "src/peach/studio_sites.py": ("catalog", "metadata"),
+    "scripts/revert_auto_landing.py": ("catalog", "metadata", "tooling"),
     # 推送发现横跨扫描登记（tooling）与 HTTP 端点（catalog），按名字只推得出一个域。
     "src/peach/push_discovery.py": ("tooling", "catalog"),
     # 入口页共用件的测试住在首启与配置来源那两份 tooling 测试里。

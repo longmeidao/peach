@@ -32,7 +32,7 @@
 
 ### 社媒头像：缺的是成熟能力验证
 
-`harvest_social_avatars.py` 声明 Instagram 只记录链接，`harvest_studio_icons.named_avatars` 消费人工提供的 CDN 地址。当前源码和 REUSE 未登记 Instaloader／gallery-dl 头像解析的成功 POC 或拒绝证据，因此不能把局部 `web_profile_info` 429 和页面小图推导成自动解析不可行。
+`harvest_social_avatars.py` 声明 Instagram 只记录链接，`studio_icons.named_avatars` 消费人工提供的 CDN 地址。当前源码和 REUSE 未登记 Instaloader／gallery-dl 头像解析的成功 POC 或拒绝证据，因此不能把局部 `web_profile_info` 429 和页面小图推导成自动解析不可行。
 
 Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_info` 与 `profile_pic_url_hd` 分支；gallery-dl 也有 `InstagramAvatarExtractor`，支持 `/USER/avatar/` 与登录／匿名分支。它们都是应比较的成熟能力，但登录态跨账号 POC 未执行（未读取 Cookie），所以「已有接口」只等于接口存在。该问题在统计中归入社媒入口，图标入口不重复计数。
 
@@ -54,7 +54,7 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 
 ### 厂牌图标：重复取数器需要合并
 
-`harvest_studio_icons.Fetcher` 自行实现连接请求、固定间隔、重试、内存缓存；`page_cache.Site`、共享 HTTP 和来源限流器已有对应基础。它直接 `client.get` 全量读取，也没有统一响应上限。保留一次首页解析产生多个候选、图片判形和候选质量策略；下载、错误分类、字节上限和缓存作用域改用共享实现。
+`studio_icons.Fetcher` 自行实现连接请求、固定间隔、重试、内存缓存；`page_cache.Site`、共享 HTTP 和来源限流器已有对应基础。它直接 `client.get` 全量读取，也没有统一响应上限。保留一次首页解析产生多个候选、图片判形和候选质量策略；下载、错误分类、字节上限和缓存作用域改用共享实现。
 
 `Site` 本身只适合当前公共页面缓存，不能不加作用域和 TTL 就拿来缓存登录资料。统一不是把所有调用生硬塞进现有类，而是在这些已用模块上补齐共用契约。
 
@@ -67,7 +67,7 @@ Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_i
 ## 两个独立缺口
 
 - `fetch_fc2_metadata.py` 已复用 HTTPX 与按来源的连接配置；评论里的跨号关系与分片判断是领域逻辑，未发现成熟依赖完整覆盖的证据。问题是它的网络错误、预算和续跑没有接入 GUI／共享服务，不能因此称其整套解析是在造轮子。
-- `harvest_studio_sites.probe` 创建 `HttpxTransport(crawler_client())`，finally 调 `http.close()`；共享 `HttpxTransport` 对注入 client 设置 `_owns_client=False`，因此这次 close 不会关闭实际 client，调用者又未关闭它。当前实现不能保证每个请求立即释放连接。先修正所有权并复测原失败序列，再判断是否需要每请求独立 client；不能依据现有文字断言 HTTPX 池会必然泄漏。
+- `studio_sites.probe` 创建 `HttpxTransport(crawler_client())`，finally 调 `http.close()`；共享 `HttpxTransport` 对注入 client 设置 `_owns_client=False`，因此这次 close 不会关闭实际 client，调用者又未关闭它。当前实现不能保证每个请求立即释放连接。先修正所有权并复测原失败序列，再判断是否需要每请求独立 client；不能依据现有文字断言 HTTPX 池会必然泄漏。
 
 ## 已有复用与历史证据
 
