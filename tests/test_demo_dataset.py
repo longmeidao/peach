@@ -149,7 +149,9 @@ class DemoDatasetTests(unittest.TestCase):
                 "SELECT id FROM asset WHERE medium='video' AND (code IS NULL OR code='') "
                 "AND name LIKE '%.mp4' AND path NOT LIKE '%未整理%'")]
         self.assertEqual(videos, len(items))
-        self.assertEqual(images, sum(len(item.gallery) for item in items) + sum(1 for item in items if item.poster))
+        # 番号作品旁的 `-poster.jpg` 是附属文件，扫描不登记，封面照样从磁盘读（上面的 covers）。
+        listed = [item for item in items if item.poster and not item.poster.endswith("-poster.jpg")]
+        self.assertEqual(images, sum(len(item.gallery) for item in items) + len(listed))
         for asset_id in made_ids:
             self.assertTrue((self.root / "generated" / "posters" / f"{asset_id}_4.jpg").is_file())
         rows = read_rows(self.root / "generated" / "library-metadata-field-candidates.csv")

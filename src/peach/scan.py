@@ -15,6 +15,10 @@
 字幕 sidecar 顺带在这里登记：遍历时每个目录的文件名已经在手上，配对判据只看同目录，
 `subtitles.py` 负责判定，本模块只负责把结论落进 `asset_subtitle`。
 
+刮削器与播放器写在正片旁边的附属文件不登记（`is_sidecar`）：NFO、Kodi 命名的海报与背景图、
+`extrafanart/` 里的剧照、截图工具拼出的缩略图。它们描述一部片，本身不是作品，登记进来就会在
+馆藏里冒出成百张「图片」，把真正的图集淹掉。
+
 `peach init` 的首次扫描与 `peach scan` 调 `scan_location` 遍历整个根；推送发现拿到一条
 路径时调 `ingest_path`，登记口径、不变量与 upsert 语句都是同一份。
 声明根和挂载表由调用方传入而不是读进程缓存：`init` 刚写完设置文件时缓存还是旧的。
@@ -22,6 +26,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -39,6 +44,21 @@ ARCHIVE = {".zip", ".rar", ".7z", ".tar", ".gz"}
 
 #: 每攒够这么多行落一次盘，并报一行进度。
 BATCH_SIZE = 2000
+
+#: Kodi／Jellyfin 的影片图片名（单写或挂在片名后面，如 `ABC-123-fanart.jpg`）。
+#: 只在同目录有视频时算附属：没有正片的目录里，`cover.jpg` 是图集自己的封面。
+ARTWORK = frozenset({
+    "poster", "fanart", "thumb", "folder", "cover", "banner", "clearart", "clearlogo",
+    "landscape", "disc", "discart", "logo", "backdrop", "keyart",
+})
+#: 装一部片剧照的整个子目录，只在上一层有视频时算附属。
+ARTWORK_DIRS = frozenset({"extrafanart", "extrathumbs"})
+#: 截图工具的产物，看名字就能认出来，不必看同目录：`X_4x4_thumb.jpg`（拼版缩略图）、
+#: `X.mp4_thumbs.jpg`（MPC-HC 存缩略图）、`X.png.thumb.png`（图片的缩略图）。
+_DERIVED_THUMB = re.compile(
+    r"(?:_\d+x\d+_thumbs?|\.(?:" + "|".join(sorted(ext[1:] for ext in VIDEO))
+    + r")_thumbs?|\.(?:" + "|".join(sorted(ext[1:] for ext in IMAGE)) + r")\.thumb)$",
+    re.IGNORECASE)
 
 _UPSERT = """INSERT INTO asset(location,path,name,medium,size,mtime,first_seen,last_seen)
              VALUES(?,?,?,?,?,?,?,?)
@@ -61,6 +81,34 @@ def medium_of(name: str) -> str:
     if suffix in ARCHIVE:
         return "archive"
     return "other"
+
+
+def video_stems(names) -> frozenset[str]:
+    """一个目录里视频文件的片名（casefold），`is_sidecar` 拿它判同目录有没有正片。"""
+    return frozenset(os.path.splitext(name)[0].casefold() for name in names
+                     if medium_of(name) == "video")
+
+
+def is_sidecar(name: str, videos: frozenset[str], *, artwork_dir: bool = False) -> bool:
+    """`name` 是不是某部片的附属文件，扫描不登记。
+
+    `videos` 是同目录的 `video_stems`；`artwork_dir` 表示这个目录叫 `extrafanart` 之类、
+    且上一层有视频。判据只看名字，不读文件内容。
+    """
+    stem, suffix = os.path.splitext(name)
+    if suffix.lower() == ".nfo":
+        return True
+    if medium_of(name) != "image":
+        return False
+    if artwork_dir or _DERIVED_THUMB.search(stem):
+        return True
+    if not videos:
+        return False
+    lowered = stem.casefold()
+    if lowered in ARTWORK:
+        return True
+    head, dash, tail = lowered.rpartition("-")
+    return bool(dash) and tail in ARTWORK and head in videos
 
 
 def check_scan_target(
@@ -138,6 +186,8 @@ class IngestResult:
     found: bool
     size: int = 0
     subtitles: int = 0
+    #: 文件在，但认作附属文件（`is_sidecar`），什么也没写。
+    sidecar: bool = False
 
 
 def _directory_stats(directory: Path) -> dict[str, tuple[int, str]]:
@@ -160,6 +210,21 @@ def _directory_stats(directory: Path) -> dict[str, tuple[int, str]]:
     return stats
 
 
+def _sidecar_on_disk(name: str, directory: Path) -> bool:
+    """单条登记时的 `is_sidecar`：只在名字本身判不完时才列目录。"""
+    if is_sidecar(name, frozenset()):
+        return True
+    if medium_of(name) != "image":
+        return False
+    if directory.name.casefold() in ARTWORK_DIRS and video_stems(
+            _directory_stats(directory.parent)):
+        return True
+    stem = os.path.splitext(name)[0].casefold()
+    if stem not in ARTWORK and stem.rpartition("-")[2] not in ARTWORK:
+        return False
+    return is_sidecar(name, video_stems(_directory_stats(directory)))
+
+
 def ingest_path(
     db_path: str | os.PathLike[str], location: str, path: str, *,
     declared_roots: Mapping[str, Sequence[str]],
@@ -174,7 +239,8 @@ def ingest_path(
 
     文件不在就直接返回：事件到达与文件落地之间总有时间差，那不是错误；定期全量扫描
     与资源同步对账各自会处理。字幕 sidecar 的配对按定义只看同一个目录，所以只有视频
-    或字幕才多列一次那个目录，别的类型连一次 `scandir` 都不发。
+    或字幕才多列一次那个目录，别的类型连一次 `scandir` 都不发。附属文件的判定同理：
+    只有叫 `poster.jpg` 这类名字、或落在 `extrafanart/` 里的图片才去列目录看有没有正片。
     """
     windows = os.name == "nt" if windows is None else windows
     ledger_path = PureWindowsPath(path)
@@ -188,6 +254,8 @@ def ingest_path(
         stat = (directory / name).stat()
     except OSError:
         return IngestResult(location, str(ledger_path), False)
+    if _sidecar_on_disk(name, directory):
+        return IngestResult(location, str(ledger_path), True, stat.st_size, sidecar=True)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     mtime = time.strftime("%Y-%m-%d", time.localtime(stat.st_mtime))
     medium = medium_of(name)
@@ -220,11 +288,13 @@ class ScanResult:
     #: 本次登记的字幕 sidecar 条数，其中配不到视频的那部分。
     subtitles: int = 0
     orphan_subtitles: int = 0
+    #: 认作附属文件、没有登记的条数（`is_sidecar`）。
+    sidecars: int = 0
 
     def summary(self) -> str:
         return (f"✓ {self.location}: {self.files:,} 文件 / "
                 f"{self.total_bytes / 1024 ** 4:.2f} TB / 耗时 {self.seconds:.0f}s；"
-                f"清单中已消失 {self.gone:,} 个；"
+                f"附属文件未登记 {self.sidecars:,} 个；清单中已消失 {self.gone:,} 个；"
                 f"字幕 {self.subtitles:,} 条（孤立 {self.orphan_subtitles:,} 条）")
 
 
@@ -281,6 +351,8 @@ def scan_location(
     started = time.time()
     files = 0
     total = 0
+    skipped = 0
+    video_dirs: set[str] = set()
     batch: list[tuple] = []
     # 字幕要等正片的行落库之后才能按 `(location, path)` 查到 asset_id，所以先攒着，
     # 遍历完再一次登记。sidecar 按定义与正片同目录，配对只看当前这一个目录。
@@ -291,8 +363,17 @@ def scan_location(
         for directory, entries in _walk(walk_root):
             relative = Path(directory).relative_to(walk_root).parts
             here: dict[str, tuple[int, str]] = {}
+            videos = video_stems(entry.name for entry in entries)
+            if videos:
+                video_dirs.add(directory)
+            # 自顶向下遍历，上一层总是先于这一层出来，这时已经知道它有没有视频。
+            artwork_dir = (os.path.basename(directory).casefold() in ARTWORK_DIRS
+                           and os.path.dirname(directory) in video_dirs)
             for entry in entries:
                 name = entry.name
+                if is_sidecar(name, videos, artwork_dir=artwork_dir):
+                    skipped += 1
+                    continue
                 try:
                     stat = entry.stat()
                 except OSError:
@@ -324,6 +405,6 @@ def scan_location(
     finally:
         connection.close()
     result = ScanResult(location, root, files, total, time.time() - started, gone,
-                        tracks, orphans)
+                        tracks, orphans, skipped)
     report(result.summary())
     return result

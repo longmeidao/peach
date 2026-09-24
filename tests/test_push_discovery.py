@@ -369,6 +369,18 @@ class IngestPathTests(_ServiceCase):
             connection.close()
         self.assertEqual(track[0], "zh")
 
+    def test_a_scraper_sidecar_is_found_but_not_registered(self):
+        folder = self.media / "ABC-123"
+        (folder / "extrafanart").mkdir(parents=True)
+        for name in ("ABC-123.mp4", "ABC-123.nfo", "poster.jpg", "extrafanart/1.jpg"):
+            (folder / name).write_bytes(b"0" * 4)
+        kwargs = {"declared_roots": self.declared, "mounts": self.mounts}
+        for parts in (("ABC-123.nfo",), ("poster.jpg",), ("extrafanart", "1.jpg")):
+            result = scan.ingest_path(self.db, "local", self.ledger("local", "ABC-123", *parts),
+                                      **kwargs)
+            self.assertEqual((result.found, result.sidecar), (True, True), parts)
+        self.assertEqual(self.rows(), {})
+
     def test_a_path_that_is_already_gone_writes_nothing(self):
         result = scan.ingest_path(
             self.db, "local", self.ledger("local", "没有这个文件.mp4"),

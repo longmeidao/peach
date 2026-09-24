@@ -631,11 +631,12 @@ class PushDiscoveryService:
 
     def _ingest(self, location: str, path: str) -> bool:
         from .scan import ingest_path
-        found = ingest_path(self.db_path, location, path,
-                            declared_roots=self.declared_roots, mounts=self.mounts).found
-        if found:
+        result = ingest_path(self.db_path, location, path,
+                             declared_roots=self.declared_roots, mounts=self.mounts)
+        # 附属文件按「处理完了」计：文件在，只是按规则不登记，不是「文件不在」。
+        if result.found and not result.sidecar:
             self._measure(location, path)
-        return found
+        return result.found
 
     def _measure(self, location: str, path: str) -> None:
         """登记完顺手探时长与分辨率。探不成不影响这一条已经入库，全量扫描还会再补。"""
