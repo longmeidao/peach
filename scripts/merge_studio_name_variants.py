@@ -232,7 +232,7 @@ def relink_logos(rows: list[dict], logo_root: Path) -> dict[str, list[str]]:
     在合并那一刻起就没人认领了——而它正是 jae.tokyo 那套 320×320 方标，比保留方手上的
     那张好。`Prestige.logo.img` 缺着，页面大位就回落到补白字标。
 
-    只补保留方缺的变体，已有的一个字节都不动（和 `harvest_studio_icons.install` 同一条
+    只补保留方缺的变体，已有的一个字节都不动（和 `studio_icons.install` 同一条
     口径）。挪不动的留在原地并列出来：孤儿文件不会被读到，删它需要单独的授权。
     """
     from peach.previews import relink_logo_files

@@ -1154,22 +1154,27 @@ def _entity_watermark(database):
     return int(row[0] or 0)
 
 
-def _avatar_followups(database, config, watermark, covered=()):
-    """这一轮新登记又没有头像的实体，一个一条补头像后继（ADR-0040）。
+def _entity_followups(database, config, watermark, covered=()):
+    """这一轮新登记的实体缺什么就补什么，一件事一条后继（ADR-0040、ADR-0052）。
 
-    `covered` 是每行换上的封面张数；换上了的作品，它们的女优也算进来（`avatar_followup.plan`）。
+    女优没有头像的派补头像后继；`covered` 是每行换上的封面张数，换上了的作品，它们的
+    女优也算进来（`avatar_followup.plan`）。厂牌盘上没有图的派补厂牌后继
+    （`studio_followup.plan`），官网与标识在那一条里一起补。
 
     只声明，不执行：派发在调用方结算这一轮时发生，真正去跑的是 `followups` 那一层。
     这里出任何问题都只让这一轮不派后继，不影响刮削本身的结论。
     """
     if database is None or watermark is None:
         return []
-    from .avatar_followup import plan
+    from . import avatar_followup, studio_followup
+    generated = config.directory('generated')
     try:
         with database.read_connection() as connection:
-            found = plan(connection, config.directory('generated') / 'avatars',
-                         since_entity_id=watermark,
-                         covered_asset_ids=[asset_id for asset_id, count in covered if count])
+            found = avatar_followup.plan(
+                connection, generated / 'avatars', since_entity_id=watermark,
+                covered_asset_ids=[asset_id for asset_id, count in covered if count])
+            found += studio_followup.plan(connection, generated / 'logos',
+                                          since_entity_id=watermark)
     except sqlite3.Error:
         return []
     return [{'key': item.key, 'task_key': item.task_key, 'label': item.label}
@@ -1219,7 +1224,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                      current_started_at=None, current_deadline_at=None,
                      followups=[],
                      started_at=time.time(), error='')
-        # 实体表的水位在开工前记一次：比它大的实体就是这一轮建出来的（`_avatar_followups`）。
+        # 实体表的水位在开工前记一次：比它大的实体就是这一轮建出来的（`_entity_followups`）。
         entity_watermark = _entity_watermark(database)
         # 每行这一轮换上了几张封面，`(asset_id, 张数)`：换上了的作品，女优可能截得出更清楚的脸。
         covered = []
@@ -1433,7 +1438,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 database, groups, config, candidate_root, remote, active, update, issue)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
-                   followups=_avatar_followups(database, config, entity_watermark, covered),
+                   followups=_entity_followups(database, config, entity_watermark, covered),
                    auto_applied=auto_apply['applied'],
                    performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
                    performer_profile_conflicts=profiles['conflicts'],

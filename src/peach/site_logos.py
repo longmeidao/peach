@@ -18,7 +18,7 @@ bambi.ne.jp 就是（2026-09-05 实测），按声明走只能得出「只有小
 **自动发现的社媒头像只认 X。** Instagram 登出页不给头像：`og:image` 是空的，HTML 里
 也没有 `profile_pic_url`（2026-09-05 对 `bambi.hajimero` 实测）；登录态才有，而那要
 浏览器里的会话，脚本拿不到，所以 Instagram 的头像地址由人解出来写进
-`harvest_studio_icons.named_avatars` 读的那份文件。TikTok 的 oembed 头像只有百来像素。
+`studio_icons.named_avatars` 读的那份文件。TikTok 的 oembed 头像只有百来像素。
 X 登出页的 `og:image` 指向 `pbs.twimg.com/profile_images/...`，按
 `social_links.twimg_tiers` 退档就能拿到上传原图，这条路 `harvest_social_avatars`
 已经走通并用在女优头像上，这里复用同一条。

@@ -399,7 +399,7 @@ av911.tv，三条候选已进复核队列。
   中文名；末尾成串裸 `@A @B @C` 是互推，`📷：@X` 是摄影师，都不建。
 - 发行平台既不是厂牌也不是创作者。FC2、myfans 这类是卖东西的地方，站上有实际卖主（出品者）的那个账号才是
   creator；平台本身只能当来源／平台实体，链接按 `catalog` 登记，不给它找「厂牌官网」，那条路对它本来就不
-  成立（`harvest_studio_sites.PLATFORM_ENTITIES` 直接判「不适用（发行平台）」，一个请求都不发，也不静默跳过）。
+  成立（`studio_sites.PLATFORM_ENTITIES` 直接判「不适用（发行平台）」，一个请求都不发，也不静默跳过）。
   账本里有些 FC2 作品标着女优、有些评论里也提到人，那是 **performer** 身份，不能顺手把平台记成创作者：
   一旦记了，这个平台下所有卖主的作品都会挂到同一个「创作者」名下，和聚合目录打统一标签是同一类事故。
 - 转载渠道水印不是创作者水印，目录名同样可能是伪装；判定优先级是画面水印 > 作品名联网反查 > 文件名文本。
@@ -578,7 +578,7 @@ av911.tv，三条候选已进复核队列。
   `web.archive.org/web/<时间戳>/<原址>`，label 写 `官网存档（YYYY-MM）`，优先所属名单页。label 不带
   公司名：这条链接只挂在这家自己的资料页上，页头就是名字。`peach.social_links.ARCHIVE_HOSTS` 让域名
   归属、事务所门面圆标和厂牌标识采集都跳过它；标识要从快照取，把快照里那张图的 `id_` 原件地址登记
-  进 `harvest_studio_icons.py` 的指定来源表。复核表改了 label 重跑 `install_entity_links.py` 即对齐。
+  进 `studio_icons.py` 的指定来源表。复核表改了 label 重跑 `install_entity_links.py` 即对齐。
 - 判词四种：`ok` 进装入队列、`已有`（同平台同 handle，不分主机写法与大小写）、`conflict`（账本同平台是
   另一个 handle）、`未取得`（页面失败或没有社媒）。
 - 来源本身可能是过期数据：目录站抄的 X 账号很多已封停、本人早换新号，所以 X 的 `ok`／`conflict` 行都用
@@ -839,7 +839,7 @@ av911.tv，三条候选已进复核队列。
   `www.sod.co.jp`（200、成人站、标题 `SOFT ON DEMAND（ソフト・オン・デマンド）`），而 `SOD Create`
   这个串整站不出现，通用判据到此只能判「标题与正文都没有厂牌名」，缺的那条是「这个厂牌属于哪家公司」。
   放宽通用判据去接住它，等于把 `hunter.com`、`bazooka.com`、`madonna.com` 一起放进来。所以走
-  `harvest_studio_sites.CONFIRMED_SITES`：一行一个厂牌，写清地址与人工确认的日期和理由，它只替掉最后
+  `studio_sites.CONFIRMED_SITES`：一行一个厂牌，写清地址与人工确认的日期和理由，它只替掉最后
   那道「页面得自述厂牌名」，状态码、空壳、停放页／自述不可用、域名回显四道照旧要过：确认的是「这个地址
   属于这家公司」，不是「这个地址此刻返回什么都算数」。确认地址排在所有推导候选前面，命中就不再走那串死域名。
 - 作品数少的厂牌不等于不用补链接。`--min-assets` 是为全量扫描定的阈值，账本里 BangBus、BangBros18
@@ -885,7 +885,7 @@ av911.tv，三条候选已进复核队列。
   解得开靠 `link_marks.decode` 里 PIL 的嗅探；按 content-type 决定要不要解会把这一枚整个丢掉，
   `test_an_octet_stream_png_is_still_a_png` 守这条。`logo` 位是
   `images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png`（600×600 P 模式、独角兽 +「FC2」
-  文字、内容比 3.02，sha256 `6911574c…6c6f1b7`、8916 B），写进 `harvest_studio_icons.LOGO_SOURCES` 而不是
+  文字、内容比 3.02，sha256 `6911574c…6c6f1b7`、8916 B），写进 `studio_icons.LOGO_SOURCES` 而不是
   `HOST_OVERRIDES`：那张表管「按主机发现图标」的例外，这一份管「这个厂牌的大字标在哪」，键的含义和取用
   位置都不同。曾用 App Store 的「FC2動画」商店图标（512×512、内容比 1.00、sha256 `ac318e2b…c99538`），
   2026-09-03 不采用：背景多了胶片图案；地址仍可复现（iTunes Lookup API），但不要再拿回来用。
@@ -1014,7 +1014,7 @@ av911.tv，三条候选已进复核队列。
   0.62 起看着正常，圆外损失落在 T-POWERS 0.019 与 TEPPAN 0.034 之间，圆形图标（Wanz Factory 0.008）
   不受影响。内容框按行列统计，只有零星几个像素的行列不算内容，因为有损压缩在纯色区留下的淡斑点会把
   逐像素外接框撑满整张画布（EST 的字样只占纵向 249 行，斑点却让框横跨 685 行）。
-  写入侧只有两条路径，规则同一条：`harvest_studio_icons.py` 的 `install()` 写盘前烤，
+  写入侧只有两条路径，规则同一条：`studio_icons.py` 的 `install()` 写盘前烤，
   `normalize_studio_logos.py` 对历史文件回溯（目录下所有 `*.img`，含 `.icon.img`／`.logo.img`）。
   两者都幂等：烤出来的产物再跑一次不再有动作。女优头像等照片不走这条路径，不加白边。
   `install()` 只收位图：矢量烤不出方图，它按「拒绝安装」处理，所以目录里那 4 张 SVG 是更早的遗留，
@@ -1036,10 +1036,10 @@ av911.tv，三条候选已进复核队列。
   备份当输入：烤底毁掉的透明通道和配错的底色在产物上判不回来，从原图重来才能让算法的改进落到已经
   装好的文件上（HEYZO 就是这么修回来的）。边车继续指向原图，别把指针改指到这一轮备份的归一产物。
   边车的 `action` 是认来路的稳定标识不是描述：`bake-white-plate`、`pad-to-square`、`refit-plate`、
-  `plate-vector`。`harvest_studio_icons.padded_studios` 按 `pad-to-square` 认「这一张的源图是条状字标」，
+  `plate-vector`。`studio_icons.padded_studios` 按 `pad-to-square` 认「这一张的源图是条状字标」，
   把重新摆位记成补方等于污染那份名单，所以三条位图路径分开记；每张已装位图的来路记在
   `*.img.normalization.json`。回溯已装文件是写操作，走 `normalize_studio_logos.py --apply`。
-- **已装的方标太小要再问一趟。** 小圆片是 32 CSS px，2 倍屏 64 实像素；`harvest_studio_icons.py`
+- **已装的方标太小要再问一趟。** 小圆片是 32 CSS px，2 倍屏 64 实像素；`studio_icons.py`
   把短边不够这个数的厂牌一并收进目标（`INSTALLED_SHORT_EDGE`、`small_installed_marks`），量的是小位
   真会取到的那一份（`<safe>.icon.img` 优先，没有才回落 `<safe>.img`；`.logo.img` 归大位不参与）。
   写盘另有 `_shorter_than_installed` 守卫，所以再问一趟只可能换上更大的，问不到就在复核件上留判词。
@@ -1117,11 +1117,11 @@ av911.tv，三条候选已进复核队列。
   `671eb6ba…`，296×82 的 BANGBROS 母品牌字标，同一症状的另一处）。落到的那一枚是
   `bangbros.com/favicon.ico`：64×64、内容比 1.00，两道闸门都过，可它是 Aylo／Project 1 Service 站点模板的
   通用图标（蓝色六边形「1」，`www.bangbus.com`、`www.monstersofcock.com` 两个独立域回同一份
-  `a61e1e88…`），和任何频道无关。所以链接带非根路径时，`harvest_studio_icons.py` 给
+  `a61e1e88…`），和任何频道无关。所以链接带非根路径时，`studio_icons.py` 给
   `site_icons.best_mark(accept=...)` 挂一道守卫：`site_icons.HOST_SCOPE` 的候选一律不算数，判词
   `平台通用图标`，证据写明取到的是哪个主机的哪一份加 sha256。`/link-mark` 那个位置本来就是按主机的
   （`cache_key` 也按主机），不受这条约束。`HOST_OVERRIDES` 的键因此支持「主机 + 路径前缀」并取最长匹配。
-- **来源顺序按分辨率择优，不按正式程度死排**（厂牌页大位是方图，头像够清晰就能当 icon 用）。`harvest_studio_icons.icon_row` 一条链走下来：官网声明的图标 → 首页 header 的
+- **来源顺序按分辨率择优，不按正式程度死排**（厂牌页大位是方图，头像够清晰就能当 icon 用）。`studio_icons.icon_row` 一条链走下来：官网声明的图标 → 首页 header 的
   `<img>` → 人指定的社媒头像 → 页面上挂着的 X 账号头像。短边到 `GOOD_ENOUGH_SHORT_EDGE=360` 就停：
   公司格最宽 180 CSS px，2 倍屏 360 实像素之后在页面上没有分别，每多问一个来源就多敲一次别人的门。
   没到线才把余下的来源问完，然后按短边取最大的那一枚，但要大出 `BETTER_BY=1.5` 倍才顶掉排在前面的：

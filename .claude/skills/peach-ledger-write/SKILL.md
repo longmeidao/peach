@@ -5,8 +5,8 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
 
 # 真实 ledger 写入流程
 
-最后复核：2026-09-11
-证据来源：`docs/HANDOFF.md`「数据安全」「身份、来源与标识采集」、ADR-0005、ADR-0015、ADR-0017。
+最后复核：2026-09-24
+证据来源：`docs/HANDOFF.md`「数据安全」「身份、来源与标识采集」、ADR-0005、ADR-0015、ADR-0017、ADR-0052。
 
 真实库：当前写入者本机 `PEACH_DATA_ROOT/database/ledger.db`（WAL）。绝不能把共享传输副本或
 另一台机器的副本当当前真实库；测试只用临时 SQLite 与临时媒体。
@@ -33,7 +33,10 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
   `UPDATE asset SET <字段>` 会绕过覆盖规则，让自动写入者悄悄改掉用户的判断，事后也答不出
   是谁写的。`mutation_revision` 是乐观并发的凭据，写入端点收 `expected_revision`。
 - 改写 `entity.canonical_name` 与迁移同级：`--apply` 必须同时给 `--backup`。
-- AI 与刮削结果只能作为带来源和置信度的候选，不直接改写真相字段。
+- 证据充分即落库（ADR-0018/0025 管字段，ADR-0052 管实体）：代码判据给出确定结论、只填空不
+  覆盖人的判断、能按 `source`／`batch` 整批撤回（`scripts/revert_auto_landing.py`）的，由处理
+  任务或后继直接写，每条记 `source`、判词与批次。LLM 输出、打分、`weak`、多候选与来源冲突
+  只产候选，人复核后才 `approved`；撤不回的（合并、改规范名）判据再确定也要授权。
 - 运维脚本默认 dry-run：`scrape_codes.py` 默认只写复核 CSV，`clean_names.py` 默认只生成
   改名计划且 `--apply` 前备份 SQLite 并在数据库更新失败时回滚文件名。
 

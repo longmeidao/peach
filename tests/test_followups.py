@@ -312,9 +312,9 @@ class AvatarFollowupTests(LedgerTestCase):
         (avatars / f"performer-{dressed}.img").write_bytes(b"jpeg")
         with self.database.read_connection() as connection:
             found = plan(connection, avatars, since_entity_id=old)
-        self.assertEqual([item.key for item in found],
-                         [followup_key("performer", fresh),
-                          followup_key("studio", studio)])
+        # 厂牌的图是标识，归补厂牌那条后继。
+        self.assertEqual([item.key for item in found], [followup_key("performer", fresh)])
+        self.assertNotIn(str(studio), found[0].key)
         self.assertTrue(found[0].label.endswith("新人"))
         self.assertEqual({item.task_key for item in found}, {AVATAR_TASK_KEY})
 
@@ -331,18 +331,9 @@ class AvatarFollowupTests(LedgerTestCase):
         summary = avatar_run(contract, followup_key("performer", entity_id), None)
         self.assertEqual(summary, {"outcome": "已有头像"})
 
-    def test_a_studio_is_only_recorded_never_installed(self):
-        from peach.avatar_followup import run as avatar_run
-
-        avatars = self.root / "avatars"
-        avatars.mkdir()
-        entity_id = self.entity("studio", "BAZOOKA")
-        contract = SimpleNamespace(
-            avatar_root=avatars, candidate_root=self.root / "generated",
-            database=self.database, task_runs=self.store, cache_bust=lambda: None)
-        summary = avatar_run(contract, followup_key("studio", entity_id), None)
-        self.assertEqual(summary["outcome"], "等人复核")
-        self.assertFalse((avatars / f"studio-{entity_id}.img").exists())
+    def test_a_studio_key_is_not_an_avatar_followup(self):
+        with self.assertRaises(ValueError):
+            parse_key(f"{AVATAR_TASK_KEY}:studio:1")
 
     def test_a_vanished_entity_is_not_a_failure(self):
         from peach.avatar_followup import run as avatar_run

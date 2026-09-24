@@ -10,12 +10,23 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def load_module():
+    """判据模块的一份独立副本：各条测试往它身上打的补丁（`probe`、`time`）互不串门。"""
     sys.path.insert(0, str(REPO / "src"))
     spec = importlib.util.spec_from_file_location(
-        "harvest_studio_sites", REPO / "scripts" / "harvest_studio_sites.py")
+        "peach._studio_sites_under_test", REPO / "src" / "peach" / "studio_sites.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def run_script(module, args) -> int:
+    """跑命令行那一趟，判据换成打过补丁的那份副本。"""
+    spec = importlib.util.spec_from_file_location(
+        "harvest_studio_sites", REPO / "scripts" / "harvest_studio_sites.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    script.sites = module
+    return script.run(args)
 
 
 def page(title: str, filler: str = "本編は18歳以上の方のみご覧いただけます。") -> bytes:
@@ -552,7 +563,7 @@ class PlatformRowTests(unittest.TestCase):
         def refuse(*_args, **_kwargs):
             raise AssertionError("不该为发行平台发出任何请求")
         self.module.probe = refuse
-        self.assertEqual(self.module.run(self.args()), 0)
+        self.assertEqual(run_script(self.module, self.args()), 0)
         from peach.review_csv import read_rows
         rows = read_rows(self.tmp / "out.csv")
         self.assertEqual(len(rows), 1)
@@ -771,7 +782,7 @@ class RunTrailTests(unittest.TestCase):
             "https://prestige-av.com/": ConnectionError("nx"),
             "https://prestige.tv/": ConnectionError("nx"),
         })
-        self.assertEqual(self.module.run(self.args(seeds)), 0)
+        self.assertEqual(run_script(self.module, self.args(seeds)), 0)
         row = self.row()
         self.assertEqual(row["verdict"], "未取得")
         self.assertIn("https://prestige.co.jp/ → 取不到：ConnectionError", row["note"])
@@ -791,7 +802,7 @@ class RunTrailTests(unittest.TestCase):
             "https://www.prestige-av.jp/": (200, page(title),
                                             "https://www.prestige-av.jp/"),
         })
-        self.assertEqual(self.module.run(self.args(seeds)), 0)
+        self.assertEqual(run_script(self.module, self.args(seeds)), 0)
         row = self.row()
         self.assertEqual(row["verdict"], "ok")
         self.assertEqual(row["final_url"], "https://www.prestige-av.jp/")
@@ -845,7 +856,7 @@ class ConfirmedRunTests(unittest.TestCase):
         args = argparse.Namespace(
             db=self.db, output=self.tmp / "out.csv", seeds=None,
             min_assets=3, only=["SOD Create"], interval=0.0, timeout=1.0, limit=0)
-        self.assertEqual(self.module.run(args), 0)
+        self.assertEqual(run_script(self.module, args), 0)
         self.assertEqual(asked, ["https://www.sod.co.jp/"])
         from peach.review_csv import read_rows
         row = read_rows(self.tmp / "out.csv")[0]
@@ -892,7 +903,7 @@ class AliasRunTests(unittest.TestCase):
         args = argparse.Namespace(
             db=self.db, output=self.tmp / "out.csv", seeds=seeds,
             min_assets=3, only=["东京热"], interval=0.0, timeout=1.0, limit=0)
-        self.assertEqual(self.module.run(args), 0)
+        self.assertEqual(run_script(self.module, args), 0)
         from peach.review_csv import read_rows
         row = read_rows(self.tmp / "out.csv")[0]
         self.assertEqual(row["verdict"], "ok")

@@ -29,15 +29,18 @@ from peach.web_state import WebContract
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def load_script():
-    path = ROOT / "scripts" / "harvest_studio_icons.py"
-    spec = importlib.util.spec_from_file_location("harvest_studio_icons_test", path)
+def load(name, *parts):
+    spec = importlib.util.spec_from_file_location(name, ROOT.joinpath(*parts))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-MODULE = load_script()
+#: 判据模块的一份独立副本：测试往它身上改的表和打的补丁不串进别的测试文件。
+MODULE = load("peach._studio_icons_under_test", "src", "peach", "studio_icons.py")
+#: 命令行那一趟，判据换成上面那份副本。
+SCRIPT = load("harvest_studio_icons_test", "scripts", "harvest_studio_icons.py")
+SCRIPT.icons = MODULE
 
 
 def png_bytes(size=(256, 256), color=(30, 90, 160)):
@@ -1466,7 +1469,7 @@ class RunTests(unittest.TestCase):
         MODULE.site_icons.best_mark = (
             lambda url, fetcher, render, fallback=None, accept=None: marks.get(url))
         try:
-            return MODULE.run(SimpleNamespace(
+            return SCRIPT.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=[], kind="studio", interval=0.0, timeout=1.0, install=install,
@@ -1484,7 +1487,7 @@ class RunTests(unittest.TestCase):
         MODULE.site_icons.best_mark = (
             lambda url, fetcher, render, fallback=None, accept=None: None)
         try:
-            MODULE.run(SimpleNamespace(
+            SCRIPT.run(SimpleNamespace(
                 database=self.database, output=self.root / "agency-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=[], kind="agency", interval=0.0, timeout=1.0, install=False,
@@ -1502,7 +1505,7 @@ class RunTests(unittest.TestCase):
         MODULE.site_icons.best_mark = (
             lambda url, fetcher, render, fallback=None, accept=None: None)
         try:
-            MODULE.run(SimpleNamespace(
+            SCRIPT.run(SimpleNamespace(
                 database=self.database, output=self.root / "agency-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=[], kind="agency", interval=0.0, timeout=1.0, install=False,
@@ -1544,7 +1547,7 @@ class RunTests(unittest.TestCase):
         MODULE.site_icons.best_mark = (
             lambda url, fetcher, render, fallback=None, accept=None: None)
         try:
-            stats = MODULE.run(SimpleNamespace(
+            stats = SCRIPT.run(SimpleNamespace(
                 database=self.database, output=self.root / "studio-icons.csv",
                 logo_root=self.logos, candidate_dir=self.root / "candidates",
                 only=["HEYZO"], kind="studio", interval=0.0, timeout=1.0, install=False,
