@@ -4,8 +4,9 @@
 解析；片商在账本里还没有实体（妄想族就是：作品全挂在旗下 label 上）时，加
 `--create-makers` 才新建，否则那一行跳过并写明原因。
 
-只有一层：label 不能再挂 label，片商自己也不能是别家的 label。多一层资料页就要递归
-展开，而这批数据里没有哪一家真的需要。
+上级自己也可以是别家的 label（ADR-0051：妄想族 → 素人ホイホイ → 素人ホイホイpower），
+只是不能成环。一个名字在同一份表里既当 label 又当上级、账本里还没有它时，加
+`--create-makers` 会先建出来再写它自己那一行，一张表就能装完整条链。
 
 默认 dry-run，只打印计划。`--apply` 必须同时给 `--backup`：这是真实账本写入。重跑是
 幂等的，已是同一家的跳过；label 转手时覆盖成新片商，计划里写成 update。
@@ -30,14 +31,44 @@ from peach.scripting import (   # noqa: E402
 )
 
 
+def name_key(connection: sqlite3.Connection, name: str) -> str:
+    """别名和规范名落到同一个键上；账本里还没有的名字按它自己归一。"""
+    found = resolve_entity(connection, "studio", name)
+    return normalize_entity_name(found["canonical_name"] if found is not None else name)
+
+
+def parents(connection: sqlite3.Connection, rows: list[dict]) -> dict[str, str]:
+    """账本现有的上级关系叠上这张表里的行，按名字键：成环要连同批的行一起查。"""
+    edges = {normalize_entity_name(label): normalize_entity_name(maker)
+             for label, maker in connection.execute(
+                 "SELECT l.canonical_name,m.canonical_name FROM label_maker lm "
+                 "JOIN entity l ON l.id=lm.label_id JOIN entity m ON m.id=lm.maker_id")}
+    for row in rows:
+        label, maker = (str(row.get(key) or "").strip() for key in ("label", "maker"))
+        if label and maker:
+            edges[name_key(connection, label)] = name_key(connection, maker)
+    return edges
+
+
+def closes_a_loop(edges: dict[str, str], label: str, maker: str) -> bool:
+    """从上级一路往上走，走回 label 自己就是环。"""
+    seen: set[str] = set()
+    step = maker
+    while step and step not in seen:
+        if step == label:
+            return True
+        seen.add(step)
+        step = edges.get(step, "")
+    return False
+
+
 def plan(connection: sqlite3.Connection, rows: list[dict], *,
          create_makers: bool) -> list[dict]:
     """逐行给出动作与原因；不合法的行照样列出，动作写成 skip。"""
     planned: list[dict] = []
     makers_in_plan = {normalize_entity_name(str(row.get("maker") or "").strip())
                       for row in rows}
-    labels_in_plan = {normalize_entity_name(str(row.get("label") or "").strip())
-                      for row in rows}
+    edges = parents(connection, rows)
     for row in rows:
         label_name = str(row.get("label") or "").strip()
         maker_name = str(row.get("maker") or "").strip()
@@ -52,37 +83,39 @@ def plan(connection: sqlite3.Connection, rows: list[dict], *,
             item["reason"] = "没有证据"
             continue
         label = resolve_entity(connection, "studio", label_name)
-        if label is None:
+        if label is None and not (create_makers
+                                  and normalize_entity_name(label_name) in makers_in_plan):
             item["reason"] = f"厂牌「{label_name}」在账本里找不到或别名撞名"
             continue
-        item["label_id"] = int(label["id"])
+        item["label_id"] = int(label["id"]) if label is not None else None
         maker = resolve_entity(connection, "studio", maker_name)
         if maker is None and not create_makers:
             item["reason"] = f"片商「{maker_name}」在账本里没有实体；确认后加 --create-makers"
             continue
         item["maker_id"] = int(maker["id"]) if maker is not None else None
-        if item["maker_id"] == item["label_id"]:
+        label_key, maker_key = name_key(connection, label_name), name_key(connection, maker_name)
+        if label_key == maker_key:
             item["reason"] = "label 与片商是同一条实体"
             continue
-        if normalize_entity_name(label_name) in makers_in_plan or connection.execute(
-                "SELECT 1 FROM label_maker WHERE maker_id=?", (item["label_id"],)).fetchone():
-            item["reason"] = "这条 label 自己是别家的片商；只支持一层"
+        if closes_a_loop(edges, label_key, maker_key):
+            item["reason"] = "沿上级往上会绕回这条 label 自己，成环"
             continue
-        if normalize_entity_name(maker_name) in labels_in_plan or (
-                item["maker_id"] is not None and connection.execute(
-                    "SELECT 1 FROM label_maker WHERE label_id=?", (item["maker_id"],)).fetchone()):
-            item["reason"] = "片商自己是别家的 label；只支持一层"
-            continue
-        current = connection.execute(
-            "SELECT maker_id FROM label_maker WHERE label_id=?", (item["label_id"],)).fetchone()
-        if current and item["maker_id"] is not None and int(current[0]) == item["maker_id"]:
-            item["reason"] = "已是这家，跳过"
-        elif current:
-            item.update(action="update", reason=f"转手：片商实体 {current[0]} → {maker_name}")
-        else:
-            item.update(action="insert",
-                        reason="新建片商实体" if item["maker_id"] is None else "")
+        item.update(**change(connection, item))
     return planned
+
+
+def change(connection: sqlite3.Connection, item: dict) -> dict:
+    """同一条 label 在账本里已有上级时是跳过还是转手，没有时是新写。"""
+    current = connection.execute(
+        "SELECT maker_id FROM label_maker WHERE label_id=?",
+        (item["label_id"],)).fetchone() if item["label_id"] is not None else None
+    if current and item["maker_id"] is not None and int(current[0]) == item["maker_id"]:
+        return {"reason": "已是这家，跳过"}
+    if current:
+        return {"action": "update", "reason": f"转手：片商实体 {current[0]} → {item['maker']}"}
+    created = [name for name, found in ((item["label"], item["label_id"]),
+                                        (item["maker"], item["maker_id"])) if found is None]
+    return {"action": "insert", "reason": f"新建实体：{'、'.join(created)}" if created else ""}
 
 
 def ensure_maker(connection: sqlite3.Connection, name: str, stamp: str) -> int:
@@ -102,13 +135,15 @@ def install(connection: sqlite3.Connection, planned: list[dict], *, source: str)
     for item in planned:
         if item["action"] not in {"insert", "update"}:
             continue
+        # 同一个名字在前一行已被当作上级建出来时，`ensure_maker` 取到的就是那一条。
         maker_id = item["maker_id"] or ensure_maker(connection, item["maker"], stamp)
+        label_id = item["label_id"] or ensure_maker(connection, item["label"], stamp)
         connection.execute(
             "INSERT INTO label_maker(label_id,maker_id,source,confidence,checked_at) "
             "VALUES(?,?,?,1.0,?) ON CONFLICT(label_id) DO UPDATE SET "
             "maker_id=excluded.maker_id,source=excluded.source,"
             "confidence=excluded.confidence,checked_at=excluded.checked_at",
-            (item["label_id"], maker_id, f"review:{source}", stamp))
+            (label_id, maker_id, f"review:{source}", stamp))
         written += 1
     return written
 

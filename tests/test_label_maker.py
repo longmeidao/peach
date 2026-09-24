@@ -1,4 +1,4 @@
-"""label 属于片商，但不当片商处理（ADR-0049）。"""
+"""label 属于片商，但不当片商处理（ADR-0049）；上级可以一级套一级（ADR-0051）。"""
 import sqlite3
 import tempfile
 import unittest
@@ -78,14 +78,52 @@ class LabelMakerTests(unittest.TestCase):
         self.assertEqual(planned[0]["action"], "update")
         self.assertEqual(self.maker_of(5569), "妄想族")
 
-    def test_only_one_layer_is_accepted(self):
-        """label 不能再挂 label，片商自己也不能是别家的 label。"""
+    def test_a_maker_can_itself_sit_under_another_maker(self):
+        """ADR-0051：妄想族 → 素人ホイホイ → 素人ホイホイpower 这样的三层照收。"""
         self.apply()
-        planned = plan(self.con, [
-            {"label": "K M Produce", "maker": "妄想族", "evidence": "x"},
-            {"label": "S級素人", "maker": "BAZOOKA", "evidence": "x"},
-        ], create_makers=True)
-        self.assertEqual([item["action"] for item in planned], ["skip", "skip"])
+        planned = self.apply([{"label": "K M Produce", "maker": "妄想族", "evidence": "x"},
+                              {"label": "S級素人", "maker": "BAZOOKA", "evidence": "x"}])
+        self.assertEqual([item["action"] for item in planned], ["insert", "update"])
+        self.assertEqual(self.maker_of(5607), "妄想族")
+        self.assertEqual(self.maker_of(5638), "BAZOOKA")
+
+    def test_a_chain_that_loops_back_is_refused(self):
+        self.apply()
+        planned = plan(self.con, [{"label": "K M Produce", "maker": "BAZOOKA", "evidence": "x"}],
+                       create_makers=True)
+        self.assertEqual(planned[0]["action"], "skip")
+        self.assertIn("成环", planned[0]["reason"])
+        same_batch = plan(self.con, [{"label": "ABC/妄想族", "maker": "S級素人", "evidence": "x"},
+                                     {"label": "S級素人", "maker": "ABC/妄想族", "evidence": "x"}],
+                          create_makers=True)
+        self.assertEqual([item["action"] for item in same_batch], ["skip", "skip"])
+
+    def test_one_table_builds_a_middle_layer_missing_from_the_ledger(self):
+        """中间那一级账本里还没有：同一张表里它既是上级又是 label，先建出来再挂上去。"""
+        planned = self.apply([{"label": "BAZOOKA", "maker": "素人ホイホイ", "evidence": "x"},
+                              {"label": "素人ホイホイ", "maker": "妄想族", "evidence": "x"}])
+        self.assertEqual([item["action"] for item in planned], ["insert", "insert"])
+        self.assertEqual(self.maker_of(5569), "素人ホイホイ")
+        middle = self.con.execute(
+            "SELECT id FROM entity WHERE canonical_name='素人ホイホイ'").fetchall()
+        self.assertEqual(len(middle), 1)
+        self.assertEqual(self.maker_of(middle[0][0]), "妄想族")
+
+    def test_a_label_missing_from_the_ledger_is_not_created_unless_it_is_also_a_maker(self):
+        planned = plan(self.con, [{"label": "無名", "maker": "K M Produce", "evidence": "x"}],
+                       create_makers=True)
+        self.assertEqual(planned[0]["action"], "skip")
+
+    def test_each_page_names_only_the_neighbouring_layers(self):
+        """资料页只链直接上级和直接下级；作品详情列整条链，从近到远。"""
+        self.apply(self.rows + [{"label": "K M Produce", "maker": "妄想族", "evidence": "x"}])
+        middle = rm_web.q_entity(self.contract, {"kind": "studio", "name": "K M Produce"})
+        self.assertEqual(middle["maker"]["name"], "妄想族")
+        self.assertEqual([label["name"] for label in middle["labels"]], ["BAZOOKA", "S級素人"])
+        bottom = rm_web.q_entity(self.contract, {"kind": "studio", "name": "BAZOOKA"})
+        self.assertEqual(bottom["maker"]["name"], "K M Produce")
+        studio = rm_web.q_item(self.contract, 1)["entity_refs"]["studio"]
+        self.assertEqual([maker["name"] for maker in studio[0]["makers"]], ["K M Produce", "妄想族"])
 
     def test_the_label_page_points_at_its_maker_and_keeps_its_own_works(self):
         self.apply()
@@ -105,8 +143,8 @@ class LabelMakerTests(unittest.TestCase):
         self.apply()
         studio = rm_web.q_item(self.contract, 3)["entity_refs"]["studio"]
         self.assertEqual([ref["name"] for ref in studio], ["ABC/妄想族"])
-        self.assertEqual(studio[0]["maker"]["name"], "妄想族")
-        self.assertNotIn("maker", rm_web.q_item(self.contract, 2)["entity_refs"]["studio"][0])
+        self.assertEqual([maker["name"] for maker in studio[0]["makers"]], ["妄想族"])
+        self.assertNotIn("makers", rm_web.q_item(self.contract, 2)["entity_refs"]["studio"][0])
 
     def test_merging_a_label_carries_its_maker_over(self):
         self.apply()
@@ -131,6 +169,15 @@ class LabelMakerTests(unittest.TestCase):
         self.assertIsNone(self.maker_of(5607))
         self.assertEqual(self.con.execute(
             "SELECT count(*) FROM label_maker WHERE label_id=maker_id").fetchone()[0], 0)
+
+    def test_merging_the_top_of_a_chain_into_its_bottom_breaks_the_loop(self):
+        """BAZOOKA → K M Produce → 妄想族，把妄想族并进 BAZOOKA：K M Produce 改挂
+        BAZOOKA，BAZOOKA 自己那一行上级会绕回它自己，删掉。"""
+        self.apply(self.rows + [{"label": "K M Produce", "maker": "妄想族", "evidence": "x"}])
+        top = self.con.execute("SELECT id FROM entity WHERE canonical_name='妄想族'").fetchone()[0]
+        merge_entity(self.con, target_id=5569, source_id=top, source_name="妄想族", alias_source="test")
+        self.assertIsNone(self.maker_of(5569))
+        self.assertEqual(self.maker_of(5607), "BAZOOKA")
 
 
 if __name__ == "__main__":

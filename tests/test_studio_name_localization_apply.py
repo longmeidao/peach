@@ -99,6 +99,17 @@ class LocalizationApplyTests(unittest.TestCase):
                          [(10,), (11,)])
         self.assertEqual(self.query("SELECT studio FROM asset WHERE id=12"), [("Hyoko",)])
 
+    def test_a_review_table_from_another_round_records_its_own_source_and_evidence(self):
+        """官方名录那一轮的复核表不是 javbus 出的：别名来源和审计原因都照实记。"""
+        write_rows(self.review, (*REVIEW_FIELDS, "evidence"),
+                   [{"entity_id": 1, "studio": "Celeb no Tomo", "verdict": "改名",
+                     "proposed": "セレブの友", "evidence": "官网名录写作セレブの友"}])
+        self.assertEqual(self.run_script("--apply", "--backup", str(self.dir / "backup.db"),
+                                         "--alias-source", "review:names.csv"), 0)
+        self.assertEqual(self.query("SELECT source FROM entity_alias WHERE entity_id=1"),
+                         [("review:names.csv",)])
+        self.assertEqual(self.audit_rows()["Celeb no Tomo"]["reason"], "官网名录写作セレブの友")
+
     def test_dry_run_writes_the_audit_but_not_the_ledger(self):
         self.plan((1, "Celeb no Tomo", "改名", "セレブの友"))
         self.assertEqual(self.run_script(), 0)
