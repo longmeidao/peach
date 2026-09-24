@@ -43,10 +43,18 @@ def scope_predicate(kind: str, column: str, subject: str = "?") -> str:
 
     `subject` 默认是占位符，索引页那种「一句 SQL 里每行一个实体」的写法传列名
     （`e.id`）。判据只有这一份，索引页和资料页数出来的作品数才不会各算各的。
+
+    片商的范围是它自己加上 `label_maker` 往下的每一级（ADR-0051 修订）：旗下 label
+    出的片都算在它名下，和事务所算成员的片是同一个道理。`UNION` 去重，账本里万一
+    有环也会停下来。
     """
     if kind == "agency":
         return (f"{column} IN (SELECT member_id FROM entity_membership"
                 f" WHERE agency_id={subject})")
+    if kind == "studio":
+        return (f"{column} IN (WITH RECURSIVE down(id) AS (SELECT {subject}"
+                " UNION SELECT lm.label_id FROM label_maker lm JOIN down ON lm.maker_id=down.id)"
+                " SELECT id FROM down)")
     return f"{column}={subject}"
 
 
@@ -71,22 +79,28 @@ def _performer_entries(contract: WebContract, c, d: dict, alias_rows) -> dict:
 
 
 def label_layer(contract: WebContract, c, kind: str, entity_id: int) -> tuple[dict | None, list[dict]]:
-    """厂牌资料页的 label 一层（ADR-0049）：它归哪家片商，和它旗下有哪些 label。
+    """厂牌资料页的 label 一层（ADR-0051）：它归哪家片商，和它旗下有哪些 label。
 
-    两边都只是链接，作品、计数和头像各算各的——label 不是片商的另一种写法。
+    旗下那批是片商页的名册，和事务所页的艺人同一个形状（`id / k / n`），格子是同一个
+    组件；`n` 是这个 label 连同它自己的下级一共多少视频，和它资料页上那个数一致。
     """
     if kind != "studio":
         return None, []
     maker = c.execute(
         "SELECT e.id,e.canonical_name name FROM label_maker lm "
         "JOIN entity e ON e.id=lm.maker_id WHERE lm.label_id=?", (entity_id,)).fetchone()
-    refs = ([dict(maker)] if maker else []) + [dict(row) for row in c.execute(
-        "SELECT e.id,e.canonical_name name FROM label_maker lm "
-        "JOIN entity e ON e.id=lm.label_id WHERE lm.maker_id=? "
-        "ORDER BY e.canonical_name", (entity_id,))]
-    for ref in refs:
+    maker = dict(maker) if maker else None
+    labels = [dict(row) for row in c.execute(
+        "SELECT e.id,e.canonical_name name,e.canonical_name k,"
+        "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id"
+        " WHERE a.medium='video' AND " + scope_predicate("studio", "ae.entity_id", "e.id") + ") n "
+        "FROM label_maker lm JOIN entity e ON e.id=lm.label_id WHERE lm.maker_id=? "
+        "ORDER BY n DESC,e.canonical_name", (entity_id,))]
+    for ref in ([maker] if maker else []) + labels:
         ref["has_logo"] = contract.has_logo(ref["name"])
-    return (refs[0], refs[1:]) if maker else (None, refs)
+    for label in labels:
+        label["has_image"] = contract.has_entity_image("studio", label["id"])
+    return maker, labels
 
 
 def q_entity(contract: WebContract, args):
@@ -207,7 +221,8 @@ def q_entity(contract: WebContract, args):
                 "JOIN asset_entity co ON co.asset_id=scope.asset_id "
                 "JOIN entity person ON person.id=co.entity_id "
                 "JOIN asset a ON a.id=scope.asset_id "
-                "WHERE scope.entity_id=? AND a.medium='video' AND person.kind='performer' "
+                "WHERE " + scope_predicate(kind, "scope.entity_id") +
+                " AND a.medium='video' AND person.kind='performer' "
                 "AND person.id<>? "
                 "GROUP BY person.id,person.canonical_name "
                 "ORDER BY n DESC,person.canonical_name LIMIT 18",
@@ -439,6 +454,29 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
             par: list = []
             if q: sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
             sql += "ORDER BY members DESC,n DESC,e.canonical_name LIMIT ? OFFSET ?"
+            par.extend((limit + 1, offset))
+            rows = [dict(r) for r in c.execute(sql, par)]
+            has_more = len(rows) > limit
+            rows = rows[:limit]
+        elif kind == "studios":
+            # 片商按合计排，旗下 label 的片都归它（ADR-0051 修订）；有上级的 label 不单列，
+            # 从片商页的名册进去。搜索时照常列出所有叫这个名字的，找 label 不必先猜它归谁。
+            # 从 entity 出发：自己一部片都没挂、片全在旗下的片商（妄想族）也要出现。
+            scope = scope_predicate("studio", "ae.entity_id", "e.id")
+            sql = ("SELECT * FROM (SELECT e.id entity_id,e.canonical_name k,"
+                   "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae"
+                   " JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND " + scope + ") n,"
+                   "(SELECT a2.id FROM asset_entity ae JOIN asset a2 ON a2.id=ae.asset_id "
+                   " WHERE " + scope + " AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+                   " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
+                   " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
+                   "FROM entity e WHERE e.kind='studio' ")
+            par = []
+            if q:
+                sql += "AND e.canonical_name LIKE ? "; par.append(f"%{q}%")
+            else:
+                sql += "AND NOT EXISTS (SELECT 1 FROM label_maker lm WHERE lm.label_id=e.id) "
+            sql += ") WHERE n>0 ORDER BY n DESC,k LIMIT ? OFFSET ?"
             par.extend((limit + 1, offset))
             rows = [dict(r) for r in c.execute(sql, par)]
             has_more = len(rows) > limit
