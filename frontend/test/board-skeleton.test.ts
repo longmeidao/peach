@@ -29,7 +29,7 @@ describe('Board 页面骨架', () => {
     ['/activity', '.activitysection', 3],
     ['/duplicates', '.dupgroup .duprow', 4],
     ['/quality-goals', '.qualityitem > .qualitycover', 6],
-    ['/follow-manage', '.fmanageoverview > div', 4],
+    ['/follow-manage', '.peach-react .follow-skeleton-surface .follow-skeleton-author', 3],
     ['/configuration', '.configfieldset', 1],
     ['/playlists', '.playlistcards > .playlistcard', 6],
   ] as const)('%s 复用最终内容容器', (path, selector, count) => {
@@ -46,22 +46,55 @@ describe('Board 页面骨架', () => {
     expect(root.querySelectorAll('video, audio, iframe')).toHaveLength(0);
     expect(root.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
-  it('关注骨架的工作区切换保留原来的分段控件', () => {
+  const follow = (options: Parameters<typeof boardPageSkeleton>[1] = {}) => {
     const root = document.createElement('div');
-    root.innerHTML = boardPageSkeleton('/follow-manage');
+    root.innerHTML = boardPageSkeleton('/follow-manage', options);
+    return root;
+  };
+  it('关注骨架的工作区切换是 React 那条分段轨道，选中关注列表', () => {
+    const root = follow();
     wireBoardSegments(root);
     expect(root.querySelector('.board-segment-thumb')).toBeNull();
-    expect(root.querySelector('.skeleton-segment-selected')?.textContent).toBe('关注列表');
-    expect([...root.querySelectorAll('.skeleton-segments > span')].map((span) => span.textContent))
-      .toEqual(['关注列表', '添加关注', '订阅源', '来源和凭证']);
-    expect(root.querySelectorAll('.follow-skeleton-button-group > button')).toHaveLength(2);
-    expect(root.querySelector('.follow-skeleton-surface')).not.toBeNull();
-    expect(root.querySelectorAll('.follow-skeleton-authors .follow-skeleton-author')).toHaveLength(3);
+    expect(root.querySelector('.peach-react [data-selected]')?.textContent).toBe('关注列表');
+    const track = root.querySelector('.peach-react [data-selected]')!.parentElement!;
+    expect([...track.children].map((span) => span.textContent)).toEqual(['关注列表', '添加关注', '订阅源', '来源和凭证']);
+  });
+  it('关注骨架的工具行按 Board UI 最终变体画：检查全部是主按钮，视图切换是按版式选中的按钮组', () => {
+    const toolbar = follow().querySelector('.follow-skeleton-toolbar')!;
+    const check = toolbar.querySelector(':scope > button')!;
+    expect(check.textContent).toBe('检查全部');
+    expect(check.classList.contains('bg-button-primary')).toBe(true);
+    const group = [...toolbar.querySelectorAll('[data-button-group][role="group"] > button')];
+    expect(group.map((button) => button.querySelector('use')?.getAttribute('href'))).toEqual(['#i-layout-grid', '#i-table']);
+    expect(group.map((button) => button.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+    expect(group.every((button) => button.classList.contains('bg-button-ghost-background'))).toBe(true);
+    expect(toolbar.querySelector('button[aria-haspopup="listbox"]')?.textContent).toBe('检查时间');
+    expect(toolbar.lastElementChild?.textContent).toBe('全部收起');
+    const tableGroup = follow({ followLayout: 'table' }).querySelectorAll('[data-button-group] > button');
+    expect([...tableGroup].map((button) => button.getAttribute('aria-pressed'))).toEqual(['false', 'true']);
+  });
+  it('排序框与方向键跟着地址栏上的排序', () => {
+    const toolbar = (options: Parameters<typeof boardPageSkeleton>[1]) =>
+      follow(options).querySelector('.follow-skeleton-toolbar')!;
+    const arrow = (root: Element) => root.querySelector('button[aria-haspopup]')!.parentElement!
+      .nextElementSibling!.querySelector('use')?.getAttribute('href');
+    expect(arrow(toolbar({}))).toBe('#i-arrow-down');
+    const byName = toolbar({ followSort: 'name' });
+    expect(byName.querySelector('button[aria-haspopup]')?.textContent).toBe('创作者名称');
+    expect(arrow(byName)).toBe('#i-arrow-up');
+    expect(arrow(toolbar({ followSort: 'name', followDir: 'desc' }))).toBe('#i-arrow-down');
+  });
+  it('创作者卡与来源行的动作键是小号次级键，和最终行内操作同一形态', () => {
+    const root = follow();
     expect(root.querySelectorAll('.follow-skeleton-source')).toHaveLength(10);
-    expect(root.querySelectorAll('.follow-skeleton-source > *')).toHaveLength(60);
-    expect(root.querySelectorAll('.follow-skeleton-select-all button')).toHaveLength(0);
-    expect(root.querySelector('.followtoolbaractions')?.lastElementChild?.textContent).toBe('全部收起');
-    expect(root.querySelector('.follow-skeleton-footer')).not.toBeNull();
+    for (const row of root.querySelectorAll('.follow-skeleton-source')) {
+      const actions = [...row.lastElementChild!.children];
+      expect(actions.map((button) => button.querySelector('use')?.getAttribute('href'))).toEqual(['#i-refresh-cw', '#i-trash']);
+      for (const button of actions) expect(button.className).toContain('size-8 rounded-lg p-0');
+    }
+    const head = root.querySelector('.follow-skeleton-author [data-follow-author-header]')!;
+    expect([...head.querySelectorAll(':scope > button')].map((button) => button.textContent)).toEqual(['', '全选', '收起']);
+    expect(root.querySelector('.follow-skeleton-surface > .group')?.textContent).toBe('全选本页');
     expect(root.querySelector('.selectiondock')).toBeNull();
   });
   it('口味骨架保留分段背景与状态行间距', () => {
@@ -72,18 +105,22 @@ describe('Board 页面骨架', () => {
     expect(root.querySelector('.tastehead + .tastestate + .tastesummaries')).not.toBeNull();
     expect(root.querySelector('.tastehead .skeleton-tabs')).toBeNull();
   });
-  it('关注表格视图预留表头与来源行',()=>{
-    const root=document.createElement('div');root.innerHTML=boardPageSkeleton('/follow-manage',{followLayout:'table'});
-    expect(root.querySelector('.follow-skeleton-table')).not.toBeNull();
-    expect(root.querySelectorAll('.follow-skeleton-table-row.head > span')).toHaveLength(7);
-    expect(root.querySelectorAll('.follow-skeleton-table-row:not(.head)')).toHaveLength(20);
+  it('关注表格视图是 Board UI 表格外框，当前排序那一列带方向', () => {
+    const root = follow({ followLayout: 'table' });
+    const table = root.querySelector('.follow-skeleton-table[data-board-data-table] table.bui-table')!;
+    expect([...table.querySelectorAll('thead th')].map((th) => th.textContent)).toEqual(['', '创作者', '来源', '站点', '状态', '上次检查', '']);
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(20);
+    expect([...table.querySelectorAll('[data-sort-indicator][data-direction]')].map((mark) => [mark.parentElement!.textContent, mark.getAttribute('data-direction')]))
+      .toEqual([['上次检查', 'descending']]);
     expect(root.querySelector('.follow-skeleton-author')).toBeNull();
+    expect(root.querySelector('.follow-skeleton-toolbar')?.textContent).not.toContain('全部收起');
   });
-  it('表格骨架的行数跟着每页条数走',()=>{
-    localStorage.setItem('peach.settings.v1',JSON.stringify({followPageSize:40}));
-    try{
-      const root=document.createElement('div');root.innerHTML=boardPageSkeleton('/follow-manage',{followLayout:'table'});
-      expect(root.querySelectorAll('.follow-skeleton-table-row:not(.head)')).toHaveLength(40);
-    }finally{localStorage.removeItem('peach.settings.v1')}
+  it('表格骨架的行数跟着每页条数走', () => {
+    localStorage.setItem('peach.settings.v1', JSON.stringify({ followPageSize: 40 }));
+    try {
+      const root = follow({ followLayout: 'table' });
+      expect(root.querySelectorAll('.follow-skeleton-table tbody tr')).toHaveLength(40);
+      expect(root.querySelector('.follow-skeleton-surface > :last-child button[aria-haspopup]')?.textContent).toBe('每页 40 条');
+    } finally { localStorage.removeItem('peach.settings.v1') }
   });
 });

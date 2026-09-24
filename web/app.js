@@ -15,7 +15,7 @@ import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection } from './dist/peach-ui.js';
-import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
+import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, scanCardSkeletonHtml, repairCardSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
@@ -324,9 +324,11 @@ const MANAGEMENT_PLACEHOLDERS={
 /* 关注管理的骨架要照用户上次选的视图画：等数据的这段时间画成卡片、数据到了换成表格
    的话，同一次进入里版式会整个翻一遍。视图是这台浏览器的偏好，取值走
    `followListLayout()`——偏好那份存储声明在本行下面，直接读它就是声明前引用，
-   会提升的函数声明才能从这里回去问。页面自己的那份状态在 island 里。 */
+   会提升的函数声明才能从这里回去问。页面自己的那份状态在 island 里。排序与方向在地址栏
+   里，骨架上的排序框和方向键照它画，跟接管后是同一档。 */
 const managementPlaceholder=path=>
-  boardPageSkeleton(path,{followLayout:followListLayout()})||
+  boardPageSkeleton(path,{followLayout:followListLayout(),
+    ...(path==='/follow-manage'?(({sort,dir})=>({followSort:sort,followDir:dir}))(followManageParams()):{})})||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 /* 详情浮窗的正文：骨架换成真内容时交叉淡入，内容换内容（在队列里跳下一条）直接换。 */
 /* 浮窗里那两行标题跟着这一次重画揭示一遍。放在这里而不是各个详情函数里：换一条片子
@@ -5567,13 +5569,9 @@ async function openDataCleanup(push=true){
   };
   const cleanupCards={
     /* 卡片和它的提示是两件东西：提示挂在卡片外面，和资源同步那两块一个写法。
-       `#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子。 */
-    scraping:`<div class="cleanupscraping" id="libraryProcessing">
-      <section class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupScrapingTitle">
-        <div class="geist-fieldset-content">${fieldsetTitle('cleanupScrapingTitle','扫描与采集')}
-          <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>扫描并补全资料</button></footer>
-      </section></div>`,
+       `#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子。island 挂上之前
+       这一格和首屏骨架是同一张卡，主键仍是蓝色，不在两段等待之间换一次长相。 */
+    scraping:`<div class="cleanupscraping" id="libraryProcessing">${scanCardSkeletonHtml()}</div>`,
     junk:statCard('垃圾文件','file-archive',`<strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
       <span class="cleanupmeta">${junkBreakdown}</span>`,'data-cleanup-open="junk"'),
     duplicates:statCard('重复文件','file-stack',`<strong>${Number(duplicates.total||0)
@@ -5587,13 +5585,8 @@ async function openDataCleanup(push=true){
       <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="geist-button primary" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>检查来源</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>清理</span></button></footer>
     </section>`,
     /* 媒体修复是一轮几十分钟起步的长任务，要确认、要看进度，所以和扫描与采集排在同一列
-       （ADR-0050）。卡片由 island 画，这里是它取数期间的那一版。 */
-    mediaRepair:`<div id="mediaRepair">
-      <section class="cleanupfieldset cleanupprocessing" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupRepairTitle">
-        <div class="geist-fieldset-content">${fieldsetTitle('cleanupRepairTitle','媒体修复')}
-          <p>修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>开始修复</button></footer>
-      </section></div>`,
+       （ADR-0050）。卡片由 island 画，这里是它取数期间的那一版，与首屏骨架同一张。 */
+    mediaRepair:`<div class="cleanupmediarepair" id="mediaRepair">${repairCardSkeletonHtml()}</div>`,
     review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
   };
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
@@ -10735,7 +10728,7 @@ const configTabItems=page=>{
    整列取自 Remix，一家画的笔画才一样粗：Lucide 的描边是 2，Remix 的轮廓约 1.2，两家
    并排时下半列每一枚都比上半列重一档，看上去像是颜色不一致。 */
 const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line','播放':'ri-play-circle-line',
-  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'ri-hard-drive-line'};
+  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'ri-macbook-line'};
 let settingsTabs=null;
 function buildSettingsTabs(){
   const settings=document.querySelector('.settingsscroll');
@@ -10780,12 +10773,6 @@ function decorate(){
         card.classList.toggle('board-settings-scrolled',settings.scrollTop>Math.max(gap-4,0));
       };
       settings.addEventListener('scroll',fade,{passive:true});fade()}}
-  const icons={'人工复核':'square-check-big','高清版':'sparkles','重复文件':'file-stack','垃圾文件':'file-archive','空文件夹':'folder','回收站':'trash','扫描与采集':'hard-drive'};
-  document.querySelectorAll('.cleanupfieldset h2,.cleanupfieldset h3').forEach(heading=>{
-    if(heading.querySelector('.board-card-icon'))return;
-    const id=icons[heading.textContent.trim()];if(!id||!document.getElementById(`i-${id}`))return;
-    const tile=document.createElement('span');tile.className='board-card-icon';tile.setAttribute('aria-hidden','true');tile.innerHTML=`<svg viewBox="0 0 24 24"><use href="#i-${id}"/></svg>`;heading.prepend(tile);
-  });
   document.querySelectorAll('#managebar [data-manage]').forEach(button=>{if(button.getAttribute('aria-pressed')==='true')button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});
 }
 let filterFrame;

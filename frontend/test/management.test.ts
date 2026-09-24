@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations } from '../src/management';
+import {
+  cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, REPAIR_CARD_TEXT, SCAN_CARD_TEXT,
+} from '../src/management';
 
 describe('网盘功能范围', () => {
   it('本地与在线关注来源不显示网盘入口', () => {
@@ -17,42 +19,61 @@ describe('网盘功能范围', () => {
 });
 
 describe('数据管理首屏', () => {
-  it('读数卡与三张任务卡复用最终排版，静态标题、图标与按钮文本立即呈现', () => {
+  const skeleton = () => {
     const root = document.createElement('div');
     root.innerHTML = cleanupSkeletonHtml();
-    const stats = root.querySelectorAll('.cleanupstats > .board-plain-stat');
-    expect(stats).toHaveLength(5);
+    return root;
+  };
+  it('读数卡复用最终排版，名字与图标立即呈现，只有读数画占位', () => {
+    const stats = skeleton().querySelectorAll('.cleanupstats > .board-plain-stat');
     expect([...stats].map(card => card.querySelector('.board-stat-tile use')?.getAttribute('href')))
       .toEqual(['#i-square-check-big', '#i-sparkles', '#i-file-stack', '#i-file-archive', '#i-trash']);
     expect([...stats].map(card => card.querySelector('.board-plain-stat-head')?.textContent))
       .toEqual(['人工复核', '高清版', '重复文件', '垃圾文件', '回收站']);
     for (const card of stats) {
-      expect(card.hasAttribute('disabled')).toBe(true);
-      expect(card.querySelector('strong > .cleanup-count-skeleton')).not.toBeNull();
-      expect(card.querySelector('.cleanupmeta > .cleanup-count-skeleton')).not.toBeNull();
+      expect(card.querySelector('strong > .skeleton-text')).not.toBeNull();
+      expect(card.querySelector('.cleanupmeta > .skeleton-text')).not.toBeNull();
     }
-    const cards = root.querySelectorAll('.cleanupgrid > .cleanupfieldset');
-    expect(cards).toHaveLength(3);
-    for (const card of cards) {
-      expect(card.querySelector('.geist-fieldset-content > .geist-fieldset-title')).not.toBeNull();
-      expect(card.querySelector('.geist-fieldset-footer > button')?.textContent).not.toBe('');
+  });
+  it('任务卡按最终顺序排好：扫描与采集、媒体修复两张岛卡，再是空文件夹与整理', () => {
+    const grid = skeleton().querySelector('.cleanupgrid')!;
+    expect([...grid.children].map(card => card.className))
+      .toEqual(['cleanupscraping', 'cleanupmediarepair', 'cleanupfieldset cleanupemptyfolders', 'cleanupfieldset cleanuporganize']);
+    for (const card of grid.querySelectorAll(':scope > .cleanupscraping, :scope > .cleanupmediarepair')) {
+      expect(card.firstElementChild?.classList.contains('peach-react')).toBe(true);
     }
-    expect(cards[0]?.querySelector('p')?.textContent).toBe('扫描媒体文件夹，导入已有资料，采集缺失信息。');
-    expect(cards[0]?.querySelector('.skeleton')).toBeNull();
-    // 扫描卡包含来源入口和禁用的分体操作。
-    expect(cards[0]?.querySelector('.geist-fieldset-footer > a.board-link-button')?.getAttribute('href')).toBe('/scraping');
-    expect(cards[0]?.querySelector('.board-link-button use')?.getAttribute('href')).toBe('#i-arrow-up');
-    expect(cards[0]?.querySelector('.splitmain use')?.getAttribute('href')).toBe('#i-database');
-    expect(cards[0]?.querySelector('.geist-fieldset-footer .splitbutton button.splitmain')?.hasAttribute('disabled')).toBe(true);
-    // 媒体修复和扫描与采集排在同一列，紧跟在它后面。
-    expect(cards[1]?.querySelector('.geist-fieldset-title')?.textContent).toBe('媒体修复');
-    expect(cards[1]?.querySelector('.geist-fieldset-footer > button')?.hasAttribute('disabled')).toBe(true);
-    expect(cards[2]?.classList.contains('cleanupemptyfolders')).toBe(true);
-    expect(cards[2]?.querySelector('.geist-fieldset-footer use')?.getAttribute('href')).toBe('#i-scan-search');
-    expect(root.querySelectorAll('.cleanup-count-skeleton')).toHaveLength(18);
+    const scan = grid.querySelector('.cleanupscraping')!;
+    expect(scan.querySelector('p')?.textContent).toBe(SCAN_CARD_TEXT);
+    expect(scan.querySelector('.skeleton')).toBeNull();
+    expect(scan.querySelector('footer > a')?.getAttribute('href')).toBe('/scraping');
+    expect(grid.querySelector('.cleanupmediarepair p')?.textContent).toBe(REPAIR_CARD_TEXT);
+  });
+  it('等数据才能执行的键保持最终变体，用 aria-disabled 挡住而不是原生禁用', () => {
+    const root = skeleton();
+    const split = root.querySelector('.cleanupscraping [data-split-button]')!;
+    expect(split.getAttribute('data-variant')).toBe('primary');
+    expect([...split.querySelectorAll('button')].map(button => button.classList.contains('bg-button-primary')))
+      .toEqual([true, true]);
+    expect(split.querySelector('button use')?.getAttribute('href')).toBe('#i-database');
+    const repair = root.querySelector('.cleanupmediarepair footer > button')!;
+    expect(repair.textContent).toBe('开始修复');
+    expect(repair.classList.contains('bg-button-primary')).toBe(true);
+    expect(repair.hasAttribute('data-skeleton-action')).toBe(true);
+    const legacy = root.querySelectorAll('.cleanupfieldset footer > button, .resourcesyncfooter > button');
+    expect([...legacy].map(button => button.textContent)).toEqual(['检查来源', '预览', '检查死链', '检查文件']);
+    for (const button of legacy) expect(button.classList.contains('primary')).toBe(true);
+    const actions = root.querySelectorAll('button:not(.board-plain-stat)');
+    expect(actions.length).toBeGreaterThan(0);
+    for (const button of actions) {
+      expect(button.hasAttribute('disabled')).toBe(false);
+      expect(button.getAttribute('aria-disabled')).toBe('true');
+    }
+  });
+  it('链接管理与资源同步的标题、正文立即呈现，不预留同步面板', () => {
+    const root = skeleton();
     expect(Array.from(root.querySelectorAll('.resourcesync > h2'), title => title.textContent)).toEqual(['链接管理', '资源同步']);
-    expect(root.querySelectorAll('.linkstats > div')).toHaveLength(5);
-    expect(root.querySelectorAll('.resourcesyncfooter button:disabled')).toHaveLength(2);
+    expect([...root.querySelectorAll('.linkstats > div > span')].map(term => term.textContent))
+      .toEqual(['链接总数', '官网/事务所', '社交账号', '作品资料站']);
     expect(root.querySelector('#resource-sync')).toBeNull();
   });
 });

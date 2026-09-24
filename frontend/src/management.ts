@@ -1,3 +1,7 @@
+import { icon } from '@peach/legacy/core';
+
+import { islandButton, islandGlyph, islandSelect } from './island-skeleton';
+
 /** 管理页按已配置的来源显示能力；离线来源仍然属于已配置来源。 */
 export interface MediaSource { location: string; roots?: unknown[]; online?: boolean }
 
@@ -10,43 +14,88 @@ export function cloudPreferenceLocations(files: readonly { location: string }[],
   return configured.filter(location => files.some(file => file.location === location));
 }
 
-/** 首屏复用读数卡、扫描、媒体修复、链接管理与资源同步的内容容器。 */
+/* 「扫描与采集」「媒体修复」两张卡的正文。卡片本体由 React 画，骨架与遗留层的取数占位
+   画的是同一段话：写两份的话，骨架上的那句会比真卡短一截，接管时整张卡跳一次。 */
+export const SCAN_CARD_TEXT = '扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，'
+  + '几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。';
+export const REPAIR_CARD_TEXT = '修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。';
+
+const bar = '<span class="skeleton skeleton-text" aria-hidden="true"></span>';
+/* 要等数据才能执行的键用 `aria-disabled`，外观仍是它最终的那一档：原生 `disabled` 会把
+   主按钮压成灰底，数据一到又跳回蓝色，同一颗键在一次进入里换两种长相。 */
+const waiting = 'type="button" aria-disabled="true"';
+
+/* 两张 React 卡的骨架包在同一层 `.peach-react` 里，按键与下拉照 Board UI 的静止态画（见
+   `island-skeleton.ts`）。卡片这一层的结构照 React 那两张卡抄：外面一列 `gap-4`，标题与正文
+   同一对字级。 */
+const unavailable = 'aria-disabled="true"';
+const island = (card: string) => `<div class="peach-react"><div class="flex flex-col gap-4">${card}</div></div>`;
+const cardText = (title: string, text: string) => `<div data-geist-fieldset-content>
+          <h3 class="text-title-2-medium text-text-primary">${title}</h3>
+          <p class="text-body-2-regular text-text-secondary">${text}</p></div>`;
+
+/** 「扫描与采集」卡：与 React `LibraryProcessingCard` 同一副容器、同一段正文、同一组键。
+ *  「复核资料」只在有候选时出现，这里不预画。 */
+export function scanCardSkeletonHtml(): string {
+  return island(`<section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing>
+        ${cardText('扫描与采集', SCAN_CARD_TEXT)}
+        <footer data-geist-fieldset-footer><a href="/scraping" class="inline-flex items-center justify-center gap-1 whitespace-nowrap font-sans rounded-sm text-body-medium text-accent-600"><span>来源和凭证</span>${islandGlyph('arrow-up', 'size-[18px] shrink-0 rotate-90')}</a><span data-button-group data-split-button data-variant="primary">${islandButton({ glyph: 'database', label: '扫描并补全资料', attrs: unavailable })}${islandButton({ glyph: 'chevron-down', attrs: `${unavailable} aria-label="更多扫描与采集方式"` })}</span></footer>
+      </section>`);
+}
+
+/** 「媒体修复」卡：页脚的媒体库下拉框先按最终尺寸画出来，库名要等数据。`bg-button-primary`
+ *  遇到 `aria-disabled` 会换成禁用渐变，`data-skeleton-action` 让它停在静止那一档。 */
+export function repairCardSkeletonHtml(): string {
+  return island(`<section aria-label="媒体修复" data-geist-fieldset data-cleanup-task data-cleanup-processing>
+        ${cardText('媒体修复', REPAIR_CARD_TEXT)}
+        <footer data-geist-fieldset-footer>${islandSelect(bar, { className: 'w-48', attrs: unavailable })}${islandButton({ label: '开始修复', attrs: `data-skeleton-action ${unavailable}` })}</footer>
+      </section>`);
+}
+
+/** 首屏复用读数卡、四张任务卡、链接管理与资源同步的最终容器；静态标题、正文和键立即呈现。 */
 export function cleanupSkeletonHtml(): string {
   const stats = [['人工复核', 'square-check-big'], ['高清版', 'sparkles'], ['重复文件', 'file-stack'], ['垃圾文件', 'file-archive'], ['回收站', 'trash']];
-  const bar = '<span class="skeleton cleanup-count-skeleton" aria-hidden="true"></span>';
+  const presets = `<span class="geist-button organize-preset-skeleton">${bar}</span>`.repeat(3);
+  const organizeField = (label: string) => `<div class="organizefield"><span>${label}</span>
+            <span class="geist-input organize-input-skeleton">${bar}</span></div>`;
   return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupstats">${stats.map(([title, glyph]) => `
       <button type="button" class="board-plain-stat" disabled>
-        <span class="board-plain-stat-head"><span class="board-stat-tile"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${glyph}"></use></svg></span>${title}</span>
+        <span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph!)}</span>${title}</span>
         <strong>${bar}</strong><span class="cleanupmeta">${bar}</span></button>`).join('')}</div>
     <div class="cleanupgrid">
-      <section class="cleanupfieldset cleanupprocessing board-processing-skeleton" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-scan">
-        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-scan">扫描与采集</h3>
-          <p>扫描媒体文件夹，导入已有资料，采集缺失信息。</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><a class="board-link-button" href="/scraping"><span>来源和凭证</span><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow-up"></use></svg></a><div class="splitbutton board-button-group primary"><button type="button" class="splitmain geist-button primary" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-database"></use></svg>扫描并补全资料</button><button type="button" class="splittoggle geist-button primary" disabled aria-label="更多扫描与采集方式"><svg aria-hidden="true"><use href="#i-chevron-down"></use></svg></button></div></footer>
-      </section>
-      <section class="cleanupfieldset cleanupprocessing board-processing-skeleton" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-repair">
-        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-repair">媒体修复</h3>
-          <p>修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled>开始修复</button></footer>
-      </section>
+      <div class="cleanupscraping">${scanCardSkeletonHtml()}</div>
+      <div class="cleanupmediarepair">${repairCardSkeletonHtml()}</div>
       <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">
-        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹</h3>
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹与失效条目</h3>
           <strong>${bar}</strong><p class="cleanupmeta">${bar}</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" disabled><svg aria-hidden="true"><use href="#i-scan-search"></use></svg><span>扫描空文件夹</span></button></footer>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button class="geist-button primary" ${waiting}>${icon('scan-search')}<span>检查来源</span></button></footer>
+      </section>
+      <section class="cleanupfieldset cleanuporganize" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-organize">
+        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-organize">整理</h3>
+          <p>按模板给文件改名并归入目录。先预览，确认后执行；执行过的一批可以整批退回。</p>
+          <div class="organizefields">
+            <div class="organizesource"><span class="gselect"><span class="gselectfield organize-source-skeleton">${bar}${icon('chevron-down')}</span></span></div>
+            ${organizeField('文件名模板')}
+            ${organizeField('目录模板')}
+            <div class="organizepresets">${presets}</div>
+            <p class="cleanupmeta">${bar}</p>
+          </div></div>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button class="geist-button primary" ${waiting}>预览</button></footer>
       </section></div>
     <section class="resourcesync" aria-labelledby="cleanup-loading-links">
       <h2 id="cleanup-loading-links">链接管理</h2>
       <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">站外链接</h3>
-          <div class="linksummary"><div class="linkstats">${['链接总数','官网/事务所','社交账号','作品资料站','资料出处'].map(title=>`<div><span>${title}</span><b>${bar}</b></div>`).join('')}</div></div></div>
-        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" type="button" disabled>检查死链</button></div>
+          <div class="linksummary"><div class="linkstats"><div><span>链接总数</span><b>${bar}</b><small>${bar}</small></div>${['官网/事务所', '社交账号', '作品资料站'].map(title => `<div><span>${title}</span><b>${bar}</b></div>`).join('')}</div>
+          <div class="linkhosts"><span>主要站点</span><b>${bar}</b></div></div></div>
+        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${waiting}>${icon('unlink')}<span>检查死链</span></button></div>
       </div></section>
     <section class="resourcesync" aria-labelledby="cleanup-loading-sync">
       <h2 id="cleanup-loading-sync">资源同步</h2>
       <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">文件与记录核对</h3>
-          <p>${bar}</p></div>
-        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" type="button" disabled>检查文件</button></div>
+          <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
+        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${waiting}>${icon('git-compare')}<span>检查文件</span></button></div>
       </div></section></div>`;
 }

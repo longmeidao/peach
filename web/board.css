@@ -449,7 +449,7 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .cleanupfieldset .cleanupmeta{font-size:12px;line-height:18px;margin-top:8px}
 .cleanupfieldset>.geist-fieldset-footer{background:transparent;border-top:1px solid var(--line-soft);padding:12px 20px;min-height:56px}
 .cleanupfieldset>.geist-fieldset-footer button{font-size:13px}
-.cleanupgrid>#libraryProcessing{grid-column:1/-1;display:grid;gap:16px}
+.cleanupgrid>:is(.cleanupscraping,.cleanupmediarepair){grid-column:1/-1;display:grid;gap:16px}
 /* ── 数据管理页照 Board 的 dashboard 模板排：顶上一排 plain stat card（stat-cards.tsx：132px 高、圆角 16、secondary 底、
    内边距 16，32px 的图标格里 20px 字形，标签 Body Medium 次文字色，读数 title-1-medium 24/34）。Peach 把整张卡做成
    按钮——它就是那一页的入口，读数下面那行 Caption 是同一份 payload 里的分项。五张在 1120 内一行摆下，窄了折两列、
@@ -470,11 +470,11 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 @media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}
 /* 读数下面那两张是要做的事，各占一行，与扫描卡同一个左说明右按钮的形状。 */
 .cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-secondary-default);box-shadow:var(--elevation-card)}
-.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
-.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content]){min-height:0;padding:24px}
-.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-footer,[data-geist-fieldset-footer]){justify-content:flex-end;border:0;padding:24px;background:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.cleanupgrid :is(.cleanupprocessing,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content]){display:flex;flex-direction:column;gap:8px}
-.cleanupgrid :is(.cleanupprocessing,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content])>:is(h3,p){margin:0}
+.cleanupgrid :is(.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+.cleanupgrid :is(.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-content,[data-geist-fieldset-content]){min-height:0;padding:24px}
+.cleanupgrid :is(.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-footer,[data-geist-fieldset-footer]){justify-content:flex-end;border:0;padding:24px;background:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cleanupgrid [data-cleanup-processing]>:is(.geist-fieldset-content,[data-geist-fieldset-content]){display:flex;flex-direction:column;gap:8px}
+.cleanupgrid [data-cleanup-processing]>:is(.geist-fieldset-content,[data-geist-fieldset-content])>:is(h3,p){margin:0}
 .cleanupgrid [data-cleanup-processing] h3{font:var(--board-heading);letter-spacing:0}
 .cleanupgrid>.cleanupemptyfolders strong{font:var(--board-body);color:var(--color-text-secondary);letter-spacing:0}
 .resourcesyncbox[data-cleanup-task]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
@@ -518,8 +518,6 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 #libraryProcessingNotice:empty,#libraryProcessingNotice:has(>.peach-react:empty){height:0}
 #libraryProcessingNotice:not(:empty):not(:has(>.peach-react:empty)){margin:0 0 22px}
 @media(prefers-reduced-motion:reduce){#libraryProcessingNotice{transition:none}}
-.board-card-icon{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line-soft);background:var(--surface);border-radius:10px;margin-right:10px;vertical-align:middle;color:var(--ink-2)}
-.board-card-icon svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .configfieldset{border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 2px #00000003}
 .configfieldset>.geist-fieldset-content{padding:24px;gap:20px}
 .configfieldset>.geist-fieldset-footer{background:var(--ground);border-top:1px solid var(--line-soft);padding:14px 24px}
@@ -1093,14 +1091,12 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 
 /* 数据按阅读目的分组，标题与内容共享边缘。 */
 .insightpage,.tastepage{width:100%;max-width:var(--board-content)}
-.followmanage .fmain{gap:28px}.followmanage .fmain>.fsec>.fsources{padding:0 24px 24px;grid-template-columns:minmax(0,1fr);gap:16px}
-.followmanage .fauthor{height:auto;padding:16px 20px;border:0;border-radius:16px;background:var(--ground);display:block}.followmanage .fauthorhead{padding:0 0 12px}.followmanage .fauthorhead b{font-weight:500;white-space:normal}.followmanage .fauthorsources{height:auto;max-height:none;overflow:visible}.followmanage .fauthor .fsource.frow{padding-block:12px;border:0}.followmanage .fauthor .fsource.frow>b{font-weight:400}.followmanage .fauthor .fsource.frow:not(:has([data-follow-select]))+.fsource.frow:not(:has([data-follow-select])){border-top:1px solid var(--line-soft)}
+.followmanage .fmain{gap:28px}
 .configfieldset-heading{border:0;padding-bottom:0}.configfieldset{border:0}.configfieldset>.geist-fieldset-footer{border:0}.configfieldset .configfieldset-heading h2{margin:0}
 #linkCheckResult:not(:empty),#resourceSyncResult:not(:empty){margin-block:16px 28px}
-.followmanage .fauthor{container-type:inline-size}
 .board-follow-list{display:grid;border-radius:16px;background:var(--ground);padding:8px 16px}.board-follow-list .fsource.frow{display:grid;grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:12px;padding:8px;min-height:48px;border:0;border-radius:8px}.board-follow-list .fsource.frow>b{font-size:13px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400}.board-follow-list .fsource.selected{background:var(--picked);opacity:1}.board-follow-selection{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px;font-size:13px}.board-follow-selection>label{display:flex;gap:8px;align-items:center}.board-follow-selection>span{margin-right:auto;color:var(--muted)}
 @media(max-width:760px){.board-follow-list{padding:8px}}
-@media(max-width:760px){body #manageTitle{width:100%}.followmanage .fauthor{padding:16px}.followmanage .fsechead{gap:8px}.followmanage .fmanagesort{margin-left:0}}
+@media(max-width:760px){body #manageTitle{width:100%}.followmanage .fsechead{gap:8px}}
 
 /* 强调色的十一级色阶。机制照搬 BoardUI：主按钮、焦点环、链接、开关、选中态全都引用
    `--color-accent-*`，换强调色就是把这十一个变量整组指到另一个色相，组件规则一个字不改。
@@ -1171,7 +1167,6 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 .skeleton-radar{width:100%;height:260px;clip-path:polygon(50% 0,95% 25%,95% 75%,50% 100%,5% 75%,5% 25%)}
 .board-page-skeleton .tastesummary{height:152px}
 .board-page-skeleton .tastesummary>b .skeleton{height:34px}
-.board-page-skeleton .fmanageoverview b .skeleton{height:34px}
 .skeleton-segments>span{display:flex;align-items:center;padding:4px 10px;min-height:28px;border-radius:6px;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap}
 .skeleton-segments>span.skeleton-segment-selected{color:var(--color-text-primary);font:var(--board-body-medium);background:var(--color-background-primary-default);box-shadow:var(--elevation-xs)}
 .board-page-skeleton .configpage{display:grid;gap:40px}
@@ -1239,22 +1234,19 @@ body :is(button.danger,.batchbar button.danger):not(:disabled)::before{content:"
 body :is(button.danger,.batchbar button.danger):not(:disabled):hover::before{opacity:1}
 body :is(button.danger,.batchbar button.danger):not(:disabled):active{background:var(--board-red-active)}
 body :is(button.danger,.batchbar button.danger):not(:disabled):active::before{opacity:0}
-.followmanage .fbtn.fmanagedir{width:36px;padding:0}
 :root{--board-card-foot:color-mix(in srgb,var(--ground) 98%,var(--ink))}
 .board-sidebar-head #brandHome .mark{color:var(--glass-text)}
 .configfieldset>.geist-fieldset-footer,.cleanupfieldset>.geist-fieldset-footer,.resourcesyncfooter,.resourceapplyrow{border-top-left-radius:0;border-top-right-radius:0;background:var(--board-card-foot)}
 .followmanage .board-follow-list{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;padding:0;background:none}
-.followmanage .board-follow-list .fauthor{width:100%;height:auto;margin:0;padding:16px;border-radius:var(--surface-radius)}
-.followmanage .board-follow-list .fauthorhead{min-height:36px}.followmanage .board-author-toggle{margin-left:auto;flex:none}.board-author-toggle[aria-expanded=true] svg{transform:rotate(180deg)}
-.followmanage .fauthorsources[hidden]{display:none}.followmanage .board-follow-list .fsource.frow{min-height:64px;padding:12px 8px}
+.followmanage .board-author-toggle{margin-left:auto;flex:none}.board-author-toggle[aria-expanded=true] svg{transform:rotate(180deg)}
+.followmanage .board-follow-list .fsource.frow{min-height:64px;padding:12px 8px}
 /* 表格视图在 Board 层套的是 Board 自己的 token：表头次级底、三级字、分隔线色都取自
    boardui 同名变量。外框用 primary 底而不是作者卡那块 --ground：Board 层把 --ground 定成了
    secondary，和表头同色，表头那条带子就没了；boardui 的表格本来就摆在 primary 面上。 */
 .followmanage .ftableframe{border:1px solid var(--color-separator-border);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden}.followmanage .ftablewrap{border-radius:0;background:transparent}.followmanage .ftable th{border-top:0}
 .followmanage .ftable th{color:var(--color-text-tertiary);background:var(--color-background-secondary-default);border-color:var(--color-separator-border)}
 .followmanage .ftable tbody tr{border-color:var(--color-separator-border)}
-@media(min-width:1200px){.followmanage .fsources[data-layout="default"] .board-follow-list{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}}
-@media(max-width:760px){.followmanage .fsechead .iconswitch{display:flex}.followmanage .board-follow-list .fauthor{padding:12px}}
+@media(max-width:760px){.followmanage .fsechead .iconswitch{display:flex}}
 
 /* 导航图形使用同宽槽位；logo 的透明边距按实际可见轮廓适配。 */
 .board-home-logo{width:20px;height:20px}.drawer:not(.open) .dnav button:has(.board-home-logo){padding:8px}
@@ -1336,12 +1328,8 @@ body .board-chip.success{background:color-mix(in srgb,#84cc16 16%,var(--color-ba
 .photolight .photonav{width:36px;height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-secondary);box-shadow:var(--elevation-xs)}.photolight .photonav:hover{background:var(--color-background-primary-hover)}.photolight .photonav svg{width:20px;height:20px}.photolight .photonav.swiper-button-disabled{opacity:.4;pointer-events:none}
 .board-carousel-pagination{display:flex;align-items:center;justify-content:center;gap:8px;max-width:160px;margin-inline:auto;overflow:hidden;height:28px}.board-carousel-pagination .swiper-pagination-bullet{width:6px;height:6px;flex:none;margin:0!important;border:0;padding:0;border-radius:999px;background:#a3a3a3;opacity:1;transition:width .2s ease-out,background .2s ease-out}.board-carousel-pagination .swiper-pagination-bullet-active{width:16px;background:#fafafa}
 @media(prefers-reduced-motion:reduce){.board-tooltip,.board-carousel-pagination .swiper-pagination-bullet{transition:none}}
-.fauthorhead{list-style:none}.fauthorhead::-webkit-details-marker{display:none}.board-author-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none}
-/* 站标和失败数贴到右边那一组按钮旁边，不跟在名字后面。作者名长短不一，站标跟着名字走就
-   每行一个位置，一列扫下来得逐行找；靠右对齐后它们和「全选」「展开」在同一条竖线上起排。
-   撑开的空当交给第一个 .fmeta，后面那个失败数和 .board-author-actions 自己的 margin-left
-   就没有剩余空间可吃，三块连着排在右端。 */
-.fauthorhead>.fmeta{margin-left:auto}.fauthorhead>.fmeta~.fmeta,.fauthorhead>.fmeta~.board-author-actions{margin-left:0}.board-author-actions .board-author-toggle{margin:0}.followmanage details.fauthor>.fcollapse>.fcollapsebody{padding:0}.followmanage details.fauthor:not([open]) .fauthorhead{margin-bottom:0}
+.board-author-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none}
+.board-author-actions .board-author-toggle{margin:0}
 .followmanage .fsource.selected{background:var(--color-background-primary-default);box-shadow:none;border-color:var(--color-border-focus-ring)}.followmanage .fsource.selected.disabled{opacity:1}
 /* 同底色上的嵌套卡（作者卡里的来源行）按 10px 圆角取 shadow-sm：
    BoardUI 的 shadow-xs 出自 24px 大圆角的 auth-card（2026-09-09 取证登记
@@ -1349,10 +1337,7 @@ body .board-chip.success{background:color-mix(in srgb,#84cc16 16%,var(--color-ba
 .followmanage .fsource:has([data-follow-select]):not(tr){border:1px solid var(--color-border-button-default);border-radius:10px;padding:12px 20px 12px 16px;margin:8px 0;cursor:pointer;transition:background-color 150ms ease,border-color 150ms ease;box-shadow:var(--elevation-sm)}
 .followmanage .fsource:has([data-follow-select]):hover{background:var(--color-background-primary-hover)}
 .followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}.followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}
-.followmanage .fsourceactions{padding:2px;overflow:visible}
-.cleanupgrid>.board-processing-skeleton{grid-column:1/-1;display:grid;grid-template-columns:1fr auto;align-items:center;min-height:114px}
-.board-processing-skeleton>.geist-fieldset-footer{border:0;background:none}
-@media(max-width:1000px){.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing]),.resourcesyncbox[data-cleanup-task]{grid-template-columns:1fr}.cleanupgrid :is(.cleanupprocessing,.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-footer,[data-geist-fieldset-footer]),.resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{justify-content:flex-start;padding-top:0}.cleanupgrid>.board-processing-skeleton{grid-template-columns:1fr}.board-processing-skeleton>.geist-fieldset-footer{justify-content:flex-start}}
+@media(max-width:1000px){.cleanupgrid :is(.cleanupemptyfolders,[data-cleanup-processing]),.resourcesyncbox[data-cleanup-task]{grid-template-columns:1fr}.cleanupgrid :is(.cleanupemptyfolders,[data-cleanup-processing])>:is(.geist-fieldset-footer,[data-geist-fieldset-footer]),.resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{justify-content:flex-start;padding-top:0}}
 .metricstrip>button[aria-selected=true]{background:var(--color-background-primary-default);box-shadow:none}.metricstrip>button[aria-selected=true]::after{box-sizing:border-box}.metricstrip>button[aria-selected=true] .board-stat-footer{background:var(--board-card-foot)}
 body .gselectmenu [role=option][aria-selected=true],body .popmenu [aria-checked=true]{background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-primary)}
 .insightswitch{display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--line);border-radius:10px;background:var(--color-background-primary-default);box-shadow:var(--elevation-xs)}.insightswitch label>span{display:flex;align-items:center;min-height:28px;padding:4px 10px;border-radius:7px;color:var(--color-text-secondary);font:var(--board-body-medium)}.insightswitch label:has(input:checked)>span{background:var(--color-background-primary-hover);color:var(--color-text-primary);box-shadow:0 1px 2px light-dark(#0000001a,#0000008c)}
@@ -1375,8 +1360,6 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 .followmanage .fsource.selected:has([data-follow-select]){border-color:var(--color-border-focus-ring)}
 /* 两半之间的线独立盖在右半左缘，上下顶满；两颗 Button 自己不再画悬停层，
    整组 hover 保持原蓝色，鼠标跨过中缝也不会一明一暗。 */
-.splitbutton.board-button-group>.splitmain,.splitbutton.board-button-group>.splittoggle{border:0;border-radius:0;box-shadow:none}
-.splitbutton.board-button-group>.splittoggle{border-left:1px solid var(--color-border-button-default)}
 [data-split-button][data-button-group]{position:relative;isolation:isolate}
 [data-split-button][data-button-group]>button{position:relative;z-index:1;height:36px;border:0;border-radius:0;background:none!important;box-shadow:none}
 [data-split-button][data-button-group]>button::before{display:none!important}
@@ -1386,15 +1369,10 @@ body [data-board-tabs] button[aria-selected=true],body .managebar [data-board-ta
 [data-split-button][data-variant=primary]:has(>button:active){background:var(--board-blue-active)}
 [data-split-button][data-variant=primary]>button{color:#fff}
 [data-split-button][data-variant=primary]>button:last-child{width:36px;padding:8px}
-/* 这两半压上去换的那一面跟站内其他次级按钮是同一个 token。基线那条按 `--inset` 填，
-   特指度还比这一组的规则高，两处今天算出来是同一个值，改其中一个就会分家。 */
-.splitbutton.board-button-group>button:is(:hover,[aria-pressed=true]):not(.primary){background:var(--control-hover)}
-/* 分隔按钮的强调档：主钮与箭头钮各挂 `geist-button primary`，那一面由全站唯一那条
-   强调档规则给，悬停的淡入也是。箭头钮是展开不是操作，但它跟主钮长在同一颗键上，
-   半蓝半灰读起来像坏了一半；中缝那条线换成压暗的蓝，整颗仍是同一枚实底键。 */
-body .splitbutton.primary{border:0;box-shadow:none}
-body .splitbutton.primary>button:disabled{background:var(--sunk);color:var(--muted)}
-body .splitbutton.primary>.splittoggle{border-left-color:color-mix(in srgb,#000 20%,var(--board-blue))}
+/* React 卡片骨架里等数据的主按钮：`bg-button-primary` 遇到 `aria-disabled` 换成禁用渐变，
+   骨架要的是接管后那一档静止面，数据一到只是解锁，不换颜色。选择器只认属性不认类名：
+   旧样式表里写 React 的工具类名会被 legacy-class-names 拒收。 */
+.peach-react [data-skeleton-action][aria-disabled]{background-image:var(--gradient-button-primary-default);color:var(--color-text-white)}
 body [data-cleanup-empty][hidden]{display:none}
 body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:var(--elevation-xs);font:var(--board-body-medium)}
 body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
@@ -1497,8 +1475,6 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 @media(max-width:1080px){.stage .vwrap{border-radius:var(--surface-radius) var(--surface-radius) 0 0}}
 /* ── 没有图的身份头像（boardui avatar.tsx 的 initials 盘）：主文字色 10% 混底、次文字色首字，不与卡片底同色 ── */
 .idface:not(:has(img)){background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
-/* ── 数据管理首屏骨架：扫描卡的底部条不铺灰底，和岛挂载后的样子一致 ── */
-.cleanupgrid>.board-processing-skeleton>.geist-fieldset-footer{background:none}
 /* ── 首页顶部两排。女优是竖排人像格：48px 圆头像在上、名字（Caption）在下，格宽 76、圆角 12——Board 的 Avatar 只到
    lg 36px（avatar.tsx），竖排格无对应，48 取的是它 `size-12` 那一级；厂牌是 40px 的灰 Pill（pill-tab.tsx gray 放大一档）：
    28px 圆标识在左、名字在右。两排都不描边、悬停 primary-hover、选中 tertiary 底主文字色；标签那一排是 30px 的描边药丸，
@@ -1556,14 +1532,11 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 /* ── 关注列表整段进框，与「添加关注」同一只卡：头 20/24/8，选择栏与列表左右 24，脚是卡片脚 ──
    作者卡是 primary 面上的一只卡；来源行照 boardui checkbox-card.tsx：10px 圆角、1px border-button-default、
    pl 16 / pr 20 / py 12，悬停 primary-hover 150ms；行距 8px。选中行沿用焦点环色的边（上游 CheckboxCard 只亮勾选框）。 */
-.followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:20px 24px 8px}
 .followmanage .board-follow-list{padding:0;background:transparent;gap:16px}
-.followmanage .board-follow-list .fauthor{background:var(--color-background-primary-default);border-radius:var(--surface-radius);padding:16px}
-.followmanage .board-follow-list .fauthorsources{display:grid;gap:8px}
 .followmanage .board-follow-list .fsource.frow{min-height:0;margin:0;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);transition:background-color .15s ease,border-color .15s ease}
 .followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}
 .followmanage .board-follow-list .fsource.selected,.followmanage .board-follow-list .fsource.selected:hover{background:var(--color-background-primary-default);border-color:var(--color-border-focus-ring)}
-@media(max-width:760px){.followmanage .fmain>.fsec:has(.fsources)>.fsechead{padding:16px 16px 8px}.followmanage .fmain>.fsec>.fsources{padding:0 16px 16px}.followmanage .fsec>.board-follow-selection{padding:4px 16px 12px}.followmanage .board-follow-list .fauthor{padding:12px}}
+@media(max-width:760px){.followmanage .fsec>.board-follow-selection{padding:4px 16px 12px}}
 /* ── 表格：外框管边线与圆角，里层管横向滚动与两端渐隐。选中行是蓝色 8% 的一层底，不描蓝线（上游选中行样式未取得） ── */
 .followmanage .ftable tr.fsource.selected,.followmanage .ftable tr.fsource.selected:hover{background:color-mix(in srgb,var(--tungsten) 8%,var(--color-background-primary-default));border-color:var(--color-separator-border);box-shadow:none}
 .followmanage .ftable tbody tr{transition:background-color .15s ease}
@@ -1780,13 +1753,7 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 .followmanage .fmain>[data-follow-panel=sources]>.fsechead{padding:0 0 16px;min-height:48px;gap:10px}
 .followmanage [data-follow-panel=sources]>.fsechead h3{font:var(--board-body-medium)}
 .followmanage .fmain>[data-follow-panel=sources]>.board-follow-selection{padding:12px 16px;background:var(--ground);border-radius:var(--surface-radius) var(--surface-radius) 0 0;border-bottom:1px solid var(--line-soft)}
-.followmanage .fmain>[data-follow-panel=sources]>.fsources{padding:0;gap:0}
 .followmanage [data-follow-panel=sources] .board-follow-list{gap:0;background:var(--ground);border-radius:0 0 var(--surface-radius) var(--surface-radius);overflow:hidden}
-.followmanage [data-follow-panel=sources] .fauthor{padding:20px 24px;border-radius:0;background:transparent}
-.followmanage [data-follow-panel=sources] .fauthor+.fauthor{border-top:1px solid var(--line-soft)}
-.followmanage [data-follow-panel=sources] .fauthorhead{padding:0;min-height:40px;gap:12px}
-.followmanage [data-follow-panel=sources] .fauthorhead>.favatar{width:36px;height:36px}
-.followmanage [data-follow-panel=sources] .fauthorsources{gap:0;padding-top:12px}
 .followmanage [data-follow-panel=sources] .fsource.frow{padding:12px 16px;border:0;border-radius:var(--control-radius);background:transparent}
 .followmanage [data-follow-panel=sources] .fsource.frow.selected{background:var(--picked)}
 .followmanage [data-follow-panel=sources] .fsource.frow:hover{background:var(--hover)}
@@ -1802,7 +1769,6 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
   .followmanage .fmain>[data-follow-panel=sources]>.fsechead{padding:0 0 12px}
   .followmanage [data-follow-panel=sources]>.fsechead h3{flex-basis:100%}
   .followmanage .fmain>[data-follow-panel=sources]>.board-follow-selection{padding:12px}
-  .followmanage [data-follow-panel=sources] .fauthor{padding:16px 12px}
   .followmanage [data-follow-panel=sources] .fsource.frow{padding:12px 8px}
 }
 
@@ -1821,27 +1787,17 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 [data-fieldset-type=warning]>:is(.geist-fieldset-footer,.resourceapplyrow){border-top:1px solid var(--meter);background:color-mix(in srgb,var(--meter) 7%,var(--ground))}
 [data-fieldset-type=warning]>:is(.geist-fieldset-footer,.resourceapplyrow)>p{color:var(--meter)}
 
-/* 关注来源始终单行，日期按创作者卡片的可用宽度逐级缩短。 */
-.followmanage .board-follow-list .fauthorhead{flex-wrap:nowrap}
-.followmanage .board-follow-list .fauthorhead>b{white-space:nowrap;text-overflow:ellipsis;min-width:0}
-.followmanage .board-follow-list .fauthorhead>.fmeta{overflow:hidden}
 .followmanage .board-follow-list .board-author-actions{width:auto;flex:none}
 .board-author-actions [data-follow-author-select]>svg{width:16px;height:16px;flex:none}
 .followmanage .followcheckall{margin-left:auto}
 .followtoolbaractions{display:flex;align-items:center;gap:8px;margin-left:auto;max-width:100%;flex-wrap:nowrap}
-.followmanage .fsechead .fmanagesort{margin-left:0}
 .followmanage [data-follow-collapse-all]{flex:none}
 .followmanage [data-follow-collapse-all][hidden]{display:none}
 .followmanage .board-follow-selection[hidden]{display:none}
 .geist-note-details a{color:var(--ink)}
 @container(max-width:460px){.board-author-actions [data-author-select-label]{display:none}.followmanage .board-follow-list .board-author-actions [data-follow-author-select]{width:var(--control-h);height:var(--control-h);padding:0;justify-content:center}}
-.followmanage .board-follow-list .fauthor .fsource.frow{grid-template-columns:20px minmax(0,1fr) auto auto auto;gap:8px;align-items:center}
 .followmanage .board-follow-list .fsource.frow>b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .followmanage .board-follow-list .fprovider{flex-wrap:nowrap;white-space:nowrap}
-.followmanage .board-follow-list .fchecked{display:block;white-space:nowrap;font-variant-numeric:tabular-nums}
-.followmanage .board-follow-list .fchecked:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-@container(max-width:600px){.followmanage .board-follow-list .fchecked .fyear{display:none}}
-@container(max-width:460px){.followmanage .board-follow-list .fchecked .fclock{display:none}.followmanage .board-follow-list .fauthor .fsource.frow{gap:4px;padding-inline:8px}}
 .followmanage .skeleton-icon{width:32px;height:32px;display:block}
 .followmanage .fsource .skeleton{max-width:100%}
 .followmanage .favatar.skeleton{display:block}

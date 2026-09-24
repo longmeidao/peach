@@ -505,29 +505,6 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
   [data-collapse-toolbar] [data-collapse-field]>svg{left:50%;transform:translateX(-50%)}
 }
 
-/* Geist Split Button：一个明确的主动作，右边一档收起同一类的做法。实测
-   https://vercel.com/geist/split-button（2026-09-07）：两颗按钮拼成一个盒子，主动作占左半、
-   右侧两角不倒角，触发档占右半、左侧两角不倒角，中间靠一条 1px 竖线分开，触发档里只有一枚
-   箭头、读屏名由 aria-label 给。菜单第一项必须与主动作同名同事，1 到 4 个近亲动作为宜；
-   不相干的动作归普通菜单，破坏性动作不当主动作。高度取所在动作条的 36px。
-   次级那圈环挂在盒子上，不挂两半各自的按钮：挂按钮上会在交界处与右半那条左边界叠成两条。 */
-.splitbutton{position:relative;display:inline-flex;flex:none;
-  border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft)}
-.splitbutton>button{display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  height:36px;border:0;background:var(--ground);color:var(--ink);font:inherit;
-  font-size:var(--fs-sm);cursor:pointer}
-.splitbutton>button:hover:not(:disabled){background:var(--inset)}
-.splitbutton>button:disabled{opacity:.5;cursor:wait}
-.splitbutton>button svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none}
-.splitbutton>.splitmain{padding:0 11px;border-radius:var(--control-radius) 0 0 var(--control-radius)}
-/* 两半之间那条线是右半自己的左边界，上下顶满。画成一根浮在上面、上下各收 6px 的竖线
-   的话，压上左半时填充铺到交界，线的两端各露出 6px 没被铺到的旧底色，看着就是线和
-   背景差了一截；边界跟着盒子走，两边的填充各自停在它两侧，压哪半都对得上。 */
-.splitbutton>.splittoggle{position:relative;width:32px;padding:0;
-  border-left:1px solid var(--border-15);
-  border-radius:0 var(--control-radius) var(--control-radius) 0}
-.splitbutton>.splittoggle[aria-expanded="true"]{background:var(--inset)}
-
 /* Geist Modal：确认一次写操作。实测 https://vercel.com/geist/modal（2026-09-04）：
    540px 宽、12px 圆角、窄屏两侧各留 10px，正文 20px 内边距，操作条粘在底、12px 内边距、
    两端对齐，遮罩纯黑不带模糊。淡入用它给出的 .3s cubic-bezier(.175,.885,.32,1.1)；

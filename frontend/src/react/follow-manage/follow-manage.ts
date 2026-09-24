@@ -14,6 +14,9 @@
  * 分组、排序、分页都是纯函数：两种视图（创作者卡片与表格）必须给出同一套顺序，比较器
  * 写在两处的话，同一份数据在两种视图里的先后就会不一样。 */
 import { apiGet, apiSend } from '../../api';
+import {
+  DEFAULT_SORT, isSortKey, SORT_DEFAULT_DIR, SORT_OPTIONS, type SortDir, type SortKey,
+} from '../../follow-sort';
 import { clampPage, pageCount } from '../../pagination';
 import { queryClient } from '../query';
 import { localTime } from '../time';
@@ -190,21 +193,8 @@ export type Layout = (typeof LAYOUTS)[number][0];
 export const PAGE_SIZES = [10, 20, 50, 100] as const;
 export const DEFAULT_PAGE_SIZE = 20;
 
-/** 工具栏那个下拉里的排序维度。前四个按创作者比，后三个按单条来源比。 */
-export const SORT_OPTIONS = [
-  ['checked', '检查时间'], ['added', '添加时间'], ['name', '创作者名称'], ['sources', '来源数量'],
-  ['source', '来源名称'], ['provider', '站点'], ['status', '状态'],
-] as const;
-export type SortKey = (typeof SORT_OPTIONS)[number][0];
-export const DEFAULT_SORT: SortKey = 'checked';
-
-export type SortDir = 'asc' | 'desc';
-
-/** 每一列问的那句话的常态：时间问「最近的先看」，名字问「从头排」。 */
-export const SORT_DEFAULT_DIR: Record<SortKey, SortDir> = {
-  checked: 'desc', added: 'desc', name: 'asc', sources: 'desc',
-  source: 'asc', provider: 'asc', status: 'asc',
-};
+/* 排序维度与默认方向和首屏骨架共用一份，见 `frontend/src/follow-sort.ts`。 */
+export { DEFAULT_SORT, isSortKey, SORT_DEFAULT_DIR, SORT_OPTIONS, type SortDir, type SortKey };
 
 const SORT_LABELS: Record<SortKey, string> = Object.fromEntries(SORT_OPTIONS) as Record<SortKey, string>;
 
@@ -212,9 +202,6 @@ const SORT_LABELS: Record<SortKey, string> = Object.fromEntries(SORT_OPTIONS) as
 export const COLUMN_SORT = {
   author: 'name', source: 'source', provider: 'provider', status: 'status', checked: 'checked',
 } as const satisfies Record<string, SortKey>;
-
-export const isSortKey = (value: unknown): value is SortKey =>
-  SORT_OPTIONS.some(([key]) => key === value);
 
 export const isLayout = (value: unknown): value is Layout =>
   LAYOUTS.some(([key]) => key === value);

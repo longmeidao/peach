@@ -258,10 +258,18 @@ const followCredential = (provider: string, requirement: string, present: boolea
 
 /** 关注管理页按一份造好的来源与凭据打开：演示库没有关注来源，也凑不齐四种凭据处境。
  *  站标同 `openScraping`：造出来的来源取不到图标，给一张能加载完的图。 */
-async function openFollowManage(browser: Browser): Promise<Visit> {
-  const opened = await visit(browser, '/follow-manage', DESKTOP);
+async function openFollowManage(browser: Browser, viewport = DESKTOP): Promise<Visit> {
+  const opened = await visit(browser, '/follow-manage', viewport);
+  await stubFollowManage(opened.page);
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('section[aria-label="kou 的关注来源"]').waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
+async function stubFollowManage(page: Page): Promise<void> {
   const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  await opened.page.route('**/api/follow?limit=1', (route) => route.fulfill(json({
+  await page.route('**/api/follow?limit=1', (route) => route.fulfill(json({
     sources: [
       followSource(1, 'kou', 'Kemono', 'kou · Kemono'),
       followSource(2, 'kou', 'Pawchive', 'kou · Pawchive'),
@@ -272,7 +280,7 @@ async function openFollowManage(browser: Browser): Promise<Visit> {
     alias_suggestions: [],
     suggestions: [],
   })));
-  await opened.page.route('**/api/follow/credentials', (route) => route.fulfill(json({
+  await page.route('**/api/follow/credentials', (route) => route.fulfill(json({
     root: 'C:\\peach\\creds',
     providers: [
       followCredential('Fanbox', 'required', false, ['FANBOXSESSID']),
@@ -281,13 +289,39 @@ async function openFollowManage(browser: Browser): Promise<Visit> {
       followCredential('Kemono', 'none', false, []),
     ],
   })));
-  await opened.page.route('**/source-icon**', (route) => route.fulfill({
+  await page.route('**/source-icon**', (route) => route.fulfill({
     status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
   }));
-  await opened.page.reload({ waitUntil: 'load' });
-  await opened.page.locator('section[aria-label="kou 的关注来源"]').waitFor({ timeout: 15_000 });
-  await settle(opened.page);
-  return opened;
+  /* 服务端的定时检查可能正在跑，那一趟会让每颗检查键挂着 aria-busy，settle 等不到头。 */
+  await page.route('**/api/follow/check', (route) => (route.request().method() === 'GET'
+    ? route.fulfill(json({ status: 'idle' })) : route.fallback()));
+}
+
+/** 把 `/api/` 请求挂住，直到调用返回的 `release()`：首屏骨架停在屏幕上，量完再放行。
+ *  先注册的桩照常生效：放行走 `fallback()`，交给它们或真实服务端。 */
+async function holdApi(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  await page.route((url) => url.pathname.startsWith('/api/') && url.pathname !== '/api/settings', async (route) => {
+    await gate;
+    await route.fallback().catch(() => {});
+  });
+  return release;
+}
+
+/** 一组控件此刻的长相：面色、字色、边线、圆角与外框尺寸，以及按钮组的选中标记。 */
+async function controlFaces(page: Page, selectors: Record<string, string>) {
+  return page.evaluate((map) => Object.fromEntries(Object.entries(map).map(([name, selector]) => {
+    const node = document.querySelector(selector);
+    if (!node) return [name, null];
+    const style = getComputedStyle(node);
+    const box = node.getBoundingClientRect();
+    return [name, {
+      face: `${style.backgroundColor} ${style.backgroundImage}`, ink: style.color,
+      edge: `${style.borderTopWidth} ${style.borderTopColor}`, radius: style.borderTopLeftRadius,
+      size: `${Math.round(box.width)}x${Math.round(box.height)}`, pressed: node.getAttribute('aria-pressed'),
+    }];
+  })), selectors);
 }
 
 /** 切到关注管理页的另一栏。栏名后面可能挂着待配置的数目，按开头认。 */
@@ -1209,6 +1243,80 @@ describe('设计决定', () => {
       }
       assert.equal(new Set(Object.values(heights)).size, 1, `同一排控件高度不一：${JSON.stringify(heights)}`);
       assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`关注列表骨架的工具行与行内操作键和接管后同一副长相（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      /* 骨架与真页面各量一遍：主按钮的面色、按钮组的选中项、排序框与方向键、行尾的移除键。
+         窄屏上工具行收成纯图标，两边按同一条线收，尺寸也要对得上。 */
+      const opened = await visit(browser, '/follow-manage', viewport);
+      try {
+        const page = opened.page;
+        await stubFollowManage(page);
+        const release = await holdApi(page);
+        await page.reload({ waitUntil: 'load' });
+        await page.locator('[data-skeleton="board/follow-manage"] .follow-skeleton-toolbar').waitFor({ timeout: 15_000 });
+        const toolbar = '[data-skeleton] .follow-skeleton-toolbar';
+        const skeleton = await controlFaces(page, {
+          检查全部: `${toolbar} > button:nth-of-type(1)`,
+          默认视图: `${toolbar} > [data-button-group] > button:first-child`,
+          表格视图: `${toolbar} > [data-button-group] > button:last-child`,
+          排序框: `${toolbar} button[aria-haspopup="listbox"]`,
+          方向键: `${toolbar} > button:nth-of-type(2)`,
+          全部收起: `${toolbar} > button:nth-of-type(3)`,
+          移除来源: '[data-skeleton] .follow-skeleton-source > span:last-child > button:last-child',
+        });
+        release();
+        await page.locator('section[aria-label="kou 的关注来源"]').waitFor({ timeout: 15_000 });
+        await settle(page);
+        const final = await controlFaces(page, {
+          检查全部: 'button[aria-label="检查全部"]',
+          默认视图: '[aria-label="关注列表版式"] > button:first-child',
+          表格视图: '[aria-label="关注列表版式"] > button:last-child',
+          排序框: 'button[aria-label="关注列表排序"]',
+          方向键: 'button[aria-label^="按检查时间"]',
+          全部收起: 'button[aria-label="全部收起"]',
+          移除来源: '[data-source-divider] > div > span:last-child > button:last-child',
+        });
+        for (const name of Object.keys(final)) {
+          assert.ok(final[name], `接管后找不到 ${name}`);
+          assert.deepEqual(skeleton[name], final[name], `${name} 在骨架里和接管后长得不一样`);
+        }
+        assert.equal(final['默认视图']!.pressed, 'true', '默认版式下选中的不是网格那颗');
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  it('数据管理骨架里的扫描键是蓝色主按钮，等数据时只挡操作不换长相', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/data-cleanup', DESKTOP);
+    try {
+      const page = opened.page;
+      // 没有任务在跑：跑着的那一档会把扫描键压成忙碌态，那是数据不是骨架。
+      await page.route('**/api/library-processing', (route) => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'idle' }),
+      }));
+      const release = await holdApi(page);
+      await page.reload({ waitUntil: 'load' });
+      await page.locator('[data-skeleton="cleanup"] .cleanupscraping [data-split-button]').waitFor({ timeout: 15_000 });
+      const split = {
+        分体键: '.cleanupscraping [data-split-button]',
+        扫描并补全资料: '.cleanupscraping [data-split-button] > button:first-child',
+        更多方式: '.cleanupscraping [data-split-button] > button:last-child',
+      };
+      const waiting = await page.locator('[data-skeleton="cleanup"] .cleanupscraping [data-split-button] > button')
+        .evaluateAll((buttons) => buttons.map((button) => [button.hasAttribute('disabled'), button.getAttribute('aria-disabled')]));
+      assert.deepEqual(waiting, [[false, 'true'], [false, 'true']], '骨架里的扫描键该用 aria-disabled 挡住，不是原生禁用');
+      const skeleton = await controlFaces(page, split);
+      release();
+      await page.locator('[data-skeleton="cleanup"]').waitFor({ state: 'detached', timeout: 15_000 });
+      await page.locator('.cleanupscraping [data-split-button]').waitFor({ timeout: 15_000 });
+      const final = await controlFaces(page, split);
+      assert.deepEqual(skeleton, final, '扫描键在骨架里和接管后长得不一样');
     } finally {
       await opened.close();
     }

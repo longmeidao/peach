@@ -22,18 +22,13 @@
    基准取 0 而不是 auto：这一行允许换行，按内容宽度参与排线的话它会先把整行挤断，
    缩放根本轮不到发生。基准 0 让它先占 0 再吃剩下的宽度，末尾省略。 */
 .fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fsechead .fbtn,.fsechead .fmanagesort{flex:none}
+.fsechead .fbtn{flex:none}
 /* 升降序键是这一行里唯一的纯图标键：正方形、边长取 --control-h，和同排的下拉、
    版式开关一样高，图标 16px 与排序框左侧那枚同尺寸。写成两级选择器是因为 .fbtn 的
    `padding:0 12px` 排在本文件后面——单类名压不过它，内容宽只剩 8px，图标会被压成一条。 */
-.fsechead .fmanagedir{width:var(--control-h);padding:0}
-.fsechead .fmanagedir svg{width:16px;height:16px}
 /* 排序框照 Geist Select 的 prefix 做法：图标压在框内左侧，不在框外挂一个文字标签。
    Geist 的文字 Label 是块级、排在控件上方（block ... mb-2），行内并排那种写法它没有；
    而工具行里既没有上方空间，图标又足够把下拉框和普通按钮区分开。 */
-.fmanagesort{position:relative;display:inline-flex;align-items:center;color:var(--muted);font-size:var(--fs-xs)}
-.fmanagesort>svg{position:absolute;z-index:1;left:9px;width:16px;height:16px;stroke:currentColor;fill:none;pointer-events:none}
-.fmanagesort:hover>svg{color:var(--ink-2)}
 /* 版式开关和排序框、按钮同处分区标题行，一起收到 --control-h 上（内边距 2px + 1px 边框
    凑齐同一个外高）。这一行不给自己开小一号的档：同排三个控件里只有下拉缩了尺寸和字号，
    读起来就是一个点不动的说明标签，而它恰恰是这行里唯一能改变列表内容的控件。 */
@@ -41,7 +36,6 @@
 .fsechead .iconswitch label{width:34px;height:32px}
 .fsechead .fbtn{height:var(--control-h)}
 /* 排序图标压在触发器左侧，所以左内边距要给它让出位置。 */
-.fmanagesort .gselectfield{height:var(--control-h);padding:0 12px 0 33px;color:var(--ink-2)}
 .fmeta{font-size:var(--fs-xs);color:var(--muted)}
 .fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
 .fmeta.warn{color:var(--drop)}
@@ -111,8 +105,6 @@
 .fbtn.primary{font-weight:500}
 /* 去边框那一条只针对动作按钮。升降序那枚不是动作：它跟旁边的下拉触发器是同一组
    控件，共用输入框那圈线。少了线，它在页面上只剩一个箭头浮着。 */
-.fbtn.fmanagedir{border:1px solid var(--field-ring);background:var(--ground);color:var(--ink-2)}
-.fbtn.fmanagedir:hover:not(:disabled){border-color:var(--field-ring-hover);background:var(--ground)}
 .fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
 .fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 
@@ -121,13 +113,10 @@
    容器和每一项都要显式 min-width:0 才会真的收缩。 */
 .frows{display:grid;min-width:0}
 .frows>*{min-width:0}
-.fsources{grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:16px 22px;align-items:start}
-.fsource .fchecked .fyear{font-style:normal}
 /* 表格视图。数值取自 boardui.com/components/data-table 的 `.bui-table`（2026-09-08，
    登记见 docs/BOARD_UI.md）：表头与格子都是 10px 12px 内边距、14/20、竖直居中；表头
    500 字重、次要字色、次级底色、上下各一条分隔线；正文行只有一条下边线，悬停不换底。
    窄屏不折叠列——它的做法是容器横向滚动，这里照做。 */
-.fsources[data-layout="table"]{display:block}
 .ftablewrap{overflow-x:auto;overscroll-behavior-x:contain}
 .ftable{width:100%;min-width:760px;border-collapse:collapse;text-align:left;font-size:var(--fs-md);line-height:20px}
 .ftable th,.ftable td{padding:10px 12px;vertical-align:middle}
@@ -144,14 +133,6 @@
 .frow .fmeta{flex:0 0 auto}
 .fsource.bad>b{color:var(--drop)}
 
-/* 作者分组。同一个人在几个站上是几条来源、一个人，所以头像和名字只出现一次，
-   下面才是各站那几行。作者卡固定为可完整显示四条普通来源的高度；更多来源在卡内滚动，
-   避免同一网格行被来源最多的作者拉出大块空白。
-
-   这段必须排在 `.frow` 之后：测试用 `index('.frow{')` 取那条规则的正文，
-   放前面的话选择器里的同名片段会被先匹配到，取回来的是这里的规则。 */
-.fauthor{box-sizing:border-box;height:280px;padding:8px 12px;border:1px solid var(--border-10);
-  border-radius:var(--control-radius);background:var(--surface);display:grid;grid-template-rows:auto minmax(0,1fr)}
 /* 进度面板与它上下的分区是同一档容器：发丝边 --field-ring 加 --ground 的面。
    `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
    读起来像另一种东西浮在页面上。 */
@@ -162,22 +143,7 @@
 p.fnote .followtask{color:var(--ink-2)}
 .followtask>.geist-fieldset-content{padding:20px;min-width:0;overflow-wrap:anywhere}
 .followmanage .followtask{margin-bottom:0}
-.fauthorhead{display:flex;align-items:center;gap:9px;padding:10px 0 6px}
-.fauthorhead b{font-size:var(--fs-md);min-width:0;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.fauthorhead .fmeta{margin-left:auto;flex:0 1 auto;min-width:0;white-space:nowrap}
-.fauthorhead .fmeta.warn{margin-left:0}
-.fauthorsources{min-height:0}
-/* 底部这 6px 是给来源卡的落影留的：滚动容器按内容盒裁边，不留就把最后一枚卡
-   贴着底的那圈 shadow-sm（3px 扩散）切掉一半，读起来像最后一行缺了一条边。 */
-.fauthorsources .geist-scroller-container{padding-right:12px;padding-bottom:6px}
-.fauthorsources .fsource:last-child{border-bottom:0}
-.fauthor .fsource.frow{padding-left:0px;display:grid;
-  grid-template-columns:22px minmax(0,1fr) auto auto auto auto;gap:10px;flex-wrap:nowrap}
-.fauthor .fsource.frow>b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .fsource.disabled{opacity:.62}
-.fchannelcheck{display:grid;place-items:center;align-self:center}
-.fsourceactions{display:flex;gap:4px;white-space:nowrap}
 .favatar{width:28px;height:28px;flex:none;border-radius:var(--pill-radius);object-fit:cover;
   background:var(--overlay-5);outline:1px solid oklch(1 0 0 / 0.1);outline-offset:-1px}
 /* 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。 */
@@ -189,17 +155,12 @@ p.fnote .followtask{color:var(--ink-2)}
 .flink{border:0;background:none;padding:0;color:var(--tungsten);font:inherit;cursor:pointer}
 .flink:hover{color:var(--tungsten);text-decoration:none}
 .empty .flink{margin-left:6px}
-.followpagefooter{margin-top:16px}
-.followpageinfo{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--muted)}
-.followpageinfo>div{flex:none}
 .followmanage [data-follow-workspace-panel="list"]{scroll-margin-top:calc(var(--topH) + 16px)}
-@media(max-width:640px){.followpagefooter .board-pagination{flex-wrap:wrap}.followpagefooter .board-pagination>ul{order:3;justify-content:center;width:100%}.followpageinfo{font-size:var(--fs-sm)}}
 
 @media (max-width:640px){
   .fsec{padding:12px 13px 14px}
   .fsechead{margin:-12px -13px 12px;padding:12px 13px}
   .frow{gap:8px}
-  .fsources{grid-template-columns:1fr}
   /* 省略后剩给说明文字的不到 120px，读出来只是「N 个来源 · 」这种半句；
      未看条数在下面每一行来源上都有，标题行让给排序和两个动作键。 */
   .fsechead .fmeta{display:none}

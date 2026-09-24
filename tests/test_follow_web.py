@@ -3044,16 +3044,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn('<Table aria-label="关注来源"', sources)
         self.assertIn('<TableBody renderEmptyState={() => \'这一页没有来源\'}>', sources)
 
-    def test_the_sort_direction_key_is_a_square_icon_button(self):
-        """纯图标键是正方形，边长与同排控件同高，图标不被内边距压扁。
-
-        `.fbtn` 自带 `padding:0 12px` 且排在样式表更后面，单类名的 `.fmanagedir`
-        压不过它：32px 宽减掉 24px 内边距只剩 8px 内容宽，14px 的箭头会被挤成一条
-        6px 的竖线——按钮不方，图标也不成比例。
-        """
-        self.assertPageContains(".fsechead .fmanagedir{width:var(--control-h);padding:0}")
-        self.assertPageContains(".fsechead .fmanagedir svg{width:16px;height:16px}")
-
     def test_follow_source_icons_fail_back_to_plain_text(self):
         """图标由服务端取回落盘（follow_assets.SOURCE_ICON_URLS），页面只认名单、只请求本机。"""
         icons = self.page.split("const SOURCE_ICON_PROVIDERS=new Set([", 1)[1].split("]);", 1)[0]

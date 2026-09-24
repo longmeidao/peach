@@ -10,6 +10,7 @@ import { Button } from '@/components/base/buttons/button';
 import { Select, SelectItem } from '@/components/base/select/select';
 
 import { apiSend } from '../../api';
+import { REPAIR_CARD_TEXT } from '../../management';
 import { JOB_RUNNING_POLL_MS } from '../background-job';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
@@ -20,8 +21,6 @@ import {
   fetchMediaRepair, fetchRepairLibraries, IDLE_REPAIR, MEDIA_REPAIR_KEY, MEDIA_REPAIR_URL,
   missingToolText, REPAIR_LIBRARIES_KEY, statusLine, type MediaRepairState,
 } from './media-repair';
-
-const CARD_TEXT = '修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。';
 
 const libraryMark = (icon: string) => MEDIA_SOURCE_ICONS[icon] || icon;
 const replace = (next: MediaRepairState) => queryClient.setQueryData(MEDIA_REPAIR_KEY, next);
@@ -67,7 +66,7 @@ export function MediaRepairCard() {
       <section aria-label="媒体修复" data-geist-fieldset data-cleanup-task data-cleanup-processing>
         <div data-geist-fieldset-content>
           <h3 className="text-title-2-medium text-text-primary">媒体修复</h3>
-          <p className="text-body-2-regular text-text-secondary">{CARD_TEXT}</p>
+          <p className="text-body-2-regular text-text-secondary">{REPAIR_CARD_TEXT}</p>
           {running && state.total
             ? <Progress label="修复进度" value={state.checked} max={state.total} />
             : null}
