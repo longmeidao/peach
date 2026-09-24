@@ -316,6 +316,47 @@ class OperationalScriptTests(unittest.TestCase):
                                           {"item_id": 1, "written": "否"}], fill_missing=True)
         self.assertEqual(backfill.written_ids(out), {2})
 
+    def test_rule34_duration_only_backfill_touches_nothing_but_empty_durations(self):
+        """授权只覆盖时长时：只挑缺时长的 mp4，不问帖子页，只写 `duration`。"""
+        backfill = load_script("backfill_rule34_details")
+        database = self.tmp_ledger()
+        seeding = sqlite3.connect(database)
+        seeding.execute(
+            "INSERT INTO follow_item VALUES(3,1,'18622790','https://rule34.xxx/?id=3',"
+            "'https://api-cdn.rule34.xxx/images/1/c.jpeg','2026-09-14T03:02:05Z',"
+            "'exact',NULL,'{}')")
+        seeding.commit()
+        untouched = seeding.execute(
+            "SELECT id, published_at, published_precision, metadata_json FROM follow_item"
+            " ORDER BY id").fetchall()
+        seeding.close()
+        heads = []
+
+        class Connector:
+            def _detail(self, post_id):
+                raise AssertionError("只补时长不该打帖子页")
+
+            def _video_seconds(self, url):
+                heads.append(url)
+                return 60.054
+
+        out = database.parent / "duration.csv"
+        args = backfill.build_parser().parse_args(
+            ["--db", str(database), "--apply", "--backup", str(database.parent / "b.db"),
+             "--out", str(out), "--delay", "0", "--duration-only"])
+        with mock.patch.object(backfill, "build_connector", return_value=Connector()), \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(backfill.run(args), 0)
+        self.assertEqual(heads, ["https://api-cdn-mp4.rule34.xxx/images/1/b.mp4"])
+        after = sqlite3.connect(database)
+        self.addCleanup(after.close)
+        self.assertEqual(dict(after.execute("SELECT id, duration FROM follow_item")),
+                         {1: 20.0, 2: 60.054, 3: None})
+        self.assertEqual(after.execute(
+            "SELECT id, published_at, published_precision, metadata_json FROM follow_item"
+            " ORDER BY id").fetchall(), untouched)
+        self.assertEqual(backfill.written_ids(out), {2})
+
     def test_follow_image_dims_backfill_reads_archives_first_and_probes_headers_for_the_rest(self):
         """图片墙的比例占位要每张图都有宽高；存量行里只有 fanbox 记过。
 

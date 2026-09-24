@@ -1142,8 +1142,44 @@ class EnrichedMarkTests(_StoreCase):
                             published_at="2026-08-26T15:20:00Z", partial=True,
                             extra={"tag": "tag"}),
         ], provider="rule34xxx", ref="tag"), moment=MOMENT)
-        self.assertEqual(self.store.enriched_external_ids(source_id, "tag_types"),
+        self.assertEqual(self.store.enriched_external_ids(source_id, "tag_types_duration"),
                          frozenset({"1"}))
+
+    def test_a_rule34xxx_video_without_duration_is_not_yet_enriched(self):
+        """分类有了、mp4 的时长没读到，下次检查还要进第二阶段；图片不需要时长。"""
+        source_id = self._source(provider="rule34xxx", ref="tag")
+        types = {"tag_types": {"tifa": "general"}}
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="clip", title="a",
+                            media_url="https://api-cdn-mp4.rule34.xxx/images/1/a.mp4",
+                            extra=types),
+            FollowCandidate(provider="rule34xxx", external_id="timed", title="b",
+                            media_url="https://api-cdn-mp4.rule34.xxx/images/1/b.mp4",
+                            duration=12.5, extra=types),
+            FollowCandidate(provider="rule34xxx", external_id="still", title="c",
+                            media_url="https://api-cdn.rule34.xxx/images/1/c.jpeg",
+                            extra=types),
+        ], provider="rule34xxx", ref="tag"), moment=MOMENT)
+        self.assertEqual(self.store.enriched_external_ids(source_id, "tag_types_duration"),
+                         frozenset({"timed", "still"}))
+
+    def test_a_partial_candidate_fills_an_empty_duration_without_overwriting(self):
+        """帖子页被挡回来时候选仍是 partial，文件头读到的时长只补空着的那一格。"""
+        source_id = self._source(provider="rule34xxx", ref="tag")
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="empty", title="a"),
+            FollowCandidate(provider="rule34xxx", external_id="known", title="b",
+                            duration=30.0),
+        ], provider="rule34xxx", ref="tag"), moment=MOMENT)
+        self.store.record(source_id, _fetch([
+            FollowCandidate(provider="rule34xxx", external_id="empty", title="a",
+                            partial=True, duration=10.0),
+            FollowCandidate(provider="rule34xxx", external_id="known", title="b",
+                            partial=True, duration=99.0),
+        ], provider="rule34xxx", ref="tag"), moment=MOMENT)
+        durations = dict(self.connection.execute(
+            "SELECT external_id, duration FROM follow_item WHERE source_id=?", (source_id,)))
+        self.assertEqual(durations, {"empty": 10.0, "known": 30.0})
 
     def test_an_unregistered_mark_is_refused_not_silently_matched(self):
         source_id = self._source()

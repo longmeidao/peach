@@ -1420,6 +1420,25 @@ class Rule34XxxConnectorTests(unittest.TestCase):
         self.assertEqual(head.headers["Range"], f"bytes=0-{budget - 1}")
         self.assertLessEqual(budget, 65536)
 
+    def test_a_throttled_post_page_still_brings_the_file_head_duration(self):
+        """文件头在另一个主机上，帖子页被挡回来不牵连它：时长照样带上，候选仍是 partial。"""
+        video = minimal_mp4(timescale=1000, sample_delta=40, samples=250, keyframe_every=25)
+
+        def transport(request, timeout, max_bytes):
+            if request.url.startswith("https://api.rule34.xxx/"):
+                return HttpResponse(200, {}, RULE34XXX_JSON)
+            if request.url.startswith("https://api-cdn-mp4.rule34.xxx/"):
+                return HttpResponse(206, {}, video)
+            return HttpResponse(503, {}, b"slow down")
+
+        result = Rule34XxxConnector(
+            transport=transport, max_items=1, sleeper=lambda _: None,
+            credential=Credential("rule34xxx", {"user_id": "42", "api_key": "sekret"}),
+        ).fetch("lazyprocrastinator")
+        self.assertEqual(result.candidates[0].duration, 10.0)
+        self.assertTrue(result.candidates[0].partial)
+        self.assertNotIn("tag_types", result.candidates[0].extra)
+
     def test_a_throttled_detail_page_is_retried_not_read_as_no_types(self):
         """站方公布的是每 60 秒 60 次，而列表页一页 24 条、每条都要单独打一次详情页。
 
@@ -2109,7 +2128,7 @@ class EnrichPhaseTests(unittest.TestCase):
         self.assertEqual(follow_sources.enrichment_mark(""), "")
         self.assertEqual(follow_sources.enrichment_mark("kemono"), "",
                          "kemono 的探测是收录判定，在列表阶段做，不是第二阶段")
-        self.assertEqual(follow_sources.enrichment_mark("rule34xxx"), "tag_types")
+        self.assertEqual(follow_sources.enrichment_mark("rule34xxx"), "tag_types_duration")
 
     def test_rule34xxx_is_not_marked_by_a_time_the_list_already_gave(self):
         """rule34xxx 的上传时间来自列表的 `change`，第一次落库就有值。
