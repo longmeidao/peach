@@ -7828,30 +7828,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
         self.assertPageContains("api('/api/related?id='+seedId+'&limit=28')")
 
-    def test_multipart_cards_flip_through_their_parts_on_hover(self):
-        """分卷卡悬浮翻各卷画面，版次卡继续走分段视频预览。
-
-        有码、中字、无码是同一段画面的几个来源，翻过去前后两张几乎一样，看着像图
-        卡住了；各卷是不同画面，翻动才说明这张卡代表不止一条。分卷卡因此也不带
-        倒计时环和快退／快进那三颗——它们要操作的 `video.hv` 在这种卡上不存在。
-        各卷只取一次，悬浮预取后点开分卷队列不再发第二个请求。
-        """
-        self.assertPageContains(
-            """${parts?'<div class="mixfaces" data-mix-faces hidden></div>':''}""")
-        self.assertPageContains("function wirePartFlip(el,it){")
-        self.assertPageContains("if(it?.part_group)wirePartFlip(el,it);")
-        self.assertPageContains(
-            "else if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);")
-        # 和 Mix 共用同一套时序、门槛和面渲染，不另写一份动效。
-        self.assertPageContains("wireStackFlip(el,async()=>{")
-        self.assertPageContains(".filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)")
-        # 第一张是卡片自己的静止封面，翻进来的才不会跳取景。
-        self.assertPageContains("return [it,...items.filter(x=>x.id!==it.id)]")
-        self.assertPageContains("const tools=parts?laterTool:")
-        self.assertPageContains("const partGroupCache=new Map();")
-        self.assertPageContains("try{group=await partGroup(seedId)}catch(_e)")
-        self.assertPageLacks("const group=await api('/api/parts?id='+seedId);")
-
     def test_stacked_cards_pile_upward_and_keep_the_row_bottom_aligned(self):
         """Mix、分卷、版次和关注合集的叠层往上溢出，卡片本体不为它留白。
 
@@ -7880,13 +7856,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wireStackFlip(card,async()=>urls.map(url=>")
         self.assertPageContains(
             "if(!card.dataset.flipWired){card.dataset.flipWired='1';wireFollowStackFlip(card)}")
-        # 翻的必须是角标数的那一组，否则卡上写「9 个视频」翻的却是别处的图。
-        self.assertPageContains(
-            "const faceSource=embedded.length>1?embedded:"
-            "(groupedVideos.length>1?groupedVideos:videos);")
-        self.assertPageContains("const faceUrls=isMix?[...new Set([thumbUrl,...faceSource")
-        self.assertPageContains(".filter(entry=>!imageView||entry.media_kind==='image')")
-        self.assertPageContains(".map(entry=>entry.thumb_url)].filter(Boolean))].slice(0,MIX_FLIP_FACES):[];")
+        # 翻哪几张由 `web/js/stack-cards.js` 判定，行为验收在 `test_web_js.py`。
         self.assertPageContains(
             '${faceUrls.length>1?`<div class="mixfaces" '
             'data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:\'\'}')

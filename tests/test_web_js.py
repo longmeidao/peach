@@ -619,6 +619,60 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("face-frame.js", "faceZoom", [self.SMALL_FACE, {"w": 0, "h": 0}, 2], 1),
         ])
 
+    # 关注卡的成员取 `/api/follow` 下发的形状：条目有 `variant_kind`，帖子里的媒体没有。
+    @staticmethod
+    def follow_member(ident, kind="main", media_kind="video"):
+        return {"id": ident, "variant_kind": kind, "media_kind": media_kind,
+                "thumb_url": f"/follow-cover?id={ident}"}
+
+    def test_a_follow_stack_flips_only_between_distinct_pieces(self):
+        # 2026-09-24 生产样本：paheal 一组 9 帖（1 图 8 视频），时长各不相同，是同一段
+        # 动画拆出的几条。每张图都不一样，照翻。
+        burst = [self.follow_member(ident) for ident in range(16385, 16393)]
+        # 主条目加几份 alt（`[4K]`、`(No Text)`）是同一段的另一版，翻过去还是那张图。
+        versions = [self.follow_member(1), self.follow_member(2, "alt"),
+                    self.follow_member(3, "alt"), self.follow_member(4, "wip")]
+        # 封面落在 alt 上、组里只有一条 main：仍然只有一段画面。
+        one_piece = [self.follow_member(2, "alt"), self.follow_member(1)]
+        results = self.run_js([
+            ["stack-cards.js", "followStack",
+             [{"cover": "/follow-cover?id=16385", "videos": burst, "openable": 8}]],
+            ["stack-cards.js", "followStack",
+             [{"cover": "/follow-cover?id=1", "videos": versions, "openable": 4}]],
+            ["stack-cards.js", "followStack",
+             [{"cover": "/follow-cover?id=2", "videos": one_piece, "openable": 2}]],
+            ["stack-cards.js", "followStack",
+             [{"cover": "/follow-cover?id=16385", "videos": burst, "openable": 8, "limit": 3}]],
+        ])
+        self.assertEqual([r["faces"] for r in results[:3]],
+                         [[f"/follow-cover?id={ident}" for ident in range(16385, 16393)], [], []])
+        # 不翻的那几种照样是一叠：纸边和「N 个视频」都还在。
+        self.assertEqual([(r["isMix"], r["mixCount"], r["mixKind"]) for r in results[:3]],
+                         [(True, 8, "视频"), (True, 4, "视频"), (True, 2, "视频")])
+        self.assertEqual(len(results[3]["faces"]), 3)
+
+    def test_a_follow_card_states_its_count_once(self):
+        # 封面角标数的是组里的视频成员时，正文的「N 个版本」数的是同一组，不再说第二遍。
+        burst = [self.follow_member(ident) for ident in range(16385, 16393)]
+        # 一条帖子自带 11 张图、组里另有一条帖子：角标数的是这一帖的图，组里几条帖子是
+        # 另一件事，正文照说；翻的是这一帖自己的图。
+        post = [{"index": i, "media_kind": "image", "thumb_url": f"/img/{i}"} for i in range(11)]
+        results = self.run_js([
+            ["stack-cards.js", "followStack",
+             [{"cover": "/follow-cover?id=16385", "videos": burst, "openable": 8}]],
+            ["stack-cards.js", "followStack",
+             [{"cover": "/img/0", "embedded": post, "videos": burst[:2], "openable": 2,
+               "imageView": True}]],
+            # 图片视图里几条单图帖子：封面没有角标，条数只能由正文说。
+            ["stack-cards.js", "followStack",
+             [{"cover": "/img/0", "embedded": post[:1], "imageView": True, "openable": 3}]],
+            ["stack-cards.js", "followStack", [{"cover": "/img/0", "openable": 1}]],
+        ])
+        self.assertEqual([r["showCount"] for r in results], [False, True, True, False])
+        self.assertEqual((results[1]["mixCount"], results[1]["mixKind"], len(results[1]["faces"])),
+                         (11, "图片", 9))
+        self.assertFalse(results[2]["isMix"])
+
 
 if __name__ == "__main__":
     unittest.main()
