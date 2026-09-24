@@ -48,7 +48,9 @@ Cookie、User-Agent 与出口三者天然一致，不再要用户贴 Cookie；�
 `windowState: normal` 再给坐标，两步），同时登记到 `browser_transport.attention()`，`/healthz` 带出去供排查。
 窗口顶到前面本身就是提醒，托盘不再弹系统通知：验证转圈时页上常常没有可点的框，通知只会打扰；再等
 `CLICK_SECONDS`（120 秒）还没过就报 `ChallengeUnsolved`，`SourceTransport` 按拒绝访问那一档冷却
-（`FIRST_BLOCKED_PAUSE` 起翻倍到 `blocked_pause`），措辞写「浏览器窗口再弹出时点一下验证即可」。过了或放弃
+（`FIRST_BLOCKED_PAUSE` 起翻倍到 `blocked_pause`），措辞写「浏览器窗口再弹出时点一下验证即可」。同一站弹过
+窗口没点过去就记进 `_unsolved`：之后再撞验证只等 `AUTO_SECONDS` 就报，不再弹窗，直到哪次页面正常打开才
+重新弹（实测 Cloudflare 升级判定后一次冷却到期撞一次，每次弹 120 秒窗口而页上无框可点）。过了或放弃
 都把窗口最小化收起（挪回负坐标会被系统钳住，最小化确定不占屏幕）。不用无头模式，不伪造指纹，不接解题
 服务：过验证的是一台真的浏览器，人点不点由人决定。
 

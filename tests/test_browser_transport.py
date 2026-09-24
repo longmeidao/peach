@@ -306,6 +306,42 @@ class BrowserTransportTests(unittest.TestCase):
         self.assertEqual(states, ["normal", None, "minimized"])
         self.assertIsNone(self.processes[0].returncode, "验证没过不是浏览器坏了，进程留着")
 
+    def test_a_site_whose_window_went_unclicked_is_not_shown_again_until_a_page_loads(self):
+        """同一站弹过窗口没点过去：再撞验证只等自动时限就报、不弹窗；哪次页面正常打开后再撞才重新弹。"""
+        passes = {"through": False}
+
+        def handler(method, params):
+            if method == "Runtime.evaluate" and is_document(params):
+                return {"result": {"value": document_reply("https://javten.com/x")}}
+            if method == "Runtime.evaluate":
+                if passes["through"]:
+                    return {"result": {"value": state_reply("JAVten", url="https://javten.com/x")}}
+                return {"result": {"value": state_reply("Just a moment...")}}
+            return self.generic(method, params)
+
+        def window_shows(server):
+            return len([1 for method, params in server.calls
+                        if method == "Browser.setWindowBounds" and params["bounds"].get("windowState") == "normal"])
+
+        transport, server = self.make(handler)
+        request = HttpRequest("GET", "https://javten.com/x", {})
+        with self.assertRaises(ChallengeUnsolved):
+            transport(request, 10, 4096)
+        self.assertEqual(window_shows(server), 1)
+        started = self.clock.now
+        with self.assertRaises(ChallengeUnsolved) as caught:
+            transport(request, 10, 4096)
+        self.assertIn("不再弹", str(caught.exception))
+        self.assertLessEqual(self.clock.now - started, 41, "不弹窗就只等自动时限，不再多等点击那 120 秒")
+        self.assertEqual(window_shows(server), 1, "弹过一次没点过去，这次不弹")
+        self.assertEqual(browser_transport.attention(), [])
+        passes["through"] = True
+        self.assertEqual(transport(request, 10, 4096).status, 200)
+        passes["through"] = False
+        with self.assertRaises(ChallengeUnsolved):
+            transport(request, 10, 4096)
+        self.assertEqual(window_shows(server), 2, "页面正常打开过一次之后再撞验证，重新弹窗")
+
     def test_a_site_gate_is_clicked_and_the_page_it_returns_to_is_read(self):
         """FC2PPV-DB 的年龄门：落到 `/age-verify` 就点匹配的按钮，等地址离开那个路径再读文档。"""
         gate_url = "https://fc2ppv-db.com/ja/age-verify?returnTo=%2Fja%2Fvideos%2F1"
