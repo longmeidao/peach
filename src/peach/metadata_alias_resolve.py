@@ -29,12 +29,27 @@ _PERFORMER_SEGMENT = re.compile(r"[/／].*$")
 #: 剪完仍带空白、分隔符或敬称的不是艺名，是企划文案（`超バドミントン部あかりちゃん`、
 #: `まゆみさん`）。剪到哪儿才对，本身就是个判断。
 _NOT_A_STAGE_NAME = re.compile(r"[\s　/／]|ちゃん$|さん$")
+#: 描述性称呼：身高、人数、外貌、身份与宣传语，不是谁的艺名。fc2cmadb 与 javdb 的
+#: 素人条目常把标题里的称呼填进出演者栏（`145cm色白お嬢様`、`人気焼肉店の看板娘`、
+#: `美女6名`），照抄就是一个永远找不到头像的女优实体。2026-09-24 拿它扫账本全部 939
+#: 位女优，命中 22 位，全是这一类；`OL` 区分大小写，免得撞上 `Ssol`、`Cola酱`。
+_DESCRIPTIVE = re.compile(
+    r"\d+\s*(?:cm|CM|㎝|センチ|名|人)|[!！]"
+    r"|身長|長身|スレンダー|爆乳|巨乳|美乳|美脚|美尻|色白|パイパン|くびれ|クビレ"
+    r"|女子|下級生|上級生|女優|グラドル|現役|看板娘|先生|少女|お嬢様|嬢$|美女|美人|ギャル|OL"
+    r"|人妻|熟女|素人|店員|主婦|新人|の様な|のような|みたいな|働く|平凡|人気|伝説|抜群"
+    r"|きれいな|綺麗な|可愛い|かわいい")
+
+
+def is_descriptive(name: str) -> bool:
+    """这个写法是描述性称呼，不是艺名。"""
+    return bool(_DESCRIPTIVE.search(str(name or "")))
 
 
 def stage_name(name: str) -> str | None:
-    """出演者栏里的艺名；认不出艺名边界时返回 None。"""
+    """出演者栏里的艺名；认不出艺名边界、或剪出来的是描述性称呼时返回 None。"""
     trimmed = _PERFORMER_INTRO.sub("", _PERFORMER_SEGMENT.sub("", str(name or ""))).strip()
-    if not trimmed or _NOT_A_STAGE_NAME.search(trimmed):
+    if not trimmed or _NOT_A_STAGE_NAME.search(trimmed) or is_descriptive(trimmed):
         return None
     return trimmed
 
