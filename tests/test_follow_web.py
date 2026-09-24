@@ -1761,6 +1761,23 @@ class FollowContractTests(unittest.TestCase):
         self.assertEqual({key: stacks["1,3"][key] for key in ("media", "copies", "kind")},
                          {"media": 2, "copies": 2, "kind": "video"})
 
+    def test_archive_copies_of_one_file_count_as_one_medium_without_thumbnails(self):
+        """归档站视频没有缩略图，计数按已存地址里的内容哈希认同一个文件，不发请求。"""
+        digest = "58739e4717810cf6b2d4b4a0c1b5f79a0e2f1e3d4c5b6a79881726354a5b6c7d"
+        for provider, host in (("kemono", "kemono.cr"), ("pawchive", "file.pawchive.pw")):
+            self._seed(candidates=(FollowCandidate(
+                provider=provider, external_id=f"{provider}-1", title="Tifa 360°",
+                media_url=f"https://{host}/data/58/73/{digest}.mp4",
+                published_at="2026-08-31T00:00:00Z"),), provider=provider,
+                ref="fanbox/30917150", label="Pantsushi · fanbox")
+        groups = self._get()["groups"]
+        self.assertEqual(len(groups), 1)
+        stack = groups[0]["stack"]
+        self.assertEqual({key: stack[key] for key in ("media", "copies", "kind")},
+                         {"media": 1, "copies": 2, "kind": "video"})
+        # 哈希只在服务端用，原始地址和哈希都不进载荷。
+        self.assertNotIn(digest, json.dumps(groups))
+
     def test_one_work_the_author_uploaded_to_two_sites_is_one_card(self):
         """rule34video 的标题里夹着作者名，FANBOX 镜像上没有；两条来源都没绑实体。"""
         self._seed(candidates=(FollowCandidate(

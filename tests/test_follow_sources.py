@@ -2145,5 +2145,56 @@ class EnrichPhaseTests(unittest.TestCase):
         self.assertTrue(all("tag_types" not in item.extra for item in listed))
 
 
+class MediaContentHashTests(unittest.TestCase):
+    """哪些站的文件名是内容哈希：地址形状取自 2026-09-24 本机 ledger 的真实行。"""
+
+    SHA = "58739e4717810cf6b2d4b4a0c1b5f79a0e2f1e3d4c5b6a79881726354a5b6c7d"
+    MD5 = "424faa6b8bbe4f4df1d0858f8880b56f"
+
+    def hash_of(self, provider, url):
+        return follow_sources.media_content_hash(provider, url)
+
+    def test_archive_sites_name_files_by_their_sha256(self):
+        for provider, url in (
+                ("kemono", f"https://kemono.cr/data/58/73/{self.SHA}.mp4"),
+                ("pawchive", f"https://file.pawchive.pw/data/58/73/{self.SHA}.mp4"),
+                ("pawchive", f"https://pawchive.pw/58/73/{self.SHA}"),
+                ("coomer", f"https://coomer.st/data/58/73/{self.SHA}.jpg"),
+                ("kemono", f"https://img.kemono.cr/thumbnail/data/58/73/{self.SHA}.png")):
+            with self.subTest(url=url):
+                self.assertEqual(self.hash_of(provider, url), f"sha256:{self.SHA}")
+
+    def test_an_archive_path_whose_folders_disagree_with_the_name_is_not_a_hash(self):
+        self.assertIsNone(self.hash_of("kemono", f"https://kemono.cr/data/aa/bb/{self.SHA}.mp4"))
+        self.assertIsNone(self.hash_of("kemono", f"https://elsewhere.example/data/58/73/{self.SHA}.mp4"))
+
+    def test_boorus_name_originals_by_their_md5(self):
+        self.assertEqual(
+            self.hash_of("rule34xxx", f"https://api-cdn-mp4.rule34.xxx/images/7456/{self.MD5}.mp4"),
+            f"md5:{self.MD5}")
+        self.assertEqual(
+            self.hash_of("rule34paheal", f"https://r34i.paheal-cdn.net/42/4f/{self.MD5}"),
+            f"md5:{self.MD5}")
+        # 同一个文件在两个 booru 上是同一个键。
+        self.assertEqual(
+            self.hash_of("rule34xxx", f"https://api-cdn.rule34.xxx/images/1/{self.MD5}.jpeg"),
+            self.hash_of("rule34paheal", f"https://r34i.paheal-cdn.net/42/4f/{self.MD5}"))
+
+    def test_names_that_are_not_content_hashes_do_not_take_part(self):
+        for provider, url in (
+                # 早年帖子的 40 位文件名无从与站点 hash 字段核对。
+                ("rule34xxx", "https://api-cdn.rule34.xxx/images/1223/"
+                              "759219d0499d863a0de889e13ee4d47a8853a98b.jpg"),
+                ("rule34paheal", f"https://r34i.paheal-cdn.net/aa/bb/{self.MD5}"),
+                # rule34video 路径里那串是签名令牌，fanbox、f95zone 是站内随机 id。
+                ("rule34video", f"https://rule34video.com/get_file/1/{self.MD5}/4583000/4583801/4583801_4k.mp4/"),
+                ("fanbox", "https://downloads.fanbox.cc/images/post/12489354/TjsymhYHYYm8uIQ8QSLYW1LG.png"),
+                ("f95zone", "https://attachments.f95zone.to/2026/09/6501839_1_1.png"),
+                ("unknown", f"https://kemono.cr/data/58/73/{self.SHA}.mp4"),
+                ("kemono", None)):
+            with self.subTest(provider=provider, url=url):
+                self.assertIsNone(self.hash_of(provider, url))
+
+
 if __name__ == "__main__":
     unittest.main()

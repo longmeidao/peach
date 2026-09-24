@@ -37,7 +37,7 @@ from .follow_avatar import MAX_PROFILE_IDENTITIES, profile_identities
 from .follow_sources import (
     CONNECTORS, KemonoConnector, Rule34VideoConnector, build_connector,
     canonical_source_ref, display_thumb_url, f95_attachment_media_items, f95_discussion_image,
-    is_history_end_error, parse_source_url, resource_links,
+    is_history_end_error, media_content_hash, parse_source_url, resource_links,
 )
 from .follow_store import (
     FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
@@ -942,6 +942,25 @@ def _group_payload(group: ReleaseGroup,
     }
 
 
+def _content_hashes(group: ReleaseGroup) -> dict[tuple[int, int | None], str]:
+    """组里每一份媒体的文件内容哈希，键是（条目 id，媒体序号；条目本身为 None）。
+
+    哈希从已存的原始地址解析，原始地址不进 feed，所以在这里算好交给
+    `follow_faces.annotate_group`，不写进载荷。
+    """
+    hashes: dict[tuple[int, int | None], str] = {}
+    for item in (group.primary, *group.variants, *group.duplicates):
+        digest = media_content_hash(item.provider, item.media_url)
+        if digest:
+            hashes[(item.id, None)] = digest
+        for index, media in enumerate(_raw_media_items(item)):
+            if isinstance(media, dict):
+                digest = media_content_hash(item.provider, media.get("url"))
+                if digest:
+                    hashes[(item.id, index)] = digest
+    return hashes
+
+
 def _author_display_name(row) -> str:
     """一条追更来源上那个可读的作者拼写。
 
@@ -1698,7 +1717,8 @@ def q_follow(contract, args) -> dict:
             ranked = ranked[offset:offset + limit]
         # 翻卡与封面计数要知道组里哪几张是同一个画面，判据与缓存见 `follow_faces`。
         faces = getattr(contract, "follow_faces", None)
-        groups = [annotate_group(_group_payload(group, credential_providers), faces)
+        groups = [annotate_group(_group_payload(group, credential_providers), faces,
+                                 _content_hashes(group))
                   for group in ranked]
         facets = _follow_facets(store, everything, by_source, alias_map,
                                 work_icon_root(contract))

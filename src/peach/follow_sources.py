@@ -643,6 +643,15 @@ class _BaseConnector:
         """
         return str(item.thumb_url or "") or None
 
+    @classmethod
+    def content_hash(cls, url: str | None) -> str | None:
+        """这个站的一条媒体地址里有没有文件内容的哈希，有就返回 `算法:十六进制`。
+
+        只有确认按内容哈希命名文件的站点才覆盖；其余站点的文件名是随机 id、帖子号
+        或签名令牌，同名不代表同一个文件，一律返回 None。
+        """
+        return None
+
     def enrich(self, candidates: Iterable[FollowCandidate]) -> tuple[
             tuple[FollowCandidate, ...], int]:
         """第二阶段：为列表页给不出的细节逐条打详情页。返回补全后的候选和打了几次。
@@ -773,9 +782,36 @@ class KemonoConnector(_BaseConnector):
     #: 列表接口一页的条数，2026-08-27 实测为 50（`?o=50` 拿到的是第 51 条起）。
     PAGE_SIZE = 50
 
+    #: 原始文件与缩略图的路径：`/data/<h0h1>/<h2h3>/<sha256>.<ext>`，缩略图前面多一段
+    #: `/thumbnail`，pawchive 旧行还有不带 `/data` 的写法。
+    _FILE_HASH_RE = re.compile(
+        r"(?:/thumbnail)?(?:/data)?/([0-9a-f]{2})/([0-9a-f]{2})/([0-9a-f]{64})(?:\.[a-z0-9]+)?$")
+
     @classmethod
     def provider_keys(cls) -> tuple[str, ...]:
         return tuple(cls.HOSTS)
+
+    @classmethod
+    def content_hash(cls, url: str | None) -> str | None:
+        """kemono 系三站按文件内容的 SHA-256 命名，两级目录是哈希的前四位。
+
+        JSON 里没有单独的哈希字段，判据来自 2026-09-24 本机 ledger 只读实测：三站
+        约 3 万个文件地址的两级目录全部等于文件名的前四位；kemono 与 pawchive 是两个
+        各自抓取的归档站，同一组里 5034 对文件名相同，其中取得签名的 798 对缩略图
+        dHash 至多差 3、色块至多差 2.0（两站各自重压缩缩略图的量级），没有一对画面
+        不同。目录与文件名对不上的地址不认。
+        """
+        try:
+            parsed = urllib.parse.urlsplit(str(url or ""))
+        except ValueError:
+            return None
+        host = (parsed.hostname or "").casefold()
+        if not any(host == base or host.endswith("." + base) for base in cls.HOSTS.values()):
+            return None
+        matched = cls._FILE_HASH_RE.search(parsed.path.casefold())
+        if not matched or matched.group(3)[:4] != matched.group(1) + matched.group(2):
+            return None
+        return f"sha256:{matched.group(3)}"
 
     @classmethod
     def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
@@ -1315,6 +1351,27 @@ class Rule34XxxConnector(_BaseConnector):
                             f"&tags={urllib.parse.quote(tags)}",
                             _slug_label(tags))
 
+    #: 原图与视频：`/images/<目录>/<md5>.<ext>`。早年帖子有 40 位十六进制的文件名，
+    #: 站点的 `hash` 字段与它对不上号时无从核对，不认。
+    _FILE_HASH_RE = re.compile(r"^/images/\d+/([0-9a-f]{32})\.[a-z0-9]+$")
+
+    @classmethod
+    def content_hash(cls, url: str | None) -> str | None:
+        """原图文件名是文件内容的 MD5：dapi 每条帖子自报的 `hash` 就是这个文件名。
+
+        2026-09-24 按本机已落盘的 dapi 原始响应核对，2000 条帖子的 `hash` 与文件名
+        逐条相同。
+        """
+        try:
+            parsed = urllib.parse.urlsplit(str(url or ""))
+        except ValueError:
+            return None
+        host = (parsed.hostname or "").casefold()
+        if host != "rule34.xxx" and not host.endswith(".rule34.xxx"):
+            return None
+        matched = cls._FILE_HASH_RE.match(parsed.path.casefold())
+        return f"md5:{matched.group(1)}" if matched else None
+
     @classmethod
     def display_thumb_url(cls, item) -> str | None:
         matched = cls._PREVIEW_RE.match(str(item.thumb_url or ""))
@@ -1652,6 +1709,28 @@ class Rule34PahealConnector(_BaseConnector):
     _TAG_RE = re.compile(r"^[^/?#]{1,100}$")
     _DURATION_RE = re.compile(r"\b(\d+(?:\.\d+)?)s\b", re.IGNORECASE)
     _TITLE_STOPWORDS = frozenset({"animated", "blender", "video", "sound", "mp4", "webm"})
+    #: 原始文件：`r34i.paheal-cdn.net/<h0h1>/<h2h3>/<md5>`，没有扩展名。
+    _FILE_HASH_RE = re.compile(r"^/([0-9a-f]{2})/([0-9a-f]{2})/([0-9a-f]{32})$")
+
+    @classmethod
+    def content_hash(cls, url: str | None) -> str | None:
+        """原始文件按内容 MD5 命名，两级目录是哈希的前四位。
+
+        2026-09-24 本机 ledger 只读实测：195 个原始文件地址的目录全部等于文件名前四位；
+        同组里 11 对 paheal 与 rule34.xxx 的条目文件名相同，而 rule34.xxx 的文件名就是
+        站点自报的 MD5，两个站各自给出同一串 128 位名字，只能是同一个文件的哈希。
+        """
+        try:
+            parsed = urllib.parse.urlsplit(str(url or ""))
+        except ValueError:
+            return None
+        host = (parsed.hostname or "").casefold()
+        if host != "paheal-cdn.net" and not host.endswith(".paheal-cdn.net"):
+            return None
+        matched = cls._FILE_HASH_RE.match(parsed.path.casefold())
+        if not matched or matched.group(3)[:4] != matched.group(1) + matched.group(2):
+            return None
+        return f"md5:{matched.group(3)}"
 
     @classmethod
     def parse_url(cls, provider: str, parsed: urllib.parse.SplitResult,
@@ -2935,6 +3014,16 @@ def display_thumb_url(item) -> str | None:
     if factory is None:
         return str(item.thumb_url or "") or None
     return factory.display_thumb_url(item)
+
+
+def media_content_hash(provider: str, url: str | None) -> str | None:
+    """这个来源的一条媒体地址里带的文件内容哈希（`算法:十六进制`），没有就是 None。
+
+    只解析已经存下的地址，不发请求。判据归各站连接器：哪些站按内容哈希命名文件是
+    站点知识。
+    """
+    factory = CONNECTORS.get(str(provider or ""))
+    return factory.content_hash(url) if factory is not None else None
 
 
 def is_history_end_error(provider: str, message: str) -> bool:

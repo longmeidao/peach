@@ -6,22 +6,36 @@
 - **翻卡**：悬停时逐张翻成员的缩略图。画面近乎相同的几张翻过去还是那张图，看着像卡住
   了，只翻彼此不同的；剔完只剩一张就不翻。
 - **计数**：封面角标报这张卡合并了几个不同的媒体。同一个视频在两个站各传一份算一个
-  媒体、两个来源；同一个站里画面相近的（一个视频的 4K 与 1080p 两个帖子）仍各算一个。
+  媒体、两个来源；同一个站里只有能证明是同一个文件的才并成一个。
 
 两件事都只作用于显示层：不合并条目、不改 ledger。判错的代价是少翻一帧，或者两个
 不同的视频被写成「2 个来源」，点开以后两条都还在。
 
 判据按先后：
 
-1. 缩略图地址相同，就是同一张。
-2. 否则两道都要过：dHash（`community_catalog.fingerprint`，与封面比对同一份实现）的
+1. 文件内容哈希相同，就是同一个文件。哈希取自已存的原始地址（kemono 系的 SHA-256、
+   rule34.xxx 与 paheal 的 MD5，判据在各站连接器的 `content_hash`），不发任何请求，
+   没有缩略图的归档站视频也判得出。哈希不同不等于画面不同，继续往下判。
+2. 缩略图地址相同，就是同一张。
+3. 否则两道都要过：dHash（`community_catalog.fingerprint`，与封面比对同一份实现）的
    汉明距离，和 8×8 色块逐格的最大 RGB 差。dHash 只看明暗走向，同一个姿势的穿衣版与
    nude 版常常只差 1～4 位；色块把换了颜色的那一块抓出来。
    两边时长都已知时，时长相差不超过 `DURATION_TOLERANCE`，且两道分别不超过
    `FACE_DISTANCE`、`COLOR_DISTANCE`；时长都已知却差得多，是两段不同的内容。
    有一边时长未知（图片、归档站不报时长的视频），改用更严的 `STRICT_FACE_DISTANCE`、
    `STRICT_COLOR_DISTANCE`。
-3. 签名还没取得的只按第 1 条判。
+4. 签名还没取得的只按第 1、2 条判。
+
+计数比翻卡严：同站的两份只按第 1 条合并，第 2、3 条只用于跨站。同站按画面找不到安全
+间隔，2026-09-24 在 11745 组、66522 对可比的同站成对上量过：
+
+- 同一个文件（哈希相同）的 255 对，dHash 与色块差全是 0。
+- 哈希不同、dHash ≤2 且色块差 <2 的 147 对里混着三种东西：同一张图的 4K 与 8K 两个
+  文件（色块差 0.33–0.67）、同一帖子里重复上传的同一张（0–0.7），和只改了局部的差分
+  图。「Tifa」一帖里的两对差分，色块差只有 1.67 与 2.0，放到 32×32 网格上最大格差却有
+  26–27。8×8 签名看不见局部改动，跨站同一文件各自重压缩后的色块差也有 0.7–2.7，
+  差分落在真重复的区间里，没有阈值能把两群隔开。
+- 同站的 alt、WIP 与 main 即便哈希相同也不合并（实测 3 对，都是 remake 帖子附了原图）。
 
 签名在服务端按缩略图算，缓存在 `peach-data/generated/posters/follow-faces/`，不进
 ledger。`/api/follow` 只查缓存，缺的交给后台线程逐张补，下一次打开就用得上；
@@ -38,7 +52,7 @@ import time
 import urllib.parse
 from collections import deque
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -122,11 +136,14 @@ class Signature:
 
 @dataclass(frozen=True)
 class Face:
-    """一张缩略图的比对依据。"""
+    """一份媒体的比对依据。`content` 是文件内容哈希（`算法:十六进制`），取不到为 None；
+    `variant` 是所属成员的 `variant_kind`。"""
     provider: str
     url: str
     duration: float | None
     signature: Signature | None
+    content: str | None = None
+    variant: str = "main"
 
 
 def _duration(value) -> float | None:
@@ -137,7 +154,14 @@ def _duration(value) -> float | None:
     return seconds if seconds > 0 else None
 
 
+def same_file(one: Face, other: Face) -> bool:
+    """两份的文件内容哈希都已知且相同。"""
+    return one.content is not None and one.content == other.content
+
+
 def same_face(one: Face, other: Face) -> bool:
+    if same_file(one, other):
+        return True
     if one.url and one.url == other.url:
         return True
     if one.signature is None or other.signature is None:
@@ -149,36 +173,61 @@ def same_face(one: Face, other: Face) -> bool:
     return distance <= STRICT_FACE_DISTANCE and color <= STRICT_COLOR_DISTANCE
 
 
+def _exact(one: Face, other: Face) -> bool:
+    return same_file(one, other) or bool(one.url and one.url == other.url)
+
+
 def face_clusters(faces: list[Face]) -> list[int]:
-    """每张缩略图归到哪一簇：与已有某簇的代表是同一张就进那一簇，否则自成一簇。"""
-    representatives: list[Face] = []
+    """每张缩略图归到哪一簇，否则自成一簇。
+
+    同一文件、同一缩略图地址与簇里任何一份相同都进那一簇；画面相近只和簇首比，免得相近的
+    一张接一张串下去。帖子自身那份的哈希取的是视频，缩略图却是帖里那张图：别的站上同一张图
+    只能凭哈希认到帖里那一份，只比簇首就会把同一张图翻两次。
+    """
+    clusters: list[list[Face]] = []
     assigned: list[int] = []
     for face in faces:
-        cluster = next((index for index, representative in enumerate(representatives)
-                        if same_face(representative, face)), None)
+        cluster = next((index for index, members in enumerate(clusters)
+                        if same_face(members[0], face)
+                        or any(_exact(member, face) for member in members[1:])), None)
         if cluster is None:
-            cluster = len(representatives)
-            representatives.append(face)
+            cluster = len(clusters)
+            clusters.append([])
+        clusters[cluster].append(face)
         assigned.append(cluster)
     return assigned
 
 
-def media_clusters(faces: list[Face]) -> list[int]:
-    """合并的媒体归成几个不同的媒体：只有别的站上的同一张才并进来。
+def _joins_by_file(members: list[Face], face: Face) -> bool:
+    """按内容哈希并进这一簇：簇里有同一个文件，且不把同站的 alt／WIP 与 main 并在一起。"""
+    if not any(same_file(member, face) for member in members):
+        return False
+    return all(member.provider != face.provider or (member.variant == "main") == (face.variant == "main")
+               for member in members)
 
-    一簇里每个站至多一份。同一个站里画面相近的是那个站自己的几个版本，用户要各算一个；
-    借着跨站那一份把同站的两条串成一簇，计数就把它们吞掉了。
+
+def _joins_by_face(members: list[Face], face: Face) -> bool:
+    """按画面并进这一簇：只认跨站，且簇里还没有这个站的任何一份，只和簇首比。"""
+    return (all(member.provider != face.provider for member in members)
+            and same_face(members[0], face))
+
+
+def media_clusters(faces: list[Face]) -> list[int]:
+    """合并的媒体归成几个不同的媒体。
+
+    同一个文件（内容哈希相同）不论同站跨站都并成一个。按画面只并别的站上的同一张，
+    一簇里每个站至多一份：同站画面相近的可能是差分或另一个分辨率的文件，借着跨站那一份
+    把同站的两条串成一簇，计数就把它们吞掉了。
     """
-    clusters: list[list[int]] = []
+    clusters: list[list[Face]] = []
     assigned: list[int] = []
-    for position, face in enumerate(faces):
+    for face in faces:
         cluster = next((index for index, members in enumerate(clusters)
-                        if all(faces[member].provider != face.provider for member in members)
-                        and same_face(faces[members[0]], face)), None)
+                        if _joins_by_file(members, face) or _joins_by_face(members, face)), None)
         if cluster is None:
             cluster = len(clusters)
             clusters.append([])
-        clusters[cluster].append(position)
+        clusters[cluster].append(face)
         assigned.append(cluster)
     return assigned
 
@@ -195,43 +244,53 @@ def _members(group: dict) -> list[dict]:
     return members
 
 
-def annotate_group(group: dict, index: "FollowFaceIndex | None" = None) -> dict:
+def annotate_group(group: dict, index: "FollowFaceIndex | None" = None,
+                   hashes: dict[tuple[int, int | None], str] | None = None) -> dict:
     """给一组 `/api/follow` 载荷写上翻卡与计数要用的那几个字段，原地改并返回。
 
     - 每个带缩略图的成员与媒体加 `face`：组内编号，编号相同就是同一个画面。
-    - 组上加 `stack`：`media` 是跨站去重后不同媒体的个数，`copies` 是合并了几份，
+    - 组上加 `stack`：`media` 是去重后不同媒体的个数，`copies` 是合并了几份，
       `kind` 是 `video`／`image`／`mixed`，`faces` 是彼此不同的翻卡画面。
       合并的媒体不到两份时 `stack` 为 None。
 
     合并的媒体：成员带媒体清单的数清单里每一张，没有清单的数成员自己。
+    `hashes` 是各份的文件内容哈希，键是（成员 id，媒体序号；成员本身为 None），
+    由调用方从原始地址解析；原始地址不在载荷里。
     """
+    hashes = hashes or {}
     thumbs: list[tuple[dict, Face]] = []
-    merged: list[tuple[dict, str, str]] = []
+    merged: list[tuple[dict, Face, str]] = []
     for member in _members(group):
         provider = str(member.get("provider") or "")
+        variant = str(member.get("variant_kind") or "main")
+        ident = member.get("id")
+        own = Face(provider, str(member.get("thumb_url") or ""), _duration(member.get("duration")),
+                   None, hashes.get((ident, None)), variant)
+        if own.url:
+            thumbs.append((member, own))
         media = [entry for entry in member.get("media_items") or ()
                  if entry.get("media_kind") in MEDIA_KINDS]
-        if member.get("thumb_url"):
-            thumbs.append((member, Face(provider, str(member["thumb_url"]),
-                                        _duration(member.get("duration")), None)))
         for entry in media:
-            if entry.get("thumb_url"):
-                thumbs.append((entry, Face(provider, str(entry["thumb_url"]), None, None)))
-        if media:
-            merged.extend((entry, provider, str(entry["media_kind"])) for entry in media)
-        elif member.get("media_kind") in MEDIA_KINDS:
-            merged.append((member, provider, str(member["media_kind"])))
+            face = Face(provider, str(entry.get("thumb_url") or ""), None, None,
+                        hashes.get((ident, entry.get("index"))), variant)
+            if face.url:
+                thumbs.append((entry, face))
+            merged.append((entry, face, str(entry["media_kind"])))
+        if not media and member.get("media_kind") in MEDIA_KINDS:
+            merged.append((member, own, str(member["media_kind"])))
     if len(merged) < 2:
         group["stack"] = None
         return group
     signatures = index.lookup([face.url for _, face in thumbs]) if index else {}
-    faces = [Face(face.provider, face.url, face.duration, signatures.get(face.url))
-             for _, face in thumbs]
+
+    def signed(face: Face) -> Face:
+        signature = signatures.get(face.url) if face.url else None
+        return replace(face, signature=signature) if signature is not None else face
+
+    faces = [signed(face) for _, face in thumbs]
     for (payload, _), cluster in zip(thumbs, face_clusters(faces)):
         payload["face"] = cluster
-    by_payload = {id(payload): face for (payload, _), face in zip(thumbs, faces)}
-    media_faces = [by_payload.get(id(payload)) or Face(provider, "", None, None)
-                   for payload, provider, _ in merged]
+    media_faces = [signed(face) for _, face, _ in merged]
     kinds = {kind for _, _, kind in merged}
     distinct: list[dict] = []
     seen_faces: set[int] = set()
@@ -279,6 +338,10 @@ class FollowFaceIndex:
 
     @staticmethod
     def _key(url: str) -> str:
+        # 帖子里点名其他视频的首帧（`/follow-cover?id=N&media=M`）键上加 `slot:` 前缀：
+        # 同一地址不带前缀的那一条签名取自第一个视频的首帧，不是这一段的画面。
+        if url.startswith(_COVER_ROUTE + "?") and "media=" in url:
+            url = f"slot:{url}"
         return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
     def _load(self) -> dict[str, list]:
@@ -367,13 +430,20 @@ class FollowFaceIndex:
 
     def _read(self, url: str) -> bytes | None:
         if url.startswith(_COVER_ROUTE + "?"):
-            ident = urllib.parse.parse_qs(url.split("?", 1)[1]).get("id", [""])[0]
-            if not ident.isdigit() or self.cover_root is None:
+            query = urllib.parse.parse_qs(url.split("?", 1)[1])
+            ident = query.get("id", [""])[0]
+            media = query.get("media", [""])[0]
+            if (not ident.isdigit() or (media and not media.isdigit())
+                    or self.cover_root is None):
                 return None
             # 视频首帧由 `/follow-cover` 生成，卡片显示过就在缓存里；还没生成的下次再说。
-            # 写到一半的临时文件（`*.tmp.jpg`）同样匹配这个模式，要跳过。
-            cached = [path for path in self.cover_root.glob(f"{ident}-*.jpg")
-                      if not path.name.endswith(".tmp.jpg")]
+            # 文件名是 `<id>-<指纹>.jpg`，点名的其他视频是 `<id>-m<序号>-<指纹>.jpg`
+            # （`follow_covers`）；指纹是十六进制，不会以 m 开头。写到一半的临时文件
+            # （`*.tmp.jpg`）同样匹配这个模式，要跳过。
+            prefix = f"{ident}-m{media}-" if media else f"{ident}-"
+            cached = [path for path in self.cover_root.glob(f"{prefix}*.jpg")
+                      if not path.name.endswith(".tmp.jpg")
+                      and (media or not path.name[len(prefix):].startswith("m"))]
             return max(cached, key=lambda path: path.stat().st_mtime).read_bytes() if cached else None
         host = _host(url)
         if not resolves_publicly(host):
