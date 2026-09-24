@@ -30,7 +30,7 @@ from starlette.staticfiles import StaticFiles
 
 from . import (
     avatar_face, avatar_picker, avatar_provider, follow_assets, images,
-    jav_poster_crop, link_marks, scraping_access, site_icons, subtitles,
+    jav_poster_crop, link_marks, scraping_access, site_icons, social_links, subtitles,
     taste_history, timeline_sheets, web_follow, web_settings,
 )
 from .config import GENERATED_DIR
@@ -938,10 +938,12 @@ def _site_mark_response(state, url: str, root: Path):
     if cached is None:
         return JSONResponse({"error": "unavailable"}, status_code=404)
     if not link_marks.is_fresh(cached, ttl=_metadata_ttl(state)):
+        page, locate = social_links.archive_view(url)
+
         def fetch(target: str):
             try:
                 upstream = state.http_transport.client.get(
-                    target, headers={"User-Agent": USER_AGENT},
+                    locate(target), headers={"User-Agent": USER_AGENT},
                     timeout=8, follow_redirects=True)
             except (OSError, httpx.HTTPError):
                 return None
@@ -950,7 +952,7 @@ def _site_mark_response(state, url: str, root: Path):
             return upstream.content, upstream.headers.get("content-type", "")
 
         # 两条通道都不适用时退回原样缩图：糊一点也好过露出地球图标。
-        made = site_icons.best_mark(url, fetch, link_marks.render_mark,
+        made = site_icons.best_mark(page, fetch, link_marks.render_mark,
                                     fallback=link_marks.plain_mark)
         if made:
             root.mkdir(parents=True, exist_ok=True)

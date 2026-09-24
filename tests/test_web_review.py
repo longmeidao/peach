@@ -864,6 +864,26 @@ class ReviewQueueTests(unittest.TestCase):
                           "两家原文各补出一句时不猜")
         self.assertIsNone(fill_masked_title(whole, [whole]))
 
+    def test_the_string_javdb_slips_into_a_title_does_not_land(self):
+        """社区之间听 javdb，它插的 `**pp*jonsoo` 剥掉之后才去和 JavArchive 比；卖家的码不动。"""
+        self._asset(133, "FC2-PPV-4241237", "FC2-PPV-4241237.mp4")
+        self.write_metadata_rows([
+            {"item_key": "MARK:title", "field": "title", "current": "", "code": "FC2-PPV-4241237",
+             "candidates": [{"source": "javdb", "value": "ゆあちゃんラスト作品！**pp*jonsoo カメラマンあり撮影"},
+                            {"source": "javarchive", "value": "ゆあちゃんラスト作品！カメラマンあり撮影"}]},
+        ])
+        self._auto()
+        con = sqlite3.connect(self.db_path)
+        try:
+            title = con.execute("SELECT catalog_title FROM asset WHERE id=133").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(title, "ゆあちゃんラスト作品！カメラマンあり撮影")
+        from peach.catalog_rules import strip_scrape_mark
+        self.assertEqual(strip_scrape_mark("【取り消し確定？】**zs*yj*ospnIカップ"), "【取り消し確定？】Iカップ")
+        self.assertEqual(strip_scrape_mark("【真夏THE LAST**】特別な"), "【真夏THE LAST**】特別な")
+        self.assertEqual(strip_scrape_mark("完全顔出し都立**超スジ"), "完全顔出し都立**超スジ")
+
     def test_library_collection_fills_an_empty_field_from_a_lone_community_source(self):
         """官方落空时只有 javdb 一家也补空，note 里分得清是一家还是两家一致（ADR-0034）。"""
         self._asset(90, "ABW-358", "ABW-358.mp4")

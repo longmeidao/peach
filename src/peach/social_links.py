@@ -76,6 +76,27 @@ def is_archive(url: str) -> bool:
     return under(host_of(url), ARCHIVE_HOSTS)
 
 
+#: 存档快照地址里的时间戳与原地址：`/web/20220512171503/https://ones-double.com/…`。
+ARCHIVE_PATH = re.compile(r"^/web/(\d{4,14})[a-z_]*/(https?://.+)$", re.I)
+
+
+def archive_view(url: str) -> tuple[str, Callable[[str], str]]:
+    """按哪个地址找站点图标，以及每个要取的地址怎么改写。
+
+    存档快照的主机是存档站自己，照它找图标，每一家关了门的公司都会顶着 Internet Archive
+    的图标。所以按快照里的原站去找，要取的每个地址都换成同一时刻的存档原件（`id_`
+    返回的是原始字节，不带存档站插的工具栏）。不是存档快照的原样取。
+    """
+    parts = urlsplit(url)
+    path = parts.path + (f"?{parts.query}" if parts.query else "")
+    found = ARCHIVE_PATH.match(path) if is_archive(url) else None
+    if found is None:
+        return url, lambda target: target
+    stamp = found.group(1)
+    return found.group(2), lambda target: (
+        target if is_archive(target) else f"https://web.archive.org/web/{stamp}id_/{target}")
+
+
 def canonical_url(url: str) -> str:
     """改过名的站点换成现主机，主机名一律小写；其余原样返回。
 

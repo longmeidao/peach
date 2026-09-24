@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from peach import site_icons   # noqa: E402
+from peach import site_icons, social_links   # noqa: E402
 
 
 def urls(candidates):
@@ -244,6 +244,34 @@ class DiscoverTests(unittest.TestCase):
     def test_an_override_candidate_is_entity_scoped(self):
         got = site_icons.overrides_for("https://bangbros.com/websites/BangBus")
         self.assertEqual([c.scope for c in got], [site_icons.ENTITY_SCOPE])
+
+
+class ArchiveViewTests(unittest.TestCase):
+    """存档链接的圆标按原站找：图标是那家公司的，取图走同一份快照。"""
+
+    SNAPSHOT = ("https://web.archive.org/web/20220512171503/"
+                "https://ones-double.com/people/mikami-yua/")
+
+    def test_a_snapshot_is_looked_up_as_the_site_it_preserved(self):
+        page, locate = social_links.archive_view(self.SNAPSHOT)
+        self.assertEqual(page, "https://ones-double.com/people/mikami-yua/")
+        self.assertEqual(locate("https://ones-double.com/favicon.ico"),
+                         "https://web.archive.org/web/20220512171503id_/"
+                         "https://ones-double.com/favicon.ico")
+
+    def test_an_address_already_inside_the_archive_is_fetched_as_is(self):
+        _, locate = social_links.archive_view(self.SNAPSHOT)
+        pinned = site_icons.overrides_for("https://ones-double.com/")[0].url
+        self.assertEqual(locate(pinned), pinned)
+
+    def test_a_live_link_is_left_alone(self):
+        page, locate = social_links.archive_view("https://faleno.jp/top/")
+        self.assertEqual((page, locate("https://faleno.jp/favicon.ico")),
+                         ("https://faleno.jp/top/", "https://faleno.jp/favicon.ico"))
+
+    def test_the_archive_front_page_is_not_a_snapshot(self):
+        page, _ = social_links.archive_view("https://web.archive.org/")
+        self.assertEqual(page, "https://web.archive.org/")
 
 
 def reject_host_scope(candidate, data, content_type=""):

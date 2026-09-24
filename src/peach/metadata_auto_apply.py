@@ -25,6 +25,7 @@ from .catalog_rules import (
     normalise_code_key,
     release_code_from_filename,
     same_release_code,
+    strip_scrape_mark,
     superseded_taste_tags,
 )
 from .entities import (
@@ -491,16 +492,20 @@ def _unmasked_titles(field: str, candidates: list[dict], current: str = "") -> l
     FC2 官方页与镜像 fc2cmadb 把敏感词换成星号，JavArchive、javdb 给的是原文；链上
     fc2 排在前面，不补的话打码那份就压过原文落进账本。账本现值也算一份原文：存量补好
     之后下一轮只剩打码那一家时，补出来的还是现值，不会被星号覆盖回去。
+
+    javdb 插进去的混淆串（`strip_scrape_mark`）先剥掉再补：社区之间听 javdb，不剥的话
+    只有 JavArchive 与 javdb 两家时，带混淆串的那份就压过 JavArchive 的原文。
     """
     if field not in {"title", "original_title"}:
         return candidates
-    originals = [str(c.get("display_value") or "") for c in candidates] + [current]
+    shown = [str(c.get("display_value") or "") for c in candidates]
+    stripped = [strip_scrape_mark(text) for text in shown]
+    originals = stripped + [strip_scrape_mark(current)]
     rows = []
-    for candidate in candidates:
-        filled = fill_masked_title(str(candidate.get("display_value") or ""), originals)
-        rows.append(candidate if filled is None else {
-            **candidate, "value": filled, "display_value": filled,
-            "masked_value": str(candidate.get("display_value") or "")})
+    for candidate, text, clean in zip(candidates, shown, stripped):
+        value = fill_masked_title(clean, originals) or clean
+        rows.append(candidate if value == text else {
+            **candidate, "value": value, "display_value": value, "masked_value": text})
     return rows
 
 
