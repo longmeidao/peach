@@ -619,59 +619,66 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("face-frame.js", "faceZoom", [self.SMALL_FACE, {"w": 0, "h": 0}, 2], 1),
         ])
 
-    # 关注卡的成员取 `/api/follow` 下发的形状：条目有 `variant_kind`，帖子里的媒体没有。
+    # 关注卡的 `stack` 取 `/api/follow` 下发的形状（`follow_faces.annotate_group`）：
+    # `faces` 里编号相同的是同一个画面，服务端已按编号去重。
     @staticmethod
-    def follow_member(ident, kind="main", media_kind="video"):
-        return {"id": ident, "variant_kind": kind, "media_kind": media_kind,
-                "thumb_url": f"/follow-cover?id={ident}"}
+    def follow_stack(media, copies, kind, faces):
+        return {"media": media, "copies": copies, "kind": kind,
+                "faces": [{"thumb_url": url, "face": face, "media_kind": media_kind}
+                          for url, face, media_kind in faces]}
 
     def test_a_follow_stack_flips_only_between_distinct_pieces(self):
-        # 2026-09-24 生产样本：paheal 一组 9 帖（1 图 8 视频），时长各不相同，是同一段
-        # 动画拆出的几条。每张图都不一样，照翻。
-        burst = [self.follow_member(ident) for ident in range(16385, 16393)]
-        # 主条目加几份 alt（`[4K]`、`(No Text)`）是同一段的另一版，翻过去还是那张图。
-        versions = [self.follow_member(1), self.follow_member(2, "alt"),
-                    self.follow_member(3, "alt"), self.follow_member(4, "wip")]
-        # 封面落在 alt 上、组里只有一条 main：仍然只有一段画面。
-        one_piece = [self.follow_member(2, "alt"), self.follow_member(1)]
+        # 2026-09-24 生产样本：paheal 一组 9 帖（1 图 8 视频），画面各不相同，照翻。
+        burst = self.follow_stack(9, 9, "mixed",
+                                  [(f"/follow-cover?id={i}", i, "video") for i in range(8)]
+                                  + [("/img/8", 8, "image")])
+        # 主条目加两份穿衣版一致的 alt，服务端把三张判成一个画面：只剩一张，不翻。
+        one_face = self.follow_stack(3, 3, "video", [("/follow-cover?id=1", 0, "video")])
         results = self.run_js([
             ["stack-cards.js", "followStack",
-             [{"cover": "/follow-cover?id=16385", "videos": burst, "openable": 8}]],
+             [{"cover": "/follow-cover?id=0", "coverFace": 0, "stack": burst}]],
             ["stack-cards.js", "followStack",
-             [{"cover": "/follow-cover?id=1", "videos": versions, "openable": 4}]],
+             [{"cover": "/follow-cover?id=1", "coverFace": 0, "stack": one_face}]],
+            # 封面落在 alt 上、地址不同却是同一个画面：按编号认，不按地址。
             ["stack-cards.js", "followStack",
-             [{"cover": "/follow-cover?id=2", "videos": one_piece, "openable": 2}]],
+             [{"cover": "/follow-cover?id=2", "coverFace": 0, "stack": one_face}]],
             ["stack-cards.js", "followStack",
-             [{"cover": "/follow-cover?id=16385", "videos": burst, "openable": 8, "limit": 3}]],
+             [{"cover": "/follow-cover?id=0", "coverFace": 0, "stack": burst, "limit": 3}]],
+            # 图片视图只翻图片。
+            ["stack-cards.js", "followStack",
+             [{"cover": "/img/8", "coverFace": 8, "stack": burst, "imageView": True}]],
         ])
-        self.assertEqual([r["faces"] for r in results[:3]],
-                         [[f"/follow-cover?id={ident}" for ident in range(16385, 16393)], [], []])
-        # 不翻的那几种照样是一叠：纸边和「N 个视频」都还在。
-        self.assertEqual([(r["isMix"], r["mixCount"], r["mixKind"]) for r in results[:3]],
-                         [(True, 8, "视频"), (True, 4, "视频"), (True, 2, "视频")])
+        self.assertEqual(results[0]["faces"],
+                         [f"/follow-cover?id={i}" for i in range(8)] + ["/img/8"])
+        self.assertEqual([r["faces"] for r in results[1:3]], [[], []])
+        # 不翻的照样是一叠：纸边和角标都还在。
+        self.assertEqual([r["isMix"] for r in results[1:3]], [True, True])
         self.assertEqual(len(results[3]["faces"]), 3)
+        self.assertEqual(results[4]["faces"], [])
 
-    def test_a_follow_card_states_its_count_once(self):
-        # 封面角标数的是组里的视频成员时，正文的「N 个版本」数的是同一组，不再说第二遍。
-        burst = [self.follow_member(ident) for ident in range(16385, 16393)]
-        # 一条帖子自带 11 张图、组里另有一条帖子：角标数的是这一帖的图，组里几条帖子是
-        # 另一件事，正文照说；翻的是这一帖自己的图。
-        post = [{"index": i, "media_kind": "image", "thumb_url": f"/img/{i}"} for i in range(11)]
+    def test_a_follow_card_counts_distinct_media_once(self):
+        video = [("/v", 0, "video")]
         results = self.run_js([
+            # 同一个视频在两个站各一份：一个媒体、两个来源。
+            ["stack-cards.js", "followStack", [{"stack": self.follow_stack(1, 2, "video", video)}]],
+            # 三个不同的视频，其中一个另有跨站那份：只报不同视频的数目。
+            ["stack-cards.js", "followStack", [{"stack": self.follow_stack(3, 4, "video", video)}]],
             ["stack-cards.js", "followStack",
-             [{"cover": "/follow-cover?id=16385", "videos": burst, "openable": 8}]],
-            ["stack-cards.js", "followStack",
-             [{"cover": "/img/0", "embedded": post, "videos": burst[:2], "openable": 2,
+             [{"stack": self.follow_stack(11, 11, "image", [("/img", 0, "image")]),
                "imageView": True}]],
-            # 图片视图里几条单图帖子：封面没有角标，条数只能由正文说。
+            # 图和视频混在一组：量词用中性的「个媒体」，字形跟当前视图。
+            ["stack-cards.js", "followStack", [{"stack": self.follow_stack(9, 9, "mixed", video)}]],
             ["stack-cards.js", "followStack",
-             [{"cover": "/img/0", "embedded": post[:1], "imageView": True, "openable": 3}]],
-            ["stack-cards.js", "followStack", [{"cover": "/img/0", "openable": 1}]],
+             [{"stack": self.follow_stack(9, 9, "mixed", video), "imageView": True}]],
+            # 只合并了一份，或者没有 stack：不是一叠，没有角标。
+            ["stack-cards.js", "followStack", [{"stack": None}]],
+            ["stack-cards.js", "followStack", [{"cover": "/img/0"}]],
         ])
-        self.assertEqual([r["showCount"] for r in results], [False, True, True, False])
-        self.assertEqual((results[1]["mixCount"], results[1]["mixKind"], len(results[1]["faces"])),
-                         (11, "图片", 9))
-        self.assertFalse(results[2]["isMix"])
+        self.assertEqual([(r["isMix"], r["label"], r["glyph"]) for r in results],
+                         [(True, "2 个来源", "play"), (True, "3 个视频", "play"),
+                          (True, "11 张图片", "pics"), (True, "9 个媒体", "play"),
+                          (True, "9 个媒体", "pics"), (False, "", "play"),
+                          (False, "", "play")])
 
 
 if __name__ == "__main__":

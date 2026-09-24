@@ -38,6 +38,7 @@ from .config import LOCATION_ROOT_DECLARATIONS, PeachSettings
 from .ffmpeg import FFmpegResolver
 from .follow_scheduler import FEED_JOB_ID, FollowScheduleConfig, FollowUpdateScheduler
 from .follow_covers import FollowCoverService
+from .follow_faces import FollowFaceIndex
 from .follow_stream import FollowMediaResolver
 from .http import HttpxTransport
 from .media import (
@@ -178,6 +179,9 @@ def create_app(
         lambda provider: web_follow._credential_store(contract).load(provider))
     follow_cover_service = FollowCoverService(
         resolver, follow_media_resolver, settings.poster_root / "follow")
+    contract.follow_faces = FollowFaceIndex(
+        settings.poster_root / "follow-faces", http_transport,
+        cover_root=settings.poster_root / "follow")
     filesystem = FilesystemBackend(
         settings.allowed_media_roots,
         settings.snapshot_root,

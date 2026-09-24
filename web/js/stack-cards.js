@@ -1,32 +1,35 @@
-/* 关注卡叠层的三件判断：封面角标数的是哪一组、悬浮翻哪几张、正文还要不要再报一次条数。
+/* 关注卡叠层的两件判断：封面角标报什么、悬浮翻哪几张。
 
-   叠层纸边说的是「这张卡不止一条」，翻动说的是「这几条长得不一样」，两件事分开判。
-   同一段画面的几份翻过去还是那张图，看着像卡住了：alt 与 WIP 是某一段的另一版
-   （`follow_variants` 按标题标记判定，服务端随每个成员下发 `variant_kind`），只留纸边、
-   不进翻动。组里独立的几段（booru 连发、同一包短片、跨站的同作品帖）是 `main`，照翻。
-   一条帖子自带的多张媒体没有这个字段，每一张本来就是不同的。 */
+   哪几张是同一个画面由服务端判（`peach.follow_faces`，缩略图 dHash、8×8 色块加时长）：每个成员
+   和媒体带 `face`，编号相同就是同一个画面；组上的 `stack` 给出跨站去重后的媒体数
+   `media`、合并了几份 `copies`、媒体类型 `kind` 和彼此不同的翻卡画面 `faces`。
+   这里只决定怎么说、翻哪几张。
 
-const isImage = (entry) => entry?.media_kind === 'image';
-const isPiece = (entry) => !entry?.variant_kind || entry.variant_kind === 'main';
+   角标只报一个数：这张卡合并了几个不同的媒体。同一个视频在两个站各传一份是一个媒体、
+   两个来源；去重后只剩一个媒体时，报的就是来源数。量词随媒体类型走：视频论「个」，
+   图片论「张」，与详情里「第 1 张，共 11 张」同一套；图和视频混在一起时说「个媒体」，
+   不说「项」——「项」在关注页数的是更新条目，读起来像又在数帖子。 */
 
-export function followStack({
-  cover = '', embedded = [], groupedVideos = [], videos = [],
-  imageView = false, openable = 0, limit = 9,
-} = {}) {
-  /* 帖子自带的媒体优先：角标数的就是点开后那一串。没有才数组里的视频成员。 */
-  const own = embedded.length > 1 ? embedded : groupedVideos.length > 1 ? groupedVideos : null;
-  const source = own || videos;
-  const isMix = source.length > 1;
-  const mixKind = source.length && source.every(isImage) ? '图片'
-    : source.some(isImage) ? '媒体' : '视频';
-  /* 图片视图里只翻图片：这一叠说的就是这几张图。第一张是静止封面本身，
-     否则一翻就露出取景差别。 */
-  const pieces = source.filter((entry) => (!imageView || isImage(entry)) && isPiece(entry));
-  const faces = pieces.length > 1
-    ? [...new Set([cover, ...pieces.map((entry) => entry.thumb_url)].filter(Boolean))].slice(0, limit)
-    : [];
-  /* 封面角标数的是组里的视频成员时，它和「N 个版本」数的是同一组，正文不再说第二遍。
-     角标数的是一条帖子里的媒体时，组里有几条帖子是另一件事，仍然要说。 */
-  const showCount = openable > 1 && !(isMix && !own);
-  return { isMix, mixCount: isMix ? source.length : 0, mixKind, faces, showCount };
+const UNITS = { video: '个视频', image: '张图片', mixed: '个媒体' };
+
+export function followStack({ cover = '', coverFace = null, stack = null, imageView = false, limit = 9 } = {}) {
+  const media = stack?.media || 0;
+  const copies = stack?.copies || 0;
+  const kind = stack?.kind || '';
+  const label = media > 1 ? `${media} ${UNITS[kind] || UNITS.mixed}`
+    : copies > 1 ? `${copies} 个来源` : '';
+  /* 字形说的是点开以后看什么：视频起播是 play，图片是 pics，与全站的视频／图片同一对。
+     图和视频混在一起时，点开落在哪一种由视图决定，字形跟着视图走。 */
+  const glyph = kind === 'image' || (kind !== 'video' && imageView) ? 'pics' : 'play';
+  /* 图片视图里只翻图片：这一叠说的就是这几张图。第一张是静止封面本身，否则一翻就露出
+     取景差别；和封面同一个画面的不再翻。画面彼此相同的服务端已经并成一张。 */
+  const seen = new Set([coverFace ?? cover]);
+  const faces = cover ? [cover] : [];
+  for (const face of stack?.faces || []) {
+    if (imageView && face.media_kind !== 'image') continue;
+    if (!face.thumb_url || face.thumb_url === cover || seen.has(face.face)) continue;
+    seen.add(face.face);
+    faces.push(face.thumb_url);
+  }
+  return { isMix: Boolean(label), label, glyph, faces: faces.length > 1 ? faces.slice(0, limit) : [] };
 }

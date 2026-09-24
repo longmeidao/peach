@@ -236,6 +236,10 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
    透出来，浅色封面的圆角上就是一圈灰边（纯白图实测边缘最暗压到 175）。封面自己的黑底
    在 `19-immersive.css` 里一并清掉；留白由 `::before` 的模糊底垫，悬停预览层自带黑底。 */
 .pic:has(.poster.cover){background:none}
+/* 叠层卡的封面格背后压着两层纸边，不能是空的：模糊衬底贴边那一截是半透明的
+   （`blur()` 向内淡出），封面落地前整格也是空的，纸边的线条会从这两处透进封面。
+   垫一层页面底色，透出来的就和普通卡一样只是底色本身。 */
+:is(.mixstack,.partstack) .pic:has(.poster.cover){background:var(--page)}
 .cardopenhit{position:absolute;inset:0;z-index:1;border:0;border-radius:inherit;background:transparent;padding:0;cursor:pointer}
 .cardopenhit:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .card>.pic,.card>.partstack,.card>.meta{position:relative;z-index:2}
