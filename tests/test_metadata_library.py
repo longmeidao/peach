@@ -920,6 +920,57 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertNotIsInstance(raised.exception, CoverKept)
         self.assertEqual((covers / 'FC2-PPV-3.jpg').read_bytes(), before)
 
+    def test_a_verified_cover_replaces_a_wider_unverified_picture_of_something_else(self):
+        """官方那一档按尺寸挑中的是正片截图：同页竖版商品图经 javdb 印证后，窄一点也换上。
+
+        FC2 官方存储上那张是卖家自己传的商品图，没印证也不当错图换；已经印证过的也不换。
+        """
+        from peach.jav_cover_fetch import Candidate
+        from peach.library_processing import CoverKept, LibraryMetadataProvider
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        portrait_url = 'https://img.javstore.net/images/FC2PPV-1PS.jpg'
+        siblings = (Candidate('img.javstore.net', portrait_url),)
+        provider._official_candidates = Mock(return_value=siblings)
+        provider.community = Mock(return_value=[('javdb', {'cover_urls': ['https://c0.jdbstatic.com/covers/x.jpg']})])
+        covers = self.root / 'covers'
+        covers.mkdir()
+
+        def gradient(size, rising):
+            image = Image.new('L', size)
+            image.putdata([int(255 * (x if rising else size[0] - 1 - x) / (size[0] - 1))
+                           for x in range(size[0])] * size[1])
+            buffer = io.BytesIO()
+            image.convert('RGB').save(buffer, format='JPEG')
+            return buffer.getvalue()
+
+        screenshot = (Candidate('img.javstore.net', 'https://img.javstore.net/images/FC2PPV-1.jpg'),
+                      (605, 364), gradient((605, 364), True))
+        portrait = (siblings[0], (510, 616), gradient((510, 616), False), ('img.javstore.net', 'javdb'))
+
+        def kept(code, **evidence):
+            (covers / f'{code}.jpg').write_bytes(screenshot[2])
+            (covers / f'{code}.scraping.json').write_text(json.dumps(
+                {'source_url': screenshot[0].url, 'verified_by': [], **evidence}), encoding='utf-8')
+
+        kept('FC2-PPV-1')
+        with patch('peach.jav_cover_fetch.best_cover', return_value=screenshot), \
+                patch('peach.community_catalog.verified_cover', return_value=portrait) as verified:
+            self.assertTrue(provider.cover('FC2-PPV-1', covers))
+        self.assertEqual(verified.call_args.kwargs['siblings'], siblings)
+        self.assertEqual((covers / 'FC2-PPV-1.jpg').read_bytes(), portrait[2])
+        evidence = json.loads((covers / 'FC2-PPV-1.scraping.json').read_text(encoding='utf-8'))
+        self.assertEqual((evidence['width'], evidence['verified_by']), (510, ['img.javstore.net', 'javdb']))
+
+        kept('FC2-PPV-2', source_url='https://storage71000.contents.fc2.com/file/1.jpg')
+        kept('FC2-PPV-3', verified_by=['dmm', 'javdb'])
+        for code in ('FC2-PPV-2', 'FC2-PPV-3'):
+            with patch('peach.jav_cover_fetch.best_cover', return_value=screenshot), \
+                    patch('peach.community_catalog.verified_cover', return_value=portrait), \
+                    self.assertRaises(CoverKept):
+                provider.cover(code, covers)
+            self.assertEqual((covers / f'{code}.jpg').read_bytes(), screenshot[2])
+
     @windows_ledger_roots
     def test_codes_r18_does_not_know_are_collected_from_the_community_sources(self):
         """r18.dev 没有的番号问 AVBase 与 javdb，两家各留一条候选；免不免复核由落库那道闸按几家一致判。"""

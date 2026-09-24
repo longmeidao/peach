@@ -326,6 +326,55 @@ class VerifiedCoverTests(unittest.TestCase):
         self.assertEqual(candidate.url, still)
 
 
+def photo(seed, crop=None, size=None):
+    """一张有纹理的「照片」：随机色块再糊一点，特征点才找得到角。`crop` 取其中一块，`size` 缩放。"""
+    import random
+    from PIL import ImageDraw, ImageFilter
+    rng = random.Random(seed)
+    image = Image.new("RGB", (800, 900), (128, 128, 128))
+    draw = ImageDraw.Draw(image)
+    for _ in range(400):
+        x, y = rng.randrange(800), rng.randrange(900)
+        draw.rectangle((x, y, x + rng.randrange(10, 80), y + rng.randrange(10, 80)),
+                       fill=tuple(rng.randrange(256) for _ in range(3)))
+    image = image.filter(ImageFilter.GaussianBlur(1))
+    if crop:
+        image = image.crop(crop)
+    if size:
+        image = image.resize(size, Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=90)
+    return buffer.getvalue()
+
+
+@unittest.skipUnless(__import__("importlib").util.find_spec("cv2"), "缺 vision 依赖组")
+class SameSceneTests(unittest.TestCase):
+    """javdb 给 FC2 的是商品图另取景的方图，JavArchive 转存的是竖版：整图指纹对不上，特征点对得上。"""
+
+    def test_a_square_crop_of_the_same_photo_is_the_same_picture(self):
+        from peach.community_catalog import same_scene
+        portrait = photo(1, size=(510, 574))
+        square = photo(1, crop=(100, 150, 700, 750), size=(276, 276))
+        self.assertTrue(same_scene(portrait, square))
+        self.assertFalse(same_scene(portrait, photo(2, crop=(100, 150, 700, 750), size=(276, 276))))
+
+    def test_the_official_pages_other_pictures_take_part_in_the_comparison(self):
+        """官方那一档按尺寸挑中的是截图；同页那张竖版商品图才和 javdb 的方图对得上。"""
+        screenshot = Candidate("img.javstore.net", "https://img.javstore.net/images/FC2PPV-3264420.jpg")
+        portrait = "https://img.javstore.net/images/FC2PPV-3264420PS.jpg"
+        square = "https://c0.jdbstatic.com/covers/ab/AbCd.jpg"
+        pages = {portrait: photo(1, size=(510, 574)),
+                 square: photo(1, crop=(100, 150, 700, 750), size=(276, 276))}
+        works = [("javdb", {"cover_urls": [square]})]
+        reference = (screenshot, (605, 364), photo(3, size=(605, 364)))
+        with self.assertRaisesRegex(Unavailable, "不是同一张图"):
+            verified_cover(serve(pages), "FC2-PPV-3264420", works, reference=reference)
+        candidate, size, _data, origins = verified_cover(
+            serve(pages), "FC2-PPV-3264420", works, reference=reference,
+            siblings=(screenshot, Candidate("img.javstore.net", portrait)))
+        self.assertEqual((candidate.url, size, origins), (portrait, (510, 574), ("img.javstore.net", "javdb")))
+
+
 class SourceChoiceTests(unittest.TestCase):
     def test_an_fc2_product_number_only_goes_to_javdb(self):
         """AVBase 与 JavBus 的目录里没有 FC2，问了只是各撞一次空搜索。"""

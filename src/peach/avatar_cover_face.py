@@ -69,6 +69,11 @@ def faces(connection, cover_root: Path, entity_id: int, probe) -> list[CoverFace
     面具、眼罩、脸贴照样算脸：梨奈的四张高清封面都戴着，YuNet 在默认门槛上全认了出来。
     没认出来的那几张不靠降门槛去捞——同几张图上 0.2 到 0.45 分的框落在手、胸口和
     身体上，比真脸还宽，按脸宽排序会排到最前面。
+
+    截出来的那块方图上也要再检得出脸（`readable_cut`）。卖家自己打了模糊的商品图，
+    整张缩小着看检得出一张很宽的脸，截出来放大就只剩一团色块：石川祐奈的
+    `FC2-PPV-3202758` 脸宽 616 像素排在最前，装上的头像认不出是谁，同一个人另两部片的
+    封面却清清楚楚。
     """
     found: list[CoverFace] = []
     seen: set[str] = set()
@@ -84,7 +89,7 @@ def faces(connection, cover_root: Path, entity_id: int, probe) -> list[CoverFace
         record = probe.on_bytes(body)
         px = (record or {}).get("px") or [0, 0]
         candidate = CoverFace(asset_id, key, body, int(px[0]), int(px[1]), record or {})
-        if candidate.face_px > 0:
+        if candidate.face_px > 0 and readable_cut(candidate, probe):
             found.append(candidate)
     found.sort(key=lambda face: (face.face_px, face.width * face.height), reverse=True)
     return found
@@ -128,6 +133,27 @@ def cut(face: CoverFace) -> tuple[bytes, dict] | None:
                   "asset_code": face.code, "crop_box": list(box),
                   "crop_source_px": [face.width, face.height],
                   "face_px": face.face_px, "identity_verified": False}
+
+
+def _has_face(probe, body: bytes | None) -> bool:
+    return body is not None and isinstance((probe.on_bytes(body) or {}).get("face"), dict)
+
+
+def readable_cut(face: CoverFace, probe) -> bool:
+    """这张封面截出来的那块方图上还检得出脸。"""
+    cropped = cut(face)
+    return cropped is not None and _has_face(probe, cropped[0])
+
+
+def installed_face_readable(avatar_root: Path, kind: str, entity_id: int, probe) -> bool:
+    """装着的那张头像上检得出脸。检不出的封面截图不管当时脸多宽，任何一张认得出的脸都比它强。"""
+    from .previews import entity_image_key
+
+    try:
+        body = (Path(avatar_root) / f"{entity_image_key(kind, int(entity_id))}.img").read_bytes()
+    except OSError:
+        return False
+    return _has_face(probe, body)
 
 
 def installed_face_px(avatar_root: Path, kind: str, entity_id: int) -> int | None:

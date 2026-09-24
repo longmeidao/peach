@@ -23,6 +23,7 @@ from .catalog_rules import (
     normalise_code_key,
     ordered_multipart_items,
     part_marker,
+    solo_performer_clause,
     tag_cat,
 )
 from .entities import normalize_entity_name, upsert_asset_entity
@@ -1039,6 +1040,7 @@ def q_tops(contract: WebContract, n=28, jav=False, seed="", state="", page=0):
             "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) n,"
             "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
             " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
+            " AND (e.kind<>'performer' OR " + solo_performer_clause("a2.id", "e.id") + ") "
             " ORDER BY (a2.play_count IS NULL),a2.size DESC LIMIT 1) rep "
             "FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
             "JOIN asset a ON a.id=ae.asset_id "

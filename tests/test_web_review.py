@@ -835,6 +835,35 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(_fc2_seller_as_label("studio", "ABP-001", {"value": "Prestige"}),
                          {"value": "Prestige"})
 
+    def test_a_title_the_seller_site_masked_is_filled_in_from_another_source(self):
+        """FC2 与 fc2cmadb 把敏感字打成 `*`，javdb 留着原文：落库的是补全的那一句。"""
+        masked = "10代**生、奇跡の美**しほちゃん"
+        whole = "10代女子生、奇跡の美少女しほちゃん"
+        self._asset(131, "FC2-PPV-2683017", "FC2-PPV-2683017.mp4")
+        self._asset(132, "FC2-PPV-2683018", "FC2-PPV-2683018.mp4")
+        self.write_metadata_rows([
+            {"item_key": "MASKED:title", "field": "title", "current": "", "code": "FC2-PPV-2683017",
+             "candidates": [{"source": "fc2", "value": masked}, {"source": "javdb", "value": whole}]},
+            {"item_key": "LONE:title", "field": "title", "current": "", "code": "FC2-PPV-2683018",
+             "candidates": [{"source": "fc2", "value": masked}]},
+        ])
+        self._auto()
+        con = sqlite3.connect(self.db_path)
+        try:
+            titles = dict(con.execute("SELECT id,catalog_title FROM asset WHERE id IN (131,132)"))
+        finally:
+            con.close()
+        self.assertEqual(titles[131], whole)
+        self.assertEqual(titles[132], masked, "没有别家原文可对时照旧用站方给的那句")
+        from peach.catalog_rules import fill_masked_title
+        self.assertEqual(fill_masked_title("【無修正】＊＊ちゃん", ["[FC2] 【無修正】ゆあちゃん 中出し"]),
+                         "【無修正】ゆあちゃん")
+        self.assertIsNone(fill_masked_title("****", [whole]), "全是码的一句对不出位置")
+        self.assertIsNone(fill_masked_title(masked, ["10代女子生、奇跡の美少女しほちゃん",
+                                                     "10代男子生、奇跡の美少年しほちゃん"]),
+                          "两家原文各补出一句时不猜")
+        self.assertIsNone(fill_masked_title(whole, [whole]))
+
     def test_library_collection_fills_an_empty_field_from_a_lone_community_source(self):
         """官方落空时只有 javdb 一家也补空，note 里分得清是一家还是两家一致（ADR-0034）。"""
         self._asset(90, "ABW-358", "ABW-358.mp4")
