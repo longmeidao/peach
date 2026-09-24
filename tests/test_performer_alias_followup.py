@@ -511,6 +511,21 @@ class RepeatTests(Case):
                                " VALUES(?,'新しい名前','新しい名前','manual')", (momoka,))
         self.assertEqual(planned(), [alias.followup_key(momoka)])
 
+    def test_a_new_entry_rule_dispatches_everyone_tried_again(self):
+        """入口判据换了版本，名字链没变的也再问一次：新入口能到的页，旧入口没读到。"""
+        momoka = self.entity("神山ももか")
+        self.work(1, momoka)
+        attempts = Attempts(attempts_root(self.generated))
+
+        def planned():
+            with self.database.read_connection() as connection:
+                return [item.key for item in alias.stock(connection, attempts, limit=5)]
+
+        self.run_followup(momoka)
+        self.assertEqual(planned(), [])
+        with mock.patch.object(alias, "ENTRY_RULE", alias.ENTRY_RULE + 1):
+            self.assertEqual(planned(), [alias.followup_key(momoka)])
+
     def test_a_rate_limited_site_is_paused_and_not_asked_again(self):
         momoka = self.entity("神山ももか")
         self.minnano.pages[minnano_av.search_url("神山ももか")] = (429, b"")

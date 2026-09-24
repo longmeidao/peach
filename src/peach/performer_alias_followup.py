@@ -72,6 +72,9 @@ AV_NEME_ROOT = "https://seesaawiki.jp/av_neme/"
 FC2CMADB_ACTRESS = "https://fc2cmadb.com/actresses/{id}"
 #: 每站最多拿几个名字去检索、av_neme 一次搜索最多读几张人物页、一站一条后继最多几次请求。
 MAX_KEYS, MAX_PERSON_PAGES, MAX_REQUESTS = 3, 3, 8
+#: 入口判据的版本，进指纹（`fingerprint`）。换了入口就加一：跑过的女优按新入口各再问一次。
+#: 2 是 ADR-0063 的 av_neme 按页名直取与摘要排序。
+ENTRY_RULE = 2
 #: fc2cmadb 最多翻她几部作品的女优栏：一部两次请求（作品页、女优栏），同一个人每部都一样。
 MAX_WORKS = 3
 #: minnano-av 的间隔与超时：与链接采集那一趟同一档，再放宽一点，这条后继不赶时间。
@@ -206,10 +209,13 @@ def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
 
     fc2cmadb 那一项只在她有 FC2 作品时进指纹：没有 FC2 作品的，指纹只有名字链与编号两项，
     存量不会因为多了一站整库重派；有的那些各重跑一次，把站上的主名补上。
+
+    入口判据的版本（`ENTRY_RULE`）也在里面：入口换了，同一条名字链在站上能找到的页就不一样，
+    跑过的都该按新入口再问一次。
     """
     names = _names(connection, entity_id, own=False) or ("", [])
     keys = sorted({match_key(name) for name in [names[0], *names[1]] if name})
-    parts: list = [keys, _refs(connection, entity_id)]
+    parts: list = [keys, _refs(connection, entity_id), f"r{ENTRY_RULE}"]
     if fc2_codes(connection, entity_id):
         parts.append(FC2CMADB)
     raw = json.dumps(parts, ensure_ascii=False)
