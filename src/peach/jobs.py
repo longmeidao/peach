@@ -469,9 +469,10 @@ class BackgroundJob:
         try:
             fn(job_id)
         except Exception as error:   # 后台失败必须变成可轮询的状态，不能只留在日志里
+            # 抛出来就是没跑完：途中声明过的后继作废，结算时一条都不派。
             self.update(job_id, status="failed",
                         error=f"{type(error).__name__}: {error}",
-                        completed_at=time.time())
+                        followups=[], completed_at=time.time())
         finally:
             self._settle(job_id)
 
@@ -498,8 +499,11 @@ class BackgroundJob:
         """
         status = state.get("status")
         if status == "failed":
+            # 声明了后继就是结算到了底，只是留下了要人处理的项（ADR-0053）：后继照派。
+            # 中途抛异常的那一轮走不到声明那一步，一条都不派。
             self._close_run(job_id, "failed", error=str(state.get("error") or "任务失败"),
-                            summary=self._summary(state))
+                            summary={**self._summary(state),
+                                     **self._dispatch_followups(job_id, state)})
             return
         if superseded and status == "running":
             # 还在跑就被顶掉：它的结果没人要了，记成取消而不是成功。
@@ -514,7 +518,8 @@ class BackgroundJob:
     def _dispatch_followups(self, job_id: str, state: dict) -> dict:
         """把这一轮声明的后继交给任务中心，返回要并进摘要的那几个数。
 
-        只有成功收尾的那条路走到这里：父任务失败一条后继都不派（ADR-0040 第四条）。
+        成功收尾、以及结算到底但留下待处理项的那一轮都走到这里（ADR-0053）；派不派
+        看这一轮有没有声明，中途中断的轮次声明不到。
         没入队的三种情况各占摘要里的一行——静默丢弃和没有上限一样，事后都查不出来。
         """
         declared = state.get("followups")
