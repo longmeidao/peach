@@ -97,16 +97,92 @@ class AnnotateGroupTests(unittest.TestCase):
         self.recoloured = _signature(_left_bright_recoloured)
 
     @staticmethod
-    def member(ident, provider, thumb, duration=30.0, kind="video", media=()):
+    def member(ident, provider, thumb, duration=30.0, kind="video", media=(), variant="main"):
         return {"id": ident, "provider": provider, "thumb_url": thumb, "duration": duration,
-                "media_kind": kind, "media_items": list(media)}
+                "media_kind": kind, "media_items": list(media), "variant_kind": variant}
 
-    def annotate(self, members, signatures):
+    def annotate(self, members, signatures, hashes=None):
         index = mock.Mock()
         index.lookup.side_effect = lambda urls: {url: signatures[url]
                                                  for url in urls if url in signatures}
         group = {"primary": members[0], "variants": members[1:], "duplicates": []}
-        return annotate_group(group, index)["stack"]
+        return annotate_group(group, index, hashes)["stack"]
+
+    def test_the_same_file_on_one_site_is_one_medium(self):
+        # 3989 那种：同一个作者在 pawchive 的三个帖子（720p／1080p／4K）附的是同一个 gif。
+        members = [self.member(ident, "pawchive", "https://a/sunset.gif", None, "image",
+                               variant="alt") for ident in (1, 2, 3)]
+        members.append(self.member(4, "rule34video", "https://v/4.jpg", 47.0, variant="alt"))
+        stack = self.annotate(members, {"https://a/sunset.gif": self.pose,
+                                        "https://v/4.jpg": self.other},
+                              {(1, None): "sha256:aa", (2, None): "sha256:aa",
+                               (3, None): "sha256:aa"})
+        self.assertEqual((stack["media"], stack["copies"], stack["kind"]), (2, 4, "mixed"))
+
+    def test_archive_videos_without_thumbnails_merge_only_by_file_hash(self):
+        # 归档站的视频没有缩略图：哈希相同就是同一个，跨站同站都一样；不同就各算一个，
+        # 也不拿别的画面去猜。
+        post = lambda ident, provider: self.member(ident, provider, None, None)  # noqa: E731
+        stack = self.annotate([post(1, "kemono"), post(2, "pawchive"), post(3, "pawchive"),
+                               post(4, "pawchive")], {},
+                              {(1, None): "sha256:aa", (2, None): "sha256:aa",
+                               (3, None): "sha256:aa", (4, None): "sha256:bb"})
+        self.assertEqual((stack["media"], stack["copies"]), (2, 4))
+        self.assertEqual(stack["faces"], [])
+
+    def test_media_inside_posts_merge_by_file_hash(self):
+        def post(ident, provider):
+            return self.member(ident, provider, None, None, "image", media=[
+                {"index": 0, "media_kind": "video", "thumb_url": None},
+                {"index": 1, "media_kind": "image", "thumb_url": f"https://{provider}/c.png"}])
+        stack = self.annotate([post(1, "kemono"), post(2, "pawchive")], {},
+                              {(1, 0): "sha256:video", (1, 1): "sha256:cover",
+                               (2, 0): "sha256:video", (2, 1): "sha256:cover"})
+        self.assertEqual((stack["media"], stack["copies"]), (2, 4))
+        # 翻卡也认同一个文件：两个站的封面图是同一张，只翻一次。
+        self.assertEqual(len(stack["faces"]), 1)
+
+    def test_a_post_cover_on_another_site_flips_once(self):
+        # 6993 那种：帖子自身的哈希取视频，缩略图却是帖里那张图；另一个站上同一张图只有
+        # 帖里那一份能凭哈希认出来，也要归进同一个画面。
+        def post(ident, provider):
+            cover = f"https://{provider}/c.png"
+            return self.member(ident, provider, cover, None, media=[
+                {"index": 0, "media_kind": "video", "thumb_url": None},
+                {"index": 1, "media_kind": "image", "thumb_url": cover}])
+        hashes = {}
+        for ident in (1, 2):
+            hashes.update({(ident, None): "sha256:video", (ident, 0): "sha256:video",
+                           (ident, 1): "sha256:cover"})
+        stack = self.annotate([post(1, "kemono"), post(2, "pawchive")], {}, hashes)
+        self.assertEqual((stack["media"], stack["copies"]), (2, 4))
+        self.assertEqual(len(stack["faces"]), 1)
+
+    def test_a_different_hash_on_one_site_is_never_merged_by_its_picture(self):
+        # 同站的差分与另一个分辨率的文件，8×8 签名与原图几乎一致（实测色块差 0.3–2.0），
+        # 计数不按画面合并；翻卡照样只翻一次。
+        stack = self.annotate([self.member(1, "kemono", "https://a/1.png", None, "image"),
+                               self.member(2, "kemono", "https://a/2.png", None, "image")],
+                              {"https://a/1.png": self.pose, "https://a/2.png": self.pose},
+                              {(1, None): "sha256:aa", (2, None): "sha256:bb"})
+        self.assertEqual((stack["media"], stack["copies"]), (2, 2))
+        self.assertEqual(len(stack["faces"]), 1)
+
+    def test_an_alt_or_wip_never_merges_with_main_on_the_same_site(self):
+        members = [self.member(1, "pawchive", None, None, "image"),
+                   self.member(2, "pawchive", None, None, "image", variant="alt"),
+                   self.member(3, "pawchive", None, None, "image", variant="wip"),
+                   self.member(4, "pawchive", None, None, "image", variant="alt")]
+        hashes = {(ident, None): "sha256:aa" for ident in (1, 2, 3, 4)}
+        # main 自成一个；alt 与 WIP 都不是 main，同一个文件并成一个。
+        self.assertEqual(self.annotate(members, {}, hashes)["media"], 2)
+
+    def test_the_same_file_on_another_site_joins_regardless_of_version_labels(self):
+        # 版本标签是各站按标题判的，同一个文件在另一个站被标成 alt 不改变它是同一个文件。
+        stack = self.annotate([self.member(1, "kemono", None, None, "image"),
+                               self.member(2, "pawchive", None, None, "image", variant="alt")],
+                              {}, {(1, None): "sha256:aa", (2, None): "sha256:aa"})
+        self.assertEqual((stack["media"], stack["copies"]), (1, 2))
 
     def test_one_video_on_two_sites_is_one_medium_from_two_sources(self):
         stack = self.annotate([self.member(1, "rule34video", "https://a/1.jpg"),
@@ -222,6 +298,20 @@ class FollowFaceIndexTests(unittest.TestCase):
         self.assertEqual(self.requests, [])
         stored = json.loads((self.root / "faces" / "face-v1.json").read_text(encoding="utf-8"))
         self.assertEqual(len(stored["entries"]), 2)
+
+    def test_each_video_in_a_post_reads_its_own_cover(self):
+        # 帖子里第二个视频的首帧是 `<id>-m<序号>-<指纹>.jpg`；第一个视频不能读到它，
+        # 它也不能读到第一个视频的，否则两段不同的视频签名一模一样。
+        covers = self.root / "covers"
+        covers.mkdir()
+        (covers / "7-abc.jpg").write_bytes(_png(_stripes))
+        (covers / "7-m2-def.jpg").write_bytes(_png(_left_bright))
+        index = self.index(cover_root=covers)
+        urls = ["/follow-cover?id=7", "/follow-cover?id=7&media=2", "/follow-cover?id=7&media=3"]
+        index.lookup(urls)
+        index.drain()
+        self.assertEqual(index.lookup(urls), {"/follow-cover?id=7": _signature(_stripes),
+                                              "/follow-cover?id=7&media=2": _signature(_left_bright)})
 
 
 if __name__ == "__main__":
