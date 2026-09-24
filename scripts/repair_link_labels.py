@@ -75,25 +75,37 @@ def agency_from_label(label: str, hostname: str, studios: set[str]) -> str:
     return "" if label.strip("/") in {hostname, f"www.{hostname}"} else label
 
 
+def _metadata(text) -> dict:
+    try:
+        found = json.loads(text or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return found if isinstance(found, dict) else {}
+
+
 def collect(connection: sqlite3.Connection) -> list[dict[str, object]]:
     """每条女优 official 链接的重判结果。"""
     owners = host_owners(connection)
     studios = studio_names(connection)
     rows: list[dict[str, object]] = []
-    for link_id, entity_id, performer, kind, label, url, hostname in connection.execute(
-        "SELECT l.id,l.entity_id,e.canonical_name,l.link_kind,l.label,l.url,l.hostname"
+    for link_id, entity_id, performer, kind, label, url, hostname, metadata in connection.execute(
+        "SELECT l.id,l.entity_id,e.canonical_name,l.link_kind,l.label,l.url,l.hostname,e.metadata_json"
         " FROM entity_link l JOIN entity e ON e.id=l.entity_id"
         " WHERE e.kind='performer' AND l.link_kind='official' ORDER BY l.id"
     ):
         agency = agency_from_label(label, hostname, studios)
+        # 人判过不成立的事务所（`reject_agency.py`）不再当标签的依据：三上悠亜那条
+        # ONE'S DOUBLE 官网链接上写着的「株式会社Miss」就是这么一直留下来的。
+        rejected = bool(agency) and agency_key(agency) in rejected_agencies(_metadata(metadata))
+        agency = "" if rejected else agency
         new_kind, new_label = classify(url, agency, owners.get)
         owner = owners.get(owner_key(hostname), "")
         if (new_kind, new_label) == (kind, label):
             verdict, note = "keep", "标签与域名归属一致"
         elif new_kind != kind:
             verdict, note = "auto", f"{hostname} 是平台账号，不是 official"
-        elif owner:
-            verdict, note = "auto", f"{hostname} 归 {owner}"
+        elif owner or rejected:
+            verdict, note = "auto", (f"{hostname} 归 {owner}" if owner else f"「{label}」是已驳回的事务所")
         else:
             # 归属未知时 classify 会把原标签原样还回来，走不到这里；留着兜底。
             verdict, note = "review", f"{hostname} 归属未取得"

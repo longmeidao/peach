@@ -36,6 +36,7 @@ from peach.review_csv import read_rows   # noqa: E402
 from peach.scripting import (   # noqa: E402
     add_ledger_write_args, counts_of, open_for_write, verify_after_write,
 )
+from peach.social_links import classify, host_owners   # noqa: E402
 
 #: 驳回是人的判断，写入者按 `field_owners` 的归属串署名。
 SOURCE = "user:manual"
@@ -104,8 +105,30 @@ def attach(connection, entity_id: int, raw: str, stamp: str) -> int:
     return created
 
 
+def relabel_links(connection, entity_id: int, rejected: str, replacement: str, stamp: str) -> int:
+    """她名下标签写着这家事务所的官方链接，按域名归属重写标签。返回改了几条。
+
+    采集时 minnano-av 的「所属事務所」被贴在同一页每条 official 链接上：三上悠亜那条
+    ONE'S DOUBLE 的个人页写着「株式会社Miss」。事务所驳回了，标签还替它说话。重写走
+    `classify`，与 `repair_link_labels.py` 同一套：域名归谁写谁，不知道就写她 AV 时期的
+    事务所，再不知道写「官方网站」。
+    """
+    owners = host_owners(connection)
+    agency = split_name(replacement)[0] if replacement else ""
+    changed = 0
+    for link_id, label, url in connection.execute(
+            "SELECT id,label,url FROM entity_link WHERE entity_id=? AND link_kind='official'",
+            (entity_id,)).fetchall():
+        if agency_key(label) != agency_key(rejected):
+            continue
+        connection.execute("UPDATE entity_link SET label=?,updated_at=? WHERE id=?",
+                           (classify(url, agency, owners.get)[1], stamp, link_id))
+        changed += 1
+    return changed
+
+
 def apply_rows(connection, rows: list[dict[str, object]], stamp: str) -> dict[str, int]:
-    done = {"驳回": 0, "归属": 0, "事务所": 0, "改挂": 0, "新建事务所": 0}
+    done = {"驳回": 0, "归属": 0, "事务所": 0, "改挂": 0, "新建事务所": 0, "链接标签": 0}
     # 外键默认关着，删实体时要它把别名、链接、外部编号一并级联删掉；PRAGMA 只能在事务外设。
     connection.commit()
     connection.execute("PRAGMA foreign_keys=ON")
@@ -130,6 +153,7 @@ def apply_rows(connection, rows: list[dict[str, object]], stamp: str) -> dict[st
                                   "checked_at": stamp}
         connection.execute("UPDATE entity SET metadata_json=?,updated_at=? WHERE id=?",
                            (json.dumps(metadata, ensure_ascii=False), stamp, entity_id))
+        done["链接标签"] += relabel_links(connection, entity_id, str(row["agency"]), replacement, stamp)
         if row.get("holds"):
             connection.execute("DELETE FROM entity_membership WHERE member_id=? AND agency_id=?",
                                (entity_id, int(row["agency_id"])))

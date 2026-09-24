@@ -246,6 +246,12 @@ HOST_OVERRIDES: dict[str, tuple[str, ...]] = {
         "https://images-assets-ht.project1content.com/BangBros/MA/Subsites/"
         "6480a83860e9c0.34870333.png",
     ),
+    # ONE'S DOUBLE 2022 年关门，官网只剩存档；快照里的 favicon.ico 是 WordPress 的默认
+    # 图标，不是这家公司的。页脚那枚 SVG 标识与事务所页的字标是同一份（`studio_icons`）。
+    "ones-double.com": (
+        "https://web.archive.org/web/20220130000436id_/"
+        "https://ones-double.com/wp/assets/img/footer-logo.svg",
+    ),
 }
 
 
