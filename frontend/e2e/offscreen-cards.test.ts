@@ -2,7 +2,7 @@
  *
  * 这几条守的是跳过渲染的副作用：屏外卡确实被跳过、没渲染过的卡按估计高度排进来之后
  * 整页高度和卡片位置不跳、Ctrl+F 仍找得到屏外卡里的字。演示库只有十来条，一屏就放完，
- * 这里把目录响应放大成一长列，编号改成互不相同，封面请求再改写回原来那条。 */
+ * 这里把目录和女优资料页的作品响应放大成一长列，编号改成互不相同，封面请求再改写回原来那条。 */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
@@ -20,10 +20,9 @@ interface CatalogPayload {
   items: Array<Record<string, unknown>>;
 }
 
-/** 目录首屏换成 `CLONES` 张卡：每三张有一张带标签，最后一张带一枚独有的标签给查找用。 */
-async function openLongCatalog(browser: Browser): Promise<Visit> {
-  const opened = await visit(browser, '/', DESKTOP);
-  const { page } = opened;
+/** `/api/items` 的首页换成 `CLONES` 条：每三条有一条带标签，最后一条带一枚独有的标签给查找用。
+ * 克隆源是去掉 `performer` 筛选之后的目录首页：演示库里没有人物实体，资料页按名字筛出来是空的。 */
+async function serveLongItems(page: Page): Promise<void> {
   const original = new Map<number, number>();
   let baseline: CatalogPayload | undefined;
   await page.route(/\/api\/items\?/, async (route) => {
@@ -32,7 +31,8 @@ async function openLongCatalog(browser: Browser): Promise<Visit> {
       await route.continue();
       return;
     }
-    baseline ??= await (await route.fetch()).json() as CatalogPayload;
+    url.searchParams.delete('performer');
+    baseline ??= await (await route.fetch({ url: url.toString() })).json() as CatalogPayload;
     const source = baseline.items.filter((item) => !item.part_group && !item.edition_group);
     const items = Array.from({ length: CLONES }, (_, index) => {
       const item = structuredClone(source[index % source.length]);
@@ -42,16 +42,41 @@ async function openLongCatalog(browser: Browser): Promise<Visit> {
       return item;
     });
     await route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ ...baseline, total: CLONES, items }) });
+      body: JSON.stringify({ ...baseline, total: CLONES, has_more: false, items }) });
   });
   await page.route((url) => original.has(Number(url.searchParams.get('id'))), async (route) => {
     const url = new URL(route.request().url());
     url.searchParams.set('id', String(original.get(Number(url.searchParams.get('id')))));
     await route.continue({ url: url.toString() });
   });
+}
+
+async function openLongCatalog(browser: Browser): Promise<Visit> {
+  const opened = await visit(browser, '/', DESKTOP);
+  const { page } = opened;
+  await serveLongItems(page);
   await page.reload({ waitUntil: 'load' });
   await page.waitForFunction((count) => document.querySelectorAll('#grid .card').length >= count, CLONES,
     { timeout: 15_000 });
+  await settle(page);
+  return opened;
+}
+
+/** 女优资料页的作品区放大成 `CLONES` 部：资料由这里给，字段照 `/api/entity` 的形状写。 */
+async function openLongEntity(browser: Browser): Promise<Visit> {
+  const name = '七沢みあ';
+  const opened = await visit(browser, '/', DESKTOP);
+  const { page } = opened;
+  await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+    id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
+    user_aliases: [], asset_count: CLONES, tags: [], related_performers: [], links: [],
+    metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
+    representative_asset_id: null, entry_links: [], feed: { following: false },
+  } }));
+  await serveLongItems(page);
+  await page.goto(new URL(`/performers/${encodeURIComponent(name)}`, page.url()).href, { waitUntil: 'load' });
+  await page.waitForFunction((count) => document.querySelectorAll('.entitysection>.grid>.card').length >= count,
+    CLONES, { timeout: 15_000 });
   await settle(page);
   return opened;
 }
@@ -120,43 +145,49 @@ describe('视口外的卡片', () => {
     await browser.close();
   });
 
-  it('跳过封面与元信息区的渲染，Ctrl+F 仍找得到屏外卡里的字', { timeout: 60_000 }, async () => {
-    const opened = await openLongCatalog(browser);
-    try {
-      const state = await opened.page.evaluate((tag) => {
-        const last = [...document.querySelectorAll<HTMLElement>('#grid .card')].at(-1)!;
-        const parts = [last.querySelector('.pic')!, last.querySelector('.meta')!];
-        // 跳过的是元素的内容，元素自己仍在排版里：查它的第一个子元素。
-        const skipped = parts.map((part) => !part.firstElementChild!.checkVisibility({ contentVisibilityAuto: true }));
-        const box = last.getBoundingClientRect();
-        /* 侧栏的标签列表里也有这枚标签，排在文档前面；往下接着找，直到落进那张卡。 */
-        const find = (window as unknown as { find(text: string): boolean }).find.bind(window);
-        let hits = 0;
-        while (hits < 5 && find(tag)) {
-          hits++;
-          const node = getSelection()?.anchorNode;
-          if (node && last.contains(node)) break;
-        }
-        const hit = getSelection()?.anchorNode;
-        return {
-          values: parts.map((part) => getComputedStyle(part).contentVisibility),
-          skipped, below: box.top - innerHeight, height: box.height,
-          hits, inLast: !!hit && last.contains(hit),
-        };
-      }, PROBE_TAG);
-      assert.deepEqual(state.values, ['auto', 'auto'], '屏外卡的封面和元信息区没有交给浏览器按视口取舍');
-      assert.ok(state.below > 1000, `最后一张卡离视口只有 ${state.below}px，放大的列表不够长`);
-      assert.deepEqual(state.skipped, [true, true], '屏外卡的封面或元信息区仍在渲染');
-      assert.ok(state.height > 0, '屏外卡的 getBoundingClientRect 量出了零高');
-      assert.ok(state.inLast, `页内查找没有落到屏外那张卡的标签上（命中 ${state.hits} 次）`);
-      assert.deepEqual(opened.problems, []);
-    } finally {
-      await opened.close();
-    }
-  });
+  for (const [where, open, selector] of [
+    ['馆藏', openLongCatalog, '#grid .card'],
+    ['女优资料页', openLongEntity, '.entitysection>.grid>.card'],
+  ] as const) {
+    it(`${where}：跳过封面与元信息区的渲染，Ctrl+F 仍找得到屏外卡里的字`, { timeout: 60_000 }, async () => {
+      const opened = await open(browser);
+      try {
+        const state = await opened.page.evaluate(([tag, cardSelector]) => {
+          const last = [...document.querySelectorAll<HTMLElement>(cardSelector)].at(-1)!;
+          const parts = [last.querySelector('.pic')!, last.querySelector('.meta')!];
+          // 跳过的是元素的内容，元素自己仍在排版里：查它的第一个子元素。
+          const skipped = parts.map((part) => !part.firstElementChild!.checkVisibility({ contentVisibilityAuto: true }));
+          const box = last.getBoundingClientRect();
+          /* 侧栏的标签列表里也有这枚标签，排在文档前面；往下接着找，直到落进那张卡。 */
+          const find = (window as unknown as { find(text: string): boolean }).find.bind(window);
+          let hits = 0;
+          while (hits < 5 && find(tag)) {
+            hits++;
+            const node = getSelection()?.anchorNode;
+            if (node && last.contains(node)) break;
+          }
+          const hit = getSelection()?.anchorNode;
+          return {
+            values: parts.map((part) => getComputedStyle(part).contentVisibility),
+            skipped, below: box.top - innerHeight, height: box.height,
+            hits, inLast: !!hit && last.contains(hit),
+          };
+        }, [PROBE_TAG, selector] as const);
+        assert.deepEqual(state.values, ['auto', 'auto'], '屏外卡的封面和元信息区没有交给浏览器按视口取舍');
+        assert.ok(state.below > 1000, `最后一张卡离视口只有 ${state.below}px，放大的列表不够长`);
+        assert.deepEqual(state.skipped, [true, true], '屏外卡的封面或元信息区仍在渲染');
+        assert.ok(state.height > 0, '屏外卡的 getBoundingClientRect 量出了零高');
+        assert.ok(state.inLast, `页内查找没有落到屏外那张卡的标签上（命中 ${state.hits} 次）`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
 
   for (const [where, open, selector] of [
     ['馆藏', openLongCatalog, '#grid .card'],
+    ['女优资料页', openLongEntity, '.entitysection>.grid>.card'],
     ['关注', openLongFollow, '.followlist>.card'],
   ] as const) {
     it(`${where}：长距离往返之后整页高度和深处那张卡的位置不跳，屏外量到的几何与渲染后一致`, { timeout: 90_000 }, async () => {

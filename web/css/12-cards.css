@@ -142,7 +142,10 @@ body.refreshing #batchAction svg,
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;border-radius:var(--surface-radius);
   position:relative;transition:transform .18s ease,filter .18s ease,background-color .15s ease,box-shadow .15s ease;transform-origin:center}
-/* 馆藏和关注网格里，视口外的卡片跳过渲染：滚动和侧栏开合时要算的只剩屏上那几十张。
+/* 馆藏、资料页作品和关注网格里，视口外的卡片跳过渲染：滚动和侧栏开合时要算的只剩屏上那几十张。
+   资料页（女优、厂牌、创作者、系列、事务所五种共用一处）的作品区是 `.entitysection>.grid`，
+   卡片出自首页同一个 `cardHtml()`、同一个 `--tile` 列宽和 JAV 版式开关，下面的估计原样成立；
+   标签页点进去落在首页 `#grid`，回收站也是，不另列。
    跳过的是卡里的两块，封面 `.pic` 和元信息区 `.meta`；卡片盒本身照常排版，所以屏外卡的
    高度里只有元信息区一项是估计值。
    - 封面高度由 `aspect-ratio` 从列宽推出，跳过渲染时照样成立，列宽随视口和侧栏开合怎么
@@ -158,17 +161,20 @@ body.refreshing #batchAction svg,
    悬停，那圈 2px 焦点环就缺一截。`overflow-clip-margin` 把裁切边往外放 8px，和整张卡的
    悬停面同宽，`frontend/e2e/design.test.ts` 按几何检查；Safari 不认这个属性，那边贴边的
    描边和焦点环仍会被裁掉一截。
-   图片墙不在其内：它的封面没有固定比例，高度取自图片本身，跳过渲染时会按零高排版。 */
+   图片墙不在其内：它的封面没有固定比例，高度取自图片本身，跳过渲染时会按零高排版。
+   资料页的照片墙 `.photowall` 与名册 `.igrid` 同理不在其内，它们也不是 `.card`。资料页
+   新作那一行（`.feednew`）和详情页的接着看（`#nrow`）只有一行、往横向排，屏外的卡不改变
+   整页高度，标题字号也不是 `--fs-md`（`.feednewcard .meta .t` 是 `--fs-sm`），不套这份估计。 */
 .meta{--card-meta-byline:1lh;--card-meta-tags:0px;--card-meta-badges:0px;
   --card-meta-block:calc(var(--fs-md)*2.7 + 3px + var(--card-meta-byline) + var(--card-meta-badges) + var(--card-meta-tags))}
 .meta:has(>.mtext>.ctags){--card-meta-tags:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px + 3px)}
 .followitem .meta{--card-meta-byline:max(1lh,21px)}
 .followitem .meta:has(>.mtext>.fbadges){--card-meta-badges:calc(1lh + 6px + 3px)}
-:is(#grid,.followlist:not(.followphotowall)) .card :is(.pic,.meta){content-visibility:auto}
+:is(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card :is(.pic,.meta){content-visibility:auto}
 /* `flex-shrink:0`：跳过渲染时元信息区的内容不参与最小尺寸，卡里有别的子元素要抢空间时它会
    被压扁。关注卡的 `.fstate` 是 `flex:1 1 100%`，不钉住的话屏外关注卡的元信息区只剩 21px。
    渲染时它本来就压不动（自动最小尺寸就是内容高度），钉住不改变屏上的排版。 */
-:is(#grid,.followlist:not(.followphotowall)) .card .meta{flex-shrink:0;
+:is(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card .meta{flex-shrink:0;
   contain-intrinsic-block-size:auto var(--card-meta-block);overflow-clip-margin:8px}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
    整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
