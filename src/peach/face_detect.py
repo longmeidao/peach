@@ -72,13 +72,18 @@ class FaceModelUnavailable(RuntimeError):
 
 @dataclass(frozen=True)
 class Face:
-    """一张脸在原图里的归一化位置。`score` 是模型给的置信度。"""
+    """一张脸在原图里的归一化位置。`score` 是模型给的置信度。
+
+    `landmarks` 是 YuNet 给的五个关键点（右眼、左眼、鼻尖、右嘴角、左嘴角），按
+    `(x, y)` 交替、同样归一化。比对要先按这五个点把脸摆正（`face_match`），取景用不上它。
+    """
 
     cx: float
     cy: float
     width: float
     height: float
     score: float
+    landmarks: tuple[float, ...] = ()
 
     @property
     def area(self) -> float:
@@ -151,23 +156,35 @@ def ensure_model(path: Path | None = None, *, allow_download: bool = True) -> Pa
     `FaceDetectorYN_create` 抛一个和网络毫无关系的错。
     """
     target = Path(path) if path is not None else MODEL_PATH
-    if target.is_file() and _digest(target) == MODEL_SHA256:
+    return fetch_model(target, MODEL_URL, MODEL_SHA256,
+                       allow_download=allow_download, label="人脸模型")
+
+
+def fetch_model(target: Path, url: str, sha256: str, *, allow_download: bool,
+                label: str, timeout: float = 60) -> Path:
+    """按固定地址与 sha256 取一个 opencv_zoo 模型，检出与比对两个模型共用这一条。
+
+    本地那份哈希对得上就直接用；对不上先删掉，再按 `allow_download` 决定取不取。
+    取不到、校验不符一律抛 `FaceModelUnavailable`，由调用方决定跳过还是停下。
+    """
+    target = Path(target)
+    if target.is_file() and _digest(target) == sha256:
         return target
     if target.is_file():
         target.unlink()
     if not allow_download:
-        raise FaceModelUnavailable(f"缺少人脸模型：{target}")
+        raise FaceModelUnavailable(f"缺少{label}：{target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_suffix(".part")
     try:
-        with urllib.request.urlopen(MODEL_URL, timeout=60) as response:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
             payload = response.read()
     except OSError as error:
-        raise FaceModelUnavailable(f"取人脸模型失败：{error}") from error
+        raise FaceModelUnavailable(f"取{label}失败：{error}") from error
     digest = hashlib.sha256(payload).hexdigest()
-    if digest != MODEL_SHA256:
+    if digest != sha256:
         raise FaceModelUnavailable(
-            f"人脸模型校验不符：期望 {MODEL_SHA256}，实际 {digest}")
+            f"{label}校验不符：期望 {sha256}，实际 {digest}")
     temporary.write_bytes(payload)
     temporary.replace(target)
     return target
@@ -260,12 +277,16 @@ class FaceDetector:
             confidence = float(row[-1])
             if confidence < min(self.score, READ_FLOOR) or w <= 0 or h <= 0:
                 continue
+            points = _rest[:10]
             faces.append(Face(
                 cx=round(min(1.0, max(0.0, (x + w / 2) / cols)), 3),
                 cy=round(min(1.0, max(0.0, (y + h / 2) / rows)), 3),
                 width=round(min(1.0, w / cols), 3),
                 height=round(min(1.0, h / rows), 3),
                 score=round(confidence, 3),
+                landmarks=tuple(round(value / (cols if index % 2 == 0 else rows), 4)
+                                for index, value in enumerate(points))
+                if len(points) == 10 else (),
             ))
         return faces
 

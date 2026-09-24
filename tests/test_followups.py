@@ -521,6 +521,214 @@ class CoverFaceFollowupTests(LedgerTestCase):
                          [followup_key("performer", self.person)])
 
 
+class FaceMatchFollowupTests(LedgerTestCase):
+    """图库同名多张时，按封面人脸认出是她的那几张（ADR-0056）。
+
+    不出网：图库候选预先放进候选缓存，比对模型换成桩——按图下半截的颜色给固定特征，
+    红的是她、蓝的是别人、灰的检不出脸。封面的检脸沿用封面截脸那组的桩。
+    """
+
+    STAMP = AvatarFollowupTests.STAMP
+    entity = AvatarFollowupTests.entity
+    HER, OTHER, BLANK = (200, 40, 40), (40, 40, 200), (128, 128, 128)
+    VECTORS = {HER: (1.0, 0.0, 0.0), OTHER: (0.0, 1.0, 0.0), BLANK: None}
+
+    def setUp(self):
+        super().setUp()
+        self.avatars = self.root / "avatars"
+        self.avatars.mkdir()
+        self.covers = self.root / "covers"
+        self.covers.mkdir()
+        self.person = self.entity("performer", "梨奈")
+        self.providers = self.root / "generated" / "provider-cache" / "performer-avatars"
+        self.gallery: dict[str, dict[str, str]] = {}
+        self.unavailable = ""
+        vectors, test = self.VECTORS, self
+
+        class Probe:
+            unavailable = ""
+
+            def on_bytes(self, body):
+                from peach.images import measure_image_size
+                width, height = measure_image_size(body)
+                return {"ratio": width / height, "px": [width, height],
+                        "face": {"cx": 0.5, "cy": 0.75, "w": 0.2, "h": 0.2, "score": 0.9}}
+
+        class Matcher:
+            @property
+            def unavailable(self):
+                return test.unavailable
+
+            def embedding(self, body):
+                import io
+
+                from PIL import Image
+                if test.unavailable:
+                    return None
+                image = Image.open(io.BytesIO(body)).convert("RGB")
+                pixel = image.getpixel((image.width // 2, image.height * 3 // 4))
+                nearest = min(vectors, key=lambda colour: sum(
+                    (a - b) ** 2 for a, b in zip(colour, pixel)))
+                return vectors[nearest]
+
+        for target, value in (("peach.avatar_face.FaceProbe", Probe),
+                              ("peach.face_match.FaceMatcher", Matcher)):
+            patcher = mock.patch(target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        sidecar = mock.patch("peach.avatar_provider.FaceProbe")
+        sidecar.start().return_value.return_value = None
+        self.addCleanup(sidecar.stop)
+        # 候选都在缓存里：真要联网就是用例写错了。
+        offline = mock.patch("peach.http.HttpxTransport",
+                             return_value=mock.Mock(side_effect=AssertionError("不许出网")))
+        offline.start()
+        self.addCleanup(offline.stop)
+
+    @staticmethod
+    def picture(size: tuple[int, int], colour: tuple[int, int, int]) -> bytes:
+        """上半截黑、下半截是这个人的颜色。整张一个颜色会被当成占位底色挡掉。"""
+        import io
+
+        from PIL import Image, ImageDraw
+        buffer = io.BytesIO()
+        image = Image.new("RGB", size, colour)
+        ImageDraw.Draw(image).rectangle((0, 0, size[0], size[1] // 2), fill="black")
+        image.save(buffer, format="JPEG", quality=95)
+        return buffer.getvalue()
+
+    def candidate(self, category: str, size: tuple[int, int], colour) -> str:
+        """往图库索引里加一张 `梨奈` 名下的候选，图预先放进缓存。返回它的 ref。"""
+        from peach import gfriends
+        from peach.avatar_provider import AvatarCandidateCache, inspect_avatar
+
+        filename = f"梨奈-{len(self.gallery)}.jpg"
+        self.gallery.setdefault(category, {})["梨奈.jpg"] = filename
+        index_dir = self.providers / "gfriends"
+        index_dir.mkdir(parents=True, exist_ok=True)
+        (index_dir / gfriends.INDEX_NAME).write_text(
+            json.dumps({"Content": self.gallery}), encoding="utf-8")
+        body = self.picture(size, colour)
+        AvatarCandidateCache(index_dir).store(gfriends.image_url(category, filename), body,
+                                              inspect_avatar(body))
+        return f"gfriends:{category}/{filename}"
+
+    def work(self, asset_id: int, code: str, colour) -> None:
+        (self.covers / f"{code}.jpg").write_bytes(self.picture((800, 540), colour))
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute(
+                "INSERT INTO asset(id,location,path,name,medium,code,size) "
+                "VALUES(?,'R:',?,?,'video',?,100)",
+                (asset_id, f"R:\\media\\{code}.mp4", f"{code}.mp4", code))
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
+                "VALUES(?,?,'performer','test')", (asset_id, self.person))
+
+    run_followup = CoverFaceFollowupTests.run_followup
+    contract = CoverFaceFollowupTests.contract
+    provenance = CoverFaceFollowupTests.provenance
+
+    def test_several_pictures_of_her_install_the_first_big_enough_in_gallery_order(self):
+        """太小的那张认出来也装不上，不比；其余照图库先后，第一张认定是她的就装。"""
+        self.candidate("0-Hand-Storage", (200, 300), self.HER)
+        first = self.candidate("1-S1", (400, 600), self.HER)
+        self.candidate("y-Minnano", (800, 1000), self.HER)
+        self.work(1, "IPX-001", self.HER)
+        self.work(2, "SSIS-002", self.HER)
+        summary = self.run_followup()
+        self.assertEqual(summary["outcome"], "已装上")
+        self.assertEqual((summary["matched"], summary["size"]), (3, "400×600"))
+        record = self.provenance()
+        self.assertEqual((record["provider"], record["source_kind"]),
+                         ("gfriends", "gallery_face_matched"))
+        self.assertEqual(f"gfriends:{record['external_id']}", first)
+        match = record["face_match"]
+        self.assertEqual((match["model"], match["threshold"], match["required"]),
+                         ("sface_2021dec", 0.363, 2))
+        self.assertEqual(sorted(cover["code"] for cover in match["covers"]),
+                         ["IPX-001", "SSIS-002"])
+        self.assertTrue(all(cover["score"] >= 0.363 for cover in match["covers"]))
+        self.assertEqual((match["candidates"], match["compared"]), (3, 1))
+
+    def test_only_her_pictures_are_eligible_when_someone_else_shares_the_name(self):
+        """同名的另一个人那张更大、排得更前，照样落选；检不出脸的那张不算她。"""
+        self.candidate("0-Hand-Storage", (900, 1200), self.OTHER)
+        self.candidate("3-Prestige", (600, 800), self.BLANK)
+        hers = self.candidate("7-S1", (400, 600), self.HER)
+        self.work(1, "IPX-001", self.HER)
+        self.work(2, "SSIS-002", self.HER)
+        self.assertEqual(self.run_followup()["outcome"], "已装上")
+        record = self.provenance()
+        self.assertEqual(f"gfriends:{record['external_id']}", hers)
+        self.assertEqual(record["face_match"]["compared"], 2)
+
+    def test_one_cover_is_enough_when_it_is_all_she_has(self):
+        self.candidate("1-S1", (400, 600), self.OTHER)
+        hers = self.candidate("2-Ideapocket", (400, 600), self.HER)
+        self.work(1, "IPX-001", self.HER)
+        self.run_followup()
+        record = self.provenance()
+        self.assertEqual(f"gfriends:{record['external_id']}", hers)
+        self.assertEqual(record["face_match"]["required"], 1)
+
+    def test_nothing_is_installed_without_a_cover_to_compare_against(self):
+        self.candidate("1-S1", (400, 600), self.HER)
+        self.candidate("2-Ideapocket", (400, 600), self.HER)
+        summary = self.run_followup()
+        self.assertEqual(summary["outcome"], "图库 2 张认不准，封面上没有能截的脸")
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_no_match_falls_back_to_the_cover_face(self):
+        """封面上的人和图库里哪一张都对不上：不装图库的，照旧截封面上那张脸。"""
+        self.candidate("1-S1", (400, 600), self.OTHER)
+        self.candidate("2-Ideapocket", (400, 600), self.OTHER)
+        self.work(1, "IPX-001", self.HER)
+        summary = self.run_followup()
+        self.assertEqual((summary["outcome"], summary["source"]),
+                         ("已装上", "作品封面 IPX-001"))
+        self.assertEqual(self.provenance()["provider"], "cover-face")
+
+    def test_without_the_model_she_falls_back_and_is_tried_again_next_round(self):
+        from peach.followups import Attempts, attempts_root
+
+        self.unavailable = "缺少人脸比对模型"
+        self.candidate("1-S1", (400, 600), self.HER)
+        self.candidate("2-Ideapocket", (400, 600), self.HER)
+        self.work(1, "IPX-001", self.HER)
+        summary = self.run_followup()
+        self.assertEqual(self.provenance()["provider"], "cover-face")
+        self.assertTrue(summary["face_match_unavailable"])
+        key = followup_key("performer", self.person)
+        with self.database.read_connection() as connection:
+            from peach.avatar_followup import fingerprint
+            current = fingerprint(connection, self.person)
+        self.assertFalse(Attempts(attempts_root(self.root / "generated")).settled(key, current))
+
+    def test_a_new_alias_changes_the_fingerprint_and_queues_her_again(self):
+        from peach.avatar_followup import fingerprint, stock
+        from peach.followups import Attempts, attempts_root
+
+        self.work(1, "IPX-001", self.BLANK)
+        attempts = Attempts(attempts_root(self.root / "generated"))
+
+        def planned():
+            with self.database.read_connection() as connection:
+                return [item.key for item in stock(connection, self.avatars, attempts,
+                                                   limit=10)]
+
+        with self.database.read_connection() as connection:
+            self.assertEqual(fingerprint(connection, self.person), "1:0")
+        self.run_followup()
+        self.assertEqual(planned(), [])
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+                " VALUES(?,?,?,'test')", (self.person, "りな", "りな"))
+        with self.database.read_connection() as connection:
+            self.assertEqual(fingerprint(connection, self.person), "1:1")
+        self.assertEqual(planned(), [followup_key("performer", self.person)])
+
+
 class ProcessLibraryTests(LedgerTestCase):
     """一整条链走通：刮削登记新女优 → 声明后继 → 派出 → 真的跑完。
 
