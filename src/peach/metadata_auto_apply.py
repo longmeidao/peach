@@ -781,7 +781,8 @@ def _apply_performer_candidate(connection, asset_ids: list[int], candidate: dict
     )
     for asset_id in asset_ids:
         for performer in performers:
-            name = performer["name"]
+            owner = _former_name_owner(connection, performer)
+            name = performer["name"] if owner is None else str(owner["canonical_name"])
             external_id = str(performer.get("external_id") or "").strip()
             connection.execute(
                 "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
@@ -801,6 +802,40 @@ def _apply_performer_candidate(connection, asset_ids: list[int], candidate: dict
             if entity_id is not None and performer.get("planning_alias"):
                 register_planning_alias(
                     connection, entity_id, str(performer["planning_alias"]))
+            if owner is not None and entity_id == int(owner["id"]):
+                _register_current_name(connection, entity_id, performer["name"])
+
+
+#: 「现名（旧名）」挂到旧名那一位身上时，现名记成她的别名用的来源。
+CURRENT_NAME_ALIAS_SOURCE = "javinizer:current-name"
+
+
+def _former_name_owner(connection, performer: dict):
+    """现名在账本里查不到、旧名查得到：返回旧名那一位；否则 None。
+
+    `姫川ゆうな（月城らん）` 拆开以后，账本里登记的若只有 `月城らん`，按现名落库就会另建
+    一条 `姫川ゆうな`，和按整串落库一样重复。
+    """
+    if resolve_entity(connection, "performer", performer["name"]) is not None:
+        return None
+    for former in performer.get("former_names") or ():
+        known = resolve_entity(connection, "performer", str(former))
+        if known is not None:
+            return known
+    return None
+
+
+def _register_current_name(connection, entity_id: int, name: str) -> None:
+    """把现名登记成旧名那一位的别名；这个写法已经归了别人时不登记。"""
+    key = normalize_entity_name(name)
+    if connection.execute(
+            "SELECT 1 FROM entity WHERE kind='performer' AND normalized_name=? AND id<>? "
+            "UNION SELECT 1 FROM entity_alias WHERE normalized_alias=? AND entity_id<>? LIMIT 1",
+            (key, entity_id, key, entity_id)).fetchone():
+        return
+    connection.execute(
+        "INSERT OR IGNORE INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+        " VALUES(?,?,?,?,0.9)", (int(entity_id), name, key, CURRENT_NAME_ALIAS_SOURCE))
 
 
 def _apply_metadata_candidate(

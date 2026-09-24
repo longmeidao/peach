@@ -13,10 +13,12 @@ from .genre_taxonomy import map_genres, unmapped_genre_warning
 from .http import body_text
 from .javdb import LOGIN as JAVDB_LOGIN_PAGE
 from .entities import (
+    FORMER_PREFIX,
     canonicalize_entity_name,
     collapse_repeated_entity_name,
     normalize_entity_name,
 )
+from .metadata_alias_resolve import is_descriptive, is_planning_alias
 
 
 #: 日期式那一支两种分隔符都放行：`_` 是一本道等片商的标识，不是可替换的写法
@@ -223,6 +225,29 @@ def collapse_repeated_phrase(value: str) -> tuple[str, bool]:
     return cleaned, cleaned != original
 
 
+#: DMM 系来源把改过名的女优写成「现名（旧名）」：r18dev 给的是 `美谷朱音（美谷朱里）`。
+#: 罗马字那一格同一个渲染格式由 `entities.split_composite_person_name` 拆。
+_CURRENT_AND_FORMER = re.compile(r"(.+?)\s*[（(]([^（()）、，,/]+)[）)]")
+_JAPANESE = re.compile(r"[぀-ヿ一-鿿々]")
+
+
+def split_former_name(name: str) -> tuple[str, str]:
+    """(现名, 旧名)；不是这种写法时旧名为空串，现名就是原文。
+
+    两边都得像日文艺名才拆：`Mana(23)` 括号里是年龄，`みく（素人）` 括号里是描述，
+    整串照原样收。整串当名字收下，就对不上账本里早已登记的那一位，另建出一条重复实体。
+    """
+    matched = _CURRENT_AND_FORMER.fullmatch(str(name or "").strip())
+    if matched is None:
+        return name, ""
+    current, former = matched.group(1).strip(), FORMER_PREFIX.sub("", matched.group(2)).strip()
+    for part in (current, former):
+        if (len(part) < 2 or not _JAPANESE.search(part) or re.search(r"\d", part)
+                or is_descriptive(part) or is_planning_alias(part)):
+            return name, ""
+    return current, former
+
+
 def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
     performers: list[dict] = []
     warnings: list[str] = []
@@ -238,8 +263,9 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
             part for part in (item.get("last_name"), item.get("first_name")) if part
         )
         original = str(preferred or "").strip()
-        name = canonicalize_entity_name("performer", original)
-        repeated = bool(name and name != original)
+        current, former = split_former_name(original)
+        name = canonicalize_entity_name("performer", current)
+        repeated = bool(name and name != current)
         if repeated:
             warnings.append(f"来源演员名含重复片段，已规范化：{preferred} → {name}")
         key = normalize_entity_name(name)
@@ -248,6 +274,7 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
         seen.add(key)
         aliases: list[str] = []
         for alias in (
+            former,
             *(item.get("aliases") if isinstance(item.get("aliases"), list) else []),
             item.get("name_kana"), item.get("name_romaji"),
         ):
@@ -265,6 +292,9 @@ def normalized_performers(raw: object) -> tuple[list[dict], list[str]]:
         }
         if aliases:
             performer["aliases"] = aliases
+        if former:
+            # 现名在账本里还没登记、旧名已经登记过时，落库挂到旧名那一位身上。
+            performer["former_names"] = [canonicalize_entity_name("performer", former)]
         if item.get("profile_source"):
             performer["profile_source"] = str(item["profile_source"])
         performers.append(performer)

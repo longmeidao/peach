@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 
 from peach.entities import split_composite_person_name
+from peach.metadata import normalized_performers, split_former_name
+from peach.metadata_auto_apply import _apply_performer_candidate
 from peach.migrations import upgrade
 from scripts.split_composite_aliases import (
     CLEANUP_SOURCE, apply_review, apply_rows, collect,
@@ -217,6 +219,67 @@ class ReviewedNameCleanupTests(unittest.TestCase):
         self.assertEqual(
             [tag for (tag,) in self.con.execute(
                 "SELECT tag FROM asset_tag WHERE asset_id=4")], ["演员:白石 あこ"])
+
+
+class FormerNameTests(unittest.TestCase):
+    """女优栏里的「现名（旧名）」：拆成一个人的两个名字，挂到账本里已有的那一位。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, ROOT / "migrations")
+        self.con = sqlite3.connect(self.db)
+        self.con.row_factory = sqlite3.Row
+        self.addCleanup(self.con.close)
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,'performer',?,?,'t','t')",
+            [(20, "美谷朱音", "美谷朱音"), (21, "姬川优奈", "姬川优奈")])
+        self.con.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,confidence)"
+            " VALUES(21,'月城らん','月城らん','test',1.0)")
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,code,size)"
+            " VALUES(1,'R:','R:\\media\\MIZD-997.mp4','MIZD-997.mp4','video','MIZD-997',1)")
+
+    def land(self, raw_name: str, external_id: str = "") -> int:
+        performers, _warnings = normalized_performers(
+            [{"japanese_name": raw_name, "dmm_id": external_id, "profile_source": "r18dev"}])
+        _apply_performer_candidate(self.con, [1], {"value": performers}, source="r18dev",
+                                   confidence=0.9, metadata={}, now="t")
+        return self.con.execute(
+            "SELECT entity_id FROM asset_entity WHERE asset_id=1 AND role='performer'"
+        ).fetchone()[0]
+
+    def test_current_and_former_names_split_apart(self):
+        self.assertEqual(split_former_name("美谷朱音（美谷朱里）"), ("美谷朱音", "美谷朱里"))
+        self.assertEqual(split_former_name("七海ひな(旧・七瀬ひな)"), ("七海ひな", "七瀬ひな"))
+        performers, _warnings = normalized_performers([{"japanese_name": "美谷朱音（美谷朱里）"}])
+        self.assertEqual((performers[0]["name"], performers[0]["aliases"],
+                          performers[0]["former_names"]),
+                         ("美谷朱音", ["美谷朱里"], ["美谷朱里"]))
+
+    def test_brackets_that_are_not_a_former_name_stay_whole(self):
+        # 年龄、描述、罗马字、几个旧名挤在一格：都不是「一个现名配一个旧名」。
+        for name in ("Mana(23)", "みく（素人）", "Rei Mizuna (Rei Mizuna)",
+                     "美谷朱音（美谷朱里、朱里）", "ゆい（20歳）"):
+            self.assertEqual(split_former_name(name), (name, ""))
+
+    def test_the_current_name_lands_on_the_entity_already_there(self):
+        self.assertEqual(self.land("美谷朱音（美谷朱里）", "1039982"), 20)
+        self.assertEqual(self.con.execute(
+            "SELECT count(*) FROM entity WHERE kind='performer'").fetchone()[0], 2)
+        self.assertEqual([row[0] for row in self.con.execute(
+            "SELECT tag FROM asset_tag WHERE asset_id=1")], ["演员:美谷朱音"])
+
+    def test_a_new_current_name_lands_on_whoever_holds_the_former_one(self):
+        self.assertEqual(self.land("姫川ゆうな（月城らん）"), 21)
+        self.assertEqual(self.con.execute(
+            "SELECT count(*) FROM entity WHERE kind='performer'").fetchone()[0], 2)
+        self.assertEqual(self.con.execute(
+            "SELECT source FROM entity_alias WHERE entity_id=21 AND alias='姫川ゆうな'"
+        ).fetchone()[0], "javinizer:current-name")
 
 
 if __name__ == "__main__":
