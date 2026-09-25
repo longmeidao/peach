@@ -280,6 +280,71 @@ class MethodTests(unittest.TestCase):
         self.assertIsNone(jav_poster_crop.fold_column(800, 540, [1.0] * 400))
 
 
+class SeamBeyondTests(unittest.TestCase):
+    """厚书脊里的文字边压过了折痕时，切点右边那条满高缝才是折痕。
+
+    ABW-147 的形状：3762×2535，书脊 1922～1978 列，窗内最强的边是书脊文字的 1939，
+    书脊右缘 1978 的梯度不到它的七成、进不了候选，可它从上贯到下，文字边不满高。
+    """
+
+    WIDTH, HEIGHT = 3762, 2535
+    TEXT_EDGE, SPINE_EDGE = 1939, 1978
+
+    def profile(self, seam_at_text: float = 0.36, spine_edge: int = SPINE_EDGE,
+                spine_strength: float = 0.66, spine_seam: float = 0.91):
+        gradient = [0.0] * self.WIDTH
+        seams = [0.0] * self.WIDTH
+        gradient[self.TEXT_EDGE], seams[self.TEXT_EDGE] = 0.99, seam_at_text
+        gradient[spine_edge], seams[spine_edge] = spine_strength, spine_seam
+        return jav_poster_crop.ColumnProfile(gradient, seams)
+
+    def test_a_full_height_seam_right_of_a_cut_that_is_not_one_becomes_the_fold(self):
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT, self.profile()),
+                         self.SPINE_EDGE + 1)
+
+    def test_a_cut_that_is_itself_a_full_height_seam_stays_where_it_is(self):
+        """正封里紧挨折痕的边框、色带同样满高；折痕已经满高就没有理由再往右走。"""
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(seam_at_text=0.9)),
+                         self.TEXT_EDGE + 1)
+
+    def test_a_seam_outside_the_window_is_content_not_the_fold(self):
+        """窗外的满高缝切出来的正封形状不对，那是正封里的一条竖线。"""
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(spine_edge=2100)),
+                         self.TEXT_EDGE + 1)
+
+    def test_a_seam_left_of_the_cut_is_never_looked_at(self):
+        """书脊左缘也是满高缝，往左看会把整条书脊带回框里。"""
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(spine_edge=1900, spine_strength=0.5)),
+                         self.TEXT_EDGE + 1)
+
+    def test_a_faint_seam_that_is_no_cliff_does_not_pull_the_cut(self):
+        """淡淡的印刷分隔线能满高，但过不了峭壁那一关。"""
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(spine_strength=0.2)),
+                         self.TEXT_EDGE + 1)
+
+    def test_a_bare_gradient_without_seams_behaves_as_before(self):
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT, list(self.profile())),
+                         self.TEXT_EDGE + 1)
+
+    @unittest.skipUnless(opencv_available(), "需要 OpenCV")
+    def test_a_lettered_spine_is_cut_at_its_far_edge_from_the_image_itself(self):
+        """从画面量：书脊底色上一列竖排文字，文字边和书脊右缘都在窗里，正封从右缘起。"""
+        width, height, spine, edge = 800, 538, 400, 430
+        image = Image.new("RGB", (width, height), (40, 40, 40))    # 封底和书脊一样暗，左缘弱
+        image.paste((20, 20, 20), (spine, 0, edge, height))
+        image.paste((120, 120, 120), (edge, 0, width, height))
+        for y in range(0, height, 6):                # 书脊里的白色文字：窗内最强、却不满高的边
+            image.paste((255, 255, 255), (spine + 12, y, spine + 15, min(y + 4, height)))
+        box = jav_poster_crop.front_panel_box(width, height, gradient_of(image))
+        self.assertEqual(box["method"], FOLD)
+        self.assertGreaterEqual(box["x0"], edge)
+        self.assertLessEqual(box["x0"], edge + 3)
+
+
 class CodeShapeTests(unittest.TestCase):
     """哪些番号的封面是横版封套。判据全部走 `catalog_rules` 现有函数。"""
 

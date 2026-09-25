@@ -148,7 +148,7 @@ MANUAL = "manual"
 MANUAL_SOURCE = "user:crop"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v7"
+ALGORITHM_VERSION = "poster-crop-v8"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -285,10 +285,14 @@ def fold_column(width: int, height: int,
 
     选中的那一列是斜坡最陡处，不是斜坡尽头，所以还要往右走到梯度落回基线：基线取窗
     内梯度的中位数，每张图各算各的，画面忙的封套门槛自然就高。
+
+    走完斜坡的切点自己不是满高缝、右边窗内还有一条满高缝时，折痕是那条缝
+    （`_seam_beyond`）：书脊里的文字边只有梯度，折痕还从上贯到下。
     """
     profile = gradient_source() if callable(gradient_source) else gradient_source
     if profile is None:
         return None
+    seams = getattr(profile, "seams", None)
     profile = list(profile)
     if len(profile) != int(width) or not profile:
         return None
@@ -308,7 +312,36 @@ def fold_column(width: int, height: int,
     edges = _rival_edges(profile, window, profile[top], span)
     found = min(edges, key=lambda column: abs((width - column) / height - shape.prior))
     baseline = statistics.median(profile[low:high + 1])
-    return _settled(profile, found, baseline, round(width * FOLD_SETTLE_LIMIT), span)
+    limit = round(width * FOLD_SETTLE_LIMIT)
+    cut = _settled(profile, found, baseline, limit, span)
+    seam = _seam_beyond(profile, seams, found, cut, window, peak)
+    return cut if seam is None else seam + 1
+
+
+def _seam_beyond(profile: list[float], seams: Sequence[float] | None, found: int,
+                 cut: int, window: range, peak: float) -> int | None:
+    """切点右边、窗内最靠右的那条满高缝；切点自己已经是满高缝，或没有缝数据，返回 None。
+
+    厚书脊里印着竖排文字，文字的边在梯度上和折痕一样陡，按形状定夺也可能选中它
+    （ABW-147：书脊 1922～1978 列，窗内最强的边 1939 是文字边，切在 1941 整条书脊
+    留在框里）。文字边不满高，折痕满高：折痕是书脊底色到正封画面的一条直线，从上贯
+    到下。所以切点自身不满高、右边窗内还有满高缝时，正封从那条缝的下一列起：缝是
+    一列过渡线，不是斜坡，不再往右走（390JAC-077 正封紧挨缝的画面很忙，走会多切 11 列）。
+
+    只往右找：书脊左缘也是一条满高缝，往左看会把整条书脊带回来（本机 7 张）。切点
+    自身已满高就不动：正封里紧挨折痕的边框、色带也满高（本机 18 张）。缝也得过峭壁
+    那一关，免得被一条淡淡的印刷分隔线牵走。本机 705 张命中折痕的封套按这条改 10 张：
+    ABW-147、ABP-702 去掉整条书脊，390JAC、451HHH、LXVS 七张去掉书脊与正封之间的
+    白色沟槽；TKM-005 正封左侧 7 列黑边跟着折痕一起被切掉，是已知代价。
+    """
+    if seams is None or len(seams) != len(profile):
+        return None
+    if max(seams[found:cut + 1]) >= SEAM_MIN_COVERAGE:
+        return None
+    floor = peak * FOLD_MIN_STRENGTH
+    return max((column for column in window if column > cut
+                and seams[column] >= SEAM_MIN_COVERAGE and profile[column] >= floor),
+               default=None)
 
 
 def center_panel(width: int, height: int, seams: Sequence[float] | None) -> dict | None:
