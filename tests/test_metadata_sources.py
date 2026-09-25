@@ -1,19 +1,23 @@
 """站点解析器契约：取页与解析分开、配置注入、`query` 的异常翻译、失败原因表，以及配置与各张表的一致。"""
+import tempfile
+import time
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
 
 from peach import scraping_access
 from peach.http import HttpResponse
-from peach.jav_cover_fetch import DeadlineExceeded, NotFound, Unavailable
+from peach.jav_cover_fetch import DeadlineExceeded, HostLimitedTransport, NotFound, Unavailable
 from peach.library_processing import PROVIDER_NAMES, SOURCE_INTERVALS, SOURCE_LABELS
 from peach.metadata import MetadataProviderError
 from peach.metadata_policy import SOURCE_SPECS
 from peach.metadata_routes import FC2_STAGE
-from peach.scraping_access import SourcePaused
+from peach.scraping_access import FIRST_BLOCKED_PAUSE, SourcePaused, SourceTransport, cooldown_state
 from peach.sources import (COOLDOWN_ACTIONS, PERMANENT_REASONS, REASON_KINDS, SEESAA, SITE_SOURCES, FailureReason,
                            Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure, http_failure)
+from peach.sources.base import challenge_page
 from peach.sources.seesaa import WIKI_SOURCES, WikiPages
 
 DEMO = SiteConfig(name="demo", label="Demo", provider="demo-page", base_url="https://demo.test",
@@ -189,6 +193,103 @@ class FailureReasonTests(unittest.TestCase):
                 self.assertEqual(SourceFailure(reason, "").cooldown_action, COOLDOWN_ACTIONS.get(reason, ""))
         self.assertEqual(set(COOLDOWN_ACTIONS.values()), {"blocked", "rate_limited"},
                          "两档就是 scraping_access.pause_source 的 refused=True / retry_after 两档")
+
+
+CHALLENGE_HTML = (b"<!DOCTYPE html><html><head><title>Just a moment...</title></head>"
+                  b"<body><script>window._cf_chl_opt={}</script></body></html>")
+
+
+class SiteCooldownTests(unittest.TestCase):
+    """自写站报出 `COOLDOWN_ACTIONS` 里的细档时整站进冷却，与 amane 桥写同一份记录，同一轮里不再一部片撞一次。"""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        finder = patch("peach.browser_transport.find_browser", return_value=None)
+        finder.start()
+        self.addCleanup(finder.stop)
+
+    def session(self, source, respond):
+        """真的 `SourceTransport` 套在 `HostLimitedTransport` 里（与 `LibraryMetadataProvider` 同一个形状），底下是假传输。"""
+        calls = []
+
+        def fake(request, timeout, limit):
+            calls.append(request.url)
+            return respond(request)
+
+        raw = SourceTransport(self.root)
+        raw.transports[source] = fake
+        return Session(HostLimitedTransport(raw, 0.0)), calls
+
+    def test_an_avbase_challenge_served_with_200_pauses_the_whole_site(self):
+        session, calls = self.session("avbase", lambda request: HttpResponse(200, {}, CHALLENGE_HTML, request.url))
+        with self.assertRaises(SourceFailure) as caught:
+            SITE_SOURCES["avbase"]().query("ABW-358", session=session)
+        self.assertEqual(caught.exception.reason, FailureReason.CLOUDFLARE_CHALLENGE)
+        until, blocks = cooldown_state(self.root, "avbase")
+        self.assertEqual((round(until - time.time()), blocks), (FIRST_BLOCKED_PAUSE, 1))
+        with self.assertRaises(SourcePaused):
+            SITE_SOURCES["avbase"]().query("MIDE-594", session=session)
+        self.assertEqual(len(calls), 1, "冷却期内第二部片一次都不问")
+
+    def test_the_challenge_title_is_recognised_in_its_other_wordings(self):
+        for title in ("Just a moment...", "请稍候…", "Attention Required! | Cloudflare"):
+            with self.subTest(title=title):
+                self.assertTrue(challenge_page(f"<html><head><title> {title} </title>".encode()))
+        self.assertFalse(challenge_page(b"<html><head><title>ABW-358 - AVBase</title>"
+                                        b"<script src='/cdn-cgi/challenge-platform/scripts/jsd/main.js'>"),
+                         "正常页里 Cloudflare 注入的脚本不算验证页")
+
+    def test_each_cooldown_reason_goes_to_its_own_tier_and_other_reasons_leave_no_record(self):
+        class Failing(DemoSource):
+            reason = FailureReason.NOT_FOUND
+
+            def parse(self, page, code):
+                raise SourceFailure(self.reason, "demo")
+
+        config = SiteConfig(name="javbus", label="JavBus", provider="javbus-page", base_url="https://www.javbus.com",
+                            domains=("javbus.com",), stage="community")
+        for reason in FailureReason:
+            with self.subTest(reason=reason):
+                scraping_access.cooldown_path(self.root, "javbus").unlink(missing_ok=True)
+                session, _calls = self.session("javbus", lambda request: HttpResponse(200, {}, b"page", request.url))
+                Failing.reason = reason
+                with self.assertRaises(SourceFailure):
+                    Failing(config).query("ABC-001", session=session)
+                until, blocks = cooldown_state(self.root, "javbus")
+                action = COOLDOWN_ACTIONS.get(reason, "")
+                if action == "blocked":
+                    self.assertEqual((round(until - time.time()), blocks), (FIRST_BLOCKED_PAUSE, 1))
+                elif action == "rate_limited":
+                    self.assertEqual((round(until - time.time()), blocks), (900, 0))
+                else:
+                    self.assertEqual((until, blocks), (0.0, 0), "不是整站的问题就不停整站")
+
+    def test_a_nested_query_counts_one_failure_once(self):
+        """子类的 `query` 包着基类的 `query`（`r18dev`），同一个失败只翻一次倍。"""
+        class Nested(DemoSource):
+            def parse(self, page, code):
+                raise SourceFailure(FailureReason.IP_BANNED, "demo")
+
+            def query(self, code, *, session):
+                with self.holding(session):
+                    return super().query(code, session=session)
+
+        config = SiteConfig(name="javdb", label="javdb", provider="javdb-page", base_url="https://javdb.com",
+                            domains=("javdb.com",), stage="community")
+        session, _calls = self.session("javdb", lambda request: HttpResponse(200, {}, b"page", request.url))
+        with self.assertRaises(SourceFailure):
+            Nested(config).query("ABC-001", session=session)
+        self.assertEqual(cooldown_state(self.root, "javdb")[1], 1)
+
+    def test_a_javbus_refusal_pauses_the_site_like_the_other_community_sources(self):
+        session, calls = self.session("javbus", lambda request: HttpResponse(403, {}, b"", request.url))
+        for code in ("MIDE-594", "ABW-358"):
+            with self.assertRaises(SourcePaused):
+                SITE_SOURCES["javbus"]().query(code, session=session)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(cooldown_state(self.root, "javbus")[1], 1)
 
 
 class ConfigConsistencyTests(unittest.TestCase):

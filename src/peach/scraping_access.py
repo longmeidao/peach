@@ -52,14 +52,16 @@ SOURCES = {
     # 作品 JSON、剧照和样片都在 1pondo.tv 底下（含 `smovie.`）。免登录可读，不收 Cookie。
     "1pondo": {"label": "一本道", "domains": ("1pondo.tv",), "login": "https://www.1pondo.tv/"},
     "instagram": {"label": "Instagram", "domains": ("instagram.com", "cdninstagram.com"), "login": "https://www.instagram.com/accounts/login/", "cookie": True},
-    # 两家社区来源拒绝访问时回 403，不发 Retry-After：javdb 是出口 IP 超了配额（一封 3～7 日，
-    # docs/SOURCING.md），AVBase 是 Cloudflare 验证。封期里接着问只会每条都再撞一次，
-    # 所以整个来源停下——停多久按 `FIRST_BLOCKED_PAUSE` 翻倍，`blocked_pause` 是这个来源的上限。
+    # 三家社区来源拒绝访问时回 403，不发 Retry-After：javdb 是出口 IP 超了配额（一封 3～7 日，
+    # docs/SOURCING.md），AVBase 是 Cloudflare 验证，JavBus 的 403 原因未取得。封期里接着问只会每条都
+    # 再撞一次，所以整个来源停下——停多久按 `FIRST_BLOCKED_PAUSE` 翻倍，`blocked_pause` 是这个来源的上限。
+    # 回 200 的验证页由解析器认成 `cloudflare_challenge`，经 `SourceTransport.hold` 进同一份记录。
     # `session`：公开采集也带上用户在采集设置里贴的 Cookie。javdb 有登录墙，JavBus 有年龄门，
     # 不带只回确认页；Cookie 由用户在浏览器里过门或登录后贴进来，Peach 不读浏览器的 Cookie 库。
     "javdb": {"label": "JavDB", "domains": ("javdb.com", "jdbstatic.com", "jdbimgs.com"), "login": "https://javdb.com/",
               "cookie": True, "session": True, "blocked_pause": 24 * 3600},
-    "javbus": {"label": "JavBus", "domains": ("javbus.com",), "login": "https://www.javbus.com/", "cookie": True, "session": True},
+    "javbus": {"label": "JavBus", "domains": ("javbus.com",), "login": "https://www.javbus.com/", "cookie": True,
+               "session": True, "blocked_pause": 6 * 3600},
     "avbase": {"label": "AVBase", "domains": ("avbase.net",), "login": "https://www.avbase.net/", "blocked_pause": 6 * 3600},
 }
 _LOCK = threading.RLock()
@@ -81,13 +83,36 @@ def cooldown_path(root: Path, source: str) -> Path:
     return Path(root) / ("scraping-" + source + ".cooldown.json")
 
 
+#: 冷却记录里的 `via`：写下这笔账时请求走的是哪条路。HTTP 客户端（httpx 直连或经 Peach 代理、amane 桥）
+#: 与本机浏览器（ADR-0065）在站方眼里是两个客户端，一条路撞出的封不说明另一条路进不去。
+#: 没有 `via` 的记录按 HTTP 客户端算。
+VIA_HTTP = "http"
+VIA_BROWSER = "browser"
+
+
 def cooldown_state(root: Path, source: str) -> tuple[float, int]:
     """`(冷却到几点, 连着撞了几次)`；没有记录或记录坏了都按 `(0, 0)`。"""
+    until, blocks, _via = _record(root, source)
+    return until, blocks
+
+
+def _record(root: Path, source: str) -> tuple[float, int, str]:
+    """`(冷却到几点, 连着撞了几次, 走的哪条路)`；没有记录或记录坏了都按 `(0, 0, VIA_HTTP)`。"""
     try:
         record = json.loads(cooldown_path(root, source).read_text(encoding="utf-8"))
-        return float(record["until"]), int(record.get("blocks") or 0)
-    except (OSError, ValueError, KeyError, TypeError):
+        return float(record["until"]), int(record.get("blocks") or 0), str(record.get("via") or VIA_HTTP)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return 0.0, 0, VIA_HTTP
+
+
+def _state_for(root: Path, source: str, via: str) -> tuple[float, int]:
+    """走 `via` 这条路时该认的冷却：记录是另一条路写下的就作废（删掉），按 `(0, 0)` 从第一档重新数。"""
+    until, blocks, recorded = _record(root, source)
+    if recorded != via and (until or blocks):
+        with _LOCK:
+            cooldown_path(root, source).unlink(missing_ok=True)
         return 0.0, 0
+    return until, blocks
 
 
 def paused_until(root: Path, source: str) -> float:
@@ -97,29 +122,30 @@ def paused_until(root: Path, source: str) -> float:
 
 
 def pause_source(root: Path, source: str, *, refused: bool = False,
-                 retry_after: float | None = None) -> float:
+                 retry_after: float | None = None, via: str = VIA_HTTP) -> float:
     """按现成的两档把来源停下，返回冷却到几点。
 
     `refused` 走 403 那一档：先停 `FIRST_BLOCKED_PAUSE`，连着再撞才翻倍，上限是
     `SOURCES[source]['blocked_pause']`，没登记上限的来源按 24 小时。否则走 429 那一档：
-    停站方说的 `retry_after` 秒，没说就 15 分钟。不是 httpx 那条路（amane 桥）发现的
-    限流与封禁也从这里进，两条路读写的是同一份记录。
+    停站方说的 `retry_after` 秒，没说就 15 分钟。amane 桥报的限流与封禁、自写站契约报的
+    冷却细档（`SourceTransport.hold`）都从这里进，与 `SourceTransport` 读写同一份记录。
+    `via` 是这次请求走的路；记录是另一条路写下的，就从第一档重新数。
     """
-    until, blocks = cooldown_state(root, source)
+    until, blocks = _state_for(root, source, via)
     if refused:
         blocks += 1
         limit = SOURCES.get(source, {}).get("blocked_pause") or 24 * 3600
         until = time.time() + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1), limit)
     else:
         until = time.time() + max(0.0, float(retry_after if retry_after is not None else 900))
-    _pause(cooldown_path(root, source), until, blocks)
+    _pause(cooldown_path(root, source), until, blocks, via)
     return until
 
 
-def _pause(cooldown: Path, until: float, blocks: int = 0) -> None:
+def _pause(cooldown: Path, until: float, blocks: int = 0, via: str = VIA_HTTP) -> None:
     with _LOCK:
         cooldown.parent.mkdir(parents=True, exist_ok=True)
-        cooldown.write_text(json.dumps({"until": max(until, time.time() + 1), "blocks": blocks}),
+        cooldown.write_text(json.dumps({"until": max(until, time.time() + 1), "blocks": blocks, "via": via}),
                             encoding="utf-8")
 
 
@@ -290,7 +316,9 @@ class SourceTransport:
             max_bytes = min(max_bytes, remaining - 1)
         key = source or hashlib.sha256(hostname_of(request.url).encode()).hexdigest()
         cooldown = cooldown_path(self.root, key)
-        until, blocks = cooldown_state(self.root, key)
+        # 冷却只认这条路自己撞出来的账：直连 403 攒下的 `blocks` 与 `until` 不压到浏览器那条路上，反之亦然。
+        via = self._via(source)
+        until, blocks = _state_for(self.root, key, via)
         if until > time.time():
             raise SourcePaused("来源正在冷却，请稍后重试；已有图片保留")
         if source not in self.transports:
@@ -303,7 +331,7 @@ class SourceTransport:
         except browser_transport.ChallengeUnsolved:
             blocks += 1
             _pause(cooldown, time.time() + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1),
-                                               SOURCES[source]["blocked_pause"]), blocks)
+                                               SOURCES[source]["blocked_pause"]), blocks, via)
             raise SourcePaused("来源的人机验证没有在限时内通过，暂停向它请求一段时间；"
                                "浏览器窗口再弹出时点一下验证即可；已有图片保留")
         self.bytes += len(response.body)
@@ -316,13 +344,13 @@ class SourceTransport:
                     until = parsedate_to_datetime(retry).timestamp()
                 except (ValueError, TypeError, OverflowError):
                     until = time.time() + 900
-            _pause(cooldown, until, blocks)
+            _pause(cooldown, until, blocks, via)
             raise SourcePaused("来源限流，已记录冷却时间；已有图片保留")
         blocked_pause = SOURCES.get(source or "", {}).get("blocked_pause")
         if response.status == 403 and blocked_pause:
             blocks += 1
             _pause(cooldown, time.time()
-                   + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1), blocked_pause), blocks)
+                   + min(FIRST_BLOCKED_PAUSE * 2 ** (blocks - 1), blocked_pause), blocks, via)
             if SOURCES[source].get("cookie"):
                 raise SourcePaused("来源拒绝访问，暂停向它请求一段时间；"
                                    "请在采集设置里更新它的 Cookie；已有图片保留")
@@ -331,6 +359,24 @@ class SourceTransport:
             # 这一趟通了，封已经解除：清掉记录，下次撞上从最短的一档重新起算。
             cooldown.unlink(missing_ok=True)
         return response
+
+    def hold(self, source: str, action: str) -> None:
+        """契约报的冷却细档（`SourceFailure.cooldown_action`）写回这个来源的冷却记录。
+
+        `blocked` 按 403 那一档翻倍，`rate_limited` 按 429 那一档；别的值与不在 `SOURCES` 里的来源不记。
+        回 200 的验证页（AVBase、JAVten、FC2PPV-DB 的 httpx 那条路）在传输层看不出来，由解析器认出后经
+        `SiteSource.holding` 走到这里，与 403 进的是同一份记录。
+        """
+        if action not in {"blocked", "rate_limited"} or source not in SOURCES:
+            return
+        pause_source(self.root, source, refused=action == "blocked", via=self._via(source))
+
+    def _via(self, source: str | None) -> str:
+        """这个来源这次走哪条路。登记了 `browser` 的来源要先选出传输才知道（不发请求、不起进程）。"""
+        if source and SOURCES[source].get("browser") and source not in self.transports:
+            self.transports[source] = self._transport_for(source)
+        transport = self.transports.get(source)
+        return VIA_BROWSER if isinstance(transport, browser_transport.BrowserTransport) else VIA_HTTP
 
     def _transport_for(self, source: str | None):
         """这个来源的请求走哪条路：登记了 `browser` 且本机有浏览器就走浏览器页面，否则 httpx。"""

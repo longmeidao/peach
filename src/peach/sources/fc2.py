@@ -1,4 +1,4 @@
-"""FC2 内容市场（adult.contents.fc2.com）的商品页，以及 FC2 三站共用的番号、时长与原件地址。
+"""FC2 内容市场（adult.contents.fc2.com）的商品页，以及 FC2 链上五站共用的番号、时长与原件地址。
 
 FC2 不是 JAV：番号是卖家自己的投稿号，JAV 目录站按它去查要么没有，要么撞上别的片。
 r18.dev 对 FC2 实测 85 条问了 85 条全空；AVBase 与 JavBus 对本地这批番号一律回「没有
@@ -7,8 +7,8 @@ r18.dev 对 FC2 实测 85 条问了 85 条全空；AVBase 与 JavBus 对本地�
 
 页面主体在 `<script type="application/ld+json">` 的 Product 里，正文 DOM 只补它没有的
 那几项。下架的商品仍回 200，靠正文里没有 Product 判定，归 `not_found`，不当成抓取失败。
-下架的由 fc2cmadb（`sources/fc2cmadb.py`）与 JavArchive（`sources/javarchive.py`）接着答，
-三站先后问、取齐即停的流程在 `LibraryMetadataProvider.fc2`。
+下架的由 fc2cmadb、FC2PPV-DB、JAVten 与 JavArchive（`sources/` 下同名模块）依次接着答，
+五站先后问、取齐即停的流程在 `LibraryMetadataProvider.fc2`，顺序是 `metadata_routes.FC2_STAGE`。
 
 带分段后缀的番号（`FC2-PPV-3312576-1`）在这里一律认不出商品号，于是一处都不问。那是
 对的：合集的封面套给每个分段，屏幕上就是 21 个不同内容顶着同一张图。
@@ -26,7 +26,7 @@ from bs4 import BeautifulSoup
 
 from .base import FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure
 
-#: 三站的页面上限。FC2 商品页实测 300～320 KB，fc2cmadb 那页 90 KB；说明与评论都在同一页里。
+#: FC2 链上五站的页面上限。FC2 商品页实测 300～320 KB，fc2cmadb 那页 90 KB；说明与评论都在同一页里。
 PAGE_LIMIT = 2 * 1024 * 1024
 #: 商品页、卖家页和图片存储（`storage*`、`contents-thumbnail*`）都在 fc2.com 底下，一条域名就够。
 #: 免登录可读，不带 Cookie；主机间隔用默认的 2 秒。

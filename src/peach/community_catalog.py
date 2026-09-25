@@ -58,8 +58,9 @@ def community_sources_for(code: str, *hints: str, route=None):
     JavBus 那 37 份全是厂牌番号，对 FC2 番号一份都没给过，javdb 则给了 166 份。问了只是
     各撞一次空搜索，白花两家的配额，还多两次被 Cloudflare 记上的机会。
 
-    省不出时间是预料之中的：`HostLimiter` 等的是「距上次满 5 秒」，这两家的往返本来就落在
-    等 javdb 的窗口里。一轮采集的长短由 javdb 的请求数乘 5 秒定死，这里改的是请求次数。
+    省不出时间是预料之中的：`HostLimiter` 等的是「距上次满 3 秒」（`library_processing.SOURCE_INTERVALS`
+    里 javdb 的主机间隔），这两家的往返本来就落在等 javdb 的窗口里。一轮采集的长短由 javdb 的请求数乘
+    3 秒定死，这里省的是请求次数。
     """
     from .metadata_routes import community_route
     members = community_route(code, *hints) if route is None else tuple(route)

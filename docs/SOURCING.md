@@ -169,7 +169,9 @@ dmm、giga、kin8 不进链，理由与数据见 ADR-0048 与 `build/agent-verif
 读到的东西不变；失败只有一张 `FailureReason` 表（十二档），`REASON_KINDS` 把它映到
 `MetadataProviderError` 的 `auth` / `unavailable` / `not_found` 三档，`COOLDOWN_ACTIONS` 说哪几档要把
 整站写进 `scraping_access` 的冷却记录（`cloudflare_challenge`、`ip_banned`、`geo_restricted` 按 403 那一档翻倍，
-`rate_limited` 按 429 那一档）。冷却期（`SourcePaused`）、动作预算与连接失败由传输层抛出，契约原样放过，
+`rate_limited` 按 429 那一档）。自写站的 `query()`／`records()` 包在 `SiteSource.holding()` 里，报出这几档就交给
+会话传输链上的 `SourceTransport.hold` 记账，与 amane 桥写同一份记录；AVBase 回 200 的验证页由此整站冷却。
+冷却期（`SourcePaused`）、动作预算与连接失败由传输层抛出，契约原样放过，
 所以按站的限流与封禁表现由传输层一处决定。配置与 `SOURCE_SPECS`、`SOURCE_LABELS`、`PROVIDER_NAMES`、
 `scraping_access.SOURCES`、`SOURCE_INTERVALS` 里同一站的那几行由 `tests/test_metadata_sources.py` 守住一致。
 
@@ -229,8 +231,10 @@ r18.dev 对 85 个 FC2 番号全空，AVBase 与 JavBus 对本地这批一律「
   解题那台浏览器的 User-Agent 与出口 IP，且只活 30 分钟。所以这两站的页由本机浏览器打开
   （`peach.browser_transport`，ADR-0065）：Peach 拉起用户机器上的 Chrome（没有才用 Edge，InPrivate；独立
   profile 放在 `peach-data/secrets/browser/`，窗口在屏幕外），导航到地址，落到验证页就等它自己过（实测 3～25
-  秒，无人点），过了把最终地址、状态码与文档读回来；40 秒没过窗口顶到前面、托盘弹通知让人点一下，再等两分钟
-  没过按 `blocked_pause` 整站冷却（15 分钟起翻倍到 6 小时），链照常往下走。FC2PPV-DB 第一次进站落年龄确认页
+  秒，无人点），过了把最终地址、状态码与文档读回来；自动阶段最多等 `min(40 秒, 这条请求的 timeout)`，没过窗口
+  顶到前面让人点一下，再等两分钟（不受 timeout 约束，同一站弹过没点就不再弹）没过按 `blocked_pause` 整站冷却
+  （15 分钟起翻倍到 6 小时），链照常往下走；不是验证页的页在 timeout 内没打开按连接失败重试。冷却记录带 `via`，
+  直连 403 攒下的冷却在切到浏览器时作废，反之亦然，规则见 ADR-0065 第二条。FC2PPV-DB 第一次进站落年龄确认页
   （`/age-verify`），传输按 `SOURCES` 里的 `browser_gate` 替人点那颗按钮。浏览器 10 分钟不用自己退出。这台机器
   没有 Chrome／Edge（`find_browser`）时退回旧路：整站 UA（`peach.user_agent.USER_AGENT`）与用户的 Chrome 一致、
   「来源和凭证」里贴 Cookie、连接方式选与那台浏览器同一个出口，403 同样冷却、保存新 Cookie 清冷却。JAVten 搜索
@@ -501,8 +505,8 @@ av911.tv，三条候选已进复核队列。
   Cloudflare 拦，njav 有验证墙，jav321 无独立女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。
   javdb.com 抓得到，但它自己按出口 IP 封速率，判据见下文。
   既有库采集只在官方渠道落空时按番号问 AVBase、JavBus 与 javdb：javdb 主机间隔由用户定
-  （`library_processing.SOURCE_INTERVALS`，2026-09-22 起 3 秒，两个主机一起改），javdb 与 AVBase 回 403
-  就整源停下，资料与封面的比对规则见 ADR-0030、ADR-0032。
+  （`library_processing.SOURCE_INTERVALS`，2026-09-22 起 3 秒，两个主机一起改），javdb、AVBase 与 JavBus 回 403
+  或验证页就整源停下，资料与封面的比对规则见 ADR-0030、ADR-0032。
   **FC2 的商品号只问 javdb**（`community_catalog.community_sources_for`）：2026-09-22 清点本机 1213 份来源证据，
   AVBase 那 86 份、JavBus 那 37 份全是厂牌番号，对 FC2 一份都没给过，javdb 给了 166 份。
   javdb 对 FC2 补的是演员（167 份里 51.5% 有）与发行日，厂牌、标签、封面一份都不给，所以它问得慢却砍不掉。
@@ -510,7 +514,7 @@ av911.tv，三条候选已进复核队列。
   被吸收，所以跳过两家省的是配额和撞 Cloudflare 的次数，不是时间；同理把几家改成并行也省不出时间。
   2026-09-22 按 5 秒实测一轮 565 部走 3349 秒（5.93 秒/部），其中 javdb 约 731 次请求折合 3655 秒，两者相差 9%。
   停多久按次数翻倍：第一次 `scraping_access.FIRST_BLOCKED_PAUSE`（15 分钟），连着再撞才翻到 `SOURCES` 的
-  `blocked_pause` 上限（javdb 24 小时、AVBase 6 小时），通了一趟就把记录清掉重新起算。
+  `blocked_pause` 上限（javdb 24 小时、AVBase 与 JavBus 6 小时），通了一趟就把记录清掉重新起算。
   **上限不能当首停时长**：实际封期常常短得多，2026-09-22 实测 javdb 记下的 24 小时才走了 6.6 小时，
   用同一套 client 问首页和两条搜索全回 200，而那一轮 778 部片的 1432 条失败全部写着「来源正在冷却」。
   冷却期抛的是 `SourcePaused` 而不是 `NotFound`，所以「7 天内不再问」的记忆（`library-metadata-misses.json`）

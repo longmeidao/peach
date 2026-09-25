@@ -6,7 +6,9 @@
 `iteminfo.director`）。一次请求就够，不必再进作品页。商品里可能混着收录这段内容的合集
 （素人系常见），合集的标题和番号都对不上本作，按这两条筛掉。
 
-它不给时长，`runtime` 留空；拒绝访问时回的是 Cloudflare 验证页。
+它不给时长，`runtime` 留空。拒绝访问时回的是 Cloudflare 验证页，状态码可能是 403，也可能是 200：
+403 由 `SourceTransport` 整站冷却，200 的那张由 `parse` 认成 `cloudflare_challenge`，经 `holding()`
+进同一份冷却记录（上限 `scraping_access.SOURCES['avbase']['blocked_pause']`）。
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ import urllib.parse
 from ..catalog_rules import same_release_code
 from ..jav_cover_fetch import THUMBNAIL, is_cross_product_cover
 from ..metadata import identifies_code
-from .base import FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure
+from .base import FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure, challenge_page
 
 #: 主机间隔用默认的 2 秒，不带 Cookie：免登录可读，拒绝访问由 Cloudflare 按出口 IP 判。
 AVBASE = SiteConfig(name="avbase", label="AVBase", provider="avbase-search",
@@ -31,7 +33,6 @@ PRODUCT_ORDER = ("fanza", "mgstage", "duga")
 UNRECOGNISED = "AVBase 页面结构未识别，可能在验证访问"
 
 _NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.S)
-_CHALLENGE = re.compile(r"<title>Just a moment\.\.\.</title>")
 _DATE = re.compile(r"^[A-Za-z]{3} ([A-Za-z]{3}) (\d{1,2}) (\d{4})")
 _MONTHS = {name: index for index, name in enumerate(
     ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), 1)}
@@ -97,7 +98,7 @@ class AVBaseSource(SiteSource):
         except (ValueError, KeyError, TypeError):
             props = None
         if not isinstance(props, dict):
-            reason = FailureReason.CLOUDFLARE_CHALLENGE if _CHALLENGE.search(text) else FailureReason.PARSE_ERROR
+            reason = FailureReason.CLOUDFLARE_CHALLENGE if challenge_page(text) else FailureReason.PARSE_ERROR
             raise SourceFailure(reason, UNRECOGNISED)
         works = [work for work in props.get("works") or []
                  if isinstance(work, dict) and same_release_code(code, str(work.get("work_id") or ""))]
