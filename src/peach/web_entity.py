@@ -14,7 +14,7 @@ import time
 
 from urllib.parse import urlsplit
 
-from . import entry_links, feeds, web_feeds
+from . import entry_links, feeds, performer_header, web_feeds
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, solo_performer_clause, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .social_links import ARCHIVE_HOSTS, is_archive
@@ -165,6 +165,9 @@ def q_entity(contract: WebContract, args):
         )]
         d.update(_performer_entries(contract, c, d, alias_rows) if kind == "performer"
                  else {"entry_links": []})
+        # 页头的五项资料与按名义分组的别名（ADR-0069）：只有女优有。
+        if kind == "performer":
+            d.update(performer_header.header(c, d["id"], d["canonical_name"]))
         scope = scope_predicate(kind, "ae.entity_id")
         count, rep = c.execute(
             "SELECT count(DISTINCT ae.asset_id),"
@@ -274,7 +277,8 @@ def agency_mark_link(links: list[dict]) -> int | None:
 
 
 def q_entity_shapes(contract, args) -> dict:
-    """资料页上可有可无的那几块，哪些实体有：新作那一行（`feed`）、卡底的同台艺人（`costars`）。
+    """资料页上可有可无的那几块，哪些实体有：新作那一行（`feed`）、卡底的同台艺人（`costars`）、
+    页头右侧那张资料表（`facts`，ADR-0069）。
 
     骨架在资料到达之前就要照最终形状画：不留位，那一块画出来时从中间顶进来；每页都
     留，没有的那一页又得在画出来时收掉。两块各有一半上下的页面有，猜哪一边都有一半在
@@ -290,6 +294,8 @@ def q_entity_shapes(contract, args) -> dict:
                 " JOIN asset_entity co ON co.asset_id=scope.asset_id AND co.entity_id<>scope.entity_id"
                 " JOIN entity person ON person.id=co.entity_id AND person.kind='performer'"):
             parts.setdefault(int(row[0]), []).append("costars")
+        for entity_id in performer_header.profiled(connection):
+            parts.setdefault(entity_id, []).append("facts")
         entities = {int(row["id"]): {"id": int(row["id"]), "kind": row["kind"],
                                      "names": [row["canonical_name"]], "parts": parts[int(row["id"])]}
                     for row in connection.execute("SELECT id, kind, canonical_name FROM entity ORDER BY id")

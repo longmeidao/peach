@@ -106,6 +106,8 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   minnano-av 读资料表，avwikidb 读 JSON-LD。不采用的候选：`kanojo-db/scrapers` 的 Minna no AV
   爬虫与 `stashapp/CommunityScrapers` 的 Minnano-AV 规则都不是可安装的库，后者是 Stash 的 XPath 配置
   （Stash 适配器已关，ADR-0021）；站点入口与名字核对 Peach 已有一份，只补资料表逐格规整。
+  女优页头（ADR-0069）只读这张表：`performer_header` 出五项与别名分组，別名栏的渠道注记从 `raw_json`
+  原文里由 `minnano_av.name_entries` 拆，拆名字复用 `sources.seesaa.split_names`，不另存。
 
 测试与集成复用 `test_runner.py`、`agent_worktree.py`；进程互斥采用开发依赖
 `filelock==3.32.4` 的 `FileLock`（[官方用法](https://py-filelock.readthedocs.io/en/stable/tutorials.html)）。
