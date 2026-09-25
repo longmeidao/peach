@@ -4,7 +4,8 @@
 `source` 与 `batch`，标识文件记在边车 `.provenance.json` 的同名两项，别名的
 `entity_alias.source` 直接就是批次号 `<source>@<任务行 id>`（ADR-0055）。女优资料行的
 `performer_profile.source` 同样是批次号，后继登记的站上编号在 `entity_external_ref.metadata_json`
-里记 `source` 与 `batch`（ADR-0067），番号样张的 `code_sample_image.source` 也是批次号（ADR-0068）。
+里记 `source` 与 `batch`（ADR-0067），番号样张的 `code_sample_image.source` 也是批次号（ADR-0068），
+种子包补的所属事务所 `entity_membership.source` 同样（ADR-0073）。
 判据错了一批，就按它们认出来一起撤掉，不必一条条找。
 
 撤回是删除，不是恢复旧值：补厂牌后继只在盘上一张图都没有、账本里一条官网都没有时才写，
@@ -15,6 +16,7 @@
     revert_auto_landing.py --source auto:performer-alias --batch auto:performer-alias@812
     revert_auto_landing.py --source auto:performer-profile
     revert_auto_landing.py --source auto:sample-images
+    revert_auto_landing.py --source auto:seed --batch auto:seed@2026-09-25
 
 默认只列计划；`--apply` 必须同时给 `--backup`，删文件在账本行之后、同一次运行里完成。
 """
@@ -83,6 +85,17 @@ def planned_profiles(connection, source: str, batch: str) -> list[dict]:
                 values)]
 
 
+def planned_memberships(connection, source: str, batch: str) -> list[dict]:
+    """这个来源写下的所属事务所（`source` 列存批次号）。"""
+    clause, values = _batch_clause("m.source", source, batch)
+    return [{"member_id": row["member_id"], "entity": row["canonical_name"], "agency": row["agency"],
+             "source": row["source"]}
+            for row in connection.execute(
+                "SELECT m.member_id,e.canonical_name,a.canonical_name AS agency,m.source"
+                " FROM entity_membership m JOIN entity e ON e.id=m.member_id"
+                " JOIN entity a ON a.id=m.agency_id WHERE " + clause + " ORDER BY m.member_id", values)]
+
+
 def planned_refs(connection, source: str, batch: str) -> list[dict]:
     """这个来源登记的站上编号（`metadata_json` 里记着 `source` 与 `batch`）。"""
     found = []
@@ -132,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         aliases = planned_aliases(connection, args.source, args.batch)
         profiles = planned_profiles(connection, args.source, args.batch)
         refs = planned_refs(connection, args.source, args.batch)
+        memberships = planned_memberships(connection, args.source, args.batch)
         files = planned_files(args.logo_root, args.source, args.batch)
         samples = sample_images.planned_revert(connection, args.source, args.batch)
         for link in links:
@@ -142,12 +156,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f" - 资料 {profile['entity'][:20]:<20} {profile['source']}")
         for ref in refs:
             print(f" - 编号 {ref['entity'][:20]:<20} {ref['provider']} {ref['id']} {ref['batch']}")
+        for membership in memberships:
+            print(f" - 归属 {membership['entity'][:20]:<20} {membership['agency'][:30]} {membership['source']}")
         for path in files:
             print(f" - 标识 {path.name}")
         for sample in samples:
             print(f" - 样张 {sample['code']:<20} {sample['count']} 张 {sample['source']}")
         print({"链接": len(links), "别名": len(aliases), "资料": len(profiles), "编号": len(refs),
-               "标识文件": len(files), "样张": sum(sample["count"] for sample in samples)})
+               "归属": len(memberships), "标识文件": len(files),
+               "样张": sum(sample["count"] for sample in samples)})
         if not args.apply:
             print("dry-run；确认无误后加 --apply --backup <路径>")
             return 0
@@ -163,6 +180,9 @@ def main(argv: list[str] | None = None) -> int:
             connection.executemany(
                 "DELETE FROM entity_external_ref WHERE provider=? AND external_kind=?"
                 " AND external_id=?", [(ref["provider"], ref["kind"], ref["id"]) for ref in refs])
+            connection.executemany(
+                "DELETE FROM entity_membership WHERE member_id=? AND source=?",
+                [(membership["member_id"], membership["source"]) for membership in memberships])
             removed_samples = sample_images.revert(connection, args.source, args.batch)
         integrity, orphans = verify_after_write(connection)
     finally:
@@ -174,7 +194,8 @@ def main(argv: list[str] | None = None) -> int:
                 target.unlink()
                 removed += 1
     print({"删除链接": len(links), "删除别名": len(aliases), "删除资料": len(profiles),
-           "删除编号": len(refs), "删除样张": removed_samples, "删除文件": removed,
+           "删除编号": len(refs), "删除归属": len(memberships), "删除样张": removed_samples,
+           "删除文件": removed,
            "integrity_check": integrity, "foreign_key_check": orphans})
     return 0
 

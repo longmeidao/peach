@@ -94,7 +94,8 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_link_rediscovery.py", "test_link_label_owner.py",
                  "test_link_repair.py",
                  "test_resource_identification.py",
-                 "test_agency_entity.py", "test_agency_reject.py", "test_label_maker.py"),
+                 "test_agency_entity.py", "test_agency_reject.py", "test_label_maker.py",
+                 "test_seed_pack.py"),
     "tooling": ("test_scripts.py", "test_trash_junk.py", "test_auth.py", "test_access.py", "test_cli.py", "test_script_policy.py",
                 "test_scan.py", "test_push_discovery.py", "test_media_probe.py", "test_subtitles.py", "test_onboarding.py", "test_configuration_sources.py", "test_folder_picker.py", "test_ledger_backups.py", "test_clear_camera_filename_codes.py",
                 "test_agent_worktree.py", "test_test_evidence.py", "test_dependency_policy.py",
@@ -105,7 +106,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_fsutil.py", "test_desktop_settings.py",
                 "test_job_status.py", "test_jobs.py", "test_task_runs.py", "test_followups.py",
                 "test_task_center_integration.py", "test_reference_updates.py",
-                "test_repo_hygiene.py",
+                "test_repo_hygiene.py", "test_seed_pack.py",
                 "test_review_csv.py", "test_jav_code_domain.py", "test_organize.py",
                 "test_link_repair.py",
                 "test_subprocess_encoding.py", "test_module_layering.py",
@@ -183,6 +184,9 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     "src/peach/studio_icons.py": ("catalog", "metadata", "web"),
     "src/peach/studio_sites.py": ("catalog", "metadata"),
     "scripts/revert_auto_landing.py": ("catalog", "metadata", "tooling"),
+    # 实体事实种子包（ADR-0073）：导出导入的逻辑与命令行，测试都在 `test_seed_pack.py`。
+    "src/peach/seed_pack.py": ("metadata", "tooling"),
+    "scripts/seed_pack.py": ("metadata", "tooling"),
     # 补女优资料后继的解析与读写层、一次补完的脚本，测试都在 `test_performer_profile_followup.py`。
     "scripts/run_performer_profiles.py": ("metadata",),
     "src/peach/avwikidb.py": ("metadata",),
