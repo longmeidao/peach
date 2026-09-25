@@ -36,7 +36,11 @@ from .http import HttpRequest, HttpResponse
 
 LOGGER = logging.getLogger(__name__)
 
-#: 验证页多久没自动过完就把窗口顶到前面让人点，调用方的 `timeout` 更短时按 `timeout`（见 `_load`）。
+#: 验证页转了多久还没自动过，就清掉该站 cookie 重载一次。Cloudflare 见到过期或判无效的 `cf_clearance`
+#: 会把浏览器扔进不给勾选框、也不放行的重试循环（页上只有转圈，`cf_chl_rc_ni` 计数涨），等多久、点哪里
+#: 都没用，删掉那两条 cookie 重载 5 秒就过（2026-09-25 用生产 profile 实测）；正常自动放行都在 10 秒内。
+RESET_SECONDS = 15.0
+#: 清 cookie 重载之后再等多久没过，就把窗口顶到前面让人点，调用方的 `timeout` 更短时按 `timeout`（见 `_load`）。
 #: 三次实测里最慢的一次是 25 秒（JAVten）。
 AUTO_SECONDS = 40.0
 #: 窗口顶到前面后再等多久。到点就报 `ChallengeUnsolved`，来源按拒绝访问那一档冷却。
@@ -292,6 +296,15 @@ class _Browser:
         assert self.socket is not None
         self.socket.call("Network.setExtraHTTPHeaders", headers=dict(headers))
 
+    def clear_cookies(self, url: str) -> int:
+        """删掉会随 `url` 发出去的全部 cookie（含 `cf_clearance`），返回条数。只动这一站，别的站的放行凭据留着。"""
+        assert self.socket is not None
+        cookies = self.socket.call("Network.getCookies", urls=[url]).get("cookies", [])
+        for cookie in cookies:
+            self.socket.call("Network.deleteCookies", name=cookie["name"], domain=cookie.get("domain", ""),
+                             path=cookie.get("path", "/"))
+        return len(cookies)
+
     def place(self, *, visible: bool) -> None:
         """要人点时放回屏幕内并顶到前面，点完最小化。
 
@@ -363,8 +376,8 @@ class BrowserTransport:
     """`HttpTransport`：让浏览器导航到地址，验证页由它过，过了读回文档。
 
     一个实例管一个浏览器进程，请求串行，只发 GET。导航后每秒看一次标题、`readyState` 与页头：不是
-    验证页且 DOM 解析完就读文档；验证在自动时限内没过，窗口顶到前面并登记 `attention`；再等
-    `click_seconds` 还没过就报 `ChallengeUnsolved`。同一站弹过窗口没点过去，之后再撞验证到自动时限
+    验证页且 DOM 解析完就读文档；验证转了 `RESET_SECONDS` 没过，清掉该站 cookie 重载一次；重载后再等
+    自动时限没过，窗口顶到前面并登记 `attention`；再等 `click_seconds` 还没过就报 `ChallengeUnsolved`。同一站弹过窗口没点过去，之后再撞验证到自动时限
     就报，不再弹窗，直到哪次页面正常打开为止：验证转圈时页上常常没有可点的框，一直弹只会打扰。
     各段时限怎么跟调用方的 `timeout` 配合见 `_load`。`gates` 是按主机登记的「点一下就过」的页（年龄门）：
     落到那个路径就点匹配的按钮，等它跳回去。
@@ -433,8 +446,10 @@ class BrowserTransport:
         时限从导航那一刻起算，`timeout` 是调用方给这一条请求的预算（`SourceTransport` 已按本趟截止时间裁过）：
 
         1. 一直没见到验证页：`timeout` 秒内要解析完，否则报 `PageTimeout`，调用方按连接失败处理。
-        2. 见到验证页：自动阶段最多等到 `min(auto_seconds, timeout)` 秒，浏览器自己过了就照常返回。
-        3. 自动阶段没过：这一站在 `_unsolved` 里就立刻报 `ChallengeUnsolved`，不弹窗；不在就把窗口顶到前面，
+        2. 见到验证页：转了 `min(RESET_SECONDS, 自动时限)` 秒还没过，清掉该站 cookie 重新导航一次——过期的
+           `cf_clearance` 会让 Cloudflare 只转圈不放行也不给勾选框，清掉才出得来。重载后再等自动时限
+           `min(auto_seconds, timeout)` 秒，浏览器自己过了就照常返回。
+        3. 重载后仍没过：这一站在 `_unsolved` 里就立刻报 `ChallengeUnsolved`，不弹窗；不在就把窗口顶到前面，
            从弹出那一刻起再等 `click_seconds`，这一段不受 `timeout` 约束——人点验证要的时间不归一条请求的
            预算管。还没过就记进 `_unsolved` 并报 `ChallengeUnsolved`，同一站之后不再弹，直到哪次页面正常打开，
            所以一个站最多让整趟多等一次 `click_seconds`。
@@ -443,8 +458,11 @@ class BrowserTransport:
         browser.extra_headers({key: value for key, value in headers.items() if key.lower() in PASSED_HEADERS})
         browser.navigate(url)
         started = self._clock()
+        phase_started = started
         auto_limit = min(self.auto_seconds, timeout)
+        reset_limit = min(RESET_SECONDS, auto_limit)
         challenged_seen = False
+        cleared = False
         shown_at: float | None = None
         try:
             while True:
@@ -463,7 +481,14 @@ class BrowserTransport:
                         self._unsolved.add(host)
                         raise ChallengeUnsolved(f"{host} 的人机验证在 {int(elapsed)} 秒内没有通过")
                 elif challenged_seen:
-                    if elapsed >= auto_limit:
+                    waited = now - phase_started
+                    if not cleared and waited >= reset_limit:
+                        cleared = True
+                        count = browser.clear_cookies(url)
+                        LOGGER.info("%s 的验证页 %d 秒没有自动通过，清掉该站 %d 条 cookie 重载", host, int(elapsed), count)
+                        browser.navigate(url)
+                        phase_started = now
+                    elif cleared and waited >= auto_limit:
                         if host in self._unsolved:
                             raise ChallengeUnsolved(f"{host} 的人机验证在 {int(elapsed)} 秒内没有自动通过；"
                                                     "窗口上次弹出后没点过去，这次不再弹")
