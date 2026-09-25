@@ -200,8 +200,11 @@ class BrowserTransportTests(unittest.TestCase):
         self.assertEqual(response.headers["content-type"], "text/html; charset=utf-8")
         self.assertNotIn("secret", json.dumps(server.calls), "Cookie 与 UA 不进浏览器，由它自己填")
         extra = [params["headers"] for method, params in server.calls if method == "Network.setExtraHTTPHeaders"]
-        self.assertEqual(extra, [{"Accept-Language": "ja,en;q=0.9", "Referer": "https://javten.com/"}],
-                         "语言与上一跳跟着进去：JAVten 按 Accept-Language 决定回日文原页还是译文页")
+        self.assertEqual(extra, [{"Accept-Language": "ja,en;q=0.9"}],
+                         "会话上只挂语言头：JAVten 按 Accept-Language 决定回日文原页还是译文页")
+        self.assertEqual([params for method, params in server.calls if method == "Page.navigate"],
+                         [{"url": "https://javten.com/search?kw=2", "referrer": "https://javten.com/"}],
+                         "上一跳只作主文档的 Referer：挂在会话上会让 Turnstile 勾选框的 iframe 被浏览器拦下")
         # 启动参数：调试口、关掉自动化标记与它的警告条、不同步、profile 在凭据根下、窗口在屏幕外、来源的连接方式。
         command = self.launches[0]
         for flag in ("--remote-debugging-port=0", "--disable-blink-features=AutomationControlled", "--test-type",
@@ -215,8 +218,8 @@ class BrowserTransportTests(unittest.TestCase):
         blocked = server.calls[2][1]["urls"]
         self.assertTrue({"*.jpg", "*.webp", "*.woff2", "*.mp4"} <= set(blocked), "图片、字体与媒体不下载")
         transport(HttpRequest("GET", "https://fc2ppv-db.com/ja/videos/1", {}), 10, 4)
-        self.assertEqual([params["url"] for method, params in server.calls if method == "Page.navigate"],
-                         ["https://javten.com/search?kw=2", "https://fc2ppv-db.com/ja/videos/1"], "每条请求各导航一次")
+        self.assertEqual([params for method, params in server.calls if method == "Page.navigate"][1:],
+                         [{"url": "https://fc2ppv-db.com/ja/videos/1"}], "每条请求各导航一次；没有上一跳就不传 referrer")
         with self.assertRaises(BrowserUnavailable):
             transport(HttpRequest("POST", "https://javten.com/", {}), 10, 4096)
 
@@ -273,14 +276,17 @@ class BrowserTransportTests(unittest.TestCase):
 
         transport, server = self.make(handler)
         started = self.clock.now
-        response = transport(HttpRequest("GET", "https://javten.com/search?kw=1", {}), 45, 4096)
+        response = transport(HttpRequest("GET", "https://javten.com/search?kw=1", {"Referer": "https://javten.com/"}),
+                             45, 4096)
         self.assertEqual(response.status, 200)
         self.assertEqual(cleared_at, [15, 15], "转 15 秒清一次，两条 cookie 都删")
         self.assertEqual([params for method, params in server.calls if method == "Network.getCookies"],
                          [{"urls": ["https://javten.com/search?kw=1"]}], "只查这一站的 cookie")
         self.assertEqual(sorted(params["name"] for method, params in server.calls if method == "Network.deleteCookies"),
                          ["cf_chl_rc_ni", "cf_clearance"])
-        self.assertEqual(len([1 for method, _ in server.calls if method == "Page.navigate"]), 2, "清完重新导航一次")
+        self.assertEqual([params for method, params in server.calls if method == "Page.navigate"],
+                         [{"url": "https://javten.com/search?kw=1", "referrer": "https://javten.com/"}] * 2,
+                         "清完重新导航一次，重载照样带上一跳")
         self.assertFalse(any(method == "Browser.setWindowBounds" for method, _ in server.calls), "重载后过了就不惊动人")
         self.assertEqual(browser_transport.attention(), [])
         self.assertEqual(transport._unsolved, set())
