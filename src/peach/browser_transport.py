@@ -60,9 +60,13 @@ CHALLENGE_MARKS = ("Just a moment", "请稍候", "cf-chl-", "challenge-platform"
 #: 导航时不下载的资源：图片、字体与媒体。要的是 HTML，验证页也不靠这些。
 BLOCKED_RESOURCES = ("*.jpg", "*.jpeg", "*.png", "*.gif", "*.webp", "*.avif", "*.ico",
                      "*.woff", "*.woff2", "*.ttf", "*.mp4", "*.webm", "*.m3u8")
-#: 请求头里跟着进浏览器的只有这两个：JAVten 按 Accept-Language 决定回日文原页还是译文页，Referer 是
-#: 解析器给的上一跳。Cookie、User-Agent 之类由浏览器自己填，其余的不带。
-PASSED_HEADERS = ("accept-language", "referer")
+#: 请求头里跟着进浏览器的只有两个。Accept-Language 挂在会话上，这一页之后每条请求都带（JAVten 按它决定
+#: 回日文原页还是译文页）；Referer 是解析器给的上一跳，只经 `Page.navigate` 的 `referrer` 落在主文档上：
+#: 挂在会话上的 Referer 会跟进子框架的导航，Chrome 把那种导航按 `ERR_BLOCKED_BY_CLIENT` 拦下，Turnstile
+#: 勾选框那个 iframe 就出不来，验证页只剩转圈、`cf_chl_rc_ni` 反复涨（2026-09-25 生产进程内对照实测）。
+#: Cookie、User-Agent 之类由浏览器自己填，其余的不带。
+SESSION_HEADERS = ("accept-language",)
+REFERRER_HEADER = "referer"
 
 _WINDOWS_CANDIDATES = (
     # Chrome 排前面：Edge 会拿 Windows 账号把新 profile 隐式登录并开同步，采集用的浏览记录会跟着
@@ -287,9 +291,11 @@ class _Browser:
             raise RuntimeError(result["exceptionDetails"].get("text") or "页面脚本出错")
         return result.get("result", {}).get("value")
 
-    def navigate(self, url: str) -> None:
+    def navigate(self, url: str, *, referrer: str | None = None) -> None:
+        """导航到 `url`；`referrer` 只作这一次主文档的 Referer，没有就不传这个键。"""
         assert self.socket is not None
-        self.socket.call("Page.navigate", url=url)
+        params = {"url": url, "referrer": referrer} if referrer else {"url": url}
+        self.socket.call("Page.navigate", **params)
 
     def extra_headers(self, headers: Mapping[str, str]) -> None:
         """这一页之后每条请求都附带的头；传空字典就是清掉。"""
@@ -455,8 +461,9 @@ class BrowserTransport:
            所以一个站最多让整趟多等一次 `click_seconds`。
         """
         host = urlsplit(url).hostname or url
-        browser.extra_headers({key: value for key, value in headers.items() if key.lower() in PASSED_HEADERS})
-        browser.navigate(url)
+        referrer = next((value for key, value in headers.items() if key.lower() == REFERRER_HEADER), None)
+        browser.extra_headers({key: value for key, value in headers.items() if key.lower() in SESSION_HEADERS})
+        browser.navigate(url, referrer=referrer)
         started = self._clock()
         phase_started = started
         auto_limit = min(self.auto_seconds, timeout)
@@ -486,7 +493,7 @@ class BrowserTransport:
                         cleared = True
                         count = browser.clear_cookies(url)
                         LOGGER.info("%s 的验证页 %d 秒没有自动通过，清掉该站 %d 条 cookie 重载", host, int(elapsed), count)
-                        browser.navigate(url)
+                        browser.navigate(url, referrer=referrer)
                         phase_started = now
                     elif cleared and waited >= auto_limit:
                         if host in self._unsolved:

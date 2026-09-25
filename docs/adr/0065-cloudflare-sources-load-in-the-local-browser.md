@@ -29,6 +29,7 @@ Chrome 或 Edge（Chrome DevTools Protocol，只需要一个 WebSocket 客户端
 | fc2ppv-db 第一次进站 | 200 但落 `/ja/age-verify?returnTo=…` 年龄确认页（Next.js 客户端页）；到过这一页之后 profile 里有 `age-verified` Cookie，同一 profile 再取作品页直接到 |
 | 同一出口一小时内几十次撞验证 | Cloudflare 把这个出口升为要人点的 Turnstile 框（「请验证您是真人」，勾选框在闭合 shadow DOM 里，页面脚本查不到 iframe），全新 profile 也一样；正常使用一站半小时一次不会撞到这档 |
 | 发下的 Cookie | `cf_clearance` 30 分钟；javten 另有 `laravel_session`、`XSRF-TOKEN` 2 小时 |
+| 会话级 `Network.setExtraHTTPHeaders` 带 Referer | Turnstile 勾选框那个子框架（`challenges.cloudflare.com/cdn-cgi/challenge-platform/…/turnstile/…`）的导航被 `ERR_BLOCKED_BY_CLIENT`（`blockedReason=other`）拦下，页上只剩转圈、`cf_chl_rc_ni` 每 50 秒涨一，人点不到；同一进程新标签页只挂 Accept-Language 就放行；Referer 经 `Page.navigate` 的 `referrer` 传，主文档照样带 Referer 且 5 秒过（Chrome 153.0.8010.54，生产进程内对照） |
 | 依赖 | venv 里没有 WebSocket 库（只有 h11、anyio）；自写 RFC 6455 客户端 80 行够用 |
 
 ## 决策
@@ -38,8 +39,9 @@ Chrome 或 Edge（Chrome DevTools Protocol，只需要一个 WebSocket 客户端
 `DevToolsActivePort` 读），只开一页，每条请求 `Page.navigate` 到地址，每秒看一次标题、`readyState` 与页头，
 DOM 解析完（`interactive`）且不是验证页就用 `Runtime.evaluate` 读回最终地址、Navigation Timing 的
 `responseStatus` 与序列化后的 `documentElement`，正文按 utf-8 编码、`content-type` 取 `document.contentType`。
-Cookie、User-Agent 与出口三者天然一致，不再要用户贴 Cookie；请求头里只有 Accept-Language 与 Referer 经
-`Network.setExtraHTTPHeaders` 跟进去（JAVten 按语言决定回日文原页还是译文页）。请求串行，一个进程一个
+Cookie、User-Agent 与出口三者天然一致，不再要用户贴 Cookie；请求头里只有 Accept-Language 经
+`Network.setExtraHTTPHeaders` 挂在会话上（JAVten 按语言决定回日文原页还是译文页），Referer 经 `Page.navigate`
+的 `referrer` 只落在主文档上——挂在会话上它会跟进 Turnstile 子框架的导航并被浏览器拦下。请求串行，一个进程一个
 浏览器；连接方式不同（直连／带地址的 Peach 代理）各起一个。`Network.setBlockedURLs` 挡掉图片、字体与媒体，
 只下载 HTML。不用页面内 `fetch()`：它只能同源，且跟到 `http://` 跳转会被浏览器按混合内容拦下。
 
