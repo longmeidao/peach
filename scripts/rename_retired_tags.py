@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-r"""把账本里的退役标签名改成规范名。
+r"""把账本里的退役标签名改成规范名，撤掉的粗桶整条删掉。
 
 名单与判据在 `peach.catalog_rules.RETIRED_TAGS` 与 `peach.tag_renames`，页面上那些
 「同一件事两行」就是按这张表消掉的。本脚本是写这一步的唯一入口。
@@ -25,7 +25,7 @@ from peach.tag_renames import FIELDS, apply_rows, collect
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="把退役标签名改成规范名")
+    parser = argparse.ArgumentParser(description="把退役标签名改成规范名，撤掉的粗桶整条删掉")
     add_ledger_write_args(parser)
     parser.add_argument("--review-csv", type=Path,
                         default=GENERATED_DIR / "retired-tag-rename.csv")
@@ -40,9 +40,11 @@ def run(args: argparse.Namespace) -> int:
         kept = sum(row["raw_kept"] for row in rows)
         print(f"退役名 {len(rows)} 个，待改标注 {total} 条；来源原话保留 {kept} 条")
         for row in rows:
-            if row["assets"] or row["merged"]:
+            if row["new"] and (row["assets"] or row["merged"]):
                 print(f"  {row['old']} → {row['new']}：改 {row['assets']} 条、"
                       f"并 {row['merged']} 条、实体{row['entity'] or '无'}")
+            elif row["assets"]:
+                print(f"  {row['old']} 撤掉：删 {row['assets']} 条、实体{row['entity'] or '无'}")
 
         if args.apply:
             before = counts_of(connection, {"asset_tag": "SELECT count(*) FROM asset_tag"})
@@ -55,7 +57,7 @@ def run(args: argparse.Namespace) -> int:
                 raise
             after = counts_of(connection, {"asset_tag": "SELECT count(*) FROM asset_tag"})
             integrity, violations = verify_after_write(connection)
-            print(f"已写入：改标注 {counts['tags']} 条、删重复 {counts['dropped']} 条、"
+            print(f"已写入：改标注 {counts['tags']} 条、删重复与撤掉的 {counts['dropped']} 条、"
                   f"动实体 {counts['entities']} 个")
             print(f"  标注 {before['asset_tag']} → {after['asset_tag']}，"
                   f"实体 {before['entity']} → {after['entity']}")

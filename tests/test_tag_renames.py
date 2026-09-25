@@ -141,6 +141,38 @@ class RenameTests(unittest.TestCase):
             [row[0] for row in self.connection.execute(
                 "SELECT canonical_name FROM entity WHERE kind='tag'")], ["恋足"])
 
+    def test_a_dropped_bucket_leaves_the_ledger_with_its_entity(self):
+        self._tag(6, "乳系", source="vision_creator")
+        self._tag(6, "美乳", source="vision_creator")
+        self._entity(20, "乳系")
+        self.connection.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source) VALUES(6,20,'tag','vision_creator')")
+        self.connection.execute(
+            "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source) VALUES(20,'乳','乳','stash')")
+        rows = {row["old"]: row for row in tag_renames.collect(self.connection)}
+        self.assertEqual((rows["乳系"]["new"], rows["乳系"]["assets"], rows["乳系"]["entity"]),
+                         ("", 1, "删除"))
+        counts = tag_renames.apply_rows(self.connection, list(rows.values()))
+        self.assertEqual(self._tags_of(6), ["美乳"])
+        self.assertEqual((counts["dropped"], counts["entities"]), (1, 1))
+        for table in ("entity", "asset_entity", "entity_alias"):
+            column = "id" if table == "entity" else "entity_id"
+            self.assertIsNone(self.connection.execute(
+                f"SELECT 1 FROM {table} WHERE {column}=20").fetchone(), table)
+
+    def test_a_dropped_bucket_the_source_itself_said_is_left_alone(self):
+        self._tag(7, "足系", source="pixiv_tag")
+        tag_renames.apply_rows(self.connection, tag_renames.collect(self.connection))
+        self.assertEqual(self._tags_of(7), ["足系"])
+
+    def test_a_followed_bucket_entity_is_kept_for_a_person_to_look_at(self):
+        self.connection.execute("CREATE TABLE follow_source(id INTEGER PRIMARY KEY, entity_id INTEGER)")
+        self._entity(21, "足系")
+        self.connection.execute("INSERT INTO follow_source(entity_id) VALUES(21)")
+        counts = tag_renames.apply_rows(self.connection, tag_renames.collect(self.connection))
+        self.assertEqual(counts["entities"], 0)
+        self.assertIsNotNone(self.connection.execute("SELECT 1 FROM entity WHERE id=21").fetchone())
+
     def test_a_preview_run_writes_the_csv_and_leaves_the_ledger_alone(self):
         self._tag(4, "足控")
         self.connection.commit()

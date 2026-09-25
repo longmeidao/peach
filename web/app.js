@@ -10013,7 +10013,7 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
     const byDisplay=new Map();
     (it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).forEach(t=>{
       const key=foldName(tagLabel(t.k)),previous=byDisplay.get(key);
-      // `足系` 与 `美腿` 的可见名相同；优先保留本身就是规范显示名的那条。
+      // 改过显示名的标签可能与另一条同名；优先保留本身就是规范显示名的那条。
       if(!previous||foldName(t.k)===key&&foldName(previous.k)!==key)byDisplay.set(key,t)});
     const visible=[...byDisplay.values()].slice(0,40);
     wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(tagLabel(t.k))}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(tagLabel(t.k))}">${icon('x')}</button></span>`).join('')+

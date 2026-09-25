@@ -16,7 +16,6 @@ from . import media_libraries, settings_file
 
 from .catalog_rules import (
     LENGTH_TAGS,
-    collapse_superseded_taste_tags,
     is_jav_asset,
     jav_display_metadata,
     names_without_shared_part_tail,
@@ -374,9 +373,7 @@ def q_items(contract: WebContract, args):
             ]
             performers = all_performers[:CARD_PERFORMERS]
             performer_names = {normalize_entity_name(name) for name in all_performers}
-            visible_tags = collapse_superseded_taste_tags(
-                canonical_tags or [t for t in ts if not t.startswith("演员:")]
-            )
+            visible_tags = canonical_tags or [t for t in ts if not t.startswith("演员:")]
             r["tags"] = [
                 tag for tag in visible_tags
                 if tag_cat(tag) in (
@@ -808,9 +805,9 @@ def q_item(contract: WebContract, aid):
         and normalize_entity_name(tag[3:]) not in canonical_creators
     ]
     performer_names = {normalize_entity_name(name) for name in performers}
-    tags = collapse_superseded_taste_tags([tag for tag in (canonical_tags or [
+    tags = [tag for tag in (canonical_tags or [
         tag for tag in legacy if not tag.startswith("演员:")
-    ]) if normalize_entity_name(tag) not in performer_names])
+    ]) if normalize_entity_name(tag) not in performer_names]
     d["tags"] = [
         {
             "k": tag,

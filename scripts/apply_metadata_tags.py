@@ -6,7 +6,7 @@
 候选带出处和置信度，由人一条条批。这里只是把同一份写入映射批量跑一遍。
 
 写入映射复用 `peach.metadata_auto_apply._apply_metadata_candidate`——就是 `/review` 批准时
-走的那一份。它管着删旧的 `javinizer:%` 标签行、规范化标签名、收敛被取代的口味标签，
+走的那一份。它管着删旧的 `javinizer:%` 标签行、规范化标签名、按现词表换掉退役名与撤掉的粗桶，
 以及 `asset_tag` 与 `asset_entity` 两处一起写。抄一份出来只会漂。
 
 默认只统计，`--apply` 才写库且必须给 `--backup`。

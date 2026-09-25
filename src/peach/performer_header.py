@@ -24,7 +24,7 @@ from datetime import date
 
 from .entities import normalize_entity_name
 from .genre_decisions import load_genre_decisions
-from .genre_taxonomy import resolve_genre
+from .genre_taxonomy import resolve_profile_tag
 from .kanji import fold_glyphs
 from .metadata_alias_resolve import PLANNING_ALIAS_SOURCE
 from .minnano_av import name_entries
@@ -82,20 +82,19 @@ def facts(row: dict | None, today: date, decisions: dict[str, str | None] | None
 def site_tags(raw: list, decisions: dict[str, str | None] | None = None) -> list[str]:
     """站上的标签换成 Peach 的中文标签，同义的并成一个（`美人`、`美少女` 都是「高颜值」）。
 
-    与作品标签走同一张表和同一批用户决定（`genre_taxonomy.resolve_genre`）；用户判为不是内容的
-    不出。表里还没收录的照原文列：那是站上确有的说法，丢掉就少了一项读数。
+    先查资料专用的那张表，再落回作品标签的表，用户的决定排最前
+    （`genre_taxonomy.resolve_profile_tag`）；一格写了几个的拆开，不作为标签的不出。
+    表里还没收录的照原文列：那是站上确有的说法，丢掉就少了一项读数。
     """
     tags: list[str] = []
     for tag in raw:
         text = " ".join(str(tag).split())
         if not text:
             continue
-        mapped = resolve_genre(text, decisions)
-        if mapped is None:
-            continue
-        shown = mapped or text
-        if shown not in tags:
-            tags.append(shown)
+        mapped = resolve_profile_tag(text, decisions)
+        for shown in (text,) if mapped is None else mapped:
+            if shown not in tags:
+                tags.append(shown)
     return tags
 
 
