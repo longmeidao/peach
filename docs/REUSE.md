@@ -243,7 +243,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - macOS Ledger 同步在共享根判为 `offline` 时先经 NetFS 挂载 `peach-sync` 再重判，挂载失败才保留离线结果，不弹阻塞认证框。
 - 浏览历史增量采集使用 SQLite backup API 与 `browserexport`，也接受 Google Takeout ZIP；原始 URL 与标题只留本机私有目录，聚合候选不写 ledger。
 - 首次设置的可选历史引导转到 `/taste?onboarding=1`，继续使用现有读取与导入入口。指南链接按 [Google 导出说明](https://support.google.com/accounts/answer/3024190?hl=zh-Hans) 和 [browserexport](https://github.com/purarue/browserexport) 官方说明核验（2026-09-06）；沿用 `browserexport==0.4.4`，未新增依赖或解析器。
-- 实体的公开事实随仓库分发（ADR-0073）：`scripts/seed_pack.py export` 只读账本生成 `resources/seed/entities.json`（女优、厂牌、事务所的别名、站上编号、官网社媒链接、资料表、所属事务所；不带图像、本机路径、Stash 编号），同一账本同一版本逐字节一致；`import` 默认 dry-run，只给本机已有实体填空、不造实体，归属 `auto:seed@<版本>`，`revert_auto_landing.py --source auto:seed` 五张表一起撤。
+- 实体的公开事实随仓库分发（ADR-0073、ADR-0075）：`scripts/seed_pack.py export` 只读账本生成 `resources/seed/entities.json`（女优、厂牌、事务所的别名、站上编号、官网社媒链接、资料表、所属事务所、label 的片商；不带图像、本机路径、Stash 编号），同一账本同一版本逐字节一致。导入由扫描结算声明的 `seed-import:<版本>` 后继跑（`seed_followup`），命令行 `import` 默认 dry-run；只给本机已有实体填空、不造实体，旧种子写的归属、片商与资料可被新版换掉，与人写的不一致记 `conflicts`、一条对上两位记 `duplicates`，两者写进 `seed-landing.csv`；归属 `auto:seed@<版本>`，`revert_auto_landing.py --source auto:seed` 六张表一起撤。
 - 数据管理首屏直接复用实际 `cleanupfieldset` 正文和操作条，只有计数等待取数；资源同步与重复文件网盘操作根据 `/api/sources` 已配置来源显示，离线来源保留入口。资源同步的扫描和执行复核均限于已配置 115／PikPak，空文件夹和按目录清理仍支持本地磁盘。
 
 ## 必须复用的成熟实现

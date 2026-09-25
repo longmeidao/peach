@@ -1,13 +1,17 @@
-"""实体事实的种子包：一台机器账本里的公开事实随仓库走，另一台机器只给已有实体填空（ADR-0073）。
+"""实体事实的种子包：一台机器账本里的公开事实随仓库走，另一台机器只给已有实体填空（ADR-0073、ADR-0075）。
 
 导出的是女优、厂牌与事务所名下**能在公开站点上重新查到**的文字事实：别名、站上编号、
-官网与社媒链接、女优资料表、所属事务所。不导任何图像字节、本机路径、刮削残片
-（`entity.metadata_json`、资料的 `raw_json`、链接的 `evidence`）与 Stash 的编号——那些
-要么是本机的，要么是别的用户账本里不可能对上的。
+官网与社媒链接、女优资料表、所属事务所、label 归哪家片商。不导任何图像字节、本机路径、
+刮削残片（`entity.metadata_json`、资料的 `raw_json`、链接的 `evidence`）与 Stash 的编号——
+那些要么是本机的，要么是别的用户账本里不可能对上的。
 
 导入按 ADR-0024 第五条：不造实体。包里的一位女优只有在本机账本已经登记了她（规范名、
 别名或站上编号对得上）时才补，补的每一格都是空格（ADR-0052 第三条），归属串 `auto:seed`、
 批次 `auto:seed@<版本>`，`scripts/revert_auto_landing.py --source auto:seed` 整批撤回。
+
+会变的事实（所属事务所、label 的片商、资料表）里由种子自己写下的行，新版种子可以整行换掉
+（ADR-0075）；人或本机后继写的行不动，包里说的不一样就记进 `conflicts` 等人看。一条对上本机
+两位实体的记进 `duplicates`：那是本机账本里的重复身份信号，合并不可逆，不由种子动手。
 """
 from __future__ import annotations
 
@@ -31,7 +35,13 @@ KINDS = ("performer", "studio", "agency")
 EXCLUDED_PROVIDERS = frozenset({"stash"})
 #: 导出的链接类型：目录页与来源引用是采集残迹，不是这个人或这家公司自己的地址。
 LINK_KINDS = ("official", "social")
-COUNT_KEYS = ("entities", "aliases", "refs", "links", "profiles", "memberships")
+COUNT_KEYS = ("entities", "aliases", "refs", "links", "profiles", "memberships", "makers")
+#: 一对一指向的两张表：包里的键 → (表, 自己那列, 对面那列, 对面的实体种类, 报告里的计数键)。
+#: 所属事务所与 label 的片商都是「主键在自己一侧，转手是覆盖」的形态（ADR-0049），导入共用一段逻辑。
+POINTERS = {
+    "agency": ("entity_membership", "member_id", "agency_id", "agency", "memberships"),
+    "maker": ("label_maker", "label_id", "maker_id", "studio", "makers"),
+}
 
 
 def batch_of(version: str) -> str:
@@ -53,6 +63,11 @@ def _metadata_ours(raw: object) -> bool:
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _name(connection: sqlite3.Connection, entity_id: int) -> str:
+    row = connection.execute("SELECT canonical_name FROM entity WHERE id=?", (entity_id,)).fetchone()
+    return str(row[0]) if row else str(entity_id)
 
 
 # -- 导出 ----------------------------------------------------------------------
@@ -113,10 +128,12 @@ def _profile(connection: sqlite3.Connection, entity_id: int) -> dict | None:
             "fetched_at": str(found["fetched_at"])}
 
 
-def _agency(connection: sqlite3.Connection, entity_id: int) -> dict | None:
+def _pointer(connection: sqlite3.Connection, entity_id: int, field: str) -> dict | None:
+    """这位指向的那一个（所属事务所、label 的片商）：对面的规范名与这条关系的来源；种子写的不导。"""
+    table, own, other, _kind, _count = POINTERS[field]
     row = connection.execute(
-        "SELECT a.canonical_name,m.source FROM entity_membership m JOIN entity a ON a.id=m.agency_id"
-        " WHERE m.member_id=?", (entity_id,)).fetchone()
+        f"SELECT t.canonical_name,p.source FROM {table} p JOIN entity t ON t.id=p.{other} WHERE p.{own}=?",
+        (entity_id,)).fetchone()
     if row is None or _ours(row[1]):
         return None
     return {"name": str(row[0]), "source": str(row[1])}
@@ -132,12 +149,13 @@ def export_pack(connection: sqlite3.Connection, *, version: str) -> dict:
         item = {"kind": str(kind), "name": str(name), "aliases": _aliases(connection, entity_id, str(kind)),
                 "refs": _refs(connection, entity_id), "links": _links(connection, entity_id)}
         if kind == "performer":
-            profile, agency = _profile(connection, entity_id), _agency(connection, entity_id)
-            if profile:
-                item["profile"] = profile
-            if agency:
-                item["agency"] = agency
-        if not (item["aliases"] or item["refs"] or item["links"] or "profile" in item or "agency" in item):
+            item.update({key: value for key, value in (("profile", _profile(connection, entity_id)),
+                                                       ("agency", _pointer(connection, entity_id, "agency")))
+                         if value})
+        elif kind == "studio":
+            item.update({key: value for key, value in (("maker", _pointer(connection, entity_id, "maker")),)
+                         if value})
+        if not (item["aliases"] or item["refs"] or item["links"] or {"profile", "agency", "maker"} & set(item)):
             continue
         entities.append(item)
         counts["entities"] += 1
@@ -146,6 +164,7 @@ def export_pack(connection: sqlite3.Connection, *, version: str) -> dict:
         counts["links"] += len(item["links"])
         counts["profiles"] += "profile" in item
         counts["memberships"] += "agency" in item
+        counts["makers"] += "maker" in item
     return {"format": FORMAT, "version": version, "source": SOURCE, "counts": counts, "entities": entities}
 
 
@@ -164,11 +183,8 @@ def load(path) -> dict:
 # -- 导入 ----------------------------------------------------------------------
 
 
-def match_entity(connection: sqlite3.Connection, item: dict) -> int | None:
-    """包里这一条对应本机哪个实体：规范名、每个写法、每个站上编号各自去认，认出来的必须是同一位。
-
-    认出两位就返回 None，哪怕其中一位是规范名逐字相同：名字对上 A、编号却挂在 B 名下，说明
-    本机账本里这两条里至少有一条是错的，指错人比漏补糟得多，这样的留给人看。"""
+def matches(connection: sqlite3.Connection, item: dict) -> set[int]:
+    """包里这一条按规范名、每个写法、每个站上编号各自去认，认出来的本机实体 id 全部返回。"""
     kind = item["kind"]
     keys = [normalize_entity_name(name) for name in
             (item["name"], *(alias["alias"] for alias in item.get("aliases") or []))]
@@ -184,6 +200,15 @@ def match_entity(connection: sqlite3.Connection, item: dict) -> int | None:
         found |= {int(row[0]) for row in connection.execute(
             f"SELECT e.id FROM entity_external_ref r JOIN entity e ON e.id=r.entity_id"
             f" WHERE e.kind=? AND ({clause})", (kind, *values))}
+    return found
+
+
+def match_entity(connection: sqlite3.Connection, item: dict) -> int | None:
+    """包里这一条对应本机哪个实体：认出来的必须是同一位。
+
+    认出两位就返回 None，哪怕其中一位是规范名逐字相同：名字对上 A、编号却挂在 B 名下，说明
+    本机账本里这两条里至少有一条是错的，指错人比漏补糟得多，这样的留给人看。"""
+    found = matches(connection, item)
     return found.pop() if len(found) == 1 else None
 
 
@@ -253,56 +278,100 @@ def _land_links(connection, entity_id: int, item: dict, batch: str, stamp: str) 
     return written
 
 
-def _land_profile(connection, entity_id: int, item: dict, batch: str) -> int:
-    """资料只给没有资料的那位写：`write_profile` 会整行替换自动来源的行，本机后继刚刮的
-    比种子新，不能被盖掉。"""
+def _land_profile(connection, entity_id: int, item: dict, batch: str, report: dict) -> None:
+    """资料只给没有资料行的写；种子自己写的那一行，包里取回时间更晚才整行换掉。本机后继刮的
+    资料比种子新，也由它自己按期刷新，`write_profile` 对自动来源的整行替换在这里不碰它。"""
     profile = item.get("profile")
-    if not profile or item["kind"] != "performer" or read_profile(connection, entity_id) is not None:
-        return 0
+    if not profile or item["kind"] != "performer":
+        return
+    current = read_profile(connection, entity_id)
+    if current is not None and not (_ours(current.get("source"))
+                                    and str(profile.get("fetched_at") or "") > str(current.get("fetched_at") or "")):
+        return
     fields = dict(profile.get("fields") or {})
     fields["raw"] = {}
-    return int(write_profile(connection, entity_id, fields, source=batch,
-                             source_url=str(profile.get("source_url") or ""),
-                             fetched_at=str(profile.get("fetched_at") or "") or None))
+    write_profile(connection, entity_id, fields, source=batch,
+                  source_url=str(profile.get("source_url") or ""),
+                  fetched_at=str(profile.get("fetched_at") or "") or None)
+    report["refreshed" if current is not None else "profiles"] += 1
 
 
-def _land_membership(connection, entity_id: int, item: dict, batch: str, stamp: str) -> int:
-    """所属事务所只在本机已经有这家事务所、这位又还没有归属时写；不造事务所实体。"""
-    agency = item.get("agency")
-    if not agency or item["kind"] != "performer":
-        return 0
-    if connection.execute("SELECT 1 FROM entity_membership WHERE member_id=?", (entity_id,)).fetchone():
-        return 0
-    agency_id = match_entity(connection, {"kind": "agency", "name": agency["name"]})
-    if agency_id is None:
-        return 0
-    connection.execute(
-        "INSERT OR IGNORE INTO entity_membership(member_id,agency_id,source,confidence,checked_at)"
-        " VALUES(?,?,?,1.0,?)", (entity_id, agency_id, batch, stamp))
-    return connection.execute("SELECT changes()").fetchone()[0]
+def _loops(connection, table: str, own: str, other: str, start: int, target: int, limit: int = 32) -> bool:
+    """从对面那位沿同一张表往上走会不会绕回自己：label 的片商可以再有片商（ADR-0051），成环不写。"""
+    current, depth = target, 0
+    while current is not None and depth < limit:
+        if current == start:
+            return True
+        row = connection.execute(f"SELECT {other} FROM {table} WHERE {own}=?", (current,)).fetchone()
+        current, depth = (int(row[0]) if row else None), depth + 1
+    return False
+
+
+def _land_pointer(connection, entity_id: int, item: dict, field: str, batch: str, stamp: str,
+                  report: dict) -> None:
+    """所属事务所与 label 的片商：本机没有就写，种子自己写的指向变了就换成新批次，人写的
+    与包里不一致就记进 `conflicts`。不造对面那个实体，对面对不上就什么都不做。"""
+    fact = item.get(field)
+    if not fact:
+        return
+    table, own, other, kind, count = POINTERS[field]
+    target = match_entity(connection, {"kind": kind, "name": fact["name"]})
+    if target is None or target == entity_id or _loops(connection, table, own, other, entity_id, target):
+        return
+    row = connection.execute(
+        f"SELECT p.{other},p.source,t.canonical_name FROM {table} p JOIN entity t ON t.id=p.{other}"
+        f" WHERE p.{own}=?", (entity_id,)).fetchone()
+    if row is None:
+        connection.execute(f"INSERT INTO {table}({own},{other},source,confidence,checked_at) VALUES(?,?,?,1.0,?)",
+                           (entity_id, target, batch, stamp))
+        report[count] += 1
+    elif int(row[0]) == target:
+        return
+    elif _ours(row[1]):
+        connection.execute(f"UPDATE {table} SET {other}=?,source=?,checked_at=? WHERE {own}=?",
+                           (target, batch, stamp, entity_id))
+        report["refreshed"] += 1
+    else:
+        report["conflicts"].append({"kind": item["kind"], "entity": _name(connection, entity_id), "field": field,
+                                    "ours": str(row[2]), "source": str(row[1]), "theirs": str(fact["name"])})
+
+
+def _land_one(connection, entity_id: int, item: dict, version: str, batch: str, stamp: str, report: dict) -> None:
+    report["aliases"] += _land_aliases(connection, entity_id, item, version, batch)
+    report["refs"] += _land_refs(connection, entity_id, item, batch, stamp)
+    report["links"] += _land_links(connection, entity_id, item, batch, stamp)
+    _land_profile(connection, entity_id, item, batch, report)
+    for field in POINTERS:
+        _land_pointer(connection, entity_id, item, field, batch, stamp, report)
+
+
+def written(report: dict) -> int:
+    """这次导入动了多少行：补上的加换掉的。"""
+    return sum(int(report.get(key, 0)) for key in (*COUNT_KEYS[1:], "refreshed"))
 
 
 def land(connection: sqlite3.Connection, pack: dict) -> dict:
-    """把包里的事实补进这本账，返回逐类计数。调用方负责事务与备份；dry-run 走 `plan`。"""
+    """把包里的事实补进这本账，返回逐类计数与两张明细（`conflicts`、`duplicates`）。
+    调用方负责事务与备份；dry-run 走 `plan`。同一包再跑一遍不会再动任何一行。"""
     version, batch, stamp = str(pack["version"]), batch_of(str(pack["version"])), _now()
     report = {"version": version, "batch": batch, "matched": 0, "unmatched": 0,
-              **dict.fromkeys(COUNT_KEYS[1:], 0)}
+              **dict.fromkeys(COUNT_KEYS[1:], 0), "refreshed": 0, "conflicts": [], "duplicates": []}
     for item in pack.get("entities") or []:
-        entity_id = match_entity(connection, item)
-        if entity_id is None:
+        found = matches(connection, item)
+        if len(found) > 1:
+            report["duplicates"].append({"kind": item["kind"], "name": item["name"],
+                                         "entities": sorted(_name(connection, entity_id) for entity_id in found)})
+            continue
+        if not found:
             report["unmatched"] += 1
             continue
         report["matched"] += 1
-        report["aliases"] += _land_aliases(connection, entity_id, item, version, batch)
-        report["refs"] += _land_refs(connection, entity_id, item, batch, stamp)
-        report["links"] += _land_links(connection, entity_id, item, batch, stamp)
-        report["profiles"] += _land_profile(connection, entity_id, item, batch)
-        report["memberships"] += _land_membership(connection, entity_id, item, batch, stamp)
+        _land_one(connection, found.pop(), item, version, batch, stamp, report)
     return report
 
 
 def plan(connection: sqlite3.Connection, pack: dict) -> dict:
-    """dry-run：在只读账本的内存副本上跑一遍 `land`，交出同样的计数，本机账本一字不动。"""
+    """dry-run：在只读账本的内存副本上跑一遍 `land`，交出同样的报告，本机账本一字不动。"""
     scratch = sqlite3.connect(":memory:")
     try:
         connection.backup(scratch)

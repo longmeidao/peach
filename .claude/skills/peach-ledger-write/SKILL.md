@@ -39,8 +39,9 @@ description: 在用户说迁移、migrate、--apply、合并实体、merge_entit
   只产候选，人复核后才 `approved`；撤不回的（合并、改规范名）判据再确定也要授权。
 - 运维脚本默认 dry-run：`scrape_codes.py` 默认只写复核 CSV，`clean_names.py` 默认只生成
   改名计划且 `--apply` 前备份 SQLite 并在数据库更新失败时回滚文件名。
-- 种子包（ADR-0073）：`seed_pack.py import` 只给已有实体填空、不造实体，归属 `auto:seed@<版本>`；
-  `export` 只读，数据包单独提交，推不推公开仓库由用户看字段决定。
+- 种子包（ADR-0073、0075）：导入只给已有实体填空、不造实体，只换 `auto:seed@…` 自己写过的归属、
+  片商与资料行，与人写的不一致记 `seed-landing.csv`；归属 `auto:seed@<版本>`。`export` 只读，
+  数据包单独提交，推不推公开仓库由用户看字段决定。
 
 ## 实体合并
 

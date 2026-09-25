@@ -81,6 +81,8 @@ FFmpeg and ffprobe are installed separately: without them you can still browse a
 
 Media stays in its original folders by default; organizing is an explicit action you start yourself, with a preview first and a rollback afterwards. The catalog, identities, viewing history and human decisions stay in a local SQLite ledger. External metadata and AI output enter as candidates with provenance and confidence; credentials stay outside Git, logs and API responses. Peach is for single-user self-hosting and does not provide a public-site or team permission model.
 
+Each release ships a seed of entity facts: aliases, site identifiers, official and social links, profiles, agency memberships and label-to-maker relations for performers, studios and agencies, with no images. After a scan it only fills blanks on entities already in your ledger; the only rows it replaces are the ones an older seed wrote itself. Anything that disagrees with a human decision goes to a review file, and every batch can be reverted.
+
 ## Documentation
 
 Using Peach: [Windows testing](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sources](docs/SOURCING.md) · [Project status](docs/STATUS.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)

@@ -1436,14 +1436,16 @@ def _entity_followups(database, config, watermark, covered=()):
     if database is None or watermark is None:
         return []
     from . import (avatar_followup, performer_alias_followup, performer_profile_followup,
-                   studio_followup)
+                   seed_followup, studio_followup)
     from .followups import Attempts, attempts_root
     from .task_runs import MAX_FOLLOWUPS
     generated = config.directory('generated')
     attempts = Attempts(attempts_root(generated))
     try:
         with database.read_connection() as connection:
-            found = avatar_followup.plan(
+            # 随版本附带的实体种子（ADR-0075）排在最前：一轮至多一条，永远在名额之内。
+            found = seed_followup.plan(connection, since_entity_id=watermark)
+            found += avatar_followup.plan(
                 connection, generated / 'avatars', since_entity_id=watermark,
                 covered_asset_ids=[asset_id for asset_id, count in covered if count])
             found += studio_followup.plan(connection, generated / 'logos',

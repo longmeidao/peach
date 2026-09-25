@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 from peach import followups as followups_module
+from peach import seed_followup, seed_pack
 from peach import task_runs as task_runs_module
 from peach.avatar_followup import TASK_KEY as AVATAR_TASK_KEY
 from peach.avatar_followup import followup_key, parse_key, plan
@@ -1047,7 +1048,22 @@ class ProcessLibraryTests(LedgerTestCase):
 
     这里不桩 `avatar_followup`：跑的就是补头像那条后继本身。图库索引在临时数据根下是空的，
     封面目录也是空的，于是它两档都给不出图并正常收尾——判不准不装图，本来就是这条后继的判据。
+    实体种子换成临时目录里的一份小包（`seed()`）：仓库里的真包会给这位真人补上 avwikidb 编号，
+    补头像那条就会真的去站上找单人作品，结论随当天有没有网而变。
     """
+
+    def seed(self) -> Path:
+        """一份只给 `涼森れむ` 补一条别名的种子包，替掉仓库里的真包。"""
+        pack = self.root / 'seed.json'
+        pack.write_text(seed_pack.dump({
+            'format': 1, 'version': '2026-09-25', 'source': 'auto:seed', 'counts': {},
+            'entities': [{'kind': 'performer', 'name': '涼森れむ', 'refs': [], 'links': [],
+                          'aliases': [{'alias': '鈴森れむ', 'source': 'r18:performer'}]}],
+        }), encoding='utf-8')
+        patcher = mock.patch.object(seed_pack, 'DEFAULT_PACK', pack)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return pack
 
     def sample(self):
         from peach.settings_file import PeachConfig
@@ -1076,6 +1092,7 @@ class ProcessLibraryTests(LedgerTestCase):
     @windows_ledger_roots
     def test_a_scrape_declares_dispatches_and_runs_its_avatar_followups(self):
         _media, config = self.sample()
+        self.seed()
         result = process_library(config, self.db, self.root / 'generated',
                                  self.root / 'covers',
                                  provider_factory=mock.Mock(return_value=self.provider()),
@@ -1085,10 +1102,12 @@ class ProcessLibraryTests(LedgerTestCase):
             entity_id = connection.execute(
                 "SELECT id FROM entity WHERE kind='performer'"
                 " AND canonical_name='涼森れむ'").fetchone()[0]
-        # 一、刮削自己声明了后继，实体身份就在 key 里：补头像、补别名、补女优资料各一条。
+        # 一、刮削自己声明了后继：随仓库走的实体种子一条排最前（ADR-0075），再是这位新女优的
+        # 补头像、补别名、补女优资料各一条，实体身份就在 key 里。
         from peach import performer_alias_followup, performer_profile_followup
         self.assertEqual([item['key'] for item in result['followups']],
-                         [followup_key('performer', entity_id),
+                         [seed_followup.followup_key('2026-09-25'),
+                          followup_key('performer', entity_id),
                           performer_alias_followup.followup_key(entity_id),
                           performer_profile_followup.followup_key(entity_id)])
 
@@ -1097,7 +1116,7 @@ class ProcessLibraryTests(LedgerTestCase):
         queued = self.store.enqueue_followups(
             parent.id, [(item['key'], item['task_key'], item['label'])
                         for item in result['followups']])['queued']
-        self.assertEqual(len(queued), 3)
+        self.assertEqual(len(queued), 4)
 
         # 三、真的被跑掉，收在终态。补别名、补女优资料的各站都换成取不到页的替身，不联网。
         class Offline:
@@ -1119,12 +1138,16 @@ class ProcessLibraryTests(LedgerTestCase):
         with mock.patch.object(performer_alias_followup, 'open_sites', return_value=offline), \
                 mock.patch.object(performer_profile_followup, 'open_sites',
                                   return_value=profile_offline):
-            self.assertEqual(FollowupRunner(contract).drain(), 3)
-        done = self.store.get(queued[0])
+            self.assertEqual(FollowupRunner(contract).drain(), 4)
+        seeded = self.store.get(queued[0])
+        self.assertEqual((seeded.status, seeded.result_summary['outcome']), ('succeeded', '别名 1'))
+        self.assertTrue((self.root / 'generated' / seed_followup.REVIEW_FILE).exists(),
+                        '种子导入跑完留下复核产物，哪怕这一轮没有可看的项')
+        done = self.store.get(queued[1])
         self.assertEqual(done.status, 'succeeded')
         self.assertEqual(done.result_summary['outcome'], '图库里没有这个名字，封面上没有能截的脸')
-        self.assertEqual(self.store.get(queued[1]).result_summary['outcome'], '未取得')
-        self.assertEqual(self.store.get(queued[2]).status, 'succeeded')
+        self.assertEqual(self.store.get(queued[2]).result_summary['outcome'], '未取得')
+        self.assertEqual(self.store.get(queued[3]).status, 'succeeded')
         self.assertFalse((self.root / 'generated' / 'avatars'
                           / f'performer-{entity_id}.img').exists())
 
