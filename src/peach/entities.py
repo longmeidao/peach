@@ -91,6 +91,26 @@ def name_rank(name: str) -> int:
     return 3
 
 
+#: 纯假名写法的短单名上限：`そら`、`みく`、`あかり` 这种只是名，不带姓。
+SHORT_KANA_NAME = 3
+#: 任何字种的短单名上限：`舞香`、`茜`、`栞` 同样只是名。
+SHORT_NAME = 2
+
+
+def is_short_single_name(name: str) -> bool:
+    """只有名、没有姓的短写法：拿它去图库或站上找，命中的多半是另一个人。
+
+    `伊吹彩` 的别名 `月島舞香` 在图库里两张都是她本人，短名 `舞香` 名下那两张跟她比
+    只有 0.360、0.286（2026-09-25 实测），是另外的人。
+    """
+    text = re.sub(r"\s+", "", str(name or ""))
+    if not text:
+        return False
+    if len(text) <= SHORT_NAME:
+        return True
+    return len(text) <= SHORT_KANA_NAME and all(KANA.match(char) for char in text)
+
+
 def name_chain(canonical: str, aliases: list[str]) -> list[str]:
     """去重后按可用程度排序的候选名字，罗马字不进链。
 

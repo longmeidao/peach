@@ -3,7 +3,7 @@
 已安装的厂牌图里有一部分源图是宽条字标，`normalize_studio_logos.py` 的边车记着它们。
 补方让这些字标在 160px 的厂牌页大位上好看，但塞进筛选片那种 28px 的小圆里只剩一条糊字，
 所以小位要另找一枚方标。社媒头像早就分 icon / logo 两用，厂牌按同一条判断走。另有一批
-厂牌连一张图都没有（账本里现在是 本中），它们不在那份名单里，可两个位置一样空着，
+厂牌连一张图都没有，它们不在那份名单里，可两个位置一样空着，
 所以也纳进来。第三批是**取回来过、但取小了**的：已装方标的短边不够小圆片的实像素，
 `cover` 铺满就是在放大它（见 `INSTALLED_SHORT_EDGE`）。
 
@@ -146,7 +146,6 @@ ASPECT_SLACK = 1.1
 #: `WORDMARK_SOURCES` 走。`シロウトTV` 的大位在这里，小位另有指定（`ICON_SOURCES`）。
 LOGO_SOURCES: dict[str, str] = {
     "FC2-PPV": "https://images.seeklogo.com/logo-png/42/1/fc2-logo-png_seeklogo-429409.png",
-    "Prestige": "http://www.jae.tokyo/jae2017/images/maker/maker_image/023.png",
     "JET映像": "http://www.jae.tokyo/jae2017/images/maker/maker_image/042.png",
     "MOODYZ": "http://www.jae.tokyo/jae2017/images/maker/maker_image/054.png",
     "MARRION": "http://www.jae.tokyo/jae2017/images/maker/maker_image/050.png",
@@ -261,6 +260,20 @@ WORDMARK_SOURCES: dict[str, str] = {
     # （2026-09-25 实测）。官网 09-23 才登记，此前盘上一张图都没有；用户同日点名。
     "変態紳士倶楽部": "https://cdn.up-timely.com/image/22/site_design/base/logo_image"
                 "/0dwpajZ71cySRqLuIcHX4o4BkKaNRzYSx50Yrk1n.png",
+    # 下面六家是 2026-09-25 全库审计后用户按推荐换的官网 header 字标，能用矢量的用矢量。
+    # Prestige 原装展会名录 413×413 位图、一本道原装红底方块，都是同一枚标识的位图版；
+    # Deep's 原装的 X 头像是一张卡车照片。三家官网 header 都是 SVG。
+    "Prestige": "https://www.prestige-av.com/_nuxt/img/logo.e232877.svg",
+    "一本道": "https://www.1pondo.tv/img/common/logo-1pondo.svg",
+    "Deep's": "https://deeps.net/img/common/logo.svg",
+    # 这三家官网只有位图，同目录猜 `.svg` 都是 404（2026-09-25 实测）。アロマ企画 原装 X 头像
+    # 200×200，官网同一枚 521×257；本中 原装 64×64 只有一个「本」字；E-BODY 原装 X 头像
+    # 只有一个「E」图形。后两家的站在 up-timely 上，平台只收位图。
+    "アロマ企画": "https://www.aroma-p.com/pc/images/common/logo.png",
+    "本中": "https://cdn.up-timely.com/image/25/site_design/base/logo_image"
+          "/MTbIeAhJDw6XIrhHyXhmQkVaVlTdS4xs1GVZ2ulz.png",
+    "E-BODY": "https://cdn.up-timely.com/image/6/site_design/base/logo_image"
+              "/zFSBseqj7KtWPX3CmRWkqGcY05jt3wRtPQimobuo.png",
     # 妄想族是片商实体，作品全挂在旗下 label 上（ADR-0049），没有展会图也没有名录那一格。
     # 自家站 header 的字标 332×187（2026-09-23 实测），就是它现在挂在门面上的那一枚。
     "妄想族": "https://www.mousouzoku-av.com/pc/images/pages/common/logo_mousouzoku.png",
@@ -469,7 +482,7 @@ def harvest_targets(padded: dict[str, dict[str, object]],
     logo 来源的。
 
     后两半不在补白名单里——`normalize_studio_logos.py` 从来没处理过它们，因为没有可处理
-    的文件。可它们在页面上占的位置和别人一样，两个变体都是空的（账本里现在是 本中）。
+    的文件。可它们在页面上占的位置和别人一样，两个变体都是空的。
     只看补白名单等于承认「没图的就一直没图」。
 
     装着的方标太小同样是入场理由：那一位的图取回来过，只是取小了，而站点上还挂着更大

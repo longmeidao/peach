@@ -309,9 +309,11 @@ class ParsingTests(unittest.TestCase):
             ["篠崎ゆう子", "橋本真紀", "桧山彩音", "高木早希", "城田優子"])
 
     def test_names_that_would_hit_someone_else_are_rejected(self):
-        for name in ("そら", "みく", "Kirara Sora", "いちかちゃん", "未来ちゃん", "名前不明", "145cm色白お嬢様"):
+        for name in ("そら", "みく", "Kirara Sora", "いちかちゃん", "未来ちゃん", "名前不明", "145cm色白お嬢様",
+                     "舞香", "茜", "舞 香"):
             self.assertTrue(alias.rejection(alias.clean(name)), name)
-        for name in ("雫つむぎ(FC2)", "美雲そら【旧名】", "有本紗世（ありもとさよ）", "キラ・クィーン"):
+        for name in ("雫つむぎ(FC2)", "美雲そら【旧名】", "有本紗世（ありもとさよ）", "キラ・クィーン",
+                     "月島舞香", "伊吹彩"):
             self.assertEqual(alias.rejection(alias.clean(name)), "", name)
 
 
@@ -574,6 +576,26 @@ class RepeatTests(Case):
             connection.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
                                " VALUES(?,'新しい名前','新しい名前','manual')", (momoka,))
         self.assertEqual(planned(), [alias.followup_key(momoka)])
+
+    def test_stock_puts_performers_without_an_avatar_first(self):
+        """作品多的那位已经有头像，缺头像的那位作品少也排在前面：别名补进来，
+        补头像后继才多一个名字去图库里找。
+        """
+        busy = self.entity("神山ももか")
+        quiet = self.entity("伊吹彩")
+        self.work(1, busy)
+        self.work(2, busy)
+        self.work(3, quiet)
+        avatars = self.generated / "avatars"
+        avatars.mkdir(parents=True, exist_ok=True)
+        (avatars / f"performer-{busy}.img").write_bytes(b"installed")
+        attempts = Attempts(attempts_root(self.generated))
+        with self.database.read_connection() as connection:
+            ordered = [item.key for item in alias.stock(connection, attempts, limit=5,
+                                                        avatar_root=avatars)]
+            plain = [item.key for item in alias.stock(connection, attempts, limit=5)]
+        self.assertEqual(ordered, [alias.followup_key(quiet), alias.followup_key(busy)])
+        self.assertEqual(plain, [alias.followup_key(busy), alias.followup_key(quiet)])
 
     def test_a_new_entry_rule_dispatches_everyone_tried_again(self):
         """入口判据换了版本，名字链没变的也再问一次：新入口能到的页，旧入口没读到。"""

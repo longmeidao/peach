@@ -29,6 +29,8 @@ from . import gfriends, images, jav_poster_crop
 from .avatar_cover_face import WHOLE_COVER_PROVIDERS, face_square
 from .avatar_face import read_sidecar
 from .catalog_rules import normalise_code_key
+from .entities import is_short_single_name
+from .kanji import fold_glyphs
 from .avatar_provider import (
     AvatarCandidateCache, InspectedAvatar, POLICY_VERSION, inspect_avatar,
     install_entity_avatar, provenance_now,
@@ -112,15 +114,22 @@ def name_chain(connection: sqlite3.Connection, entity_id: int) -> list[str]:
 
     别名不是锦上添花：大陆简体与日文字体在图库里是两个不同的键（`横宫七海` 与
     `横宮七海`），只拿规范名去查，汉字简化过的那些人一个也找不到。
+
+    只有名、没有姓的短别名不进链（`entities.is_short_single_name`）：`茜`、`舞香` 在图库
+    里各是另外几个人，图库只命中一张时补头像不比脸就装。规范名本身短的照查，别名只是它
+    换了字形的（`美优` 的 `美優`）也照查，两者在图库里本来就是同一个人的两个键。
     """
     names: list[str] = []
     row = connection.execute("SELECT canonical_name FROM entity WHERE id=?",
                              (int(entity_id),)).fetchone()
-    if row and row[0]:
-        names.append(str(row[0]))
+    canonical = str(row[0]) if row and row[0] else ""
+    if canonical:
+        names.append(canonical)
+    same_as_canonical = fold_glyphs(gfriends.normalized(canonical))
     names += [str(alias) for (alias,) in connection.execute(
         "SELECT alias FROM entity_alias WHERE entity_id=?", (int(entity_id),))
-        if alias]
+        if alias and (not is_short_single_name(str(alias))
+                      or fold_glyphs(gfriends.normalized(str(alias))) == same_as_canonical)]
     seen: set[str] = set()
     ordered: list[str] = []
     for name in names:
