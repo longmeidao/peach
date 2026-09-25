@@ -5,7 +5,9 @@
     seed_pack.py import --apply --backup peach-data/database/ledger.pre-seed-<时间戳>.db
 
 `export` 只读账本，把女优、厂牌与事务所的公开事实写成 `resources/seed/entities.json`；
-同一账本、同一版本号两次导出逐字节一致。`import` 默认 dry-run，只报会补多少；
+同一账本、同一版本号两次导出逐字节一致。内容变了就必须换版本串：`seed-import:<版本>` 是导入
+的幂等键，导过旧内容的机器会把同版本的新包当作已导过而跳过，所以版本串不比现有文件新的导出被
+拒绝、不动文件、退出码 2。`import` 默认 dry-run，只报会补多少；
 `--apply` 必须同时给 `--backup`。撤回：`revert_auto_landing.py --source auto:seed`。
 """
 from __future__ import annotations
@@ -37,6 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _version_in(text: str) -> str | None:
+    """现有文件里的版本串；文件不是种子包就当没有版本，让导出照常覆盖。"""
+    try:
+        return str(json.loads(text)["version"])
+    except (ValueError, KeyError, TypeError):
+        return None
+
+
 def export(args: argparse.Namespace) -> int:
     connection = open_readonly(args.db)
     try:
@@ -44,12 +54,21 @@ def export(args: argparse.Namespace) -> int:
     finally:
         connection.close()
     text = seed_pack.dump(pack)
-    changed = not args.out.is_file() or args.out.read_text(encoding="utf-8") != text
+    existing = args.out.read_text(encoding="utf-8") if args.out.is_file() else None
+    changed = existing != text
+    summary = {"out": str(args.out), "version": pack["version"], "changed": changed, **pack["counts"]}
+    current = _version_in(existing) if existing is not None else None
+    # 版本串按字典序比：ISO 日期加 `.n` 后缀在同一天十次以内单调；缺省的当天日期退不回已发过的 `.1`。
+    if changed and current is not None and pack["version"] <= current:
+        print(json.dumps({**summary, "written": False,
+                          "error": f"内容变了而版本串 {pack['version']} 不比文件里的 {current} 新：导入以"
+                                   " seed-import:<版本> 判有没有导过，导过旧内容的机器会跳过这份新内容；换一个新版本串再导"},
+                         ensure_ascii=False))
+        return 2
     if changed:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text, encoding="utf-8", newline="\n")
-    print(json.dumps({"out": str(args.out), "version": pack["version"], "changed": changed,
-                      **pack["counts"]}, ensure_ascii=False))
+    print(json.dumps(summary, ensure_ascii=False))
     return 0
 
 
