@@ -15,7 +15,8 @@
    「名前(別名)」。读音与 `(FC2)`、`【旧名】` 这类注记剥掉。作品小节里的素人名义不读；
    `いちかちゃん` 这种带敬称的一次性称呼、`145cm色白お嬢様` 这种描述性称呼按
    `metadata_alias_resolve` 的判据不收，也不拿去检索。
-4. **短单名不收**：三个字以内的纯假名（`そら`、`みく`）会命中别人；罗马字写法也不收，日文站和
+4. **短单名不收**：两个字以内的写法（`舞香`、`茜`）与三个字以内的纯假名（`そら`、`みく`）
+   只是名、不带姓，会命中别人（`entities.is_short_single_name`）；罗马字写法也不收，日文站和
    图库都用不上它。
 5. **四种不写**，与 `scripts/apply_alias_candidates.py` 同一口径：已有、被另一条实体占用、
    统称已变、查无此人。
@@ -48,7 +49,8 @@ from pathlib import Path
 from urllib.parse import quote
 
 from . import minnano_av
-from .entities import merge_entity, name_chain, name_rank, normalize_entity_name
+from .entities import (is_short_single_name, merge_entity, name_chain, name_rank,
+                       normalize_entity_name)
 from .followups import Attempts, Followup, FollowupType, attempts_root, register
 from .kanji import fold_glyphs
 from .metadata_alias_resolve import is_descriptive, is_planning_alias
@@ -98,7 +100,6 @@ _NOT_A_PERSON = re.compile(r"\d{4}年|[A-Za-z]+-?\d{3,}|一覧|レーベル|メ�
 _PROFILE_HINT = re.compile(r"プロフィール|旧名義|別名|生年月日|身長")
 _LISTING_HINT = re.compile(r"名前[（(]女優名[）)]")
 _BRACKETS = re.compile(r"[（(【\[][^（()）【】\[\]]*[）)】\]]")
-_KANA_ONLY = re.compile(r"^[぀-ゟ゠-ヿ]+$")
 _UNCERTAIN = re.compile(r"[?？▲�]|不明|未確認")
 
 WRITE, HAVE, TAKEN, STALE, GONE, SKIP = "写入", "已有", "占用", "已变", "查无此人", "不收"
@@ -139,7 +140,7 @@ def rejection(name: str) -> str:
         return "带不确定标记"
     if name_rank(name) >= 3:
         return "罗马字写法"
-    if _KANA_ONLY.match(name) and len(name) <= 3:
+    if is_short_single_name(name):
         return "短单名，会命中别人"
     if is_planning_alias(name):
         return "一次性称呼"
@@ -247,18 +248,28 @@ def plan(connection: sqlite3.Connection, *, since_entity_id: int) -> list[Follow
             for _assets, entity_id, name in found]
 
 
-def stock(connection: sqlite3.Connection, attempts, *, limit: int, skip=()) -> list[Followup]:
-    """库里早就登记的女优，作品多的在前，最多 `limit` 条（ADR-0053）。
+def stock(connection: sqlite3.Connection, attempts, *, limit: int, skip=(),
+          avatar_root=None) -> list[Followup]:
+    """库里早就登记的女优，最多 `limit` 条（ADR-0053）。
 
+    给了 `avatar_root` 时缺头像的先排（ADR-0072），各自再按作品多的在前：别名进了账本，
+    补头像后继才多一个名字去图库里找，`伊吹彩` 的 `月島舞香` 名下就有一张过门槛的大图。
     跑过一次、名字链与编号都没变的不再派（`attempts`）。
     """
     if limit <= 0:
         return []
+    from .avatar_followup import needs_avatar
+
+    rows = connection.execute(
+        "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) AS assets"
+        " FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id"
+        " WHERE e.kind='performer' GROUP BY e.id ORDER BY assets DESC, e.id").fetchall()
+    if avatar_root is not None:
+        lacking = [row for row in rows if needs_avatar(avatar_root, "performer", int(row[0]))]
+        taken = {int(row[0]) for row in lacking}
+        rows = lacking + [row for row in rows if int(row[0]) not in taken]
     skip, found = set(skip), []
-    for row in connection.execute(
-            "SELECT e.id,e.canonical_name,count(DISTINCT ae.asset_id) AS assets"
-            " FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id"
-            " WHERE e.kind='performer' GROUP BY e.id ORDER BY assets DESC, e.id"):
+    for row in rows:
         entity_id, key = int(row[0]), followup_key(int(row[0]))
         if key in skip or not has_entry(connection, entity_id):
             continue

@@ -110,7 +110,7 @@ def plan(connection: sqlite3.Connection, avatar_root, *,
     found = []
     for row in rows:
         entity_id, kind = int(row["id"]), str(row["kind"])
-        if not _needs_avatar(avatar_root, kind, entity_id):
+        if not needs_avatar(avatar_root, kind, entity_id):
             continue
         found.append((int(row["assets"] or 0), entity_id, kind,
                       str(row["canonical_name"] or "")))
@@ -120,7 +120,7 @@ def plan(connection: sqlite3.Connection, avatar_root, *,
             for _assets, entity_id, kind, name in found]
 
 
-def _needs_avatar(avatar_root, kind: str, entity_id: int) -> bool:
+def needs_avatar(avatar_root, kind: str, entity_id: int) -> bool:
     """没有头像，或者装着的是封面截的、小图兜底的那一档（还可能换到更清楚的）。"""
     return (not avatar_picker.installed_digest(avatar_root, kind, entity_id)
             or avatar_cover_face.installed_face_px(avatar_root, kind, entity_id) is not None
@@ -182,7 +182,7 @@ def stock(connection: sqlite3.Connection, avatar_root, attempts, *, limit: int,
         entity_id, kind = int(row["id"]), str(row["kind"])
         key = followup_key(kind, entity_id)
         current = _fingerprint(row["assets"], row["aliases"])
-        if (key in skip or not _needs_avatar(avatar_root, kind, entity_id)
+        if (key in skip or not needs_avatar(avatar_root, kind, entity_id)
                 or attempts.settled(key, current)):
             continue
         name = str(row["canonical_name"] or "")

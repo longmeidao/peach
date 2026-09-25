@@ -16,6 +16,7 @@ import unittest
 import httpx
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 
 from PIL import Image
 
@@ -638,10 +639,11 @@ class LogoSourceTests(unittest.TestCase):
     def test_the_expo_directory_is_the_source_for_the_studios_with_no_image(self):
         """用户 2026-09-04 指定 jae.tokyo：名录每届各带一套片商自己交的 logo。
 
-        2016 那届只有图没有名字，认不出是谁家的，所以表里没有 jae2016。
+        2016 那届只有图没有名字，认不出是谁家的，所以表里没有 jae2016。Prestige 用官网
+        header 的矢量字标，不从名录取。
         """
         expo = [url for url in MODULE.LOGO_SOURCES.values() if "jae.tokyo" in url]
-        self.assertEqual(len(expo), 20)
+        self.assertEqual(len(expo), 19)
         self.assertEqual([url for url in expo if "jae2016" in url], [])
         for url in expo:
             with self.subTest(url=url):
@@ -822,7 +824,8 @@ class WordmarkSourceTests(unittest.TestCase):
 
     #: 名录之外的来源，各有各的理由，逐条另有用例。整表只允许这几家走别的地址：
     #: 漏写一家就意味着有人往表里加了一条没人解释过的来源。
-    NAMED_EXCEPTIONS = {"えむっ娘ラボ", "妄想族", "K M Produce", "変態紳士倶楽部"}
+    NAMED_EXCEPTIONS = {"えむっ娘ラボ", "妄想族", "K M Produce", "変態紳士倶楽部",
+                        "Prestige", "一本道", "Deep's", "アロマ企画", "本中", "E-BODY"}
 
     def test_every_wordmark_comes_from_a_maker_directory_or_a_named_exception(self):
         """用户 2026-09-04 与 09-22 指定的是那三个厂牌名录，不是随便哪张网图。"""
@@ -865,6 +868,20 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertRegex(MODULE.WORDMARK_SOURCES["変態紳士倶楽部"],
                          r"^https://cdn\.up-timely\.com/image/22/site_design/")
 
+    def test_studios_swapped_after_the_audit_take_the_official_header_vector_first(self):
+        """2026-09-25 全库审计后用户按推荐换的六家都取官网 header，有矢量的必须是矢量：
+        同一枚标识换成位图版，等于把「能 svg 就 svg」退回去。
+        """
+        official = {"Prestige": "www.prestige-av.com", "一本道": "www.1pondo.tv",
+                    "Deep's": "deeps.net", "アロマ企画": "www.aroma-p.com",
+                    "本中": "cdn.up-timely.com", "E-BODY": "cdn.up-timely.com"}
+        for studio, host in official.items():
+            with self.subTest(studio=studio):
+                self.assertEqual(urlsplit(MODULE.WORDMARK_SOURCES[studio]).hostname, host)
+        for studio in ("Prestige", "一本道", "Deep's"):
+            with self.subTest(studio=studio):
+                self.assertTrue(MODULE.WORDMARK_SOURCES[studio].endswith(".svg"))
+
     def test_a_label_without_a_site_of_its_own_is_pinned_to_its_parent_directory(self):
         """ナンパTV 自己没有站，账本里也一条链接都没有——自动发现那四条链全都从
         链接出发，对它一条都启动不了。母公司 Prestige 的名录里有它的字标。
@@ -878,13 +895,13 @@ class WordmarkSourceTests(unittest.TestCase):
         名录版未必更大：`ラグジュTV` 落地 200×200，展会那份是 413×413。这条约束防的
         是往表里顺手多塞一家——那一家没人比过两版，装上去可能是降级。
         `S級素人`、`Real Works` 没有展会版可比，用户 2026-09-23 点名取 KMP 名录字标；
-        `K M Produce` 自己那一枚用户 2026-09-25 点名取官网 header。
+        `K M Produce` 与 `Prestige` 自己那一枚用户 2026-09-25 点名取官网 header。
         """
         picked = {"Jackson", "ラグジュTV", "million", "BAZOOKA", "俺の素人"}
         from_parent = {studio for studio, url in MODULE.WORDMARK_SOURCES.items()
                        if "prestige-av.com" in url or "km-produce.com" in url}
-        self.assertEqual(from_parent,
-                         picked | {"ナンパTV", "S級素人", "Real Works", "K M Produce"})
+        self.assertEqual(from_parent, picked | {"ナンパTV", "S級素人", "Real Works",
+                                                "K M Produce", "Prestige"})
 
 
 class IconSourceTests(unittest.TestCase):

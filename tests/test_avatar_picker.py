@@ -244,6 +244,25 @@ class ChoiceTests(PickerFixture):
         self.assertEqual(found["gfriends:3-Prestige/葵ツカサ.jpg"], "葵ツカサ")
         self.assertEqual(found[LIBRARY_REF], "葵つかさ")
 
+    def test_a_given_name_alone_does_not_search_the_library(self):
+        """`茜` 在图库里是另外几个人；图库只命中一张时补头像不比脸就装。"""
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                "confidence) VALUES(7792,'茜','茜','javdb-actor-page',0.8)")
+        self.assertEqual(self.listed()["names"], ["葵司", "葵つかさ"])
+
+    def test_a_short_alias_that_only_changes_the_glyphs_still_searches(self):
+        """规范名本身就短的人，别名只是换了字形：图库里那是同一个人的另一个键。"""
+        with self.connection:
+            self.connection.execute(
+                "UPDATE entity SET canonical_name='美优',normalized_name='美优' "
+                "WHERE id=7792")
+            self.connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                "confidence) VALUES(7792,'美優','美優','r18:performer',1.0)")
+        self.assertCountEqual(self.listed()["names"], ["美优", "葵つかさ", "美優"])
+
     def test_pictures_taken_before_show_up_as_their_own_group(self):
         """换回去不该再下一次：取过的图按内容哈希躺在候选缓存里。"""
         digest = self.remember(picture(colour="blue"))
