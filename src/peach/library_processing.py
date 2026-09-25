@@ -100,6 +100,56 @@ def _again(error):
     return again
 
 
+def _extended(deadline, extra):
+    """把单调时钟上的截止时刻往后推 `extra` 秒；没有截止时刻就还是没有。"""
+    return None if deadline is None else deadline + extra
+
+
+def _excused(provider):
+    """provider 累计等人点验证的秒数（`LibraryMetadataProvider.excused`）；没有这一项的 provider 按 0 算。"""
+    value = getattr(provider, 'excused', 0.0)
+    return value if isinstance(value, (int, float)) else 0.0
+
+
+def _unreached(problems):
+    """几处没问成的原因 `[(原因, 是否冷却)]` 合成一个异常：全是冷却就是本趟没轮到（`SourcePaused`），
+    有一处是别的原因就是 `Unavailable`。"""
+    from .jav_cover_fetch import Unavailable
+    from .scraping_access import SourcePaused
+    kind = SourcePaused if all(paused for _, paused in problems) else Unavailable
+    return kind('；'.join(text for text, _ in problems))
+
+
+def _official_evidence(snapshots, absent=()):
+    """资料那一步取到的 r18.dev 与 DMM 快照里的官方封面证据，交给 `best_cover` 的 `known`。
+
+    r18.dev 那份原样带着作品 JSON（`raw`），按 `r18_payload_evidence` 读；DMM 那份给的是
+    `cover_urls` 与 `content_id`。r18.dev 在 `absent` 里（一周内说过没有、或不在这个番号的链上）
+    也记进 `sources`：`best_cover` 见到它就不再问 r18.dev。两样都没有时交 `None`，与不给同义。
+    """
+    from .jav_cover_fetch import (IMAGE_URL, MetadataEvidence, content_id_images, dmm_cdn_images,
+                                  r18_payload_evidence)
+    found, makers, sources = [], set(), set()
+    for name, payload in snapshots:
+        if name == 'r18dev' and isinstance(payload.get('raw'), dict):
+            evidence = r18_payload_evidence(payload['raw'])
+            found += evidence.candidates
+            makers |= evidence.makers
+        elif name in ('r18dev', 'dmm'):
+            # 没有作品 JSON 的快照只在确实给出图址时才算证据，否则照旧去问。
+            images = [image for url in payload.get('cover_urls') or ()
+                      if isinstance(url, str) and IMAGE_URL.fullmatch(url) for image in dmm_cdn_images(url)]
+            images += content_id_images(str(payload.get('content_id') or ''))
+            if not images:
+                continue
+            found += images
+        else:
+            continue
+        sources.add(name)
+    sources |= {'r18dev'} & set(absent)
+    return MetadataEvidence(tuple(found), frozenset(makers), frozenset(sources)) if sources else None
+
+
 def _said_no(message, sites):
     """合档的「没有」：带上说了没有的是哪几站（`sites`），失败记忆按站记（`_MissCache`）。"""
     error = NotFound(message)
@@ -137,8 +187,9 @@ COLLECTED_FIELDS = ('title', 'performers', 'studio', 'release_date', 'tags')
 COLUMN_OF = {'title': 'catalog_title'}
 
 #: 一趟任务向外部来源要的总量。三条闸门里谁先到谁生效，之后每部片只记「本趟…已用完」。
-#: 一部片问三家目录站、每家 1～2 次，所以 6000 次约等于 1500 部；按 `SOURCE_INTERVALS`
-#: 的每来源 2 秒间隔，三家并行也正好要 4 小时才用得完，时间不会先把它掐断。
+#: 一部片问三家目录站、每家 1～2 次，所以 6000 次约等于 1500 部。请求是一条接一条发的，
+#: 同一主机两问之间隔着主机间隔（默认 2 秒，javdb 3 秒，见 `SOURCE_INTERVALS`），不同主机的间隔
+#: 互不阻塞；6000 次按 2 秒算也要三个多小时，和 4 小时的时间闸门同一量级，哪条先到都说得通。
 #: 封面与资料页合计每次约 250 KB，1 GiB 装得下这 6000 次。
 MAX_SOURCE_REQUESTS = 6000
 MAX_SOURCE_BYTES = 1024 * 1024 * 1024
@@ -208,6 +259,19 @@ class LibraryMetadataProvider:
                             max_bytes=MAX_SOURCE_BYTES, max_seconds=MAX_SOURCE_SECONDS),
             2.0, intervals=SOURCE_INTERVALS)
 
+    #: 由本机浏览器过验证的来源累计等人点验证的秒数（`_excuse`）。调用方拿它前后相减，把这段时间
+    #: 从单项动作预算里扣掉：一个站第一次弹验证窗口时，那一问要等 `min(40, timeout) + 120` 秒，
+    #: 超过一部片 90 秒的资料预算，不扣掉的话这部片会被记成「预算内未取得」（ADR-0065 第二条）。
+    excused = 0.0
+
+    def _excuse(self, source, started):
+        """`source` 是浏览器来源、这一问超过了 `BROWSER_REQUEST_TIMEOUT`：超出的那段按等人点验证算。"""
+        from .jav_cover_fetch import BROWSER_REQUEST_TIMEOUT
+        from .scraping_access import SOURCES
+        spent = time.monotonic() - started
+        if SOURCES.get(source, {}).get('browser') and spent > BROWSER_REQUEST_TIMEOUT:
+            self.excused += spent - BROWSER_REQUEST_TIMEOUT
+
     def amane(self, code, *, deadline=None, route=()):
         """经 amane 桥问 `route` 里那几站，一次子进程并发问完，返回 `[(来源, 资料)]`。
 
@@ -269,37 +333,52 @@ class LibraryMetadataProvider:
             return SourcePaused('；'.join(problems))
         return Unavailable('；'.join(problems))
 
-    def community(self, code, *, deadline=None, route=None):
+    def community(self, code, *, deadline=None, route=None, known=(), absent=()):
         """官方渠道落空时问综合索引那一档，返回 `[(来源, 资料)]`。
 
         问哪几家按 `community_catalog.community_sources_for`，它转手问
         `metadata_routes.community_route`：有码与素人问 AVBase、JavBus 与 javdb，
         FC2 的商品号只问 javdb。`route` 是调用方已经算好的那一档成员，给了就不再算
         （那一步要本机证据，provider 手上没有）。资料和封面两步都可能要它，同一个
-        番号只问一次：javdb 的配额经不起每部片问两遍。
-        几家都明确说没有才是 `NotFound`；有一家出错且谁都没给资料时，带着原因报 `Unavailable`。
+        番号只问一次：javdb 的配额经不起每部片问两遍。`known` 是调用方手上已有的几家快照
+        （资料那一步取回的、磁盘缓存里还新鲜的），算作答上、不再问；`absent` 是一周内说过
+        「没有」的几家，也不再问。
+        几家都明确说没有才是 `NotFound`；有一家出错且谁都没给资料时，出错的几家全在冷却就报
+        `SourcePaused`（本趟没轮到），否则带着原因报 `Unavailable`。
         """
         from .community_catalog import community_sources_for
-        from .jav_cover_fetch import Unavailable
+        have = dict(known)
         cache = self.__dict__.setdefault('_community', {})
         if code not in cache:
-            found, problems, absent = [], [], []
-            for source in community_sources_for(code, route=route):
-                try:
-                    found.append((source, self.site(source, code, deadline=deadline)))
-                except DeadlineExceeded:
-                    raise
-                except Exception as error:
-                    if is_missing(error):
-                        absent.append(source)
-                        continue
-                    text = describe_failure(error)
-                    problems.append(text if text.startswith(SOURCE_LABELS[source]) else f'{SOURCE_LABELS[source]}：{text}')
-            cache[code] = (found or (Unavailable('；'.join(problems)) if problems
-                                     else _said_no('社区来源都没有这个番号', absent)))
+            asked = [source for source in community_sources_for(code, route=route)
+                     if source not in have and source not in absent]
+            cache[code] = self._ask_community(code, asked, deadline)
         if isinstance(cache[code], Exception):
+            if have:
+                return list(have.items())
             raise _again(cache[code])
-        return cache[code]
+        return [*have.items(), *((source, payload) for source, payload in cache[code] if source not in have)]
+
+    def _ask_community(self, code, sources, deadline):
+        """逐家问 `sources`，交出答上的 `[(来源, 资料)]`，或一个待缓存再抛的异常（见 `community`）。"""
+        from .jav_cover_fetch import Unavailable
+        from .scraping_access import SourcePaused
+        found, problems, said_no, held = [], [], [], 0
+        for source in sources:
+            try:
+                found.append((source, self.site(source, code, deadline=deadline)))
+            except DeadlineExceeded:
+                raise
+            except Exception as error:
+                if is_missing(error):
+                    said_no.append(source)
+                    continue
+                held += source_paused(error)
+                text = describe_failure(error)
+                problems.append(text if text.startswith(SOURCE_LABELS[source]) else f'{SOURCE_LABELS[source]}：{text}')
+        if found or not problems:
+            return found or _said_no('社区来源都没有这个番号', said_no)
+        return (SourcePaused if held == len(problems) else Unavailable)('；'.join(problems))
 
     def fc2(self, code, *, deadline=None, route=None, covers=False, required=(), known=()):
         """FC2 自己那一页，下架了就依次问几个存档站；返回沿路答上的每一档 `[(来源, 资料)]`。
@@ -310,7 +389,8 @@ class LibraryMetadataProvider:
         Product 就归 `not_found`——那不是抓取失败，是这部片在站上没有了。本地这批没封面的 FC2 多数是
         这种，所以接着问 fc2cmadb：它留着下架作品的标题、卖家、标签与封面原图。再往下是 FC2PPV-DB
         （女优、卖家、販売日与流出标记，不给封面）与 JAVten（日文标题、标签与存储原件地址），这两站
-        在 Cloudflare 验证后面，没配 Cookie 时回 403、整站冷却，链照常往下走。最后才落到 JavArchive，
+        在 Cloudflare 验证后面，经本机浏览器过验证（ADR-0065）；验证没过就整站冷却，链照常往下走。
+        浏览器那一问里等人点验证的时间记进 `excused`，不算进这部片的动作预算。最后才落到 JavArchive，
         那一档只给标题和一张转存封面，比官方原图差一档（2026-09-22 实测 `FC2-PPV-4137487`
         在 fc2cmadb 是 404，JavArchive 上有）；它的每一条转存各交一份（`records()`）。几处都
         没有才按 `NotFound` 交出去，记进「没有」的记忆，一周内不再问。
@@ -336,7 +416,7 @@ class LibraryMetadataProvider:
             raise NotFound(UNRECOGNISED)
         cache = self.__dict__.setdefault('_fc2', {})
         state = cache.setdefault(code, {'found': [], 'problems': [], 'asked': set()})
-        session = Session(self.transport, deadline)
+        mark = self.excused
         for name in metadata_routes.FC2_STAGE:
             if (route is not None and name not in route) or name in state['asked']:
                 continue
@@ -345,7 +425,9 @@ class LibraryMetadataProvider:
                                                 and _lacks_performers(required, answered)):
                 break
             state['asked'].add(name)
+            started = time.monotonic()
             try:
+                session = Session(self.transport, _extended(deadline, self.excused - mark))
                 state['found'] += [(name, record.payload())
                                    for record in SITE_SOURCES[name]().records(code, session=session)]
             except DeadlineExceeded:
@@ -356,6 +438,8 @@ class LibraryMetadataProvider:
             except Exception as error:  # noqa: BLE001 - 原因由调用方汇总成一句话
                 if not is_missing(error):
                     state['problems'].append(error)
+            finally:
+                self._excuse(name, started)
         if state['found'] or known:
             return state['found']
         # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
@@ -380,7 +464,7 @@ class LibraryMetadataProvider:
             raise _again(cache[code])
         return cache[code]
 
-    def _official_candidates(self, code, evidence=(), *, deadline=None):
+    def _official_candidates(self, code, evidence=(), *, deadline=None, known=(), absent=()):
         """发行方自己那张封面，交给 `best_cover` 当候选。
 
         只有 FC2 和一本道走这里：别的番号的官方面 `best_cover` 自己会找（r18、MGS、
@@ -390,27 +474,37 @@ class LibraryMetadataProvider:
         一页上有几个图位就都交下去，不只交排头那张。JavArchive 的作品页收了两处——
         `div.fisrst_sc` 那张排前，schema.org 的 `image` 排后——而转存者存的图会失效：
         只交排头那张的话，它 404 就整条落空，同一页上还在的那张连量都没量过。
+
+        `known` 是资料那一步已经取到的快照 `[(来源, 资料)]`，这一档里有的站不再问；`absent` 里
+        的站一周内说过没有，也不再问。
         """
         from functools import partial
 
         from .jav_cover_fetch import Candidate, Unavailable
+        from .scraping_access import SourcePaused
         from .sources import FC2, ONEPONDO
         sources = _sources_for(code, *evidence)
+        have = [(name, payload) for name, payload in known if name in (*metadata_routes.FC2_STAGE, '1pondo')]
+        skip = {name for name, _ in have} | set(absent)
         if 'fc2' in sources:
-            source, ask, referer = 'fc2', partial(self.fc2, covers=True), FC2.referer
+            source, referer = 'fc2', FC2.referer
+            ask = partial(self.fc2, covers=True, known=[payload for _, payload in have],
+                          route=tuple(name for name in metadata_routes.FC2_STAGE if name not in skip))
         elif '1pondo' in sources:
-            source, ask, referer = '1pondo', self.one_pondo, ONEPONDO.referer
+            source, referer = '1pondo', ONEPONDO.referer
+            ask = self.one_pondo if '1pondo' not in skip else lambda code, deadline: []
         else:
             return ()
         try:
-            found = ask(code, deadline=deadline)
+            found = [*have, *ask(code, deadline=deadline)]
         except DeadlineExceeded:
             raise
         except Exception as error:  # noqa: BLE001 - 交给 `cover()` 汇总成一句话
             # 「没有」交回 `cover()` 时是传输层那一档的 `NotFound`：它按这一档跳到社区来源。
             if is_missing(error):
                 raise NotFound(str(error)) from error
-            raise Unavailable(f'{SOURCE_LABELS[source]}：{describe_failure(error)}') from error
+            text = f'{SOURCE_LABELS[source]}：{describe_failure(error)}'
+            raise (SourcePaused if source_paused(error) else Unavailable)(text) from error
         addresses = []
         for _, payload in found:
             for url in payload.get('cover_urls') or [payload.get('cover_url')]:
@@ -432,7 +526,7 @@ class LibraryMetadataProvider:
         GraphQL（`sources/dmm.py`，ADR-0059）。"""
         return self.site(source, code, deadline=deadline)
 
-    def cover(self, code, cover_root, *, deadline=None, evidence=()):
+    def cover(self, code, cover_root, *, deadline=None, evidence=(), snapshots=(), absent=()):
         """官方大图优先；没有就用社区来源里两个图源对得上的那张；再没有就用官方小图。
 
         小图也比没有封面强（素人系官方图只有 300×300），但社区来源的大图只有被另一个
@@ -441,42 +535,54 @@ class LibraryMetadataProvider:
         FC2 与一本道的那张走官方这一档而不是社区那一档：`storage*.contents.fc2.com` 上的图
         是卖家自己传的商品图（实测 2350×2352），一本道那张是站点自己的剧照（960×540），
         两处都是发行方，没有第二个图源可印证也不该被扣住。`evidence` 见 `_sources_for`。
+
+        `snapshots` 是资料那一步这一趟已经取到、或磁盘缓存里还新鲜的快照 `[(来源, 资料)]`，
+        `absent` 是一周内说过没有、或不在这个番号链上的站：两者都不再问。r18.dev 与 DMM 的快照
+        给出官方候选（`_official_evidence`），手上的候选里有够宽的就不再问 r18.dev 与 MGS
+        （`best_cover` 的 `sites_when_needed`）；社区那几家的快照直接交给图源印证。
+        几处没问成且全是冷却时报 `SourcePaused`（本趟没轮到），否则报 `Unavailable`。
         """
         from .community_catalog import verified_cover
         from .jav_cover_fetch import SMALL_MIN_WIDTH, Unavailable, best_cover
+        from .scraping_access import SourcePaused
         target = cover_root / (code + '.jpg')
         if cover_settled(target):
             return False
         kept = measure_image_file(target)
+        mark = self.excused
         official, verified_by, problems, siblings = None, (), [], ()
         try:
-            siblings = self._official_candidates(code, evidence, deadline=deadline)
-            official = best_cover(self.transport, code, 0, deadline=deadline, prior_candidates=siblings,
-                                  minimum_width=SMALL_MIN_WIDTH)
+            siblings = self._official_candidates(code, evidence, deadline=deadline, known=snapshots, absent=absent)
+            official = best_cover(self.transport, code, 0, deadline=_extended(deadline, self.excused - mark),
+                                  prior_candidates=siblings, minimum_width=SMALL_MIN_WIDTH,
+                                  known=_official_evidence(snapshots, absent), sites_when_needed=True)
         except NotFound:
             pass
-        except Unavailable as error:
-            problems.append(describe_failure(error))
+        except (Unavailable, SourcePaused) as error:
+            problems.append((describe_failure(error), source_paused(error)))
         chosen = official
         if official is None or official[1][0] < MIN_WIDTH:
             try:
-                *picked, verified_by = verified_cover(self.transport, code, self.community(code, deadline=deadline),
+                answers = self.community(code, deadline=_extended(deadline, self.excused - mark), absent=absent,
+                                         known=[(name, payload) for name, payload in snapshots
+                                                if name in metadata_routes.COMMUNITY_STAGE])
+                *picked, verified_by = verified_cover(self.transport, code, answers,
                                                       reference=official, siblings=siblings if official else (),
-                                                      deadline=deadline)
+                                                      deadline=_extended(deadline, self.excused - mark))
                 chosen = tuple(picked)
             except NotFound:
                 pass
-            except Unavailable as error:
-                problems.append(describe_failure(error))
+            except (Unavailable, SourcePaused) as error:
+                problems.append((describe_failure(error), source_paused(error)))
         if chosen is None:
-            raise Unavailable('；'.join(problems)) if problems else NotFound('官方与社区来源都没有这部片的封面')
+            raise _unreached(problems) if problems else NotFound('官方与社区来源都没有这部片的封面')
         candidate, size, data = chosen
         # 比宽度，不比面积：同一张缩略图各处转存常差一行像素（276×154 与 276×155），
         # 按面积判就会拿一张一样糊的图换掉另一张。
         if kept and size[0] <= kept[0] and not _corrects_kept_cover(target, candidate, data, verified_by):
             if problems:
                 # 有来源这一趟没问成（冷却、配额、超时），它那里可能有原图：不能记成一周不问。
-                raise Unavailable('；'.join(problems))
+                raise _unreached(problems)
             raise CoverKept(f'来源给的封面 {size[0]}×{size[1]} 不比本机那张宽')
         from .cover_artwork import install_cover
         install_cover(target, code, data, size, evidence=dict(source=candidate.source,
@@ -547,9 +653,12 @@ def source_paused(error):
     限流和取不到是两回事，处理它们的动作也不是一个：来源正在冷却或本趟配额用完时，
     这部片的资料站上有没有还没问出来，等一会儿重跑就有；站上确实没有那张图，重跑
     多少遍都一样。混在一句「未取得」里，读的人分不出哪些值得再等。
+
+    自写来源的验证页、封禁、地区限制与限流（`SourceFailure.cooldown_action` 非空）同样算：
+    来源层已经把那一站写进冷却，这一问站上有没有这部片还没问出来。
     """
     from .scraping_access import SourcePaused
-    return isinstance(error, SourcePaused)
+    return isinstance(error, SourcePaused) or bool(getattr(error, 'cooldown_action', ''))
 
 
 def issue_summary(problems, paused=0):
@@ -1058,8 +1167,24 @@ class _RemoteSession:
                                   or not set(answered).intersection(chain)):
             entries = self._metadata(row, code, missing, update=update, issue=issue, answered=answered)
         if _asks_cover(code, *_studio_evidence(row)) and not cover_settled(cover_root / (code + '.jpg')):
-            covers = self._cover(row, code, cover_root, update=update, issue=issue)
+            snapshots, absent = self._cover_inputs(code, chain, entries)
+            covers = self._cover(row, code, cover_root, update=update, issue=issue,
+                                 snapshots=snapshots, absent=absent)
         return entries, covers
+
+    def _cover_inputs(self, code, chain, entries):
+        """封面那一步不必再问的：手上已有的快照 `[(来源, 资料)]`，与说过没有或不在链上的站。
+
+        快照是资料那一步这一趟取到的，加上链上其余几站磁盘缓存里还新鲜的那份（给过候选而
+        这一趟没问的来源就在那里）。资料那一步已经短路、没走到的站不在里面，封面那一步照旧会问。
+        r18.dev 不在这个番号的链上时也算不必问：无码与判不准的番号在 r18.dev 上没有。
+        """
+        known = {name: payload for name, payload, _ in entries if name in SOURCE_SPECS}
+        if self._consult:
+            known.update((name, payload) for name, payload, _ in
+                         self._cached_evidence([name for name in chain if name not in known], code))
+        absent = {name for name in chain if self._consult and self.misses.fresh(name, code)}
+        return list(known.items()), absent | ({'r18dev'} - set(chain))
 
     def _evidence(self, source, code, payload):
         _save(self._evidence_path(code, source), payload)
@@ -1152,6 +1277,7 @@ class _RemoteSession:
         update(stage='采集缺失资料', current_action=action,
                current_started_at=time.time(), current_deadline_at=time.time() + budget)
         deadline = time.monotonic() + budget
+        mark = _excused(self._provider)
         evidence = _studio_evidence(row)
         chain = metadata_routes.route_for_code(code, *evidence, overrides=self._routes)
         required = list(metadata_routes.required_scalars(missing))
@@ -1172,8 +1298,9 @@ class _RemoteSession:
                 if source != 'fc2':
                     continue
             try:
-                found = self._ask(source, code, members, cached, required=required, deadline=deadline,
-                                  evidence=evidence)
+                # 浏览器来源等人点验证的那段不算进这部片的预算（`LibraryMetadataProvider.excused`）。
+                found = self._ask(source, code, members, cached, required=required, evidence=evidence,
+                                  deadline=_extended(deadline, _excused(self._provider) - mark))
             except DeadlineExceeded:
                 self.reset()
                 if entries:
@@ -1206,7 +1333,7 @@ class _RemoteSession:
               action=action, retryable=True, paused=paused)
         return []
 
-    def _cover(self, row, code, cover_root, *, update, issue):
+    def _cover(self, row, code, cover_root, *, update, issue, snapshots=(), absent=()):
         action = 'fetching_cover'
         # 「封面没有」是这条链上各站合起来的答复：链上有一站是记下之后才接入的，就再问一遍。
         lineup = metadata_routes.route_for_code(code, *_studio_evidence(row), overrides=self._routes)
@@ -1220,7 +1347,8 @@ class _RemoteSession:
                current_started_at=time.time(), current_deadline_at=time.time() + budget)
         try:
             return int(self.provider().cover(code, cover_root, deadline=time.monotonic() + budget,
-                                             evidence=_studio_evidence(row)))
+                                             evidence=_studio_evidence(row), snapshots=snapshots,
+                                             absent=absent))
         except DeadlineExceeded:
             self.reset()
             issue(row, '封面在预算时间内未取得，可稍后重试', action=action, retryable=True)

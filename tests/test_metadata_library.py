@@ -1429,6 +1429,144 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual([entry['source'] for entry in rows['performers']], ['fc2cmadb', 'fc2ppvdb'])
         self.assertEqual([entry['source'] for entry in rows['title']], ['fc2'], '同一家不重复产候选')
 
+    def test_the_cover_step_reuses_the_r18_answer_the_metadata_step_just_fetched(self):
+        """资料那一步刚取回 r18.dev 的作品 JSON，封面那一步拿里面的原图地址直接量，不再问 r18.dev。
+
+        处理链里 `best_cover` 手上没有缓存目录，每个非 FC2 番号都要再问一遍 r18.dev；
+        快照交下去之后，这一问省掉了，装上的是同一张图。
+        """
+        from peach.library_processing import LibraryMetadataProvider
+        buffer = io.BytesIO()
+        Image.new('RGB', (800, 538), 'gray').save(buffer, format='JPEG')
+        picture = buffer.getvalue()
+        raw = {'content_id': 'ipx00060', 'images': {'jacket_image': {
+            'large': 'https://pics.dmm.co.jp/digital/video/ipx00060/ipx00060pl.jpg'}}}
+        asked = {}
+        for label, snapshots in (('without', ()), ('with', [('r18dev', {'id': 'IPX-060', 'raw': raw})])):
+            hits = asked.setdefault(label, [])
+
+            def transport(request, timeout, limit, hits=hits):
+                hits.append(request.url)
+                if 'r18.dev' in request.url:
+                    return HttpResponse(200, {}, json.dumps(raw).encode(), request.url)
+                return HttpResponse(200, {}, picture, request.url)
+
+            provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+            provider.transport = transport
+            provider.community = Mock(side_effect=NotFound('社区来源都没有这个番号'))
+            covers = self.root / label
+            self.assertTrue(provider.cover('IPX-060', covers, snapshots=snapshots))
+            with Image.open(covers / 'IPX-060.jpg') as installed:
+                self.assertEqual(installed.size, (800, 538))
+        self.assertEqual(sum('r18.dev' in url for url in asked['without']), 1)
+        self.assertEqual(sum('r18.dev' in url for url in asked['with']), 0)
+        self.assertLess(len(asked['with']), len(asked['without']))
+
+    def test_the_cover_step_skips_r18_where_the_route_never_asks_it(self):
+        """r18.dev 不在这个番号的链上（无码、判不准的番号），或一周内说过没有：封面那一步也不问它。"""
+        from peach.library_processing import _official_evidence
+        self.assertIsNone(_official_evidence([]))
+        self.assertEqual(_official_evidence([], {'r18dev'}).sources, frozenset({'r18dev'}))
+        self.assertIsNone(_official_evidence([('r18dev', {'id': 'X-1'})]), '没有作品 JSON 也没有图址的快照不算证据')
+
+    def test_a_source_held_by_its_cooldown_is_reported_as_not_yet_reached(self):
+        """冷却里的来源说的是「本趟没轮到」，不是「没取到」：社区那一档与封面那一步都按它分档。
+
+        自写来源撞上验证页或限流时，来源层已经把那一站写进冷却（`SourceFailure.cooldown_action`），
+        与传输层的 `SourcePaused` 同一档。
+        """
+        from peach.jav_cover_fetch import Unavailable
+        from peach.library_processing import LibraryMetadataProvider
+        from peach.scraping_access import SourcePaused
+        from peach.sources.base import FailureReason, SourceFailure
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        answers = {'avbase': SourcePaused('来源正在冷却，请稍后重试'), 'javbus': NotFound('没有'),
+                   'javdb': SourceFailure(FailureReason.CLOUDFLARE_CHALLENGE, 'javdb 撞上了验证页')}
+
+        def site(source, code, **_):
+            raise answers[source]
+
+        provider.site = site
+        route = ('avbase', 'javbus', 'javdb')
+        with self.assertRaises(SourcePaused):
+            provider.community('ORETD-701', route=route)
+        answers['javbus'] = Unavailable('HTTP 503')
+        with self.assertRaises(Unavailable):
+            provider.community('ORETD-702', route=route)
+
+        provider._official_candidates = Mock(return_value=())
+        provider.community = Mock(side_effect=SourcePaused('javdb：来源正在冷却'))
+        with patch('peach.jav_cover_fetch.best_cover', side_effect=SourcePaused('本趟采集次数已用完')), \
+                self.assertRaisesRegex(SourcePaused, '^本趟采集次数已用完；javdb：来源正在冷却$'):
+            provider.cover('ORETD-703', self.root / 'covers')
+        with patch('peach.jav_cover_fetch.best_cover', side_effect=Unavailable('HTTP 503')), \
+                self.assertRaises(Unavailable):
+            provider.cover('ORETD-704', self.root / 'covers')
+
+    @windows_ledger_roots
+    def test_a_challenge_on_a_source_of_its_own_is_listed_as_not_yet_reached(self):
+        """r18.dev 撞上验证页、其余几档说没有：这一行在问题清单里是「本趟没轮到」，不是失败。"""
+        from peach.sources.base import FailureReason, SourceFailure
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'DASS-468.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        provider = stub_provider()
+
+        def answer(code, source='r18dev', **_):
+            if source == 'dmm':
+                raise NotFound('HTTP 404')
+            raise SourceFailure(FailureReason.CLOUDFLARE_CHALLENGE, '撞上了验证页')
+
+        provider.query.side_effect = answer
+        provider.cover.return_value = False
+        state = process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                provider_factory=Mock(return_value=provider))
+        self.assertEqual([(row['message'], row['severity']) for row in state['issue_preview']],
+                         [('外部资料本趟没轮到：r18.dev：撞上了验证页', 'paused')])
+        self.assertEqual(state['paused_count'], 1)
+
+    def test_waiting_for_someone_to_click_a_verification_is_not_charged_to_the_title(self):
+        """浏览器来源第一次弹验证窗口要等两分多钟，那段时间不算进这部片的预算：下一站照样有预算可问。
+
+        ADR-0065 第二条：弹窗那一段从弹出起算、不受请求时限约束，一部片 90 秒的资料预算装不下它。
+        """
+        from peach.library_processing import LibraryMetadataProvider
+        from peach.sources.base import FailureReason, SourceFailure
+        clock = [100.0]
+        seen = {}
+
+        class Challenged:
+            def records(self, code, *, session):
+                seen['fc2ppvdb'] = session.deadline
+                clock[0] += 45 + 120
+                raise SourceFailure(FailureReason.NOT_FOUND, '没有')
+
+        class Next:
+            def records(self, code, *, session):
+                seen['javten'] = session.deadline
+                return [SimpleNamespace(payload=lambda: {'id': code, 'title': '日本語タイトル'})]
+
+        provider = LibraryMetadataProvider.__new__(LibraryMetadataProvider)
+        provider.transport = Mock()
+        with patch.dict('peach.sources.SITE_SOURCES', {'fc2ppvdb': Challenged, 'javten': Next}), \
+                patch('peach.library_processing.time', SimpleNamespace(monotonic=lambda: clock[0])):
+            found = provider.fc2('FC2-PPV-1234567', deadline=190.0, route=('fc2ppvdb', 'javten'), covers=True)
+        self.assertEqual([name for name, _ in found], ['javten'])
+        self.assertEqual((seen['fc2ppvdb'], seen['javten']), (190.0, 310.0))
+        self.assertEqual(provider.excused, 120.0)
+
+    def test_a_browser_source_gets_the_whole_automatic_verification_window(self):
+        """浏览器来源一条请求给 45 秒，不按剩余预算往下裁：自动过验证最多要 40 秒。"""
+        from peach.jav_cover_fetch import BROWSER_REQUEST_TIMEOUT, request_timeout
+        self.assertEqual(request_timeout('https://fc2ppv-db.com/ja/articles/1', 10.0), BROWSER_REQUEST_TIMEOUT)
+        self.assertEqual(request_timeout('https://javten.com/video/1', None), BROWSER_REQUEST_TIMEOUT)
+        self.assertEqual(request_timeout('https://r18.dev/videos/1', 10.0), 10.0)
+        self.assertEqual(request_timeout('https://r18.dev/videos/1', None), 30.0)
+
     @windows_ledger_roots
     def test_a_route_override_decides_who_gets_asked(self):
         """用户把有码那条链换成只问综合索引，r18.dev 就一次都不问。"""
