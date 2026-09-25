@@ -512,6 +512,42 @@ class CoverFocusTests(AssetArtworkTests):
         self.assertEqual(self.whole_cover_history()["focus"],
                          {"x0": 217, "y0": 0, "x1": 400, "y1": 260})
 
+    def co_star(self, asset_id: int) -> None:
+        """同一部作品里再登记一位演员。"""
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO entity(id,kind,canonical_name,normalized_name,"
+                "created_at,updated_at) VALUES(9001,'performer','共演','共演','t','t')")
+            self.connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
+                "VALUES(?,9001,'performer','r18:performer')", (asset_id,))
+
+    def test_a_shared_cover_says_how_many_are_on_it_and_skips_the_face(self):
+        """合演封面上最大那张脸多半是领衔的另一位：只标人数，取景退回正封。"""
+        self.add_asset(11, "ABW-232")
+        self.co_star(11)
+        sidecar_path(self.cover).write_text(json.dumps(face_record(400, 260)), "utf-8")
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        choice = next(one for one in listed["choices"] if one["source"] == "asset")
+        self.assertEqual(choice["cast"], 2)
+        self.assertEqual(choice["focus"], {"x0": 217, "y0": 0, "x1": 400, "y1": 260})
+
+    def test_her_own_work_counts_one(self):
+        self.add_asset(11, "ABW-232")
+        listed = avatar_picker.choices(self.connection, self.providers, self.avatars,
+                                       "performer", 7792, cover_root=self.covers)
+        self.assertEqual(next(one for one in listed["choices"]
+                              if one["source"] == "asset")["cast"], 1)
+
+    def test_a_whole_shared_cover_kept_by_the_batch_skips_the_face_too(self):
+        self.add_asset(11, "ABW-232")
+        self.co_star(11)
+        sidecar_path(self.cover).write_text(json.dumps(face_record(400, 260)), "utf-8")
+        choice = self.whole_cover_history()
+        self.assertEqual((choice["cast"], choice["focus"]),
+                         (2, {"x0": 217, "y0": 0, "x1": 400, "y1": 260}))
+
 
 class CodeCoverTests(PickerFixture):
     """按番号取一张封面来框：本机有就不出网，取过一次就不再取。"""
