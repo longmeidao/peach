@@ -414,10 +414,17 @@ class LibraryNfoTests(unittest.TestCase):
         groups = read_rows(self.root / 'generated/library-metadata-field-candidates.csv')
         studio = next(row for row in groups if row['field'] == 'studio')
         self.assertEqual(json.loads(studio['candidates_json'])[0]['catalog_evidence']['runtime']['value'], 210)
+        # 厂牌只有 r18.dev 一家的待批候选：重跑时 r18.dev 不再问，链上下一家接着问；
+        # 几家都给过或说过没有之后，再跑一遍就一问都不发。
         second = process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
         self.assertEqual(second['status'], 'complete')
         self.assertEqual(second['candidates'], result['candidates'])
-        provider.query.assert_called_once()
+        self.assertEqual([call.args for call in provider.query.call_args_list],
+                         [('ABW-358', 'r18dev'), ('ABW-358', 'dmm')])
+        asked = (provider.query.call_count, provider.community.call_count, provider.amane.call_count)
+        process_library(config, db, self.root / 'generated', self.root / 'covers', provider_factory=factory)
+        self.assertEqual((provider.query.call_count, provider.community.call_count, provider.amane.call_count),
+                         asked)
 
     @windows_ledger_roots
     def test_fields_the_local_nfo_gives_take_no_remote_candidate(self):
@@ -1284,7 +1291,8 @@ class LibraryNfoTests(unittest.TestCase):
                          ['封面未取得：来源返回 HTTP 503'], '来源说没有只报一个数，不占问题清单')
         self.assertEqual(first['notes'], {'querying_metadata': 1})
         recorded = json.loads(misses_path(config).read_text(encoding='utf-8'))
-        self.assertEqual(list(recorded['misses']), ['amane_official', 'community', 'r18dev'])
+        self.assertEqual(list(recorded['misses']), ['mgstage', 'avbase', 'javbus', 'javdb', 'r18dev'],
+                         '按站记，不按档记')
         self.assertEqual(provider.amane.call_args.kwargs['route'], ('mgstage',))
         self.assertEqual(list(recorded['misses']['r18dev']), ['STP-26232'])
 
@@ -1389,6 +1397,39 @@ class LibraryNfoTests(unittest.TestCase):
                          [('fc2cmadb', '梨奈')])
 
     @windows_ledger_roots
+    def test_a_pending_candidate_skips_only_the_source_that_gave_it(self):
+        """演员栏只有 fc2cmadb 一条待批候选：重跑时照样去问演员，只是不再问 fc2cmadb。
+
+        待批候选不是账本的值，免复核要两家一致；把它当成「已有着落」，FC2PPV-DB 就一次都轮不到。
+        """
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'FC2-PPV-2851534.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        provider = stub_provider()
+        provider.fc2.return_value = [
+            ('fc2', {'id': 'FC2-PPV-2851534', 'title': 'キュートなバニーメイド', 'maker': 'rina_vlog',
+                     'release_date': '2022-04-28', 'actresses': [], 'source_url': 'https://adult.contents.fc2.com/'}),
+            ('fc2cmadb', {'id': 'FC2-PPV-2851534', 'actresses': [{'japanese_name': '梨奈'}],
+                          'source_url': 'https://fc2cmadb.com/articles/2851534'})]
+        provider.cover.return_value = False
+        run = lambda: process_library(config, db, self.root / 'generated', self.root / 'covers',
+                                      provider_factory=Mock(return_value=provider))
+        run()
+        provider.fc2.return_value = [('fc2ppvdb', {'id': 'FC2-PPV-2851534', 'actresses': [{'japanese_name': '梨奈'}],
+                                                   'source_url': 'https://fc2ppvdb.com/articles/2851534'})]
+        run()
+        kwargs = provider.fc2.call_args.kwargs
+        self.assertIn('performers', kwargs['required'])
+        self.assertEqual(kwargs['route'], ('fc2ppvdb', 'javten', 'javarchive'))
+        rows = {row['field']: json.loads(row['candidates_json'])
+                for row in read_rows(self.root / 'generated/library-metadata-field-candidates.csv')}
+        self.assertEqual([entry['source'] for entry in rows['performers']], ['fc2cmadb', 'fc2ppvdb'])
+        self.assertEqual([entry['source'] for entry in rows['title']], ['fc2'], '同一家不重复产候选')
+
+    @windows_ledger_roots
     def test_a_route_override_decides_who_gets_asked(self):
         """用户把有码那条链换成只问综合索引，r18.dev 就一次都不问。"""
         media = self.root / 'media'
@@ -1410,32 +1451,76 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(provider.community.call_args.kwargs['route'], ('javdb',))
         self.assertEqual((result['status'], result['issue_count']), ('complete', 0))
 
-    def test_a_new_source_clears_what_the_old_lineup_said_it_did_not_have(self):
-        """每条「没有」都是当时那批来源给的答案；接上一家新的，整份记忆就不作数了。
+    def test_a_new_site_clears_only_the_memories_whose_lineup_it_joined(self):
+        """接上一站只让链上有它的那几条「封面没有」失效，别的站说过的「没有」照旧作数。
 
         2026-09-21 接上 FC2 商品页与 fc2cmadb 时，430 个 FC2 番号手上压着一条
-        「封面没有」，按番号问是问不动的：答案没变，能问的人变了。
+        「封面没有」：答案没变，能问的人变了。有码番号的链上没有这两站，它们的记忆不该跟着作废，
+        javdb 对某个番号说过的「没有」也还是 javdb 的答复。
         """
-        from peach.library_processing import _MissCache, sources_fingerprint
-        path = self.root / 'misses.json'
-        cache = _MissCache(path)
-        cache.record('cover', 'FC2-PPV-3189161')
-        self.assertTrue(_MissCache(path).fresh('cover', 'FC2-PPV-3189161'))
-        self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['sources'],
-                         sources_fingerprint())
-
-        widened = _MissCache(path, fingerprint='多了一家')
-        self.assertFalse(widened.fresh('cover', 'FC2-PPV-3189161'))
-        widened.record('cover', 'NEW-001')
-        self.assertEqual(list(json.loads(path.read_text(encoding='utf-8'))['misses']['cover']),
-                         ['NEW-001'], '作废的那批不该被写回来')
-
-    def test_a_memory_written_before_the_fingerprint_is_not_trusted(self):
-        """旧格式没记下当时问的是哪几家，无从判断它还作不作数，一律重问。"""
         from peach.library_processing import _MissCache
+        path = self.root / 'misses.json'
+        clock = [1000.0]
+        now = lambda: clock[0]
+        before = _MissCache(path, now=now, sites=('fc2', 'javdb', 'r18dev'))
+        before.record('cover', 'FC2-PPV-3189161')
+        before.record('cover', 'DASS-468')
+        before.record('javdb', 'FC2-PPV-3189161')
+
+        clock[0] = 2000.0
+        widened = _MissCache(path, now=now, sites=('fc2', 'fc2cmadb', 'javdb', 'r18dev'))
+        self.assertFalse(widened.fresh('cover', 'FC2-PPV-3189161', ('fc2', 'fc2cmadb', 'javdb')))
+        self.assertTrue(widened.fresh('cover', 'DASS-468', ('r18dev', 'javdb')))
+        self.assertTrue(widened.fresh('javdb', 'FC2-PPV-3189161'))
+
+        clock[0] = 3000.0
+        widened.record('r18dev', 'DASS-468')
+        again = _MissCache(path, now=now, sites=('fc2', 'fc2cmadb', 'javdb', 'r18dev'))
+        self.assertFalse(again.fresh('cover', 'FC2-PPV-3189161', ('fc2', 'fc2cmadb', 'javdb')),
+                         '接入时刻落了盘，重开之后那条旧记忆仍不作数')
+        clock[0] = 4000.0
+        again.record('cover', 'FC2-PPV-3189161')
+        self.assertTrue(again.fresh('cover', 'FC2-PPV-3189161', ('fc2', 'fc2cmadb', 'javdb')),
+                        '新站接入之后记下的「没有」作数')
+
+    def test_a_memory_kept_per_stage_trusts_only_the_single_site_stages(self):
+        """按档记的文件：单站成档的键就是那一站的答复，合档的键说不清是哪一站，丢掉；
+        不带来源目录指纹的更早写法无从判断，一律重问。"""
+        from peach.library_processing import _legacy_fingerprint, _MissCache
         path = self.root / 'legacy.json'
-        path.write_text(json.dumps({'r18dev': {'STP-26232': time.time()}}), encoding='utf-8')
+        stamp = time.time()
+        path.write_text(json.dumps({'sources': _legacy_fingerprint(), 'misses': {
+            'r18dev': {'STP-26232': stamp}, 'community': {'STP-26232': stamp},
+            'cover': {'STP-26232': stamp}, 'fc2cmadb-cast': {'FC2-PPV-1': stamp}}}), encoding='utf-8')
+        cache = _MissCache(path)
+        self.assertTrue(cache.fresh('r18dev', 'STP-26232'))
+        self.assertTrue(cache.fresh('cover', 'STP-26232', ('mgstage', 'javdb', 'r18dev')))
+        self.assertTrue(cache.fresh('fc2cmadb-cast', 'FC2-PPV-1'), 'FC2 演员复核脚本记的键照旧作数')
+        self.assertFalse(cache.fresh('community', 'STP-26232'))
+
+        path.write_text(json.dumps({'r18dev': {'STP-26232': stamp}}), encoding='utf-8')
         self.assertFalse(_MissCache(path).fresh('r18dev', 'STP-26232'))
+
+    @windows_ledger_roots
+    def test_a_stage_asks_only_the_sites_that_have_not_said_no(self):
+        """综合索引那一档里 AVBase 与 JavBus 说过没有，javdb 没说过：这一档只问 javdb。"""
+        from peach.library_processing import _MissCache, misses_path
+        media = self.root / 'media'
+        media.mkdir()
+        (media / 'DASS-468.mp4').write_bytes(b'video')
+        db = fresh_ledger(self.root)
+        config = PeachConfig(self.root, self.root / 'config.toml', present=True,
+                             locations={'local': (str(media),)})
+        misses = _MissCache(misses_path(config))
+        for site in ('avbase', 'javbus'):
+            misses.record(site, 'DASS-468')
+        provider = stub_provider()
+        provider.query.side_effect = NotFound('HTTP 404')
+        provider.cover.return_value = False
+        process_library(config, db, self.root / 'generated', self.root / 'covers',
+                        provider_factory=Mock(return_value=provider))
+        self.assertEqual(provider.community.call_args.kwargs['route'], ('javdb',))
+        self.assertTrue(_MissCache(misses_path(config)).fresh('javdb', 'DASS-468'))
 
     def test_management_controls_keep_credentials_and_empty_sections_visible(self):
         root = Path(__file__).resolve().parents[1]
@@ -1691,12 +1776,14 @@ class LibraryWatchdogTests(unittest.TestCase):
 
     @windows_ledger_roots
     def test_a_row_with_nothing_left_to_collect_never_touches_the_disk(self):
-        """番号已落库、字段都有着落、封面在位的行，采集连 stat 都不做。
+        """番号已落库、缺的字段都有候选且链上每一站都给过候选或说过没有、封面在位的行，
+        采集连 stat 都不做。
 
         重跑「只采集」时这是绝大多数行；网盘上每行一次 stat 加一次列目录就是两趟往返。
         文件在扫描后被删掉，任务仍然一条问题都不报，就是没碰磁盘的证据。
         """
-        from peach.library_processing import FIELDS
+        from peach import metadata_routes
+        from peach.library_processing import FIELDS, _MissCache, misses_path
         from peach.review_csv import write_rows
         media = self.root / 'media'
         media.mkdir()
@@ -1714,6 +1801,9 @@ class LibraryWatchdogTests(unittest.TestCase):
         blank = {field: '' for field in FIELDS}
         write_rows(self.root / 'generated' / 'library-metadata-field-candidates.csv', FIELDS,
                    [dict(blank, item_key=f'asset:{asset_id}:{field}') for field in ('performers', 'tags')])
+        misses = _MissCache(misses_path(config))
+        for site in metadata_routes.route_for_code('ABW-205'):
+            misses.record(site, 'ABW-205')
         (media / 'ABW-205.mp4').unlink()
         with patch('peach.library_processing.sidecars') as listing:
             state = process_library(config, db, self.root / 'generated', self.root / 'covers',

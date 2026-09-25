@@ -75,8 +75,8 @@ SOURCE_SPECS = {
         "javten": "community",
         # 几个存档站也没有的下架 FC2 的最后一档（`peach.sources.javarchive`）。
         # 转载站，标题由发布者写，封面是转存件，按社区来源对待。登记在这里还有一层作用：
-        # 「没有」的记忆按 `sources_fingerprint` 作废，接上这一档，此前压着「三处都没有」
-        # 的番号下一轮就会重问一遍，不必等 TTL 走完。
+        # 「没有」的记忆按站记、记着每站的接入时刻（`library_processing._MissCache`）：接上这一站，
+        # FC2 链上此前压着「封面没有」的番号下一轮就会重问一遍，不必等 TTL 走完。
         "javarchive": "community",
         # 一本道的官网作品 JSON（`peach.sources.onepondo`）。发行方自己那一份。
         "1pondo": "official",

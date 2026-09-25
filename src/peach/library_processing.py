@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 from filelock import FileLock, Timeout
 from PIL import Image
 
-from .catalog_rules import (is_jav_code, is_korean_mib_code, normalise_code_key,
+from .catalog_rules import (is_jav_code, normalise_code_key,
                             release_code_from_filename, same_release_code, scrapes_as_jav)
 from .field_owners import SCAN_FILENAME, write_owned_fields
 from .images import measure_image_file
@@ -94,7 +94,17 @@ def _again(error):
     """缓存着的失败再抛一次时交一个同类同措辞的新实例；`SourceFailure` 连细档与状态码一起带上。"""
     if isinstance(error, SourceFailure):
         return SourceFailure(error.reason, error.message, status_code=error.status_code, detail=error.detail)
-    return type(error)(str(error))
+    again = type(error)(str(error))
+    if hasattr(error, 'sites'):
+        again.sites = error.sites
+    return again
+
+
+def _said_no(message, sites):
+    """合档的「没有」：带上说了没有的是哪几站（`sites`），失败记忆按站记（`_MissCache`）。"""
+    error = NotFound(message)
+    error.sites = tuple(sites)
+    return error
 
 
 def describe_failure(error):
@@ -220,7 +230,7 @@ class LibraryMetadataProvider:
             else:
                 cache[key] = self._amane_query(code, open_sites, deadline)
         if isinstance(cache[key], Exception):
-            raise type(cache[key])(str(cache[key]))
+            raise _again(cache[key])
         return cache[key]
 
     def _amane_query(self, code, sites, deadline):
@@ -253,7 +263,7 @@ class LibraryMetadataProvider:
         if found:
             return found
         if not problems:
-            return NotFound('amane 桥问的几站都没有这个番号')
+            return _said_no('amane 桥问的几站都没有这个番号', sites)
         # 出错的站全都进了冷却，这一档就是「本趟没轮到」；只要有一站是别的原因就是「未取得」。
         if held and held == len(problems):
             return SourcePaused('；'.join(problems))
@@ -273,7 +283,7 @@ class LibraryMetadataProvider:
         from .jav_cover_fetch import Unavailable
         cache = self.__dict__.setdefault('_community', {})
         if code not in cache:
-            found, problems = [], []
+            found, problems, absent = [], [], []
             for source in community_sources_for(code, route=route):
                 try:
                     found.append((source, self.site(source, code, deadline=deadline)))
@@ -281,13 +291,14 @@ class LibraryMetadataProvider:
                     raise
                 except Exception as error:
                     if is_missing(error):
+                        absent.append(source)
                         continue
                     text = describe_failure(error)
                     problems.append(text if text.startswith(SOURCE_LABELS[source]) else f'{SOURCE_LABELS[source]}：{text}')
             cache[code] = (found or (Unavailable('；'.join(problems)) if problems
-                                     else NotFound('社区来源都没有这个番号')))
+                                     else _said_no('社区来源都没有这个番号', absent)))
         if isinstance(cache[code], Exception):
-            raise type(cache[code])(str(cache[code]))
+            raise _again(cache[code])
         return cache[code]
 
     def fc2(self, code, *, deadline=None, route=None, covers=False, required=(), known=()):
@@ -350,7 +361,7 @@ class LibraryMetadataProvider:
         # 一处报错、另一处说没有时报错误：那个番号在报错那处有没有，还没问出来。
         if state['problems']:
             raise _again(state['problems'][0])
-        raise NotFound('FC2 与四个存档站上都没有这个商品')
+        raise _said_no('FC2 与几个存档站上都没有这个商品', sorted(state['asked']))
 
     def one_pondo(self, code, *, deadline=None):
         """一本道自己那份作品 JSON（`sources/onepondo.py`），返回 `[('1pondo', 资料)]`。
@@ -874,11 +885,36 @@ def _studio_evidence(row):
     return (row.get('path'), row.get('name'), row.get('studio'))
 
 
-def _missing_fields(row, target_key, groups, local_fields=()):
-    """这一行还缺、本地资料没给、候选表里也还没有的字段。"""
+def _missing_fields(row, local_fields=()):
+    """这一行账本里还空着、本地资料也没给的字段。
+
+    候选表里已有待批候选的字段照样算缺：一条候选还不是账本的值，免复核要两家一致
+    （ADR-0030、ADR-0034），只有一家给过的字段正该再问下一家。同一家不重问由
+    `_answered_sources` 管。
+    """
     return [field for field in COLLECTED_FIELDS
-            if field not in local_fields and f'{target_key}:{field}' not in groups
-            and not row.get(COLUMN_OF.get(field, field))]
+            if field not in local_fields and not row.get(COLUMN_OF.get(field, field))]
+
+
+def _answered_sources(groups, target_key, fields):
+    """在 `fields` 里哪一个字段上已经有自己一条候选的来源；这一行不再问它们。
+
+    一家来源的答复是整份并进候选表的（`_merge_candidates`），它在这一行缺的字段里有一条
+    候选，就说明它能给的都已经在表里了：再问一遍拿回的是同一个值，换掉它自己那一条。
+    2026-09-25 实测 410 条 FC2 演员候选待批时，这一行被当成「演员已有着落」，
+    FC2PPV-DB 一次都没被问到；按来源判就只跳过给过候选的那一家。
+    """
+    answered = set()
+    for field in fields:
+        group = groups.get(f'{target_key}:{field}')
+        if group:
+            answered.update(entry.get('source') for entry in json.loads(group.get('candidates_json') or '[]'))
+    return answered
+
+
+def _uncandidated(groups, target_key, fields):
+    """`fields` 里候选表上一条候选都还没有的那几个。"""
+    return [field for field in fields if f'{target_key}:{field}' not in groups]
 
 
 class _DirectoryIndex:
@@ -898,56 +934,83 @@ class _DirectoryIndex:
         return found
 
 
-def sources_fingerprint():
-    """当前认得哪几家来源。记忆按它作废，接上新来源就不必等 TTL。
+#: 记忆文件的格式号。按站记、带各站接入时刻的是这一版；没有这个键的文件是按档记、
+#: 整份绑一个来源目录指纹的写法（`_legacy_fingerprint`）。
+MISS_FORMAT = 2
+#: 几站合成一档的档名（`metadata_routes.stages_for_chain`）。按档记的文件里这几个键下的
+#: 「没有」说不清是哪一站说的。
+_MERGED_STAGES = frozenset({'community', 'fc2', 'amane', 'amane_official'})
 
-    `cover` 那条记的是「所有封面来源加起来都没有」，`community` 那条记的是「逐家问过
-    都说没有」——两句话都以「当时会问哪几家」为前提。2026-09-21 接上 FC2 商品页与
-    fc2cmadb 之后，430 个 FC2 番号手上还压着一条「封面没有」，按番号问是问不动的：
-    答案没变，能问的人变了。
-    """
+
+def _legacy_fingerprint():
+    """按档记的那种文件绑着的来源目录指纹。指纹对得上时，其中逐站的几条照旧作数。"""
     return hashlib.sha256('\n'.join(sorted(SOURCE_SPECS)).encode('utf-8')).hexdigest()[:12]
 
 
 class _MissCache:
-    """来源明确答复「没有」的番号，按来源分开记，期内不再问。
+    """来源明确答复「没有」的番号，按站分开记，期内不再问。
 
     r18.dev 不认识的番号每轮「只采集」都重问一遍，每条卡在主机 2 秒间隔上，答案永远一样；
     真实账本上这样的行有六百多条，一轮就是几十分钟。只记 `NotFound`：网络故障与超时
     下次可能就好了，不该记。每记一条就落盘，任务被打断也不丢。
 
-    记忆还绑着写下它时的来源目录（`sources_fingerprint`）：目录一变整份作废，
-    因为每条「没有」都是那一批来源给的答案。
+    键是站名（`r18dev`、`javdb`、`fc2cmadb`……），不是档名：一档里几站各说各的「没有」，
+    接上新的一站只多出一个没有记忆的站，别的站说过的照旧作数。`cover` 那一条是例外，
+    记的是「这个番号的封面来源加起来都没有」，以当时有哪几站为前提：文件里记着每一站
+    是什么时候第一次出现的（`joined`），`fresh(..., lineup=...)` 时这个番号的链上有一站
+    晚于这条记忆接入，这条就不作数。2026-09-21 接上 FC2 商品页与 fc2cmadb 之后，430 个
+    FC2 番号手上还压着一条「封面没有」：答案没变，能问的人变了——而有码番号的记忆与这两站无关。
     """
 
-    def __init__(self, path, *, ttl=MISS_TTL_SECONDS, now=time.time,
-                 fingerprint=None):
+    def __init__(self, path, *, ttl=MISS_TTL_SECONDS, now=time.time, sites=None):
         self._path = path
         self._ttl = ttl
         self._now = now
-        self._fingerprint = fingerprint if fingerprint is not None else sources_fingerprint()
+        self._sites = sorted(SOURCE_SPECS if sites is None else sites)
         try:
             loaded = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             loaded = {}
-        if not isinstance(loaded, dict) or loaded.get('sources') != self._fingerprint:
+        if not isinstance(loaded, dict):
             loaded = {}
+        if loaded.get('format') == MISS_FORMAT:
+            known = set(loaded.get('sites') or ())
+            joined = loaded.get('joined') if isinstance(loaded.get('joined'), dict) else {}
+        elif loaded.get('sources') == _legacy_fingerprint() and sites is None:
+            # 按档记的旧文件：单站成档的那几条（r18dev、dmm、1pondo）与 `cover` 仍是那一站、
+            # 那一批来源的答复，照旧作数；合档的键说不清是哪几站，丢掉。
+            known, joined = set(self._sites), {}
+            loaded = {'misses': {name: codes for name, codes in (loaded.get('misses') or {}).items()
+                                 if name not in _MERGED_STAGES}}
+        else:
+            known, joined, loaded = set(self._sites), {}, {}
+        self._joined = {site: float(stamp) for site, stamp in joined.items()
+                        if isinstance(stamp, (int, float))}
+        if known:
+            for site in self._sites:
+                if site not in known:
+                    self._joined[site] = self._now()
         self._entries = {}
         for source, codes in (loaded.get('misses') or {}).items():
             if isinstance(codes, dict):
                 self._entries[source] = {code: float(stamp) for code, stamp in codes.items()
                                          if isinstance(stamp, (int, float))}
 
-    def fresh(self, source, code):
+    def fresh(self, source, code, lineup=()):
+        """`source` 对 `code` 说过「没有」且还在期内。`lineup` 是这条记忆当时应当问过的几站：
+        其中有一站是记下之后才接入的，这条就不作数。"""
         stamp = self._entries.get(source, {}).get(code)
-        return stamp is not None and self._now() - stamp < self._ttl
+        return (stamp is not None and self._now() - stamp < self._ttl
+                and all(self._joined.get(site, 0.0) < stamp for site in lineup))
 
     def record(self, source, code):
         now = self._now()
         self._entries.setdefault(source, {})[code] = now
-        _save(self._path, {'sources': self._fingerprint, 'misses': {
-            name: {key: stamp for key, stamp in codes.items() if now - stamp < self._ttl}
-            for name, codes in self._entries.items()}})
+        _save(self._path, {
+            'format': MISS_FORMAT, 'sites': self._sites,
+            'joined': {site: stamp for site, stamp in self._joined.items() if now - stamp < self._ttl},
+            'misses': {name: {key: stamp for key, stamp in codes.items() if now - stamp < self._ttl}
+                       for name, codes in self._entries.items()}})
 
 
 class _RemoteSession:
@@ -978,18 +1041,22 @@ class _RemoteSession:
         if self._provider is not None and hasattr(self._provider, 'close'):
             self._provider.close()
 
-    def collect(self, row, code, missing, cover_root, *, update, issue):
+    def collect(self, row, code, missing, cover_root, *, update, issue, answered=()):
         """给这一行补外部资料与封面；返回 (证据条目, 新落盘的封面数)。
 
         文件名被读成番号的创作者作品一家都不问，判据见 `catalog_rules.scrapes_as_jav`；
-        本地海报在调用方那一步已经登记过，这里跳过的只是外部来源。
+        本地海报在调用方那一步已经登记过，这里跳过的只是外部来源。`answered` 是在这一行
+        已经给过候选的来源（`_answered_sources`），资料那一步不再问它们。
         """
         entries, covers = [], 0
         if not _scrapes_as_jav(row, code):
             return entries, covers
-        if missing and _sources_for(code, *_studio_evidence(row),
-                                    route_overrides=self._routes):
-            entries = self._metadata(row, code, missing, update=update, issue=issue)
+        chain = metadata_routes.route_for_code(code, *_studio_evidence(row), overrides=self._routes)
+        # 链上剩下的站都给过候选或说过没有、且至少有一家给过候选：这一行不是「没取到」，
+        # 只是没有新的可问，不进告知项。
+        if missing and chain and (self._askable(chain, code, answered)
+                                  or not set(answered).intersection(chain)):
+            entries = self._metadata(row, code, missing, update=update, issue=issue, answered=answered)
         if _asks_cover(code, *_studio_evidence(row)) and not cover_settled(cover_root / (code + '.jpg')):
             covers = self._cover(row, code, cover_root, update=update, issue=issue)
         return entries, covers
@@ -1019,7 +1086,51 @@ class _RemoteSession:
                 continue
         return found
 
-    def _metadata(self, row, code, missing, *, update, issue):
+    def _askable(self, members, code, answered=()):
+        """一档成员里这一行还该问的：没给过候选（`answered`），也没在一周内说过「没有」。
+
+        「没有」的记忆按站记：一档里说过没有的站摘掉，全档都说过就整档跳过。
+        「重试未完成项」不看记忆，但给过候选的来源照样不问——那一家的答复已经在候选表里了。
+        """
+        return tuple(name for name in members if name not in answered
+                     and not (self._consult and self.misses.fresh(name, code)))
+
+    def open_fields(self, row, target_key, groups):
+        """这一行还值得去问的字段；空列表表示整行没有可采集的东西。
+
+        账本空着的字段里，候选表上一条候选都没有的必问；都有候选时，链上还剩没给过候选、
+        也没说过「没有」的站才问。每家来源对一行最多问出一次候选，之后这一行就在这里停下。
+        """
+        missing = _missing_fields(row)
+        if not missing or _uncandidated(groups, target_key, missing):
+            return missing
+        code = _provider_code(row['code'])
+        chain = metadata_routes.route_for_code(code, *_studio_evidence(row), overrides=self._routes)
+        return missing if self._askable(chain, code, _answered_sources(groups, target_key, missing)) else []
+
+    def _ask(self, source, code, members, cached, *, required, deadline, evidence):
+        """问链上的一档：按档名分派到 provider 对应的入口，返回这一档答上的 `[(来源, 资料)]`。
+
+        `members` 是这一档里这一行还该问的站（`_askable`），`cached` 是这一档缓存里已有的快照：
+        FC2 那一档把它们当作已答上的几处交下去，只补问缺演员时的镜像站。
+        """
+        provider = self.provider()
+        if source in ('r18dev', 'dmm'):
+            return [(source, provider.query(code, source, deadline=deadline))]
+        if source == 'fc2':
+            answered = {name for name, _, _ in cached}
+            return provider.fc2(code, deadline=deadline, required=required,
+                                route=tuple(name for name in members if name not in answered),
+                                known=[payload for _, payload, _ in cached])
+        if source == '1pondo':
+            return provider.one_pondo(code, deadline=deadline)
+        if source in ('amane', 'amane_official'):
+            return provider.amane(code, deadline=deadline, route=members)
+        route = metadata_routes.community_route(code, *evidence, overrides=self._routes)
+        return provider.community(code, deadline=deadline,
+                                  route=tuple(name for name in route if name in members))
+
+    def _metadata(self, row, code, missing, *, update, issue, answered=()):
         """按内容类型的来源链逐档问，必填标量字段够了就不问下一档。
 
         链在 `metadata_routes`：有码先问片商官网、素人先问 MGStage（经 amane 桥，ADR-0048），
@@ -1034,7 +1145,7 @@ class _RemoteSession:
 
         社区那一档的值照常进候选，只剩一家也补空，几家不一时按字段优先级链取：FC2 的演员栏
         取 fc2cmadb，其余取 javdb（ADR-0034、ADR-0038）。
-        每档各自记「没有」的记忆：说过没有的番号，一周内直接问下一档。
+        「没有」的记忆按站记：一档里说过没有的站一周内不再问，全档都说过就直接问下一档。
         """
         action = 'querying_metadata'
         budget = ACTION_BUDGETS[action]
@@ -1048,10 +1159,10 @@ class _RemoteSession:
         problems, held, entries = [], [], []
         stages = _sources_for(code, *evidence, route_overrides=self._routes)
         for source, then in zip(stages, (*stages[1:], '')):
-            if self._consult and self.misses.fresh(source, code):
+            members = self._askable(metadata_routes.stage_members(source, chain), code, answered)
+            if not members:
                 continue
-            cached = (self._cached_evidence(metadata_routes.stage_members(source, chain), code)
-                      if self._consult else [])
+            cached = self._cached_evidence(members, code) if self._consult else []
             if cached:
                 entries.extend(cached)
                 if metadata_routes.settles(required, _given_fields(entries),
@@ -1061,24 +1172,8 @@ class _RemoteSession:
                 if source != 'fc2':
                     continue
             try:
-                if source in ('r18dev', 'dmm'):
-                    found = [(source, self.provider().query(code, source, deadline=deadline))]
-                elif source == 'fc2':
-                    answered = {name for name, _, _ in cached}
-                    found = self.provider().fc2(
-                        code, deadline=deadline, required=required,
-                        route=tuple(name for name in chain if name not in answered),
-                        known=[payload for _, payload, _ in cached])
-                elif source == '1pondo':
-                    found = self.provider().one_pondo(code, deadline=deadline)
-                elif source in ('amane', 'amane_official'):
-                    found = self.provider().amane(
-                        code, deadline=deadline, route=metadata_routes.stage_members(source, chain))
-                else:
-                    found = self.provider().community(
-                        code, deadline=deadline,
-                        route=metadata_routes.community_route(
-                            code, *evidence, overrides=self._routes))
+                found = self._ask(source, code, members, cached, required=required, deadline=deadline,
+                                  evidence=evidence)
             except DeadlineExceeded:
                 self.reset()
                 if entries:
@@ -1087,7 +1182,8 @@ class _RemoteSession:
                 return []
             except Exception as error:
                 if is_missing(error):
-                    self.misses.record(source, code)
+                    for name in getattr(error, 'sites', None) or members:
+                        self.misses.record(name, code)
                     continue
                 # 社区那一档的原因里已经写明是哪一家了（`community()` 逐家拼过），再套一层
                 # 就成了「社区来源：javdb：…」。单家来源的原因不带来源名，这里补上。
@@ -1112,7 +1208,9 @@ class _RemoteSession:
 
     def _cover(self, row, code, cover_root, *, update, issue):
         action = 'fetching_cover'
-        if self._consult and self.misses.fresh('cover', code):
+        # 「封面没有」是这条链上各站合起来的答复：链上有一站是记下之后才接入的，就再问一遍。
+        lineup = metadata_routes.route_for_code(code, *_studio_evidence(row), overrides=self._routes)
+        if self._consult and self.misses.fresh('cover', code, lineup):
             # 已经有一张小图的不算问题项：卡片上有封面，只是还没换到更大的。
             if measure_image_file(cover_root / (code + '.jpg')) is None:
                 issue(row, MISS_MESSAGES[action], action=action, retryable=True)
@@ -1412,11 +1510,12 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                        current_action='reading_local', current_started_at=time.time(),
                        current_deadline_at=None)
                 target_key = f"asset:{row['id']}"
-                # 番号早已落库、字段都有着落、封面够大的行没有可采集的东西，连网盘都不碰。
-                # 重跑「只采集」时这是绝大多数行，每行省下的是网盘上的一次 stat 和一次列目录；
-                # 量封面只读本机那张的图片头。
-                if row['code'] and not _missing_fields(row, target_key, groups) and (
-                        is_korean_mib_code(row['code']) or cover_settled(cover_root / (row['code'] + '.jpg'))):
+                # 番号早已落库、没有可问的字段、封面够大（或这种号不问封面）的行没有可采集的东西，
+                # 连网盘都不碰。重跑「只采集」时这是绝大多数行，每行省下的是网盘上的一次 stat
+                # 和一次列目录；量封面只读本机那张的图片头。
+                if row['code'] and not remote.open_fields(row, target_key, groups) and (
+                        not _asks_cover(row['code'], *_studio_evidence(row))
+                        or cover_settled(cover_root / (row['code'] + '.jpg'))):
                     update(checked=index + 1, candidates=len(groups),
                            current_asset_id=None, current_asset_name='', current_action='',
                            current_started_at=None, current_deadline_at=None)
@@ -1474,8 +1573,9 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                     evidence_path.write_bytes(raw)
                     entries.append(('local_nfo', payload, evidence_path))
                 local_fields = _fields(payload, genre_decisions) if payload else {}
-                missing = _missing_fields(row, target_key, groups, local_fields)
-                found, covers = remote.collect(row, code, missing, cover_root, update=update, issue=issue)
+                missing = _missing_fields(row, local_fields)
+                found, covers = remote.collect(row, code, missing, cover_root, update=update, issue=issue,
+                                               answered=_answered_sources(groups, target_key, missing))
                 entries.extend(found)
                 state['covers'] += covers
                 covered.append((row['id'], covers))
