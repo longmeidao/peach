@@ -527,5 +527,53 @@ class SchedulingTests(Case):
         self.assertEqual(keys, [followup.followup_key(new), followup.followup_key(old)])
 
 
+def load_sweep():
+    spec = importlib.util.spec_from_file_location(
+        "run_performer_profiles_under_test", ROOT / "scripts" / "run_performer_profiles.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class SweepTests(unittest.TestCase):
+    """一次补完的脚本只挑人、记进度；每一位怎么补是后继自己的事，这里换成替身。"""
+
+    def items(self, count):
+        return [SimpleNamespace(key=followup.followup_key(index), label=f"女优{index}")
+                for index in range(1, count + 1)]
+
+    def test_consecutive_unfetched_stops_the_sweep_instead_of_stamping_everyone(self):
+        sweep = load_sweep()
+        with mock.patch.object(followup, "run", return_value={"outcome": followup.UNFETCHED}) as run:
+            tally = sweep.sweep(None, self.items(20), "manual-test", out=io.StringIO(), stop_after=3)
+        self.assertEqual(run.call_count, 3)
+        self.assertEqual(tally["停在"], 3)
+
+    def test_one_failure_is_hers_alone_and_the_sweep_goes_on(self):
+        sweep = load_sweep()
+        outcomes = [RuntimeError("坏页"), {"outcome": "minnano-av 写入"}, {"outcome": "资料未过期"}]
+        with mock.patch.object(followup, "run", side_effect=outcomes):
+            tally = sweep.sweep(None, self.items(3), "manual-test", out=io.StringIO())
+        self.assertEqual(tally, {"出错：RuntimeError: 坏页": 1, "minnano-av 写入": 1, "资料未过期": 1})
+
+    def test_the_batch_carries_the_manual_run_id(self):
+        sweep = load_sweep()
+        seen = []
+        with mock.patch.object(followup, "run",
+                               side_effect=lambda _c, _k, handle: seen.append(handle.run_id) or {}):
+            sweep.sweep(None, self.items(2), "manual-20260925T120000", out=io.StringIO())
+        self.assertEqual(seen, ["manual-20260925T120000"] * 2)
+
+    def test_apply_without_backup_is_refused_before_anything_runs(self):
+        sweep = load_sweep()
+        with mock.patch.object(sweep, "pending") as pending, \
+                mock.patch.object(followup, "run") as run, \
+                self.assertRaises(SystemExit) as refused:
+            sweep.main(["--db", "unused.db", "--apply"])
+        self.assertEqual(str(refused.exception), sweep.BACKUP_REQUIRED)
+        pending.assert_not_called()
+        run.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -180,7 +180,8 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     "src/peach/studio_icons.py": ("catalog", "metadata", "web"),
     "src/peach/studio_sites.py": ("catalog", "metadata"),
     "scripts/revert_auto_landing.py": ("catalog", "metadata", "tooling"),
-    # 补女优资料后继的解析与读写层，测试都在 `test_performer_profile_followup.py`。
+    # 补女优资料后继的解析与读写层、一次补完的脚本，测试都在 `test_performer_profile_followup.py`。
+    "scripts/run_performer_profiles.py": ("metadata",),
     "src/peach/avwikidb.py": ("metadata",),
     "src/peach/performer_profiles.py": ("metadata",),
     # 女优页头的视图：主体测试在 `test_performer_header.py`（metadata），资料接口与骨架
