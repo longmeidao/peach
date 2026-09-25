@@ -58,7 +58,7 @@ from peach.scripting import USER_AGENT, open_readonly
 from peach.config import COVER_DIR, DATABASE_PATH, GENERATED_DIR, SOURCES_DIR
 from peach.http import HttpRequest, HttpTransport, HttpxTransport
 from peach.scripting import HostLimiter
-from peach.scraping_access import SourceTransport
+from peach.scraping_access import SOURCES, SourceTransport, source_for
 from peach.config import SECRETS_DIR
 from peach.jobs import DiskGuard, JobPolicyError
 from peach.task_runs import TaskRunHandle, cli_run, inert_handle
@@ -241,6 +241,23 @@ def _sleep_within(delay: float, deadline: float | None) -> None:
     time.sleep(delay)
 
 
+#: 一条请求给传输的时限上限。
+REQUEST_TIMEOUT = 30.0
+#: 由本机浏览器过验证的来源（`scraping_access.SOURCES` 里登记了 `browser`）一条请求的时限，
+#: 不按剩余预算往下裁。浏览器自动过验证最多等 `browser_transport.AUTO_SECONDS`（40 秒），
+#: 2026-09-25 实测 JAVten 最慢 25 秒；时限给到 30 秒以下，自动阶段没等完就被掐断，那一站白问一次。
+BROWSER_REQUEST_TIMEOUT = 45.0
+
+
+def request_timeout(url: str, remaining: float | None) -> float:
+    """这一条请求给传输多少秒：普通来源不超过剩余预算与 `REQUEST_TIMEOUT`，浏览器来源固定
+    `BROWSER_REQUEST_TIMEOUT`——等浏览器过验证的那一段不归单项预算管（ADR-0065 第二条）。"""
+    source = source_for(url)
+    if source and SOURCES[source].get("browser"):
+        return BROWSER_REQUEST_TIMEOUT
+    return REQUEST_TIMEOUT if remaining is None else max(1.0, min(REQUEST_TIMEOUT, remaining))
+
+
 def _fetch(transport: HttpTransport, url: str, *, referer: str,
            limit: int, ranged: bool = False,
            extra_headers: dict[str, str] | None = None,
@@ -258,9 +275,8 @@ def _fetch(transport: HttpTransport, url: str, *, referer: str,
         remaining = _remaining(deadline)
         if remaining is not None and remaining <= 0:
             raise DeadlineExceeded("动作预算已用尽")
-        timeout = 30.0 if remaining is None else max(1.0, min(30.0, remaining))
         try:
-            response = transport(request, timeout, limit)
+            response = transport(request, request_timeout(url, remaining), limit)
             break
         except httpx.TransportError:
             if attempt == len(NETWORK_RETRY_DELAYS):
@@ -544,19 +560,28 @@ def r18_evidence(transport: HttpTransport, code: str, *,
             ).decode("utf-8", "ignore"))
         except (Unavailable, ValueError, httpx.TransportError):
             continue
-        found: list[Candidate] = []
-        jacket = ((payload.get("images") or {}).get("jacket_image") or {})
-        if isinstance(jacket, dict):
-            for raw_url in jacket.values():
-                url = raw_url.strip() if isinstance(raw_url, str) else ""
-                if url and IMAGE_URL.fullmatch(url) and not THUMBNAIL.search(url):
-                    found.extend(dmm_cdn_images(url))
-        cid = str(payload.get("content_id") or "")
-        found.extend(content_id_images(cid))
-        makers = frozenset(str(payload.get(key, {}).get("name", "")).casefold()
-                           for key in ("maker", "label") if isinstance(payload.get(key), dict))
-        return MetadataEvidence(tuple(_unique_candidates(found)), makers, frozenset({"r18dev"}))
+        return r18_payload_evidence(payload)
     return MetadataEvidence()
+
+
+def r18_payload_evidence(payload: dict) -> MetadataEvidence:
+    """r18.dev 作品 JSON 里的封面证据：`jacket_image` 的原图与 `content_id` 拼出的数字版地址。
+
+    资料那一步取回的 r18.dev 快照原样带着这份 JSON（`sources/r18dev.py` 的 `raw`），
+    封面那一步拿它就不必再问一遍 r18.dev。
+    """
+    found: list[Candidate] = []
+    jacket = ((payload.get("images") or {}).get("jacket_image") or {})
+    if isinstance(jacket, dict):
+        for raw_url in jacket.values():
+            url = raw_url.strip() if isinstance(raw_url, str) else ""
+            if url and IMAGE_URL.fullmatch(url) and not THUMBNAIL.search(url):
+                found.extend(dmm_cdn_images(url))
+    cid = str(payload.get("content_id") or "")
+    found.extend(content_id_images(cid))
+    makers = frozenset(str(payload.get(key, {}).get("name", "")).casefold()
+                       for key in ("maker", "label") if isinstance(payload.get(key), dict))
+    return MetadataEvidence(tuple(_unique_candidates(found)), makers, frozenset({"r18dev"}))
 
 
 def mgstage_images(transport: HttpTransport, code: str, *,
@@ -657,6 +682,57 @@ def probe_size(transport: HttpTransport, candidate: Candidate, *,
     return Image.open(io.BytesIO(head)).size
 
 
+def _joined_evidence(known: MetadataEvidence | None, cached: MetadataEvidence) -> MetadataEvidence:
+    """调用方交来的快照证据排在缓存那份前面，来源与厂牌取并集。"""
+    if known is None:
+        return cached
+    return MetadataEvidence(tuple(_unique_candidates([*known.candidates, *cached.candidates])),
+                            known.makers | cached.makers, known.sources | cached.sources)
+
+
+def _usable_candidates(code: str, candidates, known_sizes: dict[str, tuple[int, int]],
+                       minimum_quality: int, minimum_pixels: int) -> list[Candidate]:
+    """去重，去掉缩略图与别的作品的封套，再去掉成功日志里量过、不比本机那张好的地址。
+
+    升级模式已在成功日志中量过的精确 URL，若像素不大于当前本地图，就不再发 Range 请求。
+    其他 URL 和尺寸未知的候选仍完整探测，不改变择优语义。
+    """
+    return [
+        candidate for candidate in _unique_candidates([
+            candidate for candidate in candidates
+            if (not THUMBNAIL.search(candidate.url) or FC2_HIRES.match(candidate.url))
+            and not is_cross_product_cover(code, candidate.url)])
+        if candidate.url not in known_sizes
+        or candidate_improves(candidate, known_sizes[candidate.url][0] * known_sizes[candidate.url][1],
+                              minimum_quality, minimum_pixels)
+    ]
+
+
+def _site_candidates(transport: HttpTransport, code: str, evidence: MetadataEvidence, *,
+                     delay: float, deadline: float | None) -> list[Candidate]:
+    """现问官方站拿到的封面候选：r18.dev，再按厂牌证据问 Prestige 或按番号形状问 MGS。FC2 一处都不问。"""
+    if code.upper().startswith("FC2-PPV-"):
+        return []
+    candidates: list[Candidate] = []
+    live_evidence = MetadataEvidence()
+    # 有成功快照时不重复打 r18；失败快照不算证据，仍允许联网刷新。
+    if "r18dev" not in evidence.sources:
+        live_evidence = r18_evidence(transport, code, deadline=deadline)
+        candidates += list(live_evidence.candidates)
+        _sleep_within(delay, deadline)
+    # MGS 与 Prestige 都是 Prestige 集团的官方供给面。只在本地厂牌证据命中时
+    # 查询，避免把全库 960 个番号无差别打到两个站点。
+    if _is_prestige(evidence) or _is_prestige(live_evidence):
+        candidates += prestige_group_images(transport, code, deadline=deadline)
+        _sleep_within(delay, deadline)
+    # 素人系番号按形状就能确定发行面是 MGS，不必先有元数据。等元数据的旧写法让
+    # 259LUXU / 300MIUM / 428SUKE 这批番号一次也没问过 MGS——而 MGS 一直有图。
+    elif is_amateur_code(code) or "mgstage" in evidence.sources:
+        candidates += mgstage_images(transport, code, deadline=deadline)
+        _sleep_within(delay, deadline)
+    return candidates
+
+
 def best_cover(transport: HttpTransport, code: str, delay: float, *,
                metadata_root: Path | None = None,
                prior_candidates: tuple[Candidate, ...] = (),
@@ -666,7 +742,16 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
                minimum_width: int = MIN_WIDTH,
                deadline: float | None = None,
                diagnostics: dict[str, int] | None = None,
+               known: MetadataEvidence | None = None,
+               sites_when_needed: bool = False,
                ) -> tuple[Candidate, tuple[int, int], bytes]:
+    """官方封面择优：手上的候选、缓存快照里的候选，加上 r18.dev、MGS 或 Prestige 现问来的候选。
+
+    `known` 是调用方这一趟已经取到的官方快照证据（例如 `r18_payload_evidence`），与 `metadata_root`
+    那份缓存同等对待：`sources` 里有 `r18dev` 就不再问 r18.dev。`sites_when_needed` 时先量手上的候选，
+    其中有一张宽到 `MIN_WIDTH` 就直接用它，量不出这么宽的才去问站——资料那一步刚取回的快照
+    多半已经带着原图地址，再问一遍 r18.dev 只是白等一次主机间隔。
+    """
     # 韩国 MIB 的编号在 JAV 目录站上要么不存在、要么撞上番号相同的日本作品：
     # `HA-101`、`MY-102` 取回的都是那部日本片的封套，番号核验拦不住，因为番号本来
     # 就一样。所以不是「找不到」，是根本不该去找。
@@ -674,50 +759,31 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         raise Unavailable(MIB_NOT_JAV)
     # 来源一律记主机名。缓存、构造路径和官方页常指向同一个主机，记成多个名字
     # 会让覆盖率统计凭空多出「渠道」。
-    evidence = cached_metadata(metadata_root, code)
-    live_evidence = MetadataEvidence()
-    candidates = list(prior_candidates) + list(evidence.candidates)
-    is_fc2 = code.upper().startswith("FC2-PPV-")
-    # 有成功快照时不重复打 r18；失败快照不算证据，仍允许联网刷新。
-    if not is_fc2 and "r18dev" not in evidence.sources:
-        live_evidence = r18_evidence(transport, code, deadline=deadline)
-        candidates += list(live_evidence.candidates)
-        _sleep_within(delay, deadline)
-    # MGS 与 Prestige 都是 Prestige 集团的官方供给面。只在本地厂牌证据命中时
-    # 查询，避免把全库 960 个番号无差别打到两个站点。
-    if not is_fc2 and (_is_prestige(evidence) or _is_prestige(live_evidence)):
-        candidates += prestige_group_images(transport, code, deadline=deadline)
-        _sleep_within(delay, deadline)
-    # 素人系番号按形状就能确定发行面是 MGS，不必先有元数据。等元数据的旧写法让
-    # 259LUXU / 300MIUM / 428SUKE 这批番号一次也没问过 MGS——而 MGS 一直有图。
-    elif not is_fc2 and (is_amateur_code(code) or "mgstage" in evidence.sources):
-        candidates += mgstage_images(transport, code, deadline=deadline)
-        _sleep_within(delay, deadline)
-    candidates = _unique_candidates([
-        candidate for candidate in candidates
-        if (not THUMBNAIL.search(candidate.url) or FC2_HIRES.match(candidate.url))
-        and not is_cross_product_cover(code, candidate.url)
-    ])
-    # 升级模式已在成功日志中量过的精确 URL，若像素不大于当前本地图，就不再
-    # 发 Range 请求。其他 URL 和尺寸未知的候选仍完整探测，不改变择优语义。
-    known_sizes = known_sizes or {}
-    candidates = [
-        candidate for candidate in candidates
-        if candidate.url not in known_sizes
-        or candidate_improves(
-            candidate,
-            known_sizes[candidate.url][0] * known_sizes[candidate.url][1],
-            minimum_quality, minimum_pixels)
-    ]
-    if not candidates:
-        raise NotFound("所有渠道都没有候选")
-
+    evidence = _joined_evidence(known, cached_metadata(metadata_root, code))
     diagnostics = diagnostics if diagnostics is not None else {}
     def record(key):
         diagnostics[key] = diagnostics.get(key, 0) + 1
 
-    measured = _measure(transport, candidates, record, minimum_width=minimum_width,
-                        delay=delay, deadline=deadline)
+    def usable(found):
+        return _usable_candidates(code, found, known_sizes or {}, minimum_quality, minimum_pixels)
+
+    first = usable([*prior_candidates, *evidence.candidates])
+    tried, measured = [], []
+    if sites_when_needed and first:
+        tried = first
+        measured = _measure(transport, first, record, minimum_width=minimum_width,
+                            delay=delay, deadline=deadline)
+        if any(size[0] >= MIN_WIDTH for _, _, size in measured):
+            return _download_best(transport, measured, record, minimum_width=minimum_width,
+                                  minimum_quality=minimum_quality, minimum_pixels=minimum_pixels,
+                                  deadline=deadline)
+    asked = usable([*first, *_site_candidates(transport, code, evidence, delay=delay, deadline=deadline)])
+    candidates = [candidate for candidate in asked if candidate not in tried]
+    if not candidates and not tried:
+        raise NotFound("所有渠道都没有候选")
+    if candidates:
+        measured += _measure(transport, candidates, record, minimum_width=minimum_width,
+                             delay=delay, deadline=deadline)
     if not measured:
         raise Unavailable(_no_usable_official(diagnostics))
     return _download_best(transport, measured, record, minimum_width=minimum_width,

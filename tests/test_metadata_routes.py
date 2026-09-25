@@ -39,6 +39,36 @@ class ClassifyTests(unittest.TestCase):
     def test_every_type_has_a_chain(self):
         self.assertEqual(set(ROUTES), set(CONTENT_TYPES))
 
+    def test_the_local_evidence_splits_what_only_looks_censored(self):
+        """这几条都是账本实测：番号形状像有码，文件却说它是别的体系，或者号根本读错了。"""
+        for code, hints, expected in (
+                ('LUXU-688', (r'B:\番号\_未知厂牌\LUXU-688\259LUXU-688.mp4', 'ラグジュTV'), 'amateur'),
+                ('FC-43768', (r'B:\MVP\FC-437689可爱的素人妹子-C\FC-437689-C.mp4',), 'fc2'),
+                ('TZ-105', (r'B:\番号\TZ-105\[ThZu.Cc]兔子先生TZ-105K杯神乳美体享受.mp4',), 'other'),
+                ('MXGD-3721', (r'B:\云下载\07\网红丝袜女神小魔女大尺度私拍啪啪视频合集\MXGD3721.MP4',), 'other'),
+                ('GFE-180', (r'B:\番号\wankzvr-elena-koshka-GFE-180_180x180_3dh_LR.mp4',), 'other'),
+                ('UWFR-085', (r'A:\Pack From Shared\pen\UWFr85dczsVeysGg.mp4',), 'unsure'),
+                ('KUZU-25010', (r'A:\Pack From Shared\pen\KUZU_250103-U_iris3.mp4',), 'unsure')):
+            with self.subTest(code=code):
+                self.assertEqual(classify(code, *hints), expected)
+
+    def test_the_usual_ways_a_release_file_is_named_stay_censored(self):
+        """站点水印、DMM 的 content_id 写法、号在目录名上、号来自 NFO，都还是有码。"""
+        for code, hint in (
+                ('MIDE-612', r'R:\hjd2048.com-0112mide612-h264\0112mide612-h264.mp4'),
+                ('LXVS-039', r'R:\Prestige\LXVS-039\[FHD]LXVS-039\118lxvs00039.mp4'),
+                ('SDMU-725', r'R:\SDMU-725\1sdmu00725hhb.mp4'),
+                ('BBZA-007', r'R:\HD-bbza-007\HD-BBZA-007.mp4'),
+                ('DVAJ-185', r'R:\第一會所新片@SIS001@(アリスJAPAN)(DVAJ-185)ひたすら.mp4'),
+                ('ABP-123', r'R:\media\movie.mp4')):
+            with self.subTest(code=code):
+                self.assertEqual(classify(code, hint), 'censored')
+
+    def test_other_systems_ask_nobody_and_unsure_codes_ask_only_the_indexes_once(self):
+        other = (r'B:\番号\TZ-105\兔子先生TZ-105.mp4',)
+        self.assertEqual(route_for_code('TZ-105', *other), ())
+        self.assertEqual(stages_for_code('UWFR-085', r'A:\pen\UWFr85dczsVeysGg.mp4'), ('community',))
+
 
 class RouteTableTests(unittest.TestCase):
     def test_members_are_sources_peach_has_a_parser_for(self):
@@ -58,11 +88,14 @@ class RouteTableTests(unittest.TestCase):
                          ('makers', 'r18dev', 'dmm', 'avbase', 'javbus', 'javdb'))
 
     def test_amateur_asks_mgstage_first_and_never_the_makers_nor_dmm(self):
-        """MGS 素人系由 MGS 自己发行；片商官网对素人号一个请求都不发，DMM 的目录上也没有它们。"""
+        """MGS 素人系由 MGS 自己发行；片商官网对素人号一个请求都不发，DMM 的目录上也没有它们。
+
+        r18.dev 在本机来源快照里一份素人号都没给过，垫在最后，不让每部片先白等它一次。
+        """
         for code in ('300MIUM-1239', '259LUXU-1475', 'SIRO-4630'):
             with self.subTest(code=code):
                 self.assertEqual(route_for_code(code),
-                                 ('mgstage', 'r18dev', 'avbase', 'javbus', 'javdb'))
+                                 ('mgstage', 'avbase', 'javbus', 'javdb', 'r18dev'))
 
     def test_dmm_is_only_on_the_censored_chain(self):
         """DMM 是有码链上 r18.dev 之后的兜底；无码与 FC2 的番号不在它的目录上。"""
@@ -94,17 +127,24 @@ class RouteTableTests(unittest.TestCase):
             route_for_code('040221-001', 'R:/media/Carib-040221-001-FHD/040221-001-carib.mp4'),
             ('avbase', 'javbus', 'javdb', 'avsox'))
 
-    def test_fc2_asks_the_shop_then_the_archives_then_the_fc2_sites_then_javdb_only(self):
-        """AVBase 与 JavBus 对 FC2 番号一份证据都没给过，问了只是各撞一次空搜索。"""
+    def test_fc2_asks_the_shop_then_the_archives_then_javdb_only(self):
+        """AVBase 与 JavBus 对 FC2 番号一份证据都没给过，问了只是各撞一次空搜索。
+
+        fc2club 在 FC2 那一档一份资料都没交过，还回 429 把自己送进冷却，不在默认链上；
+        站点仍登记着，整条覆盖时可以点名。
+        """
         self.assertEqual(route_for_code('FC2-PPV-1812235'),
-                         ('fc2', 'fc2cmadb', 'fc2ppvdb', 'javten', 'javarchive', 'fc2club', 'javdb'))
+                         ('fc2', 'fc2cmadb', 'fc2ppvdb', 'javten', 'javarchive', 'javdb'))
         self.assertNotIn('r18dev', route_for_code('FC2-PPV-1812235'))
+        self.assertIn('fc2club', SOURCE_SPECS)
+        self.assertEqual(route_for_code('FC2-PPV-1812235', overrides={'fc2': ('fc2', 'fc2club')}),
+                         ('fc2', 'fc2club'))
 
     def test_the_amane_reprint_sites_are_not_on_the_censored_or_amateur_chains(self):
         """有码与素人的默认链只经桥问官方档：freejavbt 与 airav 只能由用户整条覆盖时点名。"""
         self.assertEqual(amane_sites('ABW-220'), (('prestige',), ()))
         self.assertEqual(amane_sites('300MIUM-1239'), (('mgstage',), ()))
-        self.assertEqual(amane_sites('FC2-PPV-1812235'), ((), ('fc2club',)))
+        self.assertEqual(amane_sites('FC2-PPV-1812235'), ((), ()))
         self.assertEqual(amane_sites('HEYZO-1380'), ((), ('avsox',)))
         self.assertEqual(amane_sites('ABW-220', overrides={'censored': ('r18dev', 'freejavbt', 'airav')}),
                          ((), ('freejavbt', 'airav')))
@@ -174,15 +214,15 @@ class StageTests(unittest.TestCase):
     def test_stages_keep_the_official_sources_apart_and_fold_the_indexes(self):
         """官方那几家逐个成档才短路得了；综合索引那一档整档一起问，经桥的几站也合成一档。"""
         self.assertEqual(stages_for_code('ABW-220'), ('amane_official', 'r18dev', 'dmm', 'community'))
-        self.assertEqual(stages_for_code('300MIUM-1239'), ('amane_official', 'r18dev', 'community'))
+        self.assertEqual(stages_for_code('300MIUM-1239'), ('amane_official', 'community', 'r18dev'))
         self.assertEqual(stages_for_code('040221-001'), ('community', 'amane'))
-        self.assertEqual(stages_for_code('FC2-PPV-1812235'), ('fc2', 'amane', 'community'))
+        self.assertEqual(stages_for_code('FC2-PPV-1812235'), ('fc2', 'community'))
         self.assertEqual(stages_for_code('YUJ-103'), ())
 
     def test_stage_members_name_the_sources_the_evidence_files_use(self):
         chain = route_for_code('FC2-PPV-1812235')
         self.assertEqual(stage_members('fc2', chain), ('fc2', 'fc2cmadb', 'fc2ppvdb', 'javten', 'javarchive'))
-        self.assertEqual(stage_members('amane', chain), ('fc2club',))
+        self.assertEqual(stage_members('amane', chain), ())
         self.assertEqual(stage_members('community', chain), ('javdb',))
         self.assertEqual(stage_members('r18dev', chain), ())
         chain = route_for_code('SSIS-057')

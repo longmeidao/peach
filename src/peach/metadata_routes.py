@@ -4,8 +4,8 @@
 必填标量字段之后不再问下一档。取回来的值怎么排序、怎么结算分歧、哪个字段听谁的，
 在 `metadata_policy`（`FIELD_SOURCE_ORDER`、`PREFERRED_COMMUNITY_SOURCE`、
 `FALLBACK_SOURCES`）与落库那一侧，两条轴不要混：javbus 在结算上是兜底
-（ADR-0035），在查询上却排在 javdb 前面——javdb 按出口 IP 计配额、主机间隔 3 秒，
-先问便宜的那两家不影响结算，只影响谁先撞上限流。
+（ADR-0035），在查询上却排在 javdb 前面——javdb 按出口 IP 计配额、主机间隔 3 秒
+（`library_processing.SOURCE_INTERVALS`），先问便宜的那两家不影响结算，只影响谁先撞上限流。
 
 链的取舍参考 amane 的 `docs/dev/content-routes.md`（证据登记在
 `docs/reference-sources.json` 的 `amane-content-routes`），原则照搬三条：类型专属源
@@ -14,8 +14,9 @@
 每个站只有一个归属（ADR-0048）；上游表里 kin8、giga、theporndb、getchu 这些没接的不写进来占位。
 对不匹配番号仍发 HTTP 的片商站（Prestige、FALENO、DAHLIA）由 `route_for_code` 按本机证据裁掉。
 
-链上没有国产、欧美与里番三条：Peach 一家对应来源都没接，写一条空链只会让人以为
-问过了。真要接的时候按同一张表加类型，判据写在这里。
+国产、欧美这些 Peach 一家对应来源都没接的体系合成一类 `other`，链是空的：按本机证据认得出
+它不是日本发行物，就一家都不问，也不问封面。番号形状像有码、本机证据却对不上它的写法时归
+`unsure`，只问综合索引那一档一遍，答复照常记进「没有」的记忆（`classify` 写着判据）。
 """
 from __future__ import annotations
 
@@ -26,8 +27,9 @@ from .catalog_rules import is_amateur_code, is_korean_mib_code, is_uncensored_co
 from .metadata_policy import SOURCE_SPECS
 
 
-#: 内容类型。`unknown` 是「番号认不出来」，不是一种内容。
-CONTENT_TYPES = ("censored", "amateur", "uncensored", "fc2", "kmib", "unknown")
+#: 内容类型。`unknown` 是「番号认不出来」，不是一种内容；`other` 是认得出、但 Peach 没接
+#: 来源的体系（国产、欧美）；`unsure` 是形状像有码、本机证据对不上的番号。
+CONTENT_TYPES = ("censored", "amateur", "uncensored", "fc2", "kmib", "other", "unsure", "unknown")
 
 #: MGStage 素人系的字母前缀。三位数字前缀那一批由 `catalog_rules.is_amateur_code`
 #: 认（`300MIUM-1239`、`259LUXU-1475`），这三种没有数字前缀，形态上和厂牌番号一样，
@@ -37,6 +39,19 @@ CONTENT_TYPES = ("censored", "amateur", "uncensored", "fc2", "kmib", "unknown")
 #: 有码号与素人号，按站点归类会把整个 Prestige 判成素人。
 MGS_AMATEUR_PREFIXES = ("SIRO", "STP", "STN")
 _MGS_AMATEUR = re.compile(r"^(?:" + "|".join(MGS_AMATEUR_PREFIXES) + r")-?\d+$", re.I)
+#: 入库前没归一成 `FC2-PPV-…` 的短写法：`FC-43768`（账本实测，文件名是 `FC-437689-C.mp4`）。
+#: 与 `catalog_rules._RELEASE_SYSTEM_SHAPE` 的 `FC-\d{5,}` 同一把尺。
+_FC2_SHORT = re.compile(r"^FC-\d{5,}$", re.I)
+#: 番号拆成字母段与数字段，用来在本机证据里找它的写法。
+_CODE_PARTS = re.compile(r"^([A-Z]+)-?0*(\d+)$")
+#: 路径里出现就说明这是 Peach 没接来源的体系。每一个都在本机账本的路径里实测出现过
+#: （2026-09-25 只读统计）：`兔子先生TZ-105`、`网红…合集\MXGD3721.MP4` 这类文件的番号
+#: 形状和有码一模一样，按有码链问下去是片商官网、r18.dev、DMM、三家综合索引各白问一遍。
+OTHER_SYSTEM_MARKS = ("国产", "國產", "网红", "網紅", "兔子先生", "麻豆")
+#: 欧美片站的文件名：番号前面挂着至少两个用连字符或下划线连起来的拉丁词
+#: （`wankzvr-elena-koshka-GFE-180_180x180_3dh_LR.mp4`，站名加演员名）。日本片的前缀是
+#: 站点水印（`hjd2048.com-`、`[FHD]`、`HD_`），不会是两个以上纯字母词连写。
+_WESTERN_SLUG = r"(?<![a-z])(?:[a-z]{2,}[-_]){2,}"
 
 #: 每种内容类型问哪几家，从左到右。每条链后面的注释回答两件事：为什么是这个顺序，
 #: 以及为什么某一家**不**在这条链上——后者才是省请求的地方。
@@ -56,11 +71,12 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # 素人：MGStage 先问。MGS 素人系（`259LUXU`、`300MIUM`、`SIRO`……）由 MGS 自己发行，
     # mgstage 那一页就是发行方口径；amane 同样把 MGS 放素人第一源、不让它进有码默认表
     # （否则 MIDV 也会去问 MGS），Peach 的等价做法是把素人单列成一种类型。
-    # r18.dev 留着：素人号在 DMM 数字版目录上有没有，本机没有实测，凭「大概没有」
-    # 把官方镜像摘掉，省一次请求换来的是 mgstage 落空时整类番号再也拿不到官方值。
+    # r18.dev 垫在最后：2026-09-25 清点本机来源快照，素人号在 r18.dev 上一份都没有，排在
+    # 综合索引前面等于每部片先白等一次主机间隔。仍留在链上，mgstage 与综合索引都落空时它是
+    # 最后一处可能有官方值的地方。
     # dmm 不进：2026-09-24 实测 DMM 的搜索对 `MIUM 1239`、`LUXU 1475` 零结果，MGS 素人号
     # 不在它的目录上，多问一家只多两次白请求。
-    "amateur": ("mgstage", "r18dev", "avbase", "javbus", "javdb"),
+    "amateur": ("mgstage", "avbase", "javbus", "javdb", "r18dev"),
     # 无码：发行方自己那份作品 JSON 先问，但只在本机证据指着一本道时才问
     # （见 `route_for_code`）——日期式番号不带片商，カリビアンコム 与一本道同形，
     # 问错一家答回来的是同一天发行的另一部片。
@@ -71,20 +87,25 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # avsox 经 amane 桥（ADR-0043）垫在最后：它专收无码，但是转载索引，且要经 Cloudflare，
     # 三家综合索引都落空才轮到它。
     "uncensored": ("1pondo", "avbase", "javbus", "javdb", "avsox"),
-    # FC2：发行方商品页 → 下架作品的镜像站 → FC2PPV-DB → JAVten → JavArchive → FC2 专站 → javdb。
+    # FC2：发行方商品页 → 下架作品的镜像站 → FC2PPV-DB → JAVten → JavArchive → javdb。
     # fc2cmadb 给下架作品的原图与女优栏，排在前；FC2PPV-DB 给女优、卖家、販売日与流出标记，
     # 不给封面；JAVten 给日文标题、标签与 FC2 存储原件的地址（ADR-0060）。这两站都在 Cloudflare
     # 验证后面，由本机浏览器过验证（ADR-0065）；验证没过、或没有浏览器时 Cookie 失效回 403，各自
     # 整站冷却，链照常往下走。JavArchive 只给标题和一张
-    # 转存封面，比官方原图差一档，所以排在几个存档站之后。fc2club 经 amane 桥问（ADR-0043），
-    # 只收 FC2，所以排在综合索引 javdb 前面。
+    # 转存封面，比官方原图差一档，所以排在几个存档站之后。
+    # 不含 fc2club：它经 amane 桥问（ADR-0043），2026-09-25 清点本机来源快照，它在 FC2 那一档
+    # 一份资料都没交过，还回 429 把自己送进冷却。站点代码留着，用户整条覆盖时仍可点名。
     # 不含 r18dev（实测 85 条全空）、不含 AVBase 与 JavBus（本机 1213 份来源证据里
     # 这两家对 FC2 番号一份都没给过，javdb 给了 166 份）。判据原文在
     # `community_catalog.community_sources_for` 与 `docs/SOURCING.md`。
-    "fc2": ("fc2", "fc2cmadb", "fc2ppvdb", "javten", "javarchive", "fc2club", "javdb"),
+    "fc2": ("fc2", "fc2cmadb", "fc2ppvdb", "javten", "javarchive", "javdb"),
     # 韩国 MIB 一家都不问：番号和日本番号同形，JAV 目录站按它去查返回的是别的作品，
     # 那份错值只能靠人一条条认出来。官网走 `scripts/harvest_kmib.py`，不在这条路上。
     "kmib": (),
+    # 国产、欧美：Peach 一家对应来源都没接，问日本目录站只会查空或撞上同号的日本片。
+    "other": (),
+    # 形状像有码、本机证据对不上写法的番号：只问综合索引一遍，不起片商表、不问 r18.dev 与 DMM。
+    "unsure": ("avbase", "javbus", "javdb"),
     "unknown": (),
 }
 
@@ -123,7 +144,7 @@ COMMUNITY_STAGE = ("avbase", "javbus", "javdb")
 #: 经 amane 桥问的转载站那一档（`metadata_amane.COMMUNITY_SITES`，ADR-0043）。一次子进程并发问链上属于
 #: 这一档的几站，所以合成一档 `amane`；分级上都是社区来源，但不占 `COMMUNITY_STAGE`
 #: 的 `LIST_FIELD_DEPTH` 名额——那三家的互证样本不该被转载站挤掉。链上放在综合索引之前
-#: 还是之后由各类型的链自己定：FC2 专站在 javdb 前，无码的 avsox 在最后。
+#: 还是之后由各类型的链自己定：默认链上只有无码的 avsox，垫在最后；其余三站只由整条覆盖点名。
 AMANE_STAGE = ("fc2club", "freejavbt", "airav", "avsox")
 
 #: 必填标量字段。一档把这几项（在这一行还缺的范围内）都给全了就不问下一档。
@@ -144,6 +165,15 @@ def classify(code: str | None, *hints: str | None) -> str:
     「文件名被读成番号的创作者作品」不是一种内容类型：那道门在更前面，由
     `catalog_rules.scrapes_as_jav` 拦（`docs/SOURCING.md`「哪些行不该进 JAV 刮削」），
     过不了那道门的行根本不会走到路由这一步。
+
+    有码是兜底那一类，所以本机证据在这里再分三种（例子都是账本实测）：
+
+    - 证据里写着带三位数字前缀的同一个号（`LUXU-688` 的文件是 `259LUXU-688.mp4`）是素人；
+    - 路径带国产标记（`OTHER_SYSTEM_MARKS`）或文件名是欧美片站的写法（`_WESTERN_SLUG`）
+      归 `other`，一家都不问；
+    - 证据里有这个号的字母段、却找不到它的完整写法，是文件名被读错了号
+      （`UWFr85dczsVeysGg.mp4` 读成 `UWFR-085`，`KUZU_250103-U_iris3.mp4` 读成
+      `KUZU-25010`），归 `unsure`。证据里压根没有字母段的（号来自 NFO 或账本）不算读错。
     """
     value = str(code or "").strip()
     if not value:
@@ -151,14 +181,35 @@ def classify(code: str | None, *hints: str | None) -> str:
     if is_korean_mib_code(value):
         return "kmib"
     # `FC-437689` 这类变体由 `catalog_rules.normalise_code_key` 在入库前统一成
-    # `FC2-PPV-…`，所以这里只认 `FC2` 开头。
-    if value.upper().startswith("FC2"):
+    # `FC2-PPV-…`；没归一的短写法按 `_FC2_SHORT` 认。
+    if value.upper().startswith("FC2") or _FC2_SHORT.match(value):
         return "fc2"
     if is_uncensored_code(value):
         return "uncensored"
     if is_amateur_code(value) or _MGS_AMATEUR.match(value.upper()):
         return "amateur"
-    return "censored"
+    return _censored_or_other(value.upper(), [str(hint) for hint in hints if hint])
+
+
+def _censored_or_other(value: str, hints: list[str]) -> str:
+    """有码形状的番号按本机证据再分一次，判据见 `classify`。"""
+    parts = _CODE_PARTS.match(value)
+    if not parts or not hints:
+        return "censored"
+    letters, number = parts.group(1), str(int(parts.group(2)))
+    text = "\n".join(hints)
+    # 连字符是判据的一半：DMM 的 content_id 也是三位数字打头（`118lxvs00039`），那是 Prestige
+    # 的有码号；MGS 素人号的写法总带着连字符。
+    if re.search(rf"(?<![A-Z0-9])\d{{3}}{letters}-0*{number}(?!\d)", text, re.I):
+        return "amateur"
+    if any(mark in text for mark in OTHER_SYSTEM_MARKS):
+        return "other"
+    written = rf"(?<![A-Z]){letters}[-_ ]?0*{number}(?!\d)(?:[A-Z]{{0,3}})(?![A-Z])"
+    if re.search(_WESTERN_SLUG + written, text, re.I):
+        return "other"
+    if re.search(written, text, re.I):
+        return "censored"
+    return "unsure" if re.search(rf"(?<![A-Z]){letters}", text, re.I) else "censored"
 
 
 def parse_route_overrides(raw: str | Mapping[str, Sequence[str] | str] | None):
