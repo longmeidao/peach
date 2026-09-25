@@ -19,6 +19,7 @@ r"""转载站水印域名不得被当成番号。
 字母段，西片是「厂牌／系列 + 发行日」而不是番号，停用词与手机录像的日期串一律不产出
 番号，推广域名剥掉之后才轮到番号主体。
 """
+import csv
 import importlib.util
 import io
 import sqlite3
@@ -747,6 +748,89 @@ class RevertMisreadCodeTests(unittest.TestCase):
         self.assertEqual(self._run("--code", "WX17", "--apply",
                                    "--backup", str(self.root / "b.db")), 2)
         self.assertEqual(self._read("SELECT count(*) FROM asset WHERE code='WX17'"), [(2,)])
+
+    def _add_filename_misread(self, asset_id=3, name="dao01(1).mp4", code="DAO-001"):
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "INSERT INTO asset(id,location,path,name,medium,code,field_owners) "
+            "VALUES(?,'115',?,?,'video',?,'{\"code\":\"scan:filename\"}')",
+            (asset_id, rf"B:\创作者\Retsu_dao\{name}", name, code))
+        connection.commit()
+        connection.close()
+
+    def test_one_refused_target_keeps_the_whole_batch_unwritten(self):
+        self._add_filename_misread()
+        self.assertEqual(self._run("--code", "WX17", "ABW-123", "--asset-id", "3", "--apply",
+                                   "--backup", str(self.root / "b.db")), 2)
+        self.assertEqual(self._read("SELECT count(*) FROM asset WHERE code IS NOT NULL"), [(3,)])
+
+    def test_a_filename_misread_is_cleared_by_asset_id(self):
+        self._add_filename_misread()
+        self.assertEqual(self._run("--code", "WX17", "--asset-id", "3", "--apply",
+                                   "--backup", str(self.root / "b.db")), 0)
+        self.assertEqual(
+            self._read("SELECT code,json_extract(field_owners,'$.code') FROM asset WHERE id=3"),
+            [(None, "user:manual")])
+        self.assertEqual(self._read("SELECT count(*) FROM asset WHERE code IS NOT NULL"), [(0,)])
+
+    def test_an_asset_whose_file_name_still_yields_the_code_is_refused(self):
+        self._add_filename_misread(name="ABW-123.mp4", code="ABW-123")
+        self.assertEqual(self._run("--asset-id", "3"), 2)
+
+    def test_a_review_key_shared_with_another_asset_is_refused(self):
+        self._add_filename_misread(code="WX-017")
+        connection = sqlite3.connect(self.db)
+        connection.execute("UPDATE asset SET field_owners=NULL WHERE id=3")
+        connection.commit()
+        connection.close()
+        self.assertEqual(self._run("--code", "WX17"), 2)
+
+
+_identity_spec = importlib.util.spec_from_file_location(
+    "audit_scraped_identity", SCRIPT.with_name("audit_scraped_identity.py"))
+identity = importlib.util.module_from_spec(_identity_spec)
+_identity_spec.loader.exec_module(identity)
+
+
+class ScrapedIdentityAuditTests(unittest.TestCase):
+    """已落库的刮削归属按来源交回的编号重判身份，分错配、前缀未证实、来源无编号三档。"""
+
+    def test_each_tier_is_told_apart(self):
+        self.assertIsNone(identity.classify("ABW-123", {"id": "ABW-123"}))
+        self.assertEqual(identity.classify("WX-017", {"id": "WXSD-017"}), identity.MISMATCH)
+        self.assertEqual(identity.classify("476MLA-234", {"id": "MLA-234", "content_id": "mla234"}),
+                         identity.PREFIX)
+        self.assertEqual(identity.classify("SMBD-116", {"source_url":
+                         "https://www.aventertainments.com/ppv/detail?pro=8853"}), identity.NO_ID)
+
+    def test_the_review_csv_groups_links_and_leaves_no_id_rows_out(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "ledger.db"
+            sqlite3.connect(db).close()
+            upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code) VALUES(?,'115',?,?,'video',?)",
+                [(1, r"B:\a\1.mp4", "1.mp4", "WX17"), (2, r"B:\a\2.mp4", "2.mp4", "WX17"),
+                 (3, r"B:\a\3.mp4", "3.mp4", "SMBD-116")])
+            connection.execute(
+                "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+                "VALUES(9,'tag','口交','口交','t','t')")
+            meta = '{"review_item":"WX-017:tags","provider_id":"WXSD-017"}'
+            connection.executemany(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,metadata_json) "
+                "VALUES(?,9,'tag',?,?)",
+                [(1, "javinizer:javbus:tag", meta), (2, "javinizer:javbus:tag", meta),
+                 (3, "javinizer:aventertainment:tag", '{"source_url":"https://x/?pro=8853"}')])
+            connection.commit()
+            connection.close()
+            csv_path = Path(tmp) / "review.csv"
+            with redirect_stdout(io.StringIO()):
+                self.assertEqual(identity.main(["--db", str(db), "--review-csv", str(csv_path)]), 0)
+            with csv_path.open(encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+        self.assertEqual([(row["tier"], row["asset_code"], row["asset_ids"]) for row in rows],
+                         [(identity.MISMATCH, "WX17", "1 2")])
 
 
 if __name__ == "__main__":
