@@ -30,6 +30,7 @@ from .config import (
 from .mdns import lan_ipv4
 from .netwatch import NetworkChangeWatcher
 from .mount import mount_share as mount_smb_share
+from .process_job import assign_to_job, create_kill_on_close_job
 from .sync import COPY_ACTIONS, SyncPlan, device_id, resolve
 from .versioning import VersionManager, VersionSnapshot
 from .windows_update import (
@@ -218,7 +219,9 @@ class ServiceManager:
         self._ledger_plan = ledger_plan or self._current_ledger_plan
         self._mount_share = mount_share or self._mount_shared_root
         self._owned: dict[str, subprocess.Popen] = {}
-        self._logs: list[object] = []
+        # 子服务都挂进这个 Job：托盘被强杀时句柄由内核关闭，整棵 `peach serve` 一起收掉，
+        # 不会留下孤儿继续占着 80/443，让下一份托盘见端口健康就不拉自己的。
+        self._job = None
         self._last_health: dict[str, tuple[bool, str]] = {
             spec.name: (False, "未检测") for spec in specs
         }
@@ -295,21 +298,30 @@ class ServiceManager:
                 if owned is not None and owned.poll() is None:
                     continue
                 if self.healthy(spec):
+                    if owned is None:
+                        logging.getLogger(__name__).warning(
+                            "%s 端口上已有健康服务，但不是本托盘拉起的，未接管", spec.name)
                     continue
-                stdout = (self._log_dir / f"tray-{spec.name}.out.log").open("ab")
-                stderr = (self._log_dir / f"tray-{spec.name}.err.log").open("ab")
-                self._logs.extend((stdout, stderr))
+                if self._job is None:
+                    self._job = create_kill_on_close_job()
+                # 日志句柄交给子进程后父进程这一份就关掉：服务反复被补拉时不会越攒越多。
                 creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                self._owned[spec.name] = self._popen(
-                    list(spec.command),
-                    cwd=str(PROJECT_ROOT),
-                    stdin=subprocess.DEVNULL,
-                    stdout=stdout,
-                    stderr=stderr,
-                    shell=False,
-                    creationflags=creationflags,
-                    env=environment,
-                )
+                with (self._log_dir / f"tray-{spec.name}.out.log").open("ab") as stdout, \
+                        (self._log_dir / f"tray-{spec.name}.err.log").open("ab") as stderr:
+                    process = self._popen(
+                        list(spec.command),
+                        cwd=str(PROJECT_ROOT),
+                        stdin=subprocess.DEVNULL,
+                        stdout=stdout,
+                        stderr=stderr,
+                        shell=False,
+                        creationflags=creationflags,
+                        env=environment,
+                    )
+                assign_to_job(self._job, process)
+                self._owned[spec.name] = process
+                logging.getLogger(__name__).info(
+                    "拉起 %s 服务，PID %s", spec.name, getattr(process, "pid", "?"))
 
     def wait_until_ready(self, timeout: float = 20.0) -> bool:
         deadline = time.monotonic() + timeout
@@ -344,10 +356,6 @@ class ServiceManager:
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=3)
-        if name is None:
-            for handle in self._logs:
-                handle.close()
-            self._logs.clear()
 
     def restart(self) -> bool:
         self.stop_owned()
@@ -1067,10 +1075,29 @@ class PeachTray:
                 return
             # 先看首次设置有没有完成：切换会换掉 `manager.specs`，采样必须落在换完之后。
             self.gate.poll()
-            for spec in self.manager.specs:
-                self.manager.healthy(spec)
+            down = [spec for spec in self.manager.specs if not self.manager.healthy(spec)]
+            if down:
+                self.revive_services()
             self.icon.update_menu()
             self.poll_build_age()
+
+    def revive_services(self) -> bool:
+        """有服务不健康、又不在本托盘手里跑着，就补拉一份。返回这一轮有没有动手。
+
+        被强杀的托盘留下的孤儿服务一退，端口就空着；启动时见它健康而没拉自己的那份，
+        不补拉的话要等人去点「重启服务」。重启、同步账本、同步开发进度都在
+        `_action_lock` 里故意停服务，拿不到锁就是有人在维护，这一轮不动。
+        本托盘拉起、还活着却没应答的（刚起、正忙）由 `start_missing` 自己跳过。
+        """
+        if not self._action_lock.acquire(blocking=False):
+            return False
+        try:
+            if self._stop_event.is_set():
+                return False
+            self.manager.start_missing()
+            return True
+        finally:
+            self._action_lock.release()
 
     def _setup(self, icon) -> None:
         icon.visible = True
@@ -1104,6 +1131,7 @@ class PeachTray:
         elif self.show_browser:
             self.gate.open()
         threading.Thread(target=self._monitor, name="PeachHealth", daemon=True).start()
+        logging.getLogger(__name__).info("托盘启动完成：%s", self.manager.status())
         try:
             self.icon.run(setup=self._setup)
         finally:
@@ -1360,6 +1388,22 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def log_to_file(path: Path) -> logging.Handler | None:
+    """托盘自己的日志另落一份文件，返回挂上的 handler；写不了返回 None。
+
+    pythonw 下没有 stderr，`basicConfig` 那一份无处可落，启停时序出问题时只剩进程创建
+    时间可对。写不了只是少一份证据，不拦托盘启动。
+    """
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handler = logging.FileHandler(path, encoding="utf-8")
+    except OSError:
+        return None
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
 def main(argv: list[str] | None = None) -> int:
     # 参数解析必须排在任何进程级副作用之前：`--help` 和拼错的参数都要在 HiDPI 设置、
     # 单实例锁和目录创建之前退出，否则一条试探命令就会在磁盘上凭空造出一个数据根，
@@ -1388,6 +1432,7 @@ def main(argv: list[str] | None = None) -> int:
                 logging.getLogger(__name__).info("日志整理：%s", action)
         except Exception:
             logging.getLogger(__name__).warning("日志整理失败", exc_info=True)
+        log_to_file(config.directory("logs") / "tray.log")
         manager = ServiceManager(specs, log_dir=config.directory("logs"))
         gate = SetupGate(manager, config, waiting=waiting)
         if sys.platform == "darwin":

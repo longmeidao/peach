@@ -22,6 +22,10 @@ from .windows_update import replace_with_retry, swap_tray_binary
 
 WM_STOP = 0x0400 + 10  # pystray._util.win32.WM_STOP
 
+#: 停与起各一份的期限。正常一轮十来秒；机器忙着跑测试时新托盘光启动就可能过半分钟，
+#: 而成功时一就绪就返回，期限放宽只拖慢真失败的那一次。
+DEFAULT_TIMEOUT = 60.0
+
 
 @dataclass(frozen=True)
 class TrayWindow:
@@ -283,24 +287,150 @@ def post_stop(window_handle: int) -> bool:
     return bool(user32.PostMessageW(window_handle, WM_STOP, 0, 0))
 
 
+def _descends_from(process_id: int, ancestor: int, parents: dict[int, int]) -> bool:
+    seen: set[int] = set()
+    parent = parents.get(process_id, 0)
+    while parent and parent not in seen:
+        if parent == ancestor:
+            return True
+        seen.add(parent)
+        parent = parents.get(parent, 0)
+    return False
+
+
 def owned_service_pids(tray_process_id: int, service_executable: Path) -> tuple[int, ...]:
+    """这个托盘名下的服务入口进程。
+
+    父进程号在父进程死后仍记在子进程身上，所以托盘退出后再问一次，拿到的就是它
+    没收干净、还活着的那几个。
+    """
+    if os.name != "nt":
+        return ()
     paths, parents = _process_paths_and_parents()
     service_key = _normal_path(service_executable)
-
-    def descends_from(process_id: int) -> bool:
-        seen: set[int] = set()
-        parent = parents.get(process_id, 0)
-        while parent and parent not in seen:
-            if parent == tray_process_id:
-                return True
-            seen.add(parent)
-            parent = parents.get(parent, 0)
-        return False
-
     return tuple(sorted(
         process_id for process_id, path in paths.items()
-        if _normal_path(path) == service_key and descends_from(process_id)
+        if _normal_path(path) == service_key
+        and _descends_from(process_id, tray_process_id, parents)
     ))
+
+
+def stray_service_pids(tray_process_id: int, service_executable: Path) -> tuple[int, ...]:
+    """不在这个托盘名下的 `peach serve`：被强杀的托盘留下的孤儿就在这里面。
+
+    只认命令行第一个参数是 `serve` 的：同一个 venv 里跑着的批处理 CLI 不占端口。
+    """
+    if os.name != "nt":
+        return ()
+    paths, parents = _process_paths_and_parents()
+    service_key = _normal_path(service_executable)
+    candidates = [
+        process_id for process_id, path in paths.items()
+        if _normal_path(path) == service_key
+        and not _descends_from(process_id, tray_process_id, parents)
+    ]
+    if not candidates:
+        return ()
+    commands = _command_lines(candidates)
+    return tuple(sorted(
+        process_id for process_id in candidates
+        if parse_windows_command_line(commands.get(process_id))[1:2] == ["serve"]
+    ))
+
+
+def _stop_old_tray(
+    windows: tuple[TrayWindow, ...],
+    old_process_id: int,
+    service_executable: Path,
+    *,
+    timeout: float,
+    stop_window: Callable[[int], bool],
+    alive: Callable[[int], bool],
+    services: Callable[[int, Path], tuple[int, ...]],
+    strays: Callable[[int, Path], tuple[int, ...]],
+    sleep: Callable[[float], None],
+) -> RestartResult | None:
+    """发停止消息，等旧托盘退出，再等它名下的子服务退净；哪一步不成立就返回失败。
+
+    发消息之前先看端口是不是旧托盘的。它名下凑不齐两个子服务、旁边却有别的 `serve`
+    在跑，就是有托盘被强杀过、那几个服务成了孤儿：这时重启托盘换不掉代码，新托盘见
+    端口健康就不拉自己的，只会一直等到超时。
+
+    旧托盘退出时自己会停子服务；这里等它们真的消失，新托盘才不会把正在退出的旧服务
+    当成现成的。
+    """
+    owned = services(old_process_id, service_executable)
+    if len(owned) < 2:
+        foreign = strays(old_process_id, service_executable)
+        if foreign:
+            listed = "、".join(str(pid) for pid in foreign)
+            return RestartResult(
+                False, f"拒绝重启：旧托盘名下只有 {len(owned)} 个子服务，端口由不归它管的"
+                       f" serve 进程占着（PID {listed}），重启托盘换不掉它们",
+                old_tray_pid=old_process_id, service_pids=foreign)
+    if not all(stop_window(window.handle) for window in windows):
+        return RestartResult(False, "托盘停止消息发送失败", old_tray_pid=old_process_id)
+
+    deadline = time.monotonic() + timeout
+    while alive(old_process_id) and time.monotonic() < deadline:
+        sleep(0.1)
+    if alive(old_process_id):
+        return RestartResult(False, "托盘未在期限内正常退出；未强杀、未另启",
+                             old_tray_pid=old_process_id)
+    while any(alive(pid) for pid in owned) and time.monotonic() < deadline:
+        sleep(0.1)
+    leftover = tuple(pid for pid in owned if alive(pid))
+    if leftover:
+        return RestartResult(False, "旧托盘已退出，但它的子服务未在期限内退出；未另启",
+                             old_tray_pid=old_process_id, service_pids=leftover)
+    return None
+
+
+@dataclass(frozen=True)
+class _Launch:
+    """新托盘启动之后看到的样子。"""
+
+    exit_code: int | None = None
+    tray_pid: int | None = None
+    service_pids: tuple[int, ...] = ()
+
+    @property
+    def ready(self) -> bool:
+        return self.exit_code is None and len(self.service_pids) >= 2
+
+    def failure(self) -> str:
+        if self.exit_code is not None:
+            return f"新托盘退出，代码 {self.exit_code}"
+        if self.tray_pid is None:
+            return "新托盘窗口未在期限内出现"
+        return (f"新托盘（PID {self.tray_pid}）已起，但名下只有 {len(self.service_pids)} 个"
+                "子服务：端口可能被不归它管的进程占着")
+
+
+def _await_new_tray(
+    launched: subprocess.Popen,
+    find_windows: Callable[[], tuple[TrayWindow, ...]],
+    service_executable: Path,
+    *,
+    timeout: float,
+    services: Callable[[int, Path], tuple[int, ...]],
+    sleep: Callable[[float], None],
+) -> _Launch:
+    """等新托盘建出唯一窗口并拥有两个子服务；期限到了返回最后看到的样子。"""
+    deadline = time.monotonic() + timeout
+    seen = _Launch()
+    while time.monotonic() < deadline:
+        if launched.poll() is not None:
+            return _Launch(exit_code=launched.returncode)
+        process_ids = {window.process_id for window in find_windows()}
+        if len(process_ids) == 1:
+            tray_pid = next(iter(process_ids))
+            seen = _Launch(tray_pid=tray_pid,
+                           service_pids=services(tray_pid, service_executable))
+            if seen.ready:
+                return seen
+        sleep(0.2)
+    return seen
 
 
 def start_tray(target: Path) -> subprocess.Popen:
@@ -350,13 +480,14 @@ def _rolled_back(
 def restart_tray(
     target: Path,
     *,
-    timeout: float = 25.0,
+    timeout: float = DEFAULT_TIMEOUT,
     swap_from: Path | None = None,
     find_windows: Callable[[Path], tuple[TrayWindow, ...]] = find_tray_windows,
     stop_window: Callable[[int], bool] = post_stop,
     alive: Callable[[int], bool] = process_alive,
     start: Callable[[Path], subprocess.Popen] = start_tray,
     services: Callable[[int, Path], tuple[int, ...]] = owned_service_pids,
+    strays: Callable[[int, Path], tuple[int, ...]] = stray_service_pids,
     swap: Callable[[Path, Path], Path] = swap_tray_binary,
     sleep: Callable[[float], None] = time.sleep,
 ) -> RestartResult:
@@ -372,14 +503,11 @@ def restart_tray(
     if len(process_ids) != 1 or not windows:
         return RestartResult(False, "拒绝重启：没有找到唯一且路径匹配的 Peach 托盘窗口")
     old_process_id = next(iter(process_ids))
-    if not all(stop_window(window.handle) for window in windows):
-        return RestartResult(False, "托盘停止消息发送失败", old_tray_pid=old_process_id)
-
-    deadline = time.monotonic() + timeout
-    while alive(old_process_id) and time.monotonic() < deadline:
-        sleep(0.1)
-    if alive(old_process_id):
-        return RestartResult(False, "托盘未在期限内正常退出；未强杀、未另启", old_tray_pid=old_process_id)
+    stopped = _stop_old_tray(
+        windows, old_process_id, service_executable, timeout=timeout,
+        stop_window=stop_window, alive=alive, services=services, strays=strays, sleep=sleep)
+    if stopped is not None:
+        return stopped
 
     backup: Path | None = None
     if swap_from is not None:
@@ -397,46 +525,34 @@ def restart_tray(
     backup_path = str(backup) if backup is not None else None
     # 停和起各拿一份完整预算：换一份 40 MB 的 EXE 要几秒，那几秒不该从新托盘的
     # 启动窗口里扣掉，否则带 --swap-from 的这条路比不带的更容易假超时。
-    deadline = time.monotonic() + timeout
-    launched = start(target)
-    while time.monotonic() < deadline:
-        if launched.poll() is not None:
-            if backup is not None:
-                return _rolled_back(
-                    backup, target, start=start, sleep=sleep,
-                    message=f"新托盘退出，代码 {launched.returncode}",
-                    old_tray_pid=old_process_id, swapped_from=swapped_from)
-            return RestartResult(False, f"新托盘退出，代码 {launched.returncode}", old_tray_pid=old_process_id)
-        new_windows = find_windows(target)
-        new_process_ids = {window.process_id for window in new_windows}
-        if len(new_process_ids) == 1:
-            new_process_id = next(iter(new_process_ids))
-            service_pids = services(new_process_id, service_executable)
-            if len(service_pids) >= 2:
-                return RestartResult(
-                    True, "托盘已正常重启并重新拥有 HTTP/HTTPS 子服务",
-                    old_tray_pid=old_process_id, new_tray_pid=new_process_id,
-                    service_pids=service_pids, swapped_from=swapped_from,
-                    backup=backup_path,
-                )
-        sleep(0.2)
+    launch = _await_new_tray(
+        start(target), lambda: find_windows(target), service_executable,
+        timeout=timeout, services=services, sleep=sleep)
+    if launch.ready:
+        return RestartResult(
+            True, "托盘已正常重启并重新拥有 HTTP/HTTPS 子服务",
+            old_tray_pid=old_process_id, new_tray_pid=launch.tray_pid,
+            service_pids=launch.service_pids, swapped_from=swapped_from,
+            backup=backup_path,
+        )
     if backup is not None:
         return _rolled_back(
-            backup, target, start=start, sleep=sleep,
-            message="新托盘或两个子服务未在期限内就绪",
+            backup, target, start=start, sleep=sleep, message=launch.failure(),
             old_tray_pid=old_process_id, swapped_from=swapped_from)
-    return RestartResult(False, "新托盘或两个子服务未在期限内就绪", old_tray_pid=old_process_id)
+    return RestartResult(False, launch.failure(), old_tray_pid=old_process_id,
+                         new_tray_pid=launch.tray_pid, service_pids=launch.service_pids)
 
 
 def restart_source_tray(
     *,
-    timeout: float = 25.0,
+    timeout: float = DEFAULT_TIMEOUT,
     find_windows: Callable[[], tuple[TrayWindow, ...]] = find_source_tray_windows,
     stop_window: Callable[[int], bool] = post_stop,
     alive: Callable[[int], bool] = process_alive,
     command_lines: Callable[[], dict[int, str]] = _command_lines,
     start: Callable[[list[str]], subprocess.Popen] | None = None,
     services: Callable[[int, Path], tuple[int, ...]] = owned_service_pids,
+    strays: Callable[[int, Path], tuple[int, ...]] = stray_service_pids,
     sleep: Callable[[float], None] = time.sleep,
 ) -> RestartResult:
     """源码部署托盘的正常重启：按同一命令行自起新托盘。
@@ -473,32 +589,18 @@ def restart_source_tray(
     if not service_executable.is_file():
         return RestartResult(False, f"拒绝重启：源码托盘旁没有服务入口 {service_executable}",
                              old_tray_pid=old_process_id)
-    if not all(stop_window(window.handle) for window in windows):
-        return RestartResult(False, "托盘停止消息发送失败", old_tray_pid=old_process_id)
+    stopped = _stop_old_tray(
+        windows, old_process_id, service_executable, timeout=timeout,
+        stop_window=stop_window, alive=alive, services=services, strays=strays, sleep=sleep)
+    if stopped is not None:
+        return stopped
 
-    deadline = time.monotonic() + timeout
-    while alive(old_process_id) and time.monotonic() < deadline:
-        sleep(0.1)
-    if alive(old_process_id):
-        return RestartResult(False, "托盘未在期限内正常退出；未强杀、未另启",
-                             old_tray_pid=old_process_id)
-
-    deadline = time.monotonic() + timeout
-    launched = start_argv(argv)
-    while time.monotonic() < deadline:
-        if launched.poll() is not None:
-            return RestartResult(False, f"新托盘退出，代码 {launched.returncode}",
-                                 old_tray_pid=old_process_id)
-        new_windows = find_windows()
-        new_process_ids = {window.process_id for window in new_windows}
-        if len(new_process_ids) == 1:
-            new_process_id = next(iter(new_process_ids))
-            service_pids = services(new_process_id, service_executable)
-            if len(service_pids) >= 2:
-                return RestartResult(True, "源码托盘已正常重启并重新拥有 HTTP/HTTPS 子服务",
-                                     old_tray_pid=old_process_id,
-                                     new_tray_pid=new_process_id,
-                                     service_pids=service_pids)
-        sleep(0.2)
-    return RestartResult(False, "新托盘或两个子服务未在期限内就绪",
-                         old_tray_pid=old_process_id)
+    launch = _await_new_tray(
+        start_argv(argv), find_windows, service_executable,
+        timeout=timeout, services=services, sleep=sleep)
+    if launch.ready:
+        return RestartResult(True, "源码托盘已正常重启并重新拥有 HTTP/HTTPS 子服务",
+                             old_tray_pid=old_process_id, new_tray_pid=launch.tray_pid,
+                             service_pids=launch.service_pids)
+    return RestartResult(False, launch.failure(), old_tray_pid=old_process_id,
+                         new_tray_pid=launch.tray_pid, service_pids=launch.service_pids)

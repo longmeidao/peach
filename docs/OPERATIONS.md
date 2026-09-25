@@ -199,7 +199,8 @@ curl -s --noproxy '*' -o /dev/null -w '%{http_code}\n' https://peach.local/healt
 什么时候用这条：代码已经在检出里、只要让运行中的托盘重新加载，不换二进制。
 
 - 不要用 Computer Use 点托盘。`python scripts/restart_windows_tray.py` 按精确 EXE 路径找到 pystray 隐藏窗口、发送正常停止消息、等托盘自行关闭子服务，再静默启动并核对新托盘重新拥有两个服务。
-- 找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。
+- 找不到唯一窗口或退出超时就拒绝，绝不强杀后另启。旧托盘退出后还要等它名下的子服务退净才起新托盘；端口若被不归旧托盘管的 `serve` 进程占着，开工前就拒绝并报出它们的 PID，因为换托盘换不掉它们。
+- 托盘把自己拉起的子服务挂进 kill-on-close Job：托盘被 `Stop-Process -Force` 之类强杀时，内核关句柄，整棵 `serve` 子树一起退，不留孤儿继续占 80/443 跑旧代码。托盘每轮健康检查发现端口暗了会补拉；见到健康却不归自己的服务只记 warning、不接管。启动与补拉记在 `<数据根>/logs/tray.log`。
 - `--swap-from <暂存包>` 让它在旧托盘退出后、新托盘启动前顺手换掉二进制，那是整个换包过程中唯一一个目标文件没有进程持有的窗口。换生产二进制走 `deploy_windows_tray.py`，不要单独调它。
 - 打包托盘窗口不在时命令自动改走源码托盘：`find_source_tray_windows()` 按同一窗口类名加「命令行含 `peach.tray`」认源码托盘，`restart_source_tray()` 照抄原命令行（含 `--show`／数据根）等托盘退出后自起，不换包不备份；`--source` 显式跳过打包入口。
 

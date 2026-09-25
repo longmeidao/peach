@@ -110,7 +110,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_link_repair.py",
                 "test_subprocess_encoding.py", "test_module_layering.py",
                 "test_copy_final_state.py", "test_demo_dataset.py",
-                "test_cloudflared_packaging.py", "test_tunnel.py"),
+                "test_cloudflared_packaging.py", "test_tunnel.py", "test_process_job.py"),
     # 前端 island 层（ADR-0022）。产物与源码的断言不需要 Node；vitest 那部分在没有
     # npm 时自己跳过，所以这个域在任何机器上都能跑，`full` 也就自动包含它。
     # `test_web_perf.py` 两个域都登记：压缩与 ETag 是 API 交付（catalog），
@@ -157,6 +157,8 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     "src/peach/routes_pages.py": ("catalog", "tooling", "web"),
     # 托盘既是 sync 域的服务编排，也被版本与桌面设置那些 tooling 测试读源码。
     "src/peach/tray.py": ("sync", "tooling"),
+    # 托盘子服务与隧道的 cloudflared 共用这份 Job Object；两边的测试都要跑到。
+    "src/peach/process_job.py": ("tooling", "sync"),
     "src/peach/jav_poster_crop.py": ("metadata", "web"),
     # genre 词表按名字只推得出 metadata。复核队列与 API 那两处的用例拿「词表没收的词」
     # 当素材：词表一收那个词，`test_web_review.py`（catalog）与 `test_fastapi_api.py`

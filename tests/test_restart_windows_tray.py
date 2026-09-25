@@ -172,6 +172,112 @@ class RestartWindowsTrayTests(unittest.TestCase):
         self.assertEqual(result.new_tray_pid, 30)
         self.assertEqual(result.service_pids, (51, 52))
 
+    def source_restart(self, **overrides):
+        pythonw = self.service.parent / "pythonw.exe"
+        pythonw.write_bytes(b"shim")
+        argv = [str(pythonw), "-c", self.BOOTSTRAP]
+        windows = iter(((windows_restart.TrayWindow(10, 20),),))
+        options = dict(
+            find_windows=lambda: next(windows, (windows_restart.TrayWindow(30, 40),)),
+            stop_window=lambda _handle: True,
+            alive=lambda _pid: False,
+            command_lines=lambda: {10: subprocess.list2cmdline(argv)},
+            services=lambda tray_pid, _executable: (51, 52) if tray_pid in (10, 30) else (),
+            strays=lambda _tray_pid, _executable: (),
+            sleep=lambda _seconds: None,
+        )
+        options.update(overrides)
+        return windows_restart.restart_source_tray(**options)
+
+    @staticmethod
+    def running_tray():
+        launched = mock.Mock()
+        launched.poll.return_value = None
+        return launched
+
+    def test_orphaned_services_on_the_ports_refuse_the_restart_before_anything_stops(self):
+        """被强杀过的托盘留下的服务不归任何人管，重启托盘换不掉它们。
+
+        2026-09-25 就是这样：旧托盘名下一个子服务都没有，新托盘见端口健康也不拉自己的，
+        脚本空等到超时，报的却是「未在期限内就绪」。
+        """
+        stop_window, start = mock.Mock(), mock.Mock()
+        result = self.source_restart(
+            services=lambda _tray_pid, _executable: (),
+            strays=lambda _tray_pid, _executable: (5428, 39272),
+            stop_window=stop_window, start=start,
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("5428、39272", result.message)
+        self.assertEqual(result.service_pids, (5428, 39272))
+        stop_window.assert_not_called()
+        start.assert_not_called()
+
+    def test_a_tray_whose_services_simply_died_is_still_restarted(self):
+        """名下缺服务、旁边也没有别的 serve：重启正是修它的办法。"""
+        launched = self.running_tray()
+        result = self.source_restart(
+            services=lambda tray_pid, _executable: (51, 52) if tray_pid == 30 else (),
+            start=lambda _argv: launched,
+        )
+        self.assertTrue(result.ok, result.message)
+
+    def test_the_new_tray_starts_only_after_the_old_services_are_gone(self):
+        still_running = {51: 3, 52: 1}
+        seen_at_start = []
+
+        def alive(pid):
+            if still_running.get(pid, 0) == 0:
+                return False
+            still_running[pid] -= 1
+            return True
+
+        launched = self.running_tray()
+        result = self.source_restart(
+            alive=alive,
+            start=lambda _argv: seen_at_start.append(dict(still_running)) or launched,
+        )
+        self.assertTrue(result.ok, result.message)
+        self.assertEqual(seen_at_start, [{51: 0, 52: 0}])
+
+    def test_old_services_that_outlive_their_tray_block_the_new_one(self):
+        start = mock.Mock()
+        result = self.source_restart(
+            timeout=0.001, alive=lambda pid: pid in (51, 52), start=start,
+        )
+        self.assertFalse(result.ok)
+        self.assertIn("子服务未在期限内退出", result.message)
+        self.assertEqual(result.service_pids, (51, 52))
+        start.assert_not_called()
+
+    def test_a_new_tray_without_its_own_services_is_named_in_the_failure(self):
+        launched = self.running_tray()
+        result = self.source_restart(
+            timeout=0.05,
+            services=lambda tray_pid, _executable: (51, 52) if tray_pid == 10 else (),
+            start=lambda _argv: launched,
+        )
+        self.assertFalse(result.ok)
+        self.assertEqual(result.new_tray_pid, 30)
+        self.assertIn("PID 30", result.message)
+        self.assertIn("名下只有 0 个子服务", result.message)
+
+    @unittest.skipUnless(sys.platform == "win32", "进程快照只在 Windows 上有")
+    def test_strays_are_serve_launchers_outside_the_tray(self):
+        exe = str(self.service)
+        paths = {100: exe, 101: exe, 102: exe, 103: exe, 7: "C:/tray/pythonw.exe"}
+        parents = {100: 7, 101: 66, 102: 66, 103: 66, 7: 1}
+        commands = {101: f'"{exe}" serve --port 443', 102: f'"{exe}" scrape ABW-001',
+                    103: f'"{exe}" serve --port 80'}
+        with (
+            mock.patch.object(windows_restart, "_process_paths_and_parents",
+                              return_value=(paths, parents)),
+            mock.patch.object(windows_restart, "_command_lines",
+                              side_effect=lambda pids: {pid: commands.get(pid, "") for pid in pids}),
+        ):
+            self.assertEqual(windows_restart.stray_service_pids(7, self.service), (101, 103))
+            self.assertEqual(windows_restart.owned_service_pids(7, self.service), (100,))
+
     def stage(self) -> Path:
         staged = self.root / "staging" / "Peach.exe"
         staged.parent.mkdir()

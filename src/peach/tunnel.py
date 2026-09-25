@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Callable, TextIO
 
 from . import access
+from .process_job import assign_to_job, close_job, create_kill_on_close_job
 
 
 STATE_FILENAME = "cloudflare-tunnel.json"
@@ -442,9 +443,6 @@ def _write_state(path: Path, snapshot: TunnelSnapshot) -> None:
 
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _PROCESS_TERMINATE = 0x0001
-_JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
-#: JobObjectExtendedLimitInformation
-_JOB_EXTENDED_LIMIT_CLASS = 9
 
 
 def _windows_image_name(pid: int) -> str:
@@ -539,89 +537,6 @@ def terminate_pid(pid: int) -> None:
         else:
             _terminate_posix_pid(pid)
     except (OSError, ValueError, AttributeError):
-        pass
-
-
-def _create_kill_on_close_job():
-    """建一个随句柄关闭一并终止成员的 Job Object；非 Windows 返回 None。
-
-    服务进程被强杀时不会走 `stop()`，只有内核托管的 Job 能保证 cloudflared 不会
-    独自留在公网上继续转发。
-    """
-    if os.name != "nt":
-        return None
-    from ctypes import wintypes
-
-    class _IoCounters(ctypes.Structure):
-        _fields_ = [(name, ctypes.c_ulonglong) for name in (
-            "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
-            "ReadTransferCount", "WriteTransferCount", "OtherTransferCount",
-        )]
-
-    class _BasicLimits(ctypes.Structure):
-        _fields_ = [
-            ("PerProcessUserTimeLimit", ctypes.c_longlong),
-            ("PerJobUserTimeLimit", ctypes.c_longlong),
-            ("LimitFlags", wintypes.DWORD),
-            ("MinimumWorkingSetSize", ctypes.c_size_t),
-            ("MaximumWorkingSetSize", ctypes.c_size_t),
-            ("ActiveProcessLimit", wintypes.DWORD),
-            ("Affinity", ctypes.c_size_t),
-            ("PriorityClass", wintypes.DWORD),
-            ("SchedulingClass", wintypes.DWORD),
-        ]
-
-    class _ExtendedLimits(ctypes.Structure):
-        _fields_ = [
-            ("BasicLimitInformation", _BasicLimits),
-            ("IoInfo", _IoCounters),
-            ("ProcessMemoryLimit", ctypes.c_size_t),
-            ("JobMemoryLimit", ctypes.c_size_t),
-            ("PeakProcessMemoryUsed", ctypes.c_size_t),
-            ("PeakJobMemoryUsed", ctypes.c_size_t),
-        ]
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
-    kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
-    job = kernel32.CreateJobObjectW(None, None)
-    if not job:
-        return None
-    limits = _ExtendedLimits()
-    limits.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-    if not kernel32.SetInformationJobObject(
-        wintypes.HANDLE(job), _JOB_EXTENDED_LIMIT_CLASS,
-        ctypes.byref(limits), ctypes.sizeof(limits),
-    ):
-        kernel32.CloseHandle(wintypes.HANDLE(job))
-        return None
-    return job
-
-
-def _assign_to_job(job, process) -> None:
-    if job is None or os.name != "nt":
-        return
-    handle = getattr(process, "_handle", None)
-    if handle is None:
-        return
-    from ctypes import wintypes
-
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    try:
-        kernel32.AssignProcessToJobObject(wintypes.HANDLE(job), wintypes.HANDLE(int(handle)))
-    except (OSError, ValueError, TypeError):
-        # 内核拒绝嵌套 Job 时仍然启动：stop() 与 pidfile 回收仍会收掉这个子进程。
-        pass
-
-
-def _close_job(job) -> None:
-    if job is None or os.name != "nt":
-        return
-    from ctypes import wintypes
-
-    try:
-        ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(job))
-    except (OSError, ValueError):
         pass
 
 
@@ -834,7 +749,7 @@ class TunnelManager:
             self.reclaim_orphan()
             self.pid_file.unlink(missing_ok=True)
             if self._job is None:
-                self._job = _create_kill_on_close_job()
+                self._job = create_kill_on_close_job()
             handle: TextIO | None = None
             process: subprocess.Popen | None = None
             try:
@@ -864,7 +779,7 @@ class TunnelManager:
                 self._ready.set()
                 self._write_error(message)
                 raise TunnelError(message) from exc
-            _assign_to_job(self._job, process)
+            assign_to_job(self._job, process)
             self._process = process
             stream = process.stdout
             if stream is None:
@@ -959,7 +874,7 @@ class TunnelManager:
             self._error = ""
             self._ready.set()
         self._terminate_process(process)
-        _close_job(job)
+        close_job(job)
         if reader is not None and reader.is_alive():
             reader.join(timeout=1)
         snapshot = TunnelSnapshot(state="stopped")
