@@ -177,6 +177,9 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     "src/peach/studio_icons.py": ("catalog", "metadata", "web"),
     "src/peach/studio_sites.py": ("catalog", "metadata"),
     "scripts/revert_auto_landing.py": ("catalog", "metadata", "tooling"),
+    # 补女优资料后继的解析与读写层，测试都在 `test_performer_profile_followup.py`。
+    "src/peach/avwikidb.py": ("metadata",),
+    "src/peach/performer_profiles.py": ("metadata",),
     # 推送发现横跨扫描登记（tooling）与 HTTP 端点（catalog），按名字只推得出一个域。
     "src/peach/push_discovery.py": ("tooling", "catalog"),
     # 入口页共用件的测试住在首启与配置来源那两份 tooling 测试里。

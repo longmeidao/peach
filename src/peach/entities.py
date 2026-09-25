@@ -235,7 +235,7 @@ def merge_entity(
     """
     stamp = now or datetime.now(timezone.utc).isoformat()
     moved = {"assets": 0, "aliases": 0, "refs": 0, "links": 0, "terms": 0,
-             "dropped_refs": 0, "memberships": 0, "members": 0, "labels": 0}
+             "dropped_refs": 0, "memberships": 0, "members": 0, "labels": 0, "profiles": 0}
 
     # 被并入的名字本身留作别名，否则按旧名搜索会落空。
     connection.execute(
@@ -317,6 +317,13 @@ def merge_entity(
             " ON lm.label_id=up.id WHERE up.id<>? AND up.depth<64)"
             " SELECT 1 FROM up WHERE id=? LIMIT 1", (target_id, target_id, target_id)).fetchone():
         connection.execute("DELETE FROM label_maker WHERE label_id=?", (target_id,))
+
+    # 女优资料一人一行（ADR-0067）：target 已有就留它的，没有才接 source 那一行。
+    connection.execute(
+        "UPDATE OR IGNORE performer_profile SET entity_id=? WHERE entity_id=?",
+        (target_id, source_id))
+    moved["profiles"] = connection.execute("SELECT changes()").fetchone()[0]
+    connection.execute("DELETE FROM performer_profile WHERE entity_id=?", (source_id,))
 
     connection.execute("UPDATE entity SET updated_at=? WHERE id=?", (stamp, target_id))
     connection.execute("DELETE FROM entity WHERE id=?", (source_id,))
