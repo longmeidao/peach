@@ -205,9 +205,9 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - JAV 详情持有 `asset.catalog_title`／`original_title` 与官方 Tag 身份，官方标记用常规字重，身份区收齐到同一内容起点。
 - JAV 官方封面重探只在面积更大时替换，失败保留原图。
 - 播放器按 YouTube 锁定源码对齐控件、状态、图标形变、设置面板动画与悬停提示，倍速五格到 3.0，窄屏按播放器宽度折叠留黑边，沉浸模式按 Shorts 版式，竖屏用居中 9:16 舞台，播放统计两页共用、按传输方式分口径。
-- 图片灯箱在本地照片和关注在线图片间复用同一套 Swiper，在线图片只显示来源、合集序号和浏览器实际解析结果；照片标签进入分页图片墙，点开才按原图比例呈现。
+- 图片灯箱在本地照片、番号样张和关注在线图片间复用同一套 Swiper，样张与在线图片只显示来源、合集序号和浏览器实际解析结果；照片标签进入分页图片墙，点开才按原图比例呈现。番号集卡复用播放列表卡的叠层纸边、`mixbadge` 张数与 `mixcopy` 两行字，封面走视频卡同一份 `coverImage`（ADR-0068）。
 - 两处图片墙（资料页照片、关注在线图片）共用大小与固定比例／瀑布流设置，大小由顶部按钮控制，筛选浮层控制布局。关注图片的「仅显示图片」开关独立保存，隐藏卡片文字与信息角标。瀑布流使用 CSS 多栏、`break-inside:avoid` 和图片 `aspect-ratio:auto 1`：懒加载前保留非零高度，加载后使用天然比例；机制见 [MDN aspect-ratio](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/Properties/aspect-ratio)。图片 `alt` 保留给读屏，字色透明避免加载时铺满文件名。
-- 缓存型资产路由一律先问缓存，不先解析源文件：`media_engine.file_for()` 里那句存在性检查落在 CloudDrive 挂的网盘上，实测一次 137–402 毫秒，一屏几十张缩略图全部命中缓存也要为这几十次往返等好几秒。缩好之后源文件在不在都不改变响应，`/photo-thumb` 因此先问 `photo_service.cached()`。
+- 缓存型资产路由一律先问缓存，不先解析源文件：`media_engine.file_for()` 里那句存在性检查落在 CloudDrive 挂的网盘上，实测一次 137–402 毫秒，一屏几十张缩略图全部命中缓存也要为这几十次往返等好几秒。缩好之后源文件在不在都不改变响应，`/photo-thumb` 因此先问 `photo_service.cached()`。番号样张 `/sample-thumb` 同理先问 `SampleCache.cached()`，缓存根从 `photo_root` 推出，测试跟着进临时目录。
 - 账本路径在 Windows 只做 `abspath`，不 `resolve()`：PikPak 的 A: 是 WinFsp 映射的网络驱动器，实测（2026-09-13）`resolve()` 一条文件路径 7.5 秒、结果是 UNC 形态，对它 stat 14 秒、open 7 秒，同一文件走盘符 1 毫秒；115 的 B: 不受影响。播放时每个请求都要经过 `file_for()`，这一处决定 PikPak 的 stream-plan 与每个 Range 请求是几十秒还是零点几秒。
 - 不兼容片源（HEVC、mp3 以外的音轨、非 MP4 容器）一律按 6 秒片重编码给 HLS，账本没记时长或记成负数时用 ffprobe 报的时长切；探测也拿不到才回 Range。分片重编码链与整片转码相同（CUDA 解码加 NVENC、软件解码加 NVENC、libx264），同一分片并发只起一个 FFmpeg，Range 响应按 1 MiB 读文件、客户端一断开就停读。uvicorn 断开后 `send()` 静默返回、Starlette 的 `FileResponse` 不监听断开，`BufferedFileResponse` 因此自己盯 `http.disconnect`；实测（2026-09-13）不盯的话拖一次进度条就留下一个幽灵读者，把 115 上整部片剩下的几 GB 经 CloudDrive 拉完，新位置排在它后面，直到整部片进缓存才能播。
 - 有 B 帧却没有 `ctts` 的 MP4 只是时间戳错乱：容器声明的显示时刻其实是解码顺序，浏览器把倒着走的帧全丢掉（6297 实测整片掉两成，PotPlayer 与 FFmpeg 按解码器输出重排所以本地看着正常）。这类片源不重编码，改为重建一份 `moov`（游程编码的 `ctts`、编辑列表补整体平移、`stco`/`co64` 按头长差平移）存成 `transcode_root` 里的 `.mp4hdr` 边车，`/stream` 用「边车的头 + 原文件那段 mdat」拼出虚拟文件按 Range 发。显示顺序由一趟 `ffprobe -ignore_editlist 1 -show_entries frame=pts` 取得：解码器按显示顺序出帧、每帧的 pts 原样来自它那个样本；`pkt_dts` 记的是出帧时最后喂进去的包，不能用。边车没算出来前照旧走 HLS 转码，同一部片后台只算一次，算不出来就不再试。

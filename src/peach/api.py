@@ -61,6 +61,8 @@ from .previews import (
     entity_thumb_root,
 )
 from .push_discovery import PushDiscoveryService
+from .sample_images import SampleCache
+from .sample_images import cache_root as sample_cache_root
 from .providers import OpenCodeGoClient, default_registry
 from .repository import LedgerDatabase, LedgerRepository
 from .review_mirror import ReviewMirror
@@ -192,6 +194,7 @@ def create_app(
         settings.avatar_root, settings.logo_root,
     )
     photo_service = PhotoThumbnailService(settings.photo_root)
+    sample_cache = SampleCache(sample_cache_root(settings.photo_root))
     entity_thumb_service = DerivedImageService(entity_thumb_root(settings.avatar_root))
     cover_thumb_service = DerivedImageService(cover_thumb_root(settings.cover_root),
                                               edge=COVER_THUMB_EDGE, quality=COVER_THUMB_QUALITY)
@@ -323,6 +326,7 @@ def create_app(
     app.state.media_engine = media_engine
     app.state.preview_service = preview_service
     app.state.photo_service = photo_service
+    app.state.sample_cache = sample_cache
     app.state.entity_thumb_service = entity_thumb_service
     app.state.cover_thumb_service = cover_thumb_service
     app.state.transcode_service = transcode_service

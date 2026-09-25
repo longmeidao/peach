@@ -48,7 +48,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_review_csv.py", "test_related.py",
                 "test_search_suggest.py", "test_subtitles.py",
                 "test_task_runs.py", "test_followups.py", "test_task_center_integration.py",
-                "test_studio_followup.py",
+                "test_studio_followup.py", "test_sample_images.py",
                 "test_jav_code_domain.py",
                 "test_taste_history.py", "test_web_ui.py", "test_web_js.py",
                 "test_web_perf.py", "test_web_resource_sync.py",
@@ -82,7 +82,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                  "test_duplicate_identity_merge.py", "test_entity_merge.py",
                  "test_migrations.py",
                  "test_entity_link_install.py", "test_studio_site_harvest.py",
-                 "test_studio_followup.py",
+                 "test_studio_followup.py", "test_sample_images.py",
                  "test_performer_link_harvest.py", "test_directory_link_harvest.py",
                  "test_minnano_av.py", "test_agency_roster_harvest.py",
                  "test_performer_agency_resync.py",
@@ -173,6 +173,9 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     # 刮削后继：主体测试 `test_followups.py` 与 `test_studio_followup.py`，按名字推不出来。
     "src/peach/avatar_followup.py": ("catalog", "media", "tooling"),
     "src/peach/studio_followup.py": ("catalog", "metadata"),
+    # 补样张后继的主体测试是 `test_sample_images.py`，出图路由与番号集在 `test_fastapi_api.py`。
+    "src/peach/sample_followup.py": ("catalog", "metadata", "media"),
+    "src/peach/sample_images.py": ("catalog", "metadata", "media"),
     # 厂牌判据由命令行与后继共用，两边的测试分住 catalog、metadata 与 web。
     "src/peach/studio_icons.py": ("catalog", "metadata", "web"),
     "src/peach/studio_sites.py": ("catalog", "metadata"),

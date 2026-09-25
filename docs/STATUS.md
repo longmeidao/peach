@@ -7,7 +7,7 @@
 ## 运行态
 
 - 女优头像 545 张，脸宽中位数 320px，37 张带水印待复核；被顶掉的整套留在 `avatars-superseded/`（见 `SOURCING.md`）。
-- 数据管理页的「整理」按模板预览、执行、回滚上一批，只动视频、同卷内（ADR-0039），真实库未执行过。
+- 数据管理页「整理」（ADR-0039）可预览、执行、回滚上一批，真实库未执行过。
 - 产地是独立维度，JAV 是它的投影：`region` 为空时按厂牌、创作者、番号逐层推断，不落库；韩国 MIB 已不算 JAV。
 
 - Windows 是 ledger writer，入口是源码托盘（`pythonw -m peach.tray`，子服务用 venv 的 `peach.exe`），重启 `restart_windows_tray.py --source`；代码与数据在内置盘，外置盘只供 `R:\media`。
@@ -16,7 +16,7 @@
 - 经正式域名访问时 `/healthz` 返回 `configurable=true`；配置读写与选文件夹共用本机连接判据；托盘负责配置重载与正式 HTTPS 地址、端口。
 - 首启和配置页按系统显示缺失依赖下载：CloudDrive、挂载驱动、FFmpeg/ffprobe、OpenSSL；Windows 已识别 CloudDrive 与 WinFsp。
 - 文件检查覆盖本地与网盘，来源等分，确认用共享弹层；CloudDrive 分档建议共用首启与配置入口；来源接口需登录（401）。
-- 可选密码已上线：首启可跳过，配置页可改可关，登录可记住设备；旧安装保留口令。
+- 可选密码：首启可跳过，配置页可改可关，登录可记住设备。
 - macOS 是 reader，代码与 `peach-data` 在内置盘；`peach.local` 经 8900/8443 和 pf 提供 80/443，GET 正常、写入返回 409。
 - 两端各用本机 CA，私钥与凭据不跨机同步；代码走 Git、账本走单写者复制、图片走 Syncthing。本机坐标在 `<数据根>/config.toml`；ADR-0023 第 1～3 阶段已在 Windows 生效。
 - Windows 真实 ledger `peach-data/database/ledger.db`，2026-09-13 已应用到 `0031`；`asset_subtitle` 195 行（孤立 19），175 部带字幕轨，`asset` 80,761 行。
@@ -26,7 +26,7 @@
 - amane 桥（ADR-0048）装在 `peach-data/tools/amane-bridge/`，四类番号链都经它问。
 - 发行名 `peach`，目录名 `peach-app`。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完前别重启菜单栏：无口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
 - 扫描与采集显示项目、动作与等待时长；无进展 120 秒预警，单项外部动作（资料 90 秒、封面 240 秒）超预算跳过并计入可重试，「重试未完成项」重跑原任务失败集合。问题写入 `state/library-processing-<job_id>.issues.jsonl`，接口按 `job_id` 分页。
-- 女优资料表 `performer_profile`（ADR-0067）待迁 `0036`；补女优资料后继每轮存量至多 16 条。
+- 女优资料表 `performer_profile`（ADR-0067）与番号样张表（ADR-0068）待迁 `0036`、`0037`；补女优资料后继每轮存量至多 16 条。
 - Cloudflare 公网入口默认关闭，配置页启停，须先设访问密码；临时链接地址只写状态文件，命名隧道限源码环境、令牌只存设置文件。整站 `X-Robots-Tag: noindex` 加 `/robots.txt`。
 - FC2PPV-DB 与 JAVten 经本机 Chrome 过 Cloudflare 验证（ADR-0065），profile 在 `secrets/browser/`，不再贴 Cookie。
 

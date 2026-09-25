@@ -25,6 +25,7 @@ from .library_nfo import directory_files, read_nfo, sidecars, local_art
 from .genre_decisions import load_genre_decisions
 from .metadata import extract_catalog_evidence, extract_peach_fields, validate_provider_code
 from . import metadata_routes
+from . import sample_followup
 from .metadata_policy import SOURCE_SPECS
 from .platform import root_online, translate_ledger_path
 from .review_csv import read_rows, write_rows
@@ -1726,7 +1727,8 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                 database, groups, config, candidate_root, remote, active, update, issue)
             update(status='failed' if state['issue_count'] else 'complete', stage='处理结束',
                    checked=len(rows),
-                   followups=_entity_followups(database, config, entity_watermark, covered),
+                   followups=sample_followup.plan(database, config, cover_root)
+                   + _entity_followups(database, config, entity_watermark, covered),
                    auto_applied=auto_apply['applied'],
                    performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
                    performer_profile_conflicts=profiles['conflicts'],
