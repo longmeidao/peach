@@ -226,6 +226,8 @@ class FollowupTests(LedgerCase):
         summary = self.run_followup({"dmm": dmm_fetch, "mgstage": mgs_fetch})
         self.assertEqual((summary["landed"], summary["absent"]), (0, 2))
         self.assertEqual(summary["paused"], ["mgstage"])
+        self.assertEqual(summary["skipped"]["paused"], 1)
+        self.assertEqual(summary["outcome"], "这一轮没有补上样张；跳过 1 部因来源冷却")
         misses = sample_images.Misses(sample_images.misses_path(self.generated))
         self.assertTrue(misses.fresh("dmm", "SSIS-057"))
         self.assertFalse(misses.fresh("mgstage", "300MIUM-1000"), "冷却不是没有")
@@ -233,6 +235,16 @@ class FollowupTests(LedgerCase):
             self.assertEqual(sample_images.pending(connection, self.contract.has_cover, misses,
                                                    sample_images.snapshot_index(self.sources), limit=5),
                              ["300MIUM-1000"])
+
+    def test_codes_nobody_can_be_asked_about_are_counted_in_the_summary(self):
+        """快照里没样张、又没有官方样张站的番号（FC2）不联网也不算「没有」，摘要说清跳过了几部、为什么。"""
+        self.work(1, "FC2-PPV-1234567")
+        self.work(2, "SSIS-057")
+        self.snapshot("FC2-PPV-1234567", "dmm", {"title": "x"})
+        summary = self.run_followup({"dmm": lambda _t, _code, *, deadline=None: [dmm("ssis00057", 1, small=True)]})
+        self.assertEqual((summary["landed"], summary["deferred"]), (1, 0))
+        self.assertEqual(summary["skipped"], {"no_site": 1, "recent_miss": 0, "paused": 0})
+        self.assertEqual(summary["outcome"], "补上 1 部的样张（1 张）；跳过 1 部没有可问的官方站")
 
     def test_a_landed_batch_is_reverted_by_the_script_and_not_landed_twice(self):
         self.work(1, "SSIS-057")
