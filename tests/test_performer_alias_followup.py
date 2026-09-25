@@ -634,6 +634,18 @@ class RepeatTests(Case):
         self.assertIn("未取得", summary["sites"][alias.MINNANO])
         self.assertFalse(list((self.generated / "provider-cache" / "minnano").glob("*.json")))
 
+    def test_the_cloudflare_beacon_on_a_normal_page_is_not_a_challenge(self):
+        """Cloudflare 往正常页末尾插一段 `challenge-platform` 检测脚本；页照常取，来源不进冷却。"""
+        beacon = (b"<script>(function(){var a=document.createElement('script');"
+                  b"a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';"
+                  b"document.getElementsByTagName('head')[0].appendChild(a);})();</script>")
+        for url, (status, body) in list(self.minnano.pages.items()):
+            self.minnano.pages[url] = (status, body + beacon)
+        momoka = self.entity("神山ももか")
+        summary = self.run_followup(momoka)
+        self.assertTrue(summary["sites"][alias.MINNANO].startswith("命中 " + PROFILE_URL))
+        self.assertFalse(list(self.cooldown.glob("scraping-minnano-av.cooldown.json")))
+
 
 def load_revert():
     spec = importlib.util.spec_from_file_location(

@@ -55,6 +55,7 @@ from .metadata_alias_resolve import is_descriptive, is_planning_alias
 from .migrations import sqlite_backup
 from .scripting import HostLimiter
 from .social_links import name_key
+from .sources.base import challenge_page
 
 #: 这类后继在任务中心的身份，也是活动页上那一行的名字来源。
 TASK_KEY = "performer-alias"
@@ -88,8 +89,6 @@ MINNANO_INTERVAL, TIMEOUT = 3.0, 25.0
 #: avwikidb 与 minnano-av 同一档（补女优资料后继，ADR-0067）。
 _LIMITER = HostLimiter({"minnano-av.com": MINNANO_INTERVAL, "seesaawiki.jp": 2.0,
                         "fc2cmadb.com": 2.0, "avwikidb.com": MINNANO_INTERVAL})
-#: 机器人验证页的记号。它常以 200 回来，不认出来就会被当成正文缓存下去。
-_CHALLENGE = ("Just a moment", "cf-chl-", "challenge-platform")
 
 #: av_neme 搜索结果里明显不是人物页的页名：月份归档、番号页、厂牌与一览。
 _NOT_A_PERSON = re.compile(r"\d{4}年|[A-Za-z]+-?\d{3,}|一覧|レーベル|メーカー")
@@ -322,7 +321,7 @@ class MinnanoPages:
         if response.status == 429:
             pause_source(self.cooldown_root, self.source)
             raise Blocked("来源限流（429）")
-        if response.status == 403 or any(mark in body for mark in _CHALLENGE):
+        if response.status == 403 or challenge_page(body):
             pause_source(self.cooldown_root, self.source, refused=True)
             raise Blocked("来源拒绝访问或要求机器人验证")
         if response.status != 200:
@@ -442,7 +441,7 @@ class Fc2cmadbPages:
         if response.status == 429:
             pause_source(self.cooldown_root, FC2CMADB)
             raise Blocked("来源限流（429）")
-        if response.status == 403 or any(mark in text for mark in _CHALLENGE):
+        if response.status == 403 or challenge_page(text):
             pause_source(self.cooldown_root, FC2CMADB, refused=True)
             raise Blocked("来源拒绝访问或要求机器人验证")
         if response.status == 404:
