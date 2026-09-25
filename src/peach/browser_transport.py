@@ -71,11 +71,12 @@ REFERRER_HEADER = "referer"
 _WINDOWS_CANDIDATES = (
     # Chrome 排前面：Edge 会拿 Windows 账号把新 profile 隐式登录并开同步，采集用的浏览记录会跟着
     # 进用户的微软账号；Chrome 不会。只有 Edge 的机器用 InPrivate 拉起，见 `_Browser.start`。
-    ("ProgramFiles", r"Google\Chrome\Application\chrome.exe"),
-    ("ProgramFiles(x86)", r"Google\Chrome\Application\chrome.exe"),
-    ("LocalAppData", r"Google\Chrome\Application\chrome.exe"),
-    ("ProgramFiles(x86)", r"Microsoft\Edge\Application\msedge.exe"),
-    ("ProgramFiles", r"Microsoft\Edge\Application\msedge.exe"),
+    # 尾段写正斜杠：`Path` 在哪个平台都按它拆段，反斜杠在 macOS 上是文件名的一部分，测试找不到文件。
+    ("ProgramFiles", "Google/Chrome/Application/chrome.exe"),
+    ("ProgramFiles(x86)", "Google/Chrome/Application/chrome.exe"),
+    ("LocalAppData", "Google/Chrome/Application/chrome.exe"),
+    ("ProgramFiles(x86)", "Microsoft/Edge/Application/msedge.exe"),
+    ("ProgramFiles", "Microsoft/Edge/Application/msedge.exe"),
 )
 _MAC_CANDIDATES = (
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
