@@ -98,6 +98,9 @@ class Choice:
     #: 封面上该取景的那一块，源图像素、右下开区间（`cover_focus`）。格子围着它取景，
     #: 框选围着它落默认框；None 时两边都居中。
     focus: tuple[int, int, int, int] | None = None
+    #: 这部作品有几位演员（`cast_sizes`）。多于一位时封面上那张脸多半是领衔的另一位，
+    #: `focus` 不围着它取景；0 是不知道（不是她馆藏里的作品）。
+    cast: int = 0
 
     def as_dict(self) -> dict:
         focus = (dict(zip(("x0", "y0", "x1", "y1"), self.focus))
@@ -106,7 +109,7 @@ class Choice:
                 "width": self.width, "height": self.height,
                 "detail": self.detail, "found_by": self.found_by,
                 "current": self.current, "crop": self.crop,
-                "bases": list(self.bases), "focus": focus}
+                "bases": list(self.bases), "focus": focus, "cast": self.cast}
 
 
 def name_chain(connection: sqlite3.Connection, entity_id: int) -> list[str]:
@@ -152,8 +155,33 @@ def installed_digest(avatar_root: Path, kind: str, entity_id: int) -> str:
         return ""
 
 
+def cast_sizes(connection: sqlite3.Connection, entity_id: int) -> dict[str, int]:
+    """她名下每个番号的作品有几位演员，番号按 `normalise_code_key`。
+
+    与 `avatar_cover_face.single_performer_works` 同一个口径：只数 `performer` 角色。同一个
+    番号有几条 asset 行时取人数最多的那一行。
+    """
+    sizes: dict[str, int] = {}
+    for code, cast in connection.execute(
+            "SELECT a.code,(SELECT count(DISTINCT o.entity_id) FROM asset_entity o"
+            " WHERE o.asset_id=a.id AND o.role='performer')"
+            " FROM asset a JOIN asset_entity ae ON ae.asset_id=a.id"
+            " WHERE ae.entity_id=? AND ae.role='performer' AND coalesce(a.code,'')<>''",
+            (int(entity_id),)):
+        key = normalise_code_key(code)
+        if key:
+            sizes[key] = max(sizes.get(key, 0), int(cast or 0))
+    return sizes
+
+
+def _focus_face(face: dict | None, cast: int) -> dict | None:
+    """合演作品的封面不按边车里那张脸取景：DVAJ-495 那张是 15 人里领衔的葵つかさ。"""
+    return face if cast <= 1 else None
+
+
 def _history(providers_root: Path, entity_id: int, current: str,
-             cover_root: Path | None = None) -> list[Choice]:
+             cover_root: Path | None = None,
+             casts: dict[str, int] | None = None) -> list[Choice]:
     """这个人取过的图。证据文件按 `performer-<id>-<sha>.json` 存，天然是一份历史。
 
     这里给的是「换回去不用重下」的那一批：装过又被顶掉的、批处理下过但没装的，
@@ -186,19 +214,21 @@ def _history(providers_root: Path, entity_id: int, current: str,
         label = SOURCE_NAMES.get(provider, provider or "取过的图")
         width, height = int(record.get("width") or 0), int(record.get("height") or 0)
         whole = provider in WHOLE_COVER_PROVIDERS
-        focus = None
+        focus, cast = None, 0
         if whole:
             key = normalise_code_key(record.get("external_id"))
             label = f"{label} {key}".strip()
+            cast = (casts or {}).get(key, 0)
             cover = Path(cover_root) / f"{key}.jpg" if cover_root is not None and key else None
             if width and height:
-                focus = cover_focus(key, cover, read_sidecar(cover) if cover else None,
+                focus = cover_focus(key, cover,
+                                    _focus_face(read_sidecar(cover) if cover else None, cast),
                                     width, height)
         out.append(Choice(
             ref=f"sha256:{digest}", source="history", label=label,
             width=width, height=height,
             detail=str(record.get("upstream_url") or ""),
-            current=digest == current, crop=whole, focus=focus))
+            current=digest == current, crop=whole, focus=focus, cast=cast))
     return out
 
 
@@ -218,7 +248,11 @@ def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
     **封面像素多的排前面**，只有九宫格的排在所有封面之后。同一个人的封面有 3360×1890
     的官方原图，也有 276×154 的缩略图；框出来的头像清不清楚只看底图有多少像素。格上的
     宽高就是封面的，页面照常把它标出来。
+
+    **合演作品标出人数，不按封面上那张脸取景**（`_focus_face`）：封面人脸边车记的是最大那
+    张脸，合集里那多半是领衔的另一位。格子照列，她自己的脸常常在九宫格里。
     """
+    casts = cast_sizes(connection, entity_id)
     rows = connection.execute(
         "SELECT a.id,a.code,COALESCE(NULLIF(a.catalog_title,''),a.name),a.snapshot_path "
         "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
@@ -243,13 +277,14 @@ def asset_artwork(connection: sqlite3.Connection, cover_root: Path,
         if has_sheet:
             bases += [f"asset:{int(asset_id)}:cell{cell}" for cell in range(SHEET_CELLS)]
         width, height = size or (0, 0)
+        cast = casts.get(key, 0)
         found.append((width * height, order, Choice(
             ref=bases[0], source="asset",
             label=str(code or title or f"作品 {asset_id}"),
             width=width, height=height,
             detail=str(title or ""), crop=True, bases=tuple(bases),
-            focus=cover_focus(key, cover, read_sidecar(cover), width, height)
-            if size else None)))
+            focus=cover_focus(key, cover, _focus_face(read_sidecar(cover), cast), width, height)
+            if size else None, cast=cast)))
     found.sort(key=lambda item: (-item[0], item[1]))
     return [choice for _area, _order, choice in found[:MAX_ASSET_CHOICES]]
 
@@ -357,7 +392,8 @@ def choices(connection: sqlite3.Connection, providers_root: Path,
             found_by=match.finder.get((category, filename), "") if tell_finder else "",
             width=int(shot.get("width") or 0), height=int(shot.get("height") or 0),
             current=bool(digest) and digest == current))
-    for choice in _history(providers_root, entity_id, current, cover_root):
+    for choice in _history(providers_root, entity_id, current, cover_root,
+                           cast_sizes(connection, entity_id)):
         if choice.ref.split(":", 1)[1] not in taken:
             items.append(choice)
     # 在用的那张排第一。它是这一屏唯一的参照物——别的候选好不好，是跟它比出来的；

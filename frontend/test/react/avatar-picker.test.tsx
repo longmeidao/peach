@@ -29,6 +29,7 @@ const choice = (over: Partial<AvatarChoice> = {}): AvatarChoice => ({
   crop: false,
   bases: [],
   focus: null,
+  cast: 0,
   ...over,
 });
 
@@ -180,6 +181,26 @@ it('图库索引还没取过时只剩手填那两条路', async () => {
   expect(dialog()?.textContent).toContain('图库索引还没取过');
   expect(buttonNamed('从本机选图片')).not.toBeNull();
   expect(document.querySelector('input[type=file]')).not.toBeNull();
+});
+
+it('过期的图库索引说出多久没更新，不说成还没取过', async () => {
+  server(listing([], { matched_names: [], index_age_hours: 124, index_stale: true }));
+  await openPicker();
+  expect(dialog()?.textContent).toContain('图库索引 5 天没更新');
+  expect(dialog()?.textContent).not.toContain('还没取过');
+});
+
+it('合演作品的格子标出人数，框选时提醒先找到她自己的脸', async () => {
+  server(listing([choice({
+    ref: 'asset:11:cover', source: 'asset', label: 'DVAJ-495', crop: true,
+    width: 800, height: 540, bases: ['asset:11:cover'], cast: 15,
+  })]));
+  await openPicker();
+  const [cell] = cells();
+  expect(cell?.textContent).toContain('15 人');
+  expect(cell?.getAttribute('title')).toContain('15 人合演');
+  await click(cell);
+  expect(dialog()?.textContent).toContain('DVAJ-495：15 人合演，先找到她自己的脸');
 });
 
 /** 作品画面那一档：点开是框一块，不是直接装上去。 */

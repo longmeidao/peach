@@ -29,8 +29,8 @@ import { CropFrame } from '../crop/crop-frame';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
 import {
-  avatarChoicesKey, baseLabel, choiceDetail, choiceFrame, choiceImageUrl, fetchAvatarChoices,
-  fetchCodeCover, framesItself, indexNotReady, pickerNote, sendAvatarPick,
+  avatarChoicesKey, baseLabel, choiceDetail, choiceFrame, choiceImageUrl, cropNote,
+  fetchAvatarChoices, fetchCodeCover, framesItself, indexNote, pickerNote, sendAvatarPick, sharedCast,
   type AvatarChoice, type AvatarSubmission,
 } from './avatar-picker';
 
@@ -127,6 +127,7 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
     || (!cropping && cover.error ? errorMessage(cover.error) : '')
     || (listing.error ? errorMessage(listing.error) : '');
   const busy = submit.isPending || cover.isPending;
+  const index = cropping ? '' : indexNote(data);
   return (
     <>
       {/* 头部：左边一个方图标槽，右边标题加一句说明，右上角是关闭键。 */}
@@ -142,13 +143,9 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
             {!cropping && choices.length ? <Chip color="soft">{choices.length} 张可选</Chip> : null}
           </div>
           <p className="text-body-2-regular text-text-secondary">
-            {cropping
-              ? `${cropping.label}：拖动方框选一块，滚轮或角上那枚方块改大小。`
-              : pickerNote(name, data)}
+            {cropping ? cropNote(cropping) : pickerNote(name, data)}
           </p>
-          {!cropping && indexNotReady(data)
-            ? <Note tone="neutral">图库索引还没取过，只能从用过的图里选。</Note>
-            : null}
+          {index ? <Note tone="neutral">{index}</Note> : null}
           {problem ? <Note tone="error">{problem}</Note> : null}
         </div>
         <IconButton icon={RiCloseLine} size="small" aria-label="关闭" onClick={close} />
@@ -188,6 +185,10 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
                 <span className="truncate px-1">{choice.label}</span>
                 {choice.current
                   ? <span className="absolute top-1 left-1"><Chip variant="caption" color="gray">在用</Chip></span>
+                  : null}
+                {/* 合演封面上最大那张脸多半是领衔的另一位，格子不围着它取景，这里标出人数。 */}
+                {sharedCast(choice)
+                  ? <span className="absolute top-1 right-1"><Chip variant="caption" color="gray">{choice.cast} 人</Chip></span>
                   : null}
               </button>
             ))}
