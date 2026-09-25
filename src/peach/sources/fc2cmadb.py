@@ -28,7 +28,7 @@ from bs4 import BeautifulSoup
 
 from ..jav_cover_fetch import Unavailable
 from ..scraping_access import SourcePaused
-from .base import FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure, http_failure
+from .base import FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure
 from .fc2 import PAGE_LIMIT, fc2_record, runtime_minutes, seller_page, storage_original, unrecognised, video_id
 
 #: 按社区来源登记：它转载的是发行方那一页，但标题和标签由站方用户维护。主机间隔用默认的 2 秒。
@@ -267,8 +267,6 @@ class Fc2cmadbSource(SiteSource):
         return replace(record, performers=tuple(parse_actresses(partial)))
 
     def query(self, code: str, *, session: Session) -> SiteRecord:
-        try:
+        with self.holding(session):
             page = self.fetch(code, session=session)
-        except Unavailable as error:
-            raise http_failure(error) from None
-        return self.with_actresses(self.parse(page, code), page, session=session)
+            return self.with_actresses(self.parse(page, code), page, session=session)

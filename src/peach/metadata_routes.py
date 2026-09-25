@@ -4,7 +4,7 @@
 必填标量字段之后不再问下一档。取回来的值怎么排序、怎么结算分歧、哪个字段听谁的，
 在 `metadata_policy`（`FIELD_SOURCE_ORDER`、`PREFERRED_COMMUNITY_SOURCE`、
 `FALLBACK_SOURCES`）与落库那一侧，两条轴不要混：javbus 在结算上是兜底
-（ADR-0035），在查询上却排在 javdb 前面——javdb 按出口 IP 计配额、主机间隔 5 秒，
+（ADR-0035），在查询上却排在 javdb 前面——javdb 按出口 IP 计配额、主机间隔 3 秒，
 先问便宜的那两家不影响结算，只影响谁先撞上限流。
 
 链的取舍参考 amane 的 `docs/dev/content-routes.md`（证据登记在
@@ -49,7 +49,7 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # 给标题、厂牌、系列、发行日与演员；r18.dev 也没有再问 DMM 自己的 GraphQL 目录（ADR-0059）：
     # 它是 r18.dev 镜像的源头，2026-09-24 实测当月新片与 FKOS、FNS、SUKE 这些小厂 r18.dev 都是
     # 404 而 DMM 有，一部片一到三次请求、不需要日本出口；再落空才到三家综合索引。AVBase 与
-    # JavBus 各一次请求，javdb 两次且按出口 IP 计配额（`SOURCE_INTERVALS` 里 5 秒一页），所以 javdb 排最后。
+    # JavBus 各一次请求，javdb 两次且按出口 IP 计配额（`SOURCE_INTERVALS` 里 3 秒一页），所以 javdb 排最后。
     # 不进这条链：1pondo（无码片商，有码番号一律 404）、fc2（商品号体系不同）、mgstage
     # （它同时卖有码号，但对有码号它是转售店，标题缀着店铺特典，片商官网才是发行方）。
     "censored": ("prestige", "faleno", "dahlia", "makers", "r18dev", "dmm", "avbase", "javbus", "javdb"),
@@ -74,7 +74,8 @@ ROUTES: dict[str, tuple[str, ...]] = {
     # FC2：发行方商品页 → 下架作品的镜像站 → FC2PPV-DB → JAVten → JavArchive → FC2 专站 → javdb。
     # fc2cmadb 给下架作品的原图与女优栏，排在前；FC2PPV-DB 给女优、卖家、販売日与流出标记，
     # 不给封面；JAVten 给日文标题、标签与 FC2 存储原件的地址（ADR-0060）。这两站都在 Cloudflare
-    # 验证后面，没配 Cookie 时各自回 403 后整站冷却，链照常往下走。JavArchive 只给标题和一张
+    # 验证后面，由本机浏览器过验证（ADR-0065）；验证没过、或没有浏览器时 Cookie 失效回 403，各自
+    # 整站冷却，链照常往下走。JavArchive 只给标题和一张
     # 转存封面，比官方原图差一档，所以排在几个存档站之后。fc2club 经 amane 桥问（ADR-0043），
     # 只收 FC2，所以排在综合索引 javdb 前面。
     # 不含 r18dev（实测 85 条全空）、不含 AVBase 与 JavBus（本机 1213 份来源证据里

@@ -8,21 +8,24 @@ ADR-0044 收敛刮削栈之后，自写解析器与 amane 桥的站都套这一�
 - `SiteConfig`：站名、主域与图床、请求间隔、是否带 Cookie、页面大小上限、所属档位。它是数据，
   `scraping_access.SOURCES`、`library_processing.SOURCE_INTERVALS` 这几张表与它逐项一致，由测试守住。
 - `SiteSource`：`fetch(code, session=)` 取到作品页，`parse(page, code)` 从页面读出 `SiteRecord`，
-  `query()` 把两步串起来并把 `_fetch` 抛出的 HTTP 分档翻成 `SourceFailure`，`records()` 交出这一站的全部
-  记录（多数站就是 `query()` 那一条）。测试只喂 `parse` 一张页面就能覆盖解析，不必起假传输。
+  `query()` 把两步串起来，`records()` 交出这一站的全部记录（多数站就是 `query()` 那一条）。两者都包在
+  `holding()` 里：`_fetch` 抛出的 HTTP 分档翻成 `SourceFailure`，要整站停下的细档写回来源冷却。
+  测试只喂 `parse` 一张页面就能覆盖解析，不必起假传输。
 - `SiteRecord`：一种返回模型。`payload()` 投影成来源快照那份 dict（`id`、`maker`、`actresses[].japanese_name`、
   `cover_urls`……），`extract_peach_fields`、`verified_cover` 与复核那一路认的就是它。
 - `FailureReason`：一张失败原因表，取 amane 那十六档里 Peach 用得上的十二档。`REASON_KINDS` 把它映到
   `MetadataProviderError` 现有的 `auth` / `unavailable` / `not_found` 三档，`COOLDOWN_ACTIONS` 说哪几档要把
-  整站停下——两张表都是 amane 桥那一路已经在用的判据，这里只是让自写站也读同一份。
+  整站停下。自写站与 amane 桥读同一张表、写同一份冷却记录：自写站经 `holding()` 交给会话传输链上的
+  `SourceTransport.hold`，amane 桥经 `metadata_amane.cooldown_action` 交给 `scraping_access.pause_source`。
 
 传输层自己的信号不经这张表：`SourcePaused`（冷却期）、`DeadlineExceeded`（动作预算）与
-`httpx.TransportError`（连接未取得）由 `scraping_access` 与 `jav_cover_fetch._fetch` 抛出，`query()`
+`httpx.TransportError`（连接未取得）由 `scraping_access` 与 `jav_cover_fetch._fetch` 抛出，`holding()`
 原样放过，调用方的冷却写回、预算结束与重试语义因此保持不变。
 """
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Mapping
@@ -89,8 +92,11 @@ COOLDOWN_ACTIONS: dict[FailureReason, str] = {
 #: 重试没有意义的细档。
 PERMANENT_REASONS = frozenset({FailureReason.PARSE_ERROR})
 
-#: Cloudflare 的验证页：JS 挑战与托管挑战都顶着这个标题，正文是给浏览器跑的脚本。
-CHALLENGE_TITLE = re.compile(r"<title>Just a moment\.\.\.</title>")
+#: Cloudflare 的验证页与拦截页的标题：JS 挑战与托管挑战顶着 `Just a moment...`（中文界面 `请稍候…`），
+#: 按规则拦下的是 `Attention Required! | Cloudflare`。正文是给浏览器跑的脚本，站方回的状态码可能是
+#: 403，也可能是 200（AVBase）。只认标题：Cloudflare 往正常页里也注入 `challenge-platform` 脚本，按它认会误判。
+CHALLENGE_TITLE = re.compile(
+    r"<title[^>]*>\s*(?:Just a moment\.\.\.|请稍候…|Attention Required! \| Cloudflare)\s*</title>")
 
 
 def challenge_page(html: str | bytes) -> bool:
@@ -117,6 +123,8 @@ class SourceFailure(RuntimeError):
         self.message = message
         self.status_code = status_code
         self.detail = detail or self.reason.value
+        #: 冷却已经记过：嵌套的 `holding()`（`r18dev.query` 包着基类的 `query`）不再记第二次。
+        self.held = False
 
     @property
     def kind(self) -> str:
@@ -285,15 +293,43 @@ class SiteSource:
         """从作品页读出记录。页面结构对不上抛 `SourceFailure(PARSE_ERROR)`，门页抛 `AUTH_REQUIRED`。"""
         raise NotImplementedError
 
-    def query(self, code: str, *, session: Session) -> SiteRecord:
+    @contextmanager
+    def holding(self, session: Session):
+        """包住一次查询：`_fetch` 的 HTTP 分档翻成 `SourceFailure`，要整站停下的细档写回来源冷却。
+
+        `COOLDOWN_ACTIONS` 里的细档（验证页、封禁、地区限制、限流）说的是「这个出口对这一站进不去」，
+        同一轮里换一部片问结果不变，所以整站进冷却，之后的请求在 `SourceTransport` 那一关就停下，不再
+        一部片撞一次。冷却记录由会话传输链上第一个有 `hold` 的那一层写（`HostLimitedTransport.inner`
+        一路往里找，找到的是 `scraping_access.SourceTransport`）；链上没有它（Seesaa 的 `WikiPages`、
+        测试里的假传输）就不记。`query()` 与 `records()` 覆写时也包在这里面。
+        """
         try:
-            return self.parse(self.fetch(code, session=session), code)
-        except SourceFailure:
+            yield
+        except SourceFailure as failure:
+            _hold(session, self.config.name, failure)
             raise
         except Unavailable as error:
-            raise http_failure(error) from None
+            failure = http_failure(error)
+            _hold(session, self.config.name, failure)
+            raise failure from None
+
+    def query(self, code: str, *, session: Session) -> SiteRecord:
+        with self.holding(session):
+            return self.parse(self.fetch(code, session=session), code)
 
     def records(self, code: str, *, session: Session) -> list[SiteRecord]:
         """这一站对这个番号给出的全部记录。多数站只有一条；同一部作品在站上有几条各自独立的页面时
         （JavArchive 上几位转存者各发一次，图各存各的）子类逐条交出，封面层要的是每一条的图源。"""
         return [self.query(code, session=session)]
+
+
+def _hold(session: Session, source: str, failure: SourceFailure) -> None:
+    """把 `failure` 的冷却档交给会话传输链上的 `SourceTransport.hold`；一个失败只记一次。"""
+    if not failure.cooldown_action or failure.held:
+        return
+    failure.held = True
+    transport = session.transport
+    while transport is not None and not callable(getattr(transport, "hold", None)):
+        transport = getattr(transport, "inner", None)
+    if transport is not None:
+        transport.hold(source, failure.cooldown_action)

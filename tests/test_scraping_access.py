@@ -332,6 +332,55 @@ class ScrapingAccessTests(unittest.TestCase):
             transport(request, 1, 100)
         self.assertFalse(cooldown.exists(), "浏览器断了是连接问题，不记来源的账")
 
+    def test_a_pause_earned_on_the_direct_path_does_not_hold_back_the_browser(self):
+        """直连 403 攒下的冷却不压到浏览器那条路上：换了路就作废，浏览器撞验证没过从第一档重新数。"""
+        from peach import browser_transport
+        from peach.scraping_access import FIRST_BLOCKED_PAUSE, SourcePaused
+
+        class FakeBrowser(browser_transport.BrowserTransport):
+            def __init__(self, respond):
+                self.respond = respond
+
+            def __call__(self, request, timeout, max_bytes):
+                return self.respond(request)
+
+        cooldown = self.root / "scraping-fc2ppvdb.cooldown.json"
+        request = HttpRequest("GET", "https://fc2ppv-db.com/ja/videos/1", {})
+        refused = SourceTransport(self.root)
+        refused.transports["fc2ppvdb"] = lambda *args: HttpResponse(403, {}, b"")
+        for _ in range(3):
+            with self.assertRaises(SourcePaused):
+                refused(request, 1, 100)
+            record = json.loads(cooldown.read_text(encoding="utf-8"))
+            cooldown.write_text(json.dumps({**record, "until": 0}), encoding="utf-8")
+        cooldown.write_text(json.dumps({**record, "until": time.time() + 3600}), encoding="utf-8")
+        self.assertEqual((record["blocks"], record["via"]), (3, "http"))
+
+        opened = SourceTransport(self.root)
+        opened.transports["fc2ppvdb"] = FakeBrowser(lambda request: HttpResponse(200, {}, b"page", request.url))
+        self.assertEqual(opened(request, 1, 100).status, 200, "直连那一小时的冷却不拦浏览器")
+        self.assertFalse(cooldown.exists())
+
+        def unsolved(request):
+            raise browser_transport.ChallengeUnsolved("fc2ppv-db.com 的人机验证在 160 秒内没有通过")
+
+        cooldown.write_text(json.dumps({"until": 0, "blocks": 3, "via": "http"}), encoding="utf-8")
+        challenged = SourceTransport(self.root)
+        challenged.transports["fc2ppvdb"] = FakeBrowser(unsolved)
+        with self.assertRaises(SourcePaused):
+            challenged(request, 1, 100)
+        record = json.loads(cooldown.read_text(encoding="utf-8"))
+        self.assertEqual((round(record["until"] - time.time()), record["blocks"], record["via"]),
+                         (FIRST_BLOCKED_PAUSE, 1, "browser"), "浏览器那条路的第一次从第一档起")
+        with self.assertRaises(SourcePaused):
+            challenged(request, 1, 100)
+
+        # 浏览器那条路写下的冷却，回到直连时同样作废：直连会被按自己的账重新判。
+        direct = SourceTransport(self.root)
+        direct.transports["fc2ppvdb"] = lambda *args: HttpResponse(200, {}, b"page")
+        self.assertEqual(direct(request, 1, 100).status, 200)
+        self.assertFalse(cooldown.exists())
+
     def test_a_new_cookie_lifts_the_pause_the_old_one_earned(self):
         """过期的 `cf_clearance` 撞出 403 后整站冷却；用户换了新 Cookie 就该立刻再试，不等旧账到期。"""
         from peach.scraping_access import SourcePaused

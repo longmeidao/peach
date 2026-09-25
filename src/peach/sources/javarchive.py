@@ -16,9 +16,8 @@ import urllib.parse
 
 from bs4 import BeautifulSoup
 
-from ..jav_cover_fetch import NotFound, Unavailable
-from .base import (FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure,
-                   http_failure)
+from ..jav_cover_fetch import NotFound
+from .base import FailureReason, Page, Session, SiteConfig, SiteRecord, SiteSource, SourceFailure
 from .fc2 import (PAGE_LIMIT, canonical_code, fc2_record, runtime_minutes, strip_code, text_of, unrecognised,
                   video_id)
 
@@ -156,7 +155,7 @@ class JavArchiveSource(SiteSource):
     def records(self, code: str, *, session: Session) -> list[SiteRecord]:
         """搜索命中的每一条作品页各交一份记录。某一条 404 或对不上就跳过，一条都没有归 `not_found`。"""
         found = []
-        try:
+        with self.holding(session):
             for link in self.search(code, session=session):
                 try:
                     found.append(self.parse(session.get(self.work_url(link), config=self.config), code))
@@ -165,8 +164,6 @@ class JavArchiveSource(SiteSource):
                 except SourceFailure as failure:
                     if failure.kind != "not_found":
                         raise
-        except Unavailable as error:
-            raise http_failure(error) from None
         if not found:
             raise self._missing()
         return found
