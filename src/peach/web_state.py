@@ -161,6 +161,7 @@ class WebContract:
         from . import avatar_followup  # noqa: F401  登记补头像后继
         from . import feed_followup  # noqa: F401  登记取新作资料后继
         from . import performer_alias_followup  # noqa: F401  登记补女优别名后继
+        from . import performer_profile_followup  # noqa: F401  登记补女优资料后继
         from . import studio_followup  # noqa: F401  登记补厂牌官网与标识后继
         from .followups import FollowupRunner
         self.followups = FollowupRunner(self)

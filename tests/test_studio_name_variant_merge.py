@@ -281,6 +281,7 @@ class ApplyTests(unittest.TestCase):
             " agency_id INTEGER, source TEXT, confidence REAL, checked_at TEXT);"
             "CREATE TABLE label_maker(label_id INTEGER PRIMARY KEY,"
             " maker_id INTEGER, source TEXT, confidence REAL, checked_at TEXT);"
+            "CREATE TABLE performer_profile(entity_id INTEGER PRIMARY KEY, source TEXT);"
             "CREATE TABLE asset(id INTEGER PRIMARY KEY, code TEXT, studio TEXT);"
             "CREATE TABLE asset_entity(asset_id INTEGER, entity_id INTEGER, role TEXT,"
             " source TEXT, confidence REAL, metadata_json TEXT, first_seen_at TEXT,"

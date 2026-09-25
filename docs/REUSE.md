@@ -99,6 +99,13 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   `page_cache.Site`：它只返回正文、丢了跳转后的最终地址（复核产物要记她那一页的真实地址），限速器按实例
   各起一个，几十条后继接连跑等于没有间隔，还会把以 200 回来的机器人验证页当正文缓存下去。取页器
   `MinnanoPages` 另记最终地址、共用一个 `HostLimiter`、认出验证页不缓存并记冷却。
+- 补女优资料后继（`performer_profile_followup`，ADR-0067）复用补别名后继的入口
+  `minnano_profile_pages`、名字核对与 `MinnanoPages`（加 `source` 冷却键与 `max_age` 缓存期限，avwikidb
+  也用它，传输换成 `SourceTransport`），排单复用 ADR-0053 的 `Attempts`（写成的记号保 30 天）。
+  解析在 `minnano_av.profile` 与 `avwikidb`，读写在 `performer_profiles`；两站都读页面自带的结构，
+  minnano-av 读资料表，avwikidb 读 JSON-LD。不采用的候选：`kanojo-db/scrapers` 的 Minna no AV
+  爬虫与 `stashapp/CommunityScrapers` 的 Minnano-AV 规则都不是可安装的库，后者是 Stash 的 XPath 配置
+  （Stash 适配器已关，ADR-0021）；站点入口与名字核对 Peach 已有一份，只补资料表逐格规整。
 
 测试与集成复用 `test_runner.py`、`agent_worktree.py`；进程互斥采用开发依赖
 `filelock==3.32.4` 的 `FileLock`（[官方用法](https://py-filelock.readthedocs.io/en/stable/tutorials.html)）。

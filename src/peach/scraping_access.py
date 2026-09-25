@@ -63,6 +63,10 @@ SOURCES = {
     "javbus": {"label": "JavBus", "domains": ("javbus.com",), "login": "https://www.javbus.com/", "cookie": True,
                "session": True, "blocked_pause": 6 * 3600},
     "avbase": {"label": "AVBase", "domains": ("avbase.net",), "login": "https://www.avbase.net/", "blocked_pause": 6 * 3600},
+    # 女优编号与资料交叉核对（ADR-0067）。httpx 直连就回整页，不收 Cookie、不走浏览器；
+    # 拒绝访问时和 AVBase 一样停一段，不反复撞。
+    "avwikidb": {"label": "AVWikiDB", "domains": ("avwikidb.com",), "login": "https://avwikidb.com/",
+                 "blocked_pause": 6 * 3600},
 }
 _LOCK = threading.RLock()
 

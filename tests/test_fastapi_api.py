@@ -69,6 +69,7 @@ CREATE TABLE entity_membership(
 CREATE TABLE label_maker(
   label_id INTEGER PRIMARY KEY,maker_id INTEGER,source TEXT,
   confidence REAL DEFAULT 1.0,checked_at TEXT);
+CREATE TABLE performer_profile(entity_id INTEGER PRIMARY KEY,source TEXT);
 CREATE TABLE watch_queue(profile_id TEXT,asset_id INTEGER,added_at TEXT,source TEXT,
   PRIMARY KEY(profile_id,asset_id));
 CREATE TABLE playlist(

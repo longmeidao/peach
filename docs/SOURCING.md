@@ -382,6 +382,20 @@ av911.tv，三条候选已进复核队列。
 - 有 FC2 作品的女优先问 fc2cmadb 女优栏（ADR-0061）：按她自己作品页进到站上那位人物，只收站上主名，
   曾用名串里混着卖家商品名，不收。卖家称呼当规范名的实体（`たぬき顔サラサラ黒髪ロング`）靠这一站接上真名。
   GirlsDelta（`girlsdelta.com/model/<id>`）有名录与宣传照，比脸能确认的太少，只当单人佐证链接，不进流水线。
+- 女优资料由补女优资料后继（`peach.performer_profile_followup`，ADR-0067）写进 `performer_profile`，
+  批次号 `auto:performer-profile@<任务行 id>`，`revert_auto_landing.py --source auto:performer-profile` 撤回。
+  minnano-av 资料页 `actress<编号>.html` 的表每格以 `<span>标签</span>` 起头、值到 `</td>`；只读
+  `act-profile` 那一块，评论区的同名格子不算。`生年月日` 那一格的 `<p>` 里夹着一个多余的 `</td>`，
+  值截到那里正好不带星座后的杂项。`サイズ` 形如 `T156 / B86( Eカップ ) / W58 / H85 / S`，数字就是厘米，
+  末尾那个 `S` 含义未取得，只留原文；资料没填的页没有生年月日、血液型、出身地那几行。
+  `ブログ` 那一格显示 `http://`、`href` 是 `https://`，取 `href`。站内头像 `/p_actress_125_125/` 只有 125×125。
+- avwikidb.com 直连 httpx 带 Chrome UA 就回整页（登记在 `scraping_access.SOURCES`，拒绝访问停 6 小时）。
+  作品页 `/work/<番号>/` 头里的 JSON-LD `Movie.actor` 每项给 `name`、罗马字 `alternateName` 与
+  `/actor/<编号>/`，编号从这里取；女优页 JSON-LD `Person.alternateName` 前两项是读音与罗马字，后面混着
+  站上归并的其他名义（实测含男优名），不收。三围只在正文「身長・スリーサイズ」一格（`T148 B83(B) W55 H85`）。
+  女优图是 DMM `actjpgs` 的 125×125，不作头像；站内搜索是 `⌘K` 弹层，地址形态未取得。
+  出生日期与身高和 minnano-av 不一致时只记进外部编号的 `metadata_json.conflicts`，判词在
+  `generated/performer-profile-landing.csv`。
 - 上游名字里的零宽字符在 `canonicalize_entity_name` 一处剥掉，不在各脚本里各修一遍。
   `str.strip()` 不认它们是空白，`normalized_name` 于是带着一个看不见的字符：界面上和普通名字
   一模一样，但 `upsert_asset_entity` 按 `normalized_name` 找不到已有实体，同一个人存成两条，

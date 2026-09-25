@@ -20,6 +20,10 @@ r"""minnano-av 的页面解析：检索、女优资料表、事务所名册。
 是这家的总人数，`itemListElement` 每项给 `name` 和 `actressNNN.html`。正文里那几个
 `<a>` 的文字是 `鈴北梨乃女優情報`——把「女優情報」当名字的一部分拿去和账本对名字，
 一个都对不上。翻页也不猜 `&page=N`：`<link rel="next">` 就在头里，没有它就是最后一页。
+
+**资料表整张读成结构化资料**（`profile`，ADR-0067）：出生日期、身高三围、血型、出身地、
+出道年与出道作品这些格子逐格规整，读不出的列留空；每一格的原文另存一份，规整规则改了
+不必重新取页。
 """
 from __future__ import annotations
 
@@ -123,6 +127,113 @@ def profile_names(html: str) -> tuple[str, list[str]]:
         if _text(match.group(1)) == "別名":
             aliases.append(_text(match.group(2)))
     return main, [alias for alias in aliases if alias]
+
+
+_DATE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日")
+_PERIOD = re.compile(r"(\d{4})\s*年?\s*[-－~〜～]\s*(?:(\d{4})\s*年?)?")
+_SIZE = re.compile(r"([TBWH])\s*(\d{2,3})(?:\s*[(（]\s*([A-Z]{1,2})\s*カップ\s*[)）])?")
+_BLOOD = re.compile(r"^(AB|A|B|O)\s*型$")
+_TRAILING_NOTE = re.compile(r"[（(][^（()）]*[）)]\s*$")
+_ANCHOR_TEXT = re.compile(r"<a[^>]*>(.*?)</a>", re.S)
+#: `profile` 交回的固定列；解析不到的一律是 None，不猜。
+PROFILE_COLUMNS = (
+    "kana", "romaji", "birth_date", "height_cm", "bust_cm", "cup", "waist_cm", "hip_cm",
+    "blood_type", "birthplace", "hobbies", "debut_year", "active_until", "debut_title",
+    "debut_date", "blog_url", "site_url")
+
+
+def _iso_date(text: str) -> str | None:
+    """`2001年12月08日` → `2001-12-08`；年月日不齐或不是合法日期都返回 None。"""
+    from datetime import date
+
+    found = _DATE.search(text or "")
+    if not found:
+        return None
+    try:
+        return date(*(int(part) for part in found.groups())).isoformat()
+    except ValueError:
+        return None
+
+
+def _sizes(text: str) -> dict:
+    """`T156 / B86( Eカップ ) / W58 / H85 / S` → 身高与三围（厘米）、罩杯。
+
+    站上的数字就是厘米，不带单位；写成 `B-`、`W--` 的是没填，对应列留空。最后那个 `S`
+    站上没有说明是什么，只留在原文里。
+    """
+    found: dict = {}
+    names = {"T": "height_cm", "B": "bust_cm", "W": "waist_cm", "H": "hip_cm"}
+    for letter, number, cup in _SIZE.findall(text or ""):
+        found.setdefault(names[letter], int(number))
+        if letter == "B" and cup:
+            found.setdefault("cup", cup)
+    return found
+
+
+def _external(fragment: str) -> str | None:
+    """这一格里第一个站外链接；站上显示的文字常是 `http://`，`href` 才是真地址。"""
+    return next((href for href in HREF.findall(fragment)
+                 if urlsplit(href).scheme in {"http", "https"}), None)
+
+
+def profile(html: str) -> dict | None:
+    """资料页 → 结构化资料；不是资料页返回 None。
+
+    固定列见 `PROFILE_COLUMNS`，另有 `actress_id`、`name`、`tags`（站上的标签，按页上顺序）
+    与 `raw`（资料表每一格的原文，`別名` 那几行是列表）。只读 `act-profile` 那一块，作品与
+    评论里的同名格子不算。逐格的规则：
+
+    - 读音与罗马字取 `<h1>` 里 `<span>` 那段 `かな / Romaji`，缺哪半就留空。
+    - `生年月日` 取「年月日」三段拼成 ISO 日期，后面的「現在 24歳」与星座不要。
+    - `サイズ` 见 `_sizes`；`血液型` 只收 A、B、O、AB 四种。
+    - `AV出演期間` 形如 `2021年 -` 或 `2015年 - 2019年`：后半没写就是还在活动，`active_until` 为 None。
+    - `デビュー作品` 形如 `作品名（2021年05月 21日）`：括号里是出道日期，括号前是作品名。
+    - `ブログ`、`公式サイト` 取第一个站外链接的 `href`。
+    """
+    found_id = page_actress_id(html)
+    if not found_id:
+        return None
+    heading = _H1.search(html)
+    reading = ""
+    if heading:
+        span = re.search(r"<span[^>]*>(.*?)</span>", heading.group(1), re.S)
+        reading = _text(span.group(1)) if span else ""
+    kana, _, romaji = (part.strip() for part in reading.partition("/"))
+    block = _ACT_PROFILE.search(html)
+    cells: dict[str, str] = {}
+    raw: dict = {}
+    for match in FIELD.finditer(block.group(1) if block else ""):
+        label, value = _text(match.group(1)), match.group(2)
+        if not label:
+            continue
+        if label == "別名":
+            raw.setdefault(label, []).append(_text(value))
+            continue
+        cells.setdefault(label, value)
+        raw.setdefault(label, _text(value))
+    result: dict = {"actress_id": found_id,
+                    "name": _text(_SPAN.sub("", heading.group(1))) if heading else "",
+                    "kana": kana or None, "romaji": romaji or None}
+    result["birth_date"] = _iso_date(_text(cells.get("生年月日", "")))
+    result.update(dict.fromkeys(("height_cm", "bust_cm", "cup", "waist_cm", "hip_cm")))
+    result.update(_sizes(_text(cells.get("サイズ", ""))))
+    blood = _BLOOD.match(_text(cells.get("血液型", "")))
+    result["blood_type"] = blood.group(1) if blood else None
+    result["birthplace"] = _text(cells.get("出身地", "")) or None
+    result["hobbies"] = _text(cells.get("趣味・特技", "")) or None
+    period = _PERIOD.search(_text(cells.get("AV出演期間", "")))
+    result["debut_year"] = int(period.group(1)) if period else None
+    result["active_until"] = int(period.group(2)) if period and period.group(2) else None
+    debut = _text(cells.get("デビュー作品", ""))
+    result["debut_date"] = _iso_date(debut)
+    title = _TRAILING_NOTE.sub("", debut).strip() if result["debut_date"] else debut
+    result["debut_title"] = title or None
+    result["blog_url"] = _external(cells.get("ブログ", ""))
+    result["site_url"] = _external(cells.get("公式サイト", ""))
+    result["tags"] = [tag for tag in (_text(text) for text in _ANCHOR_TEXT.findall(cells.get("タグ", "")))
+                      if tag]
+    result["raw"] = raw
+    return result
 
 
 def profile_text(html: str, label: str) -> str:

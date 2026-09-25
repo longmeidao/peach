@@ -85,8 +85,9 @@ MAX_WORKS = 3
 #: minnano-av 的间隔与超时：与链接采集那一趟同一档，再放宽一点，这条后继不赶时间。
 MINNANO_INTERVAL, TIMEOUT = 3.0, 25.0
 #: 进程内共用：一轮里几十条后继一条接一条跑，每条各起一个限速器等于没有间隔。
+#: avwikidb 与 minnano-av 同一档（补女优资料后继，ADR-0067）。
 _LIMITER = HostLimiter({"minnano-av.com": MINNANO_INTERVAL, "seesaawiki.jp": 2.0,
-                        "fc2cmadb.com": 2.0})
+                        "fc2cmadb.com": 2.0, "avwikidb.com": MINNANO_INTERVAL})
 #: 机器人验证页的记号。它常以 200 回来，不认出来就会被当成正文缓存下去。
 _CHALLENGE = ("Just a moment", "cf-chl-", "challenge-platform")
 
@@ -278,27 +279,33 @@ class MinnanoPages:
 
     缓存记着跳转后的最终地址：检索唯一命中会直接跳到资料页，判「这是谁的页」要看那个地址。
     撞上 429、403 或机器人验证就记冷却并抛 `Blocked`，不重试。
+
+    补女优资料后继也拿它取 avwikidb 的页（`source` 换成那一站的冷却键，传输换成
+    `SourceTransport`）；`max_age` 给了就只认这么多秒以内的缓存，资料页过期重取靠它。
     """
 
     def __init__(self, cache_dir: Path, cooldown_root: Path, transport=None, *,
-                 limiter=_LIMITER, max_requests: int = MAX_REQUESTS):
+                 limiter=_LIMITER, max_requests: int = MAX_REQUESTS, source: str = MINNANO,
+                 max_age: float | None = None):
         from .http import HttpxTransport
 
         self.cache_dir, self.cooldown_root = Path(cache_dir), Path(cooldown_root)
         self.transport = transport or HttpxTransport()
         self.limiter, self.max_requests, self.requests = limiter, max_requests, 0
+        self.source, self.max_age = source, max_age
 
     def get(self, url: str) -> tuple[str, str]:
         from .http import HttpRequest
-        from .scraping_access import pause_source, paused_until
+        from .scraping_access import SourcePaused, pause_source, paused_until
 
         path = self.cache_dir / (hashlib.sha256(url.encode("utf-8")).hexdigest() + ".json")
         try:
-            cached = json.loads(path.read_text(encoding="utf-8"))
-            return str(cached["final_url"]), str(cached["body"])
+            if self.max_age is None or time.time() - path.stat().st_mtime < self.max_age:
+                cached = json.loads(path.read_text(encoding="utf-8"))
+                return str(cached["final_url"]), str(cached["body"])
         except (OSError, ValueError, KeyError, TypeError):
             pass
-        if paused_until(self.cooldown_root, MINNANO):
+        if paused_until(self.cooldown_root, self.source):
             raise Blocked("来源正在冷却")
         if self.requests >= self.max_requests:
             raise Unavailable("这一条的请求数用完了")
@@ -307,14 +314,16 @@ class MinnanoPages:
         try:
             response = self.transport(HttpRequest("GET", url, {"Accept": "text/html"}),
                                       TIMEOUT, 4 << 20)
+        except SourcePaused as error:
+            raise Blocked(str(error)) from None
         except Exception as error:  # noqa: BLE001 - 网络层失败都是「这一页没取到」
             raise Unavailable(f"网络请求失败：{type(error).__name__}") from None
         body = response.body.decode("utf-8", "replace")
         if response.status == 429:
-            pause_source(self.cooldown_root, MINNANO)
+            pause_source(self.cooldown_root, self.source)
             raise Blocked("来源限流（429）")
         if response.status == 403 or any(mark in body for mark in _CHALLENGE):
-            pause_source(self.cooldown_root, MINNANO, refused=True)
+            pause_source(self.cooldown_root, self.source, refused=True)
             raise Blocked("来源拒绝访问或要求机器人验证")
         if response.status != 200:
             raise Unavailable(f"HTTP {response.status}")
@@ -472,6 +481,18 @@ def _anchored(names: list[str], mine: set[str]) -> bool:
 
 def minnano_page(pages: MinnanoPages, keys: list[str], refs: list[str]) -> tuple[list, str]:
     """([(页面地址, 页上全部写法)], 说明)。先按账本里的编号进，没有才检索。"""
+    profiles, note = minnano_profile_pages(pages, keys, refs)
+    found = []
+    for url, html in profiles:
+        main, aliases = minnano_av.profile_names(html)
+        if main:
+            found.append((url, [clean(main), *(clean(alias) for alias in aliases)]))
+    return found, note
+
+
+def minnano_profile_pages(pages: MinnanoPages, keys: list[str],
+                          refs: list[str]) -> tuple[list[tuple[str, str]], str]:
+    """([(页面地址, 资料页正文)], 说明)：`minnano_page` 的入口那一半，补女优资料后继也走它。"""
     notes = []
     profiles = [pages.get(f"{minnano_av.SITE}actress{ref}.html") for ref in refs]
     for key in [] if refs else keys[:MAX_KEYS]:
@@ -486,12 +507,7 @@ def minnano_page(pages: MinnanoPages, keys: list[str], refs: list[str]) -> tuple
             profiles = [pages.get(f"{minnano_av.SITE}actress{hits.pop()}.html")]
             break
         notes.append(f"「{key}」{'对上多个人' if hits else '检索未命中'}")
-    found = []
-    for url, html in profiles:
-        main, aliases = minnano_av.profile_names(html)
-        if main:
-            found.append((url, [clean(main), *(clean(alias) for alias in aliases)]))
-    return found, "；".join(notes)
+    return profiles, "；".join(notes)
 
 
 def search_order(hits: list[tuple[str, str, str]]) -> list[str]:
