@@ -1740,14 +1740,18 @@ describe('设计决定', () => {
     });
   }
 
-  for (const viewport of [DESKTOP, { name: 'wide', width: 1440, height: 900, mobile: false }, MOBILE]) {
+  // 1000px 窗口侧栏展开时内容区只剩七百来像素：三栏的判据量的是内容区，这一档要排成两层，
+  // 身份那一栏不能被资料表挤到只剩一个字宽。
+  for (const [viewport, stacked] of [[DESKTOP, false], [{ name: 'wide', width: 1440, height: 900, mobile: false }, false],
+    [{ name: 'mid', width: 1000, height: 900, mobile: false }, true], [MOBILE, true]] as const) {
     it(`女优页头：宽屏资料表在身份信息右侧隔一道竖线，窄屏排到下面隔一道横线，整张卡不横向溢出（${viewport.name}）`, { timeout: 60_000 }, async () => {
       const opened = await openProfiledPerformer(browser, viewport);
       try {
         const geometry = await heroGeometry(opened.page);
-        assert.deepEqual(geometry.labels, ['生日', '身材', '出道', '出演期间', '标签'], '资料表不是那五项');
+        assert.deepEqual(geometry.labels, ['生日', '身材', '出道', '生涯', '标签'], '资料表不是那五项');
         assert.ok(geometry.facts && geometry.identity && geometry.hero, '页头缺了资料表');
-        if (viewport.mobile) {
+        assert.ok(geometry.identity.right - geometry.identity.left >= 240, '身份那一栏被挤窄了');
+        if (stacked) {
           assert.ok(geometry.facts.top >= geometry.identity.bottom - 0.5, '窄屏下资料表没有排到身份信息下面');
           assert.deepEqual(geometry.rule, { left: '0px', top: '1px' }, '窄屏下资料表该用横线和身份信息隔开');
         } else {
