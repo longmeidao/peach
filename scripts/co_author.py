@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .check_readme_impact import git
+from .check_readme_impact import git, unpublished
 
 #: 已登记的工具与它厂商的 noreply 地址。换用别的智能体就在这里加一行，别散着写。
 VENDORS = {
@@ -30,8 +30,8 @@ def values(repo: Path, head: str = "HEAD") -> list[str]:
 
 
 def commits(repo: Path, base: str, head: str = "HEAD") -> list[tuple[str, str]]:
-    """分支自己的提交：(取值用的 hash, 给人看的 `短 hash 主题`)，不含合进来的 merge。"""
-    output = git(repo, "log", "--no-merges", "--format=%H%x00%h %s", f"{base}..{head}")
+    """分支自己的提交：(取值用的 hash, 给人看的 `短 hash 主题`)，不含合进来的 merge 与已发布到远端的。"""
+    output = git(repo, "log", "--no-merges", "--format=%H%x00%h %s", f"{base}..{head}", *unpublished(repo))
     return [(line.partition("\0")[0], line.partition("\0")[2])
             for line in output.splitlines() if line.strip()]
 

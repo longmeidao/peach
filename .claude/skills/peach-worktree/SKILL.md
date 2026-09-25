@@ -61,8 +61,8 @@ description: 在用户说并行、工作树、暂存、提交、ready、集成�
   `Claude Code (Opus 5) <noreply@anthropic.com>`、`Codex (GPT-5.5) <noreply@openai.com>`。
   括号里那一段是重点：事后翻这一行是要知道哪个模型写的，同一个工具换代模型，写出来的
   代码差别比换工具本身还大。工具与地址的名单在 `scripts/co_author.py` 的 `VENDORS`，
-  `ready` / `integrate` 逐个提交判（合进来的 merge 不算），拒收缺失、形态不对、工具未
-  登记和地址与工具不配四种。
+  `ready` / `integrate` 逐个提交判，拒收缺失、形态不对、工具未登记和地址与工具不配四种；
+  合进来的 merge 与已在 `origin/master` 上的提交（网页上直接改的那种，签不了名）不算。
   一个提交由两个智能体接力写成时，两条并列署名都写上。
 
 - 禁止 `git add .`、`git add -A`、目录路径或 glob。只暂存任务明确拥有的文件。

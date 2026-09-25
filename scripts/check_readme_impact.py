@@ -15,11 +15,28 @@ FILES = {
 }
 
 
+#: 已经推到 GitHub 的提交。它的署名与主题改不了：改写 hash 只能强推覆盖远端。
+PUBLISHED_REF = "origin/master"
+
+
 def git(repo: Path, *args: str, message: str | None = None) -> str:
     return subprocess.run(
         ["git", "-C", str(repo), *args], input=message, capture_output=True,
         text=True, encoding="utf-8", check=True,
     ).stdout
+
+
+def unpublished(repo: Path) -> list[str]:
+    """`git log` 用的排除参数：`PUBLISHED_REF` 存在就排掉它能到达的提交，没有远端就什么都不排。
+
+    逐提交的门槛（署名、主题）只能落在还没发布的提交上：网页上直接改 README 的那条已经在
+    远端 master 上，分支把它并回来时它不可能再补署名。
+    """
+    try:
+        git(repo, "rev-parse", "--verify", "--quiet", f"{PUBLISHED_REF}^{{commit}}")
+    except subprocess.CalledProcessError:
+        return []
+    return [f"^{PUBLISHED_REF}"]
 
 
 def check(repo: Path, base: str, head: str = "HEAD") -> list[str]:

@@ -552,6 +552,16 @@ class CoAuthorTests(unittest.TestCase):
             "master")
         self.assertEqual(co_author.check(self.repo, "master"), [])
 
+    def test_a_commit_already_on_the_remote_master_cannot_be_signed_any_more(self):
+        """网页上直接改的那条已经在 `origin/master` 上，分支并回它时改写 hash 只能强推；
+        没有远端引用时什么都不豁免。"""
+        git(self.repo, "commit", "--allow-empty", "-m", "Remove section from README")
+        published = git(self.repo, "rev-parse", "HEAD").strip()
+        self.signed("Co-Authored-By: Claude Code (Opus 5) <noreply@anthropic.com>")
+        self.assertEqual(len(co_author.check(self.repo, "master")), 1)
+        git(self.repo, "update-ref", "refs/remotes/origin/master", published)
+        self.assertEqual(co_author.check(self.repo, "master"), [])
+
     def test_the_signature_gate_runs_before_the_test_evidence_is_read(self):
         """署名和 README 影响面在同一处拒收，都不必等到去读测试记录。"""
         (self.repo / "tests").mkdir()
@@ -612,6 +622,13 @@ class CommitSubjectTests(unittest.TestCase):
         git(self.repo, "checkout", "worker")
         git(self.repo, "commit", "--allow-empty", "-m", "fix(web): 自己的提交")
         git(self.repo, "merge", "--no-ff", "-m", "Merge branch 'master' into worker", "master")
+        self.assertEqual(commit_subject.check(self.repo, "master"), [])
+
+    def test_a_subject_already_on_the_remote_master_is_not_the_worker_s_to_fix(self):
+        problems = self.titled("Remove section from README", "docs(readme): 并回网页上的改动")
+        self.assertEqual(len(problems), 1)
+        git(self.repo, "update-ref", "refs/remotes/origin/master",
+            git(self.repo, "rev-parse", "HEAD~1").strip())
         self.assertEqual(commit_subject.check(self.repo, "master"), [])
 
     def test_the_subject_gate_runs_before_the_test_evidence_is_read(self):
