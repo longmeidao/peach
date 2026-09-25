@@ -574,6 +574,19 @@ class SweepTests(unittest.TestCase):
         pending.assert_not_called()
         run.assert_not_called()
 
+    def test_a_name_outside_the_console_code_page_does_not_stop_the_sweep(self):
+        """中文 Windows 控制台是 GBK，名字里一个 `䌷` 就能让打印抛错；输出按 UTF-8 写。"""
+        sweep = load_sweep()
+        console = io.TextIOWrapper(io.BytesIO(), encoding="gbk")
+        item = SimpleNamespace(key=followup.followup_key(1), label="䌷野あい")
+        with mock.patch("sys.stdout", console), \
+                mock.patch.object(sweep, "open_readonly", return_value=contextlib.nullcontext()), \
+                mock.patch.object(sweep, "pending", return_value=[item]), \
+                mock.patch("peach.web_state.WebContract"):
+            self.assertEqual(sweep.main(["--db", "unused.db"]), 0)
+        console.flush()
+        self.assertIn("䌷野あい", console.buffer.getvalue().decode("utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()
