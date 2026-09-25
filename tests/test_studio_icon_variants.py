@@ -822,7 +822,7 @@ class WordmarkSourceTests(unittest.TestCase):
 
     #: 名录之外的来源，各有各的理由，逐条另有用例。整表只允许这几家走别的地址：
     #: 漏写一家就意味着有人往表里加了一条没人解释过的来源。
-    NAMED_EXCEPTIONS = {"えむっ娘ラボ", "妄想族"}
+    NAMED_EXCEPTIONS = {"えむっ娘ラボ", "妄想族", "K M Produce", "変態紳士倶楽部"}
 
     def test_every_wordmark_comes_from_a_maker_directory_or_a_named_exception(self):
         """用户 2026-09-04 与 09-22 指定的是那三个厂牌名录，不是随便哪张网图。"""
@@ -856,6 +856,15 @@ class WordmarkSourceTests(unittest.TestCase):
         self.assertRegex(MODULE.WORDMARK_SOURCES["妄想族"],
                          r"^https://www\.mousouzoku-av\.com/pc/images/pages/common/")
 
+    def test_studios_the_user_named_take_the_wordmark_from_their_own_site_header(self):
+        """用户 2026-09-25 点名：KMP 母公司官网 header 是矢量字标，装着的却是 X 头像位图；
+        `変態紳士倶楽部` 官网 header 挂着字标，盘上一张图都没有。两家都指定官网那张。
+        """
+        self.assertRegex(MODULE.WORDMARK_SOURCES["K M Produce"],
+                         r"^https://www\.km-produce\.com/wp-content/themes/[^/]+/img/logo\.svg$")
+        self.assertRegex(MODULE.WORDMARK_SOURCES["変態紳士倶楽部"],
+                         r"^https://cdn\.up-timely\.com/image/22/site_design/")
+
     def test_a_label_without_a_site_of_its_own_is_pinned_to_its_parent_directory(self):
         """ナンパTV 自己没有站，账本里也一条链接都没有——自动发现那四条链全都从
         链接出发，对它一条都启动不了。母公司 Prestige 的名录里有它的字标。
@@ -868,12 +877,14 @@ class WordmarkSourceTests(unittest.TestCase):
 
         名录版未必更大：`ラグジュTV` 落地 200×200，展会那份是 413×413。这条约束防的
         是往表里顺手多塞一家——那一家没人比过两版，装上去可能是降级。
-        `S級素人`、`Real Works` 没有展会版可比，用户 2026-09-23 点名取 KMP 名录字标。
+        `S級素人`、`Real Works` 没有展会版可比，用户 2026-09-23 点名取 KMP 名录字标；
+        `K M Produce` 自己那一枚用户 2026-09-25 点名取官网 header。
         """
         picked = {"Jackson", "ラグジュTV", "million", "BAZOOKA", "俺の素人"}
         from_parent = {studio for studio, url in MODULE.WORDMARK_SOURCES.items()
                        if "prestige-av.com" in url or "km-produce.com" in url}
-        self.assertEqual(from_parent, picked | {"ナンパTV", "S級素人", "Real Works"})
+        self.assertEqual(from_parent,
+                         picked | {"ナンパTV", "S級素人", "Real Works", "K M Produce"})
 
 
 class IconSourceTests(unittest.TestCase):

@@ -254,6 +254,13 @@ WORDMARK_SOURCES: dict[str, str] = {
     "俺の素人": "https://www.km-produce.com/img2018/label/oreshiro/logo.svg",
     "S級素人": "https://www.km-produce.com/img2018/label/sq/logo.svg",
     "Real Works": "https://www.km-produce.com/img2018/label/real/logo.svg",
+    # 母公司自己那一枚：官网 header 的矢量字标（viewBox 135×56，栅格 512×213，内容比 2.46）。
+    # 原装的是 X 头像 400×400 位图；用户 2026-09-25 点名换官网 SVG。
+    "K M Produce": "https://www.km-produce.com/wp-content/themes/km-produce-v4/img/logo.svg",
+    # 官网 `to-satsu.com` header 与 og:image 同一张 240×120 透明底字标，内容比 2.03
+    # （2026-09-25 实测）。官网 09-23 才登记，此前盘上一张图都没有；用户同日点名。
+    "変態紳士倶楽部": "https://cdn.up-timely.com/image/22/site_design/base/logo_image"
+                "/0dwpajZ71cySRqLuIcHX4o4BkKaNRzYSx50Yrk1n.png",
     # 妄想族是片商实体，作品全挂在旗下 label 上（ADR-0049），没有展会图也没有名录那一格。
     # 自家站 header 的字标 332×187（2026-09-23 实测），就是它现在挂在门面上的那一枚。
     "妄想族": "https://www.mousouzoku-av.com/pc/images/pages/common/logo_mousouzoku.png",

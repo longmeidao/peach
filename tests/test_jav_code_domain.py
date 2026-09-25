@@ -238,6 +238,13 @@ class TokyoHotShapeTests(unittest.TestCase):
         self.assertTrue(is_uncensored_code("n0646"))
         self.assertEqual(code_query_variants("N0646"), ("n0646",))
 
+    def test_kirari_numbers_carry_an_s_before_the_serial(self):
+        """ムゲン 的 KIRARI 在序号前带 `S`；别家的「字母-S数字」没有实证，不放开。"""
+        for value in ("MKBD-S89", "MKBD-S118", "MKD-S89", "mkbd-s118"):
+            self.assertTrue(is_jav_code(normalise_code_key(value)), value)
+        for value in ("ABC-S12", "MKBD-S1", "MKBD-89S"):
+            self.assertFalse(is_jav_code(normalise_code_key(value)), value)
+
     def test_a_bare_number_is_read_only_at_the_head_of_the_name(self):
         self.assertEqual(release_code_from_filename("n1032.mkv"), "n1032")
         self.assertEqual(release_code_from_filename("n0762.mkv"), "n0762")

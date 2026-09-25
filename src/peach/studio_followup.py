@@ -43,6 +43,11 @@ OFFICIAL, OFFICIAL_LABEL = "official", "官方网站"
 SITE_INTERVAL, SITE_TIMEOUT = 1.2, 8.0
 ICON_INTERVAL, ICON_TIMEOUT = 1.5, 20.0
 
+#: 每轮处理任务给存量厂牌的名额，在女优头像的存量之前取，用不满的留给头像。排在头像后面
+#: 「补满」的话，没头像的女优一轮就把余下的名额用完：本机 2026-09-25 实测补厂牌一条都没
+#: 派出去过，`変態紳士倶楽部` 官网 09-23 登记后一直没图。没图的厂牌只有二三十家，几轮就轮遍。
+STOCK_SHARE = 8
+
 
 def followup_key(entity_id: int) -> str:
     return f"{TASK_KEY}:{int(entity_id)}"

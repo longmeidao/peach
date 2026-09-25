@@ -125,6 +125,11 @@ _CODE_AMATEUR = re.compile(r"^\d{3}[A-Z]{2,8}-\d{2,5}$")
 #: 2026-09-12 在本机账本 26265 条 video 上只读盘点，这样的名字有 91 条。
 _MMDDYY = r"(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{2}"
 _CODE_DATE = re.compile(rf"^{_MMDDYY}[-_]\d{{2,4}}$")
+#: ムゲンエンターテインメント 的无码系列 KIRARI：序号前带一个 `S`，`MKD-S` 是 DVD 版、
+#: `MKBD-S` 是 Blu-ray 版。javbus 上 `MKBD-S118`／`MKD-S118`／`MKBD-S89`／`MKD-S89`
+#: 四页都认这个写法、都给封面（2026-09-25 实测）。通用的「字母-S数字」不放开：
+#: 没有实证的形态放进来，素材编号和文件计数都会被当成番号。
+_KIRARI_CODE = re.compile(r"^MKB?D-S\d{2,4}$")
 
 #: Tokyo-Hot 的编号没有厂牌字母段：`n1234`／`k1234` 是本编，`red-123` 是 Red Hot 支线。
 #: 规范写法取小写，不跟着别的番号大写——javbus 的作品页地址就是 `/n1234`，NeoAVDC
@@ -443,6 +448,7 @@ def is_jav_code(code: str | None) -> bool:
         _CODE_STUDIO.match(value)
         or _CODE_AMATEUR.match(value)
         or _CODE_DATE.match(value)
+        or _KIRARI_CODE.match(value)
         or tokyo_hot_code(value)
     )
 
