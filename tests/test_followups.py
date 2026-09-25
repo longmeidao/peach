@@ -903,20 +903,21 @@ class ProcessLibraryTests(LedgerTestCase):
             entity_id = connection.execute(
                 "SELECT id FROM entity WHERE kind='performer'"
                 " AND canonical_name='涼森れむ'").fetchone()[0]
-        # 一、刮削自己声明了后继，实体身份就在 key 里：补头像一条，补别名一条。
-        from peach import performer_alias_followup
+        # 一、刮削自己声明了后继，实体身份就在 key 里：补头像、补别名、补女优资料各一条。
+        from peach import performer_alias_followup, performer_profile_followup
         self.assertEqual([item['key'] for item in result['followups']],
                          [followup_key('performer', entity_id),
-                          performer_alias_followup.followup_key(entity_id)])
+                          performer_alias_followup.followup_key(entity_id),
+                          performer_profile_followup.followup_key(entity_id)])
 
         # 二、结算这一轮时派出去，一件事排成父任务下的一行。
         parent = self.parent()
         queued = self.store.enqueue_followups(
             parent.id, [(item['key'], item['task_key'], item['label'])
                         for item in result['followups']])['queued']
-        self.assertEqual(len(queued), 2)
+        self.assertEqual(len(queued), 3)
 
-        # 三、真的被跑掉，收在终态。补别名那一条的两站都换成取不到页的替身，不联网。
+        # 三、真的被跑掉，收在终态。补别名、补女优资料的各站都换成取不到页的替身，不联网。
         class Offline:
             def get(self, _url):
                 raise performer_alias_followup.Unavailable('测试里不联网')
@@ -931,12 +932,17 @@ class ProcessLibraryTests(LedgerTestCase):
             cache_bust=lambda: None)
         offline = {performer_alias_followup.MINNANO: Offline(),
                    performer_alias_followup.AV_NEME: Offline()}
-        with mock.patch.object(performer_alias_followup, 'open_sites', return_value=offline):
-            self.assertEqual(FollowupRunner(contract).drain(), 2)
+        profile_offline = {performer_profile_followup.MINNANO: Offline(),
+                           performer_profile_followup.AVWIKIDB: Offline()}
+        with mock.patch.object(performer_alias_followup, 'open_sites', return_value=offline), \
+                mock.patch.object(performer_profile_followup, 'open_sites',
+                                  return_value=profile_offline):
+            self.assertEqual(FollowupRunner(contract).drain(), 3)
         done = self.store.get(queued[0])
         self.assertEqual(done.status, 'succeeded')
         self.assertEqual(done.result_summary['outcome'], '图库里没有这个名字，封面上没有能截的脸')
         self.assertEqual(self.store.get(queued[1]).result_summary['outcome'], '未取得')
+        self.assertEqual(self.store.get(queued[2]).status, 'succeeded')
         self.assertFalse((self.root / 'generated' / 'avatars'
                           / f'performer-{entity_id}.img').exists())
 

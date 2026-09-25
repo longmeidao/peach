@@ -364,31 +364,21 @@ def _visit_minnano(contract, pages, entity_id: int, names, state: dict, batch: s
 def _visit_avwikidb(contract, pages, entity_id: int, names, state: dict, batch: str, base: dict,
                     reports: dict, rows: list) -> int:
     """avwikidb：从她的作品页定编号，再读女优页做交叉核对。返回冲突条数。"""
-    canonical, aliases = names
+    canonical = names[0]
     refs = state["avwikidb"]
-    with contract.database.read_connection() as connection:
-        profile = read_profile(connection, entity_id)
-        synced = connection.execute(
-            "SELECT max(last_synced_at) FROM entity_external_ref WHERE entity_id=? AND provider=?",
-            (entity_id, AVWIKIDB)).fetchone()[0] if refs else None
-    if refs and _fresh(_parse_stamp(synced)):
+    profile, fresh = _avwikidb_state(contract, entity_id, refs)
+    if fresh:
         reports[AVWIKIDB] = "资料未过期"
         rows.append({**base, "site": AVWIKIDB, "page": avwikidb.ACTOR_PAGE.format(id=refs[0]),
                      "action": FRESH, "detail": "编号已绑，资料取回不到 30 天"})
         return 0
-    actor_ref, work = (refs[0], "") if refs else ("", "")
-    if not actor_ref:
-        mine = {alias.match_key(name) for name in [canonical, *aliases] if name}
-        romaji = avwikidb.romaji_key((state.get("profile") or profile or {}).get("romaji") or "")
-        try:
-            actor_ref, work, note = _find_in_cast(pages, state["codes"], mine, romaji)
-        except (alias.Blocked, alias.Unavailable) as error:
-            reports[AVWIKIDB] = f"{UNFETCHED}：{error}"
+    if refs:
+        actor_ref, work = refs[0], ""
+    else:
+        located = _locate_actor(pages, names, state, profile, base, reports, rows)
+        if located is None:
             return 0
-        if not actor_ref:
-            reports[AVWIKIDB] = f"{MISS}：{note}"
-            rows.append({**base, "site": AVWIKIDB, "page": "", "action": MISS, "detail": note})
-            return 0
+        actor_ref, work = located
     url = avwikidb.ACTOR_PAGE.format(id=actor_ref)
     try:
         actor = avwikidb.actor_profile(pages.get(url)[1]) or {}
@@ -401,16 +391,55 @@ def _visit_avwikidb(contract, pages, entity_id: int, names, state: dict, batch: 
     if actor and actor.get("id") != actor_ref:
         actor = {}
     found = conflicts(state.get("profile") or profile, actor)
-    metadata = {"source": SOURCE, "batch": batch, "work": work or None,
-                "name": actor.get("name"), "kana": actor.get("kana"), "romaji": actor.get("romaji"),
-                "image": actor.get("image"), "height": actor.get("height_cm"),
-                "birthDate": actor.get("birth_date"), "conflicts": found or None}
-    metadata = {key: value for key, value in metadata.items() if value is not None}
     with contract.database.write_transaction() as connection:
         if not _alive(connection, entity_id, canonical):
             reports[AVWIKIDB] = f"{MISS}：账本里这条实体已经变了"
             return 0
-        verdict = _bind(connection, entity_id, AVWIKIDB, actor_ref, metadata)
+        verdict = _bind(connection, entity_id, AVWIKIDB, actor_ref,
+                        _actor_metadata(actor, work, batch, found))
+    return _record_bind(url, verdict, work, actor, found, batch, base, reports, rows)
+
+
+def _avwikidb_state(contract, entity_id: int, refs: list[str]) -> tuple[dict | None, bool]:
+    """(minnano-av 资料, 已绑编号的资料是否未过期)。"""
+    with contract.database.read_connection() as connection:
+        profile = read_profile(connection, entity_id)
+        synced = connection.execute(
+            "SELECT max(last_synced_at) FROM entity_external_ref WHERE entity_id=? AND provider=?",
+            (entity_id, AVWIKIDB)).fetchone()[0] if refs else None
+    return profile, bool(refs) and _fresh(_parse_stamp(synced))
+
+
+def _locate_actor(pages, names, state: dict, profile: dict | None, base: dict, reports: dict,
+                  rows: list) -> tuple[str, str] | None:
+    """(女优编号, 番号)：从她作品的出演表定编号；定不下来写好判词，返回 None。"""
+    canonical, aliases = names
+    mine = {alias.match_key(name) for name in [canonical, *aliases] if name}
+    romaji = avwikidb.romaji_key((state.get("profile") or profile or {}).get("romaji") or "")
+    try:
+        actor_ref, work, note = _find_in_cast(pages, state["codes"], mine, romaji)
+    except (alias.Blocked, alias.Unavailable) as error:
+        reports[AVWIKIDB] = f"{UNFETCHED}：{error}"
+        return None
+    if not actor_ref:
+        reports[AVWIKIDB] = f"{MISS}：{note}"
+        rows.append({**base, "site": AVWIKIDB, "page": "", "action": MISS, "detail": note})
+        return None
+    return actor_ref, work
+
+
+def _actor_metadata(actor: dict, work: str, batch: str, found: list[dict]) -> dict:
+    """外部编号的 `metadata_json`：带 source/batch 以便撤回，空值不写。"""
+    metadata = {"source": SOURCE, "batch": batch, "work": work or None,
+                "name": actor.get("name"), "kana": actor.get("kana"), "romaji": actor.get("romaji"),
+                "image": actor.get("image"), "height": actor.get("height_cm"),
+                "birthDate": actor.get("birth_date"), "conflicts": found or None}
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
+def _record_bind(url: str, verdict: str, work: str, actor: dict, found: list[dict], batch: str,
+                 base: dict, reports: dict, rows: list) -> int:
+    """写绑定与冲突的判词行，返回记下的冲突条数。"""
     reports[AVWIKIDB] = (f"命中 {url}" if verdict == BIND else f"{TAKEN}：{url} 已属另一条实体")
     detail = f"{work} 的出演表里对得上她" if work else "编号已绑，重取女优页"
     if not actor:
