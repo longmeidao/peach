@@ -96,7 +96,7 @@ class SeedPackCase(unittest.TestCase):
             ref(con, sora, "stash", "26")
             ref(con, sora, "javdb", "seedref", {"source": "auto:seed", "batch": "auto:seed@old"})
             link(con, sora, "social", "https://x.com/amakawa_sora_")
-            link(con, sora, "official", "https://www.startup0701.net/")
+            link(con, sora, "official", "https://www.Startup0701.net/")
             link(con, sora, "social", "https://onlyfans.example/sora", sensitive=1)
             link(con, sora, "catalog", "https://www.minnano-av.com/actress295275.html")
             link(con, sora, "social", "https://x.com/seeded", metadata={"source": "auto:seed", "batch": "x"})
@@ -125,7 +125,7 @@ class ExportTests(SeedPackCase):
                          "Stash 的行号与种子写的编号都不导")
         self.assertEqual([l["url"] for l in sora["links"]],
                          ["https://www.startup0701.net/", "https://x.com/amakawa_sora_"],
-                         "敏感链接、目录页与种子写的链接都不导")
+                         "敏感链接、目录页与种子写的链接都不导；主机按导入同一套规则归一，大小写不进包")
         self.assertEqual(sora["profile"]["fields"],
                          {"kana": "あまかわそら", "birth_date": "1998-10-10", "height_cm": 164, "cup": "G",
                           "tags": ["巨乳", "美肌"]}, "资料按列导，raw 残片不导")
