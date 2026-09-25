@@ -78,13 +78,22 @@ def _refs(connection: sqlite3.Connection, entity_id: int) -> list[dict]:
             if provider not in EXCLUDED_PROVIDERS and not _metadata_ours(metadata)]
 
 
+def _normalised(url: str) -> str:
+    """补 scheme、主机小写、改过名的站换现主机：导出与导入用同一个形态，本机存的
+    `prime-Recruit.com` 才不会在导回时多出一条只差大小写的链接。"""
+    url = str(url or "").strip()
+    return canonical_url(url if urlsplit(url).scheme else "https://" + url) if url else ""
+
+
 def _links(connection: sqlite3.Connection, entity_id: int) -> list[dict]:
-    marks = ",".join("?" * len(LINK_KINDS))
-    return [{"kind": str(kind), "label": str(label), "url": str(url)}
-            for kind, label, url, metadata in connection.execute(
-                f"SELECT link_kind,label,url,metadata_json FROM entity_link WHERE entity_id=?"
-                f" AND is_sensitive=0 AND link_kind IN ({marks}) ORDER BY url", (entity_id, *LINK_KINDS))
-            if not _metadata_ours(metadata)]
+    found = {}
+    for kind, label, url, metadata in connection.execute(
+            f"SELECT link_kind,label,url,metadata_json FROM entity_link WHERE entity_id=?"
+            f" AND is_sensitive=0 AND link_kind IN ({','.join('?' * len(LINK_KINDS))}) ORDER BY url",
+            (entity_id, *LINK_KINDS)):
+        if not _metadata_ours(metadata) and _normalised(url):
+            found.setdefault(_normalised(url), {"kind": str(kind), "label": str(label), "url": _normalised(url)})
+    return [found[url] for url in sorted(found)]
 
 
 def _profile(connection: sqlite3.Connection, entity_id: int) -> dict | None:
@@ -220,10 +229,9 @@ def _land_refs(connection, entity_id: int, item: dict, batch: str, stamp: str) -
 def _land_links(connection, entity_id: int, item: dict, batch: str, stamp: str) -> int:
     written = 0
     for link in item.get("links") or []:
-        url = str(link.get("url") or "").strip()
+        url = _normalised(link.get("url"))
         if not url or link.get("kind") not in LINK_KINDS:
             continue
-        url = canonical_url(url if urlsplit(url).scheme else "https://" + url)
         connection.execute(
             "INSERT OR IGNORE INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive,"
             "metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?,?)",
