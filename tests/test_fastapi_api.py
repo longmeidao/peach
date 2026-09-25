@@ -11,6 +11,7 @@ from unittest.mock import patch
 from urllib.parse import quote
 
 from peach import __version__
+from support.ledger import fresh_ledger
 from support.mp4 import minimal_mp4
 
 
@@ -152,8 +153,10 @@ class RobotsTests(unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
         root = Path(cls.tmp.name).resolve()
+        # 账本要真的建出来：`/api/items` 走只读连接（`mode=ro`），文件不存在就打不开，
+        # 响应变成 500 并往日志里吐一整段回溯，用例却因为响应头照样在而通过。
         cls.app = create_app(PeachSettings(
-            configured=True, db_path=root / "ledger.db", follow_state_root=root / "state"))
+            configured=True, db_path=fresh_ledger(root), follow_state_root=root / "state"))
 
     @classmethod
     def tearDownClass(cls):
@@ -175,6 +178,8 @@ class RobotsTests(unittest.IsolatedAsyncioTestCase):
             for path in ("/robots.txt", "/healthz", "/login", "/favicon.ico", "/api/items"):
                 with self.subTest(path=path):
                     response = await client.get(path)
+                    self.assertLess(response.status_code, 500,
+                                    "夹具坏了也带着响应头，5xx 说明测的不是正常响应")
                     self.assertEqual(
                         response.headers["x-robots-tag"], "noindex, nofollow, noarchive")
 
