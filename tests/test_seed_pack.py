@@ -89,6 +89,8 @@ class SeedPackCase(unittest.TestCase):
             studio = entity(con, "studio", "S1 NO.1 STYLE")
             entity(con, "performer", "只有名字")
             alias(con, sora, "春山心愛", "r18:performer")
+            alias(con, sora, "Amakawa Sora", "r18:performer")
+            alias(con, sora, "そら", "javdb-actor-page@javdb-20260912")
             alias(con, sora, "二宮そら", "javdb-actor-page@javdb-20260912")
             alias(con, sora, "二宮そら", "kanji-simplification")
             alias(con, sora, "种子写的", BATCH)
@@ -120,7 +122,7 @@ class ExportTests(SeedPackCase):
         sora = by_name["天川そら"]
         self.assertEqual([(a["alias"], a["source"]) for a in sora["aliases"]],
                          [("二宮そら", "javdb-actor-page@javdb-20260912"), ("春山心愛", "r18:performer")],
-                         "按归一写法排序，同一写法只留一个来源，种子自己写的不再导出")
+                         "按归一写法排序，同一写法只留一个来源；罗马字、短单名与种子自己写的不导")
         self.assertEqual(sora["refs"], [{"provider": "minnano-av", "kind": "performer", "id": "295275"}],
                          "Stash 的行号与种子写的编号都不导")
         self.assertEqual([l["url"] for l in sora["links"]],
@@ -195,12 +197,15 @@ class ImportTests(SeedPackCase):
             write_profile(self.target, ids["her"], {"kana": "本机刮的", "raw": {}},
                           source="auto:performer-profile@99", source_url="https://example/", fetched_at=STAMP)
             membership(self.target, ids["her"], ids["agency"], "review:user")
-            link(self.target, ids["her"], "social", "https://x.com/amakawa_sora_")
+            link(self.target, ids["her"], "social", "https://X.com/amakawa_sora_")
             alias(self.target, ids["her"], "二宮そら", "user:manual")
         with self.target:
             report = seed_pack.land(self.target, pack)
         self.assertEqual((report["profiles"], report["refs"], report["memberships"], report["links"],
                           report["aliases"]), (0, 1, 0, 2, 2))
+        self.assertEqual(self.target.execute("SELECT count(*) FROM entity_link WHERE entity_id=?",
+                                             (ids["her"],)).fetchone()[0], 2,
+                         "本机那条主机大写的同一地址不再补一条只差大小写的")
         self.assertEqual(read_profile(self.target, ids["her"])["source"], "auto:performer-profile@99",
                          "本机后继刚刮的资料比种子新，不被盖掉")
         self.assertEqual(self.target.execute("SELECT source FROM entity_membership WHERE member_id=?",

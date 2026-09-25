@@ -58,13 +58,19 @@ def _now() -> str:
 # -- 导出 ----------------------------------------------------------------------
 
 
-def _aliases(connection: sqlite3.Connection, entity_id: int) -> list[dict]:
-    """名下的别名写法，同一写法只留排在前面的那个来源；种子自己写的不再导出。"""
+def _aliases(connection: sqlite3.Connection, entity_id: int, kind: str) -> list[dict]:
+    """名下的别名写法，同一写法只留排在前面的那个来源；种子自己写的不再导出。
+
+    女优的写法先过 ADR-0055 的判据：罗马字与短单名导入时本来就判「不收」，留在包里只会让
+    匹配认出别人（`绫乃梓` 的 `Nozomi` 与另一位 `NOZOMI` 同键，两位都对上就整条跳过）。"""
+    from .performer_alias_followup import rejection
     found: dict[str, dict] = {}
     for alias, source in connection.execute(
             "SELECT alias,source FROM entity_alias WHERE entity_id=? ORDER BY normalized_alias,source",
             (entity_id,)):
         if _ours(source) or not str(alias or "").strip():
+            continue
+        if kind == "performer" and rejection(str(alias)):
             continue
         found.setdefault(normalize_entity_name(str(alias)), {"alias": str(alias), "source": str(source)})
     return list(found.values())
@@ -123,7 +129,7 @@ def export_pack(connection: sqlite3.Connection, *, version: str) -> dict:
     for entity_id, kind, name in connection.execute(
             f"SELECT id,kind,canonical_name FROM entity WHERE kind IN ({','.join('?' * len(KINDS))})"
             " ORDER BY kind,normalized_name,id", KINDS):
-        item = {"kind": str(kind), "name": str(name), "aliases": _aliases(connection, entity_id),
+        item = {"kind": str(kind), "name": str(name), "aliases": _aliases(connection, entity_id, str(kind)),
                 "refs": _refs(connection, entity_id), "links": _links(connection, entity_id)}
         if kind == "performer":
             profile, agency = _profile(connection, entity_id), _agency(connection, entity_id)
@@ -227,11 +233,16 @@ def _land_refs(connection, entity_id: int, item: dict, batch: str, stamp: str) -
 
 
 def _land_links(connection, entity_id: int, item: dict, batch: str, stamp: str) -> int:
+    """已有的链接按同一套归一规则比：`UNIQUE(entity_id,url)` 认字面，本机存着
+    `prime-Recruit.com` 时只靠 `INSERT OR IGNORE` 会多出一条只差大小写的。"""
+    have = {_normalised(url) for (url,) in connection.execute(
+        "SELECT url FROM entity_link WHERE entity_id=?", (entity_id,))}
     written = 0
     for link in item.get("links") or []:
         url = _normalised(link.get("url"))
-        if not url or link.get("kind") not in LINK_KINDS:
+        if not url or url in have or link.get("kind") not in LINK_KINDS:
             continue
+        have.add(url)
         connection.execute(
             "INSERT OR IGNORE INTO entity_link(entity_id,link_kind,label,url,hostname,is_sensitive,"
             "metadata_json,created_at,updated_at) VALUES(?,?,?,?,?,0,?,?,?)",
