@@ -608,9 +608,11 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
     拼：官方那条由 `resolve_official_avatar` 认 pixiv.pximg.net 一个主机、
     `profile_avatar_tiers` 认 X、Patreon 与 FANBOX 各自的图床，归档那条由
     `follow_assets.mirror_avatar_url` 按 provider 查表；前端递不进任何 URL。
+    查官方资料与取图共用应用那一条 client，不每次请求另开连接池。
     """
     state = request.app.state
-    client = state.http_transport.client
+    transport = state.http_transport
+    client = transport.client
     if provider:
         target = follow_assets.mirror_avatar_url(provider, ref)
         if target is None:
@@ -630,7 +632,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
             tier_lists = []
             for name, handle in identities:
                 try:
-                    tier_lists.append(profile_avatar_tiers(name, handle))
+                    tier_lists.append(profile_avatar_tiers(name, handle, transport=transport))
                 except (OSError, FollowSourceError):
                     continue
             return follow_assets.largest_image(client, tier_lists)
@@ -644,7 +646,7 @@ def follow_avatar(request: Request, service: str = "", id: str = "",
 
         def fetch():
             try:
-                resolved = resolve_official_avatar(service, id)
+                resolved = resolve_official_avatar(service, id, transport=transport)
             except (OSError, FollowSourceError):
                 return None
             return follow_assets.fetch_image(client, resolved)
