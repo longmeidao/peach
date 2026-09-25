@@ -359,7 +359,7 @@ const PROFILED = {
     birth_date: '1991-07-21', age: 35, height: 155, bust: 86, waist: 60, hip: 87, cup: 'F',
     debut_date: '2010-12-02', debut_title: 'セキララ 〜今どき世代のゆるい性事情〜 03 はじめての撮影でとまどう素人娘の記録',
     active: { from: '2010', to: '2023' },
-    tags: ['美乳', '美尻', 'レズ', 'アナル', '巨乳', '巨尻', '美人'],
+    tags: ['美乳', '美臀', '百合', '肛交', '巨乳', '高颜值', '苗条', '高个', '剛毛'],
   },
   name_groups: {
     reading: 'しのだゆう', shown: ['篠崎ゆう子', '高木早希', '橋本真紀'], total: 7,
@@ -1850,6 +1850,74 @@ describe('设计决定', () => {
       }
     });
   }
+
+  it('资料表的标签只列前四个，余下的收进「+N」，浮层进顶层列全部标签', { timeout: 60_000 }, async () => {
+    const opened = await openProfiledPerformer(browser, DESKTOP);
+    try {
+      const page = opened.page;
+      const cell = await page.locator('.entityfacts dd.facttags').evaluate((dd) => ({
+        shown: [...dd.querySelectorAll(':scope > .facttag')].map((tag) => tag.textContent!.trim()),
+        more: dd.querySelector(':scope > .factmore')?.textContent?.trim() ?? '',
+      }));
+      assert.deepEqual(cell.shown, PROFILED.profile.tags.slice(0, 4), '标签那一格不是前四个');
+      assert.equal(cell.more, '+5', '「+N」数的不是剩下那几个标签');
+      const pop = page.locator('#entityTagPop');
+      assert.equal(await pop.isVisible(), false);
+      await page.locator('.factmore').hover();
+      await pop.waitFor({ state: 'visible', timeout: 5_000 });
+      const shown = await pop.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return {
+          topLayer: element.matches(':popover-open'),
+          inView: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+          title: element.querySelector('.aliaspophead')?.textContent?.trim(),
+          tags: [...element.querySelectorAll('.facttag')].map((tag) => tag.textContent!.trim()),
+        };
+      });
+      assert.equal(shown.topLayer, true, '标签浮层没进顶层，会被资料卡的 overflow:hidden 裁掉');
+      assert.ok(shown.inView, '标签浮层越出了视口');
+      assert.equal(shown.title, '9 个标签');
+      assert.deepEqual(shown.tags, PROFILED.profile.tags);
+      await page.mouse.move(1, 1);
+      await pop.waitFor({ state: 'hidden', timeout: 5_000 });
+      // 点一下钉住：指针离开也不收，Escape 才收。
+      await page.locator('.factmore').click();
+      await page.mouse.move(1, 1);
+      await page.waitForTimeout(300);
+      assert.equal(await pop.isVisible(), true, '点按钉住的标签浮层指针一走就收了');
+      await page.keyboard.press('Escape');
+      assert.equal(await pop.isVisible(), false, 'Escape 收不起标签浮层');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('换头像的加号量在圆框上：整行比圆框高时也贴着圆框右下角', { timeout: 60_000 }, async () => {
+    const opened = await openProfiledPerformer(browser, { name: 'wide', width: 1440, height: 900, mobile: false });
+    try {
+      const page = opened.page;
+      const button = page.locator('.entityportraitwrap [data-avatar-picker] button');
+      await button.waitFor({ timeout: 15_000 });
+      // 行有多高看她有多少资料、别名那一行折不折；这里直接把身份列撑高，量的是加号跟不跟圆框。
+      await page.addStyleTag({ content: '.entityidentity{padding-block:40px}' });
+      const box = await page.evaluate(() => {
+        const rect = (element: Element) => element.getBoundingClientRect();
+        const wrap = rect(document.querySelector('.entityportraitwrap')!);
+        const circle = rect(document.querySelector('.entityportrait')!);
+        const plus = rect(document.querySelector('.entityportraitwrap [data-avatar-picker] button')!);
+        return { wrap: wrap.height, circle: { right: circle.right, bottom: circle.bottom, height: circle.height },
+          plus: { right: plus.right, bottom: plus.bottom } };
+      });
+      assert.ok(box.wrap > box.circle.height + 8, `这一行没有比圆框高，用例量不出偏移（行 ${box.wrap}，圆框 ${box.circle.height}）`);
+      // Tailwind 的 `right-1 bottom-1`：按钮离圆框外框右、下各 4px。
+      assert.ok(Math.abs(box.circle.bottom - box.plus.bottom - 4) < 1, `加号没有贴着圆框底边：${JSON.stringify(box)}`);
+      assert.ok(Math.abs(box.circle.right - box.plus.right - 4) < 1, `加号没有贴着圆框右边：${JSON.stringify(box)}`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 
   it('女优页头深色主题：资料表与别名浮层跟着主题取墨色和浮层底', { timeout: 60_000 }, async () => {
     const opened = await openProfiledPerformer(browser, DESKTOP, 'dark');
