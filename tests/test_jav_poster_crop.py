@@ -311,6 +311,72 @@ class CodeShapeTests(unittest.TestCase):
             NONE)
 
 
+class WideSleeveTests(unittest.TestCase):
+    """Blu-ray 模板的宽封套：厂牌开门，比例决定走不走，正封形状另有一套先验。"""
+
+    WIDE = (750, 419)
+
+    def test_only_the_listed_labels_open_the_door(self):
+        for code in ("CWPBD-126", "cwpbd-119", "SMBD-110"):
+            with self.subTest(code=code):
+                self.assertTrue(jav_poster_crop.is_wide_sleeve_label(code))
+        for code in ("IDBD-446", "PBD-390", "ABW-232", "259LUXU-1475", "", None):
+            with self.subTest(code=code):
+                self.assertFalse(jav_poster_crop.is_wide_sleeve_label(code))
+
+    def test_a_wide_sleeve_of_a_listed_label_is_cut_at_its_own_prior(self):
+        """没有梯度时按宽封套的先验从右缘量回去，不是 DVD 那一档的 0.704。"""
+        width, height = self.WIDE
+        box = jav_poster_crop.front_panel_box(width, height, None, "CWPBD-126")
+        self.assertEqual(box["method"], RATIO)
+        self.assertEqual(box["x0"], round(width - jav_poster_crop.WIDE_PANEL_ASPECT * height))
+        self.assertEqual((box["x1"], box["y0"], box["y1"]), (width, 0, height))
+
+    def test_the_same_image_without_the_label_is_still_a_still(self):
+        """比例一样的图，厂牌不在名单里就照旧当 16:9 剧照：这一档全靠厂牌开门。"""
+        width, height = self.WIDE
+        for code in ("ABW-232", None):
+            with self.subTest(code=code):
+                box = jav_poster_crop.front_panel_box(width, height, None, code)
+                self.assertEqual(box["method"], NONE)
+
+    def test_a_listed_label_with_a_dvd_shaped_cover_walks_the_dvd_path(self):
+        """厂牌只开门，不定切法：同一厂牌哪一期换成 DVD 比例的封套，仍按那一档的形状切；
+        比例超出宽封套区间的仍是剧照。"""
+        record = jav_poster_crop.crop_record("CWPBD-126", 800, 540, [0.0] * 800)
+        self.assertEqual(record["box"]["method"], RATIO)
+        self.assertEqual(record["box"]["x0"],
+                         round(800 - jav_poster_crop.PANEL_ASPECT * 540))
+        self.assertEqual(jav_poster_crop.crop_record("SMBD-110", 1900, 1000)["box"]["method"],
+                         NONE)
+
+    @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
+    def test_a_spine_inside_the_narrow_window_is_found(self):
+        width, height = self.WIDE
+        fold = round(width - 0.855 * height)
+        profile = gradient_of(sleeve(width, height, fold))
+        box = jav_poster_crop.front_panel_box(width, height, profile, "SMBD-172")
+        self.assertEqual(box["method"], FOLD)
+        # 那条三列宽的黑线整条留在框外，正封从它右边开始。
+        self.assertGreaterEqual(box["x0"], fold + 3, box)
+        self.assertLessEqual(box["x0"] - (fold + 3), 2, box)
+
+    @unittest.skipUnless(opencv_available(), "缺 vision 依赖组")
+    def test_an_edge_outside_the_narrow_window_is_content_not_the_spine(self):
+        """书脊上竖排的片名字边比书脊右缘强，但它切出的形状不在窗里，不按它切。"""
+        width, height = self.WIDE
+        text_edge = round(width - 0.90 * height)
+        profile = gradient_of(sleeve(width, height, text_edge))
+        box = jav_poster_crop.front_panel_box(width, height, profile, "CWPBD-126")
+        self.assertEqual(box["method"], RATIO)
+        self.assertEqual(box["x0"], round(width - jav_poster_crop.WIDE_PANEL_ASPECT * height))
+
+    def test_the_record_routes_the_code_into_the_shape_decision(self):
+        record = jav_poster_crop.crop_record("SMBD-110", *self.WIDE, [0.0] * self.WIDE[0])
+        self.assertEqual(record["box"]["method"], RATIO)
+        self.assertEqual(record["px"], list(self.WIDE))
+
+
 class RecordTests(unittest.TestCase):
     """边车的内容、读写与失效判定。"""
 

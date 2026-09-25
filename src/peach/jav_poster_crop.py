@@ -25,6 +25,9 @@ JAV 的官方封套是「背面 | 书脊 | 正面」拼成的一整张横图，�
 所以只在「切出来的正封落在 `PANEL_ASPECT_MIN`～`PANEL_ASPECT_MAX` 之间」的那几十
 列里找峭壁，窗里够强的边不止一条时按形状定夺，不按谁更强。
 
+同一套找法还有一档形状不同的宽封套（`WIDE_SLEEVE_LABELS`）：Blu-ray 模板的正封更宽，
+整张封套的比例和 16:9 剧照几乎一样，只能由厂牌开门、再由比例决定走不走这一档。
+
 外部实现的实测值登记在 `docs/REUSE.md`，这里留作来路：
 
 - NeoAVDC `c7a430c64013c97a0213cd8a57e2ff5696793a86`（MIT）量 DMM/JavBus 封套，
@@ -46,6 +49,7 @@ import json
 import statistics
 from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 from . import images
 from .catalog_rules import (
@@ -89,6 +93,38 @@ FOLD_SETTLE_LIMIT = 0.01
 #: 封套总宽在 0.60～0.82 之间飘。
 PANEL_ASPECT = 0.704
 
+#: 宽封套：Dreamroom 旗下 CATWALK POISON（`CWPBD`）与 Super Model（`SMBD`）的 Blu-ray
+#: 封套，javbus 给的是 750×419（宽高比 1.79），和 mgstage 素人系列的 16:9 剧照（1.778）
+#: 只差 1%，比例分不开；画面也分不开：本机同一比例带的 143 张剧照里 52 张在同一列窗
+#: 里也有满高的缝，按「窄条双边」找书脊、阈值放到最严仍误收 20 张、还漏掉 SMBD-172。
+#: 所以由厂牌开门、比例决定走不走：厂牌在名单里且比例落在这个区间才按宽封套切；同一
+#: 厂牌换成 DVD 比例的封面照旧走上面那一档，比例更宽的照旧当剧照。别的 `*BD` 厂牌
+#: （IDBD、PBD、REBD）的封面是普通 DVD 比例，不在名单里。
+WIDE_SLEEVE_LABELS = frozenset({"CWPBD", "SMBD"})
+WIDE_SLEEVE_RATIO_MIN = 1.75
+WIDE_SLEEVE_RATIO_MAX = 1.85
+#: 宽封套正封的宽高比先验与折痕窗。本机六张实测书脊右缘都切出 0.848～0.852：这是一家
+#: 模板的固定几何，不像 DVD 封套的书脊厚度随碟数变，所以窗只留 JPEG 糊边与缩放的余量。
+#: 窗一放宽就会认错：书脊上竖排的片名文字边比书脊右缘强得多（CWPBD-126 是 0.81 对
+#: 0.32），0.80～0.90 的窗会按它切在 387 列、SMBD-110 切在 388 列，正封左缘各留下
+#: 六七列书脊；窄窗里那道文字边不在窗内，右缘又不够峭壁，落到 `ratio` 的 394 列。
+WIDE_PANEL_ASPECT = 0.85
+WIDE_PANEL_ASPECT_MIN = 0.83
+WIDE_PANEL_ASPECT_MAX = 0.87
+
+
+class PanelShape(NamedTuple):
+    """一档封套的正封形状：折痕只在切出 `low`～`high` 宽高比的列里找，窗里的候选按贴近
+    `prior` 定夺，找不到折痕就按 `prior` 从右缘量回去。"""
+
+    low: float
+    prior: float
+    high: float
+
+
+DVD_PANEL = PanelShape(PANEL_ASPECT_MIN, PANEL_ASPECT, PANEL_ASPECT_MAX)
+WIDE_PANEL = PanelShape(WIDE_PANEL_ASPECT_MIN, WIDE_PANEL_ASPECT, WIDE_PANEL_ASPECT_MAX)
+
 #: 16:9 里的居中正封：「剧照 | 正封 | 剧照」拼成一张，正封宽 `PANEL_ASPECT` 倍高、
 #: 正好居中（mgstage 给 Prestige PASN 的 `pake-03_`／`pb_e_`，MOON FORCE 的素人封套）。
 #: 认它靠拼接缝：缝是一条从上贯到下的直线，画面里的边再强也很少在同一列满高。
@@ -112,7 +148,7 @@ MANUAL = "manual"
 MANUAL_SOURCE = "user:crop"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v6"
+ALGORITHM_VERSION = "poster-crop-v7"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -138,6 +174,16 @@ def crops_to_portrait(code: str | None) -> bool:
     if key.startswith("FC2"):
         return False
     return not (is_uncensored_code(key) or is_korean_mib_code(key))
+
+
+def is_wide_sleeve_label(code: str | None) -> bool:
+    """这个番号的厂牌用的是宽封套模板吗。
+
+    只看厂牌字母段，比例那一关在 `front_panel_box`：厂牌只负责开门，同一厂牌哪一期
+    换了封面比例，仍按图本身的比例走对应的那一档。
+    """
+    key = normalise_code_key(code)
+    return bool(key) and key.split("-", 1)[0] in WIDE_SLEEVE_LABELS
 
 
 class ColumnProfile(list):
@@ -190,38 +236,51 @@ def file_gradient(path: Path | str) -> Callable[[], ColumnProfile | None]:
 
 
 def front_panel_box(width: int, height: int,
-                    gradient_source: GradientSource = None) -> dict:
+                    gradient_source: GradientSource = None,
+                    code: str | None = None) -> dict:
     """源图尺寸加列梯度 → 正封那一块的取景框。纯函数，不碰文件也不碰 OpenCV。
 
     返回 `{"x0", "y0", "x1", "y1", "method"}`，坐标是源图像素，右下开区间。
     封套的框右下角就是源图的右下角，`x0` 就是折痕所在的列——正封是「折痕右边的全部」，
     不是它里面某个形状的子区域。16:9 的居中正封左右两条缝之间就是框。`method` 为
     `none` 时框是整张图：没有可裁的形状，调用方照原图处理。
+
+    `code` 只用来认宽封套的厂牌：不给就没有这一档，别的判据全由尺寸和梯度决定。
     """
     width, height = int(width or 0), int(height or 0)
     if width <= 0 or height <= 0:
         return {"x0": 0, "y0": 0, "x1": 0, "y1": 0, "method": NONE}
     ratio = width / height
+    if (is_wide_sleeve_label(code)
+            and WIDE_SLEEVE_RATIO_MIN <= ratio < WIDE_SLEEVE_RATIO_MAX):
+        return _sleeve(width, height, gradient_source, WIDE_PANEL)
     if ratio >= SLEEVE_RATIO_MAX:
         profile = gradient_source() if callable(gradient_source) else gradient_source
         return (center_panel(width, height, getattr(profile, "seams", None))
                 or _whole(width, height))
     if ratio < SLEEVE_RATIO_MIN:
         return _whole(width, height)
-    fold = fold_column(width, height, gradient_source)
-    start = fold if fold is not None else round(width - PANEL_ASPECT * height)
+    return _sleeve(width, height, gradient_source, DVD_PANEL)
+
+
+def _sleeve(width: int, height: int, gradient_source: GradientSource,
+            shape: PanelShape) -> dict:
+    """一张封套的正封框：找到折痕从折痕起，找不到按这一档的先验从右缘量回去。"""
+    fold = fold_column(width, height, gradient_source, shape)
+    start = fold if fold is not None else round(width - shape.prior * height)
     return _panel(width, height, start, FOLD if fold is not None else RATIO)
 
 
 def fold_column(width: int, height: int,
-                gradient_source: GradientSource = None) -> int | None:
+                gradient_source: GradientSource = None,
+                shape: PanelShape = DVD_PANEL) -> int | None:
     """列梯度里那道书脊折痕所在的列；不成立返回 None。
 
-    只在「折痕右边那块的宽高比落在 `PANEL_ASPECT_MIN`～`PANEL_ASPECT_MAX`」的那几十
-    列里找。窗口由源图高度定，所以高清图和低清图用的是同一条判据；窗口之外再强的边
-    也不看——那是画面内容，按它切会切进正面或带出封底。
+    只在「折痕右边那块的宽高比落在 `shape.low`～`shape.high`」的那几十列里找。窗口由
+    源图高度定，所以高清图和低清图用的是同一条判据；窗口之外再强的边也不看——那是
+    画面内容，按它切会切进正面或带出封底。
 
-    窗里够强的边不止一条时，取切出来的正封最贴近 `PANEL_ASPECT` 的那条，不是最强的
+    窗里够强的边不止一条时，取切出来的正封最贴近 `shape.prior` 的那条，不是最强的
     那条：书脊厚到两条边都落进窗里时，左边那条往往更强，按它切整条书脊都在框里。
 
     选中的那一列是斜坡最陡处，不是斜坡尽头，所以还要往右走到梯度落回基线：基线取窗
@@ -237,8 +296,8 @@ def fold_column(width: int, height: int,
     if peak <= 0:
         return None
     width, height = int(width), int(height)
-    low = max(0, round(width - PANEL_ASPECT_MAX * height))
-    high = min(width - 1, round(width - PANEL_ASPECT_MIN * height))
+    low = max(0, round(width - shape.high * height))
+    high = min(width - 1, round(width - shape.low * height))
     window = range(low, high + 1)
     if not window:
         return None
@@ -247,7 +306,7 @@ def fold_column(width: int, height: int,
         return None
     span = round(width * FOLD_EDGE_SPAN)
     edges = _rival_edges(profile, window, profile[top], span)
-    found = min(edges, key=lambda column: abs((width - column) / height - PANEL_ASPECT))
+    found = min(edges, key=lambda column: abs((width - column) / height - shape.prior))
     baseline = statistics.median(profile[low:high + 1])
     return _settled(profile, found, baseline, round(width * FOLD_SETTLE_LIMIT), span)
 
@@ -332,7 +391,7 @@ def crop_record(code: str | None, width: int, height: int,
     番号形态先判：不该裁的图连梯度都不算，`gradient_source` 是惰性的就一次都不解码。
     """
     width, height = int(width or 0), int(height or 0)
-    box = (front_panel_box(width, height, gradient_source)
+    box = (front_panel_box(width, height, gradient_source, code)
            if crops_to_portrait(code) else _whole(width, height))
     return {"version": ALGORITHM_VERSION, "px": [width, height], "box": box}
 

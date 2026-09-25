@@ -269,7 +269,7 @@ def cover_focus(key: str, cover: Path | None, face: dict | None,
     sidecar = jav_poster_crop.read_sidecar(cover) if cover is not None else None
     box = ((jav_poster_crop.projection(sidecar)
             if jav_poster_crop.is_current(sidecar, width, height) else None)
-           or jav_poster_crop.front_panel_box(width, height))
+           or jav_poster_crop.front_panel_box(width, height, code=key))
     if box.get("method") == jav_poster_crop.NONE:
         return None
     return int(box["x0"]), int(box["y0"]), int(box["x1"]), int(box["y1"])
