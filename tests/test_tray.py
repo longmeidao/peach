@@ -2,6 +2,7 @@ import contextlib
 import importlib.util
 import inspect
 import io
+import logging
 import os
 import plistlib
 import re
@@ -1313,6 +1314,30 @@ class ServiceRevivalTests(unittest.TestCase):
             manager.start_missing()
             self.assertEqual(len(handed), 2)
             self.assertTrue(all(handle.closed for handle in handed))
+
+
+class TrayLogFileTests(unittest.TestCase):
+    def test_the_file_keeps_tray_events_and_drops_per_probe_http_noise(self):
+        """健康检查十秒一轮，httpx 的 INFO 进文件的话一天一万多行，真正的启停记录被淹掉。"""
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "logs" / "tray.log"
+            root = logging.getLogger()
+            level = root.level
+            root.setLevel(logging.INFO)
+            handler = tray_module.log_to_file(path)
+            self.assertIsNotNone(handler)
+            try:
+                logging.getLogger("httpx").info("HTTP Request: GET http://127.0.0.1/healthz")
+                logging.getLogger("httpx").warning("连接被拒绝")
+                logging.getLogger("peach.tray").info("拉起 http 服务，PID 1")
+            finally:
+                root.removeHandler(handler)
+                handler.close()
+                root.setLevel(level)
+            text = path.read_text(encoding="utf-8")
+        self.assertNotIn("HTTP Request", text)
+        self.assertIn("连接被拒绝", text)
+        self.assertIn("拉起 http 服务", text)
 
 
 if __name__ == "__main__":
