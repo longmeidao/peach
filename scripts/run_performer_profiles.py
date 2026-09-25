@@ -72,6 +72,8 @@ def sweep(contract, items, run_id: str, *, out=sys.stdout,
 
 
 def main(argv=None) -> int:
+    # 原地改编码：`sweep` 的默认输出在定义时就绑着这个对象。中文控制台是 GBK，名字里的生僻字会让打印抛错。
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     add_ledger_write_args(parser)
     parser.add_argument("--limit", type=int, help="这一趟最多跑几位")
