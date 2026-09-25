@@ -135,6 +135,24 @@ class BackgroundJobTaskRunTests(unittest.TestCase):
         self.assertEqual(self.store.get(first_id).status, "succeeded")
         self.assertEqual(len(self.store.query(status="active")), 0)
 
+    def test_a_restart_right_after_a_round_returns_waits_for_its_row_to_close(self):
+        """上一轮的线程正在把表里那一行写成结束，紧跟着的手动重来不能撞它的互斥键。"""
+        job = self.job()
+        closing = threading.Event()
+        finish = self.store.finish
+
+        def slow_finish(run_id, status, **kwargs):
+            closing.set()
+            threading.Event().wait(0.3)
+            return finish(run_id, status, **kwargs)
+
+        with unittest.mock.patch.object(self.store, "finish", side_effect=slow_finish):
+            job.start(lambda job_id: job.update(job_id, status="complete"))
+            self.assertTrue(closing.wait(5))
+            job.start(lambda job_id: job.update(job_id, status="complete"), restart=True)
+            job.thread.join(5)
+        self.assertEqual([run.status for run in self.store.query()], ["succeeded", "succeeded"])
+
     def test_shutdown_marks_the_round_cancelled_not_failed(self):
         job = self.job()
         release = threading.Event()
