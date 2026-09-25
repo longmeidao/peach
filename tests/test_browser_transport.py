@@ -343,6 +343,10 @@ class BrowserTransportTests(unittest.TestCase):
         states = [params["bounds"].get("windowState") for method, params in server.calls
                   if method == "Browser.setWindowBounds"]
         self.assertEqual(states, ["normal", None, "minimized"])
+        navigations = [params for method, params in server.calls if method == "Page.navigate"]
+        self.assertEqual(navigations[-1], {"url": "about:blank"},
+                         "放弃后把验证页换成空白页：留在窗口里它每 50 秒自己重载一次")
+        self.assertEqual(len(navigations), 3, "首次导航、清 cookie 重载、空白页")
         self.assertIsNone(self.processes[0].returncode, "验证没过不是浏览器坏了，进程留着")
 
     def test_a_site_whose_window_went_unclicked_is_not_shown_again_until_a_page_loads(self):
@@ -374,6 +378,8 @@ class BrowserTransportTests(unittest.TestCase):
         self.assertLessEqual(self.clock.now - started, 56, "不弹窗就只等清 cookie 那 15 秒加自动时限，不再多等点击那 120 秒")
         self.assertEqual(window_shows(server), 1, "弹过一次没点过去，这次不弹")
         self.assertEqual(browser_transport.attention(), [])
+        self.assertEqual([params for method, params in server.calls if method == "Page.navigate"][-1],
+                         {"url": "about:blank"}, "不弹窗直接放弃的那条路径同样把验证页换成空白页")
         passes["through"] = True
         self.assertEqual(transport(request, 10, 4096).status, 200)
         passes["through"] = False
@@ -395,6 +401,8 @@ class BrowserTransportTests(unittest.TestCase):
         self.assertIsInstance(caught.exception, BrowserUnavailable, "SourceTransport 按连接失败处理")
         self.assertEqual(self.clock.now - started, 8)
         self.assertFalse(any(method == "Browser.setWindowBounds" for method, _ in server.calls))
+        self.assertEqual([params for method, params in server.calls if method == "Page.navigate"],
+                         [{"url": "https://javten.com/x"}], "慢页面留在原地，只有放弃的验证页才换成空白页")
         self.assertIsNone(self.processes[0].returncode, "页面慢不是浏览器坏了，进程留着")
         self.assertEqual(len(self.launches), 1)
 
