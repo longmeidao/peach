@@ -8,7 +8,6 @@
 
 <p align="center">
   <a href="https://github.com/longmeidao/peach/releases">Download the Windows test package</a> ·
-  <a href="#feature-preview">Feature preview</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="README.md">中文</a>
 </p>
@@ -16,12 +15,6 @@
 Peach is a single-user, local-first media library. It brings search, playback, organization and followed updates into one browser interface, while the catalog, watch history and review decisions stay in a local SQLite ledger.
 
 > **18+** Intended for adults managing adult-content collections. The repository contains no media or site datasets. Source connectors require the user's own access rights and do not bypass paywalls, bot checks or other access controls.
-
-## Feature preview
-
-https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
-
-<p align="center"><a href="docs/assets/peach-overview.mp4">Download the 58-second feature video</a></p>
 
 ## What it does
 

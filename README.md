@@ -8,7 +8,6 @@
 
 <p align="center">
   <a href="https://github.com/longmeidao/peach/releases">下载 Windows 测试包</a> ·
-  <a href="#功能预览">功能预览</a> ·
   <a href="#文档">文档</a> ·
   <a href="README.en.md">English</a>
 </p>
@@ -16,12 +15,6 @@
 Peach 是面向单人的本地优先媒体馆藏应用。它在浏览器里统一搜索、播放、整理和追更已有媒体，馆藏、观看记录与复核决定保存在本机 SQLite ledger 中。
 
 > **18+** 面向管理成人内容馆藏的成年人。仓库不包含媒体或站点数据；来源连接器要求使用者拥有相应访问权，不绕过付费墙、机器人验证或其他访问控制。
-
-## 功能预览
-
-https://github.com/user-attachments/assets/a97049bd-ddaf-4844-99ca-b18e97957d2a
-
-<p align="center"><a href="docs/assets/peach-overview.mp4">下载 58 秒功能介绍视频</a></p>
 
 ## 能做什么
 
