@@ -11,13 +11,18 @@
   align-items:center;min-width:0}
 .entityprofile>.entityportraitwrap{align-self:stretch;display:flex;align-items:center}
 /* 女优有资料时多出第三栏：右边那张资料表（ADR-0069），和身份信息之间隔一道竖线。
-   宽 300–400px：生日、身材一行放得下，出道片名截断后还剩一半字。900px 以下它排到身份信息
-   下面，隔的线换成横的；760px 以下整张卡单列居中，表里仍左对齐，两列字才对得齐。 */
-@media(min-width:901px){.entityprofile:has(>.entityfacts){grid-template-columns:auto minmax(0,1fr) minmax(300px,400px)}}
+   宽 280–360px：生日、身材一行放得下，出道片名截断后还剩一半字。
+   三栏的判据是内容区的宽度，不是视口：侧栏展开时同一个窗口留给卡的宽度少两百多像素，
+   按视口断点的话 1000px 的窗口里身份那一栏只剩 44px，名字竖着排。内容区不到 900px
+   （头像 160、两道间隔、资料表 360 之外身份栏还有 300）时它排到身份信息下面，隔的线换成
+   横的；760px 以下整张卡单列居中，表里仍左对齐，两列字才对得齐。容器查询做不了这件事：
+   它顺带的布局隔离会让卡里那几枚 fixed 定位的菜单和遮罩改以卡为基准，所以宽度由
+   `#index` 上的 `data-hero-wide` 带进来（`syncHeroWide`）。 */
+#index[data-hero-wide] .entityprofile:has(>.entityfacts){grid-template-columns:auto minmax(0,1fr) minmax(280px,360px)}
 .entityfacts{margin:0;align-self:stretch;justify-self:stretch;align-content:center;display:grid;
   grid-template-columns:auto minmax(0,1fr);gap:10px 16px;min-width:0;padding:2px 0 2px 24px;
   border-left:1px solid var(--line-soft);font-size:var(--fs-sm);line-height:22px;text-align:left}
-@media(max-width:900px){.entityfacts{grid-column:1/-1;border-left:0;border-top:1px solid var(--line-soft);padding:14px 0 0}}
+#index:not([data-hero-wide]) .entityfacts{grid-column:1/-1;border-left:0;border-top:1px solid var(--line-soft);padding:14px 0 0}
 .entityfacts dt{display:flex;align-items:center;align-self:start;gap:6px;color:var(--muted);white-space:nowrap}
 .entityfacts dd{margin:0;min-width:0;color:var(--ink)}
 .entityfacts .num{font-variant-numeric:tabular-nums}

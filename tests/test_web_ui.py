@@ -9581,7 +9581,7 @@ class WebUiSourceTests(unittest.TestCase):
                 "row('cake','生日',",
                 "row('ruler','身材',",
                 "row('flag','出道',",
-                "row('calendar-range','出演期间',",
+                "row('calendar-range','生涯',",
                 "row('tags','标签',"):
             self.assertPageContains(needle)
         # 关注来源那几处问的就是「有没有更新」，转圈归它们；页面归 React 之后是 Remix 的

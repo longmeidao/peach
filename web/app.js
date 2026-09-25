@@ -4902,7 +4902,7 @@ const ENTITY_FEED_WAIT_TRIES=40;
 const entityFeedTip=on=>on
   ?'已订阅新作：库里还没有的新片排在资料卡下面。再点一下取消订阅。'
   :'订阅新作：定时去 JavDB 查这位有没有出新片，库里还没有的排在资料卡下面。';
-/* 女优页头右侧的资料表（ADR-0069）：生日、身材、出道、出演期间和站上的标签。服务端只下发
+/* 女优页头右侧的资料表（ADR-0069）：生日、身材、出道、生涯和站上的标签。服务端只下发
    有值的项，这里有哪项画哪项，一项都没有就不出这张表。出道片名常有四五十个字，单行截断，
    全名放在 title 里。仍在活跃的写「至今」：服务端只给 `ongoing`，字归页面。 */
 function entityFactsHtml(p){
@@ -4917,7 +4917,7 @@ function entityFactsHtml(p){
   if(p.debut_date||p.debut_title)row('flag','出道',[p.debut_date&&num(p.debut_date),p.debut_title&&sub(esc(p.debut_title))]
     .filter(Boolean).join(' '),p.debut_title?` class="clip" title="${esc(p.debut_title)}"`:'');
   const active=p.active||{};
-  if(active.from)row('calendar-range','出演期间',
+  if(active.from)row('calendar-range','生涯',
     esc(`${active.from}${active.ongoing?' – 至今':active.to?` – ${active.to}`:''}`),' class="num"');
   const tags=p.tags||[];
   if(tags.length)row('tags','标签',factTagsHtml(tags),' class="facttags"');
@@ -4926,6 +4926,13 @@ function entityFactsHtml(p){
 /* 标签那一格只列前几个，余下的收进「+N」，浮层里一次看全，和名字那一行的别名同一个做法：
    标签多的人有十几个，全摊开会把资料表撑成三四行，头像那一栏跟着被拉高。只多出一个时
    直接列出来：「+1」和那一个标签一样宽。字是服务端换好的 Peach 中文标签。 */
+/* 资料卡排不排三栏看 `#index` 自己有多宽（判据与原因见 07-entity.css 那条规则）。
+   量的是常驻的内容区，骨架和画好的页头读同一个开关，换页时不跳一次。 */
+const HERO_WIDE_PX=900;
+function syncHeroWide([entry]){
+  $('#index').toggleAttribute('data-hero-wide',entry.contentRect.width>=HERO_WIDE_PX);
+}
+new ResizeObserver(syncHeroWide).observe($('#index'));
 const FACT_TAGS_SHOWN=4;
 function factTagsHtml(tags){
   const face=tag=>`<span class="facttag">${esc(tag)}</span>`;
