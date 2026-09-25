@@ -30,6 +30,7 @@ Chrome 或 Edge（Chrome DevTools Protocol，只需要一个 WebSocket 客户端
 | 同一出口一小时内几十次撞验证 | Cloudflare 把这个出口升为要人点的 Turnstile 框（「请验证您是真人」，勾选框在闭合 shadow DOM 里，页面脚本查不到 iframe），全新 profile 也一样；正常使用一站半小时一次不会撞到这档 |
 | 发下的 Cookie | `cf_clearance` 30 分钟；javten 另有 `laravel_session`、`XSRF-TOKEN` 2 小时 |
 | 会话级 `Network.setExtraHTTPHeaders` 带 Referer | Turnstile 勾选框那个子框架（`challenges.cloudflare.com/cdn-cgi/challenge-platform/…/turnstile/…`）的导航被 `ERR_BLOCKED_BY_CLIENT`（`blockedReason=other`）拦下，页上只剩转圈、`cf_chl_rc_ni` 每 50 秒涨一，人点不到；同一进程新标签页只挂 Accept-Language 就放行；Referer 经 `Page.navigate` 的 `referrer` 传，主文档照样带 Referer 且 5 秒过（Chrome 153.0.8010.54，生产进程内对照） |
+| 放弃后留在最小化窗口里的验证页 | 每 50 秒自己重载一次，`cf_chl_rc_ni` 涨到 12（2026-09-25 生产进程内观察十分钟）；这些重试对出口评分的影响未测 |
 | 依赖 | venv 里没有 WebSocket 库（只有 h11、anyio）；自写 RFC 6455 客户端 80 行够用 |
 
 ## 决策
@@ -57,8 +58,9 @@ Cookie、User-Agent 与出口三者天然一致，不再要用户贴 Cookie；�
 （`FIRST_BLOCKED_PAUSE` 起翻倍到 `blocked_pause`），措辞写「浏览器窗口再弹出时点一下验证即可」。同一站弹过
 窗口没点过去就记进 `_unsolved`：之后再撞验证到自动时限就报，不再弹窗，直到哪次页面正常打开才
 重新弹（实测 Cloudflare 升级判定后一次冷却到期撞一次，每次弹 120 秒窗口而页上无框可点）。过了或放弃
-都把窗口最小化收起（挪回负坐标会被系统钳住，最小化确定不占屏幕）。不用无头模式，不伪造指纹，不接解题
-服务：过验证的是一台真的浏览器，人点不点由人决定。
+都把窗口最小化收起（挪回负坐标会被系统钳住，最小化确定不占屏幕）；放弃时还把页面导航到 `about:blank`，
+因为留在窗口里的验证页每 50 秒自己重载一次、`cf_chl_rc_ni` 跟着涨，在没人看的窗口里一直重试。不用无头模式，
+不伪造指纹，不接解题服务：过验证的是一台真的浏览器，人点不点由人决定。
 
 时限与调用方的 `timeout`（这一条请求的预算，`SourceTransport` 已按本趟截止时间裁过）这样配合，都从导航那一刻
 起算：一直没见到验证页时，`timeout` 内要解析完，否则报 `PageTimeout`（`BrowserUnavailable` 的子类，按连接失败

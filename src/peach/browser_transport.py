@@ -506,6 +506,11 @@ class BrowserTransport:
                 elif elapsed >= timeout:
                     raise PageTimeout(f"{host} 的页面在 {int(elapsed)} 秒内没有打开")
                 self._sleep(1.0)
+        except ChallengeUnsolved:
+            # 放弃的验证页不能留在窗口里：它每 50 秒自己重载一次，`cf_chl_rc_ni` 跟着涨，在没人看的窗口里
+            # 一直重试（2026-09-25 生产进程内观察十分钟）。导航到空白页就停了；空白页没有上一跳。
+            browser.navigate("about:blank")
+            raise
         finally:
             if shown_at is not None:
                 _set_attention(host, None)
