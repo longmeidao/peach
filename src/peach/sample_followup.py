@@ -79,7 +79,9 @@ def run(contract, key: str, handle, *, transport=None, clock=time.monotonic) -> 
             SourceTransport(Path(contract.follow_secrets_root), max_requests=BATCH * 3,
                             max_bytes=64 * 1024 * 1024, max_seconds=BUDGET_SECONDS), 2.0)
     deadline = clock() + BUDGET_SECONDS
-    landed = images = absent = failed = 0
+    landed = images = absent = failed = deferred = 0
+    #: 没问站就跳过的部数，按原因分：快照里没样张又没有可问的官方站、那一站近期说过没有、那一站冷却中。
+    skipped = {"no_site": 0, "recent_miss": 0, "paused": 0}
     paused: set[str] = set()
     try:
         for index, code in enumerate(codes):
@@ -93,9 +95,17 @@ def run(contract, key: str, handle, *, transport=None, clock=time.monotonic) -> 
                 misses.record("snapshot", code)
             if not urls:
                 site = sample_images.site_for(code) or ""
-                if not site or site in paused or misses.fresh(site, code):
+                if not site:
+                    skipped["no_site"] += 1
+                    continue
+                if site in paused:
+                    skipped["paused"] += 1
+                    continue
+                if misses.fresh(site, code):
+                    skipped["recent_miss"] += 1
                     continue
                 if clock() >= deadline:
+                    deferred = len(codes) - index
                     break
                 try:
                     urls = sample_images.usable(
@@ -103,8 +113,10 @@ def run(contract, key: str, handle, *, transport=None, clock=time.monotonic) -> 
                 except SourcePaused:
                     # 冷却或本趟预算用完：这一站后面的都不问，也不记「没有」。
                     paused.add(site)
+                    skipped["paused"] += 1
                     continue
                 except DeadlineExceeded:
+                    deferred = len(codes) - index
                     break
                 except Exception as error:  # noqa: BLE001 - 一部取不到不影响同批其余几部
                     if _missing(error):
@@ -131,8 +143,14 @@ def run(contract, key: str, handle, *, transport=None, clock=time.monotonic) -> 
     if handle is not None:
         handle.progress(current=len(codes), total=len(codes), label=TASK_LABEL, throttle=0)
     outcome = f"补上 {landed} 部的样张（{images} 张）" if landed else "这一轮没有补上样张"
+    reasons = [text for count, text in ((skipped["no_site"], f"{skipped['no_site']} 部没有可问的官方站"),
+                                        (skipped["recent_miss"], f"{skipped['recent_miss']} 部那一站近期说过没有"),
+                                        (skipped["paused"], f"{skipped['paused']} 部因来源冷却"),
+                                        (deferred, f"{deferred} 部预算用完留到下一轮")) if count]
+    if reasons:
+        outcome += "；跳过 " + "、".join(reasons)
     summary = {"outcome": outcome, "codes": len(codes), "landed": landed, "images": images,
-               "absent": absent, "failed": failed, "batch": batch}
+               "absent": absent, "failed": failed, "skipped": skipped, "deferred": deferred, "batch": batch}
     if paused:
         summary["paused"] = sorted(paused)
     return summary
