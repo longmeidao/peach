@@ -507,7 +507,8 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers["content-type"], "image/png")
         self.assertEqual(response.content, png)
         self.assertEqual(hits, ["https://pixiv.pximg.net/icon.jpeg"], "第二次不再出网")
-        resolver.assert_called_once_with("fanbox", "30917150")
+        resolver.assert_called_once_with("fanbox", "30917150",
+                                         transport=self.app.state.http_transport)
         self.assertEqual(again.status_code, 200)
         self.assertEqual(again.content, png)
         cached = list((self.candidate_root / "follow-assets" / "avatars").glob("*.img"))
@@ -527,14 +528,19 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-type"], "image/webp")
         self.assertEqual(hits, ["https://kemono.cr/icons/fanbox/30917150"])
-        # 没有实测过头像端点的来源、缺 ref 的请求都不出网，直接给占位图。
+        # 没有实测过头像端点的来源、缺 ref 或身份形状不对的请求都不出网，直接给占位图。
         for query in ("provider=rule34video&ref=1", "provider=kemono&ref=noslash",
-                      "service=fanbox&id=not-a-number", "service=patreon&id=1",
+                      "service=fanbox&id=not.a.creator", "service=patreon&id=1",
                       "service=profile&id=twitter:../x", "service=profile&id=fanbox:1"):
             missing = await self.client.get(f"/follow-avatar?t=secret&{query}")
             self.assertEqual(missing.status_code, 404, query)
             self.assertEqual(missing.headers["content-type"], PLACEHOLDER_CONTENT_TYPE, query)
         self.assertEqual(len(hits), 1)
+        # 字母加连字符是合法的 FANBOX 创作者 id：去官方查一次，走的是应用那条 client；
+        # 回来的不是资料 JSON，就给占位图，不再往别处取。
+        unknown = await self.client.get("/follow-avatar?t=secret&service=fanbox&id=not-a-number")
+        self.assertEqual(unknown.status_code, 404)
+        self.assertEqual(hits[1:], ["https://api.fanbox.cc/creator.get?creatorId=not-a-number"])
 
     async def test_profile_avatars_keep_the_sharpest_of_x_and_patreon(self):
         """名片上的 X 与 Patreon 各退到能用的最大一档，两家之间按实际像素留大的那张。"""
@@ -565,7 +571,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             "patreon": ["https://c10.patreonusercontent.com/original.png"],
         }
         with patch("peach.routes_media.profile_avatar_tiers",
-                   side_effect=lambda service, handle: tiers[service]):
+                   side_effect=lambda service, handle, transport: tiers[service]):
             response = await self.client.get(
                 "/follow-avatar?t=secret&service=profile&id=twitter:Rekin3D,patreon:sharkarts")
         self.assertEqual(response.status_code, 200)
