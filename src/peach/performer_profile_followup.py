@@ -392,10 +392,9 @@ def _visit_avwikidb(contract, pages, entity_id: int, names, state: dict, batch: 
     url = avwikidb.ACTOR_PAGE.format(id=actor_ref)
     try:
         actor = avwikidb.actor_profile(pages.get(url)[1]) or {}
-    except alias.Unavailable:
-        actor = {}
-    except alias.Blocked as error:
+    except (alias.Blocked, alias.Unavailable) as error:
         if refs:
+            # 已绑的编号只为重取资料而来：没取到就留着上一次的资料，不拿一份空的顶掉。
             reports[AVWIKIDB] = f"{UNFETCHED}：{error}"
             return 0
         actor = {}

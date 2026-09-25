@@ -423,6 +423,20 @@ class AvwikidbTests(Case):
         self.assertTrue(summary["sites"][followup.AVWIKIDB].startswith(followup.UNFETCHED))
         self.assertEqual(self.refs(self.hikaru), {})
 
+    def test_a_failed_refresh_keeps_the_metadata_of_a_bound_number(self):
+        self.run_followup(self.hikaru, run_id=5)
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute("UPDATE entity_external_ref SET last_synced_at='2026-01-01T00:00:00Z'"
+                               " WHERE provider=?", (followup.AVWIKIDB,))
+        stale = time.time() - followup.REFRESH - 60
+        for cached in (self.generated / "provider-cache" / "avwikidb").glob("*.json"):
+            os.utime(cached, (stale, stale))
+        del self.avwikidb.pages[ACTOR_URL]
+        summary = self.run_followup(self.hikaru, run_id=6)
+        _number, metadata = self.refs(self.hikaru)[followup.AVWIKIDB]
+        self.assertEqual((metadata["height"], metadata["batch"]), (148, f"{followup.SOURCE}@5"))
+        self.assertTrue(summary["sites"][followup.AVWIKIDB].startswith(followup.UNFETCHED))
+
     def test_fc2_codes_are_not_used_as_an_entry(self):
         fc2 = self.entity("FC2の人")
         self.work(5, fc2, code="FC2-PPV-1234567")
