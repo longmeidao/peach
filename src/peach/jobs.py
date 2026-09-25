@@ -286,6 +286,9 @@ class BackgroundJob:
         #: job_id → task_run id。结算读这一份而不是读状态：状态可能已经被下一轮顶掉，
         #: 而被顶掉的那一轮同样要有人给它收尾。
         self._run_ids: dict[str, int] = {}
+        #: 摘 run id 与把那一行写成结束是同一件事：只摘不写完就放手的话，另一个线程
+        #: 看见 id 没了以为已经收过尾，紧接着开的下一轮会撞上那一行还没释放的互斥键。
+        self._close_lock = threading.Lock()
 
     def snapshot(self) -> dict | None:
         """当前状态的深拷贝；一次都没跑过返回 None。"""
@@ -428,10 +431,11 @@ class BackgroundJob:
 
     def _close_run(self, job_id: str, status: str, *, error: str = "",
                    summary: dict | None = None) -> None:
-        run_id = self._run_ids.pop(job_id, None)
-        if self.runs is None or run_id is None:
-            return
-        self.runs.finish(run_id, status, summary=summary, error=error)
+        with self._close_lock:
+            run_id = self._run_ids.pop(job_id, None)
+            if self.runs is None or run_id is None:
+                return
+            self.runs.finish(run_id, status, summary=summary, error=error)
         self.runs.prune(self.task_key)
 
     def stop(self, timeout: float | None = 2.0) -> None:
