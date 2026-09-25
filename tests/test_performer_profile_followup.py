@@ -106,6 +106,28 @@ AVWIKIDB_WORK = """<html><head>
 </head><body><a href="/actor/1046723/">皆月ひかる</a></body></html>"""
 
 
+def avwikidb_works(movies: list[dict]) -> str:
+    """单人作品筛选页：作品表只在 `__NEXT_DATA__` 里，卡片上的 `alt` 会把人名截成「ほか」。"""
+    data = {"props": {"pageProps": {"movies": movies}}}
+    return ('<html><body><img alt="DVAJ-495の女優は 星野あかり、麻美ゆまほか">'
+            f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(data)}</script>'
+            "</body></html>")
+
+
+def avwikidb_movie(code: str, floor: str, cid: str, *cast: tuple[str, int],
+                   unknown: bool = False) -> dict:
+    return {"adultVideoId": code, "floor": floor, "fanzaContentId": cid, "mgsImageUrl": None,
+            "actorUnknown": unknown,
+            "actor": [{"name": name, "fanzaAvActressId": number} for name, number in cast]}
+
+
+AVWIKIDB_SINGLE = avwikidb_works([
+    avwikidb_movie("DVAJ-495", "videoa", "dvaj00495", ("星野あかり", 11823), ("杉野綾子", 1025548)),
+    avwikidb_movie("EEA-266", "videoc", "eesthe266", ("杉野綾子", 1025548), unknown=True),
+    avwikidb_movie("TD003KIRA0015C", "videoa", "td003kira00015c", ("杉野綾子", 1025548)),
+    avwikidb_movie("IPZZ-937", "videoa", "ipzz00937", ("桜空もも", 1040000))])
+
+
 class Transport:
     """按地址回页面的传输替身；没登记的检索回一张空结果页，其余回 404。"""
 
@@ -184,6 +206,22 @@ class ParsingTests(unittest.TestCase):
             "romaji": "Hikaru Minazuki", "birth_date": "2000-01-01", "height_cm": 148,
             "bust_cm": 83, "cup": "B", "waist_cm": 55, "hip_cm": 85,
             "image": "https://pics.dmm.co.jp/mono/actjpgs/minazuki_hikaru.jpg"})
+
+    def test_single_works_are_the_ones_whose_cast_is_her_alone(self):
+        """合集与别人的单人作品都不算，按出演表里的站上编号判，不按名字。"""
+        self.assertEqual(avwikidb.single_works(AVWIKIDB_SINGLE, "1025548"), [
+            {"code": "EEA-266", "floor": "videoc", "content_id": "eesthe266", "mgs_image": "",
+             "identified": True},
+            {"code": "TD003KIRA0015C", "floor": "videoa", "content_id": "td003kira00015c",
+             "mgs_image": "", "identified": False}])
+
+    def test_a_page_without_structured_data_lists_no_single_works(self):
+        self.assertEqual(avwikidb.single_works(AVWIKIDB_ACTOR, "1046723"), [])
+        self.assertEqual(avwikidb.single_count(AVWIKIDB_ACTOR), 0)
+
+    def test_the_actor_page_says_how_many_single_works_she_has(self):
+        page = AVWIKIDB_SINGLE.replace('"movies":', '"singleCount": 2, "movies":')
+        self.assertEqual(avwikidb.single_count(page), 2)
 
     def test_romaji_compares_word_order_free(self):
         self.assertEqual(avwikidb.romaji_key("Hikaru Minazuki"), avwikidb.romaji_key("Minazuki Hikaru"))

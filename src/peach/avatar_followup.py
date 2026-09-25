@@ -17,6 +17,9 @@
 * 图库给不出认得准的那一张时，从她单人作品的封面上截脸（`avatar_cover_face`）：挑脸像素最宽的
   那张封面，最差是缩略图；其余检得出脸的封面也各截一张留作候选。这一档截的图、以及批处理用整张封面装上的头像，之后遇到更清楚的
   脸会自动换掉；图库装的、人挑的一律不碰。
+* 馆里一张单人作品封面都截不出脸时（只有合集的那些人），按她的 avwikidb 编号读站上的单人
+  作品，从馆外那几部的 DMM 封面上截脸，两部不同作品的脸互相过线才装（ADR-0074，
+  `avatar_offsite_cover_face`）。装上的和馆藏封面截的同一档。
 * 两档都落空、图库里只有没过尺寸门槛的小图时，装认得准的那张小图（ADR-0066）：只有一张
   就装它，好几张照同一套互证判据挑，认定的几张里挑像素最大的。小图同样可以在上面几档里
   作证，只是不当那张被装上的图。这一档装的图之后有了过门槛的图或封面人脸就换掉。
@@ -139,29 +142,33 @@ def _installed_small(avatar_root, kind: str, entity_id: int) -> bool:
     return isinstance(record, dict) and record.get("source_kind") == SMALL_SOURCE_KIND
 
 
-#: 指纹里的两个量：作品数与别名数。别名 SQL 与 `stock` 那条共用。
+#: 指纹里的量：别名数与 avwikidb 编号数。SQL 与 `stock` 那条共用。
 _ALIAS_COUNT = "(SELECT count(*) FROM entity_alias al WHERE al.entity_id=e.id)"
+_OFFSITE_COUNT = ("(SELECT count(*) FROM entity_external_ref x WHERE x.entity_id=e.id"
+                  " AND x.provider='avwikidb' AND x.external_kind='performer')")
 
 #: 认人判据的版本，进指纹。改了判据就加一：存量里缺图的女优按新判据各重比一次。
 #: 2 是 ADR-0057 的图库互证，3 是 ADR-0062 没有封面参照时的图库自证，4 是 ADR-0066 的
-#: 小图作证与兜底，5 是 ADR-0070 的小脸裁切放大再比。
-MATCH_RULE = 5
+#: 小图作证与兜底，5 是 ADR-0070 的小脸裁切放大再比，6 是 ADR-0074 的馆外单人作品封面。
+MATCH_RULE = 6
 
 
-def _fingerprint(works, aliases) -> str:
-    return f"{int(works or 0)}:{int(aliases or 0)}:r{MATCH_RULE}"
+def _fingerprint(works, aliases, offsite) -> str:
+    return f"{int(works or 0)}:{int(aliases or 0)}:{int(offsite or 0)}:r{MATCH_RULE}"
 
 
 def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
-    """会让这条后继结论变的量：作品数、别名数与判据版本，写成 `作品数:别名数:r版本`。
+    """会让这条后继结论变的量，写成 `作品数:别名数:avwikidb 编号数:r版本`。
 
     多一部作品就多一张封面可截、可比；多一个别名就多一个名字去图库里找（`神山ももか`
-    补上别名后才命中 `美雲そら` 与 `朝霧いのり` 两张）；判据换了，同一份证据也可能认得出。
+    补上别名后才命中 `美雲そら` 与 `朝霧いのり` 两张）；补女优资料后继绑上 avwikidb 编号，
+    馆外单人作品的封面才有路可走；判据换了，同一份证据也可能认得出。
     """
     row = connection.execute(
         "SELECT (SELECT count(DISTINCT asset_id) FROM asset_entity WHERE entity_id=e.id),"
-        f" {_ALIAS_COUNT} FROM entity e WHERE e.id=?", (int(entity_id),)).fetchone()
-    return _fingerprint(*(row if row else (0, 0)))
+        f" {_ALIAS_COUNT}, {_OFFSITE_COUNT} FROM entity e WHERE e.id=?",
+        (int(entity_id),)).fetchone()
+    return _fingerprint(*(row if row else (0, 0, 0)))
 
 
 def stock(connection: sqlite3.Connection, avatar_root, attempts, *, limit: int,
@@ -176,12 +183,12 @@ def stock(connection: sqlite3.Connection, avatar_root, attempts, *, limit: int,
     found = []
     for row in connection.execute(
             "SELECT e.id,e.kind,e.canonical_name,count(DISTINCT ae.asset_id) AS assets,"
-            f" {_ALIAS_COUNT} AS aliases"
+            f" {_ALIAS_COUNT} AS aliases, {_OFFSITE_COUNT} AS offsite"
             " FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id"
             " WHERE e.kind='performer' GROUP BY e.id ORDER BY assets DESC, e.id"):
         entity_id, kind = int(row["id"]), str(row["kind"])
         key = followup_key(kind, entity_id)
-        current = _fingerprint(row["assets"], row["aliases"])
+        current = _fingerprint(row["assets"], row["aliases"], row["offsite"])
         if (key in skip or not needs_avatar(avatar_root, kind, entity_id)
                 or attempts.settled(key, current)):
             continue
@@ -196,11 +203,11 @@ def stock(connection: sqlite3.Connection, avatar_root, attempts, *, limit: int,
 def run(contract, key: str, handle) -> dict:
     """跑一条补头像后继，再把实体当时的指纹记进 `Attempts`，存量补派按它判。
 
-    该比对却取不到比对模型的那一次不记：结论取决于那天有没有网，不取决于她的作品和
-    名字，记下来就要等到她多一部作品才会再试。
+    该比对却取不到比对模型、或 avwikidb 正在冷却的那一次不记：结论取决于那天有没有网，
+    不取决于她的作品和名字，记下来就要等到她多一部作品才会再试。
     """
     summary = _run(contract, key, handle)
-    if summary.get("face_match_unavailable"):
+    if summary.get("face_match_unavailable") or summary.get("source_unavailable"):
         return summary
     _kind, entity_id = parse_key(key)
     with contract.database.read_connection() as connection:
@@ -262,6 +269,9 @@ def _run(contract, key: str, handle) -> dict:
         fallen = {**_install_cover_face(contract, providers_root, avatar_root, kind,
                                         entity_id, name, gallery, len(found), cropped_px,
                                         covers, probe), **extra}
+        if fallen["outcome"] != "已装上" and not covers and not extra:
+            fallen = _install_offsite(contract, connection, providers_root, avatar_root, kind,
+                                      entity_id, cropped_px, probe, fallen)
         # 封面截的那张装着时不退回小图：那一档自己会判要不要换。
         if (fallen["outcome"] == "已装上" or not found or extra or cropped_px is not None
                 or (avatar_picker.installed_digest(avatar_root, kind, entity_id) and not small)):
@@ -589,6 +599,63 @@ def _install_cover_face(contract, providers_root, avatar_root, kind: str,
     return {**summary, "outcome": "已装上",
             "size": f"{inspected['width']}×{inspected['height']}",
             "source": f"作品封面 {face.code}"}
+
+
+def _install_offsite(contract, connection, providers_root, avatar_root, kind: str,
+                     entity_id: int, cropped_px: int | None, probe, fallen: dict) -> dict:
+    """馆藏封面上截不出她的脸时，从 avwikidb 列出的馆外单人作品封面上截（ADR-0074）。
+
+    `fallen` 是馆藏封面那一档的摘要，这一档的结论接在它后面。两部互证不成时，截到的脸
+    照样留进候选缓存，挑图弹层里能点。
+    """
+    from . import avatar_offsite_cover_face as offsite
+    from .catalog_rules import normalise_code_key
+    from .http import HttpxTransport
+    from .performer_profile_followup import avwikidb_pages
+
+    ref = connection.execute(
+        "SELECT external_id FROM entity_external_ref WHERE entity_id=? AND provider='avwikidb'"
+        " AND external_kind='performer' ORDER BY external_id LIMIT 1",
+        (int(entity_id),)).fetchone()
+    if ref is None:
+        # 多数女优没有编号；每一行都接一句「没有编号」只是噪声，上一档的结论已经说清了。
+        return fallen
+    skip = {normalise_code_key(str(code)) for (code,) in connection.execute(
+        "SELECT DISTINCT a.code FROM asset a JOIN asset_entity ae ON ae.asset_id=a.id"
+        " WHERE ae.entity_id=? AND coalesce(a.code,'')<>''", (int(entity_id),))}
+    matcher = face_match.FaceMatcher()
+    pages, transport = avwikidb_pages(contract), HttpxTransport()
+    try:
+        outcome = offsite.find(pages, str(ref[0]), skip, probe, matcher, transport,
+                               providers_root)
+    finally:
+        pages.close()
+        close = getattr(transport, "close", None)
+        if close:
+            close()
+    kept = offsite.keep_all(providers_root, entity_id, outcome)
+    summary = {**fallen, "outcome": f"{fallen['outcome']}，{outcome.reason}".rstrip("，"),
+               **({"kept": kept} if kept else {})}
+    if outcome.unavailable:
+        flag = "face_match_unavailable" if matcher.unavailable else "source_unavailable"
+        return {**summary, flag: True}
+    winner = outcome.winner
+    if winner is None:
+        return summary
+    if cropped_px and not avatar_cover_face.installed_face_readable(avatar_root, kind, entity_id,
+                                                                    probe):
+        cropped_px = 0
+    if cropped_px is not None and winner.face_px <= cropped_px:
+        return {**summary, "outcome": "已是最清楚的封面人脸", "source": winner.code}
+    made = offsite.origin(winner, outcome.urls.get(winner.code, ""), outcome.evidence)
+    if made is None:
+        return {**summary, "outcome": "封面截不出这一块", "source": winner.code}
+    inspected = avatar_picker.install(providers_root, avatar_root, kind, entity_id, *made)
+    contract.cache_bust()
+    return {"name": fallen.get("name", ""), "matched": fallen.get("matched", 0),
+            "outcome": "已装上", "size": f"{inspected['width']}×{inspected['height']}",
+            "source": f"馆外单人作品封面 {winner.code}"
+                      f"（{len(outcome.evidence['codes'])} 部互证）"}
 
 
 #: 不写账本：这条后继只往 `avatar_root` 与候选缓存里写文件。它照样一次只跑一条——

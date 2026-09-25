@@ -161,14 +161,20 @@ def stock(connection: sqlite3.Connection, attempts, *, limit: int, skip=()) -> l
 
 def open_sites(contract) -> dict:
     """两站的取页器。缓存目录与补别名后继共用，同一页不问第二次。测试把这一步整个换掉。"""
+    cache = Path(contract.candidate_root) / "provider-cache"
+    return {MINNANO: alias.MinnanoPages(cache / "minnano-av-pages", alias._cooldown_root(contract),
+                                        max_age=REFRESH),
+            AVWIKIDB: avwikidb_pages(contract)}
+
+
+def avwikidb_pages(contract):
+    """avwikidb 的取页器。补头像后继读单人作品页也用它：同一份缓存、同一套冷却。"""
     from .scraping_access import SourceTransport
 
-    cache = Path(contract.candidate_root) / "provider-cache"
     cooldown = alias._cooldown_root(contract)
-    return {MINNANO: alias.MinnanoPages(cache / "minnano-av-pages", cooldown, max_age=REFRESH),
-            AVWIKIDB: alias.MinnanoPages(cache / "avwikidb-pages", cooldown,
-                                         SourceTransport(cooldown), source=AVWIKIDB,
-                                         max_age=REFRESH)}
+    return alias.MinnanoPages(Path(contract.candidate_root) / "provider-cache" / "avwikidb-pages",
+                              cooldown, SourceTransport(cooldown), source=AVWIKIDB,
+                              max_age=REFRESH)
 
 
 # -- 落库 --------------------------------------------------------------------
