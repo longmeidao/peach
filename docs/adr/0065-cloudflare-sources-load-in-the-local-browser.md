@@ -44,7 +44,11 @@ Cookie、User-Agent 与出口三者天然一致，不再要用户贴 Cookie；�
 只下载 HTML。不用页面内 `fetch()`：它只能同源，且跟到 `http://` 跳转会被浏览器按混合内容拦下。
 
 **二、验证页三态。** 导航落到验证页（标题 `Just a moment...`／`请稍候…`，页头含 `cf-chl-`、`challenge-platform`）
-时接着等：`AUTO_SECONDS`（40 秒）内过了就读文档，窗口不动；没过就把窗口放回屏幕内并顶到前面（先
+时接着等：转了 `RESET_SECONDS`（15 秒）还没过，先只清掉该站的 cookie 重新导航一次——过期或被判无效的
+`cf_clearance` 会让 Cloudflare 把这台浏览器扔进不放行也不给勾选框的重试循环（页上只有转圈，`cf_chl_rc_ni`
+计数涨），等多久、点哪里都没用；2026-09-25 用生产 profile 实测，全新 profile 5 到 7 秒直接过，生产 profile
+30 秒只转圈，删掉 `cf_clearance` 与 `cf_chl_rc_ni` 重载 5 秒就过，启动参数、语言头、资源屏蔽、出口节点都排除。
+重载后 `AUTO_SECONDS`（40 秒）内过了就读文档，窗口不动；没过就把窗口放回屏幕内并顶到前面（先
 `windowState: normal` 再给坐标，两步），同时登记到 `browser_transport.attention()`，`/healthz` 带出去供排查。
 窗口顶到前面本身就是提醒，托盘不再弹系统通知：验证转圈时页上常常没有可点的框，通知只会打扰；再等
 `CLICK_SECONDS`（120 秒）还没过就报 `ChallengeUnsolved`，`SourceTransport` 按拒绝访问那一档冷却
@@ -56,7 +60,8 @@ Cookie、User-Agent 与出口三者天然一致，不再要用户贴 Cookie；�
 
 时限与调用方的 `timeout`（这一条请求的预算，`SourceTransport` 已按本趟截止时间裁过）这样配合，都从导航那一刻
 起算：一直没见到验证页时，`timeout` 内要解析完，否则报 `PageTimeout`（`BrowserUnavailable` 的子类，按连接失败
-重试，浏览器进程留着）；见到验证页时，自动阶段最多等 `min(AUTO_SECONDS, timeout)`；弹窗那一段固定
+重试，浏览器进程留着）；见到验证页时，清 cookie 那一步在 `min(RESET_SECONDS, 自动时限)` 触发，重载后的
+自动阶段最多等 `min(AUTO_SECONDS, timeout)`；弹窗那一段固定
 `CLICK_SECONDS`，从弹出起算、不受 `timeout` 约束，因为人点验证的时间不归一部片的预算管。`_unsolved` 保证同一站
 在页面正常打开之前只弹一次，所以一个站最多让整趟多等一次 `CLICK_SECONDS`，不会每部片拖一遍。
 

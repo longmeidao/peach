@@ -250,7 +250,40 @@ class BrowserTransportTests(unittest.TestCase):
         self.assertEqual((response.status, response.body.decode()), (200, PAGE_HTML))
         self.assertEqual(len([1 for method, _ in server.calls if method == "Page.navigate"]), 1)
         self.assertFalse(any(method == "Browser.setWindowBounds" for method, _ in server.calls))
+        self.assertFalse(any(method == "Network.deleteCookies" for method, _ in server.calls), "几秒就过的验证不动 cookie")
         self.assertEqual(browser_transport.attention(), [])
+
+    def test_a_stuck_challenge_gets_the_sites_cookies_cleared_and_reloaded_before_anyone_is_asked(self):
+        """验证页转了 15 秒还没过：只删这一站的 cookie、重新导航，重载后过了就照常读文档，窗口不动、不提醒。"""
+        cleared_at = []
+
+        def handler(method, params):
+            if method == "Network.getCookies":
+                return {"cookies": [{"name": "cf_clearance", "domain": "javten.com", "path": "/"},
+                                    {"name": "cf_chl_rc_ni", "domain": "javten.com", "path": "/"}]}
+            if method == "Network.deleteCookies":
+                cleared_at.append(self.clock.now - started)
+            if method == "Runtime.evaluate" and is_document(params):
+                return {"result": {"value": document_reply("https://javten.com/search?kw=1")}}
+            if method == "Runtime.evaluate":
+                if cleared_at and self.clock.now - started >= cleared_at[-1] + 5:
+                    return {"result": {"value": state_reply("JAVten", url="https://javten.com/search?kw=1")}}
+                return {"result": {"value": state_reply("しばらくお待ちください...", head="<script src='/cdn-cgi/challenge-platform/h/b'>")}}
+            return self.generic(method, params)
+
+        transport, server = self.make(handler)
+        started = self.clock.now
+        response = transport(HttpRequest("GET", "https://javten.com/search?kw=1", {}), 45, 4096)
+        self.assertEqual(response.status, 200)
+        self.assertEqual(cleared_at, [15, 15], "转 15 秒清一次，两条 cookie 都删")
+        self.assertEqual([params for method, params in server.calls if method == "Network.getCookies"],
+                         [{"urls": ["https://javten.com/search?kw=1"]}], "只查这一站的 cookie")
+        self.assertEqual(sorted(params["name"] for method, params in server.calls if method == "Network.deleteCookies"),
+                         ["cf_chl_rc_ni", "cf_clearance"])
+        self.assertEqual(len([1 for method, _ in server.calls if method == "Page.navigate"]), 2, "清完重新导航一次")
+        self.assertFalse(any(method == "Browser.setWindowBounds" for method, _ in server.calls), "重载后过了就不惊动人")
+        self.assertEqual(browser_transport.attention(), [])
+        self.assertEqual(transport._unsolved, set())
 
     def test_a_page_mid_navigation_counts_as_loading(self):
         """跳转那一瞬执行环境被销毁、脚本报错：当作还在加载，下一秒再看。"""
@@ -274,7 +307,7 @@ class BrowserTransportTests(unittest.TestCase):
             if method == "Runtime.evaluate" and is_document(params):
                 return {"result": {"value": document_reply("https://fc2ppv-db.com/ja/videos/1")}}
             if method == "Runtime.evaluate":
-                if self.clock.now - started >= 45:
+                if self.clock.now - started >= 60:
                     attention_seen.append(browser_transport.attention())
                     return {"result": {"value": state_reply("FC2PPV Database", url="https://fc2ppv-db.com/ja/videos/1")}}
                 return {"result": {"value": state_reply("Just a moment...")}}
@@ -332,7 +365,7 @@ class BrowserTransportTests(unittest.TestCase):
         with self.assertRaises(ChallengeUnsolved) as caught:
             transport(request, 10, 4096)
         self.assertIn("不再弹", str(caught.exception))
-        self.assertLessEqual(self.clock.now - started, 41, "不弹窗就只等自动时限，不再多等点击那 120 秒")
+        self.assertLessEqual(self.clock.now - started, 56, "不弹窗就只等清 cookie 那 15 秒加自动时限，不再多等点击那 120 秒")
         self.assertEqual(window_shows(server), 1, "弹过一次没点过去，这次不弹")
         self.assertEqual(browser_transport.attention(), [])
         passes["through"] = True
@@ -360,7 +393,8 @@ class BrowserTransportTests(unittest.TestCase):
         self.assertEqual(len(self.launches), 1)
 
     def test_the_automatic_phase_is_cut_to_the_timeout_but_the_click_window_is_not(self):
-        """撞验证页：自动阶段最多等 `min(auto_seconds, timeout)`；弹窗之后照旧等满 `click_seconds`，不看 `timeout`。"""
+        """撞验证页：清 cookie 在 `min(RESET_SECONDS, 自动时限)` 触发，重载后自动阶段最多等 `min(auto_seconds, timeout)`；
+        弹窗之后照旧等满 `click_seconds`，不看 `timeout`。"""
         shown_at = []
 
         def handler(method, params):
@@ -371,18 +405,18 @@ class BrowserTransportTests(unittest.TestCase):
             return self.generic(method, params)
 
         transport, _server = self.make(handler)
-        for timeout, auto in ((5, 5), (100, 40)):
+        for timeout, reset, auto in ((5, 5, 5), (100, 15, 40)):
             with self.subTest(timeout=timeout):
                 shown_at.clear()
                 transport._unsolved.clear()
                 started = self.clock.now
                 with self.assertRaises(ChallengeUnsolved):
                     transport(HttpRequest("GET", "https://javten.com/x", {}), timeout, 4096)
-                self.assertEqual(shown_at, [auto])
-                self.assertEqual(self.clock.now - started, auto + 120, "弹窗后等满 click_seconds")
+                self.assertEqual(shown_at, [reset + auto])
+                self.assertEqual(self.clock.now - started, reset + auto + 120, "弹窗后等满 click_seconds")
 
     def test_a_site_left_unclicked_gives_up_at_the_shortened_automatic_limit(self):
-        """同一站上次弹窗没点过去：这次到 `min(auto_seconds, timeout)` 就报，不弹窗，不再多等。"""
+        """同一站上次弹窗没点过去：这次清 cookie 重载后到 `min(auto_seconds, timeout)` 就报，不弹窗，不再多等。"""
         def handler(method, params):
             if method == "Runtime.evaluate":
                 return {"result": {"value": state_reply("Just a moment...")}}
@@ -393,7 +427,7 @@ class BrowserTransportTests(unittest.TestCase):
         started = self.clock.now
         with self.assertRaises(ChallengeUnsolved):
             transport(HttpRequest("GET", "https://javten.com/x", {}), 6, 4096)
-        self.assertEqual(self.clock.now - started, 6)
+        self.assertEqual(self.clock.now - started, 12, "清 cookie 那一步与重载后的自动阶段都按 timeout 裁到 6 秒")
         self.assertFalse(any(method == "Browser.setWindowBounds" for method, _ in server.calls))
 
     def test_a_site_gate_is_clicked_and_the_page_it_returns_to_is_read(self):
