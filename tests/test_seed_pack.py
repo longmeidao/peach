@@ -358,6 +358,39 @@ class ScriptTests(SeedPackCase):
         self.assertEqual((report["matched"], report["aliases"], report["integrity_check"]), (1, 2, "ok"))
         self.assertTrue((self.root / "pre-seed.db").exists())
 
+    def test_a_changed_export_that_keeps_the_version_is_refused(self):
+        """`seed-import:<版本>` 是导入的幂等键：同版本装新内容，导过旧内容的机器会当作已导过而跳过。"""
+        self.seeded_source()
+        script = load_script("seed_pack")
+        out, db = self.root / "seed" / "entities.json", str(self.root / "source.db")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(script.main(["export", "--db", db, "--version", VERSION, "--out", str(out)]), 0)
+        before = out.read_text(encoding="utf-8")
+        sora = self.source.execute("SELECT id FROM entity WHERE canonical_name='天川そら'").fetchone()[0]
+        with self.source:
+            alias(self.source, sora, "改名后的艺名", "r18:performer")
+        self.source.close()
+        with contextlib.redirect_stdout(io.StringIO()) as refused:
+            self.assertEqual(script.main(["export", "--db", db, "--version", VERSION, "--out", str(out)]), 2)
+        report = json.loads(refused.getvalue())
+        self.assertEqual((report["version"], report["changed"], report["written"]), (VERSION, True, False))
+        self.assertIn("换一个新版本串", report["error"])
+        self.assertEqual(out.read_text(encoding="utf-8"), before, "被拒的导出不动文件")
+        with contextlib.redirect_stdout(io.StringIO()) as renewed:
+            self.assertEqual(script.main(["export", "--db", db, "--version", f"{VERSION}.1", "--out", str(out)]), 0)
+        self.assertTrue(json.loads(renewed.getvalue())["changed"])
+        self.assertEqual((seed_pack.load(out)["version"], seed_pack.load(out)["counts"]["aliases"]),
+                         (f"{VERSION}.1", 4))
+        # 文件已是 `.1`，再改内容后用缺省那样的当天日期导出：比现有版本串旧，同样拒绝。
+        source = connect(self.root / "source.db")
+        with source:
+            alias(source, sora, "再改一次", "r18:performer")
+        source.close()
+        with contextlib.redirect_stdout(io.StringIO()) as older:
+            self.assertEqual(script.main(["export", "--db", db, "--version", VERSION, "--out", str(out)]), 2)
+        self.assertIn(f"不比文件里的 {VERSION}.1 新", json.loads(older.getvalue())["error"])
+        self.assertEqual(seed_pack.load(out)["version"], f"{VERSION}.1")
+
 
 if __name__ == "__main__":
     unittest.main()
