@@ -1,8 +1,9 @@
 {
  "counts": {
-  "aliases": 1610,
-  "entities": 970,
+  "aliases": 1609,
+  "entities": 980,
   "links": 921,
+  "makers": 26,
   "memberships": 370,
   "profiles": 708,
   "refs": 2862
@@ -53720,6 +53721,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "ABC/妄想族",
    "refs": []
   },
@@ -53742,6 +53747,17 @@
    "refs": []
   },
   {
+   "aliases": [],
+   "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "Prestige",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "ARA",
+   "refs": []
+  },
+  {
    "aliases": [
     {
      "alias": "Asia / Mousouzoku",
@@ -53754,6 +53770,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "Asia/妄想族",
    "refs": []
   },
@@ -53785,6 +53805,10 @@
      "url": "https://x.com/AVSCollectors1"
     }
    ],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "AVS collector's",
    "refs": []
   },
@@ -53825,6 +53849,17 @@
     }
    ],
    "name": "BangBus",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "K M Produce",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "BAZOOKA",
    "refs": []
   },
   {
@@ -54039,6 +54074,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "FetishBox/妄想族",
    "refs": []
   },
@@ -54151,6 +54190,17 @@
   {
    "aliases": [],
    "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "Prestige",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "Jackson",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
    "links": [
     {
      "kind": "official",
@@ -54170,6 +54220,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "JET映像",
    "refs": []
   },
@@ -54353,6 +54407,17 @@
   {
    "aliases": [],
    "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "K M Produce",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "million",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
    "links": [
     {
      "kind": "official",
@@ -54512,10 +54577,6 @@
     {
      "alias": "プレステージ",
      "source": "merge:studio-name-variant"
-    },
-    {
-     "alias": "プレステージプレミアム",
-     "source": "peach:canonicalization"
     }
    ],
    "kind": "studio",
@@ -54550,6 +54611,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "Prestige",
+    "source": "review:prestige-premium-split-20260923"
+   },
    "name": "PRESTIGE PREMIUM",
    "refs": []
   },
@@ -54564,6 +54629,17 @@
     }
    ],
    "name": "Radix",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "K M Produce",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "Real Works",
    "refs": []
   },
   {
@@ -54660,6 +54736,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "K M Produce",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "S級素人",
    "refs": []
   },
@@ -54672,6 +54752,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260924-b.csv"
+   },
    "name": "TAKE工房PLUS/妄想族",
    "refs": []
   },
@@ -54734,6 +54818,10 @@
      "url": "https://x.com/marrion_av"
     }
    ],
+   "maker": {
+    "name": "MARRION",
+    "source": "review:label-maker-20260924-b.csv"
+   },
    "name": "Unfinished",
    "refs": []
   },
@@ -54897,6 +54985,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "ゆりえっち/妄想族",
    "refs": []
   },
@@ -54957,6 +55049,28 @@
     }
    ],
    "name": "カリビアンコム",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "ゲッツ！！ボンボン/妄想族",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "Prestige",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "シロウトTV",
    "refs": []
   },
   {
@@ -55031,6 +55145,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "ティーチャー/妄想族",
    "refs": []
   },
@@ -55055,6 +55173,17 @@
     }
    ],
    "name": "ナンパJAPAN",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "Prestige",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "ナンパTV",
    "refs": []
   },
   {
@@ -55135,6 +55264,17 @@
   {
    "aliases": [],
    "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "Prestige",
+    "source": "review:label-maker-20260923.csv"
+   },
+   "name": "ラグジュTV",
+   "refs": []
+  },
+  {
+   "aliases": [],
+   "kind": "studio",
    "links": [
     {
      "kind": "official",
@@ -55158,6 +55298,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "下半身タイガース/妄想族",
    "refs": []
   },
@@ -55215,6 +55359,10 @@
      "url": "https://web.archive.org/web/20251116091226/https://orenoshirouto.com/"
     }
    ],
+   "maker": {
+    "name": "K M Produce",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "俺の素人",
    "refs": []
   },
@@ -55258,6 +55406,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-20260923.csv"
+   },
    "name": "山と空/妄想族",
    "refs": []
   },
@@ -55357,6 +55509,17 @@
    "refs": []
   },
   {
+   "aliases": [],
+   "kind": "studio",
+   "links": [],
+   "maker": {
+    "name": "妄想族",
+    "source": "review:label-maker-hoihoi-20260924.csv"
+   },
+   "name": "素人ホイホイ",
+   "refs": []
+  },
+  {
    "aliases": [
     {
      "alias": "Amateur Hey-hey Power",
@@ -55365,6 +55528,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "素人ホイホイ",
+    "source": "review:label-maker-hoihoi-20260924.csv"
+   },
    "name": "素人ホイホイpower",
    "refs": []
   },
@@ -55385,6 +55552,10 @@
    ],
    "kind": "studio",
    "links": [],
+   "maker": {
+    "name": "素人ホイホイ",
+    "source": "review:label-maker-hoihoi-20260924.csv"
+   },
    "name": "素人ホイホイsweet！",
    "refs": []
   },
@@ -55455,5 +55626,5 @@
  ],
  "format": 1,
  "source": "auto:seed",
- "version": "2026-09-25"
+ "version": "2026-09-25.1"
 }
