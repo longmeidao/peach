@@ -73,5 +73,63 @@ class MatcherTests(unittest.TestCase):
         self.assertIsNone(embedder.embed(numpy.zeros((400, 400, 3), numpy.uint8)))
 
 
+class SmallFaceCropTests(unittest.TestCase):
+    """全身照上的小脸先裁出来放大再摆正；大脸和裁出来检不到的都照整图走。"""
+
+    POINTS = (0.4, 0.4, 0.6, 0.4, 0.5, 0.5, 0.42, 0.6, 0.58, 0.6)
+
+    def embedder(self, faces_on_crop):
+        import cv2
+        import numpy
+
+        seen = []
+
+        class Detector:
+            def __init__(self, first):
+                self.first = first
+
+            def detect(self, image):
+                seen.append(image.shape[:2])
+                return self.first if len(seen) == 1 else faces_on_crop
+
+        class Recognizer:
+            def alignCrop(self, image, _box):
+                seen.append(("aligned", image.shape[:2]))
+                return image
+
+            def feature(self, _aligned):
+                return numpy.ones((1, 4), numpy.float32)
+
+        embedder = face_match.FaceEmbedder.__new__(face_match.FaceEmbedder)
+        embedder._cv2 = cv2
+        embedder._recognizer = Recognizer()
+        return embedder, Detector, seen
+
+    def run_on(self, face_width, faces_on_crop):
+        import numpy
+
+        embedder, Detector, seen = self.embedder(faces_on_crop)
+        embedder._detector = Detector([Face(cx=0.5, cy=0.2, width=face_width, height=face_width,
+                                            score=0.9, landmarks=self.POINTS)])
+        feature = embedder.embed(numpy.zeros((1000, 800, 3), numpy.uint8))
+        return feature, seen
+
+    def test_a_small_face_is_aligned_on_the_enlarged_crop(self):
+        side = face_match.FACE_CROP_SIDE
+        feature, seen = self.run_on(0.1, [Face(cx=0.5, cy=0.5, width=0.5, height=0.5,
+                                                score=0.9, landmarks=self.POINTS)])
+        self.assertEqual(feature, (1.0, 1.0, 1.0, 1.0))
+        self.assertEqual(seen, [(1000, 800), (side, side), ("aligned", (side, side))])
+
+    def test_a_large_face_is_aligned_on_the_whole_picture(self):
+        _feature, seen = self.run_on(0.2, [])
+        self.assertEqual(seen, [(1000, 800), ("aligned", (1000, 800))])
+
+    def test_a_crop_without_a_usable_face_falls_back_to_the_whole_picture(self):
+        _feature, seen = self.run_on(0.1, [Face(cx=0.5, cy=0.5, width=0.5, height=0.5, score=0.9)])
+        side = face_match.FACE_CROP_SIDE
+        self.assertEqual(seen, [(1000, 800), (side, side), ("aligned", (1000, 800))])
+
+
 if __name__ == "__main__":
     unittest.main()

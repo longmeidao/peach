@@ -33,6 +33,14 @@ MODEL_NAME = "sface_2021dec"
 #: SFace 官方给的余弦阈值（opencv_zoo `face_recognition_sface` 的 README 与示例）：
 #: 过它算同一个人。不自己调：本库没有带真值的样本集，调出来的数没有依据。
 COSINE_THRESHOLD = 0.363
+#: 脸在原图上窄于这么多像素时，先以脸为中心裁出 `FACE_CROP_SPAN` 倍脸框的方块、放大到
+#: `FACE_CROP_SIDE` 再检一次脸、摆正、提特征（ADR-0070）。全身照上 80px 宽的脸直接摆正
+#: 到 112×112，关键点落在几个像素上，摆歪了分数就塌：伊吹彩的 ラグジュTV 全身照与
+#: Minnano 头像整图 0.352、裁脸放大后 0.51 以上。本机图库缓存 663 张实测，同名跨目录
+#: 过线 74.2% → 76.7%，不同名误认 5.219% → 5.162%，两头都没变差。
+SMALL_FACE_PX = 120
+FACE_CROP_SPAN = 2.0
+FACE_CROP_SIDE = 480
 
 
 def ensure_model(path: Path | None = None, *, allow_download: bool = True) -> Path:
@@ -71,14 +79,32 @@ class FaceEmbedder:
         """这张图上主脸的特征；检不出脸、或检出的框没带关键点就是 None。
 
         主脸按 `main_face` 挑，和取景、截脸是同一张。小图先放大到检出器认得出的尺寸，
-        关键点换算回放大后那张图的像素，摆正也在那张图上做。
+        关键点换算回放大后那张图的像素，摆正也在那张图上做。脸窄于 `SMALL_FACE_PX` 时
+        改在裁脸放大的那张上重检一次再摆正；那张上检不出带关键点的脸就仍用整图的结果。
         """
-        import numpy
-
         source = face_detect._upscale(image)
         best = main_face(self._detector.detect(source))
         if best is None or len(best.landmarks) != 10:
             return None
+        if best.width * image.shape[1] < SMALL_FACE_PX:
+            crop = self._face_crop(source, best)
+            closer = main_face(self._detector.detect(crop))
+            if closer is not None and len(closer.landmarks) == 10:
+                source, best = crop, closer
+        return self._feature(source, best)
+
+    def _face_crop(self, source, face):
+        rows, cols = source.shape[:2]
+        half = max(face.width * cols, face.height * rows) * FACE_CROP_SPAN / 2
+        cx, cy = face.cx * cols, face.cy * rows
+        x0, y0 = max(0, int(cx - half)), max(0, int(cy - half))
+        x1, y1 = min(cols, int(cx + half)), min(rows, int(cy + half))
+        return self._cv2.resize(source[y0:y1, x0:x1], (FACE_CROP_SIDE, FACE_CROP_SIDE),
+                                interpolation=self._cv2.INTER_CUBIC)
+
+    def _feature(self, source, best):
+        import numpy
+
         rows, cols = source.shape[:2]
         points = [value * (cols if index % 2 == 0 else rows)
                   for index, value in enumerate(best.landmarks)]

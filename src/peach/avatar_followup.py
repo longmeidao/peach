@@ -144,8 +144,8 @@ _ALIAS_COUNT = "(SELECT count(*) FROM entity_alias al WHERE al.entity_id=e.id)"
 
 #: 认人判据的版本，进指纹。改了判据就加一：存量里缺图的女优按新判据各重比一次。
 #: 2 是 ADR-0057 的图库互证，3 是 ADR-0062 没有封面参照时的图库自证，4 是 ADR-0066 的
-#: 小图作证与兜底。
-MATCH_RULE = 4
+#: 小图作证与兜底，5 是 ADR-0070 的小脸裁切放大再比。
+MATCH_RULE = 5
 
 
 def _fingerprint(works, aliases) -> str:
