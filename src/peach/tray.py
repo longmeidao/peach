@@ -1392,7 +1392,8 @@ def log_to_file(path: Path) -> logging.Handler | None:
     """托盘自己的日志另落一份文件，返回挂上的 handler；写不了返回 None。
 
     pythonw 下没有 stderr，`basicConfig` 那一份无处可落，启停时序出问题时只剩进程创建
-    时间可对。写不了只是少一份证据，不拦托盘启动。
+    时间可对。写不了只是少一份证据，不拦托盘启动。httpx 每轮健康检查各记一条 INFO，
+    一天一万多行，文件里只收它 WARNING 以上的。
     """
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1400,6 +1401,8 @@ def log_to_file(path: Path) -> logging.Handler | None:
     except OSError:
         return None
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    handler.addFilter(lambda record: record.levelno >= logging.WARNING
+                      or not record.name.startswith(("httpx", "httpcore")))
     logging.getLogger().addHandler(handler)
     return handler
 
