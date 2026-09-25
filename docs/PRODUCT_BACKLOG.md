@@ -116,7 +116,7 @@ shuffle_key 改变随机浏览的序列语义，先测关系筛选收益再决�
 20. 用户复核 `studio-names-<日期>.csv` 的 26 条厂牌改名后另行授权；3 条不一致按「一个账本名混了两家」处理，5 条 404 未取得，改用搜索查找要先有一个能用的搜索出口。
 21. 厂牌标识规则：logo 文件一律不透明方图（位图 `images.bake_square`、矢量 `images.bake_square_vector`），产物再过 `images.refit_plate` 摆到圆形图位里看得全的位置，页面三处一律 cover。另行授权后跑一次 `normalize_studio_logos.py --apply --backup <落点>`，2026-09-08 dry-run 报 52 张待改：46 张重新摆位（自带大留白的裁掉、顶到边的补到外接圆）、4 张 SVG 包方底（DarkRoomVR、TeamSkeetXReislin、TeenFidelity、VirtualTaboo，前两张白字标配深底）、HEYZO 从备份原图重烤改配深底、pikpak 重补方。
 22. 把 javdatabase 的 idol 页接进社媒／官网候选：183 页缓存里 139 页带 X 链接、138 页带另一个官方站，由番号定位、不必离线比名。复用 `peach.social_links` 的判据与 `install_entity_links.py` 的 `FIELDS`，排掉四个整站广告主机。
-23. 人工判 `domain-code-review.csv` 里 `WX17` 那 269 条水印存疑行，脚本不给提案。
+23. 另行授权后清掉 3 条按旧文件名判据由 `scan:filename` 写下的误识别番号：`DAO-001`（`dao01(1).mp4`）、`UWFR-085`（随机串 `UWFr85dczsVeysGg.mp4`）、`WEN-066`（`wen66s.mp4`）。`release_code_from_filename` 对这三个文件名返回 None；它们的规范写法本身像番号，`revert_misread_code.py` 不收，要按资产 id 走 `write_owned_fields`。
 24. 给账本厂牌补日文别名这条路走不通，2026-09-22 量过：名录 402 条对上账本 45 家，剩下 357 条对不上不是因为账本缺日文名，是因为账本里没有那些厂牌：MGStage 是素人／企划平台，账本那 96 家未对上的多数是 FANZA 系（MOODYZ 135 部、Idea Pocket 122 部、S1 88 部）。宽松判据（子串加 0.8 编辑距离）只翻出 11 个疑似配对，逐条看全是假的（`kawaii`↔`hawaii`、`PREMIUM`↔`KMP PREMIUM`、`Hunter`↔`ladyhunter`）。FANZA 自己的厂牌一览 `mono/dvd/-/maker/=/keyword=<音>/` 44 页 839 家（要 `age_check_done=1` 且走代理，直连回「お住まいの地域からご利用になれません」），对上账本 44 家，可补的日文写法只有 `Baltan`→`バルタン` 一条 2 部；`VRパラダイス`↔`こあらVR` 是日文折成空罗马字形撞出来的假匹配。FANZA 厂牌详情页也没有标识图，只有作品封面。真正的缺口是 48 家无图厂牌合计 165 部作品，它们一条 official／catalog 链接都没有，缺的是链接不是别名，按第 25 条走厂牌官网。
 25. 其他厂牌官网的厂标与演员资料广度扫描（SOD、FALENO、Attackers、S1、Moodyz 等），排在第 22 条 javdatabase idol 页接入之后。
 26. 用 javtiful 的 `/ja/actress/<slug>` 补演员的罗马字↔日文配对：315 页约 7560 位，切语言前缀就出日文名。厂牌名不随语言切换，这条只服务演员别名。

@@ -30,8 +30,8 @@ if str(SRC_DIR) not in sys.path:
 
 from peach import __version__ as PEACH_VERSION
 from peach import metadata_routes
-from peach.catalog_rules import (code_query_variants, is_jav_code, normalise_code_key,
-                                 same_release_code)
+from peach.catalog_rules import (RELEASE_EVIDENCE_KINDS, code_query_variants, is_jav_code,
+                                 normalise_code_key, same_release_code)
 from peach.scripting import HostLimiter, open_readonly
 from peach.config import DATABASE_PATH, GENERATED_DIR, LOG_DIR, SECRETS_DIR, SOURCES_DIR, TOOLS_DIR
 from peach.genre_decisions import load_genre_decisions
@@ -115,19 +115,25 @@ def close_log() -> None:
         _logf = None
 
 
-def _is_explicit_code(code: str) -> bool:
-    r"""番号是否明确到可以直接查来源；判的是**规范化之后**的形态。
+def _is_explicit_code(code: str, *, release_evidence: bool = False) -> bool:
+    r"""番号是否明确到可以直接查来源。
 
-    真正发给 provider 的就是 `normalise_code_key(code)`，而账本里同一个番号常以
-    `WX17`、`BANBI_555`、`IPVR00296` 这种缺分隔符的原始写法存着。按原始写法判会把它们
-    当成不明确整条跳过，`--codes-file` 那一侧却是按规范化键匹配的，于是同一批番号在
-    两处结论相反，报成「番号文件含 ledger 中不存在的番号」。2026-09-02 实测漏掉 42 个。
+    原始写法本身就是番号形态的直接放行。缺分隔符的写法（`PBD390`、`IPVR00296`）要规范化
+    之后才像番号，而账本里同样长相的还有建库前导入时写进 `code` 的目录名：论坛合集包
+    `WX17`、创作者账号 `RAIKUN325`、`BANBI_555`、创作者自编号 `DTW003`。这一类只有在
+    厂牌、发行日或出演者／片商／系列实体里有一样时才算番号，口径与 `is_jav_asset` 相同。
+    2026-09-25 只读盘点：这种写法 31 个，全部没有发行证据，全是目录名。
+
+    `WX17` 被规范成 `WX-017` 发给 javbus，取回的是另一部片 `WXSD-017`，片名和标签在
+    09-02 随整批复核落到了 266 个网红视频上。
 
     形态判定交给 `is_jav_code`，这里不再抄一份正则。抄出来的那份和它逐字相同，于是
     `HHD800`、`HJD2048` 这些转载站水印域名在 `catalog_rules` 侧被排除之后，这里还会
     继续把它们发给 provider 查——同一个「什么算番号」有两个答案。
     """
-    return is_jav_code(normalise_code_key(code))
+    if is_jav_code(code):
+        return True
+    return release_evidence and is_jav_code(normalise_code_key(code))
 
 
 def translate_failure(source: str, error: Exception) -> MetadataProviderError:
@@ -526,8 +532,15 @@ def _requested_codes(path: Path) -> list[str]:
     return requested
 
 
-def _select_requested_codes(codes: list[tuple], path: Path) -> list[tuple]:
+def _select_requested_codes(codes: list[tuple], path: Path, *,
+                            labels: set[str] = frozenset()) -> list[tuple]:
+    """按番号文件挑出要问的番号；`labels` 是账本里有、但只是目录名的那几个规范键。"""
     requested = _requested_codes(path)
+    withheld = [query for query in requested if query in labels]
+    if withheld:
+        preview = "、".join(withheld[:10])
+        raise ValueError(f"番号文件含账本里当 code 存着的目录名，不是发行番号：{preview}"
+                         "（缺分隔符，且没有厂牌、发行日或出演者证据）")
     available: dict[str, tuple] = {}
     for row in codes:
         query = normalise_code_key(row[0])
@@ -614,20 +627,31 @@ def _load_codes(connection, args, parser) -> list[tuple]:
     文件名或账本厂牌指着一本道时才问它。韩国 MIB 一律不问——JAV 目录站对这些番号只会
     返回别的作品，链上它是空的，`--sources` 点名也不放行。
     """
-    codes = [
-        (str(row[0]).strip(), float(row[1]), int(row[2]), row[3], row[4], row[5])
-        for row in connection.execute(
-            "SELECT code,COALESCE(sum(size),0)/1073741824.0,count(*),max(path),max(name),max(studio) "
-            "FROM asset WHERE medium='video' AND code IS NOT NULL AND trim(code)<>'' "
-            "GROUP BY code ORDER BY 2 DESC"
-        )
-        if _is_explicit_code(str(row[0]))
-        and metadata_routes.classify(normalise_code_key(str(row[0]))) not in ("kmib", "unknown")
-    ]
+    kinds = ",".join("?" * len(RELEASE_EVIDENCE_KINDS))
+    codes, labels = [], set()
+    for row in connection.execute(
+        "SELECT a.code,COALESCE(sum(a.size),0)/1073741824.0,count(*),max(a.path),max(a.name),"
+        "max(a.studio),max(trim(COALESCE(a.studio,''))<>'' OR trim(COALESCE(a.release_date,''))<>'' "
+        "OR EXISTS(SELECT 1 FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        f"WHERE ae.asset_id=a.id AND e.kind IN ({kinds}))) "
+        "FROM asset a WHERE a.medium='video' AND a.code IS NOT NULL AND trim(a.code)<>'' "
+        "GROUP BY a.code ORDER BY 2 DESC", sorted(RELEASE_EVIDENCE_KINDS)
+    ):
+        code = str(row[0]).strip()
+        if not _is_explicit_code(code, release_evidence=bool(row[6])):
+            if is_jav_code(normalise_code_key(code)):
+                labels.add(normalise_code_key(code))
+            continue
+        if metadata_routes.classify(normalise_code_key(code)) in ("kmib", "unknown"):
+            continue
+        codes.append((code, float(row[1]), int(row[2]), row[3], row[4], row[5]))
     if args.codes_file:
         try:
-            codes = _select_requested_codes(codes, args.codes_file)
+            codes = _select_requested_codes(codes, args.codes_file, labels=labels)
         except (OSError, UnicodeError, ValueError) as error:
+            # `parser.error` 直接退出；日志和连接不先关，Windows 上这两个文件就删不掉。
+            connection.close()
+            close_log()
             parser.error(str(error))
     if args.english_title_only:
         codes = _select_english_title_codes(connection, codes)

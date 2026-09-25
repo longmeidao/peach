@@ -20,10 +20,12 @@ r"""转载站水印域名不得被当成番号。
 番号，推广域名剥掉之后才轮到番号主体。
 """
 import importlib.util
+import io
 import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 from peach.catalog_rules import (
@@ -162,6 +164,18 @@ class ExtractionTests(unittest.TestCase):
     def test_labels_and_domains_extract_to_nothing(self):
         for text in ("HHD800", "hhd800.com", "www.98t.la", "AAVV333", "bei88"):
             self.assertIsNone(release_code_from_text(text), text)
+
+    def test_what_the_volume_strip_leaves_must_be_a_whole_code(self):
+        """合集包 `[mtfdz.club]WX17.3` 剥掉域名和 `.3` 只剩 `WX17`，补零凑成的 `WX-017` 是别的片。
+
+        2026-09-25 全库 68221 段文件名与目录名对比，这条判据只改了 7 段，全是误识别：
+        合集包名、相机文件 `DSCF27.1.jpg`、随机串 `UWFr85dczsVeysGg.mp4`。
+        """
+        for name in ("[mtfdz.club]WX17.3", "DSCF27.1.jpg", "dao01(1).mp4", "wen66s.mp4"):
+            self.assertIsNone(release_code_from_filename(name), name)
+        self.assertEqual(release_code_from_filename("abp762-1.mp4"), "ABP-762")
+        self.assertEqual(release_code_from_filename("ABW-358-2.mp4"), "ABW-358")
+        self.assertEqual(release_code_from_filename("[98t.tv]SSIS-001-C.mp4"), "SSIS-001")
 
 
 class DatedCodeSeparatorTests(unittest.TestCase):
@@ -648,6 +662,91 @@ class ApplyTests(unittest.TestCase):
         # 这里不再自备一份：同一条判据有两份实现时，修好一份不等于修好这件事。
         self.assertIs(audit.open_readonly, scripting.open_readonly)
         self.assertIs(audit.open_for_write, scripting.open_for_write)
+
+
+_revert_spec = importlib.util.spec_from_file_location(
+    "revert_misread_code", SCRIPT.with_name("revert_misread_code.py"))
+revert = importlib.util.module_from_spec(_revert_spec)
+_revert_spec.loader.exec_module(revert)
+
+
+class RevertMisreadCodeTests(unittest.TestCase):
+    """论坛合集包 `WX17` 被当成 `WX-017` 刮回另一部片的片名和标签，按键整批撤回。"""
+
+    NOW = "2026-09-25T00:00:00Z"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        self.db = self.root / "ledger.db"
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, MIGRATIONS)
+        connection = sqlite3.connect(self.db)
+        connection.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,code,catalog_title,field_owners) "
+            "VALUES(?,'115',?,?,'video','WX17',?,?)",
+            [(1, r"B:\番号\_未知厂牌\WX17\[mtfdz.club]WX17.3\Anna【20V】\Anna (1).mp4",
+              "Anna (1).mp4", "新人！「澪」のコト、知ってください。", None),
+             (2, r"B:\番号\_未知厂牌\WX17\[mtfdz.club]WX17.3\Anna【20V】\Anna (2).mp4",
+              "Anna (2).mp4", "我自己起的名字", '{"catalog_title":"user:manual"}')])
+        connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(9,'tag','口交','口交',?,?)", (self.NOW, self.NOW))
+        for asset_id in (1, 2):
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,metadata_json) "
+                "VALUES(?,9,'tag','javinizer:javbus:tag',?)",
+                (asset_id, '{"review_item":"WX-017:tags","provider_id":"WXSD-017"}'))
+            connection.execute("INSERT INTO asset_tag(asset_id,tag,source) "
+                               "VALUES(?,'口交','javinizer:javbus:tag')", (asset_id,))
+        for key in ("WX-017:tags", "WX-017:title"):
+            connection.execute(
+                "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                "VALUES('metadata_fields',?,'approved','{\"source\":\"javbus\"}',?)",
+                (key, self.NOW))
+        connection.commit()
+        connection.close()
+
+    def _run(self, *extra):
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            return revert.main(["--db", str(self.db), *extra])
+
+    def _read(self, sql, *params):
+        connection = sqlite3.connect(self.db)
+        try:
+            return connection.execute(sql, params).fetchall()
+        finally:
+            connection.close()
+
+    def test_a_dry_run_writes_nothing(self):
+        self.assertEqual(self._run("--code", "WX17"), 0)
+        self.assertEqual(self._read("SELECT count(*) FROM asset WHERE code='WX17'"), [(2,)])
+        self.assertEqual(self._read("SELECT count(*) FROM asset_tag"), [(2,)])
+
+    def test_everything_scraped_under_the_label_is_taken_back(self):
+        self.assertEqual(self._run("--code", "WX17", "--apply",
+                                   "--backup", str(self.root / "b.db")), 0)
+        self.assertEqual(
+            self._read("SELECT id,code,catalog_title,json_extract(field_owners,'$.code') "
+                       "FROM asset ORDER BY id"),
+            [(1, None, None, "user:manual"), (2, None, "我自己起的名字", "user:manual")])
+        self.assertEqual(self._read("SELECT count(*) FROM asset_entity"), [(0,)])
+        self.assertEqual(self._read("SELECT count(*) FROM asset_tag"), [(0,)])
+        self.assertEqual(self._read("SELECT DISTINCT status FROM review_decision"),
+                         [("rejected",)])
+        self.assertEqual(self._read("SELECT count(*) FROM asset_search WHERE code<>''"), [(0,)])
+        self.assertTrue((self.root / "b.db").exists())
+
+    def test_a_real_code_or_one_with_release_evidence_is_refused(self):
+        self.assertEqual(self._run("--code", "ABW-123"), 2)
+        connection = sqlite3.connect(self.db)
+        connection.execute("UPDATE asset SET studio='ワープ' WHERE id=1")
+        connection.commit()
+        connection.close()
+        self.assertEqual(self._run("--code", "WX17", "--apply",
+                                   "--backup", str(self.root / "b.db")), 2)
+        self.assertEqual(self._read("SELECT count(*) FROM asset WHERE code='WX17'"), [(2,)])
 
 
 if __name__ == "__main__":
