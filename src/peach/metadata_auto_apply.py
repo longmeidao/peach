@@ -19,14 +19,13 @@ from pathlib import Path
 
 from .catalog_rules import (
     code_release_date,
-    collapse_superseded_taste_tags,
+    current_tags,
     fill_masked_title,
     is_korean_mib_code,
     normalise_code_key,
     release_code_from_filename,
     same_release_code,
     strip_scrape_mark,
-    superseded_taste_tags,
 )
 from .entities import (
     canonicalize_entity_name,
@@ -954,26 +953,11 @@ def _apply_metadata_candidate(
     raw_tags = candidate.get("value")
     if not isinstance(raw_tags, list):
         raise ValueError("标签候选必须是数组")
-    tags = collapse_superseded_taste_tags(list(dict.fromkeys(
-        _approved_entity_name(tag, "tag") for tag in raw_tags
-    )))
+    # 候选文件停在抓取那一刻：那时的映射可能还给过退役名或已撤掉的粗桶，
+    # 落库这一步按现在的词表换名或丢掉。
+    tags = current_tags(_approved_entity_name(tag, "tag") for tag in raw_tags)
     if not tags:
         raise ValueError("标签候选为空")
-    obsolete_tags = superseded_taste_tags(tags)
-    if obsolete_tags:
-        obsolete_marks = ",".join("?" * len(obsolete_tags))
-        obsolete_values = sorted(obsolete_tags)
-        connection.execute(
-            f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
-            f"AND tag IN ({obsolete_marks})",
-            [*asset_ids, *obsolete_values],
-        )
-        connection.execute(
-            f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
-            f"AND entity_id IN (SELECT id FROM entity WHERE kind='tag' "
-            f"AND canonical_name IN ({obsolete_marks}))",
-            [*asset_ids, *obsolete_values],
-        )
     connection.execute(
         f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
         "AND source LIKE 'javinizer:%'", asset_ids,

@@ -1206,14 +1206,14 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         connection.execute("UPDATE asset SET code='ABC-001' WHERE id=1")
         connection.execute(
             "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
-            "VALUES(1,'乳系',0.4,'filename')"
+            "VALUES(1,'美乳',0.4,'filename')"
         )
         connection.commit(); connection.close()
         candidate = {
             "candidate_key": "ABC-001:tags:r18dev:abc", "source": "r18dev",
             "source_url": "https://r18.dev/example", "confidence": 0.9,
             "provider_id": "ABC-001",
-            "value": ["乳系", "颜射"], "display_value": "乳系、颜射", "warnings": [],
+            "value": ["美乳", "颜射"], "display_value": "美乳、颜射", "warnings": [],
         }
         fields = ["item_key", "code", "query", "field", "field_label", "current_value",
                   "candidates_json", "source_count", "status", "size_gb", "videos", "fetched_at"]
@@ -1222,7 +1222,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             writer = csv.DictWriter(handle, fieldnames=fields)
             writer.writeheader(); writer.writerow({
                 "item_key": "ABC-001:tags", "code": "ABC-001", "query": "ABC-001",
-                "field": "tags", "field_label": "标签", "current_value": "乳系",
+                "field": "tags", "field_label": "标签", "current_value": "美乳",
                 "candidates_json": json.dumps([candidate], ensure_ascii=False), "source_count": "1",
                 "status": "candidate", "size_gb": "1", "videos": "1", "fetched_at": "now",
             })
@@ -1234,9 +1234,9 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         connection = sqlite3.connect(self.db)
         self.assertEqual(connection.execute(
             "SELECT tag,confidence,source FROM asset_tag WHERE asset_id=1 "
-            "AND tag IN ('乳系','颜射') ORDER BY tag"
+            "AND tag IN ('美乳','颜射') ORDER BY tag"
         ).fetchall(), [
-            ("乳系", 0.9, "javinizer:r18dev:tag"),
+            ("美乳", 0.9, "javinizer:r18dev:tag"),
             ("颜射", 0.9, "javinizer:r18dev:tag"),
         ])
         connection.close()

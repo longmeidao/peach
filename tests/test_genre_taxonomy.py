@@ -5,12 +5,14 @@ from peach.genre_taxonomy import (
     CONTENT_GENRES,
     NON_CONTENT_GENRES,
     NON_CONTENT_PATTERNS,
+    PROFILE_GENRES,
     UNMAPPED,
     genres_in_warning,
     is_non_content_genre,
     map_genres,
     normalise_genre,
     resolve_genre,
+    resolve_profile_tag,
     unmapped_genre_warning,
 )
 from peach.taste_history import TASTE_CATEGORY_TAGS
@@ -50,7 +52,7 @@ class GenreTaxonomyTests(unittest.TestCase):
         self.assertEqual(CONTENT_GENRES["寝取り・寝取られ"], "绿帽NTR")
         self.assertEqual(CONTENT_GENRES["巨乳"], "巨乳")
         self.assertEqual(CONTENT_GENRES["美乳"], "美乳")
-        for measurement in ("Dカップ", "Gカップ", "Jカップ", "巨大乳輪"):
+        for measurement in ("Dカップ", "Gカップ", "Jカップ"):
             self.assertNotIn(measurement, CONTENT_GENRES,
                              f"{measurement} 是身体尺寸，词表里没有对应分类")
         for marketing in ("独占配信", "配信専用", "単体作品", "企画", "店長推薦作品",
@@ -60,26 +62,19 @@ class GenreTaxonomyTests(unittest.TestCase):
                              f"{marketing} 是发行/营销/规格分类，不是内容标签")
         self.assertTrue({key for key in CONTENT_GENRES if not key.isascii()})
 
-    def test_no_specific_genre_maps_up_into_a_superseded_broad_bucket(self):
-        """来源给了具体标签就照抄，不许升成 `乳系`、`足系` 这种粗桶。
+    def test_no_genre_maps_into_a_dropped_tag(self):
+        """`乳系`、`足系` 这种粗桶已经撤掉，来源说到哪一级就取哪一级。
 
-        `TAG_SUPERSESSION` 的定义正是「有具体标签时把粗桶删掉」，所以把
-        javbus 的 `巨乳` 映成 `乳系` 等于写入系统随后要丢弃的那个值。2026-09-02
-        真写进了账本 57 条，连带暴露出更早的 `"Big Tits": "乳系"` 是同一个错。
-
-        例外只有一种：来源词本身就只说到粗桶那一级。`おっぱい` 没说是巨乳还是
-        美乳，映到 `乳系` 才是「取来源给出的那一级」；粗桶在没有具体标签时会被
-        保留，所以这一条不是升级。要加新例外，先说出来源词凭什么无法再具体。
+        映进撤掉的标签，等于写入一个账本清理时会整条删掉的值。`おっぱい` 只说到
+        「胸」这一级，没有对应的具体标签，所以它不进表，作为未收录词回传。
         """
-        broad_only_sources = {"おっぱい"}
         offenders = sorted(
             f"{source} -> {mapped}"
-            for source, mapped in CONTENT_GENRES.items()
-            if mapped in catalog_rules.TAG_SUPERSESSION
-            and source not in broad_only_sources)
-        self.assertEqual(offenders, [], "这些映射升到了粗桶，应映射到来源给出的那一级")
-        for source in sorted(broad_only_sources):
-            self.assertIn(source, CONTENT_GENRES, f"{source} 已不在表里，例外该跟着去掉")
+            for table in (CONTENT_GENRES, PROFILE_GENRES)
+            for source, mapped in table.items()
+            if set(mapped if isinstance(mapped, tuple) else (mapped,)) & catalog_rules.DROPPED_TAGS)
+        self.assertEqual(offenders, [], "这些映射落进了撤掉的粗桶")
+        self.assertEqual(map_genres(["おっぱい"]), ([], ["おっぱい"]))
 
     def test_content_and_non_content_tables_do_not_overlap(self):
         both = {normalise_genre(key) for key in CONTENT_GENRES} & {
@@ -361,7 +356,7 @@ class VocabularyHygieneTests(unittest.TestCase):
             (("Short Hair", "ショートヘア", "短髪"), "短发"),
             (("スポーツ", "Sports", "アスリート"), "运动"),
             (("童貞", "Virgin Boy"), "处男"),
-            (("処女", "Virgin"), "处女"),
+            (("処女", "Virgin"), "处女设定"),
             (("汗だく", "Sweaty", "汗"), "汗湿"),
             (("泥酔", "Drunk", "酔っ払い"), "醉酒"),
             (("ドラッグ", "媚薬", "Aphrodisiac"), "药物"),
@@ -385,8 +380,8 @@ class VocabularyHygieneTests(unittest.TestCase):
 
         两边合成一个「第一次」标签，馆藏里就再也问不出想找的是哪一种。
         """
-        self.assertEqual(map_genres(["童貞", "処女"])[0], ["处男", "处女"])
-        self.assertEqual(map_genres(["Virgin"])[0], ["处女"])
+        self.assertEqual(map_genres(["童貞", "処女"])[0], ["处男", "处女设定"])
+        self.assertEqual(map_genres(["Virgin"])[0], ["处女设定"])
         self.assertEqual(map_genres(["Virgin Boy"])[0], ["处男"])
 
     def test_words_whose_meaning_is_not_settled_stay_on_the_review_page(self):
@@ -451,6 +446,64 @@ class UserDecisionTests(unittest.TestCase):
         self.assertEqual(genres_in_warning(line), ["69", "初裏"])
         self.assertEqual(genres_in_warning("来源值含重复片段，已规范化：A → B"), [])
         self.assertEqual(genres_in_warning(""), [])
+
+
+class LooksTests(unittest.TestCase):
+    """颜值只在说的确实是两回事时才分开。"""
+
+    def test_beauty_words_that_mean_the_same_share_one_tag(self):
+        for word in ("美人", "美少女", "美女", "美顔", "Beautiful Girl", "Pretty Face"):
+            with self.subTest(word=word):
+                self.assertEqual(map_genres([word])[0], ["高颜值"])
+
+    def test_seiso_and_cute_are_their_own_tags(self):
+        """`清楚` 说的是气质干净、不张扬，不是长得好看；`可愛い` 是另一种好看。"""
+        for word in ("清楚", "清楚系", "清純", "Neat and Clean"):
+            with self.subTest(word=word):
+                self.assertEqual(map_genres([word])[0], ["清纯"])
+        for word in ("可愛い", "かわいい", "Cute"):
+            with self.subTest(word=word):
+                self.assertEqual(map_genres([word])[0], ["可爱"])
+
+
+class ProfileTagTests(unittest.TestCase):
+    """资料页的标签先查资料专用表，再落回作品的表。"""
+
+    def test_each_trade_keeps_its_own_name(self):
+        self.assertEqual(resolve_profile_tag("現役デリヘル嬢"), ("上门服务女郎",))
+        self.assertEqual(resolve_profile_tag("ソープ嬢"), ("泡泡浴女郎",))
+        self.assertEqual(resolve_profile_tag("セクシーパブ嬢"), ("性感酒吧女郎",))
+        self.assertEqual(resolve_profile_tag("風俗嬢"), ("风俗从业",))
+        # 作品上的 `看護師` 是角色扮演，资料上是她的本职。
+        self.assertEqual(resolve_profile_tag("現役看護師"), ("现役护士",))
+
+    def test_a_style_change_keeps_both_ends_of_the_arrow(self):
+        self.assertEqual(resolve_profile_tag("ロリ→ギャル"), ("萝莉→辣妹",))
+        self.assertEqual(resolve_profile_tag("微乳→巨乳"), ("贫乳→巨乳",))
+
+    def test_a_cell_holding_several_tags_is_split(self):
+        self.assertEqual(resolve_profile_tag("ショートカット、美乳、レズ"), ("短发", "美乳", "百合"))
+        self.assertEqual(resolve_profile_tag("清楚お嬢様系"), ("清纯", "千金小姐"))
+
+    def test_labels_and_career_notes_are_not_tags(self):
+        for word in ("カリビアン", "改名・移籍", "引退", ""):
+            with self.subTest(word=word):
+                self.assertEqual(resolve_profile_tag(word), ())
+
+    def test_everything_else_falls_back_to_the_work_table(self):
+        self.assertEqual(resolve_profile_tag("巨尻"), ("巨臀",))
+        self.assertEqual(resolve_profile_tag("単体作品"), ())
+        self.assertIsNone(resolve_profile_tag("まだ知らない分類"), "未收录要让调用方照原文列")
+
+    def test_a_decision_outranks_the_profile_table(self):
+        decisions = {normalise_genre("風俗嬢"): "风俗", normalise_genre("カリビアン"): None}
+        self.assertEqual(resolve_profile_tag("風俗嬢", decisions), ("风俗",))
+        self.assertEqual(resolve_profile_tag("カリビアン", decisions), ())
+
+    def test_the_profile_table_never_overlaps_the_exclusions(self):
+        excluded = {normalise_genre(value) for value in NON_CONTENT_GENRES}
+        self.assertEqual(sorted(key for key in PROFILE_GENRES
+                                if normalise_genre(key) in excluded), [])
 
 
 if __name__ == "__main__":

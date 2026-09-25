@@ -33,12 +33,14 @@ ROLE_TAGS = {
     "素人", "网红主播", "萝莉", "痴女", "人妻", "御姐", "学生", "秘书OL",
     "女仆", "熟女", "护士", "OL制服", "JK制服", "空姐", "家庭教师", "教师",
     "探花", "男主频道", "辣妹", "千金小姐", "偶像艺人", "教练",
-    # 「处男」说男方、「处女」说女方，来源用 `童貞` 和 `処女` 两个格子分开写，
-    # 合成一个中文词就再也分不开。
-    "处男", "处女", "孕妇", "黑人",
+    # 「处男」说男方、「处女设定」说女方，来源用 `童貞` 和 `処女` 两个格子分开写，
+    # 合成一个中文词就再也分不开。女方那一格叫「设定」：AV 里的処女是出道卖点或剧情，
+    # 核实不了，出道之后对她本人也不再成立。
+    "处男", "处女设定", "孕妇", "黑人",
+    "美熟女", "微熟女", "美魔女", "变态", "跨性别",
 }
 APPEARANCE_TAGS = {
-    "丝袜", "制服", "美臀", "乳系", "足系", "露脸", "情趣内衣", "美腿", "高跟",
+    "丝袜", "制服", "美臀", "露脸", "情趣内衣", "美腿", "高跟",
     "眼镜", "洛丽塔", "苗条", "高颜值", "巨乳", "大腿", "白丝", "黑丝",
     "泳装", "美乳", "肉丝", "旗袍汉服", "恋足",
     "白虎", "双马尾", "婚纱", "裸足", "爆乳", "贫乳", "皮衣皮裙", "体操服",
@@ -46,16 +48,22 @@ APPEARANCE_TAGS = {
     "阿黑颜", "娇小", "高个", "美肌",
     # 发型三个标签一组：来源给的 `金髪・ブロンド`、`Short Hair` 和 `ツインテール`
     # 是同一档的格子。`汗湿` 和 `阿黑颜` 一样说的是身体当下的状态。
-    "金发", "短发", "汗湿", "美穴", "巨根",
+    "金发", "短发", "黑发", "汗湿", "美穴", "巨根",
+    # 乳型一种一个标签，不往一个「乳系」里并：来源说到哪一级就取哪一级。
+    "美巨乳", "美爆乳", "美贫乳", "瘦巨乳", "火箭乳", "尖乳", "下垂乳", "长垂乳",
+    "色气乳房", "美乳晕", "大乳晕", "凸乳晕", "色气乳头", "大乳头", "美乳头",
+    "凹陷乳头", "勃起乳头", "敏感乳头", "深色乳头", "长乳头", "隆胸",
+    "巨臀", "美巨臀",
+    # 「高颜值」说好看，「清纯」「可爱」各说一种气质，三个分开。
+    "清纯", "可爱",
+    "多毛", "白皙", "细腰", "火辣身材", "色气身材", "微胖", "身体柔软", "混血",
+    "纹身", "大阴唇", "深色阴部", "名器", "动漫音", "娃娃音", "腹肌", "敏感体质",
 }
 
-# 文件名／视觉模型早期只会给「乳系」「足系」这种宽泛品味标签；官方元数据一旦
-# 给出更具体的身体特征或行为，宽泛标签就不再增加信息。只做单向取代：没有具体
-# 标签时仍保留宽泛标签，避免把已有检索能力一并抹掉。
-TAG_SUPERSESSION = {
-    "乳系": frozenset({"美乳", "巨乳", "爆乳", "贫乳", "乳交"}),
-    "足系": frozenset({"美腿", "足交", "恋足", "舔脚", "裸足"}),
-}
+#: 不再使用、也没有接替者的标签。`乳系`、`足系` 是文件名规则和视觉模型早期给的宽泛
+#: 品味标签，来源说到的是具体乳型、腿脚或行为，并进一个粗桶等于把来源的话说粗了。
+#: 账本里的存量按 `scripts/rename_retired_tags.py` 删掉。
+DROPPED_TAGS = frozenset({"乳系", "足系"})
 SCENE_TAGS = {
     "酒店", "浴室", "车震", "办公室", "户外露出", "线下约拍", "探花约炮",
     "教室学校", "厨房客厅", "户外", "车内", "按摩", "油压",
@@ -77,7 +85,7 @@ POSITION_TAGS = {
     "素股隔丝", "马眼", "屁眼", "直接进入", "舔阴",
     "龟头责", "口爆", "舔脚", "毒龙", "传教士", "双洞齐插",
     "接吻", "性玩具", "69", "颜面骑乘",
-    "放尿", "局部特写",
+    "放尿", "局部特写", "母乳", "排泄", "拳交",
 }
 
 #: 同一件事的两个名字：左边是账本里已经存在、但不该再用的写法，右边是规范名。
@@ -109,6 +117,7 @@ RETIRED_TAGS = {
     "老师": "家庭教师",
     "混合集": "合集",
     "淫语ASMR": "淫语",
+    "处女": "处女设定",
 }
 
 _CODE_STUDIO = re.compile(r"^[A-Z]{2,8}-\d{2,5}$")
@@ -330,6 +339,12 @@ _PART_MARKER = re.compile(
     r"(?:^|[^a-z0-9])(?:part|pt|cd|disc|disk|dvd|vol)?[-_ ]?(0?[1-9]|[1-9]\d|[a-h])(?=\.[a-z0-9]{2,4}$)",
     re.I,
 )
+
+
+def current_tags(names) -> list[str]:
+    """按现在的词表读一串标签：退役名换成规范名，撤掉的粗桶丢掉，去重保序。"""
+    return [tag for tag in dict.fromkeys(RETIRED_TAGS.get(name, name) for name in names)
+            if tag not in DROPPED_TAGS]
 
 
 def compact_label(value: str | None) -> str:
@@ -983,21 +998,6 @@ def tag_cat(tag: str) -> str:
     if tag in POSITION_TAGS:
         return "position"
     return "general"
-
-
-def superseded_taste_tags(tags: list[str] | tuple[str, ...]) -> frozenset[str]:
-    """Return broad taste tags made redundant by more specific tags."""
-    present = {str(tag).strip() for tag in tags if str(tag).strip()}
-    return frozenset(
-        broad for broad, specifics in TAG_SUPERSESSION.items()
-        if specifics.intersection(present)
-    )
-
-
-def collapse_superseded_taste_tags(tags: list[str] | tuple[str, ...]) -> list[str]:
-    """Keep input order while removing only semantically superseded broad tags."""
-    obsolete = superseded_taste_tags(tags)
-    return [tag for tag in tags if tag not in obsolete]
 
 
 def part_marker(name: str) -> str:

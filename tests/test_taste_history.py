@@ -245,7 +245,7 @@ class TasteHistoryTests(unittest.TestCase):
             db.execute("INSERT INTO entity VALUES(3,'tag','中片-10分内','中片-10分内')")
             db.execute("INSERT INTO entity VALUES(4,'performer','Bob','bob')")
             db.execute("INSERT INTO entity VALUES(5,'tag','游戏同人','游戏同人')")
-            db.execute("INSERT INTO entity VALUES(6,'tag','足系','足系')")
+            db.execute("INSERT INTO entity VALUES(6,'tag','恋足','恋足')")
             db.execute("INSERT INTO asset_entity VALUES(1,1)")
             db.execute("INSERT INTO asset_entity VALUES(1,2)")
             db.execute("INSERT INTO asset_entity VALUES(1,3)")
@@ -300,7 +300,7 @@ class TasteHistoryTests(unittest.TestCase):
         self.assertEqual(analysis["confidence"]["level"], "early")
         self.assertTrue(any("足系" in row["text"] for row in analysis["points"]))
         explore_tags = {row["tag"] for row in analysis["explore"]}
-        self.assertTrue({"游戏同人", "足系"}.issubset(explore_tags))
+        self.assertTrue({"游戏同人", "恋足"}.issubset(explore_tags))
         self.assertTrue(all(row["items"] > 0 for row in analysis["explore"]))
         self.assertIn("不合口味", analysis["next_steps"][-1]["detail"])
 

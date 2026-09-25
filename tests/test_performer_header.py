@@ -148,14 +148,16 @@ class HeaderTests(Case):
             "groups": [{"label": "", "names": [{"name": "釈アリス"}]}]})
 
     def test_site_tags_speak_peach_chinese_and_follow_the_user_decisions(self):
-        raw = ["美人", "美少女", "巨尻", "美尻", "剛毛", "カリビアン", "  "]
-        self.assertEqual(performer_header.site_tags(raw), ["高颜值", "美臀", "剛毛", "カリビアン"])
+        raw = ["美人", "美少女", "清楚", "巨尻", "美尻", "ロリ→ギャル", "美乳美尻",
+               "カリビアン", "まだ知らない分類", "  "]
+        self.assertEqual(performer_header.site_tags(raw),
+                         ["高颜值", "清纯", "巨臀", "美臀", "萝莉→辣妹", "美乳", "まだ知らない分類"])
         with self.connection:
-            record_genre_decision(self.connection, "剛毛", "多毛", STAMP)
-            record_genre_decision(self.connection, "カリビアン", None, STAMP)
+            record_genre_decision(self.connection, "剛毛", "浓密阴毛", STAMP)
+            record_genre_decision(self.connection, "美尻", None, STAMP)
         shinoda = self.entity("篠田优")
-        self.land(shinoda, SHINODA.replace(">レズ<", ">剛毛<").replace(">美尻<", ">カリビアン<"))
-        self.assertEqual(self.header(shinoda, "篠田优")["profile"]["tags"], ["美乳", "多毛"])
+        self.land(shinoda, SHINODA.replace(">レズ<", ">剛毛<"))
+        self.assertEqual(self.header(shinoda, "篠田优")["profile"]["tags"], ["美乳", "浓密阴毛"])
 
     def test_age_turns_on_the_birthday(self):
         self.assertEqual(performer_header.age_on("1991-07-21", date(2026, 7, 20)), 34)
