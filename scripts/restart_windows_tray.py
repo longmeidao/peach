@@ -18,7 +18,7 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 from peach.windows_restart import (
-    find_tray_windows, restart_source_tray, restart_tray,
+    DEFAULT_TIMEOUT, find_tray_windows, restart_source_tray, restart_tray,
 )
 
 
@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="静默无窗口地重启 Windows Peach 托盘及子服务")
     parser.add_argument("--target", type=Path,
                         default=PROJECT_ROOT / "dist" / "Peach" / "Peach.exe")
-    parser.add_argument("--timeout", type=float, default=25.0)
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     parser.add_argument("--source", action="store_true",
                         help="重启源码部署的托盘（pythonw -m peach.tray），不做换包")
     parser.add_argument("--swap-from", type=Path, default=None,

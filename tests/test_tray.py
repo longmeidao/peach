@@ -1238,5 +1238,82 @@ class TrayCommandLineTests(unittest.TestCase):
         self._assert_nothing_touched()
 
 
+class ServiceRevivalTests(unittest.TestCase):
+    """托盘不只在启动时拉一次服务：端口空了就补拉，但不跟正在维护服务的动作抢。
+
+    2026-09-25 一份被强杀的托盘留下两棵孤儿服务，新托盘启动时见端口健康就没拉自己的；
+    孤儿被停掉以后端口空了一分半，直到有人去点「重启服务」。
+    """
+
+    SPEC = ServiceSpec("https", "https://local/healthz", ("peach", "serve"), True)
+
+    def tray(self, manager):
+        gate = Mock()
+        gate.waiting = False
+        snapshot = VersionSnapshot("0.7.14", "master", "abc12345", False, True, "origin/master")
+        with patch("peach.tray.pystray.Icon", return_value=Mock()):
+            return PeachTray(manager, FakeVersions(snapshot), FakeUpdates(), gate)
+
+    def one_health_round(self, tray):
+        stop = Mock()
+        stop.wait.side_effect = [False, True]
+        stop.is_set.return_value = False
+        tray._stop_event = stop
+        with patch("peach.standalone_update.poll"), patch("peach.desktop_uninstall.poll"):
+            tray._monitor()
+
+    def manager(self, *, healthy):
+        manager = Mock()
+        manager.specs = (self.SPEC,)
+        manager.healthy.return_value = healthy
+        return manager
+
+    def test_a_port_that_went_dark_is_refilled_on_the_next_health_round(self):
+        manager = self.manager(healthy=False)
+        self.one_health_round(self.tray(manager))
+        manager.start_missing.assert_called_once_with()
+
+    def test_healthy_services_are_left_alone(self):
+        manager = self.manager(healthy=True)
+        self.one_health_round(self.tray(manager))
+        manager.start_missing.assert_not_called()
+
+    def test_revival_yields_to_an_action_that_is_stopping_services_on_purpose(self):
+        manager = self.manager(healthy=False)
+        tray = self.tray(manager)
+        with tray._action_lock:
+            self.assertFalse(tray.revive_services())
+        tray._stop_event.set()
+        self.assertFalse(tray.revive_services())
+        manager.start_missing.assert_not_called()
+
+    def test_a_healthy_port_it_did_not_start_is_reported_not_adopted_silently(self):
+        popen = Mock()
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ServiceManager((self.SPEC,), popen=popen, log_dir=Path(directory),
+                                     health_get=lambda *args, **kwargs: Response())
+            with self.assertLogs("peach.tray", "WARNING") as logs:
+                manager.start_missing()
+        popen.assert_not_called()
+        self.assertIn("不是本托盘拉起的", logs.output[0])
+
+    def test_log_handles_go_to_the_child_and_are_closed_in_the_tray(self):
+        """补拉会反复发生，父进程每拉一次就多握两个日志句柄的话会越攒越多。"""
+        handed = []
+
+        def popen(_command, **kwargs):
+            handed.extend((kwargs["stdout"], kwargs["stderr"]))
+            process = Mock()
+            process.poll.return_value = None
+            return process
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = ServiceManager((self.SPEC,), popen=popen, log_dir=Path(directory),
+                                     health_get=Mock(side_effect=OSError("down")))
+            manager.start_missing()
+            self.assertEqual(len(handed), 2)
+            self.assertTrue(all(handle.closed for handle in handed))
+
+
 if __name__ == "__main__":
     unittest.main()
