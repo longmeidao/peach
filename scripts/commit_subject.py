@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .check_readme_impact import git
+from .check_readme_impact import git, unpublished
 
 #: 允许的提交类型，封闭清单。前三个进变更日志（`scripts/changelog.py` 的 TYPE_GROUPS），
 #: 其余只改开发过程。要加新类型先想清它属于哪一组，不是随手起个词。
@@ -20,8 +20,8 @@ EXAMPLE = "fix(web): 补齐图标声明与兜底路径"
 
 
 def subjects(repo: Path, base: str, head: str = "HEAD") -> list[str]:
-    """分支自己的提交主题，不含从目标分支合进来的 merge。"""
-    output = git(repo, "log", "--no-merges", "--format=%s", f"{base}..{head}")
+    """分支自己的提交主题，不含从目标分支合进来的 merge，也不含已发布到远端的提交。"""
+    output = git(repo, "log", "--no-merges", "--format=%s", f"{base}..{head}", *unpublished(repo))
     return [line for line in output.splitlines() if line.strip()]
 
 
