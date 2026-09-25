@@ -151,6 +151,33 @@ class PlanTests(StudioFollowupCase):
                 (studio, "official", "官方网站", "https://old.jp/", "old.jp", STAMP, STAMP))
         self.assertEqual(planned(), [key])
 
+    def test_stock_studios_are_not_crowded_out_by_avatarless_performers(self):
+        """没头像的女优再多，存量厂牌也有自己那一份名额。"""
+        from peach import (avatar_followup, library_processing, performer_alias_followup,
+                           performer_profile_followup, task_runs)
+
+        studio = self.entity("studio", "OLDLABEL")
+        people = [self.entity("performer", f"白石まり{index:02d}") for index in range(12)]
+        with self.database.write_transaction(notify=False) as connection:
+            for index, entity_id in enumerate([studio, *people], start=1):
+                connection.execute(
+                    "INSERT INTO asset(id,location,path,name,medium,code,size)"
+                    " VALUES(?,'R:',?,?,'video',?,1)",
+                    (index, f"R:\\media\\{index}.mp4", f"{index}.mp4", f"OLD-{index}"))
+                connection.execute(
+                    "INSERT INTO asset_entity(asset_id,entity_id,role,source) VALUES(?,?,?,'test')",
+                    (index, entity_id, "studio" if entity_id == studio else "performer"))
+        config = SimpleNamespace(directory=lambda _name: self.contract.candidate_root)
+        # 一轮 6 条，补别名、补资料各留 1 条，余下 4 条是厂牌和头像争的那一段。
+        with mock.patch.object(task_runs, "MAX_FOLLOWUPS", 6), \
+                mock.patch.object(performer_alias_followup, "STOCK_SHARE", 1), \
+                mock.patch.object(performer_profile_followup, "STOCK_SHARE", 1):
+            found = library_processing._entity_followups(self.database, config, max(people))
+        tasks = [item["task_key"] for item in found]
+        self.assertIn(studio_followup.followup_key(studio), [item["key"] for item in found])
+        self.assertIn(avatar_followup.TASK_KEY, tasks)
+        self.assertLessEqual(len(found), 6)
+
 
 class SiteTests(StudioFollowupCase):
     def test_an_ok_site_is_linked_with_its_source_and_batch(self):

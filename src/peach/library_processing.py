@@ -1426,7 +1426,8 @@ def _entity_followups(database, config, watermark, covered=()):
     （`performer_profile_followup.plan`，ADR-0067）。
 
     这一轮的名额（`MAX_FOLLOWUPS`）先给新登记的，余下的给库里早就登记的存量（ADR-0053）：
-    补别名与补女优资料各留出至多自己的 `STOCK_SHARE` 条，其余女优头像在前，厂牌补满。
+    补别名与补女优资料各留出至多自己的 `STOCK_SHARE` 条，厂牌先取至多自己的那一份，
+    其余给女优头像。
     存量每轮往前推一截，跑过又没变的不再派。
 
     只声明，不执行：派发在调用方结算这一轮时发生，真正去跑的是 `followups` 那一层。
@@ -1453,6 +1454,11 @@ def _entity_followups(database, config, watermark, covered=()):
             aliases = min(performer_alias_followup.STOCK_SHARE, max(0, MAX_FOLLOWUPS - len(found)))
             profiles = min(performer_profile_followup.STOCK_SHARE,
                            max(0, MAX_FOLLOWUPS - len(found) - aliases))
+            found += studio_followup.stock(
+                connection, generated / 'logos', attempts,
+                limit=min(studio_followup.STOCK_SHARE,
+                          max(0, MAX_FOLLOWUPS - len(found) - aliases - profiles)),
+                skip=taken)
             found += avatar_followup.stock(connection, generated / 'avatars', attempts,
                                            limit=MAX_FOLLOWUPS - len(found) - aliases - profiles,
                                            skip=taken)
@@ -1460,8 +1466,6 @@ def _entity_followups(database, config, watermark, covered=()):
                 connection, attempts, limit=min(aliases, MAX_FOLLOWUPS - len(found)), skip=taken)
             found += performer_profile_followup.stock(
                 connection, attempts, limit=min(profiles, MAX_FOLLOWUPS - len(found)), skip=taken)
-            found += studio_followup.stock(connection, generated / 'logos', attempts,
-                                           limit=MAX_FOLLOWUPS - len(found), skip=taken)
     except sqlite3.Error:
         return []
     return [{'key': item.key, 'task_key': item.task_key, 'label': item.label}
