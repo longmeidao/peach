@@ -23,6 +23,8 @@ import sqlite3
 from datetime import date
 
 from .entities import normalize_entity_name
+from .genre_decisions import load_genre_decisions
+from .genre_taxonomy import resolve_genre
 from .kanji import fold_glyphs
 from .metadata_alias_resolve import PLANNING_ALIAS_SOURCE
 from .minnano_av import name_entries
@@ -55,7 +57,7 @@ def age_on(birth: str, today: date) -> int | None:
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
-def facts(row: dict | None, today: date) -> dict:
+def facts(row: dict | None, today: date, decisions: dict[str, str | None] | None = None) -> dict:
     """页头那五项要的值，只放有的。`row` 是 `read_profile` 交回的一行。"""
     row = row or {}
     found: dict = {}
@@ -71,10 +73,30 @@ def facts(row: dict | None, today: date) -> dict:
         until = row.get("active_until")
         found["active"] = {"from": row["debut_year"],
                            **({"to": until} if until else {"ongoing": True})}
-    tags = [str(tag) for tag in row.get("tags") or [] if str(tag).strip()]
+    tags = site_tags(row.get("tags") or [], decisions)
     if tags:
         found["tags"] = tags
     return found
+
+
+def site_tags(raw: list, decisions: dict[str, str | None] | None = None) -> list[str]:
+    """站上的标签换成 Peach 的中文标签，同义的并成一个（`美人`、`美少女` 都是「高颜值」）。
+
+    与作品标签走同一张表和同一批用户决定（`genre_taxonomy.resolve_genre`）；用户判为不是内容的
+    不出。表里还没收录的照原文列：那是站上确有的说法，丢掉就少了一项读数。
+    """
+    tags: list[str] = []
+    for tag in raw:
+        text = " ".join(str(tag).split())
+        if not text:
+            continue
+        mapped = resolve_genre(text, decisions)
+        if mapped is None:
+            continue
+        shown = mapped or text
+        if shown not in tags:
+            tags.append(shown)
+    return tags
 
 
 def page_names(row: dict | None) -> dict:
@@ -170,10 +192,10 @@ def name_groups(connection: sqlite3.Connection, entity_id: int, canonical: str,
             "groups": sorter.groups}
 
 
-def _has_table(connection: sqlite3.Connection) -> bool:
+def _has_table(connection: sqlite3.Connection, table: str = TABLE) -> bool:
     """迁移 `0036` 应用之前账本里没有这张表：页头照常出，只是没有资料。"""
     return connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-                              (TABLE,)).fetchone() is not None
+                              (table,)).fetchone() is not None
 
 
 def profiled(connection: sqlite3.Connection) -> set[int]:
@@ -189,5 +211,6 @@ def header(connection: sqlite3.Connection, entity_id: int, canonical: str,
            today: date | None = None) -> dict:
     """`q_entity` 给女优页并进去的两项。"""
     row = read_profile(connection, entity_id) if _has_table(connection) else None
-    return {"profile": facts(row, today or date.today()),
+    decisions = load_genre_decisions(connection) if row and _has_table(connection, "genre_decision") else None
+    return {"profile": facts(row, today or date.today(), decisions),
             "name_groups": name_groups(connection, entity_id, canonical, page_names(row))}

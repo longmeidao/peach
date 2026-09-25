@@ -13,6 +13,7 @@ from pathlib import Path
 from peach import minnano_av, performer_header
 from peach import web_contract as rm_web
 from peach.entities import normalize_entity_name
+from peach.genre_decisions import record_genre_decision
 from peach.performer_profiles import write_profile
 from peach.web_entity import q_entity_shapes
 from support.ledger import fresh_ledger
@@ -117,7 +118,7 @@ class HeaderTests(Case):
             "birth_date": "1991-07-21", "age": 35, "height": 155, "bust": 86, "waist": 60,
             "hip": 87, "cup": "F", "debut_date": "2010-12-02",
             "debut_title": "セキララ 〜今どき世代のゆるい性事情〜 03",
-            "active": {"from": 2010, "to": 2023}, "tags": ["美乳", "美尻", "レズ"]})
+            "active": {"from": 2010, "to": 2023}, "tags": ["美乳", "美臀", "百合"]})
         groups = head["name_groups"]
         self.assertEqual(groups["reading"], "しのだゆう")
         self.assertEqual(groups["shown"], ["篠田ゆう", "篠崎ゆう子", "高木早希"])
@@ -145,6 +146,16 @@ class HeaderTests(Case):
         self.assertEqual(head["name_groups"], {
             "reading": "しゃくありす", "shown": ["釈アリス"], "total": 1,
             "groups": [{"label": "", "names": [{"name": "釈アリス"}]}]})
+
+    def test_site_tags_speak_peach_chinese_and_follow_the_user_decisions(self):
+        raw = ["美人", "美少女", "巨尻", "美尻", "剛毛", "カリビアン", "  "]
+        self.assertEqual(performer_header.site_tags(raw), ["高颜值", "美臀", "剛毛", "カリビアン"])
+        with self.connection:
+            record_genre_decision(self.connection, "剛毛", "多毛", STAMP)
+            record_genre_decision(self.connection, "カリビアン", None, STAMP)
+        shinoda = self.entity("篠田优")
+        self.land(shinoda, SHINODA.replace(">レズ<", ">剛毛<").replace(">美尻<", ">カリビアン<"))
+        self.assertEqual(self.header(shinoda, "篠田优")["profile"]["tags"], ["美乳", "多毛"])
 
     def test_age_turns_on_the_birthday(self):
         self.assertEqual(performer_header.age_on("1991-07-21", date(2026, 7, 20)), 34)

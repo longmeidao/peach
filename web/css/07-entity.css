@@ -32,6 +32,13 @@
 /* 圆框外面这一层只为换头像那枚加号存在：圆框自己是 `overflow:hidden`（图要被裁成
    圆的），贴在它边上的按钮放进去就没了。 */
 .entityportraitwrap{position:relative;width:max-content;max-width:100%}
+/* 外面这一层拉满整行的高，圆框却封顶 160px、竖直居中：资料表的标签折成几行时，行比圆框高，
+   加号贴这一层的角就掉到圆框下面去了。所以挂加号的宿主叠成和圆框一样大、一样位置的一块，
+   高度与居中取圆框同一个 `clamp`，加号的 `right/bottom` 就量在圆框上。它盖在脸上，不接指针。
+   不用 `transform` 居中：它会给弹层的 `fixed` 遮罩另起包含块。 */
+.entityportraitwrap>[data-avatar-picker]{position:absolute;left:0;right:0;height:clamp(120px,100%,160px);
+  top:calc((100% - clamp(120px,100%,160px)) / 2);pointer-events:none}
+.entityportraitwrap>[data-avatar-picker]>*{pointer-events:auto}
 /* `position:relative` 是给人脸放大留的包含块：放大后的 img 转成绝对定位，偏移必须
    相对这个圆框算，否则会挂到最近的定位祖先上去。见 app.js 的 avatarFrame。 */
 .entityportrait{height:100%;min-height:120px;max-height:160px;width:auto;
@@ -77,12 +84,16 @@
 .metaitem{display:inline-flex;align-items:center;gap:6px;min-width:0}
 .aliasline{flex-wrap:wrap}
 .aliasnames>span+span::before,.aliaspop dd>span+span::before{content:"·";margin:0 6px;color:var(--muted)}
-.aliasmore{height:22px;margin-left:4px;padding:0 8px;border:1px solid var(--line);border-radius:var(--pill-radius);
+.aliasmore,.factmore{height:22px;margin-left:4px;padding:0 8px;border:1px solid var(--line);border-radius:var(--pill-radius);
   background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-xs);cursor:pointer}
-.aliasmore:hover,.aliasmore[aria-expanded="true"]{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
+.aliasmore:hover,.aliasmore[aria-expanded="true"],.factmore:hover,.factmore[aria-expanded="true"]{
+  background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
+/* 标签那一格的「+N」排在标签的流里，间距归 flex 的 gap。 */
+.factmore{margin-left:0}
 /* 「+N」的浮层借锚定菜单那身盒子（`.popmenu`：底色、描边、圆角、投影与开合动效），它是
    `popover`，进顶层才不被资料卡的 `overflow:hidden` 裁掉；`.popmenu` 的 `display:grid` 会压过
-   浏览器给没打开的 popover 的 `display:none`，所以这里自己收起。位置由 `wireAliasPop` 算。 */
+   浏览器给没打开的 popover 的 `display:none`，所以这里自己收起。位置由 `wireHeroPop` 算。
+   标签的「+N」浮层（`#entityTagPop`）是同一身盒子，里面的标签仍是 `.facttags` 那一排。 */
 .popmenu.aliaspop{width:max-content;max-width:min(440px,calc(100vw - 16px));padding:12px 14px;gap:8px;
   color:var(--ink);font-size:var(--fs-sm);line-height:1.5;text-align:left}
 .popmenu.aliaspop:not(:popover-open){display:none}

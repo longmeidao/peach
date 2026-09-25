@@ -4919,8 +4919,22 @@ function entityFactsHtml(p){
   const active=p.active||{};
   if(active.from)row('calendar-range','出演期间',
     esc(`${active.from}${active.ongoing?' – 至今':active.to?` – ${active.to}`:''}`),' class="num"');
-  if((p.tags||[]).length)row('tags','标签',p.tags.map(tag=>`<span class="facttag">${esc(tag)}</span>`).join(''),' class="facttags"');
+  const tags=p.tags||[];
+  if(tags.length)row('tags','标签',factTagsHtml(tags),' class="facttags"');
   return rows.length?`<dl class="entityfacts">${rows.join('')}</dl>`:'';
+}
+/* 标签那一格只列前几个，余下的收进「+N」，浮层里一次看全，和名字那一行的别名同一个做法：
+   标签多的人有十几个，全摊开会把资料表撑成三四行，头像那一栏跟着被拉高。只多出一个时
+   直接列出来：「+1」和那一个标签一样宽。字是服务端换好的 Peach 中文标签。 */
+const FACT_TAGS_SHOWN=4;
+function factTagsHtml(tags){
+  const face=tag=>`<span class="facttag">${esc(tag)}</span>`;
+  const cut=tags.length>FACT_TAGS_SHOWN+1?FACT_TAGS_SHOWN:tags.length,rest=tags.length-cut;
+  const more=rest?`<button type="button" class="factmore" aria-expanded="false" aria-controls="entityTagPop"
+      aria-label="另外 ${rest} 个标签">+${rest}</button><div class="popmenu aliaspop" id="entityTagPop" popover="manual"
+      role="group" aria-label="${tags.length} 个标签"><p class="aliaspophead">${tags.length} 个标签</p><div class="facttags">${
+      tags.map(face).join('')}</div></div>`:'';
+  return tags.slice(0,cut).map(face).join('')+more;
 }
 /* 名字下面那一行的别名：读音在最前，接着是前几个名义，余下的收进「+N」。浮层按名义分组
    （现名、旧名义、各渠道、其它），同一个人用过的名字在这里一次看全。
@@ -4946,9 +4960,13 @@ function performerLinkName(link,agency){
 /* 「+N」的浮层与订阅新作的说明同一套：`popover` 进顶层，资料卡的 `overflow:hidden` 裁不到它；
    位置按视口算，默认贴按钮下方 8px，下面放不下翻上去，左右夹在视口内 8px。
    指针悬停或键盘聚焦就出，指针挪到浮层上读名字时不收；点一下钉住（触屏只有这一条路），
-   再点、点别处或 Escape 收起。 */
-function wireAliasPop(){
-  const more=$('#index').querySelector('.aliasmore'),pop=$('#entityAliasPop');
+   再点、点别处或 Escape 收起。别名与标签的两个「+N」各接一份。 */
+function wireHeroPops(){
+  const index=$('#index');
+  wireHeroPop(index.querySelector('.aliasmore'),$('#entityAliasPop'));
+  wireHeroPop(index.querySelector('.factmore'),$('#entityTagPop'));
+}
+function wireHeroPop(more,pop){
   if(!more||!pop)return;
   const open=()=>pop.matches(':popover-open');
   const place=()=>{
@@ -8634,7 +8652,7 @@ async function openEntity(kind,name,push=true){
   wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));
   wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);
   wireEntityFeed(Number(d.id));
-  wireAliasPop();
+  wireHeroPops();
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photosAvailable())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);
