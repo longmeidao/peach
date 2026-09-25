@@ -7675,10 +7675,13 @@ async function updateEntityCollection(kind,name,filters,push=true){
    高度是 0，把分栏交给加载顺序的话，一屏格子会整批摊进最后一列。理由和取舍写在
    `web/css/08-photos.css` 里那条规则上面。
    缩略图一律走 `/photo-thumb`（服务端缓存），只有灯箱里的大图读 `/photo` 原图——
-   PikPak 是计费来源，一屏直接铺原图等于付几十兆流量。 ── */
+   PikPak 是计费来源，一屏直接铺原图等于付几十兆流量。
+   番号样张是另一种分组：一部作品一组，集封面就是这部片的封面，点开是它的官方样张
+   （ADR-0068）。它的 set id 是 `code:<番号>`，和目录图集的整数 id 同走一个 `set=` 参数。 ── */
 function emptyMediaView(){return {media:'videos',set:0}}
 const parseMediaView=search=>{const params=new URLSearchParams(search),set=params.get('set')||'';
-  return {media:params.get('media')==='photos'?'photos':'videos',set:/^\d+$/.test(set)?Number(set):0}};
+  return {media:params.get('media')==='photos'?'photos':'videos',
+    set:/^\d+$/.test(set)?Number(set):/^code:[\w.-]+$/.test(set)?set:0}};
 const entityViewSearch=(filters,view)=>{const params=new URLSearchParams(entityFilterSearch(filters));
   if(view&&view.media==='photos'){params.set('media','photos');if(view.set)params.set('set',String(view.set))}
   return params.toString()};
@@ -7687,6 +7690,9 @@ const routeEntityView=(kind,name,view)=>{
   const search=entityViewSearch(filters,view);
   route(entityPath(kind,name)+(search?'?'+search:''))};
 const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0):0;
+const codeSetsOf=(data=entityPhotos)=>data&&!data.error?(data.sets||[]).filter(set=>set.kind==='code'):[];
+// 照片档出不出看两样：本地有图，或者名下作品有官方样张。只有样张时整面墙就是那一排番号集。
+const photosAvailable=()=>photoTotalOf()>0||codeSetsOf().length>0;
 
 /* 这一页当前是哪个视图。名册和媒体不共用 `entityMediaView`：地址栏只认 `media`，
    而名册是事务所页的默认视图，进页面就该在那里，不靠一个参数撑着。 */
@@ -7747,6 +7753,25 @@ async function openPhotoSet(kind,name,filters,setId,push=true){
   renderEntityMediaToggle(kind,name,filters);
   renderPhotoWall(kind,name,filters,data);
 }
+function showAllPhotos(kind,name,filters,push=true){
+  entityMediaView={media:'photos',set:0};
+  if(push)routeEntityView(kind,name,entityMediaView);
+  renderPhotoWall(kind,name,filters,entityPhotos);
+}
+
+/* 番号集不再请求一次：张数、站名和标题已经随 `/api/photos` 下来，样张地址留在服务端，
+   墙和灯箱只递番号与序号。地址栏里的番号不在这一页名下时退回整面照片墙。 */
+const codeSetItems=set=>Array.from({length:set.n},(_,i)=>({sample:true,code:set.code,position:i+1,
+  total:set.n,name:`${set.code} 样张 ${i+1}`,source:set.site_label||'官方样张'}));
+function openCodeSet(kind,name,filters,setId,push=true){
+  const set=codeSetsOf().find(item=>item.id===setId);
+  if(!set){showAllPhotos(kind,name,filters,push);return}
+  ++entityRequestSeq;
+  entityMediaView={media:'photos',set:setId};
+  if(push)routeEntityView(kind,name,entityMediaView);
+  renderEntityMediaToggle(kind,name,filters);
+  renderSampleWall(kind,name,filters,set);
+}
 
 /* 换一批：换一粒种子把这一屏重排一遍，整组照片或单个图集都是。翻页沿用回话里带回的
    那一粒。等的这一下键上转圈，跟首页那枚一样；新的一面墙回来时整排连它一起重画。 */
@@ -7803,6 +7828,26 @@ const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${ind
     <img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}" loading="lazy"
       decoding="async" fetchpriority="low"
       data-drop="closest:.photocell"></button>`;
+/* 样张格取不到图时留在墙上，只摘掉 <img>：本地图片取不到说明文件没了，整格该走；样张
+   取不到多半是来源这会儿不通，格子留着 `--sunk` 空底，序号不断，灯箱里照样翻得到。 */
+const sampleQuery=item=>`code=${encodeURIComponent(item.code)}&n=${item.position}`;
+const sampleCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
+    <img src="/sample-thumb?${sampleQuery(item)}" alt="${esc(item.name)}" loading="lazy"
+      decoding="async" fetchpriority="low" data-drop="self"></button>`;
+/* 番号集一张卡：借播放列表卡的叠层纸边、右下角张数和下面两行字，它们回答的是同一件事
+   ——「这一张代表一组，里面有几个」。封面走视频卡同一份 `coverImage`，取景一致。 */
+const codeSetCard=set=>{
+  const poster=set.has_cover?coverImage({code:set.code},'small',false):'<span class="nopic">无封面</span>';
+  const note=[set.site_label?`${set.site_label} 样张`:'官方样张',set.release_date].filter(Boolean).join(' · ');
+  return `<article class="card playlistcard codeset">
+    <div class="mixstack"><div class="pic" style="--card-ratio:${16/9}">${poster}
+      <button class="cardopenhit" data-code-set="${esc(set.id)}" aria-label="打开样张 ${esc(set.title)}"></button>
+      <span class="mixbadge">${icon('pics')}${set.n} 张</span></div></div>
+    <div class="mixmeta"><div class="mixcopy"><b>${esc(set.title)}</b><span>${esc(note)}</span></div></div></article>`;
+};
+const photoReadout=(data,codeSets)=>'照片 · '+[
+  data.total||!codeSets.length?`${(data.total||0).toLocaleString()} 张`:'',
+  codeSets.length?`${codeSets.length} 部作品样张`:''].filter(Boolean).join(' · ');
 
 /* 照片这一栏跟视频那一栏是同一块浮层的下半，所以用同一个壳。换成别的容器的话，切一下
    媒体类型，浮层的下半就整块消失——上半的下沿留着两个直角，底下接着页面底色。
@@ -7810,28 +7855,32 @@ const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${ind
    壳一样，里面装的不一样：这一排不给排序键。排序读的是每条记录上的值，而账本里图片只
    有文件名、体积和来源三样，视频那八个键有七个在这里没有对应的数。这一排只放三样：
    张数、换一批、大小。换一批跟首页和视频那一排是同一枚键、同一个位置、同一个意思。
-   不点它时按文件名排：`001.jpg` 这类编号本来就是一套图的顺序。 */
-const photoHeadHtml=(data,{back=false}={})=>collectionHeaderHtml({className:'photohead',
+   不点它时按文件名排：`001.jpg` 这类编号本来就是一套图的顺序。
+   番号集那一面没有换一批也没有源文件工具：样张的顺序就是官方给的顺序，文件也不在本机。 */
+const photoHeadHtml=(data,{back=false,codeSets=[],sample=false}={})=>collectionHeaderHtml({className:'photohead',
   before:back?`<button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>`:'',
-  readout:`${back?esc(data.title)+' · ':'照片 · '}${(data.total||0).toLocaleString()} 张`,
-  controls:sortControlsHtml({extra:photoControlsHtml()+(back?sourceTools(data.id):'')})});
+  readout:back?`${esc(data.title)} · ${(data.total||0).toLocaleString()} 张`:photoReadout(data,codeSets),
+  controls:sortControlsHtml({extra:photoControlsHtml()+(back&&!sample?sourceTools(data.id):'')})});
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
   const entityWide=!data.id;
   if(!append){
     photoWallItems=[];
-    section.innerHTML=photoHeadHtml(data,{back:!entityWide})
+    const codeSets=entityWide?codeSetsOf(data):[];
+    section.innerHTML=photoHeadHtml(data,{back:!entityWide,codeSets})
+      +(codeSets.length?`<div class="grid photosets">${codeSets.map(codeSetCard).join('')}</div>`:'')
       +`<div class="photowall" data-size="${photoSize()}"></div>
         <button class="entitymore" type="button">载入更多</button>`;
     const head=section.querySelector('.photohead');
     wirePhotoControls(head);syncPhotoWalls();
-    head.querySelector('.entitybatch').onclick=event=>
+    // 只有样张时没有本地图可换，换一批那枚键不出。
+    if(data.total)head.querySelector('.entitybatch').onclick=event=>
       shufflePhotos(kind,name,filters,entityWide?0:data.id,event.currentTarget);
+    else head.querySelector('.entitybatch').remove();
+    section.querySelectorAll('[data-code-set]').forEach(button=>
+      button.onclick=()=>openCodeSet(kind,name,filters,button.dataset.codeSet));
     if(!entityWide){
-      head.querySelector('.photoback').onclick=()=>{
-        entityMediaView={media:'photos',set:0};
-        routeEntityView(kind,name,entityMediaView);
-        renderPhotoWall(kind,name,filters,entityPhotos)};
+      head.querySelector('.photoback').onclick=()=>showAllPhotos(kind,name,filters);
       // 对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。
       wireSourceTools(head,()=>openPhotoSet(kind,name,filters,data.id,false));
     }
@@ -7854,6 +7903,20 @@ function renderPhotoWall(kind,name,filters,data,append=false){
       : `/api/photo-set?id=${data.id}&limit=120&offset=${photoWallItems.length}${seed}`,{signal}),
     apply:next=>{if(next.error)throw new Error(next.error);renderPhotoWall(kind,name,filters,next,true)},
   });
+}
+/* 一部作品的样张一次铺完：官方样张一部最多几十张，用不着分页。 */
+function renderSampleWall(kind,name,filters,set){
+  const section=$('#index').querySelector('.entitysection');if(!section)return;
+  photoWallItems=codeSetItems(set);
+  section.innerHTML=photoHeadHtml({title:set.title,total:set.n},{back:true,sample:true})
+    +`<div class="photowall" data-size="${photoSize()}">${photoWallItems.map(sampleCell).join('')}</div>`;
+  const head=section.querySelector('.photohead');
+  wirePhotoControls(head);syncPhotoWalls();
+  head.querySelector('.entitybatch').remove();
+  head.querySelector('.photoback').onclick=()=>showAllPhotos(kind,name,filters);
+  section.querySelectorAll('.photocell').forEach(cell=>
+    cell.onclick=()=>openPhotoLightbox(Number(cell.dataset.photoIndex)));
+  syncEntityFilterFrame();
 }
 
 /* ── 源文件管理 ───────────────────────────────────────────────────────────────
@@ -7927,11 +7990,14 @@ function wireSourceTools(root,done){
 /* 灯箱按需加载 Swiper：大图轮播、底部缩略图条和键盘左右键都是它自带的模块，
    没必要自己写一遍；但它只有看照片时才用得上，不该进首屏。 */
 let swiperLoader=null,activeLightbox=null;
-/* 灯箱既服务本地照片墙，也服务关注页的在线图集。两边共用信息面板，但动作不同：
-   本地图可按 asset id 定位源文件；在线图只展示来源、序号、尺寸和可取得的大小。 */
+/* 灯箱服务本地照片墙、番号样张和关注页的在线图集。三边共用信息面板，但动作不同：
+   本地图可按 asset id 定位源文件；样张和在线图只展示来源、序号、尺寸和可取得的大小。 */
 const photoSlide=item=>item.follow
   ?{src:item.src,thumb:item.thumb||item.src,name:item.name||'',asset:null,
     source:item.source||'在线图片',size:item.size,position:item.position,total:item.total}
+  :item.sample
+  ?{src:`/sample-image?${sampleQuery(item)}`,thumb:`/sample-thumb?${sampleQuery(item)}`,name:item.name,
+    asset:null,source:item.source,position:item.position,total:item.total}
   :{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`,name:item.name||'',asset:item};
 const loadSwiper=()=>swiperLoader||(swiperLoader=Promise.all([
   new Promise((resolve,reject)=>{
@@ -8351,7 +8417,8 @@ async function openEntity(kind,name,push=true){
         {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
          style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
       <span class="nm">${esc(x.k)}</span></button>`).join('');
-  const photoCount=photos&&!photos.error?(photos.total||0):0;
+  // 照片那枚键数的是这一档里能看的图：本地图片加番号样张。
+  const photoCount=photos&&!photos.error?(photos.total||0)+(photos.sample_total||0):0;
   /* 艺人名册、视频、照片是这一页的三个互斥视图，共用一组圆键：它们回答的是同一个
      问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册已经随
      资料下来了，视频那一半本来也要请求。
@@ -8469,10 +8536,11 @@ async function openEntity(kind,name,push=true){
   wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);
   wireEntityFeed(Number(d.id));
   entityPhotos=photos&&!photos.error?photos:null;
-  if(entityMediaView.media==='photos'&&!photoTotalOf())entityMediaView=emptyMediaView();
+  if(entityMediaView.media==='photos'&&!photosAvailable())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);
   if(entityViewNow(kind)==='people')renderEntityRoster(roster);
   else if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
+  else if(typeof entityMediaView.set==='string')openCodeSet(kind,name,filters,entityMediaView.set,false);
   else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
   else renderPhotoWall(kind,name,filters,entityPhotos);
   buildBars();

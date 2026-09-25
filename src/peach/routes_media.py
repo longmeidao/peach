@@ -460,6 +460,43 @@ def photo_thumb(request: Request, id: int, args: dict[str, str] = Depends(requir
     return _image_response(request, path, media_type="image/jpeg")
 
 
+def _sample_response(request: Request, code: str, n: int, *, thumb: bool):
+    """番号样张的一张图（ADR-0068）。先问缓存；没有才按账本里那条地址下载一次。
+
+    只接受番号与序号，地址由服务端从账本查：页面递不进上游地址。取不到一律 404，页面
+    显示占位；下载失败在缓存里记一个标记，一天内不再为这一张出网。
+    """
+    from . import sample_images
+
+    state = request.app.state
+    cache = state.sample_cache
+    path = cache.cached(code, n, thumb=thumb)
+    if path is None:
+        contract = state.web_contract
+        with contract.read_connection() as connection:
+            url = sample_images.sample_url(connection, code, n)
+        if url is not None and not cache.failed_recently(code, n):
+            path = cache.fetch(code, n, url, sample_images.downloader(contract.follow_secrets_root),
+                               thumb=thumb)
+    if path is None:
+        return JSONResponse({"error": "unavailable"}, status_code=404)
+    return _image_response(request, path, media_type="image/jpeg")
+
+
+@router.api_route("/sample-thumb", methods=["GET", "HEAD"])
+def sample_thumb(request: Request, code: str = "", n: int = 0,
+                 args: dict[str, str] = Depends(require_auth)):
+    """照片墙上那一档样张缩略图，宽度与 `/photo-thumb` 相同。"""
+    return _sample_response(request, code, n, thumb=True)
+
+
+@router.api_route("/sample-image", methods=["GET", "HEAD"])
+def sample_image(request: Request, code: str = "", n: int = 0,
+                 args: dict[str, str] = Depends(require_auth)):
+    """灯箱里看的样张原图。"""
+    return _sample_response(request, code, n, thumb=False)
+
+
 @router.api_route("/poster", methods=["GET", "HEAD"])
 def poster(request: Request, id: int, c: int = 4, args: dict[str, str] = Depends(require_auth)):
     try:

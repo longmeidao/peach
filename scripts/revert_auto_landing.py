@@ -4,15 +4,17 @@
 `source` 与 `batch`，标识文件记在边车 `.provenance.json` 的同名两项，别名的
 `entity_alias.source` 直接就是批次号 `<source>@<任务行 id>`（ADR-0055）。女优资料行的
 `performer_profile.source` 同样是批次号，后继登记的站上编号在 `entity_external_ref.metadata_json`
-里记 `source` 与 `batch`（ADR-0067）。判据错了一批，就按它们认出来一起撤掉，不必一条条找。
+里记 `source` 与 `batch`（ADR-0067），番号样张的 `code_sample_image.source` 也是批次号（ADR-0068）。
+判据错了一批，就按它们认出来一起撤掉，不必一条条找。
 
 撤回是删除，不是恢复旧值：补厂牌后继只在盘上一张图都没有、账本里一条官网都没有时才写，
-补别名后继只写账本里还没有的写法，补女优资料后继只写自动来源的那一行，写下的就是那一格的
-全部，删掉就回到它写之前的样子。
+补别名后继只写账本里还没有的写法，补女优资料后继只写自动来源的那一行，补样张后继只给还没有
+样张的番号写，写下的就是那一格的全部，删掉就回到它写之前的样子。
 
     revert_auto_landing.py --source auto:performer-alias
     revert_auto_landing.py --source auto:performer-alias --batch auto:performer-alias@812
     revert_auto_landing.py --source auto:performer-profile
+    revert_auto_landing.py --source auto:sample-images
 
 默认只列计划；`--apply` 必须同时给 `--backup`，删文件在账本行之后、同一次运行里完成。
 """
@@ -25,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from peach import sample_images  # noqa: E402
 from peach.config import GENERATED_DIR  # noqa: E402
 from peach.scripting import add_ledger_write_args, open_for_write, verify_after_write  # noqa: E402
 
@@ -130,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         profiles = planned_profiles(connection, args.source, args.batch)
         refs = planned_refs(connection, args.source, args.batch)
         files = planned_files(args.logo_root, args.source, args.batch)
+        samples = sample_images.planned_revert(connection, args.source, args.batch)
         for link in links:
             print(f" - 链接 {link['entity'][:20]:<20} {link['url'][:56]} {link['batch']}")
         for alias in aliases:
@@ -140,8 +144,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f" - 编号 {ref['entity'][:20]:<20} {ref['provider']} {ref['id']} {ref['batch']}")
         for path in files:
             print(f" - 标识 {path.name}")
+        for sample in samples:
+            print(f" - 样张 {sample['code']:<20} {sample['count']} 张 {sample['source']}")
         print({"链接": len(links), "别名": len(aliases), "资料": len(profiles), "编号": len(refs),
-               "标识文件": len(files)})
+               "标识文件": len(files), "样张": sum(sample["count"] for sample in samples)})
         if not args.apply:
             print("dry-run；确认无误后加 --apply --backup <路径>")
             return 0
@@ -157,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
             connection.executemany(
                 "DELETE FROM entity_external_ref WHERE provider=? AND external_kind=?"
                 " AND external_id=?", [(ref["provider"], ref["kind"], ref["id"]) for ref in refs])
+            removed_samples = sample_images.revert(connection, args.source, args.batch)
         integrity, orphans = verify_after_write(connection)
     finally:
         connection.close()
@@ -167,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
                 target.unlink()
                 removed += 1
     print({"删除链接": len(links), "删除别名": len(aliases), "删除资料": len(profiles),
-           "删除编号": len(refs), "删除文件": removed,
+           "删除编号": len(refs), "删除样张": removed_samples, "删除文件": removed,
            "integrity_check": integrity, "foreign_key_check": orphans})
     return 0
 

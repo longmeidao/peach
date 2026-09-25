@@ -2329,9 +2329,92 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_photo_endpoints_require_the_token(self):
         self._seed_photo()
-        for path in ("/photo?id=9", "/photo-thumb?id=9"):
+        for path in ("/photo?id=9", "/photo-thumb?id=9", "/sample-thumb?code=SSIS-057&n=1",
+                     "/sample-image?code=SSIS-057&n=1"):
             response = await self.client.get(path)
             self.assertEqual(response.status_code, 401, path)
+
+    def _seed_samples(self, count: int = 3) -> None:
+        """Alice 名下一部有码片和它的官方样张。夹具的表结构不含样张表，这里按迁移原文建。"""
+        self._seed_photo()
+        migration = Path(__file__).resolve().parents[1] / "migrations" / "0037_code_sample_image.sql"
+        with closing(sqlite3.connect(self.db)) as con:
+            con.executescript(migration.read_text(encoding="utf-8"))
+            con.execute("INSERT INTO asset(id,location,path,name,medium,code,catalog_title,release_date)"
+                        " VALUES(11,'local',?,'SSIS-057.mp4','video','SSIS-057','雨の日','2021-05-18')",
+                        (str(self.media_root / "SSIS-057.mp4"),))
+            con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                        " VALUES(11,9,'creator','legacy:asset',1.0)")
+            con.executemany(
+                "INSERT INTO code_sample_image(code,position,url,site,source,fetched_at)"
+                " VALUES('SSIS-057',?,?,'dmm','auto:sample-images@7','2026-09-25T00:00:00+00:00')",
+                [(n, f"https://pics.dmm.co.jp/digital/video/ssis00057/ssis00057jp-{n}.jpg")
+                 for n in range(1, count + 1)])
+            con.commit()
+
+    async def test_photos_list_one_code_set_per_work_that_has_samples(self):
+        self._seed_samples()
+        payload = (await self.client.get(
+            "/api/photos?kind=creator&name=Alice", headers={"X-Token": "secret"})).json()
+        code_sets = [item for item in payload["sets"] if item["kind"] == "code"]
+        self.assertEqual(len(code_sets), 1)
+        self.assertEqual(code_sets[0]["id"], "code:SSIS-057")
+        self.assertEqual(code_sets[0]["n"], 3)
+        self.assertEqual(code_sets[0]["title"], "SSIS-057 雨の日")
+        self.assertEqual(code_sets[0]["site"], "dmm")
+        self.assertEqual(payload["sample_total"], 3)
+        self.assertEqual(payload["total"], 2, "`total` 只数本地图片")
+        self.assertEqual([item["kind"] for item in payload["sets"]], ["code", "dir", "dir"])
+        self.assertNotIn("pics.dmm.co.jp", json.dumps(payload), "样张地址留在服务端")
+
+    async def test_a_sample_is_downloaded_on_first_view_and_then_served_from_cache(self):
+        from PIL import Image
+
+        self._seed_samples()
+        picture = io.BytesIO()
+        Image.new("RGB", (800, 534), (120, 80, 60)).save(picture, "JPEG")
+        asked = []
+
+        def factory(_secrets_root):
+            def download(url):
+                asked.append(url)
+                return picture.getvalue()
+            return download
+
+        headers = {"X-Token": "secret"}
+        with patch("peach.sample_images.downloader", side_effect=factory):
+            first = await self.client.get("/sample-thumb?code=SSIS-057&n=2", headers=headers)
+            again = await self.client.get("/sample-thumb?code=ssis-057&n=2", headers=headers)
+            full = await self.client.get("/sample-image?code=SSIS-057&n=2", headers=headers)
+            unknown = await self.client.get("/sample-thumb?code=SSIS-057&n=9", headers=headers)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(again.content, first.content)
+        self.assertEqual(full.content, picture.getvalue())
+        self.assertEqual(asked, ["https://pics.dmm.co.jp/digital/video/ssis00057/ssis00057jp-2.jpg"],
+                         "同一张只下载一次，账本里没有的序号不出网")
+        self.assertEqual(unknown.status_code, 404)
+        folder = self.root / "sample-cache" / "SSIS-057"
+        self.assertEqual(sorted(path.name for path in folder.iterdir()), ["2.jpg", "2.thumb.jpg"])
+        with Image.open(folder / "2.thumb.jpg") as thumb:
+            self.assertEqual(thumb.width, 640)
+
+    async def test_a_failed_sample_download_answers_404_and_is_not_retried_at_once(self):
+        self._seed_samples()
+        asked = []
+
+        def factory(_secrets_root):
+            def download(url):
+                asked.append(url)
+                raise OSError("来源连接未取得")
+            return download
+
+        headers = {"X-Token": "secret"}
+        with patch("peach.sample_images.downloader", side_effect=factory):
+            first = await self.client.get("/sample-thumb?code=SSIS-057&n=1", headers=headers)
+            again = await self.client.get("/sample-thumb?code=SSIS-057&n=1", headers=headers)
+        self.assertEqual((first.status_code, again.status_code), (404, 404))
+        self.assertEqual(len(asked), 1, "失败标记一天内挡住重试")
+        self.assertTrue((self.root / "sample-cache" / "SSIS-057" / "1.miss").is_file())
 
 
 @unittest.skipUnless(HAS_DEPS, "fastapi/httpx not installed")

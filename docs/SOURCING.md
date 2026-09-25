@@ -1362,3 +1362,19 @@ Feed 只回答一个问题：**最近出了哪些番号**。它不下载、不�
   itdog 实测电信、联通直连正常，中国移动大多在 TLS 握手后被断开。量尺寸时每张候选都断在连接上、没有一家
   回过话，`best_cover` 抛 `CoverConnectError`：它说的是线路，续跑照常重试，新作那一行与采集页据此指去
   DMM / FANZA 的连接方式，不报成官方没有图。
+
+## 番号样张
+
+女优页照片档按番号摆的官方样张（ADR-0068），读写与取页在 `peach.sample_images`，补齐在
+`peach.sample_followup`（任务中心「补番号样张」）。
+
+- 只认发行方自己那几站：有码是 DMM / FANZA 的 `jp-N`（GraphQL 给的 `awsimgsrc…/pics_dig/…/<cid>-N.jpg`
+  是 120×90 小图，同目录 `<cid>jp-N.jpg` 才是 800×534 原图，落库前改写），素人是 MGS 商品页的
+  `a.sample_image`（`cap_e_N`，840×472）。amane 桥交的 `screenshot_urls` 只从快照里读。
+- javdb、JavBus、avwikidb 的样张都是 FANZA 那一张的转载或直链，不算官方判据；avwikidb 的增量是逐张女优
+  标注 `sampleImageActors`，见待办。FC2 商品页没有样张区，R18.dev 详情没有 gallery，都是未取得。
+- 先读 `sources/library-metadata/<番号>-<站>.json` 快照，零网络；没有才问站。站点说没有记在
+  `generated/provider-cache/sample-images/misses.json`，7 天内不再问；冷却与预算用完不记。
+- 图不在采集时下载：第一次有人看，`/sample-thumb` 才按这一站的连接方式取一张存进 `generated/sample-cache/`，
+  DMM 图片主机在移动出口不通时回 404、记一天的失败标记，页面显示占位。
+- Gfriends 是头像与资料照：每人中位 1 张、缓存图中位 500×600，不按作品分组，不当写真集用。

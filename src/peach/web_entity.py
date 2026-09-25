@@ -334,8 +334,44 @@ def _display_entity_aliases(canonical_name: str, aliases: list[str]) -> list[str
             if east_asian.search(alias or "") or not re.search(r"[A-Za-z]", alias or "")]
 
 
+def entity_code_sets(contract: WebContract, c, kind: str, entity_id: int) -> list[dict]:
+    """实体名下每部有样张的作品一组（ADR-0068）。
+
+    集的 id 是 `code:<番号>`，和目录图集的整数 id 分得开，地址栏的 `set=` 两种都认。集封面就是
+    这部片的封面（`/cover`），所以只要账本里有样张，页面不必先下载任何一张样张就画得出这一排。
+    新发行的在前，没有发行日的排在最后。
+    """
+    from . import sample_images
+
+    if not sample_images.table_ready(c):
+        return []
+    works: dict[str, dict] = {}
+    for row in c.execute(
+            "SELECT a.code,a.catalog_title,a.original_title,a.release_date "
+            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "WHERE " + scope_predicate(kind, "ae.entity_id") + " AND " + VISIBLE_CATALOG_ASSET +
+            " AND a.code IS NOT NULL AND a.code<>'' ORDER BY a.id", (entity_id,)):
+        key = sample_images.code_key(row["code"])
+        if not key:
+            continue
+        work = works.setdefault(key, {"title": "", "release": ""})
+        work["title"] = work["title"] or str(row["catalog_title"] or row["original_title"] or "")
+        work["release"] = max(work["release"], str(row["release_date"] or ""))
+    sets = [{
+        "id": f"code:{key}", "kind": "code", "code": key, "name": works[key]["title"],
+        "title": f"{key} {works[key]['title']}".strip(), "n": count,
+        "release_date": works[key]["release"], "site": site,
+        "site_label": sample_images.site_label(site), "has_cover": contract.has_cover(key),
+    } for key, (count, site) in sample_images.counts(c, works).items()]
+    sets.sort(key=lambda item: item["code"])
+    sets.sort(key=lambda item: item["release_date"], reverse=True)
+    sets.sort(key=lambda item: not item["release_date"])
+    return sets
+
+
 def q_entity_photos(contract: WebContract, args):
-    """实体名下的图片墙；目录分组只保留为兼容元数据。"""
+    """实体名下的照片：本地图片分页放在 `items`；`sets` 是分组，`kind` 为 `dir` 的是本地目录图集，
+    为 `code` 的是番号样张集（`entity_code_sets`）。`total` 只数本地图片，`sample_total` 数样张。"""
     kind, name = args.get("kind", ""), args.get("name", "")
     if kind not in PROFILE_KINDS or not name:
         return {"error": "invalid entity"}
@@ -353,6 +389,7 @@ def q_entity_photos(contract: WebContract, args):
             return {"error": "not found"}
         sets = [{
             "id": item["id"],
+            "kind": "dir",
             "title": photo_set_title(item["dir"]),
             "n": item["n"],
             "bytes": item["bytes"] or 0,
@@ -387,9 +424,11 @@ def q_entity_photos(contract: WebContract, args):
                      f"ORDER BY {order} LIMIT ? OFFSET ?",
                      (row["id"], limit, offset),
                  )]
+        code_sets = entity_code_sets(contract, c, kind, row["id"])
         return {
             "kind": kind, "name": row["canonical_name"], "entity_id": row["id"],
-            "sets": sets, "total": total, "items": items, "seed": seed,
+            "sets": code_sets + sets, "total": total, "items": items, "seed": seed,
+            "sample_total": sum(item["n"] for item in code_sets),
             "has_more": offset + len(items) < total,
         }
 
