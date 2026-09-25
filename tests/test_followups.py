@@ -544,11 +544,11 @@ class CoverFaceFollowupTests(LedgerTestCase):
                          [followup_key("performer", self.person)])
 
 
-class FaceMatchFollowupTests(LedgerTestCase):
-    """图库同名多张时，按封面人脸认出是她的那几张（ADR-0056）。
+class FaceStubCase(LedgerTestCase):
+    """按人脸认人那几组共用的桩：不出网，比对模型按图下半截的颜色给固定特征。
 
-    不出网：图库候选预先放进候选缓存，比对模型换成桩——按图下半截的颜色给固定特征，
-    红的是她、蓝的是别人、灰的检不出脸。封面的检脸沿用封面截脸那组的桩。
+    红的是她、蓝的是别人、灰的检不出脸。图库候选预先放进候选缓存；封面的检脸沿用封面
+    截脸那组的桩，每张图都在下半截正中检出一张脸。
     """
 
     STAMP = AvatarFollowupTests.STAMP
@@ -653,6 +653,10 @@ class FaceMatchFollowupTests(LedgerTestCase):
     run_followup = CoverFaceFollowupTests.run_followup
     contract = CoverFaceFollowupTests.contract
     provenance = CoverFaceFollowupTests.provenance
+
+
+class FaceMatchFollowupTests(FaceStubCase):
+    """图库同名多张时，按封面人脸认出是她的那几张（ADR-0056）。"""
 
     def test_several_pictures_of_her_install_the_first_big_enough_in_gallery_order(self):
         """太小的那张认出来也不当胜者；其余照图库先后，第一张认定是她的就装。"""
@@ -805,7 +809,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                                                    limit=10)]
 
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:0:r5")
+            self.assertEqual(fingerprint(connection, self.person), "1:0:0:r6")
         self.run_followup()
         self.assertEqual(planned(), [])
         with self.database.write_transaction(notify=False) as connection:
@@ -813,7 +817,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                 "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
                 " VALUES(?,?,?,'test')", (self.person, "りな", "りな"))
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:1:r5")
+            self.assertEqual(fingerprint(connection, self.person), "1:1:0:r6")
         self.assertEqual(planned(), [followup_key("performer", self.person)])
 
     def test_a_small_picture_vouches_for_a_big_one_without_a_cover(self):
@@ -858,6 +862,184 @@ class FaceMatchFollowupTests(LedgerTestCase):
         self.assertEqual([item.key for item in planned], [followup_key("performer", self.person)])
         self.run_followup()
         self.assertEqual(self.provenance()["provider"], "cover-face")
+
+
+class OffsiteCoverFaceTests(FaceStubCase):
+    """馆里截不出她的脸时，从 avwikidb 列出的馆外单人作品封面上截，两部互证才装（ADR-0074）。"""
+
+    ACTOR = "1025548"
+
+    def setUp(self):
+        super().setUp()
+        self.works: list[dict] = []
+        self.images: dict[str, bytes] = {}
+        self.fetched: list[str] = []
+        self.pages: list[str] = []
+        self.blocked = False
+        #: 女优页只列前几部；None 是全列。筛选页总是列全。
+        self.actor_page_limit: int | None = None
+        test = self
+
+        class Pages:
+            def get(self, url):
+                from peach.performer_alias_followup import Blocked
+
+                if test.blocked:
+                    raise Blocked("avwikidb 在冷却")
+                test.pages.append(url)
+                singles = sum(len(work["actor"]) == 1 and
+                              work["actor"][0]["fanzaAvActressId"] == test.ACTOR
+                              for work in test.works)
+                if url == f"https://avwikidb.com/actor/{test.ACTOR}/":
+                    props = {"movies": test.works[:test.actor_page_limit], "singleCount": singles}
+                else:
+                    test.assertEqual(url, f"https://avwikidb.com/actor/{test.ACTOR}/works/?filter=single")
+                    props = {"movies": test.works}
+                data = {"props": {"pageProps": props}}
+                return url, ('<script id="__NEXT_DATA__" type="application/json">'
+                             f"{json.dumps(data)}</script>")
+
+            def close(self):
+                pass
+
+        def transport(request, _timeout, _limit):
+            from peach.http import HttpResponse
+
+            test.fetched.append(request.url)
+            body = test.images.get(request.url)
+            return HttpResponse(200 if body else 404, {}, body or b"", request.url)
+
+        for target, value in (("peach.performer_profile_followup.avwikidb_pages",
+                               mock.Mock(return_value=Pages())),
+                              ("peach.http.HttpxTransport", mock.Mock(return_value=transport))):
+            patcher = mock.patch(target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def bind(self) -> None:
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute(
+                "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+                " VALUES(?,'avwikidb','performer',?)", (self.person, self.ACTOR))
+
+    def compilation(self, asset_id: int, code: str) -> None:
+        """馆里一部她和别人合演的作品：馆藏封面截脸那一档不取它。"""
+        self.work(asset_id, code, self.OTHER)
+        other = self.entity("performer", f"共演-{asset_id}")
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source) "
+                "VALUES(?,?,'performer','test')", (asset_id, other))
+
+    def listed(self, code: str, cid: str, colour, *cast: str) -> None:
+        """avwikidb 上列一部作品，封面放在 DMM 的地址上；`cast` 缺省是她一个人。"""
+        self.works.append({"adultVideoId": code, "floor": "videoa", "fanzaContentId": cid,
+                           "actor": [{"name": "梨奈", "fanzaAvActressId": number}
+                                     for number in (cast or (self.ACTOR,))]})
+        if colour is not None:
+            self.images[f"https://awsimgsrc.dmm.co.jp/pics_dig/digital/video/{cid}/{cid}pl.jpg"] = (
+                self.picture((800, 540), colour))
+
+    def test_two_offsite_works_agreeing_install_the_widest_face(self):
+        self.bind()
+        self.listed("ABF-001", "118abf00001", self.HER)
+        self.listed("ABF-002", "118abf00002", self.HER_AGAIN)
+        summary = self.run_followup()
+        self.assertEqual((summary["outcome"], summary["source"]),
+                         ("已装上", "馆外单人作品封面 ABF-001（2 部互证）"))
+        record = self.provenance()
+        self.assertEqual((record["provider"], record["identity_verified"], record["offsite"]),
+                         ("cover-face", False, True))
+        self.assertTrue(record["cover_url"].endswith("/118abf00001pl.jpg"))
+        self.assertEqual(sorted(record["face_match"]["codes"]), ["ABF-001", "ABF-002"])
+        self.assertEqual(record["face_match"]["avwikidb"], self.ACTOR)
+        self.assertEqual(self.pages, [f"https://avwikidb.com/actor/{self.ACTOR}/"])
+
+    def test_a_truncated_actor_page_is_completed_from_the_single_works_page(self):
+        """女优页只列得下一部、站方却数出两部：去筛选页补齐。"""
+        self.bind()
+        self.actor_page_limit = 1
+        self.listed("ABF-001", "118abf00001", self.HER)
+        self.listed("ABF-002", "118abf00002", self.HER_AGAIN)
+        self.assertEqual(self.run_followup()["outcome"], "已装上")
+        self.assertEqual(len(self.pages), 2)
+        self.assertEqual(sorted(self.provenance()["face_match"]["codes"]), ["ABF-001", "ABF-002"])
+
+    def test_one_offsite_face_is_kept_as_a_choice_but_not_installed(self):
+        self.bind()
+        self.listed("ABF-001", "118abf00001", self.HER)
+        self.listed("ABF-002", "118abf00002", None)
+        summary = self.run_followup()
+        self.assertIn("凑不齐两部互证", summary["outcome"])
+        self.assertEqual(summary["kept"], 1)
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_two_different_people_install_nothing(self):
+        self.bind()
+        self.listed("ABF-001", "118abf00001", self.HER)
+        self.listed("ABF-002", "118abf00002", self.STRANGER)
+        self.assertIn("凑不齐两部互证", self.run_followup()["outcome"])
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_the_same_photo_on_two_covers_is_one_piece_of_evidence(self):
+        self.bind()
+        self.listed("ABF-001", "118abf00001", self.HER)
+        self.listed("ABF-002", "118abf00002", self.HER)
+        self.assertIn("凑不齐两部互证", self.run_followup()["outcome"])
+        self.assertFalse((self.avatars / f"performer-{self.person}.img").exists())
+
+    def test_works_with_someone_else_and_works_in_the_library_are_not_fetched(self):
+        self.bind()
+        self.compilation(1, "ABF-001")
+        self.listed("ABF-001", "118abf00001", self.HER)
+        self.listed("ABF-003", "118abf00003", self.HER, self.ACTOR, "1040000")
+        self.listed("ABF-002", "118abf00002", self.HER_AGAIN)
+        self.run_followup()
+        self.assertEqual([url.rsplit("/", 1)[-1] for url in self.fetched],
+                         ["118abf00002pl.jpg"])
+
+    def test_without_an_avwikidb_id_nothing_is_fetched(self):
+        self.listed("ABF-001", "118abf00001", self.HER)
+        summary = self.run_followup()
+        self.assertEqual(summary["outcome"], "图库里没有这个名字，封面上没有能截的脸")
+        self.assertEqual(self.fetched, [])
+
+    def test_a_blocked_site_is_tried_again_next_round(self):
+        from peach.avatar_followup import fingerprint
+        from peach.followups import Attempts, attempts_root
+
+        self.bind()
+        self.blocked = True
+        summary = self.run_followup()
+        self.assertTrue(summary["source_unavailable"])
+        self.assertIn("avwikidb 单人作品未取得", summary["outcome"])
+        with self.database.read_connection() as connection:
+            current = fingerprint(connection, self.person)
+        key = followup_key("performer", self.person)
+        self.assertFalse(Attempts(attempts_root(self.root / "generated")).settled(key, current))
+
+    def test_binding_an_avwikidb_id_queues_her_again(self):
+        from peach.avatar_followup import fingerprint, stock
+        from peach.followups import Attempts, attempts_root
+
+        attempts = Attempts(attempts_root(self.root / "generated"))
+        key = followup_key("performer", self.person)
+
+        def planned():
+            # 合集里的共演者也缺头像，只看她这一条。
+            with self.database.read_connection() as connection:
+                return [item.key for item in stock(connection, self.avatars, attempts, limit=10)
+                        if item.key == key]
+
+        self.compilation(1, "DVAJ-495")
+        self.run_followup()
+        with self.database.read_connection() as connection:
+            self.assertEqual(fingerprint(connection, self.person), "1:0:0:r6")
+        self.assertEqual(planned(), [])
+        self.bind()
+        with self.database.read_connection() as connection:
+            self.assertEqual(fingerprint(connection, self.person), "1:0:1:r6")
+        self.assertEqual(planned(), [key])
 
 
 class ProcessLibraryTests(LedgerTestCase):

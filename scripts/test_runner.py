@@ -176,6 +176,7 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     "src/peach/library_processing.py": ("metadata", "web"),
     # 刮削后继：主体测试 `test_followups.py` 与 `test_studio_followup.py`，按名字推不出来。
     "src/peach/avatar_followup.py": ("catalog", "media", "tooling"),
+    "src/peach/avatar_offsite_cover_face.py": ("catalog", "media", "tooling"),
     "src/peach/studio_followup.py": ("catalog", "metadata"),
     # 补样张后继的主体测试是 `test_sample_images.py`，出图路由与番号集在 `test_fastapi_api.py`。
     "src/peach/sample_followup.py": ("catalog", "metadata", "media"),

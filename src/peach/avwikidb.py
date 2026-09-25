@@ -1,7 +1,14 @@
 r"""avwikidb.com 的页面解析：作品页的出演女优、女优页的基本资料（ADR-0067）。
 
-这个站在 Peach 里只做两件事：给女优一个站上的编号（`/actor/<编号>/`），以及拿站上的出生
-日期与身高去核对 minnano-av 的资料。站上的女优图是 DMM 的 125×125 小图，不作头像。
+这个站在 Peach 里做三件事：给女优一个站上的编号（`/actor/<编号>/`），拿站上的出生日期与身高
+去核对 minnano-av 的资料，以及列出她的单人作品，让补头像从馆外的作品封面上截脸（ADR-0074）。
+站上的女优图是 DMM 的 125×125 小图，不作头像；作品封面是 DMM 自己的图，不是这一张。
+
+**作品列表读 `__NEXT_DATA__`，不读卡片。** 女优页与单人作品筛选页
+`/actor/<编号>/works/?filter=single` 的 `pageProps.movies` 每项给番号、`floor`（`videoa` 是 DMM
+数字版、`videoc` 是素人、`mgs` 是 MGS）、`fanzaContentId` 与出演表 `actor`（每人带站上编号，
+就是 `/actor/<编号>/` 那一段）。卡片上的 `alt` 会把十几个人截成「ほか」，结构化数据是全表。
+女优页最多列 8 部，`pageProps.singleCount` 是站方数的单人作品部数。
 
 **从作品页进，不从名字进。** 站内搜索是 Next.js 页面上的一个弹层，地址形态未取得；按名字
 猜编号更不行。作品页 `/work/<番号>/` 头里有一份 JSON-LD `Movie`，`actor` 每项给 `name`、
@@ -22,7 +29,9 @@ from datetime import date
 SITE = "https://avwikidb.com/"
 ACTOR_PAGE = SITE + "actor/{id}/"
 WORK_PAGE = SITE + "work/{code}/"
+SINGLE_WORKS_PAGE = SITE + "actor/{id}/works/?filter=single"
 _ACTOR = re.compile(r"/actor/(\d+)/?$")
+_NEXT_DATA = re.compile(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', re.S)
 _LD_JSON = re.compile(
     r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
 _SIZES_CELL = re.compile(r"身長・スリーサイズ\s*</p>\s*<p[^>]*>([^<]*)<", re.S)
@@ -112,3 +121,43 @@ def actor_profile(html: str) -> dict | None:
 def romaji_key(text: str) -> str:
     """罗马字比较用的键：小写、按词排序。站上写 `Hikaru Minazuki`，minnano-av 写 `Minazuki Hikaru`。"""
     return " ".join(sorted(re.sub(r"[^a-z\s]", "", str(text or "").lower()).split()))
+
+
+def _page_props(html: str) -> dict:
+    found = _NEXT_DATA.search(html or "")
+    try:
+        props = json.loads(found.group(1))["props"]["pageProps"] if found else {}
+    except (ValueError, KeyError, TypeError):
+        return {}
+    return props if isinstance(props, dict) else {}
+
+
+def single_count(html: str) -> int:
+    """女优页上站方数的单人作品部数（`pageProps.singleCount`）；读不出是 0。"""
+    count = _page_props(html).get("singleCount")
+    return count if isinstance(count, int) and count > 0 else 0
+
+
+def single_works(html: str, actor: str) -> list[dict]:
+    """女优页或作品列表页 → 出演表里只有 `actor` 这一位的作品，按页上顺序。
+
+    每项 `{"code", "floor", "content_id", "mgs_image", "identified"}`。`identified` 是站上
+    「特定済」：官方没写出演者，是站上认出来的。筛选页本身已经只列单人作品，这里仍按出演表
+    再判一次：页面换了版式、或筛选参数失效时，不能把合集当成她的单人作品。
+    """
+    movies = _page_props(html).get("movies") or []
+    works: list[dict] = []
+    for movie in movies if isinstance(movies, list) else []:
+        if not isinstance(movie, dict):
+            continue
+        cast = movie.get("actor") or []
+        ids = {str(person.get("fanzaAvActressId") or "") for person in cast
+               if isinstance(person, dict)}
+        code = str(movie.get("adultVideoId") or "").strip()
+        if not code or len(cast) != 1 or ids != {str(actor)}:
+            continue
+        works.append({"code": code, "floor": str(movie.get("floor") or ""),
+                      "content_id": str(movie.get("fanzaContentId") or "").strip().lower(),
+                      "mgs_image": str(movie.get("mgsImageUrl") or "").strip(),
+                      "identified": bool(movie.get("actorUnknown"))})
+    return works
