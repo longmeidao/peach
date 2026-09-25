@@ -805,7 +805,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                                                    limit=10)]
 
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:0:r4")
+            self.assertEqual(fingerprint(connection, self.person), "1:0:r5")
         self.run_followup()
         self.assertEqual(planned(), [])
         with self.database.write_transaction(notify=False) as connection:
@@ -813,7 +813,7 @@ class FaceMatchFollowupTests(LedgerTestCase):
                 "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
                 " VALUES(?,?,?,'test')", (self.person, "りな", "りな"))
         with self.database.read_connection() as connection:
-            self.assertEqual(fingerprint(connection, self.person), "1:1:r4")
+            self.assertEqual(fingerprint(connection, self.person), "1:1:r5")
         self.assertEqual(planned(), [followup_key("performer", self.person)])
 
     def test_a_small_picture_vouches_for_a_big_one_without_a_cover(self):
