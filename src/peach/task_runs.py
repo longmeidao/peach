@@ -92,6 +92,7 @@ TASK_LABELS = {
     "feed-check": "订阅源拉取",
     "feed-scrape": "取新作资料",
     "timeline-thumbnails": "视频缩略图采集",
+    "seed-import": "导入实体种子",
 }
 
 

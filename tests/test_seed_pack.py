@@ -1,4 +1,5 @@
-"""实体事实种子包：导出只带公开事实且逐字节稳定，导入只给已有实体填空，整批可撤（ADR-0073）。
+"""实体事实种子包：导出只带公开事实且逐字节稳定，导入只给已有实体填空、只换种子自己写过的行，
+整批可撤（ADR-0073、ADR-0075）。
 
 全程两本临时账本：一本当导出方，一本当另一台机器。
 """
@@ -68,6 +69,11 @@ def membership(connection, member_id: int, agency_id: int, source: str) -> None:
                        " VALUES(?,?,?,1.0,?)", (member_id, agency_id, source, STAMP))
 
 
+def label_maker(connection, label_id: int, maker_id: int, source: str) -> None:
+    connection.execute("INSERT INTO label_maker(label_id,maker_id,source,confidence,checked_at)"
+                       " VALUES(?,?,?,1.0,?)", (label_id, maker_id, source, STAMP))
+
+
 PROFILE = {"kana": "あまかわそら", "birth_date": "1998-10-10", "height_cm": 164, "cup": "G",
            "tags": ["巨乳", "美肌"], "raw": {"名前": "天川そら", "サイズ": "T164 / B87"}}
 
@@ -81,13 +87,17 @@ class SeedPackCase(unittest.TestCase):
         self.addCleanup(self.target.close)
 
     def seeded_source(self) -> dict:
-        """导出方账本：一位有全套事实的女优、她的事务所、一家带别名的厂牌、一位只有名字的女优。"""
+        """导出方账本：一位有全套事实的女优、她的事务所、一家带别名的厂牌、一个归属片商的 label、
+        一位只有名字的女优。"""
         con = self.source
         with con:
             sora = entity(con, "performer", "天川そら")
             agency = entity(con, "agency", "STARTUP")
             studio = entity(con, "studio", "S1 NO.1 STYLE")
+            maker = entity(con, "studio", "Prestige")
+            label = entity(con, "studio", "PRESTIGE PREMIUM")
             entity(con, "performer", "只有名字")
+            label_maker(con, label, maker, "review:label-maker-20260923.csv")
             alias(con, sora, "春山心愛", "r18:performer")
             alias(con, sora, "Amakawa Sora", "r18:performer")
             alias(con, sora, "そら", "javdb-actor-page@javdb-20260912")
@@ -114,11 +124,14 @@ class ExportTests(SeedPackCase):
     def test_pack_carries_public_facts_and_nothing_local(self):
         pack = self.seeded_source()
         self.assertEqual(pack["version"], VERSION)
-        self.assertEqual(pack["counts"], {"entities": 2, "aliases": 3, "refs": 1, "links": 3,
-                                          "profiles": 1, "memberships": 1})
+        self.assertEqual(pack["counts"], {"entities": 3, "aliases": 3, "refs": 1, "links": 3,
+                                          "profiles": 1, "memberships": 1, "makers": 1})
         by_name = {item["name"]: item for item in pack["entities"]}
-        self.assertEqual(list(by_name), ["天川そら", "S1 NO.1 STYLE"], "按种类与归一名排序")
+        self.assertEqual(list(by_name), ["天川そら", "PRESTIGE PREMIUM", "S1 NO.1 STYLE"], "按种类与归一名排序")
         self.assertNotIn("STARTUP", by_name, "事务所自己没有可补的事实，只作为她的归属出现")
+        self.assertNotIn("Prestige", by_name, "片商自己没有可补的事实，只作为 label 的归属出现")
+        self.assertEqual(by_name["PRESTIGE PREMIUM"]["maker"],
+                         {"name": "Prestige", "source": "review:label-maker-20260923.csv"})
         sora = by_name["天川そら"]
         self.assertEqual([(a["alias"], a["source"]) for a in sora["aliases"]],
                          [("二宮そら", "javdb-actor-page@javdb-20260912"), ("春山心愛", "r18:performer")],
@@ -146,12 +159,13 @@ class ExportTests(SeedPackCase):
 
 class ImportTests(SeedPackCase):
     def seeded_target(self) -> dict[str, int]:
-        """另一台机器：账本里她叫「春山心愛」，事务所已登记，厂牌只有名字；「天川そら」这条包里
-        的另一位 `未登记` 本机没有。"""
+        """另一台机器：账本里她叫「春山心愛」，事务所已登记，厂牌、label 与片商都只有名字；
+        包里的另一位 `未登记` 本机没有。"""
         con = self.target
         with con:
             ids = {"her": entity(con, "performer", "春山心愛"), "agency": entity(con, "agency", "STARTUP"),
-                   "studio": entity(con, "studio", "S1 NO.1 STYLE"), "other": entity(con, "performer", "别人")}
+                   "studio": entity(con, "studio", "S1 NO.1 STYLE"), "other": entity(con, "performer", "别人"),
+                   "label": entity(con, "studio", "PRESTIGE PREMIUM"), "maker": entity(con, "studio", "Prestige")}
         return ids
 
     def test_only_existing_entities_get_their_blanks_filled(self):
@@ -161,8 +175,9 @@ class ImportTests(SeedPackCase):
         ids = self.seeded_target()
         with self.target:
             report = seed_pack.land(self.target, pack)
-        self.assertEqual(report, {"version": VERSION, "batch": BATCH, "matched": 2, "unmatched": 1,
-                                  "aliases": 3, "refs": 1, "links": 3, "profiles": 1, "memberships": 1})
+        self.assertEqual(report, {"version": VERSION, "batch": BATCH, "matched": 3, "unmatched": 1,
+                                  "aliases": 3, "refs": 1, "links": 3, "profiles": 1, "memberships": 1,
+                                  "makers": 1, "refreshed": 0, "conflicts": [], "duplicates": []})
         her = ids["her"]
         rows = self.target.execute("SELECT alias,source FROM entity_alias WHERE entity_id=? ORDER BY alias",
                                    (her,)).fetchall()
@@ -188,7 +203,10 @@ class ImportTests(SeedPackCase):
         studio_alias = self.target.execute("SELECT alias,source FROM entity_alias WHERE entity_id=?",
                                            (ids["studio"],)).fetchone()
         self.assertEqual(tuple(studio_alias), ("S1", BATCH))
-        self.assertEqual(self.target.execute("SELECT count(*) FROM entity").fetchone()[0], 4, "不造实体")
+        maker = self.target.execute("SELECT maker_id,source FROM label_maker WHERE label_id=?",
+                                    (ids["label"],)).fetchone()
+        self.assertEqual(tuple(maker), (ids["maker"], BATCH), "label 归哪家片商也补上，来源是批次号")
+        self.assertEqual(self.target.execute("SELECT count(*) FROM entity").fetchone()[0], 6, "不造实体")
 
     def test_seed_never_overwrites_what_the_ledger_already_holds(self):
         pack = self.seeded_source()
@@ -199,10 +217,18 @@ class ImportTests(SeedPackCase):
             membership(self.target, ids["her"], ids["agency"], "review:user")
             link(self.target, ids["her"], "social", "https://X.com/amakawa_sora_")
             alias(self.target, ids["her"], "二宮そら", "user:manual")
+            kmp = entity(self.target, "studio", "K M Produce")
+            label_maker(self.target, ids["label"], kmp, "review:user")
         with self.target:
             report = seed_pack.land(self.target, pack)
         self.assertEqual((report["profiles"], report["refs"], report["memberships"], report["links"],
-                          report["aliases"]), (0, 1, 0, 2, 2))
+                          report["aliases"], report["makers"], report["refreshed"]), (0, 1, 0, 2, 2, 0, 0))
+        self.assertEqual(report["conflicts"],
+                         [{"kind": "studio", "entity": "PRESTIGE PREMIUM", "field": "maker", "ours": "K M Produce",
+                           "source": "review:user", "theirs": "Prestige"}],
+                         "人复核过的片商与包里不一致：不动，记进明细等人看")
+        self.assertEqual(self.target.execute("SELECT maker_id FROM label_maker WHERE label_id=?",
+                                             (ids["label"],)).fetchone()[0], kmp)
         self.assertEqual(self.target.execute("SELECT count(*) FROM entity_link WHERE entity_id=?",
                                              (ids["her"],)).fetchone()[0], 2,
                          "本机那条主机大写的同一地址不再补一条只差大小写的")
@@ -215,6 +241,30 @@ class ImportTests(SeedPackCase):
         self.assertEqual([tuple(row) for row in rows], [("二宮そら", "user:manual"), ("天川そら", BATCH)],
                          "已有的写法保留原来源，只补缺的那个")
 
+    def test_a_newer_seed_replaces_what_an_older_seed_wrote(self):
+        pack = self.seeded_source()
+        ids = self.seeded_target()
+        with self.target:
+            old_agency = entity(self.target, "agency", "旧事务所")
+            old_maker = entity(self.target, "studio", "旧片商")
+            membership(self.target, ids["her"], old_agency, "auto:seed@2026-01-01")
+            label_maker(self.target, ids["label"], old_maker, "auto:seed@2026-01-01")
+            write_profile(self.target, ids["her"], {"kana": "旧种子写的", "raw": {}}, source="auto:seed@2026-01-01",
+                          source_url="https://example/", fetched_at="2026-01-01T00:00:00Z")
+        with self.target:
+            report = seed_pack.land(self.target, pack)
+        self.assertEqual((report["memberships"], report["makers"], report["profiles"], report["refreshed"],
+                          report["conflicts"]), (0, 0, 0, 3, []), "旧种子写的三行都换成新批次，不算新补也不算冲突")
+        self.assertEqual(tuple(self.target.execute("SELECT agency_id,source FROM entity_membership WHERE member_id=?",
+                                                   (ids["her"],)).fetchone()), (ids["agency"], BATCH))
+        self.assertEqual(tuple(self.target.execute("SELECT maker_id,source FROM label_maker WHERE label_id=?",
+                                                   (ids["label"],)).fetchone()), (ids["maker"], BATCH))
+        profile = read_profile(self.target, ids["her"])
+        self.assertEqual((profile["kana"], profile["source"]), ("あまかわそら", BATCH))
+        with self.target:
+            again = seed_pack.land(self.target, pack)
+        self.assertEqual(seed_pack.written(again), 0, "同一包再跑一遍不再动任何一行")
+
     def test_a_name_on_one_entity_and_a_number_on_another_matches_nobody(self):
         pack = self.seeded_source()
         ids = self.seeded_target()
@@ -222,7 +272,9 @@ class ImportTests(SeedPackCase):
             ref(self.target, ids["other"], "minnano-av", "295275")
         with self.target:
             report = seed_pack.land(self.target, pack)
-        self.assertEqual((report["matched"], report["unmatched"]), (1, 1), "只有厂牌对上了")
+        self.assertEqual((report["matched"], report["unmatched"], report["duplicates"]),
+                         (2, 0, [{"kind": "performer", "name": "天川そら", "entities": ["别人", "春山心愛"]}]),
+                         "两家厂牌对上了；她那条认出两位，记进重复身份明细")
         for entity_id in (ids["her"], ids["other"]):
             self.assertEqual(self.target.execute("SELECT count(*) FROM entity_alias WHERE entity_id=?",
                                                  (entity_id,)).fetchone()[0], 0, "名字与编号各指一位，谁都不动")
@@ -236,7 +288,8 @@ class ImportTests(SeedPackCase):
             second = entity(self.target, "performer", "二宮そら")
         with self.target:
             report = seed_pack.land(self.target, pack)
-        self.assertEqual((report["matched"], report["unmatched"]), (0, 2))
+        self.assertEqual((report["matched"], report["unmatched"], report["duplicates"]),
+                         (0, 2, [{"kind": "performer", "name": "天川そら", "entities": ["二宮そら", "春山心愛"]}]))
         for entity_id in (first, second):
             self.assertEqual(self.target.execute("SELECT count(*) FROM entity_alias WHERE entity_id=?",
                                                  (entity_id,)).fetchone()[0], 0, "两位都对得上就谁都不动")
@@ -246,10 +299,10 @@ class ImportTests(SeedPackCase):
         self.seeded_target()
         before = self.target.execute("SELECT count(*) FROM entity_alias").fetchone()[0]
         report = seed_pack.plan(self.target, pack)
-        self.assertEqual((report["matched"], report["aliases"], report["profiles"]), (2, 3, 1))
+        self.assertEqual((report["matched"], report["aliases"], report["profiles"]), (3, 3, 1))
         self.assertEqual(self.target.execute("SELECT count(*) FROM entity_alias").fetchone()[0], before)
 
-    def test_a_seed_batch_is_reverted_across_all_five_tables(self):
+    def test_a_seed_batch_is_reverted_across_all_six_tables(self):
         pack = self.seeded_source()
         ids = self.seeded_target()
         with self.target:
@@ -262,6 +315,7 @@ class ImportTests(SeedPackCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(revert.main(base), 0)
         self.assertIn("'归属': 1", out.getvalue())
+        self.assertIn("'片商': 1", out.getvalue())
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(revert.main([*base, "--apply", "--backup", str(self.root / "backup.db")]), 0)
         con = connect(db)
@@ -269,8 +323,8 @@ class ImportTests(SeedPackCase):
         counts = [con.execute(sql).fetchone()[0] for sql in (
             "SELECT count(*) FROM entity_alias", "SELECT count(*) FROM entity_external_ref",
             "SELECT count(*) FROM entity_link", "SELECT count(*) FROM performer_profile",
-            "SELECT count(*) FROM entity_membership")]
-        self.assertEqual(counts, [1, 0, 0, 0, 0], "只剩人写的那条别名")
+            "SELECT count(*) FROM entity_membership", "SELECT count(*) FROM label_maker")]
+        self.assertEqual(counts, [1, 0, 0, 0, 0, 0], "只剩人写的那条别名")
 
 
 class ScriptTests(SeedPackCase):
@@ -286,7 +340,7 @@ class ScriptTests(SeedPackCase):
             script.main(["export", "--db", str(self.root / "source.db"), "--version", VERSION, "--out", str(out)])
         self.assertEqual((json.loads(first.getvalue())["changed"], json.loads(second.getvalue())["changed"]),
                          (True, False))
-        self.assertEqual(seed_pack.load(out)["counts"]["entities"], 2)
+        self.assertEqual(seed_pack.load(out)["counts"]["entities"], 3)
         with self.target:
             entity(self.target, "performer", "天川そら")
         self.target.close()

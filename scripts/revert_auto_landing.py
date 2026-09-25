@@ -5,7 +5,7 @@
 `entity_alias.source` 直接就是批次号 `<source>@<任务行 id>`（ADR-0055）。女优资料行的
 `performer_profile.source` 同样是批次号，后继登记的站上编号在 `entity_external_ref.metadata_json`
 里记 `source` 与 `batch`（ADR-0067），番号样张的 `code_sample_image.source` 也是批次号（ADR-0068），
-种子包补的所属事务所 `entity_membership.source` 同样（ADR-0073）。
+种子包补的所属事务所 `entity_membership.source` 与 label 的片商 `label_maker.source` 同样（ADR-0073、ADR-0075）。
 判据错了一批，就按它们认出来一起撤掉，不必一条条找。
 
 撤回是删除，不是恢复旧值：补厂牌后继只在盘上一张图都没有、账本里一条官网都没有时才写，
@@ -96,6 +96,17 @@ def planned_memberships(connection, source: str, batch: str) -> list[dict]:
                 " JOIN entity a ON a.id=m.agency_id WHERE " + clause + " ORDER BY m.member_id", values)]
 
 
+def planned_makers(connection, source: str, batch: str) -> list[dict]:
+    """这个来源写下的 label 归属片商（`source` 列存批次号）。"""
+    clause, values = _batch_clause("l.source", source, batch)
+    return [{"label_id": row["label_id"], "entity": row["canonical_name"], "maker": row["maker"],
+             "source": row["source"]}
+            for row in connection.execute(
+                "SELECT l.label_id,e.canonical_name,m.canonical_name AS maker,l.source"
+                " FROM label_maker l JOIN entity e ON e.id=l.label_id"
+                " JOIN entity m ON m.id=l.maker_id WHERE " + clause + " ORDER BY l.label_id", values)]
+
+
 def planned_refs(connection, source: str, batch: str) -> list[dict]:
     """这个来源登记的站上编号（`metadata_json` 里记着 `source` 与 `batch`）。"""
     found = []
@@ -146,6 +157,7 @@ def main(argv: list[str] | None = None) -> int:
         profiles = planned_profiles(connection, args.source, args.batch)
         refs = planned_refs(connection, args.source, args.batch)
         memberships = planned_memberships(connection, args.source, args.batch)
+        makers = planned_makers(connection, args.source, args.batch)
         files = planned_files(args.logo_root, args.source, args.batch)
         samples = sample_images.planned_revert(connection, args.source, args.batch)
         for link in links:
@@ -158,12 +170,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f" - 编号 {ref['entity'][:20]:<20} {ref['provider']} {ref['id']} {ref['batch']}")
         for membership in memberships:
             print(f" - 归属 {membership['entity'][:20]:<20} {membership['agency'][:30]} {membership['source']}")
+        for maker in makers:
+            print(f" - 片商 {maker['entity'][:20]:<20} {maker['maker'][:30]} {maker['source']}")
         for path in files:
             print(f" - 标识 {path.name}")
         for sample in samples:
             print(f" - 样张 {sample['code']:<20} {sample['count']} 张 {sample['source']}")
         print({"链接": len(links), "别名": len(aliases), "资料": len(profiles), "编号": len(refs),
-               "归属": len(memberships), "标识文件": len(files),
+               "归属": len(memberships), "片商": len(makers), "标识文件": len(files),
                "样张": sum(sample["count"] for sample in samples)})
         if not args.apply:
             print("dry-run；确认无误后加 --apply --backup <路径>")
@@ -183,6 +197,9 @@ def main(argv: list[str] | None = None) -> int:
             connection.executemany(
                 "DELETE FROM entity_membership WHERE member_id=? AND source=?",
                 [(membership["member_id"], membership["source"]) for membership in memberships])
+            connection.executemany(
+                "DELETE FROM label_maker WHERE label_id=? AND source=?",
+                [(maker["label_id"], maker["source"]) for maker in makers])
             removed_samples = sample_images.revert(connection, args.source, args.batch)
         integrity, orphans = verify_after_write(connection)
     finally:
@@ -194,7 +211,8 @@ def main(argv: list[str] | None = None) -> int:
                 target.unlink()
                 removed += 1
     print({"删除链接": len(links), "删除别名": len(aliases), "删除资料": len(profiles),
-           "删除编号": len(refs), "删除归属": len(memberships), "删除样张": removed_samples,
+           "删除编号": len(refs), "删除归属": len(memberships), "删除片商": len(makers),
+           "删除样张": removed_samples,
            "删除文件": removed,
            "integrity_check": integrity, "foreign_key_check": orphans})
     return 0
