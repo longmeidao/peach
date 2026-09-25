@@ -4831,6 +4831,9 @@ const COSTAR_SKELETON_PEOPLE=12;
 const costarSkeletonFoot=()=>`<div class="entityfoot"><div class="relatedpeople">${
   '<span class="av avskeleton"><span class="ring"></span><span class="nm">&#8203;</span></span>'
     .repeat(COSTAR_SKELETON_PEOPLE)}</div></div>`;
+/* 资料表在骨架里占满五行：名单只说她有没有资料表，不说有几项，按最常见的五项都有留位。 */
+const factsSkeleton=()=>`<dl class="entityfacts">${
+  '<dt><span class="skeleton"></span></dt><dd><span class="skeleton"></span></dd>'.repeat(5)}</dl>`;
 
 /* 最近一轮取封面断在连接上、这一行又还有没封面的卡时，行上方挂一条 Note 指去配连接方式。
    中国移动宽带直连 DMM 图片主机大多在握手后被断开，官方其实有图；不说清楚的话，一排
@@ -4899,6 +4902,88 @@ const ENTITY_FEED_WAIT_TRIES=40;
 const entityFeedTip=on=>on
   ?'已订阅新作：库里还没有的新片排在资料卡下面。再点一下取消订阅。'
   :'订阅新作：定时去 JavDB 查这位有没有出新片，库里还没有的排在资料卡下面。';
+/* 女优页头右侧的资料表（ADR-0069）：生日、身材、出道、出演期间和站上的标签。服务端只下发
+   有值的项，这里有哪项画哪项，一项都没有就不出这张表。出道片名常有四五十个字，单行截断，
+   全名放在 title 里。仍在活跃的写「至今」：服务端只给 `ongoing`，字归页面。 */
+function entityFactsHtml(p){
+  if(!p)return '';
+  const rows=[],row=(glyph,label,value,attrs='')=>rows.push(`<dt>${icon(glyph)}${label}</dt><dd${attrs}>${value}</dd>`);
+  const num=value=>`<span class="num">${esc(value)}</span>`,sub=value=>`<span class="sub">${value}</span>`;
+  if(p.birth_date)row('cake','生日',`${num(p.birth_date)} ${sub(`· ${p.age} 岁`)}`);
+  const size=[['T',p.height],['B',p.bust],['W',p.waist],['H',p.hip]].filter(([,value])=>value)
+    .map(([letter,value])=>`${letter}${value}`).join(' · ');
+  const cup=p.cup?sub(`${size?'· ':''}${esc(p.cup)} 罩杯`):'';
+  if(size||cup)row('ruler','身材',[size&&num(size),cup].filter(Boolean).join(' '));
+  if(p.debut_date||p.debut_title)row('flag','出道',[p.debut_date&&num(p.debut_date),p.debut_title&&sub(esc(p.debut_title))]
+    .filter(Boolean).join(' '),p.debut_title?` class="clip" title="${esc(p.debut_title)}"`:'');
+  const active=p.active||{};
+  if(active.from)row('calendar-range','出演期间',
+    esc(`${active.from}${active.ongoing?' – 至今':active.to?` – ${active.to}`:''}`),' class="num"');
+  if((p.tags||[]).length)row('tags','标签',p.tags.map(tag=>`<span class="facttag">${esc(tag)}</span>`).join(''),' class="facttags"');
+  return rows.length?`<dl class="entityfacts">${rows.join('')}</dl>`:'';
+}
+/* 名字下面那一行的别名：读音在最前，接着是前几个名义，余下的收进「+N」。浮层按名义分组
+   （现名、旧名义、各渠道、其它），同一个人用过的名字在这里一次看全。
+   `r18:performer` 的罗马字和作品起的一次性称呼由服务端排除，这里只排版。 */
+function entityNameLineHtml(g){
+  if(!g)return '';
+  const shown=g.shown||[],names=[g.reading,...shown].filter(Boolean),rest=(g.total||0)-shown.length;
+  const groups=(g.groups||[]).map(group=>`${group.label?`<dt>${esc(group.label)}</dt>`:''}<dd${group.label?'':' class="wide"'}>${
+    group.names.map(entry=>`<span>${esc(entry.name)}${entry.reading?`<small>${esc(entry.reading)}</small>`:''}</span>`).join('')}</dd>`).join('');
+  const more=rest>0?`<button type="button" class="aliasmore" aria-expanded="false" aria-controls="entityAliasPop"
+      aria-label="另外 ${rest} 个别名">+${rest}</button><div class="popmenu aliaspop" id="entityAliasPop" popover="manual"
+      role="group" aria-label="${g.total} 个别名"><p class="aliaspophead">${g.total} 个别名</p><dl>${groups}</dl></div>`:'';
+  return names.length||more?`<div class="metaitem aliasline">${icon('id-card')}<span class="aliasnames" title="别名">${
+    names.map(name=>`<span>${esc(name)}</span>`).join('')}</span>${more}</div>`:'';
+}
+/* 女优页外链一律是纯图标，名字只在 title 和读屏文字里。链到她所属事务所的那条（NAX 的
+   label 就是 `New Actor eXperience`）写「<事务所> 官方资料」：图标看不出那是她的官方档案页。 */
+function performerLinkName(link,agency){
+  const text=officialLinkText(link,'performer'),home=foldName(agency);
+  const own=home&&[link.label,text].map(foldName).some(said=>said&&(home.includes(said)||said.includes(home)));
+  return own?`${agency} 官方资料`:(text||link.label||'');
+}
+/* 「+N」的浮层与订阅新作的说明同一套：`popover` 进顶层，资料卡的 `overflow:hidden` 裁不到它；
+   位置按视口算，默认贴按钮下方 8px，下面放不下翻上去，左右夹在视口内 8px。
+   指针悬停或键盘聚焦就出，指针挪到浮层上读名字时不收；点一下钉住（触屏只有这一条路），
+   再点、点别处或 Escape 收起。 */
+function wireAliasPop(){
+  const more=$('#index').querySelector('.aliasmore'),pop=$('#entityAliasPop');
+  if(!more||!pop)return;
+  const open=()=>pop.matches(':popover-open');
+  const place=()=>{
+    const anchor=more.getBoundingClientRect(),box=pop.getBoundingClientRect();
+    pop.style.left=`${Math.max(8,Math.min(innerWidth-box.width-8,anchor.left))}px`;
+    const below=anchor.bottom+8;
+    pop.style.top=`${below+box.height<=innerHeight-8?below:Math.max(8,anchor.top-box.height-8)}px`;
+  };
+  let pinned=false,closing=0;
+  const outside=event=>{if(!more.contains(event.target)&&!pop.contains(event.target))hide()};
+  const follow=()=>{if(pop.isConnected&&open())place();else hide()};
+  function hide(){
+    clearTimeout(closing);pinned=false;
+    removeEventListener('scroll',follow,true);removeEventListener('resize',follow);
+    removeEventListener('pointerdown',outside,true);
+    if(pop.isConnected&&open())pop.hidePopover();
+    more.setAttribute('aria-expanded','false');
+  }
+  const show=()=>{
+    clearTimeout(closing);if(open())return;
+    pop.showPopover();more.setAttribute('aria-expanded','true');place();
+    addEventListener('scroll',follow,{capture:true,passive:true});addEventListener('resize',follow,{passive:true});
+    addEventListener('pointerdown',outside,true);
+  };
+  const later=()=>{clearTimeout(closing);closing=setTimeout(()=>{
+    if(!pinned&&!more.matches(':hover,:focus-visible')&&!pop.matches(':hover'))hide()},150)};
+  more.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse')show()});
+  more.addEventListener('pointerleave',later);
+  pop.addEventListener('pointerenter',()=>clearTimeout(closing));
+  pop.addEventListener('pointerleave',later);
+  more.addEventListener('focus',()=>{if(more.matches(':focus-visible'))show()});
+  more.addEventListener('blur',later);
+  more.addEventListener('click',()=>{if(pinned)hide();else{show();pinned=true}});
+  more.addEventListener('keydown',event=>{if(event.key==='Escape'&&open()){event.preventDefault();hide()}});
+}
 function wireEntityFeed(entityId){
   const toggle=$('#index').querySelector('[data-entity-feed]');
   if(!toggle||!entityId)return;
@@ -8288,6 +8373,8 @@ function syncEntitySkeletonParts(kind,name){
     ()=>skeleton.querySelector('.entityhero')?.insertAdjacentHTML('beforeend',costarSkeletonFoot()));
   sync(skeleton.querySelector('.feednew'),hasEntityPart(kind,name,'feed'),
     ()=>skeleton.querySelector('.entitysection')?.insertAdjacentHTML('beforebegin',feedNewSkeletonSection()));
+  sync(skeleton.querySelector('.entityfacts'),kind==='performer'&&hasEntityPart(kind,name,'facts'),
+    ()=>skeleton.querySelector('.entityprofile')?.insertAdjacentHTML('beforeend',factsSkeleton()));
 }
 /* 名字对不上任何一位时 `/api/entity` 回 `{error}`：骨架不换掉就一直在闪，读起来是还在取。 */
 function showEntityMissing(kind){
@@ -8356,29 +8443,35 @@ async function openEntity(kind,name,push=true){
     alt:esc(d.canonical_name),lazy:false,
     style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
     dropStyle:true}):'';
-  /* 链接按 beeg 的资料页形态：社媒收成纯图标，官网／事务所保留名字。
+  /* 链接按 beeg 的资料页形态：社媒收成纯图标，公司页的官网保留名字；女优页连官网也是图标，
+     理由在 `iconLink` 那里。
 
      社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
      真正有信息量的只有那个 X。图标本身就说明了去哪，名字留给官网那种「点之前看不出
      是谁」的链接。外链箭头一并去掉：`target="_blank"` 已经是外链，箭头只是重复，
      一排链接里还会挤掉本来就不多的横向空间。 */
+  const agencyHome=d.agency||null;
+  const agencyName=agencyHome?agencyHome.canonical_name:((d.metadata||{}).agency?.name||'');
+  /* 女优页的外链一律收成纯图标（`performerLinkName`）：页头右边多了一张资料表，名字那一栏
+     放不下一排带字的按钮，而图标本身就说清了去哪家。 */
+  const iconLink=(x,mark,name)=>`<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(name)}">${mark}<span class="sr-only">${esc(name)}</span></a>`;
+  const siteMark=x=>`<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span>`;
   const siteLinks=(d.links||[]).map(x=>{
     if(!(x.clickable&&/^https?:\/\//i.test(x.url||'')))
       return `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`;
+    if(kind==='performer'&&x.link_kind!=='social')return iconLink(x,siteMark(x),performerLinkName(x,agencyName));
     /* 社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——图标本身已经说明了去哪。 */
     if(x.link_kind==='social'){
       const brand=brandIcon(x.url);
-      const mark=brand?`<span class="entitylinkicon brand">${icon(brand)}</span>`
-        :`<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span>`;
       // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
-      return `<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${mark}<span class="sr-only">${esc(x.label)}</span></a>`;
+      return iconLink(x,brand?`<span class="entitylinkicon brand">${icon(brand)}</span>`:siteMark(x),x.label);
     }
     /* 图标是站点自己的那枚，说的是「这是哪家」；取不到图时 `data-drop="self"` 把 img
        撤掉，露出底下那枚地球。
 
        文字是这家站平时被叫的那个短名（`siteName`），人物页和厂牌页同一张表。完整的
        名称留在 `title` 里，点之前要看全称把指针停上去就有。公司页见 `officialLinkText`。 */
-    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span><span class="entitylinklabel">${esc(officialLinkText(x,kind,[d.canonical_name,...(d.aliases||[])]))}</span></a>`;
+    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${siteMark(x)}<span class="entitylinklabel">${esc(officialLinkText(x,kind,[d.canonical_name,...(d.aliases||[])]))}</span></a>`;
   }).join('');
   /* 外部入口：同一个人在 minnano-av、JavDB 与 MISSAV 的那几页。地址、位置和用哪枚标记
      都由服务端下发（`peach.entry_links`），这里只排版——站点 id 缺席、或者这条实体不是
@@ -8393,8 +8486,7 @@ async function openEntity(kind,name,push=true){
      演员页是常事，第二枚在标识后面缀服务端编好的序号。 */
   const entryLinks=d.entry_links||[];
   const links=entryLinks.filter(x=>x.slot==='pill').map(x=>
-    `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}"><span class="entitylinkicon brand">${icon(x.mark)}</span><span class="entitylinklabel">${esc(x.label)}</span></a>`
-  ).join('')+siteLinks;
+    iconLink(x,`<span class="entitylinkicon brand">${icon(x.mark)}</span>`,x.label)).join('')+siteLinks;
   /* MISSAV 站上没有图形标识，它的标题就是排出来的字：Halant 500、`MISS` 用前景色、`AV`
      用它的粉（`.text-primary` 的 rgb(254 98 142)）。这里照它那套规则重排，字体退回本机
      衬线体——为一枚标识把一份第三方字体收进仓库，不值当。前景色那半在它站上是近白，
@@ -8448,12 +8540,11 @@ async function openEntity(kind,name,push=true){
 
      这一行不写类别名。`T-POWERS` 这样的公司名摆在别名和作品数中间，读的人一眼就知道
      那是什么；多出来的两个字只占掉这行本来就不多的横向空间。 */
-  const agencyHome=d.agency||null;
-  const agencyName=agencyHome?agencyHome.canonical_name:((d.metadata||{}).agency?.name||'');
-  const agencyHtml=!agencyName?''
-    :agencyHome?` · <a class="entitylink" href="${esc(entityPath('agency',agencyName))}"
+  const agencyLink=!agencyName?''
+    :agencyHome?`<a class="entitylink" href="${esc(entityPath('agency',agencyName))}"
         data-agency="${esc(agencyName)}">${esc(agencyName)}</a>`
-    :` · ${esc(agencyName)}`;
+    :esc(agencyName);
+  const agencyHtml=agencyLink?` · ${agencyLink}`:'';
   /* 事务所页数的是人，不是片。它名下那 N 个视频是成员拍的，只报视频数会让「这家有
      几个人」这个它唯一独有的读数消失。 */
   /* 片商页同理：视频数是旗下合计（ADR-0051 修订），旗下有几个 label 是它自己的读数。 */
@@ -8481,19 +8572,27 @@ async function openEntity(kind,name,push=true){
         <hr aria-hidden="true">
         <button type="button" role="menuitem" data-namepick-alias
           >${icon('plus')}<span>添加别名…</span></button></div></div>`;
+  /* 女优页名字下面那一行分三项，各带一枚图标：视频数、事务所、别名（读音在最前）；她的生日、
+     身材这些进右边那张资料表（`entityFactsHtml`）。其余种类仍是一行字：别名 · 视频数 · 归属。 */
+  const count=`<b>${d.asset_count.toLocaleString()}</b> 个视频`;
+  const aliasLine=kind==='performer'
+    ?`<div class="alias metaline"><span class="metaitem" title="视频">${icon('film')}<span>${count}</span></span>${
+      agencyLink?`<span class="metaitem" title="事务所">${icon('briefcase')}<span>${agencyLink}</span></span>`:''}${
+      entityNameLineHtml(d.name_groups)}</div>`
+    :`<div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}${count}${memberHtml}${agencyHtml}${makerHtml}</div>`;
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   const people=kind==='performer'||kind==='creator';
   /* 资料卡按 Board 的 profile 卡排：一块 secondary 底、18px 圆角的卡，正文是头像加身份三行
-     （名字、别名与归属、外链），同台艺人收进卡底那条色阶带——那是这个人的附注，不是这一页
+     （名字、别名与归属、外链），女优有资料时右边再加一栏资料表，同台艺人收进卡底那条色阶带——那是这个人的附注，不是这一页
      的正文；事务所的名册是正文，走筛选条左端圆键里那一档。卡外面依次是交集条、玻璃筛选条
      和内容区，顶到底一条线。 */
   $('#index').innerHTML=`<section class="entityhero" aria-label="资料">
       <div class="entityprofile"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
         people?'<span data-avatar-picker></span>':''}</div>
       <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
-        <div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}<b>${d.asset_count.toLocaleString()}</b> 个视频${memberHtml}${agencyHtml}${makerHtml}</div>
+        ${aliasLine}
         ${links?`<div class="entitylinks">${links}</div>`:''}
-        ${entryMarks?`<div class="entrymarks">${entryMarks}</div>`:''}</div></div>
+        ${entryMarks?`<div class="entrymarks">${entryMarks}</div>`:''}</div>${kind==='performer'?entityFactsHtml(d.profile):''}</div>
       ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
@@ -8535,6 +8634,7 @@ async function openEntity(kind,name,push=true){
   wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));
   wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);
   wireEntityFeed(Number(d.id));
+  wireAliasPop();
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photosAvailable())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);

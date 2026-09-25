@@ -10,6 +10,25 @@
 .entityprofile{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;padding:20px;
   align-items:center;min-width:0}
 .entityprofile>.entityportraitwrap{align-self:stretch;display:flex;align-items:center}
+/* 女优有资料时多出第三栏：右边那张资料表（ADR-0069），和身份信息之间隔一道竖线。
+   宽 300–400px：生日、身材一行放得下，出道片名截断后还剩一半字。900px 以下它排到身份信息
+   下面，隔的线换成横的；760px 以下整张卡单列居中，表里仍左对齐，两列字才对得齐。 */
+@media(min-width:901px){.entityprofile:has(>.entityfacts){grid-template-columns:auto minmax(0,1fr) minmax(300px,400px)}}
+.entityfacts{margin:0;align-self:stretch;justify-self:stretch;align-content:center;display:grid;
+  grid-template-columns:auto minmax(0,1fr);gap:10px 16px;min-width:0;padding:2px 0 2px 24px;
+  border-left:1px solid var(--line-soft);font-size:var(--fs-sm);line-height:22px;text-align:left}
+@media(max-width:900px){.entityfacts{grid-column:1/-1;border-left:0;border-top:1px solid var(--line-soft);padding:14px 0 0}}
+.entityfacts dt{display:flex;align-items:center;align-self:start;gap:6px;color:var(--muted);white-space:nowrap}
+.entityfacts dd{margin:0;min-width:0;color:var(--ink)}
+.entityfacts .num{font-variant-numeric:tabular-nums}
+.entityfacts .sub{color:var(--muted)}
+.entityfacts .clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 站上的标签只是读数，不是这一页的筛选（那排在下面的筛选条里），所以是标签的脸、不接点击。 */
+.entityfacts .facttags{display:flex;flex-wrap:wrap;gap:6px}
+.facttag{padding:0 var(--tag-pad-x);border:1px solid var(--line);border-radius:var(--tag-radius);
+  background:var(--tag-fill);color:var(--ink-2);font-size:var(--fs-xs);line-height:20px;white-space:nowrap}
+.entityfacts dt svg,.entityhero .metaitem>svg{width:16px;height:16px;flex:none;color:var(--muted);
+  stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 /* 圆框外面这一层只为换头像那枚加号存在：圆框自己是 `overflow:hidden`（图要被裁成
    圆的），贴在它边上的按钮放进去就没了。 */
 .entityportraitwrap{position:relative;width:max-content;max-width:100%}
@@ -53,6 +72,26 @@
 .npmenu button[role="menuitem"] svg{visibility:visible}
 .entityhero .alias{color:var(--muted);
   font-size:var(--fs-md);line-height:1.45;margin-bottom:0;overflow-wrap:anywhere}
+/* 女优页这一行是三项并排，各带一枚图标：视频数、事务所、别名。装不下就整项换行，不在项中间断。 */
+.entityhero .alias.metaline{display:flex;flex-wrap:wrap;align-items:center;gap:4px 18px}
+.metaitem{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.aliasline{flex-wrap:wrap}
+.aliasnames>span+span::before,.aliaspop dd>span+span::before{content:"·";margin:0 6px;color:var(--muted)}
+.aliasmore{height:22px;margin-left:4px;padding:0 8px;border:1px solid var(--line);border-radius:var(--pill-radius);
+  background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-xs);cursor:pointer}
+.aliasmore:hover,.aliasmore[aria-expanded="true"]{background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
+/* 「+N」的浮层借锚定菜单那身盒子（`.popmenu`：底色、描边、圆角、投影与开合动效），它是
+   `popover`，进顶层才不被资料卡的 `overflow:hidden` 裁掉；`.popmenu` 的 `display:grid` 会压过
+   浏览器给没打开的 popover 的 `display:none`，所以这里自己收起。位置由 `wireAliasPop` 算。 */
+.popmenu.aliaspop{width:max-content;max-width:min(440px,calc(100vw - 16px));padding:12px 14px;gap:8px;
+  color:var(--ink);font-size:var(--fs-sm);line-height:1.5;text-align:left}
+.popmenu.aliaspop:not(:popover-open){display:none}
+.aliaspophead{margin:0;font-weight:500}
+.aliaspop dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px}
+.aliaspop dt{color:var(--muted);white-space:nowrap}
+.aliaspop dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.aliaspop dd.wide{grid-column:1/-1}
+.aliaspop small{margin-left:4px;color:var(--muted);font-size:inherit}
 /* 外链排成一行次级按钮：36px 高、控件圆角、一圈线，跟 Board 的 secondary Button 同一个形。
    它们是「去哪」的入口，不是标签，所以不画成药丸。 */
 .entitylinks{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;max-width:100%}
@@ -132,6 +171,8 @@
 .entityskeletontext .alias .skeleton{display:block;width:40%;height:20px}
 .entityskeletontext .entitylinks .skeleton{width:180px;height:36px}
 [data-skeleton^="entity/"] .entityportrait{height:auto}
+[data-skeleton^="entity/"] .entityfacts dt .skeleton{display:block;width:56px;height:16px;margin-block:3px}
+[data-skeleton^="entity/"] .entityfacts dd .skeleton{display:block;width:70%;height:16px;margin-block:3px}
 [data-skeleton^="entity/"] .entitycollectionhead .skeleton{width:90px;height:20px}
 @media(max-width:600px){.entityskeletontext .alias .skeleton{margin-inline:auto}}
 .entitylinklabel{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

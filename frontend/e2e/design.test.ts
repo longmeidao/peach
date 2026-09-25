@@ -351,6 +351,77 @@ async function openPerformer(browser: Browser, viewport = DESKTOP): Promise<Visi
   return opened;
 }
 
+/** 有 minnano-av 资料的女优。`profile` 与 `name_groups` 照 `peach.entity_profile.header` 的形状写，
+ *  出道片名故意很长：资料表那一格要单行截断。 */
+const PROFILED = {
+  name: '篠田ゆう',
+  profile: {
+    birth_date: '1991-07-21', age: 35, height: 155, bust: 86, waist: 60, hip: 87, cup: 'F',
+    debut_date: '2010-12-02', debut_title: 'セキララ 〜今どき世代のゆるい性事情〜 03 はじめての撮影でとまどう素人娘の記録',
+    active: { from: '2010', to: '2023' },
+    tags: ['美乳', '美尻', 'レズ', 'アナル', '巨乳', '巨尻', '美人'],
+  },
+  name_groups: {
+    reading: 'しのだゆう', shown: ['篠崎ゆう子', '高木早希', '橋本真紀'], total: 7,
+    groups: [
+      { label: '旧名义', names: [{ name: '篠崎ゆう子', reading: 'しのざきゆうこ' }] },
+      { label: '舞ワイフ', names: [{ name: '橋本真紀' }, { name: '桧山彩音' }, { name: '篠田杏奈' }] },
+      { label: 'ラグジュTV', names: [{ name: '高木早希' }] },
+      { label: '其它', names: [{ name: '城田優子' }] },
+    ],
+  },
+};
+
+/** 打开一位有资料的女优：资料表、名字行和外链照服务端下发的形状写，主题按参数切好。 */
+async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme: 'light' | 'dark' = 'light'): Promise<Visit> {
+  const opened = await visit(browser, '/', viewport);
+  await opened.page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+    id: 90_101, kind: 'performer', canonical_name: PROFILED.name, aliases: ['篠崎ゆう子'], display_aliases: ['篠崎ゆう子'],
+    user_aliases: [], asset_count: 42, tags: [], related_performers: [], metadata: {},
+    has_image: false, has_avatar: false, avatar_focus: null, representative_asset_id: null,
+    agency: { id: 90_102, canonical_name: 'New Actor eXperience', source: 'test', checked_at: '' },
+    links: [
+      { link_id: 90_201, link_kind: 'official', clickable: true, label: 'New Actor eXperience',
+        url: 'https://official.nax-pro.com/actress/shinoda' },
+      { link_id: 90_202, link_kind: 'social', clickable: true, label: 'X @shinoda_yu', url: 'https://x.com/shinoda_yu' },
+    ],
+    entry_links: [{ site: 'minnano-av', label: 'みんなのAV', ordinal: '', slot: 'pill', mark: 'brand-minnano',
+      url: 'https://www.minnano-av.com/actress12345.html' }],
+    profile: PROFILED.profile, name_groups: PROFILED.name_groups,
+  } }));
+  // 这几条链接是造出来的，服务端的圆标取不到；那是另一条判据，这里给一张能加载完的图。
+  await opened.page.route('**/link-mark**', (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await opened.page.goto(new URL(`/performers/${encodeURIComponent(PROFILED.name)}`, opened.page.url()).href, { waitUntil: 'load' });
+  await opened.page.locator('.entityhero .entitylinks').waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  await opened.page.evaluate((dark) => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.documentElement.classList.toggle('dark', dark);
+  }, theme === 'dark');
+  return opened;
+}
+
+/** 资料卡此刻的几何：身份列、资料表与卡本身的外框，以及资料表那道分隔线落在哪一边。 */
+async function heroGeometry(page: Page) {
+  return page.evaluate(() => {
+    const rect = (selector: string) => {
+      const box = document.querySelector(selector)?.getBoundingClientRect();
+      return box ? { left: box.left, right: box.right, top: box.top, bottom: box.bottom } : null;
+    };
+    const hero = document.querySelector('.entityhero')!;
+    const facts = document.querySelector('.entityfacts');
+    const style = facts ? getComputedStyle(facts) : null;
+    return {
+      hero: rect('.entityhero'), identity: rect('.entityidentity'), facts: rect('.entityfacts'),
+      heroScrolls: hero.scrollWidth > hero.clientWidth + 1,
+      rule: style ? { left: style.borderLeftWidth, top: style.borderTopWidth } : null,
+      labels: [...document.querySelectorAll('.entityfacts dt')].map((dt) => dt.textContent!.trim()),
+    };
+  });
+}
+
 /** 禁用档的三样颜色（peach-web-ui「按钮悬停只抬填充」那条）：`--surface` 底、`--border-15` 边、`--muted` 字。 */
 async function disabledTokens(page: Page) {
   return {
@@ -1668,6 +1739,142 @@ describe('设计决定', () => {
       }
     });
   }
+
+  for (const viewport of [DESKTOP, { name: 'wide', width: 1440, height: 900, mobile: false }, MOBILE]) {
+    it(`女优页头：宽屏资料表在身份信息右侧隔一道竖线，窄屏排到下面隔一道横线，整张卡不横向溢出（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openProfiledPerformer(browser, viewport);
+      try {
+        const geometry = await heroGeometry(opened.page);
+        assert.deepEqual(geometry.labels, ['生日', '身材', '出道', '出演期间', '标签'], '资料表不是那五项');
+        assert.ok(geometry.facts && geometry.identity && geometry.hero, '页头缺了资料表');
+        if (viewport.mobile) {
+          assert.ok(geometry.facts.top >= geometry.identity.bottom - 0.5, '窄屏下资料表没有排到身份信息下面');
+          assert.deepEqual(geometry.rule, { left: '0px', top: '1px' }, '窄屏下资料表该用横线和身份信息隔开');
+        } else {
+          assert.ok(geometry.facts.left >= geometry.identity.right - 0.5, '宽屏下资料表没有排在身份信息右侧');
+          assert.deepEqual(geometry.rule, { left: '1px', top: '0px' }, '宽屏下资料表该用竖线和身份信息隔开');
+        }
+        assert.ok(geometry.facts.right <= geometry.hero.right + 0.5, '资料表越出了资料卡');
+        assert.equal(geometry.heroScrolls, false, '资料卡里有东西被横向裁掉');
+        const debut = await opened.page.locator('.entityfacts dd[title]').evaluate((dd) => ({
+          title: dd.getAttribute('title'), wrap: getComputedStyle(dd).whiteSpace,
+          cut: getComputedStyle(dd).textOverflow, clipped: dd.scrollWidth > dd.clientWidth,
+          lines: Math.round(dd.getBoundingClientRect().height / parseFloat(getComputedStyle(dd).lineHeight)),
+        }));
+        assert.equal(debut.title, PROFILED.profile.debut_title, '出道那一格的 title 没给全名');
+        assert.deepEqual([debut.wrap, debut.cut, debut.lines], ['nowrap', 'ellipsis', 1], '出道片名没有单行截断');
+        const page_ = await layout(opened.page);
+        assert.ok(page_.scrollWidth <= page_.viewportWidth, `页头把页面撑出了横向滚动：${page_.offenders.join('，')}`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  it('女优页头名字下面一行：视频数、事务所与读音加前三个别名，外链一律 36px 纯图标方块', { timeout: 60_000 }, async () => {
+    const opened = await openProfiledPerformer(browser, DESKTOP);
+    try {
+      const page = opened.page;
+      const line = await page.locator('.entityhero .alias').evaluate((alias) => ({
+        glyphs: [...alias.querySelectorAll(':scope > .metaitem > svg use')].map((use) => use.getAttribute('href')),
+        names: [...alias.querySelectorAll('.aliasnames > span')].map((span) => span.textContent!.trim()),
+        more: alias.querySelector('.aliasmore')?.textContent?.trim() ?? '',
+        agency: alias.querySelector('a[data-agency]')?.textContent?.trim() ?? '',
+      }));
+      assert.deepEqual(line.glyphs, ['#i-film', '#i-briefcase', '#i-id-card'], '名字那一行的三项不是视频、事务所、别名');
+      assert.deepEqual(line.names, ['しのだゆう', '篠崎ゆう子', '高木早希', '橋本真紀'], '读音没有排在别名最前，或别名不是前三个');
+      assert.equal(line.more, '+4', '「+N」数的不是剩下那几个别名');
+      assert.equal(line.agency, 'New Actor eXperience');
+      const links = await page.locator('.entityhero .entitylinks a').evaluateAll((anchors) => anchors.map((a) => {
+        const box = a.getBoundingClientRect();
+        return { size: `${Math.round(box.width)}x${Math.round(box.height)}`, cls: a.className, title: a.getAttribute('title'),
+          name: a.querySelector('.sr-only')?.textContent ?? '', visibleText: a.querySelector('.entitylinklabel') !== null };
+      }));
+      assert.equal(links.length, 3);
+      for (const link of links) {
+        assert.deepEqual([link.size, link.cls, link.visibleText], ['36x36', 'iconlink', false], `${link.title} 不是纯图标方块`);
+        assert.equal(link.name, link.title, `${link.title} 给读屏的名字和悬停提示不一致`);
+      }
+      assert.deepEqual(links.map((link) => link.title), ['みんなのAV', 'New Actor eXperience 官方资料', 'X @shinoda_yu']);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`别名的「+N」浮层进顶层按名义分组：悬停、聚焦都出，不被资料卡裁掉，Escape 收起（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openProfiledPerformer(browser, viewport);
+      try {
+        const page = opened.page;
+        const more = page.locator('.aliasmore');
+        const pop = page.locator('#entityAliasPop');
+        assert.equal(await pop.isVisible(), false);
+        await more.hover();
+        await pop.waitFor({ state: 'visible', timeout: 5_000 });
+        assert.equal(await more.getAttribute('aria-expanded'), 'true');
+        const shown = await pop.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          return {
+            topLayer: element.matches(':popover-open'),
+            inView: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
+            title: element.querySelector('.aliaspophead')?.textContent?.trim(),
+            groups: [...element.querySelectorAll('dt')].map((dt) => dt.textContent!.trim()),
+            face: getComputedStyle(element).backgroundColor,
+          };
+        });
+        assert.equal(shown.topLayer, true, '别名浮层没进顶层，会被资料卡的 overflow:hidden 裁掉');
+        assert.ok(shown.inView, '别名浮层越出了视口');
+        assert.equal(shown.title, '7 个别名');
+        assert.deepEqual(shown.groups, ['旧名义', '舞ワイフ', 'ラグジュTV', '其它']);
+        assert.notEqual(shown.face, 'rgba(0, 0, 0, 0)', '别名浮层没有底色');
+        // 指针从按钮挪到浮层上读名字，浮层不能在半路收起。
+        const box = (await pop.boundingBox())!;
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+        await page.waitForTimeout(300);
+        assert.equal(await pop.isVisible(), true, '指针移到浮层上它就收起了');
+        await page.mouse.move(1, 1);
+        await pop.waitFor({ state: 'hidden', timeout: 5_000 });
+        await more.focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        await pop.waitFor({ state: 'visible', timeout: 5_000 });
+        await page.keyboard.press('Escape');
+        assert.equal(await pop.isVisible(), false, 'Escape 收不起别名浮层');
+        const page_ = await layout(page);
+        assert.ok(page_.scrollWidth <= page_.viewportWidth, '别名浮层把页面撑出了横向滚动');
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  it('女优页头深色主题：资料表与别名浮层跟着主题取墨色和浮层底', { timeout: 60_000 }, async () => {
+    const opened = await openProfiledPerformer(browser, DESKTOP, 'dark');
+    try {
+      const page = opened.page;
+      const ink = await tokenColor(page, '#main', '--ink');
+      const muted = await tokenColor(page, '#main', '--muted');
+      const ground = await tokenColor(page, '#main', '--ground');
+      const facts = await page.locator('.entityfacts').evaluate((dl) => ({
+        dd: getComputedStyle(dl.querySelector('dd')!).color, dt: getComputedStyle(dl.querySelector('dt')!).color,
+      }));
+      assert.equal(facts.dd, ink, '深色下资料表的值不是墨色');
+      assert.equal(facts.dt, muted, '深色下资料表的项名不是次级字色');
+      await page.locator('.aliasmore').hover();
+      const pop = page.locator('#entityAliasPop');
+      await pop.waitFor({ state: 'visible', timeout: 5_000 });
+      const face = await pop.evaluate((element) => getComputedStyle(element).backgroundColor);
+      assert.notEqual(face, 'rgba(0, 0, 0, 0)');
+      assert.notEqual(face, 'rgb(255, 255, 255)', '深色下别名浮层还是白底');
+      assert.notEqual(ground, 'rgb(255, 255, 255)', '主题没有切到深色');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 
   it('人物页同台艺人的头像悬停和首页顶栏女优头像同一副：抬整格填充、不描圈', { timeout: 60_000 }, async () => {
     const opened = await openPerformer(browser, DESKTOP);
