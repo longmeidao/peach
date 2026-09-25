@@ -11,8 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from peach import browser_transport
-from peach.browser_transport import (BrowserTransport, BrowserUnavailable, ChallengeUnsolved, _WebSocket,
-                                     find_browser, proxy_flags)
+from peach.browser_transport import (BrowserTransport, BrowserUnavailable, ChallengeUnsolved, PageTimeout,
+                                     _WebSocket, find_browser, proxy_flags)
 from peach.http import HttpRequest
 
 PAGE_HTML = "<html><head><title>FC2-PPV-1 | FC2PPV Database</title></head><body>ok</body></html>"
@@ -341,6 +341,60 @@ class BrowserTransportTests(unittest.TestCase):
         with self.assertRaises(ChallengeUnsolved):
             transport(request, 10, 4096)
         self.assertEqual(window_shows(server), 2, "页面正常打开过一次之后再撞验证，重新弹窗")
+
+    def test_a_page_that_is_not_a_challenge_must_load_within_the_callers_timeout(self):
+        """不是验证页的那一页按调用方的 `timeout` 截止：报 `PageTimeout`（调用方按连接失败重试），浏览器留着。"""
+        def handler(method, params):
+            if method == "Runtime.evaluate":
+                return {"result": {"value": state_reply("", "loading")}}
+            return self.generic(method, params)
+
+        transport, server = self.make(handler)
+        started = self.clock.now
+        with self.assertRaises(PageTimeout) as caught:
+            transport(HttpRequest("GET", "https://javten.com/x", {}), 8, 4096)
+        self.assertIsInstance(caught.exception, BrowserUnavailable, "SourceTransport 按连接失败处理")
+        self.assertEqual(self.clock.now - started, 8)
+        self.assertFalse(any(method == "Browser.setWindowBounds" for method, _ in server.calls))
+        self.assertIsNone(self.processes[0].returncode, "页面慢不是浏览器坏了，进程留着")
+        self.assertEqual(len(self.launches), 1)
+
+    def test_the_automatic_phase_is_cut_to_the_timeout_but_the_click_window_is_not(self):
+        """撞验证页：自动阶段最多等 `min(auto_seconds, timeout)`；弹窗之后照旧等满 `click_seconds`，不看 `timeout`。"""
+        shown_at = []
+
+        def handler(method, params):
+            if method == "Browser.setWindowBounds" and params["bounds"].get("windowState") == "normal":
+                shown_at.append(self.clock.now - started)
+            if method == "Runtime.evaluate":
+                return {"result": {"value": state_reply("Just a moment...")}}
+            return self.generic(method, params)
+
+        transport, _server = self.make(handler)
+        for timeout, auto in ((5, 5), (100, 40)):
+            with self.subTest(timeout=timeout):
+                shown_at.clear()
+                transport._unsolved.clear()
+                started = self.clock.now
+                with self.assertRaises(ChallengeUnsolved):
+                    transport(HttpRequest("GET", "https://javten.com/x", {}), timeout, 4096)
+                self.assertEqual(shown_at, [auto])
+                self.assertEqual(self.clock.now - started, auto + 120, "弹窗后等满 click_seconds")
+
+    def test_a_site_left_unclicked_gives_up_at_the_shortened_automatic_limit(self):
+        """同一站上次弹窗没点过去：这次到 `min(auto_seconds, timeout)` 就报，不弹窗，不再多等。"""
+        def handler(method, params):
+            if method == "Runtime.evaluate":
+                return {"result": {"value": state_reply("Just a moment...")}}
+            return self.generic(method, params)
+
+        transport, server = self.make(handler)
+        transport._unsolved.add("javten.com")
+        started = self.clock.now
+        with self.assertRaises(ChallengeUnsolved):
+            transport(HttpRequest("GET", "https://javten.com/x", {}), 6, 4096)
+        self.assertEqual(self.clock.now - started, 6)
+        self.assertFalse(any(method == "Browser.setWindowBounds" for method, _ in server.calls))
 
     def test_a_site_gate_is_clicked_and_the_page_it_returns_to_is_read(self):
         """FC2PPV-DB 的年龄门：落到 `/age-verify` 就点匹配的按钮，等地址离开那个路径再读文档。"""
