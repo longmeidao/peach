@@ -11,7 +11,7 @@ import sys
 import tempfile
 import tomllib
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from unittest import mock
@@ -1959,17 +1959,66 @@ class OperationalScriptTests(unittest.TestCase):
                 "9 帧都应在首次失败后用色彩覆盖重试",
             )
 
-    def test_explicit_code_judges_the_normalised_shape(self):
-        """账本里 `WX17` 这种缺分隔符的写法必须和 `--codes-file` 那侧结论一致。
-
-        两处一个按原始写法判、一个按规范化键匹配时，同一批番号会被报成
-        「番号文件含 ledger 中不存在的番号」，2026-09-02 实测漏掉 42 个。
-        """
+    def test_a_separatorless_code_needs_release_evidence(self):
+        """`PBD390` 与目录名 `WX17` 长得一样，只有厂牌、发行日或出演者分得开。"""
         explicit = self.scrape_codes._is_explicit_code
-        for code in ("WX17", "PBD390", "ABW-123", "ipvr00296", "fc2ppv-1234567"):
+        for code in ("ABW-123", "fc2ppv-1234567", "259LUXU-1475", "n1042"):
             self.assertTrue(explicit(code), code)
-        for code in ("", "合集", "未知厂牌", "4K", "FC2-1234"):
+        for code in ("WX17", "PBD390", "ipvr00296", "RAIKUN325", "BANBI_555"):
             self.assertFalse(explicit(code), code)
+            self.assertTrue(explicit(code, release_evidence=True), code)
+        for code in ("", "合集", "未知厂牌", "4K", "FC2-1234"):
+            self.assertFalse(explicit(code, release_evidence=True), code)
+
+    def test_a_directory_label_stored_as_code_is_never_queried(self):
+        """合集包 `WX17` 被规范成 `WX-017` 问 javbus，取回的是另一部片 `WXSD-017`。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "ledger.db"
+            sqlite3.connect(db).close()
+            upgrade(db, MIGRATIONS)
+            connection = sqlite3.connect(db)
+            connection.executemany(
+                "INSERT INTO asset(id,location,path,name,medium,code,size,studio) "
+                "VALUES(?,'local',?,?,'video',?,?,?)",
+                [(1, "pack.mp4", "EllieLeen (1).mp4", "WX17", 10_000, None),
+                 (2, "pbd.mp4", "pbd.mp4", "PBD390", 1_000, "プレミアム")],
+            )
+            connection.commit()
+            connection.close()
+
+            class FakeProvider:
+                def __init__(self):
+                    self.calls = []
+
+                def query(self, code, source):
+                    self.calls.append((code, source))
+                    return {"source": source, "series": "Series"}
+
+            def scrape(*extra):
+                provider = FakeProvider()
+                with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()) as errors:
+                    try:
+                        result = self.scrape_codes.main([
+                            "--db", str(db), "--out", str(root / "candidates.csv"),
+                            "--raw-dir", str(root / "raw"), "--log-dir", str(root / "logs"),
+                            "--delay", "0", "--min-free", "0", "--sources", "r18dev", *extra,
+                        ], provider=provider)
+                    except SystemExit as exit_:
+                        result = exit_.code
+                return result, provider.calls, errors.getvalue()
+
+            result, calls, _ = scrape()
+            self.assertEqual(result, 0)
+            self.assertEqual(calls, [("PBD-390", "r18dev")])
+
+            codes_file = root / "codes.txt"
+            codes_file.write_text("WX17\n", encoding="utf-8")
+            result, calls, errors = scrape("--codes-file", str(codes_file))
+            self.assertNotEqual(result, 0)
+            self.assertEqual(calls, [])
+            self.assertIn("目录名", errors)
+            self.assertNotIn("不存在", errors)
 
     def test_repost_site_watermarks_are_never_queued_for_a_provider(self):
         # `HHD800`、`HJD2048` 是转载站域名剥掉 TLD 后的样子，不是番号。查它们只会

@@ -237,6 +237,8 @@ _ASSET_EXTENSION = re.compile(
 _FILE_NOISE = re.compile(
     r"(?:[-_. ]?(?:1080p?|720p?|2160p?|4k|fhd|hd|uc|sub|ch|c|u)"
     r"|[-_. ]\d{1,2}|\(\d{1,2}\)|[a-z])+$", re.I)
+#: 剥掉 `_FILE_NOISE` 之后的主干还像一个完整番号：有分隔符，或序号至少三位。
+_STANDS_ALONE = re.compile(r"[-_ ]|\d{3}")
 #: 番号主体：可选的三位素人前缀 + 字母厂牌 + 序号。
 _CODE_BODY = re.compile(r"^(?:\d{3})?[A-Za-z]{2,8}[-_. ]?\d{2,5}$")
 
@@ -718,12 +720,18 @@ def _tokyo_hot_from_text(text: str) -> str:
 
 
 def release_code_from_filename(name: str | None) -> str | None:
-    """文件名带分卷、画质和重复计数，剥掉噪声后再解析。"""
+    r"""文件名带分卷、画质和重复计数，剥掉噪声后再解析。
+
+    剥完噪声剩下的主干要自己站得住：带分隔符，或序号至少三位。论坛合集包
+    `[mtfdz.club]WX17.3` 摘掉域名、再把 `.3` 当分卷剥掉，只剩 `WX17`，补零才凑成
+    `WX-017`；真番号的分卷（`abp762-1`、`ABW-358-2`）剥完仍是完整番号。
+    """
     stem = _ASSET_EXTENSION.sub("", str(name or "").strip())
     if western_release_identity(stem):
         return None
-    code = release_code_from_text(stem) or release_code_from_text(
-        _FILE_NOISE.sub("", strip_promo_markers(stem)))
+    stripped = _FILE_NOISE.sub("", strip_promo_markers(stem))
+    code = release_code_from_text(stem) or (
+        release_code_from_text(stripped) if _STANDS_ALONE.search(stripped) else None)
     if code:
         return code
     delivery = _DMM_DELIVERY.match(stem)
