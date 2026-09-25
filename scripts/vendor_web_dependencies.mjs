@@ -81,6 +81,9 @@ const lucideIcons = new Map([
   ["image","image"], ["gamepad-2","gamepad-2"],
   ["camera","camera"], ["video","video"], ["scan-search","scan-search"],
   ["clapperboard", "clapperboard"], ["briefcase", "briefcase"],
+  // 女优资料页头（ADR-0069）：名字那一行的别名，右侧资料表的生日、身材、出道与出演期间。
+  ["id-card", "id-card"], ["cake", "cake"], ["ruler", "ruler"], ["flag", "flag"],
+  ["calendar-range", "calendar-range"],
   ["home", "home"], ["panel-left", "panel-left"], ["search", "search"],
   ["layout-grid", "layout-grid"], ["square-check-big", "square-check-big"],
   ["columns-2", "columns-2"],

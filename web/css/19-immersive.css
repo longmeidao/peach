@@ -198,6 +198,8 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
     transform:translate(-50%,-50%)}
   .npmenu button,.popmenu.gselectmenu button{min-height:44px}
   .entityhero .alias{margin-bottom:10px}
+  /* 女优页那一行三项是 flex，`text-align:center` 同样管不到；别名那一项折行时「+N」也居中。 */
+  .entityhero .alias.metaline,.entityhero .aliasline{justify-content:center}
   /* 这一排外链窄屏下横滚，不换行：十条链接摊成四行是 192px，顶着头像和名字
      底下，把作品列表整个推到折线以外，而它是「顺便看一眼」的东西。收成一行加
      滑动，跟筛选条那条 `.filterscroll` 同一个做法。

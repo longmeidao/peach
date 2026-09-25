@@ -180,7 +180,7 @@ def profile(html: str) -> dict | None:
     """资料页 → 结构化资料；不是资料页返回 None。
 
     固定列见 `PROFILE_COLUMNS`，另有 `actress_id`、`name`、`tags`（站上的标签，按页上顺序）
-    与 `raw`（资料表每一格的原文，`別名` 那几行是列表）。只读 `act-profile` 那一块，作品与
+    与 `raw`（资料表每一格的原文，`別名` 那几行是列表，`名前` 是 `<h1>` 里的主名）。只读 `act-profile` 那一块，作品与
     评论里的同名格子不算。逐格的规则：
 
     - 读音与罗马字取 `<h1>` 里 `<span>` 那段 `かな / Romaji`，缺哪半就留空。
@@ -211,8 +211,10 @@ def profile(html: str) -> dict | None:
             continue
         cells.setdefault(label, value)
         raw.setdefault(label, _text(value))
-    result: dict = {"actress_id": found_id,
-                    "name": _text(_SPAN.sub("", heading.group(1))) if heading else "",
+    name = _text(_SPAN.sub("", heading.group(1))) if heading else ""
+    if name:
+        raw["名前"] = name
+    result: dict = {"actress_id": found_id, "name": name,
                     "kana": kana or None, "romaji": romaji or None}
     result["birth_date"] = _iso_date(_text(cells.get("生年月日", "")))
     result.update(dict.fromkeys(("height_cm", "bust_cm", "cup", "waist_cm", "hip_cm")))
@@ -241,6 +243,70 @@ def profile_text(html: str, label: str) -> str:
         if re.sub(r"<[^>]+>", "", match.group(1)).strip() == label:
             return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", match.group(2))).strip()[:80]
     return ""
+
+
+#: 资料表里一格名字后面的括号：读音（`（しのざきゆうこ / Shinozaki Yuuko）`）或注记
+#: （`（舞ワイフ）`、`(東京熱)`）。站上全半角括号混着写，`（ラグジュTV)` 这种一半一半的也有。
+_PAREN = re.compile(r"[（(【]([^（()）【】]*)[）)】]")
+_KANA_READING = re.compile(r"^[぀-ゟ゠-ヿ\s]*$")
+#: 这些注记说的是「这是她的旧名字」，不是哪个渠道：归到旧名义，不单列一组。
+_FORMER_NOTES = {"旧名", "旧名義", "旧芸名", "旧"}
+
+
+def _note(text: str) -> str:
+    note = re.sub(r"\s+", " ", text).strip().removesuffix("名義").strip()
+    return "" if note in _FORMER_NOTES else note
+
+
+def name_entries(cell: str) -> list[dict]:
+    """「別名」一格的原文 → [{name, reading, romaji, note}]，一个写法一项。
+
+    格子的形状是 `写法（注记） （读音 / 罗马字）`：带斜杠的那组括号是读音，其余括号是注记，
+    说的是这个名字挂在哪个渠道（`舞ワイフ`、`ラグジュTV`）或哪家店。注记本身是边界：
+    `橋本真紀&桧山彩音（舞ワイフ名義）` 里两个名字共用一条注记，拆名字的规则与 av_neme
+    同一套（`sources.seesaa.split_names`：`&`、`、`、`／`，片假名外国人名里的 `・` 不拆）。
+
+    读音那组括号里左半不是假名时（`あいな （吉原ソープ 薔薇の園 / Aina）`），站上把店名填进了
+    读音栏，按注记收。一格里拆出不止一个名字时读音不知道归谁，都不挂。
+    """
+    from .sources.seesaa import split_names
+
+    text = _text(cell)
+    groups = list(_PAREN.finditer(text))
+    reading_at = next((index for index in range(len(groups) - 1, -1, -1)
+                       if "/" in groups[index].group(1)), -1)
+    reading = romaji = reading_note = ""
+    if reading_at >= 0:
+        left, _, right = groups[reading_at].group(1).partition("/")
+        romaji = right.strip()
+        if _KANA_READING.match(left):
+            reading = re.sub(r"\s+", "", left)
+        else:
+            reading_note = _note(left)
+    entries: list[dict] = []
+    pending: list[dict] = []
+    cursor = 0
+    for index, group in enumerate([*groups, None]):
+        end = group.start() if group else len(text)
+        for name in split_names(text[cursor:end]):
+            entry = {"name": name, "reading": "", "romaji": "", "note": ""}
+            entries.append(entry)
+            pending.append(entry)
+        if group is None:
+            break
+        cursor = group.end()
+        if index == reading_at:
+            continue
+        note = _note(group.group(1))
+        for entry in pending:
+            entry["note"] = note
+        pending = []
+    if reading_note:
+        for entry in entries:
+            entry["note"] = entry["note"] or reading_note
+    if len(entries) == 1:
+        entries[0].update(reading=reading, romaji=romaji)
+    return entries
 
 
 def production_ref(html: str) -> tuple[str, str]:

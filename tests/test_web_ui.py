@@ -2181,10 +2181,11 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_social_links_show_only_the_platform_mark_not_the_handle(self):
         # handle 是网址的一部分，写出来只是把 URL 抄一遍：`X @remu19971203` 里真正有
-        # 信息量的只有那个 X。图标本身就说明了去哪，名字留给官网那种「点之前看不出是谁」
-        # 的链接。纯图标没有可读文字，所以标签必须留给辅助技术，不能整个丢掉。
+        # 信息量的只有那个 X。图标本身就说明了去哪，名字留给公司页官网那种「点之前看不出
+        # 是谁」的链接；女优页连官网也是图标（ADR-0069）。纯图标没有可读文字，所以标签必须
+        # 留给辅助技术，不能整个丢掉。
         self.assertPageContains('<a class="iconlink" href="${esc(x.url)}"')
-        self.assertPageContains('<span class="sr-only">${esc(x.label)}</span></a>')
+        self.assertPageContains('<span class="sr-only">${esc(name)}</span></a>')
         self.assertPageContains('.entitylinks a.iconlink{width:36px;padding:0;gap:0;justify-content:center}')
         # 悬停只让药丸的边显出来：这一排是图标，底色一换就读成「选中了这一个」。
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -2203,7 +2204,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 同一家站在别处以账本链接出现时，写的名字要和入口那枚药丸一致。
         self.assertPageContains("['minnano-av.com','みんなのAV']")
         self.assertPageContains(".entitylinks a.urllink{letter-spacing:.02em}")
-        links = self.app_js[self.app_js.index("const siteLinks=(d.links||[]).map"):]
+        links = self.app_js[self.app_js.index("const siteMark=x=>"):]
         links = links[:links.index(".join('');")]
         official = links.split('class="iconlink"')[-1]
         self.assertIn('<img class="entityfavicon" src="${esc(linkMarkUrl(x))}"', official)
@@ -2219,9 +2220,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const entryLinks=d.entry_links||[];")
         # minnano-av 那一枚混进上面那排外链，排在最左。
         self.assertCode("const links=entryLinks.filter(x=>x.slot==='pill').map(x=>")
+        # 它也是纯图标：名字在 title 和读屏文字里，与社媒那几枚同一个写法。
         self.assertPageContains(
-            '<span class="entitylinkicon brand">${icon(x.mark)}</span>'
-            '<span class="entitylinklabel">${esc(x.label)}</span></a>')
+            "iconLink(x,`<span class=\"entitylinkicon brand\">${icon(x.mark)}</span>`,x.label)")
         self.assertCode(").join('')+siteLinks;")
         self.assertCode("const entryMarks=entryLinks.filter(x=>x.slot==='mark').map(x=>")
         self.assertPageContains(
@@ -6784,7 +6785,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("entityPath('agency',agencyName)")
         self.assertPageContains("${memberHtml}${agencyHtml}")
         # 没有对应实体时仍写名字，但不做成链接——那会通向一个不存在的页面。
-        self.assertCode(":` · ${esc(agencyName)}`;")
+        self.assertCode(":esc(agencyName);")
         # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
         self.assertPageLacks("· 事务所 ${esc(agencyName)}")
         # 链接标签写的是那家站的短名（公司页上自家站写「官方网站」），全称留在 title 里。
@@ -9160,6 +9161,8 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm",
             ".entitylinklabel",
+            # 女优页头资料表的出道那一格：片名尾部省略，全名在 title 里。
+            ".entityfacts .clip",
             # 作者是展示名，尾部省略；完整身份保留在 title。
             ".followbyline .followauthor",
             ".followpageaction .fmeta",
@@ -9569,7 +9572,17 @@ class WebUiSourceTests(unittest.TestCase):
                 'title="打开详情" aria-label="打开详情">${icon(\'expand\')}',
                 # 缩放条两端步进的是倍数，加减号没说清加减的是什么。
                 'data-zoom-step="-1" aria-label="缩小">${icon(\'zoom-out\')}',
-                'data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}'):
+                'data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}',
+                # 女优页头（ADR-0069）：名字下面那一行是胶片数视频、公文包标事务所（与事务所
+                # 索引同一枚）、证件标别名；资料表五项各一枚，标签与标签页同一枚。
+                "title=\"视频\">${icon('film')}<span>${count}</span>",
+                "title=\"事务所\">${icon('briefcase')}<span>${agencyLink}</span>",
+                "${icon('id-card')}<span class=\"aliasnames\" title=\"别名\">",
+                "row('cake','生日',",
+                "row('ruler','身材',",
+                "row('flag','出道',",
+                "row('calendar-range','出演期间',",
+                "row('tags','标签',"):
             self.assertPageContains(needle)
         # 关注来源那几处问的就是「有没有更新」，转圈归它们；页面归 React 之后是 Remix 的
         # 同一枚字形，全选仍是双勾。
@@ -10980,9 +10993,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("<a class=\"urllink\"", app)
         urllink = app[app.index("<a class=\"urllink\""):]
         urllink = urllink[:urllink.index("</a>")]
-        self.assertIn("linkMarkUrl(x)", urllink)
-        self.assertIn("data-drop=\"self\"", urllink)
-        self.assertIn("officialLinkText(x,kind,", urllink)
+        mark = app[app.index("const siteMark=x=>"):]
+        mark = mark[:mark.index("\n")]
+        self.assertIn("linkMarkUrl(x)", mark)
+        self.assertIn("data-drop=\"self\"", mark)
+        self.assertIn("${siteMark(x)}<span class=\"entitylinklabel\">${esc(officialLinkText(x,kind,", urllink)
 
     def test_a_collapsed_ranking_shows_a_fixed_preview_and_one_way_back(self):
         """收起的排名只露前十，展开与收起共用同一颗图标按钮。
