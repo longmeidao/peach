@@ -1432,7 +1432,11 @@ describe('设计决定', () => {
       });
       release();
       await page.locator('[data-skeleton="cleanup"]').waitFor({ state: 'detached', timeout: 15_000 });
-      await page.locator('.cleanupscraping [data-split-button]').waitFor({ timeout: 15_000 });
+      // 正式页面先摆一份同样的骨架卡，等 React 岛接管；键上没了 `data-skeleton-action` 才算接管完。
+      await page.locator('.cleanupscraping [data-split-button] > button:first-child:not([data-skeleton-action])')
+        .waitFor({ timeout: 15_000 });
+      await page.locator('section[aria-label="媒体修复"] footer > button:not([data-skeleton-action])')
+        .waitFor({ timeout: 15_000 });
       await settle(page);
       const final = await controlFaces(page, {
         扫描并补全资料: '.cleanupscraping [data-split-button] > button:first-child',
