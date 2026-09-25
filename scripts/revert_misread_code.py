@@ -17,12 +17,16 @@ r"""存量修正：撤掉被当成番号的写法，以及拿它刮回来的一�
 - `--asset-id`：由 `scan:filename` 写下、而 `release_code_from_filename` 对这个文件名已给出
   别的结果的番号（`dao01(1).mp4` → `DAO-001`）。规范写法像番号，按写法判不出来，只能按
   资产逐条点名；资产上有发行证据的同样拒绝。
+- `--source-mismatch <番号>:<来源>`：番号是对的，是来源去前缀查时交回了另一部作品
+  （`348NTR-007` 查到 DMM `1ntr00007` 涼川絢音）。只撤这个来源的归属、它批准写进的列和
+  它的批准决定，`code` 和别的来源给的归属不动；来源交回的编号仍认得出这个番号时拒绝。
 
 所有目标先全部过一遍计划，有一个被拒就整批不写。一次运行只备份一次、只开一个事务。
 默认只列计划；`--apply` 必须同时给 `--backup`。
 
     revert_misread_code.py --code WX17 RAIKUN325
     revert_misread_code.py --asset-id 23975 34792 --apply --backup <备份路径>
+    revert_misread_code.py --source-mismatch 348NTR-007:r18dev 451HHH-022:r18dev
 """
 from __future__ import annotations
 
@@ -37,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from peach.catalog_rules import (  # noqa: E402
     RELEASE_EVIDENCE_KINDS, is_jav_code, normalise_code_key, release_code_from_filename)
 from peach.field_owners import is_protected, owner_of, write_owned_fields  # noqa: E402
+from peach.metadata import identifies_code  # noqa: E402
 from peach.metadata_auto_apply import METADATA_FIELD_COLUMNS  # noqa: E402
 from peach.scripting import (  # noqa: E402
     add_ledger_write_args, counts_of, open_for_write, verify_after_write)
@@ -129,6 +134,48 @@ def plan_asset(connection, asset_id: int) -> dict:
     return _derived(connection, code, [dict(row)], f"{code} 是从文件名 {name} 误识别的，不是番号")
 
 
+def _source_owns(owner: str, source: str) -> bool:
+    """这一列现在的值还是不是这个来源给的：无主的是批准写入留下的，别的来源或用户写过就不是。"""
+    return not is_protected(owner) and (not owner or source in owner)
+
+
+def plan_source(connection, target: str) -> dict:
+    """番号是对的、来源交回了另一部作品：只撤这个来源的一切；不写库。"""
+    code, _, source = target.partition(":")
+    if not source:
+        raise NotADirectoryLabel(f"{target} 要写成 <番号>:<来源>，如 348NTR-007:r18dev")
+    assets = [dict(row) for row in connection.execute(
+        f"SELECT id,field_owners,{_COLUMNS} FROM asset WHERE code=? ORDER BY id", (code,))]
+    if not assets:
+        raise NotADirectoryLabel(f"账本里没有 code={code} 的资产")
+    ids = [row["id"] for row in assets]
+    marks = ",".join("?" * len(ids))
+    rows = [dict(row) for row in connection.execute(
+        f"SELECT ae.asset_id,ae.entity_id,ae.role,ae.source,ae.metadata_json,e.canonical_name "
+        f"FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id "
+        f"WHERE ae.asset_id IN ({marks}) AND ae.source LIKE ?", (*ids, f"javinizer:{source}:%"))]
+    payloads = [{"id": meta.get("provider_id"), "content_id": meta.get("content_id"),
+                 "source_url": meta.get("source_url")}
+                for meta in (json.loads(row.pop("metadata_json") or "{}") for row in rows)]
+    payloads = [payload for payload in payloads if any(payload.values())]
+    if not payloads:
+        raise NotADirectoryLabel(f"{code} 上没有带来源编号的 {source} 归属，判不了是不是另一部")
+    if any(identifies_code(code, payload) for payload in payloads):
+        raise NotADirectoryLabel(f"{source} 交回的编号认得出 {code}，不按另一部作品处理")
+    decisions = [dict(row) for row in connection.execute(
+        "SELECT category,item_key,status,note FROM review_decision "
+        "WHERE category='metadata_fields' AND item_key LIKE ? AND status='approved' "
+        "AND json_extract(note,'$.source')=?", (f"{normalise_code_key(code)}:%", source))]
+    columns = sorted({METADATA_FIELD_COLUMNS[field] for row in decisions
+                      if (field := row["item_key"].split(":", 1)[1]) in METADATA_FIELD_COLUMNS})
+    fields = {column: [row["id"] for row in assets if str(row[column] or "").strip()
+                       and _source_owns(owner_of(row["field_owners"], column), source)]
+              for column in columns}
+    return {"code": code, "key": normalise_code_key(code), "assets": ids, "links": rows,
+            "decisions": decisions, "fields": fields, "keep_code": True,
+            "reason": f"{source} 去前缀查 {code} 交回的是另一部作品"}
+
+
 def apply(connection, work: dict, stamp: str) -> dict[str, int]:
     done = {"归属行": 0, "标签行": 0, "清空字段": 0, "清空番号": 0, "驳回决定": 0}
     for link in work["links"]:
@@ -143,7 +190,8 @@ def apply(connection, work: dict, stamp: str) -> dict[str, int]:
     for column, ids in work["fields"].items():
         if ids:
             done["清空字段"] += write_owned_fields(connection, ids, {column: None}, OWNER).assets
-    done["清空番号"] = write_owned_fields(connection, work["assets"], {"code": None}, OWNER).assets
+    if not work.get("keep_code"):
+        done["清空番号"] = write_owned_fields(connection, work["assets"], {"code": None}, OWNER).assets
     for decision in work["decisions"]:
         note = json.dumps({"reverted_approval": decision["note"], "reason": work["reason"]},
                           ensure_ascii=False)
@@ -161,12 +209,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--code", nargs="+", default=[], help="账本里存着的原始写法，如 WX17")
     parser.add_argument("--asset-id", nargs="+", type=int, default=[],
                         help="按文件名误识别番号的资产 id")
+    parser.add_argument("--source-mismatch", nargs="+", default=[],
+                        help="<番号>:<来源>，来源交回了另一部作品，如 348NTR-007:r18dev")
     return parser
 
 
 def _plan_all(connection, args) -> tuple[list[dict], list[str]]:
     works, refused = [], []
-    targets = [(plan, code) for code in args.code] + [(plan_asset, i) for i in args.asset_id]
+    targets = ([(plan, code) for code in args.code] + [(plan_asset, i) for i in args.asset_id]
+               + [(plan_source, target) for target in args.source_mismatch])
     for planner, target in targets:
         try:
             works.append(planner(connection, target))
@@ -200,8 +251,8 @@ def _write(connection, works: list[dict]) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if not args.code and not args.asset_id:
-        parser.error("至少给一个 --code 或 --asset-id")
+    if not (args.code or args.asset_id or args.source_mismatch):
+        parser.error("至少给一个 --code、--asset-id 或 --source-mismatch")
     connection = open_for_write(args)
     try:
         works, refused = _plan_all(connection, args)

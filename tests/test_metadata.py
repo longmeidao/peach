@@ -190,6 +190,20 @@ class SourceIdentityTests(unittest.TestCase):
         self.assertTrue(identifies_code("390JAC-040", {
             "id": "JAC-040", "source_url": "https://www.mgstage.com/product/product_detail/390JAC-040/"}))
 
+    def test_verified_mgstage_prefixes_match_the_bare_dmm_release(self):
+        """2026-09-25 逐组核过的 MGStage 前缀与 DMM 裸编号是同一作品，同轮的反例仍拒。"""
+        for code, payload in (
+                ("476MLA-234", {"id": "MLA-234", "content_id": "mla234"}),
+                ("428SUKE-080", {"id": "SUKE-080", "content_id": "h_1711suke00080"}),
+                ("336KBI-010", {"id": "KBI-010", "content_id": "118kbi00010"}),
+                ("762FKOS-001", {"id": "FKOS-001", "content_id": "h_1721fkos00001"})):
+            self.assertTrue(identifies_code(code, payload), code)
+        for code, payload in (
+                ("348NTR-007", {"id": "NTR-007", "content_id": "1ntr00007"}),
+                ("451HHH-022", {"id": "HHH-022", "content_id": "62hhh00022"}),
+                ("550ENE-006", {"id": "ENE-006", "content_id": "ene006"})):
+            self.assertFalse(identifies_code(code, payload), code)
+
     def test_real_source_id_shapes_are_accepted(self):
         # DMM 带厂牌数字前缀，r18dev 对 IQQQ-026 会补零，259 系只在 URL 里出现番号。
         self.assertTrue(identifies_code("ABW-220", {"content_id": "118abw220"}))

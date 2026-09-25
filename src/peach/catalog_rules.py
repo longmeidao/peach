@@ -176,7 +176,15 @@ _CODE_MAKER_PREFIXED = re.compile(r"^(\d{3})([A-Z]{2,8})-(\d{2,5})$")
 #: 数字前缀单独保留；`h_` 是 DMM content_id 的 label 标记。
 _RELEASE_ID = re.compile(r"^(\d{1,4})?([A-Z]{2,8})0*(\d{1,5})([A-Z]?)$")
 # 仅登记已核验的写法关系；查询扩展表不是身份等价表。
-_RELEASE_PREFIX_ALIASES = {("259", "LUXU"), ("7", "BAZX"), ("49", "HA")}
+#
+# MGStage 前缀那 9 行 2026-09-25 逐组核过：MGStage 商品页与 r18dev 快照的标题、时长、
+# 出演一致，封面同图，avbase 把两家店的条目归为同一作品，账本里每个字母段只挂一个厂牌。
+# 同一轮判出的反例 `348NTR`／`451HHH`／`550ENE` 与 DMM 裸编号是不同厂牌的不同作品，不登记。
+_RELEASE_PREFIX_ALIASES = {
+    ("259", "LUXU"), ("7", "BAZX"), ("49", "HA"),
+    ("230", "ORETD"), ("278", "GYAN"), ("336", "KBI"), ("345", "SIMM"), ("413", "INST"),
+    ("428", "SUKE"), ("435", "MFC"), ("476", "MLA"), ("762", "FKOS"),
+}
 _DMM_LABEL_PREFIX = re.compile(r"^H_(?=\d)")
 _MEDIA_EXTENSION = re.compile(
     r"\.(?:mp4|mkv|avi|wmv|mov|m4v|webm|ts|m2ts|mts|mpg|mpeg|flv|rm|rmvb|iso)$",

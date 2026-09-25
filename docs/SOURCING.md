@@ -472,7 +472,8 @@ av911.tv，三条候选已进复核队列。
   封面批次和按日志恢复五个入口都按 `is_korean_mib_code()` 拦。封面的跨作品判据同时比字母段和数字段：
   `YUJ-101 → yuj00011`、`435MFC-135 → h_1711mfcc00027` 字母对上、数字不对，都是别的片。
 - `catalog_rules.code_query_variants()` 仅扩展搜索词；每次返回都以账本原始编号校验，缓存和网络结果同样受检。
-  前缀等价表与查询表分开：已核验的 LUXU、BAZX、HA 写法可归一，其他数字前缀保留。
+  前缀等价表与查询表分开：已核验的 LUXU、BAZX、HA 与 9 个 MGStage 前缀（`_RELEASE_PREFIX_ALIASES`）可归一，其他数字前缀保留。
+  登记一行要逐组取证：MGStage 商品页对 r18dev 快照比标题、时长、出演与封面，avbase 把两店条目归为同一作品，账本里该字母段只挂一个厂牌。
   MGStage 官方商品详情路径中的完整编号可佐证其省略前缀的展示 id；封面、标题和搜索 URL 不作身份依据。
   DMM／r18dev 只给 `content_id` 时，其编码内的厂牌段可用于核对裸番号，不能抹掉查询中的 MGStage 前缀。
   `390JAC-040` 是 MGStage 配信，`JAC-040`／DMM `118jac040` 是另一部 DVD 合集，JNT 同样不得按裸编号合并。

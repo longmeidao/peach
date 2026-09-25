@@ -22,6 +22,7 @@ r"""转载站水印域名不得被当成番号。
 import csv
 import importlib.util
 import io
+import json
 import sqlite3
 import sys
 import tempfile
@@ -785,6 +786,62 @@ class RevertMisreadCodeTests(unittest.TestCase):
         connection.close()
         self.assertEqual(self._run("--code", "WX17"), 2)
 
+    def _add_wrong_source(self, r18dev_id="NTR-007", r18dev_content="1ntr00007"):
+        """`348NTR-007` 去前缀查 r18dev 拿回了 DMM 的 `NTR-007`，那是另一个厂牌的另一部片。"""
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "INSERT INTO asset(id,location,path,name,medium,code,catalog_title,series,field_owners) "
+            "VALUES(5,'115',?,'348NTR-007.mp4','video','348NTR-007','另一部片的片名','素人',"
+            "'{\"series\":\"auto:avbase\"}')", (r"B:\番号\ナンパTV\348NTR-007.mp4",))
+        connection.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,'performer',?,?,?,?)",
+            [(10, "凉川绚音", "凉川绚音", self.NOW, self.NOW),
+             (11, "かなえ", "かなえ", self.NOW, self.NOW)])
+        wrong = json.dumps({"review_item": "348NTR-007:performers", "provider_id": r18dev_id,
+                            "content_id": r18dev_content})
+        connection.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,metadata_json) "
+            "VALUES(5,?,?,?,?)",
+            [(10, "performer", "javinizer:r18dev:performer", wrong),
+             (9, "tag", "javinizer:r18dev:tag", wrong),
+             (11, "performer", "javinizer:mgstage:performer",
+              '{"review_item":"348NTR-007:performers","provider_id":"348NTR-007"}')])
+        connection.execute("INSERT INTO asset_tag(asset_id,tag,source) "
+                           "VALUES(5,'口交','javinizer:r18dev:tag')")
+        connection.executemany(
+            "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+            "VALUES('metadata_fields',?,'approved',?,?)",
+            [("348NTR-007:title", '{"source":"r18dev"}', self.NOW),
+             ("348NTR-007:series", '{"source":"r18dev"}', self.NOW),
+             ("348NTR-007:performers", '{"source":"mgstage"}', self.NOW)])
+        connection.commit()
+        connection.close()
+
+    def test_a_source_that_returned_another_release_is_taken_back_alone(self):
+        self._add_wrong_source()
+        self.assertEqual(self._run("--source-mismatch", "348NTR-007:r18dev", "--apply",
+                                   "--backup", str(self.root / "b.db")), 0)
+        self.assertEqual(self._read("SELECT code,catalog_title,series FROM asset WHERE id=5"),
+                         [("348NTR-007", None, "素人")])
+        self.assertEqual(self._read("SELECT source FROM asset_entity WHERE asset_id=5"),
+                         [("javinizer:mgstage:performer",)])
+        self.assertEqual(self._read("SELECT count(*) FROM asset_tag WHERE asset_id=5"), [(0,)])
+        self.assertEqual(
+            self._read("SELECT item_key,status FROM review_decision "
+                       "WHERE item_key LIKE '348NTR-007:%' ORDER BY item_key"),
+            [("348NTR-007:performers", "approved"), ("348NTR-007:series", "rejected"),
+             ("348NTR-007:title", "rejected")])
+        self.assertEqual(self._read("SELECT count(*) FROM asset_tag WHERE asset_id IN (1,2)"),
+                         [(2,)])
+
+    def test_a_source_that_still_identifies_the_code_is_refused(self):
+        self._add_wrong_source(r18dev_id="348NTR-007", r18dev_content="h_1348ntr00007")
+        self.assertEqual(self._run("--source-mismatch", "348NTR-007:r18dev", "--apply",
+                                   "--backup", str(self.root / "b.db")), 2)
+        self.assertEqual(self._read("SELECT catalog_title FROM asset WHERE id=5"),
+                         [("另一部片的片名",)])
+
 
 _identity_spec = importlib.util.spec_from_file_location(
     "audit_scraped_identity", SCRIPT.with_name("audit_scraped_identity.py"))
@@ -798,7 +855,8 @@ class ScrapedIdentityAuditTests(unittest.TestCase):
     def test_each_tier_is_told_apart(self):
         self.assertIsNone(identity.classify("ABW-123", {"id": "ABW-123"}))
         self.assertEqual(identity.classify("WX-017", {"id": "WXSD-017"}), identity.MISMATCH)
-        self.assertEqual(identity.classify("476MLA-234", {"id": "MLA-234", "content_id": "mla234"}),
+        self.assertIsNone(identity.classify("476MLA-234", {"id": "MLA-234", "content_id": "mla234"}))
+        self.assertEqual(identity.classify("348NTR-007", {"id": "NTR-007", "content_id": "1ntr00007"}),
                          identity.PREFIX)
         self.assertEqual(identity.classify("SMBD-116", {"source_url":
                          "https://www.aventertainments.com/ppv/detail?pro=8853"}), identity.NO_ID)
