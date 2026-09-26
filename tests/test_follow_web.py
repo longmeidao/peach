@@ -125,16 +125,21 @@ class FollowContractTests(unittest.TestCase):
 
     def test_background_resource_apply_has_a_queryable_receipt(self):
         from peach import web_resource_sync
-        with mock.patch.object(web_resource_sync, '_scan_missing_resources',
-                               return_value={'sources': [], 'missing_ids': []}), \
+        with mock.patch.object(web_resource_sync, 'LOCATION_ROOT_DECLARATIONS',
+                               {'local': (str(self.root),)}), \
+             mock.patch.object(web_resource_sync, '_scan_sources',
+                               return_value={'sources': [], 'vanished_ids': [], 'empty_dirs': {}}), \
              mock.patch.object(web_resource_sync, 'clean_resource_orphans',
                                return_value={'cache_removed': 0, 'bytes_reclaimed': 0}):
-            started = self._post('/api/resource-sync/apply', {'background': True, 'confirm': True})
+            scan = self._post('/api/resource-sync/scan', {'background': True, 'restart': True})
+            self.contract.resource_scan.thread.join(5)
+            started = self._post('/api/resource-sync/apply', {
+                'background': True, 'confirm': True, 'scan_id': scan['scan_id']})
             self.contract.resource_apply_job.thread.join(5)
         final = dispatch_api_get(self.contract, '/api/resource-sync/apply', {})
         self.assertEqual(final['job_id'], started['job_id'])
         self.assertEqual(final['status'], 'complete')
-        self.assertEqual(final['moved_to_trash'], 0)
+        self.assertEqual(final['purged'], 0)
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

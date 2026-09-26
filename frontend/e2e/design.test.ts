@@ -1592,7 +1592,7 @@ describe('设计决定', () => {
       const expected = await disabledTokens(page);
       const waiting = await waitingActionFaces(page, '[data-skeleton="cleanup"] [data-skeleton-action]');
       assert.deepEqual(waiting.map((face) => face.name),
-        ['扫描并补全资料', '更多扫描与采集方式', '开始修复', '检查来源', '预览', '检查死链', '检查文件']);
+        ['扫描并补全资料', '更多扫描与采集方式', '开始修复', '预览', '检查死链', '检查文件']);
       for (const face of waiting) assertDisabledFace(face, expected);
       const ring = await page.locator('[data-skeleton="cleanup"] [data-split-button]')
         .evaluate((element) => getComputedStyle(element).boxShadow);
@@ -1657,6 +1657,8 @@ describe('设计决定', () => {
         for (const target of targets) {
           const node = page.locator(target).first();
           await node.waitFor({ state: 'visible', timeout: 5_000 });
+          // 落在首屏以下的目标（数据管理的整理卡）先滚进视口：`elementFromPoint` 只认视口里的点。
+          await node.scrollIntoViewIfNeeded();
           const box = (await node.boundingBox())!;
           const look = () => node.evaluate((element) => [element, ...element.querySelectorAll('*')].slice(0, 6).map((part) => {
             const style = getComputedStyle(part);

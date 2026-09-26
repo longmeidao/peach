@@ -959,7 +959,7 @@ class WebDataTests(unittest.TestCase):
             "/api/activity", "/api/play", "/api/feedback", "/api/watch-later",
             "/api/playlist",
             "/api/preference", "/api/quality-goal", "/api/item-tag", "/api/batch",
-            "/api/search-history", "/api/trash/empty", "/api/data-cleanup/empty-folders",
+            "/api/search-history", "/api/trash/empty",
             "/api/review/decision", "/api/review/genre",
             "/api/purge-missing",
             "/api/links/check", "/api/links/prune",
@@ -1217,126 +1217,6 @@ class WebDataTests(unittest.TestCase):
         self.assertEqual(result["empty_dirs_removed"], 2)
         self.assertTrue(source_root.is_dir(), "声明的来源根绝不能随空目录一起删除")
         self.assertFalse((source_root / "creator").exists())
-
-    def test_empty_folder_cleanup_walks_bottom_up_and_skips_offline_sources(self):
-        source_root = Path(self.tmp.name) / "source"
-        (source_root / "empty" / "nested").mkdir(parents=True)
-        kept = source_root / "kept"
-        kept.mkdir()
-        (kept / "media.mp4").write_bytes(b"keep")
-        offline = Path(self.tmp.name) / "offline"
-
-        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {
-                "local": (str(source_root),), "115": (str(offline),),
-        }):
-            result = rm_web.cleanup_empty_source_directories()
-
-        self.assertEqual(result["removed"], 2)
-        self.assertEqual(result["errors"], 0)
-        self.assertTrue(source_root.is_dir())
-        self.assertTrue((kept / "media.mp4").is_file())
-        self.assertFalse((source_root / "empty").exists())
-        self.assertFalse(result["sources"][1]["online"])
-        self.assertNotIn("root", result["sources"][0], "API 不能泄露物理来源路径")
-
-    def test_a_clouddrive_empty_folder_that_scandir_cannot_open_still_counts_as_empty(self):
-        """CloudDrive 的空目录列不出 `.` 与 `..`：`scandir` 报找不到，`listdir` 给空列表。
-
-        它的上一层只装着它，删掉它以后也该跟着删；里面有东西、同样报找不到的目录才是
-        真的读不了，照旧记成错误。
-        """
-        source_root = Path(self.tmp.name) / "mount"
-        hollow = source_root / "release" / "文宣"
-        hollow.mkdir(parents=True)
-        unreadable = source_root / "unreadable"
-        unreadable.mkdir()
-        (unreadable / "media.mp4").write_bytes(b"keep")
-        failing = {os.path.normcase(os.fspath(hollow)), os.path.normcase(os.fspath(unreadable))}
-        real_scandir = os.scandir
-
-        def mount_scandir(path="."):
-            if os.path.normcase(os.fspath(path)) in failing:
-                raise FileNotFoundError(2, "系统找不到指定的文件。", os.fspath(path))
-            return real_scandir(path)
-
-        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS",
-                               {"115": (str(source_root),)}), \
-                mock.patch.object(os, "scandir", mount_scandir):
-            checked = rm_web.cleanup_empty_source_directories(dry_run=True)
-            self.assertTrue(hollow.is_dir(), "检查只报数不删")
-            cleaned = rm_web.cleanup_empty_source_directories()
-
-        self.assertEqual((checked["empty"], checked["errors"]), (2, 1))
-        self.assertEqual((cleaned["removed"], cleaned["errors"]), (2, 1))
-        self.assertFalse((source_root / "release").exists())
-        self.assertTrue((unreadable / "media.mp4").is_file())
-
-    def test_empty_folder_cleanup_post_is_gated_as_a_ledger_write(self):
-        self.assertIs(
-            rm_web.POST_HANDLERS["/api/data-cleanup/empty-folders"],
-            rm_web.w_cleanup_empty_directories,
-        )
-        self.assertNotIn(
-            "/api/data-cleanup/empty-folders", rm_web.READ_ONLY_POST_ROUTES,
-            "它连文件已消失的账本行一起删，只读端那份复制来的账本不能被它清掉",
-        )
-
-    def test_cleanup_purges_rows_whose_file_is_gone_and_only_counts_them_when_checking(self):
-        """网盘那边删掉的文件在账本里留下的行，和空目录是同一件事的两半。
-
-        用户在网盘客户端删掉一个目录，盘上留下空壳，账本里留下一批指向不存在文件的行。
-        只清目录的话那些行继续被长跑批处理一轮轮领走、一轮轮失败——本机 647 行回收站里
-        有 469 行是这样。
-        """
-        source_root = Path(self.tmp.name) / "gone-source"
-        kept = source_root / "kept"
-        kept.mkdir(parents=True)
-        (kept / "media.mp4").write_bytes(b"keep")
-        con = sqlite3.connect(self.db_path)
-        con.execute("UPDATE asset SET location='local',path=?,snapshot_path=NULL WHERE id=1",
-                    (str(source_root / "vanished" / "gone.mp4"),))
-        con.execute("UPDATE asset SET location='local',path=?,snapshot_path=NULL WHERE id=2",
-                    (str(kept / "media.mp4"),))
-        con.execute("UPDATE asset SET location='115' WHERE id=3")
-        con.commit(); con.close()
-
-        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS",
-                               {"local": (str(source_root),)}):
-            checked = web_batch.w_cleanup_empty_directories(self.contract, {"dry_run": True})
-            self.assertEqual(checked["vanished"], 1)
-            self.assertEqual(checked["purged"], 0)
-            self.assertIsNotNone(self.row(1), "检查这一步一条都不删")
-
-            result = web_batch.w_cleanup_empty_directories(self.contract, {})
-
-        self.assertEqual(result["purged"], 1)
-        self.assertIsNone(self.row(1), "文件已经不在，这一行指不到任何东西")
-        self.assertIsNotNone(self.row(2), "文件还在的行一条都不能碰")
-        self.assertEqual((kept / "media.mp4").read_bytes(), b"keep")
-        self.assertEqual(
-            self.contract.task_runs.query(task_key="empty-folders")[0].status, "succeeded",
-            "删账本行这件事要在任务中心留下记录")
-
-    def test_empty_folder_scan_counts_nested_candidates_without_removing_anything(self):
-        source_root = Path(self.tmp.name) / "scan-source"
-        leaf = source_root / "empty" / "nested"
-        leaf.mkdir(parents=True)
-        kept = source_root / "kept"
-        kept.mkdir()
-        (kept / "media.mp4").write_bytes(b"keep")
-        # 账本行也得落在这个临时来源里：装具里 `local` 的路径是 `R:\Media\...`，本机
-        # 那个目录真实存在，失效条目那一步会去读它。
-        (kept / "cover.jpg").write_bytes(b"keep")
-        con = sqlite3.connect(self.db_path)
-        con.execute("UPDATE asset SET path=? WHERE id=1", (str(kept / "media.mp4"),))
-        con.execute("UPDATE asset SET path=? WHERE id=3", (str(kept / "cover.jpg"),))
-        con.commit(); con.close()
-        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS", {"local": (str(source_root),)}):
-            result = web_batch.w_cleanup_empty_directories(self.contract, {"dry_run": True})
-        self.assertEqual(result["empty"], 2)
-        self.assertEqual(result["removed"], 0)
-        self.assertTrue(leaf.is_dir())
-        self.assertEqual((kept / "media.mp4").read_bytes(), b"keep")
 
     def test_failed_database_commit_restores_quarantined_media(self):
         path = self.stage_media(1, "commit-failure.mp4")

@@ -3154,12 +3154,11 @@ class WebUiSourceTests(unittest.TestCase):
             '.entitycollectionhead[aria-busy="true"] .entitybatch svg{\n'
             "  --strand-dash:100;--strand-cycle:2.2s}")
 
-    def test_data_page_scan_buttons_animate_their_own_glyphs_while_busy(self):
-        """「扫一遍」的两枚键各自适配忙态，不统一转圈。
+    def test_data_page_scan_button_animates_its_own_glyph_while_busy(self):
+        """「检查文件」键适配自己的忙态，不统一转圈。
 
-        检查文件的 git-compare 照 lucide-animated 的 GitCompare 逐笔描画（右下圆→两条
-        枝→左上圆，画完停住再一起淡出）；扫描空文件夹的 scan-search 四角按对角两拍
-        轮流亮，放大镜保持不动。动效只能挂在 symbol 自己的零件上：`<use>` 的影子树
+        git-compare 照 lucide-animated 的 GitCompare 逐笔描画（右下圆→两条枝→左上圆，
+        画完停住再一起淡出）。动效只能挂在 symbol 自己的零件上：`<use>` 的影子树
         里选不到外层的忙态标记，继承的自定义属性进得去，所以忙态把动画名和周期传
         下去，空闲时名字是 none。这些标注上游不会带，补丁必须住在 vendor 脚本里，
         否则换版本一刷新就被抹掉。
@@ -3171,19 +3170,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '<circle class="gc-part gc-end-b" pathLength="100" cx="6" cy="6" r="3"/>')
         self.assertPageContains(
-            '<path class="scan-corner scan-corner-a" d="M3 7V5a2 2 0 0 1 2-2h2"/>')
-        self.assertPageContains(
-            '<path class="scan-corner scan-corner-b" d="M17 3h2a2 2 0 0 1 2 2v2"/>')
-        self.assertPageContains(
             "@keyframes peach-gc-draw-a{\n"
             "  0%{stroke-dashoffset:100;opacity:1}\n"
             "  17%,86%{stroke-dashoffset:0;opacity:1}\n"
             "  100%{stroke-dashoffset:0;opacity:0}}")
-        self.assertPageContains(
-            "@keyframes peach-scan-corner-a{\n"
-            "  0%,40%{opacity:1}\n"
-            "  50%,90%{opacity:.25}\n"
-            "  100%{opacity:1}}")
         self.assertPageContains(
             "#i-git-compare .gc-part{stroke-dasharray:var(--gc-dash,none);\n"
             "  animation-name:var(--gc-anim,none);animation-duration:var(--gc-cycle,1.8s);\n"
@@ -3193,26 +3183,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "#i-git-compare .gc-end-b{animation-name:var(--gc-anim-c,none)}")
         self.assertPageContains(
-            "#i-scan-search .scan-corner{animation-name:var(--scan-anim,none);\n"
-            "  animation-duration:var(--scan-cycle,1.2s);animation-timing-function:ease-in-out;animation-iteration-count:infinite}")
-        self.assertPageContains(
-            '#resourceScan[aria-busy="true"] svg,[data-cleanup-empty-scan][aria-busy="true"] svg{\n'
-            "  --gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c;\n"
-            "  --scan-anim:peach-scan-corner-a;--scan-anim-b:peach-scan-corner-b}")
+            '#resourceScan[aria-busy="true"] svg{\n'
+            "  --gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c}")
         vendor = (Path(__file__).resolve().parents[1] / "scripts/vendor_web_dependencies.mjs").read_text(encoding="utf-8")
         self.assertIn('if (symbol === "git-compare") inner = inner', vendor)
-        self.assertIn('if (symbol === "scan-search") inner = inner', vendor)
 
     def test_resource_sync_sources_share_the_official_marks_and_board_stat_cards(self):
         """数据管理页「这是哪个网盘」的答案只有一份，结果照 Board 的 stat cards 排。
 
         115 与 PikPak 取 `MEDIA_SOURCE_ICONS` 的官方站标，不是 globe 字形：来源角标、
         媒体库切换器和配置页问的是同一件事，同一个答案不该因为取图入口不同而长成
-        两枚图形（SRCICON 的注释）。结果读数和数据管理顶上一排同一副卡片，三个来源
-        带站标 tile，缓存与回收站两张读数凑成同一行；清理内容 Note 与操作行独立成层。
-        空文件夹卡片的来源行取同一份站标，扫描结果与失败都落在 Note 里。操作键统一
-        Board primary，销毁键维持 danger 实底红；顶栏密度键与筛选框的版式开关问同一
-        件事「现在是哪种排法」，字形取同一份 PHOTO_SIZES 映射，按下去换成当前状态的图标。
+        两枚图形（SRCICON 的注释）。结果读数和数据管理顶上一排同一副卡片，来源带站标
+        tile；清理内容 Note 与操作行独立成层。操作键统一 Board primary，销毁键维持
+        danger 实底红；顶栏密度键与筛选框的版式开关问同一件事「现在是哪种排法」，
+        字形取同一份 PHOTO_SIZES 映射，按下去换成当前状态的图标。
         """
         renderer = (Path(__file__).resolve().parents[1] / "frontend/src/resource-sync.ts").read_text(encoding="utf-8")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -3226,17 +3210,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 扫描中的环形进度独居在结果槽里，自己带框才和链接检查里住在面板中的进度一个形状。
         self.assertPageContains(
             "#resourceSyncResult>.board-job-progress{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius)}")
-        # 空文件夹来源行取同一份站标；扫描结果与失败提示是 Note，不是裸文本。
-        self.assertPageContains(
-            'const sourceBadge=source=>`<span class="cleanupsourcemark">'
-            "${selectOptionIconHtml(MEDIA_SOURCE_ICONS[source.location]||'database')}"
-            '${sourceName(source)}</span>`;')
-        self.assertIn(".cleanupsourcemark{display:inline-flex;align-items:center;gap:6px}", board)
-        self.assertPageContains("status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹")
-        self.assertPageContains("status.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})")
-        # 检查结果 Note 留在说明列里、保留自己的圆角，状态容器也得是能装 Note 的块级元素。
-        self.assertPageContains('<div class="cleanupstate" aria-live="polite"></div>')
-        self.assertIn(".cleanupgrid>.cleanupemptyfolders .cleanupstate .geist-note{margin:12px 0 0}", board)
         # 操作键统一 Board primary；销毁键另有一副实底红，不掺进来。
         for needle in (
                 'id="linkCheck">',
@@ -3244,8 +3217,6 @@ class WebUiSourceTests(unittest.TestCase):
                 'id="linkRetryAll">',
                 'id="resourceScan">'):
             self.assertIn(f'class="resourceaction primary" type="button" {needle}', self.app_js)
-        self.assertIn('class="geist-button primary" data-cleanup-empty-scan', self.app_js)
-        self.assertIn('class="danger" data-cleanup-empty hidden', self.app_js)
         # 顶栏密度键跟筛选框的版式开关取同一份字形映射。
         self.assertPageContains("button.innerHTML=iconSwapHtml(big[2],small[2],")
         self.assertPageContains("}else setIconSwap(button,size===small[0]?'b':'a');")
@@ -4928,7 +4899,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_manage_menu_only_offers_pages_that_are_not_inside_data_management(self):
         """人工复核、回收站、高清版都从数据管理进，管理菜单里不再各占一行。
 
-        它们和垃圾文件、重复文件、空文件夹是同一件事的不同步骤。身份注册表仍然
+        它们和垃圾文件、重复文件、失效条目是同一件事的不同步骤。身份注册表仍然
         保留全部页面：URL 要能直达，用户也仍可把其中任何一个钉到顶层侧栏。
 
         活动页是菜单里的例外：它横跨扫描、追更、批量这几页，从其中任何一页进都会
@@ -5123,7 +5094,7 @@ class WebUiSourceTests(unittest.TestCase):
         vercel.com/geist/breadcrumbs 实测语义：nav[aria-label=Breadcrumb] > ol > li，
         当前项 aria-current="true" 渲染纯文本，上一级是 /data-cleanup 的链接；
         分隔符是每项自带的 chevron，最后一项由 CSS 隐藏。人工复核、回收站、
-        高清版在侧栏保留直达入口，但层级上仍从数据管理进；空文件夹是 hub 上的
+        高清版在侧栏保留直达入口，但层级上仍从数据管理进；资源同步是 hub 上的
         就地操作，没有独立页面，不在此列。
         """
         self.assertPageContains(
@@ -8913,7 +8884,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const target=ROUTES.find(spec=>spec.section===section);")
         self.assertPageContains("async function openDuplicates(push=true)")
 
-    def test_data_cleanup_groups_junk_duplicates_and_empty_folders_in_fieldsets(self):
+    def test_data_cleanup_groups_junk_duplicates_and_resource_sync_in_fieldsets(self):
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
         self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
@@ -8924,15 +8895,10 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(path)
         # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
         # 卡片内容高度不同时那道缺口的位置也跟着不齐。垃圾文件与重复文件是顶上一排的读数卡。
-        self.assertPageContains("fieldsetTitle('cleanupEmptyTitle','空文件夹与失效条目')")
         self.assertPageContains("junk:statCard('垃圾文件','file-archive',")
         self.assertPageContains("duplicates:statCard('重复文件','file-stack',")
         self.assertPageLacks("<legend>垃圾文件</legend>")
-        self.assertPageContains('class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task')
-        self.assertPageContains("api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'})")
-        self.assertPageContains("保留来源根目录")
-        # 这一屏会删账本行，检查那一步就得把条数写在脸上，确认框里也要说清不可撤销。
-        self.assertPageContains("条文件已不在盘上的记录")
+        # 资源同步会永久删账本行，确认框里要说清不可撤销。
         self.assertPageContains("这一步不可撤销")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
@@ -9000,12 +8966,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("`其余 ${rest.toLocaleString()}`", counts)
         self.assertIn("`占用 ${fmtSize(data.bytes||0)}`", counts, "回收站要说清空能腾出多少")
         self.assertPageContains(".cleanupmeta:empty{display:none}")
-        # 三个「· 在线」徽章换成一行来源名：在线与否是资源同步那块的读数，
-        # 在空文件夹卡上只有离线时才改变结论。来源行带官方站标，离线的归到同一枚标记后。
-        self.assertPageLacks("class=\"cleanupsource\"")
-        self.assertPageLacks(".cleanupsources{")
-        self.assertIn("offline.length?`${offline.map(sourceBadge).join('')}<span class=\"cleanupsourcemark cleanupsourcelost\">离线</span>`", cleanup)
-        self.assertIn("<strong>${online.length.toLocaleString()} 个来源可扫描</strong>", cleanup)
         # 单列布局里高度由内容决定，和同页「网盘与账本」一致；三列时的对齐地板
         # 到了单列只剩下把每张卡撑出一段空白。
         self.assertPageLacks("min-height:176px")
@@ -10222,7 +10182,7 @@ class WebUiSourceTests(unittest.TestCase):
 
         读数卡是 stat-cards.tsx 的 plain 变体做成按钮（132px、圆角 16、secondary 底、内边距 16、
         32px 图标格里 20px 字形、读数 24/34），整张卡就是那一页的入口；五张在 1120 内一行摆下，
-        窄了折两列、再折一列。扫描与采集、媒体修复和空文件夹是要做的事，不是读数，各占一整行、左说明右按钮；
+        窄了折两列、再折一列。扫描与采集、媒体修复和整理是要做的事，不是读数，各占一整行；
         下方每张任务卡同样用 secondary 灰底，浅色主题不会退回白卡。
         骨架复用同一套结构，页首因此和读数卡直接接上：同样五个入口再排一条链接条，是同一件事
         画两遍，而那条链接条连选中态都没有。
@@ -10232,7 +10192,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;')
         self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
         self.assertPageLacks('cleanup-workspace-switch')
-        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}${cleanupCards.empty}'
+        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}'
                                 '${organizeCardMarkup(organizeState)}</div>')
         # 样式也一起走：没有使用者的选择器留在 board.css 里，下一个人会当它是现役版式去改。
         self.assertNotIn("cleanup-workspace-switch",
@@ -10248,16 +10208,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-plain-stat>.cleanupmeta{display:block;min-height:16px;margin:0;font:var(--board-caption);color:var(--color-text-tertiary);", board)
         self.assertIn("@media(max-width:1119px){.cleanupstats{grid-template-columns:repeat(2,minmax(0,1fr))}}", board)
         self.assertIn("@media(max-width:559px){.cleanupstats{grid-template-columns:minmax(0,1fr)}}", board)
-        self.assertIn(".cleanupgrid :is(.cleanupemptyfolders,[data-cleanup-processing]){display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
+        self.assertIn(".cleanupgrid [data-cleanup-processing]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
         self.assertIn(".cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-secondary-default);", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{align-self:stretch;justify-content:flex-end;min-height:0;padding:24px;border:0;background:none}", board)
         self.assertGreaterEqual(self.app_js.count('class="resourcesyncbox" data-geist-fieldset data-cleanup-task'), 2)
         skeleton = (root / "frontend/src/management.ts").read_text(encoding="utf-8")
         self.assertIn('<div class="cleanupstats">${stats.map(([title, glyph]) => `', skeleton)
-        self.assertIn('<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">', skeleton)
-        self.assertEqual(skeleton.count("data-cleanup-task"), 6,
-                         "数据管理骨架要同步画出四张任务卡和两块 BoardUI 操作区")
+        self.assertEqual(skeleton.count("data-cleanup-task"), 5,
+                         "数据管理骨架要同步画出三张任务卡和两块 BoardUI 操作区")
 
     def test_the_shorts_band_is_told_apart_by_its_fill_not_a_line(self):
         """竖屏带靠底色和网格区分，不描一圈线。
@@ -12273,7 +12232,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 上一轮跑完的结果是那一刻的快照。进页面就铺开会被读成现在的账本状态，
         # 而页面上没有任何东西说它是旧的。
         self.assertPageContains("if(existing.status==='running')void followScan(existing)")
-        self.assertPageContains("清理失效记录与缓存")
+        self.assertPageContains("清理失效条目")
         self.assertPageContains('class="resourcesyncfooter geist-fieldset-footer"')
         self.assertPageContains('class="resourcepanel"')
         self.assertPageContains('class="resourceapplyrow"')
