@@ -92,8 +92,9 @@
 - 按内容类型的来源链与逐站取舍：`amane-content-routes`，链上只放 Peach 已接的解析器，候选复核与不生成 NFO 是差异；同类馆藏管理器的信息组织：`readme-yingku`，源码未公开，据 README、5 张演示图与论坛 8 张截图测读。
 - 默认 Note、只读提示和 info 入口复用本地 Lucide 圆圈 `i`（2px 描边、圆端点），不复制未开放许可的 Geist 私有 SVG。
 - 原地换态动效的形态与参数（字形、读数、骨架、开关、成功、失败）：`transitions-dev-measured`。
+- 统计与口味页的柱状、径向、雷达图：`evilcharts-registry`，逐字复制与差异见 `frontend/src/react/evilcharts/ORIGIN.md`；热力与流向图自绘（ADR-0076）。
 - 沉浸与详情播放每次加载都带独立 `session`，切片、关闭、失败和页面离开时取消旧会话：只清浏览器的 `src` 不足以停止 CloudDrive 预读或 FFmpeg。Mix 只按已解析且可播放的视频计数，不按回复数或网盘页数计数。
-- FANBOX 正文统一先经过 `peach.fanbox.normalize_fanbox_post`，数据模型固定参考 PixivUtil2 `v20251112` / `e537e96`：只有图片和视频进入可切换媒体，压缩包等文件只留资源链接，重复 URL 按正文首次出现顺序去重。
+- FANBOX 正文统一先经过 `peach.fanbox.normalize_fanbox_post`，边界见 `docs/REUSE.md`「FANBOX 正文解析」。
 - FANBOX Cookie 与 Gofile token 都是本机可选凭据，只进各自站点的请求头，不进 URL、证据、ledger 公开投影或浏览器 JSON；只允许公开 JSON，不解机器人质询、不执行网页脚本、不读付费内容。
 - Gofile 当前把 contents API 限给 Premium：`error-notPremium` 要按套餐限制报告，不能误报成 token 无效；未取得文件列表时保留分享页，不得声称已经取得视频。
 - 同一篇 FANBOX 可含多个 Gofile 文件夹：作品级仍是一个来源合集，媒体保留文件夹 id 与正文标签并在详情队列内分段，不拆作品也不压平混排。
@@ -158,7 +159,7 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 - 查询词里的负号项整体排除，下划线是组合词边界的一部分，不得把 `-ai_generated` 拆成正向 `generated`；模糊时长旧 Tag 只作兼容识别，不进入口味、索引、详情和筛选状态。
 - 原始 URL 与标题不进入页面或 ledger；上传原件存 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器先由 SQLite backup API 取一致快照。本机发现不等于跨机同步，跨机数据要显式导出、传输并按来源去重合并。
 - 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准；关注页顶部标签筛选与卡片只用来源明确标记为 `general` 的内容标签，详情页与在线索引保留全部来源标签并按类型着色，未知类型不猜成 `general`。
-- 自动追更固定用 APScheduler 3.11.3，只在 ledger writer 启动，频率存 `peach-data/state/follow-schedule.json`，默认每小时且启动后等待一个完整间隔，不要改成启动即抓；任务保持 `coalesce=True`、`max_instances=1`，与手动检查共用 `WebContract.follow_check_lock`，reader 只显示不可用状态。
+- 自动追更用 APScheduler，只在 ledger writer 启动，频率存 `peach-data/state/follow-schedule.json`，默认每小时且启动后等待一个完整间隔，不要改成启动即抓；单实例、与手动检查互斥见 `docs/REUSE.md`「定时轮询」，reader 只显示不可用状态。
 - 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。
 
 ## Web 性能边界

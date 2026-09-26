@@ -397,6 +397,27 @@
       "consumers": [
         "docs/HANDOFF.md"
       ]
+    },
+    {
+      "id": "evilcharts-registry",
+      "name": "EvilCharts 组件注册表",
+      "url": "https://raw.githubusercontent.com/legions-developer/evilcharts/main/registry.json",
+      "snapshot": "docs/reference-snapshots/upstream/evilcharts-registry.json",
+      "checked_on": "2026-09-26",
+      "sha256": "68811224d182f9e318604e2d03499e8f2e63a4869a749fbc8e96536c48cbe211",
+      "git": {
+        "repository": "https://github.com/legions-developer/evilcharts.git",
+        "ref": "refs/heads/main",
+        "revision": "500ecd44c1fdcf319ba83ea68f3771bc76125974"
+      },
+      "role": "统计页与口味页柱状、径向、雷达图的组件出处与依赖清单：Recharts 分支的 recharts-bar-chart、recharts-radial-chart、recharts-radar-chart 连同它们 import 的 chart、tooltip、legend、background、brush、dot 部件逐字复制进 frontend/src/react/evilcharts/registry/，逐文件哈希在同目录 UPSTREAM.sha256。上游没有热力图；ECharts 分支画在 Canvas 上，读不到 BoardUI 的 CSS token，不采用。浮层内容因旧样式表的 .grid 同名冲突由 Peach 重组，差异见 frontend/src/react/evilcharts/ORIGIN.md 与 ADR-0076。",
+      "consumers": [
+        "frontend/src/react/evilcharts/",
+        "frontend/src/react/charts/",
+        "frontend/src/react/stats/",
+        "frontend/src/react/taste/charts.tsx",
+        "tests/test_frontend_build.py"
+      ]
     }
   ]
 }
