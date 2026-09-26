@@ -72,9 +72,8 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 body.refreshing #batchAction svg,
 .entitycollectionhead[aria-busy="true"] .entitybatch svg{
   --strand-dash:100;--strand-cycle:2.2s}
-/* 数据管理里两枚「扫一遍」的键各自适配忙态，不统一转圈：检查文件的 git-compare 照
-   lucide-animated 的 GitCompare 逐笔描画（右下圆→两条枝→左上圆，画完停住再一起淡出），
-   扫描空文件夹的 scan-search 四角按左上右下／右上左下两拍轮流亮，放大镜保持不动。
+/* 资源同步的「检查文件」键适配自己的忙态，不统一转圈：git-compare 照 lucide-animated 的
+   GitCompare 逐笔描画（右下圆→两条枝→左上圆，画完停住再一起淡出）。
    机制同换批键：动效写在 symbol 自己的零件上，忙态把动画名和周期传下去；空闲时名字是
    none，什么都不动。全局的 prefers-reduced-motion 规则会关掉它们。 */
 @keyframes peach-gc-draw-a{
@@ -89,25 +88,13 @@ body.refreshing #batchAction svg,
   0%,50%{stroke-dashoffset:100;opacity:1}
   67%,86%{stroke-dashoffset:0;opacity:1}
   100%{stroke-dashoffset:0;opacity:0}}
-@keyframes peach-scan-corner-a{
-  0%,40%{opacity:1}
-  50%,90%{opacity:.25}
-  100%{opacity:1}}
-@keyframes peach-scan-corner-b{
-  0%,40%{opacity:.25}
-  50%,90%{opacity:1}
-  100%{opacity:.25}}
 #i-git-compare .gc-part{stroke-dasharray:var(--gc-dash,none);
   animation-name:var(--gc-anim,none);animation-duration:var(--gc-cycle,1.8s);
   animation-timing-function:linear;animation-iteration-count:infinite}
 #i-git-compare .gc-line-a,#i-git-compare .gc-line-b{animation-name:var(--gc-anim-b,none)}
 #i-git-compare .gc-end-b{animation-name:var(--gc-anim-c,none)}
-#i-scan-search .scan-corner{animation-name:var(--scan-anim,none);
-  animation-duration:var(--scan-cycle,1.2s);animation-timing-function:ease-in-out;animation-iteration-count:infinite}
-#i-scan-search .scan-corner-b{animation-name:var(--scan-anim-b,none)}
-#resourceScan[aria-busy="true"] svg,[data-cleanup-empty-scan][aria-busy="true"] svg{
-  --gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c;
-  --scan-anim:peach-scan-corner-a;--scan-anim-b:peach-scan-corner-b}
+#resourceScan[aria-busy="true"] svg{
+  --gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c}
 .count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
   overflow-x:auto;scrollbar-width:none;min-width:0}
 .count .sorts::-webkit-scrollbar,.entitycollectionhead .sorts::-webkit-scrollbar{display:none}

@@ -41,13 +41,8 @@ class DesktopSettingsTests(unittest.TestCase):
         renderer = (root / 'frontend/src/resource-sync.ts').read_text(encoding='utf-8')
         self.assertIn('resourceScanHtml(payload,fmtSize)', sync)
         self.assertIn("{label: '清理内容'}", renderer)
-        self.assertIn('class="geist-button primary" type="button" id="resourceApply"', renderer)
-        self.assertIn("danger:false,onConfirm", sync)
-        empty = app[app.index('empty:`<section'):app.index("review:entryCard('review')")]
-        self.assertNotIn('data-fieldset-type="error"', empty)
-        self.assertIn('data-cleanup-empty-scan', empty)
-        self.assertIn('class="danger" data-cleanup-empty hidden', empty)
-        self.assertIn("{dry_run:true}", app)
+        # 失效条目直接永久删除：确认框走危险档；按键的实底红由 frontend/test/resource-sync.test.ts 验。
+        self.assertIn("confirmLabel:'清理失效条目',danger:true,onConfirm", sync)
 
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()

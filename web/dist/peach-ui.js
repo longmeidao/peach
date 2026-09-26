@@ -742,11 +742,6 @@ function tt() {
     <div class="cleanupgrid">
       <div class="cleanupscraping">${K()}</div>
       <div class="cleanupmediarepair">${q()}</div>
-      <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">
-        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹与失效条目</h3>
-          <strong>${V}</strong><p class="cleanupmeta">${V}</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button class="geist-button primary" ${H}>${l("scan-search")}<span>检查来源</span></button></footer>
-      </section>
       <section class="cleanupfieldset cleanuporganize" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-organize">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-organize">整理</h3>
           <p>按模板给文件改名并归入目录。先预览，确认后执行；执行过的一批可以整批退回。</p>
@@ -775,7 +770,7 @@ function tt() {
       <h2 id="cleanup-loading-sync">资源同步</h2>
       <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">文件与记录核对</h3>
-          <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
+          <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录、空文件夹，以及不再被引用的缓存。</p></div>
         <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${H}>${l("git-compare")}<span>检查文件</span></button></div>
       </div></section></div>`;
 }
@@ -788,17 +783,22 @@ var J = (e = 0) => Number(e).toLocaleString(), nt = {
 }, rt = (t) => o(e[t] ?? "database"), Y = (e, t, n) => `<article class="board-plain-stat resourcestat">
     <span class="board-plain-stat-head">${e}</span>
     <strong>${t}</strong>
-    <span class="cleanupmeta">${n}</span></article>`;
-function it(e, t) {
+    <span class="cleanupmeta">${n}</span></article>`, it = (e) => e.online ? [
+	`找不到文件 · 共 ${J(e.total)} 项`,
+	e.empty ? `空文件夹 ${J(e.empty)} 个` : "",
+	e.unreadable ? `${J(e.unreadable)} 个目录读取失败，已跳过` : ""
+].filter(Boolean).join(" · ") : `馆藏中有 ${J(e.total)} 项`;
+function at(e, t) {
 	let n = e.cache || {
 		files: 0,
 		bytes: 0
-	}, r = !!(e.missing || n.files);
-	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => Y(`<span class="board-stat-tile resourcestat-tile">${rt(e.location)}</span>${nt[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${J(e.missing)} 项` : "—", [e.online ? `找不到文件 · 已检查 ${J(e.checked)} 项` : `馆藏中有 ${J(e.total)} 项`, e.unreadable ? `${J(e.unreadable)} 项读取失败，已跳过` : ""].filter(Boolean).join(" · "))).join("")}
-    ${Y("待移入回收站", `${J(e.missing)} 项`, "")}
+	}, r = !!(e.missing || e.empty || n.files);
+	return `<div class="cleanupstats resourcestats">${(e.sources || []).map((e) => Y(`<span class="board-stat-tile resourcestat-tile">${rt(e.location)}</span>${nt[e.location] || "媒体来源"}<span class="resourcestat-state ${e.online ? "online" : "offline"}">${e.online ? "可访问" : "离线，已跳过"}</span>`, e.online ? `${J(e.missing)} 项` : "—", it(e))).join("")}</div>
+    <div class="cleanupstats resourcestats">${Y("待永久删除", `${J(e.missing)} 项`, "文件已不在盘上，含回收站")}
+    ${Y("空文件夹", `${J(e.empty)} 个`, "保留来源根目录")}
     ${Y("可清理的缓存", `${J(n.files)} 个`, n.files ? t(n.bytes) : "")}</div>
-    ${r ? i(`将把找不到文件的 ${J(e.missing)} 项馆藏记录移入回收站，并清理 ${J(n.files)} 个闲置缓存。`, { label: "清理内容" }) : ""}
-    <div class="resourceapplyrow geist-fieldset-footer" data-geist-fieldset-footer>${r ? "<button class=\"geist-button primary\" type=\"button\" id=\"resourceApply\">清理失效记录与缓存</button>" : "<p class=\"resourcesyncok\">已检查可访问的来源，没有待清理的记录或缓存。</p>"}</div>`;
+    ${r ? i(`将永久删除文件已不在盘上的 ${J(e.missing)} 条记录和 ${J(e.empty)} 个空文件夹，并清理 ${J(n.files)} 个闲置缓存。这一步不可撤销。`, { label: "清理内容" }) : ""}
+    <div class="resourceapplyrow geist-fieldset-footer" data-geist-fieldset-footer>${r ? "<button class=\"danger\" type=\"button\" id=\"resourceApply\">清理失效条目</button>" : "<p class=\"resourcesyncok\">已检查可访问的来源，没有待清理的记录、空文件夹或缓存。</p>"}</div>`;
 }
 //#endregion
 //#region src/jav-artwork.ts
@@ -809,7 +809,7 @@ function X(e) {
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function at(e) {
+function ot(e) {
 	return {
 		javLayout: X(e.javLayout),
 		javImage: Z(e.javLayout === "preview" ? "thumbnail" : e.javImage)
@@ -818,10 +818,10 @@ function at(e) {
 function Z(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function ot(e, t) {
+function st(e, t) {
 	return e.is_jav && e.code && e.has_cover && (Z(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function st(e, t) {
+function ct(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
 	let a = (e, t, n) => Math.min(n, Math.max(0, Number.isFinite(Number(e)) ? Number(e) : t)), o = a(i, 0, n), s = Math.max(o, a(e?.x1, n, n)), c = a(e?.y0, 0, r), l = Math.max(c, a(e?.y1, r, r)), u = s - o, d = l - c;
@@ -841,7 +841,7 @@ function st(e, t) {
 		height: m(r / d)
 	};
 }
-function ct(e, t) {
+function lt(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (Z(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
@@ -863,11 +863,11 @@ var Q = {
 	activity: { react: "activity" },
 	stats: { react: "stats" },
 	taste: { react: "taste" }
-}, lt = () => Object.keys(Q), $ = /* @__PURE__ */ new Map();
-async function ut(e, t, n, r = {}) {
+}, ut = () => Object.keys(Q), $ = /* @__PURE__ */ new Map();
+async function dt(e, t, n, r = {}) {
 	let i = Q[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	pt(t);
+	mt(t);
 	let a = { controller: new AbortController() };
 	$.set(t, a);
 	let o = (await import("/dist/peach-react.js")).pages[i.react];
@@ -876,7 +876,7 @@ async function ut(e, t, n, r = {}) {
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!dt(t, a, r)) return;
+	if (!ft(t, a, r)) return;
 	let s = t.ownerDocument.createElement("div");
 	s.className = "peach-react", t.append(s);
 	let c = o.mount(s, n);
@@ -884,20 +884,20 @@ async function ut(e, t, n, r = {}) {
 		c.unmount(), s.remove();
 	};
 }
-function dt(e, t, n) {
+function ft(e, t, n) {
 	return $.get(e) === t ? n.isCurrent && !n.isCurrent() ? ($.delete(e), !1) : (e.textContent = "", !0) : !1;
 }
-var ft = (e) => !!e && $.has(e);
-function pt(e) {
-	for (let t of [...$.keys()]) (t === e || e.contains(t)) && mt(t);
-}
+var pt = (e) => !!e && $.has(e);
 function mt(e) {
+	for (let t of [...$.keys()]) (t === e || e.contains(t)) && ht(t);
+}
+function ht(e) {
 	let t = $.get(e);
 	t && (t.controller.abort(), $.delete(e), t.dispose?.());
 }
-var ht = null;
-function gt(e, t, n, r) {
-	ht ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), ht.then((e) => e.showToast(n, r));
+var gt = null;
+function _t(e, t, n, r) {
+	gt ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), gt.then((e) => e.showToast(n, r));
 }
 //#endregion
-export { He as boardPageSkeleton, f as boundedPreference, Ke as catalogEmptyHtml, Ge as catalogSuggestions, ue as clampPage, tt as cleanupSkeletonHtml, Xe as cloudLocations, Ze as cloudPreferenceLocations, Ve as detailSkeletonHtml, We as emptyCatalogLayout, me as entitySkeletonHtml, fe as faceSourceScale, re as followJobProgress, g as initBoardControls, ft as islandMounted, lt as islandNames, ot as javImageKind, w as jobActivityHtml, ut as mountIsland, m as mountNumberSetting, pe as nativeImageFit, Z as normalizeJavImage, X as normalizeJavLayout, at as normalizeJavPreferences, le as pageCount, de as paginationHtml, st as panelFrame, u as preferredDirection, q as repairCardSkeletonHtml, it as resourceScanHtml, K as scanCardSkeletonHtml, oe as selectGroup, ie as selectRange, ae as selectionSummary, gt as showToast, qe as sidebarHasCatalogContent, S as sidebarSectionHtml, Ye as sidebarTagCounts, h as syncBoardRange, ct as syncJavImages, p as syncNumberSetting, se as syncSelectionToolbar, Je as syncSidebarSurface, te as transitionTheme, pt as unmountIsland, T as watchJob, ee as wireSidebarGroups };
+export { He as boardPageSkeleton, f as boundedPreference, Ke as catalogEmptyHtml, Ge as catalogSuggestions, ue as clampPage, tt as cleanupSkeletonHtml, Xe as cloudLocations, Ze as cloudPreferenceLocations, Ve as detailSkeletonHtml, We as emptyCatalogLayout, me as entitySkeletonHtml, fe as faceSourceScale, re as followJobProgress, g as initBoardControls, pt as islandMounted, ut as islandNames, st as javImageKind, w as jobActivityHtml, dt as mountIsland, m as mountNumberSetting, pe as nativeImageFit, Z as normalizeJavImage, X as normalizeJavLayout, ot as normalizeJavPreferences, le as pageCount, de as paginationHtml, ct as panelFrame, u as preferredDirection, q as repairCardSkeletonHtml, at as resourceScanHtml, K as scanCardSkeletonHtml, oe as selectGroup, ie as selectRange, ae as selectionSummary, _t as showToast, qe as sidebarHasCatalogContent, S as sidebarSectionHtml, Ye as sidebarTagCounts, h as syncBoardRange, lt as syncJavImages, p as syncNumberSetting, se as syncSelectionToolbar, Je as syncSidebarSurface, te as transitionTheme, mt as unmountIsland, T as watchJob, ee as wireSidebarGroups };

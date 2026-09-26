@@ -18,7 +18,7 @@ import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, c
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, scanCardSkeletonHtml, repairCardSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle, selectOptionIconHtml,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   dissolveValue, popBadges, popCount, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
@@ -5172,7 +5172,7 @@ function resourceSyncMarkup(){
     <h2 id="resourceSyncTitle">资源同步</h2>
     <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
       <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录核对')}
-      <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
+      <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录、空文件夹，以及不再被引用的缓存。</p></div>
       <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
       <button class="resourceaction primary" type="button" id="resourceScan">${iconSwapHtml('git-compare','rotate-cw')}<span data-scan-label>检查文件</span></button></div></div>
     <div id="resourceSyncResult" aria-live="polite"></div></section>`;
@@ -5192,17 +5192,19 @@ async function wireResourceSync(){
     const cache=payload.cache||{files:0,bytes:0};
     result.innerHTML=resourceScanHtml(payload,fmtSize);
     $('#resourceApply')?.addEventListener('click',async event=>{
-      const button=event.currentTarget;
-      return confirmModal({title:'清理失效记录与缓存',body:`将把找不到文件的 ${payload.missing||0} 项馆藏记录移入回收站，并清理 ${cache.files||0} 个闲置缓存。记录可从回收站还原。`,confirmLabel:'清理失效记录与缓存',danger:false,onConfirm:async()=>{
+      const button=event.currentTarget,count=value=>Number(value||0).toLocaleString();
+      /* 文件已不在盘上的记录直接删，不进回收站，也就没有撤销：确认框用危险档，正文把
+         「不可撤销」写明。执行那一步只认这次检查的候选，逐条复核后再删。 */
+      return confirmModal({title:'清理失效条目',body:`将永久删除文件已不在盘上的 ${count(payload.missing)} 条记录（含回收站里的）、${count(payload.empty)} 个空文件夹，并清理 ${count(cache.files)} 个闲置缓存。来源根目录保留。这一步不可撤销。`,confirmLabel:'清理失效条目',danger:true,onConfirm:async()=>{
       setActionBusy(button);
-      button.innerHTML=`${spinnerHtml('正在清理')}<span>正在检查并清理…</span>`;
+      button.innerHTML=`${spinnerHtml('正在清理')}<span>正在复核并清理…</span>`;
       try{
         const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||'',background:true})});
         sessionStorage.setItem('peach-resource-apply-job',applied.job_id);
         if(active())void wireResourceApplyProgress();
       }catch(error){
         setActionBusy(button,false);
-        button.textContent='清理失效记录与缓存';
+        button.textContent='清理失效条目';
         if(active())void wireResourceApplyProgress();throw error}
   }});
     });
@@ -5235,11 +5237,22 @@ async function wireResourceSync(){
   void wireResourceApplyProgress();
 }
 function wireResourceApplyProgress(){
-  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在检查文件并清理…',
-    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='清理失效记录与缓存'}},
-    complete:out=>{const failed=out.cache_blocked||[];
-      $('#resourceSyncResult').innerHTML=noteHtml(`已把 ${out.moved_to_trash} 项记录移入回收站，清理 ${out.cache_removed} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。${failed.length?`${failed.length} 个缓存未能清理，请重新检查后重试。`:''}`,{label:failed.length?'部分完成':'清理结果',variant:failed.length?'warning':'success'});
-      if(!failed.length)actionReceipt('已清理失效记录与缓存')}});
+  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在复核并清理失效条目…',
+    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='清理失效条目'}},
+    /* 没删的几样是这一轮留下的：文件其实还在、目录这会儿读不了、缓存正被占用。能删的
+       已经删了，所以报警告档、写完成与没处理的数目，不说清理失败。 */
+    complete:out=>{const count=value=>Number(value||0).toLocaleString();
+      const blocked=out.blocked||[],cacheBlocked=out.cache_blocked||[],dirErrors=Number(out.dir_errors||0);
+      const done=Number(out.purged||0)+Number(out.dirs_removed||0)+Number(out.cache_removed||0);
+      const left=blocked.length+dirErrors+cacheBlocked.length;
+      const names=blocked.slice(0,3).map(item=>`「${item.name}」`).join('、')+(blocked.length>3?' 等':'');
+      const rest=[blocked.length?`${count(blocked.length)} 条记录没有删除（${names}）`:'',
+        dirErrors?`${count(dirErrors)} 个文件夹没有删除`:'',
+        cacheBlocked.length?`${count(cacheBlocked.length)} 个缓存没有清理`:''].filter(Boolean).join('，');
+      const summary=`已永久删除 ${count(out.purged)} 条失效记录和 ${count(out.dirs_removed)} 个空文件夹，清理 ${count(out.cache_removed)} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`;
+      $('#resourceSyncResult').innerHTML=noteHtml(rest?`${summary}${rest}，重新检查后可再试。`:summary,{label:rest?'部分完成':'清理结果',variant:rest?'warning':'success'});
+      if(left)toast({text:`已完成 ${count(done)} 项，${count(left)} 项没有处理`},{sound:'warning'});
+      else actionReceipt('已清理失效条目')}});
 }
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
@@ -5475,7 +5488,7 @@ async function openPlaylists(push=true){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 
-/* 数据管理是「库里已经有的东西怎么收拾」的唯一入口：广告、重复、空目录，
+/* 数据管理是「库里已经有的东西怎么收拾」的唯一入口：广告、重复、失效条目，
    加上复核队列、回收站和高清版。它们此前散在管理菜单和统计页两处，
    统计页因此还挂着两块跟统计无关的面板。 */
 const DATA_MANAGEMENT_ENTRIES=[
@@ -5485,7 +5498,7 @@ const DATA_MANAGEMENT_ENTRIES=[
 ];
 /* 这一页照 Board 的 dashboard 模板排：顶上一排是读数卡（stat-cards.tsx 的 plain 变体），五张按一条
    内容在库里的经过排——先把它说清楚（人工复核、高清版），再把不该留的挑出去（重复文件、垃圾文件），
-   最后是删掉的东西还在哪儿（回收站）。扫描与采集和空文件夹是两件要在这页上做的事，不是读数，
+   最后是删掉的东西还在哪儿（回收站）。扫描与采集、媒体修复和整理是要在这页上做的事，不是读数，
    各占一整行放在读数下面。 */
 const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];
 
@@ -5653,15 +5666,6 @@ async function openDataCleanup(push=true){
   ]);
   if(!surfaceCurrent(surface))return;
   paintManageLede();
-  /* 三个「· 在线」徽章换成一行来源名：卡片要说的是这次会扫哪几个来源，
-     来源在线与否是资源同步那一块的读数，在这里只有离线时才改变结论。 */
-  const scanSources=(sources.sources||[]).filter(source=>['local','115','pikpak'].includes(source.location));
-  const sourceName=source=>esc(LOC[source.location]||source.location);
-  const online=scanSources.filter(source=>source.online),offline=scanSources.filter(source=>!source.online);
-  /* 来源行的站标和资源同步结果面板同一份（MEDIA_SOURCE_ICONS）；离线的归到同一枚标记后。 */
-  const sourceBadge=source=>`<span class="cleanupsourcemark">${selectOptionIconHtml(MEDIA_SOURCE_ICONS[source.location]||'database')}${sourceName(source)}</span>`;
-  const sourceLine=[online.map(sourceBadge).join(''),
-    offline.length?`${offline.map(sourceBadge).join('')}<span class="cleanupsourcemark cleanupsourcelost">离线</span>`:''].filter(Boolean).join('');
   const junkCounts=junk.counts||{};
   const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
     .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
@@ -5686,12 +5690,6 @@ async function openDataCleanup(push=true){
           ?`${Number(duplicates.total).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件`
           :'没有重复内容'}</strong>
       <span class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</span>`,'data-cleanup-open="duplicates"'),
-    empty:`<section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupEmptyTitle">
-      <div class="geist-fieldset-content">${fieldsetTitle('cleanupEmptyTitle','空文件夹与失效条目')}
-        <strong>${online.length.toLocaleString()} 个来源可扫描</strong>
-        <p class="cleanupmeta">${sourceLine}</p><div class="cleanupstate" aria-live="polite"></div></div>
-      <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button type="button" class="geist-button primary" data-cleanup-empty-scan ${online.length?'':'disabled'}>${icon('scan-search')}<span>检查来源</span></button><button type="button" class="danger" data-cleanup-empty hidden>${icon('trash')}<span>清理</span></button></footer>
-    </section>`,
     /* 媒体修复是一轮几十分钟起步的长任务，要确认、要看进度，所以和扫描与采集排在同一列
        （ADR-0050）。卡片由 island 画，这里是它取数期间的那一版，与首屏骨架同一张。 */
     mediaRepair:`<div class="cleanupmediarepair" id="mediaRepair">${repairCardSkeletonHtml()}</div>`,
@@ -5699,7 +5697,7 @@ async function openDataCleanup(push=true){
   };
   $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
     ${DATA_MANAGEMENT_STATS.map(section=>cleanupCards[section]).join('')}
-  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}${cleanupCards.empty}${organizeCardMarkup(organizeState)}</div>
+  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}${organizeCardMarkup(organizeState)}</div>
   ${linkManagerMarkup()}
   ${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}</div>`;
   $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
@@ -5715,33 +5713,6 @@ async function openDataCleanup(push=true){
   $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
     button.onclick=()=>openManage(button.dataset.cleanupGo));
   paintDataManagementCounts();
-  const emptyButton=$('#stats').querySelector('[data-cleanup-empty]');
-  const emptyScan=$('#stats').querySelector('[data-cleanup-empty-scan]');
-  emptyScan.onclick=async()=>{
-    const status=$('#stats').querySelector('.cleanupstate');setActionBusy(emptyScan);emptyButton.hidden=true;
-    /* 来源检查是挂载点上的慢活，接口只有跑完才回话：状态行用 Loading Dots 说
-       「还在推进」，不假装有百分比。 */
-    status.innerHTML=loadingDotsHtml('正在检查来源…');
-    try{const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:JSON.stringify({dry_run:true})});
-      if(!surfaceCurrent(surface))return;
-      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹、${Number(result.vanished||0).toLocaleString()} 条文件已不在盘上的记录${result.errors?`，${result.errors} 个目录读取失败`:''}。`,{label:'检查结果'});
-      emptyButton.hidden=!(result.empty>0||result.vanished>0);
-    }catch(error){status.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})}finally{setActionBusy(emptyScan,false)}
-  };
-  emptyButton.onclick=async()=>{
-    return confirmModal({title:'清理空文件夹与失效条目',body:'将删除已连接磁盘和网盘中的空文件夹，保留来源根目录；文件已在盘上删掉的记录连同它们的派生产物一起从库里移除，这一步不可撤销。',confirmLabel:'清理',danger:true,onConfirm:async()=>{
-    const status=$('#stats').querySelector('.cleanupstate'),original=emptyButton.innerHTML;
-    setActionBusy(emptyButton);emptyButton.innerHTML=`${spinnerHtml('正在清理')}<span>正在清理</span>`;
-    status.textContent='正在自底向上检查已挂载来源…';
-    try{
-      const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'});
-      status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`,{label:'清理结果',variant:result.errors?'warning':'success'});
-      /* 读不到的目录只是这一轮没走到，能删的已经删了：报警告档，不说清理失败。 */
-      if(result.errors)toast({text:`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录，${Number(result.errors).toLocaleString()} 个目录读取或删除失败`},{sound:'warning'});
-      else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录`);
-    }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original;emptyButton.hidden=true}
-  }});
-  };
   await wireOrganize(surface,organizeState);
   await wireLinkManager();
   await wireResourceSync();
@@ -8763,7 +8734,7 @@ const MANAGE_SECTIONS=[
   ['configuration','配置','folder-cog'],
 ];
 /* 管理菜单只留这几项。人工复核、回收站、高清版都是「收拾库里已有的东西」，
-   和垃圾文件、重复文件、空文件夹是同一件事的不同步骤，统一从数据管理进；
+   和垃圾文件、重复文件、失效条目是同一件事的不同步骤，统一从数据管理进；
    统计页也因此不再挂链接管理和资源同步这两块跟统计无关的面板。
    活动页进这张菜单：它横跨所有这些页面（扫描、追更、批量都在它上面出现），
    从其中任何一页进都会像是那一页的下一步，而它不是。
@@ -8970,7 +8941,7 @@ function buildManageBar(){
    本来就没有标题层；统计/复核/重复各自内嵌 h2 又导致字号不一致。 */
 /* 数据管理五张卡对应的子页（vercel.com/geist/breadcrumbs：有上一级页面的
    子页才画面包屑）。人工复核、回收站、高清版虽也保留侧栏直达入口，
-   层级上仍从数据管理进；空文件夹是 hub 上的就地操作，没有独立页面。 */
+   层级上仍从数据管理进；资源同步是 hub 上的就地操作，没有独立页面。 */
 //: 上一次页面标题说的是哪一页。空串表示此刻没有管理区标题（首页、目录这些）。
 let lastManagePageLabel='';
 const MANAGE_CRUMB_PAGES={

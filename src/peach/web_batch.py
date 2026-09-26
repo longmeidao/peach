@@ -10,7 +10,6 @@
 """
 from __future__ import annotations
 
-import errno
 import os
 import re
 import time
@@ -27,7 +26,7 @@ from .regions import normalize_region
 from .task_runs import TaskRunHandle
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_catalog import COST, attach_card_performers
-from .web_resource_sync import clean_resource_orphans, vanished_asset_rows
+from .web_resource_sync import clean_resource_orphans
 from .web_state import WebContract
 
 #: 批量操作在活动页上的名字。表里存 `operation`，人看的是这一列。
@@ -481,136 +480,22 @@ def _remove_empty_ancestors(parent: Path, source_roots: Sequence[Path]) -> list[
     return removed
 
 
-def _hollow_directory(path: Path) -> bool:
-    """CloudDrive 上的空目录：`scandir` 报找不到，`listdir` 却说目录在、里面是空的。
+def purge_vanished_rows(contract: WebContract, rows) -> dict:
+    """永久删除文件已不在盘上的这些行，连同引用与派生产物；返回 `_finish_purge` 的回执。
 
-    挂载层给空目录列不出 `.` 与 `..`，`FindFirstFileW` 于是回 `ERROR_FILE_NOT_FOUND`；
-    `os.listdir` 把它当成空目录，`os.scandir`（`os.walk` 走的就是它）当成错误。2026-09-27
-    本机 115 与 PikPak 两轮遍历都报同样 71 个「读取失败」，逐个复核全是这种空目录。
-    """
-    try:
-        return path.is_dir() and not path.is_symlink() and not os.listdir(path)
-    except OSError:
-        return False
-
-
-def cleanup_empty_source_directories(
-    contract: WebContract | None = None, *, dry_run: bool = False,
-) -> dict[str, object]:
-    """Delete empty directories below each online physical source.
-
-    The declared source roots themselves are permanent boundaries and are never removed.
-    ``os.walk(..., topdown=False)`` ensures children are considered before their parents;
-    directory links are not followed or removed.
-
-    网盘那边删掉的文件在账本里留下的行一起清（`contract` 给了才做）。空目录和这些行是
-    同一件事的两半：用户在网盘客户端里删一个目录，盘上留下空壳，账本里留下一批指向
-    不存在文件的行。只清目录，那些行就继续被长跑批处理一轮轮领走、一轮轮失败。删除
-    走 `purge_assets` 这唯一一条物理删除实现，文件本来就没了，删的是账本行和派生产物。
-    """
-    results: list[dict[str, object]] = []
-    total_scanned = total_removed = total_errors = total_empty = 0
-    total_vanished = total_purged = 0
-    for location, declarations in LOCATION_ROOT_DECLARATIONS.items():
-        roots = [translate_ledger_path(declaration) for declaration in declarations]
-        mapped = all(not is_unmapped(root) for root in roots)
-        online = mapped and all(root.is_dir() and root_online(root) for root in roots)
-        row: dict[str, object] = {
-            "location": location,
-            "mapped": mapped,
-            "online": online,
-            "scanned": 0,
-            "removed": 0,
-            "empty": 0,
-            "errors": 0,
-            "vanished": 0,
-            "purged": 0,
-        }
-        if not online:
-            results.append(row)
-            continue
-
-        if contract is not None:
-            gone = vanished_asset_rows(contract, location)
-            row["vanished"] = len(gone)
-            if gone and not dry_run:
-                row["purged"] = _purge_vanished(contract, gone)
-        total_vanished += int(row["vanished"])
-        total_purged += int(row["purged"])
-
-        walk_errors: list[OSError] = []
-        empty_paths: set[Path] = set()
-
-        def consider(candidate: Path, *, hollow: bool = False) -> None:
-            row["scanned"] = int(row["scanned"]) + 1
-            try:
-                if dry_run:
-                    if hollow or all(
-                            child in empty_paths and not child.is_symlink()
-                            for child in candidate.iterdir()):
-                        empty_paths.add(candidate)
-                        row["empty"] = int(row["empty"]) + 1
-                    return
-                candidate.rmdir()
-            except FileNotFoundError:
-                # CloudDrive can remove the same empty directory concurrently.
-                return
-            except OSError as error:
-                if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
-                    row["errors"] = int(row["errors"]) + 1
-            else:
-                row["removed"] = int(row["removed"]) + 1
-
-        for root in roots:
-            # 自底向上时子目录的 onerror 先于父目录产出，空目录在这里记下，父目录照常判空。
-            def on_walk_error(error: OSError, root: Path = root) -> None:
-                path = Path(error.filename) if isinstance(error, FileNotFoundError) and error.filename else None
-                if path is not None and path != root and _hollow_directory(path):
-                    consider(path, hollow=True)
-                else:
-                    walk_errors.append(error)
-
-            for directory, _subdirectories, _files in os.walk(
-                    root, topdown=False, onerror=on_walk_error, followlinks=False):
-                candidate = Path(directory)
-                if candidate == root or candidate.is_symlink():
-                    continue
-                consider(candidate)
-        row["errors"] = int(row["errors"]) + len(walk_errors)
-        total_scanned += int(row["scanned"])
-        total_removed += int(row["removed"])
-        total_empty += int(row["empty"])
-        total_errors += int(row["errors"])
-        results.append(row)
-    return {
-        "ok": total_errors == 0,
-        "scanned": total_scanned,
-        "removed": total_removed,
-        "empty": total_empty,
-        "vanished": total_vanished,
-        "purged": total_purged,
-        "dry_run": dry_run,
-        "errors": total_errors,
-        "sources": results,
-    }
-
-
-def _purge_vanished(contract: WebContract, rows) -> int:
-    """删掉这些行，返回真删了几条。
-
-    文件早就不在盘上，`purge_assets` 的文件删除那一步会整条跳过并记进 `blocked`——
-    那正是它要报的东西：还能删掉文件的行说明文件其实还在，它不属于这一批。
+    `missing_only`：到了删的这一刻文件又在了（复核之后网盘才同步回来），这一行整条
+    跳过进 `blocked`，媒体文件一个字节都不碰。这一批要删的只是账本行。
     """
     contract.cache_bust()
     outcome = None
     try:
         with contract.write_transaction() as connection:
-            outcome = purge_assets(connection, rows)
+            outcome = purge_assets(connection, rows, missing_only=True)
     except BaseException:
         if outcome is not None:
             _restore_staged_media(outcome["_staged"])
         raise
-    return int(_finish_purge(outcome).get("purged") or 0)
+    return _finish_purge(outcome)
 
 
 def _finish_purge(outcome):
@@ -637,17 +522,28 @@ def _finish_purge(outcome):
     return outcome
 
 
-def purge_assets(connection, rows):
+def purge_assets(connection, rows, *, missing_only: bool = False):
     """Quarantine media, delete ledger rows, and leave final removal to the caller.
 
     Renaming beside the source is reversible and stays on the same filesystem. The
     caller restores the quarantined names if commit fails, then permanently removes
     them only after the SQLite transaction has committed.
+
+    ``missing_only`` 删的只是账本行：文件还在（或答不上在不在）的行进 ``blocked``。
     """
     purged, blocked, staged, snapshots, parents = [], [], [], [], []
     for row in rows:
         media = row["path"]
-        if media:
+        if media and missing_only:
+            try:
+                present = translate_ledger_path(media).exists()
+                reason = "文件仍在盘上"
+            except OSError as error:
+                present, reason = True, error.strerror or str(error)
+            if present:
+                blocked.append({"id": row["id"], "path": media, "reason": reason})
+                continue
+        elif media:
             original = Path(media)
             try:
                 if original.exists() and not original.is_file():
@@ -707,27 +603,6 @@ def w_empty_trash(contract: WebContract):
         raise
     result = {"ok": True, "operation": "empty-trash", **_finish_purge(outcome)}
     result.update(clean_resource_orphans(contract))
-    return result
-
-
-def w_cleanup_empty_directories(contract: WebContract, body):
-    """清掉在线来源上的空目录，以及文件已在网盘那边删掉的账本行。
-
-    检查这一步只看不删，两个数都报；真删那一步走任务中心留一行记录——它会删账本行，
-    事后要答得出「这批是什么时候、删了多少」，而这张表是唯一留着这个答案的地方。
-    """
-    if body.get("dry_run") is True:
-        return cleanup_empty_source_directories(contract, dry_run=True)
-    run = contract.task_runs.start("empty-folders", trigger="manual")
-    handle = TaskRunHandle(contract.task_runs, run.id if run else None)
-    try:
-        result = cleanup_empty_source_directories(contract)
-    except BaseException as error:
-        handle.finish("failed", error=f"{type(error).__name__}: {error}")
-        raise
-    handle.finish("succeeded", summary={
-        "removed": result["removed"], "purged": result["purged"],
-        "errors": result["errors"]})
     return result
 
 

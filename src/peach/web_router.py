@@ -20,7 +20,7 @@ from .web_activity import (
     w_quality_goal,
     w_watch_later,
 )
-from .web_batch import q_ads, q_duplicates, w_batch, w_cleanup_empty_directories, w_empty_trash
+from .web_batch import q_ads, q_duplicates, w_batch, w_empty_trash
 from .taste_history import history_source_count
 from .web_catalog import (
     catalog_filter,
@@ -389,7 +389,6 @@ POST_HANDLERS = {
     "/api/taste/refresh": w_taste_refresh,
     "/api/taste/source": w_taste_source,
     "/api/trash/empty": _post_empty_trash,
-    "/api/data-cleanup/empty-folders": w_cleanup_empty_directories,
     "/api/organize/preview": w_organize_preview,
     "/api/organize/apply": w_organize_apply,
     "/api/organize/rollback": w_organize_rollback,
@@ -420,9 +419,9 @@ READ_ONLY_POST_ROUTES = frozenset({
     # 整理的预览只出一份计划 CSV，不动文件也不改账本；执行与回滚不在这里。
     "/api/organize/preview",
 })
-# `/api/data-cleanup/empty-folders` 不在上面：它连文件已消失的账本行一起删，走的是
-# `purge_assets`。检查那一步（`dry_run`）确实不写，但闸门按路径判，宁可连检查一起拦，
-# 也不能让只读端那份复制来的账本被真删一批行。
+# `/api/resource-sync/apply` 不在上面：它永久删除文件已不在盘上的账本行，走的是
+# `purge_assets`。检查那一步只读盘，候选留在进程内存里；它在任务中心的那一行
+# 在只读端本来就不写。
 
 
 def dispatch_api_get(contract: WebContract, path, args):

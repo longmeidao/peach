@@ -35,10 +35,10 @@ describe('数据管理首屏', () => {
       expect(card.querySelector('.cleanupmeta > .skeleton-text')).not.toBeNull();
     }
   });
-  it('任务卡按最终顺序排好：扫描与采集、媒体修复两张岛卡，再是空文件夹与整理', () => {
+  it('任务卡按最终顺序排好：扫描与采集、媒体修复两张岛卡，再是整理', () => {
     const grid = skeleton().querySelector('.cleanupgrid')!;
     expect([...grid.children].map(card => card.className))
-      .toEqual(['cleanupscraping', 'cleanupmediarepair', 'cleanupfieldset cleanupemptyfolders', 'cleanupfieldset cleanuporganize']);
+      .toEqual(['cleanupscraping', 'cleanupmediarepair', 'cleanupfieldset cleanuporganize']);
     for (const card of grid.querySelectorAll(':scope > .cleanupscraping, :scope > .cleanupmediarepair')) {
       expect(card.firstElementChild?.classList.contains('peach-react')).toBe(true);
     }
@@ -60,11 +60,11 @@ describe('数据管理首屏', () => {
     expect(repair.classList.contains('bg-button-primary')).toBe(true);
     expect(repair.hasAttribute('data-skeleton-action')).toBe(true);
     const legacy = root.querySelectorAll('.cleanupfieldset footer > button, .resourcesyncfooter > button');
-    expect([...legacy].map(button => button.textContent)).toEqual(['检查来源', '预览', '检查死链', '检查文件']);
+    expect([...legacy].map(button => button.textContent)).toEqual(['预览', '检查死链', '检查文件']);
     for (const button of legacy) expect(button.classList.contains('primary')).toBe(true);
     const actions = root.querySelectorAll('button:not(.board-plain-stat, [aria-haspopup="listbox"])');
     expect([...actions].map(button => button.textContent || button.getAttribute('aria-label')))
-      .toEqual(['扫描并补全资料', '更多扫描与采集方式', '开始修复', '检查来源', '预览', '检查死链', '检查文件']);
+      .toEqual(['扫描并补全资料', '更多扫描与采集方式', '开始修复', '预览', '检查死链', '检查文件']);
     for (const button of actions) {
       expect(button.hasAttribute('disabled')).toBe(true);
       expect(button.hasAttribute('data-skeleton-action')).toBe(true);

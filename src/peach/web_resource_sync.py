@@ -1,19 +1,25 @@
-"""资源对账：把账本里的记录和磁盘上真实存在的文件对齐。
+"""资源对账：把账本里的记录、来源目录和磁盘上真实存在的文件对齐。
 
 从 `web_contract` 拆出。这一域自己持有扫描线程状态、目录遍历和孤儿缓存清理，
 和浏览、复核没有共享逻辑，留在契约巨石里只是让那个文件更难读。
 
+用户在网盘客户端里删掉一个目录，本机看到的是三样东西：账本里一批指向不存在文件的
+行、盘上留下的空壳目录、这些行生成过的缓存。一次检查把三样一起报出来，一次执行
+一起清掉（ADR-0036）。
+
 `source_is_online` 也在这里：判断某个来源的根挂载没挂载，只有对账要问这件事。
-`w_purge_missing` 同理——按目录清缺失文件和整库扫描是同一件事的两种入口。
+`w_purge_missing` 是按目录的那个入口，服务详情页上「这个目录我刚整理过」，
+判缺失与整库扫描共用同一套目录枚举。
 """
 from __future__ import annotations
 
+import errno
 import os
 import re
 import shutil
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Callable, Protocol, Sequence
 
 from . import jav_poster_crop
@@ -21,7 +27,7 @@ from .catalog_rules import dir_expr, normalise_code_key, photo_set_title
 from .config import LOCATION_ROOT_DECLARATIONS
 from .jobs import BackgroundJob
 from .media import normalized_path
-from .platform import is_unmapped, root_online, translate_ledger_path
+from .platform import is_unmapped, root_online, translate_ledger_path, within_root
 
 
 class ResourceSyncContract(Protocol):
@@ -97,13 +103,20 @@ def _scan_resource_directory(
     )
 
 
-def _missing_resource_ids(rows: Sequence) -> tuple[list[int], int]:
+def _directory_key(path: str | os.PathLike[str]) -> str:
+    """同一个目录只数一次：账本枚举与目录遍历报上来的写法不一定相同。"""
+    return os.path.normcase(os.fspath(path))
+
+
+def _missing_resource_ids(
+    rows: Sequence, unreadable_dirs: set[str] | None = None,
+) -> tuple[list[int], int]:
     """Compare ledger paths one directory listing at a time.
 
     Cloud mounts make one ``stat`` request per path painfully slow.  ``scandir`` reuses the
     directory enumeration that the filesystem already returns, while retaining the same
     case-insensitive Windows path semantics.  An unreadable directory is skipped rather than
-    being mistaken for a directory that the user deleted.
+    being mistaken for a directory that the user deleted; ``unreadable_dirs`` collects it.
     """
     directories: dict[Path, dict[str, list[int]]] = {}
     for row in rows:
@@ -125,16 +138,22 @@ def _missing_resource_ids(rows: Sequence) -> tuple[list[int], int]:
             results = list(executor.map(_scan_resource_directory, directory_items))
     missing = [asset_id for ids, _unreadable in results for asset_id in ids]
     unreadable = sum(count for _ids, count in results)
+    if unreadable_dirs is not None:
+        unreadable_dirs.update(_directory_key(parent)
+                               for (parent, _expected), (_ids, count) in zip(directory_items, results)
+                               if count)
     return missing, unreadable
 
 
-def vanished_asset_rows(contract: ResourceSyncContract, location: str) -> list:
+def vanished_asset_rows(
+    contract: ResourceSyncContract, location: str, *,
+    unreadable_dirs: set[str] | None = None,
+) -> list:
     """这个来源上文件已经不在的行，回收站里的也算。
 
-    对账扫描（`_scan_missing_resources`）刻意跳过回收站：那边问的是「库里这条还在不在」，
-    等着用户决定去留的行不该混进去。清理这一侧问的是另一件事——文件已经在网盘那边删掉了，
-    账本这一行指的东西不存在了。本机 647 行回收站里有 469 行属于这种，它们既不在对账的
-    视野里，又会被每一轮长跑批处理重新领一次。
+    问的是「账本这一行指的东西还在不在」，与这一行是否在回收站无关：文件已经在网盘那边
+    删掉了，回收站里那一行同样指不到任何东西。2026-09-16 本机 647 行回收站里有 469 行
+    属于这种，它们会被每一轮长跑批处理重新领一次。
 
     调用方必须先确认这个来源在线（`source_is_online`）：盘没挂上时目录读不到，
     每一条都会被判成文件没了。
@@ -146,7 +165,7 @@ def vanished_asset_rows(contract: ResourceSyncContract, location: str) -> list:
             "SELECT id,path,snapshot_path,disposal FROM asset "
             "WHERE path IS NOT NULL AND location=? ORDER BY id", (location,),
         ).fetchall()
-    missing, _unreadable = _missing_resource_ids(rows)
+    missing, _unreadable = _missing_resource_ids(rows, unreadable_dirs)
     gone = set(missing)
     return _confirm_vanished([row for row in rows if int(row["id"]) in gone])
 
@@ -181,39 +200,78 @@ def _confirm_vanished(rows: Sequence) -> list:
     return [row for row, here in zip(rows, verdicts) if not here]
 
 
-def _scan_missing_resources(
+def _source_roots(location: str) -> list[Path]:
+    return [translate_ledger_path(root) for root in LOCATION_ROOT_DECLARATIONS.get(location, ())]
+
+
+def _hollow_directory(path: Path) -> bool:
+    """CloudDrive 上的空目录：`scandir` 报找不到，`listdir` 却说目录在、里面是空的。
+
+    挂载层给空目录列不出 `.` 与 `..`，`FindFirstFileW` 于是回 `ERROR_FILE_NOT_FOUND`；
+    `os.listdir` 把它当成空目录，`os.scandir`（`os.walk` 走的就是它）当成错误。2026-09-27
+    本机 115 与 PikPak 两轮遍历都报同样 71 个「读取失败」，逐个复核全是这种空目录。
+    """
+    try:
+        return path.is_dir() and not path.is_symlink() and not os.listdir(path)
+    except OSError:
+        return False
+
+
+def _empty_directories(roots: Sequence[Path], unreadable_dirs: set[str]) -> list[Path]:
+    """自底向上找出来源根下的空目录；删掉子目录后会变空的父目录也算，来源根本身不算。
+
+    判空只用 `os.walk` 已经列出来的名字，不再逐个目录多列一次：网盘挂载上每列一次
+    就是一次网络往返。目录链接不跟进，也不算空。读不了的目录记进 `unreadable_dirs`。
+    """
+    empty: set[str] = set()
+    found: list[Path] = []
+    for root in roots:
+        # 自底向上时子目录的 onerror 先于父目录产出，空目录在这里记下，父目录照常判空。
+        def on_walk_error(error: OSError, root: Path = root) -> None:
+            path = Path(error.filename) if isinstance(error, FileNotFoundError) and error.filename else None
+            if path is not None and path != root and _hollow_directory(path):
+                empty.add(_directory_key(path))
+                found.append(path)
+            else:
+                unreadable_dirs.add(_directory_key(error.filename or root))
+
+        for directory, subdirectories, files in os.walk(
+                root, topdown=False, onerror=on_walk_error, followlinks=False):
+            candidate = Path(directory)
+            if files or candidate == root or candidate.is_symlink():
+                continue
+            if all(_directory_key(os.path.join(directory, name)) in empty for name in subdirectories):
+                empty.add(_directory_key(candidate))
+                found.append(candidate)
+    return found
+
+
+def _scan_sources(
     contract: ResourceSyncContract,
     progress: Callable[[dict], None] | None = None,
 ) -> dict:
-    """只读核对已配置磁盘与网盘中的文件。"""
+    """只读核对每个在线来源：文件已不在盘上的行、空文件夹、读不了的目录。"""
     with contract.read_connection() as connection:
-        rows = connection.execute(
-            "SELECT id,location,path FROM asset "
-            "WHERE path IS NOT NULL AND COALESCE(disposal,'')!='trash' "
-            "AND location IN ('local','115','pikpak') ORDER BY location,id",
-        ).fetchall()
-    grouped: dict[str, list] = {}
-    for row in rows:
-        grouped.setdefault(row["location"], []).append(row)
-    missing_ids: list[int] = []
+        totals = {row[0]: int(row[1]) for row in connection.execute(
+            "SELECT location,count(*) FROM asset WHERE path IS NOT NULL GROUP BY location")}
+    vanished_ids: list[int] = []
+    empty_dirs: dict[str, list[str]] = {}
     sources = []
     for location in configured_resource_locations():
-        items = grouped.get(location, [])
         online = source_is_online(location)
-        missing = []
-        unreadable = 0
+        source = {"location": location, "online": online, "total": totals.get(location, 0),
+                  "missing": 0, "empty": 0, "unreadable": 0}
         if online:
-            missing, unreadable = _missing_resource_ids(items)
-            missing_ids.extend(missing)
-        source = {
-            "location": location, "online": online,
-            "checked": max(0, len(items) - unreadable) if online else 0,
-            "total": len(items), "missing": len(missing), "unreadable": unreadable,
-        }
+            unreadable: set[str] = set()
+            gone = vanished_asset_rows(contract, location, unreadable_dirs=unreadable)
+            empties = _empty_directories(_source_roots(location), unreadable)
+            vanished_ids.extend(int(row["id"]) for row in gone)
+            empty_dirs[location] = [os.fspath(path) for path in empties]
+            source.update(missing=len(gone), empty=len(empties), unreadable=len(unreadable))
         sources.append(source)
         if progress is not None:
             progress(source)
-    return {"sources": sources, "missing_ids": missing_ids}
+    return {"sources": sources, "vanished_ids": vanished_ids, "empty_dirs": empty_dirs}
 
 
 def _cache_file(path: Path, kind: str, output: list[tuple[str, Path, int]]) -> None:
@@ -407,22 +465,31 @@ def _run_resource_scan(contract: ResourceSyncContract, scan_id: str) -> None:
             if state is not None:
                 state["sources"].append(dict(source))
 
-    scan = _scan_missing_resources(contract, progress)
-    caches = _resource_orphan_plan(contract, scan["missing_ids"])
-    result = {
-        "ok": True, "sources": scan["sources"],
-        "missing": len(scan["missing_ids"]),
+    scan = _scan_sources(contract, progress)
+    # 候选名单和空目录路径只留在任务状态里，不进 `result`：公开投影整个下发 `result`，
+    # 物理路径不出服务端。
+    job.update(scan_id, status="complete", result=_scan_result(contract, scan),
+               vanished_ids=list(scan["vanished_ids"]), empty_dirs=scan["empty_dirs"],
+               completed_at=time.time())
+
+
+def _scan_result(contract: ResourceSyncContract, scan: dict) -> dict:
+    caches = _resource_orphan_plan(contract, scan["vanished_ids"])
+    sources = scan["sources"]
+    return {
+        "ok": True, "sources": sources,
+        "missing": len(scan["vanished_ids"]),
+        "empty": sum(source["empty"] for source in sources),
+        "unreadable": sum(source["unreadable"] for source in sources),
         "cache": {"files": caches["total_files"], "bytes": caches["total_bytes"],
                   "by_kind": caches["summary"]},
     }
-    job.update(scan_id, status="complete", result=result,
-               missing_ids=list(scan["missing_ids"]), completed_at=time.time())
 
 
 def _background_resource_scan(contract: ResourceSyncContract, restart: bool = False) -> dict:
     return _resource_scan_public(contract.resource_scan.start(
         lambda scan_id: _run_resource_scan(contract, scan_id),
-        initial={"sources": [], "result": None, "missing_ids": []},
+        initial={"sources": [], "result": None, "vanished_ids": [], "empty_dirs": {}},
         restart=restart,
     ))
 
@@ -444,85 +511,120 @@ def w_resource_sync_scan(contract: ResourceSyncContract, body=None):
         return _background_resource_scan(contract, restart=body.get("restart") is True)
     if not configured_resource_locations():
         raise ValueError("请先在配置页添加媒体文件夹")
-    scan = _scan_missing_resources(contract)
-    caches = _resource_orphan_plan(contract, scan["missing_ids"])
-    return {
-        "ok": True, "sources": scan["sources"],
-        "missing": len(scan["missing_ids"]),
-        "cache": {"files": caches["total_files"], "bytes": caches["total_bytes"],
-                  "by_kind": caches["summary"]},
-    }
+    return _scan_result(contract, _scan_sources(contract))
 
 
-def _recheck_resource_scan_ids(contract: ResourceSyncContract, asset_ids: Sequence[int]) -> list[int]:
-    if not asset_ids:
-        return []
+def _completed_scan(contract: ResourceSyncContract, scan_id: str) -> dict:
+    """执行只认这一轮检查：别的一轮、还没跑完的一轮、顶掉了的一轮都不算。"""
+    state = contract.resource_scan.snapshot()
+    if (not scan_id or state is None or state["scan_id"] != scan_id
+            or state["status"] != "complete"):
+        raise ValueError("resource scan expired; scan again")
+    return state
+
+
+def _rows_by_id(contract: ResourceSyncContract, asset_ids: Sequence[int]) -> list:
     rows = []
     with contract.read_connection() as connection:
         for offset in range(0, len(asset_ids), 400):
             batch = list(asset_ids[offset:offset + 400])
             marks = ",".join("?" for _item in batch)
             rows.extend(connection.execute(
-                "SELECT id,location,path FROM asset "
-                f"WHERE id IN ({marks}) AND path IS NOT NULL "
-                "AND COALESCE(disposal,'')!='trash'",
-                batch,
+                "SELECT id,location,path,snapshot_path FROM asset "
+                f"WHERE id IN ({marks}) AND path IS NOT NULL", batch,
             ).fetchall())
-    grouped: dict[str, list] = {}
-    for row in rows:
-        grouped.setdefault(row["location"], []).append(row)
-    missing = []
-    for location, items in grouped.items():
-        if location not in configured_resource_locations() or not source_is_online(location):
+    return rows
+
+
+def _recheck_vanished(contract: ResourceSyncContract, asset_ids: Sequence[int]) -> list:
+    """检查给的候选逐条重新 `stat`，只留仍在线来源上、这一次仍答不在的行。
+
+    不重跑目录枚举：枚举在网盘上会静默少给名字（`_confirm_vanished`），而这一步之后
+    就是永久删除。复核前后各判一次在线：复核途中掉线的来源，那一趟 `stat` 全都答不在。
+    """
+    if not asset_ids:
+        return []
+    locations = configured_resource_locations()
+    online = {location for location in locations if source_is_online(location)}
+    rows = [row for row in _rows_by_id(contract, asset_ids) if row["location"] in online]
+    confirmed = _confirm_vanished(rows)
+    still_online = {location for location in online if source_is_online(location)}
+    return [row for row in confirmed if row["location"] in still_online]
+
+
+def _remove_empty_directories(paths: Sequence[Path], roots: Sequence[Path]) -> tuple[int, int]:
+    """按深度从深到浅删检查报出的空目录；来源根和根外的路径一律不碰。
+
+    `rmdir` 只删得掉空目录：检查之后又放进东西的目录照样留着，不算失败。
+    """
+    removed = errors = 0
+    for path in sorted(paths, key=lambda item: len(item.parts), reverse=True):
+        if (path in roots or path.is_symlink()
+                or not any(within_root(path, root) for root in roots)):
             continue
-        source_missing, _unreadable = _missing_resource_ids(items)
-        missing.extend(source_missing)
-    return missing
+        try:
+            path.rmdir()
+        except FileNotFoundError:
+            # CloudDrive 会在最后一个子项消失时自己收掉空的一层；删文件那一步也会顺手清空父目录。
+            continue
+        except OSError as error:
+            if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
+                errors += 1
+            continue
+        removed += 1
+    return removed, errors
 
 
 def w_resource_sync_apply(contract: ResourceSyncContract, body, *, progress=None):
+    """永久删除这一轮检查报出的失效记录与空文件夹，再清孤儿缓存。
+
+    文件已不在盘上的行不进回收站、直接删（用户原话「网盘同步删除了的都直接删」）。
+    删之前逐条复核，删不掉的进 `blocked`；这一步不可撤销，所以只认检查给的候选集合。
+    """
     if not configured_resource_locations():
         raise ValueError("请先在配置页添加媒体文件夹")
     if body.get("confirm") is not True:
         raise ValueError("resource sync requires confirmation")
+    scan_id = str(body.get("scan_id") or "")
+    _completed_scan(contract, scan_id)
     if body.get("background"):
         job = contract.resource_apply_job
         def work(job_id):
             result = w_resource_sync_apply(contract, {**body, "background": False},
                 progress=lambda **fields: job.update(job_id, **fields))
             job.update(job_id, **result, status="complete", completed_at=time.time())
-        return job.start(work, restart=True, initial={"message": "正在重新核对来源挂载与缺失文件"})
-    scan_id = str(body.get("scan_id") or "")
-    if scan_id:
-        state = contract.resource_scan.snapshot()
-        if (state is None or state["scan_id"] != scan_id
-                or state["status"] != "complete"):
-            raise ValueError("resource scan expired; scan again")
-        candidates = list(state["missing_ids"])
-        sources = [dict(source) for source in state["result"]["sources"]]
-        # Do not trust the background result at write time.  Recheck only its bounded
-        # candidate set; online sources and unreadable directories retain the safe skip.
-        missing_ids = _recheck_resource_scan_ids(contract, candidates)
-        scan = {"sources": sources, "missing_ids": missing_ids}
-    else:
-        # Compatibility path for non-browser callers: still perform a fresh full scan.
-        scan = _scan_missing_resources(contract)
-        missing_ids = scan["missing_ids"]
-    if missing_ids:
-        if progress:
-            progress(checked=0, total=None, message=f"正在把 {len(missing_ids)} 个确认缺失的条目移入回收站")
-        with contract.write_transaction() as connection:
-            stamp = time.time()
-            connection.executemany(
-                "UPDATE asset SET disposal='trash',feedback_at=? WHERE id=?",
-                [(stamp, asset_id) for asset_id in missing_ids],
-            )
+        return job.start(work, restart=True, initial={"message": "正在逐条复核失效记录"})
+    state = _completed_scan(contract, scan_id)
+    report = progress or (lambda **_fields: None)
+    report(checked=0, total=None, message="正在逐条复核失效记录")
+    confirmed = _recheck_vanished(contract, state["vanished_ids"])
+    purge = {"purged": 0, "blocked": [], "empty_dirs_removed": 0}
+    if confirmed:
+        report(checked=0, total=None, message=f"正在永久删除 {len(confirmed)} 条失效记录")
+        from .web_batch import purge_vanished_rows  # web_batch 在模块顶部 import 本模块
+        purge = purge_vanished_rows(contract, confirmed)
+    report(checked=0, total=None, message="正在删除空文件夹")
+    dirs_removed, dir_errors = 0, 0
+    for location, paths in state["empty_dirs"].items():
+        if location not in configured_resource_locations() or not source_is_online(location):
+            continue
+        removed, errors = _remove_empty_directories([Path(path) for path in paths],
+                                                    _source_roots(location))
+        dirs_removed += removed
+        dir_errors += errors
     contract.cache_bust()
     cleanup = clean_resource_orphans(contract, progress=progress) if body.get("clean_cache", True) else {
         "cache_removed": 0, "bytes_reclaimed": 0, "cache_blocked": [],
     }
-    return {"ok": True, "moved_to_trash": len(missing_ids),
-            "sources": scan["sources"], **cleanup}
+    blocked = [{"id": item["id"], "name": PureWindowsPath(item["path"]).name,
+                "reason": item["reason"]} for item in purge["blocked"]]
+    return {
+        "ok": True, "sources": state["result"]["sources"],
+        "purged": int(purge["purged"]), "blocked": blocked, "blocked_count": len(blocked),
+        "dirs_removed": dirs_removed + int(purge.get("empty_dirs_removed") or 0),
+        "dir_errors": dir_errors, "unreadable": int(state["result"].get("unreadable") or 0),
+        **cleanup,
+    }
 
 
 def w_purge_missing(contract: ResourceSyncContract, body):

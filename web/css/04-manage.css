@@ -70,8 +70,6 @@
   transition:color .15s ease-in-out,background-color .15s ease-in-out}
 .cleanupfieldset button:where(:not(.gselectfield)):hover{background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}
 .cleanupfieldset button:where(:not(.gselectfield)) svg{width:16px;height:16px;stroke:currentColor;fill:none}
-.cleanupfieldset .cleanupstate{margin-top:8px;font-size:var(--fs-sm);color:var(--ink-2)}
-.cleanupfieldset .cleanupstate:empty{display:none}
 /* 整理那张卡：两份模板、一排预设、一段结果。字段标签是块级、排在控件上方（Geist 的
    Label 就是这个形状）；来源下拉靠框内前缀图标自报用途，同一行不再挂文字标签。 */
 .organizefields{display:grid;gap:12px;margin-top:12px}

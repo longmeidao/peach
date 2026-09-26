@@ -5,6 +5,8 @@ patch 目标必须指向真正执行的模块——这批用例大量 patch `sou
 `translate_ledger_path`，拆分时若仍打在 `web_contract` 上，patch 会静默失效，
 测试照样「通过」到断言才炸。
 """
+import contextlib
+import json
 import os
 import sqlite3
 import tempfile
@@ -13,16 +15,24 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from peach import web_batch
 from peach import web_contract as rm_web
 from peach import web_resource_sync as rm_sync
 
 from support.ledger import fresh_ledger
 
 
-class PurgeMissingTests(unittest.TestCase):
-    """按目录对账：磁盘上已删掉的，账本行一并删掉。
+def finish_scan(contract) -> dict:
+    """跑完一轮后台检查并交回它的公开结果；执行只认这样一轮的 `scan_id`。"""
+    rm_sync.w_resource_sync_scan(contract, {"background": True, "restart": True})
+    contract.resource_scan.thread.join(10)
+    return rm_sync.w_resource_sync_scan(contract, {"background": True, "status_only": True})
 
-    这条路径不可恢复，所以测试重点全在「什么时候**不该**删」。
+
+class PurgeMissingTests(unittest.TestCase):
+    """对账：磁盘上已删掉的文件，账本行要么进回收站（按目录），要么直接删（整库）。
+
+    整库那条不可恢复，所以测试重点全在「什么时候**不该**删」。
     """
 
     LEDGER_DIR = r"B:\creator\P"
@@ -55,6 +65,15 @@ class PurgeMissingTests(unittest.TestCase):
         # 只有 001 和 a.mp4 还在盘上；002、003 当作已被手动删除。
         for name in ("001.jpg", "a.mp4"):
             (self.root / name).write_bytes(b"x")
+        # 检查会遍历每个在线来源的根找空文件夹：声明根不钉在临时目录里，遍历的就是
+        # 这台机器上真实的 `R:\media` 与网盘挂载。
+        self.mount = self.root / "mount"
+        self.mount.mkdir()
+        for module in (rm_sync, web_batch):
+            declared = mock.patch.object(module, "LOCATION_ROOT_DECLARATIONS",
+                                         {"115": (str(self.mount),)})
+            declared.start()
+            self.addCleanup(declared.stop)
 
     def tearDown(self):
         # 状态到达 complete 后，后台线程还要结算 task_run。先等线程真正退出，避免它在
@@ -66,6 +85,14 @@ class PurgeMissingTests(unittest.TestCase):
     def _translate(self, raw):
         """把账本的 Windows 路径映射到临时目录里的同名文件。"""
         return self.root / str(raw).rsplit(chr(92), 1)[-1]
+
+    def _synced(self, online=lambda location: location == "115"):
+        """账本路径映射到临时目录；删除那一侧（`web_batch`）要跟着映射，否则它去问真实的 B:。"""
+        stack = contextlib.ExitStack()
+        stack.enter_context(mock.patch.object(rm_sync, "translate_ledger_path", self._translate))
+        stack.enter_context(mock.patch.object(rm_sync, "source_is_online", online))
+        stack.enter_context(mock.patch.object(web_batch, "translate_ledger_path", self._translate))
+        return stack
 
     def _run(self, online=True):
         patch_translate = mock.patch.object(
@@ -155,27 +182,21 @@ class PurgeMissingTests(unittest.TestCase):
         self.contract.cover_root = roots["covers"]
         self.contract.resource_cleanup_enabled = True
 
-        def online(location):
-            return location == "115"
-        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
-             mock.patch.object(rm_sync, "source_is_online", online):
+        with self._synced():
             preview = rm_sync.w_resource_sync_scan(self.contract)
             self.assertEqual(preview["missing"], 2)
             self.assertEqual(preview["cache"]["files"], len(cache_files))
+            scan = finish_scan(self.contract)
             result = rm_sync.w_resource_sync_apply(
-                self.contract, {"confirm": True, "clean_cache": True})
+                self.contract, {"confirm": True, "clean_cache": True, "scan_id": scan["scan_id"]})
 
-        self.assertEqual(result["moved_to_trash"], 2)
-        self.assertEqual(result["cache_removed"], len(cache_files))
+        self.assertEqual(result["purged"], 2)
+        # 快照随账本行一起删（`_finish_purge`），剩下的才轮到孤儿缓存那一步。
+        self.assertEqual(result["cache_removed"], len(cache_files) - 1)
         self.assertTrue(all(not path.exists() for path in cache_files))
         self.assertTrue(kept.is_file(), "账本里还在的片子，它那套时间轴图不算孤儿")
         self.assertTrue(evidence.is_file(), "候选证据不属于可删除缓存")
-        con = sqlite3.connect(self.db_path)
-        try:
-            self.assertEqual(
-                con.execute("SELECT count(*) FROM asset WHERE disposal='trash'").fetchone()[0], 2)
-        finally:
-            con.close()
+        self.assertEqual(self.ids(), [1, 4])
 
     def test_full_sync_lists_each_directory_once_instead_of_stating_every_file(self):
         real_scandir = os.scandir
@@ -185,27 +206,30 @@ class PurgeMissingTests(unittest.TestCase):
             preview = rm_sync.w_resource_sync_scan(self.contract)
 
         self.assertEqual(preview["missing"], 2)
-        self.assertEqual(scandir.call_count, 1)
+        # 账本那几行同住一个目录，列一次；来源根为找空文件夹再列一次。
+        self.assertEqual(scandir.call_count, 2)
         source = next(row for row in preview["sources"] if row["location"] == "115")
-        self.assertEqual(source["checked"], 4)
+        self.assertEqual(source["total"], 4)
         self.assertEqual(source["unreadable"], 0)
 
     def test_sync_checks_local_and_cloud_files_in_mixed_library(self):
         with self.contract.write_transaction() as connection:
             connection.execute("INSERT INTO asset(id,location,path,name,medium,size) "
                                "VALUES(5,'local','R:\\missing.mp4','missing.mp4','video',10)")
-        with mock.patch.object(rm_sync, 'LOCATION_ROOT_DECLARATIONS',
-                               {'local': ('R:\\',), '115': ('B:\\',)}), \
-             mock.patch.object(rm_sync, 'translate_ledger_path', self._translate), \
-             mock.patch.object(rm_sync, 'source_is_online', return_value=True):
+        local = self.root / "local"
+        local.mkdir()
+        declared = {'local': (str(local),), '115': (str(self.mount),)}
+        with mock.patch.object(rm_sync, 'LOCATION_ROOT_DECLARATIONS', declared), \
+             mock.patch.object(web_batch, 'LOCATION_ROOT_DECLARATIONS', declared), \
+             self._synced(online=lambda _location: True):
             preview = rm_sync.w_resource_sync_scan(self.contract)
             self.assertEqual([source['location'] for source in preview['sources']], ['local', '115'])
             self.assertEqual(preview['missing'], 3)
-            self.assertIn(5, rm_sync._recheck_resource_scan_ids(self.contract, [5]))
-            result = rm_sync.w_resource_sync_apply(self.contract, {'confirm': True, 'clean_cache': False})
-            self.assertEqual(result['moved_to_trash'], 3)
-        with self.contract.read_connection() as connection:
-            self.assertEqual(connection.execute('SELECT disposal FROM asset WHERE id=5').fetchone()[0], 'trash')
+            scan = finish_scan(self.contract)
+            result = rm_sync.w_resource_sync_apply(
+                self.contract, {'confirm': True, 'clean_cache': False, 'scan_id': scan['scan_id']})
+        self.assertEqual(result['purged'], 3)
+        self.assertEqual(self.ids(), [1, 4])
 
     def test_local_only_configuration_has_resource_check(self):
         with mock.patch.object(rm_sync, 'LOCATION_ROOT_DECLARATIONS', {'local': ('R:\\',)}):
@@ -234,15 +258,15 @@ class PurgeMissingTests(unittest.TestCase):
 
         self.assertEqual(preview["missing"], 0)
         source = next(row for row in preview["sources"] if row["location"] == "115")
-        self.assertEqual(source["checked"], 0)
-        self.assertEqual(source["unreadable"], 4)
+        # 账本那几行所在的目录一个，来源根一个：同一个目录只数一次。
+        self.assertEqual(source["unreadable"], 2)
+        self.assertEqual(preview["empty"], 0)
 
     def test_background_sync_polls_then_rechecks_only_missing_candidates(self):
         idle = rm_sync.w_resource_sync_scan(
             self.contract, {"background": True, "status_only": True})
         self.assertEqual(idle["status"], "idle")
-        with mock.patch.object(rm_sync, "translate_ledger_path", self._translate), \
-             mock.patch.object(rm_sync, "source_is_online", lambda loc: loc == "115"):
+        with self._synced():
             started = rm_sync.w_resource_sync_scan(
                 self.contract, {"background": True, "restart": True})
             self.assertIn(started["status"], {"running", "complete"})
@@ -262,13 +286,8 @@ class PurgeMissingTests(unittest.TestCase):
                 "confirm": True, "clean_cache": False, "scan_id": status["scan_id"],
             })
 
-        self.assertEqual(result["moved_to_trash"], 2)
-        con = sqlite3.connect(self.db_path)
-        try:
-            self.assertEqual(
-                con.execute("SELECT count(*) FROM asset WHERE disposal='trash'").fetchone()[0], 2)
-        finally:
-            con.close()
+        self.assertEqual(result["purged"], 2)
+        self.assertEqual(self.ids(), [1, 4])
 
     def test_full_sync_keeps_a_cover_shared_by_an_active_asset(self):
         covers = self.root / "covers"
@@ -362,3 +381,185 @@ class PurgeMissingTests(unittest.TestCase):
         with mock.patch.object(rm_sync, "translate_ledger_path", self._translate):
             rows = rm_sync.vanished_asset_rows(self.contract, "115")
         self.assertEqual([int(row["id"]) for row in rows], [2, 3])
+
+
+class ResourceSyncCleanupTests(unittest.TestCase):
+    """一次检查、一次执行：失效记录、空文件夹与孤儿缓存一起清，失效记录直接永久删除。
+
+    路径全是临时目录里的真路径，不经 `_translate`：执行那一步真的删行、删目录，
+    删除那一侧（`web_batch`）看到的路径必须和检查那一侧是同一个。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name).resolve()
+        self.db_path = fresh_ledger(self.root)
+        self.mount = self.root / "mount"
+        offline = self.root / "offline"  # 不存在：这个来源没挂上
+        self.keep = self.mount / "keep"
+        self.keep.mkdir(parents=True)
+        (self.keep / "a.mp4").write_bytes(b"keep")
+        (self.mount / "empty" / "nested").mkdir(parents=True)
+        self.hollow = self.mount / "release" / "文宣"
+        self.hollow.mkdir(parents=True)
+        self.unreadable = self.mount / "unreadable"
+        self.unreadable.mkdir()
+        (self.unreadable / "e.mp4").write_bytes(b"keep")
+        rows = [
+            (1, "115", self.keep / "a.mp4", None),
+            (2, "115", self.mount / "gone" / "b.mp4", None),
+            (3, "115", self.keep / "c.mp4", "trash"),
+            (4, "pikpak", offline / "d.mp4", None),
+            # 所在目录的枚举会报找不到，逐条问一次它却在：不能按枚举判它没了。
+            (5, "115", self.unreadable / "e.mp4", None),
+        ]
+        con = sqlite3.connect(self.db_path)
+        con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,disposal) "
+            "VALUES(?,?,?,?,'video',10,?)",
+            [(asset_id, location, str(path), path.name, disposal)
+             for asset_id, location, path, disposal in rows])
+        con.commit()
+        con.close()
+        self.contract = rm_web.WebContract(Path(self.db_path))
+        posters = self.root / "posters"
+        posters.mkdir()
+        self.orphan_poster = posters / "2_1.jpg"
+        self.live_poster = posters / "1_1.jpg"
+        for poster in (self.orphan_poster, self.live_poster):
+            poster.write_bytes(b"poster")
+        self.contract.poster_root = posters
+        self.contract.resource_cleanup_enabled = True
+        declared = {"115": (str(self.mount),), "pikpak": (str(offline),)}
+        for module in (rm_sync, web_batch):
+            patcher = mock.patch.object(module, "LOCATION_ROOT_DECLARATIONS", declared)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.contract.resource_scan.stop()
+        self.contract.resource_apply_job.stop()
+        self.tmp.cleanup()
+
+    def ids(self):
+        with self.contract.read_connection() as connection:
+            return [row[0] for row in connection.execute("SELECT id FROM asset ORDER BY id")]
+
+    def clouddrive(self):
+        """CloudDrive 的两种目录：空的那个列不出 `.` 与 `..`；有东西的那个这一轮读不了。
+
+        两个都让 `scandir` 报找不到；`listdir` 给空列表的才算空文件夹。
+        """
+        failing = {os.path.normcase(os.fspath(path)) for path in (self.hollow, self.unreadable)}
+        real_scandir = os.scandir
+
+        def mount_scandir(path="."):
+            if os.path.normcase(os.fspath(path)) in failing:
+                raise FileNotFoundError(2, "系统找不到指定的文件。", os.fspath(path))
+            return real_scandir(path)
+        return mock.patch.object(os, "scandir", mount_scandir)
+
+    def apply(self, scan, **body):
+        return rm_sync.w_resource_sync_apply(
+            self.contract, {"confirm": True, "scan_id": scan["scan_id"], **body})
+
+    def test_check_reports_each_source_and_changes_nothing(self):
+        with self.clouddrive():
+            scan = finish_scan(self.contract)
+
+        self.assertEqual(scan["status"], "complete")
+        sources = {source["location"]: source for source in scan["sources"]}
+        cloud = sources["115"]
+        # 空文件夹：empty、empty/nested、release/文宣，以及只装着它的 release。
+        self.assertEqual((cloud["missing"], cloud["empty"], cloud["unreadable"]), (2, 4, 1))
+        self.assertEqual((scan["missing"], scan["empty"], scan["unreadable"]), (2, 4, 1))
+        self.assertFalse(sources["pikpak"]["online"])
+        self.assertEqual((sources["pikpak"]["missing"], sources["pikpak"]["total"]), (0, 1))
+        self.assertEqual(scan["cache"]["files"], 1)
+        self.assertEqual(self.ids(), [1, 2, 3, 4, 5], "检查只报数不删")
+        self.assertTrue(self.hollow.is_dir())
+        self.assertTrue((self.mount / "empty" / "nested").is_dir())
+        self.assertTrue(self.orphan_poster.is_file())
+        self.assertNotIn("mount", json.dumps(scan, ensure_ascii=False), "物理路径不出服务端")
+
+    def test_apply_purges_vanished_rows_empty_folders_and_orphan_caches(self):
+        with self.clouddrive():
+            scan = finish_scan(self.contract)
+            rm_sync.w_resource_sync_apply(self.contract, {
+                "confirm": True, "background": True, "scan_id": scan["scan_id"]})
+            self.contract.resource_apply_job.thread.join(10)
+        result = self.contract.resource_apply_job.snapshot()
+
+        self.assertEqual(result["status"], "complete")
+        self.assertEqual((result["purged"], result["blocked"]), (2, []))
+        self.assertEqual((result["dirs_removed"], result["dir_errors"]), (4, 0))
+        self.assertEqual((result["cache_removed"], result["unreadable"]), (1, 1))
+        # 在库的 2 与回收站里的 3 都删；文件还在的 1、5 和离线来源上的 4 一条不碰。
+        self.assertEqual(self.ids(), [1, 4, 5])
+        self.assertEqual((self.keep / "a.mp4").read_bytes(), b"keep")
+        self.assertEqual((self.unreadable / "e.mp4").read_bytes(), b"keep")
+        self.assertFalse((self.mount / "empty").exists())
+        self.assertFalse((self.mount / "release").exists())
+        self.assertTrue(self.mount.is_dir(), "声明的来源根绝不删")
+        self.assertFalse(self.orphan_poster.exists())
+        self.assertTrue(self.live_poster.is_file())
+        run = self.contract.task_runs.query(task_key="resource-apply")[0]
+        self.assertEqual(run.status, "succeeded", "删账本行这件事要在任务中心留下记录")
+        self.assertEqual((run.result_summary["purged"], run.result_summary["dirs_removed"],
+                          run.result_summary["cache_removed"]), (2, 4, 1))
+
+    def test_a_file_back_on_disk_since_the_check_keeps_its_row(self):
+        scan = finish_scan(self.contract)
+        (self.mount / "gone").mkdir()
+        (self.mount / "gone" / "b.mp4").write_bytes(b"back")
+
+        result = self.apply(scan)
+
+        self.assertEqual(result["purged"], 1)
+        self.assertEqual(self.ids(), [1, 2, 4, 5])
+        self.assertEqual((self.mount / "gone" / "b.mp4").read_bytes(), b"back")
+
+    def test_purge_never_deletes_a_file_that_answers_present_at_the_last_moment(self):
+        """复核之后、删除之前文件回来了：删除那一步自己再问一次，只进 `blocked`。"""
+        scan = finish_scan(self.contract)
+        (self.mount / "gone").mkdir()
+        (self.mount / "gone" / "b.mp4").write_bytes(b"back")
+
+        with mock.patch.object(rm_sync, "_confirm_vanished", side_effect=list):
+            result = self.apply(scan)
+
+        self.assertEqual(result["purged"], 1)
+        self.assertEqual(result["blocked"], [{"id": 2, "name": "b.mp4", "reason": "文件仍在盘上"}])
+        self.assertEqual((self.mount / "gone" / "b.mp4").read_bytes(), b"back")
+        self.assertIn(2, self.ids())
+
+    def test_a_source_that_went_offline_after_the_check_is_left_alone(self):
+        scan = finish_scan(self.contract)
+        with mock.patch.object(rm_sync, "source_is_online", return_value=False):
+            result = self.apply(scan)
+
+        self.assertEqual((result["purged"], result["dirs_removed"]), (0, 0))
+        self.assertEqual(self.ids(), [1, 2, 3, 4, 5])
+        self.assertTrue((self.mount / "empty" / "nested").is_dir())
+
+    def test_apply_only_accepts_the_latest_completed_check(self):
+        with self.assertRaisesRegex(ValueError, "expired"):
+            rm_sync.w_resource_sync_apply(self.contract, {"confirm": True})
+        old = finish_scan(self.contract)
+        new = finish_scan(self.contract)
+        self.assertNotEqual(old["scan_id"], new["scan_id"])
+        for body in ({"confirm": True}, {"confirm": True, "scan_id": old["scan_id"]},
+                     {"confirm": True, "scan_id": old["scan_id"], "background": True}):
+            with self.assertRaisesRegex(ValueError, "expired"):
+                rm_sync.w_resource_sync_apply(self.contract, body)
+        with self.assertRaisesRegex(ValueError, "confirmation"):
+            rm_sync.w_resource_sync_apply(self.contract, {"scan_id": new["scan_id"]})
+        self.assertIsNone(self.contract.resource_apply_job.snapshot(), "过期的检查不开执行任务")
+        self.assertEqual(self.ids(), [1, 2, 3, 4, 5])
+
+    def test_apply_is_gated_as_a_ledger_write_and_check_stays_read_only(self):
+        self.assertIs(rm_web.POST_HANDLERS["/api/resource-sync/apply"], rm_sync.w_resource_sync_apply)
+        self.assertNotIn("/api/resource-sync/apply", rm_web.READ_ONLY_POST_ROUTES,
+                         "它永久删除账本行，只读端那份复制来的账本不能被它清掉")
+        self.assertIn("/api/resource-sync/scan", rm_web.READ_ONLY_POST_ROUTES)
+        self.assertNotIn("/api/data-cleanup/empty-folders", rm_web.POST_HANDLERS)

@@ -53,7 +53,7 @@ export function repairCardSkeletonHtml(): string {
       </section>`);
 }
 
-/** 首屏复用读数卡、四张任务卡、链接管理与资源同步的最终容器；静态标题、正文和键立即呈现。 */
+/** 首屏复用读数卡、三张任务卡、链接管理与资源同步的最终容器；静态标题、正文和键立即呈现。 */
 export function cleanupSkeletonHtml(): string {
   const stats = [['人工复核', 'square-check-big'], ['高清版', 'sparkles'], ['重复文件', 'file-stack'], ['垃圾文件', 'file-archive'], ['回收站', 'trash']];
   const presets = `<span class="geist-button organize-preset-skeleton">${bar}</span>`.repeat(3);
@@ -67,11 +67,6 @@ export function cleanupSkeletonHtml(): string {
     <div class="cleanupgrid">
       <div class="cleanupscraping">${scanCardSkeletonHtml()}</div>
       <div class="cleanupmediarepair">${repairCardSkeletonHtml()}</div>
-      <section class="cleanupfieldset cleanupemptyfolders" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-empty">
-        <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-empty">空文件夹与失效条目</h3>
-          <strong>${bar}</strong><p class="cleanupmeta">${bar}</p></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button class="geist-button primary" ${waiting}>${icon('scan-search')}<span>检查来源</span></button></footer>
-      </section>
       <section class="cleanupfieldset cleanuporganize" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-organize">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-organize">整理</h3>
           <p>按模板给文件改名并归入目录。先预览，确认后执行；执行过的一批可以整批退回。</p>
@@ -96,7 +91,7 @@ export function cleanupSkeletonHtml(): string {
       <h2 id="cleanup-loading-sync">资源同步</h2>
       <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">文件与记录核对</h3>
-          <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录，以及不再被引用的缓存。</p></div>
+          <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录、空文件夹，以及不再被引用的缓存。</p></div>
         <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${waiting}>${icon('git-compare')}<span>检查文件</span></button></div>
       </div></section></div>`;
 }
