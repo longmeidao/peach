@@ -3568,7 +3568,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("data-follow-media-item=")
         self.assertPageContains("const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null")
         self.assertPageContains("const items=followVideoItems(group)")
-        self.assertPageContains(".factions{position:absolute;right:10px;top:10px")
+        self.assertPageContains(".fcorner{position:absolute;right:10px;top:10px")
         self.assertPageContains("@media (hover:hover) and (pointer:fine){.followitem:hover .factions")
         self.assertPageContains("function followQueueHtml(group,itemId)")
         self.assertPageContains('data-follow-queue-item="${item.id}"')

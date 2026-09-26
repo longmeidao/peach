@@ -6556,13 +6556,13 @@ function followCard(group,authorSources=[]){
       ${open}${thumb}${faceUrls.length>1?`<div class="mixfaces" data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:''}
       <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
       <span class="selectionMark">${icon('check')}</span>${realDuration(item.duration)?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
-      ${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon(mixGlyph)}${esc(mixLabel)}</button>`:''}
+      <div class="fcorner">${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon(mixGlyph)}${esc(mixLabel)}</button>`:''}
       <div class="factions">
         <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
         <button data-follow-status="${item.id}" data-to="seen" title="标记已看" aria-label="标记已看"${item.status==='seen'?' disabled':''}>${icon('eye')}</button>
         <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('eye-off')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
-      </div></div></div>
+      </div></div></div></div>
     <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${followAuthorAvatar(authorSources)}</span>
       <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
         <div class="s followbyline"><span class="followauthor" title="${esc(author)}">${esc(author)}</span><time class="mono" datetime="${esc(item.published_at||'')}" title="${esc(when)}">${esc(compactWhen)}</time></div>
