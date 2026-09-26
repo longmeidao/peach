@@ -35,6 +35,8 @@ import { StatsPage } from './stats/stats-page';
 import { DEFAULT_WINDOW, prefetchTaste } from './taste/taste';
 import { TastePage } from './taste/taste-page';
 
+export { mountToaster, showToast } from './toaster';
+
 /* Popover 这类弹出层由 React Aria 渲染到挂载容器外面。落在 `body` 上就出了 `.peach-react`
  * 的作用域：token 读到的是 `board.css` 的值，Preflight 也管不到。所有 React 根的弹出层都进
  * `body` 末尾这一个同样带 `.peach-react` 的容器。 */

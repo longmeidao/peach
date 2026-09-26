@@ -163,4 +163,15 @@ function disposeIsland(el: Element): void {
   mount.dispose?.();
 }
 
+/* 全站 Toast 的入口（Sonner，在 `@peach/react` 里）。第一条回执发出时才装载 React 包、挂上
+ * Toaster：目录页本来就装载着它，别的页面不为一条还没发生的回执付首屏的代价。所有调用排在
+ * 同一个 Promise 后面，按调用顺序执行，同一条回执的「发出」和「改写」不会颠倒。 */
+let toaster: Promise<typeof ReactBundle> | null = null;
+export function showToast(
+  host: Element, icons: ReactBundle.ToastIcons, id: string, request: ReactBundle.ToastRequest,
+): void {
+  toaster ??= import('@peach/react').then((bundle) => { bundle.mountToaster(host, icons); return bundle });
+  void toaster.then((bundle) => bundle.showToast(id, request));
+}
+
 export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages } from './jav-artwork';

@@ -97,7 +97,7 @@ Peach 使用 Board 的视觉与组件语义，保留 Vite、FastAPI 和现有媒
 | Tabs / 页面导航 | Tabs | 管理导航下划线，配置与设置按内容分区 |
 | Fieldset | 卡片正文与操作区组合 | 标题在框内，操作区用相邻色阶，不增加框中框 |
 | Modal | Settings Modal / Dialog | 设置左侧分区、右侧标题及独立滚动；业务确认保留后果和错误恢复 |
-| Toast | Notification | 短暂操作回执沿用现有通知通道 |
+| Toast | Notification 的面 + Sonner 的栈 | 短暂操作回执，对照见下文 |
 | Note / Banner | 字段反馈 / Announcement | 数据错误与恢复动作留在发生位置 |
 | Tooltip | Tooltip | 保留含义与键盘焦点可见性 |
 | Table | Table / Data Table | 保留选择、排序、批处理和实际数据 |
@@ -231,10 +231,10 @@ Radial Chart Card、Bar List Card、Heatmap 与 Sankey 的 Pro 源码**未取得
 
 | Peach 现有 | 处理 | 依据 |
 | --- | --- | --- |
-| Toast（操作回执、撤销） | 切成 Notification：卡片、状态圆、倒计时条已由 Board 层承接，另加 180ms 退场 | 短暂、可自动消失的回执正是 Notification 的用途 |
-| Toast 的进场 | 保留 Peach 的 180ms 淡入 | 上游无 `introDelay` 时不做进场；一条突然出现的卡片在 Peach 里没有别的东西衬托 |
-| Toast 的正文与动作 | 保留单段正文和行内文字动作，未拆标题／说明、未换成下方小按钮 | Peach 的回执只有一句话、最多一个「撤销」 |
-| 成功态的颜色 | 保留信息蓝 | `notification-success-*` token 的值未取得 |
+| Toast（操作回执、撤销） | 栈用 [Sonner](https://sonner.emilkowal.ski/)（`frontend/src/react/toaster.tsx`）：进退场、堆叠、悬停展开、滑动关闭与悬停暂停计时照它；面、线、阴影取上面这份 Notification 的量纲，圆角用浮层那一档，不画状态圆和倒计时条 | 用户指定 Sonner；回执的面和菜单、教程卡是同一种浮层 |
+| Toast 的正文与动作 | 单段正文，最多一个「撤销」，用 Sonner 的动作键；撤销结果按同一个 id 写回同一条 | Peach 的回执只有一句话 |
+| Toast 的位置 | 右下角；安装教程卡在屏幕上时，栈的底边抬到卡上沿之上 | 两块都停在右下角，回执不压在教程上 |
+| 成功态的颜色 | 勾用主色 | `notification-success-*` token 的值未取得 |
 | Note（字段、任务面板旁的持久反馈：读取失败、任务状态、完成汇总、权限过宽） | 保留，不切 | Notification 是浮在视口角上、会自动消失的栈；这些要留在发生位置，失败还得带重试入口 |
 | Banner（页面级问题与恢复动作） | 保留，不切 | 上游注册表里没有 Announcement 的对应源码，未取得 |
 | Tooltip | 保留 | 已有 Board Tooltip 的对应 |

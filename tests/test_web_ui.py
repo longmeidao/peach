@@ -191,8 +191,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".post-setup-task>a:hover{background:var(--hover)}", board)
         self.assertIn("border-radius:8px;color:var(--ink);text-decoration:none}", board)
         self.assertNotIn(".post-setup-task:hover{", board)
-        # 教程贴右下角、压在 Toast 与批量选择条之下，由 `frontend/e2e/design.test.ts`
-        # 在 390×844 下量几何与层叠。
+        # 教程贴右下角，Toast 让到它上方、批量选择条盖在它上面，由 `frontend/e2e/design.test.ts`
+        # 在窄屏与宽屏下量几何与层叠。
         self.assertIn("width:min(400px,calc(100vw - 24px))", board)
         self.assertIn("pointer-events:none", board)
         self.assertIn(".post-setup-notification{pointer-events:auto", board)
@@ -2558,23 +2558,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("item=toast({text:message},{")
         self.assertCode("toast(\n  {text:`${message}失败：${error?.message||'请重试'}`},{warn:true})")
         self.assertPageContains("toast({html:`检查了 <b>${rows.length}</b> 个来源")
-
-    def test_undo_reports_back_on_the_same_toast_instead_of_swapping_two(self):
-        """撤销的结果写回同一条 toast，不另发一条。
-
-        「关掉回执 + 另发一条已撤销」会让底部对齐的栈里一进一出，剩下那条整块跳
-        一格；撤销请求快过退场动画时两条还会同时在场。
-        """
-        self.assertPageContains("item.replaceMessage=")
-        self.assertPageContains("try{await undo();item.replaceMessage({text:'已撤销'})}")
-        self.assertPageContains("if(act)act.onclick=()=>{setActionBusy(act);action.run()};")
-        self.assertPageLacks("try{await undo();toast('已撤销')}")
-        # 退场先把高度写死再过渡到 0；直接 remove() 会让上面那条瞬间落下来。
-        self.assertPageContains("item.style.height=`${item.offsetHeight}px`;item.getBoundingClientRect();")
-        self.assertPageContains(".toast.leaving{height:0!important;margin-top:0;padding-block:0;")
-        # 行距改成每条自己的上外边距：gap 属于容器，收不进这次过渡。
-        self.assertPageContains(".toast{pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;")
-        self.assertPageLacks(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;gap:8px;")
 
     def test_leaving_a_surface_cancels_the_reads_it_started(self):
         """离开一个表面要撤掉它开的读请求，不能只把结果丢掉、让请求跑到底。
@@ -7188,7 +7171,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-sidebar-head #brandHome .mark{width:32px;height:32px;border-radius:50%;background:var(--color-background-tertiary-default)}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{width:20px;height:20px;padding:0;background:none;box-shadow:none}", board)
         self.assertIn(".drawer:not(.open) .board-sidebar-head #filterBtn{width:36px;height:20px}", board)
-        self.assertPageContains("${icon(alert?'circle-alert':'check')}")
         self.assertPageContains('<symbol id="i-circle-alert" viewBox="0 0 24 24">')
 
     def test_the_library_icon_choices_exist_on_the_server_and_in_the_sprite(self):
@@ -7270,25 +7252,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;", board)
         self.assertIn("#tiers .av .nm,:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
         self.assertPageContains("const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));")
-
-    def test_toasts_leave_like_a_boardui_notification(self):
-        """Board 层的 Toast 退场按 Notification 的 exit：180ms ease-out，下沉 8px、缩到 .96、
-        模糊 3px。高度收成 0 留着，栈里上面那条才是滑下来而不是跳下来。"""
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".toast.leaving{transform:translateY(8px) scale(.96);filter:blur(3px);"
-                      "transition:height .18s ease-out,margin .18s ease-out,padding .18s ease-out,"
-                      "border-width .18s ease-out,opacity .18s ease-out,transform .18s ease-out,filter .18s ease-out}", board)
-        self.assertPageContains("item.classList.add('leaving');setTimeout(()=>item.remove(),200)")
-
-    def test_the_countdown_bar_only_asks_whether_the_toast_expires(self):
-        """倒计时条的判据只有一个：这条 toast 会不会自己消失。
-
-        这一行排在 `root.prepend` 前面，所以它是整条 toast 的单点。判据里多搭一个
-        标识符，那个标识符哪天没了定义就是 ReferenceError，回执连挂上去都挂不上去：
-        写操作成功了、页面上什么都不出现，看起来像调用点忘了发回执。
-        """
-        self.assertPageContains("const progress=()=>{if(timeout){"
-                                "const bar=document.createElement('span');")
 
     def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
         """命中区 44px，画出来仍是 32px：那一层伸出去的方块不着墨。
@@ -10296,21 +10259,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertEqual(skeleton.count("data-cleanup-task"), 6,
                          "数据管理骨架要同步画出四张任务卡和两块 BoardUI 操作区")
 
-    def test_the_toast_glyph_is_stroked_and_sits_level_with_its_line(self):
-        """Toast 里那枚勾是描边件，和文字同一条中线。
-
-        不写 `fill:none` 的话它按 `fill` 的初值涂黑，一个勾会糊成实心箭头。文字靠
-        `align-items` 对齐，不靠给 `<p>` 加上下内边距去凑——字数换行时那个凑法就散了。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".toast{position:relative;align-items:center;", board)
-        # 圆线帽是感叹号那一点的全部：Lucide 把它画成零长度的线段，平头线帽下它就消失。
-        self.assertIn(
-            ".board-notification-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;"
-            "stroke-width:2;stroke-linecap:round;stroke-linejoin:round}", board)
-        self.assertIn(".toast p{margin:0}", board)
-        self.assertPageContains("""<span class="board-notification-icon${alert?'':' checkdraw'}" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span>""")
-
     def test_the_shorts_band_is_told_apart_by_its_fill_not_a_line(self):
         """竖屏带靠底色和网格区分，不描一圈线。
 
@@ -12203,7 +12151,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("toast({text:'已在资源管理器中显示'})")
         self.assertPageLacks("已在服务端弹出文件管理器",
                              "定位成功是短暂回执，不能在详情内容流里留下状态行")
-        self.assertPageContains(".toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover)")
         self.assertPageContains(
             "button.innerHTML=`${spinnerHtml('正在定位')}${label?`<span>${esc(label)}</span>`:''}`")
         self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
@@ -12611,9 +12558,9 @@ class MotionRecipeTests(unittest.TestCase):
                 self.assertNotIn("transition:transform .2s", rule)
 
     def test_success_check_draws_itself_and_failure_does_not(self):
-        """成功那一枚勾自己画出来；失败那一枚不画——错误要的是立刻看清。"""
-        self.assertPageContains(
-            'class="board-notification-icon${alert?\'\':\' checkdraw\'}"')
+        """成功那一枚勾自己画出来；失败那一枚不画——错误要的是立刻看清。
+
+        哪一枚画、哪一枚不画由 `frontend/test/react/toaster.test.tsx` 按渲染结果判。"""
         self.assertPageContains("@keyframes check-draw{from{stroke-dashoffset:24}"
                                 "to{stroke-dashoffset:0}}")
         # 荡那一下走按压弹簧，其余三条走站内那条通用缓动，都不是手写的毫秒数。

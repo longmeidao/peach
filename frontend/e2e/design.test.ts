@@ -1252,61 +1252,73 @@ describe('设计决定', () => {
     }
   });
 
-  it('390px 下教程浮窗贴着右下角，Toast 和批量选择条盖在它上面', { timeout: 60_000 }, async () => {
-    const opened = await visit(browser, '/', MOBILE);
-    try {
-      await opened.page.evaluate(() => {
-        localStorage.setItem('peach.post-setup-tutorial.v1', 'pending');
-        localStorage.removeItem('peach.post-setup-tutorial-collapsed.v1');
-        localStorage.removeItem('peach.post-setup-tutorial-skipped.v1');
-      });
-      await opened.page.reload({ waitUntil: 'load' });
-      /* 目录网格画出来时 paintSelection 已经按当前页收好批量条的按钮；教程卡取数期间的
-         占位带 aria-busy，settle 等到的是最终那张卡。 */
-      await expectBody(opened.page, '/', [
-        opened.page.locator('article.card[data-id]').first(),
-        opened.page.locator('#postSetupTutorial .post-setup-notification'),
-      ]);
-      await settle(opened.page);
-      /* 回执和批量条平时不在 DOM 里，用它们各自的正式类名放一份进去，再在各自中心点
-         取最上层元素。演示库自己弹出来的回执先清掉，栈里只剩这一枚。
-         清空、放入和量取必须在同一次同步执行里做完：演示库刚跑完扫描，「扫描与资料采集
-         已完成」的回执随状态轮询随时会到；重画网格的 paintSelection 也能在这个空当里
-         把批量条收回去。 */
-      const probe = await opened.page.evaluate(() => {
-        const toasts = document.getElementById('toasts')!;
-        toasts.replaceChildren();
-        const toast = document.createElement('div');
-        toast.className = 'toast';
-        toast.innerHTML = '<p>已保存配置</p>';
-        toasts.append(toast);
-        const dock = document.getElementById('batchbar')!;
-        dock.hidden = false;
-        const tutorial = document.querySelector('#postSetupTutorial .post-setup-notification')!;
-        const card = tutorial.getBoundingClientRect();
-        const hit = (node: Element) => {
-          const box = node.getBoundingClientRect();
+  for (const [label, viewport, inset] of [['390px', MOBILE, 12], ['宽屏', DESKTOP, 24]] as const) {
+    it(`${label} 下教程浮窗贴着右下角，Toast 让到它上方，批量选择条盖在它上面`, { timeout: 60_000 }, async () => {
+      const opened = await visit(browser, '/', viewport);
+      try {
+        await opened.page.evaluate(() => {
+          localStorage.setItem('peach.post-setup-tutorial.v1', 'pending');
+          localStorage.removeItem('peach.post-setup-tutorial-collapsed.v1');
+          localStorage.removeItem('peach.post-setup-tutorial-skipped.v1');
+        });
+        await opened.page.reload({ waitUntil: 'load' });
+        /* 目录网格画出来时 paintSelection 已经按当前页收好批量条的按钮；教程卡取数期间的
+           占位带 aria-busy，settle 等到的是最终那张卡。 */
+        await expectBody(opened.page, '/', [
+          opened.page.locator('article.card[data-id]').first(),
+          opened.page.locator('#postSetupTutorial .post-setup-notification'),
+        ]);
+        await settle(opened.page);
+        /* 批量条平时不在 DOM 里，放出来再在它中心点取最上层元素。放出和量取在同一次同步执行
+           里做完：重画网格的 paintSelection 能在空当里把它收回去。窄屏上它横跨整行，一定落在
+           教程卡上；宽屏上两者不在同一处，这一条只在窄屏量。 */
+        const probe = await opened.page.evaluate(() => {
+          const dock = document.getElementById('batchbar')!;
+          dock.hidden = false;
+          const tutorial = document.querySelector('#postSetupTutorial .post-setup-notification')!;
+          const card = tutorial.getBoundingClientRect();
+          const box = dock.getBoundingClientRect();
           const x = box.left + box.width / 2;
           const y = box.top + box.height / 2;
           const top = document.elementFromPoint(x, y);
-          return { overlaps: x >= card.left && x <= card.right && y >= card.top && y <= card.bottom,
-            tutorialOnTop: !!top && tutorial.contains(top) };
-        };
-        return { top: card.top, bottom: card.bottom, left: card.left, right: card.right,
-          toast: hit(toast), dock: hit(dock) };
-      });
-      assert.ok(Math.abs(probe.bottom - (MOBILE.height - 12)) <= 1,
-        `教程浮窗没有贴着右下角：下沿 ${probe.bottom}，应为 ${MOBILE.height - 12}`);
-      for (const [name, spot] of [['Toast', probe.toast], ['批量选择条', probe.dock]] as const) {
-        assert.ok(spot.overlaps, `${name}的中心没落在教程浮窗上，这条判据没有量到重叠`);
-        assert.ok(!spot.tutorialOnTop, `教程浮窗盖住了${name}`);
+          return { top: card.top, bottom: card.bottom, left: card.left, right: card.right,
+            dock: { overlaps: x >= card.left && x <= card.right && y >= card.top && y <= card.bottom,
+              tutorialOnTop: !!top && tutorial.contains(top) } };
+        });
+        assert.ok(Math.abs(probe.bottom - (viewport.height - inset)) <= 1,
+          `教程浮窗没有贴着右下角：下沿 ${probe.bottom}，应为 ${viewport.height - inset}`);
+        if (viewport.mobile) {
+          assert.ok(probe.dock.overlaps, '批量选择条的中心没落在教程浮窗上，这条判据没有量到重叠');
+          assert.ok(!probe.dock.tutorialOnTop, '教程浮窗盖住了批量选择条');
+        }
+        assert.ok(probe.top >= 0 && probe.left >= 0 && probe.right <= viewport.width,
+          `教程浮窗越出了 ${viewport.width}px 视口`);
+
+        /* 回执走真的入口发一条不会自己消失的，等栈里每一条都进场停稳再量。演示库刚跑完扫描，
+           「扫描与资料采集已完成」随时可能也进栈，所以判据是栈里每一条都在卡上沿之上。 */
+        await opened.page.evaluate(async () => {
+          const entry = '/dist/peach-ui.js';
+          const ui = await import(entry);
+          ui.showToast(document.getElementById('toasts'), { success: '', error: '' }, 'e2e-tutorial-lift',
+            { html: '已保存配置', alert: false, timeout: 0, action: null });
+        });
+        await opened.page.locator('#toasts [data-sonner-toast]').first().waitFor();
+        await opened.page.waitForFunction(() => [...document.querySelectorAll('#toasts [data-sonner-toast]')]
+          .every((node) => node.getAttribute('data-mounted') === 'true' && node.getAnimations().length === 0));
+        const stack = await opened.page.evaluate(() => {
+          const card = document.querySelector('#postSetupTutorial .post-setup-notification')!.getBoundingClientRect();
+          const boxes = [...document.querySelectorAll('#toasts [data-sonner-toast]')].map((node) => node.getBoundingClientRect());
+          return { cardTop: card.top, lowest: Math.max(...boxes.map((box) => box.bottom)),
+            highest: Math.min(...boxes.map((box) => box.top)) };
+        });
+        assert.ok(stack.lowest <= stack.cardTop,
+          `Toast 压在教程浮窗上：Toast 下沿 ${stack.lowest}，教程上沿 ${stack.cardTop}`);
+        assert.ok(stack.highest >= 0, `Toast 被顶出了视口：上沿 ${stack.highest}`);
+      } finally {
+        await opened.close();
       }
-      assert.ok(probe.top >= 0 && probe.left >= 0 && probe.right <= MOBILE.width,
-        '教程浮窗越出了 390px 视口');
-    } finally {
-      await opened.close();
-    }
-  });
+    });
+  }
 
   it('复核筛选条上的下拉和按钮一样高', { timeout: 60_000 }, async () => {
     const opened = await openReview(browser);
@@ -2426,12 +2438,12 @@ describe('设计决定', () => {
       const alphas = () => opened.page.evaluate(() => {
         const strongest = (shadow: string) => Math.max(0, ...[...shadow.matchAll(
           /rgba\(0, 0, 0, ([\d.]+)\)|rgb\(0, 0, 0\)/g)].map((match) => (match[1] ? Number(match[1]) : 1)));
-        const probe = (html: string) => {
+        const probe = (html: string, parent: Element = document.body) => {
           const holder = document.createElement('div');
           holder.innerHTML = html;
           const element = holder.firstElementChild!;
           // 挂在 React 岛外面：岛里的重置会把旧样式表的按钮阴影清掉。
-          document.body.append(element);
+          parent.append(element);
           const shadow = getComputedStyle(element).boxShadow;
           element.remove();
           return strongest(shadow);
@@ -2439,7 +2451,8 @@ describe('设计决定', () => {
         return {
           card: strongest(getComputedStyle(document.querySelector('#main [class~="shadow-card"]')!).boxShadow),
           button: probe('<button class="geist-button" type="button">键</button>'),
-          toast: probe('<div class="toast">回执</div>'),
+          // Toast 的面只在 #toasts 里成立：阴影写在 Sonner 那一条的属性选择器上。
+          toast: probe('<li data-sonner-toast data-styled="true">回执</li>', document.getElementById('toasts')!),
         };
       });
       await opened.page.evaluate(() => {
