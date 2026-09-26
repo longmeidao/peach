@@ -61,8 +61,8 @@
 .fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}
 .fbadge.dup{border-style:dashed;display:inline-flex;align-items:center;gap:4px}.fbadge.dup .ficon{margin:0}
 .fnote{font-size:var(--fs-xs);color:var(--muted)}
-/* 右上角一列：合并计数与主页卡片的版本角标同一个位置，右下角只留给时长；
-   悬浮出来的操作键排在计数下面，不盖住它。 */
+/* 右上角：合并计数与主页卡片的版本角标同一个位置，右下角只留给时长。
+   悬停时计数让位，操作键占住右上角；触屏上操作键常驻，排在计数下面。 */
 .fcorner{position:absolute;right:10px;top:10px;z-index:7;display:flex;flex-direction:column;align-items:flex-end;
   gap:6px;pointer-events:none}
 .followitem .mixbadge{position:static;border:0;cursor:pointer;font:inherit;pointer-events:auto}
@@ -73,7 +73,8 @@
 .factions button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
 .factions button:hover:not(:disabled){background:rgba(255,255,255,.18);transform:scale(1.08)}
 .factions button:disabled{opacity:.42;cursor:not-allowed}
-@media (hover:hover) and (pointer:fine){.followitem:hover .factions{opacity:1;pointer-events:auto}}
+@media (hover:hover) and (pointer:fine){.followitem:hover .factions{opacity:1;pointer-events:auto}
+  .followitem:hover .fcorner .mixbadge{display:none}}
 @media (hover:none),(pointer:coarse){.followitem .factions{opacity:1;pointer-events:auto}}
 .select-mode .followitem a,.select-mode .followitem [data-follow-detail],.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
