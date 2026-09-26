@@ -86,10 +86,8 @@
   box-shadow:0 8px 24px #0005}.selectiondock[hidden]{display:none}
 .selectiondock>button{white-space:nowrap}
 .selectiondockcount{padding:0 8px;color:var(--ink-2);white-space:nowrap}
-.tagselection.selectiondock{margin:0}
 .selectiondock [hidden]{display:none}
 body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
-#index:has(.tagselection:not([hidden])){padding-bottom:220px}
 .batchbar span{padding:0 8px;color:var(--ink-2);white-space:nowrap}.batchbar button{border:0;border-radius:var(--floating-radius);
   box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}

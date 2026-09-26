@@ -45,6 +45,16 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 - 表单校验的原因由服务端按字段给（400 的 `errors`），页面写回原位，不在前端复制判定。
 - 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页（`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。
 
+### 索引页
+
+`/performers`、`/creators`、`/studios`、`/agencies`、`/tags` 五张索引页整个是 React（`frontend/src/react/index/`，入口 `index-page.tsx`），挂在 `#index` 上。
+
+- 地址栏是唯一真相。壳的 `openIndex` 从地址读出 `q`、`scope`、`view`、`category` 作初值挂上来；页面换档只改自己的状态，经 `route` 写回地址，不重挂。从侧栏进来一律回到本地、字母表、全部类型。
+- 本地名册与词表读 `/api/index`，在线那一档读 `/api/follow/authors` 与 `/api/follow/tags`，键建在 `frontend/src/react/follow/online-vocab.ts`，归关注那一侧。四份都是 `useInfiniteQuery`，「载入更多」取下一页；打字过滤时新结果到手前留着上一份，不铺骨架。
+- 圆框里那段 HTML 仍由遗留层 `avatarInner` 拼，经 `personAvatar` 递进来；原尺寸摆图、补底与首字母收起的规则在 `web/css/01-base.css` 的 `[data-person-ring]`，量图的是遗留层挂在文档上的 `load` 监听。
+- 顶栏选择键归壳，本地标签页读它：关掉时壳经 `updateIsland` 把 `selectMode:false` 推进来，页面清空所选。所选标签的操作条三颗键都不写账本，「显示结果」回目录按所选标签筛选。
+- 壳在数据回来之前铺的骨架仍是 `web/js/ui-components.js` 的 `indexSkeletonHtml`，页头骨架与页面同一组文字。
+
 ### 产物缓存
 
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
@@ -75,7 +85,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `03-filterbar.css` | 常驻筛选层、combo、页面提要 |
 | `04-manage.css` | 统计页、播单、复核、元数据、数据管理 fieldset |
 | `05-insights.css` | Analytics／Speed Insights，以及口味页骨架的板块与指标条 |
-| `06-index.css` | 索引页、标签词表、字母表 |
+| `06-index.css` | 索引页首屏骨架、资料页名册格 |
 | `07-entity.css` | 实体资料页头、外链、相关人物 |
 | `08-photos.css` | 照片墙与灯箱主体 |
 | `09-skeleton.css` | Geist Skeleton 与各页骨架变体 |
@@ -169,6 +179,9 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
   多数页面的离场路径是直接 `innerHTML=`，根被挤出文档却照样活着，所以卸载必须由这
   几个公共点负责，而不是逐页判断。第二道是 `isCurrent`：取数落地时用户可能已经走开，
   这时不画。再进这一页时 `mountIsland` 先自我卸载，同时只有一份。
+- 壳手里的一项状态变了、页面又不该重挂时，用 `updateIsland(el, patch)`：它把 `patch`
+  合并进挂载时的 props，对同一棵根再 `render` 一次。重挂会把页面里打了一半的字和滚动
+  位置一起换掉。
 
 遗留助手不打进产物：`LOC`、`fmtDur`、`fmtSize`、`emptyStateHtml`、`noteHtml` 在浏览器里
 仍是 `/js/*.js`，源码用 `@peach/legacy/*` 引用，`output.paths` 在产物里改写回真实路径。

@@ -209,6 +209,34 @@ async function openDuplicates(browser: Browser): Promise<Visit> {
   return opened;
 }
 
+/** 打开一张索引页，名册与词表都换成桩：演示库的索引在一轮里会从空变成有，不桩的话
+ * 这一条量到的可能是空态。名册第一格带一张桩图，其余只落首字母。 */
+async function openIndexPage(browser: Browser, path: string): Promise<Visit> {
+  const opened = await visit(browser, path, DESKTOP);
+  const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  await opened.page.route('**/api/index?**', (route) => {
+    const kind = new URL(route.request().url()).searchParams.get('kind');
+    return route.fulfill(json(kind === 'tags'
+      ? { items: [{ k: '痴女', n: 4, cat: 'role' }, { k: '秘书OL', n: 2, cat: 'scene' }], has_more: false,
+        categories: { role: 1, scene: 1 } }
+      : { items: [{ k: '甲', n: 3, members: 2, entity_id: 90_101, has_image: true }, { k: '乙', n: 1, members: 1 }],
+        has_more: false }));
+  });
+  // 桩图要比框大：比框小的图按原尺寸摆，走的是另一条规则。
+  await opened.page.route('**/entity-image?**', (route) => route.fulfill({
+    status: 200, contentType: 'image/svg+xml',
+    body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800"><rect width="600" height="800" fill="#888"/></svg>',
+  }));
+  await opened.page.route('**/api/follow/tags?**', (route) => route.fulfill(json({
+    items: [{ k: 'some_artist', n: 5, cat: 'artist' }, { k: 'long_hair', n: 9, cat: 'general' }], has_more: false,
+    categories: { artist: 1, general: 1 } })));
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('#index [data-index-cell], #index [data-alpha-tag], #index [data-tag-chip]').first()
+    .waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
 /** 打开目录并等到读数与卡片一起替下首屏骨架。 */
 async function openCatalog(browser: Browser): Promise<Visit> {
   const opened = await visit(browser, '/', DESKTOP);
@@ -1686,6 +1714,139 @@ describe('设计决定', () => {
       assert.deepEqual([faces.label.size, faces.label.line], ['12px', '20px'], '链接读数的标签不是 12/20');
       assert.deepEqual([faces.figure.size, faces.figure.weight, faces.figure.line], ['20px', '700', '20px'],
         '链接读数的数字不是 20px 粗体、20px 行高');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('可点的卡悬停时铺卡面掺 5% 主文字色的那一档面，不是透明', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/data-cleanup', DESKTOP);
+    try {
+      const page = opened.page;
+      const selector = '.peach-react [data-cleanup-go]';
+      const card = page.locator(selector).first();
+      await card.waitFor({ timeout: 15_000 });
+      await settle(page);
+      const rest = await card.evaluate((element) => getComputedStyle(element).backgroundColor);
+      await card.hover();
+      // 过渡跑完才读：等到底色变了，或三秒后照实读出没变的那个值。
+      await page.waitForFunction(([target, before]) =>
+        getComputedStyle(document.querySelector(target)!).backgroundColor !== before,
+      [selector, rest] as const, { timeout: 3_000 }).catch(() => undefined);
+      const hovered = await card.evaluate((element) => getComputedStyle(element).backgroundColor);
+      assert.notEqual(hovered, 'rgba(0, 0, 0, 0)', '悬停底色落成了透明：token 在根上就折掉了');
+      assert.notEqual(hovered, rest, '悬停没有换面');
+      assert.equal(hovered, await tokenColor(page, '.peach-react', '--card-hover'), '悬停底色不是卡面掺 5% 主文字色');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('索引页名册格悬停铺卡面那一档面；页头过滤框与版式切换同为 36px 高，切换两枚共 66px 宽', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/performers');
+    try {
+      const page = opened.page;
+      const selector = '#index [data-index-cell]';
+      const cell = page.locator(selector).first();
+      const rest = await cell.evaluate((element) => getComputedStyle(element).backgroundColor);
+      await cell.hover();
+      await page.waitForFunction(([target, before]) =>
+        getComputedStyle(document.querySelector(target)!).backgroundColor !== before,
+      [selector, rest] as const, { timeout: 3_000 }).catch(() => undefined);
+      const hovered = await cell.evaluate((element) => getComputedStyle(element).backgroundColor);
+      assert.equal(hovered, await tokenColor(page, '.peach-react', '--card-hover'), '名册格悬停不是卡面掺 5% 主文字色');
+      const head = await page.evaluate(() => {
+        const input = document.querySelector('#index [data-index-search] input')!;
+        const shell = input.closest('[role="presentation"]')!;
+        const toggle = document.querySelector('#index [data-index-layout]')!;
+        return { search: getComputedStyle(shell).height, toggle: getComputedStyle(toggle).height,
+          width: getComputedStyle(toggle).width };
+      });
+      assert.deepEqual(head, { search: '36px', toggle: '36px', width: '66px' });
+      // 人脸放大把 img 撑得比框还宽再负偏移；Preflight 的 `max-width:100%` 会把它压回框宽。
+      const photo = page.locator('#index [data-person-ring] img').first();
+      await photo.waitFor({ state: 'attached', timeout: 5_000 });
+      await page.waitForFunction(() => document.querySelector('#index [data-person-ring]')?.hasAttribute('data-native-small'),
+        undefined, { timeout: 5_000 });
+      assert.equal(await photo.evaluate((element) => getComputedStyle(element).maxWidth), 'none');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('索引页换一档 Tabs 时那条蓝线沿弹簧滑过去，不是一跳', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/studios');
+    try {
+      const page = opened.page;
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const indicator = page.locator('#index [data-tab-indicator]');
+      await page.waitForFunction(() => document.querySelector('#index [data-tab-indicator]')?.hasAttribute('data-ready'),
+        undefined, { timeout: 5_000 });
+      const motion = await indicator.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { property: style.transitionProperty, duration: style.transitionDuration, height: style.height };
+      });
+      assert.equal(motion.property, 'transform, width');
+      assert.notEqual(motion.duration.split(',')[0]!.trim(), '0s', '蓝线没有过渡时长');
+      assert.equal(motion.height, '2px');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('标签多选坞出现时页底让出 96px；在线词表的类型色走上游 tag_type 那一套', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/tags');
+    try {
+      const page = opened.page;
+      await page.locator('#selectMode').click({ timeout: 5_000 });
+      await page.locator('#index [data-alpha-tag]').nth(0).click({ timeout: 5_000 });
+      await page.locator('#index [data-alpha-tag]').nth(1).click({ timeout: 5_000 });
+      const dock = page.locator('[data-selection-dock]');
+      await dock.waitFor({ timeout: 5_000 });
+      const padding = await page.evaluate(() =>
+        getComputedStyle(document.querySelector('#index .peach-react')!).paddingBottom);
+      assert.equal(padding, '96px', '选择坞盖住了最后一行标签');
+      await page.locator('#index [role="tab"][data-tab="online"]').click({ timeout: 5_000 });
+      const dot = page.locator('#index [data-alpha-tag][data-tag-cat="r34-artist"] [data-tag-dot]');
+      await dot.waitFor({ timeout: 5_000 });
+      assert.equal(await dot.evaluate((element) => getComputedStyle(element).backgroundColor), 'rgb(227, 108, 108)');
+      assert.equal(await dock.count(), 0, '在线词表不给多选坞');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('标签云一枚里名字与计数只隔一个空格宽；筛选浮层的 Aa 字形摆进 16×16 的框', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/tags?view=cloud');
+    try {
+      const page = opened.page;
+      const spacing = await page.locator('#index [data-tag-chip]').first().evaluate((chip) => {
+        // 名字那段文字按字符切开量：字的右缘到计数左缘，与末尾那个空格自己画出来的宽度相比。
+        const name = chip.firstChild!;
+        const end = name.textContent!.trimEnd().length;
+        const box = (from: number, to: number) => {
+          const part = document.createRange();
+          part.setStart(name, from);
+          part.setEnd(name, to);
+          return part.getBoundingClientRect();
+        };
+        const count = chip.querySelector('[data-tag-n]')!.getBoundingClientRect();
+        return { gap: count.left - box(0, end).right, space: box(end, name.textContent!.length).width,
+          columnGap: getComputedStyle(chip).columnGap };
+      });
+      assert.equal(spacing.columnGap, 'normal', '名字与计数之间不另加 flex 间距');
+      assert.ok(spacing.space > 2 && Math.abs(spacing.gap - spacing.space) < 0.5,
+        `名字与计数隔了 ${spacing.gap}px，一个空格是 ${spacing.space}px`);
+      const glyph = page.locator('#index svg:has(use[href="#i-text-aa"])');
+      assert.deepEqual(await glyph.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return [style.width, style.height];
+      }), ['16px', '16px']);
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

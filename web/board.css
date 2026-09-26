@@ -168,7 +168,7 @@
 /* 搜索框使用浏览器原生模糊，尺寸变化不依赖异步 SVG 位移贴图。 */
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
-html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.batchbar,.tagselection,[data-glass-pane]){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
+html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.batchbar,[data-glass-pane]){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
 /* 快照撤掉那一下，材质要淡回来：揭示动画刚停，浮层从实底「啪」地跳成毛玻璃，读起来
    像主题又切了第二次。过渡只写在常态上——进快照那一下正在拍旧状态的快照，拍到一半
    路上的颜色就会闪，所以上面那条规则自己把过渡关掉。 */
@@ -664,20 +664,11 @@ body>.board-filter-frame{margin-inline:16px}
 .igrid[data-layout="big"] .icell .ring{border-radius:10px}
 .igrid[data-layout="big"] .icell .nm,.igrid[data-layout="big"] .icell .n{text-align:left}
 .igrid[data-layout="big"] .icell .nm{font-size:14px}
-/* 字母表的分组卡与卡头：Heading 20/26；一行一枚标签是排名行那一档（36px、圆角 8）。 */
+/* 字母表骨架的分组卡；一行一枚标签是排名行那一档（36px、圆角 8）。 */
 .alphagroup{border-radius:16px;box-shadow:none}
-.alphagroup h3{font-size:20px;line-height:26px;font-weight:500}
 .alphatag{border-radius:8px}
-/* 标签页浮层上排的类型药丸：玻璃上的线取 --glass-low，没选中的是虚线，选中那一枚的色由类型色给。 */
-.board-filter-frame .tagcategories .pill{border:1px solid var(--glass-low);background:transparent}
-.board-filter-frame .tagcategories .pill:not([aria-pressed="true"]){border-style:dashed}
-.board-filter-frame .tagcategories .pill:not([aria-pressed="true"]):hover{border-style:solid}
-.board-filter-frame .tagcategories .pill[aria-pressed="true"]{border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);
-  background:color-mix(in srgb,var(--tag-color,var(--ink)) 12%,transparent)}
-.board-filter-frame .alphajump button{color:color-mix(in srgb,var(--glass-text) 60%,transparent);border-radius:7px}
-.board-filter-frame .alphajump button:hover{color:var(--glass-text)}
 /* 「载入更多」是 Board 的 secondary Button：36px、圆角 10、Body Medium。 */
-.indexmore,.entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;border-color:var(--line);font-size:14px;font-weight:500;color:var(--ink)}
+.entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;border-color:var(--line);font-size:14px;font-weight:500;color:var(--ink)}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 /* 竖屏带靠底色和网格区分，不再描一圈线：它嵌在两段无边框的网格中间，一条线反而
@@ -1171,17 +1162,16 @@ body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard :is(b,em,u){gri
    只是 60% 的 #404040 压上去，差几个色阶，必须靠边来补；Peach 不跟这条，改成把填充
    直接抬到 `--control-hover`——那是同一套面色里的下一档实色，两档都一眼看得出，
    边就不必跟着闪。`transition` 只留 `background-color`。 */
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:var(--elevation-xs);font:var(--board-body-medium);white-space:nowrap;text-decoration:none;transition:background-color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--control-hover)}
+body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:var(--elevation-xs);font:var(--board-body-medium);white-space:nowrap;text-decoration:none;transition:background-color .15s ease}
+body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--control-hover)}
 /* 药丸、标签和外链卡跟按钮同一条。它们的边各有自己的颜色来源，所以逐类钉回静止值，
    不能统一写成一个 token。 */
 body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}
 /* 玻璃条上的药丸这样一来没有任何悬停反馈：那层 `--glass-text` 的权重比基线的
    `.pill:hover` 高，把提亮文字色的那半也一起吃掉了。横排互斥选项的悬停就是提文字色。 */
 .board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}
-body .index .index-tags .tg:hover{border-color:color-mix(in srgb,var(--tag-color) 32%,transparent)}
 body .entitylinks a:hover{border-color:var(--line)}
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.tagselection button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
+body :is(.geist-button,.fbtn,.resourceaction,.batchbar button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
 /* 强调档全站一副面，三档渐变各差一个色阶，照 `boardui.com/components/button` 的
    `.bg-button-primary`（2026-09-12 实测）：静止 accent-500→600、悬停 400→500、按下
    600→700。不带边——上游那颗是 `border:0`，这里补一圈透明边会把内容盒压掉 2px，渐变的
@@ -1190,11 +1180,11 @@ body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.tagselection butt
    它没有插值可言，直接换就是硬切一下。两层交叠着改 opacity 才过渡得起来，这也是上游
    那一份的做法。宿主要 `isolation:isolate`，不然 `z-index:-1` 会把它送到按钮所在层叠
    上下文的底下，铺到卡片背面去。 */
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled){position:relative;isolation:isolate;background:var(--board-blue);border:0;color:#fff;box-shadow:var(--elevation-xs);transition:box-shadow .15s ease,color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled):hover::before{opacity:1}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled):active{background:var(--board-blue-active)}
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button).primary:not(:disabled):active::before{opacity:0}
+body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled){position:relative;isolation:isolate;background:var(--board-blue);border:0;color:#fff;box-shadow:var(--elevation-xs);transition:box-shadow .15s ease,color .15s ease}
+body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
+body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled):hover::before{opacity:1}
+body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled):active{background:var(--board-blue-active)}
+body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled):active::before{opacity:0}
 /* 危险档跟强调档同一副做法，照 `boardui.com/components/button` 的 `.bg-button-danger`
    （2026-09-12 实测，与 `.bg-button-primary` 逐字同构）：静止 red-500→600、悬停
    400→500、按下 600→700，悬停那一档铺在 `::before` 上淡入。
@@ -1350,7 +1340,7 @@ body [data-split-button]>[data-skeleton-action][data-skeleton-action]:disabled{b
 [data-split-button]:has(>[data-skeleton-action]:disabled){--split-seam:var(--border-15);box-shadow:0 0 0 1px var(--border-15)}
 body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:var(--elevation-xs);font:var(--board-body-medium)}
 body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
-.reviewcontrols{border:0;border-radius:20px}.batchbar,.tagselection{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
+.reviewcontrols{border:0;border-radius:20px}.batchbar{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
 .settingsscroll .settingrow{margin-right:16px}.settingsscroll .settinggroup{border-bottom:0}
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
@@ -1364,9 +1354,9 @@ body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),
    标准属性留在不经转换的共享样式表里，数值逐项对齐首页上下两块玻璃。 */
 body .peach-react :is([data-review-filter],[data-filter-glass]){backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}
 body .peach-react [data-selection-dock]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%)}
-html.board-high-contrast :is(.selectiondock,.batchbar,.tagselection,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
-@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.batchbar,.tagselection,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;animation:none}}
-@media(prefers-reduced-motion:reduce){body :is(.selectiondock,.batchbar,.tagselection){animation:none}}
+html.board-high-contrast :is(.selectiondock,.batchbar,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
+@media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.batchbar,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;animation:none}}
+@media(prefers-reduced-motion:reduce){body :is(.selectiondock,.batchbar){animation:none}}
 
 /* ── 分段控件（boardui segmented-control.tsx）：口味页的证据切换与工具栏的版式切换同一枚滑块 ──
    轨道 tertiary 底、4px 内边距、10px 圆角、2px 间隔；选项 px 10 / py 4、6px 圆角；选中 Body Medium 主文字色，
@@ -1584,7 +1574,7 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 @media(prefers-reduced-motion:reduce){.post-setup-notification{animation:none}.post-setup-task,.post-setup-task>a{transition:none}}
 /* ── Board 第三批：主按钮尺寸、配置页白底、通知与提醒、批量条、关注行图标、侧栏切换器 ── */
 /* 主按钮与旁边的 Board 按钮同一副盒子：36px、10px 圆角、Body Medium。 */
-body :is(.geist-button,.fbtn,.resourceaction,.tagselection button,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
+body :is(.geist-button,.fbtn,.resourceaction,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
 /* 提醒条与上下内容留 12px：关注页检查结果、扫描卡失败都是同一个 Note。 */
 body .followmanage .fwarn{margin:0 0 12px}
 body .library-processing [role=alert]>.geist-note{margin-top:12px}

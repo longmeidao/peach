@@ -809,7 +809,7 @@ function tt(e, t) {
 		height: m(r / d)
 	};
 }
-function Y(e, t) {
+function nt(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (J(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
@@ -817,12 +817,13 @@ function Y(e, t) {
 }
 //#endregion
 //#region src/islands.ts
-var X = {
+var Y = {
 	"avatar-picker": { react: "avatar-picker" },
 	"cover-crop": { react: "cover-crop" },
 	"data-cleanup": { react: "data-cleanup" },
 	duplicates: { react: "duplicates" },
 	"follow-manage": { react: "follow-manage" },
+	index: { react: "index" },
 	"library-processing": { react: "library-processing" },
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },
@@ -832,41 +833,48 @@ var X = {
 	activity: { react: "activity" },
 	stats: { react: "stats" },
 	taste: { react: "taste" }
-}, nt = () => Object.keys(X), Z = /* @__PURE__ */ new Map();
-async function rt(e, t, n, r = {}) {
-	let i = X[e];
+}, rt = () => Object.keys(Y), X = /* @__PURE__ */ new Map();
+async function Z(e, t, n, r = {}) {
+	let i = Y[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
 	Q(t);
 	let a = { controller: new AbortController() };
-	Z.set(t, a);
+	X.set(t, a);
 	let o = (await import("/dist/peach-react.js")).pages[i.react];
 	try {
 		await o.prefetch(n, a.controller.signal);
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!it(t, a, r)) return;
+	if (!at(t, a, r)) return;
 	let s = t.ownerDocument.createElement("div");
 	s.className = "peach-react", t.append(s);
 	let c = o.mount(s, n);
 	a.dispose = () => {
 		c.unmount(), s.remove();
-	};
+	}, a.props = n, a.update = (e) => c.update(e);
 }
-function it(e, t, n) {
-	return Z.get(e) === t ? n.isCurrent && !n.isCurrent() ? (Z.delete(e), !1) : (e.textContent = "", !0) : !1;
+function it(e, t) {
+	let n = e ? X.get(e) : void 0;
+	!n?.update || !n.props || (n.props = {
+		...n.props,
+		...t
+	}, n.update(n.props));
 }
-var at = (e) => !!e && Z.has(e);
+function at(e, t, n) {
+	return X.get(e) === t ? n.isCurrent && !n.isCurrent() ? (X.delete(e), !1) : (e.textContent = "", !0) : !1;
+}
+var ot = (e) => !!e && X.has(e);
 function Q(e) {
-	for (let t of [...Z.keys()]) (t === e || e.contains(t)) && ot(t);
+	for (let t of [...X.keys()]) (t === e || e.contains(t)) && st(t);
 }
-function ot(e) {
-	let t = Z.get(e);
-	t && (t.controller.abort(), Z.delete(e), t.dispose?.());
+function st(e) {
+	let t = X.get(e);
+	t && (t.controller.abort(), X.delete(e), t.dispose?.());
 }
 var $ = null;
-function st(e, t, n, r) {
+function ct(e, t, n, r) {
 	$ ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), $.then((e) => e.showToast(n, r));
 }
 //#endregion
-export { ze as boardPageSkeleton, u as boundedPreference, Ue as catalogEmptyHtml, He as catalogSuggestions, ce as clampPage, Qe as cleanupSkeletonHtml, Re as detailSkeletonHtml, Ve as emptyCatalogLayout, fe as entitySkeletonHtml, ue as faceSourceScale, ne as followJobProgress, m as initBoardControls, at as islandMounted, nt as islandNames, et as javImageKind, C as jobActivityHtml, rt as mountIsland, f as mountNumberSetting, de as nativeImageFit, J as normalizeJavImage, q as normalizeJavLayout, $e as normalizeJavPreferences, se as pageCount, le as paginationHtml, tt as panelFrame, c as preferredDirection, T as selectGroup, re as selectRange, ie as selectionSummary, st as showToast, We as sidebarHasCatalogContent, b as sidebarSectionHtml, Ke as sidebarTagCounts, p as syncBoardRange, Y as syncJavImages, d as syncNumberSetting, ae as syncSelectionToolbar, Ge as syncSidebarSurface, ee as transitionTheme, Q as unmountIsland, w as watchJob, x as wireSidebarGroups };
+export { ze as boardPageSkeleton, u as boundedPreference, Ue as catalogEmptyHtml, He as catalogSuggestions, ce as clampPage, Qe as cleanupSkeletonHtml, Re as detailSkeletonHtml, Ve as emptyCatalogLayout, fe as entitySkeletonHtml, ue as faceSourceScale, ne as followJobProgress, m as initBoardControls, ot as islandMounted, rt as islandNames, et as javImageKind, C as jobActivityHtml, Z as mountIsland, f as mountNumberSetting, de as nativeImageFit, J as normalizeJavImage, q as normalizeJavLayout, $e as normalizeJavPreferences, se as pageCount, le as paginationHtml, tt as panelFrame, c as preferredDirection, T as selectGroup, re as selectRange, ie as selectionSummary, ct as showToast, We as sidebarHasCatalogContent, b as sidebarSectionHtml, Ke as sidebarTagCounts, p as syncBoardRange, nt as syncJavImages, d as syncNumberSetting, ae as syncSelectionToolbar, Ge as syncSidebarSurface, ee as transitionTheme, Q as unmountIsland, it as updateIsland, w as watchJob, x as wireSidebarGroups };

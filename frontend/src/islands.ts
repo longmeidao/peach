@@ -37,6 +37,7 @@ export interface IslandContracts {
   'data-cleanup': ReactBundle.DataCleanupProps;
   duplicates: ReactBundle.DuplicatesProps;
   'follow-manage': ReactBundle.FollowManageProps;
+  index: ReactBundle.IndexProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
   'scraping': ReactBundle.ScrapingProps;
   'quality-goals': ReactBundle.QualityGoalsProps;
@@ -63,6 +64,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'data-cleanup': { react: 'data-cleanup' },
   duplicates: { react: 'duplicates' },
   'follow-manage': { react: 'follow-manage' },
+  index: { react: 'index' },
   'library-processing': { react: 'library-processing' },
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
@@ -81,6 +83,9 @@ interface Mount {
   controller: AbortController;
   /** 画过之后，卸载那棵根并撤掉它的容器。还没画过的容器里是遗留骨架，不归 island 清。 */
   dispose?: () => void;
+  /** 画过之后，把新 props 交给同一棵根；`updateIsland` 在它上面合并补丁。 */
+  update?: (props: object) => void;
+  props?: object;
 }
 
 const mounted = new Map<Element, Mount>();
@@ -120,6 +125,17 @@ export async function mountIsland<N extends IslandName>(
   el.append(host);
   const root = page.mount(host, props);
   mount.dispose = () => { root.unmount(); host.remove() };
+  mount.props = props;
+  mount.update = (next) => root.update(next as PropsOf<N>);
+}
+
+/** 把一部分 props 推给已经画好的 island，不重挂、不重取数。壳里的开关（例如目录的选择
+ *  模式）落在正挂着的页面上时走这里；还没画完或已经卸掉的容器是空操作。 */
+export function updateIsland<N extends IslandName>(el: Element | null, patch: Partial<PropsOf<N>>): void {
+  const mount = el ? mounted.get(el) : undefined;
+  if (!mount?.update || !mount.props) return;
+  mount.props = { ...mount.props, ...patch };
+  mount.update(mount.props);
 }
 
 /** 取数回来之后还能不能画：期间没有被重挂，遗留层也还停在这一页。能画就顺手清掉遗留骨架。 */

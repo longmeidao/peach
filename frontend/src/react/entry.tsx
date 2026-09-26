@@ -19,6 +19,8 @@ import { prefetchDuplicates } from './duplicates/duplicates';
 import { DuplicatesPage } from './duplicates/duplicates-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
 import { FollowManagePage } from './follow-manage/follow-manage-page';
+import { prefetchIndex } from './index/index-data';
+import { IndexPage } from './index/index-page';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
 import { LibraryProcessingCard } from './library-processing/library-processing-card';
 import { LibraryProcessingNotice } from './library-processing/library-processing-notice';
@@ -110,6 +112,7 @@ export const pages: Bundle.ReactPages = {
   'follow-manage': {
     prefetch: (props, signal) => prefetchFollowManage(signal, props.tab), mount: mounter(FollowManagePage),
   },
+  index: { prefetch: (props, signal) => prefetchIndex(props, signal), mount: mounter(IndexPage) },
   'library-processing': {
     prefetch: (_props, signal) => prefetchLibraryProcessing(signal),
     mount: mounter(LibraryProcessing),

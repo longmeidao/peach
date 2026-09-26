@@ -1,7 +1,8 @@
 /* 没有数据或结果时的空态：图标、标题、说明同处一个组件里（`peach-web-ui`）。
  *
  * 注册表里没有空态条目。标题是真的标题元素，冒烟用例按它认页面主体：一片白和「画出来了、
- * 只是没有内容」在别的断言下长得一模一样。
+ * 只是没有内容」在别的断言下长得一模一样。根上的 `data-empty-state` 是给冒烟与外观用例认的
+ * 钩子，不参与样式。
  *
  * 外壳按它落在哪里选，不按「哪个好看」选：卡里的空态自己不再画一层框。 */
 import type { ComponentType, ReactNode } from 'react';
@@ -24,7 +25,7 @@ export function EmptyState(
     shell?: keyof typeof SHELL },
 ) {
   return (
-    <div className={`flex flex-col items-center gap-2 text-center ${SHELL[shell]}`}>
+    <div data-empty-state="" className={`flex flex-col items-center gap-2 text-center ${SHELL[shell]}`}>
       <Icon aria-hidden className="size-6 text-text-tertiary" />
       <h3 className="text-headline-medium text-text-primary">{title}</h3>
       <p className="max-w-prose text-body-2-regular text-text-secondary">{children}</p>

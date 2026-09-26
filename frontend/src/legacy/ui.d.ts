@@ -14,6 +14,10 @@ export declare function emptyStateHtml(
 
 export declare function collectionSummaryHtml(label: string, value: string, detail?: string, options?: { pending?: boolean }): string;
 export declare function badgeHtml(text: string): string;
+/** 索引页的占位：名册网格、字母表或标签云，尺寸取最终那一副。首屏和页内换档共用这一份。 */
+export declare function indexSkeletonHtml(options: {
+  kind: string; layout?: string; mode?: string;
+}): string;
 export declare function checkboxHtml(inputAttrs?: string): string;
 export declare function loadingDotsHtml(label?: string, options?: { className?: string }): string;
 export declare function progressHtml(label: string, value: number, max?: number, options?:{variant?:'active'|'warning'|'error';stops?:{value:number;label:string}[]}): string;

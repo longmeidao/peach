@@ -1,7 +1,7 @@
 import { act } from 'react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { islandMounted, islandNames, mountIsland, unmountIsland } from '../src/islands';
+import { islandMounted, islandNames, mountIsland, unmountIsland, updateIsland } from '../src/islands';
 import { queryClient } from '../src/react/query';
 
 import { deferredFetch } from './helpers';
@@ -40,7 +40,7 @@ async function until(ok: () => boolean, what: string): Promise<void> {
 describe('island 注册表', () => {
   it('登记的名字就是遗留路由能挂载的名字', () => {
     expect(islandNames()).toEqual([
-      'avatar-picker', 'cover-crop', 'data-cleanup', 'duplicates', 'follow-manage', 'library-processing', 'scraping',
+      'avatar-picker', 'cover-crop', 'data-cleanup', 'duplicates', 'follow-manage', 'index', 'library-processing', 'scraping',
       'quality-goals', 'review', 'configuration', 'configuration-summary', 'activity', 'stats', 'taste']);
   });
 
@@ -116,6 +116,35 @@ describe('mountIsland', () => {
     await act(async () => { unmountIsland(el) });
     expect(el.querySelector('.peach-react'), 'React 根和它的容器要跟着卸载一起走').toBeNull();
     expect(islandMounted(el)).toBe(false);
+  });
+
+  /* 壳那枚选择键关掉时经 `updateIsland` 把新值推进已经挂着的根：只合并这一项，其余 props
+     照旧，也不重挂——重挂会把页头连同过滤框里打了一半的字一起换掉。 */
+  it('把一项新值推进已经挂着的根，不重挂', async () => {
+    const fetch = deferredFetch({ items: [{ k: '痴女', n: 1, cat: 'role' }], has_more: false });
+    fetch.install();
+    const el = container();
+    const showTags = vi.fn();
+    const props = {
+      kind: 'tags', q: '', scope: 'local', view: 'alphabet', category: 'all', layout: 'big', selectMode: true,
+      route: vi.fn(), savePreference: vi.fn(), exitSelectMode: vi.fn(),
+      personAvatar: () => ({ html: '', face: '' }), authorAvatar: () => '', refitImages: vi.fn(),
+      tagLabel: (tag: string) => tag, openEntity: vi.fn(), showTags, openFollowAuthor: vi.fn(),
+      openFollowTag: vi.fn(), configurable: false,
+    } as const;
+    const mounting = mountIsland('index', el, props);
+    await until(() => fetch.fetched.mock.calls.length > 0, '取数发出去');
+    fetch.resolve();
+    await act(async () => { await mounting });
+    const input = el.querySelector('[data-index-search] input');
+    const tag = () => el.querySelector('[data-alpha-tag][data-k="痴女"]')!;
+    await act(async () => { (tag() as HTMLElement).click() });
+    expect(tag().getAttribute('aria-pressed')).toBe('true');
+    await act(async () => { updateIsland(el, { selectMode: false }) });
+    expect(tag().getAttribute('aria-pressed'), '关掉选择键时所选要跟着清空').toBe('false');
+    expect(el.querySelector('[data-index-search] input'), '推新值不许重挂').toBe(input);
+    await act(async () => { (tag() as HTMLElement).click() });
+    expect(showTags, '其余 props 照旧：不在选择模式时点一枚直接回目录').toHaveBeenCalledWith(['痴女'], 'all');
   });
 });
 
