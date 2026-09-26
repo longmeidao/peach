@@ -3251,9 +3251,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".cleanupsourcemark{display:inline-flex;align-items:center;gap:6px}", board)
         self.assertPageContains("status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，发现 ${Number(result.empty||0).toLocaleString()} 个空文件夹")
         self.assertPageContains("status.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})")
-        # 检查结果 Note 在空文件夹卡里顶满左右，状态容器也得是能装 Note 的块级元素。
+        # 检查结果 Note 留在说明列里、保留自己的圆角，状态容器也得是能装 Note 的块级元素。
         self.assertPageContains('<div class="cleanupstate" aria-live="polite"></div>')
-        self.assertIn(".cleanupgrid>.cleanupemptyfolders .cleanupstate .geist-note{margin-inline:-24px;border-inline:0;border-radius:0}", board)
+        self.assertIn(".cleanupgrid>.cleanupemptyfolders .cleanupstate .geist-note{margin:12px 0 0}", board)
         # 操作键统一 Board primary；销毁键另有一副实底红，不掺进来。
         for needle in (
                 'id="linkCheck">',
