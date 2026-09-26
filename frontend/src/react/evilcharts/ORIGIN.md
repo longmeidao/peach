@@ -43,6 +43,8 @@
 
 | 组合 | 用到的上游 | 做法 |
 | --- | --- | --- |
-| `../charts/bar-card.tsx` 的 `BarCard` | `EvilBarChart` | 单系列，`ChartConfig` 只有 `value` 一个键；统计页的时长、画质、文件类型与播放次数 |
+| `../charts/bar-card.tsx` 的 `BarCard` | `EvilBarChart` | 单系列，`ChartConfig` 只有 `value` 一个键；数值轴隐藏、留两成余量，数经 `barProps.label` 标在柱端；容器加 `flex-none`，否则在卡片的 flex 列里被压成 0 高。统计页的时长、画质、文件类型与播放次数 |
 | `../stats/radial-card.tsx` 的 `RadialCard` | `EvilRadialChart` | 键写成 `s0`…`sN`，名字放进 `label`：键会进 CSS 变量名与渐变 id，来源名、库名不能直接当键。圈的形状与点击走 `radialBarProps`，按 React 状态淡化其余段、点下钉住；图例格子由 Peach 自己画 |
+| `../taste/charts.tsx` 的 `TasteRadar` | `EvilRadarChart` | 取分数最高的三到六个口味维度，单系列 `value`；少于三个画不成面，整块不出现。`chartProps.outerRadius` 压到 58%，顶点外侧的维度名在窄栏里放得下 |
+| `../taste/charts.tsx` 的 `RankedBars` | `EvilBarChart`（`layout="horizontal"`） | 前八个口味维度，柱端标数的写法同 `BarCard`；高度按条数取档 |
 | `../charts/chart-tip.tsx` 的 `ChartTip` | `ChartTooltip`、`useChart`、`getPayloadConfigFromPayload` | 见上表「浮层内容」 |

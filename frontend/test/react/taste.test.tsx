@@ -2,7 +2,8 @@
  * 导入与移除各自走哪条路、点名次交回去的是什么。
  *
  * 外观（雷达图的网格、热力格的浓度档）是设计决定，由 `frontend/e2e/design.test.ts` 读
- * `getComputedStyle` 断言；这里只看结构、文字与请求。 */
+ * `getComputedStyle` 断言；这里只看结构、文字与请求。Recharts 在这里量不到容器尺寸，
+ * 雷达与排行条的图形画不出来，从外层的名字与纯函数上验。 */
 import { act } from 'react';
 import { notifyManager, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -12,8 +13,8 @@ import * as legacyUi from '@peach/legacy/ui';
 import { JOB_RUNNING_POLL_MS } from '../../src/react/background-job';
 import { queryClient } from '../../src/react/query';
 import {
-  DEFAULT_WINDOW, prefetchTaste, TASTE_IMPORT_URL, TASTE_REFRESH_URL,
-  TASTE_SOURCE_URL, TASTE_URL, type TasteData, type TasteJob,
+  DEFAULT_WINDOW, prefetchTaste, radarRows, RANK_MAX, TASTE_IMPORT_URL, TASTE_REFRESH_URL,
+  TASTE_SOURCE_URL, TASTE_URL, topScores, type TasteData, type TasteJob,
 } from '../../src/react/taste/taste';
 import { TastePage } from '../../src/react/taste/taste-page';
 
@@ -154,6 +155,24 @@ it('首屏读 prefetch 落进缓存的那一份，两套证据是页签不是并
     .toEqual(['浏览器记录', 'Peach 内部']);
   expect(host.textContent).toContain('900');
   expect(host.textContent).not.toContain('个作品有内部行为证据');
+});
+
+it('口味维度取分数最高的几个：雷达三到六个，排行条最多八条', () => {
+  const rows = Array.from({ length: 10 }, (_, index) => ({ name: `维度${index}`, score: index }));
+  expect(topScores(rows, RANK_MAX).map((row) => row.value)).toEqual([9, 8, 7, 6, 5, 4, 3, 2]);
+  expect(radarRows(rows).map((row) => row.name)).toEqual(['维度9', '维度8', '维度7', '维度6', '维度5', '维度4']);
+  expect(radarRows([{ name: '甲', score: 3 }, { name: '乙', score: 1 }, { name: '丙' }])).toEqual([]);
+});
+
+it('浏览器画像的雷达、排行与浏览活跃热力图都按这一份数画', async () => {
+  const { host } = await open();
+  const portrait = host.querySelector('section[aria-label="浏览器画像"]')!;
+  expect(portrait.querySelector('div[role=img]')?.getAttribute('aria-label'))
+    .toBe('主要口味维度：维度甲，维度乙，维度丙');
+  expect(portrait.querySelector('section[aria-label="口味维度排名"]')).not.toBeNull();
+  const heats = [...host.querySelectorAll('svg[role=img]')].map((heat) => heat.getAttribute('aria-label'));
+  expect(heats).toEqual(expect.arrayContaining(['浏览活跃时间', '每日活跃']));
+  expect(host.querySelector('rect[aria-label="周一 21:00，5 次访问"]')).not.toBeNull();
 });
 
 it('换分析范围时留住上一份：这一屏不退回等待态，只等新的数回来', async () => {

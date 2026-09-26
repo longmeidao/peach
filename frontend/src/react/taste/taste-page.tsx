@@ -507,7 +507,7 @@ export function TastePage(props: TasteProps) {
               figure={Number(storage.exports || 0).toLocaleString()} detail={fmtSize(storage.bytes || 0)} />
           </div>
           <section className={`${CARD} md:flex-row md:gap-6`} aria-label="浏览器画像">
-            <div className="flex shrink-0 flex-col gap-2 pb-5 md:w-72 md:pr-6 md:pb-0">
+            <div className="flex shrink-0 flex-col gap-2 pb-5 md:w-80 md:pr-6 md:pb-0">
               <span className="text-caption-1-regular text-text-secondary">浏览器画像</span>
               <TasteRadar rows={categories} label="主要口味维度" />
               <small className="text-caption-1-regular text-text-secondary">

@@ -1,17 +1,20 @@
 /* 口味页的三张图：口味维度的雷达与排行条、创作者线索的流向图。浏览活跃的两张热力图与
  * 统计页共用 `../charts/heat-card.tsx`。
  *
- * 三张都用 SVG 画，几何全写成属性——条长是 `rect` 的宽度，流的粗细是 `stroke-width`，
- * `no-inline-styles` 因此不必开例外。颜色只取 BoardUI 的 `chart-*` 与 `border-focus-ring` 档。
- *
- * 指向流向图的一条流或一个节点时读数换成它的；换的是 React 状态，指针离开或焦点移走就回到
- * 总数。差异登记在 `../boardui/ORIGIN.md`。 */
+ * 雷达与排行条由 EvilCharts 画，悬停浮层是 `../charts/chart-tip.tsx`，差异登记在
+ * `../evilcharts/ORIGIN.md`。流向图保留 `d3-sankey` 自绘（ADR-0076）：几何全写成属性，流的粗细
+ * 是 `stroke-width`，颜色只取 BoardUI 的 `chart-*` 档；指向一条流或一个节点时读数换成它的，
+ * 换的是 React 状态，指针离开或焦点移走就回到总数。差异登记在 `../boardui/ORIGIN.md`。 */
 import { useState } from 'react';
 
-import { CHART_CARD, ChartHead } from '../charts/chart-card';
+import { EvilBarChart } from '@/registry/charts/recharts-bar-chart';
+import { EvilRadarChart } from '@/registry/charts/recharts-radar-chart';
+
+import { BAR_DOMAIN, barLabel } from '../charts/bar-card';
+import { CHART_CARD, CHART_COLORS, ChartHead, tone } from '../charts/chart-card';
+import { ChartTip } from '../charts/chart-tip';
 import {
-  flowGraph, flowLabel, FLOW_LABEL_X, FLOW_NODE_WIDTH, FLOW_VIEWBOX,
-  RADAR_GRID, radarPoints, radarRing, radarShape, rankShares,
+  flowGraph, flowLabel, FLOW_LABEL_X, FLOW_NODE_WIDTH, FLOW_VIEWBOX, radarRows, RANK_MAX, topScores,
   type CreatorFlow, type RankRow,
 } from './taste';
 
@@ -25,52 +28,45 @@ const FLOW_FILL = [
   'fill-chart-4', 'fill-chart-5', 'fill-chart-6',
 ];
 
-/** 主要口味维度的雷达图。三个维度以下画不成面，那时整块不出现。 */
+/** 口味维度两张图的系列：一个维度下命中的标签次数。颜色跟着口味页读数卡的 `chart-4`。 */
+const DIMENSION_CONFIG = { value: { label: '标签命中', colors: tone(CHART_COLORS[3]) } };
+
+/** 排行条的高度按条数给：条数少时不把每一条撑得很粗。类名写成整串，Tailwind 扫得到。 */
+const RANK_HEIGHT = ['h-24', 'h-24', 'h-24', 'h-32', 'h-40', 'h-48', 'h-52', 'h-60', 'h-64'];
+
+/** 主要口味维度的雷达图，画的是 EvilCharts 的 `EvilRadarChart`。三个维度以下画不成面，那时整块不出现。 */
 export function TasteRadar({ rows, label }: { rows: RankRow[]; label: string }) {
-  const points = radarPoints(rows);
-  if (!points.length) return null;
-  const count = points.length;
+  const data = radarRows(rows);
+  if (!data.length) return null;
   return (
-    <svg viewBox="0 0 320 280" role="img" aria-label={label} className="block w-full overflow-visible">
-      <title>{points.map((point) => point.name).join('，')}</title>
-      {RADAR_GRID.map((radius) => (
-        <polygon key={radius} points={radarRing(radius, count)} fill="none"
-          className="stroke-separator-border" strokeWidth={1} />
-      ))}
-      <polygon points={radarShape(points)} strokeWidth={2} strokeLinejoin="round" fillOpacity={0.18}
-        className="fill-chart-4 stroke-chart-4" />
-      {points.map((point) => (
-        <text key={point.name} x={point.labelX} y={point.labelY} dominantBaseline="middle"
-          textAnchor={point.labelX < 145 ? 'end' : point.labelX > 175 ? 'start' : 'middle'}
-          className="fill-text-secondary text-caption-1-regular">{point.name}</text>
-      ))}
-    </svg>
+    <div role="img" aria-label={`${label}：${data.map((row) => row.name).join('，')}`}>
+      {/* 半径压到六成：维度名排在顶点外侧，七八个字的名字在窄栏里要放得下，不被图框切掉。 */}
+      <EvilRadarChart data={data} config={DIMENSION_CONFIG} chartProps={{ outerRadius: '58%' }}
+        className="aspect-auto h-70 text-text-secondary">
+        <EvilRadarChart.PolarGrid />
+        <EvilRadarChart.PolarAngleAxis dataKey="name" />
+        <EvilRadarChart.Radar dataKey="value" />
+        <ChartTip />
+      </EvilRadarChart>
+    </div>
   );
 }
 
-/** 口味维度排行。一行一条，最长那条占满。 */
+/** 口味维度排行：一个维度一条横向的柱，画的是 EvilCharts 的 `EvilBarChart`，数标在柱尾。 */
 export function RankedBars({ rows, label }: { rows: RankRow[]; label: string }) {
-  const values = rows
-    .filter((row) => Number.isFinite(Number(row.score)) && Number(row.score) > 0)
-    .slice().sort((a, b) => Number(b.score) - Number(a.score)).slice(0, 8);
-  if (!values.length) return null;
-  const shares = rankShares(values);
+  const data = topScores(rows, RANK_MAX);
+  if (!data.length) return null;
   return (
-    <ol aria-label={label} className="flex flex-col gap-2">
-      {values.map((row, index) => (
-        <li key={row.name} className="flex min-w-0 flex-col gap-1.5">
-          <p className="flex items-baseline justify-between gap-3 text-body-2-regular text-text-primary">
-            <span className="min-w-0 break-words">{row.name}</span>
-            <b className="tabular-nums">{Number(row.score).toLocaleString()}</b>
-          </p>
-          <svg viewBox="0 0 100 1" preserveAspectRatio="none" aria-hidden
-            className="h-1.5 w-full overflow-hidden rounded-full">
-            <rect width={100} height={1} className="fill-chart-track" />
-            <rect width={shares[index]} height={1} className="fill-chart-4" />
-          </svg>
-        </li>
-      ))}
-    </ol>
+    <section aria-label={label}>
+      <EvilBarChart data={data} config={DIMENSION_CONFIG} layout="horizontal" barRadius={4}
+        className={`aspect-auto text-text-secondary ${RANK_HEIGHT[data.length]}`}>
+        <EvilBarChart.YAxis dataKey="name" interval={0} />
+        <EvilBarChart.XAxis hide domain={BAR_DOMAIN} />
+        <EvilBarChart.Bar dataKey="value" enableHoverHighlight
+          barProps={{ dataKey: 'value', label: barLabel('right') }} />
+        <ChartTip />
+      </EvilBarChart>
+    </section>
   );
 }
 

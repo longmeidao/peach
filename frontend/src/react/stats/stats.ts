@@ -142,7 +142,7 @@ export const mediumRows = (rows: MediumCount[]): BarRow[] =>
 
 /** 时长分档的显示名。分界同 `media_probe.context_fields`：300、900、2400 秒。 */
 const LENGTH_LABEL: Record<string, string> = {
-  速食: '5 分钟内', 短: '5–15 分钟', 中: '15–40 分钟', 长: '40 分钟以上',
+  速食: '<5 分钟', 短: '5–15 分钟', 中: '15–40 分钟', 长: '>40 分钟',
 };
 
 /** 时长与画质分档，顺序由服务端给。时长换成分钟区间，画质原样。 */

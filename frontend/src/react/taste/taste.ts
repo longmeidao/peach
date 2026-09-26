@@ -12,6 +12,7 @@
 import { sankey, sankeyLinkHorizontal } from 'd3-sankey';
 
 import { apiGet, apiSend, ApiError } from '../../api';
+import type { BarRow } from '../charts/bar-card';
 import type { ActivityCounts } from '../charts/heat';
 import { queryClient } from '../query';
 
@@ -193,42 +194,24 @@ export function rankShares(rows: RankRow[]): number[] {
   return strengths.map((value) => Math.max(0, Math.min(100, value / ceiling * 100)));
 }
 
-/** 雷达图的一个顶点。 */
-export interface RadarPoint { name: string; x: number; y: number; labelX: number; labelY: number }
+/** 按分数从高到低的前 `limit` 个维度。分数为 0 或非有限的行先滤掉。 */
+export const topScores = (rows: RankRow[], limit: number): BarRow[] =>
+  rows.filter((row) => Number.isFinite(Number(row.score)) && Number(row.score) > 0)
+    .map((row) => ({ name: row.name, value: Number(row.score) }))
+    .sort((a, b) => b.value - a.value).slice(0, limit);
 
-/** 雷达图几何：320×280 的画布、中心 (160,140)、值圈半径 100。 */
-export const RADAR_CENTER = { x: 160, y: 140 } as const;
-export const RADAR_GRID = [25, 50, 75, 100];
 /** 少于三个维度画不成面，三点以下不画。最多取前六个，再多标签互相压住。 */
 export const RADAR_MIN = 3;
 export const RADAR_MAX = 6;
 
-const radarAt = (index: number, count: number, radius: number): [number, number] => {
-  const angle = index / count * Math.PI * 2 - Math.PI / 2;
-  return [RADAR_CENTER.x + Math.cos(angle) * radius, RADAR_CENTER.y + Math.sin(angle) * radius];
-};
-
-/** 值多边形与标签位置。值为 0 或非有限的行先滤掉，按分数从高到低取前六。 */
-export function radarPoints(rows: RankRow[]): RadarPoint[] {
-  const values = rows
-    .filter((row) => Number.isFinite(Number(row.score)) && Number(row.score) > 0)
-    .slice().sort((a, b) => Number(b.score) - Number(a.score)).slice(0, RADAR_MAX);
-  if (values.length < RADAR_MIN) return [];
-  const max = Math.max(...values.map((row) => Number(row.score)));
-  return values.map((row, index) => {
-    const [x, y] = radarAt(index, values.length, Number(row.score) / max * 100);
-    const [labelX, labelY] = radarAt(index, values.length, 116);
-    return { name: row.name, x, y, labelX, labelY };
-  });
+/** 雷达图的几个顶点。 */
+export function radarRows(rows: RankRow[]): BarRow[] {
+  const values = topScores(rows, RADAR_MAX);
+  return values.length < RADAR_MIN ? [] : values;
 }
 
-/** 一圈网格的点串。 */
-export const radarRing = (radius: number, count: number): string =>
-  Array.from({ length: count }, (_, index) =>
-    radarAt(index, count, radius).map((value) => value.toFixed(2)).join(',')).join(' ');
-
-export const radarShape = (points: RadarPoint[]): string =>
-  points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+/** 排行条最多八条。 */
+export const RANK_MAX = 8;
 
 /** 桑基图的一个节点。`side` 决定它落在左边还是右边，也决定它的文字往哪边排。 */
 export interface FlowNode {

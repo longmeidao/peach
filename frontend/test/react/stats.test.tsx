@@ -159,7 +159,7 @@ it('库存那一层按时长、画质、文件类型各出一张分布图，页�
 
 it('分布图的分档：时长换成分钟区间，文件类型多的在前，播放次数长尾并档', () => {
   expect(lengthRows([{ k: '速食', n: 1 }, { k: '长', n: 2 }, { k: '超长', n: 3 }]))
-    .toEqual([{ name: '5 分钟内', value: 1 }, { name: '40 分钟以上', value: 2 }, { name: '超长', value: 3 }]);
+    .toEqual([{ name: '<5 分钟', value: 1 }, { name: '>40 分钟', value: 2 }, { name: '超长', value: 3 }]);
   expect(mediumRows([{ k: 'video', n: 4, bytes: 0 }, { k: 'account', n: 9, bytes: 0 }, { k: 'x', n: 1, bytes: 0 }]))
     .toEqual([{ name: '账号', value: 9 }, { name: '视频', value: 4 }, { name: 'x', value: 1 }]);
   expect(replayRows([{ k: 1, n: 52 }, { k: 2, n: 13 }, { k: 4, n: 6 }, { k: 7, n: 1 }, { k: 9, n: 1 }, { k: 12, n: 2 }]))
