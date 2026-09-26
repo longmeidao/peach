@@ -35,7 +35,7 @@ LIMIT = 30
 
 #: 键是 `<仓库相对路径>:<限定名>`，值是当前的分支数，只能往下改。
 BASELINE: dict[str, int] = {
-    "src/peach/web_batch.py:q_ads": 85,
+    "src/peach/web_batch.py:_scored_junk": 68,
     "scripts/scrape_codes.py:_scrape": 35,
     "scripts/localize_performer_names.py:collect": 64,
     "src/peach/web_resource_sync.py:_resource_orphan_plan": 60,

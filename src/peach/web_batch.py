@@ -28,7 +28,7 @@ from .task_runs import TaskRunHandle
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_catalog import COST, attach_card_performers
 from .web_resource_sync import clean_resource_orphans, vanished_asset_rows
-from .web_state import WebContract
+from .web_state import LEDGER_AGGREGATE_TTL, WebContract
 
 #: 批量操作在活动页上的名字。表里存 `operation`，人看的是这一列。
 BATCH_LABELS = {
@@ -273,6 +273,36 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
         raise ValueError("invalid junk kind")
     if status not in {"pending", "dismissed"}:
         raise ValueError("invalid junk status")
+    out, dismissed_ids = contract.cached(
+        "junk-scored", lambda: _scored_junk(contract), ttl=LEDGER_AGGREGATE_TTL)
+    pending = [item for item in out if item["id"] not in dismissed_ids]
+    dismissed = [item for item in out if item["id"] in dismissed_ids]
+    pool = dismissed if status == "dismissed" else pending
+    counts = {junk_kind: 0 for junk_kind in JUNK_KINDS}
+    for item in pool:
+        counts[item["junk_kind"]] += 1
+    filtered = [item for item in pool if not kind or item["junk_kind"] == kind]
+    # 缓存里那份是共享的，这一页的条目复制出来再挂演员，不改到下一次请求。
+    items = [dict(item) for item in filtered[offset:offset + limit]]
+    attach_card_performers(
+        contract, [item for item in items if item.get("medium") == "video"])
+    return {
+        "total": len(filtered),
+        "all_total": len(pool),
+        "pending_total": len(pending),
+        "dismissed_total": len(dismissed),
+        "counts": counts,
+        "kind": kind,
+        "status": status,
+        "items": items,
+    }
+
+
+def _scored_junk(contract: WebContract) -> tuple[list[dict], frozenset[int]]:
+    """全部候选按嫌疑分从高到低，连同用户已确认不是垃圾的 id。
+
+    与请求的类型、状态和分页无关：整份算一次（真实账本上两三秒），`q_ads` 按参数切。
+    """
     with contract.read_connection() as c:
         rows = _junk_rows(c)
         # 同番号是否存在明显更长的版本；只在 code 是真番号时才有意义。
@@ -397,26 +427,7 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
             d.pop("path", None)
             out.append(d)
     out.sort(key=lambda x: (-x["score"], -(x["size"] or 0)))
-    pending = [item for item in out if item["id"] not in dismissed_ids]
-    dismissed = [item for item in out if item["id"] in dismissed_ids]
-    pool = dismissed if status == "dismissed" else pending
-    counts = {junk_kind: 0 for junk_kind in JUNK_KINDS}
-    for item in pool:
-        counts[item["junk_kind"]] += 1
-    filtered = [item for item in pool if not kind or item["junk_kind"] == kind]
-    items = filtered[offset:offset + limit]
-    attach_card_performers(
-        contract, [item for item in items if item.get("medium") == "video"])
-    return {
-        "total": len(filtered),
-        "all_total": len(pool),
-        "pending_total": len(pending),
-        "dismissed_total": len(dismissed),
-        "counts": counts,
-        "kind": kind,
-        "status": status,
-        "items": items,
-    }
+    return out, frozenset(dismissed_ids)
 
 
 def _restore_staged_media(staged):

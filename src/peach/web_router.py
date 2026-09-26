@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 from .follow_discovery import MAX_SUGGESTIONS, MAX_TERM_LENGTH
+from .review_csv import candidate_root_version
 from .web_activity import (
     w_activity,
     w_feedback,
@@ -88,7 +89,7 @@ from .web_scraping import (
     q_scraping, q_scraping_amane_bridge, w_scraping_amane_check, w_scraping_amane_rebuild,
     w_scraping_check, w_scraping_cover, w_scraping_settings,
 )
-from .web_state import WebContract
+from .web_state import LEDGER_AGGREGATE_TTL, WebContract
 from .web_tasks import q_tasks
 from .web_timeline_thumbnails import q_thumbnail_jobs, q_timeline, w_thumbnail_jobs
 from .web_stats import (
@@ -229,11 +230,15 @@ def _get_taste(contract, args):
     return contract.cached(
         f"taste:{window}",
         lambda: q_taste(contract, {"window": window}),
+        ttl=LEDGER_AGGREGATE_TTL,
     )
 
 
 def _get_review(contract, args):
-    payload = contract.cached("review", lambda: q_review(contract))
+    # 候选文件由进程外的抓取脚本写，目录一变键就变；账本写入照常经 `cache_bust` 作废。
+    version = candidate_root_version(getattr(contract, "candidate_root", None))
+    payload = contract.cached(f"review:{version}", lambda: q_review(contract),
+                              ttl=LEDGER_AGGREGATE_TTL)
     # 数据管理页只要一个待复核条数。完整 payload 带着每条候选的全文，实测是
     # 兆级；卡片上的一个数字不值这趟传输，但计数本身仍来自同一份缓存快照，
     # 不另立一套口径。

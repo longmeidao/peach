@@ -395,6 +395,17 @@ class IngestPathTests(_ServiceCase):
         self.assertEqual(self.rows(), {})
 
 
+class IngestNotifiesTests(_ServiceCase):
+    def test_a_registered_file_tells_the_service_its_caches_are_stale(self):
+        """入库走扫描自己的连接；不通知的话，统计与复核要等缓存过期才看见新文件。"""
+        (self.media / "a.mp4").write_bytes(b"0" * 4)
+        notified = []
+        service = self.service(after_ingest=lambda: notified.append(True))
+        self.assertTrue(service._ingest("local", self.ledger("local", "a.mp4")))
+        self.assertFalse(service._ingest("local", self.ledger("local", "gone.mp4")))
+        self.assertEqual(notified, [True])
+
+
 class SettingsTests(_ServiceCase):
     def test_a_prefix_pointing_at_an_unknown_root_is_refused_on_save(self):
         service = self.service()
