@@ -1,17 +1,23 @@
 # 抓取复用与复现审计
 
-核验日期：2026-09-05；审计基线：`349048f`。架构方案见 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)，逐入口基线结论见 [审计 CSV](scraping-audit.csv)。下方问题列表是基线发现，实施状态以下节为准。
+这份审计回答两个问题：抓取脚本有没有重复造轮子；换一台干净机器、换一个用户，能不能复现同样的抓取结果。
+
+核验日期：2026-09-05；审计基线：`349048f`。架构方案见 [ADR-0024](adr/0024-mark-manifest-not-bundled-bytes.md)，逐入口的基线结论见 [审计 CSV](scraping-audit.csv)。CSV 记的是基线时的问题，哪些已经修好以下一节为准。
 
 ## 实施状态
 
-- 5 个内部重复入口已复用 RateLimiter／HostLimiter；图标下载使用共享 16 MiB 有界 transport，
-  保留首页单次请求缓存和图像策略。官网探测及 page_cache 显式持有自建 client 的关闭所有权。
-- 私有后缀采用离线 tldextract 5.3.2，GitHub Pages／Blogspot 独立租户与日本域名 POC 通过。
-- `/scraping` 接入定点高清封面、来源网络和 FC2 Cookie 配置；完整下载重新核对实际尺寸，
-  保留原图字节并拒绝低清覆盖。接口、凭据隔离与实际消费范围见 [来源采集](SOURCING.md)。
-- Instaloader 4.15.3 的 Bambi／LINX 匿名 POC 均为 ConnectionException；未取得独立登录会话，
-  不将匿名失败解释为所有登录用户都失败，也不把库的接口存在解释为稳定成功。
-- 整体 ADR 仍有来源清单、完整批量 GUI、标准模式、子进程网络统一及跨用户／平台验收缺口。
+基线指出的复用问题已按下面的方式收敛：
+
+- 5 个内部重复入口改用共享限流：封面的 `HostLimitedTransport` 建在 `scripting.HostLimiter` 上；事务所名册、人物链接、厂牌社媒头像三个入口用 `scripting.RateLimiter`；图标下载走共享的 16 MiB 有界 transport，保留首页单次请求缓存和图像策略。
+- 域名归属用离线 tldextract 5.3.2（实现在 `peach.link_repair`），GitHub Pages／Blogspot 独立租户与日本域名 POC 通过。
+- 官网探测与 page_cache 显式持有自建 client 的关闭所有权。
+- `/scraping` 接入了定点高清封面、来源网络和 FC2 Cookie 配置。完整下载后重新核对实际尺寸，保留原图字节，拒绝低清覆盖。接口、凭据隔离与实际消费范围见 [来源采集](SOURCING.md)。
+
+仍然开放的：
+
+- Instagram：Instaloader 4.15.3 的 Bambi／LINX 匿名 POC 均为 ConnectionException，独立登录会话未取得。匿名失败不能解释为所有登录用户都失败，库里有接口也不能解释为能稳定成功。
+- `studio_icons.Fetcher` 仍自带重试与退避，错误分类和缓存作用域还没并进共享实现。
+- ADR-0024 整体还缺来源清单、完整批量 GUI、标准模式、子进程网络统一，以及跨用户／平台验收，见「新用户复现差距」。
 
 ## 审计基线范围与结论
 
@@ -26,68 +32,64 @@
 | 复现／生命周期缺口 | 2 | FC2 Cookie 仅 CLI 接入；官网探测的 client 关闭边界有缺陷 |
 | 未发现足以判为重复造轮子的证据 | 8 | 有直接复用、固定上游参考或明确领域差异；不是永久豁免 |
 
-因此当前能够具体指认的复用问题涉及 **7/17 个入口**，另有 2 个入口的复现或运行缺口。不能把「写了 Python 脚本」「使用站点专用选择器」「没有直接依赖整个下载器」都算作错误。
+基线时能具体指认的复用问题涉及 **7/17 个入口**，另有 2 个入口有复现或运行缺口。「写了 Python 脚本」「使用站点专用选择器」「没有直接依赖整个下载器」都不算错误。
 
-## 复用问题
+## 基线问题留下的判据
+
+问题本身已修的，这里只留以后还用得上的判断规则。
 
 ### 社媒头像：缺的是成熟能力验证
 
-`harvest_social_avatars.py` 声明 Instagram 只记录链接，`studio_icons.named_avatars` 消费人工提供的 CDN 地址。当前源码和 REUSE 未登记 Instaloader／gallery-dl 头像解析的成功 POC 或拒绝证据，因此不能把局部 `web_profile_info` 429 和页面小图推导成自动解析不可行。
+`harvest_social_avatars.py` 对 Instagram 只记录链接，`studio_icons.named_avatars` 消费人工提供的 CDN 地址。源码和 REUSE 里都没有 Instaloader／gallery-dl 头像解析的成功 POC 或拒绝证据，所以不能拿局部 `web_profile_info` 429 和页面小图推出「自动解析不可行」。
 
-Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_info` 与 `profile_pic_url_hd` 分支；gallery-dl 也有 `InstagramAvatarExtractor`，支持 `/USER/avatar/` 与登录／匿名分支。它们都是应比较的成熟能力，但登录态跨账号 POC 未执行（未读取 Cookie），所以「已有接口」只等于接口存在。该问题在统计中归入社媒入口，图标入口不重复计数。
+Instaloader 4.15.3 的 `Profile.profile_pic_url` 实现含 `hd_profile_pic_url_info` 与 `profile_pic_url_hd` 分支；gallery-dl 也有 `InstagramAvatarExtractor`，支持 `/USER/avatar/` 与登录／匿名分支。两者都是应比较的成熟能力，但登录态跨账号 POC 未执行（未读取 Cookie），「已有接口」只等于接口存在。
 
-人工提供的 Bambi 图片直链与本机 `agency-avatars.json` 的图片文件编号一致；不带 Cookie、严格 TLS 请求返回 200、JPEG、1000×1000、92,068 字节，原图 SHA-256 为 `fc004f50edd9a3d684582eacf72b0521883ba42d40307304db062dc0cc931c1f`。文档不保存临时签名 URL。这一条只说明该直链当时可下载，地址发现本身没有测过。
+人工提供的 Bambi 图片直链与本机 `agency-avatars.json` 的图片文件编号一致：不带 Cookie、严格 TLS 请求返回 200、JPEG、1000×1000、92,068 字节，原图 SHA-256 为 `fc004f50edd9a3d684582eacf72b0521883ba42d40307304db062dc0cc931c1f`。文档不保存临时签名 URL。这只说明该直链当时可下载，地址发现本身没有测过。
 
-首选验证 Instaloader，不同时加入两套正式 Instagram 运行时。记录 Python／桌面包兼容性、依赖体积、会话导入、限流与账号身份结果后决定采用；GUI 会话导入不是手工维护 CDN URL。
+采用前的做法：首选验证 Instaloader，不同时加入两套正式 Instagram 运行时。记录 Python／桌面包兼容性、依赖体积、会话导入、限流与账号身份结果后再决定；GUI 会话导入不是手工维护 CDN URL。
 
-### 链接重发现：自写公共后缀判断有反例
+### 链接归属：可注册域相同不等于同一实体
 
-`rediscover_entity_links.registrable` 用末两段／三段域名和固定标签集合判断站点归属。直接执行当前函数：`a.github.io` 与 `b.github.io` 均返回 `github.io`，独立租户因此被 `same_site` 判为同站。`www.t-powers.co.jp` 与 `t-powers.co.jp` 的正例仍通过，单测只覆盖常见日文域名不足以证明通用正确。
+基线的自写后缀判断把 `a.github.io` 与 `b.github.io` 都判成 `github.io`，独立租户因此被当成同站；只测常见日文域名证明不了通用正确。tldextract 必须开 private suffix 处理并固定可离线使用的 PSL 快照，不能照搬默认参数。即使可注册域相同，账号页与共享主机路径仍要独立核验身份。
 
-采用 PSL 支持的成熟实现前先做小样本 POC；tldextract 为候选，必须开启 private suffix 处理并固定可离线使用的 PSL 快照，不能照搬其默认参数。可注册域相同也不等于实体归属相同，账号页与共享主机路径仍需独立身份核验。
+### JAV 封面：该复用的是限流，不是高清策略
 
-### JAV 封面：重复的是限流基础，不是高清策略
+限流扩展共享的 `HostLimiter`，不能直接替换成会让未配置主机不限速的写法。高清候选聚合本身有充分复用依据：REUSE 登记了 Javinizer-Go 固定 revision 的 DMM 映射和 MDCX 的 Prestige 协议模型。离线快照、严格番号核对、Range 尺寸探测和像素比较是 Peach 的质量策略，保留。
 
-`fetch_jav_covers.HostLimitedTransport` 自持 host→next_request，而 `scripting.HostLimiter` 已有主机匹配、时钟注入和线程锁。应扩展共享限流器的默认主机策略、连接生命周期和预算接口后复用，不能直接替换导致未配置主机不限速。
+### 厂牌图标与页面缓存
 
-高清候选聚合本身有充分复用证据：REUSE 已登记 Javinizer-Go 固定 revision 的 DMM 映射和 MDCX 的 Prestige 协议模型。离线快照、严格番号核对、Range 尺寸探测和像素比较属于 Peach 质量策略，保留。
+一次首页解析产生多个候选、图片判形和候选质量策略归 Peach；下载、错误分类、字节上限和缓存作用域应走共享实现。`page_cache.Site` 只适合公共页面缓存，不加作用域和 TTL 就不能拿来缓存登录资料。统一不是把所有调用硬塞进现有类，而是在已用模块上补齐共用契约。
 
-### 厂牌图标：重复取数器需要合并
+### 什么算重复的请求节拍
 
-`studio_icons.Fetcher` 自行实现连接请求、固定间隔、重试、内存缓存；`page_cache.Site`、共享 HTTP 和来源限流器已有对应基础。它直接 `client.get` 全量读取，也没有统一响应上限。保留一次首页解析产生多个候选、图片判形和候选质量策略；下载、错误分类、字节上限和缓存作用域改用共享实现。
+只有独立的节拍实现（「interval 减去 monotonic 时间差，再 sleep」）才计为重复，`scripting.RateLimiter.wait` 已覆盖这件事。来源特有的退避策略、单纯调用 sleep 或小型 HTTP 包装不自动计入：Babepedia 的失败策略留给统一错误语义处理，不凭它出现 sleep 就算重复。一个限流重复也不是重写整个入口的理由。
 
-`Site` 本身只适合当前公共页面缓存，不能不加作用域和 TTL 就拿来缓存登录资料。统一不是把所有调用生硬塞进现有类，而是在这些已用模块上补齐共用契约。
+### FC2 与官网探测
 
-### 三个入口重复计算请求节拍
-
-`harvest_agency_rosters.Site` 自持 `_last`，`harvest_performer_links.run` 与 `fetch_studio_avatar_candidates.main` 各自持有 `last`，三处均重复「interval 减去 monotonic 时间差，再 sleep」；这正是 `scripting.RateLimiter.wait` 已覆盖的能力。事务所名册、人物页身份和 unavatar 本身的复用成立，不因一个限流重复就重写整个入口。
-
-审计只把独立节拍实现计为重复；来源特有的退避策略、单纯调用 sleep 或小型 HTTP 包装不自动计入。因此 Babepedia 的失败策略留待统一错误语义，而不凭其出现 sleep 就增加重复数量。
-
-## 两个独立缺口
-
-- `fetch_fc2_metadata.py` 已复用 HTTPX 与按来源的连接配置；评论里的跨号关系与分片判断是领域逻辑，未发现成熟依赖完整覆盖的证据。问题是它的网络错误、预算和续跑没有接入 GUI／共享服务，不能因此称其整套解析是在造轮子。
-- `studio_sites.probe` 创建 `HttpxTransport(crawler_client())`，finally 调 `http.close()`；共享 `HttpxTransport` 对注入 client 设置 `_owns_client=False`，因此这次 close 不会关闭实际 client，调用者又未关闭它。当前实现不能保证每个请求立即释放连接。先修正所有权并复测原失败序列，再判断是否需要每请求独立 client；不能依据现有文字断言 HTTPX 池会必然泄漏。
+- `fetch_fc2_metadata.py` 复用了 HTTPX 与按来源的连接配置；评论里的跨号关系与分片判断是领域逻辑，没有成熟依赖能完整覆盖。基线时的问题是网络错误、预算和续跑没接入 GUI／共享服务，不是整套解析在造轮子。
+- 官网探测的连接释放问题先修所有权、复测原失败序列，再判断要不要每请求独立 client；不能只凭文字断言 HTTPX 连接池必然泄漏。
 
 ## 已有复用与历史证据
 
 - `scrape_codes.py` 调 `JavinizerGoProvider`，由外部 Javinizer-Go v1.5.2 查询，Peach 只做身份、字段候选、来源健康和复核。不是自研整套 JAV scraper。
 - `fetch_studio_avatar_candidates.py` 使用 unavatar 解析地址、平台 CDN 下载及 `LogoCandidateCache`。unavatar 是公共服务，随时可能改规则或收费，所以要有无 API key 的可用性测试和服务失败测试。
-- Gfriends 索引与头像审计复用原始索引、Pillow 和 `AvatarCandidateCache`；目录名录／本地化入口复用 `page_cache.Site`、`minnano_av`、`javdb`、名字链和 OpenCC。事务所名册的同名 `Site` 是脚本自有类，计入上面的内部重复。身份消歧仍需 Peach 承担。
-- FANBOX 已使用 curl_cffi 和 PixivUtil2 固定正文模型；Rule34Video 已部分使用 yt-dlp；其余归档／booru 官方接口及 Gofile 边界已在 REUSE 登记。这里只核对复用入口，没有对在线 provider 做端到端验收。
+- Gfriends 索引与头像审计复用原始索引、Pillow 和 `AvatarCandidateCache`；目录名录／本地化入口复用 `page_cache.Site`、`minnano_av`、`javdb`、名字链和 OpenCC。身份消歧仍需 Peach 承担。
+- FANBOX 使用 curl_cffi 和 PixivUtil2 固定正文模型；Rule34Video 部分使用 yt-dlp；其余归档／booru 官方接口及 Gofile 边界已在 REUSE 登记。这里只核对复用入口，没有对在线 provider 做端到端验收。
 - Git 中可指认的共享基础设施合并包括 `80b04d2`（UA／主机限流）、`053aed5`（番号归一化）、`c374601`（CSV）、`bdeddbc`（头像档位）。存在历史重复与后续合并证据，但不能把已删除实现重复算进当前 17 个入口。 <!-- copy-lint-disable-line -->
 
 ## 无代理刮削的实际机制
 
-Javinizer-Go v1.5.2 示例配置默认启用 r18dev，使用面向刮削器的 JSON 与专用 UA；支持按来源代理、CDN Referer、缓存和 r18 dump。**可用的聚合数据／本地缓存可以减少访问每个原站，不会让被阻断的原站凭空可达。** dump 需要先取得，缓存中的封面 URL 与原图字节也是两种资源。Peach 目前未证明已经接入其 dump 管理。
+结论先说：**可用的聚合数据／本地缓存能减少访问每个原站，不会让被阻断的原站凭空可达。**
 
-Movie Data Capture 的当前配置提供代理开关、超时／重试、来源优先级和仅补缺图；这些是选源与缓存策略，不是任意地区无代理可达的保证。本次只用其配置作行为对照，不把整个应用加入 Peach。上游绕过验证的可选分支不在 Peach 采用范围内。
+Javinizer-Go v1.5.2 示例配置默认启用 r18dev，使用面向刮削器的 JSON 与专用 UA；支持按来源代理、CDN Referer、缓存和 r18 dump。dump 需要先取得，缓存中的封面 URL 与原图字节也是两种资源。Peach 没有证明已经接入其 dump 管理。
 
-高清与代理没有必然关系。对维护者来说，多问几个高清源增加了遇到地域或网络限制的机会；普通用户可以先用可达源填齐。即使需要代理，也应由来源连接诊断决定，不能降低已能直接取得的高清图。
+Movie Data Capture 的配置提供代理开关、超时／重试、来源优先级和仅补缺图；这些是选源与缓存策略，不保证任意地区无代理可达。这里只用其配置作行为对照，不把整个应用加入 Peach；上游绕过验证的可选分支不在 Peach 采用范围内。
+
+高清与代理没有必然关系。多问几个高清源会增加遇到地域或网络限制的机会；普通用户可以先用可达源填齐。即使需要代理，也应由来源连接诊断决定，不能降低已能直接取得的高清图。
 
 ### 本机小样本
 
-主机权限下执行公开请求，每个目标每条路线一次，传输失败重试一次，严格 TLS，最多读取 64 KiB，不带 Cookie、不写 ledger。图片尺寸取自真实图片头，未用 URL 字样推断，也未将这次头部探测当作整图完整性校验。
+主机权限下执行公开请求，每个目标每条路线一次，传输失败重试一次，严格 TLS，最多读取 64 KiB，不带 Cookie、不写 ledger。图片尺寸取自真实图片头，未用 URL 字样推断，也未把这次头部探测当作整图完整性校验。
 
 | 目标 | 不使用应用环境代理 | 使用当前环境代理 | 已测图片尺寸 |
 | --- | --- | --- | --- |
@@ -96,11 +98,15 @@ Movie Data Capture 的当前配置提供代理开关、超时／重试、来源�
 | DMM 高清：GYAN-017 | 206，1 次 | 206，1 次 | 2184×1464 |
 | Prestige：ABW-232 图片 | ConnectTimeout，2 次 | 206，1 次 | 1024×690 |
 
-进程存在 HTTP_PROXY／HTTPS_PROXY／ALL_PROXY，但不输出其值。沙箱中的无代理请求均连接失败，故以主机权限复测结果作为上表依据；这仍未排除 TUN 或上游路由。FlowLens 的出口证据未取得，不能称「物理无代理」。r18 使用的是有界通用 UA HTTP 探测，未取得 Javinizer-Go 专用 UA／dump 的等价现场结果，不据此宣称其 provider 不可用。
+读这张表要知道的限制：
 
-取证脚本和脱敏 JSON 位于仓库外的 `attic/evidence/20260905-scraping-reproducibility/`，不随仓库分发。上面的网络结果绑定当时那台主机和那条线路，换地区或换出口就要重测。
+- 进程存在 HTTP_PROXY／HTTPS_PROXY／ALL_PROXY，但不输出其值。沙箱中的无代理请求均连接失败，所以上表以主机权限复测结果为准；这仍未排除 TUN 或上游路由。FlowLens 的出口证据未取得，不能称「物理无代理」。
+- r18 用的是有界通用 UA HTTP 探测，未取得 Javinizer-Go 专用 UA／dump 的等价现场结果，不据此宣称其 provider 不可用。
+- 结果绑定当时那台主机和那条线路，换地区或换出口就要重测。取证脚本和脱敏 JSON 在仓库外的 `attic/evidence/20260905-scraping-reproducibility/`，不随仓库分发。
 
 ## 新用户复现差距
+
+这张表是 ADR-0024 还没做完的部分：左列是能力，中列是当前源码做到哪一步，右列是要求。
 
 | 能力 | 当前源码 | ADR-0024 要求 |
 | --- | --- | --- |
@@ -122,4 +128,4 @@ Movie Data Capture 的当前配置提供代理开关、超时／重试、来源�
 - [gallery-dl Instagram 提取器](https://github.com/mikf/gallery-dl/blob/master/gallery_dl/extractor/instagram.py)：GPL-2.0，对照源码，未复制或引入；采用前锁定 revision 与真实输入验证。
 - [Movie Data Capture 配置](https://github.com/mvdctop/Movie_Data_Capture/blob/master/config.ini)：只作策略对照，不作为安装推荐或当前站点可达性证据。
 - [HTTPX 环境变量](https://www.python-httpx.org/environment_variables/)、[代理](https://www.python-httpx.org/advanced/proxies/)：环境和显式代理的语义。
-- [Public Suffix List](https://publicsuffix.org/list/)、[tldextract](https://github.com/john-kurkowski/tldextract)：域归属候选；含 private suffix 的 POC 与固定版本验收仍需实施。
+- [Public Suffix List](https://publicsuffix.org/list/)、[tldextract](https://github.com/john-kurkowski/tldextract)：域归属的成熟实现。
