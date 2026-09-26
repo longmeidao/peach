@@ -1,11 +1,11 @@
 {
  "counts": {
-  "aliases": 1609,
-  "entities": 980,
-  "links": 921,
+  "aliases": 1654,
+  "entities": 978,
+  "links": 912,
   "makers": 26,
   "memberships": 370,
-  "profiles": 708,
+  "profiles": 706,
   "refs": 2862
  },
  "entities": [
@@ -274,8 +274,8 @@
    "links": [
     {
      "kind": "official",
-     "label": "Cruse Group",
-     "url": "https://crusegroup.net/"
+     "label": "官网存档（2024-12）",
+     "url": "https://web.archive.org/web/20241212202131/https://crusegroup.net/"
     },
     {
      "kind": "social",
@@ -4624,8 +4624,8 @@
    "links": [
     {
      "kind": "official",
-     "label": "Cruse Group",
-     "url": "https://crusegroup.net/model/316"
+     "label": "HANAYA PROJECT",
+     "url": "https://hanaya-project.co.jp/model/aoi/"
     },
     {
      "kind": "social",
@@ -5968,7 +5968,16 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "宮澤エレン",
+     "source": "auto:performer-alias@926"
+    },
+    {
+     "alias": "小根森るる",
+     "source": "auto:performer-alias@926"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "乙花イブ",
@@ -7440,13 +7449,7 @@
     }
    ],
    "kind": "performer",
-   "links": [
-    {
-     "kind": "official",
-     "label": "Cruse Group",
-     "url": "http://www.crusegroup.net/model/"
-    }
-   ],
+   "links": [],
    "name": "伊东千奈美",
    "profile": {
     "fetched_at": "2026-09-25T04:36:18Z",
@@ -7632,7 +7635,16 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "小室みな",
+     "source": "auto:performer-alias@928"
+    },
+    {
+     "alias": "月島舞香",
+     "source": "auto:performer-alias@928"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "伊吹彩",
@@ -12530,11 +12542,6 @@
      "kind": "social",
      "label": "博客",
      "url": "http://blog.livedoor.jp/tsukasa_mikoto/"
-    },
-    {
-     "kind": "official",
-     "label": "Prime Agency",
-     "url": "http://prime-recruit.com/girlInfo.php?id=81"
     }
    ],
    "name": "司美琴",
@@ -12910,7 +12917,20 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "まゆたそ",
+     "source": "auto:performer-alias@933"
+    },
+    {
+     "alias": "まゆのゆま",
+     "source": "auto:performer-alias@933"
+    },
+    {
+     "alias": "裕木まゆ",
+     "source": "merge:auto:performer-alias@933"
+    }
+   ],
    "kind": "performer",
    "links": [
     {
@@ -12949,6 +12969,11 @@
     "source_url": "https://www.minnano-av.com/actress893468.html"
    },
    "refs": [
+    {
+     "id": "1053050",
+     "kind": "performer",
+     "provider": "avwikidb"
+    },
     {
      "id": "893468",
      "kind": "performer",
@@ -14398,6 +14423,10 @@
   },
   {
    "aliases": [
+    {
+     "alias": "堀千明",
+     "source": "merge:auto:performer-alias@916"
+    },
     {
      "alias": "川奈あいり",
      "source": "review:user+avbase-talent"
@@ -16530,7 +16559,28 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "九条咲和",
+     "source": "auto:performer-alias@904"
+    },
+    {
+     "alias": "倉木美麗",
+     "source": "auto:performer-alias@904"
+    },
+    {
+     "alias": "椿レオ",
+     "source": "auto:performer-alias@904"
+    },
+    {
+     "alias": "横山みな",
+     "source": "auto:performer-alias@904"
+    },
+    {
+     "alias": "水樹璃子",
+     "source": "auto:performer-alias@904"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "天音りおん",
@@ -18188,11 +18238,6 @@
    "kind": "performer",
    "links": [
     {
-     "kind": "official",
-     "label": "Cruse Group",
-     "url": "https://www.crusegroup.net/model/312"
-    },
-    {
      "kind": "social",
      "label": "X @miya_chiharuu",
      "url": "https://x.com/miya_chiharuu"
@@ -19089,7 +19134,24 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "古川菜摘",
+     "source": "auto:performer-alias@927"
+    },
+    {
+     "alias": "坂本眞帆",
+     "source": "auto:performer-alias@927"
+    },
+    {
+     "alias": "大川ひまわり",
+     "source": "auto:performer-alias@927"
+    },
+    {
+     "alias": "服部絢沙",
+     "source": "auto:performer-alias@927"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "小川ひまり",
@@ -20140,11 +20202,6 @@
      "url": "https://instagram.com/aikayamagishi"
     },
     {
-     "kind": "official",
-     "label": "Cruse Group",
-     "url": "https://www.crusegroup.net/model/221"
-    },
-    {
      "kind": "social",
      "label": "X @ayakayamagishi_",
      "url": "https://x.com/ayakayamagishi_"
@@ -20941,7 +20998,12 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "坂道系美〇女",
+     "source": "auto:performer-alias@902"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "川口あかり",
@@ -23420,7 +23482,16 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "橋本ななみ",
+     "source": "auto:performer-alias@924"
+    },
+    {
+     "alias": "雨宮おとは",
+     "source": "auto:performer-alias@924"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "新垣うみ",
@@ -23570,11 +23641,6 @@
    ],
    "kind": "performer",
    "links": [
-    {
-     "kind": "official",
-     "label": "Prime Agency",
-     "url": "http://prime-recruit.com/staff/kana_kusakabe/"
-    },
     {
      "kind": "social",
      "label": "X @Kana__Kusakabe",
@@ -26706,7 +26772,12 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "咲原静香",
+     "source": "auto:performer-alias@929"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "木ノ上露乃",
@@ -29197,7 +29268,12 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "葉山美空",
+     "source": "auto:performer-alias@908"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "柊木なな",
@@ -30054,7 +30130,16 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "杉村まみ",
+     "source": "auto:performer-alias@918"
+    },
+    {
+     "alias": "西川奈緒子",
+     "source": "auto:performer-alias@918"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "桜坂まみ",
@@ -32296,11 +32381,6 @@
    ],
    "kind": "performer",
    "links": [
-    {
-     "kind": "official",
-     "label": "Prime Agency",
-     "url": "http://prime-recruit.com/girlInfo.php?id=60"
-    },
     {
      "kind": "social",
      "label": "博客",
@@ -37550,7 +37630,16 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "立花千郷",
+     "source": "auto:performer-alias@931"
+    },
+    {
+     "alias": "駒場晴香",
+     "source": "auto:performer-alias@931"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "生駒はるな",
@@ -38168,7 +38257,56 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "ゆずき＠同人モデル",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "セレブ妻Ｚ",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "原田美香",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "吉川澪",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "吉川美緒",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "夏川さやか",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "小林杏",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "山科静音",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "星野さやか",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "橋本茉奈",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "澤いおり",
+     "source": "auto:performer-alias@921"
+    },
+    {
+     "alias": "蒼井ひなの",
+     "source": "auto:performer-alias@921"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "白咲花",
@@ -39671,7 +39809,16 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "夏目ヒカル",
+     "source": "auto:performer-alias@932"
+    },
+    {
+     "alias": "湊えふ",
+     "source": "auto:performer-alias@932"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "相原翼",
@@ -40013,48 +40160,24 @@
    ]
   },
   {
-   "aliases": [],
-   "kind": "performer",
-   "links": [],
-   "name": "真田さな",
-   "profile": {
-    "fetched_at": "2026-09-25T05:45:11Z",
-    "fields": {
-     "active_until": 2021,
-     "birth_date": "1996-03-14",
-     "birthplace": "東京都",
-     "blood_type": "A",
-     "bust_cm": 95,
-     "cup": "G",
-     "debut_date": "2016-09-01",
-     "debut_title": "巨乳の野球女子アスリートが興味津々でAV出演!忘れられない男子アスリートとのタフなSEXを求めオッパイをフルスイングするほど腰を振りまくる。撮影が終わっても満足できず、まさかの延長戦志願!!人生初3Pの腰振り千本ノックで息つく暇なくイキ続ける!!",
-     "debut_year": 2016,
-     "height_cm": 166,
-     "hip_cm": 90,
-     "hobbies": "ギター、バレーボール、バスケットボール",
-     "kana": "さなださな",
-     "romaji": "Sanada Sana",
-     "tags": [
-      "巨乳",
-      "巨尻",
-      "美乳",
-      "アナル"
-     ],
-     "waist_cm": 60
-    },
-    "source": "auto:performer-profile@manual-20260925T133857",
-    "source_url": "https://www.minnano-av.com/actress856687.html"
-   },
-   "refs": [
+   "aliases": [
     {
-     "id": "pnG5",
-     "kind": "performer",
-     "provider": "javdb"
+     "alias": "小金井なお",
+     "source": "auto:performer-alias@930"
+    },
+    {
+     "alias": "水樹まつり",
+     "source": "auto:performer-alias@930"
+    },
+    {
+     "alias": "真田さな",
+     "source": "merge:auto:performer-alias@930"
+    },
+    {
+     "alias": "真田みづ稀",
+     "source": "auto:performer-alias@930"
     }
-   ]
-  },
-  {
-   "aliases": [],
+   ],
    "kind": "performer",
    "links": [],
    "name": "真田美樹",
@@ -40091,6 +40214,11 @@
      "id": "1050836",
      "kind": "performer",
      "provider": "avwikidb"
+    },
+    {
+     "id": "pnG5",
+     "kind": "performer",
+     "provider": "javdb"
     },
     {
      "id": "856687",
@@ -40251,11 +40379,6 @@
    ],
    "kind": "performer",
    "links": [
-    {
-     "kind": "official",
-     "label": "Prime Agency",
-     "url": "http://prime-recruit.com/girlInfo.php?id=120"
-    },
     {
      "kind": "social",
      "label": "X @hanasakiian",
@@ -40637,11 +40760,6 @@
    "kind": "performer",
    "links": [
     {
-     "kind": "official",
-     "label": "Cruse Group",
-     "url": "https://www.crusegroup.net/model/460"
-    },
-    {
      "kind": "social",
      "label": "X @usui_ren",
      "url": "https://x.com/usui_ren"
@@ -40975,8 +41093,8 @@
    "links": [
     {
      "kind": "official",
-     "label": "Cruse Group",
-     "url": "https://www.crusegroup.net/model/307"
+     "label": "ARM プロモーション",
+     "url": "https://arm-p.com/models/"
     },
     {
      "kind": "social",
@@ -41346,7 +41464,12 @@
    ]
   },
   {
-   "aliases": [],
+   "aliases": [
+    {
+     "alias": "しらたま",
+     "source": "auto:performer-alias@925"
+    }
+   ],
    "kind": "performer",
    "links": [],
    "name": "神谷みく",
@@ -48505,47 +48628,6 @@
    ]
   },
   {
-   "aliases": [],
-   "kind": "performer",
-   "links": [],
-   "name": "裕木まゆ",
-   "profile": {
-    "fetched_at": "2026-09-25T04:56:57Z",
-    "fields": {
-     "birth_date": "1995-03-26",
-     "birthplace": "東京都",
-     "blog_url": "https://twitter.com/mayunoyuma",
-     "blood_type": "A",
-     "bust_cm": 72,
-     "cup": "B",
-     "debut_date": "2013-11-13",
-     "debut_title": "裕木まゆ Debut",
-     "debut_year": 2013,
-     "height_cm": 162,
-     "hip_cm": 80,
-     "hobbies": "お笑い、サウナ、料理、イラストを描くこと",
-     "kana": "まゆのゆま",
-     "romaji": "Mayuno Yuma",
-     "site_url": "http://cmore.jp/official/model_mayuno.html",
-     "tags": [
-      "ロリ",
-      "微乳",
-      "改名・移籍→改名(移籍なし)"
-     ],
-     "waist_cm": 51
-    },
-    "source": "auto:performer-profile@manual-20260925T124618",
-    "source_url": "https://www.minnano-av.com/actress893468.html"
-   },
-   "refs": [
-    {
-     "id": "1053050",
-     "kind": "performer",
-     "provider": "avwikidb"
-    }
-   ]
-  },
-  {
    "agency": {
     "name": "ACT",
     "source": "minnano-av:所属事務所"
@@ -53353,11 +53435,6 @@
    "kind": "performer",
    "links": [
     {
-     "kind": "official",
-     "label": "Production HARVESTARS(元・ALLURE)",
-     "url": "http://www.allurepro.com/models/index.html"
-    },
-    {
      "kind": "social",
      "label": "X @asami_yuma",
      "url": "https://x.com/asami_yuma"
@@ -55626,5 +55703,5 @@
  ],
  "format": 1,
  "source": "auto:seed",
- "version": "2026-09-25.1"
+ "version": "2026-09-26.1"
 }
