@@ -195,6 +195,28 @@ class LabelMakerTests(unittest.TestCase):
         found = rm_web.q_index(self.contract, "studios", q="BAZOOKA")
         self.assertEqual([(row["k"], row["n"]) for row in found["items"]], [("BAZOOKA", 1)])
 
+    def test_the_index_picks_each_makers_representative_from_every_layer(self):
+        """K M Produce 那格取 BAZOOKA 那部；妄想族自己没挂片，取 ABC/妄想族 那部。
+
+        K M Produce 名下最大的那部没有截图，不当代表作。搜名字时 label 那格取它自己的。
+        """
+        self.apply()
+        self.con.executemany("UPDATE asset SET snapshot_path='s.jpg',size=? WHERE id=?",
+                             [(500, 1), (200, 2), (900, 3)])
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,first_seen)"
+            " VALUES(4,'local',?,'d.mp4','video',999,'2026-01-01')", (r"R:\Media\d.mp4",))
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(4,5607,'studio','test',1.0)")
+        self.con.commit()
+        index = rm_web.q_index(self.contract, "studios")
+        self.assertEqual([(row["k"], row["rep"]) for row in index["items"]],
+                         [("K M Produce", 1), ("妄想族", 3)])
+        found = rm_web.q_index(self.contract, "studios", q="妄想族")
+        self.assertEqual([(row["k"], row["rep"]) for row in found["items"]],
+                         [("ABC/妄想族", 3), ("妄想族", 3)])
+
     def test_the_detail_carries_the_maker_beside_the_label(self):
         self.apply()
         studio = rm_web.q_item(self.contract, 3)["entity_refs"]["studio"]
