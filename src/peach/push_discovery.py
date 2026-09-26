@@ -598,10 +598,14 @@ class PushDiscoveryService:
         declared_roots, mounts, available: bool = True,
         debounce: float = DEBOUNCE_SECONDS, settle: float = SETTLE_SECONDS,
         ffprobe: Callable[[], object] | None = None,
+        after_ingest: Callable[[], None] | None = None,
     ):
         self.settings = PushDiscoverySettings(state_root)
         #: 取 ffprobe 的回调，登记完视频当场探时长用；每次现取，装上 FFmpeg 不必重启。
         self.ffprobe = ffprobe
+        #: 登记落库之后调一次。入库走 `scan` 自己的连接，不经过 `write_transaction`，
+        #: 服务里的聚合缓存靠它作废，新文件才会立刻出现在统计与复核里。
+        self.after_ingest = after_ingest
         self.secret = WebhookSecret(secrets_root)
         self.db_path = Path(db_path)
         self.declared_roots = {key: tuple(value) for key, value in declared_roots.items()}
@@ -636,6 +640,8 @@ class PushDiscoveryService:
         # 附属文件按「处理完了」计：文件在，只是按规则不登记，不是「文件不在」。
         if result.found and not result.sidecar:
             self._measure(location, path)
+        if result.found and self.after_ingest:
+            self.after_ingest()
         return result.found
 
     def _measure(self, location: str, path: str) -> None:

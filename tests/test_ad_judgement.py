@@ -7,7 +7,9 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
+from peach import web_batch
 from peach.web_contract import (
     BUNDLE_DIR_ASSETS,
     CONTENT_BYTES,
@@ -248,6 +250,21 @@ class ResourceJunkQueueTests(unittest.TestCase):
 
         w_batch(self.contract, {"ids": [20], "operation": "reconsider-junk"})
         self.assertEqual(q_ads(self.contract, limit=200)["pending_total"], 3)
+
+    def test_one_scoring_serves_every_kind_status_and_page(self):
+        """打分与类型、状态、分页无关：算一次，各种切法共用；一页里的条目改不到下一页。"""
+        self.add(30, "115", r"B:\\广告\\hayob9.com.jpg", "image", 28000)
+        self.add(31, "115", r"B:\\MIB\\Mib19.com.zip", "archive", 14 * 1024**3)
+        with mock.patch.object(web_batch, "_scored_junk", wraps=web_batch._scored_junk) as scored:
+            first = q_ads(self.contract, limit=1)
+            archives = q_ads(self.contract, limit=200, kind="archive")
+            dismissed = q_ads(self.contract, limit=200, status="dismissed")
+        self.assertEqual(scored.call_count, 1)
+        self.assertEqual(first["total"], 2)
+        self.assertEqual([item["id"] for item in archives["items"]], [31])
+        self.assertEqual(dismissed["items"], [])
+        first["items"][0]["why"] = ["被改过"]
+        self.assertNotEqual(q_ads(self.contract, limit=1)["items"][0]["why"], ["被改过"])
         self.assertEqual(q_ads(
             self.contract, limit=200, status="dismissed")["items"], [])
 

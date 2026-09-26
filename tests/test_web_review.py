@@ -148,6 +148,17 @@ class ReviewQueueTests(unittest.TestCase):
     def _auto(self):
         return auto_apply_metadata(self.contract.database, self.candidates)
 
+    def test_a_new_candidate_file_shows_up_without_waiting_for_the_cache(self):
+        """候选文件由进程外的脚本写，没有 `cache_bust`；目录一变，复核页就要重算。"""
+        before = rm_web.dispatch_api_get(self.contract, "/api/review", {})
+        self.write_logo_candidates([{
+            "studio": "Moodyz", "handle": "moodyz", "platform": "x",
+            "resolved_url": "https://example.test/moodyz.png", "saved": "", "accepted": "",
+        }])
+        after = rm_web.dispatch_api_get(self.contract, "/api/review", {})
+        self.assertIsNone(before["sources"]["studio_logos"])
+        self.assertEqual(after["sources"]["studio_logos"], "studio-logo-candidate-20260818.csv")
+
     def test_auto_apply_commits_in_batches_and_keeps_what_landed_before_a_stop(self):
         """整库一趟能有上万条。一个事务包到底的话，写锁全程被占着，界面上的复核与编辑
         都得排队；任务中途停下来，已经判完的也跟着回滚。分批提交两头都解决。

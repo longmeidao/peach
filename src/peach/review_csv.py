@@ -154,6 +154,18 @@ def latest_candidate_file(category: str, root: Path | None = None) -> Path | Non
 MULTI_BATCH_CATEGORIES = frozenset({"metadata_fields"})
 
 
+def candidate_root_version(root: Path | None = None) -> int | None:
+    """候选目录的修改时间，读缓存拿它当键的一部分。
+
+    候选文件都直接放在这一层：新增批次、改名替换与删除都会改它，原地覆写不会，
+    那一种由缓存的时间上限兜底。
+    """
+    try:
+        return (root or GENERATED_DIR).stat().st_mtime_ns
+    except OSError:
+        return None
+
+
 def candidate_files(category: str, root: Path | None = None) -> list[Path]:
     """这一类的候选文件，按证据优先级排列：先读的那份说了算。
 
