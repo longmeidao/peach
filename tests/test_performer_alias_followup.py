@@ -365,6 +365,21 @@ class LandingTests(Case):
         with self.database.read_connection() as connection:
             self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
 
+    def test_an_unrelated_orphan_row_does_not_block_a_merge(self):
+        """库里早有一条与实体无关的违规行时，合并照样落；那条行原样留着。"""
+        momoka = self.entity("神山ももか")
+        other = self.entity("雫つむぎ")
+        with self.database.write_transaction(notify=False) as connection:
+            connection.execute(
+                "INSERT INTO follow_item(id,source_id,external_id,title,release_key,"
+                "first_seen_at,last_seen_at) VALUES(1,999,'x','orphan','x',?,?)", (STAMP, STAMP))
+        summary = self.run_followup(momoka)
+        self.assertEqual(summary["merged"]["from"], other)
+        self.assertFalse(self.exists(other))
+        with self.database.read_connection() as connection:
+            self.assertEqual([tuple(row)[:3] for row in connection.execute("PRAGMA foreign_key_check")],
+                             [("follow_item", 1, "follow_source")])
+
     def exists(self, entity_id: int) -> bool:
         with self.database.read_connection() as connection:
             return connection.execute("SELECT 1 FROM entity WHERE id=?", (entity_id,)).fetchone() is not None

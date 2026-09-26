@@ -712,7 +712,11 @@ def merge_one_person(contract, entity_id: int, rows: list[dict], batch: str) -> 
     只在被占用的写法全指向同一条另外的实体时合：指向两条以上，页上的人比账本里多，
     那不是一对。保留作品多的一侧；一样多保留页上主名那一侧，再一样保留先登记的。
     合并不可逆，先按 `peach-ledger-write` 把账本备到数据库目录，托盘按备份保留规则清退；
-    合并后外键校验不为 0 就抛错让事务回滚。占用行改判成「合并」。
+    合并后外键校验多出违规就抛错让事务回滚。占用行改判成「合并」。
+
+    校验比的是合并前后的差：合并之前库里就有的违规不是这次合并造成的。按全库绝对数判
+    的话，别处一条孤儿行就让所有合并一起回滚——本机曾因一条已删关注源留下的条目，
+    同一天六次合并全部失败。
     """
     taken = [row for row in rows if row["action"] == TAKEN and row["site"] in MERGE_SITES]
     owners = {int(row.get("owner") or 0) for row in taken} - {0}
@@ -736,9 +740,11 @@ def merge_one_person(contract, entity_id: int, rows: list[dict], batch: str) -> 
     with contract.database.write_transaction() as connection:
         if _names(connection, source_id) is None or _names(connection, target_id) is None:
             return None
+        existing = {tuple(row) for row in connection.execute("PRAGMA foreign_key_check")}
         moved = merge_entity(connection, target_id=target_id, source_id=source_id,
                              source_name=absorbed, alias_source=f"merge:{batch}")
-        broken = connection.execute("PRAGMA foreign_key_check").fetchall()
+        broken = [row for row in connection.execute("PRAGMA foreign_key_check")
+                  if tuple(row) not in existing]
         if broken:
             raise RuntimeError(f"合并实体 {source_id} 进 {target_id} 后外键校验有 {len(broken)} 条违规")
     contract.cache_bust()

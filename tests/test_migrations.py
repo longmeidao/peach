@@ -25,7 +25,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -43,7 +43,7 @@ class MigrationTests(unittest.TestCase):
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "genre_decision", "asset_subtitle", "task_run", "performer_profile", "code_sample_image",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038", "0039"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -324,8 +324,9 @@ class MigrationTests(unittest.TestCase):
         base_migrations.mkdir()
         for path in sorted(MIGRATIONS.glob("*.sql")):
             # 0024 重建 follow_playback，必须与建表的 0022 一起排除；0038 给每张表挂
-            # 版本号触发器，被排除的迁移建的表这时还不存在，它也要等到后面一起应用。
-            if not path.name.startswith(("0020_", "0021_", "0022_", "0024_", "0038_")):
+            # 版本号触发器、0039 清 follow_playback 的孤儿行，被排除的迁移建的表这时还
+            # 不存在，它们也要等到后面一起应用。
+            if not path.name.startswith(("0020_", "0021_", "0022_", "0024_", "0038_", "0039_")):
                 shutil.copyfile(path, base_migrations / path.name)
         sqlite3.connect(self.db).close()
         upgrade(self.db, base_migrations)
@@ -859,6 +860,51 @@ class ExternalRefUniquenessTests(unittest.TestCase):
         self.connection.commit()
         self.assertEqual(self.connection.execute(
             "SELECT count(*) FROM entity_external_ref").fetchone()[0], 0)
+
+
+class OrphanSourceRowsTests(unittest.TestCase):
+    """0039：删来源时没跟着走的子表行被清掉，还有主人的原样留下。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name).resolve()
+        self.db = self.root / "ledger.db"
+        below = self.root / "below-0039"
+        below.mkdir()
+        for path in sorted(MIGRATIONS.glob("*.sql")):
+            if path.name < "0039":
+                shutil.copyfile(path, below / path.name)
+        sqlite3.connect(self.db).close()
+        upgrade(self.db, below)
+        connection = sqlite3.connect(self.db)
+        # 和服务的连接一样不开外键，才造得出生产上那种孤儿行。
+        connection.executescript("""
+          INSERT INTO follow_source(id,provider,ref,label,url,created_at,updated_at)
+            VALUES(1,'rule34xxx','kept','kept','https://x.test/kept','t','t');
+          INSERT INTO follow_item(id,source_id,external_id,title,release_key,first_seen_at,last_seen_at)
+            VALUES(10,1,'a','kept','a','t','t'), (11,106,'b','orphan','b','t','t');
+          INSERT INTO follow_playback(follow_item_id,play_count) VALUES(10,1),(11,1),(12,1);
+          INSERT INTO feed_source(id,kind,url,created_at) VALUES(1,'javdb_actor','https://j.test/1','t');
+          INSERT INTO feed_item(id,source_id,item_key,first_seen) VALUES(20,1,'k','t'),(21,9,'k','t');
+          INSERT INTO feed_discovery(id,code,source_id,discovered_at)
+            VALUES(30,'ABC-001',1,'t'),(31,'ABC-002',9,'t');
+        """)
+        connection.commit()
+        connection.close()
+
+    def test_rows_of_removed_sources_are_cleared(self):
+        upgrade(self.db, MIGRATIONS)
+        connection = sqlite3.connect(self.db)
+        self.addCleanup(connection.close)
+        self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+        self.assertEqual([row[0] for row in connection.execute("SELECT id FROM follow_item")], [10])
+        self.assertEqual([row[0] for row in connection.execute(
+            "SELECT follow_item_id FROM follow_playback")], [10])
+        self.assertEqual([row[0] for row in connection.execute("SELECT id FROM feed_item")], [20])
+        # 发现过的作品是「这个番号还没入库」，不随订阅消失，只断开来源。
+        self.assertEqual(connection.execute(
+            "SELECT id,source_id FROM feed_discovery ORDER BY id").fetchall(), [(30, 1), (31, None)])
 
 
 if __name__ == "__main__":

@@ -264,7 +264,15 @@ def entity_following(connection: sqlite3.Connection, entity_id: int) -> bool:
 
 
 def remove_source(connection: sqlite3.Connection, source_id: int) -> None:
-    connection.execute("DELETE FROM feed_source WHERE id=?", (int(source_id),))
+    """删掉一条订阅源，连同它的条目；发现过的作品留着，只断开来源。
+
+    子表按建表时声明的 `ON DELETE CASCADE` / `SET NULL` 显式处理：连接的
+    `PRAGMA foreign_keys` 是 OFF，库自己不会做。
+    """
+    source_id = int(source_id)
+    connection.execute("DELETE FROM feed_item WHERE source_id=?", (source_id,))
+    connection.execute("UPDATE feed_discovery SET source_id=NULL WHERE source_id=?", (source_id,))
+    connection.execute("DELETE FROM feed_source WHERE id=?", (source_id,))
 
 
 def set_enabled(connection: sqlite3.Connection, source_id: int, enabled: bool) -> None:
