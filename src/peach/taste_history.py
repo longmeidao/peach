@@ -591,6 +591,112 @@ def history_source_count(store_path: Path) -> int:
         return 0
 
 
+@dataclass(frozen=True)
+class _TasteVisit:
+    """一次落在口味站上的访问，只留汇总要用的那几样，时间窗筛选靠 `visited_at`。"""
+
+    visited_at: str
+    domain: str
+    day: str
+    hour: tuple[int, int]
+    tags: tuple[str, ...]
+    creators: tuple[str, ...]
+    categories: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class _HistoryRows:
+    """历史库解析一遍后的结果。`visited` 是去重后全部访问的时间，按查询顺序。"""
+
+    sources: tuple[dict, ...]
+    visited: tuple[str, ...]
+    taste: tuple[_TasteVisit, ...]
+
+
+#: 按历史库文件的版本缓存解析结果。历史库只在导入与刷新时变，逐条解析网址要十几秒；
+#: 账本写入与它无关，不该连带重算。键里带 `-wal` 的版本：WAL 模式下写入先落在那里。
+_HISTORY_ROWS: dict[tuple, _HistoryRows] = {}
+
+
+def _store_version(store_path: Path) -> tuple:
+    version = [str(store_path)]
+    for path in (store_path, store_path.with_name(store_path.name + "-wal")):
+        try:
+            stat = path.stat()
+        except OSError:
+            version.append(None)
+        else:
+            version.append((stat.st_mtime_ns, stat.st_size))
+    return tuple(version)
+
+
+def _read_history_rows(store_path: Path) -> _HistoryRows | None:
+    with closing(sqlite3.connect(store_path)) as store:
+        store.row_factory = sqlite3.Row
+        try:
+            source_rows = tuple(dict(row) for row in store.execute(
+                "SELECT s.source_key,s.browser,s.profile,s.host,s.first_seen_at,s.last_seen_at,"
+                "count(v.visit_key) visits,min(v.visited_at) range_start,max(v.visited_at) range_end "
+                "FROM history_source s LEFT JOIN history_visit v ON v.source_key=s.source_key "
+                "GROUP BY s.source_key ORDER BY s.last_seen_at DESC,s.browser,s.profile"
+            ))
+            rows = store.execute(
+                "SELECT v.visited_at,v.url FROM history_visit v "
+                "JOIN history_source s ON s.source_key=v.source_key"
+            )
+            seen: set[tuple[str, int]] = set()
+            visited: list[str] = []
+            taste: list[_TasteVisit] = []
+            for row in rows:
+                visited_at, url = str(row["visited_at"]), str(row["url"])
+                try:
+                    moment = datetime.fromisoformat(visited_at)
+                    fingerprint = (url, int(moment.timestamp()))
+                except ValueError:
+                    continue
+                if fingerprint in seen:
+                    continue
+                seen.add(fingerprint)
+                visited.append(visited_at)
+                domain, row_tags, row_creators = _url_candidates(url)
+                if not domain or not _is_taste_domain(domain):
+                    # 不在口味站上的访问只计入访问数与时间范围：网址候选只从口味站取。
+                    continue
+                if moment.tzinfo is None:
+                    moment = moment.replace(tzinfo=UTC)
+                moment = moment.astimezone(HONG_KONG_TIMEZONE)
+                categories = []
+                for tag in row_tags:
+                    compact = tag.replace(" ", "").replace("_", "")
+                    categories.extend(category for category, terms in CATEGORY_TERMS.items()
+                                      if compact in terms or tag in terms)
+                taste.append(_TasteVisit(
+                    visited_at, domain, moment.date().isoformat(), (moment.weekday(), moment.hour),
+                    tuple(row_tags), tuple(row_creators), tuple(categories)))
+        except sqlite3.DatabaseError:
+            return None
+    return _HistoryRows(source_rows, tuple(visited), tuple(taste))
+
+
+def _history_rows(store_path: Path) -> _HistoryRows | None:
+    version = _store_version(store_path)
+    cached = _HISTORY_ROWS.get(version)
+    if cached is None:
+        cached = _read_history_rows(store_path)
+        if cached is None:
+            return None
+        # 只留最新一版：旧版本的键再也不会被问到。
+        _HISTORY_ROWS.clear()
+        _HISTORY_ROWS[version] = cached
+    return cached
+
+
+def warm_history_dashboard(store_path: Path) -> None:
+    """把历史库先解析一遍：口味页首屏要的访问汇总就不用等用户点开时再算。"""
+    if store_path.is_file():
+        _history_rows(store_path)
+
+
 def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str, object]:
     empty = {
         "visits": 0, "sources": [], "range_start": None, "range_end": None,
@@ -599,86 +705,46 @@ def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str
     }
     if not store_path.is_file():
         return empty
-    with closing(sqlite3.connect(store_path)) as store:
-        store.row_factory = sqlite3.Row
-        try:
-            source_rows = [dict(row) for row in store.execute(
-                "SELECT s.source_key,s.browser,s.profile,s.host,s.first_seen_at,s.last_seen_at,"
-                "count(v.visit_key) visits,min(v.visited_at) range_start,max(v.visited_at) range_end "
-                "FROM history_source s LEFT JOIN history_visit v ON v.source_key=s.source_key "
-                "GROUP BY s.source_key ORDER BY s.last_seen_at DESC,s.browser,s.profile"
-            )]
-            query = (
-                "SELECT v.visited_at,v.url FROM history_visit v "
-                "JOIN history_source s ON s.source_key=v.source_key"
-            )
-            params: tuple[str, ...] = ()
-            if since:
-                query += " WHERE v.visited_at>=?"
-                params = (since,)
-            rows = store.execute(query, params)
-        except sqlite3.DatabaseError:
-            return empty
-
-        tags: Counter[str] = Counter()
-        creators: Counter[str] = Counter()
-        creator_domains: dict[str, Counter[str]] = defaultdict(Counter)
-        categories: Counter[str] = Counter()
-        domains: Counter[str] = Counter()
-        seen: set[tuple[str, int]] = set()
-        range_start: str | None = None
-        range_end: str | None = None
-        visits = 0
-        activity_days: Counter[str] = Counter()
-        activity_hours: Counter[tuple[int, int]] = Counter()
-        for row in rows:
-            visited_at, url = str(row["visited_at"]), str(row["url"])
-            try:
-                fingerprint = (url, int(datetime.fromisoformat(visited_at).timestamp()))
-            except ValueError:
-                continue
-            if fingerprint in seen:
-                continue
-            seen.add(fingerprint)
-            visits += 1
-            range_start = visited_at if range_start is None or visited_at < range_start else range_start
-            range_end = visited_at if range_end is None or visited_at > range_end else range_end
-            domain, row_tags, row_creators = _url_candidates(url)
-            if domain and _is_taste_domain(domain):
-                domains[domain] += 1
-                moment = datetime.fromisoformat(visited_at)
-                if moment.tzinfo is None:
-                    moment = moment.replace(tzinfo=UTC)
-                moment = moment.astimezone(HONG_KONG_TIMEZONE)
-                activity_days[moment.date().isoformat()] += 1
-                activity_hours[(moment.weekday(), moment.hour)] += 1
-            tags.update(row_tags)
-            creators.update(row_creators)
-            if domain:
-                for creator in row_creators:
-                    creator_domains[creator.casefold().strip()][domain] += 1
-            for tag in row_tags:
-                compact = tag.replace(" ", "").replace("_", "")
-                for category, terms in CATEGORY_TERMS.items():
-                    if compact in terms or tag in terms:
-                        categories[category] += 1
-        return {
-            "visits": visits,
-            "sources": source_rows,
-            "range_start": range_start,
-            "range_end": range_end,
-            "tags": tags,
-            "creators": creators,
-            "creator_domains": creator_domains,
-            "categories": categories,
-            "domains": domains,
-            "activity": {
-                "timezone": "UTC+08:00",
-                "days": [{"date": day, "count": count} for day, count in sorted(activity_days.items())],
-                "hours": [{"weekday": day, "hour": hour, "count": count}
-                          for (day, hour), count in sorted(activity_hours.items())],
-            },
-        }
+    history = _history_rows(store_path)
+    if history is None:
+        return empty
+    # 与 SQL 的 `visited_at>=?` 同一个比较：两边都是按字符串比。行序保持查询出来的
+    # 顺序，计数相同的几项在 `most_common` 里的先后因此不变。
+    visited = [value for value in history.visited if value >= since] if since else history.visited
+    taste = [visit for visit in history.taste if visit.visited_at >= since] if since else history.taste
+    tags: Counter[str] = Counter()
+    creators: Counter[str] = Counter()
+    creator_domains: dict[str, Counter[str]] = defaultdict(Counter)
+    categories: Counter[str] = Counter()
+    domains: Counter[str] = Counter()
+    activity_days: Counter[str] = Counter()
+    activity_hours: Counter[tuple[int, int]] = Counter()
+    for visit in taste:
+        domains[visit.domain] += 1
+        activity_days[visit.day] += 1
+        activity_hours[visit.hour] += 1
+        tags.update(visit.tags)
+        creators.update(visit.creators)
+        for creator in visit.creators:
+            creator_domains[creator.casefold().strip()][visit.domain] += 1
+        categories.update(visit.categories)
+    return {
+        "visits": len(visited),
+        "sources": [dict(row) for row in history.sources],
+        "range_start": min(visited) if visited else None,
+        "range_end": max(visited) if visited else None,
+        "tags": tags,
+        "creators": creators,
+        "creator_domains": creator_domains,
+        "categories": categories,
+        "domains": domains,
+        "activity": {
+            "timezone": "UTC+08:00",
+            "days": [{"date": day, "count": count} for day, count in sorted(activity_days.items())],
+            "hours": [{"weekday": day, "hour": hour, "count": count}
+                      for (day, hour), count in sorted(activity_hours.items())],
+        },
+    }
 
 
 def _epoch(value: object) -> float | None:
@@ -1133,7 +1199,13 @@ def _tokens(value: str) -> set[str]:
 
 
 def _is_taste_domain(domain: str) -> bool:
-    return any(domain == suffix or domain.endswith(f".{suffix}") for suffix in TASTE_DOMAIN_SUFFIXES)
+    # 逐级去掉最左一段查集合：`a.b.kemono.su` 依次查 `a.b.kemono.su`、`b.kemono.su`、
+    # `kemono.su`，与「等于某个后缀或以 `.后缀` 结尾」同义，不必每条网址扫一遍名单。
+    while domain:
+        if domain in TASTE_DOMAIN_SUFFIXES:
+            return True
+        _, _, domain = domain.partition(".")
+    return False
 
 
 def _creator_candidate(value: str) -> str | None:

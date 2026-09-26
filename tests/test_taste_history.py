@@ -304,6 +304,39 @@ class TasteHistoryTests(unittest.TestCase):
         self.assertTrue(all(row["items"] > 0 for row in analysis["explore"]))
         self.assertIn("不合口味", analysis["next_steps"][-1]["detail"])
 
+    def test_history_is_parsed_once_per_store_version(self):
+        def export(name, url, moment):
+            path = self.root / name
+            path.write_text(json.dumps([{"url": url, "dt": moment, "metadata": None}]), encoding="utf-8")
+            return path
+
+        store = self.root / "sources" / "history.sqlite"
+        import_history_exports([export("a.json", "https://onlyfans.com/alice", 1_700_000_000)],
+                               store, host="test-host")
+        reads = []
+        original = taste_history._read_history_rows
+
+        def counted(path):
+            reads.append(path)
+            return original(path)
+
+        with mock.patch.object(taste_history, "_read_history_rows", side_effect=counted):
+            taste_history.warm_history_dashboard(store)
+            first = taste_history._history_dashboard_evidence(store, None)
+            recent = taste_history._history_dashboard_evidence(store, "2099-01-01T00:00:00+00:00")
+            self.assertEqual(len(reads), 1)
+            self.assertEqual(first["visits"], 1)
+            self.assertEqual(recent["visits"], 0)
+            self.assertEqual(recent["sources"], first["sources"])
+
+            import_history_exports([export("b.json", "https://fansly.com/bob", 1_700_000_100)],
+                                   store, host="test-host")
+            second = taste_history._history_dashboard_evidence(store, None)
+        self.assertEqual(len(reads), 2)
+        self.assertEqual(second["visits"], 2)
+        self.assertEqual(set(second["creators"]), {"alice", "bob"})
+        self.assertEqual(second["range_end"], datetime.fromtimestamp(1_700_000_100, UTC).isoformat())
+
 
 if __name__ == "__main__":
     unittest.main()

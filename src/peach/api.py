@@ -144,6 +144,19 @@ def _restore_task_center(contract) -> None:
         LOGGER.info("task center requeued %s followup(s)", len(requeued))
 
 
+async def _warm_taste_history(settings: PeachSettings, contract) -> None:
+    """口味页要的浏览历史汇总，开机后在后台先解析一遍，首次打开不再等七八秒。"""
+    if not settings.configured:
+        return
+    from . import taste_history
+    try:
+        await asyncio.to_thread(taste_history.warm_history_dashboard,
+                                contract.taste_history_store)
+    except Exception:
+        # 预热失败不影响服务启动，口味页照旧在第一次打开时自己解析。
+        LOGGER.debug("taste history warmup failed", exc_info=True)
+
+
 def create_app(
     settings: PeachSettings | None = None,
     sync: LedgerSync | None = None,
@@ -288,6 +301,7 @@ def create_app(
         automatic_updates.start()
         push_discovery.start()
         warmup = asyncio.create_task(warm_startup_entries())
+        taste_warmup = asyncio.create_task(_warm_taste_history(settings, contract))
         if mdns is not None:
             try:
                 await asyncio.to_thread(mdns.start)
@@ -298,6 +312,7 @@ def create_app(
             yield
         finally:
             warmup.cancel()
+            taste_warmup.cancel()
             follow_scheduler.stop()
             feed_scheduler.stop()
             automatic_updates.stop()
