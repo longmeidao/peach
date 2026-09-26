@@ -2798,7 +2798,7 @@ class ApplyMetadataTagsTests(unittest.TestCase):
             self.assertEqual(row[0], "approved")
             self.assertEqual(json.loads(row[1])["candidate_key"],
                              "TRE-080:tags:javbus:abc",
-                             "留痕必须带候选身份，_metadata_decision_is_stale 靠它判过期")
+                             "留痕必须带候选身份，metadata_decision_is_stale 靠它判过期")
 
     def test_dry_run_never_touches_the_database(self):
         with tempfile.TemporaryDirectory() as tmp:

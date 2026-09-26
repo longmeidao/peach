@@ -4,7 +4,10 @@
 patch `read_candidates` 与 `_review_rows`，代码搬走后若仍打在 `web_contract` 上，
 patch 会静默失效——不报错，一路跑到断言才炸。
 """
+import contextlib
 import csv
+import importlib.util
+import io
 import json
 import os
 import re
@@ -777,11 +780,14 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(note["rule"], "adr-0038-planning-alias-resolved-sougouwiki")
 
     def test_a_planning_alias_with_no_evidence_still_goes_to_review(self):
-        """解不出就交人工。这一层不从宣传语里猜人名，ADR-0025 否决过那件事。"""
-        self._asset(126, "FC2-PPV-2486345", "FC2-PPV-2486345.mp4")
+        """解不出就交人工。这一层不从宣传语里猜人名，ADR-0025 否决过那件事。
+
+        FC2 番号不走这条（ADR-0079，见下面的自动否决），这里用一个素人系番号。
+        """
+        self._asset(126, "300MIUM-600", "300MIUM-600.mp4")
         self.write_metadata_rows([
             {"item_key": "NOPE", "field": "performers", "current": "",
-             "code": "FC2-PPV-2486345", "source": "javdb",
+             "code": "300MIUM-600", "source": "javdb",
              "candidates": [{"value": [{"name": "飛鳥ちゃん"}], "display": "飛鳥ちゃん"}]},
         ])
         result = auto_apply_metadata(
@@ -790,32 +796,215 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(result["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["NOPE"])
 
-    def test_a_descriptive_name_is_not_landed_as_a_performer(self):
-        """`145cm色白お嬢様` 是标题里的称呼，不是艺名：交人工，不建女优实体。"""
+    def _fc2_performer_row(self, key, code, *candidates):
+        """一行 FC2 出演者：`candidates` 是 `(来源, 名字)`，名字用顿号分隔多位。"""
+        return {"item_key": key, "field": "performers", "current": "", "code": code,
+                "candidates": [{"source": source, "display": names,
+                                "value": [{"name": name} for name in names.split("、")]}
+                               for source, names in candidates]}
+
+    def _auto_without_snapshots(self):
+        return auto_apply_metadata(self.contract.database, self.candidates,
+                                   snapshot_root=Path(self.tmp.name) / "empty-snapshots")
+
+    def _decision(self, item_key):
+        con = sqlite3.connect(self.db_path)
+        try:
+            return con.execute("SELECT status,note FROM review_decision WHERE item_key=?",
+                               (item_key,)).fetchone()
+        finally:
+            con.close()
+
+    def _performers_of(self, asset_id):
+        con = sqlite3.connect(self.db_path)
+        try:
+            return sorted(row[0] for row in con.execute(
+                "SELECT e.canonical_name FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id "
+                "WHERE ae.asset_id=? AND ae.role='performer'", (asset_id,)))
+        finally:
+            con.close()
+
+    def test_an_fc2_row_with_only_descriptive_names_is_rejected_without_an_entity(self):
+        """`145cm色白お嬢様` 是标题里的称呼，不是艺名；FC2 上人看了也不知道本名，
+        能做的只有否决，所以自动否决、不进队列、不建女优实体（ADR-0079）。
+
+        范围只有 FC2：别的番号上同样的称呼照旧交人工。
+        """
         self._asset(128, "FC2-PPV-1785524", "FC2-PPV-1785524.mp4")
         self._asset(129, "FC2-PPV-1785525", "FC2-PPV-1785525.mp4")
+        self._asset(127, "300MIUM-601", "300MIUM-601.mp4")
         self.write_metadata_rows([
-            {"item_key": "DESC", "field": "performers", "current": "",
-             "code": "FC2-PPV-1785524", "source": "javdb",
-             "candidates": [{"value": [{"name": "145cm色白お嬢様"}], "display": "145cm色白お嬢様"}]},
-            {"item_key": "CROWD", "field": "performers", "current": "",
-             "code": "FC2-PPV-1785525", "source": "fc2cmadb",
-             "candidates": [{"value": [{"name": "人気焼肉店の看板娘"}],
-                             "display": "人気焼肉店の看板娘"}]},
+            self._fc2_performer_row("DESC", "FC2-PPV-1785524", ("javdb", "145cm色白お嬢様")),
+            self._fc2_performer_row("CROWD", "FC2-PPV-1785525",
+                                    ("fc2cmadb", "人気焼肉店の看板娘"), ("fc2ppvdb", "みおちゃん")),
+            self._fc2_performer_row("JAV", "300MIUM-601", ("javdb", "145cm色白お嬢様")),
         ])
-        result = auto_apply_metadata(
-            self.contract.database, self.candidates,
-            snapshot_root=Path(self.tmp.name) / "empty-snapshots")
-        self.assertEqual(result["applied"], 0)
-        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["CROWD", "DESC"])
+        result = self._auto_without_snapshots()
+        self.assertEqual((result["applied"], result["auto_rejected"]), (0, 2))
+        self.assertEqual(self.queue_keys("metadata_fields"), ["JAV"])
+        status, note = self._decision("CROWD")
+        note = json.loads(note)
+        self.assertEqual(status, "rejected")
+        self.assertIs(note["auto_rejected"], True)
+        self.assertEqual(note["rule"], "adr-0079-fc2-descriptive-performer")
+        self.assertEqual(note["rejected_values"],
+                         [{"source": "fc2cmadb", "value": "人気焼肉店の看板娘"},
+                          {"source": "fc2ppvdb", "value": "みおちゃん"}])
+        self.assertIsNone(self._decision("JAV"))
+        self.assertEqual(self._performers_of(128) + self._performers_of(129), [])
         con = sqlite3.connect(self.db_path)
         try:
             performers = con.execute(
-                "SELECT count(*) FROM entity WHERE kind='performer' AND canonical_name IN (?,?)",
-                ("145cm色白お嬢様", "人気焼肉店の看板娘")).fetchone()[0]
+                "SELECT count(*) FROM entity WHERE kind='performer' AND canonical_name IN (?,?,?)",
+                ("145cm色白お嬢様", "人気焼肉店の看板娘", "みおちゃん")).fetchone()[0]
         finally:
             con.close()
         self.assertEqual(performers, 0)
+
+    def test_an_fc2_row_lands_the_named_source_when_the_other_gave_only_a_description(self):
+        """一家给真名、另一家只给描述性称呼时，后者不算证据，真名照常按判据落库。
+
+        被剔掉的那家记在 note 里：事后要答得出「javdb 那条为什么没算」。
+        """
+        self._asset(131, "FC2-PPV-1396747", "FC2-PPV-1396747.mp4")
+        self.write_metadata_rows([
+            self._fc2_performer_row("NAMED", "FC2-PPV-1396747",
+                                    ("fc2cmadb", "大村阿美香"), ("javdb", "145cm色白お嬢様")),
+        ])
+        result = self._auto_without_snapshots()
+        self.assertEqual((result["applied"], result["auto_rejected"]), (1, 0))
+        self.assertEqual(self._performers_of(131), ["大村阿美香"])
+        status, note = self._decision("NAMED")
+        self.assertEqual(status, "approved")
+        self.assertEqual(json.loads(note)["descriptive_dropped"],
+                         [{"source": "javdb", "value": "145cm色白お嬢様"}])
+
+    def test_fc2_rows_that_still_need_a_person_to_pick_a_name_stay_in_review(self):
+        """两种行不替人决定。
+
+        剔掉描述性称呼后只剩短单名的：`飛鳥` 两个字，按它认人会命中别人（ADR-0072）。
+        一条候选里一半是真名的：`神山ももか` 是人，整条丢掉就把她一起丢了。
+        """
+        self._asset(132, "FC2-PPV-1512000", "FC2-PPV-1512000.mp4")
+        self._asset(133, "FC2-PPV-1512001", "FC2-PPV-1512001.mp4")
+        self.write_metadata_rows([
+            self._fc2_performer_row("SHORT", "FC2-PPV-1512000",
+                                    ("fc2ppvdb", "飛鳥"), ("javdb", "飛鳥ちゃん")),
+            self._fc2_performer_row("HALF", "FC2-PPV-1512001",
+                                    ("javdb", "神山ももか、かえでちゃん")),
+        ])
+        result = self._auto_without_snapshots()
+        self.assertEqual((result["applied"], result["auto_rejected"]), (0, 0))
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["HALF", "SHORT"])
+        self.assertEqual(self._performers_of(132), [])
+
+    def test_an_auto_rejection_is_judged_again_when_a_source_adds_a_candidate(self):
+        """自动否决只覆盖否决那一刻的候选：来源后来给出真名，这一行重新判、照常落库。
+
+        用户手工否决的不翻案，候选变了也一样。
+        """
+        self._asset(134, "FC2-PPV-1600000", "FC2-PPV-1600000.mp4")
+        self._asset(135, "FC2-PPV-1600001", "FC2-PPV-1600001.mp4")
+        descriptive = ("javdb", "19歳フリーターギャル")
+        self.write_metadata_rows([
+            self._fc2_performer_row("AUTO", "FC2-PPV-1600000", descriptive),
+            self._fc2_performer_row("MANUAL", "FC2-PPV-1600001", descriptive),
+        ])
+        self.decide("metadata_fields", "MANUAL", "rejected")
+        self.assertEqual(self._auto_without_snapshots()["auto_rejected"], 1)
+        self.assertEqual(self._decision("AUTO")[0], "rejected")
+        # 下一批里 fc2cmadb 给了真名：候选多出一个否决时没见过的 candidate_key。
+        self.write_metadata_rows([
+            self._fc2_performer_row("AUTO", "FC2-PPV-1600000",
+                                    descriptive, ("fc2cmadb", "大村阿美香")),
+            self._fc2_performer_row("MANUAL", "FC2-PPV-1600001",
+                                    descriptive, ("fc2cmadb", "大村阿美香")),
+        ])
+        result = self._auto_without_snapshots()
+        self.assertEqual((result["applied"], result["auto_rejected"]), (1, 0))
+        self.assertEqual(self._performers_of(134), ["大村阿美香"])
+        self.assertEqual(self._decision("AUTO")[0], "approved")
+        self.assertEqual(self._performers_of(135), [])
+        self.assertEqual(self._decision("MANUAL")[0], "rejected")
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_an_auto_rejection_that_is_still_current_stays_off_the_queue_on_rerun(self):
+        """候选没变时重跑不重判，也不把这一行摆回复核页。"""
+        self._asset(136, "FC2-PPV-1600002", "FC2-PPV-1600002.mp4")
+        self.write_metadata_rows([
+            self._fc2_performer_row("AGAIN", "FC2-PPV-1600002", ("javdb", "美女6名")),
+        ])
+        self.assertEqual(self._auto_without_snapshots()["auto_rejected"], 1)
+        self.assertEqual(self._auto_without_snapshots()["auto_rejected"], 0)
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_a_stale_approval_is_judged_again_and_lands(self):
+        """旧批准指向的候选已经不在了：页面把这一行摆回队列，自动落库也要按现行判据
+        重判，落得下去就落，并覆盖那条旧决定。
+
+        带 `pending_genres` 的自动落库不在此列：标签已经落了，等的是生词收录。
+        """
+        self._asset(137, "PPT-137", "PPT-137.mp4")
+        self._asset(138, "PPT-138", "PPT-138.mp4")
+        con = sqlite3.connect(self.db_path)
+        try:
+            for key, note in (
+                    ("PPT-137:release_date", {"candidate_key": "PPT-137:gone", "source": "r18dev",
+                                              "user_note": ""}),
+                    ("PPT-138:release_date", {"auto_applied": True, "candidate_key": "PPT-138:gone",
+                                              "pending_genres": ["生詞"]})):
+                con.execute(
+                    "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                    "VALUES('metadata_fields',?,'approved',?,'2026-09-01T00:00:00Z')",
+                    (key, json.dumps(note, ensure_ascii=False)))
+            con.commit()
+        finally:
+            con.close()
+        self.write_metadata_rows([
+            {"item_key": f"{code}:release_date", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": code} for code in ("PPT-137", "PPT-138")])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")),
+                         ["PPT-137:release_date", "PPT-138:release_date"])
+
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            dates = dict(con.execute("SELECT id,release_date FROM asset WHERE id IN (137,138)"))
+        finally:
+            con.close()
+        self.assertEqual(dates, {137: "2015-02-20", 138: None})
+        note = json.loads(self._decision("PPT-137:release_date")[1])
+        self.assertIs(note["auto_applied"], True)
+        self.assertEqual(note["candidate_key"], "PPT-137:release_date:0")
+        self.assertEqual(self.queue_keys("metadata_fields"), ["PPT-138:release_date"])
+
+    def test_the_revert_script_takes_back_auto_rejections_by_rule_name(self):
+        """按规则名整批撤回自动否决，行回到队列；用户手工否决的不在其中。"""
+        self._asset(139, "FC2-PPV-1700000", "FC2-PPV-1700000.mp4")
+        self._asset(140, "FC2-PPV-1700001", "FC2-PPV-1700001.mp4")
+        self.write_metadata_rows([
+            self._fc2_performer_row("AUTO", "FC2-PPV-1700000", ("javdb", "現役グラドル")),
+            self._fc2_performer_row("MANUAL", "FC2-PPV-1700001", ("javdb", "現役グラドル")),
+        ])
+        self.decide("metadata_fields", "MANUAL", "rejected")
+        self._auto_without_snapshots()
+        spec = importlib.util.spec_from_file_location(
+            "revert_auto_landing_under_test",
+            Path(__file__).resolve().parents[1] / "scripts" / "revert_auto_landing.py")
+        revert = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(revert)
+        base = ["--db", self.db_path, "--logo-root", str(self.logo_root),
+                "--source", "adr-0079-fc2-descriptive-performer"]
+        with contextlib.redirect_stdout(io.StringIO()) as printed:
+            self.assertEqual(revert.main(base), 0)
+        self.assertIn("'否决': 1", printed.getvalue())
+        self.assertEqual(self._decision("AUTO")[0], "rejected", "只列计划时不动账本")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(revert.main(
+                [*base, "--apply", "--backup", str(Path(self.tmp.name) / "backup.db")]), 0)
+        self.assertIsNone(self._decision("AUTO"))
+        self.assertEqual(self._decision("MANUAL")[0], "rejected")
+        self.assertEqual(self.queue_keys("metadata_fields"), ["AUTO"])
 
     def test_an_fc2_seller_lands_as_the_label_under_the_fc2_ppv_studio(self):
         """FC2 番号上来源给的厂牌是卖家：厂牌落 `FC2-PPV`，卖家记在候选的 `label` 上。
@@ -1333,7 +1522,7 @@ class ReviewQueueTests(unittest.TestCase):
         """人工批准的 note 只记 `candidate_key` 与 `source`，不记写进去的值。
 
         没记值就证明不了账本现在这一个是它写的，拿它当「official 已确认」会把
-        `_metadata_decision_is_stale` 本该重开的字段永久压在队列外面。
+        `metadata_decision_is_stale` 本该重开的字段永久压在队列外面。
         """
         self._asset(98, "GGG-7", "GGG-7.mp4")
         con = sqlite3.connect(self.db_path)

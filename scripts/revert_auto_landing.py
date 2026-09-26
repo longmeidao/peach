@@ -8,6 +8,10 @@
 种子包补的所属事务所 `entity_membership.source` 与 label 的片商 `label_maker.source` 同样（ADR-0073、ADR-0075）。
 判据错了一批，就按它们认出来一起撤掉，不必一条条找。
 
+复核队列的自动否决记在 `review_decision.note` 里（`auto_rejected` 与 `rule`，ADR-0079），
+`--source` 给规则名就按它认。决定没有批次号，给了 `--batch` 就一条都不认。撤掉的那几行回到
+复核页；下一轮处理任务会按同一条判据再否决一次，所以先改判据再撤。
+
 撤回是删除，不是恢复旧值：补厂牌后继只在盘上一张图都没有、账本里一条官网都没有时才写，
 补别名后继只写账本里还没有的写法，补女优资料后继只写自动来源的那一行，补样张后继只给还没有
 样张的番号写，写下的就是那一格的全部，删掉就回到它写之前的样子。
@@ -17,6 +21,7 @@
     revert_auto_landing.py --source auto:performer-profile
     revert_auto_landing.py --source auto:sample-images
     revert_auto_landing.py --source auto:seed --batch auto:seed@2026-09-25
+    revert_auto_landing.py --source adr-0079-fc2-descriptive-performer
 
 默认只列计划；`--apply` 必须同时给 `--backup`，删文件在账本行之后、同一次运行里完成。
 """
@@ -125,6 +130,28 @@ def planned_refs(connection, source: str, batch: str) -> list[dict]:
     return found
 
 
+def planned_rejections(connection, source: str, batch: str) -> list[dict]:
+    """这条规则自动写下的复核否决（note 里 `auto_rejected` 为真、`rule` 逐字相同）。
+
+    用户手工否决的 note 是自由文本或不带 `auto_rejected`，这里认不到，也就不会被撤。
+    """
+    if batch:
+        return []
+    found = []
+    for row in connection.execute(
+            "SELECT category,item_key,note FROM review_decision"
+            " WHERE status='rejected' AND note LIKE ? ORDER BY category,item_key",
+            (f"%{source}%",)):
+        try:
+            note = json.loads(row["note"] or "{}")
+        except ValueError:
+            continue
+        if (isinstance(note, dict) and note.get("auto_rejected") is True
+                and note.get("rule") == source):
+            found.append({"category": row["category"], "item_key": row["item_key"]})
+    return found
+
+
 def planned_files(logo_root: Path, source: str, batch: str) -> list[Path]:
     """边车上写着这个来源的标识文件本体。"""
     found = []
@@ -160,6 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         makers = planned_makers(connection, args.source, args.batch)
         files = planned_files(args.logo_root, args.source, args.batch)
         samples = sample_images.planned_revert(connection, args.source, args.batch)
+        rejections = planned_rejections(connection, args.source, args.batch)
         for link in links:
             print(f" - 链接 {link['entity'][:20]:<20} {link['url'][:56]} {link['batch']}")
         for alias in aliases:
@@ -176,9 +204,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f" - 标识 {path.name}")
         for sample in samples:
             print(f" - 样张 {sample['code']:<20} {sample['count']} 张 {sample['source']}")
+        for rejection in rejections:
+            print(f" - 否决 {rejection['category']} {rejection['item_key']}")
         print({"链接": len(links), "别名": len(aliases), "资料": len(profiles), "编号": len(refs),
                "归属": len(memberships), "片商": len(makers), "标识文件": len(files),
-               "样张": sum(sample["count"] for sample in samples)})
+               "样张": sum(sample["count"] for sample in samples), "否决": len(rejections)})
         if not args.apply:
             print("dry-run；确认无误后加 --apply --backup <路径>")
             return 0
@@ -201,6 +231,9 @@ def main(argv: list[str] | None = None) -> int:
                 "DELETE FROM label_maker WHERE label_id=? AND source=?",
                 [(maker["label_id"], maker["source"]) for maker in makers])
             removed_samples = sample_images.revert(connection, args.source, args.batch)
+            connection.executemany(
+                "DELETE FROM review_decision WHERE category=? AND item_key=? AND status='rejected'",
+                [(rejection["category"], rejection["item_key"]) for rejection in rejections])
         integrity, orphans = verify_after_write(connection)
     finally:
         connection.close()
@@ -212,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
                 removed += 1
     print({"删除链接": len(links), "删除别名": len(aliases), "删除资料": len(profiles),
            "删除编号": len(refs), "删除归属": len(memberships), "删除片商": len(makers),
-           "删除样张": removed_samples,
+           "删除样张": removed_samples, "删除否决": len(rejections),
            "删除文件": removed,
            "integrity_check": integrity, "foreign_key_check": orphans})
     return 0

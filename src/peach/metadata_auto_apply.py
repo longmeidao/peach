@@ -30,6 +30,7 @@ from .catalog_rules import (
 from .entities import (
     canonicalize_entity_name,
     collapse_repeated_entity_name,
+    is_short_single_name,
     normalize_entity_name,
     resolve_entity,
     upsert_asset_entity,
@@ -311,6 +312,125 @@ def _stage_names(candidate: dict, resolve=None) -> tuple[list[str] | None, dict]
             resolved[name] = (raw.strip(), source)
         names.append(name)
     return (names or None), (resolved if names else {})
+
+
+def _names_nobody(candidate: dict, resolve=None) -> bool:
+    """这条出演者候选里是不是一个艺名都没有：每一位都剪不出，企划名义也解不出。
+
+    `神山ももか、かえでちゃん` 这种一半是人名的不算：前一位是真名，整条丢掉就把她一起
+    丢了，那种交人工。空列表也不算，它说的是「来源说这里没人」。
+    """
+    people = candidate.get("value")
+    if not isinstance(people, list) or not people:
+        return False
+    for person in people:
+        if not isinstance(person, dict):
+            return False
+        raw = str(person.get("name") or "")
+        if _stage_name(raw) is not None:
+            return False
+        if resolve is not None and resolve(raw) is not None:
+            return False
+    return True
+
+
+#: FC2 出演者行的自动否决写在这个规则名下（ADR-0079）。撤回脚本按它整批认出来。
+FC2_DESCRIPTIVE_REJECTION_RULE = "adr-0079-fc2-descriptive-performer"
+
+
+def _without_descriptive_performers(code: str, field: str, candidates: list[dict],
+                                    resolve=None) -> tuple[list[dict], list[dict]]:
+    """FC2 出演者候选里一个艺名都没有的那些不算证据（ADR-0079），剩下的照常比。
+
+    返回 `(留下的候选, 被剔掉的候选)`。全都剔光时原样返回：那一行交给自动否决判，
+    不在这里把它变成「没有候选」。
+
+    剩下的里有短单名（`entities.is_short_single_name`）时不剔：`飛鳥ちゃん` 与 `飛鳥`
+    两家并列时，剔掉前者就是按一个两字名去认人，ADR-0072 说过这种名字会命中别人。
+    两家各执一词的行交人工，不因为少了一家就替人认了。
+    """
+    if field != "performers" or not _FC2_CODE.match(code):
+        return candidates, []
+    dropped = [c for c in candidates if _names_nobody(c, resolve)]
+    kept = [c for c in candidates if not _names_nobody(c, resolve)]
+    if not dropped or not kept:
+        return candidates, []
+    for candidate in kept:
+        names, _resolved = _stage_names(candidate, resolve)
+        if names and any(is_short_single_name(name) for name in names):
+            return candidates, []
+    return kept, dropped
+
+
+def fc2_descriptive_rejection(connection, row: dict, *, snapshot_root=None) -> dict | None:
+    """这一行 FC2 出演者该不该自动否决；该否决就返回要写进 note 的那份记录。
+
+    用户 2026-09-27 定下（ADR-0079）：候选里一个艺名都剪不出、企划名义也解不出的，
+    人看了也不知道这位叫什么，能做的只有否决。判的是这一行过了番号核对的**全部**候选，
+    不只是已登记来源：未登记来源给了真名，人在页面上还能选它，那就不替人否决。
+
+    不建实体，不写真相字段。note 里的 `candidate_keys` 是过期判据用的：之后来源给出
+    新的候选（fc2cmadb 补上了真名），这条否决就过期，这一行重新判一次。
+    """
+    field = str(row.get("field") or "").strip()
+    code = str(row.get("code") or "").strip()
+    if field != "performers" or not _FC2_CODE.match(code):
+        return None
+    candidates = row.get("candidates") or []
+    if not candidates:
+        return None
+    resolve = _planning_alias_resolver(connection, row, snapshot_root)
+    if not all(_names_nobody(candidate, resolve) for candidate in candidates):
+        return None
+    return {
+        "auto_rejected": True, "rule": FC2_DESCRIPTIVE_REJECTION_RULE,
+        "candidate_keys": sorted({str(c.get("candidate_key") or "").strip()
+                                  for c in candidates}),
+        "rejected_values": [{"source": str(c.get("source") or "").strip(),
+                             "value": str(c.get("display_value") or "").strip()}
+                            for c in candidates],
+    }
+
+
+def _decision_note(decision: dict) -> dict:
+    """决定的 note 解析成字典；早期的自由文本留痕、用户手写的备注都返回空字典。"""
+    try:
+        note = json.loads(str(decision.get("note") or ""))
+    except (TypeError, ValueError):
+        return {}
+    return note if isinstance(note, dict) else {}
+
+
+def metadata_decision_is_stale(decision: dict, candidates: list[dict]) -> bool:
+    """旧决定是否已经不对应这一行现存的候选；复核页与自动落库共用这一份。
+
+    `metadata_fields` 的 `item_key` 是 `<番号>:<字段>`，不带候选身份。于是
+    2026-09-01 对 r18dev「空日文标题」的一条 approved，会把之后 javbus 抓到的
+    真标题一并盖住：队列里看不见这条，页面上还是英文标题。实测 TRE-080 就是
+    这样卡住的，同批还有 24 个番号。判据与 `studio_logos` 的「上游内容变了就
+    清掉旧判定」是同一条线，只是这里的「变了」体现为候选身份换了一个。
+
+    - 批准：note 记着的 `candidate_key` 已经不在当前候选里；
+    - 自动否决（ADR-0079）：当前候选里出现了否决时没有的 `candidate_key`——来源给了
+      新说法，否决时的判断不再覆盖它。来源少了一条不算，剩下的仍是否决过的那些；
+    - 用户手工否决、跳过一律不算过期：那是人的判断，候选变了也不替人翻案。
+
+    只在能读出旧决定指向哪个候选时才判过期。note 不是 JSON（早期的自由文本留痕）就
+    保守放过——宁可漏一条，也不要把用户已经判过的东西重新翻出来。
+    """
+    note = _decision_note(decision)
+    keys = {str(candidate.get("candidate_key") or "").strip()
+            for candidate in candidates or []} - {""}
+    if not keys:
+        return False
+    status = str(decision.get("status") or "").strip()
+    if status == "approved":
+        approved_key = str(note.get("candidate_key") or "").strip()
+        return bool(approved_key) and approved_key not in keys
+    if status == "rejected" and note.get("auto_rejected") is True:
+        rejected = {str(key).strip() for key in note.get("candidate_keys") or []}
+        return not keys <= rejected
+    return False
 
 
 def _candidate_value_key(connection, field: str, candidate: dict, resolve=None):
@@ -660,7 +780,8 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
 
     出演者多一道形态门槛：官方页把年龄职业写在艺名后面，剪不出艺名的先按本机已有的
     证据解一次企划名义（`snapshot_root` 给的快照目录与 `entity_alias`，ADR-0038），
-    解不出才交回人工。第 1 条对它比的是人而不是写法：同一位在两家站上挂着不同艺名、
+    解不出才交回人工。FC2 番号上一个艺名都没有的候选不算证据（ADR-0079），整行都是这种
+    时不交人工，由 `fc2_descriptive_rejection` 自动否决。第 1 条对它比的是人而不是写法：同一位在两家站上挂着不同艺名、
     账本已把这两个写法登记在同一条实体名下时，那不是分歧（`_candidate_value_key`）。
 
     未登记来源的候选先被剔除再比对取值：没进 `REGISTERED_SOURCES` 的来源不构成证据，
@@ -679,9 +800,11 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     if not code:
         return None
     resolve = _planning_alias_resolver(connection, row, snapshot_root)
+    evidence, descriptive = _without_descriptive_performers(
+        code, field, _evidence_candidates(row, field), resolve)
     candidates, settled_by, overruled = _settled_candidates(
         connection, field, code, _unmasked_titles(
-            field, _evidence_candidates(row, field), str(row.get("current_value") or "")), resolve)
+            field, evidence, str(row.get("current_value") or "")), resolve)
     if not candidates:
         return None
     replaces_current = bool(str(row.get("current_value") or "").strip())
@@ -713,6 +836,10 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
             **({"chain_winner": str(candidate.get("source") or "").strip(),
                 "overruled": overruled} if overruled else {}),
             **({"pending_genres": found} if (found := pending_genres(candidates)) else {}),
+            **({"descriptive_dropped": [
+                {"source": str(c.get("source") or "").strip(),
+                 "value": str(c.get("display_value") or "").strip()} for c in descriptive]}
+               if descriptive else {}),
             **({"replaces_current": True} if replaces_current else {})}
 
 
@@ -1003,6 +1130,10 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     每条仍写 review_decision 留痕（note 里记来源与判据），所以事后可以追问
     「这个值是谁写的、凭什么」——留痕才是那条规则真正要保住的东西。
 
+    已有决定的行不重判，过期的除外（`_decision_reopens`）。落不下去的 FC2 出演者行里
+    一个艺名都没有的，写一条 `rejected`（`fc2_descriptive_rejection`，ADR-0079），
+    其余照旧留给人。
+
     `database` 是调用方已经在用的那一个 `LedgerDatabase`：写锁与提交后的缓存失效都挂在
     实例上，自己再 new 一个就绕开了两者。`active` 返回假时停在批与批之间，已经提交的
     那些保留。
@@ -1012,7 +1143,7 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     猜错的表现是测试悄悄读起了真实库。
     """
     rows, _source, _skipped = read_candidates("metadata_fields", Path(candidate_root))
-    applied, skipped = [], 0
+    applied, skipped, rejected = [], 0, 0
     step = max(1, int(batch_size))
     for start in range(0, len(rows), step):
         if not active():
@@ -1021,8 +1152,9 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
         # 写入都要等它跑完；被停止或中途失败时，回滚的也只是当前这一批。
         batch = [dict(row) for row in rows[start:start + step]]
         with database.write_transaction() as connection:
-            decided = {row["item_key"] for row in connection.execute(
-                "SELECT item_key FROM review_decision WHERE category='metadata_fields'")}
+            decided = {row["item_key"]: dict(row) for row in connection.execute(
+                "SELECT item_key,status,note FROM review_decision "
+                "WHERE category='metadata_fields'")}
             genres = load_genre_decisions(connection)
             # 第 1 条判据是「这个字段现在是空的」，问的必须是账本此刻，不是候选件那一刻。
             # 候选落盘之后落过库、合并过实体的，快照还写着空，照它落库就是拿来源覆盖已有值。
@@ -1030,15 +1162,30 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
             now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             for row in batch:
                 item_key = str(row.get("item_key") or "").strip()
-                if not item_key or item_key in decided:
+                if not item_key:
                     continue
                 if str(row.get("status") or "").strip() != "candidate":
                     continue
                 row["candidates"] = _row_candidates(row, genres)
+                if item_key in decided and not _decision_reopens(
+                        decided[item_key], row["candidates"]):
+                    continue
                 candidate = metadata_auto_apply_candidate(
                     connection, row, snapshot_root=snapshot_root)
                 if candidate is None:
-                    skipped += 1
+                    rejection = fc2_descriptive_rejection(
+                        connection, row, snapshot_root=snapshot_root)
+                    if rejection is None:
+                        skipped += 1
+                        continue
+                    connection.execute(
+                        "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                        "VALUES('metadata_fields',?,'rejected',?,?) "
+                        "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,"
+                        "note=excluded.note,updated_at=excluded.updated_at",
+                        (item_key, json.dumps(rejection, ensure_ascii=False,
+                                              separators=(",", ":")), now))
+                    rejected += 1
                     continue
                 try:
                     count = _apply_metadata_candidate(
@@ -1070,6 +1217,9 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                         # 单独等人收录，复核页按它把这一行重新摆出来。
                         **({"pending_genres": candidate["pending_genres"]}
                            if candidate.get("pending_genres") else {}),
+                        # FC2 出演者里一个艺名都没有、没算作证据的那几家（ADR-0079）。
+                        **({"descriptive_dropped": candidate["descriptive_dropped"]}
+                           if candidate.get("descriptive_dropped") else {}),
                         # 出演者写的是剪过的艺名，原文得留着：事后要答得出账本里这个名字
                         # 是从哪一句剪出来的。
                         **({"raw_value": candidate["raw_display_value"]}
@@ -1081,5 +1231,19 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                 applied.append({"item_key": item_key, "field": row.get("field"),
                                 "value": candidate.get("display_value"),
                                 "assets": count})
-    return {"ok": True, "applied": len(applied), "left_to_review": skipped,
-            "items": applied}
+    return {"ok": True, "applied": len(applied), "auto_rejected": rejected,
+            "left_to_review": skipped, "items": applied}
+
+
+def _decision_reopens(decision: dict, candidates: list[dict]) -> bool:
+    """已有决定的这一行要不要重新走一遍判据。
+
+    过期的决定（`metadata_decision_is_stale`）等于没有决定：页面已经把它摆回人工队列，
+    自动落库不重判的话，按现行判据落得下去的那些就一直停在人面前。
+
+    带 `pending_genres` 的自动落库不重判：标签已经落了，那一行等的是生词收录，
+    由 genre 那一侧管。
+    """
+    if not metadata_decision_is_stale(decision, candidates):
+        return False
+    return not _decision_note(decision).get("pending_genres")
