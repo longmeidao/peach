@@ -4,60 +4,70 @@
 
 <h1 align="center">Peach</h1>
 
-<p align="center">Turn media on disks, mounted drives and followed sources into a private library of your own.</p>
+<p align="center">A private video library for yourself: local drives, cloud drives and the creators you follow, all in one place.</p>
 
 <p align="center">
-  <a href="https://github.com/longmeidao/peach/releases">Download the Windows test package</a> ·
+  <a href="https://github.com/longmeidao/peach/releases">Download for Windows</a> ·
+  <a href="https://github.com/longmeidao/peach/releases/tag/intro-video">Intro video</a> ·
+  <a href="https://github.com/longmeidao/peach/issues">Report a problem</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="README.md">中文</a>
 </p>
 
-Peach is a single-user, local-first media library. It brings search, playback, organization and followed updates into one browser interface, while the catalog, watch history and review decisions stay in a local SQLite ledger.
+https://github.com/user-attachments/assets/40f7fb76-fece-4af9-86e1-e0279cc525af
 
-> **18+** Intended for adults managing adult-content collections. The repository contains no media or site datasets. Source connectors require the user's own access rights and do not bypass paywalls, bot checks or other access controls.
+> **18+** For adults managing their own adult-content collections. The repository contains no media or site data. When Peach connects to outside sites it uses your own accounts and access rights, and it does not get around paywalls, bot checks or other access controls.
+
+- **Already-organized videos just work**: scanning reads the NFO files and posters that already sit next to your videos, so nothing needs to be scraped again.
+- **Your files stay put**: scanning is read-only and files stay where they are. Renaming or moving only happens when you start it, with a preview first and an undo afterwards.
+- **Cloud and local together**: once 115 or PikPak is mounted as a local drive with CloudDrive2, its videos join the same library as your hard drives.
+- **Your data stays on your computer**: watch history, favorites and settings are stored locally. When filling in details, Peach only sends the video code to source sites.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-home.jpg" alt="Home"></td>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-performer.jpg" alt="Performer page"></td>
+  </tr>
+  <tr>
+    <td align="center">Home: filter by source, length and tags</td>
+    <td align="center">Performer page: profile, aliases, links and every video</td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-follow.jpg" alt="Following"></td>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-stats.jpg" alt="Statistics"></td>
+  </tr>
+  <tr>
+    <td align="center">Following: one creator's updates from several sites in one feed</td>
+    <td align="center">Statistics: where your videos live and how much you have watched</td>
+  </tr>
+</table>
 
 ## What it does
 
-<table>
-  <thead>
-    <tr>
-      <th width="180" nowrap>Capability</th>
-      <th>Summary</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td width="180" nowrap><strong>Visual library</strong></td>
-      <td>Browse videos and photo collections by cover; search by work, performer, studio, creator, series or tag; use library filters, identity completion and large-cover mode from the same page.</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>Playback and links</strong></td>
-      <td>Play media from local disks and mounted drives, with people, studios, tags and related works beside the player; keep watch-later items, viewing state, Mixes, playlists and a corner miniplayer.</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>People and identity</strong></td>
-      <td>Collect portraits, aliases, external links and work relationships on performer profiles, while external identity candidates retain provenance and wait for review.</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>Collection and enrichment</strong></td>
-      <td>Scan folders for NFO files, local posters and existing metadata; fetch missing covers, portraits and metadata, then write reviewed results to the library. Turn on push discovery and new files reach the library within seconds — local folders through filesystem events, cloud mounts through CloudDrive2 notifications — and periodic scans pick up any file the push missed.</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>Multi-source following</strong></td>
-      <td>Register official or archive sources, see one creator's updates across sites and save content inside Peach.</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>Interface and devices</strong></td>
-      <td>Use light or dark themes, custom colors and responsive pages on desktop, tablet and phone; review duplicates, unavailable files, trash and external candidates in one place.</td>
-    </tr>
-  </tbody>
-</table>
+- **Search**: type a few characters and performers, codes and videos show up together.
+- **Performer pages**: aliases, birthday and measurements, social accounts and JavDB and MISSAV links on one page, above every video of hers in your library and her photos. You can pick an avatar by drawing a box on any cover.
+- **Filling in details**: by video code, Peach fills in titles, performers, studios and high-resolution covers from studio sites, DMM, JavBus, JavDB and others. It only fills empty fields and never overwrites your edits.
+- **Playback**: play in the browser and pick up where you left off. Like, rate, save for later, add to a playlist, or "log a climax".
+- **New releases**: turn on a subscription on a performer page and Peach checks for her new titles regularly. Creators can be followed across 11 sites such as FANBOX, Patreon and Kemono, and the same post on different sites shows up as one card.
+- **Statistics**: which drive holds what, how much you have watched and which tags dominate, on one page.
+- **Appearance**: light or dark, accent color and sidebar order are all yours to set.
+- **Any screen**: works in the browser on desktop, tablet and phone.
 
-## Get Peach
+## Download and use
 
-The standalone Windows x64 test package is available from [GitHub Releases](https://github.com/longmeidao/peach/releases); Windows and macOS can also run Peach from source, which requires Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.12 or newer. See [Windows testing](docs/TESTING_DESKTOP.md) and [operations](docs/OPERATIONS.md) for downloads, verification and configuration.
+### Windows
 
-Running from source (the example uses Python 3.14; uv downloads a missing interpreter):
+1. Download `Peach-<version>-windows-x64.zip` from [Releases](https://github.com/longmeidao/peach/releases), right-click it and choose "Extract All".
+2. Double-click `Peach.exe`. Your browser opens the first-run setup page.
+3. Pick your media folders and who may access Peach, then start the scan.
+
+The test package is not code-signed yet. If Windows says "Windows protected your PC", make sure the file came from this project's Releases, then choose "More info → Run anyway". Transcoding and thumbnails need FFmpeg; without it you can still browse and play MP4 and WebM. See [Windows test build](docs/TESTING_DESKTOP.md) for how to install it.
+
+### Run from source (Windows, macOS)
+
+You need Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.12 or newer (uv downloads a missing interpreter for you):
 
 ```powershell
 git clone https://github.com/longmeidao/peach.git peach-app
@@ -66,26 +76,46 @@ uv sync --locked --python 3.14
 & .\.venv\Scripts\peach-tray.exe
 ```
 
-On macOS replace the last two commands with `uv sync --locked --python 3.14 --extra macos` and `./.venv/bin/peach-tray`. The tray opens the first-run setup page, where you pick media folders, access scope and port.
+On macOS, replace the last two lines with `uv sync --locked --python 3.14 --extra macos` and `./.venv/bin/peach-tray`.
 
-FFmpeg and ffprobe are installed separately: without them you can still browse and play browser-compatible formats, while transcoding, probing and thumbnails stay unavailable. Source deployments keep data in `peach-data/` next to the repository, the standalone package uses `%LOCALAPPDATA%\Peach\peach-data`, and `PEACH_DATA_ROOT` points either one elsewhere. LAN and HTTPS access are covered in [operations](docs/OPERATIONS.md); updates and uninstall live under Manage → Configuration → Updates and maintenance, with the standalone steps in [Windows testing](docs/TESTING_DESKTOP.md).
+LAN access, access passwords, updates and uninstalling are covered in [Operations](docs/OPERATIONS.md).
 
-## Data boundaries
+## FAQ
 
-Media stays in its original folders by default; organizing is an explicit action you start yourself, with a preview first and a rollback afterwards. The catalog, identities, viewing history and human decisions stay in a local SQLite ledger. External metadata and AI output enter as candidates with provenance and confidence; credentials stay outside Git, logs and API responses. Peach is for single-user self-hosting and does not provide a public-site or team permission model.
+**Will it change my files?**
+Scanning and filling in details never touch the original files. Only two things do: running an organize job you started (rename or move, with a preview and an undo for the last batch), and emptying the trash (which really deletes).
 
-Each release ships a seed of entity facts: aliases, site identifiers, official and social links, profiles, agency memberships and label-to-maker relations for performers, studios and agencies, with no images. After a scan it only fills blanks on entities already in your ledger; the only rows it replaces are the ones an older seed wrote itself. Anything that disagrees with a human decision goes to a review file, and every batch can be reverted.
+**I already organized my videos with another scraper. Can Peach use that?**
+Peach reads the Kodi and Jellyfin layout: an `.nfo` named after the video and posters such as `<title>-poster.jpg`. Existing titles, performers, studios and posters show up right away.
+
+**Which cloud drives are supported?**
+115 and PikPak, mounted as local drives with CloudDrive2. Peach reads them like ordinary folders and does not store your cloud account.
+
+**How do I watch on my phone?**
+Choose "devices on the same network" during first-run setup, connect your phone to the same network and open the address shown on the setup page. Setting an access password is a good idea.
+
+**Where is my data?**
+In the `peach-data` folder on your computer. The Windows build keeps it in `%LOCALAPPDATA%\Peach\peach-data` by default.
+
+## Reporting problems
+
+Open an [issue](https://github.com/longmeidao/peach/issues) with the version, what you did, what you expected and what actually happened, ideally with a screenshot. Before taking screenshots, hide passwords, cookies, LAN addresses and full file paths, and do not upload database files or media. Report security issues privately as described in the [security policy](SECURITY.md).
 
 ## Documentation
 
-Using Peach: [Windows testing](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sources](docs/SOURCING.md) · [Project status](docs/STATUS.md) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
+Using Peach: [Windows test build](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sourcing](docs/SOURCING.md) · [Cloud drive mounts](docs/CLOUDDRIVE.md) · [Changelog](CHANGELOG.md)
 
-Developing Peach: [Development agreement](AGENTS.md) · [Architecture](docs/ARCHITECTURE.md) · [Testing and dependencies](docs/TESTING.md) · [Frontend](docs/FRONTEND.md) · [Product backlog](docs/PRODUCT_BACKLOG.md) · [Handover notes](docs/HANDOFF.md) · [Reuse list](docs/REUSE.md) · [README maintenance](docs/README_MAINTENANCE.md) · [Architecture decisions](docs/adr/)
+Contributing: [Development guide](AGENTS.md) · [Architecture](docs/ARCHITECTURE.md) · [Testing and dependencies](docs/TESTING.md) · [Frontend](docs/FRONTEND.md) · [Reuse inventory](docs/REUSE.md) · [README maintenance](docs/README_MAINTENANCE.md). Verify changes with Windows `& .\scripts\test.ps1` or macOS/Linux `./scripts/test.sh`.
 
-Run development checks through `& .\scripts\test.ps1` on Windows or `./scripts/test.sh` on macOS/Linux. File issues with the version, the steps, and the expected and actual results; never attach a real ledger, media, cookies or private keys. Report security problems through the [security policy](SECURITY.md).
+## Related projects
+
+- [amane](https://github.com/sqzw-x/amane): Peach reaches studio sites and other sources through it.
+- [Gfriends](https://github.com/gfriends/gfriends): performer avatar collection.
+- [CloudDrive2](https://www.clouddrive2.com/): mounts cloud drives as local disks.
+- [OpenAver](https://github.com/slive777/OpenAver), [Javinizer-Go](https://github.com/javinizer/javinizer-go), [MetaTube](https://github.com/metatube-community/metatube-sdk-go), [MDCx](https://github.com/sqzw-x/mdcx): Peach learned from their source parsing and recommendation approaches.
+
+The full reuse and credits list is in the [reuse inventory](docs/REUSE.md).
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao.
-
-Vendored frontend files retain their upstream licenses and provenance under [web/vendor](web/vendor/).
+[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao. Bundled third-party frontend files keep their own licenses; see [web/vendor](web/vendor/).

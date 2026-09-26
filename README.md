@@ -4,60 +4,70 @@
 
 <h1 align="center">Peach</h1>
 
-<p align="center">把磁盘、挂载网盘与关注来源里的媒体，整理成只属于自己的私人馆藏。</p>
+<p align="center">给自己用的私人影片馆藏：本地硬盘、网盘和关注的创作者，放在一个地方看。</p>
 
 <p align="center">
-  <a href="https://github.com/longmeidao/peach/releases">下载 Windows 测试包</a> ·
+  <a href="https://github.com/longmeidao/peach/releases">下载 Windows 版</a> ·
+  <a href="https://github.com/longmeidao/peach/releases/tag/intro-video">介绍视频</a> ·
+  <a href="https://github.com/longmeidao/peach/issues">问题反馈</a> ·
   <a href="#文档">文档</a> ·
   <a href="README.en.md">English</a>
 </p>
 
-Peach 是面向单人的本地优先媒体馆藏应用。它在浏览器里统一搜索、播放、整理和追更已有媒体，馆藏、观看记录与复核决定保存在本机 SQLite ledger 中。
+https://github.com/user-attachments/assets/40f7fb76-fece-4af9-86e1-e0279cc525af
 
-> **18+** 面向管理成人内容馆藏的成年人。仓库不包含媒体或站点数据；来源连接器要求使用者拥有相应访问权，不绕过付费墙、机器人验证或其他访问控制。
+> **18+** 仅供成年人管理自己的成人内容馆藏。仓库不含任何媒体或站点数据；连接外部站点时用的是你自己的账号和访问权，不绕过付费墙、人机验证或其他访问限制。
+
+- **整理过的片子直接用**：扫描时读取片子旁边已有的 NFO 和海报，不用重新刮削。
+- **不动你的文件**：扫描只读，文件留在原处；改名、移动由你手动发起，先看预览，做完可以撤回。
+- **网盘和本地一起看**：115、PikPak 用 CloudDrive2 挂载成本地磁盘后，和硬盘里的片子进同一个馆藏。
+- **数据留在自己电脑上**：观看记录、收藏和设置都存在本机；补资料时只向来源站点发送番号。
+
+## 截图
+
+<table>
+  <tr>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-home.jpg" alt="首页"></td>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-performer.jpg" alt="女优页"></td>
+  </tr>
+  <tr>
+    <td align="center">首页：按来源、时长、标签筛选</td>
+    <td align="center">女优页：资料、别名、外部链接和全部作品</td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-follow.jpg" alt="关注"></td>
+    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-stats.jpg" alt="统计"></td>
+  </tr>
+  <tr>
+    <td align="center">关注：一个创作者在多个站点的更新汇到一起</td>
+    <td align="center">统计：片子存在哪、看了多少</td>
+  </tr>
+</table>
 
 ## 能做什么
 
-<table>
-  <thead>
-    <tr>
-      <th width="180" nowrap>功能</th>
-      <th>简介</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td width="180" nowrap><strong>视觉馆藏</strong></td>
-      <td>以封面浏览视频与图集，按作品、女优、厂牌、创作者、系列和标签搜索；馆藏筛选、身份补全与大图模式在同一页完成。</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>播放与关联</strong></td>
-      <td>播放本地磁盘和挂载网盘媒体，在详情页查看人物、厂牌、标签与相关作品；支持稍后看、观看状态、Mix、播放列表和角落小窗。</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>人物与身份</strong></td>
-      <td>把头像、别名、外部链接与作品关系整理到人物资料页，外部身份候选保留来源并交给用户复核。</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>采集与补全</strong></td>
-      <td>扫描文件夹并识别 NFO、本地海报和已有资料；从来源补充封面、头像与元数据，确认后才写入馆藏。开启推送发现后，本机新文件与 CloudDrive2 通知到的网盘新文件几秒内入库，推送漏掉的文件由定期扫描补上。</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>多来源关注</strong></td>
-      <td>登记官方或归档来源，集中查看同一创作者在不同站点的更新，并在 Peach 内保存内容。</td>
-    </tr>
-    <tr>
-      <td width="180" nowrap><strong>界面与多端</strong></td>
-      <td>支持明暗主题、自定义配色和响应式页面，可在桌面、平板与手机浏览；重复项、失效文件、回收站和外部候选集中复核。</td>
-    </tr>
-  </tbody>
-</table>
+- **搜索**：输入几个字，女优、番号和影片一起出来。
+- **女优页**：别名、生日身材、社媒和 JavDB、MISSAV 链接汇在一页，下面是她在你馆藏里的全部作品和照片；头像可以直接在作品封面上框一块。
+- **补资料**：按番号从片商官网、DMM、JavBus、JavDB 等站点补标题、女优、厂牌和高清封面；只填空着的，不覆盖你改过的。
+- **播放**：在浏览器里直接播放，记下看到哪；可以点喜欢、打分、稍后看、加进播放列表，也能「记一次高潮」。
+- **追新作**：在女优页打开订阅，Peach 会定期查她的新作；创作者可以跨 FANBOX、Patreon、Kemono 等 11 个站点一起关注，不同站点上的同一个作品合成一张卡。
+- **统计**：片子存在哪块盘、看过多少、标签分布，一页看完。
+- **外观**：深色浅色、主题色、侧栏顺序都能自己调。
+- **多端**：电脑、平板、手机的浏览器都能用。
 
-## 获取 Peach
+## 下载与使用
 
-Windows x64 独立测试包在 [GitHub Releases](https://github.com/longmeidao/peach/releases) 提供；Windows 与 macOS 也可从源码运行，源码方式需要 Git、[uv](https://docs.astral.sh/uv/getting-started/installation/) 和 Python 3.12 或更高。下载、校验与配置见 [Windows 测试版](docs/TESTING_DESKTOP.md) 和 [运行与配置](docs/OPERATIONS.md)。
+### Windows
 
-源码运行（下例用 Python 3.14，uv 会自动下载缺失的解释器）：
+1. 从 [Releases](https://github.com/longmeidao/peach/releases) 下载 `Peach-<版本>-windows-x64.zip`，右键「全部解压」。
+2. 双击 `Peach.exe`，浏览器会打开首次设置页。
+3. 选好媒体文件夹和谁能访问，开始扫描。
+
+测试包还没有代码签名。Windows 提示「已保护你的电脑」时，确认文件来自本项目的 Release，再点「更多信息 → 仍要运行」。转码和缩略图要用到 FFmpeg，没装也能浏览和播放 MP4、WebM，安装方法见 [Windows 测试版](docs/TESTING_DESKTOP.md)。
+
+### 从源码运行（Windows、macOS）
+
+需要 Git、[uv](https://docs.astral.sh/uv/getting-started/installation/) 和 Python 3.12 或更高（uv 会自动下载缺的解释器）：
 
 ```powershell
 git clone https://github.com/longmeidao/peach.git peach-app
@@ -66,26 +76,46 @@ uv sync --locked --python 3.14
 & .\.venv\Scripts\peach-tray.exe
 ```
 
-macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.venv/bin/peach-tray`。托盘会打开首次设置页，在那里选媒体文件夹、访问范围和端口。
+macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.venv/bin/peach-tray`。
 
-FFmpeg 与 ffprobe 需自行安装：缺少时仍可浏览和播放浏览器兼容格式，转码、探测与缩略图不可用。源码部署的数据默认在仓库同级的 `peach-data/`，独立测试包放在 `%LOCALAPPDATA%\Peach\peach-data`，`PEACH_DATA_ROOT` 可指定其他位置。局域网与 HTTPS 访问见 [运行与配置](docs/OPERATIONS.md)；更新与卸载在管理菜单「配置 → 更新与维护」，独立包的步骤见 [Windows 测试版](docs/TESTING_DESKTOP.md)。
+局域网访问、访问密码、更新和卸载见 [运行与配置](docs/OPERATIONS.md)。
 
-## 数据边界
+## 常见问题
 
-媒体默认保留在原目录，整理是用户显式发起、可预览可回滚的操作；馆藏、身份、观看记录和人工决定保存在本机 SQLite ledger；外部元数据与 AI 结果先作为带来源和置信度的候选，凭据不进入 Git、日志或 API 返回。Peach 面向单人自托管，不提供公开站点或团队权限模型。
+**会改我的文件吗？**
+扫描、补资料都不碰原文件。只有两件事会动文件：你在整理里点了执行（改名或移动，先给预览，可以撤回上一批），以及你清空回收站（真的删除）。
 
-随版本附带一份实体事实种子（女优、厂牌与事务所的别名、站上编号、官网与社媒链接、资料表、所属事务所与 label 的片商，不含任何图像）。扫描结束后它只给账本里已有的实体填空，换掉的只有旧版种子自己写下的行，与人工判断不一致的记进复核产物，整批可撤回。
+**之前用别的刮削器整理过，能直接用吗？**
+能读的是 Kodi、Jellyfin 那种格式：和视频同名的 `.nfo`，以及 `<片名>-poster.jpg` 这样的海报。已有的标题、女优、厂牌和海报会直接显示。
+
+**支持哪些网盘？**
+目前是 115 和 PikPak，用 CloudDrive2 挂载成本地磁盘。Peach 只把它当普通文件夹读，不保存网盘账号。
+
+**手机上怎么看？**
+首次设置时选「同一局域网的设备」，手机和电脑连同一个网络，用浏览器打开设置页给出的地址。建议顺手设一个访问密码。
+
+**数据存在哪？**
+都在本机的 `peach-data` 文件夹里，Windows 版默认在 `%LOCALAPPDATA%\Peach\peach-data`。
+
+## 问题反馈
+
+在 [Issues](https://github.com/longmeidao/peach/issues) 里写清楚版本号、做了什么、想要的结果和实际看到的结果，最好附截图。截图前遮掉密码、Cookie、局域网地址和文件完整路径，不要上传数据库文件或媒体。安全问题请按 [安全政策](SECURITY.md) 私下报告。
 
 ## 文档
 
-使用：[Windows 测试版](docs/TESTING_DESKTOP.md) · [运行与配置](docs/OPERATIONS.md) · [来源采集](docs/SOURCING.md) · [项目状态](docs/STATUS.md) · [变更日志](CHANGELOG.md) · [安全政策](SECURITY.md)
+使用：[Windows 测试版](docs/TESTING_DESKTOP.md) · [运行与配置](docs/OPERATIONS.md) · [来源采集](docs/SOURCING.md) · [网盘挂载](docs/CLOUDDRIVE.md) · [变更日志](CHANGELOG.md)
 
-开发：[开发约定](AGENTS.md) · [总体架构](docs/ARCHITECTURE.md) · [测试与依赖](docs/TESTING.md) · [前端开发](docs/FRONTEND.md) · [产品待办](docs/PRODUCT_BACKLOG.md) · [交接说明](docs/HANDOFF.md) · [复用清单](docs/REUSE.md) · [README 维护](docs/README_MAINTENANCE.md) · [架构决策](docs/adr/)
+参与开发：[开发约定](AGENTS.md) · [总体架构](docs/ARCHITECTURE.md) · [测试与依赖](docs/TESTING.md) · [前端开发](docs/FRONTEND.md) · [复用清单](docs/REUSE.md) · [README 维护](docs/README_MAINTENANCE.md)。改完用 Windows `& .\scripts\test.ps1` 或 macOS/Linux `./scripts/test.sh` 验证。
 
-开发验证统一使用 Windows `& .\scripts\test.ps1` 或 macOS/Linux `./scripts/test.sh`。提交问题请附版本、操作步骤、预期与实际结果，不要附带真实账本、媒体、Cookie 或私钥；安全问题按[安全政策](SECURITY.md)报告。
+## 相关项目
+
+- [amane](https://github.com/sqzw-x/amane)：Peach 通过它接入片商官网等来源。
+- [Gfriends](https://github.com/gfriends/gfriends)：女优头像图库。
+- [CloudDrive2](https://www.clouddrive2.com/)：把网盘挂载成本地磁盘。
+- [OpenAver](https://github.com/slive777/OpenAver)、[Javinizer-Go](https://github.com/javinizer/javinizer-go)、[MetaTube](https://github.com/metatube-community/metatube-sdk-go)、[MDCx](https://github.com/sqzw-x/mdcx)：Peach 参考过它们的来源解析和推荐做法。
+
+完整的复用与致谢见 [复用清单](docs/REUSE.md)。
 
 ## 许可证
 
-[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao。
-
-固定的第三方前端文件保留上游许可证与来源记录，见 [web/vendor](web/vendor/)。
+[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao。随附的第三方前端文件保留各自的许可证，见 [web/vendor](web/vendor/)。
