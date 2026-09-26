@@ -280,15 +280,16 @@ class ShellBoundaryTest(unittest.TestCase):
         self.assertNotIn("feed_item", ASSET_REFERENCE_TABLES)
 
     def test_deleting_a_source_takes_its_items_but_leaves_the_shell(self):
-        # 壳是「这个番号还没入库」，它不该随着某个订阅被删而消失。
+        # 壳是「这个番号还没入库」，它不该随着某个订阅被删而消失。连接和服务一样不开
+        # 外键：子表靠 `remove_source` 自己处理，不靠建表时的 CASCADE 声明。
         with self.database.write_transaction() as connection:
-            connection.execute("PRAGMA foreign_keys=ON")
             feeds.remove_source(connection, self._poll_once(connection))
         with self.database.read_connection() as connection:
             self.assertEqual(connection.execute(
                 "SELECT count(*) FROM feed_item").fetchone()[0], 0)
-            self.assertEqual(connection.execute(
-                "SELECT count(*) FROM feed_discovery").fetchone()[0], 2)
+            self.assertEqual(tuple(connection.execute(
+                "SELECT count(*), count(source_id) FROM feed_discovery").fetchone()), (2, 0))
+            self.assertEqual(connection.execute("PRAGMA foreign_key_check").fetchall(), [])
 
 
 if __name__ == "__main__":  # pragma: no cover

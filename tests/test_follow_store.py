@@ -1047,6 +1047,16 @@ class SourceRemovalTests(_StoreCase):
         self.store.remove_source(source_id)
         self.assertEqual([row["id"] for row in self.store.sources()], [other])
 
+    def test_removing_a_source_takes_its_items_and_their_playback(self):
+        source_id = self._source()
+        self.store.record(source_id, _fetch([_candidate("1", "Fiona")]), moment=MOMENT)
+        self.store.record_playback(self.store.items()[0].id, MOMENT)
+        self.store.remove_source(source_id)
+        for table in ("follow_item", "follow_playback"):
+            self.assertEqual(self.connection.execute(
+                f"SELECT count(*) FROM {table}").fetchone()[0], 0, table)
+        self.assertEqual(self.connection.execute("PRAGMA foreign_key_check").fetchall(), [])
+
 
 class PlaybackTests(_StoreCase):
     def _item(self):

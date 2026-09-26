@@ -585,8 +585,17 @@ class FollowStore:
 
         哪张表、要不要连带清理，属于这一层的知识。写成 Web 处理函数里一句裸
         DELETE 的话，换存储结构时得去处理函数里找 SQL。
+
+        条目与播放记录由这里显式删：连接的 `PRAGMA foreign_keys` 是 OFF，表上的
+        `ON DELETE CASCADE` 不会执行。留下的孤儿条目让全库 `foreign_key_check` 不为 0，
+        补别名后继合并实体时照这个结果回滚，每一次合并都失败。
         """
-        self._connect().execute("DELETE FROM follow_source WHERE id=?", (source_id,))
+        connection = self._connect()
+        connection.execute(
+            "DELETE FROM follow_playback WHERE follow_item_id IN"
+            " (SELECT id FROM follow_item WHERE source_id=?)", (source_id,))
+        connection.execute("DELETE FROM follow_item WHERE source_id=?", (source_id,))
+        connection.execute("DELETE FROM follow_source WHERE id=?", (source_id,))
 
     def record_error(self, source_id: int, message: str,
                      moment: datetime | None = None, *, status: str = "error") -> None:
