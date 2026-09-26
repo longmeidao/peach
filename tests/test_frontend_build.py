@@ -223,28 +223,34 @@ class ReactBundleTests(unittest.TestCase):
 
 
 class BoardUiUpstreamTests(unittest.TestCase):
-    """`frontend/src/react/boardui/` 是 BoardUI 注册表源码的逐字副本，只加不改（ADR-0031）。
+    """`frontend/src/react/boardui/` 与 `evilcharts/` 是上游注册表源码的逐字副本，只加不改
+    （ADR-0031、ADR-0076）。
 
-    `UPSTREAM.sha256` 记下复制时每个文件的 SHA-256。改了副本、多出没登记的文件、登记了却
-    删掉，都在这里红。比的是登记的快照而不是线上注册表：上游随时会改，测试不能联网。
-    升级上游时重新复制文件、重算对应行，并更新 `ORIGIN.md` 的条目哈希。
+    每个目录的 `UPSTREAM.sha256` 记下复制时每个文件的 SHA-256。改了副本、多出没登记的文件、
+    登记了却删掉，都在这里红。比的是登记的快照而不是线上注册表：上游随时会改，测试不能联网。
+    升级上游时重新复制文件、重算对应行，并更新同目录 `ORIGIN.md` 的条目哈希。
     """
 
-    BOARDUI = FRONTEND / "src" / "react" / "boardui"
+    VENDORED = ("boardui", "evilcharts")
     RECORDS = ("ORIGIN.md", "UPSTREAM.sha256")
 
     def test_the_copied_sources_match_their_recorded_upstream_hashes(self):
+        for name in self.VENDORED:
+            with self.subTest(name):
+                self.assert_matches_upstream(FRONTEND / "src" / "react" / name, name)
+
+    def assert_matches_upstream(self, root: Path, name: str):
         recorded = {}
-        for line in (self.BOARDUI / "UPSTREAM.sha256").read_text(encoding="utf-8").splitlines():
+        for line in (root / "UPSTREAM.sha256").read_text(encoding="utf-8").splitlines():
             digest, path = line.split("  ", 1)
             recorded[path] = digest
-        present = {file.relative_to(self.BOARDUI).as_posix(): file for file in self.BOARDUI.rglob("*")
+        present = {file.relative_to(root).as_posix(): file for file in root.rglob("*")
                    if file.is_file() and file.name not in self.RECORDS}
         self.assertEqual(sorted(present), sorted(recorded),
-                         "boardui/ 的文件要与 UPSTREAM.sha256 一一对应；Peach 自己的组合放在 boardui/ 外面")
+                         f"{name}/ 的文件要与 UPSTREAM.sha256 一一对应；Peach 自己的组合放在 {name}/ 外面")
         for path, file in present.items():
             self.assertEqual(hashlib.sha256(file.read_bytes()).hexdigest(), recorded[path],
-                             f"boardui/{path} 与复制时的上游内容不同；外观差异在 boardui/ 外面组合")
+                             f"{name}/{path} 与复制时的上游内容不同；外观差异在 {name}/ 外面组合")
 
 
 class FrontendManifestTests(unittest.TestCase):
@@ -451,10 +457,6 @@ class StatsEndpointTests(unittest.TestCase):
         self.assertIn("react-aria-components", self.source)
         self.assertEqual(self.source.count("<MetricTab"), 4)
 
-    def test_ring_geometry_is_a_percentage_of_one_turn(self):
-        """一圈钉成 100，`stroke-dasharray` 写的那个数就是百分比本身。"""
-        self.assertIn("pathLength={100}", self.source)
-
     def test_the_endpoint_is_declared_once(self):
         """端点在前端只能有一个声明处，就是这一页的数据模块。"""
         sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
@@ -520,7 +522,7 @@ class TasteEndpointTests(unittest.TestCase):
 
     def test_every_chart_is_a_react_component(self):
         """六种图都在 React 里：雷达、排行条、读数卡、两张热力图、创作者流向。"""
-        for component in ("TasteRadar", "RankedBars", "SummaryCard", "HeatCard", "CreatorSankey"):
+        for component in ("TasteRadar", "RankedBars", "SummaryCard", "ActivityHeat", "CreatorSankey"):
             self.assertIn(component, self.source)
         self.assertIn("from 'd3-sankey'", self.source)
 

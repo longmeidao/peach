@@ -1,21 +1,20 @@
 /* 库存的径向图：一段一圈，读数跟着指到的那一段走。
  *
- * 注册表里没有图表条目，环用 SVG 画：`pathLength={100}` 把一圈长度钉成 100，
- * `stroke-dasharray` 写的那个数就是百分比本身，几何全走属性、不用内联样式。颜色只取
- * BoardUI 的 `chart-*` 档，差异登记在 `../boardui/ORIGIN.md`。
- *
- * 高亮是 React 状态：指针进出与点选各管一件事——扫过去是看一眼，点下去是钉住。
- * 过渡用 CSS，`web/css/01-base.css` 的全局规则在 reduced motion 下把它整个关掉。 */
+ * 圈由 EvilCharts 的 `EvilRadialChart` 画，颜色按 `chart-1`…`chart-6` 循环，满圈是最长那段的
+ * 1.1 倍（`radialCeiling`）。高亮是 React 状态：指针进出与点选各管一件事——扫过去是看一眼，
+ * 点下去是钉住。图下那排格子是同一份状态的按钮，键盘也够得着；上游的可点选图例只有一个
+ * 选中态，分不出「看一眼」和「钉住」，所以圈的形状与点击走 `radialBarProps` 接到这里。
+ * 差异登记在 `../evilcharts/ORIGIN.md`。 */
 import { useState } from 'react';
+import { Sector, type SectorProps } from 'recharts';
 
-import { cardClass } from '../components/card';
-import { rings, type RadialSlice } from './stats';
+import { EvilRadialChart } from '@/registry/charts/recharts-radial-chart';
+
+import { CHART_CARD, sliceConfig, sliceKey } from '../charts/chart-card';
+import { ChartTip } from '../charts/chart-tip';
+import { radialBarSize, radialCeiling, type RadialSlice } from './stats';
 
 /** 六档图表色循环。类名写成整串，Tailwind 扫得到。 */
-const RING_STROKE = [
-  'stroke-chart-1', 'stroke-chart-2', 'stroke-chart-3',
-  'stroke-chart-4', 'stroke-chart-5', 'stroke-chart-6',
-];
 const TILE_SWATCH = [
   'bg-chart-1', 'bg-chart-2', 'bg-chart-3',
   'bg-chart-4', 'bg-chart-5', 'bg-chart-6',
@@ -43,12 +42,12 @@ export function RadialCard(
 
   const focus = hovered >= 0 ? hovered : pinned;
   const total = slices.reduce((sum, row) => sum + row.value, 0);
-  const geometry = rings(slices.map((row) => row.value));
   const shown = slices[focus];
   const toggle = (index: number) => setPinned((at) => (at === index ? -1 : index));
+  const data = slices.map((row, index) => ({ slice: sliceKey(index), value: row.value }));
 
   return (
-    <section className={`${cardClass({ radius: 'chart' })} flex flex-col gap-4 max-sm:p-4`}>
+    <section className={CHART_CARD}>
       <header className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
         <span className="flex min-w-0 flex-col gap-1">
           <h3 className="text-title-2-medium text-text-primary">{shown ? shown.name : title}</h3>
@@ -58,22 +57,22 @@ export function RadialCard(
         </span>
         <small className="text-caption-1-regular text-text-secondary">{unit}</small>
       </header>
-      <svg viewBox="0 0 320 320" fill="none" role="img" aria-label={title}
-        className="block h-75 w-full max-sm:h-65" onPointerLeave={() => setHovered(-1)}>
-        {slices.map((row, index) => (
-          <g key={row.name} onPointerEnter={() => setHovered(index)} onClick={() => toggle(index)}>
-            <title>{`${row.name}：${row.value.toLocaleString()} ${unit}`}</title>
-            <circle cx="160" cy="160" r={geometry[index]!.radius} strokeWidth={geometry[index]!.width}
-              strokeLinecap="round" className="stroke-chart-track" />
-            <circle cx="160" cy="160" r={geometry[index]!.radius} strokeWidth={geometry[index]!.width}
-              strokeLinecap="round" pathLength={100} transform="rotate(-90 160 160)"
-              strokeDasharray={`${geometry[index]!.length} ${100 - geometry[index]!.length}`}
-              className={focus >= 0 && focus !== index
-                ? `cursor-pointer opacity-30 transition-opacity ${RING_STROKE[index % 6]}`
-                : `cursor-pointer transition-opacity ${RING_STROKE[index % 6]}`} />
-          </g>
-        ))}
-      </svg>
+      <div role="img" aria-label={title} onPointerLeave={() => setHovered(-1)}>
+        <EvilRadialChart data={data} nameKey="slice" config={sliceConfig(slices.map((row) => row.name))}
+          max={radialCeiling(slices.map((row) => row.value))} innerRadius="22%"
+          className="aspect-auto h-75 max-sm:h-65">
+          <EvilRadialChart.RadialBar dataKey="value" barSize={radialBarSize(slices.length)} radialBarProps={{
+            shape: (props: SectorProps & { index?: number }) => (
+              <Sector {...props}
+                opacity={focus >= 0 && focus !== props.index ? 0.3 : 1}
+                className="cursor-pointer transition-opacity duration-200" />
+            ),
+            onClick: (_entry: unknown, index: number) => toggle(index),
+            onMouseEnter: (_entry: unknown, index: number) => setHovered(index),
+          }} />
+          <ChartTip nameKey="slice" hideLabel />
+        </EvilRadialChart>
+      </div>
       <div className="inline-grid w-full grid-cols-3 gap-2 max-sm:grid-cols-2">
         {slices.map((row, index) => (
           <button key={row.name} type="button" aria-pressed={pinned === index}

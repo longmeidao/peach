@@ -1,13 +1,18 @@
 /* 统计页的行为：一屏读的是不是同一份数、四张卡当页签切到哪一层、几个空态去哪、
- * 点内容标签交回给壳的是哪个键。
+ * 点内容标签交回给壳的是哪个键、图表的分档怎么折算。
  *
- * 外观（环的粗细、卡片间距）是设计决定，由 `frontend/e2e/design.test.ts` 读
- * `getComputedStyle` 断言；这里只看结构、文字与请求。 */
+ * 外观（卡片间距、阴影）是设计决定，由 `frontend/e2e/design.test.ts` 读
+ * `getComputedStyle` 断言；这里只看结构、文字与请求。Recharts 在这里量不到容器尺寸，
+ * 画不出图形本身，图的读数从图例、页头与纯函数上验。 */
+import { act } from 'react';
 import { notifyManager, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { queryClient } from '../../src/react/query';
-import { prefetchStats, rings, STATS_URL, watchNote, type StatsData } from '../../src/react/stats/stats';
+import {
+  lengthRows, mediumRows, prefetchStats, radialBarSize, radialCeiling, replayRows, STATS_URL, watchNote,
+  type StatsData,
+} from '../../src/react/stats/stats';
 import { StatsPage } from '../../src/react/stats/stats-page';
 
 import { buttonNamed, click, mount, mountRoot } from './render';
@@ -22,14 +27,23 @@ notifyManager.setScheduler((notify) => notify());
 const payload = (overrides: Partial<StatsData> = {}): StatsData => ({
   by_loc: [{ k: 'local', n: 3, bytes: 3221225472, videos: 3 },
     { k: '115', n: 1, bytes: 1073741824, videos: 1 }],
+  by_medium: [{ k: 'video', n: 4, bytes: 4294967296 }, { k: 'image', n: 6, bytes: 1048576 }],
   by_library: [{ k: 'main', name: '主库', icon: 'film', videos: 4, bytes: 4294967296 }],
+  by_length: [{ k: '速食', n: 1 }, { k: '短', n: 3 }, { k: '中', n: 0 }, { k: '长', n: 0 }],
+  by_quality: [{ k: '4K', n: 0 }, { k: '2K', n: 0 }, { k: '1080P', n: 4 }, { k: '720P', n: 0 }, { k: '低画质', n: 0 }],
+  play_activity: {
+    timezone: 'UTC+08:00',
+    days: [{ date: '2026-09-20', count: 1 }, { date: '2026-09-22', count: 1 }],
+    hours: [{ weekday: 0, hour: 23, count: 1 }, { weekday: 6, hour: 8, count: 1 }],
+  },
+  replays: [{ k: 1, n: 1 }, { k: 3, n: 1 }],
   attribution: { videos: 4, creator: 3, code: 2, studio: 1, thumb: 4, duration: 4 },
   tag_source: [{ k: 'javdb', n: 12, assets: 3 }],
   tag_cov: 2,
   top_tags: [{ k: 'tag:a', n: 9, cat: 'genre' }, { k: 'tag:b', n: 4, cat: 'genre' }],
   consumption: {
     played: 2, library_played: 1, online_played: 1, play_seconds: 7200,
-    o_total: 5, dislike: 1, seen: 2, trash: 0, skimmed: 1,
+    o_total: 5, liked: 1, dislike: 1, seen: 2, trash: 0, skimmed: 1,
   },
   recent: [{
     id: 42, name: 'one.mp4', creator: '甲', play_seconds: 600,
@@ -103,32 +117,83 @@ it('四张卡就是页签：点「看过」换到看过那一层，其余的收�
   expect(panel.textContent).not.toContain('已抽帧');
 });
 
-it('库存那一层每个来源一段环，读数用来源的界面名称', async () => {
+/** 库存那一层的两张径向图：图形那一块以图的标题为名。 */
+const radialCharts = (root: ParentNode) =>
+  [...root.querySelectorAll<HTMLElement>('[role=tabpanel] div[role=img]')];
+
+it('库存那一层每个来源一圈，图例用来源的界面名称', async () => {
   const { host } = await open();
-  const charts = host.querySelectorAll('svg[role=img]');
-  expect([...charts].map((chart) => chart.getAttribute('aria-label'))).toEqual(['网盘与本地', '媒体库']);
-  expect([...charts[0]!.querySelectorAll('title')].map((node) => node.textContent))
-    .toEqual(['本地：3 个视频', '115：1 个视频']);
+  const charts = radialCharts(host);
+  expect(charts.map((chart) => chart.getAttribute('aria-label'))).toEqual(['网盘与本地', '媒体库']);
+  const tiles = [...charts[0]!.closest('section')!.querySelectorAll('button')];
+  expect(tiles.map((tile) => tile.querySelector('span')?.textContent)).toEqual(['本地', '115']);
+  expect(tiles.map((tile) => tile.querySelector('b')?.textContent)).toEqual(['3', '1']);
 });
 
-it('环写的是百分比本身：一圈钉成 100，最长那段留一成余量', async () => {
-  const geometry = rings([10, 5]);
-  expect(geometry[0]!.length).toBeCloseTo(100 / 1.1);
-  expect(geometry[1]!.length).toBeCloseTo(50 / 1.1);
-  const { host } = await open();
-  const value = host.querySelectorAll('svg[role=img]')[0]!.querySelectorAll('circle')[1]!;
-  expect(value.getAttribute('pathLength')).toBe('100');
+it('满圈是最长那段的 1.1 倍，圈数越多每圈越细', () => {
+  expect(radialCeiling([10, 5])).toBeCloseTo(11);
+  expect(radialCeiling([])).toBeCloseTo(1.1);
+  expect([2, 12, 40].map(radialBarSize)).toEqual([14, 8, 4]);
 });
 
 it('点图例把那一段钉住，读数跟着换；再点一次放开', async () => {
   const { host } = await open();
-  const tile = buttonNamed('115', host) ?? [...host.querySelectorAll('button')]
-    .find((button) => button.textContent?.startsWith('115'))!;
+  const card = radialCharts(host)[0]!.closest('section')!;
+  const tile = [...card.querySelectorAll('button')].find((button) => button.textContent?.startsWith('115'))!;
   await click(tile);
   expect(tile.getAttribute('aria-pressed')).toBe('true');
-  expect(host.querySelector('svg[role=img]')!.closest('section')!.textContent).toContain('115');
+  expect(card.querySelector('h3')?.textContent).toBe('115');
+  expect(card.querySelector('header b')?.textContent).toBe('1');
   await click(tile);
   expect(tile.getAttribute('aria-pressed')).toBe('false');
+  expect(card.querySelector('h3')?.textContent).toBe('网盘与本地');
+});
+
+it('库存那一层按时长、画质、文件类型各出一张分布图，页头读合计', async () => {
+  const { host } = await open();
+  const panel = host.querySelector('[role=tabpanel]')!;
+  const bars = [...panel.querySelectorAll('section[aria-label]')];
+  expect(bars.map((bar) => [bar.getAttribute('aria-label'), bar.querySelector('header b')?.textContent]))
+    .toEqual([['时长', '4'], ['画质', '4'], ['文件类型', '10']]);
+});
+
+it('分布图的分档：时长换成分钟区间，文件类型多的在前，播放次数长尾并档', () => {
+  expect(lengthRows([{ k: '速食', n: 1 }, { k: '长', n: 2 }, { k: '超长', n: 3 }]))
+    .toEqual([{ name: '<5 分钟', value: 1 }, { name: '>40 分钟', value: 2 }, { name: '超长', value: 3 }]);
+  expect(mediumRows([{ k: 'video', n: 4, bytes: 0 }, { k: 'account', n: 9, bytes: 0 }, { k: 'x', n: 1, bytes: 0 }]))
+    .toEqual([{ name: '账号', value: 9 }, { name: '视频', value: 4 }, { name: 'x', value: 1 }]);
+  expect(replayRows([{ k: 1, n: 52 }, { k: 2, n: 13 }, { k: 4, n: 6 }, { k: 7, n: 1 }, { k: 9, n: 1 }, { k: 12, n: 2 }]))
+    .toEqual([
+      { name: '1 次', value: 52 }, { name: '2 次', value: 13 }, { name: '3 次', value: 0 },
+      { name: '4 次', value: 6 }, { name: '5 次', value: 0 }, { name: '6–9 次', value: 2 },
+      { name: '≥10 次', value: 2 },
+    ]);
+});
+
+it('看过那一层有播放时间的两张热力图，指到一格读数换成那一格', async () => {
+  const { host } = await open();
+  await click(tabNamed(host, '看过'));
+  const panel = host.querySelector('[role=tabpanel]')!;
+  const heats = [...panel.querySelectorAll('svg[role=img]')];
+  expect(heats.map((heat) => heat.getAttribute('aria-label'))).toEqual(['播放时间', '每日播放']);
+  const card = heats[0]!.closest('section')!;
+  expect(card.querySelector('header b')?.textContent).toBe('2');
+  expect(card.querySelector('footer')?.textContent).toContain('UTC+08:00');
+  const cell = card.querySelector<SVGRectElement>('rect[aria-label="周一 23:00，1 个作品"]')!;
+  await act(async () => { cell.dispatchEvent(new FocusEvent('focusin', { bubbles: true })); });
+  expect(card.querySelector('header small')?.textContent).toBe('周一 23:00');
+  expect(card.querySelector('header b')?.textContent).toBe('1');
+  await act(async () => { cell.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); });
+  expect(card.querySelector('header b')?.textContent).toBe('2');
+  expect(panel.querySelector('section[aria-label="播放次数"] header b')?.textContent).toBe('2');
+  const liked = [...panel.querySelectorAll('span')].find((term) => term.textContent === '喜欢');
+  expect(liked?.nextElementSibling?.textContent).toBe('1');
+});
+
+it('没有播放时间记录时看过那一层不出热力图', async () => {
+  const { host } = await open(payload({ play_activity: { timezone: 'UTC+08:00', days: [], hours: [] } }));
+  await click(tabNamed(host, '看过'));
+  expect(host.querySelector('[role=tabpanel] svg[role=img]')).toBeNull();
 });
 
 it('覆盖率那一层的每条进度用同一对分子分母，不另算一遍', async () => {
@@ -188,7 +253,8 @@ it('快进扫过和正常看完是两回事，一行里分得出来', async () =
 it('一个视频都没有时给空态，能改配置就给去添加媒体文件夹', async () => {
   const { host, props } = await open(payload({ by_loc: [], by_library: [] }));
   expect(host.querySelector('h3')?.textContent).toBe('还没有视频');
-  expect(host.querySelector('svg[role=img]')).toBeNull();
+  expect(radialCharts(host)).toEqual([]);
+  expect(host.querySelector('[role=tabpanel] section[aria-label]')).toBeNull();
   await click(buttonNamed('添加媒体文件夹', host));
   expect(props.openMediaSettings).toHaveBeenCalledTimes(1);
 });

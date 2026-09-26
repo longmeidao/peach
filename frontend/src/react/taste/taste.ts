@@ -12,6 +12,8 @@
 import { sankey, sankeyLinkHorizontal } from 'd3-sankey';
 
 import { apiGet, apiSend, ApiError } from '../../api';
+import type { BarRow } from '../charts/bar-card';
+import type { ActivityCounts } from '../charts/heat';
 import { queryClient } from '../query';
 
 export const TASTE_URL = '/api/taste';
@@ -87,12 +89,6 @@ export interface TasteAnalysis {
   next_steps?: { route: string; title: string; detail: string }[];
 }
 
-export interface TasteActivity {
-  timezone?: string;
-  days?: { date: string; count: number }[];
-  hours?: { weekday: number; hour: number; count: number }[];
-}
-
 export interface CreatorFlow { source: string; target: string; value: number }
 
 /** `/api/taste` 的响应。字段与 `web_stats.q_taste` 对齐。 */
@@ -103,7 +99,7 @@ export interface TasteData {
   gaps?: RankRow[];
   sources?: TasteSource[];
   analysis?: TasteAnalysis;
-  activity?: TasteActivity;
+  activity?: ActivityCounts;
   creator_flows?: CreatorFlow[];
   storage?: { exports?: number; bytes?: number };
   window?: string;
@@ -198,97 +194,24 @@ export function rankShares(rows: RankRow[]): number[] {
   return strengths.map((value) => Math.max(0, Math.min(100, value / ceiling * 100)));
 }
 
-/** 雷达图的一个顶点。 */
-export interface RadarPoint { name: string; x: number; y: number; labelX: number; labelY: number }
+/** 按分数从高到低的前 `limit` 个维度。分数为 0 或非有限的行先滤掉。 */
+export const topScores = (rows: RankRow[], limit: number): BarRow[] =>
+  rows.filter((row) => Number.isFinite(Number(row.score)) && Number(row.score) > 0)
+    .map((row) => ({ name: row.name, value: Number(row.score) }))
+    .sort((a, b) => b.value - a.value).slice(0, limit);
 
-/** 雷达图几何：320×280 的画布、中心 (160,140)、值圈半径 100。 */
-export const RADAR_CENTER = { x: 160, y: 140 } as const;
-export const RADAR_GRID = [25, 50, 75, 100];
 /** 少于三个维度画不成面，三点以下不画。最多取前六个，再多标签互相压住。 */
 export const RADAR_MIN = 3;
 export const RADAR_MAX = 6;
 
-const radarAt = (index: number, count: number, radius: number): [number, number] => {
-  const angle = index / count * Math.PI * 2 - Math.PI / 2;
-  return [RADAR_CENTER.x + Math.cos(angle) * radius, RADAR_CENTER.y + Math.sin(angle) * radius];
-};
-
-/** 值多边形与标签位置。值为 0 或非有限的行先滤掉，按分数从高到低取前六。 */
-export function radarPoints(rows: RankRow[]): RadarPoint[] {
-  const values = rows
-    .filter((row) => Number.isFinite(Number(row.score)) && Number(row.score) > 0)
-    .slice().sort((a, b) => Number(b.score) - Number(a.score)).slice(0, RADAR_MAX);
-  if (values.length < RADAR_MIN) return [];
-  const max = Math.max(...values.map((row) => Number(row.score)));
-  return values.map((row, index) => {
-    const [x, y] = radarAt(index, values.length, Number(row.score) / max * 100);
-    const [labelX, labelY] = radarAt(index, values.length, 116);
-    return { name: row.name, x, y, labelX, labelY };
-  });
+/** 雷达图的几个顶点。 */
+export function radarRows(rows: RankRow[]): BarRow[] {
+  const values = topScores(rows, RADAR_MAX);
+  return values.length < RADAR_MIN ? [] : values;
 }
 
-/** 一圈网格的点串。 */
-export const radarRing = (radius: number, count: number): string =>
-  Array.from({ length: count }, (_, index) =>
-    radarAt(index, count, radius).map((value) => value.toFixed(2)).join(',')).join(' ');
-
-export const radarShape = (points: RadarPoint[]): string =>
-  points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
-
-/** 热力图里的一格。`share` 是这一格相对最忙那一格的浓度，0 到 1。 */
-export interface HeatCell { key: string; label: string; count: number; share: number }
-
-export const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-
-/** 有访问的格子至少留一成浓度：一次访问和一次都没有必须看得出差别。 */
-const shareOf = (count: number, max: number) => (count ? Math.max(0.12, count / max) : 0);
-
-/** 星期 × 小时的 168 格。越界或负数的记录当作没有。 */
-export function hourGrid(activity: TasteActivity | undefined): { cells: HeatCell[]; total: number } {
-  const counts = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
-  for (const item of activity?.hours || []) {
-    const { weekday, hour, count } = item;
-    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue;
-    if (!Number.isInteger(hour) || hour < 0 || hour > 23) continue;
-    if (!Number.isFinite(count) || count < 0) continue;
-    counts[weekday]![hour] = (counts[weekday]![hour] || 0) + count;
-  }
-  const flat = counts.flat();
-  const max = Math.max(1, ...flat);
-  const cells = counts.flatMap((row, day) => row.map((count, hour) => ({
-    key: `${day}-${hour}`, label: `${WEEKDAYS[day]} ${hour}:00`, count, share: shareOf(count, max),
-  })));
-  return { cells, total: flat.reduce((sum, count) => sum + count, 0) };
-}
-
-/** 最近 91 天的日历。末尾那天由数据说了算，往前数 90 天，中间没有记录的那些补 0。 */
-export function dayCalendar(activity: TasteActivity | undefined):
-{ cells: HeatCell[]; total: number; start: string; end: string } {
-  const days = (activity?.days || [])
-    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date)
-      && Number.isFinite(row.count) && row.count >= 0)
-    .slice().sort((a, b) => a.date.localeCompare(b.date));
-  const empty = { cells: [], total: 0, start: '', end: '' };
-  if (!days.length) return empty;
-  const end = new Date(`${days.at(-1)!.date}T00:00:00Z`);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - 90);
-  const daily = new Map(days.map((row) => [row.date, row.count]));
-  const max = Math.max(1, ...days.map((row) => row.count));
-  const cells = Array.from({ length: 91 }, (_, index) => {
-    const date = new Date(start);
-    date.setUTCDate(start.getUTCDate() + index);
-    const key = date.toISOString().slice(0, 10);
-    const count = daily.get(key) || 0;
-    return { key, label: key, count, share: shareOf(count, max) };
-  });
-  return {
-    cells,
-    total: cells.reduce((sum, cell) => sum + cell.count, 0),
-    start: start.toISOString().slice(0, 10),
-    end: days.at(-1)!.date,
-  };
-}
+/** 排行条最多八条。 */
+export const RANK_MAX = 8;
 
 /** 桑基图的一个节点。`side` 决定它落在左边还是右边，也决定它的文字往哪边排。 */
 export interface FlowNode {

@@ -16,6 +16,8 @@ export default mergeConfig(base, defineConfig({
       '@peach/legacy/ui': stub('legacy-ui.ts'),
       // 测试里 island 直接拿到 React 子树的源码入口，不经过 web/dist 产物。
       '@peach/react': source('react/entry.tsx'),
+      '@/registry': source('react/evilcharts/registry'),
+      '@/lib/utils': source('react/charts/cn.ts'),
       '@': source('react/boardui'),
     },
   },

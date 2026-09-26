@@ -217,6 +217,78 @@ def _storage_volumes() -> list[dict[str, object]]:
     return volumes
 
 
+#: 视频的时长与画质分档，顺序同 `media_probe.context_fields` 的判据：由短到长、由高到低。
+LENGTH_BANDS = ("速食", "短", "中", "长")
+QUALITY_BANDS = ("4K", "2K", "1080P", "720P", "低画质")
+
+
+def _bands(c, column: str, order: tuple[str, ...]) -> list[dict[str, object]]:
+    """一列分档的视频数。判据里的档位按顺序全列出来，没有视频的读 0；账本里多出的档排在后面。"""
+    counts = {row[0]: row[1] for row in c.execute(
+        f"SELECT {column},count(*) FROM asset WHERE medium='video' AND {column} IS NOT NULL "
+        f"GROUP BY {column}")}
+    extra = sorted(key for key in counts if key not in order)
+    return [{"k": key, "n": counts.get(key, 0)} for key in (*order, *extra)]
+
+
+#: 在线追更的一条播放不算进来的条件：它关联的馆藏视频自己已经有这一项。和 `online_played`
+#: 同一个去重，一个作品在两边都播过只算一次。
+_ONLINE_ONLY = ("(fi.asset_id IS NULL OR NOT EXISTS(SELECT 1 FROM asset a "
+                "WHERE a.id=fi.asset_id AND {}))")
+
+
+def _utc_offset(moment: datetime) -> str:
+    offset = moment.strftime("%z") or "+0000"
+    return f"UTC{offset[:3]}:{offset[3:]}"
+
+
+def _play_activity(c, has_follow: bool) -> dict[str, object]:
+    """每个作品最近一次播放落在哪一天、星期几的哪个钟点，按本机时区算。
+
+    形状同口味页的 `activity`（`days`、`hours`、`timezone`），前端两处共用一张热力卡。
+    账本每个作品只记最近一次播放的时间，所以一个作品只占一格。"""
+    stamps = [row[0] for row in c.execute(
+        "SELECT CAST(last_played AS REAL) FROM asset WHERE last_played IS NOT NULL")]
+    if has_follow:
+        stamps += [row[0] for row in c.execute(
+            "SELECT CAST(fp.last_played AS REAL) FROM follow_playback fp "
+            "JOIN follow_item fi ON fi.id=fp.follow_item_id WHERE fp.last_played IS NOT NULL AND "
+            + _ONLINE_ONLY.format("a.last_played IS NOT NULL"))]
+    days: dict[str, int] = {}
+    hours: dict[tuple[int, int], int] = {}
+    for stamp in stamps:
+        if not stamp or stamp <= 0:
+            continue
+        try:
+            moment = datetime.fromtimestamp(stamp).astimezone()
+        except (OverflowError, OSError, ValueError):
+            continue
+        day = moment.date().isoformat()
+        days[day] = days.get(day, 0) + 1
+        slot = (moment.weekday(), moment.hour)
+        hours[slot] = hours.get(slot, 0) + 1
+    return {
+        "timezone": _utc_offset(datetime.now().astimezone()),
+        "days": [{"date": day, "count": count} for day, count in sorted(days.items())],
+        "hours": [{"weekday": weekday, "hour": hour, "count": count}
+                  for (weekday, hour), count in sorted(hours.items())],
+    }
+
+
+def _replays(c, has_follow: bool) -> list[dict[str, int]]:
+    """播放次数的分布：播过 k 次的作品有几个。合计与 `consumption.played` 相同。"""
+    counts: dict[int, int] = {}
+    rows = list(c.execute("SELECT play_count,count(*) FROM asset WHERE play_count>0 GROUP BY play_count"))
+    if has_follow:
+        rows += c.execute(
+            "SELECT fp.play_count,count(*) FROM follow_playback fp JOIN follow_item fi "
+            "ON fi.id=fp.follow_item_id WHERE fp.play_count>0 AND "
+            + _ONLINE_ONLY.format("a.play_count>0") + " GROUP BY fp.play_count").fetchall()
+    for plays, n in rows:
+        counts[int(plays)] = counts.get(int(plays), 0) + n
+    return [{"k": plays, "n": n} for plays, n in sorted(counts.items())]
+
+
 def q_stats(contract: WebContract):
     """统计页：库存 / 归属 / 标签 / 本地与在线播放 / 各存储卷。"""
     with contract.read_connection() as c:
@@ -228,6 +300,8 @@ def q_stats(contract: WebContract):
         out["by_medium"] = [dict(r) for r in c.execute(
             "SELECT medium k, count(*) n, COALESCE(sum(size),0) bytes "
             "FROM asset GROUP BY medium ORDER BY bytes DESC")]
+        out["by_length"] = _bands(c, "ctx_length", LENGTH_BANDS)
+        out["by_quality"] = _bands(c, "ctx_quality", QUALITY_BANDS)
         config = settings_file.active()
         out["by_library"] = []
         for library in media_libraries.libraries(config):
@@ -273,11 +347,12 @@ def q_stats(contract: WebContract):
         library_seconds = one("SELECT COALESCE(sum(play_seconds),0) FROM asset")
         online_played = 0
         online_seconds = 0
-        if "follow_playback" in tables:
+        has_follow = "follow_playback" in tables
+        if has_follow:
             online_played = one(
                 "SELECT count(*) FROM follow_playback fp JOIN follow_item fi "
-                "ON fi.id=fp.follow_item_id WHERE fp.play_count>0 AND (fi.asset_id IS NULL OR "
-                "NOT EXISTS(SELECT 1 FROM asset a WHERE a.id=fi.asset_id AND a.play_count>0))"
+                "ON fi.id=fp.follow_item_id WHERE fp.play_count>0 AND "
+                + _ONLINE_ONLY.format("a.play_count>0")
             )
             online_seconds = one(
                 "SELECT COALESCE(sum(play_seconds),0) FROM follow_playback"
@@ -290,6 +365,8 @@ def q_stats(contract: WebContract):
             "library_play_seconds": library_seconds,
             "online_play_seconds": online_seconds,
             "o_total": one("SELECT COALESCE(sum(o_count),0) FROM asset"),
+            "liked": one("SELECT count(*) FROM asset_preference WHERE profile_id=? AND liked=1",
+                         DEFAULT_PROFILE_ID) if "asset_preference" in tables else 0,
             "dislike": one("SELECT count(*) FROM asset WHERE feedback='dislike'"),
             "seen": one("SELECT count(*) FROM asset WHERE feedback='seen'"),
             "trash": one("SELECT count(*) FROM asset WHERE disposal='trash'"),
@@ -311,6 +388,8 @@ def q_stats(contract: WebContract):
         out["recent"] = sorted(
             recent, key=lambda row: float(row.get("last_played") or 0), reverse=True,
         )[:12]
+        out["play_activity"] = _play_activity(c, has_follow)
+        out["replays"] = _replays(c, has_follow)
     out["storage_volumes"] = _storage_volumes()
     measured = [row for row in out["storage_volumes"] if row["total"] is not None]
     out["storage_summary"] = {

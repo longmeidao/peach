@@ -9,6 +9,7 @@ import time
 import unittest
 from contextlib import closing, contextmanager
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from unittest import mock
 
@@ -197,6 +198,52 @@ class WebDataTests(unittest.TestCase):
         stats = rm_web.q_stats(self.contract)
         self.assertEqual(stats["tag_cov"], 2)
         self.assertIn("审核标签", {row["k"] for row in stats["top_tags"]})
+
+    def test_stats_band_videos_by_length_and_quality_in_probe_order(self):
+        stats = rm_web.q_stats(self.contract)
+        self.assertEqual(stats["by_length"], [
+            {"k": "速食", "n": 2}, {"k": "短", "n": 0}, {"k": "中", "n": 0}, {"k": "长", "n": 0}])
+        self.assertEqual(stats["by_quality"], [
+            {"k": "4K", "n": 0}, {"k": "2K", "n": 1}, {"k": "1080P", "n": 1},
+            {"k": "720P", "n": 0}, {"k": "低画质", "n": 0}])
+
+    def test_stats_play_activity_and_replays_count_each_work_once(self):
+        """在线追更那条关联的馆藏视频自己播过，就只按馆藏那一次算；没关联的照常算。"""
+        late_monday = datetime(2026, 9, 21, 23, 30).timestamp()
+        early_tuesday = datetime(2026, 9, 22, 0, 10).timestamp()
+        sunday = datetime(2026, 9, 20, 8, 5).timestamp()
+        with closing(sqlite3.connect(self.db_path)) as connection:
+            connection.execute("UPDATE asset SET play_count=3,last_played=? WHERE id=1", (str(late_monday),))
+            connection.execute("UPDATE asset SET play_count=1,last_played=? WHERE id=2", (str(early_tuesday),))
+            connection.execute(
+                "INSERT INTO follow_source(id,provider,ref,label,url,created_at,updated_at) "
+                "VALUES(1,'x','ref','Source','https://example.test','2026-01-01','2026-01-01')")
+            connection.executemany(
+                "INSERT INTO follow_item(id,source_id,external_id,title,release_key,asset_id,"
+                "first_seen_at,last_seen_at) VALUES(?,1,?,?,?,?,'2026-01-01','2026-01-01')",
+                [(1, "saved", "Saved", "saved", 1), (2, "online", "Online", "online", None)])
+            connection.executemany(
+                "INSERT INTO follow_playback(follow_item_id,play_count,last_played) VALUES(?,?,?)",
+                [(1, 5, sunday), (2, 1, sunday)])
+            connection.executemany(
+                "INSERT INTO asset_preference(profile_id,asset_id,liked,reason,updated_at) "
+                "VALUES('local-default',?,?,?,'2026-09-22')",
+                [(1, 0, "只写了理由"), (2, 1, "")])
+            connection.commit()
+
+        stats = rm_web.q_stats(self.contract)
+
+        self.assertEqual(stats["consumption"]["played"], 3)
+        self.assertEqual(stats["consumption"]["liked"], 1)
+        self.assertEqual(stats["replays"], [{"k": 1, "n": 2}, {"k": 3, "n": 1}])
+        activity = stats["play_activity"]
+        self.assertRegex(activity["timezone"], r"^UTC[+-]\d{2}:\d{2}$")
+        self.assertEqual(activity["days"], [
+            {"date": "2026-09-20", "count": 1}, {"date": "2026-09-21", "count": 1},
+            {"date": "2026-09-22", "count": 1}])
+        self.assertEqual(activity["hours"], [
+            {"weekday": 0, "hour": 23, "count": 1}, {"weekday": 1, "hour": 0, "count": 1},
+            {"weekday": 6, "hour": 8, "count": 1}])
 
     def test_library_counts_follow_named_roots_and_exclude_images(self):
         with closing(sqlite3.connect(self.db_path)) as connection:

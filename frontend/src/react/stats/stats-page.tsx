@@ -21,6 +21,9 @@ import { LinkButton } from '@/components/base/buttons/link-button';
 
 import { errorMessage } from '../../api';
 import type { StatsProps } from '../bundle';
+import { BarCard } from '../charts/bar-card';
+import { CHART_COLORS } from '../charts/chart-card';
+import { ActivityHeat } from '../charts/heat-card';
 import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { ExpandableRanking } from '../components/expandable-ranking';
@@ -31,12 +34,17 @@ import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
 import { StatCard, statCardClass, STAT_STRIP } from '../components/stat-card';
 import { RadialCard } from './radial-card';
 import {
-  fetchStats, percentOf, playedFor, playedItemUrl, reachedShare, STATS_KEY, watchedShare, watchNote,
+  bandRows, fetchStats, lengthRows, mediumRows, percentOf, playedFor, playedItemUrl, reachedShare,
+  replayRows, STATS_KEY, watchedShare, watchNote,
   type Attribution, type RecentPlay, type StatsData, type StorageVolume, type TagSource, type TopTag,
 } from './stats';
 
 /** 收起时露这么多条排行。三十条一次铺开会把下面两个面板整个顶到屏外。 */
 const RANKING_PREVIEW = 10;
+
+/** 图表色跟着上面那张读数卡的强调色走：馆藏是 `chart-6`，看过是 `chart-5`（`StatCard` 的 `accent`）。 */
+const INVENTORY_COLOR = CHART_COLORS[5];
+const VIEWING_COLOR = CHART_COLORS[4];
 
 const CARD = `${cardClass()} flex flex-col gap-4`;
 
@@ -112,12 +120,34 @@ function InventoryDetail({ data, configurable, openMediaSettings }: { data: Stat
     );
   }
   return (
-    <div className="inline-grid w-full gap-5 md:grid-cols-2">
-      <RadialCard title="网盘与本地" rows={data.by_loc.map((row) => (
-        { name: LOC[row.k] ?? row.k, value: row.videos, detail: fmtSize(row.bytes) }))} />
-      <RadialCard title="媒体库" rows={data.by_library.map((row) => (
-        { name: row.name, value: row.videos, detail: fmtSize(row.bytes) }))} />
+    <div className="flex flex-col gap-5">
+      <div className="inline-grid w-full gap-5 md:grid-cols-2">
+        <RadialCard title="网盘与本地" rows={data.by_loc.map((row) => (
+          { name: LOC[row.k] ?? row.k, value: row.videos, detail: fmtSize(row.bytes) }))} />
+        <RadialCard title="媒体库" rows={data.by_library.map((row) => (
+          { name: row.name, value: row.videos, detail: fmtSize(row.bytes) }))} />
+      </div>
+      <div className="inline-grid w-full gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <BarCard title="时长" unit="个视频" series="视频" color={INVENTORY_COLOR}
+          rows={lengthRows(data.by_length)} />
+        <BarCard title="画质" unit="个视频" series="视频" color={INVENTORY_COLOR}
+          rows={bandRows(data.by_quality)} />
+        <BarCard title="文件类型" unit="个条目" series="条目" color={INVENTORY_COLOR} layout="horizontal"
+          rows={mediumRows(data.by_medium)} />
+      </div>
     </div>
+  );
+}
+
+/** 看过那一层的图：最近一次播放落在什么时候，和每个作品播了几次。 */
+function ViewingCharts({ data }: { data: StatsData }) {
+  return (
+    <>
+      <ActivityHeat activity={data.play_activity} title="播放时间" dailyTitle="每日播放"
+        words={{ unit: '个作品', series: '作品', cellUnit: '个作品' }} tone={5} />
+      <BarCard title="播放次数" unit="个作品" series="作品" color={VIEWING_COLOR}
+        rows={replayRows(data.replays)} />
+    </>
   );
 }
 
@@ -305,18 +335,20 @@ export function StatsPage(props: StatsProps) {
             detail={storage.measured ? `已用 ${fmtSize(storage.used)}` : '容量未取得'} />
         </TabList>
         <TabPanel id="inventory"><InventoryDetail data={data} {...props} /></TabPanel>
-        <TabPanel id="viewing">
+        <TabPanel id="viewing" className="flex flex-col gap-5">
           <Detail headline={<Headline term="观看" figure={consumption.played.toLocaleString()} unit="个作品有播放记录" />}>
             <div className="inline-grid w-full gap-3 sm:grid-cols-2">
               <Fact term="馆藏观看" value={consumption.library_played} />
               <Fact term="在线直接观看" value={consumption.online_played} />
               <Fact term="高潮计数" value={consumption.o_total} />
               <Fact term="快进扫过" value={consumption.skimmed} />
+              <Fact term="喜欢" value={consumption.liked} />
               <Fact term="明确不喜欢" value={consumption.dislike} />
               <Fact term="看过了" value={consumption.seen} />
               <Fact term="回收站" value={consumption.trash} />
             </div>
           </Detail>
+          <ViewingCharts data={data} />
         </TabPanel>
         <TabPanel id="coverage">
           <Detail headline={<Headline term="内容标签覆盖" figure={`${coverage}%`}

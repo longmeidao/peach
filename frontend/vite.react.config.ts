@@ -4,7 +4,8 @@
  * `@peach/react` 引用这份产物，构建时改写成 `/dist/peach-react.js`，只有挂到 React 子树时
  * 浏览器才去取它。`npm run build` 先跑 Preact 那份（它会清空 web/dist），再跑这份。
  *
- * `@/` 指向 `src/react/boardui/`，上游 BoardUI 源码里的 `@/utils/cx` 因此原样成立。 */
+ * `@/` 指向 `src/react/boardui/`，上游 BoardUI 源码里的 `@/utils/cx` 因此原样成立。
+ * EvilCharts 源码的 `@/registry/*` 与 `@/lib/utils` 排在它前面：别名按书写顺序取第一个命中的。 */
 import { fileURLToPath } from 'node:url';
 
 import tailwindcss from '@tailwindcss/vite';
@@ -15,7 +16,11 @@ import { LEGACY_MODULES } from './vite.config.ts';
 export default defineConfig({
   plugins: [tailwindcss()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src/react/boardui', import.meta.url)) },
+    alias: {
+      '@/registry': fileURLToPath(new URL('./src/react/evilcharts/registry', import.meta.url)),
+      '@/lib/utils': fileURLToPath(new URL('./src/react/charts/cn.ts', import.meta.url)),
+      '@': fileURLToPath(new URL('./src/react/boardui', import.meta.url)),
+    },
   },
   // 库模式不替换 `process.env.NODE_ENV`，React 会在浏览器里读到一个不存在的 `process`。
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },

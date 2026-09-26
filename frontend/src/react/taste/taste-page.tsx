@@ -47,7 +47,8 @@ import { StatCard, statCardClass, STAT_STRIP } from '../components/stat-card';
 import { queryClient } from '../query';
 import { Disclosure } from '../settings/section';
 import { busyProps } from '../settings/use-action';
-import { ActivityCharts, CreatorSankey, RankedBars, TasteRadar } from './charts';
+import { ActivityHeat } from '../charts/heat-card';
+import { CreatorSankey, RankedBars, TasteRadar } from './charts';
 import {
   DEFAULT_WINDOW, fetchTaste, fetchTasteJob, IDLE_POLL_MS, importTasteExport, rankDetail,
   rankShares, removeTasteSource, startTasteRefresh, tasteDate, tasteHours, tasteKey,
@@ -506,7 +507,7 @@ export function TastePage(props: TasteProps) {
               figure={Number(storage.exports || 0).toLocaleString()} detail={fmtSize(storage.bytes || 0)} />
           </div>
           <section className={`${CARD} md:flex-row md:gap-6`} aria-label="浏览器画像">
-            <div className="flex shrink-0 flex-col gap-2 pb-5 md:w-72 md:pr-6 md:pb-0">
+            <div className="flex shrink-0 flex-col gap-2 pb-5 md:w-80 md:pr-6 md:pb-0">
               <span className="text-caption-1-regular text-text-secondary">浏览器画像</span>
               <TasteRadar rows={categories} label="主要口味维度" />
               <small className="text-caption-1-regular text-text-secondary">
@@ -519,7 +520,9 @@ export function TastePage(props: TasteProps) {
                 : <EmptyState shell="plain" icon={RiSearchLine} title="暂无口味维度">{NO_CATEGORY_HINT}</EmptyState>}
             </div>
           </section>
-          <ActivityCharts activity={data.activity} />
+          <ActivityHeat activity={data.activity} title="浏览活跃时间" dailyTitle="每日活跃"
+            words={{ unit: '口味网站访问', series: '访问', cellUnit: '次访问' }} tone={4}
+            empty="还没有可用于分析的口味网站访问记录。" />
           <CreatorSankey flows={data.creator_flows} />
           <DimensionPanels label="浏览器口味维度" onSignal={onSignal} avatarInner={avatarInner}
             panels={[

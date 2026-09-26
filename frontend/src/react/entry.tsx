@@ -3,6 +3,7 @@ import './styles.css';
 
 import type { ComponentType } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { MotionConfig } from 'motion/react';
 import { UNSAFE_PortalProvider } from 'react-aria';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
@@ -54,13 +55,19 @@ function overlayContainer(): HTMLElement {
  * 第一帧用 `flushSync` 同步落到 DOM 上：遗留壳挂完这一页紧接着就读它画出来的结构
  * （配置页按 `.configgroup` 小标题切页签，再按地址里的 `#peachProxy` 滚过去），而
  * `root.render` 自己是排进下一次渲染的；骨架已经清掉，晚一帧画就是一帧空白。往后的
- * `update` 照常异步。 */
+ * `update` 照常异步。
+ *
+ * EvilCharts 的生长动画由 Motion 逐帧驱动，`web/css/01-base.css` 那条全局 reduced motion
+ * 规则只关得掉 CSS 过渡，够不着它。`MotionConfig reducedMotion="user"` 在根上一处接住：
+ * 系统设了减弱动态效果，每棵 React 根里的 Motion 动画都按终态直接画。 */
 function mounter<P extends object>(Component: ComponentType<P>) {
   return (el: Element, props: P): Bundle.ReactMount<P> => {
     const root = createRoot(el);
     const paint = (next: P) => root.render(
       <QueryClientProvider client={queryClient}>
-        <UNSAFE_PortalProvider getContainer={overlayContainer}><Component {...next} /></UNSAFE_PortalProvider>
+        <MotionConfig reducedMotion="user">
+          <UNSAFE_PortalProvider getContainer={overlayContainer}><Component {...next} /></UNSAFE_PortalProvider>
+        </MotionConfig>
       </QueryClientProvider>,
     );
     flushSync(() => paint(props));
