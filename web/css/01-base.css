@@ -156,6 +156,10 @@
    宽度归零，跳版的前提也一并消失——设置面板、灯箱和播放器给 body 加 overflow:hidden 时，
    本来就没有东西会消失。 */
 html{color-scheme:light;scroll-padding-top:calc(var(--topH) + 8px);scrollbar-width:none}
+/* 这段内边距给的是跳到锚点、键盘移焦时的落点，免得目标钻到粘性顶栏底下。焦点就在顶栏
+   里时它反而帮倒忙：搜索框本来就钉在视口上沿，却落在这段「被盖住」的区域里，浏览器每敲
+   一个字都要把光标往下滚，而顶栏跟着一起走，页面就一路往回退。 */
+html:has(.top :focus){scroll-padding-top:0}
 html::-webkit-scrollbar{display:none}
 /* 换筛选那一路上关掉滚动锚定：卡片换成骨架、骨架再换成新卡片，锚定每一步都要照新内容
    把位置推一次，而这一路正有一段回到顶部的滚动在走，两边会互相顶。 */
