@@ -39064,7 +39064,7 @@ var SF = (e, t) => t ? Math.round(e / t * 100) : 0, CF = (e) => e >= 3600 ? `${(
 	[
 		10,
 		Infinity,
-		"10 次以上"
+		"≥10 次"
 	]
 ], IF = (e) => FF.map(([t, n, r]) => ({
 	name: r,

@@ -151,10 +151,11 @@ export const bandRows = (rows: BandCount[], labels: Record<string, string> = {})
 
 export const lengthRows = (rows: BandCount[]): BarRow[] => bandRows(rows, LENGTH_LABEL);
 
-/** 播放次数的分档：五次以内一次一档，往后并成两档，长尾不把柱子拉成一排细线。 */
+/** 播放次数的分档：五次以内一次一档，往后并成两档，长尾不把柱子拉成一排细线。
+ * 名字写短，390 宽的手机上七根柱子的类别名不互相挤掉。 */
 const REPLAY_BANDS: readonly [number, number, string][] = [
   [1, 1, '1 次'], [2, 2, '2 次'], [3, 3, '3 次'], [4, 4, '4 次'], [5, 5, '5 次'],
-  [6, 9, '6–9 次'], [10, Infinity, '10 次以上'],
+  [6, 9, '6–9 次'], [10, Infinity, '≥10 次'],
 ];
 
 export const replayRows = (rows: ReplayCount[]): BarRow[] =>

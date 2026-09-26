@@ -166,7 +166,7 @@ it('分布图的分档：时长换成分钟区间，文件类型多的在前，�
     .toEqual([
       { name: '1 次', value: 52 }, { name: '2 次', value: 13 }, { name: '3 次', value: 0 },
       { name: '4 次', value: 6 }, { name: '5 次', value: 0 }, { name: '6–9 次', value: 2 },
-      { name: '10 次以上', value: 2 },
+      { name: '≥10 次', value: 2 },
     ]);
 });
 
