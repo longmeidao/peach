@@ -144,17 +144,23 @@ def _restore_task_center(contract) -> None:
         LOGGER.info("task center requeued %s followup(s)", len(requeued))
 
 
-async def _warm_taste_history(settings: PeachSettings, contract) -> None:
-    """口味页要的浏览历史汇总，开机后在后台先解析一遍，首次打开不再等七八秒。"""
+#: 开机在后台先算一遍的聚合：口味、复核、垃圾复核、关注的全部条目与筛选项各要几秒到
+#: 十几秒，都按账本版本号缓存（`WebContract.cached_until_changed`），算好一次就一直用到
+#: 账本或文件真的变了。
+WARM_AGGREGATES = (("/api/taste", {"window": "all"}), ("/api/review", {}), ("/api/ads", {}),
+                   ("/api/follow", {}))
+
+
+async def _warm_ledger_aggregates(settings: PeachSettings, contract) -> None:
+    """走和真实请求同一条分派，缓存键一致，页面第一次打开就是现成的。"""
     if not settings.configured:
         return
-    from . import taste_history
-    try:
-        await asyncio.to_thread(taste_history.warm_history_dashboard,
-                                contract.taste_history_store)
-    except Exception:
-        # 预热失败不影响服务启动，口味页照旧在第一次打开时自己解析。
-        LOGGER.debug("taste history warmup failed", exc_info=True)
+    for path, args in WARM_AGGREGATES:
+        try:
+            await asyncio.to_thread(web_contract.dispatch_api_get, contract, path, args)
+        except Exception:
+            # 预热失败不影响服务启动，这一页照旧在第一次打开时自己算。
+            LOGGER.debug("aggregate warmup failed: %s", path, exc_info=True)
 
 
 def create_app(
@@ -302,7 +308,7 @@ def create_app(
         automatic_updates.start()
         push_discovery.start()
         warmup = asyncio.create_task(warm_startup_entries())
-        taste_warmup = asyncio.create_task(_warm_taste_history(settings, contract))
+        aggregate_warmup = asyncio.create_task(_warm_ledger_aggregates(settings, contract))
         if mdns is not None:
             try:
                 await asyncio.to_thread(mdns.start)
@@ -313,7 +319,7 @@ def create_app(
             yield
         finally:
             warmup.cancel()
-            taste_warmup.cancel()
+            aggregate_warmup.cancel()
             follow_scheduler.stop()
             feed_scheduler.stop()
             automatic_updates.stop()

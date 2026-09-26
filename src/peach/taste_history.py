@@ -618,7 +618,7 @@ class _HistoryRows:
 _HISTORY_ROWS: dict[tuple, _HistoryRows] = {}
 
 
-def _store_version(store_path: Path) -> tuple:
+def store_version(store_path: Path) -> tuple:
     version = [str(store_path)]
     for path in (store_path, store_path.with_name(store_path.name + "-wal")):
         try:
@@ -679,7 +679,7 @@ def _read_history_rows(store_path: Path) -> _HistoryRows | None:
 
 
 def _history_rows(store_path: Path) -> _HistoryRows | None:
-    version = _store_version(store_path)
+    version = store_version(store_path)
     cached = _HISTORY_ROWS.get(version)
     if cached is None:
         cached = _read_history_rows(store_path)
@@ -689,12 +689,6 @@ def _history_rows(store_path: Path) -> _HistoryRows | None:
         _HISTORY_ROWS.clear()
         _HISTORY_ROWS[version] = cached
     return cached
-
-
-def warm_history_dashboard(store_path: Path) -> None:
-    """把历史库先解析一遍：口味页首屏要的访问汇总就不用等用户点开时再算。"""
-    if store_path.is_file():
-        _history_rows(store_path)
 
 
 def _history_dashboard_evidence(store_path: Path, since: str | None) -> dict[str, object]:

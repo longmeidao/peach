@@ -26,11 +26,12 @@ from .taste_history import (
     discover_history_sources,
     refresh_history,
     remove_history_source,
+    store_version,
     write_manifest,
 )
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_catalog import COST, attach_avatar_availability, tag_is_not_a_performer_name
-from .web_state import WebContract
+from .web_state import WebContract, path_version
 
 
 def q_search_history(contract: WebContract, limit: int = 10):
@@ -50,6 +51,19 @@ def _taste_since(window: str) -> str | None:
         raise ValueError("invalid taste window")
     days = TASTE_WINDOWS[window]
     return (datetime.now(UTC) - timedelta(days=days)).isoformat() if days else None
+
+
+def taste_inputs(contract: WebContract, window: str) -> tuple:
+    """`q_taste` 读到的账本之外的东西的版本，给 `cached_until_changed` 当键。
+
+    浏览历史库、分析清单与导入目录由 `scripts/taste_history.py` 在进程外写；榜单上的
+    圆头像读头像目录。有时间窗的视图起点每天滑一格，按日期重算一次。
+    """
+    return (store_version(contract.taste_history_store),
+            path_version(contract.taste_history_manifest),
+            path_version(contract.taste_history_import_root),
+            path_version(contract.avatar_root),
+            (_taste_since(window) or "")[:10])
 
 
 #: 口味榜里会出圆头像的两排，以及页面上读得到它们的那几个榜单键。标签榜和网站榜

@@ -25,7 +25,7 @@
 - amane 桥（ADR-0048）装在 `peach-data/tools/amane-bridge/`，四类番号链都经它问。
 - 发行名 `peach`，目录名 `peach-app`。macOS 落后 master 一组有顺序的操作（待办「待执行的操作」第 30 条），做完前别重启菜单栏：无口令的 `peach serve --host 0.0.0.0` 会拒绝启动。
 - 扫描与采集显示项目与等待时长；无进展 120 秒预警，单项外部动作（资料 90 秒、封面 240 秒）超预算跳过并可重试；问题写入 `state/library-processing-<job_id>.issues.jsonl`。
-- 女优资料表 `performer_profile`（ADR-0067）与番号样张表（ADR-0068）待迁 `0036`、`0037`；补女优资料后继每轮存量至多 16 条。
+- 账本版本号 `0038` 待迁，迁前口味、复核等聚合按 90 秒过期；补女优资料后继每轮存量至多 16 条。
 - 实体种子（ADR-0075）由扫描结算的 `seed-import` 后继导入，只填空并换旧种子行；不一致与重复身份在 `generated/seed-landing.csv`。
 - Cloudflare 公网入口默认关闭，配置页启停，须先设访问密码；临时链接地址只写状态文件，命名隧道限源码环境、令牌只存设置文件。整站 `X-Robots-Tag: noindex` 加 `/robots.txt`。
 - FC2PPV-DB 与 JAVten 经本机 Chrome 过 Cloudflare 验证（ADR-0065），profile 在 `secrets/browser/`，不用贴 Cookie。

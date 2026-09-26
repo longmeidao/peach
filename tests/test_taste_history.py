@@ -321,7 +321,6 @@ class TasteHistoryTests(unittest.TestCase):
             return original(path)
 
         with mock.patch.object(taste_history, "_read_history_rows", side_effect=counted):
-            taste_history.warm_history_dashboard(store)
             first = taste_history._history_dashboard_evidence(store, None)
             recent = taste_history._history_dashboard_evidence(store, "2099-01-01T00:00:00+00:00")
             self.assertEqual(len(reads), 1)

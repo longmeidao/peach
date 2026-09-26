@@ -25,7 +25,7 @@ class MigrationTests(unittest.TestCase):
         backup = self.root / "before.db"
         done = upgrade(self.db, MIGRATIONS, backup)
         self.assertEqual([m.version for m in done],
-                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037"])
+                         ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"])
         self.assertTrue(backup.exists())
         con = sqlite3.connect(self.db)
         tables = {row[0] for row in con.execute(
@@ -43,7 +43,7 @@ class MigrationTests(unittest.TestCase):
                          "asset_tag_preference", "asset_search", "follow_playback",
                          "genre_decision", "asset_subtitle", "task_run", "performer_profile", "code_sample_image",
                          "schema_migration"} <= tables)
-        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037"])
+        self.assertEqual(versions, ["0000", "0001", "0002", "0003", "0004", "0005", "0006", "0007", "0008", "0009", "0010", "0011", "0012", "0013", "0014", "0015", "0016", "0017", "0018", "0019", "0020", "0021", "0022", "0023", "0024", "0025", "0026", "0027", "0028", "0029", "0030", "0031", "0032", "0033", "0034", "0035", "0036", "0037", "0038"])
         self.assertEqual(upgrade(self.db, MIGRATIONS), [])
         self.assertEqual(plan(self.db, MIGRATIONS)[1], [])
 
@@ -323,8 +323,9 @@ class MigrationTests(unittest.TestCase):
         base_migrations = self.root / "base-migrations"
         base_migrations.mkdir()
         for path in sorted(MIGRATIONS.glob("*.sql")):
-            # 0024 重建 follow_playback，必须与建表的 0022 一起排除。
-            if not path.name.startswith(("0020_", "0021_", "0022_", "0024_")):
+            # 0024 重建 follow_playback，必须与建表的 0022 一起排除；0038 给每张表挂
+            # 版本号触发器，被排除的迁移建的表这时还不存在，它也要等到后面一起应用。
+            if not path.name.startswith(("0020_", "0021_", "0022_", "0024_", "0038_")):
                 shutil.copyfile(path, base_migrations / path.name)
         sqlite3.connect(self.db).close()
         upgrade(self.db, base_migrations)

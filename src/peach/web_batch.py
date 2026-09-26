@@ -28,7 +28,7 @@ from .task_runs import TaskRunHandle
 from .web_activity import DEFAULT_PROFILE_ID
 from .web_catalog import COST, attach_card_performers
 from .web_resource_sync import clean_resource_orphans, vanished_asset_rows
-from .web_state import LEDGER_AGGREGATE_TTL, WebContract
+from .web_state import WebContract
 
 #: 批量操作在活动页上的名字。表里存 `operation`，人看的是这一列。
 BATCH_LABELS = {
@@ -273,8 +273,8 @@ def q_ads(contract: WebContract, limit=200, offset=0, kind="", status="pending")
         raise ValueError("invalid junk kind")
     if status not in {"pending", "dismissed"}:
         raise ValueError("invalid junk status")
-    out, dismissed_ids = contract.cached(
-        "junk-scored", lambda: _scored_junk(contract), ttl=LEDGER_AGGREGATE_TTL)
+    out, dismissed_ids = contract.cached_until_changed(
+        "junk-scored", lambda: _scored_junk(contract))
     pending = [item for item in out if item["id"] not in dismissed_ids]
     dismissed = [item for item in out if item["id"] in dismissed_ids]
     pool = dismissed if status == "dismissed" else pending

@@ -155,13 +155,17 @@ MULTI_BATCH_CATEGORIES = frozenset({"metadata_fields"})
 
 
 def candidate_root_version(root: Path | None = None) -> int | None:
-    """候选目录的修改时间，读缓存拿它当键的一部分。
+    """候选目录的版本，复核缓存拿它当键的一部分：目录与这一层 CSV 的最大修改时间。
 
-    候选文件都直接放在这一层：新增批次、改名替换与删除都会改它，原地覆写不会，
-    那一种由缓存的时间上限兜底。
+    候选文件都直接放在这一层。新增批次、改名替换与删除改的是目录时间，同名批次原地
+    重写只改文件时间，两样都算进来，复核页才能一直缓存到候选真的变了为止。
     """
+    base = root or GENERATED_DIR
     try:
-        return (root or GENERATED_DIR).stat().st_mtime_ns
+        with os.scandir(base) as entries:
+            stamps = [entry.stat().st_mtime_ns for entry in entries
+                      if entry.name.endswith(".csv") and entry.is_file()]
+        return max([base.stat().st_mtime_ns, *stamps])
     except OSError:
         return None
 
