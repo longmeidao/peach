@@ -345,6 +345,36 @@ class SeamBeyondTests(unittest.TestCase):
         self.assertLessEqual(box["x0"], edge + 3)
 
 
+class SharpFoldTests(unittest.TestCase):
+    """书脊里竖排片名是一片宽的高地，折痕是一条窄线：按突出度折痕才是窗里最显眼的那条。
+
+    DDK-023 的形状：800×539，折痕窗 390～433，书脊片名的高地 391～408 最高 0.50，
+    折痕 419 列只有 0.34（不到高地七成），满高覆盖 0.68（不到 `_seam_beyond` 的 0.75）。
+    """
+
+    WIDTH, HEIGHT, FOLD_AT = 800, 539, 419
+
+    def profile(self, fold_seam: float = 0.68):
+        gradient = [0.1] * self.WIDTH
+        seams = [0.3] * self.WIDTH
+        gradient[3] = 1.0                                   # 封底左缘，全图最强
+        for column in range(391, 409):                      # 片名那片高地
+            gradient[column] = 0.5 - abs(column - 401) * 0.01
+        gradient[self.FOLD_AT], gradient[self.FOLD_AT + 1] = 0.34, 0.28
+        seams[self.FOLD_AT] = fold_seam
+        return jav_poster_crop.ColumnProfile(gradient, seams)
+
+    def test_a_narrow_fold_beside_a_lettered_plateau_is_the_fold(self):
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT, self.profile()),
+                         self.FOLD_AT + 2)
+
+    def test_a_narrow_edge_that_is_not_full_height_is_front_lettering(self):
+        """正封里紧挨折痕的大字也是窄尖峰，但只占几行，不进候选。"""
+        self.assertLess(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                    self.profile(fold_seam=0.3)),
+                        self.FOLD_AT)
+
+
 class CodeShapeTests(unittest.TestCase):
     """哪些番号的封面是横版封套。判据全部走 `catalog_rules` 现有函数。"""
 
