@@ -7,7 +7,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import httpx
+
 REPO = Path(__file__).resolve().parents[1]
+
+#: 停放页的最小形态，照 `crusegroup.net` 2026-09-26 实测的结构手写：200、标题
+#: `Redirecting...`、正文一段把访客送去停放平台路由的脚本，响应头里带着平台主机名。
+PARKED_PAGE = (b'<!doctype html><html><head><title>Redirecting...</title></head><body>'
+               b'<script>fetch("https://router.parklogic.com/model/221")</script></body></html>')
+PARKED_HEADERS = {"permissions-policy": 'ch-ua=(self "https://*.parklogic.com")'}
 
 
 def load_module(name: str = "install_entity_links"):
@@ -258,7 +266,7 @@ class ResolvesTests(unittest.TestCase):
     """可达性探测：抖动要重试，状态码是一次成局。"""
 
     class Client:
-        """`httpx.Client` 的替身，按剧本逐次抛错或返回状态码。"""
+        """`httpx.Client` 的替身，按剧本逐次抛错、返回状态码或返回整个响应。"""
 
         def __init__(self, script):
             self.script = script
@@ -276,7 +284,9 @@ class ResolvesTests(unittest.TestCase):
             step = self.script.pop(0)
             if isinstance(step, Exception):
                 raise step
-            return type("Response", (), {"status_code": step})()
+            status, body, response_headers = step if isinstance(step, tuple) else (step, b"", {})
+            return httpx.Response(status, content=body, headers=response_headers,
+                                  request=httpx.Request("GET", url))
 
     def setUp(self):
         # `time` 和 `httpx` 是进程共享的真模块，替身必须还回去：这一组用例先跑完，
@@ -309,6 +319,56 @@ class ResolvesTests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("ConnectionError", note)
         self.assertFalse(self.module.is_gone(note), "取不到不等于确证没了")
+
+    def test_a_parked_domain_is_gone_even_though_it_answers_200(self):
+        """事务所注销、域名被停放平台接走之后，页面照样 200，内容已不是这家公司。"""
+        self.use((200, PARKED_PAGE, PARKED_HEADERS))
+        ok, note = self.module.resolves("https://www.crusegroup.net/model/221")
+        self.assertFalse(ok)
+        self.assertIn("parklogic.com", note)
+        self.assertTrue(self.module.is_gone(note))
+        self.assertEqual(self.slept, [], "停放页是站点的回答，不是抖动，不必重试")
+
+    def test_a_parked_domain_behind_an_invalid_certificate_is_gone(self):
+        """停放平台没有原主的证书，HTTPS 当场失败；同一地址走 http 才看得见停放页。"""
+        certificate = ConnectionError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+        self.use(certificate, (200, PARKED_PAGE, PARKED_HEADERS))
+        ok, note = self.module.resolves("https://crusegroup.net/model/316")
+        self.assertFalse(ok)
+        self.assertIn("证书", note)
+        self.assertTrue(self.module.is_gone(note))
+
+    def test_an_invalid_certificate_alone_is_not_proof(self):
+        """证书链不全的真站也报同一个错；http 那一页不是停放页就只算取不到。"""
+        certificate = ConnectionError("[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed")
+        self.use(*[certificate, (200, b"<title>T-POWERS</title>", {})] * 3)
+        ok, note = self.module.resolves("https://www.t-powers.co.jp/")
+        self.assertFalse(ok)
+        self.assertFalse(self.module.is_gone(note))
+
+    def test_an_ordinary_page_that_links_elsewhere_still_opens(self):
+        self.use((200, b"<title>ARM</title><a href='https://x.com/arm_pro'>X</a>", {}))
+        self.assertEqual(self.module.resolves("https://arm-p.com/models/"), (True, "可打开"))
+
+    def test_pruning_can_be_limited_to_one_site(self):
+        """清一家注销事务所的链接时，库里别的死链不跟着一起删。"""
+        connection = sqlite3.connect(":memory:")
+        connection.executescript(SCHEMA)
+        connection.execute("INSERT INTO entity VALUES(1,'performer','山岸逢花')")
+        connection.executemany(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,created_at,updated_at) "
+            "VALUES(1,'official',?,?,'2026-01-01','2026-01-01')",
+            [("Cruse Group", "https://www.crusegroup.net/model/221"),
+             ("Cruse Group", "https://crusegroup.net/"),
+             ("别的事务所", "https://other.example/gone"),
+             ("存档", "https://web.archive.org/web/2015/http://z-earth2.crusegroup.net/")])
+        probed = []
+        dead = self.module.dead_links(
+            connection, host="crusegroup.net",
+            probe=lambda url: probed.append(url) or (False, "HTTP 404"))
+        self.assertEqual(probed, ["https://www.crusegroup.net/model/221",
+                                  "https://crusegroup.net/"])
+        self.assertEqual(len(dead), 2)
 
 
 class NormalizeHostsTests(unittest.TestCase):

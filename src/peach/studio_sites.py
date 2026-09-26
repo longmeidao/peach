@@ -51,6 +51,15 @@ PARKED = re.compile(
     r"domain (?:is )?for sale|buy this domain|parked (?:free )?at|このドメイン(?:は|を)"
     r"|ドメイン(?:の)?販売|sedo\.com|afternic|godaddy\.com/domain|hugedomains",
     re.I)
+# 停放平台自己的主机。停放页不一定自述在出售：`crusegroup.net` 在公司注销后由 ParkLogic
+# 停放，2026-09-26 实测 200、5.5 KB、标题 `Redirecting...`，正文只有一段把访客送去
+# `router.parklogic.com` 的脚本，上面两条自述词一个都对不上。认得出它的只有平台主机名，
+# 出现在最终地址、响应头或正文里都算。后三个是同样形态的停放平台。
+PARKING_HOSTS = re.compile(
+    r"(?<![\w-])((?:[\w-]+\.)*(?:parklogic\.com|sedoparking\.com|bodis\.com"
+    r"|parkingcrew\.net))(?![\w.-]*\w)", re.I)
+#: 停放页判词的开头。链接体检按它把停放页归进「确证没了」。
+PARKED_NOTE = "停放页"
 # 空壳页也会 200。真站首页（含年龄门）实测都在 10 KB 以上，取一半做下限。
 MIN_BODY = 5000
 # 「标题里有厂牌名」证明不了这是**这个**厂牌的站——同名的无关公司照样通过。实测四例：
@@ -199,6 +208,49 @@ def page_title(body: bytes) -> str:
     return re.sub(r"\s+", " ", text).strip()[:120]
 
 
+def parked_reason(title: str, text: str, headers: str = "", final_url: str = "") -> str:
+    """这一页是停放页或域名出售页的依据，以 `PARKED_NOTE` 开头；不是就返回空串。
+
+    厂牌官网发现与实体链接体检共用这一份：两边要回答的都是「这个 200 是不是真站」。
+    """
+    if PARKED_TITLE.search(title):
+        return f"{PARKED_NOTE}（标题自述在出售域名：{title[:44]}）"
+    # 不截窗口。实测停放页把「domain for sale」写在第 81683 字节，任何固定窗口都会漏；
+    # 整篇扫一遍在这个量级上不值得省。
+    if PARKED.search(text):
+        return f"{PARKED_NOTE}或域名出售页"
+    for where, blob in (("最终地址", final_url), ("响应头", headers), ("正文", text)):
+        match = PARKING_HOSTS.search(blob)
+        if match:
+            return f"{PARKED_NOTE}（{where}指向 {match.group(1).lower()}）"
+    return ""
+
+
+def response_parked_reason(response: "httpx.Response") -> str:
+    """一个 `httpx` 响应是不是停放页，判据同 `parked_reason`。"""
+    body = response.content or b""
+    headers = "\n".join(f"{key}: {value}" for key, value in response.headers.items())
+    return parked_reason(page_title(body), decode(body), headers, str(response.url))
+
+
+def parked_after_certificate_error(url: str, error: Exception, fetch) -> str:
+    """HTTPS 证书校验失败时改走 http 再取一次，看这个域名是不是已被停放。
+
+    停放平台接手域名后没有原主的证书：`crusegroup.net` 2026-09-26 实测 HTTPS 报
+    `CERTIFICATE_VERIFY_FAILED`，同一地址走 http 就是 ParkLogic 的停放页。证书校验失败
+    本身不算证据，证书链不全的真站也这样报；只有 http 那一页是停放页才算。
+    `fetch(url)` 返回 `httpx.Response`。
+    """
+    if urlsplit(url).scheme != "https" or "CERTIFICATE_VERIFY_FAILED" not in str(error):
+        return ""
+    try:
+        response = fetch("http://" + url[len("https://"):])
+    except Exception:
+        return ""
+    reason = response_parked_reason(response) if response.status_code == 200 else ""
+    return f"{reason}；HTTPS 证书无效" if reason else ""
+
+
 def site_verdict(name: str, status: int, body: bytes, title: str,
                  url: str = "", derived_hosts: frozenset[str] = frozenset(),
                  confirmed: str = "", aliases: Sequence[str] = ()) -> tuple[str, str]:
@@ -226,10 +278,9 @@ def site_verdict(name: str, status: int, body: bytes, title: str,
     if BROKEN_TITLE.search(title):
         return "未取得", f"站点自述不可用（{title[:44]}）"
     text = decode(body)
-    # 不再截窗口。实测停放页把「domain for sale」写在第 81683 字节，任何固定窗口都会漏；
-    # 整篇扫一遍在这个量级上不值得省。
-    if PARKED.search(text):
-        return "未取得", "停放页或域名出售页"
+    reason = parked_reason("", text, final_url=url)
+    if reason:
+        return "未取得", reason
     # 标题不比域名多说任何东西，就等于没有自述身份。实测 `prestige.com` 返回 200、
     # 不是停放页、标题正好是 `prestige.com`——它因此通过了「标题含厂牌名」，被判成
     # Prestige 官网，而真站是 `prestige-av.com`，那是另一家公司。停放页规则拦不住它：

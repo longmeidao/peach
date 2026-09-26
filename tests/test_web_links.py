@@ -6,6 +6,8 @@ import unittest
 from contextlib import contextmanager
 from pathlib import Path
 
+import httpx
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach import web_links   # noqa: E402
@@ -67,6 +69,27 @@ class VerdictTests(unittest.TestCase):
         for status in (400, 403, 429, 500, 502, 503):
             self.assertEqual(web_links.link_verdict(status, ""), "unclear", status)
         self.assertEqual(web_links.link_verdict(0, "ConnectError"), "unclear")
+
+    def test_a_parked_domain_answering_200_is_gone(self):
+        """事务所注销、域名被停放平台接走之后，页面照样 200，内容已不是这家公司。"""
+        page = (b'<title>Redirecting...</title>'
+                b'<script>fetch("https://router.parklogic.com/model/221")</script>')
+        client = httpx.Client
+
+        def mocked(**kwargs):
+            return client(transport=httpx.MockTransport(
+                lambda request: httpx.Response(200, content=page)), **kwargs)
+
+        web_links.httpx.Client = mocked
+        try:
+            status, note = web_links._probe("https://www.crusegroup.net/model/221")
+        finally:
+            web_links.httpx.Client = client
+        self.assertEqual(status, 200)
+        self.assertIn("parklogic.com", note)
+        self.assertEqual(web_links.link_verdict(status, note), "gone")
+        self.assertIn("parklogic.com", web_links._note(status, note),
+                      "面板上要看得出为什么 200 也判了没了")
 
 
 class SummaryTests(unittest.TestCase):

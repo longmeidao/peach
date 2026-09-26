@@ -318,6 +318,15 @@ class VerdictTests(unittest.TestCase):
             "Attackers", 200, page(title), title, "https://attackers.net/")
         self.assertEqual(verdict, "ok")
 
+    def test_a_page_that_only_hands_off_to_a_parking_platform_is_rejected(self):
+        """停放页不一定自述在出售，只把访客交给停放平台的路由脚本。"""
+        title = "Cruse Group"
+        body = page(title) + b'<script>fetch("https://router.parklogic.com/")</script>'
+        verdict, note = self.module.site_verdict(
+            "Cruse Group", 200, body, title, "https://crusegroup.net/")
+        self.assertEqual(verdict, "未取得")
+        self.assertIn("parklogic.com", note)
+
     def test_a_parked_title_is_caught_even_when_the_body_keyword_is_far_down(self):
         """实测漏判：`kawaii.com - domain for sale`。
 
