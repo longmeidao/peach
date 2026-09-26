@@ -481,6 +481,19 @@ def _remove_empty_ancestors(parent: Path, source_roots: Sequence[Path]) -> list[
     return removed
 
 
+def _hollow_directory(path: Path) -> bool:
+    """CloudDrive 上的空目录：`scandir` 报找不到，`listdir` 却说目录在、里面是空的。
+
+    挂载层给空目录列不出 `.` 与 `..`，`FindFirstFileW` 于是回 `ERROR_FILE_NOT_FOUND`；
+    `os.listdir` 把它当成空目录，`os.scandir`（`os.walk` 走的就是它）当成错误。2026-09-27
+    本机 115 与 PikPak 两轮遍历都报同样 71 个「读取失败」，逐个复核全是这种空目录。
+    """
+    try:
+        return path.is_dir() and not path.is_symlink() and not os.listdir(path)
+    except OSError:
+        return False
+
+
 def cleanup_empty_source_directories(
     contract: WebContract | None = None, *, dry_run: bool = False,
 ) -> dict[str, object]:
@@ -527,28 +540,42 @@ def cleanup_empty_source_directories(
 
         walk_errors: list[OSError] = []
         empty_paths: set[Path] = set()
+
+        def consider(candidate: Path, *, hollow: bool = False) -> None:
+            row["scanned"] = int(row["scanned"]) + 1
+            try:
+                if dry_run:
+                    if hollow or all(
+                            child in empty_paths and not child.is_symlink()
+                            for child in candidate.iterdir()):
+                        empty_paths.add(candidate)
+                        row["empty"] = int(row["empty"]) + 1
+                    return
+                candidate.rmdir()
+            except FileNotFoundError:
+                # CloudDrive can remove the same empty directory concurrently.
+                return
+            except OSError as error:
+                if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
+                    row["errors"] = int(row["errors"]) + 1
+            else:
+                row["removed"] = int(row["removed"]) + 1
+
         for root in roots:
+            # 自底向上时子目录的 onerror 先于父目录产出，空目录在这里记下，父目录照常判空。
+            def on_walk_error(error: OSError, root: Path = root) -> None:
+                path = Path(error.filename) if isinstance(error, FileNotFoundError) and error.filename else None
+                if path is not None and path != root and _hollow_directory(path):
+                    consider(path, hollow=True)
+                else:
+                    walk_errors.append(error)
+
             for directory, _subdirectories, _files in os.walk(
-                    root, topdown=False, onerror=walk_errors.append, followlinks=False):
+                    root, topdown=False, onerror=on_walk_error, followlinks=False):
                 candidate = Path(directory)
                 if candidate == root or candidate.is_symlink():
                     continue
-                row["scanned"] = int(row["scanned"]) + 1
-                try:
-                    if dry_run:
-                        if all(child in empty_paths and not child.is_symlink() for child in candidate.iterdir()):
-                            empty_paths.add(candidate)
-                            row["empty"] = int(row["empty"]) + 1
-                        continue
-                    candidate.rmdir()
-                except FileNotFoundError:
-                    # CloudDrive can remove the same empty directory concurrently.
-                    continue
-                except OSError as error:
-                    if error.errno not in {errno.ENOTEMPTY, errno.EEXIST}:
-                        row["errors"] = int(row["errors"]) + 1
-                else:
-                    row["removed"] = int(row["removed"]) + 1
+                consider(candidate)
         row["errors"] = int(row["errors"]) + len(walk_errors)
         total_scanned += int(row["scanned"])
         total_removed += int(row["removed"])
