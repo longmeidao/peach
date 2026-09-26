@@ -27,6 +27,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach.review_csv import read_rows   # noqa: E402
 from peach.social_links import canonical_url   # noqa: E402
+from peach.studio_sites import (   # noqa: E402
+    PARKED_NOTE,
+    parked_after_certificate_error,
+    response_parked_reason,
+)
 from peach.scripting import (   # noqa: E402
     BACKUP_REQUIRED,
     USER_AGENT,
@@ -145,20 +150,30 @@ def resolves(url: str, timeout: float = 12.0,
     （`[SSL: UNEXPECTED_EOF_WHILE_READING]`），一次失败就记「打不开」是把抖动写成结论：
     eltra.jp 2026-09-05 连着两趟这样被判死，而每次重试一下就 200。404 重试三次还是 404。
     """
+    def get(target: str) -> httpx.Response:
+        with httpx.Client(follow_redirects=True, timeout=timeout,
+                          limits=httpx.Limits(max_connections=4,
+                                              max_keepalive_connections=0)) as client:
+            return client.get(target, headers={"User-Agent": USER_AGENT})
+
     note = "取不到"
     for attempt in range(tries):
         try:
-            with httpx.Client(follow_redirects=True, timeout=timeout,
-                              limits=httpx.Limits(max_connections=4,
-                                                  max_keepalive_connections=0)) as client:
-                response = client.get(url, headers={"User-Agent": USER_AGENT})
+            response = get(url)
         except Exception as exc:
+            parked = parked_after_certificate_error(url, exc, get)
+            if parked:
+                return False, parked
             note = f"取不到：{type(exc).__name__}"
             if attempt + 1 < tries:
                 time.sleep(pause)
             continue
         if response.status_code != 200:
             return False, f"HTTP {response.status_code}"
+        # 停放页也回 200，判据见 `studio_sites.PARKING_HOSTS`。
+        parked = response_parked_reason(response)
+        if parked:
+            return False, parked
         return True, "可打开"
     return False, note
 
@@ -175,7 +190,11 @@ def is_gone(note: str) -> bool:
 
     按「非 200 就删」会连这 26 条一起删掉，其中大部分链接本身是好的。5xx、403 和
     超时要留着下次复查，不是删除的理由——这和取证失败时写 `未取得` 而不是写结论是同一条。
+
+    停放页是另一种确证：域名已经换了主人，页面打得开，内容却不再是这个人或这家公司。
     """
+    if note.startswith(PARKED_NOTE):
+        return True
     match = re.match(r"HTTP (\d+)$", note)
     return bool(match) and int(match.group(1)) in GONE_STATUSES
 
@@ -203,8 +222,16 @@ def check_links(planned: list[dict], interval: float = 0.4, probe=None) -> None:
             time.sleep(interval)
 
 
-def dead_links(connection: sqlite3.Connection, interval: float = 0.4, probe=None) -> list[dict]:
-    """已经在库里、但现在打不开的链接。
+def on_host(url: str, host: str) -> bool:
+    """`url` 的主机是 `host` 本身或它的子域。"""
+    name = (urlsplit(url).hostname or "").lower()
+    host = host.lower()
+    return name == host or name.endswith("." + host)
+
+
+def dead_links(connection: sqlite3.Connection, interval: float = 0.4, probe=None,
+               host: str = "") -> list[dict]:
+    """已经在库里、但现在打不开的链接；给了 `host` 就只查这个站和它的子域。
 
     可达性门槛只挡住新写入；库里那 703 条是在门槛存在之前进去的，得单独清一遍。
     链接还会随时间烂掉——事务所改版、艺人解约、博客注销——所以这条路要留着复用，
@@ -215,6 +242,8 @@ def dead_links(connection: sqlite3.Connection, interval: float = 0.4, probe=None
     for link_id, entity, kind, label, url in connection.execute(
             "SELECT l.id, e.canonical_name, l.link_kind, l.label, l.url "
             "FROM entity_link l JOIN entity e ON e.id=l.entity_id ORDER BY l.id"):
+        if host and not on_host(url, host):
+            continue
         ok, note = probe(url)
         if not ok:
             out.append({"id": link_id, "entity": entity, "link_kind": kind,
@@ -265,6 +294,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help=f"复核表，列：{','.join(FIELDS)}")
     parser.add_argument("--prune-dead", action="store_true",
                         help="改为清理库里已经打不开的链接，不读 --input")
+    parser.add_argument("--host", default="",
+                        help="配合 --prune-dead：只查这个站和它的子域，例如一家已注销的事务所")
     parser.add_argument("--no-check", action="store_true",
                         help="跳过「地址能不能打开」的检查。只在离线复核时用——"
                              "首批 703 条就是没验直接装的，事后发现 37%% 是死链")
@@ -274,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
 def prune(connection: sqlite3.Connection, args) -> int:
     """列出并（在 --apply 时）删除库里打不开的链接。"""
     before = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
-    unreachable = dead_links(connection)
+    unreachable = dead_links(connection, host=args.host)
     gone = [item for item in unreachable if is_gone(item["note"])]
     unclear = [item for item in unreachable if not is_gone(item["note"])]
     for item in gone:

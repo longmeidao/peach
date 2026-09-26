@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from . import studio_sites
 from .jobs import BackgroundJob
 
 from .user_agent import USER_AGENT
@@ -42,18 +43,24 @@ class LinkContract(Protocol):
 
 
 def _probe(url: str, timeout: float = CHECK_TIMEOUT) -> tuple[int, str]:
-    """(status, 说明)。status 为 0 表示连都没连上。
+    """(status, 说明)。status 为 0 表示连都没连上；停放页的说明里写停放依据。
 
     每个请求新建 client 并立刻关掉：这批地址分布在上百个互不相同的主机上，其中不少
     连不上，而失败的连接会在共享池里漏掉槽位，几十个请求之后一切都变成 PoolTimeout。
     """
-    try:
+    def get(target: str) -> httpx.Response:
         with httpx.Client(follow_redirects=True, timeout=timeout,
                           limits=httpx.Limits(max_connections=4,
                                               max_keepalive_connections=0)) as client:
-            response = client.get(url, headers={"User-Agent": USER_AGENT})
+            return client.get(target, headers={"User-Agent": USER_AGENT})
+
+    try:
+        response = get(url)
     except Exception as error:
-        return 0, type(error).__name__
+        return 0, (studio_sites.parked_after_certificate_error(url, error, get)
+                   or type(error).__name__)
+    if response.status_code == 200:
+        return 200, studio_sites.response_parked_reason(response)
     return response.status_code, ""
 
 
@@ -63,12 +70,24 @@ def link_verdict(status: int, note: str) -> str:
     取不到不等于没了。实测反例：`linktr.ee` 403（Linktree 挡爬虫，浏览器里能开）、
     `facebook.com` 400、`x.com` 500（临时错误，账号还在）、连接失败与超时。
     把它们并进 gone，删除时就会连好链接一起删。
+
+    停放页反过来：200 也是没了。域名过期后被停放平台接走，页面照样打得开，内容却已
+    不是这个人或这家公司的。
     """
+    if note.startswith(studio_sites.PARKED_NOTE):
+        return "gone"
     if status == 200:
         return "ok"
     if status in GONE_STATUSES:
         return "gone"
     return "unclear"
+
+
+def _note(status: int, note: str) -> str:
+    """面板上那一格说明。停放页只写状态码就看不出为什么判了没了。"""
+    if status == 200 or note.startswith(studio_sites.PARKED_NOTE):
+        return note
+    return f"HTTP {status}" if status else f"取不到：{note}"
 
 
 def w_links(contract: LinkContract, args=None):
@@ -145,7 +164,7 @@ def _run_link_check(contract: LinkContract, check_id: str,
                     "id": row["id"], "entity": row["entity"],
                     "link_kind": row["link_kind"], "label": row["label"],
                     "url": row["url"],
-                    "note": f"HTTP {status}" if status else f"取不到：{note}",
+                    "note": _note(status, note),
                 })
         time.sleep(CHECK_INTERVAL)
     job.update(check_id, status="complete", completed_at=time.time())
