@@ -8,6 +8,7 @@ import { VisuallyHidden } from 'react-aria-components';
 
 import { Button, ButtonLink } from '@/components/base/buttons/button';
 import { CheckboxGlyph } from '@/components/base/checkbox/checkbox-glyph';
+import { LEGACY_AVATAR_IMG } from '../components/legacy-avatar';
 import { busyProps } from '../settings/use-action';
 import type { ReviewAsset, ReviewRow } from './review';
 
@@ -70,7 +71,7 @@ export function EntityHead(
     <div className="flex min-w-0 items-center gap-3">
       {/* `avatarInner` 是遗留层唯一那份「有图走图、没图退首字母」的实现，页面不重画一遍。 */}
       <button type="button" aria-label={`打开创作者页：${name}`} onClick={() => openEntity(kind, name)}
-        className="relative inline-grid size-11 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-full bg-background-secondary-default text-caption-1-medium text-text-secondary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring [&_img]:absolute [&_img]:inset-0 [&_img]:size-full [&_img]:object-cover"
+        className={`relative inline-grid size-11 shrink-0 cursor-pointer place-items-center overflow-hidden rounded-full bg-background-secondary-default text-caption-1-medium text-text-secondary outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring ${LEGACY_AVATAR_IMG}`}
         dangerouslySetInnerHTML={{ __html: avatar }} />
       <div className="flex min-w-0 flex-col items-start">
         <button type="button" onClick={() => openEntity(kind, name)}

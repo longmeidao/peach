@@ -38,6 +38,7 @@ import type { TasteProps } from '../bundle';
 import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { ExpandableRanking } from '../components/expandable-ranking';
+import { LEGACY_AVATAR_IMG } from '../components/legacy-avatar';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
@@ -107,7 +108,7 @@ function SiteAvatar({ name, domain }: { name: string; domain: string }) {
 /** 实体圆标。`avatarInner` 是遗留层唯一那份回落链实现，页面不重画一遍。 */
 function EntityAvatar({ html }: { html: string }) {
   return (
-    <span className="relative inline-grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-background-tertiary-default text-caption-1-medium text-text-secondary [&_img]:absolute [&_img]:inset-0 [&_img]:size-full [&_img]:object-cover"
+    <span className={`relative inline-grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-background-tertiary-default text-caption-1-medium text-text-secondary ${LEGACY_AVATAR_IMG}`}
       dangerouslySetInnerHTML={{ __html: html }} />
   );
 }
