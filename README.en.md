@@ -14,6 +14,16 @@
   <a href="README.md">中文</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&amp;label=tests&amp;logo=githubactions&amp;logoColor=white" alt="tests"></a>
+  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&amp;label=release&amp;logo=github&amp;logoColor=white" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?logo=gnu&amp;logoColor=white" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xIDFoMTB2MTBIMXptMTIgMGgxMHYxMEgxM3pNMSAxM2gxMHYxMEgxem0xMiAwaDEwdjEwSDEzeiIvPjwvc3ZnPg%3D%3D" alt="Windows">
+  <img src="https://img.shields.io/badge/platform-macOS-555555?logo=apple&amp;logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/18%2B-adult%20content-critical?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMiAzIDZ2NmMwIDUgOSAxMCA5IDEwczktNSA5LTEwVjZ6TTEyIDd2Nm0wIDN2MSIvPjwvc3ZnPg%3D%3D" alt="18+ adult content">
+</p>
+
 https://github.com/user-attachments/assets/40f7fb76-fece-4af9-86e1-e0279cc525af
 
 > **18+** For adults managing their own adult-content collections. The repository contains no media or site data. When Peach connects to outside sites it uses your own accounts and access rights, and it does not get around paywalls, bot checks or other access controls.
@@ -82,20 +92,26 @@ LAN access, access passwords, updates and uninstalling are covered in [Operation
 
 ## FAQ
 
-**Will it change my files?**
-Scanning and filling in details never touch the original files. Only two things do: running an organize job you started (rename or move, with a preview and an undo for the last batch), and emptying the trash (which really deletes).
-
-**I already organized my videos with another scraper. Can Peach use that?**
-Peach reads the Kodi and Jellyfin layout: an `.nfo` named after the video and posters such as `<title>-poster.jpg`. Existing titles, performers, studios and posters show up right away.
-
-**Which cloud drives are supported?**
-115 and PikPak, mounted as local drives with CloudDrive2. Peach reads them like ordinary folders and does not store your cloud account.
-
-**How do I watch on my phone?**
-Choose "devices on the same network" during first-run setup, connect your phone to the same network and open the address shown on the setup page. Setting an access password is a good idea.
-
-**Where is my data?**
-In the `peach-data` folder on your computer. The Windows build keeps it in `%LOCALAPPDATA%\Peach\peach-data` by default.
+- **Will it change my files?**
+  - Scanning and filling in details never touch the original files.
+  - Only two things do:
+    - Running an organize job you started: rename or move, with a preview first and an undo for the last batch.
+    - Emptying the trash: this really deletes.
+- **I already organized my videos with another scraper. Can Peach use that?**
+  - Peach reads the Kodi and Jellyfin layout:
+    - an `.nfo` named after the video;
+    - posters such as `<title>-poster.jpg`.
+  - Existing titles, performers, studios and posters show up right away.
+- **Which cloud drives are supported?**
+  - 115 and PikPak, mounted as local drives with CloudDrive2.
+  - Peach reads them like ordinary folders and does not store your cloud account.
+- **How do I watch on my phone?**
+  - Choose "devices on the same network" during first-run setup.
+  - Connect your phone to the same network and open the address shown on the setup page.
+  - Setting an access password is a good idea.
+- **Where is my data?**
+  - In the `peach-data` folder on your computer.
+  - The Windows build keeps it in `%LOCALAPPDATA%\Peach\peach-data` by default.
 
 ## Reporting problems
 

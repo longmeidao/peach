@@ -14,6 +14,16 @@
   <a href="README.en.md">English</a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&amp;label=tests&amp;logo=githubactions&amp;logoColor=white" alt="tests"></a>
+  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&amp;label=release&amp;logo=github&amp;logoColor=white" alt="release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?logo=gnu&amp;logoColor=white" alt="license"></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
+  <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xIDFoMTB2MTBIMXptMTIgMGgxMHYxMEgxM3pNMSAxM2gxMHYxMEgxem0xMiAwaDEwdjEwSDEzeiIvPjwvc3ZnPg%3D%3D" alt="Windows">
+  <img src="https://img.shields.io/badge/platform-macOS-555555?logo=apple&amp;logoColor=white" alt="macOS">
+  <img src="https://img.shields.io/badge/18%2B-adult%20content-critical?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIj48cGF0aCBkPSJNMTIgMiAzIDZ2NmMwIDUgOSAxMCA5IDEwczktNSA5LTEwVjZ6TTEyIDd2Nm0wIDN2MSIvPjwvc3ZnPg%3D%3D" alt="18+ adult content">
+</p>
+
 https://github.com/user-attachments/assets/40f7fb76-fece-4af9-86e1-e0279cc525af
 
 > **18+** 仅供成年人管理自己的成人内容馆藏。仓库不含任何媒体或站点数据；连接外部站点时用的是你自己的账号和访问权，不绕过付费墙、人机验证或其他访问限制。
@@ -82,20 +92,26 @@ macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.
 
 ## 常见问题
 
-**会改我的文件吗？**
-扫描、补资料都不碰原文件。只有两件事会动文件：你在整理里点了执行（改名或移动，先给预览，可以撤回上一批），以及你清空回收站（真的删除）。
-
-**之前用别的刮削器整理过，能直接用吗？**
-能读的是 Kodi、Jellyfin 那种格式：和视频同名的 `.nfo`，以及 `<片名>-poster.jpg` 这样的海报。已有的标题、女优、厂牌和海报会直接显示。
-
-**支持哪些网盘？**
-目前是 115 和 PikPak，用 CloudDrive2 挂载成本地磁盘。Peach 只把它当普通文件夹读，不保存网盘账号。
-
-**手机上怎么看？**
-首次设置时选「同一局域网的设备」，手机和电脑连同一个网络，用浏览器打开设置页给出的地址。建议顺手设一个访问密码。
-
-**数据存在哪？**
-都在本机的 `peach-data` 文件夹里，Windows 版默认在 `%LOCALAPPDATA%\Peach\peach-data`。
+- **会改我的文件吗？**
+  - 扫描、补资料都不碰原文件。
+  - 只有两件事会动文件：
+    - 你在整理里点了执行：改名或移动，先给预览，可以撤回上一批。
+    - 你清空回收站：真的删除。
+- **之前用别的刮削器整理过，能直接用吗？**
+  - 能读的是 Kodi、Jellyfin 那种格式：
+    - 和视频同名的 `.nfo`；
+    - `<片名>-poster.jpg` 这样的海报。
+  - 已有的标题、女优、厂牌和海报会直接显示。
+- **支持哪些网盘？**
+  - 目前是 115 和 PikPak，用 CloudDrive2 挂载成本地磁盘。
+  - Peach 只把它当普通文件夹读，不保存网盘账号。
+- **手机上怎么看？**
+  - 首次设置时选「同一局域网的设备」。
+  - 手机和电脑连同一个网络，用浏览器打开设置页给出的地址。
+  - 建议顺手设一个访问密码。
+- **数据存在哪？**
+  - 都在本机的 `peach-data` 文件夹里。
+  - Windows 版默认在 `%LOCALAPPDATA%\Peach\peach-data`。
 
 ## 问题反馈
 
