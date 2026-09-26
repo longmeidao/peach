@@ -6,7 +6,6 @@ import time
 import unittest
 from pathlib import Path
 
-from peach.jobs import process_alive
 from peach.process_job import assign_to_job, close_job, create_kill_on_close_job
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +38,50 @@ def descendants(root: int) -> set[int]:
                 found.add(process_id)
                 frontier.append(process_id)
     return found
+
+
+def open_for_wait(pid: int) -> int:
+    """按 PID 开一个只带 `SYNCHRONIZE` 的进程句柄，开不到返回 0。
+
+    句柄在手里，进程对象就不会被回收，PID 复用冒充不了结果。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    return kernel32.OpenProcess(0x00100000, False, pid) or 0
+
+
+def still_running(handles: dict[int, int], seconds: float) -> set[int]:
+    """在期限内等这些进程对象进入 signaled 状态，返回期限到了还没 signaled 的 PID。
+
+    判据是 signaled，不是 `process_alive`：它看的退出码在内核拆句柄表之前就写好了，
+    进程被 Job 终止后有一段时间退出码已不是 `STILL_ACTIVE`，句柄表却还没拆，
+    日志文件照样被占着，`TemporaryDirectory` 这时删目录就报 WinError 32。
+    进程对象要等句柄表拆完才 signaled，所以等到它，文件句柄一定已经放掉。
+    """
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    deadline = time.monotonic() + seconds
+    survivors = set()
+    for pid, handle in handles.items():
+        remaining = max(0, int((deadline - time.monotonic()) * 1000))
+        if kernel32.WaitForSingleObject(handle, remaining) != 0:
+            survivors.add(pid)
+    return survivors
+
+
+def close_handle(handle: int) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    ctypes.WinDLL("kernel32", use_last_error=True).CloseHandle(wintypes.HANDLE(handle))
 
 
 def wait_until(predicate, seconds: float = 10.0) -> bool:
@@ -82,12 +125,17 @@ class KillOnCloseJobTests(unittest.TestCase):
             service = int(tray.stdout.readline())
             # venv 的 python.exe 是个转发器，真正的解释器是它再起的子进程。
             wait_until(lambda: descendants(service))
-            tree = {service} | descendants(service)
+            handles = {pid: open_for_wait(pid) for pid in {service} | descendants(service)}
+            for handle in handles.values():
+                if handle:
+                    self.addCleanup(close_handle, handle)
+            self.assertTrue(all(handles.values()), f"强杀前就开不到这些服务进程：{handles}")
             tray.kill()
             tray.wait(timeout=10)
             tray.stdout.close()
-            self.assertTrue(wait_until(lambda: not any(process_alive(pid) for pid in tree)),
-                            f"托盘被强杀后这些服务进程还活着：{sorted(tree)}")
+            # 离开 with 就删临时目录，服务的 stderr 正写在里面，所以在这里等它们的句柄表拆完。
+            survivors = still_running(handles, seconds=10)
+            self.assertFalse(survivors, f"托盘被强杀后这些服务进程还活着：{sorted(survivors)}")
 
 
 if __name__ == "__main__":
