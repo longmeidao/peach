@@ -2229,6 +2229,19 @@ class ReviewQueueTests(unittest.TestCase):
         rows = rm_review.q_review(self.contract)["sections"]["cover_sources"]
         self.assertEqual(rows, [], "封面成功、尺寸和缺失都由机械状态处理")
 
+    def test_a_video_without_a_contact_sheet_is_not_review_work(self):
+        """九宫格没抽出来要的是重抽，没有可批准或否决的东西（ADR-0052 第五条）。"""
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO asset(id,location,path,name,medium,duration,snapshot_path) "
+                    "VALUES(12510,'115',?,'a.mp4','video',600,NULL)", ("/115/a.mp4",))
+        con.commit(); con.close()
+        payload = rm_review.q_review(self.contract)
+        self.assertEqual(set(payload["sections"]), set(rm_review.REVIEW_CATEGORIES))
+        self.assertEqual(set(payload["counts"]), set(rm_review.REVIEW_CATEGORIES))
+        with self.assertRaises(ValueError):
+            rm_review.w_review_decision(self.contract, {
+                "category": "media_failure", "item_key": "12510", "status": "skipped"})
+
     def test_metadata_review_links_back_to_one_original_asset(self):
         con = sqlite3.connect(self.db_path)
         con.execute("UPDATE asset SET code='ABC-001' WHERE id=1")

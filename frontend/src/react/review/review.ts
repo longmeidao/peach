@@ -2,7 +2,7 @@
  * 声明一次（`tests/test_frontend_build.py` 盯着）。
  *
  * `['review']` 是整条复核队列。接口一次给出全部分类（实测 4.6 MB、1300 行，本机读
- *   0.1 秒），十个分类合在一个响应里，所以也只用一个 `queryKey`：分类切换是翻这一份的
+ *   0.1 秒），九个分类合在一个响应里，所以也只用一个 `queryKey`：分类切换是翻这一份的
  *   不同段落，不是另一份真相。判定写回来时只把那几行从缓存里摘掉（`dropReviewRows`），
  *   不为一次判定把整条队列重取一遍。
  *
@@ -32,7 +32,6 @@ export const REVIEW_LABELS = {
   fc2_markings: 'FC2 评论标记',
   fc2_similarity: 'FC2 跨号相似',
   video_endcards: '片尾/出处证据',
-  media_failure: '无法识别',
 } as const;
 
 export type ReviewCategory = keyof typeof REVIEW_LABELS;

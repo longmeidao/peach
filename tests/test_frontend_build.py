@@ -689,7 +689,7 @@ class ReviewEndpointTests(unittest.TestCase):
         """分类名只有这一张表，遗留层那份骨架按同一批名字画占位。"""
         labels = self.data.split("export const REVIEW_LABELS = {", 1)[1].split("} as const;", 1)[0]
         pairs = re.findall(r"(\w+): '([^']+)',", labels)
-        self.assertEqual(len(pairs), 10, f"分类表读出来 {len(pairs)} 条")
+        self.assertEqual(len(pairs), 9, f"分类表读出来 {len(pairs)} 条")
         app_js = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
         for category, label in pairs:
             self.assertIn(f"{category}:'{label}'", app_js,
