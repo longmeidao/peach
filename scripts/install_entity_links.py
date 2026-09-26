@@ -25,6 +25,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from peach import link_status   # noqa: E402
 from peach.review_csv import read_rows   # noqa: E402
 from peach.social_links import canonical_url   # noqa: E402
 from peach.studio_sites import (   # noqa: E402
@@ -230,18 +231,26 @@ def on_host(url: str, host: str) -> bool:
 
 
 def dead_links(connection: sqlite3.Connection, interval: float = 0.4, probe=None,
-               host: str = "") -> list[dict]:
+               host: str = "", retired: bool = False) -> list[dict]:
     """已经在库里、但现在打不开的链接；给了 `host` 就只查这个站和它的子域。
 
     可达性门槛只挡住新写入；库里那 703 条是在门槛存在之前进去的，得单独清一遍。
     链接还会随时间烂掉——事务所改版、艺人解约、博客注销——所以这条路要留着复用，
     不是一次性的清理脚本。
+
+    `retired` 只查已隐退女优的官网链接：退所后页面下架是常态，这一批最容易烂。
     """
     probe = probe or resolves
     out = []
+    # 已标记失效的结论已经落账，不再去敲它的地址。
+    where = link_status.live_clause()
+    if retired:
+        where += (" AND l.link_kind='official' AND l.entity_id IN "
+                  "(SELECT entity_id FROM performer_profile WHERE active_until IS NOT NULL)")
     for link_id, entity, kind, label, url in connection.execute(
             "SELECT l.id, e.canonical_name, l.link_kind, l.label, l.url "
-            "FROM entity_link l JOIN entity e ON e.id=l.entity_id ORDER BY l.id"):
+            "FROM entity_link l JOIN entity e ON e.id=l.entity_id "
+            f"WHERE {where} ORDER BY l.id"):
         if host and not on_host(url, host):
             continue
         ok, note = probe(url)
@@ -296,6 +305,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="改为清理库里已经打不开的链接，不读 --input")
     parser.add_argument("--host", default="",
                         help="配合 --prune-dead：只查这个站和它的子域，例如一家已注销的事务所")
+    parser.add_argument("--retired", action="store_true",
+                        help="配合 --prune-dead：只查已隐退女优的官网链接")
     parser.add_argument("--no-check", action="store_true",
                         help="跳过「地址能不能打开」的检查。只在离线复核时用——"
                              "首批 703 条就是没验直接装的，事后发现 37%% 是死链")
@@ -303,9 +314,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def prune(connection: sqlite3.Connection, args) -> int:
-    """列出并（在 --apply 时）删除库里打不开的链接。"""
+    """列出并（在 --apply 时）处置库里打不开的链接：已隐退女优的打失效标记，其余删除。"""
     before = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
-    unreachable = dead_links(connection, host=args.host)
+    unreachable = dead_links(connection, host=args.host, retired=args.retired)
     gone = [item for item in unreachable if is_gone(item["note"])]
     unclear = [item for item in unreachable if not is_gone(item["note"])]
     for item in gone:
@@ -316,20 +327,20 @@ def prune(connection: sqlite3.Connection, args) -> int:
         print(f" ? {item['entity'][:14]:<14} {item['link_kind']:<8} "
               f"{item['label'][:18]:<18} {item['note']:<14} {item['url'][:52]}")
     print({"库内链接": before, "打不开": len(unreachable),
-           "确证已没了（将删除）": len(gone), "取不到但不算证据（保留待复查）": len(unclear)})
-    dead = gone
+           "确证已没了（删除或标记）": len(gone), "取不到但不算证据（保留待复查）": len(unclear)})
     if not args.apply:
         print("dry-run；确认无误后加 --apply --backup <路径>")
         return 0
 
+    # 已隐退女优的留成失效标记，其余删除，取舍见 `link_status`。
     with connection:
-        connection.executemany("DELETE FROM entity_link WHERE id=?",
-                               [(item["id"],) for item in dead])
+        removed, marked = link_status.settle_gone(connection, gone)
     after = connection.execute("SELECT count(*) FROM entity_link").fetchone()[0]
     integrity, orphans = verify_after_write(connection)
-    print({"删除前": before, "删除后": after, "差值": before - after,
+    print({"删除前": before, "删除后": after, "删除": removed, "标记失效": marked,
            "integrity_check": integrity, "foreign_key_check": orphans})
-    if before - after != len(dead) or integrity != "ok" or orphans:
+    if (before - after != removed or removed + marked != len(gone)
+            or integrity != "ok" or orphans):
         print("[warn] 前后差值、完整性或外键与预期不符，请人工核对")
         return 1
     return 0

@@ -20,6 +20,7 @@ import sqlite3
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
+from . import link_status
 from .entities import _ref_is_free, normalize_entity_name
 from .minnano_av import PROFILE_COLUMNS
 from .performer_profiles import read_profile, write_profile
@@ -110,7 +111,8 @@ def _links(connection: sqlite3.Connection, entity_id: int) -> list[dict]:
     found = {}
     for kind, label, url, metadata in connection.execute(
             f"SELECT link_kind,label,url,metadata_json FROM entity_link WHERE entity_id=?"
-            f" AND is_sensitive=0 AND link_kind IN ({','.join('?' * len(LINK_KINDS))}) ORDER BY url",
+            f" AND is_sensitive=0 AND {link_status.live_clause('metadata_json')}"
+            f" AND link_kind IN ({','.join('?' * len(LINK_KINDS))}) ORDER BY url",
             (entity_id, *LINK_KINDS)):
         if not _metadata_ours(metadata) and _normalised(url):
             found.setdefault(_normalised(url), {"kind": str(kind), "label": str(label), "url": _normalised(url)})

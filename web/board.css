@@ -669,7 +669,7 @@ body>.board-filter-frame{margin-inline:16px}
 .entityhero h2{font-size:24px;font-weight:500;line-height:32px}
 .entityhero .alias{font-size:14px;line-height:20px}
 .entitylinks a,.entitylinks .private{height:36px;border-radius:10px;border-color:var(--line);font-size:13px}
-.entitylinks a.iconlink{border-radius:10px}
+.entitylinks .iconlink{border-radius:10px}
 /* 计数徽标照 tabs.tsx：`rounded-sm px-1 py-px text-caption-1-medium`，未选中黑 10% 底半透明，
    选中换成强调色 12% 底、强调色字。字母表分组卡的字头旁挂的也是这一枚。 */
 .board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;font:var(--board-caption);font-weight:500;line-height:16px;

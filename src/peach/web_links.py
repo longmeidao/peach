@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from . import studio_sites
+from . import link_status, studio_sites
 from .jobs import BackgroundJob
 
 from .user_agent import USER_AGENT
@@ -138,8 +138,10 @@ def _run_link_check(contract: LinkContract, check_id: str,
     给了 `link_ids` 就只验点名的那几条，别的链接的判定由调用方原样带进初始状态。
     """
     job = contract.link_check
+    # 已标记失效的不再验：结论已经落账，每次都去敲一个停放域名只会招来杀毒软件告警。
     query = ("SELECT l.id, l.link_kind, l.label, l.url, e.canonical_name AS entity "
-             "FROM entity_link l JOIN entity e ON e.id=l.entity_id")
+             "FROM entity_link l JOIN entity e ON e.id=l.entity_id "
+             f"WHERE {link_status.live_clause()}")
     with contract.read_connection() as connection:
         if link_ids is None:
             rows = [dict(row) for row in connection.execute(query + " ORDER BY l.id")]
@@ -147,7 +149,7 @@ def _run_link_check(contract: LinkContract, check_id: str,
             # 点名的链接可能在上一次检查之后已经被删掉；查不到就是不必再验。
             marks = ",".join("?" * len(link_ids))
             rows = [dict(row) for row in connection.execute(
-                f"{query} WHERE l.id IN ({marks}) ORDER BY l.id", link_ids)]
+                f"{query} AND l.id IN ({marks}) ORDER BY l.id", link_ids)]
     with job.editing(check_id) as state:
         if state is None:
             return
@@ -253,19 +255,21 @@ def w_links_prune(contract: LinkContract, body, *, progress=None):
         if progress:
             progress(checked=index, total=len(planned), message=f"重验失效链接：已检查 {index} / {len(planned)} 条")
         status, note = _probe(item["url"])
-        (confirmed if link_verdict(status, note) == "gone" else recovered).append(item)
+        if link_verdict(status, note) == "gone":
+            confirmed.append({**item, "note": _note(status, note)})
+        else:
+            recovered.append(item)
 
-    removed = 0
+    removed = marked = 0
     if progress:
-        progress(checked=len(planned), total=len(planned), message=f"重验结束：准备删除 {len(confirmed)} 条，保留 {len(recovered)} 条")
+        progress(checked=len(planned), total=len(planned), message=f"重验结束：准备处理 {len(confirmed)} 条，保留 {len(recovered)} 条")
     if confirmed:
-        # 整批删除走同一个写事务：要么这一次判定的 gone 全部落库，要么一条都不落。
+        # 整批走同一个写事务：要么这一次判定的 gone 全部落库，要么一条都不落。
+        # 已隐退女优的留成失效标记，其余删除，取舍见 `link_status`。
         with contract.write_transaction() as connection:
-            for item in confirmed:
-                removed += connection.execute(
-                    "DELETE FROM entity_link WHERE id=?", (item["id"],)).rowcount
+            removed, marked = link_status.settle_gone(connection, confirmed)
     with contract.link_check.editing(body.get("check_id")) as state:
         if state is not None:
             state["gone"] = []
-    return {"ok": True, "removed": removed, "recovered": len(recovered),
+    return {"ok": True, "removed": removed, "marked": marked, "recovered": len(recovered),
             "entities": len({item["entity"] for item in confirmed})}

@@ -370,6 +370,45 @@ class ResolvesTests(unittest.TestCase):
                                   "https://crusegroup.net/"])
         self.assertEqual(len(dead), 2)
 
+    def test_pruning_marks_a_retired_performers_link_and_deletes_the_rest(self):
+        """已隐退女优的事务所页没了，留成失效标记；还在活动的人照旧删，已标记的不再去敲。"""
+        tmp = Path(tempfile.mkdtemp())
+        db = tmp / "ledger.db"
+        with sqlite3.connect(db) as connection:
+            connection.executescript(SCHEMA + "CREATE TABLE performer_profile("
+                                     "entity_id INTEGER PRIMARY KEY, active_until INTEGER);")
+            connection.executemany("INSERT INTO entity VALUES(?,'performer',?)",
+                                   [(1, "东条苍"), (2, "神宫寺")])
+            connection.execute("INSERT INTO performer_profile VALUES(1, 2021)")
+            connection.executemany(
+                "INSERT INTO entity_link(id,entity_id,link_kind,label,url,created_at,updated_at) "
+                "VALUES(?,?,'official','Cruse Group',?,'2026-01-01','2026-01-01')",
+                [(1, 1, "https://crusegroup.net/model/316"),
+                 (2, 2, "https://www.crusegroup.net/model/295")])
+        probed = []
+        self.module.resolves = lambda url: probed.append(url) or (False, "HTTP 404")
+        code = self.module.main(["--db", str(db), "--prune-dead", "--host", "crusegroup.net",
+                                 "--apply", "--backup", str(tmp / "backup.db")])
+        self.assertEqual(code, 0)
+        with sqlite3.connect(db) as connection:
+            rows = connection.execute("SELECT id, metadata_json FROM entity_link").fetchall()
+        self.assertEqual([row[0] for row in rows], [1])
+        self.assertEqual(json.loads(rows[0][1])["gone"]["note"], "HTTP 404")
+
+        probed.clear()
+        self.assertEqual(self.module.main(["--db", str(db), "--prune-dead"]), 0)
+        self.assertEqual(probed, [], "已标记失效的链接不再重验")
+
+        with sqlite3.connect(db) as connection:
+            connection.executemany(
+                "INSERT INTO entity_link(entity_id,link_kind,label,url,created_at,updated_at) "
+                "VALUES(?,?,'x',?,'2026-01-01','2026-01-01')",
+                [(1, "official", "https://hanaya-project.co.jp/model/aoi/"),
+                 (1, "social", "https://x.com/aoi"), (2, "official", "https://arm-p.com/models/")])
+        self.assertEqual(self.module.main(["--db", str(db), "--prune-dead", "--retired"]), 0)
+        self.assertEqual(probed, ["https://hanaya-project.co.jp/model/aoi/"],
+                         "--retired 只查已隐退女优的官网链接")
+
 
 class NormalizeHostsTests(unittest.TestCase):
     """twitter.com → x.com 的主机归一：改写要保真，撞上已有的新写法要删而不是炸。

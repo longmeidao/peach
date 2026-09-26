@@ -30,7 +30,7 @@ from starlette.staticfiles import StaticFiles
 
 from . import (
     avatar_face, avatar_picker, avatar_provider, follow_assets, images,
-    jav_poster_crop, link_marks, scraping_access, site_icons, social_links, subtitles,
+    jav_poster_crop, link_marks, link_status, scraping_access, site_icons, social_links, subtitles,
     taste_history, timeline_sheets, web_follow, web_settings,
 )
 from .config import GENERATED_DIR
@@ -1018,12 +1018,15 @@ def link_mark(request: Request, id: int = 0, args: dict[str, str] = Depends(requ
     地址只从账本按链接 id 解析，绝不接受前端递过来的 URL——和 `/follow-stream`
     同一条规矩，否则这就是一个任意地址抓取的口子。取哪一份交给 `site_icons`：
     先读首页声明的 apple-touch-icon / SVG / manifest，都没有才落到 favicon.ico。
+
+    标记为失效的链接不取：那个域名多半已被停放，首页是一段跳转脚本，抓它只会让
+    杀毒软件把 Peach 报成在访问跳转页。
     """
     state = request.app.state
     with state.database.read_connection() as connection:
         row = connection.execute(
-            "SELECT url FROM entity_link WHERE id=?", (id,)).fetchone()
-    if row is None:
+            "SELECT url, metadata_json FROM entity_link WHERE id=?", (id,)).fetchone()
+    if row is None or link_status.gone_mark(row["metadata_json"]) is not None:
         return JSONResponse({"error": "no such link"}, status_code=404)
     return _site_mark_response(state, row["url"], GENERATED_DIR / "link-marks")
 

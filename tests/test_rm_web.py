@@ -1558,6 +1558,24 @@ class WebDataTests(unittest.TestCase):
         facets = rm_web.q_facets(self.contract)
         self.assertEqual(facets["creators"][0]["k"], "Canonical Creator")
 
+    def test_a_retired_performers_dead_link_is_listed_without_its_address(self):
+        """资料页照旧列出那一枚，只写是哪家；地址不下发，悬停用的隐退年份一起给。"""
+        con = sqlite3.connect(self.db_path)
+        con.execute(
+            "INSERT INTO performer_profile(entity_id,active_until,source,source_url,fetched_at) "
+            "VALUES(11,2021,'minnano-av','https://www.minnano-av.com/','2026-01-01')")
+        con.execute(
+            "INSERT INTO entity_link(entity_id,link_kind,label,url,hostname,metadata_json,"
+            "created_at,updated_at) VALUES(11,'official','Cruse Group',"
+            "'https://crusegroup.net/model/316','crusegroup.net',"
+            "'{\"gone\":{\"at\":\"2026-09-26\",\"note\":\"HTTP 404\"}}','2026-01-01','2026-01-01')")
+        con.commit(); con.close()
+        page = rm_web.q_entity(self.contract, {"kind": "performer", "name": "Canonical Alice"})
+        [link] = page["links"]
+        self.assertEqual((link["gone"], link["clickable"], link["url"], link["retired_year"]),
+                         (True, False, None, 2021))
+        self.assertEqual(link["label"], "Cruse Group")
+
     def test_performer_entity_page_and_watch_queue(self):
         con = sqlite3.connect(self.db_path)
         con.execute(

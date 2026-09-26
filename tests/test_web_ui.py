@@ -2186,7 +2186,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 留给辅助技术，不能整个丢掉。
         self.assertPageContains('<a class="iconlink" href="${esc(x.url)}"')
         self.assertPageContains('<span class="sr-only">${esc(name)}</span></a>')
-        self.assertPageContains('.entitylinks a.iconlink{width:36px;padding:0;gap:0;justify-content:center}')
+        self.assertPageContains('.entitylinks .iconlink{width:36px;padding:0;gap:0;justify-content:center}')
         # 悬停只让药丸的边显出来：这一排是图标，底色一换就读成「选中了这一个」。
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)

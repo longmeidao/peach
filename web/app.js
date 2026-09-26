@@ -5191,7 +5191,7 @@ async function wireLinkManager(){
 function wirePruneProgress(){
   return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
     busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
-    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；保留 ${out.recovered} 条未确认失效的链接。`,{variant:'success',label:'完成'})}});
+    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；${out.marked?`已隐退女优的 ${out.marked} 条留作不可点的记录；`:''}保留 ${out.recovered} 条未确认失效的链接。`,{variant:'success',label:'完成'})}});
 }
 function resourceSyncMarkup(){
   return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
@@ -8508,7 +8508,15 @@ async function openEntity(kind,name,push=true){
      放不下一排带字的按钮，而图标本身就说清了去哪家。 */
   const iconLink=(x,mark,name)=>`<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(name)}">${mark}<span class="sr-only">${esc(name)}</span></a>`;
   const siteMark=x=>`<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span>`;
+  /* 已隐退女优的失效链接留在原位、不可点，也不取站点图标：去敲一个停放域名只会招来杀毒
+     软件告警。她当年属于哪家仍是有用的信息，悬停写隐退年份，说明这页为什么打不开。 */
+  const goneLink=x=>{
+    const why=x.retired_year?`已于 ${x.retired_year} 年隐退`:'链接已失效';
+    const title=`${performerLinkName(x,agencyName)} · ${why}`;
+    return `<span class="private iconlink" tabindex="0" title="${esc(title)}"><span class="entitylinkicon">${icon('globe')}</span><span class="sr-only">${esc(title)}</span></span>`;
+  };
   const siteLinks=(d.links||[]).map(x=>{
+    if(x.gone)return goneLink(x);
     if(!(x.clickable&&/^https?:\/\//i.test(x.url||'')))
       return `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`;
     if(kind==='performer'&&x.link_kind!=='social')return iconLink(x,siteMark(x),performerLinkName(x,agencyName));
