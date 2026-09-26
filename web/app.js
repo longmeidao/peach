@@ -1,4 +1,4 @@
-import { resourceScanHtml, boundedPreference, mountNumberSetting, syncNumberSetting, jobActivityHtml, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
+import { boundedPreference, mountNumberSetting, syncNumberSetting, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, siteName, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, officialLinkText, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
@@ -15,10 +15,10 @@ import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
-import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, scanCardSkeletonHtml, repairCardSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
+import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml, fieldsetTitle,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   dissolveValue, popBadges, popCount, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
@@ -5044,216 +5044,6 @@ function wireEntityFeed(entityId){
   };
 }
 
-/* 外链是别人服务器上的东西，会在我们不知情的时候烂掉——实测 719 条里 152 条打不开，
-   而它们在资料页上和好链接长得一模一样，只有点下去才知道。所以检查要能随时重跑，
-   不是一次性脚本。放在资源同步上面：两块都是「把库里的记录和外部现实对齐」。 */
-function linkManagerMarkup(){
-  return `<section class="resourcesync" id="link-manager" aria-labelledby="linkManagerTitle">
-    <h2 id="linkManagerTitle">链接管理</h2>
-    <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('linkBoxTitle','站外链接')}
-      <div id="linkSummary" class="linksummary"></div></div>
-      <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction primary" type="button" id="linkCheck">${icon('unlink')}<span>检查死链</span></button></div></div>
-    <div id="linkCheckResult" aria-live="polite"></div></section>`;
-}
-async function wireLinkManager(){
-  const button=$('#linkCheck'),result=$('#linkCheckResult'),summary=$('#linkSummary');
-  if(!button||!result)return;
-  const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
-  /* `官网 · 事务所` 里的间隔点会和「按类型」那行的分隔点撞在一起，读出来是
-     「社媒 373 · 官网 · 事务所 224」——分不清哪个数字属于哪一类。 */
-  const KINDS={official:'官网/事务所',social:'社交账号',catalog:'作品资料站',source_reference:'资料出处'};
-  try{
-    const info=await api('/api/links');
-    /* 每一类各占一格。挤成一行时标签和数字之间只剩间隔点，数字归谁全靠猜。 */
-    const stat=(label,value,note='')=>`<div><span>${esc(label)}</span><b>${value}</b>${
-      note?`<small>${note}</small>`:''}</div>`;
-    const kinds=Object.entries(info.by_kind||{})
-      .map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');
-    const hosts=(info.top_hosts||[]).slice(0,3).map(([host,count])=>`${esc(host)} ${count}`).join(' · ');
-    summary.innerHTML=`<div class="linkstats">
-      ${stat('链接总数',info.total.toLocaleString(),`分布在 ${info.entities.toLocaleString()} 个女优、厂牌与系列`)}
-      ${kinds}</div>
-      ${hosts?`<div class="linkhosts"><span>主要站点</span><b>${hosts}</b></div>`:''}`;
-  }catch(error){summary.innerHTML=noteHtml(error.message,{variant:'error',label:'读取失败'})}
-
-  const row=(item,pick)=>`<tr>${pick?`<td class="linkpick"><input type="checkbox" data-link-id="${item.id}" aria-label="选择 ${esc(item.entity)} 的${esc(item.label||item.url)}"></td>`:''}<td>${esc(item.entity)}</td><td>${esc(KINDS[item.link_kind]||item.link_kind)}</td>
-    <td>${esc(item.label||'')}</td><td class="linknote">${esc(item.note)}</td>
-    <td class="linkurl"><a class="externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer"><span data-middle-truncate>${esc(item.url)}</span>${icon('external-link','externalmark')}</a></td></tr>`;
-  const table=(title,items,hint,{pick=false,footer=''}={})=>items.length?`<div class="linkgroup"><h4>${esc(title)} <b>${items.length}</b></h4>
-    <p>${esc(hint)}</p><div class="linktablewrap"><table class="linktable"><thead><tr>${pick?'<th class="linkpick"><input type="checkbox" id="linkPickAll" aria-label="全选本次未访问成功的链接"></th>':''}<th>所属</th><th>类型</th><th>标签</th><th>结果</th><th>地址</th></tr></thead><tbody>${items.map(item=>row(item,pick)).join('')}</tbody></table></div>${footer}</div>`:'';
-
-  const render=payload=>{
-    const running=payload.status==='running';
-    const done=payload.status==='complete';
-    button.innerHTML=`${icon('unlink')}<span>${running?'检查中':done?'重新检查':'检查死链'}</span>`;
-    setActionBusy(button,running);
-    if(payload.status==='idle'){result.innerHTML='';return}
-    if(payload.status==='failed'){result.innerHTML=noteHtml(payload.error||'检查失败',{variant:'error',label:'检查失败'});return}
-    const retrying=payload.scope==='retry';
-    const progress=running?jobActivityHtml(payload.total?`${retrying?'已重验':'已检查'} ${payload.checked.toLocaleString()} / ${payload.total.toLocaleString()} 条链接`:retrying?'正在重验链接':'正在检查链接',payload.checked,payload.total):'';
-    /* gone 和 unclear 必须分开摆：`linktr.ee` 回 403 是挡爬虫、`x.com` 回 500 是临时错误，
-       链接本身好好的。混成一张表会让人顺手把好链接一起删掉。 */
-    const gone=table('地址已失效',payload.gone||[],'站点返回 404 或 410，确认这个地址不存在。');
-    /* 这一组大多是站点拒绝程序访问或一次抖动，换个时间再问一次就通了。重跑整批要好几
-       分钟，所以这里能挑着重试：勾中哪几条就只问哪几条，别的结论原样留着。 */
-    const retryable=done?(payload.unclear||[]):[];
-    const retryRow=retryable.length?`<div class="linkretryrow">
-      <button class="resourceaction primary" type="button" id="linkRetryPicked" disabled>${icon('rotate-cw')}<span>重试选中的链接</span></button>
-      <button class="resourceaction primary" type="button" id="linkRetryAll">${icon('rotate-cw')}<span>全部重试（${retryable.length}）</span></button></div>`:'';
-    const unclear=table('本次未访问成功',payload.unclear||[],'站点拒绝程序访问或一次临时故障都会落在这里。链接保留，可勾选后单独重试。',{pick:retryable.length>0,footer:retryRow});
-    const apply=(done&&(payload.gone||[]).length)?`<div class="resourceapplyrow"><p>删除前会逐条重验一次；此操作不可撤销。</p>
-      <button class="resourceaction danger" type="button" id="linkPrune">删除 ${payload.gone.length} 条失效链接</button></div>`:'';
-    const clean=(done&&!(payload.gone||[]).length&&!(payload.unclear||[]).length)?'<p class="resourcesyncok">全部链接均可访问。</p>':'';
-    result.innerHTML=`<div class="resourcepanel"${apply?' data-fieldset-type="error"':''}>${progress}${gone}${unclear}${apply}${clean}</div>`;
-    $('#linkPrune')?.addEventListener('click',async event=>{
-      const control=event.currentTarget;
-      return confirmModal({title:'删除失效链接',body:`将删除 ${payload.gone.length} 条失效链接。删除前会再次检查，删除后无法恢复。`,confirmLabel:'删除失效链接',danger:true,onConfirm:async()=>{
-      setActionBusy(control);
-      control.innerHTML=`${spinnerHtml('正在重验')}<span>正在重验并删除…</span>`;
-      try{
-        const out=await api('/api/links/prune',{method:'POST',body:JSON.stringify({confirm:true,check_id:payload.check_id,background:true})});
-        sessionStorage.setItem('peach-link-prune-job',out.job_id);
-        if(active())void wirePruneProgress();
-      }catch(error){setActionBusy(control,false);if(active())void wirePruneProgress();throw error}
-  }});
-    });
-    const boxes=()=>[...result.querySelectorAll('[data-link-id]')];
-    const picked=()=>boxes().filter(box=>box.checked).map(box=>Number(box.dataset.linkId));
-    const all=$('#linkPickAll'),pickedButton=$('#linkRetryPicked');
-    const syncPicks=()=>{
-      const ids=picked(),total=boxes().length;
-      if(pickedButton){pickedButton.disabled=!ids.length;
-        pickedButton.querySelector('span').textContent=ids.length?`重试选中的 ${ids.length} 条`:'重试选中的链接'}
-      if(all){all.checked=total>0&&ids.length===total;all.indeterminate=ids.length>0&&ids.length<total}
-    };
-    boxes().forEach(box=>box.addEventListener('change',syncPicks));
-    all?.addEventListener('change',()=>{boxes().forEach(box=>box.checked=all.checked);syncPicks()});
-    const retry=async(control,ids)=>{
-      if(!ids.length)return;
-      setActionBusy(control);
-      try{
-        const out=await api('/api/links/check',{method:'POST',body:JSON.stringify({retry:ids,check_id:payload.check_id})});
-        if(!active())return;
-        render(out);void poll();
-      }catch(error){
-        setActionBusy(control,false);
-        if(active()){result.innerHTML=noteHtml(error.message,{variant:'error',label:'重试失败'});void poll()}
-      }
-    };
-    pickedButton?.addEventListener('click',event=>void retry(event.currentTarget,picked()));
-    $('#linkRetryAll')?.addEventListener('click',event=>void retry(event.currentTarget,retryable.map(item=>item.id)));
-  };
-
-  const ui=await import('/dist/peach-ui.js');
-  let watching=0;
-  const poll=()=>{const generation=++watching;return ui.watchJob({
-    active:()=>active()&&watching===generation,
-    read:signal=>api('/api/links/check',{signal,method:'POST',body:JSON.stringify({status_only:true})}),
-    render,disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}})};
-  button.onclick=async()=>{
-    if(button.getAttribute('aria-busy')==='true')return;
-    setActionBusy(button);
-    try{const payload=await api('/api/links/check',{method:'POST',body:JSON.stringify({restart:true})});
-      if(!active())return;render(payload);void poll();
-    }catch(error){if(active()){result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'});void poll()}}
-  };
-  void poll();
-  void wirePruneProgress();
-}
-function wirePruneProgress(){
-  return wireOperationProgress({host:$('#link-manager'),path:'/api/links/prune',key:'peach-link-prune-job',title:'正在重验并删除失效链接…',
-    busy:running=>{const button=$('#linkPrune');if(button){setActionBusy(button,running);if(!running)button.textContent='重试删除失效链接'}},
-    complete:out=>{$('#linkCheckResult').innerHTML=noteHtml(`已删除 ${out.removed} 条；${out.marked?`已隐退女优的 ${out.marked} 条留作不可点的记录；`:''}保留 ${out.recovered} 条未确认失效的链接。`,{variant:'success',label:'完成'})}});
-}
-function resourceSyncMarkup(){
-  return `<section class="resourcesync" id="resource-sync" aria-labelledby="resourceSyncTitle">
-    <h2 id="resourceSyncTitle">资源同步</h2>
-    <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
-      <div class="resourcesyncbody geist-fieldset-content">${fieldsetTitle('resourceBoxTitle','文件与记录核对')}
-      <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录、空文件夹，以及不再被引用的缓存。</p></div>
-      <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer>
-      <button class="resourceaction primary" type="button" id="resourceScan">${iconSwapHtml('git-compare','rotate-cw')}<span data-scan-label>检查文件</span></button></div></div>
-    <div id="resourceSyncResult" aria-live="polite"></div></section>`;
-}
-async function wireResourceSync(){
-  const scan=$('#resourceScan'),result=$('#resourceSyncResult');
-  if(!scan||!result)return;
-  const active=()=>location.pathname==='/data-cleanup'&&!$('#stats').hidden&&document.body.contains(result);
-  const setBusy=(busy,done=false)=>{
-    setActionBusy(scan,busy);
-    /* 这枚键上的字形要从「比对」换成「再来一次」，只改状态不重写 innerHTML：
-       `git-compare` 自己带一套逐笔描画，重写一次就把它连同正在走的笔画一起丢掉。 */
-    setIconSwap(scan,done?'b':'a');
-    swapText(scan.querySelector('[data-scan-label]'),busy?'扫描中':done?'重新扫描':'检查文件');
-  };
-  const render=payload=>{
-    const cache=payload.cache||{files:0,bytes:0};
-    result.innerHTML=resourceScanHtml(payload,fmtSize);
-    $('#resourceApply')?.addEventListener('click',async event=>{
-      const button=event.currentTarget,count=value=>Number(value||0).toLocaleString();
-      /* 文件已不在盘上的记录直接删，不进回收站，也就没有撤销：确认框用危险档，正文把
-         「不可撤销」写明。执行那一步只认这次检查的候选，逐条复核后再删。 */
-      return confirmModal({title:'清理失效条目',body:`将永久删除文件已不在盘上的 ${count(payload.missing)} 条记录（含回收站里的）、${count(payload.empty)} 个空文件夹，并清理 ${count(cache.files)} 个闲置缓存。来源根目录保留。这一步不可撤销。`,confirmLabel:'清理失效条目',danger:true,onConfirm:async()=>{
-      setActionBusy(button);
-      button.innerHTML=`${spinnerHtml('正在清理')}<span>正在复核并清理…</span>`;
-      try{
-        const applied=await api('/api/resource-sync/apply',{method:'POST',body:JSON.stringify({confirm:true,clean_cache:true,scan_id:payload.scan_id||'',background:true})});
-        sessionStorage.setItem('peach-resource-apply-job',applied.job_id);
-        if(active())void wireResourceApplyProgress();
-      }catch(error){
-        setActionBusy(button,false);
-        button.textContent='清理失效条目';
-        if(active())void wireResourceApplyProgress();throw error}
-  }});
-    });
-  };
-  const followScan=async payload=>{
-    setBusy(true);result.innerHTML=`<p class="resourcescanning">${loadingDotsHtml('正在检查本地磁盘和网盘…')}</p>`;
-    try{
-      if(!payload){try{payload=await api('/api/resource-sync/scan',{method:'POST',body:JSON.stringify({background:true,restart:true})})}
-        catch(error){if(active())result.innerHTML=noteHtml('暂时无法确认启动结果，正在读取任务状态…',{label:'任务状态'})}}
-      const ui=await import('/dist/peach-ui.js');
-      await ui.watchJob({active,
-        read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
-        render:state=>{payload=state;if(state.status==='running'){
-          result.innerHTML=jobActivityHtml(state.total_sources?`已扫描 ${state.completed_sources||0}/${state.total_sources} 个来源`:'正在扫描来源',state.completed_sources,state.total_sources)}},
-        disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
-      if(payload.status==='failed')throw new Error(payload.error||'后台扫描失败');
-      if(payload.status==='idle')throw new Error('任务尚未启动，请重试扫描');
-      if(!active())return;
-      render(payload);
-    }
-    catch(error){result.innerHTML=noteHtml(error.message,{variant:'error',label:'扫描失败'})}
-    finally{setBusy(false,true)}
-  };
-  scan.onclick=()=>{if(scan.getAttribute('aria-busy')!=='true')void followScan(null)};
-  const ui=await import('/dist/peach-ui.js');
-  void ui.watchJob({active,once:true,
-    read:signal=>api('/api/resource-sync/scan',{signal,method:'POST',body:JSON.stringify({background:true,status_only:true})}),
-    render:existing=>{if(existing.status==='running')void followScan(existing)},
-    disconnected:()=>{result.innerHTML=noteHtml('暂时无法读取进度，正在重新连接…',{label:'任务状态'})}});
-  void wireResourceApplyProgress();
-}
-function wireResourceApplyProgress(){
-  return wireOperationProgress({host:$('#resource-sync'),path:'/api/resource-sync/apply',key:'peach-resource-apply-job',title:'正在复核并清理失效条目…',
-    busy:running=>{const button=$('#resourceApply');if(button){setActionBusy(button,running);if(!running)button.textContent='清理失效条目'}},
-    /* 没删的几样是这一轮留下的：文件其实还在、目录这会儿读不了、缓存正被占用。能删的
-       已经删了，所以报警告档、写完成与没处理的数目，不说清理失败。 */
-    complete:out=>{const count=value=>Number(value||0).toLocaleString();
-      const blocked=out.blocked||[],cacheBlocked=out.cache_blocked||[],dirErrors=Number(out.dir_errors||0);
-      const done=Number(out.purged||0)+Number(out.dirs_removed||0)+Number(out.cache_removed||0);
-      const left=blocked.length+dirErrors+cacheBlocked.length;
-      const names=blocked.slice(0,3).map(item=>`「${item.name}」`).join('、')+(blocked.length>3?' 等':'');
-      const rest=[blocked.length?`${count(blocked.length)} 条记录没有删除（${names}）`:'',
-        dirErrors?`${count(dirErrors)} 个文件夹没有删除`:'',
-        cacheBlocked.length?`${count(cacheBlocked.length)} 个缓存没有清理`:''].filter(Boolean).join('，');
-      const summary=`已永久删除 ${count(out.purged)} 条失效记录和 ${count(out.dirs_removed)} 个空文件夹，清理 ${count(out.cache_removed)} 个缓存，释放 ${fmtSize(out.bytes_reclaimed||0)}。`;
-      $('#resourceSyncResult').innerHTML=noteHtml(rest?`${summary}${rest}，重新检查后可再试。`:summary,{label:rest?'部分完成':'清理结果',variant:rest?'warning':'success'});
-      if(left)toast({text:`已完成 ${count(done)} 项，${count(left)} 项没有处理`},{sound:'warning'});
-      else actionReceipt('已清理失效条目')}});
-}
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
   if(push||location.pathname==='/resource-sync')route('/data-cleanup#resource-sync',!push);
@@ -5489,374 +5279,35 @@ async function openPlaylists(push=true){
 }
 
 /* 数据管理是「库里已经有的东西怎么收拾」的唯一入口：广告、重复、失效条目，
-   加上复核队列、回收站和高清版。它们此前散在管理菜单和统计页两处，
-   统计页因此还挂着两块跟统计无关的面板。 */
-const DATA_MANAGEMENT_ENTRIES=[
-  ['review','人工复核','square-check-big'],
-  ['trash','回收站','trash'],
-  ['quality','高清版','sparkles'],
-];
-/* 这一页照 Board 的 dashboard 模板排：顶上一排是读数卡（stat-cards.tsx 的 plain 变体），五张按一条
-   内容在库里的经过排——先把它说清楚（人工复核、高清版），再把不该留的挑出去（重复文件、垃圾文件），
-   最后是删掉的东西还在哪儿（回收站）。扫描与采集、媒体修复和整理是要在这页上做的事，不是读数，
-   各占一整行放在读数下面。 */
-const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];
-
-/* 整理（ADR-0039）：媒体默认留在原目录，这一块是唯一会动文件名和目录的入口。
-   两份模板、一次预览、一次执行，外加把上一批原样退回去。 */
-function organizeCardMarkup(payload){
-  const locations=payload.locations||[];
-  const presets=payload.presets||[];
-  const hint=(payload.placeholders||[]).map(item=>`{${item.key}} ${item.label}`).join(' · ');
-  return `<section class="cleanupfieldset cleanuporganize" id="organize" data-geist-fieldset data-cleanup-task aria-labelledby="cleanupOrganizeTitle">
-    <div class="geist-fieldset-content">${fieldsetTitle('cleanupOrganizeTitle','整理')}
-      <p>按模板给文件改名并归入目录。先预览，确认后执行；执行过的一批可以整批退回。</p>
-      <div class="organizefields">
-        <div class="organizesource" data-organize-source></div>
-        <label class="organizefield"><span>文件名模板</span>
-          <input type="text" class="geist-input" data-organize-file spellcheck="false"
-            autocapitalize="off" placeholder="{number}[ {title}]"></label>
-        <label class="organizefield"><span>目录模板</span>
-          <input type="text" class="geist-input" data-organize-dir spellcheck="false"
-            autocapitalize="off" placeholder="留空表示原地改名"></label>
-        <div class="organizepresets">${presets.map((preset,index)=>
-          `<button type="button" class="geist-button" data-organize-preset="${index}">${esc(preset.label)}</button>`).join('')}</div>
-        <p class="cleanupmeta">${esc(hint)}；方括号里的内容在字段为空时整段省略。</p>
-      </div>
-      <div class="organizestate" aria-live="polite"></div></div>
-    <footer class="geist-fieldset-footer" data-geist-fieldset-footer>
-      <button type="button" class="geist-button primary" data-organize-preview ${locations.length?'':'disabled'}>预览</button>
-      <button type="button" class="geist-button primary" data-organize-apply hidden>执行整理</button>
-      <button type="button" class="geist-button" data-organize-rollback ${payload.last_batch?'':'hidden'}>回滚上一批</button>
-    </footer></section>`;
-}
-
-/* 预览结果只列会变的行：库里几万行里改不到的那部分是背景，不是结果。 */
-function organizePlanHtml(result){
-  const counts=result.counts||{},reasons=result.reasons||{};
-  const rows=(result.rows||[]).slice(0,8).map(row=>
-    `<li><span data-middle-truncate title="${esc(row.current_path)}">${esc(baseName(row.current_path))}</span><span aria-hidden="true">→</span><span data-middle-truncate title="${esc(row.target_path)}">${esc(baseName(row.target_path))}</span></li>`).join('');
-  const skipped=Object.entries(reasons).sort((a,b)=>b[1]-a[1])
-    .map(([reason,count])=>`${esc(reason)} ${Number(count).toLocaleString()}`).join(' · ');
-  if(!Number(counts.change||0))
-    return noteHtml(`没有要改的文件。${skipped?`跳过：${skipped}。`:''}`,{label:'预览结果'});
-  return `${noteHtml(`${Number(counts.change).toLocaleString()} 个文件会改名或移动，${Number(counts.unchanged||0).toLocaleString()} 个已经就是目标名字${skipped?`；跳过 ${skipped}`:''}。`,{label:'预览结果'})}
-    <ol class="organizeplan">${rows}</ol>${result.truncated?'<p class="cleanupmeta">只列出前 8 行，完整计划在计划 CSV 里。</p>':''}`;
-}
-
-function baseName(path){
-  const text=String(path||'');
-  return text.slice(Math.max(text.lastIndexOf('\\'),text.lastIndexOf('/'))+1);
-}
-
-async function wireOrganize(surface,payload){
-  const host=$('#organize');
-  if(!host)return;
-  const status=host.querySelector('.organizestate');
-  const fileInput=host.querySelector('[data-organize-file]');
-  const dirInput=host.querySelector('[data-organize-dir]');
-  const previewButton=host.querySelector('[data-organize-preview]');
-  const applyButton=host.querySelector('[data-organize-apply]');
-  const rollbackButton=host.querySelector('[data-organize-rollback]');
-  const locations=payload.locations||[];
-  const templates=payload.templates||{};
-  const mount=host.querySelector('[data-organize-source]');
-  let location=locations[0]?.location||'';
-  const loadTemplates=()=>{
-    const stored=templates[location]||{};
-    fileInput.value=stored.file||'';
-    dirInput.value=stored.dir||'';
-  };
-  if(locations.length){
-    mount.innerHTML=selectFieldHtml(locations.map(item=>
-      [item.location,LOC[item.location]||item.location,MEDIA_SOURCE_ICONS[item.location]||'database']),
-      location,{label:'整理哪个来源'});
-    const field=wireSelectField(mount.firstElementChild);
-    field.addEventListener('change',()=>{location=field.value;loadTemplates();applyButton.hidden=true;status.innerHTML=''});
-  }
-  loadTemplates();
-  host.querySelectorAll('[data-organize-preset]').forEach(button=>button.onclick=()=>{
-    const preset=(payload.presets||[])[Number(button.dataset.organizePreset)];
-    if(!preset)return;
-    fileInput.value=preset.file;dirInput.value=preset.dir;
-    fileInput.removeAttribute('aria-invalid');dirInput.removeAttribute('aria-invalid');
-  });
-  const body=()=>JSON.stringify({location,file_template:fileInput.value.trim(),
-    dir_template:dirInput.value.trim()});
-  /* 模板跟着账本走，所以预览成功的那一刻顺手存下来：用户下次进这一页看到的是
-     自己上次用的那两行，而不是又一次空框。只读端存不进去，那不该挡住预览。 */
-  const remember=async()=>{
-    try{await api('/api/settings',{method:'POST',body:JSON.stringify({organizeTemplates:{
-      ...templates,[location]:{file:fileInput.value.trim(),dir:dirInput.value.trim()}}})})}
-    catch(_error){}
-  };
-  previewButton.onclick=async()=>{
-    fileInput.removeAttribute('aria-invalid');dirInput.removeAttribute('aria-invalid');
-    setActionBusy(previewButton);applyButton.hidden=true;
-    status.innerHTML=loadingDotsHtml('正在按模板算计划…');
-    try{
-      const result=await api('/api/organize/preview',{method:'POST',body:body()});
-      if(!surfaceCurrent(surface))return;
-      status.innerHTML=organizePlanHtml(result);
-      applyButton.hidden=!Number(result.counts?.change||0);
-      templates[location]={file:fileInput.value.trim(),dir:dirInput.value.trim()};
-      void remember();
-    }catch(error){
-      /* 模板不合法时错误就出在这两个框里的一个，所以除了说原因还要指出是哪一格。 */
-      const target=/目录模板|分隔符|盘符|`\.`/.test(error.message)?dirInput:fileInput;
-      target.setAttribute('aria-invalid','true');target.focus();
-      status.innerHTML=noteHtml(error.message,{variant:'error',label:'模板不可用'});
-    }finally{setActionBusy(previewButton,false)}
-  };
-  applyButton.onclick=async()=>{
-    const name=LOC[location]||location;
-    return confirmModal({title:'按模板整理文件',
-      body:`将按这两份模板改动「${name}」上的文件名与目录，目标已存在的行会整行跳过。这一批可以从「回滚上一批」整批退回。`,
-      confirmLabel:'整理文件',danger:false,onConfirm:async()=>{
-        const started=await api('/api/organize/apply',{method:'POST',
-          body:JSON.stringify({location,file_template:fileInput.value.trim(),
-            dir_template:dirInput.value.trim(),confirm:true})});
-        sessionStorage.setItem('peach-organize-job',started.job_id);
-        if(surfaceCurrent(surface))void wireOrganizeProgress();
-      }});
-  };
-  rollbackButton.onclick=async()=>{
-    return confirmModal({title:'回滚上一批整理',
-      body:`将把上一批整理动过的文件退回整理前的名字与位置，账本路径跟着退回。退回后这一批不再出现在这里。`,
-      confirmLabel:'回滚整理',danger:false,onConfirm:async()=>{
-        const started=await api('/api/organize/rollback',{method:'POST',
-          body:JSON.stringify({confirm:true})});
-        sessionStorage.setItem('peach-organize-job',started.job_id);
-        if(surfaceCurrent(surface))void wireOrganizeProgress();
-      }});
-  };
-  void wireOrganizeProgress();
-}
-
-function wireOrganizeProgress(){
-  return wireOperationProgress({host:$('#organize'),path:'/api/organize',
-    key:'peach-organize-job',title:'正在整理文件…',
-    busy:running=>{const button=$('#organize')?.querySelector('[data-organize-apply]');
-      if(button)setActionBusy(button,running)},
-    complete:out=>{
-      const status=$('#organize')?.querySelector('.organizestate');
-      if(!status)return;
-      const restored=out.restored;
-      const failed=Number(out.failed||0);
-      const done=Number(restored===undefined?out.moved||0:restored);
-      const text=restored===undefined
-        ?`已整理 ${done.toLocaleString()} 个文件${failed?`，${failed.toLocaleString()} 行未能处理`:''}。`
-        :`已退回 ${done.toLocaleString()} 个文件${failed?`，${failed.toLocaleString()} 行未能退回`:''}。`;
-      status.innerHTML=noteHtml(text,{label:failed?'部分完成':'整理结果',variant:failed?'warning':'success'});
-      if(failed)actionFailure('按模板整理',new Error(`${failed} 行未能处理`));
-      else actionReceipt(text.replace(/。$/,''));
-      const rollback=$('#organize')?.querySelector('[data-organize-rollback]');
-      if(rollback)rollback.hidden=restored!==undefined&&!failed;
-    }});
-}
-
+   加上复核队列、回收站和高清版。整页归 React 子树（ADR-0031），遗留层只铺骨架、
+   交出回执与换页；读数卡通往的那几页仍归遗留路由。 */
 async function openDataCleanup(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/data-cleanup');
   const surface=claimSurface('/data-cleanup');
   showManagementBody({placeholder:managementPlaceholder('/data-cleanup')});
-  const [junk,duplicates,sources,organizeState]=await Promise.all([
-    surfaceApi(surface,'/api/ads?limit=1'),surfaceApi(surface,'/api/duplicates?limit=1'),
-    surfaceApi(surface,'/api/sources'),surfaceApi(surface,'/api/organize'),
-  ]);
-  if(!surfaceCurrent(surface))return;
   paintManageLede();
-  const junkCounts=junk.counts||{};
-  const junkBreakdown=[...JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)
-    .map(([key,label])=>`${esc(label)} ${Number(junkCounts[key]).toLocaleString()}`),
-    ...(Number(junk.dismissed_total)>0?[`已忽略 ${Number(junk.dismissed_total).toLocaleString()}`]:[])].join(' · ');
-  /* 读数卡是 Board 的 plain stat card 做成按钮：整张卡就是那一页的入口，读数下一行 Caption 是同一份
-     payload 里的分项。人工复核、高清版、回收站的读数由 paintDataManagementCounts 稍后填进来。 */
-  const statCard=(title,glyph,body,attrs)=>`<button type="button" class="board-plain-stat" ${attrs}>
-      <span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;
-  const entryCard=section=>{
-    const [,title,glyph]=DATA_MANAGEMENT_ENTRIES.find(([key])=>key===section);
-    return statCard(title,glyph,`<strong data-cleanup-count="${section}">—</strong>
-      <span class="cleanupmeta" data-cleanup-meta="${section}"></span>`,`data-cleanup-go="${section}"`);
-  };
-  const cleanupCards={
-    /* 卡片和它的提示是两件东西：提示挂在卡片外面，和资源同步那两块一个写法。
-       `#libraryProcessing` 因此是这一格本身，卡片是它的第一个孩子。island 挂上之前
-       这一格和首屏骨架是同一张卡，主键仍是蓝色，不在两段等待之间换一次长相。 */
-    scraping:`<div class="cleanupscraping" id="libraryProcessing">${scanCardSkeletonHtml()}</div>`,
-    junk:statCard('垃圾文件','file-archive',`<strong>${Number(junk.pending_total||0).toLocaleString()} 个待判断</strong>
-      <span class="cleanupmeta">${junkBreakdown}</span>`,'data-cleanup-open="junk"'),
-    duplicates:statCard('重复文件','file-stack',`<strong>${Number(duplicates.total||0)
-          ?`${Number(duplicates.total).toLocaleString()} 组 · ${Number(duplicates.files||0).toLocaleString()} 个文件`
-          :'没有重复内容'}</strong>
-      <span class="cleanupmeta">${Number(duplicates.total||0)?`可回收 ${fmtSize(duplicates.reclaimable||0)}`:''}</span>`,'data-cleanup-open="duplicates"'),
-    /* 媒体修复是一轮几十分钟起步的长任务，要确认、要看进度，所以和扫描与采集排在同一列
-       （ADR-0050）。卡片由 island 画，这里是它取数期间的那一版，与首屏骨架同一张。 */
-    mediaRepair:`<div class="cleanupmediarepair" id="mediaRepair">${repairCardSkeletonHtml()}</div>`,
-    review:entryCard('review'),quality:entryCard('quality'),trash:entryCard('trash'),
-  };
-  $('#stats').innerHTML=`<div class="cleanuppage"><div class="cleanupstats">
-    ${DATA_MANAGEMENT_STATS.map(section=>cleanupCards[section]).join('')}
-  </div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}${organizeCardMarkup(organizeState)}</div>
-  ${linkManagerMarkup()}
-  ${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}</div>`;
-  $('#stats').querySelector('[data-cleanup-open="junk"]').onclick=()=>openManage('ads');
-  const processingUi=await import('/dist/peach-ui.js');
+  const ui=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface))return;
-  await Promise.all([
-    processingUi.mountIsland('library-processing',$('#libraryProcessing'),{toast,monitor:true,onComplete:()=>{if(surfaceCurrent(surface))void paintDataManagementCounts()}},{isCurrent:()=>surfaceCurrent(surface)}),
-    processingUi.mountIsland('media-repair',$('#mediaRepair'),{},{isCurrent:()=>surfaceCurrent(surface)}),
-  ]);
+  /* 重复文件报数据管理的身份，`openManage('duplicates')` 找不到它自己的 section。 */
+  const props={toast:(message,{warning=false}={})=>warning?toast({text:message},{sound:'warning'}):actionReceipt(message),
+    failure:actionFailure,open:section=>section==='duplicates'?openDuplicates():openManage(section)};
+  await ui.mountIsland('data-cleanup',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
   if(surfaceCurrent(surface)&&location.hash==='#libraryProcessing')$('#libraryProcessing')?.scrollIntoView({block:'start'});
-  if(!surfaceCurrent(surface))return;
-  $('#stats').querySelector('[data-cleanup-open="duplicates"]').onclick=()=>openDuplicates();
-  $('#stats').querySelectorAll('[data-cleanup-go]').forEach(button=>
-    button.onclick=()=>openManage(button.dataset.cleanupGo));
-  paintDataManagementCounts();
-  await wireOrganize(surface,organizeState);
-  await wireLinkManager();
-  await wireResourceSync();
 }
 
-/* 计数各自失败各自算：复核接口出错不该把回收站那张卡也变成「—」。
-   第二行是同一份 payload 里已经有的分项，不额外发请求。 */
-async function paintDataManagementCounts(){
-  const write=(section,text,meta='')=>{
-    const root=$('#stats');
-    const count=root?.querySelector(`[data-cleanup-count="${section}"]`);
-    if(count)count.textContent=text;
-    const line=root?.querySelector(`[data-cleanup-meta="${section}"]`);
-    if(line)line.textContent=meta;
-  };
-  const fill=async(section,load)=>{
-    try{const [text,meta='']=await load();write(section,text,meta)}
-    catch(_error){write(section,'读取失败')}
-  };
-  await Promise.all([
-    fill('review',async()=>{
-      const data=await api('/api/review?counts=1');
-      const counts=Object.entries(data.counts||{})
-        .map(([key,value])=>[REVIEW_LABELS[key]||key,Number(value)||0])
-        .filter(([,value])=>value>0).sort((a,b)=>b[1]-a[1]);
-      const total=counts.reduce((sum,[,value])=>sum+value,0);
-      // 只列前三类，剩下的合成一项：卡片是入口，不是复核队列本身。
-      const top=counts.slice(0,3).map(([label,value])=>`${label} ${value.toLocaleString()}`);
-      const rest=counts.slice(3).reduce((sum,[,value])=>sum+value,0);
-      if(rest)top.push(`其余 ${rest.toLocaleString()}`);
-      return [`${total.toLocaleString()} 条待复核`,top.join(' · ')];
-    }),
-    fill('trash',async()=>{
-      const data=await api('/api/items?state=trash&limit=1');
-      const total=Number(data.total||0);
-      return [`${total.toLocaleString()} 项在回收站`,total?`占用 ${fmtSize(data.bytes||0)}`:''];
-    }),
-    fill('quality',async()=>
-      [`${Number((await api('/api/quality-goals?limit=1')).total||0).toLocaleString()} 个待升级`]),
-  ]);
-}
-
-let dupData=null;
-/* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复——
-   合集、分卷和混入的广告都会共用一个 code，只按番号做「保留最大」会删掉内容。
-   批量一律走 dispose 进回收站，可逆；永久删除仍只能从回收站单独执行。 */
+/* 重复文件。判据是「同番号 + 时长相近 + 分卷标记一致」，不是同番号即重复；整页归 React
+   子树（ADR-0031），批量一律走 dispose 进回收站，永久删除仍只能从回收站单独执行。 */
 async function openDuplicates(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/duplicates');
   const surface=claimSurface('/duplicates');
   showManagementBody({placeholder:managementPlaceholder('/duplicates')});
-  const [next,sources]=await Promise.all([surfaceApi(surface,'/api/duplicates?limit=120'),surfaceApi(surface,'/api/sources')]);
+  paintManageLede();
+  const ui=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface))return;
-  dupData={...next,cloudLocations:cloudLocations(sources.sources||[])};
-  renderDuplicates();
-}
-/* 「留 115」只在这一组既有 115 又有别处文件时出现：整组都在同一个网盘，留它和留最大
-   是同一个结果，多一颗键只是多一个要读的选项。 */
-function mixedCloudPreferences(files,configured){
-  return cloudPreferenceLocations(files,configured).filter(loc=>files.some(f=>f.location!==loc));
-}
-/* 文件所在的库跟侧栏媒体库菜单、来源角标用同一枚图形：115 与 PikPak 取官方站标，
-   本地盘取硬盘。 */
-function dupLocationHtml(f){
-  const key=f.location||'';
-  return `<span class="mono duploc">${SRCICON[key]||''}<span>${esc(LOC[key]||key||f.drive||'')}</span></span>`;
-}
-function renderDuplicates(){
-  const d=dupData;if(!d)return;
-  const groups=d.groups||[];
-  const configured=d.cloudLocations||[];
-  const bulkClouds=configured.filter(loc=>groups.some(g=>mixedCloudPreferences(g.files,[loc]).length));
-  paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`);
-  $('#stats').innerHTML=`<div class="review">
-    ${collectionSummaryHtml('重复内容',`${Number(d.total||0).toLocaleString()} 组`,`${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`)}
-    ${groups.length?`<div class="board-filter-frame" data-filter-frame><div class="dupactions" data-filter-row="top"><h3>批量保留</h3>
-      <button data-dup-all="largest">全部保留最大</button>
-      <button data-dup-all="longest">全部保留最长</button>
-      ${bulkClouds.map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join('')}</div></div>`:''}
-    ${groups.length?groups.map((g,gi)=>`<section class="dupgroup" data-dup-group="${gi}">
-      <div class="duphead"><b class="mono">${esc(g.code)}</b>
-        <span class="mono">${g.count} 个 · 可回收 ${fmtSize(g.reclaimable)}</span>
-        ${g.identical?'<span class="dupflag ok">sha1 一致</span>'
-          :g.evidence==='same_code_short_copy'?'<span class="dupflag">同番号短版本</span>'
-          :'<span class="dupflag">时长推断</span>'}
-        ${g.cross_drive?`<span class="dupflag">跨盘 ${esc(g.drives.join(' '))}</span>`:''}
-        <span class="dupbtns"><button data-dup-keep="largest" data-dup-i="${gi}">留最大</button>
-          <button data-dup-keep="longest" data-dup-i="${gi}">留最长</button>
-          ${mixedCloudPreferences(g.files,configured).map(loc=>`<button data-dup-keep="${loc}" data-dup-i="${gi}">留 ${esc(LOC[loc])}</button>`).join('')}
-          <button class="danger" data-dup-keep="all" data-dup-i="${gi}">整组回收</button></span></div>
-      <div class="duplist">${g.files.map(f=>`<div class="duprow">
-        <button type="button" class="dupcover" data-open-dup="${f.id}" aria-label="预览 ${esc(f.name)}"><img src="/thumb?id=${f.id}&c=4" alt="" loading="lazy" data-drop="self">${icon('play')}</button>
-        <span class="duptitle"><button class="dupname" data-middle-truncate data-middle-truncate-within data-open-dup="${f.id}" title="${esc(f.name)}">${esc(f.name)}</button>
-          <span class="dupmarks">${f.is_largest?'<i class="big">最大</i>':''}${f.is_longest?'<i class="long">最长</i>':''}</span></span>
-        ${dupLocationHtml(f)}
-        <span class="mono">${fmtSize(f.size||0)}</span>
-        <span class="mono">${fmtDur(f.duration)}</span>
-        <span class="mono duppath" data-middle-truncate title="${esc(f.path||'')}">${esc(f.path||'')}</span></div>`).join('')}</div>
-    </section>`).join(''):emptyState('file-stack','没有找到重复文件','所有来源之间没有检测到内容相同的文件。扫描新来源后，这里会自动更新。')}</div>`;
-  $('#stats').querySelectorAll('[data-open-dup]').forEach(b=>
-    b.onclick=()=>openItem(+b.dataset.openDup));
-  $('#stats').querySelectorAll('[data-dup-keep]').forEach(b=>
-    b.onclick=()=>disposeDuplicates([groups[+b.dataset.dupI]],b.dataset.dupKeep,b));
-  $('#stats').querySelectorAll('[data-dup-all]').forEach(b=>
-    b.onclick=()=>disposeDuplicates(groups,b.dataset.dupAll,b));
-}
-/* 每组只留一个，其余进回收站；整组都是广告时允许一个不留。 */
-function duplicateVictims(groups,keep){
-  const ids=[];
-  for(const g of groups){
-    if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}
-    const flag=keep==='longest'?'is_longest':'is_largest';
-    const preferred=(keep==='115'||keep==='pikpak')?g.files.filter(f=>f.location===keep):[];
-    const pool=preferred.length?preferred:g.files;
-    const keeper=(keep==='largest'||keep==='longest')
-      ? (g.files.find(f=>f[flag])||g.files[0])
-      : pool.reduce((best,file)=>(file.size||0)>(best.size||0)?file:best,pool[0]);
-    for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id);
-  }
-  return ids;
-}
-async function disposeDuplicates(groups,keep,button){
-  const ids=duplicateVictims(groups,keep);
-  if(!ids.length)return;
-  const victims=new Set(ids);
-  const bytes=groups.reduce((n,g)=>n+g.files.reduce((m,f)=>m+(victims.has(f.id)?f.size||0:0),0),0);
-  const label={largest:'最大的一个',longest:'最长的一个','115':'115（没有则留最大）',pikpak:'PikPak（没有则留最大）',all:'零个文件'}[keep];
-  return confirmModal({title:'移入回收站',body:`将把 ${ids.length} 个重复文件的馆藏记录移入回收站，每组保留${label}。文件共 ${fmtSize(bytes)}，记录可从回收站还原。`,confirmLabel:'移入回收站',danger:false,onConfirm:async()=>{
-  setActionBusy(button);
-  try{
-    // /api/batch 单次上限 200，分批发。
-    for(let i=0;i<ids.length;i+=200){
-      await api('/api/batch',{method:'POST',
-        body:JSON.stringify({ids:ids.slice(i,i+200),operation:'dispose'})});
-    }
-    await openDuplicates(false);
-    actionReceipt(`已把 ${ids.length} 项移入回收站`,{undo:async()=>{
-      for(let i=0;i<ids.length;i+=200)
-        await api('/api/batch',{method:'POST',
-          body:JSON.stringify({ids:ids.slice(i,i+200),operation:'restore'})});
-      await openDuplicates(false);
-    }});
-  }finally{setActionBusy(button,false)}
-  }});
+  const props={openItem,failure:actionFailure,toast:(message,{undo}={})=>actionReceipt(message,{undo})};
+  await ui.mountIsland('duplicates',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
 }
 
 /* ── island 挂载点（ADR-0022）──
@@ -6921,17 +6372,6 @@ async function refreshFollowSurface(surface){
     followData=data;
     renderFollow();
   }catch(error){if(surfaceCurrent(surface))toast(error.message,{warn:true})}
-}
-async function wireOperationProgress({host,path,key,title,busy,complete}){
-  if(!host)return;
-  host.querySelector('[data-operation-progress]')?.remove();
-  const marker=document.createElement('div');marker.dataset.operationProgress='';host.append(marker);
-  const surface=surfaceToken(surfacePath()),ui=await import('/dist/peach-ui.js');
-  if(!surfaceCurrent(surface)||!marker.isConnected)return;
-  ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),read:signal=>api(path,{signal}),
-    storageKey:key,title,busy,watchIdle:false,complete:report=>{
-      if(report.status==='failed'){marker.innerHTML=noteHtml(report.error||'任务失败',{variant:'error',label:'任务失败'});return}
-      complete(report)}});
 }
 function wireFollowOlder(){
   const button=$('#stats').querySelector('[data-follow-older]');

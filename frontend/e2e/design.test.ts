@@ -180,6 +180,35 @@ async function openJunk(browser: Browser): Promise<Visit> {
   return opened;
 }
 
+/** 一个重复文件。字段以 `/api/duplicates`（`src/peach/web_contract.py`）为准。 */
+const duplicateFile = (id: number, location: string, patch: Record<string, unknown> = {}) => ({
+  id, name: `DUPE-${id}.mp4`, path: `R:\\media\\DUPE-${id}.mp4`, location, drive: location === '115' ? 'B:' : 'R:',
+  size: 1073741824, duration: 3600, is_largest: false, is_longest: false, ...patch,
+});
+
+/** 重复文件页按给定的两组打开：演示库里没有重复组。一组字节一致，一组本地与 115 混着。
+ *  文件是造出来的，抽帧那一趟必然取不到，给它一张能加载完的图。 */
+async function openDuplicates(browser: Browser): Promise<Visit> {
+  const opened = await visit(browser, '/duplicates', DESKTOP);
+  const groups = [
+    { code: 'DUPE-001', count: 2, identical: true, drives: ['R:'], cross_drive: false, reclaimable: 1073741824,
+      files: [duplicateFile(9001, 'local', { is_largest: true }), duplicateFile(9002, 'local', { is_longest: true })] },
+    { code: 'DUPE-002', count: 2, identical: false, drives: ['R:', 'B:'], cross_drive: true, reclaimable: 1073741824,
+      files: [duplicateFile(9003, 'local', { is_largest: true, is_longest: true }), duplicateFile(9004, '115')] },
+  ];
+  await opened.page.route('**/api/duplicates?**', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ total: 2, files: 4, reclaimable: 2147483648, groups }),
+  }));
+  await opened.page.route('**/thumb?**', (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('#stats section[aria-label="DUPE-002"] .duplicate-row').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
 /** 打开目录并等到读数与卡片一起替下首屏骨架。 */
 async function openCatalog(browser: Browser): Promise<Visit> {
   const opened = await visit(browser, '/', DESKTOP);
@@ -1605,23 +1634,92 @@ describe('设计决定', () => {
       release();
       await page.locator('[data-skeleton="cleanup"]').waitFor({ state: 'detached', timeout: 15_000 });
       // 正式页面先摆一份同样的骨架卡，等 React 岛接管；键上没了 `data-skeleton-action` 才算接管完。
-      await page.locator('.cleanupscraping [data-split-button] > button:first-child:not([data-skeleton-action])')
+      await page.locator('section[aria-label="扫描与采集"] [data-split-button] > button:first-child:not([data-skeleton-action])')
         .waitFor({ timeout: 15_000 });
       await page.locator('section[aria-label="媒体修复"] footer > button:not([data-skeleton-action])')
         .waitFor({ timeout: 15_000 });
       await settle(page);
       const final = await controlFaces(page, {
-        扫描并补全资料: '.cleanupscraping [data-split-button] > button:first-child',
-        更多方式: '.cleanupscraping [data-split-button] > button:last-child',
+        扫描并补全资料: 'section[aria-label="扫描与采集"] [data-split-button] > button:first-child',
+        更多方式: 'section[aria-label="扫描与采集"] [data-split-button] > button:last-child',
         开始修复: 'section[aria-label="媒体修复"] footer > button',
       });
       for (const name of Object.keys(sizes)) {
         assert.equal(sizes[name]!.size, final[name]!.size, `${name} 接管时尺寸跳了`);
         assert.match(final[name]!.face, /gradient/, `${name} 接管后没换回蓝色主按钮`);
       }
-      const enabled = await page.locator('.cleanupscraping [data-split-button] > button')
+      const enabled = await page.locator('section[aria-label="扫描与采集"] [data-split-button] > button')
         .evaluateAll((buttons) => buttons.map((button) => (button as HTMLButtonElement).disabled));
       assert.deepEqual(enabled, [false, false], '数据到了扫描键还是禁用的');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('数据管理卡外的分区标题是 20px 的 Title 2，链接读数照旧版字号与行高', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/data-cleanup', DESKTOP);
+    try {
+      const page = opened.page;
+      await page.locator('#link-manager .link-stat-grid b').first().waitFor({ timeout: 15_000 });
+      await page.locator('#resource-sync-title').waitFor({ timeout: 15_000 });
+      await settle(page);
+      const faces = await page.evaluate(() => {
+        const style = (selector: string) => {
+          const computed = getComputedStyle(document.querySelector(selector)!);
+          return {
+            size: computed.fontSize, weight: computed.fontWeight, line: computed.lineHeight,
+            top: computed.marginTop, bottom: computed.marginBottom,
+          };
+        };
+        return {
+          links: style('#link-manager-title'),
+          sync: style('#resource-sync-title'),
+          label: style('#link-manager .link-stat-grid span'),
+          figure: style('#link-manager .link-stat-grid b'),
+        };
+      });
+      /* 这一页挂在 `#stats` 里，遗留样式表给那里的二级标题定了 24px 与 4px 底距。 */
+      for (const [name, heading] of [['链接管理', faces.links], ['资源同步', faces.sync]] as const) {
+        assert.equal(heading.size, '20px', `${name}标题字号不是 Title 2`);
+        assert.equal(heading.bottom, '0px', `${name}标题带着遗留那 4px 底距`);
+      }
+      assert.deepEqual([faces.label.size, faces.label.line], ['12px', '20px'], '链接读数的标签不是 12/20');
+      assert.deepEqual([faces.figure.size, faces.figure.weight, faces.figure.line], ['20px', '700', '20px'],
+        '链接读数的数字不是 20px 粗体、20px 行高');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('重复文件的汇总条是玻璃面，组卡 14px 圆角、组头 20px 内边距，每行上方一条 1px 分隔线', { timeout: 60_000 }, async () => {
+    const opened = await openDuplicates(browser);
+    try {
+      const faces = await opened.page.evaluate(() => {
+        const glass = getComputedStyle(document.querySelector('[data-filter-glass]')!);
+        const group = document.querySelector('#stats section[aria-label="DUPE-002"]')!;
+        const head = group.firstElementChild!;
+        const card = getComputedStyle(group);
+        const header = getComputedStyle(head);
+        const code = getComputedStyle(head.querySelector('b')!);
+        return {
+          glass: { filter: glass.backdropFilter, padding: glass.padding, height: glass.height },
+          card: { radius: card.borderRadius, overflow: card.overflow, face: card.backgroundColor },
+          head: { padding: header.padding, face: header.backgroundColor, size: code.fontSize, weight: code.fontWeight },
+          rows: [...group.querySelectorAll('.duplicate-row')].map((row) => {
+            const computed = getComputedStyle(row);
+            return [computed.borderTopWidth, computed.padding];
+          }),
+        };
+      });
+      assert.match(faces.glass.filter, /blur\(/, '汇总条没有背景模糊，不是玻璃面');
+      assert.deepEqual([faces.glass.padding, faces.glass.height], ['10px 16px', '50px']);
+      assert.deepEqual([faces.card.radius, faces.card.overflow], ['14px', 'hidden'], '组卡圆角或裁切不对');
+      assert.notEqual(faces.head.face, faces.card.face, '组头和组卡同色，番号那一行分不出来');
+      assert.deepEqual([faces.head.padding, faces.head.size, faces.head.weight], ['20px', '20px', '500']);
+      assert.deepEqual(faces.rows, [['1px', '16px 20px'], ['1px', '16px 20px']],
+        '组内每一行上方不是 1px 分隔线，或内边距不是 16/20');
+      assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }

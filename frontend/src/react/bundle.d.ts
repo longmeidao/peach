@@ -174,9 +174,6 @@ export interface ReactPage<P> {
 /** 活动页没有来自遗留层的助手：整页的数据都来自 `/api/tasks`。 */
 export type ActivityProps = Record<string, never>;
 
-/** 数据管理页上的「媒体修复」卡片。起停与进度都走 `/api/media-repair`，遗留层什么也不用给。 */
-export type MediaRepairProps = Record<string, never>;
-
 /** 高清版目标页仍由遗留层提供的能力。全是纯函数或导航，页面不持有它们的状态。 */
 export interface QualityGoalsProps {
   /** 打开作品详情（遗留层的整页视图，含播放器与队列）。 */
@@ -323,15 +320,38 @@ export interface CoverCropProps {
   onSaved(): void;
 }
 
+/** 数据管理页顶上那排读数卡各通往哪一页。`ads` 是垃圾文件。 */
+export type DataCleanupSection = 'review' | 'quality' | 'duplicates' | 'ads' | 'trash';
+
+/** 数据管理页仍由遗留层提供的能力：回执和换页。 */
+export interface DataCleanupProps {
+  /** 操作回执（遗留层 `actionReceipt`）。`warning` 是做完了但有一部分要留意，走警告音效。 */
+  toast(message: string, options?: { warning?: boolean }): void;
+  /** 失败回执（遗留层 `actionFailure`）：`action` 是没做成的那件事。 */
+  failure(action: string, error: unknown): void;
+  /** 点一张读数卡：换到那一页。 */
+  open(section: DataCleanupSection): void;
+}
+
+/** 重复文件页仍由遗留层提供的能力。 */
+export interface DuplicatesProps {
+  /** 打开作品详情（遗留层的整页视图）。 */
+  openItem(id: number): void;
+  /** 操作回执；给了 `undo` 就带一颗撤销键。 */
+  toast(message: string, options?: { undo?: () => Promise<void> }): void;
+  failure(action: string, error: unknown): void;
+}
+
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'avatar-picker': ReactPage<AvatarPickerProps>;
   configuration: ReactPage<ConfigurationProps>;
   'configuration-summary': ReactPage<ConfigurationSummaryProps>;
   'cover-crop': ReactPage<CoverCropProps>;
+  'data-cleanup': ReactPage<DataCleanupProps>;
+  duplicates: ReactPage<DuplicatesProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
-  'media-repair': ReactPage<MediaRepairProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   review: ReactPage<ReviewProps>;
   scraping: ReactPage<ScrapingProps>;

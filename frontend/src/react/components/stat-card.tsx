@@ -6,11 +6,10 @@
  *
  * 图标底色按卡片在一排里的位次换，四张卡四个颜色；旧值是四个字面色，这里取图表色 token
  * 里最接近的四档（蓝、紫、绿、黄），差异登记在 `../boardui/ORIGIN.md`。 */
-import type { ComponentType, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { cardClass, type CardOptions } from './card';
-
-type Glyph = ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>;
+import type { Glyph } from './sprite-glyph';
 
 /* 图标那个小方块居中用 flex 不用 grid：`grid` 与旧样式表同名，按 `../styles.css` 顶上的
  * `@source not inline(...)` 不生成这个工具类。 */
@@ -26,6 +25,44 @@ export function statCardClass(options: CardOptions = {}) {
 
 /** 一排读数卡：四张一排，窄屏折成两张一排。宿主可能是 `TabList`，所以类名也单独给一份。 */
 export const STAT_STRIP = 'inline-grid w-full grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4';
+
+/** 净面读数卡的卡面：数据管理顶上那一排入口与资源同步的结果。和上面那一档不是同一张卡——
+ *  旧 `.board-plain-stat` 没有脚注带、没有阴影，内边距落在卡片自己身上（16px，三段之间
+ *  8px），图标块是一格白底，读数下面那行脚注是三级灰小字。 */
+export function plainStatClass({ interactive = false }: { interactive?: boolean } = {}) {
+  return cardClass({ padding: 'none', radius: 'plain', interactive,
+    className: 'flex min-h-33 flex-col gap-2 p-4 text-left' });
+}
+
+/** 一排五张净面读数卡：窄一档两张一排，手机上一张一排（旧 `.cleanupstats` 的 1119／559 两档）。 */
+export const PLAIN_STAT_STRIP = 'inline-grid w-full grid-cols-5 gap-4 max-plain-stat-pair:grid-cols-2'
+  + ' max-plain-stat-single:grid-cols-1';
+
+export function PlainStat(
+  { label, icon: Icon, mark, aside, figure, meta, wrapMeta = false }:
+  {
+    label: string; icon?: Glyph; mark?: ReactNode; aside?: ReactNode;
+    figure: string; meta?: string; wrapMeta?: boolean;
+  },
+) {
+  return (
+    <>
+      <span className="flex min-w-0 items-center gap-2 text-body-medium text-text-secondary">
+        {Icon || mark ? (
+          <i aria-hidden className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background-primary-default text-text-primary">
+            {Icon ? <Icon aria-hidden className="size-4" /> : mark}
+          </i>
+        ) : null}
+        <span className="min-w-0 truncate">{label}</span>
+        {aside ? <span className="ml-auto shrink-0 text-caption-1-regular">{aside}</span> : null}
+      </span>
+      <strong className="block text-title-1-medium tabular-nums text-text-primary">{figure}</strong>
+      <span className={`block min-h-4 text-caption-1-regular text-text-tertiary ${wrapMeta ? '' : 'truncate'}`}>
+        {meta}
+      </span>
+    </>
+  );
+}
 
 export function StatCard(
   { label, icon: Icon, accent = 0, figure, footer }:

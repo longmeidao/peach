@@ -18,32 +18,6 @@ from peach import (desktop_startup, desktop_uninstall, entry_links, peach_proxy,
 
 
 class DesktopSettingsTests(unittest.TestCase):
-    def test_the_danger_area_face_is_painted_in_the_board_layer(self):
-        root = Path(__file__).resolve().parents[1]
-        # 危险区那副面在 `board.css` 末尾：给卡描边、给底栏铺面的通用规则有五六条，都在
-        # Board 那一层按自己的面色重写过一遍，色写在这一层会被它们逐条盖掉。
-        board = (root / 'web/board.css').read_text(encoding='utf-8')
-        self.assertIn('[data-geist-fieldset][data-fieldset-type=error]{border:1px solid var(--board-red-line)}', board)
-        self.assertIn('[data-fieldset-type=error]>:is(.geist-fieldset-footer,.resourceapplyrow)'
-                      '{border-top:1px solid var(--board-red-line);background:var(--board-red-wash)}', board)
-        self.assertIn('[data-fieldset-type=error]>:is(.geist-fieldset-footer,.resourceapplyrow)>p'
-                      '{color:var(--board-red-text)}', board)
-        for generic in ('.geist-fieldset,.configfieldset,', '.geist-fieldset-footer,.configfieldset>.geist-fieldset-footer{'):
-            self.assertGreater(board.index('[data-geist-fieldset][data-fieldset-type=error]'), board.index(generic),
-                               '危险区那几条要排在通用面色之后，同特指度时在后面的才算数')
-
-    def test_cleanup_risk_colors_follow_the_operation_effect(self):
-        root = Path(__file__).resolve().parents[1]
-        app = (root / 'web/app.js').read_text(encoding='utf-8')
-        links = app[app.index('function linkManagerMarkup'):app.index('function resourceSyncMarkup')]
-        sync = app[app.index('function resourceSyncMarkup'):app.index('async function openTaste')]
-        self.assertIn('data-fieldset-type="error"', links)
-        renderer = (root / 'frontend/src/resource-sync.ts').read_text(encoding='utf-8')
-        self.assertIn('resourceScanHtml(payload,fmtSize)', sync)
-        self.assertIn("{label: '清理内容'}", renderer)
-        # 失效条目直接永久删除：确认框走危险档；按键的实底红由 frontend/test/resource-sync.test.ts 验。
-        self.assertIn("confirmLabel:'清理失效条目',danger:true,onConfirm", sync)
-
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

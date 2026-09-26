@@ -89,6 +89,16 @@ const ROUTES: readonly Route[] = [
       page.locator('#stats section[aria-label="媒体修复"]')],
   },
   {
+    // 骨架只写「正在比对重复内容」；汇总块上那一格「重复内容」有没有重复组都会画，只有真页面有。
+    path: '/duplicates',
+    body: (page) => [heading(page, '#main', '重复文件'), page.locator('#stats').getByText('重复内容', { exact: true })],
+  },
+  {
+    // 旧直达地址落到数据管理页的锚点上；骨架里那一段没有 `id`，带 `id` 的只有演示库配了根目录后的真卡片。
+    path: '/resource-sync',
+    body: (page) => [heading(page, '#main', '数据管理'), page.locator('#stats section#resource-sync')],
+  },
+  {
     path: '/quality-goals',
     // 演示库里没有标记中的目标，等到的是空态那一句：它是真的标题元素，不是一段文字。
     body: (page) => [heading(page, '#main', '高清版'), heading(page, '#stats', '没有标记中的高清版目标')],

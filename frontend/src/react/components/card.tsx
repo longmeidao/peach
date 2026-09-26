@@ -21,7 +21,7 @@
 
 /** 圆角：读数卡、面板、分区都是 16px；图表卡大一档 20px，和旧 `.board-radial-card` 一致；
  *  描边卡是 Board 那档不浮起的表面 `--surface-radius`（14px），`outlined` 默认取它。 */
-export type CardRadius = 'default' | 'chart' | 'surface';
+export type CardRadius = 'default' | 'chart' | 'surface' | 'plain';
 
 /** 内边距：`none` 交给卡内自己的头、体、脚各自排；`default` 是旧图表卡与面板体的 20px。 */
 export type CardPadding = 'none' | 'default';
@@ -61,6 +61,8 @@ const RADIUS: Record<CardRadius, string> = {
   default: 'rounded-2xl shadow-card',
   chart: 'rounded-2-5xl',
   surface: 'rounded-surface',
+  /* 数据管理那一排净面读数卡（旧 `.board-plain-stat`）：同样 16px，但不压接触阴影。 */
+  plain: 'rounded-2xl',
 };
 
 const BORDER = {

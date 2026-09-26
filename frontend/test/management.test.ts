@@ -1,22 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, REPAIR_CARD_TEXT, SCAN_CARD_TEXT,
-} from '../src/management';
-
-describe('网盘功能范围', () => {
-  it('本地与在线关注来源不显示网盘入口', () => {
-    expect(cloudLocations([{ location: 'local' }, { location: 'online' }])).toEqual([]);
-  });
-  it('已配置但离线的网盘仍然提供状态入口', () => {
-    expect(cloudLocations([{ location: '115', roots: ['B:\\'], online: false },
-      { location: 'pikpak', roots: [] }])).toEqual(['115']);
-  });
-  it('重复文件只提供组内存在且已配置的网盘保留选项', () => {
-    expect(cloudPreferenceLocations([{ location: 'local' }], ['115', 'pikpak'])).toEqual([]);
-    expect(cloudPreferenceLocations([{ location: 'local' }, { location: '115' }], ['115', 'pikpak'])).toEqual(['115']);
-    expect(cloudPreferenceLocations([{ location: '115' }], [])).toEqual([]);
-  });
-});
+import { cleanupSkeletonHtml, REPAIR_CARD_TEXT, SCAN_CARD_TEXT } from '../src/management';
 
 describe('数据管理首屏', () => {
   const skeleton = () => {
