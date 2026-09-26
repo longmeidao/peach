@@ -864,8 +864,14 @@ it('「猜你喜欢」点一下就拿那个名字去查', async () => {
 const SUGGESTED: SuggestData = {
   q: 'strau',
   groups: [
-    { kind: 'library', label: '馆藏', items: [{ value: 'strauzek' }] },
-    { kind: 'site', label: 'Kemono', items: [{ value: 'Mr_Strauz', matched: 'Mr_Strauz (Kemono)' }] },
+    { kind: 'followed', label: '已关注', items: [{ value: 'strauzek', n: 0, matched: '' }] },
+    { kind: 'archive', label: '归档站的创作者', items: [{ value: 'Mr_Strauz', n: 0, matched: 'kemono' }] },
+    {
+      kind: 'tag', label: 'Rule34.xxx 标签', items: [
+        { value: 'strauss', n: 1234, matched: '角色' },
+        { value: 'strausberg', n: 56, matched: '标签' },
+      ],
+    },
   ],
 };
 
@@ -897,8 +903,11 @@ it('建议按服务端给的分组和次序列出，上下键选中再回车就�
   vi.useFakeTimers();
   const { host, fetcher } = await open({ suggest: () => SUGGESTED }, { tab: 'add' });
   await typeAndWait(host, 'strau');
+  // 行首是名字本身，见到它的站和站方分类只作旁注；组名每组只出现一次。
   expect([...host.querySelectorAll('[aria-label="来源建议"] button')].map((row) => row.textContent))
-    .toEqual(['strauzek馆藏', 'Mr_Strauz (Kemono)Kemono']);
+    .toEqual(['strauzek', 'Mr_Strauzkemono', 'strauss角色1,234', 'strausberg标签56']);
+  expect([...host.querySelectorAll('[aria-label="来源建议"] > div')].map((row) => row.textContent))
+    .toEqual(['已关注', '归档站的创作者', 'Rule34.xxx 标签']);
 
   await press(lookupField(host), 'ArrowDown');
   await press(lookupField(host), 'ArrowDown');

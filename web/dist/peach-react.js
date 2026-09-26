@@ -32113,20 +32113,30 @@ function cie({ options: e, active: t, busy: n, onPick: r }) {
 		children: [n && !e.length ? /* @__PURE__ */ (0, D.jsx)("div", {
 			className: "px-2 py-1.5",
 			children: /* @__PURE__ */ (0, D.jsx)(yw, { label: "正在查找建议" })
-		}) : null, e.map((e, n) => /* @__PURE__ */ (0, D.jsxs)("button", {
+		}) : null, e.map((n, i) => /* @__PURE__ */ (0, D.jsxs)(E.Fragment, { children: [n.group === e[i - 1]?.group ? null : /* @__PURE__ */ (0, D.jsx)("div", {
+			className: "px-2 pt-1 text-caption-1-regular text-text-tertiary",
+			children: n.group
+		}), /* @__PURE__ */ (0, D.jsxs)("button", {
 			type: "button",
-			"aria-current": n === t ? "true" : void 0,
-			className: n === t ? cw(SA, "bg-background-secondary-default") : SA,
+			"aria-current": i === t ? "true" : void 0,
+			className: i === t ? cw(SA, "bg-background-secondary-default") : SA,
 			onMouseDown: (e) => e.preventDefault(),
-			onClick: () => r(e.value),
-			children: [/* @__PURE__ */ (0, D.jsx)("span", {
-				className: "min-w-0 grow truncate text-left",
-				children: e.label
-			}), /* @__PURE__ */ (0, D.jsx)("span", {
-				className: "shrink-0 text-caption-1-regular text-text-tertiary",
-				children: e.group
-			})]
-		}, `${e.group}-${e.value}`))]
+			onClick: () => r(n.value),
+			children: [
+				/* @__PURE__ */ (0, D.jsx)("span", {
+					className: "min-w-0 grow truncate text-left",
+					children: n.value
+				}),
+				n.matched ? /* @__PURE__ */ (0, D.jsx)("span", {
+					className: "shrink-0 text-caption-1-regular text-text-tertiary",
+					children: n.matched
+				}) : null,
+				n.n ? /* @__PURE__ */ (0, D.jsx)("span", {
+					className: "shrink-0 text-caption-1-regular tabular-nums text-text-tertiary",
+					children: n.n.toLocaleString()
+				}) : null
+			]
+		})] }, `${n.group}-${n.value}`))]
 	});
 }
 function lie({ credentials: e, hidden: t, onHidden: n, openCredentials: r }) {
@@ -32265,7 +32275,8 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 		enabled: l.length > 0 && d
 	}), w = (0, E.useMemo)(() => (C.data?.groups || []).flatMap((e) => e.items.map((t) => ({
 		value: t.value,
-		label: t.matched || t.value,
+		matched: t.matched || "",
+		n: t.n || 0,
 		group: e.label
 	}))), [C.data]), { job: T, running: O, outcome: k, start: A, dismiss: j } = eA({
 		queryKey: gre,

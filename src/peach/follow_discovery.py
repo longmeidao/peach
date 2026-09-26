@@ -249,18 +249,35 @@ def _fanbox_candidates(archive_candidates: list[Candidate], transport) -> list[C
     return candidates
 
 
+def rule34video_slugs(term: str) -> tuple[str, ...]:
+    """一个名字在 rule34video 上可能的作者页 slug，按先后去重。
+
+    KVS 由显示名生成 slug，连续的非字母数字换成一个 `-`：`Bulging Senpai` 的页是
+    `bulging-senpai`，写成 `bulgingsenpai` 回 404（2026-09-26 实测）。名字本身连写
+    （`LazyProcrastinator`）时 slug 也连写，所以驼峰拆开的写法排在原样之后，全去掉
+    分隔的写法垫底。
+    """
+    forms = [re.sub(r"[^a-z0-9]+", "-", variant.casefold()).strip("-")
+             for variant in search_variants(term)]
+    forms.append(re.sub(r"[^a-z0-9]+", "", term.casefold()))
+    slugs: list[str] = []
+    for slug in forms:
+        if slug not in slugs and Rule34VideoConnector._SLUG_RE.match(slug):
+            slugs.append(slug)
+    return tuple(slugs)
+
+
 def _rule34video_candidates(term: str, transport) -> list[Candidate]:
-    slug = re.sub(r"[^a-z0-9]+", "", term.casefold())
-    if not slug:
-        return []
+    """按顺序探作者页，第一个存在的就是它。
+
+    几种写法都存在时那是几个人，只回先命中的那个：一个名字登记两个作者页，比漏一个更难察觉。
+    """
     connector = Rule34VideoConnector(transport=transport)
-    response = connector.probe(f"https://rule34video.com/models/{slug}/",
-                               headers={"Accept": "text/html"})
-    if response.status != 200:
-        return []
-    return [Candidate("rule34video", slug,
-                      f"https://rule34video.com/models/{slug}/",
-                      term.strip(), "work", "作者页存在")]
+    for slug in rule34video_slugs(term):
+        url = f"https://rule34video.com/models/{slug}/"
+        if connector.probe(url, headers={"Accept": "text/html"}).status == 200:
+            return [Candidate("rule34video", slug, url, term.strip(), "work", "作者页存在")]
+    return []
 
 
 def _rule34xxx_tag_url(tag: str) -> str:
