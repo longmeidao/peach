@@ -9165,6 +9165,8 @@ class WebUiSourceTests(unittest.TestCase):
             ".entityfacts .clip",
             # 作者是展示名，尾部省略；完整身份保留在 title。
             ".followbyline .followauthor",
+            # 署名行同属展示名，尾部省略；完整一行保留在 title。
+            ".followitem .meta .followcredit",
             ".followpageaction .fmeta",
             ".fsechead .fmeta",
             ".frow>b",

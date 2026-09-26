@@ -495,6 +495,36 @@ class FollowContractTests(unittest.TestCase):
                          ["miqo'te", "y'shtola", "barnabas'_mother"])
         self.assertEqual(item["title"], "barnabas' mother · biting lip")
 
+    def _credited_post(self, external_id, source, artists, followed="billyhhyb"):
+        tag_types = {tag: "artist" for tag in artists} | {"blowjob": "general"}
+        return FollowCandidate(
+            provider="rule34xxx", external_id=external_id, title=f"post {external_id}",
+            url=f"https://rule34.xxx/index.php?page=post&s=view&id={external_id}",
+            extra={"tag": followed, "tags": " ".join(tag_types), "source": source,
+                   "tag_types": tag_types})
+
+    def test_booru_posts_credit_the_poster_whose_account_is_the_source(self):
+        """出处账号对上另一位 artist 时，那位是作者，被关注者只是素材署名。
+
+        17070008 挂着 2hour2、billyhhyb、madruga3d 三位 artist，出处是
+        `x.com/2hour2hour`：账号比标签多个后缀，前缀相同也算同一人。
+        """
+        self._seed(candidates=(
+            self._credited_post("17070008", "https://x.com/2hour2hour/status/2039951989975494723",
+                                ["2hour2", "billyhhyb", "madruga3d"]),
+            self._credited_post("1", "https://x.com/billyhhyb/status/1", ["billyhhyb", "madruga3d"]),
+            self._credited_post("2", "https://pixiv.net/artworks/2", ["2hour2", "billyhhyb"]),
+            self._credited_post("3", "https://x.com/someoneelse/status/3", ["2hour2", "billyhhyb"]),
+            self._credited_post("4", "https://x.com/2hour2hour/status/4", ["2hour2"]),
+        ), provider="rule34xxx", ref="billyhhyb", label="billyhhyb")
+        credits = {group["primary"]["external_id"]: group["primary"]["credit"]
+                   for group in self._get()["groups"]}
+        self.assertEqual(credits, {
+            "17070008": {"poster": "2hour2", "credited": "billyhhyb"},
+            # 本人发的、出处认不出账号的、账号对不上任何 artist 的、被关注者不在 artist 里的：照常署名。
+            "1": None, "2": None, "3": None, "4": None,
+        })
+
     def test_external_file_pages_are_exposed_without_leaking_raw_media_urls(self):
         self._seed(candidates=(FollowCandidate(
             provider="f95zone", external_id="21435166", title="InitialA Collection",
@@ -3120,7 +3150,7 @@ class FollowWebSourceTests(unittest.TestCase):
 
     def test_follow_cards_use_author_avatars_and_open_details_inside_peach(self):
         self.assertPageContains("return followCard(group,siblings)")
-        self.assertPageContains('title="创作者头像">${followAuthorAvatar(authorSources)}')
+        self.assertPageContains('title="创作者头像">${avatar}')
         self.assertNotIn(
             'class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}',
             self.page,
@@ -3145,7 +3175,7 @@ class FollowWebSourceTests(unittest.TestCase):
             ".followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent)")
         self.assertPageContains(
             "background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}")
-        self.assertPageContains("const postedBy=item.author&&foldName(item.author)!==foldName(author)")
+        self.assertPageContains("const postedBy=credited?'':item.author&&foldName(item.author)!==foldName(author)")
         self.assertPageContains("openFollowDetail(id);")
         self.assertNotIn('class="cardopenhit" href=', self.page)
         self.assertNotIn('class="t cardtitle" href=', self.page)

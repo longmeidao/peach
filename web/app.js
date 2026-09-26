@@ -6328,8 +6328,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
   // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
   const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');
-  const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
-  const postedBy=item.author&&foldName(item.author)!==foldName(author)?item.author:'';
+  const {author,avatar,credited}=followIdentity(item,authorSources);
+  const postedBy=credited?'':item.author&&foldName(item.author)!==foldName(author)?item.author:'';
   const mediaIssue=followMediaIssue(item);
   // 被隐藏的图退到这条恢复带上：缩略图加一枚撤销键，点了就回到轮播。
   // 不占媒体队列，也不进角标数——它们已经是「不在看」的那部分。
@@ -6343,8 +6343,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
       <div class="followdetailtitle"><div class="stitle" data-reveal-line>${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
-      <div class="followdetailidentity"><span class="mav fsourceavatar">${followAuthorAvatar(authorSources)}</span>
-        <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}</div></div>
+      <div class="followdetailidentity"><span class="mav fsourceavatar">${avatar}</span>
+        <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}${credited?`<span>署名含 ${esc(credited)}</span>`:''}</div></div>
       <div class="smeta mono" data-reveal-line><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
       ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
       ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
@@ -6545,7 +6545,7 @@ function followCard(group,authorSources=[]){
   const {isMix,label:mixLabel,glyph:mixGlyph,faces:faceUrls}=followStack({cover:thumbUrl,
     coverFace:(selectedMedia?.thumb_url?selectedMedia:item).face,stack:group.stack,imageView,limit:MIX_FLIP_FACES});
   const badges=followBadges(group,item);
-  const author=followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得';
+  const {author,avatar,credited}=followIdentity(item,authorSources);
   const when=followWhen(item),compactWhen=/^\d{4}-/.test(when)
     ?(when.startsWith(String(new Date().getFullYear()))?when.slice(5,10):when.slice(0,10)):when;
   const tags=followCardTags(item).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
@@ -6563,9 +6563,10 @@ function followCard(group,authorSources=[]){
         <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('eye-off')}</button>
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
       </div></div></div></div>
-    <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${followAuthorAvatar(authorSources)}</span>
+    <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${avatar}</span>
       <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
         <div class="s followbyline"><span class="followauthor" title="${esc(author)}">${esc(author)}</span><time class="mono" datetime="${esc(item.published_at||'')}" title="${esc(when)}">${esc(compactWhen)}</time></div>
+        ${credited?`<div class="s followcredit" title="署名含 ${esc(credited)}">署名含 ${esc(credited)}</div>`:''}
         ${badges?`<div class="fbadges">${badges}</div>`:''}
         ${tags?`<div class="ctags">${tags}</div>`:''}${mediaIssue?`<span class="fnote followmediaissue">${esc(mediaIssue)}</span>`:''}</div></div>
     <span class="fstate" aria-live="polite"></span></article>`;
@@ -7046,24 +7047,39 @@ function sourceIcon(provider,label=''){return SOURCE_ICON_PROVIDERS.has(provider
   ? `<img class="ficon" src="/source-icon?provider=${encodeURIComponent(provider)}" alt="${esc(label)}"${label?` title="${esc(label)}"`:''} loading="lazy" data-drop="self">`
   : ''}
 
-function followAvatarInitial(group){
-  const name=followAuthorName(group).trim();
+function followAvatarInitial(name){
+  name=String(name||'').trim();
   const ascii=name.match(/[A-Za-z0-9]/);
   return (ascii?ascii[0]:Array.from(name)[0]||'?').toUpperCase();
 }
 
 /* 同一创作者的官方来源优先提供头像，归档来源只回退。都取不到时明确用创作者首字母，
    不再从某条来源的中文显示标签切出“初”“一”之类与创作者无关的字。 */
-function followAuthorAvatar(group){
+function followAuthorAvatar(group,name=followAuthorName(group)){
   const official=group.find(source=>source.official_avatar_url);
   const mirror=group.find(source=>source.avatar_url);
   const src=official?.official_avatar_url||mirror?.avatar_url;
   const fallback=official&&mirror&&mirror.avatar_url!==src?mirror.avatar_url:'';
-  const initial=followAvatarInitial(group);
+  const initial=followAvatarInitial(name);
   if(src)return `<img class="favatar" src="${esc(src)}" alt=""
     loading="lazy" referrerpolicy="no-referrer" ${imageFallbackAttrs({
       drop:'initial',dropClass:'favatar none',initial,fallbacks:[fallback]})}>`;
   return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
+}
+
+/* 卡片与详情的署名。booru 帖子由服务端认出真正的发布者时（`item.credit`），名字和头像
+   都换成发布者：也关注了这位就用那位的来源，否则只出首字母，不借被关注者的头像；
+   被关注者退成一行「署名含」，说明这条为什么出现在这里。认不出的照常署被关注者。 */
+function followIdentity(item,authorSources){
+  const poster=item.credit?.poster;
+  if(!poster)return {author:followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得',
+    avatar:followAuthorAvatar(authorSources),credited:''};
+  const key=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  const sources=followData?.sources||[];
+  const own=sources.find(row=>key(row.ref)===key(poster));
+  const group=own?.author_key?sources.filter(row=>row.author_key===own.author_key):own?[own]:[];
+  const author=group.length&&followAuthorName(group)||poster;
+  return {author,avatar:followAuthorAvatar(group,author),credited:item.credit.credited||''};
 }
 
 /* 题材那一枚跟首页的厂牌药丸同形：28px 圆标识加作品名。圆里装的是这个题材下最热的
