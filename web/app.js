@@ -6109,9 +6109,6 @@ function followBadges(group,shown=group.primary){
   if(group.primary.variant_kind==='wip')badges.push('<span class="fbadge wip">WIP</span>');
   else if(group.has_wip)badges.push('<span class="fbadge wip partial">含 WIP</span>');
   if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
-  // 声音版本说的是卡面这一条：同一段动画的无声原片与配音重发常在同一个流里前后出现。
-  const audio={voiced:'配音版',silent:'无声版'}[shown.audio];
-  if(audio)badges.push(`<span class="fbadge audio">${audio}</span>`);
   /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。
      「另见」相对卡面这一条（`shown`）说：主条目没有当前视图的媒体时，卡面换成组里别的站
      那条，这时主条目的站才是另见，卡面自己的站不再列。 */
@@ -6124,6 +6121,13 @@ function followBadges(group,shown=group.primary){
     badges.push(`<span class="fbadge dup" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`);
   }
   return badges.join('');
+}
+
+/* 声音版本排在标题前面，与主页标题里的版次字样同一个控件：同一段动画的无声原片与
+   配音重发常在同一个流里前后出现，扫标题时就要分得出来。 */
+function followAudioMark(item){
+  const [label,tone]={voiced:['配音版','subtitle'],silent:['无声版','censored']}[item.audio]||[];
+  return label?`<small class="javedition ${tone} followaudio">${label}</small>`:'';
 }
 
 function followCollectionItems(group){
@@ -6345,7 +6349,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}${frameRatio?' framed':''}"${frameRatio?` style="--follow-frame-ratio:${frameRatio.toFixed(4)}"`:''}>${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
-      <div class="followdetailtitle"><div class="stitle" data-reveal-line>${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
+      <div class="followdetailtitle"><div class="stitle" data-reveal-line>${followAudioMark(item)}${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${avatar}</span>
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}${credited?`<span>署名含 ${esc(credited)}</span>`:''}</div></div>
       <div class="smeta mono" data-reveal-line><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
@@ -6567,7 +6571,7 @@ function followCard(group,authorSources=[]){
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
       </div></div></div></div>
     <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${avatar}</span>
-      <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${esc(item.title)}</button>
+      <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${followAudioMark(item)}${esc(item.title)}</button>
         <div class="s followbyline"><span class="followauthor" title="${esc(author)}">${esc(author)}</span><time class="mono" datetime="${esc(item.published_at||'')}" title="${esc(when)}">${esc(compactWhen)}</time></div>
         ${credited?`<div class="s followcredit" title="署名含 ${esc(credited)}">署名含 ${esc(credited)}</div>`:''}
         ${badges?`<div class="fbadges">${badges}</div>`:''}

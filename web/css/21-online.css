@@ -58,6 +58,7 @@
 /* 署名行只在作者换成发布者时出现，弱于作者名，一行放不下就截断。 */
 .followitem .meta .followcredit{min-height:0;font-size:var(--fs-xs);color:var(--muted);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
+.javedition.followaudio{margin-right:6px}
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 .fbadge.wip{border-color:var(--meter);color:var(--meter)}
 /* 「含 WIP」说的是同组里还有一条半成品，这一条本身不是；配色要弱于 WIP 本体。 */
