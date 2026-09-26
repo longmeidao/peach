@@ -83,6 +83,17 @@
   /* 统计与口味两页的折行断点，旧 `05-insights.css` 的媒体查询统一钉在 1000px，
    * 不落在 Tailwind 的 sm/md/lg 上。写成断点 token，`board:` 变体照常生成。 */
   --breakpoint-board: 1000px;
+  /* 数据管理那一排五张读数卡的两档折行，旧 `.cleanupstats` 钉在 1119px 与 559px。 */
+  --breakpoint-plain-stat-pair: 1120px;
+  --breakpoint-plain-stat-single: 560px;
+  /* 数据管理页的卡片间距与整理卡内边距在 760px 以下收一档，旧 `board.css` 那条窄屏媒体查询。 */
+  --breakpoint-cleanup-tight: 761px;
+  /* 重复文件页一行的封面 112px，900px 以下 88px（旧 `board.css` 900px 那条窄屏媒体查询）。 */
+  --container-duplicate-cover: 112px;
+  --container-duplicate-cover-narrow: 88px;
+  --breakpoint-duplicate-narrow: 901px;
+  /* 旧 `board.css` 600px 那条窄屏媒体查询：列表页汇总块改上下两行，重复文件的组头与行距收一档。 */
+  --breakpoint-compact: 601px;
 }
 
 /* EvilCharts 源码写的是 shadcn 的语义色名（`bg-background`、`text-muted-foreground`、
@@ -121,6 +132,33 @@
 @utility card-grid-cover {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+}
+
+/* 左说明右按钮的那种卡（`components/fieldset.tsx` 的 `split`）：两列、竖向居中，1000px 以下
+ * 按钮落到说明下面一行。`grid` 这个名字与旧样式表同名不生成，写成 utility。 */
+@utility fieldset-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  @media (width < 1001px) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 站外链接那几格读数：按可用宽度自动排，一格最窄 150px。 */
+@utility link-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* 重复文件的一行：封面、名字、所在库、大小、时长，路径另起一行跨过后四列。900px 以下
+ * 名字独占第一行，所在库、大小、时长挤进后面自适应的几格。 */
+@utility duplicate-row {
+  display: grid;
+  grid-template-columns: var(--container-duplicate-cover) minmax(0, 1fr) 84px 84px 84px;
+  @media (width < 901px) {
+    grid-template-columns: var(--container-duplicate-cover-narrow) minmax(0, 1fr) auto auto;
+  }
 }
 
 /* 后台任务仍在推进、又说不出总量时的 Loading Dots。工具类里没有 animation-delay 这一档，
@@ -344,7 +382,9 @@
 /* 两块玻璃的料由 `web/board.css` 的 `[data-glass-pane]` 一处给，两个元素都挂着那个属性。
  * 留在这里的是各自的几何、`backdrop-filter` 的饱和度和文字色：首页 `.board-filter-frame`
  * 与 `.selectiondock` 的饱和度本来就不同，不能拿同一个近似 utility 套。 */
-.peach-react [data-review-filter] {
+/* 重复文件页那条「批量保留」（`components/filter-glass.tsx`）和复核筛选条是同一块玻璃：
+ * 旧版两处都是首页 `.board-filter-frame` 那一副，几何与饱和度都一样。 */
+.peach-react :is([data-review-filter], [data-filter-glass]) {
   top: calc(var(--topH) + 8px);
   border-radius: 22px;
   backdrop-filter: var(--glass-optic, blur(22px)) saturate(160%) var(--glass-lume);
@@ -374,7 +414,7 @@
 }
 
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-  .peach-react :is([data-review-filter], [data-selection-dock]) {
+  .peach-react :is([data-review-filter], [data-filter-glass], [data-selection-dock]) {
     background: var(--ground);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
@@ -383,7 +423,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .peach-react :is([data-review-filter], [data-selection-dock]) { animation: none; }
+  .peach-react :is([data-review-filter], [data-filter-glass], [data-selection-dock]) { animation: none; }
 }
 
 .peach-react:has([data-selection-dock]) {

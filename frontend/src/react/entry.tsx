@@ -13,11 +13,13 @@ import { prefetchTasks } from './activity/tasks';
 import { AvatarPicker } from './avatar-picker/avatar-picker-page';
 import type * as Bundle from './bundle';
 import { CoverCrop } from './cover-crop/cover-crop-page';
+import { prefetchDataCleanup } from './data-cleanup/data-cleanup';
+import { DataCleanupPage } from './data-cleanup/data-cleanup-page';
+import { prefetchDuplicates } from './duplicates/duplicates';
+import { DuplicatesPage } from './duplicates/duplicates-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
 import { FollowManagePage } from './follow-manage/follow-manage-page';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
-import { prefetchMediaRepair } from './media-repair/media-repair';
-import { MediaRepairCard } from './media-repair/media-repair-card';
 import { LibraryProcessingCard } from './library-processing/library-processing-card';
 import { LibraryProcessingNotice } from './library-processing/library-processing-notice';
 import { QualityGoalsPage } from './quality-goals/quality-goals-page';
@@ -98,6 +100,11 @@ export const pages: Bundle.ReactPages = {
   'configuration-summary': {
     prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationSummary),
   },
+  /* 首屏等顶上那排读数里自己的几份、两张后台任务卡与整理卡；复核、高清版与链接各读各的。 */
+  'data-cleanup': {
+    prefetch: (_props, signal) => prefetchDataCleanup(signal), mount: mounter(DataCleanupPage),
+  },
+  duplicates: { prefetch: (_props, signal) => prefetchDuplicates(signal), mount: mounter(DuplicatesPage) },
   /* 首屏只取来源清单与凭据状态，地址栏指着「订阅源」时连它一起取。检查更新与查找那两趟
      后台任务的快照不在首屏里：它们常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */
   'follow-manage': {
@@ -107,7 +114,6 @@ export const pages: Bundle.ReactPages = {
     prefetch: (_props, signal) => prefetchLibraryProcessing(signal),
     mount: mounter(LibraryProcessing),
   },
-  'media-repair': { prefetch: (_props, signal) => prefetchMediaRepair(signal), mount: mounter(MediaRepairCard) },
   'quality-goals': {
     prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
   },

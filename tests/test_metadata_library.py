@@ -1676,7 +1676,8 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertIn("mode:'notice'", source)
         configuration = (root / 'frontend/src/react/settings/configuration-page.tsx').read_text(encoding='utf-8')
         self.assertNotIn("'/api/library-processing'", configuration)
-        self.assertIn('toast,monitor:true,onComplete:', source)
+        page = (root / 'frontend/src/react/data-cleanup/data-cleanup-page.tsx').read_text(encoding='utf-8')
+        self.assertIn('<LibraryProcessingCard toast={notify} monitor onComplete={refreshReadings} />', page)
 
 
 class LibraryWatchdogTests(unittest.TestCase):

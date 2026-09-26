@@ -27,19 +27,17 @@ export { entitySkeletonHtml } from './entity-skeleton';
 export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
-export {
-  cleanupSkeletonHtml, cloudLocations, cloudPreferenceLocations, repairCardSkeletonHtml, scanCardSkeletonHtml,
-} from './management';
-export { resourceScanHtml } from './resource-sync';
+export { cleanupSkeletonHtml } from './management';
 
 /** 每个 island 的 props。新增 island 时在这里登记，注册表随之要求实现；
  *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
 export interface IslandContracts {
   'avatar-picker': ReactBundle.AvatarPickerProps;
   'cover-crop': ReactBundle.CoverCropProps;
+  'data-cleanup': ReactBundle.DataCleanupProps;
+  duplicates: ReactBundle.DuplicatesProps;
   'follow-manage': ReactBundle.FollowManageProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
-  'media-repair': ReactBundle.MediaRepairProps;
   'scraping': ReactBundle.ScrapingProps;
   'quality-goals': ReactBundle.QualityGoalsProps;
   review: ReactBundle.ReviewProps;
@@ -62,9 +60,10 @@ interface Island {
 const REGISTRY: { [N in IslandName]: Island } = {
   'avatar-picker': { react: 'avatar-picker' },
   'cover-crop': { react: 'cover-crop' },
+  'data-cleanup': { react: 'data-cleanup' },
+  duplicates: { react: 'duplicates' },
   'follow-manage': { react: 'follow-manage' },
   'library-processing': { react: 'library-processing' },
-  'media-repair': { react: 'media-repair' },
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
   review: { react: 'review' },

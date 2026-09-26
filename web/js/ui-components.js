@@ -557,17 +557,6 @@ export function configurationSkeletonHtml(){
 }
 
 /**
- * Geist Fieldset 的标题。标题是正文区的第一行，不是独立横条。
- *
- * 不用原生 `<legend>`：它会在上边框上开一个缺口，标题看起来骑在线上而不是在
- * 框里。也不给标题加下边框——Geist 的 Fieldset 全框只有一条线，在底部操作条
- * 上方（证据：https://vercel.com/geist/fieldset 的 Multiple Fieldsets 示例）。
- */
-export function fieldsetTitle(id,title){
-  return `<h3 class="geist-fieldset-title" id="${esc(id)}">${esc(title)}</h3>`;
-}
-
-/**
  * Geist Breadcrumbs（https://vercel.com/geist/breadcrumbs 实测）的列表本体。
  * 容器 nav[aria-label="Breadcrumb"] 归页面骨架所有，这里只画 `ol > li`。
  *
@@ -899,7 +888,7 @@ export function wireScrollers(root=document){
 const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.stagescroll','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
-  '.skeletondashstrip','.followpagination','.linktablewrap',
+  '.skeletondashstrip','.followpagination',
   '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',
   '.follow-workspace-switch','.fmanagenav','[role="listbox"]',
 ].join(',');

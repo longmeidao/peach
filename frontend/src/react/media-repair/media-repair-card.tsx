@@ -12,6 +12,7 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { apiSend } from '../../api';
 import { REPAIR_CARD_TEXT } from '../../management';
 import { JOB_RUNNING_POLL_MS } from '../background-job';
+import { Fieldset, FieldsetTitle } from '../components/fieldset';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
 import { queryClient } from '../query';
@@ -63,16 +64,8 @@ export function MediaRepairCard() {
   const problem = action.error || state.error || (repair.error ? '读不到媒体修复的状态' : '');
   return (
     <div className="flex flex-col gap-4">
-      <section aria-label="媒体修复" data-geist-fieldset data-cleanup-task data-cleanup-processing>
-        <div data-geist-fieldset-content>
-          <h3 className="text-title-2-medium text-text-primary">媒体修复</h3>
-          <p className="text-body-2-regular text-text-secondary">{REPAIR_CARD_TEXT}</p>
-          {running && state.total
-            ? <Progress label="修复进度" value={state.checked} max={state.total} />
-            : null}
-          {line ? <p role="status" className="text-caption-1-regular text-text-secondary">{line}</p> : null}
-        </div>
-        <footer data-geist-fieldset-footer>
+      <Fieldset layout="split" label="媒体修复" footer={
+        <>
           <Select aria-label="媒体库" className="w-48" selectedKey={selected?.id ?? null}
             isDisabled={running || !libraries.length}
             onSelectionChange={(key) => { if (key !== null) setChosen(String(key)); }}>
@@ -85,8 +78,17 @@ export function MediaRepairCard() {
           {running
             ? <Button onClick={stop} {...busyProps(action.busy === 'stop')}>停止</Button>
             : <Button onClick={start} disabled={!selected}>开始修复</Button>}
-        </footer>
-      </section>
+        </>
+      }>
+        <div className="flex flex-col gap-2">
+          <FieldsetTitle>媒体修复</FieldsetTitle>
+          <p className="text-body-2-regular text-text-secondary">{REPAIR_CARD_TEXT}</p>
+          {running && state.total
+            ? <Progress label="修复进度" value={state.checked} max={state.total} />
+            : null}
+          {line ? <p role="status" className="text-caption-1-regular text-text-secondary">{line}</p> : null}
+        </div>
+      </Fieldset>
       <div aria-live="polite" className="flex flex-col gap-4 empty:hidden">
         {complete && !state.repaired && !state.failed
           ? <Note tone="info" title="没有要修的">这个库里的片子都能直接播。</Note>

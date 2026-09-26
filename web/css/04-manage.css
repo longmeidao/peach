@@ -44,7 +44,7 @@
    flex-direction:row、nowrap，min-height 56px 实测长到 65/85/105px，
    按钮保持 70–186px 的内容宽度，没有一个铺满）。 */
 .geist-fieldset-footer>p,.geist-fieldset-footer>span,
-.resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}
+.resourcesyncfooter>p{min-width:0;margin-right:auto}
 .cleanupfieldset>.geist-fieldset-footer>p{margin:0 auto 0 0;text-align:left}
 /* 没有 min-height：卡片高度由内容决定，和同页的「网盘与账本」一致。三列时那条
    176px 地板是用来对齐同一行的，改成单列后它只是把每张卡都撑出一段空白。 */
@@ -76,20 +76,12 @@
 .organizefield{display:grid;gap:6px;min-width:0}
 .organizefield>span{color:var(--ink-2);font-size:var(--fs-sm)}
 .organizepresets{display:flex;flex-wrap:wrap;gap:8px}
-.organizeplan{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:4px;min-width:0}
-.organizeplan li{display:flex;align-items:center;gap:8px;min-width:0;
-  color:var(--ink-2);font-size:var(--fs-sm)}
-.organizeplan li span{min-width:0;overflow:hidden;white-space:nowrap}
-.organizeplan li span:last-child{color:var(--ink)}
-.cleanupfieldset .organizestate{margin-top:12px;display:grid;gap:8px}
-.cleanupfieldset .organizestate:empty{display:none}
 .stats h2{margin:0 0 4px;font-size:var(--fs-2xl)}
 .stats .sub{color:var(--muted);margin:0}
 /* 来源和凭证页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架：那一句静态说明
    和四块占位卡，宽度另由 `board.css` 那条钉到 `--board-content`。 */
 .scraping-page{width:min(812px,100%);margin:0 auto;display:grid;gap:20px}
 .scraping-page>h1,.scraping-page p{margin:0}
-#libraryProcessing{scroll-margin-top:80px}
 
 /* 分类那一列与工具条在骨架里也要占住位置，正文归 React 子树之后只剩这几条。 */
 .reviewcontrols{display:grid;gap:12px;padding-block:12px;margin-bottom:16px}

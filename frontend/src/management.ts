@@ -2,18 +2,6 @@ import { icon } from '@peach/legacy/core';
 
 import { islandButton, islandGlyph, islandSelect } from './island-skeleton';
 
-/** 管理页按已配置的来源显示能力；离线来源仍然属于已配置来源。 */
-export interface MediaSource { location: string; roots?: unknown[]; online?: boolean }
-
-export function cloudLocations(sources: readonly MediaSource[]): string[] {
-  return sources.filter(source => ['115', 'pikpak'].includes(source.location)
-    && (source.roots === undefined || source.roots.length > 0)).map(source => source.location);
-}
-
-export function cloudPreferenceLocations(files: readonly { location: string }[], configured: readonly string[]): string[] {
-  return configured.filter(location => files.some(file => file.location === location));
-}
-
 /* 「扫描与采集」「媒体修复」两张卡的正文。卡片本体由 React 画，骨架与遗留层的取数占位
    画的是同一段话：写两份的话，骨架上的那句会比真卡短一截，接管时整张卡跳一次。 */
 export const SCAN_CARD_TEXT = '扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，'

@@ -6,7 +6,9 @@
 
 还没迁到 React 的页面仍在 `web/app.js`。迁移按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页改写成 React + Tailwind v4 + BoardUI 原版源码：每次一到两个页面、独立分支集成，旧渲染函数、旧 CSS 与旧断言随页面一起删。控件映射见 [Board 适配](BOARD_UI.md)。迁移不包含版本号或其他分支发布工作。
 
-- 前端基础库随页面引入，取舍与时机见 ADR-0031「前端基础库」一节。TanStack Query 与 TanStack Table 已在用；数据管理页迁移时，卡片上的高清版总数改读高清版页同一个 `queryKey`；React Router 在外壳与路由迁移那一步接管；TanStack Virtual 等馆藏网格迁到 React 时按实测决定。
+- 前端基础库随页面引入，取舍与时机见 ADR-0031「前端基础库」一节。TanStack Query 与 TanStack Table 已在用；React Router 在外壳与路由迁移那一步接管；TanStack Virtual 等馆藏网格迁到 React 时按实测决定。
+- `bg-card-footer` 与 `bg-card-hover` 在所有 React 页上都是透明：`styles.css` 的 `@theme` 把 `--color-card-footer`、`--color-card-hover` 写成 `var(--card-footer, transparent)` 这样的引用，声明在 `:root`，而 `--card-footer`、`--card-hover` 只在 `.peach-react` 里有，于是在根上就折成透明往下继承。读数卡悬停也就没有面。数据管理页整理卡、统计、活动、关注管理与设置的卡片页脚都受影响。改成 `@theme inline` 或在 `.peach-react` 上声明这两个 `--color-*`，这几页的页脚底色一起变，要逐页截图验。
+- React 子树深色下的次要文字取 BoardUI 的 neutral-500（115），遗留页的 `--muted`、`--ink-2` 是 163 与 212。已迁各页都是这一档，要不要把 `text-secondary` 调亮是一次全局决定，不在单页里改。
 - Remix Icon 候选在预览页 `/icon-review.html` 审查，用户筛选完之前保留现有已选图标。
 - 安装后教程：右下角那张卡和清单渲染仍在 `web/app.js`，状态层（三个本地键、签名、请求代际）已在 `web/js/ui-components.js`。迁移时整块接管渲染，删掉遗留那一段。
 - 厂牌资料页视频视图卡片多时（如 Prestige，339 张卡），侧栏展开那一帧最长约 37ms。屏外卡已跳过封面与元信息区的渲染，剩下的开销在卡片盒本身的排版，这几页迁往 React 时用虚拟列表一起处理。

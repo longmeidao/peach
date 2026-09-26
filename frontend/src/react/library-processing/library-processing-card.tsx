@@ -23,6 +23,7 @@ import { cx } from '@/utils/cx';
 import { apiSend, errorMessage } from '../../api';
 import { SCAN_CARD_TEXT } from '../../management';
 import type { LibraryProcessingProps } from '../bundle';
+import { Fieldset, FieldsetTitle } from '../components/fieldset';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { useOverlayScrollbar } from '../components/overlay-scrollbar';
@@ -223,9 +224,20 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing>
-        <div data-geist-fieldset-content>
-          <h3 className="text-title-2-medium text-text-primary">扫描与采集</h3>
+      <Fieldset layout="split" label="扫描与采集" footer={
+        <>
+          <LinkButton href="/scraping" size="small" trailingIcon={RiArrowRightLine}>来源和凭证</LinkButton>
+          {state.candidates
+            ? <LinkButton href="/review" size="small" trailingIcon={RiArrowRightLine}>复核资料</LinkButton>
+            : null}
+          {/* 两个入口并存，各自答的不是一个问题：这里是「重新跑一整批」，下面那条错误提示里
+              的「重试未完成项」只补上一趟没做完的那些。采集里网络超时几乎每趟都留下几项可
+              重试的，页脚要是让位给重试键，新入库的片子就再也没有入口被扫到。 */}
+          <ScanActions busy={busy} onRun={run} />
+        </>
+      }>
+        <div className="flex flex-col gap-2">
+          <FieldsetTitle>扫描与采集</FieldsetTitle>
           <p className="text-body-2-regular text-text-secondary">{SCAN_CARD_TEXT}</p>
           {state.status === 'running'
             ? <div className="flex flex-col gap-1.5">
@@ -240,17 +252,7 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
               </div>
             : null}
         </div>
-        <footer data-geist-fieldset-footer>
-          <LinkButton href="/scraping" size="small" trailingIcon={RiArrowRightLine}>来源和凭证</LinkButton>
-          {state.candidates
-            ? <LinkButton href="/review" size="small" trailingIcon={RiArrowRightLine}>复核资料</LinkButton>
-            : null}
-          {/* 两个入口并存，各自答的不是一个问题：这里是「重新跑一整批」，下面那条错误提示里
-              的「重试未完成项」只补上一趟没做完的那些。采集里网络超时几乎每趟都留下几项可
-              重试的，页脚要是让位给重试键，新入库的片子就再也没有入口被扫到。 */}
-          <ScanActions busy={busy} onRun={run} />
-        </footer>
-      </section>
+      </Fieldset>
       <Outcome state={state} problem={problem} settled={settled} onRetry={retry} toast={toast} />
     </div>
   );

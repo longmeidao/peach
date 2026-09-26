@@ -510,11 +510,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("--page:#FAFAFA;")
         self.assertPageContains("--page:#04060A;")
         for selector in (".cleanupfieldset", ".fsec",
-                         ".resourcesyncbox,.resourcepanel"):
+                         ".resourcesyncbox"):
             self.assertPageContains(selector + "{", f"{selector} 应有一条自己的规则")
         css = stylesheet_source()
         for name in (".cleanupfieldset>.geist-fieldset-footer",
-                     ".fsechead", ".resourcesyncfooter,.resourceapplyrow"):
+                     ".fsechead", ".resourcesyncfooter"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
             self.assertIn("background:var(--overlay-5)", rule, f"{name} 是操作条")
@@ -1437,7 +1437,7 @@ class WebUiSourceTests(unittest.TestCase):
         source = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(
             encoding="utf-8")
         labels = re.findall(r"spinnerHtml\('([^']+)'\)", source)
-        self.assertGreaterEqual(len(labels), 10, "调用点少得不像全站都在用")
+        self.assertGreaterEqual(len(labels), 9, "调用点少得不像全站都在用")
         ongoing = ("正在", "中", "…")
         for label in labels:
             self.assertTrue(label.endswith(ongoing) or label.startswith("正在"),
@@ -1567,10 +1567,10 @@ class WebUiSourceTests(unittest.TestCase):
         css = stylesheet_source()
         self.assertEqual(re.findall(r"border-radius:9{2,}px", css), [],
                          "整圆一律走 --pill-radius，别再写字面值")
-        for selector in (".fbadge{", ".fvkind{", ".dupmarks i{"):
+        for selector in (".fbadge{", ".fvkind{"):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
-        for selector in (".dupbtns button{", ".indexmore,.entitymore{"):
+        for selector in (".indexmore,.entitymore{",):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
@@ -3183,41 +3183,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "#i-git-compare .gc-end-b{animation-name:var(--gc-anim-c,none)}")
         self.assertPageContains(
-            '#resourceScan[aria-busy="true"] svg{\n'
-            "  --gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c}")
+            '[data-resource-scan][aria-busy="true"] svg{'
+            "--gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c}")
         vendor = (Path(__file__).resolve().parents[1] / "scripts/vendor_web_dependencies.mjs").read_text(encoding="utf-8")
         self.assertIn('if (symbol === "git-compare") inner = inner', vendor)
 
-    def test_resource_sync_sources_share_the_official_marks_and_board_stat_cards(self):
-        """数据管理页「这是哪个网盘」的答案只有一份，结果照 Board 的 stat cards 排。
-
-        115 与 PikPak 取 `MEDIA_SOURCE_ICONS` 的官方站标，不是 globe 字形：来源角标、
-        媒体库切换器和配置页问的是同一件事，同一个答案不该因为取图入口不同而长成
-        两枚图形（SRCICON 的注释）。结果读数和数据管理顶上一排同一副卡片，来源带站标
-        tile；清理内容 Note 与操作行独立成层。操作键统一 Board primary，销毁键维持
-        danger 实底红；顶栏密度键与筛选框的版式开关问同一件事「现在是哪种排法」，
-        字形取同一份 PHOTO_SIZES 映射，按下去换成当前状态的图标。
-        """
-        renderer = (Path(__file__).resolve().parents[1] / "frontend/src/resource-sync.ts").read_text(encoding="utf-8")
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("selectOptionIconHtml(MEDIA_SOURCE_ICONS[location] ?? 'database')", renderer)
-        self.assertNotIn("'globe'", renderer,
-                         "115/PikPak 用官方站标，不退回 globe 字形")
-        self.assertIn('class="board-plain-stat resourcestat"', renderer)
-        self.assertIn('class="resourcestat-state', renderer)
-        self.assertIn(".resourcestat-tile img{width:20px;height:20px;object-fit:contain}", board)
-        self.assertIn(".resourcestat-state.online{color:var(--success)}", board)
-        # 扫描中的环形进度独居在结果槽里，自己带框才和链接检查里住在面板中的进度一个形状。
-        self.assertPageContains(
-            "#resourceSyncResult>.board-job-progress{margin:0;padding:14px 16px;border:1px solid var(--line-soft);border-radius:var(--control-radius)}")
-        # 操作键统一 Board primary；销毁键另有一副实底红，不掺进来。
-        for needle in (
-                'id="linkCheck">',
-                'id="linkRetryPicked" disabled>',
-                'id="linkRetryAll">',
-                'id="resourceScan">'):
-            self.assertIn(f'class="resourceaction primary" type="button" {needle}', self.app_js)
-        # 顶栏密度键跟筛选框的版式开关取同一份字形映射。
+    def test_density_toggle_shares_the_layout_glyph_map(self):
+        """顶栏密度键与筛选框的版式开关问同一件事「现在是哪种排法」，字形取同一份
+        PHOTO_SIZES 映射，按下去换成当前状态的图标。"""
         self.assertPageContains("button.innerHTML=iconSwapHtml(big[2],small[2],")
         self.assertPageContains("}else setIconSwap(button,size===small[0]?'b':'a');")
         self.assertPageContains("syncDensityIcon(density==='big'?'big':'small')}")
@@ -5039,28 +5012,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(entry)el.textContent=pageLabel||entry[1]")
         self.assertPageContains('<div class="followhead"><h2 class="pagetitle">关注</h2></div>')
 
-    def test_data_management_is_the_single_entry_for_tidying_the_library(self):
-        """复核、回收站、高清版和链接管理、资源同步都归到数据管理这一页。
-
-        资源同步和链接管理此前挂在统计页上——它们改的是账本和外部现实的对齐，
-        跟「库里现在有多少」不是一件事。
-        """
-        self.assertPageContains("const DATA_MANAGEMENT_ENTRIES=[")
-        for entry in ("['review','人工复核'", "['trash','回收站'", "['quality','高清版'"):
-            self.assertPageContains(entry)
-        self.assertPageContains("button.onclick=()=>openManage(button.dataset.cleanupGo)")
-        self.assertPageContains("async function paintDataManagementCounts()")
-        self.assertPageContains("api('/api/review?counts=1')")
-        # 三个计数各自失败各自算：一个接口出错不该把另外两张卡也变成「—」。
-        self.assertPageContains("catch(_error){write(section,'读取失败')}")
-        cleanup = self.page.split("async function openDataCleanup(", 1)[1].split("let dupData=null;", 1)[0]
-        self.assertIn("${linkManagerMarkup()}", cleanup)
-        self.assertIn("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}", cleanup)
-        stats = self.page.split("async function openStats(", 1)[1].split("function showHomeSurfaces(", 1)[0]
-        self.assertNotIn("linkManagerMarkup()", stats,
-                         "统计页只讲库里现在有多少，不该再挂对齐外部现实的面板")
-        self.assertNotIn("resourceSyncMarkup()", stats)
-
     def test_scraping_is_reachable_from_the_library_processing_card(self):
         """来源和凭证自成一页，入口在数据管理那张「扫描与采集」卡上。
 
@@ -5071,7 +5022,7 @@ class WebUiSourceTests(unittest.TestCase):
         `rel` 由 `frontend/e2e/design.test.ts` 读计算值守。
         """
         self.assertPageContains("'/scraping':'来源和凭证'")
-        self.assertPageContains('id="libraryProcessing"')
+        self.assertPageContains("$('#libraryProcessing')?.scrollIntoView({block:'start'})")
         processing = (
             Path(__file__).resolve().parents[1]
             / 'frontend/src/react/library-processing/library-processing-card.tsx'
@@ -5140,24 +5091,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("href=\"${esc(item.href)}\"", self.page,
                       "href 仍要渲染出来，中键和右键菜单靠它")
 
-    def test_link_totals_get_one_cell_each_instead_of_one_crammed_line(self):
-        """「社媒 373 · 官网 · 事务所 224」读不出哪个数字属于哪一类。
-
-        类型名自己带间隔点（`官网 · 事务所`），和拼接用的间隔点撞在一起；挤成
-        一行后标签与数字之间也只剩那个点。每类各占一格，类型名改用斜杠。
-        """
-        self.assertPageContains("official:'官网/事务所'")
-        self.assertPageLacks("official:'官网 · 事务所'")
-        self.assertPageContains("const stat=(label,value,note='')=>")
-        self.assertPageContains(".map(([kind,count])=>stat(KINDS[kind]||kind,Number(count).toLocaleString())).join('');")
-        self.assertPageContains(".linkstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))")
-        self.assertPageContains('<div class="linkhosts"><span>主要站点</span>')
-        # 类型名要能被没读过代码的人读懂：`catalog` 收的是 DMM、MGStage、JavLibrary
-        # 这类作品检索站，`source_reference` 是这条资料的出处。
-        self.assertPageContains("catalog:'作品资料站'")
-        self.assertPageContains("source_reference:'资料出处'")
-        self.assertPageContains("分布在 ${info.entities.toLocaleString()} 个女优、厂牌与系列")
-
     def test_taste_page_combines_private_exports_and_peach_behavior(self):
         """口味页是 React 档（ADR-0031）：遗留层只铺骨架、交容器与几样自己的能力。
 
@@ -5198,7 +5131,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const symbol=kind==='secondary'?'info':kind==='success'?'check':'alert'")
         self.assertPageContains("const role=kind==='error'?' role=\"alert\"':' role=\"note\"'")
         self.assertPageContains("failure.innerHTML=noteHtml(error.message||'操作未完成',{variant:'error'})")
-        self.assertPageContains("noteHtml(error.message,{variant:'error',label:'扫描失败'})")
         # 「没有更多内容」的抓取完摘要跟着检查完成的右下角 notification 走，页内只剩失败与取证缺档。
         self.assertPageLacks('个来源没有更多内容</b>')
         # 每一条失败都进 Note，没有第二套「红字一行」的写法：红色文字既没有图标
@@ -5937,7 +5869,6 @@ class WebUiSourceTests(unittest.TestCase):
     def test_duplicate_and_trash_descriptions_share_one_page_lede(self):
         self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
         self.assertPageContains(".pagelede{margin:0 0 16px;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}")
-        self.assertPageContains("paintManageLede(`${d.total} 组 · ${d.files} 个文件 · 可回收 ${fmtSize(d.reclaimable)}`)")
         self.assertPageContains("if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`,")
         self.assertPageContains(".count.count-actions-only:empty{display:none}")
         self.assertPageLacks('class="dupsum mono"')
@@ -8107,7 +8038,6 @@ class WebUiSourceTests(unittest.TestCase):
             "请求中的按钮必须保持可聚焦，不能再把 native disabled 和 busy 混用",
         )
         self.assertPageContains("setActionBusy(batch)")
-        self.assertPageContains("setActionBusy(scan,busy)")
         self.assertPageContains("setActionBusy(btn)")
         # React 档里同一件事由 `busyProps()` 发：同样是 aria-busy 加 aria-disabled，
         # 按钮留在 tab 序列上。
@@ -8884,22 +8814,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const target=ROUTES.find(spec=>spec.section===section);")
         self.assertPageContains("async function openDuplicates(push=true)")
 
-    def test_data_cleanup_groups_junk_duplicates_and_resource_sync_in_fieldsets(self):
+    def test_data_cleanup_skeleton_cards_follow_the_geist_fieldset(self):
+        """数据管理页的正文归 React 子树（ADR-0031），卡片的内容、写操作与确认框由
+        `frontend/test/react/data-cleanup.test.tsx` 守。遗留层只留路由与骨架那几张卡的框体。"""
         self.assertPageContains("async function openDataCleanup(push=true)")
         self.assertPageContains("route('/data-cleanup')")
-        self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
-        self.assertPageContains("fieldsetTitle('resourceBoxTitle','文件与记录核对')")
-        self.assertPageContains("按馆藏记录逐条查找本地磁盘与网盘上的文件")
-        self.assertPageContains("mixedCloudPreferences(g.files,configured)")
-        for path in ("'/api/ads?limit=1'", "'/api/duplicates?limit=1'", "'/api/sources'"):
-            self.assertPageContains(path)
-        # 标题是正文区的第一行，不用原生 legend——legend 会在上边框上开个缺口，
-        # 卡片内容高度不同时那道缺口的位置也跟着不齐。垃圾文件与重复文件是顶上一排的读数卡。
-        self.assertPageContains("junk:statCard('垃圾文件','file-archive',")
-        self.assertPageContains("duplicates:statCard('重复文件','file-stack',")
-        self.assertPageLacks("<legend>垃圾文件</legend>")
-        # 资源同步会永久删账本行，确认框里要说清不可撤销。
-        self.assertPageContains("这一步不可撤销")
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-content{flex:1;min-height:0;padding:20px}")
         # Geist 的 Fieldset 全框只有一条线，在底部操作条上方；标题底下不划线。
         self.assertPageContains("--fieldset-bar-h:52px;")
@@ -8909,7 +8828,7 @@ class WebUiSourceTests(unittest.TestCase):
                                 "min-height:var(--fieldset-bar-h);")
         # 按钮一律靠右；左边有说明时说明推到最左。
         self.assertPageContains("justify-content:flex-end;gap:8px;")
-        self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
+        self.assertPageContains(".resourcesyncfooter>p{min-width:0;margin-right:auto}")
         self.assertRoute('/data-cleanup', "openDataCleanup(push)")
 
     def test_fieldset_bars_keep_one_row_and_one_button_shape_on_narrow_screens(self):
@@ -8927,10 +8846,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".cleanupfieldset>.geist-fieldset-footer{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
         self.assertPageContains("padding:12px 12px 12px 20px;")
-        self.assertPageContains(".resourcesyncfooter,.resourceapplyrow{box-sizing:border-box;"
+        self.assertPageContains(".resourcesyncfooter{box-sizing:border-box;"
                                 "min-height:var(--fieldset-bar-h);")
         # 说明能被压窄并换行，按钮不参与压缩。
-        self.assertPageContains(".resourcesyncfooter>p,.resourceapplyrow>p{min-width:0;margin-right:auto}")
+        self.assertPageContains(".resourcesyncfooter>p{min-width:0;margin-right:auto}")
         # 排除下拉触发器：它是 .cleanupfieldset 里的一个 button，但形状属于输入控件，
         # 那圈线要留着。零权重的 :where() 才不会反过来压过 .geist-button.primary。
         self.assertPageContains(".cleanupfieldset button:where(:not(.gselectfield)){"
@@ -8944,128 +8863,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".resourcesync .resourceapplyrow{align-items:stretch;flex-direction:column}")
         self.assertPageLacks(".resourcesync #resourceApply{width:100%}")
 
-    def test_each_cleanup_card_shows_the_breakdown_already_in_its_payload(self):
-        """每张卡在主数字下再给一行分项，用的是同一份 payload 里已有的数字。
-
-        卡片只有一个总数时，一列 fieldset 里剩下的全是空白；分项本来就在
-        `/api/ads` 的 counts、`/api/duplicates` 的 reclaimable 和 `/api/review?counts=1`
-        里，不必为第二行多发请求。空的分项行整行不占位——没有分项的卡不该
-        比别人多留一段白。
-        """
-        cleanup = self.page.split("async function openDataCleanup(", 1)[1].split(
-            "let dupData=null;", 1)[0]
-        self.assertIn("JUNK_KIND_OPTIONS.filter(([key])=>key&&Number(junkCounts[key])>0)", cleanup,
-                      "垃圾文件没有按类型给分项")
-        self.assertIn("已忽略 ${Number(junk.dismissed_total).toLocaleString()}", cleanup)
-        self.assertIn("可回收 ${fmtSize(duplicates.reclaimable||0)}", cleanup)
-        self.assertIn("'没有重复内容'", cleanup, "0 组时别写成「0 组 · 0 个文件」")
-        self.assertIn('<span class="cleanupmeta" data-cleanup-meta="${section}">', cleanup)
-        counts = self.page.split("async function paintDataManagementCounts()", 1)[1].split(
-            "let dupData=null;", 1)[0]
-        self.assertIn("REVIEW_LABELS[key]||key", counts, "人工复核的分项得是分类名")
-        self.assertIn("`其余 ${rest.toLocaleString()}`", counts)
-        self.assertIn("`占用 ${fmtSize(data.bytes||0)}`", counts, "回收站要说清空能腾出多少")
-        self.assertPageContains(".cleanupmeta:empty{display:none}")
-        # 单列布局里高度由内容决定，和同页「网盘与账本」一致；三列时的对齐地板
-        # 到了单列只剩下把每张卡撑出一段空白。
-        self.assertPageLacks("min-height:176px")
-
-    def test_duplicate_batch_keeps_one_per_cluster_not_one_per_code(self):
-        # 每组各自选 keeper：合集与分卷已经在数据层拆成不同簇，界面不能再按番号合并。
-        self.assertPageContains("function duplicateVictims(groups,keep)")
-        self.assertPageContains("const flag=keep==='longest'?'is_longest':'is_largest'")
-        self.assertPageContains("for(const f of g.files)if(f.id!==keeper.id)ids.push(f.id)")
-        self.assertPageContains("g.files.filter(f=>f.location===keep)")
-        self.assertPageContains('data-dup-all="${loc}"')
-        self.assertPageContains("const bulkClouds=configured.filter(loc=>groups.some(g=>mixedCloudPreferences(g.files,[loc]).length));")
-
-    def test_cloud_preference_buttons_only_appear_for_mixed_location_groups(self):
-        """整组都在同一个网盘时不出「留 115」：留它和留最大是同一个结果。
-
-        「批量保留」条上的「全部优先 115」同理，只在至少一组混着 115 与别处文件时出现。
-        `duplicateVictims` 的选法不变：没有该网盘文件的组仍退回留最大。
-        """
-        self.assertPageContains("function mixedCloudPreferences(files,configured){")
-        self.assertPageContains("return cloudPreferenceLocations(files,configured).filter(loc=>files.some(f=>f.location!==loc));")
-        self.assertPageContains('${mixedCloudPreferences(g.files,configured).map(loc=>`<button data-dup-keep="${loc}" data-dup-i="${gi}">留 ${esc(LOC[loc])}</button>`).join(\'\')}')
-        self.assertPageContains('${bulkClouds.map(loc=>`<button data-dup-all="${loc}">全部优先 ${esc(LOC[loc])}</button>`).join(\'\')}')
-        self.assertPageLacks('cloudPreferenceLocations(g.files,d.cloudLocations||[])')
-        self.assertPageLacks('cloudPreferenceLocations(groups.flatMap(g=>g.files)')
-        self.assertPageContains("const preferred=(keep==='115'||keep==='pikpak')?g.files.filter(f=>f.location===keep):[];")
-
-    def test_duplicate_rows_put_the_library_icon_before_its_name_and_marks_after_the_filename(self):
-        """所在库用侧栏媒体库菜单同一枚图形；「最大」「最长」紧跟文件名右侧。"""
-        self.assertPageContains('return `<span class="mono duploc">${SRCICON[key]||\'\'}<span>${esc(LOC[key]||key||f.drive||\'\')}</span></span>`;')
-        self.assertPageContains("${dupLocationHtml(f)}")
-        self.assertPageContains('<span class="duptitle"><button class="dupname" data-middle-truncate data-middle-truncate-within data-open-dup="${f.id}"')
-        self.assertPageContains('<span class="dupmarks">${f.is_largest?\'<i class="big">最大</i>\':\'\'}${f.is_longest?\'<i class="long">最长</i>\':\'\'}</span></span>')
-        self.assertPageContains(".duptitle{display:flex;align-items:center;gap:8px;min-width:0}")
-        self.assertPageContains(".dupname{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap;")
-        self.assertPageContains(".dupmarks{display:flex;flex:none;gap:4px}")
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('body[data-surface="/duplicates"] .duprow{grid-template-columns:112px minmax(0,1fr) 84px 84px 84px;', board)
-        self.assertIn(' body[data-surface="/duplicates"] .duprow{grid-template-columns:88px minmax(0,1fr) auto auto}', board)
-        self.assertIn(' body[data-surface="/duplicates"] .duptitle{grid-column:2/-1}', board)
-        self.assertNotIn('body[data-surface="/duplicates"] .dupmarks{grid-column', board)
-
-    def test_duplicate_bulk_bar_is_a_sticky_glass_pane_and_light_groups_sit_above_the_page(self):
-        """「批量保留」条就是首页那块 `.board-filter-frame`；每组卡头部比正文深一档。
-
-        `[data-glass-pane]` 那份料没有 `backdrop-filter`，吸顶后身后的组标题原样透出来；
-        玻璃、吸顶、`backdrop-filter` 与 `board-is-stuck` 抬影都在 `.board-filter-frame` 这一个类上，
-        这一排只做它的一格 `[data-filter-row]`，不复制样式。
-        """
-        self.assertPageContains('<div class="board-filter-frame" data-filter-frame><div class="dupactions" data-filter-row="top"><h3>批量保留</h3>')
-        self.assertPageLacks('class="dupactions" data-glass-pane')
-        self.assertPageLacks('class="fsechead dupactions"')
-        self.assertPageLacks(".dupactions.fsechead")
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn('body[data-surface="/duplicates"] .dupactions{margin:0;padding:10px 16px;flex-wrap:wrap;gap:8px 10px;color:var(--glass-text)}', board)
-        self.assertNotIn('body[data-surface="/duplicates"] .dupactions{position:sticky', board)
-        self.assertIn('body[data-surface="/duplicates"] .dupactions button{height:30px;padding:0 12px;border:1px solid var(--glass-low);border-radius:var(--pill-radius);background:transparent;color:var(--glass-text);', board)
-        # 一深一淡：深色正文 primary、头部 secondary；浅色正文 secondary、头部 tertiary。
-        self.assertIn('body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}', board)
-        self.assertIn('body[data-surface="/duplicates"] .duphead{padding:20px;gap:12px;background:var(--color-background-secondary-default)}', board)
-        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .dupgroup{background:var(--color-background-secondary-default)}', board)
-        self.assertIn('html:not(.dark) body[data-surface="/duplicates"] .duphead{background:var(--color-background-tertiary-default)}', board)
-        self.assertNotIn('.duphead{border-bottom', board)
-
-    def test_duplicate_group_can_be_entirely_recycled_when_every_file_is_an_ad(self):
-        self.assertPageContains("if(keep==='all'){for(const f of g.files)ids.push(f.id);continue}")
-        self.assertPageContains('data-dup-keep="all"')
-        self.assertPageContains("all:'零个文件'")
-
-    def test_duplicate_rows_show_the_full_path_without_losing_source_and_size(self):
-        self.assertPageContains('class="mono duppath" data-middle-truncate title="${esc(f.path||\'\')}"')
-        self.assertPageContains("${esc(f.path||'')}")
-        self.assertPageContains('.duppath{grid-column:2/-1;min-width:0;overflow:hidden')
-
     def test_resource_identifiers_use_geist_middle_truncation(self):
         """文件名和路径保留首尾；标题、说明仍按语义使用末尾省略。"""
         self.assertPageContains("import { initMiddleTruncate } from './js/middle-truncate.js'")
         self.assertPageContains("initMiddleTruncate(document)")
         for consumer in (
-                'class="dupname" data-middle-truncate',
-                'class="mono duppath" data-middle-truncate',
                 'id="photoDetailTitle" data-middle-truncate',
                 '<b data-middle-truncate>${esc(javDisplayName(media))}</b>',
                 '<b data-middle-truncate>${esc(javDisplayName(x))}</b>',
                 'class="t resourcecardtitle" data-middle-truncate',
                 'class="t junkcardtitle" type="button" data-junk-open data-middle-truncate',
-                'class="t junkcardtitle" data-middle-truncate',
-                # 死链表里的地址：`/official/talent/X` 与 `/talent/X` 的差别就在尾部，
-                # 尾部省略会把这张表要回答的东西切掉。省略挂在里面那个 span 上，
-                # 外链标才留得住：中缩靠改写 textContent 实现，同一节点里的图标会被抹掉。
-                '<span data-middle-truncate>${esc(item.url)}</span>',
-                # 整理预览的两列都是文件名，差别常常只在番号或结尾的 CD 标记上。
-                '<span data-middle-truncate title="${esc(row.current_path)}">',
-                '<span data-middle-truncate title="${esc(row.target_path)}">'):
+                'class="t junkcardtitle" data-middle-truncate'):
             self.assertPageContains(consumer)
-        # 高清版目标页、统计页与复核页归 React 子树，由 frontend 的用例覆盖。
-        # 十二处里有一处是重复文件名上的 `data-middle-truncate-within`：它后面紧跟着「最大」
-        # 「最长」标记，自己按内容收缩，可用宽度要按父级量。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 12)
-        self.assertPageContains('class="dupname" data-middle-truncate data-middle-truncate-within')
+        # 高清版目标页、统计页、复核页、数据管理与重复文件页归 React 子树，由 frontend 的用例覆盖。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 6)
         self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         # 关注合集队列卡的出处行是 flex 一行（`.fqmeta`），时间不收窄，不走尾部省略。
@@ -9121,20 +8932,6 @@ class WebUiSourceTests(unittest.TestCase):
             if truncates:
                 actual.add(" ".join(selector.split()))
         self.assertEqual(reviewed_end_selectors, actual)
-
-    def test_duplicate_removal_is_reversible(self):
-        # 只能进回收站；永久删除仍得从回收站单独执行。
-        self.assertPageContains("operation:'dispose'")
-        self.assertPageLacks("operation:'delete'},{method:'POST'}")
-        self.assertPageContains("记录可从回收站还原")
-
-    def test_duplicate_batches_respect_the_two_hundred_id_cap(self):
-        self.assertPageContains("for(let i=0;i<ids.length;i+=200)")
-
-    def test_duplicate_rows_show_the_evidence_grade(self):
-        # sha1 齐全才敢说「一致」，否则只是时长推断——界面必须把差别显示出来。
-        self.assertPageContains("g.identical?'<span class=\"dupflag ok\">sha1 一致</span>'")
-        self.assertPageContains("时长推断")
 
     def test_review_page_exposes_the_new_candidate_categories(self):
         # 这三类此前只落在 CSV 里没有入口，复核负担等于丢回给用户去翻文件。
@@ -9482,12 +9279,6 @@ class WebUiSourceTests(unittest.TestCase):
         for needle in (
                 # 换一批洗的是这一批的成员，不是把同一批重新取一遍。
                 'title="换一批" aria-label="换一批">${icon(\'shuffle\')}',
-                # 检查死链找的是断掉的那条链。
-                'id="linkCheck">${icon(\'unlink\')}<span>检查死链</span>',
-                # 资源同步比的是盘上和账本的差异；跑过一轮之后那一枚才是「再跑一遍」。
-                'id="resourceScan">${iconSwapHtml(\'git-compare\',\'rotate-cw\')}'
-                '<span data-scan-label>检查文件</span>',
-                "setIconSwap(scan,done?'b':'a');",
                 # 同步删除把这个目录在盘上和账本里对齐。
                 'aria-label="同步删除">${icon(\'folder-sync\')}',
                 # 沉浸模式是一叠竖着翻的卡，保存为播放列表存的是一份列表。
@@ -9517,7 +9308,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("leadingIcon={RiCheckDoubleLine}", source_list)
         # 两个空态各说自己那件事：筛不出结果，和一次比对没有发现。
         self.assertPageContains("emptyState('search-x','当前筛选下没有更新'")
-        self.assertPageContains("emptyState('file-stack','没有找到重复文件'")
         # 本地是磁盘、在线是订阅源；标签页和艺人页共用这一对，和关注页的来源图标同一套。
         self.assertPageContains("const INDEX_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];")
         # 「喜爱理由」开的是一个写字面板，不是喜欢开关——那个是旁边的 thumbs-up。
@@ -10066,8 +9856,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertIn(".cleanuppage{width:min(812px,100%);margin:0 auto;display:grid;gap:32px}", self.css)
         self.assertIn(".cleanupgrid{display:grid;grid-template-columns:minmax(0,1fr);gap:20px}", self.css)
-        # 结果区空着时也占一条网格轨道，区块底部会凭空多出一个间距。
-        self.assertIn("#linkCheckResult:empty,#resourceSyncResult:empty{display:none}", self.css)
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".cleanupgrid{gap:16px}", board)
         self.assertIn(".cleanupstats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}", board)
@@ -10085,14 +9873,13 @@ class WebUiSourceTests(unittest.TestCase):
         这一页是 React 档（ADR-0031），正文在 `frontend/src/react/library-processing/`；
         结果、故障与重试怎么说由 `frontend/test/react/library-processing.test.tsx` 守。
         """
-        self.assertPageContains('<div class="cleanupscraping" id="libraryProcessing">')
         card = self.read_react("library-processing/library-processing-card.tsx")
         # 提示排在任务卡之后，两块由外面这一层的 `gap` 分开。
         self.assertIn(
-            "      </section>\n"
+            "      </Fieldset>\n"
             "      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} toast={toast} />",
             card)
-        self.assertIn("data-geist-fieldset data-cleanup-task data-cleanup-processing", card)
+        self.assertIn('<Fieldset layout="split" label="扫描与采集" footer={', card)
         # 空着时整块收起：`aria-live` 的容器留一条空轨道，卡片底下会凭空多出一个间距。
         self.assertIn('<div aria-live="polite" className="flex flex-col gap-4 empty:hidden">', card)
         # 进度条留在卡片里，和那颗按钮同一格。
@@ -10177,28 +9964,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("#followBatchAll")
         self.assertPageContains("$('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);")
 
-    def test_the_data_management_page_opens_with_a_row_of_stat_cards(self):
-        """数据管理页照 Board 的 dashboard 模板：一排读数卡打头，下面三张任务卡各占一行。
+    def test_the_data_management_skeleton_opens_with_a_row_of_stat_cards(self):
+        """数据管理页的骨架照 Board 的 dashboard 模板：一排读数卡打头，下面的任务卡各占一行。
 
-        读数卡是 stat-cards.tsx 的 plain 变体做成按钮（132px、圆角 16、secondary 底、内边距 16、
-        32px 图标格里 20px 字形、读数 24/34），整张卡就是那一页的入口；五张在 1120 内一行摆下，
-        窄了折两列、再折一列。扫描与采集、媒体修复和整理是要做的事，不是读数，各占一整行；
-        下方每张任务卡同样用 secondary 灰底，浅色主题不会退回白卡。
-        骨架复用同一套结构，页首因此和读数卡直接接上：同样五个入口再排一条链接条，是同一件事
-        画两遍，而那条链接条连选中态都没有。
+        读数卡 132px、圆角 16、secondary 底、内边距 16、32px 图标格里 20px 字形、读数 24/34；
+        五张在 1120 内一行摆下，窄了折两列、再折一列。任务卡左说明右按钮，同样用 secondary
+        灰底。接管之后的正文由 `frontend/src/react/data-cleanup/` 按同一组几何画出。
         """
-        self.assertPageContains("const DATA_MANAGEMENT_STATS=['review','quality','duplicates','junk','trash'];")
-        self.assertPageContains('<button type="button" class="board-plain-stat" ${attrs}>')
-        self.assertPageContains('<span class="board-plain-stat-head"><span class="board-stat-tile">${icon(glyph)}</span>${esc(title)}</span>${body}</button>`;')
-        self.assertPageContains('<div class="cleanuppage"><div class="cleanupstats">')
-        self.assertPageLacks('cleanup-workspace-switch')
-        self.assertPageContains('</div><div class="cleanupgrid">${cleanupCards.scraping}${cleanupCards.mediaRepair}'
-                                '${organizeCardMarkup(organizeState)}</div>')
-        # 样式也一起走：没有使用者的选择器留在 board.css 里，下一个人会当它是现役版式去改。
-        self.assertNotIn("cleanup-workspace-switch",
-                         (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8"))
-        for entry in ("['review','人工复核','square-check-big']", "['trash','回收站','trash']", "['quality','高清版','sparkles']"):
-            self.assertPageContains(entry)
         root = Path(__file__).resolve().parents[1]
         board = (root / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".board-plain-stat{display:flex;flex-direction:column;justify-content:space-between;gap:8px;min-width:0;min-height:132px;margin:0;padding:16px;border:0;border-radius:16px;background:var(--color-background-secondary-default);", board)
@@ -10212,7 +9984,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".cleanupgrid [data-cleanup-task],.resourcesyncbox[data-cleanup-task]{border:1px solid var(--color-separator-border);border-radius:16px;background:var(--color-background-secondary-default);", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}", board)
         self.assertIn(".resourcesyncbox[data-cleanup-task]>.resourcesyncfooter{align-self:stretch;justify-content:flex-end;min-height:0;padding:24px;border:0;background:none}", board)
-        self.assertGreaterEqual(self.app_js.count('class="resourcesyncbox" data-geist-fieldset data-cleanup-task'), 2)
         skeleton = (root / "frontend/src/management.ts").read_text(encoding="utf-8")
         self.assertIn('<div class="cleanupstats">${stats.map(([title, glyph]) => `', skeleton)
         self.assertEqual(skeleton.count("data-cleanup-task"), 5,
@@ -10852,15 +10623,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(
             "#libraryProcessingNotice:not(:empty):not(:has(>.peach-react:empty))"
             f"{{margin:0 0 {gap}px}}", board)
-
-    def test_a_progress_ring_lines_up_with_the_lists_under_it(self):
-        """资源面板里的进度环和它下面那几组链接表对同一条左边。
-
-        那张卡自己不留内边距，里面每块各带各的；进度环少了这一条就贴着卡片左沿。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-job-progress{display:flex;align-items:center;gap:12px;padding:12px 0;", board)
-        self.assertIn(".resourcepanel>.board-job-progress{padding:12px 16px}", board)
 
     def test_cover_scraping_says_it_is_still_running(self):
         """抓封面这一趟在页面上留状态，不是只让按钮转一下。
@@ -11575,13 +11337,6 @@ class WebUiSourceTests(unittest.TestCase):
         每一枚都走同一对类名，包括 `来源资料` 那一处：箭头字符说的是同一件事，
         但它不是那枚标，全站没有第二种写法。
         """
-        self.assertPageContains('<a class="externallink" href="${esc(item.url)}"',
-                                "死链表那一格整格就是外部地址")
-        # 中缩靠改写 textContent 实现，图标留在被省略的节点外面才不会被抹掉。
-        self.assertPageContains("<span data-middle-truncate>${esc(item.url)}</span>"
-                                "${icon('external-link','externalmark')}")
-        self.assertPageContains(".linktable .linkurl a{display:grid;"
-                                "grid-template-columns:minmax(0,1fr) auto;")
         # 关注来源那一行已经有站标，链接本身不再叠一枚；同页会离开 Peach 的另外两处
         # （外链搜索建议、凭据的「去取」）走共用的 `ExternalLink`，标由它带。
         self.assertIn('target="_blank" rel="noreferrer noopener" title="打开原来源"',
@@ -11656,10 +11411,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 复核卡的拒绝键走 Geist 的 error 变体，那是同一块红的另一个入口。
         self.assertPageContains(".geist-button.error{background:#da2f35;",
                                 "销毁键静止态就是实底红")
-        # 垃圾复核的「移入回收站」、失效链接的「删除 N 条」。
-        for markup in ('class="danger" data-junk-operation="dispose"',
-                       'class="resourceaction danger" type="button" id="linkPrune"'):
-            self.assertPageContains(markup, "销毁键的红挂在 .danger 上")
+        # 垃圾复核的「移入回收站」。
+        self.assertPageContains('class="danger" data-junk-operation="dispose"', "销毁键的红挂在 .danger 上")
         # React 那侧同一块红走 BoardUI 的 danger 变体：关注来源凭据行的「清除」是其中一颗。
         self.assertIn('<Button variant="danger" size="small" disabled={readOnly}',
                       self.read_react("follow-manage/credentials.tsx"))
@@ -11692,7 +11445,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("top: calc(var(--topH) + 8px);", styles)
         self.assertIn("position: fixed;", styles)
         self.assertIn(".settingscard>.board-local-nav,[data-glass-pane]", self.app_js)
-        self.assertIn("body .peach-react [data-review-filter]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}", board)
+        self.assertIn("body .peach-react :is([data-review-filter],[data-filter-glass]){backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}", board)
         self.assertIn("body .peach-react [data-selection-dock]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%)}", board)
         self.assertIn("data-candidate-choice", candidate)
         self.assertLess(candidate.index("data-candidate-choice"), candidate.index("<dl className"),
@@ -12218,32 +11971,11 @@ class WebUiSourceTests(unittest.TestCase):
         # 在线资产是 URL，没有本地文件可定位。
         self.assertPageContains('${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span>')
 
-    def test_resource_sync_lives_in_data_management_and_keeps_offline_sources_safe(self):
-        self.assertPageContains("${(sources.sources||[]).some(source=>['local','115','pikpak'].includes(source.location)&&source.roots?.length)?resourceSyncMarkup():''}")
+    def test_resource_sync_is_an_anchor_on_the_data_management_page(self):
+        """资源同步是数据管理页上的一个锚点，扫描、清理与离线来源怎么说由
+        `frontend/test/react/data-cleanup.test.tsx` 守。"""
         self.assertRoute('/resource-sync', "openResourceSync(push)")
         self.assertPageContains("route('/data-cleanup#resource-sync',!push)")
-        self.assertPageContains("api('/api/resource-sync/scan',{method:'POST'")
-        self.assertPageContains("api('/api/resource-sync/apply',{method:'POST'")
-        self.assertPageContains("resourceScanHtml(payload,fmtSize)")
-        self.assertPageContains("background:true,restart:true")
-        self.assertPageContains("payload.status==='running'")
-        self.assertPageContains("location.pathname==='/data-cleanup'")
-        self.assertPageContains("background:true,status_only:true")
-        # 上一轮跑完的结果是那一刻的快照。进页面就铺开会被读成现在的账本状态，
-        # 而页面上没有任何东西说它是旧的。
-        self.assertPageContains("if(existing.status==='running')void followScan(existing)")
-        self.assertPageContains("清理失效条目")
-        self.assertPageContains('class="resourcesyncfooter geist-fieldset-footer"')
-        self.assertPageContains('class="resourcepanel"')
-        self.assertPageContains('class="resourceapplyrow"')
-        self.assertPageContains(".resourceaction{box-sizing:border-box;height:36px")
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertPageContains(".resourcesyncbox,.resourcepanel{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius)")
-        self.assertIn(".resourcestat{cursor:default}", board,
-                      "结果读数卡不是入口，不接悬停抬色")
-        self.assertIn("#resourceSyncResult>.resourceapplyrow{margin:16px 0 0;min-height:0;border:0;background:none;padding:0}", board,
-                      "读数卡、Note 与操作行各是独立一层，不再共享一只面板框")
-        self.assertPageContains(".resourceapplyrow .resourcesyncok{color:var(--success)}")
         self.assertPageContains(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}")
         self.assertPageLacks(".resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px;margin-top:32px;padding-top:24px;border-top:1px solid var(--line-soft)}")
         self.assertPageContains("border-radius:var(--control-radius)")

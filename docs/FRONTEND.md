@@ -40,7 +40,7 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 - 数据契约是 `/api/configuration`（`src/peach/routes_configuration.py`）。端点字符串只在 `frontend/src/configuration-endpoints.ts` 声明一次，整页和设置弹层的摘要卡读同一个 `queryKey`。
 - 第一帧必须同步：壳挂完这一页紧接着就读它画出来的结构，所以 `react/entry.tsx` 的 `mounter` 用 `flushSync` 画第一帧，往后的更新照常异步。小标题和分区因此必须是 `.configpage` 的直接子节点、交替排列。
 - 设置弹层「这台电脑」一格只挂 `configuration-summary`（`configuration-summary.tsx`）：媒体库数、端口、更新状态和「打开配置页」，不放可编辑的控件（ADR-0050）。媒体库数取 `/api/configuration` 的 `library_count`，由服务端按 `media_libraries.libraries` 分组数好，页面不自己归并。
-- 相邻的两处不在这页：媒体修复是数据管理页上的 `media-repair` island（`frontend/src/react/media-repair/`），订阅源是关注管理页的「订阅源」页签（`follow-manage/feed-sources.tsx`，读 `/api/feeds`）。
+- 相邻的两处不在这页：媒体修复是数据管理页 React 子树里的一张卡（`frontend/src/react/media-repair/`），订阅源是关注管理页的「订阅源」页签（`follow-manage/feed-sources.tsx`，读 `/api/feeds`）。
 - 服务端按两道门放行：托盘管理的服务、发起连接的是本机。`/healthz` 按调用方回 `configurable`，遗留层据此决定管理菜单列不列「配置」，摘要卡挂 island 还是换成一句「该配置需在服务端设备修改」。
 - 表单校验的原因由服务端按字段给（400 的 `errors`），页面写回原位，不在前端复制判定。
 - 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页（`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。
@@ -207,10 +207,20 @@ const job = useQuery({
 并发的 `fetch` 由 Query 自己合并。反过来各存一份状态的话，两边的轮询各走各的节律，卡片
 说「已完成」、横幅还挂着进度。
 
-高清版目标是同一条判据下还没接上的一处：`/quality-goals` 整页列表要 `items`，
-`/data-cleanup` 上的「高清版」卡片只要一个 `total`，而卡片还在 `web/app.js` 里自己发一次
-`/api/quality-goals?limit=1`。它随数据管理页迁移时改读 `QUALITY_GOALS_KEY`。
+数据管理页（`src/react/data-cleanup/`）顶上五张读数卡是同一条判据的例子：「高清版」只要
+`total`，读的仍是 `/quality-goals` 整页那一把 `QUALITY_GOALS_KEY`；「重复文件」读
+`/duplicates` 整页的 `DUPLICATES_KEY`。同一个数在两页上永远是同一份，谁先进哪一页都一样。
+复核计数不读 `REVIEW_KEY`：那一把是整条队列，`?counts=1` 响应形状不同，是另一份资源。
+五张卡各自一个 `useQuery`，一张取不到只写那一张「读取失败」。
 **遗留层里的读者等它所在的页面迁过来再接**，不为它在产物上另开一个通知入口。
+
+这一页下半截的卡片各是一趟后台任务或一次写入：链接检查与删除、资源同步的扫描与清理走
+`useBackgroundJob`，整理的预览与执行、重复文件的批量保留走 `useMutation`。
+写真实 ledger 的动作（资源同步清理、`/api/batch`、整理执行与回滚、链接删除）
+都由用户点击触发、先过 `confirmModal`；资源同步清理永久删除失效记录与空文件夹，走危险档。
+资源同步只在有来源配了根目录时出现，它的两份任务状态也只在那时进首屏预取；
+直达 `#resource-sync`（`/resource-sync` 转过来的）时，它上面那几份懒取的读数也一并等齐，
+免得滚到位之后又被撑下去。
 
 端点字符串在 `frontend/src` 里只许出现一次，就在这一页的数据模块里
 （`src/react/quality-goals/quality-goals.ts`）。要拦的是「两个地方各写一遍这条 URL」。
