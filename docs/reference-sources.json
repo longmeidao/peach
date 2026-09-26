@@ -393,9 +393,101 @@
         "ref": "refs/heads/main",
         "revision": "c3c0e41d21f4ae6538217a2c5d5dd12de0a2bb68"
       },
-      "role": "同类本地馆藏管理器的信息组织：人物页三个直达入口、本地作品与作品总数并列、页头的数据质量计数。源码未公开（README 自己写着这一条），结论来自 README 与它挂的 5 张演示图，加上论坛帖里 8 张真实截图的测读；截图给不出可哈希的上游字节，登记的是 README 本体。Peach 不复制它的界面，只取这三处的组织方式。",
+      "role": "同类本地馆藏管理器的信息组织：人物页三个直达入口、本地作品与作品总数并列、页头的数据质量计数。源码未公开（README 自己写着这一条），结论来自 README 与它挂的 5 张演示图，加上论坛帖里 8 张真实截图的测读；截图给不出可哈希的上游字节，登记的是 README 本体。Peach 不复制它的界面，只取这三处的组织方式。README 另取它的页头链接行、粗体引导的主要功能短列表和「问题反馈要附什么、遮盖什么」的写法。",
       "consumers": [
-        "docs/HANDOFF.md"
+        "docs/HANDOFF.md",
+        "README.md",
+        "README.en.md"
+      ]
+    },
+    {
+      "id": "readme-openaver",
+      "name": "OpenAver 说明",
+      "url": "https://raw.githubusercontent.com/slive777/OpenAver/main/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-openaver.md",
+      "checked_on": "2026-09-26",
+      "sha256": "b3ed679a14afa9483ac83c7aa8d907c7e1bf588a7439c445dac810f8952f2cfe",
+      "git": {
+        "repository": "https://github.com/slive777/OpenAver.git",
+        "ref": "refs/heads/main",
+        "revision": "7ebc659c3806a870e1edfa26beedfecfd0508580"
+      },
+      "role": "同类本地影片管理器的 README 信息结构：页头几条粗体承诺、规格速览表、截图表与常见问题。Peach 只借结构，不复制文案、截图、功能承诺与免责声明条款。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
+      ]
+    },
+    {
+      "id": "readme-amane",
+      "name": "amane 说明",
+      "url": "https://raw.githubusercontent.com/sqzw-x/amane/main/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-amane.md",
+      "checked_on": "2026-09-26",
+      "sha256": "ccb5d984e258a689389df70d117b8bddd31e1eded466f98db18f4a2d9db73cd2",
+      "git": {
+        "repository": "https://github.com/sqzw-x/amane.git",
+        "ref": "refs/heads/main",
+        "revision": "56ff8b49a014832fa49a3d6345a31da16c778bda"
+      },
+      "role": "同类项目的极简 README：一行一个功能、安装只给入口、开发说明压到最后。Peach 只借篇幅控制，不复制文案。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
+      ]
+    },
+    {
+      "id": "readme-stash",
+      "name": "Stash 说明",
+      "url": "https://raw.githubusercontent.com/stashapp/stash/develop/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-stash.md",
+      "checked_on": "2026-09-26",
+      "sha256": "9919670b3e5813dcd1175cc0fe3cf0fcf5092aa8a2e17446b22d2d7d32eeeb98",
+      "git": {
+        "repository": "https://github.com/stashapp/stash.git",
+        "ref": "refs/heads/develop",
+        "revision": "b6b09dd5fd9b6be6e36deb3d20bc5c4cf52450a6"
+      },
+      "role": "自托管成人馆藏应用的 README：一句定位加大截图、演示视频入口、首次运行的未签名提示与 FFmpeg 说明。Peach 只借这几处的位置，不复制文案与截图。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
+      ]
+    },
+    {
+      "id": "readme-metatube",
+      "name": "MetaTube Jellyfin 插件说明",
+      "url": "https://raw.githubusercontent.com/metatube-community/jellyfin-plugin-metatube/main/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-metatube.md",
+      "checked_on": "2026-09-26",
+      "sha256": "71548894457ccba2c55665923c179e0711b69e75e5ecf3c75d64cc747c281113",
+      "git": {
+        "repository": "https://github.com/metatube-community/jellyfin-plugin-metatube.git",
+        "ref": "refs/heads/main",
+        "revision": "f7c1f336fc2bd3b35b82af7c6e69da09a196e3d2"
+      },
+      "role": "同类元数据插件的 README：功能一行一条、详细说明全部链到文档。Peach 只借「README 不展开细节」的做法。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
+      ]
+    },
+    {
+      "id": "readme-mdcx",
+      "name": "MDCx 说明",
+      "url": "https://raw.githubusercontent.com/sqzw-x/mdcx/master/README.md",
+      "snapshot": "docs/reference-snapshots/upstream/readme-mdcx.md",
+      "checked_on": "2026-09-26",
+      "sha256": "d3a1f722660278be9f65e102e627c65d197aaa1460a2346b3d49aacc8f0307c7",
+      "git": {
+        "repository": "https://github.com/sqzw-x/mdcx.git",
+        "ref": "refs/heads/master",
+        "revision": "58e3f930f2e864fceb8a53ceef818716e2a6413d"
+      },
+      "role": "同类刮削器的 README：上游项目谱系与致谢写法。Peach 只借致谢的位置，不复制附加使用条款。",
+      "consumers": [
+        "README.md",
+        "README.en.md"
       ]
     },
     {
