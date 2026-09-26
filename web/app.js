@@ -14,7 +14,7 @@ import { tagLabel } from './js/tags.js';
 import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
-import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml, scanCardSkeletonHtml, repairCardSkeletonHtml, cloudLocations, cloudPreferenceLocations } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -1076,13 +1076,12 @@ const srcBadge=(loc,cost,cls)=>{const label=`${LOC[loc]||loc}${cost==='metered'?
 const emptyState=emptyStateHtml;
 let runtimeConfigurable=null;
 
-/* Toast：挂在 #toasts（body 直下）而不是 #stats 里——检查完会整页重画，
-   页内浮层会被冲掉，这里不会。对齐 Geist 的处方（取证见
-   docs/reference-snapshots/vercel-geist-toast.md）：只做用户主动动作的
-   非阻塞回执，自动消失；hover 暂停计时，右上角关闭。回执可以带一个
-   明确的后续动作（action.label + action.run）：光摆数字会让用户去找
-   「哪里能点」，Geist 的做法是给一个具名的下一步。失败这类必须跟进的
-   事只发一句短 toast，原因和恢复入口留在页面里的持久行上。 */
+/* Toast：Sonner 的栈（`frontend/src/react/toaster.tsx`），挂在 #toasts（body 直下）而不是
+   #stats 里——检查完会整页重画，页内浮层会被冲掉，这里不会。用法照 Geist 的处方（取证见
+   docs/reference-snapshots/vercel-geist-toast.md）：只做用户主动动作的非阻塞回执，自动
+   消失。回执可以带一个明确的后续动作（action.label + action.run）：光摆数字会让用户去找
+   「哪里能点」，Geist 的做法是给一个具名的下一步。失败这类必须跟进的事只发一句短 toast，
+   原因和恢复入口留在页面里的持久行上。 */
 /* Toast 的正文只接 `{text}`（转义后插入）或 `{html}`（原样插入）。
 
    签名不接裸字符串：那样「这是文本还是 HTML」全靠调用点自己记得 `esc()`，而
@@ -1095,51 +1094,30 @@ const toastBody=message=>message&&typeof message==='object'&&'html' in message
   : esc(message&&typeof message==='object'?(message.text??''):message??'');
 /* 音效按通知表达的状态分三档：成功、警告、失败。默认由 `warn` 取成功或失败；事情
    做完了但有一部分要留意（几个来源失败、筛出来没有能放的）的传 `sound:'warning'`。 */
+let toastSeq=0;
 const toast=(message,{timeout=6000,warn=false,action=null,sound=null}={})=>{
-  const root=$('#toasts');
-  const item=document.createElement('div');
-  item.className='toast'+(warn?' warn':'');
-  const initial=toastBody(message);
-  const paint=(body,alert)=>{
-    item.classList.toggle('warn',!!alert);
-    item.setAttribute('role',alert?'alert':'status');
+  const id=`toast-${++toastSeq}`;
+  const show=(body,alert,duration,next)=>{
     playUiSound(sound||(alert?'error':'success'));
-    /* 成功那一枚勾自己画出来：从下方荡上来、转正、从模糊里清晰，笔画随后走完。
-       保存配置、复核判定这些写操作的回执全走这一条，确认反馈只此一处。
-       失败那一枚不画——错误要的是立刻看清，不是等一段动画。 */
-    item.innerHTML=`<span class="board-notification-icon${alert?'':' checkdraw'}" aria-hidden="true">${icon(alert?'circle-alert':'check')}</span><p>${body}</p>${
-      action&&!alert&&body===initial?`<button class="tact">${esc(action.label)}</button>`:''
-      }<button class="tclose" title="关闭" aria-label="关闭提示">${icon('x')}</button>`;
-    item.querySelector('.tclose').onclick=close;
-    const act=item.querySelector('.tact');
-    if(act)act.onclick=()=>{setActionBusy(act);action.run()};
+    showToast($('#toasts'),{success:icon('check'),error:icon('circle-alert')},id,{html:body,alert:!!alert,timeout:duration,
+      action:next&&!alert?{label:next.label,run:button=>{setActionBusy(button);next.run()}}:null});
   };
-  let timer=null,remaining=timeout,started=0,hovered=false,focused=false;
-  /* 收起前先把当前高度写死再过渡到 0。直接 remove() 会让这一格瞬间消失，
-     栈里剩下的 toast 一次跳过来，正是撤销那一下最明显的抖动。 */
-  const close=()=>{clearTimeout(timer);
-    item.style.height=`${item.offsetHeight}px`;item.getBoundingClientRect();
-    item.classList.add('leaving');setTimeout(()=>item.remove(),200)};
-  const arm=()=>{if(timeout&&!hovered&&!focused&&timer===null){started=Date.now();timer=setTimeout(close,remaining)}};
-  const pause=()=>{if(timer!==null){clearTimeout(timer);timer=null;remaining=Math.max(0,remaining-(Date.now()-started))}};
-  /* 倒计时条只看这条 toast 会不会自己消失，判据到此为止。这一行排在 `root.prepend`
-     前面：再搭一个标识符上去，它哪天没了定义就是 ReferenceError，整条 toast 连挂都挂
-     不上去——症状是写操作成功了，页面上什么都不出现。 */
-  const progress=()=>{if(timeout){const bar=document.createElement('span');bar.className='board-notification-timer';bar.setAttribute('aria-hidden','true');bar.style.setProperty('--notification-duration',`${timeout}ms`);item.append(bar)}};
-  /* 结果就写在同一条 toast 上。「关掉回执 + 另发一条已撤销」会让两条在同一个
+  show(toastBody(message),warn,timeout,action);
+  /* 结果就写在同一条 toast 上（同一个 id）。「关掉回执 + 另发一条已撤销」会让两条在同一个
      底部对齐的栈里一进一出，看上去就是整块跳了一下。 */
-  item.replaceMessage=(body,{warn:alert=false,timeout:next=4000}={})=>{
-    clearTimeout(timer);timer=null;paint(toastBody(body),alert);timeout=next;remaining=next;progress();arm()};
-  paint(initial,warn);
-  progress();
-  item.addEventListener('mouseenter',()=>{hovered=true;pause()});
-  item.addEventListener('mouseleave',()=>{hovered=false;arm()});
-  item.addEventListener('focusin',()=>{focused=true;pause()});
-  item.addEventListener('focusout',event=>{focused=item.contains(event.relatedTarget);arm()});
-  root.prepend(item);arm();
-  while(root.children.length>4)root.lastElementChild.remove();
-  return item;
+  return {replaceMessage:(body,{warn:alert=false,timeout:next=4000}={})=>show(toastBody(body),alert,next,null)};
 };
+/* 教程卡和 Toast 都停在右下角。卡在屏幕上时，把 Toast 栈的底边抬到卡的上沿之上，回执不压在
+   教程上；卡几乎占满一屏时（手机上展开那一版）不抬，免得回执被顶出视口，照旧盖在卡上面。
+   位置写在 #toasts 自己身上：高频改的变量挂在 html 上会让整棵树重算样式。 */
+const liftToastsOverTutorial=()=>{
+  const card=$('#postSetupTutorial'),host=$('#toasts');
+  const top=card.hidden?innerHeight:card.getBoundingClientRect().top;
+  if(card.hidden||!card.offsetHeight||top<160)host.style.removeProperty('--toast-bottom');
+  else host.style.setProperty('--toast-bottom',`${Math.round(innerHeight-top+12)}px`);
+};
+new ResizeObserver(liftToastsOverTutorial).observe($('#postSetupTutorial'));
+addEventListener('resize',liftToastsOverTutorial);
 
 /* 所有可逆写操作共用同一种回执：只在请求真正完成后报过去时结果，撤销入口
    保留 8 秒。撤销本身也是一次真实写入，失败时另报一条短错误，不能把本地 UI

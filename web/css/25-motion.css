@@ -69,7 +69,7 @@
   to{opacity:1;transform:rotate(0);filter:blur(0)}}
 @keyframes check-bob{from{translate:0 14px}to{translate:0 0}}
 @keyframes check-draw{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
-.checkdraw>svg{stroke-dasharray:24;
+[data-toast-glyph=draw]>svg{stroke-dasharray:24;
   animation:check-settle var(--board-motion) backwards,
     check-bob calc(var(--spring-press-ms)*1ms) var(--spring-press) backwards,
     check-draw var(--board-motion) var(--motion-stagger) backwards}

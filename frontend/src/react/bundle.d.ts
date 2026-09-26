@@ -340,3 +340,20 @@ export interface ReactPages {
 }
 
 export declare const pages: ReactPages;
+
+/** 全站 Toast 的两枚字形，遗留层 `icon()` 画好的 SVG 片段。 */
+export interface ToastIcons { success: string; error: string }
+
+/** 一条回执。`html` 已由遗留层的 `toastBody` 按调用点的声明转义或原样放行。 */
+export interface ToastRequest {
+  html: string;
+  alert: boolean;
+  /** 毫秒；0 表示不自己消失。 */
+  timeout: number;
+  action: { label: string; run(button: HTMLButtonElement): void } | null;
+}
+
+/** 在 `host` 上挂全站唯一的 Toaster；重复调用是空操作。 */
+export declare function mountToaster(host: Element, icons: ToastIcons): void;
+/** 发出一条回执；同一个 `id` 再调一次就是改写那一条。 */
+export declare function showToast(id: string, request: ToastRequest): void;

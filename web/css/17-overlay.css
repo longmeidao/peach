@@ -1,35 +1,24 @@
-/* ── Toast：Geist 的非阻塞回执 ──
-   右下角浮层，自动消失，hover 暂停计时，右上角关闭。挂在 body 直下
-   （#stats 外），整页重画冲不掉。行为取证见 docs/reference-snapshots/
-   vercel-geist-toast.md；量纲沿用本站实测 Geist 的那一套：8px 圆角、
-   发丝边、比页面亮一档的表面。warn 态加一圈红边和图标，但失败的原因
-   仍以页内持久行为准——toast 只负责提一句。 */
-/* 行距用每条自己的上外边距，不用容器 gap：收起时高度和外边距一起过渡到 0，
-   栈才收得平顺；gap 是容器的，收不掉。 */
-.toasts{position:fixed;right:16px;bottom:22px;z-index:var(--layer-popover);display:grid;
-  justify-items:end;pointer-events:none}
-.toast{pointer-events:auto;box-sizing:border-box;display:flex;align-items:center;gap:9px;
-  width:min(440px,calc(100vw - 32px));margin-top:8px;padding:11px 10px 11px 13px;
-  border:1px solid var(--line);border-radius:var(--surface-radius);background:var(--surface);color:var(--ink);
-  font-size:var(--fs-sm);line-height:1.6;box-shadow:0 2px 4px #0003,0 24px 80px #000b;
-  animation:toast-in .18s ease}
-@keyframes toast-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.toast.warn{border-color:color-mix(in srgb,var(--drop) 38%,var(--line))}
-.toast.warn>svg{width:15px;height:15px;flex:none;stroke:var(--drop);fill:none;
-  stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.toast p{flex:1;margin:0;min-width:0}
-.toast b{font-variant-numeric:tabular-nums}
-/* 动作是具名的下一步（去看更新），文字按钮跟正文同行；关闭才是 24px 图标位。 */
-.toast .tact{flex:none;border:0;background:none;padding:0;
-  color:var(--ink);font:inherit;font-size:var(--fs-sm);cursor:pointer}
-.toast .tact:hover{color:var(--ink-2)}
-.toast .tact[aria-busy="true"]{color:var(--muted);cursor:default}
-.toast .tclose{flex:none;width:24px;height:24px;padding:0;border:0;border-radius:var(--control-radius);
-  background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer}
-.toast .tclose:hover{background:var(--hover);color:var(--ink)}
-.toast .tclose svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
-.toast.leaving{height:0!important;margin-top:0;padding-block:0;border-block-width:0;opacity:0;overflow:hidden;
-  transition:height .18s ease,margin .18s ease,padding .18s ease,border-width .18s ease,opacity .12s ease}
+/* ── Toast：Sonner 的栈，Board 的面 ──
+   堆叠、悬停展开、滑动关闭与悬停暂停计时照 Sonner（`frontend/src/react/toaster.tsx`）；面、线、
+   圆角、阴影和字取 Board 浮层那一套，和菜单、教程卡是同一种东西。颜色变量写在每条 toast
+   自己身上，压过 Sonner 按浅色主题挂在栈上的那一组，两档主题都跟着 Board token 走。
+   层级回到站内的 popover 档：Sonner 自带的九位数会连 tooltip 一起盖住。 */
+#toasts [data-sonner-toaster]{z-index:var(--layer-popover);font:var(--board-body)}
+#toasts [data-sonner-toast][data-styled=true]{--normal-bg:var(--color-background-primary-default);
+  --normal-border:var(--color-border-button-default);--normal-text:var(--color-text-primary);
+  gap:10px;border-radius:var(--floating-radius);font:var(--board-body);
+  box-shadow:0 12px 24px -4px light-dark(#0000001a,#0000008c),0 4px 8px -2px light-dark(#0000000d,#00000073)}
+#toasts [data-sonner-toast] [data-title]{font-weight:500}
+#toasts [data-sonner-toast] b{font-variant-numeric:tabular-nums}
+/* 字形用全站那套描边件：成功是主色的勾，失败是警示色的圈。不写 `fill:none` 就按 `fill` 的
+   初值涂黑，一个勾会糊成实心箭头；圆线帽是感叹号那一点的全部，平头线帽下它就消失。 */
+#toasts [data-toast-glyph]{display:contents;color:var(--color-accent-600)}
+#toasts [data-type=error] [data-toast-glyph]{color:var(--drop)}
+#toasts [data-toast-glyph] svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round}
+#toasts [data-sonner-toast] [data-close-button]:hover{background:var(--color-background-primary-hover);
+  border-color:var(--color-border-button-hover)}
+#toasts [data-sonner-toast] [data-button][aria-busy=true]{opacity:.6;cursor:default}
 .mixgrouplabel{display:flex;align-items:center;gap:8px;margin:12px 10px 6px;color:var(--ink);
   font-size:var(--fs-xs);font-weight:600}
 .mixgrouplabel:first-child{margin-top:4px}

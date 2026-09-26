@@ -37,7 +37,7 @@
      --badge-radius:状态与元信息标记。把「WIP」「最长」这种普通元信息做成整圆胶囊，
      是 vercel-report-design 点名要拒绝的反射：它们会跟真标签抢同一种视觉身份，
      用户以为可以点。
-     --surface-radius:不浮起的内嵌表面——缩略图、行卡片、Note、Toast、分段器外框，介于控件与浮层之间。
+     --surface-radius:不浮起的内嵌表面——缩略图、行卡片、Note、分段器外框，介于控件与浮层之间。
      除这五个 token、50% 和 0 之外不写字面圆角；带边框容器里的头尾条用 calc(… - 1px) 保持同心。
      字重同理只有 400／500／600 三档：vercel.com/design.md 明说不要自造数字字重，650、700 全部收到 600。 */
   --pill-radius:999px; --tag-radius:var(--pill-radius);
