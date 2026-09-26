@@ -2525,6 +2525,9 @@ describe('设计决定', () => {
           return {
             tabs: [...document.querySelectorAll('#searchMenu [role="tab"]')].map((tab) => tab.textContent!.trim()),
             tracks: getComputedStyle(results).gridTemplateColumns.split(' ').filter((track) => track !== 'none').length,
+            divider: getComputedStyle(results, '::before').content,
+            dividerHeight: parseFloat(getComputedStyle(results, '::before').height),
+            resultsHeight: results.getBoundingClientRect().height,
             right: columns.at(-1)!.querySelector('.searchgroup')?.getAttribute('data-kind'),
             videoGrid: getComputedStyle(document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!).display,
             peeks: getComputedStyle(person.querySelector('.searchpeeks')!).display,
@@ -2537,6 +2540,11 @@ describe('设计决定', () => {
         });
         assert.deepEqual(shown.tabs, ['全部', '女优2', '厂牌1', '视频12'], '页签不是「全部」加各类命中数');
         assert.equal(shown.tracks, split ? 2 : 0, split ? '宽屏下拉没有分两栏' : '窄屏下拉不该分栏');
+        assert.equal(shown.divider, split ? '""' : 'none', split ? '宽屏两栏之间没有分隔线' : '窄屏一栏不该有分隔线');
+        if (split) {
+          assert.ok(Math.abs(shown.dividerHeight - shown.resultsHeight) <= 1,
+            `分隔线高 ${shown.dividerHeight}px，两栏高 ${shown.resultsHeight}px`);
+        }
         assert.equal(shown.right, 'asset', '视频不在最后一栏');
         assert.equal(shown.videoGrid, split ? 'grid' : 'block', split ? '宽屏视频没排成封面格' : '窄屏视频该一行一部');
         assert.equal(shown.peeks, split ? 'flex' : 'none', split ? '宽屏人名一行没摆近作' : '窄屏人名一行不摆近作');
@@ -2566,6 +2574,67 @@ describe('设计决定', () => {
       }
     });
   }
+
+  it('只看视频时封面格按列均分铺满整栏，每格有宽度上限', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', WIDE);
+    try {
+      const page = opened.page;
+      await stubSuggest(page);
+      await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+      await settle(page);
+      await page.locator('#q').fill(SUGGEST.q);
+      const menu = page.locator('#searchMenu');
+      await menu.locator('.searchperson').first().waitFor({ state: 'visible', timeout: 5_000 });
+      await menu.getByRole('tab', { name: /^视频/ }).click();
+      await page.waitForFunction(() => document.querySelectorAll('#searchMenu .searchgroup[data-kind]').length === 1);
+      const grid = await page.evaluate(() => {
+        const items = document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!;
+        const box = items.getBoundingClientRect();
+        const cards = [...items.querySelectorAll('.searchwork')].map((card) => card.getBoundingClientRect());
+        return {
+          rows: new Set(cards.map((card) => Math.round(card.top))).size,
+          widths: cards.map((card) => Math.round(card.width)),
+          slack: Math.round(box.right - cards.at(-1)!.right),
+        };
+      });
+      assert.equal(grid.rows, 1, '五部视频没排在同一行');
+      assert.ok(grid.slack <= 1, `封面格右侧空出 ${grid.slack}px`);
+      assert.ok(grid.widths.every((width) => width >= 96 && width <= 242), `封面宽度越出 96～242：${grid.widths.join('、')}`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('空输入时搜索记录与推荐并排，两栏之间的分隔线从顶画到底', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', WIDE);
+    try {
+      const page = opened.page;
+      const history = Array.from({ length: 10 }, (_, at) => `搜索记录 ${at + 1}`);
+      await page.route(/\/api\/search-history\?/, (route) => route.fulfill({ json: { items: history } }));
+      await page.reload({ waitUntil: 'load' });
+      await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+      await settle(page);
+      await page.locator('#q').click();
+      await page.locator('#searchMenu .searchresults[data-split]').waitFor({ state: 'visible', timeout: 5_000 });
+      const split = await page.evaluate(() => {
+        const results = document.querySelector('#searchMenu .searchresults')!;
+        const [left, right] = [...results.querySelectorAll(':scope > .searchcol')].map((col) => col.getBoundingClientRect());
+        const box = results.getBoundingClientRect();
+        const line = getComputedStyle(results, '::before');
+        return {
+          box: box.height, left: left.height, right: right.height, line: parseFloat(line.height),
+          offset: parseFloat(line.left) + parseFloat(line.width) / 2 - ((left.right + right.left) / 2 - box.left),
+        };
+      });
+      assert.ok(split.right < split.left, `推荐一栏（${split.right}px）应比十条搜索记录（${split.left}px）短`);
+      assert.ok(Math.abs(split.line - split.box) <= 1, `分隔线高 ${split.line}px，两栏高 ${split.box}px`);
+      assert.ok(Math.abs(split.offset) <= 1, `分隔线偏离两栏之间的缝 ${split.offset}px`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 
   it('资料表的标签只列前四个，余下的收进「+N」，浮层进顶层列全部标签', { timeout: 60_000 }, async () => {
     const opened = await openProfiledPerformer(browser, DESKTOP);
