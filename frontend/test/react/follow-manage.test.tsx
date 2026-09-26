@@ -878,6 +878,9 @@ const SUGGESTED: SuggestData = {
 const suggestCalls = (fetcher: ReturnType<typeof serve>) => fetcher.mock.calls
   .map(([input]) => String(input)).filter((url) => url.startsWith(`${FOLLOW_SUGGEST_URL}?`));
 
+/** 建议下拉挂在浮层容器里，不在页面那棵根下面，从整个文档找。 */
+const suggestMenu = () => document.querySelector<HTMLElement>('[aria-label="来源建议"]');
+
 async function typeAndWait(host: HTMLElement, text: string) {
   await focus(lookupField(host));
   await type(lookupField(host), text);
@@ -904,9 +907,11 @@ it('建议按服务端给的分组和次序列出，上下键选中再回车就�
   const { host, fetcher } = await open({ suggest: () => SUGGESTED }, { tab: 'add' });
   await typeAndWait(host, 'strau');
   // 行首是名字本身，见到它的站和站方分类只作旁注；组名每组只出现一次。
-  expect([...host.querySelectorAll('[aria-label="来源建议"] button')].map((row) => row.textContent))
+  // 只数下拉的直接子行：react-aria 还在末尾垫了一枚给读屏器的隐藏 Dismiss 键。
+  expect([...suggestMenu()!.querySelectorAll(':scope > button')].map((row) => row.textContent))
     .toEqual(['strauzek', 'Mr_Strauzkemono', 'strauss角色1,234', 'strausberg标签56']);
-  expect([...host.querySelectorAll('[aria-label="来源建议"] > div')].map((row) => row.textContent))
+  expect([...suggestMenu()!.querySelectorAll(':scope > div')]
+    .filter((row) => !row.querySelector('button')).map((row) => row.textContent))
     .toEqual(['已关注', '归档站的创作者', 'Rule34.xxx 标签']);
 
   await press(lookupField(host), 'ArrowDown');
@@ -920,7 +925,7 @@ it('鼠标点建议时查找框不失焦，点中的那个名字直接去查', a
   vi.useFakeTimers();
   const { host, fetcher } = await open({ suggest: () => SUGGESTED }, { tab: 'add' });
   await typeAndWait(host, 'strau');
-  const row = host.querySelector('[aria-label="来源建议"] button')!;
+  const row = suggestMenu()!.querySelector('button')!;
   const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
   await act(async () => { row.dispatchEvent(down) });
   expect(down.defaultPrevented).toBe(true);
@@ -945,11 +950,30 @@ it('站点还没回话时下拉里是一行等待，回车查的是框里敲的�
   vi.useFakeTimers();
   const { host, fetcher } = await open({ suggest: () => new Promise<SuggestData>(() => {}) }, { tab: 'add' });
   await typeAndWait(host, 'strau');
-  expect(host.querySelector('[aria-label="来源建议"]')?.textContent).toContain('正在查找建议');
+  expect(suggestMenu()?.textContent).toContain('正在查找建议');
   await press(lookupField(host), 'ArrowDown');
   await press(lookupField(host), 'Enter');
   await settle();
   expect(lookups(fetcher)).toEqual([{ lines: ['strau'], background: true }]);
+});
+
+it('Escape 收起下拉并放掉选中，回车查框里的字；再敲一个字下拉又开', async () => {
+  vi.useFakeTimers();
+  const { host, fetcher } = await open({ suggest: () => SUGGESTED }, { tab: 'add' });
+  await typeAndWait(host, 'strau');
+  await press(lookupField(host), 'ArrowDown');
+  await press(lookupField(host), 'Escape');
+  expect(suggestMenu()).toBeNull();
+  // 焦点一直在输入框里，上下键把它叫回来，但不顺手选中一行。
+  await press(lookupField(host), 'ArrowDown');
+  expect(suggestMenu()?.querySelector('[aria-current="true"]')).toBeNull();
+  await press(lookupField(host), 'Escape');
+  await typeAndWait(host, 'strauz');
+  expect(suggestMenu()).not.toBeNull();
+  await press(lookupField(host), 'Escape');
+  await press(lookupField(host), 'Enter');
+  await settle();
+  expect(lookups(fetcher)).toEqual([{ lines: ['strauz'], background: true }]);
 });
 
 // ── 来源和凭证 ──────────────────────────────────────────────────────────────

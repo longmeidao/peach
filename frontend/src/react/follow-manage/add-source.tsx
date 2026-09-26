@@ -6,7 +6,7 @@
  * 查找那一趟在后台跑，页面关掉也还在跑。首屏读到的旧终态不冒充新结果：只有本次点过
  * 查找、或者本次亲眼见过它在跑，结果才摆出来（ADR-0031）。 */
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, RefObject } from 'react';
 import { RiFilter3Line, RiSearchLine } from '@remixicon/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Dialog, Popover } from 'react-aria-components';
@@ -61,14 +61,28 @@ interface SuggestOption { value: string; matched: string; n: number; group: stri
  * 名字才是选中后要去查的东西，另外两样只帮人认出是不是他。
  *
  * 站上那一路要先问补全再问分类，实测一秒上下，这段时间得看得出在做事：空着像是敲了没反应。
- * 忙的那一行不是候选，上下键和回车这时不该选中一个「正在查找建议」。 */
+ * 忙的那一行不是候选，上下键和回车这时不该选中一个「正在查找建议」。
+ *
+ * 定位和来源筛选同一个 react-aria `Popover`：它把高度压到字段下方真正剩下的空间，
+ * 装不下就在菜单里滚。不翻到上方：每敲一个字建议条数都在变，翻来翻去读不成一张表。
+ * 非模态是为了焦点留在输入框；页面一滚走字段它就收起，菜单自己的滚动不收。 */
 function SuggestMenu(
-  { options, active, busy, onPick }:
-  { options: SuggestOption[]; active: number; busy: boolean; onPick(value: string): void },
+  { field, menu, options, active, busy, onPick, onClose }:
+  {
+    field: RefObject<HTMLDivElement | null>; menu: RefObject<HTMLElement | null>;
+    options: SuggestOption[]; active: number; busy: boolean;
+    onPick(value: string): void; onClose(): void;
+  },
 ) {
+  // 上下键走到菜单可见区外的那一行，把它滚进来；菜单外的页面不动。
+  useEffect(() => {
+    menu.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [menu, active]);
   return (
-    <div aria-label="来源建议"
-      className={cx(MENU_POPOVER_SURFACE, 'absolute top-full z-10 mt-1 flex w-full flex-col gap-1')}>
+    <Popover ref={menu} triggerRef={field} isOpen isNonModal shouldFlip={false}
+      onOpenChange={(open) => { if (!open) onClose() }}
+      placement="bottom start" offset={4} aria-label="来源建议"
+      className={cx(MENU_POPOVER_SURFACE, 'flex w-(--trigger-width) flex-col gap-1 overscroll-contain')}>
       {busy && !options.length
         ? <div className="px-2 py-1.5"><LoadingDots label="正在查找建议" /></div>
         : null}
@@ -95,7 +109,7 @@ function SuggestMenu(
           </button>
         </Fragment>
       ))}
-    </div>
+    </Popover>
   );
 }
 
@@ -211,7 +225,11 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
   const [asked, setAsked] = useState('');
   const [term, setTerm] = useState('');
   const [focused, setFocused] = useState(false);
+  /** 在这段输入上收起过下拉（Escape、页面滚走）。再敲一个字或按上下键就重新打开。 */
+  const [closedAt, setClosedAt] = useState<string | null>(null);
   const [active, setActive] = useState(-1);
+  const field = useRef<HTMLDivElement>(null);
+  const menu = useRef<HTMLElement>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set<string>());
   const [unpicked, setUnpicked] = useState<ReadonlySet<string>>(new Set<string>());
   const [problem, setProblem] = useState('');
@@ -260,12 +278,18 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
     resolve.mutate(query);
   };
 
+  const suggesting = suggest.isFetching;
+  const menuOpen = focused && closedAt !== line && (options.length > 0 || suggesting);
+  // 收起的同时放掉选中：看不见的那一行不该被回车选去查。
+  const closeMenu = () => { setActive(-1); setClosedAt(line) };
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.nativeEvent.isComposing) return;
-    if (event.key === 'Escape' && options.length) { setActive(-1); setFocused(false); return }
+    if (event.key === 'Escape' && menuOpen) { closeMenu(); return }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (!options.length) return;
       event.preventDefault();
+      if (!menuOpen) { setClosedAt(null); return }
       const step = event.key === 'ArrowDown' ? 1 : -1;
       setActive((now) => {
         const next = now + step;
@@ -320,8 +344,6 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
 
   const guesses = data.suggestions || [];
   const byName = !asked.includes('/');
-  const suggesting = suggest.isFetching;
-  const menuOpen = focused && (options.length > 0 || suggesting);
 
   return (
     /* 旧 `.followmanage .fmain>.fsec`：一块分区就是一张填充卡，标题在卡里。 */
@@ -329,18 +351,21 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
       <h3 className="text-title-2-medium text-text-primary">添加关注</h3>
 
       <div className="flex flex-wrap items-end gap-2">
-        {/* 焦点离开的是整块字段才收下拉，不是离开输入框就收：下拉里的每一条都是真的按钮，
-            键盘走得进去，输入框一失焦就收的话，那一下正好把要点的东西撤走。 */}
-        <div className="relative min-w-64 grow" onFocus={() => setFocused(true)}
+        {/* 焦点离开的是字段和下拉两处才收，不是离开输入框就收：下拉里的每一条都是真的按钮，
+            焦点落进去的那一下收掉的话，正好把要点的东西撤走。下拉挂在浮层容器里，不在
+            字段的 DOM 下面，所以两处分开认。 */}
+        <div ref={field} className="min-w-64 grow" onFocus={() => setFocused(true)}
           onBlur={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+            const next = event.relatedTarget;
+            if (!event.currentTarget.contains(next) && !menu.current?.contains(next)) setFocused(false);
           }}>
           <Input aria-label="来源链接、名字或 id" placeholder={PLACEHOLDER} value={line}
             leadingIcon={RiSearchLine} isDisabled={readOnly} onChange={setLine}
             onKeyDown={onKeyDown} />
-          {menuOpen
-            ? <SuggestMenu options={options} active={active} busy={suggesting} onPick={search} />
-            : null}
+          {menuOpen ? (
+            <SuggestMenu field={field} menu={menu} options={options} active={active}
+              busy={suggesting} onPick={search} onClose={closeMenu} />
+          ) : null}
         </div>
         <SourceFilter credentials={credentials} hidden={hidden} onHidden={setHidden}
           openCredentials={openCredentials} />

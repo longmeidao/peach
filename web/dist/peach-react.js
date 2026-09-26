@@ -32106,37 +32106,49 @@ function xA({ source: e }) {
 //#endregion
 //#region src/react/follow-manage/add-source.tsx
 var SA = cw(Zk, Qk, "text-body-2-medium"), iie = "粘贴来源链接，或输入创作者名、id…", aie = "查找中…（首次按名字查要下载创作者索引，可能几十秒）", oie = "识别中…", sie = "站内没有查到来源", CA = (e, t) => `${e}:${t.url}`;
-function cie({ options: e, active: t, busy: n, onPick: r }) {
-	return /* @__PURE__ */ (0, D.jsxs)("div", {
+function cie({ field: e, menu: t, options: n, active: r, busy: i, onPick: a, onClose: o }) {
+	return (0, E.useEffect)(() => {
+		t.current?.querySelector("[aria-current=\"true\"]")?.scrollIntoView({ block: "nearest" });
+	}, [t, r]), /* @__PURE__ */ (0, D.jsxs)(PE, {
+		ref: t,
+		triggerRef: e,
+		isOpen: !0,
+		isNonModal: !0,
+		shouldFlip: !1,
+		onOpenChange: (e) => {
+			e || o();
+		},
+		placement: "bottom start",
+		offset: 4,
 		"aria-label": "来源建议",
-		className: cw(Xk, "absolute top-full z-10 mt-1 flex w-full flex-col gap-1"),
-		children: [n && !e.length ? /* @__PURE__ */ (0, D.jsx)("div", {
+		className: cw(Xk, "flex w-(--trigger-width) flex-col gap-1 overscroll-contain"),
+		children: [i && !n.length ? /* @__PURE__ */ (0, D.jsx)("div", {
 			className: "px-2 py-1.5",
 			children: /* @__PURE__ */ (0, D.jsx)(yw, { label: "正在查找建议" })
-		}) : null, e.map((n, i) => /* @__PURE__ */ (0, D.jsxs)(E.Fragment, { children: [n.group === e[i - 1]?.group ? null : /* @__PURE__ */ (0, D.jsx)("div", {
+		}) : null, n.map((e, t) => /* @__PURE__ */ (0, D.jsxs)(E.Fragment, { children: [e.group === n[t - 1]?.group ? null : /* @__PURE__ */ (0, D.jsx)("div", {
 			className: "px-2 pt-1 text-caption-1-regular text-text-tertiary",
-			children: n.group
+			children: e.group
 		}), /* @__PURE__ */ (0, D.jsxs)("button", {
 			type: "button",
-			"aria-current": i === t ? "true" : void 0,
-			className: i === t ? cw(SA, "bg-background-secondary-default") : SA,
+			"aria-current": t === r ? "true" : void 0,
+			className: t === r ? cw(SA, "bg-background-secondary-default") : SA,
 			onMouseDown: (e) => e.preventDefault(),
-			onClick: () => r(n.value),
+			onClick: () => a(e.value),
 			children: [
 				/* @__PURE__ */ (0, D.jsx)("span", {
 					className: "min-w-0 grow truncate text-left",
-					children: n.value
+					children: e.value
 				}),
-				n.matched ? /* @__PURE__ */ (0, D.jsx)("span", {
+				e.matched ? /* @__PURE__ */ (0, D.jsx)("span", {
 					className: "shrink-0 text-caption-1-regular text-text-tertiary",
-					children: n.matched
+					children: e.matched
 				}) : null,
-				n.n ? /* @__PURE__ */ (0, D.jsx)("span", {
+				e.n ? /* @__PURE__ */ (0, D.jsx)("span", {
 					className: "shrink-0 text-caption-1-regular tabular-nums text-text-tertiary",
-					children: n.n.toLocaleString()
+					children: e.n.toLocaleString()
 				}) : null
 			]
-		})] }, `${n.group}-${n.value}`))]
+		})] }, `${e.group}-${e.value}`))]
 	});
 }
 function lie({ credentials: e, hidden: t, onHidden: n, openCredentials: r }) {
@@ -32259,7 +32271,7 @@ function uie({ row: e, at: t, hidden: n, unpicked: r, onPick: i }) {
 	});
 }
 function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: i }) {
-	let [a, o] = (0, E.useState)(""), [s, c] = (0, E.useState)(""), [l, u] = (0, E.useState)(""), [d, f] = (0, E.useState)(!1), [p, m] = (0, E.useState)(-1), [h, g] = (0, E.useState)(/* @__PURE__ */ new Set()), [_, v] = (0, E.useState)(/* @__PURE__ */ new Set()), [y, b] = (0, E.useState)(""), [x, S] = (0, E.useState)(0);
+	let [a, o] = (0, E.useState)(""), [s, c] = (0, E.useState)(""), [l, u] = (0, E.useState)(""), [d, f] = (0, E.useState)(!1), [p, m] = (0, E.useState)(null), [h, g] = (0, E.useState)(-1), _ = (0, E.useRef)(null), v = (0, E.useRef)(null), [y, b] = (0, E.useState)(/* @__PURE__ */ new Set()), [x, S] = (0, E.useState)(/* @__PURE__ */ new Set()), [C, w] = (0, E.useState)(""), [T, O] = (0, E.useState)(0);
 	(0, E.useEffect)(() => {
 		let e = a.trim();
 		if (!e || e.includes("/")) {
@@ -32269,52 +32281,57 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 		let t = setTimeout(() => u(e), 250);
 		return () => clearTimeout(t);
 	}, [a]);
-	let C = ft({
+	let k = ft({
 		queryKey: _re(l),
 		queryFn: ({ signal: e }) => Mre(l, e),
 		enabled: l.length > 0 && d
-	}), w = (0, E.useMemo)(() => (C.data?.groups || []).flatMap((e) => e.items.map((t) => ({
+	}), A = (0, E.useMemo)(() => (k.data?.groups || []).flatMap((e) => e.items.map((t) => ({
 		value: t.value,
 		matched: t.matched || "",
 		n: t.n || 0,
 		group: e.label
-	}))), [C.data]), { job: T, running: O, outcome: k, start: A, dismiss: j } = eA({
+	}))), [k.data]), { job: j, running: M, outcome: N, start: P, dismiss: F } = eA({
 		queryKey: gre,
 		queryFn: ({ signal: e }) => jre(e),
 		start: (e) => Nre([e]),
-		onStarted: () => v(/* @__PURE__ */ new Set()),
-		onError: (e) => b(K(e)),
+		onStarted: () => S(/* @__PURE__ */ new Set()),
+		onError: (e) => w(K(e)),
 		onFinish: (e) => {
-			e.status === "failed" && b(e.error || "查找失败");
+			e.status === "failed" && w(e.error || "查找失败");
 		}
-	}), M = (e) => {
+	}), I = (e) => {
 		let t = e.trim();
-		!t || O || A.isPending || (b(""), m(-1), c(t), o(""), u(""), A.mutate(t));
-	}, N = (e) => {
+		!t || M || P.isPending || (w(""), g(-1), c(t), o(""), u(""), P.mutate(t));
+	}, ee = k.isFetching, te = d && p !== a && (A.length > 0 || ee), L = () => {
+		g(-1), m(a);
+	}, ne = (e) => {
 		if (!e.nativeEvent.isComposing) {
-			if (e.key === "Escape" && w.length) {
-				m(-1), f(!1);
+			if (e.key === "Escape" && te) {
+				L();
 				return;
 			}
 			if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-				if (!w.length) return;
-				e.preventDefault();
+				if (!A.length) return;
+				if (e.preventDefault(), !te) {
+					m(null);
+					return;
+				}
 				let t = e.key === "ArrowDown" ? 1 : -1;
-				m((e) => {
+				g((e) => {
 					let n = e + t;
-					return n < 0 ? w.length - 1 : n >= w.length ? 0 : n;
+					return n < 0 ? A.length - 1 : n >= A.length ? 0 : n;
 				});
 				return;
 			}
-			e.key === "Enter" && (e.preventDefault(), M(w[p]?.value || a));
+			e.key === "Enter" && (e.preventDefault(), I(A[h]?.value || a));
 		}
-	}, P = k?.results || [], F = P.flatMap((e, t) => (e.candidates || []).filter((e) => !e.known && !h.has(e.provider_label || "")).map((e) => ({
+	}, re = N?.results || [], ie = re.flatMap((e, t) => (e.candidates || []).filter((e) => !e.known && !y.has(e.provider_label || "")).map((e) => ({
 		candidate: e,
 		key: CA(t, e)
-	})).filter((e) => !_.has(e.key))), I = pt({
+	})).filter((e) => !x.has(e.key))), ae = pt({
 		mutationFn: async (e) => {
 			let t = [], n = [];
-			S(0);
+			O(0);
 			for (let r of e) {
 				try {
 					let e = await Fre(r.candidate);
@@ -32322,7 +32339,7 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 				} catch (e) {
 					t.push(`${r.candidate.label}：${K(e)}`);
 				}
-				S((e) => e + 1);
+				O((e) => e + 1);
 			}
 			if (n.length) try {
 				await Pk(n);
@@ -32336,13 +32353,13 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 		},
 		onSuccess: (e) => {
 			if (zk(), e.failures.length) {
-				b(e.failures.join("；"));
+				w(e.failures.join("；"));
 				return;
 			}
-			b(""), j(), r(`已添加 ${e.sources.length} 个关注来源`);
+			w(""), F(), r(`已添加 ${e.sources.length} 个关注来源`);
 		},
-		onError: (e) => b(K(e))
-	}), ee = e.suggestions || [], te = !s.includes("/"), L = C.isFetching, ne = d && (w.length > 0 || L);
+		onError: (e) => w(K(e))
+	}), oe = e.suggestions || [], se = !s.includes("/");
 	return /* @__PURE__ */ (0, D.jsxs)("div", {
 		className: _w({
 			padding: "none",
@@ -32357,10 +32374,12 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 				className: "flex flex-wrap items-end gap-2",
 				children: [
 					/* @__PURE__ */ (0, D.jsxs)("div", {
-						className: "relative min-w-64 grow",
+						ref: _,
+						className: "min-w-64 grow",
 						onFocus: () => f(!0),
 						onBlur: (e) => {
-							e.currentTarget.contains(e.relatedTarget) || f(!1);
+							let t = e.relatedTarget;
+							!e.currentTarget.contains(t) && !v.current?.contains(t) && f(!1);
 						},
 						children: [/* @__PURE__ */ (0, D.jsx)(IO, {
 							"aria-label": "来源链接、名字或 id",
@@ -32369,25 +32388,28 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 							leadingIcon: AS,
 							isDisabled: n,
 							onChange: o,
-							onKeyDown: N
-						}), ne ? /* @__PURE__ */ (0, D.jsx)(cie, {
-							options: w,
-							active: p,
-							busy: L,
-							onPick: M
+							onKeyDown: ne
+						}), te ? /* @__PURE__ */ (0, D.jsx)(cie, {
+							field: _,
+							menu: v,
+							options: A,
+							active: h,
+							busy: ee,
+							onPick: I,
+							onClose: L
 						}) : null]
 					}),
 					/* @__PURE__ */ (0, D.jsx)(lie, {
 						credentials: t,
-						hidden: h,
-						onHidden: g,
+						hidden: y,
+						onHidden: b,
 						openCredentials: i
 					}),
 					/* @__PURE__ */ (0, D.jsx)(G, {
 						variant: "primary",
 						disabled: n || !a.trim(),
-						...J(O || A.isPending),
-						onClick: () => M(a),
+						...J(M || P.isPending),
+						onClick: () => I(a),
 						children: "查找"
 					})
 				]
@@ -32395,28 +32417,28 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 			/* @__PURE__ */ (0, D.jsxs)("div", {
 				"aria-live": "polite",
 				className: "flex flex-col gap-3 empty:hidden",
-				children: [O || A.isPending ? T?.total ? /* @__PURE__ */ (0, D.jsx)(xw, {
-					label: T.message || `查找中：${T.checked || 0}/${T.total}`,
-					value: T.checked || 0,
-					max: T.total
-				}) : /* @__PURE__ */ (0, D.jsx)(yw, { label: te ? aie : oie }) : null, y ? /* @__PURE__ */ (0, D.jsx)(q, {
+				children: [M || P.isPending ? j?.total ? /* @__PURE__ */ (0, D.jsx)(xw, {
+					label: j.message || `查找中：${j.checked || 0}/${j.total}`,
+					value: j.checked || 0,
+					max: j.total
+				}) : /* @__PURE__ */ (0, D.jsx)(yw, { label: se ? aie : oie }) : null, C ? /* @__PURE__ */ (0, D.jsx)(q, {
 					tone: "error",
 					title: "这一次没有完成",
-					children: y
+					children: C
 				}) : null]
 			}),
-			P.length ? /* @__PURE__ */ (0, D.jsxs)("div", {
+			re.length ? /* @__PURE__ */ (0, D.jsxs)("div", {
 				className: "flex flex-col gap-3",
 				children: [
 					/* @__PURE__ */ (0, D.jsx)(fA, { children: "查找结果" }),
-					P.map((e, t) => /* @__PURE__ */ (0, D.jsx)(uie, {
+					re.map((e, t) => /* @__PURE__ */ (0, D.jsx)(uie, {
 						row: e,
 						at: t,
-						hidden: h,
-						unpicked: _,
+						hidden: y,
+						unpicked: x,
 						onPick: (e, t) => {
-							let n = new Set(_);
-							t ? n.delete(e) : n.add(e), v(n);
+							let n = new Set(x);
+							t ? n.delete(e) : n.add(e), S(n);
 						}
 					}, `${e.line}-${t}`)),
 					/* @__PURE__ */ (0, D.jsxs)("div", {
@@ -32425,37 +32447,37 @@ function die({ data: e, credentials: t, readOnly: n, toast: r, openCredentials: 
 							/* @__PURE__ */ (0, D.jsx)(G, {
 								variant: "primary",
 								size: "small",
-								disabled: n || !F.length,
-								...J(I.isPending),
-								onClick: () => I.mutate(F),
-								children: `添加选中（${F.length}）`
+								disabled: n || !ie.length,
+								...J(ae.isPending),
+								onClick: () => ae.mutate(ie),
+								children: `添加选中（${ie.length}）`
 							}),
 							/* @__PURE__ */ (0, D.jsx)(G, {
 								variant: "secondary",
 								size: "small",
-								onClick: () => j(),
+								onClick: () => F(),
 								children: "关闭"
 							}),
-							I.isPending ? /* @__PURE__ */ (0, D.jsx)("span", {
+							ae.isPending ? /* @__PURE__ */ (0, D.jsx)("span", {
 								role: "status",
 								className: "text-body-2-regular text-text-secondary",
-								children: `添加中… ${x}/${F.length}`
+								children: `添加中… ${T}/${ie.length}`
 							}) : null
 						]
 					})
 				]
 			}) : null,
-			ee.length ? /* @__PURE__ */ (0, D.jsxs)("div", {
+			oe.length ? /* @__PURE__ */ (0, D.jsxs)("div", {
 				className: "flex flex-wrap items-center gap-2",
 				children: [/* @__PURE__ */ (0, D.jsx)("span", {
 					className: "text-body-2-regular text-text-secondary",
 					children: "猜你喜欢"
-				}), ee.map((e) => /* @__PURE__ */ (0, D.jsx)(G, {
+				}), oe.map((e) => /* @__PURE__ */ (0, D.jsx)(G, {
 					variant: "secondary",
 					size: "small",
 					disabled: n,
 					title: `浏览历史里出现 ${e.visits} 次${e.origin ? ` · ${e.origin}` : ""}`,
-					onClick: () => M(e.name),
+					onClick: () => I(e.name),
 					children: e.name
 				}, e.name))]
 			}) : null

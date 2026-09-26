@@ -1665,6 +1665,69 @@ describe('设计决定', () => {
     }
   });
 
+  /* 建议由这里给，两组共 30 条，两个视口下字段下方都装不下。桌面取 1280×1000，
+     字段下缘在视口中段偏下，正是只能往下开、又放不全的那种处境。 */
+  for (const viewport of [{ ...DESKTOP, height: 1000 }, MOBILE]) {
+    it(`添加关注的建议下拉压在字段下方剩下的空间里，装不下在菜单内滚，选中行滚进可见区（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openFollowManage(browser, viewport);
+      try {
+        const { page } = opened;
+        await page.route(/\/api\/follow\/suggest\?/, (route) => route.fulfill({ json: {
+          q: 'bulging',
+          groups: [['归档站', 18], ['站方分类', 12]].map(([label, count]) => ({
+            kind: String(label), label,
+            items: Array.from({ length: Number(count) }, (_, at) => ({
+              value: `bulging ${label} ${at + 1}`, matched: 'Kemono', n: 120 - at,
+            })),
+          })),
+        } }));
+        await followTab(opened, '添加关注');
+        const before = await page.evaluate(() => document.documentElement.scrollHeight);
+        const input = page.getByRole('textbox', { name: '来源链接、名字或 id' });
+        await input.click({ timeout: 5_000 });
+        await input.fill('bulging');
+        const menu = page.locator('[aria-label="来源建议"]');
+        await menu.locator('button').nth(29).waitFor({ state: 'attached', timeout: 10_000 });
+        const measure = () => menu.evaluate((element) => {
+          for (const animation of element.getAnimations({ subtree: true })) animation.finish();
+          const box = element.getBoundingClientRect();
+          const field = element.ownerDocument.querySelector('input[aria-label="来源链接、名字或 id"]')!
+            .getBoundingClientRect();
+          const row = element.querySelector('[aria-current="true"]')?.getBoundingClientRect();
+          return {
+            top: box.top, bottom: box.bottom, fieldBottom: field.bottom, viewport: innerHeight,
+            overflowing: element.scrollHeight > element.clientHeight,
+            overscroll: getComputedStyle(element).overscrollBehaviorY,
+            page: document.documentElement.scrollHeight, pageWidth: document.documentElement.scrollWidth,
+            width: innerWidth, y: scrollY,
+            row: row ? { top: row.top, bottom: row.bottom } : null,
+          };
+        });
+        const open = await measure();
+        assert.ok(open.bottom <= open.viewport + .5, `下拉底边 ${open.bottom} 越出视口 ${open.viewport}`);
+        assert.ok(open.top >= open.fieldBottom, `下拉上沿 ${open.top} 盖住了字段（下缘 ${open.fieldBottom}）`);
+        assert.ok(open.overflowing, '30 条建议没有让下拉溢出，这条用例没练到内滚');
+        assert.equal(open.overscroll, 'contain', '下拉滚到头会带着页面一起滚');
+        assert.ok(open.page <= before, `下拉把页面从 ${before} 撑到 ${open.page}`);
+        assert.ok(open.pageWidth <= open.width, `页面被撑出横向滚动：${open.pageWidth} > ${open.width}`);
+
+        // 走到最后一条：它在初始可见区外面，得被滚进来，页面本身不动。
+        for (let step = 0; step < 30; step++) await input.press('ArrowDown');
+        const last = await measure();
+        assert.ok(last.row, '上下键没有选中任何一行');
+        assert.ok(last.row.top >= last.top - .5 && last.row.bottom <= last.bottom + .5,
+          `选中行 ${last.row.top}–${last.row.bottom} 不在下拉可见区 ${last.top}–${last.bottom} 内`);
+        assert.equal(last.y, open.y, '选中行滚进可见区时把页面也滚了');
+        await input.press('ArrowDown');
+        const first = await measure();
+        assert.ok(first.row && first.row.top >= first.top - .5, '绕回第一条后它没有滚回可见区');
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
   it('凭据的四种处境四副底色：待办和完成一眼分得开', { timeout: 60_000 }, async () => {
     const opened = await openFollowManage(browser);
     try {
