@@ -1098,6 +1098,29 @@ describe('设计决定', () => {
     }
   });
 
+  it('首页也有大图／小图：默认小图，大图只拉长番号卡，选择单独记住', { timeout: 60_000 }, async () => {
+    /* 演示库没有番号作品，给首张卡挂一个；第二张保持普通视频，看它不跟着拉长。 */
+    const opened = await openCatalogFixture(browser, (payload) => {
+      Object.assign(payload.items[0], { is_jav: true, code: 'ABC-123', display_code: 'ABC-123', has_cover: true });
+    });
+    const { page } = opened;
+    const ratio = (index: number) => page.locator('#grid article.card[data-id]').nth(index).locator('.pic')
+      .evaluate((element) => element.getBoundingClientRect().width / element.getBoundingClientRect().height);
+    const choice = (value: string) => page.locator(`#count input[name="home-layout"][value="${value}"]`);
+    try {
+      assert.equal(await choice('small').isChecked(), true, '首页版式默认不是小图');
+      assert.ok(Math.abs(await ratio(0) - 16 / 9) < 0.05, '小图下番号卡不是 16:9');
+      await choice('big').check({ force: true });
+      assert.ok(Math.abs(await ratio(0) - 0.75) < 0.05, '大图下番号卡没有拉成正封比例');
+      assert.ok(Math.abs(await ratio(1) - 16 / 9) < 0.05, '大图把非番号卡也拉长了');
+      // `visit()` 的初始化脚本每次导航都重写设置，刷新验不了；直接读存下来的那份。
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('peach.settings.v1') || '{}'));
+      assert.equal(saved.homeLayout, 'big', '首页版式没有存下来');
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('卡片悬停反馈不在封面像素上描边', { timeout: 60_000 }, async () => {
     const opened = await openCatalog(browser);
     try {

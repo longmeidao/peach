@@ -3011,9 +3011,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 手动换一批仍使用稳定种子，避免分页重复或漏项。
         self.assertPageContains("sortControlsHtml({shuffleId:'batchAction'")
         self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed()")
-        # 刷新属于列表，不再占顶栏；JAV 共用同一计数/筛选行。
+        # 刷新属于列表，不再占顶栏；JAV 与首页的版式开关共用同一计数/筛选行。
         self.assertPageLacks('id="refresh"')
-        self.assertPageContains("extra:javActive()?javLayoutButtons():''")
+        self.assertPageContains("extra:javActive()?javLayoutButtons():homeLayoutActive()?homeLayoutButtons():''")
 
     def test_sort_splits_into_a_column_and_a_direction_on_the_selected_chip(self):
         """排序拆成「列 + 方向」：箭头画在选中的那一枚里，再点一次翻方向。
@@ -12002,7 +12002,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("let entityRequestSeq=0,entityJavLayout=false")
         self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
         self.assertPageContains("return state.jav==='1'||entityJavLayout")
-        self.assertPageContains("const jav=javActive()&&!!it.is_jav,layout=javLayout()")
+        self.assertPageContains("const jav=cardLayoutActive()&&!!it.is_jav,layout=cardLayout()")
 
     def test_switching_the_jav_layout_repaints_cards_without_a_request(self):
         """版式是纯展示层的开关：不发请求，也就没有等待态可放。
