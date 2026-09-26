@@ -14,7 +14,7 @@ import time
 
 from urllib.parse import urlsplit
 
-from . import entry_links, feeds, performer_header, web_feeds
+from . import entry_links, feeds, link_status, performer_header, web_feeds
 from .catalog_rules import LENGTH_TAGS, dir_expr, photo_set_title, solo_performer_clause, tag_cat
 from .entities import normalize_entity_name, resolve_entity, rewrite_flat_projection
 from .social_links import ARCHIVE_HOSTS, is_archive
@@ -108,6 +108,34 @@ def label_layer(contract: WebContract, c, kind: str, entity_id: int) -> tuple[di
     return maker, labels
 
 
+def _entity_links(c, entity_id: int, kind: str) -> list[dict]:
+    """资料页那一排外链。敏感来源与失效的链接列出来但不给地址：页面只写它是哪家。"""
+    links = []
+    retired = link_status.retired_year(c, entity_id) if kind == "performer" else None
+    for link in c.execute(
+        "SELECT id AS link_id,link_kind,label,url,hostname,is_sensitive,metadata_json "
+        "FROM entity_link WHERE entity_id=? ORDER BY link_kind,label", (entity_id,),
+    ):
+        item = dict(link)
+        host = item["hostname"] or urlsplit(item["url"]).hostname or ""
+        sensitive = bool(item.pop("is_sensitive")) or item["link_kind"] == "source_reference"
+        item["hostname"] = host
+        try:
+            item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
+        except (TypeError, ValueError):
+            item["metadata"] = {}
+        # 失效的那一枚悬停说明为什么点不了，隐退年份随它一起下发。
+        gone = link_status.gone_mark(item["metadata"]) is not None
+        item["gone"] = gone
+        if gone:
+            item["retired_year"] = retired
+        item["clickable"] = not (sensitive or gone)
+        if not item["clickable"]:
+            item["url"] = None
+        links.append(item)
+    return links
+
+
 def q_entity(contract: WebContract, args):
     """女优、厂牌、事务所等实体的资料页。
 
@@ -140,24 +168,7 @@ def q_entity(contract: WebContract, args):
             "SELECT alias FROM entity_alias WHERE entity_id=? AND source=? ORDER BY alias",
             (d["id"], USER_ALIAS_SOURCE),
         )]
-        links = []
-        for link in c.execute(
-            "SELECT id AS link_id,link_kind,label,url,hostname,is_sensitive,metadata_json "
-            "FROM entity_link WHERE entity_id=? ORDER BY link_kind,label", (d["id"],),
-        ):
-            item = dict(link)
-            host = item["hostname"] or urlsplit(item["url"]).hostname or ""
-            sensitive = bool(item.pop("is_sensitive")) or item["link_kind"] == "source_reference"
-            item["hostname"] = host
-            item["clickable"] = not sensitive
-            if sensitive:
-                item["url"] = None
-            try:
-                item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
-            except (TypeError, ValueError):
-                item["metadata"] = {}
-            links.append(item)
-        d["links"] = links
+        d["links"] = _entity_links(c, d["id"], kind)
         d["search_terms"] = [dict(r) for r in c.execute(
             "SELECT term,purpose,source FROM entity_search_term WHERE entity_id=? "
             "ORDER BY purpose,term", (d["id"],),

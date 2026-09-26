@@ -899,6 +899,17 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(list((self.root / "generated" / "link-marks").iterdir())), 2)
         self.assertTrue(all(url.startswith("https://web.archive.org/") for url in asked), asked)
 
+    async def test_a_link_marked_gone_gets_no_mark_and_no_upstream_request(self):
+        """已失效的链接不再去取图标：停放域名的一次请求就够杀毒软件报警。"""
+        asked = self._archive_links(lambda url: "red")
+        with closing(sqlite3.connect(self.db)) as connection, connection:
+            connection.execute(
+                "UPDATE entity_link SET metadata_json=? WHERE id=901",
+                ('{"gone":{"at":"2026-09-26","note":"HTTP 404"}}',))
+        answer = await self.client.get("/link-mark?t=secret&id=901")
+        self.assertEqual(answer.status_code, 404)
+        self.assertEqual(asked, [])
+
     async def test_an_archived_site_without_a_usable_icon_shows_the_archive_one(self):
         """原站在快照里给不出合格的圆标，就用存档站自己的：点过去本来就是存档。"""
         from PIL import Image

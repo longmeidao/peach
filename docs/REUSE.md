@@ -231,7 +231,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 操作回执复用 Toast；按钮以 Spinner 和 `aria-busy` 标明忙态。后台任务显示可恢复进度，断线自动重连。
 - 实体的统称由用户在资料页自选：菜单只列这条实体名下已有的写法，选中的提为规范名、换下的留成别名，扁平投影跟着改；换之前先过一层确认弹层并点名两个写法，成功后发一条可撤销的回执；不收自由文本，撞上另一条实体的规范名只报冲突。
 - 名字里的括号都走 `split_composite_aliases.py`：自动那拨只认罗马字复合人名，把 r18.dev 打包的 17 条拆成 37 条别名；`--from-review` 那拨按人工判定清掉 9 条不承载名字的尾巴，旧写法留作别名。备份是 2026-09-04 的两份 `ledger.pre-*.db`。剩下的读音、厂牌消歧和角色出处不拆，清单见 BACKLOG 第 29 条。
-- 实体链接可安装：`entity_link` 表、`q_entity` 的 `links` 契约、资料页 favicon 与管理页链接管理成套；死链区分「搬走了」和「没了」，`rediscover_entity_links.py` 从站点索引页上溯找新锚。
+- 实体链接可安装：`entity_link` 表、`q_entity` 的 `links` 契约、资料页 favicon 与管理页链接管理成套；死链区分「搬走了」和「没了」，`rediscover_entity_links.py` 从站点索引页上溯找新锚。确证没了的链接由 `link_status.settle_gone` 处置：已隐退女优的留成不可点的失效标记，其余删除。
 - 事务所是实体：57 家各有 `/agencies/<名字>` 页，成员、官网、标签与作品都按 `entity_membership` 算，女优页点得进去，搜名字出这家人的片；原文留在 `metadata.agency`。
 - 外链圆标与厂牌标识取站点自己声明的资产，宽扁字标不参加小圆标竞选；`/logo` 的 `variant` 分 `icon`、`logo` 与最清晰的 `large`，大图版式和资料页取 `large`，紧凑版式取 `icon`。头像与标识共用 `nativeImageFit`：按屏幕像素密度折算的源尺寸不足框四成时等比居中且不放大，四周同图模糊补底；框短边小于 64 px 不补底，70 px 紧凑圆框适用。加载、图片回落和版式切换均重新度量。
 - 关注的作者头像与来源图标是元数据，由 `follow_assets` 取回落在 `generated/follow-assets/` 再经 `/follow-avatar`、`/source-icon` 给页面：地址只从固定表或固定主机拼、字节先认成图再写盘、到期重取失败继续用旧的并退避一小时；保鲜期与 `/link-mark` 共用设置「头像与站点图标刷新」（`web_settings.metadata_refresh_seconds`）。视频与图片不存到本机。官方头像先认 FANBOX，没有时由 `follow_avatar.profile_avatar_tiers` 取名片上的 X 与 Patreon，`follow_assets.largest_image` 按实际像素留最清楚的那张。

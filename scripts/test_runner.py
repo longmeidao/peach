@@ -184,6 +184,8 @@ AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
     # 厂牌判据由命令行与后继共用，两边的测试分住 catalog、metadata 与 web。
     "src/peach/studio_icons.py": ("catalog", "metadata", "web"),
     "src/peach/studio_sites.py": ("catalog", "metadata"),
+    # 失效标记由资料页、网页链接体检、维护脚本与种子导出共用。
+    "src/peach/link_status.py": ("catalog", "metadata", "tooling", "web"),
     "scripts/revert_auto_landing.py": ("catalog", "metadata", "tooling"),
     # 实体事实种子包（ADR-0073）：导出导入的逻辑与命令行，测试都在 `test_seed_pack.py`；
     # 扫描结算后自动导入的后继（ADR-0075）在 `test_seed_followup.py`。

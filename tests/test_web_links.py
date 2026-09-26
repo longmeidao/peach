@@ -10,7 +10,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from peach import web_links   # noqa: E402
+from peach import link_status, web_links   # noqa: E402
 from peach.jobs import BackgroundJob   # noqa: E402
 
 from support.ledger import fresh_ledger   # noqa: E402
@@ -234,6 +234,68 @@ class SummaryTests(unittest.TestCase):
             self.contract, {"retry": [999], "check_id": "fresh"})
         self.assertFalse(unknown["ok"])
         self.assertEqual(self.contract.link_check.snapshot()["check_id"], "fresh")
+
+
+class RetiredLinkTests(unittest.TestCase):
+    """已隐退女优的失效链接留成标记，还在活动的照旧删除。"""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        db = fresh_ledger(self.tmp)
+        connection = sqlite3.connect(db)
+        connection.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at) "
+            "VALUES(?,'performer',?,?,'2026-01-01','2026-01-01')",
+            [(1, "东条苍", "东条苍"), (2, "神宫寺", "神宫寺")])
+        connection.execute(
+            "INSERT INTO performer_profile(entity_id,active_until,source,source_url,fetched_at) "
+            "VALUES(1,2021,'minnano-av','https://www.minnano-av.com/','2026-01-01')")
+        connection.executemany(
+            "INSERT INTO entity_link(id,entity_id,link_kind,label,url,hostname,"
+            "created_at,updated_at) VALUES(?,?,'official','Cruse Group',?,'crusegroup.net',"
+            "'2026-01-01','2026-01-01')",
+            [(1, 1, "https://crusegroup.net/model/316"),
+             (2, 2, "https://www.crusegroup.net/model/295")])
+        connection.commit()
+        connection.close()
+        self.contract = FakeContract(db)
+        self.original_probe, self.original_interval = web_links._probe, web_links.CHECK_INTERVAL
+        self.addCleanup(setattr, web_links, "_probe", self.original_probe)
+        self.addCleanup(setattr, web_links, "CHECK_INTERVAL", self.original_interval)
+        web_links.CHECK_INTERVAL = 0
+        self.probed = []
+        web_links._probe = lambda url, timeout=0: self.probed.append(url) or (404, "")
+
+    def _prune(self):
+        self.contract.link_check.state = {
+            "check_id": "fresh", "status": "complete", "checked": 2, "total": 2,
+            "scope": "all", "error": "", "unclear": [],
+            "gone": [{"id": link_id, "entity": name, "link_kind": "official",
+                      "label": "Cruse Group", "url": url, "note": "HTTP 404"}
+                     for link_id, name, url in ((1, "东条苍", "https://crusegroup.net/model/316"),
+                                                (2, "神宫寺", "https://www.crusegroup.net/model/295"))],
+        }
+        return web_links.w_links_prune(self.contract, {"confirm": True, "check_id": "fresh"})
+
+    def test_prune_keeps_a_retired_performers_link_as_a_mark(self):
+        out = self._prune()
+        self.assertEqual((out["removed"], out["marked"]), (1, 1))
+        rows = sqlite3.connect(self.contract.db_path).execute(
+            "SELECT id, metadata_json FROM entity_link").fetchall()
+        self.assertEqual([row[0] for row in rows], [1])
+        self.assertEqual(link_status.gone_mark(rows[0][1])["note"], "HTTP 404")
+
+    def test_a_full_check_does_not_probe_a_marked_link(self):
+        """结论已经落账；每次都去敲一个停放域名只会招来杀毒软件告警。"""
+        self._prune()
+        self.probed.clear()
+        web_links.w_links_check(self.contract, {"restart": True})
+        thread = self.contract.link_check.thread
+        if thread is not None:
+            thread.join(5)
+        state = self.contract.link_check.snapshot()
+        self.assertEqual((state["status"], state["total"]), ("complete", 0))
+        self.assertEqual(self.probed, [])
 
 
 if __name__ == "__main__":

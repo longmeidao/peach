@@ -129,7 +129,7 @@
    `overflow:hidden` 落不到它身上——圆内切在方框里，一个角都碰不到。 */
 .entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}
 /* 纯图标的社媒链接：收成正方形，没有文字就不给文字留位置。 */
-.entitylinks a.iconlink{width:36px;padding:0;gap:0;justify-content:center}
+.entitylinks .iconlink{width:36px;padding:0;gap:0;justify-content:center}
 /* 官网域名前显示站点自己那枚图标，取不到才露出地球；与带名称的链接共用间距。 */
 .entitylinks a.urllink{letter-spacing:.02em}
 /* 看片的那一行：两站自己的横向标识排在一起，不套药丸。标识本身已经说清是哪家，再画
