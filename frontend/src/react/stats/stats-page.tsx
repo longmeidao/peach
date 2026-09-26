@@ -164,27 +164,29 @@ function CoverageDetail({ attribution }: { attribution: Attribution }) {
   );
 }
 
+/** 一个卷一行，与覆盖率同一个节律：名字配已用量与占比，下面一条进度，再下面一行小字
+ *  写它挂在哪、还剩多少。取不到容量的卷不画进度，读数那一格换成它的状态。 */
 function VolumeRow({ volume }: { volume: StorageVolume }) {
   const total = volume.total;
   const used = volume.used ?? 0;
   return (
-    <article className="flex min-w-0 flex-col gap-1.5">
-      <header className="flex items-baseline justify-between gap-3">
-        <h3 className="min-w-0 text-body-2-medium break-words text-text-primary">{volume.label}</h3>
-        <b className="text-body-2-medium whitespace-nowrap text-text-primary">
-          {total != null ? `${percentOf(used, total)}%` : (volume.online ? '容量未取得' : '离线')}
-        </b>
+    <article className="flex min-w-0 flex-col gap-1.5 border-b border-separator-border py-3 last:border-b-0">
+      <header className="flex items-baseline justify-between gap-3 text-body-2-regular text-text-primary">
+        <h3 className="min-w-0 break-words">{volume.label}</h3>
+        {total != null ? (
+          <b className="whitespace-nowrap tabular-nums">
+            {fmtSize(used)}
+            <span className="ml-1.5 text-caption-1-regular text-text-secondary">{percentOf(used, total)}%</span>
+          </b>
+        ) : <span className="whitespace-nowrap text-text-secondary">{volume.online ? '容量未取得' : '离线'}</span>}
       </header>
-      <small className="text-caption-1-regular break-words text-text-secondary">{volume.root ?? '未映射'}</small>
-      {total != null ? (
-        <>
-          <Progress label={`${volume.label}空间使用率`} value={used} max={Math.max(total, 1)} />
-          <p className="flex justify-between gap-3 text-caption-1-regular text-text-secondary">
-            <span>已用 <b className="font-normal text-text-primary">{fmtSize(used)}</b></span>
-            <span>可用 <b className="font-normal text-text-primary">{fmtSize(volume.free ?? 0)}</b></span>
-          </p>
-        </>
-      ) : null}
+      {total != null ? <Progress label={`${volume.label}空间使用率`} value={used} max={Math.max(total, 1)} /> : null}
+      <p className="flex justify-between gap-3 text-caption-1-regular text-text-secondary">
+        <span className="min-w-0 break-words">{volume.root ?? '未映射'}</span>
+        {total != null
+          ? <span className="whitespace-nowrap tabular-nums">{`可用 ${fmtSize(volume.free ?? 0)} · 共 ${fmtSize(total)}`}</span>
+          : null}
+      </p>
     </article>
   );
 }
@@ -198,7 +200,7 @@ function StorageDetail({ volumes, configurable, openMediaSettings }: { volumes: 
     );
   }
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col">
       {volumes.map((volume) => <VolumeRow key={`${volume.kind}:${volume.label}`} volume={volume} />)}
     </div>
   );

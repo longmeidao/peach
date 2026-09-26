@@ -3006,6 +3006,49 @@ describe('设计决定', () => {
     }
   });
 
+  it('使用空间按字节量级的真实容量画出已用那一段，每个卷一行、不越出卡片', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/stats', DESKTOP);
+    try {
+      const page = opened.page;
+      const TB = 1024 ** 4;
+      const volumes = [
+        { kind: 'system', label: '系统盘', root: 'C:\\', online: true, total: 2 * TB, used: 1.8 * TB, free: .2 * TB },
+        { kind: 'media', label: '资源盘', root: 'R:\\media', online: false, total: null, used: null, free: null },
+        { kind: 'media', label: 'PikPak 网盘', root: 'A:\\', online: true, total: 10240 * TB, used: 0, free: 10240 * TB },
+      ];
+      await page.route(/\/api\/stats(?:\?|$)/, async (route) => {
+        const json = await (await route.fetch()).json();
+        await route.fulfill({ json: { ...json, storage_volumes: volumes, storage_summary: {
+          volumes: 3, online: 2, measured: 2, free: 10240.2 * TB, used: 1.8 * TB, total: 10242 * TB,
+        } } });
+      });
+      await page.reload({ waitUntil: 'load' });
+      await page.getByRole('tab', { name: /使用空间/ }).click();
+      const panel = page.locator('[role="tabpanel"]').first();
+      await panel.locator('[role="progressbar"]').first().waitFor({ state: 'visible', timeout: 15_000 });
+      await settle(page);
+      const shown = await panel.evaluate((element) => {
+        const card = element.firstElementChild!;
+        const cardBox = card.getBoundingClientRect();
+        const detail = card.lastElementChild!.getBoundingClientRect();
+        return {
+          filled: [...element.querySelectorAll('[role="progressbar"]')].map((bar) =>
+            Math.round(bar.querySelectorAll('rect')[1]!.getBoundingClientRect().width / bar.getBoundingClientRect().width * 100)),
+          rows: [...element.querySelectorAll('article')].map((row) => getComputedStyle(row).borderBottomWidth),
+          overflow: detail.right - (cardBox.right - parseFloat(getComputedStyle(card).paddingRight)),
+          text: element.textContent ?? '',
+        };
+      });
+      assert.deepEqual(shown.filled, [90, 0], '进度条画出来的已用比例不对');
+      assert.deepEqual(shown.rows, ['1px', '1px', '0px'], '卷与卷之间没有覆盖率那样的分隔线');
+      assert.ok(shown.overflow <= .5, `使用空间的详情越出卡片内边距 ${shown.overflow}px`);
+      assert.ok(shown.text.includes('10.00 PB'), '网盘容量没按 PB 写');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('被打断的那一轮只有结束原因，卡片正文下面不留空行', { timeout: 60_000 }, async () => {
     const opened = await openActivity(browser, [
       { ...settledRun(1, 'interrupted', '追更检查'), error: '服务重启，这一轮没有跑完' },

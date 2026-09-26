@@ -487,6 +487,7 @@ class WebJsBehaviourTests(unittest.TestCase):
             ("core.js", "fmtSize", [1024 * 1024], "1 MB"),
             ("core.js", "fmtSize", [3 * 1024 * 1024 * 1024], "3.0 GB"),
             ("core.js", "fmtSize", [2 * 1024 ** 4], "2.00 TB"),
+            ("core.js", "fmtSize", [10 * 1024 ** 5], "10.00 PB"),
         ])
 
     # ── 头像的人脸放大 ──────────────────────────────────────────────────────
