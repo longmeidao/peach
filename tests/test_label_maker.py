@@ -46,7 +46,8 @@ class LabelMakerTests(unittest.TestCase):
         ]
         logos = root / "logos"; logos.mkdir()
         avatars = root / "avatars"; avatars.mkdir()
-        self.contract = rm_web.WebContract(self.db, avatar_root=avatars, logo_root=logos)
+        self.contract = rm_web.WebContract(self.db, avatar_root=avatars, logo_root=logos,
+                                           cover_root=root / "covers")
 
     def apply(self, rows=None, *, create_makers=True):
         planned = plan(self.con, rows or self.rows, create_makers=create_makers)
@@ -150,6 +151,40 @@ class LabelMakerTests(unittest.TestCase):
         self.assertEqual(top["asset_count"], 3)
         self.assertEqual([(label["k"], label["n"]) for label in top["labels"]],
                          [("K M Produce", 2), ("ABC/妄想族", 1)])
+
+    def test_the_maker_representative_can_be_a_labels_work(self):
+        """BAZOOKA 那部最大、归 K M Produce；ABC/妄想族 那部更大，但不归它。"""
+        self.apply()
+        self.con.executemany("UPDATE asset SET snapshot_path='s.jpg',size=? WHERE id=?",
+                             [(500, 1), (200, 2), (900, 3)])
+        self.con.commit()
+        page = rm_web.q_entity(self.contract, {"kind": "studio", "name": "K M Produce"})
+        self.assertEqual(page["representative_asset_id"], 1)
+
+    def test_the_maker_photos_and_sample_sets_include_its_labels(self):
+        """图集、总数、分页和番号样张集都连同旗下 label 一起算，ABC/妄想族 的不算。"""
+        self.apply()
+        for asset_id, studio in ((21, 5569), (22, 5607), (23, 8248)):
+            path = rf"R:\Media\stills\{asset_id}.jpg"
+            self.con.execute(
+                "INSERT INTO asset(id,location,path,name,medium,size,first_seen)"
+                " VALUES(?,'local',?,?,'image',10,'2026-01-01')", (asset_id, path, f"{asset_id}.jpg"))
+            self.con.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                " VALUES(?,?,'studio','test',1.0)", (asset_id, studio))
+        for asset_id, code in ((1, "SSIS-057"), (2, "SSIS-058"), (3, "IPX-001")):
+            self.con.execute("UPDATE asset SET code=? WHERE id=?", (code, asset_id))
+            self.con.execute(
+                "INSERT INTO code_sample_image(code,position,url,site,source,fetched_at)"
+                " VALUES(?,1,'https://pics.dmm.co.jp/x.jpg','dmm','test','2026-09-25T00:00:00Z')",
+                (code,))
+        self.con.commit()
+        photos = rm_web.q_entity_photos(self.contract, {"kind": "studio", "name": "K M Produce"})
+        self.assertEqual([(item["kind"], item["id"], item["n"]) for item in photos["sets"]],
+                         [("code", "code:SSIS-057", 1), ("code", "code:SSIS-058", 1),
+                          ("dir", 21, 2)])
+        self.assertEqual((photos["total"], photos["sample_total"]), (2, 2))
+        self.assertEqual([item["id"] for item in photos["items"]], [21, 22])
 
     def test_the_index_lists_makers_with_their_totals_and_folds_labels_in(self):
         """索引页只列最上层，数的是合计；搜名字时 label 照常搜得到。"""
