@@ -379,12 +379,13 @@ class DesktopSettingsTests(unittest.TestCase):
         payload = dict(job, pid=2147483647, quiet=True)
         if log is not None:
             payload['log'] = str(log)
-        # 助手每轮重试都要枚举一遍全部进程的路径；本机七百多个进程时一遍约 9 秒，
-        # 删不掉文件的用例要走满三轮，30 秒的上限正好卡在它的正常耗时上。
+        # 删不掉文件的用例清场三轮、等两次各 2 秒的重试，本机分片并行时约 6 秒。
+        # 30 秒的上限同时守着清场只读同名进程的路径：逐个读七百多个进程的路径一遍
+        # 就要七秒以上，三轮加等待会超时。
         return subprocess.run([str(shell), '-NoProfile', '-NonInteractive', '-EncodedCommand',
                                base64.b64encode(desktop_uninstall._SCRIPT.encode('utf-16-le')).decode('ascii')],
                               input=json.dumps(payload).encode('utf-8'), capture_output=True,
-                              timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+                              timeout=30, creationflags=subprocess.CREATE_NO_WINDOW)
 
     @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
     def test_native_uninstall_kills_strays_running_from_the_program(self):
