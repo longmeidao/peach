@@ -5,7 +5,7 @@
  *
  * 查找那一趟在后台跑，页面关掉也还在跑。首屏读到的旧终态不冒充新结果：只有本次点过
  * 查找、或者本次亲眼见过它在跑，结果才摆出来（ADR-0031）。 */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { RiFilter3Line, RiSearchLine } from '@remixicon/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -53,16 +53,18 @@ export interface AddSourceProps {
 /** 候选的身份是它的地址：同一次查找里同一个地址只会出现一次。 */
 const candidateKey = (row: number, candidate: ResolveCandidate) => `${row}:${candidate.url}`;
 
+interface SuggestOption { value: string; matched: string; n: number; group: string }
+
 /** 敲字建议的下拉。只在输入框有焦点时开着，键盘上下键在里面走。
+ *
+ * 每组一个组名，行里先是名字本身，再是在哪儿见到的（归档站名、站方分类）和作品数：
+ * 名字才是选中后要去查的东西，另外两样只帮人认出是不是他。
  *
  * 站上那一路要先问补全再问分类，实测一秒上下，这段时间得看得出在做事：空着像是敲了没反应。
  * 忙的那一行不是候选，上下键和回车这时不该选中一个「正在查找建议」。 */
 function SuggestMenu(
   { options, active, busy, onPick }:
-  {
-    options: { value: string; label: string; group: string }[];
-    active: number; busy: boolean; onPick(value: string): void;
-  },
+  { options: SuggestOption[]; active: number; busy: boolean; onPick(value: string): void },
 ) {
   return (
     <div aria-label="来源建议"
@@ -71,15 +73,27 @@ function SuggestMenu(
         ? <div className="px-2 py-1.5"><LoadingDots label="正在查找建议" /></div>
         : null}
       {options.map((option, at) => (
-        <button key={`${option.group}-${option.value}`} type="button"
-          aria-current={at === active ? 'true' : undefined}
-          className={at === active ? cx(MENU_ROW, 'bg-background-secondary-default') : MENU_ROW}
-          // 按下就 preventDefault：让下拉把焦点从输入框抢走的话，敲到一半的词就断在那里。
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onPick(option.value)}>
-          <span className="min-w-0 grow truncate text-left">{option.label}</span>
-          <span className="shrink-0 text-caption-1-regular text-text-tertiary">{option.group}</span>
-        </button>
+        <Fragment key={`${option.group}-${option.value}`}>
+          {option.group !== options[at - 1]?.group ? (
+            <div className="px-2 pt-1 text-caption-1-regular text-text-tertiary">{option.group}</div>
+          ) : null}
+          <button type="button"
+            aria-current={at === active ? 'true' : undefined}
+            className={at === active ? cx(MENU_ROW, 'bg-background-secondary-default') : MENU_ROW}
+            // 按下就 preventDefault：让下拉把焦点从输入框抢走的话，敲到一半的词就断在那里。
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onPick(option.value)}>
+            <span className="min-w-0 grow truncate text-left">{option.value}</span>
+            {option.matched ? (
+              <span className="shrink-0 text-caption-1-regular text-text-tertiary">{option.matched}</span>
+            ) : null}
+            {option.n ? (
+              <span className="shrink-0 text-caption-1-regular tabular-nums text-text-tertiary">
+                {option.n.toLocaleString()}
+              </span>
+            ) : null}
+          </button>
+        </Fragment>
       ))}
     </div>
   );
@@ -218,8 +232,10 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
     enabled: term.length > 0 && focused,
   });
 
-  const options = useMemo(() => (suggest.data?.groups || []).flatMap((group) => (
-    group.items.map((item) => ({ value: item.value, label: item.matched || item.value, group: group.label }))
+  const options = useMemo<SuggestOption[]>(() => (suggest.data?.groups || []).flatMap((group) => (
+    group.items.map((item) => ({
+      value: item.value, matched: item.matched || '', n: item.n || 0, group: group.label,
+    }))
   )), [suggest.data]);
 
   const { job, running, outcome, start: resolve, dismiss } = useBackgroundJob<ResolveJob, string>({

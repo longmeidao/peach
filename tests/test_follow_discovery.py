@@ -12,7 +12,7 @@ from peach.follow import FollowSourceError
 from peach.follow_discovery import (
     CREATOR_INDEX_TTL_SECONDS, DEFAULT_PROVIDERS, MAX_TERM_LENGTH, CreatorIndex,
     archive_suggestions, discover, discovery_plan, forum_queries, identity_key,
-    search_variants, spelling_variants, suggest_term, tag_suggestions,
+    rule34video_slugs, search_variants, spelling_variants, suggest_term, tag_suggestions,
 )
 from peach.follow_secrets import Credential, CredentialError
 from peach.http import HttpResponse
@@ -157,6 +157,19 @@ class DiscoveryPlanTests(unittest.TestCase):
         self.assertEqual(search_variants("Lazy Procrastinator"), ("Lazy Procrastinator",))
 
 
+class Rule34VideoSlugTests(unittest.TestCase):
+    def test_word_breaks_become_hyphens_before_they_are_dropped(self):
+        # KVS 的 slug 是 `bulging-senpai`；连写的 `bulgingsenpai` 回 404。
+        self.assertEqual(rule34video_slugs("Bulging Senpai"), ("bulging-senpai", "bulgingsenpai"))
+
+    def test_a_joined_name_tries_itself_first_then_its_camel_split(self):
+        self.assertEqual(rule34video_slugs("BulgingSenpai"), ("bulgingsenpai", "bulging-senpai"))
+        self.assertEqual(rule34video_slugs("lazyprocrastinator"), ("lazyprocrastinator",))
+
+    def test_a_name_without_latin_letters_has_no_slug(self):
+        self.assertEqual(rule34video_slugs("鈴太郎"), ())
+
+
 class CreatorIndexTests(_DiscoveryCase):
     def _index(self, calls=None):
         return CreatorIndex(self.state, transport=_router(
@@ -201,6 +214,16 @@ class DiscoverTests(_DiscoveryCase):
         self.assertEqual(by_provider["kemono"].ref, "fanbox/30917150")
         self.assertEqual(by_provider["rule34video"].ref, "lazyprocrastinator")
         self.assertEqual(by_provider["f95zone"].ref, "50685")
+
+    def test_a_spaced_name_finds_the_hyphenated_rule34video_page(self):
+        calls = []
+        found = self._discover("Bulging Senpai", {
+            "rule34video.com/models/bulging-senpai/": HttpResponse(200, {}, b"<html/>"),
+        }, providers=("rule34video",), calls=calls)
+        self.assertEqual([(c.ref, c.url) for c in found.candidates],
+                         [("bulging-senpai", "https://rule34video.com/models/bulging-senpai/")])
+        # 第一个写法就命中，后面的不再探。
+        self.assertEqual(calls, ["https://rule34video.com/models/bulging-senpai/"])
 
     def test_each_source_reports_itself_before_it_runs(self):
         notes = []
