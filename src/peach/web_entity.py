@@ -398,7 +398,7 @@ def q_entity_photos(contract: WebContract, args):
         row = resolve_entity(c, kind, name)
         if not row:
             return {"error": "not found"}
-        # 图集、总数和分页数的是同一批图，`total` 才对得上翻到底的张数。
+        # 图集和分页数的是同一批图，`total` 由图集相加，才对得上翻到底的张数。
         scoped = ("FROM asset_entity ae CROSS JOIN asset a ON a.id=ae.asset_id "
                   "WHERE " + scope_predicate(kind, "ae.entity_id") +
                   " AND a.medium='image' AND a.name IS NOT NULL "
@@ -412,11 +412,15 @@ def q_entity_photos(contract: WebContract, args):
             "location": item["location"],
             "cost": COST.get(item["location"], "metered"),
         } for item in c.execute(
+            # 一张图在范围里可能挂好几行（两位成员、片商连同旗下 label、同一位的不同 role 或
+            # source）。先只按 id 去重，再回 `asset` 取路径分组，`n` 和 `bytes` 数的才是图；
+            # 每张图恰好落在一个图集里，各组 `n` 相加就是 `total`。
             f"SELECT {PHOTO_DIR} dir,min(a.id) id,count(*) n,sum(a.size) bytes,a.location "
-            + scoped + f"GROUP BY {PHOTO_DIR},a.location ORDER BY n DESC,dir",
+            "FROM (SELECT DISTINCT a.id " + scoped + ") u CROSS JOIN asset a ON a.id=u.id "
+            f"GROUP BY {PHOTO_DIR},a.location ORDER BY n DESC,dir",
             (row["id"],),
         )]
-        total = c.execute("SELECT count(DISTINCT a.id) " + scoped, (row["id"],)).fetchone()[0]
+        total = sum(item["n"] for item in sets)
         items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0,
                   "location": item["location"]}
                  for item in c.execute(
