@@ -199,8 +199,15 @@ class AgencyLedgerTests(unittest.TestCase):
     def page(self, kind, name):
         return rm_web.q_entity(self.contract, {"kind": kind, "name": name})
 
-    def photos(self, name):
-        return rm_web.q_entity_photos(self.contract, {"kind": "agency", "name": name})
+    def photos(self, name, kind="agency"):
+        return rm_web.q_entity_photos(self.contract, {"kind": kind, "name": name})
+
+    def counted_once(self, photos):
+        """总数、分页和图集数的是同一张图：各一次，图集字节数也只算一份。"""
+        self.assertEqual(
+            (photos["total"], [item["id"] for item in photos["items"]],
+             [(item["kind"], item["n"], item["bytes"]) for item in photos["sets"]]),
+            (1, [21], [("dir", 1, 10)]))
 
     def add_pictures(self, rows):
         """(id, 路径, 挂在哪几位名下, disposal)。"""
@@ -269,8 +276,15 @@ class AgencyLedgerTests(unittest.TestCase):
 
     def test_a_picture_of_two_members_is_counted_and_listed_once(self):
         self.add_pictures([(21, r"R:\Media\duo\01.jpg", [11, 12], None)])
-        photos = self.photos("Capsule Agency")
-        self.assertEqual((photos["total"], [item["id"] for item in photos["items"]]), (1, [21]))
+        self.counted_once(self.photos("Capsule Agency"))
+
+    def test_a_picture_filed_twice_under_one_entity_is_counted_once(self):
+        """主键含 role 与 source：同一位名下，复核再写一行也还是同一张图。"""
+        self.add_pictures([(21, r"R:\Media\solo\01.jpg", [11], None)])
+        self.con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                         " VALUES(21,11,'performer','review',1.0)")
+        self.con.commit()
+        self.counted_once(self.photos("七泽美亚", "performer"))
 
     def test_a_performer_profile_points_at_her_agency_entity(self):
         home = self.page("performer", "七泽美亚")["agency"]
