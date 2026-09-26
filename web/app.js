@@ -5762,7 +5762,8 @@ async function openDataCleanup(push=true){
     try{
       const result=await api('/api/data-cleanup/empty-folders',{method:'POST',body:'{}'});
       status.innerHTML=noteHtml(`已检查 ${Number(result.scanned||0).toLocaleString()} 个目录，删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录${result.errors?`，${Number(result.errors).toLocaleString()} 个读取或删除失败`:''}。`,{label:'清理结果',variant:result.errors?'warning':'success'});
-      if(result.errors)actionFailure('空文件夹与失效条目清理',new Error(`${result.errors} 个目录处理失败`));
+      /* 读不到的目录只是这一轮没走到，能删的已经删了：报警告档，不说清理失败。 */
+      if(result.errors)toast({text:`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录，${Number(result.errors).toLocaleString()} 个目录读取或删除失败`},{sound:'warning'});
       else actionReceipt(`已删除 ${Number(result.removed||0).toLocaleString()} 个空文件夹、${Number(result.purged||0).toLocaleString()} 条失效记录`);
     }finally{setActionBusy(emptyButton,false);emptyButton.innerHTML=original;emptyButton.hidden=true}
   }});

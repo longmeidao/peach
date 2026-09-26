@@ -498,9 +498,9 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .resourcestat-state.online{color:var(--success)}
 .resourcestat-state.offline{color:var(--drop)}
 .resourcestat .cleanupmeta{white-space:normal}
-/* 检查结果 Note 在空文件夹卡里顶满左右：两侧吃掉内容区的内边距直抵框边，
-   侧边不再自带圆角和描边，读起来是卡片自己的一条结果带。 */
-.cleanupgrid>.cleanupemptyfolders .cleanupstate .geist-note{margin-inline:-24px;border-inline:0;border-radius:0}
+/* 检查结果 Note 是说明列里一块完整的圆角 Note，与加工卡的失败提示同一副形状。按钮
+   单占右列，说明列到不了卡片右边框，Note 若出血顶边只会左边贴框、右边悬空。 */
+.cleanupgrid>.cleanupemptyfolders .cleanupstate .geist-note{margin:12px 0 0}
 #resourceSyncResult>.cleanupstats{margin:0}
 /* 结果槽里三层各管各的间距：读数卡、说明 Note、操作行都不再共享一只面板框。 */
 #resourceSyncResult>.geist-note{margin:16px 0 0}
