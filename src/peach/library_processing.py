@@ -1372,7 +1372,7 @@ def _apply_finished_candidates(database, candidate_root, active):
     是这个功能最难解释的一种表现。
     """
     if database is None or not active():
-        return {'applied': 0}
+        return {'applied': 0, 'auto_rejected': 0}
     from .jav_cover_fetch import DEFAULT_METADATA_ROOT
     from .metadata_auto_apply import auto_apply_metadata
     # 快照目录是企划名义解析的证据来源（ADR-0038）。路径只有 `DEFAULT_METADATA_ROOT`
@@ -1737,6 +1737,7 @@ def process_library(config, db_path, candidate_root, cover_root, *, location='co
                    followups=sample_followup.plan(database, config, cover_root)
                    + _entity_followups(database, config, entity_watermark, covered),
                    auto_applied=auto_apply['applied'],
+                   auto_rejected=auto_apply['auto_rejected'],
                    performer_aliases=profiles['aliases'], performer_avatars=profiles['avatars'],
                    performer_profile_conflicts=profiles['conflicts'],
                    performer_profile_failed=profiles['failed'],

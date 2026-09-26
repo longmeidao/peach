@@ -410,7 +410,9 @@ def metadata_decision_is_stale(decision: dict, candidates: list[dict]) -> bool:
     这样卡住的，同批还有 24 个番号。判据与 `studio_logos` 的「上游内容变了就
     清掉旧判定」是同一条线，只是这里的「变了」体现为候选身份换了一个。
 
-    - 批准：note 记着的 `candidate_key` 已经不在当前候选里；
+    - 批准：note 记着的 `candidate_key` 已经不在当前候选里，`refreshed_candidate_key`
+      也不在。后者是自动落库重判后确认「现存候选与账本现值相同」时追加的一项，原决定
+      的其余字段不动（`_reopened_approval`）；
     - 自动否决（ADR-0079）：当前候选里出现了否决时没有的 `candidate_key`——来源给了
       新说法，否决时的判断不再覆盖它。来源少了一条不算，剩下的仍是否决过的那些；
     - 用户手工否决、跳过一律不算过期：那是人的判断，候选变了也不替人翻案。
@@ -426,11 +428,40 @@ def metadata_decision_is_stale(decision: dict, candidates: list[dict]) -> bool:
     status = str(decision.get("status") or "").strip()
     if status == "approved":
         approved_key = str(note.get("candidate_key") or "").strip()
-        return bool(approved_key) and approved_key not in keys
+        refreshed_key = str(note.get("refreshed_candidate_key") or "").strip()
+        return bool(approved_key) and not {approved_key, refreshed_key} & keys
     if status == "rejected" and note.get("auto_rejected") is True:
         rejected = {str(key).strip() for key in note.get("candidate_keys") or []}
         return not keys <= rejected
     return False
+
+
+def _same_as_current(connection, field: str, candidate: dict, current: str) -> bool:
+    """落库用的这条候选与账本现值说的是不是同一件事。
+
+    口径与复核页剔「没有新信息」的行一致：标签按集合比，出演者与厂牌、系列按实体
+    身份比（`横宮七海` 与 `横宫七海` 是同一位，`プレステージ` 与 `Prestige` 是同一家），
+    其余按折叠空白后的字符串比。现值为空时总是不同：那是补空。
+    """
+    current = str(current or "").strip()
+    value = str(candidate.get("display_value") or "").strip()
+    if not current:
+        return False
+    if field == "performers":
+        return (_performer_identity_keys(connection, _split_multi(value))
+                == _performer_identity_keys(connection, _split_multi(current)))
+    if field == "tags":
+        return frozenset(_split_multi(value)) == frozenset(_split_multi(current))
+    if field in {"studio", "series"}:
+        return (_entity_identity_key(connection, field, value)
+                == _entity_identity_key(connection, field, current))
+    return " ".join(value.split()) == " ".join(current.split())
+
+
+def _is_automatic(decision: dict) -> bool:
+    """这条决定是不是自动写下的：自动落库或自动否决。其余都算人的判断。"""
+    note = _decision_note(decision)
+    return note.get("auto_applied") is True or note.get("auto_rejected") is True
 
 
 def _candidate_value_key(connection, field: str, candidate: dict, resolve=None):
@@ -1130,9 +1161,10 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     每条仍写 review_decision 留痕（note 里记来源与判据），所以事后可以追问
     「这个值是谁写的、凭什么」——留痕才是那条规则真正要保住的东西。
 
-    已有决定的行不重判，过期的除外（`_decision_reopens`）。落不下去的 FC2 出演者行里
-    一个艺名都没有的，写一条 `rejected`（`fc2_descriptive_rejection`，ADR-0079），
-    其余照旧留给人。
+    已有决定的行不重判，过期的除外（`_decision_reopens`）；过期批准重判之后值不变的只
+    追加一项留痕，要改值而原决定是人批准的交回人（`_reopened_approval`）。落不下去的
+    FC2 出演者行里一个艺名都没有的，写一条 `rejected`（`fc2_descriptive_rejection`，
+    ADR-0079），其余照旧留给人。
 
     `database` 是调用方已经在用的那一个 `LedgerDatabase`：写锁与提交后的缓存失效都挂在
     实例上，自己再 new 一个就绕开了两者。`active` 返回假时停在批与批之间，已经提交的
@@ -1143,7 +1175,7 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     猜错的表现是测试悄悄读起了真实库。
     """
     rows, _source, _skipped = read_candidates("metadata_fields", Path(candidate_root))
-    applied, skipped, rejected = [], 0, 0
+    applied, skipped, rejected, refreshed = [], 0, 0, 0
     step = max(1, int(batch_size))
     for start in range(0, len(rows), step):
         if not active():
@@ -1167,14 +1199,16 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                 if str(row.get("status") or "").strip() != "candidate":
                     continue
                 row["candidates"] = _row_candidates(row, genres)
-                if item_key in decided and not _decision_reopens(
-                        decided[item_key], row["candidates"]):
+                prior = decided.get(item_key)
+                if prior is not None and not _decision_reopens(prior, row["candidates"]):
                     continue
                 candidate = metadata_auto_apply_candidate(
                     connection, row, snapshot_root=snapshot_root)
                 if candidate is None:
-                    rejection = fc2_descriptive_rejection(
+                    # 自动否决只替换自动写下的决定：人批准过的那一行，候选变了也交回人。
+                    rejection = (fc2_descriptive_rejection(
                         connection, row, snapshot_root=snapshot_root)
+                        if prior is None or _is_automatic(prior) else None)
                     if rejection is None:
                         skipped += 1
                         continue
@@ -1186,6 +1220,14 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                         (item_key, json.dumps(rejection, ensure_ascii=False,
                                               separators=(",", ":")), now))
                     rejected += 1
+                    continue
+                outcome = (None if prior is None
+                           else _reopened_approval(connection, item_key, prior, row, candidate))
+                if outcome == "refreshed":
+                    refreshed += 1
+                    continue
+                if outcome == "left":
+                    skipped += 1
                     continue
                 try:
                     count = _apply_metadata_candidate(
@@ -1232,7 +1274,33 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                                 "value": candidate.get("display_value"),
                                 "assets": count})
     return {"ok": True, "applied": len(applied), "auto_rejected": rejected,
-            "left_to_review": skipped, "items": applied}
+            "refreshed": refreshed, "left_to_review": skipped, "items": applied}
+
+
+def _reopened_approval(connection, item_key: str, decision: dict, row: dict,
+                       candidate: dict) -> str | None:
+    """过期的批准重判出一条可落的候选之后怎么办。
+
+    - `refreshed`：候选与账本现值是同一件事。真相字段不写，原决定的 status、
+      updated_at 与 note 原有各项都不动，只在 note 里追加 `refreshed_candidate_key`，
+      让 `metadata_decision_is_stale` 认得这一行已经对过；
+    - `left`：会改变现值，而原决定是人批准的。不覆盖人的判断（ADR-0052），留在
+      复核页交人；
+    - None：会改变现值，原决定是自动落库写下的，照常重落并覆盖那条决定。
+
+    原决定不是批准（过期的自动否决）时也返回 None：否决没有写过值，谈不上覆盖。
+    """
+    if str(decision.get("status") or "").strip() != "approved":
+        return None
+    field = str(row.get("field") or "").strip()
+    if _same_as_current(connection, field, candidate, str(row.get("current_value") or "")):
+        note = {**_decision_note(decision),
+                "refreshed_candidate_key": str(candidate.get("candidate_key") or "").strip()}
+        connection.execute(
+            "UPDATE review_decision SET note=? WHERE category='metadata_fields' AND item_key=?",
+            (json.dumps(note, ensure_ascii=False, separators=(",", ":")), item_key))
+        return "refreshed"
+    return None if _is_automatic(decision) else "left"
 
 
 def _decision_reopens(decision: dict, candidates: list[dict]) -> bool:

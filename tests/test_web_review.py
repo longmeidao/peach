@@ -938,28 +938,124 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto_without_snapshots()["auto_rejected"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), [])
 
-    def test_a_stale_approval_is_judged_again_and_lands(self):
-        """旧批准指向的候选已经不在了：页面把这一行摆回队列，自动落库也要按现行判据
-        重判，落得下去就落，并覆盖那条旧决定。
+    STALE_AT = "2026-09-01T00:00:00Z"
+
+    def _stale_approvals(self, notes):
+        """写几条旧批准：`notes` 是 `{item_key: note}`，note 里的 candidate_key 已不在候选里。"""
+        con = sqlite3.connect(self.db_path)
+        try:
+            for key, note in notes.items():
+                con.execute(
+                    "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+                    "VALUES('metadata_fields',?,'approved',?,?)",
+                    (key, json.dumps(note, ensure_ascii=False), self.STALE_AT))
+            con.commit()
+        finally:
+            con.close()
+
+    def _full_decision(self, item_key):
+        con = sqlite3.connect(self.db_path)
+        try:
+            status, note, updated = con.execute(
+                "SELECT status,note,updated_at FROM review_decision WHERE item_key=?",
+                (item_key,)).fetchone()
+        finally:
+            con.close()
+        return status, json.loads(note), updated
+
+    def _release_dates(self, *ids):
+        con = sqlite3.connect(self.db_path)
+        try:
+            return dict(con.execute(
+                f"SELECT id,release_date FROM asset WHERE id IN ({','.join('?' * len(ids))})", ids))
+        finally:
+            con.close()
+
+    def _set_release_date(self, asset_id, value):
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE asset SET release_date=? WHERE id=?", (value, asset_id))
+            con.commit()
+        finally:
+            con.close()
+
+    def test_a_stale_approval_whose_value_is_already_in_the_ledger_keeps_its_record(self):
+        """旧批准过期、重判出的值与账本现值相同：真相不写，决定的状态、时间与原有留痕
+        一字不改，只追加 `refreshed_candidate_key`，之后不再判它过期。
+
+        人批准的和自动落库的都一样：值没变就没有要落的东西，改写留痕只会丢掉「这是
+        谁批的」。
+        """
+        manual = {"candidate_key": "PPT-141:gone", "source": "r18dev", "user_note": "看过封面"}
+        auto = {"auto_applied": True, "rule": "adr-0018-empty-field-single-official-source",
+                "candidate_key": "PPT-142:gone", "source": "r18dev", "value": "2015-02-20"}
+        for asset_id, code in ((141, "PPT-141"), (142, "PPT-142")):
+            self._asset(asset_id, code, f"{code}.mp4")
+            self._set_release_date(asset_id, "2015-02-20")
+        self._stale_approvals({"PPT-141:release_date": manual, "PPT-142:release_date": auto})
+        self.write_metadata_rows([
+            {"item_key": f"{code}:release_date", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": code} for code in ("PPT-141", "PPT-142")])
+
+        result = self._auto()
+        self.assertEqual((result["applied"], result["refreshed"]), (0, 2))
+        for key, original in (("PPT-141:release_date", manual), ("PPT-142:release_date", auto)):
+            status, note, updated = self._full_decision(key)
+            self.assertEqual((status, updated), ("approved", self.STALE_AT))
+            self.assertEqual(note, {**original,
+                                    "refreshed_candidate_key": f"{key}:0"})
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+        # 对过的那一行再跑一遍不再重判。
+        self.assertEqual(self._auto()["refreshed"], 0)
+
+    def test_a_stale_manual_approval_that_would_change_the_value_goes_to_a_person(self):
+        """重判会改掉账本现值、而原决定是人批准的：不落，留在复核页交人（ADR-0052）。
+
+        补空也算改值：人批准的那一次没有写进这个值，现在替人写就是替人判断。
+        """
+        note = {"candidate_key": "PPT-143:gone", "source": "r18dev", "user_note": ""}
+        self._asset(143, "PPT-143", "PPT-143.mp4")
+        self._asset(144, "PPT-144", "PPT-144.mp4")
+        self._set_release_date(143, "2015-01-01")
+        self._stale_approvals({"PPT-143:release_date": note,
+                               "PPT-144:release_date": {**note, "candidate_key": "PPT-144:gone"}})
+        self.write_metadata_rows([
+            {"item_key": f"{code}:release_date", "field": "release_date", "current": "",
+             "candidates": ["2015-02-20"], "code": code} for code in ("PPT-143", "PPT-144")])
+
+        result = self._auto()
+        self.assertEqual((result["applied"], result["refreshed"]), (0, 0))
+        self.assertEqual(self._release_dates(143, 144), {143: "2015-01-01", 144: None})
+        self.assertEqual(self._full_decision("PPT-143:release_date"),
+                         ("approved", note, self.STALE_AT))
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")),
+                         ["PPT-143:release_date", "PPT-144:release_date"])
+
+    def test_a_stale_manual_approval_is_never_replaced_by_an_auto_rejection(self):
+        """人批准过的 FC2 出演者，候选换成只剩描述性称呼时也交回人，不自动否决。"""
+        note = {"candidate_key": "FC2-PPV-1800000:gone", "source": "fc2cmadb", "user_note": ""}
+        self._asset(145, "FC2-PPV-1800000", "FC2-PPV-1800000.mp4")
+        self._stale_approvals({"FC2P": note})
+        self.write_metadata_rows([
+            self._fc2_performer_row("FC2P", "FC2-PPV-1800000", ("javdb", "美女6名"))])
+
+        self.assertEqual(self._auto_without_snapshots()["auto_rejected"], 0)
+        self.assertEqual(self._full_decision("FC2P"), ("approved", note, self.STALE_AT))
+        self.assertEqual(self.queue_keys("metadata_fields"), ["FC2P"])
+
+    def test_a_stale_auto_approval_that_would_change_the_value_lands_again(self):
+        """原决定是自动落库写的：照现行判据重落，并覆盖那条决定。
 
         带 `pending_genres` 的自动落库不在此列：标签已经落了，等的是生词收录。
         """
         self._asset(137, "PPT-137", "PPT-137.mp4")
         self._asset(138, "PPT-138", "PPT-138.mp4")
-        con = sqlite3.connect(self.db_path)
-        try:
-            for key, note in (
-                    ("PPT-137:release_date", {"candidate_key": "PPT-137:gone", "source": "r18dev",
-                                              "user_note": ""}),
-                    ("PPT-138:release_date", {"auto_applied": True, "candidate_key": "PPT-138:gone",
-                                              "pending_genres": ["生詞"]})):
-                con.execute(
-                    "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
-                    "VALUES('metadata_fields',?,'approved',?,'2026-09-01T00:00:00Z')",
-                    (key, json.dumps(note, ensure_ascii=False)))
-            con.commit()
-        finally:
-            con.close()
+        self._set_release_date(137, "2015-01-01")
+        self._stale_approvals({
+            "PPT-137:release_date": {"auto_applied": True, "candidate_key": "PPT-137:gone",
+                                     "source": "javbus", "value": "2015-01-01"},
+            "PPT-138:release_date": {"auto_applied": True, "candidate_key": "PPT-138:gone",
+                                     "pending_genres": ["生詞"]}})
         self.write_metadata_rows([
             {"item_key": f"{code}:release_date", "field": "release_date", "current": "",
              "candidates": ["2015-02-20"], "code": code} for code in ("PPT-137", "PPT-138")])
@@ -967,13 +1063,10 @@ class ReviewQueueTests(unittest.TestCase):
                          ["PPT-137:release_date", "PPT-138:release_date"])
 
         self.assertEqual(self._auto()["applied"], 1)
-        con = sqlite3.connect(self.db_path)
-        try:
-            dates = dict(con.execute("SELECT id,release_date FROM asset WHERE id IN (137,138)"))
-        finally:
-            con.close()
-        self.assertEqual(dates, {137: "2015-02-20", 138: None})
-        note = json.loads(self._decision("PPT-137:release_date")[1])
+        self.assertEqual(self._release_dates(137, 138), {137: "2015-02-20", 138: None})
+        status, note, updated = self._full_decision("PPT-137:release_date")
+        self.assertEqual(status, "approved")
+        self.assertNotEqual(updated, self.STALE_AT)
         self.assertIs(note["auto_applied"], True)
         self.assertEqual(note["candidate_key"], "PPT-137:release_date:0")
         self.assertEqual(self.queue_keys("metadata_fields"), ["PPT-138:release_date"])

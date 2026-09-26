@@ -225,6 +225,7 @@ class LibraryNfoTests(unittest.TestCase):
                                  database=LedgerDatabase(db))
 
         self.assertGreaterEqual(result['auto_applied'], 1)
+        self.assertEqual(result['auto_rejected'], 0)
         with closing(sqlite3.connect(db)) as connection:
             title, owners = connection.execute(
                 "SELECT catalog_title,field_owners FROM asset WHERE code='ABW-358'").fetchone()
