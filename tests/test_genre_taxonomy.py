@@ -396,6 +396,80 @@ class VocabularyHygieneTests(unittest.TestCase):
                 self.assertEqual(resolve_genre(word), UNMAPPED)
 
 
+class Fc2SellerTagTests(unittest.TestCase):
+    """FC2 卖家自填的标签：花样拆得细、从标题截词，还混着发行说法和夸法。"""
+
+    def test_the_variants_of_one_act_land_on_its_tag(self):
+        """口交的站姿、骑姿、不用手、事后清理各写一格，说的仍是口交。"""
+        for spellings, tag in (
+            (("お掃除フェラ", "お掃除", "フェラ抜き", "仁王立ちフェラ", "ノーハンドフェラ",
+              "馬乗りフェラ", "Ｗフェラ", "玉舐め", "裏筋舐め", "口淫"), "口交"),
+            (("舌上発射", "舌上射精"), "口爆"),
+            (("精飲",), "吞精"),
+            (("挟射", "馬乗りパイズリ", "着衣パイズリ"), "乳交"),
+            (("2回射精", "大量射精", "大量発射", "ザーメン発射"), "射精"),
+            (("精子を搾り取", "搾り取", "ザーメン搾り取", "精液搾り"), "榨精"),
+            (("濃厚中出し", "膣内射精", "生セックス", "生SEX", "ザーメン注入"), "中出内射"),
+            (("アナルファック", "AF", "アナル中出し"), "肛交"),
+            (("アナル舐め",), "毒龙"),
+            (("亀頭責め",), "龟头责"),
+            (("正常位",), "传教士"),
+            (("ピストン", "ガン突き"), "打桩"),
+            (("腋コキ", "わき"), "腋"),
+            (("オナホ", "ローター責め", "コックリング", "アナルプラグ"), "性玩具"),
+        ):
+            for spelling in spellings:
+                with self.subTest(spelling=spelling):
+                    self.assertEqual(map_genres([spelling]), ([tag], []))
+
+    def test_spelling_variants_and_costumes_reach_the_existing_tags(self):
+        """假名、省写与扮装各有既有的一格，不另开标签。"""
+        for spellings, tag in (
+            (("ぱいぱん",), "白虎"),
+            (("スジマン",), "美穴"),
+            (("猫耳",), "兽耳兽装"),
+            (("セーラー",), "制服"),
+            (("体操着", "体操服"), "体操服"),
+            (("バニー",), "兔女郎"),
+            (("競泳水着",), "泳装"),
+            (("ボンテージ", "エナメル"), "皮衣皮裙"),
+            (("コス", "コスチューム", "サキュバス"), "角色扮演"),
+            (("メンズエステ", "メンエス"), "按摩"),
+            (("隠し撮り",), "偷拍偷窥"),
+            (("他人棒",), "绿帽NTR"),
+            (("奥様",), "人妻"),
+            (("無", "モ無し"), "无码"),
+        ):
+            for spelling in spellings:
+                with self.subTest(spelling=spelling):
+                    self.assertEqual(map_genres([spelling]), ([tag], []))
+
+    def test_a_gravure_idol_is_an_idol_on_a_work_and_a_trade_on_a_profile(self):
+        """同一个 `グラドル`：作品上说出镜的是谁，资料页上说她做过的行业。"""
+        self.assertEqual(map_genres(["グラドル"])[0], ["偶像艺人"])
+        self.assertEqual(resolve_profile_tag("グラドル"), ("写真偶像",))
+
+    def test_release_wording_and_praise_are_excluded_not_registered(self):
+        """谁拍的、公开过没有、有多好，都不说拍了什么。"""
+        for word in ("個人撮影", "個撮", "オリジナル", "未公開", "限定", "長編", "VIP",
+                     "セックス", "SEX", "エッチ", "セクシー", "極上", "イキまくり",
+                     "Wピース", "ゴム", "着衣", "しょうなちゃん", "ＦＧ○"):
+            with self.subTest(word=word):
+                self.assertTrue(is_non_content_genre(word), word)
+        self.assertEqual(map_genres(["個人撮影", "オリジナル", "お掃除フェラ"]), (["口交"], []))
+
+    def test_words_the_catalog_has_no_slot_for_stay_on_the_review_page(self):
+        """词表里没有对应一格、或者含义还没查清的词，留给人判。
+
+        `神乳` 剥掉夸法只剩「乳」这一级，和 `おっぱい` 同理；受孕那一簇说的是内射到怀孕的
+        题材，`孕妇` 说的是出镜时已经怀孕，两边不是一回事；`Iカップ` 是尺寸；`ハイレグ` 既可能是
+        泳装也可能是体操服；`モザ` 在一部已判无码的片子上出现，是半个词。
+        """
+        for word in ("神乳", "妊娠", "孕ませ", "排卵", "種付け", "Iカップ", "ハイレグ", "モザ"):
+            with self.subTest(word=word):
+                self.assertEqual(resolve_genre(word), UNMAPPED)
+
+
 class ResolveGenreTests(unittest.TestCase):
     """抓取与复核折叠候选走同一个查表函数。"""
 
@@ -486,7 +560,7 @@ class ProfileTagTests(unittest.TestCase):
         self.assertEqual(resolve_profile_tag("清楚お嬢様系"), ("清纯", "千金小姐"))
 
     def test_labels_and_career_notes_are_not_tags(self):
-        for word in ("カリビアン", "改名・移籍", "引退", ""):
+        for word in ("カリビアン", "改名・移籍", "引退", "セクシー", "女優", ""):
             with self.subTest(word=word):
                 self.assertEqual(resolve_profile_tag(word), ())
 
