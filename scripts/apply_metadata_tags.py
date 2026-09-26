@@ -78,7 +78,7 @@ def _record_decision(connection, group: dict, candidate: dict, note: str, now: s
     """把写入登记成 approved，留痕形状与 `/review` 手工批准完全一致。
 
     不登记的后果实测过：2026-09-02 那 119 组标签写完仍原样挂在 `/review` 里，
-    看不出已经处理过。留痕里必须带 `candidate_key`——`_metadata_decision_is_stale`
+    看不出已经处理过。留痕里必须带 `candidate_key`——`metadata_decision_is_stale`
     正是靠它判断「这条旧批准指向的候选还在不在」，缺了它以后新来源就压不进来。
     """
     connection.execute(

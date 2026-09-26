@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-08-24
-- 修订：ADR-0025 把 `AUTO_APPLY_FIELDS` 从 `release_date` 一个字段扩到六个 P0 字段，白名单以代码为准
+- 修订：ADR-0025 把 `AUTO_APPLY_FIELDS` 从 `release_date` 一个字段扩到六个 P0 字段，白名单以代码为准；ADR-0079 规定过期决定怎样重判
 
 ## 背景
 
@@ -47,7 +47,7 @@ javbus 补空候选全部滞留人工，补的都是账本里空着的发行日�
 早就排好了序，让人再判一遍等于把定好的信任模型丢回给人。没有落库记录的行照常进队列：
 现值来路不明时 community 的异议有意义。现值与记录不符（被别的动作改过）时同样交回人工。
 **只有记下了取值的记录才算数。** 人工批准写的 note 只有 `candidate_key` 与 `source`，
-证明不了账本现在这一个是它写的；拿它当已确认会把 `_metadata_decision_is_stale`
+证明不了账本现在这一个是它写的；拿它当已确认会把 `metadata_decision_is_stale`
 本该重开的字段永久压在队列外面。
 
 判据实现见 `metadata_auto_apply_candidate`；执行入口是处理任务收尾时调用的
