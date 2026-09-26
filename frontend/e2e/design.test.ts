@@ -1098,6 +1098,29 @@ describe('设计决定', () => {
     }
   });
 
+  /* 搜索框住在粘性顶栏里，永远在视口上沿；可 `html` 的 `scroll-padding-top` 把那一条
+     划成「被顶栏盖住」的区域，浏览器每敲一个字就把光标往下滚一次，页面一路往回退。
+     点击走鼠标坐标：定位器的 click 会先替元素滚进视口，那一下不是页面自己的行为。 */
+  it('往下翻过之后在搜索框里打字，页面停在原处', { timeout: 60_000 }, async () => {
+    const opened = await openCatalog(browser);
+    try {
+      const { page } = opened;
+      await page.setViewportSize({ width: DESKTOP.width, height: 480 });
+      await page.mouse.move(DESKTOP.width / 2, 300);
+      await page.mouse.wheel(0, 600);
+      await page.waitForFunction(() => scrollY > 300, undefined, { timeout: 5_000 });
+      const before = await page.evaluate(() => scrollY);
+      const box = await page.locator('#q').boundingBox();
+      if (!box) throw new Error('搜索框不可见');
+      await page.mouse.click(box.x + 40, box.y + box.height / 2);
+      await page.keyboard.type('演示abc', { delay: 60 });
+      await page.waitForTimeout(300);
+      assert.equal(await page.evaluate(() => scrollY), before, '打字时页面跟着滚动了');
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('首页也有大图／小图：默认小图，大图只拉长番号卡，选择单独记住', { timeout: 60_000 }, async () => {
     /* 演示库没有番号作品，给首张卡挂一个；第二张保持普通视频，看它不跟着拉长。 */
     const opened = await openCatalogFixture(browser, (payload) => {
