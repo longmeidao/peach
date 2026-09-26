@@ -532,6 +532,69 @@ class GroupingTests(_StoreCase):
             replace(stale, group_hint="rule34xxx:post:2"))
         self.assertEqual(len(groups), 1)
 
+    def _upload(self, external_id, hours, *, duration=60.054, character="grace_ashcroft",
+                general=("athletic_female", "blender", "cowgirl_position", "nude"), **extra):
+        return replace(self._booru_post(external_id, hours * 60, character=character,
+                                        general=general, **extra), duration=duration)
+
+    def _members(self, groups):
+        return sorted(sorted(m.external_id for m in (g.primary, *g.variants, *g.duplicates))
+                      for g in groups)
+
+    def test_the_same_clip_uploaded_again_days_later_joins_the_first_upload(self):
+        # Memz 的 Grace 动画：07-18 一帖带出处，07-23 又传两帖。重新编码过，只有时长逐毫秒
+        # 相同；后两帖多挂一个作品标签，一般标签也不完全一样。
+        later = {"resident_evil_9:_requiem": "copyright", "grace_ashcroft": "character",
+                 "memz": "artist", "athletic_female": "general", "blender": "general",
+                 "cowgirl_position": "general", "nude": "general", "3d_animation": "general"}
+        groups = self._record_booru(
+            self._upload("18148361", 0, source="https://danbooru.donmai.us/posts/11817280"),
+            self._upload("18193355", 104, tag_types=later),
+            self._upload("18193376", 104, tag_types=later))
+        self.assertEqual(self._members(groups), [["18148361", "18193355", "18193376"]])
+
+    def test_an_export_length_shared_by_other_characters_is_not_evidence(self):
+        # LazyProcrastinator 的 20.02 秒用在上百种角色组合上：同一角色隔几天的两帖是两部。
+        groups = self._record_booru(
+            self._upload("1", 0, duration=20.02, character="reika_(doa)"),
+            self._upload("2", 24 * 100, duration=20.02, character="reika_(doa)"),
+            self._upload("3", 24 * 50, duration=20.02, character="jote_(ffxvi)"))
+        self.assertEqual(len(groups), 3)
+
+    def test_a_filtered_page_still_knows_an_export_length(self):
+        # 只看未读时，别的角色那几帖可能都不在这一页；认固定长度要按筛选前的全部条目。
+        self._record_booru(
+            self._upload("1", 0, duration=20.02, character="reika_(doa)"),
+            self._upload("2", 24 * 100, duration=20.02, character="reika_(doa)"),
+            self._upload("3", 24 * 50, duration=20.02, character="jote_(ffxvi)"))
+        everything = self.store.items()
+        page = tuple(item for item in everything if item.external_id != "3")
+        self.assertEqual(len(self.store.group(page, population=everything)), 2)
+
+    def test_uploads_within_one_session_are_left_to_the_burst_rule(self):
+        # 同一小时里时长相同的几帖是同一场景的不同体位，连发判据按相邻帖的标签切开了：
+        # 1 与 3 标签相近，中间隔着体位不同的 2，这里不拿时长把 1 和 3 重新串起来。
+        handjob = ("beach", "handjob", "duo", "pov")
+        groups = self._record_booru(
+            self._upload("1", 0, general=handjob),
+            self._upload("2", 0.25, general=("beach", "ass_focus", "doggy", "wall")),
+            self._upload("3", 0.5, general=(*handjob[:3], "kneeling")))
+        self.assertEqual(len(groups), 3)
+
+    def test_reuploads_need_overlapping_tags_and_a_millisecond_length(self):
+        groups = self._record_booru(
+            self._upload("1", 0), self._upload("2", 48, general=("standing", "hat", "wall", "nude")),
+            self._upload("3", 0, duration=45.0, character="nyotengu"),
+            self._upload("4", 48, duration=45.0, character="nyotengu"))
+        self.assertEqual(len(groups), 4)
+
+    def test_two_declared_releases_are_not_joined_as_a_reupload(self):
+        # Pantsushi3D 发过两条推：来源自己说是两次发布，缩略图再像也不并。
+        groups = self._record_booru(
+            self._upload("4704518", 0, source="https://twitter.com/Pantsushi3D/status/1"),
+            self._upload("6178800", 24 * 392, source="https://twitter.com/Pantsushi3D/status/2"))
+        self.assertEqual(len(groups), 2)
+
     def _clip(self, video_id, title, *, duration=20.0, character="angel (kof)",
               work="King of Fighters", **extra_tags):
         tag_types = {"beach": "general", character: "general", work: "copyright",

@@ -1712,7 +1712,8 @@ def q_follow(contract, args) -> dict:
             # 只剩两三条，得反复点「加载更多」才凑出一屏；按条目切页再分组的话，同一作品
             # 的几份上传落在相邻两页，页面上就是两张卡。所以整批分组，`limit` 数的是组。
             page = tuple(item for item in counted if not statuses or item.status in statuses)
-            ranked = _sorted_groups(store.group(page, by_author), sort, direction, seed)
+            ranked = _sorted_groups(store.group(page, by_author, everything),
+                                    sort, direction, seed)
             has_more = len(ranked) > offset + limit
             ranked = ranked[offset:offset + limit]
         # 翻卡与封面计数要知道组里哪几张是同一个画面，判据与缓存见 `follow_faces`。

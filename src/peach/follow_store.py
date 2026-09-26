@@ -702,16 +702,22 @@ class FollowStore:
     @staticmethod
     def group(items: tuple[FollowItemRow, ...],
               authors: dict[int, tuple[str, frozenset[str]]] | None = None,
+              population: tuple[FollowItemRow, ...] | None = None,
               ) -> tuple[ReleaseGroup, ...]:
         """把条目折叠成作品分组。
 
         先按来源自带的 `group_hint` 合并（booru 的 `parent_id` 比标题可靠），
         再按标题推出的 `release_key` 合并，最后同一组里选主条目。booru 上没有标题也
         没有出处的帖子，按角色、上传时间与标签重合度认出同一作品的连发（ADR-0046）；
-        站内 id 连号上传的同一批短片按角色认成一包（ADR-0045）。
+        站内 id 连号上传的同一批短片按角色认成一包（ADR-0045）；角色、毫秒时长与标签
+        都对得上的隔天重传也归进同一组（ADR-0077）。
 
         `authors` 把来源 id 映射到（作者键, 这位作者的全部名字写法）。给了它，标题里
         夹着的作者名在分组前剥掉，相似标题的版本也跨同一作者的各个来源去对。
+
+        `population` 是筛选前的全部条目，只用来认作者的固定导出长度（见
+        `_align_reuploads`）；不给就按 `items` 认。按状态或标签筛过的一页里其他角色
+        可能正好都不在，同一个时长就会被错认成只属于一部片子。
         """
         # 先按标题判据拆开同站撞车，再按来源自带的关系合并：来源自己声明过的关系
         # 优先，绝不能被标题判据拆散。
@@ -729,9 +735,9 @@ class FollowStore:
         linked = _hint_linked(stripped)
         # 连发判据排在出处对齐之后：没有出处的帖子要挂到同批有出处的那组上，得先让
         # 那组共用一个键。
-        aligned = _align_tag_bursts(_align_by_group_hint(_align_upload_packs(
+        aligned = _align_reuploads(_align_tag_bursts(_align_by_group_hint(_align_upload_packs(
             _align_title_families(_split_ambiguous_works(stripped, linked), authors))),
-            linked)
+            linked), linked, _template_lengths(population if population is not None else items))
         primaries = group_duplicates(aligned)
         buckets: dict[int, tuple[FollowItemRow, list[FollowItemRow]]] = {}
         for item, primary in zip(aligned, primaries):
@@ -1337,7 +1343,7 @@ def _align_tag_bursts(items: tuple[FollowItemRow, ...],
         if not identity:
             continue
         general = frozenset(tag for tag, kind in tag_types.items() if kind == "general")
-        anchor = bool(metadata.get("source")) or (item.provider, item.external_id) in linked
+        anchor = _declares_origin(item, linked)
         buckets.setdefault((item.source_id, identity), []).append(
             (moment, general, anchor, item))
     renamed: dict[int, str] = {}
@@ -1410,6 +1416,119 @@ def _burst_near(left: tuple, right: tuple) -> bool:
 def _overlap(left: frozenset[str], right: frozenset[str]) -> float:
     union = left | right
     return len(left & right) / len(union) if union else 0.0
+
+
+def _align_reuploads(items: tuple[FollowItemRow, ...],
+                     linked: frozenset[tuple[str, str]] = frozenset(),
+                     templates: frozenset[tuple[int, float]] | None = None,
+                     ) -> tuple[FollowItemRow, ...]:
+    """同一段片子隔几天重传的几帖归到一个键下（ADR-0077）。
+
+    Memz 的 Grace Ashcroft 动画 07-18 传过一帖，07-23 又传了两帖：文件各自重新编码，MD5
+    不同，站上生成的缩略图也取了不同的帧，只有时长逐毫秒相同（60.054 秒）。连发判据的
+    3 小时窗口接不住，作品标签也多挂了一个 `resident_evil_9:_requiem`。
+
+    条件同时成立才算重传：
+
+    1. 同一来源，时长到毫秒相同，而且这个时长在这个来源里只出现在一种角色组合上。作者常用
+       固定的导出长度：LazyProcrastinator 的 20.02 秒用在 98 种角色组合上，InitialA 的
+       31.232 秒用在 60 种上，这种时长相同说明不了是同一段。整秒的时长也不认，那多半是
+       站点报的取整值。
+    2. 角色标签的集合相同；作品标签不看，各帖写法不一。
+    3. 一般标签的 Jaccard 重合度不低于 `_BURST_MIN_OVERLAP`。
+    4. 发布时间相隔 `_BURST_GAP` 以上。同一时段里连着传的几帖归连发判据管，这里不拿
+       时长把它按标签切开的几段重新串起来。
+
+    合并的是整组的键，不是单帖：一帖已经在连发组里，整组跟着它走。有出处的组只当锚，
+    一次合并里只能有一个锚：两帖各写了不同的出处，是来源自己说的两次发布，不并。
+
+    `templates` 是第 1 条里的固定导出长度（`_template_lengths`），不给就按 `items` 算。
+    """
+    if templates is None:
+        templates = _template_lengths(items)
+    buckets: dict[tuple, list[tuple[frozenset[str], datetime, frozenset[str],
+                                    FollowItemRow]]] = {}
+    for item in items:
+        found = _reupload_bucket(item)
+        if found is not None and found[0] not in templates and found[1]:
+            buckets.setdefault((found[0], found[1]), []).append((*found[1:], item))
+    anchored = {item.release_key for item in items
+                if item.release_key and _declares_origin(item, linked)}
+    parent: dict[str, str] = {}
+    anchors: dict[str, frozenset[str]] = {}
+
+    def root(key: str) -> str:
+        while parent.get(key, key) != key:
+            key = parent[key]
+        return key
+
+    for members in buckets.values():
+        for item, other in _reupload_pairs(members):
+            left, right = root(item.release_key), root(other.release_key)
+            if left == right:
+                continue
+            joined = (anchors.get(left, frozenset({left} & anchored))
+                      | anchors.get(right, frozenset({right} & anchored)))
+            if len(joined) > 1:
+                continue
+            target = next(iter(joined)) if joined else min(left, right)
+            parent[left] = parent[right] = target
+            parent.pop(target, None)
+            anchors[target] = joined
+    if not parent:
+        return items
+    return tuple(
+        FollowItemRow(**{**item.__dict__, "release_key": root(item.release_key)})
+        if item.release_key and root(item.release_key) != item.release_key else item
+        for item in items
+    )
+
+
+def _template_lengths(items: tuple[FollowItemRow, ...]) -> frozenset[tuple[int, float]]:
+    """作者的固定导出长度：同一来源里出现在两种以上角色组合上的毫秒时长。"""
+    seen: dict[tuple, set[frozenset[str]]] = {}
+    for item in items:
+        found = _reupload_bucket(item)
+        if found is not None:
+            seen.setdefault(found[0], set()).add(found[1])
+    return frozenset(key for key, characters in seen.items() if len(characters) > 1)
+
+
+def _reupload_pairs(members: list) -> list[tuple[FollowItemRow, FollowItemRow]]:
+    """同一来源、同一毫秒时长、同一组角色的一桶里，够得上重传的成对。"""
+    return [(item, other)
+            for index, (_, moment, general, item) in enumerate(members)
+            for _, other_moment, other_general, other in members[index + 1:]
+            if abs(moment - other_moment) > _BURST_GAP
+            and _overlap(general, other_general) >= _BURST_MIN_OVERLAP]
+
+
+def _reupload_bucket(item: FollowItemRow) -> tuple[
+        tuple, frozenset[str], datetime, frozenset[str]] | None:
+    """重传判据的桶键（来源、毫秒时长）、角色集合、发布时间与一般标签；
+    不参与判断的条目给 None。"""
+    metadata = item.metadata or {}
+    tag_types = metadata.get("tag_types")
+    if (metadata.get("title_from") != "tags" or not isinstance(tag_types, dict)
+            or not item.release_key or not item.duration or item.duration <= 0):
+        return None
+    seconds = round(float(item.duration), 3)
+    try:
+        moment = datetime.fromisoformat(str(item.published_at).replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    if seconds.is_integer():
+        return None
+    characters = frozenset(tag for tag, kind in tag_types.items()
+                           if kind == "character" and tag not in _BURST_PSEUDO_CHARACTERS)
+    general = frozenset(tag for tag, kind in tag_types.items() if kind == "general")
+    return (item.source_id, seconds), characters, moment, general
+
+
+def _declares_origin(item: FollowItemRow, linked: frozenset[tuple[str, str]]) -> bool:
+    """来源自己声明了这一帖属于哪次发布：写了出处，或与别的条目共用 `group_hint`。"""
+    return (bool((item.metadata or {}).get("source"))
+            or (item.provider, item.external_id) in linked)
 
 
 #: 一包短片的边界：相邻两条站内 id 至多差多少、时长至多差几秒，以及标题开头的
