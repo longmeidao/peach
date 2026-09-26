@@ -85,6 +85,19 @@
   --breakpoint-board: 1000px;
 }
 
+/* EvilCharts 源码写的是 shadcn 的语义色名（`bg-background`、`text-muted-foreground`、
+ * `fill-muted`、`border-border`）。这里只把名字接到 BoardUI 已有的 token 上，不另起一套颜色：
+ * 浮层面同菜单（`background-primary-default`），次要字与轴刻度取 `text-secondary`，
+ * 径向轨道与悬停底取 `chart-track`，分隔取 `separator-border`。`inline` 让工具类直接带出
+ * 右边那个变量，不在 `:root` 上多出一组同名的 `--color-*`。来源与差异见 `evilcharts/ORIGIN.md`。 */
+@theme inline {
+  --color-background: var(--color-background-primary-default);
+  --color-foreground: var(--color-text-primary);
+  --color-muted: var(--color-chart-track);
+  --color-muted-foreground: var(--color-text-secondary);
+  --color-border: var(--color-separator-border);
+}
+
 /* 复核队列的卡片网格与作品样本网格。两处都是「按可用宽度自动折行」，只有最窄那一列
  * 不同：队列卡要放下一张候选表单，样本格只放一张 16/10 的缩略图。 */
 @utility review-grid {

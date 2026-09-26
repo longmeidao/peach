@@ -6,7 +6,13 @@
     // boardui/ 逐字复制上游源码，上游没有按这两条写；在这里放宽，而不是改上游文件。
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": false,
+    // evilcharts/ 同样逐字复制，上游用普通 import 取 recharts 的类型（`RectRadius`、`TypedDataKey`）；
+    // `isolatedModules` 仍开着，转译时只被当类型用的 import 照常剥掉。
+    "verbatimModuleSyntax": false,
     "paths": {
+      // EvilCharts 源码按 shadcn 项目的路径写 import；最长前缀优先，排在 `@/*` 之前命中。
+      "@/registry/*": ["./evilcharts/registry/*"],
+      "@/lib/utils": ["./charts/cn.ts"],
       "@/*": ["./boardui/*"],
       "@peach/legacy/core": ["../legacy/core.d.ts"],
       "@peach/legacy/ui": ["../legacy/ui.d.ts"]

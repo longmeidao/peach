@@ -4,7 +4,7 @@
     "correctness": "off"
   },
   "jsPlugins": ["@shadcn/lint"],
-  "ignorePatterns": ["src/react/boardui/**"],
+  "ignorePatterns": ["src/react/boardui/**", "src/react/evilcharts/**"],
   "settings": {
     "shadcn": {
       "ui": "@/components",
