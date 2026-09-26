@@ -507,11 +507,13 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
             # 片商按合计排，旗下 label 的片都归它（ADR-0051 修订）；有上级的 label 不单列，
             # 从片商页的名册进去。搜索时照常列出所有叫这个名字的，找 label 不必先猜它归谁。
             # 从 entity 出发：自己一部片都没挂、片全在旗下的片商（妄想族）也要出现。
+            # 两个子查询都用 `CROSS JOIN` 钉住连接顺序，原因见 `scope_predicate`：交给规划器
+            # 的话，代表作那句每家片商都把全部有截图的视频回查一遍，一百多家叠起来要两秒多。
             scope = scope_predicate("studio", "ae.entity_id", "e.id")
             sql = ("SELECT * FROM (SELECT e.id entity_id,e.canonical_name k,"
                    "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae"
-                   " JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND " + scope + ") n,"
-                   "(SELECT a2.id FROM asset_entity ae JOIN asset a2 ON a2.id=ae.asset_id "
+                   " CROSS JOIN asset a ON a.id=ae.asset_id WHERE a.medium='video' AND " + scope + ") n,"
+                   "(SELECT a2.id FROM asset_entity ae CROSS JOIN asset a2 ON a2.id=ae.asset_id "
                    " WHERE " + scope + " AND a2.medium='video' AND a2.snapshot_path IS NOT NULL "
                    " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
                    " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1) rep "
