@@ -1,5 +1,7 @@
 # 前端 island 层
 
+这份文档讲前端代码放在哪、怎么构建和测试、React 页怎么挂进遗留壳，以及迁下一个页面的步骤。
+
 Peach 的界面正在从 `web/app.js`（无构建、一万一千余行的原生 ES module）逐页迁到
 React + Tailwind v4 + BoardUI 源码。迁移方式是 strangler：
 **遗留路由继续拥有外壳和每一个页面**，一页被重写之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
@@ -30,25 +32,20 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 状态，原生 `<form method="post">` 不写一行 JS 就能工作。设置成功以浏览器 cookie 登录并跳入馆藏。
 它的配色 token 从 `web/css/01-base.css` 的 `:root` 两段抽出来，跟随系统深浅色。
 
-配置好之后改文件夹与端口的那张页整个是 React（`frontend/src/react/settings/`，入口
-`configuration-page.tsx`）：一条窄列里排「通用 / 媒体 / 网络与访问 / 更新与维护」四组，每组一个
-`h2.configgroup` 小标题，没有内容的组连标题一起省略。数据契约是 `/api/configuration`
-（`src/peach/routes_configuration.py`），端点字符串只在 `frontend/src/configuration-endpoints.ts`
-声明一次，整页和设置弹层的摘要卡读同一个 `queryKey`。
-`/configuration` 是唯一的编辑页，进管理菜单；媒体库选单、统计页与首次配置引导都指向它。
-左栏页签按 `.configgroup` 标题切（`web/app.js` 的 `configTabItems`）。壳挂完这一页紧接着
-就读它画出来的结构，所以第一帧要同步落到 DOM 上：`react/entry.tsx` 的 `mounter` 用 `flushSync`
-画第一帧，往后的更新照常异步。小标题和分区因此必须是 `.configpage` 的直接子节点、交替排列。
-设置弹层「这台电脑」一格只挂 `configuration-summary`（`configuration-summary.tsx`）：媒体库数、
-端口、更新状态和「打开配置页」，不放可编辑的控件（ADR-0050）。媒体库数取 `/api/configuration` 的
-`library_count`，由服务端按 `media_libraries.libraries` 分组数好，页面不自己归并。媒体修复是数据管理页上的
-`media-repair` island（`frontend/src/react/media-repair/`），订阅源是关注管理页的「订阅源」页签
-（`follow-manage/feed-sources.tsx`，读 `/api/feeds`）。
-服务端按两道门放行：托盘管理的服务、发起连接的是本机；并在 `/healthz` 里按调用方回
-`configurable`，遗留层据此决定管理菜单列不列「配置」，摘要卡挂 island 还是换成一句「该配置需在服务端设备修改」。
-表单校验的原因由服务端按字段给（400 的 `errors`），页面写回原位，不在前端复制判定。
-浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页
-（`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。
+### 配置页
+
+配置好之后改文件夹与端口的那张页整个是 React（`frontend/src/react/settings/`，入口 `configuration-page.tsx`）。`/configuration` 是唯一的编辑页，进管理菜单；媒体库选单、统计页与首次配置引导都指向它。
+
+- 结构：一条窄列里排「通用 / 媒体 / 网络与访问 / 更新与维护」四组，每组一个 `h2.configgroup` 小标题，没有内容的组连标题一起省略。左栏页签按 `.configgroup` 标题切（`web/app.js` 的 `configTabItems`）。
+- 数据契约是 `/api/configuration`（`src/peach/routes_configuration.py`）。端点字符串只在 `frontend/src/configuration-endpoints.ts` 声明一次，整页和设置弹层的摘要卡读同一个 `queryKey`。
+- 第一帧必须同步：壳挂完这一页紧接着就读它画出来的结构，所以 `react/entry.tsx` 的 `mounter` 用 `flushSync` 画第一帧，往后的更新照常异步。小标题和分区因此必须是 `.configpage` 的直接子节点、交替排列。
+- 设置弹层「这台电脑」一格只挂 `configuration-summary`（`configuration-summary.tsx`）：媒体库数、端口、更新状态和「打开配置页」，不放可编辑的控件（ADR-0050）。媒体库数取 `/api/configuration` 的 `library_count`，由服务端按 `media_libraries.libraries` 分组数好，页面不自己归并。
+- 相邻的两处不在这页：媒体修复是数据管理页上的 `media-repair` island（`frontend/src/react/media-repair/`），订阅源是关注管理页的「订阅源」页签（`follow-manage/feed-sources.tsx`，读 `/api/feeds`）。
+- 服务端按两道门放行：托盘管理的服务、发起连接的是本机。`/healthz` 按调用方回 `configurable`，遗留层据此决定管理菜单列不列「配置」，摘要卡挂 island 还是换成一句「该配置需在服务端设备修改」。
+- 表单校验的原因由服务端按字段给（400 的 `errors`），页面写回原位，不在前端复制判定。
+- 浏览器直接导航撞上 `HTTPException` 时，`api.py` 的处理器按 `Accept` 回一张 HTML 错误页（`routes_pages.error_page`），`/api/` 下和非导航请求仍回 JSON。
+
+### 产物缓存
 
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
 缓存由服务端控制：`/dist/` 与 `/app.js`、`/app.css`、`/js/` 同一档，回
@@ -98,6 +95,8 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 
 ## 开发循环
 
+改前端代码时怎么看到效果、怎么跑测试，以及提交前必须做什么。
+
 ```bash
 npm --prefix frontend ci        # 首次或改了依赖之后
 npm --prefix frontend run dev   # vite build --watch，改完存盘就重建 web/dist
@@ -141,6 +140,8 @@ BoardUI 组件上的间距或外观，处理办法是在组件外面套一层普
 
 ## 挂载契约
 
+遗留路由怎样把一个容器交给 React 页、又怎样收回来，下面每条都是为了不出现两段等待态或离场后还在轮询的根。
+
 ```js
 // web/app.js 里的遗留入口
 const ui = await import('/dist/peach-ui.js');
@@ -176,7 +177,7 @@ await ui.mountIsland('quality-goals', $('#stats'), props, {isCurrent: () => surf
 
 两条跨层都成立的硬约束：
 
-- 数据库元数据不得插值到 inline JavaScript 事件属性：真实厂牌名里的撇号曾直接造成 Firefox 语法错误。
+- 数据库元数据不得插值到 inline JavaScript 事件属性：真实厂牌名里的撇号会直接造成 Firefox 语法错误。
 - 前端 API 包装必须先检查 HTTP 状态再返回 JSON：冲突只读时写端点返回 `409` 和错误 JSON，当成普通成功对象会清空选择并重载，用户只看到条目原样回来。批量处置和详情反馈必须保留当前选择并显示失败原因。
 
 ## 共享状态怎么写
@@ -318,10 +319,9 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
 
-React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 1159.0 kB（gzip 294.6 kB），
-只在页面挂 React 子树时由 island 动态加载；`peach-react.css` 108.4 kB（gzip 17.0 kB），
-由 `index.html` 在旧样式表之前引入。`peach-ui.js` 38.6 kB（gzip 13.4 kB），只剩挂载契约与
-遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
+React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 只在页面挂 React 子树时由
+island 动态加载；`peach-react.css` 由 `index.html` 在旧样式表之前引入；`peach-ui.js` 只剩挂载
+契约与遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。
 

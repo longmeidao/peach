@@ -1,8 +1,10 @@
 # 测试与依赖
 
+这份文档讲三件事：依赖怎么装、怎么升级；改完代码要跑哪些测试、CI 怎么分；新测试该写成什么样。
+
 ## 环境与锁文件
 
-源码安装使用 `uv sync --locked`。开发、测试和构建在隔离工作树创建 `.venv`，不对正在服务的环境执行精确同步。
+依赖由 uv 按锁文件精确复现。源码安装用 `uv sync --locked`。开发、测试和构建在隔离工作树里建自己的 `.venv`，不对正在服务的环境做精确同步。
 
 安装全部测试依赖（先完成前端依赖安装和构建，再开始正式验证）：
 
@@ -22,13 +24,24 @@ uv add "包名==版本"
 uv sync --locked --extra build
 ```
 
-提交 `pyproject.toml` 与 `uv.lock`。CI 使用 `--locked` 拒绝过期锁文件；Dependabot 的 `uv` 生态负责更新。`uv pip install` 用于临时环境或安装产物，不用于维护项目依赖。普通 pip 安装 wheel 的冒烟仍独立验证打包声明。
+提交 `pyproject.toml` 与 `uv.lock`。CI 用 `--locked` 拒绝过期锁文件；Dependabot 的 `uv` 生态负责更新。`uv pip install` 只用于临时环境或安装产物，不用来维护项目依赖。普通 pip 安装 wheel 的冒烟另外独立验证打包声明。
 
-npm 的两份清单还有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。Dependabot 只改 manifest 与 lock，算不出这些，它的 PR 上 `npm run check:vendor` 或 island 产物那一关会红，因为它的 workflow 拿到的 token 是只读的，推不回 `dependabot/**`。在隔离工作树里用 `scripts/adopt_dependency_bump.py --pr <编号> --co-author '<工具> (<模型>) <厂商 noreply>'` 接管：签出那份清单、重算派生产物、只暂存这些并提交，`--apply` 前先看它列出的文件清单。uv 与 github-actions 的升级没有派生产物，直接合并即可。破坏性的大版本升级由 `.github/dependabot.yml` 的 `ignore` 显式挡在自动 PR 之外，迁移单开分支做。
+### 接手 Dependabot 的 npm 升级
+
+npm 的两份清单各有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。
+
+Dependabot 只改 manifest 与 lock，算不出派生产物；它的 workflow 拿到的 token 又是只读的，推不回 `dependabot/**`。所以它的 PR 上 `npm run check:vendor` 或 island 产物那一关会红，要人接管：
+
+1. 在隔离工作树里运行 `scripts/adopt_dependency_bump.py --pr <编号> --co-author '<工具> (<模型>) <厂商 noreply>'`。它签出那份清单、重算派生产物、只暂存这些并提交。
+2. 加 `--apply` 之前，先看它列出的文件清单。
+
+uv 与 github-actions 的升级没有派生产物，直接合并即可。破坏性的大版本升级由 `.github/dependabot.yml` 的 `ignore` 挡在自动 PR 之外，迁移单开分支做。
 
 版本来自 `src/peach/__init__.py`，已纳入 uv 缓存键；源码版本更新后再次同步会刷新安装元数据。缓存规则采用 [uv 官方动态元数据机制](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)。
 
 ## 验证频率
+
+不是每次都跑全量：本机按改动涉及的域选测，CI 按提交类型决定覆盖多宽。
 
 | 场景 | 验证 |
 | --- | --- |
@@ -42,7 +55,9 @@ npm 的两份清单还有一层派生产物：根 `package.json` 对应 `web/ven
 
 全量在两个独立 runner 按测试文件稳定分片；汇总任务要求所有分片和必需任务成功。分片子进程不签发记录。
 
-浏览器冒烟与设计决定断言（`tests/test_web_e2e.py`）由 `web-e2e` job 在 `windows-latest` 上执行 `web` 域，它装 Node 24、`frontend/node_modules`、ffmpeg，并经 `PEACH_E2E_CHROME` 指定 runner 自带的 Chrome。矩阵扩成全量（`plan` 输出的 `wide`）时 Windows 全量行本身就跑 `web` 域，这个 job 按条件跳过，`verified` 只在这种情况接受它的 skipped，别的 job 跳过照样算红。需要这些外部前置条件的用例在本机缺失时跳过，在 CI（`GITHUB_ACTIONS=true`）里判失败，判定集中在 `tests/support/conditions.py` 的 `missing_prerequisite`；所以 `python` 矩阵里 `core` 以外的行也装 Node，Windows 行另装 ffmpeg 与 Chrome。
+浏览器冒烟与设计决定断言（`tests/test_web_e2e.py`）由 `web-e2e` job 在 `windows-latest` 上执行 `web` 域。它装 Node 24、`frontend/node_modules`、ffmpeg，并经 `PEACH_E2E_CHROME` 指定 runner 自带的 Chrome。矩阵扩成全量（`plan` 输出的 `wide`）时，Windows 全量行本身就跑 `web` 域，这个 job 按条件跳过；`verified` 只在这种情况接受它的 skipped，别的 job 跳过照样算红。
+
+需要外部前置条件（Node、ffmpeg、Chrome 等）的用例，本机缺条件时跳过，在 CI（`GITHUB_ACTIONS=true`）里判失败，判定集中在 `tests/support/conditions.py` 的 `missing_prerequisite`。所以 `python` 矩阵里 `core` 以外的行也装 Node，Windows 行另装 ffmpeg 与 Chrome。
 
 本机默认并行：入口传 `--jobs auto`（Windows `-Jobs`），运行器按同一套稳定分片切成并发数四倍的片，最多四个子进程各领一片、先完成的接着领下一片，父进程汇总成败、用例数与逐用例耗时后按原口径签发一份记录，一片红整轮红。`-Jobs 1` 退回串行。测试之间没有共享的端口或全局目录，账本与仓库夹具都在各自的临时目录里，并行才是安全的；新增测试保持这一点。
 
@@ -52,7 +67,13 @@ Windows 的路径、挂载、托盘、证书、进程编码、更新、认证及
 
 ## 写什么测试
 
-测试要能在实现写错时变红。「某段字符串在某个仓库文件里」做不到：关注管理页有 596 条这样的断言，改写成渲染后的行为用例时当场查出三处缺陷，旧断言全都放行：查找链接时等待提示仍说「按名字查」；点下检查后、重读回来前，上一趟的终态被当成这一趟的回执；任务在第一次重读前跑完时，这一趟的结果被丢掉。
+测试要能在实现写错时变红。「某段字符串在某个仓库文件里」做不到。关注管理页有 596 条这样的断言，改写成渲染后的行为用例时当场查出三处缺陷，而旧断言全都放行了：
+
+- 查找链接时，等待提示仍说「按名字查」；
+- 点下检查后、重读回来前，上一趟的终态被当成这一趟的回执；
+- 任务在第一次重读前跑完时，这一趟的结果被丢掉。
+
+按下面的分工写：
 
 - 行为（点了发出什么请求、状态怎么变、算出什么值）写 vitest（`frontend/test/`）或 `tests/test_web_js.py`；后端调用真函数或真接口。
 - 用户定过的设计决定写 `frontend/e2e/design.test.ts`，读 `getComputedStyle`；布局与运行期不变量进 `smoke.test.ts`。
@@ -62,6 +83,8 @@ Windows 的路径、挂载、托盘、证书、进程编码、更新、认证及
 - 不写同义反复的用例：断言常量等于它自己、mock 掉被测对象再断言 mock 被调用，都证明不了什么。
 
 ## 正式入口
+
+测试只从下面两个入口跑，入口负责选测、签发测试记录和环境预检，自己拼的命令拿不到有效记录。
 
 Windows 按影响域验证：
 

@@ -1,6 +1,6 @@
 # Peach 交接与长期工作约定
 
-设置见 `OPERATIONS.md`。
+接手时先读这份：跨任务长期成立的判据与约定。运行态见 `STATUS.md`，部署与设置见 `OPERATIONS.md`。
 
 ## 界面、媒体与复核的既定判据
 
@@ -35,7 +35,6 @@
 ## 无摩擦接手
 
 - uv 安装见 README；复用决策见 REUSE。
-
 - Codex 读取 `AGENTS.md`，Claude 通过 `CLAUDE.md` 导入；项目技能共用 `.claude/skills/`，Codex 按入口索引读取。
 - 测试入口为 Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`。选测与 CI 见 `TESTING.md`；证据、集成互斥和锁定见 `peach-worktree`。
 - 指令维护：按任务读取，缩小技能触发，保留事故边界，用文档、行为与数据任务复核，静态检查不证明效率改善。方法见 [OpenAI](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)。
@@ -45,9 +44,9 @@
 
 ## 并行智能体与 Git 工作树
 
-操作步骤与平台陷阱统一见 `.claude/skills/peach-worktree/SKILL.md` 和
-`.claude/skills/peach-cross-platform/SKILL.md`。保留的事故证据只有 `bba0b77`：测试先提交、实现漏暂存，
-因此隔离工作树、逐文件暂存复核和实现/测试原子提交是强制边界；其余已由脚本或测试守住的复盘从常驻上下文清退。
+操作步骤与平台陷阱见 `.claude/skills/peach-worktree/SKILL.md` 和
+`.claude/skills/peach-cross-platform/SKILL.md`。事故证据是 `bba0b77`：测试先提交、实现漏暂存，
+所以隔离工作树、逐文件暂存复核、实现与测试原子提交是强制边界；其余复盘已由脚本或测试守住。
 
 ## 只存在于聊天中的结论等于不存在
 
@@ -93,11 +92,6 @@
 - 默认 Note、只读提示和 info 入口复用本地 Lucide 圆圈 `i`（2px 描边、圆端点），不复制未开放许可的 Geist 私有 SVG。
 - 原地换态动效的形态与参数（字形、读数、骨架、开关、成功、失败）：`transitions-dev-measured`。
 - 统计与口味页的柱状、径向、雷达图：`evilcharts-registry`，逐字复制与差异见 `frontend/src/react/evilcharts/ORIGIN.md`；热力与流向图自绘（ADR-0076）。
-- 沉浸与详情播放每次加载都带独立 `session`，切片、关闭、失败和页面离开时取消旧会话：只清浏览器的 `src` 不足以停止 CloudDrive 预读或 FFmpeg。Mix 只按已解析且可播放的视频计数，不按回复数或网盘页数计数。
-- FANBOX 正文统一经过 `peach.fanbox.normalize_fanbox_post`，边界见 `docs/REUSE.md`「必须复用的成熟实现」。
-- FANBOX Cookie 与 Gofile token 都是本机可选凭据，只进各自站点的请求头，不进 URL、证据、ledger 公开投影或浏览器 JSON；只允许公开 JSON，不解机器人质询、不执行网页脚本、不读付费内容。
-- Gofile 当前把 contents API 限给 Premium：`error-notPremium` 要按套餐限制报告，不能误报成 token 无效；未取得文件列表时保留分享页，不得声称已经取得视频。
-- 同一篇 FANBOX 可含多个 Gofile 文件夹：作品级仍是一个来源合集，媒体保留文件夹 id 与正文标签并在详情队列内分段，不拆作品也不压平混排。
 
 ## 批处理边界
 
@@ -120,8 +114,7 @@
 
 ## 流量与代理诊断工具
 
-- 抓取与 Cookie GUI 见 [审计](SCRAPING_AUDIT.md)。
-
+- 抓取入口的复用与复现缺口见 [审计](SCRAPING_AUDIT.md)。
 - Windows 用 FlowLens（`http://127.0.0.1:9091/`；API `/api/v1/connections`、`/summary`、`/status`）查流量。经 Mihomo 的 `DIRECT` 可观测；绕过它的记「未观测」，不推断为零。
 - macOS 的流量诊断统一使用 Stash Dashboard。
 
@@ -150,15 +143,19 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 
 ## 当前架构真相
 
-- Ledger 拥有真相和行为；服务运行期媒体解析只有文件系统一条路径，ADR-0021 已删 Stash 适配层，Stash 客户端与两个离线导入脚本也已退役，Stash 只剩账本里的溯源数据。
+- Ledger 拥有真相和行为；服务运行期媒体只从文件系统解析，Stash 只剩账本里的溯源数据（ADR-0021、`STASH.md`）。
 - 规范女优、厂牌、标签、创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
 - 前端按 ADR-0031 走 strangler 迁移：新页面进 `frontend/src/react/`（React + Tailwind + BoardUI 源码），逐页替换，不做整站重写；分发阶段见 ADR-0023。
-- 当前页面、路由、交互与性能实现只写 `docs/STATUS.md`，由 API 和 `tests/test_web_ui.py` 守住；本文件不复制易过期的版本号、像素值和控件清单。
+- 页面与交互的已定型行为写 `docs/REUSE.md`，由 API 与测试守住；版本号、像素值、批量大小与性能测量是实现快照，留在测试或参考快照，本文件不抄。
 - `/taste` 只读合并 Peach 行为与本机私有浏览历史，明确以浏览器记录为主要画像、Peach 内部为辅助证据，分别排序，不把「不合口味」自动归因或降权到 Tag。
 - 查询词里的负号项整体排除，下划线是组合词边界的一部分，不得把 `-ai_generated` 拆成正向 `generated`；模糊时长旧 Tag 只作兼容识别，不进入口味、索引、详情和筛选状态。
 - 原始 URL 与标题不进入页面或 ledger；上传原件存 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器先由 SQLite backup API 取一致快照。本机发现不等于跨机同步，跨机数据要显式导出、传输并按来源去重合并。
 - 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准；关注页顶部标签筛选与卡片只用来源明确标记为 `general` 的内容标签，详情页与在线索引保留全部来源标签并按类型着色，未知类型不猜成 `general`。
+- FANBOX 正文统一经过 `peach.fanbox.normalize_fanbox_post`，边界见 `docs/REUSE.md`「必须复用的成熟实现」。
+- FANBOX Cookie 与 Gofile token 都是本机可选凭据，只进各自站点的请求头，不进 URL、证据、ledger 公开投影或浏览器 JSON；只允许公开 JSON，不解机器人质询、不执行网页脚本、不读付费内容。
+- Gofile 把 contents API 限给 Premium：`error-notPremium` 按套餐限制报告，不误报成 token 无效；没取得文件列表时保留分享页，不得声称已取得视频。
+- 同一篇 FANBOX 可含多个 Gofile 文件夹：作品级仍是一个来源合集，媒体保留文件夹 id 与正文标签并在详情队列内分段，不拆作品也不压平混排。
 - 自动追更用 APScheduler，只在 ledger writer 启动，频率存 `peach-data/state/follow-schedule.json`，默认每小时且启动后等满一个间隔，不要改成启动即抓；单实例、与手动检查互斥见 `docs/REUSE.md`「必须复用的成熟实现」，reader 只显示不可用状态。
 - 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。
 
@@ -166,8 +163,8 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 
 - 列表必须分批构建；首批才计算总数，后续多取一条判断是否还有下一页。无限滚动同一时间只允许一个追加请求。
 - 聚合查询禁止按实体发 N+1 SQL；相邻请求可复用缓存，但异步响应必须核对请求序号和当前路由，旧响应不得覆盖新页面。
-- 远端媒体 hover 只读本地预览；离开详情、换页或替换 DOM 时停止播放并取消当前 stream session，不能让 CloudDrive 继续读盘。
-- 当前批量大小、播放器版本、像素值与性能测量属于实现快照，留在测试、`docs/STATUS.md` 或参考快照，不写入长期上下文。
+- 远端媒体 hover 只读本地预览。沉浸与详情每次加载都带独立 `session`，切片、关闭、失败、换页或替换 DOM 时停止播放并取消旧会话：只清浏览器的 `src` 停不住 CloudDrive 预读或 FFmpeg。
+- Mix 只按已解析且可播放的视频计数，不按回复数或网盘页数计数。
 
 ## 恢复入口
 
