@@ -33,7 +33,7 @@ dependencies = [
   "APScheduler==3.11.3",
   "beautifulsoup4==4.15.0",
   "browserexport==0.4.4",
-  "curl_cffi==0.16.2",
+  "curl_cffi==0.16.3",
   "fastapi==0.141.1",
   "httpx==0.28.1",
   "pillow==12.3.0",
