@@ -732,6 +732,16 @@ SUGGEST_ASSET_NAMED = (
 #: 作品这一组的全部命中：叫什么，加上文件名。
 SUGGEST_ASSET_MATCH = "(" + SUGGEST_ASSET_NAMED + " OR " + _suggest_like("a.name") + ")"
 
+#: 下拉栏里「一部作品」的身份。番号作品按封面缓存键归一：同一个番号存着几个文件、同一部
+#: 挂着几条来源，画出来都是同一张封面。没有番号的按抽帧，抽帧也没有才是文件自己。
+#: `normalise_code_key` 是连接上注册的 SQL 函数，与封面缓存同一份实现。
+SUGGEST_WORK_KEY = ("COALESCE(NULLIF(normalise_code_key(a.code),''),"
+                    "'thumb:'||a.snapshot_path,'id:'||a.id)")
+
+#: 同一部的几份里由哪一份出面：有抽帧的优先（封面按番号共用，抽帧是逐个文件的，挑到没
+#: 抽帧的那份会让整部作品掉出近作），其次番号写法规范的那份，再次最早入库的那份。
+SUGGEST_WORK_COPY_ORDER = "a.snapshot_path IS NULL,a.code IS NOT normalise_code_key(a.code),a.id"
+
 
 def _suggest_asset_rows(connection, params, limit):
     """作品这一组给的是「打开这一条」，不是一个搜索词。
@@ -743,21 +753,29 @@ def _suggest_asset_rows(connection, params, limit):
     文件名排在最后一档。它是存储事实而不是这部片叫什么，命中它的多半是扩展名和
     转码标记：真实账本上「MO」会从文件名里捞出 `IMG_2757_682.MOV` 和一条标题里
     带 `MOVIE版` 的转码文件。番号和发行标题够五条时它就不露面。
+
+    一部作品只占一格（`SUGGEST_WORK_KEY`）：真实账本上 IPVR-050 存着三个文件，逐行
+    列出来就是三张一样的封面。出面的是播得最多的那份，打开的就是用户一直在看的文件。
     """
+    tier = ("CASE WHEN a.code LIKE :prefix THEN 0 WHEN " + SUGGEST_ASSET_NAMED
+            + " THEN 1 ELSE 2 END")
     sql = (
-        "SELECT a.id id, COALESCE(a.code,'') code, COALESCE(a.catalog_title,'') title, "
-        "COALESCE(a.name,'') name, a.snapshot_path snapshot_path FROM asset a WHERE "
-        + VISIBLE_CATALOG_ASSET + " AND " + SUGGEST_ASSET_MATCH + " "
-        "ORDER BY CASE WHEN a.code LIKE :prefix THEN 0 WHEN " + SUGGEST_ASSET_NAMED + " THEN 1 "
-        "ELSE 2 END, COALESCE(a.play_count,0) DESC, a.id DESC LIMIT :limit"
+        "SELECT id, code, title, name, snapshot_path FROM (SELECT a.id id, "
+        "COALESCE(a.code,'') code, COALESCE(a.catalog_title,'') title, "
+        "COALESCE(a.name,'') name, a.snapshot_path snapshot_path, " + tier + " tier, "
+        "COALESCE(a.play_count,0) plays, ROW_NUMBER() OVER (PARTITION BY " + SUGGEST_WORK_KEY
+        + " ORDER BY " + tier + ", COALESCE(a.play_count,0) DESC, " + SUGGEST_WORK_COPY_ORDER
+        + ") copy FROM asset a WHERE " + VISIBLE_CATALOG_ASSET + " AND " + SUGGEST_ASSET_MATCH
+        + ") WHERE copy=1 ORDER BY tier, plays DESC, id DESC LIMIT :limit"
     )
     return connection.execute(sql, {**params, "limit": limit}).fetchall()
 
 
 def _suggest_asset_total(connection, params) -> int:
-    """作品这一组一共命中多少条。页签上的数要和点进去看到的是同一个判据。"""
-    sql = ("SELECT count(*) FROM asset a WHERE " + VISIBLE_CATALOG_ASSET
-           + " AND " + SUGGEST_ASSET_MATCH)
+    """作品这一组一共命中多少部。页签上的数要和点进去看到的是同一个判据，所以同样按
+    `SUGGEST_WORK_KEY` 数，同一部的几个文件算一部。"""
+    sql = ("SELECT count(DISTINCT " + SUGGEST_WORK_KEY + ") FROM asset a WHERE "
+           + VISIBLE_CATALOG_ASSET + " AND " + SUGGEST_ASSET_MATCH)
     return int(connection.execute(sql, params).fetchone()[0])
 
 
@@ -798,6 +816,10 @@ def _suggest_faces(contract: WebContract, connection, kind: str, items: list[dic
     脸走资料页同一条两级链：规范实体图优先，取不到退到代表作头像。代表作的挑法与
     索引页一致，女优只取单人作品——多人作品的那一帧不一定是她。近作也先排单人作品：
     合集封面上站着一排人，缩到下拉栏那么小认不出哪一个是她。
+
+    近作按部挑，不按行挑（`SUGGEST_WORK_KEY`）。`asset_entity` 的主键带来源，同一部
+    片常有 `r18` 与 `javinizer` 各记一条；同一个番号也常存着几个文件。去重必须在截取
+    候选之前：FC2 一个番号存了十九份，先截十二行再去重就只剩一部。
     """
     if not items:
         return
@@ -818,17 +840,20 @@ def _suggest_faces(contract: WebContract, connection, kind: str, items: list[dic
                 f" JOIN entity e ON e.id=m.agency_id WHERE m.member_id IN ({marks})"
                 " ORDER BY m.member_id,e.canonical_name", ids):
             agencies.setdefault(member, name)
-    solo_first = ("CASE WHEN " + solo_performer_clause("a.id", "ae.entity_id")
-                  + " THEN 0 ELSE 1 END," if kind == "performer" else "")
+    solo = ("CASE WHEN " + solo_performer_clause("a.id", "ae.entity_id")
+            + " THEN 0 ELSE 1 END" if kind == "performer" else "0")
     works: dict[int, list[dict]] = {}
     for row in connection.execute(
-            "SELECT entity_id,id,code,snapshot_path FROM (SELECT ae.entity_id entity_id,"
-            "a.id id,COALESCE(a.code,'') code,a.snapshot_path snapshot_path,"
-            "ROW_NUMBER() OVER (PARTITION BY ae.entity_id ORDER BY " + solo_first +
-            " a.release_date DESC NULLS LAST,a.first_seen DESC,a.id DESC) rn"
+            "SELECT entity_id,id,code,snapshot_path FROM (SELECT *,ROW_NUMBER() OVER ("
+            "PARTITION BY entity_id ORDER BY solo,release_date DESC NULLS LAST,"
+            "first_seen DESC,id DESC) rn FROM (SELECT ae.entity_id entity_id,a.id id,"
+            "COALESCE(a.code,'') code,a.snapshot_path snapshot_path," + solo + " solo,"
+            "a.release_date release_date,a.first_seen first_seen,"
+            "ROW_NUMBER() OVER (PARTITION BY ae.entity_id," + SUGGEST_WORK_KEY +
+            " ORDER BY " + SUGGEST_WORK_COPY_ORDER + ") copy"
             " FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id"
             f" WHERE ae.entity_id IN ({marks}) AND " + VISIBLE_CATALOG_ASSET +
-            ") WHERE rn<=? ORDER BY entity_id,rn", [*ids, SUGGEST_WORK_CANDIDATES]):
+            ") WHERE copy=1) WHERE rn<=? ORDER BY entity_id,rn", [*ids, SUGGEST_WORK_CANDIDATES]):
         picked = works.setdefault(row["entity_id"], [])
         if len(picked) < SUGGEST_WORKS and (card := _suggest_work_card(contract, row)):
             picked.append(card)
