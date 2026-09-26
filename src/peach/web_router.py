@@ -89,7 +89,7 @@ from .web_scraping import (
     q_scraping, q_scraping_amane_bridge, w_scraping_amane_check, w_scraping_amane_rebuild,
     w_scraping_check, w_scraping_cover, w_scraping_settings,
 )
-from .web_state import LEDGER_AGGREGATE_TTL, WebContract
+from .web_state import WebContract, path_version
 from .web_tasks import q_tasks
 from .web_timeline_thumbnails import q_thumbnail_jobs, q_timeline, w_thumbnail_jobs
 from .web_stats import (
@@ -97,6 +97,7 @@ from .web_stats import (
     q_search_history,
     q_stats,
     q_taste,
+    taste_inputs,
     w_search_history,
     w_taste_refresh,
     w_taste_source,
@@ -227,18 +228,18 @@ def _get_search_history(contract, args):
 
 def _get_taste(contract, args):
     window = str(args.get("window") or "all")
-    return contract.cached(
-        f"taste:{window}",
-        lambda: q_taste(contract, {"window": window}),
-        ttl=LEDGER_AGGREGATE_TTL,
-    )
+    return contract.cached_until_changed(
+        f"taste:{window}", lambda: q_taste(contract, {"window": window}),
+        *taste_inputs(contract, window))
 
 
 def _get_review(contract, args):
-    # 候选文件由进程外的抓取脚本写，目录一变键就变；账本写入照常经 `cache_bust` 作废。
-    version = candidate_root_version(getattr(contract, "candidate_root", None))
-    payload = contract.cached(f"review:{version}", lambda: q_review(contract),
-                              ttl=LEDGER_AGGREGATE_TTL)
+    # 账本之外，复核读三处磁盘：抓取脚本写的候选 CSV、卡片封面徽章用的封面目录、
+    # 创作者头像与取景用的头像目录。
+    payload = contract.cached_until_changed(
+        "review", lambda: q_review(contract),
+        candidate_root_version(contract.candidate_root),
+        path_version(contract.cover_root), path_version(contract.avatar_root))
     # 数据管理页只要一个待复核条数。完整 payload 带着每条候选的全文，实测是
     # 兆级；卡片上的一个数字不值这趟传输，但计数本身仍来自同一份缓存快照，
     # 不另立一套口径。
@@ -246,6 +247,12 @@ def _get_review(contract, args):
         return {key: payload[key] for key in ("counts", "sources", "skipped_rows")
                 if key in payload}
     return payload
+
+
+def _get_entity_shapes(contract, args):
+    # 每一页开头都要这一份（骨架照它留位），全部来自账本，账本不变就一直用同一份。
+    return contract.cached_until_changed("entity-shapes",
+                                         lambda: q_entity_shapes(contract, args))
 
 
 #: 安装教程每一项只读这几个字段。载荷形状由 `test_post_setup_tutorial_only_carries_progress_counts`
@@ -325,7 +332,7 @@ GET_HANDLERS = {
     "/api/parts": q_parts,
     "/api/editions": q_editions,
     "/api/entity": q_entity,
-    "/api/entity/shapes": q_entity_shapes,
+    "/api/entity/shapes": _get_entity_shapes,
     "/api/links": w_links,
     "/api/photos": q_entity_photos,
     "/api/photo-set": q_photo_set,

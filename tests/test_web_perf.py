@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sqlite3
 import tempfile
 import unittest
@@ -432,15 +433,25 @@ class CoverIndexTests(unittest.TestCase):
         self.assertFalse(contract.has_cover("ABC-001"))
         self.assertIsNone(contract.cover_frame("ABC-001"))
 
-    def test_a_freshly_written_cover_appears_after_the_cache_is_busted(self):
+    def test_a_freshly_written_cover_appears_without_waiting_for_the_cache(self):
         (self.covers / "ABC-004.jpg").write_bytes(b"jpg")
         self.assertTrue(self.contract.has_cover("ABC-004"))
-        (self.covers / "GHI-005.jpg").write_bytes(b"jpg")
-        # TTL 内不重扫目录，这正是索引省下 stat 的来源；用户自己的复核动作会
-        # cache_bust，所以他看得到即时效果。
-        self.assertFalse(self.contract.has_cover("GHI-005"))
-        self.contract.cache_bust()
-        self.assertTrue(self.contract.has_cover("GHI-005"))
+        scans = []
+        original = self.contract._scan_cover_root
+
+        def counted():
+            scans.append(1)
+            return original()
+
+        with patch.object(self.contract, "_scan_cover_root", side_effect=counted):
+            # 目录没变就不重扫，这正是索引省下 stat 的来源。
+            self.assertTrue(self.contract.has_cover("ABC-004"))
+            self.assertEqual(scans, [])
+            # 新文件改了目录的修改时间，索引按目录版本当场重扫。
+            (self.covers / "GHI-005.jpg").write_bytes(b"jpg")
+            os.utime(self.covers, ns=(0, self.covers.stat().st_mtime_ns + 1_000_000))
+            self.assertTrue(self.contract.has_cover("GHI-005"))
+            self.assertEqual(scans, [1])
 
 
 if __name__ == "__main__":

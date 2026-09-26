@@ -7,13 +7,15 @@
 `web_catalog`、`web_entity`、`web_stats`、`web_batch` 全都 import 它，所以它一旦反
 过来 import 其中任何一个，整层立刻循环。判据就是这个文件里不许出现 `from .web_`。
 
-`CACHE_TTL` 与 `LEDGER_AGGREGATE_TTL` 归这里，因为它们量的是本文件 `cached()`／`cached_lru()` 的寿命。内联 favicon 也放这里：它是
+`CACHE_TTL` 与账本版本号归这里，因为它们决定本文件 `cached()`／`cached_lru()` 的寿命。内联 favicon 也放这里：它是
 唯一一个没有磁盘文件的静态资源，而 `api` 一直从契约模块取它，这次只搬位置。
 """
 from __future__ import annotations
 
 import json
+import math
 import os
+import sqlite3
 import threading
 import time
 
@@ -62,11 +64,18 @@ class AvatarRootIndex(NamedTuple):
 FAVICON = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0B0B0D"/><defs><linearGradient id="pg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FF9A76"/><stop offset="1" stop-color="#F2557B"/></linearGradient></defs><path d="M16 28c-5.7 0-9.7-3.6-9.7-8.6 0-4.3 2.8-7.6 6.5-7.6 1.4 0 2.4.5 3.2 1.1.8-.6 1.8-1.1 3.2-1.1 3.7 0 6.5 3.3 6.5 7.6C25.7 24.4 21.7 28 16 28z" fill="url(#pg)"/><path d="M16 13.4V27" stroke="#0B0B0D" stroke-width="1.1" opacity=".3" stroke-linecap="round"/><path d="M17.1 11.7c.6-2.8 2.8-4.6 5.6-4.8-.2 2.8-2.2 4.7-5.6 4.8z" fill="#5FB95F"/><path d="M16 11.9c0-1.9.5-3.4 1.5-4.5" stroke="#8A5A3B" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>')
 
 CACHE_TTL = 90
-#: 只读账本的重聚合（复核、口味、垃圾复核）的寿命。服务进程内的写入一律经
-#: `after_commit` 或显式 `cache_bust()` 作废缓存，这个上限兜的只是进程外的写：
-#: CLI 的 `--apply` 脚本与账本同步拉库落库后，这几页最多滞后这么久。
-#: 磁盘扫描类索引（封面、厂牌 Logo、头像目录）外部脚本随时往里放文件，仍用 `CACHE_TTL`。
-LEDGER_AGGREGATE_TTL = 15 * 60
+
+
+def path_version(path: Path) -> int | None:
+    """文件或目录的修改时间，缓存键拿它认「变了没有」；不存在就是 None。
+
+    目录的时间在里面新增、删除、换名文件时变，原地覆写已有文件时不变，所以会被这样
+    读的边车一律先写临时文件再换名（`avatar_face.write_sidecar`）。
+    """
+    try:
+        return path.stat().st_mtime_ns
+    except OSError:
+        return None
 
 
 class WebContract:
@@ -151,7 +160,8 @@ class WebContract:
         self.database = database or LedgerDatabase(db_path)
         self.db_path = self.database.db_path
         self.snapshot_root = Path(snapshot_root) if snapshot_root is not None else None
-        self.cache: OrderedDict[str, tuple[float, object]] = OrderedDict()
+        #: 键 → (算出时刻, 输入版本, 结果)，见 `cached()`。
+        self.cache: OrderedDict[str, tuple[float, object, object]] = OrderedDict()
         self.cache_lock = threading.Lock()
         #: 按资产取键的读缓存，LRU 限界。键空间不封闭的场景走这里，见 `cached_lru()`。
         self.keyed_cache: OrderedDict[str, tuple[float, object]] = OrderedDict()
@@ -211,9 +221,13 @@ class WebContract:
         return BackgroundJob(name, id_key=id_key, task_key=task_key,
                              runs=self.task_runs, followup_runner=self.followups)
 
-    def cached(self, key, fn, *, ttl: float = CACHE_TTL):
+    def cached(self, key, fn, *, ttl: float = CACHE_TTL, version=None):
         """带 TTL 的读缓存。`fn` 刻意在锁外算——它会读 CSV、查库，拿着锁算会把
         并发请求全串起来。
+
+        `version` 是这份结果依赖的输入的版本，与存下的不同就算没命中。一个键只存
+        最新算的那一版：封面刮削期间目录版本一直在变，按版本另起键会把整目录索引
+        一份份堆在内存里。
 
         代价是计算期间缓存可能被 `cache_bust()` 清掉，那份还没写回的值就是失效前的
         快照。复核页正是这个场景：`q_review` 在算，用户批准了一条候选，
@@ -225,16 +239,16 @@ class WebContract:
         now = time.monotonic()
         with self.cache_lock:
             hit = self.cache.get(key)
-            if hit and now - hit[0] < ttl:
+            if hit and hit[1] == version and now - hit[0] < ttl:
                 self.cache.move_to_end(key)
-                return hit[1]
+                return hit[2]
             generation = self.cache_generation
         value = fn()
         with self.cache_lock:
             if generation == self.cache_generation:
                 # 时间戳沿用进入时的 now：算得比 TTL 还久的结果直接算过期，
                 # 宁可下次重算，也不要把一份已经旧了的数据当新的用。
-                self.cache[key] = (now, value)
+                self.cache[key] = (now, version, value)
                 self.cache.move_to_end(key)
                 while len(self.cache) > 192:
                     self.cache.popitem(last=False)
@@ -261,6 +275,32 @@ class WebContract:
                 while len(self.keyed_cache) > maxsize:
                     self.keyed_cache.popitem(last=False)
         return value
+
+    def ledger_revision(self) -> int | None:
+        """账本版本号：`ledger_revision` 各行之和（migration 0038）。
+
+        每张账本表的增删改都由触发器给自己那一行加一，不论写的是服务、CLI 脚本还是
+        账本同步，所以这个数变了就是账本变了。任务中心的心跳不挂触发器。库还没迁移到
+        0038（或根本没有库）时返回 None。
+        """
+        try:
+            with self.read_connection() as connection:
+                row = connection.execute("SELECT total(n) FROM ledger_revision").fetchone()
+        except sqlite3.Error:
+            return None
+        return int(row[0])
+
+    def cached_until_changed(self, key: str, fn, *inputs):
+        """只读账本聚合的缓存：账本版本号与 `inputs` 都没变就一直命中，不按时间过期。
+
+        `inputs` 是聚合读到的账本之外的东西的版本（候选目录、头像目录、浏览历史库），
+        由调用方给出：漏一样，那一样变了页面就一直是旧的。版本号在计算前读，计算期间
+        有进程外的写，结果记在旧版本下，下一次请求读到新版本照样重算。库还没有版本号时
+        退回 `CACHE_TTL`。
+        """
+        revision = self.ledger_revision()
+        return self.cached(key, fn, ttl=CACHE_TTL if revision is None else math.inf,
+                           version=(revision, *inputs))
 
     def stop_background_jobs(self) -> None:
         """服务关停时丢掉后台任务状态并等线程收工。
@@ -318,10 +358,11 @@ class WebContract:
         读文件；封面目录一次 scandir 就覆盖全部番号，结果走 `cached()` 的 TTL。
         `/cover` 端点仍走 `cover_path()` 直读，取图不受索引影响。
 
-        代价是刚落盘的封面最多一个 TTL 后才出现在卡片徽章上；刮削流程里复核确认
-        本来就会 `cache_bust()`，所以用户自己的动作看得到即时效果。
+        键里带目录的修改时间：新落盘或换名替换的封面立刻进索引，按版本缓存的聚合
+        （复核）重算时拿到的也是这一份。原地覆写的边车最多一个 TTL 后生效。
         """
-        return self.cached("cover-index", self._scan_cover_root)
+        return self.cached("cover-index", self._scan_cover_root,
+                           version=path_version(self.cover_root))
 
     def _scan_cover_root(self) -> dict[str, dict]:
         """一次目录扫描同时收集封面存在性和两份 sidecar。目录不存在就是空索引。"""
@@ -388,10 +429,10 @@ class WebContract:
         敏感、同样把 `.icon` / `.logo` 变体算作这个厂牌有图。松一格就是页面说有图却
         取回 404（碎图），紧一格就是明明装了却永远只显示首字母。
 
-        代价和 `cover_index()` 一样：刚装上的标识最多一个 TTL 后才出现在页面上；
-        复核批准本来就会 `cache_bust()`，所以用户自己的动作看得到即时效果。
+        键里和 `cover_index()` 一样带目录的修改时间，刚装上的标识立刻进索引。
         """
-        return self.cached("logo-index", self._scan_logo_root)
+        return self.cached("logo-index", self._scan_logo_root,
+                           version=path_version(self.logo_root))
 
     def _scan_logo_root(self) -> frozenset[str]:
         """一次目录扫描收齐已装标识，并入随仓库分发的那批（ADR-0026）。
@@ -436,11 +477,11 @@ class WebContract:
         实体图和头像同处 `avatar_root`（`{kind}-{id}.img` 与 `{asset_id}.jpg`），
         所以一次 `os.scandir` 一起收；分成两个缓存键就是同一个目录连扫两遍。
 
-        代价和 `cover_index()`、`logo_index()` 一样：刚装上的实体图最多一个 TTL 后
-        才出现在页面上；复核批准本来就会 `cache_bust()`，所以用户自己的动作看得到
-        即时效果。
+        键里和 `cover_index()` 一样带目录的修改时间，刚装上的实体图立刻进索引，
+        口味与复核按头像目录版本重算时拿到的也是这一份。
         """
-        return self.cached("avatar-root-index", self._scan_avatar_root)
+        return self.cached("avatar-root-index", self._scan_avatar_root,
+                           version=path_version(self.avatar_root))
 
     def _scan_avatar_root(self) -> AvatarRootIndex:
         """一次目录扫描同时收齐实体图和已裁头像。目录不存在就是两个空集合。"""

@@ -43,6 +43,7 @@ from .follow_store import (
     FollowStore, ReleaseGroup, author_display_text, normalized_author_name,
 )
 from .taste_history import read_creator_candidates
+from .web_state import path_version
 
 
 #: 界面上给每个来源的中文短名。没登记的 provider 直接显示原名。
@@ -1800,8 +1801,12 @@ def q_follow(contract, args) -> dict:
                 return False
             return True
 
-        everything = tuple(item for item in store.items(source_id=source_id, limit=_ALL_ITEMS)
-                           if item.source_id in enabled_source_ids and not _excluded_item(item))
+        # 全部条目和筛选项只随账本与来源参数变，与筛选、排序、分页无关，按账本版本号
+        # 缓存：一次请求省下解析上万条 metadata 与整库分组的好几秒。
+        everything = contract.cached_until_changed(
+            f"follow-items:{source_id}",
+            lambda: tuple(item for item in store.items(source_id=source_id, limit=_ALL_ITEMS)
+                          if item.source_id in enabled_source_ids and not _excluded_item(item)))
         counted = _sorted_items(
             tuple(item for item in everything if _matches(item)), sort, direction, seed)
         by_author = group_authors(source_rows, alias_map)
@@ -1813,8 +1818,12 @@ def q_follow(contract, args) -> dict:
         groups = [annotate_group(_group_payload(group, credential_providers), faces,
                                  _content_hashes(group))
                   for group in ranked]
-        facets = {} if summary else _follow_facets(store, everything, by_source, alias_map,
-                                                   work_icon_root(contract))
+        # 题材圆标的有无与取景读题材头像目录，目录版本进键。
+        icon_root = work_icon_root(contract)
+        facets = {} if summary else contract.cached_until_changed(
+            f"follow-facets:{source_id}",
+            lambda: _follow_facets(store, everything, by_source, alias_map, icon_root),
+            path_version(icon_root))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
         # 扣减逻辑也只写一份。写成一句全库 SQL 再逐条减掉被隐藏的 rule34video 和
         # 无资源的 f95zone 的话，同一套排除规则要维护两份，而且它不看作者、来源和

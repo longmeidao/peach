@@ -16,6 +16,7 @@ import json
 from pathlib import Path
 
 from peach import face_detect
+from peach.fsutil import atomic_write_text
 from peach.catalog_rules import face_focus
 from peach.face_detect import FaceDetector, main_face
 
@@ -87,9 +88,9 @@ def face_share(record: dict | None) -> float:
 
 
 def write_sidecar(image_path: Path, record: dict) -> Path:
-    path = sidecar_path(image_path)
-    path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
-    return path
+    # 原子替换会改目录的修改时间，按头像目录版本取键的缓存（口味、复核的头像取景）
+    # 据此认出 sidecar 变了；原地覆写只改文件时间，那些缓存看不见。
+    return atomic_write_text(sidecar_path(image_path), json.dumps(record, ensure_ascii=False))
 
 
 def read_sidecar(image_path: Path) -> dict | None:

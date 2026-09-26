@@ -129,7 +129,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
             "test_fastapi_api.py", "test_follow_assets.py", "test_follow_web.py",
             "test_metadata_library.py", "test_studio_icon_variants.py", "test_web_settings.py"),
     "core": ("test_access.py", "test_auth.py", "test_config.py", "test_field_owners.py",
-             "test_migrations.py",
+             "test_migrations.py", "test_ledger_revision.py",
              "test_platform.py", "test_mount.py", "test_tray.py", "test_certs.py",
              "test_folder_picker.py", "test_fsutil.py", "test_runtime_consistency.py",
              "test_subprocess_encoding.py", "test_windows_update.py", "test_buildinfo.py"),
