@@ -7088,7 +7088,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);")
 
     def test_entity_name_picker_reuses_the_shared_anchored_menu(self):
-        self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu);")
+        self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu,{align:'start'});")
         self.assertPageContains('<div class="popmenu npmenu"')
 
     def test_an_open_anchored_menu_yields_to_the_settings_panel_and_to_its_neighbours(self):
@@ -8739,7 +8739,7 @@ class WebUiSourceTests(unittest.TestCase):
         """七组补全装不进一屏，滚到底不把身后的列表一起翻走。"""
         self.assertCode("max-height:min(60vh,520px);overflow:auto;overscroll-behavior:contain;")
         self.assertCode(
-            ".searchmenu{position:fixed;left:8px;right:8px;top:56px;max-height:70vh;"
+            ".searchmenu{position:absolute;left:-40px;right:0;top:calc(100% + 8px);max-height:70vh;"
             "overflow:auto;overscroll-behavior:contain}")
 
     def test_a_suggestion_keeps_its_alias_and_count_subordinate(self):

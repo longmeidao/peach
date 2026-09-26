@@ -591,12 +591,22 @@ def q_index(contract: WebContract, kind, q="", limit=600, offset=0, category="")
 #: 推到需要滚动的位置。
 SUGGEST_GROUP_LIMIT = 5
 
+#: 页签里只看一类时的条数上限。那时下拉栏只装这一组，四倍的量刚好铺满宽屏两栏。
+SUGGEST_KIND_LIMIT = SUGGEST_GROUP_LIMIT * 4
+
+#: 一个人名下跟着带出来的近作张数。宽下拉一行摆得下的最多那几张；窄下拉一张不画，
+#: 但数据照给——同一段输入在两种宽度下取的是同一个缓存键。
+SUGGEST_WORKS = 4
+
+#: 挑近作时每人先取的候选数。有的片还没装封面、也没抽帧，要从后面几部补上。
+SUGGEST_WORK_CANDIDATES = SUGGEST_WORKS * 3
+
 #: 补全的分组顺序与显示名，顺序就是下拉栏里的先后。它只定在这里，界面照抄——
 #: 两侧各排一次的话，改了一侧就会出现「后端认为最该先看的组显示在第三位」。
 #: 作品垫底：它的值是番号或整句标题，扫读成本比一个人名高。
 SUGGEST_GROUPS = (
     ("performer", "女优"), ("creator", "创作者"), ("studio", "厂牌"),
-    ("agency", "事务所"), ("series", "系列"), ("tag", "标签"), ("asset", "作品"),
+    ("agency", "事务所"), ("series", "系列"), ("tag", "标签"), ("asset", "视频"),
 )
 
 #: 直接挂在作品上的实体种类。事务所不在内：`asset_entity` 里没有它的行，
@@ -658,7 +668,7 @@ def _suggest_entity_rows(connection, params):
     length_keys = {f"lt{index}": tag for index, tag in enumerate(sorted(LENGTH_TAGS))}
     kinds = ",".join(f"'{kind}'" for kind in SUGGEST_ENTITY_KINDS)
     sql = (
-        "SELECT e.kind kind, e.canonical_name k, count(DISTINCT ae.asset_id) n, "
+        "SELECT e.kind kind, e.id entity_id, e.canonical_name k, count(DISTINCT ae.asset_id) n, "
         + SUGGEST_MATCHED + " FROM entity e "
         "JOIN asset_entity ae ON ae.entity_id=e.id JOIN asset a ON a.id=ae.asset_id "
         "WHERE " + VISIBLE_CATALOG_ASSET + f" AND e.kind IN ({kinds}) "
@@ -681,15 +691,29 @@ def _suggest_agency_rows(connection, params):
     名下一部作品都没有的事务所不进补全：账本里有它的身份，但按它搜出来是空的。
     """
     sql = (
-        "SELECT * FROM (SELECT 'agency' kind, e.canonical_name k, "
+        "SELECT * FROM (SELECT 'agency' kind, e.id entity_id, e.canonical_name k, "
         "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
         " JOIN asset a ON a.id=ae.asset_id WHERE " + VISIBLE_CATALOG_ASSET + " AND "
         + scope_predicate("agency", "ae.entity_id", "e.id") + ") n, "
+        # 事务所没有标识文件，门面是官网的站点圆标，与索引页同一条链接。
+        "(SELECT l.id FROM entity_link l WHERE l.entity_id=e.id"
+        " AND l.link_kind='official' AND l.hostname NOT IN ("
+        + ",".join(f"'{host}'" for host in ARCHIVE_HOSTS) + ")"
+        " ORDER BY l.id LIMIT 1) mark, "
         + SUGGEST_MATCHED + " FROM entity e WHERE e.kind='agency' AND "
         + SUGGEST_ENTITY_MATCH + ") WHERE n>0 "
         "ORDER BY CASE WHEN k LIKE :prefix THEN 0 ELSE 1 END, n DESC, k"
     )
     return connection.execute(sql, params).fetchall()
+
+
+#: 作品按它叫什么命中：番号、发行标题、原题。
+SUGGEST_ASSET_NAMED = (
+    "(" + _suggest_like("a.code") + " OR " + _suggest_like("a.catalog_title")
+    + " OR " + _suggest_like("a.original_title") + ")"
+)
+#: 作品这一组的全部命中：叫什么，加上文件名。
+SUGGEST_ASSET_MATCH = "(" + SUGGEST_ASSET_NAMED + " OR " + _suggest_like("a.name") + ")"
 
 
 def _suggest_asset_rows(connection, params, limit):
@@ -703,18 +727,21 @@ def _suggest_asset_rows(connection, params, limit):
     转码标记：真实账本上「MO」会从文件名里捞出 `IMG_2757_682.MOV` 和一条标题里
     带 `MOVIE版` 的转码文件。番号和发行标题够五条时它就不露面。
     """
-    named = (
-        "(" + _suggest_like("a.code") + " OR " + _suggest_like("a.catalog_title")
-        + " OR " + _suggest_like("a.original_title") + ")"
-    )
     sql = (
         "SELECT a.id id, COALESCE(a.code,'') code, COALESCE(a.catalog_title,'') title, "
-        "COALESCE(a.name,'') name FROM asset a WHERE " + VISIBLE_CATALOG_ASSET
-        + " AND (" + named + " OR " + _suggest_like("a.name") + ") "
-        "ORDER BY CASE WHEN a.code LIKE :prefix THEN 0 WHEN " + named + " THEN 1 "
+        "COALESCE(a.name,'') name, a.snapshot_path snapshot_path FROM asset a WHERE "
+        + VISIBLE_CATALOG_ASSET + " AND " + SUGGEST_ASSET_MATCH + " "
+        "ORDER BY CASE WHEN a.code LIKE :prefix THEN 0 WHEN " + SUGGEST_ASSET_NAMED + " THEN 1 "
         "ELSE 2 END, COALESCE(a.play_count,0) DESC, a.id DESC LIMIT :limit"
     )
     return connection.execute(sql, {**params, "limit": limit}).fetchall()
+
+
+def _suggest_asset_total(connection, params) -> int:
+    """作品这一组一共命中多少条。页签上的数要和点进去看到的是同一个判据。"""
+    sql = ("SELECT count(*) FROM asset a WHERE " + VISIBLE_CATALOG_ASSET
+           + " AND " + SUGGEST_ASSET_MATCH)
+    return int(connection.execute(sql, params).fetchone()[0])
 
 
 def _asset_display_name(name: str) -> str:
@@ -726,38 +753,172 @@ def _asset_display_name(name: str) -> str:
     return head if head and len(tail) <= 4 else name
 
 
-def q_suggest(contract: WebContract, q: str, limit: int = SUGGEST_GROUP_LIMIT):
+#: 下拉栏里画一张脸的种类。系列和标签只是一个词，厂牌和事务所画的是标识。
+SUGGEST_PEOPLE = ("performer", "creator")
+
+
+def _suggest_work_card(contract: WebContract, row) -> dict | None:
+    """一部作品在下拉栏里的那张小图：官方封面优先，其次抽帧。两样都没有就不画。
+
+    正封取景要的框和人脸位置跟着封面走，与卡片同一份 `poster_box`／`cover_frame`：
+    下拉栏的小格和卡片是同一个比例，取景换算在页面上共用一套。
+    """
+    code = row["code"] or ""
+    has_cover = bool(code) and contract.has_cover(code)
+    has_thumb = contract.has_snapshot(row["snapshot_path"])
+    if not (has_cover or has_thumb):
+        return None
+    card = {"id": row["id"], "code": code, "has_cover": has_cover, "has_thumb": has_thumb}
+    if has_cover:
+        card["cover_frame"] = contract.cover_frame(code)
+        card["poster_box"] = contract.poster_box(code)
+    return card
+
+
+def _suggest_faces(contract: WebContract, connection, kind: str, items: list[dict]) -> None:
+    """人这一行要画的：一张脸、所属事务所、几部近作。
+
+    脸走资料页同一条两级链：规范实体图优先，取不到退到代表作头像。代表作的挑法与
+    索引页一致，女优只取单人作品——多人作品的那一帧不一定是她。近作也先排单人作品：
+    合集封面上站着一排人，缩到下拉栏那么小认不出哪一个是她。
+    """
+    if not items:
+        return
+    ids = [item["entity_id"] for item in items]
+    marks = ",".join("?" * len(ids))
+    solo_rep = " AND " + solo_performer_clause("a2.id", "e.id") if kind == "performer" else ""
+    reps = {row[0]: row[1] for row in connection.execute(
+        "SELECT e.id,(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id"
+        " WHERE ae2.entity_id=e.id AND a2.medium='video' AND a2.snapshot_path IS NOT NULL"
+        + solo_rep +
+        " ORDER BY COALESCE(a2.play_count,0) DESC,COALESCE(a2.play_seconds,0) DESC,"
+        " COALESCE(a2.width,0)*COALESCE(a2.height,0) DESC,a2.size DESC LIMIT 1)"
+        f" FROM entity e WHERE e.id IN ({marks})", ids)}
+    agencies: dict[int, str] = {}
+    if kind == "performer":
+        for member, name in connection.execute(
+                "SELECT m.member_id,e.canonical_name FROM entity_membership m"
+                f" JOIN entity e ON e.id=m.agency_id WHERE m.member_id IN ({marks})"
+                " ORDER BY m.member_id,e.canonical_name", ids):
+            agencies.setdefault(member, name)
+    solo_first = ("CASE WHEN " + solo_performer_clause("a.id", "ae.entity_id")
+                  + " THEN 0 ELSE 1 END," if kind == "performer" else "")
+    works: dict[int, list[dict]] = {}
+    for row in connection.execute(
+            "SELECT entity_id,id,code,snapshot_path FROM (SELECT ae.entity_id entity_id,"
+            "a.id id,COALESCE(a.code,'') code,a.snapshot_path snapshot_path,"
+            "ROW_NUMBER() OVER (PARTITION BY ae.entity_id ORDER BY " + solo_first +
+            " a.release_date DESC NULLS LAST,a.first_seen DESC,a.id DESC) rn"
+            " FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id"
+            f" WHERE ae.entity_id IN ({marks}) AND " + VISIBLE_CATALOG_ASSET +
+            ") WHERE rn<=? ORDER BY entity_id,rn", [*ids, SUGGEST_WORK_CANDIDATES]):
+        picked = works.setdefault(row["entity_id"], [])
+        if len(picked) < SUGGEST_WORKS and (card := _suggest_work_card(contract, row)):
+            picked.append(card)
+    for item in items:
+        entity_id = item["entity_id"]
+        item["has_image"] = contract.has_entity_image(kind, entity_id)
+        if item["has_image"]:
+            item["avatar_focus"] = contract.avatar_focus(kind, entity_id)
+        item["rep"] = reps.get(entity_id)
+        if kind == "performer":
+            item["agency"] = agencies.get(entity_id, "")
+        item["works"] = works.get(entity_id, [])
+
+
+def _suggest_works(contract: WebContract, connection, rows: list[dict]) -> list[dict]:
+    """作品这一组：打开这一条要的 id，一张小图，加上它是谁拍的。
+
+    番号作品的署名是女优，其余是创作者——与卡片署名同一个取舍。
+    """
+    if not rows:
+        return []
+    ids = [row["id"] for row in rows]
+    marks = ",".join("?" * len(ids))
+    names: dict[int, dict[str, str]] = {}
+    for asset_id, kind, name in connection.execute(
+            "SELECT ae.asset_id,e.kind,e.canonical_name FROM asset_entity ae"
+            " JOIN entity e ON e.id=ae.entity_id"
+            f" WHERE ae.asset_id IN ({marks}) AND e.kind IN ('performer','creator')"
+            " ORDER BY ae.asset_id,e.canonical_name", ids):
+        names.setdefault(asset_id, {}).setdefault(kind, name)
+    items = []
+    for row in rows:
+        credit = names.get(row["id"], {})
+        who = (credit.get("performer") or credit.get("creator") if row["code"]
+               else credit.get("creator") or credit.get("performer"))
+        items.append({
+            # 番号优先：它既是这条作品的名字，也是一个搜得到的短词。没有番号的
+            # 才退到发行标题，最后才是文件名——文件名是最不像「这部片叫什么」的
+            # 那个写法。
+            "value": row["code"] or row["title"] or _asset_display_name(row["name"]),
+            "n": 0, "matched": "", "id": row["id"],
+            "code": row["code"], "title": row["title"], "who": who or "",
+            "card": _suggest_work_card(contract, row),
+        })
+    return items
+
+
+def suggest_kinds(raw: str) -> tuple[str, ...]:
+    """`kind=performer,creator` 这种参数里认得的那几类，按声明顺序。认不出的丢掉。"""
+    asked = {part.strip() for part in str(raw or "").split(",")}
+    return tuple(kind for kind, _ in SUGGEST_GROUPS if kind in asked)
+
+
+def q_suggest(contract: WebContract, q: str, limit: int = SUGGEST_GROUP_LIMIT,
+              kinds: tuple[str, ...] = ()):
     """搜索栏下拉的补全：给一段输入，返回馆藏里点得开的身份与作品。
 
     「点得开」不是靠调用方逐条验一遍达成的，是判据本身与 `/api/items` 同源：
     可见性用的是同一个 `VISIBLE_CATALOG_ASSET`，命中的三条路是搜索 LIKE 分支的
     那三条，实体行来自实际挂着作品的 join。所以这里返回的每一项，按它的 `value`
     去搜都有结果——补全与搜索口径漂开，比没有补全更难查。
+
+    `kinds` 非空时只回这几类，下拉栏的页签用它一次拉满一类。每组带 `total`：这段
+    输入在这一类里一共命中多少，页签上的数读的就是它。
     """
     query = (q or "").strip()
     if not query:
         return {"q": "", "groups": []}
-    per_group = max(1, min(int(limit), SUGGEST_GROUP_LIMIT * 4))
+    wanted = set(kinds or (kind for kind, _ in SUGGEST_GROUPS))
+    per_group = max(1, min(int(limit), SUGGEST_KIND_LIMIT))
     params = _suggest_patterns(query)
+    buckets: dict[str, list[dict]] = {}
+    totals: dict[str, int] = {}
     with contract.read_connection() as connection:
         entities = [dict(row) for row in _suggest_entity_rows(connection, params)]
-        entities += [dict(row) for row in _suggest_agency_rows(connection, params)]
-        assets = [dict(row) for row in _suggest_asset_rows(connection, params, per_group)]
-    buckets: dict[str, list[dict]] = {}
-    for row in entities:
-        bucket = buckets.setdefault(row["kind"], [])
-        if len(bucket) < per_group:
-            bucket.append({"value": row["k"], "n": row["n"],
-                           "matched": row["matched"], "id": None})
-    buckets["asset"] = [{
-        # 番号优先：它既是这条作品的名字，也是一个搜得到的短词。没有番号的
-        # 才退到发行标题，最后才是文件名——文件名是最不像「这部片叫什么」的
-        # 那个写法。
-        "value": row["code"] or row["title"] or _asset_display_name(row["name"]),
-        "n": 0, "matched": "", "id": row["id"],
-    } for row in assets]
+        if "agency" in wanted:
+            entities += [dict(row) for row in _suggest_agency_rows(connection, params)]
+        for row in entities:
+            if row["kind"] not in wanted:
+                continue
+            totals[row["kind"]] = totals.get(row["kind"], 0) + 1
+            bucket = buckets.setdefault(row["kind"], [])
+            if len(bucket) < per_group:
+                item = {"value": row["k"], "n": row["n"], "matched": row["matched"],
+                        "id": None, "entity_id": row["entity_id"]}
+                if row["kind"] == "agency":
+                    item["mark"] = row["mark"]
+                bucket.append(item)
+        for kind in SUGGEST_PEOPLE:
+            _suggest_faces(contract, connection, kind, buckets.get(kind, []))
+        if "asset" in wanted:
+            assets = [dict(row) for row in _suggest_asset_rows(connection, params, per_group)]
+            buckets["asset"] = _suggest_works(contract, connection, assets)
+            totals["asset"] = _suggest_asset_total(connection, params) if assets else 0
+    people = [item for kind in SUGGEST_PEOPLE for item in buckets.get(kind, [])]
+    attach_avatar_availability(contract, people)
+    for item in people:
+        # 代表作头像取不到就不给这一环，页面上直接是首字母，不先出一张等 404 的图。
+        if not item.pop("has_avatar"):
+            item["rep"] = None
+    for kind in ("studio", "agency"):
+        for item in buckets.get(kind, []):
+            item["has_image"] = contract.has_entity_image(kind, item["entity_id"])
+            if kind == "studio":
+                item["has_logo"] = contract.has_logo(item["value"])
     return {"q": query, "groups": [
-        {"kind": kind, "label": label, "items": buckets[kind]}
+        {"kind": kind, "label": label, "total": totals.get(kind, 0), "items": buckets[kind]}
         for kind, label in SUGGEST_GROUPS if buckets.get(kind)
     ]}
 

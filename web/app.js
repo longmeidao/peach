@@ -8309,7 +8309,7 @@ function wireNamePicker(kind,current,mine){
   if(!mount)return;
   const toggle=mount.querySelector('[data-namepick-toggle]');
   const menu=mount.querySelector('[data-namepick-menu]');
-  const anchored=wireAnchoredMenu(mount,toggle,menu);
+  const anchored=wireAnchoredMenu(mount,toggle,menu,{align:'start'});
   const rename=(from,to)=>api('/api/entity-name',
     {method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});
   const alias=payload=>api('/api/entity-alias',
@@ -9407,34 +9407,108 @@ function hideSearchMenu(){dismissMenu($('#searchMenu'))}
 /* 敲一下就查一次的补全。分组顺序和每组的名字都由 `/api/suggest` 给出，这里照抄：
    两侧各排一次的话，改了一侧就会出现「后端认为最该先看的组显示在第三位」。 */
 const SUGGEST_DEBOUNCE=150;
-let suggestGroups=[],suggestFor='',suggestRequest=0,suggestTimer=0;
-async function loadSuggestions(query){
+/* 「全部」每类给前几条，点一个页签再按这一类一次拉满。页签上的数是这段输入在那一类
+   里一共命中多少，由「全部」那一次带回来，切页签不重算。 */
+const SUGGEST_EACH=5,SUGGEST_ONE_KIND=20;
+let suggestGroups=[],suggestFor='',suggestRequest=0,suggestTimer=0,suggestKind='',suggestTabs=[];
+async function loadSuggestions(query,kind=''){
   const request=++suggestRequest;
   try{
-    const data=await api('/api/suggest?q='+encodeURIComponent(query)+'&limit=5');
+    const data=await api('/api/suggest?q='+encodeURIComponent(query)+
+      (kind?`&kind=${kind}&limit=${SUGGEST_ONE_KIND}`:`&limit=${SUGGEST_EACH}`));
     /* 慢的旧响应不许盖掉新的。连敲两个字时先发的那次完全可能后回来，盖回去
        就是下拉里挂着上一个字的补全，而输入框里已经是下一个字了。 */
     if(request!==suggestRequest)return;
     suggestFor=data.q||'';suggestGroups=data.groups||[];
+    if(!kind)suggestTabs=suggestGroups.map(({kind,label,total})=>({kind,label,total}));
   }catch(e){if(request===suggestRequest){suggestFor=query;suggestGroups=[]}}
+}
+/* 有脸的那几类点开的是资料页，标签没有资料页，点它照旧是按这个词搜。 */
+const SUGGEST_PROFILE_KINDS=new Set(['performer','creator','studio','agency','series']);
+/* 下拉栏按宽度分两栏：左栏是身份和词，右栏是作品封面格。两栏各自仍按后端给的先后排，
+   窄到一栏时两栏首尾相接，就是后端的原顺序——作品垫底。 */
+const SUGGEST_RIGHT_KINDS=new Set(['asset']);
+/* 小图和卡片同一套取景：正封按 `--card-ratio` 从封套里切出来，番号作品跟随
+   「JAV 默认封面」设置。两样都没有的画一块「无预览」，格子不塌。 */
+function searchCover(card){
+  const kind=card?javImageKind({...card,is_jav:!!card.code},appSettings.javImage):'';
+  const image=kind==='cover'?coverImage(card,'big')
+    :kind?`<img class="poster still" src="/poster?id=${card.id}&c=4" alt="" loading="lazy" data-drop="self">`
+    :'<span class="nopic">无预览</span>';
+  return `<span class="pic">${image}</span>`;
+}
+/* 人和公司的门面走索引页同一条兜底链：人是实体图 → 代表作头像，厂牌是标识，
+   事务所是官网站点圆标；都取不到就是首字母。 */
+function searchFace(item,kind){
+  const ref={id:item.entity_id,has_image:item.has_image,avatar_focus:item.avatar_focus};
+  return `<span class="searchface" data-kind="${kind}">`+
+    avatarInner(item.value,ref,item.rep||null,kind,item.mark||null,item.has_logo?item.value:'',
+                'icon',undefined,true)+'</span>';
+}
+function suggestionRow(item,kind){
+  const matched=item.matched?`<span class="matched">${esc(item.matched)}</span>`:'';
+  if(kind==='asset'){
+    /* 作品点开是详情，不是一个搜索词：整句标题填回搜索框，下一次搜索会因为其中任何
+       一个字符对不上而落空。 */
+    const byline=[item.who,item.code?item.title:''].filter(Boolean).map(esc).join(' · ');
+    return `<div class="searchoption searchwork" data-search-value="${esc(item.value)}" data-open-item="${item.id}">`+
+      `${searchCover(item.card)}<span class="searchmeta"><span class="searchname">${esc(item.value)}</span>`+
+      `<span class="searchsub">${byline}</span></span></div>`;
+  }
+  const open=SUGGEST_PROFILE_KINDS.has(kind)?` data-open-entity="${kind}"`:'';
+  if(kind==='performer'||kind==='creator'){
+    // 一行里摆得下几部近作就摆几部；窄下拉整排收起，数据照给，缓存键不跟着宽度分叉。
+    const works=(item.works||[]).map(card=>
+      `<button type="button" class="searchpeek" data-open-work="${card.id}" aria-label="打开 ${esc(card.code||item.value)}">${searchCover(card)}</button>`).join('');
+    const sub=[`${item.n.toLocaleString()} 个视频`,item.agency].filter(Boolean).map(esc).join(' · ');
+    return `<div class="searchoption searchperson" data-search-value="${esc(item.value)}"${open}>`+
+      `${searchFace(item,kind)}<span class="searchmeta"><span class="searchname"><span>${esc(item.value)}</span>${matched}</span>`+
+      `<span class="searchsub">${sub}</span></span>${works?`<span class="searchpeeks">${works}</span>`:''}</div>`;
+  }
+  const face=kind==='studio'||kind==='agency'?searchFace(item,kind):'';
+  return `<div class="searchoption" data-search-value="${esc(item.value)}"${open}>${face}<span>${esc(item.value)}</span>`+
+    `${matched}${item.n?`<span class="n">${item.n.toLocaleString()}</span>`:''}</div>`;
 }
 function renderSearchMenu(){const menu=$('#searchMenu'),query=$('#q').value.trim();
   // 有输入时历史跟着筛：这一刻用户在找一个词，不是在回顾自己搜过什么。
   const history=readSearchHistory().filter(x=>!query||foldName(x).includes(foldName(query)));
   const recommendations=query?[]:[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
   const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
-  /* 补全项不各配一枚字形：组标题已经说明这一组是女优还是标签，每行再放一枚人像
-     等于把同一件事说两遍。带 `data-open-item` 的那些是作品，点它直接开详情——
-     整句标题填回搜索框，下一次搜索会因为其中任何一个字符对不上而落空。 */
-  const suggestRow=item=>`<div class="searchoption" data-search-value="${esc(item.value)}"${item.id?` data-open-item="${item.id}"`:''}><span>${esc(item.value)}</span>${item.matched?`<span class="matched">${esc(item.matched)}</span>`:''}${item.n?`<span class="n">${item.n.toLocaleString()}</span>`:''}</div>`;
-  const completions=(query&&suggestFor===query?suggestGroups:[]).map(group=>
-    `<section class="searchgroup"><h3>${esc(group.label)}</h3>${group.items.map(suggestRow).join('')}</section>`).join('');
-  menu.innerHTML=(history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'')+completions+
-    (recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'');
+  const fresh=!!query&&suggestFor===query;
+  // 选了一类就只画这一类；拉满那一类的请求还在路上时，先用「全部」里的那几条顶着。
+  const groups=(fresh?suggestGroups:[]).filter(group=>!suggestKind||group.kind===suggestKind);
+  const section=group=>`<section class="searchgroup" data-kind="${group.kind}"><h3>${esc(group.label)}</h3>`+
+    `<div class="searchitems">${group.items.map(item=>suggestionRow(item,group.kind)).join('')}</div></section>`;
+  const left=groups.filter(group=>!SUGGEST_RIGHT_KINDS.has(group.kind)).map(section).join('');
+  const right=groups.filter(group=>SUGGEST_RIGHT_KINDS.has(group.kind)).map(section).join('');
+  /* 页签只在命中不止一类时出现：只有一类的话「全部」和那一类是同一屏。 */
+  const tab=(kind,label,total)=>`<button type="button" role="tab" data-suggest-kind="${kind}" aria-selected="${suggestKind===kind}">`+
+    `${esc(label)}${total?`<span class="board-tab-count">${total.toLocaleString()}</span>`:''}</button>`;
+  const tabs=fresh&&suggestTabs.length>1?`<div class="searchtabs" role="tablist" aria-label="按种类看补全">`+
+    tab('','全部',0)+suggestTabs.map(t=>tab(t.kind,t.label,t.total)).join('')+'</div>':'';
+  const columns=(a,b)=>a||b?`<div class="searchresults"${a&&b?' data-split':''}>`+
+    (a?`<div class="searchcol">${a}</div>`:'')+(b?`<div class="searchcol">${b}</div>`:'')+'</div>':'';
+  const recent=history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'';
+  const picks=recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'';
+  /* 页签管的是整个下拉栏，所以排在最上面；选了一类时搜索记录让位，那一屏只有这一类。
+     空输入时是记录和推荐两组短词，宽下拉并排放，不必竖着排出一长条。 */
+  menu.innerHTML=query?tabs+(suggestKind?'':recent)+columns(left,right):columns(recent,picks);
   if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;
+  menu.querySelectorAll('[data-suggest-kind]').forEach(b=>{
+    // 按下不抢焦点：抢走会触发 `#q` 的 blur，140ms 后整个下拉栏收掉，页签等于白点。
+    b.onmousedown=e=>e.preventDefault();
+    b.onclick=()=>pickSuggestKind(b.dataset.suggestKind);
+  });
+  // 窄屏页签排不下时右缘渐隐，看得出还能往右拨。
+  wireHorizontalScroller(menu.querySelector('.searchtabs'));
+  menu.querySelectorAll('[data-open-work]').forEach(b=>{
+    b.onmousedown=e=>e.preventDefault();
+    b.onclick=e=>{e.stopPropagation();hideSearchMenu();$('#q').blur();openItem(+b.dataset.openWork)};
+  });
   menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
     hideSearchMenu();
     if(x.dataset.openItem){$('#q').blur();openItem(+x.dataset.openItem);return}
+    if(x.dataset.openEntity){openSuggestedEntity(x);return}
     $('#q').value=x.dataset.searchValue;runSearch(false,true)});
   menu.querySelectorAll('[data-remove-history]').forEach(b=>{
     /* 按下就 preventDefault，不让删除按钮把焦点从输入框抢走。抢走会触发 `#q` 的
@@ -9462,6 +9536,24 @@ function runSearch(useSuggestion=false,committed=false){let query=$('#q').value.
   if(committed)rememberSearch(query);
   disposeStage(false);
   state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)}
+/* 人、公司和系列点开就是资料页，不绕一趟搜索：按名字搜出来的是一屏作品，而用户点的
+   是「这个人」。记进搜索记录的是这个名字，下次聚焦还找得回来。 */
+function openSuggestedEntity(option){
+  const name=option.dataset.searchValue;
+  $('#q').blur();
+  rememberSearch(name);
+  openEntity(option.dataset.openEntity,name);
+}
+function pickSuggestKind(kind){
+  const query=$('#q').value.trim();
+  if(!query||kind===suggestKind)return;
+  suggestKind=kind;
+  clearTimeout(suggestTimer);
+  renderSearchMenu();
+  $('#searchMenu').scrollTop=0;
+  loadSuggestions(query,kind).then(()=>{
+    if(document.activeElement===$('#q')&&suggestKind===kind)renderSearchMenu()});
+}
 const searchOptions=()=>{const menu=$('#searchMenu');
   return menu.hidden?[]:[...menu.querySelectorAll('[data-search-value]')]};
 function moveSearchActive(step){
@@ -9474,6 +9566,8 @@ function moveSearchActive(step){
 /* 每一下输入都排一次补全，但只发一次请求：150ms 内继续敲就换掉上一次的排期。
    先按手头已有的内容重绘一遍，下拉栏不会在等请求的这段里空着。 */
 const refreshSearchMenu=()=>{searchActive=-1;
+  // 换了词就回到「全部」：上一个词选中的那一类，这个词下可能一条都没有。
+  suggestKind='';
   clearTimeout(suggestTimer);
   const query=$('#q').value.trim();
   if(!query){suggestFor='';suggestGroups=[]}
@@ -9519,6 +9613,7 @@ $('#q').onkeydown=e=>{
   hideSearchMenu();
   // 选中的是一部作品时回车就开它，和点它一样，不绕一趟搜索。
   if(picked&&picked.dataset.openItem){$('#q').blur();openItem(+picked.dataset.openItem);return}
+  if(picked&&picked.dataset.openEntity){openSuggestedEntity(picked);return}
   if(picked){$('#q').value=picked.dataset.searchValue;rememberSearchValue()}
   // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
   runSearch(!picked,true);
