@@ -6101,14 +6101,23 @@ function followDetailTags(item){
 }
 
 /* 正文不报组里有几条：条数只由封面角标报一次，数的是合并了几个媒体（`followStack`）。 */
+/* 说「这一条是哪个版本」的字样排在标题前面，与主页标题里的版次字样同一个控件，扫标题
+   时就分得出来。WIP 说的是这一条，不是这一组：`2B Camp [4K]` 判的是 alt，只因为同组
+   还有一条 `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」；同组有 WIP 仍然
+   要说，但要说成「含」。声音版本说的是卡面这一条：同一段动画的无声原片与配音重发常在
+   同一个流里前后出现，配音版着色、无声版弱化加虚线框，两者一眼分开。 */
+function followTitleMarks(group,shown=group.primary){
+  const marks=[];
+  if(group.primary.variant_kind==='wip')marks.push('<small class="javedition followmark wip">WIP</small>');
+  else if(group.has_wip)marks.push('<small class="javedition followmark wip partial">含 WIP</small>');
+  if(group.primary.version)marks.push(`<small class="javedition followmark ver">${esc(group.primary.version)}</small>`);
+  const audio={voiced:'配音版',silent:'无声版'}[shown.audio];
+  if(audio)marks.push(`<small class="javedition followmark ${shown.audio}">${audio}</small>`);
+  return marks.join('');
+}
+
 function followBadges(group,shown=group.primary){
   const badges=[];
-  /* WIP 说的是这一条，不是这一组。`2B Camp [4K]` 判的是 alt，只因为同组还有一条
-     `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」。同组有 WIP 仍然要
-     说，但要说成「含」。 */
-  if(group.primary.variant_kind==='wip')badges.push('<span class="fbadge wip">WIP</span>');
-  else if(group.has_wip)badges.push('<span class="fbadge wip partial">含 WIP</span>');
-  if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
   /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。
      「另见」相对卡面这一条（`shown`）说：主条目没有当前视图的媒体时，卡面换成组里别的站
      那条，这时主条目的站才是另见，卡面自己的站不再列。 */
@@ -6121,13 +6130,6 @@ function followBadges(group,shown=group.primary){
     badges.push(`<span class="fbadge dup" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`);
   }
   return badges.join('');
-}
-
-/* 声音版本排在标题前面，与主页标题里的版次字样同一个控件：同一段动画的无声原片与
-   配音重发常在同一个流里前后出现，扫标题时就要分得出来。 */
-function followAudioMark(item){
-  const [label,tone]={voiced:['配音版','subtitle'],silent:['无声版','censored']}[item.audio]||[];
-  return label?`<small class="javedition ${tone} followaudio">${label}</small>`:'';
 }
 
 function followCollectionItems(group){
@@ -6332,7 +6334,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const imageControls=imageCarousel?`<button class="media-circle media-overlay followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
     <button class="media-circle media-overlay followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
     <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
-  const badges=followBadges({primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'});
+  const single={primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'};
+  const badges=followBadges(single),marks=followTitleMarks(single);
   // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
   const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');
   const {author,avatar,credited}=followIdentity(item,authorSources);
@@ -6349,7 +6352,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
     <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}${frameRatio?' framed':''}"${frameRatio?` style="--follow-frame-ratio:${frameRatio.toFixed(4)}"`:''}>${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
     ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
     <div class="side followdetailside"><div class="sidecontent">
-      <div class="followdetailtitle"><div class="stitle" data-reveal-line>${followAudioMark(item)}${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
+      <div class="followdetailtitle"><div class="stitle" data-reveal-line>${marks}${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
       <div class="followdetailidentity"><span class="mav fsourceavatar">${avatar}</span>
         <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}${credited?`<span>署名含 ${esc(credited)}</span>`:''}</div></div>
       <div class="smeta mono" data-reveal-line><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
@@ -6551,7 +6554,7 @@ function followCard(group,authorSources=[]){
   /* 角标与翻卡都取服务端对整组的判定（`group.stack`）：同一个画面只翻一次，跨站重复算来源。 */
   const {isMix,label:mixLabel,glyph:mixGlyph,faces:faceUrls}=followStack({cover:thumbUrl,
     coverFace:(selectedMedia?.thumb_url?selectedMedia:item).face,stack:group.stack,imageView,limit:MIX_FLIP_FACES});
-  const badges=followBadges(group,item);
+  const badges=followBadges(group,item),marks=followTitleMarks(group,item);
   const {author,avatar,credited}=followIdentity(item,authorSources);
   const when=followWhen(item),compactWhen=/^\d{4}-/.test(when)
     ?(when.startsWith(String(new Date().getFullYear()))?when.slice(5,10):when.slice(0,10)):when;
@@ -6571,7 +6574,7 @@ function followCard(group,authorSources=[]){
         ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
       </div></div></div></div>
     <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${avatar}</span>
-      <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${followAudioMark(item)}${esc(item.title)}</button>
+      <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${marks}${esc(item.title)}</button>
         <div class="s followbyline"><span class="followauthor" title="${esc(author)}">${esc(author)}</span><time class="mono" datetime="${esc(item.published_at||'')}" title="${esc(when)}">${esc(compactWhen)}</time></div>
         ${credited?`<div class="s followcredit" title="署名含 ${esc(credited)}">署名含 ${esc(credited)}</div>`:''}
         ${badges?`<div class="fbadges">${badges}</div>`:''}

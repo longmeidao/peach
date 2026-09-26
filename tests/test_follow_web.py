@@ -3331,7 +3331,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("fbadge dup")
 
     def test_wip_has_its_own_badge(self):
-        self.assertPageContains('<span class="fbadge wip">WIP</span>')
+        self.assertPageContains('<small class="javedition followmark wip">WIP</small>')
 
     def test_network_check_is_an_explicit_button_not_an_auto_refresh(self):
         # 联网只发生在按下「检查全部」的那一刻（`frontend/test/react/follow-manage.test.tsx`）。
@@ -3573,10 +3573,10 @@ class FollowWebSourceTests(unittest.TestCase):
         角标却贴在主条目标题旁边，读起来就是「这一条是半成品」。
         """
         self.assertPageContains(
-            "if(group.primary.variant_kind==='wip')badges.push('<span class=\"fbadge wip\">WIP</span>');")
+            "if(group.primary.variant_kind==='wip')marks.push('<small class=\"javedition followmark wip\">WIP</small>');")
         self.assertPageContains(
-            "else if(group.has_wip)badges.push('<span class=\"fbadge wip partial\">含 WIP</span>');")
-        self.assertPageContains(".fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}")
+            "else if(group.has_wip)marks.push('<small class=\"javedition followmark wip partial\">含 WIP</small>');")
+        self.assertPageContains(".javedition.followmark.wip.partial{color:var(--muted)}")
 
     def test_only_actionable_media_failures_enter_the_information_stream(self):
         self.assertPageContains("媒体未取得：需要 F95 登录会话解析")
