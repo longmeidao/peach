@@ -235,7 +235,7 @@ $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
 /* 筛选条只由当前 state 决定，这次加载不会改变它，所以它现在就能画成最终样子。
    `state` 在启动 URL 解析之后才赋值，冷启动第一张骨架比它早，那一次只画计数骨架。 */
 const countSortsHtml=()=>!state?'':sortControlsHtml({shuffleId:'batchAction',shuffleClass:'',
-  extra:javActive()?javLayoutButtons():'',items:sortOptions(),
+  extra:javActive()?javLayoutButtons():homeLayoutActive()?homeLayoutButtons():'',items:sortOptions(),
   renderItem:([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')});
 function wireCountRow(){
   const batch=$('#batchAction');
@@ -245,6 +245,7 @@ function wireCountRow(){
     try{await refreshAll()}finally{setActionBusy(batch,false);batch.innerHTML=old}
   };
   wireJavLayoutButtons($('#count'));
+  wireIconSwitch($('#count'),'data-home-layout',setHomeLayout);
   $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
     const next=nextSortState(b.dataset.sort,state.sort,state.dir);
     if(!next)return;
@@ -546,7 +547,7 @@ const PHOTO_SIZES=[['big','大图','maximize'],['small','小图','layout-grid']]
 const PHOTO_LAYOUTS=[['fixed','固定比例','layout-grid'],['masonry','瀑布流','columns-2']];
 /* 显示器用于跟随系统主题和详情页的画面分辨率。 */
 const THEME_OPTIONS=[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']];
-const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW,accent:DEFAULT_ACCENT};
+const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed',sortDefaultsVersion:3,hoverDelaySeconds:5,seekSeconds:10,searchHistoryLimit:10,relatedLimit:20,javLayout:'big',homeLayout:'small',javImage:'cover',followLayout:'default',peopleLayout:'big',photoSize:'small',ambientMode:true,miniplayer:true,theaterMode:false,theme:'system',groupCollapse:true,sidebarOrder:DEFAULT_SIDEBAR_ORDER,homeGlow:DEFAULT_HOME_GLOW,accent:DEFAULT_ACCENT};
 let appSettings={...DEFAULT_SETTINGS};
 try{appSettings={...DEFAULT_SETTINGS,...JSON.parse(localStorage.getItem(SETTINGS_KEY)||'{}')}}catch(_e){}
 appSettings.followInitialDays=[0,7,30,90].includes(+appSettings.followInitialDays)?+appSettings.followInitialDays:30;
@@ -3504,7 +3505,7 @@ function cardIdentity(it,linked=true){
 function cardHtml(it,cls){
   /* 资料页可能同时收录番号和非番号作品；版式按钮属于页面，但封套比例只施加给
      真实 `is_jav` 卡片，不能把同页的创作者视频也拉成竖封。 */
-  const jav=javActive()&&!!it.is_jav,layout=javLayout();
+  const jav=cardLayoutActive()&&!!it.is_jav,layout=cardLayout();
   const parts=it.part_group||null;
   const editions=it.edition_group||null;
   /* 卡片比例，写进 `--card-ratio` 交给 CSS 消费。`.pic` 写死 16/9 的话，JAV 的两种
@@ -3747,7 +3748,7 @@ function mixHasPicture(it,layout){
 /* Mix 卡片的静止封面和悬浮翻动的每一张都走这里：翻进来的那张必须和静止的
    那张长得一样，否则一翻就露出比例和取景的差别。 */
 function mixFacePoster(it,layout,eager){
-  const jav=javActive()&&!!it.is_jav;
+  const jav=cardLayoutActive()&&!!it.is_jav;
   /* 翻动的那几张必须 eager：它们是悬浮时才插进一个 hidden 容器的，
      lazy 图在没有布局盒时根本不会发请求，一翻就是黑屏。 */
   const load=eager?'eager':'lazy';
@@ -3758,7 +3759,7 @@ function mixFacePoster(it,layout,eager){
       : `<span class="nopic">无预览</span>`);
 }
 function mixCardHtml(it){
-  const jav=javActive()&&!!it.is_jav,layout=javLayout();
+  const jav=cardLayoutActive()&&!!it.is_jav,layout=cardLayout();
   const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;
   const thumb=mixFacePoster(it,layout);
   const label=mixLabel(it);
@@ -3796,7 +3797,7 @@ const MIX_SLOT=7;                 // Mix 卡片插在这一位，也就是每批
    同样的图，看起来像渲染错了。改成从 Mix 位再往下隔一屏开始找：仍然是本批里的
    一部作品，语义不变，但不会和同屏可见的卡片撞图。 */
 function mixSeed(visible){
-  const layout=javLayout();
+  const layout=cardLayout();
   const named=it=>mixHasPicture(it,layout)&&(it.creator||(it.performers||[]).length||it.studio);
   return visible.slice(MIX_SLOT+8).find(named)
     ||visible.slice(MIX_SLOT+1).find(named)
@@ -3890,7 +3891,7 @@ function wireStackFlip(el,loadFaces){
 }
 function wireMixFlip(el,seedId){
   wireStackFlip(el,async()=>{
-    const related=await mixRelated(seedId),layout=javLayout();
+    const related=await mixRelated(seedId),layout=cardLayout();
     return [CACHE[seedId],...related]
       .filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)
       .map(x=>mixFacePoster(x,layout,true));
@@ -9074,9 +9075,9 @@ function openManage(section='stats'){
   state.orient='';state.state='ads';route(junkPath());
   showHomeSurfaces();buildEdge();buildBars();load(true);
 }
-/* JAV 模式。只有带番号的作品才有官方封套，所以版式切换只在这个语境里出现——
-   首页混着创作者作品和素人流出，给它们切「封面」没有意义。
-   资料页（女优/厂牌）进入时继承这个开关，因为那里同样是按番号浏览。 */
+/* JAV 模式。只有带番号的作品才有官方封套，发行时间排序、番号筛选都挂在这个语境上；
+   资料页（女优/厂牌）进入时继承这个开关，因为那里同样是按番号浏览。
+   卡片版式另有首页那一份，见 `homeLayoutActive`。 */
 function javActive(){
   const path=decodeURIComponent(location.pathname);
   if(path==='/')return state.jav==='1';
@@ -9115,6 +9116,26 @@ function javLayout(){
 function javLayoutButtons(){
   return iconSwitchHtml('jav-layout','JAV 卡片版式',JAV_LAYOUTS,javLayout(),
     {attr:'data-jav-layout',className:'javlayout'});
+}
+/* 首页（非 JAV 模式）也有大图／小图。首页混着番号作品和创作者作品，大图只拉长带番号的
+   那几张，其余照旧 16:9，和资料页同一个口径。它单独记在 `homeLayout`、默认小图：
+   JAV 模式的版式是给整屏番号挑的，搬到混排的首页未必合适，两边各记各的。 */
+function homeLayoutActive(){
+  return decodeURIComponent(location.pathname)==='/'&&state.jav!=='1';
+}
+function cardLayoutActive(){return javActive()||homeLayoutActive()}
+function cardLayout(){
+  return homeLayoutActive()?normalizeJavLayout(appSettings.homeLayout):javLayout();
+}
+function homeLayoutButtons(){
+  return iconSwitchHtml('home-layout','首页卡片版式',JAV_LAYOUTS,cardLayout(),
+    {attr:'data-home-layout',className:'javlayout'});
+}
+function setHomeLayout(value){
+  appSettings.homeLayout=normalizeJavLayout(value);
+  saveSettings();
+  document.querySelectorAll('[data-home-layout]').forEach(input=>{input.checked=input.value===appSettings.homeLayout});
+  if(!$('#grid').hidden)repaintCatalogCards();
 }
 function wireJavLayoutButtons(root){wireIconSwitch(root,'data-jav-layout',setJavLayout)}
 /* 版式切换一次请求都不发。卡片 HTML 完全由 CACHE 里那条媒体决定，走 `load(true)` 的话
