@@ -1307,7 +1307,10 @@ const viewportTop=()=>8+(parseFloat(getComputedStyle(document.documentElement)
 export function scrollMovesAnchor(event,anchor){
   return event.target instanceof Node&&event.target.contains(anchor);
 }
-export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
+/* `align:'start'` 让菜单从触发钮左缘往右开。默认往左开，是因为触发钮多半在一排的
+   右端；触发钮紧跟在内容后面时（资料页名字右边那一枚），往左开就盖住了它跟着的那段
+   内容和再往左的头像。 */
+export function wireAnchoredMenu(mount,toggle,menu,{side=false,align='end'}={}){
   const position=()=>{
     // 宽度读 offsetWidth：进场动画起手是 scale(.95)，getBoundingClientRect 量到的是缩过的框。
     const anchor=toggle.getBoundingClientRect(),width=menu.offsetWidth;
@@ -1329,7 +1332,7 @@ export function wireAnchoredMenu(mount,toggle,menu,{side=false}={}){
     const height=Math.min(naturalHeight,Math.max(downward?under:over,0));
     menu.dataset.placement=downward?'bottom':'top';
     menu.style.maxHeight=height+'px';
-    const preferredLeft=menu.classList.contains('context-card')?anchor.left:anchor.right-width;
+    const preferredLeft=align==='start'||menu.classList.contains('context-card')?anchor.left:anchor.right-width;
     menu.style.left=Math.max(8,Math.min(preferredLeft,innerWidth-width-8))+'px';
     menu.style.top=(downward?anchor.bottom+8:anchor.top-8-height)+'px'};
   /* 触发钮被滚走了就关掉：菜单固定在视口里，锚点跟着内容跑，留着就悬在半空。

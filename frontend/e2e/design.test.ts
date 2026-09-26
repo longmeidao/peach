@@ -403,6 +403,49 @@ async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme
   return opened;
 }
 
+/** 下拉栏里一部作品的小图。字段以 `_suggest_work_card`（`src/peach/web_entity.py`）为准。 */
+const suggestCard = (id: number) => ({ id, code: `ABW-${id % 1000}`, has_cover: true, has_thumb: false, cover_frame: null, poster_box: null });
+
+/** 一段输入命中女优、厂牌与视频三类的补全，字段以 `q_suggest` 为准。演示库里没有女优实体。 */
+const SUGGEST = {
+  q: '涼森',
+  groups: [
+    { kind: 'performer', label: '女优', total: 2, items: [
+      { value: '涼森れむ', n: 128, matched: '', id: null, entity_id: 90_301, has_image: true, avatar_focus: null, rep: null,
+        agency: 'Capsule Agency', works: [1, 2, 3, 4].map((at) => suggestCard(90_400 + at)) },
+      { value: '涼森ひより', n: 3, matched: 'すずもりひより', id: null, entity_id: 90_302, has_image: false, rep: null,
+        agency: '', works: [] },
+    ] },
+    { kind: 'studio', label: '厂牌', total: 1, items: [
+      { value: 'Prestige', n: 900, matched: '', id: null, entity_id: 90_303, has_image: false, has_logo: true },
+    ] },
+    { kind: 'asset', label: '视频', total: 12, items: [1, 2, 3, 4, 5].map((at) => ({
+      value: `ABW-${500 + at}`, n: 0, matched: '', id: 90_500 + at, code: `ABW-${500 + at}`,
+      title: '出演作', who: '涼森れむ', card: suggestCard(90_500 + at),
+    })) },
+  ],
+};
+
+/** 补全、下拉里的图和点进去的资料页都按上面那份造好的数据答。返回每次补全请求问的种类。
+ *  图是造出来的实体和番号，服务端取不到；那是另一条判据，这里给一张能加载完的图。 */
+async function stubSuggest(page: Page): Promise<string[]> {
+  const kinds: string[] = [];
+  await page.route(/\/api\/suggest\?/, (route) => {
+    const kind = new URL(route.request().url()).searchParams.get('kind') || '';
+    kinds.push(kind);
+    return route.fulfill({ json: { q: SUGGEST.q, groups: SUGGEST.groups.filter((group) => !kind || group.kind === kind) } });
+  });
+  await page.route(/\/(?:cover|entity-image|avatar|logo)\?/, (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+    id: 90_301, kind: 'performer', canonical_name: '涼森れむ', aliases: [], display_aliases: [], user_aliases: [],
+    asset_count: 0, tags: [], related_performers: [], links: [], metadata: {}, entry_links: [],
+    has_image: false, has_avatar: false, avatar_focus: null, representative_asset_id: null,
+  } }));
+  return kinds;
+}
+
 /** 资料卡此刻的几何：身份列、资料表与卡本身的外框，以及资料表那道分隔线落在哪一边。 */
 async function heroGeometry(page: Page) {
   return page.evaluate(() => {
@@ -1848,6 +1891,95 @@ describe('设计决定', () => {
         assert.equal(await pop.isVisible(), false, 'Escape 收不起别名浮层');
         const page_ = await layout(page);
         assert.ok(page_.scrollWidth <= page_.viewportWidth, '别名浮层把页面撑出了横向滚动');
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  // 名字右边那枚按钮往左开的话，260px 的菜单越过名字压在头像上（用户报过）。
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`名字与别名菜单从按钮左缘往右开，不盖住页头头像（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openProfiledPerformer(browser, viewport);
+      try {
+        const page = opened.page;
+        await page.locator('[data-namepick-toggle]').click();
+        await page.locator('[data-namepick-menu]').waitFor({ state: 'visible', timeout: 5_000 });
+        const box = await page.evaluate(() => {
+          const rect = (selector: string) => {
+            const b = document.querySelector(selector)!.getBoundingClientRect();
+            return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+          };
+          return { menu: rect('[data-namepick-menu]'), portrait: rect('.entityportrait'), toggle: rect('[data-namepick-toggle]') };
+        });
+        const overlaps = box.menu.left < box.portrait.right && box.menu.right > box.portrait.left
+          && box.menu.top < box.portrait.bottom && box.menu.bottom > box.portrait.top;
+        assert.equal(overlaps, false, `名字菜单盖住了头像：${JSON.stringify(box)}`);
+        assert.ok(box.menu.left >= 0 && box.menu.right <= viewport.width, '名字菜单越出了视口');
+        if (!viewport.mobile) assert.ok(Math.abs(box.menu.left - box.toggle.left) < 1, '宽屏下菜单没有对齐按钮左缘');
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  for (const [viewport, split] of [[WIDE, true], [MOBILE, false]] as const) {
+    it(`搜索下拉按种类分页签；宽屏分两栏、人名带头像与近作、视频排成封面格，窄屏一栏（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await visit(browser, '/', viewport);
+      try {
+        const page = opened.page;
+        const kinds = await stubSuggest(page);
+        await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+        await settle(page);
+        if (viewport.mobile) await page.locator('#searchBtn').click();
+        await page.locator('#q').fill(SUGGEST.q);
+        const menu = page.locator('#searchMenu');
+        await menu.locator('.searchperson').first().waitFor({ state: 'visible', timeout: 5_000 });
+        const shown = await page.evaluate(() => {
+          const menuBox = document.querySelector('#searchMenu')!.getBoundingClientRect();
+          const results = document.querySelector<HTMLElement>('#searchMenu .searchresults')!;
+          const columns = [...results.querySelectorAll(':scope > .searchcol')];
+          const person = document.querySelector('#searchMenu .searchperson')!;
+          return {
+            tabs: [...document.querySelectorAll('#searchMenu [role="tab"]')].map((tab) => tab.textContent!.trim()),
+            tracks: getComputedStyle(results).gridTemplateColumns.split(' ').filter((track) => track !== 'none').length,
+            right: columns.at(-1)!.querySelector('.searchgroup')?.getAttribute('data-kind'),
+            videoGrid: getComputedStyle(document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!).display,
+            peeks: getComputedStyle(person.querySelector('.searchpeeks')!).display,
+            peekCount: person.querySelectorAll('.searchpeek').length,
+            sub: person.querySelector('.searchsub')!.textContent,
+            face: person.querySelector('.searchface img')?.getAttribute('src'),
+            inView: menuBox.left >= 0 && menuBox.right <= innerWidth,
+            edges: [Math.round(menuBox.left), Math.round(innerWidth - menuBox.right)],
+          };
+        });
+        assert.deepEqual(shown.tabs, ['全部', '女优2', '厂牌1', '视频12'], '页签不是「全部」加各类命中数');
+        assert.equal(shown.tracks, split ? 2 : 0, split ? '宽屏下拉没有分两栏' : '窄屏下拉不该分栏');
+        assert.equal(shown.right, 'asset', '视频不在最后一栏');
+        assert.equal(shown.videoGrid, split ? 'grid' : 'block', split ? '宽屏视频没排成封面格' : '窄屏视频该一行一部');
+        assert.equal(shown.peeks, split ? 'flex' : 'none', split ? '宽屏人名一行没摆近作' : '窄屏人名一行不摆近作');
+        assert.equal(shown.peekCount, 4);
+        assert.equal(shown.sub, '128 个视频 · Capsule Agency');
+        assert.equal(shown.face, '/entity-image?kind=performer&id=90301&thumb=1');
+        assert.ok(shown.inView, '下拉栏越出了视口');
+        // 窄屏下拉栏盖过返回键那一列，和顶栏两侧一样各留 8，不缩进到搜索框底下。
+        if (viewport.mobile) assert.deepEqual(shown.edges, [8, 8], '窄屏下拉栏两侧留白不是 8');
+        const page_ = await layout(page);
+        assert.ok(page_.scrollWidth <= page_.viewportWidth, `下拉把页面撑出了横向滚动：${page_.offenders.join('，')}`);
+
+        await menu.getByRole('tab', { name: /^女优/ }).click();
+        await page.waitForFunction(() => document.querySelectorAll('#searchMenu .searchgroup[data-kind]').length === 1);
+        assert.equal(await menu.isVisible(), true, '点页签把下拉栏收掉了');
+        assert.ok(kinds.includes('performer'), '选了一类没有按这一类去拉满');
+        assert.equal(await menu.getByRole('tab', { name: /^女优/ }).getAttribute('aria-selected'), 'true');
+
+        // 人名那一行点开的是资料页，不是按名字再搜一遍。
+        await page.keyboard.press('ArrowDown');
+        await page.keyboard.press('Enter');
+        await page.waitForURL(/\/performers\//, { timeout: 5_000 });
+        assert.equal(decodeURIComponent(new URL(page.url()).pathname), '/performers/涼森れむ');
         assert.deepEqual(opened.problems, []);
       } finally {
         await opened.close();

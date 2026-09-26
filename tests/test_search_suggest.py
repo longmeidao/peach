@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 from peach import web_contract as rm_web
-from peach.web_entity import SUGGEST_GROUPS
+from peach.web_entity import SUGGEST_GROUPS, suggest_kinds
 
 from support.ledger import fresh_ledger
 
@@ -227,6 +227,70 @@ class SuggestTests(LedgerFixture):
     def test_a_suggested_work_opens_the_row_it_points_at(self):
         for item in self.group("ABW", "asset"):
             self.assertEqual(rm_web.q_item(self.contract, item["id"])["id"], item["id"])
+
+
+class SuggestCardTests(LedgerFixture):
+    """下拉栏画得出每一行：人的脸、事务所与近作，作品的小图与署名，每类的总数。"""
+
+    def setUp(self):
+        super().setUp()
+        root = Path(self.tmp.name)
+        covers = root / "covers"
+        covers.mkdir()
+        (covers / "ABW-123.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+        snapshot = root / "two.jpg"
+        snapshot.write_bytes(b"\xff\xd8\xff\xd9")
+        # ABW-123 有官方封面，two.mp4 只有抽帧，one/three 两样都没有。
+        self.con.execute("INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                         " VALUES(4,11,'performer','test',1.0)")
+        self.con.execute("UPDATE asset SET snapshot_path=? WHERE id=2", (str(snapshot),))
+        self.con.commit()
+        self.contract = rm_web.WebContract(self.db, cover_root=covers)
+
+    def test_a_person_row_names_her_agency(self):
+        self.assertEqual(self.group("涼森", "performer")[0]["agency"], "Capsule Agency")
+
+    def test_a_person_row_brings_only_works_that_have_a_picture(self):
+        works = self.group("涼森", "performer")[0]["works"]
+        self.assertEqual({work["id"] for work in works}, {2, 4})
+        cover = next(work for work in works if work["id"] == 4)
+        self.assertTrue(cover["has_cover"])
+        self.assertEqual(cover["code"], "ABW-123")
+
+    def test_a_face_that_cannot_be_drawn_is_not_offered(self):
+        """没装实体图、代表作也没有抽帧：页面直接画首字母，不先出一张等 404 的图。"""
+        item = self.group("神雪", "performer")[0]
+        self.assertFalse(item["has_image"])
+        self.assertIsNone(item["rep"])
+
+    def test_a_suggested_work_carries_its_credit_and_picture(self):
+        item = self.group("ABW", "asset")[0]
+        self.assertEqual(item["who"], "涼森れむ")
+        self.assertTrue(item["card"]["has_cover"])
+
+    def test_a_suggested_work_without_a_picture_has_no_card(self):
+        self.assertIsNone(self.group("IMG", "asset")[0]["card"])
+
+    def test_each_group_says_how_many_it_matched_in_all(self):
+        """六个标签以「足」开头，一组只列五个，总数仍是六。"""
+        tags = next(group for group in self.suggest("足")["groups"] if group["kind"] == "tag")
+        self.assertEqual((len(tags["items"]), tags["total"]), (5, 6))
+
+    def test_the_work_total_counts_every_hit(self):
+        works = next(group for group in self.suggest("ABW", limit=1)["groups"]
+                     if group["kind"] == "asset")
+        self.assertEqual((len(works["items"]), works["total"]), (1, 2))
+
+    def test_asking_for_one_kind_returns_only_that_kind(self):
+        groups = rm_web.q_suggest(self.contract, "涼", 20, ("performer",))["groups"]
+        self.assertEqual([group["kind"] for group in groups], ["performer"])
+
+    def test_an_unknown_kind_is_dropped(self):
+        self.assertEqual(suggest_kinds("asset,bogus,performer"), ("performer", "asset"))
+
+    def test_an_agency_row_carries_its_site_mark_slot(self):
+        """事务所没有标识文件，门面是官网圆标；这份夹具里没有官网，那一格就是空的。"""
+        self.assertIsNone(self.group("Capsule", "agency")[0]["mark"])
 
 
 class ShortLatinQueryTests(LedgerFixture):

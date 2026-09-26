@@ -34,12 +34,14 @@ from .web_catalog import (
 )
 from .web_entity import (
     SUGGEST_GROUP_LIMIT,
+    SUGGEST_KIND_LIMIT,
     q_entity,
     q_entity_photos,
     q_entity_shapes,
     q_index,
     q_photo_set,
     q_suggest,
+    suggest_kinds,
     w_entity_alias,
     w_entity_name,
 )
@@ -186,16 +188,17 @@ def _get_facets(contract, args):
 def _get_suggest(contract, args):
     """搜索栏每敲一下就来一次，所以走 LRU：键是用户输入，键空间不封闭。
 
-    键里带上 limit——同一段输入要不同条数就是不同结果。写路径调 `cache_bust()`
-    时它跟着一起作废，补全不会在新片入库后还给出旧的一批。
+    键里带上 limit 与 kind——同一段输入要不同条数、不同种类就是不同结果。写路径调
+    `cache_bust()` 时它跟着一起作废，补全不会在新片入库后还给出旧的一批。
     """
     query = str(args.get("q") or "").strip()[:64]
-    limit = min(max(int(args.get("limit", str(SUGGEST_GROUP_LIMIT))), 1),
-                SUGGEST_GROUP_LIMIT * 4)
+    limit = min(max(int(args.get("limit", str(SUGGEST_GROUP_LIMIT))), 1), SUGGEST_KIND_LIMIT)
+    kinds = suggest_kinds(args.get("kind", ""))
     if not query:
         return q_suggest(contract, "")
     return contract.cached_lru(
-        f"suggest:{limit}:{query}", lambda: q_suggest(contract, query, limit))
+        f"suggest:{limit}:{','.join(kinds)}:{query}",
+        lambda: q_suggest(contract, query, limit, kinds))
 
 
 def _get_follow_suggest(contract, args):
