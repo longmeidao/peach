@@ -171,6 +171,71 @@ def _item_tag_types(item, tags: list[str]) -> dict[str, str]:
             if (tag_type := _recorded_tag_type(item, tag))}
 
 
+#: 路径首段就是账号名的出处站。bsky 的账号在第二段（`/profile/<handle>`），fanbox
+#: 的账号是子域名，各自在 `_source_handle` 里单独取。
+_HANDLE_HOSTS = frozenset((
+    "x.com", "twitter.com", "patreon.com", "www.patreon.com", "subscribestar.adult",
+    "www.subscribestar.adult", "bsky.app", "www.pixiv.net", "ko-fi.com",
+))
+
+
+def _handle_key(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", html.unescape(str(text or "")).casefold())
+
+
+def _source_handle(url) -> str:
+    first = str(url or "").split()
+    try:
+        parts = urllib.parse.urlsplit(first[0] if first else "")
+    except ValueError:
+        return ""
+    host = (parts.hostname or "").casefold()
+    segments = [segment for segment in parts.path.split("/") if segment]
+    if host.endswith(".fanbox.cc"):
+        return host.split(".")[0]
+    if host not in _HANDLE_HOSTS or not segments:
+        return ""
+    return segments[1] if host == "bsky.app" and len(segments) > 1 else segments[0]
+
+
+def _same_handle(handle: str, tag: str) -> bool:
+    """账号名与 artist 标签是不是同一个人。
+
+    账号常比标签多个后缀（`2hour2hour` 对 `2hour2`），所以四个字符以上的前缀也算。
+    """
+    a, b = _handle_key(handle), _handle_key(tag)
+    return bool(a and b) and (a == b or (
+        min(len(a), len(b)) >= 4 and (a.startswith(b) or b.startswith(a))))
+
+
+def _item_credit(item) -> dict | None:
+    """booru 帖子真正的发布者，被关注的这位只是素材署名时才有值。
+
+    rule34 把动画、模型、场景的作者都标成 artist。帖子出处多半指向发布者自己的
+    X／Patreon 帖子：账号名对上一个 artist 标签、而那一位不是被关注者时，卡片署名
+    改成发布者，被关注者退成「署名含」。认不出账号、对不上标签，或对上的就是被关注者
+    本人，照常显示被关注者（ADR-0078）。
+    """
+    if item.provider not in {"rule34xxx", "rule34paheal"}:
+        return None
+    followed = html.unescape(str(item.metadata.get("tag") or "")).strip()
+    handle = _source_handle(item.metadata.get("source"))
+    raw = item.metadata.get("tag_types")
+    if not followed or not handle or not isinstance(raw, dict):
+        return None
+    artists = [html.unescape(str(tag)) for tag, kind in raw.items()
+               if str(kind).casefold() == "artist"]
+    if not any(_handle_key(tag) == _handle_key(followed) for tag in artists):
+        return None
+    owners = [tag for tag in artists if _same_handle(handle, tag)]
+    if not owners or any(_same_handle(followed, tag) for tag in owners):
+        return None
+    # 同一人挂了几个写法（`madruga3d`、`madrugasfm`）时取和账号完全一致的，其次取最长的。
+    poster = max(owners, key=lambda tag: (_handle_key(tag) == _handle_key(handle),
+                                          len(_handle_key(tag))))
+    return {"poster": poster, "credited": followed}
+
+
 #: 作品名里的罗马数字。写成名单而不是通用式：通用式会把 `mix`、`did` 这类英文词
 #: 也判成数字，而作品名里实际用到的就这十几个。
 _ROMAN_NUMERALS = frozenset((
@@ -891,6 +956,7 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
         # 出口统一反转义，与 _item_tags 同一处理，unescape 幂等。
         "title": html.unescape(item.title) if item.title else item.title,
         "author": item.metadata.get("author") or None,
+        "credit": _item_credit(item),
         "summary": item.metadata.get("summary") or None,
         "url": item.url,
         "thumb_url": _thumb_url(item),
