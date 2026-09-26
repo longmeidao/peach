@@ -1886,6 +1886,66 @@ describe('设计决定', () => {
     }
   });
 
+  it('整页空态沉一档底色、20px 圆角、至少 320px 高，图标装进 54px 描边方框；卡里的空态不带方框', { timeout: 60_000 }, async () => {
+    // 演示库在一轮里凑得出重复组，桩成空的才一定落到整页空态上。
+    const opened = await visit(browser, '/duplicates', DESKTOP);
+    try {
+      const page = opened.page;
+      await page.route('**/api/duplicates?**', (route) => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ total: 0, files: 0, reclaimable: 0, groups: [] }),
+      }));
+      await page.reload({ waitUntil: 'load' });
+      await page.locator('#stats [data-empty-state]').waitFor({ timeout: 15_000 });
+      await settle(page);
+      const face = await page.evaluate(() => {
+        const root = document.querySelector('#stats [data-empty-state]')!;
+        const glyph = root.querySelector('svg')!;
+        const box = glyph.parentElement!;
+        const shell = getComputedStyle(root);
+        const frame = getComputedStyle(box);
+        const title = getComputedStyle(root.querySelector('h3')!);
+        const copy = getComputedStyle(root.querySelector('p')!);
+        return {
+          shell: { face: shell.backgroundColor, line: shell.borderTopColor, width: shell.borderTopWidth,
+            radius: shell.borderTopLeftRadius, minHeight: shell.minHeight },
+          boxed: box !== root,
+          frame: { width: frame.width, height: frame.height, radius: frame.borderTopLeftRadius,
+            line: frame.borderTopWidth, glyph: getComputedStyle(glyph).width },
+          title: [title.fontSize, title.fontWeight], copy: [copy.maxWidth, copy.lineHeight],
+        };
+      });
+      assert.equal(face.shell.face, await tokenColor(page, '.peach-react', '--color-background-secondary-default'),
+        '整页空态没有沉一档底色');
+      assert.equal(face.shell.line, await tokenColor(page, '.peach-react', '--color-separator-border'), '外框不是分隔线色');
+      assert.deepEqual([face.shell.width, face.shell.radius, face.shell.minHeight], ['1px', '20px', '320px']);
+      assert.ok(face.boxed, '整页空态的图标没有装进方框');
+      assert.deepEqual(face.frame, { width: '54px', height: '54px', radius: '20px', line: '1px', glyph: '32px' });
+      assert.deepEqual(face.title, ['14px', '600']);
+      assert.deepEqual(face.copy, ['340px', '20.15px']);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+    // 卡里那一档（活动页没有任务记录）图标直接挂在空态上，外面没有方框。
+    const activity = await visit(browser, '/activity', DESKTOP);
+    try {
+      await activity.page.route('**/api/tasks', (route) => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ available: true, running: [], skipped: [], finished: [] }),
+      }));
+      await activity.page.reload({ waitUntil: 'load' });
+      const empty = activity.page.locator('[data-empty-state]');
+      await empty.waitFor({ timeout: 15_000 });
+      await settle(activity.page);
+      assert.equal(await empty.evaluate((root) => root.querySelector('svg')!.parentElement === root), true,
+        '卡里的空态也套了图标方框');
+      assert.deepEqual(activity.problems, []);
+    } finally {
+      await activity.close();
+    }
+  });
+
   it('骨架里的占位和按键悬停不给任何反馈，也点不中', { timeout: 120_000 }, async () => {
     const name = '七沢みあ';
     const pages: { path: string; ready: string; targets: string[]; prepare?: (page: Page) => Promise<void> }[] = [
