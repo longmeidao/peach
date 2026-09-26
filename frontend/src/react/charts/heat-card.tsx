@@ -137,8 +137,10 @@ export function ActivityHeat(
       </section>
     ) : null;
   }
+  /* 两张卡按各自内容的高度排：星期 × 小时有 24 列，格子比每日那张小一半，同行拉成等高
+     会在它下面空出半张卡。 */
   return (
-    <div className="inline-grid w-full gap-5 lg:grid-cols-2">
+    <div className="inline-grid w-full items-start gap-5 lg:grid-cols-2">
       <HeatCard title={title} words={words} tone={tone}
         cells={hours.cells} total={hours.total} columns={24} rows={7} axis={HOUR_AXIS}
         footer={<><span>星期 × 小时</span><span>{activity?.timezone || 'UTC+08:00'}</span></>} />

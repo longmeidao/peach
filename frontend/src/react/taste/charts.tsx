@@ -2,7 +2,7 @@
  * 统计页共用 `../charts/heat-card.tsx`。
  *
  * 雷达与排行条由 EvilCharts 画，悬停浮层是 `../charts/chart-tip.tsx`，差异登记在
- * `../evilcharts/ORIGIN.md`。流向图保留 `d3-sankey` 自绘（ADR-0076）：几何全写成属性，流的粗细
+ * `../evilcharts/ORIGIN.md`。雷达的半径是平方根刻度，浮层仍读原始次数。流向图保留 `d3-sankey` 自绘（ADR-0076）：几何全写成属性，流的粗细
  * 是 `stroke-width`，颜色只取 BoardUI 的 `chart-*` 档；指向一条流或一个节点时读数换成它的，
  * 换的是 React 状态，指针离开或焦点移走就回到总数。差异登记在 `../boardui/ORIGIN.md`。 */
 import { useState } from 'react';
@@ -34,19 +34,32 @@ const DIMENSION_CONFIG = { value: { label: '标签命中', colors: tone(CHART_CO
 /** 排行条的高度按条数给：条数少时不把每一条撑得很粗。类名写成整串，Tailwind 扫得到。 */
 const RANK_HEIGHT = ['h-24', 'h-24', 'h-24', 'h-32', 'h-40', 'h-48', 'h-52', 'h-60', 'h-64'];
 
+/** 雷达图画的是 `radius` 列，名字与颜色跟口味维度的另外两张图一致。 */
+const RADAR_CONFIG = { radius: DIMENSION_CONFIG.value };
+
+/** 雷达图的半径刻度，也是这张图唯一一处换算：`√(次数 / 最大次数)`，最大的维度落在外圈（1）。
+ * 头一个维度常是其余的十倍以上，线性半径会把面压成一根尖刺，读不出次要维度的形状；开方后
+ * 它们才撑得开。原始次数留在 `value` 列，浮层读它，数值本身由旁边的排行条给。 */
+const radarRadius = (value: number, top: number) => Math.sqrt(value / top);
+
 /** 主要口味维度的雷达图，画的是 EvilCharts 的 `EvilRadarChart`。三个维度以下画不成面，那时整块不出现。 */
 export function TasteRadar({ rows, label }: { rows: RankRow[]; label: string }) {
-  const data = radarRows(rows);
-  if (!data.length) return null;
+  const points = radarRows(rows);
+  if (!points.length) return null;
+  const top = points[0]!.value;
+  const data = points.map((row) => ({ ...row, radius: radarRadius(row.value, top) }));
   return (
     <div role="img" aria-label={`${label}：${data.map((row) => row.name).join('，')}`}>
       {/* 半径压到六成：维度名排在顶点外侧，七八个字的名字在窄栏里要放得下，不被图框切掉。 */}
-      <EvilRadarChart data={data} config={DIMENSION_CONFIG} chartProps={{ outerRadius: '58%' }}
+      <EvilRadarChart data={data} config={RADAR_CONFIG} chartProps={{ outerRadius: '58%' }}
         className="aspect-auto h-70 text-text-secondary">
         <EvilRadarChart.PolarGrid />
         <EvilRadarChart.PolarAngleAxis dataKey="name" />
-        <EvilRadarChart.Radar dataKey="value" />
-        <ChartTip />
+        {/* 半径轴定死在 0 到 1：外圈就是最大的维度，不让 Recharts 往上取整留出空圈。网格圈跟着
+            这根轴的刻度走，Recharts 默认只取整数刻度，要放开小数才有四等分的圈。 */}
+        <EvilRadarChart.PolarRadiusAxis domain={[0, 1]} allowDecimals tick={false} />
+        <EvilRadarChart.Radar dataKey="radius" />
+        <ChartTip valueKey="value" />
       </EvilRadarChart>
     </div>
   );

@@ -3,7 +3,8 @@
  *
  * 外观（雷达图的网格、热力格的浓度档）是设计决定，由 `frontend/e2e/design.test.ts` 读
  * `getComputedStyle` 断言；这里只看结构、文字与请求。Recharts 在这里量不到容器尺寸，
- * 雷达与排行条的图形画不出来，从外层的名字与纯函数上验。 */
+ * 整页挂上去时雷达与排行条的图形画不出来，从外层的名字与纯函数上验；雷达的刻度用例单挂
+ * 这张图，拿掉 `ResizeObserver` 让它按初始尺寸画。 */
 import { act } from 'react';
 import { notifyManager, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -16,9 +17,10 @@ import {
   DEFAULT_WINDOW, prefetchTaste, radarRows, RANK_MAX, TASTE_IMPORT_URL, TASTE_REFRESH_URL,
   TASTE_SOURCE_URL, TASTE_URL, topScores, type TasteData, type TasteJob,
 } from '../../src/react/taste/taste';
+import { TasteRadar } from '../../src/react/taste/charts';
 import { TastePage } from '../../src/react/taste/taste-page';
 
-import { buttonNamed, choose, click, mountRoot, settle } from './render';
+import { buttonNamed, choose, click, mount, mountRoot, settle } from './render';
 
 // 客户端是模块级的单例（所有 React 根共用一个），用例之间不清就互相喂数据。
 afterEach(() => queryClient.clear());
@@ -162,6 +164,40 @@ it('口味维度取分数最高的几个：雷达三到六个，排行条最多�
   expect(topScores(rows, RANK_MAX).map((row) => row.value)).toEqual([9, 8, 7, 6, 5, 4, 3, 2]);
   expect(radarRows(rows).map((row) => row.name)).toEqual(['维度9', '维度8', '维度7', '维度6', '维度5', '维度4']);
   expect(radarRows([{ name: '甲', score: 3 }, { name: '乙', score: 1 }, { name: '丙' }])).toEqual([]);
+});
+
+it('雷达半径按平方根刻度：最大的维度落在外圈，浮层读的仍是原始次数', async () => {
+  // Recharts 靠 ResizeObserver 量容器，拿掉它就按 EvilCharts 给的初始尺寸 320 × 200 画；
+  // 声明减少动态效果，Recharts 不播生长动画，多边形直接是终态。
+  vi.stubGlobal('ResizeObserver', undefined);
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('reduce'), media: query, addEventListener() {}, removeEventListener() {},
+  }));
+  const counts = [657, 68, 56, 4, 1];
+  const host = await mount(
+    <TasteRadar rows={counts.map((score, index) => ({ name: `维度${index}`, score }))} label="主要口味维度" />);
+  const points = (path: Element | null | undefined) =>
+    [...(path?.getAttribute('d') ?? '').matchAll(/(-?[\d.]+),\s*(-?[\d.]+)/g)]
+      .map(([, x, y]) => ({ x: Number(x), y: Number(y) }));
+  const rings = [...host.querySelectorAll('.recharts-polar-grid-concentric-polygon')].map(points);
+  // 半径 0 那一圈退化成圆心；网格四等分，最外一圈就是半径轴的 1。
+  expect(rings).toHaveLength(5);
+  const center = rings[0]![0]!;
+  const reach = (point: { x: number; y: number }) => Math.hypot(point.x - center.x, point.y - center.y);
+  const outer = reach(rings.at(-1)![0]!);
+  const radar = points(host.querySelector('.recharts-radar-polygon path')).slice(0, counts.length);
+  expect(radar.map((point) => reach(point) / outer))
+    .toEqual(counts.map((count) => expect.closeTo(Math.sqrt(count / 657), 3)));
+
+  // 指到正上方那个顶点（最大的维度），浮层给的是 657 次，不是画图用的半径 1。
+  await act(async () => {
+    host.querySelector('.recharts-wrapper')!.dispatchEvent(new MouseEvent('mousemove',
+      { bubbles: true, clientX: center.x, clientY: center.y - outer / 2 }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  const tip = host.querySelector('.recharts-tooltip-wrapper')!;
+  expect(tip.textContent).toContain('维度0');
+  expect([...tip.querySelectorAll('span')].map((span) => span.textContent)).toEqual(['标签命中', '657']);
 });
 
 it('浏览器画像的雷达、排行与浏览活跃热力图都按这一份数画', async () => {

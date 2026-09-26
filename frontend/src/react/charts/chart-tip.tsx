@@ -31,10 +31,10 @@ export function TipRow({ swatch, name, value }: { swatch: ReactNode; name: React
 export const TIP_SWATCH = 'size-2.5 shrink-0 rounded-xs';
 
 type TipProps = Partial<Pick<TooltipContentProps<number, string>, 'active' | 'payload' | 'label'>> & {
-  nameKey?: string; hideLabel?: boolean;
+  nameKey?: string; valueKey?: string; hideLabel?: boolean;
 };
 
-function TipContent({ active, payload, label, nameKey, hideLabel }: TipProps) {
+function TipContent({ active, payload, label, nameKey, valueKey, hideLabel }: TipProps) {
   const { config } = useChart();
   const items = (payload ?? []).filter((item) => item.type !== 'none');
   /* 上游同款：没有内容时留一块空的占位，浮层下一次出现才不会从图的左上角滑过来。 */
@@ -44,11 +44,13 @@ function TipContent({ active, payload, label, nameKey, hideLabel }: TipProps) {
     <div className={TIP_SURFACE}>
       {title ? <div className="font-medium text-foreground">{title}</div> : null}
       {items.map((item, index) => {
-        const named = nameKey && item.payload ? (item.payload as Record<string, unknown>)[nameKey] : undefined;
+        const row = (item.payload ?? {}) as Record<string, unknown>;
+        const named = nameKey ? row[nameKey] : undefined;
         const key = `${named ?? item.name ?? item.dataKey ?? 'value'}`;
         const entry = getPayloadConfigFromPayload(config, item, key);
+        const value = valueKey ? row[valueKey] : item.value;
         return (
-          <TipRow key={key + index} name={entry?.label ?? item.name} value={Number(item.value ?? 0)}
+          <TipRow key={key + index} name={entry?.label ?? item.name} value={Number(value ?? 0)}
             swatch={(
               // oxlint-disable-next-line shadcn/no-inline-styles -- 色点取 ChartStyle 按系列键生成的 CSS 变量，变量名随键变
               <i className={TIP_SWATCH} style={{ background: `var(--color-${key}-0)` }} />
@@ -59,7 +61,13 @@ function TipContent({ active, payload, label, nameKey, hideLabel }: TipProps) {
   );
 }
 
-/** 接进 EvilCharts 图里的浮层。`nameKey` 是径向图那种一段一个名字的数据列。 */
-export function ChartTip({ nameKey, hideLabel }: { nameKey?: string; hideLabel?: boolean }) {
-  return <ChartTooltip cursor={false} content={<TipContent nameKey={nameKey} hideLabel={hideLabel} />} />;
+/** 接进 EvilCharts 图里的浮层。`nameKey` 是径向图那种一段一个名字的数据列；`valueKey` 是
+ * 画图的列经过刻度换算时，浮层该读的原始数那一列（雷达图）。 */
+export function ChartTip(
+  { nameKey, valueKey, hideLabel }: { nameKey?: string; valueKey?: string; hideLabel?: boolean },
+) {
+  return (
+    <ChartTooltip cursor={false}
+      content={<TipContent nameKey={nameKey} valueKey={valueKey} hideLabel={hideLabel} />} />
+  );
 }

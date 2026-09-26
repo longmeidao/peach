@@ -59613,34 +59613,35 @@ function R7({ swatch: e, name: t, value: n }) {
 	});
 }
 var z7 = "size-2.5 shrink-0 rounded-xs";
-function Cbe({ active: e, payload: t, label: n, nameKey: r, hideLabel: i }) {
-	let { config: a } = p7(), o = (t ?? []).filter((e) => e.type !== "none");
-	if (!e || !o.length) return /* @__PURE__ */ (0, D.jsx)("span", { className: "p-4" });
-	let s = i || typeof n != "string" ? null : a[n]?.label ?? n;
+function Cbe({ active: e, payload: t, label: n, nameKey: r, valueKey: i, hideLabel: a }) {
+	let { config: o } = p7(), s = (t ?? []).filter((e) => e.type !== "none");
+	if (!e || !s.length) return /* @__PURE__ */ (0, D.jsx)("span", { className: "p-4" });
+	let c = a || typeof n != "string" ? null : o[n]?.label ?? n;
 	return /* @__PURE__ */ (0, D.jsxs)("div", {
 		className: L7,
-		children: [s ? /* @__PURE__ */ (0, D.jsx)("div", {
+		children: [c ? /* @__PURE__ */ (0, D.jsx)("div", {
 			className: "font-medium text-foreground",
-			children: s
-		}) : null, o.map((e, t) => {
-			let n = `${(r && e.payload ? e.payload[r] : void 0) ?? e.name ?? e.dataKey ?? "value"}`, i = _7(a, e, n);
+			children: c
+		}) : null, s.map((e, t) => {
+			let n = e.payload ?? {}, a = `${(r ? n[r] : void 0) ?? e.name ?? e.dataKey ?? "value"}`, s = _7(o, e, a), c = i ? n[i] : e.value;
 			return /* @__PURE__ */ (0, D.jsx)(R7, {
-				name: i?.label ?? e.name,
-				value: Number(e.value ?? 0),
+				name: s?.label ?? e.name,
+				value: Number(c ?? 0),
 				swatch: /* @__PURE__ */ (0, D.jsx)("i", {
 					className: z7,
-					style: { background: `var(--color-${n}-0)` }
+					style: { background: `var(--color-${a}-0)` }
 				})
-			}, n + t);
+			}, a + t);
 		})]
 	});
 }
-function B7({ nameKey: e, hideLabel: t }) {
+function B7({ nameKey: e, valueKey: t, hideLabel: n }) {
 	return /* @__PURE__ */ (0, D.jsx)(b7, {
 		cursor: !1,
 		content: /* @__PURE__ */ (0, D.jsx)(Cbe, {
 			nameKey: e,
-			hideLabel: t
+			valueKey: t,
+			hideLabel: n
 		})
 	});
 }
@@ -59872,7 +59873,7 @@ var Obe = /* @__PURE__ */ (0, D.jsxs)(D.Fragment, { children: [W7.map((e, t) => 
 function X7({ activity: e, title: t, dailyTitle: n, words: r, tone: i, empty: a }) {
 	let o = wbe(e), s = Tbe(e);
 	return s.cells.length ? /* @__PURE__ */ (0, D.jsxs)("div", {
-		className: "inline-grid w-full gap-5 lg:grid-cols-2",
+		className: "inline-grid w-full items-start gap-5 lg:grid-cols-2",
 		children: [/* @__PURE__ */ (0, D.jsx)(Y7, {
 			title: t,
 			words: r,
@@ -61698,27 +61699,37 @@ var rSe = [
 	"h-52",
 	"h-60",
 	"h-64"
-];
-function oSe({ rows: e, label: t }) {
+], oSe = { radius: U9.value }, sSe = (e, t) => Math.sqrt(e / t);
+function cSe({ rows: e, label: t }) {
 	let n = Lxe(e);
-	return n.length ? /* @__PURE__ */ (0, D.jsx)("div", {
+	if (!n.length) return null;
+	let r = n[0].value, i = n.map((e) => ({
+		...e,
+		radius: sSe(e.value, r)
+	}));
+	return /* @__PURE__ */ (0, D.jsx)("div", {
 		role: "img",
-		"aria-label": `${t}：${n.map((e) => e.name).join("，")}`,
+		"aria-label": `${t}：${i.map((e) => e.name).join("，")}`,
 		children: /* @__PURE__ */ (0, D.jsxs)(z9, {
-			data: n,
-			config: U9,
+			data: i,
+			config: oSe,
 			chartProps: { outerRadius: "58%" },
 			className: "aspect-auto h-70 text-text-secondary",
 			children: [
 				/* @__PURE__ */ (0, D.jsx)(z9.PolarGrid, {}),
 				/* @__PURE__ */ (0, D.jsx)(z9.PolarAngleAxis, { dataKey: "name" }),
-				/* @__PURE__ */ (0, D.jsx)(z9.Radar, { dataKey: "value" }),
-				/* @__PURE__ */ (0, D.jsx)(B7, {})
+				/* @__PURE__ */ (0, D.jsx)(z9.PolarRadiusAxis, {
+					domain: [0, 1],
+					allowDecimals: !0,
+					tick: !1
+				}),
+				/* @__PURE__ */ (0, D.jsx)(z9.Radar, { dataKey: "radius" }),
+				/* @__PURE__ */ (0, D.jsx)(B7, { valueKey: "value" })
 			]
 		})
-	}) : null;
+	});
 }
-function sSe({ rows: e, label: t }) {
+function lSe({ rows: e, label: t }) {
 	let n = O9(e, 8);
 	return n.length ? /* @__PURE__ */ (0, D.jsx)("section", {
 		"aria-label": t,
@@ -61750,7 +61761,7 @@ function sSe({ rows: e, label: t }) {
 		})
 	}) : null;
 }
-function cSe({ flows: e }) {
+function uSe({ flows: e }) {
 	let [t, n] = (0, E.useState)(null), r = Rxe(e);
 	if (!r) return null;
 	let i = t?.node ?? null, a = (e, n) => t ? i === null ? t.label === n : e.source === i || e.target === i : !0;
@@ -61838,7 +61849,7 @@ function cSe({ flows: e }) {
 }
 //#endregion
 //#region src/react/taste/taste-page.tsx
-var lSe = 10, W9 = cw(Zk, Qk, "text-body-2-medium"), G9 = `${_w()} flex flex-col gap-4`, K9 = "rounded-xl bg-background-primary-default p-3", uSe = "读取运行 Peach 的这台电脑上的浏览记录", dSe = "导入或读取浏览记录后，这里会列出已采集设备。", fSe = "馆藏里暂时没有对得上浏览信号的标签。", pSe = "采集浏览记录后，这里会显示聚合后的口味证据。", mSe = "这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据", hSe = "在运行 Peach 的电脑上使用浏览器：点上面的「读取浏览器历史」。", gSe = "记录在其他设备上：导出文件后，点上面的「导入历史文件」。多台设备的文件分别导入。", _Se = "需要刷新时再次读取或导入；数据源可在页面底部移除。", vSe = "这个数据源将不再用于口味分析。原始导出文件保留。", q9 = "peach-taste-guide-dismissed";
+var dSe = 10, W9 = cw(Zk, Qk, "text-body-2-medium"), G9 = `${_w()} flex flex-col gap-4`, K9 = "rounded-xl bg-background-primary-default p-3", fSe = "读取运行 Peach 的这台电脑上的浏览记录", pSe = "导入或读取浏览记录后，这里会列出已采集设备。", mSe = "馆藏里暂时没有对得上浏览信号的标签。", hSe = "采集浏览记录后，这里会显示聚合后的口味证据。", gSe = "这些词在浏览记录中出现，但 Peach 观看记录还没有对应证据", _Se = "在运行 Peach 的电脑上使用浏览器：点上面的「读取浏览器历史」。", vSe = "记录在其他设备上：导出文件后，点上面的「导入历史文件」。多台设备的文件分别导入。", ySe = "需要刷新时再次读取或导入；数据源可在页面底部移除。", bSe = "这个数据源将不再用于口味分析。原始导出文件保留。", q9 = "peach-taste-guide-dismissed";
 function J9({ icon: e, term: t, figure: n, detail: r, accent: i }) {
 	return /* @__PURE__ */ (0, D.jsx)("div", {
 		className: Wk(),
@@ -61865,13 +61876,13 @@ function Y9({ name: e, domain: t }) {
 		})]
 	});
 }
-function ySe({ html: e }) {
+function xSe({ html: e }) {
 	return /* @__PURE__ */ (0, D.jsx)("span", {
 		className: "relative inline-grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-background-tertiary-default text-caption-1-medium text-text-secondary [&_img]:absolute [&_img]:inset-0 [&_img]:size-full [&_img]:object-cover",
 		dangerouslySetInnerHTML: { __html: e }
 	});
 }
-function bSe({ rows: e, kind: t, visual: n, empty: r, onSignal: i, avatarInner: a }) {
+function SSe({ rows: e, kind: t, visual: n, empty: r, onSignal: i, avatarInner: a }) {
 	if (!e.length) return /* @__PURE__ */ (0, D.jsx)(vw, {
 		shell: "plain",
 		icon: AS,
@@ -61880,7 +61891,7 @@ function bSe({ rows: e, kind: t, visual: n, empty: r, onSignal: i, avatarInner: 
 	});
 	let o = Ixe(e);
 	return /* @__PURE__ */ (0, D.jsx)(Z7, {
-		previewCount: lSe,
+		previewCount: dSe,
 		className: "inline-grid w-full gap-x-7 gap-y-2 sm:grid-cols-2",
 		children: e.map((e, r) => {
 			let s = !!t && !!e.peach_items, c = String(e.source_domain || ""), l = /* @__PURE__ */ (0, D.jsxs)(D.Fragment, { children: [
@@ -61907,7 +61918,7 @@ function bSe({ rows: e, kind: t, visual: n, empty: r, onSignal: i, avatarInner: 
 					name: e.name,
 					domain: c
 				}) : null,
-				n !== "none" && n !== "domain" && (e.entity_id || e.has_avatar || !c) ? /* @__PURE__ */ (0, D.jsx)(ySe, { html: a(e.name, e.entity_id ? {
+				n !== "none" && n !== "domain" && (e.entity_id || e.has_avatar || !c) ? /* @__PURE__ */ (0, D.jsx)(xSe, { html: a(e.name, e.entity_id ? {
 					id: e.entity_id,
 					has_image: !!e.has_image,
 					avatar_focus: e.avatar_focus
@@ -61959,7 +61970,7 @@ function X9({ label: e, panels: t, onSignal: n, avatarInner: r }) {
 		}), t.map((e) => /* @__PURE__ */ (0, D.jsx)(CO, {
 			id: e.id,
 			className: "px-4 pt-3.5 pb-4",
-			children: /* @__PURE__ */ (0, D.jsx)(bSe, {
+			children: /* @__PURE__ */ (0, D.jsx)(SSe, {
 				...e.props,
 				onSignal: n,
 				avatarInner: r
@@ -61967,7 +61978,7 @@ function X9({ label: e, panels: t, onSignal: n, avatarInner: r }) {
 		}, e.id))]
 	});
 }
-function xSe({ data: e, onSignal: t, navigate: n }) {
+function CSe({ data: e, onSignal: t, navigate: n }) {
 	let r = e.analysis;
 	if (!r?.headline) return null;
 	let i = r.confidence || {}, a = [...(r.explore || []).map((e) => ({
@@ -62042,12 +62053,12 @@ function xSe({ data: e, onSignal: t, navigate: n }) {
 				shell: "plain",
 				icon: AS,
 				title: "还没有可探索的入口",
-				children: fSe
+				children: mSe
 			})
 		]
 	});
 }
-function SSe({ onboarding: e, done: t }) {
+function wSe({ onboarding: e, done: t }) {
 	let [n, r] = (0, E.useState)(() => {
 		try {
 			return localStorage.getItem(q9) === "1";
@@ -62066,11 +62077,11 @@ function SSe({ onboarding: e, done: t }) {
 			children: [
 				/* @__PURE__ */ (0, D.jsx)("p", {
 					className: "text-body-2-regular text-text-secondary",
-					children: hSe
+					children: _Se
 				}),
 				/* @__PURE__ */ (0, D.jsx)("p", {
 					className: "text-body-2-regular text-text-secondary",
-					children: gSe
+					children: vSe
 				}),
 				/* @__PURE__ */ (0, D.jsxs)("ul", {
 					className: "flex list-disc flex-col gap-1 pl-5 text-body-2-regular text-text-secondary",
@@ -62100,7 +62111,7 @@ function SSe({ onboarding: e, done: t }) {
 				}),
 				/* @__PURE__ */ (0, D.jsx)("p", {
 					className: "text-body-2-regular text-text-secondary",
-					children: _Se
+					children: ySe
 				}),
 				/* @__PURE__ */ (0, D.jsx)("span", {
 					className: "self-start",
@@ -62120,7 +62131,7 @@ function SSe({ onboarding: e, done: t }) {
 		})
 	});
 }
-function CSe({ busy: e, onRefresh: t, onImport: n }) {
+function TSe({ busy: e, onRefresh: t, onImport: n }) {
 	let r = (0, E.useRef)(null), [i, a] = (0, E.useState)(!1), o = (e) => {
 		a(!1), e();
 	};
@@ -62130,7 +62141,7 @@ function CSe({ busy: e, onRefresh: t, onImport: n }) {
 		"data-variant": "primary",
 		children: [/* @__PURE__ */ (0, D.jsx)(G, {
 			leadingIcon: bS,
-			title: uSe,
+			title: fSe,
 			onClick: t,
 			...J(e),
 			children: "读取浏览器历史"
@@ -62173,7 +62184,7 @@ function CSe({ busy: e, onRefresh: t, onImport: n }) {
 		})
 	})] });
 }
-function wSe({ sources: e, window: t, toast: n }) {
+function ESe({ sources: e, window: t, toast: n }) {
 	let r = pt({
 		mutationFn: (e) => Axe(e, t),
 		onSuccess: (e) => {
@@ -62227,7 +62238,7 @@ function wSe({ sources: e, window: t, toast: n }) {
 							onClick: () => {
 								r.isPending || c({
 									title: "移除口味数据源",
-									body: vSe,
+									body: bSe,
 									confirmLabel: "移除口味数据源",
 									onConfirm: () => r.mutateAsync(e.source_key)
 								});
@@ -62239,12 +62250,12 @@ function wSe({ sources: e, window: t, toast: n }) {
 				shell: "plain",
 				icon: xS,
 				title: "还没有数据源",
-				children: dSe
+				children: pSe
 			})
 		]
 	});
 }
-function TSe(e) {
+function DSe(e) {
 	let { onSignal: t, navigate: r, toast: i, avatarInner: a, onboarding: o } = e, [s, c] = (0, E.useState)("all"), [l, u] = (0, E.useState)("browser"), d = (0, E.useRef)(null), f = ft({
 		queryKey: T9(s),
 		queryFn: ({ signal: e }) => E9(s, e),
@@ -62308,7 +62319,7 @@ function TSe(e) {
 									children: t
 								}, e))
 							}),
-							/* @__PURE__ */ (0, D.jsx)(CSe, {
+							/* @__PURE__ */ (0, D.jsx)(TSe, {
 								busy: m || g.isPending || _.isPending,
 								onRefresh: y,
 								onImport: () => d.current?.click()
@@ -62324,7 +62335,7 @@ function TSe(e) {
 						]
 					})]
 				}),
-				/* @__PURE__ */ (0, D.jsx)(SSe, {
+				/* @__PURE__ */ (0, D.jsx)(wSe, {
 					onboarding: o,
 					done: !!(x.history_sources || b.updated_at)
 				}),
@@ -62396,7 +62407,7 @@ function TSe(e) {
 										className: "text-caption-1-regular text-text-secondary",
 										children: "浏览器画像"
 									}),
-									/* @__PURE__ */ (0, D.jsx)(oSe, {
+									/* @__PURE__ */ (0, D.jsx)(cSe, {
 										rows: T,
 										label: "主要口味维度"
 									}),
@@ -62407,14 +62418,14 @@ function TSe(e) {
 								]
 							}), /* @__PURE__ */ (0, D.jsx)("div", {
 								className: "min-w-0 grow",
-								children: T.length ? /* @__PURE__ */ (0, D.jsx)(sSe, {
+								children: T.length ? /* @__PURE__ */ (0, D.jsx)(lSe, {
 									rows: T,
 									label: "口味维度排名"
 								}) : /* @__PURE__ */ (0, D.jsx)(vw, {
 									shell: "plain",
 									icon: AS,
 									title: "暂无口味维度",
-									children: pSe
+									children: hSe
 								})
 							})]
 						}),
@@ -62430,7 +62441,7 @@ function TSe(e) {
 							tone: 4,
 							empty: "还没有可用于分析的口味网站访问记录。"
 						}),
-						/* @__PURE__ */ (0, D.jsx)(cSe, { flows: b.creator_flows }),
+						/* @__PURE__ */ (0, D.jsx)(uSe, { flows: b.creator_flows }),
 						/* @__PURE__ */ (0, D.jsx)(X9, {
 							label: "浏览器口味维度",
 							onSignal: t,
@@ -62473,7 +62484,7 @@ function TSe(e) {
 										rows: O,
 										kind: "",
 										visual: "none",
-										empty: mSe
+										empty: gSe
 									}
 								}
 							]
@@ -62587,12 +62598,12 @@ function TSe(e) {
 				})
 			]
 		}),
-		/* @__PURE__ */ (0, D.jsx)(xSe, {
+		/* @__PURE__ */ (0, D.jsx)(CSe, {
 			data: b,
 			onSignal: t,
 			navigate: r
 		}),
-		/* @__PURE__ */ (0, D.jsx)(wSe, {
+		/* @__PURE__ */ (0, D.jsx)(ESe, {
 			sources: b.sources || [],
 			window: s,
 			toast: i
@@ -62622,7 +62633,7 @@ function Z9({ term: e, value: t, rest: n }) {
 //#endregion
 //#region src/react/entry.tsx
 var Q9 = null;
-function ESe() {
+function OSe() {
 	return Q9?.isConnected || (Q9 = document.createElement("div"), Q9.className = "peach-react", Q9.dataset.reactOverlays = "", document.body.append(Q9)), Q9;
 }
 function $9(e) {
@@ -62632,7 +62643,7 @@ function $9(e) {
 			children: /* @__PURE__ */ (0, D.jsx)(gu, {
 				reducedMotion: "user",
 				children: /* @__PURE__ */ (0, D.jsx)(Xv, {
-					getContainer: ESe,
+					getContainer: OSe,
 					children: /* @__PURE__ */ (0, D.jsx)(e, { ...t })
 				})
 			})
@@ -62643,7 +62654,7 @@ function $9(e) {
 		};
 	};
 }
-var DSe = {
+var kSe = {
 	activity: {
 		prefetch: (e, t) => Xte(t),
 		mount: $9(cne)
@@ -62694,8 +62705,8 @@ var DSe = {
 	},
 	taste: {
 		prefetch: (e, t) => Oxe("all", t),
-		mount: $9(TSe)
+		mount: $9(DSe)
 	}
 };
 //#endregion
-export { DSe as pages };
+export { kSe as pages };
