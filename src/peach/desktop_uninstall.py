@@ -112,9 +112,14 @@ function Stop-PeachProgramProcesses {
   # 托盘退出时被硬杀的服务会留下自己的子进程：扫描、转码用的可执行文件可能就在
   # `_internal` 里。按镜像路径清场，只匹配程序目录前缀加一个分隔符，不误伤名字
   # 相近的其它解压目录。
+  # 读 `Path` 要打开目标进程、枚举它的全部模块，七百多个进程逐个读一遍要七秒以上，
+  # 删除重试时还要再清场。进程名就是镜像文件名去掉 `.exe`，先拿 `$peachImageNames`
+  # 筛出与程序目录里某个 `.exe` 同名的进程，只读这几个的路径。
   # `Path` 每读一次都现查一次进程：判空和比前缀各读一次的话，进程恰好在两次之间退出，
   # 第二次读到的就是 Null。只读一次。
   $peachStrays = @(Get-Process -ErrorAction SilentlyContinue | Where-Object {
+    $peachImageNames.Contains($_.ProcessName)
+  } | Where-Object {
     $peachImage = $_.Path
     $peachImage -and $peachImage.StartsWith($peachProgram + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)
   })
@@ -133,10 +138,15 @@ try {
       foreach ($peachChild in Get-ChildItem -LiteralPath $peachNode -Force) { Test-PeachTree $peachChild.FullName }
     }
   }
-  Stop-PeachProgramProcesses
   foreach ($peachPath in @($peachJob.directories) + @($peachJob.files) + @($peachProgram)) {
     if (Test-Path -LiteralPath $peachPath) { Test-PeachTree $peachPath }
   }
+  # 名单在链接检查之后收：程序树里有链接的话上一步已经抛出，递归不会走出程序目录。
+  $peachImageNames = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+  foreach ($peachExecutable in Get-ChildItem -LiteralPath $peachProgram -Recurse -Force -File -Filter '*.exe') {
+    [void]$peachImageNames.Add($peachExecutable.BaseName)
+  }
+  Stop-PeachProgramProcesses
   foreach ($peachPath in @($peachJob.directories) + @($peachJob.files) + @($peachProgram)) {
     for ($peachAttempt = 3; $peachAttempt -gt 0; $peachAttempt--) {
       if (-not (Test-Path -LiteralPath $peachPath)) { break }
