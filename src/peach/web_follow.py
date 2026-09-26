@@ -171,6 +171,24 @@ def _item_tag_types(item, tags: list[str]) -> dict[str, str]:
             if (tag_type := _recorded_tag_type(item, tag))}
 
 
+#: 声音标签按下划线、空格归一后比对。配音版包括后期加声音的 `sound_edit`：同一段动画
+#: 常由配音者配上人声或音效后另发一帖。只写呻吟、音效的帖子不算，那是原片自带的声音。
+_VOICED_TAGS = frozenset((
+    "voice acted", "voice acting", "english voice acting", "japanese voice acting",
+    "ai voice acted", "voice actress", "english voice", "voice",
+    "dialogue", "english dialogue", "japanese dialogue", "sound edit",
+))
+_SILENT_TAGS = frozenset(("no sound", "no audio"))
+
+
+def _item_audio(item) -> str | None:
+    """条目的声音版本：`voiced` 配音版、`silent` 无声版，来源没标就是 None。"""
+    tags = {re.sub(r"[\s_]+", " ", tag).strip().casefold() for tag in _item_all_tags(item)}
+    if tags & _VOICED_TAGS:
+        return "voiced"
+    return "silent" if tags & _SILENT_TAGS else None
+
+
 #: 路径首段就是账号名的出处站。bsky 的账号在第二段（`/profile/<handle>`），fanbox
 #: 的账号是子域名，各自在 `_source_handle` 里单独取。
 _HANDLE_HOSTS = frozenset((
@@ -957,6 +975,7 @@ def _item_payload(item, credential_providers: frozenset[str] = frozenset()) -> d
         "title": html.unescape(item.title) if item.title else item.title,
         "author": item.metadata.get("author") or None,
         "credit": _item_credit(item),
+        "audio": _item_audio(item),
         "summary": item.metadata.get("summary") or None,
         "url": item.url,
         "thumb_url": _thumb_url(item),

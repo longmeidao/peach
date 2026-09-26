@@ -525,6 +525,23 @@ class FollowContractTests(unittest.TestCase):
             "1": None, "2": None, "3": None, "4": None,
         })
 
+    def test_items_say_whether_they_are_the_voiced_or_the_silent_version(self):
+        """配音与无声两种写法都认，下划线和空格是同一个标签；只有呻吟、音效不算配音。"""
+        def post(external_id, tags):
+            return FollowCandidate(
+                provider="rule34xxx", external_id=external_id, title=f"post {external_id}",
+                url=f"https://rule34.xxx/index.php?page=post&s=view&id={external_id}",
+                extra={"tags": tags})
+        self._seed(candidates=(
+            post("1", "animated voice_acted sound"), post("2", "animated sound_edit"),
+            post("3", "animated no_sound"), post("4", "animated moaning sound_effects"),
+            post("5", "animated no_sound english_dialogue"),
+        ), provider="rule34xxx", ref="billyhhyb", label="billyhhyb")
+        audio = {group["primary"]["external_id"]: group["primary"]["audio"]
+                 for group in self._get()["groups"]}
+        self.assertEqual(audio, {"1": "voiced", "2": "voiced", "3": "silent", "4": None,
+                                 "5": "voiced"})
+
     def test_external_file_pages_are_exposed_without_leaking_raw_media_urls(self):
         self._seed(candidates=(FollowCandidate(
             provider="f95zone", external_id="21435166", title="InitialA Collection",

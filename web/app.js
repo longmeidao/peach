@@ -6109,6 +6109,9 @@ function followBadges(group,shown=group.primary){
   if(group.primary.variant_kind==='wip')badges.push('<span class="fbadge wip">WIP</span>');
   else if(group.has_wip)badges.push('<span class="fbadge wip partial">含 WIP</span>');
   if(group.primary.version)badges.push(`<span class="fbadge ver">${esc(group.primary.version)}</span>`);
+  // 声音版本说的是卡面这一条：同一段动画的无声原片与配音重发常在同一个流里前后出现。
+  const audio={voiced:'配音版',silent:'无声版'}[shown.audio];
+  if(audio)badges.push(`<span class="fbadge audio">${audio}</span>`);
   /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。
      「另见」相对卡面这一条（`shown`）说：主条目没有当前视图的媒体时，卡面换成组里别的站
      那条，这时主条目的站才是另见，卡面自己的站不再列。 */
