@@ -82,6 +82,16 @@ FOLD_MIN_STRENGTH = 0.35
 #: 书脊时两条都在候选里，而左边那条常常更强：它挨着封底的留白，右边那条挨着正封的
 #: 画面。谁更强不说明哪条是折痕，所以候选之间按「切出来的正封形状」定夺。
 FOLD_RIVAL_RATIO = 0.7
+#: 突出度（这一列减去左右各这个比例源图宽内的梯度中位数）达到窗内最高突出度
+#: `FOLD_RIVAL_RATIO` 倍的列也算候选。折痕是一条一两列宽的线，书脊上的竖排片名是
+#: 二十来列宽的一片高地：DDK-023 书脊里片名那片高地最高 0.50，折痕 419 列只有 0.34，
+#: 按强度进不了候选，切在高地的下坡 409 列，正封左缘留下 11 列书脊；按突出度折痕
+#: 是窗里最高的那条（0.23 对高地的 0.16）。
+FOLD_PROMINENCE_REACH = 0.01
+#: 按突出度进来的候选还得大体从上贯到下：满高覆盖（见 `SEAM_STEP`）达到这个数。正封里
+#: 紧挨折痕的大字也是一两列宽的尖峰，突出度照样高，但只占几行（IDBD-610 的 433 列 0.22、
+#: MIMK-009 的 423 列 0.35）；DDK-023 的折痕 0.68。
+FOLD_SHARP_MIN_COVERAGE = 0.6
 #: 候选按相邻归并成边：一道边在梯度上响应好几列，相距不超过源图宽这个比例的算一条。
 FOLD_EDGE_SPAN = 0.005
 #: 折痕是一道有宽度的斜坡，梯度的峰落在斜坡最陡处，也就是斜坡当中；书脊的最后一两
@@ -148,7 +158,7 @@ MANUAL = "manual"
 MANUAL_SOURCE = "user:crop"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v8"
+ALGORITHM_VERSION = "poster-crop-v9"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -282,6 +292,8 @@ def fold_column(width: int, height: int,
 
     窗里够强的边不止一条时，取切出来的正封最贴近 `shape.prior` 的那条，不是最强的
     那条：书脊厚到两条边都落进窗里时，左边那条往往更强，按它切整条书脊都在框里。
+    强度不够、却是窄而大体满高的尖峰也算候选（`_sharp_edges`）：书脊上的竖排片名是
+    一片宽的高地，强度压过折痕，突出度压不过。
 
     选中的那一列是斜坡最陡处，不是斜坡尽头，所以还要往右走到梯度落回基线：基线取窗
     内梯度的中位数，每张图各算各的，画面忙的封套门槛自然就高。
@@ -310,6 +322,10 @@ def fold_column(width: int, height: int,
         return None
     span = round(width * FOLD_EDGE_SPAN)
     edges = _rival_edges(profile, window, profile[top], span)
+    if seams is not None and len(seams) == width:
+        edges += [column for column in _sharp_edges(profile, window, round(width * FOLD_PROMINENCE_REACH), span)
+                  if seams[column] >= FOLD_SHARP_MIN_COVERAGE
+                  and all(abs(column - other) > span for other in edges)]
     found = min(edges, key=lambda column: abs((width - column) / height - shape.prior))
     baseline = statistics.median(profile[low:high + 1])
     limit = round(width * FOLD_SETTLE_LIMIT)
@@ -377,6 +393,28 @@ def _rival_edges(profile: list[float], window: range, top: float,
     ranked = sorted((column for column in window
                      if profile[column] >= top * FOLD_RIVAL_RATIO),
                     key=profile.__getitem__, reverse=True)
+    kept: list[int] = []
+    for column in ranked:
+        if all(abs(column - other) > span for other in kept):
+            kept.append(column)
+    return kept
+
+
+def _sharp_edges(profile: list[float], window: range, reach: int, span: int) -> list[int]:
+    """窗里突出度和最突出那列相当的边：比左右 `reach` 列的中位数高出多少，一条边只留一列。"""
+    if reach < 1:
+        return []
+
+    def prominence(column: int) -> float:
+        around = profile[max(0, column - reach):column] + profile[column + 1:column + reach + 1]
+        return profile[column] - statistics.median(around)
+
+    lifted = {column: prominence(column) for column in window}
+    best = max(lifted.values())
+    if best <= 0:
+        return []
+    ranked = sorted((column for column in window if lifted[column] >= best * FOLD_RIVAL_RATIO),
+                    key=lifted.__getitem__, reverse=True)
     kept: list[int] = []
     for column in ranked:
         if all(abs(column - other) > span for other in kept):
