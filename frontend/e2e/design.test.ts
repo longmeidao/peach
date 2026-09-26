@@ -1692,6 +1692,30 @@ describe('设计决定', () => {
     }
   });
 
+  it('可点的卡悬停时铺卡面掺 5% 主文字色的那一档面，不是透明', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/data-cleanup', DESKTOP);
+    try {
+      const page = opened.page;
+      const selector = '.peach-react [data-cleanup-go]';
+      const card = page.locator(selector).first();
+      await card.waitFor({ timeout: 15_000 });
+      await settle(page);
+      const rest = await card.evaluate((element) => getComputedStyle(element).backgroundColor);
+      await card.hover();
+      // 过渡跑完才读：等到底色变了，或三秒后照实读出没变的那个值。
+      await page.waitForFunction(([target, before]) =>
+        getComputedStyle(document.querySelector(target)!).backgroundColor !== before,
+      [selector, rest] as const, { timeout: 3_000 }).catch(() => undefined);
+      const hovered = await card.evaluate((element) => getComputedStyle(element).backgroundColor);
+      assert.notEqual(hovered, 'rgba(0, 0, 0, 0)', '悬停底色落成了透明：token 在根上就折掉了');
+      assert.notEqual(hovered, rest, '悬停没有换面');
+      assert.equal(hovered, await tokenColor(page, '.peach-react', '--card-hover'), '悬停底色不是卡面掺 5% 主文字色');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('重复文件的汇总条是玻璃面，组卡 14px 圆角、组头 20px 内边距，每行上方一条 1px 分隔线', { timeout: 60_000 }, async () => {
     const opened = await openDuplicates(browser);
     try {
