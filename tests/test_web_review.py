@@ -1139,6 +1139,12 @@ class ReviewQueueTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "scripts" / "revert_auto_landing.py")
         revert = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(revert)
+        # 标签来源列上别的归属串（刮削、扫描写下的）不归这个脚本撤。
+        with contextlib.redirect_stdout(io.StringIO()) as printed:
+            self.assertEqual(revert.main([
+                "--db", self.db_path, "--logo-root", str(self.logo_root),
+                "--source", "javinizer:r18dev:tag"]), 0)
+        self.assertIn("'标签': 0", printed.getvalue())
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(revert.main([
                 "--db", self.db_path, "--logo-root", str(self.logo_root),

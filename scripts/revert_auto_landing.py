@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from peach import sample_images  # noqa: E402
 from peach.config import GENERATED_DIR  # noqa: E402
+from peach.metadata_auto_apply import UNION_TAGS_SOURCE  # noqa: E402
 from peach.scripting import add_ledger_write_args, open_for_write, verify_after_write  # noqa: E402
 
 SIDECARS = (".ct", ".provenance.json")
@@ -162,7 +163,12 @@ def planned_tags(connection, source: str, batch: str) -> list[dict]:
 
     `item_key` 取自实体关系留痕里的 `review_item`：撤掉标签的同时，那一行决定的 note
     要去掉 `refreshed_candidate_key` 与 `added_tags`，否则它不再过期，也就回不到复核页。
+
+    只认并集补标签这一个归属串：标签的来源列还存着扫描、刮削写下的 `name`、`r18` 等，
+    给别的 `--source` 就按它整批删，删掉的是不归自动落库管的标签。
     """
+    if source != UNION_TAGS_SOURCE:
+        return []
     clause, values = _batch_clause("ae.source", source, batch)
     found = []
     for row in connection.execute(
@@ -292,9 +298,11 @@ def main(argv: list[str] | None = None) -> int:
             connection.executemany(
                 "DELETE FROM asset_entity WHERE asset_id=? AND entity_id=? AND role='tag'"
                 " AND source=?", [(tag["asset_id"], tag["entity_id"], tag["source"]) for tag in tags])
-            clause, values = _batch_clause("source", args.source, args.batch)
-            removed_tag_rows = connection.execute(
-                "DELETE FROM asset_tag WHERE " + clause, values).rowcount or 0
+            # 扁平投影只删计划里列出的那几行：按来源串整表删的话，`--source name` 这类
+            # 扫描写下的标签来源也会被认成一批。
+            removed_tag_rows = sum(connection.execute(
+                "DELETE FROM asset_tag WHERE asset_id=? AND tag=? AND source=?",
+                (tag["asset_id"], tag["tag"], tag["source"])).rowcount or 0 for tag in tags)
             reopened = reopen_extended_decisions(connection, {tag["item_key"] for tag in tags})
         integrity, orphans = verify_after_write(connection)
     finally:
