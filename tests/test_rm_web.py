@@ -1239,6 +1239,38 @@ class WebDataTests(unittest.TestCase):
         self.assertFalse(result["sources"][1]["online"])
         self.assertNotIn("root", result["sources"][0], "API 不能泄露物理来源路径")
 
+    def test_a_clouddrive_empty_folder_that_scandir_cannot_open_still_counts_as_empty(self):
+        """CloudDrive 的空目录列不出 `.` 与 `..`：`scandir` 报找不到，`listdir` 给空列表。
+
+        它的上一层只装着它，删掉它以后也该跟着删；里面有东西、同样报找不到的目录才是
+        真的读不了，照旧记成错误。
+        """
+        source_root = Path(self.tmp.name) / "mount"
+        hollow = source_root / "release" / "文宣"
+        hollow.mkdir(parents=True)
+        unreadable = source_root / "unreadable"
+        unreadable.mkdir()
+        (unreadable / "media.mp4").write_bytes(b"keep")
+        failing = {os.path.normcase(os.fspath(hollow)), os.path.normcase(os.fspath(unreadable))}
+        real_scandir = os.scandir
+
+        def mount_scandir(path="."):
+            if os.path.normcase(os.fspath(path)) in failing:
+                raise FileNotFoundError(2, "系统找不到指定的文件。", os.fspath(path))
+            return real_scandir(path)
+
+        with mock.patch.object(web_batch, "LOCATION_ROOT_DECLARATIONS",
+                               {"115": (str(source_root),)}), \
+                mock.patch.object(os, "scandir", mount_scandir):
+            checked = rm_web.cleanup_empty_source_directories(dry_run=True)
+            self.assertTrue(hollow.is_dir(), "检查只报数不删")
+            cleaned = rm_web.cleanup_empty_source_directories()
+
+        self.assertEqual((checked["empty"], checked["errors"]), (2, 1))
+        self.assertEqual((cleaned["removed"], cleaned["errors"]), (2, 1))
+        self.assertFalse((source_root / "release").exists())
+        self.assertTrue((unreadable / "media.mp4").is_file())
+
     def test_empty_folder_cleanup_post_is_gated_as_a_ledger_write(self):
         self.assertIs(
             rm_web.POST_HANDLERS["/api/data-cleanup/empty-folders"],
