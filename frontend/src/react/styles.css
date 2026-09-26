@@ -95,6 +95,11 @@
   --container-index-person: 150px;
   --container-index-company: 180px;
   --container-index-tag: 200px;
+  /* 整页空态（`components/empty-state.tsx` 的 `page` 档）的三个值，同遗留层
+   * `web/css/19-immersive.css` 的 `.emptystate`：图标盒子 54px 见方，说明最宽 340px、行高 1.55。 */
+  --spacing-empty-glyph: 54px;
+  --container-empty-copy: 340px;
+  --leading-empty-copy: 1.55;
 }
 
 /* EvilCharts 源码写的是 shadcn 的语义色名（`bg-background`、`text-muted-foreground`、

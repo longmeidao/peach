@@ -26017,25 +26017,33 @@ function vw(e = {}) {
 //#endregion
 //#region src/react/components/empty-state.tsx
 var yw = {
-	page: "rounded-2xl border border-separator-border px-6 py-12",
+	page: "min-h-80 justify-center rounded-floating border border-separator-border bg-background-secondary-default px-6 py-12",
 	plain: "px-6 py-12",
 	inset: "min-h-40 justify-center rounded-xl bg-background-secondary-default px-4 py-4"
 };
 function bw({ icon: e, title: t, actions: n, children: r, shell: i = "page" }) {
+	let a = i === "page";
 	return /* @__PURE__ */ (0, O.jsxs)("div", {
 		"data-empty-state": "",
 		className: `flex flex-col items-center gap-2 text-center ${yw[i]}`,
 		children: [
-			/* @__PURE__ */ (0, O.jsx)(e, {
+			a ? /* @__PURE__ */ (0, O.jsx)("span", {
+				"aria-hidden": !0,
+				className: "mb-2 flex size-empty-glyph items-center justify-center rounded-floating border border-text-primary/15 p-2.5 text-text-secondary",
+				children: /* @__PURE__ */ (0, O.jsx)(e, {
+					"aria-hidden": !0,
+					className: "size-8"
+				})
+			}) : /* @__PURE__ */ (0, O.jsx)(e, {
 				"aria-hidden": !0,
 				className: "size-6 text-text-tertiary"
 			}),
 			/* @__PURE__ */ (0, O.jsx)("h3", {
-				className: "text-headline-medium text-text-primary",
+				className: `${a ? "text-body-semibold" : "text-headline-medium"} text-text-primary`,
 				children: t
 			}),
 			/* @__PURE__ */ (0, O.jsx)("p", {
-				className: "max-w-prose text-body-2-regular text-text-secondary",
+				className: `${a ? "max-w-empty-copy leading-empty-copy" : "max-w-prose"} text-body-2-regular text-text-secondary`,
 				children: r
 			}),
 			n ? /* @__PURE__ */ (0, O.jsx)("div", {
