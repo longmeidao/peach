@@ -683,33 +683,17 @@ def _review_evidence(category: str, row: dict) -> str:
 
 
 def q_review(contract: ReviewContract):
-    with contract.read_connection() as connection:
-        failures = [dict(row) for row in connection.execute(
-            "SELECT id,name,location,path,duration FROM asset "
-            "WHERE location='115' AND medium='video' AND snapshot_path IS NULL AND duration>2"
-        )]
-        decisions = {
-            row["item_key"]: dict(row) for row in connection.execute(
-                "SELECT item_key,status,note,updated_at FROM review_decision WHERE category='media_failure'"
-            )
-        }
-    for row in failures:
-        decision = decisions.get(str(row["id"]), {})
-        row["item_key"] = str(row["id"])
-        row["decision"] = decision.get("status", "pending")
-        row["decision_note"] = decision.get("note", "")
-        row["asset_id"] = row["id"]
-        row["asset_name"] = row["name"]
-        row["asset_preview_url"] = ""
-    failures = _pending_first(failures)
+    """复核页只放冲突项（ADR-0052 第五条）。
+
+    九宫格没抽出来是机械状态，没有可批准或否决的东西，和 `cover_sources` 的未取得同一条
+    理由不进队列；重抽归 `scripts/sheets.py`，缺多少由 `peach status` 的加工进度报。
+    """
     sections, sources, skipped = {}, {}, {}
     for category in REVIEW_CATEGORIES:
         rows, source, dropped = _review_rows(contract, category)
         sections[category] = rows
         sources[category] = source
         skipped[category] = dropped
-    sections["media_failure"] = failures
-    sources["media_failure"] = "ledger"
     # 候选文件缺失和主键缺失都要说出来。静默的空列表会被读成「没有待复核项」。
     # `genre_tags` 是收录 genre 时的候选词表。给的是静态表已经投影到的那百来个内容标签，
     # 不是账本里全部 5508 个标签实体：后者大半来自文件名，拿它当建议只会把噪声接着抄下去。
@@ -761,7 +745,6 @@ DECISION_ONLY_CATEGORIES = {
     "fc2_markings": "只标注证据状态，不改真相字段",
     "fc2_similarity": "产出的是跨号候选，合并要另行授权",
     "video_endcards": "只登记首尾帧证据，不改资产",
-    "media_failure": "只记录失败原因，供下一轮取证",
 }
 
 
@@ -876,7 +859,7 @@ def w_review_decision(contract: ReviewContract, body):
     if category not in {
         "metadata_fields", "creator_tags", "studio_logos", "performer_avatars",
         "western_identity", "code_creators", "cover_sources", "fc2_markings",
-        "fc2_similarity", "video_endcards", "media_failure",
+        "fc2_similarity", "video_endcards",
     }:
         raise ValueError("invalid review category")
     if not item_key or status not in {"approved", "rejected", "skipped"}:

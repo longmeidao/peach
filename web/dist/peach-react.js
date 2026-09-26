@@ -36143,8 +36143,7 @@ var Lie = "/api/review", Rie = "/api/review/decision", zie = "/api/review/genre"
 	code_creators: "番号目录存疑",
 	fc2_markings: "FC2 评论标记",
 	fc2_similarity: "FC2 跨号相似",
-	video_endcards: "片尾/出处证据",
-	media_failure: "无法识别"
+	video_endcards: "片尾/出处证据"
 }, Bie = Object.keys(uN), Vie = "metadata_fields", dN = (e) => typeof e == "string" && Object.hasOwn(uN, e), Hie = {
 	creator_tags: "creator",
 	western_identity: "creator"

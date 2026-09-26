@@ -1131,7 +1131,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("creator_tags", response.json()["sections"])
         decided = await self.client.post(
             "/api/review/decision?t=secret",
-            json={"category": "media_failure", "item_key": "12510", "status": "skipped"},
+            json={"category": "video_endcards", "item_key": "12510", "status": "skipped"},
         )
         self.assertEqual(decided.status_code, 200)
 
