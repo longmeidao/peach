@@ -457,10 +457,6 @@ class StatsEndpointTests(unittest.TestCase):
         self.assertIn("react-aria-components", self.source)
         self.assertEqual(self.source.count("<MetricTab"), 4)
 
-    def test_ring_geometry_is_a_percentage_of_one_turn(self):
-        """一圈钉成 100，`stroke-dasharray` 写的那个数就是百分比本身。"""
-        self.assertIn("pathLength={100}", self.source)
-
     def test_the_endpoint_is_declared_once(self):
         """端点在前端只能有一个声明处，就是这一页的数据模块。"""
         sources = sorted(path for path in (FRONTEND / "src").rglob("*.ts*"))
@@ -526,7 +522,7 @@ class TasteEndpointTests(unittest.TestCase):
 
     def test_every_chart_is_a_react_component(self):
         """六种图都在 React 里：雷达、排行条、读数卡、两张热力图、创作者流向。"""
-        for component in ("TasteRadar", "RankedBars", "SummaryCard", "HeatCard", "CreatorSankey"):
+        for component in ("TasteRadar", "RankedBars", "SummaryCard", "ActivityHeat", "CreatorSankey"):
             self.assertIn(component, self.source)
         self.assertIn("from 'd3-sankey'", self.source)
 

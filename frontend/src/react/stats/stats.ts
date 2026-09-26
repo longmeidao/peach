@@ -4,9 +4,11 @@
  * 这一页是账本当前的快照，没有后台任务也不轮询：整页只有一个 `queryKey`，一屏里的四个
  * 指标、下面那三个面板读的都是同一份数，分开取就会出现这一格是新的、那一格是旧的。
  *
- * 体积走 `/js/core.js` 的 `fmtSize`，与馆藏、重复项、高清版同一套口径；只有播放时长和
- * 那几条百分比是这一页自己的折算，写成纯函数放在这里，由 vitest 直接验。 */
+ * 体积走 `/js/core.js` 的 `fmtSize`，与馆藏、重复项、高清版同一套口径；播放时长、百分比
+ * 与图表的分档是这一页自己的折算，写成纯函数放在这里，由 vitest 直接验。 */
 import { apiGet } from '../../api';
+import type { BarRow } from '../charts/bar-card';
+import type { ActivityCounts } from '../charts/heat';
 import { queryClient } from '../query';
 
 export const STATS_URL = '/api/stats';
@@ -31,8 +33,17 @@ export interface TopTag { k: string; n: number; cat: string }
 
 export interface Consumption {
   played: number; library_played: number; online_played: number; play_seconds: number;
-  o_total: number; dislike: number; seen: number; trash: number; skimmed: number;
+  o_total: number; liked: number; dislike: number; seen: number; trash: number; skimmed: number;
 }
+
+/** 按文件类型分的条目数。`k` 是 `video`／`image`／`archive` 这些媒介代号。 */
+export interface MediumCount { k: string; n: number; bytes: number }
+
+/** 视频的一个时长或画质分档。 */
+export interface BandCount { k: string; n: number }
+
+/** 播放过 `k` 次的作品有 `n` 个。 */
+export interface ReplayCount { k: number; n: number }
 
 /** 最近一条播放记录。馆藏与在线追更两条来源合并后按时间排，`kind` 决定点进去去哪。 */
 export interface RecentPlay {
@@ -53,7 +64,12 @@ export interface StorageSummary {
 /** `/api/stats` 的响应。字段与 `web_stats.q_stats` 对齐。 */
 export interface StatsData {
   by_loc: LocationCount[];
+  by_medium: MediumCount[];
   by_library: LibraryCount[];
+  by_length: BandCount[];
+  by_quality: BandCount[];
+  play_activity: ActivityCounts;
+  replays: ReplayCount[];
   attribution: Attribution;
   tag_source: TagSource[];
   tag_cov: number;
@@ -106,18 +122,43 @@ export const playedItemUrl = (row: RecentPlay): string =>
 /** 径向图里的一段。 */
 export interface RadialSlice { name: string; value: number; detail: string }
 
-/** 一段环的几何。半径由外往里排，`length` 已经是百分比（`pathLength=100`）。 */
-export interface Ring { radius: number; width: number; length: number }
+/** 满圈代表的数：最长那段留一成余量，看得出是「最多」而不是「全部」。 */
+export const radialCeiling = (values: number[]): number => Math.max(1, ...values) * 1.1;
 
-/** 环的几何：最长那段留一成余量，环之间等距，线宽跟着间距走。
- *
- * 满圈留余量是为了让最大的那一段看得出是「最多」而不是「全部」；段数多时间距压到
- * 110/段数，最内圈才不会缩进圆心。 */
-export function rings(values: number[]): Ring[] {
-  const ceiling = Math.max(1, ...values) * 1.1;
-  const step = Math.min(22, 110 / Math.max(1, values.length));
-  const width = Math.min(15, step * 0.68);
-  return values.map((value, index) => ({
-    radius: 32 + index * step, width, length: value / ceiling * 100,
+/** 每圈的粗细（像素）。段数多时压细，最内圈才不会缩进圆心，也不会和相邻那圈叠在一起。 */
+export const radialBarSize = (count: number): number =>
+  Math.max(4, Math.min(14, Math.round(90 / Math.max(1, count))));
+
+/** 文件类型的显示名。与馆藏里资源卡片的叫法相同。 */
+const MEDIUM_LABEL: Record<string, string> = {
+  video: '视频', image: '图片', illustration: '插画', archive: '压缩包',
+  audio: '音频', account: '账号', other: '其它文件',
+};
+
+/** 按文件类型分的条目数，多的在前。 */
+export const mediumRows = (rows: MediumCount[]): BarRow[] =>
+  rows.map((row) => ({ name: MEDIUM_LABEL[row.k] ?? row.k, value: row.n }))
+    .sort((a, b) => b.value - a.value);
+
+/** 时长分档的显示名。分界同 `media_probe.context_fields`：300、900、2400 秒。 */
+const LENGTH_LABEL: Record<string, string> = {
+  速食: '5 分钟内', 短: '5–15 分钟', 中: '15–40 分钟', 长: '40 分钟以上',
+};
+
+/** 时长与画质分档，顺序由服务端给。时长换成分钟区间，画质原样。 */
+export const bandRows = (rows: BandCount[], labels: Record<string, string> = {}): BarRow[] =>
+  rows.map((row) => ({ name: labels[row.k] ?? row.k, value: row.n }));
+
+export const lengthRows = (rows: BandCount[]): BarRow[] => bandRows(rows, LENGTH_LABEL);
+
+/** 播放次数的分档：五次以内一次一档，往后并成两档，长尾不把柱子拉成一排细线。 */
+const REPLAY_BANDS: readonly [number, number, string][] = [
+  [1, 1, '1 次'], [2, 2, '2 次'], [3, 3, '3 次'], [4, 4, '4 次'], [5, 5, '5 次'],
+  [6, 9, '6–9 次'], [10, Infinity, '10 次以上'],
+];
+
+export const replayRows = (rows: ReplayCount[]): BarRow[] =>
+  REPLAY_BANDS.map(([low, high, name]) => ({
+    name,
+    value: rows.filter((row) => row.k >= low && row.k <= high).reduce((sum, row) => sum + row.n, 0),
   }));
-}

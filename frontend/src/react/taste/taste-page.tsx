@@ -47,7 +47,8 @@ import { StatCard, statCardClass, STAT_STRIP } from '../components/stat-card';
 import { queryClient } from '../query';
 import { Disclosure } from '../settings/section';
 import { busyProps } from '../settings/use-action';
-import { ActivityCharts, CreatorSankey, RankedBars, TasteRadar } from './charts';
+import { ActivityHeat } from '../charts/heat-card';
+import { CreatorSankey, RankedBars, TasteRadar } from './charts';
 import {
   DEFAULT_WINDOW, fetchTaste, fetchTasteJob, IDLE_POLL_MS, importTasteExport, rankDetail,
   rankShares, removeTasteSource, startTasteRefresh, tasteDate, tasteHours, tasteKey,
@@ -519,7 +520,9 @@ export function TastePage(props: TasteProps) {
                 : <EmptyState shell="plain" icon={RiSearchLine} title="暂无口味维度">{NO_CATEGORY_HINT}</EmptyState>}
             </div>
           </section>
-          <ActivityCharts activity={data.activity} />
+          <ActivityHeat activity={data.activity} title="浏览活跃时间" dailyTitle="每日活跃"
+            words={{ unit: '口味网站访问', series: '访问', cellUnit: '次访问' }} tone={4}
+            empty="还没有可用于分析的口味网站访问记录。" />
           <CreatorSankey flows={data.creator_flows} />
           <DimensionPanels label="浏览器口味维度" onSignal={onSignal} avatarInner={avatarInner}
             panels={[

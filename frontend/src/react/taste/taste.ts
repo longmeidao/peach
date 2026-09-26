@@ -12,6 +12,7 @@
 import { sankey, sankeyLinkHorizontal } from 'd3-sankey';
 
 import { apiGet, apiSend, ApiError } from '../../api';
+import type { ActivityCounts } from '../charts/heat';
 import { queryClient } from '../query';
 
 export const TASTE_URL = '/api/taste';
@@ -87,12 +88,6 @@ export interface TasteAnalysis {
   next_steps?: { route: string; title: string; detail: string }[];
 }
 
-export interface TasteActivity {
-  timezone?: string;
-  days?: { date: string; count: number }[];
-  hours?: { weekday: number; hour: number; count: number }[];
-}
-
 export interface CreatorFlow { source: string; target: string; value: number }
 
 /** `/api/taste` 的响应。字段与 `web_stats.q_taste` 对齐。 */
@@ -103,7 +98,7 @@ export interface TasteData {
   gaps?: RankRow[];
   sources?: TasteSource[];
   analysis?: TasteAnalysis;
-  activity?: TasteActivity;
+  activity?: ActivityCounts;
   creator_flows?: CreatorFlow[];
   storage?: { exports?: number; bytes?: number };
   window?: string;
@@ -234,61 +229,6 @@ export const radarRing = (radius: number, count: number): string =>
 
 export const radarShape = (points: RadarPoint[]): string =>
   points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
-
-/** 热力图里的一格。`share` 是这一格相对最忙那一格的浓度，0 到 1。 */
-export interface HeatCell { key: string; label: string; count: number; share: number }
-
-export const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-
-/** 有访问的格子至少留一成浓度：一次访问和一次都没有必须看得出差别。 */
-const shareOf = (count: number, max: number) => (count ? Math.max(0.12, count / max) : 0);
-
-/** 星期 × 小时的 168 格。越界或负数的记录当作没有。 */
-export function hourGrid(activity: TasteActivity | undefined): { cells: HeatCell[]; total: number } {
-  const counts = Array.from({ length: 7 }, () => Array<number>(24).fill(0));
-  for (const item of activity?.hours || []) {
-    const { weekday, hour, count } = item;
-    if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) continue;
-    if (!Number.isInteger(hour) || hour < 0 || hour > 23) continue;
-    if (!Number.isFinite(count) || count < 0) continue;
-    counts[weekday]![hour] = (counts[weekday]![hour] || 0) + count;
-  }
-  const flat = counts.flat();
-  const max = Math.max(1, ...flat);
-  const cells = counts.flatMap((row, day) => row.map((count, hour) => ({
-    key: `${day}-${hour}`, label: `${WEEKDAYS[day]} ${hour}:00`, count, share: shareOf(count, max),
-  })));
-  return { cells, total: flat.reduce((sum, count) => sum + count, 0) };
-}
-
-/** 最近 91 天的日历。末尾那天由数据说了算，往前数 90 天，中间没有记录的那些补 0。 */
-export function dayCalendar(activity: TasteActivity | undefined):
-{ cells: HeatCell[]; total: number; start: string; end: string } {
-  const days = (activity?.days || [])
-    .filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date)
-      && Number.isFinite(row.count) && row.count >= 0)
-    .slice().sort((a, b) => a.date.localeCompare(b.date));
-  const empty = { cells: [], total: 0, start: '', end: '' };
-  if (!days.length) return empty;
-  const end = new Date(`${days.at(-1)!.date}T00:00:00Z`);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - 90);
-  const daily = new Map(days.map((row) => [row.date, row.count]));
-  const max = Math.max(1, ...days.map((row) => row.count));
-  const cells = Array.from({ length: 91 }, (_, index) => {
-    const date = new Date(start);
-    date.setUTCDate(start.getUTCDate() + index);
-    const key = date.toISOString().slice(0, 10);
-    const count = daily.get(key) || 0;
-    return { key, label: key, count, share: shareOf(count, max) };
-  });
-  return {
-    cells,
-    total: cells.reduce((sum, cell) => sum + cell.count, 0),
-    start: start.toISOString().slice(0, 10),
-    end: days.at(-1)!.date,
-  };
-}
 
 /** 桑基图的一个节点。`side` 决定它落在左边还是右边，也决定它的文字往哪边排。 */
 export interface FlowNode {

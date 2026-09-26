@@ -36,4 +36,13 @@
 | shadcn 语义色名 | `../styles.css` 的 `@theme inline` 把 `background`、`foreground`、`muted`、`muted-foreground`、`border` 接到 BoardUI 已有 token；`primary` 不接 | 上游浮层与轴刻度写的是 shadcn 色名，Peach 没有这一套变量；`primary` 只有加载指示用，Peach 不传 `isLoading` |
 | 系列颜色 | 调用处的 `ChartConfig` 只写 `var(--color-chart-N)`，不写上游示例里的 oklch 字面值 | 颜色只取 BoardUI 的 `chart-*` 档，深浅两档跟着 token 走 |
 | reduced motion | `../entry.tsx` 在每棵 React 根外包一层 `MotionConfig reducedMotion="user"` | 柱状图的生长动画由 Motion 逐帧驱动，`web/css/01-base.css` 的全局规则只关得掉 CSS 过渡；Recharts 自己的动画在 `isAnimationActive="auto"` 下已读系统设置 |
-| lint | `frontend/.oxlintrc.json` 的 `ignorePatterns` 排除本目录，与 `boardui/` 同一个做法 | 上游源码用任意值类名、内联样式和原始颜色，逐字复制就过不了 `@shadcn/lint`；Peach 自己的组合仍全量检查 |
+| 浮层内容 | `../charts/chart-tip.tsx` 的 `ChartTip` 照 `ChartTooltipContent` 的类名重组，容器换成 `flex flex-col`，经上游的 `ChartTooltip` 接进图里；各图的 `Tooltip` 子组件都不用 | 上游容器写 `grid` 类，与旧样式表卡片网格的 `.grid` 同名，页面上浮层会被撑成卡片宽的格子、行距变成 24px |
+| lint | `frontend/.oxlintrc.json` 的 `ignorePatterns` 排除本目录，与 `boardui/` 同一个做法 | 上游源码用任意值类名、内联样式和原始颜色，逐字复制就过不了 `@shadcn/lint`；Peach 自己的组合仍全量检查。排除之后本目录里与旧样式表同名的类名不会被拦（上面那一行就是），升级上游时按 `../styles.css` 里 `@source not inline` 的几个词搜一遍 |
+
+## Peach 的组合
+
+| 组合 | 用到的上游 | 做法 |
+| --- | --- | --- |
+| `../charts/bar-card.tsx` 的 `BarCard` | `EvilBarChart` | 单系列，`ChartConfig` 只有 `value` 一个键；统计页的时长、画质、文件类型与播放次数 |
+| `../stats/radial-card.tsx` 的 `RadialCard` | `EvilRadialChart` | 键写成 `s0`…`sN`，名字放进 `label`：键会进 CSS 变量名与渐变 id，来源名、库名不能直接当键。圈的形状与点击走 `radialBarProps`，按 React 状态淡化其余段、点下钉住；图例格子由 Peach 自己画 |
+| `../charts/chart-tip.tsx` 的 `ChartTip` | `ChartTooltip`、`useChart`、`getPayloadConfigFromPayload` | 见上表「浮层内容」 |
