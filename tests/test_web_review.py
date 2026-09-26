@@ -23,6 +23,7 @@ from peach import metadata_policy as rm_policy
 from peach import review_csv as rm_candidates
 from peach import web_contract as rm_web
 from peach import web_review as rm_review
+from peach.entities import upsert_asset_entity
 from peach.genre_taxonomy import map_genres
 from peach.metadata_auto_apply import _fc2_seller_as_label, auto_apply_metadata
 from peach.field_owners import (
@@ -1070,6 +1071,84 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertIs(note["auto_applied"], True)
         self.assertEqual(note["candidate_key"], "PPT-137:release_date:0")
         self.assertEqual(self.queue_keys("metadata_fields"), ["PPT-138:release_date"])
+
+    def _seed_tags(self, asset_id, tags):
+        """账本里已有的一套标签，归属与人批准时落库写下的一样。"""
+        con = sqlite3.connect(self.db_path)
+        try:
+            for tag in tags:
+                con.execute("INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+                            "VALUES(?,?,0.9,'javinizer:r18dev:tag')", (asset_id, tag))
+                upsert_asset_entity(con, kind="tag", name=tag, asset_id=asset_id, role="tag",
+                                    source="javinizer:r18dev:tag", confidence=0.9)
+            con.commit()
+        finally:
+            con.close()
+
+    def _tags_of(self, asset_id):
+        """这部片的标签：实体关系上的名字 → 来源，外加扁平投影那一份名字集合。"""
+        con = sqlite3.connect(self.db_path)
+        try:
+            linked = dict(con.execute(
+                "SELECT e.canonical_name,ae.source FROM asset_entity ae JOIN entity e"
+                " ON e.id=ae.entity_id WHERE ae.asset_id=? AND ae.role='tag'", (asset_id,)))
+            flat = {row[0] for row in con.execute(
+                "SELECT tag FROM asset_tag WHERE asset_id=?", (asset_id,))}
+        finally:
+            con.close()
+        return linked, flat
+
+    def test_a_stale_manual_tag_approval_grows_by_union_and_reverts_by_batch(self):
+        """人批准过的标签过期，重判出的一套只增不减：按并集补上新增的那几个，算补空。
+
+        人批准过的每个标签原样留着，决定只追加 `refreshed_candidate_key` 与 `added_tags`；
+        有减少的照旧交人。补进来的那几个按批次整批撤回，那一行重新过期、回到复核页。
+        """
+        grow = {"candidate_key": "PPT-147:gone", "source": "r18dev", "user_note": "看过封面"}
+        shrink = {"candidate_key": "PPT-148:gone", "source": "r18dev", "user_note": ""}
+        for asset_id, code in ((147, "PPT-147"), (148, "PPT-148")):
+            self._asset(asset_id, code, f"{code}.mp4")
+            self._seed_tags(asset_id, ["美乳", "痴女"])
+        self._stale_approvals({"PPT-147:tags": grow, "PPT-148:tags": shrink})
+        self.write_metadata_rows([
+            {"item_key": "PPT-147:tags", "field": "tags", "current": "", "code": "PPT-147",
+             "candidates": [{"value": ["美乳", "痴女", "高颜值"], "display": "美乳、痴女、高颜值"}]},
+            {"item_key": "PPT-148:tags", "field": "tags", "current": "", "code": "PPT-148",
+             "candidates": [{"value": ["美乳", "高颜值"], "display": "美乳、高颜值"}]},
+        ])
+
+        result = self._auto()
+        self.assertEqual((result["applied"], result["refreshed"], result["left_to_review"]),
+                         (1, 0, 1))
+        linked, flat = self._tags_of(147)
+        self.assertEqual(flat, {"美乳", "痴女", "高颜值"})
+        self.assertEqual({tag: source for tag, source in linked.items() if tag != "高颜值"},
+                         {"美乳": "javinizer:r18dev:tag", "痴女": "javinizer:r18dev:tag"})
+        self.assertTrue(linked["高颜值"].startswith("auto:metadata-tags@"))
+        self.assertEqual(self._full_decision("PPT-147:tags"), (
+            "approved", {**grow, "refreshed_candidate_key": "PPT-147:tags:0",
+                         "added_tags": ["高颜值"]}, self.STALE_AT))
+        # 有减少：账本与决定都不动，交人。
+        self.assertEqual(self._tags_of(148)[1], {"美乳", "痴女"})
+        self.assertEqual(self._full_decision("PPT-148:tags"), ("approved", shrink, self.STALE_AT))
+        self.assertEqual(self.queue_keys("metadata_fields"), ["PPT-148:tags"])
+        self.assertEqual(self._auto()["applied"], 0)
+
+        spec = importlib.util.spec_from_file_location(
+            "revert_auto_landing_under_test",
+            Path(__file__).resolve().parents[1] / "scripts" / "revert_auto_landing.py")
+        revert = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(revert)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(revert.main([
+                "--db", self.db_path, "--logo-root", str(self.logo_root),
+                "--source", "auto:metadata-tags",
+                "--apply", "--backup", str(Path(self.tmp.name) / "backup.db")]), 0)
+        linked, flat = self._tags_of(147)
+        self.assertEqual((set(linked), flat), ({"美乳", "痴女"}, {"美乳", "痴女"}))
+        self.assertEqual(self._full_decision("PPT-147:tags"), ("approved", grow, self.STALE_AT))
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")),
+                         ["PPT-147:tags", "PPT-148:tags"])
 
     def test_the_revert_script_takes_back_auto_rejections_by_rule_name(self):
         """按规则名整批撤回自动否决，行回到队列；用户手工否决的不在其中。"""

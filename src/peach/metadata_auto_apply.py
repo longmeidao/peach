@@ -995,20 +995,13 @@ def _register_current_name(connection, entity_id: int, name: str) -> None:
         " VALUES(?,?,?,?,0.9)", (int(entity_id), name, key, CURRENT_NAME_ALIAS_SOURCE))
 
 
-def _apply_metadata_candidate(
-    connection, group: dict, candidate: dict, now: str, owner: str, *,
-    expected_revision: int | None = None,
-) -> int:
-    """把一个候选的取值写进真相字段，`owner` 是本次写入者的归属串。
+def _landing_scope(connection, group: dict, candidate: dict,
+                   expected_revision: int | None = None) -> tuple[list[int], str, float, dict]:
+    """一条候选落库之前必过的几道闸，过了就给出写入范围、来源、置信度与实体留痕。
 
-    `owner` 没有默认值：写入者是谁属于调用点的事实，给个默认就等于让下一个
-    调用点默默继承别人的身份，而这一层留痕正是 ADR-0005 要保住的东西。
+    整套落库（`_apply_metadata_candidate`）与只补新增标签（`_extend_approved_tags`）
+    共用这一份：范围、并发凭据和番号身份不能只在其中一条路上核。
     """
-    field = str(group.get("field") or "").strip()
-    if field not in {
-        "title", "original_title", "performers", "studio", "series", "release_date", "tags",
-    }:
-        raise ValueError("该元数据字段没有 Peach 写入映射")
     code = str(group.get("code") or "").strip()
     query = str(group.get("query") or code).strip()
     if group.get('asset_path'):
@@ -1059,6 +1052,26 @@ def _apply_metadata_candidate(
         "raw_snapshot": candidate.get("raw_snapshot"), "review_item": group["item_key"],
         "candidate_key": candidate_key,
     }
+    return asset_ids, source, confidence, metadata
+
+
+def _apply_metadata_candidate(
+    connection, group: dict, candidate: dict, now: str, owner: str, *,
+    expected_revision: int | None = None,
+) -> int:
+    """把一个候选的取值写进真相字段，`owner` 是本次写入者的归属串。
+
+    `owner` 没有默认值：写入者是谁属于调用点的事实，给个默认就等于让下一个
+    调用点默默继承别人的身份，而这一层留痕正是 ADR-0005 要保住的东西。
+    """
+    field = str(group.get("field") or "").strip()
+    if field not in {
+        "title", "original_title", "performers", "studio", "series", "release_date", "tags",
+    }:
+        raise ValueError("该元数据字段没有 Peach 写入映射")
+    code = str(group.get("code") or "").strip()
+    asset_ids, source, confidence, metadata = _landing_scope(
+        connection, group, candidate, expected_revision)
     marks = ",".join("?" * len(asset_ids))
 
     if field in {"title", "original_title"}:
@@ -1116,13 +1129,17 @@ def _apply_metadata_candidate(
     tags = current_tags(_approved_entity_name(tag, "tag") for tag in raw_tags)
     if not tags:
         raise ValueError("标签候选为空")
+    # 整套换掉的时候，并集补进来的那几个（`_extend_approved_tags`）一起清：它们是
+    # 上一套候选的一部分，留下来就成了哪一套都不属于的标签。
     connection.execute(
         f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='tag' "
-        "AND source LIKE 'javinizer:%'", asset_ids,
+        "AND (source LIKE 'javinizer:%' OR substr(source,1,?)=?)",
+        (*asset_ids, len(UNION_TAGS_SOURCE) + 1, UNION_TAGS_SOURCE + "@"),
     )
     connection.execute(
         f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
-        "AND source LIKE 'javinizer:%:tag'", asset_ids,
+        "AND (source LIKE 'javinizer:%:tag' OR substr(source,1,?)=?)",
+        (*asset_ids, len(UNION_TAGS_SOURCE) + 1, UNION_TAGS_SOURCE + "@"),
     )
     for asset_id in asset_ids:
         for tag in tags:
@@ -1138,6 +1155,47 @@ def _apply_metadata_candidate(
                 metadata=metadata, now=now,
             )
     return len(asset_ids)
+
+
+#: 并集补标签的归属串。`asset_tag.source` 与 `asset_entity.source` 写的是批次号
+#: `<归属串>@<时间>`，`revert_auto_landing.py --source auto:metadata-tags` 按它整批撤回。
+UNION_TAGS_SOURCE = "auto:metadata-tags"
+
+
+def _extend_approved_tags(connection, row: dict, candidate: dict, batch: str,
+                          now: str) -> list[str]:
+    """人批准过的标签，重判出的这一套只增不减时，把新增的那几个补进账本。
+
+    返回补进去的标签名；有减少、有替换、账本里还一个标签都没有，或落库的闸不过，都返回
+    空表，什么都不写。比较用落库那一刻的名字（按现在的词表换过名），账本那一侧取的是
+    这组资产此刻挂着的全部标签，不分来源：人手加的也算在人的判断里。已有的行一行不动，
+    只插新增的，归属是 `batch`。
+    """
+    raw_tags = candidate.get("value")
+    if not isinstance(raw_tags, list):
+        return []
+    try:
+        written = current_tags(_approved_entity_name(tag, "tag") for tag in raw_tags)
+        asset_ids, _source, confidence, metadata = _landing_scope(connection, row, candidate)
+    except ValueError:
+        return []
+    marks = ",".join("?" * len(asset_ids))
+    have = {normalize_entity_name(str(name)) for (name,) in connection.execute(
+        "SELECT e.canonical_name FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id"
+        f" WHERE ae.asset_id IN ({marks}) AND ae.role='tag'", asset_ids)}
+    added = [tag for tag in written if normalize_entity_name(tag) not in have]
+    if not have or not added or not have <= {normalize_entity_name(tag) for tag in written}:
+        return []
+    metadata = {**metadata, "batch": batch}
+    for asset_id in asset_ids:
+        for tag in added:
+            connection.execute(
+                "INSERT OR IGNORE INTO asset_tag(asset_id,tag,confidence,source) VALUES(?,?,?,?)",
+                (asset_id, tag, confidence, batch))
+            upsert_asset_entity(
+                connection, kind="tag", name=tag, asset_id=asset_id, role="tag",
+                source=batch, confidence=confidence, metadata=metadata, now=now)
+    return added
 
 
 def _performer_external_provider(performer: dict, source: str,
@@ -1162,7 +1220,8 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     「这个值是谁写的、凭什么」——留痕才是那条规则真正要保住的东西。
 
     已有决定的行不重判，过期的除外（`_decision_reopens`）；过期批准重判之后值不变的只
-    追加一项留痕，要改值而原决定是人批准的交回人（`_reopened_approval`）。落不下去的
+    追加一项留痕，人批准过的标签只增不减的按并集补上，其余要改值而原决定是人批准的
+    交回人（`_reopened_approval`）。落不下去的
     FC2 出演者行里一个艺名都没有的，写一条 `rejected`（`fc2_descriptive_rejection`，
     ADR-0079），其余照旧留给人。
 
@@ -1176,6 +1235,8 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     """
     rows, _source, _skipped = read_candidates("metadata_fields", Path(candidate_root))
     applied, skipped, rejected, refreshed = [], 0, 0, 0
+    # 一次运行一个批次号，并集补进来的标签按它整批撤回。
+    union_batch = f"{UNION_TAGS_SOURCE}@{time.strftime('%Y%m%dT%H%M%S')}"
     step = max(1, int(batch_size))
     for start in range(0, len(rows), step):
         if not active():
@@ -1221,8 +1282,12 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                                               separators=(",", ":")), now))
                     rejected += 1
                     continue
-                outcome = (None if prior is None
-                           else _reopened_approval(connection, item_key, prior, row, candidate))
+                outcome, added = ((None, []) if prior is None else _reopened_approval(
+                    connection, item_key, prior, row, candidate, batch=union_batch, now=now))
+                if outcome == "extended":
+                    applied.append({"item_key": item_key, "field": row.get("field"),
+                                    "value": "、".join(added), "assets": None})
+                    continue
                 if outcome == "refreshed":
                     refreshed += 1
                     continue
@@ -1278,12 +1343,15 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
 
 
 def _reopened_approval(connection, item_key: str, decision: dict, row: dict,
-                       candidate: dict) -> str | None:
-    """过期的批准重判出一条可落的候选之后怎么办。
+                       candidate: dict, *, batch: str, now: str) -> tuple[str | None, list[str]]:
+    """过期的批准重判出一条可落的候选之后怎么办，返回（去向，补进去的标签）。
 
     - `refreshed`：候选与账本现值是同一件事。真相字段不写，原决定的 status、
       updated_at 与 note 原有各项都不动，只在 note 里追加 `refreshed_candidate_key`，
       让 `metadata_decision_is_stale` 认得这一行已经对过；
+    - `extended`：人批准过的标签，重判出的这一套只增不减。按并集补上新增的那几个
+      （`_extend_approved_tags`），算补空，不改人批准过的任何一个；note 同样只追加
+      `refreshed_candidate_key`，再加 `added_tags`；
     - `left`：会改变现值，而原决定是人批准的。不覆盖人的判断（ADR-0052），留在
       复核页交人；
     - None：会改变现值，原决定是自动落库写下的，照常重落并覆盖那条决定。
@@ -1291,16 +1359,25 @@ def _reopened_approval(connection, item_key: str, decision: dict, row: dict,
     原决定不是批准（过期的自动否决）时也返回 None：否决没有写过值，谈不上覆盖。
     """
     if str(decision.get("status") or "").strip() != "approved":
-        return None
+        return None, []
     field = str(row.get("field") or "").strip()
+    added: list[str] = []
     if _same_as_current(connection, field, candidate, str(row.get("current_value") or "")):
-        note = {**_decision_note(decision),
-                "refreshed_candidate_key": str(candidate.get("candidate_key") or "").strip()}
-        connection.execute(
-            "UPDATE review_decision SET note=? WHERE category='metadata_fields' AND item_key=?",
-            (json.dumps(note, ensure_ascii=False, separators=(",", ":")), item_key))
-        return "refreshed"
-    return None if _is_automatic(decision) else "left"
+        outcome = "refreshed"
+    elif _is_automatic(decision):
+        return None, []
+    elif field == "tags" and (added := _extend_approved_tags(
+            connection, row, candidate, batch, now)):
+        outcome = "extended"
+    else:
+        return "left", []
+    note = {**_decision_note(decision),
+            "refreshed_candidate_key": str(candidate.get("candidate_key") or "").strip(),
+            **({"added_tags": added} if added else {})}
+    connection.execute(
+        "UPDATE review_decision SET note=? WHERE category='metadata_fields' AND item_key=?",
+        (json.dumps(note, ensure_ascii=False, separators=(",", ":")), item_key))
+    return outcome, added
 
 
 def _decision_reopens(decision: dict, candidates: list[dict]) -> bool:
