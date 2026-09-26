@@ -397,9 +397,9 @@ export function toggleGroup(selected: ReadonlySet<number>, ids: number[], on: bo
 
 /* ── 取数与写操作 ── */
 
-/** 管理页只要来源清单与别名，条目本身一条就够：那一页读的是 `/follow`。 */
+/** 管理页只要来源清单、别名与计数；`summary=1` 让服务端跳过作品分组与筛选项。 */
 export const fetchFollow = (signal?: AbortSignal) =>
-  apiGet<FollowData>(`${FOLLOW_URL}?limit=1`, signal);
+  apiGet<FollowData>(`${FOLLOW_URL}?summary=1`, signal);
 
 export const fetchCredentials = (signal?: AbortSignal) =>
   apiGet<CredentialData>(FOLLOW_CREDENTIALS_URL, signal);

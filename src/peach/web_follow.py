@@ -1714,6 +1714,24 @@ def q_follow_suggest(contract, q: str, limit: int = MAX_SUGGESTIONS,
     ]}
 
 
+def _page_groups(store, everything, counted, by_author, *, item_id, statuses, order, window):
+    """这一次要回的作品组，以及后面还有没有。"""
+    if item_id is not None:
+        # 直达详情取这一条所在的整组。组是读时拼的（剥作者名、相似标题），只按库里
+        # 同键去捞会漏掉别的站上那几份，详情就比列表里的卡片少。
+        ranked = tuple(group for group in store.group(everything, by_author)
+                       if item_id in {member.id for member in
+                                      (group.primary, *group.variants, *group.duplicates)})
+        return ranked, False   # 直达详情只取这一组，没有下一页
+    # 分页在筛选与分组之后：SQL 先分页、前端再筛的话，选个冷门作者会看到一页里
+    # 只剩两三条，得反复点「加载更多」才凑出一屏；按条目切页再分组的话，同一作品
+    # 的几份上传落在相邻两页，页面上就是两张卡。所以整批分组，`limit` 数的是组。
+    offset, limit = window
+    page = tuple(item for item in counted if not statuses or item.status in statuses)
+    ranked = _sorted_groups(store.group(page, by_author, everything), *order)
+    return ranked[offset:offset + limit], len(ranked) > offset + limit
+
+
 def q_follow(contract, args) -> dict:
     statuses = tuple(
         value for value in str(args.get("status") or "").split(",") if value in _STATUSES
@@ -1730,6 +1748,8 @@ def q_follow(contract, args) -> dict:
     source_id = int(source) if str(source or "").isdigit() else None
     requested_item = args.get("item")
     item_id = int(requested_item) if str(requested_item or "").isdigit() else None
+    # 管理页只要来源、别名与计数。分组与筛选项占这条接口八成的时间，它一样都不用。
+    summary = str(args.get("summary") or "") == "1" and item_id is None
     # 三个筛选都接受逗号分隔的多个值。作者、来源在同一维度内是「任一」：选两个作者
     # 就看两个人的更新；标签是「同时具备」，见下面 `_matches` 里的说明。
     authors = frozenset(_csv_values(args.get("author")))
@@ -1785,29 +1805,16 @@ def q_follow(contract, args) -> dict:
         counted = _sorted_items(
             tuple(item for item in everything if _matches(item)), sort, direction, seed)
         by_author = group_authors(source_rows, alias_map)
-        if item_id is not None:
-            # 直达详情取这一条所在的整组。组是读时拼的（剥作者名、相似标题），只按库里
-            # 同键去捞会漏掉别的站上那几份，详情就比列表里的卡片少。
-            ranked = tuple(group for group in store.group(everything, by_author)
-                           if item_id in {member.id for member in
-                                          (group.primary, *group.variants, *group.duplicates)})
-            has_more = False   # 直达详情只取这一组，没有下一页
-        else:
-            # 分页在筛选与分组之后：SQL 先分页、前端再筛的话，选个冷门作者会看到一页里
-            # 只剩两三条，得反复点「加载更多」才凑出一屏；按条目切页再分组的话，同一作品
-            # 的几份上传落在相邻两页，页面上就是两张卡。所以整批分组，`limit` 数的是组。
-            page = tuple(item for item in counted if not statuses or item.status in statuses)
-            ranked = _sorted_groups(store.group(page, by_author, everything),
-                                    sort, direction, seed)
-            has_more = len(ranked) > offset + limit
-            ranked = ranked[offset:offset + limit]
+        ranked, has_more = ((), False) if summary else _page_groups(
+            store, everything, counted, by_author, item_id=item_id, statuses=statuses,
+            order=(sort, direction, seed), window=(offset, limit))
         # 翻卡与封面计数要知道组里哪几张是同一个画面，判据与缓存见 `follow_faces`。
         faces = getattr(contract, "follow_faces", None)
         groups = [annotate_group(_group_payload(group, credential_providers), faces,
                                  _content_hashes(group))
                   for group in ranked]
-        facets = _follow_facets(store, everything, by_source, alias_map,
-                                work_icon_root(contract))
+        facets = {} if summary else _follow_facets(store, everything, by_source, alias_map,
+                                                   work_icon_root(contract))
         # counts 与列表同源，两边都从 `counted` 出发：筛选怎么变，数字就怎么变，
         # 扣减逻辑也只写一份。写成一句全库 SQL 再逐条减掉被隐藏的 rule34video 和
         # 无资源的 f95zone 的话，同一套排除规则要维护两份，而且它不看作者、来源和
