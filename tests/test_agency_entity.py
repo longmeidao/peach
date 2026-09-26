@@ -194,10 +194,34 @@ class AgencyLedgerTests(unittest.TestCase):
         self.logos = root / "logos"; self.logos.mkdir()
         self.avatars = root / "avatars"; self.avatars.mkdir()
         self.contract = rm_web.WebContract(
-            self.db, avatar_root=self.avatars, logo_root=self.logos)
+            self.db, avatar_root=self.avatars, logo_root=self.logos, cover_root=root / "covers")
 
     def page(self, kind, name):
         return rm_web.q_entity(self.contract, {"kind": kind, "name": name})
+
+    def photos(self, name):
+        return rm_web.q_entity_photos(self.contract, {"kind": "agency", "name": name})
+
+    def add_pictures(self, rows):
+        """(id, 路径, 挂在哪几位名下, disposal)。"""
+        for asset_id, path, owners, disposal in rows:
+            self.con.execute(
+                "INSERT INTO asset(id,location,path,name,medium,size,first_seen,disposal)"
+                " VALUES(?,'local',?,?,'image',10,'2026-01-01',?)",
+                (asset_id, path, path.rsplit("\\", 1)[-1], disposal))
+            self.con.executemany(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                " VALUES(?,?,'performer','test',1.0)", [(asset_id, owner) for owner in owners])
+        self.con.commit()
+
+    def add_samples(self, codes):
+        """作品 id → 番号，每个番号配一张官方样张。"""
+        for asset_id, code in codes.items():
+            self.con.execute("UPDATE asset SET code=? WHERE id=?", (code, asset_id))
+            self.con.execute(
+                "INSERT INTO code_sample_image(code,position,url,site,source,fetched_at)"
+                " VALUES(?,1,'https://pics.dmm.co.jp/x.jpg','dmm','test',?)", (code, STAMP))
+        self.con.commit()
 
     def test_every_performer_with_an_agency_gets_exactly_one_membership(self):
         self.assertEqual(
@@ -216,6 +240,37 @@ class AgencyLedgerTests(unittest.TestCase):
     def test_the_agency_profile_carries_the_tags_of_its_members_works(self):
         self.assertIn("足交", [tag["k"] for tag in
                               self.page("agency", "Capsule Agency")["tags"]])
+
+    def test_the_agency_representative_is_picked_from_its_members_works(self):
+        """ACT 那位的片更大，但不是这家的。"""
+        self.con.executemany("UPDATE asset SET snapshot_path='s.jpg',size=? WHERE id=?",
+                             [(200, 1), (300, 2), (900, 3)])
+        self.con.commit()
+        self.assertEqual(self.page("agency", "Capsule Agency")["representative_asset_id"], 2)
+
+    def test_the_agency_photos_and_sample_sets_are_those_of_its_members(self):
+        """事务所自己不挂图：图集、总数、分页和番号样张集都从成员名下取。
+
+        ACT 那位的图和片不算，回收站里的图也不算。
+        """
+        self.add_pictures([
+            (21, r"R:\Media\summer\01.jpg", [11], None),
+            (22, r"R:\Media\summer\02.jpg", [12], None),
+            (23, r"R:\Media\winter\01.jpg", [12], None),
+            (24, r"R:\Media\summer\03.jpg", [11], "trash"),
+            (25, r"R:\Media\act\01.jpg", [13], None)])
+        self.add_samples({1: "SSIS-057", 2: "SSIS-058", 3: "IPX-001"})
+        photos = self.photos("Capsule Agency")
+        self.assertEqual([(item["kind"], item["id"], item["n"]) for item in photos["sets"]],
+                         [("code", "code:SSIS-057", 1), ("code", "code:SSIS-058", 1),
+                          ("dir", 21, 2), ("dir", 23, 1)])
+        self.assertEqual((photos["total"], photos["sample_total"]), (3, 2))
+        self.assertEqual([item["id"] for item in photos["items"]], [21, 22, 23])
+
+    def test_a_picture_of_two_members_is_counted_and_listed_once(self):
+        self.add_pictures([(21, r"R:\Media\duo\01.jpg", [11, 12], None)])
+        photos = self.photos("Capsule Agency")
+        self.assertEqual((photos["total"], [item["id"] for item in photos["items"]]), (1, [21]))
 
     def test_a_performer_profile_points_at_her_agency_entity(self):
         home = self.page("performer", "七泽美亚")["agency"]

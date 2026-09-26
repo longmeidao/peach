@@ -47,6 +47,11 @@ def scope_predicate(kind: str, column: str, subject: str = "?") -> str:
     片商的范围是它自己加上 `label_maker` 往下的每一级（ADR-0051 修订）：旗下 label
     出的片都算在它名下，和事务所算成员的片是同一个道理。`UNION` 去重，账本里万一
     有环也会停下来。
+
+    这两种范围是 `IN` 子查询，规划器估不出它有几行。和 `asset` 上的 `medium` 过滤
+    同句时，真实账本的统计会让它从 `asset` 那侧按 `medium` 起步，再逐行回查
+    `asset_entity`，一家事务所的图集要扫五万张图。所以这类查询用 `CROSS JOIN` 把
+    `asset_entity` 钉在外层，从范围出发走 `entity_id` 索引；`=` 那一种本来就这样走。
     """
     if kind == "agency":
         return (f"{column} IN (SELECT member_id FROM entity_membership"
@@ -171,7 +176,7 @@ def q_entity(contract: WebContract, args):
         scope = scope_predicate(kind, "ae.entity_id")
         count, rep = c.execute(
             "SELECT count(DISTINCT ae.asset_id),"
-            "(SELECT a2.id FROM asset_entity ae2 JOIN asset a2 ON a2.id=ae2.asset_id "
+            "(SELECT a2.id FROM asset_entity ae2 CROSS JOIN asset a2 ON a2.id=ae2.asset_id "
             " WHERE " + scope_predicate(kind, "ae2.entity_id") +
             " AND a2.medium='video' AND a2.snapshot_path IS NOT NULL " +
             (" AND " + solo_performer_clause("a2.id", "ae2.entity_id") if kind == "performer" else "") +
@@ -354,7 +359,7 @@ def entity_code_sets(contract: WebContract, c, kind: str, entity_id: int) -> lis
     works: dict[str, dict] = {}
     for row in c.execute(
             "SELECT a.code,a.catalog_title,a.original_title,a.release_date "
-            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
+            "FROM asset_entity ae CROSS JOIN asset a ON a.id=ae.asset_id "
             "WHERE " + scope_predicate(kind, "ae.entity_id") + " AND " + VISIBLE_CATALOG_ASSET +
             " AND a.code IS NOT NULL AND a.code<>'' ORDER BY a.id", (entity_id,)):
         key = sample_images.code_key(row["code"])
@@ -393,6 +398,11 @@ def q_entity_photos(contract: WebContract, args):
         row = resolve_entity(c, kind, name)
         if not row:
             return {"error": "not found"}
+        # 图集、总数和分页数的是同一批图，`total` 才对得上翻到底的张数。
+        scoped = ("FROM asset_entity ae CROSS JOIN asset a ON a.id=ae.asset_id "
+                  "WHERE " + scope_predicate(kind, "ae.entity_id") +
+                  " AND a.medium='image' AND a.name IS NOT NULL "
+                  "AND (a.disposal IS NULL OR a.disposal<>'trash') ")
         sets = [{
             "id": item["id"],
             "kind": "dir",
@@ -403,29 +413,14 @@ def q_entity_photos(contract: WebContract, args):
             "cost": COST.get(item["location"], "metered"),
         } for item in c.execute(
             f"SELECT {PHOTO_DIR} dir,min(a.id) id,count(*) n,sum(a.size) bytes,a.location "
-            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-            "WHERE " + scope_predicate(kind, "ae.entity_id") +
-            " AND a.medium='image' AND a.name IS NOT NULL "
-            "AND (a.disposal IS NULL OR a.disposal<>'trash') "
-            f"GROUP BY {PHOTO_DIR},a.location ORDER BY n DESC,dir",
+            + scoped + f"GROUP BY {PHOTO_DIR},a.location ORDER BY n DESC,dir",
             (row["id"],),
         )]
-        total = c.execute(
-            "SELECT count(DISTINCT a.id) "
-            "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-            "WHERE " + scope_predicate(kind, "ae.entity_id") +
-            " AND a.medium='image' AND a.name IS NOT NULL "
-            "AND (a.disposal IS NULL OR a.disposal<>'trash')",
-            (row["id"],),
-        ).fetchone()[0]
+        total = c.execute("SELECT count(DISTINCT a.id) " + scoped, (row["id"],)).fetchone()[0]
         items = [{"id": item["id"], "name": item["name"], "size": item["size"] or 0,
                   "location": item["location"]}
                  for item in c.execute(
-                     f"SELECT a.id,a.name,a.size,a.location,{PHOTO_DIR} dir "
-                     "FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id "
-                     "WHERE " + scope_predicate(kind, "ae.entity_id") +
-                     " AND a.medium='image' AND a.name IS NOT NULL "
-                     "AND (a.disposal IS NULL OR a.disposal<>'trash') "
+                     f"SELECT a.id,a.name,a.size,a.location,{PHOTO_DIR} dir " + scoped +
                      f"GROUP BY a.id,a.name,a.size,a.location,{PHOTO_DIR} "
                      f"ORDER BY {order} LIMIT ? OFFSET ?",
                      (row["id"], limit, offset),
