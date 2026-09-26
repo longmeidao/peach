@@ -14,7 +14,7 @@ import { tagLabel } from './js/tags.js';
 import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
-import { mountIsland, unmountIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, updateIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
@@ -85,7 +85,6 @@ const FOLLOW_FEED_DIR_WORDS={new:['从新到旧','从旧到新'],hot:['从高到
    排序键——那三枚键任一按下就离开它；种子写进地址，刷新和后退回到的是同一批次序。 */
 const FOLLOW_RANDOM_SORT='rand';
 let followSort='new',followDir='desc',followSeed=0;
-const selectedIndexTags=new Set();
 let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
 /* 事务所页看的是它签了谁，所以进页面先摆艺人；片商页同理，先摆旗下 label。视频照样在，
    只是换一个开关的距离：那批片是成员或各个 label 各自出的，混成一条 feed 回答不了
@@ -140,23 +139,25 @@ const ROUTES=[
   ...Object.entries(ROUTE_ENTITIES).map(([segment,kind])=>({
     match:`/${segment}/:name*`,title:params=>params.name,
     open:(params,push)=>openEntity(kind,params.name,push)})),
+  /* 索引页的状态全在地址栏上（过滤词、范围、视图、类型由页面自己写回），所以就地重取
+     与刷新都是按当前地址重开一次。 */
   {match:'/performers',nav:'performers',title:'女优',
-    open:(params,push)=>openIndexRoute('performers',push),
-    reload:()=>openIndexRoute('performers',false,indexQuery())},
+    open:(params,push)=>openIndex('performers',push),
+    reload:()=>openIndex('performers',false)},
   {match:'/creators',title:'创作者',
-    open:(params,push)=>openIndexRoute('creators',push),
-    reload:()=>openIndexRoute('creators',false,indexQuery())},
+    open:(params,push)=>openIndex('creators',push),
+    reload:()=>openIndex('creators',false)},
   /* 厂牌出片、事务所出人，是两种实体，所以是两条路径；页内那个
      开关只是在两条路径之间走，不是同一份数据的两种筛选。 */
   {match:'/studios',nav:'studios',title:'厂牌',
-    open:(params,push)=>openIndexRoute('studios',push),
-    reload:()=>openIndexRoute('studios',false,indexQuery())},
+    open:(params,push)=>openIndex('studios',push),
+    reload:()=>openIndex('studios',false)},
   {match:'/agencies',title:'事务所',
-    open:(params,push)=>openIndexRoute('agencies',push),
-    reload:()=>openIndexRoute('agencies',false,indexQuery())},
+    open:(params,push)=>openIndex('agencies',push),
+    reload:()=>openIndex('agencies',false)},
   {match:'/tags',nav:'tags',title:'标签',
-    open:(params,push)=>openIndexRoute('tags',push),
-    reload:()=>openIndexRoute('tags',false,indexQuery())},
+    open:(params,push)=>openIndex('tags',push),
+    reload:()=>openIndex('tags',false)},
   {match:'/stats',section:'stats',title:'统计',open:(params,push)=>openStats(push)},
   {match:'/taste',section:'taste',title:'口味',refresh:'reopen',
     open:(params,push)=>openTaste(push)},
@@ -396,8 +397,7 @@ function renderInitialSurfaceLoading(){
   }
   if(/^\/(performers|creators|studios|agencies|tags)$/.test(path)){
     hideDiscoveryBars();
-    if(path==='/tags')readTagIndexRoute(new URLSearchParams(location.search));
-    showIndexLoading('正在读取索引',path.slice(1),new URLSearchParams(location.search).get('q')||'');
+    showIndexSkeleton(indexRoute(path.slice(1)));
     return;
   }
   if(/^\/(?:performers|creators|studios|agencies)\//.test(path)){
@@ -2840,13 +2840,15 @@ function paintSelection(){
     button.hidden=!junkPage||(operation==='dismiss-junk'&&junkView==='dismissed')
       ||(operation==='reconsider-junk'&&junkView!=='dismissed');
   });
-  paintTagIndexSelection();
 }
+/* 标签页的多选归 React 页面自己记：键在壳里，所以开关一变就推给正挂着的那一页，关掉时
+   页面随之清空所选。别的页面上没有挂着的索引页，`updateIsland` 是空操作。 */
 function setSelectMode(on,clear=false){
   if(on&&!selectMode)selectSurface=currentSelectSurface();
   selectMode=!!on;if(!selectMode)selectSurface='';document.body.classList.toggle('select-mode',selectMode);
   if(selectMode)releaseHoverPreviews();
-  $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();selectedIndexTags.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection()}
+  $('#selectMode').setAttribute('aria-pressed',selectMode);if(clear){selected.clear();followSelected.clear();lastSelectedId=null;followLastSelectedId=null}paintSelection();
+  if(location.pathname==='/tags')updateIsland($('#index'),{selectMode})}
 /* 只取网格直属卡片：竖屏条是嵌在网格里的横向滚动条，不该被 Shift 范围选中顺带框进来。 */
 function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
@@ -3306,8 +3308,9 @@ document.addEventListener('load',event=>{
    什么都不标，页面每次重绘都不会闪一下微光。标上之后 `load` 一定会来——图已经挂在
    文档上，捕获阶段的监听收得到；取不到图的 `error` 同样收尾，不让微光盖住首字母。
    收尾后类名一并摘掉：没到门槛就到手的直接摘，淡出过的等淡出完再摘，封面上平时不留
-   那层 `::after`。 */
-const PENDING_IMAGES='.pic>img.poster,.ring>img,.entityportrait>img';
+   那层 `::after`。React 索引页的头像框（`[data-person-ring]`）里那张图同样由遗留层拼，
+   插进页面时照样被这里看见。 */
+const PENDING_IMAGES='.pic>img.poster,.ring>img,[data-person-ring]>img,.entityportrait>img';
 const pendingSince=new WeakMap();
 function watchPendingImages(node){
   const found=node.matches(PENDING_IMAGES)?[node]:node.querySelectorAll(PENDING_IMAGES);
@@ -6671,381 +6674,149 @@ async function followWrite(button,path,body){
   }
 }
 
-/* ── 全部艺人 / 创作者 / 标签索引页 ── */
-/* 标签页有两套词表：本地是 ledger 里的中文标签，在线是关注页那套 booru 英文标签。
-   计数含义（作品数 / 更新数）、类别划分和点击后去哪儿三者都不同，混在一列只会
-   互相说谎，所以用范围切换分开。字母表对在线那套正合适——实测 3582 个标签全是
-   ASCII；本地全是中文，做字母表只会得到一个「中文」分组。 */
-let tagIndexMode='alphabet',tagIndexCategory='all',tagIndexScope='local',indexRequestSeq=0;
-/* 艺人页同样有两套名册：本地是账本里绑了实体的人，在线是关注来源里的创作者。两边数的
-   不是同一样东西（本机片数 / 还没下载的更新数），点开去的也不是同一页，所以跟标签页
-   一样用页面级的切换分开，而不是在同一列里混着排。 */
-let performerIndexScope='local';
-const TAG_CATEGORIES=[['all','全部'],['meta','影片属性'],['relationship','人物关系'],
-  ['role','角色设定'],['appearance','外貌身材'],['scene','情境场所'],['story','故事剧情'],
-  ['position','性交体位'],['general','其他内容']];
-const ONLINE_TAG_CATEGORIES=[['all','全部'],['general','通用'],['artist','创作者'],
-  ['character','角色'],['copyright','作品'],['metadata','元数据']];
-let tagIndexMatch='any';
-function paintTagIndexSelection(){
-  const root=$('#index');if(!root||location.pathname!=='/tags')return;
-  root.querySelectorAll('[data-k]').forEach(button=>{
-    const on=selectedIndexTags.has(button.dataset.k);
-    button.setAttribute('aria-pressed',String(on));button.classList.toggle('selected',on)});
-  const panel=root.querySelector('[data-tag-selection]');if(!panel)return;
-  panel.hidden=!selectMode||!selectedIndexTags.size;
-  const count=panel.querySelector('[data-tag-selected]');if(count)count.textContent=`已选 ${selectedIndexTags.size} 个标签`;
-  const apply=panel.querySelector('[data-tag-apply]');if(apply)apply.disabled=!selectedIndexTags.size;
-}
+/* ── 全部艺人 / 创作者 / 厂牌 / 事务所 / 标签索引页 ──
+   整页在 React（`frontend/src/react/index/`）。壳做三件事：从地址栏读出这一页的状态、铺骨架、
+   把遗留层唯一那一份取图链与去处当 props 递进去。换档（厂牌↔事务所、本地↔在线、类型、视图、
+   过滤词）由页面经 `route` 写回地址栏，不经过这里重挂。 */
 const INDEX_TITLES={performers:'艺人',creators:'创作者',studios:'厂牌',
                     agencies:'事务所',tags:'标签'};
 /* 艺人索引版式，思路同 JAV 大图：列宽不变、只把图从圆框拉成竖幅，一屏里的人数
-   不变而每张脸更大；紧凑就是圆头像那一屏。控件与 JAV 版式、关注列表版式共用
-   iconSwitchHtml，切换只改容器上的 data-layout——版式是纯展示层的事，不重画列表，
-   也不重新请求。 */
+   不变而每张脸更大；紧凑就是圆头像那一屏。资料页的名册读的是同一个设置值。 */
 const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],['compact','紧凑 · 圆形头像','layout-grid']];
-/* 公司那一格摆的是方形标识而不是脸，大图版式也把框做成方的、一个像素都不裁。沿用
-   艺人那套词就是让提示说着「竖幅头像」、屏幕上摆着方标识。档位仍是同一个设置值，
-   分开的只有说法。 */
+/* 公司那一格摆的是方形标识而不是脸，说法跟着换；档位仍是同一个设置值。 */
 const COMPANY_LAYOUTS=[['big','大图 · 完整标识','maximize'],['compact','紧凑 · 圆形标识','layout-grid']];
-function indexLayoutOptions(kind){
-  return kind==='studios'||kind==='agencies'?COMPANY_LAYOUTS:PEOPLE_LAYOUTS;
-}
 function peopleIndexLayout(){
   return allowedSetting(appSettings.peopleLayout,PEOPLE_LAYOUTS.map(([k])=>k),'big');
 }
-function peopleLayoutButtons(kind){
-  return iconSwitchHtml('people-layout',(INDEX_TITLES[kind]||'艺人')+'索引版式',
-    indexLayoutOptions(kind),peopleIndexLayout(),{attr:'data-people-layout'});
-}
-/* 换版式不重拼列表：重绘会丢掉滚动位置和已经取回的图，而两个版式之间真正不同的
-   只有标识那一档和「小图要不要按原尺寸摆」。已经回落到实体图的格子不动——那张图
-   不在 `/logo` 这条链上，改它的地址只会指向一个不存在的东西。 */
-function retargetCompanyMarks(root){
-  const big=peopleIndexLayout()==='big';
-  const rings=(root||document).querySelectorAll(
-    '.icell[data-kind="studio"] .ring,.icell[data-kind="agency"] .ring');
-  rings.forEach(ring=>{
-    ring.setAttribute('data-fit-native','mark');
-    const img=ring.querySelector('img'),src=(img&&img.getAttribute('src'))||'';
-    if(!src.startsWith('/logo?'))return;
-    const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'ring'}`);
-    if(next!==src)img.setAttribute('src',next);
-  });
-}
-function setPeopleIndexLayout(value){
-  appSettings.peopleLayout=value;
-  saveSettings();
-  document.querySelectorAll('.igrid').forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});
-  // 大格与圆框要的标识不是同一档，换版式就得把已经在页面上的那批换过来。
-  retargetCompanyMarks($('#index'));
-  // 框换了大小，「这张图要不要补底」得重算：图早加载完了，不会再自己发一次 load。
-  refitNativeImages($('#index'));
-  fitSkeleton($('#index'));
-}
-/* 一格人：圆框或竖幅头像、名字、一个读数。索引页和事务所名册摆的是同一样东西，
-   区别只在读数的口径，所以模板只有这一份，版式也由同一个 `.igrid[data-layout]` 管。
+/* 一格人的圆框里那段：有图走图、没图退首字母。索引页（React）和资料页名册摆的是同一格，
+   所以取图只有这一份。
+
+   公司这一格不退到代表作截图，和它自己的资料页保持同一条判据：那是某部片的画面，
+   摆在公司名下就是替它拿别人的脸当门面，同一个厂牌两个页面还会各出各的图。
+   公司摆的是标识而不是脸，而两个版式要的不是同一份：180 px 的大格要 `large`（这个厂牌
+   手上最清晰的那份）并且允许小图按原尺寸摆，圆框要 `ring`：方标够填满圆框就用方标，
+   只有邮票大小的才换最清晰那份，免得圆里只剩一粒糊点。判据在服务端 `_ring_variant`，
+   度量在 fitNativeImage 里。
 
    平移挂在圆框上而不是 img 上：竖幅裁到 3:4 时几何居中会切掉脸，而 img 由八处共用的
-   avatarInner 拼，两个版式都只能从容器这一侧改。放大反过来只能挂在 img 上——那改的
-   是图自己的尺寸和偏移——所以脸框穿过 avatarInner 贴到 img 上，两件事各走各的。 */
+   avatarInner 拼，两个版式都只能从容器这一侧改。放大反过来只能挂在 img 上，所以脸框
+   穿过 avatarInner 贴到 img 上，两件事各走各的。 */
+function personRingHtml(x,kind,big){
+  const ref=x.entity_id||x.id;
+  const company=kind==='studio'||kind==='agency';
+  return avatarInner(x.k,ref?{id:ref,has_image:x.has_image}:null,
+    x.has_avatar&&!company?x.rep:null,kind,x.mark,x.has_logo?x.k:'',
+    company&&big?'large':'ring',company?null:x.avatar_focus,true);
+}
+/* 资料页名册的一格：事务所页是艺人，片商页是旗下 label，版式由同一个 `.igrid[data-layout]` 管。 */
 function personCellHtml(x,kind,countText){
   const face=faceOrigin(x.avatar_focus);
-  const ref=x.entity_id||x.id;
-  /* 公司这一格不退到代表作截图，和它自己的资料页保持同一条判据：那是某部片的画面，
-     摆在公司名下就是替它拿别人的脸当门面，同一个厂牌两个页面还会各出各的图。 */
   const company=kind==='studio'||kind==='agency';
-  /* 公司这一格摆的是标识而不是脸，而两个版式要的不是同一份：180 px 的大格要
-     `large`（这个厂牌手上最清晰的那份）并且允许小图按原尺寸摆，圆框要 `ring`：方标
-     够填满圆框就用方标，只有邮票大小的才换最清晰那份，免得圆里只剩一粒糊点。
-     判据在服务端 `_ring_variant`。度量在 fitNativeImage 里。 */
-  const bigMark=company&&peopleIndexLayout()==='big';
   return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
-      <span class="ring" data-fit-native="${company?'mark':'portrait'}"${face?` style="--face:${face}"`:''}>${avatarInner(x.k,
-        ref?{id:ref,has_image:x.has_image}:null,
-        x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',
-        bigMark?'large':'ring', company?null:x.avatar_focus, true)}</span>
+      <span class="ring" data-fit-native="${company?'mark':'portrait'}"${face?` style="--face:${face}"`:''}>${
+        personRingHtml(x,kind,peopleIndexLayout()==='big')}</span>
       <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
-}
-/* 厂牌与事务所是两种实体，不是同一份数据的两种筛选：厂牌出片，事务所出人，一位女优
-   可以同一年给多个厂牌拍片而只属于一家事务所。所以这个开关切的是路径，不是筛选。 */
-/* 场记板归厂牌，公文包归事务所：一个出片、一个带人，字形各说各的那一件事。
-   办公楼那类字形两边都对得上，也就等于两边都没说清是哪一种公司。 */
-const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],['agencies','事务所','briefcase']];
-/* 两条索引地址是两页，所以这一排是 Board 的下划线 Tabs：它答的是「现在摆的是哪一页」，
-   不是给当前这批加一条筛选——筛选归玻璃浮层上的药丸。 */
-function makerModeHtml(kind){
-  return boardTabsHtml(MAKER_INDEX_KINDS.map(([value,label,symbol])=>({value,label,symbol})),
-    {active:kind,attr:'data-index-kind',label:'公司类型',className:'indextabs'});
-}
-/* 本地与在线是两套词表——计数口径、类别划分和点开去哪儿都不同，所以也是页面级的 Tabs。
-   艺人页那一排问的是同一件事（这一屏摆的是本机的还是来源上的），所以共用这份定义：
-   两页各写一份的话，哪天换了字形就只会换掉其中一页，用户看到两个说法。 */
-const INDEX_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];
-function scopeTabsHtml(active,attr,label){
-  return boardTabsHtml(INDEX_SCOPES.map(([value,text,symbol])=>({value,label:text,symbol})),
-    {active,attr,label,className:'indextabs'});
-}
-function tagScopeTabsHtml(){return scopeTabsHtml(tagIndexScope,'data-tag-scope','词表')}
-function performerScopeTabsHtml(){
-  return scopeTabsHtml(performerIndexScope,'data-performer-scope','名册');
 }
 /* 在线创作者这一格跟本地艺人同形，差别只在圆里那张图从哪儿来：本地走 `/entity-image`
    那条自家链，在线只有来源站点给的地址，官方主页优先、归档兜底，两条都取不到就落回
-   首字母——跟关注页的创作者行同一套判据。这一格不带实体 id：这个人还没进账本，`data-k`
-   上挂的是关注页那套创作者键，点开去的也是关注页而不是资料页。 */
-function onlineAuthorCellHtml(x){
+   首字母——跟关注页的创作者行同一套判据。 */
+function onlineAuthorRingHtml(x){
   const initial=(String(x.k||'').match(/[A-Za-z0-9]/)||[Array.from(String(x.k||''))[0]||'?'])[0].toUpperCase();
   const image=x.avatar?`<img src="${esc(x.avatar)}" alt="" loading="lazy" referrerpolicy="no-referrer" ${
     imageFallbackAttrs({fallbacks:[x.avatar_fallback||'']})}>`:'';
-  return `<button class="icell" data-follow-author="${esc(x.key)}" data-kind="performer">
-      <span class="ring" data-fit-native="portrait"><span class="ini">${esc(initial)}</span>${image}</span>
-      <span class="nm">${esc(x.k)}</span><span class="n">${x.n.toLocaleString()} 项更新</span></button>`;
+  return `<span class="ini">${esc(initial)}</span>${image}`;
 }
-const TAG_VIEW_MODES=[['cloud','标签云','tags'],['alphabet','字母表','text-aa']];
-/* 标签页的筛选浮层跟首页同一块玻璃：上排是类型药丸，下排是读数、按首字跳转和视图切换。
-   外框直接写成带槽位标记的 HTML，不走 `mountFilterFrame`：这一段随每次筛选整块重画，
-   外框跟着一起出生，省得事后再包一层。 */
-function tagFilterFrameHtml(categories,readout,groups){
-  const pills=categories.map(([key,label])=>filterChipHtml(label,
-    {attr:'data-tag-category',value:key,selected:tagIndexCategory===key,className:key})).join('');
-  const jump=groups.length>1?`<nav class="alphajump" aria-label="按首字跳转">${groups.map(([letter],i)=>
-    `<button type="button" data-alpha-jump="${i}">${esc(letter)}</button>`).join('')}</nav>`:'';
-  const view=iconSwitchHtml('tag-view','标签视图',TAG_VIEW_MODES,tagIndexMode,{attr:'data-tag-view'});
-  return `<div class="board-filter-frame" data-filter-frame>
-    <div class="tagbar tagcategories" data-filter-row="top" aria-label="标签类型"><div class="filterscroll"><div class="tagscroll" data-filter-slot="tags">${pills}</div></div></div>
-    <div class="count tagcount" data-filter-row="bottom"><span class="mono" id="indexCount" data-filter-slot="readout">${readout}</span>${jump}<div class="sorts" data-filter-slot="controls">${view}</div></div></div>`;
+/* 地址栏上的那几项。范围与视图只认两个值；类型由页面按这一套词表核对，认不出的回到全部。 */
+function indexRoute(kind){
+  const params=new URLSearchParams(location.search);
+  return {kind,q:params.get('q')||'',scope:params.get('scope')==='online'?'online':'local',
+    view:params.get('view')==='cloud'?'cloud':'alphabet',category:params.get('category')||'all'};
 }
-/* 页头只剩标题、读数、版式切换和过滤框；页面级的切换（厂牌／事务所、本地／在线）
-   是页头下面那排 Tabs。标签页的读数住在浮层下排，页头不再重复一遍。 */
-function indexHeaderHtml(kind,q,countText){
-  const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags';
+function indexPath({kind,q,scope,view,category}){
+  const params=new URLSearchParams();if(q)params.set('q',q);
+  if(kind==='tags'){
+    params.set('view',view);
+    if(scope==='online')params.set('scope','online');
+    if(category!=='all')params.set('category',category)}
+  if(kind==='performers'&&scope==='online')params.set('scope','online');
+  return '/'+kind+(params.size?'?'+params:'');
+}
+/* 页头那几样此刻就能给出最终样子：标题、读数的占位、版式开关、过滤框和页面级 Tabs，
+   等的只有下面那块内容。React 页取回首屏后整块换掉它，键和文字同页面那一份一致，换的
+   那一下页头不跳。这里的控件不接线：骨架只在取数那一段露面。 */
+const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],['agencies','事务所','briefcase']];
+const INDEX_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];
+function indexPlaceholderHtml({kind,q,scope,view}){
+  const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags',company=kind==='studios'||kind==='agencies';
+  const layout=peopleIndexLayout();
+  const tabs=(items,active,label)=>boardTabsHtml(items.map(([value,text,symbol])=>({value,label:text,symbol})),
+    {active,label,className:'indextabs'});
+  const switcher=people?iconSwitchHtml('people-layout',title+'索引版式',company?COMPANY_LAYOUTS:PEOPLE_LAYOUTS,layout):'';
   return `<div class="ihead">
       <h2 class="disp indexheading">${title}</h2>
-      ${people?`<span class="mono" id="indexCount">${countText}</span>`:''}
-      ${people?peopleLayoutButtons(kind):''}
-      ${searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})}
+      ${people?'<span class="mono" id="indexCount"><span class="countskeleton"></span></span>':''}${switcher}
+      ${searchInputHtml({label:'过滤'+title,value:q||''})}
     </div>
-    ${kind==='tags'?tagScopeTabsHtml():kind==='performers'?performerScopeTabsHtml()
-      :MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}`;
+    ${kind==='tags'?tabs(INDEX_SCOPES,scope,'词表'):kind==='performers'?tabs(INDEX_SCOPES,scope,'名册')
+      :company?tabs(MAKER_INDEX_KINDS,kind,'公司类型'):''}
+    ${indexSkeletonHtml({kind,layout,mode:view})}`;
 }
-function wireIndexControls(kind){
-  const iq=$('#iq');let it2;
-  const refineIndex=()=>{clearTimeout(it2);
-    it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)};
-  /* 中文输入法在选字过程中一样发 input，事件上的 isComposing 是唯一可靠的判据：
-     拿还没定型的拼音去筛选，筛的是「zhon」这种半截输入。组完字由 compositionend 接手。 */
-  iq.oninput=e=>{if(e.isComposing)return;refineIndex()};
-  iq.oncompositionend=refineIndex;
-  /* 只读筛选不配提交按钮，回车就是「别等那 300 ms，现在就查」。组字过程中的回车
-     是在定字，放过去会拿半截拼音发请求。 */
-  iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;
-    e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};
-  wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);
-  /* Tabs 的蓝线按下去当场就挪：`wireBoardTabs` 观察着 `aria-selected`。换词表时骨架键
-     不变、页头不重画，不在这里改属性的话那条线就停在旧的一档上。 */
-  const selectTab=button=>button.closest('[role="tablist"]')?.querySelectorAll('[role="tab"]')
-    .forEach(tab=>tab.setAttribute('aria-selected',String(tab===button)));
-  /* 厂牌与事务所各有自己的地址，所以这个开关走的是 openIndex 的另一条 kind，
-     不是在同一批数据上再筛一次。过滤词跟着走：它问的是同一个问题。 */
-  $('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{
-    if(kind===b.dataset.indexKind)return;
-    selectTab(b);
-    openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{
-    if(tagIndexScope===b.dataset.tagScope)return;
-    selectTab(b);
-    tagIndexScope=b.dataset.tagScope;
-    // 在线标签全是英文，字母表才是它的形态；切过去时顺手换上，不必用户再点一次。
-    if(tagIndexScope==='online')tagIndexMode='alphabet';
-    tagIndexCategory='all';
-    selectedIndexTags.clear();
-    openIndex('tags',$('#iq').value.trim(),true)});
-  /* 在线那一档摆的是还没进账本的人，选择模式拼的是目录批量操作，对它一条都不成立。 */
-  $('#index').querySelectorAll('[data-performer-scope]').forEach(b=>b.onclick=()=>{
-    if(performerIndexScope===b.dataset.performerScope)return;
-    selectTab(b);
-    performerIndexScope=b.dataset.performerScope;
-    if(performerIndexScope==='online')setSelectMode(false,false);
-    openIndex('performers',$('#iq').value.trim(),true)});
-  wireIconSwitch($('#index'),'data-tag-view',value=>{
-    tagIndexMode=value;openIndex('tags',$('#iq').value.trim(),true)});
-  $('#index').querySelectorAll('[data-tag-category]').forEach(b=>b.onclick=()=>{
-    tagIndexCategory=b.dataset.tagCategory;openIndex('tags',$('#iq').value.trim(),true)});
-  /* 分组卡有 `scroll-margin-top` 给吸顶的浮层让位，所以对齐到卡的上沿就够。 */
-  $('#index').querySelectorAll('[data-alpha-jump]').forEach(b=>b.onclick=()=>{
-    $('#index').querySelector(`[data-alpha-group="${b.dataset.alphaJump}"]`)
-      ?.scrollIntoView({block:'start',behavior:'smooth'})});
-}
-/* 已经在这一页上、只是换了一档的话，骨架只盖下面那块内容。页头和筛选浮层此刻就能
-   给出最终样子，它们从来没在等：整块重画的代价是过滤框连同里面的字和焦点一起被换掉，
-   Tabs 那条蓝线从头起跑，浮层先消失再出现——换一次词表，上面两条全闪一遍。
-   判据要两样都成立：外壳记的是同一个 kind，而且那块内容还在。资料页会把 `#index`
-   整个换掉，只看记号的话会往一个已经不存在的节点里塞骨架。 */
-function showIndexLoading(label,kind='',q=''){
+/* 屏幕上已经是同一张骨架就别重画：深链冷启动时首屏骨架先铺过一遍，innerHTML 换新节点会把
+   shimmer 从头放一遍。 */
+function showIndexSkeleton(params){
   $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
-  const body=kind&&$('#index').dataset.indexShell===kind?$('#indexBody'):null;
-  if(body){
-    const next=indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode});
-    if(skeletonKeyOf(body.innerHTML)!==skeletonKeyOf(next)){body.innerHTML=next;fitSkeleton(body)}
-    return;
-  }
-  const placeholder=kind?indexHeaderHtml(kind,q,'<span class="countskeleton"></span>')+
-    `<div id="indexFilters"></div><div id="indexBody">${indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode})}</div><button class="indexmore" id="indexMore" type="button" hidden>载入更多</button>`
-    :pageSkeletonHtml(label,{cards:true});
-  const next=skeletonKeyOf(placeholder);
-  if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==next){
+  const placeholder=indexPlaceholderHtml(params);
+  if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==skeletonKeyOf(placeholder)){
     $('#index').innerHTML=placeholder;fitSkeleton($('#index'));
   }
-  $('#index').dataset.indexShell=kind;
-  if(kind)wireIndexControls(kind);
 }
-/* refine=true 表示这一次是筛选框自己重跑，不是一次页面进入：既不铺骨架，也不重画表头。 */
-async function openIndex(kind,q,push=true,refine=false){
+/* 回目录按标签筛选：点一枚是「只看这一枚」，按所选显示结果是照匹配方式拼几枚。 */
+function showIndexTags(tags,match){
+  state={...state,state:'',tag:tags.join(','),tag_match:match};
+  setSelectMode(false,false);route(homePath());showHomeSurfaces();buildEdge();buildBars();load(true);
+}
+/* 在线那一档的人和标签还没进账本，没有资料页可去：他们名下那批东西全在关注页上，所以点开
+   等于「关注 · 这一位 / 这一枚」。其余条件一并清空——从名册点进来问的是这一位的全部更新，
+   不是「这一位 且 上次留在筛选条上的那几个标签」。 */
+function openFollowAuthorFromIndex(key){
+  followTags=new Set();followProviders=new Set();followWorks=new Set();
+  followMediaView='videos';followFilter='';
+  followAuthors=new Set([key]);
+  $('#index').hidden=true;route(followViewPath());openFollow(false);
+}
+function openFollowTagFromIndex(tag){
+  followAuthors=new Set();followProviders=new Set();followMediaView='videos';followFilter='';
+  followTags=new Set([tag]);
+  $('#index').hidden=true;route(followViewPath());openFollow(false);
+}
+/* `push=true` 是从导航点进来：退出选择模式、不带过滤词，回到本地与字母表。
+   `push=false` 是地址栏已经在这一屏（刷新、前进后退、批量操作后的就地重取）：状态全从地址读。 */
+async function openIndex(kind,push=true){
   releaseHoverPreviews();
-  const requestSeq=++indexRequestSeq;
   document.body.classList.remove('entity-open');
   delete $('#index').dataset.entityKind;delete $('#index').dataset.entityName;
-  /* 圆头像那一档索引：四种实体同一套版式、同一条取图链，区别只在 kind。 */
-  const people=Object.prototype.hasOwnProperty.call(ROUTE_ENTITIES,kind);
-  const entityKind=ROUTE_ENTITIES[kind]||'performer';
-  const indexLimit=people?120:180;
-  const indexQuery=new URLSearchParams();if(q)indexQuery.set('q',q);
-  const onlineTags=kind==='tags'&&tagIndexScope==='online';
-  const onlineAuthors=kind==='performers'&&performerIndexScope==='online';
-  if(kind==='tags'){
-    indexQuery.set('view',tagIndexMode);
-    if(onlineTags)indexQuery.set('scope','online');
-    if(tagIndexCategory!=='all')indexQuery.set('category',tagIndexCategory)}
-  if(onlineAuthors)indexQuery.set('scope','online');
-  if(push)route('/'+kind+(indexQuery.size?'?'+indexQuery:''),!!q);
+  const params=push?{kind,q:'',scope:'local',view:'alphabet',category:'all'}:indexRoute(kind);
+  if(push){setSelectMode(false,true);route(indexPath(params))}
+  const surface=claimSurface('/'+kind);
   showHomeSurfaces();
   // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
   // 写在前面等于自己加完自己删。
   document.body.classList.add('index-open');
   disposeStage(false);
-  /* 骨架只盖真正在等的内容区。筛选重跑时页面已经在这儿了，把骨架铺上去会连筛选框
-     一起吃掉——同步就能给出的控件不进骨架，正在打字的那个更不能。 */
-  if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q);
-  /* 在线标签走关注页那套统计，形状与 /api/index 一致，所以分页、搜索和「载入更多」
-     这三处现成的机制换个地址就能用。 */
-  const indexApi=offset=>onlineTags
-    ?'/api/follow/tags?types=all&limit='+indexLimit+'&offset='+offset+
-      (tagIndexCategory!=='all'?'&type='+encodeURIComponent(tagIndexCategory):'')+
-      (q?'&q='+encodeURIComponent(q):'')
-    :onlineAuthors
-    ?'/api/follow/authors?limit='+indexLimit+'&offset='+offset+
-      (q?'&q='+encodeURIComponent(q):'')
-    :'/api/index?kind='+kind+'&limit='+indexLimit+'&offset='+offset+
-      (q?'&q='+encodeURIComponent(q):'')+
-      (kind==='tags'&&tagIndexCategory!=='all'?'&category='+encodeURIComponent(tagIndexCategory):'');
-  const d=await api(indexApi(0));
-  if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return;
-  $('#index').hidden=false;buildEdge(); $('#grid').innerHTML=''; $('#count').textContent='';
-  $('#loadSentinel').hidden=true;
-  const title=INDEX_TITLES[kind]||'标签';
-  const tagItems=[...d.items];
-  const tagGroupEntries=items=>{
-    const groups={};[...items].sort((a,b)=>a.k.localeCompare(b.k,'zh-CN',{numeric:true,sensitivity:'base'})).forEach(x=>{
-      const ch=tagLabel(x.k).normalize('NFKC').trim().charAt(0).toUpperCase();
-      const key=/[A-Z]/.test(ch)?ch:(/[0-9]/.test(ch)?'#':(/[\u3400-\u9fff]/.test(ch)?'中文':'其他'));
-      (groups[key]||(groups[key]=[])).push(x)});
-    return Object.entries(groups).sort(([a],[b])=>a.localeCompare(b,'zh-CN'))};
-  /* 每个首字一张卡：字头是卡的标题，右边挂这一组有几个；一行一枚标签，36px 高、8px 圆角，
-     取的是 Board 排名行那一档身量。`data-alpha-group` 是浮层下排那排跳转键的落点。 */
-  const tagGroups=items=>tagGroupEntries(items).map(([letter,items],i)=>
-      `<section class="alphagroup" data-alpha-group="${i}"><h3>${letter}<span class="board-tab-count">${items.length.toLocaleString()}</span></h3><div class="alphalist">${items.map(x=>
-        `<button class="alphatag ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"><span>${esc(tagLabel(x.k))}</span><span class="n">${x.n.toLocaleString()}</span></button>`).join('')}</div></section>`).join('');
-  const peopleHtml=items=>onlineAuthors?items.map(onlineAuthorCellHtml).join(''):items.map(x=>
-    /* 事务所数的是人：它名下那 N 个视频是成员拍的，只报视频数会让「这家有几个人」
-       这个它唯一独有的读数消失。数字带单位，否则 411 读不出是人还是片。 */
-    personCellHtml(x,entityKind,entityKind==='agency'
-      ?`${(x.members||0).toLocaleString()} 人`:x.n.toLocaleString())).join('');
-  const tagHtml=items=>tagIndexMode==='alphabet'?`<div class="alphabet">${tagGroups(items)}</div>`:`<div class="tagwall index-tags">`+items.map(x=>`<button class="tg ${onlineTags?'r34-'+(x.cat||'unknown'):(x.cat||'general')}" data-k="${esc(x.k)}" aria-pressed="${selectedIndexTags.has(x.k)}"
-        >${esc(tagLabel(x.k))}
-        <span class="n">${x.n.toLocaleString()}</span></button>`).join('')+`</div>`;
-  /* 公司格和人格在大图版式下要的形状不一样：竖幅是给脸留的，方标进去左右各被裁掉
-     一截。这一格里装的是什么，只有这里知道，所以在这里写进 DOM。 */
-  const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';
-  const body=!d.items.length?catalogEmptyHtml({kind,filtered:!!q||(kind==='tags'&&tagIndexCategory!=='all'),configurable:runtimeConfigurable,online:onlineTags||onlineAuthors})
-    :people?`<div class="igrid" data-cells="${cells}" data-layout="${
-    peopleIndexLayout()}">${peopleHtml(d.items)}</div>`:tagHtml(tagItems);
-  const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
-  const visibleTagCategories=categoryOptions.filter(([key])=>key==='all'||Number(d.categories?.[key]||0)>0);
-  const countText=`${tagItems.length}${d.has_more?'+':''} 项`;
-  /* 多选面板拼的是目录筛选，只在本地范围出现；在线分类来自上游 booru tag_type。 */
-  const tagFilters=()=>tagFilterFrameHtml(visibleTagCategories,`${tagItems.length}${d.has_more?'+':''} 项`,
-      tagIndexMode==='alphabet'&&tagItems.length?tagGroupEntries(tagItems):[])
-    +(onlineTags?'':`
-    <div class="tagselection selectiondock" data-tag-selection role="group" aria-label="所选标签操作" hidden>
-      <label>${checkboxHtml(`data-tag-match-any ${tagIndexMatch==='any'?'checked':''}`)}<span><b>广泛匹配</b><small>开启后匹配任一所选标签；关闭后必须同时包含全部标签。</small></span></label>
-      <span class="selectiondockcount" data-tag-selected>已选 0 个标签</span>
-      <button type="button" data-tag-clear>清空</button>
-      <button type="button" class="primary" data-tag-apply disabled>显示结果</button>
-    </div>`);
-  const filters=kind==='tags'?tagFilters():'';
-  /* 筛选重跑不重画表头：输入框是同一个节点，焦点、光标位置和中文输入法正在组的字
-     才不会在 300 ms 后被换掉。表头里随查询变的只有计数一处，单独改它；标签页的读数
-     住在浮层里，跟着浮层一起重画。 */
-  if($('#indexFilters')){
-    $('#indexFilters').innerHTML=filters;
-    if(people)popCount($('#indexCount'),countText);
-    revealSkeleton($('#indexBody'),()=>{$('#indexBody').innerHTML=body});
-    $('#indexMore').hidden=!d.has_more;
-  }else $('#index').innerHTML=indexHeaderHtml(kind,q,countText)+`<div id="indexFilters">${filters}</div><div id="indexBody">${body}</div><button class="indexmore" id="indexMore" type="button" ${d.has_more?'':'hidden'}>载入更多</button>`;
-  // 外壳记号跟着内容走：下一次换档时靠它判断页头和浮层还在不在，值不对就整块重画。
-  $('#index').dataset.indexShell=kind;
-  wireIndexControls(kind);
-  scheduleStickySurfaces();
-  /* 在线这一档的人还没进账本，没有资料页可去：他名下那批东西全在关注页上，所以点开
-     等于「关注 · 这个人」，跟在线标签那一档同一条去路。其余条件一并清空——从名册点进来
-     问的是这个人的全部更新，不是「这个人 且 上次留在筛选条上的那几个标签」。 */
-  const wireIndexEntries=root=>{
-  root.querySelectorAll('[data-follow-author]').forEach(b=>b.onclick=()=>{
-    followTags=new Set();followProviders=new Set();followWorks=new Set();
-    followMediaView='videos';followFilter='';
-    followAuthors=new Set([b.dataset.followAuthor]);
-    $('#index').hidden=true;route(followViewPath());openFollow(false)});
-  root.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{
-    if(people){openEntity(b.dataset.kind,b.dataset.k);return}
-    /* 在线标签只在关注页有意义——它标注的是还没入库的在线更新，拿去筛目录必然
-       一条不中。所以直接进「关注 · 这个标签」，并且绕过多选：多选拼的是目录筛选。 */
-    if(onlineTags){
-      followAuthors=new Set();followProviders=new Set();followMediaView='videos';followFilter='';
-      followTags=new Set([b.dataset.k]);
-      $('#index').hidden=true;route(followViewPath());openFollow(false);return}
-    if(selectMode){const key=b.dataset.k;selectedIndexTags.has(key)?selectedIndexTags.delete(key):selectedIndexTags.add(key);paintTagIndexSelection();return}
-    $('#index').hidden=true;state={...state,state:'',tag:b.dataset.k,tag_match:'all'};route(homePath());buildBars();load(true)});
-  };
-  wireIndexEntries($('#indexBody'));
-  if(kind==='tags'&&!onlineTags){
-    const panel=$('#index').querySelector('[data-tag-selection]');
-    panel.querySelector('[data-tag-match-any]').onchange=e=>{tagIndexMatch=e.target.checked?'any':'all'};
-    panel.querySelector('[data-tag-clear]').onclick=()=>{selectedIndexTags.clear();paintTagIndexSelection()};
-    panel.querySelector('[data-tag-apply]').onclick=()=>{
-      if(!selectedIndexTags.size)return;
-      state={...state,state:'',tag:[...selectedIndexTags].join(','),tag_match:tagIndexMatch};
-      selectedIndexTags.clear();setSelectMode(false,false);route(homePath());showHomeSurfaces();buildEdge();buildBars();load(true)};
-    paintTagIndexSelection();
-  }
-  let indexOffset=d.items.length;
-  /* 按下去到下一批画出来之间要有东西在动：这一段是一次网络往返加一屏头像，光把键
-     按灰了说不出「还在走」和「点了没反应」的区别。换的是首页续载那一枚同样的点，
-     文字留在键里，所以键宽不变、下面的内容不跟着跳。 */
-  const MORE_LABEL='载入更多';
-  $('#indexMore').onclick=async()=>{const more=$('#indexMore');more.disabled=true;
-    more.setAttribute('aria-busy','true');more.innerHTML=loadingDotsHtml('继续载入中…');
-    try{const next=await api(indexApi(indexOffset));if(requestSeq!==indexRequestSeq)return;
-      indexOffset+=next.items.length;d.has_more=next.has_more;
-      if(people){d.items.push(...next.items);const grid=$('#indexBody .igrid');
-        grid.insertAdjacentHTML('beforeend',peopleHtml(next.items));wireIndexEntries(grid)}
-      else{d.items.push(...next.items);tagItems.push(...next.items);$('#indexBody').innerHTML=tagHtml(tagItems);wireIndexEntries($('#indexBody'));
-        /* 分组多了几个首字，跳转那一排要跟上；浮层整块重画，读数也在里面。 */
-        $('#indexFilters').innerHTML=tagFilters();wireIndexControls(kind);paintTagIndexSelection()}
-      if(people)$('#indexCount').textContent=indexOffset+(next.has_more?'+':'')+' 项';more.hidden=!next.has_more}
-    finally{more.removeAttribute('aria-busy');more.textContent=MORE_LABEL;
-      if(requestSeq===indexRequestSeq)more.disabled=false}};
+  showIndexSkeleton(params);
+  await mountIsland('index',$('#index'),{...params,layout:peopleIndexLayout(),selectMode,
+    route:(next,{replace=false}={})=>route(indexPath(next),replace),
+    savePreference:({layout})=>{appSettings.peopleLayout=layout;saveSettings()},
+    exitSelectMode:()=>setSelectMode(false,false),
+    personAvatar:(x,entityKind,big)=>({html:personRingHtml(x,entityKind,big),face:faceOrigin(x.avatar_focus)}),
+    authorAvatar:onlineAuthorRingHtml,refitImages:refitNativeImages,tagLabel,
+    openEntity:(entityKind,name)=>openEntity(entityKind,name),
+    showTags:showIndexTags,openFollowAuthor:openFollowAuthorFromIndex,openFollowTag:openFollowTagFromIndex,
+    configurable:!!runtimeConfigurable,
+  },{isCurrent:()=>surfaceCurrent(surface)});
+  if(!surfaceCurrent(surface))return;
+  buildEdge();scheduleStickySurfaces();
 }
 
 /* 「女优」只用于番号发行物。素人、创作者自制和网红内容里的出镜者是艺人，
@@ -10304,25 +10075,6 @@ function openTrash(push){
   if(push)route('/trash');
   state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};clearSearchField();
   showHomeSurfaces();buildEdge();buildBars();load(true);
-}
-/* 索引页（女优／创作者／标签）三条路由共用。
-   `push=true` 是从导航点进来：退出选择模式、不带搜索词从头开始。
-   `push=false` 是地址栏已经在这一屏：视图状态从 URL 读。
-   `q` 显式传入时优先——批量操作后的就地重取要保留搜索框里已经打好的词。 */
-function indexQuery(){return $('#iq')?.value.trim()||''}
-function openIndexRoute(kind,push,q=null){
-  if(push){setSelectMode(false,true);return openIndex(kind)}
-  const params=new URLSearchParams(location.search);
-  if(kind==='tags')readTagIndexRoute(params);
-  if(kind==='performers')performerIndexScope=params.get('scope')==='online'?'online':'local';
-  return openIndex(kind,q??(params.get('q')||''),false);
-}
-function readTagIndexRoute(params){
-    tagIndexScope=params.get('scope')==='online'?'online':'local';
-    tagIndexMode=params.get('view')==='cloud'?'cloud':'alphabet';
-    const category=params.get('category')||'all';
-    const categories=tagIndexScope==='online'?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES;
-    tagIndexCategory=categories.some(([key])=>key===category)?category:'all';
 }
 /* 沉浸模式当前这一条写在 `?id=`（见 tokShow），刷新和后退都该回到同一条片子。 */
 function immerseStartId(){

@@ -4,6 +4,9 @@
  * `entry.tsx` 按这里的签名实现，两边的类型检查各自对照同一份声明。
  * 配置数据的形状以 `/api/configuration`（`src/peach/routes_configuration.py`）为准。 */
 import type { QualityGoal } from './quality-goals/quality-goals';
+import type { IndexProps } from './index/index-data';
+
+export type { IndexProps };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -351,6 +354,7 @@ export interface ReactPages {
   'data-cleanup': ReactPage<DataCleanupProps>;
   duplicates: ReactPage<DuplicatesProps>;
   'follow-manage': ReactPage<FollowManageProps>;
+  index: ReactPage<IndexProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   review: ReactPage<ReviewProps>;

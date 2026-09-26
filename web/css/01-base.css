@@ -585,15 +585,17 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
    没有变量时 min(100%,100%) 就是铺满，JS 没跑到的地方按 CSS 自己收场。
    补底那一层是同一张图放大后模糊，往框外多铺一圈，让糊边落在 overflow 之外。 */
 [data-fit-native]{position:relative}
-/* 选择器点名这两处容器：`.icell .ring img` 与 `.entityportrait img` 各自写着
-   width:100% 和 object-fit:cover，光凭一个属性选择器压不过它们。
+/* 选择器点名这三处容器：`.icell .ring img`、`.entityportrait img` 与 React 索引页那枚
+   `[data-person-ring]` 的 img 各自写着铺满和 object-fit:cover，光凭一个属性选择器压不过它们。
 
    尺寸走 `--markw` / `--markh` 而不是 `width:auto`：还没度量过的图按 auto 是 0×0，
    而 `loading="lazy"` 见到 0×0 的框就认定它不在视口里，于是永远不去取这张图——
    图不来就没有 load、没有 load 就没有度量，两边互相等着，格子一直空着。缺省值
    仍是铺满，度量之后才换成那张图自己的像素数。 */
 .icell .ring[data-fit-native="mark"] img,.entityportrait[data-fit-native="mark"] img,
-.icell .ring[data-native-small="true"] img,.entityportrait[data-native-small="true"] img{
+[data-person-ring][data-fit-native="mark"] img,
+.icell .ring[data-native-small="true"] img,.entityportrait[data-native-small="true"] img,
+[data-person-ring][data-native-small="true"] img{
   width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;
   max-width:100%;max-height:100%;z-index:1}
 [data-fit-native]::before{content:"";position:absolute;inset:-14%;z-index:0;
@@ -601,4 +603,4 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
   opacity:.55;pointer-events:none}
 /* 首字母是取不到图时的垫底。图不再铺满框之后它会从旁边露出来，所以有图就收起来。
    资料页那一侧的首字母是 `.entityportrait>span`，`:has(img)` 已经替它收好了。 */
-.icell .ring[data-fit-native]:has(img) .ini{display:none}
+.icell .ring[data-fit-native]:has(img) .ini,[data-person-ring][data-fit-native]:has(img) .ini{display:none}

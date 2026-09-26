@@ -206,7 +206,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_index_and_entity_visibility_targets_exist_in_the_page(self):
         html = (Path(__file__).resolve().parents[1] / "web/index.html").read_text(encoding="utf-8")
-        for start, end in (("async function openIndex(", "  const title="),
+        for start, end in (("function showIndexSkeleton(", "  const placeholder="),
                            ("async function openEntity(", "  /* 大位")):
             body = self.app_js.split(start, 1)[1]
             body = body.split(end, 1)[0]
@@ -998,7 +998,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_a_solid_tier_hover_spells_out_its_own_text_colour(self):
         """把填充换成实心一档的悬停规则必须自己写 `color`，不能指望静止那条留下来。
 
-        `:hover` 只声明 background 时，同一组里更宽的通用悬停（`.tagselection
+        `:hover` 只声明 background 时，同一组里更宽的通用悬停（`.batchbar
         button:hover`、`.junkactions button:hover` 都是）会把文字提到 `--ink`：
         它的选择器更弱，可 `color` 在实心档自己这条里没有对手，于是深色实底上落成
         深字深底，鼠标一压按钮上的字就没了。2026-09-04 用户在关注管理页第二次遇到
@@ -1302,7 +1302,7 @@ class WebUiSourceTests(unittest.TestCase):
         for selector in (".srctools button:disabled",):
             self.assertPageContains(selector + ringed)
         for selector in (".geist-button:disabled", ".fbtn:disabled",
-                         ".resourceaction:disabled", ".tagselection button:disabled"):
+                         ".resourceaction:disabled"):
             self.assertPageContains(selector + flat)
 
     def test_the_secondary_tier_keeps_a_one_pixel_ring_so_it_reads_on_its_own_ground(self):
@@ -1570,7 +1570,7 @@ class WebUiSourceTests(unittest.TestCase):
         for selector in (".fbadge{", ".fvkind{"):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
-        for selector in (".indexmore,.entitymore{",):
+        for selector in (".entitymore{",):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
@@ -1829,8 +1829,8 @@ class WebUiSourceTests(unittest.TestCase):
                         'box-shadow:inset 0 0 0 2px var(--color-border-button-active)}')
         self.assertPageLacks("data-follow-search-prefix")
         self.assertPageLacks("fsearchprefix")
-        # 遗留层剩下的调用点走组件；索引页的筛选框不再用 placeholder 当标签。
-        self.assertPageContains("searchInputHtml({id:'iq',label:'过滤'+title,value:q||''})")
+        # 遗留层剩下的调用点走组件：索引页首屏骨架里那格过滤框也是它，标签同 React 页头那一格。
+        self.assertPageContains("searchInputHtml({label:'过滤'+title,value:q||''})")
         self.assertPageLacks('<input id="iq" placeholder="过滤…"')
         # 关注管理的那一处：标签一字不差，查找中的说明是同一屏里的一段文字。
         add = (Path(__file__).resolve().parents[1]
@@ -1843,10 +1843,9 @@ class WebUiSourceTests(unittest.TestCase):
         """选字过程中不查询：拿半截拼音去筛选，筛的是「zhon」这种不存在的词。
 
         `input` 在组字过程中照样发，事件上的 `isComposing` 是唯一可靠的判据；
-        组完由 `compositionend` 接手。回车同理——那一下是定字，不是提交。
+        组完由 `compositionend` 接手。索引页的过滤框在 React 里，同一条判据由
+        `frontend/test/react/index-page.test.tsx` 验收。
         """
-        self.assertPageContains("iq.oninput=e=>{if(e.isComposing)return;refineIndex()};")
-        self.assertPageContains("iq.oncompositionend=refineIndex;")
         self.assertPageContains("const handleSearchInput=e=>{\n  if(e.isComposing)return;")
         self.assertPageContains("$('#q').oninput=handleSearchInput;")
         self.assertPageContains("$('#q').addEventListener('compositionend',handleSearchInput);")
@@ -1855,31 +1854,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 顶部搜索和标签选择器的键盘处理在最前面让位给输入法。
         self.assertPageLacks("$('#q').oninput=()=>{searchActive=-1;")
         self.assertPageLacks("search.oninput=renderPicker;")
-        self.assertEqual(self.app_js.count("if(e.isComposing)return;"), 5,
-                         "五处：索引筛选、顶部搜索的输入与键盘、标签选择器的输入与键盘")
-        # 只读筛选没有提交按钮，回车必须自己接管：不接就是按了没反应。
-        self.assertPageContains("iq.onkeydown=e=>{if(e.isComposing||e.key!=='Enter')return;")
-        self.assertPageContains(
-            "e.preventDefault();clearTimeout(it2);openIndex(kind,iq.value.trim(),true,true)};")
-
-    def test_a_filter_rerun_keeps_the_input_alive_instead_of_repainting_the_page(self):
-        """重画整屏会把正在打字的那个输入框换掉，光标和未定型的拼音一起丢。
-
-        筛选框重跑不是一次页面进入：既不该铺骨架（同步就能给的控件不进骨架），
-        也不该重画表头。表头里随查询变的只有计数，单独改它；标签页的读数住在浮层里，
-        跟着浮层一起重画。
-        """
-        self.assertPageContains("async function openIndex(kind,q,push=true,refine=false)")
-        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
-        self.assertCode("""if($('#indexFilters')){
-    $('#indexFilters').innerHTML=filters;
-    if(people)popCount($('#indexCount'),countText);
-    revealSkeleton($('#indexBody'),()=>{$('#indexBody').innerHTML=body});
-    $('#indexMore').hidden=!d.has_more;
-  }else""")
-        # 分类筛选自己有容器，才能不动表头单独换掉。
-        self.assertPageContains('<div id="indexFilters">${filters}</div>')
-        self.assertPageContains("it2=setTimeout(()=>openIndex(kind,iq.value.trim(),true,true),300)")
+        self.assertEqual(self.app_js.count("if(e.isComposing)return;"), 4,
+                         "四处：顶部搜索的输入与键盘、标签选择器的输入与键盘")
 
     def test_route_titles_and_settings_dialog_manage_focus(self):
         # 标题跟着路由表走：每一屏的标签写在自己那条记录上，不再有第二份
@@ -1910,7 +1886,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_hidden_load_more_buttons_are_actually_removed_from_layout(self):
         # 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏；
         # 少了这条规则，按钮画在页面上但 requestMore 首行就 return，点了没反应。
-        self.assertPageContains(".indexmore[hidden],.entitymore[hidden]{display:none}")
+        self.assertPageContains(".entitymore[hidden]{display:none}")
 
     def test_co_starred_cards_keep_one_name_and_the_total(self):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
@@ -2023,7 +1999,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 跟着这一页的身份走——创作者的图写成 `performer-<id>.img` 是读不到的。
         self.assertPageContains("ref?{id:ref,has_image:x.has_image}:null,")
         self.assertPageContains(
-            "x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',")
+            "x.has_avatar&&!company?x.rep:null,kind,x.mark,x.has_logo?x.k:'',")
         # 口味榜（`/api/taste`）归 React 档，判据仍是同一对：引用给 `avatarInner()`，
         # 代表作那一侧只有 `has_avatar` 为真才交。
         taste = (Path(__file__).resolve().parents[1]
@@ -2090,7 +2066,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 脸框得穿过它才到得了 img——平移挂容器、放大挂图，两件事各走各的。
         self.assertPageContains("focus:company?null:d.avatar_focus,")
         self.assertPageContains("style:facePos(x.avatar_focus),focus:x.avatar_focus}")
-        self.assertPageContains("bigMark?'large':'ring', company?null:x.avatar_focus, true)")
+        self.assertPageContains("company&&big?'large':'ring',company?null:x.avatar_focus,true);")
         self.assertPageContains("logo:logoName,logoVariant,focus:hint,thumb}")
         # 五个数挤一个属性，回落时只要摘一样东西。
         self.assertPageContains(
@@ -2477,14 +2453,13 @@ class WebUiSourceTests(unittest.TestCase):
         # 悬停不许提边：这条只写 background。
         rule = self.page[self.page.index(".pcheck:hover>span,"):]
         self.assertNotIn("border-color", rule[:rule.index("}")])
-        # 遗留层剩下的调用点，一个都不许再留原生 checkbox 的 accent-color。关注管理的
-        # 那几处随整页进了 React，画的是 BoardUI `Checkbox`。
-        for attrs in ("data-pick-playlist=", "data-tag-match-any", 'id="groupCollapseSetting"'):
+        # 遗留层剩下的调用点，一个都不许再留原生 checkbox 的 accent-color。关注管理与
+        # 标签索引页的那几处随整页进了 React，画的是 BoardUI `Checkbox`。
+        for attrs in ("data-pick-playlist=", 'id="groupCollapseSetting"'):
             self.assertPageContains(attrs)
         # 单选框仍归原生（`.metadatacandidate` 是 radio，不是同一个控件）。
         self.assertPageLacks(".fsrcmenu input{accent-color")
         self.assertPageLacks(".fpickitem input{accent-color")
-        self.assertPageLacks(".tagselection input{width:18px")
         self.assertPageLacks(".settingrow input[type=checkbox]{width:20px")
         # 停用的候选不该显示成可点。
         self.assertPageContains(".pcheck:has(input:disabled){cursor:not-allowed}")
@@ -3225,10 +3200,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("company?'company':'people'")
         self.assertPageContains('class="tagwall index-tags"')
         self.assertPageContains('.index-skeleton[data-fill]>section>div')
-        self.assertPageContains("indexHeaderHtml(kind,q,'<span class=\"countskeleton\"></span>')")
-        self.assertPageContains("if($('#indexFilters')){")
-        self.assertPageContains("showIndexLoading('正在读取索引',path.slice(1)")
-        self.assertPageContains("querySelector('[data-skeleton]')?.dataset.skeleton!==next")
+        # 页头照最终结构铺，读数先是一枚占位；深链冷启动与进页面铺的是同一张。
+        self.assertPageContains('<span class="mono" id="indexCount"><span class="countskeleton"></span></span>')
+        self.assertPageContains("showIndexSkeleton(indexRoute(path.slice(1)));")
 
     def test_inline_portrait_cards_follow_dense_mode(self):
         self.assertPageContains('body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}')
@@ -5516,8 +5490,6 @@ class WebUiSourceTests(unittest.TestCase):
         条子常驻的话，一张没选时它在屏幕下沿横着一块空玻璃，读起来像是有东西待处理。
         """
         self.assertPageContains('class="batchbar selectiondock"')
-        self.assertPageContains('class="tagselection selectiondock"')
-        self.assertPageContains('panel.hidden=!selectMode||!selectedIndexTags.size;')
         self.assertPageContains('.selectiondock[hidden]{display:none}')
         self.assertNotIn("selection.active=selectMode", self.page)
 
@@ -5600,10 +5572,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const surface=claimSurface('/review')")
         self.assertPageContains("if(!surfaceCurrent(surface))return")
         self.assertCode("async function restoreRoute(){\n  surfaceEpoch++")
-        self.assertPageContains("if(requestSeq!==indexRequestSeq||location.pathname!=='/'+kind)return")
         self.assertPageContains("decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath)")
-        index = self.page.split("async function openIndex", 1)[1].split("const d=await api", 1)[0]
-        self.assertIn("showHomeSurfaces();", index)
         # 「换一批」在管理区的行为写在路由表的 refresh 上，不再每页一条分支。
         self.assertPageContains("if(hit?.route.refresh==='reopen'){await hit.route.open(hit.params,false);return}")
         self.assertRoute('/review', "refresh:'reopen'")
@@ -6098,9 +6067,9 @@ class WebUiSourceTests(unittest.TestCase):
                             "--glass-tint-b:var(--glass-native-b)",
                             "--glass-native-a:#6686b8;--glass-native-b:#8f98a4"):
             self.assertIn(declaration, css)
-        # 多选那条悬浮坞、批处理条和标签选择条也读这两团：它们和侧栏同时在屏上，
+        # 多选那条悬浮坞和批处理条也读这两团：它们和侧栏同时在屏上，
         # 漏掉任何一条就是一屏里两种颜色的玻璃。
-        for face in ("body .selectiondock{", ".batchbar,.tagselection{", "[data-glass-pane]{"):
+        for face in ("body .selectiondock{", ".batchbar{", "[data-glass-pane]{"):
             with self.subTest(face=face):
                 rule = css.split(face, 1)[1].split("}", 1)[0]
                 self.assertIn("var(--glass-drift-a),var(--glass-drift-b)", rule)
@@ -6708,8 +6677,8 @@ class WebUiSourceTests(unittest.TestCase):
         实体图是给大位存的照片，本库 727 张均 221 KB；铺进 150 px 的格子，一屏 120 格
         就是十几 MB，而屏幕上用得着的只有其中百分之几的像素。
         """
-        self.assertCode(
-            "        bigMark?'large':'ring', company?null:x.avatar_focus, true)}</span>")
+        # 末位的 true 就是「取派生件」；索引页与资料页名册的格子都经 personRingHtml 出图。
+        self.assertPageContains("company&&big?'large':'ring',company?null:x.avatar_focus,true);")
         # 解码离开主线程：几十张图同时落地时，同步解码把滚动和点击一起压住。
         self.assertPageContains(
             "`<img src=\"${src}\" alt=\"${alt}\"${lazy?' loading=\"lazy\"':''} decoding=\"async\"")
@@ -6725,12 +6694,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode(
             "  const frame=faceFrame({cx,cy,faceW:faceW*scale,imgW:imgW*scale,imgH:imgH*scale},\n"
             "    {w:rect.width,h:rect.height},window.devicePixelRatio||1);")
-
-    def test_loading_more_index_entries_shows_that_it_is_working(self):
-        """这一段是一次往返加一屏头像；把键按灰说不出「还在走」和「点了没反应」。"""
-        self.assertPageContains(
-            "more.setAttribute('aria-busy','true');more.innerHTML=loadingDotsHtml('继续载入中…');")
-        self.assertPageContains("finally{more.removeAttribute('aria-busy');more.textContent=MORE_LABEL;")
 
     def test_the_agency_page_opens_on_its_roster(self):
         """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
@@ -6760,9 +6723,11 @@ class WebUiSourceTests(unittest.TestCase):
             "         style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>")
 
     def test_a_company_cell_is_square_because_it_holds_a_mark_not_a_face(self):
-        """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。"""
-        self.assertCode(
-            "const cells=entityKind==='studio'||entityKind==='agency'?'company':'people';")
+        """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。
+
+        这里是资料页名册那一格；索引页的方格在 React 里（`index/index-people.tsx`）。
+        """
+        self.assertCode("const cells=cellKind==='studio'?'company':'people';")
         self.assertPageContains('<div class="igrid" data-cells="${cells}" data-layout="${')
         self.assertPageContains(
             '.igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}')
@@ -6803,15 +6768,8 @@ class WebUiSourceTests(unittest.TestCase):
         """厂牌出片、事务所出人，是两种实体：开关切的是路径，不是同一批数据再筛一次。"""
         self.assertCode("const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],"
                         "['agencies','事务所','briefcase']];")
-        self.assertPageContains("function makerModeHtml(kind){")
-        # 两条地址是两页，所以这一排是 Board 的下划线 Tabs；切的是地址，不是给这一批加筛选。
-        self.assertCode("  return boardTabsHtml(MAKER_INDEX_KINDS.map(([value,label,symbol])=>({value,label,symbol})),\n"
-                        "    {active:kind,attr:'data-index-kind',label:'公司类型',className:'indextabs'});")
-        self.assertCode("$('#index').querySelectorAll('[data-index-kind]').forEach(b=>b.onclick=()=>{")
-        self.assertCode("openIndex(b.dataset.indexKind,$('#iq').value.trim(),true)});")
-        # 蓝线按下去当场就挪：换页时页头不重画，不改属性那条线就停在旧的一档上。
-        self.assertCode("const selectTab=button=>button.closest('[role=\"tablist\"]')?.querySelectorAll('[role=\"tab\"]')\n"
-                        "    .forEach(tab=>tab.setAttribute('aria-selected',String(tab===button)));")
+        # 两条地址是两页，所以这一排是 Board 的下划线 Tabs；切换与蓝线由
+        # `frontend/test/react/index-page.test.tsx` 验。
         # Tabs 里的前置图标是这一排独有的：厂牌是场记板、事务所是公文包，指的都是对象。
         self.assertPageContains("${symbol?icon(symbol):''}${esc(text)}${badge}")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -6830,14 +6788,14 @@ class WebUiSourceTests(unittest.TestCase):
             "const src=useLogo?`/logo?studio=${encodeURIComponent(logo)}&variant=${logoVariant}`")
         # 变体由调用点决定：小圆框和窄格子要方形图标，索引页那格要 large。
         self.assertPageContains("logo:logoName,logoVariant,focus:hint,thumb}")
-        self.assertPageContains("bigMark?'large':'ring', company?null:x.avatar_focus, true)")
+        self.assertPageContains("company&&big?'large':'ring',company?null:x.avatar_focus,true);")
         # 取不到标识就退回实体图、再退到头像，和资料页大位同一条链。
         self.assertPageContains("const fallbacks=useLogo?[entitySrc,avatarSrc].filter(Boolean)")
         # 公司这一格不退到代表作截图，和它自己的资料页同一条判据。
         self.assertPageContains("const company=kind==='studio'||kind==='agency';")
         # 索引页那格由服务端的 has_logo 决定走不走这一环。
         self.assertPageContains(
-            "x.has_avatar&&!company?x.rep:null, kind, x.mark, x.has_logo?x.k:'',")
+            "x.has_avatar&&!company?x.rep:null,kind,x.mark,x.has_logo?x.k:'',")
         # 标识不是人脸，取景和摘取景那套只贴给实体图。
         self.assertPageContains("const framed=useEntity&&!useLogo;")
 
@@ -6847,27 +6805,11 @@ class WebUiSourceTests(unittest.TestCase):
         后缀说明不了清晰度：Prestige 的 `icon` 只有 42 px、MOODYZ 的只有 64 px，
         摆进 180 px 的大格就是一团糊，而它们的裸文件分别有 632 px 和 403 px。
         """
-        self.assertPageContains("bigMark?'large':'ring', company?null:x.avatar_focus, true)")
+        self.assertPageContains("company&&big?'large':'ring',company?null:x.avatar_focus,true);")
         self.assertPageContains(
             "logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',")
         # 小位仍要方形小标：卡片角标和顶栏那排只有二十来像素，取原图只是白下载。
         self.assertPageContains('variant=icon"')
-
-    def test_the_compact_studio_ring_keeps_the_square_mark(self):
-        """圆框里摆完整字标，看得清的部分比方标还少。
-
-        两个版式于是各取各的一档，换版式时原地把地址里的变体换掉：重拼列表会丢掉
-        滚动位置和已经取回的图，而多取一次标识在本机服务端上不值钱。
-        """
-        self.assertPageContains("const bigMark=company&&peopleIndexLayout()==='big';")
-        self.assertPageContains("function retargetCompanyMarks(root){")
-        self.assertPageContains(
-            "const next=src.replace(/([?&]variant=)[^&]*/,`$1${big?'large':'ring'}`);")
-        # 已经回落到实体图的格子不在 `/logo` 这条链上，改它的地址只会指向不存在的东西。
-        self.assertPageContains("if(!src.startsWith('/logo?'))return;")
-        # 圆框不按原尺寸摆，上一档留在容器上的三个度量要跟着撤，否则字标的尺寸会
-        # 继续压着方标。
-        self.assertPageContains("ring.setAttribute('data-fit-native','mark');")
 
     def test_a_mark_smaller_than_its_frame_is_not_blown_up(self):
         """图比框还小就不拉伸：原尺寸居中，空出来的一圈用同一张图放大模糊补底。
@@ -6894,23 +6836,21 @@ class WebUiSourceTests(unittest.TestCase):
         # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
         # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
         self.assertCode(
-            '.icell .ring[data-native-small="true"] img,.entityportrait[data-native-small="true"] img{\n'
+            '.icell .ring[data-native-small="true"] img,.entityportrait[data-native-small="true"] img,\n'
+            '[data-person-ring][data-native-small="true"] img{\n'
             "  width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;\n"
             "  max-width:100%;max-height:100%;z-index:1}")
         self.assertPageContains('[data-fit-native]::before{content:"";position:absolute;'
                                 'inset:-14%;z-index:0;')
         # 图不再铺满框，首字母垫底会从旁边露出来。
-        self.assertPageContains(".icell .ring[data-fit-native]:has(img) .ini{display:none}")
+        self.assertPageContains(".icell .ring[data-fit-native]:has(img) .ini,"
+                                "[data-person-ring][data-fit-native]:has(img) .ini{display:none}")
 
     def test_the_company_index_layout_control_says_what_it_shows(self):
         """厂牌那一格摆的是方形标识，提示不能照艺人页写「竖幅头像」。"""
         self.assertPageContains(
             "const COMPANY_LAYOUTS=[['big','大图 · 完整标识','maximize'],"
             "['compact','紧凑 · 圆形标识','layout-grid']];")
-        self.assertCode(
-            "function indexLayoutOptions(kind){\n"
-            "  return kind==='studios'||kind==='agencies'?COMPANY_LAYOUTS:PEOPLE_LAYOUTS;\n"
-            "}")
         # 档位仍是同一个设置值，分开的只有说法。
         self.assertPageContains(
             "allowedSetting(appSettings.peopleLayout,PEOPLE_LAYOUTS.map(([k])=>k),'big')")
@@ -6928,23 +6868,12 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageLacks("tagmodes")
         self.assertPageLacks("viewmodes")
-        self.assertCode("function scopeTabsHtml(active,attr,label){\n"
-                        "  return boardTabsHtml(INDEX_SCOPES.map(([value,text,symbol])=>({value,label:text,symbol})),\n"
-                        "    {active,attr,label,className:'indextabs'});\n"
-                        "}")
-        self.assertCode("function tagScopeTabsHtml(){return scopeTabsHtml(tagIndexScope,'data-tag-scope','词表')}")
-        self.assertCode("function performerScopeTabsHtml(){\n"
-                        "  return scopeTabsHtml(performerIndexScope,'data-performer-scope','名册');\n"
-                        "}")
-        self.assertCode("${kind==='tags'?tagScopeTabsHtml():kind==='performers'?performerScopeTabsHtml()\n"
-                        "      :MAKER_INDEX_KINDS.some(([key])=>key===kind)?makerModeHtml(kind):''}")
 
     def test_the_index_head_keeps_only_the_layout_switch(self):
         """页头里只剩版式切换一组控件，它站在自己那块底板上、28px 高。"""
         self.assertPageContains("border-radius:var(--surface-radius);background:var(--overlay-5)}")
         self.assertPageContains(".iconswitch label{position:relative;display:inline-grid;"
                                 "width:34px;height:28px;")
-        self.assertPageContains("      ${people?peopleLayoutButtons(kind):''}\n")
 
     def test_entity_name_picker_offers_only_this_entity_existing_names(self):
         # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
@@ -7559,14 +7488,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("p.set('limit','48')")
         self.assertPageContains("if(offset)p.set('count','0')")
         self.assertPageContains('class="entitymore"')
-        self.assertPageContains("const indexLimit=people?120:180")
-        self.assertPageContains('class="indexmore"')
         self.assertPageContains("adsBatch.items.slice(pageOffset,pageOffset+appSettings.batchSize)")
         self.assertPageContains("p.set('limit',appSettings.batchSize)")
         self.assertPageContains("const pageOffset=reset?0:offset+appSettings.batchSize")
         self.assertPageContains("if(!reset)p.set('count','0')")
         self.assertPageContains("enabled:()=>!listLoading&&$('#stats').hidden&&$('#index').hidden")
-        self.assertPageContains("indexRequestSeq")
         self.assertPageContains("barsRequestSeq")
         self.assertPageContains("async function getBarsData(context=barsContext)")
         self.assertPageContains("Date.now()-barsDataAt<30000")
@@ -7933,7 +7859,6 @@ class WebUiSourceTests(unittest.TestCase):
                                 "      {cards:true,className:'follow-content-skeleton postercard-skeleton'});")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
-        self.assertPageContains("if(!refine)showIndexLoading('正在读取'+(INDEX_TITLES[kind]||'标签'),kind,q)")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
         # 「接着看」没有内容就整块不出现：推荐条数设为 0 时不生成，取回空列表时整块拿掉。
@@ -7944,27 +7869,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("function showItemDetailLoading(anchor,above)")
         self.assertPageLacks("detailpending")
         self.assertPageLacks("showItemDetailLoading(origin,above)")
-
-    def test_switching_an_index_tab_only_skeletons_the_content_below(self):
-        """换一档词表或名册，骨架只盖下面那块内容。
-
-        页头和筛选浮层此刻就能给出最终样子，它们从来没在等：整块重画的代价是过滤框
-        连同里面的字和焦点一起被换掉，Tabs 那条蓝线从头起跑，浮层先消失再出现——换
-        一次词表，上面两条全闪一遍。判据要两样都成立：外壳记的是同一个 kind，而且那块
-        内容还在；资料页会把 `#index` 整个换掉，只看记号的话会往一个已经不存在的节点
-        里塞骨架。
-        """
-        self.assertPageContains("const body=kind&&$('#index').dataset.indexShell===kind?$('#indexBody'):null;")
-        self.assertCode("  if(body){\n"
-                        "    const next=indexSkeletonHtml({kind,layout:peopleIndexLayout(),mode:tagIndexMode});\n"
-                        "    if(skeletonKeyOf(body.innerHTML)!==skeletonKeyOf(next)){body.innerHTML=next;fitSkeleton(body)}\n"
-                        "    return;\n"
-                        "  }")
-        # 记号跟着内容走：内容重画完才写，值不对下一次就整块重画。
-        self.assertPageContains("$('#index').dataset.indexShell=kind;\n  wireIndexControls(kind);")
-        # 蓝线按下去当场就挪——骨架键不变、页头不重画，不在这里改属性那条线会停在旧档上。
-        self.assertPageContains("const selectTab=button=>button.closest('[role=\"tablist\"]')"
-                                "?.querySelectorAll('[role=\"tab\"]')")
 
     def test_every_management_surface_paints_the_same_skeleton_on_boot_and_on_route(self):
         """整页刷新只能出现一段加载动画，不是先大布局骨架、再各页自己的加载态。
@@ -8255,26 +8159,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';")
         self.assertPageContains('<span class="size">${sizeText}</span>')
 
-    def test_tags_page_has_cloud_and_alphabet_modes(self):
-        # 两个视图是同一批标签的两种摆法，走 iconswitch；页面级的本地／在线才是 Tabs。
-        self.assertCode("const TAG_VIEW_MODES=[['cloud','标签云','tags'],['alphabet','字母表','text-aa']];")
-        self.assertCode("const view=iconSwitchHtml('tag-view','标签视图',TAG_VIEW_MODES,tagIndexMode,{attr:'data-tag-view'});")
-        self.assertCode("wireIconSwitch($('#index'),'data-tag-view',value=>{\n"
-                        "    tagIndexMode=value;openIndex('tags',$('#iq').value.trim(),true)});")
-        self.assertPageContains('class="alphabet"')
-        self.assertPageContains("attr:'data-tag-category'")
-        self.assertPageContains("['meta','影片属性']")
-        self.assertPageContains("['relationship','人物关系']")
-        self.assertPageContains("['role','角色设定']")
-        self.assertPageContains("['appearance','外貌身材']")
-        self.assertPageContains("['scene','情境场所']")
-        self.assertPageContains("['story','故事剧情']")
-        self.assertPageContains("['position','性交体位']")
-        self.assertPageContains("['general','其他内容']")
-        self.assertPageContains("['copyright','作品']")
-        self.assertPageLacks("['artist','人物']")
-        self.assertPageContains("['character','角色']")
-        self.assertPageContains("key==='all'||Number(d.categories?.[key]||0)>0")
+    def test_tag_display_names_keep_the_common_spelling(self):
+        # 标签云与字母表两种摆法、类型筛选由 `frontend/test/react/index-page.test.tsx` 验。
         self.assertPageContains("'1080P':'1080p'")
         self.assertPageContains("'60fps':'60FPS'")
         self.assertPageContains("'AI去码':'AI解码'")
@@ -8282,17 +8168,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("'足系':'美腿'")
         self.assertPageLacks("'足交':'脚交'")
         self.assertPageContains("'骑乘':'骑乘位'")
-        self.assertPageContains("category=params.get('category')")
 
     def test_state_routes_tag_multiselect_and_header_capabilities_are_explicit(self):
         self.assertPageContains("const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged',ads:'/junk-files'}")
         self.assertPageContains('href="${v.k?STATE_ROUTES[v.k]:\'/\'}" data-state="${v.k}"')
         self.assertPageContains("route(homePath());buildBars();load(true)")
-        self.assertPageContains("const selectedIndexTags=new Set()")
-        self.assertPageContains('data-tag-match-any')
-        self.assertPageContains('广泛匹配')
-        self.assertPageContains('data-tag-apply')
-        self.assertPageContains("tag_match:tagIndexMatch")
         self.assertPageContains("const canSelect=catalog||entity||path==='/tags'")
         self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity")
         self.assertPageLacks("const canRefresh=")
@@ -9012,25 +8892,8 @@ class WebUiSourceTests(unittest.TestCase):
         说谎。字母表对在线那套正合适——实测 3582 个在线标签全是 ASCII，能分出
         # 和 A–V；本地全是中文，做字母表只会得到一个「中文」分组。
         """
-        self.assertCode("const INDEX_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];")
-        self.assertCode("function tagScopeTabsHtml(){return scopeTabsHtml(tagIndexScope,'data-tag-scope','词表')}")
-        self.assertCode("$('#index').querySelectorAll('[data-tag-scope]').forEach(b=>b.onclick=()=>{\n"
-                        "    if(tagIndexScope===b.dataset.tagScope)return;\n"
-                        "    selectTab(b);\n"
-                        "    tagIndexScope=b.dataset.tagScope;")
-        self.assertPageContains("if(tagIndexScope==='online')tagIndexMode='alphabet';",
-                                "切到在线应当直接给出字母表，那才是它的形态")
-        self.assertPageContains("const onlineTags=kind==='tags'&&tagIndexScope==='online';")
-        self.assertPageContains("'/api/follow/tags?types=all&limit='+indexLimit+'&offset='+offset")
-        self.assertPageContains("const ONLINE_TAG_CATEGORIES=")
-        self.assertPageContains("onlineTags?'r34-'+(x.cat||'unknown')")
-        self.assertPageContains("const categoryOptions=onlineTags?ONLINE_TAG_CATEGORIES:TAG_CATEGORIES")
-        # 多选面板是本地目录语义；分类栏两套词表都显示。
-        self.assertPageContains("if(kind==='tags'&&!onlineTags){")
-        self.assertPageContains(".alphatag.r34-artist")
-        self.assertPageContains(".alphatag.r34-character")
-        self.assertPageContains(".alphatag.r34-copyright")
-        self.assertPageContains(".alphatag.r34-metadata")
+        # 两套词表的切换、在线强制字母表与多选只在本地出现，由
+        # `frontend/test/react/index-page.test.tsx` 验；壳只铺同一组 Tabs 的骨架。
         self.assertPageContains("indexheading")
         self.assertPageContains("['local','本地','hard-drive']")
 
@@ -9041,31 +8904,10 @@ class WebUiSourceTests(unittest.TestCase):
         ——在线那一档的人还没进账本，没有资料页可去，他名下那批东西全在关注页上。
         所以跟标签页一样用页面级的 Tabs 分开，而不是在同一列里混着排。
         """
-        self.assertCode("let performerIndexScope='local';")
-        self.assertCode("const onlineAuthors=kind==='performers'&&performerIndexScope==='online';")
-        self.assertPageContains("if(onlineAuthors)indexQuery.set('scope','online');")
-        self.assertPageContains("?'/api/follow/authors?limit='+indexLimit+'&offset='+offset+\n"
-                                "      (q?'&q='+encodeURIComponent(q):'')")
-        self.assertCode("$('#index').querySelectorAll('[data-performer-scope]').forEach(b=>b.onclick=()=>{\n"
-                        "    if(performerIndexScope===b.dataset.performerScope)return;\n"
-                        "    selectTab(b);\n"
-                        "    performerIndexScope=b.dataset.performerScope;")
-        # 选择模式拼的是目录批量操作，对还没进账本的人一条都不成立。
-        self.assertPageContains("if(performerIndexScope==='online')setSelectMode(false,false);")
-        # 刷新和后退都该回到同一档。
-        self.assertPageContains("if(kind==='performers')performerIndexScope=params.get('scope')==='online'?'online':'local';")
-        # 一格的形状跟本地那一格共用，只有圆里那张图换成来源站点给的地址。
-        self.assertCode('''  return `<button class="icell" data-follow-author="${esc(x.key)}" data-kind="performer">''')
-        self.assertPageContains('''<span class="ring" data-fit-native="portrait"><span class="ini">${esc(initial)}</span>${image}</span>''')
+        # 切换、刷新回到同一档、选择模式退出与点开去关注页由
+        # `frontend/test/react/index-page.test.tsx` 验。圆里那张图换成来源站点给的地址，
+        # 取不到就退到来源给的备用图。
         self.assertPageContains("imageFallbackAttrs({fallbacks:[x.avatar_fallback||'']})")
-        self.assertPageContains("const peopleHtml=items=>onlineAuthors?items.map(onlineAuthorCellHtml).join(''):items.map(x=>")
-        # 点开去关注页，不是去一个不存在的资料页。
-        self.assertCode("  root.querySelectorAll('[data-follow-author]').forEach(b=>b.onclick=()=>{\n"
-                        "    followTags=new Set();followProviders=new Set();followWorks=new Set();\n"
-                        "    followMediaView='videos';followFilter='';\n"
-                        "    followAuthors=new Set([b.dataset.followAuthor]);\n"
-                        "    $('#index').hidden=true;route(followViewPath());openFollow(false)});")
-        self.assertPageContains("online:onlineTags||onlineAuthors")
 
     def test_the_follow_feed_controls_are_shuffle_then_the_sort_keys(self):
         """下排右端：换一批、图片墙上的「仅显示图片」，然后才是排序键。
@@ -9154,52 +8996,16 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("followAuthors.clear();followProviders.clear();followTags.clear();followWorks.clear();apply();")
         self.assertPageContains("wireFollowConditions($('#stats').querySelector('.followcombo'),applyFollowView);")
 
-    def test_the_tag_filters_live_in_the_home_glass_frame(self):
-        """标签页的类型药丸、读数、字母跳转和视图切换收进首页那块玻璃浮层。
+    def test_the_alphabet_skeleton_is_one_card_per_letter(self):
+        """骨架照最终结构：每个首字一张卡、一行一枚 36px 高、8px 圆角的标签。
 
-        上排是类型药丸，下排是读数加按首字跳转加视图切换；外框直接写成带槽位标记
-        的 HTML，随每次筛选整块重画。浮层住在 `#indexFilters` 里，那个父级只有浮层
-        自己那么高，sticky 会被它卡死——`display:contents` 让它退出盒树。
+        字母表本身的字头、计数徽标与跳转由 `frontend/test/react/index-page.test.tsx` 验。
         """
-        self.assertPageContains("function tagFilterFrameHtml(categories,readout,groups){")
-        self.assertCode("  const pills=categories.map(([key,label])=>filterChipHtml(label,\n"
-                        "    {attr:'data-tag-category',value:key,selected:tagIndexCategory===key,className:key})).join('');")
-        self.assertPageContains('<div class="board-filter-frame" data-filter-frame>\n'
-                                '    <div class="tagbar tagcategories" data-filter-row="top" aria-label="标签类型">'
-                                '<div class="filterscroll"><div class="tagscroll" data-filter-slot="tags">${pills}</div></div></div>\n'
-                                '    <div class="count tagcount" data-filter-row="bottom">'
-                                '<span class="mono" id="indexCount" data-filter-slot="readout">${readout}</span>${jump}'
-                                '<div class="sorts" data-filter-slot="controls">${view}</div></div></div>')
-        self.assertPageContains("#indexFilters{display:contents}")
-        self.assertPageLacks("tagfilters")
-        # 药丸上那枚色点说类型，选中那一枚的线和填充取自己的类型色。
-        self.assertPageContains(".tagcategories .pill::before,.alphatag::before{content:\"\";width:7px;height:7px;border-radius:50%;")
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-filter-frame .tagcategories .pill{border:1px solid var(--glass-low);background:transparent}", board)
-        # 标签页的读数只住在浮层里，页头不再重复一遍。
-        self.assertPageContains("${people?`<span class=\"mono\" id=\"indexCount\">${countText}</span>`:''}")
-        self.assertCode("    if(people)popCount($('#indexCount'),countText);")
-
-    def test_the_alphabet_is_one_card_per_letter_with_a_jump_row(self):
-        """每个首字一张卡：字头是卡的标题，右边挂计数徽标；一行一枚标签、36px 高、8px
-        圆角，取的是 Board 排名行那一档身量。浮层下排那排跳转键按首字排开，落点是卡。"""
-        self.assertPageContains('`<section class="alphagroup" data-alpha-group="${i}"><h3>${letter}'
-                                '<span class="board-tab-count">${items.length.toLocaleString()}</span></h3>'
-                                '<div class="alphalist">')
-        self.assertPageContains('<nav class="alphajump" aria-label="按首字跳转">')
-        self.assertPageContains('`<button type="button" data-alpha-jump="${i}">${esc(letter)}</button>`')
-        self.assertCode("$('#index').querySelectorAll('[data-alpha-jump]').forEach(b=>b.onclick=()=>{\n"
-                        "    $('#index').querySelector(`[data-alpha-group=\"${b.dataset.alphaJump}\"]`)\n"
-                        "      ?.scrollIntoView({block:'start',behavior:'smooth'})});")
-        # 卡顶给吸顶的浮层让位；载入更多后首字可能变多，浮层整块重画让跳转键跟上。
-        self.assertPageContains(".alphagroup{padding:16px 20px 12px;border-radius:var(--floating-radius);background:var(--ground);\n"
-                                "  scroll-margin-top:calc(var(--topH) + 124px)}")
+        self.assertPageContains(".alphagroup{padding:16px 20px 12px;border-radius:var(--floating-radius);background:var(--ground)}")
         self.assertPageContains(".alphatag{display:flex;align-items:center;justify-content:flex-start;gap:9px;height:36px;")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".alphagroup{border-radius:16px;box-shadow:none}", board)
         self.assertIn(".alphatag{border-radius:8px}", board)
-        self.assertCode("$('#indexFilters').innerHTML=tagFilters();wireIndexControls(kind);paintTagIndexSelection()}")
-        # 骨架照最终结构：字头占位加一张分组卡。
         self.assertPageContains('<section class="alphagroup"><span class="indexletterskeleton skeleton"></span>')
 
     def test_the_people_index_cells_are_board_cards(self):
@@ -9210,7 +9016,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".icell .nm{font-size:14px;line-height:20px;font-weight:500}", board)
         self.assertIn(".icell .n{font:var(--board-caption);color:var(--muted)}", board)
         self.assertIn('.igrid[data-layout="big"] .icell .ring{border-radius:10px}', board)
-        self.assertIn(".indexmore,.entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;", board)
+        self.assertIn(".entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;", board)
 
     def test_an_alphabet_entry_stays_on_one_line(self):
         """一枚标签占一行，长名字截断。
@@ -9243,7 +9049,7 @@ class WebUiSourceTests(unittest.TestCase):
         regular，填充声明写在 symbol 上——全局 svg 是
         `stroke:currentColor;fill:none`，只补 path 会让填充图标整枚不可见。
         """
-        self.assertPageContains("['alphabet','字母表','text-aa']")
+        self.assertIn("['alphabet', '字母表', 'text-aa']", self.read_react("index/index-tags.tsx"))
         self.assertPageContains("['playlists','播放列表','playlist'],")
         self.assertPageContains("emptyState('playlist','还没有播放列表'")
         self.assertPageContains('aria-label="编辑播放列表">${icon(\'playlist\')}')
@@ -10732,7 +10538,9 @@ class WebUiSourceTests(unittest.TestCase):
             "const ratio=WIDE_ICONS[name],classes=[ratio?'iconwide':'',cls].filter(Boolean).join(' ');")
         self.assertPageContains(
             "const box=ratio?`0 0 ${(24*ratio).toFixed(2)} 24`:'0 0 24 24';")
-        self.assertPageContains(".tagcount .iconswitch svg.iconwide{width:auto}")
+        # React 那一侧的字形组件带同一份比例，框由宿主给（标签页浮层那一格是 16×16）。
+        self.assertIn("const WIDE: Record<string, number> = { 'text-aa': 1.435 };",
+                      self.read_react("components/sprite-glyph.tsx"))
 
     def test_plain_text_inputs_share_one_token_so_the_button_beside_them_matches(self):
         """控件高度只有一档：输入框 38px，同一行的按钮照抄这个数。
@@ -10765,10 +10573,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('<Input aria-label="平台别名"', alias)
 
     def test_an_online_tag_opens_the_follow_page_not_a_catalog_filter(self):
-        """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。"""
-        self.assertPageContains("if(onlineTags){")
-        self.assertPageContains("followTags=new Set([b.dataset.k]);")
-        self.assertPageContains("$('#index').hidden=true;route(followViewPath());openFollow(false);return}")
+        """在线标签标注的是还没入库的在线更新，拿去筛目录必然一条不中。
+
+        点哪一枚由 React 标签页判（`frontend/test/react/index-page.test.tsx` 验收），
+        去关注页的那一步由遗留层这个助手做。
+        """
+        self.assertPageContains("function openFollowTagFromIndex(tag){")
+        self.assertPageContains("followTags=new Set([tag]);")
+        self.assertPageContains("$('#index').hidden=true;route(followViewPath());openFollow(false);\n}")
 
     def test_the_drawer_lists_follow_tags_without_the_catalog_binding_stealing_them(self):
         """抽屉里的关注标签必须保住自己的点击处理。
@@ -11155,7 +10967,7 @@ class WebUiSourceTests(unittest.TestCase):
             "$('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';"
             "$('#combo').innerHTML='';",
             "索引页与资料页的共用铺开函数必须收掉目录的筛选芯片")
-        for name, loader in (("openIndex", "showIndexLoading("), ("openEntity", "showEntityLoading(")):
+        for name, loader in (("openIndex", "showIndexSkeleton("), ("openEntity", "showEntityLoading(")):
             self.assertIn(loader, self._js_function(name),
                           name + " 自己铺索引页主体，多半又抄漏了一行")
         # 详情页内联在目录里，两个容器都还藏着：芯片在那里继续成立，不能被一起收掉。
@@ -11373,17 +11185,13 @@ class WebUiSourceTests(unittest.TestCase):
         """
         css = stylesheet_source()
         # 重复页「批量保留」那条不在此列：它是一块玻璃，上面的键沿用筛选框胶囊那圈 `--glass-low` 发丝边。
-        for name in (".tagselection button{", ".batchbar button{", ".junkactions button{"):
+        for name in (".batchbar button{", ".junkactions button{"):
             found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
             self.assertIsNotNone(found, f"{name} 找不到基样式")
             start = found.end() - len(name)
             rule = css[start:css.index("}", start)]
             self.assertIn("border:0", rule, f"{name} 不描边")
             self.assertIn("background:var(--ground)", rule, f"{name} 自己是一块面")
-        # 筛选那一排保留边的虚实：它说的是「这条筛选加上去了没有」。
-        self.assertPageContains(".tagcategories .pill[aria-pressed=\"true\"]{color:var(--ink);border-color:color-mix(in srgb,var(--tag-color,var(--ink)) 45%,transparent);")
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".board-filter-frame .tagcategories .pill{border:1px solid var(--glass-low);background:transparent}", board)
         self.assertPageContains(".factions button{width:36px;height:36px;"
                                 "border:1px solid rgba(255,255,255,.16);")
         # 资源同步那一族按钮的底色自己就画出了按钮，`border-color` 落在 `border:0` 上
@@ -11692,16 +11500,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const PEOPLE_LAYOUTS=[['big','大图 · 竖幅头像','maximize'],"
             "['compact','紧凑 · 圆形头像','layout-grid']];")
-        self.assertPageContains(
-            "iconSwitchHtml('people-layout',(INDEX_TITLES[kind]||'艺人')+'索引版式',")
-        self.assertPageContains("indexLayoutOptions(kind),peopleIndexLayout(),"
-                                "{attr:'data-people-layout'});")
-        # 只有艺人和创作者是头像网格；标签页那一屏没有图可放大。
-        self.assertPageContains("${people?peopleLayoutButtons(kind):''}")
-        self.assertPageContains(
-            "wireIconSwitch($('#index'),'data-people-layout',setPeopleIndexLayout);")
-        self.assertCode('`<div class="igrid" data-cells="${cells}" data-layout="${\n'
-                        '    peopleIndexLayout()}">${peopleHtml(d.items)}</div>`')
+        # 切换与写回偏好由 `frontend/test/react/index-page.test.tsx` 验。
         self.assertPageContains("peopleLayout:'big'", "默认与 JAV 版式、密度一致：大图为主")
 
     def test_the_big_people_layout_only_stretches_the_frame_it_does_not_change_columns(self):
@@ -11713,23 +11512,6 @@ class WebUiSourceTests(unittest.TestCase):
                              "两个版式必须同列宽同列数")
         self.assertPageLacks('.igrid[data-layout="compact"]',
                              "紧凑就是基础样式那一屏，不该再写一份")
-
-    def test_switching_the_people_layout_swaps_the_marks_without_repainting(self):
-        # 版式基本是展示层的事：改容器上的一个属性就够，和关注列表版式同一个做法。
-        # 例外只有厂牌标识——两个版式要的是不同的一档，那一批得原地换地址。
-        self.assertCode(
-            "function setPeopleIndexLayout(value){\n"
-            "  appSettings.peopleLayout=value;\n"
-            "  saveSettings();\n"
-            "  document.querySelectorAll('.igrid')"
-            ".forEach(grid=>{grid.dataset.layout=peopleIndexLayout()});\n"
-            "  // 大格与圆框要的标识不是同一档，换版式就得把已经在页面上的那批换过来。\n"
-            "  retargetCompanyMarks($('#index'));\n"
-            "  // 框换了大小，「这张图要不要补底」得重算：图早加载完了，"
-            "不会再自己发一次 load。\n"
-            "  refitNativeImages($('#index'));\n"
-            "  fitSkeleton($('#index'));\n"
-            "}")
 
     def test_the_big_people_layout_frames_the_detected_face(self):
         # 3:4 竖幅按几何居中会把脸切掉。换算只有 faceOrigin 一份：资料页写进 img 的

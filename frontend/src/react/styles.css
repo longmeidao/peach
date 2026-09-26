@@ -66,6 +66,8 @@
    * 名字与取值同 `web/board.css` 的 `--surface-radius`、`--floating-radius`。 */
   --radius-surface: 14px;
   --radius-floating: 20px;
+  /* 玻璃浮层下排那排按首字跳转的小键：比浮层上 8px 的药丸收一档。 */
+  --radius-glass-key: 7px;
   /* 分类列并回正文上方的那一档，以及药丸缩一号的那一档。 */
   --breakpoint-review-split: 900px;
   --breakpoint-review-tight: 600px;
@@ -86,6 +88,13 @@
   --breakpoint-duplicate-narrow: 901px;
   /* 旧 `board.css` 600px 那条窄屏媒体查询：列表页汇总块改上下两行，重复文件的组头与行距收一档。 */
   --breakpoint-compact: 601px;
+  /* 旧 `board.css` 760px 那条窄屏媒体查询：下划线 Tabs 收紧，索引页头把开关另起一行。 */
+  --breakpoint-board-narrow: 761px;
+  /* 索引页的格宽：人格 150px，公司格放宽一档到 180px（给方标识换宽度），字母表一行一枚标签
+   * 最窄 200px。壳铺的骨架（`web/css/06-index.css` 的 `.igrid` 与 `.alphalist`）用同一组宽。 */
+  --container-index-person: 150px;
+  --container-index-company: 180px;
+  --container-index-tag: 200px;
 }
 
 /* EvilCharts 源码写的是 shadcn 的语义色名（`bg-background`、`text-muted-foreground`、
@@ -141,6 +150,25 @@
 @utility link-stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+/* 索引页的名册网格：列宽不随版式变，大图只把圆框拉成竖幅，一屏人数不变而每张脸更大。
+ * 公司格放宽一档；760px 以下收回人格那一档，手机上仍是两列。 */
+@utility index-grid-person {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--container-index-person), 1fr));
+}
+@utility index-grid-company {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--container-index-company), 1fr));
+  @media (width < 761px) {
+    grid-template-columns: repeat(auto-fill, minmax(var(--container-index-person), 1fr));
+  }
+}
+/* 字母表一组里的标签：一行一枚，按可用宽度排成几列。 */
+@utility index-tag-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--container-index-tag), 1fr));
 }
 
 /* 重复文件的一行：封面、名字、所在库、大小、时长，路径另起一行跨过后四列。900px 以下
@@ -432,6 +460,91 @@
 
 .peach-react:has([data-selection-dock]) {
   padding-bottom: 96px;
+}
+
+/* 下划线 Tabs 那条 2px 蓝线（`components/board-tabs.tsx`）。位置与宽度由组件量出来写在
+ * tablist 上；位移跟侧栏、筛选条上那几块玻璃同一条弹簧，宽度匀速走——跟着弹簧过冲的话，
+ * 它会在停下之前先抻出邻居的边界。第一帧之后才打开过渡，头一次画出来直接落位。 */
+.peach-react [data-tab-indicator] {
+  width: var(--tab-width, 0px);
+  transform: translateX(var(--tab-x, 0px));
+}
+.peach-react [data-tab-indicator][data-ready] {
+  transition: transform calc(var(--spring-pane-ms, 200) * 1ms) var(--spring-pane, ease),
+    width calc(var(--spring-pane-ms, 200) * 1ms) ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .peach-react [data-tab-indicator][data-ready] { transition: none; }
+}
+
+/* 玻璃浮层上分段控件选中的那一格（`components/segmented.tsx` 的 `SEGMENT_GLASS`）：
+ * 白填充垫底、斜光一道、整圈 rim 描边，与浮层上其余「当前在哪儿」的那块同一副料。 */
+.peach-react [data-glass-segment][data-selected] {
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 62%), var(--glass-pick-fill);
+  box-shadow: inset 0 0 0 1px var(--glass-rim), var(--glass-pick-shadow);
+}
+
+/* 索引页的过滤框在窄屏把字号提到 16px：小于这一档，手机浏览器聚焦时会把整页放大。 */
+@media (width < 761px) {
+  .peach-react [data-index-search] input { font-size: 16px; }
+}
+
+/* 标签的类型色：本地九类取 ledger 的分类，在线那一套取上游 booru 的 tag_type（`r34-*`）。
+ * 标签云、字母表的色点和浮层上排的类型药丸读同一个 `--tag-color`，和卡片上标签的着色一致。
+ * 「全部」那一枚的色点是一段渐变，不落在任何一类上。 */
+.peach-react [data-tag-cat] { --tag-color: #7a91a8; }
+.peach-react [data-tag-cat="general"],
+.peach-react [data-tag-cat="r34-general"] { --tag-color: #55a7ff; }
+.peach-react [data-tag-cat="artist"] { --tag-color: #f1a454; }
+.peach-react [data-tag-cat="meta"] { --tag-color: #7f909e; }
+.peach-react [data-tag-cat="relationship"] { --tag-color: #f1a454; }
+.peach-react [data-tag-cat="role"] { --tag-color: #ed78af; }
+.peach-react [data-tag-cat="appearance"] { --tag-color: #a989f5; }
+.peach-react [data-tag-cat="scene"] { --tag-color: #53b8a4; }
+.peach-react [data-tag-cat="story"] { --tag-color: #e19a5b; }
+.peach-react [data-tag-cat="position"] { --tag-color: #d66e8d; }
+.peach-react [data-tag-cat="r34-artist"] { --tag-color: #e36c6c; }
+.peach-react [data-tag-cat="r34-character"] { --tag-color: #68c76f; }
+.peach-react [data-tag-cat="r34-copyright"] { --tag-color: #d675d6; }
+.peach-react [data-tag-cat="r34-metadata"] { --tag-color: #f5a24a; }
+.peach-react [data-tag-cat="r34-unknown"] { --tag-color: var(--muted); }
+/* 浮层上排的药丸没有「未分类」那一档：「全部」不带类型色，选中时退回主文字色。 */
+.peach-react [data-tag-pill][data-tag-cat="all"] { --tag-color: initial; }
+.peach-react [data-tag-dot] { background: var(--tag-color, var(--muted)); }
+.peach-react [data-tag-pill][data-tag-cat="all"] [data-tag-dot] {
+  background: linear-gradient(135deg, #55a7ff, #d783ff);
+}
+
+/* 标签云那一枚：线和底都取自己的类型色，悬停把底提一档、线不动。选中换成浮层选中那一档面。
+ * 类型色掺透明要按 sRGB 掺，与卡片上那枚同一副配色；工具类的透明度修饰按 oklab 掺，
+ * 同一个百分比在两个色彩空间里不是同一块颜色。 */
+.peach-react [data-tag-chip] {
+  border-color: color-mix(in srgb, var(--tag-color) 32%, transparent);
+  background: color-mix(in srgb, var(--tag-color) 7%, transparent);
+}
+.peach-react [data-tag-chip]:hover {
+  background: color-mix(in srgb, var(--tag-color) 13%, transparent);
+}
+.peach-react [data-tag-chip][aria-pressed="true"],
+.peach-react [data-alpha-tag][aria-pressed="true"] {
+  background: var(--picked);
+  color: var(--color-text-primary);
+}
+/* 类型药丸选中：线和填充取自己的类型色，「全部」取主文字色。 */
+.peach-react [data-tag-pill][aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--tag-color, var(--ink)) 45%, transparent);
+  border-style: solid;
+  background: color-mix(in srgb, var(--tag-color, var(--ink)) 12%, transparent);
+  color: var(--ink);
+}
+/* 字母表那一行悬停抬一层主文字色 6% 的薄底，取的是排名行那一档身量。 */
+.peach-react [data-alpha-tag]:not([aria-pressed="true"]):hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+
+/* 分组卡的上沿要让出吸顶的浮层：浮层下排那排跳转键滚过来时，卡顶正好落在浮层下面。 */
+.peach-react [data-alpha-group] {
+  scroll-margin-top: calc(var(--topH) + 124px);
 }
 
 .peach-react [data-source-divider] > * + * {

@@ -30,10 +30,11 @@ const heading = (page: Page, scope: string, name: string): Locator =>
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 
-/** 索引条目（`data-k`）或明确的空态，先出现哪个算哪个。选择器里就带 `:visible`：
- * 不然 `.first()` 可能落在一个隐藏的匹配上，等它可见等到超时，主体其实早画好了。 */
+/** 索引条目（`data-k`）或明确的空态，先出现哪个算哪个。两样都只有 React 那棵树画，
+ * 壳铺的骨架一样都不带。选择器里就带 `:visible`：不然 `.first()` 可能落在一个隐藏的
+ * 匹配上，等它可见等到超时，主体其实早画好了。 */
 const indexEntries = (page: Page): Locator =>
-  page.locator('#index [data-k]:visible, #index [data-geist-empty-state]:visible').first();
+  page.locator('#index [data-k]:visible, #index [data-empty-state]:visible').first();
 
 /** 统计页画完的标志：四张读数卡兼页签，第一张是馆藏。名字里还带读数和体积，按前缀匹配。 */
 const statsInventoryTab = (page: Page): Locator =>
@@ -42,7 +43,9 @@ const statsInventoryTab = (page: Page): Locator =>
 const ROUTES: readonly Route[] = [
   { path: '/', body: (page) => [page.locator('#grid article.card').first()] },
   { path: '/performers', body: (page) => [heading(page, '#index', '艺人'), indexEntries(page)] },
+  { path: '/creators', body: (page) => [heading(page, '#index', '创作者'), indexEntries(page)] },
   { path: '/studios', body: (page) => [heading(page, '#index', '厂牌'), indexEntries(page)] },
+  { path: '/agencies', body: (page) => [heading(page, '#index', '事务所'), indexEntries(page)] },
   { path: '/tags', body: (page) => [heading(page, '#index', '标签'), indexEntries(page)] },
   {
     path: '/playlists',
