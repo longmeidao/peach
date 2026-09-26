@@ -58,11 +58,14 @@
 /* 署名行只在作者换成发布者时出现，弱于作者名，一行放不下就截断。 */
 .followitem .meta .followcredit{min-height:0;font-size:var(--fs-xs);color:var(--muted);overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
-.javedition.followaudio{margin-right:6px}
+/* 标题前的版本字样。「含 WIP」说的是同组里还有一条半成品，这一条本身不是，配色弱于
+   WIP 本体。配音版着色带底，无声版弱化加虚线框。 */
+.javedition.followmark{margin-right:6px;color:var(--ink-2)}
+.javedition.followmark.wip{color:var(--meter)}
+.javedition.followmark.wip.partial{color:var(--muted)}
+.javedition.followmark.voiced{color:var(--keep);background:color-mix(in srgb,var(--keep) 16%,transparent)}
+.javedition.followmark.silent{color:var(--muted);border-style:dashed}
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
-.fbadge.wip{border-color:var(--meter);color:var(--meter)}
-/* 「含 WIP」说的是同组里还有一条半成品，这一条本身不是；配色要弱于 WIP 本体。 */
-.fbadge.wip.partial{border-color:var(--border-15);color:var(--muted)}
 .fbadge.dup{border-style:dashed;display:inline-flex;align-items:center;gap:4px}.fbadge.dup .ficon{margin:0}
 .fnote{font-size:var(--fs-xs);color:var(--muted)}
 /* 右上角：合并计数与主页卡片的版本角标同一个位置，右下角只留给时长。
