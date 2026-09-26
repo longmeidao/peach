@@ -31564,7 +31564,7 @@ function jk(e, t, n) {
 	for (let e of t) n ? r.add(e) : r.delete(e);
 	return r;
 }
-var Mk = (e) => hw(`${uk}?limit=1`, e), Nk = (e) => hw(lre, e), Are = (e) => hw(dk, e), jre = (e) => hw(pk, e), Mre = (e, t) => hw(`${ure}?q=${encodeURIComponent(e)}`, t), Pk = (e) => gw(dk, {
+var Mk = (e) => hw(`${uk}?summary=1`, e), Nk = (e) => hw(lre, e), Are = (e) => hw(dk, e), jre = (e) => hw(pk, e), Mre = (e, t) => hw(`${ure}?q=${encodeURIComponent(e)}`, t), Pk = (e) => gw(dk, {
 	...e?.length ? { sources: e } : {},
 	background: !0
 }), Nre = (e) => gw(pk, {

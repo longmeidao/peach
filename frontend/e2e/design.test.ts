@@ -269,7 +269,7 @@ async function openFollowManage(browser: Browser, viewport = DESKTOP): Promise<V
 
 async function stubFollowManage(page: Page): Promise<void> {
   const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-  await page.route('**/api/follow?limit=1', (route) => route.fulfill(json({
+  await page.route('**/api/follow?summary=1', (route) => route.fulfill(json({
     sources: [
       followSource(1, 'kou', 'Kemono', 'kou · Kemono'),
       followSource(2, 'kou', 'Pawchive', 'kou · Pawchive'),

@@ -1751,6 +1751,23 @@ class FollowContractTests(unittest.TestCase):
         # counts 不随分页缩小：它统计的是整库。
         self.assertGreater(sum(page["counts"].values()), len(page["groups"]))
 
+    def test_the_summary_keeps_sources_and_counts_without_groups(self):
+        """管理页取 `summary=1`：来源、别名与计数和整页同源，作品分组与筛选项不算。"""
+        self._seed(candidates=(
+            FollowCandidate(provider="rule34video", external_id="1", title="Fiona - Paizuri",
+                            published_at="2026-08-18T00:00:00Z"),
+            FollowCandidate(provider="rule34video", external_id="2", title="Sayuri - Cowgirl",
+                            published_at="2026-08-17T00:00:00Z"),
+        ))
+        full = self._get()
+        summary = self._get(summary="1")
+        for key in ("sources", "author_aliases", "alias_suggestions", "suggestions", "counts"):
+            self.assertEqual(summary[key], full[key], key)
+        self.assertEqual(summary["counts"]["new"], 2)
+        self.assertEqual(summary["groups"], [])
+        self.assertEqual(summary["facets"], {})
+        self.assertFalse(summary["has_more"])
+
     def test_the_last_page_reports_no_more(self):
         self._seed()
         full = self._get()
