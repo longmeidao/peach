@@ -34,7 +34,7 @@ from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
-from peach import link_marks, scraping_access, settings_file
+from peach import follow_assets, link_marks, scraping_access, settings_file
 from peach.config import FFMPEG_DIR
 from peach.ffmpeg import FFmpegResolver
 from peach.library_processing import process_library
@@ -156,6 +156,8 @@ class WebE2ESmokeTests(unittest.TestCase):
         settings_file.write(config)
         generated = config.directory("generated")
         # 路由冒烟只验页面与站标端点的衔接；取图算法另有 mock 契约，不让这轮布局测试依赖外网。
+        # 站标与来源图标两处缓存都预先填上同一张图：缓存为空时 `/site-mark` 与 `/source-icon`
+        # 会在请求时去各站拉图，站点或代理一抖就 404，用例把 404 记成问题，整轮就红。
         mark_root = generated / "site-marks"
         mark_root.mkdir(parents=True)
         mark = (ROOT / "resources" / "peach-logo.png").read_bytes()
@@ -163,6 +165,11 @@ class WebE2ESmokeTests(unittest.TestCase):
             cached = link_marks.cached_path(mark_root, spec["login"])
             if cached is None:
                 raise AssertionError(f"采集来源没有可缓存的主机：{spec['login']}")
+            cached.write_bytes(mark)
+        icon_root = generated / follow_assets.ROOT_NAME
+        for provider in follow_assets.SOURCE_ICON_URLS:
+            cached = follow_assets.cache_path(icon_root, "icons", provider)
+            cached.parent.mkdir(parents=True, exist_ok=True)
             cached.write_bytes(mark)
         result = process_library(config, cls.db, generated, generated / "covers",
                                  provider_factory=refuse_network)
