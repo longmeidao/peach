@@ -946,6 +946,37 @@ METADATA_FIELD_COLUMNS = {
 }
 
 
+#: 刮削链之前那两套导入写下的关联来源：r18 与 javbus 的发行元数据，外加从 `asset`
+#: 扁平字段投影出来的 `legacy:asset`。它们和 `javinizer:*` 一样是抓来的，官方值换掉
+#: 字段时要一起换掉。只删 `javinizer:*` 时旧的那几条留在原处：`ACC-006` 的 r18 条目按
+#: 番号撞上了 2009 年 Star Ship 的同号片，DMM 的值落进字段以后，页面上仍挂着那部片的
+#: 系列「決断」和出演者「三浦沙绫」。
+_SCRAPED_ROLE_SOURCES = {
+    "performer": ("r18:performer", "javbus:performer"),
+    "studio": ("r18:studio", "javbus:studio", "legacy:asset"),
+    "series": ("r18:series", "javbus:series", "legacy:asset"),
+}
+
+
+def _drop_superseded_links(connection, asset_ids: list[int], field: str, entity_id: int,
+                           name: str) -> None:
+    """字段换成官方值 `name` 之后，这个角色上指向别的实体的抓取关联一并删掉。
+
+    只删字段确实已是新值的资产：`write_owned_fields` 不覆盖人写的字段，那些资产上的
+    关联还对得上人写的值。人手挂的关联（`user:*`、`review:*`、`script:*`）不在
+    `_SCRAPED_ROLE_SOURCES` 里，不删。
+    """
+    marks = ",".join("?" * len(asset_ids))
+    scraped = _SCRAPED_ROLE_SOURCES[field]
+    connection.execute(
+        f"DELETE FROM asset_entity WHERE role=? AND entity_id<>? "
+        f"AND (source LIKE 'javinizer:%' OR source IN ({','.join('?' * len(scraped))})) "
+        f"AND asset_id IN (SELECT id FROM asset WHERE id IN ({marks}) "
+        f"AND {METADATA_FIELD_COLUMNS[field]}=?)",
+        (field, entity_id, *scraped, *asset_ids, name),
+    )
+
+
 def _apply_performer_candidate(connection, asset_ids: list[int], candidate: dict, *,
                                source: str, confidence: float, metadata: dict,
                                now: str) -> None:
@@ -971,13 +1002,16 @@ def _apply_performer_candidate(connection, asset_ids: list[int], candidate: dict
     if not performers:
         raise ValueError("演员候选为空")
     marks = ",".join("?" * len(asset_ids))
+    scraped = ",".join("?" * len(_SCRAPED_ROLE_SOURCES["performer"]))
     connection.execute(
         f"DELETE FROM asset_entity WHERE asset_id IN ({marks}) AND role='performer' "
-        "AND source LIKE 'javinizer:%'", asset_ids,
+        f"AND (source LIKE 'javinizer:%' OR source IN ({scraped}))",
+        (*asset_ids, *_SCRAPED_ROLE_SOURCES["performer"]),
     )
     connection.execute(
         f"DELETE FROM asset_tag WHERE asset_id IN ({marks}) "
-        "AND source LIKE 'javinizer:%:performer'", asset_ids,
+        f"AND (source LIKE 'javinizer:%:performer' OR source IN ({scraped}))",
+        (*asset_ids, *_SCRAPED_ROLE_SOURCES["performer"]),
     )
     for asset_id in asset_ids:
         for performer in performers:
@@ -1151,11 +1185,12 @@ def _apply_metadata_candidate(
             (*asset_ids, field),
         )
         for asset_id in asset_ids:
-            upsert_asset_entity(
+            entity_id = upsert_asset_entity(
                 connection, kind=field, name=name, asset_id=asset_id, role=field,
                 source=f"javinizer:{source}:{field}", confidence=confidence,
                 metadata=metadata, now=now,
             )
+        _drop_superseded_links(connection, asset_ids, field, entity_id, name)
         return len(asset_ids)
 
     if field == "performers":
