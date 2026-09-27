@@ -68,6 +68,9 @@ REVIEW_APPLY_LIMIT = 500
 #: 多值字段在账本里是实体关系，不是 `asset` 上的列。
 _MULTI_VALUE_ROLES = {"performers": "performer", "tags": "tag"}
 
+#: `_codes_matching` 一条查询里最多带几个宽查键；SQLite 表达式树深度上限是 1000。
+_LIKE_CHUNK = 200
+
 
 def _codes_matching(connection, codes: list[str], columns: str) -> list:
     """这些番号名下的资产行。账本里的写法未必和候选件一致。
@@ -78,27 +81,34 @@ def _codes_matching(connection, codes: list[str], columns: str) -> list:
     而账本里的别名早就把「藤原遼子／森沢かな」和「東熱／東京熱」各自认作一个）。
     `normalise_code_key` 两边归一化之后是同一个键，它也正是封面缓存和复核页在用的那个。
 
-    先按字符串精确查一遍，没覆盖到的番号才宽查：归一化后的键是账本写法的子串
-    （`n0762` ⊂ `TOKYO-HOT-N0762`），拿它把范围收小，再逐条按归一化判等。
+    精确写法与同号异写一次查齐：归一化后的键是账本写法的子串（`n0762` ⊂
+    `TOKYO-HOT-N0762`），拿它把范围收小，再逐条按归一化判等。精确命中一条也照样找
+    异写：`n0780` 与 `TOKYO-HOT-N0780` 是同一部作品的两个文件，前者叫 `Tokyo-Hot.mp4`
+    读不出番号，后者叫 `n0780.mkv`，只拿前者判「文件名认不认得出这个番号」，整组就停在
+    人工队列（2026-09-27 实测 10 行）。精确查本来就是全表扫描，单条候选并进同一条查询
+    不多花；整队列刷新现值时一次几百个番号，宽查按 `_LIKE_CHUNK` 个键一段，一长串 OR
+    会撞上 SQLite 的表达式深度上限。
     """
     wanted = [code for code in dict.fromkeys(code.strip() for code in codes) if code]
     if not wanted:
         return []
-    marks = ",".join("?" * len(wanted))
-    found = list(connection.execute(
-        f"SELECT {columns} FROM asset WHERE medium='video' "
-        f"AND (disposal IS NULL OR disposal<>'trash') "
-        f"AND upper(trim(code)) IN ({','.join(['upper(?)'] * len(wanted))}) ORDER BY id", wanted))
-    covered = {normalise_code_key(str(row["code"] or "")) for row in found}
-    missing = [code for code in wanted if normalise_code_key(code) not in covered]
-    if not missing:
-        return found
-    keys = {normalise_code_key(code) for code in missing} - {""}
-    likes = " OR ".join(["upper(code) LIKE '%'||upper(?)||'%'"] * len(keys))
-    found += [row for row in connection.execute(
-        f"SELECT {columns} FROM asset WHERE medium='video' "
-        f"AND (disposal IS NULL OR disposal<>'trash') AND ({likes}) ORDER BY id", sorted(keys))
-        if normalise_code_key(str(row["code"] or "")) in keys]
+    exact = {code.upper() for code in wanted}
+    keys = sorted({normalise_code_key(code) for code in wanted} - {""})
+    marks = ",".join(["upper(?)"] * len(wanted))
+    found = []
+    # 每一行只在它的归一化键所在那一段收下，精确写法每段都查，也不会重复收。
+    for start in range(0, max(len(keys), 1), _LIKE_CHUNK):
+        chunk = set(keys[start:start + _LIKE_CHUNK])
+        likes = "".join(" OR upper(code) LIKE '%'||upper(?)||'%'" for _key in sorted(chunk))
+        for row in connection.execute(
+                f"SELECT {columns} FROM asset WHERE medium='video' "
+                f"AND (disposal IS NULL OR disposal<>'trash') "
+                f"AND (upper(trim(code)) IN ({marks}){likes}) ORDER BY id",
+                [*wanted, *sorted(chunk)]):
+            key = normalise_code_key(str(row["code"] or ""))
+            if key in chunk or (not start and not key
+                                and str(row["code"] or "").strip().upper() in exact):
+                found.append(row)
     return found
 
 
