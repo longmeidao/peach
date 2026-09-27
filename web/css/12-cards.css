@@ -66,7 +66,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 #i-shuffle .strand{stroke-dasharray:var(--strand-dash,none);
   animation:peach-strand-draw var(--strand-cycle,0s) linear infinite}
 #i-shuffle .strand-b{animation-name:peach-strand-draw-late}
-.count[aria-busy="true"] :is(#batchAction,#followShuffle) svg,
+.count[aria-busy="true"] #batchAction svg,
 body.refreshing #batchAction svg{
   --strand-dash:100;--strand-cycle:2.2s}
 /* 资源同步的「检查文件」键适配自己的忙态，不统一转圈：git-compare 照 lucide-animated 的
@@ -106,27 +106,21 @@ body.refreshing #batchAction svg{
   stroke-linecap:round;stroke-linejoin:round}
 /* 这一排里的批量键是强调档，面色连同悬停归 `board.css` 一处：那一层按这条工具带的形状
    重排过它们，在这里再写一份，算出来生效的仍是那一层。 */
-/* 形状按类写，不按 id：这一排在首页和关注页各有一枚同样的换一批键，挂在 id 上
-   的话每多一页就要在这里补一个选择器，而漏掉的那一页不是报错——是图标算出 0×0，
-   按钮变成一块纯色方块。 */
+/* 形状按类写，不按 id：换一批键挂在 id 上的话每多一页就要在这里补一个选择器，而漏掉的
+   那一页不是报错——是图标算出 0×0，按钮变成一块纯色方块。 */
 .count .sorts .batchaction{font-weight:600;width:36px;padding:0;display:inline-grid;place-items:center}
 .count .sorts .batchaction svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
-/* 「仅显示图片」是一枚 30px 见方的图标开关，跟旁边版式分段器的每一枚选项同一副身量；
-   开着时垫的玻璃由筛选条那块滑动玻璃给（GLIDE_ROWS.imagesonly），这里只管形状。那块
-   玻璃挂在这枚键自己身上，键是它的定位基准，字形要压在它上面，跟媒体那几枚圆键同一条。 */
-.count .sorts .followimagesonly{width:30px;padding:0;display:inline-grid;place-items:center;position:relative}
-.count .sorts .followimagesonly svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;position:relative;z-index:1}
 /* 壳自己画进 `#grid` 的那几屏（骨架、垃圾文件队列）是一叠卡：每一段卡合成一个 `.grid`，
    `#grid` 本身只是这叠卡的容器，自己不排网格。目录、回收站与资料页的作品卡由 `catalog-grid`
    island 自己排，版面写在 `frontend/src/react/components/media-card.css`。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}
 /* 列距 16px 是给悬停面留的：卡片悬停时底色往盒外多铺 8px（见下方 `:hover`），列距再窄，
-   两张卡的悬停面就顶到邻卡上。关注页的视频列表 `.followlist` 用同一副间距。 */
-.grid,.followlist:not(.followphotowall){gap:24px 16px}
+   两张卡的悬停面就顶到邻卡上。 */
+.grid{gap:24px 16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;border-radius:var(--surface-radius);
   position:relative;transition:transform .18s ease,filter .18s ease,background-color .15s ease,box-shadow .15s ease;transform-origin:center}
-/* 垃圾文件队列和关注网格里，视口外的卡片跳过渲染：滚动和侧栏开合时要算的只剩屏上那几十张。
+/* 垃圾文件队列里，视口外的卡片跳过渲染：滚动和侧栏开合时要算的只剩屏上那几十张。
    目录、回收站与资料页作品区的作品卡归 `catalog-grid` island，同一份估计写在
    `frontend/src/react/components/media-card.css`，取值与这里一致。
    跳过的是卡里的两块，封面 `.pic` 和元信息区 `.meta`；卡片盒本身照常排版，所以屏外卡的
@@ -135,11 +129,9 @@ body.refreshing #batchAction svg{
      变都与真实渲染一致。卡高随列宽在 270～590px 之间变（JAV 大图一档最高），整张卡
      跳过就只能给一个固定占位，对不上所有版式，没渲染过的卡越多滚动条漂得越远。
    - 元信息区高度不随列宽变，由它自己的排版 token 推出，见 `--card-meta-block`：两行标题
-     （`.meta .t` 的 2.7em）、一行归属（1lh，关注卡另有 21px 的最小高度）、`.mtext` 的 3px
-     行距；有标签的卡再加一行标签（`.ctags` 的高度）和一道行距，关注卡的徽章行 `.fbadges`
-     同理（`.fbadge` 一行字加上下 2px 内边距和 1px 边框）。密集一档的高度是 `.mtext` 固定的
-     三行，同一个变量。
-   叠层纸边画在 `.pic` 外面，不在裁切范围里，关注页的 Mix 卡一并适用。
+     （`.meta .t` 的 2.7em）、一行归属（1lh）、`.mtext` 的 3px 行距。密集一档的高度是
+     `.mtext` 固定的三行，同一个变量。
+   叠层纸边画在 `.pic` 外面，不在裁切范围里。
    跳过渲染连带 paint containment，裁切边是元信息区的 padding box：贴着左缘的头像悬停
    描边、头像与标签的 2px 焦点环都画在内容盒外面。所以元信息区四周垫 8px 内边距、再用
    -8px 外边距抵消，裁切边往外扩 8px（和整张卡的悬停面同宽），内容盒、卡片尺寸和它与
@@ -150,19 +142,14 @@ body.refreshing #batchAction svg{
    资料页的照片墙与名册（`entity-body` 岛）同理不在其内，它们也不是 `.card`。资料页
    新作那一行（`.feednew`）只有一行、往横向排，屏外的卡不改变整页高度，标题字号也不是
    `--fs-md`（`.feednewcard .meta .t` 是 `--fs-sm`），不套这份估计。 */
-.meta{--card-meta-byline:1lh;--card-meta-tags:0px;--card-meta-badges:0px;
-  --card-meta-block:calc(var(--fs-md)*2.7 + 3px + var(--card-meta-byline) + var(--card-meta-badges) + var(--card-meta-tags))}
-.meta:has(>.mtext>.ctags){--card-meta-tags:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px + 3px)}
-.followitem .meta{--card-meta-byline:max(1lh,21px)}
-.followitem .meta:has(>.mtext>.fbadges){--card-meta-badges:calc(1lh + 6px + 3px)}
-:is(#grid,.followlist:not(.followphotowall)) .card :is(.pic,.meta){content-visibility:auto}
+.meta{--card-meta-block:calc(var(--fs-md)*2.7 + 3px + 1lh)}
+#grid .card :is(.pic,.meta){content-visibility:auto}
 /* `flex-shrink:0`：跳过渲染时元信息区的内容不参与最小尺寸，卡里有别的子元素要抢空间时它会
-   被压扁。关注卡的 `.fstate` 是 `flex:1 1 100%`，不钉住的话屏外关注卡的元信息区只剩 21px。
-   渲染时它本来就压不动（自动最小尺寸就是内容高度），钉住不改变屏上的排版。
+   被压扁。渲染时它本来就压不动（自动最小尺寸就是内容高度），钉住不改变屏上的排版。
    估计高度作用在内容盒上，内边距另外加在外面，所以 `--card-meta-block` 只估内容。 */
-:is(#grid,.followlist:not(.followphotowall)) .card .meta{flex-shrink:0;
+#grid .card .meta{flex-shrink:0;
   margin:-8px;padding:8px;pointer-events:none;contain-intrinsic-block-size:auto var(--card-meta-block)}
-:where(#grid,.followlist:not(.followphotowall)) .card .meta>*{pointer-events:auto}
+:where(#grid) .card .meta>*{pointer-events:auto}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
    整张卡压低 7px 并加高 7px，同一行里 Mix 卡的封面和下面的文字就比邻居矮一截；
    往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。
@@ -173,29 +160,10 @@ body.refreshing #batchAction svg{
 .mixstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
 .mixstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
 .mixstack .pic{z-index:1}
-/* 悬浮 Mix 卡片时逐张翻走：最上面那张向上抬起、轻转并淡出，下一张随即接管。
-   和静止时的叠层是同一个隐喻，不是另一套动效；滞后动画偏好下根本不启动（JS 侧拦下）。 */
-.mixfaces{position:absolute;inset:0;z-index:2;pointer-events:none;background:#000}   /* 遮住静止封面：不遮的话两张正在交接的时候它会从中间透出来 */
-.mixface{position:absolute;inset:0;opacity:0;transform:scale(.985);transform-origin:50% 88%;
-  transition:transform .46s cubic-bezier(.34,.02,.24,1),opacity .4s ease}
-.mixface.on{opacity:1;z-index:2;transform:none;transition:none}
-.mixface.off{opacity:0;z-index:3;transform:translateY(-11%) rotate(-3.4deg) scale(.94)}
-.mixbadge{position:absolute;right:9px;bottom:9px;z-index:6;display:flex;align-items:center;gap:6px;
-  min-height:28px;padding:4px 9px;border-radius:var(--control-radius);background:rgba(12,8,8,.72);color:#fff;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:var(--fs-xs);font-weight:600}
-.mixbadge svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
 .playlistcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
 .playlistcard .mixcopy{flex:1}
 .mixcopy{min-width:0}.mixcopy b,.mixcopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mixcopy b{font-size:var(--fs-md);line-height:1.45}.mixcopy span{font-size:var(--fs-xs);color:var(--muted);margin-top:2px}
-/* 标记是正圆，全站一个形状——复核缩略图那一枚已经是圆的，两处只差尺寸档。 */
-.selectionMark{display:none;position:absolute;top:10px;right:10px;z-index:8;width:26px;height:26px;border-radius:50%;
-  place-items:center;color:rgba(255,255,255,.72);background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.28);
-  backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px)}
-.selectionMark svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
-.card.selected .selectionMark{background:var(--on-media);color:var(--on-media-ink);
-  border-color:var(--on-media);box-shadow:0 3px 12px #0008}
 .pic{position:relative;aspect-ratio:var(--card-ratio,16/9);background:#000;border-radius:var(--badge-radius);
   overflow:hidden;display:flex;align-items:center;justify-content:center}
 /* 正封窄于卡片时两侧的留白，垫的是同一张封面的模糊放大版；`--cover-blur` 由
@@ -309,7 +277,6 @@ body .card:focus-within{background:var(--hover);box-shadow:0 0 0 8px var(--hover
    子元素就不截，iOS 上长标题会整段摊开，把「接着看」那一排撑得老高。 */
 .meta .t{font-size:var(--fs-md);line-height:1.35;min-height:2.7em;max-height:2.7em;overflow:hidden;display:-webkit-box;
   -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
-.meta .cardtitle{width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}
 .javidentity{display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;white-space:nowrap}
 .javcode{font-weight:600;letter-spacing:.01em}.javtitle{font-weight:400}
 .javedition{display:inline-flex;align-items:center;min-height:18px;padding:0 5px;border:1px solid currentColor;
@@ -332,19 +299,9 @@ body .card:focus-within{background:var(--hover);box-shadow:0 0 0 8px var(--hover
 .flags i.dispose{background:var(--meter)}
 .flags i.later{background:var(--ink)}
 /* 标签语义分级 */
-/* 卡片上宁可少放几个标签，也要把名字写全：截成「主…」「背…」之后，那既不是标签，
-   也认不出原来是哪一个。所以这一行改成可换行、只有一颗标签那么高——放不下的整颗
-   落到第二行，被容器整颗切掉，切掉的是标签本身，不是它的名字。行高按 .tg 的三个
-   token 算出来，改字号或内边距时不用回来对第二个数。
-   裁切边是 padding box：四周垫 4px 内边距再用 -4px 外边距抵消，标签 2px 偏移加 2px 线宽
-   的焦点环整圈落在裁切边以内，这一行占的位置和标签的排布一个像素不动；第二行离第一行
-   隔着 5px 行距，仍整颗落在裁切边外面。垫出来的一圈伸到卡片盒外面，这一行自己不接指针，
-   只有标签接。
+/* 卡片上那一行标签归 React 卡片（`media-card.css` 的 `[data-media-tags]`）。
    .tg 只留 max-width:100% 这一层兜底：一颗标签自己就比整张卡还宽时，横着溢出会
    压到卡片外面，这时候省略号是唯一的出路。 */
-.ctags{display:flex;flex-wrap:wrap;align-content:flex-start;gap:5px;min-width:0;overflow:hidden;
-  margin:-4px;padding:4px;height:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px + 8px);pointer-events:none}
-.ctags>*{pointer-events:auto}
 .tg{padding:var(--tag-pad-y) var(--tag-pad-x);border-radius:var(--tag-radius);font:inherit;font-size:var(--fs-xs);border:1px solid var(--line);
   line-height:1.45;white-space:nowrap;cursor:pointer;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;max-width:100%;
   background:var(--tag-fill)}
@@ -352,26 +309,23 @@ body .card:focus-within{background:var(--hover);box-shadow:0 0 0 8px var(--hover
 .tg.artist{font-weight:600}
 .tg:hover{color:var(--ink);background:var(--hover)}
 .tg:disabled{cursor:not-allowed}
-body[data-density="dense"] .card .ctags .tg:nth-child(n+2){display:none}
-body[data-density="dense"] .card .ctags .tg{max-width:100%;overflow:hidden;text-overflow:ellipsis}
 /* 顶栏的密集模式固定为标题、身份、标签三行。缺少标签时第三行仍保留，
    同一网格不会再被大小、观看次数或长身份撑成四行。分卷卡已有 7px 叠层空间，
    密集网格的普通卡也保留同一高度，避免每行是否出现分卷卡决定整行高度。
-   三行由 `.mtext` 裁住，它和 `.ctags` 一样四周垫 4px 再用 -4px 抵消、自己不接指针，标签的
-   焦点环不被这一层裁掉。子元素把指针接回来，标签行由它自己那条规则管；资料页新作那一行
+   三行由 `.mtext` 裁住，四周垫 4px 再用 -4px 抵消、自己不接指针，标签的
+   焦点环不被这一层裁掉。子元素把指针接回来；资料页新作那一行
    的卡整块放行指针（见 `.feednewcard`），不接回来。 */
 body[data-density="dense"] .grid>.card{padding-top:7px}
 body[data-density="dense"] .card .meta{--card-meta-block:calc(2.7em + 36px)}
 body[data-density="dense"] .card .mtext{display:grid;grid-template-rows:1.35em 1.35em 30px;
   gap:3px;margin:-4px;padding:4px;height:calc(var(--card-meta-block) + 8px);overflow:hidden;pointer-events:none}
-body[data-density="dense"] .card:not(.feednewcard) .mtext>:not(.ctags){pointer-events:auto}
+body[data-density="dense"] .card:not(.feednewcard) .mtext>*{pointer-events:auto}
 body[data-density="dense"] .card .meta .t{display:block;max-width:100%;min-height:1.35em;overflow:hidden;
   -webkit-line-clamp:unset;white-space:nowrap;text-overflow:ellipsis}
 body[data-density="dense"] .card .meta .s{height:1.35em;min-height:0;flex-wrap:nowrap;overflow:hidden;white-space:nowrap}
 body[data-density="dense"] .card .meta .who{flex:0 1 auto}
 body[data-density="dense"] .card .meta .whomore,
 body[data-density="dense"] .card .meta .size{flex:none;white-space:nowrap}
-body[data-density="dense"] .card .ctags{height:38px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}
 body[data-density="dense"] .card .meta .why{display:none}
 
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}

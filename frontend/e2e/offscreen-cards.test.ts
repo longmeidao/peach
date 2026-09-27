@@ -15,7 +15,8 @@ const CLONES = 150;
 const CLONE_BASE = 900_000;
 const PROBE_TAG = '屏外探针';
 
-/** 卡片里各块的选择器。作品卡归 `catalog-grid` island，钩子是 `data-media-*`；关注卡仍是壳画的。 */
+/** 卡片里各块的选择器。作品卡归 `catalog-grid` island，关注卡归 `follow-feed` island，钩子都是
+ * `data-media-*`；关注卡的封面格多包一层 `[data-follow-visual]`，头像和标签是 `<span>`。 */
 interface CardShape {
   card: string; pic: string; meta: string; avatar: string; text: string; tags: string;
   avatarButton: string; tagButton: string;
@@ -25,13 +26,10 @@ const MEDIA: CardShape = {
   text: '[data-media-text]', tags: '[data-media-tags]',
   avatarButton: '[data-media-meta]>button[data-media-avatar]', tagButton: '[data-media-tags]>button[data-media-tag]',
 };
-const FOLLOW: CardShape = {
-  card: '.card', pic: '.pic', meta: '.meta', avatar: '.mav', text: '.mtext', tags: '.ctags',
-  avatarButton: '.meta>button.mav', tagButton: '.ctags>button.tg',
-};
+const FOLLOW = MEDIA;
 const CATALOG_CARDS = '#grid [data-media-grid]>[data-media-card]';
 const ENTITY_CARDS = '#index [data-entity-grid] [data-media-grid]>[data-media-card]';
-const FOLLOW_CARDS = '.followlist>.card';
+const FOLLOW_CARDS = '[data-follow-list]>[data-follow-item]';
 
 interface CatalogPayload {
   total: number;
@@ -275,7 +273,7 @@ describe('视口外的卡片', () => {
         const { page } = opened;
         /* 元信息区四周垫内边距再用负外边距抵消，裁切边（padding box）往外扩，内容盒原地不动。
            内容盒要贴着卡片左右缘、封面下方隔一道卡片行距，外边距盒的下沿就是内容盒下沿；
-           同一行里最高的那张卡，内容盒下面到卡片下缘（关注卡是到 `.fstate`）不留空，卡高
+           同一行里最高的那张卡，内容盒下面到卡片下缘（关注卡是到 `[data-follow-state]`）不留空，卡高
            于是仍是封面、行距与内容三项之和。头像和文字列贴着内容盒。垫出去的那一圈伸出
            卡片盒，指针落在那里不能算进这张卡。 */
         const frames = await page.evaluate(([cardSelector, parts]) => {

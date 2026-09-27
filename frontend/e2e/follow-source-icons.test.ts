@@ -138,9 +138,9 @@ describe('关注的出处用站点图标', () => {
   });
 
   it('卡片的「另见」徽章：另一站按图标列出，站名不写成文字', { timeout: 60_000 }, async () => {
-    const opened = await openFollow(browser, '/follow', '.followitem .fbadge.dup');
+    const opened = await openFollow(browser, '/follow', '[data-follow-item] .fbadge.dup');
     try {
-      const [badge] = await lineGeometry(opened.page, '.followitem .fbadge.dup');
+      const [badge] = await lineGeometry(opened.page, '[data-follow-item] .fbadge.dup');
       assert.ok(badge, '卡片上没有「另见」徽章');
       assert.equal(badge.text, '另见');
       assert.equal(badge.alt, 'Rule34.xxx');
@@ -154,7 +154,7 @@ describe('关注的出处用站点图标', () => {
     const opened = await openFollow(browser, '/follow', '[data-follow-item="12"] .fbadge.dup');
     try {
       const card = opened.page.locator('[data-follow-item="12"]');
-      const shown = await card.locator('.pic > .badge').getAttribute('title');
+      const shown = await card.locator('[data-media-badge]').getAttribute('title');
       const alts = await card.locator('.fbadge.dup img').evaluateAll((icons) =>
         icons.map((icon) => icon.getAttribute('alt')));
       assert.equal(shown, 'Rule34.xxx', '卡面没有换成有视频的那条');

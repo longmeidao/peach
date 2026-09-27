@@ -502,7 +502,7 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
 [data-collapse-toolbar]{container-type:inline-size}
 @container (max-width:740px){
   [data-collapse-toolbar] [data-collapse-label]{display:none}
-  [data-collapse-toolbar] :is(.fbtn,.geist-button):has(>[data-collapse-label]){width:var(--control-h);padding:0}
+  [data-collapse-toolbar] .geist-button:has(>[data-collapse-label]){width:var(--control-h);padding:0}
   /* 下拉收掉的是当前值和那枚 chevron，框内左侧的前缀图标移到正中，成为它唯一的字形。 */
   [data-collapse-toolbar] [data-collapse-field] .gselectfield{width:var(--control-h);padding:0}
   [data-collapse-toolbar] [data-collapse-field] .gselectfield>*{display:none}

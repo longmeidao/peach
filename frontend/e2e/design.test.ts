@@ -8,6 +8,7 @@ import { after, before, describe, it } from 'node:test';
 
 import type { Browser, Locator, Page } from 'playwright-core';
 
+import { openFollowFeed } from './follow-fixture.ts';
 import { configurationBody, expectBody, launch, layout, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
@@ -3598,19 +3599,26 @@ describe('设计决定', () => {
         const neighbor = [...element.parentElement!.children].find((other) => other !== element
           && Math.abs(other.getBoundingClientRect().top - box.top) < 1)!;
         const spread = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(getComputedStyle(element).boxShadow)?.[1]);
-        // 壳画的骨架网格和关注页的视频列表不在首页这叠卡里：各挂一个同类名的空壳读列距。
-        const columnGap = (className: string) => {
+        // 壳画的骨架网格和关注页岛的视频列表不在首页这叠卡里：各挂一个同形的空壳读列距。
+        const columnGap = (build: (probe: HTMLElement) => HTMLElement) => {
           const probe = document.createElement('div');
-          probe.className = className;
-          document.querySelector('#main')!.append(probe);
+          const host = build(probe);
+          document.querySelector('#main')!.append(host);
           const gap = parseFloat(getComputedStyle(probe).columnGap);
-          probe.remove();
+          host.remove();
           return gap;
         };
         return {
           spread, clearance: neighbor.getBoundingClientRect().left - (box.right + spread),
           home: parseFloat(getComputedStyle(element.parentElement!).columnGap),
-          skeleton: columnGap('grid'), follow: columnGap('followlist'),
+          skeleton: columnGap((probe) => { probe.className = 'grid'; return probe }),
+          follow: columnGap((probe) => {
+            const island = document.createElement('div');
+            island.className = 'peach-react';
+            probe.setAttribute('data-follow-list', '');
+            island.append(probe);
+            return island;
+          }),
         };
       });
       assert.ok(geometry.spread > 0, '卡片悬停面没有往盒外铺');
@@ -4278,6 +4286,35 @@ describe('设计决定', () => {
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
+    }
+  });
+
+  it('关注页：标题 24px、窄屏 20px，药丸间距同首页 7px，读数用等宽字', { timeout: 90_000 }, async () => {
+    const read = (page: Page) => page.evaluate(() => {
+      const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
+      return {
+        title: style('[data-follow-title]').fontSize,
+        gaps: ['[data-follow-filter-glass] [data-entity-states]', '[data-follow-filter-glass] [data-entity-tags]']
+          .map((selector) => style(selector).columnGap),
+        readout: style('[data-follow-readout]').fontFamily,
+      };
+    });
+    const wide = await openFollowFeed(browser, '/follow', DESKTOP);
+    try {
+      const shown = await read(wide.page);
+      assert.equal(shown.title, '24px');
+      assert.deepEqual(shown.gaps, ['7px', '7px'], '关注页的药丸间距和首页那条不一样');
+      assert.match(shown.readout, /Cascadia Mono|Consolas|monospace/, `读数不是等宽字：${shown.readout}`);
+      assert.deepEqual(wide.problems, []);
+    } finally {
+      await wide.close();
+    }
+    const narrow = await openFollowFeed(browser, '/follow', MOBILE);
+    try {
+      assert.equal((await read(narrow.page)).title, '20px', '窄屏的关注标题没有收到 20px');
+      assert.deepEqual(narrow.problems, []);
+    } finally {
+      await narrow.close();
     }
   });
 });

@@ -1,5 +1,5 @@
 import { boundedPreference, mountNumberSetting, syncNumberSetting, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, entityPath, esc, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, entityPath, esc, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration, seededRank} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
@@ -11,10 +11,9 @@ import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
-import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
-import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast, openPhotoLightbox } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast, openPhotoLightbox, followJobProgress } from './dist/peach-ui.js';
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
@@ -22,7 +21,7 @@ import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   dissolveValue, popBadges, revealSkeleton, revealTexts, setIconSwap, swapText,
-  mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
@@ -72,18 +71,18 @@ let barsFacets=null,barsScopedCreators=[];
 let loadRequestSeq=0;
 // `#grid` 上此刻挂的是哪一个 island：目录与回收站的 `catalog-grid`，或垃圾文件的 `junk-queue`。
 let gridIsland='';
-let followData=null,followFilter='',followBusy=false;
+/* `followRevision` 是关注页岛的刷新代次：已经挂着时要求重读（批量标记之后、前进后退），
+   推一个新代次让它重取，不重挂。 */
+let followData=null,followFilter='',followRevision=0;
 /* 值是天数，`0` 表示不限。选项文本自己说清量的是时间：这一行不挂文字标签，收起时
    框里只剩当前这一项，「全部」放在时钟图标旁边读不出是全部什么。 */
 const FOLLOW_INITIAL_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['30','最近 30 天'],
   ['90','最近 90 天']];
 let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followWorks=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
 /* 看的那一页按什么排。只有这三档在每条更新上都成立：观看次数、体积那几列问的是本机
-   文件，而这一页上的东西多数还没下载。词跟着列走，`desc` 在时间上是「从新到旧」，
-   在时长上是「从长到短」，写成通用的「降序」等于让界面解释 SQL。 */
+   文件，而这一页上的东西多数还没下载。壳只拿它核对地址栏上的 `sort`；键上的说法在岛里
+   （`follow-feed.ts` 的 `FOLLOW_FEED_DIR_WORDS`）。 */
 const FOLLOW_FEED_SORTS=[['new','更新时间'],['hot','热度'],['dur','时长']];
-const FOLLOW_FEED_DIR_WORDS={new:['从新到旧','从旧到新'],hot:['从高到低','从低到高'],
-  dur:['从长到短','从短到长']};
 /* 「换一批」按下去就是这一档：整批更新按一粒种子打散，跟首页同一个意思。它没有自己的
    排序键——那三枚键任一按下就离开它；种子写进地址，刷新和后退回到的是同一批次序。 */
 const FOLLOW_RANDOM_SORT='rand';
@@ -198,13 +197,16 @@ const ROUTES=[
 const registerRoute=spec=>{ROUTES.push(spec);return spec};
 window.peachRegisterRoute=registerRoute;
 
-const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill,cardRatio}={})=>
-  skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
-    gridClass:className.includes('follow-content-skeleton')&&new URLSearchParams(location.search).get('media')==='images'?'followlist followphotowall':'',
-    gridSize:className.includes('follow-content-skeleton')?photoSize():'',
+const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill,cardRatio,gridClass='',gridSize=''}={})=>
+  skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,gridClass,gridSize,
     ...(count?{count}:{}),...(fill===undefined?{}:{fill}),...(cardRatio?{cardRatio}:{})});
+/* 关注页列表那一块的骨架：进页整块骨架的下半，也是岛换筛选时列表区铺的那一块。图片视图借
+   照片墙的网格算式，列数跟着照片墙尺寸档走。 */
+const followContentSkeletonHtml=(media=new URLSearchParams(location.search).get('media')==='images'?'images':'videos',
+  label='正在读取关注内容')=>pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton',
+  gridClass:media==='images'?'followlist followphotowall':'',gridSize:photoSize()});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
-   高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的创作者行、题材行和那块
+   高一点（岛卡片的署名行至少 21px，见 `follow-feed.css`）。上面是它自己的创作者行、题材行和那块
    两排的玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏那两排是
    同一枚：创作者行铺 `av`、题材行铺 `brandpill`，跟内容回来之后的形状一致。外框
    要自己写全：`mountFilterFrame` 是运行时才建的，骨架进不了那条路径，少了它上下两排
@@ -216,7 +218,7 @@ const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow
   <div class="board-filter-frame" data-filter-frame>
     <div class="tagbar followfilters" data-filter-row="top" data-skeleton-tier="pill"></div>
     <div class="count followcount" data-filter-row="bottom"><span class="mono"><span class="countskeleton"></span></span></div></div>
-  ${pageSkeletonHtml(label,{cards:true,className:'follow-content-skeleton postercard-skeleton'})}</div>`;
+  ${followContentSkeletonHtml(undefined,label)}</div>`;
 /* 分类名是静态文案，骨架和复核页各要一份，所以它排在骨架前面而不是跟着复核页那段代码。 */
 const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者标签',studio_logos:'厂牌 Logo',performer_avatars:'女优头像',western_identity:'西方身份回配',code_creators:'番号目录存疑',fc2_markings:'FC2 评论标记',fc2_similarity:'FC2 跨号相似',video_endcards:'片尾/出处证据'};
 /* 复核页是左边一列分类、右边工具条加一格一格 Fieldset，骨架就用最终容器的那几个类名，
@@ -1194,13 +1196,6 @@ async function syncMachineSettings(){
 /* 异或结果是有符号 32 位，先转无符号再取模：种子要写进地址，后端只认非负整数。 */
 const newSeed=()=>String(((Date.now()^(Math.random()*1e9|0))>>>0)%99991);
 const rollSeed=()=>newSeed();
-/* 种子随机：FNV-1a 把「种子 + 键」压成一个 32 位数当排序键。同一个种子下顺序稳定，
-   换种子就是另一套顺序，客户端不必存 PRNG 状态，也不必让后端多带一个参数。 */
-const seededRank=(seed,value)=>{
-  let hash=2166136261>>>0;
-  for(const char of `${seed}\u0000${value}`){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)>>>0}
-  return hash;
-};
 /* 抽样只决定「这一批露出哪些」，不动原有顺序：标签条照旧按数量从多到少读下来，
    换一批换的是成员。装不满就原样返回，详情页那种只有几个标签的集合不受影响。 */
 const seededSample=(rows,count,seed,key=row=>row.k)=>{
@@ -2833,10 +2828,9 @@ const selected=new Set(),followSelected=new Set();
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
 const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
-  // 卡片网格与垃圾队列的选中态归 React：每次推一份新的集合，卡片按引用比较才看得出变了。
+  // 卡片网格、垃圾队列与关注页的选中态归 React：每次推一份新的集合，卡片按引用比较才看得出变了。
   gridIslandHosts().forEach(host=>updateIsland(host,{selected:new Set(selected),selectMode}));
-  document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
-    card.classList.toggle('selected',followSelected.has(+card.dataset.followItem)));
+  pushFollowFeed({selected:new Set(followSelected),selectMode});
   const followPage=location.pathname==='/follow',junkPage=location.pathname==='/junk-files';
   const picked=followPage?followSelected:selected;
   $('#batchbar').hidden=!picked.size;$('#batchCount').textContent=`已选 ${picked.size} 项`;
@@ -2864,7 +2858,7 @@ function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}
 function toggleSelection(id,range=false){
   lastSelectedId=selectRange(selected,visibleCardIds(),lastSelectedId,id,range);setSelectMode(true);paintSelection();
 }
-function visibleFollowIds(){return [...document.querySelectorAll('.followlist > .followitem[data-follow-item]')]
+function visibleFollowIds(){return [...document.querySelectorAll('[data-follow-list] > [data-follow-item]')]
   .map(card=>+card.dataset.followItem)}
 function toggleFollowSelection(id,range=false){
   followLastSelectedId=selectRange(followSelected,visibleFollowIds(),followLastSelectedId,id,range);setSelectMode(true);paintSelection();
@@ -3525,73 +3519,7 @@ function mixRelated(seedId){
       .catch(error=>{mixRelatedCache.delete(seedId);throw error}));
   return mixRelatedCache.get(seedId);
 }
-const MIX_FLIP_MS=1100;      // 一张停多久再翻走
-const MIX_FLIP_LEAD_MS=420;  // 面板建好到第一次翻动。直接用 1.1 秒间隔等第一张，鼠标停下到有反应要接近两秒
-const MIX_FLIP_FACES=9;      // 最多预渲染几张，一次悬浮不拉一整批封面
 const reduceMotion=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
-/* 悬浮一叠卡片时把它里面的前几张逐张翻走，说明它是一叠而不是某一个视频。
-   门槛和悬停预览一致：多选、遮挡、滞后动画偏好和滚动中都不启动，离开即停并
-   还原静止封面；`_stopHover` 让 releaseHoverPreviews 能连它一起收掉。
-   翻哪些由调用方给：目录页的 Mix 现拉相关作品，关注页的合集用卡片自己已有的
-   缩略图，两处共用同一套时序和门槛，不各写一份动效。 */
-function wireStackFlip(el,loadFaces){
-  const box=el.querySelector('[data-mix-faces]');if(!box)return;
-  let armed=null,lead=null,cycle=null,faces=[],index=0,live=false,generation=0;
-  const pending=new Set(),cleanups=new Set();
-  const stop=()=>{
-    live=false;generation++;clearTimeout(armed);armed=null;clearTimeout(lead);lead=null;
-    clearInterval(cycle);cycle=null;
-    pending.forEach(cancel=>cancel());cleanups.forEach(clearTimeout);cleanups.clear();
-    box.hidden=true;box.innerHTML='';faces=[];index=0;
-  };
-  const readyImage=img=>new Promise(resolve=>{
-    let settled=false;
-    const finish=ok=>{if(settled)return;settled=true;clearTimeout(timeout);
-      img.removeEventListener('load',loaded);img.removeEventListener('error',failed);
-      pending.delete(cancel);resolve(ok)};
-    const cancel=()=>finish(false),failed=()=>finish(false);
-    const loaded=()=>{if(!img.naturalWidth){finish(false);return}
-      if(typeof img.decode==='function')img.decode().then(()=>finish(true),failed);
-      else finish(true)};
-    const timeout=setTimeout(failed,5000);
-    pending.add(cancel);img.addEventListener('load',loaded);img.addEventListener('error',failed);
-    if(img.complete)loaded();
-  });
-  const step=()=>{
-    if(!live||faces.length<2)return;
-    const out=faces[index],next=faces[(index+1)%faces.length];
-    out.classList.remove('on');out.classList.add('off');
-    next.classList.remove('off');next.classList.add('on');
-    // 翻出去的那张得先演完才能卸掉 off，否则会当场弹回原位。
-    const cleanup=setTimeout(()=>{out.classList.remove('off');cleanups.delete(cleanup)},MIX_FLIP_MS-120);
-    cleanups.add(cleanup);
-    index=(index+1)%faces.length;
-  };
-  const start=async()=>{
-    if(selectMode||censorOn()||window.__scrolling||reduceMotion())return;
-    if(live)return;
-    live=true;const current=++generation;
-    let pool=[];
-    try{pool=await loadFaces()}catch(_e){return}
-    if(!live||current!==generation||selectMode||censorOn())return;
-    if(pool.length<2)return;
-    const staging=document.createElement('div');
-    staging.innerHTML=pool.map(face=>`<div class="mixface">${face}</div>`).join('');
-    syncJavImages(staging,appSettings.javImage);
-    const candidates=[...staging.children];
-    const ready=await Promise.all(candidates.map(async face=>{
-      const images=[...face.querySelectorAll('img')];
-      return images.length>0&&(await Promise.all(images.map(readyImage))).every(Boolean)}));
-    if(!live||current!==generation||selectMode||censorOn()||window.__scrolling)return;
-    faces=candidates.filter((_face,i)=>ready[i]);
-    if(faces.length<2)return;
-    faces[0].classList.add('on');box.replaceChildren(...faces);index=0;box.hidden=false;
-    lead=setTimeout(()=>{step();cycle=setInterval(step,MIX_FLIP_MS)},MIX_FLIP_LEAD_MS);
-  };
-  el.addEventListener('mouseenter',()=>{clearTimeout(armed);armed=setTimeout(start,340)});
-  el.addEventListener('mouseleave',stop);
-  el._stopHover=stop;
-}
 /* 分卷组每个 seed 只取一次：同一组的分卷队列反复打开不再发第二个请求。 */
 const partGroupCache=new Map();
 function partGroup(seedId){
@@ -3600,16 +3528,6 @@ function partGroup(seedId){
       .then(group=>{if(group.error)throw new Error(group.error);cache(group.items);return group})
       .catch(error=>{partGroupCache.delete(seedId);throw error}));
   return partGroupCache.get(seedId);
-}
-/* 关注页的合集翻的是卡片渲染时就写进 DOM 的那几张缩略图：同一组媒体已经在
-   手上，悬浮不该再为动画发一次请求。第一张必须是静止封面本身，否则一翻就
-   露出取景差别。 */
-function wireFollowStackFlip(card){
-  const box=card.querySelector('[data-mix-faces]');if(!box)return;
-  let urls=[];
-  try{urls=JSON.parse(box.dataset.mixFaces||'[]')}catch(_e){return}
-  wireStackFlip(card,async()=>urls.map(url=>
-    `<img class="poster" src="${esc(url)}" alt="" loading="eager" referrerpolicy="no-referrer">`));
 }
 /* 一个标签是否生效、按一下变成什么，全站只有这一份判据。目录、资料页和详情页各自
    存着自己的筛选，谁在那里手写一次 `split(',')` 或 `=== filters.tag`，谁就会与其余
@@ -3844,31 +3762,13 @@ function viewGlideGeometry(pill,within='.board-filter-frame'){
   }
   return {host,x,w:pill.offsetWidth,y,h:pill.offsetHeight};
 }
-/* 首页和关注页各有一排几选一，玻璃是同一块：在人眼里这几排就是同一个控件，「跟着指针
-   滑过去」没有理由只在其中一页成立。两边的 DOM 对不上——首页那排是 `#viewPills` 里的
-   链接，选中记在 `data-state` 上；关注页那排五枚里恒有一枚生效，选中记在
-   `data-follow-filter` 上——所以按结构找，不按 id 找，这一页有哪一排就管哪一排。
-   判据是「此刻量得出宽度」，不是「存在」也不是自己那个 `hidden`：几排在同一份文档里
-   一直都在，别的页面开着的时候首页那排只是被祖先收起来了，`hidden` 上看不出来。零宽度
-   把这一种连同 `display:none` 一起挡住——玻璃留在一排收起来的按钮上，就是在一块空玻璃上亮着。
-   资料页那两排是同一块料，由 `entity-filter` 岛自己挪（`use-view-glide.ts`）。
-
-   关注页那条上有两排都在回答「你在哪儿」：左端那一档媒体类型，和五枚状态。它们问的不是
-   同一件事，所以各有一块玻璃——共用一块的话，点一下图片，玻璃从状态那排飞过来，读出来是
-   这两排在抢同一个当前项。 */
+/* 首页那排几选一的滑动玻璃。判据是「此刻量得出宽度」，不是「存在」也不是自己那个
+   `hidden`：这一排在同一份文档里一直都在，别的页面开着的时候它只是被祖先收起来了，
+   `hidden` 上看不出来。零宽度把这一种连同 `display:none` 一起挡住——玻璃留在一排收起来的
+   按钮上，就是在一块空玻璃上亮着。资料页与关注页那几排是同一块料，由各自的岛挪
+   （`use-view-glide.ts`）。 */
 const GLIDE_ROWS={
-  views:{selector:'#viewPills,.followviews',
-         pressed:'[data-state][aria-pressed="true"],[data-follow-filter][aria-pressed="true"]'},
-  /* 媒体那几枚是圆的，玻璃跟着它们的圆角走：一块 8px 圆角的方玻璃扣在一枚圆按钮上，
-     四个角先露出来，读起来是玻璃底下还垫着别的东西。 */
-  media:{selector:'.followmediaview',pressed:'[data-media-view][aria-pressed="true"]',
-         className:'viewglide-round'},
-  /* 图片墙上「仅显示图片」那枚开关开着时垫的也是这块玻璃：它跟版式分段器一样答的是
-     「你在哪儿」，料就该是同一块，不另写一份材质。它只有一枚，玻璃只有出现和收起两态。
-     玻璃挂在这枚键自己身上（`host`），不挂外框：键在哪儿玻璃就在哪儿，旁边的分段器晚一步
-     换几何、前面的读数换宽，都动不了它。 */
-  imagesonly:{selector:'.followcount .sorts',host:'.followimagesonly',
-              pressed:'[data-follow-images-only][aria-pressed="true"]'},
+  views:{selector:'#viewPills',pressed:'[data-state][aria-pressed="true"]'},
 };
 function viewPillsRow(kind){
   for(const row of document.querySelectorAll(GLIDE_ROWS[kind].selector)){
@@ -4917,10 +4817,8 @@ async function openScraping(push=true){
    - `/follow-manage`（管理区）是**管**：加来源、检查更新、移除来源、看凭据状态，
      以及对内容做批量标记。
    联网只发生在管理页点「检查更新」的那一刻——看的那一页不联网。 */
+/* 这一次进入的取样种子：创作者、题材、标签三排露出哪些由它定，岛按它取样（`randomOrder`）。 */
 let followDiscoverySeed=Math.floor(Math.random()*0xffffffff);
-const followDiscoveryRank=value=>seededRank(followDiscoverySeed,value);
-const followRandomOrder=(rows,key)=>[...rows].sort((a,b)=>
-  followDiscoveryRank(key(a))-followDiscoveryRank(key(b))||String(key(a)).localeCompare(String(key(b))));
 /* 关注页一次取一屏。counts 是全库口径（「未看 2292」），groups 只有这一页——
    两个数并排显示时看起来像自相矛盾，实际是两个口径，所以列表底部要能继续加载。 */
 const FOLLOW_PAGE=300;
@@ -4940,10 +4838,6 @@ const followPageUrl=offset=>
   +(followSort===FOLLOW_RANDOM_SORT?`&seed=${followSeed}`:'')
   +(followDir!=='desc'?`&dir=${followDir}`:'');
 let followCredentialProviders=new Set();
-/* 上一次检查的结果。检查完页面会整页重画，如果不把结果留在这里，用户看到的就只是
-   一次闪烁——他的原话是「完全没返回任何结果」。接口其实每条来源都回了
-   added/updated/not_modified/error，是界面把它们全丢了。 */
-let followCheckReport=null;
 /* 这一排是「现在看的哪一档」。已看那一档不摆出来：看过就归档，要再翻出来是「全部」
    的事，而一枚常年指向十几条的筛选占的是这一排最值钱的横向空间。状态本身照旧记，
    卡片和详情面板上都还能把一条标成已看。 */
@@ -5069,14 +4963,10 @@ const followMediaKinds=group=>{
     followItemMediaKinds(item).forEach(kind=>kinds.add(kind)));
   return kinds;
 };
-const followItemForMedia=(group,view=followMediaView)=>{
-  const wanted=view==='images'?'image':'video';
-  return followCollectionItemsNewest(group).find(item=>followItemMediaKinds(item).has(wanted))||group.primary;
-};
 
-function followMediaIssue(item){
+function followMediaIssue(item,credentials=followCredentialProviders){
   if(item.media_error)return `媒体未取得：${item.media_error}`;
-  if(item.media_needs_credential&&!followCredentialProviders.has(item.provider))return item.playable
+  if(item.media_needs_credential&&!credentials.has(item.provider))return item.playable
     ?'部分媒体未取得：需要 F95 登录会话解析'
     :'媒体未取得：需要 F95 登录会话解析';
   return '';
@@ -5274,13 +5164,15 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   $('#stage').classList.toggle('theater-mode',selectedKind==='video'&&appSettings.theaterMode);
   /* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会
      取回第一页——「加载更多」出来的条目会连同索引一起消失，那些卡片的详情随后
-     就打不开了。列表数据还在 followData 里，直接重画。 */
+     就打不开了。岛还挂着就只把地址栏上的那一份推回去（没变就是同一个键，不重取）；
+     深链直接进的详情没挂过岛，这时才挂。 */
   const closeDetail=async()=>{
     await stageExit();
     disposeStage(false,false,{miniplayer:false});
     route(followDetailReturnPath||'/follow');
     if(location.pathname!=='/follow'){await restoreRoute();return}
-    if(!$('#stats .followlist')){if(followData)renderFollow();else await openFollow(false)}
+    if(!followFeedLive()){await openFollow(false);return}
+    readFollowView();pushFollowFeed({view:followView()});
   };
   $('#closeStage').onclick=closeDetail;
   $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
@@ -5336,6 +5228,8 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
     const tag=button.dataset.followTag;
     if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
+    // 回到的是带上这枚标签的那一份列表：地址栏是筛选的唯一真相源，只改全局会被推回去。
+    followDetailReturnPath=followViewPath();
     await closeDetail();
   });
   const write=async(button,path,body,done,{message='已更新',undo=null}={})=>{
@@ -5418,65 +5312,6 @@ function alignFollowImageControls(){
   };
   if(image.complete)requestAnimationFrame(align);
   else image.addEventListener('load',align,{once:true});
-}
-
-function wireFollowDetail(root){
-  root.querySelectorAll('[data-follow-detail]').forEach(button=>button.onclick=event=>{
-    event.preventDefault();event.stopPropagation();
-    openFollowDetail(+button.dataset.followDetail)});
-}
-
-function followCard(group,authorSources=[]){
-  const item=followItemForMedia(group);
-  const imageView=followMediaView==='images';
-  const selectedMedia=imageView?(item.media_items||[]).find(media=>media.media_kind==='image'):null;
-  const thumbUrl=selectedMedia?.thumb_url||item.thumb_url;
-  /* width/height 属性让浏览器在图片落地前就按固有比例占位：瀑布流按卡片高度
-     分列，没有这两个属性时未加载的图高度是零，每一张加载完都把整墙的列重新
-     平衡一遍，卡片就在列间跳。只有图片视图摆成瀑布流，视频卡片不占位也不回写。
-     比例取卡面上这张图自己的：卡面是媒体清单里那张就落在那张上；卡面就是条目自己的
-     缩略图时落在条目上（归档站多附件帖的首图与条目封面是同一张，清单补上之前量过的
-     仍然算数）。来路有来源接口、回填脚本问过的文件头、上次加载后回写的；都没有就
-     不硬猜，走无尺寸占位那套，并在这张图加载完后把 natural 尺寸回写给它的主人。 */
-  const cardMedia=selectedMedia&&selectedMedia.thumb_url===thumbUrl?selectedMedia:null;
-  const itemOwnsCard=!cardMedia||thumbUrl===item.thumb_url;
-  const sized=imageView?[cardMedia,itemOwnsCard?item:null].find(owner=>owner?.width>0&&owner.height>0):null;
-  const dims=sized?` width="${sized.width}" height="${sized.height}"`:'';
-  const learn=imageView&&!sized&&thumbUrl?` data-learn-dims="${item.id}"${cardMedia?` data-learn-media="${cardMedia.index}"`:''}`:'';
-  const thumb=thumbUrl
-    ? `<img${dims}${learn} src="${esc(thumbUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
-    : `<span class="fnothumb">${sourceIcon(item.resource_provider||item.provider)}</span>`;
-  const videos=followMediaView==='videos'?followVideoItems(group):[],embedded=item.media_items||[];
-  const mixTarget=embedded.length>1?item.id:(videos[0]?.id||item.id);
-  /* 角标与翻卡都取服务端对整组的判定（`group.stack`）：同一个画面只翻一次，跨站重复算来源。 */
-  const {isMix,label:mixLabel,glyph:mixGlyph,faces:faceUrls}=followStack({cover:thumbUrl,
-    coverFace:(selectedMedia?.thumb_url?selectedMedia:item).face,stack:group.stack,imageView,limit:MIX_FLIP_FACES});
-  const badges=followBadges(group,item),marks=followTitleMarks(group,item);
-  const {author,avatar,credited}=followIdentity(item,authorSources);
-  const when=followWhen(item),compactWhen=/^\d{4}-/.test(when)
-    ?(when.startsWith(String(new Date().getFullYear()))?when.slice(5,10):when.slice(0,10)):when;
-  const tags=followCardTags(item).slice(0,3).map(tag=>followTagChip(item,tag)).join('');
-  const mediaIssue=followMediaIssue(item);
-  const open=`<button class="cardopenhit" data-follow-detail="${item.id}" aria-label="打开 ${esc(item.title)} 详情"></button>`;
-  return `<article class="card followitem${isMix?' collection':''}${imageView?' imagecard':''}" data-follow-item="${item.id}" data-status="${esc(item.status)}">
-    <div class="${isMix?'mixstack ':''}followvisual"><div class="pic">
-      ${open}${thumb}${faceUrls.length>1?`<div class="mixfaces" data-mix-faces="${esc(JSON.stringify(faceUrls))}" hidden></div>`:''}
-      <span class="badge" title="${esc(item.provider_label)}" aria-label="来源：${esc(item.provider_label)}">${sourceIcon(item.provider)}</span>
-      <span class="selectionMark">${icon('check')}</span>${realDuration(item.duration)?`<span class="dur mono">${fmtDur(item.duration)}</span>`:''}
-      <div class="fcorner">${isMix?`<button class="mixbadge" data-follow-collection="${mixTarget}">${icon(mixGlyph)}${esc(mixLabel)}</button>`:''}
-      <div class="factions">
-        <button data-follow-save="${item.id}" title="${item.status==='saved'?'已保存':'保存到账本'}" aria-label="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
-        <button data-follow-status="${item.id}" data-to="seen" title="标记已看" aria-label="标记已看"${item.status==='seen'?' disabled':''}>${icon('eye')}</button>
-        <button data-follow-status="${item.id}" data-to="ignored" title="忽略" aria-label="忽略"${item.status==='ignored'?' disabled':''}>${icon('eye-off')}</button>
-        ${item.status==='seen'||item.status==='ignored'?`<button data-follow-status="${item.id}" data-to="new" title="恢复未看" aria-label="恢复未看">${icon('rotate-ccw')}</button>`:''}
-      </div></div></div></div>
-    <div class="meta"><span class="mav fsourceavatar" title="创作者头像">${avatar}</span>
-      <div class="mtext"><button class="t cardtitle" data-follow-detail="${item.id}">${marks}${esc(item.title)}</button>
-        <div class="s followbyline"><span class="followauthor" title="${esc(author)}">${esc(author)}</span><time class="mono" datetime="${esc(item.published_at||'')}" title="${esc(when)}">${esc(compactWhen)}</time></div>
-        ${credited?`<div class="s followcredit" title="署名含 ${esc(credited)}">署名含 ${esc(credited)}</div>`:''}
-        ${badges?`<div class="fbadges">${badges}</div>`:''}
-        ${tags?`<div class="ctags">${tags}</div>`:''}${mediaIssue?`<span class="fnote followmediaissue">${esc(mediaIssue)}</span>`:''}</div></div>
-    <span class="fstate" aria-live="polite"></span></article>`;
 }
 
 /* 检查完必须说清三件事：新增了什么、哪些确实没有更新、哪些失败了以及为什么。
@@ -5563,375 +5398,129 @@ function readFollowView(){
   followSeed=Number(params.get('seed'))>>>0||followSeed||Number(rollSeed());
   followDir=params.get('dir')==='asc'?'asc':'desc';
 }
-/* 创作者、来源、题材三行各按着一个：点什么就只看什么，一个都不按就是全部；标签行是「同时
-   具备」的交集（服务端如此判）。这一页是浏览用的，不配批量选择键，想回到不筛就把按下的抬起来。 */
-/* 这一档排在筛选条最左端，跟资料页那一组同一个位置、同一块玻璃：它答的是「这一页现在
-   摆的是哪一类东西」，比它右边那些「这一类里看哪些」粗一级。摆到下排右端的话，它挨着
-   的是排序键和动作键，读起来像给当前这批加的又一个条件，而它换掉的是整页内容。
-   只有视频时不出这一组：一枚孤零零的键没有可切的对象。 */
-function followMediaControl(counts){
-  if(!counts.images&&followMediaView!=='images')return '';
-  return mediaViewButtonsHtml({active:followMediaView,videoCount:counts.videos,imageCount:counts.images,
-    className:'followmediaview'});
-}
-/* 当前按下的筛选条件，四个维度收成一张清单。这几排药丸是横滚的，按下去的那几枚常常
-   被滚到看不见的地方——「怎么只剩三条更新」的答案就藏在那儿。顺序照筛选条从粗到细：
-   创作者、来源、题材、标签。 */
-function followConditions({authors,providers,works}={}){
-  const rows=[];
-  const push=(set,kind,key,label)=>rows.push({set,kind,key,label:String(label||key)});
-  followAuthors.forEach(key=>push(followAuthors,'创作者',key,(authors&&authors.get(key)||{}).name));
-  followProviders.forEach(key=>push(followProviders,'来源',key,providers&&providers.get(key)));
-  followWorks.forEach(key=>push(followWorks,'题材',key,works&&works.get(key)));
-  followTags.forEach(key=>push(followTags,'标签',key,key));
-  return rows;
-}
-/* 生效的筛选摊在浮层正下方，跟首页和资料页同一条交集筛选条：同一颗 `.cb`、同一枚撤销
-   键、同一个「全部清除」。三页问的是同一件事——现在这一屏被哪几个条件框住了——画成
-   三种样子就得认三遍。标签那一档不写前缀，跟首页一致：标签名自己就说明了它是什么。
+/* 看的那一页整个归 React 岛 `follow-feed`（ADR-0031）：取数、两排、玻璃、列表、写操作、检查
+   更新与往回抓都在 /dist/peach-react.js 里。壳只管三样：地址栏（筛选的唯一真相源）、这一次
+   进入的取样种子、选择与照片墙这几样全站偏好。详情页读的 `followData` 由岛每取到一版列表就经
+   `loaded` 交回。
 
-   位置也照首页：这一条从无到有会把它下面的东西整块推下四十像素，放在浮层上面的话，
-   被推的是那块吸顶的玻璃和它上面的两排头像——按一枚标签，半屏东西跟着挪。放在下面
-   推的只有列表，而列表本来就要重画。 */
-function followComboHtml(conditions){
-  if(!conditions.length)return '';
-  return conditions.map(row=>`<span class="cb">${row.kind==='标签'?'':esc(row.kind)+' '}${esc(row.label)}<b data-follow-drop="${esc(row.key)}" data-follow-drop-kind="${esc(row.kind)}">✕</b></span>`).join('')
-    +`<button class="clr" type="button">全部清除</button>`;
+   岛改筛选只调 `route(view)`：这里写进地址栏，再经 `updateIsland` 推回新的 `view`。已经挂着时
+   换一档（前进后退、侧栏标签、批量标记之后）也走推送，只有列表铺骨架；重挂会把页头、两排和
+   那块玻璃一起先撤掉再画。 */
+function followView(){
+  return {status:followFilter,media:followMediaView,author:[...followAuthors][0]||'',
+    provider:[...followProviders][0]||'',work:[...followWorks][0]||'',tags:[...followTags],
+    sort:followSort,dir:followDir,seed:followSeed};
 }
-/* 下排右端那一组：换一批，图片墙上再加一枚「仅显示图片」，然后是几枚排序键。
-
-   「换一批」换的是整页：上面三排创作者、题材、标签按种子重新取样，下面的列表也按同一粒
-   种子打散重取——跟首页那一枚同一个意思。只重掷上面三排、列表纹丝不动的话，人按了几下
-   看到的还是按更新时间排的同一批，读成「没生效」。去问一遍来源那枚不在这一排：它是这一页
-   唯一联网的动作，站在页头「管理关注」右边当主按钮。 */
-function followFeedControlsHtml(){
-  return sortControlsHtml({
-    shuffleId:'followShuffle',shuffleClass:'',items:FOLLOW_FEED_SORTS,
-    renderItem:([key,label])=>sortButtonHtml(key,label,followSort,followDir,'data-follow-sort',FOLLOW_FEED_DIR_WORDS),
-    extra:followMediaView==='images'?photoControlsHtml({follow:true}):''});
+function adoptFollowView(view){
+  followFilter=view.status;followMediaView=view.media;
+  followAuthors=new Set(view.author?[view.author]:[]);
+  followProviders=new Set(view.provider?[view.provider]:[]);
+  followWorks=new Set(view.work?[view.work]:[]);
+  followTags=new Set(view.tags);
+  followSort=view.sort;followDir=view.dir;followSeed=view.seed;
 }
-/* 看的那一页上唯一一次联网：去问每个来源有没有新东西。管理页那几枚按的是同一条路径，
-   区别在它还要把失败详情摊进那一页的报告块；这一页上没有放报告的地方，失败只留一条
-   Toast，原因去管理页看。进度由 `wireFollowProgress` 那条统一接管——它本来就在这一页上
-   盯着这个任务，两处各盯一份的话，抓完会重取两遍。 */
-function wireFollowRecheck(button){
-  if(!button)return;
-  button.onclick=async()=>{
-    if(followBusy)return;
-    followBusy=true;let started=false;const old=button.innerHTML;
-    setActionBusy(button);button.innerHTML=spinnerHtml('检查中');
-    try{
-      const job=await api('/api/follow/check',{method:'POST',body:JSON.stringify({background:true})});
-      sessionStorage.setItem('peach-follow-job',job.job_id);
-      followCheckReport=null;started=true;
-      if(button.isConnected)void wireFollowProgress();
-    }catch(error){
-      followCheckReport={results:[{ok:false,error:error.message}]};
-      followCheckToast(followCheckReport);
-    }finally{
-      if(button.isConnected)followBusy=started;
-      setActionBusy(button,started);button.innerHTML=old;
-    }
-  };
+/* `#stats` 上此刻画着的是不是关注页那座岛：别的页面也挂在这个容器上，推错了就是往播放列表
+   里塞一份关注页的 props。 */
+function followFeedLive(){return islandMounted($('#stats'))&&!!$('#stats').querySelector('[data-follow-feed]')}
+function pushFollowFeed(patch){if(followFeedLive())updateIsland($('#stats'),patch)}
+/* 媒体那一档只换分组、不换列表，不滚回顶部；其余换的是整份列表，跟进页一样回到顶上。 */
+function routeFollowFeed(view,patch={}){
+  const list=followPageUrl(0);
+  adoptFollowView(view);route(followViewPath());
+  pushFollowFeed({...patch,view:followView()});
+  syncPhotoWalls();
+  if(followPageUrl(0)!==list)window.scrollTo({top:0,behavior:'smooth'});
 }
-/* 撤一条要重取：创作者、来源、标签、题材都在服务端筛。四个维度各有自己的 Set，所以
-   按键上带着 kind——同一个字符串在两个维度里都可能出现，只认 key 会撤错那一边。 */
-function wireFollowConditions(root,apply){
-  if(!root)return;
-  root.querySelectorAll('[data-follow-drop]').forEach(button=>button.onclick=()=>{
-    const row=followConditions().find(item=>item.key===button.dataset.followDrop
-      &&item.kind===button.dataset.followDropKind);
-    if(!row)return;
-    row.set.delete(row.key);apply();
-  });
-  const clear=root.querySelector('.clr');
-  if(clear)clear.onclick=()=>{
-    followAuthors.clear();followProviders.clear();followTags.clear();followWorks.clear();apply();
-  };
+/* 换一批掷一粒新种子，上面三排的取样和下面列表的次序都读它；排序键上没有「随机」这一档，
+   进随机就是三枚键都抬起来，按任一枚就离开。 */
+function shuffleFollowFeed(){
+  followSeed=Number(rollSeed());followDiscoverySeed=followSeed;
+  routeFollowFeed({...followView(),sort:FOLLOW_RANDOM_SORT},{seed:followDiscoverySeed});
 }
-function groupTagType(groups,tag){
-  for(const group of groups){
-    const type=group.primary&&group.primary.tag_types&&group.primary.tag_types[tag];
-    if(type)return type;
-  }
-  return 'general';
-}
-function renderFollow(){
-  const groups=followData.groups||[],counts=followData.counts||{};
-  indexFollowItems(followData);
-  const sources=followData.sources||[];
-  const broken=sources.filter(s=>s.last_status==='error'||s.last_status==='unauthorized');
-  const byId=new Map(sources.map(source=>[source.id,source]));
-  const sourceOf=group=>byId.get(group.primary&&group.primary.source_id);
-  /* 筛选条上能选什么来自服务端的全库口径 facets，不是这一页的 groups。按 groups 算
-     的话，选中一个创作者之后服务端只回他的条目，创作者栏就只剩他一个人，再也切不回去。 */
-  const facets=followData.facets||{};
-  const activeAuthors=new Set(facets.authors||[]);
-  const providerLabels=new Map(sources.map(source=>[source.provider,source.provider_label]));
-  const providers=new Map((facets.providers||[]).map(key=>[key,providerLabels.get(key)||key]));
-  const tagCounts=new Map(facets.tags||[]);
-  const authorSources=new Map();
-  sources.forEach(source=>{
-    if(!source.author_key)return;
-    if(!authorSources.has(source.author_key))authorSources.set(source.author_key,[]);
-    authorSources.get(source.author_key).push(source);
-  });
-  const authors=new Map([...authorSources].filter(([key])=>activeAuthors.has(key)).map(([key,list])=>[key,{
-    name:followAuthorName(list),sources:list,
-  }]));
-  const randomizedAuthors=followRandomOrder([...authors],row=>row[0]);
-  /* 创作者行下面这一排是题材，位置和形状对着首页那排厂牌：那边第二排答的是「这是谁出的」，
-     这边答的是「这是哪部作品、哪个人物」，都是先认出一个名字再决定看不看。只收来源自己
-     记成 copyright 与 character 的标签，词形猜不得——画师手柄在字面上跟作品名没有区别。
-
-     取样也跟着首页走：那两排按本次访问的种子随机取，进一次换一批。按条数取前 24 的话，
-     八十来个题材里永远只露出同样那二十几个，剩下的没有任何一条路径会把它们摆到眼前——
-     这排回答的是「接下来看什么」，不是「哪个最多」。创作者行和标签行早就是这么取的。 */
-  const workRows=followRandomOrder(facets.works||[],row=>row[0]).slice(0,ROW_FIRST);
-  followWorks.forEach(key=>{
-    if(!workRows.some(row=>row[0]===key))workRows.push([key,key,0]);
-  });
-  const allCount=Object.values(counts).reduce((total,count)=>total+(+count||0),0);
-  const topTagRows=followRandomOrder([...tagCounts],row=>row[0]).slice(0,20);
-  followTags.forEach(tag=>{
-    if(!topTagRows.some(([key])=>key===tag))
-      topTagRows.push([tag,tagCounts.get(tag)||allCount]);
-  });
-  const topTags=topTagRows.map(([tag,n])=>[tag,tagLabel(tag),n]);
-  followAuthors=new Set([...followAuthors].filter(key=>authors.has(key)));
-  followProviders=new Set([...followProviders].filter(key=>providers.has(key)));
-  // artist/character/copyright/metadata 不进入 general facets，但从在线标签索引点入后
-  // 仍是有效筛选，不能因为顶部筛选条的口径更窄就把它从 URL 和界面删掉。
-  // 创作者、来源和标签都已在服务端筛过，这里不再筛第二遍——两份同义的判定必然漂移。
-  const mediaCounts={videos:0,images:0};
-  groups.forEach(group=>followMediaKinds(group).forEach(kind=>
-    mediaCounts[kind==='image'?'images':'videos']++));
-  const wantedKind=followMediaView==='images'?'image':'video';
-  const visible=groups.filter(group=>followMediaKinds(group).has(wantedKind));
-  renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)));
-  const providerPills=[...providers].map(([key,label])=>
-    `<button class="pill sourcepill" data-follow-provider="${esc(key)}" aria-pressed="${followProviders.has(key)}"
-      title="${esc(label)}" aria-label="来源：${esc(label)}">${sourceIcon(key)}</button>`).join('');
-  const total=followFilter?counts[followFilter]||0:allCount;
-  const mediaControl=followMediaControl(mediaCounts);
-  const extraFilters=providerPills+(providerPills&&topTags.length?'<span class="sep" aria-hidden="true"></span>':'')
-    +topTags.map(([key,label,n])=>
-      filterChipHtml(label,{attr:'data-follow-tag',value:key,selected:followTags.has(key),count:n||undefined,className:'r34-'+groupTagType(groups,key)})).join('');
-  /* 名字从全量 facets 取，不从那一排随机露出的二十几枚取：按下的题材常常不在这一批里，
-     拿那一批当词表的话，清单上写的会是账本里那个小写的键。 */
-  const conditions=followConditions({authors,providers,
-    works:new Map((facets.works||[]).map(row=>[row[0],row[1]]))});
-  /* 筛选条跟首页是同一块玻璃浮层，分工也照那边。上排三段由粗到细，和资料页那条同一个
-     次序：最左端是视频／图片——这一页现在摆的是哪一类东西；隔一道竖线是五枚状态，
-     五选一、恒有一枚生效，答的是这一类里看哪一档，滑动的那块玻璃跟着它走；再隔一道
-     才是来源和标签这些可加可不加的筛选。观看状态在首页、资料页和这里三处是同一个控件，
-     画成三种样子就得学三遍。
-
-     下排左端读数照首页那条写，右端那一组也照首页：换一批，然后是几枚排序键。生效的
-     筛选不挤进这一排，它在浮层正下方那条交集筛选条上，跟首页和资料页同一个位置。
-
-     页头右端两枚：「管理关注」是去另一页的入口，次级；「检查更新」是这一页唯一联网的
-     动作，也是这一屏唯一的主按钮。一个来源都没有时不出它——没有可问的对象，而空态里
-     那枚「添加关注」已经是主按钮。 */
-  $('#stats').innerHTML=`<div class="follow">
-    <div class="followhead"><h2 class="disp pagetitle">关注</h2><span class="fheadactions">
-      <button class="fbtn fcheck" data-follow-manage>${icon('settings')}管理关注</button>${sources.length
-        ?`<button class="fbtn primary" data-follow-recheck aria-label="检查每个来源的更新">检查更新</button>`:''}</span></div>
-    ${authors.size?`<div class="tier followauthors" aria-label="按创作者筛选">${randomizedAuthors.map(([key,author])=>
-      `<button class="av" data-follow-author="${esc(key)}" aria-pressed="${followAuthors.has(key)}">
-        <span class="ring">${followAuthorAvatar(author.sources)}</span><span class="nm">${esc(author.name)}</span></button>`
-      ).join('')}</div>`:''}
-    ${workRows.length?`<div class="tier followworks" aria-label="按题材筛选">${workRows.map(row=>
-      followWorkPill(row)).join('')}</div>`:''}
-    <div class="tagbar followfilters" aria-label="${mediaControl?'媒体与关注筛选':'关注筛选'}">${mediaControl}${mediaControl?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills followviews" role="group" aria-label="状态">${FOLLOW_FILTERS.map(([key,label])=>
-      filterChipHtml(label,{attr:'data-follow-filter',value:key,selected:key===followFilter})).join('')}${extraFilters?'<span class="sep" aria-hidden="true"></span>':''}</div><div class="tagscroll followtags">${extraFilters}</div></div></div>
-    <div class="count followcount"><span class="mono">${total.toLocaleString()} 项更新 · 显示 ${visible.length.toLocaleString()}</span>${followFeedControlsHtml()}</div>
-    <div class="combo followcombo">${followComboHtml(conditions)}</div>
-    ${broken.length
-      ?`<div class="geist-note geist-note-error fwarn" role="alert">${icon('alert')}<span>${broken.length} 个来源上次检查失败，去<button class="flink" data-follow-manage>管理关注</button>看原因。</span></div>`:''}
-    <div class="followlist${followMediaView==='images'?' followphotowall':''}">${visible.length?visible.map(group=>{
-      const source=sourceOf(group),siblings=source&&authorSources.get(source.author_key)||[];
-      return followCard(group,siblings)}).join('')
-      :groups.length?emptyState('search-x','当前筛选下没有更新','切换媒体类型、创作者、来源或标签后再试。')
-      :sources.length?emptyState('rss','没有符合条件的更新','切换状态或来源筛选后再试。')
-      :emptyState('rss','还没有关注任何来源','添加创作者或订阅来源后，更新会集中显示在这里。',{actions:'<a class="geist-button primary" href="/follow-manage?tab=add">添加关注</a>'})}</div>
-    ${followData.has_more||sources.some(source=>source.can_backfill)?`<div class="followpagination">
-      ${followData.has_more?`<span class="followpageaction"><button class="fbtn" data-follow-more>${icon('chevron-down')}加载更多</button></span>`:''}
-      ${sources.some(source=>source.can_backfill)?`<span class="followpageaction"><button class="fbtn" data-follow-older>${icon('history')}抓更早的一页</button>
-        <span class="fmeta">${esc(followBackfillState(sources))}</span></span>`:''}</div>`:''}</div>`;
-  const more=$('#stats').querySelector('[data-follow-more]');
-  const page=followData,surface=surfaceToken(surfacePath());
-  wireLoadMore(more,{
-    enabled:()=>!followBusy,
-    isCurrent:()=>surfaceCurrent(surface)&&followData===page,
-    read:signal=>api(followPageUrl((page.offset||0)+FOLLOW_PAGE),{signal}),
-    // 服务端先整批分组再按组分页，同一作品不会跨页，下一页的组直接接在后面。
-    apply:next=>{followData={...next,groups:[...page.groups,...(next.groups||[])],sources:next.sources||page.sources};renderFollow()},
-  });
-  wireFollowItems();
-  wireFollowOlder();
-  void wireFollowProgress();
-  /* 上下两排收进同一块外框，材质与吸顶归外框；玻璃的坐标基准也是它，所以先搭框再量。 */
-  const filterRow=$('#stats').querySelector('.followfilters'),countRow=$('#stats').querySelector('.followcount');
-  wirePhotoControls(countRow);syncPhotoWalls();
-  mountFilterFrame(filterRow,countRow,{views:filterRow.querySelector('.followviews'),
-    tags:filterRow.querySelector('.followtags'),readout:countRow.querySelector('.mono'),
-    controls:countRow.querySelector('.sorts')});
-  wireDrag($('#stats').querySelector('.followauthors'));
-  wireDrag($('#stats').querySelector('.followworks'));
-  wireDrag(filterRow.querySelector('.filterscroll'));wireDrag(filterRow.querySelector('.tagscroll'));
-  wireHorizontalScroller(filterRow.querySelector('.tagscroll'));
-  const statusPills=[...filterRow.querySelectorAll('[data-follow-filter]')];
-  wireViewGlideRow(filterRow.querySelector('.followviews'),statusPills);
-  /* 媒体那一档另有一块玻璃，跟资料页同一个道理：它和四枚状态问的不是同一件事，共用
-     一块的话，点一下图片，玻璃会从「未看」那儿飞过来。 */
-  const mediaRow=filterRow.querySelector('.followmediaview');
-  if(mediaRow)wireViewGlideRow(mediaRow,[...mediaRow.querySelectorAll('[data-media-view]')],'media');
-  /* 「仅显示图片」那块玻璃也在这里落位，不在 wirePhotoControls 里：那一步跑在搭框之前，
-     量不到外框。每次重画都要落一次——换到视频那一档时开关不在了，玻璃得跟着收起来。 */
-  syncViewGlide(false,null,'imagesonly');
-  scheduleStickySurfaces();
-  paintSelection();
-  /* 一律先把新状态写进 URL 再重取：openFollow 现在照 URL 推导，不先写就会被
-     推回旧值。前进后退也因此天然可用。 */
-  const applyFollowView=()=>{route(followViewPath());openFollow(false)};
-  statusPills.forEach(button=>button.onclick=()=>{
-    /* 玻璃先走，数据后到：等服务端回来再动，点完先僵一下再跳。 */
-    statusPills.forEach(p=>p.setAttribute('aria-pressed',String(p===button)));syncViewGlide(true,button);
-    followFilter=button.dataset.followFilter;applyFollowView()});
-  $('#stats').querySelectorAll('.followfilters [data-media-view]').forEach(button=>button.onclick=()=>{
-    // 媒体类型是纯前端的分组，不影响服务端取哪些条目，所以只重画不重取。
-    followMediaView=button.dataset.mediaView;
-    route(followViewPath());renderFollow()});
-  /* 排序归服务端，所以点完要重取；玻璃那一套不适用——这几枚靠字重和箭头说话。
-     点未选中的换列并用那一列的默认方向，点选中的翻方向，跟首页同一份 `nextSortState`。 */
-  countRow.querySelectorAll('[data-follow-sort]').forEach(button=>button.onclick=()=>{
-    const next=nextSortState(button.dataset.followSort,followSort,followDir,FOLLOW_FEED_DIR_WORDS);
-    if(!next)return;
-    followSort=next.sort;followDir=next.dir;applyFollowView()});
-  /* 换一批掷一粒新种子，上面三排的取样和下面列表的次序都读它：列表归服务端排，所以要
-     重取；排序键上没有「随机」这一档，进随机就是三枚键都抬起来，按任一枚就离开。 */
-  const shuffle=countRow.querySelector('#followShuffle');
-  if(shuffle)shuffle.onclick=()=>{
-    followSeed=Number(rollSeed());followDiscoverySeed=followSeed;followSort=FOLLOW_RANDOM_SORT;applyFollowView()};
-  wireFollowRecheck($('#stats').querySelector('[data-follow-recheck]'));
-  wireFollowConditions($('#stats').querySelector('.followcombo'),applyFollowView);
-  /* 作者、来源、题材点什么就只看什么：按下一枚换掉同一排里按着的那枚，再点一次抬起。
-     只有标签是交集，按下几枚就要同时带着这几个标签。 */
-  const toggle=(set,key)=>{if(set.has(key))set.delete(key);else set.add(key)};
-  const pick=(set,key)=>{const again=set.has(key);set.clear();if(!again)set.add(key)};
-  $('#stats').querySelectorAll('[data-follow-author]').forEach(button=>button.onclick=()=>{
-    pick(followAuthors,button.dataset.followAuthor);applyFollowView()});
-  $('#stats').querySelectorAll('[data-follow-provider]').forEach(button=>button.onclick=()=>{
-    pick(followProviders,button.dataset.followProvider);applyFollowView()});
-  $('#stats').querySelectorAll('[data-follow-tag]').forEach(button=>button.onclick=()=>{
-    toggle(followTags,button.dataset.followTag);applyFollowView()});
-  $('#stats').querySelectorAll('[data-follow-work]').forEach(button=>button.onclick=()=>{
-    pick(followWorks,button.dataset.followWork);applyFollowView()});
-  $('#stats').querySelectorAll('[data-follow-manage]').forEach(button=>
-    button.onclick=()=>openFollowManage());
-
-}
-
-/* 往回抓到哪儿了。不说的话，用户点一次只看到列表变长一点，不知道自己走到第几页，
-   也不知道还要点几次。页码是 0 起的游标（0 = 只抓过第一页），显示成人读的第几页。 */
-function followBackfillState(sources){
-  const pages=sources.filter(source=>source.can_backfill)
-    .map(source=>(source.backfill_page||0)+1);
-  if(!pages.length)return '';
-  const deepest=Math.max(...pages), shallowest=Math.min(...pages);
-  if(deepest<=1)return '每个来源都只抓了第 1 页';
-  return shallowest===deepest
-    ? `每个来源都抓到第 ${deepest} 页`
-    : `已抓到第 ${shallowest}–${deepest} 页`;
-}
-
-/* 一次只往回一页。追更的常规检查永远只看第一页——每次都从头翻一遍站点既慢又没必要；
-   但那也意味着每个来源只有第一页那点内容，用户问「怎么这么少」就是这个原因。
-   所以往回抓是一个独立的、显式的动作，点一次走一页，不自动、不连翻。 */
-async function wireFollowProgress(){
-  const host=$('#stats'),surface=surfaceToken(surfacePath());
-  host.querySelector('[data-follow-progress]')?.remove();
-  const marker=document.createElement('div');marker.dataset.followProgress='';host.prepend(marker);
-  const ui=await import('/dist/peach-ui.js');
-  if(!surfaceCurrent(surface)||!marker.isConnected)return;
-  ui.followJobProgress({host:marker,active:()=>surfaceCurrent(surface),
-    read:signal=>api('/api/follow/check',{signal}),
-    busy:running=>{followBusy=running;
-      host.querySelectorAll('[data-follow-recheck],[data-follow-older]')
-        .forEach(button=>setActionBusy(button,running))},
-    complete:report=>{followCheckReport=report.status==='failed'
-      ?{results:[{ok:false,error:report.error}]}:report;
-      followCheckToast(followCheckReport);
-      if(surfaceCurrent(surface))void refreshFollowSurface(surface)}});
-}
-async function refreshFollowSurface(surface){
-  try{
-    const data=await surfaceApi(surface,followPageUrl(0));
-    if(!surfaceCurrent(surface))return;
-    followData=data;
-    renderFollow();
-  }catch(error){if(surfaceCurrent(surface))toast(error.message,{warn:true})}
-}
-function wireFollowOlder(){
-  const button=$('#stats').querySelector('[data-follow-older]');
-  if(!button)return;
-  button.onclick=async()=>{
-    if(followBusy)return;
-    followBusy=true;setActionBusy(button);
-    button.innerHTML=`${spinnerHtml('抓取中')}<span>抓取中…</span>`;
-    try{
-      const started=await api('/api/follow/check',
-        {method:'POST',body:JSON.stringify({older:true,background:true})});
-      sessionStorage.setItem('peach-follow-job',started.job_id);
-      if(button.isConnected)void wireFollowProgress();
-    }catch(error){
-      followCheckReport={results:[{ok:false,error:error.message}]};
-      followCheckToast(followCheckReport);
-      await openFollow(false);
-    }finally{if(button.isConnected){followBusy=false;setActionBusy(button,false)}}
-  };
-}
+/* 岛要的助手与动作各只有一份、身份不变：卡片按引用比较，每次推新对象进去就是整屏重画。
+   头像、署名、题材圆标与来源图标跟详情共用这一份实现。 */
+const followFeedHelpers={
+  sourceIcon:(provider,label='')=>sourceIcon(provider,label),
+  authorAvatar:(sources,context)=>followAuthorAvatar(sources,followAuthorName(sources,context.aliases)),
+  authorName:(sources,context)=>followAuthorName(sources,context.aliases),
+  identity:(item,authorSources,context)=>followIdentity(item,authorSources,context),
+  workMark:row=>followWorkMark(row),
+  titleMarks:(group,shown)=>followTitleMarks(group,shown),
+  badges:(group,shown)=>followBadges(group,shown),
+  mediaIssue:(item,context)=>followMediaIssue(item,context.credentials),
+  when:item=>followWhen(item),
+  tagLabel:tag=>tagLabel(tag),
+  wireDrag:row=>{if(row)wireDrag(row)},
+  wireScroller:row=>{if(row)wireHorizontalScroller(row)},
+  learnDims:(item,media,width,height)=>learnFollowDims(item,media,width,height),
+  listSkeletonHtml:media=>followContentSkeletonHtml(media),
+  jobProgress:options=>followJobProgress(options),
+};
+const followFeedActions={
+  route:view=>routeFollowFeed(view),
+  shuffle:()=>shuffleFollowFeed(),
+  loaded:(data,visible,credentials)=>{
+    followData=data;followCredentialProviders=new Set(credentials);
+    indexFollowItems(data);
+    renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)));
+  },
+  openDetail:id=>openFollowDetail(id),
+  openManage:()=>openFollowManage(),
+  toggleSelection:(id,range)=>toggleFollowSelection(id,range),
+  setImagesOnly:on=>{appSettings.followImagesOnly=!!on;saveSettings();syncPhotoWalls()},
+  setPhotoLayout:layout=>{
+    appSettings.photoLayout=allowedSetting(layout,['fixed','masonry'],'masonry');saveSettings();syncPhotoWalls()},
+  canFlip:()=>!selectMode&&!censorOn()&&!window.__scrolling&&!reduceMotion(),
+  toast:(message,{undo}={})=>actionReceipt(message,{undo}),
+  failure:(action,error)=>actionFailure(action,error),
+  checkReport:report=>followCheckToast(report),
+};
+const followFeedProps=()=>({view:followView(),seed:followDiscoverySeed,revision:followRevision,
+  selectMode,selected:new Set(followSelected),photoSize:photoSize(),photoLayout:photoLayout(),
+  imagesOnly:!!appSettings.followImagesOnly,helpers:followFeedHelpers,actions:followFeedActions});
 
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
-  /* 从窄栏点进来（push）是「重新进入」，回到干净的 /follow；其余情况一律照 URL
-     推导。筛选状态由 URL 推导，不在这里逐个手写重置——漏一个就会让 provider、tag、
-     status 一直按着，而它们还决定服务端取哪些条目，等于取错数据。 */
+  /* 从窄栏点进来（push）是「重新进入」，回到干净的 /follow、换一粒取样种子；其余情况一律照
+     URL 推导。筛选状态由 URL 推导，不在这里逐个手写重置——漏一个就会让某一维一直按着，
+     而它们还决定服务端取哪些条目，等于取错数据。 */
   if(push)followDiscoverySeed=Math.floor(Math.random()*0xffffffff);
   if(push)route('/follow');
   if(location.pathname==='/follow')readFollowView();
-  const surface=claimSurface(renderForDetail?surfacePath():'/follow');
-  /* 已经在这一页上、只是换了一档筛选或排序的话，骨架只盖浮层下面那块列表。页头、创作者
-     行、题材行和那块玻璃此刻就能给出最终样子，它们从来没在等：整块铺骨架的代价是浮层
-     连同上面两排一起先消失再出现——换一次排序，屏幕上大半的东西都闪一遍，而真正在等
-     的只有列表里摆哪些东西。列表整个换掉而不是往里塞：`.followlist` 自己是网格容器，
-     骨架有自己的算式，套在里面就成了网格里的一个单元格。
-     图片墙的骨架为了借真网格的算式，自己的内层也叫 `.followlist`；深链启动先画了它、路由
-     到位再进来一次时，它不算「已经在这一页上」——把它当列表换掉，就是往骨架里再套一张
-     骨架，外层那张的网格把内层整张压成一个单元格。 */
-  const list=$('#stats').querySelector('.follow .followlist');
-  const partial=!!list&&!list.closest('[data-skeleton]')&&!renderForDetail;
-  showManagementBody({manage:false,
-    placeholder:partial?'':renderForDetail?detailSkeletonHtml():followSkeletonHtml('正在读取关注内容')});
-  if(partial){
-    list.outerHTML=pageSkeletonHtml('正在读取关注内容',
-      {cards:true,className:'follow-content-skeleton postercard-skeleton'});
-    fitSkeleton($('#stats'));
-    // 等数据的这段时间换批键自己画，跟首页同一个忙态；这一排随后整个重画，标记不用手动摘。
-    $('#stats').querySelector('.followcount')?.setAttribute('aria-busy','true');
+  if(followFeedLive()){
+    // 详情盖在列表上面：列表原样留着，返回时接着看。
+    if(renderForDetail)return;
+    showManagementBody({manage:false});
+    pushFollowFeed({view:followView(),seed:followDiscoverySeed,revision:++followRevision});
+    syncPhotoWalls();
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
   }
-  const [data,credentials]=await Promise.all([
-    surfaceApi(surface,followPageUrl(0)),
-    surfaceApi(surface,'/api/follow/credentials').catch(()=>({providers:[]})),
-  ]);
-  if(!surfaceCurrent(surface))return;
-  followData=data;
-  followCredentialProviders=new Set((credentials.providers||[])
-    .filter(provider=>provider.present).map(provider=>provider.provider));
-  if(!surfaceCurrent(surface))return;
-  renderFollow();
-  if(!renderForDetail)window.scrollTo({top:0,behavior:'smooth'});
+  if(renderForDetail){
+    /* 深链直接进详情：详情要的只是条目索引、来源与凭据，取一页就够；岛等回到列表时再挂。 */
+    const surface=claimSurface(surfacePath());
+    showManagementBody({manage:false,placeholder:detailSkeletonHtml()});
+    const [data,credentials]=await Promise.all([
+      surfaceApi(surface,followPageUrl(0)),
+      surfaceApi(surface,'/api/follow/credentials').catch(()=>({providers:[]})),
+    ]);
+    if(!surfaceCurrent(surface)||!data)return;
+    // 详情盖在这块上面；骨架留着就一直报「正在读取」，列表回来时由岛自己铺。
+    $('#stats').replaceChildren();
+    followData=data;
+    followCredentialProviders=new Set((credentials?.providers||[])
+      .filter(provider=>provider.present).map(provider=>provider.provider));
+    indexFollowItems(data);
+    const wanted=followMediaView==='images'?'image':'video';
+    renderFollowDrawer((data.groups||[]).filter(group=>followMediaKinds(group).has(wanted))
+      .flatMap(group=>followCollectionItems(group)));
+    return;
+  }
+  const surface=claimSurface('/follow');
+  showManagementBody({manage:false,placeholder:followSkeletonHtml('正在读取关注内容')});
+  await mountIsland('follow-feed',$('#stats'),followFeedProps(),
+    {isCurrent:()=>surfaceCurrent(surface),reveal:revealSkeleton});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
 
 /* 有站点图标的来源。图标由服务端按 follow_assets.SOURCE_ICON_URLS 取回、保存在本机，
@@ -5966,15 +5555,18 @@ function followAuthorAvatar(group,name=followAuthorName(group)){
 /* 卡片与详情的署名。booru 帖子由服务端认出真正的发布者时（`item.credit`），名字和头像
    都换成发布者：也关注了这位就用那位的来源，否则只出首字母，不借被关注者的头像；
    被关注者退成一行「署名含」，说明这条为什么出现在这里。认不出的照常署被关注者。 */
-function followIdentity(item,authorSources){
+/* `context` 是关注页岛那一版列表的来源与别名；详情不传，读 `followData`。 */
+function followIdentity(item,authorSources,context=null){
+  const aliases=context?.aliases||followData?.author_aliases||[];
   const poster=item.credit?.poster;
-  if(!poster)return {author:followAuthorName(authorSources)||item.author||item.source_label||'创作者未取得',
-    avatar:followAuthorAvatar(authorSources),credited:''};
+  if(!poster){const name=followAuthorName(authorSources,aliases);
+    return {author:name||item.author||item.source_label||'创作者未取得',
+      avatar:followAuthorAvatar(authorSources,name),credited:''}}
   const key=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  const sources=followData?.sources||[];
+  const sources=context?.sources||followData?.sources||[];
   const own=sources.find(row=>key(row.ref)===key(poster));
   const group=own?.author_key?sources.filter(row=>row.author_key===own.author_key):own?[own]:[];
-  const author=group.length&&followAuthorName(group)||poster;
+  const author=group.length&&followAuthorName(group,aliases)||poster;
   return {author,avatar:followAuthorAvatar(group,author),credited:item.credit.credited||''};
 }
 
@@ -5987,11 +5579,9 @@ function followIdentity(item,authorSources){
    两个函数。放大在这里不是锦上添花：圆标只有 28px，而这是一整张作品图不是烤好边距
    的头像，只挪不放大的话脸在图里占多少、在这枚圆里就占多少，一排看下来仍是身体。
    没检出脸就两样都不写，圆标按样式表里的默认取景摆。 */
-function followWorkPill([key,label,,icon,focus]){
+function followWorkMark([key,label,,icon,focus]){
   const fallback=esc(String(label||'').slice(0,2));
-  const mark=icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy"${facePos(focus)}${faceBoxAttrs(focus)}>`:fallback;
-  return `<button class="brandpill" data-follow-work="${esc(key)}" aria-pressed="${followWorks.has(key)}">
-    <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(label)}</button>`;
+  return icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy"${facePos(focus)}${faceBoxAttrs(focus)}>`:fallback;
 }
 
 /* 分组标题要用创作者本人的名字，不是某一条来源的标签。哪一段标签是人名由服务端一处
@@ -6000,7 +5590,7 @@ function followWorkPill([key,label,,icon,focus]){
    创作者在末尾的方括号里。这里只在同一个人的几种写法之间挑一个，不再自己解析标签。
    同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
    更像创作者自己写的名字。 */
-function followAuthorName(group){
+function followAuthorName(group,aliases=followData?.author_aliases||[]){
   if(!group.length)return '';
   const clean=value=>String(value||'')
     .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'')
@@ -6008,7 +5598,7 @@ function followAuthorName(group){
   const authored=source=>String(source.author_name||'').trim()||clean(source.label);
   const entity=group.find(source=>source.entity_name);
   if(entity)return entity.entity_name;
-  const aliasGroup=(followData.author_aliases||[]).find(
+  const aliasGroup=aliases.find(
     item=>`name:${item.canonical_key}`===group[0]?.author_key);
   if(aliasGroup)return clean(aliasGroup.canonical_name);
   // 官方主页来源不只优先提供头像，也优先提供创作者写法；否则 F95 的线程标题
@@ -6102,73 +5692,14 @@ function flushFollowDims(){
   api('/api/follow/image-dims',{method:'POST',body:JSON.stringify({entries})}).catch(()=>{});
   if(followDimsQueue.length)followDimsTimer=setTimeout(flushFollowDims,800);
 }
-function wireImageDimsLearning(root){
-  root.querySelectorAll('img[data-learn-dims]').forEach(img=>{
-    const record=()=>{
-      if(!img.naturalWidth||!img.naturalHeight)return;
-      const item=+img.dataset.learnDims,media=img.dataset.learnMedia;
-      const key=`${item}:${media??''}`;
-      if(followDimsReported.has(key))return;
-      followDimsReported.add(key);
-      const entry={item,width:img.naturalWidth,height:img.naturalHeight};
-      if(media!==undefined)entry.media=+media;
-      followDimsQueue.push(entry);
-      if(!followDimsTimer)followDimsTimer=setTimeout(flushFollowDims,800);
-    };
-    if(img.complete)record();else img.addEventListener('load',record,{once:true});
-  });
-}
-function wireFollowItems(){
-  const root=$('#stats');
-  wireFollowDetail(root);
-  wireImageDimsLearning(root);
-  root.querySelectorAll('[data-follow-status]').forEach(button=>button.onclick=async event=>{
-    event.stopPropagation();
-    await followWrite(button,'/api/follow/status',
-      {item:+button.dataset.followStatus,to:button.dataset.to})});
-  root.querySelectorAll('[data-follow-save]').forEach(button=>button.onclick=async event=>{
-    event.stopPropagation();
-    await followWrite(button,'/api/follow/save',{item:+button.dataset.followSave})});
-  root.querySelectorAll('[data-follow-collection]').forEach(button=>button.onclick=event=>{
-    event.stopPropagation();openFollowDetail(+button.dataset.followCollection)});
-  root.querySelectorAll('.followitem[data-follow-item]').forEach(card=>{
-    const id=+card.dataset.followItem;
-    if(!card.dataset.flipWired){card.dataset.flipWired='1';wireFollowStackFlip(card)}
-    card.onclick=event=>{
-      if(event.target.closest('[data-follow-status],[data-follow-save],[data-follow-collection],[data-follow-detail],.tg'))return;
-      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
-        event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey);return}
-      openFollowDetail(id);
-    };
-    card.querySelectorAll('a').forEach(link=>link.onclick=event=>{
-      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
-        event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey)}
-    });
-    const mark=card.querySelector('.selectionMark');
-    if(mark)mark.onclick=event=>{event.preventDefault();event.stopPropagation();toggleFollowSelection(id,event.shiftKey)};
-  });
-}
-
-async function followWrite(button,path,body){
-  const card=button.closest('.followitem'),state=card?.querySelector('.fstate');
-  const before=card?.dataset.status||'new';
-  setActionBusy(button);
-  try{
-    await api(path,{method:'POST',body:JSON.stringify(body)});
-    await openFollow(false);
-    const saving=path==='/api/follow/save',to=body.to;
-    const labels={new:'已恢复未看',seen:'已标记已看',ignored:'已忽略'};
-    actionReceipt(saving?'已保存到账本':(labels[to]||'已更新关注状态'),{undo:!saving&&before!=='saved'?async()=>{
-      await api('/api/follow/status',{method:'POST',body:JSON.stringify({item:body.item,to:before})});
-      await openFollow(false);
-    }:null});
-  }catch(e){
-    // 只读端（reader）写入必然 409，那是正常状态；照实显示比静默失败好。
-    if(state)state.textContent=e.message;
-    actionFailure(path==='/api/follow/save'?'保存到账本':'更新关注状态',e);
-  }finally{
-    setActionBusy(button,false);
-  }
+function learnFollowDims(item,media,width,height){
+  const key=`${item}:${media??''}`;
+  if(followDimsReported.has(key))return;
+  followDimsReported.add(key);
+  const entry={item,width,height};
+  if(media!==null&&media!==undefined)entry.media=media;
+  followDimsQueue.push(entry);
+  if(!followDimsTimer)followDimsTimer=setTimeout(flushFollowDims,800);
 }
 
 /* ── 全部艺人 / 创作者 / 厂牌 / 事务所 / 标签索引页 ──
@@ -6536,33 +6067,24 @@ function photoSize(){
   return allowedSetting(appSettings.photoSize,PHOTO_SIZES.map(([key])=>key),'small');
 }
 function photoLayout(){return allowedSetting(appSettings.photoLayout,['fixed','masonry'],'masonry')}
-/* 资料页那面墙由岛异步画，刚推过去的这一刻 DOM 里还没有它：按视图状态判，不查墙。 */
+/* 资料页与关注页那面墙都由岛异步画，刚推过去的这一刻 DOM 里还没有它：按视图状态判，不查墙。
+   剩下那一条认的是进页骨架里借照片墙网格的那一块。 */
 function photoViewActive(){
   if(entityBodyView==='photos'&&entityBodyCurrent()&&!$('#index').hidden)return true;
+  if(location.pathname==='/follow'&&followMediaView==='images'&&!$('#stats').hidden)return true;
   return [...document.querySelectorAll('.followphotowall')].some(wall=>wall.getClientRects().length>0)}
-function photoControlsHtml({follow=false}={}){return iconSwitchHtml('photo-layout','图片布局',PHOTO_LAYOUTS,photoLayout(),
-  {attr:'data-photo-layout',className:'photolayout'})+(follow?`<button type="button" class="followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon('captions-off')}</button>`:'')}
 function syncPhotoWalls(){
+  // 骨架里那面墙一律按固定比例铺：瀑布流的列高要等图片回来才知道。
   document.querySelectorAll('.followphotowall').forEach(wall=>{
-    wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()});
-  pushEntityBody({photoSize:photoSize(),photoLayout:photoLayout()});
-  document.querySelectorAll('.followphotowall').forEach(wall=>{
+    wall.dataset.size=photoSize();wall.dataset.layout='fixed';
     wall.dataset.imagesOnly=String(!!appSettings.followImagesOnly)});
+  pushEntityBody({photoSize:photoSize(),photoLayout:photoLayout()});
+  pushFollowFeed({photoSize:photoSize(),photoLayout:photoLayout(),imagesOnly:!!appSettings.followImagesOnly});
   if(photoViewActive()){
     $('#density').setAttribute('aria-pressed',String(photoSize()==='small'));
     $('#density').title='当前：'+(photoSize()==='big'?'大图':'小图');
     syncDensityIcon(photoSize());
   }else applyDensity();
-}
-function wirePhotoControls(root){
-  const imagesOnly=root?.querySelector('[data-follow-images-only]');
-  /* 不是一排里选一枚，所以不接悬停跟随，只在按下时让玻璃出现或收起。 */
-  if(imagesOnly)imagesOnly.onclick=()=>{
-    appSettings.followImagesOnly=!appSettings.followImagesOnly;saveSettings();syncPhotoWalls();
-    imagesOnly.setAttribute('aria-pressed',String(appSettings.followImagesOnly));
-    syncViewGlide(false,null,'imagesonly')};
-  wireIconSwitch(root,'data-photo-layout',value=>{
-    appSettings.photoLayout=allowedSetting(value,['fixed','masonry'],'masonry');saveSettings();syncPhotoWalls()});
 }
 /* 换大小一次请求都不发，也不重拼这面墙：列数是 CSS 的事，重画只会把已经取回的缩略图
    丢掉再要一遍，还把人滚到的位置带走。 */

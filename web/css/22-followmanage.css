@@ -18,14 +18,6 @@
   margin:-14px -16px 12px;padding:11px 16px;background:var(--overlay-5);
   border-bottom:1px solid var(--line-soft);border-radius:calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px) 0 0}
 .fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
-/* 说明文字是这一行里唯一可以缩的东西：标题、排序框和动作键都要完整读出来。
-   基准取 0 而不是 auto：这一行允许换行，按内容宽度参与排线的话它会先把整行挤断，
-   缩放根本轮不到发生。基准 0 让它先占 0 再吃剩下的宽度，末尾省略。 */
-.fsechead .fmeta{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.fsechead .fbtn{flex:none}
-/* 升降序键是这一行里唯一的纯图标键：正方形、边长取 --control-h，和同排的下拉、
-   版式开关一样高，图标 16px 与排序框左侧那枚同尺寸。写成两级选择器是因为 .fbtn 的
-   `padding:0 12px` 排在本文件后面——单类名压不过它，内容宽只剩 8px，图标会被压成一条。 */
 /* 排序框照 Geist Select 的 prefix 做法：图标压在框内左侧，不在框外挂一个文字标签。
    Geist 的文字 Label 是块级、排在控件上方（block ... mb-2），行内并排那种写法它没有；
    而工具行里既没有上方空间，图标又足够把下拉框和普通按钮区分开。 */
@@ -34,11 +26,6 @@
    读起来就是一个点不动的说明标签，而它恰恰是这行里唯一能改变列表内容的控件。 */
 .fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
 .fsechead .iconswitch label{width:34px;height:32px}
-.fsechead .fbtn{height:var(--control-h)}
-/* 排序图标压在触发器左侧，所以左内边距要给它让出位置。 */
-.fmeta{font-size:var(--fs-xs);color:var(--muted)}
-.fmeta b{color:var(--ink);font-variant-numeric:tabular-nums}
-.fmeta.warn{color:var(--drop)}
 .fnote{margin:8px 0 0;font-size:var(--fs-sm);line-height:1.7;color:var(--muted)}
 .fnote:empty{display:none}
 .fnote b{color:var(--ink-2);font-weight:600}
@@ -92,21 +79,6 @@
 .fwarn{grid-template-columns:16px minmax(0,1fr);margin:10px 0 14px}
 .fwarn>span{min-width:0}
 .fwarn p{margin:0}
-.fbtn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
-  box-sizing:border-box;padding:0 12px;border:0;border-radius:var(--control-radius);
-  box-shadow:0 0 0 1px var(--line-soft);
-  background:var(--ground);color:var(--ink);font-size:var(--fs-md);font-weight:500;font-family:inherit;cursor:pointer;
-  white-space:nowrap;transition:color .15s ease-in-out,background-color .15s ease-in-out}
-.fbtn:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground))}
-.fbtn:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}
-/* 强调档那一面归 `board.css` 的 Board primary 一处，跟 `.geist-button.primary` 一样不在
-   这里另写：留一份 Geist 的墨色实底，它的 `:hover:not(:disabled)` 比 Board 那条静止规则
-   还重一个类，压上去整颗跳成墨色、还描一圈同色的边——「管理关注」上那道黑边就是它。 */
-.fbtn.primary{font-weight:500}
-/* 去边框那一条只针对动作按钮。升降序那枚不是动作：它跟旁边的下拉触发器是同一组
-   控件，共用输入框那圈线。少了线，它在页面上只剩一个箭头浮着。 */
-.fbtn.small{height:26px;padding:0 10px;font-size:var(--fs-sm)}
-.fbtn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
 
 /* 卡片内部的行：只用分隔线，不套框——框里再套框正是要避开的那条。 */
 /* grid 项默认 min-width:auto，最宽的一行会把整列撑出容器——窄的那一栏尤其明显。
@@ -130,7 +102,6 @@
 .frows>.frow:last-child[open]{border-bottom:0}
 .frow>b{flex:1 1 180px;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap}
-.frow .fmeta{flex:0 0 auto}
 .fsource.bad>b{color:var(--drop)}
 
 /* 进度面板与它上下的分区是同一档容器：发丝边 --field-ring 加 --ground 的面。
@@ -161,19 +132,13 @@ p.fnote .followtask{color:var(--ink-2)}
   .fsec{padding:12px 13px 14px}
   .fsechead{margin:-12px -13px 12px;padding:12px 13px}
   .frow{gap:8px}
-  /* 省略后剩给说明文字的不到 120px，读出来只是「N 个来源 · 」这种半句；
-     未看条数在下面每一行来源上都有，标题行让给排序和两个动作键。 */
-  .fsechead .fmeta{display:none}
-  .frow .fmeta:nth-of-type(2){display:none}
 }
 
 /* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；
    按钮仍保留各自的本地加载 / 站点抓取语义。 */
 .followpagination{display:flex;align-items:center;gap:14px 24px;min-width:0;margin:18px 0 0;
   padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto}
-.followpageaction{display:inline-flex;align-items:center;gap:12px;min-width:0;flex:none}
-.followpageaction .fmeta{min-width:0;overflow:hidden;text-overflow:ellipsis}
-@media(max-width:640px){.followpagination{align-items:flex-start;flex-wrap:wrap;white-space:normal}.followpageaction{width:100%}}
+@media(max-width:640px){.followpagination{align-items:flex-start;flex-wrap:wrap;white-space:normal}}
 
 /* 资源标识统一由 MiddleTruncate 计算可见文本。星号让本规则与「类 + 元素」的末尾省略
    选择器同权重，并凭源码顺序覆盖，避免两套省略同时生效。 */

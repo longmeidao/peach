@@ -903,6 +903,7 @@ var Z = {
 	"entity-body": { react: "entity-body" },
 	"entity-filter": { react: "entity-filter" },
 	"entity-hero": { react: "entity-hero" },
+	"follow-feed": { react: "follow-feed" },
 	"follow-manage": { react: "follow-manage" },
 	index: { react: "index" },
 	"junk-queue": { react: "junk-queue" },

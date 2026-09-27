@@ -55,13 +55,6 @@
    浮层吸顶的范围是它父元素的盒子，只裹着它自己的父元素一格都走不动；两层让开，父元素就是
    `#index`。 */
 [data-entity-filter],[data-entity-filter]>.peach-react{display:contents}
-.mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
-.mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;
-  border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
-.mediaviewbuttons .mediaviewbutton svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
-.mediaviewbuttons .mediaviewbutton[data-media-icon="image"] svg{fill:currentColor;stroke:none}
-.mediaviewbuttons .mediaviewbutton:hover{color:var(--ink)}
-.mediaviewbuttons .mediaviewbutton[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
 /* 每一枚就是首页那枚 `.av` 女优头像，尺寸、间距与悬停都归 `board.css` 那套共享规则；
    这里只管横滚轨道本身。 */
 .relatedpeople{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;overscroll-behavior-inline:contain}

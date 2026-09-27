@@ -26,6 +26,9 @@ export declare function entityPath(kind: string, name: string): string;
 /** 名字比对用的折叠：NFKC、去首尾空白、小写。 */
 export declare function foldName(value: unknown): string;
 
+/** 种子随机的排序键：FNV-1a 压「种子 + 键」成 32 位无符号数，同一种子下稳定。 */
+export declare function seededRank(seed: number | string, value: string): number;
+
 /** 常见社媒走雪碧图里的品牌字形（`brand-x` 这一类），不在名单里是空串。 */
 export declare function brandIcon(url: string): string;
 

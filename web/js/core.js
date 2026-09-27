@@ -168,9 +168,18 @@ const fmtClock=s=>{s=Math.max(0,Math.floor(Number(s)||0));const h=s/3600|0,m=(s%
 /* 网盘报的容量可以到 PB：PikPak 报 10 PiB，写成 TB 是「10240.00 TB」。 */
 const fmtSize=b=>b>=1125899906842624?(b/1125899906842624).toFixed(2)+' PB':b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
 const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
+/* 种子随机：FNV-1a 把「种子 + 键」压成一个 32 位数当排序键。同一个种子下顺序稳定，
+   换种子就是另一套顺序，客户端不必存 PRNG 状态，也不必让后端多带一个参数。首页的
+   抽样和关注页岛的两排共用这一份，同一粒种子两边取到的是同一批。 */
+const seededRank=(seed,value)=>{
+  let hash=2166136261>>>0;
+  for(const char of `${seed}\u0000${value}`){hash^=char.codePointAt(0);hash=Math.imul(hash,16777619)>>>0}
+  return hash;
+};
 
 export {
   $,
+  seededRank,
   realDuration,
   icon,
   api,

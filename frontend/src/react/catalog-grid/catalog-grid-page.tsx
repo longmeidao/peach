@@ -7,7 +7,7 @@
  * 读数行（`#count`）的结构归壳，网格每接一页经 `onCount` 报一次，再把读数按位错峰写进
  * 那一格（遗留层 `popCount`）。无限滚动的判据照抄遗留层 `wireLoadMore`：哨兵进入视口 320px
  * 内自动取下一页，点它等于手动取；失败在哨兵后面留一条可重试的 Note，之后只有手动才重试。 */
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useInfiniteQuery, type InfiniteData, type QueryKey } from '@tanstack/react-query';
 import { requestErrorMessage } from '@peach/legacy/core';
 import { loadingDotsHtml, popCount } from '@peach/legacy/ui';
@@ -156,8 +156,11 @@ function GridBody(props: CatalogGridProps) {
 }
 
 /** 续页。目录是一颗滚到附近就自己取的哨兵，资料页是一枚「载入更多」键，两者判据相同。
- *  每接上一页就按新键重挂一次，失败状态不跨页。资料页照片墙的翻页也用这一枚。 */
-export function LoadMore({ entity, load, enabled }: { entity: boolean; load: () => Promise<void>; enabled: () => boolean }) {
+ *  每接上一页就按新键重挂一次，失败状态不跨页。资料页照片墙与关注页的翻页也用这一枚；关注页那枚键
+ *  带字形，`children` 换掉键上的字。 */
+export function LoadMore({ entity, load, enabled, children }: {
+  entity: boolean; load: () => Promise<void>; enabled: () => boolean; children?: ReactNode;
+}) {
   const node = useRef<HTMLElement | null>(null);
   const busy = useRef(false);
   const failed = useRef(false);
@@ -194,7 +197,7 @@ export function LoadMore({ entity, load, enabled }: { entity: boolean; load: () 
   return (
     <>
       {entity
-        ? <button ref={attach} type="button" data-entity-more="" {...aria} onClick={() => void run(true)}>载入更多</button>
+        ? <button ref={attach} type="button" data-entity-more="" {...aria} onClick={() => void run(true)}>{children ?? '载入更多'}</button>
         : <div ref={attach} data-load-more="" {...aria} onClick={() => void run(true)}
           dangerouslySetInnerHTML={{ __html: loadingDotsHtml('继续载入中…') }} />}
       {state.error ? <RetryNote message={state.error} onRetry={() => void run(true)} /> : null}
