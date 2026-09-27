@@ -51,19 +51,10 @@
 .entitytagbar{position:sticky;top:var(--topH);z-index:61;display:flex;align-items:center;
   height:var(--filterH);margin:0 -16px;padding:9px 16px;background:transparent;
   border-bottom:1px solid transparent}
-/* 这一格在筛选条里就是首页那条的标签区，横滚、滚动条和窄屏让位都归 `.tagscroll`。
-   这里只补一件这一页独有的事：标签不折行，装不下的滑出去。`.entitytags` 这个类名
-   在骨架里单独用到，所以它自己那份摆法留着。 */
-.entitytagbar .entitytags{flex-wrap:nowrap}
-.entitytags{display:flex;align-items:center;flex-wrap:wrap;gap:7px}.entitytags .pill{flex:none}
-/* 这条是横向滚动行，里面每一项都得拒绝被压扁——挤瘪的开关点不准，也读不出图标。 */
-.entitytags .iconswitch{flex:none}
-.entitytags small{color:var(--muted);margin-left:4px}
-/* 那排标签数的是视频。看照片或名册时它们一个都对不上屏幕上摆着的东西，点下去还会把
-   视图拨回视频，所以那两档只留媒体开关。切回视频它们照旧在。 */
-.entitytagbar[data-media-only] .entitytags .pill{display:none}
-/* 交集条列的也是作品筛选，照片视图下同样不成立。 */
-.entitycombo:has(+.board-filter-frame .entitytagbar[data-media-only]){display:none}
+/* 资料卡下面的交集条与玻璃浮层是 `entity-filter` 岛。宿主和 React 根那一层都不生成盒子：
+   浮层吸顶的范围是它父元素的盒子，只裹着它自己的父元素一格都走不动；两层让开，父元素就是
+   `#index`。 */
+[data-entity-filter],[data-entity-filter]>.peach-react{display:contents}
 .mediaviewbuttons{display:inline-flex;align-items:center;gap:2px;flex:none}
 .mediaviewbuttons .mediaviewbutton{display:grid;place-items:center;flex:0 0 var(--filterItemH);width:var(--filterItemH);height:var(--filterItemH);padding:0;
   border:0;border-radius:50%;background:transparent;color:var(--muted);cursor:pointer}
@@ -79,9 +70,4 @@
 .entitycollectionhead{position:sticky;top:var(--topH);z-index:60;display:flex;align-items:center;gap:10px;
   min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;
   background:transparent;border-bottom:1px solid transparent}
-.entitycollectionhead h3{margin:0;flex:0 0 auto}.entitycollectionhead .javlayout{display:inline-flex;gap:2px}
-/* 照片这一栏的抬头就是 `.entitycollectionhead`，横向排布、间距和吸顶都归那一条管；
-   `.photohead` 只是个记号，给这一屏特有的返回键认门；换一批那枚键跟视频那一排共用
-   `.entitybatch`。 */
-.photoback{display:flex;align-items:center;gap:4px;height:28px;padding:0 10px 0 6px;border:1px solid var(--line);
-  border-radius:var(--control-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-xs);cursor:pointer}
+.entitycollectionhead h3{margin:0;flex:0 0 auto}

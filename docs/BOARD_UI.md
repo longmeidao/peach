@@ -323,7 +323,7 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 | --- | --- | --- |
 | 资料卡 | 未取得（card／profile-card 404）；卡形沿用 `.fsec`：secondary 底、18px 圆角、不描边、卡脚 `--board-card-foot` | React 岛 `entity-hero`（`frontend/src/react/entity-hero/`）：头像按身份列的行数定尺寸（外链与看片那一行都在是 160px，其余 120px），旁边身份三行：名字 Title 3（24/32、500）、别名·视频数·事务所、外链排成 36px／10px 圆角的 secondary Button；同台艺人收进卡脚 `[data-entity-foot]` 那条带，它是这个人的附注，不是正文；事务所的名册是正文，走 Tabs 里那一档。窄屏卡不变，只有卡里正文那一格改成单列居中、头像 96px，外链那一排横滑不换行 |
 | 视频／照片／艺人切换 | `tabs.tsx` 是页面级导航的形；这一组留在筛选浮层上，不取 Tabs | 浮层最左端的一组媒体圆键（`mediaViewButtonsHtml`，`aria-pressed`），选中那枚由圆玻璃 `viewglide-round` 滑过去标出，跟四枚观看状态各一块玻璃；隔一道竖杠再是观看状态、再一道才是标签。`boardTabsHtml()` 的下划线 Tabs 只给索引页切地址用 |
-| 资料页筛选条 | 无对应 | 媒体圆键、四枚观看状态、标签三段由粗到细，`aria-label`「媒体与标签」；照片、名册视图下标签收起、竖杠隐去，圆键留着 |
+| 资料页筛选条 | 无对应 | React 岛 `entity-filter`：媒体圆键、四枚观看状态、标签三段由粗到细，`aria-label`「媒体与标签」；照片、名册视图下观看状态、标签与交集条收起、竖杠隐去，圆键留着 |
 | 资料页照片档 | 无对应；按作品分段是用户对照预览选定的（ADR-0068 修订） | 有本地图片或有番号样张就出照片键，键上数的是两者之和。样张按发行日从新到旧一部一段：段头 `.photogroup` 一行写番号（`--fs-md`、主文字色）、标题（过长省略）、右端「来源 样张 · 发行日 · 张数」，下面是这部自己的 `.photowall`；各段之后是本地图片墙，有样张时带「本地图片 · N 张」段头；读数「照片 · N 张 · 样张 M 张 · K 部作品」，只有样张时省掉第一段，也不出换一批。翻页只数本地图片。样张格取不到时只摘 `<img>`，格子留 `--sunk` 空底，瀑布流里按 3:2 撑住；灯箱详情写「来源 · 第 n / N 张 · 尺寸」（ADR-0068） |
 | 关注页 | 无对应（上游没有更新流页） | 对齐首页，不另起一套；头像排、题材圆标取景、筛选浮层与排序见下方「关注页」小节 |
 | 两页骨架 | Skeleton 只是占位形状 | 都把 `.board-filter-frame` 外框和上下两排的 `data-filter-row` 写全，否则等的那几秒钟是两块各带圆角的浮层；资料页骨架用 `.entityprofile`／`.entityidentity` 的真实类名，筛选条那排用 `data-skeleton-tier="pill"` 铺药丸 |
@@ -365,7 +365,7 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 筛选浮层、排序与图片墙：
 
 - 筛选条 `.tagbar` 与读数 `.count` 收进同一块 `mountFilterFrame` 浮层。
-- 上排最左是视频／图片两枚媒体圆键，跟资料页同一个控件、同一块圆玻璃（`GLIDE_ROWS.media` 多认 `.followmediaview`）。隔一道竖杠是四枚状态（全部、未看、已保存、已忽略，不挂计数），与首页四枚视图同一个控件，共用那块滑动玻璃（`GLIDE_ROWS.views` 多认 `.followviews`）。来源图标与标签在右半截横滚，来源类型只在选中时上色。
+- 上排最左是视频／图片两枚媒体圆键，跟资料页那一组同形，圆玻璃是 `GLIDE_ROWS.media`（资料页那一组在 `entity-filter` 岛里，同一条 `[data-view-glide="round"]` 材质）。隔一道竖杠是四枚状态（全部、未看、已保存、已忽略，不挂计数），与首页四枚视图同一个控件，共用那块滑动玻璃（`GLIDE_ROWS.views` 多认 `.followviews`）。来源图标与标签在右半截横滚，来源类型只在选中时上色。
 - 下排读数照首页写「N 项更新 · 显示 M」，右端是 `sortControlsHtml` 那一组：换一批（切到 `sort=rand&seed=`，整批按种子打散，种子写进地址），然后是更新时间／热度／时长三档排序。换一批等数据时也画首页那段描边忙态（读数行挂 `aria-busy`）。
 - 图片墙上多一枚 30px 见方的「仅显示图片」图标开关，字形是 Lucide `captions-off`，不跟媒体那一档的图片字形撞。开着时垫筛选条那块滑动玻璃（`GLIDE_ROWS.imagesonly`），跟旁边的版式分段器同一块料、同一副尺寸：浮层上的分段器轨道不留内边距，选项 30px 见方、8px 圆角。
 - 排序归服务端（`/api/follow?sort=&dir=&seed=`）：分页在服务端，浏览器只拿到当前这几页。`FollowStore.group()` 结尾无条件按 `newest_at` 倒序，所以条目层和发布组层都要按同一把尺再排一次（`_sorted_items` 与 `_sorted_groups`）。

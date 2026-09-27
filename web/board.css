@@ -168,7 +168,7 @@
 /* 搜索框使用浏览器原生模糊，尺寸变化不依赖异步 SVG 位移贴图。 */
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
-html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,.navglide,.settingscard>.board-local-nav,.selectiondock,.batchbar,[data-glass-pane]){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
+html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,[data-view-glide],.navglide,.settingscard>.board-local-nav,.selectiondock,.batchbar,[data-glass-pane]){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
 /* 快照撤掉那一下，材质要淡回来：揭示动画刚停，浮层从实底「啪」地跳成毛玻璃，读起来
    像主题又切了第二次。过渡只写在常态上——进快照那一下正在拍旧状态的快照，拍到一半
    路上的颜色就会闪，所以上面那条规则自己把过渡关掉。 */
@@ -182,16 +182,8 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
   width:auto;margin:0;min-width:0;z-index:auto;border:0;box-shadow:none;background:none;
   backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 .board-filter-frame>[data-filter-row]::before,.board-filter-frame>[data-filter-row]::after{display:none}
-.board-filter-frame .entityviews{display:flex;flex:none;gap:6px}
-.board-filter-frame .entityviews[hidden]{display:none}
-/* 玻璃层只把这三格之间的间距收一档，不动它们谁滚谁不滚：整条一起滚的话左端那一档
-   也跟着走，而它正是这条筛选条上唯一离开就读不懂的东西。 */
+/* 资料页骨架那块浮层的上排：微光药丸之间的间距同真浮层上排。 */
 .board-filter-frame .entitytagbar .filterscroll{gap:6px}
-.board-filter-frame .entityviews .pill{height:30px;padding:0 10px;font-size:13px;white-space:nowrap}
-/* 相接的复核横条由页面的单层玻璃承接；独立横条和骨架使用共享玻璃材质。 */
-.entitytagbar .pill,.entitycollectionhead h3{color:var(--glass-text)}
-.entitytagbar .pill[data-tag]:not([aria-pressed="true"]){border-color:var(--glass-low);border-style:dashed}
-.entitytagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
 /* 标签后面那个数在这块玻璃上要自己降一档。flat 层那条降的是 --muted，而在这一层里
    --muted 和 --ink-2 都映射到 --color-text-secondary，是同一个值——照搬过来，计数
    和标签仍然一样亮。按这一排自己的文字色降档，口径跟未选中的视图胶囊那一档同源。
@@ -201,51 +193,13 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
 .board-filter-frame.board-filter-frame .pill:hover .n,
 .board-filter-frame.board-filter-frame .pill[aria-pressed="true"] .n{
   color:color-mix(in srgb,var(--glass-text) 80%,transparent)}
-/* 这块玻璃回答的是「你在哪儿」：侧栏的当前项、四枚视图里生效的那一枚、实体页正在看
-   的那一档媒体，都是位置。白填充垫底、在已经合成好的底子上再提一档亮度、整圈 rim
-   描边。铺一层墨色灰是另一种东西——它在亮内容上是块脏斑，浅色下又是整条里唯一发灰的
-   地方。 */
-.entitytagbar.entitytagbar .pill[aria-pressed="true"]{
-  background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
-  backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);
-  color:var(--glass-text);border-color:transparent;
-  box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
-/* 上面那条对四枚视图和左端那一档媒体类型都不适用：这两排的填充各由一块 `.viewglide`
-   滑过去的玻璃给，四枚视图那块跟首页是同一块。两边都铺的话，静止态是一块不透明的
-   填充压在玻璃上面，切换时也只看得见它瞬间换位置，滑动的那块从头到尾被盖在下面。
-   选中和悬停都只提字色。 */
-.entitytagbar.entitytagbar .pill[data-entity-state],
-.entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
-.entitytagbar.entitytagbar .mediaviewbutton,
-.entitytagbar.entitytagbar .mediaviewbutton:hover,
-.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{
-  border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none}
-.entitytagbar.entitytagbar .pill[data-entity-state],
-.entitytagbar.entitytagbar .mediaviewbutton{color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.entitytagbar.entitytagbar .pill[data-entity-state]:hover,
-.entitytagbar.entitytagbar .pill[data-entity-state][aria-pressed="true"],
-.entitytagbar.entitytagbar .mediaviewbutton:hover,
-.entitytagbar.entitytagbar .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
-/* 那几枚字形要压在玻璃上面，不然滑过去的时候被盖住一路暗过去——跟首页四枚视图同一条。 */
-.entitytagbar.entitytagbar .mediaviewbutton{position:relative;z-index:1}
-/* 照片视图下这条只剩左端那一组，后面没有东西可隔；分隔线留着就是一条指向空白的竖线。 */
-.entitytagbar[data-media-only] .sep{display:none}
 /* 版式、大小这类分段开关问的也是「你在哪儿」。滑块的位置和几何归分段器自己管，这里
    只换材质与配色：那一套是给 flat 面配的，一块灰底衬一枚不透明的白滑块，摆到浮层上
    就是整条里唯一一块实心的面，读起来像贴上去的另一个控件；字色取的也是 flat 面的
    --muted/--ink，跟旁边同一排的排序键差一档。壳撤掉，滑块换成选中态那块玻璃。 */
-.entitytagbar.entitytagbar .iconswitch[data-board-segments],
-.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments],
 .board-filter-frame.board-filter-frame .iconswitch[data-board-segments]{background:none}
-.entitytagbar.entitytagbar .iconswitch>label,
-.entitycollectionhead.entitycollectionhead .iconswitch>label,
 .board-filter-frame.board-filter-frame .iconswitch>label{
   color:color-mix(in srgb,var(--glass-text) 62%,transparent)}
-.entitytagbar.entitytagbar .iconswitch>label:hover,
-.entitytagbar.entitytagbar .iconswitch>label:has(input:checked),
-.entitycollectionhead.entitycollectionhead .iconswitch>label:hover,
-.entitycollectionhead.entitycollectionhead .iconswitch>label:has(input:checked),
 .board-filter-frame.board-filter-frame .iconswitch>label:hover,
 .board-filter-frame.board-filter-frame .iconswitch>label:has(input:checked){color:var(--glass-text)}
 /* 排序键回答的是「这一列按什么排」——一个参数的当前值，不是一个位置，所以不占那块
@@ -253,12 +207,9 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
    八九个候选都退到六成，生效的那枚回到满值再加半档字重。只差字重不够——一排等亮度的
    字里，扫一眼看不出哪个粗一点。这一排里的「换一批」不在其中：它是动作不是参数，走下面
    那条强调档，字色由它自己给。 */
-.entitycollectionhead.entitycollectionhead .sorts button:not(.batchaction),
 .board-filter-frame.board-filter-frame .sorts button:not(.batchaction){
   color:color-mix(in srgb,var(--glass-text) 62%,transparent)}
-.entitycollectionhead.entitycollectionhead .sorts button:not(.batchaction):hover,
 .board-filter-frame.board-filter-frame .sorts button:not(.batchaction):hover{color:var(--glass-text)}
-.entitycollectionhead.entitycollectionhead .sorts button[aria-pressed="true"],
 .board-filter-frame.board-filter-frame .sorts button[aria-pressed="true"]{
   background:none;backdrop-filter:none;-webkit-backdrop-filter:none;
   color:var(--glass-text);border-color:transparent;box-shadow:none;font-weight:500}
@@ -286,7 +237,8 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
    代价是描边和圆角跟着缩放变形——被拉长的那一瞬圆角扁一点、边细一点。这一下恰好就是
    要的：一块软东西被拽着走，本来就该在跑的方向上抻开。
    缩放的原点留在正中，两端一起外扩；位移写在 `translate` 属性上，不看这个原点。 */
-.viewglide.viewglide,.drawer.drawer>.navglide,.board-local-nav>.navglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
+/* 资料页浮层那两块由 `entity-filter` 岛画成 `[data-view-glide]`，形状与材质同这一条。 */
+.viewglide.viewglide,[data-view-glide][data-view-glide],.drawer.drawer>.navglide,.board-local-nav>.navglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
   border-radius:8px;will-change:translate,scale;
   /* 高光从上往下，不走那道 125° 对角线：对角线是按盒子自己的长边铺的，在一枚
      三十来像素高的药丸上，转折点正好落在中间，静止看是左右两块拼起来的。 */
@@ -299,7 +251,7 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
   box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
 .viewglide.viewglide[hidden],.drawer.drawer>.navglide[hidden],.board-local-nav>.navglide[hidden]{display:none}
 /* 媒体那一档的按钮是正圆，这块跟着它走：方玻璃扣在圆按钮上，四个角先露出来。 */
-.viewglide.viewglide-round{border-radius:50%}
+.viewglide.viewglide-round,[data-view-glide="round"][data-view-glide]{border-radius:50%}
 /* 侧栏那一列是竖排，圆角照按钮自己的 10px 走，不跟着那一排药丸的 8px。
    它住在滚动容器外面、抽屉这块玻璃里面，`z-index:-1` 把它压回内容底下：抽屉自己带
    `backdrop-filter`，那一层已经是个层叠上下文，负层号只会落到抽屉的面之上、那一列
@@ -319,7 +271,7 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
 /* 换一批和实体批量键走强调档：这一排其余的是排序开关，它们只是同一份列表的看法，
    而这两枚是动作。面色取全站那两个 token，压上去跟每一颗主按钮一样提亮一档；圆角随这
    一条上的按钮取 7px，不取强调档那副文字键的盒子。选中态归排序键，这两枚只有悬停。 */
-.board-filter-frame.board-filter-frame .sorts .batchaction,.entitycollectionhead.entitycollectionhead .sorts .batchaction{color:#fff;background:var(--board-blue);border:0;border-radius:7px;box-shadow:var(--elevation-xs)}
+.board-filter-frame.board-filter-frame .sorts .batchaction{color:#fff;background:var(--board-blue);border:0;border-radius:7px;box-shadow:var(--elevation-xs)}
 .top.top,body.board-scrolled .top.top{background:transparent;box-shadow:none;backdrop-filter:none;border:0}
 /* 顶栏这一条本身不铺任何底：玻璃是搜索框和右边那几个图标钮各自一块，它们中间的空处
    直接通到内容。往那片空处垫一条压制带能让滚上来的字不那么碎，代价是整条顶栏成了一块
@@ -534,7 +486,7 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
    8px 还被 `.combo` 的下边距吃掉，加起来 32px，下面却只有 20px，同一块浮层上下差出 12px。
    上面这 22px 改不动（两处都是别的页面共用的），所以自己不再加，下面照同一个数写。 */
 .board-filter-frame{position:sticky;top:calc(var(--topH) + 8px);z-index:60;border:0;border-radius:16px;background:var(--ground);margin:0 0 22px;box-shadow:0 2px 14px light-dark(#00000014,#00000066)}
-@media(max-width:760px){.board-filter-frame.board-filter-frame.mobile-filter-free{top:var(--filter-free-top)}}
+@media(max-width:760px){.board-filter-frame.board-filter-frame[data-filter-free]{top:var(--filter-free-top)}}
 /* 首页那块住在 `body` 底下，两侧没有任何东西给它留白，22px 的圆角直接切在屏幕边沿上；
    资料页那块在 `#index` 里，`main` 的 16px 已经把它让开了。这里补的就是那 16px，取的
    也是 `main` 自己的那个数，所以两页的浮层和底下的网格对在同一条竖线上。 */
@@ -549,20 +501,10 @@ body>.board-filter-frame{margin-inline:16px}
    它自己就是整块，回到顶栏下 8px。 */
 :root{--board-filterH:48px}
 .entitytagbar{position:sticky;top:calc(var(--topH) + 8px);margin:0;height:var(--board-filterH);gap:6px;padding:8px 12px}
-.entitytagbar .entitytags{gap:6px}
-.entitytagbar .mediaviewbuttons .mediaviewbutton{flex:0 0 30px;width:30px;height:30px}
+/* 资料页骨架里那块浮层的下排：读数一格，几何同真浮层下排。 */
 .entitycollectionhead{position:sticky;top:calc(var(--topH) + 8px);margin:0 0 22px;padding:8px 12px;min-height:var(--board-filterH);gap:12px}
-.entitycollectionhead.is-stuck::after{content:'';position:absolute;inset:0;z-index:-1;border-radius:inherit;
-  box-shadow:0 0 24px 4px #00000038,0 8px 20px #00000026;pointer-events:none}
-/* 两行合成一块时，吸顶那一档影由整块玻璃自己换成 --glass-lift，这一层不再叠。 */
-/* 读数照首页那条 `10,471 个符合` 写：12px、常规字重、不加字距，颜色比标签低一档。
-   排序键也跟那边同一套——30px 高、12px 字、7px 圆角，选中态那块玻璃在上面统一给。 */
+/* 读数照首页那条 `10,471 个符合` 写：12px、常规字重、不加字距，颜色比标签低一档。 */
 .entitycollectionhead h3{font-size:12px;font-weight:400;letter-spacing:normal;color:var(--ink-2)}
-/* 返回键在这块玻璃上，那圈线和字色都得跟着玻璃取，不然是浮层里唯一一处用 flat 面
-   配色的东西；高度跟同一排的排序键对齐。 */
-.entitycollectionhead .photoback{height:30px;border-color:var(--glass-low);color:var(--glass-text)}
-.entitycollectionhead .sorts{gap:4px}
-.entitycollectionhead .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
 /* 浮层下半在手机上仍是一横条：读数在左，控件跟在右边，装不下就整条往右滚。让读数
    和控件各占一行的话，这块玻璃要吃掉三行高度——上半那排标签本来就是横滚的，同一块
    玻璃上一半横滚、一半换行，读起来是两个不同的东西。滚动开在这一条自己身上而不是
@@ -574,8 +516,8 @@ body>.board-filter-frame{margin-inline:16px}
     overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
     overscroll-behavior-inline:contain;touch-action:pan-x pan-y}
   .board-filter-frame .count::-webkit-scrollbar,.entitycollectionhead::-webkit-scrollbar{display:none}
-  .board-filter-frame .count>.mono,.entitycollectionhead>h3,.entitycollectionhead>.photoback{flex:none;white-space:nowrap}
-  .board-filter-frame .count .sorts,.entitycollectionhead .sorts{flex:none;width:max-content;max-width:none;min-width:0;
+  .board-filter-frame .count>.mono,.entitycollectionhead>h3{flex:none;white-space:nowrap}
+  .board-filter-frame .count .sorts{flex:none;width:max-content;max-width:none;min-width:0;
     margin-left:auto;overflow:visible;padding:0;margin-block:0}}
 [data-overflow-right="true"]{mask-image:linear-gradient(to right,#000 calc(100% - 18px),transparent)}
 [data-overflow-left="true"]{mask-image:linear-gradient(to right,transparent,#000 18px)}
@@ -616,11 +558,6 @@ body>.board-filter-frame{margin-inline:16px}
    筛选条上不换一套。 */
 .board-filter-frame.board-filter-frame .followfilters .pill[class*="r34-"][aria-pressed="true"]{
   border-color:color-mix(in srgb,var(--r34-tag) 72%,transparent);background:color-mix(in srgb,var(--r34-tag) 22%,transparent)}
-/* 资料页的标签跟首页筛选条上的标签是同一个控件，只是换了个位置：那边 30px 高、13px
-   字，这边还留着 40px 高的大药丸，同一个人的标签在两页上大一圈小一圈。
-   计数跟着缩到 Caption。 */
-.entitytags .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:var(--tag-radius);border:1px solid var(--glass-low);color:var(--glass-text)}
-.entitytags .pill small{margin-left:5px;font:var(--board-caption)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
 /* 关注页上排最左那两枚是视频／图片，跟资料页那一组同形：自己不铺底，选中那一枚的填充
@@ -1026,7 +963,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .sidecontent .obtn svg{width:20px;height:20px;color:#ff669d}
 .sidecontent .obtn b{font-size:12px;line-height:18px;padding:1px 6px;border-radius:5px;background:var(--picked);font-weight:500}
 .sidecontent .obtn:hover{background:var(--hover)}
-.board-filter-frame.board-filter-frame .sorts .batchaction:hover,.entitycollectionhead.entitycollectionhead .sorts .batchaction:hover{background:var(--board-blue-hover);color:#fff}
+.board-filter-frame.board-filter-frame .sorts .batchaction:hover{background:var(--board-blue-hover);color:#fff}
 .board-job-progress{display:flex;align-items:center;gap:12px;padding:12px 0;font-size:14px;line-height:20px}
 .board-job-progress svg{flex:none}.board-job-progress circle{fill:none;stroke-width:2.5;stroke-linecap:round}
 .board-job-track{stroke:var(--line-soft)}.board-job-fill{stroke:var(--tungsten);transition:stroke-dasharray .3s ease-out}
@@ -1366,26 +1303,16 @@ html.board-high-contrast :is(.selectiondock,.batchbar,.card .badge,[data-glass-p
    （30px），滑块就是整枚选项：轨道不留内边距，选项 30px 见方、图标 16px，圆角跟那块滑动
    玻璃同一个 8px。轨道留 3px 的话滑块比旁边那块玻璃矮一圈、圆角也小一档，同一块料在
    同一排里出现两种尺寸。筛选行与排序行上下留白都是 8px，排序滚动容器不再自己多垫。 */
-.board-filter-frame.board-filter-frame .iconswitch[data-board-segments],
-.entitytagbar.entitytagbar .iconswitch[data-board-segments],
-.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]{padding:0;border-radius:8px;gap:2px}
-.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>label,
-.entitytagbar.entitytagbar .iconswitch[data-board-segments]>label,
-.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]>label{height:30px;min-height:30px;width:30px;padding:0;border-radius:8px}
-.board-filter-frame.board-filter-frame .iconswitch[data-board-segments] svg,
-.entitytagbar.entitytagbar .iconswitch[data-board-segments] svg,
-.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments] svg{width:16px;height:16px}
-.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>.board-segment-thumb,
-.entitytagbar.entitytagbar .iconswitch[data-board-segments]>.board-segment-thumb,
-.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:8px}
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]{padding:0;border-radius:8px;gap:2px}
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>label{height:30px;min-height:30px;width:30px;padding:0;border-radius:8px}
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments] svg{width:16px;height:16px}
+.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:8px}
 /* 这一组是横滚容器，会把里面东西的落影从上下两边裁掉——版式分段器的滑块和「仅显示图片」
    那块玻璃最远那层影落在 14px 外，贴着容器边就只剩一条平切的底。上下各留出这 14px 再
    用负外边距收回，排在行里还是 30px 高，影和聚焦环都露得出来。 */
-.count .sorts,.entitycollectionhead .sorts{padding:14px 2px;margin-block:-14px}
+.count .sorts{padding:14px 2px;margin-block:-14px}
 /* 浮层上的滑块。深色那两条按主题给的填充和影写在上面，特指度到 0-5-0，所以这里也得
    数够——`[data-board-segments]` 那一节的几何照旧，换掉的只有材质。 */
-.entitytagbar.entitytagbar.entitytagbar .iconswitch[data-board-segments]>.board-segment-thumb,
-.entitycollectionhead.entitycollectionhead.entitycollectionhead .iconswitch[data-board-segments]>.board-segment-thumb,
 .board-filter-frame.board-filter-frame.board-filter-frame .iconswitch[data-board-segments]>.board-segment-thumb{
   background:linear-gradient(180deg,var(--glass-sheen),transparent 62%),var(--glass-pick-fill);
   backdrop-filter:var(--glass-pick);-webkit-backdrop-filter:var(--glass-pick);

@@ -5,7 +5,8 @@
  * 也在那一条上。吸到顶栏下沿那一刻由 `use-stuck.ts` 标 `data-stuck`，影换成抬起来那一档。
  * 胶囊键 30px 高、透明底、一圈 `--glass-low`，
  * 悬停换成 `--glass-rim` 边加 `--glass-pick-fill` 底——玻璃上的键不是 BoardUI 那种实心按钮。 */
-import { useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode, type Ref } from 'react';
+import { cx } from '@/utils/cx';
 
 import { useStuck } from './use-stuck';
 
@@ -21,22 +22,43 @@ export function FilterGlass({ title, children }: { title: string; children: Reac
   );
 }
 
-/** 两排的那一副：首页与标签页的筛选浮层。上排是一行横滚的筛选药丸，下排是读数和这一屏的
- *  视图控件。几何同旧 `.board-filter-frame`：上排 48px 高、8px／12px 内边距，下排最矮 46px、
- *  格间 12px。整块吸在顶栏下沿，粘住时仍是同一块玻璃。 */
+/** 两排的那一副：首页、标签页与实体页的筛选浮层。上排是一行横滚的筛选药丸，下排是读数和
+ *  这一屏的视图控件。几何同壳的 `.board-filter-frame`：上排 48px 高、8px／12px 内边距，下排最矮
+ *  46px、格间 12px。整块吸在顶栏下沿，粘住时仍是同一块玻璃。
+ *
+ *  实体页那一副的几何差一点（上排格间 6px、下排最矮 48px），上排也不是整排一起滚——左端的
+ *  媒体键钉住，只有里面那一格滚。这些由调用方在 `className`／`topClassName`／`bottomClassName`
+ *  里改写，`cx` 合并时后写的赢。`panes` 是直接挂在浮层根上的那几块滑动玻璃
+ *  （`use-view-glide.ts`），`attrs` 给根补壳要认的标记（窄屏让位认 `data-filter-frame`）。
+ *  `busy` 标在下排上：读数在等这一趟取数，下排里认它的动效（换批键描线）跟着走。 */
 export function FilterGlassRows(
-  { label, topLabel, top, bottom }: { label: string; topLabel: string; top: ReactNode; bottom: ReactNode },
+  { label, topLabel, top, bottom, className, topClassName, bottomClassName, panes, attrs, busy, bottomRef }: {
+    label: string;
+    topLabel: string;
+    top: ReactNode;
+    bottom: ReactNode;
+    className?: string;
+    topClassName?: string;
+    bottomClassName?: string;
+    panes?: ReactNode;
+    attrs?: Record<`data-${string}`, string>;
+    busy?: boolean;
+    bottomRef?: Ref<HTMLDivElement>;
+  },
 ) {
   const glass = useRef<HTMLDivElement>(null);
   useStuck(glass);
   return (
-    <div ref={glass} role="group" aria-label={label} data-filter-glass data-glass-pane=""
-      className="sticky top-topbar z-10 mb-5.5 flex flex-col">
+    <div ref={glass} role="group" aria-label={label} data-filter-glass data-glass-pane="" {...attrs}
+      className={cx('sticky top-topbar z-10 mb-5.5 flex flex-col', className)}>
+      {panes}
       <div role="group" aria-label={topLabel} data-filter-row="top"
-        className="flex h-12 min-w-0 items-center gap-1.75 overflow-x-auto overscroll-x-contain px-3 py-2">
+        className={cx('flex h-12 min-w-0 items-center gap-1.75 overflow-x-auto overscroll-x-contain px-3 py-2',
+          topClassName)}>
         {top}
       </div>
-      <div data-filter-row="bottom" className="flex min-h-11.5 min-w-0 items-center gap-3 px-3 py-2">
+      <div ref={bottomRef} data-filter-row="bottom" aria-busy={busy || undefined}
+        className={cx('flex min-h-11.5 min-w-0 items-center gap-3 px-3 py-2', bottomClassName)}>
         {bottom}
       </div>
     </div>
@@ -50,11 +72,11 @@ const FILTER_PILL = 'flex h-7.5 flex-none cursor-pointer items-center gap-1.75 r
   + ' outline-none hover:border-solid focus-visible:ring-2 focus-visible:ring-border-focus-ring';
 
 export function FilterPill(
-  { children, pressed, onPress, ...data }:
-  { children: ReactNode; pressed: boolean; onPress(): void } & Record<`data-${string}`, string>,
+  { children, pressed, onPress, className, ...data }:
+  { children: ReactNode; pressed: boolean; onPress(): void; className?: string } & Record<`data-${string}`, string>,
 ) {
   return (
-    <button type="button" {...data} aria-pressed={pressed} className={FILTER_PILL}
+    <button type="button" {...data} aria-pressed={pressed} className={cx(FILTER_PILL, className)}
       onClick={onPress}>
       {children}
     </button>
