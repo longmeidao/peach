@@ -88,7 +88,7 @@ const FOLLOW_FEED_DIR_WORDS={new:['从新到旧','从旧到新'],hot:['从高到
    排序键——那三枚键任一按下就离开它；种子写进地址，刷新和后退回到的是同一批次序。 */
 const FOLLOW_RANDOM_SORT='rand';
 let followSort='new',followDir='desc',followSeed=0;
-let entityPhotos=null,entityMediaView=emptyMediaView(),photoWallItems=[];
+let entityPhotos=null,entityMediaView=emptyMediaView(),entityPhotoWall=null,entityPhotoRevision=0,entityPhotoMore=null;
 /* 事务所页看的是它签了谁，所以进页面先摆艺人；片商页同理，先摆旗下 label。视频照样在，
    只是换一个开关的距离：那批片是成员或各个 label 各自出的，混成一条 feed 回答不了
    「这家有哪些人、哪些牌子」。每次进页面都回到名册，切到视频是这一次浏览的选择，
@@ -6207,15 +6207,8 @@ function personRingHtml(x,kind,big){
     x.has_avatar&&!company?x.rep:null,kind,x.mark,x.has_logo?x.k:'',
     company&&big?'large':'ring',company?null:x.avatar_focus,true);
 }
-/* 资料页名册的一格：事务所页是艺人，片商页是旗下 label，版式由同一个 `.igrid[data-layout]` 管。 */
-function personCellHtml(x,kind,countText){
-  const face=faceOrigin(x.avatar_focus);
-  const company=kind==='studio'||kind==='agency';
-  return `<button class="icell" data-k="${esc(x.k)}" data-kind="${kind}">
-      <span class="ring" data-fit-native="${company?'mark':'portrait'}"${face?` style="--face:${face}"`:''}>${
-        personRingHtml(x,kind,peopleIndexLayout()==='big')}</span>
-      <span class="nm">${esc(x.k)}</span><span class="n">${countText}</span></button>`;
-}
+/* 两座岛（索引页、资料页正文的名册）要的那一格头像：圆框里的 HTML 和人脸取景。 */
+const personAvatar=(x,entityKind,big)=>({html:personRingHtml(x,entityKind,big),face:faceOrigin(x.avatar_focus)});
 /* 在线创作者这一格跟本地艺人同形，差别只在圆里那张图从哪儿来：本地走 `/entity-image`
    那条自家链，在线只有来源站点给的地址，官方主页优先、归档兜底，两条都取不到就落回
    首字母——跟关注页的创作者行同一套判据。 */
@@ -6273,7 +6266,7 @@ function indexPlaceholderHtml({kind,q,scope,view}){
 /* 屏幕上已经是同一张骨架就别重画：深链冷启动时首屏骨架先铺过一遍，innerHTML 换新节点会把
    shimmer 从头放一遍。 */
 function showIndexSkeleton(params){
-  releaseEntityGrid();
+  releaseEntityBody();
   $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const placeholder=indexPlaceholderHtml(params);
@@ -6319,8 +6312,7 @@ async function openIndex(kind,push=true){
     route:(next,{replace=false}={})=>route(indexPath(next),replace),
     savePreference:({layout})=>{appSettings.peopleLayout=layout;saveSettings()},
     exitSelectMode:()=>setSelectMode(false,false),
-    personAvatar:(x,entityKind,big)=>({html:personRingHtml(x,entityKind,big),face:faceOrigin(x.avatar_focus)}),
-    authorAvatar:onlineAuthorRingHtml,refitImages:refitNativeImages,tagLabel,
+    personAvatar,authorAvatar:onlineAuthorRingHtml,refitImages:refitNativeImages,tagLabel,
     openEntity:(entityKind,name)=>openEntity(entityKind,name),
     showTags:showIndexTags,openFollowAuthor:openFollowAuthorFromIndex,openFollowTag:openFollowTagFromIndex,
     configurable:!!runtimeConfigurable,
@@ -6344,14 +6336,36 @@ async function fetchEntityItems(kind,name,filters,offset=0,signal){
   if(state.jav==='1')p.set('jav','1');
   const items=await api('/api/items?'+p,{signal});cache(items.items);return items
 }
-/* 资料页作品区的卡片网格是 `catalog-grid` island 的 entity 模式（ADR-0031）：第一页随页头
-   一起取来交给它，续页、分卷／版次折叠和「载入更多」都在岛里。每画一次换一个代次，查询随之
-   换键。宿主 `[data-entity-grid]` 在作品区里，作品区整块重写之前必须先卸掉它，否则那棵根
-   挂在脱离文档的节点上一直活着。 */
-let entityGridRevision=0;
-function releaseEntityGrid(){
-  $('#index').querySelectorAll('[data-entity-grid]').forEach(host=>{releaseHoverPreviews(host);unmountIsland(host)});
+/* 筛选浮层下面那一整块正文归 React（`entity-body`，ADR-0031 第 10e 步）：名册、作品网格
+   （`catalog-grid` 的 entity 模式，续页、分卷／版次折叠和「载入更多」都在岛里）三选一。壳取数、
+   岛只画：换视图、换筛选都经 `pushEntityBody` 推过去，不重挂。作品每请求一次换一个代次，网格
+   随之换键；等的那一下先推 `items:null`，岛里铺骨架。宿主 `[data-entity-body]` 记在这里：
+   `#index` 整块重写之前必须先卸掉它，否则那棵根挂在脱离文档的节点上一直活着。 */
+let entityBodyHost=null,entityBodyRevision=0,entityBodyView='';
+const entityBodyCurrent=()=>!!entityBodyHost?.isConnected&&islandMounted(entityBodyHost);
+function pushEntityBody(patch){
+  if(!entityBodyCurrent())return;
+  if(patch.view)entityBodyView=patch.view;
+  updateIsland(entityBodyHost,patch);
 }
+function releaseEntityBody(){
+  if(!entityBodyHost)return;
+  releaseHoverPreviews(entityBodyHost);unmountIsland(entityBodyHost);entityBodyView='';
+}
+/* 名册一格的取图同索引页；卡片的助手与动作就是目录那一份，身份不变。照片墙多两样：
+   点一格打开灯箱（灯箱归壳，岛递来的是整面墙那一列），翻本地图片的下一页。 */
+const entityBodyHelpers={...gridHelpers,personAvatar};
+const entityBodyActions={...gridActions,
+  openLightbox:(index,source)=>{void openPhotoLightbox(index,source)},
+  loadMorePhotos:()=>entityPhotoMore?entityPhotoMore():Promise.resolve()};
+const entityBodyCanLoadMore=()=>!$('#index').hidden&&$('#stats').hidden;
+const entityBodySkeleton=()=>catalogSkeletonHtml();
+/* 卡片网格原样要的那几样：版式、选择状态与展示设置随每次推送带上最新值。 */
+const entityGridShared=()=>({layout:catalogGridLayout(),selectMode,selected:new Set(selected),
+  seekSeconds:appSettings.seekSeconds,groupCollapse:appSettings.groupCollapse});
+const entityRosterProps=()=>entityRoster.length
+  ?{kind:entityRosterKind==='studio'?'studios':'performers',people:entityRoster,layout:peopleIndexLayout()}:null;
+const entityItemsFetcher=(kind,name,filters)=>(offset,signal)=>fetchEntityItems(kind,name,filters,offset,signal);
 /* 资料卡下面那一整块（交集条、两排玻璃浮层）归 React（`entity-filter`，ADR-0031 第 10d 步）。
    壳取数、岛只画：这一页的筛选、当前视图、排序与读数都经 `pushEntityFilter` 推过去，点下去的
    动作回壳。按下态在发请求之前就推，`aria-pressed` 与滑动玻璃当场到位，读数换成微光等这一趟。
@@ -6409,37 +6423,21 @@ function entityFilterHelpers(kind,name,initial){
 /* 名册：事务所页是艺人，片商页是旗下 label。和对应的索引页摆的是同一格、同一套版式
    设置，只是这批随资料页一起下来了，不再单独请求；读数写的是这一格有多少视频。 */
 function renderEntityRoster(people){
-  const section=$('#index').querySelector('.entitysection');if(!section)return;
-  releaseEntityGrid();
-  const cellKind=entityRosterKind;
-  const cells=cellKind==='studio'?'company':'people';
-  section.innerHTML=`<div class="igrid" data-cells="${cells}" data-layout="${peopleIndexLayout()}">${
-      people.map(x=>personCellHtml(x,cellKind,x.n.toLocaleString())).join('')}</div>`;
-  section.querySelectorAll('[data-k]').forEach(button=>button.onclick=()=>
-    openEntity(cellKind,button.dataset.k));
+  releaseHoverPreviews(entityBodyHost);
+  pushEntityBody({view:'people'});
   pushEntityFilter({view:'people',busy:false,
-    readout:(cellKind==='studio'?'厂牌':'艺人')+' · '+people.length.toLocaleString()});
+    readout:(entityRosterKind==='studio'?'厂牌':'艺人')+' · '+people.length.toLocaleString()});
   scheduleStickySurfaces();
 }
-function renderEntityCollection(kind,name,items,filters){
-  // 资料页的标签同样可以叠加，读数把生效的几个都写出来。
+/* 作品视图那一栏的读数与排序行。资料页的标签同样可以叠加，读数把生效的几个都写出来。 */
+function pushEntityVideoHead(items,filters){
   const entityTags=tagList(filters.tag).map(tagLabel);
-  const section=$('#index').querySelector('.entitysection');if(!section)return;
-  releaseEntityGrid();
-  /* 宿主里先铺一份骨架：React 产物头一次装载要等一个来回，这期间不留一块空白。 */
-  section.innerHTML=`<div data-entity-grid>${catalogSkeletonHtml()}</div>`;
-  section.dataset.total=String(items.total||0);
   pushEntityFilter({view:'videos',busy:false,video:entityVideoHead(filters),
     readout:`视频 · ${(items.total||0).toLocaleString()}${entityTags.length?' · '+entityTags.join(' · '):''}`});
-  const host=section.querySelector('[data-entity-grid]');
-  mountIsland('catalog-grid',host,{
-    mode:'entity',entityKey:`${kind}:${name}`,revision:++entityGridRevision,initial:items,
-    fetchPage:(offset,signal)=>fetchEntityItems(kind,name,filters,offset,signal),
-    helpers:gridHelpers,actions:gridActions,layout:catalogGridLayout(),
-    selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,
-    cache,wireDrag,skeletonHtml:()=>catalogSkeletonHtml(),groupCollapse:appSettings.groupCollapse,
-    canLoadMore:()=>!$('#index').hidden&&$('#stats').hidden,
-  },{isCurrent:()=>section.contains(host)}).catch(error=>console.error(error));
+}
+function renderEntityCollection(kind,name,items,filters,revision=++entityBodyRevision){
+  pushEntityBody({...entityGridShared(),view:'videos',items,revision,fetchPage:entityItemsFetcher(kind,name,filters)});
+  pushEntityVideoHead(items,filters);
   scheduleStickySurfaces();
 }
 async function updateEntityCollection(kind,name,filters,push=true){
@@ -6456,21 +6454,17 @@ async function updateEntityCollection(kind,name,filters,push=true){
     tags:entityFilterTags(filters),combo:comboItems(filters)});
   /* 名单已经不是刚才那一份了。把旧卡片留在屏幕上等新的回来，等的这一下人读到的是一份
      跟头上的筛选对不上的列表——数字在转圈，底下那几十张却还是上一次的答案。 */
-  const section=$('#index').querySelector('.entitysection');
-  const host=section?.querySelector('[data-entity-grid]');
-  if(host){releaseEntityGrid();host.innerHTML=catalogSkeletonHtml();fitSkeleton(section)}
+  const revision=++entityBodyRevision;
+  if(entityBodyView==='videos'){releaseHoverPreviews(entityBodyHost);pushEntityBody({items:null,revision})}
   const items=await fetchEntityItems(kind,name,filters);
   if(seq!==entityRequestSeq)return;
-  renderEntityCollection(kind,name,items,filters)
+  renderEntityCollection(kind,name,items,filters,revision)
 }
 /* ── 资料页的照片 ─────────────────────────────────────────────────────────────
    图集就是目录：账本里没有图集实体，`<作品目录>\P\001.jpg` 这种约定只保留在后端，
    页面不先造一层图集封面，照片标签直接进入这面墙，再点图进入灯箱。
-   墙是 CSS 网格而不是 JS 布局，每格自带比例：账本里图片没有宽高，缩略图到达之前
-   高度是 0，把分栏交给加载顺序的话，一屏格子会整批摊进最后一列。理由和取舍写在
-   `web/css/08-photos.css` 里那条规则上面。
-   缩略图一律走 `/photo-thumb`（服务端缓存），只有灯箱里的大图读 `/photo` 原图——
-   PikPak 是计费来源，一屏直接铺原图等于付几十兆流量。
+   墙归 React（`entity-body` 岛的照片视图）：分段、缩略图口与列数的取舍写在
+   `frontend/src/react/entity-body/` 里。壳取数、记翻页，推一份 `photos` 过去；灯箱留在壳里。
    番号样张按作品分段、不另开一层：名下每部作品的官方样张按发行日从新到旧一段一段铺在
    本地图片前面，每段一行段头（ADR-0068）。`set=` 参数只认目录图集的整数 id。 ── */
 function emptyMediaView(){return {media:'videos',set:0}}
@@ -6528,11 +6522,6 @@ function showAllPhotos(kind,name,filters,push=true){
   renderPhotoWall(kind,name,filters,entityPhotos);
 }
 
-/* 样张不再请求一次：张数、站名和标题已经随 `/api/photos` 下来，样张地址留在服务端，
-   墙和灯箱只递番号与序号。 */
-const codeSetItems=set=>Array.from({length:set.n},(_,i)=>({sample:true,code:set.code,position:i+1,
-  total:set.n,name:`${set.code} 样张 ${i+1}`,source:set.site_label||'官方样张'}));
-
 /* 换一批：换一粒种子把这一屏重排一遍，整组照片或单个图集都是。翻页沿用回话里带回的
    那一粒。等的这一下键上转圈，跟首页那枚一样：转圈归浮层那枚键自己，它等的就是这个
    Promise 落定。 */
@@ -6549,13 +6538,16 @@ function photoSize(){
   return allowedSetting(appSettings.photoSize,PHOTO_SIZES.map(([key])=>key),'small');
 }
 function photoLayout(){return allowedSetting(appSettings.photoLayout,['fixed','masonry'],'masonry')}
-function photoViewActive(){return [...document.querySelectorAll('.photowall,.followphotowall')]
-  .some(wall=>wall.getClientRects().length>0)}
+/* 资料页那面墙由岛异步画，刚推过去的这一刻 DOM 里还没有它：按视图状态判，不查墙。 */
+function photoViewActive(){
+  if(entityBodyView==='photos'&&entityBodyCurrent()&&!$('#index').hidden)return true;
+  return [...document.querySelectorAll('.followphotowall')].some(wall=>wall.getClientRects().length>0)}
 function photoControlsHtml({follow=false}={}){return iconSwitchHtml('photo-layout','图片布局',PHOTO_LAYOUTS,photoLayout(),
   {attr:'data-photo-layout',className:'photolayout'})+(follow?`<button type="button" class="followimagesonly" data-follow-images-only aria-pressed="${!!appSettings.followImagesOnly}" title="仅显示图片" aria-label="仅显示图片">${icon('captions-off')}</button>`:'')}
 function syncPhotoWalls(){
-  document.querySelectorAll('.photowall,.followphotowall').forEach(wall=>{
+  document.querySelectorAll('.followphotowall').forEach(wall=>{
     wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()});
+  pushEntityBody({photoSize:photoSize(),photoLayout:photoLayout()});
   document.querySelectorAll('.followphotowall').forEach(wall=>{
     wall.dataset.imagesOnly=String(!!appSettings.followImagesOnly)});
   if(photoViewActive()){
@@ -6581,25 +6573,8 @@ function setPhotoSize(value){
   saveSettings();
   syncPhotoWalls();
 }
-const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
-    <img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}" loading="lazy"
-      decoding="async" fetchpriority="low"
-      data-drop="closest:.photocell"></button>`;
-/* 样张格取不到图时留在墙上，只摘掉 <img>：本地图片取不到说明文件没了，整格该走；样张
-   取不到多半是来源这会儿不通，格子留着 `--sunk` 空底，序号不断，灯箱里照样翻得到。 */
+/* 样张的地址按番号与序号由服务端查，灯箱取大图时用。 */
 const sampleQuery=item=>`code=${encodeURIComponent(item.code)}&n=${item.position}`;
-const sampleCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
-    <img src="/sample-thumb?${sampleQuery(item)}" alt="${esc(item.name)}" loading="lazy"
-      decoding="async" fetchpriority="low" data-drop="self"></button>`;
-/* 每部作品一段：段头一行写番号、标题和「来源 样张 · 发行日 · 张数」，下面是这部自己的一面墙。
-   一面通铺的瀑布流按列往下填，一部的图会从上一列底部接到下一列顶部，逐张标番号又太吵；
-   分段后一部只标一次，归属一眼看得出。`start` 是这一段在整面墙序号里的起点，灯箱照旧
-   跨段连续翻。 */
-const photoGroupHead=(label,title,meta)=>`<div class="photogroup"><b class="mono">${esc(label)}</b>${title
-  ?`<span class="photogrouptitle" title="${esc(title)}">${esc(title)}</span>`:''}<span class="photogroupmeta">${esc(meta)}</span></div>`;
-const sampleGroupHtml=(set,items,start)=>photoGroupHead(set.code,set.name,
-  [`${set.site_label||'官方'} 样张`,set.release_date,`${set.n} 张`].filter(Boolean).join(' · '))
-  +`<div class="photowall" data-size="${photoSize()}">${items.map((item,i)=>sampleCell(item,start+i)).join('')}</div>`;
 const photoReadout=(data,codeSets)=>'照片 · '+[
   data.total||!codeSets.length?`${(data.total||0).toLocaleString()} 张`:'',
   codeSets.length?`样张 ${(data.sample_total||0).toLocaleString()} 张 · ${codeSets.length} 部作品`:'']
@@ -6614,46 +6589,33 @@ const photoHead=(data,{back=false,codeSets=[]}={})=>({
   // 只有样张时没有本地图可换，换一批那枚键不出。
   photo:{back,shuffle:!!data.total,layout:photoLayout(),layouts:PHOTO_LAYOUTS,setId:back?Number(data.id):0}});
 /* 样张各段在前、本地图片那一面墙在后，翻页只数本地图片：样张一次铺完，不走分页。 */
-const localPhotoCount=()=>photoWallItems.filter(item=>!item.sample).length;
+const localPhotoCount=()=>entityPhotoWall?entityPhotoWall.items.length:0;
+/* 推给岛的是这一屏的整份照片（`entity-body` 的 `photos`）：换一批、进出图集时换代，墙从头画；
+   翻页只把本地图片接长。下一页怎么取记在 `entityPhotoMore` 里，岛那枚「载入更多」调它，
+   取不到就抛错由键下的重试接住；取回时这一页已经换走就不接。 */
 function renderPhotoWall(kind,name,filters,data,append=false){
-  const section=$('#index').querySelector('.entitysection');if(!section)return;
-  if(!append)releaseEntityGrid();
+  if(!entityBodyCurrent())return;
   const entityWide=!data.id;
-  if(!append){
+  if(!append||!entityPhotoWall){
     const codeSets=entityWide?codeSetsOf(data):[];
-    photoWallItems=[];
-    const groups=codeSets.map(set=>{
-      const items=codeSetItems(set),start=photoWallItems.length;
-      photoWallItems.push(...items);
-      return sampleGroupHtml(set,items,start)}).join('');
-    // 只有本地图片时不出段头，墙和目录图集那一屏一样直接开始。
-    const localHead=codeSets.length&&data.total
-      ?photoGroupHead('本地图片','',`${data.total.toLocaleString()} 张`):'';
-    section.innerHTML=groups+localHead
-      +`<div class="photowall" data-local-wall data-size="${photoSize()}"></div>
-        <button class="entitymore" type="button">载入更多</button>`;
-    syncPhotoWalls();
+    entityPhotoWall={revision:++entityPhotoRevision,codeSets,items:[],total:data.total||0,hasMore:false};
     const head=photoHead(data,{back:!entityWide,codeSets});
     entityPhotoHeadNow=head.photo;
     pushEntityFilter({view:'photos',busy:false,...head});
+    releaseHoverPreviews(entityBodyHost);
   }
-  const wall=section.querySelector('[data-local-wall]');
-  const start=photoWallItems.length;
-  photoWallItems.push(...data.items);
-  wall.insertAdjacentHTML('beforeend',data.items.map((item,i)=>photoCell(item,start+i)).join(''));
-  section.querySelectorAll('.photocell:not([data-wired])').forEach(cell=>{
-    cell.dataset.wired='1';
-    cell.onclick=()=>openPhotoLightbox(Number(cell.dataset.photoIndex))});
-  const more=section.querySelector('.entitymore');
-  more.hidden=!data.has_more;
+  entityPhotoWall={...entityPhotoWall,items:[...entityPhotoWall.items,...(data.items||[])],hasMore:!!data.has_more};
   const seq=entityRequestSeq,seed=data.seed?`&seed=${encodeURIComponent(data.seed)}`:'';
-  wireLoadMore(more,{
-    isCurrent:()=>seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name,
-    read:signal=>api(entityWide
+  const isCurrent=()=>seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name;
+  entityPhotoMore=data.has_more?async()=>{
+    const next=await api(entityWide
       ? `/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${localPhotoCount()}${seed}`
-      : `/api/photo-set?id=${data.id}&limit=120&offset=${localPhotoCount()}${seed}`,{signal}),
-    apply:next=>{if(next.error)throw new Error(next.error);renderPhotoWall(kind,name,filters,next,true)},
-  });
+      : `/api/photo-set?id=${data.id}&limit=120&offset=${localPhotoCount()}${seed}`);
+    if(!isCurrent())return;
+    if(next.error)throw new Error(next.error);
+    renderPhotoWall(kind,name,filters,next,true)}:null;
+  pushEntityBody({view:'photos',photos:entityPhotoWall});
+  syncPhotoWalls();
 }
 
 /* ── 源文件管理 ───────────────────────────────────────────────────────────────
@@ -6848,7 +6810,7 @@ function closePhotoLightbox(){
   document.body.classList.remove('photolight-open');
 }
 async function openPhotoLightbox(index,source=null){
-  const items=(source||photoWallItems).map(photoSlide);
+  const items=(source||[]).map(photoSlide);
   if(!items.length||index<0||index>=items.length)return;
   let SwiperCtor;
   try{SwiperCtor=await loadSwiper()}
@@ -7077,7 +7039,7 @@ function entityHeroHelpers(kind,d){
   };
 }
 async function openEntity(kind,name,push=true){
-  releaseHoverPreviews();releaseEntityGrid();
+  releaseHoverPreviews();releaseEntityBody();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
   if(kind==='creator')filters.creator='';
   const expectedPath=entityPath(kind,name);
@@ -7147,34 +7109,44 @@ async function openEntity(kind,name,push=true){
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photosAvailable())entityMediaView=emptyMediaView();
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
-  /* 资料卡与新作那一行归 React（`entity-hero`），资料卡下面的交集条与玻璃浮层也是
-     （`entity-filter`）。卡外面依次是交集条、玻璃筛选条、新作和内容区，顶到底一条线；新作
-     那一行的容器留在筛选条和内容区之间，由资料卡那座岛接管。两座岛挂上之前宿主都是空的：
-     React 包已随取数预载好，挂载里剩下的都是微任务，换掉骨架与画出整页落在同一帧。 */
+  /* 资料卡与新作那一行归 React（`entity-hero`），资料卡下面的交集条与玻璃浮层（`entity-filter`）
+     和再下面那一整块正文（`entity-body`）也是。卡外面依次是交集条、玻璃筛选条、新作和正文，
+     顶到底一条线；新作那一行的容器留在筛选条和正文之间，由资料卡那座岛接管。三座岛挂上之前
+     宿主都是空的：React 包已随取数预载好，挂载里剩下的都是微任务，换掉骨架与画出整页落在同一帧。 */
   if(entityFilterHost)unmountIsland(entityFilterHost);
   $('#index').innerHTML=`<div data-entity-hero="${d.id?Number(d.id):''}"></div>
     <div data-entity-filter></div>
     <section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>
-    <div class="entitysection"></div>`;
+    <div data-entity-body></div>`;
   const heroHost=$('#index').querySelector('[data-entity-hero]');
   const filterHost=$('#index').querySelector('[data-entity-filter]');
-  entityHeroHost=heroHost;entityFilterHost=filterHost;entityPhotoHeadNow=null;
+  const bodyHost=$('#index').querySelector('[data-entity-body]');
+  entityHeroHost=heroHost;entityFilterHost=filterHost;entityBodyHost=bodyHost;entityPhotoHeadNow=null;
+  entityPhotoWall=null;entityPhotoMore=null;
   const onPage=host=>()=>seq===entityRequestSeq&&host.isConnected;
+  const view=entityViewNow(kind);entityBodyView=view;
   await Promise.all([
     mountIsland('entity-hero',heroHost,{kind,name,entity:d,feedNew:d.feedNew||null,
       feedHost:d.id?$('#index').querySelector('[data-feed-new]'):null,jav:entityJavLayout,
       actions:entityHeroActions(kind,name,d,heroHost),helpers:entityHeroHelpers(kind,d)},
     {isCurrent:onPage(heroHost)}),
     /* 读数由下面那一格画完时推过来；深链直达一个图集时要先取这一组，读数先是微光。 */
-    mountIsland('entity-filter',filterHost,{kind,name,view:entityViewNow(kind),views,
+    mountIsland('entity-filter',filterHost,{kind,name,view,views,
       state:filters.state||'',states:VIEW_PILLS,tags:entityFilterTags(filters),combo:comboItems(filters),
       readout:'',busy:!!(entityMediaView.media==='photos'&&entityMediaView.set),
       video:entityVideoHead(filters),photo:null,
       actions:entityFilterActions(kind,name,filters),helpers:entityFilterHelpers(kind,name,filters)},
-    {isCurrent:onPage(filterHost)})]);
+    {isCurrent:onPage(filterHost)}),
+    /* 作品第一页不论落在哪个视图都已取回：落在作品视图时首帧就是卡片，切过去也不必再等。 */
+    mountIsland('entity-body',bodyHost,{...entityGridShared(),kind,name,view,roster:entityRosterProps(),
+      items,revision:++entityBodyRevision,fetchPage:entityItemsFetcher(kind,name,filters),
+      photos:null,photoSize:photoSize(),photoLayout:photoLayout(),
+      helpers:entityBodyHelpers,actions:entityBodyActions,cache,wireDrag,skeletonHtml:entityBodySkeleton,
+      canLoadMore:entityBodyCanLoadMore},
+    {isCurrent:onPage(bodyHost)})]);
   if(seq!==entityRequestSeq||!heroHost.isConnected)return;
-  if(entityViewNow(kind)==='people')renderEntityRoster(roster);
-  else if(entityMediaView.media!=='photos')renderEntityCollection(kind,name,items,filters);
+  if(view==='people')renderEntityRoster(roster);
+  else if(view==='videos')pushEntityVideoHead(items,filters);
   else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
   else renderPhotoWall(kind,name,filters,entityPhotos);
   buildBars();
@@ -7865,7 +7837,7 @@ function catalogCardRatio(){
 }
 /* 挂着卡片网格的几处：目录 `#grid`、资料页作品区、详情页的接着看。 */
 function gridIslandHosts(){
-  return [$('#grid'),...$('#index').querySelectorAll('[data-entity-grid]'),$('#nrow')].filter(host=>islandMounted(host));
+  return [$('#grid'),entityBodyCurrent()?entityBodyHost:null,$('#nrow')].filter(host=>host&&islandMounted(host));
 }
 /* 版式、「JAV 默认封面」、快进秒数这些展示层的设置变了，只推给正挂着的网格重画，不重取。 */
 function repaintCatalogGrid(){

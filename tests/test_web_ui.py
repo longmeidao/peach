@@ -1567,9 +1567,6 @@ class WebUiSourceTests(unittest.TestCase):
         for selector in (".fbadge{", ".fvkind{"):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
-        for selector in (".entitymore{",):
-            rule = css[css.index(selector):css.index("}", css.index(selector))]
-            self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
     def test_shared_geist_component_tokens_cover_the_whole_shell(self):
         """全站壳层、浮层和普通操作使用同一组语义 token。"""
@@ -1878,11 +1875,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("performer:'performers'")
         self.assertPageContains("studio:'studios'")
         self.assertPageContains("creator:'creators'")
-
-    def test_hidden_load_more_buttons_are_actually_removed_from_layout(self):
-        # 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏；
-        # 少了这条规则，按钮画在页面上但 requestMore 首行就 return，点了没反应。
-        self.assertPageContains(".entitymore[hidden]{display:none}")
 
     def test_co_starred_cards_keep_one_name_and_the_total(self):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
@@ -6423,16 +6415,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "let entityRosterView='people',entityRoster=[],entityRosterKind='performer';")
         self.assertCode("  entityJavLayout=false;\n  entityRosterView='people';")
-        self.assertCode("if(entityViewNow(kind)==='people')renderEntityRoster(roster);")
+        # 进页落在名册、切到视频再切回来，由 e2e `entity-filter.test.ts` 在真浏览器里走。
 
     def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
-        """名册和艺人索引摆的是同一格人，模板与版式设置都只有一份。"""
-        self.assertPageContains("function personCellHtml(x,kind,countText){")
+        """名册和艺人索引摆的是同一格人，取图链只有一份。
+
+        格子本身是 `entity-body` 岛里的 `PeopleGrid`（与索引页同一个组件），点一格去哪儿
+        由 `frontend/test/react/entity-body.test.tsx` 钉住。"""
         # 索引页那批行的实体 id 叫 entity_id，名册那批叫 id，取图链只认一个。
         self.assertPageContains("const ref=x.entity_id||x.id;")
-        self.assertCode(
-            '<div class="igrid" data-cells="${cells}" data-layout="${peopleIndexLayout()}">${\n'
-            "      people.map(x=>personCellHtml(x,cellKind,x.n.toLocaleString())).join('')}</div>")
         # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像（资料卡岛
         # 在事务所页不画卡底，见 entity-hero.test.tsx）；片商页的名册是旗下 label，同台
         # 艺人照旧留在卡底。
@@ -6446,10 +6437,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_a_company_cell_is_square_because_it_holds_a_mark_not_a_face(self):
         """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。
 
-        这里是资料页名册那一格；索引页的方格在 React 里（`index/index-people.tsx`）。
+        这里是壳铺的那张头像格骨架；真格子在 React 里（`index/index-people.tsx`，索引页与
+        资料页名册共用），片商名册摆成公司格由 `entity-body.test.tsx` 钉住。
         """
-        self.assertCode("const cells=cellKind==='studio'?'company':'people';")
-        self.assertPageContains('<div class="igrid" data-cells="${cells}" data-layout="${')
         self.assertPageContains(
             '.igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}')
         # 省下的高度换成宽度：同一屏里公司格比人格宽一档。
@@ -6537,22 +6527,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(ring.dataset.nativeSmall==='true')return;")
         self.assertPageContains(
             "box.style.setProperty('--markbg',small?`url(\"${src}\")`:'none');")
-        # 用到它的容器自己声明意图，JS 只负责量。资料卡大位那一处在 entity-hero island 里，
-        # 同一个属性、同一组变量，摆法写在 `entity-hero.css`。
-        self.assertPageContains("data-fit-native=\"${company?'mark':'portrait'}\"")
-        # 两处容器各自写着 width:100% 和 object-fit:cover，选择器压不过它们就白改。
+        # 用到它的容器自己声明意图，JS 只负责量。名册那一格（`index-people.tsx`）与资料卡
+        # 大位（entity-hero island）都在 React 里，同一个属性、同一组变量。
+        # 名册格写着 width:100% 和 object-fit:cover，选择器压不过它就白改。
         # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
         # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
         self.assertCode(
-            '.icell .ring[data-native-small="true"] img,\n'
+            '[data-person-ring][data-fit-native="mark"] img,\n'
             '[data-person-ring][data-native-small="true"] img{\n'
             "  width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;\n"
             "  max-width:100%;max-height:100%;z-index:1}")
         self.assertPageContains('[data-fit-native]::before{content:"";position:absolute;'
                                 'inset:-14%;z-index:0;')
         # 图不再铺满框，首字母垫底会从旁边露出来。
-        self.assertPageContains(".icell .ring[data-fit-native]:has(img) .ini,"
-                                "[data-person-ring][data-fit-native]:has(img) .ini{display:none}")
+        self.assertPageContains("[data-person-ring][data-fit-native]:has(img) .ini{display:none}")
 
     def test_the_company_index_layout_control_says_what_it_shows(self):
         """厂牌那一格摆的是方形标识，提示不能照艺人页写「竖幅头像」。"""
@@ -6924,8 +6912,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});")
         self.assertIn("html.refiltering{overflow-anchor:none}", stylesheet_source())
-        # 目录那边的骨架由 loadCatalog() 铺；资料页的集合自己铺一份同样的。
-        self.assertCode("  if(host){releaseEntityGrid();host.innerHTML=catalogSkeletonHtml();fitSkeleton(section)}")
+        # 目录那边的骨架由 loadCatalog() 铺；资料页那一格换成骨架等新列表由
+        # `frontend/test/react/entity-body.test.tsx` 钉住。
 
     def test_adding_a_filter_only_changes_the_list_underneath(self):
         """点一条筛选，动的只有底下那份名单；上面那几排原地改按下态。
@@ -7161,7 +7149,6 @@ class WebUiSourceTests(unittest.TestCase):
     def test_large_collections_render_in_bounded_batches(self):
         self.assertPageContains("p.set('limit','48')")
         self.assertPageContains("if(offset)p.set('count','0')")
-        self.assertPageContains('class="entitymore"')
         self.assertPageContains("barsRequestSeq")
         self.assertPageContains("async function getBarsData(context=barsContext)")
         self.assertPageContains("Date.now()-barsDataAt<30000")
@@ -8310,8 +8297,6 @@ class WebUiSourceTests(unittest.TestCase):
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".pickrowtext b",
-            # 照片档样张段头的片名：语义文本，尾部省略，全名在 title 里。
-            ".photogrouptitle",
             ".playerstats dd", ".playerstatsmetric>span",
             # 详情标题折成两行，尾部省略；溢出时旁边那枚展开键给出全文。
             ".stitletext",
@@ -8522,13 +8507,12 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_people_index_cells_are_board_cards(self):
         """索引格是 secondary 底、16px 圆角、12px 内边距的卡，名字 Body Medium、计数 Caption。
-        大图版式里头像改 10px 圆角、文字左对齐。载入更多是 36px／10px 圆角的 secondary Button。"""
+        大图版式里头像改 10px 圆角、文字左对齐。载入更多那枚键在 React 里，由 e2e 设计用例量。"""
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".icell{gap:8px;padding:12px;border-radius:16px;background:var(--ground)}", board)
         self.assertIn(".icell .nm{font-size:14px;line-height:20px;font-weight:500}", board)
         self.assertIn(".icell .n{font:var(--board-caption);color:var(--muted)}", board)
         self.assertIn('.igrid[data-layout="big"] .icell .ring{border-radius:10px}', board)
-        self.assertIn(".entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;", board)
 
     def test_an_alphabet_entry_stays_on_one_line(self):
         """一枚标签占一行，长名字截断。
@@ -10036,7 +10020,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("rootMargin:'320px'", body)
         self.assertEqual(self.page.count("new IntersectionObserver"), 1,
                          "共享分页只有这一个观察器")
-        for consumer in ("function renderFollow", "function renderPhotoWall"):
+        # 资料页照片墙的翻页在 `entity-body` 岛里，用的是卡片网格那枚 `LoadMore`，同一套判据。
+        for consumer in ("function renderFollow",):
             self.assertIn("wireLoadMore(", self._js_function(consumer.split()[-1]))
 
     def test_the_identity_name_leaves_room_for_descenders(self):
@@ -10634,47 +10619,11 @@ class WebUiSourceTests(unittest.TestCase):
             "const applyFollowView=()=>{route(followViewPath());openFollow(false)};")
 
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
-        # 图片墙铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。
-        self.assertPageContains('<img src="/photo-thumb?id=${item.id}"')
+        # 图片墙铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。墙上那一口在
+        # `entity-body` 岛里，由 `entity-body.test.tsx` 钉住；格子与列数的外观由 e2e 设计用例量。
         # 取图口收进 photoSlide：灯箱现在也服务关注页的在线图，模板不能再写死本地口。
         self.assertPageContains(
             ':{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`')
-        self.assertPageLacks('<img src="/photo?id=${item.id}" class="photocell"')
-        self.assertPageContains(
-            ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
-
-    def test_photo_wall_columns_all_start_at_the_top_before_any_thumbnail_arrives(self):
-        """固定比例格子和瀑布流图片都在懒加载前占位，防止零高分栏和连续自动翻页。"""
-        self.assertPageContains(
-            ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
-        self.assertPageContains(
-            ".photocell{display:block;width:100%;aspect-ratio:1;border:0;padding:0;margin:0;"
-            "background:var(--sunk);")
-        self.assertPageContains(
-            ".photocell img{width:100%;height:100%;object-fit:cover;display:block;"
-            "background:var(--sunk);color:transparent}")
-        # 窄屏两列也是网格；这条写在灯箱分区的断点里，和上面同优先级、排在后面。
-        self.assertPageContains(
-            "  .photowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}")
-        for lacking, why in (
-            (".photowall{column-count:5;column-gap:10px}", "多列流式排版会按零高摊格子"),
-            (".photowall{column-count:2;column-gap:8px}", "窄屏那两列同样不能靠图片撑高"),
-            (".photocell img{width:100%;height:auto", "高度得由格子给，不能等图片撑"),
-        ):
-            self.assertPageLacks(lacking, why)
-
-    def test_a_photo_cell_waiting_for_its_thumbnail_is_an_empty_tile(self):
-        """图还没到的格子是一块空底，不是一行文件名。
-
-        `alt` 是这张图的文件名，留着给读屏；但格子按比例占好位置之后，浏览器就有地方
-        把它画出来，一屏几十格同时在等图，看到的是满屏 `118abp00325pl.jpg`。格子高度
-        是 0 的年代看不见它，纯粹是因为没地方画。
-
-        隐去的办法是把字色调成透明，不是删掉 `alt`：删了读屏就只剩一个没有名字的按钮。
-        这块 `--sunk` 底本身就是这里的骨架，不另画「正在读取」。
-        """
-        self.assertPageContains("background:var(--sunk);color:transparent}")
-        self.assertPageContains('<img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}"')
 
     def test_photo_tab_opens_the_flat_wall_without_album_cover_cards(self):
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
@@ -10704,12 +10653,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()")
         self.assertPageContains("setPhotoSize(photoSize()==='big'?'small':'big')")
         self.assertPageContains("wirePhotoControls(countRow);syncPhotoWalls()")
-        self.assertPageContains("[data-layout=\"masonry\"]>.photocell img{height:auto;aspect-ratio:auto 1}")
         self.assertPageContains("break-inside:avoid;margin:0 0 14px")
-        self.assertPageContains(
-            '.photowall[data-size="big"]{grid-template-columns:repeat(3,minmax(0,1fr))}')
-        self.assertPageContains(
-            '  .photowall[data-size="big"]{grid-template-columns:repeat(1,minmax(0,1fr))}')
+        # 资料页那面墙各档列数与瀑布流的排法由 e2e 设计用例在浏览器里量。
         # 标签只在视频视图里露面，由 e2e `entity-filter.test.ts` 量。
         self.assertPageContains(
             "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});")
@@ -10832,15 +10777,10 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_big_people_layout_frames_the_detected_face(self):
         # 3:4 竖幅按几何居中会把脸切掉。换算只有 faceOrigin 一份：资料页写进 img 的
-        # style，索引页交给圆框上的 --face——那里的 img 是八处共用的 avatarInner 拼的。
+        # style，名册那一格（React `PeopleGrid`）交给圆框上的 --face，由 `entity-body.test.tsx` 钉住。
         self.assertPageContains("function faceOrigin(f){")
         self.assertCode("  const origin=faceOrigin(f);\n"
                         "  return origin?` style=\"object-position:${origin}\"`:'';")
-        self.assertPageContains("const face=faceOrigin(x.avatar_focus);")
-        self.assertPageContains(
-            '<span class="ring" data-fit-native="${company?\'mark\':\'portrait\'}"'
-            '${face?` style="--face:${face}"`:\'\'}>')
-        self.assertPageContains("object-position:var(--face,50% 50%)}")
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
         self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")

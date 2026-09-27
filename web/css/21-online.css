@@ -123,20 +123,19 @@
   .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:44px;height:44px}.followimagedots{bottom:12px}
 }
 
-/* 图片墙共用列数与布局；未加载图片由备用比例占位，加载后使用天然比例。 */
-:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:5;grid-template-columns:repeat(var(--photo-columns),minmax(0,1fr))}
-:is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:3}
-@media(max-width:1400px){:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:4}
-  :is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:2}}
-@media(max-width:1000px){:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:3}
-  :is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:1}}
-@media(max-width:640px){:is(.photowall,.followlist.followphotowall)[data-size]{--photo-columns:2}
-  :is(.photowall,.followlist.followphotowall)[data-size="big"]{--photo-columns:1}}
-:is(.photowall,.followlist.followphotowall)[data-layout="masonry"]{display:block;column-count:var(--photo-columns);column-gap:10px}
+/* 关注页图片墙的列数与布局，与资料页照片墙（`frontend/src/react/entity-body/entity-body.css`）
+   同一套档位；未加载图片由备用比例占位，加载后使用天然比例。 */
+.followlist.followphotowall[data-size]{--photo-columns:5;grid-template-columns:repeat(var(--photo-columns),minmax(0,1fr))}
+.followlist.followphotowall[data-size="big"]{--photo-columns:3}
+@media(max-width:1400px){.followlist.followphotowall[data-size]{--photo-columns:4}
+  .followlist.followphotowall[data-size="big"]{--photo-columns:2}}
+@media(max-width:1000px){.followlist.followphotowall[data-size]{--photo-columns:3}
+  .followlist.followphotowall[data-size="big"]{--photo-columns:1}}
+@media(max-width:640px){.followlist.followphotowall[data-size]{--photo-columns:2}
+  .followlist.followphotowall[data-size="big"]{--photo-columns:1}}
+.followlist.followphotowall[data-layout="masonry"]{display:block;column-count:var(--photo-columns);column-gap:10px}
 [data-layout="masonry"]>.emptystate{column-span:all}
-[data-layout="masonry"]>.photocell,[data-layout="masonry"]>.followitem.imagecard{break-inside:avoid;margin:0 0 14px}
-[data-layout="masonry"]>.photocell{aspect-ratio:auto}
-[data-layout="masonry"]>.photocell img{height:auto;aspect-ratio:auto 1}
+[data-layout="masonry"]>.followitem.imagecard{break-inside:avoid;margin:0 0 14px}
 [data-layout="masonry"] .followitem.imagecard .pic{aspect-ratio:1}
 /* 只有带 width/height 属性的图才放开高度按固有比例占位：瀑布流按卡片高度分列，
    图没加载完高度未知时放手，每张加载完都会把整墙的列再平衡一遍，卡片在列间跳。

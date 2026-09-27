@@ -18,6 +18,7 @@ import { prefetchDataCleanup } from './data-cleanup/data-cleanup';
 import { DataCleanupPage } from './data-cleanup/data-cleanup-page';
 import { prefetchDuplicates } from './duplicates/duplicates';
 import { DuplicatesPage } from './duplicates/duplicates-page';
+import { EntityBodyPage } from './entity-body/entity-body-page';
 import { EntityFilterPage } from './entity-filter/entity-filter-page';
 import { EntityHeroPage } from './entity-hero/entity-hero-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
@@ -116,6 +117,8 @@ export const pages: Bundle.ReactPages = {
   'entity-hero': { prefetch: async () => {}, mount: mounter(EntityHeroPage) },
   /* 筛选、读数与排序项都由壳算好递进来，挂上就是最终样子。 */
   'entity-filter': { prefetch: async () => {}, mount: mounter(EntityFilterPage) },
+  /* 名册随资料下来，作品第一页与照片由壳和页头并行取好递进来，挂上就是最终样子。 */
+  'entity-body': { prefetch: async () => {}, mount: mounter(EntityBodyPage) },
   /* 首屏只取来源清单与凭据状态，地址栏指着「订阅源」时连它一起取。检查更新与查找那两趟
      后台任务的快照不在首屏里：它们常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */
   'follow-manage': {

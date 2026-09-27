@@ -48,10 +48,13 @@ function Cell(
   );
 }
 
-/** 本地名册。 */
+/** 本地名册。资料页的名册（事务所旗下艺人、片商旗下厂牌）摆的也是这一格，只借取图与去处两样。 */
 export function PeopleGrid(
   { kind, items, layout, props }:
-  { kind: Exclude<IndexKind, 'tags'>; items: IndexPerson[]; layout: PeopleLayout; props: IndexProps },
+  {
+    kind: Exclude<IndexKind, 'tags'>; items: IndexPerson[]; layout: PeopleLayout;
+    props: Pick<IndexProps, 'personAvatar' | 'openEntity'>;
+  },
 ) {
   const entityKind = ENTITY_KINDS[kind];
   const company = isCompany(kind);

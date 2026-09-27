@@ -68,11 +68,6 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
    列数、间距与卡片几何由 `board.css` 的 `body[data-surface="/quality-goals"]` 那组给。 */
 .qualitylist{display:grid}
 .qualityitem{min-width:0;background:var(--ground)}
-.entitymore[hidden]{display:none}
-.entitymore{display:flex;align-items:center;justify-content:center;margin:20px auto 0;min-width:124px;
-  min-height:40px;padding:8px 16px;border:1px solid var(--border-15);border-radius:var(--control-radius);background:transparent;
-  color:var(--ink-2);cursor:pointer}.entitymore:hover{background:var(--hover);color:var(--ink)}
-.entitymore:disabled{opacity:.5;cursor:wait}
 /* 「未归属」和实体名一样是个入口，只是它指向一个集合而不是一个人，样式同源。 */
 .entitylink,.unownedlink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
 .entitylink:hover,.unownedlink:hover{color:var(--ink);text-decoration:none}

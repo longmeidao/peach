@@ -9,12 +9,14 @@ import type { CatalogGridProps } from './catalog-grid/types';
 import type { JunkQueueProps } from './junk-queue/junk-queue';
 import type { EntityHeroProps } from './entity-hero/entity-hero';
 import type { EntityFilterProps } from './entity-filter/entity-filter';
+import type { EntityBodyProps } from './entity-body/entity-body';
 
 export type { IndexProps };
 export type { CatalogGridProps };
 export type { JunkQueueProps };
 export type { EntityHeroProps };
 export type { EntityFilterProps };
+export type { EntityBodyProps };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -386,6 +388,7 @@ export interface ReactPages {
   'cover-crop': ReactPage<CoverCropProps>;
   'data-cleanup': ReactPage<DataCleanupProps>;
   duplicates: ReactPage<DuplicatesProps>;
+  'entity-body': ReactPage<EntityBodyProps>;
   'entity-filter': ReactPage<EntityFilterProps>;
   'entity-hero': ReactPage<EntityHeroProps>;
   'follow-manage': ReactPage<FollowManageProps>;
