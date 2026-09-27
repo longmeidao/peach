@@ -564,10 +564,10 @@ it('各栏按做事的先后排，缺凭据的数挂在最后一栏上', async (
 const FEEDS: FeedsData = {
   unread: 3,
   sources: [
-    { id: 4, kind: 'performer', kind_label: '女优新作', name: '甲 的新作', url: 'https://feeds.test/a',
+    { id: 4, kind: 'performer', kind_label: 'JAV 订阅', name: '甲 的新作', url: 'https://feeds.test/a',
       entity_name: '甲', enabled: true, interval_minutes: 720, last_fetched_at: null, last_error: null,
       last_new_count: 0, seen: 2 },
-    { id: 5, kind: 'performer', kind_label: '女优新作', name: '乙 的新作', url: 'https://feeds.test/b',
+    { id: 5, kind: 'performer', kind_label: 'JAV 订阅', name: '乙 的新作', url: 'https://feeds.test/b',
       entity_name: '乙', enabled: false, interval_minutes: 30, last_fetched_at: null, last_error: '站点 503',
       last_new_count: 0, seen: 0 },
   ],
@@ -598,7 +598,12 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
   stubConfirm(true);
   const { host, fetcher } = await open({ feeds: FEEDS }, { tab: 'feeds' });
   expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('订阅源');
-  expect(host.textContent).toContain('女优新作 · 每 12 小时一次 · 还没拉过 · 上次新增 0 条');
+  expect([...host.querySelectorAll('[role="columnheader"]')].map((cell) => cell.textContent?.trim()))
+    .toEqual(['选择', '名称', '类型', '来源', '状态', '频率', '上次拉取', '上次新增', '启用', '操作']);
+  const first = checkboxNamed(host, '选择 甲 的新作')!.closest('[role="row"]')!;
+  expect([...first.querySelectorAll('[role="rowheader"],[role="gridcell"]')].map((cell) => cell.textContent?.trim()))
+    .toEqual(['', '甲 的新作', 'JAV 订阅', 'feeds.test', '正常', '每 12 小时', '还没拉过', '0 条', '', '']);
+  expect(first.querySelector('a')?.getAttribute('href')).toBe('https://feeds.test/a');
   expect(host.textContent).toContain('乙 的新作 拉取失败');
   expect(host.textContent).toContain('有 3 条新作还没看');
   expect(host.textContent).not.toContain('正在读订阅源');
@@ -614,6 +619,44 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
   ]);
   expect(sentBody(fetcher, FEEDS_CHECK_URL)).toEqual([{ all: true }]);
   expect(feedReads(fetcher)).toBeGreaterThan(1);
+});
+
+it('订阅源表里点一行的空白处就是选这一行，选中了底部浮出批量操作，暂停逐条写到订阅源接口', async () => {
+  const { host, fetcher } = await open({ feeds: FEEDS }, { tab: 'feeds' });
+  const row = () => checkboxNamed(host, '选择 乙 的新作')!.closest('[role="row"]')!;
+  const blank = () => [...row().querySelectorAll('[role="rowheader"],[role="gridcell"]')]
+    .find((cell) => cell.textContent?.trim() === '每 30 分钟')!;
+  expect(host.querySelector('[data-selection-dock]')).toBeNull();
+
+  await click(blank());
+  expect(row().hasAttribute('data-follow-selected')).toBe(true);
+  expect(host.textContent).toContain('已选 1 条订阅源');
+  await click(blank());
+  expect(row().hasAttribute('data-follow-selected')).toBe(false);
+  expect(host.querySelector('[data-selection-dock]')).toBeNull();
+
+  await click(checkboxNamed(host, '选择 甲 的新作'));
+  await click(checkboxNamed(host, '选择 乙 的新作'));
+  expect(host.textContent).toContain('已选 2 条订阅源');
+  await click([...host.querySelectorAll('[data-selection-dock] button')].find((b) => b.textContent === '暂停'));
+  await settle();
+  expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([
+    { action: 'enabled', id: 4, enabled: false }, { action: 'enabled', id: 5, enabled: false },
+  ]);
+  expect(host.querySelector('[data-selection-dock]')).toBeNull();
+});
+
+it('批量移除先弹确认并说清条数，确认后逐条移除、Toast 报条数', async () => {
+  const { asked, outcomes } = stubConfirm(true);
+  const { host, fetcher, props } = await open({ feeds: FEEDS }, { tab: 'feeds' });
+  await click(checkboxNamed(host, '选择 甲 的新作'));
+  await click(checkboxNamed(host, '选择 乙 的新作'));
+  await click([...host.querySelectorAll('[data-selection-dock] button')].find((b) => b.textContent === '移除'));
+  expect(asked[0]).toMatchObject({ title: '移除 2 条订阅源', confirmLabel: '移除所选订阅源', danger: true });
+  expect(await outcomes[0]).toBeNull();
+  await settle();
+  expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([{ action: 'remove', id: 4 }, { action: 'remove', id: 5 }]);
+  expect(props.toast).toHaveBeenCalledWith('已移除 2 条订阅源');
 });
 
 it('点移除先弹确认：标题与主按钮同一个动词，正文点名这条源，取消就什么都不发', async () => {

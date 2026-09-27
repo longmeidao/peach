@@ -24,7 +24,7 @@ from .entities import normalize_entity_name
 #: JavDB 演员页当伪 Feed 抓。它按发行日排在前面，所以「还没发行的作品」会先出现。
 KIND_JAVDB_ACTOR = "javdb-actor"
 
-KIND_LABELS = {KIND_JAVDB_ACTOR: "JavDB 演员页"}
+KIND_LABELS = {KIND_JAVDB_ACTOR: "JAV 订阅"}
 
 #: 拉取间隔。JavDB 按出口 IP 计配额，一张一天才更新几条的页面拉得再密也只是花配额。
 DEFAULT_INTERVAL_MINUTES = 360

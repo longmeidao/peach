@@ -129,7 +129,7 @@ class FeedWebTest(FeedWebFixture):
         snapshot = dispatch_api_get(self.contract, "/api/feeds", {})
         self.assertEqual(len(snapshot["sources"]), 1)
         self.assertEqual(snapshot["sources"][0]["name"], "示例源")
-        self.assertEqual(snapshot["sources"][0]["kind_label"], "JavDB 演员页")
+        self.assertEqual(snapshot["sources"][0]["kind_label"], "JAV 订阅")
         self.assertTrue(snapshot["sources"][0]["enabled"])
 
     def test_the_source_endpoint_takes_no_address_from_the_page(self):
