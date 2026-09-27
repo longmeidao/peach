@@ -39,6 +39,8 @@ export interface ResourceScanState {
   empty?: number;
   unreadable?: number;
   cache?: { files: number; bytes: number };
+  /** 这一轮已经照着清过：读数是清理前的，结果区改画清理回执。 */
+  applied?: boolean;
   error?: string;
 }
 
