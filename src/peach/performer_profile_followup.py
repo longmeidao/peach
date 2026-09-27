@@ -212,8 +212,8 @@ def _ours(metadata: dict) -> bool:
     return source == SOURCE or source.startswith(SOURCE + "@")
 
 
-def _bind(connection: sqlite3.Connection, entity_id: int, provider: str, external_id: str,
-          metadata: dict) -> str:
+def bind(connection: sqlite3.Connection, entity_id: int, provider: str, external_id: str,
+         metadata: dict) -> str:
     """把站上编号登记到她名下，返回判词：`绑定`，或编号已属另一条实体时的 `占用`。
 
     已经在她名下、却不是这条后继登记的，只换资料那几项，`source` 留原样：撤回只删自己登记的。
@@ -373,8 +373,8 @@ def _visit_minnano(contract, pages, entity_id: int, names, state: dict, batch: s
         wrote = write_profile(connection, entity_id, parsed, source=batch, source_url=url)
         bound = ""
         if not refs:
-            bound = _bind(connection, entity_id, MINNANO, parsed["actress_id"],
-                          {"source": SOURCE, "batch": batch})
+            bound = bind(connection, entity_id, MINNANO, parsed["actress_id"],
+                         {"source": SOURCE, "batch": batch})
     state["profile"] = parsed
     reports[MINNANO] = f"命中 {url}"
     rows.append({**base, "site": MINNANO, "page": url, "action": WRITE if wrote else MISS,
@@ -421,8 +421,8 @@ def _visit_avwikidb(contract, pages, entity_id: int, names, state: dict, batch: 
         if not _alive(connection, entity_id, canonical):
             reports[AVWIKIDB] = f"{MISS}：账本里这条实体已经变了"
             return 0
-        verdict = _bind(connection, entity_id, AVWIKIDB, actor_ref,
-                        _actor_metadata(actor, work, batch, found))
+        verdict = bind(connection, entity_id, AVWIKIDB, actor_ref,
+                       _actor_metadata(actor, work, batch, found))
     return _record_bind(url, verdict, work, actor, found, batch, base, reports, rows)
 
 
@@ -543,8 +543,8 @@ def _visit_javdb(contract, pages, entity_id: int, names, batch: str, base: dict,
         if not _alive(connection, entity_id, canonical):
             reports[JAVDB] = f"{MISS}：账本里这条实体已经变了"
             return
-        verdicts = [(card, _bind(connection, entity_id, JAVDB, card["id"],
-                                 {"source": SOURCE, "batch": batch})) for card in cards]
+        verdicts = [(card, bind(connection, entity_id, JAVDB, card["id"],
+                                {"source": SOURCE, "batch": batch})) for card in cards]
     reports[JAVDB] = "；".join(f"{'命中' if verdict == BIND else TAKEN} {card['id']}"
                               for card, verdict in verdicts)
     for card, verdict in verdicts:

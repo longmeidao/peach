@@ -1,8 +1,9 @@
-/* 关注管理页的「订阅源」页签：一张和关注列表同一个外观的表，一行一条源，列出类型、来源、
- * 状态、频率、上次拉取与新增，行尾是启用开关与移除键（ADR-0042）。
+/* 关注管理页的「订阅源」页签：上面一张「添加 JAV 订阅」卡，下面一张和关注列表同一个外观的表，
+ * 一行一条源，列出类型、来源、状态、频率、上次拉取与新增，行尾是启用开关与移除键（ADR-0042）。
  *
- * 订阅只从人物页的「订阅新作」进，这里不收地址（ADR-0047）。拉回来的新作排在首页与人物页
- * 筛选栏下面那一行，不在这里列——这里再列一遍就成了第二个入口，两处的已读状态会各说各话。
+ * 订阅从人物页的「订阅新作」或这里按名字进，两条路都不收地址（ADR-0047、ADR-0083）。拉回来的
+ * 新作排在首页与人物页筛选栏下面那一行，不在这里列——这里再列一遍就成了第二个入口，两处的
+ * 已读状态会各说各话。
  * 服务端是唯一真相：开关与移除之后重取这一份，不在前端按响应拼一份新的本地状态。
  *
  * 勾选和关注列表同一套：勾在行首，点一行的空白处也是选这一行，选中了底部浮出批量操作。 */
@@ -31,6 +32,7 @@ import { queryClient } from '../query';
 import { ErrorText, Help } from '../settings/section';
 import { busyProps, useAction } from '../settings/use-action';
 import { localTime } from '../time';
+import { AddFeed } from './add-feed';
 import {
   checkFeeds, FEEDS_KEY, fetchFeeds, removeFeed, setFeedEnabled, type FeedSource,
 } from './follow-manage';
@@ -164,11 +166,17 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
       column.accessor(feedName, {
         id: 'name',
         header: label('name'),
+        /* 名字、频率与时间都不换行：窄屏上这张表靠 Table 自带的容器横着滚，让格子换行只会
+           把「三上悠亜」竖着摆成四行，滚动反而没了用处。 */
         cell: (context) => (
-          <span className="min-w-0 break-words text-body-medium text-text-primary">{context.getValue()}</span>
+          <span className="whitespace-nowrap text-body-medium text-text-primary">{context.getValue()}</span>
         ),
       }),
-      column.accessor((row) => row.kind_label, { id: 'kind', header: label('kind') }),
+      column.accessor((row) => row.kind_label, {
+        id: 'kind',
+        header: label('kind'),
+        cell: (context) => <span className="whitespace-nowrap">{context.getValue()}</span>,
+      }),
       column.accessor((row) => row.url, {
         id: 'origin',
         header: label('origin'),
@@ -184,16 +192,20 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
         header: label('status'),
         cell: (context) => <StatusChip source={context.row.original} />,
       }),
-      column.accessor((row) => intervalText(row.interval_minutes), { id: 'interval', header: label('interval') }),
+      column.accessor((row) => intervalText(row.interval_minutes), {
+        id: 'interval',
+        header: label('interval'),
+        cell: (context) => <span className="whitespace-nowrap">{context.getValue()}</span>,
+      }),
       column.accessor((row) => (row.last_fetched_at ? localTime(row.last_fetched_at) : '还没拉过'), {
         id: 'fetched',
         header: label('fetched'),
-        cell: (context) => <span className="tabular-nums">{context.getValue()}</span>,
+        cell: (context) => <span className="whitespace-nowrap tabular-nums">{context.getValue()}</span>,
       }),
       column.accessor((row) => row.last_new_count, {
         id: 'fresh',
         header: label('fresh'),
-        cell: (context) => <span className="tabular-nums">{`${context.getValue()} 条`}</span>,
+        cell: (context) => <span className="whitespace-nowrap tabular-nums">{`${context.getValue()} 条`}</span>,
       }),
       column.display({
         id: 'enabled',
@@ -251,6 +263,7 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
   /* 分区名由页签「订阅源」给，表上面没有同名的小标题。 */
   return (
     <div className="flex flex-col gap-3">
+      <AddFeed readOnly={readOnly} toast={toast} onAdded={() => void reload()} />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Help role="status">{data.unread ? `有 ${data.unread} 条新作还没看` : '新作都看过了'}</Help>
         <Button onClick={check} disabled={readOnly} {...busyProps(action.busy === 'check')}>立即拉取</Button>
@@ -309,7 +322,7 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
         </DataTableFrame>
       ) : (
         <EmptyState icon={RiRssLine} title="还没有订阅源" shell="plain">
-          在人物页点「订阅新作」添加。
+          在上面按女优名添加，或在人物页点「订阅新作」。
         </EmptyState>
       )}
     </div>

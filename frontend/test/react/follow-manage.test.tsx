@@ -12,12 +12,12 @@ import { JOB_RUNNING_POLL_MS } from '../../src/react/background-job';
 import { queryClient } from '../../src/react/query';
 import {
   authorAvatar, authorGroups, authorInitial, authorName, checkSummary, FEEDS_CHECK_URL, FEED_SOURCE_URL,
-  FEEDS_URL, FOLLOW_CHECK_URL,
+  FEEDS_LOOKUP_URL, FEEDS_URL, FOLLOW_CHECK_URL,
   FOLLOW_CREDENTIAL_URL, FOLLOW_CREDENTIALS_URL, FOLLOW_RESOLVE_URL, FOLLOW_SOURCE_URL,
   FOLLOW_SUGGEST_URL, FOLLOW_URL, pageWindow, prefetchFollowManage,
   sortLabel, SUGGEST_DEBOUNCE_MS, tableRows,
-  type CheckJob, type CredentialData, type CredentialRow, type FeedsData, type FollowData, type FollowSource,
-  type ResolveJob, type SuggestData,
+  type CheckJob, type CredentialData, type CredentialRow, type FeedLookup, type FeedsData, type FollowData,
+  type FollowSource, type ResolveJob, type SuggestData,
 } from '../../src/react/follow-manage/follow-manage';
 import { FollowManagePage } from '../../src/react/follow-manage/follow-manage-page';
 
@@ -89,8 +89,10 @@ interface Plan {
   add?: (body: { url: string; label: string }) => unknown;
   /** 订阅源清单。 */
   feeds?: FeedsData;
-  /** 订阅源的开关与移除。回 `refuse(...)` 就是这一次被服务端挡回来。 */
-  feedWrite?: (body: { action: string; id: number }) => unknown;
+  /** 订阅源的开关、移除与按名字登记。回 `refuse(...)` 就是这一次被服务端挡回来。 */
+  feedWrite?: (body: { action: string; id?: number; name?: string; ids?: string[] }) => unknown;
+  /** 按女优名到 JavDB 搜演员卡的结果。回 `refuse(...)` 就是这一趟被服务端挡回来。 */
+  lookup?: (q: string) => FeedLookup | ReturnType<typeof refuse>;
 }
 
 /** 按端点分流的假 fetch。写操作各回一个最小成功体。 */
@@ -102,6 +104,11 @@ function serve(plan: Plan = {}) {
     if (url === FEEDS_URL) return ok(plan.feeds ?? { sources: [], unread: 0 });
     if (url === FEED_SOURCE_URL && plan.feedWrite) return plan.feedWrite(body);
     if (url === FEED_SOURCE_URL || url === FEEDS_CHECK_URL) return ok({ ok: true });
+    if (url.startsWith(`${FEEDS_LOOKUP_URL}?`)) {
+      const q = new URL(url, 'http://peach.test').searchParams.get('q') || '';
+      const found = plan.lookup ? plan.lookup(q) : { q, url: '', candidates: [], suggested: [], known: null };
+      return 'candidates' in found ? ok(found) : found;
+    }
     if (url === FOLLOW_CREDENTIALS_URL) return ok(plan.creds ?? credentials());
     if (url === FOLLOW_CREDENTIAL_URL) return ok({});
     if (url === FOLLOW_CHECK_URL) {
@@ -698,9 +705,11 @@ it('移除被服务端挡回时把原因交给弹层，不发 Toast、不重取�
   expect(feedReads(fetcher)).toBe(before);
 });
 
-it('订阅源页签不收地址，只读的这台开关、移除与拉取都停用', async () => {
+it('订阅源页签不收地址，只读的这台查找、开关、移除与拉取都停用', async () => {
   const { host } = await open({ feeds: FEEDS }, { tab: 'feeds', readOnly: true });
-  expect(host.querySelector('input[type="url"], input[type="text"]')).toBeNull();
+  expect(host.querySelector('input[type="url"]')).toBeNull();
+  expect(nameField(host).disabled).toBe(true);
+  expect(buttonNamed('查找', host)?.disabled).toBe(true);
   expect(buttonNamed('立即拉取', host)?.disabled).toBe(true);
   expect(buttonLabelled(host, '移除 甲 的新作')?.disabled).toBe(true);
   expect(host.querySelector<HTMLInputElement>('input[aria-label="启用 甲 的新作"]')?.disabled).toBe(true);
@@ -709,10 +718,99 @@ it('订阅源页签不收地址，只读的这台开关、移除与拉取都停�
 it('没有订阅源时那张卡里是空态，分区名由页签给、卡上没有同名标题', async () => {
   const { host } = await open({}, { tab: 'feeds' });
   const panel = host.querySelector('[role="tabpanel"]')!;
-  expect(panel.querySelector('h3')?.textContent).toBe('还没有订阅源');
-  expect(panel.textContent).toContain('在人物页点「订阅新作」添加。');
+  expect([...panel.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(['添加 JAV 订阅', '还没有订阅源']);
+  expect(panel.textContent).toContain('在上面按女优名添加，或在人物页点「订阅新作」。');
   expect(panel.querySelector('section[aria-label="订阅源"]')).toBeNull();
   expect(buttonNamed('立即拉取', host)).not.toBeNull();
+});
+
+// ── 添加 JAV 订阅：按名字搜演员卡、勾选、登记 ─────────────────────────────
+
+/** 女优名输入框。BoardUI 的 `Input` 把无障碍名称落在外层字段上，输入框在它里面。 */
+function nameField(root: ParentNode): HTMLInputElement {
+  const named = root.querySelector('[aria-label="女优名"]');
+  const field = named instanceof HTMLInputElement ? named : named?.querySelector('input');
+  if (!field) throw new Error('女优名输入框没有画出来');
+  return field;
+}
+
+const card = (id: string, names: string[], record = '', held_by: FeedLookup['known'] = null) =>
+  ({ id, names, record, url: `https://javdb.com/actors/${id}`, held_by, matched: [] });
+
+const LOOKUP: FeedLookup = {
+  q: '瀬戸環奈', url: 'https://javdb.com/search?f=actor&q=x', known: null, suggested: ['Kn01', 'Kn02'],
+  candidates: [card('Kn01', ['瀬戸環奈', '瀨戶環奈']), card('Kn02', ['瀬戸環奈'], '無碼'), card('Zz99', ['別人さん'])],
+};
+
+const boxNamed = (root: ParentNode, text: string) =>
+  [...root.querySelectorAll('label')].find((label) => label.textContent?.includes(text))
+    ?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+
+it('按名字查找列出每张演员卡，同一个人的两张先勾上；说清会新建，添加后送 id、Toast 点名并重取清单', async () => {
+  const lookup = vi.fn(() => LOOKUP);
+  const feedWrite = vi.fn(() => ok({ ok: true, entity_id: 9, entity_name: '瀬戸環奈', created: true, sources: [7, 8] }));
+  const { host, fetcher, props } = await open({ feeds: FEEDS, lookup, feedWrite }, { tab: 'feeds' });
+  const before = feedReads(fetcher);
+  expect(buttonNamed('查找', host)?.disabled).toBe(true);
+  await type(nameField(host), ' 瀬戸環奈 ');
+  await click(buttonNamed('查找', host));
+  await settle();
+  expect(lookup).toHaveBeenCalledWith('瀬戸環奈');
+  expect(boxNamed(host, '瀬戸環奈、瀨戶環奈')?.checked).toBe(true);
+  expect(boxNamed(host, '無碼')?.checked).toBe(true);
+  expect(boxNamed(host, '別人さん')?.checked).toBe(false);
+  expect(host.textContent).toContain('账本里还没有「瀬戸環奈」，会新建一位');
+  expect([...host.querySelectorAll('a')].find((a) => a.textContent?.includes('Kn01'))?.getAttribute('href'))
+    .toBe('https://javdb.com/actors/Kn01');
+
+  await click(boxNamed(host, '無碼'));
+  expect(buttonNamed('添加订阅（1）', host)).not.toBeNull();
+  await click(buttonNamed('添加订阅（1）', host));
+  await settle();
+  expect(feedWrite).toHaveBeenCalledWith({ action: 'follow-name', name: '瀬戸環奈', ids: ['Kn01'] });
+  expect(props.toast).toHaveBeenCalledWith('已新建「瀬戸環奈」并订阅她的新作');
+  expect(feedReads(fetcher)).toBeGreaterThan(before);
+  // 候选收起，输入框清空，下一位从头来。
+  expect(boxNamed(host, '無碼')).toBeUndefined();
+  expect(nameField(host).value).toBe('');
+});
+
+it('回车也是查找；勾的卡已在账本里谁名下就说会挂给谁，分属两个人时添加键停用', async () => {
+  const held = { ...LOOKUP, suggested: [], candidates: [
+    card('Kn01', ['瀬戸環奈'], '', { id: 3, name: '甲' }), card('Kn02', ['瀬戸環奈'], '無碼', { id: 4, name: '乙' }),
+  ] };
+  const { host, fetcher } = await open({ feeds: FEEDS, lookup: () => held }, { tab: 'feeds' });
+  await type(nameField(host), '瀬戸環奈');
+  await act(async () => {
+    nameField(host).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+  });
+  await settle();
+  expect(host.textContent).toContain('已在「甲」名下');
+  expect(host.textContent).toContain('勾选她的演员卡');
+  await click(boxNamed(host, '無碼'));
+  expect(host.textContent).toContain('会登记到「乙」名下');
+  expect(buttonNamed('添加订阅（1）', host)?.disabled).toBe(false);
+  await click(boxNamed(host, '瀬戸環奈'));
+  expect(host.textContent).toContain('所勾的卡分属账本里不同的人：甲、乙');
+  expect(buttonNamed('添加订阅（2）', host)?.disabled).toBe(true);
+  expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([]);
+});
+
+it('查找被服务端挡回时原因摆在卡里，没有候选时直说', async () => {
+  const first = await open({ feeds: FEEDS, lookup: () => refuse('JavDB 回的是登入页') }, { tab: 'feeds' });
+  await type(nameField(first.host), '甲');
+  await click(buttonNamed('查找', first.host));
+  await settle();
+  expect(first.host.textContent).toContain('JavDB 回的是登入页');
+  await first.unmount();
+  queryClient.clear();
+
+  const none = await open({ feeds: FEEDS }, { tab: 'feeds' });
+  await type(nameField(none.host), '乙');
+  await click(buttonNamed('查找', none.host));
+  await settle();
+  expect(none.host.textContent).toContain('JavDB 上没有搜到这个名字。');
+  expect(buttonNamed('关闭', none.host)).not.toBeNull();
 });
 
 it('只读的这台说清楚、指向写入端，写操作一律停用', async () => {

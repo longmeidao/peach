@@ -6,12 +6,18 @@
 """
 from __future__ import annotations
 
+import json
+import re
 import threading
 import time
 import uuid
 from datetime import timedelta
+from urllib.parse import quote
 
-from . import entities, entry_links, feed_followup, feeds, web_settings
+from . import (
+    entities, entry_links, feed_followup, feeds, javdb, performer_alias_followup as alias,
+    performer_profile_followup, web_settings,
+)
 from .jobs import TaskRunConflict
 from .http import HttpRequest, public_https_url
 
@@ -232,9 +238,10 @@ def q_feeds(contract, args) -> dict:
 
 
 def w_feed_source(contract, body) -> dict:
-    """订阅的移除与开关，以及人物页的「订阅新作」。
+    """订阅的移除与开关、人物页的「订阅新作」，以及订阅源页签按名字订。
 
-    这里不收页面送来的地址：订阅只从人物页进，地址由服务端按这位的 JavDB 身份现拼（ADR-0047）。
+    这里不收页面送来的地址：地址由服务端按这位的 JavDB 身份现拼，按名字订时页面送的也只是
+    她在站上的演员 id（ADR-0047、ADR-0083）。
     """
     action = str(body.get("action") or "")
     if action == "remove":
@@ -253,16 +260,37 @@ def w_feed_source(contract, body) -> dict:
         return {"ok": True, "source": source_id, "enabled": enabled}
     if action == "follow":
         return _follow_entity(contract, body)
+    if action == "follow-name":
+        return _follow_by_name(contract, body)
     raise ValueError(f"unknown feed source action: {action}")
 
 
-def _follow_entity(contract, body) -> dict:
-    """人物页「订阅新作」开关。地址按这位的 JavDB 演员页现拼，不收页面传来的地址。
+def _subscribe(connection, entity_id: int, canonical_name: str) -> list[int]:
+    """这位的每个 JavDB 演员页各订一条，返回源 id。地址按账本里她的编号现拼。"""
+    refs = [dict(ref) for ref in connection.execute(
+        "SELECT provider,external_kind,external_id FROM entity_external_ref"
+        " WHERE entity_id=?", (int(entity_id),))]
+    pages = entry_links.javdb_actor_pages(canonical_name, refs)
+    if not pages:
+        raise ValueError("这位在 JavDB 上没有演员页编号")
+    return feeds.follow_entity(connection, entity_id, pages)
 
-    打开后当场在后台拉这几条：人物页上点开关的人要的是马上看到她有哪些新作，
-    而不是等下一轮到期扫描。已有一轮在跑时就交给那一轮之后的到期扫描——
-    新源 `next_fetch_at` 为空，下一轮一定带上它。
+
+def _fetch_now(contract, ids: list[int]) -> None:
+    """新订的当场在后台拉：订的人要的是马上看到她有哪些新作，不是等下一轮到期扫描。
+
+    已有一轮在跑时就交给那一轮之后的到期扫描——新源 `next_fetch_at` 为空，下一轮一定带上它。
     """
+    contract.cache_bust()
+    if ids:
+        try:
+            w_feed_check(contract, {"sources": ids, "background": True})
+        except TaskRunConflict:
+            pass
+
+
+def _follow_entity(contract, body) -> dict:
+    """人物页「订阅新作」开关。地址按这位的 JavDB 演员页现拼，不收页面传来的地址。"""
     entity_id, enabled = body.get("entity_id"), body.get("enabled")
     if not isinstance(entity_id, int) or not isinstance(enabled, bool):
         raise ValueError("entity_id must be an integer and enabled must be a boolean")
@@ -276,20 +304,129 @@ def _follow_entity(contract, body) -> dict:
             feeds.unfollow_entity(connection, entity_id)
             ids: list[int] = []
         else:
-            refs = [dict(ref) for ref in connection.execute(
-                "SELECT provider,external_kind,external_id FROM entity_external_ref"
-                " WHERE entity_id=?", (entity_id,))]
-            pages = entry_links.javdb_actor_pages(row["canonical_name"], refs)
-            if not pages:
-                raise ValueError("这位在 JavDB 上没有演员页编号")
-            ids = feeds.follow_entity(connection, entity_id, pages)
-    contract.cache_bust()
-    if ids:
-        try:
-            w_feed_check(contract, {"sources": ids, "background": True})
-        except TaskRunConflict:
-            pass
+            ids = _subscribe(connection, entity_id, row["canonical_name"])
+    _fetch_now(contract, ids)
     return {"ok": True, "entity_id": entity_id, "following": enabled, "sources": ids}
+
+
+#: 订阅源页签按名字订的那条路写下的来源：新建的实体与绑上的演员 id 都记这一个，
+#: 回溯「这位是谁登记的」时一眼看得出是用户当场点选的，不是自动后继猜的。
+FOLLOW_SOURCE = "user:feed-follow"
+
+#: JavDB 演员 id 的写法。页面送来的 id 只认这一种，拼出的地址才一定还在演员页那一档。
+ACTOR_ID = re.compile(r"^[A-Za-z0-9]{1,16}$")
+
+#: 搜索页的超时。它比演员页小，体积上限沿用演员页那一档。
+LOOKUP_TIMEOUT = 20.0
+
+
+def q_feed_lookup(contract, args) -> dict:
+    """按女优名到 JavDB 搜演员卡，列出候选；只查不写（ADR-0083）。
+
+    每张卡带站内 id、标题一栏的全部写法与记录类型，再对一遍账本：这个 id 已经在谁名下
+    （`held_by`），卡上哪个写法是账本里某位的正名或别名（`matched`）。名字对得上、又只有
+    一个人的那几张先勾上（`suggested`）；同名不止一位时一张都不替用户挑。
+    """
+    name = entities.canonicalize_entity_name("performer", str(args.get("q") or ""))
+    if not name:
+        raise ValueError("要先给一个女优名")
+    url = javdb.SEARCH.format(quote(name))
+    try:
+        response = _transport(contract)(HttpRequest("GET", url, {"Accept": "text/html"}),
+                                        LOOKUP_TIMEOUT, FETCH_MAX_BYTES)
+    except Exception as error:  # noqa: BLE001 - 冷却、限流还是断网，原因原样交给页面
+        raise ValueError(f"JavDB 没有搜成：{error}") from error
+    if response.status != 200:
+        raise ValueError(f"JavDB 回了 HTTP {response.status}")
+    html = response.body.decode("utf-8", "replace")
+    if javdb.LOGIN.search(html):
+        raise ValueError("JavDB 回的是登入页，这一趟搜不了；稍后再试")
+    cards = javdb.search_cards(html)
+    wanted = alias.match_key(name)
+    with contract.database.read_connection() as connection:
+        candidates = [_describe_card(connection, card) for card in cards]
+        # 账本里按这个名字认得出谁：登记时没人持有所勾的卡就挂到她名下（`_follow_by_name`），
+        # 页面提前把这句话说出来，免得点了才知道挂给了谁。
+        known = entities.resolve_entity(connection, "performer", name)
+    mine = [card for card in cards
+            if any(alias.match_key(written) == wanted for written in card["names"])]
+    suggested = [card["id"] for card in mine] if javdb.one_person(mine) else []
+    return {"ok": True, "q": name, "url": url, "candidates": candidates, "suggested": suggested,
+            "known": {"id": int(known["id"]), "name": str(known["canonical_name"])} if known else None}
+
+
+def _describe_card(connection, card: dict) -> dict:
+    held = connection.execute(
+        "SELECT e.id,e.canonical_name FROM entity_external_ref r JOIN entity e ON e.id=r.entity_id"
+        " WHERE r.provider='javdb' AND r.external_kind='performer' AND r.external_id=?",
+        (card["id"],)).fetchone()
+    matched: list[dict] = []
+    for written in card["names"]:
+        key = entities.normalize_entity_name(written)
+        if not key:
+            continue
+        for row in connection.execute(
+                "SELECT id,canonical_name FROM entity WHERE kind='performer' AND normalized_name=?"
+                " UNION SELECT e.id,e.canonical_name FROM entity_alias a"
+                " JOIN entity e ON e.id=a.entity_id"
+                " WHERE e.kind='performer' AND a.normalized_alias=? ORDER BY 1", (key, key)):
+            if all(int(row[0]) != found["id"] for found in matched):
+                matched.append({"id": int(row[0]), "name": str(row[1])})
+    return {"id": card["id"], "names": card["names"], "record": card["record"],
+            "url": f"{javdb.BASE}actors/{card['id']}",
+            "held_by": {"id": int(held[0]), "name": str(held[1])} if held else None,
+            "matched": matched}
+
+
+def _follow_by_name(contract, body) -> dict:
+    """订阅源页签「添加 JAV 订阅」：勾选的演员卡登记到这位名下，再订上她的演员页（ADR-0083）。
+
+    这位是谁按这个顺序定：卡上的 id 已经在账本里谁名下就是谁；都没主时按名字认账本里
+    的正名或唯一别名；还认不出就新建一位。几张卡分属不同的人时拒绝，让用户先去合并。
+    新建的实体与绑上的 id 都记 `FOLLOW_SOURCE`；卡上的其他写法不写进别名，那是资料后继的事。
+    """
+    name = entities.canonicalize_entity_name("performer", str(body.get("name") or ""))
+    if not name:
+        raise ValueError("女优名不能为空")
+    raw = body.get("ids")
+    ids = [value for value in (raw if isinstance(raw, list) else [])
+           if isinstance(value, str) and ACTOR_ID.match(value)]
+    if not ids:
+        raise ValueError("要先勾选至少一张演员卡")
+    with contract.database.write_transaction() as connection:
+        holders: dict[int, str] = {}
+        for actor_id in ids:
+            held = connection.execute(
+                "SELECT e.id,e.canonical_name FROM entity_external_ref r"
+                " JOIN entity e ON e.id=r.entity_id WHERE r.provider='javdb'"
+                " AND r.external_kind='performer' AND r.external_id=?", (actor_id,)).fetchone()
+            if held is not None:
+                holders[int(held[0])] = str(held[1])
+        if len(holders) > 1:
+            raise ValueError("这几张卡分属账本里不同的人：" + "、".join(holders.values()))
+        created = False
+        if holders:
+            [(entity_id, canonical)] = holders.items()
+        else:
+            found = entities.resolve_entity(connection, "performer", name)
+            if found is not None:
+                entity_id, canonical = int(found["id"]), str(found["canonical_name"])
+            else:
+                stamp = feeds.stamp()
+                entity_id = int(connection.execute(
+                    "INSERT INTO entity(kind,canonical_name,normalized_name,metadata_json,"
+                    "created_at,updated_at) VALUES('performer',?,?,?,?,?)",
+                    (name, entities.normalize_entity_name(name),
+                     json.dumps({"source": FOLLOW_SOURCE}, ensure_ascii=False), stamp, stamp),
+                ).lastrowid)
+                canonical, created = name, True
+        for actor_id in ids:
+            performer_profile_followup.bind(connection, entity_id, "javdb", actor_id,
+                                            {"source": FOLLOW_SOURCE})
+        sources = _subscribe(connection, entity_id, canonical)
+    _fetch_now(contract, sources)
+    return {"ok": True, "entity_id": entity_id, "entity_name": canonical, "created": created,
+            "sources": sources}
 
 
 #: 列表一次给多少条。首页那一块只放一行，人物页给一屏。

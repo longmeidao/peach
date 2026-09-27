@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import sys
 import tempfile
 import time
@@ -598,6 +599,156 @@ class PerformerFeedSwitchTest(FeedWebFixture):
         bare = self._performer("無名の人", [])
         with self.assertRaises(ValueError):
             self._switch(True, bare)
+        self.assertEqual(self._sources(), [])
+
+
+#: JavDB 演员搜索页：同一位的有碼与無碼两张卡，加一位同名的别人。写法照
+#: `test_directory_link_harvest.JAVDB_SEARCH_PAGE`，多了無碼那枚 `info` 标记。
+SEARCH_PAGE = """<div id="actors" class="actors">
+ <div class="box actor-box"><a href="/actors/Kn01" title="瀬戸環奈, 瀨戶環奈, 濑户环奈">
+  <figure class="image"><img class="avatar" src="https://c0.jdbstatic.com/avatars/kn/Kn01.jpg" />
+  </figure><strong>瀬戸環奈</strong></a></div>
+ <div class="box actor-box"><a href="/actors/Kn02" title="瀬戸環奈">
+  <figure class="image"><span class="info">無碼</span></figure><strong>瀬戸環奈</strong></a></div>
+ <div class="box actor-box"><a href="/actors/Zz99" title="別人さん">
+  <strong>別人さん</strong></a></div>
+</div>"""
+
+#: 站上真有两位同名：有碼那种记录出现了两张。
+TWINS_PAGE = """<div id="actors" class="actors">
+ <div class="box actor-box"><a href="/actors/Tw01" title="瀬戸環奈"><strong>瀬戸環奈</strong></a></div>
+ <div class="box actor-box"><a href="/actors/Tw02" title="瀬戸環奈"><strong>瀬戸環奈</strong></a></div>
+</div>"""
+
+LOGIN_PAGE = """<html><head><title> 登入 | JavDB 成人影片數據庫 </title></head>
+<body><form action="/user_sessions"></form></body></html>"""
+
+
+class FeedFollowByNameTest(PerformerFeedSwitchTest):
+    """订阅源页签「添加 JAV 订阅」：按名字搜演员卡，勾选后登记到她名下并订上（ADR-0083）。"""
+
+    def setUp(self):
+        super().setUp()
+        self.search = "https://javdb.com/search?f=actor&q=%E7%80%AC%E6%88%B8%E7%92%B0%E5%A5%88"
+        self._serve(self.search, SEARCH_PAGE)
+        for actor_id in ("Kn01", "Kn02", "Tw01", "Tw02"):
+            self._serve(f"https://javdb.com/actors/{actor_id}", JAVDB_PAGE)
+
+    def _serve(self, url, html):
+        self.transport.responses[url] = HttpResponse(
+            200, {"Content-Type": "text/html"}, html.encode("utf-8"), url)
+
+    def _lookup(self, name="瀬戸環奈"):
+        return dispatch_api_get(self.contract, "/api/feeds/lookup", {"q": name})
+
+    def _follow(self, ids, name="瀬戸環奈"):
+        return dispatch_api_post(self.contract, "/api/feeds/source",
+                                 {"action": "follow-name", "name": name, "ids": ids})
+
+    def _entity(self, entity_id):
+        with self.contract.database.read_connection() as connection:
+            row = connection.execute(
+                "SELECT canonical_name,metadata_json FROM entity WHERE id=?", (entity_id,)).fetchone()
+            refs = connection.execute(
+                "SELECT external_id,metadata_json FROM entity_external_ref WHERE entity_id=?"
+                " AND provider='javdb' ORDER BY external_id", (entity_id,)).fetchall()
+        return row, refs
+
+    def test_lookup_lists_every_card_and_only_pre_picks_the_one_person_matching_the_name(self):
+        result = self._lookup()
+        self.assertEqual(result["url"], self.search)
+        self.assertEqual([card["id"] for card in result["candidates"]], ["Kn01", "Kn02", "Zz99"])
+        first = result["candidates"][0]
+        self.assertEqual(first["names"], ["瀬戸環奈", "瀨戶環奈", "濑户环奈"])
+        self.assertEqual(first["url"], "https://javdb.com/actors/Kn01")
+        self.assertEqual(result["candidates"][1]["record"], "無碼")
+        # 有碼与無碼各一张，是同一个人；别人那张不在预勾里。
+        self.assertEqual(result["suggested"], ["Kn01", "Kn02"])
+        # 账本里还没有她：既没人持有这些 id，名字也对不上谁。
+        self.assertIsNone(first["held_by"])
+        self.assertEqual(first["matched"], [])
+        self.assertIsNone(result["known"])
+        self.assertEqual(self.transport.requests[-1].url, self.search)
+
+    def test_lookup_tells_who_already_holds_the_card_and_whose_name_it_matches(self):
+        held = self._performer("瀬戸環奈", ["Kn01"])
+        with self.contract.database.write_transaction() as connection:
+            connection.execute(
+                "INSERT INTO entity_alias(entity_id,alias,normalized_alias,source)"
+                " VALUES(?,'濑户环奈',peach_normalize('濑户环奈'),'test')", (held,))
+        result = self._lookup()
+        first, second = result["candidates"][:2]
+        self.assertEqual(result["known"], {"id": held, "name": "瀬戸環奈"})
+        self.assertEqual(first["held_by"], {"id": held, "name": "瀬戸環奈"})
+        self.assertIsNone(second["held_by"])
+        # 无码那张卡上只有正名，也对得上她；别名撞上的写法只报一次。
+        self.assertEqual(first["matched"], [{"id": held, "name": "瀬戸環奈"}])
+        self.assertEqual(second["matched"], [{"id": held, "name": "瀬戸環奈"}])
+
+    def test_lookup_does_not_pre_pick_when_the_site_has_two_people_with_that_name(self):
+        self._serve(self.search, TWINS_PAGE)
+        result = self._lookup()
+        self.assertEqual([card["id"] for card in result["candidates"]], ["Tw01", "Tw02"])
+        self.assertEqual(result["suggested"], [])
+
+    def test_lookup_refuses_a_login_page_and_an_empty_name(self):
+        self._serve(self.search, LOGIN_PAGE)
+        with self.assertRaisesRegex(ValueError, "登入页"):
+            self._lookup()
+        with self.assertRaises(ValueError):
+            self._lookup("  ")
+
+    def test_following_an_unknown_name_creates_her_binds_the_cards_and_subscribes_now(self):
+        result = self._follow(["Kn01", "Kn02"])
+        self.assertTrue(result["created"])
+        self.assertEqual(result["entity_name"], "瀬戸環奈")
+        row, refs = self._entity(result["entity_id"])
+        self.assertEqual(row["canonical_name"], "瀬戸環奈")
+        self.assertEqual(json.loads(row["metadata_json"])["source"], web_feeds.FOLLOW_SOURCE)
+        self.assertEqual([ref["external_id"] for ref in refs], ["Kn01", "Kn02"])
+        self.assertEqual(json.loads(refs[0]["metadata_json"])["source"], web_feeds.FOLLOW_SOURCE)
+        # 两个演员页各一条源，全部启用、挂在她名下，当场拉了一趟。
+        self.assertEqual(sorted(source["url"] for source in self._sources()),
+                         ["https://javdb.com/actors/Kn01", "https://javdb.com/actors/Kn02"])
+        self.assertTrue(all(source["entity_id"] == result["entity_id"] for source in self._sources()))
+        self.assertEqual(self._settled()["added"], 2)
+        # 新建的是零作品实体：她的资料页打得开，但作品索引里还没有她。
+        profile = dispatch_api_get(self.contract, "/api/entity",
+                                   {"kind": "performer", "name": "瀬戸環奈"})
+        self.assertEqual(profile["feed"], {"following": True})
+
+    def test_following_a_known_name_binds_to_her_instead_of_making_a_second_person(self):
+        known = self._performer("瀬戸環奈", [])
+        result = self._follow(["Kn01"])
+        self.assertFalse(result["created"])
+        self.assertEqual(result["entity_id"], known)
+        _row, refs = self._entity(known)
+        self.assertEqual([ref["external_id"] for ref in refs], ["Kn01"])
+        self._settled()
+
+    def test_a_card_already_held_wins_over_the_typed_name(self):
+        holder = self._performer("瀬戸かんな", ["Kn01"])
+        result = self._follow(["Kn01", "Kn02"], name="瀬戸環奈")
+        self.assertEqual((result["entity_id"], result["entity_name"], result["created"]),
+                         (holder, "瀬戸かんな", False))
+        _row, refs = self._entity(holder)
+        self.assertEqual([ref["external_id"] for ref in refs], ["Kn01", "Kn02"])
+        self._settled()
+
+    def test_cards_held_by_two_different_people_are_refused_by_name(self):
+        self._performer("甲", ["Kn01"])
+        self._performer("乙", ["Kn02"])
+        with self.assertRaisesRegex(ValueError, "甲、乙"):
+            self._follow(["Kn01", "Kn02"])
+        self.assertEqual(self._sources(), [])
+
+    def test_following_needs_a_name_and_well_formed_card_ids(self):
+        with self.assertRaises(ValueError):
+            self._follow(["Kn01"], name="")
+        with self.assertRaises(ValueError):
+            self._follow([])
+        with self.assertRaises(ValueError):
+            self._follow(["../Kn01"])
         self.assertEqual(self._sources(), [])
 
 
