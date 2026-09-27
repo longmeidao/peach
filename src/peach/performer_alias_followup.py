@@ -304,11 +304,18 @@ class MinnanoPages:
         self.limiter, self.max_requests, self.requests = limiter, max_requests, 0
         self.source, self.max_age = source, max_age
 
+    def _path(self, url: str) -> Path:
+        return self.cache_dir / (hashlib.sha256(url.encode("utf-8")).hexdigest() + ".json")
+
+    def forget(self, url: str) -> None:
+        """丢掉这一页的缓存：回 200 却不是要的那页（登入页）时，下一轮得重新问。"""
+        self._path(url).unlink(missing_ok=True)
+
     def get(self, url: str) -> tuple[str, str]:
         from .http import HttpRequest
         from .scraping_access import SourcePaused, pause_source, paused_until
 
-        path = self.cache_dir / (hashlib.sha256(url.encode("utf-8")).hexdigest() + ".json")
+        path = self._path(url)
         try:
             if self.max_age is None or time.time() - path.stat().st_mtime < self.max_age:
                 cached = json.loads(path.read_text(encoding="utf-8"))

@@ -8,7 +8,7 @@ from pathlib import Path
 from peach.entry_links import EXTERNAL_KIND
 from peach.migrations import upgrade
 from scripts.backfill_performer_entry_ids import (
-    CONFLICT, HAVE, JAVDB, OK, TAKEN, apply_rows, plan,
+    CONFLICT, HAVE, JAVDB, NAMESAKE, OK, TAKEN, apply_rows, plan,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,6 +39,17 @@ class EntryIdBackfillTests(unittest.TestCase):
             f'<html><body><span class="actor-section-name">{name}</span>'
             f'<a href="/actors/{actor}/collect"></a></body></html>',
             encoding="utf-8")
+
+    def search_page(self, stem: str, *cards: tuple[str, str, str]) -> None:
+        """一张 javdb 搜索结果页：每张卡 (id, 标题一栏, 记录类型)。"""
+        boxes = "".join(
+            f'<div class="box actor-box"><a href="/actors/{actor}" title="{title}">'
+            f'<figure class="image">'
+            + (f'<span class="info">{record}</span>' if record else "")
+            + f"</figure><strong>{title}</strong></a></div>"
+            for actor, title, record in cards)
+        (self.cache / f"{stem}.html").write_text(
+            f'<html><body><div class="actors">{boxes}</div></body></html>', encoding="utf-8")
 
     def rows(self) -> list[dict]:
         args = argparse.Namespace(javdb_cache=self.cache, csv=[])
@@ -89,6 +100,38 @@ class EntryIdBackfillTests(unittest.TestCase):
         rows = self.rows()
         self.assertEqual([row["verdict"] for row in rows], [CONFLICT, CONFLICT])
         self.assertEqual(apply_rows(self.connection, rows), (0, 0))
+
+    def test_japanese_glyphs_on_the_page_match_the_simplified_name(self):
+        self.connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(13,'performer','泽村玲子','泽村玲子','t','t')")
+        self.connection.commit()
+        self.page("澤村玲子", "d45k9")
+        self.assertEqual([(row["entity_id"], row["verdict"]) for row in self.rows()], [(13, OK)])
+
+    def test_search_cards_give_both_records_of_one_performer(self):
+        """资料页没取回时，搜索页的卡上就有 id；有碼、無碼各一张是同一个人。"""
+        self.search_page("s1", ("d45k9", "释爱丽丝, 釈アリス", ""), ("ZX5z7", "释爱丽丝", "無碼"),
+                         ("Qq11", "天川そら", ""))
+        rows = self.rows()
+        self.assertEqual([(row["external_id"], row["verdict"]) for row in rows],
+                         [("ZX5z7", OK), ("d45k9", OK)])
+
+    def test_two_cards_of_the_same_record_kind_are_namesakes(self):
+        self.search_page("s1", ("d45k9", "释爱丽丝", ""))
+        self.search_page("s2", ("ZX5z7", "释爱丽丝", ""), ("d45k9", "释爱丽丝", ""))
+        rows = self.rows()
+        self.assertEqual([(row["verdict"], row["external_id"]) for row in rows], [(NAMESAKE, "")])
+        self.assertIn("ZX5z7、d45k9", rows[0]["evidence"])
+        self.assertEqual(apply_rows(self.connection, rows), (0, 0))
+
+    def test_a_short_single_name_on_a_card_is_not_an_anchor(self):
+        self.connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(12,'performer','葵','葵','t','t')")
+        self.connection.commit()
+        self.search_page("s1", ("Aa01", "葵", ""))
+        self.assertEqual(self.rows(), [])
 
 
 if __name__ == "__main__":

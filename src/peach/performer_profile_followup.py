@@ -1,4 +1,5 @@
-"""补女优资料：minnano-av 的资料表整张落进 `performer_profile`，再绑 avwikidb 的女优编号（ADR-0067）。
+"""补女优资料：minnano-av 的资料表整张落进 `performer_profile`，再绑 avwikidb 的女优编号（ADR-0067）
+与 javdb 的演员 id（ADR-0081）。
 
 判据是确定性的，按 ADR-0052 直接落库，不产生候选：
 
@@ -14,18 +15,24 @@
    不按名字猜编号。这个编号已经属于另一条实体时只记「占用」。
 5. **交叉核对只记不改**：avwikidb 女优页的出生日期与身高和 `performer_profile` 不一致时，
    资料表不动，两边的值记进这条外部编号的 `metadata_json.conflicts`，摘要里给条数。
+6. **javdb 只给 JAV 女优、只绑 id**：前两站跑完、她在 JAV 目录站里有身份
+   （`entry_links.is_jav_performer`）又还没有 javdb id 时，拿名字链里收得下的写法搜
+   `search?f=actor`，至多 `alias.MAX_KEYS` 个写法、搜到就停。卡片标题一栏里有账本里她的名字才算，
+   对上的几张卡还得是同一个人（`javdb.one_person`：有碼、無碼各至多一张），是就把几个 id 都绑上；
+   同一种记录对上两张是站上同名，写「未命中」。资料页不进，JavDB 入口只要 id。
 
 每条写入都带批次号 `auto:performer-profile@<任务行 id>`：资料行记在 `performer_profile.source`，
 外部编号记在 `entity_external_ref.metadata_json` 的 `source` 与 `batch`。
 `scripts/revert_auto_landing.py --source auto:performer-profile` 整批撤回。判词逐条写进
 `generated/performer-profile-landing.csv`。
 
-取页复用补别名后继的 `MinnanoPages`：成功页落盘缓存，两站都按 3 秒间隔，撞上 429、403 或
-机器人验证就记进 `scraping_access` 的冷却，本轮与之后在冷却期内都不再问，结论写「未取得」。
-avwikidb 的请求走 `SourceTransport`，连接方式跟采集设置里那一站的设置走。
+取页复用补别名后继的 `MinnanoPages`：成功页落盘缓存，minnano-av 与 avwikidb 按 3 秒间隔，撞上
+429、403 或机器人验证就记进 `scraping_access` 的冷却，本轮与之后在冷却期内都不再问，结论写「未取得」。
+avwikidb 与 javdb 的请求走 `SourceTransport`，连接方式跟采集设置里那一站的设置走。javdb 按出口 IP
+计配额、一封 3～7 天，这一站单独 5 秒间隔（与目录采集同一档），冷却记录与作品采集共用 `javdb` 那一份。
 
 多久再派一次由 `Attempts` 的记号决定：写成了的保 `REFRESH`（30 天），到期再派一次，资料页
-按取回时间过了 30 天才重取；有一站「未取得」的只保 `RETRY_UNFETCHED`；两站都没对上的等名字链、
+按取回时间过了 30 天才重取；有一站「未取得」的只保 `RETRY_UNFETCHED`；哪一站都没对上的等名字链、
 编号或作品变了再派。
 """
 from __future__ import annotations
@@ -37,15 +44,21 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import avwikidb, minnano_av
+from urllib.parse import quote
+
+from . import avwikidb, entry_links, javdb, minnano_av
 from . import performer_alias_followup as alias
 from .followups import Attempts, Followup, FollowupType, attempts_root, register
 from .performer_profiles import fetched_at as profile_fetched_at, read_profile, write_profile
+from .scripting import HostLimiter
 
 TASK_KEY = "performer-profile"
 TASK_LABEL = "补女优资料"
 SOURCE = "auto:performer-profile"
-MINNANO, AVWIKIDB = alias.MINNANO, "avwikidb"
+MINNANO, AVWIKIDB, JAVDB = alias.MINNANO, "avwikidb", "javdb"
+#: javdb 的主机间隔，与 `harvest_directory_links.SOURCE_INTERVAL` 同一档（docs/SOURCING.md）。
+JAVDB_INTERVAL = 5.0
+_JAVDB_LIMITER = HostLimiter({"javdb.com": JAVDB_INTERVAL})
 
 #: 每轮处理任务给存量的名额。一条最多问两站五六次、每次隔 3 秒，给多了会把头像与厂牌挤到很后面；
 #: 九百多位女优按这个名额要一个多月的处理轮次才轮遍，存量本来就不赶。
@@ -54,7 +67,8 @@ STOCK_SHARE = 16
 REFRESH = 30 * 86400
 RETRY_UNFETCHED = alias.RETRY_UNFETCHED
 #: 入口判据的版本，进指纹。换了判据就加一，跑过的女优按新判据各再问一次。
-RULE = 1
+#: 2 是 javdb 那一站（ADR-0081）。
+RULE = 2
 #: avwikidb 最多翻她几部作品的出演表。
 MAX_WORKS = 3
 
@@ -106,11 +120,11 @@ def has_entry(connection: sqlite3.Connection, entity_id: int) -> bool:
 
 
 def fingerprint(connection: sqlite3.Connection, entity_id: int) -> str:
-    """会让结论变的量：名字链、两站编号、avwikidb 的入口番号与判据版本。"""
+    """会让结论变的量：名字链、三站编号、avwikidb 的入口番号与判据版本。"""
     names = alias._names(connection, entity_id) or ("", [])
     keys = sorted({alias.match_key(name) for name in [names[0], *names[1]] if name})
     parts = [keys, _refs(connection, entity_id, MINNANO), _refs(connection, entity_id, AVWIKIDB),
-             work_codes(connection, entity_id), f"r{RULE}"]
+             work_codes(connection, entity_id), _refs(connection, entity_id, JAVDB), f"r{RULE}"]
     raw = json.dumps(parts, ensure_ascii=False)
     return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
 
@@ -160,11 +174,16 @@ def stock(connection: sqlite3.Connection, attempts, *, limit: int, skip=()) -> l
 
 
 def open_sites(contract) -> dict:
-    """两站的取页器。缓存目录与补别名后继共用，同一页不问第二次。测试把这一步整个换掉。"""
+    """三站的取页器。缓存目录与补别名后继共用，同一页不问第二次。测试把这一步整个换掉。"""
+    from .scraping_access import SourceTransport
+
     cache = Path(contract.candidate_root) / "provider-cache"
-    return {MINNANO: alias.MinnanoPages(cache / "minnano-av-pages", alias._cooldown_root(contract),
-                                        max_age=REFRESH),
-            AVWIKIDB: avwikidb_pages(contract)}
+    cooldown = alias._cooldown_root(contract)
+    return {MINNANO: alias.MinnanoPages(cache / "minnano-av-pages", cooldown, max_age=REFRESH),
+            AVWIKIDB: avwikidb_pages(contract),
+            JAVDB: alias.MinnanoPages(cache / "javdb-pages", cooldown, SourceTransport(cooldown),
+                                      limiter=_JAVDB_LIMITER, max_requests=alias.MAX_KEYS,
+                                      source=JAVDB, max_age=REFRESH)}
 
 
 def avwikidb_pages(contract):
@@ -290,6 +309,7 @@ def _run(contract, key: str, handle) -> dict:
         _visit_minnano(contract, sites[MINNANO], entity_id, names, state, batch, base, reports, rows)
         conflict_count = _visit_avwikidb(contract, sites[AVWIKIDB], entity_id, names, state, batch,
                                          base, reports, rows)
+        _visit_javdb(contract, sites[JAVDB], entity_id, names, batch, base, reports, rows)
     finally:
         for pages in sites.values():
             pages.close()
@@ -306,7 +326,7 @@ def _run(contract, key: str, handle) -> dict:
     elif any(report.startswith(UNFETCHED) for report in reports.values()):
         outcome = UNFETCHED
     else:
-        outcome = "两站都没对上她"
+        outcome = "哪一站都没对上她"
     summary = {"name": canonical, "outcome": outcome, "sites": reports, "landed": bool(landed)}
     if conflict_count:
         summary["conflicts"] = conflict_count
@@ -460,6 +480,79 @@ def _record_bind(url: str, verdict: str, work: str, actor: dict, found: list[dic
                      "detail": f"{item['field']}：minnano-av {item[MINNANO]}，"
                                f"avwikidb {item[AVWIKIDB]}；资料表不改"})
     return len(found)
+
+
+def _visit_javdb(contract, pages, entity_id: int, names, batch: str, base: dict, reports: dict,
+                 rows: list) -> None:
+    """javdb：按名字搜演员卡，卡上的 id 是她的就绑上。只给 JAV 女优，已有 id 的不再搜。"""
+    canonical, aliases = names
+    with contract.database.read_connection() as connection:
+        refs = [{"provider": row[0], "external_kind": row[1], "external_id": row[2]}
+                for row in connection.execute(
+                    "SELECT provider,external_kind,external_id FROM entity_external_ref"
+                    " WHERE entity_id=?", (int(entity_id),))]
+    if not entry_links.is_jav_performer(refs):
+        reports[JAVDB] = "不查：JAV 目录站里没有她"
+        return
+    if entry_links.provider_ids(refs).get(JAVDB):
+        reports[JAVDB] = "编号已绑"
+        return
+    keys = alias.search_keys(canonical, aliases)[:alias.MAX_KEYS]
+    if not keys:
+        reports[JAVDB] = f"{MISS}：没有能拿去检索的名字"
+        return
+    mine = {alias.match_key(name) for name in [canonical, *aliases] if not alias.rejection(name)}
+    cards, notes, searched = [], [], 0
+    for key in keys:
+        url = javdb.SEARCH.format(quote(key))
+        try:
+            _final, html = pages.get(url)
+        except alias.Blocked as error:
+            reports[JAVDB] = f"{UNFETCHED}：{error}"
+            return
+        except alias.Unavailable as error:
+            notes.append(f"{key} {error}")
+            continue
+        if javdb.LOGIN.search(html):
+            # 回 200 的登入页不是「搜过、站上没有她」：丢掉缓存，按未取得等下一轮。
+            pages.forget(url)
+            notes.append(f"{key} 回的是登入页")
+            continue
+        searched += 1
+        cards = [card for card in javdb.search_cards(html)
+                 if any(alias.match_key(name) in mine for name in card["names"])]
+        if cards:
+            break
+        notes.append(f"{key} 搜不到她")
+    if not cards:
+        detail = "；".join(notes)
+        if not searched:
+            # 一个写法都没搜成：站那天没让进，不是她不在站上，不结算指纹。
+            reports[JAVDB] = f"{UNFETCHED}：{detail}"
+            return
+        reports[JAVDB] = f"{MISS}：{detail}"
+        rows.append({**base, "site": JAVDB, "page": "", "action": MISS, "detail": detail})
+        return
+    ids = [card["id"] for card in cards]
+    if not javdb.one_person(cards):
+        detail = f"站上同名不止一位：{'、'.join(ids)}"
+        reports[JAVDB] = f"{MISS}：{detail}"
+        rows.append({**base, "site": JAVDB, "page": url, "action": MISS, "detail": detail})
+        return
+    with contract.database.write_transaction() as connection:
+        if not _alive(connection, entity_id, canonical):
+            reports[JAVDB] = f"{MISS}：账本里这条实体已经变了"
+            return
+        verdicts = [(card, _bind(connection, entity_id, JAVDB, card["id"],
+                                 {"source": SOURCE, "batch": batch})) for card in cards]
+    reports[JAVDB] = "；".join(f"{'命中' if verdict == BIND else TAKEN} {card['id']}"
+                              for card, verdict in verdicts)
+    for card, verdict in verdicts:
+        record = f"（{card['record']}）" if card["record"] else ""
+        rows.append({**base, "site": JAVDB, "page": url, "action": verdict,
+                     "batch": batch if verdict == BIND else "",
+                     "detail": f"演员卡 {card['id']}{record} 列着她的名字" if verdict == BIND
+                               else f"演员 id {card['id']} 已属另一条实体"})
 
 
 def _parse_stamp(value) -> datetime | None:
