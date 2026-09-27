@@ -2,19 +2,10 @@
 .follow{padding:4px 0 42px}
 .followhead{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:20px}
 .followhead .pagetitle{margin:0}
-.fheadactions{display:inline-flex;align-items:center;gap:8px;flex:none}
-.follow .fcheck{font-weight:500}
-.follow .fcheck svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+/* 以上与下面 `.followauthors`、`.followlist`、照片墙档位只剩进页骨架在用；页面本身归
+   `follow-feed` 岛（`frontend/src/react/follow-feed/follow-feed.css`）。 */
 .followauthors{padding:3px 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 .followauthors .av{width:76px}
-.followauthors .av[aria-pressed="true"] .ring{box-shadow:0 0 0 2px var(--ink)}
-.followauthors .favatar{width:64px;height:64px;border-radius:50%;outline:0}
-.followauthors .favatar.none{font-size:var(--fs-lg);background:var(--overlay-5)}
-/* 关注的筛选条就是首页那条 `.tagbar`，跟读数那排 `.count` 一起收进同一块浮层：
-   左端五枚状态钉住、右半截来源和标签横滚，分工、尺寸和材质都取自那边，这里只补
-   来源图标键自己的身量——它是一枚只有图标的药丸。 */
-.followfilters .sourcepill{width:34px;padding:0}
-.followfilters .sourcepill .ficon{width:18px;height:18px;margin:0}
 .ficon{width:14px;height:14px;border-radius:var(--badge-radius);object-fit:contain;
   vertical-align:-2px;margin-right:5px}
 .followlist{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}
@@ -22,42 +13,18 @@
 /* 固定比例视图的媒体框在懒加载前占好高度。 */
 @media (max-width:1400px){.followlist.followphotowall{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media (max-width:1000px){.followlist.followphotowall{grid-template-columns:repeat(3,minmax(0,1fr))}}
-.followitem{min-width:0}
-.followphotowall[data-images-only="true"] .followitem :is(.meta,.badge,.mixbadge,.fstate){display:none}
 .followphotowall[data-images-only="true"] .skeletoncard :is(b,em){display:none}
-.followitem.imagecard{display:flex;width:100%;margin:0}
-.followitem.imagecard .pic{aspect-ratio:4/3;min-height:0;background:var(--sunk)}
-.followitem.imagecard .followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:var(--sunk)}
-/* 翻动面板遮住静止封面，底色要跟着这张卡自己的底走：图片墙是浅底，视频卡是黑底。
-   面板里每一张面也是 `.poster`，它自带的黑底是给视频卡留白用的，在浅底的图片卡上一悬浮
-   就把留白翻成黑的，所以两层一起换。 */
-.followitem.imagecard :is(.mixfaces,.mixface .poster){background:var(--sunk)}
-.followitem a{text-decoration:none}.followitem a:hover{text-decoration:none}
-/* 已看的卡片保持原样：看过不等于不想再看，只有忽略的才淡下去。 */
-.followitem[data-status="ignored"]{opacity:.62}
-.followvisual{position:relative;isolation:isolate}.followvisual .pic{z-index:1}
-.followvisual .pic>img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .fnothumb{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:var(--fs-xs)}
-.followitem .badge .ficon{width:18px;height:18px;margin:0}
 .fsourceavatar{display:grid;place-items:center;cursor:default;background:var(--overlay-5);border:1px solid var(--line-soft)}
 .fsourceavatar:hover{box-shadow:none}.fsourceavatar .favatar{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;outline:0;object-fit:cover}
 .fsourceavatar .favatar.none{display:grid;place-items:center;font-size:var(--fs-sm);color:var(--muted)}
-.followitem .cardtitle{display:block;width:100%;border:0;background:transparent;color:inherit;padding:0;text-align:left;font-family:inherit;cursor:pointer;text-decoration:none}
-.followitem .tg,.followdetailtags .tg{--r34-tag:#55A7FF;border-color:color-mix(in srgb,var(--r34-tag) 42%,transparent);background:color-mix(in srgb,var(--r34-tag) 10%,transparent)}
-.followfilters .pill[class*="r34-"]{--r34-tag:#55A7FF}
-.followfilters .pill[class*="r34-"][aria-pressed="true"]{border-color:color-mix(in srgb,var(--r34-tag) 72%,transparent);background:color-mix(in srgb,var(--r34-tag) 22%,transparent);color:var(--glass-text,var(--ink))}
-.followitem .r34-artist,.followdetailtags .r34-artist,.followfilters .r34-artist{--r34-tag:#E36C6C}
-.followitem .r34-character,.followdetailtags .r34-character,.followfilters .r34-character{--r34-tag:#68C76F}
-.followitem .r34-copyright,.followdetailtags .r34-copyright,.followfilters .r34-copyright{--r34-tag:#D675D6}
-.followitem .r34-metadata,.followdetailtags .r34-metadata,.followfilters .r34-metadata{--r34-tag:#F5A24A}
+.followdetailtags .tg{--r34-tag:#55A7FF;border-color:color-mix(in srgb,var(--r34-tag) 42%,transparent);background:color-mix(in srgb,var(--r34-tag) 10%,transparent)}
+.followdetailtags .r34-artist{--r34-tag:#E36C6C}
+.followdetailtags .r34-character{--r34-tag:#68C76F}
+.followdetailtags .r34-copyright{--r34-tag:#D675D6}
+.followdetailtags .r34-metadata{--r34-tag:#F5A24A}
 .followdetailtags .r34-unknown{--r34-tag:var(--muted)}
-.followitem .meta .s{min-height:21px}.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
-.followitem .meta .followbyline{display:flex;flex-wrap:nowrap;gap:6px;min-width:0;overflow:hidden}
-.followbyline .followauthor{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.followbyline time{flex:none;white-space:nowrap}
-/* 署名行只在作者换成发布者时出现，弱于作者名，一行放不下就截断。 */
-.followitem .meta .followcredit{min-height:0;font-size:var(--fs-xs);color:var(--muted);overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
+.fbadges{display:flex;flex-wrap:nowrap;gap:5px;min-width:0;overflow:hidden}
 /* 标题前的版本字样。「含 WIP」说的是同组里还有一条半成品，这一条本身不是，配色弱于
    WIP 本体。配音版着色带底，无声版弱化加虚线框。 */
 .javedition.followmark{margin-right:6px;color:var(--ink-2)}
@@ -68,22 +35,6 @@
 .fbadge{padding:2px 8px;border:1px solid var(--border-15);border-radius:var(--badge-radius);font-size:var(--fs-xs);color:var(--ink-2)}
 .fbadge.dup{border-style:dashed;display:inline-flex;align-items:center;gap:4px}.fbadge.dup .ficon{margin:0}
 .fnote{font-size:var(--fs-xs);color:var(--muted)}
-/* 右上角：合并计数与主页卡片的版本角标同一个位置，右下角只留给时长。
-   悬停时计数让位，操作键占住右上角；触屏上操作键常驻，排在计数下面。 */
-.fcorner{position:absolute;right:10px;top:10px;z-index:7;display:flex;flex-direction:column;align-items:flex-end;
-  gap:6px;pointer-events:none}
-.followitem .mixbadge{position:static;border:0;cursor:pointer;font:inherit;pointer-events:auto}
-.factions{display:flex;gap:6px;align-items:center;opacity:0;pointer-events:none;transition:opacity .15s ease}
-.factions button{width:36px;height:36px;border:1px solid rgba(255,255,255,.16);border-radius:50%;padding:0;
-  display:grid;place-items:center;background:rgba(0,0,0,.48);color:#fff;cursor:pointer;
-  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-.factions button svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
-.factions button:hover:not(:disabled){background:rgba(255,255,255,.18);transform:scale(1.08)}
-.factions button:disabled{opacity:.42;cursor:not-allowed}
-@media (hover:hover) and (pointer:fine){.followitem:hover .factions{opacity:1;pointer-events:auto}
-  .followitem:hover .fcorner .mixbadge{display:none}}
-@media (hover:none),(pointer:coarse){.followitem .factions{opacity:1;pointer-events:auto}}
-.select-mode .followitem a,.select-mode .followitem [data-follow-detail],.select-mode .followitem .factions,.select-mode .followitem .mixbadge{pointer-events:none!important}
 .fstate{flex:1 1 100%;font-size:var(--fs-xs);color:var(--drop)}
 /* 详情右栏是纵向 flex：`flex:1 1 100%` 在这里会把整栏的剩余高度都算给这条
    错误行，标签被推到栏底、中间空出一大段。错误行按内容高就够。 */
@@ -123,8 +74,8 @@
   .followdetailmedia{--follow-image-arrow-inset:10px}.followimagearrow{width:44px;height:44px}.followimagedots{bottom:12px}
 }
 
-/* 关注页图片墙的列数与布局，与资料页照片墙（`frontend/src/react/entity-body/entity-body.css`）
-   同一套档位；未加载图片由备用比例占位，加载后使用天然比例。 */
+/* 骨架里那面图片墙的列数，与资料页照片墙（`frontend/src/react/entity-body/entity-body.css`）、
+   岛里那面墙（`follow-feed.css`）同一套档位。骨架一律按固定比例铺。 */
 .followlist.followphotowall[data-size]{--photo-columns:5;grid-template-columns:repeat(var(--photo-columns),minmax(0,1fr))}
 .followlist.followphotowall[data-size="big"]{--photo-columns:3}
 @media(max-width:1400px){.followlist.followphotowall[data-size]{--photo-columns:4}
@@ -133,12 +84,4 @@
   .followlist.followphotowall[data-size="big"]{--photo-columns:1}}
 @media(max-width:640px){.followlist.followphotowall[data-size]{--photo-columns:2}
   .followlist.followphotowall[data-size="big"]{--photo-columns:1}}
-.followlist.followphotowall[data-layout="masonry"]{display:block;column-count:var(--photo-columns);column-gap:10px}
 [data-layout="masonry"]>.emptystate{column-span:all}
-[data-layout="masonry"]>.followitem.imagecard{break-inside:avoid;margin:0 0 14px}
-[data-layout="masonry"] .followitem.imagecard .pic{aspect-ratio:1}
-/* 只有带 width/height 属性的图才放开高度按固有比例占位：瀑布流按卡片高度分列，
-   图没加载完高度未知时放手，每张加载完都会把整墙的列再平衡一遍，卡片在列间跳。
-   没有尺寸的图保持 1:1 占位框，图在框内 contain——列从首帧起就是稳定的。 */
-[data-layout="masonry"] .followitem.imagecard .pic:has(>img[width][height]){aspect-ratio:auto}
-[data-layout="masonry"] .followitem.imagecard .followvisual .pic>img[width][height]{position:static;height:auto;aspect-ratio:auto 1}

@@ -197,7 +197,6 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
      会只把它打到 23px，而 `#manageTitle` 在 `#stats` 外面，手机上又变成两种大小。 */
   .pagetitle,.listtitle,.managetitle,.index .ihead h2,.playlistpage h2{font-size:var(--fs-2xl)}
   .kv .u{display:block;margin-left:0;margin-top:2px}
-  .ctags .tg:nth-child(n+3){display:none}
   .tokstage,.tokstage.wide{inset:0;width:100%;height:100%;aspect-ratio:auto;transform:none}
   .toktrack{border-radius:0;box-shadow:none}
   .tokbtns{left:auto;right:max(8px,env(safe-area-inset-right));bottom:92px;width:56px;gap:14px}

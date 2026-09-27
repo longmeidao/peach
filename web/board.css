@@ -251,7 +251,7 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
   box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
 .viewglide.viewglide[hidden],.drawer.drawer>.navglide[hidden],.board-local-nav>.navglide[hidden]{display:none}
 /* 媒体那一档的按钮是正圆，这块跟着它走：方玻璃扣在圆按钮上，四个角先露出来。 */
-.viewglide.viewglide-round,[data-view-glide="round"][data-view-glide]{border-radius:50%}
+[data-view-glide="round"][data-view-glide]{border-radius:50%}
 /* 侧栏那一列是竖排，圆角照按钮自己的 10px 走，不跟着那一排药丸的 8px。
    它住在滚动容器外面、抽屉这块玻璃里面，`z-index:-1` 把它压回内容底下：抽屉自己带
    `backdrop-filter`，那一层已经是个层叠上下文，负层号只会落到抽屉的面之上、那一列
@@ -535,45 +535,26 @@ body>.board-filter-frame{margin-inline:16px}
   .top:has(.search.search-morphing){overflow:visible}
   .top:has(.search.search-morphing) #searchBtn{opacity:0}
 }
-/* 首页的 `#tagbar` 和关注页的 `.followfilters` 是同一条筛选条，规则按类名写、两页共用：
-   左端几枚视图记在 `data-state`／`data-follow-filter` 上，右半截的标签记在
-   `data-tag`／`data-follow-tag`，来源图标键是 `data-follow-provider`。 */
+/* 首页的 `#tagbar`：左端几枚视图记在 `data-state` 上，右半截的标签记在 `data-tag`。规则按
+   类名写，关注页骨架里那条 `.followfilters` 同形；关注页本身那条归 `follow-feed` 岛。 */
 .board-filter-frame .tagbar{height:48px;gap:6px;padding:8px 12px}
 .board-filter-frame .tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
 /* 几枚视图自己不铺底，选中那一枚的填充由 `.viewglide` 那块滑过去的玻璃提供：
    两边都铺，静止态就是一块不透明的 `--picked` 压在玻璃上面，切换时也只能看见它
    瞬间换位置，滑动的那块从头到尾被盖住。 */
-.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]){border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter]):hover,
-.board-filter-frame .tagbar .pill:is([data-state],[data-follow-filter])[aria-pressed="true"]{background:none;color:var(--glass-text)}
+.board-filter-frame .tagbar .pill[data-state]{border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
+.board-filter-frame .tagbar .pill[data-state]:hover,
+.board-filter-frame .tagbar .pill[data-state][aria-pressed="true"]{background:none;color:var(--glass-text)}
 /* 可加可不加的筛选没生效时是虚线，悬停拉成实线；判据与 flat 层那条同一份，见 03-filterbar.css。 */
-.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]){border:1px dashed var(--line);background:transparent}
-.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]):not([aria-pressed="true"]):hover{border-style:solid}
+.board-filter-frame .tagbar .pill[data-tag]:not([aria-pressed="true"]){border:1px dashed var(--line);background:transparent}
+.board-filter-frame .tagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
 /* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边几枚
    是分段器，形状归它自己那一排。线画满两态：填充说的是这条加没加上去，那一圈线说的是
    「这是一颗标签」，两句话不能合成一句讲。玻璃上取 --glass-low、flat 面上取 --line，
    同一个角色各按自己的底选值。 */
-.board-filter-frame.board-filter-frame .tagbar .pill:is([data-tag],[data-follow-tag],[data-follow-provider]){border-radius:var(--tag-radius);border-color:var(--glass-low)}
-/* 关注页的标签按来源类型着色，选中那一档的线和填充都取那个色：这是它们在卡片上的样子，
-   筛选条上不换一套。 */
-.board-filter-frame.board-filter-frame .followfilters .pill[class*="r34-"][aria-pressed="true"]{
-  border-color:color-mix(in srgb,var(--r34-tag) 72%,transparent);background:color-mix(in srgb,var(--r34-tag) 22%,transparent)}
+.board-filter-frame.board-filter-frame .tagbar .pill[data-tag]{border-radius:var(--tag-radius);border-color:var(--glass-low)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
-/* 关注页上排最左那两枚是视频／图片，跟资料页那一组同形：自己不铺底，选中那一枚的填充
-   由 media 那块滑过去的玻璃给。两边都铺的话，静止态是一块不透明的面压在玻璃上面，
-   切换时也只看得见它瞬间换位置。字形要压在玻璃上面，不然滑过去时一路被盖暗。 */
-.board-filter-frame .followmediaview{gap:2px}
-.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton{
-  flex:0 0 30px;width:30px;height:30px;border-radius:7px;position:relative;z-index:1;
-  border:0;background:none;backdrop-filter:none;-webkit-backdrop-filter:none;box-shadow:none;
-  color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton:hover,
-.board-filter-frame.board-filter-frame .followmediaview .mediaviewbutton[aria-pressed="true"]{color:var(--glass-text)}
-/* 图片墙上的「仅显示图片」是开关不是动作，蓝色留给换一批；它自己不铺底——开着时垫的
-   是筛选条上那块滑动玻璃（GLIDE_ROWS.imagesonly），跟版式分段器、媒体那一档同一块料。
-   关着和悬停走这一排排序键的规矩（六成字色、悬停提满），按下的字色由上面那条
-   `[aria-pressed="true"]` 给，都不另写。 */
 /* 资料卡照 Board 的卡排：secondary 底、18px 圆角、不描边，卡底那条带取卡脚那一档色阶。
    标题是 Title 3（24/32、500），别名行 Body 1，外链是 36px 的 secondary Button。 */
 .entityhero{border-radius:18px;background:var(--ground);box-shadow:none}
@@ -1042,12 +1023,12 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 :root{--tag-radius:8px}
 body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-body)}button,input,textarea,select{font-family:var(--board-font)}
 .pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b,.fsource.frow>b{font:var(--board-body)}.fmeta,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
-.geist-button,.fbtn,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
+.geist-button,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 /* 悬停只抬填充，那圈线一步不动：按钮静止态已经带一圈 1px，悬停再把它加深，
    鼠标扫过一排次级键就是一排边框忽明忽暗，而键本身并没有变化。 */
-.geist-button:hover:not(:disabled),.fbtn:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);color:var(--color-text-primary)}
+.geist-button:hover:not(:disabled),.resourceaction:hover:not(:disabled){background-color:var(--color-background-primary-hover);color:var(--color-text-primary)}
 /* 强调档那一面连同悬停只在下面 `body :is(…).primary` 一处给出。 */
-.geist-button.danger:hover:not(:disabled),.fbtn.danger:hover:not(:disabled),.resourceaction.danger:hover:not(:disabled){background:var(--drop);color:#fff}
+.geist-button.danger:hover:not(:disabled),.resourceaction.danger:hover:not(:disabled){background:var(--drop);color:#fff}
 @media(max-width:760px){.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading{font:var(--board-figure)}input.geist-input,.geist-search input{font-size:16px}}
 
 /* 每类骨架保留实际内容的列宽、轮廓和留白。 */
@@ -1092,15 +1073,15 @@ body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard :is(b,em,u){gri
    只是 60% 的 #404040 压上去，差几个色阶，必须靠边来补；Peach 不跟这条，改成把填充
    直接抬到 `--control-hover`——那是同一套面色里的下一档实色，两档都一眼看得出，
    边就不必跟着闪。`transition` 只留 `background-color`。 */
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:var(--elevation-xs);font:var(--board-body-medium);white-space:nowrap;text-decoration:none;transition:background-color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--control-hover)}
+body :is(.geist-button,.resourceaction,.batchbar button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning){box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-primary);box-shadow:var(--elevation-xs);font:var(--board-body-medium);white-space:nowrap;text-decoration:none;transition:background-color .15s ease}
+body :is(.geist-button,.resourceaction,.batchbar button,.geist-fieldset-footer>a,.geist-fieldset-footer>button):not(.primary,.danger,.error,.warning):hover:not(:disabled,[aria-disabled=true]){background:var(--control-hover)}
 /* 药丸、标签和外链卡跟按钮同一条。它们的边各有自己的颜色来源，所以逐类钉回静止值，
    不能统一写成一个 token。 */
 body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}
 /* 玻璃条上的药丸这样一来没有任何悬停反馈：那层 `--glass-text` 的权重比基线的
    `.pill:hover` 高，把提亮文字色的那半也一起吃掉了。横排互斥选项的悬停就是提文字色。 */
 .board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}
-body :is(.geist-button,.fbtn,.resourceaction,.batchbar button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
+body :is(.geist-button,.resourceaction,.batchbar button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
 /* 强调档全站一副面，三档渐变各差一个色阶，照 `boardui.com/components/button` 的
    `.bg-button-primary`（2026-09-12 实测）：静止 accent-500→600、悬停 400→500、按下
    600→700。不带边——上游那颗是 `border:0`，这里补一圈透明边会把内容盒压掉 2px，渐变的
@@ -1109,11 +1090,11 @@ body :is(.geist-button,.fbtn,.resourceaction,.batchbar button):not(.primary,.dan
    它没有插值可言，直接换就是硬切一下。两层交叠着改 opacity 才过渡得起来，这也是上游
    那一份的做法。宿主要 `isolation:isolate`，不然 `z-index:-1` 会把它送到按钮所在层叠
    上下文的底下，铺到卡片背面去。 */
-body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled){position:relative;isolation:isolate;background:var(--board-blue);border:0;color:#fff;box-shadow:var(--elevation-xs);transition:box-shadow .15s ease,color .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
-body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled):hover::before{opacity:1}
-body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled):active{background:var(--board-blue-active)}
-body :is(.geist-button,.fbtn,.resourceaction).primary:not(:disabled):active::before{opacity:0}
+body :is(.geist-button,.resourceaction).primary:not(:disabled){position:relative;isolation:isolate;background:var(--board-blue);border:0;color:#fff;box-shadow:var(--elevation-xs);transition:box-shadow .15s ease,color .15s ease}
+body :is(.geist-button,.resourceaction).primary:not(:disabled)::before{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;border-radius:inherit;background:var(--board-blue-hover);opacity:0;transition:opacity .15s ease}
+body :is(.geist-button,.resourceaction).primary:not(:disabled):hover::before{opacity:1}
+body :is(.geist-button,.resourceaction).primary:not(:disabled):active{background:var(--board-blue-active)}
+body :is(.geist-button,.resourceaction).primary:not(:disabled):active::before{opacity:0}
 /* 危险档跟强调档同一副做法，照 `boardui.com/components/button` 的 `.bg-button-danger`
    （2026-09-12 实测，与 `.bg-button-primary` 逐字同构）：静止 red-500→600、悬停
    400→500、按下 600→700，悬停那一档铺在 `::before` 上淡入。
@@ -1393,14 +1374,6 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 #tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring,
 :is(.followauthors,.followworks,.relatedpeople) .av:hover .ring,:is(.followauthors,.followworks,.relatedpeople) .av[aria-pressed="true"] .ring{box-shadow:none}
 #tiers .av .nm,:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
-/* 关注页的头像是张外站图，自己带着 64px 的身量；圆头像的尺寸归上面那一格，它只负责
-   把那一格填满。 */
-.followauthors .av .ring .favatar{width:100%;height:100%;border-radius:0;object-fit:cover}
-.followauthors .av .ring .favatar.none{display:flex;align-items:center;justify-content:center;background:none;font:inherit;color:inherit}
-/* 题材那一枚圆标装的是这个题材下最热的一张作品图，不是烤好边距的厂牌标识：按正中裁
-   一个 28px 的圆出来常常只剩一截身子。检出了脸的图由服务端把取景写进 img 自己的
-   style，这里这一档只管没检出脸的那些——上四分之一是人像里头最常落的位置。 */
-.followworks .brandpill .mk img{object-position:50% 25%}
 :is(.followauthors,.followworks,.relatedpeople){gap:4px;align-items:center}
 .followworks{padding:0 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 
@@ -1484,7 +1457,7 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 @media(prefers-reduced-motion:reduce){.post-setup-notification{animation:none}.post-setup-task,.post-setup-task>a{transition:none}}
 /* ── Board 第三批：主按钮尺寸、配置页白底、通知与提醒、批量条、关注行图标、侧栏切换器 ── */
 /* 主按钮与旁边的 Board 按钮同一副盒子：36px、10px 圆角、Body Medium。 */
-body :is(.geist-button,.fbtn,.resourceaction,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
+body :is(.geist-button,.resourceaction,.geist-fieldset-footer>a,.geist-fieldset-footer>button).primary{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;gap:4px;height:36px;min-height:36px;padding:8px 12px;border-radius:10px;font:var(--board-body-medium);white-space:nowrap}
 /* 提醒条与上下内容留 12px：关注页检查结果、扫描卡失败都是同一个 Note。 */
 body .followmanage .fwarn{margin:0 0 12px}
 body .library-processing [role=alert]>.geist-note{margin-top:12px}

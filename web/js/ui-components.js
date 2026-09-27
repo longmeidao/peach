@@ -790,31 +790,6 @@ export function fitSkeleton(root){
 }
 
 /**
- * 资料页与关注列表共用的视图按钮：一排、一个尺寸。
- *
- * 这几个键问的是同一件事——这一页现在显示什么，所以都是这一组里的按钮，不另起控件。
- * 给空值的那一位不出按钮：没有照片的人不该看见照片键，没有名册的实体不出名册键。
- * 名册键默认是艺人；片商页的名册是旗下厂牌，文字和图标跟着侧栏「厂牌」那一项。
- */
-export function mediaViewButtonsHtml({
-  active='videos',peopleValue='',videoValue='videos',imageValue='images',
-  peopleLabel='艺人',peopleIcon='user-round',videoLabel='视频',imageLabel='图片',
-  peopleCount=null,videoCount=null,imageCount=null,label='媒体类型',className='',
-}={}){
-  const control=(value,text,count,symbol,kind)=>{
-    const title=count===null||count===undefined
-      ?text:`${text} ${Math.max(0,Number(count)||0).toLocaleString()}`;
-    return `<button class="mediaviewbutton" type="button" data-media-view="${esc(value)}"
-      data-media-icon="${kind}" aria-pressed="${active===value}" aria-label="${esc(title)}"
-      title="${esc(title)}">${icon(symbol)}</button>`;
-  };
-  return `<div class="mediaviewbuttons${className?` ${esc(className)}`:''}" role="group" aria-label="${esc(label)}">
-    ${peopleValue?control(peopleValue,peopleLabel,peopleCount,peopleIcon,'people'):''}
-    ${videoValue?control(videoValue,videoLabel,videoCount,'play','video'):''}
-    ${imageValue?control(imageValue,imageLabel,imageCount,'pics','image'):''}</div>`;
-}
-
-/**
  * Board 下划线 Tabs（boardui tabs.tsx）：一排互斥的「这一页现在摆的是哪一组东西」。
  *
  * 索引页用它切厂牌／事务所与本地／在线两套词表：两档各是一条地址。它回答的是页面层级的

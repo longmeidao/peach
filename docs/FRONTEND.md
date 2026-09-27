@@ -62,7 +62,7 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 - 读 `/api/playlists`，首屏 `prefetch` 写明 `staleTime: 0`：首页刚存的 Mix 进来就要看得到。新建、改名、删除都 POST `/api/playlist`，写完让列表键重取，不拿回话拼缓存。
 - 删除先过遗留层 `confirmModal`，删之前 GET `?id=` 取回内容，撤销按原内容与来源重建一份；取不到就不给撤销。回执与撤销失败的说法归 `actionReceipt`。
 - 停在这一页时壳要求重读（顶栏「换一批」、从播放队列返回），`openPlaylists(false)` 经 `updateIsland` 把 `revision` 加一，页面只重取、不重挂。
-- 每份列表是共用的 Mix 卡 `components/mix-card.tsx`：纸边、黑底封面、玻璃徽标、叠放头像，几何写在 `styles.css` 的 `[data-mix-*]`；悬停翻页是 `components/use-stack-flip.ts`，时序同遗留层 `wireStackFlip`，翻页门槛（多选、遮挡、减少动效、滚动中）由壳经 `canFlip` 递进来。
+- 每份列表是共用的 Mix 卡 `components/mix-card.tsx`：纸边、黑底封面、玻璃徽标、叠放头像，几何写在 `styles.css` 的 `[data-mix-*]`；悬停翻页是 `components/use-stack-flip.ts`（关注页卡叠也用它），时序钉在 `use-stack-flip.test.tsx`，翻页门槛（多选、遮挡、减少动效、滚动中）由壳经 `canFlip` 递进来。
 - 改名弹层、换头像与裁剪封面共用 `components/modal-frame.tsx` 的外壳，`form` 档 540px 同 `.geist-modal`。
 
 ### 馆藏网格
@@ -113,7 +113,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `08-photos.css` | 媒体圆钮、灯箱打开时的页面锁滚 |
 | `09-skeleton.css` | Geist Skeleton 与各页骨架变体 |
 | `11-identity.css` | 身份组、演员与系列链接、重复项、质量清单、复核对照 |
-| `12-cards.css` | 壳自己画的卡片（垃圾文件、关注、新作）、悬停预览层与密度 |
+| `12-cards.css` | 壳自己画的卡片（垃圾文件、新作）、悬停预览层与密度 |
 | `13-stage.css` | 就地展开的舞台与 Mix 队列 |
 | `14-player.css` | video.js 定制、播放统计、播放器的脱盘占位 |
 | `15-detail.css` | 详情侧栏、标签选择器、反馈条、相关推荐 |
@@ -122,7 +122,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `18-drawer.css` | 筛选抽屉 |
 | `19-immersive.css` | 沉浸模式 |
 | `20-offdisk.css` | 脱盘模式 |
-| `21-online.css` | 在线追更 |
+| `21-online.css` | 关注页骨架与关注详情（列表归 `follow-feed` 岛） |
 | `22-followmanage.css` | 关注管理页 |
 
 ## 开发循环
