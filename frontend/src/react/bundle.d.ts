@@ -345,6 +345,23 @@ export interface DuplicatesProps {
   failure(action: string, error: unknown): void;
 }
 
+/** 播放列表页仍由遗留层提供的能力。 */
+export interface PlaylistsProps {
+  /** 打开一份列表的播放队列，从 `resumeAssetId` 那一个接着播。 */
+  openPlaylist(id: number, resumeAssetId: number): void;
+  /** 点署名行的头像：去这个人的资料页。`kind` 是 `performer`／`creator`。 */
+  openEntity(kind: string, name: string): void;
+  /** 圆框里那段 HTML（遗留层 `avatarInner`）：有图走图，没图退首字母。 */
+  faceAvatar(face: { kind: string; id: number; name: string; has_image?: boolean; avatar_focus?: unknown }): string;
+  /** 此刻能不能悬停翻页：壳的多选、遮挡、减少动效与滚动中都回 false。 */
+  canFlip(): boolean;
+  /** 操作回执（遗留层 `actionReceipt`）；给了 `undo` 就带一颗撤销键。撤销抛错时回执自己
+   *  换成「撤销失败」，页面不另报一次。 */
+  toast(message: string, options?: { undo?: () => Promise<void> }): void;
+  /** 刷新代次。壳在这一页上要求重读（顶栏「换一批」、从别处写完回来）时加一，页面据此重取，不重挂。 */
+  revision?: number;
+}
+
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'avatar-picker': ReactPage<AvatarPickerProps>;
@@ -356,6 +373,7 @@ export interface ReactPages {
   'follow-manage': ReactPage<FollowManageProps>;
   index: ReactPage<IndexProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
+  playlists: ReactPage<PlaylistsProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;
   review: ReactPage<ReviewProps>;
   scraping: ReactPage<ScrapingProps>;

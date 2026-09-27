@@ -1583,7 +1583,6 @@ class WebUiSourceTests(unittest.TestCase):
                 (".geist-button{", "var(--control-radius)"),
                 (".searchmenu{", "var(--floating-radius)"),
                 (".searchoption{", "var(--control-radius)"),
-                (".cardmenupanel button{", "var(--control-radius)"),
                 (".geist-modal{", "var(--floating-radius)"),
                 (".pickrow{", "var(--control-radius)"),
                 (".settingscard{", "var(--floating-radius)"),
@@ -9051,7 +9050,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertIn("['alphabet', '字母表', 'text-aa']", self.read_react("index/index-tags.tsx"))
         self.assertPageContains("['playlists','播放列表','playlist'],")
-        self.assertPageContains("emptyState('playlist','还没有播放列表'")
         self.assertPageContains('aria-label="编辑播放列表">${icon(\'playlist\')}')
         self.assertPageContains('title="加入播放列表">${icon(\'playlist\')}')
         # 关注管理的来源筛选归 React 之后用 Remix 的漏斗，含义还是筛选。
@@ -10546,27 +10544,14 @@ class WebUiSourceTests(unittest.TestCase):
         """控件高度只有一档：输入框 38px，同一行的按钮照抄这个数。
 
         窄屏那条 `font-size:16px!important` 会把没写死高度的输入框抬 3px，旁边的
-        按钮不动，一行里两个控件差一截；播放列表那张表还因为 `flex:1 1 100%`
-        把提交键顶到下一行。纯文本输入框全站共用 `.geist-input`。
+        按钮不动，一行里两个控件差一截。纯文本输入框全站共用 `.geist-input`。
         """
         self.assertPageContains(".geist-input{box-sizing:border-box;width:100%;min-width:0;height:var(--control-h);")
-        self.assertPageContains(".playlistcreate .geist-button{height:38px;padding:0 13px}")
-        # 提交键是主动作，实心档由共用的 .geist-button.primary 给，不再本地拼一套描边。
-        # 弹层里的提交键由 Geist Modal 的操作条给，页面上自己拼的只剩这一枚。
-        self.assertPageContains(
-            '<button class="geist-button primary" type="submit">新建</button>')
+        # 弹层里的提交键由 Geist Modal 的操作条给，实心档由共用的 .geist-button.primary 给。
         self.assertPageContains('<button type="submit" class="geist-button primary" data-modal-confirm>')
-        self.assertPageLacks(".playlistcreate button,.playlistactions button{")
-        self.assertPageContains(".playlistcreate label{display:grid;gap:8px;color:var(--muted);"
-                                "font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}")
-        self.assertPageLacks(".playlistcreate label{flex:1 1 100%}")
         # 自己拼内边距的那几处已经并入 token，别再冒出第二份。
-        self.assertPageLacks(".playlistcreate input,.playlistmeta input{min-width:220px;")
         self.assertPageLacks(".faliasform input{min-width:0;height:34px;")
-        for needle in (
-                '<label class="modalfield"><span>名称</span><input class="geist-input" name="name"',
-                '<label>新播放列表<input class="geist-input" name="name"'):
-            self.assertPageContains(needle)
+        self.assertPageContains('<label class="modalfield"><span>名称</span><input class="geist-input" name="name"')
         # 别名管理归 React 之后，这两格用同一档的 BoardUI `Input`，高度也还是那一档。
         alias = self.read_react("follow-manage/alias-manager.tsx")
         self.assertIn('<Input aria-label="规范创作者名"', alias)

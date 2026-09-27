@@ -24,6 +24,8 @@ import { IndexPage } from './index/index-page';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
 import { LibraryProcessingCard } from './library-processing/library-processing-card';
 import { LibraryProcessingNotice } from './library-processing/library-processing-notice';
+import { prefetchPlaylists } from './playlists/playlists';
+import { PlaylistsPage } from './playlists/playlists-page';
 import { QualityGoalsPage } from './quality-goals/quality-goals-page';
 import { prefetchQualityGoals } from './quality-goals/quality-goals';
 import { queryClient } from './query';
@@ -117,6 +119,7 @@ export const pages: Bundle.ReactPages = {
     prefetch: (_props, signal) => prefetchLibraryProcessing(signal),
     mount: mounter(LibraryProcessing),
   },
+  playlists: { prefetch: (_props, signal) => prefetchPlaylists(signal), mount: mounter(PlaylistsPage) },
   'quality-goals': {
     prefetch: (_props, signal) => prefetchQualityGoals(signal), mount: mounter(QualityGoalsPage),
   },

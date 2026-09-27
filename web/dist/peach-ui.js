@@ -825,6 +825,7 @@ var Y = {
 	"follow-manage": { react: "follow-manage" },
 	index: { react: "index" },
 	"library-processing": { react: "library-processing" },
+	playlists: { react: "playlists" },
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },
 	review: { react: "review" },

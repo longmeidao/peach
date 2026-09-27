@@ -13,6 +13,7 @@
 - Remix Icon 候选在预览页 `/icon-review.html` 审查，用户筛选完之前保留现有已选图标。
 - 安装后教程：右下角那张卡和清单渲染仍在 `web/app.js`，状态层（三个本地键、签名、请求代际）已在 `web/js/ui-components.js`。迁移时整块接管渲染，删掉遗留那一段。
 - 厂牌资料页视频视图卡片多时（如 Prestige，339 张卡），侧栏展开那一帧最长约 37ms。屏外卡已跳过封面与元信息区的渲染，剩下的开销在卡片盒本身的排版，这几页迁往 React 时用虚拟列表一起处理。
+- 首页 Mix 卡仍是遗留层 `mixCardHtml` 加 `wireStackFlip`，迁 React 时换用播放列表页那张 `components/mix-card.tsx`，翻的图由调用方现拉相关作品。资料页照片集卡（`.photosets`）仍借 `.playlistcard` 的遗留卡面，迁移时一并换掉，再删 `12-cards.css` 里那几条。
 
 ## 已有骨架、尚未完成（7 项）
 
