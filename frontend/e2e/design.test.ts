@@ -1264,6 +1264,26 @@ describe('设计决定', () => {
     }
   });
 
+  /* 骨架是列表回来之前那一屏的形状预告：JAV 默认大图，卡片是 3:4 的正封，骨架照 16:9
+     铺的话，内容一到整屏卡片都被拉高一截。把列表请求扣住，只看骨架本身。 */
+  it('作品骨架的封面比例跟当前版式走：JAV 大图 3:4，首页小图 16:9', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', DESKTOP);
+    const { page } = opened;
+    await page.route(/\/api\/items\?/, () => {});
+    const skeletonRatio = async (path: string) => {
+      await page.goto(new URL(path, page.url()).href, { waitUntil: 'load' });
+      const cover = page.locator('#grid .catalog-skeleton .skeletoncard i').first();
+      await cover.waitFor({ state: 'attached', timeout: 15_000 });
+      return cover.evaluate((element) => element.getBoundingClientRect().width / element.getBoundingClientRect().height);
+    };
+    try {
+      assert.ok(Math.abs(await skeletonRatio('/?jav=1') - 0.75) < 0.05, 'JAV 大图下骨架封面不是正封比例');
+      assert.ok(Math.abs(await skeletonRatio('/') - 16 / 9) < 0.05, '首页小图下骨架封面不是 16:9');
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('卡片悬停反馈不在封面像素上描边', { timeout: 60_000 }, async () => {
     const opened = await openCatalog(browser);
     try {

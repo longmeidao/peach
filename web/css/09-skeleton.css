@@ -22,7 +22,7 @@
 .skeletoncard{display:grid;gap:10px;min-width:0}
 .skeletoncard i,.skeletoncard b,.skeletoncard em{display:block;
   border-radius:var(--control-radius);background:var(--hover)}
-.skeletoncard i{aspect-ratio:16/9}.skeletoncard b{width:72%;height:18px}.skeletoncard em{width:46%;height:14px}
+.skeletoncard i{aspect-ratio:var(--skeleton-card-ratio,16/9)}.skeletoncard b{width:72%;height:18px}.skeletoncard em{width:46%;height:14px}
 /* 头像格与标签格只有海报网格用得上，行政界面的骨架照 fieldset 排，多出来的两格
    会在一列长条中间凭空插两块灰。默认关掉，由用得上的那张骨架自己打开。 */
 .skeletoncard s,.skeletoncard u{display:none}
