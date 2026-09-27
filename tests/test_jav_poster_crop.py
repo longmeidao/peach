@@ -375,6 +375,66 @@ class SharpFoldTests(unittest.TestCase):
                         self.FOLD_AT)
 
 
+class SharpBeyondTests(unittest.TestCase):
+    """书脊和正封同底色时折痕只在书脊内容所在的行里存在：切点右边那根孤立尖峰才是折痕。
+
+    IPZ-602 的形状：800×536，折痕窗 393～436，书脊内一块带边框的面板与竖排文字形成
+    390～409 的高地（最高 0.51，满高覆盖 0.5 上下），按形状选中高地右端、切在 410；
+    折痕 420 列梯度 0.24、满高覆盖 0.20，左边面板内部 0.06～0.11、右边正封留白 0.02～0.04，
+    周围 16 列中位数 0.065，折痕是它的 3.7 倍。合成剖面左侧取 0.07、右侧 0.02（3.4 倍）。
+    """
+
+    WIDTH, HEIGHT, FOLD_AT = 800, 536, 420
+
+    def profile(self, left: float = 0.07, right: float = 0.02, panel_seam: float = 0.5,
+                seams: bool = True):
+        gradient = [0.05] * self.WIDTH
+        coverage = [0.1] * self.WIDTH
+        gradient[3] = 1.0                                   # 封底左缘，全图最强
+        for column in range(390, 410):                      # 面板边框与文字那片高地
+            gradient[column] = 0.4
+            coverage[column] = panel_seam
+        gradient[396], gradient[404] = 0.51, 0.45
+        for column in range(410, self.FOLD_AT):             # 面板内部到折痕
+            gradient[column] = left
+        gradient[self.FOLD_AT], gradient[self.FOLD_AT + 1] = 0.24, 0.14
+        coverage[self.FOLD_AT] = 0.2
+        for column in range(self.FOLD_AT + 2, 440):         # 正封左缘
+            gradient[column] = right
+        return jav_poster_crop.ColumnProfile(gradient, coverage) if seams else gradient
+
+    def test_an_isolated_edge_past_a_bordered_panel_is_the_fold(self):
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT, self.profile()),
+                         self.FOLD_AT + 2)
+
+    def test_an_edge_that_rises_into_front_content_is_the_start_of_lettering(self):
+        """左边留白、右边忙：那是正封内容的起笔，切点已经在折痕上（PPT-018 的金色片名）。
+
+        右侧取 0.12 而不是更高：周围中位数是左右两侧合起来算的，右侧再高，尖峰就先在
+        孤立度上被拦下，方向判据反而没被测到。
+        """
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(left=0.02, right=0.12)),
+                         410)
+
+    def test_an_edge_among_other_strokes_is_not_isolated(self):
+        """周围中位数压不下去的尖峰是大字里的一笔，哪怕左边比右边忙（MIMK-009 的 423 列）。"""
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(left=0.12, right=0.09)),
+                         410)
+
+    def test_a_cut_that_is_already_a_full_height_seam_stays(self):
+        """高地本身满高就是折痕，右边再孤立的尖峰也是正封内容。"""
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(panel_seam=0.8)),
+                         410)
+
+    def test_a_bare_gradient_without_seams_behaves_as_before(self):
+        self.assertEqual(jav_poster_crop.fold_column(self.WIDTH, self.HEIGHT,
+                                                     self.profile(seams=False)),
+                         410)
+
+
 class CodeShapeTests(unittest.TestCase):
     """哪些番号的封面是横版封套。判据全部走 `catalog_rules` 现有函数。"""
 
