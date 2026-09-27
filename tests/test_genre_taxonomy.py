@@ -76,6 +76,15 @@ class GenreTaxonomyTests(unittest.TestCase):
         self.assertEqual(offenders, [], "这些映射落进了撤掉的粗桶")
         self.assertEqual(map_genres(["おっぱい"]), ([], ["おっぱい"]))
 
+    def test_no_genre_maps_into_a_retired_name(self):
+        """退役名在账本里会被改成规范名，投影表再产出它就是每轮抓取都留一次旧写法。"""
+        offenders = sorted(
+            f"{source} -> {mapped}"
+            for table in (CONTENT_GENRES, PROFILE_GENRES)
+            for source, mapped in table.items()
+            if set(mapped if isinstance(mapped, tuple) else (mapped,)) & set(catalog_rules.RETIRED_TAGS))
+        self.assertEqual(offenders, [], "这些映射落进了退役名")
+
     def test_content_and_non_content_tables_do_not_overlap(self):
         both = {normalise_genre(key) for key in CONTENT_GENRES} & {
             normalise_genre(value) for value in NON_CONTENT_GENRES
@@ -97,6 +106,9 @@ class GenreTaxonomyTests(unittest.TestCase):
         self.assertEqual(map_genres(["Creampie"])[0], map_genres(["中出し"])[0])
         self.assertEqual(map_genres(["Blowjob"])[0], map_genres(["フェラチオ"])[0])
         self.assertEqual(map_genres(["Big Tits"])[0], map_genres(["巨乳"])[0])
+        # 胸的大小只有一档：来源之间 `Big Tits` 与 `Huge Tits` 的边界各说各的。
+        self.assertEqual(map_genres(["Huge Tits"])[0], map_genres(["巨乳"])[0])
+        self.assertEqual(map_genres(["Lunch Box Fuck"])[0], map_genres(["駅弁"])[0])
 
     def test_marketing_and_format_categories_are_excluded_not_missing(self):
         tags, unmapped = map_genres(["AV女優", "単体作品", "サンプル動画", "ハイビジョン"])
@@ -169,9 +181,6 @@ class GenreTaxonomyTests(unittest.TestCase):
         self.assertEqual(carib, ["美乳", "中出内射", "白虎", "自慰", "手交", "69",
                                  "舔阴", "初次无码", "苗条"])
         self.assertEqual(carib_left, [])
-        # 没把握的仍旧留给人决定：`Lunch Box Fuck` 是 aventertainments 自造的类目名，
-        # 对应的日文原词未取得，不猜一个译法塞进表里。
-        self.assertEqual(map_genres(["Lunch Box Fuck"])[1], ["Lunch Box Fuck"])
         heyzo, heyzo_left = map_genres([
             "中出し", "潮吹き", "淫語", "騎乗位", "口内発射", "看護婦", "指マン"])
         self.assertEqual(heyzo, ["中出内射", "潮吹", "淫语", "骑乘", "口爆", "护士", "手交"])
@@ -387,11 +396,10 @@ class VocabularyHygieneTests(unittest.TestCase):
     def test_words_whose_meaning_is_not_settled_stay_on_the_review_page(self):
         """含义还没查清的原文留给人判，不按字面猜一个标签。
 
-        `Lunch Box Fuck` 是 aventertainments 机器翻译出来的格子，字面对不上任何
-        行为；`Inter` 只在 SMBD-110 上出现，是站方截断的半个词，既可能是
+        `Inter` 只在 SMBD-110 上出现，是站方截断的半个词，既可能是
         `Interracial` 也可能是 `Interview`。猜哪一个都会写出一条错标签。
         """
-        for word in ("Lunch Box Fuck", "Inter"):
+        for word in ("Inter",):
             with self.subTest(word=word):
                 self.assertEqual(resolve_genre(word), UNMAPPED)
 
@@ -490,13 +498,13 @@ class UserDecisionTests(unittest.TestCase):
 
     def test_a_recorded_genre_stops_coming_back_as_unmapped(self):
         decisions = {normalise_genre("Famous Name"): "有名女优"}
-        tags, unmapped = map_genres(["中出し", "Famous Name", "Lunch Box Fuck"], decisions)
+        tags, unmapped = map_genres(["中出し", "Famous Name", "Inter"], decisions)
         self.assertEqual(tags, ["中出内射", "有名女优"])
-        self.assertEqual(unmapped, ["Lunch Box Fuck"], "还没决定的那个仍要回来问")
+        self.assertEqual(unmapped, ["Inter"], "还没决定的那个仍要回来问")
 
     def test_a_genre_judged_non_content_is_excluded_not_asked_again(self):
-        tags, unmapped = map_genres(["Lunch Box Fuck", "巨乳"],
-                                    {normalise_genre("Lunch Box Fuck"): None})
+        tags, unmapped = map_genres(["Inter", "巨乳"],
+                                    {normalise_genre("Inter"): None})
         self.assertEqual(tags, ["巨乳"])
         self.assertEqual(unmapped, [], "排除也是结论；再问一遍等于没记下来")
 

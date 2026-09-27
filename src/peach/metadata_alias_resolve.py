@@ -25,7 +25,10 @@ from .entities import normalize_entity_name, resolve_entity
 
 #: 艺名到年龄标记为止，后面是介绍；`はな/19歳/…` 用斜杠分段，同理。
 _PERFORMER_INTRO = re.compile(r"[\s　]*[（(]?\d+\s*歳.*$")
-_PERFORMER_SEGMENT = re.compile(r"[/／].*$")
+_PERFORMER_SEPARATOR = re.compile(r"[/／]")
+#: 斜杠分段里单独成段的年龄。MGS 的 `300NTK` 把介绍写在最前：`…オフパコ！！/はな/20歳`，
+#: 艺名是年龄前面那一段，不是第一段。
+_AGE_SEGMENT = re.compile(r"\s*\d+\s*歳\s*")
 #: 剪完仍带空白、分隔符或敬称的不是艺名，是企划文案（`超バドミントン部あかりちゃん`、
 #: `まゆみさん`）。剪到哪儿才对，本身就是个判断。
 _NOT_A_STAGE_NAME = re.compile(r"[\s　/／]|ちゃん$|さん$")
@@ -48,7 +51,10 @@ def is_descriptive(name: str) -> bool:
 
 def stage_name(name: str) -> str | None:
     """出演者栏里的艺名；认不出艺名边界、或剪出来的是描述性称呼时返回 None。"""
-    trimmed = _PERFORMER_INTRO.sub("", _PERFORMER_SEGMENT.sub("", str(name or ""))).strip()
+    segments = _PERFORMER_SEPARATOR.split(str(name or ""))
+    ages = [index for index, part in enumerate(segments) if _AGE_SEGMENT.fullmatch(part)]
+    named = segments[ages[0] - 1] if ages and ages[0] > 0 else segments[0]
+    trimmed = _PERFORMER_INTRO.sub("", named).strip()
     if not trimmed or _NOT_A_STAGE_NAME.search(trimmed) or is_descriptive(trimmed):
         return None
     return trimmed

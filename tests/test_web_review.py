@@ -639,6 +639,66 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(json.loads(note)["rule"],
                          "adr-0035-official-replaces-single-source")
 
+    def test_an_official_value_takes_the_older_scraped_links_with_it(self):
+        """官方值换掉字段时，r18 导入留下的那几条关联一起走，人手挂的留着。
+
+        `ACC-006` 的 r18 条目按番号撞上了另一部同号片：DMM 的系列和出演者落进来以后，
+        那部片的系列与出演者还挂在页面上。
+        """
+        self._asset(97, "ACC-006", "ACC-006.mp4")
+        con = sqlite3.connect(self.db_path)
+        try:
+            con.execute("UPDATE asset SET series='決断' WHERE id=97")
+            for kind, name, role, source in (
+                    ("series", "決断", "series", "r18:series"),
+                    ("performer", "三浦沙綾", "performer", "r18:performer"),
+                    ("performer", "手挂的人", "performer", "user:manual")):
+                upsert_asset_entity(con, kind=kind, name=name, asset_id=97, role=role,
+                                    source=source)
+            con.execute("INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+                        "VALUES(97,'演员:三浦沙綾',0.9,'r18:performer')")
+            con.commit()
+        finally:
+            con.close()
+        self.write_metadata_rows([
+            {"item_key": "ACC-006:series", "field": "series", "current": "決断",
+             "code": "ACC-006", "candidates": [{"source": "dmm", "value": "美人CAのマゾ性癖"}]},
+            {"item_key": "ACC-006:performers", "field": "performers", "current": "三浦沙綾",
+             "code": "ACC-006", "candidates": [
+                 {"source": "libredmm", "value": [{"name": "永沢咲良"}], "display": "永沢咲良"}]},
+        ])
+        self.assertEqual(self._auto()["applied"], 2)
+        con = sqlite3.connect(self.db_path)
+        try:
+            linked = {(role, name) for role, name in con.execute(
+                "SELECT ae.role, e.canonical_name FROM asset_entity ae "
+                "JOIN entity e ON e.id=ae.entity_id WHERE ae.asset_id=97")}
+            flat = {row[0] for row in con.execute(
+                "SELECT tag FROM asset_tag WHERE asset_id=97 AND tag LIKE '演员:%'")}
+        finally:
+            con.close()
+        self.assertEqual(linked, {("series", "美人CAのマゾ性癖"), ("performer", "永沢咲良"),
+                                  ("performer", "手挂的人")})
+        self.assertEqual(flat, {"演员:永沢咲良"})
+
+    def test_a_stage_name_between_the_intro_and_the_age_lands(self):
+        """MGS 的 `300NTK` 把介绍写在最前：`…/はな/20歳` 的艺名是年龄前那一段。"""
+        self._asset(98, "300NTK-618", "300NTK-618.mp4")
+        intro = "悶絶ガチ昇天するスレンダー美ボディ裏垢女子のオフパコ！！/はな/20歳"
+        self.write_metadata_rows([
+            {"item_key": "NTK", "field": "performers", "current": "", "code": "300NTK-618",
+             "candidates": [{"source": "mgstage", "value": [{"name": intro}], "display": intro}]},
+        ])
+        self.assertEqual(self._auto_without_snapshots()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            landed = [row[0] for row in con.execute(
+                "SELECT e.canonical_name FROM entity e JOIN asset_entity ae ON ae.entity_id=e.id "
+                "WHERE ae.asset_id=98 AND ae.role='performer'")]
+        finally:
+            con.close()
+        self.assertEqual(landed, ["はな"])
+
     def test_javbus_gives_way_to_any_other_source_on_the_same_field(self):
         """javbus 的取值只在没有别家时才算证据（ADR-0035）。
 
