@@ -72,8 +72,10 @@ https://github.com/user-attachments/assets/cc164de3-28d6-4fc9-8067-f2e70e94cb93
 
 ### Windows
 
-1. 从 [Releases](https://github.com/longmeidao/peach/releases) 下载 `Peach-<版本>-windows-x64.zip`，右键「全部解压」。
-2. 双击 `Peach.exe`，浏览器会打开首次设置页。
+1. 从 [Releases](https://github.com/longmeidao/peach/releases) 下载其中一种：
+   - 安装包 `Peach-<版本>-windows-x64-setup.exe`：双击安装，不需要管理员权限，开始菜单里有 Peach，可以在系统设置里卸载。
+   - 免安装包 `Peach-<版本>-windows-x64.zip`：右键「全部解压」，双击里面的 `Peach.exe`。
+2. 浏览器会打开首次设置页。
 3. 选好媒体文件夹和谁能访问，开始扫描。
 
 测试包还没有代码签名。Windows 提示「已保护你的电脑」时，确认文件来自本项目的 Release，再点「更多信息 → 仍要运行」。转码和缩略图要用到 FFmpeg，没装也能浏览和播放 MP4、WebM，安装方法见 [Windows 测试版](docs/TESTING_DESKTOP.md)。

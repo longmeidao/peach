@@ -371,6 +371,29 @@ class DesktopSettingsTests(unittest.TestCase):
         self.assertIsNotNone(held.poll())
 
     @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
+    def test_native_uninstall_withdraws_what_the_installer_registered(self):
+        import uuid
+        import winreg
+        key = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{{{str(uuid.uuid4()).upper()}}}_is1"
+        winreg.CloseKey(winreg.CreateKey(winreg.HKEY_CURRENT_USER, key))
+        self.addCleanup(lambda: subprocess.run(['reg', 'delete', 'HKCU\\' + key, '/f'], capture_output=True))
+        owned, foreign = self.root / 'menu' / 'Peach.lnk', self.root / 'other' / 'Peach.lnk'
+        owned.parent.mkdir(); foreign.parent.mkdir()
+        desktop_startup.shortcut('write', owned, target=str(self.program / 'Peach.exe'))
+        desktop_startup.shortcut('write', foreign, target=str(self.root / 'Elsewhere' / 'Peach.exe'))
+        job = desktop_uninstall.plan(self.config, delete_data=False, program=self.program)
+        result = self._run_native_uninstall(dict(job, installer_key=key, installer_menu=str(owned)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(owned.exists())
+        with self.assertRaises(FileNotFoundError):
+            winreg.OpenKey(winreg.HKEY_CURRENT_USER, key)
+        (self.program / '_internal').mkdir(parents=True)
+        (self.program / '_internal/standalone.txt').touch()
+        result = self._run_native_uninstall(dict(job, installer_menu=str(foreign)))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(foreign.exists(), '同名开始菜单项指向别处时属于另一份安装')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 系统卸载助手')
     def test_native_uninstall_retries_until_the_file_is_released(self):
         blocked = self.program / '_internal' / 'locked.bin'
         blocked.write_text('fixture')

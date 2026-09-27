@@ -72,8 +72,10 @@ Want to look around before installing? The [live demo](https://demo.peach.video)
 
 ### Windows
 
-1. Download `Peach-<version>-windows-x64.zip` from [Releases](https://github.com/longmeidao/peach/releases), right-click it and choose "Extract All".
-2. Double-click `Peach.exe`. Your browser opens the first-run setup page.
+1. Download one of the two packages from [Releases](https://github.com/longmeidao/peach/releases):
+   - Installer `Peach-<version>-windows-x64-setup.exe`: double-click to install. No administrator rights needed; Peach appears in the Start menu and can be uninstalled from Windows Settings.
+   - Portable `Peach-<version>-windows-x64.zip`: right-click it, choose "Extract All", then double-click `Peach.exe` inside.
+2. Your browser opens the first-run setup page.
 3. Pick your media folders and who may access Peach, then start the scan.
 
 The test package is not code-signed yet. If Windows says "Windows protected your PC", make sure the file came from this project's Releases, then choose "More info → Run anyway". Transcoding and thumbnails need FFmpeg; without it you can still browse and play MP4 and WebM. See [Windows test build](docs/TESTING_DESKTOP.md) for how to install it.

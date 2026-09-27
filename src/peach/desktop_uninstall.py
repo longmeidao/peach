@@ -12,7 +12,7 @@ import time
 
 from filelock import FileLock
 
-from . import desktop_startup, distribution, settings_file, standalone_update
+from . import desktop_installer, desktop_startup, distribution, settings_file, standalone_update
 from .fsutil import atomic_write_text
 
 
@@ -108,6 +108,8 @@ if ($peachProcess -and -not $peachProcess.WaitForExit(90000)) { exit 3 }
 foreach ($peachPath in @($peachJob.directories) + @($peachJob.files)) {
   if ([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($peachPath)) -ne $peachData) { exit 2 }
 }
+if ($peachJob.installer_key -and $peachJob.installer_key -notmatch '^Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\\{[0-9A-F-]{36}\}_is1$') { exit 2 }
+if ($peachJob.installer_menu -and [IO.Path]::GetFileName($peachJob.installer_menu) -ne 'Peach.lnk') { exit 2 }
 function Stop-PeachProgramProcesses {
   # 托盘退出时被硬杀的服务会留下自己的子进程：扫描、转码用的可执行文件可能就在
   # `_internal` 里。按镜像路径清场，只匹配程序目录前缀加一个分隔符，不误伤名字
@@ -165,6 +167,17 @@ try {
   if ($peachJob.delete_data -and (Test-Path -LiteralPath $peachData) -and -not (Get-ChildItem -LiteralPath $peachData -Force | Select-Object -First 1)) {
     Remove-Item -LiteralPath $peachData
   }
+  # 安装包装的程序还有「应用和功能」里那一条和开始菜单项，程序目录删掉后它们都指向空处。
+  # 开始菜单项只在仍指向这个程序目录时才删：同名的可能是另一份安装放的。
+  if ($peachJob.installer_key) {
+    Remove-Item -LiteralPath ('HKCU:\' + $peachJob.installer_key) -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  if ($peachJob.installer_menu -and (Test-Path -LiteralPath $peachJob.installer_menu)) {
+    $peachMenuTarget = (New-Object -ComObject WScript.Shell).CreateShortcut($peachJob.installer_menu).TargetPath
+    if ($peachMenuTarget -and $peachMenuTarget.StartsWith($peachProgram + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+      Remove-Item -LiteralPath $peachJob.installer_menu -Force
+    }
+  }
 } catch {
   $peachReason = $_.Exception.Message
   # 弹窗只说原因；日志另记出错的那一行，「不能对 Null 值表达式调用方法」单看查不出是哪一步。
@@ -206,7 +219,11 @@ def poll(tray) -> None:
         process = subprocess.Popen([str(shell), "-NoProfile", "-NonInteractive", "-EncodedCommand",
                                     base64.b64encode(_SCRIPT.encode("utf-16-le")).decode("ascii")],
                                    stdin=subprocess.PIPE, creationflags=subprocess.CREATE_NO_WINDOW)
-        process.stdin.write(json.dumps(dict(checked, pid=os.getpid())).encode("utf-8"))
+        job = dict(checked, pid=os.getpid())
+        if desktop_installer.installed(Path(checked["program"])):
+            job.update(installer_key=desktop_installer.UNINSTALL_KEY,
+                       installer_menu=str(desktop_installer.menu_shortcut()))
+        process.stdin.write(json.dumps(job).encode("utf-8"))
         process.stdin.close()
         path.unlink()
         tray.exit()

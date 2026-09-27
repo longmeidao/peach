@@ -597,6 +597,13 @@ class PackagedEntryTests(unittest.TestCase):
         self.assertTrue(self.entry.wants_cli(["peach.exe", "status"]))
         self.assertTrue(self.entry.wants_cli(["peach.exe", "ledger-sync"]))
 
+    def test_installer_hooks_reach_the_installer_handoff_not_the_tray(self):
+        with mock.patch("peach.desktop_installer.main", return_value=0) as handoff, \
+                mock.patch.object(self.entry, "tray_main") as tray:
+            self.assertEqual(self.entry.main(["peach.exe", "--installer-uninstall"]), 0)
+        handoff.assert_called_once_with("--installer-uninstall")
+        tray.assert_not_called()
+
     def test_packaged_command_failure_returns_without_a_native_error_dialog(self):
         output = io.StringIO()
         with mock.patch.object(self.entry, "cli_main", side_effect=RuntimeError("migration failed")), mock.patch.object(

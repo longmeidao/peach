@@ -68,6 +68,7 @@ class StandaloneUpdateTests(unittest.TestCase):
     def test_download_prepares_verified_package_without_stopping_the_app(self):
         target = self.root / "installed"; target.mkdir()
         (target / "Peach.exe").write_text("old")
+        (target / "unins000.exe").write_text("uninstaller")
         archive = self.archive(["Peach/Peach.exe", "Peach/_internal/standalone.txt"])
         with zipfile.ZipFile(archive, "a") as package:
             package.writestr("Peach/_internal/build-info.json", json.dumps({"version":"1.0.0","commit":None,"built_at":"fixture"}))
@@ -87,6 +88,7 @@ class StandaloneUpdateTests(unittest.TestCase):
         self.assertEqual(state["state"],"ready",state)
         self.assertEqual(state["downloaded"],len(content))
         self.assertTrue((Path(state["helper"])/"Peach.exe").is_file())
+        self.assertEqual((Path(state["stage"])/"unins000.exe").read_text(),"uninstaller")
         self.assertEqual((target/"Peach.exe").read_text(),"old")
         launch.assert_not_called()
         lock.release.assert_called_once()

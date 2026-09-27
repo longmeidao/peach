@@ -75,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
     if len(argv) == 4 and argv[1] == "--apply-standalone-update":
         from peach.standalone_update import apply
         return apply(Path(argv[2]), int(argv[3]))
+    if len(argv) == 2 and argv[1] in {"--installer-stop", "--installer-uninstall"}:
+        from peach.desktop_installer import main as installer_main
+        return installer_main(argv[1])
     if wants_cli(argv):
         _prepare_console()
         try:

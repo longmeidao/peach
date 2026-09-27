@@ -1,13 +1,21 @@
 # Windows 测试版
 
-Windows 测试版是一个解压就能用的程序包，不需要安装 Python、Git、Node 或 OpenSSL。macOS 暂无独立包，请按 [README](https://github.com/longmeidao/peach) 从源码运行。
+Windows 测试版有安装包和免安装包两种，程序文件相同，都不需要安装 Python、Git、Node 或 OpenSSL。macOS 暂无独立包，请按 [README](https://github.com/longmeidao/peach) 从源码运行。
+
+| | 安装包 | 免安装包 |
+| --- | --- | --- |
+| 文件 | `Peach-<版本>-windows-x64-setup.exe` | `Peach-<版本>-windows-x64.zip` |
+| 程序位置 | 固定在 `%LOCALAPPDATA%\Programs\Peach`，不需要管理员权限 | 解压到哪里就在哪里 |
+| 开始菜单与系统设置里的卸载项 | 有 | 没有 |
+
+两种的数据都在 `%LOCALAPPDATA%\Peach\peach-data`，换用另一种时设置和数据库照常沿用。
 
 ## 开始使用
 
-1. 从 [GitHub Releases](https://github.com/longmeidao/peach/releases) 下载 `Peach-<版本>-windows-x64.zip` 和 `SHA256SUMS.txt`。
-2. 核对哈希：在 PowerShell 里运行 `Get-FileHash .\Peach-<版本>-windows-x64.zip`，结果应与 `SHA256SUMS.txt` 里对应的那一行相同（不区分大小写）。
-3. 右键压缩包，选「全部解压」。保留整个 `Peach` 文件夹，不要只拿出 `Peach.exe`。
-4. 双击 `Peach.exe`。浏览器会打开首次设置页。
+1. 从 [GitHub Releases](https://github.com/longmeidao/peach/releases) 下载其中一种，以及 `SHA256SUMS.txt`。
+2. 核对哈希：在 PowerShell 里运行 `Get-FileHash .\<下载的文件名>`，结果应与 `SHA256SUMS.txt` 里对应的那一行相同（不区分大小写）。
+3. 安装包：双击，按提示完成安装，最后一步勾选「运行 Peach」。免安装包：右键压缩包，选「全部解压」，保留整个 `Peach` 文件夹，不要只拿出 `Peach.exe`，然后双击 `Peach.exe`。
+4. 浏览器会打开首次设置页。
 5. 添加媒体文件夹（可以用「选择文件夹」挑选），选择谁可以访问、要不要设访问密码、是否立即扫描，然后提交。
 6. 设置完成后自动进入馆藏，右下角会显示一份安装教程，照着做或逐项跳过都可以。
 
@@ -81,11 +89,16 @@ Windows 第一次询问防火墙权限时，只勾选「专用网络」。
 
 也可以打开「自动检查新版本」和「自动下载更新」，下载完成后仍要在这里确认重启。
 
-手动更新时，先从托盘退出 Peach，再把新版完整解压到一个新文件夹。不要只替换 `Peach.exe`：旁边的 `_internal` 文件夹也是程序的一部分。数据目录不用动，新版启动后会沿用已有配置。
+也可以手动更新，数据目录不用动，新版启动后会沿用已有配置：
+
+- 安装包：直接运行新版安装包。它会先让正在运行的 Peach 退出，装完后在需要时更新本地数据库，更新前的数据库备份在数据目录的 `database` 文件夹里，文件名以 `ledger.pre-migrate-` 开头。
+- 免安装包：先从托盘退出 Peach，再把新版完整解压到一个新文件夹。不要只替换 `Peach.exe`：旁边的 `_internal` 文件夹也是程序的一部分。
 
 ## 卸载
 
-在配置页「更新与维护 → 卸载 Peach」里操作。卸载会先退出 Peach，再移除程序文件夹、开机自启和桌面图标。
+在配置页「更新与维护 → 卸载 Peach」里操作。卸载会先退出 Peach，再移除程序文件夹、开机自启和桌面图标；用安装包装的，开始菜单项和系统设置里的卸载项也一并移除。
+
+用安装包装的也可以在系统设置「应用 → 已安装的应用」里卸载 Peach。这条路只移除程序、开始菜单项、开机自启和桌面图标，数据全部保留；要连数据一起删，用配置页里的「完全卸载」。
 
 - 默认保留数据：设置、本地数据库、观看记录和缓存都留着，以后重新安装可以接着用。
 - 勾选「完全卸载」会同时删除设置、本地数据库、观看记录、凭据和缓存。

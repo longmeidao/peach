@@ -159,6 +159,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 标签发布复用系统 Git、GitHub CLI 2.100.0（MIT）和 [Actions runs REST API](https://docs.github.com/en/rest/actions/workflow-runs)，不新增 Python 依赖；`release_tag.py` 只实现版本、主线归属、同提交最新 CI 与不可覆盖策略。Windows Python 3.14 使用提交 `45168dd` 的真实成功 Test 记录完成只读 POC；失败/运行中/其它分支与 master 并发推进用隔离测试拒绝。工作流仍复用既有 Release 制品验收，未引入发布服务。
 
 - 独立 Windows 测试包复用 PyInstaller 6.22.2（GPL-2.0-or-later，带分发 bootloader 例外）的 [onedir 与自启动子进程](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html)；使用已有精确固定的 build 依赖。Python 3.14 / Windows x64 在清除开发工具 PATH、隔离数据目录下实测初始化、页面与 API。保留 Peach 的进程所有权、数据目录、配置和扫描策略；onefile 的托盘入口只用于既有源码部署，独立包采用完整目录以共享资源并避免重复解包。没有新增运行时依赖。
+- Windows 安装包复用 Inno Setup 6.7.3（Inno Setup License，允许免费分发）与官方仓库 `Files/Languages/Unofficial/ChineseSimplified.isl` 的简体中文译文，译文随仓库放在 `scripts/installer/`。`.iss` 只管文件、开始菜单项和卸载登记；停托盘、补迁移、撤快捷方式都调 Peach 已有的入口，由 `desktop_installer` 衔接，自更新与应用内卸载继续是唯一实现。Windows 11 本机实测静默安装、托盘运行中覆盖安装、已有账本补跑迁移与卸载。没有新增运行时依赖。
 
 - 运行一致性复评：复用 `LedgerDatabase.write_transaction` 的提交边界和标准库 `OrderedDict`；HTTP 导航复用 FastAPI/Starlette，图片复验复用 `StaticFiles.is_not_modified` 与 `FileResponse` 的 ETag。列表使用 SQLite 的 IN/UNION 保留隐藏标签与多标签组合，不引入查询框架。
 - 馆藏侧栏复用 `catalog_filter` 的列表条件，已保存在线卡片复用关注来源的标签与封面投影，详情复用 `openFollowDetail`、Video.js 和媒体队列。导航范围与标签计数位于 `frontend/src/sidebar.ts`；不新增依赖。截图所示 F95 合集的只读核对结果为无封面、无标签、无已解析媒体，详情按现有来源信息展示。
