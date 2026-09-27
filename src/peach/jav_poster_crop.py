@@ -92,6 +92,16 @@ FOLD_PROMINENCE_REACH = 0.01
 #: 紧挨折痕的大字也是一两列宽的尖峰，突出度照样高，但只占几行（IDBD-610 的 433 列 0.22、
 #: MIMK-009 的 423 列 0.35）；DDK-023 的折痕 0.68。
 FOLD_SHARP_MIN_COVERAGE = 0.6
+#: 满高不够的窄尖峰还有一条路：切点自己不满高、它右边窗内有一根孤立的尖峰时，折痕是
+#: 那根尖峰（`_sharp_beyond`）。孤立是「这一列达到左右各 `FOLD_PROMINENCE_REACH` 内梯度
+#: 中位数的这个倍数」。书脊和正封共用底色的封套，折痕只在书脊内容所在的行里看得见：
+#: IPZ-602 书脊 379～421 列，折痕 420 列梯度 0.24、满高覆盖 0.20，进不了上面那一关，
+#: 切在书脊内照片与文字形成的高地下坡 411 列，正封左缘留下 10 列书脊；同形态的
+#: EBOD-531、GUN-851、IPX-150、PGD-526、CLUB-622、IPZZ-477 各留 7～19 列。这七张的
+#: 折痕是周围中位数的 3.7～9.2 倍；正封里紧挨折痕的大字周围还有别的笔画，MIMK-009
+#: 的 423 列只有 2.2 倍、IDBD-610 的 433 列 2.0 倍。ABP-627 的折痕 441 列挨着正封的
+#: 金色花纹，2.6 倍，救不回来（正封左缘留 8 列书脊），是这个数的已知代价。
+FOLD_ISOLATION = 3.0
 #: 候选按相邻归并成边：一道边在梯度上响应好几列，相距不超过源图宽这个比例的算一条。
 FOLD_EDGE_SPAN = 0.005
 #: 折痕是一道有宽度的斜坡，梯度的峰落在斜坡最陡处，也就是斜坡当中；书脊的最后一两
@@ -158,7 +168,7 @@ MANUAL = "manual"
 MANUAL_SOURCE = "user:crop"
 
 #: 算法版本号。sidecar 记着它，落后的重算。改动判据、常数或框的形状都要进位。
-ALGORITHM_VERSION = "poster-crop-v9"
+ALGORITHM_VERSION = "poster-crop-v10"
 #: sidecar 与封面同名换后缀：`ABW-232.jpg` → `ABW-232.poster.json`。人脸取景是
 #: `.face.json`，两者同目录、同命名风格，各描述一件事：一个是脸在哪，一个是正封在哪。
 SIDECAR_SUFFIX = ".poster.json"
@@ -299,7 +309,9 @@ def fold_column(width: int, height: int,
     内梯度的中位数，每张图各算各的，画面忙的封套门槛自然就高。
 
     走完斜坡的切点自己不是满高缝、右边窗内还有一条满高缝时，折痕是那条缝
-    （`_seam_beyond`）：书脊里的文字边只有梯度，折痕还从上贯到下。
+    （`_seam_beyond`）：书脊里的文字边只有梯度，折痕还从上贯到下。缝也没有、右边却有
+    一根孤立的尖峰、且尖峰左边比右边忙时，折痕是那根尖峰（`_sharp_beyond`）：书脊和
+    正封同底色的封套，折痕只在书脊内容所在的行里存在，满高不了，却是内容到留白的边。
     """
     profile = gradient_source() if callable(gradient_source) else gradient_source
     if profile is None:
@@ -321,9 +333,10 @@ def fold_column(width: int, height: int,
     if profile[top] < peak * FOLD_MIN_STRENGTH:
         return None
     span = round(width * FOLD_EDGE_SPAN)
+    reach = round(width * FOLD_PROMINENCE_REACH)
     edges = _rival_edges(profile, window, profile[top], span)
     if seams is not None and len(seams) == width:
-        edges += [column for column in _sharp_edges(profile, window, round(width * FOLD_PROMINENCE_REACH), span)
+        edges += [column for column in _sharp_edges(profile, window, reach, span)
                   if seams[column] >= FOLD_SHARP_MIN_COVERAGE
                   and all(abs(column - other) > span for other in edges)]
     found = min(edges, key=lambda column: abs((width - column) / height - shape.prior))
@@ -331,7 +344,65 @@ def fold_column(width: int, height: int,
     limit = round(width * FOLD_SETTLE_LIMIT)
     cut = _settled(profile, found, baseline, limit, span)
     seam = _seam_beyond(profile, seams, found, cut, window, peak)
-    return cut if seam is None else seam + 1
+    if seam is not None:
+        return seam + 1
+    sharp = _sharp_beyond(profile, seams, found, cut, window, reach, span)
+    return cut if sharp is None else _settled(profile, sharp, baseline, limit, span)
+
+
+def _sharp_beyond(profile: list[float], seams: Sequence[float] | None, found: int,
+                  cut: int, window: range, reach: int, span: int) -> int | None:
+    """切点右边、窗内最靠近切点的那根孤立尖峰；切点自己已经满高，或没有缝数据，返回 None。
+
+    书脊和正封底色相同的封套，折痕在留白的行里根本不存在，只在书脊内容所在的行里
+    是一道边：满高覆盖过不了 `FOLD_SHARP_MIN_COVERAGE`，梯度也过不了峭壁那一关，
+    于是候选只剩书脊内照片与文字的边，切点落在书脊里（IPZ-602 切在 411，折痕在
+    420）。这种折痕在剖面上是一根孤立的尖峰：达到窗内最高突出度 `FOLD_RIVAL_RATIO`
+    倍，且是左右各 `reach` 列梯度中位数的 `FOLD_ISOLATION` 倍。正封里紧挨折痕的大字
+    也是尖峰，可周围还有别的笔画，中位数压不下去。
+
+    孤立还不够，尖峰得是「书脊内容到正封留白」那个方向的（`_falls_off_to_the_right`）：
+    左边是书脊里的照片和文字，右边是正封留白，左侧中位数压过右侧，七张实测 2.3～15 倍。
+    正封内容的起笔正相反，左边是折痕到起笔之间的留白、右边是内容本身：PPT-018 的金色
+    竖排片名 431 列 0.13 倍、MISM-236 正封里一条细竖线 1162 列 0.66 倍、IPOK-010 正封
+    照片的边 1172 列 0.22 倍，三张的切点本来就在折痕上（满高 0.40～0.62，差一点够不到
+    `SEAM_MIN_COVERAGE`），不看方向会各切进正封 9～24 列。
+
+    与 `_seam_beyond` 共用两条边界：只往右找（书脊内容的边都在折痕左边），切点自身
+    满高就不动（那已经是折痕）。取最靠近切点的那根：折痕右边再有孤立尖峰是正封的
+    内容，越过它就切进正面。尖峰还是斜坡最陡处，切点照旧往右走完斜坡。本机 772 张
+    切出正封的封套（折痕 719、比例 53）按这条改 5 张（CLUB-622、EBOD-531、GUN-851、
+    IPX-150、PGD-526），演示库 299 张改 2 张（IPZ-602、IPZZ-477），逐张目视都是去掉
+    正封左缘那条书脊。
+    """
+    if seams is None or len(seams) != len(profile):
+        return None
+    if max(seams[found:cut + 1]) >= SEAM_MIN_COVERAGE:
+        return None
+    lifted = _prominence(profile, window, reach)
+    if not lifted:
+        return None
+    best = max(lifted.values())
+    if best <= 0:
+        return None
+    return min((column for column in window if column > cut
+                and lifted[column] >= best * FOLD_RIVAL_RATIO
+                and profile[column] >= FOLD_ISOLATION * (profile[column] - lifted[column])
+                and _falls_off_to_the_right(profile, column, span, reach)),
+               default=None)
+
+
+def _falls_off_to_the_right(profile: list[float], column: int, span: int, reach: int) -> bool:
+    """这根尖峰左边比右边忙吗：两侧各取边自身 `span` 之外、`reach` 之内的梯度中位数。
+
+    边自身那几列不算：JPEG 里一道边糊成两三列（GUN-851 的折痕 422、423 两列一样高），
+    算进右侧会把右侧抬起来。两侧都取不到列（尖峰贴着源图边缘）就不认。
+    """
+    left = profile[max(0, column - reach):max(0, column - span)]
+    right = profile[column + span + 1:column + reach + 1]
+    if not left or not right:
+        return False
+    return statistics.median(left) > statistics.median(right)
 
 
 def _seam_beyond(profile: list[float], seams: Sequence[float] | None, found: int,
@@ -400,16 +471,23 @@ def _rival_edges(profile: list[float], window: range, top: float,
     return kept
 
 
-def _sharp_edges(profile: list[float], window: range, reach: int, span: int) -> list[int]:
-    """窗里突出度和最突出那列相当的边：比左右 `reach` 列的中位数高出多少，一条边只留一列。"""
+def _prominence(profile: list[float], window: range, reach: int) -> dict[int, float]:
+    """窗里每一列的突出度：比左右各 `reach` 列的梯度中位数高出多少。`reach` 不足一列为空。"""
     if reach < 1:
-        return []
+        return {}
 
     def prominence(column: int) -> float:
         around = profile[max(0, column - reach):column] + profile[column + 1:column + reach + 1]
         return profile[column] - statistics.median(around)
 
-    lifted = {column: prominence(column) for column in window}
+    return {column: prominence(column) for column in window}
+
+
+def _sharp_edges(profile: list[float], window: range, reach: int, span: int) -> list[int]:
+    """窗里突出度和最突出那列相当的边，一条边只留一列。"""
+    lifted = _prominence(profile, window, reach)
+    if not lifted:
+        return []
     best = max(lifted.values())
     if best <= 0:
         return []
