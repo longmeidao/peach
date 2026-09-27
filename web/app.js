@@ -6600,8 +6600,8 @@ async function updateEntityCollection(kind,name,filters,push=true){
    `web/css/08-photos.css` 里那条规则上面。
    缩略图一律走 `/photo-thumb`（服务端缓存），只有灯箱里的大图读 `/photo` 原图——
    PikPak 是计费来源，一屏直接铺原图等于付几十兆流量。
-   番号样张不分组：名下每部作品的官方样张按发行日从新到旧直接铺在墙的最前面，每部第一张
-   角上标番号（ADR-0068）。`set=` 参数只认目录图集的整数 id。 ── */
+   番号样张按作品分段、不另开一层：名下每部作品的官方样张按发行日从新到旧一段一段铺在
+   本地图片前面，每段一行段头（ADR-0068）。`set=` 参数只认目录图集的整数 id。 ── */
 function emptyMediaView(){return {media:'videos',set:0}}
 const parseMediaView=search=>{const params=new URLSearchParams(search),set=params.get('set')||'';
   return {media:params.get('media')==='photos'?'photos':'videos',set:/^\d+$/.test(set)?Number(set):0}};
@@ -6743,14 +6743,20 @@ const photoCell=(item,index)=>`<button class="photocell" data-photo-index="${ind
       decoding="async" fetchpriority="low"
       data-drop="closest:.photocell"></button>`;
 /* 样张格取不到图时留在墙上，只摘掉 <img>：本地图片取不到说明文件没了，整格该走；样张
-   取不到多半是来源这会儿不通，格子留着 `--sunk` 空底，序号不断，灯箱里照样翻得到。
-   每部作品的第一张角上标番号，用卡片上那枚角标：墙上各部挨着铺，这是分得清哪几张是
-   同一部的唯一记号；图没取到时番号照样留在空格上。 */
+   取不到多半是来源这会儿不通，格子留着 `--sunk` 空底，序号不断，灯箱里照样翻得到。 */
 const sampleQuery=item=>`code=${encodeURIComponent(item.code)}&n=${item.position}`;
 const sampleCell=(item,index)=>`<button class="photocell" data-photo-index="${index}" title="${esc(item.name)}">
     <img src="/sample-thumb?${sampleQuery(item)}" alt="${esc(item.name)}" loading="lazy"
-      decoding="async" fetchpriority="low" data-drop="self">${item.position===1
-      ?`<span class="mixbadge mono">${esc(item.code)}</span>`:''}</button>`;
+      decoding="async" fetchpriority="low" data-drop="self"></button>`;
+/* 每部作品一段：段头一行写番号、标题和「来源 样张 · 发行日 · 张数」，下面是这部自己的一面墙。
+   一面通铺的瀑布流按列往下填，一部的图会从上一列底部接到下一列顶部，逐张标番号又太吵；
+   分段后一部只标一次，归属一眼看得出。`start` 是这一段在整面墙序号里的起点，灯箱照旧
+   跨段连续翻。 */
+const photoGroupHead=(label,title,meta)=>`<div class="photogroup"><b class="mono">${esc(label)}</b>${title
+  ?`<span class="photogrouptitle" title="${esc(title)}">${esc(title)}</span>`:''}<span class="photogroupmeta">${esc(meta)}</span></div>`;
+const sampleGroupHtml=(set,items,start)=>photoGroupHead(set.code,set.name,
+  [`${set.site_label||'官方'} 样张`,set.release_date,`${set.n} 张`].filter(Boolean).join(' · '))
+  +`<div class="photowall" data-size="${photoSize()}">${items.map((item,i)=>sampleCell(item,start+i)).join('')}</div>`;
 const photoReadout=(data,codeSets)=>'照片 · '+[
   data.total||!codeSets.length?`${(data.total||0).toLocaleString()} 张`:'',
   codeSets.length?`样张 ${(data.sample_total||0).toLocaleString()} 张 · ${codeSets.length} 部作品`:'']
@@ -6768,7 +6774,7 @@ const photoHeadHtml=(data,{back=false,codeSets=[]}={})=>collectionHeaderHtml({cl
   before:back?`<button class="photoback" type="button">${icon('chevron-left')}<span>全部照片</span></button>`:'',
   readout:back?`${esc(data.title)} · ${(data.total||0).toLocaleString()} 张`:photoReadout(data,codeSets),
   controls:sortControlsHtml({extra:photoControlsHtml()+(back?sourceTools(data.id):'')})});
-/* 墙上样张在前、本地图片在后，翻页只数本地图片：样张一次铺完，不走分页。 */
+/* 样张各段在前、本地图片那一面墙在后，翻页只数本地图片：样张一次铺完，不走分页。 */
 const localPhotoCount=()=>photoWallItems.filter(item=>!item.sample).length;
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
@@ -6776,9 +6782,16 @@ function renderPhotoWall(kind,name,filters,data,append=false){
   const entityWide=!data.id;
   if(!append){
     const codeSets=entityWide?codeSetsOf(data):[];
-    photoWallItems=codeSets.flatMap(codeSetItems);
-    section.innerHTML=photoHeadHtml(data,{back:!entityWide,codeSets})
-      +`<div class="photowall" data-size="${photoSize()}">${photoWallItems.map(sampleCell).join('')}</div>
+    photoWallItems=[];
+    const groups=codeSets.map(set=>{
+      const items=codeSetItems(set),start=photoWallItems.length;
+      photoWallItems.push(...items);
+      return sampleGroupHtml(set,items,start)}).join('');
+    // 只有本地图片时不出段头，墙和目录图集那一屏一样直接开始。
+    const localHead=codeSets.length&&data.total
+      ?photoGroupHead('本地图片','',`${data.total.toLocaleString()} 张`):'';
+    section.innerHTML=photoHeadHtml(data,{back:!entityWide,codeSets})+groups+localHead
+      +`<div class="photowall" data-local-wall data-size="${photoSize()}"></div>
         <button class="entitymore" type="button">载入更多</button>`;
     const head=section.querySelector('.photohead');
     wirePhotoControls(head);syncPhotoWalls();
@@ -6793,11 +6806,11 @@ function renderPhotoWall(kind,name,filters,data,append=false){
     }
     syncEntityFilterFrame();
   }
-  const wall=section.querySelector('.photowall');
+  const wall=section.querySelector('[data-local-wall]');
   const start=photoWallItems.length;
   photoWallItems.push(...data.items);
   wall.insertAdjacentHTML('beforeend',data.items.map((item,i)=>photoCell(item,start+i)).join(''));
-  wall.querySelectorAll('.photocell:not([data-wired])').forEach(cell=>{
+  section.querySelectorAll('.photocell:not([data-wired])').forEach(cell=>{
     cell.dataset.wired='1';
     cell.onclick=()=>openPhotoLightbox(Number(cell.dataset.photoIndex))});
   const more=section.querySelector('.entitymore');
