@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/longmeidao/peach/releases">下载 Windows 版</a> ·
+  <a href="https://demo.peach.video">在线演示</a> ·
   <a href="https://github.com/longmeidao/peach/releases/tag/intro-video">介绍视频</a> ·
   <a href="https://github.com/longmeidao/peach/issues">问题反馈</a> ·
   <a href="#文档">文档</a> ·
@@ -34,6 +35,8 @@ https://github.com/user-attachments/assets/cc164de3-28d6-4fc9-8067-f2e70e94cb93
 - **数据留在自己电脑上**：观看记录、收藏和设置都存在本机；补资料时只向来源站点发送番号。
 
 ## 截图
+
+不想先装？[在线演示](https://demo.peach.video) 里是一份现成的馆藏，搜索、女优页、筛选和统计都能直接点；演示站只读，操作不会保存。
 
 <table>
   <tr>
