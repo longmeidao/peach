@@ -2,13 +2,18 @@
  *
  * 料（漂移的两团、斜光、内嵌边与落影）由 `web/board.css` 的 `[data-glass-pane]` 一处给，
  * 几何、饱和度与文字色在 `../styles.css` 的 `[data-filter-glass]`，高对比与减少透明度的回退
- * 也在那一条上。胶囊键 30px 高、透明底、一圈 `--glass-low`，
+ * 也在那一条上。吸到顶栏下沿那一刻由 `use-stuck.ts` 标 `data-stuck`，影换成抬起来那一档。
+ * 胶囊键 30px 高、透明底、一圈 `--glass-low`，
  * 悬停换成 `--glass-rim` 边加 `--glass-pick-fill` 底——玻璃上的键不是 BoardUI 那种实心按钮。 */
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
+
+import { useStuck } from './use-stuck';
 
 export function FilterGlass({ title, children }: { title: string; children: ReactNode }) {
+  const glass = useRef<HTMLDivElement>(null);
+  useStuck(glass);
   return (
-    <div role="group" aria-label={title} data-filter-glass data-glass-pane=""
+    <div ref={glass} role="group" aria-label={title} data-filter-glass data-glass-pane=""
       className="sticky top-topbar z-10 mb-5.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5">
       <h3 className="mr-1 text-body-medium">{title}</h3>
       {children}
@@ -22,8 +27,10 @@ export function FilterGlass({ title, children }: { title: string; children: Reac
 export function FilterGlassRows(
   { label, topLabel, top, bottom }: { label: string; topLabel: string; top: ReactNode; bottom: ReactNode },
 ) {
+  const glass = useRef<HTMLDivElement>(null);
+  useStuck(glass);
   return (
-    <div role="group" aria-label={label} data-filter-glass data-glass-pane=""
+    <div ref={glass} role="group" aria-label={label} data-filter-glass data-glass-pane=""
       className="sticky top-topbar z-10 mb-5.5 flex flex-col">
       <div role="group" aria-label={topLabel} data-filter-row="top"
         className="flex h-12 min-w-0 items-center gap-1.75 overflow-x-auto overscroll-x-contain px-3 py-2">

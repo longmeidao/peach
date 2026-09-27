@@ -59,11 +59,18 @@ it('填充卡之上另加的那条描边不换底', () => {
   expect(classes({ bordered: 'soft' })).toContain('border-separator-border');
 });
 
-it('选中态压一圈内描边，悬停不盖选中', () => {
+/* 环画在 `::after` 覆盖层上：inset 的 box-shadow 画在子元素底下，脚注带一铺底色就盖掉环的下半截。 */
+it('选中态在最上层压一圈 2px 描边，收掉接触阴影，悬停不盖选中', () => {
   const tab = cardClass({ interactive: true, selectable: true });
-  expect(tab).toContain('data-selected:ring-2');
-  expect(tab).toContain('data-selected:ring-inset');
-  expect(tab).toContain('data-selected:ring-border-focus-ring');
+  expect(tab).toContain('relative');
+  expect(tab).toContain('data-selected:shadow-none');
+  expect(tab).toContain('data-selected:after:absolute');
+  expect(tab).toContain('data-selected:after:inset-0');
+  expect(tab).toContain('data-selected:after:z-1');
+  expect(tab).toContain('data-selected:after:rounded-[inherit]');
+  expect(tab).toContain('data-selected:after:border-2');
+  expect(tab).toContain('data-selected:after:border-border-focus-ring');
+  expect(tab).not.toContain('ring-inset');
   // 悬停那条写成 `not-data-selected:`，不指望工具类的先后顺序。
   expect(tab).toContain('not-data-selected:hover:bg-card-hover');
   expect(tab).not.toContain(' hover:bg-card-hover');
