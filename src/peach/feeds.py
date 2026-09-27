@@ -4,8 +4,9 @@ Feed 只回答一个问题——最近出了哪些番号。一次拉取的全部
 的记录和一条「这个番号还没入库」的记录；不下载种子、不下载 enclosure、不建目录、
 不碰任何媒体文件。
 
-订阅只有一类：JavDB 演员页当伪 Feed 抓，由人物页的「订阅新作」开关按这位的 JavDB 身份
-现拼地址（ADR-0047）。页面不送地址，所以这里没有「任意地址」这条入口。
+订阅只有一类：JavDB 演员页当伪 Feed 抓，由人物页的「订阅新作」开关或订阅源页签按名字勾选的
+演员卡，按这位的 JavDB 身份现拼地址（ADR-0047、ADR-0083）。页面不送地址，所以这里没有
+「任意地址」这条入口。
 
 **解析只吃已下载的字节**，地址由调用方自己取（`peach.http` 的 transport 加主机限流）。
 把地址交给一个会自己发 HTTP 的解析器，等于绕过项目的代理、限流、超时与预算闸门。
@@ -24,7 +25,7 @@ from .entities import normalize_entity_name
 #: JavDB 演员页当伪 Feed 抓。它按发行日排在前面，所以「还没发行的作品」会先出现。
 KIND_JAVDB_ACTOR = "javdb-actor"
 
-KIND_LABELS = {KIND_JAVDB_ACTOR: "JavDB 演员页"}
+KIND_LABELS = {KIND_JAVDB_ACTOR: "JAV 订阅"}
 
 #: 拉取间隔。JavDB 按出口 IP 计配额，一张一天才更新几条的页面拉得再密也只是花配额。
 DEFAULT_INTERVAL_MINUTES = 360

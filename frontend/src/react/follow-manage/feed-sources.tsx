@@ -1,114 +1,330 @@
-/* 关注管理页的「订阅源」页签：列表、开关、移除、上次拉取时间与错误（ADR-0042）。
+/* 关注管理页的「订阅源」页签：上面一张「添加 JAV 订阅」卡，下面一张和关注列表同一个外观的表，
+ * 一行一条源，列出类型、来源、状态、频率、上次拉取与新增，行尾是启用开关与移除键（ADR-0042）。
  *
- * 订阅只从人物页的「订阅新作」进，这里不收地址（ADR-0047）。拉回来的新作排在首页与人物页
- * 筛选栏下面那一行，不在这里列——这里再列一遍就成了第二个入口，两处的已读状态会各说各话。
- * 服务端是唯一真相：开关与移除之后重取这一份，不在前端按响应拼一份新的本地状态。 */
-import { useQuery } from '@tanstack/react-query';
+ * 订阅从人物页的「订阅新作」或这里按名字进，两条路都不收地址（ADR-0047、ADR-0083）。拉回来的
+ * 新作排在首页与人物页筛选栏下面那一行，不在这里列——这里再列一遍就成了第二个入口，两处的
+ * 已读状态会各说各话。
+ * 服务端是唯一真相：开关与移除之后重取这一份，不在前端按响应拼一份新的本地状态。
+ *
+ * 勾选和关注列表同一套：勾在行首，点一行的空白处也是选这一行，选中了底部浮出批量操作。 */
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { RiDeleteBinLine, RiRssLine } from '@remixicon/react';
+import { VisuallyHidden } from 'react-aria-components';
+import { mapLimit } from '@peach/legacy/core';
 import { confirmModal } from '@peach/legacy/ui';
 
-import { SettingsCard, SettingsRow } from '@/components/application/settings/settings-rows';
+import { Chip } from '@/components/base/badges/chip';
 import { Button } from '@/components/base/buttons/button';
+import { Checkbox } from '@/components/base/checkbox/checkbox';
 import { Switch } from '@/components/base/switch/switch';
+import {
+  Table, TableBody, TableCell, TableColumn, TableHeader, TableRow,
+} from '@/components/base/table/table';
 
 import { errorMessage } from '../../api';
+import { DataTableFrame } from '../components/data-table-frame';
 import { EmptyState } from '../components/empty-state';
 import { Note } from '../components/note';
+import { SelectionDock } from '../components/selection-dock';
 import { queryClient } from '../query';
-import { ErrorText, Footer, Help, Rows, Stack } from '../settings/section';
+import { ErrorText, Help } from '../settings/section';
 import { busyProps, useAction } from '../settings/use-action';
+import { localTime } from '../time';
+import { AddFeed } from './add-feed';
 import {
   checkFeeds, FEEDS_KEY, fetchFeeds, removeFeed, setFeedEnabled, type FeedSource,
 } from './follow-manage';
 
-/** 一行订阅源在名称下面那句话：上次什么时候拉的、拉到几条。没拉过就直说还没拉过。 */
-function describe(source: FeedSource): string {
-  const when = source.last_fetched_at
-    ? `上次拉取 ${new Date(source.last_fetched_at).toLocaleString()}`
-    : '还没拉过';
-  const interval = source.interval_minutes >= 60
-    ? `每 ${Math.round(source.interval_minutes / 60)} 小时一次`
-    : `每 ${source.interval_minutes} 分钟一次`;
-  return `${source.kind_label} · ${interval} · ${when} · 上次新增 ${source.last_new_count} 条`;
-}
+const COLUMN_LABELS: Record<string, string> = {
+  select: '选择',
+  name: '名称',
+  kind: '类型',
+  origin: '来源',
+  status: '状态',
+  interval: '频率',
+  fetched: '上次拉取',
+  fresh: '上次新增',
+  enabled: '启用',
+  actions: '操作',
+};
+
+/** 表头里不占字的列：勾选那一格自己会说「选择 谁」，行尾两个控件也各带自己的名字。 */
+const SILENT_COLUMNS = new Set(['select', 'enabled', 'actions']);
 
 const reload = () => queryClient.invalidateQueries({ queryKey: FEEDS_KEY, exact: true });
 
 const feedName = (source: FeedSource) => source.name || source.url;
 
+const intervalText = (minutes: number) => (minutes >= 60
+  ? `每 ${Math.round(minutes / 60)} 小时`
+  : `每 ${minutes} 分钟`);
+
+/** 来源那一格只摆站名：地址整条写出来会把这张表撑到一屏之外，点开就是原页面。 */
+function originHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+/** 一条源此刻的状态：拉不动最要紧，其次才是开着还是停着。 */
+function StatusChip({ source }: { source: FeedSource }) {
+  if (source.last_error) return <Chip variant="caption" color="rose">拉取失败</Chip>;
+  if (!source.enabled) return <Chip variant="caption" color="neutral">已暂停</Chip>;
+  return <Chip variant="caption" color="lime">正常</Chip>;
+}
+
+interface RowHandlers {
+  readOnly: boolean;
+  toggle(source: FeedSource, enabled: boolean): void;
+  remove(source: FeedSource): void;
+}
+
+/** 移除前先弹确认，和关注列表那一行同一套：删的是这条源和它的去重记忆，拉回来的新作留着
+ *  （`feed_discovery.source_id` 置空）。写入交给弹层，忙态和失败原因都落在弹层里。 */
+function confirmRemove(sources: FeedSource[], write: () => Promise<unknown>) {
+  const one = sources.length === 1 ? sources[0] : null;
+  return confirmModal({
+    title: one ? '移除订阅源' : `移除 ${sources.length} 条订阅源`,
+    body: one
+      ? `将移除订阅源「${feedName(one)}」，之后不再拉取它的新作；已经拉到的新作保留。`
+      : '将移除所选订阅源，之后不再拉取它们的新作；已经拉到的新作保留。',
+    confirmLabel: one ? '移除订阅源' : '移除所选订阅源', danger: true,
+    onConfirm: write,
+  });
+}
+
 export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(message: string): void }) {
   const feeds = useQuery({ queryKey: FEEDS_KEY, queryFn: ({ signal }) => fetchFeeds(signal) });
   const action = useAction();
   const data = feeds.data;
+  const sources = useMemo(() => data?.sources ?? [], [data]);
+  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set<number>());
 
-  if (!data) {
-    return (
-      <SettingsCard>
-        <Stack>
-          {feeds.error
-            ? <Note tone="error" title="打不开订阅源">{errorMessage(feeds.error)}</Note>
-            : <Help>正在读订阅源。</Help>}
-        </Stack>
-      </SettingsCard>
-    );
-  }
+  /* 删掉的源不该还占着计数：清单换一份就把已经不在里面的 ID 丢掉。 */
+  useEffect(() => {
+    setSelected((now) => {
+      const alive = new Set(sources.map((source) => source.id));
+      const next = new Set([...now].filter((id) => alive.has(id)));
+      return next.size === now.size ? now : next;
+    });
+  }, [sources]);
 
-  const toggle = (source: FeedSource, enabled: boolean) => void action.run(`enabled-${source.id}`,
-    (signal) => setFeedEnabled(source.id, enabled, signal), () => void reload());
-  /* 移除和关注列表那一行同一套确认：删的是这条源和它的去重记忆，拉回来的新作留着
-     （`feed_discovery.source_id` 置空）。写入交给弹层，忙态和失败原因都落在弹层里。 */
-  const remove = (source: FeedSource) => void confirmModal({
-    title: '移除订阅源',
-    body: `将移除订阅源「${feedName(source)}」，之后不再拉取它的新作；已经拉到的新作保留。`,
-    confirmLabel: '移除订阅源', danger: true,
-    onConfirm: async () => {
+  const bulk = useMutation({
+    mutationFn: async (work: { ids: number[]; action: 'enabled' | 'paused' | 'remove' }) => {
+      const results = await mapLimit(work.ids, 4, async (id: number) => {
+        if (work.action === 'remove') await removeFeed(id);
+        else await setFeedEnabled(id, work.action === 'enabled');
+      });
+      return { ...work, results };
+    },
+    onSuccess: (result) => {
+      const failed = result.results.filter((row) => !row.ok);
+      const done = result.ids.length - failed.length;
+      setSelected(new Set());
+      void reload();
+      if (result.action === 'remove' && done) toast(`已移除 ${done} 条订阅源`);
+      if (failed.length) {
+        const first = failed[0]!;
+        action.setError(`${failed.length} 条没有写入：${first.ok ? '' : errorMessage(first.error)}`);
+      }
+    },
+    onError: (cause) => action.setError(errorMessage(cause)),
+  });
+
+  /* 列定义只建一次，行里的控件到点击那一刻再从这里取最新的处理器与只读态。 */
+  const handlers = useRef<RowHandlers>({ readOnly, toggle: () => {}, remove: () => {} });
+  handlers.current = {
+    readOnly,
+    toggle: (source, enabled) => void action.run(`enabled-${source.id}`,
+      (signal) => setFeedEnabled(source.id, enabled, signal), () => void reload()),
+    remove: (source) => void confirmRemove([source], async () => {
       await removeFeed(source.id);
       toast(`已移除订阅源「${feedName(source)}」`);
       void reload();
+    }),
+  };
+
+  const columns = useMemo(() => {
+    const column = createColumnHelper<FeedSource>();
+    const label = (id: string) => () => COLUMN_LABELS[id] || id;
+    return [
+      column.display({
+        id: 'select',
+        header: label('select'),
+        /* `slot={null}`：表格自带一个叫 selection 的插槽，摆进去的勾不声明归属就会被它
+           拦下报错。这一列的勾归 TanStack Table 那份行选择管，不走 Table 自己的选择。 */
+        cell: (context) => (
+          <Checkbox slot={null} isSelected={context.row.getIsSelected()}
+            onChange={(on) => context.row.toggleSelected(on)}
+            aria-label={`选择 ${feedName(context.row.original)}`} />
+        ),
+      }),
+      column.accessor(feedName, {
+        id: 'name',
+        header: label('name'),
+        /* 名字、频率与时间都不换行：窄屏上这张表靠 Table 自带的容器横着滚，让格子换行只会
+           把「三上悠亜」竖着摆成四行，滚动反而没了用处。 */
+        cell: (context) => (
+          <span className="whitespace-nowrap text-body-medium text-text-primary">{context.getValue()}</span>
+        ),
+      }),
+      column.accessor((row) => row.kind_label, {
+        id: 'kind',
+        header: label('kind'),
+        cell: (context) => <span className="whitespace-nowrap">{context.getValue()}</span>,
+      }),
+      column.accessor((row) => row.url, {
+        id: 'origin',
+        header: label('origin'),
+        cell: (context) => (
+          <a href={context.getValue()} target="_blank" rel="noreferrer noopener" title="打开来源页面"
+            className="text-text-primary underline-offset-2 hover:underline">
+            {originHost(context.getValue())}
+          </a>
+        ),
+      }),
+      column.display({
+        id: 'status',
+        header: label('status'),
+        cell: (context) => <StatusChip source={context.row.original} />,
+      }),
+      column.accessor((row) => intervalText(row.interval_minutes), {
+        id: 'interval',
+        header: label('interval'),
+        cell: (context) => <span className="whitespace-nowrap">{context.getValue()}</span>,
+      }),
+      column.accessor((row) => (row.last_fetched_at ? localTime(row.last_fetched_at) : '还没拉过'), {
+        id: 'fetched',
+        header: label('fetched'),
+        cell: (context) => <span className="whitespace-nowrap tabular-nums">{context.getValue()}</span>,
+      }),
+      column.accessor((row) => row.last_new_count, {
+        id: 'fresh',
+        header: label('fresh'),
+        cell: (context) => <span className="whitespace-nowrap tabular-nums">{`${context.getValue()} 条`}</span>,
+      }),
+      column.display({
+        id: 'enabled',
+        header: label('enabled'),
+        cell: (context) => (
+          <Switch aria-label={`启用 ${feedName(context.row.original)}`}
+            isSelected={context.row.original.enabled} isDisabled={handlers.current.readOnly}
+            onChange={(enabled) => handlers.current.toggle(context.row.original, enabled)} />
+        ),
+      }),
+      column.display({
+        id: 'actions',
+        header: label('actions'),
+        /* 移除键和关注列表那一枚同一个写法：次级描边、垃圾桶字形，xs 那一档和开关一样高。 */
+        cell: (context) => (
+          <Button variant="secondary" size="xs" iconOnly leadingIcon={RiDeleteBinLine}
+            aria-label={`移除 ${feedName(context.row.original)}`}
+            disabled={handlers.current.readOnly}
+            onClick={() => handlers.current.remove(context.row.original)} />
+        ),
+      }),
+    ];
+  }, []);
+
+  const rowSelection = useMemo(
+    () => Object.fromEntries([...selected].map((id) => [String(id), true])), [selected]);
+  const table = useReactTable({
+    data: sources,
+    columns,
+    getRowId: (row) => String(row.id),
+    state: { rowSelection },
+    enableRowSelection: true,
+    onRowSelectionChange: (updater) => {
+      const next = typeof updater === 'function' ? updater(rowSelection) : updater;
+      setSelected(new Set(Object.entries(next).filter(([, on]) => on).map(([id]) => Number(id))));
     },
+    getCoreRowModel: getCoreRowModel(),
   });
+
+  if (!data) {
+    return feeds.error
+      ? <Note tone="error" title="打不开订阅源">{errorMessage(feeds.error)}</Note>
+      : <Help>正在读订阅源。</Help>;
+  }
+
   const check = () => void action.run('check', (signal) => checkFeeds(signal), () => void reload());
+  const toggleRow = (id: number) => setSelected((now) => {
+    const next = new Set(now);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const chosen = sources.filter((source) => selected.has(source.id));
+  const failing = sources.filter((source) => source.last_error);
 
-  const failing = data.sources.filter((source) => source.last_error);
-
-  /* 分区名由页签「订阅源」给，卡片上面没有同名的小标题。 */
+  /* 分区名由页签「订阅源」给，表上面没有同名的小标题。 */
   return (
-    <SettingsCard>
-      {data.sources.length ? (
-        <Rows>
-          {data.sources.map((source) => (
-            <SettingsRow key={source.id} label={feedName(source)} description={describe(source)}>
-              {/* 移除键和关注列表那一枚同一个写法：次级描边、垃圾桶字形。取 xs 那一档，
-                  和开关一样 24px 高，两样并排才读成同一行的两个控件。 */}
-              <div className="flex items-center gap-2">
-                <Switch aria-label={`启用 ${feedName(source)}`} isSelected={source.enabled}
-                  isDisabled={readOnly} onChange={(enabled) => toggle(source, enabled)} />
-                <Button variant="secondary" size="xs" iconOnly leadingIcon={RiDeleteBinLine}
-                  aria-label={`移除 ${feedName(source)}`} disabled={readOnly}
-                  onClick={() => remove(source)} />
-              </div>
-            </SettingsRow>
-          ))}
-        </Rows>
-      ) : (
-        <EmptyState icon={RiRssLine} title="还没有订阅源" shell="plain">
-          在人物页点「订阅新作」添加。
-        </EmptyState>
-      )}
+    <div className="flex flex-col gap-3">
+      <AddFeed readOnly={readOnly} toast={toast} onAdded={() => void reload()} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Help role="status">{data.unread ? `有 ${data.unread} 条新作还没看` : '新作都看过了'}</Help>
+        <Button onClick={check} disabled={readOnly} {...busyProps(action.busy === 'check')}>立即拉取</Button>
+      </div>
+
       {failing.length || action.error ? (
-        <Stack divided>
-          {/* 拉不动的源各自把原因摆在自己那一行下面：一条源坏掉不该让整节看起来都坏了。 */}
+        <div className="flex flex-col gap-3">
+          {/* 拉不动的源各自把原因摆出来：一条源坏掉不该让整张表看起来都坏了。 */}
           {failing.map((source) => (
             <Note key={source.id} tone="error" title={`${feedName(source)} 拉取失败`}>
               {source.last_error}
             </Note>
           ))}
           {action.error ? <ErrorText>{action.error}</ErrorText> : null}
-        </Stack>
+        </div>
       ) : null}
-      <Footer status={data.unread ? `有 ${data.unread} 条新作还没看` : '新作都看过了'}>
-        <Button onClick={check} disabled={readOnly} {...busyProps(action.busy === 'check')}>立即拉取</Button>
-      </Footer>
-    </SettingsCard>
+
+      {chosen.length ? (
+        <SelectionDock label="订阅源批量操作" count={`已选 ${chosen.length} 条订阅源`}>
+          <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
+            onClick={() => bulk.mutate({ ids: chosen.map((row) => row.id), action: 'enabled' })}>启用</Button>
+          <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
+            onClick={() => bulk.mutate({ ids: chosen.map((row) => row.id), action: 'paused' })}>暂停</Button>
+          <Button variant="danger" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
+            onClick={() => void confirmRemove(chosen,
+              () => bulk.mutateAsync({ ids: chosen.map((row) => row.id), action: 'remove' }))}>移除</Button>
+          <Button variant="ghost" size="small" onClick={() => setSelected(new Set())}>取消选择</Button>
+        </SelectionDock>
+      ) : null}
+
+      {sources.length ? (
+        <DataTableFrame onRowClick={(key) => toggleRow(Number(key))}>
+          <Table aria-label="订阅源" size="sm">
+            <TableHeader>
+              {table.getHeaderGroups()[0]!.headers.map((header) => {
+                const text = flexRender(header.column.columnDef.header, header.getContext());
+                return (
+                  <TableColumn key={header.id} id={header.id} isRowHeader={header.column.id === 'name'}>
+                    {SILENT_COLUMNS.has(header.column.id) ? <VisuallyHidden>{text}</VisuallyHidden> : text}
+                  </TableColumn>
+                );
+              })}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id} id={row.id} data-follow-selected={row.getIsSelected() || undefined}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DataTableFrame>
+      ) : (
+        <EmptyState icon={RiRssLine} title="还没有订阅源" shell="plain">
+          在上面按女优名添加，或在人物页点「订阅新作」。
+        </EmptyState>
+      )}
+    </div>
   );
 }

@@ -33,6 +33,7 @@ export const FOLLOW_STATUS_URL = '/api/follow/status';
 export const FEEDS_URL = '/api/feeds';
 export const FEED_SOURCE_URL = '/api/feeds/source';
 export const FEEDS_CHECK_URL = '/api/feeds/check';
+export const FEEDS_LOOKUP_URL = '/api/feeds/lookup';
 
 /** 来源清单、创作者别名与推荐共用这一个键。 */
 export const FOLLOW_MANAGE_KEY = ['follow-manage'] as const;
@@ -487,6 +488,46 @@ export const removeFeed = (id: number, signal?: AbortSignal) =>
 
 /** 立即拉取走的是和定时同一条路，只是把到期判断换成「全部启用的源」。 */
 export const checkFeeds = (signal?: AbortSignal) => apiSend(FEEDS_CHECK_URL, { all: true }, 'POST', signal);
+
+/** JavDB 搜出来的一张演员卡。字段以 `web_feeds.q_feed_lookup` 为准。 */
+export interface FeedCandidate {
+  /** 站内 id，登记时送回去的就是它。 */
+  id: string;
+  /** 这个人在站上的全部写法。 */
+  names: string[];
+  /** 记录类型：無碼那条带 `無碼`，有碼那条是空串。 */
+  record: string;
+  url: string;
+  /** 这个 id 已经在账本里谁名下。 */
+  held_by: { id: number; name: string } | null;
+  /** 卡上的写法对得上账本里哪几位的正名或别名。 */
+  matched: { id: number; name: string }[];
+}
+
+export interface FeedLookup {
+  q: string;
+  url: string;
+  candidates: FeedCandidate[];
+  /** 名字对得上、又只有一个人的那几张，先替用户勾上；同名不止一位时是空的。 */
+  suggested: string[];
+  /** 账本里按这个名字认得出的那位；认不出是 null，登记时会新建。 */
+  known: { id: number; name: string } | null;
+}
+
+export const lookupFeedActor = (name: string, signal?: AbortSignal) =>
+  apiGet<FeedLookup>(`${FEEDS_LOOKUP_URL}?q=${encodeURIComponent(name)}`, signal);
+
+export interface FeedFollowed {
+  entity_id: number;
+  entity_name: string;
+  /** 这位是这一次新建到账本里的。 */
+  created: boolean;
+  sources: number[];
+}
+
+/** 勾选的演员卡登记到这位名下并订上她的演员页。地址仍由服务端拼，页面只送 id。 */
+export const followFeedByName = (name: string, ids: string[], signal?: AbortSignal) =>
+  apiSend<FeedFollowed>(FEED_SOURCE_URL, { action: 'follow-name', name, ids }, 'POST', signal);
 
 /** 首屏：来源清单与凭据状态取回来才画；地址栏直接指着「订阅源」时连它一起取。
  *
