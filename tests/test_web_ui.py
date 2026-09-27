@@ -2368,19 +2368,20 @@ class WebUiSourceTests(unittest.TestCase):
             "background:transparent;")
 
     def test_the_portrait_grows_with_the_identity_column_on_wide_screens(self):
-        """头像跟着右边那列的高度长，不再钉死一个尺寸。
+        """头像跟着右边那列的行数长：四行都在时 160px，其余 120px。
 
         身份列有几行是看这个人有多少东西：只有名字和别名是两行，加上外链和看片那一行
-        就是四行。钉住 120px 的话卡上下空出一截，圆框反倒比文字轻。下限保住原尺寸，
-        上限免得内容再多时圆框把这一页的主角抢了。
+        就是四行。钉住 120px 的话卡上下空出一截，圆框反倒比文字轻。尺寸按行定而不取
+        行高的百分比：那样圆框宽、列宽、别名折行、行高绕成一个圈，Chromium 只解第一轮，
+        折行多出的高度压进卡底内边距。
         """
         self.assertPageContains(
             ".entityprofile{display:grid;grid-template-columns:auto minmax(0,1fr);")
         self.assertPageContains(
-            ".entityprofile>.entityportraitwrap{align-self:stretch;"
-            "display:flex;align-items:center}")
+            ".entityprofile:has(>.entityidentity>.entitylinks):has(>.entityidentity>.entrymarks)"
+            "{--portrait-size:160px}")
         self.assertPageContains(
-            ".entityportrait{height:100%;min-height:120px;max-height:160px;width:auto;")
+            ".entityportrait{height:var(--portrait-size);width:auto;")
 
     def test_the_entity_hero_is_a_centred_single_column_on_phones(self):
         # 左像右文那套是给宽屏的：手机上 96px 头像旁边只剩两百多像素，别名和链接被挤成
@@ -8528,7 +8529,7 @@ class WebUiSourceTests(unittest.TestCase):
             ".followpageaction .fmeta",
             ".fsechead .fmeta",
             ".frow>b",
-            ".feednewcard .meta .s>.feednewstudio", ".fvkind", ".idname",
+            ".feednewcard .meta .s>.feednewperformers", ".fvkind", ".idname",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",

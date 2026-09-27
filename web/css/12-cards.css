@@ -414,10 +414,10 @@ body[data-density="dense"] .card .meta .why{display:none}
 .feednewtools button{width:32px;height:32px}
 .feednewtools button svg{width:17px;height:17px}
 .feednewcard .meta .t{font-size:var(--fs-sm)}
-/* 厂牌加发行日一行放完，放不下截掉厂牌的尾巴：折成两行时断在日期中间，读成两个数。 */
+/* 女优名加发行日一行放完，放不下截掉女优名的尾巴：折成两行时断在日期中间，读成两个数。 */
 .feednewcard .meta .s{flex-wrap:nowrap;white-space:nowrap}
 .feednewcard .meta .s>span{flex:none}
-.feednewcard .meta .s>.feednewstudio{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.feednewcard .meta .s>.feednewperformers{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* 占位卡直接套真卡的 `.t` 与 `.s`：标题块是两行 2.7em，下面那行放一个零宽字符，行高
    跟真卡那行字同一套规则，到货那一下整行不跳。 */
 .feednewskeleton{pointer-events:none}
