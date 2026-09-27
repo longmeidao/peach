@@ -1984,6 +1984,48 @@ describe('设计决定', () => {
     });
   }
 
+  /* 整行都能点选之后，指着哪一行得看得出来。卡片视图的来源行和表格行走同一条规则；选中行
+     有自己的底色，指着它时不换。 */
+  it('关注列表指着哪一行哪一行换底色，两种视图都是，选中行的底色不被 hover 盖掉', { timeout: 60_000 }, async () => {
+    const opened = await openFollowManage(browser);
+    try {
+      const page = opened.page;
+      const background = (locator: Locator) => locator.evaluate((element) => {
+        for (const animation of element.getAnimations()) animation.finish();
+        return getComputedStyle(element).backgroundColor;
+      });
+      /* 勾选框的 input 视觉隐藏在画出来的方框底下，点它要 force，和上面选中底色那条用例一样。 */
+      const select = () => page.getByRole('checkbox', { name: '选择 kou · Kemono' })
+        .check({ force: true, timeout: 5_000 });
+      const card = page.locator('[data-source-divider] > div').first();
+      const cardRested = await background(card);
+      await card.hover();
+      assert.notEqual(await background(card), cardRested, '指着卡片视图的来源行时底色没换');
+      await select();
+      const cardSelectedHovered = await background(card);
+      await page.mouse.move(0, 0);
+      const cardSelectedRested = await background(card);
+      assert.equal(cardSelectedHovered, cardSelectedRested, '卡片视图选中行指着时换了底色，盖掉了选中态');
+      assert.notEqual(cardSelectedRested, cardRested, '卡片视图选中行没有自己的底色');
+
+      await page.locator('button[aria-label="表格视图"]').click({ timeout: 5_000 });
+      const row = page.locator('[data-board-data-table] tbody tr').first();
+      await row.waitFor({ timeout: 15_000 });
+      await page.mouse.move(0, 0);
+      const selectedRested = await background(row);
+      await row.hover();
+      assert.equal(await background(row), selectedRested, '表格视图选中行指着时换了底色，盖掉了选中态');
+      await page.getByRole('checkbox', { name: '选择 kou · Kemono' }).uncheck({ force: true, timeout: 5_000 });
+      await page.mouse.move(0, 0);
+      const rested = await background(row);
+      assert.notEqual(selectedRested, rested, '表格视图选中行没有自己的底色');
+      await row.hover();
+      assert.notEqual(await background(row), rested, '指着表格行时底色没换');
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('数据管理骨架里等数据的操作键是禁用态，数据到了才换回蓝色主按钮', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/data-cleanup', DESKTOP);
     try {

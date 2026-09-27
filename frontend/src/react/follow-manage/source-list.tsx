@@ -24,6 +24,7 @@ import { confirmModal } from '@peach/legacy/ui';
 import { Button, ButtonLink } from '@/components/base/buttons/button';
 import { Checkbox } from '@/components/base/checkbox/checkbox';
 import { Select, SelectItem } from '@/components/base/select/select';
+import { Switch } from '@/components/base/switch/switch';
 import {
   Table, TableBody, TableCell, TableColumn, TableHeader, TableRow,
 } from '@/components/base/table/table';
@@ -88,6 +89,8 @@ const COLUMN_LABELS: Record<string, string> = {
 /** 行上那两个动作由调用方给，但列定义不该跟着每一次渲染重建；两者之间放一个当前值的盒子。 */
 interface RowHandlers {
   check(ids: number[]): void;
+  /** 行尾的启用开关：只写这一条，不动勾选、不弹批量那句 toast，和订阅源表的开关一样。 */
+  toggle(source: FollowSource, enabled: boolean): void;
   remove(source: FollowSource): void;
   busy: boolean;
   readOnly: boolean;
@@ -165,6 +168,8 @@ function SourceRow(
       <span className="shrink-0 text-body-2-regular whitespace-nowrap text-text-secondary">
         {checkedText(source)}
       </span>
+      <Switch aria-label={`启用 ${source.label}`} isSelected={source.enabled}
+        isDisabled={handlers.readOnly} onChange={(on) => handlers.toggle(source, on)} />
       <span className="flex shrink-0 items-center gap-1">
         <Button variant="secondary" size="small" iconOnly leadingIcon={RiRefreshLine}
           aria-label={`检查 ${source.label} 的更新`}
@@ -282,6 +287,17 @@ export function SourceList(props: SourceListProps) {
     onError: (cause) => setProblem(errorMessage(cause)),
   });
 
+  /* 行尾的开关只写这一条并改本地那一行；批量那条路会顺手清勾选、弹「已启用 n 个」，
+     一枚开关不该有这两样动静。 */
+  const toggleEnabled = useMutation({
+    mutationFn: (work: { id: number; enabled: boolean }) => setSourceEnabled(work.id, work.enabled),
+    onSuccess: (_result, work) => {
+      patchSource(work.id, { enabled: work.enabled });
+      setProblem('');
+    },
+    onError: (cause) => setProblem(errorMessage(cause)),
+  });
+
   const removeSourceRow = (source: FollowSource) => void confirmModal({
     title: '取消关注来源', body: '将移除这个来源及已抓取的条目，媒体文件保留。',
     confirmLabel: '取消关注来源', danger: true,
@@ -335,11 +351,15 @@ export function SourceList(props: SourceListProps) {
     onError: (cause) => setProblem(errorMessage(cause)),
   });
 
+  const toggleSourceRow = (source: FollowSource, enabled: boolean) =>
+    toggleEnabled.mutate({ id: source.id, enabled });
+
   const handlers = useRef<RowHandlers>({
-    check: startChecking, remove: removeSourceRow, busy: false, readOnly,
+    check: startChecking, toggle: toggleSourceRow, remove: removeSourceRow, busy: false, readOnly,
   });
   handlers.current = {
     check: startChecking,
+    toggle: toggleSourceRow,
     remove: removeSourceRow,
     busy: running || check.isPending,
     readOnly,
@@ -411,6 +431,9 @@ export function SourceList(props: SourceListProps) {
         header: label('actions'),
         cell: (context) => (
           <span className="flex items-center gap-1">
+            <Switch aria-label={`启用 ${context.row.original.source.label}`}
+              isSelected={context.row.original.source.enabled} isDisabled={rowHandlers.readOnly}
+              onChange={(on) => handlers.current.toggle(context.row.original.source, on)} />
             <Button variant="secondary" size="small" iconOnly leadingIcon={RiRefreshLine}
               aria-label={`检查 ${context.row.original.source.label} 的更新`}
               disabled={!context.row.original.source.enabled || rowHandlers.readOnly}

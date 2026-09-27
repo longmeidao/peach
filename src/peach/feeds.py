@@ -282,6 +282,8 @@ def set_enabled(connection: sqlite3.Connection, source_id: int, enabled: bool) -
 
 
 def sources(connection: sqlite3.Connection) -> list[dict]:
+    """订阅源清单。挂着人物的源，名字就是她在账本里的统称：用户在资料页定的那个写法，
+    不是登记时从站上抄下来的。没挂人物的才用登记时存的名字。"""
     rows = connection.execute(
         "SELECT s.*, e.canonical_name AS entity_name,"
         " (SELECT count(*) FROM feed_item i WHERE i.source_id=s.id) AS seen"
@@ -291,7 +293,7 @@ def sources(connection: sqlite3.Connection) -> list[dict]:
         "id": int(row["id"]),
         "kind": row["kind"],
         "kind_label": KIND_LABELS.get(row["kind"], row["kind"]),
-        "name": row["name"] or row["entity_name"] or "",
+        "name": row["entity_name"] or row["name"] or "",
         "url": row["url"],
         "entity_id": row["entity_id"],
         "entity_name": row["entity_name"],

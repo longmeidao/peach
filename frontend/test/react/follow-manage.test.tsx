@@ -323,6 +323,27 @@ it('表格视图把每条来源摊成一行，勾的还是来源 ID', async () =
   expect(sentBody(fetcher, FOLLOW_SOURCE_URL)).toEqual([{ action: 'enabled', id: 2, enabled: false }]);
 });
 
+it('两种视图的行尾都有启用开关，拨一下只写这一条，勾选和 toast 都不动', async () => {
+  const { host, fetcher } = await open({}, { layout: 'table' });
+  await click(checkboxNamed(host, '选择 甲 · Pawchive'));
+  const toggle = () => host.querySelector<HTMLInputElement>('[aria-label="启用 甲 · Pawchive"]');
+  expect(toggle()?.checked).toBe(true);
+  await click(toggle());
+  await settle();
+  expect(sentBody(fetcher, FOLLOW_SOURCE_URL)).toEqual([{ action: 'enabled', id: 2, enabled: false }]);
+  expect(toggle()?.checked).toBe(false);
+  expect(host.textContent).toContain('已选 1 个来源');
+  expect(host.textContent).not.toContain('已暂停 1 个关注来源');
+
+  const card = await open({}, { layout: 'default' });
+  const cardToggle = () => card.host.querySelector<HTMLInputElement>('[aria-label="启用 甲 · Pawchive"]');
+  expect(cardToggle()?.checked).toBe(true);
+  await click(cardToggle());
+  await settle();
+  expect(sentBody(card.fetcher, FOLLOW_SOURCE_URL)).toEqual([{ action: 'enabled', id: 2, enabled: false }]);
+  expect(cardToggle()?.checked).toBe(false);
+});
+
 it('表格里点一行的空白处就是选这一行，再点取消；点行里的链接不算选', async () => {
   const { host } = await open({}, { layout: 'table' });
   const row = () => checkboxNamed(host, '选择 甲 · Pawchive')!.closest('[role="row"]')!;
@@ -572,12 +593,19 @@ const FEEDS: FeedsData = {
   unread: 3,
   sources: [
     { id: 4, kind: 'performer', kind_label: 'JAV 订阅', name: '甲 的新作', url: 'https://feeds.test/a',
-      entity_name: '甲', enabled: true, interval_minutes: 720, last_fetched_at: null, last_error: null,
-      last_new_count: 0, seen: 2 },
+      entity_id: 41, entity_name: '甲', has_image: true, enabled: true, interval_minutes: 720,
+      last_fetched_at: null, last_error: null, last_new_count: 0, seen: 2 },
     { id: 5, kind: 'performer', kind_label: 'JAV 订阅', name: '乙 的新作', url: 'https://feeds.test/b',
-      entity_name: '乙', enabled: false, interval_minutes: 30, last_fetched_at: null, last_error: '站点 503',
-      last_new_count: 0, seen: 0 },
+      entity_id: 42, entity_name: '乙', has_image: false, enabled: false, interval_minutes: 30,
+      last_fetched_at: null, last_error: '站点 503', last_new_count: 0, seen: 0 },
   ],
+};
+
+/** 一格里读得到的字：名字前那个退首字母的圆框标了 aria-hidden，不算进去。 */
+const shown = (cell: Element) => {
+  const copy = cell.cloneNode(true) as Element;
+  copy.querySelectorAll('[aria-hidden]').forEach((node) => node.remove());
+  return copy.textContent?.trim();
 };
 
 const feedReads = (fetcher: ReturnType<typeof serve>) =>
@@ -606,16 +634,24 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
   const { host, fetcher } = await open({ feeds: FEEDS }, { tab: 'feeds' });
   expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('订阅源');
   expect([...host.querySelectorAll('[role="columnheader"]')].map((cell) => cell.textContent?.trim()))
-    .toEqual(['选择', '名称', '类型', '来源', '状态', '频率', '上次拉取', '上次新增', '启用', '操作']);
+    .toEqual(['选择', '名称', '类型', '来源', '状态', '频率', '上次拉取', '上次新增', '操作']);
   const first = checkboxNamed(host, '选择 甲 的新作')!.closest('[role="row"]')!;
-  expect([...first.querySelectorAll('[role="rowheader"],[role="gridcell"]')].map((cell) => cell.textContent?.trim()))
-    .toEqual(['', '甲 的新作', 'JAV 订阅', 'feeds.test', '正常', '每 12 小时', '还没拉过', '0 条', '', '']);
+  expect([...first.querySelectorAll('[role="rowheader"],[role="gridcell"]')].map(shown))
+    .toEqual(['', '甲 的新作', 'JAV 订阅', 'feeds.test', '正常', '每 12 小时', '还没拉过', '0 条', '']);
   expect(first.querySelector('a')?.getAttribute('href')).toBe('https://feeds.test/a');
+  // 名字前的圆框：有资料图的走 `/entity-image`，没有的退首字母。
+  expect(first.querySelector('[role="rowheader"] img')?.getAttribute('src'))
+    .toBe('/entity-image?kind=performer&id=41&thumb=1');
+  const second = checkboxNamed(host, '选择 乙 的新作')!.closest('[role="row"]')!;
+  expect(second.querySelector('[role="rowheader"] img')).toBeNull();
+  expect(second.querySelector('[role="rowheader"] [aria-hidden]')?.textContent).toBe('乙');
   expect(host.textContent).toContain('乙 的新作 拉取失败');
   expect(host.textContent).toContain('有 3 条新作还没看');
   expect(host.textContent).not.toContain('正在读订阅源');
   expect(feedReads(fetcher)).toBe(1);
   await click(host.querySelector('[aria-label="启用 乙 的新作"]'));
+  await settle();
+  await click(buttonLabelled(host, '拉取 乙 的新作'));
   await settle();
   await click(buttonLabelled(host, '移除 甲 的新作'));
   await settle();
@@ -624,7 +660,8 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
   expect(sentBody(fetcher, FEED_SOURCE_URL)).toEqual([
     { action: 'enabled', id: 5, enabled: true }, { action: 'remove', id: 4 },
   ]);
-  expect(sentBody(fetcher, FEEDS_CHECK_URL)).toEqual([{ all: true }]);
+  // 行尾的拉取键只点名这一条，停着的也拉；「立即拉取」才是全部启用的源。
+  expect(sentBody(fetcher, FEEDS_CHECK_URL)).toEqual([{ sources: [5] }, { all: true }]);
   expect(feedReads(fetcher)).toBeGreaterThan(1);
 });
 

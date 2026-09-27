@@ -1,5 +1,6 @@
 /* 关注管理页的「订阅源」页签：上面一张「添加 JAV 订阅」卡，下面一张和关注列表同一个外观的表，
- * 一行一条源，列出类型、来源、状态、频率、上次拉取与新增，行尾是启用开关与移除键（ADR-0042）。
+ * 一行一条源，名字前是她的资料图，列出类型、来源、状态、频率、上次拉取与新增，行尾是启用开关、
+ * 拉取键与移除键（ADR-0042）。行尾这三样和关注列表那一行一一对应，两张表看起来是一回事。
  *
  * 订阅从人物页的「订阅新作」或这里按名字进，两条路都不收地址（ADR-0047、ADR-0083）。拉回来的
  * 新作排在首页与人物页筛选栏下面那一行，不在这里列——这里再列一遍就成了第二个入口，两处的
@@ -10,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
-import { RiDeleteBinLine, RiRssLine } from '@remixicon/react';
+import { RiDeleteBinLine, RiRefreshLine, RiRssLine } from '@remixicon/react';
 import { VisuallyHidden } from 'react-aria-components';
 import { mapLimit } from '@peach/legacy/core';
 import { confirmModal } from '@peach/legacy/ui';
@@ -46,12 +47,11 @@ const COLUMN_LABELS: Record<string, string> = {
   interval: '频率',
   fetched: '上次拉取',
   fresh: '上次新增',
-  enabled: '启用',
   actions: '操作',
 };
 
-/** 表头里不占字的列：勾选那一格自己会说「选择 谁」，行尾两个控件也各带自己的名字。 */
-const SILENT_COLUMNS = new Set(['select', 'enabled', 'actions']);
+/** 表头里不占字的列：勾选那一格自己会说「选择 谁」，行尾三个控件也各带自己的名字。 */
+const SILENT_COLUMNS = new Set(['select', 'actions']);
 
 const reload = () => queryClient.invalidateQueries({ queryKey: FEEDS_KEY, exact: true });
 
@@ -77,9 +77,29 @@ function StatusChip({ source }: { source: FeedSource }) {
   return <Chip variant="caption" color="lime">正常</Chip>;
 }
 
+/** 名字前的圆框：和关注列表的创作者圆标同一个尺寸与底色。有资料图走 `/entity-image`，判据由
+ *  服务端的 `has_image` 给；没有就退首字母，首字母不进读屏，名字本身就在旁边。 */
+function FeedAvatar({ source }: { source: FeedSource }) {
+  if (source.has_image && source.entity_id) {
+    return (
+      <img src={`/entity-image?kind=performer&id=${source.entity_id}&thumb=1`} alt="" width={32} height={32}
+        loading="lazy" className="size-8 shrink-0 rounded-full bg-background-tertiary-default object-cover" />
+    );
+  }
+  return (
+    <span aria-hidden
+      className="inline-grid size-8 shrink-0 place-items-center rounded-full bg-background-tertiary-default text-caption-1-semibold text-text-secondary">
+      {feedName(source).slice(0, 1)}
+    </span>
+  );
+}
+
 interface RowHandlers {
   readOnly: boolean;
+  /** 正在跑的那个动作的键（`useAction` 的 `busy`），行尾的拉取键按它挂忙态。 */
+  busy: string | null;
   toggle(source: FeedSource, enabled: boolean): void;
+  fetch(source: FeedSource): void;
   remove(source: FeedSource): void;
 }
 
@@ -136,11 +156,17 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
   });
 
   /* 列定义只建一次，行里的控件到点击那一刻再从这里取最新的处理器与只读态。 */
-  const handlers = useRef<RowHandlers>({ readOnly, toggle: () => {}, remove: () => {} });
+  const handlers = useRef<RowHandlers>({
+    readOnly, busy: null, toggle: () => {}, fetch: () => {}, remove: () => {},
+  });
   handlers.current = {
     readOnly,
+    busy: action.busy,
     toggle: (source, enabled) => void action.run(`enabled-${source.id}`,
       (signal) => setFeedEnabled(source.id, enabled, signal), () => void reload()),
+    /* 只拉这一条，停着的也拉：点这枚键的人就是想现在看她有没有新作，不必先去开开关。 */
+    fetch: (source) => void action.run(`check-${source.id}`,
+      (signal) => checkFeeds(signal, [source.id]), () => void reload()),
     remove: (source) => void confirmRemove([source], async () => {
       await removeFeed(source.id);
       toast(`已移除订阅源「${feedName(source)}」`);
@@ -169,7 +195,10 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
         /* 名字、频率与时间都不换行：窄屏上这张表靠 Table 自带的容器横着滚，让格子换行只会
            把「三上悠亜」竖着摆成四行，滚动反而没了用处。 */
         cell: (context) => (
-          <span className="whitespace-nowrap text-body-medium text-text-primary">{context.getValue()}</span>
+          <span className="flex items-center gap-2 whitespace-nowrap text-body-medium text-text-primary">
+            <FeedAvatar source={context.row.original} />
+            {context.getValue()}
+          </span>
         ),
       }),
       column.accessor((row) => row.kind_label, {
@@ -208,23 +237,25 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
         cell: (context) => <span className="whitespace-nowrap tabular-nums">{`${context.getValue()} 条`}</span>,
       }),
       column.display({
-        id: 'enabled',
-        header: label('enabled'),
-        cell: (context) => (
-          <Switch aria-label={`启用 ${feedName(context.row.original)}`}
-            isSelected={context.row.original.enabled} isDisabled={handlers.current.readOnly}
-            onChange={(enabled) => handlers.current.toggle(context.row.original, enabled)} />
-        ),
-      }),
-      column.display({
         id: 'actions',
         header: label('actions'),
-        /* 移除键和关注列表那一枚同一个写法：次级描边、垃圾桶字形，xs 那一档和开关一样高。 */
+        /* 行尾和关注列表表格同一个次序：启用开关、拉取键、移除键挨在一起。两枚键次级描边、
+           刷新与垃圾桶字形，xs 那一档和开关一样高。 */
         cell: (context) => (
-          <Button variant="secondary" size="xs" iconOnly leadingIcon={RiDeleteBinLine}
-            aria-label={`移除 ${feedName(context.row.original)}`}
-            disabled={handlers.current.readOnly}
-            onClick={() => handlers.current.remove(context.row.original)} />
+          <span className="flex items-center gap-1">
+            <Switch aria-label={`启用 ${feedName(context.row.original)}`}
+              isSelected={context.row.original.enabled} isDisabled={handlers.current.readOnly}
+              onChange={(enabled) => handlers.current.toggle(context.row.original, enabled)} />
+            <Button variant="secondary" size="xs" iconOnly leadingIcon={RiRefreshLine}
+              aria-label={`拉取 ${feedName(context.row.original)}`}
+              disabled={handlers.current.readOnly}
+              {...busyProps(handlers.current.busy === `check-${context.row.original.id}`)}
+              onClick={() => handlers.current.fetch(context.row.original)} />
+            <Button variant="secondary" size="xs" iconOnly leadingIcon={RiDeleteBinLine}
+              aria-label={`移除 ${feedName(context.row.original)}`}
+              disabled={handlers.current.readOnly}
+              onClick={() => handlers.current.remove(context.row.original)} />
+          </span>
         ),
       }),
     ];
