@@ -6,12 +6,12 @@
  *
  * 这一屏要回答的是「换成哪一张」，所以候选网格占掉中间全部高度，头部和底下那排操作
  * 固定不动，只有网格滚。候选到点开弹层才取：资料页每进一次就预取一遍，多数时候没人点。
- * 注册表里没有模态弹层，用 React Aria 的 `Modal` 组合，差异登记在 `../boardui/ORIGIN.md`。 */
+ * 弹层外壳是 `../components/modal-frame.tsx`。 */
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, CSSProperties } from 'react';
 import { RiAddLine, RiCloseLine, RiUserLine } from '@remixicon/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components';
+import { Heading } from 'react-aria-components';
 
 import { Chip } from '@/components/base/badges/chip';
 import { Button } from '@/components/base/buttons/button';
@@ -23,6 +23,7 @@ import {
   centeredBox, isUsableSize, previewStyle, windowStyle, type CropBox, type CropSize,
 } from '../../crop-geometry';
 import type { AvatarPickerProps } from '../bundle';
+import { ModalFrame, ModalGlyph } from '../components/modal-frame';
 import { Note } from '../components/note';
 import { useOverlayScrollbar } from '../components/overlay-scrollbar';
 import { CropFrame } from '../crop/crop-frame';
@@ -57,17 +58,10 @@ export function AvatarPicker({ kind, entityId, name, onPicked }: AvatarPickerPro
           <RiAddLine aria-hidden className="size-4" />
         </button>
       </span>
-      {/* 层级取遗留壳的 `--layer-dialog`：顶栏和侧栏各有自己的 z-index，比 Tailwind 那档
-          `z-50` 都高，遮罩压不住它们，弹层开着时那两块还亮着。 */}
-      <ModalOverlay isOpen={open} onOpenChange={setOpen} isDismissable
-        className="fixed inset-0 z-dialog flex items-center justify-center bg-scrim p-4">
-        <Modal className="flex max-h-full w-full max-w-avatar-picker flex-col overflow-hidden rounded-2-5xl border border-separator-border bg-background-full shadow-dropdown">
-          <Dialog aria-label="更换头像" className="flex min-h-0 flex-col outline-none">
-            <PickerBody kind={kind} entityId={entityId} name={name} onPicked={onPicked}
-              close={() => setOpen(false)} />
-          </Dialog>
-        </Modal>
-      </ModalOverlay>
+      <ModalFrame isOpen={open} onOpenChange={setOpen} width="avatar-picker" label="更换头像">
+        <PickerBody kind={kind} entityId={entityId} name={name} onPicked={onPicked}
+          close={() => setOpen(false)} />
+      </ModalFrame>
     </>
   );
 }
@@ -132,9 +126,7 @@ function PickerBody({ kind, entityId, name, onPicked, close }: AvatarPickerProps
     <>
       {/* 头部：左边一个方图标槽，右边标题加一句说明，右上角是关闭键。 */}
       <div className="flex shrink-0 items-start gap-4 p-5">
-        <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-separator-border bg-background-secondary-default text-foreground-icon-secondary">
-          <RiUserLine className="size-6" />
-        </span>
+        <ModalGlyph><RiUserLine className="size-6" /></ModalGlyph>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <Heading slot="title" className="text-title-3-semibold text-text-primary">

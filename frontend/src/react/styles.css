@@ -100,6 +100,10 @@
   --spacing-empty-glyph: 54px;
   --container-empty-copy: 340px;
   --leading-empty-copy: 1.55;
+  /* 填一份表的弹层（`components/modal-frame.tsx` 的 `form` 档），同遗留层 `.geist-modal` 的 540px。 */
+  --container-form-modal: 540px;
+  /* 封面格里「无预览」那一行的字距，同旧 `.nopic` 的 .12em。 */
+  --tracking-caps: 0.12em;
 }
 
 /* EvilCharts 源码写的是 shadcn 的语义色名（`bg-background`、`text-muted-foreground`、
@@ -489,10 +493,98 @@
   box-shadow: inset 0 0 0 1px var(--glass-rim), var(--glass-pick-shadow);
 }
 
-/* 索引页的过滤框在窄屏把字号提到 16px：小于这一档，手机浏览器聚焦时会把整页放大。 */
+/* 索引页的过滤框与播放列表的新建框在窄屏把字号提到 16px：小于这一档，手机浏览器聚焦时
+ * 会把整页放大。 */
 @media (width < 761px) {
-  .peach-react [data-index-search] input { font-size: 16px; }
+  .peach-react :is([data-index-search], [data-playlist-create]) input { font-size: 16px; }
 }
+
+/* 一叠视频的卡片（`components/mix-card.tsx`），取值同遗留层 `web/css/12-cards.css` 的
+ * `.mixstack`、`.mixfaces`、`.mixbadge`、`.mavstack` 与 `web/css/25-motion.css` 的头像让位。
+ *
+ * 纸边：封面后面两层，和封面同一种表面、同一档圆角（继承容器），往上溢出到行间距里，
+ * 卡片盒不为它留白，同一行里叠层卡和普通卡的封面与文字才平齐。 */
+.peach-react [data-mix-stack]::before,
+.peach-react [data-mix-stack]::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  border-radius: inherit;
+  border: 1px solid var(--border-15);
+  background: color-mix(in srgb, var(--surface) 84%, var(--video-glow, #15202a));
+}
+.peach-react [data-mix-stack]::before { inset: 0 12px 8px; transform: translateY(-7px); opacity: .54; }
+.peach-react [data-mix-stack]::after { inset: 0 6px 4px; transform: translateY(-4px); opacity: .78; }
+/* 封面格背后压着纸边，不能是空的：封面落地前整格是空的，纸边的线条会透进封面。 */
+.peach-react [data-mix-cover],
+.peach-react [data-mix-poster] { background: #000; }
+
+/* 悬停翻页：最上面那张向上抬起、轻转并淡出，下一张随即接管。面板垫黑，遮住静止封面：
+ * 不遮的话两张正在交接时它会从中间透出来。 */
+.peach-react [data-mix-faces] {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: #000;
+}
+.peach-react [data-mix-face] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(.985);
+  transform-origin: 50% 88%;
+  transition: transform .46s cubic-bezier(.34, .02, .24, 1), opacity .4s ease;
+}
+.peach-react [data-mix-face="on"] { opacity: 1; z-index: 2; transform: none; transition: none; }
+.peach-react [data-mix-face="off"] { opacity: 0; z-index: 3; transform: translateY(-11%) rotate(-3.4deg) scale(.94); }
+.peach-react [data-mix-face] img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+/* 条数徽标压在封面上，底色是一块半透明的深色玻璃，封面亮暗都读得出字。 */
+.peach-react [data-mix-badge] {
+  background: rgb(12 8 8 / .72);
+  backdrop-filter: blur(10px);
+}
+
+/* 署名行的叠放头像：最多五枚，常态紧叠；上、左、下三边给放大与焦点环留出空间，头像本身
+ * 仍与单人头像站在同一条左对齐线上。指到的一枚抬起并放大，右侧邻座逐枚朝标题方向让开，
+ * 全程只动 transform；`:has(:hover)` 让整组在同一时刻换缓动。 */
+.peach-react [data-mix-avatars] {
+  display: flex;
+  flex: none;
+  max-width: calc(100% - 48px);
+  margin: -4px -2px -2px;
+  padding: 6px 2px 2px 5px;
+  --lift-motion: calc(var(--spring-press-ms) * 1ms) var(--spring-press);
+}
+.peach-react [data-mix-avatars]:has(:is(:hover, :focus-visible)) { --lift-motion: var(--board-motion); }
+.peach-react [data-mix-avatars] > * {
+  box-shadow: 0 0 0 2px var(--ground);
+  transform: translate(var(--lift-x, 0), var(--lift-y, 0)) scale(var(--lift-scale, 1));
+  transition: transform var(--lift-motion, var(--board-motion));
+}
+.peach-react [data-mix-avatars] > * + * { margin-left: -22px; }
+.peach-react [data-mix-avatars] > :nth-child(1) { z-index: 5; }
+.peach-react [data-mix-avatars] > :nth-child(2) { z-index: 4; }
+.peach-react [data-mix-avatars] > :nth-child(3) { z-index: 3; }
+.peach-react [data-mix-avatars] > :nth-child(4) { z-index: 2; }
+.peach-react [data-mix-avatars] > :nth-child(5) { z-index: 1; }
+.peach-react [data-mix-avatars] > :is(:hover, :focus-visible) {
+  z-index: 6;
+  box-shadow: 0 0 0 2px var(--ink-2);
+  --lift-y: -4px;
+  --lift-scale: 1.05;
+}
+.peach-react [data-mix-avatars] > :is(:hover, :focus-visible) + * { --lift-y: -1.8px; --lift-x: 10px; }
+.peach-react [data-mix-avatars] > :is(:hover, :focus-visible) + * + * { --lift-y: -.81px; --lift-x: 20px; }
+.peach-react [data-mix-avatars] > :is(:hover, :focus-visible) + * + * + * { --lift-x: 30px; }
+.peach-react [data-mix-avatars] > :is(:hover, :focus-visible) + * + * + * + * { --lift-x: 40px; }
 
 /* 标签的类型色：本地九类取 ledger 的分类，在线那一套取上游 booru 的 tag_type（`r34-*`）。
  * 标签云、字母表的色点和浮层上排的类型药丸读同一个 `--tag-color`，和卡片上标签的着色一致。

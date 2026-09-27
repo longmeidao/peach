@@ -237,6 +237,31 @@ async function openIndexPage(browser: Browser, path: string): Promise<Visit> {
   return opened;
 }
 
+/** 播放列表页按一份造出来的 `/api/playlists`（`src/peach/web_playlists.py`）打开：演示库里
+ * 没有播放列表。第一份带三位署名，第二份没人（画标题首字），第三份是空列表（写「无预览」）。
+ * 封面是造出来的编号，给一张能加载完的图。 */
+async function openPlaylistsPage(browser: Browser, viewport = DESKTOP): Promise<Visit> {
+  const opened = await visit(browser, '/playlists', viewport);
+  const face = (id: number, name: string, kind = 'performer') => ({ kind, id, name, has_image: false });
+  const row = (id: number, patch: Record<string, unknown> = {}) => ({
+    id, name: `列表${id}`, source_kind: 'manual', source_seed_asset_id: null, current_asset_id: null,
+    created_at: '2026-09-01 10:00:00', updated_at: '2026-09-01 10:00:00', item_count: 2,
+    preview_asset_id: 11, preview_ids: [11, 12], faces: [], ...patch,
+  });
+  await opened.page.route((url) => url.pathname === '/api/playlists', (route) => route.fulfill({ json: { items: [
+    row(1, { source_kind: 'mix', faces: [face(901, '甲'), face(902, '乙'), face(903, '丙', 'creator')] }),
+    row(2),
+    row(3, { item_count: 0, preview_asset_id: null, preview_ids: [] }),
+  ] } }));
+  await opened.page.route('**/poster**', (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('#stats [data-playlist-card]').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return opened;
+}
+
 /** 打开目录并等到读数与卡片一起替下首屏骨架。 */
 async function openCatalog(browser: Browser): Promise<Visit> {
   const opened = await visit(browser, '/', DESKTOP);
@@ -1792,6 +1817,81 @@ describe('设计决定', () => {
       assert.equal(motion.property, 'transform, width');
       assert.notEqual(motion.duration.split(',')[0]!.trim(), '0s', '蓝线没有过渡时长');
       assert.equal(motion.height, '2px');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('播放列表卡：封面后压两层纸边、黑底封面、玻璃徽标、38px 头像叠 22px；标题 32/44，菜单键静止透明', { timeout: 60_000 }, async () => {
+    const opened = await openPlaylistsPage(browser);
+    try {
+      const page = opened.page;
+      const look = await page.evaluate(() => {
+        const card = document.querySelector('#stats [data-playlist-card="1"]')!;
+        const css = (selector: string) => getComputedStyle(card.querySelector(selector)!);
+        const stack = card.querySelector('[data-mix-stack]')!;
+        const back = getComputedStyle(stack, '::before');
+        const mid = getComputedStyle(stack, '::after');
+        const title = getComputedStyle(document.querySelector('#stats header h2')!);
+        const cover = css('[data-mix-cover]');
+        const badge = css('[data-mix-badge]');
+        const menu = css('[data-playlist-menu]');
+        const blank = getComputedStyle(document.querySelector('#stats [data-playlist-card="3"] [data-mix-cover] > span')!);
+        return {
+          title: [title.fontSize, title.lineHeight, title.fontWeight],
+          gap: getComputedStyle(document.querySelector('#stats [data-playlist-grid]')!).gap,
+          back: [back.borderTopWidth, back.inset, back.transform, back.opacity],
+          mid: [mid.borderTopWidth, mid.inset, mid.transform, mid.opacity],
+          cover: [cover.backgroundColor, cover.borderRadius],
+          badge: [badge.backgroundColor, badge.backdropFilter, badge.minHeight, badge.borderRadius, badge.right, badge.bottom],
+          avatars: [...card.querySelectorAll('[data-mix-avatars] button')].map((button) => {
+            const style = getComputedStyle(button);
+            return [style.width, style.marginLeft, style.zIndex];
+          }),
+          menu: [menu.width, menu.height, menu.borderRadius, menu.backgroundColor],
+          blank: [blank.letterSpacing, blank.textTransform],
+        };
+      });
+      assert.deepEqual(look, {
+        title: ['32px', '44px', '500'],
+        gap: '18px',
+        back: ['1px', '0px 12px 8px', 'matrix(1, 0, 0, 1, 0, -7)', '0.54'],
+        mid: ['1px', '0px 6px 4px', 'matrix(1, 0, 0, 1, 0, -4)', '0.78'],
+        cover: ['rgb(0, 0, 0)', '14px'],
+        badge: ['rgba(12, 8, 8, 0.72)', 'blur(10px)', '28px', '10px', '9px', '9px'],
+        avatars: [['38px', '0px', '5'], ['38px', '-22px', '4'], ['38px', '-22px', '3']],
+        menu: ['30px', '30px', '10px', 'rgba(0, 0, 0, 0)'],
+        blank: ['1.44px', 'uppercase'],
+      });
+      // 指到的头像抬起 4px、放大到 1.05，右边那位朝标题让开 10px。
+      await page.locator('#stats [data-playlist-card="1"] [data-mix-avatars] button').first().hover();
+      const lifted = await page.evaluate(() => {
+        document.getAnimations().forEach((animation) => animation.finish());
+        return [...document.querySelectorAll('#stats [data-playlist-card="1"] [data-mix-avatars] button')]
+          .slice(0, 2).map((button) => getComputedStyle(button).transform);
+      });
+      assert.deepEqual(lifted, ['matrix(1.05, 0, 0, 1.05, 0, -4)', 'matrix(1, 0, 0, 1, 10, -1.8)']);
+      // 点点点菜单外宽 172px，同旧卡片菜单。
+      await page.locator('#stats [data-playlist-card="1"] [data-playlist-menu]').click();
+      const panel = page.locator(':has(> [role="dialog"][aria-label="播放列表操作：列表1"])');
+      await panel.waitFor({ timeout: 5_000 });
+      assert.equal(await panel.evaluate((element) => getComputedStyle(element).width), '172px');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('播放列表页窄屏：页头改竖排，新建框字号 16px 免得 iOS 聚焦时放大', { timeout: 60_000 }, async () => {
+    const opened = await openPlaylistsPage(browser, MOBILE);
+    try {
+      const narrow = await opened.page.evaluate(() => ({
+        header: getComputedStyle(document.querySelector('#stats header')!).flexDirection,
+        input: getComputedStyle(document.querySelector('#stats [data-playlist-create] input')!).fontSize,
+        title: getComputedStyle(document.querySelector('#stats header h2')!).fontSize,
+      }));
+      assert.deepEqual(narrow, { header: 'column', input: '16px', title: '32px' });
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

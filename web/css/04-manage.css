@@ -1,13 +1,9 @@
 /* 统计页 */
 .stats{padding:0 0 42px}
+/* 播放列表页的遗留骨架（`frontend/src/board-skeleton.ts`）。页面本身归 React 子树，
+   这几条只给数据回来之前那一屏：页头、新建框占位与卡片栅格。 */
 .playlistpage{padding:4px 0 42px}.playlistpage>header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.playlistpage h2{margin:0 0 8px}.playlistpage p{margin:0;color:var(--muted);font-size:var(--fs-sm)}
-.playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}.playlistcreate label{display:grid;gap:8px;color:var(--muted);font-size:var(--fs-xs);flex:1 1 200px;max-width:320px}.playlistcreate input{min-width:200px}
-/* 提交键是这一屏的主动作，走 Geist 的实心档；38px 取自 .geist-input，
-   与输入框同高才算一行，和「添加关注」那张表也是同一档。 */
-.playlistcreate .geist-button{height:38px;padding:0 13px}
-.playlistcreate [data-playlist-state]{flex-basis:100%;color:var(--drop);font-size:var(--fs-xs)}
-/* 一份播放列表就是一叠视频，和首页那张 Mix 卡是同一件东西：封面、叠层、悬浮翻动和
-   署名行全部走 .card / .mixstack / .mixmeta，这里只定这一页的栅格。 */
+.playlistcreate{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
 .playlistcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
 /* 账本只读那一条是 Note：框、图标字形和整套色调都在 `.geist-note` 那一份里，这里只留
    它在页面里的位置。自己再描一圈暖色边、把字写成 --ink 的话，底色说的是「注意」、

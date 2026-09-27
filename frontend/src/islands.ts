@@ -39,6 +39,7 @@ export interface IslandContracts {
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
+  playlists: ReactBundle.PlaylistsProps;
   'scraping': ReactBundle.ScrapingProps;
   'quality-goals': ReactBundle.QualityGoalsProps;
   review: ReactBundle.ReviewProps;
@@ -66,6 +67,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
   'library-processing': { react: 'library-processing' },
+  playlists: { react: 'playlists' },
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
   review: { react: 'review' },

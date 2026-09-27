@@ -5147,24 +5147,6 @@ async function openAddToPlaylist(item){
     if(result.created)await playlistWrite({action:'delete',id:result.created.id});
   }});
 }
-async function renamePlaylist(list){
-  const modal=formModal({
-    title:'编辑名称',
-    body:playlistNameField(list.name),
-    confirmLabel:'保存名称',
-    onConfirm:()=>{
-      const name=modal.dialog.querySelector('[name="name"]').value.trim();
-      if(!name)throw new Error('播放列表名称不能为空');
-      return playlistWrite({action:'rename',id:list.id,name});
-    }});
-  modal.dialog.querySelector('[name="name"]').select();
-  const {confirmed}=await modal.done;
-  if(!confirmed)return;
-  await openPlaylists(false);
-  actionReceipt('已重命名播放列表',{undo:async()=>{
-    await playlistWrite({action:'rename',id:list.id,name:list.name});await openPlaylists(false);
-  }});
-}
 /* 顺序由拖动定：一列十几条视频，靠上移下移一格一格挪到第九位要按八次。撤销拿的是
    拖动之前那一份完整顺序，所以一次拖动无论跨多少行都只需按一次撤销。 */
 async function reorderPlaylistItems(queue,ids,currentId){
@@ -5196,89 +5178,32 @@ async function removePlaylistItem(queue,assetId,currentId){
   }});
 }
 
+/* 播放列表页整个归 React 子树（ADR-0031）：取数、卡面、新建改名删除都在 /dist/peach-ui.js 里。
+   壳只铺骨架，交出打开队列、资料页、头像 HTML、翻页门槛与回执。
+   已经停在这一页、岛还挂着时要求重读（顶栏「换一批」、从播放队列返回、撤销后），
+   推一个刷新代次让页面重取，不重挂：重挂会先铺一遍骨架，卡片与滚动位置都跟着闪。 */
+let playlistsSurface=null,playlistsRevision=0;
 async function openPlaylists(push=true){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
   if(push)route('/playlists');
+  if(!push&&playlistsSurface&&surfaceCurrent(playlistsSurface)&&islandMounted($('#stats'))){
+    showManagementBody({manage:false});
+    updateIsland($('#stats'),{revision:++playlistsRevision});
+    return;
+  }
   const surface=claimSurface('/playlists');
   showManagementBody({manage:false,placeholder:managementPlaceholder('/playlists')});
-  const data=await surfaceApi(surface,'/api/playlists');
+  const ui=await import('/dist/peach-ui.js');
   if(!surfaceCurrent(surface))return;
-  showManagementBody({manage:false});
-  /* 一份播放列表就是一叠视频，和首页那张 Mix 卡是同一件东西，所以穿同一身：封面悬浮
-     时逐张翻过列表里的画面，下面一行是列表里出镜最多的那几位的头像，标题就是列表名。
-     改名和删除收进名字右边那个点点点菜单——它们是这张卡的次要动作，不该和「打开」
-     并排占着一整行。 */
-  const cards=(data.items||[]).map(list=>{
-    const resume=list.current_asset_id||list.preview_asset_id;
-    const poster=list.preview_asset_id
-      ?`<img class="poster" src="/poster?id=${list.preview_asset_id}&c=4" alt="" loading="lazy" data-drop="self">`
-      :'<span class="nopic">无预览</span>';
-    const faces=(list.faces||[]).length
-      ? `<div class="mavstack">${list.faces.slice(0,5).map(face=>`<button class="mav entitylink"
-          data-entity-kind="${esc(face.kind)}" data-entity-name="${esc(face.name)}"
-          title="打开资料页：${esc(face.name)}">${avatarInner(face.name,face,REP[face.name],face.kind)}</button>`).join('')}</div>`
-      : `<span class="mav"><span class="ini">${esc(list.name.slice(0,1))}</span></span>`;
-    return `<article class="card playlistcard" data-playlist-card="${list.id}"
-      data-playlist-previews="${esc(JSON.stringify(list.preview_ids||[]))}">
-      <div class="mixstack"><div class="pic" style="--card-ratio:${16/9}">${poster}
-        <div class="mixfaces" data-mix-faces hidden></div>
-        <button class="cardopenhit" data-open-playlist="${list.id}"${resume?'':' disabled'}
-          aria-label="打开播放列表 ${esc(list.name)}"></button>
-        <span class="mixbadge">${icon('play')}${list.item_count} 个视频</span></div></div>
-      <div class="mixmeta">${faces}<div class="mixcopy"><b>${esc(list.name)}</b>
-        <span>${list.source_kind==='mix'?'由 Mix 保存':'手动播放列表'}</span></div>
-        <div class="cardmenu" data-playlist-menu>
-          <button type="button" class="cardmenubtn" data-playlist-menu-toggle aria-haspopup="menu"
-            aria-expanded="false" aria-controls="playlist-menu-${list.id}"
-            title="更多操作" aria-label="播放列表操作：${esc(list.name)}">${icon('ellipsis')}</button>
-          <div class="popmenu cardmenupanel" id="playlist-menu-${list.id}" role="menu" hidden>
-            <button type="button" role="menuitem" data-rename-playlist="${list.id}">${icon('pencil')}<span>编辑名称</span></button>
-            <button type="button" role="menuitem" class="destructive" data-delete-playlist="${list.id}">${icon('trash')}<span>删除播放列表</span></button>
-          </div></div></div></article>`}).join('');
-  $('#stats').innerHTML=`<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><form class="playlistcreate" id="newPlaylist"><label>新播放列表<input class="geist-input" name="name" maxlength="80" placeholder="输入名称" required></label><button class="geist-button primary" type="submit">新建</button><span data-playlist-state></span></form></header><div class="playlistcards">${cards||emptyState('playlist','还没有播放列表','保存 Mix 或新建列表后，会在这里按自己的顺序继续播放。')}</div></section>`;
-  $('#newPlaylist').onsubmit=async event=>{event.preventDefault();const form=event.currentTarget;
-    try{const result=await playlistWrite({action:'create',name:new FormData(form).get('name'),asset_ids:[]});await openPlaylists(false);
-      actionReceipt('已新建播放列表',{undo:async()=>{
-        await playlistWrite({action:'delete',id:result.playlist.id});await openPlaylists(false)}})}
-    catch(error){form.querySelector('[data-playlist-state]').textContent=error.message||'新建失败'}};
-  $('#stats').querySelectorAll('[data-open-playlist]').forEach(button=>button.onclick=()=>{
-    const list=data.items.find(item=>item.id===+button.dataset.openPlaylist),resume=list?.current_asset_id||list?.preview_asset_id;
-    if(resume)openPlaylist(list.id,resume,true)});
-  $('#stats').querySelectorAll('[data-playlist-card]').forEach(card=>{
-    let ids=[];try{ids=JSON.parse(card.dataset.playlistPreviews||'[]')}catch(_e){ids=[]}
-    // 翻的是这份列表自己的封面，用的是首页 Mix 卡那一套时序与门槛，不另写一份动效。
-    wireStackFlip(card,async()=>ids.map(id=>
-      `<img class="poster" src="/poster?id=${id}&c=4" alt="" loading="eager">`));
-    const menu=card.querySelector('[data-playlist-menu]');
-    if(menu)wireAnchoredMenu(menu,menu.querySelector('[data-playlist-menu-toggle]'),
-      menu.querySelector('.cardmenupanel'));
-  });
-  $('#stats').querySelectorAll('[data-entity-kind]').forEach(button=>button.onclick=()=>
-    openEntity(button.dataset.entityKind,button.dataset.entityName));
-  $('#stats').querySelectorAll('[data-rename-playlist]').forEach(button=>button.onclick=()=>{
-    closeAnchoredMenu();
-    const list=data.items.find(item=>item.id===+button.dataset.renamePlaylist);
-    if(list)renamePlaylist(list);
-  });
-  $('#stats').querySelectorAll('[data-delete-playlist]').forEach(button=>button.onclick=async()=>{
-    closeAnchoredMenu();
-    return confirmModal({title:'删除播放列表',body:'这个播放列表将被删除，视频文件保留。',confirmLabel:'删除播放列表',danger:true,onConfirm:async()=>{
-      const id=+button.dataset.deletePlaylist;
-      /* 删之前先把内容取回来：`delete` 连 playlist_item 一起清，删完就没有地方能问出
-         这份列表装着哪些视频。重建出来的是一份新记录，装的是同一批视频。 */
-      const kept=await api('/api/playlist?id='+id).catch(()=>null);
-      try{await playlistWrite({action:'delete',id});await openPlaylists(false);
-        actionReceipt('已删除播放列表',{undo:!kept?null:async()=>{
-          const ids=(kept.items||[]).map(entry=>entry.id);
-          const seed=kept.source_seed_asset_id;
-          await playlistWrite({action:'create',name:kept.name,asset_ids:ids,
-            source_kind:kept.source_kind,
-            source_seed_asset_id:ids.includes(seed)?seed:null});
-          await openPlaylists(false);
-        }})}
-      catch(error){setActionBusy(button,false);throw error}
-    }});});
-  window.scrollTo({top:0,behavior:'smooth'});
+  const props={
+    openPlaylist:(id,resume)=>openPlaylist(id,resume,true),openEntity,
+    faceAvatar:face=>avatarInner(face.name,face,REP[face.name],face.kind),
+    canFlip:()=>!selectMode&&!censorOn()&&!window.__scrolling&&!reduceMotion(),
+    toast:(message,{undo}={})=>actionReceipt(message,{undo}),revision:playlistsRevision,
+  };
+  playlistsSurface=surface;
+  await ui.mountIsland('playlists',$('#stats'),props,{isCurrent:()=>surfaceCurrent(surface)});
+  if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
 
 /* 数据管理是「库里已经有的东西怎么收拾」的唯一入口：广告、重复、失效条目，

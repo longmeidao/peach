@@ -12,7 +12,7 @@ import { useRef, useState } from 'react';
 import { RiCloseLine } from '@remixicon/react';
 import { useMutation } from '@tanstack/react-query';
 import { UNSAFE_PortalProvider } from 'react-aria';
-import { Dialog, Heading, Modal, ModalOverlay } from 'react-aria-components';
+import { Heading } from 'react-aria-components';
 
 import { Button } from '@/components/base/buttons/button';
 import { IconButton } from '@/components/base/buttons/icon-button';
@@ -23,6 +23,7 @@ import {
   clampBox, defaultPanelBox, isUsableSize, type CropBox, type CropSize,
 } from '../../crop-geometry';
 import type { CoverCropProps } from '../bundle';
+import { ModalFrame, ModalGlyph } from '../components/modal-frame';
 import { Note } from '../components/note';
 import { overlayHost } from '../components/overlay-host';
 import { useOverlayScrollbar } from '../components/overlay-scrollbar';
@@ -58,15 +59,10 @@ export function CoverCrop({ code, coverUrl, box, onSaved }: CoverCropProps) {
       </button>
       {/* 详情页是 `showModal()` 开的原生 dialog，弹层要挂进同一层才盖得住它。 */}
       <UNSAFE_PortalProvider getContainer={() => overlayHost(anchor.current)}>
-        <ModalOverlay isOpen={open} onOpenChange={setOpen} isDismissable
-          className="fixed inset-0 z-dialog flex items-center justify-center bg-scrim p-4">
-          <Modal className="flex max-h-full w-full max-w-cover-crop flex-col overflow-hidden rounded-2-5xl border border-separator-border bg-background-full shadow-dropdown">
-            <Dialog aria-label="裁剪封面" className="flex min-h-0 flex-col outline-none">
-              <CropBody code={code} coverUrl={coverUrl} box={box} onSaved={onSaved}
-                close={() => setOpen(false)} />
-            </Dialog>
-          </Modal>
-        </ModalOverlay>
+        <ModalFrame isOpen={open} onOpenChange={setOpen} width="cover-crop" label="裁剪封面">
+          <CropBody code={code} coverUrl={coverUrl} box={box} onSaved={onSaved}
+            close={() => setOpen(false)} />
+        </ModalFrame>
       </UNSAFE_PortalProvider>
     </>
   );
@@ -97,9 +93,7 @@ function CropBody({ code, coverUrl, box: saved, onSaved, close }: CoverCropProps
   return (
     <>
       <div className="flex shrink-0 items-start gap-4 p-5">
-        <span aria-hidden className="flex size-14 shrink-0 items-center justify-center rounded-2xl border border-separator-border bg-background-secondary-default text-foreground-icon-secondary">
-          <CropIcon className="size-6" />
-        </span>
+        <ModalGlyph><CropIcon className="size-6" /></ModalGlyph>
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <Heading slot="title" className="text-title-3-semibold text-text-primary">裁剪封面</Heading>
           <p className="text-body-2-regular text-text-secondary">

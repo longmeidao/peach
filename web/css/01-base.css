@@ -562,22 +562,6 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
   min-width:0;flex:1}
 .pickrowtext b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
 .pickrowtext small{flex:none;color:var(--muted)}
-/* 卡片上的次要动作收进这一枚点点点：它们不该和「打开」并排占一整行。 */
-.cardmenu{flex:none;margin-left:auto;position:relative}
-.cardmenubtn{display:grid;place-items:center;width:30px;height:30px;padding:0;border:0;
-  border-radius:var(--control-radius);background:transparent;color:var(--muted);cursor:pointer}
-.cardmenubtn:hover,.cardmenubtn[aria-expanded="true"]{background:var(--hover);color:var(--ink)}
-.cardmenubtn svg{width:18px;height:18px;stroke:currentColor;fill:none}
-.cardmenupanel{min-width:172px}
-.cardmenupanel button{display:flex;align-items:center;gap:9px;width:100%;min-height:34px;
-  padding:0 9px;border:0;border-radius:var(--control-radius);background:transparent;
-  color:var(--ink-2);font:inherit;font-size:var(--fs-md);text-align:left;cursor:pointer}
-.cardmenupanel button:hover{background:var(--hover);color:var(--ink)}
-/* 菜单里的销毁项是红字，不是那块实底红：实底是主操作条上的按钮档，摆进一列菜单
-   行里会变成整条红块，读起来像这一项被选中了。所以不走 .danger 那个类。 */
-.cardmenupanel button.destructive{color:var(--drop)}
-.cardmenupanel button.destructive:hover{background:color-mix(in srgb,var(--drop) 12%,transparent);color:var(--drop)}
-.cardmenupanel svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none}
 
 /* 「图比框小就别放大」的共用摆法。索引页的厂牌大格和厂牌资料页的大位共用它：那两处
    摆的都是标识，而标识的原始尺寸差得很远，实测 42 px 到 1378 px 都有。

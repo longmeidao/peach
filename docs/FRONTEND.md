@@ -55,6 +55,16 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 - 顶栏选择键归壳，本地标签页读它：关掉时壳经 `updateIsland` 把 `selectMode:false` 推进来，页面清空所选。所选标签的操作条三颗键都不写账本，「显示结果」回目录按所选标签筛选。
 - 壳在数据回来之前铺的骨架仍是 `web/js/ui-components.js` 的 `indexSkeletonHtml`，页头骨架与页面同一组文字。
 
+### 播放列表页
+
+`/playlists` 列表页整个是 React（`frontend/src/react/playlists/`，入口 `playlists-page.tsx`），挂在 `#stats` 上；点开一份之后的 `/playlists/:playlist/:item` 仍是遗留层 `openPlaylist`。
+
+- 读 `/api/playlists`，首屏 `prefetch` 写明 `staleTime: 0`：首页刚存的 Mix 进来就要看得到。新建、改名、删除都 POST `/api/playlist`，写完让列表键重取，不拿回话拼缓存。
+- 删除先过遗留层 `confirmModal`，删之前 GET `?id=` 取回内容，撤销按原内容与来源重建一份；取不到就不给撤销。回执与撤销失败的说法归 `actionReceipt`。
+- 停在这一页时壳要求重读（顶栏「换一批」、从播放队列返回），`openPlaylists(false)` 经 `updateIsland` 把 `revision` 加一，页面只重取、不重挂。
+- 每份列表是共用的 Mix 卡 `components/mix-card.tsx`：纸边、黑底封面、玻璃徽标、叠放头像，几何写在 `styles.css` 的 `[data-mix-*]`；悬停翻页是 `components/use-stack-flip.ts`，时序同遗留层 `wireStackFlip`，翻页门槛（多选、遮挡、减少动效、滚动中）由壳经 `canFlip` 递进来。
+- 改名弹层、换头像与裁剪封面共用 `components/modal-frame.tsx` 的外壳，`form` 档 540px 同 `.geist-modal`。
+
 ### 产物缓存
 
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
