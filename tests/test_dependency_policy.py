@@ -218,7 +218,8 @@ class DependencyPolicyTests(unittest.TestCase):
             self.assertEqual((repo / "package.json").read_bytes(),
                              manifest("2", '    "sonner": "2.0.8",\n'))
             staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--name-only"],
-                                    check=True, capture_output=True, text=True).stdout
+                                    check=True, capture_output=True, text=True,
+                                    encoding="utf-8").stdout
             self.assertEqual(staged, "", "接管只改工作区，暂存留给 --apply")
 
             repo = seed_repository(Path(holder).resolve() / "clash",
