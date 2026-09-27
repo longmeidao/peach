@@ -121,6 +121,9 @@ def refresh_current_values(connection, rows: list[dict]) -> None:
     演员 22、标题 13、厂牌 8、系列 8、发行日期 5）。队列拿它判「补空还是冲突」，自动
     落库拿它判「这里是不是空的」——过期一份，两处一起错，而且错的方向是往库里写。
 
+    资产数 `videos` 同理按账本现算：候选件那一列是生成器顺手填的，fc2-cast 那一份
+    根本没填，复核页就把账本里有资产的番号写成「0 个同番号资产」。
+
     账本里找不到这个番号的资产时保留候选件那一份：那种行本来就轮不到按现值判。
     """
     codes = [code for code in dict.fromkeys(
@@ -157,6 +160,7 @@ def refresh_current_values(connection, rows: list[dict]) -> None:
             targets = by_code.get(key, [])
         if not targets:
             continue
+        row["videos"] = str(len(targets))
         column = METADATA_FIELD_COLUMNS.get(field)
         if column:
             # 同番号多卷时任取有值的那一卷：落库本来就是整组一起写。

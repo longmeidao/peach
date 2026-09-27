@@ -699,6 +699,22 @@ class ReviewQueueTests(unittest.TestCase):
             con.close()
         self.assertEqual(landed, ["はな"])
 
+    def test_the_asset_count_in_the_reason_comes_from_the_ledger(self):
+        """候选件的 `videos` 列可能是空的：fc2-cast 生成器就没填。卡片上的资产数按账本现算。"""
+        self._asset(86080, "FC2-PPV-1449453", "FC2-PPV-1449453-CD1.mp4")
+        self._asset(86081, "FC2-PPV-1449453", "FC2-PPV-1449453-CD2.mp4")
+        key = "FC2-PPV-1449453:performers:fc2cmadb"
+        self.write_metadata_candidates([{
+            "item_key": key, "code": "FC2-PPV-1449453", "query": "FC2-PPV-1449453",
+            "field": "performers", "field_label": "演员", "current_value": "",
+            "candidates_json": json.dumps([{
+                "candidate_key": f"{key}:0", "source": "fc2cmadb", "display_value": "Chisa",
+                "value": [{"name": "Chisa"}], "confidence": 0.9,
+                "provider_id": "FC2-PPV-1449453"}], ensure_ascii=False),
+            "source_count": "1", "source_profile": "fc2-cast", "status": "candidate",
+            "size_gb": "", "videos": "", "fetched_at": ""}])
+        self.assertIn("2 个同番号资产", self.queue_row("metadata_fields", key)["reason"])
+
     def test_javbus_gives_way_to_any_other_source_on_the_same_field(self):
         """javbus 的取值只在没有别家时才算证据（ADR-0035）。
 
