@@ -3109,6 +3109,38 @@ describe('设计决定', () => {
     }
   });
 
+  it('头像圆框里的图按人脸框写进的内联尺寸不被岛里的预检夹回框宽', { timeout: 60_000 }, async () => {
+    /* 演示库没有实体图，往首张卡的头像框里塞一张按人脸框放大的图：宽超过框宽时图就该那么宽，
+       由圆框的 overflow 裁；被夹回框宽的话脸偏到左边，右侧露出底下的首字母。 */
+    const opened = await openCatalogFixture(browser, (payload) => {
+      const item = payload.items[0];
+      if (!item) throw new Error('演示目录没有可替换的卡片');
+      item.creator = '';
+      item.performers = ['演示演员'];
+      item.performer_total = 1;
+      item.performer_entities = [{ id: 90_000, name: '演示演员', has_image: false }];
+    });
+    try {
+      const avatar = opened.page.locator('#grid [data-media-grid] > [data-media-card] [data-media-meta] > button[data-media-avatar]').first();
+      const framed = await avatar.evaluate((element) => {
+        const img = document.createElement('img');
+        img.setAttribute('style', 'position:absolute;inset:-25% auto auto 0;width:150%;height:195%');
+        element.appendChild(img);
+        const frame = element.getBoundingClientRect();
+        const box = img.getBoundingClientRect();
+        const style = getComputedStyle(img);
+        return { maxWidth: style.maxWidth, maxHeight: style.maxHeight,
+          width: box.width / frame.width, height: box.height / frame.height };
+      });
+      assert.equal(framed.maxWidth, 'none', '头像图还带着预检的 max-width');
+      assert.equal(framed.maxHeight, 'none', '头像图还带着 max-height');
+      assert.ok(Math.abs(framed.width - 1.5) <= .02, `按人脸框放大到 1.5 倍框宽的图被夹成了 ${framed.width} 倍`);
+      assert.ok(Math.abs(framed.height - 1.95) <= .02, `按人脸框放大到 1.95 倍框高的图被夹成了 ${framed.height} 倍`);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('暗色下 React 卡片和旧样式表控件的阴影都换成看得见的那一档', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/stats', DESKTOP);
     try {
