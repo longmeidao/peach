@@ -4,11 +4,14 @@ import ast
 import json
 from pathlib import Path
 import re
+import subprocess
 import sys
+import tempfile
 import tomllib
 import unittest
 
 from scripts import adopt_dependency_bump as adopt
+from tests.support.gitrepo import seed_repository
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -180,6 +183,49 @@ class DependencyPolicyTests(unittest.TestCase):
             adopt.recipe_for(["uv.lock", ".github/workflows/test.yml"])
         with self.assertRaisesRegex(RuntimeError, "同时改了"):
             adopt.recipe_for(["package.json", "frontend/package.json"])
+
+    def test_the_takeover_keeps_what_master_added_to_the_manifest_after_the_fork(self):
+        """接管套的是分支自己的改动，分叉后 master 往清单里加的依赖原样留着。
+
+        Dependabot 的分支停在几天前的 master 上；整份签出它的清单，就把这几天新加的
+        依赖抹掉了。两边改到同一行时要报出来，不能静默挑一边。
+        """
+        def manifest(a: str, extra: str = "") -> bytes:
+            names = "".join(f'    "{name}": "1",\n' for name in "bcdefg")
+            return (f'{{\n  "dependencies": {{\n    "a": "{a}",\n{names}{extra}'
+                    '    "h": "1"\n  }\n}\n').encode("utf-8")
+
+        def git(repo: Path, *args: str) -> None:
+            subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+        def fork(repo: Path, *, branch_a: str, master_a: str, master_extra: str) -> None:
+            # 仓库靠 .gitattributes 固定 LF；临时仓库没有它，开发机的全局 autocrlf 会让
+            # 三方合并写回 CRLF。
+            git(repo, "config", "core.autocrlf", "false")
+            git(repo, "checkout", "-q", "-b", "dep")
+            (repo / "package.json").write_bytes(manifest(branch_a))
+            git(repo, "commit", "-q", "-am", "bump a")
+            git(repo, "update-ref", "refs/remotes/origin/dep", "dep")
+            git(repo, "checkout", "-q", "master")
+            (repo / "package.json").write_bytes(manifest(master_a, master_extra))
+            git(repo, "commit", "-q", "-am", "master moves on")
+
+        with tempfile.TemporaryDirectory() as holder:
+            repo = seed_repository(Path(holder).resolve() / "clean",
+                                   {"package.json": manifest("1")}, "base")
+            fork(repo, branch_a="2", master_a="1", master_extra='    "sonner": "2.0.8",\n')
+            adopt.bring_over("dep", ("package.json",), root=repo)
+            self.assertEqual((repo / "package.json").read_bytes(),
+                             manifest("2", '    "sonner": "2.0.8",\n'))
+            staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--name-only"],
+                                    check=True, capture_output=True, text=True).stdout
+            self.assertEqual(staged, "", "接管只改工作区，暂存留给 --apply")
+
+            repo = seed_repository(Path(holder).resolve() / "clash",
+                                   {"package.json": manifest("1")}, "base")
+            fork(repo, branch_a="2", master_a="3", master_extra="")
+            with self.assertRaises(RuntimeError):
+                adopt.bring_over("dep", ("package.json",), root=repo)
 
     def test_the_takeover_commit_message_passes_the_readme_impact_gate(self):
         """`README-Impact` 与 `Co-Authored-By` 必须同一个 trailer 块、中间不空行。

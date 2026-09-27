@@ -10,7 +10,7 @@ lucide-static 1.38.0 → 1.40.0 的 PR #4）。`frontend/package.json` 同理，
 `dependabot/**` 推回重算的产物得靠 `pull_request_target` 或一个 PAT，两条都是给 CI 加
 提权面。所以接管在本地做——凭据是你自己的，CI 一行都不用改。它做完这些：
 
-1. 取那个 PR 的 head 分支，只把 manifest 与 lock 签出到当前分支；
+1. 取那个 PR 的 head 分支，把它对 manifest 与 lock 的改动三方合并套到当前分支；
 2. `npm ci --ignore-scripts` 后重算这份清单对应的派生产物；
 3. 列出真实改动的文件，`--apply` 时只暂存这些并提交。
 
@@ -53,14 +53,15 @@ RECIPES = {
 }
 
 
-def run(command: tuple[str, ...] | list[str], *, capture: bool = True) -> str:
+def run(command: tuple[str, ...] | list[str], *, capture: bool = True,
+        root: Path = ROOT) -> str:
     """在仓库根目录跑一条命令，失败即抛。
 
     第一个词过一遍 `shutil.which`：Windows 上 `npm` 是 `npm.cmd`，而 `CreateProcess`
     不查 `PATHEXT`，照字面传就是 FileNotFoundError。
     """
     executable = shutil.which(command[0]) or command[0]
-    result = subprocess.run([executable, *command[1:]], cwd=ROOT, capture_output=capture,
+    result = subprocess.run([executable, *command[1:]], cwd=root, capture_output=capture,
                             text=True, encoding="utf-8", errors="replace", check=False)
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "").strip() if capture else ""
@@ -102,6 +103,29 @@ def branch_changes(branch: str) -> list[str]:
     return [line for line in
             run(("git", "diff", "--name-only", "--merge-base", "HEAD", f"origin/{branch}")).splitlines()
             if line]
+
+
+def bring_over(branch: str, manifests: tuple[str, ...], *, root: Path = ROOT) -> None:
+    """把那个分支对清单的改动套到工作区，不暂存。
+
+    套的是它自合并基以来的 diff，不是整份文件：分支的清单停在几天前的 master 上，
+    整份签出会把这几天 master 往清单里加的依赖一并抹掉（实际发生过：#20 的
+    `frontend/package.json` 没有后来加进来的 `sonner`）。两边改到同一行时 `--3way`
+    报冲突并退出非零，由 `run` 抛出来。补丁先落成文件再给 `git apply`：Windows 上文本
+    模式的 stdin 会把 `\\n` 写成 `\\r\\n`，补丁就对不上了。
+    """
+    patch = run(("git", "diff", "--merge-base", "HEAD", f"origin/{branch}", "--", *manifests),
+                root=root)
+    if not patch:
+        return
+    path = root / "build" / "adopt.patch"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(patch, encoding="utf-8", newline="\n")
+    try:
+        run(("git", "apply", "--3way", str(path)), root=root)
+    finally:
+        path.unlink()
+    run(("git", "reset", "--quiet", "--", *manifests), root=root)
 
 
 def working_changes() -> list[str]:
@@ -171,8 +195,7 @@ def main(argv: list[str] | None = None) -> int:
         branch = args.branch or head_branch(args.pr)
         run(("git", "fetch", "origin", branch))
         key, recipe = recipe_for(branch_changes(branch))
-        run(("git", "checkout", f"origin/{branch}", "--", *recipe["manifests"]))
-        run(("git", "reset", "--quiet", "--", *recipe["manifests"]))
+        bring_over(branch, recipe["manifests"])
         versions = manifest_versions(key)
         for command in recipe["commands"]:
             run(command, capture=False)
