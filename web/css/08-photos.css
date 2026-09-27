@@ -11,7 +11,7 @@
 @media (max-width:1000px){.photowall{grid-template-columns:repeat(3,minmax(0,1fr))}
   .photowall[data-size="big"]{grid-template-columns:repeat(1,minmax(0,1fr))}}
 .photocell{display:block;width:100%;aspect-ratio:1;border:0;padding:0;margin:0;background:var(--sunk);
-  border-radius:var(--surface-radius);overflow:hidden;cursor:zoom-in;line-height:0}
+  border-radius:var(--surface-radius);overflow:hidden;cursor:zoom-in;line-height:0;position:relative}
 /* 图还没到的格子是一块空底，不是一行文件名。`alt` 留着给读屏，但格子既然已经按比例
    占好了位置，浏览器就有地方把它画出来——一屏几十格全在等图时，看到的是满屏
    `118abp00325pl.jpg`。这块 `--sunk` 底本身就是这里的骨架。 */
@@ -20,8 +20,10 @@
 /* 样张取不到时摘掉的只是 <img>，格子留着。瀑布流里格高来自图，空格会塌成 0，所以按
    官方样张最常见的横幅比例撑住那块 `--sunk` 底。 */
 [data-layout="masonry"]>.photocell:not(:has(img)){aspect-ratio:3/2}
-/* 番号集那排卡片在本地图片墙上方，间距与卡片网格的行距相同。 */
-.photosets{margin-bottom:24px}
+/* 每部作品第一张样张的番号：卡片那枚角标挪到左上，让开右下角留给图本身的水印。
+   格子是 `line-height:0` 的替换元素容器，角标自己把行高要回来。 */
+.photocell>.mixbadge{left:8px;top:8px;right:auto;bottom:auto;min-height:24px;padding:2px 8px;
+  line-height:20px;pointer-events:none}
 /* 媒体圆钮只共享 48/24 的几何与图标居中；表面色由使用场景决定。 */
 .media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;
   background:rgba(255,255,255,.1);color:#f1f1f1;display:grid;place-items:center;cursor:pointer}

@@ -1,4 +1,4 @@
-/* 女优资料页照片档的番号样张集（ADR-0068）。
+/* 女优资料页照片档的番号样张（ADR-0068）。
  *
  * 演示库没有人物实体，也没有样张：资料、照片清单、封面和样张图都由这里按接口的形状给，
  * 页面自己的路由、渲染、深链与灯箱照常跑。第 2 张样张故意回 404，验「取不到的那格留着占位、
@@ -12,41 +12,57 @@ import { launch, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 const NAME = '七沢みあ';
-const SET_ID = 'code:SSIS-057';
-// 1×1 的 PNG，封面与样张都用它：这里验的是结构与交互，不是图。
+// 1×1 的 PNG，样张与本地图都用它：这里验的是结构与交互，不是图。
 const PIXEL = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   'base64');
 const MISSING = /\/sample-(?:thumb|image)\?code=SSIS-057&n=2$/;
+const SETS = [
+  { id: 'code:SSIS-057', kind: 'code', code: 'SSIS-057', name: '雨の日', title: 'SSIS-057 雨の日', n: 3,
+    release_date: '2021-05-18', site: 'dmm', site_label: 'DMM', has_cover: true },
+  { id: 'code:SSIS-001', kind: 'code', code: 'SSIS-001', name: '初夏', title: 'SSIS-001 初夏', n: 2,
+    release_date: '2021-02-19', site: 'dmm', site_label: 'DMM', has_cover: true },
+];
 
-async function serveProfile(page: Page): Promise<void> {
+type Local = { first: number; more: number };
+
+/** `local` 给了就同时有本地图片：第一页 `first` 张、`has_more` 为真，翻页请求把 offset 记下来。 */
+async function serveProfile(page: Page, local?: Local): Promise<number[]> {
+  const offsets: number[] = [];
+  const photo = (id: number) => ({ id, name: `${id}.jpg`, size: 1, location: 'media' });
   await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
     id: 90_001, kind: 'performer', canonical_name: NAME, aliases: [], display_aliases: [],
     user_aliases: [], asset_count: 0, tags: [], related_performers: [], links: [],
     metadata: {}, has_image: false, has_avatar: false, avatar_focus: null,
     representative_asset_id: null, entry_links: [], feed: { following: false },
   } }));
-  await page.route(/\/api\/photos\?/, (route) => route.fulfill({ json: {
-    kind: 'performer', name: NAME, entity_id: 90_001, total: 0, items: [], seed: '', has_more: false,
-    sample_total: 3,
-    sets: [{ id: SET_ID, kind: 'code', code: 'SSIS-057', name: '雨の日', title: 'SSIS-057 雨の日', n: 3,
-      release_date: '2021-05-18', site: 'dmm', site_label: 'DMM', has_cover: true }],
-  } }));
-  await page.route(/\/cover\?code=SSIS-057/, (route) =>
+  await page.route(/\/api\/photos\?/, (route) => {
+    const offset = Number(new URL(route.request().url()).searchParams.get('offset') || 0);
+    if (offset) offsets.push(offset);
+    const items = !local ? [] : offset
+      ? Array.from({ length: local.more }, (_, i) => photo(100 + offset + i))
+      : Array.from({ length: local.first }, (_, i) => photo(100 + i));
+    return route.fulfill({ json: {
+      kind: 'performer', name: NAME, entity_id: 90_001, total: local ? local.first + local.more : 0, items,
+      seed: '', has_more: Boolean(local) && !offset, sample_total: 5, sets: SETS,
+    } });
+  });
+  await page.route(/\/photo-thumb\?/, (route) =>
     route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL }));
   await page.route(/\/sample-(?:thumb|image)\?/, (route) => MISSING.test(route.request().url())
     ? route.fulfill({ status: 404, json: { error: 'unavailable' } })
     : route.fulfill({ status: 200, contentType: 'image/png', body: PIXEL }));
+  return offsets;
 }
 
-async function openPhotos(browser: Browser, search: string): Promise<Visit> {
+async function openPhotos(browser: Browser, search: string, local?: Local): Promise<Visit & { offsets: number[] }> {
   const opened = await visit(browser, '/', DESKTOP);
-  await serveProfile(opened.page);
+  const offsets = await serveProfile(opened.page, local);
   await opened.page.goto(new URL(`/performers/${encodeURIComponent(NAME)}?${search}`, opened.page.url()).href,
     { waitUntil: 'load' });
   await opened.page.locator('#index .photohead').waitFor({ state: 'visible', timeout: 15_000 });
   await settle(opened.page);
-  return opened;
+  return { ...opened, offsets };
 }
 
 /** 故意回 404 的那一张不算运行期问题，浏览器为它各记一条的控制台 404 也按条数扣掉；
@@ -61,60 +77,69 @@ function unexpected(problems: string[]): string[] {
   });
 }
 
-describe('番号样张集', () => {
+const cellBadges = (page: Page) => page.locator('.photowall .photocell').evaluateAll((cells) =>
+  cells.map((cell) => cell.querySelector('.mixbadge')?.textContent?.trim() || ''));
+
+describe('番号样张', () => {
   let browser: Browser;
   before(async () => { browser = await launch(); });
   after(async () => { await browser?.close(); });
 
-  it('只有样张时照片档照样出现，墙上是一排番号集卡', async () => {
+  it('只有样张时照片档照样出现，各部样张按发行日铺在一面墙上，每部第一张标番号', async () => {
     const opened = await openPhotos(browser, 'media=photos');
     const { page } = opened;
     try {
       assert.equal(await page.locator('.entitymediaview [data-media-view="photos"]').getAttribute('aria-pressed'),
         'true');
-      const card = page.locator('.photosets .codeset');
-      assert.equal(await card.count(), 1);
-      assert.match(await card.innerText(), /SSIS-057 雨の日/);
-      assert.match(await card.innerText(), /3 张/);
-      assert.match(await page.locator('.photohead h3').innerText(), /1 部作品样张/);
+      assert.deepEqual(await cellBadges(page), ['SSIS-057', '', '', 'SSIS-001', '']);
+      assert.match(await page.locator('.photohead h3').innerText(), /样张 5 张 · 2 部作品/);
       assert.equal(await page.locator('.photohead .entitybatch').count(), 0, '没有本地图可换一批');
+      assert.equal(await page.locator('.photoback').count(), 0, '样张不另开一层');
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
       await opened.close();
     }
   });
 
-  it('点开一组进样张墙，地址带番号集 id，取不到的那格留着占位', async () => {
+  it('取不到的那格留着占位和番号位置，灯箱按整面墙连续翻', async () => {
     const opened = await openPhotos(browser, 'media=photos');
     const { page } = opened;
     try {
-      await page.locator('[data-code-set]').click();
-      await page.waitForFunction(() => document.querySelectorAll('.photowall .photocell').length === 3);
-      assert.equal(new URL(page.url()).searchParams.get('set'), SET_ID);
-      assert.match(await page.locator('.photohead h3').innerText(), /SSIS-057 雨の日 · 3 张/);
       await page.waitForFunction(() => !document.querySelector('.photowall .photocell:nth-child(2) img'));
       const hole = await page.locator('.photowall .photocell').nth(1).boundingBox();
       assert.ok(hole && hole.height > 0, '占位格不塌');
-      await page.locator('.photowall .photocell').first().click();
+      await page.locator('.photowall .photocell').nth(3).click();
       const count = page.locator('dialog.photolight .photocount');
       await count.waitFor({ state: 'visible' });
-      assert.equal((await count.innerText()).trim(), '1 / 3');
+      assert.equal((await count.innerText()).trim(), '4 / 5');
       await page.locator('dialog.photolight .photoclose').click();
-      await page.locator('.photoback').click();
-      await page.locator('.photosets .codeset').waitFor({ state: 'visible' });
-      assert.equal(new URL(page.url()).searchParams.get('set'), null);
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
       await opened.close();
     }
   });
 
-  it('深链直接进样张墙', async () => {
-    const opened = await openPhotos(browser, `media=photos&set=${encodeURIComponent(SET_ID)}`);
+  it('样张排在本地图片前面，翻页只数本地图片', async () => {
+    const opened = await openPhotos(browser, 'media=photos', { first: 2, more: 1 });
     const { page } = opened;
     try {
-      assert.equal(await page.locator('.photowall .photocell').count(), 3);
-      assert.equal(await page.locator('.photoback').count(), 1);
+      // 墙矮，「载入更多」一进视口就自己翻下一页：等两页都落定再读。
+      await page.waitForFunction(() => document.querySelectorAll('.photowall .photocell').length === 8);
+      assert.deepEqual(await cellBadges(page), ['SSIS-057', '', '', 'SSIS-001', '', '', '', '']);
+      assert.equal(await page.locator('.photowall .photocell img[src^="/photo-thumb"]').count(), 3);
+      assert.deepEqual(opened.offsets, [2]);
+      assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('带番号集 id 的旧地址退回整面照片墙', async () => {
+    const opened = await openPhotos(browser, `media=photos&set=${encodeURIComponent('code:SSIS-057')}`);
+    const { page } = opened;
+    try {
+      assert.equal(await page.locator('.photowall .photocell').count(), 5);
+      assert.equal(await page.locator('.photoback').count(), 0);
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
       await opened.close();

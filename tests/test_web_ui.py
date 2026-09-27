@@ -11014,7 +11014,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_photo_tab_opens_the_flat_wall_without_album_cover_cards(self):
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
         self.assertPageContains("readout:back?`${esc(data.title)} · ${(data.total||0).toLocaleString()} 张`:photoReadout(data,codeSets)")
-        self.assertPageContains("/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${photoWallItems.length}")
+        self.assertPageContains("/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${localPhotoCount()}")
         self.assertPageLacks("renderPhotoSets")
         self.assertPageLacks(".photosetcover{display:block;aspect-ratio:3/4")
 
@@ -11024,14 +11024,14 @@ class WebUiSourceTests(unittest.TestCase):
         账本里图片只有文件名、体积和来源，视频那排排序键在这里没有对应的数。换一批跟
         视频那一排同一枚键、同一个位置；大小是列数，一次请求都不发。那排标签数的是视频，
         照片视图下收起来。等着的那一下骨架也带着下半，浮层不会缺一截。"""
-        self.assertPageContains("const photoHeadHtml=(data,{back=false,codeSets=[],sample=false}={})=>collectionHeaderHtml({className:'photohead'")
+        self.assertPageContains("const photoHeadHtml=(data,{back=false,codeSets=[]}={})=>collectionHeaderHtml({className:'photohead'")
         self.assertPageContains(
             "controls:sortControlsHtml({extra:photoControlsHtml()")
         self.assertPageLacks("photorefresh")
         self.assertPageContains("shufflePhotos(kind,name,filters,entityWide?0:data.id,event.currentTarget)")
         # 换过一批，后面几页沿用同一粒种子。
         self.assertPageContains("seed=data.seed?`&seed=${encodeURIComponent(data.seed)}`:'';")
-        self.assertPageContains("offset=${photoWallItems.length}${seed}`")
+        self.assertPageContains("offset=${localPhotoCount()}${seed}`")
         # 大小：存进设置，改的只是那面墙上的一个属性。
         self.assertPageContains("photoSize:'small',")
         self.assertPageContains("wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()")
