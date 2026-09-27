@@ -20,6 +20,23 @@ export declare function siteMarkUrl(params: { source: string } | { domain: strin
 
 export declare function esc(value: string): string;
 
+/** 实体资料页的地址：`/performers/<名字>` 这一类。 */
+export declare function entityPath(kind: string, name: string): string;
+
+/** 名字比对用的折叠：NFKC、去首尾空白、小写。 */
+export declare function foldName(value: unknown): string;
+
+/** 常见社媒走雪碧图里的品牌字形（`brand-x` 这一类），不在名单里是空串。 */
+export declare function brandIcon(url: string): string;
+
+/** 账本链接的站点圆标地址。递的是链接 id，不是地址。 */
+export declare function linkMarkUrl(link: { link_id?: number | null }): string;
+
+/** 官网链接上那行字：站点短名，没有就用 label；公司页指回自家站的写「官方网站」。 */
+export declare function officialLinkText(
+  link: { url?: string; label?: string }, kind: string, names?: readonly string[],
+): string;
+
 /** 有界并发的批量请求。返回值顺序与输入一致，某一项失败只记下原因、不中断整批：
  *  批量操作一次几百条，串行发是实测的卡点，一次全发出去又会自己挤自己。 */
 export declare function mapLimit<T, R>(

@@ -1,5 +1,5 @@
 import { boundedPreference, mountNumberSetting, syncNumberSetting, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
-import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, brandIcon, entityPath, esc, siteName, linkMarkUrl, fmtClock, fmtDur, fmtSize, foldName, officialLinkText, icon, isCatalogPath, realDuration} from './js/core.js';
+import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, entityPath, esc, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
@@ -14,7 +14,7 @@ import { tagLabel } from './js/tags.js';
 import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
-import { mountIsland, unmountIsland, updateIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
@@ -3125,7 +3125,7 @@ function avatarInner(name,ref,repId,kind='performer',markId=null,logoName='',log
 }
 /* 人脸取景：资料页圆框按检出的人脸中心取景（/api/entity 的 avatar_focus）。
    没检出或没算过返回空串维持几何居中；换回落图时必须撤掉——那是另一张照片，
-   脸不在同一位置，见 entityhero img 的 `data-drop-style`。 */
+   脸不在同一位置，见资料卡大位那张图的 `data-drop-style`。 */
 /* 换算只有这一份。资料页把它写进 img 的 style；索引页大图版式要把它交给圆框上的
    CSS 变量——那里的 img 由共用的 avatarInner 拼，版式能改的容器只有圆框。 */
 function faceOrigin(f){
@@ -3310,9 +3310,10 @@ document.addEventListener('load',event=>{
    什么都不标，页面每次重绘都不会闪一下微光。标上之后 `load` 一定会来——图已经挂在
    文档上，捕获阶段的监听收得到；取不到图的 `error` 同样收尾，不让微光盖住首字母。
    收尾后类名一并摘掉：没到门槛就到手的直接摘，淡出过的等淡出完再摘，封面上平时不留
-   那层 `::after`。React 索引页的头像框（`[data-person-ring]`）里那张图同样由遗留层拼，
-   插进页面时照样被这里看见。 */
-const PENDING_IMAGES='.pic>img.poster,[data-media-art]>img,.ring>img,[data-person-ring]>img,.entityportrait>img';
+   那层 `::after`。React 索引页的头像框（`[data-person-ring]`）与资料卡的大位、同台艺人
+   （`[data-entity-portrait]`、`[data-hero-ring]`）里那张图同样由遗留层拼，插进页面时照样
+   被这里看见。 */
+const PENDING_IMAGES='.pic>img.poster,[data-media-art]>img,.ring>img,[data-person-ring]>img,[data-entity-portrait]>img,[data-hero-ring]>img';
 const pendingSince=new WeakMap();
 function watchPendingImages(node){
   const found=node.matches(PENDING_IMAGES)?[node]:node.querySelectorAll(PENDING_IMAGES);
@@ -4534,12 +4535,12 @@ async function loadFeedNew(entityId,preload){
   if(preload&&items.length)await preloadImages(html,FEED_SKELETON_CARDS,FEED_COVER_WAIT);
   return {items,html};
 }
-/* `loaded` 是随资料页整页一起取好的那一份，给了就不再取。 */
-async function renderFeedNew(host,entityId,loaded){
+/* 首页那一行。资料页那一行在资料卡的岛里（`entity-hero`），数据同样取自 `loadFeedNew`。 */
+async function renderFeedNew(host,entityId){
   if(!host)return;
   host.dataset.feedEntity=entityId?String(entityId):'';
-  const {items,html}=loaded||await loadFeedNew(entityId,host.getAttribute('aria-busy')==='true');
-  // 取数期间人已经离开了这一页：首页那一行不画到管理区上，人物页那一行的容器已经换掉。
+  const {items,html}=await loadFeedNew(entityId,host.getAttribute('aria-busy')==='true');
+  // 取数期间人已经离开了这一页：首页那一行不画到管理区上。
   if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
   host.removeAttribute('aria-busy');
   if(!items.length){host.hidden=true;host.innerHTML='';return}
@@ -4558,6 +4559,11 @@ async function renderFeedNew(host,entityId,loaded){
   wireDrag(row);
   if(appSettings.feedAutoScroll)wireAutoScroll(row);
 }
+/* 资料页顶上的资料卡与新作那一行归 React（`entity-hero`，ADR-0031 第 10c 步）。`/api/entity`
+   与新作仍由这里取，写操作也由这里做成 `actions` 递进去；宿主记在这里，合集开关改了、
+   订阅后那一轮拉取跑完时，找得到它把新作换一份。宿主的 `data-entity-hero` 记着实体 id。 */
+let entityHeroHost=null;
+const entityHeroCurrent=()=>!!entityHeroHost?.isConnected&&islandMounted(entityHeroHost);
 /* 合集开关改了，页面上已经画过的那几行照新的筛法重取一遍。 */
 function refreshFeedRows(){
   // 首页那一行只在目录页出现，人不在那儿时不替它重取，否则会在别的页面上冒出来。
@@ -4565,6 +4571,8 @@ function refreshFeedRows(){
     if(host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
     void renderFeedNew(host,Number(host.dataset.feedEntity)||undefined);
   });
+  // 资料页那一行在资料卡的岛里，换一份新作交给它。
+  if(entityHeroCurrent())void refreshEntityFeed(entityHeroHost);
 }
 /* 设置里开关自动滚动，页面上已经摆着的那几行当场跟着停或走，不等下一次重画。 */
 function syncFeedAutoScroll(){
@@ -4572,37 +4580,24 @@ function syncFeedAutoScroll(){
     appSettings.feedAutoScroll?wireAutoScroll(row):stopAutoScroll(row));
 }
 
-/* 人物页「订阅新作」开关。地址不经页面：服务端按这位的 JavDB 演员页现拼，页面只送
-   开或关。打开时服务端当场在后台拉一轮，拉完这里把未入库的新作那一行重画一次；
-   等的上限是那一轮自己的时长量级，页面换走了就不再等。 */
-const ENTITY_FEED_WAIT_TRIES=40;
-const entityFeedTip=on=>on
-  ?'已订阅新作：库里还没有的新片排在资料卡下面。再点一下取消订阅。'
-  :'订阅新作：定时去 JavDB 查这位有没有出新片，库里还没有的排在资料卡下面。';
-/* 女优页头右侧的资料表（ADR-0069）：生日、身材、出道、生涯和站上的标签。服务端只下发
-   有值的项，这里有哪项画哪项，一项都没有就不出这张表。出道片名常有四五十个字，单行截断，
-   全名放在 title 里。仍在活跃的写「至今」：服务端只给 `ongoing`，字归页面。 */
-function entityFactsHtml(p){
-  if(!p)return '';
-  const rows=[],row=(glyph,label,value,attrs='')=>rows.push(`<dt>${icon(glyph)}${label}</dt><dd${attrs}>${value}</dd>`);
-  const num=value=>`<span class="num">${esc(value)}</span>`,sub=value=>`<span class="sub">${value}</span>`;
-  if(p.birth_date)row('cake','生日',`${num(p.birth_date)} ${sub(`· ${p.age} 岁`)}`);
-  const size=[['T',p.height],['B',p.bust],['W',p.waist],['H',p.hip]].filter(([,value])=>value)
-    .map(([letter,value])=>`${letter}${value}`).join(' · ');
-  const cup=p.cup?sub(`${size?'· ':''}${esc(p.cup)} 罩杯`):'';
-  if(size||cup)row('ruler','身材',[size&&num(size),cup].filter(Boolean).join(' '));
-  if(p.debut_date||p.debut_title)row('flag','出道',[p.debut_date&&num(p.debut_date),p.debut_title&&sub(esc(p.debut_title))]
-    .filter(Boolean).join(' '),p.debut_title?` class="clip" title="${esc(p.debut_title)}"`:'');
-  const active=p.active||{};
-  if(active.from)row('calendar-range','生涯',
-    esc(`${active.from}${active.ongoing?' – 至今':active.to?` – ${active.to}`:''}`),' class="num"');
-  const tags=p.tags||[];
-  if(tags.length)row('tags','标签',factTagsHtml(tags),' class="facttags"');
-  return rows.length?`<dl class="entityfacts">${rows.join('')}</dl>`:'';
+/* 资料卡岛里那一行新作换一份。 */
+async function refreshEntityFeed(host){
+  const feedNew=await loadFeedNew(Number(host.dataset.entityHero)||undefined,false);
+  if(host===entityHeroHost&&host.isConnected)updateIsland(host,{feedNew});
 }
-/* 标签那一格只列前几个，余下的收进「+N」，浮层里一次看全，和名字那一行的别名同一个做法：
-   标签多的人有十几个，全摊开会把资料表撑成三四行，头像那一栏跟着被拉高。只多出一个时
-   直接列出来：「+1」和那一个标签一样宽。字是服务端换好的 Peach 中文标签。 */
+/* 「订阅新作」的地址不经页面：服务端按这位的 JavDB 演员页现拼，页面只送开或关。打开时
+   服务端当场在后台拉一轮，拉完这里把未入库的新作那一行重取一次；等的上限是那一轮自己的
+   时长量级，页面换走了就不再等。 */
+const ENTITY_FEED_WAIT_TRIES=40;
+async function refreshEntityFeedAfterCheck(host){
+  const onPage=()=>host===entityHeroHost&&entityHeroCurrent();
+  for(let tries=0;tries<ENTITY_FEED_WAIT_TRIES&&onPage();tries+=1){
+    await new Promise(resolve=>setTimeout(resolve,3000));
+    const job=await api('/api/feeds/check').catch(()=>null);
+    if(!job||job.status!=='running')break;
+  }
+  if(onPage())await refreshEntityFeed(host);
+}
 /* 资料卡排不排三栏看 `#index` 自己有多宽（判据与原因见 07-entity.css 那条规则）。
    量的是常驻的内容区，骨架和画好的页头读同一个开关，换页时不跳一次。 */
 const HERO_WIDE_PX=900;
@@ -4610,141 +4605,6 @@ function syncHeroWide([entry]){
   $('#index').toggleAttribute('data-hero-wide',entry.contentRect.width>=HERO_WIDE_PX);
 }
 new ResizeObserver(syncHeroWide).observe($('#index'));
-const FACT_TAGS_SHOWN=4;
-function factTagsHtml(tags){
-  const face=tag=>`<span class="facttag">${esc(tag)}</span>`;
-  const cut=tags.length>FACT_TAGS_SHOWN+1?FACT_TAGS_SHOWN:tags.length,rest=tags.length-cut;
-  const more=rest?`<button type="button" class="factmore" aria-expanded="false" aria-controls="entityTagPop"
-      aria-label="另外 ${rest} 个标签">+${rest}</button><div class="popmenu aliaspop" id="entityTagPop" popover="manual"
-      role="group" aria-label="${tags.length} 个标签"><p class="aliaspophead">${tags.length} 个标签</p><div class="facttags">${
-      tags.map(face).join('')}</div></div>`:'';
-  return tags.slice(0,cut).map(face).join('')+more;
-}
-/* 名字下面那一行的别名：读音在最前，接着是前几个名义，余下的收进「+N」。浮层按名义分组
-   （现名、旧名义、各渠道、其它），同一个人用过的名字在这里一次看全。
-   `r18:performer` 的罗马字和作品起的一次性称呼由服务端排除，这里只排版。 */
-function entityNameLineHtml(g){
-  if(!g)return '';
-  const shown=g.shown||[],names=[g.reading,...shown].filter(Boolean),rest=(g.total||0)-shown.length;
-  const groups=(g.groups||[]).map(group=>`${group.label?`<dt>${esc(group.label)}</dt>`:''}<dd${group.label?'':' class="wide"'}>${
-    group.names.map(entry=>`<span>${esc(entry.name)}${entry.reading?`<small>${esc(entry.reading)}</small>`:''}</span>`).join('')}</dd>`).join('');
-  const more=rest>0?`<button type="button" class="aliasmore" aria-expanded="false" aria-controls="entityAliasPop"
-      aria-label="另外 ${rest} 个别名">+${rest}</button><div class="popmenu aliaspop" id="entityAliasPop" popover="manual"
-      role="group" aria-label="${g.total} 个别名"><p class="aliaspophead">${g.total} 个别名</p><dl>${groups}</dl></div>`:'';
-  return names.length||more?`<div class="metaitem aliasline">${icon('id-card')}<span class="aliasnames" title="别名">${
-    names.map(name=>`<span>${esc(name)}</span>`).join('')}</span>${more}</div>`:'';
-}
-/* 女优页外链一律是纯图标，名字只在 title 和读屏文字里。链到她所属事务所的那条（NAX 的
-   label 就是 `New Actor eXperience`）写「<事务所> 官方资料」：图标看不出那是她的官方档案页。 */
-function performerLinkName(link,agency){
-  const text=officialLinkText(link,'performer'),home=foldName(agency);
-  const own=home&&[link.label,text].map(foldName).some(said=>said&&(home.includes(said)||said.includes(home)));
-  return own?`${agency} 官方资料`:(text||link.label||'');
-}
-/* 「+N」的浮层与订阅新作的说明同一套：`popover` 进顶层，资料卡的 `overflow:hidden` 裁不到它；
-   位置按视口算，默认贴按钮下方 8px，下面放不下翻上去，左右夹在视口内 8px。
-   指针悬停或键盘聚焦就出，指针挪到浮层上读名字时不收；点一下钉住（触屏只有这一条路），
-   再点、点别处或 Escape 收起。别名与标签的两个「+N」各接一份。 */
-function wireHeroPops(){
-  const index=$('#index');
-  wireHeroPop(index.querySelector('.aliasmore'),$('#entityAliasPop'));
-  wireHeroPop(index.querySelector('.factmore'),$('#entityTagPop'));
-}
-function wireHeroPop(more,pop){
-  if(!more||!pop)return;
-  const open=()=>pop.matches(':popover-open');
-  const place=()=>{
-    const anchor=more.getBoundingClientRect(),box=pop.getBoundingClientRect();
-    pop.style.left=`${Math.max(8,Math.min(innerWidth-box.width-8,anchor.left))}px`;
-    const below=anchor.bottom+8;
-    pop.style.top=`${below+box.height<=innerHeight-8?below:Math.max(8,anchor.top-box.height-8)}px`;
-  };
-  let pinned=false,closing=0;
-  const outside=event=>{if(!more.contains(event.target)&&!pop.contains(event.target))hide()};
-  const follow=()=>{if(pop.isConnected&&open())place();else hide()};
-  function hide(){
-    clearTimeout(closing);pinned=false;
-    removeEventListener('scroll',follow,true);removeEventListener('resize',follow);
-    removeEventListener('pointerdown',outside,true);
-    if(pop.isConnected&&open())pop.hidePopover();
-    more.setAttribute('aria-expanded','false');
-  }
-  const show=()=>{
-    clearTimeout(closing);if(open())return;
-    pop.showPopover();more.setAttribute('aria-expanded','true');place();
-    addEventListener('scroll',follow,{capture:true,passive:true});addEventListener('resize',follow,{passive:true});
-    addEventListener('pointerdown',outside,true);
-  };
-  const later=()=>{clearTimeout(closing);closing=setTimeout(()=>{
-    if(!pinned&&!more.matches(':hover,:focus-visible')&&!pop.matches(':hover'))hide()},150)};
-  more.addEventListener('pointerenter',event=>{if(event.pointerType==='mouse')show()});
-  more.addEventListener('pointerleave',later);
-  pop.addEventListener('pointerenter',()=>clearTimeout(closing));
-  pop.addEventListener('pointerleave',later);
-  more.addEventListener('focus',()=>{if(more.matches(':focus-visible'))show()});
-  more.addEventListener('blur',later);
-  more.addEventListener('click',()=>{if(pinned)hide();else{show();pinned=true}});
-  more.addEventListener('keydown',event=>{if(event.key==='Escape'&&open()){event.preventDefault();hide()}});
-}
-function wireEntityFeed(entityId){
-  const toggle=$('#index').querySelector('[data-entity-feed]');
-  if(!toggle||!entityId)return;
-  const onPage=()=>$('#index').contains(toggle);
-  const label=toggle.closest('.entryfeed'),tip=label.querySelector('.entryfeedtip');
-  /* 说明浮层开着时在顶层，按视口定位：默认贴图标下方，下面放不下才翻到上方，左右夹在视口
-     内 8px。开着的时候页面滚动或窗口改宽就重算，关掉或页面换走后那条监听自己摘掉。 */
-  const open=()=>tip.matches(':popover-open');
-  const place=()=>{
-    const anchor=label.getBoundingClientRect(),box=tip.getBoundingClientRect();
-    tip.style.left=`${Math.max(8,Math.min(innerWidth-box.width-8,anchor.left))}px`;
-    const below=anchor.bottom+8;
-    tip.style.top=`${below+box.height<=innerHeight-8?below:Math.max(8,anchor.top-box.height-8)}px`;
-  };
-  const follow=()=>{
-    if(tip.isConnected&&open()){place();return}
-    removeEventListener('scroll',follow,true);removeEventListener('resize',follow);
-  };
-  // Escape 只收起这一次；指针离开或焦点移走后，下一次悬停照常出现。
-  let dismissed=false;
-  const showTip=()=>{
-    if(dismissed||open())return;
-    tip.showPopover();place();
-    addEventListener('scroll',follow,{capture:true,passive:true});addEventListener('resize',follow,{passive:true});
-  };
-  const hideTip=()=>{if(open())tip.hidePopover()};
-  const restore=()=>{dismissed=false;hideTip()};
-  toggle.addEventListener('keydown',event=>{if(event.key==='Escape'){dismissed=true;hideTip()}});
-  label.addEventListener('pointerenter',showTip);
-  toggle.addEventListener('focus',()=>{if(toggle.matches(':focus-visible'))showTip()});
-  label.addEventListener('pointerleave',()=>{if(!toggle.matches(':focus-visible'))restore()});
-  toggle.addEventListener('blur',restore);
-  const write=async on=>{
-    setActionBusy(toggle);
-    try{
-      await api('/api/feeds/source',{method:'POST',
-        body:JSON.stringify({action:'follow',entity_id:entityId,enabled:on})});
-      toggle.checked=on;
-      return true;
-    }catch(error){
-      toggle.checked=!on;actionFailure(on?'订阅新作':'取消订阅新作',error);
-      return false;
-    }finally{setActionBusy(toggle,false);tip.textContent=entityFeedTip(toggle.checked);if(open())place()}
-  };
-  const refreshAfterCheck=async()=>{
-    for(let tries=0;tries<ENTITY_FEED_WAIT_TRIES&&onPage();tries+=1){
-      await new Promise(resolve=>setTimeout(resolve,3000));
-      const job=await api('/api/feeds/check').catch(()=>null);
-      if(!job||job.status!=='running')break;
-    }
-    if(onPage())void renderFeedNew($('#index').querySelector('[data-feed-new]'),entityId);
-  };
-  toggle.onchange=async()=>{
-    const on=toggle.checked;
-    if(!await write(on))return;
-    actionReceipt(on?'已订阅新作':'已取消订阅新作',{undo:async()=>{await write(!on)}});
-    if(on)void refreshAfterCheck();
-  };
-}
 
 /* 旧直达 URL 仍然可用，落点跟着面板一起搬到数据管理。 */
 async function openResourceSync(push=true){
@@ -7099,73 +6959,63 @@ async function openPhotoLightbox(index,source=null){
    `entity.canonical_name` 这个真相字段，所以只在服务端换完之后才重画这一页；撤销
    同样是一次真实写回，不在本地把标题改回去当成功。添别名写的是 `entity_alias`，
    两者分成两个端点：一个是身份补充、有自己的冲突判定，一个只在本条实体的名字里选。
-   页面重画会把菜单连同这里绑的处理器一起换掉，每次渲染重新绑一遍。 */
-function wireNamePicker(kind,current,mine){
-  const mount=$('#index').querySelector('[data-namepick]');
-  if(!mount)return;
-  const toggle=mount.querySelector('[data-namepick-toggle]');
-  const menu=mount.querySelector('[data-namepick-menu]');
-  const anchored=wireAnchoredMenu(mount,toggle,menu,{align:'start'});
-  const rename=(from,to)=>api('/api/entity-name',
-    {method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});
+   菜单本身在资料卡的岛里（`name-picker.tsx`），这里是它递过来的两件事。 */
+const renameEntity=(kind,from,to)=>api('/api/entity-name',
+  {method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});
+async function addEntityAlias(kind,current,mine){
   const alias=payload=>api('/api/entity-alias',
     {method:'POST',body:JSON.stringify({kind,name:current,...payload})});
-  menu.querySelector('[data-namepick-alias]').onclick=async()=>{
-    anchored.setOpen(false);
-    /* 添别名只往这条实体上加一个写法，不改任何已有断言，所以不再问一遍；撤销摆在
-       同一个弹层里，添和撤是一件事的两头。写回来的名字随后就出现在这个菜单里，
-       要把它提成统称再点一次即可——那一步有它自己的代价，仍走确认。 */
-    const form=formModal({
-      title:'添加别名',
-      description:'图库按名字存图，多记一个写法就多一批候选；这里添的名字也能提为统称。',
-      body:`<label class="modalfield"><span>别名</span>
-          <input class="geist-input" name="alias" maxlength="80" autocomplete="off"
-            placeholder="另一种写法，或另一个艺名"></label>`
-        +(mine.length?`<div class="modalfield"><span>自己添过的</span>
-          <div class="aliaschips">${mine.map(one=>`<span class="aliaschip">${esc(one)}
-            <button type="button" data-alias-drop="${esc(one)}"
-              aria-label="撤销别名 ${esc(one)}">${icon('x')}</button></span>`).join('')}</div></div>`:''),
-      confirmLabel:'添加别名',
-      confirmDisabled:true,
-      onConfirm:()=>alias({alias:field.value.trim()})});
-    const field=form.dialog.querySelector('[name=alias]');
-    field.oninput=()=>{form.confirmButton.disabled=!field.value.trim()};
-    /* 撤销只认自己添的那几个：刮削和合并留下的别名是这条实体当初被认成这个人的依据，
-       一次点击删不得。服务端按来源守这条线，这里只列它报回来的那几个。 */
-    form.dialog.querySelectorAll('[data-alias-drop]').forEach(chip=>chip.onclick=async()=>{
-      const gone=chip.dataset.aliasDrop;
-      form.close();
-      try{await alias({alias:gone,remove:true})}
-      catch(error){actionFailure('撤销别名',error);return}
-      actionReceipt(`已撤销别名 ${gone}`,{undo:async()=>{
-        await alias({alias:gone});await openEntity(kind,current)}});
-      await openEntity(kind,current);
-    });
-    const {confirmed,result}=await form.done;
-    if(!confirmed)return;
-    if(result?.added)actionReceipt(`已添加别名 ${result.alias}`,{undo:async()=>{
-      await alias({alias:result.alias,remove:true});await openEntity(kind,current)}});
-    else actionReceipt(`${result?.alias} 已经是这条实体的名字`);
+  /* 添别名只往这条实体上加一个写法，不改任何已有断言，所以不再问一遍；撤销摆在
+     同一个弹层里，添和撤是一件事的两头。写回来的名字随后就出现在这个菜单里，
+     要把它提成统称再点一次即可——那一步有它自己的代价，仍走确认。 */
+  const form=formModal({
+    title:'添加别名',
+    description:'图库按名字存图，多记一个写法就多一批候选；这里添的名字也能提为统称。',
+    body:`<label class="modalfield"><span>别名</span>
+        <input class="geist-input" name="alias" maxlength="80" autocomplete="off"
+          placeholder="另一种写法，或另一个艺名"></label>`
+      +(mine.length?`<div class="modalfield"><span>自己添过的</span>
+        <div class="aliaschips">${mine.map(one=>`<span class="aliaschip">${esc(one)}
+          <button type="button" data-alias-drop="${esc(one)}"
+            aria-label="撤销别名 ${esc(one)}">${icon('x')}</button></span>`).join('')}</div></div>`:''),
+    confirmLabel:'添加别名',
+    confirmDisabled:true,
+    onConfirm:()=>alias({alias:field.value.trim()})});
+  const field=form.dialog.querySelector('[name=alias]');
+  field.oninput=()=>{form.confirmButton.disabled=!field.value.trim()};
+  /* 撤销只认自己添的那几个：刮削和合并留下的别名是这条实体当初被认成这个人的依据，
+     一次点击删不得。服务端按来源守这条线，这里只列它报回来的那几个。 */
+  form.dialog.querySelectorAll('[data-alias-drop]').forEach(chip=>chip.onclick=async()=>{
+    const gone=chip.dataset.aliasDrop;
+    form.close();
+    try{await alias({alias:gone,remove:true})}
+    catch(error){actionFailure('撤销别名',error);return}
+    actionReceipt(`已撤销别名 ${gone}`,{undo:async()=>{
+      await alias({alias:gone});await openEntity(kind,current)}});
     await openEntity(kind,current);
-  };
-  menu.querySelectorAll('[data-namepick-name]').forEach(item=>item.onclick=async()=>{
-    const chosen=item.dataset.namepickName;
-    anchored.setOpen(false);
-    if(chosen===current)return;
-    /* 换统称要重写整条实体的扁平投影，先把代价说清再问。确认键、标题和成功回执共用
-       「更改统称」这一个动词；写入失败时弹层留在原地，原因写在正文下方等重试。 */
-    const {confirmed,result}=await confirmModal({
-      title:'更改统称',
-      body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`
-        +'作品上的署名、搜索和标签都会跟着改写。',
-      confirmLabel:'更改统称',
-      onConfirm:()=>rename(current,chosen)});
-    if(!confirmed||!result?.changed)return;
-    actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{
-      await rename(result.canonical_name,result.previous_name);
-      await openEntity(kind,result.previous_name)}});
-    await openEntity(kind,result.canonical_name);
   });
+  const {confirmed,result}=await form.done;
+  if(!confirmed)return;
+  if(result?.added)actionReceipt(`已添加别名 ${result.alias}`,{undo:async()=>{
+    await alias({alias:result.alias,remove:true});await openEntity(kind,current)}});
+  else actionReceipt(`${result?.alias} 已经是这条实体的名字`);
+  await openEntity(kind,current);
+}
+async function chooseEntityName(kind,current,chosen){
+  if(chosen===current)return;
+  /* 换统称要重写整条实体的扁平投影，先把代价说清再问。确认键、标题和成功回执共用
+     「更改统称」这一个动词；写入失败时弹层留在原地，原因写在正文下方等重试。 */
+  const {confirmed,result}=await confirmModal({
+    title:'更改统称',
+    body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`
+      +'作品上的署名、搜索和标签都会跟着改写。',
+    confirmLabel:'更改统称',
+    onConfirm:()=>renameEntity(kind,current,chosen)});
+  if(!confirmed||!result?.changed)return;
+  actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{
+    await renameEntity(kind,result.canonical_name,result.previous_name);
+    await openEntity(kind,result.previous_name)}});
+  await openEntity(kind,result.canonical_name);
 }
 
 /* 横着滚的那一行两端要渐隐：不然浮层圆角那儿最后一个标签被直角硬切掉半个字，
@@ -7203,6 +7053,58 @@ function showEntityMissing(kind){
   const actions=INDEX_TITLES[index]?`<a class="geist-button primary" href="/${index}">返回${title}列表</a>`:'';
   $('#index').innerHTML=emptyState('search-x',`找不到这个${title}`,'名字可能拼错了，或者已经合并到别的名字下；回列表里重新找。',{actions});
 }
+/* 资料卡要做的写操作和站内跳转。岛不自己拼请求：失败回执、确认弹层与「写完重进这一页」
+   都和壳里其余页面同一套。 */
+function entityHeroActions(kind,name,d,host){
+  const id=Number(d.id);
+  return {
+    openEntity:(target,to)=>void openEntity(target,to),
+    chooseName:chosen=>void chooseEntityName(kind,d.canonical_name,chosen),
+    addAlias:()=>void addEntityAlias(kind,d.canonical_name,d.user_aliases||[]),
+    follow:async on=>{
+      try{
+        await api('/api/feeds/source',{method:'POST',
+          body:JSON.stringify({action:'follow',entity_id:id,enabled:on})});
+      }catch(error){actionFailure(on?'订阅新作':'取消订阅新作',error);throw error}
+    },
+    refreshFeedAfterCheck:()=>void refreshEntityFeedAfterCheck(host),
+    // 忽略与已读都是标记，写失败了卡片照样收起：这一行下次取数时会按服务端的现状重排。
+    feedAction:(feedId,action)=>api('/api/feeds/discovery',{method:'POST',
+      body:JSON.stringify({action,ids:[feedId]})}).then(()=>undefined,()=>undefined),
+    /* 圆框角上那个加号。换完重进这一页：头像索引在服务端已经失效过一次，重画才读得到新图。 */
+    avatarPicked:()=>void openEntity(kind,name,false),
+  };
+}
+/* 资料卡里仍由遗留层拼的那几段：头像的 `<img>`（兜底链、人脸放大与等待微光都直接改这个
+   节点）、横滚行的拖动与滚轮、回执。 */
+function entityHeroHelpers(kind,d){
+  /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
+     圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
+     露出来。四个标志（`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由
+     `/api/entity` 随资料下发。
+
+     作品截图不给公司用：厂牌那张是自家片没错，可这一页要认的是牌子；事务所名下的片
+     更是成员各自拍的，拿其中一部的画面当门面，说的是别人的事。 */
+  const company=kind==='studio'||kind==='agency';
+  return {
+    portraitImg:()=>d.id?entityFaceImg({kind,id:d.id,hasImage:d.has_image,
+      rep:company||!d.has_avatar?null:d.representative_asset_id,
+      mark:kind==='agency'?d.mark_link_id:null,
+      logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',
+      alt:esc(d.canonical_name),lazy:false,
+      style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
+      dropStyle:true}):'',
+    costarImg:x=>entityFaceImg({id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
+      style:facePos(x.avatar_focus),focus:x.avatar_focus}),
+    wireScroller:row=>{if(row)wireDrag(row)},
+    wireFeedRow:row=>{
+      if(!row)return;
+      wireDrag(row);
+      if(appSettings.feedAutoScroll)wireAutoScroll(row);
+    },
+    receipt:(message,options)=>actionReceipt(message,options),
+  };
+}
 async function openEntity(kind,name,push=true){
   releaseHoverPreviews();releaseEntityGrid();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
@@ -7238,7 +7140,9 @@ async function openEntity(kind,name,push=true){
       if(d&&!d.error&&d.id)d.feedNew=await loadFeedNew(d.id,true);
       return d}),
     fetchEntityItems(kind,name,filters),
-    api(`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`)]);
+    api(`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
+    // 资料卡是 React 岛：包和资料一起取，数据一到就能画。
+    preloadIslands()]);
   if(seq!==entityRequestSeq||
      decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath))return;
   if(d.error){showEntityMissing(kind);return}
@@ -7249,95 +7153,12 @@ async function openEntity(kind,name,push=true){
   document.body.classList.add('entity-open');
   $('#index').hidden=false;clearCatalogGrid();$('#count').textContent='';
   $('#loadSentinel').hidden=true;
-  /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
-     圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
-     露出来。四个标志（`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由
-     `/api/entity` 随资料下发。
-
-     作品截图不给公司用：厂牌那张是自家片没错，可这一页要认的是牌子；事务所名下的片
-     更是成员各自拍的，拿其中一部的画面当门面，说的是别人的事。 */
-  const company=kind==='studio'||kind==='agency';
-  const image=d.id?entityFaceImg({kind,id:d.id,hasImage:d.has_image,
-    rep:company||!d.has_avatar?null:d.representative_asset_id,
-    mark:kind==='agency'?d.mark_link_id:null,
-    logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',
-    alt:esc(d.canonical_name),lazy:false,
-    style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
-    dropStyle:true}):'';
-  /* 链接按 beeg 的资料页形态：社媒收成纯图标，公司页的官网保留名字；女优页连官网也是图标，
-     理由在 `iconLink` 那里。
-
-     社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——`X @remu19971203` 里
-     真正有信息量的只有那个 X。图标本身就说明了去哪，名字留给官网那种「点之前看不出
-     是谁」的链接。外链箭头一并去掉：`target="_blank"` 已经是外链，箭头只是重复，
-     一排链接里还会挤掉本来就不多的横向空间。 */
-  const agencyHome=d.agency||null;
-  const agencyName=agencyHome?agencyHome.canonical_name:((d.metadata||{}).agency?.name||'');
-  /* 女优页的外链一律收成纯图标（`performerLinkName`）：页头右边多了一张资料表，名字那一栏
-     放不下一排带字的按钮，而图标本身就说清了去哪家。 */
-  const iconLink=(x,mark,name)=>`<a class="iconlink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(name)}">${mark}<span class="sr-only">${esc(name)}</span></a>`;
-  const siteMark=x=>`<span class="entitylinkicon">${icon('globe')}<img class="entityfavicon" src="${esc(linkMarkUrl(x))}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self"></span>`;
-  /* 已隐退女优的失效链接留在原位、不可点，也不取站点图标：去敲一个停放域名只会招来杀毒
-     软件告警。她当年属于哪家仍是有用的信息，悬停写隐退年份，说明这页为什么打不开。 */
-  const goneLink=x=>{
-    const why=x.retired_year?`已于 ${x.retired_year} 年隐退`:'链接已失效';
-    const title=`${performerLinkName(x,agencyName)} · ${why}`;
-    return `<span class="private iconlink" tabindex="0" title="${esc(title)}"><span class="entitylinkicon">${icon('globe')}</span><span class="sr-only">${esc(title)}</span></span>`;
-  };
-  const siteLinks=(d.links||[]).map(x=>{
-    if(x.gone)return goneLink(x);
-    if(!(x.clickable&&/^https?:\/\//i.test(x.url||'')))
-      return `<span class="private" title="私人馆藏来源记录，不直接打开下载页"><span class="entitylinkicon">${icon('globe')}</span><span class="entitylinklabel">来源 · ${esc(x.label||x.hostname||'已记录')}</span></span>`;
-    if(kind==='performer'&&x.link_kind!=='social')return iconLink(x,siteMark(x),performerLinkName(x,agencyName));
-    /* 社媒的 handle 是网址的一部分，写出来只是把 URL 抄一遍——图标本身已经说明了去哪。 */
-    if(x.link_kind==='social'){
-      const brand=brandIcon(x.url);
-      // 纯图标的链接自己不带可读文字，得把标签留给辅助技术。
-      return iconLink(x,brand?`<span class="entitylinkicon brand">${icon(brand)}</span>`:siteMark(x),x.label);
-    }
-    /* 图标是站点自己的那枚，说的是「这是哪家」；取不到图时 `data-drop="self"` 把 img
-       撤掉，露出底下那枚地球。
-
-       文字是这家站平时被叫的那个短名（`siteName`），人物页和厂牌页同一张表。完整的
-       名称留在 `title` 里，点之前要看全称把指针停上去就有。公司页见 `officialLinkText`。 */
-    return `<a class="urllink" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${siteMark(x)}<span class="entitylinklabel">${esc(officialLinkText(x,kind,[d.canonical_name,...(d.aliases||[])]))}</span></a>`;
-  }).join('');
-  /* 外部入口：同一个人在 minnano-av、JavDB 与 MISSAV 的那几页。地址、位置和用哪枚标记
-     都由服务端下发（`peach.entry_links`），这里只排版——站点 id 缺席、或者这条实体不是
-     JAV 女优时，那一枚根本不在 `entry_links` 里，页面上也就没有一个点过去落空的入口。
-
-     minnano-av 是一份资料页，和事务所官网、社媒同一类，所以它排进上面那排链接的最左边，
-     形状也跟着那排走；`/link-mark` 那条圆标认的是账本里的链接 id，这一枚不是账本链接，
-     图标于是取雪碧图里 minnano 自己那枚。
-
-     JavDB 与 MISSAV 是「去看片」的入口，另起一行，印两站自己的标识：一行两枚横标识，
-     比两枚小圆标加两行栏位标题省掉整整两行，而认出是哪家更快。一位女优在 javdb 有两个
-     演员页是常事，第二枚在标识后面缀服务端编好的序号。 */
-  const entryLinks=d.entry_links||[];
-  const links=entryLinks.filter(x=>x.slot==='pill').map(x=>
-    iconLink(x,`<span class="entitylinkicon brand">${icon(x.mark)}</span>`,x.label)).join('')+siteLinks;
-  /* MISSAV 站上没有图形标识，它的标题就是排出来的字：Halant 500、`MISS` 用前景色、`AV`
-     用它的粉（`.text-primary` 的 rgb(254 98 142)）。这里照它那套规则重排，字体退回本机
-     衬线体——为一枚标识把一份第三方字体收进仓库，不值当。前景色那半在它站上是近白，
-     压在 Peach 的浅色面上会整块消失，所以跟着页面墨色走。 */
-  const entryMarks=entryLinks.filter(x=>x.slot==='mark').map(x=>
-    `<a class="entrymark" href="${esc(x.url)}" target="_blank" rel="noreferrer" title="${esc(x.label)}">${
-      x.mark?icon(x.mark):'<span class="missavmark"><span>MISS</span><span>AV</span></span>'
-    }${x.ordinal?`<span class="entryordinal">${esc(x.ordinal)}</span>`:''}<span class="sr-only">${esc(x.label)}</span></a>`
-  ).join('')+(d.feed?`<label class="entryfeed">${icon('rss')}<input type="checkbox"
-      class="sr-only" role="switch" aria-label="订阅新作" aria-describedby="entityFeedTip" data-entity-feed ${d.feed.following?'checked':''}><span
-      class="entryfeedtip" role="tooltip" id="entityFeedTip" popover="manual">${entityFeedTip(d.feed.following)}</span></label>`:'');
   const tags=(d.tags||[]).map(x=>filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag',value:x.k,selected:tagPressed(filters.tag,x.k),count:x.n.toLocaleString()})).join('');
-  /* 事务所名下的这批人不摆在这排小圆头像里：那是「同台艺人」，一条附注；名册是这一页
-     的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。
+  /* 事务所名下的这批人不摆在资料卡底那排小圆头像里：那是「同台艺人」，一条附注；名册是
+     这一页的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。
      片商页的名册是旗下 label（`d.labels`），同台艺人那排照旧留在卡底。 */
   const roster=kind==='agency'?(d.related_performers||[]):kind==='studio'?(d.labels||[]):[];
   entityRoster=roster;entityRosterKind=kind==='studio'?'studio':'performer';
-  const related=kind==='agency'?'':(d.related_performers||[]).map(x=>`<button class="av" data-related-performer="${esc(x.k)}">
-      <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${entityFaceImg(
-        {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
-         style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
-      <span class="nm">${esc(x.k)}</span></button>`).join('');
   // 照片那枚键数的是这一档里能看的图：本地图片加番号样张。
   const photoCount=photos&&!photos.error?(photos.total||0)+(photos.sample_total||0):0;
   /* 艺人名册、视频、照片是这一页的三个互斥视图，共用一组圆键：它们回答的是同一个
@@ -7355,115 +7176,34 @@ async function openEntity(kind,name,push=true){
     imageValue:photoCount?'photos':'',imageLabel:'照片',
     videoCount:d.asset_count,imageCount:photoCount,
     label:roster.length?'页面视图':'媒体类型',className:'entitymediaview'}):'';
-  /* 统称由用户自己定。同一个人在库里常有中文、日文、罗马字几种写法，哪一个该顶在
-     标题上是他的偏好，账本里没有能推出答案的字段。菜单只列这条实体名下已有的写法：
-     换统称是换显示的那一个，不是改名——改名要有来源和证据，不该由一次点击完成。
-     只有一个写法时不出这个控件，那里没有可选的东西。 */
-  /* 事务所是身份信息，不是链接。它此前寄居在官方链接的标签里，于是那个控件同时替
-     两家公司说话——文字是事务所名，图标和落点却是片商的站。名字归名字、链接归链接，
-     它就跟着别名和作品数排在同一行。
-
-     账本里有这家事务所的实体时给出去处：`d.agency` 是那条实体，点进去是它的资料页。
-     只有 `metadata.agency` 时仍写名字但不做链接——那是采到的原文，还没有对应身份，
-     做成链接会通向一个不存在的页面。
-
-     这一行不写类别名。`T-POWERS` 这样的公司名摆在别名和作品数中间，读的人一眼就知道
-     那是什么；多出来的两个字只占掉这行本来就不多的横向空间。 */
-  const agencyLink=!agencyName?''
-    :agencyHome?`<a class="entitylink" href="${esc(entityPath('agency',agencyName))}"
-        data-agency="${esc(agencyName)}">${esc(agencyName)}</a>`
-    :esc(agencyName);
-  const agencyHtml=agencyLink?` · ${agencyLink}`:'';
-  /* 事务所页数的是人，不是片。它名下那 N 个视频是成员拍的，只报视频数会让「这家有
-     几个人」这个它唯一独有的读数消失。 */
-  /* 片商页同理：视频数是旗下合计（ADR-0051 修订），旗下有几个 label 是它自己的读数。 */
-  const memberHtml=kind==='agency'
-    ?` · <b>${(d.member_count||0).toLocaleString()}</b> 位艺人`
-    :(d.labels||[]).length?` · <b>${d.labels.length.toLocaleString()}</b> 个厂牌`:'';
-  /* label 一层（ADR-0051）：label 页在归属那一格给出所属片商；片商页旗下的 label 是
-     名册，摆在筛选条下面，和事务所页的艺人同一个位置。 */
-  const studioLink=target=>`<a class="entitylink" href="${esc(entityPath('studio',target))}"
-      data-studio-link="${esc(target)}">${esc(target)}</a>`;
-  const makerHtml=d.maker?` · ${studioLink(d.maker.name)}`:'';
-  const nameChoices=[d.canonical_name,...(d.aliases||[])]
-    .filter((option,index,all)=>option&&all.indexOf(option)===index);
-  /* 这枚下拉恒在。只有一个名字时整块不画的话，「她还叫过别的」这件事在页面上就没有
-     入口，而恰恰是只剩一个名字的人最需要补——图库按名字存图，少一个写法就少一批图。
-     选统称仍只在已有的名字里挑；添别名是另一件事，隔一条线摆在末尾。 */
-  const namePick=`<div class="namepick" data-namepick>
-      <button type="button" class="npbtn" data-namepick-toggle aria-haspopup="menu"
-        aria-expanded="false" aria-controls="entity-name-menu"
-        aria-label="名字与别名" title="名字与别名">${icon('chevron-down')}</button>
-      <div class="popmenu npmenu" id="entity-name-menu" role="menu" data-namepick-menu hidden>${
-        nameChoices.map(option=>`<button type="button" role="menuitemradio"
-          data-namepick-name="${esc(option)}" aria-checked="${option===d.canonical_name}"
-          >${icon('check')}<span>${esc(option)}</span></button>`).join('')}
-        <hr aria-hidden="true">
-        <button type="button" role="menuitem" data-namepick-alias
-          >${icon('plus')}<span>添加别名…</span></button></div></div>`;
-  /* 女优页名字下面那一行分三项，各带一枚图标：视频数、事务所、别名（读音在最前）；她的生日、
-     身材这些进右边那张资料表（`entityFactsHtml`）。其余种类仍是一行字：别名 · 视频数 · 归属。 */
-  const count=`<b>${d.asset_count.toLocaleString()}</b> 个视频`;
-  const aliasLine=kind==='performer'
-    ?`<div class="alias metaline"><span class="metaitem" title="视频">${icon('film')}<span>${count}</span></span>${
-      agencyLink?`<span class="metaitem" title="事务所">${icon('briefcase')}<span>${agencyLink}</span></span>`:''}${
-      entityNameLineHtml(d.name_groups)}</div>`
-    :`<div class="alias">${(d.display_aliases||[]).length?`${d.display_aliases.map(esc).join(' / ')} · `:''}${count}${memberHtml}${agencyHtml}${makerHtml}</div>`;
   $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
-  const people=kind==='performer'||kind==='creator';
-  /* 资料卡按 Board 的 profile 卡排：一块 secondary 底、18px 圆角的卡，正文是头像加身份三行
-     （名字、别名与归属、外链），女优有资料时右边再加一栏资料表，同台艺人收进卡底那条色阶带——那是这个人的附注，不是这一页
-     的正文；事务所的名册是正文，走筛选条左端圆键里那一档。卡外面依次是交集条、玻璃筛选条
-     和内容区，顶到底一条线。 */
-  $('#index').innerHTML=`<section class="entityhero" aria-label="资料">
-      <div class="entityprofile"><div class="entityportraitwrap"><div class="entityportrait ${people?'':'square'}" data-fit-native="${company?'mark':'portrait'}">${image}<span>${esc(name.slice(0,1))}</span></div>${
-        people?'<span data-avatar-picker></span>':''}</div>
-      <div class="entityidentity"><div class="entitytitle"><h2>${esc(d.canonical_name)}</h2>${namePick}</div>
-        ${aliasLine}
-        ${links?`<div class="entitylinks">${links}</div>`:''}
-        ${entryMarks?`<div class="entrymarks">${entryMarks}</div>`:''}</div>${kind==='performer'?entityFactsHtml(d.profile):''}</div>
-      ${related?`<div class="entityfoot" aria-label="同台艺人"><div class="relatedpeople">${related}</div></div>`:''}</section>
+  /* 资料卡与新作那一行归 React（`entity-hero`）：宿主排在最前，新作那一行的容器留在筛选条
+     和内容区之间，由岛接管。卡外面依次是交集条、玻璃筛选条、新作和内容区，顶到底一条线。
+     岛挂上之前宿主是空的：React 包已随取数预载好，挂载里剩下的都是微任务，换掉骨架与画出
+     资料卡落在同一帧。 */
+  $('#index').innerHTML=`<div data-entity-hero="${d.id?Number(d.id):''}"></div>
     <div class="combo entitycombo"></div>
     <section class="entitytagbar" aria-label="媒体与标签">${mediaToggle}${mediaToggle?'<span class="sep" aria-hidden="true"></span>':''}<div class="filterscroll"><div class="viewpills entityviews" role="group" aria-label="观看状态">${VIEW_PILLS.map(v=>`<button type="button" class="pill" data-entity-state="${v.k}" aria-pressed="${(filters.state||'')===v.k}">${v.label}</button>`).join('')}<span class="sep" aria-hidden="true"></span></div><div class="tagscroll entitytags">${tags}</div></div></section>
     <section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>
     <div class="entitysection"></div>`;
-  /* 圆框角上那个加号。自动挑的那张按来源优先级来，而那个顺序回答的是「先试哪一张」，
-     不是「哪一张适合当头像」：图库排第一的常是写真封面，同一个人往下翻几张就有片商的
-     正脸原图。换完重进这一页——头像索引在服务端已经失效过一次，重画才读得到新图。 */
-  /* 关注的这位有新作、库里还没有文件时，那一行摆在资料卡和作品之间：它讲的是这个人，
-     但不是这一页的正文。一条都没有就整块不出（`renderFeedNew` 自己判）。 */
-  if(d.id)void renderFeedNew($('#index').querySelector('[data-feed-new]'),Number(d.id),d.feedNew);
-  const pickerHost=$('#index').querySelector('[data-avatar-picker]');
-  if(pickerHost&&d.id)import('/dist/peach-ui.js').then(ui=>ui.mountIsland('avatar-picker',pickerHost,{
-    kind,entityId:Number(d.id),name:d.canonical_name||name,
-    onPicked:()=>openEntity(kind,name,false)},
-    // 取产物要等一个来回，这期间页面可能已经重画了：那时这个容器已经不在 #index 里。
-    {isCurrent:()=>$('#index').contains(pickerHost)}));
+  const heroHost=$('#index').querySelector('[data-entity-hero]');
+  entityHeroHost=heroHost;
+  await mountIsland('entity-hero',heroHost,{kind,name,entity:d,feedNew:d.feedNew||null,
+    feedHost:d.id?$('#index').querySelector('[data-feed-new]'):null,jav:entityJavLayout,
+    actions:entityHeroActions(kind,name,d,heroHost),helpers:entityHeroHelpers(kind,d)},
+  {isCurrent:()=>seq===entityRequestSeq&&heroHost.isConnected});
+  if(seq!==entityRequestSeq||!heroHost.isConnected)return;
   // 资料页的标签和顶部标签条是同一个开关，读的写的都是这一页的筛选。
   $('#index').querySelectorAll('[data-entity-tag]').forEach(b=>b.onclick=()=>
     toggleTag(b.dataset.entityTag));
-  $('#index').querySelectorAll('[data-related-performer]').forEach(b=>b.onclick=()=>
-    openEntity('performer',b.dataset.relatedPerformer));
-  // 站内跳转走同一个 SPA 入口，不让浏览器整页重载。
-  $('#index').querySelectorAll('[data-agency]').forEach(a=>a.onclick=event=>{
-    event.preventDefault();openEntity('agency',a.dataset.agency)});
-  $('#index').querySelectorAll('[data-studio-link]').forEach(a=>a.onclick=event=>{
-    event.preventDefault();openEntity('studio',a.dataset.studioLink)});
-  /* 同台艺人、标签和窄屏那排外链都是 `overflow-x:auto` 加隐藏滚动条：能滚，但鼠标没有
-     一个够得着的入口——滚轮是竖向的，滚动条不画出来，于是第 8 位之后的人和标签看得见
-     够不着。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。外链那排宽屏下
-     是换行的，不溢出时组件自己量得出来，既不接滚轮也不画两端的渐隐。 */
-  wireDrag($('#index').querySelector('.relatedpeople'));
+  /* 标签那一格是 `overflow-x:auto` 加隐藏滚动条：能滚，但鼠标没有一个够得着的入口——滚轮
+     是竖向的，滚动条不画出来。全站横向行的那套拖动加滚轮映射就是为这个写的，登记上即可。 */
   wireDrag($('#index').querySelector('.entitytags'));
-  wireDrag($('#index').querySelector('.entitylinks'));
   /* 窄屏下滚的不是标签那一格而是它外面那层——四枚观看状态那时也跟着一起走。两层都
      登记：登记在不滚的那一层上是空转，`wireHorizontalScroller` 量得出没有溢出就不接
      滚轮，而少登记一层就会在某一个宽度上滚不动。 */
   wireHorizontalScroller($('#index').querySelector('.entitytags'));
   wireHorizontalScroller($('#index').querySelector('.entitytagbar .filterscroll'));
-  wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);
-  wireEntityFeed(Number(d.id));
-  wireHeroPops();
   entityPhotos=photos&&!photos.error?photos:null;
   if(entityMediaView.media==='photos'&&!photosAvailable())entityMediaView=emptyMediaView();
   renderEntityMediaToggle(kind,name,filters);

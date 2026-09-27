@@ -84,7 +84,7 @@ export function advanceImageFallback(image) {
 
 /* 全站一条监听就够。`error` 不冒泡，但捕获阶段照样会经过祖先，所以挂在根上的
    捕获监听能接住任何后代图片，不必给每个 `<img>` 各挂一个——逐个绑的话，
-   `.entityfavicon` 每次重绘都要重新绑一轮。
+   资料页外链的站点圆标每次重绘都要重新绑一轮。
    只认 `<img>`：同一个事件名也会从 `<video>`、`<source>`、`<script>` 上发出来。 */
 export function wireImageFallbacks(root) {
   root.addEventListener('error', event => {

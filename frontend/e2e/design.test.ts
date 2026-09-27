@@ -498,8 +498,8 @@ async function openPerformer(browser: Browser, viewport = DESKTOP): Promise<Visi
     feed: { following: true },
   } }));
   await opened.page.goto(new URL(`/performers/${encodeURIComponent(name)}`, opened.page.url()).href, { waitUntil: 'load' });
-  await opened.page.locator('.entryfeed').waitFor({ timeout: 15_000 });
-  await opened.page.locator('.entityfoot [data-related-performer]').first().waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-entry-feed]').waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-entity-foot] [data-related-performer]').first().waitFor({ timeout: 15_000 });
   await settle(opened.page);
   await opened.page.evaluate(() => {
     document.documentElement.dataset.theme = 'light';
@@ -529,8 +529,11 @@ const PROFILED = {
   },
 };
 
-/** 打开一位有资料的女优：资料表、名字行和外链照服务端下发的形状写，主题按参数切好。 */
-async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme: 'light' | 'dark' = 'light'): Promise<Visit> {
+/** 打开一位有资料的女优：资料表、名字行和外链照服务端下发的形状写，主题按参数切好。
+ *  `extra` 覆盖资料里的字段：默认没有看片那一行（`entry_links` 只有 minnano-av 那枚 pill、没有 `feed`），
+ *  要验两行都在的几何就从这里补。 */
+async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme: 'light' | 'dark' = 'light',
+  extra: Record<string, unknown> = {}): Promise<Visit> {
   const opened = await visit(browser, '/', viewport);
   await opened.page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
     id: 90_101, kind: 'performer', canonical_name: PROFILED.name, aliases: ['篠崎ゆう子'], display_aliases: ['篠崎ゆう子'],
@@ -545,13 +548,14 @@ async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme
     entry_links: [{ site: 'minnano-av', label: 'みんなのAV', ordinal: '', slot: 'pill', mark: 'brand-minnano',
       url: 'https://www.minnano-av.com/actress12345.html' }],
     profile: PROFILED.profile, name_groups: PROFILED.name_groups,
+    ...extra,
   } }));
   // 这几条链接是造出来的，服务端的圆标取不到；那是另一条判据，这里给一张能加载完的图。
   await opened.page.route('**/link-mark**', (route) => route.fulfill({
     status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
   }));
   await opened.page.goto(new URL(`/performers/${encodeURIComponent(PROFILED.name)}`, opened.page.url()).href, { waitUntil: 'load' });
-  await opened.page.locator('.entityhero .entitylinks').waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-entity-card] [data-entity-links]').waitFor({ timeout: 15_000 });
   await settle(opened.page);
   await opened.page.evaluate((dark) => {
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -610,14 +614,14 @@ async function heroGeometry(page: Page) {
       const box = document.querySelector(selector)?.getBoundingClientRect();
       return box ? { left: box.left, right: box.right, top: box.top, bottom: box.bottom } : null;
     };
-    const hero = document.querySelector('.entityhero')!;
-    const facts = document.querySelector('.entityfacts');
+    const hero = document.querySelector('[data-entity-card]')!;
+    const facts = document.querySelector('[data-entity-facts]');
     const style = facts ? getComputedStyle(facts) : null;
     return {
-      hero: rect('.entityhero'), identity: rect('.entityidentity'), facts: rect('.entityfacts'),
+      hero: rect('[data-entity-card]'), identity: rect('[data-entity-identity]'), facts: rect('[data-entity-facts]'),
       heroScrolls: hero.scrollWidth > hero.clientWidth + 1,
       rule: style ? { left: style.borderLeftWidth, top: style.borderTopWidth } : null,
-      labels: [...document.querySelectorAll('.entityfacts dt')].map((dt) => dt.textContent!.trim()),
+      labels: [...document.querySelectorAll('[data-entity-facts] dt')].map((dt) => dt.textContent!.trim()),
     };
   });
 }
@@ -2605,7 +2609,7 @@ describe('设计决定', () => {
       } }));
       await opened.page.goto(new URL(`/performers/${encodeURIComponent(name)}`,
         opened.page.url()).href, { waitUntil: 'load' });
-      const mark = opened.page.locator('.entrymarks a.entrymark').first();
+      const mark = opened.page.locator('[data-entry-marks] a[data-entry-mark]').first();
       await mark.waitFor({ timeout: 15_000 });
       await settle(opened.page);
       // 浅色下 `--hover` 与资料卡的 `--ground` 同是 #f5f5f5，垫上去等于没垫。
@@ -2616,14 +2620,14 @@ describe('设计决定', () => {
       await mark.hover();
       const faces = await mark.evaluate((element) => ({
         mark: getComputedStyle(element).backgroundColor,
-        card: getComputedStyle(element.closest('.entityhero')!).backgroundColor,
+        card: getComputedStyle(element.closest('[data-entity-card]')!).backgroundColor,
       }));
       assert.notEqual(faces.mark, 'rgba(0, 0, 0, 0)', '悬停没有垫底');
       assert.notEqual(faces.mark, faces.card, '悬停底色和资料卡同色，看不出来');
       const toggle = opened.page.getByRole('switch', { name: '订阅新作' });
       assert.equal(await toggle.count(), 1, '资料卡上没有订阅新作开关');
       assert.equal(await toggle.isChecked(), false);
-      const feed = opened.page.locator('.entryfeed');
+      const feed = opened.page.locator('[data-entry-feed]');
       await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
       assert.equal(await feed.evaluate((element) => getComputedStyle(element).animationName),
         'entryfeed-breathe', '没订的那枚图标不呼吸，一枚墨色小图标没人注意到');
@@ -2650,7 +2654,7 @@ describe('设计决定', () => {
       const opened = await openPerformer(browser, viewport);
       try {
         const page = opened.page;
-        const feed = page.locator('.entryfeed');
+        const feed = page.locator('[data-entry-feed]');
         await feed.hover();
         const tip = page.locator('#entityFeedTip');
         await tip.waitFor({ state: 'visible', timeout: 5_000 });
@@ -2676,7 +2680,7 @@ describe('设计决定', () => {
             .filter((hit) => !hit || !element.contains(hit)).map((hit) => hit?.className || 'null');
           element.style.pointerEvents = '';
           return { inView: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
-            clippedBy, covered, below: box.top >= document.querySelector('.entryfeed')!.getBoundingClientRect().bottom };
+            clippedBy, covered, below: box.top >= document.querySelector('[data-entry-feed]')!.getBoundingClientRect().bottom };
         });
         assert.ok(placement.inView, '说明浮层越出了视口');
         assert.deepEqual(placement.clippedBy, [], '说明浮层被外层容器裁掉了一截');
@@ -2711,7 +2715,7 @@ describe('设计决定', () => {
         }
         assert.ok(geometry.facts.right <= geometry.hero.right + 0.5, '资料表越出了资料卡');
         assert.equal(geometry.heroScrolls, false, '资料卡里有东西被横向裁掉');
-        const debut = await opened.page.locator('.entityfacts dd[title]').evaluate((dd) => ({
+        const debut = await opened.page.locator('[data-entity-facts] dd[title]').evaluate((dd) => ({
           title: dd.getAttribute('title'), wrap: getComputedStyle(dd).whiteSpace,
           cut: getComputedStyle(dd).textOverflow, clipped: dd.scrollWidth > dd.clientWidth,
           lines: Math.round(dd.getBoundingClientRect().height / parseFloat(getComputedStyle(dd).lineHeight)),
@@ -2731,24 +2735,24 @@ describe('设计决定', () => {
     const opened = await openProfiledPerformer(browser, DESKTOP);
     try {
       const page = opened.page;
-      const line = await page.locator('.entityhero .alias').evaluate((alias) => ({
-        glyphs: [...alias.querySelectorAll(':scope > .metaitem > svg use')].map((use) => use.getAttribute('href')),
-        names: [...alias.querySelectorAll('.aliasnames > span')].map((span) => span.textContent!.trim()),
-        more: alias.querySelector('.aliasmore')?.textContent?.trim() ?? '',
+      const line = await page.locator('[data-entity-alias]').evaluate((alias) => ({
+        glyphs: [...alias.querySelectorAll(':scope > [data-meta-item] > svg use')].map((use) => use.getAttribute('href')),
+        names: [...alias.querySelectorAll('[data-alias-names] > span')].map((span) => span.textContent!.trim()),
+        more: alias.querySelector('[data-hero-more="alias"]')?.textContent?.trim() ?? '',
         agency: alias.querySelector('a[data-agency]')?.textContent?.trim() ?? '',
       }));
       assert.deepEqual(line.glyphs, ['#i-film', '#i-briefcase', '#i-id-card'], '名字那一行的三项不是视频、事务所、别名');
       assert.deepEqual(line.names, ['しのだゆう', '篠崎ゆう子', '高木早希', '橋本真紀'], '读音没有排在别名最前，或别名不是前三个');
       assert.equal(line.more, '+4', '「+N」数的不是剩下那几个别名');
       assert.equal(line.agency, 'New Actor eXperience');
-      const links = await page.locator('.entityhero .entitylinks a').evaluateAll((anchors) => anchors.map((a) => {
+      const links = await page.locator('[data-entity-links] a').evaluateAll((anchors) => anchors.map((a) => {
         const box = a.getBoundingClientRect();
-        return { size: `${Math.round(box.width)}x${Math.round(box.height)}`, cls: a.className, title: a.getAttribute('title'),
-          name: a.querySelector('.sr-only')?.textContent ?? '', visibleText: a.querySelector('.entitylinklabel') !== null };
+        return { size: `${Math.round(box.width)}x${Math.round(box.height)}`, kind: a.getAttribute('data-link'), title: a.getAttribute('title'),
+          name: a.getAttribute('aria-label') ?? '', visibleText: a.querySelector('[data-link-label]') !== null };
       }));
       assert.equal(links.length, 3);
       for (const link of links) {
-        assert.deepEqual([link.size, link.cls, link.visibleText], ['36x36', 'iconlink', false], `${link.title} 不是纯图标方块`);
+        assert.deepEqual([link.size, link.kind, link.visibleText], ['36x36', 'icon', false], `${link.title} 不是纯图标方块`);
         assert.equal(link.name, link.title, `${link.title} 给读屏的名字和悬停提示不一致`);
       }
       assert.deepEqual(links.map((link) => link.title), ['みんなのAV', 'New Actor eXperience 官方资料', 'X @shinoda_yu']);
@@ -2763,7 +2767,7 @@ describe('设计决定', () => {
       const opened = await openProfiledPerformer(browser, viewport);
       try {
         const page = opened.page;
-        const more = page.locator('.aliasmore');
+        const more = page.locator('[data-hero-more="alias"]');
         const pop = page.locator('#entityAliasPop');
         assert.equal(await pop.isVisible(), false);
         await more.hover();
@@ -2774,7 +2778,7 @@ describe('设计决定', () => {
           return {
             topLayer: element.matches(':popover-open'),
             inView: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
-            title: element.querySelector('.aliaspophead')?.textContent?.trim(),
+            title: element.querySelector('[data-hero-pop-head]')?.textContent?.trim(),
             groups: [...element.querySelectorAll('dt')].map((dt) => dt.textContent!.trim()),
             face: getComputedStyle(element).backgroundColor,
           };
@@ -2819,7 +2823,7 @@ describe('设计决定', () => {
             const b = document.querySelector(selector)!.getBoundingClientRect();
             return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
           };
-          return { menu: rect('[data-namepick-menu]'), portrait: rect('.entityportrait'), toggle: rect('[data-namepick-toggle]') };
+          return { menu: rect('[data-namepick-menu]'), portrait: rect('[data-entity-portrait]'), toggle: rect('[data-namepick-toggle]') };
         });
         const overlaps = box.menu.left < box.portrait.right && box.menu.right > box.portrait.left
           && box.menu.top < box.portrait.bottom && box.menu.bottom > box.portrait.top;
@@ -2968,23 +2972,23 @@ describe('设计决定', () => {
     const opened = await openProfiledPerformer(browser, DESKTOP);
     try {
       const page = opened.page;
-      const cell = await page.locator('.entityfacts dd.facttags').evaluate((dd) => ({
-        shown: [...dd.querySelectorAll(':scope > .facttag')].map((tag) => tag.textContent!.trim()),
-        more: dd.querySelector(':scope > .factmore')?.textContent?.trim() ?? '',
+      const cell = await page.locator('[data-entity-facts] dd[data-fact="tags"]').evaluate((dd) => ({
+        shown: [...dd.querySelectorAll(':scope > [data-fact-tag]')].map((tag) => tag.textContent!.trim()),
+        more: dd.querySelector(':scope > [data-hero-more="fact"]')?.textContent?.trim() ?? '',
       }));
       assert.deepEqual(cell.shown, PROFILED.profile.tags.slice(0, 4), '标签那一格不是前四个');
       assert.equal(cell.more, '+5', '「+N」数的不是剩下那几个标签');
       const pop = page.locator('#entityTagPop');
       assert.equal(await pop.isVisible(), false);
-      await page.locator('.factmore').hover();
+      await page.locator('[data-hero-more="fact"]').hover();
       await pop.waitFor({ state: 'visible', timeout: 5_000 });
       const shown = await pop.evaluate((element) => {
         const box = element.getBoundingClientRect();
         return {
           topLayer: element.matches(':popover-open'),
           inView: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight,
-          title: element.querySelector('.aliaspophead')?.textContent?.trim(),
-          tags: [...element.querySelectorAll('.facttag')].map((tag) => tag.textContent!.trim()),
+          title: element.querySelector('[data-hero-pop-head]')?.textContent?.trim(),
+          tags: [...element.querySelectorAll('[data-fact-tag]')].map((tag) => tag.textContent!.trim()),
         };
       });
       assert.equal(shown.topLayer, true, '标签浮层没进顶层，会被资料卡的 overflow:hidden 裁掉');
@@ -2994,7 +2998,7 @@ describe('设计决定', () => {
       await page.mouse.move(1, 1);
       await pop.waitFor({ state: 'hidden', timeout: 5_000 });
       // 点一下钉住：指针离开也不收，Escape 才收。
-      await page.locator('.factmore').click();
+      await page.locator('[data-hero-more="fact"]').click();
       await page.mouse.move(1, 1);
       await page.waitForTimeout(300);
       assert.equal(await pop.isVisible(), true, '点按钉住的标签浮层指针一走就收了');
@@ -3010,15 +3014,15 @@ describe('设计决定', () => {
     const opened = await openProfiledPerformer(browser, { name: 'wide', width: 1440, height: 900, mobile: false });
     try {
       const page = opened.page;
-      const button = page.locator('.entityportraitwrap [data-avatar-picker] button');
+      const button = page.locator('[data-entity-portrait-wrap] [data-avatar-picker] button');
       await button.waitFor({ timeout: 15_000 });
       // 行有多高看她有多少资料、别名那一行折不折；这里直接把身份列撑高，量的是加号跟不跟圆框。
-      await page.addStyleTag({ content: '.entityidentity{padding-block:40px}' });
+      await page.addStyleTag({ content: '[data-entity-identity]{padding-block:40px}' });
       const box = await page.evaluate(() => {
         const rect = (element: Element) => element.getBoundingClientRect();
-        const wrap = rect(document.querySelector('.entityportraitwrap')!);
-        const circle = rect(document.querySelector('.entityportrait')!);
-        const plus = rect(document.querySelector('.entityportraitwrap [data-avatar-picker] button')!);
+        const wrap = rect(document.querySelector('[data-entity-portrait-wrap]')!);
+        const circle = rect(document.querySelector('[data-entity-portrait]')!);
+        const plus = rect(document.querySelector('[data-entity-portrait-wrap] [data-avatar-picker] button')!);
         return { wrap: wrap.height, circle: { right: circle.right, bottom: circle.bottom, height: circle.height },
           plus: { right: plus.right, bottom: plus.bottom } };
       });
@@ -3039,12 +3043,12 @@ describe('设计决定', () => {
       const ink = await tokenColor(page, '#main', '--ink');
       const muted = await tokenColor(page, '#main', '--muted');
       const ground = await tokenColor(page, '#main', '--ground');
-      const facts = await page.locator('.entityfacts').evaluate((dl) => ({
+      const facts = await page.locator('[data-entity-facts]').evaluate((dl) => ({
         dd: getComputedStyle(dl.querySelector('dd')!).color, dt: getComputedStyle(dl.querySelector('dt')!).color,
       }));
       assert.equal(facts.dd, ink, '深色下资料表的值不是墨色');
       assert.equal(facts.dt, muted, '深色下资料表的项名不是次级字色');
-      await page.locator('.aliasmore').hover();
+      await page.locator('[data-hero-more="alias"]').hover();
       const pop = page.locator('#entityAliasPop');
       await pop.waitFor({ state: 'visible', timeout: 5_000 });
       const face = await pop.evaluate((element) => getComputedStyle(element).backgroundColor);
@@ -3061,9 +3065,9 @@ describe('设计决定', () => {
     const opened = await openPerformer(browser, DESKTOP);
     try {
       const page = opened.page;
-      const person = page.locator('.entityfoot [data-related-performer]').first();
+      const person = page.locator('[data-entity-foot] [data-related-performer]').first();
       const face = () => person.evaluate((element) => {
-        const style = getComputedStyle(element), ring = getComputedStyle(element.querySelector('.ring')!);
+        const style = getComputedStyle(element), ring = getComputedStyle(element.querySelector('[data-hero-ring]')!);
         return { fill: style.backgroundColor, ink: style.color, radius: style.borderRadius, padding: style.padding,
           width: style.width, ring: ring.boxShadow, size: ring.width };
       });
@@ -3083,6 +3087,249 @@ describe('设计决定', () => {
       assert.equal(hovered.fill, home.fill, '悬停没有铺首页那一档填充');
       assert.equal(hovered.ink.replace(/\s/g, ''), home.ink.replace(/\s/g, ''), '悬停没有换成主文字色');
       assert.equal(hovered.ring, 'none', '悬停还在给圆头像描圈');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('资料卡大位与同台艺人的头像按人脸框放大：图保持原比例、盖满圆框，不被预检的 max-width 夹住', { timeout: 60_000 }, async () => {
+    const name = '七沢みあ';
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      const page = opened.page;
+      const focus = { box: TASTE_FACE };
+      await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+        id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
+        user_aliases: [], asset_count: 0, tags: [], links: [], metadata: {}, entry_links: [],
+        related_performers: [{ id: 90_002, k: '共演者', n: 1, rep: null, has_image: true, has_avatar: false,
+          avatar_focus: focus }],
+        has_image: true, has_avatar: false, avatar_focus: focus, representative_asset_id: null,
+      } }));
+      await page.route(/\/entity-image\?/, (route) => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: `<svg xmlns="http://www.w3.org/2000/svg" width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}">`
+          + `<rect width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}" fill="#888"/></svg>`,
+      }));
+      await page.goto(new URL(`/performers/${encodeURIComponent(name)}`, page.url()).href, { waitUntil: 'load' });
+      for (const [where, selector] of [['大位', '[data-entity-portrait] > img[data-facebox]'],
+        ['同台艺人', '[data-hero-ring] > img[data-facebox]']] as const) {
+        const img = page.locator(selector).first();
+        await img.waitFor({ state: 'attached', timeout: 15_000 });
+        // 放大是图加载后 `avatarFrame` 写进内联 style 的；等到那一步落地再量。
+        await page.waitForFunction((element) => element instanceof HTMLImageElement
+          && element.complete && element.naturalWidth > 0 && element.style.width !== '',
+        await img.elementHandle(), { timeout: 15_000 });
+        const frame = await img.evaluate((element) => {
+          const ring = element.parentElement!.getBoundingClientRect();
+          const box = element.getBoundingClientRect();
+          return {
+            maxWidth: getComputedStyle(element).maxWidth, maxHeight: getComputedStyle(element).maxHeight,
+            ring: ring.width, width: box.width, aspect: box.width / box.height,
+            gaps: [box.left - ring.left, ring.right - box.right, box.top - ring.top, ring.bottom - box.bottom],
+            initial: getComputedStyle(element.parentElement!.querySelector('span')!).display,
+          };
+        });
+        assert.deepEqual([frame.maxWidth, frame.maxHeight], ['none', 'none'], `${where}的图被预检的 max-width 夹住`);
+        assert.ok(frame.width > frame.ring, `${where}没有按人脸框放大：图宽 ${frame.width}px，圆框 ${frame.ring}px`);
+        assert.ok(Math.abs(frame.aspect - TASTE_FACE.imgW / TASTE_FACE.imgH) < .02, `${where}的图宽高比 ${frame.aspect}，被压扁了`);
+        assert.ok(frame.gaps.every((gap) => gap <= .5), `${where}的图没盖满圆框：${frame.gaps.join('、')}`);
+        if (where === '大位') assert.equal(frame.initial, 'none', '大位有图时首字母没有让位');
+      }
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`资料卡外链的圆盘不垫底、社媒字形铺满圆盘；手机上那一排不换行、横滑，滚动层顶到卡沿（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openProfiledPerformer(browser, viewport);
+      try {
+        const row = await opened.page.locator('[data-entity-links]').evaluate((element) => {
+          const style = getComputedStyle(element);
+          const card = element.closest('[data-entity-card]')!.getBoundingClientRect();
+          const box = element.getBoundingClientRect();
+          const brand = element.querySelector('[data-link-icon="brand"]')!;
+          const glyph = brand.querySelector('svg')!.getBoundingClientRect(), plate = brand.getBoundingClientRect();
+          return {
+            wrap: style.flexWrap, overflowX: style.overflowX, justify: style.justifyContent,
+            edges: [box.left - card.left, card.right - box.right],
+            discs: [...element.querySelectorAll('[data-link-icon]')].map((disc) => getComputedStyle(disc).backgroundColor),
+            glyph: [Math.round(glyph.width), Math.round(glyph.height)], plate: [Math.round(plate.width), Math.round(plate.height)],
+          };
+        });
+        // 垫一层底会让圆盘比周围暗一档，看着像这条链接被禁用了。
+        assert.ok(row.discs.every((fill) => fill === 'rgba(0, 0, 0, 0)'), `外链圆盘垫了底色：${row.discs.join('、')}`);
+        assert.deepEqual(row.glyph, row.plate, '社媒字形没有铺满圆盘，场色的角露出底');
+        if (viewport.mobile) {
+          // 普通 `center` 在溢出时把前半排推到滚动起点之前，那几条滑不到。
+          assert.deepEqual([row.wrap, row.overflowX, row.justify], ['nowrap', 'auto', 'safe center'], '窄屏外链不是一行横滑');
+          assert.ok(row.edges.every((gap) => Math.abs(gap) < 0.5), `窄屏外链的滚动层没有顶到卡沿：${row.edges.join('、')}`);
+        } else {
+          assert.equal(row.wrap, 'wrap', '宽屏外链该换行，不横滑');
+        }
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+
+    it(`名字菜单：当前统称抬一档底色并打勾，其余行的勾位空着；手机上开关画 32px、命中区 44px，菜单行 44px（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openProfiledPerformer(browser, viewport);
+      try {
+        const page = opened.page;
+        const toggle = page.locator('[data-namepick-toggle]');
+        const hit = await toggle.evaluate((element) => {
+          const box = element.getBoundingClientRect(), after = getComputedStyle(element, '::after');
+          return { drawn: [Math.round(box.width), Math.round(box.height)], hit: [after.width, after.height] };
+        });
+        assert.deepEqual(hit.drawn, [32, 32], '名字旁那枚开关画出来不是 32px');
+        if (viewport.mobile) assert.deepEqual(hit.hit, ['44px', '44px'], '手机上开关的命中区不到 44px');
+        await toggle.click();
+        await page.locator('[data-namepick-menu]').waitFor({ state: 'visible', timeout: 5_000 });
+        const rows = await page.locator('[data-namepick-menu] [role="menuitemradio"]').evaluateAll((items) => items.map((item) => ({
+          checked: item.getAttribute('aria-checked') === 'true', fill: getComputedStyle(item).backgroundColor,
+          tick: getComputedStyle(item.querySelector('svg')!).visibility, height: item.getBoundingClientRect().height,
+          menu: getComputedStyle(item.closest('[data-namepick-menu]')!).backgroundColor,
+        })));
+        assert.deepEqual(rows.map((row) => row.checked), [true, false], '菜单里当前统称不是第一行，或不止一行被选中');
+        const [current, other] = rows;
+        assert.notEqual(current!.fill, 'rgba(0, 0, 0, 0)', '当前统称那一行没有抬底');
+        assert.notEqual(current!.fill, current!.menu, '当前统称那一行的底色和菜单面同色，看不出来');
+        assert.deepEqual([current!.tick, other!.tick], ['visible', 'hidden'], '勾没有只给当前统称，或未选中那行不留勾位');
+        assert.equal(other!.fill, 'rgba(0, 0, 0, 0)', '未选中那一行也抬了底');
+        const least = viewport.mobile ? 44 : 36;
+        const alias = await page.locator('[data-namepick-alias]').evaluate((item) => item.getBoundingClientRect().height);
+        assert.ok([...rows.map((row) => row.height), alias].every((height) => height >= least - 0.5), `菜单行矮于 ${least}px`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  /* 尺寸按身份列有哪几行定：外链与看片那一行都在是 160px，缺一行是 120px。取行高百分比的话
+     圆框宽、列宽、别名折行、行高绕成一个圈，折行多出的那截压进卡底内边距。
+     有资料的女优默认只有外链那一行，两行都在的那位要补上看片标识与订阅开关；七沢みあ只有看片那一行。 */
+  const openBothRows = (browser: Browser, viewport: typeof DESKTOP) => openProfiledPerformer(browser, viewport, 'light', {
+    entry_links: [
+      { site: 'minnano-av', label: 'みんなのAV', ordinal: '', slot: 'pill', mark: 'brand-minnano',
+        url: 'https://www.minnano-av.com/actress12345.html' },
+      { site: 'javdb', label: 'JavDB', ordinal: '', slot: 'mark', mark: 'mark-javdb', url: 'https://javdb.com/actors/NPD3' },
+    ],
+    feed: { following: false },
+  });
+  for (const [label, open, size] of [
+    ['外链与看片那一行都在', openBothRows, 160],
+    ['只有看片那一行', openPerformer, 120],
+    ['只有外链那一行', openProfiledPerformer, 120],
+  ] as const) {
+    it(`资料卡大位按身份列的行数定尺寸：${label}是 ${size}px 正圆，身份列不压进卡底内边距`, { timeout: 60_000 }, async () => {
+      const opened = await open(browser, DESKTOP);
+      try {
+        const box = await opened.page.locator('[data-entity-portrait]').evaluate((element) => {
+          const portrait = element.getBoundingClientRect();
+          const profile = element.closest('[data-entity-profile]')!.getBoundingClientRect();
+          const identity = element.closest('[data-entity-profile]')!.querySelector('[data-entity-identity]')!.getBoundingClientRect();
+          return { width: portrait.width, height: portrait.height, room: profile.bottom - identity.bottom };
+        });
+        assert.ok(Math.abs(box.height - size) < 1, `头像 ${box.height}px，应是 ${size}px`);
+        assert.ok(Math.abs(box.width - box.height) < 1, '头像不是正圆');
+        assert.ok(box.room >= 19.5, `身份列离卡底只剩 ${box.room}px，压进了 20px 的内边距`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  it('看片那一行：两枚标识隔 32px、按 22px 字高对齐；MISSAV 按它站上的排字，AV 用它的粉；第二枚带序号', { timeout: 60_000 }, async () => {
+    const name = '七沢みあ';
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      const page = opened.page;
+      await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+        id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [],
+        user_aliases: [], asset_count: 0, tags: [], related_performers: [], links: [], metadata: {},
+        has_image: false, has_avatar: false, avatar_focus: null, representative_asset_id: null,
+        entry_links: [
+          { site: 'javdb', label: 'JavDB', ordinal: '', slot: 'mark', mark: 'mark-javdb', url: 'https://javdb.com/actors/NPD3' },
+          { site: 'missav', label: 'MISSAV', ordinal: '2', slot: 'mark', mark: '', url: 'https://missav.ws/actresses/x' },
+        ],
+      } }));
+      await page.goto(new URL(`/performers/${encodeURIComponent(name)}`, page.url()).href, { waitUntil: 'load' });
+      await page.locator('[data-missav-mark]').waitFor({ timeout: 15_000 });
+      const marks = await page.locator('[data-entry-marks]').evaluate((row) => {
+        const wordmark = row.querySelector('[data-missav-mark]')!;
+        const [miss, av] = [...wordmark.children].map((part) => getComputedStyle(part).color);
+        return {
+          gap: getComputedStyle(row).columnGap,
+          javdb: row.querySelector('[data-entry-mark] svg')!.getBoundingClientRect().height,
+          family: getComputedStyle(wordmark).fontFamily, weight: getComputedStyle(wordmark).fontWeight,
+          miss, av, ink: getComputedStyle(wordmark.closest('a')!).color,
+          ordinal: row.querySelector('[data-entry-ordinal]')?.textContent ?? '',
+          hrefs: [...row.querySelectorAll('a[data-entry-mark]')].map((a) => a.getAttribute('href')),
+        };
+      });
+      assert.equal(marks.gap, '32px', '两枚标识的间距不是 32px');
+      assert.equal(Math.round(marks.javdb), 22, 'JavDB 标识的字高不是 22px');
+      assert.match(marks.family, /^Halant/, 'MISSAV 没有用 Halant 排字');
+      assert.equal(marks.weight, '500');
+      assert.equal(marks.miss, marks.ink, 'MISS 那半没有跟页面墨色');
+      assert.equal(marks.av, 'rgb(254, 98, 142)', 'AV 那半不是 MISSAV 的粉');
+      assert.equal(marks.ordinal, '2', '第二枚没带服务端编好的序号');
+      assert.deepEqual(marks.hrefs, ['https://javdb.com/actors/NPD3', 'https://missav.ws/actresses/x'], '入口地址不是服务端下发的那个');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('厂牌页资料卡：标识铺满方框；指回自家站的官网写「官方网站」，带站点圆标、字距 .02em', { timeout: 60_000 }, async () => {
+    const name = 'S1 NO.1 STYLE';
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      const page = opened.page;
+      await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+        id: 90_601, kind: 'studio', canonical_name: name, aliases: [], display_aliases: [], user_aliases: [],
+        asset_count: 3, tags: [], related_performers: [], labels: [], metadata: {}, entry_links: [],
+        has_image: false, has_avatar: false, has_logo: true, avatar_focus: null, representative_asset_id: null,
+        links: [{ link_id: 90_602, link_kind: 'official', clickable: true, label: 'S1', url: 'https://www.s1s1s1.com/' }],
+      } }));
+      // 标识比方框大，走铺满那条；比框小的走原尺寸居中，是另一条判据。
+      await page.route(/\/logo\?/, (route) => route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600"><rect width="600" height="600" fill="#888"/></svg>',
+      }));
+      await page.route('**/link-mark**', (route) => route.fulfill({
+        status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+      }));
+      await page.goto(new URL(`/studios/${encodeURIComponent(name)}`, page.url()).href, { waitUntil: 'load' });
+      const logo = page.locator('[data-entity-portrait] > img');
+      await logo.waitFor({ state: 'attached', timeout: 15_000 });
+      await page.waitForFunction((element) => element instanceof HTMLImageElement && element.complete && element.naturalWidth > 0,
+        await logo.elementHandle(), { timeout: 15_000 });
+      const face = await logo.evaluate((element) => {
+        const frame = element.parentElement!, box = element.getBoundingClientRect(), outer = frame.getBoundingClientRect();
+        return { shape: frame.getAttribute('data-entity-portrait'), radius: getComputedStyle(frame).borderTopLeftRadius,
+          fit: getComputedStyle(element).objectFit,
+          gaps: [box.left - outer.left, outer.right - box.right, box.top - outer.top, outer.bottom - box.bottom] };
+      });
+      assert.equal(face.shape, 'square');
+      assert.notEqual(face.radius, '50%', '厂牌的标识框画成了圆');
+      // 标识走「图比框小就别放大」那组：contain 不裁字标，比框大的按框收，所以照样铺满。
+      assert.equal(face.fit, 'contain', '厂牌标识被裁成了铺满');
+      assert.ok(face.gaps.every((gap) => Math.abs(gap) < 0.5), `标识没盖满方框：${face.gaps.join('、')}`);
+      const site = await page.locator('[data-entity-links] a[data-link="url"]').evaluate((a) => ({
+        text: a.querySelector('[data-link-label]')?.textContent ?? '',
+        spacing: parseFloat(getComputedStyle(a).letterSpacing) / parseFloat(getComputedStyle(a).fontSize),
+        mark: a.querySelector('[data-link-icon] img')?.getAttribute('src') ?? '',
+        referrer: a.querySelector('[data-link-icon] img')?.getAttribute('referrerpolicy') ?? '',
+      }));
+      assert.equal(site.text, '官方网站');
+      assert.ok(Math.abs(site.spacing - 0.02) < 0.001, `官网那一格的字距是 ${site.spacing}em`);
+      assert.deepEqual([site.mark, site.referrer], ['/link-mark?id=90602', 'no-referrer'], '官网没带本机合成的站点圆标');
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
@@ -3184,7 +3431,7 @@ describe('设计决定', () => {
       const after = await row.evaluate((element) => ({
         height: element.getBoundingClientRect().height, busy: element.getAttribute('aria-busy'),
         waiting: element.querySelectorAll('[data-feed-id] .pic.imgwait').length,
-        footHeight: document.querySelector('.entityhero > .entityfoot')?.getBoundingClientRect().height ?? 0,
+        footHeight: document.querySelector('[data-entity-card] > [data-entity-foot]')?.getBoundingClientRect().height ?? 0,
         second: (window as unknown as { feedSeen: { second: boolean } }).feedSeen.second }));
       assert.equal(after.height, before.height, '占位行和到货的那一行不一样高，下面的作品网格会跳');
       assert.equal(after.footHeight, before.footHeight, '同台艺人那一条占位和真的不一样高，资料卡会伸缩');
