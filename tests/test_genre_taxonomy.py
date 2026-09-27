@@ -408,10 +408,11 @@ class Fc2SellerTagTests(unittest.TestCase):
     """FC2 卖家自填的标签：花样拆得细、从标题截词，还混着发行说法和夸法。"""
 
     def test_the_variants_of_one_act_land_on_its_tag(self):
-        """口交的站姿、骑姿、不用手、事后清理各写一格，说的仍是口交。"""
+        """口交的站姿、骑姿、不用手各写一格，说的仍是口交；事后舔干净的另归一格。"""
         for spellings, tag in (
-            (("お掃除フェラ", "お掃除", "フェラ抜き", "仁王立ちフェラ", "ノーハンドフェラ",
+            (("フェラ抜き", "仁王立ちフェラ", "ノーハンドフェラ",
               "馬乗りフェラ", "Ｗフェラ", "玉舐め", "裏筋舐め", "口淫"), "口交"),
+            (("お掃除フェラ", "お掃除", "掃除"), "打扫口交"),
             (("舌上発射", "舌上射精"), "口爆"),
             (("精飲",), "吞精"),
             (("挟射", "馬乗りパイズリ", "着衣パイズリ"), "乳交"),
@@ -464,7 +465,7 @@ class Fc2SellerTagTests(unittest.TestCase):
                      "Wピース", "ゴム", "着衣", "しょうなちゃん", "ＦＧ○"):
             with self.subTest(word=word):
                 self.assertTrue(is_non_content_genre(word), word)
-        self.assertEqual(map_genres(["個人撮影", "オリジナル", "お掃除フェラ"]), (["口交"], []))
+        self.assertEqual(map_genres(["個人撮影", "オリジナル", "お掃除フェラ"]), (["打扫口交"], []))
 
     def test_words_the_catalog_has_no_slot_for_stay_on_the_review_page(self):
         """词表里没有对应一格、或者含义还没查清的词，留给人判。
