@@ -1,6 +1,6 @@
 /* 悬停一叠卡片时把它里面的前几张逐张翻走，说明它是一叠而不是某一个视频。
  *
- * 时序与门槛同遗留层 `wireStackFlip`（`web/app.js`）：指针停 340ms 才开始，面板建好
+ * 时序与门槛（`frontend/test/react/use-stack-flip.test.tsx`）：指针停 340ms 才开始，面板建好
  * 420ms 后翻第一下，之后每 1100ms 翻一张；翻出去的那张演完（间隔减 120ms）才卸掉离场态，
  * 否则会当场弹回原位。多选、遮挡、减少动效与滚动中都不启动，这些判据归壳，经 `canFlip`
  * 递进来；取图前后各再问一次。离开即停并还原静止封面。
@@ -25,6 +25,9 @@ export interface StackFlipOptions {
   load(): Promise<readonly string[]>;
   /** 此刻能不能翻：多选、遮挡、减少动效、滚动中都回 false。 */
   canFlip(): boolean;
+  /** 预取解码时带的来路策略，要和台上那几张 `<img>` 一致，否则解码的和显示的是两次请求。
+   *  关注页的外站图不带来路。 */
+  referrerPolicy?: ReferrerPolicy;
 }
 
 export interface StackFlip {
@@ -51,9 +54,10 @@ interface Run {
 }
 
 /** 等一张图载入并解码。取不到、宽为 0 或超时都算不能用。 */
-function readyImage(url: string, run: Run): Promise<boolean> {
+function readyImage(url: string, run: Run, referrerPolicy?: ReferrerPolicy): Promise<boolean> {
   return new Promise((resolve) => {
     const image = new Image();
+    if (referrerPolicy) image.referrerPolicy = referrerPolicy;
     let settled = false;
     const finish = (ok: boolean) => {
       if (settled) return;
@@ -77,7 +81,7 @@ function readyImage(url: string, run: Run): Promise<boolean> {
   });
 }
 
-export function useStackFlip({ load, canFlip }: StackFlipOptions): StackFlip {
+export function useStackFlip({ load, canFlip, referrerPolicy }: StackFlipOptions): StackFlip {
   const [faces, setFaces] = useState<readonly string[]>([]);
   const [current, setCurrent] = useState(0);
   const [leaving, setLeaving] = useState<number | null>(null);
@@ -131,7 +135,7 @@ export function useStackFlip({ load, canFlip }: StackFlipOptions): StackFlip {
       return;
     }
     if (!alive() || !latest.current.canFlip() || pool.length < 2) return;
-    const ready = await Promise.all(pool.map((url) => readyImage(url, state)));
+    const ready = await Promise.all(pool.map((url) => readyImage(url, state, referrerPolicy)));
     if (!alive() || !latest.current.canFlip()) return;
     const usable = pool.filter((_url, index) => ready[index]);
     if (usable.length < 2) return;

@@ -10,6 +10,7 @@ import type { JunkQueueProps } from './junk-queue/junk-queue';
 import type { EntityHeroProps } from './entity-hero/entity-hero';
 import type { EntityFilterProps } from './entity-filter/entity-filter';
 import type { EntityBodyProps } from './entity-body/entity-body';
+import type { FollowFeedProps } from './follow-feed/follow-feed';
 import type { LightboxHost, LightboxSlide } from './photo-lightbox/photo-lightbox';
 
 export type { IndexProps };
@@ -18,6 +19,7 @@ export type { JunkQueueProps };
 export type { EntityHeroProps };
 export type { EntityFilterProps };
 export type { EntityBodyProps };
+export type { FollowFeedProps };
 export type { LightboxHost, LightboxSlide };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
@@ -393,6 +395,7 @@ export interface ReactPages {
   'entity-body': ReactPage<EntityBodyProps>;
   'entity-filter': ReactPage<EntityFilterProps>;
   'entity-hero': ReactPage<EntityHeroProps>;
+  'follow-feed': ReactPage<FollowFeedProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   index: ReactPage<IndexProps>;
   'junk-queue': ReactPage<JunkQueueProps>;

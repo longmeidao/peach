@@ -40,6 +40,7 @@ export interface IslandContracts {
   'entity-body': ReactBundle.EntityBodyProps;
   'entity-filter': ReactBundle.EntityFilterProps;
   'entity-hero': ReactBundle.EntityHeroProps;
+  'follow-feed': ReactBundle.FollowFeedProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
   'junk-queue': ReactBundle.JunkQueueProps;
@@ -72,6 +73,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'entity-body': { react: 'entity-body' },
   'entity-filter': { react: 'entity-filter' },
   'entity-hero': { react: 'entity-hero' },
+  'follow-feed': { react: 'follow-feed' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
   'junk-queue': { react: 'junk-queue' },

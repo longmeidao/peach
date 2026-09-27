@@ -168,8 +168,8 @@ function Readout({ text, busy }: { text: string; busy: boolean }) {
   );
 }
 
-/** 玻璃上的分段开关：卡片版式、图片布局。选中那一格是浮层选中态那块料。 */
-function Segments({ label, value, options, onChange }: {
+/** 玻璃上的分段开关：卡片版式、图片布局。选中那一格是浮层选中态那块料。关注页浮层用的是同一枚。 */
+export function Segments({ label, value, options, onChange }: {
   label: string; value: string; options: readonly SegmentOption[]; onChange(value: string): void;
 }) {
   return (
@@ -187,7 +187,7 @@ function Segments({ label, value, options, onChange }: {
   );
 }
 
-function Shuffle({ onPress, busy = false }: { onPress(): void; busy?: boolean }) {
+export function Shuffle({ onPress, busy = false }: { onPress(): void; busy?: boolean }) {
   return (
     <button type="button" data-entity-batch="" title="换一批" aria-label="换一批" aria-busy={busy || undefined}
       aria-disabled={busy || undefined} onClick={() => { if (!busy) onPress() }}
