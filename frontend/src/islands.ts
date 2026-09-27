@@ -37,6 +37,7 @@ export interface IslandContracts {
   'cover-crop': ReactBundle.CoverCropProps;
   'data-cleanup': ReactBundle.DataCleanupProps;
   duplicates: ReactBundle.DuplicatesProps;
+  'entity-filter': ReactBundle.EntityFilterProps;
   'entity-hero': ReactBundle.EntityHeroProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
@@ -67,6 +68,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'cover-crop': { react: 'cover-crop' },
   'data-cleanup': { react: 'data-cleanup' },
   duplicates: { react: 'duplicates' },
+  'entity-filter': { react: 'entity-filter' },
   'entity-hero': { react: 'entity-hero' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
