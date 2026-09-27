@@ -1357,11 +1357,21 @@ describe('设计决定', () => {
     const opened = await visit(browser, '/', DESKTOP);
     const { page } = opened;
     await page.route(/\/api\/items\?/, () => {});
+    /* 骨架挂上的那一帧可能还没排版（宽高都是 0），量出来是 NaN。等它有了尺寸、且连续两帧
+       比例不变再读：量的是这一屏落定后的形状，不是插进 DOM 的那一瞬。 */
     const skeletonRatio = async (path: string) => {
       await page.goto(new URL(path, page.url()).href, { waitUntil: 'load' });
-      const cover = page.locator('#grid .catalog-skeleton .skeletoncard i').first();
-      await cover.waitFor({ state: 'attached', timeout: 15_000 });
-      return cover.evaluate((element) => element.getBoundingClientRect().width / element.getBoundingClientRect().height);
+      const handle = await page.waitForFunction(() => {
+        const cover = document.querySelector('#grid .catalog-skeleton .skeletoncard i');
+        const box = cover?.getBoundingClientRect();
+        if (!box || !box.width || !box.height) return false;
+        const ratio = box.width / box.height;
+        const holder = window as unknown as { skeletonRatioSeen?: number };
+        const settled = holder.skeletonRatioSeen === ratio;
+        holder.skeletonRatioSeen = ratio;
+        return settled && ratio;
+      }, undefined, { polling: 'raf', timeout: 15_000 });
+      return Number(await handle.jsonValue());
     };
     try {
       assert.ok(Math.abs(await skeletonRatio('/?jav=1') - 0.75) < 0.05, 'JAV 大图下骨架封面不是正封比例');
