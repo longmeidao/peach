@@ -321,13 +321,13 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 
 | 位置 | 上游 | Peach |
 | --- | --- | --- |
-| 资料卡 | 未取得（card／profile-card 404）；卡形沿用 `.fsec`：secondary 底、18px 圆角、不描边、卡脚 `--board-card-foot` | `<section class="entityhero">`：`.entityprofile` 里 120px 头像加身份三行：名字 Title 3（24/32、500）、别名·视频数·事务所、外链排成 36px／10px 圆角的 secondary Button；同台艺人收进卡脚 `.entityfoot` 那条带，它是这个人的附注，不是正文；事务所的名册是正文，走 Tabs 里那一档。窄屏卡不变，只有卡里正文那一格改成单列居中、头像 96px |
+| 资料卡 | 未取得（card／profile-card 404）；卡形沿用 `.fsec`：secondary 底、18px 圆角、不描边、卡脚 `--board-card-foot` | React 岛 `entity-hero`（`frontend/src/react/entity-hero/`）：头像按身份列的行数定尺寸（外链与看片那一行都在是 160px，其余 120px），旁边身份三行：名字 Title 3（24/32、500）、别名·视频数·事务所、外链排成 36px／10px 圆角的 secondary Button；同台艺人收进卡脚 `[data-entity-foot]` 那条带，它是这个人的附注，不是正文；事务所的名册是正文，走 Tabs 里那一档。窄屏卡不变，只有卡里正文那一格改成单列居中、头像 96px，外链那一排横滑不换行 |
 | 视频／照片／艺人切换 | `tabs.tsx` 是页面级导航的形；这一组留在筛选浮层上，不取 Tabs | 浮层最左端的一组媒体圆键（`mediaViewButtonsHtml`，`aria-pressed`），选中那枚由圆玻璃 `viewglide-round` 滑过去标出，跟四枚观看状态各一块玻璃；隔一道竖杠再是观看状态、再一道才是标签。`boardTabsHtml()` 的下划线 Tabs 只给索引页切地址用 |
 | 资料页筛选条 | 无对应 | 媒体圆键、四枚观看状态、标签三段由粗到细，`aria-label`「媒体与标签」；照片、名册视图下标签收起、竖杠隐去，圆键留着 |
 | 资料页照片档 | 无对应；按作品分段是用户对照预览选定的（ADR-0068 修订） | 有本地图片或有番号样张就出照片键，键上数的是两者之和。样张按发行日从新到旧一部一段：段头 `.photogroup` 一行写番号（`--fs-md`、主文字色）、标题（过长省略）、右端「来源 样张 · 发行日 · 张数」，下面是这部自己的 `.photowall`；各段之后是本地图片墙，有样张时带「本地图片 · N 张」段头；读数「照片 · N 张 · 样张 M 张 · K 部作品」，只有样张时省掉第一段，也不出换一批。翻页只数本地图片。样张格取不到时只摘 `<img>`，格子留 `--sunk` 空底，瀑布流里按 3:2 撑住；灯箱详情写「来源 · 第 n / N 张 · 尺寸」（ADR-0068） |
 | 关注页 | 无对应（上游没有更新流页） | 对齐首页，不另起一套；头像排、题材圆标取景、筛选浮层与排序见下方「关注页」小节 |
 | 两页骨架 | Skeleton 只是占位形状 | 都把 `.board-filter-frame` 外框和上下两排的 `data-filter-row` 写全，否则等的那几秒钟是两块各带圆角的浮层；资料页骨架用 `.entityprofile`／`.entityidentity` 的真实类名，筛选条那排用 `data-skeleton-tier="pill"` 铺药丸 |
-| 外链图标 | `avatar.tsx` 只有圆形；站标那一档无对应 | 资料卡外链按钮里的 favicon 与社媒标记 `.entitylinkicon` 收成 `--badge-radius` 的圆角方框，跟 20px 的图标位同形；外链一律 `target="_blank" rel="noreferrer"` |
+| 外链图标 | `avatar.tsx` 只有圆形；站标那一档无对应 | 资料卡外链按钮里的站点圆标与社媒标记 `[data-link-icon]` 不垫底色，收成 `--badge-radius` 的圆角方框，跟 20px 的图标位同形；外链一律 `target="_blank" rel="noreferrer"` |
 | 艺人／厂牌／事务所索引（`/performers`、`/studios`、`/agencies`、`/creators`） | 索引网格无对应；卡形取 `stat-card`（secondary 底、16px 圆角、p16 收成 p12）、名字 Body Medium 14/20 500、计数 Caption | `.icell` 是一张卡，悬停抬 6% 主文字色；大图版式头像 10px 圆角、文字左对齐；「载入更多」是 36px／10px 圆角的 secondary Button。厂牌与事务所是两条地址，页头下那排 `boardTabsHtml()` 的下划线 Tabs（`data-index-kind`，带对象图标）切页，不是筛选。`/performers` 另有本地／在线一档（`data-performer-scope`，跟标签页共用 `INDEX_SCOPES` 与 `scopeTabsHtml()`）：在线那档读 `/api/follow/authors`，一个人的几个来源按别名归成一行、计数与关注页的读数同一个口径（按条目数，不是发布组），点开去 `/follow?author=`；地址带 `?scope=online`，深链进来直接落在那一档 |
 | 标签页（`/tags`） | 字母表无对应；分组卡取 `stat-card` 形，行取 bar-list 的 36px／8px | 本地／在线是页面级的 Tabs（`data-tag-scope`）；换档只重画 `#indexBody`，页头、搜索框和那块浮层是同步就有的东西，跟着一起铺骨架等于把已经在屏幕上的控件抹掉再画一遍。类型药丸、读数、按首字跳转、标签云／字母表切换收进首页那块玻璃浮层 `tagFilterFrameHtml()`：上排 `.tagcategories` 药丸带类型色点，下排读数＋`.alphajump`＋`iconSwitchHtml`；浮层住在 `#indexFilters` 里，那个父级只有浮层那么高，sticky 会被卡死，`display:contents` 让它退出盒树。字母表 `.alphagroup` 每个首字一张卡，字头旁挂 `.board-tab-count` 徽标，`scroll-margin-top` 给吸顶浮层让位 |
 
