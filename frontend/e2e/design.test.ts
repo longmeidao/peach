@@ -529,8 +529,11 @@ const PROFILED = {
   },
 };
 
-/** 打开一位有资料的女优：资料表、名字行和外链照服务端下发的形状写，主题按参数切好。 */
-async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme: 'light' | 'dark' = 'light'): Promise<Visit> {
+/** 打开一位有资料的女优：资料表、名字行和外链照服务端下发的形状写，主题按参数切好。
+ *  `extra` 覆盖资料里的字段：默认没有看片那一行（`entry_links` 只有 minnano-av 那枚 pill、没有 `feed`），
+ *  要验两行都在的几何就从这里补。 */
+async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme: 'light' | 'dark' = 'light',
+  extra: Record<string, unknown> = {}): Promise<Visit> {
   const opened = await visit(browser, '/', viewport);
   await opened.page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
     id: 90_101, kind: 'performer', canonical_name: PROFILED.name, aliases: ['篠崎ゆう子'], display_aliases: ['篠崎ゆう子'],
@@ -545,6 +548,7 @@ async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme
     entry_links: [{ site: 'minnano-av', label: 'みんなのAV', ordinal: '', slot: 'pill', mark: 'brand-minnano',
       url: 'https://www.minnano-av.com/actress12345.html' }],
     profile: PROFILED.profile, name_groups: PROFILED.name_groups,
+    ...extra,
   } }));
   // 这几条链接是造出来的，服务端的圆标取不到；那是另一条判据，这里给一张能加载完的图。
   await opened.page.route('**/link-mark**', (route) => route.fulfill({
@@ -3206,10 +3210,20 @@ describe('设计决定', () => {
   }
 
   /* 尺寸按身份列有哪几行定：外链与看片那一行都在是 160px，缺一行是 120px。取行高百分比的话
-     圆框宽、列宽、别名折行、行高绕成一个圈，折行多出的那截压进卡底内边距。 */
+     圆框宽、列宽、别名折行、行高绕成一个圈，折行多出的那截压进卡底内边距。
+     有资料的女优默认只有外链那一行，两行都在的那位要补上看片标识与订阅开关；七沢みあ只有看片那一行。 */
+  const openBothRows = (browser: Browser, viewport: typeof DESKTOP) => openProfiledPerformer(browser, viewport, 'light', {
+    entry_links: [
+      { site: 'minnano-av', label: 'みんなのAV', ordinal: '', slot: 'pill', mark: 'brand-minnano',
+        url: 'https://www.minnano-av.com/actress12345.html' },
+      { site: 'javdb', label: 'JavDB', ordinal: '', slot: 'mark', mark: 'mark-javdb', url: 'https://javdb.com/actors/NPD3' },
+    ],
+    feed: { following: false },
+  });
   for (const [label, open, size] of [
-    ['外链与看片那一行都在', openProfiledPerformer, 160],
+    ['外链与看片那一行都在', openBothRows, 160],
     ['只有看片那一行', openPerformer, 120],
+    ['只有外链那一行', openProfiledPerformer, 120],
   ] as const) {
     it(`资料卡大位按身份列的行数定尺寸：${label}是 ${size}px 正圆，身份列不压进卡底内边距`, { timeout: 60_000 }, async () => {
       const opened = await open(browser, DESKTOP);
