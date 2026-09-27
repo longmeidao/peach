@@ -39,7 +39,7 @@ export type CardOptions = {
   padding?: CardPadding;
   /** 卡片本身可点（读数卡兼页签、来源卡）：补悬停填充、焦点环与光标。 */
   interactive?: boolean;
-  /** 卡片带互斥选中态：选中时换成浮层那一档面，再压一圈 2px 的 `--tungsten` 内描边。 */
+  /** 卡片带互斥选中态：选中时换成浮层那一档面、收掉接触阴影，最上层压一圈 2px 的焦点环色描边。 */
   selectable?: boolean;
   /** 填充之上另加的那条描边：活动页的 Fieldset 用 `--line`，高清版的条目用 `--line-soft`。
    *  `outlined` 自带描边，不必再给。 */
@@ -80,8 +80,13 @@ const PADDING: Record<CardPadding, string> = {
 const INTERACTIVE = 'cursor-pointer outline-none not-data-selected:hover:bg-card-hover'
   + ' focus-visible:ring-2 focus-visible:ring-border-focus-ring focus-visible:ring-offset-3';
 
-const SELECTABLE = 'data-selected:bg-background-primary-default'
-  + ' data-selected:ring-2 data-selected:ring-inset data-selected:ring-border-focus-ring';
+/* 选中的那一圈画在 `::after` 上、压在最上层，不用 inset 的 box-shadow：内阴影画在子元素底下，
+ * 读数卡的脚注带一铺底色，环的下半截就被盖掉，只剩上面三边。旧
+ * `.metricstrip>button[aria-selected=true]::after` 就是一层 2px 描边的覆盖层，圆角跟卡走。 */
+const SELECTABLE = 'relative data-selected:bg-background-primary-default data-selected:shadow-none'
+  + ' data-selected:after:pointer-events-none data-selected:after:absolute data-selected:after:inset-0'
+  + ' data-selected:after:z-1 data-selected:after:rounded-[inherit]'
+  + ' data-selected:after:border-2 data-selected:after:border-border-focus-ring';
 
 /** 卡面的类名。宿主可能是 `section`、`li`、React Aria 的 `Tab` 或 `Modal`，所以只给类名。 */
 export function cardClass(options: CardOptions = {}) {

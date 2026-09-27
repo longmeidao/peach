@@ -514,7 +514,8 @@ export function TastePage(props: TasteProps) {
                 {data.updated_at ? `更新于 ${tasteDate(data.updated_at)}` : '尚未采集浏览记录'}
               </small>
             </div>
-            <div className="min-w-0 grow">
+            {/* 右栏跟着雷达那一栏等高（行内默认拉伸），排行条在纵向 flex 里撑满这一栏。 */}
+            <div className="flex min-w-0 grow flex-col">
               {categories.length
                 ? <RankedBars rows={categories} label="口味维度排名" />
                 : <EmptyState shell="plain" icon={RiSearchLine} title="暂无口味维度">{NO_CATEGORY_HINT}</EmptyState>}

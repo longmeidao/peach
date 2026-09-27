@@ -237,6 +237,44 @@ async function openIndexPage(browser: Browser, path: string): Promise<Visit> {
   return opened;
 }
 
+/** 口味页浏览器画像的五个维度：头一个是其余的十倍，和真实馆藏的分布一样。 */
+const TASTE_CATEGORIES = [['剧情', 657], ['写真', 68], ['素人', 56], ['偶像', 4], ['企划', 1]]
+  .map(([name, score]) => ({ name, score }));
+
+/** 一张全身站姿照的人脸框：脸落在画面上半截的一小块里，小圆框要放大好几倍才看得清。 */
+const TASTE_FACE = { cx: .439, cy: .224, faceW: 67, imgW: 640, imgH: 960 };
+
+/** 口味页按改写过的 `/api/taste` 打开：演示库没有浏览记录，也没有带人脸框的实体图。
+ * 字段以 `src/peach/taste_history.py` 与 `src/peach/web_stats.py` 为准；实体图换成与人脸框同尺寸的纯色图。 */
+async function openTaste(browser: Browser, viewport: typeof DESKTOP): Promise<Visit> {
+  const opened = await visit(browser, '/taste', viewport);
+  const face = (id: number, name: string) => ({
+    name, peach_items: 3, peach_score: 5, entity_id: id, has_image: true, avatar_focus: { box: TASTE_FACE },
+  });
+  await opened.page.route(/\/api\/taste\?/, async (route) => {
+    const json = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...json, rankings: { ...json.rankings,
+      browser_categories: TASTE_CATEGORIES,
+      peach_performers: [face(901, '演示女优')],
+      peach_creators: [face(902, '演示创作者')],
+    } } });
+  });
+  await opened.page.route(/\/entity-image\?/, (route) => route.fulfill({
+    contentType: 'image/svg+xml',
+    body: `<svg xmlns="http://www.w3.org/2000/svg" width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}">`
+      + `<rect width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}" fill="#888"/></svg>`,
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await expectBody(opened.page, '/taste', [
+    opened.page.locator('#stats').getByRole('tab', { name: '浏览器记录', exact: true }),
+  ]);
+  return opened;
+}
+
+/** 一串 `box-shadow`（计算值或 token 原文）里最大的那个像素数：落影三层里最远那层的模糊半径。 */
+const farthestShadow = (shadow: string) =>
+  Math.max(0, ...[...shadow.matchAll(/(\d+(?:\.\d+)?)px/g)].map((match) => Number(match[1])));
+
 /** 播放列表页按一份造出来的 `/api/playlists`（`src/peach/web_playlists.py`）打开：演示库里
  * 没有播放列表。第一份带三位署名，第二份没人（画标题首字），第三份是空列表（写「无预览」）。
  * 封面是造出来的编号，给一张能加载完的图。 */
@@ -2851,7 +2889,8 @@ describe('设计决定', () => {
   it('暗色下 React 卡片和旧样式表控件的阴影都换成看得见的那一档', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/stats', DESKTOP);
     try {
-      const card = opened.page.locator('#main [class~="shadow-card"]').first();
+      // 选中的那张页签按基线收掉接触阴影，读旁边没选中的一张。
+      const card = opened.page.locator('#main [class~="shadow-card"]:not([data-selected])').first();
       await card.waitFor({ timeout: 15_000 });
       await settle(opened.page);
       /* Tailwind 把阴影 token 的字面值抄进工具类，`.dark` 里改 `--shadow-*` 够不着它；
@@ -2870,7 +2909,7 @@ describe('设计决定', () => {
           return strongest(shadow);
         };
         return {
-          card: strongest(getComputedStyle(document.querySelector('#main [class~="shadow-card"]')!).boxShadow),
+          card: strongest(getComputedStyle(document.querySelector('#main [class~="shadow-card"]:not([data-selected])')!).boxShadow),
           button: probe('<button class="geist-button" type="button">键</button>'),
           // Toast 的面只在 #toasts 里成立：阴影写在 Sonner 那一条的属性选择器上。
           toast: probe('<li data-sonner-toast data-styled="true">回执</li>', document.getElementById('toasts')!),
@@ -3078,6 +3117,128 @@ describe('设计决定', () => {
       const entry = page.locator('#managebar [data-manage="configuration"]');
       await entry.waitFor({ state: 'attached', timeout: 10_000 });
       assert.equal(await entry.getAttribute('aria-pressed'), 'true', '管理菜单里的「配置」没有标成当前页');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  for (const viewport of VIEWPORTS) {
+    it(`口味维度排名宽屏跟雷达那一栏等高、窄屏按条数给高度，图拉高时条不变粗（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openTaste(browser, viewport);
+      try {
+        const page = opened.page;
+        const bars = page.locator('section[aria-label="口味维度排名"]');
+        await bars.locator('.recharts-bar-rectangle').first().waitFor({ state: 'visible', timeout: 15_000 });
+        await settle(page);
+        const shown = await page.locator('section[aria-label="浏览器画像"]').evaluate((section) => {
+          const radar = section.firstElementChild!.getBoundingClientRect();
+          const ranked = section.querySelector('section[aria-label="口味维度排名"]')!.getBoundingClientRect();
+          return {
+            radar: radar.height,
+            ranked: ranked.height,
+            thickness: [...section.querySelectorAll('.recharts-bar-rectangle')]
+              .map((bar) => bar.getBoundingClientRect().height),
+          };
+        });
+        assert.equal(shown.thickness.length, TASTE_CATEGORIES.length);
+        if (viewport.mobile) {
+          assert.ok(shown.ranked >= 32 * TASTE_CATEGORIES.length,
+            `窄屏排行条只有 ${shown.ranked}px，${TASTE_CATEGORIES.length} 条挤不下`);
+        } else {
+          assert.ok(Math.abs(shown.ranked - shown.radar) < 2,
+            `排行条 ${shown.ranked}px，雷达那一栏 ${shown.radar}px，两栏不等高`);
+        }
+        // 26 是一格 32 里默认留出的粗细；图被拉高时多出来的高度拉开条距，不进条本身。
+        assert.ok(shown.thickness.every((height) => height <= 26.5), `条粗 ${shown.thickness.join('、')}px`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  it('统计页选中的读数卡：2px 描边压在脚注带上面、圆角跟卡走，接触阴影收掉', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/stats', DESKTOP);
+    try {
+      const page = opened.page;
+      const tab = page.locator('#stats [role="tab"][data-selected]').first();
+      await tab.waitFor({ timeout: 15_000 });
+      await settle(page);
+      const ring = await tokenColor(page, '.peach-react', '--color-border-focus-ring');
+      const shown = await tab.evaluate((element) => {
+        const card = getComputedStyle(element);
+        const after = getComputedStyle(element, '::after');
+        const footer = element.querySelector('small')!;
+        const other = document.querySelector('#stats [role="tab"]:not([data-selected])')!;
+        // `shadow-none` 是五层透明的 0px，不是字面的 none：看有没有一层带颜色。
+        const shadowVisible = [...card.boxShadow.matchAll(/rgba?\([^)]*\)/g)]
+          .some((match) => !/, 0\)$/.test(match[0]));
+        return {
+          shadowVisible, position: card.position, radius: card.borderRadius,
+          after: {
+            content: after.content, position: after.position, width: after.borderTopWidth,
+            color: after.borderTopColor, radius: after.borderRadius, z: after.zIndex,
+            inset: [after.top, after.right, after.bottom, after.left],
+          },
+          footerFace: getComputedStyle(footer).backgroundColor,
+          otherAfter: getComputedStyle(other, '::after').content,
+        };
+      });
+      assert.equal(shown.shadowVisible, false, '选中的卡还压着接触阴影');
+      assert.equal(shown.position, 'relative');
+      assert.equal(shown.after.content, '""', '选中的卡没有画覆盖层');
+      assert.equal(shown.after.position, 'absolute');
+      assert.deepEqual(shown.after.inset, ['0px', '0px', '0px', '0px'], '覆盖层没有铺满整张卡');
+      assert.deepEqual([shown.after.width, shown.after.color], ['2px', ring], '描边不是 2px 焦点环色');
+      assert.equal(shown.after.radius, shown.radius, '覆盖层圆角和卡不一致');
+      assert.ok(Number(shown.after.z) >= 1, `覆盖层 z-index ${shown.after.z}，会被脚注带盖住`);
+      assert.notEqual(shown.footerFace, 'rgba(0, 0, 0, 0)', '脚注带没有底色，这条用例守的就是环压在它上面');
+      assert.equal(shown.otherAfter, 'none', '没选中的卡也画了覆盖层');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('标签页的筛选玻璃吸到顶栏下沿时影换成抬起来那一档，上沿垫一条页面底色的遮带', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/tags');
+    try {
+      const page = opened.page;
+      const read = () => page.evaluate(() => {
+        const glass = document.querySelector('[data-filter-glass]')!;
+        const root = getComputedStyle(document.documentElement);
+        return {
+          stuck: glass.hasAttribute('data-stuck'),
+          shadow: getComputedStyle(glass).boxShadow,
+          strip: getComputedStyle(glass, '::before'),
+          lift: root.getPropertyValue('--glass-lift'),
+          rest: root.getPropertyValue('--glass-shadow'),
+        };
+      });
+      const readStrip = () => page.evaluate(() => {
+        const strip = getComputedStyle(document.querySelector('[data-filter-glass]')!, '::before');
+        return { content: strip.content, top: strip.top, height: strip.height, z: strip.zIndex, mask: strip.maskImage };
+      });
+      const resting = await read();
+      assert.equal(resting.stuck, false, '还没滚就标成吸顶');
+      assert.equal(farthestShadow(resting.shadow), farthestShadow(resting.rest), '静止态的影不是 --glass-shadow');
+      assert.equal((await readStrip()).content, 'none', '静止态就画了遮带');
+      // 桩数据只有两枚标签，页面不够长滚不动：垫一块高度再滚。
+      await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div style="height:200vh"></div>'));
+      await page.evaluate(() => window.scrollTo(0, 600));
+      await page.waitForFunction(() => document.querySelector('[data-filter-glass]')!.hasAttribute('data-stuck'),
+        undefined, { timeout: 5_000 });
+      const stuck = await read();
+      const strip = await readStrip();
+      assert.equal(farthestShadow(stuck.shadow), farthestShadow(stuck.lift), '吸顶后的影不是 --glass-lift');
+      assert.ok(farthestShadow(stuck.shadow) > farthestShadow(resting.shadow), '吸顶后影没有抬起来');
+      assert.match(stuck.shadow, /inset/, '吸顶后四条内嵌 rim 线丢了');
+      assert.deepEqual([strip.content, strip.top, strip.height, strip.z], ['""', '-9px', '9px', '-1']);
+      assert.match(strip.mask, /linear-gradient/, '遮带两端没有渐隐');
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.waitForFunction(() => !document.querySelector('[data-filter-glass]')!.hasAttribute('data-stuck'),
+        undefined, { timeout: 5_000 });
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

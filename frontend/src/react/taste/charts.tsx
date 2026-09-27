@@ -31,8 +31,13 @@ const FLOW_FILL = [
 /** 口味维度两张图的系列：一个维度下命中的标签次数。颜色跟着口味页读数卡的 `chart-4`。 */
 const DIMENSION_CONFIG = { value: { label: '标签命中', colors: tone(CHART_COLORS[3]) } };
 
-/** 排行条的高度按条数给：条数少时不把每一条撑得很粗。类名写成整串，Tailwind 扫得到。 */
-const RANK_HEIGHT = ['h-24', 'h-24', 'h-24', 'h-32', 'h-40', 'h-48', 'h-52', 'h-60', 'h-64'];
+/** 排行条的最低高度按条数给，一条一格 32：窄屏里排行条独占一行、或维度不足三个画不出雷达时，
+ *  它就是这么高。旁边有雷达时整块跟着雷达那一栏拉到等高，多出来的高度拉开条与条的间距。
+ *  类名写成整串，Tailwind 扫得到。 */
+const RANK_HEIGHT = ['min-h-24', 'min-h-24', 'min-h-24', 'min-h-32', 'min-h-40', 'min-h-48', 'min-h-52', 'min-h-60', 'min-h-64'];
+
+/** 一条柱的粗细上限，与一格 32 里默认留出的粗细相同：图拉高时条不跟着变粗。 */
+const RANK_BAR_SIZE = 26;
 
 /** 雷达图画的是 `radius` 列，名字与颜色跟口味维度的另外两张图一致。 */
 const RADAR_CONFIG = { radius: DIMENSION_CONFIG.value };
@@ -65,14 +70,15 @@ export function TasteRadar({ rows, label }: { rows: RankRow[]; label: string }) 
   );
 }
 
-/** 口味维度排行：一个维度一条横向的柱，画的是 EvilCharts 的 `EvilBarChart`，数标在柱尾。 */
+/** 口味维度排行：一个维度一条横向的柱，画的是 EvilCharts 的 `EvilBarChart`，数标在柱尾。
+ *  整块在纵向 flex 里撑满父级给的高度，图表容器本身是 `flex-1`。 */
 export function RankedBars({ rows, label }: { rows: RankRow[]; label: string }) {
   const data = topScores(rows, RANK_MAX);
   if (!data.length) return null;
   return (
-    <section aria-label={label}>
+    <section aria-label={label} className={`flex grow flex-col ${RANK_HEIGHT[data.length]}`}>
       <EvilBarChart data={data} config={DIMENSION_CONFIG} layout="horizontal" barRadius={4}
-        className={`aspect-auto text-text-secondary ${RANK_HEIGHT[data.length]}`}>
+        chartProps={{ maxBarSize: RANK_BAR_SIZE }} className="aspect-auto text-text-secondary">
         <EvilBarChart.YAxis dataKey="name" interval={0} />
         <EvilBarChart.XAxis hide domain={BAR_DOMAIN} />
         <EvilBarChart.Bar dataKey="value" enableHoverHighlight
