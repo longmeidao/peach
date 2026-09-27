@@ -3481,6 +3481,25 @@ describe('设计决定', () => {
     }
   });
 
+  it('索引页容器不横向裁剪：筛选玻璃左右两侧的影洒得出来，页面也不横向溢出', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/tags');
+    try {
+      const page = opened.page;
+      const clip = await page.evaluate(() => {
+        const index = document.querySelector('#index')!;
+        return {
+          overflow: getComputedStyle(index).overflowX,
+          spill: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      assert.equal(clip.overflow, 'visible', '#index 横向裁剪，玻璃左右两侧的影被切成直边');
+      assert.equal(clip.spill, 0, '不裁剪后页面被撑出横向滚动');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('标签页的筛选玻璃吸到顶栏下沿时影换成抬起来那一档，上沿垫一条页面底色的遮带', { timeout: 60_000 }, async () => {
     const opened = await openIndexPage(browser, '/tags');
     try {

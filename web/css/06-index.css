@@ -1,8 +1,8 @@
 /* 索引页整页在 React（`frontend/src/react/index/`）。这里留下的是壳铺的那张骨架（页头、
-   头像格、标签行与标签云的占位）和资料页名册共用的那一格人。 */
-.index{padding:4px 0 20px;min-width:0;max-width:100%;overflow-x:clip}
-/* 实体吸顶栏用负边距把分隔线铺到 main 左右边缘；默认的横向裁剪会把这 16 px 截掉。 */
-body.entity-open .index{overflow-x:visible}
+   头像格、标签行与标签云的占位）和资料页名册共用的那一格人。
+   不裁横向溢出：筛选玻璃的三层投影要往左右各洒出几十像素，资料页吸顶栏也用负边距把
+   分隔线铺到 main 左右边缘；横滚的行各自 `overflow-x:auto`，页面本身不会被撑出横向滚动。 */
+.index{padding:4px 0 20px;min-width:0;max-width:100%}
 .index .ihead{display:flex;align-items:center;gap:12px;margin-bottom:20px}
 .index .ihead h2{margin:0}
 .indexheading{display:inline-flex;align-items:center}

@@ -6497,7 +6497,6 @@ class WebUiSourceTests(unittest.TestCase):
                                 '<div class="relatedpeople">${related}</div></div>')
         self.assertPageLacks("entityfootlabel")
         self.assertPageContains('class="entitytagbar" aria-label="媒体与标签"')
-        self.assertPageContains("body.entity-open .index{overflow-x:visible}")
         self.assertNotIn("关联艺人", profile)
         self.assertNotIn("相关标签", profile)
         # 资料页只渲染可核对的身份、计数与链接，没有散文简介块，样式表里也不该
