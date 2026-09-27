@@ -26,16 +26,21 @@ uv sync --locked --extra build
 
 提交 `pyproject.toml` 与 `uv.lock`。CI 用 `--locked` 拒绝过期锁文件；Dependabot 的 `uv` 生态负责更新。`uv pip install` 只用于临时环境或安装产物，不用来维护项目依赖。普通 pip 安装 wheel 的冒烟另外独立验证打包声明。
 
-### 接手 Dependabot 的 npm 升级
+### 接手 Dependabot 的升级
 
-npm 的两份清单各有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。
+Dependabot 的 PR 一律在本地接管，不在网页上合：
 
-Dependabot 只改 manifest 与 lock，算不出派生产物；它的 workflow 拿到的 token 又是只读的，推不回 `dependabot/**`。所以它的 PR 上 `npm run check:vendor` 或 island 产物那一关会红，要人接管：
+- npm 的两份清单各有一层派生产物：根 `package.json` 对应 `web/vendor/**` 与 `web/index.html` 的版本注释，`frontend/package.json` 对应 `web/dist/peach-ui.js`。Dependabot 算不出这些，它的 workflow 拿到的 token 又是只读的，推不回 `dependabot/**`，所以 `npm run check:vendor` 或 island 产物那一关必红。
+- uv 与 github-actions 没有派生产物，但 master 在本机集成、通常领先 origin。在网页上合会让两边分叉，回并要在主检出 master 上 merge，被 `scripts/githooks/` 拒收。
 
-1. 在隔离工作树里运行 `scripts/adopt_dependency_bump.py --pr <编号> --co-author '<工具> (<模型>) <厂商 noreply>'`。它签出那份清单、重算派生产物、只暂存这些并提交。
-2. 加 `--apply` 之前，先看它列出的文件清单。
+每周的升级在一个隔离工作树里一次接完：
 
-uv 与 github-actions 的升级没有派生产物，本地 master 与 origin 一致时可以在网页上直接合并。本地 master 领先 origin 时不要在网页上合：两边会分叉，回并要在主检出 master 上 merge，被 `scripts/githooks/` 拒收。改在同一个工作树里调 `adopt_dependency_bump.bring_over` 逐个套入，每套一个先暂存，再 `uv lock --check`，走 ready / integrate。破坏性的大版本升级由 `.github/dependabot.yml` 的 `ignore` 挡在自动 PR 之外，迁移单开分支做。
+1. 运行 `scripts/adopt_dependency_bump.py --all-open --co-author '<工具> (<模型>) <厂商 noreply>'`，看它列出的 PR 与各自的清单。
+2. 加 `--apply`，按编号从小到大一个 PR 一个提交：取回分支，只把它自己对清单的改动三方合并套进来，npm 重算派生产物，uv 跑 `uv lock --check`。
+3. 两个 PR 改到相邻行时脚本停下，报出冲突文件并在 `build/adopt-pr-<编号>.txt` 备好提交说明。按它印出的步骤解冲突、重算、提交，再跑一次 `--all-open --apply`；已接管的 PR 按提交说明跳过。
+4. 跑 `test.ps1 full`，走 ready / integrate，推送 master 后按它印出的 `gh pr close` 逐个关 PR。PR 显示为 Closed 而不是 Merged，因为提交是在本地重做的。
+
+单个 PR 用 `--pr <编号>`，流程相同。`.github/dependabot.yml` 把每个生态的 minor 与 patch 合成一个 PR，semver-major 照常一个包一个 PR，接管前先读变更说明。已知要改代码才能升的大版本（如 `@tanstack/react-table` v9）由 `ignore` 挡在自动 PR 之外，迁移单开分支做。
 
 版本来自 `src/peach/__init__.py`，已纳入 uv 缓存键；源码版本更新后再次同步会刷新安装元数据。缓存规则采用 [uv 官方动态元数据机制](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)。
 
