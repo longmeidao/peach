@@ -53,6 +53,9 @@ export interface MediaCardLayout { active: boolean; size: 'big' | 'small'; portr
 export interface MediaCardHelpers {
   /** 番号作品的官方封套 `<img>`（遗留层 `coverImage`）：取景属性由它贴，加载后由壳接管取景。 */
   coverHtml(item: MediaItem, layout: 'big' | 'small', eager: boolean): string;
+  /** 封面格换版式：格里那张 `<img>` 原地换取景类名，已加载的按新卡片比例重算取景
+   *  （遗留层 `relayoutJavImages` + `coverAnchor`）。 */
+  relayoutArt(root: HTMLElement, layout: 'big' | 'small'): void;
   /** 来源角标（遗留层 `srcBadge`）。 */
   badgeHtml(location: string, cost: string): string;
   /** 标题的 HTML：番号 + 版次徽章 + 片名，非番号作品是转义后的名字（遗留层 `javTitleHtml`）。 */

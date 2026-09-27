@@ -101,3 +101,22 @@ export function syncJavImages(root: ParentNode, preference: unknown): void {
     if (src && img.getAttribute('src') !== src) img.src = src;
   });
 }
+
+/** 大图／小图原地换：同一张图只换取景类名，来源和已换回的原件都留着，不重新解码。
+ *  上一种版式算出的取景一律作废；返回已经加载完、要按新卡片比例立刻重算取景的那几张，
+ *  还没到手的等 `load` 自己算。 */
+export function relayoutJavImages(root: ParentNode, layout: JavLayout): HTMLImageElement[] {
+  const ready: HTMLImageElement[] = [];
+  root.querySelectorAll<HTMLImageElement>('img[data-jav-image]').forEach(img => {
+    if (img.dataset.javImageLayout === layout) return;
+    img.dataset.javImageLayout = layout;
+    if (!img.classList.contains('cover')) return;
+    img.classList.toggle('whole', layout !== 'big');
+    img.classList.toggle('front', layout === 'big');
+    img.classList.remove('panel');
+    img.removeAttribute('style');
+    (img.closest('.pic,[data-media-pic]') as HTMLElement | null)?.style.removeProperty('--cover-blur');
+    if (img.complete && img.naturalWidth) ready.push(img);
+  });
+  return ready;
+}

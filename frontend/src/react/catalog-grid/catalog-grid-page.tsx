@@ -292,10 +292,14 @@ function HomeMix({ seed, layout, helpers, actions }: {
     return list.map((item) => String(item.id));
   }, [seed, actions, helpers]);
   const jav = layout.active && !!seed.is_jav;
+  const size = jav ? layout.size : 'small';
+  const artwork = mixFace(seed, layout, false, helpers);
   return (
     <MixCard data-mix-seed={String(seed.id)} name={`Mix · ${label}`}
       caption={`${helpers.displayName(seed, seed.name || '')}及相似作品`} count={0} badge="Mix" glyph wholeCard
-      poster={null} artwork={mixFace(seed, layout, false, helpers)}
+      poster={null} artwork={artwork}
+      artworkIdentity={size === 'small' ? artwork.html : mixFace(seed, { ...layout, size: 'small' }, false, helpers).html}
+      relayoutArt={(root) => helpers.relayoutArt(root, size)}
       ratio={jav && layout.size === 'big' ? COVER_FRONT_RATIO : 16 / 9}
       flipImages={flipImages} faceHtml={(id) => faces.current.get(id) || ''} canFlip={actions.canFlip}
       faces={[]} faceAvatar={() => ''} onOpenEntity={actions.openEntity}

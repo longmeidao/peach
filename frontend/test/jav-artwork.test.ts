@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { javImageKind, normalizeJavImage, normalizeJavPreferences, panelFrame, syncJavImages } from '../src/jav-artwork';
+import { javImageKind, normalizeJavImage, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages } from '../src/jav-artwork';
 
 describe('JAV 默认封面', () => {
   const jav = { is_jav: true, code: 'TEST-001', has_cover: true, has_thumb: true };
@@ -45,6 +45,27 @@ describe('JAV 默认封面', () => {
     expect(img.classList.contains('panel')).toBe(false);
     expect(img.getAttribute('style')).toBeNull();
     expect(pic.style.getPropertyValue('--cover-blur')).toBe('');
+  });
+  it('换版式在同一张图上换取景类名，来源不动，只交回已加载完、要立刻重算的那几张', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<div data-media-pic="" style="--cover-blur:url(&quot;/cover?code=TEST-001&quot;)">'
+      + '<img data-jav-image="1" data-jav-image-layout="big" class="poster cover front panel"'
+      + ' style="--panel-left:-101.3%" src="/cover?code=TEST-001"></div>'
+      + '<img data-jav-image="2" data-jav-image-layout="big" class="poster cover front" src="/cover?code=TEST-002">'
+      + '<img data-jav-image="3" data-jav-image-layout="big" class="poster" src="/poster?id=3&c=4">';
+    const [loaded, pending, thumb] = [...root.querySelectorAll('img')] as [HTMLImageElement, HTMLImageElement, HTMLImageElement];
+    Object.defineProperty(loaded, 'naturalWidth', { value: 800 });
+    Object.defineProperty(loaded, 'complete', { value: true });
+    Object.defineProperty(pending, 'complete', { value: false });
+    expect(relayoutJavImages(root, 'small')).toEqual([loaded]);
+    expect([loaded.className, pending.className, thumb.className])
+      .toEqual(['poster cover whole', 'poster cover whole', 'poster']);
+    expect(loaded.getAttribute('style')).toBeNull();
+    expect((root.firstElementChild as HTMLElement).style.getPropertyValue('--cover-blur')).toBe('');
+    expect([loaded, pending, thumb].map(img => img.dataset.javImageLayout)).toEqual(['small', 'small', 'small']);
+    expect(loaded.getAttribute('src')).toBe('/cover?code=TEST-001');
+    // 同一版式再来一次什么都不做：卡片每次重画都会问一遍。
+    expect(relayoutJavImages(root, 'small')).toEqual([]);
   });
   it.each(['big', 'small'])('%s 保留两种封面来源，保存后恢复同一组合', javLayout => {
     for (const javImage of ['cover', 'thumbnail']) {
