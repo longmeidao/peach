@@ -209,4 +209,4 @@ export function showToast(
   void toaster.then((bundle) => bundle.showToast(id, request));
 }
 
-export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages } from './jav-artwork';
+export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages } from './jav-artwork';

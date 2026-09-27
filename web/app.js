@@ -17,7 +17,7 @@ import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_S
 import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
-import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -3610,6 +3610,7 @@ const withTagToggled=(value,tag)=>{const cur=tagList(value);const index=cur.inde
    比较，每次推新对象进去就是整屏重画。 */
 const gridHelpers={
   coverHtml:(it,layout,eager)=>coverImage(it,layout,eager),
+  relayoutArt:(root,layout)=>relayoutJavImages(root,layout).forEach(img=>{coverAnchor(img);upgradeCover(img)}),
   badgeHtml:(location,cost)=>srcBadge(location,cost),
   titleHtml:(it,raw)=>javTitleHtml(it,raw),
   displayName:(it,raw)=>javDisplayName(it,raw),

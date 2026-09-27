@@ -887,6 +887,12 @@ function pt(e, t) {
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic,[data-media-pic]")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
+function mt(e, t) {
+	let n = [];
+	return e.querySelectorAll("img[data-jav-image]").forEach((e) => {
+		e.dataset.javImageLayout !== t && (e.dataset.javImageLayout = t, e.classList.contains("cover") && (e.classList.toggle("whole", t !== "big"), e.classList.toggle("front", t === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic,[data-media-pic]")?.style.removeProperty("--cover-blur"), e.complete && e.naturalWidth && n.push(e)));
+	}), n;
+}
 //#endregion
 //#region src/islands.ts
 var Z = {
@@ -909,8 +915,8 @@ var Z = {
 	activity: { react: "activity" },
 	stats: { react: "stats" },
 	taste: { react: "taste" }
-}, mt = () => import("/dist/peach-react.js").then(() => void 0), ht = () => Object.keys(Z), Q = /* @__PURE__ */ new Map();
-async function gt(e, t, n, r = {}) {
+}, ht = () => import("/dist/peach-react.js").then(() => void 0), gt = () => Object.keys(Z), Q = /* @__PURE__ */ new Map();
+async function _t(e, t, n, r = {}) {
 	let i = Z[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
 	$(t);
@@ -922,7 +928,7 @@ async function gt(e, t, n, r = {}) {
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!vt(t, a, r)) return;
+	if (!yt(t, a, r)) return;
 	let s = () => {
 		t.textContent = "";
 		let e = t.ownerDocument.createElement("div");
@@ -934,27 +940,27 @@ async function gt(e, t, n, r = {}) {
 	};
 	r.reveal ? r.reveal(t, s) : s();
 }
-function _t(e, t) {
+function vt(e, t) {
 	let n = e ? Q.get(e) : void 0;
 	!n?.update || !n.props || (n.props = {
 		...n.props,
 		...t
 	}, n.update(n.props));
 }
-function vt(e, t, n) {
+function yt(e, t, n) {
 	return Q.get(e) === t ? n.isCurrent && !n.isCurrent() ? (Q.delete(e), !1) : !0 : !1;
 }
-var yt = (e) => !!e && Q.has(e);
+var bt = (e) => !!e && Q.has(e);
 function $(e) {
-	for (let t of [...Q.keys()]) (t === e || e.contains(t)) && bt(t);
+	for (let t of [...Q.keys()]) (t === e || e.contains(t)) && xt(t);
 }
-function bt(e) {
+function xt(e) {
 	let t = Q.get(e);
 	t && (t.controller.abort(), Q.delete(e), t.dispose?.());
 }
-var xt = null;
-function St(e, t, n, r) {
-	xt ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), xt.then((e) => e.showToast(n, r));
+var St = null;
+function Ct(e, t, n, r) {
+	St ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), St.then((e) => e.showToast(n, r));
 }
 //#endregion
-export { Be as boardPageSkeleton, u as boundedPreference, We as catalogEmptyHtml, Ue as catalogSuggestions, le as clampPage, $e as cleanupSkeletonHtml, ze as detailSkeletonHtml, He as emptyCatalogLayout, pe as entitySkeletonHtml, de as faceSourceScale, ne as followJobProgress, m as initBoardControls, yt as islandMounted, ht as islandNames, dt as javImageKind, C as jobActivityHtml, lt as junkCountSkeletonHtml, q as junkPath, tt as junkRoute, gt as mountIsland, f as mountNumberSetting, fe as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, ut as normalizeJavPreferences, ce as pageCount, ue as paginationHtml, ft as panelFrame, c as preferredDirection, mt as preloadIslands, ae as selectGroup, re as selectRange, ie as selectionSummary, St as showToast, Ge as sidebarHasCatalogContent, b as sidebarSectionHtml, qe as sidebarTagCounts, p as syncBoardRange, pt as syncJavImages, d as syncNumberSetting, oe as syncSelectionToolbar, Ke as syncSidebarSurface, ee as transitionTheme, $ as unmountIsland, _t as updateIsland, w as watchJob, x as wireSidebarGroups };
+export { Be as boardPageSkeleton, u as boundedPreference, We as catalogEmptyHtml, Ue as catalogSuggestions, le as clampPage, $e as cleanupSkeletonHtml, ze as detailSkeletonHtml, He as emptyCatalogLayout, pe as entitySkeletonHtml, de as faceSourceScale, ne as followJobProgress, m as initBoardControls, bt as islandMounted, gt as islandNames, dt as javImageKind, C as jobActivityHtml, lt as junkCountSkeletonHtml, q as junkPath, tt as junkRoute, _t as mountIsland, f as mountNumberSetting, fe as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, ut as normalizeJavPreferences, ce as pageCount, ue as paginationHtml, ft as panelFrame, c as preferredDirection, ht as preloadIslands, mt as relayoutJavImages, ae as selectGroup, re as selectRange, ie as selectionSummary, Ct as showToast, Ge as sidebarHasCatalogContent, b as sidebarSectionHtml, qe as sidebarTagCounts, p as syncBoardRange, pt as syncJavImages, d as syncNumberSetting, oe as syncSelectionToolbar, Ke as syncSidebarSurface, ee as transitionTheme, $ as unmountIsland, vt as updateIsland, w as watchJob, x as wireSidebarGroups };

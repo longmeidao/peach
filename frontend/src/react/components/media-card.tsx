@@ -11,7 +11,8 @@
  * 重画一次就被冲掉）：
  * - 悬停预览（`wireHover`）往封面格里插 `video.hv`／`img.hvframes`，在卡上切
  *   `data-previewing`／`data-longhover`，并在卡上挂 `_stopHover` 让滚动与换页时收掉。
- * - 封面取景（`coverAnchor`）改的是封面格里那张图，见 `../catalog-grid/artwork.ts`。
+ * - 封面取景（`coverAnchor`）改的是封面格里那张图，见 `../catalog-grid/artwork.ts`；
+ *   大图／小图也在那张图上原地换，见 `./art-slot.tsx`。
  * - 图片微光（`PENDING_IMAGES`）在 `[data-media-art]` 上加 `imgwait`／`imgdone`。
  *
  * 点击的分流：多选与修饰键优先，然后是打开、实体链接、未归属、
@@ -22,6 +23,7 @@ import { spinnerHtml } from '@peach/legacy/ui';
 
 import type { MediaCardActions, MediaCardHelpers, MediaCardLayout, MediaItem } from '../catalog-grid/types';
 import { cardArtwork } from '../catalog-grid/artwork';
+import { ArtSlot } from './art-slot';
 
 /** 大图卡片的容器比例，同遗留层 `COVER_FRONT_RATIO`：正封宽高比 0.667～0.749，0.75 比最宽
  *  的那张还宽，一张都不用从左边切。 */
@@ -162,7 +164,9 @@ function VideoCard({ item, variant, layout, selected, selectMode, seekSeconds, h
   const editions = item.edition_group || null;
   const stacked = !!(parts || editions);
   const jav = layout.active && !!item.is_jav;
-  const artwork = cardArtwork(item, jav ? layout.size : 'small', false, layout.javImage, helpers.coverHtml);
+  const size = jav ? layout.size : 'small';
+  const artwork = cardArtwork(item, size, false, layout.javImage, helpers.coverHtml);
+  const identity = size === 'small' ? artwork.html : cardArtwork(item, 'small', false, layout.javImage, helpers.coverHtml).html;
   const rawName = parts?.title || item.name || '';
   const shownName = helpers.displayName(item, rawName);
   const shownSize = parts?.total_size ?? item.size;
@@ -199,7 +203,7 @@ function VideoCard({ item, variant, layout, selected, selectMode, seekSeconds, h
   const pic = (
     <div data-media-pic="" style={{ '--card-ratio': String(cardRatio(item, variant, layout)) } as CSSProperties}>
       {artwork.html
-        ? <span data-media-art={artwork.kind} dangerouslySetInnerHTML={{ __html: artwork.html }} />
+        ? <ArtSlot artwork={artwork} identity={identity} relayout={(root) => helpers.relayoutArt(root, size)} />
         : <span data-media-nopic="">无预览</span>}
       <div data-media-badge="" dangerouslySetInnerHTML={{ __html: helpers.badgeHtml(item.location || '', item.cost || '') }} />
       <span data-media-check=""><Icon name="check" /></span>

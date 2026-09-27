@@ -9,6 +9,7 @@
  * 伪元素、`color-mix` 与相邻兄弟选择器在工具类里写不出来。 */
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 
+import { ArtSlot } from './art-slot';
 import { spriteGlyph } from './sprite-glyph';
 import { useStackFlip } from './use-stack-flip';
 
@@ -56,6 +57,9 @@ export interface MixCardProps {
   /** 静止封面改用遗留层拼的那段图片 HTML（番号作品的取景链要接管它），封面格同时带上作品卡
    *  的封面格钩子（`data-media-pic`），模糊衬底与取景和作品卡同一条路。 */
   artwork?: { kind: string; html: string };
+  /** 静止封面去掉版式后的身份与原地换版式，见 `./art-slot.tsx`。 */
+  artworkIdentity?: string;
+  relayoutArt?(root: HTMLElement): void;
   /** 翻页的每一张也用 HTML 画，和静止封面长得一样；参数是 `flipImages` 给的那个地址。 */
   faceHtml?(src: string): string;
   /** 徽标上的字。不给就是「N 个视频」。 */
@@ -102,7 +106,7 @@ function Avatars({ faces, fallback, faceAvatar, onOpenEntity }: {
 
 export function MixCard({
   name, caption, count, poster, flipImages, canFlip, faces, faceAvatar, onOpenEntity, onOpen, openLabel, menu,
-  ratio, artwork, faceHtml, badge, glyph, wholeCard,
+  ratio, artwork, artworkIdentity, relayoutArt, faceHtml, badge, glyph, wholeCard,
   ...data
 }: MixCardProps & Record<`data-${string}`, string>) {
   const flip = useStackFlip({ load: flipImages, canFlip });
@@ -125,7 +129,7 @@ export function MixCard({
           style={ratio !== undefined ? { '--card-ratio': String(ratio) } as CSSProperties : undefined}
           className="relative z-1 flex aspect-video items-center justify-center overflow-hidden rounded-surface">
           {artwork?.html
-            ? <span data-media-art={artwork.kind} dangerouslySetInnerHTML={{ __html: artwork.html }} />
+            ? <ArtSlot artwork={artwork} identity={artworkIdentity} relayout={relayoutArt} />
             : poster
               ? <Poster key={poster} src={poster} />
               : <span className="text-caption-1-regular tracking-caps text-text-secondary uppercase">无预览</span>}

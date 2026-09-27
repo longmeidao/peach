@@ -1,6 +1,6 @@
 /* 馆藏卡片网格：一屏卡片怎么排（取数的查询串、折叠、Mix 落位、竖屏带落点），以及一张卡
  * 画出什么、点哪里去哪里。 */
-import { act } from 'react';
+import { act, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { MediaCard, cardRatio, type MediaCardVariant } from '../../src/react/components/media-card';
@@ -122,6 +122,7 @@ describe('比例', () => {
 describe('作品卡', () => {
   const helpers: MediaCardHelpers = {
     coverHtml: () => '<img class="poster cover whole" src="/cover" alt="">',
+    relayoutArt: vi.fn(),
     badgeHtml: (location) => `<span>${location}</span>`,
     titleHtml: (_it, raw) => raw,
     displayName: (_it, raw) => raw,
@@ -235,5 +236,34 @@ describe('作品卡', () => {
     const shortcut = await render(item(18, { medium: 'other', name: '入口.URL' }), { variant: 'resource' });
     expect(shortcut.host.querySelector('[data-media-who]')?.textContent).toBe('网址快捷方式');
     expect(shortcut.host.querySelector('[data-media-resource-action]')?.getAttribute('title')).toBe('移入回收站');
+  });
+
+  it('换大图／小图留着原来那张封面，交给壳原地换取景；换了作品才换图', async () => {
+    const relayoutArt = vi.fn();
+    const layered: MediaCardHelpers = {
+      ...helpers, relayoutArt,
+      coverHtml: (it, size) => `<img class="poster cover ${size === 'small' ? 'whole' : 'front'}" src="/cover?code=${it.code}" alt="">`,
+    };
+    const BIG: MediaCardLayout = { active: true, size: 'big', portrait: false, javImage: 'cover' };
+    let show!: (next: { layout: MediaCardLayout; code: string }) => void;
+    function Harness() {
+      const [state, set] = useState({ layout: BIG, code: 'ABC-001' });
+      show = set;
+      return <MediaCard item={item(19, { is_jav: true, code: state.code, has_cover: true })} variant="grid"
+        layout={state.layout} selected={false} selectMode={false} seekSeconds={10} helpers={layered}
+        actions={actionsFor()} onOpen={vi.fn()} />;
+    }
+    const host = await mount(<Harness />);
+    const cover = host.querySelector('[data-media-art] img');
+    relayoutArt.mockClear();
+
+    await act(async () => show({ layout: { ...BIG, size: 'small' }, code: 'ABC-001' }));
+    expect(host.querySelector('[data-media-art] img')).toBe(cover);
+    expect(relayoutArt).toHaveBeenLastCalledWith(host.querySelector('[data-media-art]'), 'small');
+    expect(host.querySelector<HTMLElement>('[data-media-pic]')!.style.getPropertyValue('--card-ratio')).toBe(String(16 / 9));
+
+    await act(async () => show({ layout: { ...BIG, size: 'small' }, code: 'ABC-002' }));
+    expect(host.querySelector('[data-media-art] img')).not.toBe(cover);
+    expect(host.querySelector('[data-media-art] img')?.getAttribute('src')).toBe('/cover?code=ABC-002');
   });
 });
