@@ -132,6 +132,21 @@ class FeedWebTest(FeedWebFixture):
         self.assertEqual(snapshot["sources"][0]["name"], "示例源")
         self.assertEqual(snapshot["sources"][0]["kind_label"], "JAV 订阅")
         self.assertTrue(snapshot["sources"][0]["enabled"])
+        # 没挂人物就没有资料图可画。
+        self.assertFalse(snapshot["sources"][0]["has_image"])
+
+    def test_a_source_tied_to_a_performer_is_named_by_her_canonical_name(self):
+        """挂着人物的源，名字是她在账本里的统称，登记时抄下的站上名字不再顶在前面。"""
+        with self.contract.database.write_transaction() as connection:
+            entity_id = int(connection.execute(
+                "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES('performer',?,peach_normalize(?),?,?)",
+                ("凉森玲梦", "凉森玲梦", feeds.stamp(), feeds.stamp())).lastrowid)
+        self._add(entity_id)
+        [source] = dispatch_api_get(self.contract, "/api/feeds", {})["sources"]
+        self.assertEqual((source["name"], source["entity_id"], source["entity_name"]),
+                         ("凉森玲梦", entity_id, "凉森玲梦"))
+        self.assertFalse(source["has_image"])
 
     def test_the_source_endpoint_takes_no_address_from_the_page(self):
         # 订阅只从人物页进，地址由服务端现拼（ADR-0047）；页面送来的地址一律不收。

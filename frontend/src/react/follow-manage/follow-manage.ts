@@ -457,9 +457,13 @@ export interface FeedSource {
   id: number;
   kind: string;
   kind_label: string;
+  /** 挂着人物时是她在账本里的统称，否则是登记时存的名字。 */
   name: string;
   url: string;
+  entity_id: number | null;
   entity_name: string | null;
+  /** 这位有没有资料图：有就在名字前画 `/entity-image` 的圆框，没有退首字母。 */
+  has_image?: boolean;
   enabled: boolean;
   interval_minutes: number;
   last_fetched_at: string | null;
@@ -486,8 +490,9 @@ export const setFeedEnabled = (id: number, enabled: boolean, signal?: AbortSigna
 export const removeFeed = (id: number, signal?: AbortSignal) =>
   apiSend(FEED_SOURCE_URL, { action: 'remove', id }, 'POST', signal);
 
-/** 立即拉取走的是和定时同一条路，只是把到期判断换成「全部启用的源」。 */
-export const checkFeeds = (signal?: AbortSignal) => apiSend(FEEDS_CHECK_URL, { all: true }, 'POST', signal);
+/** 拉取走的是和定时同一条路：不点名就是「全部启用的源」，点名几条就只拉那几条，停用的也拉。 */
+export const checkFeeds = (signal?: AbortSignal, ids?: number[]) =>
+  apiSend(FEEDS_CHECK_URL, ids?.length ? { sources: ids } : { all: true }, 'POST', signal);
 
 /** JavDB 搜出来的一张演员卡。字段以 `web_feeds.q_feed_lookup` 为准。 */
 export interface FeedCandidate {

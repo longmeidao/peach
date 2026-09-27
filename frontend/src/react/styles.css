@@ -708,6 +708,13 @@
   border-color: var(--color-border-button-default);
 }
 
+/* 指着哪一行哪一行换底：整行都能点选之后，没有这层反馈就不知道点下去落在哪一行。
+ * 取 BoardUI primary 面的 hover 档，只给没选中的行；选中行的底色在下面，压过这一条。 */
+.peach-react [data-board-data-table] .bui-table tbody tr:hover,
+.peach-react [data-source-divider] > :hover {
+  background-color: var(--color-background-primary-hover);
+}
+
 .peach-react [data-board-data-table] .bui-table tbody tr[data-follow-selected],
 .peach-react [data-board-data-table] .bui-table tbody tr[data-board-selected] {
   background-color: var(--color-background-secondary-default);

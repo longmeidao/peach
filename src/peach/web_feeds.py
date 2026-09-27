@@ -231,6 +231,9 @@ def q_feeds(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         feeds.register_functions(connection, hidden)
         rows = feeds.sources(connection)
+        # 表里名字前面那个圆框：有图走 `/entity-image`，判据和资料页同一个。
+        for row in rows:
+            row["has_image"] = contract.has_entity_image("performer", row["entity_id"])
         pending = connection.execute(
             "SELECT count(*) FROM feed_discovery d WHERE d.ignored_at IS NULL"
             f" AND d.read_at IS NULL AND {' AND '.join(LISTED)}").fetchone()[0]
