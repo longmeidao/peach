@@ -182,8 +182,10 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
      左像右文那套是给宽屏的：手机上 92 px 头像旁边只剩两百多像素，别名和链接被挤成
      两三行，头像下面又空着一大片。居中之后名字和链接都拿到整行宽度。 */
   .entityprofile{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px;justify-items:center;text-align:center}
-  /* 单列时头像上下各是一整行，没有「右边那列有多高」可跟，尺寸就还是钉住的 96px。 */
+  /* 单列时头像上下各是一整行，没有「右边那列有多高」可跟，尺寸就还是钉住的 96px。
+     换头像加号的宿主按 `--portrait-size` 叠在圆框上，写在外层自己身上才压得过资料卡按行数给的那一档。 */
   .entityportrait{height:96px;min-height:96px;max-height:96px;width:96px}.entityhero h2{font-size:var(--fs-xl)}
+  .entityportraitwrap{--portrait-size:96px}
   .entityidentity{width:100%}
   .entityfoot{padding:10px 16px}
   /* 标题行是 flex，`text-align:center` 管不到它，得自己居中。 */

@@ -4449,14 +4449,13 @@ function feedNewCoverHtml(item){
     ` src="${esc(item.cover_url)}" referrerpolicy="no-referrer" data-panel-prior="1"`);
 }
 function feedNewCardHtml(item){
-  // 厂牌与发行日各占一段：放不下时只收厂牌，日期整段留着。
-  const label=[item.studio&&`<span class="feednewstudio">${esc(item.studio)}</span>`,
+  // 女优名与发行日各占一段：订阅按人订，底行说是谁的新片；放不下时只收女优名，日期整段留着。
+  const label=[item.performers&&`<span class="feednewperformers">${esc(item.performers)}</span>`,
     item.release_date&&`<span>${esc(item.release_date)}</span>`].filter(Boolean)
     .join('<span aria-hidden="true">·</span>');
   const cover=feedNewCoverHtml(item);
   // 番号与标题排在同一个两行的标题块里，和资产卡一样：番号加粗打头，标题接在后面截断。
-  const heading=javTitleHtml({is_jav:true,code:item.code,name:item.code,
-    display_title:item.title||item.performers||''});
+  const heading=javTitleHtml({is_jav:true,code:item.code,name:item.code,display_title:item.title||''});
   /* 点击区自己一个类，不共用 `.cardopenhit`：那一个是「在 Peach 里打开这条」的落点，
      全站按它认站内跳转（`test_follow_web` 盯着它不许变成外链）。这一条通向别人的站。 */
   const open=item.link
@@ -4467,7 +4466,7 @@ function feedNewCardHtml(item){
         <button type="button" data-feed-action="ignore" title="不想看" aria-label="不想看 ${esc(item.code)}">${icon('x')}</button>
         <button type="button" data-feed-action="read" title="标为已看过" aria-label="标为已看过 ${esc(item.code)}">${icon('check')}</button></div></div>
     <div class="meta"><div class="mtext"><span class="t">${heading}</span>
-      <div class="s mono">${label||(item.title||item.performers?'':'资料还没取到')}</div></div></div></article>`;
+      <div class="s mono">${label||(item.title?'':'资料还没取到')}</div></div></div></article>`;
 }
 
 /* 订阅了这位时，新作那一行先按真卡的轮廓占住位置：取数回来再整行换掉，没有就收起。

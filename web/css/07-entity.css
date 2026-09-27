@@ -3,12 +3,15 @@
    圆角裁掉。 */
 .entityhero{display:flex;flex-direction:column;margin:0 0 22px;border-radius:var(--floating-radius);
   background:var(--ground);overflow:hidden;min-width:0;max-width:100%}
-/* 头像跟着右边那列的高度长。身份列有几行是看这个人有多少东西：只有名字和别名时是两行，
+/* 头像跟着右边那列的行数长。身份列有几行是看这个人有多少东西：只有名字和别名时是两行，
    加上外链和看片那一行就是四行，头像钉死 120px 的话卡上下会空出一截，圆框反倒比文字轻。
-   所以这一列不再写死宽度：圆框拉满这一行的高度，宽由 `aspect-ratio` 推出来，下限 120px
-   保住原来的尺寸，上限 160px 免得内容再多时圆框把这一页的主角抢了。 */
+   所以四行都在时圆框放到 160px，其余 120px；上限 160px 免得圆框把这一页的主角抢了。
+   尺寸按有哪几行定，不取这一行高度的百分比：圆框的宽决定头像那一列多宽，列宽又决定
+   别名会不会折行、身份列有多高，取百分比就成了一个圈。Chromium 只解这个圈的第一轮，
+   别名折行后多出的那截会压进卡底的内边距，看片那一行贴到同台艺人的分隔线上。 */
 .entityprofile{display:grid;grid-template-columns:auto minmax(0,1fr);gap:20px;padding:20px;
-  align-items:center;min-width:0}
+  align-items:center;min-width:0;--portrait-size:120px}
+.entityprofile:has(>.entityidentity>.entitylinks):has(>.entityidentity>.entrymarks){--portrait-size:160px}
 .entityprofile>.entityportraitwrap{align-self:stretch;display:flex;align-items:center}
 /* 女优有资料时多出第三栏：右边那张资料表（ADR-0069），和身份信息之间隔一道竖线。
    宽 280–360px：生日、身材一行放得下，出道片名截断后还剩一半字。
@@ -37,16 +40,16 @@
 /* 圆框外面这一层只为换头像那枚加号存在：圆框自己是 `overflow:hidden`（图要被裁成
    圆的），贴在它边上的按钮放进去就没了。 */
 .entityportraitwrap{position:relative;width:max-content;max-width:100%}
-/* 外面这一层拉满整行的高，圆框却封顶 160px、竖直居中：资料表的标签折成几行时，行比圆框高，
+/* 外面这一层拉满整行的高，圆框却竖直居中：资料表的标签折成几行时，行比圆框高，
    加号贴这一层的角就掉到圆框下面去了。所以挂加号的宿主叠成和圆框一样大、一样位置的一块，
-   高度与居中取圆框同一个 `clamp`，加号的 `right/bottom` 就量在圆框上。它盖在脸上，不接指针。
-   不用 `transform` 居中：它会给弹层的 `fixed` 遮罩另起包含块。 */
-.entityportraitwrap>[data-avatar-picker]{position:absolute;left:0;right:0;height:clamp(120px,100%,160px);
-  top:calc((100% - clamp(120px,100%,160px)) / 2);pointer-events:none}
+   高度与居中取圆框同一个 `--portrait-size`，加号的 `right/bottom` 就量在圆框上。它盖在脸上，
+   不接指针。不用 `transform` 居中：它会给弹层的 `fixed` 遮罩另起包含块。 */
+.entityportraitwrap>[data-avatar-picker]{position:absolute;left:0;right:0;height:var(--portrait-size);
+  top:calc((100% - var(--portrait-size)) / 2);pointer-events:none}
 .entityportraitwrap>[data-avatar-picker]>*{pointer-events:auto}
 /* `position:relative` 是给人脸放大留的包含块：放大后的 img 转成绝对定位，偏移必须
    相对这个圆框算，否则会挂到最近的定位祖先上去。见 app.js 的 avatarFrame。 */
-.entityportrait{height:100%;min-height:120px;max-height:160px;width:auto;
+.entityportrait{height:var(--portrait-size);width:auto;
   aspect-ratio:1;border-radius:50%;overflow:hidden;background:var(--overlay-5);
   display:grid;place-items:center;font-size:var(--fs-4xl);color:var(--muted);max-width:100%;
   position:relative}
@@ -186,7 +189,7 @@
 .entityskeletontext .entitytitle .skeleton{width:60%;height:auto}
 .entityskeletontext .alias .skeleton{display:block;width:40%;height:20px}
 .entityskeletontext .entitylinks .skeleton{width:180px;height:36px}
-[data-skeleton^="entity/"] .entityportrait{height:auto}
+[data-skeleton^="entity/"] .entityportrait{height:var(--portrait-size)}
 [data-skeleton^="entity/"] .entityfacts dt .skeleton{display:block;width:56px;height:16px;margin-block:3px}
 [data-skeleton^="entity/"] .entityfacts dd .skeleton{display:block;width:70%;height:16px;margin-block:3px}
 [data-skeleton^="entity/"] .entitycollectionhead .skeleton{width:90px;height:20px}
