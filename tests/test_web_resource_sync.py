@@ -557,6 +557,20 @@ class ResourceSyncCleanupTests(unittest.TestCase):
         self.assertIsNone(self.contract.resource_apply_job.snapshot(), "过期的检查不开执行任务")
         self.assertEqual(self.ids(), [1, 2, 3, 4, 5])
 
+    def test_a_check_that_was_applied_reports_applied_and_cannot_run_again(self):
+        """清过的那一轮不再拿旧读数冒充现状：状态带 `applied`，同一个 `scan_id` 不能再执行。"""
+        scan = finish_scan(self.contract)
+        self.assertFalse(scan["applied"])
+        self.apply(scan)
+
+        status = rm_sync.w_resource_sync_scan(
+            self.contract, {"background": True, "status_only": True})
+        self.assertEqual((status["status"], status["scan_id"], status["applied"]),
+                         ("complete", scan["scan_id"], True))
+        with self.assertRaisesRegex(ValueError, "expired"):
+            self.apply(scan)
+        self.assertFalse(finish_scan(self.contract)["applied"], "重新检查是新的一轮")
+
     def test_apply_is_gated_as_a_ledger_write_and_check_stays_read_only(self):
         self.assertIs(rm_web.POST_HANDLERS["/api/resource-sync/apply"], rm_sync.w_resource_sync_apply)
         self.assertNotIn("/api/resource-sync/apply", rm_web.READ_ONLY_POST_ROUTES,

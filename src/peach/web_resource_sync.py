@@ -444,7 +444,8 @@ def clean_resource_orphans(contract: ResourceSyncContract, *, progress=None) -> 
 
 def _resource_scan_public(state: dict) -> dict:
     if state["status"] == "complete":
-        return {**state["result"], "status": "complete", "scan_id": state["scan_id"]}
+        return {**state["result"], "status": "complete", "scan_id": state["scan_id"],
+                "applied": bool(state.get("applied_at"))}
     return {
         "ok": state["status"] != "failed",
         "status": state["status"],
@@ -515,10 +516,10 @@ def w_resource_sync_scan(contract: ResourceSyncContract, body=None):
 
 
 def _completed_scan(contract: ResourceSyncContract, scan_id: str) -> dict:
-    """执行只认这一轮检查：别的一轮、还没跑完的一轮、顶掉了的一轮都不算。"""
+    """执行只认这一轮检查：别的一轮、还没跑完的一轮、顶掉了的一轮、已经清过的一轮都不算。"""
     state = contract.resource_scan.snapshot()
     if (not scan_id or state is None or state["scan_id"] != scan_id
-            or state["status"] != "complete"):
+            or state["status"] != "complete" or state.get("applied_at")):
         raise ValueError("resource scan expired; scan again")
     return state
 
@@ -618,6 +619,8 @@ def w_resource_sync_apply(contract: ResourceSyncContract, body, *, progress=None
     }
     blocked = [{"id": item["id"], "name": PureWindowsPath(item["path"]).name,
                 "reason": item["reason"]} for item in purge["blocked"]]
+    # 这一轮的清单已经照着清过：读数不再是盘上的现状，结果区换成清理回执。
+    contract.resource_scan.update(scan_id, applied_at=time.time())
     return {
         "ok": True, "sources": state["result"]["sources"],
         "purged": int(purge["purged"]), "blocked": blocked, "blocked_count": len(blocked),

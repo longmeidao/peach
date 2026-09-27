@@ -3,7 +3,8 @@
  * 不进回收站，所以执行键是危险档，确认框把「不可撤销」写明。
  *
  * 扫描与清理是两趟后台任务，都走 `useBackgroundJob`。扫描的结论就是那趟任务的终态，所以
- * 结果区画的是当前快照：上一趟扫出来的东西还等着清。清理只报本次跟完的那一趟。 */
+ * 结果区画的是当前快照：上一趟扫出来的东西还等着清。那一趟清过之后（`applied`）读数就不是
+ * 现状了，结果区改画服务器留着的最近一次清理回执。 */
 import { confirmModal, MEDIA_SOURCE_ICONS } from '@peach/legacy/ui';
 import { fmtSize } from '@peach/legacy/core';
 
@@ -80,8 +81,9 @@ export function ResourceSyncCard(
     queryFn: ({ signal }) => fetchResourceApply(signal),
     start: startResourceApply,
     onFinish: (out) => {
-      /* 回收站里的失效记录也一并删了：顶上那张回收站读数跟着重取。 */
+      /* 回收站里的失效记录也一并删了：顶上那张回收站读数跟着重取。检查那一份带上了 `applied`。 */
       void queryClient.invalidateQueries({ queryKey: TRASH_KEY, exact: true });
+      void queryClient.invalidateQueries({ queryKey: RESOURCE_SCAN_KEY, exact: true });
       if (out.status !== 'complete') return;
       /* 没删的几样是这一轮留下的，能删的已经删了：报警告档、写完成与没处理的数目，不说失败。 */
       const { done, left } = applyLeftovers(out);
@@ -113,16 +115,19 @@ export function ResourceSyncCard(
   });
 
   const done = apply.outcome;
+  const receipt = (out: ResourceApplyState) => {
+    const partial = applyLeftovers(out).left > 0;
+    return (
+      <Note tone={partial ? 'warning' : 'success'} title={partial ? '部分完成' : '清理结果'}>
+        {applyText(out, fmtSize)}
+      </Note>
+    );
+  };
   let result = null;
   if (done?.status === 'failed') {
     result = <Note tone="error" title="任务失败">{done.error || '任务失败'}</Note>;
   } else if (done) {
-    const partial = applyLeftovers(done).left > 0;
-    result = (
-      <Note tone={partial ? 'warning' : 'success'} title={partial ? '部分完成' : '清理结果'}>
-        {applyText(done, fmtSize)}
-      </Note>
-    );
+    result = receipt(done);
   } else if (apply.running) {
     result = <LoadingDots label={apply.job?.message || '正在复核并清理失效条目…'} />;
   } else if (scan.start.isError) {
@@ -141,6 +146,10 @@ export function ResourceSyncCard(
     );
   } else if (state?.status === 'failed') {
     result = <Note tone="error" title="扫描失败">{state.error || '后台扫描失败'}</Note>;
+  } else if (state?.status === 'complete' && state.applied) {
+    result = apply.job?.status === 'complete'
+      ? receipt(apply.job)
+      : <Note tone="neutral" title="清理结果">这次检查的结果已经清理，重新扫描可再核对。</Note>;
   } else if (state?.status === 'complete') {
     const changes = hasChanges(state);
     result = (
