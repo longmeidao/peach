@@ -77,21 +77,25 @@ function unexpected(problems: string[]): string[] {
   });
 }
 
-const cellBadges = (page: Page) => page.locator('.photowall .photocell').evaluateAll((cells) =>
-  cells.map((cell) => cell.querySelector('.mixbadge')?.textContent?.trim() || ''));
+/** 每一段的段头标签和它下面那面墙的格数，按页面顺序。 */
+const groups = (page: Page) => page.locator('.photogroup').evaluateAll((heads) => heads.map((head) => [
+  head.querySelector('b')?.textContent?.trim() || '',
+  head.nextElementSibling?.querySelectorAll('.photocell').length ?? -1,
+]));
 
 describe('番号样张', () => {
   let browser: Browser;
   before(async () => { browser = await launch(); });
   after(async () => { await browser?.close(); });
 
-  it('只有样张时照片档照样出现，各部样张按发行日铺在一面墙上，每部第一张标番号', async () => {
+  it('只有样张时照片档照样出现，各部样张按发行日一部一段，段头写番号、标题与来源', async () => {
     const opened = await openPhotos(browser, 'media=photos');
     const { page } = opened;
     try {
       assert.equal(await page.locator('.entitymediaview [data-media-view="photos"]').getAttribute('aria-pressed'),
         'true');
-      assert.deepEqual(await cellBadges(page), ['SSIS-057', '', '', 'SSIS-001', '']);
+      assert.deepEqual(await groups(page), [['SSIS-057', 3], ['SSIS-001', 2]]);
+      assert.match(await page.locator('.photogroup').first().innerText(), /雨の日[\s\S]*DMM 样张 · 2021-05-18 · 3 张/);
       assert.match(await page.locator('.photohead h3').innerText(), /样张 5 张 · 2 部作品/);
       assert.equal(await page.locator('.photohead .entitybatch').count(), 0, '没有本地图可换一批');
       assert.equal(await page.locator('.photoback').count(), 0, '样张不另开一层');
@@ -101,11 +105,11 @@ describe('番号样张', () => {
     }
   });
 
-  it('取不到的那格留着占位和番号位置，灯箱按整面墙连续翻', async () => {
+  it('取不到的那格留着占位，灯箱跨段连续翻', async () => {
     const opened = await openPhotos(browser, 'media=photos');
     const { page } = opened;
     try {
-      await page.waitForFunction(() => !document.querySelector('.photowall .photocell:nth-child(2) img'));
+      await page.waitForFunction(() => !document.querySelector('.photowall')?.children[1]?.querySelector('img'));
       const hole = await page.locator('.photowall .photocell').nth(1).boundingBox();
       assert.ok(hole && hole.height > 0, '占位格不塌');
       await page.locator('.photowall .photocell').nth(3).click();
@@ -119,14 +123,15 @@ describe('番号样张', () => {
     }
   });
 
-  it('样张排在本地图片前面，翻页只数本地图片', async () => {
+  it('样张各段排在本地图片前面，翻页只数本地图片', async () => {
     const opened = await openPhotos(browser, 'media=photos', { first: 2, more: 1 });
     const { page } = opened;
     try {
-      // 墙矮，「载入更多」一进视口就自己翻下一页：等两页都落定再读。
+      // 「载入更多」一进视口就自己翻下一页：把它滚进来，等两页都落定再读。
+      await page.evaluate(() => document.querySelector('#index .entitymore')?.scrollIntoView());
       await page.waitForFunction(() => document.querySelectorAll('.photowall .photocell').length === 8);
-      assert.deepEqual(await cellBadges(page), ['SSIS-057', '', '', 'SSIS-001', '', '', '', '']);
-      assert.equal(await page.locator('.photowall .photocell img[src^="/photo-thumb"]').count(), 3);
+      assert.deepEqual(await groups(page), [['SSIS-057', 3], ['SSIS-001', 2], ['本地图片', 3]]);
+      assert.equal(await page.locator('[data-local-wall] .photocell img[src^="/photo-thumb"]').count(), 3);
       assert.deepEqual(opened.offsets, [2]);
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
@@ -134,7 +139,7 @@ describe('番号样张', () => {
     }
   });
 
-  it('带番号集 id 的旧地址退回整面照片墙', async () => {
+  it('带番号集 id 的旧地址退回照片档全部内容', async () => {
     const opened = await openPhotos(browser, `media=photos&set=${encodeURIComponent('code:SSIS-057')}`);
     const { page } = opened;
     try {

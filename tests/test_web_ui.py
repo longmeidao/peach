@@ -8535,6 +8535,8 @@ class WebUiSourceTests(unittest.TestCase):
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".pickrowtext b",
+            # 照片档样张段头的片名：语义文本，尾部省略，全名在 title 里。
+            ".photogrouptitle",
             ".playerstats dd", ".playerstatsmetric>span",
             # 详情标题折成两行，尾部省略；溢出时旁边那枚展开键给出全文。
             ".stitletext",
