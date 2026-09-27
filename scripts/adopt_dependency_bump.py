@@ -8,20 +8,30 @@ lucide-static 1.38.0 → 1.40.0 的 PR #4）。`frontend/package.json` 同理，
 
 修不了那个 PR 本身：Dependabot 触发的 workflow 拿到的 token 是只读的，往
 `dependabot/**` 推回重算的产物得靠 `pull_request_target` 或一个 PAT，两条都是给 CI 加
-提权面。所以接管在本地做——凭据是你自己的，CI 一行都不用改。它做完这些：
+提权面。所以接管在本地做——凭据是你自己的，CI 一行都不用改。
 
-1. 取那个 PR 的 head 分支，把它对 manifest 与 lock 的改动三方合并套到当前分支；
-2. `npm ci --ignore-scripts` 后重算这份清单对应的派生产物；
-3. 列出真实改动的文件，`--apply` 时只暂存这些并提交。
+uv 与 github-actions 没有派生产物，也在这里接管：master 在本机集成、通常领先 origin，
+在网页上合并会让两边分叉，回并又被 `scripts/githooks/` 拒收。
+
+每个 PR 做完这些：
+
+1. `git fetch` 它的 head 分支，把它对清单的改动三方合并套到当前分支；
+2. 按清单重算派生产物（npm），或核对锁文件（uv）；
+3. 列出真实改动的文件，`--apply` 时只暂存这些并提交，一个 PR 一个提交。
+
+`--all-open` 按编号从小到大接管全部 open 的 Dependabot PR。两个 PR 改到相邻行时三方
+合并报冲突，脚本停在那个 PR，报出冲突文件并备好提交说明；解完冲突提交后再跑一次，
+已经在 HEAD 上的升级会跳过。
 
 测试不在这里跑：仓库只有一个测试入口，另拼一条会让 `test_evidence` 的记录对不上。
-脚本最后印出该跑的命令与收尾的 `gh pr close`。
+脚本最后印出该跑的命令与推送后收尾的 `gh pr close`。
 """
 from __future__ import annotations
 
 import argparse
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -33,15 +43,16 @@ from . import co_author
 
 ROOT = Path(__file__).resolve().parents[1]
 
-#: 每份 manifest 的接管方式。`manifests` 是从 Dependabot 分支签出的文件，`derived` 是
-#: 重算后可能变的路径前缀，`commands` 是重算命令。uv 与 github-actions 不在表里：
-#: 它们没有派生产物，Dependabot 的 PR 直接合就行，接管反而多绕一圈。
+#: 每份清单的接管方式。`manifests` 是从 Dependabot 分支套过来的文件，`derived` 是重算后
+#: 可能变的路径，`commands` 是重算命令，`checks` 只核对不产出文件。以 `/` 结尾的条目按
+#: 目录算，其余按整条路径比。
 RECIPES = {
     "web": {
         "label": "根 package.json（手工 vendor 的四个 web 包）",
         "manifests": ("package.json", "package-lock.json"),
         "derived": ("web/vendor/", "web/index.html"),
         "commands": (("npm", "ci", "--ignore-scripts"), ("npm", "run", "vendor:web")),
+        "checks": (),
     },
     "frontend": {
         "label": "frontend/package.json（island 层构建依赖）",
@@ -49,8 +60,37 @@ RECIPES = {
         "derived": ("web/dist/",),
         "commands": (("npm", "--prefix", "frontend", "ci"),
                      ("npm", "--prefix", "frontend", "run", "build")),
+        "checks": (),
+    },
+    "uv": {
+        "label": "Python 依赖（pyproject.toml 与 uv.lock）",
+        "manifests": ("pyproject.toml", "uv.lock"),
+        "derived": (),
+        "commands": (),
+        "checks": (("uv", "lock", "--check"),),
+    },
+    "actions": {
+        "label": "GitHub Actions 工作流",
+        "manifests": (".github/workflows/",),
+        "derived": (),
+        "commands": (),
+        "checks": (),
     },
 }
+
+#: 推送后关 PR 时的留言，按有没有派生产物分两种说法。
+CLOSE_COMMENT = {
+    True: "派生产物需要本地重算，已在工作树接管进 master",
+    False: "本地 master 领先 origin，网页合并会让两边分叉，已在工作树接管进 master",
+}
+
+
+class ConflictError(RuntimeError):
+    """三方合并留下了冲突，`files` 是冲突文件。"""
+
+    def __init__(self, message: str, files: list[str]):
+        super().__init__(message)
+        self.files = files
 
 
 def run(command: tuple[str, ...] | list[str], *, capture: bool = True,
@@ -69,31 +109,50 @@ def run(command: tuple[str, ...] | list[str], *, capture: bool = True,
     return (result.stdout or "") if capture else ""
 
 
+def matches(entry: str, path: str) -> bool:
+    return path.startswith(entry) if entry.endswith("/") else path == entry
+
+
 def recipe_for(paths: list[str]) -> tuple[str, dict]:
     """一批改动文件属于哪份清单。
 
     同时动了两份就拒绝：那不是 Dependabot 的形状（一个 PR 只碰一个 ecosystem 的一个
-    directory），硬按一份重算会把另一份的产物留在旧版本上。
+    directory），硬按一份重算会把另一份的产物留在旧版本上。清单之外的文件也拒绝：
+    认不出来的改动不替人决定怎么接。
     """
     matched = [key for key, recipe in RECIPES.items()
-               if any(path in recipe["manifests"] for path in paths)]
+               if any(matches(entry, path) for entry in recipe["manifests"] for path in paths)]
     if not matched:
-        known = "、".join(name for recipe in RECIPES.values() for name in recipe["manifests"])
-        raise RuntimeError(f"这个分支没有改动带派生产物的清单（认得的是 {known}）。"
-                           "uv 与 github-actions 的升级没有派生产物，直接合并那个 PR 即可。")
+        known = "、".join(entry for recipe in RECIPES.values() for entry in recipe["manifests"])
+        raise RuntimeError(f"这个分支没有改动认得的清单（认得的是 {known}）")
     if len(matched) > 1:
         raise RuntimeError(f"这个分支同时改了 {len(matched)} 份清单，逐份接管：{matched}")
-    return matched[0], RECIPES[matched[0]]
+    recipe = RECIPES[matched[0]]
+    stray = [path for path in paths if not any(matches(entry, path) for entry in recipe["manifests"])]
+    if stray:
+        raise RuntimeError(f"这个分支改了清单之外的文件：{stray}")
+    return matched[0], recipe
 
 
-def head_branch(pr: str) -> str:
-    payload = json.loads(run(("gh", "pr", "view", pr, "--json", "headRefName,state")))
+def open_pull_requests() -> list[dict]:
+    """全部 open 的 Dependabot PR，按编号从小到大。"""
+    payload = json.loads(run(("gh", "pr", "list", "--state", "open", "--author", "app/dependabot",
+                              "--limit", "100", "--json", "number,title,headRefName")))
+    return sorted(payload, key=lambda item: item["number"])
+
+
+def pull_request(pr: str) -> dict:
+    payload = json.loads(run(("gh", "pr", "view", pr, "--json", "number,title,headRefName,state")))
     if payload["state"] != "OPEN":
         raise RuntimeError(f"PR #{pr} 状态是 {payload['state']}，不是 OPEN")
-    return payload["headRefName"]
+    return payload
 
 
-def branch_changes(branch: str) -> list[str]:
+def fetch(branch: str, *, root: Path = ROOT) -> None:
+    run(("git", "fetch", "--quiet", "origin", branch), root=root)
+
+
+def branch_changes(branch: str, *, root: Path = ROOT) -> list[str]:
     """那个分支自己改了哪些文件。
 
     判据是它与 `HEAD` 的合并基，不是 `HEAD` 本身：Dependabot 的分支从几天前的 master
@@ -101,19 +160,25 @@ def branch_changes(branch: str) -> list[str]:
     于是每个 PR 看上去都动了清单。
     """
     return [line for line in
-            run(("git", "diff", "--name-only", "--merge-base", "HEAD", f"origin/{branch}")).splitlines()
+            run(("git", "diff", "--name-only", "--merge-base", "HEAD", f"origin/{branch}"),
+                root=root).splitlines()
             if line]
 
 
-def bring_over(branch: str, manifests: tuple[str, ...], *, root: Path = ROOT) -> None:
-    """把那个分支对清单的改动套到工作区，不暂存。
+def bring_over(branch: str, manifests: tuple[str, ...], *, root: Path = ROOT,
+               refresh: bool = True) -> None:
+    """取回那个分支，把它对清单的改动套到工作区，不暂存。
 
     套的是它自合并基以来的 diff，不是整份文件：分支的清单停在几天前的 master 上，
     整份签出会把这几天 master 往清单里加的依赖一并抹掉（实际发生过：#20 的
-    `frontend/package.json` 没有后来加进来的 `sonner`）。两边改到同一行时 `--3way`
-    报冲突并退出非零，由 `run` 抛出来。补丁先落成文件再给 `git apply`：Windows 上文本
-    模式的 stdin 会把 `\\n` 写成 `\\r\\n`，补丁就对不上了。
+    `frontend/package.json` 没有后来加进来的 `sonner`）。两边改到同一行或相邻行时
+    `--3way` 留下冲突，抛 `ConflictError` 报出文件，不替人挑一边。补丁先落成文件再给
+    `git apply`：Windows 上文本模式的 stdin 会把 `\\n` 写成 `\\r\\n`，补丁就对不上了。
+    `--3way` 要求工作区与暂存区一致，连着套几个分支时，每套一个先暂存再套下一个。
+    刚 fetch 过的调用方传 `refresh=False`。
     """
+    if refresh:
+        fetch(branch, root=root)
     patch = run(("git", "diff", "--merge-base", "HEAD", f"origin/{branch}", "--", *manifests),
                 root=root)
     if not patch:
@@ -123,13 +188,22 @@ def bring_over(branch: str, manifests: tuple[str, ...], *, root: Path = ROOT) ->
     path.write_text(patch, encoding="utf-8", newline="\n")
     try:
         run(("git", "apply", "--3way", str(path)), root=root)
+    except RuntimeError as exc:
+        conflicts = [line for line in
+                     run(("git", "diff", "--name-only", "--diff-filter=U"), root=root).splitlines()
+                     if line]
+        if conflicts:
+            raise ConflictError(f"origin/{branch} 与当前分支改到同一处，三方合并留下冲突",
+                                conflicts) from exc
+        raise
     finally:
         path.unlink()
     run(("git", "reset", "--quiet", "--", *manifests), root=root)
 
 
-def working_changes() -> list[str]:
-    return [line for line in run(("git", "diff", "--name-only", "HEAD")).splitlines() if line]
+def working_changes(*, root: Path = ROOT) -> list[str]:
+    return [line for line in run(("git", "diff", "--name-only", "HEAD"), root=root).splitlines()
+            if line]
 
 
 def commit_message(key: str, versions: list[str], pr: str | None,
@@ -143,24 +217,29 @@ def commit_message(key: str, versions: list[str], pr: str | None,
     if co_author.FORM.fullmatch(signature) is None:
         raise ValueError("--co-author 形态须为 工具 (模型 版本) <厂商 noreply>，如 "
                          + co_author.EXAMPLE.partition(": ")[2])
+    recipe = RECIPES[key]
     origin = f"Dependabot PR #{pr}" if pr else "Dependabot 分支"
-    rebuild = "`" + "`、`".join(" ".join(item) for item in RECIPES[key]["commands"]) + "`"
-    return (f"chore(deps): 接管 {RECIPES[key]['label']} 的升级\n\n"
-            f"{origin} 只改了 manifest 与 lock。派生产物由 {rebuild} 重算，"
-            "它在只读 token 下算不出来，所以接管到本地分支一起提交。\n\n"
+    if recipe["commands"]:
+        rebuild = "`" + "`、`".join(" ".join(item) for item in recipe["commands"]) + "`"
+        why = (f"{origin} 只改了 manifest 与 lock。派生产物由 {rebuild} 重算，"
+               "它在只读 token 下算不出来，所以接管到本地分支一起提交。")
+    else:
+        why = (f"{origin} 没有派生产物。本地 master 领先 origin 时在网页上合并会让两边分叉，"
+               "所以接管到本地分支。")
+    return (f"chore(deps): 接管 {recipe['label']} 的升级\n\n{why}\n\n"
             + ("升级：" + "、".join(versions) + "\n\n" if versions else "")
             + "README-Impact: none; 依赖版本与派生产物，README 不涉及。\n"
             + f"Co-Authored-By: {signature}\n")
 
 
-def manifest_versions(key: str) -> list[str]:
-    """从签出的清单里读出被改掉的版本，只为写进提交说明。"""
+def manifest_versions(key: str, *, root: Path = ROOT) -> list[str]:
+    """从套过来的清单里读出被改掉的版本，只为写进提交说明。"""
     lines = []
     for name in RECIPES[key]["manifests"]:
         if not name.endswith("package.json"):
             continue
-        before = json.loads(run(("git", "show", f"HEAD:{name}")) or "{}")
-        after = json.loads((ROOT / name).read_text(encoding="utf-8"))
+        before = json.loads(run(("git", "show", f"HEAD:{name}"), root=root) or "{}")
+        after = json.loads((root / name).read_text(encoding="utf-8"))
         for section in ("dependencies", "devDependencies"):
             old, new = before.get(section, {}), after.get(section, {})
             lines += [f"{package} {old.get(package, '新增')} → {version}"
@@ -169,10 +248,109 @@ def manifest_versions(key: str) -> list[str]:
 
 
 def owned_by(recipe: dict, path: str) -> bool:
-    """这个路径是不是本次接管该动的。以 `/` 结尾的 `derived` 是目录，其余按整条比。"""
-    return path in recipe["manifests"] or any(
-        path.startswith(prefix) if prefix.endswith("/") else path == prefix
-        for prefix in recipe["derived"])
+    """这个路径是不是本次接管该动的：清单本身或它的派生产物。"""
+    return any(matches(entry, path) for entry in (*recipe["manifests"], *recipe["derived"]))
+
+
+def close_command(pr: int, key: str) -> str:
+    comment = CLOSE_COMMENT[bool(RECIPES[key]["commands"])]
+    return f'gh pr close {pr} --delete-branch --comment "{comment}"'
+
+
+def adopted(number: int, branch: str, *, root: Path = ROOT) -> bool:
+    """那个分支分叉之后，HEAD 上有没有提交说明写着接管了这个 PR。
+
+    不拿三方合并的结果判：上一轮停在冲突、人解完提交后，前面那些 PR 再套一次会跟解冲突
+    留下的相邻行再撞一次，「已接管的跳过」就成了「再停一次」。
+    """
+    base = run(("git", "merge-base", "HEAD", f"origin/{branch}"), root=root).strip()
+    log = run(("git", "log", "--format=%B", f"{base}..HEAD"), root=root)
+    return re.search(rf"Dependabot PR #{number}(?!\d)", log) is not None
+
+
+def adopt(pr: dict, *, apply: bool, signature: str, root: Path = ROOT) -> dict:
+    """接管一个 PR。`apply` 时暂存并提交；否则改动留在工作区未暂存。
+
+    升级已经在 HEAD 上（上次停在冲突、解完提交后再跑）时什么都不做，报 `already`。
+    """
+    branch, number = pr["headRefName"], pr.get("number")
+    fetch(branch, root=root)
+    key, recipe = recipe_for(branch_changes(branch, root=root))
+    result = {"pr": number, "branch": branch, "recipe": key}
+    if number and adopted(number, branch, root=root):
+        return {**result, "already": True}
+    bring_over(branch, recipe["manifests"], root=root, refresh=False)
+    if not working_changes(root=root):
+        return {**result, "already": True}
+    versions = manifest_versions(key, root=root) or ([pr["title"]] if pr.get("title") else [])
+    for command in recipe["commands"]:
+        run(command, capture=False, root=root)
+    for command in recipe["checks"]:
+        run(command, root=root)
+    # 只认真实变了的那些。清单动了产物却一个字节没变是常事（补丁版没碰 vendored 的
+    # 那几个文件），照 `derived` 前缀盲暂存会把无关文件带上。
+    touched = working_changes(root=root)
+    landed = sorted(path for path in touched if owned_by(recipe, path))
+    stray = sorted(path for path in touched if not owned_by(recipe, path))
+    result.update(versions=versions, files=landed, unexpected=stray, applied=False)
+    if stray:
+        raise RuntimeError(f"PR #{number} 重算动到了清单与派生产物之外的文件，先看清楚：{stray}")
+    if apply:
+        run(("git", "add", "--", *landed), root=root)
+        message = root / "build" / f"adopt-{key}.txt"
+        message.parent.mkdir(parents=True, exist_ok=True)
+        message.write_text(commit_message(key, versions, number and str(number), signature),
+                           encoding="utf-8", newline="\n")
+        run(("git", "commit", "--quiet", "-F", str(message)), root=root)
+        message.unlink()
+        result.update(applied=True, head=run(("git", "rev-parse", "HEAD"), root=root).strip())
+    return result
+
+
+def adopt_all(prs: list[dict], *, signature: str, root: Path = ROOT) -> dict:
+    """逐个接管并提交；停在第一个冲突或失败的 PR，已提交的留着。"""
+    commit_message("uv", [], None, signature)  # 署名写错就一个都别动
+    done: list[dict] = []
+    for pr in prs:
+        try:
+            done.append(adopt(pr, apply=True, signature=signature, root=root))
+        except ConflictError as exc:
+            key, recipe = recipe_for(branch_changes(pr["headRefName"], root=root))
+            message = root / "build" / f"adopt-pr-{pr['number']}.txt"
+            message.write_text(commit_message(key, [pr["title"]], str(pr["number"]), signature),
+                               encoding="utf-8", newline="\n")
+            rebuild = [" ".join(command) for command in (*recipe["commands"], *recipe["checks"])]
+            return {"ok": False, "error": str(exc), "stopped_at": pr["number"],
+                    "conflicts": exc.files, "done": done,
+                    "next": [f"解开冲突：{'、'.join(exc.files)}",
+                             *(f"重算或核对：{command}" for command in rebuild),
+                             f"git add -- {' '.join(exc.files)}"
+                             + ("，连同重算改到的派生产物（看 git status）" if recipe["commands"] else ""),
+                             f"git commit -F {message.relative_to(root).as_posix()}",
+                             "再跑一次 --all-open --apply，已接管的会跳过"]}
+        except RuntimeError as exc:
+            return {"ok": False, "error": str(exc), "stopped_at": pr["number"], "done": done}
+    next_steps = ["测试：& .\\scripts\\test.ps1 full",
+                  "交付：scripts/agent_worktree.py ready，再由协调者 integrate",
+                  "推送 master 之后逐个收尾：",
+                  *(close_command(item["pr"], item["recipe"]) for item in done)]
+    return {"ok": True, "done": done, "next": next_steps if done else []}
+
+
+def plan_all(prs: list[dict], *, root: Path = ROOT) -> dict:
+    """只列要接管的 PR 与各自的清单，不动工作区。"""
+    items = []
+    for pr in prs:
+        fetch(pr["headRefName"], root=root)
+        paths = branch_changes(pr["headRefName"], root=root)
+        try:
+            key, _ = recipe_for(paths)
+            items.append({"pr": pr["number"], "title": pr["title"], "recipe": key, "files": paths})
+        except RuntimeError as exc:
+            items.append({"pr": pr["number"], "title": pr["title"], "files": paths,
+                          "error": str(exc)})
+    return {"ok": all("error" not in item for item in items), "prs": items,
+            "next": ["加 --apply 逐个接管并提交"] if items else []}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -180,6 +358,8 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--pr", help="Dependabot 的 PR 编号")
     source.add_argument("--branch", help="Dependabot 的分支名，跳过 gh 查询")
+    source.add_argument("--all-open", action="store_true",
+                        help="按编号从小到大接管全部 open 的 Dependabot PR")
     parser.add_argument("--apply", action="store_true", help="暂存并提交；缺省只列计划")
     parser.add_argument("--co-author", required=True,
                         help="本次提交的署名，形如 "
@@ -192,41 +372,28 @@ def main(argv: list[str] | None = None) -> int:
                                "`scripts/agent_worktree.py create --agent <名> --task deps-<包名>`。")
         if run(("git", "status", "--porcelain")).strip():
             raise RuntimeError("工作区不干净。接管会往里写重算出来的产物，先把手上的改动收掉。")
-        branch = args.branch or head_branch(args.pr)
-        run(("git", "fetch", "origin", branch))
-        key, recipe = recipe_for(branch_changes(branch))
-        bring_over(branch, recipe["manifests"])
-        versions = manifest_versions(key)
-        for command in recipe["commands"]:
-            run(command, capture=False)
-        # 只认真实变了的那些。清单动了产物却一个字节没变是常事（补丁版没碰 vendored 的
-        # 那几个文件），照 `derived` 前缀盲暂存会把无关文件带上。
-        touched = working_changes()
-        landed = sorted(path for path in touched if owned_by(recipe, path))
-        stray = sorted(path for path in touched if not owned_by(recipe, path))
-        plan = {"ok": not stray, "branch": branch, "recipe": key, "versions": versions,
-                "files": landed, "unexpected": stray, "applied": False,
-                "next": ["测试：& .\\scripts\\test.ps1 full（清单在 FULL_ONLY_PREFIXES 里）",
-                         "交付：scripts/agent_worktree.py ready，再由协调者 integrate"]}
-        if stray:
-            plan["error"] = "重算动到了清单与派生产物之外的文件，先看清楚这些改动再决定"
-        elif args.apply:
-            run(("git", "add", "--", *landed))
-            message = ROOT / "build" / f"adopt-{key}.txt"
-            message.parent.mkdir(parents=True, exist_ok=True)
-            message.write_text(commit_message(key, versions, args.pr, args.co_author), encoding="utf-8", newline="\n")
-            run(("git", "commit", "--quiet", "-F", str(message)))
-            message.unlink()
-            plan["applied"] = True
-            plan["head"] = run(("git", "rev-parse", "HEAD")).strip()
-            if args.pr:
-                plan["next"].append(f"收尾：gh pr close {args.pr} --delete-branch "
-                                    '--comment "派生产物需要本地重算，已接管进 master"')
+        if args.all_open:
+            prs = open_pull_requests()
+            plan = (adopt_all(prs, signature=args.co_author) if args.apply else plan_all(prs))
         else:
-            plan["next"].insert(0, "重算的产物留在工作区未暂存："
-                                   f"`git restore -- {' '.join(landed)}` 撤销，加 --apply 提交")
+            pr = pull_request(args.pr) if args.pr else {"headRefName": args.branch}
+            item = adopt(pr, apply=args.apply, signature=args.co_author)
+            plan = {"ok": True, **item,
+                    "next": ["测试：& .\\scripts\\test.ps1 full",
+                             "交付：scripts/agent_worktree.py ready，再由协调者 integrate"]}
+            if item.get("already"):
+                plan["next"] = []
+            elif not args.apply:
+                plan["next"].insert(0, "改动留在工作区未暂存："
+                                       f"`git restore -- {' '.join(item['files'])}` 撤销，加 --apply 提交")
+            elif args.pr:
+                plan["next"].append("推送 master 之后收尾：" + close_command(item["pr"], item["recipe"]))
         print(json.dumps(plan, ensure_ascii=False, indent=2))
         return 0 if plan["ok"] else 1
+    except ConflictError as exc:
+        print(json.dumps({"ok": False, "error": str(exc), "conflicts": exc.files},
+                         ensure_ascii=False, indent=2))
+        return 1
     except (RuntimeError, OSError, ValueError, KeyError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         return 1

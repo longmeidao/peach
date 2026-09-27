@@ -16,6 +16,28 @@ from tests.support.gitrepo import seed_repository
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
+                          text=True, encoding="utf-8").stdout.strip()
+
+
+def takeover_repository(repo: Path) -> None:
+    """把临时仓库自己登记成 origin，`git fetch origin <分支>` 就取的是本地分支。"""
+    # 仓库靠 .gitattributes 固定 LF；临时仓库没有它，开发机的全局 autocrlf 会让三方合并
+    # 写回 CRLF。
+    git(repo, "config", "core.autocrlf", "false")
+    git(repo, "remote", "add", "origin", str(repo))
+
+
+def dependabot_branch(repo: Path, name: str, files: dict[str, bytes]) -> None:
+    """从当前 master 分出一个只改 `files` 的分支，再回到 master。"""
+    git(repo, "checkout", "-q", "-b", name)
+    for path, body in files.items():
+        (repo / path).write_bytes(body)
+    git(repo, "commit", "-q", "-am", f"bump on {name}")
+    git(repo, "checkout", "-q", "master")
+
+
 class DependencyPolicyTests(unittest.TestCase):
     def setUp(self):
         self.pyproject = tomllib.loads(
@@ -178,11 +200,16 @@ class DependencyPolicyTests(unittest.TestCase):
         for path in ("web/index.html.bak", "web/dist/peach-ui.js", "src/peach/api.py"):
             self.assertFalse(adopt.owned_by(recipe, path), path)
         self.assertEqual(adopt.recipe_for(["frontend/package.json"])[0], "frontend")
-        # uv 与 github-actions 的升级没有派生产物，说清楚「直接合」，不要含糊地失败。
-        with self.assertRaisesRegex(RuntimeError, "直接合并"):
+        self.assertEqual(adopt.recipe_for(["pyproject.toml", "uv.lock"])[0], "uv")
+        self.assertEqual(adopt.recipe_for([".github/workflows/test.yml"])[0], "actions")
+        with self.assertRaisesRegex(RuntimeError, "同时改了"):
             adopt.recipe_for(["uv.lock", ".github/workflows/test.yml"])
         with self.assertRaisesRegex(RuntimeError, "同时改了"):
             adopt.recipe_for(["package.json", "frontend/package.json"])
+        with self.assertRaisesRegex(RuntimeError, "清单之外"):
+            adopt.recipe_for(["uv.lock", "src/peach/api.py"])
+        with self.assertRaisesRegex(RuntimeError, "认得的清单"):
+            adopt.recipe_for(["README.md"])
 
     def test_the_takeover_keeps_what_master_added_to_the_manifest_after_the_fork(self):
         """接管套的是分支自己的改动，分叉后 master 往清单里加的依赖原样留着。
@@ -195,18 +222,9 @@ class DependencyPolicyTests(unittest.TestCase):
             return (f'{{\n  "dependencies": {{\n    "a": "{a}",\n{names}{extra}'
                     '    "h": "1"\n  }\n}\n').encode("utf-8")
 
-        def git(repo: Path, *args: str) -> None:
-            subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
-
         def fork(repo: Path, *, branch_a: str, master_a: str, master_extra: str) -> None:
-            # 仓库靠 .gitattributes 固定 LF；临时仓库没有它，开发机的全局 autocrlf 会让
-            # 三方合并写回 CRLF。
-            git(repo, "config", "core.autocrlf", "false")
-            git(repo, "checkout", "-q", "-b", "dep")
-            (repo / "package.json").write_bytes(manifest(branch_a))
-            git(repo, "commit", "-q", "-am", "bump a")
-            git(repo, "update-ref", "refs/remotes/origin/dep", "dep")
-            git(repo, "checkout", "-q", "master")
+            takeover_repository(repo)
+            dependabot_branch(repo, "dep", {"package.json": manifest(branch_a)})
             (repo / "package.json").write_bytes(manifest(master_a, master_extra))
             git(repo, "commit", "-q", "-am", "master moves on")
 
@@ -214,19 +232,61 @@ class DependencyPolicyTests(unittest.TestCase):
             repo = seed_repository(Path(holder).resolve() / "clean",
                                    {"package.json": manifest("1")}, "base")
             fork(repo, branch_a="2", master_a="1", master_extra='    "sonner": "2.0.8",\n')
+            self.assertEqual(git(repo, "branch", "-r"), "", "origin/dep 要由 bring_over 自己取回")
             adopt.bring_over("dep", ("package.json",), root=repo)
             self.assertEqual((repo / "package.json").read_bytes(),
                              manifest("2", '    "sonner": "2.0.8",\n'))
-            staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--name-only"],
-                                    check=True, capture_output=True, text=True,
-                                    encoding="utf-8").stdout
-            self.assertEqual(staged, "", "接管只改工作区，暂存留给 --apply")
+            self.assertEqual(git(repo, "diff", "--cached", "--name-only"), "",
+                             "接管只改工作区，暂存留给 --apply")
 
             repo = seed_repository(Path(holder).resolve() / "clash",
                                    {"package.json": manifest("1")}, "base")
             fork(repo, branch_a="2", master_a="3", master_extra="")
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(adopt.ConflictError) as caught:
                 adopt.bring_over("dep", ("package.json",), root=repo)
+            self.assertEqual(caught.exception.files, ["package.json"])
+
+    def test_adopting_every_open_pr_stops_at_a_conflict_and_resumes_after_it(self):
+        """`--all-open` 一个 PR 一个提交；改到相邻行的那个停下报文件，解完再跑只剩收尾。
+
+        实际发生过：filelock 与 pyinstaller 的升级在 `pyproject.toml` 里是相邻两行。
+        """
+        signature = "Claude Code (Opus 5) <noreply@anthropic.com>"
+        workflow = lambda a, b: f"a: {a}\nb: {b}\nc: 1\nd: 1\n".encode("utf-8")
+        with tempfile.TemporaryDirectory() as holder:
+            repo = seed_repository(Path(holder).resolve() / "repo",
+                                   {".github/workflows/test.yml": workflow(1, 1),
+                                    ".github/workflows/release.yml": workflow(1, 1)}, "base")
+            takeover_repository(repo)
+            dependabot_branch(repo, "dependabot/a", {".github/workflows/test.yml": workflow(2, 1)})
+            dependabot_branch(repo, "dependabot/r", {".github/workflows/release.yml": workflow(3, 1)})
+            dependabot_branch(repo, "dependabot/b", {".github/workflows/test.yml": workflow(1, 2)})
+            prs = [{"number": number, "title": f"bump {name}", "headRefName": f"dependabot/{name}"}
+                   for number, name in ((1, "a"), (2, "r"), (3, "b"))]
+
+            stopped = adopt.adopt_all(prs, signature=signature, root=repo)
+            self.assertFalse(stopped["ok"])
+            self.assertEqual(stopped["stopped_at"], 3)
+            self.assertEqual(stopped["conflicts"], [".github/workflows/test.yml"])
+            self.assertEqual([item["pr"] for item in stopped["done"]], [1, 2])
+            log = git(repo, "log", "--format=%B", "-2")
+            for number in (1, 2):
+                self.assertIn(f"Dependabot PR #{number} 没有派生产物", log)
+            self.assertIn("README-Impact: none; ", log)
+            self.assertIn("git commit -F build/adopt-pr-3.txt", stopped["next"])
+
+            (repo / ".github/workflows/test.yml").write_bytes(workflow(2, 2))
+            git(repo, "add", "--", ".github/workflows/test.yml")
+            git(repo, "commit", "-q", "-F", "build/adopt-pr-3.txt")
+            head = git(repo, "rev-parse", "HEAD")
+
+            resumed = adopt.adopt_all(prs, signature=signature, root=repo)
+            self.assertTrue(resumed["ok"], resumed)
+            self.assertTrue(all(item.get("already") for item in resumed["done"]))
+            self.assertEqual(git(repo, "rev-parse", "HEAD"), head)
+            self.assertEqual(git(repo, "status", "--porcelain", "--untracked-files=no"), "")
+            closing = [step for step in resumed["next"] if step.startswith("gh pr close")]
+            self.assertEqual([step.split()[3] for step in closing], ["1", "2", "3"])
 
     def test_the_takeover_commit_message_passes_the_readme_impact_gate(self):
         """`README-Impact` 与 `Co-Authored-By` 必须同一个 trailer 块、中间不空行。
