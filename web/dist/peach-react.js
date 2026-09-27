@@ -65187,7 +65187,8 @@ function jDe({ data: t, configurable: n, openMediaSettings: i }) {
 			size: "small",
 			onClick: i,
 			children: "添加媒体文件夹"
-		}) : null, /* @__PURE__ */ (0, F.jsx)(NA, {
+		}) : null, /* @__PURE__ */ (0, F.jsx)(bw, {
+			variant: "secondary",
 			href: "/follow-manage?tab=add",
 			size: "small",
 			children: "添加关注"
@@ -65332,7 +65333,8 @@ function IDe({ tags: e, tagLabel: t, onTag: n }) {
 		shell: "plain",
 		icon: wS,
 		title: "还没有内容标签",
-		actions: /* @__PURE__ */ (0, F.jsx)(NA, {
+		actions: /* @__PURE__ */ (0, F.jsx)(bw, {
+			variant: "secondary",
 			href: "/data-cleanup",
 			size: "small",
 			children: "补全资料"
@@ -65377,7 +65379,8 @@ function LDe({ rows: e }) {
 		shell: "plain",
 		icon: _S,
 		title: "还没有观看记录",
-		actions: /* @__PURE__ */ (0, F.jsx)(NA, {
+		actions: /* @__PURE__ */ (0, F.jsx)(bw, {
+			variant: "secondary",
 			href: "/",
 			size: "small",
 			children: "浏览馆藏"
@@ -65419,7 +65422,8 @@ function RDe({ sources: e, videos: t }) {
 		shell: "plain",
 		icon: wS,
 		title: "还没有标签来源",
-		actions: /* @__PURE__ */ (0, F.jsx)(NA, {
+		actions: /* @__PURE__ */ (0, F.jsx)(bw, {
+			variant: "secondary",
 			href: "/data-cleanup",
 			size: "small",
 			children: "补全资料"

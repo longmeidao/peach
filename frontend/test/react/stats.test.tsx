@@ -280,6 +280,20 @@ it('这台机器不能改配置时空态不给那个按钮，只留能走的那�
   const { host } = await open(payload({ by_loc: [], by_library: [] }), props);
   expect(buttonNamed('添加媒体文件夹', host)).toBeNull();
   expect(host.querySelector('a')?.textContent).toBe('添加关注');
+  expect(looksLikeButton(host.querySelector('a'))).toBe(true);
+});
+
+/** 空态里的去处画成次级实底按钮（白底、发丝边框），不是一行带下划线的文字链接。 */
+const looksLikeButton = (link: Element | null) =>
+  !!link && link.className.includes('border-border-button-default') && !link.className.includes('hover:underline');
+const linkNamed = (root: ParentNode, name: string) =>
+  [...root.querySelectorAll('a')].find((a) => a.textContent === name) ?? null;
+
+it('没有内容标签时空态给一枚「补全资料」按钮，去数据整理页', async () => {
+  const { host } = await open(payload({ top_tags: [] }));
+  const link = linkNamed(host, '补全资料');
+  expect(link?.getAttribute('href')).toBe('/data-cleanup');
+  expect(looksLikeButton(link)).toBe(true);
 });
 
 it('首屏取数就失败时只剩一条错误，不画空看板', async () => {
