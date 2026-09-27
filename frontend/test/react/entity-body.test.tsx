@@ -11,8 +11,12 @@ import type {
 } from '../../src/react/entity-body/entity-body';
 import { EntityBodyPage } from '../../src/react/entity-body/entity-body-page';
 import type { MediaItem, MediaPage } from '../../src/react/catalog-grid/types';
+import { openPhotoLightbox } from '../../src/react/photo-lightbox/photo-lightbox-dialog';
 import { queryClient } from '../../src/react/query';
 import { click, mount } from './render';
+
+/* 灯箱自己的开合、翻页与缩放在 `photo-lightbox.test.tsx`；这里只看墙把哪一列、从第几张交给它。 */
+vi.mock('../../src/react/photo-lightbox/photo-lightbox-dialog', () => ({ openPhotoLightbox: vi.fn(async () => {}) }));
 
 afterEach(() => { queryClient.clear() });
 notifyManager.setScheduler((notify) => notify());
@@ -33,7 +37,7 @@ function actions(): EntityBodyActions {
     open: vi.fn(), openResource: vi.fn(), openShort: vi.fn(), openShorts: vi.fn(), openMix: vi.fn(),
     openEntity: vi.fn(), openUnowned: vi.fn(), toggleTag: vi.fn(), toggleSelection: vi.fn(),
     watchLater: vi.fn(async () => {}), resourceOperation: vi.fn(async () => {}), mixRelated: vi.fn(async () => []),
-    canFlip: () => true, openLightbox: vi.fn(), loadMorePhotos: vi.fn(async () => {}),
+    canFlip: () => true, revealSource: vi.fn(async () => ''), loadMorePhotos: vi.fn(async () => {}),
   };
 }
 
@@ -171,14 +175,21 @@ describe('照片墙', () => {
     expect(indexes(host)).toEqual([0, 1]);
   });
 
-  it('点一格把整面墙交给壳的灯箱，序号跨段连续', async () => {
+  it('点一格把整面墙交给灯箱，序号跨段连续；样张走番号与序号，本地图带着定位', async () => {
     const { host, given } = await openPhotos();
     await click(host.querySelector('[data-photo-index="3"]'));
-    const [index, source] = vi.mocked(given.actions.openLightbox).mock.calls[0];
+    const [index, slides, reveal] = vi.mocked(openPhotoLightbox).mock.calls.at(-1)!;
     expect(index).toBe(3);
-    expect(source).toHaveLength(7);
-    expect(source[3]).toMatchObject({ sample: true, code: 'SSIS-001', position: 1, total: 2, source: 'DMM' });
-    expect(source[5]).toMatchObject({ id: 101 });
+    expect(slides).toHaveLength(7);
+    expect(slides[3]).toEqual({
+      src: '/sample-image?code=SSIS-001&n=1', thumb: '/sample-thumb?code=SSIS-001&n=1', name: 'SSIS-001 样张 1',
+      asset: null, source: 'DMM', position: 1, total: 2,
+    });
+    expect(slides[5]).toEqual({
+      src: '/photo?id=101', thumb: '/photo-thumb?id=101', name: '101.jpg', asset: { id: 101, name: '101.jpg' },
+    });
+    await reveal!.revealSource(101);
+    expect(given.actions.revealSource).toHaveBeenCalledWith(101);
   });
 
   it('本地图取不到整格走，样张取不到只摘图留格；别的格子序号不变', async () => {

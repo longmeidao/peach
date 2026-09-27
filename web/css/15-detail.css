@@ -16,7 +16,7 @@
 .stitletext[data-expanded]{display:block;-webkit-line-clamp:unset;line-clamp:unset}
 .stitletext[data-foldable]{cursor:pointer}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
-   缺了就被按默认 fill:black 画成黑块（详见 .photonav 那一段的同类修复）。 */
+   缺了就被按默认 fill:black 画成黑块（灯箱 `photo-lightbox.css` 的圆钮图标同样显式写了）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}
 .srctools button{width:26px;height:26px;display:grid;place-items:center;flex:none;
   border:1px solid var(--line);border-radius:var(--control-radius);background:transparent;color:var(--muted);

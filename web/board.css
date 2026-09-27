@@ -1163,14 +1163,14 @@ body :is(button.danger,.batchbar button.danger):not(:disabled):active::before{op
 .pcheck input:disabled+span{opacity:.5}.pcheck>span svg{width:14px;height:14px;stroke-width:2}.pcheck:hover>span{border-color:var(--color-border-button-hover)}
 input[type=checkbox]:not(.ptoggle):not(.pcheck input):not(.peach-react input){accent-color:var(--color-accent-600);width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
 .dual-range .range-base,.dual-range .range-fill{height:6px;top:11px}.dual-range .range-base{background:var(--color-background-tertiary-default);box-shadow:inset 0 1px 1px #0000000f}.dual-range .range-fill{background:linear-gradient(90deg,var(--color-accent-400),var(--color-accent-600));box-shadow:inset 0 1px 0 #ffffff3d,0 1px 2px #0450e229}
-body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px light-dark(#0000001a,#00000080),inset 0 1px 0 #ffffffcc;cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),box-shadow .15s}
+body :is(.dual-range input,.vjs-peach-speed-range)::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px light-dark(#0000001a,#00000080),inset 0 1px 0 #ffffffcc;cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),box-shadow .15s}
 /* 抓住的时候手柄涨一圈，松开按同一条弹簧收回去。位置不参与任何过渡——手柄要贴着
    指针走，给它加一段缓动就是让它落在指针后面，滑块立刻变成拖不准的东西。 */
-body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range):active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}
-body :is(.dual-range input,.photozoom input,.vjs-peach-speed-range)::-moz-range-thumb{width:18px;height:18px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px light-dark(#0000001a,#00000080)}
-body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--color-accent-400) var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
-body :is(.photozoom input,.vjs-peach-speed-range)::-webkit-slider-thumb{margin-top:-7px}
-body :is(.photozoom input,.vjs-peach-speed-range)::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--color-accent-400) var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0)}
+body :is(.dual-range input,.vjs-peach-speed-range):active::-webkit-slider-thumb{scale:1.18;transition:scale .06s ease-out}
+body :is(.dual-range input,.vjs-peach-speed-range)::-moz-range-thumb{width:18px;height:18px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px light-dark(#0000001a,#00000080)}
+body .vjs-peach-speed-range::-webkit-slider-runnable-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--color-accent-400) var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0);box-shadow:inset 0 1px 1px #0000000f}
+body .vjs-peach-speed-range::-webkit-slider-thumb{margin-top:-7px}
+body .vjs-peach-speed-range::-moz-range-track{height:6px;border-radius:999px;background:linear-gradient(90deg,var(--color-accent-400) var(--board-range-value,var(--peach-speed-percent,0%)),var(--color-background-tertiary-default) 0)}
 /* 气泡对准手柄居中，越过轨道两端的那一截由 `--range-tip-shift` 收回来（`syncBoardRange`
    量出来的实际溢出）：侧栏只比轨道宽出一点点，伸出去的半截会被侧栏裁掉，读数就只剩
    一半。两端各钉一种对齐只在正好 0% 和 100% 时成立，中间任何位置照样出界。 */
@@ -1210,9 +1210,7 @@ body .board-chip.success{background:color-mix(in srgb,#84cc16 16%,var(--color-ba
 :is(.board-button-group,[data-button-group])>button+button{border-left:1px solid var(--color-border-button-default)}
 :is(.board-button-group,[data-button-group])>button:is(:hover,[aria-pressed=true],[aria-selected=true]):not(.primary){background:var(--control-hover);color:var(--color-text-primary)}
 :is(.board-button-group,[data-button-group])>button:focus-visible{position:relative;z-index:1;outline:2px solid var(--color-border-focus-ring);outline-offset:-2px}
-.photolight .photonav{width:36px;height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;background:var(--color-background-primary-default);color:var(--color-text-secondary);box-shadow:var(--elevation-xs)}.photolight .photonav:hover{background:var(--color-background-primary-hover)}.photolight .photonav svg{width:20px;height:20px}.photolight .photonav.swiper-button-disabled{opacity:.4;pointer-events:none}
-.board-carousel-pagination{display:flex;align-items:center;justify-content:center;gap:8px;max-width:160px;margin-inline:auto;overflow:hidden;height:28px}.board-carousel-pagination .swiper-pagination-bullet{width:6px;height:6px;flex:none;margin:0!important;border:0;padding:0;border-radius:999px;background:#a3a3a3;opacity:1;transition:width .2s ease-out,background .2s ease-out}.board-carousel-pagination .swiper-pagination-bullet-active{width:16px;background:#fafafa}
-@media(prefers-reduced-motion:reduce){.board-tooltip,.board-carousel-pagination .swiper-pagination-bullet{transition:none}}
+@media(prefers-reduced-motion:reduce){.board-tooltip{transition:none}}
 .board-author-actions{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none}
 .board-author-actions .board-author-toggle{margin:0}
 .followmanage .fsource.selected{background:var(--color-background-primary-default);box-shadow:none;border-color:var(--color-border-focus-ring)}.followmanage .fsource.selected.disabled{opacity:1}

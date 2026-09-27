@@ -38,7 +38,7 @@ export interface EntityCodeSet {
 /** 本地图片一张（`/api/photos`、`/api/photo-set` 的 `items`）。整条原样递给灯箱详情。 */
 export interface EntityLocalPhoto { id: number; name?: string; [field: string]: unknown }
 
-/** 样张一格。形状与壳的 `photoSlide` 认的那一种相同，灯箱拿到就能翻。 */
+/** 样张一格。大图与缩略图的地址按番号与序号由服务端查（`sampleQuery`）。 */
 export interface EntitySamplePhoto {
   sample: true;
   code: string;
@@ -64,10 +64,10 @@ export interface EntityPhotos {
 export type PhotoSize = 'small' | 'big';
 export type PhotoLayout = 'fixed' | 'masonry';
 
-/** 卡片上的动作，外加照片墙那两样。名册一格点开走的是其中的 `openEntity`。灯箱归壳：
- *  `source` 是墙上这一整列（样张各段在前、本地图片在后），`index` 是点中那一格在其中的位置。 */
+/** 卡片上的动作，外加照片墙那两样。名册一格点开走的是其中的 `openEntity`。 */
 export interface EntityBodyActions extends MediaCardActions {
-  openLightbox(index: number, source: EntityWallPhoto[]): void;
+  /** 灯箱里本地图片那一枚「在资源管理器中显示」。成功由壳发回执，失败回一句原因。 */
+  revealSource(id: number): Promise<string>;
   /** 本地图片的下一页。壳取回后推一份更长的 `photos` 进来；取不到就抛错，键下出重试。 */
   loadMorePhotos(): Promise<void>;
 }

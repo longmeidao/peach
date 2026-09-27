@@ -5,7 +5,7 @@ import { searchMorphFrames } from './js/search-morph.js';
 import { filterScrollState } from './js/filter-scroll.js';
 import { selectRange, selectionSummary, selectGroup, syncSelectionToolbar } from './dist/peach-ui.js';
 import { MEDIA_SOURCE_ICONS } from './js/media-source-icons.js';
-import { boardPageSkeleton, detailSkeletonHtml, initBoardControls, syncBoardRange } from './dist/peach-ui.js';
+import { boardPageSkeleton, detailSkeletonHtml, initBoardControls } from './dist/peach-ui.js';
 import { imageFallbackAttrs, wireImageFallbacks } from './js/image-fallback.js';
 import { javDisplayName, javTitleHtml } from './js/jav-title.js';
 import { matchRoute, routeLabel } from './js/routes.js';
@@ -14,7 +14,7 @@ import { tagLabel } from './js/tags.js';
 import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
-import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast, openPhotoLightbox } from './dist/peach-ui.js';
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
@@ -24,7 +24,7 @@ import {
   dissolveValue, popBadges, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
   postSetupTutorialSkipped, setPostSetupTutorialSkipped, postSetupTutorialSignature,
   nextPostSetupTutorialRequest, isCurrentPostSetupTutorialRequest, resetPostSetupTutorialState,
@@ -4852,9 +4852,7 @@ async function openReview(push=true){
     route:routeReview,
     openItem:id=>void openItem(id),
     openEntity:(kind,name)=>void openEntity(kind,name),
-    /* 定位成功的回执归全站那一份 Toast，失败要回到出事的那一行旁边。`revealSource`
-       把原因写进 `status.textContent`，这里给它一个收字的对象读回来。 */
-    revealSource:async id=>{const status={textContent:''};await revealSource(id,status);return status.textContent},
+    revealSource:revealForIsland,
     avatarInner,toast:actionReceipt,
     readOnly:!!runtime?.ledger_read_only,
     readOnlyMessage:runtime?.ledger_read_only_message||'本机当前只能浏览',
@@ -5302,15 +5300,15 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
      一条帖子的所有图，不用退出去再点下一张。取不到正片就退而用缩略图——看小图
      总比点了没反应强。 */
   const followSlides=imageMedia.length
-    ?imageMedia.map((image,index)=>({follow:true,
+    ?imageMedia.map((image,index)=>({
       src:`/follow-stream?id=${item.id}&media=${image.index}`,
       thumb:image.thumb_url||item.thumb_url||`/follow-stream?id=${item.id}&media=${image.index}`,
       name:image.name||item.title,source:followMediaSourceLabel(image,item),size:image.size,
       position:index+1,total:imageMedia.length}))
     :selectedKind==='image'&&src
-      ?[{follow:true,src,thumb:item.thumb_url||src,name:item.title,
+      ?[{src,thumb:item.thumb_url||src,name:item.title,
         source:followMediaSourceLabel(selectedMedia,item),size:selectedMedia?.size,position:1,total:1}]
-      :item.thumb_url?[{follow:true,src:item.thumb_url,thumb:item.thumb_url,name:item.title,
+      :item.thumb_url?[{src:item.thumb_url,thumb:item.thumb_url,name:item.title,
         source:item.provider_label||item.provider||'在线图片',position:1,total:1}]:[];
   const poster=$('#stage').querySelector('.followdetailposter');
   if(poster&&followSlides.length){
@@ -6353,10 +6351,10 @@ function releaseEntityBody(){
   releaseHoverPreviews(entityBodyHost);unmountIsland(entityBodyHost);entityBodyView='';
 }
 /* 名册一格的取图同索引页；卡片的助手与动作就是目录那一份，身份不变。照片墙多两样：
-   点一格打开灯箱（灯箱归壳，岛递来的是整面墙那一列），翻本地图片的下一页。 */
+   灯箱里定位本地图片的源文件，翻本地图片的下一页。 */
 const entityBodyHelpers={...gridHelpers,personAvatar};
 const entityBodyActions={...gridActions,
-  openLightbox:(index,source)=>{void openPhotoLightbox(index,source)},
+  revealSource:revealForIsland,
   loadMorePhotos:()=>entityPhotoMore?entityPhotoMore():Promise.resolve()};
 const entityBodyCanLoadMore=()=>!$('#index').hidden&&$('#stats').hidden;
 const entityBodySkeleton=()=>catalogSkeletonHtml();
@@ -6573,8 +6571,6 @@ function setPhotoSize(value){
   saveSettings();
   syncPhotoWalls();
 }
-/* 样张的地址按番号与序号由服务端查，灯箱取大图时用。 */
-const sampleQuery=item=>`code=${encodeURIComponent(item.code)}&n=${item.position}`;
 const photoReadout=(data,codeSets)=>'照片 · '+[
   data.total||!codeSets.length?`${(data.total||0).toLocaleString()} 张`:'',
   codeSets.length?`样张 ${(data.sample_total||0).toLocaleString()} 张 · ${codeSets.length} 部作品`:'']
@@ -6646,6 +6642,10 @@ async function revealSource(id,status,{button=null}={}){
   }catch(e){status.textContent=sourceHint(e.message)}
   finally{if(button){setActionBusy(button,false);button.innerHTML=buttonHtml}}
 }
+/* React 那一侧（复核页、灯箱）用的形态：忙态由它自己画，定位成功的回执归全站那一份 Toast，
+   失败的原因要回到出事的那一行旁边。`revealSource` 把原因写进 `status.textContent`，这里给它
+   一个收字的对象读回来。 */
+async function revealForIsland(id){const status={textContent:''};await revealSource(id,status);return status.textContent}
 
 async function syncMissing(id,status,done){
   status.textContent='正在核对目录…';
@@ -6684,208 +6684,6 @@ function wireSourceTools(root,done){
   const sync=root.querySelector('[data-sync]');
   if(reveal)reveal.onclick=()=>revealSource(Number(reveal.dataset.reveal),status,{button:reveal});
   if(sync)sync.onclick=()=>syncMissing(Number(sync.dataset.sync),status,done);
-}
-
-/* 灯箱按需加载 Swiper：大图轮播、底部缩略图条和键盘左右键都是它自带的模块，
-   没必要自己写一遍；但它只有看照片时才用得上，不该进首屏。 */
-let swiperLoader=null,activeLightbox=null;
-/* 灯箱服务本地照片墙、番号样张和关注页的在线图集。三边共用信息面板，但动作不同：
-   本地图可按 asset id 定位源文件；样张和在线图只展示来源、序号、尺寸和可取得的大小。 */
-const photoSlide=item=>item.follow
-  ?{src:item.src,thumb:item.thumb||item.src,name:item.name||'',asset:null,
-    source:item.source||'在线图片',size:item.size,position:item.position,total:item.total}
-  :item.sample
-  ?{src:`/sample-image?${sampleQuery(item)}`,thumb:`/sample-thumb?${sampleQuery(item)}`,name:item.name,
-    asset:null,source:item.source,position:item.position,total:item.total}
-  :{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`,name:item.name||'',asset:item};
-const loadSwiper=()=>swiperLoader||(swiperLoader=Promise.all([
-  new Promise((resolve,reject)=>{
-    const href='/vendor/swiper/14.2.0/swiper-bundle.min.css';
-    const existing=document.querySelector(`link[href="${href}"]`);
-    if(existing?.sheet){resolve();return}
-    const style=existing||document.createElement('link');
-    style.rel='stylesheet';style.href=href;
-    style.addEventListener('load',resolve,{once:true});
-    style.addEventListener('error',()=>reject(new Error('swiper styles unavailable')),{once:true});
-    if(!existing)document.head.appendChild(style)}),
-  window.Swiper?Promise.resolve(window.Swiper):new Promise((resolve,reject)=>{
-    const script=document.createElement('script');
-    script.src='/vendor/swiper/14.2.0/swiper-bundle.min.js';
-    script.onload=()=>resolve(window.Swiper);
-    script.onerror=()=>reject(new Error('swiper unavailable'));
-    document.head.appendChild(script)})
-]).then(([,SwiperCtor])=>SwiperCtor).catch(error=>{swiperLoader=null;throw error}));
-const photoLightKeys=e=>{if(e.key!=='Escape')return;
-  e.preventDefault();e.stopImmediatePropagation();
-  if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}
-  closePhotoLightbox()};
-const PHOTO_ZOOM_MIN=10,PHOTO_ZOOM_MAX=400,PHOTO_ZOOM_STEP=10;
-
-/* 缩放条显示相对原图像素的百分比，而不是相对「适应窗口」的变换倍数。
-   因此大图初始可能是 34%，原大小才是 100%；Swiper 14 的 zoom.in(number)
-   能直接接收目标倍数，既可低于 1 也可高于 1。 */
-function wirePhotoZoom(box, main){
-  const slider=box.querySelector('.photozoom input');
-  const label=box.querySelector('.photozoom b');
-  let target='fit';
-  const image=()=>main.slides?.[main.activeIndex]?.querySelector('img');
-  const fitPercent=()=>{
-    const img=image();
-    if(!img?.naturalWidth||!img.naturalHeight)return 100;
-    return Math.min(100,img.offsetWidth/img.naturalWidth*100,img.offsetHeight/img.naturalHeight*100)
-  };
-  const show=percent=>{const value=Math.round(percent);slider.value=value;label.textContent=value+'%';syncBoardRange(slider)};
-  const apply=raw=>{
-    if(main.destroyed||!box.isConnected)return;
-    const fit=fitPercent();
-    const percent=raw==='fit'?fit:Math.min(PHOTO_ZOOM_MAX,Math.max(PHOTO_ZOOM_MIN,Number(raw)||fit));
-    target=raw==='fit'?'fit':percent;show(percent);
-    const ratio=percent/fit;
-    if(Math.abs(ratio-1)<.001)main.zoom.out();
-    else main.zoom.in(ratio);
-  };
-  const reset=()=>requestAnimationFrame(()=>apply('fit'));
-  slider.oninput=()=>apply(Number(slider.value));
-  box.querySelectorAll('[data-zoom-step]').forEach(b=>
-    b.onclick=()=>apply(Number(slider.value)+Number(b.dataset.zoomStep)*PHOTO_ZOOM_STEP));
-  box.querySelector('[data-photo-scale="fit"]').onclick=()=>apply('fit');
-  box.querySelector('[data-photo-scale="original"]').onclick=()=>apply(100);
-  main.on('slideChange',reset);
-  main.on('zoomChange',(_swiper,scale)=>{if(scale)show(fitPercent()*scale)});
-  box.querySelectorAll('.photomain img').forEach(img=>{
-    if(!img.complete)img.addEventListener('load',()=>{if(img===image())apply(target)})});
-  reset();
-  return {resize:()=>apply(target)};
-}
-
-/* 图片详情只展示安全元数据，定位仍只把 asset id 交给服务端。绝不能为了显示路径把
-   ledger 的本机绝对路径送进浏览器。 */
-const fmtPhotoSize=raw=>{const size=Number(raw)||0;if(!size)return'大小未知';
-  return (size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`:fmtSize(size)).replace(' ','\u00a0')};
-function wirePhotoDetail(box,items,index){
-  const toggle=box.querySelector('.photodetailtoggle');
-  const panel=box.querySelector('.photodetail');
-  const title=panel.querySelector('h2');
-  const meta=panel.querySelector('.photodetailmeta');
-  const reveal=panel.querySelector('[data-photo-reveal]');
-  const status=panel.querySelector('.srcstate');
-  const images=[...box.querySelectorAll('.photomain img')];
-  let painted=index;
-  const paint=at=>{
-    const item=items[at];if(!item)return;
-    const asset=item.asset,image=images[at];painted=at;
-    toggle.hidden=false;
-    title.textContent=(asset?.name||item.name)||'未命名图片';
-    const resolution=image?.naturalWidth&&image?.naturalHeight
-      ?`${image.naturalWidth} × ${image.naturalHeight}`:'';
-    const sequence=!asset&&item.total>1?`第 ${item.position} / ${item.total} 张`:'';
-    meta.textContent=asset
-      ?[LOC[asset.location]||asset.location||'来源未知',fmtPhotoSize(asset.size)].join(' · ')
-      :[item.source||'在线图片',sequence,resolution,item.size?fmtPhotoSize(item.size):'']
-        .filter(Boolean).join(' · ');
-    reveal.hidden=!asset;
-    if(asset)reveal.dataset.photoReveal=String(asset.id);
-    else reveal.removeAttribute('data-photo-reveal');
-    status.textContent='';
-    if(!asset&&image&&!image.complete)image.addEventListener('load',()=>{
-      if(painted===at)paint(at)},{once:true});
-  };
-  const context=wireContextCard(box,toggle,panel);
-  const dismiss=returnFocus=>{context.hide();toggle.setAttribute('aria-expanded','false');
-    if(returnFocus&&document.contains(toggle))toggle.focus()};
-  const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false;
-    dismiss();return true};
-  reveal.onclick=()=>{if(reveal.dataset.photoReveal)
-    revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal})};
-  paint(index);return {paint,dismiss,dismissOutside,isOpen:()=>!panel.hidden};
-}
-
-function closePhotoLightbox(){
-  if(!activeLightbox)return;
-  document.removeEventListener('keydown',photoLightKeys,true);
-  activeLightbox.detail?.dismiss();
-  activeLightbox.resize?.disconnect();
-  activeLightbox.main.destroy(true,true);activeLightbox.strip.destroy(true,true);
-  activeLightbox.box.close();activeLightbox.box.remove();activeLightbox=null;
-  document.body.classList.remove('photolight-open');
-}
-async function openPhotoLightbox(index,source=null){
-  const items=(source||[]).map(photoSlide);
-  if(!items.length||index<0||index>=items.length)return;
-  let SwiperCtor;
-  try{SwiperCtor=await loadSwiper()}
-  catch(_e){window.open(items[index].src,'_blank','noopener');return}
-  closePhotoLightbox();
-  const box=document.createElement('dialog');
-  box.setAttribute('aria-label','图片浏览');
-  box.className='photolight'+(items.length>1?' has-strip':'');
-  box.innerHTML=`<button class="media-circle media-overlay photoclose" type="button" aria-label="关闭">${icon('x')}</button>
-    <div class="swiper photomain" role="region" aria-roledescription="轮播" aria-label="图片浏览"><div class="swiper-wrapper">${items.map(item=>
-      `<div class="swiper-slide"><div class="swiper-zoom-container"><img src="${esc(item.src)}"
-        alt="${esc(item.name)}" loading="lazy" referrerpolicy="no-referrer"></div></div>`).join('')}</div>
-      <button class="media-circle media-overlay photonav back" type="button" aria-label="上一张">${icon('chevron-left')}</button>
-      <button class="media-circle media-overlay photonav fwd" type="button" aria-label="下一张">${icon('chevron-left')}</button></div>
-    <div class="photobar">
-      <button class="photodetailtoggle" type="button" aria-expanded="false" aria-controls="photoDetail"
-        aria-haspopup="dialog"
-        aria-label="图片详情" title="图片详情">${icon('info')}</button>
-      <div><div class="photocount mono" aria-live="polite">${index+1} / ${items.length}</div>${items.length>1?'<div class="board-carousel-pagination" aria-label="选择图片"></div>':''}</div>
-      <div class="photozoom">
-        <button type="button" data-zoom-step="-1" aria-label="缩小">${icon('zoom-out')}</button>
-        <input type="range" min="${PHOTO_ZOOM_MIN}" max="${PHOTO_ZOOM_MAX}" step="1" value="100" aria-label="缩放">
-        <button type="button" data-zoom-step="1" aria-label="放大">${icon('zoom-in')}</button>
-        <b class="mono">100%</b>
-        <button class="photoscale" type="button" data-photo-scale="fit" aria-label="适应窗口" title="适应窗口">${icon('maximize')}</button>
-        <button class="photoscale photooriginal mono" type="button" data-photo-scale="original" aria-label="原大小" title="原大小">1:1</button>
-      </div></div>
-    <section class="photodetail" id="photoDetail" role="dialog" aria-modal="false"
-      aria-labelledby="photoDetailTitle" hidden>
-      <div class="photodetailcopy"><h2 id="photoDetailTitle" data-middle-truncate tabindex="-1"></h2><span class="photodetailmeta"></span></div>
-      <button type="button" data-photo-reveal="">${icon('folder-open')}<span>在资源管理器中显示</span></button>
-      <span class="srcstate" aria-live="polite"></span>
-    </section>
-    <div class="swiper photostrip"><div class="swiper-wrapper">${items.map(item=>
-      `<div class="swiper-slide"><img src="${esc(item.thumb)}" alt="" loading="lazy" referrerpolicy="no-referrer"></div>`).join('')}</div></div>`;
-  document.body.appendChild(box);
-  box.showModal();
-  box.oncancel=event=>{event.preventDefault();closePhotoLightbox()};
-  document.body.classList.add('photolight-open');
-  const counter=box.querySelector('.photocount');
-  const strip=new SwiperCtor(box.querySelector('.photostrip'),{
-    slidesPerView:'auto',spaceBetween:8,freeMode:true,watchSlidesProgress:true,
-    centeredSlides:true,slideToClickedSlide:true});
-  const centerThumb=(at,speed=200)=>strip.slideTo(at,speed);
-  const main=new SwiperCtor(box.querySelector('.photomain'),{
-    initialSlide:index,zoom:{minRatio:.01,maxRatio:100},keyboard:{enabled:true},lazyPreloadPrevNext:1,
-    // 上下滚也翻页：看图时手在滚轮上，没人愿意为了换一张去够左右键或按钮。
-    mousewheel:{enabled:true,forceToAxis:false},
-    thumbs:{swiper:strip},
-    pagination:{el:box.querySelector('.board-carousel-pagination'),clickable:true,dynamicBullets:true,dynamicMainBullets:3,renderBullet:(at,className)=>`<button type="button" class="${className}" aria-label="查看第 ${at+1} 张图片"></button>`},
-    navigation:{prevEl:box.querySelector('.photonav.back'),nextEl:box.querySelector('.photonav.fwd')},
-    on:{slideChange(){counter.textContent=`${this.activeIndex+1} / ${items.length}`;
-      centerThumb(this.activeIndex)}}});
-  centerThumb(index,0);
-  const zoomBar=wirePhotoZoom(box,main);
-  const detail=wirePhotoDetail(box,items,index);
-  main.on('slideChange',()=>detail.paint(main.activeIndex));
-  /* Swiper 只在自己构造的那一刻量一次容器。灯箱是插进已经布好版的页面里的，
-     窗口一改大小（或首屏字体、滚动条落定得比构造晚）slide 就停在旧宽度上，
-     大图按错误的框缩放，看起来就是「显示不全」。挂个 ResizeObserver 让它重量。 */
-  const resize=new ResizeObserver(()=>{main.update();strip.update();zoomBar.resize()});
-  resize.observe(box);
-  activeLightbox={box,main,strip,resize,zoomBar,detail};
-  // 原图取不到时换上这张的缩略图：归档站的原文件主机会拦下代理（pawchive 的 file.
-  // 子域挂着 ddos-guard），缩略图由浏览器直接读公开主机。
-  box.querySelectorAll('.photomain img').forEach((img,at)=>img.addEventListener('error',()=>{
-    const thumb=items[at].thumb;
-    if(thumb&&img.getAttribute('src')!==thumb)img.src=thumb},{once:true}));
-  box.querySelector('.photoclose').onclick=closePhotoLightbox;
-  // 主画布铺满视口后，黑色留白属于 zoom 容器而不是最外层；两者都视为背景。
-  // 点图片、缩略图条、工具栏和翻页按钮仍不退出。
-  box.addEventListener('click',e=>{
-    if(detail.dismissOutside(e.target))return;
-    if(e.target===box||e.target.classList.contains('swiper-zoom-container'))closePhotoLightbox()});
-  document.addEventListener('keydown',photoLightKeys,true);
 }
 
 /* 名字下拉的行为：在已有的名字里挑一个当统称，或者添一个新的。换统称改的是

@@ -118,10 +118,10 @@ describe('番号样张', () => {
       const hole = await page.locator('[data-photo-wall] [data-photo-cell]').nth(1).boundingBox();
       assert.ok(hole && hole.height > 0, '占位格不塌');
       await page.locator('[data-photo-wall] [data-photo-cell]').nth(3).click();
-      const count = page.locator('dialog.photolight .photocount');
+      const count = page.locator('dialog[data-photo-lightbox] [data-photo-count]');
       await count.waitFor({ state: 'visible' });
       assert.equal((await count.innerText()).trim(), '4 / 5');
-      await page.locator('dialog.photolight .photoclose').click();
+      await page.locator('dialog[data-photo-lightbox] [data-photo-close]').click();
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
       await opened.close();

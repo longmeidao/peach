@@ -548,6 +548,37 @@ const photoWallFaces = (page: Page) => page.evaluate(() => {
   };
 });
 
+/** 照片档里 `count` 张本地图，点开第一张的灯箱。大图是 `width`×`height` 的 SVG；取图口全部回桩图，
+ *  `/photo` 原图走计费来源，设计用例也不碰真的。 */
+async function openLightbox(browser: Browser, { count, width, height }: { count: number; width: number; height: number }):
+  Promise<Visit & { box: Locator }> {
+  const name = '七沢みあ';
+  const opened = await visit(browser, '/', DESKTOP);
+  const { page } = opened;
+  const svg = (w: number, h: number) => ({ status: 200, contentType: 'image/svg+xml',
+    body: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="#3a4a5a"/></svg>` });
+  await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+    id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [], user_aliases: [],
+    asset_count: 0, tags: [], related_performers: [], links: [], metadata: {}, has_image: false, has_avatar: false,
+    avatar_focus: null, representative_asset_id: null, entry_links: [], feed: { following: false },
+  } }));
+  await page.route(/\/api\/photos\?/, (route) => route.fulfill({ json: {
+    kind: 'performer', name, entity_id: 90_001, total: count, seed: '', has_more: false, sample_total: 0, sets: [],
+    items: Array.from({ length: count }, (_, i) => ({ id: 300 + i, name: `${300 + i}.jpg`, size: 1, location: 'media' })),
+  } }));
+  await page.route(/\/photo\?/, (route) => route.fulfill(svg(width, height)));
+  await page.route(/\/photo-thumb\?/, (route) => route.fulfill(svg(160, 120)));
+  await page.goto(new URL(`/performers/${encodeURIComponent(name)}?media=photos`, page.url()).href, { waitUntil: 'load' });
+  await page.locator('[data-photo-cell] img').first().waitFor({ timeout: 15_000 });
+  await settle(page);
+  await page.locator('[data-photo-cell]').first().click();
+  const box = page.locator('dialog[data-photo-lightbox][open]');
+  await box.waitFor();
+  await page.waitForFunction(() => document.querySelector<HTMLImageElement>('[data-photo-main] .swiper-slide-active img')!
+    .naturalWidth > 0, undefined, { timeout: 10_000 });
+  return { ...opened, box };
+}
+
 /** 有 minnano-av 资料的女优。`profile` 与 `name_groups` 照 `peach.entity_profile.header` 的形状写，
  *  出道片名故意很长：资料表那一格要单行截断。 */
 const PROFILED = {
@@ -4168,6 +4199,82 @@ describe('设计决定', () => {
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForFunction(() => !document.querySelector('[data-filter-glass]')!.hasAttribute('data-stuck'),
         undefined, { timeout: 5_000 });
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('图片灯箱：竖图按高度整张收进视口，上下让出工具条与缩略图条，左右让出翻页键', { timeout: 60_000 }, async () => {
+    const opened = await openLightbox(browser, { count: 3, width: 1200, height: 4000 });
+    try {
+      const read = await opened.page.evaluate(() => {
+        const rect = (selector: string) => document.querySelector(selector)!.getBoundingClientRect().toJSON() as DOMRect;
+        return { img: rect('[data-photo-main] .swiper-slide-active img'), bar: rect('[data-photo-bar]'),
+          strip: rect('[data-photo-strip]'), back: rect('[data-photo-nav="back"]'), viewport: innerHeight };
+      });
+      const { img } = read;
+      assert.ok(img.top >= 24 - .5 && img.bottom <= read.viewport - 148 + .5, `大图越出了上下安全区：${img.top}–${img.bottom}`);
+      assert.ok(Math.abs(img.width / img.height - 1200 / 4000) < .01, `竖图被拉变形：${img.width}×${img.height}`);
+      assert.ok(Math.abs(img.left + img.width / 2 - DESKTOP.width / 2) <= 1, '大图没有水平居中');
+      assert.ok(read.bar.bottom <= read.strip.top, '工具条压到了缩略图条上');
+      assert.equal(Math.round(read.viewport - read.strip.bottom), 14);
+      assert.ok(read.back.right <= 72, '翻页键伸进了图片那一栏');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('图片灯箱只有一张时不画缩略图条、页码点和翻页键，底部空间还给图片', { timeout: 60_000 }, async () => {
+    const opened = await openLightbox(browser, { count: 1, width: 4000, height: 3000 });
+    try {
+      const read = await opened.page.evaluate(() => {
+        const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
+        return {
+          strip: style('[data-photo-strip]').display,
+          nav: [...document.querySelectorAll('[data-photo-nav]')].map((button) => getComputedStyle(button).display),
+          pagination: document.querySelectorAll('[data-photo-pagination]').length,
+          padding: style('[data-photo-main] .swiper-zoom-container').paddingBottom,
+          count: document.querySelector('[data-photo-count]')!.textContent,
+        };
+      });
+      assert.deepEqual(read, { strip: 'none', nav: ['none', 'none'], pagination: 0, padding: '76px', count: '1 / 1' });
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('灯箱圆钮：图标压在圆心，线头是圆的、不填充；前进那枚是同一枚箭头转半圈，到头那枚让开', { timeout: 60_000 }, async () => {
+    const opened = await openLightbox(browser, { count: 3, width: 4000, height: 3000 });
+    try {
+      const read = await opened.page.evaluate(() => [
+        '[data-photo-close]', '[data-photo-nav="back"]', '[data-photo-nav="fwd"]', '[data-photo-detail-toggle]',
+      ].map((selector) => {
+        const button = document.querySelector(selector)!, svg = button.querySelector('svg')!;
+        const outer = button.getBoundingClientRect(), inner = svg.getBoundingClientRect(), style = getComputedStyle(svg);
+        return {
+          selector, glyph: svg.querySelector('use')?.getAttribute('href'),
+          off: Math.max(Math.abs(outer.left + outer.width / 2 - inner.left - inner.width / 2),
+            Math.abs(outer.top + outer.height / 2 - inner.top - inner.height / 2)),
+          fill: style.fill, cap: style.strokeLinecap, turn: style.transform,
+          visibility: getComputedStyle(button).visibility,
+        };
+      }));
+      for (const icon of read) {
+        assert.ok(icon.off <= .5, `${icon.selector} 的图标偏离圆心 ${icon.off}px`);
+        assert.equal(icon.fill, 'none', `${icon.selector} 的描边图标被填实了`);
+        // Lucide 的 info 圆点是长度 .01 的短线，没有圆头就缩成看不见的一横。
+        assert.equal(icon.cap, 'round', `${icon.selector} 的线头不是圆的`);
+      }
+      const [close, back, fwd, info] = read;
+      assert.equal(close.glyph, '#i-x');
+      assert.equal(info.glyph, '#i-info');
+      assert.deepEqual([back.glyph, fwd.glyph], ['#i-chevron-left', '#i-chevron-left']);
+      assert.equal(back.turn, 'none');
+      assert.match(fwd.turn, /^matrix\(-1, /, '前进键的箭头没有转半圈');
+      assert.deepEqual([back.visibility, fwd.visibility], ['hidden', 'visible'], '停在第一张时后退键该让开');
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();

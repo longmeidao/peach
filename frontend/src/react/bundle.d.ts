@@ -10,6 +10,7 @@ import type { JunkQueueProps } from './junk-queue/junk-queue';
 import type { EntityHeroProps } from './entity-hero/entity-hero';
 import type { EntityFilterProps } from './entity-filter/entity-filter';
 import type { EntityBodyProps } from './entity-body/entity-body';
+import type { LightboxHost, LightboxSlide } from './photo-lightbox/photo-lightbox';
 
 export type { IndexProps };
 export type { CatalogGridProps };
@@ -17,6 +18,7 @@ export type { JunkQueueProps };
 export type { EntityHeroProps };
 export type { EntityFilterProps };
 export type { EntityBodyProps };
+export type { LightboxHost, LightboxSlide };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -421,3 +423,7 @@ export interface ToastRequest {
 export declare function mountToaster(host: Element, icons: ToastIcons): void;
 /** 发出一条回执；同一个 `id` 再调一次就是改写那一条。 */
 export declare function showToast(id: string, request: ToastRequest): void;
+
+/** 图片灯箱：从第 `index` 张开始看 `slides`，同一时刻只有一份。`host` 给了才出定位源文件那一枚键。 */
+export declare function openPhotoLightbox(index: number, slides: LightboxSlide[], host?: LightboxHost): Promise<void>;
+export declare function closePhotoLightbox(): void;

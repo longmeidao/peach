@@ -124,7 +124,10 @@ class DependencyPolicyTests(unittest.TestCase):
         self.assertIn(f"Lucide static {versions['lucide-static']}", index)
         self.assertIn(f"Health Icons {versions['healthicons']}", index)
         self.assertIn(f"Phosphor {versions['@phosphor-icons/core']} regular", index)
-        self.assertIn(f"/vendor/swiper/{versions['swiper']}/", app)
+        # 灯箱的 Swiper 同样按需加载，版本钉在 React 灯箱的加载器里。
+        lightbox = (ROOT / "frontend" / "src" / "react" / "photo-lightbox" / "photo-lightbox.ts").read_text(
+            encoding="utf-8")
+        self.assertIn(f"'/vendor/swiper/{versions['swiper']}/'", lightbox)
 
     def test_every_sprite_symbol_has_a_declared_owner(self):
         """雪碧图里每一枚 symbol 都归某一套图标集或自绘名单。

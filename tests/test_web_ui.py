@@ -79,7 +79,7 @@ class StylesheetPartitionTests(unittest.TestCase):
     PARTITIONS = (
         "01-base.css", "02-topbar.css", "03-filterbar.css", "04-manage.css",
         "05-insights.css", "06-index.css", "07-entity.css", "08-photos.css",
-        "09-skeleton.css", "10-photolight.css", "11-identity.css", "12-cards.css",
+        "09-skeleton.css", "11-identity.css", "12-cards.css",
         "13-stage.css", "14-player.css", "15-detail.css", "16-settings.css",
         "17-overlay.css", "18-drawer.css", "19-immersive.css", "20-offdisk.css",
         "21-online.css", "22-followmanage.css", "23-configuration.css",
@@ -4539,9 +4539,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("if(fallback&&el.getAttribute('src')!==fallback){")
         self.assertCode("el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}")
         self.assertPageContains("data-media-thumb-fallback hidden>原图未取回，先显示缩略图")
-        # 灯箱里翻到的每一张同样退回它自己的缩略图。
-        self.assertCode("box.querySelectorAll('.photomain img').forEach((img,at)=>img.addEventListener('error',()=>{")
-        self.assertCode("if(thumb&&img.getAttribute('src')!==thumb)img.src=thumb},{once:true}));")
+        # 灯箱里翻到的每一张同样退回它自己的缩略图：frontend/test/react/photo-lightbox.test.tsx。
 
     def test_follow_detail_gets_the_same_player_stats_overlay(self):
         """作品详情与关注详情共用同一段统计模板，关注详情里的在线视频同样有统计入口。"""
@@ -4954,7 +4952,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_note_and_info_surfaces_reuse_the_photo_detail_info_icon(self):
         self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
-        self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
+        # 灯箱「图片详情」那枚圆圈 i 画的就是这一枚，由 e2e 设计用例在浏览器里读。
         # 凭据存放位置改由关注管理页自己的说明块直说，不再藏在一枚信息键后面。
         self.assertIn('<PathLine path={data.root} prefix="凭据文件在 "',
                       (Path(__file__).resolve().parents[1]
@@ -7397,7 +7395,7 @@ class WebUiSourceTests(unittest.TestCase):
                                 "    disposeStage(false,false,{miniplayer:false});"
                                 "route(detailReturnPath||'/');restoreRoute()});")
         self.assertPageContains("if(stage.open)stage.close();")
-        self.assertPageContains("box.showModal();")
+        # 图片灯箱同样开成原生模态，由 `frontend/test/react/photo-lightbox.test.tsx` 钉住。
         self.assertPageContains("if(stage.open)stage.append(menu);")
         self.assertPageContains("max-height:calc(100dvh - 32px)")
         self.assertPageLacks("stage.scrollIntoView(")
@@ -8261,12 +8259,12 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("import { initMiddleTruncate } from './js/middle-truncate.js'")
         self.assertPageContains("initMiddleTruncate(document)")
         for consumer in (
-                'id="photoDetailTitle" data-middle-truncate',
                 '<b data-middle-truncate>${esc(javDisplayName(media))}</b>',
                 '<b data-middle-truncate>${esc(javDisplayName(x))}</b>'):
             self.assertPageContains(consumer)
-        # 高清版目标页、统计页、复核页、数据管理、重复文件页、回收站资源卡与垃圾卡归 React 子树，由 frontend 的用例覆盖。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 3)
+        # 高清版目标页、统计页、复核页、数据管理、重复文件页、回收站资源卡、垃圾卡与图片灯箱
+        # 归 React 子树，由 frontend 的用例覆盖。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 2)
         self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         # 关注合集队列卡的出处行是 flex 一行（`.fqmeta`），时间不收窄，不走尾部省略。
@@ -8580,12 +8578,9 @@ class WebUiSourceTests(unittest.TestCase):
                 'title="换一批" aria-label="换一批">${icon(\'shuffle\')}',
                 # 同步删除把这个目录在盘上和账本里对齐。
                 'aria-label="同步删除">${icon(\'folder-sync\')}',
-                # 保存为播放列表存的是一份列表。沉浸模式入口与卡上「打开详情」的字形
-                # 分别在 e2e 设计用例和 catalog-grid.test.tsx 里核对。
+                # 保存为播放列表存的是一份列表。沉浸模式入口、卡上「打开详情」与灯箱缩放条
+                # 两端的字形分别在 e2e 设计用例、catalog-grid.test.tsx 与 photo-lightbox.test.tsx 里核对。
                 'aria-label="保存为播放列表">${icon(\'playlist\')}',
-                # 缩放条两端步进的是倍数，加减号没说清加减的是什么。
-                'data-zoom-step="-1" aria-label="缩小">${icon(\'zoom-out\')}',
-                'data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}',
                 ):
             self.assertPageContains(needle)
         # 女优页头（ADR-0069）归 `entity-hero` island：名字下面那一行的胶片、公文包与证件由
@@ -10618,13 +10613,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "const applyFollowView=()=>{route(followViewPath());openFollow(false)};")
 
-    def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
-        # 图片墙铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。墙上那一口在
-        # `entity-body` 岛里，由 `entity-body.test.tsx` 钉住；格子与列数的外观由 e2e 设计用例量。
-        # 取图口收进 photoSlide：灯箱现在也服务关注页的在线图，模板不能再写死本地口。
-        self.assertPageContains(
-            ':{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`')
-
     def test_photo_tab_opens_the_flat_wall_without_album_cover_cards(self):
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
         self.assertPageContains("readout:back?`${data.title} · ${(data.total||0).toLocaleString()} 张`:photoReadout(data,codeSets)")
@@ -10782,52 +10770,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("  const origin=faceOrigin(f);\n"
                         "  return origin?` style=\"object-position:${origin}\"`:'';")
 
-    def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
-        self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")
-        self.assertPageContains("swiperLoader=Promise.all([")
-        self.assertPageContains("style.addEventListener('load',resolve,{once:true})")
-        self.assertPageContains("]).then(([,SwiperCtor])=>SwiperCtor)")
-        self.assertPageContains("thumbs:{swiper:strip}")
-        self.assertPageContains("keyboard:{enabled:true}")
-        self.assertPageContains(".photolight{position:fixed;inset:0;z-index:200;background:#000;display:block;overflow:hidden}")
+    def test_swiper_stays_out_of_the_first_paint(self):
+        # 灯箱归 React（`frontend/src/react/photo-lightbox/`），打开时才按需取 Swiper，
+        # 由 `photo-lightbox.test.tsx` 与 e2e 钉住；首屏页面不许直接挂它。
         self.assertPageLacks('<script src="/vendor/swiper', "灯箱才用得上，不进首屏")
-
-    def test_lightbox_image_is_capped_by_height_not_only_width(self):
-        """竖图必须整张收进灯箱，不能上下被裁掉。
-
-        主画布使用固定视口的绝对定位，不能再让 grid 行与 Swiper 的百分比高度互相
-        依赖；否则超宽视口会把主图行收成 0，让原图按自然尺寸贴到左边溢出。
-        """
-        self.assertPageContains(
-            ".photolight .photomain{position:absolute;inset:0;min-width:0;min-height:0;width:100%;height:100%;overflow:hidden}")
-        self.assertPageContains(
-            ".photolight .photomain>.swiper-wrapper{display:flex;width:100%;height:100%}")
-        self.assertPageContains(
-            ".photolight .photomain>.swiper-wrapper>.swiper-slide{flex:0 0 100%;width:100%;height:100%;min-width:0;")
-        self.assertPageContains(
-            ".photolight .photomain .swiper-zoom-container{width:100%;height:100%;"
-            "min-height:0;min-width:0;")
-        self.assertPageContains("box-sizing:border-box;display:grid;place-items:center;padding:24px 72px 76px")
-        self.assertPageContains(".photolight.has-strip .photomain .swiper-zoom-container{padding-bottom:148px}")
-        self.assertPageContains(
-            ".photolight .photomain img{max-width:100%;max-height:100%;"
-            "min-width:0;min-height:0;")
-        self.assertPageContains("box.className='photolight'+(items.length>1?' has-strip':'')")
-        self.assertPageContains(".photolight:not(.has-strip) .photostrip{display:none}")
-        self.assertPageContains("e.target===box||e.target.classList.contains('swiper-zoom-container')")
-
-    def test_lightbox_nav_classes_avoid_the_generic_next_rule(self):
-        """翻页按钮不能叫 `.next`：详情页「接下来」那块用的就是无前缀 `.next`。
-
-        两者同为 0-1-0 特指度且 `.next` 写在后面，padding、border-top 和背景色会
-        整块盖过来，图标被挤得偏右下——实测偏移 5px/2px。
-        """
-        self.assertPageContains('class="media-circle media-overlay photonav back"')
-        self.assertPageContains('class="media-circle media-overlay photonav fwd"')
-        self.assertPageContains(".photonav.back{left:14px}.photonav.fwd{right:14px}")
-        self.assertPageContains(".photonav.fwd svg{transform:rotate(180deg)}")
-        self.assertPageLacks('class="photonav prev"')
-        self.assertPageLacks('class="photonav next"')
 
     def test_sprite_icons_declare_stroke_and_no_fill(self):
         """Lucide 描边图标缺 `fill:none;stroke:currentColor` 就被按默认的
@@ -10843,100 +10789,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".media-circle.media-overlay{background:rgba(0,0,0,.6);color:#fff;backdrop-filter:blur(16px)}")
         self.assertPageContains('class="media-circle media-overlay followimagearrow prev"')
         self.assertPageContains('class="media-circle media-overlay followimagearrow next"')
-        self.assertPageContains('class="media-circle media-overlay photoclose"')
-        self.assertPageContains('class="media-circle media-overlay photonav back"')
         self.assertPageContains('class="media-circle" id="tokDislike"')
         self.assertPageContains(".followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%)}")
-        self.assertPageContains(".photonav.swiper-button-disabled{opacity:0;visibility:hidden;pointer-events:none}")
-
-    def test_lightbox_offers_wheel_paging_and_an_explicit_zoom_bar(self):
-        self.assertPageContains("mousewheel:{enabled:true,forceToAxis:false}")
-        self.assertPageContains("const PHOTO_ZOOM_MIN=10,PHOTO_ZOOM_MAX=400,PHOTO_ZOOM_STEP=10")
-        self.assertPageContains("return Math.min(100,img.offsetWidth/img.naturalWidth*100,img.offsetHeight/img.naturalHeight*100)")
-        self.assertPageContains("else main.zoom.in(ratio)")
-        self.assertPageContains('<input type="range" min="${PHOTO_ZOOM_MIN}" max="${PHOTO_ZOOM_MAX}"')
-        # zoomChange 的第一个参数是 swiper 实例，倍数在第二个；接错了写进 NaN。
-        self.assertPageContains("main.on('zoomChange',(_swiper,scale)=>")
-        self.assertPageContains('data-photo-scale="fit" aria-label="适应窗口"')
-        self.assertPageContains('data-photo-scale="original" aria-label="原大小"')
-        # 文本字形受字体基线影响，会让圆按钮里的 +/- 肉眼偏上或偏下；SVG 几何才稳定居中。
-        self.assertPageContains('data-zoom-step="-1" aria-label="缩小">${icon(\'zoom-out\')}')
-        self.assertPageContains('data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}')
-        self.assertPageContains(".photozoom button svg{width:15px;height:15px;display:block;")
-        self.assertPageContains(".photobar{position:absolute;z-index:4;bottom:14px;")
-        self.assertPageContains(".photolight.has-strip .photobar{bottom:98px}")
-
-    def test_lightbox_centers_the_active_thumbnail(self):
-        self.assertPageContains("centeredSlides:true,slideToClickedSlide:true")
-        self.assertPageContains("const centerThumb=(at,speed=200)=>strip.slideTo(at,speed)")
-        self.assertPageContains("centerThumb(this.activeIndex)")
-        self.assertPageContains("centerThumb(index,0)")
-        self.assertPageLacks("centeredSlidesBounds:true")
-        # 每一张只闭合自己的 slide；wrapper 必须等 map 完成后再闭合。
-        # 若把 wrapper 的闭合标签写进循环，浏览器会把第二张起移到轨道外，
-        # Swiper 无法切换或居中当前缩略图。
-        self.assertPageContains(
-            '<img src="${esc(item.thumb)}" alt="" loading="lazy" '
-            'referrerpolicy="no-referrer"></div>`).join(\'\')}</div></div>`;'
-        )
-        self.assertPageLacks(
-            '<img src="${esc(item.thumb)}" alt="" loading="lazy" '
-            'referrerpolicy="no-referrer"></div></div>`).join(\'\')}'
-        )
-
-    def test_lightbox_photo_detail_reveals_by_asset_id_without_leaking_a_path(self):
-        self.assertPageContains('aria-label="图片详情" title="图片详情">${icon(\'info\')}</button>')
-        self.assertPageLacks("${icon('info')}<span>图片详情</span>",
-                             "详情入口只显示圆圈 i，不再加文字按钮外框")
-        self.assertPageContains('aria-expanded="false" aria-controls="photoDetail"')
-        self.assertPageContains('aria-haspopup="dialog"')
-        self.assertPageContains('<section class="photodetail" id="photoDetail" role="dialog" aria-modal="false"')
-        self.assertPageContains('aria-labelledby="photoDetailTitle" hidden>')
-        self.assertPageContains("LOC[asset.location]||asset.location||'来源未知'")
-        self.assertPageContains("size<1024*1024?`${Math.max(1,Math.round(size/1024))} KB`")
-        self.assertPageContains("reveal.dataset.photoReveal=String(asset.id)")
-        self.assertPageContains("revealSource(Number(reveal.dataset.photoReveal),status,{button:reveal})")
-        self.assertPageContains("toast({text:'已在资源管理器中显示'})")
-        self.assertPageLacks("已在服务端弹出文件管理器",
-                             "定位成功是短暂回执，不能在详情内容流里留下状态行")
-        self.assertPageContains(
-            "button.innerHTML=`${spinnerHtml('正在定位')}${label?`<span>${esc(label)}</span>`:''}`")
-        self.assertPageContains("if(activeLightbox?.detail?.isOpen()){activeLightbox.detail.dismiss(true);return}")
-        self.assertPageContains("if(returnFocus&&document.contains(toggle))toggle.focus()")
-        # 打开详情要把焦点送进面板。reveal 是「在资源管理器中显示」，只对本地资产存在；
-        # 在线图片上它是 hidden 的，焦点这时必须落到标题——对隐藏元素调 focus() 不生效，
-        # 人会被留在 toggle 上。标题为此带 tabindex="-1" 才接得住。三条一起守：分支表达式、
-        # 标题的 tabindex，以及无条件 reveal.focus() 不许回来。bcf112e 改了实现只更新了
-        # tests/test_follow_web.py，这里的旧断言留在原地，master 上因此挂了一段时间。
-        self.assertPageContains(
-            "wireContextCard(")
-        self.assertPageContains(
-            '<h2 id="photoDetailTitle" data-middle-truncate tabindex="-1">',
-            "标题要接得住焦点，缺 tabindex=-1 时 reveal 隐藏那条路径等于没聚焦")
-        self.assertPageLacks(
-            "queueMicrotask(()=>reveal.focus())",
-            "不能无条件聚焦 reveal：在线图片上它是隐藏的")
-        self.assertPageContains("const dismissOutside=target=>{if(panel.hidden||toggle.contains(target)||panel.contains(target))return false")
-        self.assertPageContains("if(detail.dismissOutside(e.target))return")
-        self.assertPageContains(".photodetail[hidden]{display:none}")
-        self.assertPageContains("box-sizing:border-box;display:grid;align-items:start;gap:14px;padding:16px")
-        self.assertPageContains(".photodetail .srcstate:empty{display:none}")
-        self.assertPageContains(".photodetail>button{min-height:44px}")
-        self.assertPageContains(".photodetailtoggle{width:40px;height:40px}")
-        self.assertPageContains(".photodetailtoggle{justify-self:start;width:40px;height:40px;display:grid;place-items:center")
-        # Lucide 的 info 圆点是长度 .01 的短线；没有圆头时会缩成几乎不可见的横杠。
-        css = stylesheet_source()
-        start = css.index(".photodetailtoggle svg{")
-        rule = css[start:css.index("}", start)]
-        self.assertIn("stroke-linecap:round", rule)
-        self.assertPageContains('<symbol id="i-info" viewBox="0 0 24 24">')
-        self.assertPageLacks("item.path", "图片详情不能取得或渲染 ledger 绝对路径")
-
-    def test_lightbox_remeasures_when_the_window_resizes(self):
-        # Swiper 只在构造那一刻量一次容器；灯箱是插进已布好版的页面里的，
-        # 窗口一改大小 slide 就停在旧宽度，大图按错误的框缩放。
-        self.assertPageContains("new ResizeObserver(()=>{main.update();strip.update();zoomBar.resize()})")
-        self.assertPageContains("activeLightbox.resize?.disconnect()")
 
     def test_the_review_skeleton_is_built_from_the_real_page_containers(self):
         """骨架用最终容器的类名，分栏和列宽就都由页面自己那套规则给。
