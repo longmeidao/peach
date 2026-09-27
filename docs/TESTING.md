@@ -35,7 +35,7 @@ Dependabot 只改 manifest 与 lock，算不出派生产物；它的 workflow �
 1. 在隔离工作树里运行 `scripts/adopt_dependency_bump.py --pr <编号> --co-author '<工具> (<模型>) <厂商 noreply>'`。它签出那份清单、重算派生产物、只暂存这些并提交。
 2. 加 `--apply` 之前，先看它列出的文件清单。
 
-uv 与 github-actions 的升级没有派生产物，直接合并即可。破坏性的大版本升级由 `.github/dependabot.yml` 的 `ignore` 挡在自动 PR 之外，迁移单开分支做。
+uv 与 github-actions 的升级没有派生产物，本地 master 与 origin 一致时可以在网页上直接合并。本地 master 领先 origin 时不要在网页上合：两边会分叉，回并要在主检出 master 上 merge，被 `scripts/githooks/` 拒收。改在同一个工作树里调 `adopt_dependency_bump.bring_over` 逐个套入，每套一个先暂存，再 `uv lock --check`，走 ready / integrate。破坏性的大版本升级由 `.github/dependabot.yml` 的 `ignore` 挡在自动 PR 之外，迁移单开分支做。
 
 版本来自 `src/peach/__init__.py`，已纳入 uv 缓存键；源码版本更新后再次同步会刷新安装元数据。缓存规则采用 [uv 官方动态元数据机制](https://docs.astral.sh/uv/concepts/cache/#dynamic-metadata)。
 
