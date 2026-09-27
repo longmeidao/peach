@@ -834,6 +834,9 @@ jae.tokyo（Japan Adult Expo）是人工指定的第三个目录来源，同一�
   带出；名字精确匹配到这条资产已关联的人物实体，才登记成 `entity_external_ref(provider='javdb', external_kind='performer')`，人物页
   的 JavDB 入口靠它拼（`peach.entry_links`）。历史数据走 `scripts/backfill_performer_entry_ids.py`：javdb 页面缓存与
   `review/agency-rosters.csv` 的 `actress_id` 各补一路，先出 dry-run CSV 再 `--apply`。
+- **作品不是从 javdb 刮的女优，由补女优资料后继按名字搜演员卡补 id（ADR-0081）。** 卡片上的 id 就是资料页的 id，
+  无碼那条的头像上有 `<span class="info">無碼</span>`；对上的卡每种记录类型至多一张才算同一个人（`javdb.one_person`）。
+  回填脚本读搜索页缓存时用同一份判据。
 - **同名两条记录不取第一个。** 同一位女优在站上常有「有碼」「無碼」两条，两页都进判定，撞上的账号落成 `conflict` 进复核表。
 - **一部分资料页要登录，回的是登入页而不是 401。** 不注册账号。那一页记「未取得」并写明原因：「搜过、站上没有这个人」「搜到了
   但要登录」「没搜」是三件事，不分开写，下一轮还得重搜。要登录的那页都是「無碼」那条孪生记录，有碼那条公开，中文名从它就

@@ -8,6 +8,9 @@
 
 - **javdb 的页面缓存**（`peach.page_cache.Site` 落盘的整页 HTML）。资料页里有
   `href="/actors/<id>/collect"`，解析走 `peach.javdb`，和取中文名那条路同一份判据。
+  搜索结果页的演员卡也带 id：资料页没取回（限流、要登录）的那些人，id 就在卡上。
+  卡片只按收得下的写法认人（`performer_alias_followup.rejection`，`葵` 这种短单名不算），
+  对上的几张卡还得是同一个人（`javdb.one_person`：有碼、無碼各至多一张），否则记「站上同名」。
 - **复核 CSV**。`harvest_agency_rosters.py` 的名册件每行都带 `entity_id` 与
   `actress_id`，那就是 minnano-av 的女优 id；`harvest_javdb_cn_names.py` 的件带
   `actor_id`。
@@ -15,7 +18,9 @@
 两处都是磁盘上现成的东西，这个脚本一次网都不出。默认 dry-run，只产出复核 CSV；
 `--apply` 才写库，并且必须同时给 `--backup`。
 
-名字对不上就不登记：javdb 页那一侧按整条名字链（规范名加别名）精确匹配。
+名字对不上就不登记：javdb 页那一侧按整条名字链（规范名加别名）匹配，全半角、大小写与
+日本字形折掉再比（`performer_alias_followup.match_key`）：账本写 `泽村玲子`、站上写
+`澤村玲子` 是同一个人。
 
 判定按「这一条引用能不能落库」逐条给，可以重复跑：
 
@@ -25,6 +30,8 @@
 - `id 已归他人`：这个 id 在账本里挂在另一位实体名下。站上的一个 id 只能属于一位，
   写下去会被主键挡掉，所以点名占有者等人判，不靠 `INSERT OR IGNORE` 无声吞掉。
 - `冲突`：这一批证据里有两位实体认领同一个 id，同样不挑一个。
+- `站上同名`：搜索卡片上对得上她的不止一个人，id 列在证据里等人判。她已经登记过
+  javdb id 的不出这一行。
 """
 from __future__ import annotations
 
@@ -42,48 +49,81 @@ if str(SRC_DIR) not in sys.path:
 from peach import javdb   # noqa: E402
 from peach.config import STATE_DIR   # noqa: E402
 from peach.entry_links import EXTERNAL_KIND   # noqa: E402
+from peach.performer_alias_followup import match_key, rejection   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
 from peach.scripting import add_ledger_write_args, open_for_write, verify_after_write   # noqa: E402
-from peach.social_links import name_key   # noqa: E402
 
 JAVDB, MINNANO = "javdb", "minnano-av"
 #: 复核 CSV 里这两列就是站点 id，列名由产出它们的脚本定下。
 CSV_COLUMNS = {"actor_id": JAVDB, "actress_id": MINNANO}
 
 OK, HAVE, CONFLICT = "ok", "已登记", "冲突"
-TAKEN, NOT_PERFORMER = "id 已归他人", "不是女优实体"
+TAKEN, NOT_PERFORMER, NAMESAKE = "id 已归他人", "不是女优实体", "站上同名"
 
 FIELDS = ("entity_id", "canonical_name", "provider", "external_id",
           "origin", "verdict", "evidence")
 
 
-def name_owners(connection: sqlite3.Connection) -> dict[str, set[int]]:
-    """折叠键 → 拥有这个写法的女优实体。一个键对上两条就是重名，不猜。"""
+def name_owners(connection: sqlite3.Connection, *,
+                anchors_only: bool = False) -> dict[str, set[int]]:
+    """折叠键 → 拥有这个写法的女优实体。一个键对上两条就是重名，不猜。
+
+    `anchors_only` 只收本身收得下的写法：搜索卡片只凭名字认人，`葵` 这种短单名会认到别人。
+    """
     owners: dict[str, set[int]] = collections.defaultdict(set)
     for entity_id, written in connection.execute(
             "SELECT e.id,e.canonical_name FROM entity e WHERE e.kind='performer'"
             " UNION SELECT a.entity_id,a.alias FROM entity_alias a"
             " JOIN entity e ON e.id=a.entity_id WHERE e.kind='performer'"):
-        if written:
-            owners[name_key(str(written))].add(int(entity_id))
+        if written and not (anchors_only and rejection(str(written))):
+            owners[match_key(str(written))].add(int(entity_id))
     return owners
+
+
+def _cached_pages(cache_dir: Path):
+    for path in sorted(Path(cache_dir).glob("*.html")):
+        try:
+            yield path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
 
 
 def from_page_cache(cache_dir: Path, owners: dict[str, set[int]]) -> dict:
     """缓存下来的 javdb 资料页 → 实体 → 演员 id 集合。"""
     found: dict[int, set[str]] = collections.defaultdict(set)
-    for path in sorted(Path(cache_dir).glob("*.html")):
-        try:
-            html = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
+    for html in _cached_pages(cache_dir):
         actor = javdb.actor_id(html)
         if not actor:
             continue
         for written in javdb.all_names(html):
-            for entity_id in owners.get(name_key(written), ()):
+            for entity_id in owners.get(match_key(written), ()):
                 found[entity_id].add(actor)
     return found
+
+
+def from_search_cards(cache_dir: Path, owners: dict[str, set[int]]) -> tuple[dict, dict]:
+    """缓存下来的 javdb 搜索页 → (实体 → 演员 id 集合, 实体 → 站上同名的那几个 id)。
+
+    同一张卡会出现在几张搜索页里，按 id 去重之后再判是不是同一个人。
+    """
+    cards: dict[str, dict] = {}
+    for html in _cached_pages(cache_dir):
+        for card in javdb.search_cards(html):
+            cards.setdefault(card["id"], card)
+    matched: dict[int, list[dict]] = collections.defaultdict(list)
+    for card in cards.values():
+        claimants = set().union(*(owners.get(match_key(name), set()) for name in card["names"]))
+        for entity_id in claimants:
+            matched[entity_id].append(card)
+    found: dict[int, set[str]] = {}
+    namesakes: dict[int, list[str]] = {}
+    for entity_id, hits in matched.items():
+        ids = sorted(card["id"] for card in hits)
+        if javdb.one_person(hits):
+            found[entity_id] = set(ids)
+        else:
+            namesakes[entity_id] = ids
+    return found, namesakes
 
 
 def from_csv(paths, provider_of: dict[str, str]) -> dict:
@@ -117,9 +157,16 @@ def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]
     """每条候选引用一行。已登记、冲突、实体不对的也留行：下一趟要看得出这一位查过。"""
     owners = name_owners(connection)
     candidates: dict[tuple[str, int], tuple[set[str], str]] = {}
+    namesakes: dict[int, list[str]] = {}
     if args.javdb_cache and Path(args.javdb_cache).is_dir():
-        for entity_id, ids in from_page_cache(Path(args.javdb_cache), owners).items():
-            candidates[(JAVDB, entity_id)] = (ids, f"javdb 页面缓存 {args.javdb_cache}")
+        cache = Path(args.javdb_cache)
+        for entity_id, ids in from_page_cache(cache, owners).items():
+            candidates[(JAVDB, entity_id)] = (ids, f"javdb 页面缓存 {cache}")
+        carded, namesakes = from_search_cards(cache, name_owners(connection, anchors_only=True))
+        for entity_id, ids in carded.items():
+            have, origin = candidates.get((JAVDB, entity_id), (set(), ""))
+            candidates[(JAVDB, entity_id)] = (
+                have | ids, origin or f"javdb 搜索页缓存 {cache}")
     for path in args.csv:
         for (provider, entity_id), ids in from_csv([path], CSV_COLUMNS).items():
             have, origin = candidates.get((provider, entity_id), (set(), ""))
@@ -158,6 +205,14 @@ def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]
                                     f"{len(others) + 1} 位实体："
                                     f"{'、'.join(str(x) for x in sorted(others | {entity_id}))}")
             rows.append(row)
+    registered = {entity_id for (provider, _external_id), entity_id in owner.items()
+                  if provider == JAVDB}
+    for entity_id, ids in sorted(namesakes.items()):
+        if entity_id in names and entity_id not in registered and (JAVDB, entity_id) not in candidates:
+            rows.append({"entity_id": entity_id, "canonical_name": names[entity_id],
+                         "provider": JAVDB, "external_id": "",
+                         "origin": f"javdb 搜索页缓存 {args.javdb_cache}", "verdict": NAMESAKE,
+                         "evidence": f"对得上的卡片不止一个人：{'、'.join(ids)}"})
     return rows
 
 

@@ -15,8 +15,9 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
+from urllib.parse import quote
 
-from peach import avwikidb, minnano_av
+from peach import avwikidb, javdb, minnano_av
 from peach import performer_alias_followup as alias
 from peach import performer_profile_followup as followup
 from peach.entities import merge_entity, normalize_entity_name
@@ -104,6 +105,17 @@ AVWIKIDB_WORK = """<html><head>
 {"@type":"Person","name":"南日菜乃","alternateName":"Hinano Minami","url":"https://avwikidb.com/actor/1097822/"},
 {"@type":"Person","name":"冬愛ことね","alternateName":"Kotone Toua","url":"https://avwikidb.com/actor/1051459/"}]}</script>
 </head><body><a href="/actor/1046723/">皆月ひかる</a></body></html>"""
+
+
+def javdb_search(*cards: tuple[str, str, str]) -> str:
+    """javdb 演员搜索结果：每张卡 (id, 标题一栏, 记录类型)。按 2026-09-12 缓存的搜索页裁剪。"""
+    boxes = "".join(
+        f'<div class="box actor-box"><a href="/actors/{actor}" title="{title}">'
+        f'<figure class="image"><img class="avatar" src="https://c0.jdbstatic.com/x.jpg" />'
+        + (f'<span class="info">{record}</span>' if record else "")
+        + f"</figure><strong>{title.split(',')[0]}</strong></a></div>"
+        for actor, title, record in cards)
+    return f'<html><body><div id="actors" class="actors">{boxes}</div></body></html>'
 
 
 def avwikidb_works(movies: list[dict]) -> str:
@@ -245,6 +257,7 @@ class Case(unittest.TestCase):
             minnano_av.search_url("美ノ嶋めぐり"): (200, MINNANO_SEARCH),
             MINNANO_URL: (200, MINNANO_PROFILE)})
         self.avwikidb = Transport({WORK_URL: (200, AVWIKIDB_WORK), ACTOR_URL: (200, AVWIKIDB_ACTOR)})
+        self.javdb = Transport({}, empty_search=javdb_search())
 
     def entity(self, name: str, *aliases: str) -> int:
         with self.database.write_transaction(notify=False) as connection:
@@ -291,7 +304,10 @@ class Case(unittest.TestCase):
                     max_age=followup.REFRESH),
                 followup.AVWIKIDB: alias.MinnanoPages(
                     cache / "avwikidb", self.cooldown, self.avwikidb, limiter=NoWait(),
-                    source=followup.AVWIKIDB, max_age=followup.REFRESH)}
+                    source=followup.AVWIKIDB, max_age=followup.REFRESH),
+                followup.JAVDB: alias.MinnanoPages(
+                    cache / "javdb", self.cooldown, self.javdb, limiter=NoWait(),
+                    max_requests=alias.MAX_KEYS, source=followup.JAVDB, max_age=followup.REFRESH)}
 
     def run_followup(self, entity_id: int, run_id: int = 7) -> dict:
         handle = SimpleNamespace(run_id=run_id, progress=lambda **_kwargs: None)
@@ -343,7 +359,7 @@ class MinnanoLandingTests(Case):
         summary = self.run_followup(other)
         self.assertIsNone(self.profile(other))
         self.assertTrue(summary["sites"][followup.MINNANO].startswith(followup.MISS))
-        self.assertEqual(summary["outcome"], "两站都没对上她")
+        self.assertEqual(summary["outcome"], "哪一站都没对上她")
 
     def test_a_hand_written_row_is_left_alone(self):
         meguri = self.entity("美ノ嶋めぐり")
@@ -480,6 +496,84 @@ class AvwikidbTests(Case):
         self.work(5, fc2, code="FC2-PPV-1234567")
         with self.database.read_connection() as connection:
             self.assertEqual(followup.work_codes(connection, fc2), [])
+
+
+class JavdbTests(Case):
+    def setUp(self):
+        super().setUp()
+        self.meguri = self.entity("美ノ嶋めぐり")
+        self.work(1, self.meguri)
+        self.ref(self.meguri, alias.MINNANO, "387589")
+
+    def search(self, name: str, *cards: tuple[str, str, str], status: int = 200) -> None:
+        self.javdb.pages[javdb.SEARCH.format(quote(name))] = (status, javdb_search(*cards))
+
+    def javdb_ids(self, entity_id: int) -> list[tuple[str, dict]]:
+        with self.database.read_connection() as connection:
+            return [(str(row[0]), json.loads(row[1] or "{}")) for row in connection.execute(
+                "SELECT external_id,metadata_json FROM entity_external_ref"
+                " WHERE entity_id=? AND provider=? ORDER BY external_id",
+                (entity_id, followup.JAVDB))]
+
+    def test_her_censored_and_uncensored_records_are_both_bound(self):
+        """有碼、無碼两条是同一个人；名字对不上的近似结果不算。"""
+        self.search("美ノ嶋めぐり", ("Ab12", "美ノ嶋めぐり, 中村めぐり", ""),
+                    ("Cd34", "美ノ嶋めぐり", "無碼"), ("Zz99", "美嶋めぐみ", ""))
+        summary = self.run_followup(self.meguri, run_id=4)
+        found = self.javdb_ids(self.meguri)
+        self.assertEqual([number for number, _metadata in found], ["Ab12", "Cd34"])
+        self.assertEqual({metadata["batch"] for _number, metadata in found}, {f"{followup.SOURCE}@4"})
+        self.assertIn("javdb 绑定", summary["outcome"])
+
+    def test_two_people_sharing_her_name_are_left_unbound(self):
+        self.search("美ノ嶋めぐり", ("Ab12", "美ノ嶋めぐり", ""), ("Ef56", "美ノ嶋めぐり", ""))
+        summary = self.run_followup(self.meguri)
+        self.assertEqual(self.javdb_ids(self.meguri), [])
+        self.assertTrue(summary["sites"][followup.JAVDB].startswith(followup.MISS))
+        self.assertIn("Ab12、Ef56", summary["sites"][followup.JAVDB])
+
+    def test_japanese_glyphs_on_the_card_match_her_simplified_name(self):
+        reiko = self.entity("泽村玲子")
+        self.work(2, reiko)
+        self.ref(reiko, alias.MINNANO, "5555")
+        self.search("泽村玲子", ("Gh78", "澤村玲子", ""))
+        self.run_followup(reiko)
+        self.assertEqual([number for number, _metadata in self.javdb_ids(reiko)], ["Gh78"])
+
+    def test_a_performer_without_a_jav_directory_id_is_not_searched(self):
+        creator = self.entity("145cm色白お嬢様")
+        self.work(3, creator)
+        summary = self.run_followup(creator)
+        self.assertEqual(self.javdb.calls, [])
+        self.assertEqual(summary["sites"][followup.JAVDB], "不查：JAV 目录站里没有她")
+
+    def test_a_bound_id_is_not_searched_again(self):
+        self.ref(self.meguri, followup.JAVDB, "Ab12")
+        self.run_followup(self.meguri)
+        self.assertEqual(self.javdb.calls, [])
+
+    def test_a_login_page_is_unfetched_and_asked_again_next_round(self):
+        """回 200 的登入页不是「站上没有她」：不结算，缓存也不留。"""
+        url = javdb.SEARCH.format(quote("美ノ嶋めぐり"))
+        self.javdb.pages[url] = (200, "<html><head><title>登入 | JavDB</title></head></html>")
+        summary = self.run_followup(self.meguri)
+        self.assertTrue(summary["sites"][followup.JAVDB].startswith(followup.UNFETCHED))
+        self.search("美ノ嶋めぐり", ("Ab12", "美ノ嶋めぐり", ""))
+        self.run_followup(self.meguri)
+        self.assertEqual([number for number, _metadata in self.javdb_ids(self.meguri)], ["Ab12"])
+
+    def test_searches_that_all_fail_are_unfetched_not_a_miss(self):
+        self.search("美ノ嶋めぐり", status=500)
+        summary = self.run_followup(self.meguri)
+        self.assertTrue(summary["sites"][followup.JAVDB].startswith(followup.UNFETCHED))
+        self.assertNotIn(followup.JAVDB, {row["site"] for row in self.review()})
+
+    def test_a_refusal_pauses_javdb_and_binds_nothing(self):
+        self.search("美ノ嶋めぐり", status=403)
+        summary = self.run_followup(self.meguri)
+        self.assertTrue(summary["sites"][followup.JAVDB].startswith(followup.UNFETCHED))
+        self.assertTrue(paused_until(self.cooldown, followup.JAVDB))
+        self.assertEqual(self.javdb_ids(self.meguri), [])
 
 
 def load_revert():
