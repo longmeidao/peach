@@ -14,7 +14,8 @@
 
 人批准过的标签上按并集补进来的那几个，`asset_tag.source` 与 `asset_entity.source` 都是批次号
 `auto:metadata-tags@<时间>`。撤回删掉这几行标签，并把对应决定 note 里补标签时追加的
-`refreshed_candidate_key`、`added_tags` 去掉，那一行重新过期、回到复核页；同样先改判据再撤。
+`refreshed_candidate_key`、`added_tags` 去掉，那一行重新过期、回到复核页；生词收录后补的
+那几个（ADR-0082）连同 `collected_genres` 一起去掉，下一轮按那时的收录结果重补。同样先改判据再撤。
 
 撤回是删除，不是恢复旧值：补厂牌后继只在盘上一张图都没有、账本里一条官网都没有时才写，
 补别名后继只写账本里还没有的写法，补女优资料后继只写自动来源的那一行，补样张后继只给还没有
@@ -188,7 +189,7 @@ def planned_tags(connection, source: str, batch: str) -> list[dict]:
 
 
 def reopen_extended_decisions(connection, item_keys: set[str]) -> int:
-    """并集补标签的那几行决定去掉补标签时追加的两项，其余原样，返回改了几行。"""
+    """并集补标签的那几行决定去掉补标签时追加的几项，其余原样，返回改了几行。"""
     changed = 0
     for item_key in sorted(key for key in item_keys if key):
         row = connection.execute(
@@ -201,7 +202,7 @@ def reopen_extended_decisions(connection, item_keys: set[str]) -> int:
         if not isinstance(note, dict) or "added_tags" not in note:
             continue
         kept = {key: value for key, value in note.items()
-                if key not in {"added_tags", "refreshed_candidate_key"}}
+                if key not in {"added_tags", "refreshed_candidate_key", "collected_genres"}}
         connection.execute(
             "UPDATE review_decision SET note=? WHERE category='metadata_fields' AND item_key=?",
             (json.dumps(kept, ensure_ascii=False, separators=(",", ":")), item_key))

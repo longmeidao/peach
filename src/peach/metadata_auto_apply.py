@@ -21,6 +21,7 @@ from .catalog_rules import (
     code_release_date,
     current_tags,
     fill_masked_title,
+    is_jav_code,
     is_korean_mib_code,
     normalise_code_key,
     release_code_from_filename,
@@ -740,10 +741,39 @@ def _filename_carries_code(code: str, name: str) -> bool:
     return bool(parsed) and same_release_code(code, parsed)
 
 
+#: 目录名兜底要求文件名带着的那段数字至少几位。`WX-17` 这种两位序号在文件名里太常见，
+#: 碰巧撞上的余地大；三位起才算得上文件自己的身份。
+_FOLDER_DIGITS_MIN = 3
+
+
+def _folder_carries_code(code: str, target) -> bool:
+    """文件名读不出番号时，这个文件的直接父目录能不能替它认出这个番号（ADR-0082）。
+
+    三项同时成立：番号是明确的番号形态（`is_jav_code`）；父目录名逐字写着完整番号，
+    不对目录名跑番号解析——`[mtfdz.club]WX17.3` 这类合集名解析出来的 `WX-017` 正是要
+    防的那种；文件名里单独出现番号最长的那段数字，至少三位，并列时取最后一段。
+    `1pondo-123118.mp4` 放在 `123118_001` 目录下可过：目录名写着番号，文件名写着日期。
+
+    路径按反斜杠和斜杠一起切：账本存 `R:\\...` 形态，测试夹具里是 POSIX 形态。
+    """
+    if not is_jav_code(code):
+        return False
+    parts = re.split(r"[\\/]", str(target["path"] or ""))
+    if len(parts) < 2 or code.casefold() not in parts[-2].casefold():
+        return False
+    runs = re.findall(r"\d+", code)
+    digits = max(reversed(runs), key=len, default="")
+    if len(digits) < _FOLDER_DIGITS_MIN:
+        return False
+    return bool(re.search(rf"(?<!\d){digits}(?!\d)", str(target["name"] or "")))
+
+
 def _group_identifies_code(code: str, targets) -> bool:
     """这一组资产是不是这个番号的片。
 
     要求这组里**有**文件名认得出这个番号的，而认不出的那些也没有指向别的番号。
+    整组文件名一个番号都读不出时，退一步看父目录（`_folder_carries_code`）；组里只要有
+    一个文件名读得出番号，不论是不是这一个，都不看目录。
 
     盗版包会往同一个番号目录里塞推广片：`259LUXU-902` 名下两条正片各 985 MB 和
     2714 MB，旁边躺着 `免费手机看片.avi`（4.4 MB／26 秒）、`線上影片每天火熱更新中.avi`
@@ -755,7 +785,9 @@ def _group_identifies_code(code: str, targets) -> bool:
     """
     names = [str(target["name"] or "") for target in targets]
     if not any(_filename_carries_code(code, name) for name in names):
-        return False
+        if any(release_code_from_filename(name) for name in names):
+            return False
+        return any(_folder_carries_code(code, target) for target in targets)
     return not any(
         (parsed := release_code_from_filename(name)) and not same_release_code(code, parsed)
         for name in names if not _filename_carries_code(code, name))
@@ -805,7 +837,8 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
        取值直接替换现值。发行方自己那页就是这部片的出处，账本里那个来路不明的旧值
        没有理由压住它；用户改过的格子归属受保护，仍然不碰；
     3. 该番号名下有资产的文件名认得出这个番号，认不出的那些也没有指向别的番号
-       （`_group_identifies_code`）——逐字出现，或按编目规则解析出来就是它。
+       （`_group_identifies_code`）——逐字出现，或按编目规则解析出来就是它；整组文件名
+       都读不出番号时，父目录逐字写着番号、文件名带着番号里三位以上那段数字也算。
        `MEYD911.mp4` 只差一个连字符，逐字比对认不出，而它就是 `MEYD-911`；本机
        2611 条有番号的视频里这样的有 297 条。
 
@@ -859,7 +892,7 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     # 官网时才放行：官网按番号列出的就是这部片本身。
     if is_korean_mib_code(code) and not _only_mib_official(row):
         return None
-    targets = _codes_matching(connection, [code, query], "code,name,field_owners")
+    targets = _codes_matching(connection, [code, query], "code,name,path,field_owners")
     if not targets:
         return None
     if not _group_identifies_code(code, targets):
@@ -1173,28 +1206,36 @@ UNION_TAGS_SOURCE = "auto:metadata-tags"
 
 
 def _extend_approved_tags(connection, row: dict, candidate: dict, batch: str,
-                          now: str) -> list[str]:
-    """人批准过的标签，重判出的这一套只增不减时，把新增的那几个补进账本。
+                          now: str, only: set[str] | None = None) -> list[str] | None:
+    """把这条候选里账本还没有的标签补进去，已有的一个不删（ADR-0082）。
 
-    返回补进去的标签名；有减少、有替换、账本里还一个标签都没有，或落库的闸不过，都返回
-    空表，什么都不写。比较用落库那一刻的名字（按现在的词表换过名），账本那一侧取的是
-    这组资产此刻挂着的全部标签，不分来源：人手加的也算在人的判断里。已有的行一行不动，
+    返回补进去的标签名；候选全在账本里时返回空表，什么都不写。账本里还一个标签都没有，
+    或落库的闸不过，返回 None：那不是「没有要补的」，是这条路走不通。`only` 给出时只补
+    其中的名字（按规范化名比）：生词收录那一条只该补那个词收录出的标签，账本少的其余几个
+    可能是用户手删的。
+
+    比较用落库那一刻的名字（按现在的词表换过名，停用的 `乳系` 这时已经丢掉），账本那一侧
+    取的是这组资产此刻挂着的全部标签，不分来源：人手加的也算在人的判断里。候选比账本
+    少的那几个照旧挂着——人批准过它们，来源这一次没给不等于人判错了。已有的行一行不动，
     只插新增的，归属是 `batch`。
     """
     raw_tags = candidate.get("value")
     if not isinstance(raw_tags, list):
-        return []
+        return None
     try:
         written = current_tags(_approved_entity_name(tag, "tag") for tag in raw_tags)
         asset_ids, _source, confidence, metadata = _landing_scope(connection, row, candidate)
     except ValueError:
-        return []
+        return None
     marks = ",".join("?" * len(asset_ids))
     have = {normalize_entity_name(str(name)) for (name,) in connection.execute(
         "SELECT e.canonical_name FROM asset_entity ae JOIN entity e ON e.id=ae.entity_id"
         f" WHERE ae.asset_id IN ({marks}) AND ae.role='tag'", asset_ids)}
-    added = [tag for tag in written if normalize_entity_name(tag) not in have]
-    if not have or not added or not have <= {normalize_entity_name(tag) for tag in written}:
+    if not have:
+        return None
+    added = [tag for tag in written if normalize_entity_name(tag) not in have
+             and (only is None or normalize_entity_name(tag) in only)]
+    if not added:
         return []
     metadata = {**metadata, "batch": batch}
     for asset_id in asset_ids:
@@ -1230,8 +1271,9 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
     「这个值是谁写的、凭什么」——留痕才是那条规则真正要保住的东西。
 
     已有决定的行不重判，过期的除外（`_decision_reopens`）；过期批准重判之后值不变的只
-    追加一项留痕，人批准过的标签只增不减的按并集补上，其余要改值而原决定是人批准的
-    交回人（`_reopened_approval`）。落不下去的
+    追加一项留痕，人批准过的标签按并集补上新增、一个不删，其余要改值而原决定是人批准的
+    交回人（`_reopened_approval`）。自动落库时留下生词的那一行，词收录了就把收录出的
+    标签按并集补上（`_land_collected_genres`，ADR-0082）。落不下去的
     FC2 出演者行里一个艺名都没有的，写一条 `rejected`（`fc2_descriptive_rejection`，
     ADR-0079），其余照旧留给人。
 
@@ -1271,26 +1313,25 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                     continue
                 row["candidates"] = _row_candidates(row, genres)
                 prior = decided.get(item_key)
+                landed = _land_collected_genres(
+                    connection, item_key, prior, row, genres, batch=union_batch, now=now)
+                if landed:
+                    applied.append({"item_key": item_key, "field": row.get("field"),
+                                    "value": "、".join(landed), "assets": None})
+                    continue
+                if landed is not None:
+                    refreshed += 1
+                    continue
                 if prior is not None and not _decision_reopens(prior, row["candidates"]):
                     continue
                 candidate = metadata_auto_apply_candidate(
                     connection, row, snapshot_root=snapshot_root)
                 if candidate is None:
-                    # 自动否决只替换自动写下的决定：人批准过的那一行，候选变了也交回人。
-                    rejection = (fc2_descriptive_rejection(
-                        connection, row, snapshot_root=snapshot_root)
-                        if prior is None or _is_automatic(prior) else None)
-                    if rejection is None:
+                    if _write_fc2_rejection(connection, item_key, prior, row,
+                                            snapshot_root=snapshot_root, now=now):
+                        rejected += 1
+                    else:
                         skipped += 1
-                        continue
-                    connection.execute(
-                        "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
-                        "VALUES('metadata_fields',?,'rejected',?,?) "
-                        "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,"
-                        "note=excluded.note,updated_at=excluded.updated_at",
-                        (item_key, json.dumps(rejection, ensure_ascii=False,
-                                              separators=(",", ":")), now))
-                    rejected += 1
                     continue
                 outcome, added = ((None, []) if prior is None else _reopened_approval(
                     connection, item_key, prior, row, candidate, batch=union_batch, now=now))
@@ -1358,9 +1399,10 @@ def _reopened_approval(connection, item_key: str, decision: dict, row: dict,
 
     - `refreshed`：候选与账本现值是同一件事。真相字段不写，原决定的 status、
       updated_at 与 note 原有各项都不动，只在 note 里追加 `refreshed_candidate_key`，
-      让 `metadata_decision_is_stale` 认得这一行已经对过；
-    - `extended`：人批准过的标签，重判出的这一套只增不减。按并集补上新增的那几个
-      （`_extend_approved_tags`），算补空，不改人批准过的任何一个；note 同样只追加
+      让 `metadata_decision_is_stale` 认得这一行已经对过。人批准过的标签，候选全在
+      账本里（只是少了几个）也算这一种；
+    - `extended`：人批准过的标签，重判出的这一套有账本没有的。按并集补上新增的那几个
+      （`_extend_approved_tags`，ADR-0082），算补空，人批准过的一个不删；note 同样只追加
       `refreshed_candidate_key`，再加 `added_tags`；
     - `left`：会改变现值，而原决定是人批准的。不覆盖人的判断（ADR-0052），留在
       复核页交人；
@@ -1376,9 +1418,10 @@ def _reopened_approval(connection, item_key: str, decision: dict, row: dict,
         outcome = "refreshed"
     elif _is_automatic(decision):
         return None, []
-    elif field == "tags" and (added := _extend_approved_tags(
-            connection, row, candidate, batch, now)):
-        outcome = "extended"
+    elif field == "tags" and (grown := _extend_approved_tags(
+            connection, row, candidate, batch, now)) is not None:
+        added = grown
+        outcome = "extended" if added else "refreshed"
     else:
         return "left", []
     note = {**_decision_note(decision),
@@ -1388,6 +1431,100 @@ def _reopened_approval(connection, item_key: str, decision: dict, row: dict,
         "UPDATE review_decision SET note=? WHERE category='metadata_fields' AND item_key=?",
         (json.dumps(note, ensure_ascii=False, separators=(",", ":")), item_key))
     return outcome, added
+
+
+def genres_still_pending(genre_decisions: dict, decision: dict) -> bool:
+    """这条自动落库是不是还留着没人收录的 genre（ADR-0038）。
+
+    标签候选里认得出的那些已经落库了，`pending_genres` 记的是三张表都不认的词。
+    这一行重新摆回队列不是为了再判一次标签，是为了判那几个词——所以判据只看词，
+    收录一个就少一个，全收录完这一行就自己消失。
+
+    静态表也要重查：`genre_taxonomy` 随代码一直在补，落库那一刻不认的词，今天可能
+    已经在表里了（`_fold_genre_decisions` 的同一条理由）。
+    """
+    return any(resolve_genre(str(genre), genre_decisions) == UNMAPPED
+               for genre in _decision_note(decision).get("pending_genres") or [])
+
+
+def _write_fc2_rejection(connection, item_key: str, prior: dict | None, row: dict, *,
+                         snapshot_root, now: str) -> bool:
+    """落不下去的这一行按 `fc2_descriptive_rejection` 该否决时写下否决，返回写没写。
+
+    自动否决只替换自动写下的决定：人批准过的那一行，候选变了也交回人。
+    """
+    if prior is not None and not _is_automatic(prior):
+        return False
+    rejection = fc2_descriptive_rejection(connection, row, snapshot_root=snapshot_root)
+    if rejection is None:
+        return False
+    connection.execute(
+        "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+        "VALUES('metadata_fields',?,'rejected',?,?) "
+        "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,"
+        "note=excluded.note,updated_at=excluded.updated_at",
+        (item_key, json.dumps(rejection, ensure_ascii=False, separators=(",", ":")), now))
+    return True
+
+
+def _newly_collected_genres(decision: dict | None, note: dict,
+                            genre_decisions: dict) -> list[str]:
+    """自动落库留下的生词里，已经有了去向、还没补过标签的那几个。
+
+    只看自动落库的批准：`pending_genres` 只有它会写，人批准的行不归这里补。
+    """
+    if (str((decision or {}).get("status") or "").strip() != "approved"
+            or note.get("auto_applied") is not True):
+        return []
+    collected = {str(word) for word in note.get("collected_genres") or []}
+    return [str(word) for word in note.get("pending_genres") or []
+            if str(word) not in collected
+            and resolve_genre(str(word), genre_decisions) != UNMAPPED]
+
+
+def _approved_candidate(note: dict, row: dict) -> dict | None:
+    """这一行现存候选里，决定当时落的那一条（按 `candidate_key` 或重判追加的那一项认）。"""
+    keys = {str(note.get(key) or "").strip()
+            for key in ("candidate_key", "refreshed_candidate_key")} - {""}
+    return next((c for c in row.get("candidates") or []
+                 if str(c.get("candidate_key") or "").strip() in keys), None)
+
+
+def _land_collected_genres(connection, item_key: str, decision: dict | None, row: dict,
+                           genre_decisions: dict, *, batch: str, now: str) -> list[str] | None:
+    """自动落库时留下生词的那一行，词收录了之后把收录出的标签补进账本（ADR-0082）。
+
+    返回补进去的标签名（词收成非内容、或标签账本里早有时是空表）；这一行不归这里管时
+    返回 None。只管 note 带 `pending_genres`、其中有词已经有了去向却还没补过的自动落库。
+
+    不走整套重落：标签落过一次，现值就不空了，而非官方来源（javbus 这类）不能改非空
+    的现值——整套重落的路对它们一条都走不通，收录出的标签就只在页面上消失、不进账本。
+    这里用落库时那条候选（按 `candidate_key` 认，genre 已按现在的决定折过）走并集那一条，
+    只插账本没有的，归属是 `batch`，与人批准标签的并集补齐同一套撤回口径。
+
+    `pending_genres` 原样留着，复核页按现在的决定逐个重查（`genres_still_pending`）；
+    补过的词记进 `collected_genres`，补进去的标签累加进 `added_tags`。撤回脚本去掉这两项
+    之后，下一轮按那时的收录结果重补一次。
+    """
+    note = _decision_note(decision or {})
+    newly = _newly_collected_genres(decision, note, genre_decisions)
+    candidate = _approved_candidate(note, row) if newly else None
+    if candidate is None:
+        return None
+    resolved = [resolve_genre(word, genre_decisions) for word in newly]
+    wanted = {normalize_entity_name(tag) for tag in current_tags(tag for tag in resolved if tag)}
+    added = _extend_approved_tags(connection, row, candidate, batch, now, only=wanted)
+    if added is None:
+        return None
+    done = {*map(str, note.get("collected_genres") or []), *newly}
+    note = {**note, "collected_genres": [str(word) for word in note["pending_genres"]
+                                         if str(word) in done]}
+    if added:
+        note["added_tags"] = list(dict.fromkeys([*note.get("added_tags", []), *added]))
+    connection.execute(
+        "UPDATE review_decision SET note=? WHERE category='metadata_fields' AND item_key=?",
+        (json.dumps(note, ensure_ascii=False, separators=(",", ":")), item_key))
+    return added
 
 
 def _decision_reopens(decision: dict, candidates: list[dict]) -> bool:
