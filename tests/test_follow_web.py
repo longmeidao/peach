@@ -3108,7 +3108,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn('<DataTableFrame follow>', sources)
         # 整屏只有「检查全部」一枚主动作，行内动作都不借它的蓝；画出来几枚图标键、
         # 分别叫什么，由 `frontend/test/react/follow-manage.test.tsx` 在渲染结果上判。
-        self.assertEqual(sources.count('variant="primary"'), 1)
+        # 空态里那枚「添加关注」链接画在没有工具条的那一屏上，两枚不同屏，也由那份用例判。
+        self.assertEqual(sources.count('<Button variant="primary"'), 1)
         self.assertIn('<Button variant="secondary" size="small" aria-expanded={open}', sources)
         # 三处分层与分隔线各有自己的规则。这里只认规则还在：把整段声明逐字比一遍的话，
         # 样式表换一次缩进就红，而那正是格式化工具随时会做的事。

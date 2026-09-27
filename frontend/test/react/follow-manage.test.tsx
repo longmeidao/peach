@@ -513,6 +513,15 @@ it('一条来源都没有时说清这里会显示什么', async () => {
   expect(host.textContent).toContain('关注来源及其检查状态会显示在这里。');
 });
 
+it('一条来源都没有时空态给出添加关注的去处', async () => {
+  const { host } = await open({ data: follow({ sources: [] }) });
+  const empty = host.querySelector('[data-empty-state]')!;
+  const link = empty.querySelector('a[href="/follow-manage?tab=add"]');
+  expect(link?.textContent).toBe('添加关注');
+  // 这一屏的主动作就是它：工具条和「检查全部」只在有来源时才画。
+  expect(buttonNamed('检查全部', host)).toBeNull();
+});
+
 // ── 页签与只读 ──────────────────────────────────────────────────────────────
 
 it('各栏按做事的先后排，缺凭据的数挂在最后一栏上', async () => {
