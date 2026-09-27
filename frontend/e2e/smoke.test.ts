@@ -92,6 +92,11 @@ const ROUTES: readonly Route[] = [
       page.locator('#stats section[aria-label="媒体修复"]')],
   },
   {
+    // 演示库里没有垃圾候选，等到的是 `junk-queue` 的空态标题；壳铺的骨架只有卡片占位。
+    path: '/junk-files',
+    body: (page) => [heading(page, '#main', '垃圾文件'), heading(page, '#grid', '没有待判断的垃圾文件')],
+  },
+  {
     // 骨架只写「正在比对重复内容」；汇总块上那一格「重复内容」有没有重复组都会画，只有真页面有。
     path: '/duplicates',
     body: (page) => [heading(page, '#main', '重复文件'), page.locator('#stats').getByText('重复内容', { exact: true })],

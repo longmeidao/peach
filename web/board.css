@@ -373,7 +373,7 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
 .configfieldset.configfieldset:not([data-fieldset-type])>.geist-fieldset-footer,.cleanupfieldset.cleanupfieldset>.geist-fieldset-footer{background:var(--board-card-foot)}
 .followmanage .fmain>.fsec>.frows{padding:8px 24px}
 @media(max-width:760px){.followmanage .fmain>.fsec>.fsechead{padding:16px}.followmanage .fmain>.fsec>.frows{padding:8px 16px}}
-.gridstack .card:not(.junkcard) .pic{border-radius:var(--surface-radius);overflow:hidden}
+.gridstack .card .pic{border-radius:var(--surface-radius);overflow:hidden}
 .top{isolation:isolate}
 body.board-scrolled .top{box-shadow:none;border-bottom:0}
 /* 吸顶那一刻这块板离开纸面往上抬一档，三层影跟着加重：它盖住内容滚过去，两层之间
@@ -396,7 +396,7 @@ body{background:var(--page)}
 .stats>section,.stats>.fieldset,.fieldset{border-radius:var(--surface-radius)}
 .settingscard,.drawer{box-shadow:0 12px 40px light-dark(#0000000d,#00000080)}
 .settingscard{border:1px solid var(--line)}
-.gridstack .card:not(.junkcard){background:transparent}
+.gridstack .card{background:transparent}
 /* 强调档不写在这一段：它那一面连同悬停归 `body :is(…).primary` 一处。在这里再写一份
    的话，静止那条会被后面那条压掉、悬停那条却比它重一个类，一颗按钮的静止和悬停就由
    两处规则分别给出。 */
@@ -1335,7 +1335,6 @@ body [data-skeleton-action][data-skeleton-action]:disabled{background:var(--surf
 body [data-skeleton-action][data-skeleton-action]:disabled::before{display:none}
 body [data-split-button]>[data-skeleton-action][data-skeleton-action]:disabled{box-shadow:none}
 [data-split-button]:has(>[data-skeleton-action]:disabled){--split-seam:var(--border-15);box-shadow:0 0 0 1px var(--border-15)}
-body .junkactions button:not(.danger){height:36px;border:1px solid var(--color-border-button-default);border-radius:10px;padding:8px 12px;background:var(--color-background-primary-default);color:var(--ink);box-shadow:var(--elevation-xs);font:var(--board-body-medium)}
 body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
 .reviewcontrols{border:0;border-radius:20px}.batchbar{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
@@ -1618,24 +1617,16 @@ body[data-surface="/quality-goals"] .qualityitem{display:grid;grid-template-colu
 body[data-surface="/quality-goals"] .qualitycover{position:relative;display:grid;place-items:center;grid-row:1 / span 2;width:150px;aspect-ratio:16/10;border-radius:var(--control-radius);background:var(--color-background-tertiary-default)}
 .qualitybody{padding:4px 4px 0;min-width:0}
 .qualityactions{display:flex;justify-content:flex-end;padding:8px 4px 0;background:transparent}
-/* 垃圾文件的计数行装着两块整宽的面：上面是「待判断 N 个」那块摘要，下面是分类切换。
-   这一行仍按目录页的横排走的话，`width:100%` 的摘要把后面那条挤到 0 宽，而它自己
-   `min-width:0` 又带横向滚动，于是宽屏上分类切换整条看不见，只剩一块摘要贴着网格。 */
+/* 垃圾文件的计数行只装 `junk-queue` 的那一格：摘要面在上、分类条在下，两块的版式在
+   island 自己的样式表里。这一行按目录页的横排走的话那一格只有内容宽，这里竖排、拉满。 */
 body[data-surface="/junk-files"] #count{flex-direction:column;align-items:stretch;gap:16px;padding-inline:0}
-body[data-surface="/junk-files"] .junksummary{width:100%}
-body[data-surface="/junk-files"] .collection-summary{margin:0}
-body[data-surface="/junk-files"] .junkfilters{width:100%;padding:12px;gap:8px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
 /* 它是数据管理的子页：摘要、分类条、网格和加载哨兵跟标题、面包屑、区块切换条同宽。
    只有网格那一支铺满内容区时，宽屏上标题居中缩在中间、卡片顶着两边，同一页有两条
    对不上的左边界。 */
 body[data-surface="/junk-files"] :is(#count,#grid,#loadSentinel){width:100%;max-width:var(--board-content);margin-inline:auto}
 body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack>.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
-body[data-surface="/junk-files"] .gridstack .card{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden;gap:0}
 body[data-surface="/trash"] #manageLede{padding:20px 24px;background:var(--color-background-primary-default);border-radius:var(--surface-radius);gap:16px;flex-wrap:wrap}
 body[data-surface="/trash"] #manageLede>span{font:var(--board-heading)}
-html:not(.dark) body[data-surface="/junk-files"] .junkfilters{background:var(--color-background-secondary-default)}
-body[data-surface="/junk-files"] .junkmeta{padding:20px}
-body[data-surface="/junk-files"] .junkactions{padding:12px;background:var(--color-background-secondary-default);flex-wrap:wrap}
 @media(max-width:900px){
  body[data-surface="/review"] .review-workspace{grid-template-columns:1fr}
  body[data-surface="/review"] .review-workspace>.reviewcontrols{position:static;grid-column:1;grid-row:auto!important;margin-bottom:16px}

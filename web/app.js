@@ -15,10 +15,11 @@ import { followStack } from './js/stack-cards.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, updateIsland, islandMounted, paginationHtml, pageCount, clampPage, preferredDirection, showToast } from './dist/peach-ui.js';
+import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   dissolveValue, popBadges, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
@@ -68,7 +69,9 @@ let barsRendered='';
 /* 侧栏「更多」摊开时要照最新那份 facets 重画那一列。挂在 buildBars 的闭包上就只能是
    画那一遍时的那份——中途改过筛选，摊开看到的是一列旧数字。 */
 let barsFacets=null,barsScopedCreators=[];
-let adsBatch=null,loadRequestSeq=0,listLoading=false;
+let loadRequestSeq=0;
+// `#grid` 上此刻挂的是哪一个 island：目录与回收站的 `catalog-grid`，或垃圾文件的 `junk-queue`。
+let gridIsland='';
 let followData=null,followFilter='',followBusy=false;
 /* 值是天数，`0` 表示不限。选项文本自己说清量的是时间：这一行不挂文字标签，收起时
    框里只剩当前这一项，「全部」放在时钟图标旁边读不出是全部什么。 */
@@ -255,35 +258,30 @@ function wireCountRow(){
    `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
    `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
    同理不动——它们本来就不随这次请求变。 */
-/* 壳自己画的那几屏（骨架、垃圾文件队列）把卡片写进 `#grid > .grid`，续页追加在最后
-   一段里。目录与回收站的作品卡归 `catalog-grid` island。 */
-const lastGridSection=()=>{
-  const grid=$('#grid'),last=grid.lastElementChild;
-  if(last&&last.classList.contains('grid'))return last;
-  const section=document.createElement('div');section.className='grid';grid.append(section);return section};
-/* 占位换成真内容时走交叉淡入：骨架淡出糊掉、内容同时清晰起来。骨架换骨架、内容换
-   内容（翻页、换筛选）不走这条——`revealSkeleton` 自己看出去的那一屏里有没有占位。 */
+/* 网格还没挂上 island 时，壳把骨架写进 `#grid > .grid`。卡片都归 island：目录与回收站是
+   `catalog-grid`，垃圾文件是 `junk-queue`。骨架换骨架时 `revealSkeleton` 不播交叉淡入，
+   它自己看出去的那一屏里有没有占位。 */
 const setGridCards=html=>revealSkeleton($('#grid'),()=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`});
-const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
-/* 「本页有哪些卡」，Shift 连选按这个顺序：垃圾文件的卡、目录与资料页网格里的作品卡。竖屏带
+/* 「本页有哪些卡」，Shift 连选按这个顺序：目录、垃圾文件与资料页网格里的卡。竖屏带
    和接着看那一排不在其中，它们不在网格的分段里。 */
 const gridCards=()=>document.querySelectorAll(
-  '#grid > .grid > .card[data-id],:is(#grid,#index [data-entity-grid]) [data-media-grid] > [data-media-card][data-id]');
+  ':is(#grid,#index [data-entity-grid]) [data-media-grid] > [data-media-card][data-id]');
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
   count.setAttribute('aria-label',label);
   /* 垃圾文件那一屏的计数行是自己的：一块摘要面加一条分类切换，没有排序也没有换批。
      照目录那条画的话，等待期间摆着一排这一页根本没有的排序键，数据到货整行再换成
-     另一种东西。版式类平时由 loadJunk() 写，深链冷启动时骨架排在它前面，这里一并带上。 */
+     另一种东西。这一版是 `junk-queue` island 等数据时那一版的静态副本，island 挂上就换掉它；
+     骨架里的分类链接是真的 `<a href>`，React 包没到时点下去照常换页。 */
   const junk=decodeURIComponent(location.pathname)==='/junk-files';
   count.classList.toggle('manage-static',junk);
   count.classList.toggle('junkcount',junk);
   // 回收站的计数挂在说明行上，这一行只剩「清空回收站」，没有会变的数字可占位。
   count.innerHTML=state&&state.state==='trash'?''
-    :junk?junkNavigationHtml(null)
+    :junk?junkCountSkeletonHtml(junkRoute(location.search))
     :`<span class="mono"><span class="countskeleton"></span></span>`+countSortsHtml();
-  if(junk)wireJunkNavigation();else wireCountRow();
+  if(!junk)wireCountRow();
   /* 骨架一铺上去就得把底部那颗 Loading Dots 收掉。骨架说的是「等下会出现几张什么
      形状的卡」，dots 说的是「上面已经有内容，还在往下接」；两段同时在场时一屏里
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
@@ -1213,17 +1211,6 @@ const seededSample=(rows,count,seed,key=row=>row.k)=>{
   return rows.filter(row=>picked.has(key(row)));
 };
 const initialParams=new URLSearchParams(location.search);
-const JUNK_KIND_OPTIONS=[['','全部','layout-grid'],['video','视频','play'],['image','图片','pics'],
-  ['archive','压缩包','file-archive'],['audio','音频','file-audio'],['url','网址','globe'],
-  ['other','其它','hard-drive']];
-const cleanJunkKind=value=>JUNK_KIND_OPTIONS.some(([key])=>key===value)?value:'';
-let junkKind=cleanJunkKind(initialParams.get('type')||'');
-let junkView=initialParams.get('view')==='dismissed'?'dismissed':'pending';
-function junkPath(kind=junkKind,view=junkView){
-  const params=new URLSearchParams();
-  if(kind)params.set('type',kind);if(view==='dismissed')params.set('view','dismissed');
-  return '/junk-files'+(params.size?'?'+params:'');
-}
 const cleanTagFilter=value=>String(value||'').split(',').filter(tag=>tag&&!DURATION_TAGS.has(tag)).join(',');
 const cleanSort=(value,fallback=appSettings.defaultSort)=>SORT_KEYS.includes(value)?value:fallback;
 /* 列和方向一次解出来：旧键自带方向，`dir` 显式写了就听它的，随机没有方向。 */
@@ -1513,7 +1500,7 @@ const cloneBarsContext=context=>context&&context.type==='entity'
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
 $('#q').value=state.q;rememberSearchValue();
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
-let offset=0,total=0,facets=null,current=null,detailReturnPath='/',activeQueue=null;
+let total=0,facets=null,current=null,detailReturnPath='/',activeQueue=null;
 let detailOriginAnchor=null,detailOriginAbove=false,detailReturnNeedsRestore=false;
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
@@ -2834,8 +2821,7 @@ const selected=new Set(),followSelected=new Set();
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
 const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
-  document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
-  // 卡片网格的选中态归 React：每次推一份新的集合，卡片按引用比较才看得出变了。
+  // 卡片网格与垃圾队列的选中态归 React：每次推一份新的集合，卡片按引用比较才看得出变了。
   gridIslandHosts().forEach(host=>updateIsland(host,{selected:new Set(selected),selectMode}));
   document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
     card.classList.toggle('selected',followSelected.has(+card.dataset.followItem)));
@@ -2846,6 +2832,7 @@ function paintSelection(){
   $('#batchbar').querySelectorAll('[data-follow-batch]').forEach(button=>button.hidden=!followPage);
   $('#batchbar').querySelectorAll('[data-trash-only]').forEach(button=>button.hidden=followPage||junkPage||state.state!=='trash');
   $('#batchbar').querySelectorAll('[data-batch="like"],[data-batch="seen"],[data-batch="later"],[data-batch="dispose"],[data-batch-region]').forEach(button=>button.hidden=followPage||junkPage||state.state==='trash');
+  const junkView=junkRoute(location.search).view;
   $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>{
     const operation=button.dataset.junkBatch;
     button.hidden=!junkPage||(operation==='dismiss-junk'&&junkView==='dismissed')
@@ -2948,7 +2935,7 @@ $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.oncl
   setActionBusy(button);
   try{
     await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
-    setSelectMode(false,true);adsBatch=null;await loadCatalog();
+    setSelectMode(false,true);await loadCatalog();
     const inverse=operation==='dispose'?'restore':operation==='dismiss-junk'?'reconsider-junk':
       operation==='reconsider-junk'?'dismiss-junk':null;
     actionReceipt(`已批量${labels[operation]}：${ids.length} 项`,{undo:inverse?async()=>{
@@ -3489,113 +3476,6 @@ function cardIdentity(it,linked=true){
       :linked?`<button class="who unownedlink" type="button" data-open-unowned>${esc(who)}</button>`
         :`<span class="who">${esc(who)}</span>`);
   return {avatar,whoHtml};
-}
-const JUNK_KIND_META={
-  video:['视频','play'],image:['图片','pics'],archive:['压缩包','file-archive'],
-  audio:['音频','file-audio'],url:['网址快捷方式','globe'],other:['其它文件','hard-drive'],
-};
-function junkCardHtml(it){
-  const kind=it.junk_kind||'other',meta=JUNK_KIND_META[kind]||JUNK_KIND_META.other;
-  const preview=kind==='video'
-    ? `<img class="poster" src="/thumb?id=${it.id}&c=4" width="640" height="360" alt="" loading="lazy" data-drop="self">`
-    : kind==='image'
-      ? `<img class="poster" src="/photo-thumb?id=${it.id}" width="640" height="360" alt="" loading="lazy" data-drop="self">`:'';
-  const decision=junkView==='dismissed'
-    ? ['reconsider-junk','重新判断','rotate-ccw']
-    : ['dismiss-junk','不是垃圾','check'];
-  const canOpen=kind==='video'||kind==='image';
-  return `<article class="card junkcard" data-id="${it.id}" data-junk-kind="${esc(kind)}">
-    <div class="pic" style="--card-ratio:16/9"><span class="resourceglyph">${icon(meta[1])}<b>${esc(meta[0])}</b></span>${preview}
-      <div class="badge mono">${srcBadge(it.location,it.cost)}</div><span class="selectionMark">${icon('check')}</span></div>
-    <div class="junkbody"><div class="junkmeta">
-      ${canOpen?`<button class="t junkcardtitle" type="button" data-junk-open data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</button>`
-        :`<span class="t junkcardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>`}
-      <div class="s mono"><span class="who">${esc(meta[0])}</span>${it.why?`<span class="why">${esc(it.why)}</span>`:''}<span class="size">${Number(it.size)>0?fmtSize(Number(it.size)):'大小未知'}</span></div>
-    </div><footer class="junkactions">
-      <button type="button" data-junk-reveal title="在资源管理器中显示" aria-label="在资源管理器中显示">${icon('folder-open')}<span>打开位置</span></button>
-      <button type="button" data-junk-operation="${decision[0]}" title="${esc(decision[1])}" aria-label="${esc(decision[1])}">${icon(decision[2])}<span>${decision[1]}</span></button>
-      <button type="button" class="danger" data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站">${icon('trash')}<span>移入回收站</span></button>
-      <span class="junkstate" aria-live="polite"></span>
-    </footer></div></article>`;
-}
-async function runJunkOperation(id,operation){
-  await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})});
-  adsBatch=null;await loadCatalog();
-}
-function wireJunkCards(root){
-  root.querySelectorAll('.junkcard').forEach(card=>{
-    const id=+card.dataset.id,item=CACHE[id];
-    card.onclick=event=>{
-      if(event.target.closest('[data-junk-operation],[data-junk-reveal]'))return;
-      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
-        event.preventDefault();event.stopPropagation();toggleSelection(id,event.shiftKey);
-      }
-    };
-    card.querySelector('[data-junk-open]')?.addEventListener('click',event=>{
-      event.stopPropagation();
-      if(selectMode||event.shiftKey||event.ctrlKey||event.metaKey){
-        event.preventDefault();toggleSelection(id,event.shiftKey);return
-      }
-      if(item?.junk_kind==='image')window.open('/photo?id='+id,'_blank','noopener');
-      else openItem(id,true,null,card);
-    });
-    const reveal=card.querySelector('[data-junk-reveal]'),status=card.querySelector('.junkstate');
-    if(reveal)reveal.onclick=event=>{
-      event.preventDefault();event.stopPropagation();revealSource(id,status,{button:reveal});
-    };
-    card.querySelectorAll('[data-junk-operation]').forEach(button=>button.onclick=async event=>{
-      event.preventDefault();event.stopPropagation();
-      const operation=button.dataset.junkOperation;
-      setActionBusy(button);
-      try{
-        await runJunkOperation(id,operation);
-        const disposed=operation==='dispose',reconsidered=operation==='reconsider-junk';
-        actionReceipt(disposed?'已移入回收站':reconsidered?'已重新加入垃圾判断':'已标记为不是垃圾',{
-          undo:()=>runJunkOperation(id,disposed?'restore':reconsidered?'dismiss-junk':'reconsider-junk'),
-        });
-      }catch(error){
-        actionFailure('操作',error);
-        setActionBusy(button,false);
-      }
-    });
-  });
-}
-/* 计数行的最终样子。分类有哪几项、此刻选中哪一项、看的是待判断还是已排除，全由
-   URL 决定，等数据的这段时间就能画成最终样子；随这次请求变的只有摘要里那个数字和
-   各类的计数徽标，`data` 为空时它们让位给占位，别的原地不动。 */
-function junkNavigationHtml(data){
-  const countFor=key=>key?Number(data?.counts?.[key]||0):Number(data?.all_total||0);
-  const dismissedTotal=Number(data?.dismissed_total||0);
-  const categoryLinks=JUNK_KIND_OPTIONS.map(([key,label,glyph])=>{
-    const current=key===junkKind,count=data?countFor(key):0;
-    /* 同一套 Geist Tabs 徽标口径：计数为 0 时整枚去掉。这一条仍用 <a>，因为分类要落到
-       URL 上——规范里 Tabs 的行为条款本身就要求当前项可深链、可刷新恢复。 */
-    return `<a href="${junkPath(key,junkView)}" data-junk-kind-link="${esc(key)}"${current?' aria-current="page"':''}>${icon(glyph)}${esc(label)}${count?` <span class="n mono" data-count-badge="junk:${esc(key)}">${count.toLocaleString()}</span>`:''}</a>`;
-  }).join('');
-  return `<div class="junksummary" aria-live="polite">${collectionSummaryHtml(junkView==='dismissed'?'已排除':'待判断',
-      data?`${Number(data.total||0).toLocaleString()} 个`:'','',{pending:!data})}</div>
-    <nav class="junkfilters" aria-label="垃圾文件分类">${categoryLinks}<i aria-hidden="true"></i>
-      <a href="${junkPath('',junkView==='dismissed'?'pending':'dismissed')}" data-junk-view-link="${junkView==='dismissed'?'pending':'dismissed'}"${junkView==='dismissed'?' aria-current="page"':''}>${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}${junkView==='dismissed'?'返回待判断':'已排除'}${dismissedTotal?` <span class="n mono" data-count-badge="junk:dismissed">${dismissedTotal.toLocaleString()}</span>`:''}</a>
-    </nav>`;
-}
-function renderJunkNavigation(data){
-  $('#count').removeAttribute('aria-busy');
-  $('#count').innerHTML=junkNavigationHtml(data);
-  // 判过一批之后各类的待处理数就变了，弹的是变了的那几枚，没动的那几类原地不动。
-  popBadges($('#count'),'junk');
-  wireJunkNavigation();
-}
-/* 等待态与到货后是同一条分类切换，接线也就只有这一份：骨架里点分类会换到那一类
-   继续等，跟数据已经到了时点它是同一件事。 */
-function wireJunkNavigation(){
-  $('#count').querySelectorAll('[data-junk-kind-link],[data-junk-view-link]').forEach(link=>link.onclick=event=>{
-    if(event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
-    event.preventDefault();
-    if(selectMode)setSelectMode(false,true);
-    if(link.hasAttribute('data-junk-kind-link'))junkKind=cleanJunkKind(link.dataset.junkKindLink||'');
-    if(link.dataset.junkViewLink)junkView=link.dataset.junkViewLink;
-    adsBatch=null;route(junkPath());loadCatalog();
-  });
 }
 function openResourceCard(id,anchor=null){
   const item=CACHE[id];
@@ -4515,7 +4395,7 @@ function showManagementBody({manage=true,placeholder=''}={}){
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
-  loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';
+  loadRequestSeq++;$('#combo').innerHTML='';
   hideDiscoveryBars();
   document.body.classList.remove('entity-open','index-open');
 }
@@ -8219,7 +8099,7 @@ $('#scrim').onclick=()=>openDrawer(false);
    取数落定（成功、为空或失败）时兑现，调用方 `await` 它再做下一步（撤销回执、换一批的转圈）。
    目录与回收站的卡片网格是 `catalog-grid` island（ADR-0031）：已经挂着就把新筛选推过去，
    它按新键重取、自己铺骨架；还没挂就挂上，首屏取完才换掉壳铺的骨架。垃圾文件那一屏是
-   逐项处置的队列，卡片与分页仍由壳画（`loadJunk`）。 */
+   逐项处置的队列，是另一个 island（`junk-queue`），同样挂在 `#grid` 上，两者换页时互相先卸。 */
 async function loadCatalog(){
   const requestSeq=++loadRequestSeq;
   const surface=claimSurface(surfacePath());
@@ -8233,8 +8113,9 @@ async function loadCatalog(){
   if(isCatalogPath(location.pathname))void renderFeedNew($('#feedNew'));
   else{$('#feedNew').hidden=true;$('#feedNew').innerHTML=''}
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
-  if(state.state==='ads')return loadJunk(true,requestSeq,surface);
-  adsBatch=null;
+  if(state.state==='ads')return loadJunk(surface);
+  // 卸掉垃圾队列要赶在铺骨架之前：它的计数行也在 `#count` 里，先铺就把它挂着的那一格冲掉了。
+  if(gridIsland==='junk-queue')clearCatalogGrid();
   renderCatalogLoading();
   showHomeSurfaces();
   renderCombo();
@@ -8251,19 +8132,26 @@ function settleCatalog(revision){
 function releaseCatalogWaiters(){const waiters=catalogWaiters;catalogWaiters=[];waiters.forEach(waiter=>waiter.resolve())}
 /* 离开目录时收起网格。`#grid` 是 React 根的容器，壳往里写内容之前必须先卸掉它。 */
 function clearCatalogGrid(){
-  releaseHoverPreviews($('#grid'));unmountIsland($('#grid'));catalogPainting=null;releaseCatalogWaiters();
+  releaseHoverPreviews($('#grid'));unmountIsland($('#grid'));catalogPainting=null;gridIsland='';releaseCatalogWaiters();
   $('#grid').innerHTML='';
 }
-function paintCatalogGrid(surface){
-  const grid=$('#grid'),revision=++catalogRevision;
+function paintCatalogGrid(surface){return paintGridIsland('catalog-grid',catalogGridProps,surface,{reveal:revealSkeleton})}
+/* 垃圾队列不在挂载前取数，挂上就画它自己那份骨架，和壳铺的这份逐项相同，不必交叉淡入。 */
+function paintJunkQueue(surface){return paintGridIsland('junk-queue',junkQueueProps,surface)}
+/* `#grid` 上挂哪一个 island 记在 `gridIsland` 里：换成另一个之前先卸，旧的那棵不能收新的 props。 */
+function paintGridIsland(name,propsFor,surface,options={}){
+  const grid=$('#grid');
+  if(gridIsland&&gridIsland!==name)clearCatalogGrid();
+  const revision=++catalogRevision;
   const settled=new Promise(resolve=>catalogWaiters.push({revision,resolve}));
-  const props=catalogGridProps();
+  const props=propsFor();
   /* 首屏还在取的那一次也算没挂好：`updateIsland` 对还没画出来的根是空操作，新筛选会丢。
      重挂一次，上一次的取数随之作废。 */
   if(islandMounted(grid)&&!catalogPainting){updateIsland(grid,props);return settled}
   releaseHoverPreviews(grid);
-  const painting=catalogPainting=mountIsland('catalog-grid',grid,props,
-    {isCurrent:()=>surfaceCurrent(surface),reveal:revealSkeleton});
+  gridIsland=name;
+  const painting=catalogPainting=mountIsland(name,grid,props,
+    {...options,isCurrent:()=>surfaceCurrent(surface)});
   painting.catch(error=>console.error(error)).finally(()=>{
     if(catalogPainting===painting)catalogPainting=null;
     if(!islandMounted(grid))releaseCatalogWaiters();
@@ -8322,41 +8210,57 @@ function catalogGridProps(){
     canLoadMore:()=>$('#stats').hidden&&$('#index').hidden,
   };
 }
-async function loadJunk(reset,requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
-  if(!reset&&listLoading)return;
-  if(!reset)listLoading=true;
-  const pageOffset=reset?0:offset+appSettings.batchSize;
-  try{
-  if(reset){clearCatalogGrid();renderCatalogLoading('正在读取垃圾文件')}
+/* 进入或重读垃圾文件队列。已经挂着且计数行那一格还在（在这一屏里换分类、换视图，处置完
+   重读）就把新的地址与代次推过去；否则先卸掉 `#grid` 上的旧根，铺骨架再挂。分类与视图
+   只从地址读，壳不另记一份。 */
+function loadJunk(surface){
+  const count=$('#count');
+  const live=gridIsland==='junk-queue'&&islandMounted($('#grid'))&&!catalogPainting
+    &&count.querySelector(':scope > .peach-react:not([data-junk-count-skeleton])');
+  if(!live){clearCatalogGrid();renderCatalogLoading('正在读取垃圾文件')}
   showHomeSurfaces();
-  if(reset)offset=0;
   renderCombo();
   // 垃圾文件是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
-  const countRow=$('#count');
-  countRow.classList.add('manage-static','junkcount');
-  countRow.classList.remove('is-stuck');
-  // 哨兵由 renderCatalogLoading 统一收掉：铺骨架和收 dots 是同一件事的两半，
-  // 分开写就会有分支只做了一半。
-  if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
-    const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery);
-    if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-    adsBatch=nextAds;cache(adsBatch.items)}
-  const batch=adsBatch.items.slice(pageOffset,pageOffset+appSettings.batchSize);
-  offset=pageOffset;
-  const html=batch.map(junkCardHtml).join('');
-  if(reset)releaseHoverPreviews($('#grid'));
-  if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
-  else if(reset)setGridCards(html);else appendGridCards(html);
-  renderJunkNavigation(adsBatch);
-  $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
-  wireJunkCards($('#grid'));paintSelection();
-  wireLoadMore($('#loadSentinel'),{
-    enabled:()=>!listLoading&&$('#stats').hidden&&$('#index').hidden,
-    isCurrent:()=>surfaceCurrent(surface),
-    read:()=>loadJunk(false),
-  });
-  }catch(error){if(requestSeq===loadRequestSeq&&surfaceCurrent(surface))throw error}
-  finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
+  count.classList.add('manage-static','junkcount');
+  count.classList.remove('is-stuck');
+  return paintJunkQueue(surface);
+}
+/* 垃圾卡上那三颗键与标题。写 ledger 的操作做完重读队列并给撤销（互逆操作，移入回收站
+   的撤销是还原）；失败再抛给卡片，它据此把键恢复成可点。 */
+async function runJunkOperation(it,operation){
+  const ids=[it.id],disposed=operation==='dispose',reconsidered=operation==='reconsider-junk';
+  try{
+    await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
+    await loadCatalog();
+    const inverse=disposed?'restore':reconsidered?'dismiss-junk':'reconsider-junk';
+    actionReceipt(disposed?'已移入回收站':reconsidered?'已重新加入垃圾判断':'已标记为不是垃圾',{undo:async()=>{
+      await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation:inverse})});
+      await loadCatalog();
+    }});
+  }catch(error){actionFailure('操作',error);throw error}
+}
+const junkQueueHelpers={badgeHtml:(location,cost)=>srcBadge(location,cost)};
+const junkQueueActions={
+  /* 换分类、换视图：先收起多选，改地址再重读。 */
+  navigate:path=>{if(selectMode)setSelectMode(false,true);route(path);loadCatalog()},
+  toggleSelection:(id,range)=>toggleSelection(id,range),
+  open:(it,anchor)=>it.junk_kind==='image'
+    ?window.open('/photo?id='+it.id,'_blank','noopener'):openItem(it.id,true,null,anchor),
+  /* 定位成功由 Toast 报，卡上状态行留空；失败把原因写回状态行。 */
+  reveal:async it=>{
+    try{await api('/api/reveal',{method:'POST',body:JSON.stringify({id:it.id})});toast({text:'已在资源管理器中显示'});return ''}
+    catch(error){return sourceHint(error.message)}
+  },
+  operate:(it,operation)=>runJunkOperation(it,operation),
+};
+function junkQueueProps(){
+  return {
+    ...junkRoute(location.search),helpers:junkQueueHelpers,actions:junkQueueActions,
+    batchSize:appSettings.batchSize,revision:catalogRevision,selectMode,selected:new Set(selected),
+    countRow:$('#count'),cache,settled:settleCatalog,
+    skeletonHtml:()=>pageSkeletonHtml('正在读取垃圾文件',{cards:true,className:'catalog-skeleton postercard-skeleton'}),
+    canLoadMore:()=>$('#stats').hidden&&$('#index').hidden,
+  };
 }
 let searchPoolCache=[];
 let searchPoolRequest=0;
@@ -9802,10 +9706,6 @@ function openCatalog(path){
   const params=new URLSearchParams(location.search);
   const enteringHome=path==='/'&&lastRoutePath!=='/';
   if(enteringHome){barsDataCache=null;barsDataPromise=null}
-  if(path==='/junk-files'){
-    junkKind=cleanJunkKind(params.get('type')||'');
-    junkView=params.get('view')==='dismissed'?'dismissed':'pending';
-  }
   state={...state,loc:params.get('loc')??'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
     tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
     dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
@@ -9833,7 +9733,8 @@ async function restoreRoute(){
   const path=decodeURIComponent(location.pathname);
   void syncPostSetupTutorial();
   if(path==='/'&&new URLSearchParams(location.search).get('state')==='ads'){
-    route(junkPath(),true);await restoreRoute();return;
+    const {kind,view}=junkRoute(location.search);
+    route(junkPath(kind,view),true);await restoreRoute();return;
   }
   /* 唯一的派发点：路径匹配哪条路由，就把那一屏打开。`push=false`——地址栏本来
      就是它，再 `route()` 一次会往历史里塞一条重复记录。

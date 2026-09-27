@@ -203,15 +203,52 @@ async function openProcessing(
 /** 1280 的桌面视口比 `--board-content` 还窄，量不出「网格铺满、标题居中」这类差别。 */
 const WIDE = { name: 'wide', width: 1600, height: 900, mobile: false };
 
-/** 垃圾文件页。计数行由页面自己画，演示库里一条候选都没有时它照样在。 */
+/** 垃圾文件页。计数行由 `junk-queue` island 画，演示库里一条候选都没有时它照样在；壳铺的
+ *  骨架（`[data-junk-count-skeleton]`）也有这两块，等的是 island 接管之后的那一版。 */
+const JUNK_COUNT = '#count > .peach-react:not([data-junk-count-skeleton])';
 async function openJunk(browser: Browser): Promise<Visit> {
   const opened = await visit(browser, '/junk-files', WIDE);
   await expectBody(opened.page, '/junk-files', [
-    opened.page.locator('#count .collection-summary'),
-    opened.page.locator('#count .junkfilters'),
+    opened.page.locator(`${JUNK_COUNT} [data-collection-summary]`),
+    opened.page.locator(`${JUNK_COUNT} [data-junk-filters]`),
   ]);
   await settle(opened.page);
   return opened;
+}
+
+/** 一条垃圾候选。字段以 `/api/ads`（`src/peach/web_batch.py` 的 `q_ads`）为准；类型都挑没有预览
+ *  的，造出来的 id 取不到缩略图。 */
+const junkItem = (id: number, kind: string, name: string) => ({
+  id, name, junk_kind: kind, why: '文件名像推广', size: 1048576 * id, location: 'local', cost: '',
+});
+
+/** 垃圾文件页按给定的候选打开：演示库里没有垃圾候选。`/api/ads` 每次都按当前名单回话，
+ *  `/api/batch` 记下请求体、把处置掉的那条从名单里拿掉。 */
+async function openJunkWith(browser: Browser, items: ReturnType<typeof junkItem>[], viewport = WIDE) {
+  const opened = await visit(browser, '/junk-files', viewport);
+  const state = { items: [...items], batches: [] as { ids: number[]; operation: string }[], reads: [] as string[] };
+  await opened.page.route('**/api/ads?**', (route) => {
+    const url = new URL(route.request().url());
+    state.reads.push(url.search);
+    const kind = url.searchParams.get('kind');
+    const shown = state.items.filter((item) => !kind || item.junk_kind === kind);
+    const counts: Record<string, number> = {};
+    for (const item of state.items) counts[item.junk_kind] = (counts[item.junk_kind] || 0) + 1;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({
+      items: shown, total: shown.length, all_total: state.items.length, pending_total: state.items.length,
+      dismissed_total: 0, counts,
+    }) });
+  });
+  await opened.page.route('**/api/batch', (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    state.batches.push(body);
+    state.items = state.items.filter((item) => !body.ids.includes(item.id));
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, updated: body.ids.length }) });
+  });
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('#grid [data-junk-card]').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  return { ...opened, state };
 }
 
 /** 一个重复文件。字段以 `/api/duplicates`（`src/peach/web_contract.py`）为准。 */
@@ -1730,11 +1767,11 @@ describe('设计决定', () => {
           getComputedStyle(document.querySelector(selector)!).backgroundColor;
         return {
           title: span('#manageTitle'),
-          summary: span('#count .collection-summary'),
-          filters: span('#count .junkfilters'),
+          summary: span('#count [data-collection-summary]'),
+          filters: span('#count [data-junk-filters]'),
           grid: span('#grid'),
-          summaryFace: face('#count .collection-summary'),
-          filtersFace: face('#count .junkfilters'),
+          summaryFace: face('#count [data-collection-summary]'),
+          filtersFace: face('#count [data-junk-filters]'),
           page: getComputedStyle(document.body).backgroundColor,
         };
       });
@@ -1760,17 +1797,112 @@ describe('设计决定', () => {
          没有的换批与排序键，数据到货整行再换成另一种东西。 */
       await opened.page.route('**/api/ads?**', () => {});
       await opened.page.reload({ waitUntil: 'load' });
-      await opened.page.locator('#count .junkfilters').waitFor({ timeout: 15_000 });
+      // 等 island 接管：壳铺的骨架和它等数据时那一版相同，接管之后仍是这一版才算数。
+      await opened.page.locator(`${JUNK_COUNT} [data-junk-filters]`).waitFor({ timeout: 15_000 });
       const row = await opened.page.locator('#count').evaluate((node) => ({
         busy: node.getAttribute('aria-busy'),
-        filters: node.querySelectorAll('.junkfilters a').length,
-        placeholder: node.querySelectorAll('.collection-summary .countskeleton').length,
+        filters: node.querySelectorAll('[data-junk-filters] a').length,
+        placeholder: node.querySelectorAll('[data-collection-summary] [data-skeleton="count"]').length,
         sorts: node.querySelectorAll('.sorts').length,
       }));
       assert.equal(row.busy, 'true', '等待态没有对辅助技术公开');
       assert.ok(row.filters > 0, '等待期间这一行没有分类切换');
       assert.equal(row.placeholder, 1, '占位没有落在读数那一格');
       assert.equal(row.sorts, 0, '等待期间摆着这一页没有的排序键');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('垃圾卡处置发出一条批量请求、卡随之离开；换分类不整页跳转', { timeout: 90_000 }, async () => {
+    const opened = await openJunkWith(browser, [
+      junkItem(9101, 'archive', '推广合集.zip'), junkItem(9102, 'url', '官网.url'), junkItem(9103, 'audio', '广告.mp3'),
+    ]);
+    try {
+      const page = opened.page;
+      const cards = page.locator('#grid [data-junk-card]');
+      assert.equal(await cards.count(), 3);
+      await cards.first().locator('[data-junk-action="dispose"]').click();
+      await page.waitForFunction(() => document.querySelectorAll('#grid [data-junk-card]').length === 2, null,
+        { timeout: 10_000 });
+      assert.deepEqual(opened.state.batches, [{ ids: [9101], operation: 'dispose' }]);
+      await page.getByText('已移入回收站', { exact: true }).first().waitFor({ timeout: 5_000 });
+
+      // 分类是 `<a href>`，普通左键由壳改地址重读：整页重载的话，页面上记的这个标记会丢。
+      await page.evaluate(() => { (window as { junkStay?: boolean }).junkStay = true });
+      await page.locator(`${JUNK_COUNT} [data-junk-kind-link="url"]`).click();
+      await page.waitForFunction(() => location.search === '?type=url'
+        && document.querySelectorAll('#grid [data-junk-card]').length === 1, null, { timeout: 10_000 });
+      assert.equal(await page.evaluate(() => (window as { junkStay?: boolean }).junkStay), true, '换分类整页重载了');
+      assert.match(opened.state.reads.at(-1)!, /kind=url/);
+      assert.equal(await page.locator(`${JUNK_COUNT} [data-junk-kind-link="url"]`).getAttribute('aria-current'), 'page');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('垃圾卡是一块有边的面：三颗键等宽居中，移入回收站静止就是实底红', { timeout: 90_000 }, async () => {
+    const opened = await openJunkWith(browser, [junkItem(9201, 'archive', '推广.zip'), junkItem(9202, 'url', '官网.url')]);
+    try {
+      const page = opened.page;
+      const read = () => page.evaluate(() => {
+        const card = document.querySelector('#grid [data-junk-card]')!;
+        const keys = [...card.querySelectorAll('[data-junk-action]')].map((button) => {
+          const style = getComputedStyle(button);
+          const rect = button.getBoundingClientRect();
+          return {
+            action: (button as HTMLElement).dataset.junkAction, width: Math.round(rect.width), height: Math.round(rect.height),
+            justify: style.justifyContent, border: style.borderTopWidth, face: style.backgroundColor, ink: style.color,
+            label: getComputedStyle(button.querySelector('[data-junk-label]')!).display,
+          };
+        });
+        const links = [...document.querySelectorAll('#count [data-junk-filters] a')].map((link) => ({
+          current: link.getAttribute('aria-current') === 'page', face: getComputedStyle(link).backgroundColor,
+          height: Math.round(link.getBoundingClientRect().height),
+        }));
+        // 卡在 island 里取 oklch，页面底是 rgb：各画一个像素再比，字面不同不等于颜色不同。
+        const pixel = (color: string) => {
+          const context = document.createElement('canvas').getContext('2d')!;
+          context.fillStyle = color;
+          context.fillRect(0, 0, 1, 1);
+          return [...context.getImageData(0, 0, 1, 1).data].join(',');
+        };
+        const style = getComputedStyle(card);
+        const ground = [document.body, document.documentElement].map((el) => pixel(getComputedStyle(el).backgroundColor))
+          .find((value) => !value.endsWith(',0')) ?? '255,255,255,255';
+        return { edge: style.borderTopWidth, line: pixel(style.borderTopColor), page: ground, keys, links };
+      });
+      const red = await tokenColor(page, 'body', '--board-red');
+      const wide = await read();
+      // 浅色下卡底与页面同为白，卡的轮廓全靠这圈边：边宽 1px、颜色不能跟页面底一样。
+      assert.equal(wide.edge, '1px', '垃圾卡没有描边');
+      assert.notEqual(wide.line, wide.page, '垃圾卡的边和页面底色同色');
+      assert.equal(new Set(wide.keys.map((key) => key.width)).size, 1, `三颗键不等宽：${wide.keys.map((key) => key.width)}`);
+      for (const key of wide.keys) {
+        assert.equal(key.justify, 'center', `${key.action} 的图标与标签没有居中`);
+        assert.equal(key.height, 36, `${key.action} 高 ${key.height}`);
+      }
+      const dispose = wide.keys.find((key) => key.action === 'dispose')!;
+      assert.equal(dispose.face, red, '移入回收站静止态不是实底红');
+      assert.equal(dispose.ink, 'rgb(255, 255, 255)');
+      for (const key of wide.keys.filter((one) => one.action !== 'dispose')) assert.equal(key.border, '1px', `${key.action} 没有描边`);
+      const current = wide.links.filter((link) => link.current);
+      assert.equal(current.length, 1);
+      assert.ok(wide.links.filter((link) => !link.current).every((link) => link.face === 'rgba(0, 0, 0, 0)'), '未选中的分类不该有底');
+      assert.notEqual(current[0]!.face, 'rgba(0, 0, 0, 0)', '选中的分类没有抬底');
+
+      // 紧凑密度下键上只剩图标。
+      await page.evaluate(() => { document.body.dataset.density = 'dense' });
+      assert.ok((await read()).keys.every((key) => key.label === 'none'), '紧凑密度下键上还有字');
+      await page.evaluate(() => { delete document.body.dataset.density });
+
+      // 手机上够手指点：分类与三颗键都到 44px。
+      await page.setViewportSize({ width: MOBILE.width, height: MOBILE.height });
+      const narrow = await read();
+      assert.ok(narrow.keys.every((key) => key.height >= 44), `手机上键高 ${narrow.keys.map((key) => key.height)}`);
+      assert.ok(narrow.links.every((link) => link.height >= 44), `手机上分类高 ${narrow.links.map((link) => link.height)}`);
+      assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }

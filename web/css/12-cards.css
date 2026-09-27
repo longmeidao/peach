@@ -230,9 +230,9 @@ img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain
   background:#000;display:block}
 /* 悬停面往卡片盒外多铺 8px：不动网格尺寸、不挤相邻卡，只让整张卡的命中反馈比内容
    大一圈。背景仍落在卡本身，保留浏览器里可直接核验的悬停底色。 */
-body .card:not(.junkcard):hover{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
-body .card:not(.junkcard):hover .pic{filter:saturate(.9) brightness(.94)}
-body .card:not(.junkcard):focus-within{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
+body .card:hover{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
+body .card:hover .pic{filter:saturate(.9) brightness(.94)}
+body .card:focus-within{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
 .select-mode .card{cursor:default}
 .select-mode .cardopenhit,.select-mode .hovertools{pointer-events:none!important}
 .card.selected .pic,.card.selected:hover .pic{box-shadow:inset 0 0 0 2px var(--on-media)}
@@ -246,63 +246,24 @@ body .card:not(.junkcard):focus-within{background:var(--hover);box-shadow:0 0 0 
   stroke-linecap:round;stroke-linejoin:round}
 .hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}
 .nopic{font-size:var(--fs-xs);letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
-.resourceglyph{display:grid;place-items:center;gap:8px;color:var(--muted);font-size:var(--fs-xs);letter-spacing:.08em}
-.resourceglyph svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:2}
 .junkcount{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
-.junksummary{flex:none;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
-/* 两条分类切换共用一套外观，语义各自不同：复核那条在 10 个互不相同的候选数据集之间切
-   （真 tablist），垃圾文件那条是同一批候选按 type 收窄（落 URL 的筛选链接）。
-   几何仍取 Geist Tabs 的 secondary 变体（vercel.com/geist/tabs 实测 2026-09-03）：高 32px、
-   左右 12px、6px 圆角、13px/400，hover 只换文字色，选中只抬底到 --hover、不动边框。
-   有意偏离一处：上游 secondary 不描边，Peach 描 1px --border-15。上游正文没有
-   「secondary 必须放在容器内」这类条款（未取得），但 Peach 这两条直接坐在页面顶部，
-   下面就是全宽网格，四周没有任何容器边线；不描边时只有选中那一枚有底色，其余几项
-   没有可视边界，看不出是一排可点的控件。取值与排序条同族，两处认得出是同类控件。 */
-.reviewtabs,.junkfilters{display:flex;align-items:center;gap:5px;min-width:0;overflow-x:auto;scrollbar-width:none}
-.reviewtabs::-webkit-scrollbar,.junkfilters::-webkit-scrollbar{display:none}
+/* 复核那条分类切换在 10 个互不相同的候选数据集之间切（真 tablist）。
+   几何取 Geist Tabs 的 secondary 变体（vercel.com/geist/tabs 实测 2026-09-03）：高 32px、
+   左右 12px、6px 圆角、13px/400，hover 只换文字色，选中只抬底到 --hover、不动边框。 */
+.reviewtabs{display:flex;align-items:center;gap:5px;min-width:0;overflow-x:auto;scrollbar-width:none}
+.reviewtabs::-webkit-scrollbar{display:none}
 .reviewtabs{margin-bottom:16px}
 /* 一枚也不描边。给每一枚都画一圈线之后，一排读起来是七个一模一样的框，选中那一枚
    靠的是比页面底亮 2% 的填充——线比填充响得多，于是「选中」在浅色一档上根本看不出来。
    Geist Tabs secondary 两态都没有 border，选中只有 `aria-selected:bg-gray-200` 一件事
    （vercel-geist-semantics-measured.md「选中态与它的悬停」）。 */
-.reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;
+.reviewtabs button{box-sizing:border-box;height:32px;padding:0 12px;flex:none;
   display:inline-flex;align-items:center;gap:6px;border:0;
   border-radius:var(--control-radius);background:transparent;color:var(--muted);
   text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;
   white-space:nowrap;cursor:pointer}
-.reviewtabs button:hover,.junkfilters a:hover{color:var(--ink)}
-.junkfilters a[aria-current="page"]{background:var(--picked);color:var(--ink)}
-.reviewtabs button:focus-visible,.junkfilters a:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.junkfilters .n{color:var(--muted);font-size:var(--fs-xs);font-variant-numeric:tabular-nums}
-.junkfilters i{width:1px;height:20px;background:var(--line-soft);flex:none;margin:0 6px}
-.junkfilters a>svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;
-  stroke-linecap:round;stroke-linejoin:round}
-.junkcard{cursor:default;gap:0;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--floating-radius);background:var(--ground);
-  content-visibility:auto;contain-intrinsic-size:auto 360px}
-.junkcard .pic{border:0;border-radius:0}.junkcard:hover .pic{box-shadow:none}
-.junkcard .poster{object-fit:contain}.junkbody{display:flex;flex:1;flex-direction:column;min-height:0}
-.select-mode .junkcard .junkactions{pointer-events:none;opacity:.52}
-.junkmeta{display:grid;gap:6px;min-width:0;padding:12px}.junkmeta .s{display:flex;gap:7px;min-width:0;flex-wrap:wrap;
-  color:var(--muted);font-size:var(--fs-xs)}
-.junkmeta .why{overflow-wrap:anywhere}.junkmeta .size{margin-left:auto;white-space:nowrap}
-.junkcardtitle{display:block;width:100%;min-width:0;
-  border:0;padding:0;background:transparent;color:var(--ink);font:inherit;font-weight:600;line-height:1.4;text-align:left}
-button.junkcardtitle{cursor:pointer}button.junkcardtitle:hover{color:var(--ink-2)}
-button.junkcardtitle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px;border-radius:var(--control-radius)}
-.junkactions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:auto;padding:10px 12px;
-  border-top:1px solid var(--line-soft);background:var(--overlay-5)}
-/* 三个按钮等宽，图标加标签在各自那一格里居中。 */
-.junkactions button{box-sizing:border-box;min-width:0;min-height:36px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;gap:7px;
-  border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);
-  font:inherit;font-size:var(--fs-xs);white-space:nowrap;cursor:pointer}
-.junkactions button:hover:not(:disabled){background:var(--inset);color:var(--ink)}
-.junkactions button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.junkactions button:disabled{cursor:wait;opacity:.64}.junkactions button svg{width:15px;height:15px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
-/* 「移入回收站」的红来自 `.danger`，这一格只管几何。请求期间三颗键一起 `cursor:wait`
-   变淡，红那颗的禁用底交给危险档，页面不给它另写一份灰。 */
-.junkstate{grid-column:1/-1;color:var(--drop);font-size:var(--fs-xs)}.junkstate:empty{display:none}
-/* 紧凑密度下只剩图标。 */
-body[data-density="dense"] .junkcard .junkactions button span{display:none}
+.reviewtabs button:hover{color:var(--ink)}
+.reviewtabs button:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
 .badge{position:absolute;top:6px;left:6px;display:flex;gap:4px;z-index:2;align-items:center;
   transition:opacity .15s ease}
 /* 首页流和详情只留来源图标；完整来源与费用通过 title/aria-label 提供。 */
