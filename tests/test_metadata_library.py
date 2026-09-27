@@ -962,6 +962,13 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertNotIsInstance(raised.exception, CoverKept)
         self.assertEqual((covers / 'FC2-PPV-3.jpg').read_bytes(), before)
 
+        # 官方图全回 404（卖家删了图）是确定答复：镜像那张不比本机宽，就是保留，一周不再问。
+        with patch('peach.jav_cover_fetch.best_cover', side_effect=NotFound('官方封面地址都没有取到图片')), \
+                patch('peach.community_catalog.verified_cover', return_value=(*mirror, ())), \
+                self.assertRaises(CoverKept):
+            provider.cover('FC2-PPV-3', covers)
+        self.assertEqual((covers / 'FC2-PPV-3.jpg').read_bytes(), before)
+
     def test_a_verified_cover_replaces_a_wider_unverified_picture_of_something_else(self):
         """官方那一档按尺寸挑中的是正片截图：同页竖版商品图经 javdb 印证后，窄一点也换上。
 

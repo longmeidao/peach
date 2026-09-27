@@ -73,6 +73,25 @@ class FetchRetryTests(unittest.TestCase):
                 covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0, prior_candidates=(candidate,))
         self.assertNotIsInstance(raised.exception, covers.NotFound)
 
+    def test_candidates_that_all_answered_no_are_a_definitive_miss(self):
+        """FC2 卖家删了商品图，官方页上的两张存储地址都回 404：来源答过了，是确定的没有。
+        混着一张 5xx 时那一张可能还在，仍是这趟没问成。"""
+        candidates = (covers.Candidate("a", "https://storage1.contents.fc2.com/a.jpg"),
+                      covers.Candidate("b", "https://storage2.contents.fc2.com/b.jpg"))
+
+        def best(side_effect):
+            with patch.object(covers, "cached_metadata", return_value=covers.MetadataEvidence()), \
+                    patch.object(covers, "probe_size", side_effect=side_effect):
+                covers.best_cover(lambda *args: None, "FC2-PPV-123456", 0, prior_candidates=candidates)
+
+        with self.assertRaisesRegex(covers.NotFound, f"^{covers.NO_USABLE_OFFICIAL[0]}$"):
+            best([covers.NotFound("HTTP 404"), covers.NotFound("HTTP 404")])
+        with self.assertRaisesRegex(covers.NotFound, f"^{covers.NO_USABLE_OFFICIAL[1]}$"):
+            best([covers.NotFound("HTTP 404"), (200, 200)])
+        with self.assertRaises(covers.Unavailable) as raised:
+            best([covers.NotFound("HTTP 404"), covers.Unavailable("HTTP 503")])
+        self.assertNotIsInstance(raised.exception, covers.NotFound)
+
     def test_every_candidate_cut_off_at_the_connection_is_a_route_problem(self):
         """中国移动宽带直连 DMM 图片主机时，每一张候选都断在握手上：这说的是线路，
         不是官方没有图；只要有一家回过话，就仍按来源的回答判。"""

@@ -275,7 +275,7 @@ class VerifiedCoverTests(unittest.TestCase):
         self.assertEqual((candidate.url, size, origins), (JAVDB_COVER, (800, 534), ("dmm", "javdb")))
         self.assertEqual(candidate.referer, "https://javdb.com/")
         pages[DMM_COVER] = gradient(400, 267, rising=False)
-        with self.assertRaisesRegex(Unavailable, "^dmm、javdb 给的封面不是同一张图"):
+        with self.assertRaisesRegex(NotFound, "^dmm、javdb 给的封面不是同一张图"):
             verified_cover(serve(pages), "ABW-358", works)
 
     def test_javbus_is_an_origin_of_its_own(self):
@@ -300,7 +300,7 @@ class VerifiedCoverTests(unittest.TestCase):
         self.assertEqual((candidate.url, origins), (JAVDB_COVER, ("javdb", "mgstage")))
         with self.assertRaisesRegex(Unavailable, "下载失败"):
             verified_cover(serve({}), "ORETD-615", works, reference=reference)
-        with self.assertRaisesRegex(Unavailable, "^javdb、mgstage 给的封面不是同一张图"):
+        with self.assertRaisesRegex(NotFound, "^javdb、mgstage 给的封面不是同一张图"):
             verified_cover(serve({JAVDB_COVER: gradient(900, 600, rising=False)}), "ORETD-615",
                            works, reference=reference)
         with self.assertRaisesRegex(Unavailable, "下载失败"):

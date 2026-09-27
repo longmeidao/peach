@@ -785,7 +785,10 @@ def best_cover(transport: HttpTransport, code: str, delay: float, *,
         measured += _measure(transport, candidates, record, minimum_width=minimum_width,
                              delay=delay, deadline=deadline)
     if not measured:
-        raise Unavailable(_no_usable_official(diagnostics))
+        # 每张候选都回过话（404、太小、占位图、解不开）就是来源的确定答复，下次再问还是这几张：
+        # 交 `NotFound`，采集任务记下一周不问。有一张断在连接、5xx 或拒绝访问上才可能是这趟没问成。
+        kind = Unavailable if diagnostics.get("unanswered") else NotFound
+        raise kind(_no_usable_official(diagnostics))
     return _download_best(transport, measured, record, minimum_width=minimum_width,
                           minimum_quality=minimum_quality, minimum_pixels=minimum_pixels,
                           deadline=deadline)
@@ -796,7 +799,8 @@ def _measure(transport: HttpTransport, candidates, record, *, minimum_width: int
     """逐张量候选的尺寸，留下够宽的那些；量不出的原因记进诊断。
 
     断在连接上的几张与来源回过话的几张分开数：一张都没回过话时，候选用完也好、
-    预算在重试里耗尽也好，说的都是线路不通，抛 `CoverConnectError`。
+    预算在重试里耗尽也好，说的都是线路不通，抛 `CoverConnectError`。连接断开和
+    404 以外的错误回应另记一格 `unanswered`：有它在，量不出尺寸就不算来源的确定答复。
     """
     measured: list[tuple[int, Candidate, tuple[int, int]]] = []
     unreachable = answered = 0
@@ -806,10 +810,13 @@ def _measure(transport: HttpTransport, candidates, record, *, minimum_width: int
                 width, height = probe_size(transport, candidate, deadline=deadline)
             except httpx.TransportError as error:
                 record(_probe_failure(error))
+                record("unanswered")
                 unreachable += 1
                 continue
             except Unavailable as error:
                 record(_probe_failure(error))
+                if not isinstance(error, NotFound):
+                    record("unanswered")
                 answered += 1
                 continue
             except (UnidentifiedImageError, OSError):
