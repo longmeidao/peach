@@ -16,8 +16,7 @@ import { Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
 
 import { fmtSize, LOC } from '@peach/legacy/core';
 
-import { Button } from '@/components/base/buttons/button';
-import { LinkButton } from '@/components/base/buttons/link-button';
+import { Button, ButtonLink } from '@/components/base/buttons/button';
 
 import { errorMessage } from '../../api';
 import type { StatsProps } from '../bundle';
@@ -114,7 +113,7 @@ function InventoryDetail({ data, configurable, openMediaSettings }: { data: Stat
           {configurable
             ? <Button size="small" onClick={openMediaSettings}>添加媒体文件夹</Button>
             : null}
-          <LinkButton href="/follow-manage?tab=add" size="small">添加关注</LinkButton>
+          <ButtonLink variant="secondary" href="/follow-manage?tab=add" size="small">添加关注</ButtonLink>
         </>
       }>{NO_VIDEO_HINT}</EmptyState>
     );
@@ -210,7 +209,7 @@ function TagRanking({ tags, tagLabel, onTag }: { tags: TopTag[] } & StatsProps) 
   if (!tags.length) {
     return (
       <EmptyState shell="plain" icon={RiPriceTag3Line} title="还没有内容标签"
-        actions={<LinkButton href="/data-cleanup" size="small">补全资料</LinkButton>}>{NO_TAG_HINT}</EmptyState>
+        actions={<ButtonLink variant="secondary" href="/data-cleanup" size="small">补全资料</ButtonLink>}>{NO_TAG_HINT}</EmptyState>
     );
   }
   return (
@@ -234,7 +233,7 @@ function RecentWatches({ rows }: { rows: RecentPlay[] }) {
   if (!rows.length) {
     return (
       <EmptyState shell="plain" icon={RiHistoryLine} title="还没有观看记录"
-        actions={<LinkButton href="/" size="small">浏览馆藏</LinkButton>}>{NO_WATCH_HINT}</EmptyState>
+        actions={<ButtonLink variant="secondary" href="/" size="small">浏览馆藏</ButtonLink>}>{NO_WATCH_HINT}</EmptyState>
     );
   }
   return (
@@ -269,7 +268,7 @@ function TagSources({ sources, videos }: { sources: TagSource[]; videos: number 
   if (!sources.length) {
     return (
       <EmptyState shell="plain" icon={RiPriceTag3Line} title="还没有标签来源"
-        actions={<LinkButton href="/data-cleanup" size="small">补全资料</LinkButton>}>{NO_TAG_SOURCE_HINT}</EmptyState>
+        actions={<ButtonLink variant="secondary" href="/data-cleanup" size="small">补全资料</ButtonLink>}>{NO_TAG_SOURCE_HINT}</EmptyState>
     );
   }
   return (
