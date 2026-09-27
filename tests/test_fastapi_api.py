@@ -284,6 +284,7 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         con.close()
         self.settings = PeachSettings(
             db_path=self.db, configured=True, token="secret", page_path=self.page, vendor_path=self.vendor_root,
+            agentation_path=self.root / "build" / "peach-agentation.js",
             allowed_media_roots=(self.media_root,), snapshot_root=self.snapshot_root,
             poster_root=self.poster_root, avatar_root=self.avatar_root, logo_root=self.logo_root,
             cover_root=self.cover_root, stream_root=self.stream_root,
@@ -475,6 +476,22 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(denied.status_code, 404, f"{escape} 不该被提供")
 
         unauthorized = await self.client.get("/dist/peach-ui.js")
+        self.assertEqual(unauthorized.status_code, 401)
+
+    async def test_annotation_tool_is_served_only_where_it_was_built(self):
+        """`/dev/agentation.js` 只在本机构建过的检出里有东西，其余部署一律 404。"""
+        missing = await self.client.get("/dev/agentation.js?t=secret")
+        self.assertEqual(missing.status_code, 404)
+
+        bundle = self.settings.agentation_path
+        bundle.parent.mkdir(parents=True)
+        bundle.write_text("export {};\n", encoding="utf-8")
+        served = await self.client.get("/dev/agentation.js?t=secret")
+        self.assertEqual(served.status_code, 200)
+        self.assertTrue(served.headers["content-type"].startswith("text/javascript"))
+        self.assertEqual(served.headers["cache-control"], "no-cache")
+
+        unauthorized = await self.client.get("/dev/agentation.js")
         self.assertEqual(unauthorized.status_code, 401)
 
     def _swap_http_client(self, upstream):

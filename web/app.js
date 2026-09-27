@@ -1326,6 +1326,18 @@ if(cameFromSetup){
   const clean=new URL(location.href);clean.searchParams.delete('onboarding');
   history.replaceState(history.state,'',clean.pathname+(clean.search||'')+clean.hash);
 }
+/* 界面标注工具（docs/FRONTEND.md「界面标注」）：`?agentation=on|off` 写这台设备的开关并从
+   地址里去掉；开关开着才请求 `/dev/agentation.js`，没在本机构建过就是 404，静默不装。 */
+{
+  const clean=new URL(location.href),flag=clean.searchParams.get('agentation');
+  if(flag==='on')localStorage.setItem('peach.agentation','on');
+  if(flag==='off')localStorage.removeItem('peach.agentation');
+  if(flag!==null){
+    clean.searchParams.delete('agentation');
+    history.replaceState(history.state,'',clean.pathname+(clean.search||'')+clean.hash);
+  }
+  if(localStorage.getItem('peach.agentation')==='on')import('/dev/agentation.js').catch(()=>{});
+}
 const postSetupTutorialTasks=async()=>{
   const {library,scraping,taste,follow,credentials,review}=await api('/api/post-setup-tutorial');
   const scrapingCredentialSources=(scraping.sources||[]).filter(source=>source.accepts_cookie);

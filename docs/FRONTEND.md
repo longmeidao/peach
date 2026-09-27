@@ -171,6 +171,30 @@ React 子树读到 BoardUI 的 token 原值、持久警示是状态色块、一�
 BoardUI 组件上的间距或外观，处理办法是在组件外面套一层普通元素，不给规则加例外。
 `src/react/boardui/` 只加不改，`UPSTREAM.sha256` 记着复制时每个文件的哈希，由 `tests/test_frontend_build.py` 比对。
 
+## 界面标注
+
+指认界面上的某一块时，用 [Agentation](https://agentation.com) 在页面上点中元素、写下意见，
+复制出的 markdown 带 CSS 选择器、class、计算样式和附近文字，直接贴给智能体，不必再用话描述
+「侧栏那块光斑」。
+
+```powershell
+npm --prefix frontend run build:agentation   # 在要用它的那份检出里构建一次
+```
+
+然后在页面地址后加 `?agentation=on`（关闭用 `?agentation=off`），开关存在这台设备的
+`localStorage` 里，之后每次开页都会带上右下角的工具栏。
+
+- 产物写到 `build/agentation/peach-agentation.js`，由 `/dev/agentation.js` 提供，口令同 `/dist/`。
+  它不进 Git、不进独立包：Agentation 是 PolyForm Shield 许可，只许自用，不随 Peach 分发，
+  所以不放在会被打包整个带走的 `web/` 下。没构建过的检出里这条路由是 404，`app.js` 静默跳过。
+- 产物是本机构建的：换检出、升级依赖之后重跑一次，刷新页面即生效。
+- 标注里拿不到源文件路径：它靠 React 的 `_debugSource`，React 19 已移除这个字段；组件名也被
+  `peach-react.js` 的压缩改掉了。要在 Tailwind 类名之外给智能体更稳的抓手，给区块加
+  `data-component`（Agentation 默认采集的属性之一）。
+- Agentation 自己的全局快捷键已关闭，避免与 Peach 的 Esc、方向键冲突，只用工具栏按钮操作。
+- 没有接 MCP：标注靠复制粘贴交接。要让智能体直接读标注，另行注册 `agentation-mcp`
+  并给组件传 `endpoint`。
+
 ## 挂载契约
 
 遗留路由怎样把一个容器交给 React 页、又怎样收回来，下面每条都是为了不出现两段等待态或离场后还在轮询的根。
@@ -364,6 +388,7 @@ vendor 到 `web/vendor/` 的四个包（video.js、swiper、lucide-static、heal
 | `@remixicon/react` | BoardUI 组件内置的图标 |
 | `tailwindcss`、`@tailwindcss/vite` | 按 `src/react/` 里实际用到的类名生成 `peach-react.css` |
 | `@types/react`、`@types/react-dom` | React 子树的类型检查 |
+| `agentation` | 本机开发用的界面标注工具栏，单独构建、不进产物与独立包（见「界面标注」） |
 
 React 子树单独构建（`vite.react.config.ts`）。`peach-react.js` 只在页面挂 React 子树时由
 island 动态加载；`peach-react.css` 由 `index.html` 在旧样式表之前引入；`peach-ui.js` 只剩挂载
