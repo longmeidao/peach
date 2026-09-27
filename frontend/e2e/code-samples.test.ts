@@ -60,7 +60,8 @@ async function openPhotos(browser: Browser, search: string, local?: Local): Prom
   const offsets = await serveProfile(opened.page, local);
   await opened.page.goto(new URL(`/performers/${encodeURIComponent(NAME)}?${search}`, opened.page.url()).href,
     { waitUntil: 'load' });
-  await opened.page.locator('#index .photohead').waitFor({ state: 'visible', timeout: 15_000 });
+  await opened.page.locator('#index [data-entity-readout]', { hasText: '照片' })
+    .waitFor({ state: 'visible', timeout: 15_000 });
   await settle(opened.page);
   return { ...opened, offsets };
 }
@@ -92,13 +93,17 @@ describe('番号样张', () => {
     const opened = await openPhotos(browser, 'media=photos');
     const { page } = opened;
     try {
-      assert.equal(await page.locator('.entitymediaview [data-media-view="photos"]').getAttribute('aria-pressed'),
+      assert.equal(await page.locator('[data-entity-media] [data-media-view="photos"]').getAttribute('aria-pressed'),
         'true');
       assert.deepEqual(await groups(page), [['SSIS-057', 3], ['SSIS-001', 2]]);
+      // 第一段的 28px 段距与筛选浮层 22px 的下边距合并成一段，不叠加。
+      const gap = await page.evaluate(() => document.querySelector('.photogroup')!.getBoundingClientRect().top
+        - document.querySelector('[data-entity-filter-glass]')!.getBoundingClientRect().bottom);
+      assert.ok(Math.abs(gap - 28) <= 1, `第一段离浮层 ${gap}px`);
       assert.match(await page.locator('.photogroup').first().innerText(), /雨の日[\s\S]*DMM 样张 · 2021-05-18 · 3 张/);
-      assert.match(await page.locator('.photohead h3').innerText(), /样张 5 张 · 2 部作品/);
-      assert.equal(await page.locator('.photohead .entitybatch').count(), 0, '没有本地图可换一批');
-      assert.equal(await page.locator('.photoback').count(), 0, '样张不另开一层');
+      assert.match(await page.locator('[data-entity-readout]').innerText(), /样张 5 张 · 2 部作品/);
+      assert.equal(await page.locator('[data-entity-batch]').count(), 0, '没有本地图可换一批');
+      assert.equal(await page.locator('[data-photo-back]').count(), 0, '样张不另开一层');
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
       await opened.close();
@@ -144,7 +149,7 @@ describe('番号样张', () => {
     const { page } = opened;
     try {
       assert.equal(await page.locator('.photowall .photocell').count(), 5);
-      assert.equal(await page.locator('.photoback').count(), 0);
+      assert.equal(await page.locator('[data-photo-back]').count(), 0);
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
       await opened.close();

@@ -41,10 +41,10 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
 .count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
 .resourcesyncbox{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}
-.tagbar,.count,.entitytagbar,.entitycollectionhead{transition:background-color .16s ease,border-color .16s ease}
+.tagbar,.count{transition:background-color .16s ease,border-color .16s ease}
 /* 吸顶那条是底色的半透明版，配方跟着 --ground 走：写死深色底会在浅色主题下
    变成一条黑带压在白底内容上。 */
-.tagbar.is-stuck,.count.is-stuck,.entitytagbar.is-stuck,.entitycollectionhead.is-stuck{background:color-mix(in srgb,var(--ground) 84%,transparent);
+.tagbar.is-stuck,.count.is-stuck{background:color-mix(in srgb,var(--ground) 84%,transparent);
   border-bottom-color:var(--line-soft);backdrop-filter:saturate(1.35) blur(16px);
   -webkit-backdrop-filter:saturate(1.35) blur(16px)}
 .count:empty{display:none}
@@ -67,8 +67,7 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
   animation:peach-strand-draw var(--strand-cycle,0s) linear infinite}
 #i-shuffle .strand-b{animation-name:peach-strand-draw-late}
 .count[aria-busy="true"] :is(#batchAction,#followShuffle) svg,
-body.refreshing #batchAction svg,
-.entitycollectionhead[aria-busy="true"] .entitybatch svg{
+body.refreshing #batchAction svg{
   --strand-dash:100;--strand-cycle:2.2s}
 /* 资源同步的「检查文件」键适配自己的忙态，不统一转圈：git-compare 照 lucide-animated 的
    GitCompare 逐笔描画（右下圆→两条枝→左上圆，画完停住再一起淡出）。
@@ -92,26 +91,26 @@ body.refreshing #batchAction svg,
 #i-git-compare .gc-line-a,#i-git-compare .gc-line-b{animation-name:var(--gc-anim-b,none)}
 #i-git-compare .gc-end-b{animation-name:var(--gc-anim-c,none)}
 [data-resource-scan][aria-busy="true"] svg{--gc-dash:100;--gc-anim:peach-gc-draw-a;--gc-anim-b:peach-gc-draw-b;--gc-anim-c:peach-gc-draw-c}
-.count .sorts,.entitycollectionhead .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
+.count .sorts{display:flex;gap:5px;margin-left:auto;flex-wrap:nowrap;
   overflow-x:auto;scrollbar-width:none;min-width:0}
-.count .sorts::-webkit-scrollbar,.entitycollectionhead .sorts::-webkit-scrollbar{display:none}
-.count .sorts button,.entitycollectionhead .sorts button{min-height:32px;padding:0 11px;display:inline-flex;align-items:center;
+.count .sorts::-webkit-scrollbar{display:none}
+.count .sorts button{min-height:32px;padding:0 11px;display:inline-flex;align-items:center;
   border:1px solid var(--border-15);border-radius:var(--control-radius);
   background:transparent;cursor:pointer;font-size:var(--fs-xs);color:var(--muted);
   flex:0 0 auto;white-space:nowrap}
-.count .sorts button:hover,.entitycollectionhead .sorts button:hover{color:var(--ink)}
-.count .sorts button[aria-pressed="true"],.entitycollectionhead .sorts button[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
+.count .sorts button:hover{color:var(--ink)}
+.count .sorts button[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
 /* 方向箭头只画在选中的那一枚里，跟着它的文字色走。自带 class 而不是选 `button>svg`：
    同一排里的批量键是 36px 方形图标键，那条规则会给它的图标也加上左边距。 */
 .sortdir{width:14px;height:14px;flex:none;margin-left:5px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 /* 这一排里的批量键是强调档，面色连同悬停归 `board.css` 一处：那一层按这条工具带的形状
    重排过它们，在这里再写一份，算出来生效的仍是那一层。 */
-/* 形状按类写，不按 id：这一排在首页、资料页和关注页各有一枚同样的换一批键，挂在 id 上
+/* 形状按类写，不按 id：这一排在首页和关注页各有一枚同样的换一批键，挂在 id 上
    的话每多一页就要在这里补一个选择器，而漏掉的那一页不是报错——是图标算出 0×0，
    按钮变成一块纯色方块。 */
-.count .sorts .batchaction,.entitycollectionhead .sorts .batchaction{font-weight:600;width:36px;padding:0;display:inline-grid;place-items:center}
-.count .sorts .batchaction svg,.entitycollectionhead .sorts .batchaction svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+.count .sorts .batchaction{font-weight:600;width:36px;padding:0;display:inline-grid;place-items:center}
+.count .sorts .batchaction svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
 /* 「仅显示图片」是一枚 30px 见方的图标开关，跟旁边版式分段器的每一枚选项同一副身量；
    开着时垫的玻璃由筛选条那块滑动玻璃给（GLIDE_ROWS.imagesonly），这里只管形状。那块
    玻璃挂在这枚键自己身上，键是它的定位基准，字形要压在它上面，跟媒体那几枚圆键同一条。 */

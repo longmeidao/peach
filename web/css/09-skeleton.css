@@ -189,10 +189,9 @@ body.refreshing #tiers .av .ring.imgdone::after{opacity:1;filter:none;visibility
 
 /* 计数骨架的宽高定死：跟着真实文本走的话，数字回来那一刻整行会横向弹一下。
    14px 远低于筛选条按钮的 32px，而 `.count` 有 min-height 兜底，所以换成真数字
-   不改变行高。`视频 · N` 用的是同一枚。 */
+   不改变行高。 */
 .countskeleton{display:inline-block;width:150px;height:14px;border-radius:var(--control-radius);
   background:var(--hover)}
-.entitycollectionhead h3 .countskeleton{width:96px}
 /* 索引页这一枚等的是「118 项」，四五个字。150px 是照筛选条那句长读数定的，摆到
    标题右边就是一条明显长过答案的灰条，看着像还有一整句没回来。 */
 .index .ihead .countskeleton{width:54px}
