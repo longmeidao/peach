@@ -8,8 +8,11 @@
 .index-skeleton .alphatag::before{background:var(--hover)}
 .index-skeleton .alphatag .skeleton:first-of-type{width:65%;height:1.3em}
 .index-skeleton .alphatag .n{width:24px;height:1.3em}
-.indexletterskeleton{display:block;width:48px;height:28px;margin:0 0 10px}
+/* 字头占位照页面那行 26px 的标题加 8px 下边距，一组卡的高度才和落地后的一样。 */
+.index-skeleton .indexletterskeleton{display:block;width:48px;height:26px;margin:0 0 8px}
 .index-skeleton .tagwall .tg{height:auto;border-color:transparent;background:var(--hover)}
+/* 标签页骨架里的视图切换靠在读数行右缘，同页面落地后那一枚的位置。 */
+.index .board-filter-frame .count>.iconswitch{margin:0 0 0 auto}
 .skeleton{display:block;height:18px;border-radius:var(--control-radius);background:var(--hover)}
 /* 读数占位是行内的一截：它坐在最终那枚 `b`、`strong`、说明行里，行高仍由那枚元素自己给，
    数字一到这一行不长不缩。 */

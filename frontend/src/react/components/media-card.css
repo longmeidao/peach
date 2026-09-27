@@ -422,7 +422,19 @@ body[data-surface="/trash"] .peach-react [data-media-card] [data-media-pic] { bo
   cursor: pointer;
 }
 .peach-react button[data-media-avatar]:hover { box-shadow: 0 0 0 2px var(--ink-2); }
-.peach-react [data-media-avatar] > img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 有人脸框时壳的 `avatarFrame`（`web/app.js`）在图加载后往图上写内联的位置与百分比尺寸，把脸
+   放大到框中，宽度常常超过框宽；岛里的 Tailwind 预检给每张图 `max-width:100%`，不放开的话宽被
+   夹回框宽、高照样放大，脸偏到左边，右侧露出底下的首字母。同 `legacy-avatar.ts`。 */
+.peach-react [data-media-avatar] > img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+}
 .peach-react [data-media-avatar] > span:first-child {
   position: absolute;
   inset: 0;

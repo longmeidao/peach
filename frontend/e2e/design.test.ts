@@ -3109,6 +3109,38 @@ describe('设计决定', () => {
     }
   });
 
+  it('头像圆框里的图按人脸框写进的内联尺寸不被岛里的预检夹回框宽', { timeout: 60_000 }, async () => {
+    /* 演示库没有实体图，往首张卡的头像框里塞一张按人脸框放大的图：宽超过框宽时图就该那么宽，
+       由圆框的 overflow 裁；被夹回框宽的话脸偏到左边，右侧露出底下的首字母。 */
+    const opened = await openCatalogFixture(browser, (payload) => {
+      const item = payload.items[0];
+      if (!item) throw new Error('演示目录没有可替换的卡片');
+      item.creator = '';
+      item.performers = ['演示演员'];
+      item.performer_total = 1;
+      item.performer_entities = [{ id: 90_000, name: '演示演员', has_image: false }];
+    });
+    try {
+      const avatar = opened.page.locator('#grid [data-media-grid] > [data-media-card] [data-media-meta] > button[data-media-avatar]').first();
+      const framed = await avatar.evaluate((element) => {
+        const img = document.createElement('img');
+        img.setAttribute('style', 'position:absolute;inset:-25% auto auto 0;width:150%;height:195%');
+        element.appendChild(img);
+        const frame = element.getBoundingClientRect();
+        const box = img.getBoundingClientRect();
+        const style = getComputedStyle(img);
+        return { maxWidth: style.maxWidth, maxHeight: style.maxHeight,
+          width: box.width / frame.width, height: box.height / frame.height };
+      });
+      assert.equal(framed.maxWidth, 'none', '头像图还带着预检的 max-width');
+      assert.equal(framed.maxHeight, 'none', '头像图还带着 max-height');
+      assert.ok(Math.abs(framed.width - 1.5) <= .02, `按人脸框放大到 1.5 倍框宽的图被夹成了 ${framed.width} 倍`);
+      assert.ok(Math.abs(framed.height - 1.95) <= .02, `按人脸框放大到 1.95 倍框高的图被夹成了 ${framed.height} 倍`);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('暗色下 React 卡片和旧样式表控件的阴影都换成看得见的那一档', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/stats', DESKTOP);
     try {
@@ -3515,6 +3547,50 @@ describe('设计决定', () => {
       assert.equal(clip.overflow, 'visible', '#index 横向裁剪，玻璃左右两侧的影被切成直边');
       assert.equal(clip.spill, 0, '不裁剪后页面被撑出横向滚动');
       assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('标签页骨架里就铺着那块筛选玻璃，React 落地时玻璃与开头那组内容都留在原位', { timeout: 60_000 }, async () => {
+    /* 骨架与真页面各量一遍：玻璃的位置与大小、开头那组内容的上沿。药丸、读数与首字要等数据，
+       骨架里是占位；视图切换此刻就是最终那一档。 */
+    const opened = await visit(browser, '/tags', DESKTOP);
+    try {
+      const page = opened.page;
+      await page.route('**/api/index?**', (route) => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ items: [{ k: '痴女', n: 4, cat: 'role' }, { k: '秘书OL', n: 2, cat: 'scene' }],
+          has_more: false, categories: { role: 1, scene: 1 } }),
+      }));
+      const release = await holdApi(page);
+      await page.reload({ waitUntil: 'load' });
+      await page.locator('#index [data-skeleton^="index/tags/"]').waitFor({ timeout: 15_000 });
+      const measure = (glass: string, group: string, view: string) => page.evaluate(([glassSelector, groupSelector, viewSelector]) => {
+        const rect = (selector: string) => {
+          const box = document.querySelector(selector)?.getBoundingClientRect();
+          return box ? { top: box.top, left: box.left, width: box.width, height: box.height } : null;
+        };
+        return { glass: rect(glassSelector), group: rect(groupSelector),
+          pills: document.querySelectorAll(`${glassSelector} [data-filter-row="top"] > *`).length,
+          view: rect(`${glassSelector} [data-filter-row="bottom"] ${viewSelector}`) };
+      }, [glass, group, view] as const);
+      const skeleton = await measure('#index .board-filter-frame', '#index [data-skeleton] .alphagroup', '.iconswitch');
+      release();
+      await page.locator('#index [data-alphabet]').waitFor({ timeout: 15_000 });
+      await settle(page);
+      const live = await measure('#index [data-filter-glass]', '#index [data-alpha-group]', '[aria-label="标签视图"]');
+      assert.ok(skeleton.glass && skeleton.group && skeleton.view, '标签页骨架里缺筛选玻璃、开头那组或视图切换');
+      assert.ok(skeleton.pills > 0, '骨架玻璃的上排没有铺药丸占位');
+      assert.ok(live.glass && live.group && live.view, '接管后找不到筛选玻璃、开头那组或视图切换');
+      for (const key of ['top', 'left', 'width', 'height'] as const) {
+        assert.ok(Math.abs(skeleton.glass![key] - live.glass![key]) <= 1,
+          `筛选玻璃的 ${key} 接管时跳了：骨架 ${skeleton.glass![key]}，接管后 ${live.glass![key]}`);
+      }
+      assert.ok(Math.abs(skeleton.group!.top - live.group!.top) <= 1,
+        `开头那组内容的上沿接管时跳了：骨架 ${skeleton.group!.top}，接管后 ${live.group!.top}`);
+      assert.ok(Math.abs(skeleton.view!.top - live.view!.top) <= 1 && Math.abs(skeleton.view!.left - live.view!.left) <= 1,
+        `视图切换接管时挪了位：骨架 (${skeleton.view!.left}, ${skeleton.view!.top})，接管后 (${live.view!.left}, ${live.view!.top})`);
     } finally {
       await opened.close();
     }
