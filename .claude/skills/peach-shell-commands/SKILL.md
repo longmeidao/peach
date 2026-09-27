@@ -1,14 +1,30 @@
 ---
 name: peach-shell-commands
-description: 在写 PowerShell 或 Bash 命令、拼多行内容、用 rg 或 Python CLI、在测试里造临时目录，或命令报了看不懂的语法与编码错误时使用。
+description: 在写 PowerShell 或 Bash 命令、交给用户在终端跑命令、拼多行内容、用 rg 或 Python CLI、在测试里造临时目录，或命令报了看不懂的语法与编码错误时使用。
 ---
 
 # 命令与路径的形态
 
-最后复核：2026-09-20
+最后复核：2026-09-27
 证据来源：`tests/test_agent_worktree.py` 与 `tests/test_scripts.py` 里临时目录 `.resolve()`
 和正斜杠路径的注释、`scripts/test.ps1` 与 `scripts/test.sh` 的编码约定、Git 历史里被
-heredoc 转义损坏的那几次补丁，以及 `scripts/test_runner.py` 的外部工具预检。
+heredoc 转义损坏的那几次补丁、`scripts/test_runner.py` 的外部工具预检，以及 2026-07 至 09
+Claude 与 Codex 会话记录里交给用户、被贴回报错截图的 39 条命令。
+
+## 交给用户跑的命令
+
+用户终端在 Windows 上是 PowerShell 7，在 Mac 上是 zsh，都不是智能体自己工具里的那个 shell。
+通用的错法与写法见用户级技能 `user-terminal-commands`（`~/.agents/skills/`）。Peach 专属的几条：
+
+- 终端不一定在 peach-app，出现过停在 `.claude\worktrees\<会话>` 里的情况。所以 venv 与脚本写绝对路径：
+  `& <用户目录>\Desktop\peach\peach-app\.venv\Scripts\python.exe -X utf8 <同上>\scripts\x.py`，
+  写出时把占位换成实际路径。也可以在命令开头加 `Set-Location <peach-app 绝对路径>;`。
+- 不能凭记忆写的参数：`agent_worktree.py integrate --branch <分支>`；迁移要写
+  `peach.exe migrate upgrade --yes`，只写 `migrate` 只会打印状态。
+- `--apply --backup` 的备份文件名带 `$(Get-Date -Format yyyyMMdd-HHmmss)`：上一次失败前备份已经写出，
+  同名重跑会报 `FileExistsError`。
+- 交出前确认前提成立：`restart_windows_tray.py` 需要托盘已经在运行；`uv sync` 碰到运行中的
+  `peach.exe` 会报拒绝访问；不要让用户删本会话终端的启动目录。
 
 ## 何时使用
 
