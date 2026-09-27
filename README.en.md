@@ -8,6 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/longmeidao/peach/releases">Download for Windows</a> ·
+  <a href="https://demo.peach.video">Live demo</a> ·
   <a href="https://github.com/longmeidao/peach/releases/tag/intro-video">Intro video</a> ·
   <a href="https://github.com/longmeidao/peach/issues">Report a problem</a> ·
   <a href="#documentation">Documentation</a> ·
@@ -34,6 +35,8 @@ https://github.com/user-attachments/assets/cc164de3-28d6-4fc9-8067-f2e70e94cb93
 - **Your data stays on your computer**: watch history, favorites and settings are stored locally. When filling in details, Peach only sends the video code to source sites.
 
 ## Screenshots
+
+Want to look around before installing? The [live demo](https://demo.peach.video) is a ready-made library where you can try search, performer pages, filters and stats. The demo is read-only, so nothing you do is saved.
 
 <table>
   <tr>
