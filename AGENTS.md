@@ -45,7 +45,7 @@
 | 模仿、参考或对齐外部产品的界面与行为 | `.claude/skills/peach-reference-evidence/SKILL.md` |
 | 新增、修改或复核页面、控件、提示、数据面板与响应式布局 | `.claude/skills/peach-web-ui/SKILL.md` |
 | 在 macOS 上开工、改路径解析或挂载判定、git status 与 diff 不一致 | `.claude/skills/peach-cross-platform/SKILL.md` |
-| 写 PowerShell 或 Bash 命令、拼多行内容、测试里造临时目录 | `.claude/skills/peach-shell-commands/SKILL.md` |
+| 写 PowerShell 或 Bash 命令、交给用户跑命令、拼多行内容、测试里造临时目录 | `.claude/skills/peach-shell-commands/SKILL.md` |
 | 新增、修改或清退智能体规则、入口与技能 | `.claude/skills/peach-context-rules/SKILL.md` |
 | 新增、恢复或重写实现，尤其协议、解析器、抓取、媒体与基础设施 | `.claude/skills/peach-reuse-first/SKILL.md` |
 
@@ -78,6 +78,7 @@
 
 - 改文件直接用编辑工具，让 diff 可审阅；脚本仅用于生成、批量变换或需解析定位的算法任务，须可重复执行且遍历、重试有终止条件。退出 0 或打印成功不能证明内容正确。
 - 多行内容一律用写入工具写成文件再让命令读，不用 heredoc：反斜杠会被吃掉一层，加引号定界符也挡不住，而损坏是静默的，命令照样退出 0，写进去的内容却已经变形。其余 shell、PowerShell 与 CI 路径别名的坑见 `peach-shell-commands`。
+- 交给用户跑的命令按用户终端写（Windows PowerShell、Mac zsh），不照搬自己的 shell；写前按 `peach-shell-commands` 核对。
 - 收尾前按 PID 结束本任务起的调试服务、浏览器守护进程和后台命令，不按进程名批量结束；机器变卡时先跑 `agent_worktree.py processes`，看运行时长、CPU、内存和父进程是否还在，清掉自己的残留再起新的。
 - HTTPS 结论必须使用项目 CA 做严格校验；Schannel、浏览器或取证入口失败时，立即报告原始错误和未取得的验收面，不能改用 HTTP 成功来声称 HTTPS 已通过。
 - 界面、API、契约、数据层或用户可见文案改动，收尾按 `peach-surfaces` 核对各影响面并报告适用性；纯指令文档改动检查文档、入口与相关门槛。
