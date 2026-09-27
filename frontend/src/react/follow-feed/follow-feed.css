@@ -252,6 +252,14 @@
 .peach-react [data-follow-pagination] [data-entity-more] { gap: 4px; min-width: 0; margin: 0; }
 /* 忙态里转圈与「抓取中…」隔开 4px，同遗留层 `.fbtn` 的间距。 */
 .peach-react :is([data-follow-older], [data-follow-recheck]) > span { gap: 4px; }
+/* 任务在跑时两枚键只标 `aria-busy`，重复点击由 `start` 拦住：「检查更新」保持主键那块蓝，
+   「抓更早的一页」铺遗留层次级键的忙态面（`--ground` 底、`--line` 边、`--muted` 字、不带影），悬停也不变。 */
+.peach-react button[data-follow-older][aria-busy] {
+  border-color: var(--line);
+  background: var(--ground);
+  color: var(--muted);
+  box-shadow: none;
+}
 .peach-react [data-follow-backfill] { color: var(--muted); font: var(--board-compact); }
 
 /* ── 列表 ── */

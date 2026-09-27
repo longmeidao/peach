@@ -38550,7 +38550,6 @@ function eF(e) {
 						"data-follow-recheck": "",
 						"aria-label": "检查每个来源的更新",
 						"aria-busy": g.busy || void 0,
-						"aria-disabled": g.busy || void 0,
 						onClick: () => void g.start(!1),
 						children: g.starting === "check" ? /* @__PURE__ */ (0, L.jsx)("span", {
 							className: "contents",
@@ -38620,7 +38619,6 @@ function eF(e) {
 						leadingIcon: g.olderBusy ? void 0 : ZP,
 						"data-follow-older": "",
 						"aria-busy": g.busy || void 0,
-						"aria-disabled": g.busy || void 0,
 						onClick: () => void g.start(!0),
 						children: g.olderBusy ? /* @__PURE__ */ (0, L.jsxs)(L.Fragment, { children: [/* @__PURE__ */ (0, L.jsx)("span", {
 							className: "contents",

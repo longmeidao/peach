@@ -145,7 +145,7 @@ export function FollowFeedPage(props: FollowFeedProps) {
             </Button>
             {facets.sources.length ? (
               <Button variant="primary" data-follow-recheck="" aria-label="检查每个来源的更新"
-                aria-busy={job.busy || undefined} aria-disabled={job.busy || undefined}
+                aria-busy={job.busy || undefined}
                 onClick={() => void job.start(false)}>
                 {job.starting === 'check'
                   ? <span className="contents" dangerouslySetInnerHTML={{ __html: spinnerHtml('检查中') }} />
@@ -177,7 +177,7 @@ export function FollowFeedPage(props: FollowFeedProps) {
             {canBackfill ? (
               <span data-follow-page-action="">
                 <Button variant="secondary" leadingIcon={job.olderBusy ? undefined : HISTORY} data-follow-older=""
-                  aria-busy={job.busy || undefined} aria-disabled={job.busy || undefined}
+                  aria-busy={job.busy || undefined}
                   onClick={() => void job.start(true)}>
                   {job.olderBusy
                     ? <><span className="contents" dangerouslySetInnerHTML={{ __html: spinnerHtml('抓取中') }} /><span>抓取中…</span></>

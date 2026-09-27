@@ -388,6 +388,15 @@ describe('页面', () => {
     await act(async () => options.busy(true));
     expect(host.querySelector('[data-follow-older]')?.textContent).toContain('抓取中');
     expect(host.querySelector('[data-follow-backfill]')?.textContent).toBe('每个来源都抓到第 2 页');
+    // 忙着时两枚键只标 aria-busy，不落 BoardUI 的禁用档；再点哪一枚都不另起一趟。
+    for (const selector of ['[data-follow-older]', '[data-follow-recheck]']) {
+      const button = host.querySelector(selector)!;
+      expect(button.getAttribute('aria-busy')).toBe('true');
+      expect(button.hasAttribute('aria-disabled')).toBe(false);
+      await click(button);
+    }
+    await settle();
+    expect(fetcher.mock.calls.filter(([url, init]) => url === '/api/follow/check' && init?.method === 'POST')).toHaveLength(1);
   });
 
   it('管理关注是次级键、检查更新是主键；没有来源时只剩管理关注', async () => {
