@@ -3105,7 +3105,7 @@ class FollowWebSourceTests(unittest.TestCase):
         """列表外框、作者与紧凑表格分三层；行内操作不借主动作的蓝色。"""
         sources = self.read_react("follow-manage/source-list.tsx")
         self.assertIn('data-follow-author-header data-open={open || undefined}', sources)
-        self.assertIn('<DataTableFrame follow>', sources)
+        self.assertIn('<DataTableFrame follow onRowClick=', sources)
         # 整屏只有「检查全部」一枚主动作，行内动作都不借它的蓝；画出来几枚图标键、
         # 分别叫什么，由 `frontend/test/react/follow-manage.test.tsx` 在渲染结果上判。
         # 空态里那枚「添加关注」链接画在没有工具条的那一屏上，两枚不同屏，也由那份用例判。

@@ -35,6 +35,7 @@ import { useBackgroundJob } from '../background-job';
 import { cardClass } from '../components/card';
 import { DataTableFrame } from '../components/data-table-frame';
 import { EmptyState } from '../components/empty-state';
+import { clickedBlank } from '../components/row-click';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Progress } from '../components/progress';
@@ -141,9 +142,11 @@ function SourceRow(
   { source, selected, onToggle, handlers }:
   { source: FollowSource; selected: boolean; onToggle(on: boolean): void; handlers: RowHandlers },
 ) {
+  /* 点这一行的空白处就是勾上或取消：勾选框只有 16px，一行里其余的地方点了没反应的话，选几条要瞄几次。 */
   return (
     <div data-selected={selected || undefined}
-      className="flex min-h-16 flex-wrap items-center gap-3 px-2 py-3">
+      className="flex min-h-16 flex-wrap items-center gap-3 px-2 py-3"
+      onClick={(event) => { if (clickedBlank(event, event.currentTarget)) onToggle(!selected) }}>
       <Checkbox isSelected={selected} onChange={onToggle} aria-label={`选择 ${source.label}`} />
       <span className="flex min-w-0 grow flex-col gap-0.5">
         <SourceLink source={source} />
@@ -576,7 +579,7 @@ export function SourceList(props: SourceListProps) {
       ) : null}
 
       {asTable ? (
-        <DataTableFrame follow>
+        <DataTableFrame follow onRowClick={(key) => toggleOne(Number(key), !selected.has(Number(key)))}>
           <Table aria-label="关注来源" size="sm"
             sortDescriptor={sorting[0]
               ? { column: sorting[0].id, direction: sorting[0].desc ? 'descending' : 'ascending' }

@@ -316,6 +316,37 @@ it('表格视图把每条来源摊成一行，勾的还是来源 ID', async () =
   expect(sentBody(fetcher, FOLLOW_SOURCE_URL)).toEqual([{ action: 'enabled', id: 2, enabled: false }]);
 });
 
+it('表格里点一行的空白处就是选这一行，再点取消；点行里的链接不算选', async () => {
+  const { host } = await open({}, { layout: 'table' });
+  const row = () => checkboxNamed(host, '选择 甲 · Pawchive')!.closest('[role="row"]')!;
+  const blank = () => [...row().querySelectorAll('[role="rowheader"],[role="gridcell"]')]
+    .find((cell) => cell.textContent?.trim() === 'Pawchive')!;
+
+  await click(blank());
+  expect(row().hasAttribute('data-follow-selected')).toBe(true);
+  expect(host.textContent).toContain('已选 1 个来源');
+
+  await click(blank());
+  expect(row().hasAttribute('data-follow-selected')).toBe(false);
+
+  const link = row().querySelector('a')!;
+  link.addEventListener('click', (event) => event.preventDefault());
+  await click(link);
+  expect(row().hasAttribute('data-follow-selected')).toBe(false);
+});
+
+it('卡片里点来源那一行的空白处同样选中整行，点勾选框仍是勾选框自己在管', async () => {
+  const { host } = await open();
+  const row = () => checkboxNamed(host, '选择 甲 · Pawchive')!.closest('[data-source-divider] > div')!;
+
+  await click(row().querySelector('span[title="Pawchive"]'));
+  expect(row().hasAttribute('data-selected')).toBe(true);
+  expect(host.textContent).toContain('已选 1 个来源');
+
+  await click(checkboxNamed(host, '选择 甲 · Pawchive'));
+  expect(row().hasAttribute('data-selected')).toBe(false);
+});
+
 it('表格的可排序列显示并更新排序三角', async () => {
   const { host, props } = await open({}, { layout: 'table' });
   const author = [...host.querySelectorAll<HTMLElement>('[role="columnheader"]')]
