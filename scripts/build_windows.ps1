@@ -1,10 +1,13 @@
 ﻿param(
     [string]$OutputDirectory = (Join-Path $PSScriptRoot '..\dist\Peach'),
     [switch]$Standalone,
+    # 在独立目录包之上再编一个 Inno Setup 安装包，放在输出目录的上一层。
+    [switch]$Installer,
     [string]$CloudflaredPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
+if ($Installer) { $Standalone = $true }
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $Python = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $Python)) {
@@ -128,7 +131,24 @@ if (Test-Path -LiteralPath $WorkPath) {
     Remove-Item -LiteralPath $WorkPath -Recurse -Force
 }
 
+$InstallerPath = $null
+if ($Installer) {
+    $IsccCandidates = @($env:PEACH_ISCC, (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source,
+        (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'))
+    $Iscc = $IsccCandidates | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } | Select-Object -First 1
+    if (-not $Iscc) {
+        throw 'Inno Setup 6 not found. Install it with: winget install JRSoftware.InnoSetup, or set PEACH_ISCC.'
+    }
+    $InstallerOutput = Split-Path -Parent $OutputPath
+    & $Iscc /Q "/DAppVersion=$($BuildInfo.version)" "/DSourceDir=$OutputPath" "/DOutputDir=$InstallerOutput" `
+        (Join-Path $PSScriptRoot 'installer\peach.iss')
+    if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
+    $InstallerPath = Join-Path $InstallerOutput "Peach-$($BuildInfo.version)-windows-x64-setup.exe"
+}
+
 [pscustomobject]@{
     Executable = Join-Path $OutputPath 'Peach.exe'
     Icon = Join-Path $ProjectRoot 'resources\peach.ico'
+    Installer = $InstallerPath
 }

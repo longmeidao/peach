@@ -18,7 +18,7 @@ import zipfile
 import httpx
 from filelock import FileLock, Timeout
 
-from . import distribution, release_updates
+from . import desktop_installer, distribution, release_updates
 from .config import STATE_DIR, DATABASE_PATH
 from .fsutil import atomic_write_text
 from .windows_update import replace_with_retry
@@ -119,6 +119,7 @@ def prepare(data: dict, lock: FileLock) -> None:
         if not info or info.version != release["latest_version"]:
             raise ValueError("包内版本与发布版本不符")
         write(data, state="preparing", progress=90, message="正在准备安装")
+        desktop_installer.carry_uninstaller(target, stage)
         # 助手从自己的目录运行，正式目录与暂存目录都不会被它的 DLL 句柄占用。
         helper = transaction / "helper"
         shutil.copytree(target, helper, ignore=shutil.ignore_patterns("*.log"))
@@ -248,6 +249,11 @@ def apply(manifest: Path, wait_pid: int) -> int:
                 ready = httpx.get(spec.health_url + "?ready=1", verify=spec.verify, trust_env=False, timeout=3)
                 if (health.status_code == ready.status_code == 200 and health.json().get("version") == data["version"]
                         and ready.json().get("ready") and find_tray_windows(target / "Peach.exe")):
+                    if desktop_installer.installed(target):
+                        try:
+                            desktop_installer.record_version(data["version"])
+                        except OSError:
+                            pass
                     write(data, state="complete", progress=100, message=f"已更新至 {data['version']}")
                     return 0
             except (httpx.HTTPError, ValueError):

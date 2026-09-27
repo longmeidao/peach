@@ -104,7 +104,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
                 "test_restart_windows_tray.py", "test_deploy_windows_tray.py",
                 "test_buildinfo.py", "test_versioning.py",
                 "test_windows_update.py", "test_release_updates.py", "test_automatic_updates.py", "test_standalone_update.py", "test_certs.py", "test_config.py",
-                "test_fsutil.py", "test_desktop_settings.py",
+                "test_fsutil.py", "test_desktop_settings.py", "test_desktop_installer.py",
                 "test_job_status.py", "test_jobs.py", "test_task_runs.py", "test_followups.py",
                 "test_task_center_integration.py", "test_reference_updates.py",
                 "test_repo_hygiene.py", "test_seed_pack.py", "test_seed_followup.py",
@@ -136,7 +136,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
              "test_subprocess_encoding.py", "test_windows_update.py", "test_buildinfo.py"),
     "packaging": ("test_dependency_policy.py", "test_buildinfo.py", "test_onboarding.py",
                   "test_cli.py", "test_versioning.py", "test_frontend_build.py",
-                  "test_cloudflared_packaging.py"),
+                  "test_cloudflared_packaging.py", "test_desktop_installer.py"),
 }
 
 SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
