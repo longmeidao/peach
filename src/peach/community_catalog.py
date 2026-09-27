@@ -214,7 +214,8 @@ def _unverified(pool: list[Picture], usable: int,
         raise Unavailable("社区来源的封面下载失败")
     origins = sorted({one.origin for one in pool})
     if len(origins) > 1:
-        raise Unavailable(f"{'、'.join(origins)} 给的封面不是同一张图，无法互相印证")
+        # 几家都答了、图都下到了，只是互相对不上：再问还是这几张，交 `NotFound` 让采集任务记住。
+        raise NotFound(f"{'、'.join(origins)} 给的封面不是同一张图，无法互相印证")
     largest = max(pool, key=lambda one: one.pixels)
     return largest.candidate, largest.size, largest.data, ()
 
