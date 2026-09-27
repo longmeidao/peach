@@ -86,6 +86,8 @@ def create(repo: Path, agent: str, task: str, root: Path | None = None) -> dict[
     _git(main, "worktree", "add", "--lock", "--reason", "Peach active agent task",
          "-b", branch, str(target), "HEAD")
     _install_hooks(main)
+    # 开工前就报出父进程已经不在的残留进程：别的会话还在跑的进程有父进程，不在这里出现。
+    found = processes_under(_worktree_roots(main))
     return {
         "ok": True,
         "action": "create",
@@ -93,6 +95,8 @@ def create(repo: Path, agent: str, task: str, root: Path | None = None) -> dict[
         "branch": branch,
         "base": _git(target, "rev-parse", "HEAD").stdout.strip(),
         "main_dirty": bool(_git(main, "status", "--porcelain").stdout.strip()),
+        "orphan_processes": found if isinstance(found, str) else
+                            [row for row in found if row["orphan"]],
     }
 
 
@@ -247,6 +251,98 @@ def _delete_tree(path: Path) -> str:
     return why
 
 
+def _worktree_roots(main: Path) -> tuple[Path, Path]:
+    return main.parent / WORKTREE_ROOT, main / BUILTIN_WORKTREES
+
+
+def _under(value: str, roots: list[str]) -> bool:
+    if not value:
+        return False
+    here = os.path.normcase(os.path.normpath(value))
+    return any(here == root or here.startswith(root + os.sep) for root in roots)
+
+
+def processes_under(roots: Iterable[Path], *, sample: float = 0.0) -> list[dict] | str:
+    """列出当前目录或命令行落在 roots 下的进程。
+
+    工作树里起的调试服务、浏览器守护进程和挂在 stdin 上的 shell，在会话结束后照样活着：
+    2026-09-07、09-21、09-22 三次都是它们占住目录，`prune --apply` 删不掉，整洁门槛报红，
+    而当时只能手工读进程的 PEB 才找得到是谁。生产托盘与 serve 从主检出起，不在这两个落点下。
+
+    先按当前目录和命令行筛（全机扫一遍约 0.1 秒），只对命中的进程取启动时间、父进程和
+    内存：Windows 上对全部进程取这几项要十几秒，慢在拒绝访问的系统进程上。
+    `caller` 标出调用者自己这条进程链，`orphan` 是父进程已经不在的进程——会话关掉后
+    留下的多半是这种。`sample` 大于 0 时再采一次 CPU。缺 psutil 返回「未取得」说明。
+    """
+    try:
+        import psutil
+    except ImportError:
+        return "未取得：当前 venv 缺 psutil，先运行 uv sync --locked --all-extras"
+    prefixes = [os.path.normcase(os.path.normpath(str(root))) for root in roots]
+    caller: set[int] = set()
+    try:
+        link = psutil.Process()
+        while link is not None and link.pid not in caller:
+            caller.add(link.pid)
+            link = link.parent()
+    except psutil.Error:
+        pass
+    hits = []
+    for process in psutil.process_iter(["cwd", "cmdline"]):
+        cwd = process.info.get("cwd") or ""
+        cmdline = process.info.get("cmdline") or []
+        if _under(cwd, prefixes) or any(_under(arg, prefixes) for arg in cmdline):
+            hits.append((process, cwd, cmdline))
+    if sample > 0:
+        for process, _cwd, _cmdline in hits:
+            try:
+                process.cpu_percent(None)
+            except psutil.Error:
+                pass
+        time.sleep(sample)
+    rows = []
+    now = time.time()
+    for process, cwd, cmdline in hits:
+        try:
+            with process.oneshot():
+                started = process.create_time()
+                row = {
+                    "pid": process.pid,
+                    "name": process.name(),
+                    "cmdline": " ".join(cmdline)[:300],
+                    "cwd": cwd,
+                    "age_minutes": round((now - started) / 60, 1),
+                    "rss_mb": round(process.memory_info().rss / 2**20, 1),
+                    "ppid": process.ppid(),
+                    "orphan": process.parent() is None,
+                    "caller": process.pid in caller,
+                }
+                if sample > 0:
+                    row["cpu_percent"] = process.cpu_percent(None)
+        except psutil.Error:
+            continue
+        rows.append(row)
+    return sorted(rows, key=lambda row: row["rss_mb"], reverse=True)
+
+
+def processes(repo: Path) -> dict[str, object]:
+    """机器变卡或回收前，看两个工作树落点下还活着哪些进程。只报告，不结束任何进程。"""
+    main = _main_worktree(repo)
+    roots = _worktree_roots(main)
+    report: dict[str, object] = {"ok": True, "action": "processes",
+                                 "roots": [str(root) for root in roots]}
+    try:
+        import psutil
+        memory = psutil.virtual_memory()
+        report["machine"] = {"cpu_percent": psutil.cpu_percent(0.5),
+                             "memory_percent": memory.percent,
+                             "memory_available_gb": round(memory.available / 2**30, 1)}
+    except ImportError:
+        pass
+    report["processes"] = processes_under(roots, sample=0.5)
+    return report
+
+
 def _reclaim(main: Path, path: Path, branch: str) -> tuple[str, dict[str, str]]:
     """回收单个工作树，把结果归到 reclaimed / residue / failed 之一。
 
@@ -271,7 +367,8 @@ def _reclaim(main: Path, path: Path, branch: str) -> tuple[str, dict[str, str]]:
         left = _delete_tree(path)
         if left:
             return "residue", {"path": str(path), "branch": branch,
-                               "why": f"注册已摘掉，目录删不掉，确认没人占用后手动删：{left}（{why}）"}
+                               "why": f"注册已摘掉，目录删不掉，确认没人占用后手动删：{left}（{why}）",
+                               "holders": processes_under([path])}
     return "reclaimed", {"path": str(path), "branch": branch}
 
 
@@ -293,7 +390,7 @@ def _sweep_unregistered(main: Path, here: Path, *, apply: bool
     residue: list[dict[str, str]] = []
     kept: list[dict[str, str]] = []
     registered = {Path(item["path"]).resolve() for item in _worktree_entries(main)}
-    for root in (main.parent / WORKTREE_ROOT, main / BUILTIN_WORKTREES):
+    for root in _worktree_roots(main):
         if not root.is_dir():
             continue
         for path in sorted(root.iterdir()):
@@ -308,7 +405,8 @@ def _sweep_unregistered(main: Path, here: Path, *, apply: bool
                 continue
             left = _delete_tree(path)
             if left:
-                residue.append({"path": str(path), "branch": "", "why": "目录删不掉：" + left})
+                residue.append({"path": str(path), "branch": "", "why": "目录删不掉：" + left,
+                                "holders": processes_under([path])})
             else:
                 swept.append(str(path))
     return swept, residue, kept
@@ -400,6 +498,7 @@ def main() -> int:
     sweep.add_argument("--target", default="master")
     sweep.add_argument("--apply", action="store_true",
                        help="真的回收；不给这个参数就只报告")
+    sub.add_parser("processes", help="列出两个工作树落点下还活着的进程，只报告不结束")
     args = parser.parse_args()
     try:
         if args.command == "create":
@@ -408,6 +507,8 @@ def main() -> int:
             result = ready(args.repo, args.target)
         elif args.command == "prune":
             result = prune(args.repo, args.target, apply=args.apply)
+        elif args.command == "processes":
+            result = processes(args.repo)
         else:
             result = integrate(args.repo, args.branch, args.target)
     except WorkspaceError as exc:

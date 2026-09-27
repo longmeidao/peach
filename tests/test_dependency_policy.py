@@ -73,6 +73,7 @@ class DependencyPolicyTests(unittest.TestCase):
             "objc": "pyobjc-framework-Cocoa",
             "opencc": "opencc",
             "p115client": "p115client",
+            "psutil": "psutil",
             "pystray": "pystray",
             "resvg_py": "resvg-py",
             "starlette": "starlette",

@@ -1,13 +1,16 @@
+import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
 
 from scripts import agent_worktree, release_tag
 from scripts.agent_worktree import (
-    WorkspaceError, _git, _lines, create, integrate, prune, ready,
+    WorkspaceError, _git, _lines, create, integrate, processes_under, prune, ready,
 )
 from scripts.version_bump import read_version
 from support.gitrepo import seed_repository
@@ -332,6 +335,67 @@ class UnregisteredLeftoverTests(_WorktreeCase):
                 self.assertTrue(worker.is_dir())
                 self.assertIn(f"agent/claude/{task}",
                               [row["branch"] for row in report["kept"]])
+
+
+class LeftoverProcessTests(_WorktreeCase):
+    """找出工作树落点下还活着的进程：谁占着删不掉的目录、机器变卡时谁是自己的残留。"""
+
+    def sleeper(self, cwd: Path) -> subprocess.Popen:
+        cwd.mkdir(parents=True, exist_ok=True)
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"], cwd=cwd)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            rows = processes_under([cwd])
+            if any(row["pid"] == child.pid for row in rows):
+                break
+            time.sleep(0.1)
+        return child
+
+    def stop(self, child: subprocess.Popen) -> None:
+        child.kill()
+        child.wait()
+
+    def test_a_process_working_in_a_worktree_is_listed_with_its_details(self):
+        child = self.sleeper(self.repo.parent / agent_worktree.WORKTREE_ROOT / "busy")
+        try:
+            report = agent_worktree.processes(self.repo)
+        finally:
+            self.stop(child)
+        row = next(row for row in report["processes"] if row["pid"] == child.pid)
+        self.assertFalse(row["orphan"], "父进程（测试本身）还在")
+        self.assertFalse(row["caller"])
+        self.assertGreaterEqual(row["age_minutes"], 0)
+        self.assertIn("cpu_percent", row)
+        self.assertIn("memory_percent", report["machine"])
+
+    def test_the_caller_and_processes_elsewhere_are_told_apart(self):
+        child = self.sleeper(self.root / "elsewhere")
+        try:
+            rows = processes_under([self.root / "elsewhere", Path(os.getcwd())])
+        finally:
+            self.stop(child)
+        self.assertIn(child.pid, [row["pid"] for row in rows])
+        self.assertNotIn(child.pid, [row["pid"] for row in processes_under([self.repo])])
+        mine = [row for row in rows if row["pid"] == os.getpid()]
+        self.assertEqual([row["caller"] for row in mine], [True], "调用者自己这条链要标出来")
+
+    def test_a_directory_nobody_can_delete_names_the_process_holding_it(self):
+        held = self.repo / agent_worktree.BUILTIN_WORKTREES / "held-open"
+        child = self.sleeper(held)
+        try:
+            with mock.patch.object(agent_worktree, "_delete_tree",
+                                   return_value="PermissionError: 目录被别的进程占着"):
+                report = prune(self.repo, apply=True)
+        finally:
+            self.stop(child)
+        self.assertEqual([row["path"] for row in report["residue"]], [str(held)])
+        self.assertIn(child.pid, [row["pid"] for row in report["residue"][0]["holders"]])
+
+    def test_without_psutil_the_scan_says_it_was_not_obtained(self):
+        with mock.patch.dict(sys.modules, {"psutil": None}):
+            self.assertTrue(processes_under([self.repo]).startswith("未取得"))
+            report = create(self.repo, "Codex", "no-psutil", self.root / "worktrees")
+        self.assertTrue(report["orphan_processes"].startswith("未取得"))
 
 
 class IntegrationVersionTests(_WorktreeCase):
