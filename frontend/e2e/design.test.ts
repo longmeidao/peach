@@ -1297,6 +1297,12 @@ describe('设计决定', () => {
       await choice('big').check({ force: true });
       assert.ok(Math.abs(await ratio(0) - 0.75) < 0.05, '大图下番号卡没有拉成正封比例');
       assert.ok(Math.abs(await ratio(1) - 16 / 9) < 0.05, '大图把非番号卡也拉长了');
+      // 两张卡同在首行：普通视频卡按自己的内容定高，悬停面不铺进番号卡撑出来的那截空白。
+      const box = (index: number) => page.locator('#grid [data-media-grid] > [data-media-card][data-id]').nth(index)
+        .evaluate((element) => ({ top: element.getBoundingClientRect().top, height: element.getBoundingClientRect().height }));
+      const [jav, plain] = [await box(0), await box(1)];
+      assert.ok(Math.abs(jav.top - plain.top) < 1, '前两张卡不在同一行，量不到撑高');
+      assert.ok(plain.height < jav.height - 40, '普通视频卡被同行的番号卡撑到整行高');
       // `visit()` 的初始化脚本每次导航都重写设置，刷新验不了；直接读存下来的那份。
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('peach.settings.v1') || '{}'));
       assert.equal(saved.homeLayout, 'big', '首页版式没有存下来');
