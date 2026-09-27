@@ -143,10 +143,10 @@ class ReviewQueueTests(unittest.TestCase):
                 "provider_id": item.get("provider_id") or item.get("code", item["item_key"]),
                 "source_url": "", "raw_snapshot": ""}
 
-    def _asset(self, aid, code, name):
+    def _asset(self, aid, code, name, folder="/x"):
         con = sqlite3.connect(self.db_path)
         con.execute("INSERT INTO asset(id,location,path,name,medium,code) "
-                    "VALUES(?,'local',?,?,'video',?)", (aid, f"/x/{name}", name, code))
+                    "VALUES(?,'local',?,?,'video',?)", (aid, f"{folder}/{name}", name, code))
         con.commit(); con.close()
 
     def _auto(self):
@@ -458,6 +458,41 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto()["applied"], 0)
         self.assertEqual(self.queue_keys("metadata_fields"), ["259LUXU-902:release_date"])
 
+    def _release_date_row(self, code, value="2018-05-02"):
+        return {"item_key": f"{code}:release_date", "field": "release_date", "current": "",
+                "candidates": [value], "code": code}
+
+    def test_a_folder_named_after_the_code_vouches_for_a_file_that_carries_its_number(self):
+        """文件名读不出番号时，父目录逐字写着番号、文件名带着番号里那段数字也算认得（ADR-0082）。
+
+        `1pondo-123118.mp4` 放在 `123118_001` 目录下：目录写番号，文件名写日期。
+        """
+        self._asset(103, "SSIS-123", "正片123.mp4", folder=r"R:\media\SSIS-123 标题")
+        self._asset(104, "123118_001", "1pondo-123118.mp4", folder="/lib/123118_001")
+        self.write_metadata_rows([
+            self._release_date_row("SSIS-123"),
+            {"item_key": "123118_001:title", "field": "title", "current": "",
+             "candidates": ["标题"], "code": "123118_001"}])
+        self.assertEqual(self._auto()["applied"], 2)
+        self.assertEqual(self._release_dates(103), {103: "2018-05-02"})
+
+    def test_a_folder_does_not_vouch_for_a_short_number_or_a_file_naming_another_code(self):
+        """目录名兜底收得很窄，三种都不算。
+
+        文件名里只有两位数字：`ABC-17` 的 `17` 碰巧撞上的余地太大。
+        文件名里是不补零的数字：`[mtfdz.club]WX17.3` 放在 `WX-017` 目录下，文件名里没有 `017`。
+        组里有文件名读得出别的番号：那就不看目录，交回人工。
+        """
+        self._asset(105, "ABC-17", "正片17.mp4", folder="/lib/ABC-17")
+        self._asset(106, "WX-017", "[mtfdz.club]WX17.3.mp4", folder="/lib/WX-017")
+        self._asset(107, "SSIS-124", "正片124.mp4", folder="/lib/SSIS-124")
+        self._asset(108, "SSIS-124", "ABW-358.mp4", folder="/lib/SSIS-124")
+        self.write_metadata_rows([self._release_date_row(code)
+                                  for code in ("ABC-17", "WX-017", "SSIS-124")])
+        self.assertEqual(self._auto()["applied"], 0)
+        self.assertEqual(self._release_dates(105, 106, 107, 108),
+                         {105: None, 106: None, 107: None, 108: None})
+
     def _tag_row(self, item_key, code, genres, *, current=""):
         """一条标签候选。`value` 是投影后的标签，`unmapped_genres` 是没有去向的原文。"""
         tags, unmapped = map_genres(genres)
@@ -521,6 +556,41 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._auto()["applied"], 1)
         rm_review.w_review_genre(
             self.contract, {"genre": "まだ知らない分類", "tag": "苗条"})
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+
+    def test_a_recorded_word_lands_its_tag_on_the_next_run(self):
+        """词收录之后，下一轮把它收录出的那个标签补进账本（ADR-0082）。
+
+        只补那个词的：落库后被手删的标签不跟着回来。补过的词记进 `collected_genres`，
+        再跑一轮不重复补。
+        """
+        self._asset(96, "MIAD-573", "MIAD573_01.wmv")
+        slender = map_genres(["スレンダー"])[0][0]
+        self.write_metadata_rows([self._tag_row(
+            "MIAD-573:tags", "MIAD-573", ["スレンダー", "巨乳", "まだ知らない分類"])])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            entity = con.execute("SELECT id FROM entity WHERE kind='tag' AND canonical_name=?",
+                                 (slender,)).fetchone()[0]
+            con.execute("DELETE FROM asset_tag WHERE asset_id=96 AND tag=?", (slender,))
+            con.execute("DELETE FROM asset_entity WHERE asset_id=96 AND entity_id=?", (entity,))
+            con.commit()
+        finally:
+            con.close()
+        rm_review.w_review_genre(
+            self.contract, {"genre": "まだ知らない分類", "tag": "苗条"})
+
+        result = self._auto()
+        self.assertEqual((result["applied"], result["items"][0]["value"]), (1, "苗条"))
+        linked, flat = self._tags_of(96)
+        self.assertEqual(flat, {map_genres(["巨乳"])[0][0], "苗条"})
+        self.assertTrue(linked["苗条"].startswith("auto:metadata-tags@"))
+        note = self._full_decision("MIAD-573:tags")[1]
+        self.assertEqual((note["pending_genres"], note["collected_genres"], note["added_tags"]),
+                         (["まだ知らない分類"], ["まだ知らない分類"], ["苗条"]))
+        again = self._auto()
+        self.assertEqual((again["applied"], again["refreshed"]), (0, 0))
         self.assertEqual(self.queue_keys("metadata_fields"), [])
 
     def test_a_community_value_or_a_choice_between_two_waits_for_review(self):
@@ -1116,27 +1186,33 @@ class ReviewQueueTests(unittest.TestCase):
         return linked, flat
 
     def test_a_stale_manual_tag_approval_grows_by_union_and_reverts_by_batch(self):
-        """人批准过的标签过期，重判出的一套只增不减：按并集补上新增的那几个，算补空。
+        """人批准过的标签过期：按并集补上重判出的新增标签，人批准过的一个不删（ADR-0082）。
 
-        人批准过的每个标签原样留着，决定只追加 `refreshed_candidate_key` 与 `added_tags`；
-        有减少的照旧交人。补进来的那几个按批次整批撤回，那一行重新过期、回到复核页。
+        决定只追加 `refreshed_candidate_key` 与 `added_tags`。候选比账本少了几个也照样补：
+        少的那个是人批准过的，来源这一次没给不等于人判错了。候选全在账本里的只算对过。
+        补进来的那几个按批次整批撤回，那一行重新过期、回到复核页。
         """
         grow = {"candidate_key": "PPT-147:gone", "source": "r18dev", "user_note": "看过封面"}
         shrink = {"candidate_key": "PPT-148:gone", "source": "r18dev", "user_note": ""}
-        for asset_id, code in ((147, "PPT-147"), (148, "PPT-148")):
+        subset = {"candidate_key": "PPT-149:gone", "source": "r18dev", "user_note": ""}
+        for asset_id, code in ((147, "PPT-147"), (148, "PPT-148"), (149, "PPT-149")):
             self._asset(asset_id, code, f"{code}.mp4")
             self._seed_tags(asset_id, ["美乳", "痴女"])
-        self._stale_approvals({"PPT-147:tags": grow, "PPT-148:tags": shrink})
+        self._stale_approvals({"PPT-147:tags": grow, "PPT-148:tags": shrink,
+                               "PPT-149:tags": subset})
         self.write_metadata_rows([
             {"item_key": "PPT-147:tags", "field": "tags", "current": "", "code": "PPT-147",
              "candidates": [{"value": ["美乳", "痴女", "高颜值"], "display": "美乳、痴女、高颜值"}]},
             {"item_key": "PPT-148:tags", "field": "tags", "current": "", "code": "PPT-148",
              "candidates": [{"value": ["美乳", "高颜值"], "display": "美乳、高颜值"}]},
+            # 停用的 `乳系` 落库时丢掉，剩下的全在账本里。
+            {"item_key": "PPT-149:tags", "field": "tags", "current": "", "code": "PPT-149",
+             "candidates": [{"value": ["美乳", "乳系"], "display": "美乳、乳系"}]},
         ])
 
         result = self._auto()
         self.assertEqual((result["applied"], result["refreshed"], result["left_to_review"]),
-                         (1, 0, 1))
+                         (2, 1, 0))
         linked, flat = self._tags_of(147)
         self.assertEqual(flat, {"美乳", "痴女", "高颜值"})
         self.assertEqual({tag: source for tag, source in linked.items() if tag != "高颜值"},
@@ -1145,10 +1221,14 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(self._full_decision("PPT-147:tags"), (
             "approved", {**grow, "refreshed_candidate_key": "PPT-147:tags:0",
                          "added_tags": ["高颜值"]}, self.STALE_AT))
-        # 有减少：账本与决定都不动，交人。
-        self.assertEqual(self._tags_of(148)[1], {"美乳", "痴女"})
-        self.assertEqual(self._full_decision("PPT-148:tags"), ("approved", shrink, self.STALE_AT))
-        self.assertEqual(self.queue_keys("metadata_fields"), ["PPT-148:tags"])
+        self.assertEqual(self._tags_of(148)[1], {"美乳", "痴女", "高颜值"})
+        self.assertEqual(self._full_decision("PPT-148:tags"), (
+            "approved", {**shrink, "refreshed_candidate_key": "PPT-148:tags:0",
+                         "added_tags": ["高颜值"]}, self.STALE_AT))
+        self.assertEqual(self._tags_of(149)[1], {"美乳", "痴女"})
+        self.assertEqual(self._full_decision("PPT-149:tags"), (
+            "approved", {**subset, "refreshed_candidate_key": "PPT-149:tags:0"}, self.STALE_AT))
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
         self.assertEqual(self._auto()["applied"], 0)
 
         spec = importlib.util.spec_from_file_location(

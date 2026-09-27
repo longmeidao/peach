@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-08-24
-- 修订：ADR-0025 把 `AUTO_APPLY_FIELDS` 从 `release_date` 一个字段扩到六个 P0 字段，白名单以代码为准；ADR-0079 规定过期决定怎样重判
+- 修订：ADR-0025 把 `AUTO_APPLY_FIELDS` 从 `release_date` 一个字段扩到六个 P0 字段，白名单以代码为准；ADR-0079 规定过期决定怎样重判；ADR-0082 给第 3 条加了文件名读不出番号时的目录名窄兜底
 
 ## 背景
 

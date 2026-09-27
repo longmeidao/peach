@@ -28,7 +28,7 @@ from .field_owners import (
 )
 from .fsutil import atomic_write_bytes
 from .genre_decisions import load_genre_decisions, record_genre_decision
-from .genre_taxonomy import CONTENT_GENRES, UNMAPPED, resolve_genre
+from .genre_taxonomy import CONTENT_GENRES
 # 判据与写入映射属于领域层（`metadata_auto_apply`）：命令行首扫、处理任务的自动落库和
 # 这里的「通过」按钮必须是同一套，复核域只负责把它们摆到人面前并记下决定。
 from .metadata_auto_apply import (
@@ -43,6 +43,7 @@ from .metadata_auto_apply import (
     _performer_identity_keys,
     _row_candidates,
     _split_multi,
+    genres_still_pending,
     metadata_decision_is_stale,
     refresh_current_values,
 )
@@ -268,38 +269,18 @@ def _drop_fallback_challenges(rows: list[dict]) -> list[dict]:
     return [row for row in rows if keep(row)]
 
 
-def _genres_still_pending(decisions: dict, decision: dict) -> bool:
-    """这条自动落库是不是还留着没人收录的 genre（ADR-0038）。
-
-    标签候选里认得出的那些已经落库了，`pending_genres` 记的是三张表都不认的词。
-    这一行重新摆回队列不是为了再判一次标签，是为了判那几个词——所以判据只看词，
-    收录一个就少一个，全收录完这一行就自己消失。
-
-    静态表也要重查：`genre_taxonomy` 随代码一直在补，落库那一刻不认的词，今天可能
-    已经在表里了（`_fold_genre_decisions` 的同一条理由）。
-    """
-    try:
-        note = json.loads(str(decision.get("note") or ""))
-    except (TypeError, ValueError):
-        return False
-    if not isinstance(note, dict):
-        return False
-    return any(resolve_genre(str(genre), decisions) == UNMAPPED
-               for genre in note.get("pending_genres") or [])
-
-
 def _metadata_decision_in_force(decision: dict, row: dict, genre_decisions: dict) -> dict:
     """这一行的旧决定还算不算数；不算数就当待定，返回空字典。
 
     过期判据与自动落库是同一份（`metadata_decision_is_stale`）：页面摆回来的行，
     下一轮处理任务也会重判，不会一边说「待定」一边永远不动。还有生词等收录的
-    自动落库（`_genres_still_pending`）同样摆回来，那一行等的是 genre 那一侧。
+    自动落库（`genres_still_pending`）同样摆回来，那一行等的是 genre 那一侧。
     """
     if not decision:
         return decision
     if metadata_decision_is_stale(decision, row.get("candidates") or []):
         return {}
-    if decision.get("status") == "approved" and _genres_still_pending(genre_decisions, decision):
+    if decision.get("status") == "approved" and genres_still_pending(genre_decisions, decision):
         return {}
     return decision
 
@@ -347,7 +328,7 @@ def _metadata_queue_rows(connection, rows: list[dict],
     # 不认的词。按新信息剔掉它，那几个词就再没有出现的地方了。
     rows = [row for row in rows
             if _metadata_row_adds_information(connection, row)
-            or _genres_still_pending(genre_decisions, decisions.get(row["item_key"], {}))]
+            or genres_still_pending(genre_decisions, decisions.get(row["item_key"], {}))]
     # 韩国 MIB 的番号不适用 JAV 规则，`metadata_routes` 给它的链是空的。但候选件是
     # 历史产物，闸门只管以后不再生成，管不了已经落盘的那些：2026-09-04 实测队列里
     # 还有 214 条（title 51、studio 51、release_date 51、performers 39、series 22）。
