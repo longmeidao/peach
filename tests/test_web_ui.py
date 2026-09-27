@@ -7192,7 +7192,7 @@ class WebUiSourceTests(unittest.TestCase):
             "scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});")
         self.assertIn("html.refiltering{overflow-anchor:none}", stylesheet_source())
         # 目录那边的骨架由 loadCatalog() 铺；资料页的集合自己铺一份同样的。
-        self.assertCode("  if(host){releaseEntityGrid();host.innerHTML=entityGridSkeletonHtml();fitSkeleton(section)}")
+        self.assertCode("  if(host){releaseEntityGrid();host.innerHTML=catalogSkeletonHtml();fitSkeleton(section)}")
 
     def test_adding_a_filter_only_changes_the_list_underneath(self):
         """点一条筛选，动的只有底下那份名单；上面那几排原地改按下态。
@@ -7705,7 +7705,7 @@ class WebUiSourceTests(unittest.TestCase):
         body = body.split("\n}", 1)[0]
         self.assertIn("$('#loadSentinel').hidden=true;", body)
         self.assertLess(body.index("$('#loadSentinel').hidden=true;"),
-                        body.index("setGridCards(pageSkeletonHtml"),
+                        body.index("setGridCards(catalogSkeletonHtml"),
                         "哨兵要在骨架铺上之前收掉，别让 dots 和骨架同时存在一帧")
         # 目录这条链上收哨兵只有这一处：分支里再补一次就是又一个会漏掉的地方。
         ads = self.app_js.split("async function loadJunk(", 1)[1].split("renderJunkNavigation(adsBatch)", 1)[0]
@@ -7715,8 +7715,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
-        self.assertPageContains("setGridCards(pageSkeletonHtml(label,\n"
-            "    {cards:true,className:'catalog-skeleton postercard-skeleton'}));")
+        self.assertPageContains("setGridCards(catalogSkeletonHtml(label));")
         self.assertPageContains("count.setAttribute('aria-label',label);")
         self.assertPageContains(".grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("function renderInitialSurfaceLoading()")
@@ -7781,10 +7780,10 @@ class WebUiSourceTests(unittest.TestCase):
             "'/follow-manage':()=>`<div class=\"follow\">${pageSkeletonHtml('正在读取关注管理',")
         self.assertPageContains("{cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,")
         self.assertPageContains(
-            "const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>")
+            "const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill,cardRatio}={})=>")
         self.assertPageContains("skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,")
         self.assertPageContains(
-            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true,gridClass='',gridSize=''}={})")
+            "export function skeletonHtml(label='正在读取内容',{className='',variant='panel',count=6,fill=true,gridClass='',gridSize='',cardRatio=0}={})")
         self.assertPageContains("?Array.from({length:Math.max(1,count)},")
         # 版式：一列对上 .followmanage，宽度也跟它一样是 812px 居中。
         self.assertPageContains(

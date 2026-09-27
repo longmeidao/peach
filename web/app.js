@@ -195,11 +195,11 @@ const ROUTES=[
 const registerRoute=spec=>{ROUTES.push(spec);return spec};
 window.peachRegisterRoute=registerRoute;
 
-const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill}={})=>
+const pageSkeletonHtml=(label,{cards=false,className='',variant='',count,fill,cardRatio}={})=>
   skeletonHtml(label,{variant:variant||(cards?'cards':'panel'),className,
     gridClass:className.includes('follow-content-skeleton')&&new URLSearchParams(location.search).get('media')==='images'?'followlist followphotowall':'',
     gridSize:className.includes('follow-content-skeleton')?photoSize():'',
-    ...(count?{count}:{}),...(fill===undefined?{}:{fill})});
+    ...(count?{count}:{}),...(fill===undefined?{}:{fill}),...(cardRatio?{cardRatio}:{})});
 /* 关注页的骨架跟首页共用海报卡那套几何：网格算式、卡内每一格都一样，只有归属行
    高一点（`.followitem .meta .s` 有 min-height）。上面是它自己的创作者行、题材行和那块
    两排的玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏那两排是
@@ -292,8 +292,7 @@ function renderCatalogLoading(label='正在读取作品'){
   fitSkeleton(count);
   /* 网格已经挂着时骨架归它自己铺：`#grid` 是它的容器，壳往里写会把 React 根冲掉。 */
   if(islandMounted($('#grid')))return;
-  setGridCards(pageSkeletonHtml(label,
-    {cards:true,className:'catalog-skeleton postercard-skeleton'}));
+  setGridCards(catalogSkeletonHtml(label));
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -6589,7 +6588,6 @@ let entityGridRevision=0;
 function releaseEntityGrid(){
   $('#index').querySelectorAll('[data-entity-grid]').forEach(host=>{releaseHoverPreviews(host);unmountIsland(host)});
 }
-const entityGridSkeletonHtml=()=>pageSkeletonHtml('正在读取作品',{cards:true,className:'catalog-skeleton postercard-skeleton'});
 function syncEntityFilterFrame(){
   const root=$('#index'),top=root.querySelector('.entitytagbar');
   const bottom=root.querySelector('.entitysection>.entitycollectionhead');
@@ -6648,7 +6646,7 @@ function markEntityCollectionBusy(kind,name,filters){
   /* 名单已经不是刚才那一份了。把旧卡片留在屏幕上等新的回来，等的这一下人读到的是一份
      跟头上的筛选对不上的列表——数字在转圈，底下那几十张却还是上一次的答案。 */
   const host=section.querySelector('[data-entity-grid]');
-  if(host){releaseEntityGrid();host.innerHTML=entityGridSkeletonHtml();fitSkeleton(section)}
+  if(host){releaseEntityGrid();host.innerHTML=catalogSkeletonHtml();fitSkeleton(section)}
 }
 /* 名册：事务所页是艺人，片商页是旗下 label。和对应的索引页摆的是同一格、同一套版式
    设置，只是这批随资料页一起下来了，不再单独请求；读数写的是这一格有多少视频。 */
@@ -6672,7 +6670,7 @@ function renderEntityCollection(kind,name,items,filters){
   releaseEntityGrid();
   /* 宿主里先铺一份骨架：React 产物头一次装载要等一个来回，这期间不留一块空白。 */
   section.innerHTML=`${collectionHeaderHtml({controls:entityCollectionSortsHtml(filters)})}
-    <div data-entity-grid>${entityGridSkeletonHtml()}</div>`;
+    <div data-entity-grid>${catalogSkeletonHtml()}</div>`;
   section.dataset.total=String(items.total||0);
   section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTags.length?' · '+entityTags.join(' · '):''}`;
   wireEntityCollectionHead(section,kind,name,filters);
@@ -6682,7 +6680,7 @@ function renderEntityCollection(kind,name,items,filters){
     fetchPage:(offset,signal)=>fetchEntityItems(kind,name,filters,offset,signal),
     helpers:gridHelpers,actions:gridActions,layout:catalogGridLayout(),
     selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,
-    cache,wireDrag,skeletonHtml:entityGridSkeletonHtml,groupCollapse:appSettings.groupCollapse,
+    cache,wireDrag,skeletonHtml:()=>catalogSkeletonHtml(),groupCollapse:appSettings.groupCollapse,
     canLoadMore:()=>!$('#index').hidden&&$('#stats').hidden,
   },{isCurrent:()=>section.contains(host)}).catch(error=>console.error(error));
   syncEntityFilterFrame();
@@ -7309,7 +7307,7 @@ function showEntityLoading(kind,name){
   const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});
   const body=kind==='agency'
     ?indexSkeletonHtml({kind:'performers',layout:peopleIndexLayout()})
-    :pageSkeletonHtml('正在读取作品',{cards:true,className:'catalog-skeleton postercard-skeleton'});
+    :catalogSkeletonHtml();
   const placeholder=entitySkeletonHtml(kind,head,body);
   if($('#index').firstElementChild?.dataset.skeleton!==`entity/${kind}`){
     $('#index').innerHTML=placeholder;
@@ -8270,6 +8268,18 @@ function catalogGridLayout(){
   if(!catalogLayoutValue||Object.keys(next).some(key=>next[key]!==catalogLayoutValue[key]))catalogLayoutValue=next;
   return catalogLayoutValue;
 }
+/* 作品网格的骨架（目录、回收站、资料页作品区）。封面比例跟真卡的 `cardRatio` 对番号
+   作品给的那一档一致：显式筛了竖屏是 9:16，首页与 JAV 语境下选了大图是 3:4 正封，
+   其余 16:9。首页大图只拉长番号作品，骨架不知道会回来哪几张，按版式本身给。 */
+function catalogSkeletonHtml(label='正在读取作品'){
+  return pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton postercard-skeleton',cardRatio:catalogCardRatio()});
+}
+function catalogCardRatio(){
+  if(!state)return 16/9;
+  const layout=catalogGridLayout();
+  if(layout.portrait)return 9/16;
+  return layout.active&&layout.size==='big'?COVER_FRONT_RATIO:16/9;
+}
 /* 挂着卡片网格的几处：目录 `#grid`、资料页作品区、详情页的接着看。 */
 function gridIslandHosts(){
   return [$('#grid'),...$('#index').querySelectorAll('[data-entity-grid]'),$('#nrow')].filter(host=>islandMounted(host));
@@ -8287,7 +8297,7 @@ function catalogGridProps(){
     mode:'catalog',helpers:gridHelpers,actions:gridActions,layout:catalogGridLayout(),
     selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,revision:catalogRevision,
     cache,wireDrag,settled:settleCatalog,
-    skeletonHtml:()=>pageSkeletonHtml('正在读取作品',{cards:true,className:'catalog-skeleton postercard-skeleton'}),
+    skeletonHtml:()=>catalogSkeletonHtml(),
     filters:{...state},batchSize:appSettings.batchSize,groupCollapse:appSettings.groupCollapse,
     /* 只有首页默认列表排除竖屏——那里另有独立的竖屏带承接它们。搜索必须能搜到竖屏作品，
        否则按名字找一条竖屏视频会得到 0 结果。JAV 模式恒不含竖屏：番号发行物本身就是横版。 */
