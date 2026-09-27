@@ -165,7 +165,8 @@ const fmtDur=s=>{s=realDuration(s);if(!s)return'—';s=Math.round(s);const h=s/3
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
 const fmtClock=s=>{s=Math.max(0,Math.floor(Number(s)||0));const h=s/3600|0,m=(s%3600)/60|0,x=s%60;
   return h?`${h}:${String(m).padStart(2,'0')}:${String(x).padStart(2,'0')}`:`${m}:${String(x).padStart(2,'0')}`};
-const fmtSize=b=>b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
+/* 网盘报的容量可以到 PB：PikPak 报 10 PiB，写成 TB 是「10240.00 TB」。 */
+const fmtSize=b=>b>=1125899906842624?(b/1125899906842624).toFixed(2)+' PB':b>=1099511627776?(b/1099511627776).toFixed(2)+' TB':b>=1073741824?(b/1073741824).toFixed(1)+' GB':(b/1048576|0)+' MB';
 const LOC={local:'本地','115':'115',pikpak:'PikPak',online:'在线'};
 
 export {

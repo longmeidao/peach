@@ -69,6 +69,40 @@ const qualityGoal = (id: number, name: string) => ({
 /** 1×1 的透明 PNG，够让 `<img>` 走完一次加载。 */
 const PIXEL = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
+/** 口味页浏览器画像的五个维度：头一个是其余的十倍，和真实馆藏的分布一样。 */
+const TASTE_CATEGORIES = [['剧情', 657], ['写真', 68], ['素人', 56], ['偶像', 4], ['企划', 1]]
+  .map(([name, score]) => ({ name, score }));
+
+/** 一张全身站姿照的人脸框：脸落在画面上半截的一小块里，小圆框要放大好几倍才看得清。 */
+const TASTE_FACE = { cx: .439, cy: .224, faceW: 67, imgW: 640, imgH: 960 };
+
+/** 口味页按改写过的 `/api/taste` 打开：演示库没有浏览记录，也没有带人脸框的实体图。
+ * 字段以 `src/peach/taste_history.py` 与 `src/peach/web_stats.py` 为准；实体图换成与人脸框同尺寸的纯色图。 */
+async function openTaste(browser: Browser, viewport: typeof DESKTOP): Promise<Visit> {
+  const opened = await visit(browser, '/taste', viewport);
+  const face = (id: number, name: string) => ({
+    name, peach_items: 3, peach_score: 5, entity_id: id, has_image: true, avatar_focus: { box: TASTE_FACE },
+  });
+  await opened.page.route(/\/api\/taste\?/, async (route) => {
+    const json = await (await route.fetch()).json();
+    await route.fulfill({ json: { ...json, rankings: { ...json.rankings,
+      browser_categories: TASTE_CATEGORIES,
+      peach_performers: [face(901, '演示女优')],
+      peach_creators: [face(902, '演示创作者')],
+    } } });
+  });
+  await opened.page.route(/\/entity-image\?/, (route) => route.fulfill({
+    contentType: 'image/svg+xml',
+    body: `<svg xmlns="http://www.w3.org/2000/svg" width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}">`
+      + `<rect width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}" fill="#888"/></svg>`,
+  }));
+  await opened.page.reload({ waitUntil: 'load' });
+  await expectBody(opened.page, '/taste', [
+    opened.page.locator('#stats').getByRole('tab', { name: '浏览器记录', exact: true }),
+  ]);
+  return opened;
+}
+
 /** 高清版目标页按给定的一份 `/api/quality-goals` 打开：演示库里凑不齐很长的标题。 */
 async function openQualityGoals(browser: Browser, items: unknown[]): Promise<Visit> {
   const opened = await visit(browser, '/quality-goals', DESKTOP);
@@ -234,40 +268,6 @@ async function openIndexPage(browser: Browser, path: string): Promise<Visit> {
   await opened.page.locator('#index [data-index-cell], #index [data-alpha-tag], #index [data-tag-chip]').first()
     .waitFor({ timeout: 15_000 });
   await settle(opened.page);
-  return opened;
-}
-
-/** 口味页浏览器画像的五个维度：头一个是其余的十倍，和真实馆藏的分布一样。 */
-const TASTE_CATEGORIES = [['剧情', 657], ['写真', 68], ['素人', 56], ['偶像', 4], ['企划', 1]]
-  .map(([name, score]) => ({ name, score }));
-
-/** 一张全身站姿照的人脸框：脸落在画面上半截的一小块里，小圆框要放大好几倍才看得清。 */
-const TASTE_FACE = { cx: .439, cy: .224, faceW: 67, imgW: 640, imgH: 960 };
-
-/** 口味页按改写过的 `/api/taste` 打开：演示库没有浏览记录，也没有带人脸框的实体图。
- * 字段以 `src/peach/taste_history.py` 与 `src/peach/web_stats.py` 为准；实体图换成与人脸框同尺寸的纯色图。 */
-async function openTaste(browser: Browser, viewport: typeof DESKTOP): Promise<Visit> {
-  const opened = await visit(browser, '/taste', viewport);
-  const face = (id: number, name: string) => ({
-    name, peach_items: 3, peach_score: 5, entity_id: id, has_image: true, avatar_focus: { box: TASTE_FACE },
-  });
-  await opened.page.route(/\/api\/taste\?/, async (route) => {
-    const json = await (await route.fetch()).json();
-    await route.fulfill({ json: { ...json, rankings: { ...json.rankings,
-      browser_categories: TASTE_CATEGORIES,
-      peach_performers: [face(901, '演示女优')],
-      peach_creators: [face(902, '演示创作者')],
-    } } });
-  });
-  await opened.page.route(/\/entity-image\?/, (route) => route.fulfill({
-    contentType: 'image/svg+xml',
-    body: `<svg xmlns="http://www.w3.org/2000/svg" width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}">`
-      + `<rect width="${TASTE_FACE.imgW}" height="${TASTE_FACE.imgH}" fill="#888"/></svg>`,
-  }));
-  await opened.page.reload({ waitUntil: 'load' });
-  await expectBody(opened.page, '/taste', [
-    opened.page.locator('#stats').getByRole('tab', { name: '浏览器记录', exact: true }),
-  ]);
   return opened;
 }
 
@@ -2525,6 +2525,9 @@ describe('设计决定', () => {
           return {
             tabs: [...document.querySelectorAll('#searchMenu [role="tab"]')].map((tab) => tab.textContent!.trim()),
             tracks: getComputedStyle(results).gridTemplateColumns.split(' ').filter((track) => track !== 'none').length,
+            divider: getComputedStyle(results, '::before').content,
+            dividerHeight: parseFloat(getComputedStyle(results, '::before').height),
+            resultsHeight: results.getBoundingClientRect().height,
             right: columns.at(-1)!.querySelector('.searchgroup')?.getAttribute('data-kind'),
             videoGrid: getComputedStyle(document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!).display,
             peeks: getComputedStyle(person.querySelector('.searchpeeks')!).display,
@@ -2537,6 +2540,11 @@ describe('设计决定', () => {
         });
         assert.deepEqual(shown.tabs, ['全部', '女优2', '厂牌1', '视频12'], '页签不是「全部」加各类命中数');
         assert.equal(shown.tracks, split ? 2 : 0, split ? '宽屏下拉没有分两栏' : '窄屏下拉不该分栏');
+        assert.equal(shown.divider, split ? '""' : 'none', split ? '宽屏两栏之间没有分隔线' : '窄屏一栏不该有分隔线');
+        if (split) {
+          assert.ok(Math.abs(shown.dividerHeight - shown.resultsHeight) <= 1,
+            `分隔线高 ${shown.dividerHeight}px，两栏高 ${shown.resultsHeight}px`);
+        }
         assert.equal(shown.right, 'asset', '视频不在最后一栏');
         assert.equal(shown.videoGrid, split ? 'grid' : 'block', split ? '宽屏视频没排成封面格' : '窄屏视频该一行一部');
         assert.equal(shown.peeks, split ? 'flex' : 'none', split ? '宽屏人名一行没摆近作' : '窄屏人名一行不摆近作');
@@ -2566,6 +2574,67 @@ describe('设计决定', () => {
       }
     });
   }
+
+  it('只看视频时封面格按列均分铺满整栏，每格有宽度上限', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', WIDE);
+    try {
+      const page = opened.page;
+      await stubSuggest(page);
+      await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+      await settle(page);
+      await page.locator('#q').fill(SUGGEST.q);
+      const menu = page.locator('#searchMenu');
+      await menu.locator('.searchperson').first().waitFor({ state: 'visible', timeout: 5_000 });
+      await menu.getByRole('tab', { name: /^视频/ }).click();
+      await page.waitForFunction(() => document.querySelectorAll('#searchMenu .searchgroup[data-kind]').length === 1);
+      const grid = await page.evaluate(() => {
+        const items = document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!;
+        const box = items.getBoundingClientRect();
+        const cards = [...items.querySelectorAll('.searchwork')].map((card) => card.getBoundingClientRect());
+        return {
+          rows: new Set(cards.map((card) => Math.round(card.top))).size,
+          widths: cards.map((card) => Math.round(card.width)),
+          slack: Math.round(box.right - cards.at(-1)!.right),
+        };
+      });
+      assert.equal(grid.rows, 1, '五部视频没排在同一行');
+      assert.ok(grid.slack <= 1, `封面格右侧空出 ${grid.slack}px`);
+      assert.ok(grid.widths.every((width) => width >= 96 && width <= 242), `封面宽度越出 96～242：${grid.widths.join('、')}`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('空输入时搜索记录与推荐并排，两栏之间的分隔线从顶画到底', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', WIDE);
+    try {
+      const page = opened.page;
+      const history = Array.from({ length: 10 }, (_, at) => `搜索记录 ${at + 1}`);
+      await page.route(/\/api\/search-history\?/, (route) => route.fulfill({ json: { items: history } }));
+      await page.reload({ waitUntil: 'load' });
+      await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+      await settle(page);
+      await page.locator('#q').click();
+      await page.locator('#searchMenu .searchresults[data-split]').waitFor({ state: 'visible', timeout: 5_000 });
+      const split = await page.evaluate(() => {
+        const results = document.querySelector('#searchMenu .searchresults')!;
+        const [left, right] = [...results.querySelectorAll(':scope > .searchcol')].map((col) => col.getBoundingClientRect());
+        const box = results.getBoundingClientRect();
+        const line = getComputedStyle(results, '::before');
+        return {
+          box: box.height, left: left.height, right: right.height, line: parseFloat(line.height),
+          offset: parseFloat(line.left) + parseFloat(line.width) / 2 - ((left.right + right.left) / 2 - box.left),
+        };
+      });
+      assert.ok(split.right < split.left, `推荐一栏（${split.right}px）应比十条搜索记录（${split.left}px）短`);
+      assert.ok(Math.abs(split.line - split.box) <= 1, `分隔线高 ${split.line}px，两栏高 ${split.box}px`);
+      assert.ok(Math.abs(split.offset) <= 1, `分隔线偏离两栏之间的缝 ${split.offset}px`);
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
 
   it('资料表的标签只列前四个，余下的收进「+N」，浮层进顶层列全部标签', { timeout: 60_000 }, async () => {
     const opened = await openProfiledPerformer(browser, DESKTOP);
@@ -2937,6 +3006,118 @@ describe('设计决定', () => {
     }
   });
 
+  it('使用空间按字节量级的真实容量画出已用那一段，每个卷一行、不越出卡片', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/stats', DESKTOP);
+    try {
+      const page = opened.page;
+      const TB = 1024 ** 4;
+      const volumes = [
+        { kind: 'system', label: '系统盘', root: 'C:\\', online: true, total: 2 * TB, used: 1.8 * TB, free: .2 * TB },
+        { kind: 'media', label: '资源盘', root: 'R:\\media', online: false, total: null, used: null, free: null },
+        { kind: 'media', label: 'PikPak 网盘', root: 'A:\\', online: true, total: 10240 * TB, used: 0, free: 10240 * TB },
+      ];
+      await page.route(/\/api\/stats(?:\?|$)/, async (route) => {
+        const json = await (await route.fetch()).json();
+        await route.fulfill({ json: { ...json, storage_volumes: volumes, storage_summary: {
+          volumes: 3, online: 2, measured: 2, free: 10240.2 * TB, used: 1.8 * TB, total: 10242 * TB,
+        } } });
+      });
+      await page.reload({ waitUntil: 'load' });
+      await page.getByRole('tab', { name: /使用空间/ }).click();
+      const panel = page.locator('[role="tabpanel"]').first();
+      await panel.locator('[role="progressbar"]').first().waitFor({ state: 'visible', timeout: 15_000 });
+      await settle(page);
+      const shown = await panel.evaluate((element) => {
+        const card = element.firstElementChild!;
+        const cardBox = card.getBoundingClientRect();
+        const detail = card.lastElementChild!.getBoundingClientRect();
+        return {
+          filled: [...element.querySelectorAll('[role="progressbar"]')].map((bar) =>
+            Math.round(bar.querySelectorAll('rect')[1]!.getBoundingClientRect().width / bar.getBoundingClientRect().width * 100)),
+          rows: [...element.querySelectorAll('article')].map((row) => getComputedStyle(row).borderBottomWidth),
+          overflow: detail.right - (cardBox.right - parseFloat(getComputedStyle(card).paddingRight)),
+          text: element.textContent ?? '',
+        };
+      });
+      assert.deepEqual(shown.filled, [90, 0], '进度条画出来的已用比例不对');
+      assert.deepEqual(shown.rows, ['1px', '1px', '0px'], '卷与卷之间没有覆盖率那样的分隔线');
+      assert.ok(shown.overflow <= .5, `使用空间的详情越出卡片内边距 ${shown.overflow}px`);
+      assert.ok(shown.text.includes('10.00 PB'), '网盘容量没按 PB 写');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  for (const viewport of VIEWPORTS) {
+    it(`口味维度排名宽屏跟雷达那一栏等高、窄屏按条数给高度，图拉高时条不变粗（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openTaste(browser, viewport);
+      try {
+        const page = opened.page;
+        const bars = page.locator('section[aria-label="口味维度排名"]');
+        await bars.locator('.recharts-bar-rectangle').first().waitFor({ state: 'visible', timeout: 15_000 });
+        await settle(page);
+        const shown = await page.locator('section[aria-label="浏览器画像"]').evaluate((section) => {
+          const radar = section.firstElementChild!.getBoundingClientRect();
+          const ranked = section.querySelector('section[aria-label="口味维度排名"]')!.getBoundingClientRect();
+          return {
+            radar: radar.height,
+            ranked: ranked.height,
+            thickness: [...section.querySelectorAll('.recharts-bar-rectangle')]
+              .map((bar) => bar.getBoundingClientRect().height),
+          };
+        });
+        assert.equal(shown.thickness.length, TASTE_CATEGORIES.length);
+        if (viewport.mobile) {
+          assert.ok(shown.ranked >= 32 * TASTE_CATEGORIES.length,
+            `窄屏排行条只有 ${shown.ranked}px，${TASTE_CATEGORIES.length} 条挤不下`);
+        } else {
+          assert.ok(Math.abs(shown.ranked - shown.radar) < 2,
+            `排行条 ${shown.ranked}px，雷达那一栏 ${shown.radar}px，两栏不等高`);
+        }
+        // 26 是一格 32 里默认留出的粗细；图被拉高时多出来的高度拉开条距，不进条本身。
+        assert.ok(shown.thickness.every((height) => height <= 26.5), `条粗 ${shown.thickness.join('、')}px`);
+        assert.deepEqual(opened.problems, []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
+  it('口味榜的女优与创作者头像按人脸框放大：图保持原比例、盖满圆框，不露出底下的首字母', { timeout: 60_000 }, async () => {
+    const opened = await openTaste(browser, DESKTOP);
+    try {
+      const page = opened.page;
+      await page.getByRole('tablist', { name: '口味证据来源' }).getByRole('tab', { name: 'Peach 内部' }).click();
+      for (const name of ['女优', '创作者']) {
+        await page.getByRole('tablist', { name: 'Peach 口味维度' }).getByRole('tab', { name }).click();
+        const img = page.getByRole('tabpanel', { name }).locator('img[data-facebox]').first();
+        await img.scrollIntoViewIfNeeded();
+        // 放大是图加载后 `avatarFrame` 写进内联 style 的；等到那一步落地再量。
+        await page.waitForFunction((element) => element instanceof HTMLImageElement
+          && element.complete && element.naturalWidth > 0 && element.style.width !== '',
+        await img.elementHandle(), { timeout: 15_000 });
+        const frame = await img.evaluate((element) => {
+          const ring = element.parentElement!.getBoundingClientRect();
+          const box = element.getBoundingClientRect();
+          return {
+            maxWidth: getComputedStyle(element).maxWidth, ring: ring.width,
+            width: box.width, aspect: box.width / box.height,
+            gaps: [box.left - ring.left, ring.right - box.right, box.top - ring.top, ring.bottom - box.bottom],
+          };
+        });
+        assert.equal(frame.maxWidth, 'none', `${name}头像的图被预检的 max-width 夹住`);
+        assert.ok(frame.width > frame.ring, `${name}头像没有按人脸框放大：图宽 ${frame.width}px，圆框 ${frame.ring}px`);
+        assert.ok(Math.abs(frame.aspect - TASTE_FACE.imgW / TASTE_FACE.imgH) < .02,
+          `${name}头像的图宽高比 ${frame.aspect}，被压扁了`);
+        assert.ok(frame.gaps.every((gap) => gap <= .5), `${name}头像的图没盖满圆框：${frame.gaps.join('、')}`);
+      }
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('被打断的那一轮只有结束原因，卡片正文下面不留空行', { timeout: 60_000 }, async () => {
     const opened = await openActivity(browser, [
       { ...settledRun(1, 'interrupted', '追更检查'), error: '服务重启，这一轮没有跑完' },
@@ -3122,41 +3303,6 @@ describe('设计决定', () => {
       await opened.close();
     }
   });
-
-  for (const viewport of VIEWPORTS) {
-    it(`口味维度排名宽屏跟雷达那一栏等高、窄屏按条数给高度，图拉高时条不变粗（${viewport.name}）`, { timeout: 60_000 }, async () => {
-      const opened = await openTaste(browser, viewport);
-      try {
-        const page = opened.page;
-        const bars = page.locator('section[aria-label="口味维度排名"]');
-        await bars.locator('.recharts-bar-rectangle').first().waitFor({ state: 'visible', timeout: 15_000 });
-        await settle(page);
-        const shown = await page.locator('section[aria-label="浏览器画像"]').evaluate((section) => {
-          const radar = section.firstElementChild!.getBoundingClientRect();
-          const ranked = section.querySelector('section[aria-label="口味维度排名"]')!.getBoundingClientRect();
-          return {
-            radar: radar.height,
-            ranked: ranked.height,
-            thickness: [...section.querySelectorAll('.recharts-bar-rectangle')]
-              .map((bar) => bar.getBoundingClientRect().height),
-          };
-        });
-        assert.equal(shown.thickness.length, TASTE_CATEGORIES.length);
-        if (viewport.mobile) {
-          assert.ok(shown.ranked >= 32 * TASTE_CATEGORIES.length,
-            `窄屏排行条只有 ${shown.ranked}px，${TASTE_CATEGORIES.length} 条挤不下`);
-        } else {
-          assert.ok(Math.abs(shown.ranked - shown.radar) < 2,
-            `排行条 ${shown.ranked}px，雷达那一栏 ${shown.radar}px，两栏不等高`);
-        }
-        // 26 是一格 32 里默认留出的粗细；图被拉高时多出来的高度拉开条距，不进条本身。
-        assert.ok(shown.thickness.every((height) => height <= 26.5), `条粗 ${shown.thickness.join('、')}px`);
-        assert.deepEqual(opened.problems, []);
-      } finally {
-        await opened.close();
-      }
-    });
-  }
 
   it('统计页选中的读数卡：2px 描边压在脚注带上面、圆角跟卡走，接触阴影收掉', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/stats', DESKTOP);

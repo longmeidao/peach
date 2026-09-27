@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 
 from peach import web_contract as rm_web
+from peach.catalog_rules import normalise_code_key
 from peach.web_entity import SUGGEST_GROUPS, suggest_kinds
 
 from support.ledger import fresh_ledger
@@ -418,6 +419,73 @@ class ShortQueryReachesEveryKindTests(LedgerFixture):
 
     def test_a_two_character_performer_query_still_works(self):
         self.assertEqual(self.total("凉森"), 3)
+
+
+class OneWorkOneSlotTests(LedgerFixture):
+    """同一部作品在下拉栏里只占一格。
+
+    真实账本上一部片常有几条来源挂着同一位女优（`r18` 与 `javinizer` 各记一条），同一个
+    番号也常存着几个文件。逐行取的话，一个人的四张近作里会有两张是同一张封面，视频组
+    也会并排摆出三张一样的图。
+    """
+
+    def setUp(self):
+        super().setUp()
+        root = Path(self.tmp.name)
+        covers = root / "covers"
+        covers.mkdir()
+        for code in ("ABW-123", "ABW-124"):
+            (covers / f"{code}.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+        frame = root / "ssis-001-b.jpg"
+        frame.write_bytes(b"\xff\xd8\xff\xd9")
+        self.con.executemany(
+            "INSERT INTO asset(id,location,path,name,medium,size,first_seen,code,"
+            "catalog_title,snapshot_path) VALUES(?,'local',?,?,'video',100,'2026-01-01',?,?,?)",
+            [# ABW-123 的另外两个文件，一个写法规范，一个是下划线小写。
+             (8, r"R:\Media\ABW-123-B.mp4", "ABW-123-B.mp4", "ABW-123", "潜入取材の一日", None),
+             (9, r"R:\Media\abw_123.mp4", "abw_123.mp4", "abw_123", None, None),
+             (10, r"R:\Media\ABW-124.mp4", "ABW-124.mp4", "ABW-124", "二日目", None),
+             # SSIS-001 没有封面，两个文件里只有后入库的那个抽过帧。
+             (11, r"R:\Media\SSIS-001.mp4", "SSIS-001.mp4", "SSIS-001", None, None),
+             (12, r"R:\Media\SSIS-001-B.mp4", "SSIS-001-B.mp4", "SSIS-001", None, str(frame))],
+        )
+        self.con.executemany(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,11,'performer',?,1.0)",
+            [(4, "test"), (8, "test"), (9, "test"), (10, "test"), (10, "r18"),
+             (11, "test"), (12, "test")],
+        )
+        self.con.commit()
+        self.contract = rm_web.WebContract(self.db, cover_root=covers)
+
+    def work_keys(self):
+        works = self.group("涼森", "performer")[0]["works"]
+        return [normalise_code_key(work["code"]) for work in works]
+
+    def test_a_work_credited_by_two_sources_takes_one_slot(self):
+        self.assertEqual(self.work_keys().count("ABW-124"), 1)
+
+    def test_every_file_of_one_code_takes_one_slot(self):
+        """ABW-123 存着三个文件，其中一个番号写成 `abw_123`，画出来都是同一张封面。"""
+        self.assertEqual(self.work_keys().count("ABW-123"), 1)
+
+    def test_a_work_shows_up_through_the_file_that_has_a_frame(self):
+        """SSIS-001 没有封面，出面的必须是抽过帧的那个文件，否则整部作品掉出近作。"""
+        works = self.group("涼森", "performer")[0]["works"]
+        self.assertEqual([work["id"] for work in works], [12, 10, 4])
+        self.assertTrue(works[0]["has_thumb"])
+
+    def test_the_video_group_lists_each_work_once(self):
+        self.assertEqual(self.values("ABW", "asset"), ["ABW-124", "ABW-123", "old-ABW-clip"])
+
+    def test_the_video_group_opens_the_file_written_the_canonical_way(self):
+        item = next(item for item in self.group("ABW", "asset") if item["value"] == "ABW-123")
+        self.assertEqual(item["id"], 4)
+
+    def test_the_video_total_counts_works_not_files(self):
+        works = next(group for group in self.suggest("ABW", limit=1)["groups"]
+                     if group["kind"] == "asset")
+        self.assertEqual((len(works["items"]), works["total"]), (1, 3))
 
 
 if __name__ == "__main__":

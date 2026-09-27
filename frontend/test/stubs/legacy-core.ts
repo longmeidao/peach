@@ -25,6 +25,7 @@ export const fmtDur = (seconds: number | null | undefined): string => {
 
 export const fmtSize = (bytes: number | null | undefined): string => {
   const value = Number(bytes) || 0;
+  if (value >= 1125899906842624) return `${(value / 1125899906842624).toFixed(2)} PB`;
   if (value >= 1099511627776) return `${(value / 1099511627776).toFixed(2)} TB`;
   if (value >= 1073741824) return `${(value / 1073741824).toFixed(1)} GB`;
   return `${Math.floor(value / 1048576)} MB`;

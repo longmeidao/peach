@@ -217,6 +217,22 @@ it('取不到容量的卷不画使用率，只说取不到', async () => {
   expect(panel.querySelector('[role=progressbar]')).toBeNull();
 });
 
+it('按字节计的卷在百格画布上按真实比例画出已用那一段，读屏值仍是字节', async () => {
+  const total = 2_031_179_788_288;
+  const used = 1_828_061_809_459;
+  const { host } = await open(payload({
+    storage_volumes: [{ kind: 'system', label: '系统盘', root: 'C:\\', online: true, free: total - used, used, total }],
+    storage_summary: { volumes: 1, online: 1, measured: 1, free: total - used, used, total },
+  }));
+  await click(tabNamed(host, '使用空间'));
+  const bar = host.querySelectorAll('[role=tabpanel]')[0]!.querySelector('[role=progressbar]')!;
+  expect(bar.getAttribute('aria-valuemax')).toBe(String(total));
+  expect(bar.getAttribute('aria-valuenow')).toBe(String(used));
+  expect(bar.getAttribute('viewBox')).toBe('0 0 100 1');
+  expect(Number(bar.querySelectorAll('rect')[1]!.getAttribute('width'))).toBeCloseTo(90, 1);
+  expect(host.querySelectorAll('[role=tabpanel]')[0]!.textContent).toContain('90%');
+});
+
 it('排行收起时后两项不可交互，箭头原地展开并能收回', async () => {
   const tags = Array.from({ length: 12 }, (_, index) => ({ k: `tag:${index}`, n: 12 - index, cat: 'genre' }));
   const { host } = await open(payload({ top_tags: tags }));
