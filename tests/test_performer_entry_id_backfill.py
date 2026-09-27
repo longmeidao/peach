@@ -8,7 +8,7 @@ from pathlib import Path
 from peach.entry_links import EXTERNAL_KIND
 from peach.migrations import upgrade
 from scripts.backfill_performer_entry_ids import (
-    CONFLICT, HAVE, JAVDB, NAMESAKE, OK, TAKEN, apply_rows, plan,
+    CONFLICT, FC2_ONLY, HAVE, JAVDB, NAMESAKE, OK, TAKEN, apply_rows, plan,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,6 +132,47 @@ class EntryIdBackfillTests(unittest.TestCase):
         self.connection.commit()
         self.search_page("s1", ("Aa01", "葵", ""))
         self.assertEqual(self.rows(), [])
+
+    def test_a_short_single_name_on_a_profile_page_is_not_an_anchor(self):
+        self.connection.execute(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(12,'performer','葵','葵','t','t')")
+        self.connection.commit()
+        self.page("葵", "Aa01")
+        self.assertEqual(self.rows(), [])
+
+    def works(self, entity_id: int, *codes: str) -> None:
+        for code in codes:
+            asset = self.connection.execute(
+                "INSERT INTO asset(location,path,name,medium,code) VALUES('local',?,?,'video',?)",
+                (rf"R:\media\{code}.mp4", f"{code}.mp4", code)).lastrowid
+            self.connection.execute(
+                "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+                " VALUES(?,?,'performer','test',1.0)", (asset, entity_id))
+        self.connection.commit()
+
+    def test_an_fc2_creator_without_a_jav_directory_id_is_not_bound(self):
+        """FC2 个人摄创作者不在 javdb 的人物收录里，名字对上的演员页是同名的另一个人。"""
+        self.works(10, "FC2-PPV-1812235", "FC2-PPV-3202758")
+        self.page("释爱丽丝", "d45k9")
+        rows = self.rows()
+        self.assertEqual([row["verdict"] for row in rows], [FC2_ONLY])
+        self.assertIn("2 部", rows[0]["evidence"])
+        self.assertEqual(apply_rows(self.connection, rows), (0, 0))
+
+    def test_fc2_works_do_not_hold_back_a_performer_known_to_a_jav_directory(self):
+        self.works(10, "FC2-PPV-1812235")
+        self.connection.execute(
+            "INSERT INTO entity_external_ref(entity_id,provider,external_kind,external_id)"
+            " VALUES(10,'minnano-av',?,'12345')", (EXTERNAL_KIND,))
+        self.connection.commit()
+        self.page("释爱丽丝", "d45k9")
+        self.assertEqual([row["verdict"] for row in self.rows()], [OK])
+
+    def test_one_studio_release_among_fc2_works_keeps_the_binding(self):
+        self.works(10, "FC2-PPV-1812235", "SSIS-001")
+        self.page("释爱丽丝", "d45k9")
+        self.assertEqual([row["verdict"] for row in self.rows()], [OK])
 
 
 if __name__ == "__main__":
