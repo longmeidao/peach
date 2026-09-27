@@ -701,11 +701,16 @@ def _suggest_agency_rows(connection, params):
     """事务所的规模顺着成员算，判据与它的资料页、索引页同一份。
 
     名下一部作品都没有的事务所不进补全：账本里有它的身份，但按它搜出来是空的。
+
+    计数用 `CROSS JOIN` 把 `asset_entity` 钉在外层：从成员出发走 `entity_id` 索引，
+    每家只碰成员名下那几百行。交给规划器排的话，真实账本的统计会让它从 `asset` 那侧
+    按 `medium` 起步，每命中一家事务所就把八万条可见作品逐条回查一遍——单个字母能
+    命中十几家，补全要等两三秒。
     """
     sql = (
         "SELECT * FROM (SELECT 'agency' kind, e.id entity_id, e.canonical_name k, "
         "(SELECT count(DISTINCT ae.asset_id) FROM asset_entity ae "
-        " JOIN asset a ON a.id=ae.asset_id WHERE " + VISIBLE_CATALOG_ASSET + " AND "
+        " CROSS JOIN asset a ON a.id=ae.asset_id WHERE " + VISIBLE_CATALOG_ASSET + " AND "
         + scope_predicate("agency", "ae.entity_id", "e.id") + ") n, "
         # 事务所没有标识文件，门面是官网的站点圆标，与索引页同一条链接。
         "(SELECT l.id FROM entity_link l WHERE l.entity_id=e.id"

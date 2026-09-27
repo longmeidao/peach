@@ -293,6 +293,77 @@ class SuggestCardTests(LedgerFixture):
         self.assertIsNone(self.group("Capsule", "agency")[0]["mark"])
 
 
+class AgencyGroupTests(LedgerFixture):
+    """事务所这一组的排序与计数。
+
+    事务所自己不挂作品，名下作品数是跨成员的一次去重计数；排序先看整串前缀命中，
+    再看作品数，最后按名字。单个字母在真实账本上能命中十几家事务所，这一组的
+    先后和总数由这里钉住。
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.con.executemany(
+            "INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,updated_at)"
+            " VALUES(?,?,?,?,'t','t')",
+            [(40, "agency", "Alpha Talent", "alpha talent"), (41, "performer", "星空", "星空"),
+             (42, "agency", "Blue Agent", "blue agent"), (43, "performer", "月野", "月野"),
+             # 唯一的成员只在回收站那条上出现过：名下没有可见作品。
+             (44, "agency", "Amber Empty", "amber empty"), (45, "performer", "雨宮", "雨宮")],
+        )
+        self.link(4, 41)
+        self.link(2, 43)
+        self.link(5, 45)
+        self.con.executemany(
+            "INSERT INTO entity_membership(member_id,agency_id,source,checked_at)"
+            " VALUES(?,?,'test',?)",
+            [(41, 40, STAMP), (43, 42, STAMP), (45, 44, STAMP)],
+        )
+        self.con.commit()
+
+    def link(self, asset_id, entity_id, source="test"):
+        self.con.execute(
+            "INSERT INTO asset_entity(asset_id,entity_id,role,source,confidence)"
+            " VALUES(?,?,'performer',?,1.0)", (asset_id, entity_id, source))
+        self.con.commit()
+
+    def capsule_works(self):
+        return self.group("Capsule", "agency")[0]["n"]
+
+    def test_agencies_rank_by_prefix_hit_then_works_then_name(self):
+        """单个字母比词首：`Alpha Talent` 整串以它开头，其余三家是某个词的词首。
+
+        前缀命中压过作品更多的 `Capsule Agency`；同为词首命中的按作品数，作品数
+        相同的按名字。
+        """
+        self.assertEqual(
+            [(item["value"], item["n"]) for item in self.group("a", "agency")],
+            [("Alpha Talent", 1), ("Capsule Agency", 3), ("Blue Agent", 1),
+             ("SO MODEL AGENT", 1)])
+
+    def test_the_total_counts_every_agency_with_works(self):
+        """五家命中「a」。`Amber Empty` 名下没有可见作品，不进列表，也不进总数。"""
+        agencies = next(group for group in self.suggest("a", limit=1)["groups"]
+                        if group["kind"] == "agency")
+        self.assertEqual((len(agencies["items"]), agencies["total"]), (1, 4))
+
+    def test_the_same_work_registered_by_another_source_counts_once(self):
+        self.link(1, 11, source="scrape")
+        self.assertEqual(self.capsule_works(), 3)
+
+    def test_a_member_work_in_the_trash_is_not_counted(self):
+        self.link(5, 12)
+        self.assertEqual(self.capsule_works(), 3)
+
+    def test_a_member_picture_is_not_counted(self):
+        self.con.execute(
+            "INSERT INTO asset(id,location,path,name,medium,size,first_seen)"
+            " VALUES(8,'local',?,'still.jpg','image',100,'2026-01-01')",
+            (r"R:\Media\still.jpg",))
+        self.link(8, 12)
+        self.assertEqual(self.capsule_works(), 3)
+
+
 class ShortLatinQueryTests(LedgerFixture):
     """两个字母的拉丁输入比词首，不比子串。
 
