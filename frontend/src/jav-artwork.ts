@@ -97,7 +97,7 @@ export function syncJavImages(root: ParentNode, preference: unknown): void {
        模糊背景挂在卡片上而不是图片上，`removeAttribute('style')` 够不着它。 */
     img.classList.remove('panel');
     img.removeAttribute('style');
-    (img.closest('.pic') as HTMLElement | null)?.style.removeProperty('--cover-blur');
+    (img.closest('.pic,[data-media-pic]') as HTMLElement | null)?.style.removeProperty('--cover-blur');
     if (src && img.getAttribute('src') !== src) img.src = src;
   });
 }

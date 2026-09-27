@@ -671,9 +671,6 @@ body>.board-filter-frame{margin-inline:16px}
 .entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;border-color:var(--line);font-size:14px;font-weight:500;color:var(--ink)}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
-/* 竖屏带靠底色和网格区分，不再描一圈线：它嵌在两段无边框的网格中间，一条线反而
-   把它读成一个可以点开的容器。 */
-.shorts-inline{border:0}
 @media(pointer:coarse){.board-filter-frame #tagbar .pill{height:36px}.board-filter-frame #tagbar{height:52px}.board-filter-frame .sorts button{height:36px}}
 #applyUISetting{padding:8px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
 #applyUISetting[hidden]{display:none}
@@ -750,7 +747,7 @@ body>.board-filter-frame{margin-inline:16px}
 .iconswitch label{border-radius:8px}
 .iconswitch label:has(input:checked){background:var(--ground);box-shadow:0 1px 3px light-dark(#0002,#0009)}
 .card{overflow:visible;border-radius:var(--surface-radius)}
-.card :is(.pic,.mixstack,.partstack){border-radius:var(--surface-radius)}
+.card :is(.pic,.mixstack){border-radius:var(--surface-radius)}
 .card .info{background:transparent}
 @media(max-width:760px){.sidecontent{padding:16px}.stage{border-radius:12px}.stage .side{border-left:0;border-top:1px solid var(--line-soft)}}
 /* 单列时媒体、详情栏和队列上下排成一列，总高超过浮窗，滚的是里面那一格内容：`<dialog>`
@@ -1453,12 +1450,6 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
    在留了轨道宽度的档位上开。 */
 @media(min-width:761px){
   #tiers .tier{margin-left:calc(-1 * var(--railW));padding-left:calc(var(--railW) + 16px)}
-  /* 竖屏那一条是块有底的面板，跟着一起铺过去：只让里面那一排越界的话，卡片滑到面板左
-     边缘就从自己的底上掉出来，接缝是一条直上直下的硬边。面板铺到视口边上，左边那两个
-     圆角也就没有存在的理由了。 */
-  .shorts-inline{margin-left:calc(-1 * (var(--railW) + 16px));padding-left:calc(var(--railW) + 32px);
-    border-radius:0 var(--floating-radius) var(--floating-radius) 0}
-  .shorts-inline .srow{margin-left:calc(-1 * (var(--railW) + 32px));padding-left:calc(var(--railW) + 32px)}
 }
 /* 关注页顶上那两排跟首页这两排是同一个控件，所以规则一份写全：那边是「谁出的」加
    「哪个厂牌」，这边是「谁发的」加「哪部作品」，人在两页看到的该是同一种东西。它们
@@ -1639,9 +1630,7 @@ body[data-surface="/junk-files"] .junkfilters{width:100%;padding:12px;gap:8px;bo
    对不上的左边界。 */
 body[data-surface="/junk-files"] :is(#count,#grid,#loadSentinel){width:100%;max-width:var(--board-content);margin-inline:auto}
 body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack>.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
-body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack .card{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden;gap:0}
-body[data-surface="/trash"] .gridstack .card .pic{border-radius:0}
-body[data-surface="/trash"] .gridstack .card>.meta{padding:16px 20px}
+body[data-surface="/junk-files"] .gridstack .card{border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden;gap:0}
 body[data-surface="/trash"] #manageLede{padding:20px 24px;background:var(--color-background-primary-default);border-radius:var(--surface-radius);gap:16px;flex-wrap:wrap}
 body[data-surface="/trash"] #manageLede>span{font:var(--board-heading)}
 html:not(.dark) body[data-surface="/junk-files"] .junkfilters{background:var(--color-background-secondary-default)}

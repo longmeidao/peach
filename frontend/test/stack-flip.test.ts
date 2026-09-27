@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // 执行生产函数，隔离整页启动与网络请求。
 const app = readFileSync(resolve(process.cwd(), '../web/app.js'), 'utf8');
-const source = app.slice(app.indexOf('function wireStackFlip('), app.indexOf('function wireMixFlip('));
+const source = app.slice(app.indexOf('function wireStackFlip('), app.indexOf('/* 分卷组每个 seed 只取一次'));
 const wire = new Function('selectMode', 'censorOn', 'reduceMotion', 'syncJavImages', 'appSettings',
   'MIX_FLIP_MS', 'MIX_FLIP_LEAD_MS', `${source};return wireStackFlip`)(
   false, () => false, () => false, () => {}, {}, 1100, 420);

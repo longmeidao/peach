@@ -41,7 +41,7 @@ const statsInventoryTab = (page: Page): Locator =>
   page.locator('#stats').getByRole('tab', { name: /^馆藏视频/ });
 
 const ROUTES: readonly Route[] = [
-  { path: '/', body: (page) => [page.locator('#grid article.card').first()] },
+  { path: '/', body: (page) => [page.locator('#grid [data-media-card]').first()] },
   { path: '/performers', body: (page) => [heading(page, '#index', '艺人'), indexEntries(page)] },
   { path: '/creators', body: (page) => [heading(page, '#index', '创作者'), indexEntries(page)] },
   { path: '/studios', body: (page) => [heading(page, '#index', '厂牌'), indexEntries(page)] },

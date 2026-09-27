@@ -15,6 +15,24 @@ const CLONES = 150;
 const CLONE_BASE = 900_000;
 const PROBE_TAG = '屏外探针';
 
+/** 卡片里各块的选择器。作品卡归 `catalog-grid` island，钩子是 `data-media-*`；关注卡仍是壳画的。 */
+interface CardShape {
+  card: string; pic: string; meta: string; avatar: string; text: string; tags: string;
+  avatarButton: string; tagButton: string;
+}
+const MEDIA: CardShape = {
+  card: '[data-media-card]', pic: '[data-media-pic]', meta: '[data-media-meta]', avatar: '[data-media-avatar]',
+  text: '[data-media-text]', tags: '[data-media-tags]',
+  avatarButton: '[data-media-meta]>button[data-media-avatar]', tagButton: '[data-media-tags]>button[data-media-tag]',
+};
+const FOLLOW: CardShape = {
+  card: '.card', pic: '.pic', meta: '.meta', avatar: '.mav', text: '.mtext', tags: '.ctags',
+  avatarButton: '.meta>button.mav', tagButton: '.ctags>button.tg',
+};
+const CATALOG_CARDS = '#grid [data-media-grid]>[data-media-card]';
+const ENTITY_CARDS = '#index [data-entity-grid] [data-media-grid]>[data-media-card]';
+const FOLLOW_CARDS = '.followlist>.card';
+
 interface CatalogPayload {
   total: number;
   items: Array<Record<string, unknown>>;
@@ -63,8 +81,8 @@ async function openLongCatalog(browser: Browser, density = 'big'): Promise<Visit
   await serveLongItems(page);
   await page.evaluate((value) => localStorage.setItem('density', value), density);
   await page.reload({ waitUntil: 'load' });
-  await page.waitForFunction((count) => document.querySelectorAll('#grid .card').length >= count, CLONES,
-    { timeout: 15_000 });
+  await page.waitForFunction(([selector, count]) => document.querySelectorAll(selector).length >= count,
+    [CATALOG_CARDS, CLONES] as const, { timeout: 15_000 });
   await settle(page);
   return opened;
 }
@@ -82,8 +100,8 @@ async function openLongEntity(browser: Browser): Promise<Visit> {
   } }));
   await serveLongItems(page);
   await page.goto(new URL(`/performers/${encodeURIComponent(name)}`, page.url()).href, { waitUntil: 'load' });
-  await page.waitForFunction((count) => document.querySelectorAll('.entitysection>.grid>.card').length >= count,
-    CLONES, { timeout: 15_000 });
+  await page.waitForFunction(([selector, count]) => document.querySelectorAll(selector).length >= count,
+    [ENTITY_CARDS, CLONES] as const, { timeout: 15_000 });
   await settle(page);
   return opened;
 }
@@ -119,8 +137,8 @@ async function openLongFollow(browser: Browser): Promise<Visit> {
   await page.route(/\/api\/follow(\?|$)/, (route) => route.fulfill({ status: 200, contentType: 'application/json',
     body: JSON.stringify(body) }));
   await page.goto(new URL('/follow', page.url()).toString(), { waitUntil: 'load' });
-  await page.waitForFunction((count) => document.querySelectorAll('.followlist>.card').length >= count, CLONES,
-    { timeout: 15_000 });
+  await page.waitForFunction(([selector, count]) => document.querySelectorAll(selector).length >= count,
+    [FOLLOW_CARDS, CLONES] as const, { timeout: 15_000 });
   await settle(page);
   return opened;
 }
@@ -153,15 +171,15 @@ describe('视口外的卡片', () => {
   });
 
   for (const [where, open, selector] of [
-    ['馆藏', openLongCatalog, '#grid .card'],
-    ['女优资料页', openLongEntity, '.entitysection>.grid>.card'],
+    ['馆藏', openLongCatalog, CATALOG_CARDS],
+    ['女优资料页', openLongEntity, ENTITY_CARDS],
   ] as const) {
     it(`${where}：跳过封面与元信息区的渲染，Ctrl+F 仍找得到屏外卡里的字`, { timeout: 60_000 }, async () => {
       const opened = await open(browser);
       try {
-        const state = await opened.page.evaluate(([tag, cardSelector]) => {
+        const state = await opened.page.evaluate(([tag, cardSelector, shape]) => {
           const last = [...document.querySelectorAll<HTMLElement>(cardSelector)].at(-1)!;
-          const parts = [last.querySelector('.pic')!, last.querySelector('.meta')!];
+          const parts = [last.querySelector(shape.pic)!, last.querySelector(shape.meta)!];
           // 跳过的是元素的内容，元素自己仍在排版里：查它的第一个子元素。
           const skipped = parts.map((part) => !part.firstElementChild!.checkVisibility({ contentVisibilityAuto: true }));
           const box = last.getBoundingClientRect();
@@ -179,7 +197,7 @@ describe('视口外的卡片', () => {
             skipped, below: box.top - innerHeight, height: box.height,
             hits, inLast: !!hit && last.contains(hit),
           };
-        }, [PROBE_TAG, selector] as const);
+        }, [PROBE_TAG, selector, MEDIA] as const);
         assert.deepEqual(state.values, ['auto', 'auto'], '屏外卡的封面和元信息区没有交给浏览器按视口取舍');
         assert.ok(state.below > 1000, `最后一张卡离视口只有 ${state.below}px，放大的列表不够长`);
         assert.deepEqual(state.skipped, [true, true], '屏外卡的封面或元信息区仍在渲染');
@@ -192,25 +210,25 @@ describe('视口外的卡片', () => {
     });
   }
 
-  for (const [where, open, selector] of [
-    ['馆藏', openLongCatalog, '#grid .card'],
-    ['馆藏密集一档', (b: Browser) => openLongCatalog(b, 'dense'), '#grid .card'],
-    ['女优资料页', openLongEntity, '.entitysection>.grid>.card'],
-    ['关注', openLongFollow, '.followlist>.card'],
+  for (const [where, open, selector, shape] of [
+    ['馆藏', openLongCatalog, CATALOG_CARDS, MEDIA],
+    ['馆藏密集一档', (b: Browser) => openLongCatalog(b, 'dense'), CATALOG_CARDS, MEDIA],
+    ['女优资料页', openLongEntity, ENTITY_CARDS, MEDIA],
+    ['关注', openLongFollow, FOLLOW_CARDS, FOLLOW],
   ] as const) {
     it(`${where}：长距离往返之后整页高度和深处那张卡的位置不跳，屏外量到的几何与渲染后一致`, { timeout: 90_000 }, async () => {
       const opened = await open(browser);
       try {
         const { page } = opened;
-        const measure = () => page.evaluate((cardSelector) => {
+        const measure = () => page.evaluate(([cardSelector, metaSelector]) => {
           const cards = [...document.querySelectorAll(cardSelector)];
           const deep = cards[Math.floor(cards.length * .8)];
           return { height: document.documentElement.scrollHeight,
             deep: deep.getBoundingClientRect().top + scrollY, y: scrollY,
             view: deep.getBoundingClientRect().top,
-            skipping: getComputedStyle(deep.querySelector('.meta')!).contentVisibility,
-            meta: deep.querySelector('.meta')!.getBoundingClientRect().height };
-        }, selector);
+            skipping: getComputedStyle(deep.querySelector(metaSelector)!).contentVisibility,
+            meta: deep.querySelector(metaSelector)!.getBoundingClientRect().height };
+        }, [selector, shape.meta] as const);
         /* 首屏之外的卡此刻都没渲染过，高度全按估计值；往返一趟之后每张都记住了自己的实际
            尺寸。两次量到的差就是估计值的误差，一行差一点，累积到深处就是滚动条在跳。 */
         const fresh = await measure();
@@ -245,11 +263,11 @@ describe('视口外的卡片', () => {
   }
 
   /* 关注卡的头像和标签是 `<span>`，不可聚焦，焦点环那一半只在作品卡上查。 */
-  for (const [where, open, selector, focusable] of [
-    ['馆藏', openLongCatalog, '#grid .card', true],
-    ['馆藏密集一档', (b: Browser) => openLongCatalog(b, 'dense'), '#grid .card', true],
-    ['女优资料页', openLongEntity, '.entitysection>.grid>.card', true],
-    ['关注', openLongFollow, '.followlist>.card', false],
+  for (const [where, open, selector, shape, focusable] of [
+    ['馆藏', openLongCatalog, CATALOG_CARDS, MEDIA, true],
+    ['馆藏密集一档', (b: Browser) => openLongCatalog(b, 'dense'), CATALOG_CARDS, MEDIA, true],
+    ['女优资料页', openLongEntity, ENTITY_CARDS, MEDIA, true],
+    ['关注', openLongFollow, FOLLOW_CARDS, FOLLOW, false],
   ] as const) {
     it(`${where}：元信息区垫出的裁切余量不改排版、不接指针，头像和标签的焦点环整圈可见`, { timeout: 60_000 }, async () => {
       const opened = await open(browser);
@@ -260,7 +278,7 @@ describe('视口外的卡片', () => {
            同一行里最高的那张卡，内容盒下面到卡片下缘（关注卡是到 `.fstate`）不留空，卡高
            于是仍是封面、行距与内容三项之和。头像和文字列贴着内容盒。垫出去的那一圈伸出
            卡片盒，指针落在那里不能算进这张卡。 */
-        const frames = await page.evaluate((cardSelector) => {
+        const frames = await page.evaluate(([cardSelector, parts]) => {
           const inFlow = (element: Element | null, step: 'previousElementSibling' | 'nextElementSibling') => {
             let node = element?.[step] ?? null;
             while (node && getComputedStyle(node).position === 'absolute') node = node[step];
@@ -268,9 +286,9 @@ describe('视口外的卡片', () => {
           };
           return [...document.querySelectorAll(cardSelector)].filter((card) => {
             const box = card.getBoundingClientRect();
-            return card.querySelector(':scope>.meta') && box.top >= 0 && box.bottom <= innerHeight;
+            return card.querySelector(`:scope>${parts.meta}`) && box.top >= 0 && box.bottom <= innerHeight;
           }).map((card) => {
-            const meta = card.querySelector(':scope>.meta')!;
+            const meta = card.querySelector(`:scope>${parts.meta}`)!;
             const style = getComputedStyle(meta);
             const border = meta.getBoundingClientRect();
             const content = {
@@ -286,12 +304,12 @@ describe('视口外的卡片', () => {
             const below = inFlow(meta, 'nextElementSibling');
             const floor = below ? below.getBoundingClientRect().top - gap
               : cardBox.bottom - parseFloat(cardStyle.paddingBottom);
-            const mav = meta.querySelector(':scope>.mav')?.getBoundingClientRect();
-            const mtext = meta.querySelector(':scope>.mtext')!;
+            const mav = meta.querySelector(`:scope>${parts.avatar}`)?.getBoundingClientRect();
+            const mtext = meta.querySelector(`:scope>${parts.text}`)!;
             const textStyle = getComputedStyle(mtext);
             const textBox = mtext.getBoundingClientRect();
             /* 探的是垫出来的那几圈（元信息区 8px、标签行与密集一档的文字列 4px）里面的点。 */
-            const tags = meta.querySelector('.ctags')?.getBoundingClientRect();
+            const tags = meta.querySelector(parts.tags)?.getBoundingClientRect();
             const probes = [...[content.top + 10, (content.top + content.bottom) / 2, content.bottom - 4]
               .flatMap((y) => [[cardBox.left - 2, y], [cardBox.right + 2, y]]),
             [(content.left + content.right) / 2, cardBox.bottom + 2],
@@ -309,7 +327,7 @@ describe('视口外的卡片', () => {
               claimed: outside.filter((hit) => hit && card.contains(hit)).length,
             };
           });
-        }, selector);
+        }, [selector, shape] as const);
         assert.ok(frames.length > 0, `${where}没有整张落在视口里的卡`);
         for (const frame of frames) {
           assert.ok(frame.padded.every((value) => value > 0), `${where}的元信息区没有垫裁切余量`);
@@ -326,12 +344,12 @@ describe('视口外的卡片', () => {
 
         /* 焦点环画在元素外面，逐层往上找会裁切的祖先（`overflow` 不是 visible，或跳过渲染带来的
            paint containment），环的外沿必须落在每一层的 padding box 以内。 */
-        const room = (target: string) => page.locator(`${selector} ${target}`).first().evaluate((element) => {
+        const room = (target: string) => page.locator(`${selector} ${target}`).first().evaluate((element, cardSelector) => {
           const style = getComputedStyle(element);
           const ring = style.outlineStyle === 'none' ? 0 : parseFloat(style.outlineWidth) + parseFloat(style.outlineOffset);
           const box = element.getBoundingClientRect();
           let least = Infinity, clips = 0;
-          for (let clip = element.parentElement; clip && !clip.matches('.card'); clip = clip.parentElement) {
+          for (let clip = element.parentElement; clip && !clip.matches(cardSelector); clip = clip.parentElement) {
             const clipStyle = getComputedStyle(clip);
             if (clipStyle.overflow === 'visible' && clipStyle.contentVisibility !== 'auto') continue;
             clips++;
@@ -341,8 +359,8 @@ describe('视口外的卡片', () => {
               left + clip.clientWidth - (box.right + ring), top + clip.clientHeight - (box.bottom + ring));
           }
           return { focused: element.matches(':focus-visible'), ring, least, clips };
-        });
-        for (const target of focusable ? ['.meta>button.mav', '.ctags>button.tg'] : []) {
+        }, shape.card);
+        for (const target of focusable ? [shape.avatarButton, shape.tagButton] : []) {
           await page.keyboard.press('Tab');
           await page.locator(`${selector} ${target}`).first().focus();
           const edge = await room(target);

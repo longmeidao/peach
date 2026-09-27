@@ -6,14 +6,14 @@
 
 还没迁到 React 的页面仍在 `web/app.js`。迁移按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页改写成 React + Tailwind v4 + BoardUI 原版源码：每次一到两个页面、独立分支集成，旧渲染函数、旧 CSS 与旧断言随页面一起删。控件映射见 [Board 适配](BOARD_UI.md)。迁移不包含版本号或其他分支发布工作。
 
-- 前端基础库随页面引入，取舍与时机见 ADR-0031「前端基础库」一节。TanStack Query 与 TanStack Table 已在用；React Router 在外壳与路由迁移那一步接管；TanStack Virtual 等馆藏网格迁到 React 时按实测决定。
+- 前端基础库随页面引入，取舍与时机见 ADR-0031「前端基础库」一节。TanStack Query 与 TanStack Table 已在用；React Router 在外壳与路由迁移那一步接管；馆藏网格已在 React 里、不用 TanStack Virtual，屏外卡靠 `content-visibility` 跳过渲染；要不要上虚拟列表按下一条的实测决定。
 - `bg-card-footer` 与 `bg-card-hover` 取的是 `.peach-react` 里的真值，数据管理页整理卡、统计、活动、关注管理与设置的卡片页脚带都有底色，这几页还要逐页截图核对。
 - 索引页取 BoardUI 的控件尺寸：过滤框 36px 高、底色与边框是 BoardUI 输入框那一档，遗留页的 Geist 搜索框是 38px；版式切换 66px 宽，遗留页的同类开关是 78px；名册格悬停掺 5% 主文字色，资料页名册格掺 6%。读数的逐位滚动（遗留层 `popCount`）、骨架换内容的淡入（`revealSkeleton`）与版式切换的弹簧滑块还没接进 React 那一侧。
 - React 子树深色下的次要文字取 BoardUI 的 neutral-500（115），遗留页的 `--muted`、`--ink-2` 是 163 与 212。已迁各页都是这一档，要不要把 `text-secondary` 调亮是一次全局决定，不在单页里改。
 - Remix Icon 候选在预览页 `/icon-review.html` 审查，用户筛选完之前保留现有已选图标。
 - 安装后教程：右下角那张卡和清单渲染仍在 `web/app.js`，状态层（三个本地键、签名、请求代际）已在 `web/js/ui-components.js`。迁移时整块接管渲染，删掉遗留那一段。
-- 厂牌资料页视频视图卡片多时（如 Prestige，339 张卡），侧栏展开那一帧最长约 37ms。屏外卡已跳过封面与元信息区的渲染，剩下的开销在卡片盒本身的排版，这几页迁往 React 时用虚拟列表一起处理。
-- 首页 Mix 卡仍是遗留层 `mixCardHtml` 加 `wireStackFlip`，迁 React 时换用播放列表页那张 `components/mix-card.tsx`，翻的图由调用方现拉相关作品。资料页照片集卡（`.photosets`）仍借 `.playlistcard` 的遗留卡面，迁移时一并换掉，再删 `12-cards.css` 里那几条。
+- 厂牌资料页视频视图卡片多时（如 Prestige，339 张卡），侧栏展开那一帧最长约 37ms。屏外卡已跳过封面与元信息区的渲染，剩下的开销在卡片盒本身的排版；作品区已在 `catalog-grid` island 里，要上虚拟列表就在岛里做。
+- 资料页照片集卡（`.photosets`）仍借 `.playlistcard` 的遗留卡面，迁移时换掉，再删 `12-cards.css` 里那几条。
 
 ## 已有骨架、尚未完成（7 项）
 

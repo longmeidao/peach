@@ -15,6 +15,7 @@ export const emptyStateHtml = (
 // @ts-expect-error 汇总行与索引骨架复用正式模板，折叠开合、覆盖式滚动条与滚动判据用正式实现。
 export {attachOverlayScrollbar, collectionSummaryHtml, indexSkeletonHtml, scrollMovesAnchor, setCollapseOpen} from '../../../web/js/ui-components.js';
 export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;
+export const spinnerHtml = (label: string): string => `<span role="status" aria-label="${label}"></span>`;
 export const checkboxHtml = (attrs = ''): string => `<span class="pcheck"><input type="checkbox" ${attrs}></span>`;
 export const progressHtml = (label: string, value: number, max = 100): string =>
   `<progress role="progressbar" aria-label="${label}" value="${value}" max="${max}" aria-valuenow="${value}" aria-valuemax="${max}"></progress>`;

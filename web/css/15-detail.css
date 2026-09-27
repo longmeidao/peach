@@ -147,16 +147,6 @@
 .next h3{margin:0 0 8px;font-size:var(--fs-xs);letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
 /* 横滚写法与详情下方的切换带 `.mixlist` 同一份：竖向不滚，滑到头也不把手势交给外面那层浮窗。 */
 .nrow{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;padding-bottom:6px}
-.ncard{flex:none;width:216px;cursor:pointer}
-.ncard .why{color:var(--loupe)}
-/* 216px 的窄卡上，第三个头像挤掉的正好是署名那一行的宽度，元数据于是折成三到四行，
-   整条横向带被最高的一张顶起来、矮的下面全是空。窄卡只放两个头像，元数据钉成一行不换行：
-   大小和观看次数干脆不放，推荐理由留着截尾——那才是这条带存在的理由。
-   不能用固定高度加 overflow 去裁：`.s` 的行高和 gap 凑不出整行，第三行会露半截字。 */
-.ncard .mavstack .mav:nth-child(n+3),
+/* Mix 切换带里的窄卡只放两个头像：第三个挤掉的正好是署名那一行的宽度，元数据会折成
+   三到四行。接着看那一排的窄卡是同一个判据，写在 `media-card.css` 的 `next` 变体上。 */
 .sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(n+3){display:none}
-.ncard .meta .s{flex-wrap:nowrap;overflow:hidden}
-.ncard .meta .who{flex:0 1 auto;max-width:55%}
-.ncard .meta .whomore{flex:none;white-space:nowrap}
-.ncard .meta .why{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ncard .meta .size,.ncard .meta .watchcount{display:none}

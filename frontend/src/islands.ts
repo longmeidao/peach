@@ -33,6 +33,7 @@ export { cleanupSkeletonHtml } from './management';
  *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
 export interface IslandContracts {
   'avatar-picker': ReactBundle.AvatarPickerProps;
+  'catalog-grid': ReactBundle.CatalogGridProps;
   'cover-crop': ReactBundle.CoverCropProps;
   'data-cleanup': ReactBundle.DataCleanupProps;
   duplicates: ReactBundle.DuplicatesProps;
@@ -61,6 +62,7 @@ interface Island {
 
 const REGISTRY: { [N in IslandName]: Island } = {
   'avatar-picker': { react: 'avatar-picker' },
+  'catalog-grid': { react: 'catalog-grid' },
   'cover-crop': { react: 'cover-crop' },
   'data-cleanup': { react: 'data-cleanup' },
   duplicates: { react: 'duplicates' },
@@ -96,6 +98,9 @@ const mounted = new Map<Element, Mount>();
  *  取数期间用户走开了，island 不能把数据画到别的页面上。 */
 export interface MountOptions {
   isCurrent?: () => boolean;
+  /** 换掉遗留骨架的方式。不给就一次清空再画；给了就交给它（遗留层 `revealSkeleton`）：
+   *  骨架抬成一层淡出，`write` 画出来的内容同时从模糊里清晰起来。 */
+  reveal?: (container: Element, write: () => void) => void;
 }
 
 /** 挂载一个 island 并等首屏数据落地。容器里原有的内容（遗留骨架）在这一刻被换掉。 */
@@ -122,13 +127,18 @@ export async function mountIsland<N extends IslandName>(
   if (!claimContainer(el, mount, options)) return;
   // token、Preflight 与焦点规则都作用在 `.peach-react` 上，React 根要挂在带这个类的容器里。
   // 容器本身归遗留层所有（它会直接 `innerHTML=`），所以另建一个，卸载时连它一起撤掉。
-  const host = el.ownerDocument.createElement('div');
-  host.className = 'peach-react';
-  el.append(host);
-  const root = page.mount(host, props);
-  mount.dispose = () => { root.unmount(); host.remove() };
-  mount.props = props;
-  mount.update = (next) => root.update(next as PropsOf<N>);
+  const paint = () => {
+    el.textContent = '';
+    const host = el.ownerDocument.createElement('div');
+    host.className = 'peach-react';
+    el.append(host);
+    const root = page.mount(host, props);
+    mount.dispose = () => { root.unmount(); host.remove() };
+    mount.props = props;
+    mount.update = (next) => root.update(next as PropsOf<N>);
+  };
+  if (options.reveal) options.reveal(el, paint);
+  else paint();
 }
 
 /** 把一部分 props 推给已经画好的 island，不重挂、不重取数。壳里的开关（例如目录的选择
@@ -140,7 +150,7 @@ export function updateIsland<N extends IslandName>(el: Element | null, patch: Pa
   mount.update(mount.props);
 }
 
-/** 取数回来之后还能不能画：期间没有被重挂，遗留层也还停在这一页。能画就顺手清掉遗留骨架。 */
+/** 取数回来之后还能不能画：期间没有被重挂，遗留层也还停在这一页。 */
 function claimContainer(el: Element, mount: Mount, options: MountOptions): boolean {
   // 期间被卸载或重新挂载：这一次的结果已经过期，不许往新内容上盖。
   if (mounted.get(el) !== mount) return false;
@@ -149,8 +159,7 @@ function claimContainer(el: Element, mount: Mount, options: MountOptions): boole
     mounted.delete(el);
     return false;
   }
-  // 遗留骨架整个清掉再画，一次替换，只有一次布局变化。
-  el.textContent = '';
+  // 遗留骨架由 `paint` 整个清掉再画，一次替换，只有一次布局变化。
   return true;
 }
 

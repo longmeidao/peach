@@ -56,6 +56,17 @@ export declare function attachOverlayScrollbar(
  *  重复触发由遗留层的 `wireBusyActions` 拦住。请求等待期不许改用原生 `disabled`。 */
 export declare function setActionBusy(control: Element | null, busy?: boolean): void;
 
+/** Geist Spinner：只反馈用户刚点下的那一下。`label` 写正在做的事（「正在还原」）。 */
+export declare function spinnerHtml(label?: string): string;
+
+/** 读数按位错峰长出来。只在值真变时放动画；整块重建的那一格先把上一次的值写回
+ *  `dataset.popCount` 再调，它才分得清「换了个数」和「刚出现」。 */
+export declare function popCount(el: HTMLElement | null, text: string): void;
+
+/** 骨架落进 DOM 之后按实际尺寸补齐到盖住视口，并挂上显示门槛（`.skeleton-awaiting`）：
+ *  门槛之前就取完的，这张骨架从未被看见。 */
+export declare function fitSkeleton(root: Element | null): void;
+
 /** Geist Note：字段、卡片、分区旁的持久反馈。 */
 export declare function noteHtml(
   message: string,
