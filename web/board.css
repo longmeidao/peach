@@ -602,8 +602,6 @@ body>.board-filter-frame{margin-inline:16px}
 /* 字母表骨架的分组卡；一行一枚标签是排名行那一档（36px、圆角 8）。 */
 .alphagroup{border-radius:16px;box-shadow:none}
 .alphatag{border-radius:8px}
-/* 「载入更多」是 Board 的 secondary Button：36px、圆角 10、Body Medium。 */
-.entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;border-color:var(--line);font-size:14px;font-weight:500;color:var(--ink)}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 @media(pointer:coarse){.board-filter-frame #tagbar .pill{height:36px}.board-filter-frame #tagbar{height:52px}.board-filter-frame .sorts button{height:36px}}

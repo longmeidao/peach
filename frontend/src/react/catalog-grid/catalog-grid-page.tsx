@@ -156,8 +156,8 @@ function GridBody(props: CatalogGridProps) {
 }
 
 /** 续页。目录是一颗滚到附近就自己取的哨兵，资料页是一枚「载入更多」键，两者判据相同。
- *  每接上一页就按新键重挂一次，失败状态不跨页。 */
-function LoadMore({ entity, load, enabled }: { entity: boolean; load: () => Promise<void>; enabled: () => boolean }) {
+ *  每接上一页就按新键重挂一次，失败状态不跨页。资料页照片墙的翻页也用这一枚。 */
+export function LoadMore({ entity, load, enabled }: { entity: boolean; load: () => Promise<void>; enabled: () => boolean }) {
   const node = useRef<HTMLElement | null>(null);
   const busy = useRef(false);
   const failed = useRef(false);

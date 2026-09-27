@@ -508,6 +508,46 @@ async function openPerformer(browser: Browser, viewport = DESKTOP): Promise<Visi
   return opened;
 }
 
+/** 照片档：一部作品的两张官方样张加六张本地图片，缩略图都是 1×1 的图，量的是墙的几何。 */
+async function openPhotoWall(browser: Browser, viewport = DESKTOP): Promise<Visit> {
+  const name = '七沢みあ';
+  const opened = await visit(browser, '/', viewport);
+  const { page } = opened;
+  await page.route(/\/api\/entity\?/, (route) => route.fulfill({ json: {
+    id: 90_001, kind: 'performer', canonical_name: name, aliases: [], display_aliases: [], user_aliases: [],
+    asset_count: 0, tags: [], related_performers: [], links: [], metadata: {}, has_image: false, has_avatar: false,
+    avatar_focus: null, representative_asset_id: null, entry_links: [], feed: { following: false },
+  } }));
+  // 下一页一直不回：「载入更多」停在忙态，墙不再变，量得到那枚键的几何。
+  await page.route(/\/api\/photos\?/, (route) => Number(new URL(route.request().url()).searchParams.get('offset') || 0) ? undefined : route.fulfill({ json: {
+    kind: 'performer', name, entity_id: 90_001, total: 12, seed: '', has_more: true, sample_total: 2,
+    items: Array.from({ length: 6 }, (_, i) => ({ id: 200 + i, name: `${200 + i}.jpg`, size: 1, location: 'media' })),
+    sets: [{ id: 'code:SSIS-057', kind: 'code', code: 'SSIS-057', name: '雨の日', title: 'SSIS-057 雨の日', n: 2,
+      release_date: '2021-05-18', site: 'dmm', site_label: 'DMM', has_cover: true }],
+  } }));
+  await page.route(/\/(?:photo-thumb|sample-thumb)\?/, (route) => route.fulfill({
+    status: 200, contentType: 'image/png', body: Buffer.from(PIXEL, 'base64'),
+  }));
+  await page.goto(new URL(`/performers/${encodeURIComponent(name)}?media=photos`, page.url()).href, { waitUntil: 'load' });
+  await page.locator('[data-local-wall] [data-photo-cell] img').first().waitFor({ timeout: 15_000 });
+  await settle(page);
+  return opened;
+}
+
+/** 本地图片那面墙的排法：网格数列宽，瀑布流数 column-count。 */
+const photoWallFaces = (page: Page) => page.evaluate(() => {
+  const wall = document.querySelector<HTMLElement>('[data-local-wall]')!;
+  const style = getComputedStyle(wall);
+  const cell = wall.querySelector<HTMLElement>('[data-photo-cell]')!;
+  const box = cell.getBoundingClientRect();
+  return {
+    display: style.display,
+    columns: style.display === 'grid' ? style.gridTemplateColumns.split(' ').length : Number(style.columnCount),
+    gap: style.columnGap,
+    square: Math.abs(box.width - box.height) <= 1,
+  };
+});
+
 /** 有 minnano-av 资料的女优。`profile` 与 `name_groups` 照 `peach.entity_profile.header` 的形状写，
  *  出道片名故意很长：资料表那一格要单行截断。 */
 const PROFILED = {
@@ -2941,6 +2981,63 @@ describe('设计决定', () => {
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
+    }
+  });
+
+  it('资料页照片墙：1280 宽小图 4 列、大图 2 列，手机 2 列；固定版式是方格，瀑布流按列填；格子是一块等图的空底', { timeout: 90_000 }, async () => {
+    const opened = await openPhotoWall(browser);
+    try {
+      const { page } = opened;
+      // 默认瀑布流、小图。
+      assert.deepEqual(await photoWallFaces(page), { display: 'block', columns: 4, gap: '10px', square: true });
+      const cell = await page.evaluate(() => {
+        const node = document.querySelector<HTMLElement>('[data-local-wall] [data-photo-cell]')!;
+        const style = getComputedStyle(node);
+        const head = document.querySelector('[data-photo-group]')!;
+        return {
+          radius: style.borderRadius, cursor: style.cursor, sunk: style.backgroundColor,
+          token: getComputedStyle(document.documentElement).getPropertyValue('--surface-radius').trim(),
+          alt: getComputedStyle(node.querySelector('img')!).color,
+          headTop: getComputedStyle(head).marginTop,
+          rows: [head, head.querySelector('b')!].map((node) => getComputedStyle(node).lineHeight),
+          code: getComputedStyle(head.querySelector('b')!).fontFamily,
+          meta: getComputedStyle(head.querySelector('[data-photo-group-meta]')!).marginLeft !== '0px',
+        };
+      });
+      assert.equal(cell.radius, cell.token, '照片格的圆角是 --surface-radius');
+      assert.equal(cell.cursor, 'zoom-in');
+      assert.equal(cell.alt, 'rgba(0, 0, 0, 0)', '等图时 alt 文件名不画出来');
+      assert.notEqual(cell.sunk, 'rgba(0, 0, 0, 0)', '格子自带一块沉底色');
+      assert.equal(cell.headTop, '28px', '每段上方留出段距');
+      assert.deepEqual(cell.rows, ['20px', '20px'], '段头一行 20px，番号不按自己的字号撑高');
+      assert.match(cell.code, /Cascadia Mono/, '段头番号是等宽字');
+      assert.ok(cell.meta, '来源与张数靠右');
+      assert.equal(await page.locator('#index [data-entity-more]').evaluate((node) => {
+        const style = getComputedStyle(node);
+        return `${style.height} ${style.borderRadius} ${style.fontSize} ${style.fontWeight}`;
+      }), '36px 10px 14px 500', '载入更多是 36px 高、10px 圆角的 secondary 按钮');
+      await page.locator('[data-entity-layout][aria-label="图片布局"] label:has(input[value="fixed"])').click();
+      await page.waitForFunction(() => document.querySelector('[data-local-wall]')?.getAttribute('data-layout') === 'fixed');
+      assert.deepEqual(await photoWallFaces(page), { display: 'grid', columns: 4, gap: '10px', square: true });
+      // 顶栏那枚大小键在照片档里换的是照片的大小档，一次请求都不发。
+      await page.locator('#density').click();
+      await page.waitForFunction(() => document.querySelector('[data-local-wall]')?.getAttribute('data-size') === 'big');
+      assert.deepEqual(await photoWallFaces(page), { display: 'grid', columns: 2, gap: '10px', square: true });
+      assert.equal(await page.locator('#density').getAttribute('title'), '当前：大图');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+    const phone = await openPhotoWall(browser, MOBILE);
+    try {
+      const { page } = phone;
+      assert.deepEqual(await photoWallFaces(page), { display: 'block', columns: 2, gap: '10px', square: true });
+      await page.locator('[data-entity-layout][aria-label="图片布局"] label:has(input[value="fixed"])').click();
+      await page.waitForFunction(() => document.querySelector('[data-local-wall]')?.getAttribute('data-layout') === 'fixed');
+      assert.deepEqual(await photoWallFaces(page), { display: 'grid', columns: 2, gap: '8px', square: true });
+      assert.deepEqual(phone.problems, []);
+    } finally {
+      await phone.close();
     }
   });
 

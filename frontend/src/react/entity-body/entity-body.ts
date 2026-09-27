@@ -25,8 +25,52 @@ export interface EntityBodyHelpers extends MediaCardHelpers {
   personAvatar(item: IndexPerson, entityKind: string, big: boolean): PersonAvatar;
 }
 
-/** 卡片上的动作。名册一格点开走的是其中的 `openEntity`。 */
-export type EntityBodyActions = MediaCardActions;
+/** 名下一部作品的官方样张（`/api/photos` 的 `sets` 里 `kind` 为 `code` 的那几条）。样张地址留在
+ *  服务端，墙和灯箱只递番号与序号。 */
+export interface EntityCodeSet {
+  code: string;
+  name?: string;
+  n: number;
+  release_date?: string;
+  site_label?: string;
+}
+
+/** 本地图片一张（`/api/photos`、`/api/photo-set` 的 `items`）。整条原样递给灯箱详情。 */
+export interface EntityLocalPhoto { id: number; name?: string; [field: string]: unknown }
+
+/** 样张一格。形状与壳的 `photoSlide` 认的那一种相同，灯箱拿到就能翻。 */
+export interface EntitySamplePhoto {
+  sample: true;
+  code: string;
+  position: number;
+  total: number;
+  name: string;
+  source: string;
+}
+
+export type EntityWallPhoto = EntityLocalPhoto | EntitySamplePhoto;
+
+/** 照片视图这一屏。`codeSets` 只在整组照片里有（目录图集里是空的），各段排在本地图片前面；
+ *  `items` 是本地图片里已经取回的那些，翻页往后接；`total` 是本地图片总数，段头读它。
+ *  `revision` 是这一屏的代次：换一批、进出图集时加一，墙从头画，续页只追加不换代。 */
+export interface EntityPhotos {
+  revision: number;
+  codeSets: EntityCodeSet[];
+  items: EntityLocalPhoto[];
+  total: number;
+  hasMore: boolean;
+}
+
+export type PhotoSize = 'small' | 'big';
+export type PhotoLayout = 'fixed' | 'masonry';
+
+/** 卡片上的动作，外加照片墙那两样。名册一格点开走的是其中的 `openEntity`。灯箱归壳：
+ *  `source` 是墙上这一整列（样张各段在前、本地图片在后），`index` 是点中那一格在其中的位置。 */
+export interface EntityBodyActions extends MediaCardActions {
+  openLightbox(index: number, source: EntityWallPhoto[]): void;
+  /** 本地图片的下一页。壳取回后推一份更长的 `photos` 进来；取不到就抛错，键下出重试。 */
+  loadMorePhotos(): Promise<void>;
+}
 
 /** 从卡片网格原样递进去的那几样：版式、选择状态、缓存与骨架都是壳里同一份。 */
 type SharedGridProps = Pick<CatalogGridProps,
@@ -46,6 +90,11 @@ export interface EntityBodyProps extends SharedGridProps {
   revision: number;
   /** 续页。筛选与排序由壳在闭包里带着，和第一页同一套口径。 */
   fetchPage(offset: number, signal: AbortSignal): Promise<MediaPage>;
+  /** 照片视图这一屏；还没进过照片视图时是 `null`。 */
+  photos: EntityPhotos | null;
+  /** 照片墙的大小档与版式。开关画在筛选浮层与顶栏里，这里只读，标在墙的 `data-size`/`data-layout` 上。 */
+  photoSize: PhotoSize;
+  photoLayout: PhotoLayout;
   helpers: EntityBodyHelpers;
   actions: EntityBodyActions;
 }

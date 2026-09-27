@@ -79,9 +79,9 @@ function unexpected(problems: string[]): string[] {
 }
 
 /** 每一段的段头标签和它下面那面墙的格数，按页面顺序。 */
-const groups = (page: Page) => page.locator('.photogroup').evaluateAll((heads) => heads.map((head) => [
+const groups = (page: Page) => page.locator('[data-photo-group]').evaluateAll((heads) => heads.map((head) => [
   head.querySelector('b')?.textContent?.trim() || '',
-  head.nextElementSibling?.querySelectorAll('.photocell').length ?? -1,
+  head.nextElementSibling?.querySelectorAll('[data-photo-cell]').length ?? -1,
 ]));
 
 describe('番号样张', () => {
@@ -97,10 +97,10 @@ describe('番号样张', () => {
         'true');
       assert.deepEqual(await groups(page), [['SSIS-057', 3], ['SSIS-001', 2]]);
       // 第一段的 28px 段距与筛选浮层 22px 的下边距合并成一段，不叠加。
-      const gap = await page.evaluate(() => document.querySelector('.photogroup')!.getBoundingClientRect().top
+      const gap = await page.evaluate(() => document.querySelector('[data-photo-group]')!.getBoundingClientRect().top
         - document.querySelector('[data-entity-filter-glass]')!.getBoundingClientRect().bottom);
       assert.ok(Math.abs(gap - 28) <= 1, `第一段离浮层 ${gap}px`);
-      assert.match(await page.locator('.photogroup').first().innerText(), /雨の日[\s\S]*DMM 样张 · 2021-05-18 · 3 张/);
+      assert.match(await page.locator('[data-photo-group]').first().innerText(), /雨の日[\s\S]*DMM 样张 · 2021-05-18 · 3 张/);
       assert.match(await page.locator('[data-entity-readout]').innerText(), /样张 5 张 · 2 部作品/);
       assert.equal(await page.locator('[data-entity-batch]').count(), 0, '没有本地图可换一批');
       assert.equal(await page.locator('[data-photo-back]').count(), 0, '样张不另开一层');
@@ -114,10 +114,10 @@ describe('番号样张', () => {
     const opened = await openPhotos(browser, 'media=photos');
     const { page } = opened;
     try {
-      await page.waitForFunction(() => !document.querySelector('.photowall')?.children[1]?.querySelector('img'));
-      const hole = await page.locator('.photowall .photocell').nth(1).boundingBox();
+      await page.waitForFunction(() => !document.querySelector('[data-photo-wall]')?.children[1]?.querySelector('img'));
+      const hole = await page.locator('[data-photo-wall] [data-photo-cell]').nth(1).boundingBox();
       assert.ok(hole && hole.height > 0, '占位格不塌');
-      await page.locator('.photowall .photocell').nth(3).click();
+      await page.locator('[data-photo-wall] [data-photo-cell]').nth(3).click();
       const count = page.locator('dialog.photolight .photocount');
       await count.waitFor({ state: 'visible' });
       assert.equal((await count.innerText()).trim(), '4 / 5');
@@ -133,10 +133,10 @@ describe('番号样张', () => {
     const { page } = opened;
     try {
       // 「载入更多」一进视口就自己翻下一页：把它滚进来，等两页都落定再读。
-      await page.evaluate(() => document.querySelector('#index .entitymore')?.scrollIntoView());
-      await page.waitForFunction(() => document.querySelectorAll('.photowall .photocell').length === 8);
+      await page.evaluate(() => document.querySelector('#index [data-entity-more]')?.scrollIntoView());
+      await page.waitForFunction(() => document.querySelectorAll('[data-photo-wall] [data-photo-cell]').length === 8);
       assert.deepEqual(await groups(page), [['SSIS-057', 3], ['SSIS-001', 2], ['本地图片', 3]]);
-      assert.equal(await page.locator('[data-local-wall] .photocell img[src^="/photo-thumb"]').count(), 3);
+      assert.equal(await page.locator('[data-local-wall] [data-photo-cell] img[src^="/photo-thumb"]').count(), 3);
       assert.deepEqual(opened.offsets, [2]);
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {
@@ -148,7 +148,7 @@ describe('番号样张', () => {
     const opened = await openPhotos(browser, `media=photos&set=${encodeURIComponent('code:SSIS-057')}`);
     const { page } = opened;
     try {
-      assert.equal(await page.locator('.photowall .photocell').count(), 5);
+      assert.equal(await page.locator('[data-photo-wall] [data-photo-cell]').count(), 5);
       assert.equal(await page.locator('[data-photo-back]').count(), 0);
       assert.deepEqual(unexpected(opened.problems), [], JSON.stringify(opened.problems));
     } finally {

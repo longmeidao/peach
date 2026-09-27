@@ -70,11 +70,11 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 目录（`/` 与筛选态、`/trash`）、资料页作品区和详情页的接着看都由 `catalog-grid` island 画（`frontend/src/react/catalog-grid/`）。作品卡是 `components/media-card.tsx`，Mix 卡用播放列表页那张 `components/mix-card.tsx`。三种取数按 `mode` 分：
 
 - `catalog` 挂在 `#grid` 上，筛选态是壳的 `state`，经 `filters` 递进；壳要求重读时走 `loadCatalog`，它把 `revision` 加一，查询换键重取、不重挂。读数行 `#count` 的结构归壳，读数那一格、`#loadSentinel` 的自动续页、Mix 落位、竖屏带与分卷／版次折叠都在岛里。
-- `entity` 挂在资料页作品区的 `[data-entity-grid]` 上：第一页随页头一起取来，作为 `initial`；续页经 `fetchPage` 回到壳的 `fetchEntityItems`。每画一次 `revision` 加一，每次进入各用一把查询键。
+- `entity` 由资料页正文岛 `entity-body`（`frontend/src/react/entity-body/`）直接渲染在它的作品视图里，不另挂岛：第一页随页头一起取来，作为 `initial` 经 `initialData` 进查询；续页经 `fetchPage` 回到壳的 `fetchEntityItems`。壳每发起一次作品请求 `revision` 加一，先推 `items:null` 换成骨架，列表回来后换键淡出。同一座岛的另两个视图是名册（索引页的 `PeopleGrid`）与照片墙（样张分段在前、本地图片在后；灯箱归壳，岛调 `actions.openLightbox`，翻页调 `actions.loadMorePhotos`）。
 - `items` 挂在 `#nrow` 上：壳手上已有那一批，岛只画卡。
 - 版式、选中态与快进秒数经 `updateIsland` 推进来：换版式只重画，已载入的分页原样保留。`selected` 每次推一个新的 `Set`。
 - 壳在卡上还做三件事：悬停预览（`wireHover`／`releaseHover` 经 `helpers` 递进，状态写在卡的 `data-previewing`／`data-longhover` 上）、封面取景、图片微光（`PENDING_IMAGES` 认 `[data-media-art]>img`）。卡片的结构钩子全是 `data-media-*`；壳插进封面格的 `video.hv`、`img.hvframes` 与封套 `img.poster` 用自己的类名，样式在 `12-cards.css`。
-- 离场：`claimSurface` 卸 `#grid` 与 `#nrow`；资料页作品区整块重写之前先卸（`releaseEntityGrid`）；接着看在舞台清场时经 `onStageDispose` 卸。
+- 离场：`claimSurface` 卸 `#grid` 与 `#nrow`；资料页正文岛在换页或铺骨架前由 `releaseEntityBody` 卸；接着看在舞台清场时经 `onStageDispose` 卸。
 - 屏外卡用 `content-visibility` 跳过封面与元信息区的渲染，不做虚拟列表。
 - 单卡写操作都由用户点击触发：稍后看走 `actions.watchLater`，回收站卡的还原走 `actions.resourceOperation`，做完给撤销；彻底删除只在批量条上，先过 `confirmModal` 的危险档。
 

@@ -147,7 +147,7 @@ body.refreshing #batchAction svg{
    卡片盒外面，元信息区自己因此不接指针，只有它的子元素接：卡片的悬停面、点击区和悬停
    预览的触发范围仍是卡片盒本身。元信息区没有背景，垫出来的一圈不画任何东西。
    图片墙不在其内：它的封面没有固定比例，高度取自图片本身，跳过渲染时会按零高排版。
-   资料页的照片墙 `.photowall` 与名册 `.igrid` 同理不在其内，它们也不是 `.card`。资料页
+   资料页的照片墙与名册（`entity-body` 岛）同理不在其内，它们也不是 `.card`。资料页
    新作那一行（`.feednew`）只有一行、往横向排，屏外的卡不改变整页高度，标题字号也不是
    `--fs-md`（`.feednewcard .meta .t` 是 `--fs-sm`），不套这份估计。 */
 .meta{--card-meta-byline:1lh;--card-meta-tags:0px;--card-meta-badges:0px;

@@ -1567,9 +1567,6 @@ class WebUiSourceTests(unittest.TestCase):
         for selector in (".fbadge{", ".fvkind{"):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
-        for selector in (".entitymore{",):
-            rule = css[css.index(selector):css.index("}", css.index(selector))]
-            self.assertIn("var(--control-radius)", rule, f"{selector} 是按钮")
 
     def test_shared_geist_component_tokens_cover_the_whole_shell(self):
         """全站壳层、浮层和普通操作使用同一组语义 token。"""
@@ -1878,11 +1875,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("performer:'performers'")
         self.assertPageContains("studio:'studios'")
         self.assertPageContains("creator:'creators'")
-
-    def test_hidden_load_more_buttons_are_actually_removed_from_layout(self):
-        # 有显式 display 的元素不会被浏览器默认的 [hidden]{display:none} 隐藏；
-        # 少了这条规则，按钮画在页面上但 requestMore 首行就 return，点了没反应。
-        self.assertPageContains(".entitymore[hidden]{display:none}")
 
     def test_co_starred_cards_keep_one_name_and_the_total(self):
         # 多人合集保留头像提示，但文字只写第一位和总人数，避免名称折成多行。
@@ -7157,7 +7149,6 @@ class WebUiSourceTests(unittest.TestCase):
     def test_large_collections_render_in_bounded_batches(self):
         self.assertPageContains("p.set('limit','48')")
         self.assertPageContains("if(offset)p.set('count','0')")
-        self.assertPageContains('class="entitymore"')
         self.assertPageContains("barsRequestSeq")
         self.assertPageContains("async function getBarsData(context=barsContext)")
         self.assertPageContains("Date.now()-barsDataAt<30000")
@@ -8306,8 +8297,6 @@ class WebUiSourceTests(unittest.TestCase):
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",
             ".mixitemtext [data-truncate-end]", ".mixqueuehead h2",
             ".pickrowtext b",
-            # 照片档样张段头的片名：语义文本，尾部省略，全名在 title 里。
-            ".photogrouptitle",
             ".playerstats dd", ".playerstatsmetric>span",
             # 详情标题折成两行，尾部省略；溢出时旁边那枚展开键给出全文。
             ".stitletext",
@@ -8518,13 +8507,12 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_people_index_cells_are_board_cards(self):
         """索引格是 secondary 底、16px 圆角、12px 内边距的卡，名字 Body Medium、计数 Caption。
-        大图版式里头像改 10px 圆角、文字左对齐。载入更多是 36px／10px 圆角的 secondary Button。"""
+        大图版式里头像改 10px 圆角、文字左对齐。载入更多那枚键在 React 里，由 e2e 设计用例量。"""
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".icell{gap:8px;padding:12px;border-radius:16px;background:var(--ground)}", board)
         self.assertIn(".icell .nm{font-size:14px;line-height:20px;font-weight:500}", board)
         self.assertIn(".icell .n{font:var(--board-caption);color:var(--muted)}", board)
         self.assertIn('.igrid[data-layout="big"] .icell .ring{border-radius:10px}', board)
-        self.assertIn(".entitymore{min-height:36px;height:36px;padding:0 12px;border-radius:10px;", board)
 
     def test_an_alphabet_entry_stays_on_one_line(self):
         """一枚标签占一行，长名字截断。
@@ -10032,7 +10020,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("rootMargin:'320px'", body)
         self.assertEqual(self.page.count("new IntersectionObserver"), 1,
                          "共享分页只有这一个观察器")
-        for consumer in ("function renderFollow", "function renderPhotoWall"):
+        # 资料页照片墙的翻页在 `entity-body` 岛里，用的是卡片网格那枚 `LoadMore`，同一套判据。
+        for consumer in ("function renderFollow",):
             self.assertIn("wireLoadMore(", self._js_function(consumer.split()[-1]))
 
     def test_the_identity_name_leaves_room_for_descenders(self):
@@ -10630,47 +10619,11 @@ class WebUiSourceTests(unittest.TestCase):
             "const applyFollowView=()=>{route(followViewPath());openFollow(false)};")
 
     def test_photo_wall_uses_cached_thumbnails_and_only_the_lightbox_reads_originals(self):
-        # 图片墙铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。
-        self.assertPageContains('<img src="/photo-thumb?id=${item.id}"')
+        # 图片墙铺原图等于一屏付几十兆 PikPak 流量；缩略图由服务端缓存一次。墙上那一口在
+        # `entity-body` 岛里，由 `entity-body.test.tsx` 钉住；格子与列数的外观由 e2e 设计用例量。
         # 取图口收进 photoSlide：灯箱现在也服务关注页的在线图，模板不能再写死本地口。
         self.assertPageContains(
             ':{src:`/photo?id=${item.id}`,thumb:`/photo-thumb?id=${item.id}`')
-        self.assertPageLacks('<img src="/photo?id=${item.id}" class="photocell"')
-        self.assertPageContains(
-            ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
-
-    def test_photo_wall_columns_all_start_at_the_top_before_any_thumbnail_arrives(self):
-        """固定比例格子和瀑布流图片都在懒加载前占位，防止零高分栏和连续自动翻页。"""
-        self.assertPageContains(
-            ".photowall{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}")
-        self.assertPageContains(
-            ".photocell{display:block;width:100%;aspect-ratio:1;border:0;padding:0;margin:0;"
-            "background:var(--sunk);")
-        self.assertPageContains(
-            ".photocell img{width:100%;height:100%;object-fit:cover;display:block;"
-            "background:var(--sunk);color:transparent}")
-        # 窄屏两列也是网格；这条写在灯箱分区的断点里，和上面同优先级、排在后面。
-        self.assertPageContains(
-            "  .photowall{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}")
-        for lacking, why in (
-            (".photowall{column-count:5;column-gap:10px}", "多列流式排版会按零高摊格子"),
-            (".photowall{column-count:2;column-gap:8px}", "窄屏那两列同样不能靠图片撑高"),
-            (".photocell img{width:100%;height:auto", "高度得由格子给，不能等图片撑"),
-        ):
-            self.assertPageLacks(lacking, why)
-
-    def test_a_photo_cell_waiting_for_its_thumbnail_is_an_empty_tile(self):
-        """图还没到的格子是一块空底，不是一行文件名。
-
-        `alt` 是这张图的文件名，留着给读屏；但格子按比例占好位置之后，浏览器就有地方
-        把它画出来，一屏几十格同时在等图，看到的是满屏 `118abp00325pl.jpg`。格子高度
-        是 0 的年代看不见它，纯粹是因为没地方画。
-
-        隐去的办法是把字色调成透明，不是删掉 `alt`：删了读屏就只剩一个没有名字的按钮。
-        这块 `--sunk` 底本身就是这里的骨架，不另画「正在读取」。
-        """
-        self.assertPageContains("background:var(--sunk);color:transparent}")
-        self.assertPageContains('<img src="/photo-thumb?id=${item.id}" alt="${esc(item.name)}"')
 
     def test_photo_tab_opens_the_flat_wall_without_album_cover_cards(self):
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
@@ -10700,12 +10653,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("wall.dataset.size=photoSize();wall.dataset.layout=wall.closest('.skeletonpanel')?'fixed':photoLayout()")
         self.assertPageContains("setPhotoSize(photoSize()==='big'?'small':'big')")
         self.assertPageContains("wirePhotoControls(countRow);syncPhotoWalls()")
-        self.assertPageContains("[data-layout=\"masonry\"]>.photocell img{height:auto;aspect-ratio:auto 1}")
         self.assertPageContains("break-inside:avoid;margin:0 0 14px")
-        self.assertPageContains(
-            '.photowall[data-size="big"]{grid-template-columns:repeat(3,minmax(0,1fr))}')
-        self.assertPageContains(
-            '  .photowall[data-size="big"]{grid-template-columns:repeat(1,minmax(0,1fr))}')
+        # 资料页那面墙各档列数与瀑布流的排法由 e2e 设计用例在浏览器里量。
         # 标签只在视频视图里露面，由 e2e `entity-filter.test.ts` 量。
         self.assertPageContains(
             "const head=collectionHeaderHtml({readout:'&nbsp;',loading:true,filterRow:'bottom'});")
