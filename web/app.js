@@ -473,6 +473,8 @@ const claimSurface=path=>{
   /* 目录网格同理：目录页与回收站之间它一直挂着，换筛选只是换查询；去别的页面就卸掉，
      那些页面接着会往 `#grid` 里写自己的东西。 */
   if(!isCatalogPath(path)&&path!=='/trash')clearCatalogGrid();
+  /* 详情页接着看那一排也是一棵网格根；换页时舞台随之清场，根先卸掉。 */
+  releaseNextRow();
   surfaceRequests?.abort();
   surfaceRequests=new AbortController();
   surfaceEpoch++;return surfaceToken(path)};
@@ -2832,8 +2834,8 @@ let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface
 const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
-  // 目录网格的选中态归 React：每次推一份新的集合，卡片按引用比较才看得出变了。
-  if(islandMounted($('#grid')))updateIsland($('#grid'),{selected:new Set(selected),selectMode});
+  // 卡片网格的选中态归 React：每次推一份新的集合，卡片按引用比较才看得出变了。
+  gridIslandHosts().forEach(host=>updateIsland(host,{selected:new Set(selected),selectMode}));
   document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
     card.classList.toggle('selected',followSelected.has(+card.dataset.followItem)));
   const followPage=location.pathname==='/follow',junkPage=location.pathname==='/junk-files';
@@ -6756,6 +6758,7 @@ function indexPlaceholderHtml({kind,q,scope,view}){
 /* 屏幕上已经是同一张骨架就别重画：深链冷启动时首屏骨架先铺过一遍，innerHTML 换新节点会把
    shimmer 从头放一遍。 */
 function showIndexSkeleton(params){
+  releaseEntityGrid();
   $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const placeholder=indexPlaceholderHtml(params);
@@ -6826,7 +6829,15 @@ async function fetchEntityItems(kind,name,filters,offset=0,signal){
   if(state.jav==='1')p.set('jav','1');
   const items=await api('/api/items?'+p,{signal});cache(items.items);return items
 }
-let entityCollectionPage={items:[],total:0,has_more:false};
+/* 资料页作品区的卡片网格是 `catalog-grid` island 的 entity 模式（ADR-0031）：第一页随页头
+   一起取来交给它，续页、分卷／版次折叠和「载入更多」都在岛里。每画一次换一个代次，查询随之
+   换键。宿主 `[data-entity-grid]` 在作品区里，作品区整块重写之前必须先卸掉它，否则那棵根
+   挂在脱离文档的节点上一直活着。 */
+let entityGridRevision=0;
+function releaseEntityGrid(){
+  $('#index').querySelectorAll('[data-entity-grid]').forEach(host=>{releaseHoverPreviews(host);unmountIsland(host)});
+}
+const entityGridSkeletonHtml=()=>pageSkeletonHtml('正在读取作品',{cards:true,className:'catalog-skeleton postercard-skeleton'});
 function syncEntityFilterFrame(){
   const root=$('#index'),top=root.querySelector('.entitytagbar');
   const bottom=root.querySelector('.entitysection>.entitycollectionhead');
@@ -6884,16 +6895,14 @@ function markEntityCollectionBusy(kind,name,filters){
   wireEntityCollectionHead(head,kind,name,filters);
   /* 名单已经不是刚才那一份了。把旧卡片留在屏幕上等新的回来，等的这一下人读到的是一份
      跟头上的筛选对不上的列表——数字在转圈，底下那几十张却还是上一次的答案。 */
-  const grid=section.querySelector('.grid');
-  if(grid){grid.innerHTML=pageSkeletonHtml('正在读取作品',
-    {cards:true,className:'catalog-skeleton postercard-skeleton'});fitSkeleton(section)}
-  const more=section.querySelector('.entitymore');
-  if(more)more.hidden=true;
+  const host=section.querySelector('[data-entity-grid]');
+  if(host){releaseEntityGrid();host.innerHTML=entityGridSkeletonHtml();fitSkeleton(section)}
 }
 /* 名册：事务所页是艺人，片商页是旗下 label。和对应的索引页摆的是同一格、同一套版式
    设置，只是这批随资料页一起下来了，不再单独请求；读数写的是这一格有多少视频。 */
 function renderEntityRoster(people){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
+  releaseEntityGrid();
   const cellKind=entityRosterKind;
   const cells=cellKind==='studio'?'company':'people';
   section.innerHTML=`${collectionHeaderHtml({readout:(cellKind==='studio'?'厂牌':'艺人')+' · '+people.length.toLocaleString()})}
@@ -6904,35 +6913,26 @@ function renderEntityRoster(people){
   syncEntityFilterFrame();
   scheduleStickySurfaces();
 }
-function renderEntityCollection(kind,name,items,filters,append=false){
+function renderEntityCollection(kind,name,items,filters){
   // 资料页的标签同样可以叠加，表头把生效的几个都写出来。
   const entityTags=tagList(filters.tag).map(tagLabel);
   const section=$('#index').querySelector('.entitysection');if(!section)return;
-  if(!append){
-    renderedPartGroups.clear();renderedEditionGroups.clear();
-    entityCollectionPage={items:[...(items.items||[])],total:items.total||0,
-      has_more:items.has_more==null?(items.items||[]).length<(items.total||0):!!items.has_more};
-    section.innerHTML=`${collectionHeaderHtml({controls:entityCollectionSortsHtml(filters)})}
-      <div class="grid"></div><button class="entitymore" type="button">载入更多</button>`;
-    section.dataset.total=String(items.total||0);
-    section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTags.length?' · '+entityTags.join(' · '):''}`;
-    wireEntityCollectionHead(section,kind,name,filters);
-  }else{
-    entityCollectionPage.items.push(...(items.items||[]));
-    entityCollectionPage.has_more=!!items.has_more;
-  }
-  const grid=section.querySelector('.grid');
-  grid.insertAdjacentHTML('beforeend',
-    collapseEditionGroups(collapseMultipartItems(items.items)).map(it=>cardHtml(it)).join(''));
-  wireCards(grid);
-  const more=section.querySelector('.entitymore');
-  more.hidden=!entityCollectionPage.has_more;
-  const seq=entityRequestSeq;
-  wireLoadMore(more,{
-    isCurrent:()=>seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name,
-    read:signal=>fetchEntityItems(kind,name,filters,entityCollectionPage.items.length,signal),
-    apply:next=>renderEntityCollection(kind,name,next,filters,true),
-  });
+  releaseEntityGrid();
+  /* 宿主里先铺一份骨架：React 产物头一次装载要等一个来回，这期间不留一块空白。 */
+  section.innerHTML=`${collectionHeaderHtml({controls:entityCollectionSortsHtml(filters)})}
+    <div data-entity-grid>${entityGridSkeletonHtml()}</div>`;
+  section.dataset.total=String(items.total||0);
+  section.querySelector('h3').textContent=`视频 · ${(items.total||0).toLocaleString()}${entityTags.length?' · '+entityTags.join(' · '):''}`;
+  wireEntityCollectionHead(section,kind,name,filters);
+  const host=section.querySelector('[data-entity-grid]');
+  mountIsland('catalog-grid',host,{
+    mode:'entity',entityKey:`${kind}:${name}`,revision:++entityGridRevision,initial:items,
+    fetchPage:(offset,signal)=>fetchEntityItems(kind,name,filters,offset,signal),
+    helpers:gridHelpers,actions:gridActions,layout:catalogGridLayout(),
+    selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,
+    cache,wireDrag,skeletonHtml:entityGridSkeletonHtml,groupCollapse:appSettings.groupCollapse,
+    canLoadMore:()=>!$('#index').hidden&&$('#stats').hidden,
+  },{isCurrent:()=>section.contains(host)}).catch(error=>console.error(error));
   syncEntityFilterFrame();
   scheduleStickySurfaces();
 }
@@ -7148,6 +7148,7 @@ const photoHeadHtml=(data,{back=false,codeSets=[],sample=false}={})=>collectionH
   controls:sortControlsHtml({extra:photoControlsHtml()+(back&&!sample?sourceTools(data.id):'')})});
 function renderPhotoWall(kind,name,filters,data,append=false){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
+  if(!append)releaseEntityGrid();
   const entityWide=!data.id;
   if(!append){
     photoWallItems=[];
@@ -7192,6 +7193,7 @@ function renderPhotoWall(kind,name,filters,data,append=false){
 /* 一部作品的样张一次铺完：官方样张一部最多几十张，用不着分页。 */
 function renderSampleWall(kind,name,filters,set){
   const section=$('#index').querySelector('.entitysection');if(!section)return;
+  releaseEntityGrid();
   photoWallItems=codeSetItems(set);
   section.innerHTML=photoHeadHtml({title:set.title,total:set.n},{back:true,sample:true})
     +`<div class="photowall" data-size="${photoSize()}">${photoWallItems.map(sampleCell).join('')}</div>`;
@@ -7583,7 +7585,7 @@ function showEntityMissing(kind){
   $('#index').innerHTML=emptyState('search-x',`找不到这个${title}`,'名字可能拼错了，或者已经合并到别的名字下；回列表里重新找。',{actions});
 }
 async function openEntity(kind,name,push=true){
-  releaseHoverPreviews();
+  releaseHoverPreviews();releaseEntityGrid();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
   if(kind==='creator')filters.creator='';
   const expectedPath=entityPath(kind,name);
@@ -8317,13 +8319,7 @@ function setJavLayout(value){
   saveSettings();
   document.querySelectorAll('[data-jav-layout]').forEach(input=>{input.checked=input.value===appSettings.javLayout});
   // 只重画卡片，不重新请求：版式是纯展示层的事。资料页保留已经载入的分页。
-  const index=$('#index'),kind=index?.dataset.entityKind,name=index?.dataset.entityName;
-  if(kind&&name&&!index.hidden&&entityMediaView.media!=='photos'){
-    renderEntityCollection(kind,name,{...entityCollectionPage,items:[...entityCollectionPage.items]},
-      barsContext.type==='entity'?barsContext.filters:emptyEntityFilters());
-    return;
-  }
-  if(!$('#grid').hidden)repaintCatalogGrid();
+  repaintCatalogGrid();
 }
 function paintJavBar(){
   // 版式按钮现在长在排序行里（见 renderCount），这里只负责收掉旧容器。
@@ -8540,12 +8536,16 @@ function catalogGridLayout(){
   if(!catalogLayoutValue||Object.keys(next).some(key=>next[key]!==catalogLayoutValue[key]))catalogLayoutValue=next;
   return catalogLayoutValue;
 }
+/* 挂着卡片网格的几处：目录 `#grid`、资料页作品区、详情页的接着看。 */
+function gridIslandHosts(){
+  return [$('#grid'),...$('#index').querySelectorAll('[data-entity-grid]'),$('#nrow')].filter(host=>islandMounted(host));
+}
 /* 版式、「JAV 默认封面」、快进秒数这些展示层的设置变了，只推给正挂着的网格重画，不重取。 */
 function repaintCatalogGrid(){
-  const grid=$('#grid');
-  if(!islandMounted(grid))return;
-  releaseHoverPreviews(grid);
-  updateIsland(grid,{layout:catalogGridLayout(),seekSeconds:appSettings.seekSeconds});
+  gridIslandHosts().forEach(host=>{
+    releaseHoverPreviews(host);
+    updateIsland(host,{layout:catalogGridLayout(),seekSeconds:appSettings.seekSeconds});
+  });
 }
 function catalogGridProps(){
   const path=decodeURIComponent(location.pathname),home=isCatalogPath(path),trash=state.state==='trash';
@@ -9498,14 +9498,28 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   buildBars();
   scrollItemDetailIntoView();
 
-  if(!queueContext&&appSettings.relatedLimit>0)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
-    const n=$('#nrow'); if(!n)return; cache(d.items);
+  const nextRow=$('#nrow');
+  if(nextRow)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
+    if(!nextRow.isConnected)return; cache(d.items);
     /* 没有可接着看的就整块拿掉，不留一个标题配空白。 */
-    if(!d.items.length){n.closest('.next')?.remove();return}
-    n.innerHTML=d.items.map(x=>cardHtml(x,'ncard')).join('');
+    if(!d.items.length){nextRow.closest('.next')?.remove();return}
+    /* 卡片是 `catalog-grid` island 的 items 模式：壳手上已经有这一批，岛只画卡。舞台清场时
+       经 `onStageDispose` 卸掉它。 */
+    onStageDispose(()=>releaseNextRow(nextRow));
+    mountIsland('catalog-grid',nextRow,{
+      mode:'items',variant:'next',items:d.items,helpers:gridHelpers,actions:gridActions,layout:catalogGridLayout(),
+      selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,revision:0,
+      cache,wireDrag,skeletonHtml:()=>'',
+    },{isCurrent:()=>nextRow.isConnected}).catch(error=>console.error(error));
     /* 这一排每开一次详情就重新生成，启动时那次 `wireAllDrag()` 登记的是早已不在页面上的旧节点；
        它又没有滚动条，不在这里登记，滚轮和拖动都推不动它。 */
-    wireCards(n);wireDrag(n);});
+    wireDrag(nextRow);});
+}
+/* 卸掉接着看那一排的网格根。舞台清场、换页之前都要先做：`#stage` 整块重写之后，挂在旧节点
+   上的根不卸就一直活着。 */
+function releaseNextRow(row=$('#nrow')){
+  if(!row)return;
+  releaseHoverPreviews(row);unmountIsland(row);
 }
 
 function wireTelemetry(it,v,sel){
