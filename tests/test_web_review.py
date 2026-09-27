@@ -385,6 +385,23 @@ class ReviewQueueTests(unittest.TestCase):
         finally:
             con.close()
 
+    def test_an_exact_hit_does_not_hide_the_other_spelling_of_the_same_release(self):
+        """精确命中的那条文件名读不出番号，另一种写法下的文件读得出，整组照样认得。"""
+        self._asset(95, "n0780", "Tokyo-Hot.mp4")
+        self._asset(96, "TOKYO-HOT-N0780", "n0780.mkv")
+        self.write_metadata_rows([{"item_key": "n0780:release_date", "field": "release_date",
+                                   "current": "", "candidates": ["2012-09-07"],
+                                   "code": "n0780"}])
+        self.assertEqual(self._auto()["applied"], 1)
+        con = sqlite3.connect(self.db_path)
+        try:
+            self.assertEqual(
+                con.execute("SELECT id, release_date FROM asset WHERE id IN (95, 96) "
+                            "ORDER BY id").fetchall(),
+                [(95, "2012-09-07"), (96, "2012-09-07")])
+        finally:
+            con.close()
+
     def test_a_code_that_only_looks_alike_is_not_taken_for_this_one(self):
         """收小范围用的是子串，判等仍按归一化：`N0762` 出现在别的番号里不算命中。"""
         self._asset(96, "AN0762X", "AN0762X.mp4")

@@ -834,6 +834,35 @@ class RevertMisreadCodeTests(unittest.TestCase):
              ("348NTR-007:title", "rejected")])
         self.assertEqual(self._read("SELECT count(*) FROM asset_tag WHERE asset_id IN (1,2)"),
                          [(2,)])
+        # 清空的片名不受保护：另一个来源给得出同一部片的片名时照常自动落库。
+        self.assertEqual(
+            self._read("SELECT json_extract(field_owners,'$.catalog_title') FROM asset WHERE id=5"),
+            [("script:revert_misread_code",)])
+
+    def test_fields_an_earlier_run_cleared_as_the_user_are_signed_back_to_the_script(self):
+        """以 `user:manual` 清空的字段改签成脚本归属；只认驳回决定点到的、仍空着的那几格。"""
+        self._add_wrong_source()
+        connection = sqlite3.connect(self.db)
+        connection.execute(
+            "UPDATE asset SET catalog_title=NULL,field_owners=json_object("
+            "'catalog_title','user:manual','series','user:manual') WHERE id=5")
+        connection.execute(
+            "UPDATE review_decision SET status='rejected',"
+            "note='{\"reason\":\"r18dev 去前缀查 348NTR-007 交回的是另一部作品\"}' "
+            "WHERE item_key IN ('348NTR-007:title','348NTR-007:series')")
+        connection.commit()
+        connection.close()
+        self.assertEqual(self._run("--release-owners"), 0)
+        self.assertEqual(
+            self._read("SELECT json_extract(field_owners,'$.catalog_title') FROM asset WHERE id=5"),
+            [("user:manual",)])
+        self.assertEqual(self._run("--release-owners", "--apply",
+                                   "--backup", str(self.root / "b.db")), 0)
+        # 系列仍有值（`素人`），那是用户写下的，不改签。
+        self.assertEqual(
+            self._read("SELECT catalog_title,json_extract(field_owners,'$.catalog_title'),"
+                       "series,json_extract(field_owners,'$.series') FROM asset WHERE id=5"),
+            [(None, "script:revert_misread_code", "素人", "user:manual")])
 
     def test_a_source_that_still_identifies_the_code_is_refused(self):
         self._add_wrong_source(r18dev_id="348NTR-007", r18dev_content="h_1348ntr00007")
