@@ -19,7 +19,7 @@
     }],
     "shadcn/no-arbitrary-values": "error",
     "shadcn/no-inline-styles": "error",
-    "shadcn/no-unknown-classes": ["error", { "allow": ["configpage", "configgroup"] }],
+    "shadcn/no-unknown-classes": ["error", { "allow": ["configpage", "configgroup", "swiper", "swiper-wrapper", "swiper-slide", "swiper-zoom-container"] }],
     "shadcn/require-static-classes": "error"
   }
 }

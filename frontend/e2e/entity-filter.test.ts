@@ -316,14 +316,25 @@ describe('实体页筛选浮层', () => {
       await page.waitForFunction(() => (document.querySelector('[data-view-glide=""]') as HTMLElement).hidden,
         undefined, { timeout: 5_000 });
       const glass = '[data-entity-filter-glass]';
-      await page.evaluate(() => window.scrollTo(0, 300));
-      await page.waitForTimeout(100);
-      await page.evaluate(() => window.scrollTo(0, 700));
+      /* 方向判据按「上一个 y」算：壳在 scroll 事件里排一帧 rAF 才读 scrollY，两次滚动落进同一帧
+         的话它只读到后一次，往下 300 再到 700 会被看成一步、700 回 500 会被看成从 300 往下滚。
+         所以每滚一次都等到这个位置的 scroll 事件真的发出来，再过两帧：壳那一帧排在这一帧前面，
+         两帧过去它一定已经读过这个位置，下一次滚动才发。 */
+      const scrollSettled = (y: number) => page.evaluate((target) => new Promise<void>((done) => {
+        addEventListener('scroll', function seen() {
+          if (scrollY !== target) return;
+          removeEventListener('scroll', seen);
+          requestAnimationFrame(() => requestAnimationFrame(() => done()));
+        });
+        scrollTo(0, target);
+      }), y);
+      await scrollSettled(300);
+      await scrollSettled(700);
       await page.waitForFunction((selector) => document.querySelector(selector)!.hasAttribute('data-filter-free'),
         glass, { timeout: 5_000 });
       const bottom = (selector: string) => page.evaluate((s) => document.querySelector(s)!.getBoundingClientRect().bottom, selector);
       assert.ok(await bottom(glass) <= 0, `让位后浮层还压在屏幕上沿：下沿 ${await bottom(glass)}`);
-      await page.evaluate(() => window.scrollTo(0, 500));
+      await scrollSettled(500);
       await page.waitForFunction((selector) => !document.querySelector(selector)!.hasAttribute('data-filter-free'),
         glass, { timeout: 5_000 });
       const top = await page.evaluate((s) => {

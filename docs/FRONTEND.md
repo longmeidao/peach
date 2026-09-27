@@ -70,7 +70,7 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 目录（`/` 与筛选态、`/trash`）、资料页作品区和详情页的接着看都由 `catalog-grid` island 画（`frontend/src/react/catalog-grid/`）。作品卡是 `components/media-card.tsx`，Mix 卡用播放列表页那张 `components/mix-card.tsx`。三种取数按 `mode` 分：
 
 - `catalog` 挂在 `#grid` 上，筛选态是壳的 `state`，经 `filters` 递进；壳要求重读时走 `loadCatalog`，它把 `revision` 加一，查询换键重取、不重挂。读数行 `#count` 的结构归壳，读数那一格、`#loadSentinel` 的自动续页、Mix 落位、竖屏带与分卷／版次折叠都在岛里。
-- `entity` 由资料页正文岛 `entity-body`（`frontend/src/react/entity-body/`）直接渲染在它的作品视图里，不另挂岛：第一页随页头一起取来，作为 `initial` 经 `initialData` 进查询；续页经 `fetchPage` 回到壳的 `fetchEntityItems`。壳每发起一次作品请求 `revision` 加一，先推 `items:null` 换成骨架，列表回来后换键淡出。同一座岛的另两个视图是名册（索引页的 `PeopleGrid`）与照片墙（样张分段在前、本地图片在后；灯箱归壳，岛调 `actions.openLightbox`，翻页调 `actions.loadMorePhotos`）。
+- `entity` 由资料页正文岛 `entity-body`（`frontend/src/react/entity-body/`）直接渲染在它的作品视图里，不另挂岛：第一页随页头一起取来，作为 `initial` 经 `initialData` 进查询；续页经 `fetchPage` 回到壳的 `fetchEntityItems`。壳每发起一次作品请求 `revision` 加一，先推 `items:null` 换成骨架，列表回来后换键淡出。同一座岛的另两个视图是名册（索引页的 `PeopleGrid`）与照片墙（样张分段在前、本地图片在后；岛直接打开 React 灯箱（`photo-lightbox/`），定位源文件调 `actions.revealSource`，翻页调 `actions.loadMorePhotos`）。
 - `items` 挂在 `#nrow` 上：壳手上已有那一批，岛只画卡。
 - 版式、选中态与快进秒数经 `updateIsland` 推进来：换版式只重画，已载入的分页原样保留。`selected` 每次推一个新的 `Set`。
 - 壳在卡上还做三件事：悬停预览（`wireHover`／`releaseHover` 经 `helpers` 递进，状态写在卡的 `data-previewing`／`data-longhover` 上）、封面取景、图片微光（`PENDING_IMAGES` 认 `[data-media-art]>img`）。卡片的结构钩子全是 `data-media-*`；壳插进封面格的 `video.hv`、`img.hvframes` 与封套 `img.poster` 用自己的类名，样式在 `12-cards.css`。
@@ -110,9 +110,8 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `05-insights.css` | Analytics／Speed Insights，以及口味页骨架的板块与指标条 |
 | `06-index.css` | 索引页首屏骨架、资料页名册格 |
 | `07-entity.css` | 实体资料页头、外链、相关人物 |
-| `08-photos.css` | 照片墙与灯箱主体 |
+| `08-photos.css` | 媒体圆钮、灯箱打开时的页面锁滚 |
 | `09-skeleton.css` | Geist Skeleton 与各页骨架变体 |
-| `10-photolight.css` | 灯箱的缩放条、详情、缩略带与窄屏 |
 | `11-identity.css` | 身份组、演员与系列链接、重复项、质量清单、复核对照 |
 | `12-cards.css` | 壳自己画的卡片（垃圾文件、关注、新作）、悬停预览层与密度 |
 | `13-stage.css` | 就地展开的舞台与 Mix 队列 |
@@ -360,8 +359,10 @@ BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选�
 React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.css`；它与旧样式表同处一页的
 三条约束（工具类不分层、只扫描 `src/react/`、Preflight 限定在 `.peach-react` 里）写在
 `frontend/src/react/styles.css` 开头，逐字复制与没有复制的上游文件见 `frontend/src/react/boardui/ORIGIN.md`。
-`.oxlintrc.json` 里两条例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
-React 页要按原名输出壳才拆得出分区；`shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
+`.oxlintrc.json` 里三条例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
+React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`、`swiper-slide`、
+`swiper-zoom-container` 是 Swiper 核心 API 认的结构类名（图片灯箱），不写它就找不到轮播的
+容器与每一张；`shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
 `no-raw-colors` 只认 `--color-*`，把它当成了未声明的颜色。
 
 ## 依赖清单

@@ -79,22 +79,3 @@ describe('悬停合集封面', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
-
-it('关闭灯箱后到达的图片事件和缩放回调不访问已销毁的轮播', () => {
-  const zoomSource = app.slice(app.indexOf('function wirePhotoZoom('), app.indexOf('const fmtPhotoSize='));
-  const zoom = new Function('syncBoardRange', 'PHOTO_ZOOM_MIN', 'PHOTO_ZOOM_MAX', 'PHOTO_ZOOM_STEP',
-    `${zoomSource};return wirePhotoZoom`)(() => {}, 10, 400, 10);
-  vi.useFakeTimers();
-  const box = document.createElement('div');
-  box.innerHTML = '<div class="photozoom"><input><b></b></div><button data-photo-scale="fit"></button><button data-photo-scale="original"></button><div class="photomain"><div><img></div></div>';
-  document.body.append(box);
-  const img = box.querySelector('img')!;
-  vi.spyOn(img, 'complete', 'get').mockReturnValue(false);
-  const main = { slides: [img.parentElement!] as HTMLElement[] | undefined, activeIndex: 0,
-    destroyed: false, on: vi.fn(), zoom: { in: vi.fn(), out: vi.fn() } };
-  const controller = zoom(box, main);
-  main.destroyed = true; main.slides = undefined; box.remove();
-  expect(() => { img.dispatchEvent(new Event('load')); controller.resize(); vi.runAllTimers(); }).not.toThrow();
-  expect(main.zoom.out).not.toHaveBeenCalled();
-  vi.useRealTimers();
-});

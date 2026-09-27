@@ -8,6 +8,8 @@ import { Fragment, useCallback, useMemo, useState } from 'react';
 import { CatalogGridPage, LoadMore } from '../catalog-grid/catalog-grid-page';
 import { useSkeletonReveal } from '../components/grid-reveal';
 import { PeopleGrid } from '../index/index-people';
+import { openPhotoLightbox } from '../photo-lightbox/photo-lightbox-dialog';
+import type { LightboxSlide } from '../photo-lightbox/photo-lightbox';
 import type {
   EntityBodyProps, EntityCodeSet, EntityPhotos, EntityRoster, EntitySamplePhoto, EntityWallPhoto,
 } from './entity-body';
@@ -55,17 +57,26 @@ const sampleItems = (set: EntityCodeSet): EntitySamplePhoto[] => Array.from({ le
 
 const isSample = (item: EntityWallPhoto): item is EntitySamplePhoto => (item as EntitySamplePhoto).sample === true;
 
+/** 样张的地址按番号与序号由服务端查，缩略图与灯箱里的大图共用。 */
+const sampleQuery = (item: EntitySamplePhoto) => `code=${encodeURIComponent(item.code)}&n=${item.position}`;
+
 /* 缩略图一律走 `/photo-thumb`（服务端缓存），只有灯箱里的大图读原图：PikPak 是计费来源，一屏
- * 直接铺原图等于付几十兆流量。样张走 `/sample-thumb`，地址按番号与序号由服务端查。 */
+ * 直接铺原图等于付几十兆流量。样张走 `/sample-thumb`。 */
 const thumbSrc = (item: EntityWallPhoto) => isSample(item)
-  ? `/sample-thumb?code=${encodeURIComponent(item.code)}&n=${item.position}`
+  ? `/sample-thumb?${sampleQuery(item)}`
   : `/photo-thumb?id=${item.id}`;
+
+/** 墙上一格换成灯箱里的一张。本地图片整条当 asset 递进去，详情面板读来源与大小、定位读 id。 */
+const wallSlide = (item: EntityWallPhoto): LightboxSlide => isSample(item)
+  ? { src: `/sample-image?${sampleQuery(item)}`, thumb: thumbSrc(item), name: item.name, asset: null,
+    source: item.source, position: item.position, total: item.total }
+  : { src: `/photo?id=${item.id}`, thumb: thumbSrc(item), name: item.name || '', asset: item };
 
 /** 照片视图：名下每部作品的官方样张按发行日从新到旧一段一段铺在前面，每段一行段头；本地图片
  *  那一面墙在后面，只有本地图片时不出段头（ADR-0068）。
  *
  *  一面通铺的瀑布流按列往下填，一部的图会从上一列底部接到下一列顶部，逐张标番号又太吵；分段后
- *  一部只标一次。`data-photo-index` 是一格在整面墙里的序号，跨段连续，点下去把整列交给壳的灯箱，
+ *  一部只标一次。`data-photo-index` 是一格在整面墙里的序号，跨段连续，点下去把整列交给灯箱，
  *  灯箱照旧跨段连续翻。翻页只数本地图片：样张一次铺完，不走分页。 */
 function PhotoSection({ photos, props }: { photos: EntityPhotos; props: EntityBodyProps }) {
   const { photoSize: size, photoLayout: layout, actions, canLoadMore } = props;
@@ -79,7 +90,9 @@ function PhotoSection({ photos, props }: { photos: EntityPhotos; props: EntityBo
     next.add(index);
     return next;
   }), []);
-  const open = useCallback((index: number) => actions.openLightbox(index, wall), [actions, wall]);
+  const open = useCallback((index: number) => {
+    void openPhotoLightbox(index, wall.map(wallSlide), { revealSource: actions.revealSource });
+  }, [actions, wall]);
   const cell = (item: EntityWallPhoto, index: number) => (
     <PhotoCell key={index} item={item} index={index} lost={lost.has(index)} onLose={lose} onOpen={open} />
   );

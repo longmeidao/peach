@@ -3760,12 +3760,13 @@ class FollowWebSourceTests(unittest.TestCase):
         """关注详情的图要能点开大图，用的必须是同一个灯箱，不是另写一套。
 
         灯箱不写死 `/photo?id=`：那是本地 ledger 资产的取图口，在线图没有 asset id，
-        套不进去。所以按 slide 归一化，在线图直接给 URL。
+        套不进去。所以各调用方自己换成 `LightboxSlide`，在线图直接给 URL。灯箱本身归
+        React（`frontend/src/react/photo-lightbox/`），行为由 `photo-lightbox.test.tsx` 与 e2e 钉住。
         """
         self.assertPageContains("poster.onclick=()=>openPhotoLightbox(Math.max(0,imagePosition),followSlides)",
                                 "详情图片没有接上灯箱")
-        self.assertPageContains("async function openPhotoLightbox(index,source=null)",
-                                "灯箱仍只认自己的照片墙，收不下外部图集")
+        self.assertPageContains("showToast, openPhotoLightbox } from './dist/peach-ui.js'",
+                                "关注页没有用资料页那一个灯箱")
         self.assertPageLacks('<img src="/photo?id=${item.id}"',
                              "灯箱模板仍写死本地取图口")
         self.assertPageContains(".followdetailposter.zoomable{cursor:zoom-in}",
@@ -3777,14 +3778,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("src:`/follow-stream?id=${item.id}&media=${image.index}`")
 
     def test_online_images_show_image_info_without_the_local_reveal_action(self):
-        """在线图保留图片信息入口，但不显示只对本地文件成立的资源管理器动作。"""
+        """在线图保留图片信息入口，但不显示只对本地文件成立的资源管理器动作。
+
+        面板上的来源、序号与分辨率，以及定位键只对本地图出现，由 `photo-lightbox.test.tsx` 钉住；
+        这里只看关注页交进去的那一张带着来源。"""
         self.assertPageContains("source:followMediaSourceLabel(image,item)")
-        self.assertPageContains("const resolution=image?.naturalWidth&&image?.naturalHeight")
-        self.assertPageContains("reveal.hidden=!asset")
-        self.assertPageContains("wireContextCard(")
-        self.assertPageContains(".photodetail>button[hidden]{display:none}")
-        self.assertPageLacks("if(!asset){toggle.hidden=true;dismiss();return}",
-                             "在线图片的整个信息入口仍被隐藏")
 
 
 

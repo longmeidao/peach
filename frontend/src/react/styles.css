@@ -20,6 +20,7 @@
 @import "./entity-hero/entity-hero.css";
 @import "./entity-filter/entity-filter.css";
 @import "./entity-body/entity-body.css";
+@import "./photo-lightbox/photo-lightbox.css";
 
 @source "./";
 /* 扫描不分代码与注释：这几个词各在注释里出现过，生成出来就和旧样式表的 `.ring`、`.grid`、

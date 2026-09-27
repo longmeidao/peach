@@ -51,6 +51,14 @@ export declare function attachOverlayScrollbar(
   options?: { variant?: string },
 ): (() => void) | null;
 
+/** 补充信息卡：`panel` 进顶层、锚在 `trigger` 旁，悬停 150ms 或点一下打开，`mount` 里按
+ *  Escape 收起。`aria-expanded`、`hidden` 与 `.context-card` 都由它写，调用方不再管。 */
+export declare function wireContextCard(mount: Element, trigger: HTMLElement, panel: HTMLElement): {
+  setOpen(open: boolean): void;
+  isOpen(): boolean;
+  hide(): void;
+};
+
 /** 用户触发的动作等待结果时的忙态：`aria-busy` 与 `aria-disabled` 一起写，控件仍可聚焦，
  *  重复触发由遗留层的 `wireBusyActions` 拦住。请求等待期不许改用原生 `disabled`。 */
 export declare function setActionBusy(control: Element | null, busy?: boolean): void;
