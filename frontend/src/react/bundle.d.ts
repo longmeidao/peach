@@ -261,6 +261,13 @@ export interface FollowManageProps {
   readOnlyMessage: string;
   /** 写入端上这一页的地址。取不到时门禁里不给去处。 */
   writerUrl: string;
+  /** 订阅源那一行的人物圆标：有图走图，没图退到首字母。遗留层那份唯一的回落链实现。 */
+  avatarInner(
+    name: string,
+    entity: { id: number; has_image: boolean; avatar_focus?: unknown } | null,
+    representativeAssetId: number | null,
+    kind: string,
+  ): string;
 }
 
 /** 人工复核页。

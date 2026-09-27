@@ -50,6 +50,10 @@ _JAVDB_BOX = re.compile(
     r'.*?<div class="meta">\s*(?P<date>\d{4}-\d{2}-\d{2})',
     re.S)
 _TAGS = re.compile(r"<[^>]+>")
+#: 演员页标题栏：站上这一页挂在哪个名字下，和页面自报的作品数。一位女优常有两页，
+#: 本名一页、旧艺名一页（森日向子的另一页挂在「白石アイリ」下），名字是区分两行的唯一线索。
+_JAVDB_ACTOR_NAME = re.compile(r'<span class="actor-section-name">([^<]*)</span>')
+_JAVDB_WORK_COUNT = re.compile(r'<span class="section-meta">\s*(\d+)\s*部影片\s*</span>')
 
 #: 合集的标题记号：精选、总集、连发。`BEST` 前后不许紧挨字母，`BESTIE` 那种词不算。
 _COMPILATION_TITLE = re.compile(
@@ -166,15 +170,21 @@ def _published(value: str) -> str | None:
 
 
 def parse_javdb_actor(html: str, base_url: str) -> ParsedFeed | None:
-    """JavDB 演员页 → 条目。一条作品都解不出时返回 None。
+    """JavDB 演员页 → 条目，`title` 是这一页挂的名字。一条作品都解不出时返回 None。
 
     解不出不等于这个人没作品：带查询串的地址回过一份 27 KB、一条作品都没有的页面
     （2026-09-22 实测；09-23 同一种 `?t=s` 地址回的是 85 KB、40 条的完整页），不带参数
     的是 78 KB 的完整页。所以这种情况按拉取失败报出来，而不是当成「这次没有新作」——
     后者会把一个坏掉的源伪装成安静的源。
+
+    例外只有页面自己说「0 部影片」的那种：旧艺名页常年挂着空列表（`MmbDR` 白石アイリ，
+    2026-09-28 实测），那是一个真实存在、只是没有作品的源，返回零条。判据是页面自报的
+    计数，不是「暂无内容」那行字——计数不为零却没有作品，照旧算失败。
     """
     if not html:
         return None
+    named = _JAVDB_ACTOR_NAME.search(html)
+    name = (named.group(1).strip() or None) if named else None
     rows: list[FeedEntry] = []
     for found in list(_JAVDB_BOX.finditer(html))[:MAX_ENTRIES]:
         href = found.group("href")
@@ -184,8 +194,11 @@ def parse_javdb_actor(html: str, base_url: str) -> ParsedFeed | None:
         rows.append(FeedEntry(href, title, urljoin(base_url, href),
                               _published(found.group("date"))))
     if not rows:
+        counted = _JAVDB_WORK_COUNT.search(html)
+        if name and counted and int(counted.group(1)) == 0:
+            return ParsedFeed(name, ())
         return None
-    return ParsedFeed(None, tuple(rows))
+    return ParsedFeed(name, tuple(rows))
 
 
 def solo_works_url(url: str) -> str:
@@ -283,17 +296,22 @@ def set_enabled(connection: sqlite3.Connection, source_id: int, enabled: bool) -
 
 def sources(connection: sqlite3.Connection) -> list[dict]:
     """订阅源清单。挂着人物的源，名字就是她在账本里的统称：用户在资料页定的那个写法，
-    不是登记时从站上抄下来的。没挂人物的才用登记时存的名字。"""
+    不是登记时从站上抄下来的。没挂人物的才用存下的名字。
+
+    `page_name` 是上次拉取时这一页在站上挂的名字（`settle` 写进 `feed_source.name`）。
+    同一个人的两页在表里名字一样，只有它说得出哪一行是旧艺名那页。排序按人物走，
+    同一个人的几页挨在一起，不被页名拆开。"""
     rows = connection.execute(
         "SELECT s.*, e.canonical_name AS entity_name,"
         " (SELECT count(*) FROM feed_item i WHERE i.source_id=s.id) AS seen"
         " FROM feed_source s LEFT JOIN entity e ON e.id=s.entity_id"
-        " ORDER BY s.kind, s.name, s.id").fetchall()
+        " ORDER BY s.kind, coalesce(e.canonical_name, s.name), s.id").fetchall()
     return [{
         "id": int(row["id"]),
         "kind": row["kind"],
         "kind_label": KIND_LABELS.get(row["kind"], row["kind"]),
         "name": row["entity_name"] or row["name"] or "",
+        "page_name": row["name"] or "",
         "url": row["url"],
         "entity_id": row["entity_id"],
         "entity_name": row["entity_name"],
@@ -319,8 +337,8 @@ def due_sources(connection: sqlite3.Connection, now: str | None = None) -> list[
 def settle(connection: sqlite3.Connection, source_id: int, *, error: str | None = None,
            etag: str | None = None, last_modified: str | None = None,
            interval_minutes: int, seen: int = 0, new: int = 0,
-           now: datetime | None = None) -> None:
-    """结算一次拉取。
+           page_name: str | None = None, now: datetime | None = None) -> None:
+    """结算一次拉取。`page_name` 是这一页在站上挂的名字，解不出时留着上次的。
 
     失败也按同一间隔排下一次，不做指数退避——退避要么在这里写第二套判据，要么让一个
     临时挡回来的源沉默半天。下次时间在所有返回路径上都写，任何一种结局都不会让源卡住。
@@ -329,9 +347,9 @@ def settle(connection: sqlite3.Connection, source_id: int, *, error: str | None 
     connection.execute(
         "UPDATE feed_source SET last_error=?,last_fetched_at=?,next_fetch_at=?,"
         "etag=COALESCE(?,etag),last_modified=COALESCE(?,last_modified),"
-        "last_seen_count=?,last_new_count=? WHERE id=?",
+        "name=COALESCE(?,name),last_seen_count=?,last_new_count=? WHERE id=?",
         (error, stamp(moment), stamp(moment + timedelta(minutes=interval_minutes)),
-         etag, last_modified, int(seen), int(new), int(source_id)))
+         etag, last_modified, page_name or None, int(seen), int(new), int(source_id)))
 
 
 # -- 条目与壳 --------------------------------------------------------------

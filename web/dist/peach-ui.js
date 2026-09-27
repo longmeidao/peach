@@ -478,15 +478,17 @@ function k(e, { size: t = "md", className: n = "", attrs: r = "" } = {}) {
 }
 //#endregion
 //#region src/board-skeleton.ts
-var A = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, j = () => `${A("80%")}${A("48%")}`, M = (e, t) => e.repeat(t), N = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${A("45%")}</b><small class="board-stat-footer">${A("60%")}</small></div>`).join("")}</div>`, we = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, Te = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, P = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${M(j(), 3)}</div></section>`, F = "disabled data-skeleton-action", I = (e) => `<span class="skeleton skeleton-text" style="width:${e}"></span>`, L = (e, t, n = !1) => `<span class="skeleton" style="width:${e}px;height:${t}px;flex:none${n ? ";border-radius:50%" : ""}"></span>`, Ee = "min-w-0 bg-background-secondary-default rounded-2xl shadow-card flex flex-col gap-3 px-6 py-5 max-sm:gap-2 max-sm:p-4", De = () => `<div class="inline-grid w-full grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">${[
+var A = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, j = () => `${A("80%")}${A("48%")}`, M = (e, t) => e.repeat(t), N = (e, t = "metricstrip") => `<div class="${t}">${e.map((e) => `<div class="tastesummary"><span class="board-stat-label">${e}</span><b class="board-stat-value">${A("45%")}</b><small class="board-stat-footer">${A("60%")}</small></div>`).join("")}</div>`, we = (e, t = "skeleton-tabs") => `<div class="${t}">${e.map((e) => `<span>${e}</span>`).join("")}</div>`, Te = (e, t) => `<div class="${t} skeleton-segments" data-board-segments="true">${e.map((e, t) => `<span${t === 0 ? " class=\"skeleton-segment-selected\"" : ""}>${e}</span>`).join("")}</div>`, P = (e) => `<section class="insightpanel"><header>${e}</header><div class="insightpanelbody skeleton-lines">${M(j(), 3)}</div></section>`, F = "disabled data-skeleton-action", I = (e) => `<span class="skeleton skeleton-text" style="width:${e}"></span>`, L = (e, t, n = !1) => `<span class="skeleton" style="width:${e}px;height:${t}px;flex:none${n ? ";border-radius:50%" : ""}"></span>`, Ee = "min-w-0 bg-background-secondary-default rounded-2xl shadow-card flex flex-col gap-3 px-6 py-5 max-sm:gap-2 max-sm:p-4", De = () => `<div class="inline-grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6">${[
 	"关注创作者",
 	"启用来源",
 	"检查失败",
-	"未看更新"
+	"未看更新",
+	"JAV 订阅",
+	"未看新作"
 ].map((e) => `<div class="${Ee}"><span class="text-body-medium text-text-secondary">${e}</span><b class="text-title-1-medium tabular-nums text-text-primary">${I("3em")}</b></div>`).join("")}</div>`, Oe = "flex min-h-7 flex-none items-center gap-1.5 rounded-md px-2.5 py-1 text-body-medium whitespace-nowrap text-text-secondary data-selected:bg-background-primary-default data-selected:text-text-primary data-selected:shadow-card dark:data-selected:bg-background-primary-hover", ke = () => `<div class="inline-flex w-max max-w-full items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-2lg bg-background-tertiary-default p-1">${[
 	"关注列表",
 	"添加关注",
-	"订阅源",
+	"JAV 订阅源",
 	"来源和凭证"
 ].map((e, t) => `<span class="${Oe}"${t === 0 ? " data-selected=\"true\"" : ""}>${e}</span>`).join("")}</div>`, R = (e = "") => `<span class="group inline-flex items-center select-none gap-2"><span class="flex shrink-0 items-center justify-center rounded-sm size-4 border bg-background-primary-default shadow-xs border-border-checkbox-default"></span>${e ? `<span class="text-body-medium text-text-primary">${e}</span>` : ""}</span>`, Ae = ({ table: e, sort: t, dir: n }) => {
 	let r = T.find(([e]) => e === t)[1];

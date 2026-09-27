@@ -48,6 +48,31 @@ JAVDB_ACTOR = """
 </div>
 """
 
+#: 旧艺名那一页：`/actors/MmbDR`（白石アイリ）2026-09-28 抓回来的标题栏与空列表。
+JAVDB_EMPTY_ACTOR = """
+<div class="columns is-desktop section-columns">
+  <div class="column section-title">
+    <h2 class="title is-4 has-text-justified">
+      <span class="actor-section-name">白石アイリ</span>
+      <br>
+      <span class="section-meta">0 部影片</span>
+    </h2>
+  </div>
+</div>
+  <div class="empty-message">暂无内容</div>
+"""
+
+#: 本名那一页（`/actors/bkxd`）的标题栏：别名一行在前，作品数一行在后。
+JAVDB_ACTOR_HEADER = """
+    <h2 class="title is-4 has-text-justified">
+      <span class="actor-section-name">森日向子</span>
+        <br>
+        <span class="section-meta">朝比奈えみり, ひー, ひなこちゃん, 雛子ちゃん, 日向結衣</span>
+      <br>
+      <span class="section-meta">1060 部影片</span>
+    </h2>
+"""
+
 
 def _database(root: Path) -> LedgerDatabase:
     path = root / "ledger.db"
@@ -82,6 +107,22 @@ class FeedParsingTest(unittest.TestCase):
         # 订阅永远不报错。
         self.assertIsNone(feeds.parse_javdb_actor("<html>nothing</html>",
                                                   "https://javdb.com/actors/pRMq"))
+
+    def test_a_page_that_says_it_has_no_work_is_a_quiet_source(self):
+        # 旧艺名页常年是空的；页面自报 0 部，它就是一个没有作品的真实源。
+        parsed = feeds.parse_javdb_actor(JAVDB_EMPTY_ACTOR, "https://javdb.com/actors/MmbDR")
+        self.assertEqual((parsed.title, parsed.entries), ("白石アイリ", ()))
+
+    def test_a_page_that_claims_works_but_lists_none_is_still_a_failure(self):
+        self.assertIsNone(feeds.parse_javdb_actor(
+            JAVDB_ACTOR_HEADER + '<div class="empty-message">暂无内容</div>',
+            "https://javdb.com/actors/bkxd"))
+
+    def test_the_page_name_is_read_from_the_title_bar(self):
+        parsed = feeds.parse_javdb_actor(JAVDB_ACTOR_HEADER + JAVDB_ACTOR,
+                                         "https://javdb.com/actors/bkxd")
+        self.assertEqual(parsed.title, "森日向子")
+        self.assertEqual(len(parsed.entries), 3)
 
 
 class CompilationTest(unittest.TestCase):
