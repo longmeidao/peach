@@ -1754,8 +1754,7 @@ var et = class extends Ce {
 		}));
 	}
 	remove(e) {
-		let t = this.#e.get(e.queryHash);
-		t && (e.destroy(), t === e && this.#e.delete(e.queryHash), this.notify({
+		this.#e.get(e.queryHash) === e && (e.destroy(), this.#e.delete(e.queryHash), this.notify({
 			type: "removed",
 			query: e
 		}));
