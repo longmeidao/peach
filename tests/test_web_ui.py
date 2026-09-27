@@ -3236,7 +3236,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "    const columns=style.gridTemplateColumns.split(' ').filter(Boolean).length;")
         self.assertPageContains(
-            "    const rows=Math.max(1,Math.min(maxRows,Math.ceil((room+rowGap)/(cardHeight+rowGap))));\n"
+            "    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));\n"
             "    const want=columns*rows;\n"
             "    while(grid.children.length>want)grid.lastElementChild.remove();\n"
             "    while(grid.children.length<want)grid.appendChild(first.cloneNode(true));")

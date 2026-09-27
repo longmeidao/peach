@@ -695,13 +695,15 @@ export function indexSkeletonHtml({kind,layout='big',mode='alphabet'}={}){
     ?'<span class="icell"><span class="ring skeleton"></span><span class="nm skeleton">&nbsp;</span><span class="n skeleton">&nbsp;</span></span>'
     :'<span class="alphatag"><span class="skeleton"></span><span class="n skeleton"></span></span>';
   const grid=people?`igrid" data-cells="${company?'company':'people'}" data-layout="${esc(layout)}`:'alphalist';
+  /* 字母表是一组一张卡：每组两行占位，铺三组，形状同页面落地后开头那几组；
+     它不走 `data-fill`——那条补的是单张网格，一组补到视口下沿反而不像。 */
   const body=!people&&mode==='cloud'
     ?`<div class="tagwall index-tags">${Array.from({length:60},(_,i)=>
       `<span class="tg skeleton" style="width:${[92,128,76,108,144][i%5]}px">&nbsp;</span>`).join('')}</div>`
     :people?`<div class="${grid}">${cell.repeat(12)}</div>`
-    :`<section class="alphagroup"><span class="indexletterskeleton skeleton"></span><div class="${grid}">${cell.repeat(12)}</div></section>`;
+    :`<section class="alphagroup"><span class="indexletterskeleton skeleton"></span><div class="${grid}">${cell.repeat(10)}</div></section>`.repeat(3);
   const label='正在读取索引';
-  return `<div class="skeletonpanel index-skeleton" data-skeleton="index/${esc(kind)}/${esc(layout)}/${esc(mode)}"${people||mode!=='cloud'?' data-fill=""':''}
+  return `<div class="skeletonpanel index-skeleton" data-skeleton="index/${esc(kind)}/${esc(layout)}/${esc(mode)}"${people?' data-fill=""':''}
     role="status" aria-label="${label}"><span class="sr-only">${label}</span><section aria-hidden="true">${body}</section></div>`;
 }
 
@@ -787,8 +789,7 @@ export function fitSkeleton(root){
     /* 骨架说的是「这块地方等下会被填满」，所以铺到视口下沿；四行是护栏，
        再多也是一屏之外看不见的占位，白占动画。 */
     const room=window.innerHeight-grid.getBoundingClientRect().top;
-    const maxRows=grid.classList.contains('alphalist')?24:4;
-    const rows=Math.max(1,Math.min(maxRows,Math.ceil((room+rowGap)/(cardHeight+rowGap))));
+    const rows=Math.max(1,Math.min(4,Math.ceil((room+rowGap)/(cardHeight+rowGap))));
     const want=columns*rows;
     while(grid.children.length>want)grid.lastElementChild.remove();
     while(grid.children.length<want)grid.appendChild(first.cloneNode(true));

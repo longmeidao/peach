@@ -6491,6 +6491,15 @@ function indexPath({kind,q,scope,view,category}){
    那一下页头不跳。这里的控件不接线：骨架只在取数那一段露面。 */
 const MAKER_INDEX_KINDS=[['studios','厂牌','clapperboard'],['agencies','事务所','briefcase']];
 const INDEX_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];
+const TAG_VIEWS=[['cloud','标签云','tags'],['alphabet','字母表','text-aa']];
+/* 标签页 Tabs 下面还有一块两排的筛选玻璃（React 的 `FilterGlassRows`）：上排是类型药丸，
+   下排是读数、按首字跳转和视图切换。药丸有哪几枚、读数多少、有哪些首字都要等数据，
+   视图切换此刻就是最终那一档；块高与下边距同旧 `.board-filter-frame`，页面落地时它原地
+   换成真的那一块，下面的内容不下跳。 */
+const tagFilterSkeletonHtml=view=>`<div class="board-filter-frame" data-filter-frame>
+    <div class="tagbar" data-filter-row="top" data-skeleton-tier="pill" aria-label="标签类型"></div>
+    <div class="count" data-filter-row="bottom"><span class="mono"><span class="countskeleton"></span></span>
+      ${iconSwitchHtml('tag-view','标签视图',TAG_VIEWS,view)}</div></div>`;
 function indexPlaceholderHtml({kind,q,scope,view}){
   const title=INDEX_TITLES[kind]||'标签',people=kind!=='tags',company=kind==='studios'||kind==='agencies';
   const layout=peopleIndexLayout();
@@ -6504,6 +6513,7 @@ function indexPlaceholderHtml({kind,q,scope,view}){
     </div>
     ${kind==='tags'?tabs(INDEX_SCOPES,scope,'词表'):kind==='performers'?tabs(INDEX_SCOPES,scope,'名册')
       :company?tabs(MAKER_INDEX_KINDS,kind,'公司类型'):''}
+    ${kind==='tags'?tagFilterSkeletonHtml(view):''}
     ${indexSkeletonHtml({kind,layout,mode:view})}`;
 }
 /* 屏幕上已经是同一张骨架就别重画：深链冷启动时首屏骨架先铺过一遍，innerHTML 换新节点会把

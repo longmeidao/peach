@@ -3520,6 +3520,50 @@ describe('设计决定', () => {
     }
   });
 
+  it('标签页骨架里就铺着那块筛选玻璃，React 落地时玻璃与开头那组内容都留在原位', { timeout: 60_000 }, async () => {
+    /* 骨架与真页面各量一遍：玻璃的位置与大小、开头那组内容的上沿。药丸、读数与首字要等数据，
+       骨架里是占位；视图切换此刻就是最终那一档。 */
+    const opened = await visit(browser, '/tags', DESKTOP);
+    try {
+      const page = opened.page;
+      await page.route('**/api/index?**', (route) => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ items: [{ k: '痴女', n: 4, cat: 'role' }, { k: '秘书OL', n: 2, cat: 'scene' }],
+          has_more: false, categories: { role: 1, scene: 1 } }),
+      }));
+      const release = await holdApi(page);
+      await page.reload({ waitUntil: 'load' });
+      await page.locator('#index [data-skeleton^="index/tags/"]').waitFor({ timeout: 15_000 });
+      const measure = (glass: string, group: string, view: string) => page.evaluate(([glassSelector, groupSelector, viewSelector]) => {
+        const rect = (selector: string) => {
+          const box = document.querySelector(selector)?.getBoundingClientRect();
+          return box ? { top: box.top, left: box.left, width: box.width, height: box.height } : null;
+        };
+        return { glass: rect(glassSelector), group: rect(groupSelector),
+          pills: document.querySelectorAll(`${glassSelector} [data-filter-row="top"] > *`).length,
+          view: rect(`${glassSelector} [data-filter-row="bottom"] ${viewSelector}`) };
+      }, [glass, group, view] as const);
+      const skeleton = await measure('#index .board-filter-frame', '#index [data-skeleton] .alphagroup', '.iconswitch');
+      release();
+      await page.locator('#index [data-alphabet]').waitFor({ timeout: 15_000 });
+      await settle(page);
+      const live = await measure('#index [data-filter-glass]', '#index [data-alpha-group]', '[aria-label="标签视图"]');
+      assert.ok(skeleton.glass && skeleton.group && skeleton.view, '标签页骨架里缺筛选玻璃、开头那组或视图切换');
+      assert.ok(skeleton.pills > 0, '骨架玻璃的上排没有铺药丸占位');
+      assert.ok(live.glass && live.group && live.view, '接管后找不到筛选玻璃、开头那组或视图切换');
+      for (const key of ['top', 'left', 'width', 'height'] as const) {
+        assert.ok(Math.abs(skeleton.glass![key] - live.glass![key]) <= 1,
+          `筛选玻璃的 ${key} 接管时跳了：骨架 ${skeleton.glass![key]}，接管后 ${live.glass![key]}`);
+      }
+      assert.ok(Math.abs(skeleton.group!.top - live.group!.top) <= 1,
+        `开头那组内容的上沿接管时跳了：骨架 ${skeleton.group!.top}，接管后 ${live.group!.top}`);
+      assert.ok(Math.abs(skeleton.view!.top - live.view!.top) <= 1 && Math.abs(skeleton.view!.left - live.view!.left) <= 1,
+        `视图切换接管时挪了位：骨架 (${skeleton.view!.left}, ${skeleton.view!.top})，接管后 (${live.view!.left}, ${live.view!.top})`);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('标签页的筛选玻璃吸到顶栏下沿时影换成抬起来那一档，上沿垫一条页面底色的遮带', { timeout: 60_000 }, async () => {
     const opened = await openIndexPage(browser, '/tags');
     try {
