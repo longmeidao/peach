@@ -672,17 +672,19 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
 });
 
 it('同一个人的两页各一行，旧艺名那页在名字旁写出站上的名字；顶上按人数计订阅', async () => {
-  const page = (id: number, pageName: string) => ({
-    id, kind: 'javdb-actor', kind_label: 'JAV 订阅', name: '森日向子', page_name: pageName,
-    url: `https://javdb.com/actors/${id}`, entity_id: 8112, entity_name: '森日向子', has_image: true,
+  const page = (id: number, pageName: string, name = '森日向子', entity = 8112) => ({
+    id, kind: 'javdb-actor', kind_label: 'JAV 订阅', name, page_name: pageName,
+    url: `https://javdb.com/actors/${id}`, entity_id: entity, entity_name: name, has_image: true,
     enabled: true, interval_minutes: 360, last_fetched_at: null, last_error: null, last_new_count: 0, seen: 0,
   });
-  const { host } = await open(
-    { feeds: { unread: 81, sources: [page(3, '白石アイリ'), page(4, '森日向子')] } }, { tab: 'feeds' });
+  const { host } = await open({ feeds: { unread: 81, sources: [
+    page(3, '白石アイリ'), page(4, '森日向子'), page(2, '涼森玲夢, 涼森れむ', '凉森玲梦', 7746),
+  ] } }, { tab: 'feeds' });
   const names = [...host.querySelectorAll('[role="rowheader"]')].map(shown);
-  expect(names).toEqual(['森日向子白石アイリ', '森日向子']);
+  // 只有一行的人不写页名：站上标题栏那串写法摆出来只是噪音。
+  expect(names).toEqual(['森日向子白石アイリ', '森日向子', '凉森玲梦']);
   const readings = [...host.querySelector('[aria-label="关注概览"]')!.children].map((card) => card.textContent);
-  expect(readings.slice(-2)).toEqual(['JAV 订阅1 位', '未看新作81 条']);
+  expect(readings.slice(-2)).toEqual(['JAV 订阅2 位', '未看新作81 条']);
 });
 
 it('订阅源表里点一行的空白处就是选这一行，选中了底部浮出批量操作，暂停逐条写到订阅源接口', async () => {

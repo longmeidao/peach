@@ -95,13 +95,28 @@ function FeedAvatar({ source, avatarInner }: { source: FeedSource; avatarInner: 
 }
 
 /** 这一页在站上挂的另一个名字。一个人常有两页，本名页和旧艺名页在表里同名，
- *  只有这一段说得出哪一行是哪一页；和统称一样时不重复。 */
-const pageAlias = (source: FeedSource) =>
-  (source.page_name && source.page_name !== source.name ? source.page_name : '');
+ *  只有这一段说得出哪一行是哪一页。只在这位不止一行时写：站上的标题栏常把几种写法
+ *  连成一串（「涼森玲夢, 涼森れむ」），只有一行的人再摆一遍只是噪音；和统称一样时也不重复。 */
+const pageAlias = (source: FeedSource, shared: ReadonlySet<number>) =>
+  (source.entity_id !== null && shared.has(source.entity_id)
+    && source.page_name && source.page_name !== source.name ? source.page_name : '');
+
+/** 挂着不止一条源的人。 */
+function sharedEntities(sources: FeedSource[]): ReadonlySet<number> {
+  const seen = new Set<number>();
+  const shared = new Set<number>();
+  for (const { entity_id: id } of sources) {
+    if (id === null) continue;
+    if (seen.has(id)) shared.add(id); else seen.add(id);
+  }
+  return shared;
+}
 
 interface RowHandlers {
   readOnly: boolean;
   avatarInner: AvatarInner;
+  /** 挂着不止一条源的人，名字旁的页名只给他们写。 */
+  shared: ReadonlySet<number>;
   /** 正在跑的那个动作的键（`useAction` 的 `busy`），行尾的拉取键按它挂忙态。 */
   busy: string | null;
   toggle(source: FeedSource, enabled: boolean): void;
@@ -164,12 +179,14 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
   });
 
   /* 列定义只建一次，行里的控件到点击那一刻再从这里取最新的处理器与只读态。 */
+  const shared = useMemo(() => sharedEntities(sources), [sources]);
   const handlers = useRef<RowHandlers>({
-    readOnly, avatarInner, busy: null, toggle: () => {}, fetch: () => {}, remove: () => {},
+    readOnly, avatarInner, shared, busy: null, toggle: () => {}, fetch: () => {}, remove: () => {},
   });
   handlers.current = {
     readOnly,
     avatarInner,
+    shared,
     busy: action.busy,
     toggle: (source, enabled) => void action.run(`enabled-${source.id}`,
       (signal) => setFeedEnabled(source.id, enabled, signal), () => void reload()),
@@ -204,7 +221,7 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
         /* 名字、频率与时间都不换行：窄屏上这张表靠 Table 自带的容器横着滚，让格子换行只会
            把「三上悠亜」竖着摆成四行，滚动反而没了用处。 */
         cell: (context) => {
-          const alias = pageAlias(context.row.original);
+          const alias = pageAlias(context.row.original, handlers.current.shared);
           return (
             <span className="flex items-center gap-2 whitespace-nowrap text-body-medium text-text-primary">
               <FeedAvatar source={context.row.original} avatarInner={handlers.current.avatarInner} />
