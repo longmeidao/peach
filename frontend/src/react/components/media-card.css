@@ -1,9 +1,9 @@
 /* 馆藏作品卡与卡片网格（`media-card.tsx`、`../catalog-grid/`）。
  *
- * 取值逐条照抄遗留层：卡片本身是 `web/css/12-cards.css` 的 `.card`／`.pic`／`.meta` 一族，
- * Board 覆盖层（`web/board.css`）给封面格的圆角、来源角标的玻璃底、选中描边和回收站那一
- * 屏的卡面，详情页接着看那一排的窄卡取 `web/css/15-detail.css` 的 `.ncard`。选择器全用
- * `data-media-*`：旧样式表不分层、排在后面，写旧类名就会被那边同名的规则接管。
+ * 卡片的几何与状态都写在这里，取值与壳里同形的卡一致：`web/css/12-cards.css` 的
+ * `.card`／`.pic`／`.meta` 一族（壳里的垃圾文件卡、关注卡与新作卡用它），以及 Board 覆盖层
+ * （`web/board.css`）的封面圆角、来源角标玻璃底与选中描边。选择器全用 `data-media-*`：
+ * 旧样式表不分层、排在后面，写旧类名就会被那边同名的规则接管。
  *
  * 封面格里的图、来源角标和头像圆框里的内容是遗留层拼的 HTML（取景链、来源图标和头像回落
  * 都归壳），它们自己的类名照旧由旧样式表管：`.poster.cover` 的取景、`.src` 的图标尺寸。
@@ -358,6 +358,7 @@ body[data-surface="/trash"] .peach-react [data-media-card] [data-media-pic] { bo
 }
 .peach-react [data-previewing] [data-media-preview] circle:last-child { animation: preview-arc var(--hover-delay) linear forwards; }
 .peach-react [data-longhover] [data-media-preview] circle:last-child { animation: none; }
+@keyframes preview-arc { to { stroke-dashoffset: 0; } }
 .peach-react [data-media-ring-play] {
   position: relative;
   width: 14px;

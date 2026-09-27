@@ -1,11 +1,11 @@
 /* 馆藏里的一张作品卡：目录网格、资料页作品区、竖屏带与详情页的接着看都是它。
  *
- * 形状同遗留层 `cardHtml`：封面格在上，下面一行头像、两行标题、一行署名与大小，再一行
+ * 形状：封面格在上，下面一行头像、两行标题、一行署名与大小，再一行
  * 标签。封面格里是来源角标、时长、观看进度，悬停时右上角一圈倒计时、右下角「稍后看」，
  * 停够了居中三颗快退、快进与打开详情。叠层纸边说明这张卡代表不止一条（分卷或版次）。
  *
  * 结构与样式钩子全用 `data-media-*`，不沿用旧类名：旧样式表不分层、排在后面，同名规则会
- * 落到这张卡上。取值照抄 `web/css/12-cards.css`，写在 `./media-card.css`。
+ * 落到这张卡上。样式写在 `./media-card.css`。
  *
  * 壳在这张卡上还做三件 React 看不见的事，状态因此都写成属性而不是类名（类名归 React 管，
  * 重画一次就被冲掉）：
@@ -14,7 +14,7 @@
  * - 封面取景（`coverAnchor`）改的是封面格里那张图，见 `../catalog-grid/artwork.ts`。
  * - 图片微光（`PENDING_IMAGES`）在 `[data-media-art]` 上加 `imgwait`／`imgdone`。
  *
- * 点击的分流照抄遗留层 `wireCards`：多选与修饰键优先，然后是打开、实体链接、未归属、
+ * 点击的分流：多选与修饰键优先，然后是打开、实体链接、未归属、
  * 标签，其余落到整张卡上就是打开。 */
 import { memo, useCallback, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { esc, fmtDur, fmtSize } from '@peach/legacy/core';
@@ -26,7 +26,7 @@ import { cardArtwork } from '../catalog-grid/artwork';
 /** 大图卡片的容器比例，同遗留层 `COVER_FRONT_RATIO`：正封宽高比 0.667～0.749，0.75 比最宽
  *  的那张还宽，一张都不用从左边切。 */
 export const COVER_FRONT_RATIO = 0.75;
-/** 竖屏一律同一个比例，同遗留层 `PORTRAIT_RATIO`：竖屏条与竖屏网格才高低一致。 */
+/** 竖屏一律同一个比例，不按每条视频的实际宽高：竖屏条与竖屏网格才高低一致。 */
 export const PORTRAIT_RATIO = 9 / 16;
 
 export type MediaCardVariant = 'grid' | 'short' | 'next' | 'resource';

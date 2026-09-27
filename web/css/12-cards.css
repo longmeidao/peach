@@ -117,8 +117,9 @@ body.refreshing #batchAction svg,
    玻璃挂在这枚键自己身上，键是它的定位基准，字形要压在它上面，跟媒体那几枚圆键同一条。 */
 .count .sorts .followimagesonly{width:30px;padding:0;display:inline-grid;place-items:center;position:relative}
 .count .sorts .followimagesonly svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;position:relative;z-index:1}
-/* 目录列表是一叠卡：连续的一段视频合成一个 `.grid`，竖屏带插进来时把那一段从行边界
-   剪开，上下两半于是各自成为一张独立的卡。`#grid` 本身只是这叠卡的容器，不再是网格。 */
+/* 壳自己画进 `#grid` 的那几屏（骨架、垃圾文件队列）是一叠卡：每一段卡合成一个 `.grid`，
+   `#grid` 本身只是这叠卡的容器，自己不排网格。目录、回收站与资料页的作品卡由 `catalog-grid`
+   island 自己排，版面写在 `frontend/src/react/components/media-card.css`。 */
 .gridstack{display:flex;flex-direction:column;gap:16px}
 /* 列距 16px 是给悬停面留的：卡片悬停时底色往盒外多铺 8px（见下方 `:hover`），列距再窄，
    两张卡的悬停面就顶到邻卡上。关注页的视频列表 `.followlist` 用同一副间距。 */
@@ -126,10 +127,9 @@ body.refreshing #batchAction svg,
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(var(--tile),1fr))}
 .card{cursor:pointer;display:flex;flex-direction:column;gap:8px;min-width:0;border-radius:var(--surface-radius);
   position:relative;transition:transform .18s ease,filter .18s ease,background-color .15s ease,box-shadow .15s ease;transform-origin:center}
-/* 馆藏、资料页作品和关注网格里，视口外的卡片跳过渲染：滚动和侧栏开合时要算的只剩屏上那几十张。
-   资料页（女优、厂牌、创作者、系列、事务所五种共用一处）的作品区是 `.entitysection>.grid`，
-   卡片出自首页同一个 `cardHtml()`、同一个 `--tile` 列宽和 JAV 版式开关，下面的估计原样成立；
-   标签页点进去落在首页 `#grid`，回收站也是，不另列。
+/* 垃圾文件队列和关注网格里，视口外的卡片跳过渲染：滚动和侧栏开合时要算的只剩屏上那几十张。
+   目录、回收站与资料页作品区的作品卡归 `catalog-grid` island，同一份估计写在
+   `frontend/src/react/components/media-card.css`，取值与这里一致。
    跳过的是卡里的两块，封面 `.pic` 和元信息区 `.meta`；卡片盒本身照常排版，所以屏外卡的
    高度里只有元信息区一项是估计值。
    - 封面高度由 `aspect-ratio` 从列宽推出，跳过渲染时照样成立，列宽随视口和侧栏开合怎么
@@ -140,40 +140,40 @@ body.refreshing #batchAction svg,
      行距；有标签的卡再加一行标签（`.ctags` 的高度）和一道行距，关注卡的徽章行 `.fbadges`
      同理（`.fbadge` 一行字加上下 2px 内边距和 1px 边框）。密集一档的高度是 `.mtext` 固定的
      三行，同一个变量。
-   叠层纸边画在 `.pic` 外面，不在裁切范围里，Mix 卡、分卷／版次卡和竖屏带的卡一并适用。
+   叠层纸边画在 `.pic` 外面，不在裁切范围里，关注页的 Mix 卡一并适用。
    跳过渲染连带 paint containment，裁切边是元信息区的 padding box：贴着左缘的头像悬停
    描边、头像与标签的 2px 焦点环都画在内容盒外面。所以元信息区四周垫 8px 内边距、再用
    -8px 外边距抵消，裁切边往外扩 8px（和整张卡的悬停面同宽），内容盒、卡片尺寸和它与
-   封面的间距一个像素不动；`frontend/e2e/design.test.ts` 按几何检查。垫出来的那一圈伸到
+   封面的间距一个像素不动；`frontend/e2e/design.test.ts` 按几何检查岛里的同一写法。垫出来的那一圈伸到
    卡片盒外面，元信息区自己因此不接指针，只有它的子元素接：卡片的悬停面、点击区和悬停
    预览的触发范围仍是卡片盒本身。元信息区没有背景，垫出来的一圈不画任何东西。
    图片墙不在其内：它的封面没有固定比例，高度取自图片本身，跳过渲染时会按零高排版。
    资料页的照片墙 `.photowall` 与名册 `.igrid` 同理不在其内，它们也不是 `.card`。资料页
-   新作那一行（`.feednew`）和详情页的接着看（`#nrow`）只有一行、往横向排，屏外的卡不改变
-   整页高度，标题字号也不是 `--fs-md`（`.feednewcard .meta .t` 是 `--fs-sm`），不套这份估计。 */
+   新作那一行（`.feednew`）只有一行、往横向排，屏外的卡不改变整页高度，标题字号也不是
+   `--fs-md`（`.feednewcard .meta .t` 是 `--fs-sm`），不套这份估计。 */
 .meta{--card-meta-byline:1lh;--card-meta-tags:0px;--card-meta-badges:0px;
   --card-meta-block:calc(var(--fs-md)*2.7 + 3px + var(--card-meta-byline) + var(--card-meta-badges) + var(--card-meta-tags))}
 .meta:has(>.mtext>.ctags){--card-meta-tags:calc(var(--fs-xs)*1.45 + var(--tag-pad-y)*2 + 2px + 3px)}
 .followitem .meta{--card-meta-byline:max(1lh,21px)}
 .followitem .meta:has(>.mtext>.fbadges){--card-meta-badges:calc(1lh + 6px + 3px)}
-:is(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card :is(.pic,.meta){content-visibility:auto}
+:is(#grid,.followlist:not(.followphotowall)) .card :is(.pic,.meta){content-visibility:auto}
 /* `flex-shrink:0`：跳过渲染时元信息区的内容不参与最小尺寸，卡里有别的子元素要抢空间时它会
    被压扁。关注卡的 `.fstate` 是 `flex:1 1 100%`，不钉住的话屏外关注卡的元信息区只剩 21px。
    渲染时它本来就压不动（自动最小尺寸就是内容高度），钉住不改变屏上的排版。
    估计高度作用在内容盒上，内边距另外加在外面，所以 `--card-meta-block` 只估内容。 */
-:is(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card .meta{flex-shrink:0;
+:is(#grid,.followlist:not(.followphotowall)) .card .meta{flex-shrink:0;
   margin:-8px;padding:8px;pointer-events:none;contain-intrinsic-block-size:auto var(--card-meta-block)}
-:where(#grid,.entitysection>.grid,.followlist:not(.followphotowall)) .card .meta>*{pointer-events:auto}
+:where(#grid,.followlist:not(.followphotowall)) .card .meta>*{pointer-events:auto}
 /* 叠层往上溢出到行间距里，卡片本体不为它留白。留白的写法（padding-top:7px）会把
-   整张卡压低 7px 并加高 7px，同一行里 Mix、分卷、版次卡的封面和下面的文字就比
-   邻居矮一截；往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。
+   整张卡压低 7px 并加高 7px，同一行里 Mix 卡的封面和下面的文字就比邻居矮一截；
+   往上堆之后卡片盒和普通卡完全同高，下沿自然平齐。
    纸边与封面是同一种表面，圆角同一档：容器取封面那一档，纸边继承容器。 */
-.mixstack,.partstack{position:relative;isolation:isolate;border-radius:var(--badge-radius)}
-.mixstack::before,.mixstack::after,.partstack::before,.partstack::after{content:"";position:absolute;border-radius:inherit;
+.mixstack{position:relative;isolation:isolate;border-radius:var(--badge-radius)}
+.mixstack::before,.mixstack::after{content:"";position:absolute;border-radius:inherit;
   border:1px solid var(--border-15);background:color-mix(in srgb,var(--surface) 84%,var(--video-glow,#15202a));z-index:0}
-.mixstack::before,.partstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
-.mixstack::after,.partstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
-.mixstack .pic,.partstack .pic{z-index:1}
+.mixstack::before{inset:0 12px 8px;transform:translateY(-7px);opacity:.54}
+.mixstack::after{inset:0 6px 4px;transform:translateY(-4px);opacity:.78}
+.mixstack .pic{z-index:1}
 /* 悬浮 Mix 卡片时逐张翻走：最上面那张向上抬起、轻转并淡出，下一张随即接管。
    和静止时的叠层是同一个隐喻，不是另一套动效；滞后动画偏好下根本不启动（JS 侧拦下）。 */
 .mixfaces{position:absolute;inset:0;z-index:2;pointer-events:none;background:#000}   /* 遮住静止封面：不遮的话两张正在交接的时候它会从中间透出来 */
@@ -185,14 +185,8 @@ body.refreshing #batchAction svg,
   min-height:28px;padding:4px 9px;border-radius:var(--control-radius);background:rgba(12,8,8,.72);color:#fff;
   backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);font-size:var(--fs-xs);font-weight:600}
 .mixbadge svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-.partbadge{position:absolute;right:9px;top:9px;z-index:6;min-height:27px;padding:5px 9px;border-radius:var(--control-radius);
-  background:rgba(12,8,8,.72);color:#fff;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-  font-size:var(--fs-xs);font-weight:600}
-.mixcard .mixmeta,.playlistcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
+.playlistcard .mixmeta{display:flex;min-width:0;gap:9px;align-items:flex-start}
 .playlistcard .mixcopy{flex:1}
-.mixglyph{width:40px;height:40px;flex:none;border-radius:50%;display:grid;place-items:center;
-  color:var(--ink);background:var(--overlay-5);border:1px solid var(--border-10)}
-.mixglyph svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .mixcopy{min-width:0}.mixcopy b,.mixcopy span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mixcopy b{font-size:var(--fs-md);line-height:1.45}.mixcopy span{font-size:var(--fs-xs);color:var(--muted);margin-top:2px}
 /* 标记是正圆，全站一个形状——复核缩略图那一枚已经是圆的，两处只差尺寸档。 */
@@ -203,18 +197,6 @@ body.refreshing #batchAction svg,
 body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 .card.selected .selectionMark{background:var(--on-media);color:var(--on-media-ink);
   border-color:var(--on-media);box-shadow:0 3px 12px #0008}
-.deleteMark{position:absolute;z-index:7;left:10px;bottom:10px;display:none;align-items:center;gap:5px;height:28px;padding:0 9px;
-  border-radius:var(--badge-radius);background:rgba(0,0,0,.58);color:#FFB14A;border:1px solid rgba(255,177,74,.4);
-  backdrop-filter:saturate(1.8) blur(12px);-webkit-backdrop-filter:saturate(1.8) blur(12px);font-size:var(--fs-xs);font-weight:600}
-.deleteMark svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.card.pending-delete .deleteMark{display:flex}
-.card.pending-delete .poster,.card.pending-delete .hv,
-.card.pending-delete .hvframes{filter:grayscale(.9) brightness(.54);opacity:.68}
-/* 模糊层要跟着一起暗下去，否则待删卡片上只有两条留白还是亮的。这条自带 blur()，
-   `filter` 不能继承也不能叠加，只能把三个函数写在一起。 */
-.card.pending-delete .pic::before{filter:blur(26px) grayscale(.9) brightness(.27);opacity:.68}
-.card.pending-delete .meta{opacity:.58}
-.card.pending-delete:hover .meta{opacity:.76}
 .pic{position:relative;aspect-ratio:var(--card-ratio,16/9);background:#000;border-radius:var(--badge-radius);
   overflow:hidden;display:flex;align-items:center;justify-content:center}
 /* 正封窄于卡片时两侧的留白，垫的是同一张封面的模糊放大版；`--cover-blur` 由
@@ -233,10 +215,10 @@ body.select-mode .selectionMark,.card.selected .selectionMark{display:grid}
 /* 叠层卡的封面格背后压着两层纸边，不能是空的：模糊衬底贴边那一截是半透明的
    （`blur()` 向内淡出），封面落地前整格也是空的，纸边的线条会从这两处透进封面。
    垫一层页面底色，透出来的就和普通卡一样只是底色本身。 */
-:is(.mixstack,.partstack) .pic:has(.poster.cover){background:var(--page)}
+.mixstack .pic:has(.poster.cover){background:var(--page)}
 .cardopenhit{position:absolute;inset:0;z-index:1;border:0;border-radius:inherit;background:transparent;padding:0;cursor:pointer}
 .cardopenhit:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.card>.pic,.card>.partstack,.card>.meta{position:relative;z-index:2}
+.card>.pic,.card>.meta{position:relative;z-index:2}
 /* 悬停即播真视频（仅免费源，计费源永远不自动拉流） */
 .hv{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;
   opacity:0;transition:opacity .2s}
@@ -248,19 +230,14 @@ img.hvframes{position:absolute;inset:0;width:100%;height:100%;object-fit:contain
   background:#000;display:block}
 /* 悬停面往卡片盒外多铺 8px：不动网格尺寸、不挤相邻卡，只让整张卡的命中反馈比内容
    大一圈。背景仍落在卡本身，保留浏览器里可直接核验的悬停底色。 */
-body .card:not(.junkcard,.resourcecard):hover{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
-body .card:not(.junkcard,.resourcecard):hover .pic{filter:saturate(.9) brightness(.94)}
-body .card:not(.junkcard,.resourcecard):focus-within{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
+body .card:not(.junkcard):hover{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
+body .card:not(.junkcard):hover .pic{filter:saturate(.9) brightness(.94)}
+body .card:not(.junkcard):focus-within{background:var(--hover);box-shadow:0 0 0 8px var(--hover)}
 .select-mode .card{cursor:default}
-.select-mode .cardopenhit,.select-mode .hovertools,.select-mode .previewcounter{pointer-events:none!important}
+.select-mode .cardopenhit,.select-mode .hovertools{pointer-events:none!important}
 .card.selected .pic,.card.selected:hover .pic{box-shadow:inset 0 0 0 2px var(--on-media)}
-@media (hover:hover) and (pointer:fine){
-  .card.longhover{transform:translateY(-7px) scale(1.065);z-index:8;filter:brightness(1.04)}
-}
 .hovertools{position:absolute;z-index:4;display:flex;align-items:center;gap:14px;
   opacity:0;transition:opacity .15s;pointer-events:none}
-.card.longhover .seektools,.card:hover .later-tools{opacity:1}
-.hovertools.seektools{inset:50% auto auto 50%;transform:translate(-50%,-50%)}
 .hovertools button{pointer-events:none;width:58px;height:58px;border-radius:50%;border:1px solid rgba(255,255,255,.12);
   background:rgba(0,0,0,.24);color:#fff;backdrop-filter:saturate(180%) blur(12px);
   -webkit-backdrop-filter:saturate(180%) blur(12px);display:flex;align-items:center;
@@ -268,39 +245,9 @@ body .card:not(.junkcard,.resourcecard):focus-within{background:var(--hover);box
 .hovertools button svg{width:25px;height:25px;stroke:currentColor;fill:none;stroke-width:2;
   stroke-linecap:round;stroke-linejoin:round}
 .hovertools button:hover{transform:scale(1.12);background:rgba(0,0,0,.34)}
-/* 居中那三颗和右下角的「稍后看」是同一种控件，只是尺寸不同：共用磨砂圆底、同一条
-   边框和同一档悬停填充，图标按 58／36 的比例放到 34px。裸图标在浅色封面上要靠投影
-   才读得出，而投影本身又是这一层里唯一一处没有面的写法。秒数交给 title／aria-label，
-   图标上不压数字。参考证据见 docs/reference-snapshots/hover-seek-controls-user-screenshot.md。 */
-.hovertools.seektools button svg{width:34px;height:34px}
-.hovertools.later-tools{right:12px;bottom:12px}
-.card.longhover .seektools button,.card:hover .later-tools button{pointer-events:auto}
-.hovertools .laterbtn{width:36px;height:36px;padding:0;font-family:inherit}
-.hovertools .laterbtn svg{width:21px;height:21px}.hovertools .laterbtn[aria-pressed="true"]{background:var(--ink);color:var(--ground)}
-.previewcounter{position:absolute;right:12px;top:12px;z-index:4;width:36px;height:36px;border:0;padding:0;
-  border-radius:50%;display:grid;place-items:center;color:#fff;cursor:pointer;opacity:0;pointer-events:none;
-  background:rgba(0,0,0,.24);backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);
-  transition:transform .15s ease,opacity .15s}
-.card.previewing .previewcounter{opacity:1;pointer-events:auto}.card.longhover .previewcounter{opacity:0;pointer-events:none}
-.previewcounter:hover{transform:scale(1.2)}.previewcounter>svg{position:absolute;inset:0;width:36px;height:36px;transform:rotate(-90deg)}
-.previewcounter circle{fill:none;stroke-width:2}.previewcounter circle:first-child{stroke:rgba(255,255,255,.18)}
-.previewcounter circle:last-child{stroke:#fff;stroke-linecap:round;stroke-dasharray:106.814;stroke-dashoffset:106.814}
-.card.previewing .previewcounter circle:last-child{animation:preview-arc var(--hover-delay) linear forwards}.card.longhover .previewcounter circle:last-child{animation:none}
-.previewcounter .ringplay{position:relative;inset:auto;width:14px;height:14px;transform:none;stroke:#fff;fill:none;stroke-width:2;margin-left:1px}
-@keyframes preview-arc{to{stroke-dashoffset:0}}
 .nopic{font-size:var(--fs-xs);letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
 .resourceglyph{display:grid;place-items:center;gap:8px;color:var(--muted);font-size:var(--fs-xs);letter-spacing:.08em}
 .resourceglyph svg{width:32px;height:32px;stroke:currentColor;fill:none;stroke-width:2}
-.resourcecardaction{position:absolute;right:10px;bottom:10px;z-index:5;display:inline-flex;align-items:center;gap:6px;
-  min-height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.25);border-radius:var(--control-radius);
-  background:rgba(0,0,0,.64);color:#fff;font:inherit;font-size:var(--fs-xs);cursor:pointer;
-  backdrop-filter:saturate(1.5) blur(10px);-webkit-backdrop-filter:saturate(1.5) blur(10px)}
-.resourcecardaction:hover:not(:disabled){background:var(--hover);color:var(--ink)}
-.resourcecardaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
-.resourcecardaction:disabled{cursor:wait;opacity:.72}.resourcecardaction svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
-.resourcekind{display:grid;place-items:center;color:var(--muted);border-radius:var(--control-radius)}
-.resourcekind svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2}
-.resourcecardtitle{cursor:default}
 .junkcount{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
 .junksummary{flex:none;font-size:var(--fs-sm);color:var(--muted);white-space:nowrap}
 /* 两条分类切换共用一套外观，语义各自不同：复核那条在 10 个互不相同的候选数据集之间切
@@ -377,11 +324,6 @@ body[data-density="dense"] .junkcard .junkactions button span{display:none}
 @media (hover:hover) and (pointer:fine){
   .card:hover .badge,.card:hover .dur{opacity:0}
 }
-.scrub{position:absolute;left:0;right:0;bottom:0;height:3px;z-index:2;
-  background:color-mix(in srgb,#000 45%,transparent)}
-.scrub i{display:block;height:100%;background:var(--loupe)}
-.watchprogress{position:absolute;left:0;right:0;bottom:0;height:4px;z-index:5;background:rgba(255,255,255,.3)}
-.watchprogress i{display:block;height:100%;background:var(--tungsten)}
 .meta{display:flex;gap:10px;min-width:0}
 .mav{width:38px;height:38px;border-radius:50%;flex:none;overflow:hidden;background:var(--sunk);
   position:relative;margin-top:2px;border:0;padding:0;cursor:pointer;color:inherit}
@@ -470,29 +412,9 @@ body[data-density="dense"] .card .meta .who{flex:0 1 auto}
 body[data-density="dense"] .card .meta .whomore,
 body[data-density="dense"] .card .meta .size{flex:none;white-space:nowrap}
 body[data-density="dense"] .card .ctags{height:38px;align-items:flex-start;flex-wrap:nowrap;overflow:hidden}
-body[data-density="dense"] .card .meta .why,
-body[data-density="dense"] .card .meta .watchcount{display:none}
+body[data-density="dense"] .card .meta .why{display:none}
 
-/* 短片带是这一叠卡里的一张，和上下两段视频平级：同一张 --ground 面、同一圈发丝边、
-   同一个圆角，只有内容不同。它不套在视频框里，也不是把一个框从中间划开——划开的是
-   一张卡，两张卡之间那 16px 页面底才是分隔。 */
-.shorts-inline{padding:16px;background:var(--ground);
-  border:1px solid var(--field-ring);border-radius:var(--floating-radius)}
-.shorts-inline h2{margin:0 0 11px;font-size:var(--fs-lg);display:flex;align-items:center;gap:10px}
-.shorts-inline .scard .pic{aspect-ratio:var(--card-ratio,9/16)}
-/* 竖屏计数的灰字。index.html 和 openItem 的内联片段原先各写一份，一模一样。 */
-.shortscount{color:var(--muted);font-size:var(--fs-xs)}
-.shorts-inline h2 button{margin-left:auto;min-height:48px;display:inline-flex;align-items:center;gap:7px;
-  font-size:var(--fs-xs);background:var(--overlay-5);border:0;border-radius:var(--pill-radius);padding:0 16px;cursor:pointer;
-  color:var(--ink);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);transition:background .14s,translate .14s,scale calc(var(--spring-press-ms) * 1ms) var(--spring-press)}
-.shorts-inline h2 button:hover{background:color-mix(in srgb,var(--ink) 16%,transparent);translate:0 -1px}
-/* 抬起和缩放各占一个属性：两样都写在 `transform` 上时，按下那一刻抬起的那 1px 被顶
-   掉，按钮在缩小的同时还往下掉一格。 */
-.shorts-inline h2 button:active{scale:.96;transition:scale .06s ease-out}
-.shorts-inline h2 button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2}
 .srow{display:flex;gap:13px;overflow-x:auto;padding-bottom:7px}
-.srow .scard{flex:none;width:214px;cursor:pointer}
-body[data-density="dense"] .shorts-inline .scard{width:calc(214px * 168 / 336)}
 
 /* 订阅源发现的新作（ADR-0041）。横排复用 `.srow`，卡片复用 `.card` 的封套与元数据；
  * 这里只定宽度、淡出已读那一档，以及那两颗悬浮动作键——其余形态跟着资产卡走，

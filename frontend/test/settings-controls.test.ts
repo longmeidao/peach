@@ -15,14 +15,14 @@ describe('悬停放大设置', () => {
     const arm = new Function('el', 'appSettings', `${hoverStateSource} let longTimer; return ${armSource}`)(card, settings);
     arm();
     vi.advanceTimersByTime(10000);
-    expect(card.className).toBe('');
+    expect(card.hasAttribute('data-previewing')).toBe(false);
     settings.hoverDelaySeconds = 3;
     arm();
-    expect(card.classList.contains('previewing')).toBe(true);
+    expect(card.hasAttribute('data-previewing')).toBe(true);
     vi.advanceTimersByTime(2999);
-    expect(card.classList.contains('longhover')).toBe(false);
+    expect(card.hasAttribute('data-longhover')).toBe(false);
     vi.advanceTimersByTime(1);
-    expect(card.classList.contains('longhover')).toBe(true);
+    expect(card.hasAttribute('data-longhover')).toBe(true);
   });
   it('计时中关闭后不进入放大状态', () => {
     vi.useFakeTimers();
@@ -32,6 +32,6 @@ describe('悬停放大设置', () => {
     arm();
     settings.hoverDelaySeconds = 0;
     vi.advanceTimersByTime(3000);
-    expect(card.classList.contains('longhover')).toBe(false);
+    expect(card.hasAttribute('data-longhover')).toBe(false);
   });
 });

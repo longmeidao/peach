@@ -1077,9 +1077,9 @@ describe('设计决定', () => {
     });
     try {
       await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
-      const stack = opened.page.locator('.card[data-id] .mavstack').first();
+      const stack = opened.page.locator('[data-media-card][data-id] [data-media-avatars]').first();
       await stack.waitFor({ timeout: 5_000 });
-      const avatars = stack.locator('.mav');
+      const avatars = stack.locator('[data-media-avatar]');
       assert.equal(await avatars.count(), 5, 'API 给七位表演者时卡片没有收在五枚以内');
       const before = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
       const left = (await stack.boundingBox())!.x;
@@ -1098,11 +1098,11 @@ describe('设计决定', () => {
       await avatars.nth(2).hover();
       await waitForAvatarMotion();
       const after = await avatars.evaluateAll((items) => items.map((item) => item.getBoundingClientRect().x));
-      const card = stack.locator('xpath=ancestor::*[contains(concat(" ", normalize-space(@class), " "), " card ")]').first();
+      const card = stack.locator('xpath=ancestor::article[@data-media-card]').first();
       const bounds = await card.evaluate((cardElement) => {
-        const stackRect = cardElement.querySelector('.mavstack')!.getBoundingClientRect();
-        const lastRect = cardElement.querySelector('.mav:last-child')!.getBoundingClientRect();
-        const firstRect = cardElement.querySelector('.mav')!.getBoundingClientRect();
+        const stackRect = cardElement.querySelector('[data-media-avatars]')!.getBoundingClientRect();
+        const lastRect = cardElement.querySelector('[data-media-avatar]:last-child')!.getBoundingClientRect();
+        const firstRect = cardElement.querySelector('[data-media-avatar]')!.getBoundingClientRect();
         const cardRect = cardElement.getBoundingClientRect();
         return {
           stackLeft: stackRect.left,
@@ -1137,8 +1137,8 @@ describe('设计决定', () => {
       await waitForAvatarMotion();
       const narrow = await card.evaluate((cardElement) => {
         const cardRect = cardElement.getBoundingClientRect();
-        const firstRect = cardElement.querySelector('.mav')!.getBoundingClientRect();
-        const lastRect = cardElement.querySelector('.mav:last-child')!.getBoundingClientRect();
+        const firstRect = cardElement.querySelector('[data-media-avatar]')!.getBoundingClientRect();
+        const lastRect = cardElement.querySelector('[data-media-avatar]:last-child')!.getBoundingClientRect();
         let clip: Element | null = cardElement.parentElement;
         while (clip && clip !== document.documentElement) {
           const style = getComputedStyle(clip);
@@ -1247,7 +1247,7 @@ describe('设计决定', () => {
       Object.assign(payload.items[0], { is_jav: true, code: 'ABC-123', display_code: 'ABC-123', has_cover: true });
     });
     const { page } = opened;
-    const ratio = (index: number) => page.locator('#grid article.card[data-id]').nth(index).locator('.pic')
+    const ratio = (index: number) => page.locator('#grid [data-media-grid] > [data-media-card][data-id]').nth(index).locator('[data-media-pic]')
       .evaluate((element) => element.getBoundingClientRect().width / element.getBoundingClientRect().height);
     const choice = (value: string) => page.locator(`#count input[name="home-layout"][value="${value}"]`);
     try {
@@ -1267,8 +1267,8 @@ describe('设计决定', () => {
   it('卡片悬停反馈不在封面像素上描边', { timeout: 60_000 }, async () => {
     const opened = await openCatalog(browser);
     try {
-      const card = opened.page.locator('article.card:not(.junkcard)').first();
-      const picture = card.locator('.pic');
+      const card = opened.page.locator('#grid [data-media-card]').first();
+      const picture = card.locator('[data-media-pic]');
       await card.hover();
       const overlay = await picture.evaluate((element) => {
         const style = getComputedStyle(element, '::after');
@@ -1278,8 +1278,141 @@ describe('设计决定', () => {
       assert.equal(overlay.borderWidth, '0px', '悬停边线仍污染圆角边缘像素');
       assert.match(await card.evaluate((element) => getComputedStyle(element).boxShadow),
         /0px 0px 0px 8px/, '悬停底色没有在卡片四周向外多铺 8px');
-      assert.equal(await card.locator('.later-tools').evaluate(
+      assert.equal(await card.locator('[data-media-later]').evaluate(
         (element) => getComputedStyle(element).opacity), '1', '移除描边后没有保留悬停反馈');
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('馆藏卡片的字取页面正文那一档，角标、悬停控件、进度条、竖屏带、Mix 与回收站卡面按定下的样子画', { timeout: 90_000 }, async () => {
+    /* 演示库凑不出回收站里的非视频资源：回收站那一页把第二条换成一个压缩包。
+       目录那一页给前三条挂半程观看进度，量进度条的颜色。 */
+    const opened = await openCatalogFixture(browser, (payload, url) => {
+      if (url.searchParams.get('state') !== 'trash') {
+        for (const item of payload.items.slice(0, 3)) Object.assign(item, { duration: 600, play_seconds: 300 });
+        return;
+      }
+      const item = payload.items[1];
+      if (!item) throw new Error('演示目录不够两条');
+      Object.assign(item, { medium: 'archive', name: '演示资料.zip', disposal: 'trash' });
+      payload.items[0].disposal = 'trash';
+    });
+    const { page } = opened;
+    /* 岛根是 `line-height:1.5`，卡里没写行高的格子会继承它；旧卡读的是页面正文 14px/20px。
+       取值用同一个岛根下的空元素量 token，不在断言里抄像素。 */
+    const readStyles = (selectors: Record<string, string>) => page.evaluate((wanted) => {
+      const root = document.querySelector('#grid .peach-react')!;
+      const pick = (element: Element | null) => {
+        if (!element) return null;
+        const style = getComputedStyle(element);
+        return { fontSize: style.fontSize, lineHeight: style.lineHeight, fontFamily: style.fontFamily,
+          letterSpacing: style.letterSpacing, minHeight: style.minHeight, padding: style.padding,
+          display: style.display, place: `${style.alignItems} ${style.justifyItems}`, color: style.color,
+          background: style.backgroundColor, borderWidth: style.borderTopWidth, borderColor: style.borderTopColor,
+          leftRadius: style.borderTopLeftRadius, width: style.width, opacity: style.opacity };
+      };
+      const probe = (css: string) => {
+        const element = document.createElement('div');
+        element.style.cssText = css;
+        root.append(element);
+        const value = pick(element)!;
+        element.remove();
+        return value;
+      };
+      return {
+        body: probe('font: var(--board-body)'), caption: probe('font: var(--board-caption)'),
+        md: probe('font-size: var(--fs-md)'), muted: probe('color: var(--muted)'), text: probe(''),
+        ground: probe('background: var(--ground)'), tungsten: probe('background: var(--tungsten)'),
+        overlay: probe('background: var(--overlay-5); border: 1px solid var(--border-10)'),
+        ...Object.fromEntries(Object.entries(wanted).map(([key, selector]) => [key, pick(root.querySelector(selector))])),
+      };
+    }, selectors);
+    try {
+      await page.locator('#grid [data-shorts-strip]').first().waitFor({ timeout: 10_000 });
+      await page.locator('#grid [data-media-grid] > [data-media-card] [data-media-progress]').first().waitFor({ timeout: 10_000 });
+      const catalog = await readStyles({
+        card: '[data-media-grid] > [data-media-card]',
+        badge: '[data-media-grid] > [data-media-card] [data-media-badge]',
+        shorts: '[data-shorts-strip] > h2',
+        mix: '[data-media-grid] > [data-mix-card]',
+        mixTitle: '[data-media-grid] > [data-mix-card] [data-mix-title]',
+        mixGlyph: '[data-media-grid] > [data-mix-card] [data-mix-glyph]',
+        strip: '[data-shorts-strip]',
+        progress: '[data-media-grid] > [data-media-card] [data-media-progress] > i',
+        seekGlyph: '[data-media-grid] > [data-media-card] [data-media-seek] svg',
+        laterButton: '[data-media-grid] > [data-media-card] [data-media-later] button',
+        laterGlyph: '[data-media-grid] > [data-media-card] [data-media-later] svg',
+      });
+      const { body, caption, md, card, badge, shorts, mix, mixTitle } = catalog;
+      /* 竖屏带靠底色和网格区分，不描线；宽屏上往左铺过侧栏轨道，贴视口那一侧不留圆角。 */
+      assert.deepEqual([catalog.strip?.background, catalog.strip?.borderWidth], [catalog.ground.background, '0px'],
+        '竖屏带不是页面底色那一张面，或者描了一圈线');
+      assert.equal(catalog.strip?.leftRadius, '0px', '宽屏上竖屏带贴视口的那一侧还留着圆角');
+      const edges = await page.evaluate(() => ({
+        strip: document.querySelector('#grid [data-shorts-strip]')!.getBoundingClientRect().left,
+        grid: document.querySelector('#grid [data-media-grid]')!.getBoundingClientRect().left,
+      }));
+      assert.ok(edges.strip < edges.grid, `竖屏带左缘 ${edges.strip} 没有越过网格左缘 ${edges.grid} 铺到侧栏底下`);
+      /* 沉浸模式是一叠竖着翻的卡，入口用叠卡那一枚字形，不和别的动作共用。 */
+      assert.equal(await page.locator('#grid [data-shorts-enter] svg use').first().getAttribute('href'), '#i-gallery-vertical-end',
+        '竖屏带的「进入沉浸模式」换了字形');
+      assert.equal(catalog.progress?.background, catalog.tungsten.background, '观看进度条不是钨丝蓝');
+      assert.deepEqual([catalog.mixGlyph?.background, catalog.mixGlyph?.borderWidth, catalog.mixGlyph?.borderColor],
+        [catalog.overlay.background, '1px', catalog.overlay.borderColor], 'Mix 署名位那枚字形不是半透明底加细边');
+      /* 居中的快退快进和右下角「稍后看」是同一种控件，只是尺寸不同：58px 配 34px 图标，36px 配 21px。 */
+      assert.deepEqual([catalog.seekGlyph?.width, catalog.laterButton?.width, catalog.laterGlyph?.width], ['34px', '36px', '21px'],
+        '悬停控件的尺寸和图标比例变了');
+      const denseShort = await page.evaluate(() => {
+        document.body.dataset.density = 'dense';
+        const width = getComputedStyle(document.querySelector('#grid [data-shorts-strip] [data-media-card]')!).width;
+        delete document.body.dataset.density;
+        return width;
+      });
+      assert.equal(denseShort, '107px', '密集模式下竖屏带里的卡没有跟着缩到 214px 的一半');
+      assert.deepEqual([card?.fontSize, card?.lineHeight], ['14px', '20px'], '作品卡的字不是页面正文那一档，岛根的 1.5 行高漏了进来');
+      assert.deepEqual([badge?.fontSize, badge?.lineHeight], [caption.fontSize, caption.lineHeight], '来源角标的字不是 caption 那一档');
+      assert.equal(badge?.minHeight, '24px', '来源角标矮于 24px');
+      assert.deepEqual([shorts?.fontFamily, shorts?.lineHeight], [body.fontFamily, '20px'], '竖屏带标题的字体或行高不同页面正文');
+      assert.ok(mix && mixTitle, '夹具目录里没有插进 Mix');
+      assert.deepEqual([mix.fontSize, mix.lineHeight], ['14px', '20px'], '网格里的 Mix 卡没取页面正文那一档');
+      assert.equal(mixTitle.letterSpacing, 'normal', '网格里的 Mix 标题带着字距');
+      assert.ok(Math.abs(parseFloat(mixTitle.lineHeight) - parseFloat(md.fontSize) * 1.45) < .5,
+        `网格里的 Mix 标题行高 ${mixTitle.lineHeight}，不是 --fs-md 的 1.45 倍`);
+
+      await page.goto(new URL('/trash', page.url()).href, { waitUntil: 'load' });
+      await page.locator('#grid [data-media-card][data-variant="resource"]').first().waitFor({ timeout: 15_000 });
+      await settle(page);
+      const trash = await readStyles({
+        meta: '[data-media-grid] > [data-media-card] [data-media-meta]',
+        glyph: '[data-variant="resource"] [data-media-glyph]',
+        kind: '[data-variant="resource"] [data-media-kind-glyph]',
+      });
+      assert.equal(trash.meta?.padding, '8px', '回收站卡的元信息区不是网格卡那 8px 内边距');
+      assert.deepEqual([trash.glyph?.display, trash.glyph?.place, trash.glyph?.color], ['grid', 'center center', trash.muted.color],
+        '回收站资源卡封面格里的字形没有居中或不是次要文字色');
+      assert.deepEqual([trash.kind?.display, trash.kind?.place, trash.kind?.color], ['grid', 'center center', trash.text.color],
+        '回收站资源卡头像位的字形没有居中或不是正文色');
+      /* 悬停扫视层是壳插进封面格的 `img.hvframes`：待删卡的灰化要连它一起，否则悬停时整卡「复活」成正常色。 */
+      const scan = await page.locator('#grid [data-media-card][data-pending-delete]:not([data-variant="resource"]) [data-media-pic]')
+        .first().evaluate((pic) => {
+          const layer = document.createElement('img');
+          layer.className = 'hvframes';
+          pic.append(layer);
+          const filter = getComputedStyle(layer).filter;
+          layer.remove();
+          return filter;
+        });
+      assert.match(scan, /grayscale\(0\.9\)/, '待删卡的悬停扫视层没有跟着灰化');
+      /* 待删卡整块压暗：元信息区降透明度，封面两侧那层模糊垫底也要重写一遍 blur 再灰化，
+         `filter` 不叠加，只写灰化会把模糊冲掉。 */
+      const pending = await page.locator('#grid [data-media-card][data-pending-delete]:not([data-variant="resource"])')
+        .first().evaluate((card) => ({
+          meta: getComputedStyle(card.querySelector('[data-media-meta]')!).opacity,
+          backdrop: getComputedStyle(card.querySelector('[data-media-pic]')!, '::before').filter,
+        }));
+      assert.equal(pending.meta, '0.58', '待删卡的元信息区没有压暗');
+      assert.match(pending.backdrop, /blur\(26px\) grayscale\(0\.9\) brightness\(0\.27\)/, '待删卡封面两侧的模糊垫底没有跟着灰化');
     } finally {
       await opened.close();
     }
@@ -1295,25 +1428,26 @@ describe('设计决定', () => {
     });
     try {
       const shapeOf = (selector: string) => opened.page.locator(selector).first().evaluate((element) => {
-        const stack = element.querySelector('.partstack,.mixstack')!;
+        const stack = element.querySelector('[data-media-stack],[data-mix-stack]')!;
+        const cover = element.querySelector('[data-media-pic],[data-mix-cover]')!;
         return {
-          cover: getComputedStyle(element.querySelector('.pic')!).borderTopLeftRadius,
-          ground: getComputedStyle(element.querySelector('.pic')!).backgroundColor,
+          cover: getComputedStyle(cover).borderTopLeftRadius,
+          ground: getComputedStyle(cover).backgroundColor,
           layers: ['::before', '::after'].map((pseudo) => getComputedStyle(stack, pseudo).borderTopLeftRadius),
           faces: element.querySelectorAll('[data-mix-faces]').length,
-          preview: Boolean(element.querySelector('.previewcounter')),
+          preview: Boolean(element.querySelector('[data-media-preview]')),
         };
       });
-      await opened.page.locator('article.card.partcard').first().waitFor({ timeout: 10_000 });
-      const part = await shapeOf('article.card.partcard');
+      await opened.page.locator('[data-media-card][data-part-seed]').first().waitFor({ timeout: 10_000 });
+      const part = await shapeOf('[data-media-card][data-part-seed]');
       assert.notEqual(part.cover, '0px', '封面没有圆角，比对失去意义');
       assert.deepEqual(part.layers, [part.cover, part.cover], '分卷卡的叠层纸边和封面不是同一档圆角');
       // 封面格背后压着纸边：格子是空的，纸边线条就从封面没盖住的地方透出来。
       assert.notEqual(part.ground, 'rgba(0, 0, 0, 0)', '叠层卡的封面格是透明的，纸边会透进封面');
       assert.equal(part.faces, 0, '分卷卡仍挂着翻卡面板');
       assert.ok(part.preview, '分卷卡悬停没有分段预览入口');
-      if (await opened.page.locator('article.mixcard').count()) {
-        const mix = await shapeOf('article.mixcard');
+      if (await opened.page.locator('#grid [data-mix-card]').count()) {
+        const mix = await shapeOf('#grid [data-mix-card]');
         assert.deepEqual(mix.layers, [mix.cover, mix.cover], 'Mix 卡的叠层纸边和封面不是同一档圆角');
       }
       assert.deepEqual(opened.problems, []);
@@ -1344,8 +1478,8 @@ describe('设计决定', () => {
       payload.items[0] = { ...payload.items[0], tags: ['演示标签'] };
     });
     try {
-      const card = opened.page.locator('article.card[data-id]').first();
-      const opener = card.locator('.cardopenhit');
+      const card = opened.page.locator('#grid [data-media-card][data-id]').first();
+      const opener = card.locator('[data-media-open]');
       const boxes = await Promise.all([card.boundingBox(), opener.boundingBox()]);
       assert.deepEqual(boxes[1], boxes[0], '全卡入口没有覆盖图片、文字与卡内空白');
       await card.hover();
@@ -1358,7 +1492,7 @@ describe('设计决定', () => {
       assert.ok((narrow[0]?.x || 0) >= 0 && (narrow[0]?.x || 0) + (narrow[0]?.width || 0) <= 390,
         '390px 下视频卡越出视口');
 
-      const nested = card.locator('.tg:not(:disabled)').first();
+      const nested = card.locator('[data-media-tag]:not(:disabled)').first();
       const tag = await nested.getAttribute('data-tag');
       assert.ok(tag, '演示卡没有可操作的内部标签');
       await nested.focus();
@@ -1385,7 +1519,7 @@ describe('设计决定', () => {
         /* 目录网格画出来时 paintSelection 已经按当前页收好批量条的按钮；教程卡取数期间的
            占位带 aria-busy，settle 等到的是最终那张卡。 */
         await expectBody(opened.page, '/', [
-          opened.page.locator('article.card[data-id]').first(),
+          opened.page.locator('#grid [data-media-card][data-id]').first(),
           opened.page.locator('#postSetupTutorial .post-setup-notification'),
         ]);
         await settle(opened.page);
@@ -2511,7 +2645,7 @@ describe('设计决定', () => {
       try {
         const page = opened.page;
         const kinds = await stubSuggest(page);
-        await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+        await expectBody(page, '/', [page.locator('#grid [data-media-card][data-id]').first()]);
         await settle(page);
         if (viewport.mobile) await page.locator('#searchBtn').click();
         await page.locator('#q').fill(SUGGEST.q);
@@ -2580,7 +2714,7 @@ describe('设计决定', () => {
     try {
       const page = opened.page;
       await stubSuggest(page);
-      await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+      await expectBody(page, '/', [page.locator('article[data-media-card][data-id]').first()]);
       await settle(page);
       await page.locator('#q').fill(SUGGEST.q);
       const menu = page.locator('#searchMenu');
@@ -2613,7 +2747,7 @@ describe('设计决定', () => {
       const history = Array.from({ length: 10 }, (_, at) => `搜索记录 ${at + 1}`);
       await page.route(/\/api\/search-history\?/, (route) => route.fulfill({ json: { items: history } }));
       await page.reload({ waitUntil: 'load' });
-      await expectBody(page, '/', [page.locator('article.card[data-id]').first()]);
+      await expectBody(page, '/', [page.locator('article[data-media-card][data-id]').first()]);
       await settle(page);
       await page.locator('#q').click();
       await page.locator('#searchMenu .searchresults[data-split]').waitFor({ state: 'visible', timeout: 5_000 });
@@ -2872,14 +3006,14 @@ describe('设计决定', () => {
   it('卡片悬停面不顶到邻卡，三处卡片网格同一副列距', { timeout: 60_000 }, async () => {
     const opened = await openCatalog(browser);
     try {
-      const card = opened.page.locator('#grid .grid > article.card').first();
+      const card = opened.page.locator('#grid [data-media-grid] > [data-media-card]').first();
       await card.hover();
       const geometry = await card.evaluate((element) => {
         const box = element.getBoundingClientRect();
         const neighbor = [...element.parentElement!.children].find((other) => other !== element
           && Math.abs(other.getBoundingClientRect().top - box.top) < 1)!;
         const spread = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(getComputedStyle(element).boxShadow)?.[1]);
-        // 人物页的作品网格和关注页的视频列表不在首页这叠卡里：各挂一个同类名的空壳读列距。
+        // 壳画的骨架网格和关注页的视频列表不在首页这叠卡里：各挂一个同类名的空壳读列距。
         const columnGap = (className: string) => {
           const probe = document.createElement('div');
           probe.className = className;
@@ -2891,13 +3025,13 @@ describe('设计决定', () => {
         return {
           spread, clearance: neighbor.getBoundingClientRect().left - (box.right + spread),
           home: parseFloat(getComputedStyle(element.parentElement!).columnGap),
-          entity: columnGap('grid'), follow: columnGap('followlist'),
+          skeleton: columnGap('grid'), follow: columnGap('followlist'),
         };
       });
       assert.ok(geometry.spread > 0, '卡片悬停面没有往盒外铺');
       assert.ok(geometry.clearance >= geometry.spread,
         `悬停面离邻卡只剩 ${geometry.clearance}px，比它自己往外铺的 ${geometry.spread}px 还窄`);
-      assert.equal(geometry.entity, geometry.home, '人物页作品网格的列距和首页不一样');
+      assert.equal(geometry.skeleton, geometry.home, '壳画的骨架网格的列距和首页不一样，真卡换上来时整排挪位');
       assert.equal(geometry.follow, geometry.home, '关注页视频列表的列距和首页不一样');
       assert.deepEqual(opened.problems, []);
     } finally {
@@ -2920,9 +3054,9 @@ describe('设计决定', () => {
          几何照算，所以这里比的是描边外沿与 padding box，不是与内容盒。头像贴着内容盒的
          左缘和上缘。这条不读 `overflow-clip-margin`：Safari 不认它，裁切边只能靠盒子本身。 */
       const { page } = opened;
-      const avatar = page.locator('#grid .grid > article.card .meta > button.mav').first();
+      const avatar = page.locator('#grid [data-media-grid] > [data-media-card] [data-media-meta] > button[data-media-avatar]').first();
       const edges = () => avatar.evaluate((element) => {
-        const meta = element.closest('.meta')!;
+        const meta = element.closest('[data-media-meta]')!;
         const style = getComputedStyle(element);
         const shadow = Number(/0px 0px 0px (\d+(?:\.\d+)?)px/.exec(style.boxShadow)?.[1] ?? 0);
         const outline = style.outlineStyle === 'none' ? 0

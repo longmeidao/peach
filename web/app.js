@@ -255,9 +255,8 @@ function wireCountRow(){
    `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
    `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
    同理不动——它们本来就不随这次请求变。 */
-/* 目录列表是一叠 `.grid`，不是一个：竖屏带把当前这段从行边界剪开后，上下两半各自
-   是一段。所有「本页有哪些卡」的判断都按 `#grid > .grid > .card` 走，跨过分段这一层，
-   同时把竖屏带里的 `.scard` 排除在外——它们在 `.srow` 里，不属于任何一段。 */
+/* 壳自己画的那几屏（骨架、垃圾文件队列）把卡片写进 `#grid > .grid`，续页追加在最后
+   一段里。目录与回收站的作品卡归 `catalog-grid` island。 */
 const lastGridSection=()=>{
   const grid=$('#grid'),last=grid.lastElementChild;
   if(last&&last.classList.contains('grid'))return last;
@@ -266,7 +265,10 @@ const lastGridSection=()=>{
    内容（翻页、换筛选）不走这条——`revealSkeleton` 自己看出去的那一屏里有没有占位。 */
 const setGridCards=html=>revealSkeleton($('#grid'),()=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`});
 const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
-const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id],#grid [data-media-grid] > [data-media-card][data-id]');
+/* 「本页有哪些卡」，Shift 连选按这个顺序：垃圾文件的卡、目录与资料页网格里的作品卡。竖屏带
+   和接着看那一排不在其中，它们不在网格的分段里。 */
+const gridCards=()=>document.querySelectorAll(
+  '#grid > .grid > .card[data-id],:is(#grid,#index [data-entity-grid]) [data-media-grid] > [data-media-card][data-id]');
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
@@ -853,7 +855,7 @@ const SETTING_SELECTS=[
   ['hoverDelaySetting','悬停放大',[['0','关闭'],['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
     value=>{appSettings.hoverDelaySeconds=boundedPreference(+value,0,60,5);
-      if(!appSettings.hoverDelaySeconds)document.querySelectorAll('.previewing,.longhover,[data-previewing],[data-longhover]')
+      if(!appSettings.hoverDelaySeconds)document.querySelectorAll('[data-previewing],[data-longhover]')
         .forEach(el=>{setHoverState(el,'previewing',false);setHoverState(el,'longhover',false)});
       document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
   ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
@@ -2999,11 +3001,10 @@ function releaseHoverPreviews(root=document,except=null){
     if(im.closest(HOVER_CARDS)===except)return;
     im.removeAttribute('src');im.remove()});
 }
-/* 悬停态按卡的来源写：壳拼的卡认类名；React 卡的类名归 React 管、不往上加，
-   只写 `data-previewing`／`data-longhover`。 */
-function setHoverState(el,name,on){if(!el.matches('[data-media-card],[data-mix-card]')){el.classList.toggle(name,on);return}if(on)el.dataset[name]='';else delete el.dataset[name]}
+/* 悬停态写在卡上的 `data-previewing`／`data-longhover`：卡的类名归 React 管，壳不往上加。 */
+function setHoverState(el,name,on){if(on)el.dataset[name]='';else delete el.dataset[name]}
 function wireHover(el,it){
-  const pic=el.querySelector('.pic,[data-media-pic]'); if(!pic)return;
+  const pic=el.querySelector('[data-media-pic]'); if(!pic)return;
   el.dataset.hoverMode=it.location==='local'?'video':'frames';
   let longTimer=null;
   const armLong=()=>{clearTimeout(longTimer);if(!appSettings.hoverDelaySeconds)return;setHoverState(el,'previewing',true);longTimer=setTimeout(()=>{if(appSettings.hoverDelaySeconds)setHoverState(el,'longhover',true)},appSettings.hoverDelaySeconds*1000)};
@@ -3011,7 +3012,7 @@ function wireHover(el,it){
   if(it.location!=='local'){        // 远端源：只在接触印相的格子间扫视，零网络流量
     /* 扫视图是叠在画面之上新建的一层，不改任何已有 `<img>` 的 src。JAV 大图和小图
        版式里画面就是封面本身（`.poster.cover`），改它的 src 等于把封面当场换掉；
-       按类名把封面排掉又等于这两种版式整个没有悬停预览，连 `.longhover` 都不进，
+       按类名把封面排掉又等于这两种版式整个没有悬停预览，连 `data-longhover` 都不进，
        快退快进那三颗也跟着永远不出现。叠一层对三种版式是同一条路。
        这一层用 contain 加黑底：大图版式的容器是 0.75 的竖比例，16:9 的接触印相格子
        在里面居中、上下留黑，和本地视频的 `.hv` 同一个口径。 */
@@ -3400,10 +3401,6 @@ window.addEventListener('resize',()=>{
    最大 5.6%。
    取 0.72 会让 10 张被切掉最多 3.8%，取 0.76 同样一张不切但留白到每边中位 3.7%。 */
 const COVER_FRONT_RATIO=0.75;
-/* 竖屏一律用同一个比例，不按每条视频的实际宽高。竖屏素材从 0.5 到 0.9 都有，
-   按各自比例渲染会让竖屏条和竖屏网格高低不齐；比例不同的用 contain 上下留黑边
-   （`.poster` 本来就是 contain + 黑底）。 */
-const PORTRAIT_RATIO=9/16;
 function coverImage(it,layout,eager){
   const src=`/cover?code=${encodeURIComponent(it.code||'')}&thumb=1`;
   // 人脸位置原样交给页面，锚点由 `coverAnchor` 在加载后算：哪个轴被裁、要推多远，
@@ -3493,98 +3490,6 @@ function cardIdentity(it,linked=true){
       :linked?`<button class="who unownedlink" type="button" data-open-unowned>${esc(who)}</button>`
         :`<span class="who">${esc(who)}</span>`);
   return {avatar,whoHtml};
-}
-function cardHtml(it,cls){
-  /* 资料页可能同时收录番号和非番号作品；版式按钮属于页面，但封套比例只施加给
-     真实 `is_jav` 卡片，不能把同页的创作者视频也拉成竖封。 */
-  const jav=cardLayoutActive()&&!!it.is_jav,layout=cardLayout();
-  const parts=it.part_group||null;
-  const editions=it.edition_group||null;
-  /* 卡片比例，写进 `--card-ratio` 交给 CSS 消费。`.pic` 写死 16/9 的话，JAV 的两种
-     版式看起来一模一样。 */
-  /* 一个列表里所有卡片必须同高，比例只能由**列表的语境**决定，不能由单条媒体决定。
-     按 `it.ctx_orient` 逐条算的话，任何混着横屏和竖屏的网格都会高低不齐——资料页、
-     相关推荐、搜索结果全中招。竖屏比例只留给两种整列都是竖屏的场合：竖屏条，
-     以及用户显式筛了竖屏的时候。比例对不上的用 contain 上下留黑边。 */
-  const portrait=cls==='scard'||state.orient==='竖屏';
-  const ar=portrait
-    ? PORTRAIT_RATIO
-    /* 大图只留右侧正封，宽度不变、高度拉长；小图和预览图保持 16:9。
-       没有封面的那些也跟着拉长：一行里高矮混排同样会把网格撕成锯齿状，
-       缺封面的用 16:9 预览图上下留黑边即可（`.poster` 本来就是 contain + 黑底）。 */
-    : (jav&&layout==='big'?COVER_FRONT_RATIO:16/9);
-
-  const thumb=it.is_jav
-    ? javArtwork(it,jav?layout:'small')
-    : it.follow_thumb_url
-      ? `<img class="poster" src="${esc(it.follow_thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer">`
-    : (it.has_thumb||it.has_local_poster
-      ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="lazy">`
-      : `<span class="nopic">无预览</span>`);
-  const fl=[it.feedback==='dislike'&&'dislike',it.feedback==='seen'&&'seen',
-            it.disposal==='trash'&&'dispose',it.watch_later&&'later']
-            .filter(Boolean).map(c=>`<i class="${c}"></i>`).join('');
-  const {avatar,whoHtml}=cardIdentity(it);
-  const rawShownName=parts?.title||it.name;
-  const shownName=javDisplayName(it,rawShownName);
-  const shownTitle=javTitleHtml(it,rawShownName);
-  const shownSize=parts?.total_size??it.size;
-  const shownDuration=parts?.total_duration??it.duration;
-  const watchedRatio=!parts&&Number(it.play_seconds)>0&&Number(it.duration)>0
-    ? Math.min(Number(it.play_seconds)/Number(it.duration),1):0;
-  const tr=watchedRatio>0
-    ? `<div class="watchprogress" role="progressbar" aria-label="观看进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(watchedRatio*100)}"><i style="width:${(watchedRatio*100).toFixed(1)}%"></i></div>`
-    : (it.leave_ratio!=null?`<div class="scrub"><i style="width:${Math.round(it.leave_ratio*100)}%"></i></div>`:'');
-  const sizeText=Number(shownSize)>0?fmtSize(Number(shownSize)):'大小未知';
-  const tgs=(it.follow_tags||it.tags||[]).slice(0,3).map(x=>`<button type="button" class="tg general"${it.follow_item_id?' disabled':` data-tag="${esc(x)}"`}>${esc(tagLabel(x))}</button>`).join('');
-  const laterTool=`<div class="hovertools later-tools"><button class="laterbtn" data-later aria-pressed="${!!it.watch_later}" title="稍后看" aria-label="稍后看">
-      ${it.watch_later?icon('check'):icon('bookmark-plus')}</button></div>`;
-  const tools=`<button class="previewcounter" data-open title="打开预览" aria-label="打开预览">
-      <svg viewBox="-18 -18 36 36"><circle r="17"></circle><circle r="17"></circle></svg>${icon('play','ringplay')}</button>
-    ${laterTool}
-    <div class="hovertools seektools">
-      <button data-seek="-${appSettings.seekSeconds}" title="后退 ${appSettings.seekSeconds} 秒" aria-label="后退 ${appSettings.seekSeconds} 秒">${icon('rotate-ccw')}</button>
-      <button data-seek="${appSettings.seekSeconds}" title="前进 ${appSettings.seekSeconds} 秒" aria-label="前进 ${appSettings.seekSeconds} 秒">${icon('rotate-cw')}</button>
-      <button data-open title="打开详情" aria-label="打开详情">${icon('expand')}</button></div>`;
-  /* 小图与预览图都是 16:9 横图，只更换图片来源；元数据 DOM 和高度必须完全相同。 */
-  /* 叠层纸边是「这张卡代表不止一条」的视觉说法，分卷和版次都成立。只给分卷的话，
-     同样被折叠过的版次卡长得和普通卡一模一样，只有角标能看出来。
-     两种都不翻卡：各卷与各版次共用同一个番号的封套，翻过去还是那张图，看着像卡住了。
-     悬停照普通卡走分段视频预览。 */
-  const stacked=parts||editions;
-  return `<article class="card ${stacked?'partcard ':''}${cls||''} ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}"${parts?` data-part-seed="${parts.seed_id}"`:''}>
-    <button type="button" class="cardopenhit" data-open aria-label="打开 ${esc(shownName)}${parts?'分卷':editions?'版本':'详情'}"></button>
-    ${stacked?'<div class="partstack">':''}<div class="pic" style="--card-ratio:${ar}">${thumb}
-      <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
-      <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
-      ${parts?`<span class="partbadge">${parts.count} 卷</span>`:''}${editions?`<span class="partbadge editionbadge" title="${esc(editions.editions.join(' · '))}">${editions.count} 个版本</span>`:''}<span class="dur mono">${fmtDur(shownDuration)}</span>${tr}${tools}</div>${stacked?'</div>':''}
-    <div class="meta">${avatar}<div class="mtext"><button class="t cardtitle" data-open>${shownTitle}</button>
-      <div class="s mono">${whoHtml}
-        ${it.why?`<span class="why">${esc(it.why)}</span>`:''}
-        <span class="size">${sizeText}</span>
-        ${it.play_count?`<span class="watchcount">看过 ${it.play_count}</span>`:''}
-        <span class="flags">${fl}</span></div>
-      ${tgs?`<div class="ctags">${tgs}</div>`:''}</div></div></article>`;
-}
-const RESOURCE_MEDIUM_LABEL={image:'图片',audio:'音频',archive:'压缩包',other:'其它文件'};
-function resourceCardHtml(it){
-  if(!it.medium||it.medium==='video')return cardHtml(it);
-  const image=it.medium==='image'&&it.location!=='online';
-  const label=(String(it.name||'').toLowerCase().endsWith('.url')?'网址快捷方式'
-    :RESOURCE_MEDIUM_LABEL[it.medium]||'其它文件');
-  const glyph=image?'pics':label==='网址快捷方式'?'globe':'hard-drive';
-  const action=it.disposal==='trash'?'restore':'dispose';
-  const actionLabel=action==='restore'?'还原':'移入回收站';
-  return `<article class="card resourcecard ${it.disposal==='trash'?'pending-delete':''}" data-id="${it.id}" data-medium="${esc(it.medium||'other')}">
-    <div class="pic" style="--card-ratio:16/9"><span class="resourceglyph">${icon(glyph)}<b>${esc(label)}</b></span>
-      ${image?`<img class="poster" src="/photo-thumb?id=${it.id}" alt="" loading="lazy" data-drop="self">`:''}
-      <div class="badge mono">${srcBadge(it.location,it.cost)}</div>
-      <span class="selectionMark">${icon('check')}</span><span class="deleteMark">${icon('trash')}<b>回收站</b></span>
-      <button class="resourcecardaction" type="button" data-resource-operation="${action}" aria-label="${actionLabel} ${esc(it.name||'')}" title="${actionLabel}">${icon(action==='restore'?'rotate-ccw':'trash')}<span>${actionLabel}</span></button></div>
-    <div class="meta"><span class="mav resourcekind" aria-hidden="true">${icon(glyph)}</span><div class="mtext">
-      <span class="t resourcecardtitle" data-middle-truncate title="${esc(it.name||'')}">${esc(it.name||'未命名资源')}</span>
-      <div class="s mono"><span class="who">${esc(label)}</span>${it.why?`<span class="why">${esc(it.why)}</span>`:''}<span class="size">${Number(it.size)>0?fmtSize(Number(it.size)):'大小未知'}</span></div>
-    </div></div></article>`;
 }
 const JUNK_KIND_META={
   video:['视频','play'],image:['图片','pics'],archive:['压缩包','file-archive'],
@@ -3701,44 +3606,12 @@ function openResourceCard(id,anchor=null){
   }
   toggleSelection(id);
 }
-function wireResourceCardActions(root){
-  root.querySelectorAll('[data-resource-operation]').forEach(button=>{
-    if(button.dataset.wired)return;button.dataset.wired='1';
-    button.onclick=async event=>{
-      event.preventDefault();event.stopPropagation();
-      const card=button.closest('[data-id]'),operation=button.dataset.resourceOperation;
-      if(!card)return;
-      setActionBusy(button);
-      button.innerHTML=`${spinnerHtml(operation==='restore'?'正在还原':'正在移入回收站')}<span>${operation==='restore'?'正在还原':'正在处理'}</span>`;
-      try{
-        const id=+card.dataset.id;
-        await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})});
-        await loadCatalog();
-        const inverse=operation==='restore'?'dispose':'restore';
-        actionReceipt(operation==='restore'?'已还原':'已移入回收站',{undo:async()=>{
-          await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation:inverse})});
-          await loadCatalog();
-        }});
-      }catch(error){
-        actionFailure('操作',error);
-        setActionBusy(button,false);
-        const label=operation==='restore'?'还原':'移入回收站';
-        button.innerHTML=`${icon(operation==='restore'?'rotate-ccw':'trash')}<span>${label}</span>`;
-      }
-    };
-  });
-}
 function mixLabel(it){
   const performer=(it.performers||[])[0];
   return (it.is_jav&&performer?performer:it.creator)||performer||it.studio||it.code||tagLabel((it.tags||[])[0])||'为你推荐';
 }
-/* 这一条真能画出图吗。必须和下面 mixFacePoster 的分支一致：只看 has_cover 会把
-   非 JAV 模式下只有官方封套的条目当成有图，选它做 seed 或翻到它都是一张「无预览」。 */
-function mixHasPicture(it,layout){
-  return !!it&&Boolean(javImageKind(it,appSettings.javImage));
-}
-/* Mix 卡片的静止封面和悬浮翻动的每一张都走这里：翻进来的那张必须和静止的
-   那张长得一样，否则一翻就露出比例和取景的差别。 */
+/* 播放队列每一行的小图。取图的判据同网格里 Mix 卡的画面（`catalog-grid` 的 `mixFace`）：
+   番号作品走封套链，其余取本地预览格，同一条在两处长得一样。 */
 function mixFacePoster(it,layout,eager){
   const jav=cardLayoutActive()&&!!it.is_jav;
   /* 翻动的那几张必须 eager：它们是悬浮时才插进一个 hidden 容器的，
@@ -3749,60 +3622,6 @@ function mixFacePoster(it,layout,eager){
     : (it.has_thumb||it.has_local_poster
       ? `<img class="poster" src="/poster?id=${it.id}&c=4" alt="" loading="${load}">`
       : `<span class="nopic">无预览</span>`);
-}
-function mixCardHtml(it){
-  const jav=cardLayoutActive()&&!!it.is_jav,layout=cardLayout();
-  const ar=jav&&layout==='big'?COVER_FRONT_RATIO:16/9;
-  const thumb=mixFacePoster(it,layout);
-  const label=mixLabel(it);
-  return `<article class="card mixcard" data-mix-seed="${it.id}">
-    <div class="mixstack"><div class="pic" style="--card-ratio:${ar}">${thumb}<div class="mixfaces" data-mix-faces hidden></div><button class="cardopenhit" data-open-mix aria-label="打开 Mix · ${esc(label)}"></button>
-      <span class="mixbadge">${icon('play')}Mix</span></div></div>
-    <div class="mixmeta"><span class="mixglyph">${icon('play')}</span><div class="mixcopy">
-      <b>Mix · ${esc(label)}</b><span>${esc(javDisplayName(it))}及相似作品</span></div></div></article>`;
-}
-let renderedPartGroups=new Set();
-/* 版次组和分卷组各自折叠。分卷是「一部片被切成几段」，版次是「同一部片的几个来源」
-   ——有码、中字、无码。它们能同时出现在一个番号上，所以两套 key 分开记，不共用。 */
-let renderedEditionGroups=new Set();
-function collapseMultipartItems(items){
-  if(!appSettings.groupCollapse)return items;
-  return items.filter(it=>{
-    const key=it.part_group?.key;
-    if(!key)return true;
-    if(renderedPartGroups.has(key))return false;
-    renderedPartGroups.add(key);return true;
-  });
-}
-function collapseEditionGroups(items){
-  if(!appSettings.groupCollapse)return items;
-  return items.filter(it=>{
-    const key=it.edition_group?.key;
-    if(!key)return true;
-    if(renderedEditionGroups.has(key))return false;
-    renderedEditionGroups.add(key);return true;
-  });
-}
-const MIX_SLOT=7;                 // Mix 卡片插在这一位，也就是每批的第 8 张
-/* seed 决定 Mix 的封面和署名。旧写法取「本批第一个有署名的作品」，而几乎
-   每条都有 creator，于是 seed 恒等于第一张卡片：Mix 卡片永远显示它上面几行那张
-   同样的图，看起来像渲染错了。改成从 Mix 位再往下隔一屏开始找：仍然是本批里的
-   一部作品，语义不变，但不会和同屏可见的卡片撞图。 */
-function mixSeed(visible){
-  const layout=cardLayout();
-  const named=it=>mixHasPicture(it,layout)&&(it.creator||(it.performers||[]).length||it.studio);
-  return visible.slice(MIX_SLOT+8).find(named)
-    ||visible.slice(MIX_SLOT+1).find(named)
-    ||visible.slice(MIX_SLOT+1).find(it=>mixHasPicture(it,layout))
-    ||visible[visible.length-1];
-}
-function batchWithMix(items,enabled=true){
-  const visible=collapseEditionGroups(collapseMultipartItems(items));
-  const cards=visible.map(it=>cardHtml(it));
-  if(!enabled)return cards.join('');
-  const seed=mixSeed(visible);
-  if(seed&&visible.length>=8)cards.splice(MIX_SLOT,0,mixCardHtml(seed));
-  return cards.join('');
 }
 /* 相关作品每个 seed 只取一次：悬浮翻动和点开后的队列用的是同一份，
    悬浮过再点开 Mix 不会再发一次请求。 */
@@ -3881,14 +3700,6 @@ function wireStackFlip(el,loadFaces){
   el.addEventListener('mouseleave',stop);
   el._stopHover=stop;
 }
-function wireMixFlip(el,seedId){
-  wireStackFlip(el,async()=>{
-    const related=await mixRelated(seedId),layout=cardLayout();
-    return [CACHE[seedId],...related]
-      .filter(x=>mixHasPicture(x,layout)).slice(0,MIX_FLIP_FACES)
-      .map(x=>mixFacePoster(x,layout,true));
-  });
-}
 /* 分卷组每个 seed 只取一次：同一组的分卷队列反复打开不再发第二个请求。 */
 const partGroupCache=new Map();
 function partGroup(seedId){
@@ -3908,14 +3719,6 @@ function wireFollowStackFlip(card){
   wireStackFlip(card,async()=>urls.map(url=>
     `<img class="poster" src="${esc(url)}" alt="" loading="eager" referrerpolicy="no-referrer">`));
 }
-function wireMixCards(root){
-  root.querySelectorAll('[data-mix-seed]').forEach(el=>{
-    if(el.dataset.wired)return;el.dataset.wired='1';
-    const seedId=+el.dataset.mixSeed;
-    el.onclick=()=>openMix(seedId,seedId,true,el);
-    wireMixFlip(el,seedId);
-  });
-}
 /* 一个标签是否生效、按一下变成什么，全站只有这一份判据。目录、资料页和详情页各自
    存着自己的筛选，谁在那里手写一次 `split(',')` 或 `=== filters.tag`，谁就会与其余
    几处漂开：按下态按多选算、点击按单选写，同一枚标签的显示和行为对不上。 */
@@ -3923,57 +3726,6 @@ const tagList=(value=state.tag)=>String(value||'').split(',').filter(Boolean);
 const tagPressed=(value,tag)=>tagList(value).includes(String(tag));
 const withTagToggled=(value,tag)=>{const cur=tagList(value);const index=cur.indexOf(tag);
   index>=0?cur.splice(index,1):cur.push(tag);return cur.join(',')};
-function wireCards(root,onClick){
-  root.querySelectorAll('[data-id]').forEach(el=>{
-    if(el.dataset.wired)return; el.dataset.wired='1';
-    const it=CACHE[el.dataset.id];
-    // 小窗开着时普通视频卡直接在小窗里换片；分卷／版次组和要先过门的条目照旧走详情。
-    const openCard=(id,anchor=el)=>miniplayerTakesCard(it)?miniplayerPlay(id):onClick?onClick(id,anchor):(it?.part_group
-      ?openParts(it.part_group.seed_id,id,true,anchor)
-      :it?.edition_group
-        ?openEditions(it.edition_group.seed_id,id,true,anchor)
-        :openItem(id,true,null,anchor));
-    el.onclick=e=>{
-      const seek=e.target.closest('[data-seek]');
-      if(seek){e.stopPropagation();const v=el.querySelector('video.hv');
-        if(v&&Number.isFinite(v.duration)){if(v._hop){clearInterval(v._hop);v._hop=null}
-          v.currentTime=Math.max(0,Math.min(v.duration,v.currentTime+(+seek.dataset.seek)))}return}
-      const later=e.target.closest('[data-later]');
-      if(later){e.stopPropagation();setActionBusy(later);api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})})
-        .then(r=>{it.watch_later=r.watch_later;later.setAttribute('aria-pressed',r.watch_later);
-          later.innerHTML=r.watch_later?icon('check'):icon('bookmark-plus');
-          actionReceipt(r.watch_later?'已加入稍后看':'已移出稍后看',{undo:async()=>{
-            const restored=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
-            it.watch_later=restored.watch_later;if(!later.isConnected)return;
-            later.setAttribute('aria-pressed',restored.watch_later);
-            later.innerHTML=restored.watch_later?icon('check'):icon('bookmark-plus');
-          }})}).catch(error=>actionFailure('更新稍后看',error)).finally(()=>setActionBusy(later,false));return}
-      if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();e.stopPropagation();toggleSelection(it.id,e.shiftKey);return}
-      if(e.target.closest('[data-open]')){e.stopPropagation();openCard(+el.dataset.id,el);return}
-      /* 只认卡片自己身上的实体链接。资料页把 `data-entity-kind` 写在 `#index` 上，
-         无界的 `closest` 会一路找到它：卡片上任何一次点击都变成「再打开一次这一页」，
-         底下的标签和播放分支一个都轮不到。 */
-      const ent=e.target.closest('[data-entity-kind]');
-      if(ent&&el.contains(ent)){e.stopPropagation();openEntity(ent.dataset.entityKind,ent.dataset.entityName);return}
-      const unownedLink=e.target.closest('[data-open-unowned]');
-      if(unownedLink&&el.contains(unownedLink)){e.stopPropagation();openUnowned();return}
-      /* 卡片上的标签是「只看这个标签」，已经在筛它就取消。在哪一屏点就在哪一屏
-         生效：目录上换成这个标签，资料页上是在这个人／厂牌内部换。 */
-      const tg=e.target.closest('.tg');
-      if(tg){e.stopPropagation();
-        commitContextFilter(filters=>{
-          filters.tag=tagPressed(filters.tag,tg.dataset.tag)?'':tg.dataset.tag});
-        window.scrollTo({top:0,behavior:'smooth'});return}
-      if(e.shiftKey||e.ctrlKey||e.metaKey||selectMode){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}
-      openCard(+el.dataset.id,el);
-    };
-    el.querySelectorAll('[data-open]').forEach(opener=>{
-      opener.dataset.openWired='1';
-      opener.onclick=e=>{e.stopPropagation();if(selectMode||e.shiftKey||e.ctrlKey||e.metaKey){e.preventDefault();toggleSelection(it.id,e.shiftKey);return}openCard(+el.dataset.id,el)};
-    });
-    if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);
-  });
-}
 /* 馆藏卡片网格（`catalog-grid` island）用的助手与动作。各只有一份、身份不变：卡片按引用
    比较，每次推新对象进去就是整屏重画。 */
 const gridHelpers={
@@ -3986,8 +3738,8 @@ const gridHelpers={
   wireHover:(el,it)=>wireHover(el,it),
   releaseHover:el=>{el._stopHover?.();releaseHoverPreviews(el)},
 };
-/* 打开一张作品卡，同 `wireCards` 的 `openCard`：小窗开着时普通视频卡直接在小窗里换片，
-   分卷／版次组和要先过门的条目照旧走详情。 */
+/* 打开一张作品卡：小窗开着时普通视频卡直接在小窗里换片，分卷／版次组各进自己的队列，
+   其余打开详情。 */
 function openGridCard(it,anchor){
   if(miniplayerTakesCard(it)){miniplayerPlay(it.id);return}
   if(it.part_group){openParts(it.part_group.seed_id,it.id,true,anchor);return}
@@ -8296,24 +8048,6 @@ function setHomeLayout(value){
   if(!$('#grid').hidden)repaintCatalogGrid();
 }
 function wireJavLayoutButtons(root){wireIconSwitch(root,'data-jav-layout',setJavLayout)}
-/* 版式切换一次请求都不发。卡片 HTML 完全由 CACHE 里那条媒体决定，走 `loadCatalog()` 的话
-   会先把整屏换成骨架、再重新取一遍同样的数据，于是纯展示层的一个开关被演成了一次页面
-   加载：列表整屏消失、骨架闪一下、内容再回来。
-   逐张换 outerHTML，不重跑 batchWithMix：网格里的顺序、Mix 的落位和分卷／版次折叠都是
-   前几批累积下来的结果，重跑一遍分组会把它们重排。 */
-function repaintCatalogCards(){
-  // 回收站和垃圾文件的卡片由 resourceCardHtml／junkCardHtml 画，形状和动作都不同，
-  // 不能拿 cardHtml 重画；这两屏本来也没有版式开关。
-  if(state.state==='trash'||state.state==='ads')return;
-  const grid=$('#grid');
-  releaseHoverPreviews(grid);
-  grid.querySelectorAll('.card[data-id],.card[data-mix-seed]').forEach(card=>{
-    const seed=card.dataset.mixSeed;
-    const it=CACHE[seed||card.dataset.id];
-    if(it)card.outerHTML=seed?mixCardHtml(it):cardHtml(it);
-  });
-  wireCards(grid);wireMixCards(grid);paintSelection();
-}
 function setJavLayout(value){
   appSettings.javLayout=normalizeJavLayout(value);
   saveSettings();
@@ -8860,53 +8594,6 @@ $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearc
   .then(()=>{if(document.activeElement!==$('#q'))return;
     // 带着 `?q=` 进来再点回输入框时，框里已经有词，补全该跟着这个词给。
     renderSearchMenu();refreshSearchMenu()})});
-
-/* 竖屏带每接一页出现一条，位置在这一页新增的那几行里随机取一个行边界。
-   固定第几行的写法从第二屏起就成了可预期的栏目，而这条带子的作用正是打断节奏——
-   位置可预期，节奏就不再被打断。每条带子取不同的一批竖屏，翻下去不会反复看到同 18 个。 */
-const SHORTS_BATCH=18;
-let shortsOffset=0;
-async function loadShorts(requestSeq,surface,{reset=false,addedFrom=0}={}){
-  // JAV 模式不插竖屏带：番号发行物本身是横版，竖屏是另一类内容。
-  // 主列表的 exclude_vertical 管不到这条——它是独立请求、独立插入的。
-  if(!isCatalogPath(decodeURIComponent(location.pathname))||javActive()||state.orient==='竖屏'
-     ||state.state==='ads'||state.state==='trash')return;
-  if(reset)shortsOffset=0;
-  const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  /* 排序跟着主列表走，不再写死 sort=new；换一批时竖屏带也要一起换。 */
-  p.set('orient','竖屏');p.set('limit',SHORTS_BATCH);p.set('offset',shortsOffset);
-  const d=await surfaceApi(surface,'/api/items?'+p);
-  if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-  if(!d.items.length){shortsOffset=0;return}
-  cache(d.items);
-  const html=`<section class="shorts-inline"><h2 class="disp">竖屏 <span class="mono shortscount">${
-    d.total.toLocaleString()} 个</span><button class="shorts-enter" type="button">${
-    icon('gallery-vertical-end')}<span>进入沉浸模式</span></button></h2><div class="srow">${
-    d.items.map(it=>cardHtml(it,'scard')).join('')}</div></section>`;
-  const strip=splitGridForShorts(html,addedFrom);
-  if(!strip)return;
-  shortsOffset=d.has_more===false?0:shortsOffset+SHORTS_BATCH;
-  strip.querySelector('.shorts-enter').onclick=()=>openTok();
-  wireCards(strip.querySelector('.srow'),openTok); wireDrag(strip.querySelector('.srow'));
-}
-/* 从行边界剪开当前这段视频：剪点之后的卡整段搬进新的 `.grid`，竖屏带插在两段之间。
-   只在行边界上剪，否则上一行会被截断留下一段空白；两端各留至少一行，
-   剪在头尾就成了「置顶」或「垫底」，不是穿插。 */
-function splitGridForShorts(html,addedFrom){
-  const section=lastGridSection();
-  const cards=[...section.children].filter(x=>x.matches('.card[data-id]'));
-  const columns=Math.max(1,getComputedStyle(section).gridTemplateColumns.split(' ').length);
-  const boundaries=[];
-  for(let i=Math.max(columns,Math.ceil(Math.max(0,addedFrom)/columns)*columns);i<cards.length;i+=columns)
-    boundaries.push(i);
-  if(!boundaries.length)return null;
-  const at=cards[boundaries[Math.floor(Math.random()*boundaries.length)]];
-  const tail=document.createElement('div');tail.className='grid';
-  for(let node=at;node;){const move=node;node=node.nextElementSibling;tail.append(move)}
-  section.after(tail);
-  tail.insertAdjacentHTML('beforebegin',html);
-  return tail.previousElementSibling;
-}
 
 /* ── 就地展开播放 ── */
 /* 版次徽章的配色跟卡片标题上的那套走。多一个 `有码`：卡片上正片不加角标是对的

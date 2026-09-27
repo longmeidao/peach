@@ -65,6 +65,19 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 - 每份列表是共用的 Mix 卡 `components/mix-card.tsx`：纸边、黑底封面、玻璃徽标、叠放头像，几何写在 `styles.css` 的 `[data-mix-*]`；悬停翻页是 `components/use-stack-flip.ts`，时序同遗留层 `wireStackFlip`，翻页门槛（多选、遮挡、减少动效、滚动中）由壳经 `canFlip` 递进来。
 - 改名弹层、换头像与裁剪封面共用 `components/modal-frame.tsx` 的外壳，`form` 档 540px 同 `.geist-modal`。
 
+### 馆藏网格
+
+目录（`/` 与筛选态、`/trash`）、资料页作品区和详情页的接着看都由 `catalog-grid` island 画（`frontend/src/react/catalog-grid/`）。作品卡是 `components/media-card.tsx`，Mix 卡用播放列表页那张 `components/mix-card.tsx`。三种取数按 `mode` 分：
+
+- `catalog` 挂在 `#grid` 上，筛选态是壳的 `state`，经 `filters` 递进；壳要求重读时走 `loadCatalog`，它把 `revision` 加一，查询换键重取、不重挂。读数行 `#count` 的结构归壳，读数那一格、`#loadSentinel` 的自动续页、Mix 落位、竖屏带与分卷／版次折叠都在岛里。
+- `entity` 挂在资料页作品区的 `[data-entity-grid]` 上：第一页随页头一起取来，作为 `initial`；续页经 `fetchPage` 回到壳的 `fetchEntityItems`。每画一次 `revision` 加一，每次进入各用一把查询键。
+- `items` 挂在 `#nrow` 上：壳手上已有那一批，岛只画卡。
+- 版式、选中态与快进秒数经 `updateIsland` 推进来：换版式只重画，已载入的分页原样保留。`selected` 每次推一个新的 `Set`。
+- 壳在卡上还做三件事：悬停预览（`wireHover`／`releaseHover` 经 `helpers` 递进，状态写在卡的 `data-previewing`／`data-longhover` 上）、封面取景、图片微光（`PENDING_IMAGES` 认 `[data-media-art]>img`）。卡片的结构钩子全是 `data-media-*`；壳插进封面格的 `video.hv`、`img.hvframes` 与封套 `img.poster` 用自己的类名，样式在 `12-cards.css`。
+- 离场：`claimSurface` 卸 `#grid` 与 `#nrow`；资料页作品区整块重写之前先卸（`releaseEntityGrid`）；接着看在舞台清场时经 `onStageDispose` 卸。
+- 屏外卡用 `content-visibility` 跳过封面与元信息区的渲染，不做虚拟列表。
+- 单卡写操作都由用户点击触发：稍后看走 `actions.watchLater`，回收站卡的还原走 `actions.resourceOperation`，做完给撤销；彻底删除只在批量条上，先过 `confirmModal` 的危险档。
+
 ### 产物缓存
 
 产物名字不带内容哈希：引用它的 `web/app.js` 不经过构建，构建时改不了那里的路径。
@@ -101,7 +114,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `09-skeleton.css` | Geist Skeleton 与各页骨架变体 |
 | `10-photolight.css` | 灯箱的缩放条、详情、缩略带与窄屏 |
 | `11-identity.css` | 身份组、演员与系列链接、重复项、质量清单、复核对照 |
-| `12-cards.css` | 主区网格与卡片，含悬停预览、密度、短片带 |
+| `12-cards.css` | 壳自己画的卡片（垃圾文件、关注、新作）、悬停预览层与密度 |
 | `13-stage.css` | 就地展开的舞台与 Mix 队列 |
 | `14-player.css` | video.js 定制、播放统计、播放器的脱盘占位 |
 | `15-detail.css` | 详情侧栏、标签选择器、反馈条、相关推荐 |
