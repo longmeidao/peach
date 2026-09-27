@@ -26,6 +26,9 @@
   .peach-react [data-follow-title] { font: var(--board-figure); font-size: var(--fs-xl); }
 }
 .peach-react [data-follow-head-actions] { display: inline-flex; flex: none; align-items: center; gap: 8px; }
+/* 「管理关注」「抓更早的一页」同遗留层 `.fbtn`：左边留 12px，图标 14px，与文字隔 4px（文字自带的内边距）。 */
+.peach-react button:is([data-follow-manage], [data-follow-older]):has(> svg) { gap: 0; padding-left: 12px; }
+.peach-react button:is([data-follow-manage], [data-follow-older]) > svg { width: 14px; height: 14px; }
 
 /* ── 创作者行与题材行 ──
  * 同首页那两排（`#tiers .av`、`#tiers .brandpill`）：圆头像 48px、名字一行 Caption；题材是 40px 高的
@@ -147,6 +150,10 @@
   scrollbar-width: none;
 }
 .peach-react [data-follow-filter-glass] > [data-filter-row="bottom"]::-webkit-scrollbar { display: none; }
+/* 窄屏里横滚的是整排，排序键那格不再裁落影，左边那 2px 留边收掉，换一批键贴着读数排。 */
+@media (max-width: 760px) {
+  .peach-react [data-follow-filter-glass] [data-entity-sorts] { padding-left: 0; }
+}
 /* 关注页这块浮层的药丸间距同首页（`03-filterbar.css` 的 `.viewpills`、`.tagscroll`）是 7px，资料页收到 6px。 */
 .peach-react [data-follow-filter-glass] :is([data-entity-scroll], [data-entity-states], [data-entity-tags]) { gap: 7px; }
 /* 来源键只有站点图标，是一枚 34px 宽的药丸。 */
