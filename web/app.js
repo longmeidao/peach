@@ -20,7 +20,7 @@ import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPrefer
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, collectionSummaryHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
-  dissolveValue, popBadges, popCount, revealSkeleton, revealTexts, setIconSwap, swapText,
+  dissolveValue, popBadges, revealSkeleton, revealTexts, setIconSwap, swapText,
   mediaViewButtonsHtml, boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, wireContextCard, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
@@ -248,7 +248,7 @@ function wireCountRow(){
     const next=nextSortState(b.dataset.sort,state.sort,state.dir);
     if(!next)return;
     state.sort=next.sort;state.dir=next.dir;
-    load(true)});
+    loadCatalog()});
 }
 /* 骨架只盖这次加载真会变的东西，也就是计数那一串数字。筛选条照常画出来并接上事件：
    连它一起清空的话，点下去的那一枚会在等数据的这段时间里失去高亮，看着像没点上；
@@ -266,14 +266,14 @@ const lastGridSection=()=>{
    内容（翻页、换筛选）不走这条——`revealSkeleton` 自己看出去的那一屏里有没有占位。 */
 const setGridCards=html=>revealSkeleton($('#grid'),()=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`});
 const appendGridCards=html=>lastGridSection().insertAdjacentHTML('beforeend',html);
-const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id]');
+const gridCards=()=>document.querySelectorAll('#grid > .grid > .card[data-id],#grid [data-media-grid] > [data-media-card][data-id]');
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
   count.setAttribute('aria-busy','true');
   count.setAttribute('aria-label',label);
   /* 垃圾文件那一屏的计数行是自己的：一块摘要面加一条分类切换，没有排序也没有换批。
      照目录那条画的话，等待期间摆着一排这一页根本没有的排序键，数据到货整行再换成
-     另一种东西。版式类平时由 load() 写，深链冷启动时骨架排在它前面，这里一并带上。 */
+     另一种东西。版式类平时由 loadJunk() 写，深链冷启动时骨架排在它前面，这里一并带上。 */
   const junk=decodeURIComponent(location.pathname)==='/junk-files';
   count.classList.toggle('manage-static',junk);
   count.classList.toggle('junkcount',junk);
@@ -287,9 +287,11 @@ function renderCatalogLoading(label='正在读取作品'){
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
      `has_more` 重新决定，所以这里只管收，不必记住原值。 */
   $('#loadSentinel').hidden=true;
+  fitSkeleton(count);
+  /* 网格已经挂着时骨架归它自己铺：`#grid` 是它的容器，壳往里写会把 React 根冲掉。 */
+  if(islandMounted($('#grid')))return;
   setGridCards(pageSkeletonHtml(label,
     {cards:true,className:'catalog-skeleton postercard-skeleton'}));
-  fitSkeleton(count);
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -388,7 +390,7 @@ function renderInitialSurfaceLoading(){
     '/playlists','/resource-sync','/follow','/follow-manage','/configuration','/activity']);
   if(management.has(path)||path.startsWith('/follow/item/')){
     hideDiscoveryBars();
-    const stats=$('#stats');stats.hidden=false;$('#grid').innerHTML='';
+    const stats=$('#stats');stats.hidden=false;clearCatalogGrid();
     stats.innerHTML=path.startsWith('/follow/item/')?detailSkeletonHtml():path.startsWith('/follow')&&path!=='/follow-manage'
       ?followSkeletonHtml('正在读取关注内容')
       :managementPlaceholder(path);
@@ -402,7 +404,7 @@ function renderInitialSurfaceLoading(){
   }
   if(/^\/(?:performers|creators|studios|agencies)\//.test(path)){
     hideDiscoveryBars();
-    $('#index').hidden=false;$('#grid').innerHTML='';
+    $('#index').hidden=false;clearCatalogGrid();
     // 形状名单这时刚发出去：等它一下再画，骨架第一帧就带着这一位有的那两块。
     const kind=ROUTE_ENTITIES[path.split('/')[1]],name=path.split('/').slice(2).join('/');
     void waitEntityShapes().then(()=>{
@@ -415,7 +417,7 @@ function renderInitialSurfaceLoading(){
   /* 未匹配的地址没有随后的读取，不能留一张永远不会被替换的目录骨架。合法的目录、
      回收站和沉浸模式都有路由，才进入各自真实请求对应的等待态。 */
   if(!matchRoute(ROUTES,path)){
-    $('#grid').innerHTML='';$('#count').textContent='';$('#loadSentinel').hidden=true;
+    clearCatalogGrid();$('#count').textContent='';$('#loadSentinel').hidden=true;
     return;
   }
   renderCatalogLoading();
@@ -468,6 +470,9 @@ const claimSurface=path=>{
   unmountIsland($('#stats'));
   /* 资料页那块（换头像挂在它的圆框上）在管理区打开时只是被藏起来，DOM 还在。 */
   unmountIsland($('#index'));
+  /* 目录网格同理：目录页与回收站之间它一直挂着，换筛选只是换查询；去别的页面就卸掉，
+     那些页面接着会往 `#grid` 里写自己的东西。 */
+  if(!isCatalogPath(path)&&path!=='/trash')clearCatalogGrid();
   surfaceRequests?.abort();
   surfaceRequests=new AbortController();
   surfaceEpoch++;return surfaceToken(path)};
@@ -650,7 +655,7 @@ function renderJavImageSetting(){
     [['cover','官方封面',''],['thumbnail','预览图','']],appSettings.javImage,{attr:'data-jav-image-choice',className:'javimageswitch',text:true});
   wireIconSwitch(mount,'data-jav-image-choice',choice=>{
     appSettings.javImage=normalizeJavImage(choice);saveSettings();
-    syncJavImages(document,appSettings.javImage);
+    syncJavImages(document,appSettings.javImage);repaintCatalogGrid();
     document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
     repaintDetailPoster();
   });
@@ -834,23 +839,24 @@ function renderThemeSetting(){
 const SETTING_SELECTS=[
   ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
     ()=>appSettings.batchSize,
-    value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')load(true)}],
+    value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')loadCatalog()}],
   ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
     ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
     ()=>appSettings.defaultSort,
     value=>{appSettings.defaultSort=value;syncSortDirectionSetting();saveSettings();state.sort=appSettings.defaultSort;
-      state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
+      state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')loadCatalog()}],
   ['defaultSortDirectionSetting','默认排序方向',[['desc','降序'],['asc','升序']],
     ()=>appSettings.defaultSortDirection==='asc'?'asc':'desc',
-    value=>{appSettings.defaultSortDirection=value;syncSortDirectionSetting();saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')load(true)}],
+    value=>{appSettings.defaultSortDirection=value;syncSortDirectionSetting();saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')loadCatalog()}],
   ['hoverDelaySetting','悬停放大',[['0','关闭'],['3','3 秒'],['5','5 秒'],['8','8 秒']],
     ()=>appSettings.hoverDelaySeconds,
     value=>{appSettings.hoverDelaySeconds=boundedPreference(+value,0,60,5);
-      if(!appSettings.hoverDelaySeconds)document.querySelectorAll('.previewing,.longhover').forEach(el=>el.classList.remove('previewing','longhover'));
+      if(!appSettings.hoverDelaySeconds)document.querySelectorAll('.previewing,.longhover,[data-previewing],[data-longhover]')
+        .forEach(el=>{setHoverState(el,'previewing',false);setHoverState(el,'longhover',false)});
       document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
   ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
     ()=>appSettings.seekSeconds,
-    value=>{appSettings.seekSeconds=+value||10;saveSettings()}],
+    value=>{appSettings.seekSeconds=+value||10;saveSettings();repaintCatalogGrid()}],
   /* 档位跟着这台机器走（/api/thumbnail-jobs），不存在本地：跑的是这台机器上的一条
      长任务，从另一台设备打开设置要看到的是它正在按什么密度采，不是那台设备上次选的。
      初值写 off，真值由 `loadVideoThumbnailSetting` 读回来填。 */
@@ -1265,8 +1271,8 @@ let barsContext={type:'home',filters:state},detailReturnBarsContext=null;
 /* 所有明确的「回首页」动作必须得到同一个干净状态。只改地址为 `/` 不够：state.jav
    等内存筛选还会继续进入 /api/items，让页面看似首页却只剩 JAV。来源选择是用户的
    浏览范围，继续保留；其余分类、搜索和排序恢复首页默认值。
-   barsContext 也在这里回到 home：从资料页点侧栏或左上角标志回首页时，load(true)
-   确实会把它拨回来，但 openHome 是先 buildBars() 后 load(true)，buildBars 开头就把
+   barsContext 也在这里回到 home：从资料页点侧栏或左上角标志回首页时，loadCatalog()
+   确实会把它拨回来，但 openHome 是先 buildBars() 后 loadCatalog()，buildBars 开头就把
    activeFilterState() 取走了——取到的是资料页那份筛选，它没有 state 这个键，
    于是四枚视图胶囊一枚都不亮，首页看上去像谁都没选中。 */
 function resetHomeState(){
@@ -1298,19 +1304,19 @@ const clearSearchField=(snapshot=null)=>{
 function openUnowned(){
   resetHomeState();state.owner='none';
   clearSearchField();disposeStage(false);showHomeSurfaces();
-  route(homePath());buildEdge();buildBars();load(true);
+  route(homePath());buildEdge();buildBars();loadCatalog();
   window.scrollTo({top:0,behavior:'smooth'});
 }
 /* 详情页那枚产地和未归属同一种东西：它标的不是一句说明，是馆藏里一个能筛的集合。 */
 function openRegion(region){
   resetHomeState();state.region=region||'none';
   clearSearchField();disposeStage(false);showHomeSurfaces();
-  route(homePath());buildEdge();buildBars();load(true);
+  route(homePath());buildEdge();buildBars();loadCatalog();
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function openHome(scroll=false){
   resetHomeState();route('/');clearSearchField();disposeStage(false);showHomeSurfaces();
-  buildEdge();buildBars();load(true);
+  buildEdge();buildBars();loadCatalog();
   if(scroll)window.scrollTo({top:0,behavior:'smooth'});
 }
 /* `onboarding=1` 来自设置完成页。标记会在 Peach 的每一页保持生效；清单只读真实接口，
@@ -2826,6 +2832,8 @@ let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface
 const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
   document.querySelectorAll('.card[data-id]').forEach(card=>card.classList.toggle('selected',selected.has(+card.dataset.id)));
+  // 目录网格的选中态归 React：每次推一份新的集合，卡片按引用比较才看得出变了。
+  if(islandMounted($('#grid')))updateIsland($('#grid'),{selected:new Set(selected),selectMode});
   document.querySelectorAll('.followitem[data-follow-item]').forEach(card=>
     card.classList.toggle('selected',followSelected.has(+card.dataset.followItem)));
   const followPage=location.pathname==='/follow',junkPage=location.pathname==='/junk-files';
@@ -2937,12 +2945,12 @@ $('#batchbar').querySelectorAll('[data-junk-batch]').forEach(button=>button.oncl
   setActionBusy(button);
   try{
     await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});
-    setSelectMode(false,true);adsBatch=null;await load(true);
+    setSelectMode(false,true);adsBatch=null;await loadCatalog();
     const inverse=operation==='dispose'?'restore':operation==='dismiss-junk'?'reconsider-junk':
       operation==='reconsider-junk'?'dismiss-junk':null;
     actionReceipt(`已批量${labels[operation]}：${ids.length} 项`,{undo:inverse?async()=>{
       await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation:inverse})});
-      await load(true);
+      await loadCatalog();
     }:null});
   }catch(error){setActionBusy(button,false);throw error}
   finally{setActionBusy(button,false);paintSelection()}
@@ -2974,25 +2982,30 @@ applyDensity();
 
 /* ── 悬停预览：只有本地文件拉真视频。
    115 / PikPak 等远端源只扫本地接触印相，避免页面移除后继续下载或填满缓存。 ── */
+/* 卡片有两种：壳拼的 `.card`，和 React 网格里的 `[data-media-card]`／`[data-mix-card]`。 */
+const HOVER_CARDS='.card,[data-media-card],[data-mix-card]';
 function releaseHoverPreviews(root=document,except=null){
   if(!root||!root.querySelectorAll)return;
-  root.querySelectorAll('.card').forEach(card=>{
+  root.querySelectorAll(HOVER_CARDS).forEach(card=>{
     if(card!==except&&card._stopHover)card._stopHover()});
   root.querySelectorAll('video.hv').forEach(v=>{
-    if(v.closest('.card')===except)return;
+    if(v.closest(HOVER_CARDS)===except)return;
     if(v._hop)clearInterval(v._hop);v.pause();v.removeAttribute('src');v.load();v.remove()});
   // 远端源那一层和视频同样要兜一遍：卡片被重画过的话，旧元素上的 `_stopHover`
   // 已经跟着旧 DOM 走了，只靠上面那轮回调收不到它留在画面上的扫视图。
   root.querySelectorAll('img.hvframes').forEach(im=>{
-    if(im.closest('.card')===except)return;
+    if(im.closest(HOVER_CARDS)===except)return;
     im.removeAttribute('src');im.remove()});
 }
+/* 悬停态按卡的来源写：壳拼的卡认类名；React 卡的类名归 React 管、不往上加，
+   只写 `data-previewing`／`data-longhover`。 */
+function setHoverState(el,name,on){if(!el.matches('[data-media-card],[data-mix-card]')){el.classList.toggle(name,on);return}if(on)el.dataset[name]='';else delete el.dataset[name]}
 function wireHover(el,it){
-  const pic=el.querySelector('.pic'); if(!pic)return;
+  const pic=el.querySelector('.pic,[data-media-pic]'); if(!pic)return;
   el.dataset.hoverMode=it.location==='local'?'video':'frames';
   let longTimer=null;
-  const armLong=()=>{clearTimeout(longTimer);if(!appSettings.hoverDelaySeconds)return;el.classList.add('previewing');longTimer=setTimeout(()=>{if(appSettings.hoverDelaySeconds)el.classList.add('longhover')},appSettings.hoverDelaySeconds*1000)};
-  const clearLong=()=>{clearTimeout(longTimer);el.classList.remove('previewing','longhover')};
+  const armLong=()=>{clearTimeout(longTimer);if(!appSettings.hoverDelaySeconds)return;setHoverState(el,'previewing',true);longTimer=setTimeout(()=>{if(appSettings.hoverDelaySeconds)setHoverState(el,'longhover',true)},appSettings.hoverDelaySeconds*1000)};
+  const clearLong=()=>{clearTimeout(longTimer);setHoverState(el,'previewing',false);setHoverState(el,'longhover',false)};
   if(it.location!=='local'){        // 远端源：只在接触印相的格子间扫视，零网络流量
     /* 扫视图是叠在画面之上新建的一层，不改任何已有 `<img>` 的 src。JAV 大图和小图
        版式里画面就是封面本身（`.poster.cover`），改它的 src 等于把封面当场换掉；
@@ -3037,7 +3050,7 @@ function wireHover(el,it){
       const SEG=[0.08,0.22,0.36,0.50,0.64,0.78,0.90]; let si=0, hop=null;
       const seek=()=>{try{v.currentTime=(v.duration||0)*SEG[si]}catch(e){}};
       v.addEventListener('loadedmetadata',()=>{
-        seek(); v.classList.add('on');armLong();
+        seek(); v.classList.add('on');v.dataset.playing='';armLong();
         hop=setInterval(()=>{si=(si+1)%SEG.length;seek()},1400);
         v._hop=hop;
       },{once:true});
@@ -3262,7 +3275,7 @@ function posterPanel(img,ratio){
    正封那时已经被 `clip-path` 切成一块，铺不到留白处。糊成一片的底用不着原件的像素，
    换回原件之后这一层仍取派生档。 */
 function coverBackdrop(img){
-  img.closest('.pic')?.style.setProperty('--cover-blur',
+  img.closest('.pic,[data-media-pic]')?.style.setProperty('--cover-blur',
     `url("${img.dataset.thumbSrc||img.currentSrc||img.src}")`);
 }
 /* 卡片先取封面的派生档（`/cover?thumb=1`）：高清原件一张解码 38 MB，一页几十张挤爆
@@ -3310,7 +3323,7 @@ document.addEventListener('load',event=>{
    收尾后类名一并摘掉：没到门槛就到手的直接摘，淡出过的等淡出完再摘，封面上平时不留
    那层 `::after`。React 索引页的头像框（`[data-person-ring]`）里那张图同样由遗留层拼，
    插进页面时照样被这里看见。 */
-const PENDING_IMAGES='.pic>img.poster,.ring>img,[data-person-ring]>img,.entityportrait>img';
+const PENDING_IMAGES='.pic>img.poster,[data-media-art]>img,.ring>img,[data-person-ring]>img,.entityportrait>img';
 const pendingSince=new WeakMap();
 function watchPendingImages(node){
   const found=node.matches(PENDING_IMAGES)?[node]:node.querySelectorAll(PENDING_IMAGES);
@@ -3601,7 +3614,7 @@ function junkCardHtml(it){
 }
 async function runJunkOperation(id,operation){
   await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})});
-  adsBatch=null;await load(true);
+  adsBatch=null;await loadCatalog();
 }
 function wireJunkCards(root){
   root.querySelectorAll('.junkcard').forEach(card=>{
@@ -3675,7 +3688,7 @@ function wireJunkNavigation(){
     if(selectMode)setSelectMode(false,true);
     if(link.hasAttribute('data-junk-kind-link'))junkKind=cleanJunkKind(link.dataset.junkKindLink||'');
     if(link.dataset.junkViewLink)junkView=link.dataset.junkViewLink;
-    adsBatch=null;route(junkPath());load(true);
+    adsBatch=null;route(junkPath());loadCatalog();
   });
 }
 function openResourceCard(id,anchor=null){
@@ -3698,11 +3711,11 @@ function wireResourceCardActions(root){
       try{
         const id=+card.dataset.id;
         await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})});
-        await load(true);
+        await loadCatalog();
         const inverse=operation==='restore'?'dispose':'restore';
         actionReceipt(operation==='restore'?'已还原':'已移入回收站',{undo:async()=>{
           await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation:inverse})});
-          await load(true);
+          await loadCatalog();
         }});
       }catch(error){
         actionFailure('操作',error);
@@ -3959,6 +3972,69 @@ function wireCards(root,onClick){
     if(it&&(!it.medium||it.medium==='video'))wireHover(el,it);
   });
 }
+/* 馆藏卡片网格（`catalog-grid` island）用的助手与动作。各只有一份、身份不变：卡片按引用
+   比较，每次推新对象进去就是整屏重画。 */
+const gridHelpers={
+  coverHtml:(it,layout,eager)=>coverImage(it,layout,eager),
+  badgeHtml:(location,cost)=>srcBadge(location,cost),
+  titleHtml:(it,raw)=>javTitleHtml(it,raw),
+  displayName:(it,raw)=>javDisplayName(it,raw),
+  avatarHtml:(name,ref,kind)=>avatarInner(name,ref,kind?REP[name]:null,kind||'performer'),
+  tagLabel:tag=>tagLabel(tag),
+  wireHover:(el,it)=>wireHover(el,it),
+  releaseHover:el=>{el._stopHover?.();releaseHoverPreviews(el)},
+};
+/* 打开一张作品卡，同 `wireCards` 的 `openCard`：小窗开着时普通视频卡直接在小窗里换片，
+   分卷／版次组和要先过门的条目照旧走详情。 */
+function openGridCard(it,anchor){
+  if(miniplayerTakesCard(it)){miniplayerPlay(it.id);return}
+  if(it.part_group){openParts(it.part_group.seed_id,it.id,true,anchor);return}
+  if(it.edition_group){openEditions(it.edition_group.seed_id,it.id,true,anchor);return}
+  openItem(it.id,true,null,anchor);
+}
+/* 稍后看只由点击触发，写 ledger；成功与撤销都把新值回给卡片上那枚键。 */
+async function toggleWatchLater(it,onChange){
+  try{
+    const r=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
+    it.watch_later=r.watch_later;onChange(!!r.watch_later);
+    actionReceipt(r.watch_later?'已加入稍后看':'已移出稍后看',{undo:async()=>{
+      const restored=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
+      it.watch_later=restored.watch_later;onChange(!!restored.watch_later);
+    }});
+  }catch(error){actionFailure('更新稍后看',error)}
+}
+/* 回收站卡上那枚键：还原或移入回收站，写 ledger，做完重读目录并给撤销。失败再抛给卡片，
+   它据此把键恢复成可点。 */
+async function runResourceOperation(it,operation){
+  try{
+    await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[it.id],operation})});
+    await loadCatalog();
+    const inverse=operation==='restore'?'dispose':'restore';
+    actionReceipt(operation==='restore'?'已还原':'已移入回收站',{undo:async()=>{
+      await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[it.id],operation:inverse})});
+      await loadCatalog();
+    }});
+  }catch(error){actionFailure('操作',error);throw error}
+}
+const gridActions={
+  open:(it,anchor)=>openGridCard(it,anchor),
+  openResource:(it,anchor)=>miniplayerTakesCard(it)?miniplayerPlay(it.id):openResourceCard(it.id,anchor),
+  openShort:it=>miniplayerTakesCard(it)?miniplayerPlay(it.id):openTok(it.id),
+  openShorts:()=>openTok(),
+  openMix:(seedId,anchor)=>openMix(seedId,seedId,true,anchor),
+  openEntity:(kind,name)=>openEntity(kind,name),
+  openUnowned:()=>openUnowned(),
+  /* 卡片上的标签是「只看这个标签」，已经在筛它就取消。在哪一屏点就在哪一屏生效。 */
+  toggleTag:tag=>{
+    commitContextFilter(filters=>{filters.tag=tagPressed(filters.tag,tag)?'':tag});
+    window.scrollTo({top:0,behavior:'smooth'});
+  },
+  toggleSelection:(id,range)=>toggleSelection(id,range),
+  watchLater:(it,onChange)=>toggleWatchLater(it,onChange),
+  resourceOperation:(it,operation)=>runResourceOperation(it,operation),
+  mixRelated:seedId=>mixRelated(seedId),
+  canFlip:()=>!selectMode&&!censorOn()&&!window.__scrolling&&!reduceMotion(),
+};
 
 /* ── 顶部标签条 + 抽屉 ── */
 /* 状态页把顶部三层收窄到本页口径，为的是不列出「在这一页一个作品都没有」的人和厂牌。
@@ -4082,11 +4158,11 @@ function commitContextFilter(mutate){
       buildBars();updateEntityCollection(target.kind,target.name,target.filters,true);return
     }
     mutate(state);barsContext={type:'home',filters:state};route(homePath());showHomeSurfaces();
-    buildBars();load(true);return
+    buildBars();loadCatalog();return
   }
   mutate(state);route(homePath());
   applyFilterStateInPlace(state);refreshFacetCounts(barsContext);
-  load(true);
+  loadCatalog();
 }
 /* 首屏时顶部三层和标签条还是两个空 div，而这一次请求要花约一秒。Geist 的判据是
    骨架宽高必须等于最终内容——「200×20 的块变成 80×16 的字读起来像故障」——所以
@@ -4285,7 +4361,7 @@ function wireViewPills(){
   pills.forEach(b=>b.onclick=e=>{
     e.preventDefault();state.state=b.dataset.state;
     pills.forEach(p=>p.setAttribute('aria-pressed',String(p===b)));syncViewGlide(true,b);
-    route(homePath());buildBars();load(true)});
+    route(homePath());buildBars();loadCatalog()});
   /* 玻璃跟着指针走，不等点击：指到哪一枚就滑过去，指针离开这一排再回到真正选中的
      那枚。这一排是四选一，滑过去等于先把这一下的结果比划出来，点不点是下一步的事。
      `aria-pressed` 全程不动——移过去不是选中，读屏和键盘那边不该跟着变。 */
@@ -4569,11 +4645,11 @@ async function buildBars(){
     if(expanded)group.querySelector('.board-section-toggle').click();
     bind();hold();requestAnimationFrame(hold);});
 }
-/* 上一次画出来的读数。整行重画时读数那一格跟着重建，靠它判断这次是换了值还是刚出现。 */
-let lastCountReadout='';
-/* 排序和换批都属于当前列表，放在计数行，不占用全局导航。 */
-function renderCount(){
-  const n=gridCards().length;   // 竖屏带里的 .scard 不计入「显示 N」
+/* 排序和换批都属于当前列表，放在计数行，不占用全局导航。目录网格每接一页报一次总数与
+   显示的卡数（竖屏带与 Mix 不算）；读数那一格（`data-count-readout`）由网格按位错峰写进去，
+   它记着上一次的值，分得清「换了个数」和「刚建出来」。 */
+function paintCatalogCount(nextTotal,n){
+  total=nextTotal;buildManageBar();
   const trash=state.state==='trash';
   /* 「清空回收站」和左边的计数说的是同一批文件，挂在说明行右端。它自己占一行时，
      标题和网格之间会空出一条只放一个按钮的带子。 */
@@ -4585,15 +4661,6 @@ function renderCount(){
     (trash?'':`<span class="mono" data-count-readout></span>`)
     // 回收站是待清理队列，不是浏览列表：换一批和排序在这里没有意义。
     +(trash?'':countSortsHtml());
-  /* 这一行每次筛选都整块重画，读数那一格因此是新建出来的，自己不知道上一次是多少。
-     把上一次的值写回去它才分得清「刚建出来」和「换了个数」——只有后者按位错峰长出来，
-     首屏那一次不放动画。 */
-  const readout=$('#count [data-count-readout]');
-  if(readout&&!trash){
-    if(lastCountReadout)readout.dataset.popCount=lastCountReadout;
-    lastCountReadout=`${total.toLocaleString()} 个符合 · 显示 ${n}`;
-    popCount(readout,lastCountReadout);
-  }
   wireCountRow();
   const emptyTrash=$('#emptyTrash');
   if(emptyTrash)emptyTrash.onclick=async(e)=>{
@@ -4606,7 +4673,7 @@ function renderCount(){
       if(r.blocked&&r.blocked.length)throw new Error(`已永久删除 ${r.purged} 项；${r.blocked.length} 项未能删除，仍在回收站：\n`
         +r.blocked.slice(0,5).map(x=>`${x.path}（${x.reason}）`).join('\n'));
       actionReceipt(`已永久删除 ${r.purged} 项`);
-    }finally{await load(true)}
+    }finally{await loadCatalog()}
   }});
   };
 }
@@ -4677,7 +4744,7 @@ function ledgerGateNote(runtime,message,actionLabel,actionHref){
    两个都要调，由 `test_every_full_page_view_enters_through_the_shared_helpers` 兜住。 */
 const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
 function showManagementBody({manage=true,placeholder=''}={}){
-  $('#stats').hidden=false;$('#index').hidden=true;$('#grid').innerHTML='';
+  $('#stats').hidden=false;$('#index').hidden=true;clearCatalogGrid();
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   if(manage)buildManageBar();
   else{$('#managebar').hidden=true;$('#manageTitle').hidden=true;buildEdge()}
@@ -4722,12 +4789,12 @@ function showHomeSurfaces(){
      上一页挂在里面的 React 根（换头像）就没人卸，留着一棵管着已经不在页面上的节点的根。 */
   unmountIsland($('#index'));
   $('#stats').hidden=true;$('#index').hidden=true;
-  // 新作那一行由 `load()` 按路径重画；这里先收起，换页时不会有上一页的内容留着。
+  // 新作那一行由 `loadCatalog()` 按路径重画；这里先收起，换页时不会有上一页的内容留着。
   $('#feedNew').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
-function closeStats(push=true){if(push)route('/');showHomeSurfaces();load(true)}
+function closeStats(push=true){if(push)route('/');showHomeSurfaces();loadCatalog()}
 
 /* 未入库的新作：订阅源发现的番号，库里还没有文件（ADR-0042）。
  *
@@ -5059,7 +5126,7 @@ async function openResourceSync(push=true){
 function openTasteSignal(kind,name){
   if(kind==='tag'){
     state={...state,tag:name,tag_match:'all',creator:'',studio:'',q:'',state:'',orient:''};
-    clearSearchField();route(homePath());showHomeSurfaces();buildBars();load(true);return
+    clearSearchField();route(homePath());showHomeSurfaces();buildBars();loadCatalog();return
   }
   openEntity(kind,name);
 }
@@ -6689,7 +6756,7 @@ function indexPlaceholderHtml({kind,q,scope,view}){
 /* 屏幕上已经是同一张骨架就别重画：深链冷启动时首屏骨架先铺过一遍，innerHTML 换新节点会把
    shimmer 从头放一遍。 */
 function showIndexSkeleton(params){
-  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
+  $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const placeholder=indexPlaceholderHtml(params);
   if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==skeletonKeyOf(placeholder)){
@@ -6699,7 +6766,7 @@ function showIndexSkeleton(params){
 /* 回目录按标签筛选：点一枚是「只看这一枚」，按所选显示结果是照匹配方式拼几枚。 */
 function showIndexTags(tags,match){
   state={...state,state:'',tag:tags.join(','),tag_match:match};
-  setSelectMode(false,false);route(homePath());showHomeSurfaces();buildEdge();buildBars();load(true);
+  setSelectMode(false,false);route(homePath());showHomeSurfaces();buildEdge();buildBars();loadCatalog();
 }
 /* 在线那一档的人和标签还没进账本，没有资料页可去：他们名下那批东西全在关注页上，所以点开
    等于「关注 · 这一位 / 这一枚」。其余条件一并清空——从名册点进来问的是这一位的全部更新，
@@ -7528,7 +7595,7 @@ async function openEntity(kind,name,push=true){
   showHomeSurfaces();
   disposeStage(false);
   document.body.classList.add('entity-open');
-  $('#stats').hidden=true;$('#index').hidden=false;$('#grid').innerHTML='';$('#combo').innerHTML='';
+  $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();$('#combo').innerHTML='';
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const seq=++entityRequestSeq;
   /* 名单启动时就在取；深链直接落在资料页时它可能还在路上，稍等一下再画骨架，画出来
@@ -7559,7 +7626,7 @@ async function openEntity(kind,name,push=true){
   entityJavLayout=(kind==='performer'||kind==='studio')&&
     (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
   document.body.classList.add('entity-open');
-  $('#index').hidden=false;$('#grid').innerHTML='';$('#count').textContent='';
+  $('#index').hidden=false;clearCatalogGrid();$('#count').textContent='';
   $('#loadSentinel').hidden=true;
   /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
      圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
@@ -8162,7 +8229,7 @@ function openManage(section='stats'){
   /* 认不出的 section 一律落到垃圾文件：统计页那颗「查看垃圾文件」传的就是 `ads`，
      而垃圾文件是目录页的一个筛选态，没有自己的 section。 */
   state.orient='';state.state='ads';route(junkPath());
-  showHomeSurfaces();buildEdge();buildBars();load(true);
+  showHomeSurfaces();buildEdge();buildBars();loadCatalog();
 }
 /* JAV 模式。只有带番号的作品才有官方封套，发行时间排序、番号筛选都挂在这个语境上；
    资料页（女优/厂牌）进入时继承这个开关，因为那里同样是按番号浏览。
@@ -8224,10 +8291,10 @@ function setHomeLayout(value){
   appSettings.homeLayout=normalizeJavLayout(value);
   saveSettings();
   document.querySelectorAll('[data-home-layout]').forEach(input=>{input.checked=input.value===appSettings.homeLayout});
-  if(!$('#grid').hidden)repaintCatalogCards();
+  if(!$('#grid').hidden)repaintCatalogGrid();
 }
 function wireJavLayoutButtons(root){wireIconSwitch(root,'data-jav-layout',setJavLayout)}
-/* 版式切换一次请求都不发。卡片 HTML 完全由 CACHE 里那条媒体决定，走 `load(true)` 的话
+/* 版式切换一次请求都不发。卡片 HTML 完全由 CACHE 里那条媒体决定，走 `loadCatalog()` 的话
    会先把整屏换成骨架、再重新取一遍同样的数据，于是纯展示层的一个开关被演成了一次页面
    加载：列表整屏消失、骨架闪一下、内容再回来。
    逐张换 outerHTML，不重跑 batchWithMix：网格里的顺序、Mix 的落位和分卷／版次折叠都是
@@ -8256,7 +8323,7 @@ function setJavLayout(value){
       barsContext.type==='entity'?barsContext.filters:emptyEntityFilters());
     return;
   }
-  if(!$('#grid').hidden)repaintCatalogCards();
+  if(!$('#grid').hidden)repaintCatalogGrid();
 }
 function paintJavBar(){
   // 版式按钮现在长在排序行里（见 renderCount），这里只负责收掉旧容器。
@@ -8267,10 +8334,10 @@ function toggleJavMode(){
   if(state.jav!=='1'&&state.sort==='release'){state.sort='seed';state.dir=''}
   state.state='';state.orient='';
   route(state.jav==='1'?'/?jav=1':'/');
-  showHomeSurfaces();buildEdge();buildBars();load(true);
+  showHomeSurfaces();buildEdge();buildBars();loadCatalog();
 }
 /* 批量操作后回到刚才那一页，而不是首页列表。
-   实体资料页、索引页和管理区各有自己的取数路径，`load(true)` 只会重建首页网格，
+   实体资料页、索引页和管理区各有自己的取数路径，`loadCatalog()` 只会重建首页网格，
    于是在女优页选一批进回收站后会被莫名其妙地扔回首页。 */
 async function reloadCurrentSurface(){
   const index=$('#index');
@@ -8281,7 +8348,7 @@ async function reloadCurrentSurface(){
   }
   const hit=matchRoute(ROUTES,decodeURIComponent(location.pathname));
   if(hit?.route.reload){await hit.route.reload();return}
-  await load(true);
+  await loadCatalog();
 }
 function navOn(k){
   const path=decodeURIComponent(location.pathname);
@@ -8317,7 +8384,7 @@ function navTo(k){
   if(k==='shorts'){state.orient='竖屏';state.state=''}else{state.orient='';state.state=k}
   route(homePath());
   showHomeSurfaces();
-  buildEdge();buildBars();load(true);
+  buildEdge();buildBars();loadCatalog();
 }
 function syncHeaderActions(){
   const path=decodeURIComponent(location.pathname),parts=path.split('/').filter(Boolean);
@@ -8342,7 +8409,7 @@ function buildEdge(){
     const i=cur.indexOf(b.dataset.loc);
     i>=0?cur.splice(i,1):cur.push(b.dataset.loc);
     state.loc=cur.join(',');
-    buildEdge(); buildBars(); load(true);
+    buildEdge(); buildBars(); loadCatalog();
   });
   $('#edge').querySelectorAll('[data-nav]').forEach(b=>b.onclick=e=>{
     e.stopPropagation();navTo(b.dataset.nav)});
@@ -8410,102 +8477,132 @@ window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageC
 $('#scrim').onclick=()=>openDrawer(false);
 
 /* ── 列表 ── */
-async function load(reset){
-  const requestSeq=reset?++loadRequestSeq:loadRequestSeq;
-  const surface=reset?claimSurface(surfacePath()):surfaceToken(surfacePath());
-  if(reset)wireLoadMore($('#loadSentinel'),{}).destroy();
+/* 按当前筛选进入或重读目录：`/` 与四个筛选态、回收站、垃圾文件。返回的 Promise 在这次
+   取数落定（成功、为空或失败）时兑现，调用方 `await` 它再做下一步（撤销回执、换一批的转圈）。
+   目录与回收站的卡片网格是 `catalog-grid` island（ADR-0031）：已经挂着就把新筛选推过去，
+   它按新键重取、自己铺骨架；还没挂就挂上，首屏取完才换掉壳铺的骨架。垃圾文件那一屏是
+   逐项处置的队列，卡片与分页仍由壳画（`loadJunk`）。 */
+async function loadCatalog(){
+  const requestSeq=++loadRequestSeq;
+  const surface=claimSurface(surfacePath());
+  wireLoadMore($('#loadSentinel'),{}).destroy();
   // 已经挂着就让它接着跑：重挂要先清空容器，而它这一刻要说的话跟上一刻是同一句。
-  if(reset&&isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))
+  if(isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))
     void mountIsland('library-processing',$('#libraryProcessingNotice'),{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});
   /* 新作那一行只在目录路径上出现：管理页、回收站这些页面回答的是别的问题，一行「外面出了
      什么」摆在那里只是噪音。离开目录时要显式收起——它是 `#main` 的固定子节点，没人收就
      一直挂在那儿。 */
-  if(reset){
-    if(isCatalogPath(location.pathname))void renderFeedNew($('#feedNew'));
-    else{$('#feedNew').hidden=true;$('#feedNew').innerHTML=''}
-  }
+  if(isCatalogPath(location.pathname))void renderFeedNew($('#feedNew'));
+  else{$('#feedNew').hidden=true;$('#feedNew').innerHTML=''}
+  barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
+  if(state.state==='ads')return loadJunk(true,requestSeq,surface);
+  adsBatch=null;
+  renderCatalogLoading();
+  showHomeSurfaces();
+  renderCombo();
+  $('#count').classList.remove('manage-static','junkcount');
+  return paintCatalogGrid(surface);
+}
+/* 网格每次取数带一个代次：壳每要求一次重读就加一，查询随之换键重取。等着某一次重读的调用方
+   挂在这里，网格报告那一代（或更新的一代）落定时一起放行；网格被卸掉时也放行，不让
+   `await loadCatalog()` 永远挂着。 */
+let catalogRevision=0,catalogWaiters=[],catalogPainting=null;
+function settleCatalog(revision){
+  catalogWaiters=catalogWaiters.filter(waiter=>{if(waiter.revision>revision)return true;waiter.resolve();return false});
+}
+function releaseCatalogWaiters(){const waiters=catalogWaiters;catalogWaiters=[];waiters.forEach(waiter=>waiter.resolve())}
+/* 离开目录时收起网格。`#grid` 是 React 根的容器，壳往里写内容之前必须先卸掉它。 */
+function clearCatalogGrid(){
+  releaseHoverPreviews($('#grid'));unmountIsland($('#grid'));catalogPainting=null;releaseCatalogWaiters();
+  $('#grid').innerHTML='';
+}
+function paintCatalogGrid(surface){
+  const grid=$('#grid'),revision=++catalogRevision;
+  const settled=new Promise(resolve=>catalogWaiters.push({revision,resolve}));
+  const props=catalogGridProps();
+  /* 首屏还在取的那一次也算没挂好：`updateIsland` 对还没画出来的根是空操作，新筛选会丢。
+     重挂一次，上一次的取数随之作废。 */
+  if(islandMounted(grid)&&!catalogPainting){updateIsland(grid,props);return settled}
+  releaseHoverPreviews(grid);
+  const painting=catalogPainting=mountIsland('catalog-grid',grid,props,
+    {isCurrent:()=>surfaceCurrent(surface),reveal:revealSkeleton});
+  painting.catch(error=>console.error(error)).finally(()=>{
+    if(catalogPainting===painting)catalogPainting=null;
+    if(!islandMounted(grid))releaseCatalogWaiters();
+  });
+  return settled;
+}
+/* 一屏卡片的版式。只在真变了的时候换新对象：卡片按引用比较，版式对象每次都新建的话，
+   选一张卡也会让整屏每一张都重画一遍。 */
+let catalogLayoutValue=null;
+function catalogGridLayout(){
+  const next={active:cardLayoutActive(),size:cardLayout(),portrait:state.orient==='竖屏',javImage:appSettings.javImage};
+  if(!catalogLayoutValue||Object.keys(next).some(key=>next[key]!==catalogLayoutValue[key]))catalogLayoutValue=next;
+  return catalogLayoutValue;
+}
+/* 版式、「JAV 默认封面」、快进秒数这些展示层的设置变了，只推给正挂着的网格重画，不重取。 */
+function repaintCatalogGrid(){
+  const grid=$('#grid');
+  if(!islandMounted(grid))return;
+  releaseHoverPreviews(grid);
+  updateIsland(grid,{layout:catalogGridLayout(),seekSeconds:appSettings.seekSeconds});
+}
+function catalogGridProps(){
+  const path=decodeURIComponent(location.pathname),home=isCatalogPath(path),trash=state.state==='trash';
+  return {
+    mode:'catalog',helpers:gridHelpers,actions:gridActions,layout:catalogGridLayout(),
+    selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,revision:catalogRevision,
+    cache,wireDrag,settled:settleCatalog,
+    skeletonHtml:()=>pageSkeletonHtml('正在读取作品',{cards:true,className:'catalog-skeleton postercard-skeleton'}),
+    filters:{...state},batchSize:appSettings.batchSize,groupCollapse:appSettings.groupCollapse,
+    /* 只有首页默认列表排除竖屏——那里另有独立的竖屏带承接它们。搜索必须能搜到竖屏作品，
+       否则按名字找一条竖屏视频会得到 0 结果。JAV 模式恒不含竖屏：番号发行物本身就是横版。 */
+    excludeVertical:(home&&!state.q&&!state.orient)||state.jav==='1',
+    mix:home&&!trash,
+    /* JAV 模式不插竖屏带：主列表的 exclude_vertical 管不到它，它是独立请求、独立插入的。 */
+    shorts:home&&!javActive()&&state.orient!=='竖屏'&&!trash,
+    countRow:$('#count'),onCount:paintCatalogCount,
+    emptyHtml:({trash:inTrash,libraryEmpty})=>inTrash
+      ?emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。')
+      :catalogEmptyHtml({jav:javActive()&&!libraryEmpty,configurable:runtimeConfigurable,filtered:!libraryEmpty}),
+    canLoadMore:()=>$('#stats').hidden&&$('#index').hidden,
+  };
+}
+async function loadJunk(reset,requestSeq=loadRequestSeq,surface=surfaceToken(surfacePath())){
   if(!reset&&listLoading)return;
   if(!reset)listLoading=true;
   const pageOffset=reset?0:offset+appSettings.batchSize;
   try{
-  if(reset){barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
-    renderCatalogLoading(state.state==='ads'?'正在读取垃圾文件':'正在读取作品')}
+  if(reset){clearCatalogGrid();renderCatalogLoading('正在读取垃圾文件')}
   showHomeSurfaces();
-  if(reset){offset=0;renderedPartGroups.clear();renderedEditionGroups.clear()}
+  if(reset)offset=0;
   renderCombo();
   // 垃圾文件是逐项处置队列，计数只是当前队列说明，不是需要跟随浏览的排序工具。
-  const countRow=$('#count'),staticManageCount=state.state==='ads';
-  countRow.classList.toggle('manage-static',staticManageCount);
-  countRow.classList.toggle('junkcount',staticManageCount);
-  if(staticManageCount)countRow.classList.remove('is-stuck');
-  if(state.state==='ads'){
-    // 哨兵由 renderCatalogLoading 统一收掉：铺骨架和收 dots 是同一件事的两半，
-    // 分开写就会有分支只做了一半。
-    if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
-      const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery);
-      if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-      adsBatch=nextAds;cache(adsBatch.items)}
-    const batch=adsBatch.items.slice(pageOffset,pageOffset+appSettings.batchSize);
-    offset=pageOffset;
-    const html=batch.map(junkCardHtml).join('');
-    if(reset)releaseHoverPreviews($('#grid'));
-    if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
-    else if(reset)setGridCards(html);else appendGridCards(html);
-    renderJunkNavigation(adsBatch);
-    $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
-    wireJunkCards($('#grid'));paintSelection();wireCatalogLoadMore(surface);return;
-  }
-  adsBatch=null;
-  const p=new URLSearchParams(Object.entries(state).filter(([,v])=>v));
-  /* 只有首页默认列表排除竖屏——那里另有独立的竖屏条承接它们。
-     搜索必须能搜到竖屏作品，否则按名字找一条竖屏视频会得到 0 结果。 */
-  if(isCatalogPath(decodeURIComponent(location.pathname))&&!state.q&&!state.orient)p.set('exclude_vertical','1');
-  // JAV 模式恒不含竖屏：番号发行物本身就是横版，竖屏是另一类内容。
-  if(state.jav==='1')p.set('exclude_vertical','1');
-  p.set('limit',appSettings.batchSize); p.set('offset',pageOffset);
-  if(!reset)p.set('count','0');
-  const d=await surfaceApi(surface,'/api/items?'+p);
-  if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-  offset=pageOffset;
-  cache(d.items);
-  if(reset)total=d.total;
-  buildManageBar();
-  const html=state.state==='trash'?d.items.map(resourceCardHtml).join('')
-    :batchWithMix(d.items,isCatalogPath(decodeURIComponent(location.pathname))&&state.state!=='trash');
-  if(reset)releaseHoverPreviews($('#grid'));
-  let libraryEmpty=false;
-  if(reset&&!d.items.length&&state.state!=='trash'){
-    const library=await surfaceApi(surface,'/api/items?limit=1&thumb=0');
+  const countRow=$('#count');
+  countRow.classList.add('manage-static','junkcount');
+  countRow.classList.remove('is-stuck');
+  // 哨兵由 renderCatalogLoading 统一收掉：铺骨架和收 dots 是同一件事的两半，
+  // 分开写就会有分支只做了一半。
+  if(reset||!adsBatch){const junkQuery=new URLSearchParams({limit:'200',status:junkView});if(junkKind)junkQuery.set('kind',junkKind);
+    const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery);
     if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;
-    libraryEmpty=library.total===0;
-  }
-  if(reset&&state.state==='trash'&&!d.items.length)
-    $('#grid').innerHTML=emptyState('trash','回收站是空的','删掉的内容会先到这里；确认不再需要后再清空。');
-  else if(reset&&!d.items.length)
-    $('#grid').innerHTML=catalogEmptyHtml({jav:javActive()&&!libraryEmpty,configurable:runtimeConfigurable,
-      filtered:!libraryEmpty});
-  /* 接下来这一页新增在当前这段里的起点：竖屏带的落点要落在新增的那几行之间，
-     不能又插回已经看过的上半屏。 */
-  const addedFrom=reset?0:[...lastGridSection().children].filter(x=>x.matches('.card[data-id]')).length;
-  if(reset&&d.items.length)setGridCards(html);
-  else if(!reset)appendGridCards(html);
-  renderCount();
-  $('#loadSentinel').hidden=reset?d.items.length>=total:!d.has_more;
-  wireCards($('#grid'),state.state==='trash'?openResourceCard:undefined);
-  if(state.state==='trash')wireResourceCardActions($('#grid'));
-  wireMixCards($('#grid'));
-  paintSelection();
-  loadShorts(requestSeq,surface,{reset,addedFrom});
-  wireCatalogLoadMore(surface);
-  }catch(error){if(requestSeq===loadRequestSeq&&surfaceCurrent(surface))throw error}
-  finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
-}
-function wireCatalogLoadMore(surface){
+    adsBatch=nextAds;cache(adsBatch.items)}
+  const batch=adsBatch.items.slice(pageOffset,pageOffset+appSettings.batchSize);
+  offset=pageOffset;
+  const html=batch.map(junkCardHtml).join('');
+  if(reset)releaseHoverPreviews($('#grid'));
+  if(reset&&!batch.length)$('#grid').innerHTML=emptyState('check',junkView==='dismissed'?'没有已排除的文件':'没有待判断的垃圾文件',junkView==='dismissed'?'点“不是垃圾”的资源会保留在这里，可随时重新判断。':'当前分类没有候选文件。');
+  else if(reset)setGridCards(html);else appendGridCards(html);
+  renderJunkNavigation(adsBatch);
+  $('#loadSentinel').hidden=$('#grid').querySelectorAll('.junkcard').length>=adsBatch.items.length;
+  wireJunkCards($('#grid'));paintSelection();
   wireLoadMore($('#loadSentinel'),{
     enabled:()=>!listLoading&&$('#stats').hidden&&$('#index').hidden,
     isCurrent:()=>surfaceCurrent(surface),
-    read:()=>load(false),
+    read:()=>loadJunk(false),
   });
+  }catch(error){if(requestSeq===loadRequestSeq&&surfaceCurrent(surface))throw error}
+  finally{if(!reset&&requestSeq===loadRequestSeq)listLoading=false}
 }
 let searchPoolCache=[];
 let searchPoolRequest=0;
@@ -8671,7 +8768,7 @@ function runSearch(useSuggestion=false,committed=false){let query=$('#q').value.
   rememberSearchValue();
   if(committed)rememberSearch(query);
   disposeStage(false);
-  state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);load(true)}
+  state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);loadCatalog()}
 /* 人、公司和系列点开就是资料页，不绕一趟搜索：按名字搜出来的是一屏作品，而用户点的
    是「这个人」。记进搜索记录的是这个名字，下次聚焦还找得回来。 */
 function openSuggestedEntity(option){
@@ -8906,15 +9003,15 @@ function hasReturnSurface(){
    占位的那张「正在读取作品」就停在详情下方，写着在读，其实没有任何请求在跑。这里把那
    一次请求补发出去：从列表里点进详情时下面就是那份列表，直接刷新详情页的地址也该有
    同样的东西，否则排序条底下是一整屏空白。
-   走的是 `load(false)`「接着往下取一页」那条路——`reset` 那条开头就 `disposeStage()`，
-   会把刚打开的这一屏详情一起收掉。 */
+   走的是 `paintCatalogGrid` 直接挂网格那条路——`loadCatalog` 开头就 `disposeStage()`，
+   会把刚打开的这一屏详情一起收掉。网格已经挂上（哪怕还在取第一页）就不再补发；静态骨架留在
+   原位，由挂载时的 `revealSkeleton` 淡出。 */
 function fillIdleCatalog(){
   const grid=$('#grid');
+  if(islandMounted(grid)||catalogPainting)return;
   if(!grid.querySelector('.catalog-skeleton')&&!$('#stage').querySelector('[data-skeleton="detail"]'))return;
-  grid.innerHTML='';
   const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
-  offset=0;
-  void load(false);
+  void paintCatalogGrid(surfaceToken(surfacePath()));
 }
 /* 评分落在 `asset.rating`，量纲是 0–100：这一列是 Stash 的 rating100 直接导进来的，
    taste_history 也按 rating/20 折算成 0–5 分。所以第 n 颗星送出的是 n*20，不是 n。
@@ -9232,10 +9329,10 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
           if(r.feedback)await postFeedback(r.feedback);
           if(before.feedback)await postFeedback(before.feedback);
         }
-        if(state.state==='ads')await load(true);
+        if(state.state==='ads')await loadCatalog();
       }});
       if(kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'){
-        disposeStage(true,false,{miniplayer:false});await load(true);
+        disposeStage(true,false,{miniplayer:false});await loadCatalog();
       }
     }catch(error){actionFailure('操作',error)}finally{setActionBusy(b,false)}
   });
@@ -9944,7 +10041,7 @@ async function refreshAll(automatic=false){
      按钮已经停了。顶部三层与标签条不铺骨架——它们此刻有内容在屏幕上，撕成
      灰条再填回去比直接换掉更晃眼；骨架留给从无到有的首屏。 */
   document.body.classList.add('refreshing');
-  try{await Promise.all([load(true),buildBars()])}
+  try{await Promise.all([loadCatalog(),buildBars()])}
   finally{document.body.classList.remove('refreshing')}
   if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
   return true;
@@ -9993,13 +10090,13 @@ function openCatalog(path){
     dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
     state:ROUTE_STATES[path]||params.get('state')||'',...resolveSort(params.get('sort'),params.get('dir')),
     seed:params.get('seed')||(enteringHome?rollSeed():state.seed||rollSeed()),q:params.get('q')||'',jav:params.get('jav')||''};
-  $('#q').value=state.q;rememberSearchValue();buildEdge();buildBars();load(true);
+  $('#q').value=state.q;rememberSearchValue();buildEdge();buildBars();loadCatalog();
 }
 /* 回收站。它和目录页共用同一张网格，只是筛选被钉死成 `trash`。 */
 function openTrash(push){
   if(push)route('/trash');
   state={...state,creator:'',studio:'',tag:'',orient:'',state:'trash',q:''};clearSearchField();
-  showHomeSurfaces();buildEdge();buildBars();load(true);
+  showHomeSurfaces();buildEdge();buildBars();loadCatalog();
 }
 /* 沉浸模式当前这一条写在 `?id=`（见 tokShow），刷新和后退都该回到同一条片子。 */
 function immerseStartId(){

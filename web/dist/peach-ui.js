@@ -812,13 +812,14 @@ function tt(e, t) {
 function nt(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (J(t) === "cover" || !r)), a = i ? n : r;
-		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
+		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic,[data-media-pic]")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
 //#endregion
 //#region src/islands.ts
 var Y = {
 	"avatar-picker": { react: "avatar-picker" },
+	"catalog-grid": { react: "catalog-grid" },
 	"cover-crop": { react: "cover-crop" },
 	"data-cleanup": { react: "data-cleanup" },
 	duplicates: { react: "duplicates" },
@@ -848,12 +849,16 @@ async function Z(e, t, n, r = {}) {
 		if (a.controller.signal.aborted) return;
 	}
 	if (!at(t, a, r)) return;
-	let s = t.ownerDocument.createElement("div");
-	s.className = "peach-react", t.append(s);
-	let c = o.mount(s, n);
-	a.dispose = () => {
-		c.unmount(), s.remove();
-	}, a.props = n, a.update = (e) => c.update(e);
+	let s = () => {
+		t.textContent = "";
+		let e = t.ownerDocument.createElement("div");
+		e.className = "peach-react", t.append(e);
+		let r = o.mount(e, n);
+		a.dispose = () => {
+			r.unmount(), e.remove();
+		}, a.props = n, a.update = (e) => r.update(e);
+	};
+	r.reveal ? r.reveal(t, s) : s();
 }
 function it(e, t) {
 	let n = e ? X.get(e) : void 0;
@@ -863,7 +868,7 @@ function it(e, t) {
 	}, n.update(n.props));
 }
 function at(e, t, n) {
-	return X.get(e) === t ? n.isCurrent && !n.isCurrent() ? (X.delete(e), !1) : (e.textContent = "", !0) : !1;
+	return X.get(e) === t ? n.isCurrent && !n.isCurrent() ? (X.delete(e), !1) : !0 : !1;
 }
 var ot = (e) => !!e && X.has(e);
 function Q(e) {

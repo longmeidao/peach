@@ -5,8 +5,10 @@
  * 配置数据的形状以 `/api/configuration`（`src/peach/routes_configuration.py`）为准。 */
 import type { QualityGoal } from './quality-goals/quality-goals';
 import type { IndexProps } from './index/index-data';
+import type { CatalogGridProps } from './catalog-grid/types';
 
 export type { IndexProps };
+export type { CatalogGridProps };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -365,6 +367,7 @@ export interface PlaylistsProps {
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'avatar-picker': ReactPage<AvatarPickerProps>;
+  'catalog-grid': ReactPage<CatalogGridProps>;
   configuration: ReactPage<ConfigurationProps>;
   'configuration-summary': ReactPage<ConfigurationSummaryProps>;
   'cover-crop': ReactPage<CoverCropProps>;
