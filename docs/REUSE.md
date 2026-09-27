@@ -16,11 +16,11 @@
 
 - 横排滚到头的回弹由 `wireHorizontalScroller` 内的 `edgeBounce` 承载，头像排、厂牌排、新作排、筛选条共用。transitions.dev 的配方里没有这一条（2026-09-23 核对过全部 43 条）。越界位移借 UIScrollView 的橡皮筋公式 `(1 - 1/(x·c/d + 1))·d`，c = 0.55，与 use-gesture 的 `rubberband` 同一条（MIT，https://github.com/pmndrs/use-gesture ）。回弹走 `--spring-pane`。只抄了公式，不引依赖：use-gesture 管的是手势识别，而这几排的拖动与滚轮归属已经由 `wireHorizontalScroller` 判定。新作排的自动滚动是同一文件里的 `wireAutoScroll`，同样没有新增依赖。
 
-- 浮层筛选由 `web/js/ui-components.js` 的 `mountFilterFrame()` 承载：首页与实体资料页共用视图、标签、读数、控件四个槽位。外框负责玻璃与吸顶，页面负责查询状态和事件；视频、照片与名册更新只替换底行。复用现有 Board 控件及原生 DOM，不新增依赖；身份与观看状态的组合沿用 `/api/items`。
+- 浮层筛选在首页与关注页由 `web/js/ui-components.js` 的 `mountFilterFrame()` 承载视图、标签、读数、控件四个槽位；实体资料页那块是 React 岛 `entity-filter`（`FilterGlassRows` 两排，滑动玻璃走 `use-view-glide.ts`）。外框负责玻璃与吸顶，壳负责查询状态和取数，岛只画、动作回壳，按下态在发请求之前由 `updateIsland` 推到。身份与观看状态的组合沿用 `/api/items`。
 
 - 组件映射、官方公开注册表证据与许可证见 [Board 界面](BOARD_UI.md)。`web/board.css` 共用正式页面结构；登录、首启与错误页共用 `web_entry.entry_page_style()`，登录页是首启 Auth Card 的单字段形态。
 - `frontend/src/number-setting.ts` 共用带单位输入、可选 Switch、整数边界和锚定错误提示。关闭保留上次合法值，异步读取后切换也恢复实际值；业务保存仍由调用方负责。
-- 筛选内层复用 `filterChipHtml`、`sortControlsHtml`、`collectionHeaderHtml`，首页、关注和资料页提供查询键及读数。横向行复用 `wireHorizontalScroller`，拖动、滚轮、渐隐与卸载清理归同一个生命周期。
+- 筛选内层复用 `filterChipHtml`、`sortControlsHtml`，首页与关注页提供查询键及读数；`collectionHeaderHtml` 只剩资料页骨架那一排读数。横向行复用 `wireHorizontalScroller`，拖动、滚轮、渐隐与卸载清理归同一个生命周期。
 - 选择范围与工具条复用 `frontend/src/selection.ts`；馆藏、关注与复核保持各自身份、可见顺序、默认选择及写入权限。批量失败项的保留由业务负责。
 - React 设置分区复用 `frontend/src/react/settings/section.tsx`：`Section` 提供标题、卡片与表单外壳，`Footer`、`Note`、`ErrorText`、`FactList`、`Progress`、`Disclosure` 补齐 BoardUI 注册表没有的底栏、行内提示、读数、进度与折叠。`use-action.ts` 的 `useAction` 负责提交互斥、卸载取消与原位错误，`busyProps` 写忙态。密码字段校验与服务端回执仍归各分区，不自动重试写入。后台任务（口味读取、封面采集、amane 桥重建、关注检查与查找）共用 `frontend/src/react/background-job.ts` 的 `useBackgroundJob`。
 - 增量列表复用 `wireLoadMore` 的请求锁、原位重试与卸载清理；页面注入读取、追加、代际判定和可用条件。首页页码在读取成功后推进，照片沿用随机种子，关注合并分组。显式页码继续使用 `pagination.ts`。
@@ -226,7 +226,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 不兼容片源（HEVC、mp3 以外的音轨、非 MP4 容器）一律按 6 秒片重编码给 HLS，账本没记时长或记成负数时用 ffprobe 报的时长切；探测也拿不到才回 Range。分片重编码链与整片转码相同（CUDA 解码加 NVENC、软件解码加 NVENC、libx264），同一分片并发只起一个 FFmpeg，Range 响应按 1 MiB 读文件、客户端一断开就停读。uvicorn 断开后 `send()` 静默返回、Starlette 的 `FileResponse` 不监听断开，`BufferedFileResponse` 因此自己盯 `http.disconnect`；实测（2026-09-13）不盯的话拖一次进度条就留下一个幽灵读者，把 115 上整部片剩下的几 GB 经 CloudDrive 拉完，新位置排在它后面，直到整部片进缓存才能播。
 - 有 B 帧却没有 `ctts` 的 MP4 只是时间戳错乱：容器声明的显示时刻其实是解码顺序，浏览器把倒着走的帧全丢掉（6297 实测整片掉两成，PotPlayer 与 FFmpeg 按解码器输出重排所以本地看着正常）。这类片源不重编码，改为重建一份 `moov`（游程编码的 `ctts`、编辑列表补整体平移、`stco`/`co64` 按头长差平移）存成 `transcode_root` 里的 `.mp4hdr` 边车，`/stream` 用「边车的头 + 原文件那段 mdat」拼出虚拟文件按 Range 发。显示顺序由一趟 `ffprobe -ignore_editlist 1 -show_entries frame=pts` 取得：解码器按显示顺序出帧、每帧的 pts 原样来自它那个样本；`pkt_dts` 记的是出帧时最后喂进去的包，不能用。边车没算出来前照旧走 HLS 转码，同一部片后台只算一次，算不出来就不再试。
 - 「只采集」对齐全的行（番号已落库、字段有着落或已在候选表、封面在位）不碰磁盘；文件在不在看目录列表，同目录只列一次；候选 CSV 每 5 秒写盘一次、被打断也在收尾写全；扫描从目录列表自带的大小与时间登记文件，不逐个 stat。账本副本、外部来源换桩、媒体挂载只读的实测（2026-09-13）：本地盘 2553 行 2 秒，115 每秒约 65 行、PikPak 约 35 行，进入首行前的准备 0.4 秒；真实运行每条缺资料的行另加联网时间，联网仍是串行。
-- 一个控件在两页出现时，选中态怎么表现也归它，不只是外框和材质：首页与资料页的「全部／没看过／稍后看／已标记」共用 `syncViewGlide` 那块滑动玻璃，填充只由玻璃给，两排各自不铺底。找那一排按结构（`#viewPills,.entityviews`）加「此刻量得出宽度」，不按 id：两排在同一份文档里一直都在，另一页开着的时候只是被祖先收起来，写死 id 会一直取到看不见的那一排。
+- 一个控件在两页出现时，选中态怎么表现也归它，不只是外框和材质：首页与关注页的「全部／没看过／稍后看／已标记」共用 `syncViewGlide` 那块滑动玻璃，资料页那一排的玻璃由 `use-view-glide.ts` 挪、形状与材质同一条 `[data-view-glide]`；填充只由玻璃给，各排自己不铺底。找那一排按结构（`#viewPills,.followviews`）加「此刻量得出宽度」，不按 id：几排在同一份文档里一直都在，另一页开着的时候只是被祖先收起来，写死 id 会一直取到看不见的那一排。
 - 统计与口味两页按登录态 Vercel Analytics／Speed Insights 的当前页面重做，排行与数据源共用父网格的引导线。
 - 口味页顶部给出结论与可点入口：浏览与 Peach 两侧的共同信号、可探索标签、待补证据的下一步动作。
 - 操作回执复用 Toast（Sonner 的栈，`frontend/src/react/toaster.tsx`；壳里只调 `toast()`／`actionReceipt()`）；按钮以 Spinner 和 `aria-busy` 标明忙态。后台任务显示可恢复进度，断线自动重连。
