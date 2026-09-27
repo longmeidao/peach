@@ -850,6 +850,10 @@ class RevertMisreadCodeTests(unittest.TestCase):
             "UPDATE review_decision SET status='rejected',"
             "note='{\"reason\":\"r18dev 去前缀查 348NTR-007 交回的是另一部作品\"}' "
             "WHERE item_key IN ('348NTR-007:title','348NTR-007:series')")
+        # 纯文本理由的驳回决定与这条无关，也不能让查询报错。
+        connection.execute(
+            "INSERT INTO review_decision(category,item_key,status,note,updated_at) "
+            "VALUES('metadata_fields','ABW-001:title','rejected','片名不对',?)", (self.NOW,))
         connection.commit()
         connection.close()
         self.assertEqual(self._run("--release-owners"), 0)

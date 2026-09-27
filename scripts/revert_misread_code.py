@@ -197,7 +197,10 @@ def plan_release(connection) -> dict:
     columns_by_key: dict[str, set[str]] = {}
     for (item_key,) in connection.execute(
             "SELECT item_key FROM review_decision WHERE category='metadata_fields' "
-            "AND status='rejected' AND json_extract(note,'$.reason') LIKE ?", (_MISMATCH_REASON,)):
+            "AND status='rejected' "
+            # 人手写的驳回理由是纯文本 note，`json_extract` 碰上就整条查询报错。
+            "AND CASE WHEN json_valid(note) THEN json_extract(note,'$.reason') END LIKE ?",
+            (_MISMATCH_REASON,)):
         key, _, field = item_key.partition(":")
         if field in METADATA_FIELD_COLUMNS:
             columns_by_key.setdefault(key, set()).add(METADATA_FIELD_COLUMNS[field])
