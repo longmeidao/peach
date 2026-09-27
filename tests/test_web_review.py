@@ -1313,6 +1313,37 @@ class ReviewQueueTests(unittest.TestCase):
         self.assertEqual(sorted(self.queue_keys("metadata_fields")),
                          ["PPT-147:tags", "PPT-148:tags"])
 
+    def test_a_manual_tag_approval_without_a_candidate_key_grows_by_its_source(self):
+        """留痕只记了来源、没有候选身份的人批准：按来源认回那条候选，并集补新增、一个不删。
+
+        补过把候选身份记下，下一轮不再重补；同一来源认不出唯一一条的不动，复核页也不摆回来。
+        """
+        legacy = {"rule": "user-authorized-official-tag-backfill-20260901",
+                  "source": "aventertainment", "value": "美乳、痴女"}
+        vague = {"rule": "user-authorized-official-tag-backfill-20260901", "value": "美乳、痴女"}
+        for asset_id, code in ((150, "CWPBD-150"), (151, "CWPBD-151")):
+            self._asset(asset_id, code, f"{code}.mp4")
+            self._seed_tags(asset_id, ["美乳", "痴女"])
+        self._stale_approvals({"CWPBD-150:tags": legacy, "CWPBD-151:tags": vague})
+        self.write_metadata_rows([
+            {"item_key": f"{code}:tags", "field": "tags", "current": "", "code": code,
+             "source": "aventertainment",
+             "candidates": [{"value": ["美乳", "火车便当"], "display": "美乳、火车便当"}]}
+            for code in ("CWPBD-150", "CWPBD-151")])
+
+        result = self._auto()
+        self.assertEqual((result["applied"], result["left_to_review"]), (1, 0))
+        linked, flat = self._tags_of(150)
+        self.assertEqual(flat, {"美乳", "痴女", "火车便当"})
+        self.assertTrue(linked["火车便当"].startswith("auto:metadata-tags@"))
+        self.assertEqual(self._full_decision("CWPBD-150:tags"), (
+            "approved", {**legacy, "refreshed_candidate_key": "CWPBD-150:tags:0",
+                         "added_tags": ["火车便当"]}, self.STALE_AT))
+        self.assertEqual(self._tags_of(151)[1], {"美乳", "痴女"})
+        self.assertEqual(self._full_decision("CWPBD-151:tags"), ("approved", vague, self.STALE_AT))
+        self.assertEqual(self.queue_keys("metadata_fields"), [])
+        self.assertEqual(self._auto()["applied"], 0)
+
     def test_the_revert_script_takes_back_auto_rejections_by_rule_name(self):
         """按规则名整批撤回自动否决，行回到队列；用户手工否决的不在其中。"""
         self._asset(139, "FC2-PPV-1700000", "FC2-PPV-1700000.mp4")

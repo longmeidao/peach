@@ -1348,7 +1348,7 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                     continue
                 row["candidates"] = _row_candidates(row, genres)
                 prior = decided.get(item_key)
-                landed = _land_collected_genres(
+                landed = _land_union_tags(
                     connection, item_key, prior, row, genres, batch=union_batch, now=now)
                 if landed:
                     applied.append({"item_key": item_key, "field": row.get("field"),
@@ -1554,6 +1554,54 @@ def _land_collected_genres(connection, item_key: str, decision: dict | None, row
     done = {*map(str, note.get("collected_genres") or []), *newly}
     note = {**note, "collected_genres": [str(word) for word in note["pending_genres"]
                                          if str(word) in done]}
+    if added:
+        note["added_tags"] = list(dict.fromkeys([*note.get("added_tags", []), *added]))
+    connection.execute(
+        "UPDATE review_decision SET note=? WHERE category='metadata_fields' AND item_key=?",
+        (json.dumps(note, ensure_ascii=False, separators=(",", ":")), item_key))
+    return added
+
+
+def _land_union_tags(connection, item_key: str, decision: dict | None, row: dict,
+                     genre_decisions: dict, *, batch: str, now: str) -> list[str] | None:
+    """两条只补不删的标签路：生词收录之后补（ADR-0082），与没记候选身份的人批准。"""
+    landed = _land_collected_genres(connection, item_key, decision, row, genre_decisions,
+                                    batch=batch, now=now)
+    if landed is not None:
+        return landed
+    return _extend_unkeyed_tag_approval(connection, item_key, decision, row, batch=batch, now=now)
+
+
+def _extend_unkeyed_tag_approval(connection, item_key: str, decision: dict | None, row: dict,
+                                 *, batch: str, now: str) -> list[str] | None:
+    """人批准的标签留痕里没有候选身份时，按留痕记的来源认回那条候选，按并集补新增。
+
+    2026-09-01 那次官方标签回填写下的批准只记了 `source` 与 `value`，没有 `candidate_key`。
+    `metadata_decision_is_stale` 认不出它们指向哪条候选，只能保守放过，之后收录的生词在
+    这些片上就一直补不进去：CWPBD-126 的 `Lunch Box Fuck` 收录成火车便当以后，账本里仍然
+    没有这个标签。复核页照旧放过这些行，这里只补标签、一个不删。
+
+    同一来源的候选恰好一条、它的身份还没对过（不等于 `refreshed_candidate_key`）才补；补过
+    （含没东西可补）把那条的身份记进 `refreshed_candidate_key`，候选再变时才会重来。返回
+    补进去的标签名；这一行不归这里管时返回 None。
+    """
+    if (decision is None or str(row.get("field") or "").strip() != "tags"
+            or str(decision.get("status") or "").strip() != "approved"
+            or _is_automatic(decision)):
+        return None
+    note = _decision_note(decision)
+    source = str(note.get("source") or "").strip()
+    if note.get("candidate_key") or not source:
+        return None
+    matches = [candidate for candidate in row.get("candidates") or []
+               if str(candidate.get("source") or "").strip() == source]
+    key = str(matches[0].get("candidate_key") or "").strip() if len(matches) == 1 else ""
+    if not key or key == str(note.get("refreshed_candidate_key") or "").strip():
+        return None
+    added = _extend_approved_tags(connection, row, matches[0], batch, now)
+    if added is None:
+        return None
+    note = {**note, "refreshed_candidate_key": key}
     if added:
         note["added_tags"] = list(dict.fromkeys([*note.get("added_tags", []), *added]))
     connection.execute(
