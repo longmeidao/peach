@@ -82,6 +82,9 @@ class PeachSettings:
     db_path: Path = DATABASE_PATH
     page_path: Path = PROJECT_ROOT / "web" / "index.html"
     vendor_path: Path = PROJECT_ROOT / "web" / "vendor"
+    #: 界面标注工具的本机构建产物，由 `/dev/agentation.js` 提供。落在 `build/` 而不是 `web/`：
+    #: 打包带走整个 `web/`，这份第三方工具不能跟着进独立包（docs/FRONTEND.md「界面标注」）。
+    agentation_path: Path = PROJECT_ROOT / "build" / "agentation" / "peach-agentation.js"
     token: str = ""
     access_path: Path | None = None
     docs_enabled: bool = False

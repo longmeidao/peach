@@ -4,7 +4,7 @@
 和直接粘地址都能进来。所以 `client_route` 的那一长串装饰器不是重复，是「前端有哪些
 路由」的声明，新增页面必须在这里补一行，否则刷新就是 404。
 
-`index` 的 401 走跳登录页，`/app.css`、`/app.js`、`/js/`、`/dist/` 走 PlainText 提示：
+`index` 的 401 走跳登录页，`/app.css`、`/app.js`、`/js/`、`/dist/`、`/dev/` 走 PlainText 提示：
 资产被浏览器直接请求，重定向到登录页只会让它把 HTML 当脚本解析。
 
 缓存也分两档：`index.html` 是 `no-store`，它是所有资产 URL 的来源；四类资产走
@@ -723,6 +723,19 @@ def app_bundle(request: Request, name: str,
         return PlainTextResponse("missing", status_code=404)
     media = "text/css" if name.endswith(".css") else "text/javascript"
     return asset_response(request, path, media)
+
+
+@router.api_route("/dev/agentation.js", methods=["GET", "HEAD"])
+def agentation_bundle(request: Request, args: dict[str, str] = Depends(require_asset_auth)):
+    """界面标注工具 Agentation 的本机构建产物，口令与缓存口径同 `/dist/`。
+
+    产物不进 Git、不进独立包，只在跑过 `npm --prefix frontend run build:agentation`
+    的检出里存在；其余部署一律 404。`app.js` 只在本机开关打开时才请求它。
+    """
+    path = request.app.state.settings.agentation_path
+    if not path.is_file():
+        return PlainTextResponse("missing", status_code=404)
+    return asset_response(request, path, "text/javascript")
 
 
 @router.api_route("/robots.txt", methods=["GET", "HEAD"])
