@@ -21,7 +21,7 @@ import { VisuallyHidden } from 'react-aria-components';
 import { mapLimit } from '@peach/legacy/core';
 import { confirmModal } from '@peach/legacy/ui';
 
-import { Button } from '@/components/base/buttons/button';
+import { Button, ButtonLink } from '@/components/base/buttons/button';
 import { Checkbox } from '@/components/base/checkbox/checkbox';
 import { Select, SelectItem } from '@/components/base/select/select';
 import {
@@ -477,7 +477,10 @@ export function SourceList(props: SourceListProps) {
 
   if (!sources.length) {
     return (
-      <EmptyState shell="plain" icon={RiRssLine} title="还没有关注来源">关注来源及其检查状态会显示在这里。</EmptyState>
+      /* 去处写成地址：遗留层那个全局点击处理器认这条链接，已经在关注管理页上时只换到「添加关注」页签。 */
+      <EmptyState shell="plain" icon={RiRssLine} title="还没有关注来源" actions={
+        <ButtonLink variant="primary" size="small" href="/follow-manage?tab=add">添加关注</ButtonLink>
+      }>关注来源及其检查状态会显示在这里。</EmptyState>
     );
   }
 
