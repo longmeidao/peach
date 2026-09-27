@@ -64,7 +64,7 @@ const ROUTES: readonly Route[] = [
   {
     // 订阅源页签由地址参数直达；演示库没有订阅源，等到的是那一节的页脚按钮。
     path: '/follow-manage?tab=feeds',
-    body: (page) => [page.locator('#stats').getByRole('tab', { name: '订阅源', exact: true, selected: true }),
+    body: (page) => [page.locator('#stats').getByRole('tab', { name: 'JAV 订阅源', exact: true, selected: true }),
       page.locator('#stats').getByRole('button', { name: '立即拉取', exact: true })],
   },
   {

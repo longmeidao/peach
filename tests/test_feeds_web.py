@@ -188,6 +188,23 @@ class FeedWebTest(FeedWebFixture):
         self.assertEqual(row["last_error"], "来源回了 HTTP 503")
         self.assertIsNotNone(row["next_fetch_at"])
 
+    def test_an_empty_alias_page_settles_quietly_and_names_its_row(self):
+        """同一个人的第二页挂在旧艺名下、一部作品都没有：不算失败，行上说出是哪个名字。"""
+        with self.contract.database.write_transaction() as connection:
+            entity_id = int(connection.execute(
+                "INSERT INTO entity(kind,canonical_name,normalized_name,created_at,updated_at)"
+                " VALUES('performer',?,peach_normalize(?),?,?)",
+                ("森日向子", "森日向子", feeds.stamp(), feeds.stamp())).lastrowid)
+        self._add(entity_id)
+        empty = ('<span class="actor-section-name">白石アイリ</span><br>'
+                 '<span class="section-meta">0 部影片</span>'
+                 '<div class="empty-message">暂无内容</div>').encode("utf-8")
+        self.transport.responses[self.url] = HttpResponse(200, {}, empty, self.url)
+        self.assertTrue(self._check()["results"][0]["ok"])
+        [row] = dispatch_api_get(self.contract, "/api/feeds", {})["sources"]
+        self.assertEqual((row["last_error"], row["name"], row["page_name"]),
+                         (None, "森日向子", "白石アイリ"))
+
     def test_read_and_ignore_are_separate_and_idempotent(self):
         self._add()
         self._check()

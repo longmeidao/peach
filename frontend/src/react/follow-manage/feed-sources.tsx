@@ -1,4 +1,4 @@
-/* 关注管理页的「订阅源」页签：上面一张「添加 JAV 订阅」卡，下面一张和关注列表同一个外观的表，
+/* 关注管理页的「JAV 订阅源」页签：上面一张「添加 JAV 订阅」卡，下面一张和关注列表同一个外观的表，
  * 一行一条源，名字前是她的资料图，列出类型、来源、状态、频率、上次拉取与新增，行尾是启用开关、
  * 拉取键与移除键（ADR-0042）。行尾这三样和关注列表那一行一一对应，两张表看起来是一回事。
  *
@@ -25,8 +25,10 @@ import {
 } from '@/components/base/table/table';
 
 import { errorMessage } from '../../api';
+import type { FollowManageProps } from '../bundle';
 import { DataTableFrame } from '../components/data-table-frame';
 import { EmptyState } from '../components/empty-state';
+import { LEGACY_AVATAR_IMG } from '../components/legacy-avatar';
 import { Note } from '../components/note';
 import { SelectionDock } from '../components/selection-dock';
 import { queryClient } from '../query';
@@ -77,25 +79,29 @@ function StatusChip({ source }: { source: FeedSource }) {
   return <Chip variant="caption" color="lime">正常</Chip>;
 }
 
-/** 名字前的圆框：和关注列表的创作者圆标同一个尺寸与底色。有资料图走 `/entity-image`，判据由
- *  服务端的 `has_image` 给；没有就退首字母，首字母不进读屏，名字本身就在旁边。 */
-function FeedAvatar({ source }: { source: FeedSource }) {
-  if (source.has_image && source.entity_id) {
-    return (
-      <img src={`/entity-image?kind=performer&id=${source.entity_id}&thumb=1`} alt="" width={32} height={32}
-        loading="lazy" className="size-8 shrink-0 rounded-full bg-background-tertiary-default object-cover" />
-    );
-  }
+type AvatarInner = FollowManageProps['avatarInner'];
+
+/** 名字前的圆框：和关注列表的创作者圆标同一个尺寸与底色。里面那段由遗留层 `avatarInner` 拼：
+ *  有资料图按人脸取景出图，判据是服务端的 `has_image`；没有就是首字母。整格不进读屏，名字就在旁边。 */
+function FeedAvatar({ source, avatarInner }: { source: FeedSource; avatarInner: AvatarInner }) {
+  const entity = source.entity_id
+    ? { id: source.entity_id, has_image: !!source.has_image, avatar_focus: source.avatar_focus }
+    : null;
   return (
     <span aria-hidden
-      className="inline-grid size-8 shrink-0 place-items-center rounded-full bg-background-tertiary-default text-caption-1-semibold text-text-secondary">
-      {feedName(source).slice(0, 1)}
-    </span>
+      className={`relative inline-grid size-8 shrink-0 place-items-center overflow-hidden rounded-full bg-background-tertiary-default text-caption-1-semibold text-text-secondary ${LEGACY_AVATAR_IMG}`}
+      dangerouslySetInnerHTML={{ __html: avatarInner(feedName(source), entity, null, 'performer') }} />
   );
 }
 
+/** 这一页在站上挂的另一个名字。一个人常有两页，本名页和旧艺名页在表里同名，
+ *  只有这一段说得出哪一行是哪一页；和统称一样时不重复。 */
+const pageAlias = (source: FeedSource) =>
+  (source.page_name && source.page_name !== source.name ? source.page_name : '');
+
 interface RowHandlers {
   readOnly: boolean;
+  avatarInner: AvatarInner;
   /** 正在跑的那个动作的键（`useAction` 的 `busy`），行尾的拉取键按它挂忙态。 */
   busy: string | null;
   toggle(source: FeedSource, enabled: boolean): void;
@@ -117,7 +123,9 @@ function confirmRemove(sources: FeedSource[], write: () => Promise<unknown>) {
   });
 }
 
-export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(message: string): void }) {
+export function FeedSources({ readOnly, toast, avatarInner }: {
+  readOnly: boolean; toast(message: string): void; avatarInner: AvatarInner;
+}) {
   const feeds = useQuery({ queryKey: FEEDS_KEY, queryFn: ({ signal }) => fetchFeeds(signal) });
   const action = useAction();
   const data = feeds.data;
@@ -157,10 +165,11 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
 
   /* 列定义只建一次，行里的控件到点击那一刻再从这里取最新的处理器与只读态。 */
   const handlers = useRef<RowHandlers>({
-    readOnly, busy: null, toggle: () => {}, fetch: () => {}, remove: () => {},
+    readOnly, avatarInner, busy: null, toggle: () => {}, fetch: () => {}, remove: () => {},
   });
   handlers.current = {
     readOnly,
+    avatarInner,
     busy: action.busy,
     toggle: (source, enabled) => void action.run(`enabled-${source.id}`,
       (signal) => setFeedEnabled(source.id, enabled, signal), () => void reload()),
@@ -194,12 +203,20 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
         header: label('name'),
         /* 名字、频率与时间都不换行：窄屏上这张表靠 Table 自带的容器横着滚，让格子换行只会
            把「三上悠亜」竖着摆成四行，滚动反而没了用处。 */
-        cell: (context) => (
-          <span className="flex items-center gap-2 whitespace-nowrap text-body-medium text-text-primary">
-            <FeedAvatar source={context.row.original} />
-            {context.getValue()}
-          </span>
-        ),
+        cell: (context) => {
+          const alias = pageAlias(context.row.original);
+          return (
+            <span className="flex items-center gap-2 whitespace-nowrap text-body-medium text-text-primary">
+              <FeedAvatar source={context.row.original} avatarInner={handlers.current.avatarInner} />
+              {context.getValue()}
+              {alias ? (
+                <span className="text-body-2-regular text-text-secondary" title={`站上这一页挂在「${alias}」名下`}>
+                  {alias}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       }),
       column.accessor((row) => row.kind_label, {
         id: 'kind',
@@ -291,7 +308,7 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
   const chosen = sources.filter((source) => selected.has(source.id));
   const failing = sources.filter((source) => source.last_error);
 
-  /* 分区名由页签「订阅源」给，表上面没有同名的小标题。 */
+  /* 分区名由页签「JAV 订阅源」给，表上面没有同名的小标题。 */
   return (
     <div className="flex flex-col gap-3">
       <AddFeed readOnly={readOnly} toast={toast} onAdded={() => void reload()} />
@@ -327,7 +344,7 @@ export function FeedSources({ readOnly, toast }: { readOnly: boolean; toast(mess
 
       {sources.length ? (
         <DataTableFrame onRowClick={(key) => toggleRow(Number(key))}>
-          <Table aria-label="订阅源" size="sm">
+          <Table aria-label="JAV 订阅源" size="sm">
             <TableHeader>
               {table.getHeaderGroups()[0]!.headers.map((header) => {
                 const text = flexRender(header.column.columnDef.header, header.getContext());

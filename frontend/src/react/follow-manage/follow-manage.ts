@@ -457,13 +457,17 @@ export interface FeedSource {
   id: number;
   kind: string;
   kind_label: string;
-  /** 挂着人物时是她在账本里的统称，否则是登记时存的名字。 */
+  /** 挂着人物时是她在账本里的统称，否则是存下的名字。 */
   name: string;
+  /** 上次拉取时这一页在站上挂的名字。同一个人的旧艺名页靠它和本名页分开。 */
+  page_name?: string;
   url: string;
   entity_id: number | null;
   entity_name: string | null;
   /** 这位有没有资料图：有就在名字前画 `/entity-image` 的圆框，没有退首字母。 */
   has_image?: boolean;
+  /** 资料图的人脸取景，和 `has_image` 出自同一份身份引用。 */
+  avatar_focus?: unknown;
   enabled: boolean;
   interval_minutes: number;
   last_fetched_at: string | null;

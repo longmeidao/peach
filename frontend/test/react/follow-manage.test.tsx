@@ -145,6 +145,10 @@ const shellProps = (over: Partial<Props> = {}): Props => ({
   toast: vi.fn(),
   openFollow: vi.fn(),
   readOnly: false, readOnlyMessage: '', writerUrl: '',
+  // 遗留层那条回落链的形状：先垫首字母，有图再叠一张。
+  avatarInner: vi.fn((name: string, entity: { id: number; has_image: boolean } | null) =>
+    `<span class="ini">${name.slice(0, 1)}</span>`
+    + (entity?.has_image ? `<img src="/entity-image?kind=performer&amp;id=${entity.id}" alt="">` : '')),
   ...over,
 });
 
@@ -586,7 +590,7 @@ it('一条来源都没有时空态给出添加关注的去处', async () => {
 it('各栏按做事的先后排，缺凭据的数挂在最后一栏上', async () => {
   const { host } = await open({ creds: { root: 'C:\\creds', providers: [credential({ provider: 'fanbox' })] } });
   expect([...host.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent))
-    .toEqual(['关注列表', '添加关注', '订阅源', '来源和凭证（1）']);
+    .toEqual(['关注列表', '添加关注', 'JAV 订阅源', '来源和凭证（1）']);
 });
 
 const FEEDS: FeedsData = {
@@ -631,17 +635,19 @@ function stubConfirm(accept: boolean) {
 
 it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即拉取都落到订阅源的接口上', async () => {
   stubConfirm(true);
-  const { host, fetcher } = await open({ feeds: FEEDS }, { tab: 'feeds' });
-  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('订阅源');
+  const { host, fetcher, props } = await open({ feeds: FEEDS }, { tab: 'feeds' });
+  expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toBe('JAV 订阅源');
   expect([...host.querySelectorAll('[role="columnheader"]')].map((cell) => cell.textContent?.trim()))
     .toEqual(['选择', '名称', '类型', '来源', '状态', '频率', '上次拉取', '上次新增', '操作']);
   const first = checkboxNamed(host, '选择 甲 的新作')!.closest('[role="row"]')!;
   expect([...first.querySelectorAll('[role="rowheader"],[role="gridcell"]')].map(shown))
     .toEqual(['', '甲 的新作', 'JAV 订阅', 'feeds.test', '正常', '每 12 小时', '还没拉过', '0 条', '']);
   expect(first.querySelector('a')?.getAttribute('href')).toBe('https://feeds.test/a');
-  // 名字前的圆框：有资料图的走 `/entity-image`，没有的退首字母。
+  // 名字前的圆框由遗留层的回落链拼：身份引用带着有没有图，图有了才叠上去。
+  expect(props.avatarInner).toHaveBeenCalledWith(
+    '甲 的新作', { id: 41, has_image: true, avatar_focus: undefined }, null, 'performer');
   expect(first.querySelector('[role="rowheader"] img')?.getAttribute('src'))
-    .toBe('/entity-image?kind=performer&id=41&thumb=1');
+    .toBe('/entity-image?kind=performer&id=41');
   const second = checkboxNamed(host, '选择 乙 的新作')!.closest('[role="row"]')!;
   expect(second.querySelector('[role="rowheader"] img')).toBeNull();
   expect(second.querySelector('[role="rowheader"] [aria-hidden]')?.textContent).toBe('乙');
@@ -663,6 +669,20 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
   // 行尾的拉取键只点名这一条，停着的也拉；「立即拉取」才是全部启用的源。
   expect(sentBody(fetcher, FEEDS_CHECK_URL)).toEqual([{ sources: [5] }, { all: true }]);
   expect(feedReads(fetcher)).toBeGreaterThan(1);
+});
+
+it('同一个人的两页各一行，旧艺名那页在名字旁写出站上的名字；顶上按人数计订阅', async () => {
+  const page = (id: number, pageName: string) => ({
+    id, kind: 'javdb-actor', kind_label: 'JAV 订阅', name: '森日向子', page_name: pageName,
+    url: `https://javdb.com/actors/${id}`, entity_id: 8112, entity_name: '森日向子', has_image: true,
+    enabled: true, interval_minutes: 360, last_fetched_at: null, last_error: null, last_new_count: 0, seen: 0,
+  });
+  const { host } = await open(
+    { feeds: { unread: 81, sources: [page(3, '白石アイリ'), page(4, '森日向子')] } }, { tab: 'feeds' });
+  const names = [...host.querySelectorAll('[role="rowheader"]')].map(shown);
+  expect(names).toEqual(['森日向子白石アイリ', '森日向子']);
+  const readings = [...host.querySelector('[aria-label="关注概览"]')!.children].map((card) => card.textContent);
+  expect(readings.slice(-2)).toEqual(['JAV 订阅1 位', '未看新作81 条']);
 });
 
 it('订阅源表里点一行的空白处就是选这一行，选中了底部浮出批量操作，暂停逐条写到订阅源接口', async () => {

@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 from . import (
     entities, entry_links, feed_followup, feeds, javdb, performer_alias_followup as alias,
-    performer_profile_followup, web_settings,
+    performer_profile_followup, web_catalog, web_settings,
 )
 from .jobs import TaskRunConflict
 from .http import HttpRequest, public_https_url
@@ -102,7 +102,7 @@ def poll_source(contract, transport, source) -> dict:
         feeds.settle(connection, source_id, error=None,
                      etag=headers.get("etag"), last_modified=headers.get("last-modified"),
                      interval_minutes=interval, seen=outcome["seen"],
-                     new=len(outcome["created"]))
+                     new=len(outcome["created"]), page_name=parsed.title)
     report.update(seen=outcome["seen"], fresh=outcome["fresh"],
                   without_code=outcome["without_code"],
                   added=len(outcome["created"]),
@@ -231,9 +231,11 @@ def q_feeds(contract, args) -> dict:
     with contract.database.read_connection() as connection:
         feeds.register_functions(connection, hidden)
         rows = feeds.sources(connection)
-        # 表里名字前面那个圆框：有图走 `/entity-image`，判据和资料页同一个。
+        # 表里名字前面那个圆框：有图走 `/entity-image`，判据与取景都取自身份引用那一份。
         for row in rows:
-            row["has_image"] = contract.has_entity_image("performer", row["entity_id"])
+            ref = web_catalog.entity_ref(contract, "performer", row["entity_id"], row["name"])
+            row["has_image"] = ref["has_image"]
+            row["avatar_focus"] = ref.get("avatar_focus")
         pending = connection.execute(
             "SELECT count(*) FROM feed_discovery d WHERE d.ignored_at IS NULL"
             f" AND d.read_at IS NULL AND {' AND '.join(LISTED)}").fetchone()[0]

@@ -25,20 +25,20 @@ import { cardClass } from '../components/card';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
-import { STAT_STRIP } from '../components/stat-card';
+import { STAT_STRIP_SIX } from '../components/stat-card';
 import { AddSource } from './add-source';
 import { AliasManager } from './alias-manager';
 import { Credentials } from './credentials';
 import { FeedSources } from './feed-sources';
 import {
-  credentialDone, DEFAULT_SORT, fetchCredentials, fetchFollow, FOLLOW_CREDENTIALS_KEY,
+  credentialDone, DEFAULT_SORT, FEEDS_KEY, fetchCredentials, fetchFeeds, fetchFollow, FOLLOW_CREDENTIALS_KEY,
   FOLLOW_MANAGE_KEY, groupByAuthor, isBroken, isLayout, keepSelected, pageSizeOf,
   SORT_DEFAULT_DIR, type CredentialData, type FollowData, type Layout, type SortDir, type SortKey,
 } from './follow-manage';
 import { SourceList } from './source-list';
 
 const TABS = [
-  ['list', '关注列表'], ['add', '添加关注'], ['feeds', '订阅源'], ['source', '来源和凭证'],
+  ['list', '关注列表'], ['add', '添加关注'], ['feeds', 'JAV 订阅源'], ['source', '来源和凭证'],
 ] as const;
 type TabKey = (typeof TABS)[number][0];
 
@@ -74,6 +74,8 @@ export function FollowManagePage(props: FollowManageProps) {
   const credentials = useQuery({
     queryKey: FOLLOW_CREDENTIALS_KEY, queryFn: ({ signal }) => fetchCredentials(signal),
   });
+  /* 和 JAV 订阅源页签同一份缓存：读数与表格看的是同一次读取。 */
+  const feeds = useQuery({ queryKey: FEEDS_KEY, queryFn: ({ signal }) => fetchFeeds(signal) });
   const data: FollowData = follow.data || { sources: [] };
   const creds: CredentialData = credentials.data || { root: '', providers: [] };
   const sources = data.sources;
@@ -104,6 +106,9 @@ export function FollowManagePage(props: FollowManageProps) {
   const enabled = sources.filter((source) => source.enabled).length;
   const pending = (creds.providers || []).filter(
     (row) => row.requirement === 'required' && !credentialDone(row)).length;
+  /* 按人数：一位女优常有本名页和旧艺名页两条源，订的是她这个人。没挂人物的源各算一位。 */
+  const subscribed = new Set((feeds.data?.sources || []).map(
+    (source) => source.entity_id ?? `source-${source.id}`)).size;
 
   return (
     <Page>
@@ -120,12 +125,14 @@ export function FollowManagePage(props: FollowManageProps) {
         </Note>
       ) : null}
 
-      {/* 四张一排，窄屏折成两张：旧 `.fmanageoverview` 就是定死四栏，不按卡片宽度自己折。 */}
-      <div className={STAT_STRIP} aria-label="关注概览">
+      {/* 前四张是关注，后两张是 JAV 订阅源：订了几位、拉回来的新作还有几条没看。 */}
+      <div className={STAT_STRIP_SIX} aria-label="关注概览">
         <Reading term="关注创作者" figure={groups.length} unit="位" />
         <Reading term="启用来源" figure={enabled} unit={`/ ${sources.length}`} />
         <Reading term="检查失败" figure={broken} unit="个来源" />
         <Reading term="未看更新" figure={data.counts?.new || 0} unit="条" />
+        <Reading term="JAV 订阅" figure={subscribed} unit="位" />
+        <Reading term="未看新作" figure={feeds.data?.unread || 0} unit="条" />
       </div>
 
       <Tabs selectedKey={tab} onSelectionChange={(key) => {
@@ -177,7 +184,7 @@ export function FollowManagePage(props: FollowManageProps) {
         </TabPanel>
 
         <TabPanel id="feeds" className="flex flex-col gap-4">
-          <FeedSources readOnly={readOnly} toast={toast} />
+          <FeedSources readOnly={readOnly} toast={toast} avatarInner={props.avatarInner} />
         </TabPanel>
 
         <TabPanel id="source" className="flex flex-col gap-4">

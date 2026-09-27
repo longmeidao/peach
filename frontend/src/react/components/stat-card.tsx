@@ -26,6 +26,10 @@ export function statCardClass(options: CardOptions = {}) {
 /** 一排读数卡：四张一排，窄屏折成两张一排。宿主可能是 `TabList`，所以类名也单独给一份。 */
 export const STAT_STRIP = 'inline-grid w-full grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4';
 
+/** 一排六张读数卡：宽屏一排，中等宽度三张一排，窄屏两张一排。关注管理顶上那一排是四张关注
+ *  读数加两张 JAV 订阅读数；放进四列那一档会折成四加二，后两张孤零零挂在第二行。 */
+export const STAT_STRIP_SIX = 'inline-grid w-full grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 xl:grid-cols-6';
+
 /** 净面读数卡的卡面：数据管理顶上那一排入口与资源同步的结果。和上面那一档不是同一张卡——
  *  旧 `.board-plain-stat` 没有脚注带、没有阴影，内边距落在卡片自己身上（16px，三段之间
  *  8px），图标块是一格白底，读数下面那行脚注是三级灰小字。 */
