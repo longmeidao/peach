@@ -9,7 +9,7 @@
 - **javdb 的页面缓存**（`peach.page_cache.Site` 落盘的整页 HTML）。资料页里有
   `href="/actors/<id>/collect"`，解析走 `peach.javdb`，和取中文名那条路同一份判据。
   搜索结果页的演员卡也带 id：资料页没取回（限流、要登录）的那些人，id 就在卡上。
-  卡片只按收得下的写法认人（`performer_alias_followup.rejection`，`葵` 这种短单名不算），
+  两种页都只按收得下的写法认人（`performer_alias_followup.rejection`，`葵` 这种短单名不算），
   对上的几张卡还得是同一个人（`javdb.one_person`：有碼、無碼各至多一张），否则记「站上同名」。
 - **复核 CSV**。`harvest_agency_rosters.py` 的名册件每行都带 `entity_id` 与
   `actress_id`，那就是 minnano-av 的女优 id；`harvest_javdb_cn_names.py` 的件带
@@ -32,6 +32,8 @@
 - `冲突`：这一批证据里有两位实体认领同一个 id，同样不挑一个。
 - `站上同名`：搜索卡片上对得上她的不止一个人，id 列在证据里等人判。她已经登记过
   javdb id 的不出这一行。
+- `只有 FC2 作品`：她没有 JAV 目录站 id，带番号的作品又全是 FC2。这是 FC2 个人摄创作者，
+  javdb 不按人收录，名字对上的演员页是同名的另一个人，不写。
 """
 from __future__ import annotations
 
@@ -48,7 +50,7 @@ if str(SRC_DIR) not in sys.path:
 
 from peach import javdb   # noqa: E402
 from peach.config import STATE_DIR   # noqa: E402
-from peach.entry_links import EXTERNAL_KIND   # noqa: E402
+from peach.entry_links import EXTERNAL_KIND, JAV_DIRECTORIES   # noqa: E402
 from peach.performer_alias_followup import match_key, rejection   # noqa: E402
 from peach.review_csv import read_rows, write_rows   # noqa: E402
 from peach.scripting import add_ledger_write_args, open_for_write, verify_after_write   # noqa: E402
@@ -59,23 +61,23 @@ CSV_COLUMNS = {"actor_id": JAVDB, "actress_id": MINNANO}
 
 OK, HAVE, CONFLICT = "ok", "已登记", "冲突"
 TAKEN, NOT_PERFORMER, NAMESAKE = "id 已归他人", "不是女优实体", "站上同名"
+FC2_ONLY = "只有 FC2 作品"
 
 FIELDS = ("entity_id", "canonical_name", "provider", "external_id",
           "origin", "verdict", "evidence")
 
 
-def name_owners(connection: sqlite3.Connection, *,
-                anchors_only: bool = False) -> dict[str, set[int]]:
+def name_owners(connection: sqlite3.Connection) -> dict[str, set[int]]:
     """折叠键 → 拥有这个写法的女优实体。一个键对上两条就是重名，不猜。
 
-    `anchors_only` 只收本身收得下的写法：搜索卡片只凭名字认人，`葵` 这种短单名会认到别人。
+    只收本身收得下的写法：资料页和搜索卡片都只凭名字认人，`葵`、`蕾` 这种短单名会认到别人。
     """
     owners: dict[str, set[int]] = collections.defaultdict(set)
     for entity_id, written in connection.execute(
             "SELECT e.id,e.canonical_name FROM entity e WHERE e.kind='performer'"
             " UNION SELECT a.entity_id,a.alias FROM entity_alias a"
             " JOIN entity e ON e.id=a.entity_id WHERE e.kind='performer'"):
-        if written and not (anchors_only and rejection(str(written))):
+        if written and not rejection(str(written)):
             owners[match_key(str(written))].add(int(entity_id))
     return owners
 
@@ -153,6 +155,25 @@ def _owner_of(connection: sqlite3.Connection) -> dict[tuple[str, str], int]:
                 " WHERE external_kind=?", (EXTERNAL_KIND,))}
 
 
+def fc2_only(connection: sqlite3.Connection) -> dict[int, int]:
+    """没有 JAV 目录站 id、带番号的作品又全是 FC2 的女优实体 → 作品数。
+
+    这些是 FC2 个人摄创作者，javdb 不按人收录她们：名字对上的演员页是同名的另一个人。
+    """
+    jav = {int(entity_id) for (entity_id,) in connection.execute(
+        "SELECT DISTINCT entity_id FROM entity_external_ref WHERE external_kind=?"
+        f" AND provider IN ({','.join('?' * len(JAV_DIRECTORIES))})",
+        (EXTERNAL_KIND, *sorted(JAV_DIRECTORIES)))}
+    codes: dict[int, list[str]] = collections.defaultdict(list)
+    for entity_id, code in connection.execute(
+            "SELECT ae.entity_id,a.code FROM asset_entity ae JOIN asset a ON a.id=ae.asset_id"
+            " JOIN entity e ON e.id=ae.entity_id WHERE e.kind='performer'"
+            " AND COALESCE(a.code,'')<>''"):
+        codes[int(entity_id)].append(str(code).upper())
+    return {entity_id: len(held) for entity_id, held in codes.items()
+            if entity_id not in jav and all(code.startswith("FC2") for code in held)}
+
+
 def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]:
     """每条候选引用一行。已登记、冲突、实体不对的也留行：下一趟要看得出这一位查过。"""
     owners = name_owners(connection)
@@ -162,7 +183,7 @@ def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]
         cache = Path(args.javdb_cache)
         for entity_id, ids in from_page_cache(cache, owners).items():
             candidates[(JAVDB, entity_id)] = (ids, f"javdb 页面缓存 {cache}")
-        carded, namesakes = from_search_cards(cache, name_owners(connection, anchors_only=True))
+        carded, namesakes = from_search_cards(cache, owners)
         for entity_id, ids in carded.items():
             have, origin = candidates.get((JAVDB, entity_id), (set(), ""))
             candidates[(JAVDB, entity_id)] = (
@@ -175,6 +196,7 @@ def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]
     names = {int(entity_id): str(written) for entity_id, written in connection.execute(
         "SELECT id,canonical_name FROM entity WHERE kind='performer'")}
     owner = _owner_of(connection)
+    creators = fc2_only(connection)
     # 这一批证据里谁认领了哪个 id。两位实体认领同一个是重名没解开，不挑一个。
     claimants: dict[tuple[str, str], set[int]] = collections.defaultdict(set)
     for (provider, entity_id), (ids, _origin) in candidates.items():
@@ -204,6 +226,9 @@ def plan(connection: sqlite3.Connection, args: argparse.Namespace) -> list[dict]
                            evidence="同一个 id 对上 "
                                     f"{len(others) + 1} 位实体："
                                     f"{'、'.join(str(x) for x in sorted(others | {entity_id}))}")
+            elif provider == JAVDB and entity_id in creators:
+                row.update(verdict=FC2_ONLY,
+                           evidence=f"没有 JAV 目录站 id，带番号的 {creators[entity_id]} 部作品全是 FC2")
             rows.append(row)
     registered = {entity_id for (provider, _external_id), entity_id in owner.items()
                   if provider == JAVDB}
