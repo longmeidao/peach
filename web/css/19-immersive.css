@@ -125,8 +125,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .count .sorts{width:max-content;margin-left:0;flex:0 0 auto;overflow:visible}
   .count .sorts button{min-height:36px}
   .count.junkcount{align-items:stretch;flex-direction:column;overflow:visible;padding-block:8px}
-  .junkcount .junksummary{line-height:1.4}.junkfilters{width:100%;padding-bottom:2px}
-  .reviewtabs button,.junkfilters a{height:44px}.junkactions button{min-height:44px;padding-inline:7px}
+  .reviewtabs button{height:44px}
   #batchbar[hidden]{display:none}
   .batchbar:has([data-junk-batch]:not([hidden])){left:12px;right:12px;bottom:12px;width:auto;transform:none;
     display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;padding:9px 10px}

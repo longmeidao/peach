@@ -514,14 +514,6 @@ function noteDetailsHtml({label='',items=[],footnote=''}={}){
     <ul>${items.map(line).join('')}</ul>${footnote?`<p>${esc(footnote)}</p>`:''}</details>`;
 }
 
-/** 数据管理子页的结果标题，只接收当前查询得到的读数。
-    `pending` 是这次请求还没回来：标题那一句同步就有，等的只有读数，占位也就只盖读数
-    那一格，宽高定死，数字回来时这块面不改高度。 */
-export function collectionSummaryHtml(label,value,detail='',{pending=false}={}){
-  const figure=pending?'<span class="countskeleton"></span>':esc(value);
-  return `<header class="collection-summary"><div><span>${esc(label)}</span><strong>${figure}</strong></div>${detail?`<p>${esc(detail)}</p>`:''}</header>`;
-}
-
 /* Inline, persistent context beside the field/card/section it describes.
    恢复动作有两种形态：留在本页执行的走按钮，要离开本页才做得成的走链接。
    两者占同一个格子、同一枚 `data-note-action`，Note 的版式不因为它是 <a> 改变。 */
@@ -893,7 +885,7 @@ const OVERLAY_SCROLLERS=[
   '.settingsscroll','.sidecontent','.stagescroll','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.skeletondashstrip','.followpagination',
-  '.reviewtabs','.junkfilters','.ftablewrap','.board-local-nav','.managebar-menu',
+  '.reviewtabs','.ftablewrap','.board-local-nav','.managebar-menu',
   '.follow-workspace-switch','.fmanagenav','[role="listbox"]',
 ].join(',');
 /* Board 层里会超宽的横向滚动层：两端按滚动位置渐隐说明「那边还有」，鼠标停在上面时竖向

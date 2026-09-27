@@ -819,8 +819,9 @@ class WebUiSourceTests(unittest.TestCase):
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--ground)", rule, f"{name} 浮在页面底之上")
         # 直接坐在页面上的盒子不能再填 --surface：它与 --page 在浅色一档是同一个 #FAFAFA，
-        # 填上去等于没有盒子。--surface 只剩交互与内嵌那一档。
-        for name in (".insightpanel", ".junkcard", ".managebar", ".emptystate"):
+        # 填上去等于没有盒子。--surface 只剩交互与内嵌那一档。垃圾卡归 `junk-queue` island，
+        # 它和页面底色不同由 e2e 设计用例读计算值核对。
+        for name in (".insightpanel", ".managebar", ".emptystate"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
             self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
@@ -2540,10 +2541,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const isAbort=error=>error?.name==='AbortError'")
         self.assertPageContains("if(isAbort(error))return null;throw error")
         self.assertPageContains("if(signal)init.signal=signal")
-        # 用响应体之前必须先过期判定：被取消时 surfaceApi 返回的是 null。
-        load_body = self.page.split("async function loadJunk(", 1)[1].split("renderJunkNavigation(adsBatch)", 1)[0]
-        guard = load_body.index("if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return;\n    adsBatch=nextAds")
-        self.assertLess(guard, load_body.index("cache(adsBatch.items)"))
 
     def test_bulk_follow_updates_run_with_bounded_concurrency(self):
         """一千条串行 POST 全靠往返等，界面按住不放；一次全发出去又会挤满连接。
@@ -3030,7 +3027,7 @@ class WebUiSourceTests(unittest.TestCase):
              "background:transparent;cursor:pointer;font-size:var(--fs-xs);color:var(--muted);"),
             ("管理页标签 .managebar button",
              "background:transparent;color:var(--muted);padding:0 14px;cursor:pointer;font-size:var(--fs-sm);"),
-            ("复核页标签与垃圾筛选 .reviewtabs button,.junkfilters a",
+            ("复核页标签 .reviewtabs button",
              "border-radius:var(--control-radius);background:transparent;color:var(--muted);"),
             ("JAV 工具条 .javbar button",
              "background:transparent;color:var(--muted);cursor:pointer;padding:0}"),
@@ -3045,15 +3042,15 @@ class WebUiSourceTests(unittest.TestCase):
         筛选条完全由当前 state 决定，这次请求不会改变它，所以没有可占位的东西：
         连它一起清空的话，刚点下的那一枚会在等数据的整段时间里失去高亮，看着像
         没点上；`.count:empty` 还会把整行折叠，网格跟着往上跳一截。垃圾文件那一屏的
-        计数行是另一条控件，走它自己的 `junkNavigationHtml`。
+        计数行是另一条控件，骨架是 `junk-queue` island 等数据时那一版的静态副本。
         """
         self.assertPageContains("const countSortsHtml=()=>!state?'':")
         # 加载态与最终态取同一份筛选条，两边不可能画得不一样。
         self.assertPageContains(
             "count.innerHTML=state&&state.state==='trash'?''\n"
-            "    :junk?junkNavigationHtml(null)\n"
+            "    :junk?junkCountSkeletonHtml(junkRoute(location.search))\n"
             "    :`<span class=\"mono\"><span class=\"countskeleton\"></span></span>`+countSortsHtml();\n"
-            "  if(junk)wireJunkNavigation();else wireCountRow();")
+            "  if(!junk)wireCountRow();")
         self.assertPageContains("    +(trash?'':countSortsHtml());")
         self.assertPageLacks("count.textContent=''",
                              "加载态不能清空整行，筛选条要留在原位")
@@ -3306,7 +3303,7 @@ class WebUiSourceTests(unittest.TestCase):
             "const hideDiscoveryBars=()=>{$('#tiers').style.display='none';"
             "$('#tagbar').style.display='none'};")
         self.assertPageContains(
-            "  loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';\n"
+            "  loadRequestSeq++;$('#combo').innerHTML='';\n"
             "  hideDiscoveryBars();")
         self.assertEqual(self.page.count("hideDiscoveryBars();"), 5,
                          "管理页、索引列表、实体资料页、详情页和中央清理函数各调一次，收起动作本身只写一处")
@@ -4564,7 +4561,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_card_hover_and_view_glide_can_extend_outside_content(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".card{overflow:visible;border-radius:var(--surface-radius)}", board)
-        self.assertIn(".gridstack .card:not(.junkcard) .pic{border-radius:var(--surface-radius);overflow:hidden}", board)
+        self.assertIn(".gridstack .card .pic{border-radius:var(--surface-radius);overflow:hidden}", board)
         self.assertIn(".card:hover .pic::after,.card.selected .pic::after{box-sizing:border-box;border-radius:inherit}", board)
         self.assertIn(".board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}", board)
         self.assertPageContains("const host=pill.closest(within);if(!host)return null;")
@@ -5157,7 +5154,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("tag:cleanTagFilter(params.get('tag'))")
         self.assertPageContains("state={...state,creator:'',studio:'',tag:'',tag_match:'all'")
         self.assertPageContains("function enterManagementSurface()")
-        self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML=''")
+        self.assertPageContains("loadRequestSeq++;$('#combo').innerHTML=''")
 
     def test_sidebar_add_row_wears_the_shared_input_and_primary_button(self):
         """这一行有三条判据：颜色只走 token、高度只引用 --control-h、主次动作分得开。
@@ -5535,7 +5532,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("surfaceEpoch++;return surfaceToken(path)}")
         self.assertPageContains("const surfaceCurrent=token=>token.epoch===surfaceEpoch&&surfacePath()===token.path")
         self.assertPageContains("const surface=claimSurface(surfacePath());")
-        self.assertPageContains("if(requestSeq!==loadRequestSeq||!surfaceCurrent(surface))return")
         self.assertPageContains("const surface=claimSurface('/review')")
         self.assertPageContains("if(!surfaceCurrent(surface))return")
         self.assertCode("async function restoreRoute(){\n  surfaceEpoch++")
@@ -5603,8 +5599,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_ads_queue_count_does_not_stick_and_disposal_reports_failures(self):
         """垃圾文件是处置队列；计数行不跟随滚动，写入冲突也不能伪装成成功。"""
-        self.assertPageContains("countRow.classList.add('manage-static','junkcount');")
-        self.assertPageContains("countRow.classList.remove('is-stuck');")
+        self.assertPageContains("count.classList.add('manage-static','junkcount');")
+        self.assertPageContains("count.classList.remove('is-stuck');")
         self.assertPageContains(".count.manage-static{position:relative;top:auto;z-index:1}")
         self.assertPageContains("if(!response.ok){")
         self.assertPageContains("throw new Error(requestErrorMessage(detail,response.status))")
@@ -5612,23 +5608,17 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("actionFailure('操作',error)")
         self.assertPageContains("kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
 
-    def test_junk_empty_state_only_appears_after_the_loading_request_finishes(self):
-        """待判断为空是请求终态；加载期间显示的是骨架，不能先闪空态。"""
-        branch = self.app_js.split("async function loadJunk(", 1)[1].split("renderJunkNavigation(adsBatch)", 1)[0]
-        request = "const nextAds=await surfaceApi(surface,'/api/ads?'+junkQuery)"
-        self.assertLess(branch.index(request), branch.index("emptyState('check'"))
-
     def test_junk_files_wait_on_a_structural_skeleton_not_loading_dots(self):
         """垃圾文件页等的是一屏同质卡片，不是后台任务的进度。
 
         `.claude/skills/peach-web-ui/SKILL.md` 的判据：整页或大区块首次等待内容结构用
         Skeleton，后台任务仍在推进才用 Loading Dots。垃圾文件页的正文就是一格一格的
-        `.junkcard`，跟目录网格同形；这里画 Loading Dots 等于把「等下会出现几张什么形状
+        垃圾卡，跟目录网格同形；这里画 Loading Dots 等于把「等下会出现几张什么形状
         的卡」换成了「还在跑」。两条进入路径——深链首屏和路由后的 `loadCatalog()`——必须
         说同一句话，否则整页刷新会连播两段动画：先骨架，再 dots。
         """
         self.assertPageContains("renderCatalogLoading('正在读取垃圾文件');")
-        self.assertPageContains("if(reset){clearCatalogGrid();renderCatalogLoading('正在读取垃圾文件')}")
+        self.assertPageContains("if(!live){clearCatalogGrid();renderCatalogLoading('正在读取垃圾文件')}")
         self.assertPageLacks("loadingDotsHtml('正在读取垃圾文件…')")
         self.assertPageLacks("junkloading")
 
@@ -5636,21 +5626,17 @@ class WebUiSourceTests(unittest.TestCase):
         """等待期间的计数行画的是垃圾文件自己那条，不是目录的排序。
 
         `peach-web-ui` 的判据：骨架复用最终容器的结构，能同步得到的筛选控件立即显示。
-        分类有哪几项、此刻选中哪一项、看的是待判断还是已排除，全由 URL 决定；随这次请求
-        变的只有摘要里那个数字和各类的计数徽标，占位就只盖它们。照目录那条画的话，等待
-        期间摆着一排这一页根本没有的换批与排序键，数据到货整行再换成另一种东西。
+        分类有哪几项、此刻选中哪一项、看的是待判断还是已排除，全由 URL 决定，所以骨架
+        取的是 island 按同一份地址画出的那一版（`junkCountSkeletonHtml`）。照目录那条画
+        的话，等待期间摆着一排这一页根本没有的换批与排序键，数据到货整行再换成另一种东西。
+        两版逐项相同由 `frontend/test/react/junk-queue.test.tsx` 断言。
         """
         loading = self.app_js.split("function renderCatalogLoading(", 1)[1].split("\n}", 1)[0]
-        self.assertIn("junkNavigationHtml(null)", loading)
-        self.assertIn("if(junk)wireJunkNavigation();else wireCountRow();", loading)
-        # 这一行自己的版式类平时由 load() 写，深链冷启动时骨架排在它前面。
+        self.assertIn("junkCountSkeletonHtml(junkRoute(location.search))", loading)
+        self.assertIn("if(!junk)wireCountRow();", loading)
+        # 这一行自己的版式类平时由 loadJunk 写，深链冷启动时骨架排在它前面。
         self.assertIn("count.classList.toggle('junkcount',junk)", loading)
         self.assertIn("count.classList.toggle('manage-static',junk)", loading)
-        # 等待与到货是同一份结构、同一份接线，不是两份互相追赶的模板。
-        self.assertPageContains("$('#count').innerHTML=junkNavigationHtml(data);")
-        self.assertPageContains("{pending:!data}")
-        self.assertPageContains(
-            "const figure=pending?'<span class=\"countskeleton\"></span>':esc(value);")
 
     def test_junk_count_row_stacks_two_visible_faces_as_wide_as_the_title(self):
         """垃圾文件的计数行是上下两块整宽的面，跟标题、面包屑和网格同宽。
@@ -5669,8 +5655,6 @@ class WebUiSourceTests(unittest.TestCase):
                       '{width:100%;max-width:var(--board-content);margin-inline:auto}', board)
         self.assertIn('html:not(.dark) .collection-summary'
                       '{background:var(--color-background-secondary-default)}', board)
-        self.assertIn('html:not(.dark) body[data-surface="/junk-files"] .junkfilters'
-                      '{background:var(--color-background-secondary-default)}', board)
 
     def test_category_switchers_are_geist_secondary_tabs_not_a_segmented_control(self):
         """复核分类和垃圾文件分类共用一套外观：带描边的 Geist Tabs secondary 几何。
@@ -5686,70 +5670,34 @@ class WebUiSourceTests(unittest.TestCase):
         gap 留 5px：两枚填充块紧贴会连成一条，读成一个控件。
         """
         self.assertPageContains(
-            ".reviewtabs,.junkfilters{display:flex;align-items:center;gap:5px;min-width:0;"
+            ".reviewtabs{display:flex;align-items:center;gap:5px;min-width:0;"
             "overflow-x:auto;scrollbar-width:none}")
         self.assertCode(
-            ".reviewtabs button,.junkfilters a{box-sizing:border-box;height:32px;padding:0 12px;flex:none;"
+            ".reviewtabs button{box-sizing:border-box;height:32px;padding:0 12px;flex:none;"
             "display:inline-flex;align-items:center;gap:6px;border:0;"
             "border-radius:var(--control-radius);background:transparent;color:var(--muted);"
             "text-decoration:none;font:inherit;font-size:var(--fs-sm);font-weight:400;"
             "white-space:nowrap;cursor:pointer}")
-        # 装不下时要能滚：这两条都靠覆盖式滑块给出可拖的抓手，系统滚动条已经关掉了。
-        self.assertPageContains("'.reviewtabs','.junkfilters',")
-        self.assertPageContains(
-            '.junkfilters a[aria-current="page"]{background:var(--picked);color:var(--ink)}')
-        # 反相底色不能回来。
-        self.assertPageLacks('.junkfilters a[aria-current="page"]{border-color:var(--ink-2)')
-        # 垃圾文件那条是同一批候选按 type 收窄，数据模型不变，当前项落在 URL 上，所以是
-        # 导航链接而不是 tab。别为了「两条长得一样」把它也套上 tablist：屏幕阅读器会把
-        # 筛选念成「标签页 3 of 7」，键盘上还会多出一层方向键漫游，Ctrl 点开新页也没了。
-        self.assertPageContains('<nav class="junkfilters" aria-label="垃圾文件分类">')
-        self.assertPageLacks('class="junkfilters" role="tablist"')
-        self.assertPageContains('data-junk-kind-link="${esc(key)}"${current?' + repr(' aria-current="page"'))
-        # 计数是徽标不是标题的一部分，为 0 时整枚去掉，两条一个口径。
-        self.assertPageContains(
-            'count?` <span class="n mono" data-count-badge="junk:${esc(key)}">'
-            '${count.toLocaleString()}</span>`:' + repr(''))
-        self.assertPageContains(
-            'dismissedTotal?` <span class="n mono" data-count-badge="junk:dismissed">'
-            '${dismissedTotal.toLocaleString()}</span>`:' + repr(''))
-        self.assertPageLacks(" <span>${countFor(key).toLocaleString()}</span>")
-        self.assertPageContains(".junkfilters .n{color:var(--muted);"
-                                "font-size:var(--fs-xs);font-variant-numeric:tabular-nums}")
-        # 40em 以下要抬高触摸目标；控件现在是定高，min-height 压不动它，两条 tab 一起抬。
-        self.assertPageContains(".reviewtabs button,.junkfilters a{height:44px}")
+        # 装不下时要能滚：靠覆盖式滑块给出可拖的抓手，系统滚动条已经关掉了。
+        self.assertPageContains("'.reviewtabs','.ftablewrap',")
+        # 40em 以下要抬高触摸目标；控件现在是定高，min-height 压不动它。
+        self.assertPageContains(".reviewtabs button{height:44px}")
+        # 垃圾文件那条分类归 `junk-queue` island：导航链接而不是 tablist、计数徽标为 0 时
+        # 整枚去掉由 `frontend/test/react/junk-queue.test.tsx` 断言，几何与选中抬底由
+        # `frontend/e2e/design.test.ts` 在真浏览器里量。
 
     def test_junk_review_and_trash_render_every_physical_resource_type(self):
-        """图片、网址快捷方式等不能复用视频播放器，但必须可预览、回收和还原。"""
-        self.assertPageContains('src="/photo-thumb?id=${it.id}"')
-        self.assertPageContains("await api('/api/batch',{method:'POST',body:JSON.stringify({ids:[id],operation})})")
+        """图片、网址快捷方式等不能复用视频播放器，但必须可预览、回收和还原。
+
+        垃圾卡本身（各类缩略图与字形、三颗处置键、选中标记、不带稍后看）归 `junk-queue`
+        island，由 `frontend/test/react/junk-queue.test.tsx` 断言；键的几何由
+        `frontend/e2e/design.test.ts` 量。这里只留壳这一侧的写入、回收站与批量条。
+        """
+        self.assertPageContains("await api('/api/batch',{method:'POST',body:JSON.stringify({ids,operation})});")
         self.assertPageContains("const emptyTrash=$('#emptyTrash');")
         self.assertPageContains("if(emptyTrash)emptyTrash.onclick=async(e)=>{")
-        self.assertPageContains("function junkCardHtml(it)")
-        self.assertPageContains('data-junk-operation="${decision[0]}" title="${esc(decision[1])}" aria-label="${esc(decision[1])}"')
-        self.assertPageContains('data-junk-operation="dispose" title="移入回收站" aria-label="移入回收站"')
-        self.assertPageContains('data-junk-reveal title="在资源管理器中显示"')
-        self.assertPageContains("revealSource(id,status,{button:reveal})")
-        self.assertPageContains('<span>打开位置</span>')
-        self.assertPageContains("['dismiss-junk','不是垃圾','check']")
-        self.assertPageContains("<span>移入回收站</span>")
-        self.assertPageContains('body[data-density="dense"] .junkcard .junkactions button span{display:none}')
-        # 三个按钮等宽，图标加标签在各自那一格里居中。
-        junk_button = self.css.split(".junkactions button{", 1)[1].split("}", 1)[0]
-        self.assertIn("justify-content:center", junk_button)
-        self.assertNotIn("justify-content:flex-start", junk_button)
-        self.assertPageContains("function renderJunkNavigation(data)")
-        self.assertPageContains("['video','视频','play'],['image','图片','pics']")
-        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
-        self.assertPageContains("href=\"${junkPath(key,junkView)}\"")
-        self.assertPageContains("${icon(glyph)}${esc(label)}")
-        self.assertPageContains("${icon(junkView==='dismissed'?'rotate-ccw':'eye-off')}")
-        junk_card = self.app_js.split("function junkCardHtml(it){", 1)[1].split("\n}", 1)[0]
-        self.assertIn("selectionMark", junk_card)
-        self.assertNotIn("data-later", junk_card)
         self.assertPageContains("const catalog=isCatalogPath(path)||path==='/trash'")
         self.assertPageContains("location.pathname==='/junk-files'?'junk':'catalog'")
-        self.assertPageContains("wireJunkCards($('#grid'));paintSelection()")
         self.assertPageContains("data-junk-batch=\"dismiss-junk\"")
         self.assertPageContains("data-junk-batch=\"reconsider-junk\"")
 
@@ -5769,7 +5717,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("#batchbar[hidden]{display:none}")
         self.assertPageContains("button[hidden]{display:none}")
         self.assertPageContains("querySelectorAll('[data-junk-batch]')")
-        self.assertPageContains("toggleSelection(id,event.shiftKey)")
 
     def test_search_suggestions_come_from_real_data_in_bulk(self):
         """推荐取当前馆藏，并核对实际搜索命中。"""
@@ -7431,9 +7378,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("p.set('limit','48')")
         self.assertPageContains("if(offset)p.set('count','0')")
         self.assertPageContains('class="entitymore"')
-        self.assertPageContains("adsBatch.items.slice(pageOffset,pageOffset+appSettings.batchSize)")
-        self.assertPageContains("const pageOffset=reset?0:offset+appSettings.batchSize")
-        self.assertPageContains("enabled:()=>!listLoading&&$('#stats').hidden&&$('#index').hidden")
         self.assertPageContains("barsRequestSeq")
         self.assertPageContains("async function getBarsData(context=barsContext)")
         self.assertPageContains("Date.now()-barsDataAt<30000")
@@ -7628,8 +7572,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("releaseHoverPreviews(document,el)")
         self.assertPageContains("window.addEventListener('pagehide',()=>releaseHoverPreviews())")
         self.assertPageContains("if(document.hidden)releaseHoverPreviews()")
-        self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
-        self.assertPageContains("if(reset)releaseHoverPreviews($('#grid'))")
 
     def test_remote_hover_scan_is_an_overlay_so_every_jav_layout_has_it(self):
         """远端源的扫视图叠一层，不改任何已有 `<img>` 的 src。
@@ -7708,7 +7650,7 @@ class WebUiSourceTests(unittest.TestCase):
                         body.index("setGridCards(catalogSkeletonHtml"),
                         "哨兵要在骨架铺上之前收掉，别让 dots 和骨架同时存在一帧")
         # 目录这条链上收哨兵只有这一处：分支里再补一次就是又一个会漏掉的地方。
-        ads = self.app_js.split("async function loadJunk(", 1)[1].split("renderJunkNavigation(adsBatch)", 1)[0]
+        ads = self.app_js.split("function loadJunk(surface){", 1)[1].split("\n}", 1)[0]
         self.assertNotIn("$('#loadSentinel').hidden=true", ads)
         boot = self.app_js.split("if(path==='/junk-files'){", 1)[1].split("return;", 1)[0]
         self.assertNotIn("$('#loadSentinel').hidden=true", boot)
@@ -7926,7 +7868,7 @@ class WebUiSourceTests(unittest.TestCase):
         同时把竖屏带排除在外——它的卡在竖屏那一排里，不属于任何一段。
         """
         self.assertPageContains(
-            "'#grid > .grid > .card[data-id],:is(#grid,#index [data-entity-grid]) "
+            "':is(#grid,#index [data-entity-grid]) "
             "[data-media-grid] > [data-media-card][data-id]');")
         self.assertPageContains(
             "function visibleCardIds(){return [...gridCards()].map(card=>+card.dataset.id)}")
@@ -8555,12 +8497,10 @@ class WebUiSourceTests(unittest.TestCase):
         for consumer in (
                 'id="photoDetailTitle" data-middle-truncate',
                 '<b data-middle-truncate>${esc(javDisplayName(media))}</b>',
-                '<b data-middle-truncate>${esc(javDisplayName(x))}</b>',
-                'class="t junkcardtitle" type="button" data-junk-open data-middle-truncate',
-                'class="t junkcardtitle" data-middle-truncate'):
+                '<b data-middle-truncate>${esc(javDisplayName(x))}</b>'):
             self.assertPageContains(consumer)
-        # 高清版目标页、统计页、复核页、数据管理、重复文件页与回收站资源卡归 React 子树，由 frontend 的用例覆盖。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 5)
+        # 高清版目标页、统计页、复核页、数据管理、重复文件页、回收站资源卡与垃圾卡归 React 子树，由 frontend 的用例覆盖。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 3)
         self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
         self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
         # 关注合集队列卡的出处行是 flex 一行（`.fqmeta`），时间不收窄，不走尾部省略。
@@ -8876,10 +8816,8 @@ class WebUiSourceTests(unittest.TestCase):
 
         `i-clock` 没有使用者，是用户点名留的备用件，不要当死代码清掉。
         """
-        # 文件类型标的是文件，不是打开动作，也不是音量。
-        self.assertPageContains("['archive','压缩包','file-archive'],['audio','音频','file-audio']")
-        self.assertPageContains("archive:['压缩包','file-archive'],")
-        self.assertPageContains("audio:['音频','file-audio'],")
+        # 文件类型标的是文件，不是打开动作，也不是音量：垃圾卡与分类条的字形归
+        # `junk-queue` island，由 `frontend/test/react/junk-queue.test.tsx` 逐类钉住。
         # 「加载更多」往下接一页，方向由字形给出。
         self.assertPageContains("data-follow-more>${icon('chevron-down')}加载更多</button>")
         # 转圈只剩「去问来源有没有更新」这一个意思。此前九处动作共用它，读下来全是
@@ -10425,7 +10363,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("rootMargin:'320px'", body)
         self.assertEqual(self.page.count("new IntersectionObserver"), 1,
                          "共享分页只有这一个观察器")
-        for consumer in ("function renderFollow", "function renderPhotoWall", "function loadJunk"):
+        for consumer in ("function renderFollow", "function renderPhotoWall"):
             self.assertIn("wireLoadMore(", self._js_function(consumer.split()[-1]))
 
     def test_the_identity_name_leaves_room_for_descenders(self):
@@ -10659,7 +10597,7 @@ class WebUiSourceTests(unittest.TestCase):
         for name in ("openStats", "openTaste", "openPlaylists", "openReview", "openFollow"):
             self.assertIn("enterManagementSurface()", self._js_function(name),
                           name + " 没有走中央清理函数，多半又手抄了一份不完整的")
-        self.assertPageContains("loadRequestSeq++;listLoading=false;$('#combo').innerHTML='';",
+        self.assertPageContains("loadRequestSeq++;$('#combo').innerHTML='';",
                                 "中央清理函数必须同时收掉筛选芯片和在途的目录请求")
         # 手抄正是这个 bug 的来源。除了清理函数自己，只有目录内部的管理条可以直接动
         # 这两个元素——它换的是目录自己的形态，而不是切去另一个页面。
@@ -10909,7 +10847,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         css = stylesheet_source()
         # 重复页「批量保留」那条不在此列：它是一块玻璃，上面的键沿用筛选框胶囊那圈 `--glass-low` 发丝边。
-        for name in (".batchbar button{", ".junkactions button{"):
+        for name in (".batchbar button{",):
             found = re.search(r"(?:^|[}\n])" + re.escape(name), css)
             self.assertIsNotNone(found, f"{name} 找不到基样式")
             start = found.end() - len(name)
@@ -10934,7 +10872,7 @@ class WebUiSourceTests(unittest.TestCase):
         可它旁边只有一颗「选择文件夹」，所以它走实底红。
 
         红只有一个入口，所以这几颗键在标记上带 `.danger`，选择器把类名写两遍换权重。
-        页面另起一个单类承担不了这一档：`.resourceaction`、`.junkactions button` 这类容器
+        页面另起一个单类承担不了这一档：`.resourceaction` 这类容器
         规则自己就填底色，权重不低于页面单类、文件又排在 01-base 后面，红会被容器底色
         盖掉，两边的 CSS 单看都对。
         """
@@ -10943,8 +10881,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 复核卡的拒绝键走 Geist 的 error 变体，那是同一块红的另一个入口。
         self.assertPageContains(".geist-button.error{background:#da2f35;",
                                 "销毁键静止态就是实底红")
-        # 垃圾复核的「移入回收站」。
-        self.assertPageContains('class="danger" data-junk-operation="dispose"', "销毁键的红挂在 .danger 上")
+        # 垃圾复核的「移入回收站」归 `junk-queue` island，静止实底红由 e2e design 在真浏览器里量。
         # React 那侧同一块红走 BoardUI 的 danger 变体：关注来源凭据行的「清除」是其中一颗。
         self.assertIn('<Button variant="danger" size="small" disabled={readOnly}',
                       self.read_react("follow-manage/credentials.tsx"))
@@ -11815,8 +11752,7 @@ class MotionRecipeTests(unittest.TestCase):
         self.assertPageContains(
             ".countbadge.popped{transform:scale(0);opacity:0;filter:blur(2px);transition:none}")
         for call in ("popBadges($('#tagScroll'),'tagbar')",
-                     "popBadges($('#drawerScroll'),'drawer')",
-                     "popBadges($('#count'),'junk')"):
+                     "popBadges($('#drawerScroll'),'drawer')"):
             with self.subTest(call=call):
                 self.assertPageContains(call)
 

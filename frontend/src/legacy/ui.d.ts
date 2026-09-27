@@ -12,7 +12,6 @@ export declare function emptyStateHtml(
   options?: { className?: string; actions?: string },
 ): string;
 
-export declare function collectionSummaryHtml(label: string, value: string, detail?: string, options?: { pending?: boolean }): string;
 export declare function badgeHtml(text: string): string;
 /** 索引页的占位：名册网格、字母表或标签云，尺寸取最终那一副。首屏和页内换档共用这一份。 */
 export declare function indexSkeletonHtml(options: {
@@ -62,6 +61,10 @@ export declare function spinnerHtml(label?: string): string;
 /** 读数按位错峰长出来。只在值真变时放动画；整块重建的那一格先把上一次的值写回
  *  `dataset.popCount` 再调，它才分得清「换了个数」和「刚出现」。 */
 export declare function popCount(el: HTMLElement | null, text: string): void;
+
+/** 计数徽标（`[data-count-badge]`）变了数就弹一下，没变的原地不动。上一次的值按 `scope` 与
+ *  徽标的键记在模块里，所以整块重建的那一行也分得清「换了个数」和「刚出现」。 */
+export declare function popBadges(root: Element | null, scope?: string): void;
 
 /** 骨架落进 DOM 之后按实际尺寸补齐到盖住视口，并挂上显示门槛（`.skeleton-awaiting`）：
  *  门槛之前就取完的，这张骨架从未被看见。 */

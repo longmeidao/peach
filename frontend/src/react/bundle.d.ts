@@ -6,9 +6,11 @@
 import type { QualityGoal } from './quality-goals/quality-goals';
 import type { IndexProps } from './index/index-data';
 import type { CatalogGridProps } from './catalog-grid/types';
+import type { JunkQueueProps } from './junk-queue/junk-queue';
 
 export type { IndexProps };
 export type { CatalogGridProps };
+export type { JunkQueueProps };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -375,6 +377,7 @@ export interface ReactPages {
   duplicates: ReactPage<DuplicatesProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   index: ReactPage<IndexProps>;
+  'junk-queue': ReactPage<JunkQueueProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   playlists: ReactPage<PlaylistsProps>;
   'quality-goals': ReactPage<QualityGoalsProps>;

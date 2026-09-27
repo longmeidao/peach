@@ -44,12 +44,13 @@ body[data-surface="/trash"] .peach-react [data-media-grid] {
 .peach-react [data-media-card][data-variant="short"] { flex: none; width: 214px; }
 .peach-react [data-media-card][data-variant="next"] { flex: none; width: 216px; }
 body[data-density="dense"] .peach-react [data-media-card][data-variant="short"] { width: calc(214px * 168 / 336); }
-/* 悬停面往卡片盒外多铺 8px：不动网格尺寸、不挤相邻卡，只让命中反馈比内容大一圈。 */
-.peach-react [data-media-card]:not([data-variant="resource"]):is(:hover, :focus-within) {
+/* 悬停面往卡片盒外多铺 8px：不动网格尺寸、不挤相邻卡，只让命中反馈比内容大一圈。回收站的资源卡
+ * 与垃圾卡是有边的面，不铺。 */
+.peach-react [data-media-card]:not([data-variant="resource"], [data-variant="junk"]):is(:hover, :focus-within) {
   background: var(--hover);
   box-shadow: 0 0 0 8px var(--hover);
 }
-.peach-react [data-media-card]:not([data-variant="resource"]):hover [data-media-pic] { filter: saturate(.9) brightness(.94); }
+.peach-react [data-media-card]:not([data-variant="resource"], [data-variant="junk"]):hover [data-media-pic] { filter: saturate(.9) brightness(.94); }
 .peach-react [data-select-mode] [data-media-card] { cursor: default; }
 .peach-react [data-select-mode] :is([data-media-open], [data-media-preview], [data-media-later], [data-media-seek]),
 .peach-react [data-select-mode] :is([data-media-later], [data-media-seek]) button { pointer-events: none !important; }

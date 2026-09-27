@@ -40,7 +40,7 @@ async function until(ok: () => boolean, what: string): Promise<void> {
 describe('island 注册表', () => {
   it('登记的名字就是遗留路由能挂载的名字', () => {
     expect(islandNames()).toEqual([
-      'avatar-picker', 'catalog-grid', 'cover-crop', 'data-cleanup', 'duplicates', 'follow-manage', 'index', 'library-processing', 'playlists',
+      'avatar-picker', 'catalog-grid', 'cover-crop', 'data-cleanup', 'duplicates', 'follow-manage', 'index', 'junk-queue', 'library-processing', 'playlists',
       'scraping', 'quality-goals', 'review', 'configuration', 'configuration-summary', 'activity', 'stats', 'taste']);
   });
 

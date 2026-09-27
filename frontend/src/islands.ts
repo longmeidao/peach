@@ -28,6 +28,7 @@ export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
 export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml } from './management';
+export { junkCountSkeletonHtml, junkPath, junkRoute } from './junk-queue';
 
 /** 每个 island 的 props。新增 island 时在这里登记，注册表随之要求实现；
  *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
@@ -39,6 +40,7 @@ export interface IslandContracts {
   duplicates: ReactBundle.DuplicatesProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
+  'junk-queue': ReactBundle.JunkQueueProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
   playlists: ReactBundle.PlaylistsProps;
   'scraping': ReactBundle.ScrapingProps;
@@ -68,6 +70,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   duplicates: { react: 'duplicates' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
+  'junk-queue': { react: 'junk-queue' },
   'library-processing': { react: 'library-processing' },
   playlists: { react: 'playlists' },
   'scraping': { react: 'scraping' },

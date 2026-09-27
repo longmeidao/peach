@@ -7,15 +7,13 @@
  * 读数行（`#count`）的结构归壳，网格每接一页经 `onCount` 报一次，再把读数按位错峰写进
  * 那一格（遗留层 `popCount`）。无限滚动的判据照抄遗留层 `wireLoadMore`：哨兵进入视口 320px
  * 内自动取下一页，点它等于手动取；失败在哨兵后面留一条可重试的 Note，之后只有手动才重试。 */
-import {
-  Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
-  type AnimationEvent, type MouseEvent, type RefObject,
-} from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useInfiniteQuery, type InfiniteData, type QueryKey } from '@tanstack/react-query';
 import { requestErrorMessage } from '@peach/legacy/core';
-import { fitSkeleton, loadingDotsHtml, noteHtml, popCount } from '@peach/legacy/ui';
+import { loadingDotsHtml, popCount } from '@peach/legacy/ui';
 
 import { apiGet } from '../../api';
+import { RetryNote, useSkeletonReveal } from '../components/grid-reveal';
 import { COVER_FRONT_RATIO, MediaCard, type MediaCardVariant } from '../components/media-card';
 import { MIX_FLIP_FACES, MixCard } from '../components/mix-card';
 import { javArtwork, type Artwork } from './artwork';
@@ -149,47 +147,6 @@ function GridBody(props: CatalogGridProps) {
       {reveal.layer}
       {content()}
     </div>
-  );
-}
-
-/** 骨架与它的退场。骨架那一层在数据到了之后原地变成淡出层：同一个元素、同一段 HTML，
- *  React 不重写它，`fitSkeleton` 补齐的那几张卡也还在。骨架还没到显示门槛（`fitSkeleton`
- *  给它挂着 `.skeleton-awaiting`）就已取完，就直接撤掉，不为从未被看见的占位播退场。 */
-function useSkeletonReveal(pending: boolean, skeletonHtml: () => string) {
-  const [phase, setPhase] = useState<'skeleton' | 'fade' | 'none'>(pending ? 'skeleton' : 'none');
-  const [markup] = useState(() => (pending ? skeletonHtml() : ''));
-  const node = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => { if (node.current) fitSkeleton(node.current) }, []);
-  useLayoutEffect(() => {
-    if (pending || phase !== 'skeleton') return;
-    const seen = !!node.current && !node.current.querySelector('.skeleton-awaiting');
-    setPhase(seen ? 'fade' : 'none');
-  }, [pending]);
-  /* 动画结束事件丢了（标签页在后台、元素被别的动效接管）也要收掉，同遗留层的 1 秒兜底。 */
-  useEffect(() => {
-    if (phase !== 'fade') return undefined;
-    const timer = setTimeout(() => setPhase('none'), 1000);
-    return () => clearTimeout(timer);
-  }, [phase]);
-  const done = (event: AnimationEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) setPhase('none');
-  };
-  const layer = phase === 'none' ? null : (
-    <div ref={node} data-grid-fade={phase === 'fade' ? '' : undefined} aria-hidden={pending ? undefined : true}
-      hidden={!pending && phase === 'skeleton'} onAnimationEnd={done}
-      dangerouslySetInnerHTML={{ __html: markup }} />
-  );
-  return { layer, fading: phase === 'fade' };
-}
-
-/** 失败留在原位，给一颗重试。Note 由遗留层 `noteHtml` 拼，和壳里别处的失败提示是同一份。 */
-function RetryNote({ message, onRetry }: { message: string; onRetry: () => void }) {
-  const click = (event: MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('[data-note-action]')) onRetry();
-  };
-  return (
-    <div data-media-error="" onClick={click}
-      dangerouslySetInnerHTML={{ __html: noteHtml(message, { variant: 'error', actionLabel: '重试' }) }} />
   );
 }
 
