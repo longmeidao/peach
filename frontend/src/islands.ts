@@ -33,11 +33,11 @@ export { junkCountSkeletonHtml, junkPath, junkRoute } from './junk-queue';
 /** 每个 island 的 props。新增 island 时在这里登记，注册表随之要求实现；
  *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
 export interface IslandContracts {
-  'avatar-picker': ReactBundle.AvatarPickerProps;
   'catalog-grid': ReactBundle.CatalogGridProps;
   'cover-crop': ReactBundle.CoverCropProps;
   'data-cleanup': ReactBundle.DataCleanupProps;
   duplicates: ReactBundle.DuplicatesProps;
+  'entity-hero': ReactBundle.EntityHeroProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
   'junk-queue': ReactBundle.JunkQueueProps;
@@ -63,11 +63,11 @@ interface Island {
 }
 
 const REGISTRY: { [N in IslandName]: Island } = {
-  'avatar-picker': { react: 'avatar-picker' },
   'catalog-grid': { react: 'catalog-grid' },
   'cover-crop': { react: 'cover-crop' },
   'data-cleanup': { react: 'data-cleanup' },
   duplicates: { react: 'duplicates' },
+  'entity-hero': { react: 'entity-hero' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
   'junk-queue': { react: 'junk-queue' },
@@ -82,6 +82,10 @@ const REGISTRY: { [N in IslandName]: Island } = {
   stats: { react: 'stats' },
   taste: { react: 'taste' },
 };
+
+/** 先把 React 包取回来，不挂任何东西。遗留层在自己取数的同时调它：数据一到，`mountIsland`
+ *  里那一次 `import` 已经落地，壳换掉骨架与岛画出首帧落在同一帧里。 */
+export const preloadIslands = (): Promise<void> => import('@peach/react').then(() => undefined);
 
 /** 已注册的 island 名字。遗留层与测试用它核对路由表，不必知道注册表结构。 */
 export const islandNames = (): IslandName[] => Object.keys(REGISTRY) as IslandName[];

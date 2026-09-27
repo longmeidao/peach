@@ -7,10 +7,12 @@ import type { QualityGoal } from './quality-goals/quality-goals';
 import type { IndexProps } from './index/index-data';
 import type { CatalogGridProps } from './catalog-grid/types';
 import type { JunkQueueProps } from './junk-queue/junk-queue';
+import type { EntityHeroProps } from './entity-hero/entity-hero';
 
 export type { IndexProps };
 export type { CatalogGridProps };
 export type { JunkQueueProps };
+export type { EntityHeroProps };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -304,7 +306,8 @@ export interface LibraryProcessingProps {
   monitor?: boolean;
 }
 
-/** 换头像：资料页圆框角上那个加号，连同它点开的那一屏候选。 */
+/** 换头像：资料页圆框角上那个加号，连同它点开的那一屏候选。资料卡（`entity-hero`）在自己
+ *  的头像框上直接渲染它，不单独挂载。 */
 export interface AvatarPickerProps {
   /** 实体类型（`performer`／`creator`）。 */
   kind: string;
@@ -368,13 +371,13 @@ export interface PlaylistsProps {
 
 export interface ReactPages {
   activity: ReactPage<ActivityProps>;
-  'avatar-picker': ReactPage<AvatarPickerProps>;
   'catalog-grid': ReactPage<CatalogGridProps>;
   configuration: ReactPage<ConfigurationProps>;
   'configuration-summary': ReactPage<ConfigurationSummaryProps>;
   'cover-crop': ReactPage<CoverCropProps>;
   'data-cleanup': ReactPage<DataCleanupProps>;
   duplicates: ReactPage<DuplicatesProps>;
+  'entity-hero': ReactPage<EntityHeroProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   index: ReactPage<IndexProps>;
   'junk-queue': ReactPage<JunkQueueProps>;

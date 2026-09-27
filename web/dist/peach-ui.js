@@ -888,11 +888,11 @@ function pt(e, t) {
 //#endregion
 //#region src/islands.ts
 var Z = {
-	"avatar-picker": { react: "avatar-picker" },
 	"catalog-grid": { react: "catalog-grid" },
 	"cover-crop": { react: "cover-crop" },
 	"data-cleanup": { react: "data-cleanup" },
 	duplicates: { react: "duplicates" },
+	"entity-hero": { react: "entity-hero" },
 	"follow-manage": { react: "follow-manage" },
 	index: { react: "index" },
 	"junk-queue": { react: "junk-queue" },
@@ -906,8 +906,8 @@ var Z = {
 	activity: { react: "activity" },
 	stats: { react: "stats" },
 	taste: { react: "taste" }
-}, mt = () => Object.keys(Z), Q = /* @__PURE__ */ new Map();
-async function ht(e, t, n, r = {}) {
+}, mt = () => import("/dist/peach-react.js").then(() => void 0), ht = () => Object.keys(Z), Q = /* @__PURE__ */ new Map();
+async function gt(e, t, n, r = {}) {
 	let i = Z[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
 	$(t);
@@ -919,7 +919,7 @@ async function ht(e, t, n, r = {}) {
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!_t(t, a, r)) return;
+	if (!vt(t, a, r)) return;
 	let s = () => {
 		t.textContent = "";
 		let e = t.ownerDocument.createElement("div");
@@ -931,27 +931,27 @@ async function ht(e, t, n, r = {}) {
 	};
 	r.reveal ? r.reveal(t, s) : s();
 }
-function gt(e, t) {
+function _t(e, t) {
 	let n = e ? Q.get(e) : void 0;
 	!n?.update || !n.props || (n.props = {
 		...n.props,
 		...t
 	}, n.update(n.props));
 }
-function _t(e, t, n) {
+function vt(e, t, n) {
 	return Q.get(e) === t ? n.isCurrent && !n.isCurrent() ? (Q.delete(e), !1) : !0 : !1;
 }
-var vt = (e) => !!e && Q.has(e);
+var yt = (e) => !!e && Q.has(e);
 function $(e) {
-	for (let t of [...Q.keys()]) (t === e || e.contains(t)) && yt(t);
+	for (let t of [...Q.keys()]) (t === e || e.contains(t)) && bt(t);
 }
-function yt(e) {
+function bt(e) {
 	let t = Q.get(e);
 	t && (t.controller.abort(), Q.delete(e), t.dispose?.());
 }
-var bt = null;
-function xt(e, t, n, r) {
-	bt ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), bt.then((e) => e.showToast(n, r));
+var xt = null;
+function St(e, t, n, r) {
+	xt ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), xt.then((e) => e.showToast(n, r));
 }
 //#endregion
-export { Be as boardPageSkeleton, u as boundedPreference, We as catalogEmptyHtml, Ue as catalogSuggestions, le as clampPage, $e as cleanupSkeletonHtml, ze as detailSkeletonHtml, He as emptyCatalogLayout, pe as entitySkeletonHtml, de as faceSourceScale, ne as followJobProgress, m as initBoardControls, vt as islandMounted, mt as islandNames, dt as javImageKind, C as jobActivityHtml, lt as junkCountSkeletonHtml, q as junkPath, tt as junkRoute, ht as mountIsland, f as mountNumberSetting, fe as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, ut as normalizeJavPreferences, ce as pageCount, ue as paginationHtml, ft as panelFrame, c as preferredDirection, ae as selectGroup, re as selectRange, ie as selectionSummary, xt as showToast, Ge as sidebarHasCatalogContent, b as sidebarSectionHtml, qe as sidebarTagCounts, p as syncBoardRange, pt as syncJavImages, d as syncNumberSetting, oe as syncSelectionToolbar, Ke as syncSidebarSurface, ee as transitionTheme, $ as unmountIsland, gt as updateIsland, w as watchJob, x as wireSidebarGroups };
+export { Be as boardPageSkeleton, u as boundedPreference, We as catalogEmptyHtml, Ue as catalogSuggestions, le as clampPage, $e as cleanupSkeletonHtml, ze as detailSkeletonHtml, He as emptyCatalogLayout, pe as entitySkeletonHtml, de as faceSourceScale, ne as followJobProgress, m as initBoardControls, yt as islandMounted, ht as islandNames, dt as javImageKind, C as jobActivityHtml, lt as junkCountSkeletonHtml, q as junkPath, tt as junkRoute, gt as mountIsland, f as mountNumberSetting, fe as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, ut as normalizeJavPreferences, ce as pageCount, ue as paginationHtml, ft as panelFrame, c as preferredDirection, mt as preloadIslands, ae as selectGroup, re as selectRange, ie as selectionSummary, St as showToast, Ge as sidebarHasCatalogContent, b as sidebarSectionHtml, qe as sidebarTagCounts, p as syncBoardRange, pt as syncJavImages, d as syncNumberSetting, oe as syncSelectionToolbar, Ke as syncSidebarSurface, ee as transitionTheme, $ as unmountIsland, _t as updateIsland, w as watchJob, x as wireSidebarGroups };

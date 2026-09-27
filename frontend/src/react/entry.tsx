@@ -10,7 +10,6 @@ import { flushSync } from 'react-dom';
 
 import { ActivityPage } from './activity/activity-page';
 import { prefetchTasks } from './activity/tasks';
-import { AvatarPicker } from './avatar-picker/avatar-picker-page';
 import type * as Bundle from './bundle';
 import { prefetchCatalogGrid } from './catalog-grid/catalog-grid';
 import { CatalogGridPage } from './catalog-grid/catalog-grid-page';
@@ -19,6 +18,7 @@ import { prefetchDataCleanup } from './data-cleanup/data-cleanup';
 import { DataCleanupPage } from './data-cleanup/data-cleanup-page';
 import { prefetchDuplicates } from './duplicates/duplicates';
 import { DuplicatesPage } from './duplicates/duplicates-page';
+import { EntityHeroPage } from './entity-hero/entity-hero-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
 import { FollowManagePage } from './follow-manage/follow-manage-page';
 import { prefetchIndex } from './index/index-data';
@@ -95,9 +95,6 @@ const LibraryProcessing = (props: Bundle.LibraryProcessingProps) => (
 /** 整页归 React 的那些页面，按名字给遗留层用。 */
 export const pages: Bundle.ReactPages = {
   activity: { prefetch: (_props, signal) => prefetchTasks(signal), mount: mounter(ActivityPage) },
-  /* 换头像的候选要打到图库上，而资料页每进一次就预取一遍的话，多数时候没人点开它。
-     首屏没有要取的东西，`prefetch` 是空操作，候选由弹层自己在打开时取。 */
-  'avatar-picker': { prefetch: async () => {}, mount: mounter(AvatarPicker) },
   'catalog-grid': { prefetch: prefetchCatalogGrid, mount: mounter(CatalogGridPage) },
   /* 裁剪封面同理：详情页每进一次都挂这枚键，首屏没有要取的东西，图到点开才量。 */
   'cover-crop': { prefetch: async () => {}, mount: mounter(CoverCrop) },
@@ -113,6 +110,9 @@ export const pages: Bundle.ReactPages = {
     prefetch: (_props, signal) => prefetchDataCleanup(signal), mount: mounter(DataCleanupPage),
   },
   duplicates: { prefetch: (_props, signal) => prefetchDuplicates(signal), mount: mounter(DuplicatesPage) },
+  /* 资料卡要的 `/api/entity` 与新作由壳取好当 props 递进来，首屏没有要取的东西。换头像的
+     候选也不在这里预取：资料页每进一次就打一遍图库的话，多数时候没人点开它。 */
+  'entity-hero': { prefetch: async () => {}, mount: mounter(EntityHeroPage) },
   /* 首屏只取来源清单与凭据状态，地址栏指着「订阅源」时连它一起取。检查更新与查找那两趟
      后台任务的快照不在首屏里：它们常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */
   'follow-manage': {

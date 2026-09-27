@@ -1504,7 +1504,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         css = stylesheet_source()
         weights = sorted(set(re.findall(r"font-weight:\s*([^;}]+)", css)))
-        self.assertEqual(weights, ["400", "500", "600", "inherit"],
+        self.assertEqual(weights, ["400", "500", "600"],
                          f"字重只能是三档之一，实际出现 {weights}")
 
     def test_every_border_radius_comes_from_the_radius_vocabulary(self):
@@ -2111,16 +2111,10 @@ class WebUiSourceTests(unittest.TestCase):
         # 外链的 favicon 是向对方站点发出的真实请求。锚点上的 rel="noreferrer" 只管
         # 点击跳转，管不到这个 <img>——不设 referrerpolicy 的话，光是打开一位女优的
         # 资料页就会把 Peach 的页面地址报给 x.com、事务所站等每一个被链接的站点。
-        # 同页的 taste 行早就是 no-referrer，这里此前漏了；资料页链接从 5 条涨到两百
-        # 多条之后，漏的这一处才真正开始有代价。
-        # 现在更进一步：图标由本机 `/link-mark` 提供，浏览器根本不再向对方站点发请求，
-        # 也就无从泄露。referrerpolicy 仍然留着——它守的是这条约束本身。
-        self.assertPageContains('class="entityfavicon" src="${esc(linkMarkUrl(x))}"')
+        # 图标由本机 `/link-mark` 提供，浏览器根本不向对方站点发请求，也就无从泄露；
+        # referrerpolicy 仍然留着，它守的是这条约束本身。资料卡那一排在 entity-hero
+        # island 里，两条都由 entity-hero.test.tsx 钉住。
         self.assertPageLacks("faviconUrl(", "外链图标不应再直接指向对方站点")
-        anchor = self.app_js.index('class="entityfavicon"')
-        self.assertIn('referrerpolicy="no-referrer"',
-                      self.app_js[anchor:anchor + 260],
-                      "资料页外链 favicon 必须带 no-referrer")
 
     def test_no_site_icon_is_fetched_by_the_browser_from_the_site_itself(self):
         """站点图标全部由本机给：浏览器不向对方站点要图，也不问第三方图标代理。
@@ -2148,80 +2142,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("/link-mark?url=", "外链图标端点不得接受前端给的地址")
         self.assertPageLacks("/site-mark?url=", "站点圆标端点同样只认键")
 
-    def test_social_links_show_only_the_platform_mark_not_the_handle(self):
-        # handle 是网址的一部分，写出来只是把 URL 抄一遍：`X @remu19971203` 里真正有
-        # 信息量的只有那个 X。图标本身就说明了去哪，名字留给公司页官网那种「点之前看不出
-        # 是谁」的链接；女优页连官网也是图标（ADR-0069）。纯图标没有可读文字，所以标签必须
-        # 留给辅助技术，不能整个丢掉。
-        self.assertPageContains('<a class="iconlink" href="${esc(x.url)}"')
-        self.assertPageContains('<span class="sr-only">${esc(name)}</span></a>')
-        self.assertPageContains('.entitylinks .iconlink{width:36px;padding:0;gap:0;justify-content:center}')
-        # 悬停只让药丸的边显出来：这一排是图标，底色一换就读成「选中了这一个」。
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn("body .entitylinks a:hover{border-color:var(--line)}", board)
-
     def test_an_official_link_shows_the_sites_short_name_next_to_its_own_mark(self):
         # 文字是这家站平时被叫的短名（NAX、T-POWERS、DMM），图标是站点自己那枚。
         # 账本里的 label 是采集时抄的全称，域名又要人先认出哪一段是名字，两样都比短名
-        # 难读；全称留在 title 里。表里没有的站才退回 label。
-        # 已知例外：事务所 ACT 的站标是旗下一位艺人的照片，那一条会在人物页上摆出一张
-        # 别人的脸。取不到图时 `data-drop="self"` 撤掉 img，露出底下那枚地球。
-        self.assertPageContains('<a class="urllink" href="${esc(x.url)}"')
-        self.assertPageContains("${esc(officialLinkText(x,kind,[d.canonical_name,...(d.aliases||[])]))}")
+        # 难读；全称留在 title 里。表里没有的站才退回 label。资料卡怎么排这一格归
+        # entity-hero island（entity-hero.test.tsx 与 e2e 设计用例）。
         self.assertPageContains(
             "['nax-pro.com','NAX'],['t-powers.co.jp','T-POWERS'],['dmm.co.jp','DMM']")
         # 同一家站在别处以账本链接出现时，写的名字要和入口那枚药丸一致。
         self.assertPageContains("['minnano-av.com','みんなのAV']")
-        self.assertPageContains(".entitylinks a.urllink{letter-spacing:.02em}")
-        links = self.app_js[self.app_js.index("const siteMark=x=>"):]
-        links = links[:links.index(".join('');")]
-        official = links.split('class="iconlink"')[-1]
-        self.assertIn('<img class="entityfavicon" src="${esc(linkMarkUrl(x))}"', official)
-        self.assertIn('data-drop="self"', official)
-
-    def test_the_entry_links_only_print_what_the_server_already_built(self):
-        """外部入口是服务端拼好的地址、位置与标记，页面只负责排。
-
-        前端手里没有站点 id 也没有名字，模板拼在这边等于再养一份规则；缺 id 的站点、
-        以及不是 JAV 女优的那些人，根本不在 `entry_links` 里，页面上也就没有一枚点过去
-        落空的入口。
-        """
-        self.assertCode("const entryLinks=d.entry_links||[];")
-        # minnano-av 那一枚混进上面那排外链，排在最左。
-        self.assertCode("const links=entryLinks.filter(x=>x.slot==='pill').map(x=>")
-        # 它也是纯图标：名字在 title 和读屏文字里，与社媒那几枚同一个写法。
-        self.assertPageContains(
-            "iconLink(x,`<span class=\"entitylinkicon brand\">${icon(x.mark)}</span>`,x.label)")
-        self.assertCode(").join('')+siteLinks;")
-        self.assertCode("const entryMarks=entryLinks.filter(x=>x.slot==='mark').map(x=>")
-        self.assertPageContains(
-            '<a class="entrymark" href="${esc(x.url)}" target="_blank" rel="noreferrer"')
-        # MISSAV 没有图形标识，那一枚排字；带序号的第二枚把序号摆在标识旁边。
-        self.assertPageContains(
-            "x.mark?icon(x.mark):'<span class=\"missavmark\">"
-            "<span>MISS</span><span>AV</span></span>'")
-        self.assertPageContains('<span class="entryordinal">${esc(x.ordinal)}</span>')
-        self.assertPageContains('<div class="entrymarks">${entryMarks}</div>')
-        entry = self.app_js[self.app_js.index("const entryLinks=d.entry_links||[];"):]
-        self.assertNotIn("http", entry[:entry.index("const tags=")], "地址由服务端拼，页面不许自己接")
-        self.assertPageContains(
-            ".entrymarks{display:flex;flex-wrap:wrap;align-items:center;gap:32px;"
-            "margin-top:14px;max-width:100%}")
-        # 悬停底色是设计决定，按计算值量在 `frontend/e2e/design.test.ts`。
-        self.assertPageContains(".entrymark svg{height:22px;width:auto}")
-        self.assertPageContains(".entityhero .entrymarks{justify-content:center}")
 
     def test_the_watch_row_prints_each_site_own_wordmark(self):
-        """JavDB 用它页面导航里那枚横标识，MISSAV 按它自己的排版规则排字。"""
+        """JavDB 用它页面导航里那枚横标识；MISSAV 的排字归 entity-hero island，由 e2e 设计用例量。"""
         self.assertPageContains('<symbol id="i-mark-javdb" viewBox="0 0 326 111">')
         # 「Jav」那半在站上是纯白，压在 Peach 的浅色面上会消失，所以跟页面墨色走。
         self.assertPageContains('<path stroke="none" fill="currentColor" d="M47.4375 29.5469')
         self.assertPageContains('fill="#2F80ED"')
         self.assertCode("const WIDE_ICONS={'text-aa':1.435,'mark-javdb':326/111};")
-        self.assertPageContains(
-            ".missavmark{font-family:Halant,Georgia,\"Times New Roman\",serif;"
-            "font-weight:500;\n  font-size:var(--fs-xl);line-height:22px;")
-        self.assertPageContains(".missavmark span:last-child{color:#FE628E}")
         # minnano-av 的圆标取自它自己的标识文件左半，viewBox 因此是 70×70。
         self.assertPageContains(
             '<symbol id="i-brand-minnano" viewBox="0 0 70 70">'
@@ -2289,9 +2226,9 @@ class WebUiSourceTests(unittest.TestCase):
 
         认出是哪一家靠的正是颜色：X 黑底白字、Instagram 那道粉紫、YouTube 正红。场色
         和白字形都是人家标识的一部分，不是界面 token，跟着主题变就认不出了。场色铺满
-        24×24 的 viewBox，圆角由外面那层 `.entitylinkicon` 裁——官网那一格的 favicon 也是
-        这么裁的，同一排里社媒标记和它于是是同一种圆角方片。字形按 24×.5/256 缩在中心，
-        外圈裁掉的只是场色的角：社媒标记是拿来认牌子的，裁掉一角就不是那个牌子了。
+        24×24 的 viewBox，圆角由外面那层圆盘（资料卡岛的 `[data-link-icon]`）裁——官网那一格
+        的站点圆标也是这么裁的，同一排里社媒标记和它于是是同一种圆角方片。字形按 24×.5/256
+        缩在中心，外圈裁掉的只是场色的角：社媒标记是拿来认牌子的，裁掉一角就不是那个牌子了。
         """
         fields = {
             "brand-x": '"#000000"', "brand-threads": '"#000000"', "brand-tiktok": '"#000000"',
@@ -2319,13 +2256,11 @@ class WebUiSourceTests(unittest.TestCase):
                       "[['linktr.ee','linktree.com'],'brand-linktree']"):
             self.assertPageContains(hosts)
         self.assertPageLacks("knockout", "字形是白色实体，不是从圆盘里挖掉的洞")
-        self.assertPageContains(
-            '.entitylinkicon.brand svg{width:100%;height:100%;stroke:none;filter:none}')
 
     def test_only_the_profile_link_row_is_exempt_from_the_flat_external_link(self):
         """一句话那种外链是无边无底的蓝字；资料页那排外链是一圈药丸。
 
-        豁免判的是那枚圆盘 `.entitylinkicon`，不是「这条链接里有没有 `<img>`」。社媒标记
+        豁免判的是那枚圆盘 `[data-link-icon]`，不是「这条链接里有没有 `<img>`」。社媒标记
         是内联 `<svg>`，按后一个判据会被当成文字外链，药丸的边和底被抹平，同一排里只有
         它们几个没有圈；而按 `<img>` 豁免又会把别处任何包着图的外链一起放走，那些本来
         就该是平的。判据一并消失时整排药丸都被抹平，所以三种写法都要钉。
@@ -2333,13 +2268,13 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         for rule in (
             "body a:is(.externallink,[target=_blank])"
-            ":not(:has(.entitylinkicon)):not(.cardlink){",
+            ":not(:has([data-link-icon])):not(.cardlink){",
             "body a:is(.externallink,[target=_blank])"
-            ":not(:has(.entitylinkicon)):not(.cardlink):hover{",
+            ":not(:has([data-link-icon])):not(.cardlink):hover{",
         ):
             self.assertIn(rule, board)
         for weaker in (":not(:has(img)):not(.cardlink){", ":not(:has(img)):hover{",
-                       ":not(:has(img,.entitylinkicon))",
+                       ":not(:has(img,[data-link-icon]))",
                        "body a:is(.externallink,[target=_blank]):not(.cardlink){"):
             self.assertNotIn(weaker, board)
 
@@ -2360,66 +2295,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '${filterRow?` data-filter-row="${esc(filterRow)}"`:\'\'}')
 
-    def test_the_link_icon_disc_carries_no_plate_of_its_own(self):
-        """内联品牌标记直接画在药丸上。垫一层 `--sunk` 会让它比周围暗一档，看着像
-        这条链接被禁用了——而图标要说的是「去哪」，不是「能不能点」。"""
-        self.assertPageContains(
-            ".entitylinkicon{width:20px;height:20px;border-radius:var(--badge-radius);"
-            "background:transparent;")
+    def test_the_entity_skeleton_keeps_the_hero_geometry(self):
+        """资料卡骨架与岛里的真卡同一套几何，换成真卡时高度不跳。
 
-    def test_the_portrait_grows_with_the_identity_column_on_wide_screens(self):
-        """头像跟着右边那列的行数长：四行都在时 160px，其余 120px。
-
-        身份列有几行是看这个人有多少东西：只有名字和别名是两行，加上外链和看片那一行
-        就是四行。钉住 120px 的话卡上下空出一截，圆框反倒比文字轻。尺寸按行定而不取
-        行高的百分比：那样圆框宽、列宽、别名折行、行高绕成一个圈，Chromium 只解第一轮，
-        折行多出的高度压进卡底内边距。
+        头像按身份列有哪几行定尺寸，骨架没有看片那一行，落在 120px 那一档；手机上单列居中、
+        头像钉 96px。真卡这几条由 e2e 设计用例量（大位按行数 160／120px、外链那排窄屏横滚、
+        圆盘不垫底、名字菜单命中区）。
         """
         self.assertPageContains(
             ".entityprofile{display:grid;grid-template-columns:auto minmax(0,1fr);")
         self.assertPageContains(
-            ".entityprofile:has(>.entityidentity>.entitylinks):has(>.entityidentity>.entrymarks)"
-            "{--portrait-size:160px}")
-        self.assertPageContains(
             ".entityportrait{height:var(--portrait-size);width:auto;")
-
-    def test_the_entity_hero_is_a_centred_single_column_on_phones(self):
-        # 左像右文那套是给宽屏的：手机上 96px 头像旁边只剩两百多像素，别名和链接被挤成
-        # 两三行，头像下面又空着一大片。按 beeg 的资料页改成单列居中；卡还是那张卡，
-        # 变的只是卡里正文那一格的排法。
         self.assertPageContains(
             ".entityprofile{grid-template-columns:minmax(0,1fr);gap:12px;padding:16px;"
             "justify-items:center;text-align:center}")
-        # 单列时头像上下各占一整行，没有「右边那列有多高」可跟，尺寸仍是钉住的。
         self.assertPageContains(
             ".entityportrait{height:96px;min-height:96px;max-height:96px;width:96px}")
         self.assertPageContains(".entityidentity{width:100%}")
-        self.assertPageContains(".entityhero .entitylinks{justify-content:safe center")
-
-    def test_the_profile_link_row_scrolls_sideways_on_phones(self):
-        """十条外链在 390px 下换行要堆四行，把作品列表推到折线以外。
-
-        收成一行加横滑，跟筛选条一个做法。居中必须是 `safe center`：普通 `center`
-        在溢出时把前半排推到滚动起点之前，那几条够不着。竖直方向被 `overflow-x`
-        连带压成 hidden，焦点环靠上下各 4px 的内边距留位置、再由负外边距收回。
-        左右同样由负外边距撑到卡沿：滚动层收在卡的内边距里时，最后那枚药丸是在卡当中
-        被切一刀，看着像画坏了。
-        """
-        self.assertPageContains(
-            ".entityhero .entitylinks{justify-content:safe center;flex-wrap:nowrap;")
-        self.assertPageContains(
-            "margin-top:9px;margin-bottom:-4px;margin-inline:-16px;"
-            "padding-block:4px;padding-inline:16px;")
-        # 卡里那条 `max-width:100%` 会把撑出去的两侧又收回来，窄屏这一层得撤掉它。
-        self.assertPageContains("scroll-padding-inline:16px;max-width:none;")
-        self.assertPageContains(
-            "overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
-            "overscroll-behavior-inline:contain}")
-        self.assertPageContains(".entityhero .entitylinks::-webkit-scrollbar{display:none}")
-        self.assertPageContains(".entityhero .entitylinks>*{flex:none}")
-        self.assertPageLacks(
-            ".entityhero .entitylinks{justify-content:center",
-            "溢出的那半会落在滚动起点之前，滑不到")
 
     def test_the_switch_centers_its_icon_instead_of_the_line_box(self):
         """svg 默认是 inline，行盒底下留着基线以下的空档。
@@ -4555,7 +4447,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('align-items:center', note)
         self.assertIn('background:color-mix(in srgb,var(--feedback-color) 8%,var(--ground))', note)
         self.assertPageContains('.geist-note.geist-note>p{margin:0;color:inherit;font:inherit;align-self:center}')
-        self.assertIn('body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlink):hover'
+        self.assertIn('body a:is(.externallink,[target=_blank]):not(:has([data-link-icon])):not(.cardlink):hover'
                       '{background:transparent;text-decoration:underline;box-shadow:none}', board)
         self.assertIn('.board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}', board)
 
@@ -6432,17 +6324,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("logo:company&&d.has_logo?d.canonical_name:'',")
         self.assertPageContains('class="tagscroll entitytags"')
         self.assertPageContains("filterChipHtml(tagLabel(x.k),{attr:'data-entity-tag'")
-        self.assertPageContains('class="relatedpeople"')
-        self.assertPageContains("data-related-performer")
         profile = self.page[self.page.index("async function openEntity("):]
-        self.assertLess(profile.index('<section class="entityhero" aria-label="资料">'),
-                        profile.index('class="relatedpeople"'))
-        self.assertLess(profile.index('class="relatedpeople"'),
+        # 资料卡（连同卡底的同台艺人）是 entity-hero island，宿主排在筛选条之前；同台艺人
+        # 收在卡底那条带里、由 aria-label 说是谁，由 e2e 设计用例量。
+        self.assertLess(profile.index('<div data-entity-hero="'),
                         profile.index('class="tagscroll entitytags"'))
-        # 同台艺人是这个人的附注，收在资料卡底那条带里，不是这一页的正文。这一排是谁
-        # 由 aria-label 说，不另画一枚小标签占位。
-        self.assertPageContains('<div class="entityfoot" aria-label="同台艺人">'
-                                '<div class="relatedpeople">${related}</div></div>')
         self.assertPageLacks("entityfootlabel")
         self.assertPageContains('class="entitytagbar" aria-label="媒体与标签"')
         self.assertNotIn("关联艺人", profile)
@@ -6519,42 +6405,18 @@ class WebUiSourceTests(unittest.TestCase):
         # 照片墙没有视频排序语义，切换后直接渲染照片，不复用作品头。
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
 
-    def test_entity_profile_uses_display_aliases_not_search_identity_aliases(self):
-        self.assertPageContains("(d.display_aliases||[]).length")
-        self.assertPageLacks("(d.aliases||[]).length?'别名")
-
-    def test_the_agency_reads_as_identity_and_leads_to_its_own_page(self):
-        """事务所是这个人签在谁名下，和别名、作品数是同一类事实，不是一条外链。
-
-        它在账本里有实体时给出去处：那条链接落在站内的事务所资料页，不是某个片商的站。
-        """
-        self.assertCode("const agencyHome=d.agency||null;")
-        self.assertPageContains("entityPath('agency',agencyName)")
-        self.assertPageContains("${memberHtml}${agencyHtml}")
-        # 没有对应实体时仍写名字，但不做成链接——那会通向一个不存在的页面。
-        self.assertCode(":esc(agencyName);")
-        # 公司名自己说明了它是什么，这一行只出名字，不加类别名占横向空间。
-        self.assertPageLacks("· 事务所 ${esc(agencyName)}")
-        # 链接标签写的是那家站的短名（公司页上自家站写「官方网站」），全称留在 title 里。
-        self.assertPageContains("officialLinkText(x,kind,")
-
     def test_the_agency_page_reuses_the_entity_route_table(self):
         """实体本来就只有 kind 不同，事务所加进同一张表就有了 `/agencies/<名字>`。"""
         self.assertPageContains("agency:'agencies'")
         self.assertPageContains("agencies:'agency'")
 
     def test_portrait_pixels_do_not_size_the_face_frame(self):
-        self.assertPageContains(".entityportrait img{position:absolute;inset:0;grid-area:auto;")
         # 索引页拿到的是等比缩过的派生件，先换算比例再判；比例为 0 才退回几何居中。
         self.assertPageContains("const scale=faceSourceScale(img.naturalWidth,img.naturalHeight,imgW,imgH);")
         self.assertPageContains("img.style.objectPosition='50% 50%';")
 
     def test_the_agency_page_gets_the_same_loading_skeleton(self):
         self.assertPageContains("performers|creators|studios|agencies")
-
-    def test_the_agency_page_counts_people_not_only_videos(self):
-        """事务所名下的视频是成员拍的，「这家有几个人」才是它独有的读数。"""
-        self.assertPageContains("位艺人")
 
     def test_the_agency_face_is_its_own_mark_not_a_members_frame(self):
         """代表作截图是某位成员某部片的画面，当不了一家公司的门面。"""
@@ -6603,17 +6465,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode(
             '<div class="igrid" data-cells="${cells}" data-layout="${peopleIndexLayout()}">${\n'
             "      people.map(x=>personCellHtml(x,cellKind,x.n.toLocaleString())).join('')}</div>")
-        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像；片商页的
-        # 名册是旗下 label，同台艺人照旧留在卡底。
+        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像（资料卡岛
+        # 在事务所页不画卡底，见 entity-hero.test.tsx）；片商页的名册是旗下 label，同台
+        # 艺人照旧留在卡底。
         self.assertCode("const roster=kind==='agency'?(d.related_performers||[])"
                         ":kind==='studio'?(d.labels||[]):[];")
-        self.assertCode("const related=kind==='agency'?'':(d.related_performers||[]).map(")
         # 圆框越小越需要取景：一张 3762×2535 的封面塞进 44px 的圆里，几何居中给出的是
-        # 封面正中那块版式，脸在不在里面全看运气。
+        # 封面正中那块版式，脸在不在里面全看运气。按人脸框放大由 e2e 设计用例量。
         self.assertPageContains(
             "{id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,")
-        self.assertPageContains(
-            "         style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>")
 
     def test_a_company_cell_is_square_because_it_holds_a_mark_not_a_face(self):
         """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。
@@ -6646,12 +6506,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("entityRosterView='videos';")
 
     def test_the_profile_rows_that_overflow_get_the_shared_drag_and_wheel(self):
-        """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。"""
-        self.assertPageContains("wireDrag($('#index').querySelector('.relatedpeople'));")
+        """同台艺人和标签这两行没有滚动条，不接拖动就是看得见够不着。
+
+        同台艺人与外链那排在资料卡岛里，经 `helpers.wireScroller` 接同一套（entity-hero.test.tsx）。
+        """
         self.assertPageContains("wireDrag($('#index').querySelector('.entitytags'));")
-        # 外链那排窄屏下横滚，作品集表头窄屏下整条横滚，两处都是同一件事。390px 实测
-        # 分别溢出 667px 与 338px，不登记就只有滚动条被藏掉、滚轮又是竖向的那种死局。
-        self.assertPageContains("wireDrag($('#index').querySelector('.entitylinks'));")
+        # 作品集表头窄屏下整条横滚，390px 实测溢出 338px，不登记就只有滚动条被藏掉、
+        # 滚轮又是竖向的那种死局。
         self.assertPageContains("wireDrag(section.closest('.entitycollectionhead')"
                                 "||section.querySelector('.entitycollectionhead'));")
         # 横向滚动行里的开关不能被压扁。
@@ -6721,15 +6582,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(ring.dataset.nativeSmall==='true')return;")
         self.assertPageContains(
             "box.style.setProperty('--markbg',small?`url(\"${src}\")`:'none');")
-        # 用到它的两个容器自己声明意图，JS 只负责量。
+        # 用到它的容器自己声明意图，JS 只负责量。资料卡大位那一处在 entity-hero island 里，
+        # 同一个属性、同一组变量，摆法写在 `entity-hero.css`。
         self.assertPageContains("data-fit-native=\"${company?'mark':'portrait'}\"")
-        self.assertPageContains('"entityportrait ${people?\'\':\'square\'}" '
-                                'data-fit-native="${company?\'mark\':\'portrait\'}"')
         # 两处容器各自写着 width:100% 和 object-fit:cover，选择器压不过它们就白改。
         # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
         # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
         self.assertCode(
-            '.icell .ring[data-native-small="true"] img,.entityportrait[data-native-small="true"] img,\n'
+            '.icell .ring[data-native-small="true"] img,\n'
             '[data-person-ring][data-native-small="true"] img{\n'
             "  width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;\n"
             "  max-width:100%;max-height:100%;z-index:1}")
@@ -6768,35 +6628,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".iconswitch label{position:relative;display:inline-grid;"
                                 "width:34px;height:28px;")
 
-    def test_entity_name_picker_offers_only_this_entity_existing_names(self):
-        # 候选取的是身份契约 `aliases`（完整），不是收窄过的展示别名：罗马字也是
-        # 这个人真的用过的写法，用户想拿它当统称就该能选。
-        self.assertCode("const nameChoices=[d.canonical_name,...(d.aliases||[])]")
-        self.assertCode(
-            ".filter((option,index,all)=>option&&all.indexOf(option)===index);")
-        self.assertPageContains('data-namepick-toggle aria-haspopup="menu"')
-        self.assertPageContains('role="menuitemradio"')
-        self.assertPageContains('aria-checked="${option===d.canonical_name}"')
-
     def test_entity_name_picker_is_there_even_for_someone_with_one_name(self):
         """只剩一个名字的人最需要补一个：图库按名字存图，少一个写法就少一批图。
 
-        菜单恒在，末尾那一项才是添别名的入口；它不在「挑一个当统称」之列，所以是
-        `menuitem` 而不是 `menuitemradio`。
+        菜单在资料卡的岛里，恒在、末尾那一项是添别名（`entity-hero.test.tsx`）；弹层与
+        写回仍是壳的 `addEntityAlias`。
         """
-        self.assertCode('const namePick=`<div class="namepick" data-namepick>')
-        self.assertPageContains('role="menuitem" data-namepick-alias')
-        self.assertCode("menu.querySelector('[data-namepick-alias]').onclick=async()=>{")
         # 添别名写的是 `entity_alias`，跟在已有名字里挑统称是两个端点。
         self.assertCode("const alias=payload=>api('/api/entity-alias',")
         self.assertCode("onConfirm:()=>alias({alias:field.value.trim()})});")
         # 撤销只给自己添的那几个，服务端按来源守这条线。
         self.assertCode("form.dialog.querySelectorAll('[data-alias-drop]')")
-        self.assertCode("wireNamePicker(kind,d.canonical_name,d.user_aliases||[]);")
-
-    def test_entity_name_picker_reuses_the_shared_anchored_menu(self):
-        self.assertPageContains("const anchored=wireAnchoredMenu(mount,toggle,menu,{align:'start'});")
-        self.assertPageContains('<div class="popmenu npmenu"')
+        self.assertCode("addAlias:()=>void addEntityAlias(kind,d.canonical_name,d.user_aliases||[]),")
 
     def test_an_open_anchored_menu_yields_to_the_settings_panel_and_to_its_neighbours(self):
         """开着的锚定弹层，点设置或点它那片祖先里别的控件，都要收掉。
@@ -6977,30 +6820,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("#tiers .av .nm,:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
         self.assertPageContains("const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));")
 
-    def test_entity_name_picker_keeps_a_touch_target_on_phones(self):
-        """命中区 44px，画出来仍是 32px：那一层伸出去的方块不着墨。
+    def test_the_select_menu_keeps_a_touch_target_on_phones(self):
+        """窄屏下下拉菜单的每一行到 44px。
 
-        这枚开关紧挨着名字。把画出来的方块也撑到 44px，一屏里最先看见的就成了它，
-        而它说的只是「这个人还有别的名字」。菜单项不在此列，行本来就该有 44px 高。
+        两个类一起写：任何一条 `.某工具条 button` 都比单类祖先更具体，会把菜单里的
+        每一行也画成工具条按钮，连这条 44px 命中区一起压掉。资料卡名字菜单的命中区
+        归 entity-hero island，由 e2e 设计用例量。
         """
-        self.assertPageContains(".npbtn{position:relative}")
-        self.assertPageContains(
-            '.npbtn::after{content:"";position:absolute;top:50%;left:50%;'
-            "width:44px;height:44px;")
-        self.assertPageContains("transform:translate(-50%,-50%)}")
-        self.assertPageLacks(".npbtn{width:44px;height:44px}")
-        # 两个类一起写：任何一条 `.某工具条 button` 都比单类祖先更具体，会把菜单里的
-        # 每一行也画成工具条按钮，连这条 44px 命中区一起压掉。
-        self.assertPageContains(".npmenu button,.popmenu.gselectmenu button{min-height:44px}")
+        self.assertPageContains(".popmenu.gselectmenu button{min-height:44px}")
 
     def test_entity_name_picker_writes_through_the_server_before_repainting(self):
-        self.assertCode("const rename=(from,to)=>api('/api/entity-name',")
+        self.assertCode("const renameEntity=(kind,from,to)=>api('/api/entity-name',")
         self.assertCode(
             "{method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});")
-        self.assertCode("onConfirm:()=>rename(current,chosen)});")
+        self.assertCode("onConfirm:()=>renameEntity(kind,current,chosen)});")
         self.assertCode("if(!confirmed||!result?.changed)return;")
         # 撤销是一次真实写回，不在本地把标题改回去。
-        self.assertCode("await rename(result.canonical_name,result.previous_name);")
+        self.assertCode("await renameEntity(kind,result.canonical_name,result.previous_name);")
 
     def test_entity_name_picker_confirms_and_names_both_writings_first(self):
         # 换统称会重写整条实体的扁平投影，写之前必须让用户看见换成什么、旧写法去哪。
@@ -7068,13 +6904,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".geist-modal-footer .geist-button{min-height:44px;padding:0 14px}")
 
-    def test_entity_name_picker_marks_the_current_name_with_fill_and_a_check(self):
-        self.assertPageContains(
-            '.npmenu button[aria-checked="true"]{background:var(--hover);color:var(--ink)}')
-        self.assertPageContains('.npmenu button[aria-checked="true"] svg{visibility:visible}')
-        # 未选中那几行也占着勾的位置，切换时文字不横向跳。
-        self.assertPageContains("visibility:hidden")
-        # 窄屏的资料页整块居中，flex 标题行得自己居中。
+    def test_the_entity_skeleton_centres_its_title_row_on_phones(self):
+        # 窄屏的资料页整块居中，flex 标题行得自己居中；骨架与岛里的真卡同一个排法。
+        # 名字菜单的选中底色与勾归 entity-hero island，由 e2e 设计用例读计算样式。
         self.assertPageContains(".entitytitle{justify-content:center}")
 
     def test_jav_cards_prefer_the_canonical_performer_over_legacy_creator_text(self):
@@ -7770,11 +7602,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks(".followfilters .sep{")
 
     def test_entity_profile_uses_logo_links_without_a_redundant_back_row(self):
-        self.assertPageContains('class="entitylinkicon"')
-        self.assertPageContains('class="entitylinklabel"')
-        # favicon 取不到就把 <img> 摘掉，露出底下的 globe 图标；这条兜底由
-        # image-fallback 的委托监听执行，不再给每个 .entityfavicon 各挂一个监听。
-        self.assertPageContains('class="entityfavicon" src="${esc(linkMarkUrl(x))}')
+        # 站点圆标取不到就把 <img> 摘掉，露出底下的 globe 图标；这条兜底由 image-fallback
+        # 的委托监听执行（`data-drop="self"`，见 entity-hero.test.tsx），不给每张图各挂一个监听。
         self.assertPageLacks(".entityfavicon').forEach(img=>img.addEventListener('error'")
         self.assertPageLacks('<span class="mono" style="color:var(--muted)">${labels[kind]||kind}资料页</span>')
 
@@ -7792,8 +7621,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".idface img{position:absolute;inset:0;width:100%;height:100%;"
             "object-fit:cover;display:block}")
-        self.assertPageContains(
-            ".entityportrait img{position:absolute;inset:0;grid-area:auto;width:100%;height:100%;object-fit:cover;display:block")
+        # 资料卡大位那一处归 entity-hero island，铺满方框由 e2e 设计用例读计算样式。
         self.assertPageLacks(".idcell.logo .idface img{")
         self.assertPageLacks('style="width:100%;height:100%;object-fit:contain"')
 
@@ -8519,9 +8347,6 @@ class WebUiSourceTests(unittest.TestCase):
         """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm",
-            ".entitylinklabel",
-            # 女优页头资料表的出道那一格：片名尾部省略，全名在 title 里。
-            ".entityfacts .clip",
             # 作者是展示名，尾部省略；完整身份保留在 title。
             ".followbyline .followauthor",
             # 署名行同属展示名，尾部省略；完整一行保留在 title。
@@ -8836,17 +8661,10 @@ class WebUiSourceTests(unittest.TestCase):
                 # 缩放条两端步进的是倍数，加减号没说清加减的是什么。
                 'data-zoom-step="-1" aria-label="缩小">${icon(\'zoom-out\')}',
                 'data-zoom-step="1" aria-label="放大">${icon(\'zoom-in\')}',
-                # 女优页头（ADR-0069）：名字下面那一行是胶片数视频、公文包标事务所（与事务所
-                # 索引同一枚）、证件标别名；资料表五项各一枚，标签与标签页同一枚。
-                "title=\"视频\">${icon('film')}<span>${count}</span>",
-                "title=\"事务所\">${icon('briefcase')}<span>${agencyLink}</span>",
-                "${icon('id-card')}<span class=\"aliasnames\" title=\"别名\">",
-                "row('cake','生日',",
-                "row('ruler','身材',",
-                "row('flag','出道',",
-                "row('calendar-range','生涯',",
-                "row('tags','标签',"):
+                ):
             self.assertPageContains(needle)
+        # 女优页头（ADR-0069）归 `entity-hero` island：名字下面那一行的胶片、公文包与证件由
+        # e2e 设计用例读，资料表五项的字形由 `frontend/test/react/entity-hero.test.tsx` 钉住。
         # 关注来源那几处问的就是「有没有更新」，转圈归它们；页面归 React 之后是 Remix 的
         # 同一枚字形，全选仍是双勾。
         source_list = self.read_react("follow-manage/source-list.tsx")
@@ -10183,18 +10001,6 @@ class WebUiSourceTests(unittest.TestCase):
         gap = int(rail.group(1)) + int(gutter.group(1))
         self.assertIn(f"background:var(--ground);margin:0 0 {gap}px;", board)
         self.assertIn(".combo:empty{height:0;margin-bottom:0}", base)
-
-    def test_a_profile_website_link_shows_the_sites_own_mark(self):
-        """官网那一格的文字是站点短名，图标是站点自己的那枚；取不到才露出地球。"""
-        app = self.app_js
-        self.assertIn("<a class=\"urllink\"", app)
-        urllink = app[app.index("<a class=\"urllink\""):]
-        urllink = urllink[:urllink.index("</a>")]
-        mark = app[app.index("const siteMark=x=>"):]
-        mark = mark[:mark.index("\n")]
-        self.assertIn("linkMarkUrl(x)", mark)
-        self.assertIn("data-drop=\"self\"", mark)
-        self.assertIn("${siteMark(x)}<span class=\"entitylinklabel\">${esc(officialLinkText(x,kind,", urllink)
 
     def test_a_collapsed_ranking_shows_a_fixed_preview_and_one_way_back(self):
         """收起的排名只露前十，展开与收起共用同一颗图标按钮。

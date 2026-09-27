@@ -643,8 +643,6 @@ body>.board-filter-frame{margin-inline:16px}
 .entityfoot{background:var(--board-card-foot);border-top-color:var(--line-soft)}
 .entityhero h2{font-size:24px;font-weight:500;line-height:32px}
 .entityhero .alias{font-size:14px;line-height:20px}
-.entitylinks a,.entitylinks .private{height:36px;border-radius:10px;border-color:var(--line);font-size:13px}
-.entitylinks .iconlink{border-radius:10px}
 /* 计数徽标照 tabs.tsx：`rounded-sm px-1 py-px text-caption-1-medium`，未选中黑 10% 底半透明，
    选中换成强调色 12% 底、强调色字。字母表分组卡的字头旁挂的也是这一枚。 */
 .board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;font:var(--board-caption);font-weight:500;line-height:16px;
@@ -1167,7 +1165,6 @@ body .pill:hover,body .brandpill:hover{border-color:var(--field-ring)}
 /* 玻璃条上的药丸这样一来没有任何悬停反馈：那层 `--glass-text` 的权重比基线的
    `.pill:hover` 高，把提亮文字色的那半也一起吃掉了。横排互斥选项的悬停就是提文字色。 */
 .board-filter-frame.board-filter-frame .pill:hover{color:var(--ink)}
-body .entitylinks a:hover{border-color:var(--line)}
 body :is(.geist-button,.fbtn,.resourceaction,.batchbar button):not(.primary,.danger,.error,.warning):is(:disabled,[aria-disabled=true]){background:var(--ground);border-color:var(--line);color:var(--muted);box-shadow:none}
 /* 强调档全站一副面，三档渐变各差一个色阶，照 `boardui.com/components/button` 的
    `.bg-button-primary`（2026-09-12 实测）：静止 accent-500→600、悬停 400→500、按下
@@ -1260,11 +1257,11 @@ body :is(.popmenu,.gselectmenu)>:is(button,[role=option],[role=menuitem]):is(:ho
 /* 这一条只管「一句话就是一个链接」的那种外链：一行蓝字，没有边、没有底、不占按钮的位置。
    资料页那排外链不在此列——它是一圈药丸，边、底和 4px 内边距都是它自己的，被这里的
    `padding:0` 和 `border:0` 抹平之后那一排就只剩十个光秃秃的图标。
-   排除条件写的是那枚圆盘 `.entitylinkicon` 本身，不写「有没有 `<img>`」：常见社媒的标记
+   排除条件写的是那枚圆盘 `[data-link-icon]`（资料卡岛里的）本身，不写「有没有 `<img>`」：常见社媒的标记
    是内联 `<svg>`，一枚 `<img>` 都没有，按后一个判据照样漏进来。只认圆盘还把这条豁免收在
    资料页那一排上，别处的外链——包括包着图的——继续按这条走，不因为多一张图就长出个框。 */
-body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlink){display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none;color:var(--tungsten);font-weight:500;text-decoration:none;text-underline-offset:3px}
-body a:is(.externallink,[target=_blank]):not(:has(.entitylinkicon)):not(.cardlink):hover{background:transparent;text-decoration:underline;box-shadow:none}.externallink .externalmark{width:18px;height:18px;flex:none}
+body a:is(.externallink,[target=_blank]):not(:has([data-link-icon])):not(.cardlink){display:inline-flex;align-items:center;gap:4px;min-height:20px;padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none;color:var(--tungsten);font-weight:500;text-decoration:none;text-underline-offset:3px}
+body a:is(.externallink,[target=_blank]):not(:has([data-link-icon])):not(.cardlink):hover{background:transparent;text-decoration:underline;box-shadow:none}.externallink .externalmark{width:18px;height:18px;flex:none}
 .board-link-button{display:inline-flex;align-items:center;justify-content:center;justify-self:start;gap:4px;max-width:100%;padding:0;border:0;border-radius:4px;background:transparent;box-shadow:none;color:var(--tungsten);font:inherit;font-weight:500;text-decoration:none;text-underline-offset:3px;transition:color .15s ease}
 .board-link-button:hover{background:transparent;text-decoration:underline;box-shadow:none}
 .board-link-button:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
