@@ -66,6 +66,9 @@
    这里只管横滚轨道本身。 */
 .relatedpeople{display:flex;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;overscroll-behavior-inline:contain}
 .relatedpeople::-webkit-scrollbar{display:none}
+/* 正文是 `entity-body` 岛，骨架里同一格是 `.entitysection`，两者占同一个位置。宿主不加内边距、
+   不起新的格式化上下文：照片墙段头的上边距要穿过它，和筛选浮层的下边距折叠成一段。 */
+[data-entity-body]{min-width:0;max-width:100%}
 .entitysection{min-width:0;max-width:100%}.entitysection h3{font-size:var(--fs-sm);letter-spacing:.08em;color:var(--muted);margin:0 0 12px}
 .entitycollectionhead{position:sticky;top:var(--topH);z-index:60;display:flex;align-items:center;gap:10px;
   min-height:var(--sortH);margin:0 -16px 12px;padding:8px 16px;min-width:0;

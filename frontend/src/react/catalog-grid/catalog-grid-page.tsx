@@ -59,11 +59,16 @@ function GridBody(props: CatalogGridProps) {
   const entity = props.mode === 'entity';
   const trash = !entity && props.filters?.state === 'trash';
   const query = entity ? entityQuery(props) : catalogQuery(props);
+  /* 资料页的第一页由壳和页头一起取来：同步落进这一代的缓存，首帧就是卡片，不再发一遍。 */
+  const initialData = entity && props.initial
+    ? { pages: [{ ...props.initial, items: props.initial.items || [], offset: 0 }], pageParams: [0] }
+    : undefined;
   const result = useInfiniteQuery<GridPage, Error, InfiniteData<GridPage, number>, QueryKey, number>({
     queryKey: query.queryKey,
     queryFn: ({ pageParam, signal }) => query.queryFn({ pageParam, signal }),
     initialPageParam: 0,
     getNextPageParam: query.getNextPageParam,
+    initialData,
   });
 
   /* 一次取数落定就告诉壳一次，成功、为空、失败都算：壳里 `await` 这次重读的调用方据此放行。 */

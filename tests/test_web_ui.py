@@ -6423,16 +6423,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "let entityRosterView='people',entityRoster=[],entityRosterKind='performer';")
         self.assertCode("  entityJavLayout=false;\n  entityRosterView='people';")
-        self.assertCode("if(entityViewNow(kind)==='people')renderEntityRoster(roster);")
+        # 进页落在名册、切到视频再切回来，由 e2e `entity-filter.test.ts` 在真浏览器里走。
 
     def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
-        """名册和艺人索引摆的是同一格人，模板与版式设置都只有一份。"""
-        self.assertPageContains("function personCellHtml(x,kind,countText){")
+        """名册和艺人索引摆的是同一格人，取图链只有一份。
+
+        格子本身是 `entity-body` 岛里的 `PeopleGrid`（与索引页同一个组件），点一格去哪儿
+        由 `frontend/test/react/entity-body.test.tsx` 钉住。"""
         # 索引页那批行的实体 id 叫 entity_id，名册那批叫 id，取图链只认一个。
         self.assertPageContains("const ref=x.entity_id||x.id;")
-        self.assertCode(
-            '<div class="igrid" data-cells="${cells}" data-layout="${peopleIndexLayout()}">${\n'
-            "      people.map(x=>personCellHtml(x,cellKind,x.n.toLocaleString())).join('')}</div>")
         # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像（资料卡岛
         # 在事务所页不画卡底，见 entity-hero.test.tsx）；片商页的名册是旗下 label，同台
         # 艺人照旧留在卡底。
@@ -6446,10 +6445,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_a_company_cell_is_square_because_it_holds_a_mark_not_a_face(self):
         """3:4 是给脸留的形状，方标铺进去左右各被 `object-fit:cover` 裁掉四分之一。
 
-        这里是资料页名册那一格；索引页的方格在 React 里（`index/index-people.tsx`）。
+        这里是壳铺的那张头像格骨架；真格子在 React 里（`index/index-people.tsx`，索引页与
+        资料页名册共用），片商名册摆成公司格由 `entity-body.test.tsx` 钉住。
         """
-        self.assertCode("const cells=cellKind==='studio'?'company':'people';")
-        self.assertPageContains('<div class="igrid" data-cells="${cells}" data-layout="${')
         self.assertPageContains(
             '.igrid[data-cells="company"][data-layout="big"] .icell .ring{aspect-ratio:1}')
         # 省下的高度换成宽度：同一屏里公司格比人格宽一档。
@@ -6537,22 +6535,20 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(ring.dataset.nativeSmall==='true')return;")
         self.assertPageContains(
             "box.style.setProperty('--markbg',small?`url(\"${src}\")`:'none');")
-        # 用到它的容器自己声明意图，JS 只负责量。资料卡大位那一处在 entity-hero island 里，
-        # 同一个属性、同一组变量，摆法写在 `entity-hero.css`。
-        self.assertPageContains("data-fit-native=\"${company?'mark':'portrait'}\"")
-        # 两处容器各自写着 width:100% 和 object-fit:cover，选择器压不过它们就白改。
+        # 用到它的容器自己声明意图，JS 只负责量。名册那一格（`index-people.tsx`）与资料卡
+        # 大位（entity-hero island）都在 React 里，同一个属性、同一组变量。
+        # 名册格写着 width:100% 和 object-fit:cover，选择器压不过它就白改。
         # 尺寸不写 auto：还没度量过的图按 auto 是 0×0，`loading="lazy"` 见到 0×0 就
         # 认定它不在视口里、永远不去取，图不来就没有 load，两边互相等着。缺省铺满。
         self.assertCode(
-            '.icell .ring[data-native-small="true"] img,\n'
+            '[data-person-ring][data-fit-native="mark"] img,\n'
             '[data-person-ring][data-native-small="true"] img{\n'
             "  width:var(--markw,100%);height:var(--markh,100%);margin:auto;object-fit:contain;\n"
             "  max-width:100%;max-height:100%;z-index:1}")
         self.assertPageContains('[data-fit-native]::before{content:"";position:absolute;'
                                 'inset:-14%;z-index:0;')
         # 图不再铺满框，首字母垫底会从旁边露出来。
-        self.assertPageContains(".icell .ring[data-fit-native]:has(img) .ini,"
-                                "[data-person-ring][data-fit-native]:has(img) .ini{display:none}")
+        self.assertPageContains("[data-person-ring][data-fit-native]:has(img) .ini{display:none}")
 
     def test_the_company_index_layout_control_says_what_it_shows(self):
         """厂牌那一格摆的是方形标识，提示不能照艺人页写「竖幅头像」。"""
@@ -6924,8 +6920,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "scrollTo({top:0,behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});")
         self.assertIn("html.refiltering{overflow-anchor:none}", stylesheet_source())
-        # 目录那边的骨架由 loadCatalog() 铺；资料页的集合自己铺一份同样的。
-        self.assertCode("  if(host){releaseEntityGrid();host.innerHTML=catalogSkeletonHtml();fitSkeleton(section)}")
+        # 目录那边的骨架由 loadCatalog() 铺；资料页那一格换成骨架等新列表由
+        # `frontend/test/react/entity-body.test.tsx` 钉住。
 
     def test_adding_a_filter_only_changes_the_list_underneath(self):
         """点一条筛选，动的只有底下那份名单；上面那几排原地改按下态。
@@ -10832,15 +10828,10 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_the_big_people_layout_frames_the_detected_face(self):
         # 3:4 竖幅按几何居中会把脸切掉。换算只有 faceOrigin 一份：资料页写进 img 的
-        # style，索引页交给圆框上的 --face——那里的 img 是八处共用的 avatarInner 拼的。
+        # style，名册那一格（React `PeopleGrid`）交给圆框上的 --face，由 `entity-body.test.tsx` 钉住。
         self.assertPageContains("function faceOrigin(f){")
         self.assertCode("  const origin=faceOrigin(f);\n"
                         "  return origin?` style=\"object-position:${origin}\"`:'';")
-        self.assertPageContains("const face=faceOrigin(x.avatar_focus);")
-        self.assertPageContains(
-            '<span class="ring" data-fit-native="${company?\'mark\':\'portrait\'}"'
-            '${face?` style="--face:${face}"`:\'\'}>')
-        self.assertPageContains("object-position:var(--face,50% 50%)}")
 
     def test_photo_lightbox_loads_swiper_lazily_with_thumbs_and_keyboard(self):
         self.assertPageContains("'/vendor/swiper/14.2.0/swiper-bundle.min.js'")

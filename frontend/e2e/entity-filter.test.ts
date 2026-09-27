@@ -129,7 +129,7 @@ describe('实体页筛选浮层', () => {
       release();
       await page.locator('[data-entity-filter-glass] [data-entity-readout]', { hasText: '视频' }).waitFor({ timeout: 15_000 });
       await settle(page);
-      const live = await measure('#index [data-entity-card]', '#index [data-entity-filter-glass]', '#index .entitysection');
+      const live = await measure('#index [data-entity-card]', '#index [data-entity-filter-glass]', '#index [data-entity-body]');
       for (const key of ['gap', 'left', 'width', 'height', 'grid'] as const) {
         assert.ok(Math.abs(skeleton[key] - live[key]) <= 1,
           `浮层的 ${key} 接管时跳了：骨架 ${skeleton[key]}，接管后 ${live[key]}`);
@@ -284,7 +284,7 @@ describe('实体页筛选浮层', () => {
         views: [...document.querySelectorAll('[data-media-view]')].map((node) => node.getAttribute('data-media-view')),
         sorts: document.querySelectorAll('[data-entity-sort]').length,
         tags: document.querySelectorAll('[data-entity-tag]').length,
-        cards: document.querySelectorAll('#index .entitysection .igrid > *').length,
+        cards: document.querySelectorAll('#index [data-entity-body] [data-index-grid] > [data-index-cell]').length,
       }));
       assert.deepEqual(roster, { readout: '艺人 · 3', pressed: 'people', views: ['people', 'videos'], sorts: 0, tags: 0, cards: 3 });
       await page.locator('[data-media-view="videos"]').click();

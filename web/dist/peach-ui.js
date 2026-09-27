@@ -900,6 +900,7 @@ var Z = {
 	"cover-crop": { react: "cover-crop" },
 	"data-cleanup": { react: "data-cleanup" },
 	duplicates: { react: "duplicates" },
+	"entity-body": { react: "entity-body" },
 	"entity-filter": { react: "entity-filter" },
 	"entity-hero": { react: "entity-hero" },
 	"follow-manage": { react: "follow-manage" },

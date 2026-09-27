@@ -9,7 +9,7 @@
  * - 目录每一页可见的卡够 8 张时，第 8 位插一张 Mix；种子从 Mix 位再往下隔一屏开始找，
  *   不会和同屏的卡撞图。
  * - 竖屏带每接一页出现一条，落点在这一页新增的那几行之间的行边界上随机取一个。 */
-import type { InfiniteData, QueryKey } from '@tanstack/react-query';
+import type { QueryKey } from '@tanstack/react-query';
 
 import { apiGet } from '../../api';
 import { javImageKind } from '../../jav-artwork';
@@ -98,22 +98,10 @@ export function entityQuery(props: CatalogGridProps) {
   };
 }
 
-/** 首屏取数。资料页的第一页由壳和页头一起并行取来，直接写进缓存。 */
+/** 首屏取数。只有目录要等：资料页的作品区挂在 `entity-body` 岛里，第一页由壳递进来，
+ *  网格挂上时自己落进缓存（`initialData`）。 */
 export async function prefetchCatalogGrid(props: CatalogGridProps, signal: AbortSignal): Promise<void> {
-  if (props.mode === 'items') return;
-  if (props.mode === 'entity') {
-    const query = entityQuery(props);
-    if (props.initial) {
-      queryClient.setQueryData<InfiniteData<GridPage, number>>(query.queryKey, {
-        pages: [{ ...props.initial, items: props.initial.items || [], offset: 0 }], pageParams: [0],
-      });
-      return;
-    }
-    await queryClient.fetchInfiniteQuery({
-      ...query, queryFn: ({ pageParam }) => query.queryFn({ pageParam: pageParam as number, signal }),
-    });
-    return;
-  }
+  if (props.mode !== 'catalog') return;
   const query = catalogQuery(props);
   await queryClient.fetchInfiniteQuery({
     ...query, queryFn: ({ pageParam }) => query.queryFn({ pageParam: pageParam as number, signal }),
