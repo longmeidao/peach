@@ -14,6 +14,8 @@ from .http import body_text
 from .javdb import LOGIN as JAVDB_LOGIN_PAGE
 from .entities import (
     FORMER_PREFIX,
+    KANA,
+    KANJI,
     canonicalize_entity_name,
     collapse_repeated_entity_name,
     normalize_entity_name,
@@ -324,6 +326,46 @@ def japanese_view(payload: dict) -> dict:
     return {}
 
 
+def r18_english_page(payload: dict) -> bool:
+    """这份快照是不是 r18.dev 英文那一页的形态：地址在 r18.dev，却没有日文视图。
+
+    日文那一页没取到时 `sources.r18dev` 交出的就是这种，磁盘缓存里也还留着这种形态的旧快照；
+    顶层的标题、系列是 r18 的英文译文，演员是罗马字。
+    """
+    return "r18.dev" in str(payload.get("source_url") or "") and not japanese_view(payload)
+
+
+def _in_japanese_script(text: str) -> bool:
+    return bool(KANA.search(text) or KANJI.search(text))
+
+
+def original_cast(payload: dict) -> object:
+    """交给 `normalized_performers` 的演员行。r18.dev 英文页那份只留名字带假名或汉字的人，
+    罗马字的进了候选就成了罗马字的女优实体。"""
+    actresses = payload.get("actresses")
+    if not r18_english_page(payload) or not isinstance(actresses, list):
+        return actresses
+    return [row for row in actresses
+            if _in_japanese_script(str((row.get("japanese_name") if isinstance(row, dict) else row) or ""))]
+
+
+def original_wording(payload: dict, key: str) -> str:
+    """标题、系列这类会被来源自己译一层的字段，取原文那一侧。
+
+    r18.dev 的快照（以及 Javinizer-Go 的 r18dev 快照）顶层是 r18 自己译的英文，标题与系列多是
+    机翻；系列一旦取了它，就成了系列实体的规范名（ABW-358 的 `HOW TO SEX! The Infirmary
+    Teacher…`）。所以日文视图给了就用它；日文视图空着或整份没有，顶层值只有本身带假名或汉字
+    才用，纯拉丁字母的那份就是译文，宁可空着让来源链去问下一家。别的来源（javbus、DMM）
+    没有日文视图，顶层本来就是原文，照旧取顶层。
+    """
+    japanese = japanese_view(payload)
+    written = _normalized_text(japanese.get(key))
+    top = _normalized_text(payload.get(key))
+    if written or not (japanese or r18_english_page(payload)):
+        return written or top
+    return top if _in_japanese_script(top) else ""
+
+
 def _normalized_text(raw: object) -> str:
     return " ".join(str(raw or "").split())
 
@@ -402,7 +444,7 @@ def extract_catalog_evidence(payload: dict) -> dict[str, dict]:
     japanese = japanese_view(payload)
     out: dict[str, dict] = {}
     text_fields = {
-        "title": japanese.get("title") or payload.get("title"),
+        "title": original_wording(payload, "title"),
         "original_title": payload.get("original_title"),
         "director": japanese.get("director") or payload.get("director"),
         "label": japanese.get("label") or payload.get("label"),
@@ -439,7 +481,7 @@ def extract_peach_fields(payload: dict, genre_decisions=None) -> dict[str, dict]
     for field in ("title", "original_title"):
         if field in catalog:
             out[field] = dict(catalog[field])
-    performers, warnings = normalized_performers(payload.get("actresses"))
+    performers, warnings = normalized_performers(original_cast(payload))
     if performers:
         out["performers"] = {
             "value": performers,
@@ -449,7 +491,9 @@ def extract_peach_fields(payload: dict, genre_decisions=None) -> dict[str, dict]
     japanese = japanese_view(payload)
     for field in ("studio", "series"):
         key = "maker" if field == "studio" else field
-        raw_name = str(japanese.get(key) or "").strip() or payload.get(key)
+        # 厂牌不走 `original_wording`：账本的厂牌实体用品牌名（`Prestige`），见 `sources.r18dev`。
+        raw_name = (original_wording(payload, key) if field == "series"
+                    else str(japanese.get(key) or "").strip() or payload.get(key))
         name, repeated = collapse_repeated_phrase(str(raw_name or ""))
         if name:
             out[field] = {

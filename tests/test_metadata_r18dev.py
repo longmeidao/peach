@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 from peach.http import HttpResponse
 from peach.jav_cover_fetch import R18_COMBINED, R18_DETAIL, NotFound, Unavailable
 from peach.library_processing import LibraryMetadataProvider, describe_failure, is_missing
+from peach.metadata import extract_catalog_evidence, extract_peach_fields, original_wording
 from peach.scraping_access import SourcePaused
 from peach.sources import R18DEV, FailureReason, Page, R18DevSource, Session, SourceFailure
 from peach.sources.r18dev import ACTRESS_IMAGE, actresses, with_japanese
@@ -30,8 +31,8 @@ JAPANESE_ACTRESS = {"japanese_name": "涼森れむ", "name_kana": "すずもり�
 #: `LibraryMetadataProvider.query('ABW-358')` 对这份夹具交出的 dict，逐键钉住。`cover_urls` 是契约统一带的整列，
 #: `cover_url` 仍是第一张；`raw` 与 `combined` 原样带着，候选与复核那一路认的就是这份形状。
 EXPECTED = {
-    "id": "ABW-358", "content_id": "118abw358", "source_url": DETAIL_URL, "title": "Remu Style", "maker": "Prestige",
-    "series": "HOW TO SEX", "release_date": "2023-05-26", "director": "Charlie Nakata", "label": "ABSOLUTELY WONDERFUL",
+    "id": "ABW-358", "content_id": "118abw358", "source_url": DETAIL_URL, "title": "涼森れむ流", "maker": "Prestige",
+    "series": "保健室の先生", "release_date": "2023-05-26", "director": "Charlie Nakata", "label": "ABSOLUTELY WONDERFUL",
     "runtime": 210, "cover_urls": [JACKET], "cover_url": JACKET, "actresses": [JAPANESE_ACTRESS],
     "genres": ["スレンダー", "企画"], "raw": DETAIL,
     "translations": [{"language": "ja", "title": "涼森れむ流", "series": "保健室の先生",
@@ -98,14 +99,22 @@ class R18DevSourceTests(unittest.TestCase):
         self.assertEqual(japanese.studio, "Prestige", "账本厂牌实体用品牌名，日文写法会另起一个实体")
         self.assertEqual(japanese.extra["translations"], EXPECTED["translations"])
         self.assertIs(japanese.extra["combined"], COMBINED)
-        self.assertIs(with_japanese(record, {"content_id": "118xyz001", "title_ja": "别的片"}), record,
-                      "combined 页不是这部片的就原样交回")
-        self.assertIs(with_japanese(record, ["not", "a", "dict"]), record)
+        self.assertEqual((japanese.title, japanese.series), ("涼森れむ流", "保健室の先生"))
 
-    def test_with_japanese_keeps_the_english_rows_when_the_japanese_page_gives_none(self):
+    def test_a_combined_page_for_another_work_counts_as_no_japanese_page(self):
+        """英文页的标题、系列与罗马字演员不交出去：落了库，系列与演员就成了英文的实体规范名。"""
+        record = R18DevSource().parse(Page(DETAIL_URL, encoded(DETAIL)), "ABW-358")
+        for combined in ({"content_id": "118xyz001", "title_ja": "别的片"}, ["not", "a", "dict"]):
+            with self.subTest(combined=combined):
+                bare = with_japanese(record, combined)
+                self.assertEqual((bare.title, bare.series, bare.performers), ("", "", ()))
+                self.assertEqual((bare.studio, bare.release_date, bare.cover_urls, bare.tags),
+                                 (record.studio, record.release_date, record.cover_urls, record.tags))
+
+    def test_an_empty_japanese_side_leaves_title_series_and_cast_empty(self):
         record = R18DevSource().parse(Page(DETAIL_URL, encoded(DETAIL)), "ABW-358")
         bare = with_japanese(record, {"content_id": "118abw358", "actresses": [{"name_kanji": ""}], "categories": []})
-        self.assertEqual((bare.performers, bare.tags), (record.performers, record.tags))
+        self.assertEqual((bare.title, bare.series, bare.performers, bare.tags), ("", "", (), record.tags))
         self.assertEqual(bare.extra["translations"], [{"language": "ja", "title": "", "series": "", "label": "", "director": ""}])
 
     def test_actresses_build_the_official_avatar_only_from_a_bare_filename(self):
@@ -113,7 +122,8 @@ class R18DevSourceTests(unittest.TestCase):
                 {"image_url": "", "name_kanji": "丙"}]
         found = actresses(rows)
         self.assertEqual([row["thumb_url"] for row in found], [ACTRESS_IMAGE.format(filename="a.jpg"), "", ""])
-        self.assertEqual([row["japanese_name"] for row in found], ["甲", "Otsu", "丙"])
+        self.assertEqual([row["japanese_name"] for row in found], ["甲", "", "丙"])
+        self.assertEqual(found[1]["name_romaji"], "Otsu")
         self.assertEqual([row["dmm_id"] for row in found], [7, 8, ""])
         self.assertEqual(actresses(None), [])
 
@@ -135,8 +145,8 @@ class R18DevSourceTests(unittest.TestCase):
         self.assertEqual([call.args[1] for call in fetch.call_args_list], [DETAIL_URL, COMBINED_URL])
         self.assertEqual(fetch.call_args_list[0].kwargs, {"referer": "https://r18.dev/", "limit": 2 * 1024 * 1024, "deadline": None})
 
-    def test_the_english_page_stands_when_the_japanese_page_fails_or_is_not_json(self):
-        english = dict(EXPECTED, actresses=[{"japanese_name": "Remu Suzumori"}], genres=["Slender", "Variety"])
+    def test_without_the_japanese_page_only_the_language_neutral_fields_stand(self):
+        english = dict(EXPECTED, title="", series="", actresses=[], genres=["Slender", "Variety"])
         english.pop("translations")
         english.pop("combined")
         for body in (Unavailable("HTTP 503"), NotFound("HTTP 404"), b"<html>maintenance</html>"):
@@ -170,6 +180,47 @@ class R18DevSourceTests(unittest.TestCase):
         with self.assertRaises(SourceFailure) as caught:
             R18DevSource().query("ABW-358", session=Session(serve({DETAIL_URL: Unavailable("本趟对外请求配额已用完")})))
         self.assertEqual((caught.exception.reason, str(caught.exception)), (FailureReason.NETWORK, "本趟对外请求配额已用完"))
+
+
+class OriginalWordingTests(unittest.TestCase):
+    """候选只取原文那一侧：r18 快照顶层的英文标题、系列与罗马字演员进不了候选。"""
+
+    ENGLISH = {"source_url": DETAIL_URL, "title": "Remu Style", "maker": "Prestige",
+               "series": "HOW TO SEX! The Infirmary Teacher", "release_date": "2023-05-26",
+               "actresses": [{"japanese_name": "Remu Suzumori"}]}
+
+    def test_an_empty_japanese_view_does_not_let_the_english_series_through(self):
+        payload = dict(self.ENGLISH, translations=[{"language": "ja", "title": "", "series": ""}])
+        fields = extract_peach_fields(payload)
+        self.assertNotIn("series", fields)
+        self.assertNotIn("title", fields)
+        self.assertEqual(fields["studio"]["value"], "Prestige", "厂牌用品牌名，照旧取顶层")
+        self.assertEqual(fields["release_date"]["value"], "2023-05-26")
+
+    def test_an_english_page_snapshot_without_any_japanese_view_gives_no_names(self):
+        """日文那一页没取到时的形态，磁盘缓存里也留着这种旧快照。"""
+        fields = extract_peach_fields(self.ENGLISH)
+        self.assertEqual({"title", "series", "performers"} & set(fields), set())
+        self.assertNotIn("title", extract_catalog_evidence(self.ENGLISH))
+        self.assertEqual(fields["studio"]["value"], "Prestige")
+        mixed = dict(self.ENGLISH, actresses=[{"japanese_name": "胡桃さくら"}, {"japanese_name": "Remu Suzumori"}])
+        self.assertEqual([row["name"] for row in extract_peach_fields(mixed)["performers"]["value"]], ["胡桃さくら"])
+
+    def test_a_top_level_value_written_in_japanese_script_stays(self):
+        payload = dict(self.ENGLISH, series="いつでも使えるオナホ後輩",
+                       translations=[{"language": "ja", "series": ""}])
+        self.assertEqual(original_wording(payload, "series"), "いつでも使えるオナホ後輩")
+        self.assertEqual(extract_peach_fields(payload)["series"]["value"], "いつでも使えるオナホ後輩")
+
+    def test_the_japanese_view_wins_and_other_sources_keep_their_top_level_values(self):
+        payload = dict(self.ENGLISH, translations=[{"language": "ja", "title": "涼森れむ流", "series": "保健室の先生"}])
+        self.assertEqual((original_wording(payload, "title"), original_wording(payload, "series")),
+                         ("涼森れむ流", "保健室の先生"))
+        javbus = {"source_url": "https://www.javbus.com/ABW-358", "title": "Remu Style", "series": "HOW TO SEX",
+                  "actresses": [{"japanese_name": "涼森れむ"}]}
+        fields = extract_peach_fields(javbus)
+        self.assertEqual((fields["title"]["value"], fields["series"]["value"]), ("Remu Style", "HOW TO SEX"))
+        self.assertEqual([row["name"] for row in fields["performers"]["value"]], ["涼森れむ"])
 
 
 class FailureWordingTests(unittest.TestCase):
