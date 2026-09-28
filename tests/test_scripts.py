@@ -2056,7 +2056,12 @@ class OperationalScriptTests(unittest.TestCase):
                 def query(self, code, source):
                     self.calls.append((code, source))
                     return {
-                        "source": source, "source_url": "https://r18.dev/example",
+                        "source": source,
+                        "source_url": ("https://r18.dev/example" if source == "r18dev"
+                                       else "https://www.javbus.com/ABC-001"),
+                        # r18.dev 的标题与系列只认日文视图，顶层那份是它自己的英文译文。
+                        "translations": ([{"language": "ja", "title": "カタログ題", "series": "シリーズA"}]
+                                         if source == "r18dev" else []),
                         "id": "ABC-001", "content_id": "abc00001",
                         "title": "Catalog title", "original_title": "原标题",
                         "runtime": 121, "director": "Director A", "label": "Label A",

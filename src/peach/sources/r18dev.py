@@ -2,9 +2,14 @@
 
 `dvd_id=<番号>` 那一页只给英文，标题和系列多是机翻（ABW-358 的 `title_en_is_machine_translation`
 为真），演员只有罗马字。日文在 `combined=<content_id>` 那一页：`title_ja`、`series_name_ja`、
-演员 `name_kanji`，取到后写进 `translations`（形状与 Javinizer-Go 快照一致），演员与 genre 换成
-日文那份。厂牌不取日文——账本的厂牌实体用品牌名（`Prestige`、`MOODYZ`），换成 `プレステージ`
-会另起一个实体。日文那一页取不到时照旧交英文，不让一次失败吞掉整条资料。
+演员 `name_kanji`，取到后写进 `translations`（形状与 Javinizer-Go 快照一致），标题、系列、演员与
+genre 都换成日文那份。厂牌不取日文——账本的厂牌实体用品牌名（`Prestige`、`MOODYZ`），换成
+`プレステージ` 会另起一个实体。
+
+标题、系列和演员只认日文那一侧：日文那一页取不到，或那一侧空着，这几样就留空，不拿英文页的
+写法顶上。英文页的这三样一旦落库，系列与演员就成了实体规范名——ABW-358 的系列实体因此叫了
+`HOW TO SEX! The Infirmary Teacher…`，详情页一直显示英文。留空的字段由来源链接着问下一家；
+发行日、厂牌、封面和 genre 两边一样可用，照旧交出，一次失败不吞掉整条资料。
 
 genre 取 `categories[].name_ja`，也就是 DMM 自己那套词。英文是 r18 在它上面再译一层，词根在那
 一层会丢：`その他フェチ` 一眼看得出是「フェチ」那一格的兜底，从 `Other Fetishes` 反推不回去。
@@ -34,14 +39,18 @@ ACTRESS_IMAGE = "https://pics.dmm.co.jp/mono/actjpgs/{filename}"
 
 
 def actresses(rows) -> list[dict]:
-    """combined 页的演员：日文名、假名、罗马字、DMM id 与官方头像地址。"""
+    """combined 页的演员：日文名、假名、罗马字、DMM id 与官方头像地址。
+
+    `japanese_name` 只取 `name_kanji`，那是 DMM 登记的艺名（`RARA`、`JULIA` 这类本来就写拉丁
+    字母的也在这一栏）。没有它的只剩 r18 拼的罗马字，名字留空，由 `with_japanese` 剔掉。
+    """
     found = []
     for row in rows or []:
         image = str(row.get('image_url') or '').strip()
         thumb_url = (ACTRESS_IMAGE.format(filename=quote(image, safe=''))
                      if image and '/' not in image and '\\' not in image else '')
         found.append({
-            'japanese_name': row.get('name_kanji') or row.get('name_romaji') or '',
+            'japanese_name': row.get('name_kanji') or '',
             'name_kana': row.get('name_kana') or '',
             'name_romaji': row.get('name_romaji') or '',
             'dmm_id': row.get('id') or '',
@@ -51,21 +60,26 @@ def actresses(rows) -> list[dict]:
     return found
 
 
+def english_only(record: SiteRecord) -> SiteRecord:
+    """日文那一页没拿到时交出的记录：标题、系列与演员留空，其余照旧。"""
+    return replace(record, title='', series='', performers=())
+
+
 def with_japanese(record: SiteRecord, combined: object) -> SiteRecord:
-    """把 combined 页的日文写法并进记录；那一页不是这部片的就原样交回。"""
+    """把 combined 页的日文写法并进记录；那一页不是这部片的，按没拿到处理。"""
     content_id = str(record.extra.get('content_id') or '')
     if not isinstance(combined, dict) or combined.get('content_id') != content_id:
-        return record
+        return english_only(record)
     directors = [row.get('name_kanji') for row in combined.get('directors') or [] if row.get('name_kanji')]
-    translations = [dict(language='ja', title=combined.get('title_ja') or '',
-                         series=combined.get('series_name_ja') or '',
+    title = ' '.join(str(combined.get('title_ja') or '').split())
+    series = ' '.join(str(combined.get('series_name_ja') or '').split())
+    translations = [dict(language='ja', title=title, series=series,
                          label=combined.get('label_name_ja') or '',
                          director=directors[0] if directors else '')]
-    performers = actresses(combined.get('actresses'))
+    performers = tuple(row for row in actresses(combined.get('actresses')) if row['japanese_name'])
     japanese = [row.get('name_ja') or row.get('name_en') or '' for row in combined.get('categories') or []]
     return replace(
-        record,
-        performers=tuple(performers) if any(row['japanese_name'] for row in performers) else record.performers,
+        record, title=title, series=series, performers=performers,
         tags=tuple(name for name in japanese if name) if any(japanese) else record.tags,
         extra={**record.extra, 'translations': translations, 'combined': combined})
 
@@ -105,14 +119,14 @@ class R18DevSource(SiteSource):
             extra={'content_id': raw.get('content_id'), 'raw': raw})
 
     def japanese(self, record: SiteRecord, *, session: Session) -> SiteRecord:
-        """补上 combined 页的日文写法。那一页取不到、不是 JSON 或连接失败都照旧交英文。"""
+        """补上 combined 页的日文写法。那一页取不到、不是 JSON 或连接失败时交 `english_only`。"""
         content_id = str(record.extra.get('content_id') or '')
         if not content_id:
-            return record
+            return english_only(record)
         try:
             combined = json.loads(session.get(self.combined_url(content_id), config=self.config).body)
         except (Unavailable, ValueError, httpx.TransportError):
-            return record
+            return english_only(record)
         return with_japanese(record, combined)
 
     def query(self, code: str, *, session: Session) -> SiteRecord:

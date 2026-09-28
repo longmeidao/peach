@@ -642,7 +642,7 @@ class LibraryNfoTests(unittest.TestCase):
         self.assertEqual(tags, ['苗条'])
         self.assertEqual(unmapped, [], '`企画` 是发行企划、`その他フェチ` 是兜底格，都按非内容排除')
 
-    def test_r18_metadata_keeps_english_when_the_japanese_page_fails(self):
+    def test_without_the_japanese_page_r18_gives_no_english_title_or_romaji_cast(self):
         from peach.jav_cover_fetch import Unavailable
         from peach.library_processing import LibraryMetadataProvider
         detail = {'content_id': '118abw358', 'title': 'Remu Style', 'actresses': [{'name': 'Remu Suzumori'}],
@@ -655,8 +655,10 @@ class LibraryNfoTests(unittest.TestCase):
         provider.transport = Mock()
         with patch('peach.jav_cover_fetch._fetch', side_effect=pages):
             payload = provider.query('ABW-358')
-        self.assertEqual(_fields(payload)['title']['value'], 'Remu Style')
-        self.assertEqual(payload['genres'], ['Slender'], '日文页没取到时，英文那份仍然能投影')
+        fields = _fields(payload)
+        self.assertNotIn('title', fields, '英文页的标题是 r18 的译文，留空让来源链去问下一家')
+        self.assertNotIn('performers', fields, '罗马字演员会建出罗马字的女优实体')
+        self.assertEqual(payload['genres'], ['Slender'], '日文页没取到时，genre 仍然能投影')
         self.assertNotIn('translations', payload)
 
     def test_fc2cmadb_asks_a_second_time_for_the_women_that_page_holds_back(self):

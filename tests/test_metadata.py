@@ -136,13 +136,14 @@ class MetadataProviderTests(unittest.TestCase):
         self.assertEqual(fields["title"]["value"], "日本語タイトル")
         self.assertEqual(fields["original_title"]["value"], "Original Title")
 
-    def test_empty_japanese_names_fall_back_to_the_default_view(self):
+    def test_an_empty_japanese_side_keeps_the_brand_but_not_the_translated_series(self):
+        """厂牌用品牌名，退回顶层；系列顶层是 r18 的英文译文，退回去就成了英文的系列实体。"""
         fields = extract_peach_fields({
             "maker": "FALENO",
             "series": "FALENO Compilation",
             "translations": [{"language": "ja", "maker": "", "series": ""}],
         })
-        self.assertEqual(fields["series"]["value"], "FALENO Compilation")
+        self.assertNotIn("series", fields)
         self.assertEqual(fields["studio"]["value"], "FALENO")
 
     def test_rich_catalog_fields_stay_source_evidence(self):

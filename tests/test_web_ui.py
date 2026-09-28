@@ -9870,18 +9870,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 省略号仍然要有：名字长了得截断，只是不能连下伸部一起裁掉。
         self.assertIn("text-overflow:ellipsis", rule)
         self.assertIn("text-align:left", rule, "文字和头像共用左边缘")
-        self.assertPageContains(".idgroup-performer .idname{text-align:center}")
-        self.assertPageContains(".idgroup-performer .idcell{align-items:center}")
-
-    def test_the_group_label_lines_up_with_the_avatar_below_it(self):
-        """组标题、图标和名字都贴详情内容区左边缘。"""
-        self.assertPageContains(".idgroup{--id-cell:62px;--id-face:46px}")
-        self.assertPageContains(".idgroup-performer{--id-cell:58px}")
-        self.assertPageContains(".idgroup-performer .idrow{gap:10px}")
-        self.assertPageContains(".idlabel{margin:0 0 7px")
-        self.assertPageContains("align-items:flex-start;gap:5px;width:var(--id-cell,62px)")
-        self.assertPageContains("width:var(--id-cell,62px)")
-        self.assertPageContains("width:var(--id-face,46px);height:var(--id-face,46px)")
+        # 组标题、头像和名字三者的左边缘由 `frontend/e2e/design.test.ts` 按真实几何判。
 
     def test_detail_source_icon_starts_at_the_content_edge(self):
         # 徽标是标题第一行开头的行内块，随文字一起被两行折叠裁住。
