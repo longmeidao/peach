@@ -364,10 +364,14 @@ BoardUI 的 `chart-*` 档。点一个内容标签是「回目录并按它筛选�
 React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.css`；它与旧样式表同处一页的
 三条约束（工具类不分层、只扫描 `src/react/`、Preflight 限定在 `.peach-react` 里）写在
 `frontend/src/react/styles.css` 开头，逐字复制与没有复制的上游文件见 `frontend/src/react/boardui/ORIGIN.md`。
-`.oxlintrc.json` 里三条例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
+`.oxlintrc.json` 里的例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
 React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`、`swiper-slide`、
 `swiper-zoom-container` 是 Swiper 核心 API 认的结构类名（图片灯箱），不写它就找不到轮播的
-容器与每一张；`shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
+容器与每一张；关注详情（`follow-detail`）的舞台版式、侧栏、合集队列与 Video.js 播放器仍用
+`13-stage.css`、`15-detail.css` 与 Video.js 皮肤，`sgrid`、`mixgrid`、`vwrap`、`closestage`、`video-js`、
+`vjs-big-play-centered`、`side`、`sidecontent`、`stitle`、`smeta`、`mono`、`stags`、`tg`、`mav`、`externallink`、
+`fb`、`later`、`seen`、`dislike`、`dur`、`current` 与 `mix*` 这一组按原名输出，舞台与播放器归 React 时一起收回；
+`shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
 `no-raw-colors` 只认 `--color-*`，把它当成了未声明的颜色。
 
 ## 依赖清单

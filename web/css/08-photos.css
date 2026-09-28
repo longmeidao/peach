@@ -1,4 +1,4 @@
-/* 媒体圆钮（关注页图集的左右翻页 `followimagearrow`）与灯箱打开时的整页锁滚。灯箱本身在 React 里，
+/* 媒体圆钮（竖屏刷片页 `.tokaction` 那一列动作键）与灯箱打开时的整页锁滚。灯箱本身在 React 里，
    样式见 `frontend/src/react/photo-lightbox/photo-lightbox.css`。 */
 /* 媒体圆钮只共享 48/24 的几何与图标居中；表面色由使用场景决定。 */
 .media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;
@@ -7,8 +7,6 @@
 .media-circle:focus-visible{outline:2px solid var(--tungsten);outline-offset:3px}
 .media-circle svg{display:block;width:24px;height:24px;flex:none;stroke:currentColor;fill:none;
   stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.media-circle.media-overlay{background:rgba(0,0,0,.6);color:#fff;backdrop-filter:blur(16px)}
-.media-circle.media-overlay:hover{background:rgba(0,0,0,.78)}
 body.photolight-open{overflow:hidden}
 
 /* 展开着不动时那道裁边要摘掉：高度过渡需要它，展开完就只剩副作用——里面最后一张卡片

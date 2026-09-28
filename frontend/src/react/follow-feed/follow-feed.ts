@@ -9,8 +9,9 @@
  * 上面创作者、题材、标签三排露出哪些由它定。重新进入（壳的 `push`）与「换一批」才换它，岛重画
  * 从不重新洗牌。
  *
- * 详情（`/follow/item/:id`）仍在壳里，读的是壳的 `followData`：岛每取到一版列表就经
- * `actions.loaded` 交回一份合并后的数据，壳据此建条目索引、画侧栏标签抽屉。 */
+ * 详情（`/follow/item/:id`）是另一座岛（`../follow-detail/`），先扫这里缓存的几页找条目
+ * （`findFollowItem`），扫不到才单独取。侧栏标签抽屉仍归壳画：岛每取到一版列表就经
+ * `actions.loaded` 交回这一视图可见条目的标签计数。 */
 import { keepPreviousData, type InfiniteData, type QueryKey } from '@tanstack/react-query';
 import { seededRank } from '@peach/legacy/core';
 
@@ -114,6 +115,8 @@ export interface FollowGroup {
   variants: FollowItem[];
   duplicates: FollowItem[];
   has_wip?: boolean;
+  /** 论坛发布帖：组里每条是一条回复，正文是回复内容而不是线程标题。 */
+  is_release?: boolean;
   stack?: FollowStackInfo | null;
 }
 
@@ -222,6 +225,53 @@ export function collectionItems(group: FollowGroup): FollowItem[] {
     seen.add(item.id);
     return true;
   });
+}
+
+/** 列表缓存里的一条：条目本身、所在的组与那一版的来源和别名。 */
+export interface FollowItemHit {
+  item: FollowItem;
+  group: FollowGroup;
+  sources: FollowSource[];
+  aliases: unknown[];
+}
+
+/** 在这座岛已缓存的每一版列表里找一条（详情先扫这里）。来源与别名取那一版最后一页的，同 `mergedPage`。 */
+export function findFollowItem(id: number): FollowItemHit | null {
+  for (const [, data] of queryClient.getQueriesData<InfiniteData<FollowPage>>({ queryKey: ['follow-feed'] })) {
+    if (!Array.isArray(data?.pages) || !data.pages.length) continue;
+    const last = data.pages[data.pages.length - 1]!;
+    for (const page of data.pages) {
+      for (const group of page.groups || []) {
+        const item = collectionItems(group).find((member) => member.id === id);
+        if (item) return { item, group, sources: last.sources || [], aliases: last.author_aliases || [] };
+      }
+    }
+  }
+  return null;
+}
+
+/** 每一版列表缓存里的同一条换成 `next`（详情隐藏或恢复一张图之后，服务端投影给出新的媒体清单）。 */
+export function replaceFollowItem(next: FollowItem): void {
+  queryClient.setQueriesData<InfiniteData<FollowPage>>({
+    queryKey: ['follow-feed'], predicate: (query) => Array.isArray((query.state.data as InfiniteData<FollowPage>)?.pages),
+  }, (data) => data && {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      groups: (page.groups || []).map((group) => {
+        const swap = (item: FollowItem) => (item.id === next.id ? next : item);
+        if (!collectionItems(group).some((item) => item.id === next.id)) return group;
+        return { ...group, primary: swap(group.primary), variants: group.variants.map(swap), duplicates: group.duplicates.map(swap) };
+      }),
+    })),
+  });
+}
+
+/** 每一版列表缓存里的同一条换状态、挪计数（详情里的保存与标记）。不移出整组：详情不知道每一版筛着哪一档。 */
+export function setFollowItemStatus(id: number, to: string): void {
+  queryClient.setQueriesData<InfiniteData<FollowPage>>({
+    queryKey: ['follow-feed'], predicate: (query) => Array.isArray((query.state.data as InfiniteData<FollowPage>)?.pages),
+  }, (data) => data && withStatus(data, null, id, to));
 }
 
 /** 同上，按发布时间从新到旧。 */
@@ -393,8 +443,8 @@ export interface FollowFeedActions {
   route(view: FollowView): void;
   /** 换一批：壳掷一粒新种子，两排取样与列表次序都换。 */
   shuffle(): void;
-  /** 岛取到一版列表（首屏、续页、写操作之后）：合并后的数据、这一视图可见的组与凭据。 */
-  loaded(data: FollowPage, visible: readonly FollowGroup[], credentials: ReadonlySet<string>): void;
+  /** 岛取到一版列表（首屏、续页、写操作之后）：这一视图可见条目的标签计数，壳拿去画侧栏抽屉。 */
+  loaded(tags: readonly (readonly [string, number])[]): void;
   openDetail(id: number): void;
   openManage(): void;
   /** 多选里的一张：`range` 是 Shift 连选。 */
@@ -414,8 +464,9 @@ export interface FollowFeedActions {
 /** 状态写接口回的那一份：换的是哪一条、换成了什么。 */
 export interface FollowStatusWrite { item: number; to: string }
 
-/** 写完之后在缓存里换局部：条目状态、状态计数，筛着某一档而新状态不在这一档时整组移出。 */
-export function withStatus(data: InfiniteData<FollowPage>, view: FollowView, id: number, to: string):
+/** 写完之后在缓存里换局部：条目状态、状态计数，筛着某一档而新状态不在这一档时整组移出。
+ *  `view` 为空时只换状态与计数、不移出（详情里的写操作）。 */
+export function withStatus(data: InfiniteData<FollowPage>, view: FollowView | null, id: number, to: string):
 InfiniteData<FollowPage> {
   let before = '';
   const pages = data.pages.map((page) => ({
@@ -429,7 +480,7 @@ InfiniteData<FollowPage> {
         return { ...item, status: to };
       };
       const next = { ...group, primary: swap(group.primary), variants: group.variants.map(swap), duplicates: group.duplicates.map(swap) };
-      if (hit && view.status && next.primary.id === id && to !== view.status) return [];
+      if (hit && view?.status && next.primary.id === id && to !== view.status) return [];
       return [next];
     }),
   }));

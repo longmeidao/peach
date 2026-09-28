@@ -2946,7 +2946,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("open:(params,push)=>openFollowManage(push)},")
         self.assertPageContains(
             "await openFollow(push,true);await openFollowDetail(params.id,push)")
-        self.assertPageContains("api(`/api/follow?item=${encodeURIComponent(id)}`)")
         self.assertPageContains(".then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})")
 
     def test_reader_management_is_locked_and_points_to_the_writer(self):
@@ -3172,11 +3171,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("let followAuthors=new Set(),followProviders=new Set(),followTags=new Set()")
         # 取交集的判定在服务端；页面负责把多选的标签一次全交出去。
         self.assertPageContains("+(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'')")
-        # 详情页的标签按来源类型着色；筛选条与卡片上那几颗归 `follow-feed.css` 的 `data-tag-cat`。
-        self.assertPageContains(".r34-artist")
-        self.assertPageContains(".r34-character")
-        self.assertPageContains(".r34-copyright")
-        self.assertPageContains(".r34-metadata")
 
     def test_follow_cards_use_author_avatars_and_open_details_inside_peach(self):
         # 卡片本身归 `follow-feed` 岛：头像取壳的 `followAuthorAvatar`，点卡交给壳开详情。
@@ -3188,44 +3182,16 @@ class FollowWebSourceTests(unittest.TestCase):
             self.page,
         )
         self.assertPageContains("async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false)")
-        self.assertPageContains("const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?")
-        self.assertPageContains("route(`/follow/item/${item.id}`)")
-        self.assertPageContains('class="sgrid followdetailgrid${collection||embeddedQueue?\' mixgrid\':\'\'}"')
-        self.assertPageContains('class="followorigin externallink" href="${esc(item.url)}" target="_blank"')
-        self.assertPageContains('title="打开来源页面" aria-label="打开来源页面"')
         self.assertNotIn('打开来源页面</a>', self.page)
-        self.assertPageContains(".followdetailtitle{display:flex;gap:5px")
-        self.assertPageContains(".fnote.followmediaissue{margin:18px 0 8px;color:var(--drop)}")
         self.assertPageContains("followAuthorAvatar(authorSources,name)")
-        self.assertPageContains("followTagChip(item,tag,'button')")
-        self.assertPageContains("item.detail_tags||item.tags||[]")
-        self.assertPageContains(".followdetailtags .tg{max-width:none")
-        # 标签是按钮，点下去按这个标签筛选，必须有悬停反馈。通用 `.tg:hover` 的填充和
-        # 文字色被按类型着色那两条同权重规则压掉了，只能按标签自己那个类型色加深一档。
-        self.assertPageContains(
-            ".followdetailtags .tg:hover{border-color:color-mix(in srgb,var(--r34-tag) 68%,transparent)")
-        self.assertPageContains(
-            "background:color-mix(in srgb,var(--r34-tag) 18%,transparent);color:var(--ink)}")
-        self.assertPageContains("const postedBy=credited?'':item.author&&foldName(item.author)!==foldName(author)")
         self.assertNotIn('class="cardopenhit" href=', self.page)
         self.assertNotIn('class="fcollectionthumb" href=', self.page)
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
-        # 标签紧跟动作条。错误行 `.fstate` 带着 `flex:1 1 100%`，在纵向 flex 的右栏里
-        # 会把剩余高度全算给自己，把标签压到栏底、中间空一大段。
-        self.assertPageContains(".followdetailside .fstate{flex:none}")
-
-    def test_one_fanbox_collection_keeps_its_gofile_folder_sections(self):
-        self.assertPageContains("const followGroupedMediaOwner=group=>")
-        self.assertPageContains("(item.media_items||[]).some(media=>media.resource_group)")
-        self.assertPageContains("const key=media.resource_group||'ungrouped'")
-        self.assertPageContains('class="mixgrouplabel"')
-        self.assertPageContains('data-follow-media-owner="${item.id}"')
 
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
         self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
-        self.assertPageContains("if(followVideo){")
-        self.assertPageContains("const followPlayer=await mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{")
-        self.assertPageContains("source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'}")
+        self.assertPageContains("mountDetailPlayer(item,video,appSettings.detailAutoplay,{")
+        self.assertPageContains("source:{src,type:media?.media_type||item.media_type||'video/mp4'}")
         # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
         self.assertPageContains(
@@ -3237,48 +3203,31 @@ class FollowWebSourceTests(unittest.TestCase):
         # 档位和字节数是同一趟回源的产物，播放器两样都从这个应答里取。
         self.assertPageContains("updateQualities?.(next?.qualities?.length?next.qualities:null);")
         self.assertPageContains("const size=Number(next?.size)||0;")
-        detail = self.page.split("async function openFollowDetail", 1)[1].split(
-            "function alignFollowImageControls", 1)[0]
-        self.assertNotIn("await api(`/follow-qualities", detail,
+        player = self.page.split("function mountFollowPlayer(", 1)[1].split(
+            "async function openFollow(", 1)[0]
+        self.assertNotIn("await api(`/follow-qualities", player,
                          "清晰度回源不能挡住默认视频挂载")
-        self.assertLess(detail.index("const followPlayer=await mountDetailPlayer"),
-                        detail.index("wireFollowTelemetry"))
+        self.assertLess(player.index("mountDetailPlayer(item,video"),
+                        player.index("wireFollowTelemetry"))
         self.assertPageContains('aria-label="播放器设置"')
         self.assertPageContains("data-player-quality-badge")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
         self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("const stopFollowAmbient=mountPlayerAmbient(followVideo)")
-        self.assertPageContains("followPlayer?.one?.('dispose',stopFollowAmbient)")
+        self.assertPageContains("const stopAmbient=mountPlayerAmbient(video)")
+        self.assertPageContains("player?.one?.('dispose',stopAmbient)")
         self.assertPageContains("mountPlayerTheaterControl(player,root)")
-        self.assertPageContains("wireFollowTelemetry(item,followVideo)")
+        self.assertPageContains("wireFollowTelemetry(item,video)")
         self.assertPageContains("api('/api/follow/play'")
         self.assertPageContains("api('/api/follow/activity'")
 
-    def test_follow_detail_save_keeps_the_button_after_the_async_request(self):
-        self.assertPageContains("const button=event.currentTarget;")
-        self.assertPageContains("write(button,'/api/follow/save',{item:item.id},()=>{")
-        self.assertPageContains("button.innerHTML=icon('check')")
-        self.assertPageContains("button.setAttribute('aria-label','已保存')")
-        self.assertPageLacks("event.currentTarget.innerHTML=icon('check')")
-
     def test_follow_image_collections_use_buttons_dots_and_arrow_keys(self):
-        self.assertPageContains('class="media-circle media-overlay followimagearrow prev"')
-        self.assertPageContains('class="media-circle media-overlay followimagearrow next"')
-        self.assertPageContains('class="followimagedots" role="group"')
-        self.assertPageContains('data-follow-image-item="${image.index}"')
         self.assertPageContains("imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')")
-        self.assertPageContains("openFollowDetail(item.id,false,+index,true)")
-        self.assertPageContains(".followimagedots button[aria-current=\"true\"]")
-        self.assertPageContains("function alignFollowImageControls()")
-        self.assertPageContains("const renderedWidth=Math.min(box.width,box.height*ratio)")
-        self.assertPageContains("--follow-image-arrow-inset")
 
     def test_follow_detail_keeps_filter_context_and_clears_initial_loading(self):
         self.assertPageContains("async function openFollow(push=true,renderForDetail=false)")
-        # 深链进详情只取一页数据、不挂岛；关掉详情时岛不在场才挂（e2e `follow-feed.test.ts`）。
+        # 深链进详情不取列表、不挂列表岛，这一条由详情岛自己取；关掉详情时列表岛不在场才挂（e2e `follow-feed.test.ts`、`follow-detail.test.ts`）。
         self.assertPageContains("const surface=claimSurface(surfacePath());")
         self.assertPageContains("const surface=claimSurface('/follow');")
-        self.assertPageContains("if(!surfaceCurrent(surface)||!data)return;")
         self.assertPageContains("await openFollow(push,true);await openFollowDetail(params.id,push)")
         self.assertPageContains("placeItemDetail(detailOriginAnchor,detailOriginAbove);")
         self.assertPageContains("if(!stage.open)stage.showModal();")
@@ -3321,16 +3270,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn("约 ${text}", body)
         self.assertIn("return text", body)
 
-    def test_release_time_is_not_reused_as_a_variant_label(self):
-        self.assertPageContains("if(!label&&group.is_release)label=item.variant_label||item.variant_kind||''")
-        body = self.page[self.page.index("function followCollectionCopy("):
-                         self.page.index("function followQueueHtml(")]
-        self.assertNotIn("localTime(item.published_at)", body)
-
-    def test_release_rows_show_the_reply_body_not_the_thread_title(self):
-        self.assertPageContains("const body=group.is_release")
-        self.assertPageContains("'（仅附件）'")
-
     def test_cross_site_duplicates_are_shown_as_another_source(self):
         self.assertPageContains("另见 ")
         self.assertPageContains("fbadge dup")
@@ -3347,7 +3286,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("{match:'/follow-manage',section:'follow',title:'关注管理',refresh:'skip',")
 
     def test_every_entered_state_can_be_left_again(self):
-        self.assertPageContains("""item.status==='seen'||item.status==='ignored'""")
         self.assertIn('data-to="new" title="恢复未看" aria-label="恢复未看"',
                       self.read_react("follow-feed/follow-card.tsx"))
 
@@ -3553,25 +3491,6 @@ class FollowWebSourceTests(unittest.TestCase):
             self.assertIsNone(web_follow._avatar_url(provider, ref),
                               f"{provider} 没有实测过的头像来源，不该猜一个")
 
-    def test_detail_tags_follow_rule34s_own_category_order(self):
-        """详情标签按 rule34.xxx 帖子页 `#tag-sidebar` 的类型顺序分组，不按字母。
-
-        2026-09-01 实测两个帖子页（18622796 / 18622794），`li.tag-type-*` 的出现
-        顺序都是 copyright → character → artist → general → metadata，组内按名升序；
-        缺的类型直接跳过不占位。证据见
-        docs/reference-snapshots/rule34-follow-tags-and-collections.md。
-        """
-        self.assertPageContains(
-            "const FOLLOW_TAG_ORDER=['copyright','character','artist','general','metadata'];")
-        self.assertPageContains("function followDetailTags(item)")
-        self.assertPageContains("return at<0?FOLLOW_TAG_ORDER.length:at};")
-        self.assertPageContains(
-            "return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));")
-        self.assertPageContains(
-            "const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');")
-        # 来源没记类型的排最后、保持中性色：不按词形猜类型是关注标签的既有门槛。
-        self.assertPageContains(".followdetailtags .r34-unknown{--r34-tag:var(--muted)}")
-
     def test_wip_badge_describes_this_item_not_its_siblings(self):
         """`2B Camp [4K]` 判的是 alt，只因为同组还有一条 `[WIP]` 就挂上 WIP。
 
@@ -3589,39 +3508,15 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("部分媒体未取得：需要 F95 登录会话解析")
         self.assertPageLacks("已显示可读取附件；F95 登录会话已保存")
         self.assertPageLacks("这条旧记录的受保护资源会在下次检查重新解析")
-        self.assertPageContains("followCredentialProviders=new Set")
-        self.assertPageContains("surfaceApi(surface,'/api/follow/credentials').catch")
         self.assertPageLacks("个外部文件页；视频列表未取得")
-        self.assertPageContains("function followMediaIssue(item,credentials=followCredentialProviders){")
-        self.assertPageContains('class="fnote followmediaissue"')
-        self.assertPageContains("function followResourceLinks(item)")
-        self.assertPageContains('class="followresources"')
-        self.assertPageContains("${followResourceLinks(item)}")
 
     def test_follow_external_links_have_a_real_icon_and_no_underlines(self):
         self.assertPageContains('<symbol id="i-external-link"')
-        self.assertPageContains("icon('external-link','externalmark')")
-        self.assertPageContains(".followresources a:hover")
         self.assertPageContains("text-decoration:none")
 
     def test_follow_styles_exist_for_the_card_surface(self):
-        for selector in (".followlist{", ".fbadge{", ".followqueue"):
+        for selector in (".followlist{", ".fbadge{"):
             self.assertPageContains(selector)
-
-    def test_follow_cards_reuse_home_cards_hover_actions_and_mix_stacks(self):
-        self.assertPageContains("function followVideoItems(group)")
-        self.assertPageContains("function followCollectionItemsNewest(group)")
-        self.assertPageContains("Date.parse(b.published_at||'')")
-        self.assertPageContains("followCollectionItemsNewest(group).filter")
-        self.assertPageContains("item.playable&&item.media_kind==='video'")
-        # 列表里的卡、卡叠与悬停动作归 `follow-feed` 岛（`follow-feed.test.tsx`、e2e
-        # `follow-feed.test.ts`）；这里只剩详情页用到的合集与队列。
-        self.assertPageContains("function followEmbeddedQueueHtml(item,mediaIndex)")
-        self.assertPageContains("data-follow-media-item=")
-        self.assertPageContains("const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null")
-        self.assertPageContains("const items=followVideoItems(group)")
-        self.assertPageContains("function followQueueHtml(group,itemId)")
-        self.assertPageContains('data-follow-queue-item="${item.id}"')
 
     def test_follow_puts_the_media_buttons_at_the_top_row_left_behind_a_separator(self):
         """媒体类型在上排最左，隔一道竖线才是状态——跟资料页那条同一个次序。
@@ -3630,8 +3525,6 @@ class FollowWebSourceTests(unittest.TestCase):
         一整批内容，状态是在这一批里再挑一档。摆在下排右端的话，它挨着的是排序键和
         动作键，读起来像给当前这批加的又一个条件，而它换掉的是整页内容。
         """
-        self.assertPageContains("const followMediaKinds=group=>")
-        self.assertPageContains("function followItemMediaKinds(item)")
         self.assertPageLacks('class="insightswitch followmediaswitch"')
         self.assertPageLacks("params.set('media-ui','switch')")
         self.assertPageLacks('class="followmediaicons"')
@@ -3639,7 +3532,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("params.set('author',[...followAuthors].join(','))")
         self.assertPageLacks("if(followMediaView==='images'&&!mediaCounts.images)followMediaView='videos'")
         self.assertPageLacks("if(followMediaView==='videos'&&!mediaCounts.videos&&mediaCounts.images)followMediaView='images'")
-        self.assertPageContains("const preferredKind=followMediaView==='images'?'image':'video'")
         # 媒体两枚在上排最左、隔一道竖线才是状态，各有一块滑动玻璃：由 `follow-feed` 岛画，
         # 次序与玻璃由 e2e `follow-feed.test.ts` 钉住。照片墙只剩骨架那一份栅格。
         self.assertPageContains(".followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr))")
@@ -3649,7 +3541,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageLacks(".followlist.followphotowall{display:block;column-count:5")
 
     def test_external_file_pages_do_not_default_to_video_and_paging_actions_share_one_row(self):
-        self.assertPageContains("else if(item.media_kind==='image'||item.media_kind==='video')kinds.add(item.media_kind)")
         self.assertPageLacks("else kinds.add(item.media_kind==='image'?'image':'video')")
         # 「加载更多」与「抓更早的一页」同一行、往回抓时的忙态归 `follow-feed` 岛
         # （e2e `follow-feed.test.ts`「载入更多」「往回抓一页」）。
@@ -3662,20 +3553,14 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
         self.assertPageContains('background:var(--detail-surface)')
         self.assertPageContains("const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}")
-        self.assertPageContains('<h2>视频合集</h2>')
-        self.assertPageContains('<h2>多媒体</h2>')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')
         self.assertPageContains('.sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
         self.assertPageContains("wireDrag($('#stage').querySelector('.mixlist'))")
-        self.assertPageContains("followdetailmedia${selectedKind==='image'?' image':''}")
-        self.assertPageContains('.followdetailmedia.image{background:')
         # 媒体框不给视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在
         # vh 上时两个量在窄屏上朝相反方向走，框比画面高出一大截，上下各空一片。
-        self.assertPageContains('.followdetailmedia{--follow-image-arrow-inset:16px}')
         self.assertPageLacks('min-height:min(62vh,640px)')
-        self.assertPageContains('.followdetailplaceholder{aspect-ratio:16/9;display:grid;place-items:center;')
 
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")
@@ -3687,7 +3572,6 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_ignore_actions_do_not_reuse_the_close_icon(self):
         self.assertPageContains('<symbol id="i-eye-off"')
         self.assertPageContains('data-follow-batch="ignored" hidden><svg viewBox="0 0 24 24"><use href="#i-eye-off"')
-        self.assertPageContains('data-follow-detail-status="ignored" aria-label="忽略" title="忽略"')
         self.assertPageContains("${icon('eye-off')}</button>")
 
     def test_the_check_button_stays_visible_on_a_narrow_viewport(self):
@@ -3702,26 +3586,8 @@ class FollowWebSourceTests(unittest.TestCase):
         套不进去。所以各调用方自己换成 `LightboxSlide`，在线图直接给 URL。灯箱本身归
         React（`frontend/src/react/photo-lightbox/`），行为由 `photo-lightbox.test.tsx` 与 e2e 钉住。
         """
-        self.assertPageContains("poster.onclick=()=>openPhotoLightbox(Math.max(0,imagePosition),followSlides)",
-                                "详情图片没有接上灯箱")
-        self.assertPageContains("showToast, openPhotoLightbox, followJobProgress } from './dist/peach-ui.js'",
-                                "关注页没有用资料页那一个灯箱")
         self.assertPageLacks('<img src="/photo?id=${item.id}"',
                              "灯箱模板仍写死本地取图口")
-        self.assertPageContains(".followdetailposter.zoomable{cursor:zoom-in}",
-                                "可点开的图要有光标提示，否则没人知道能点")
-
-    def test_a_multi_image_post_hands_the_whole_set_to_the_lightbox(self):
-        """一条帖子有多张图时应当能在灯箱里左右翻完，而不是退出去再点下一张。"""
-        self.assertPageContains("const followSlides=imageMedia.length")
-        self.assertPageContains("src:`/follow-stream?id=${item.id}&media=${image.index}`")
-
-    def test_online_images_show_image_info_without_the_local_reveal_action(self):
-        """在线图保留图片信息入口，但不显示只对本地文件成立的资源管理器动作。
-
-        面板上的来源、序号与分辨率，以及定位键只对本地图出现，由 `photo-lightbox.test.tsx` 钉住；
-        这里只看关注页交进去的那一张带着来源。"""
-        self.assertPageContains("source:followMediaSourceLabel(image,item)")
 
 
 

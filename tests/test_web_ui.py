@@ -1227,7 +1227,6 @@ class WebUiSourceTests(unittest.TestCase):
         判断（红=不合口味、绿=看过、橙=回收），整理动作不占色相。
         """
         self.assertPageContains(".fb button:hover{transform:none;background:var(--hover)}")
-        self.assertPageContains(".fb .fdownload:hover{background:var(--hover);color:var(--ink)}")
         self.assertPageContains(".fb .playlistadd:hover{color:var(--ink);background:var(--hover)}")
         for leaf, body in self._leaf_rules():
             if leaf.startswith(".fb"):
@@ -1561,7 +1560,7 @@ class WebUiSourceTests(unittest.TestCase):
         css = stylesheet_source()
         self.assertEqual(re.findall(r"border-radius:9{2,}px", css), [],
                          "整圆一律走 --pill-radius，别再写字面值")
-        for selector in (".fbadge{", ".fvkind{"):
+        for selector in (".fbadge{",):
             rule = css[css.index(selector):css.index("}", css.index(selector))]
             self.assertIn("var(--badge-radius)", rule, f"{selector} 是状态标记，不是标签")
 
@@ -2152,7 +2151,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('showEntityLoading(kind,name);')
         self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
         self.assertPageContains('mountDetailPlayer(it,vv,appSettings.detailAutoplay)')
-        self.assertPageContains('mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{')
+        self.assertPageContains('mountDetailPlayer(item,video,appSettings.detailAutoplay,{')
         self.assertPageContains('class="ptoggle" type="checkbox" id="detailAutoplaySetting"')
 
     def test_local_assets_get_their_sidecar_subtitles_as_closed_text_tracks(self):
@@ -2488,10 +2487,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_follow_detail_has_an_explicit_download(self):
         """下载到本地是显式动作，此前根本没有入口。用 `<a download>` 让浏览器落盘。"""
-        self.assertPageContains('class="fdownload"')
-        self.assertPageContains("download=1")
         self.assertPageContains('<symbol id="i-download"')
-        self.assertPageContains(".fb .fdownload{box-sizing:border-box;width:44px;height:42px;")
 
     def test_detail_like_reason_is_an_icon_disclosure_without_idle_explanation(self):
         self.assertPageContains('id="preferenceToggle" aria-label="喜爱理由"')
@@ -4502,29 +4498,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`:'—';")
         self.assertPageLacks("× 实时")
 
-    def test_follow_detail_image_falls_back_to_the_card_thumbnail(self):
-        """原图经代理取不到时换上缩略图，不留一块空画布。
-
-        pawchive 的原文件主机挂着 ddos-guard，服务端去取一律 403；缩略图由浏览器直接读
-        公开主机，照常能看。换上之后侧栏说明这是缩略图；缩略图也取不到才报没取回来。
-        """
-        self.assertCode("const detailThumb=selectedMedia?.thumb_url||item.thumb_url||'';")
-        self.assertCode('${detailThumb&&detailThumb!==src?` data-fallback-src="${esc(detailThumb)}"`:\'\'} referrerpolicy="no-referrer">')
-        # 画框比例跟整组图走：换图、原图没加载完、退回缩略图时详情都不忽高忽低。
-        self.assertCode("const framedOwners=(imageCarousel?[...imageMedia,item]:[selectedMedia,item]).filter(owner=>owner?.width>0&&owner.height>0);")
-        self.assertCode("${frameRatio?' framed':''}\"${frameRatio?` style=\"--follow-frame-ratio:${frameRatio.toFixed(4)}\"`:''}>")
-        online = (Path(__file__).resolve().parents[1] / 'web/css/21-online.css').read_text(encoding='utf-8')
-        self.assertIn(".followdetailmedia.framed .followdetailposter{width:100%;aspect-ratio:var(--follow-frame-ratio)}", online)
-        self.assertCode("if(fallback&&el.getAttribute('src')!==fallback){")
-        self.assertCode("el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}")
-        self.assertPageContains("data-media-thumb-fallback hidden>原图未取回，先显示缩略图")
-        # 灯箱里翻到的每一张同样退回它自己的缩略图：frontend/test/react/photo-lightbox.test.tsx。
-
     def test_follow_detail_gets_the_same_player_stats_overlay(self):
         """作品详情与关注详情共用同一段统计模板，关注详情里的在线视频同样有统计入口。"""
         self.assertPageContains("function playerStatsOverlayHtml()")
-        self.assertPageContains("${selectedKind==='video'?playerStatsOverlayHtml():''}")
-        self.assertPageContains("size:selectedMedia?.size,")
+        self.assertPageContains("video.insertAdjacentHTML('beforebegin',playerStatsOverlayHtml());")
+        self.assertPageContains("size:media?.size,")
         self.assertEqual(self.page.count('playerstatsbtn" id="playerStatsBtn"'), 1,
                          "统计三件套只能有一份模板，两个详情页共用")
         # 关注条目没有落盘文件名，容器格式从片源 MIME 反推，会话号也不该显示成空的。
@@ -5138,7 +5116,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".side{min-width:0;min-height:0;align-self:stretch")
         self.assertPageContains(".sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh")
         self.assertPageContains('<div class="side"><div class="sidecontent">')
-        self.assertPageContains('<div class="side followdetailside"><div class="sidecontent">')
         self.assertPageContains(".sidecontent{height:auto;max-height:none}")
 
     def test_state_pages_ask_for_facets_narrowed_to_that_state(self):
@@ -5209,8 +5186,6 @@ class WebUiSourceTests(unittest.TestCase):
             "const FOLLOW_FILTERS=[['','全部'],['new','未看'],['saved','已保存'],['ignored','已忽略']];")
         self.assertPageContains(
             "followFilter=FOLLOW_FILTERS.some(([key])=>key&&key===status)?status:'';")
-        # 状态本身照旧记：详情面板能把一条标成已看，卡片上那枚键见 `follow-feed.test.tsx`。
-        self.assertPageContains('data-follow-detail-status="seen"')
 
     def test_the_follow_page_carries_the_home_two_rows_with_works_in_place_of_studios(self):
         """关注页顶上两排对着首页那两排：作者对女优，题材对厂牌。
@@ -6649,9 +6624,6 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}"
                       ".followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}", board)
-        self.assertIn(".followmanage .board-follow-list .fsource.frow{min-height:0;margin:0;padding:12px 20px 12px 16px;border:1px solid var(--color-border-button-default);"
-                      "border-radius:10px;background:var(--color-background-primary-default);transition:background-color .15s ease,border-color .15s ease}", board)
-        self.assertIn(".followmanage .board-follow-list .fsource.frow:hover{background:var(--color-background-primary-hover)}", board)
         self.assertIn(".followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}", board)
         self.assertIn(".followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:2}", board)
         self.assertIn("--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3", board)
@@ -6816,8 +6788,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode('surfaceEpoch++;\n  barsRequestSeq++;')
         self.assertPageContains('key=surfacePath()+location.search')
         self.assertPageLacks("api('/api/follow/tags?limit=30')")
-        self.assertPageContains('renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)))')
-        self.assertPageContains('renderFollowDrawer([item])')
+        self.assertPageContains('loaded:tags=>renderFollowDrawer(tags),')
+        self.assertPageContains('renderFollowDrawer(sidebarTagCounts([{tags:followCardTags(item)}]));')
         self.assertPageContains("if(!sidebarHasCatalogContent(location.pathname))return;")
         # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
         self.assertPageContains("facetParams.set('scope_kind',context.kind)")
@@ -7349,7 +7321,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 第一次进这一页由壳铺整张骨架；已经在页上、只是换一档筛选或排序时只有列表铺骨架，
         # 那一步归 `follow-feed` 岛（`frontend/e2e/follow-feed.test.ts`）。
         self.assertPageContains("showManagementBody({manage:false,placeholder:followSkeletonHtml('正在读取关注内容')});")
-        self.assertPageContains("showManagementBody({manage:false,placeholder:detailSkeletonHtml()});")
         self.assertPageContains("pageSkeletonHtml('正在读取统计',{variant:'dashboard'})")
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
@@ -8172,16 +8143,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("import { initMiddleTruncate } from './js/middle-truncate.js'")
         self.assertPageContains("initMiddleTruncate(document)")
         for consumer in (
-                '<b data-middle-truncate>${esc(javDisplayName(media))}</b>',
-                '<b data-middle-truncate>${esc(javDisplayName(x))}</b>'):
+                '<b data-middle-truncate>${esc(javDisplayName(x))}</b>',):
             self.assertPageContains(consumer)
-        # 高清版目标页、统计页、复核页、数据管理、重复文件页、回收站资源卡、垃圾卡与图片灯箱
+        # 高清版目标页、统计页、复核页、数据管理、重复文件页、回收站资源卡、垃圾卡、图片灯箱与关注详情的多媒体队列
         # 归 React 子树，由 frontend 的用例覆盖。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 2)
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 1)
         self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
-        self.assertEqual(self.app_js.count('class="mixitemtext"'), 3)
-        # 关注合集队列卡的出处行是 flex 一行（`.fqmeta`），时间不收窄，不走尾部省略。
-        self.assertEqual(self.app_js.count("data-truncate-end"), 3)
+        self.assertEqual(self.app_js.count('class="mixitemtext"'), 1)
+        self.assertEqual(self.app_js.count("data-truncate-end"), 1)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
         self.assertPageContains("resizeObserver=new ResizeObserver")
         self.assertPageContains("context.font=style.font||`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`")
@@ -8196,7 +8165,7 @@ class WebUiSourceTests(unittest.TestCase):
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm",
             ".frow>b",
-            ".feednewcard .meta .s>.feednewperformers", ".fvkind", ".idname",
+            ".feednewcard .meta .s>.feednewperformers", ".idname",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
             ".miniplayertitle", ".miniplayersub", ".playermenuitem>span",
@@ -8894,18 +8863,6 @@ class WebUiSourceTests(unittest.TestCase):
                       '.entitytags .pill[aria-pressed="true"]{border-color:transparent;',
                       '.board-filter-frame .sorts button[aria-pressed="true"]{background:var(--picked)}'):
             self.assertNotIn(stale, board)
-
-    def test_a_selectable_follow_row_keeps_its_own_border_on_every_edge(self):
-        """关注列表进选择态后，行与行之间那条线是卡片自己的上边框。
-
-        表格模式下行是 `tr`，卡片那套边框圆角落上去会和外框画出两条重叠的竖线，
-        所以那套只给非 `tr`。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".followmanage .fsource:has([data-follow-select]):not(tr){"
-                      "border:1px solid var(--color-border-button-default);border-radius:10px;", board)
-        # 表格外框自己收口：它离卡片脚还有一层内边距，去掉下边框就没有收尾。
-        self.assertNotIn(".followmanage .fmain>.fsec:has(>.fsecfoot) .ftableframe", board)
 
     def test_the_author_avatar_stays_a_circle_when_there_is_no_picture(self):
         """取不到头像时那个空位仍然是一个圆。
@@ -9620,7 +9577,7 @@ class WebUiSourceTests(unittest.TestCase):
         overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
         self.assertIn("'.stagescroll'", overlay, "滚的那一层要登记才接得上覆盖式滚动条")
         self.assertPageContains('<div class="stagescroll"><div class="sgrid ${queueContext?\'mixgrid\':\'\'}">')
-        self.assertPageContains('<div class="stagescroll"><div class="sgrid followdetailgrid')
+        self.assertPageContains("const host=document.createElement('div');host.className='stagescroll';")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".stage>.stagescroll{max-height:calc(100dvh - 34px);"
                       "overflow:hidden auto;overscroll-behavior:contain}", board)
@@ -9835,27 +9792,6 @@ class WebUiSourceTests(unittest.TestCase):
                           name + " 没有走「离开目录」，筛选芯片会留在新页面上")
             self.assertIn("showManagementBody(", body,
                           name + " 自己铺页面主体，多半又抄漏了一行")
-
-    def test_infinite_scroll_is_wired_through_one_helper(self):
-        """「载入更多」的观察器只许有一份实现。
-
-        它此前抄了三份：关注流、实体合集、照片墙。已经开始漂——后两份有 `hidden`
-        判断，关注那份没有。藏起来的按钮观察它没有意义，漏掉只是浪费一个观察器，
-        但下一次抄漏的可能就不是这一行。
-
-        重画会换掉按钮节点，所以 disconnect 不能省：旧观察器还盯着已脱离文档的节点，
-        既不会触发也不会被回收。
-        """
-        body = self._js_function("wireLoadMore")
-        self.assertIn("observer.disconnect()", body, "卸载必须断开观察器")
-        self.assertIn("busy||button.hidden||!button.isConnected", body)
-        self.assertIn("current.isCurrent?.()!==false", body)
-        self.assertIn("request?.abort()", body)
-        self.assertIn("rootMargin:'320px'", body)
-        self.assertEqual(self.page.count("new IntersectionObserver"), 1,
-                         "共享分页只有这一个观察器")
-        # 资料页照片墙与关注流的翻页在 `entity-body`、`follow-feed` 岛里，用的是卡片网格那枚
-        # `LoadMore`，同一套判据。
 
     def test_the_identity_name_leaves_room_for_descenders(self):
         """身份格子里的名字不能被行框切掉下伸部。
@@ -10186,7 +10122,7 @@ class WebUiSourceTests(unittest.TestCase):
         筛选；「全部」是这一页真正的常态。默认值同时决定 URL 形态：全部是默认，
         所以缺省即全部，`/follow` 不带 `status`。
         """
-        self.assertPageContains("let followData=null,followFilter='',followRevision=0;")
+        self.assertPageContains("let followFilter='',followRevision=0;")
         self.assertPageLacks("followFilter='new'", "重置分支不得把筛选推回旧默认")
         # 从索引页进关注页有两个入口——在线标签那一档和在线名册那一档，两处重置
         # 都得落在同一个默认上。
@@ -10194,24 +10130,6 @@ class WebUiSourceTests(unittest.TestCase):
             "followMediaView='videos';followFilter='';"), 2,
             "有重置分支还在把筛选推回旧默认")
         self.assertPageContains("[['','全部'],['new','未看']")
-
-    def test_follow_detail_puts_the_actions_above_the_tag_cloud(self):
-        """详情侧栏的顺序是正文 → 操作 → 状态 → 标签。
-
-        来源站的标签动辄几十个。标签排在操作之前时，「已看／忽略／保存」被整片标签云
-        推到侧栏底下，每处理一条都要先滚过去。标签是可选的参考信息，操作是每条都要用的。
-        """
-        side = self.page.split('<div class="side followdetailside">', 1)[1].split(
-            "</div></div></div>`;", 1)[0]
-        actions = side.index('class="fb followdetailactions"')
-        state = side.index('class="fstate"')
-        tags = side.index('class="stags followdetailtags"')
-        self.assertLess(actions, state, "操作条必须在状态行之前")
-        self.assertLess(state, tags, "标签必须沉到侧栏最后")
-        self.assertPageContains(".followdetailside .followdetailtags{margin:16px 0 0}")
-        # 窄屏通用规则会把 .fb 撑满整行，三四个动作键于是变成四个大得离谱的方块。
-        self.assertPageContains(".fb.followdetailactions{width:max-content;max-width:100%}")
-        self.assertPageContains(".fb.followdetailactions button,.fb.followdetailactions .fdownload{flex:0 0 auto}")
 
     def test_manage_sort_reads_as_a_select_without_a_loose_text_label(self):
         """排序框用框内前缀图标标明用途，标题行里不挂一个游离的「排序」二字。
@@ -10596,11 +10514,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_photo_navigation_reuses_one_overlay_button_treatment(self):
         self.assertPageContains(
             ".media-circle{box-sizing:border-box;width:48px;height:48px;padding:0;border:0;border-radius:50%;")
-        self.assertPageContains(".media-circle.media-overlay{background:rgba(0,0,0,.6);color:#fff;backdrop-filter:blur(16px)}")
-        self.assertPageContains('class="media-circle media-overlay followimagearrow prev"')
-        self.assertPageContains('class="media-circle media-overlay followimagearrow next"')
         self.assertPageContains('class="media-circle" id="tokDislike"')
-        self.assertPageContains(".followimagearrow{position:absolute;z-index:4;top:50%;transform:translateY(-50%)}")
 
     def test_the_review_skeleton_is_built_from_the_real_page_containers(self):
         """骨架用最终容器的类名，分栏和列宽就都由页面自己那套规则给。

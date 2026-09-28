@@ -21,6 +21,8 @@ import { DuplicatesPage } from './duplicates/duplicates-page';
 import { EntityBodyPage } from './entity-body/entity-body-page';
 import { EntityFilterPage } from './entity-filter/entity-filter-page';
 import { EntityHeroPage } from './entity-hero/entity-hero-page';
+import { prefetchFollowDetail } from './follow-detail/follow-detail';
+import { FollowDetailPage } from './follow-detail/follow-detail-page';
 import { prefetchFollowFeed } from './follow-feed/follow-feed';
 import { FollowFeedPage } from './follow-feed/follow-feed-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
@@ -49,7 +51,6 @@ import { DEFAULT_WINDOW, prefetchTaste } from './taste/taste';
 import { TastePage } from './taste/taste-page';
 
 export { mountToaster, showToast } from './toaster';
-export { closePhotoLightbox, openPhotoLightbox } from './photo-lightbox/photo-lightbox-dialog';
 
 /* Popover 这类弹出层由 React Aria 渲染到挂载容器外面。落在 `body` 上就出了 `.peach-react`
  * 的作用域：token 读到的是 `board.css` 的值，Preflight 也管不到。所有 React 根的弹出层都进
@@ -123,6 +124,7 @@ export const pages: Bundle.ReactPages = {
   /* 名册随资料下来，作品第一页与照片由壳和页头并行取好递进来，挂上就是最终样子。 */
   'entity-body': { prefetch: async () => {}, mount: mounter(EntityBodyPage) },
   /* 关注列表第一页与凭据两趟并行，挂上就是最终样子；换筛选之后的取数由页面自己的查询驱动。 */
+  'follow-detail': { prefetch: prefetchFollowDetail, mount: mounter(FollowDetailPage) },
   'follow-feed': { prefetch: prefetchFollowFeed, mount: mounter(FollowFeedPage) },
   /* 首屏只取来源清单与凭据状态，地址栏指着「订阅源」时连它一起取。检查更新与查找那两趟
      后台任务的快照不在首屏里：它们常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */

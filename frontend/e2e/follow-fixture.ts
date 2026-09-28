@@ -1,7 +1,7 @@
-/* 关注页岛的桩数据：`follow-feed.test.ts` 与 `design.test.ts` 共用。
+/* 关注页与关注详情两个岛的桩数据：`follow-feed.test.ts`、`follow-detail.test.ts` 与 `design.test.ts` 共用。
  *
  * 演示库没有关注来源，这里按 `_source_payload`、`_group_payload`（`src/peach/web_follow.py`）造
- * 六位创作者、一页视频与图片、第二页续页。关注来源的真实抓取一次都不发：`/api/follow/check`
+ * 六位创作者、一页视频与图片、第二页续页，外加详情那几种形态。关注来源的真实抓取一次都不发：`/api/follow/check`
  * 的 POST 由桩接住，写接口（状态、稍后看）也只落在桩里。进页掷的取样种子换成定种子的序列，
  * 两排的次序每次一样。 */
 import type { Page, Route } from 'playwright-core';
@@ -56,6 +56,60 @@ export const FIRST = [
 /** 续页那一批视频。 */
 export const MORE = Array.from({ length: 4 }, (_, at) => group(item(3000 + at, at + 3)));
 
+/* ── 详情那几种形态 ──
+   只经单条取数（`/api/follow?item=`）交回、不进列表页：列表那几条按 FIRST 数卡，不受影响。 */
+const still = (id: number, index: number) => ({
+  index, media_kind: 'image', thumb_url: `/stub-thumb/${id}-${index}`, name: `${index}.jpg`, width: 600, height: 800,
+  media_type: 'image/jpeg',
+});
+const clip = (id: number, index: number) => ({
+  index, media_kind: 'video', thumb_url: `/stub-thumb/${id}v${index}`, name: `片段 ${index}.mp4`, width: 1280, height: 720,
+  media_type: 'video/mp4',
+});
+const gallery = (id: number, count: number, title: string) => item(id, 1, {
+  title, media_kind: 'image', thumb_url: `/stub-thumb/${id}-0`, duration: null, media_type: 'image/jpeg', width: 600,
+  height: 800, media_items: Array.from({ length: count }, (_, index) => still(id, index)),
+});
+/** 多图轮播、视频合集（另一版加另一站的同一条）、一帖多媒体、带两张已隐藏图的帖子，以及一条
+ *  没有任何预览、标签六种类型各一枚的帖子。 */
+export const DETAIL = { gallery: 5001, collection: 5101, media: 5201, hidden: 5301, bare: 5401 } as const;
+const TYPED_TAGS = { ow: 'copyright', tracer: 'character', kou: 'artist', solo: 'general', animated: 'metadata', odd: 'unknown' };
+const DETAIL_GROUPS = [
+  group(gallery(5001, 3, '三张图的帖子 5001')),
+  {
+    ...group(item(5101, 0, { title: '合集主条目 5101' })), providers: ['kemono', 'rule34xxx'],
+    variants: [item(5102, 0, { title: '合集另一版 5102', variant_kind: 'alt', variant_label: '4K',
+      published_at: '2026-09-19T08:20:00Z' })],
+    duplicates: [item(5103, 1, { title: '另一站的同一条 5103', published_at: '2026-09-18T08:20:00Z' })],
+  },
+  group(item(5201, 0, { title: '多媒体帖子 5201', media_items: [clip(5201, 0), still(5201, 1), clip(5201, 2)] })),
+  group(gallery(5301, 5, '有隐藏图的帖子 5301')),
+  group(item(5401, 0, {
+    title: '只有文字的帖子 5401', thumb_url: null, has_media: false, media_kind: 'external', playable: false,
+    media_type: null, duration: null, tags: Object.keys(TYPED_TAGS), detail_tags: Object.keys(TYPED_TAGS),
+    tag_types: TYPED_TAGS,
+  })),
+];
+const members = (row: (typeof DETAIL_GROUPS)[number]) => [row.primary, ...row.variants, ...row.duplicates];
+const detailMediaKind = (id: number, index: number) => DETAIL_GROUPS.flatMap(members)
+  .find((member) => member.id === id)?.media_items.find((media) => media.index === index)?.media_kind;
+
+/** 单条取数：状态与隐藏按桩里记下的写，隐藏的图从媒体清单挪到 `hidden_media`，同服务端投影。 */
+const detailPayload = (id: number, statuses: Map<number, string>, hidden: Map<number, Set<number>>) => {
+  const row = DETAIL_GROUPS.find((candidate) => members(candidate).some((member) => member.id === id));
+  if (!row) return null;
+  const view = <T extends (typeof row)['primary']>(member: T): T => {
+    const off = hidden.get(member.id) || new Set<number>();
+    return {
+      ...member, status: statuses.get(member.id) || member.status,
+      media_items: member.media_items.filter((media) => !off.has(media.index)),
+      hidden_media: member.media_items.filter((media) => off.has(media.index)),
+    };
+  };
+  const groups = [{ ...row, primary: view(row.primary), variants: row.variants.map(view), duplicates: row.duplicates.map(view) }];
+  return { ok: true, sources: SOURCES, author_aliases: [], groups };
+};
+
 /** 写成功的状态记在这里，重读时读得到，同服务端。 */
 const payload = (url: URL, statuses: Map<number, string>) => {
   const offset = Number(url.searchParams.get('offset') || 0);
@@ -91,6 +145,7 @@ export interface FollowStub {
 async function stub(page: Page): Promise<FollowStub> {
   const held: { route: Route; url: URL }[] = [];
   const statuses = new Map<number, string>();
+  const hidden = new Map([[DETAIL.hidden, new Set([3, 4])]]);
   const state: FollowStub = {
     writes: [], hold: null,
     release: async () => {
@@ -100,6 +155,8 @@ async function stub(page: Page): Promise<FollowStub> {
   };
   await page.route((url) => url.pathname === '/api/follow', (route) => {
     const url = new URL(route.request().url());
+    const single = url.searchParams.has('item') && detailPayload(Number(url.searchParams.get('item')), statuses, hidden);
+    if (single) return route.fulfill({ json: single });
     if (state.hold?.(url)) {
       held.push({ route, url });
       return;
@@ -135,7 +192,22 @@ async function stub(page: Page): Promise<FollowStub> {
     return route.fulfill({ contentType: 'image/svg+xml', body: svg(key, width, height) });
   });
   await page.route('**/source-icon**', (route) => route.fulfill({ contentType: 'image/svg+xml', body: svg('icon', 32, 32) }));
-  await page.route('**/follow-stream**', (route) => route.fulfill({ status: 204, body: '' }));
+  await page.route((url) => url.pathname === '/api/follow/media/hide', (route) => {
+    const body = route.request().postDataJSON() as { item: number; media: number; hidden: boolean };
+    state.writes.push({ url: '/api/follow/media/hide', body });
+    const off = hidden.get(body.item) || new Set<number>();
+    if (body.hidden) off.add(body.media); else off.delete(body.media);
+    hidden.set(body.item, off);
+    return route.fulfill({ json: { ok: true } });
+  });
+  // 图按原图代理给一张画出来的图；视频不给正片，播放器报的那一条 VIDEOJS 错误由各条自己滤掉。
+  await page.route('**/follow-stream**', (route) => {
+    const url = new URL(route.request().url());
+    const kind = detailMediaKind(Number(url.searchParams.get('id')), Number(url.searchParams.get('media')));
+    return kind === 'image'
+      ? route.fulfill({ contentType: 'image/svg+xml', body: svg(url.search, 600, 800) })
+      : route.fulfill({ status: 204, body: '' });
+  });
   await page.route('**/follow-qualities**', (route) => route.fulfill({ json: {} }));
   return state;
 }

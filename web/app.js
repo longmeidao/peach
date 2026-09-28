@@ -13,7 +13,7 @@ import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
-import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast, openPhotoLightbox, followJobProgress } from './dist/peach-ui.js';
+import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast, followJobProgress } from './dist/peach-ui.js';
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
@@ -23,7 +23,7 @@ import {
   dissolveValue, popBadges, revealSkeleton, revealTexts, setIconSwap, swapText,
   boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, configurationSkeletonHtml, wireLoadMore, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
+  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, configurationSkeletonHtml, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
   postSetupTutorialSkipped, setPostSetupTutorialSkipped, postSetupTutorialSignature,
   nextPostSetupTutorialRequest, isCurrentPostSetupTutorialRequest, resetPostSetupTutorialState,
@@ -73,12 +73,14 @@ let loadRequestSeq=0;
 let gridIsland='';
 /* `followRevision` 是关注页岛的刷新代次：已经挂着时要求重读（批量标记之后、前进后退），
    推一个新代次让它重取，不重挂。 */
-let followData=null,followFilter='',followRevision=0;
+let followFilter='',followRevision=0;
 /* 值是天数，`0` 表示不限。选项文本自己说清量的是时间：这一行不挂文字标签，收起时
    框里只剩当前这一项，「全部」放在时钟图标旁边读不出是全部什么。 */
 const FOLLOW_INITIAL_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['30','最近 30 天'],
   ['90','最近 90 天']];
-let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followWorks=new Set(),followMediaView='videos',followGroupByItemId=new Map(),followItemsById=new Map(),followDetailReturnPath='/follow';
+let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followWorks=new Set(),followMediaView='videos',followDetailReturnPath='/follow';
+// 关注详情岛的宿主（`openFollowDetail` 建、`disposeStage` 先卸岛再拆舞台）。
+let followDetailHost=null;
 /* 看的那一页按什么排。只有这三档在每条更新上都成立：观看次数、体积那几列问的是本机
    文件，而这一页上的东西多数还没下载。壳只拿它核对地址栏上的 `sort`；键上的说法在岛里
    （`follow-feed.ts` 的 `FOLLOW_FEED_DIR_WORDS`）。 */
@@ -1632,6 +1634,8 @@ function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
   if(!toMini&&!owned)cancelDetailStream();
+  // 关注详情是挂在舞台里的岛：先卸根，再清舞台，别让 React 对着一块被清空的 DOM。
+  if(followDetailHost){unmountIsland(followDetailHost);followDetailHost=null}
   runStageDisposers();
   stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeQueue=null;
   if(!preserveInlineOrigin){
@@ -4837,7 +4841,6 @@ const followPageUrl=offset=>
   +(followSort!=='new'?`&sort=${followSort}`:'')
   +(followSort===FOLLOW_RANDOM_SORT?`&seed=${followSeed}`:'')
   +(followDir!=='desc'?`&dir=${followDir}`:'');
-let followCredentialProviders=new Set();
 /* 这一排是「现在看的哪一档」。已看那一档不摆出来：看过就归档，要再翻出来是「全部」
    的事，而一枚常年指向十几条的筛选占的是这一排最值钱的横向空间。状态本身照旧记，
    卡片和详情面板上都还能把一条标成已看。 */
@@ -4873,24 +4876,9 @@ function followWhen(item){
   return text;
 }
 
-const followTagType=(item,tag)=>item.tag_types&&item.tag_types[tag]||'unknown';
 /* 卡片、详情、筛选条和在线标签页都只消费服务端的内容标签投影。过滤只维护一份，
    原始来源标签仍完整留在 metadata。 */
 const followCardTags=item=>item.tags||[];
-const followTagChip=(item,tag,kind='span')=>`<${kind} class="tg r34-${
-  esc(followTagType(item,tag))}" data-follow-tag="${esc(tag)}">${esc(tagLabel(tag))}</${kind}>`;
-/* 详情标签按 rule34.xxx 帖子页 `#tag-sidebar` 的类型顺序分组，组内按名升序——
-   证据见 docs/reference-snapshots/rule34-follow-tags-and-collections.md（2026-09-01
-   两个帖子页实测，顺序一致，缺的类型直接跳过不占位）。
-   来源没记类型的排最后并保持中性色：不按词形猜类型是关注标签的既有门槛。 */
-const FOLLOW_TAG_ORDER=['copyright','character','artist','general','metadata'];
-function followDetailTags(item){
-  const tags=item.detail_tags||item.tags||[];
-  const rank=tag=>{const at=FOLLOW_TAG_ORDER.indexOf(followTagType(item,tag));
-    return at<0?FOLLOW_TAG_ORDER.length:at};
-  return [...tags].sort((a,b)=>rank(a)-rank(b)||tagLabel(a).localeCompare(tagLabel(b)));
-}
-
 /* 正文不报组里有几条：条数只由封面角标报一次，数的是合并了几个媒体（`followStack`）。 */
 /* 说「这一条是哪个版本」的字样排在标题前面，与主页标题里的版次字样同一个控件，扫标题
    时就分得出来。WIP 说的是这一条，不是这一组：`2B Camp [4K]` 判的是 alt，只因为同组
@@ -4923,395 +4911,12 @@ function followBadges(group,shown=group.primary){
   return badges.join('');
 }
 
-function followCollectionItems(group){
-  const seen=new Set();
-  return [group.primary,...group.variants,...group.duplicates].filter(item=>{
-    if(!item||seen.has(item.id))return false;seen.add(item.id);return true});
-}
-
-function followCollectionItemsNewest(group){
-  return followCollectionItems(group).sort((a,b)=>{
-    const byTime=(Date.parse(b.published_at||'')||0)-(Date.parse(a.published_at||'')||0);
-    return byTime||(+b.id||0)-(+a.id||0);
-  });
-}
-
-const followGroupedMediaOwner=group=>followCollectionItems(group).find(item=>
-  (item.media_items||[]).some(media=>media.resource_group));
-
-// F95 的「8 条动态」可能只有一个网盘页，也可能一条实际视频都没有。Mix 是播放
-// 语义，只能由已解析、可在 Peach 内播放的视频触发，不能拿回复数或外链数冒充。
-function followVideoItems(group){
-  return followCollectionItemsNewest(group).filter(item=>
-    item.playable&&item.media_kind==='video');
-}
-
-/* 关注条目和资料页的作品不是同一种 DTO，但媒体切换的语义相同：一个卡片只要
-   含对应媒体就进入对应视图。external 只说明有外部文件页，不能再冒充视频；
-   没有可验证媒体类型的旧行不进入任一媒体视图。 */
-function followItemMediaKinds(item){
-  const kinds=new Set();
-  const embedded=item.media_items||[];
-  if(embedded.length)embedded.forEach(media=>{
-    if(media.media_kind==='image'||media.media_kind==='video')kinds.add(media.media_kind)});
-  else if(item.media_kind==='image'||item.media_kind==='video')kinds.add(item.media_kind);
-  return kinds;
-}
-const followMediaKinds=group=>{
-  const kinds=new Set();
-  followCollectionItems(group).forEach(item=>
-    followItemMediaKinds(item).forEach(kind=>kinds.add(kind)));
-  return kinds;
-};
-
-function followMediaIssue(item,credentials=followCredentialProviders){
+function followMediaIssue(item,credentials){
   if(item.media_error)return `媒体未取得：${item.media_error}`;
   if(item.media_needs_credential&&!credentials.has(item.provider))return item.playable
     ?'部分媒体未取得：需要 F95 登录会话解析'
     :'媒体未取得：需要 F95 登录会话解析';
   return '';
-}
-
-function followResourceLabel(url){
-  try{
-    const host=new URL(url).hostname.replace(/^www\./,'');
-    return ({'gofile.io':'Gofile','pixeldrain.com':'Pixeldrain','mega.nz':'MEGA',
-      'mega.io':'MEGA','mediafire.com':'MediaFire','drive.google.com':'Google Drive'})[host]||host;
-  }catch{return '外部文件页'}
-}
-
-function followMediaSourceLabel(media,item){
-  const provider=media?.resource_provider;
-  return ({gofile:'Gofile',pixeldrain:'Pixeldrain',mega:'MEGA',mediafire:'MediaFire',
-    google_drive:'Google Drive'})[provider]||item.provider_label||item.provider||'在线图片';
-}
-
-function followResourceLinks(item){
-  const links=item.resource_urls||[];
-  if(!links.length)return '';
-  return `<div class="followresources">${links.map(url=>
-    `<a class="externallink" href="${esc(url)}" target="_blank" rel="noreferrer noopener">${esc(followResourceLabel(url))}${icon('external-link','externalmark')}</a>`
-  ).join('')}</div>`;
-}
-
-/* 集合弹层与列表共用同一套动态语义：线程标题不能冒充每条回复的正文，
-   行首则说明它与主条目的关系。 */
-function followCollectionCopy(group,item,mark=''){
-  let label=mark;
-  // 发布时间已经由 followWhen 单独显示，不能再伪装成版本/类型标签。
-  if(!label&&group.is_release)label=item.variant_label||item.variant_kind||'';
-  if(!label)label=item.variant_kind==='wip'?'WIP':(item.variant_label||item.variant_kind||'视频');
-  const body=group.is_release
-    ?(item.summary||(item.has_media?'（仅附件）':'（无正文）')):item.title;
-  return {label,title:group.is_release&&item.author?`${item.author}：${body}`:body};
-}
-
-/* 队列里没有画面的那一格放中性图形，不放站点图标：格子里的图一律按画面铺满，
-   48px 的 favicon 会被拉成整格，看上去就像这条视频的缩略图。 */
-function followQueueNoThumb(kind){
-  return `<span class="fnothumb">${icon(kind==='image'?'image-off':'play')}</span>`;
-}
-
-function followQueueHtml(group,itemId){
-  const groupedOwner=followGroupedMediaOwner(group);
-  if(groupedOwner)return followEmbeddedQueueHtml(groupedOwner,null);
-  const items=followVideoItems(group);
-  return `<aside class="mixqueue followqueue" data-queue-kind="collection"><div class="mixqueuehead"><div><h2>视频合集</h2><span>${esc(group.primary.title||'未命名合集')} · ${items.length} 个视频</span></div><div class="mixqueueactions">
-    <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${items.map(item=>{
-      const duplicate=group.duplicates.includes(item);
-      const copy=followCollectionCopy(group,item,duplicate?item.provider_label:'');
-      // 另一站的同一条由站点图标报出处，图标的 alt 就是站名；没登记图标的站仍写站名。
-      const mark=duplicate&&sourceIcon(item.provider,item.provider_label)
-        ||`<i class="fvkind ${esc(item.variant_kind||'')}">${esc(copy.label)}</i>`;
-      const thumb=item.thumb_url
-        ?`<img src="${esc(item.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
-        :followQueueNoThumb('video');
-      return `<div class="mixrow"><button class="mixitem ${item.id===itemId?'current':''}" data-follow-queue-item="${item.id}" aria-current="${item.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}${realDuration(item.duration)?`<i class="dur mono">${fmtDur(item.duration)}</i>`:''}</span>
-        <span class="mixitemtext"><b data-truncate-end>${esc(copy.title)}</b><span class="fqmeta">${mark}<time datetime="${esc(item.published_at||'')}">${esc(followWhen(item))}</time></span></span></button></div>`;
-    }).join('')}</div></aside>`;
-}
-
-function followEmbeddedQueueHtml(item,mediaIndex){
-  const items=item.media_items||[];
-  const groups=[];
-  items.forEach(media=>{
-    const key=media.resource_group||'ungrouped';
-    let group=groups.find(row=>row.key===key);
-    if(!group){group={key,label:media.resource_group_label||'',items:[]};groups.push(group)}
-    group.items.push(media);
-  });
-  const rows=groups.map(group=>`${group.label?`<h3 class="mixgrouplabel">${esc(group.label)} <span>${group.items.length}</span></h3>`:''}${group.items.map(media=>{
-      const thumb=media.thumb_url
-        ?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`
-        :followQueueNoThumb(media.media_kind);
-      return `<div class="mixrow"><button class="mixitem ${media.index===mediaIndex?'current':''}" data-follow-media-owner="${item.id}" data-follow-media-item="${media.index}" data-media-kind="${media.media_kind}" aria-current="${media.index===mediaIndex?'true':'false'}">
-        <span class="mixitempic">${thumb}</span><span class="mixitemtext"><b data-middle-truncate>${esc(javDisplayName(media))}</b><span data-truncate-end>${media.media_kind==='image'?'图片':'视频'}</span></span></button></div>`;
-    }).join('')}`).join('');
-  return `<aside class="mixqueue followqueue" data-queue-kind="media"><div class="mixqueuehead"><div><h2>多媒体</h2><span>${esc(item.title||'未命名内容')} · ${items.length} 个媒体</span></div><div class="mixqueueactions">
-    <button data-follow-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${rows}</div></aside>`;
-}
-
-/* 重建条目索引。`merge` 时只往里加，不清空已有的。
-
-   单条查询（followItemById）不能走整表重建：那会让点一个不在索引里的条目把索引
-   替换成只剩那一条，再点别的又没有、又替换。列表能翻页之后这条路径被踩得很频繁，
-   表现就是「多点几次详情就打不开了」。 */
-function indexFollowItems(data,{merge=false}={}){
-  const groups=data?.groups||[];
-  if(!merge){followItemsById=new Map();followGroupByItemId=new Map()}
-  groups.forEach(group=>followCollectionItems(group).forEach(item=>{
-    followItemsById.set(item.id,item);followGroupByItemId.set(item.id,group)}));
-}
-
-async function followItemById(id){
-  if(followItemsById.has(id))return followItemsById.get(id);
-  const data=await api(`/api/follow?item=${encodeURIComponent(id)}`);
-  if(!followData)followData=data;
-  indexFollowItems(data,{merge:true});
-  return followItemsById.get(id);
-}
-
-async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false){
-  releaseHoverPreviews();
-  const entering=!location.pathname.startsWith('/follow/item/');
-  if(push&&entering&&!preserveReturn)followDetailReturnPath=location.pathname+location.search;
-  if(!push&&!preserveReturn)followDetailReturnPath='/follow';
-  const surface=surfaceToken(surfacePath());
-  const item=await followItemById(+id);if(!item||!surfaceCurrent(surface))return;
-  const group=followGroupByItemId.get(item.id);
-  const embedded=item.media_items||[];
-  const preferredKind=followMediaView==='images'?'image':'video';
-  const preferredMedia=embedded.find(media=>media.media_kind===preferredKind)||embedded[0];
-  const selectedMedia=embedded.length
-    ?embedded.find(media=>media.index===(mediaIndex??preferredMedia.index))||preferredMedia
-    :null;
-  const imageMedia=embedded.filter(media=>media.media_kind==='image');
-  const imagePosition=imageMedia.findIndex(media=>media.index===selectedMedia?.index);
-  const imageCarousel=imageMedia.length>1&&imagePosition>=0;
-  const embeddedQueue=embedded.length>1&&!imageCarousel;
-  const collection=!embedded.length&&group&&followVideoItems(group).length>1?group:null;
-  // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
-  closeMiniplayer();
-  if(!push)queueDetailResumeFromUrl('follow',item.id);
-  disposeStage(false,false,{miniplayer:false});
-  if(push)route(`/follow/item/${item.id}`);
-  renderFollowDrawer([item]);
-  const source=(followData?.sources||[]).find(row=>row.id===item.source_id);
-  stageMiniplayerMeta={kind:'follow',item,title:item.title||'',sub:item.author||item.source_label||''};
-  const authorSources=(followData?.sources||[]).filter(row=>
-    source?.author_key&&row.author_key===source.author_key);
-  if(!authorSources.length&&source)authorSources.push(source);
-  const src=item.playable?`/follow-stream?id=${item.id}${selectedMedia?`&media=${selectedMedia.index}`:''}`:'';
-  const selectedKind=selectedMedia?.media_kind||item.media_kind;
-  // 原图经代理取，缩略图由浏览器直接读公开主机：归档站的原文件主机会拦下服务端
-  // （pawchive 的 file. 子域挂着 ddos-guard，一律 403），缩略图主机照常给。
-  const detailThumb=selectedMedia?.thumb_url||item.thumb_url||'';
-  // 画框比例跟整组图走、不跟当前这张：换图时详情不忽高忽低，图没加载完也先占住位置。
-  // 有尺寸的图里取最高的那张（宽高比最小）；一张都没有时轮播用方框，单图由图片自己撑开。
-  const framedOwners=(imageCarousel?[...imageMedia,item]:[selectedMedia,item]).filter(owner=>owner?.width>0&&owner.height>0);
-  const frameRatio=selectedKind!=='image'?0:framedOwners.length?Math.min(...framedOwners.map(owner=>owner.width/owner.height)):imageCarousel?1:0;
-  const media=item.playable&&selectedKind==='video'
-    ?`<video class="video-js vjs-big-play-centered" controls playsinline preload="metadata"${item.thumb_url?` poster="${esc(item.thumb_url)}"`:''}></video>`
-    :item.playable&&selectedKind==='image'
-      ?`<img class="followdetailposter" src="${src}" alt="${esc(item.title)}"${detailThumb&&detailThumb!==src?` data-fallback-src="${esc(detailThumb)}"`:''} referrerpolicy="no-referrer">`
-      :item.thumb_url
-        ?`<img class="followdetailposter" src="${esc(item.thumb_url)}" alt="${esc(item.title)}" referrerpolicy="no-referrer">`
-        :`<div class="followdetailplaceholder">${sourceIcon(item.resource_provider||item.provider)}<span>没有可用预览</span></div>`;
-  const imageControls=imageCarousel?`<button class="media-circle media-overlay followimagearrow prev" data-follow-image-step="-1" aria-label="上一张图片" title="上一张">${icon('chevron-left')}</button>
-    <button class="media-circle media-overlay followimagearrow next" data-follow-image-step="1" aria-label="下一张图片" title="下一张">${icon('chevron-right')}</button>
-    <div class="followimagedots" role="group" aria-label="${imageMedia.length} 张图片">${imageMedia.map((image,index)=>`<button data-follow-image-item="${image.index}" aria-current="${index===imagePosition}" aria-label="第 ${index+1} 张，共 ${imageMedia.length} 张" title="第 ${index+1} 张"></button>`).join('')}</div>`:'';
-  const single={primary:item,variants:[],duplicates:[],has_wip:item.variant_kind==='wip'};
-  const badges=followBadges(single),marks=followTitleMarks(single);
-  // 卡片只消费 general 内容投影；详情保留来源记录的全部类型，并按类型着色。
-  const tags=followDetailTags(item).map(tag=>followTagChip(item,tag,'button')).join('');
-  const {author,avatar,credited}=followIdentity(item,authorSources);
-  const postedBy=credited?'':item.author&&foldName(item.author)!==foldName(author)?item.author:'';
-  const mediaIssue=followMediaIssue(item);
-  // 被隐藏的图退到这条恢复带上：缩略图加一枚撤销键，点了就回到轮播。
-  // 不占媒体队列，也不进角标数——它们已经是「不在看」的那部分。
-  const hiddenStrip=(item.hidden_media||[]).length?`<div class="followhiddenmedia">
-    <span class="followhiddenlabel">已隐藏 ${item.hidden_media.length} 张</span>
-    <div class="followhiddenthumbs">${item.hidden_media.map(media=>`<button data-follow-media-restore="${media.index}" title="恢复显示 ${esc(media.name||'')}" aria-label="恢复显示 ${esc(media.name||'')}">${media.thumb_url?`<img src="${esc(media.thumb_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" data-drop="self">`:icon('image-off')}<i>${icon('rotate-ccw')}</i></button>`).join('')}</div></div>`:'';
-  placeItemDetail(detailOriginAnchor,detailOriginAbove);
-  $('#stage').hidden=false;document.body.classList.add('detail-open');
-  paintStage(`<div class="stagescroll"><div class="sgrid followdetailgrid${collection||embeddedQueue?' mixgrid':''}">
-    <div class="vwrap followdetailmedia${selectedKind==='image'?' image':''}${frameRatio?' framed':''}"${frameRatio?` style="--follow-frame-ratio:${frameRatio.toFixed(4)}"`:''}>${selectedKind==='video'?'<canvas class="ambientcanvas" width="32" height="18"></canvas>':''}<button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>${selectedKind==='video'?playerStatsOverlayHtml():''}${media}${imageControls}</div>
-    ${embeddedQueue?followEmbeddedQueueHtml(item,selectedMedia.index):(collection?followQueueHtml(collection,item.id):'')}
-    <div class="side followdetailside"><div class="sidecontent">
-      <div class="followdetailtitle"><div class="stitle" data-reveal-line>${marks}${esc(item.title)}</div>${item.url?`<a class="followorigin externallink" href="${esc(item.url)}" target="_blank" rel="noreferrer noopener" title="打开来源页面" aria-label="打开来源页面">${icon('external-link','externalmark')}</a>`:''}</div>
-      <div class="followdetailidentity"><span class="mav fsourceavatar">${avatar}</span>
-        <div><b>${esc(author)}</b>${postedBy?`<span>发布者 ${esc(postedBy)}</span>`:''}${credited?`<span>署名含 ${esc(credited)}</span>`:''}</div></div>
-      <div class="smeta mono" data-reveal-line><span>${followWhen(item)}</span>${realDuration(item.duration)?`<span>${fmtDur(item.duration)}</span>`:''}${badges?`<span class="fbadges">${badges}</span>`:''}</div>
-      ${item.summary?`<p class="followdetailsummary">${esc(item.summary)}</p>`:''}
-      ${mediaIssue?`<p class="fnote followmediaissue">${esc(mediaIssue)}</p>`:''}
-      <p class="fnote followmediaissue" data-media-load-issue hidden>媒体未取回：上游这一次没有返回内容，多半是站点限流，过一阵再打开。</p>
-      <p class="fnote followmediaissue" data-media-thumb-fallback hidden>原图未取回，先显示缩略图：上游拦下了这一次请求。</p>
-      ${followResourceLinks(item)}
-      <div class="fb followdetailactions">
-        <button class="later" data-follow-detail-save aria-label="${item.status==='saved'?'已保存':'保存到账本'}" title="${item.status==='saved'?'已保存':'保存到账本'}"${item.status==='saved'?' disabled':''}>${item.status==='saved'?icon('check'):icon('bookmark-plus')}</button>
-        <button class="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看" aria-pressed="${item.status==='seen'}">${icon('eye')}</button>
-        <button class="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略" aria-pressed="${item.status==='ignored'}">${icon('eye-off')}</button>
-        ${item.status==='seen'||item.status==='ignored'?`<button data-follow-detail-status="new" aria-label="恢复未看" title="恢复未看">${icon('rotate-ccw')}</button>`:''}
-        ${selectedKind==='image'&&selectedMedia?`<button class="dislike" data-follow-media-hide="${selectedMedia.index}" aria-label="隐藏这张图" title="隐藏这张图">${icon('image-off')}</button>`:''}
-        ${src?`<a class="fdownload" href="${esc(src)}${src.includes('?')?'&':'?'}download=1" download
-          aria-label="下载到本地" title="下载到本地">${icon('download')}</a>`:''}</div>
-      ${hiddenStrip}
-      <span class="fstate" aria-live="polite"></span>
-      ${tags?`<div class="stags followdetailtags">${tags}</div>`:''}
-    </div></div></div></div>`);
-  $('#stage').classList.toggle('ambient-on',selectedKind==='video'&&appSettings.ambientMode);
-  $('#stage').classList.toggle('theater-mode',selectedKind==='video'&&appSettings.theaterMode);
-  /* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会
-     取回第一页——「加载更多」出来的条目会连同索引一起消失，那些卡片的详情随后
-     就打不开了。岛还挂着就只把地址栏上的那一份推回去（没变就是同一个键，不重取）；
-     深链直接进的详情没挂过岛，这时才挂。 */
-  const closeDetail=async()=>{
-    await stageExit();
-    disposeStage(false,false,{miniplayer:false});
-    route(followDetailReturnPath||'/follow');
-    if(location.pathname!=='/follow'){await restoreRoute();return}
-    if(!followFeedLive()){await openFollow(false);return}
-    readFollowView();pushFollowFeed({view:followView()});
-  };
-  $('#closeStage').onclick=closeDetail;
-  $('#stage').querySelectorAll('[data-follow-queue-close]').forEach(button=>button.onclick=closeDetail);
-  $('#stage').querySelectorAll('[data-follow-queue-item]').forEach(button=>button.onclick=()=>
-    openFollowDetail(+button.dataset.followQueueItem,true,null,true));
-  $('#stage').querySelectorAll('[data-follow-media-item]').forEach(button=>button.onclick=()=>
-    openFollowDetail(+(button.dataset.followMediaOwner||item.id),false,
-      +button.dataset.followMediaItem,true));
-  const switchImage=index=>openFollowDetail(item.id,false,+index,true);
-  $('#stage').querySelectorAll('[data-follow-image-item]').forEach(button=>button.onclick=()=>
-    switchImage(button.dataset.followImageItem));
-  $('#stage').querySelectorAll('[data-follow-image-step]').forEach(button=>button.onclick=()=>{
-    const next=(imagePosition+(+button.dataset.followImageStep)+imageMedia.length)%imageMedia.length;
-    switchImage(imageMedia[next].index);
-  });
-  /* 详情里点图开大图，跟女优页同一个灯箱。多图时把整组交进去，左右翻页就能看完
-     一条帖子的所有图，不用退出去再点下一张。取不到正片就退而用缩略图——看小图
-     总比点了没反应强。 */
-  const followSlides=imageMedia.length
-    ?imageMedia.map((image,index)=>({
-      src:`/follow-stream?id=${item.id}&media=${image.index}`,
-      thumb:image.thumb_url||item.thumb_url||`/follow-stream?id=${item.id}&media=${image.index}`,
-      name:image.name||item.title,source:followMediaSourceLabel(image,item),size:image.size,
-      position:index+1,total:imageMedia.length}))
-    :selectedKind==='image'&&src
-      ?[{src,thumb:item.thumb_url||src,name:item.title,
-        source:followMediaSourceLabel(selectedMedia,item),size:selectedMedia?.size,position:1,total:1}]
-      :item.thumb_url?[{src:item.thumb_url,thumb:item.thumb_url,name:item.title,
-        source:item.provider_label||item.provider||'在线图片',position:1,total:1}]:[];
-  const poster=$('#stage').querySelector('.followdetailposter');
-  if(poster&&followSlides.length){
-    poster.classList.add('zoomable');
-    poster.onclick=()=>openPhotoLightbox(Math.max(0,imagePosition),followSlides);
-  }
-  const followVideo=$('#stage').querySelector('.followdetailmedia>video');
-  if(followVideo){
-    /* 清晰度与字节数的解析跟默认片源并行。它需要回源抓详情、再 HEAD 一次正片，不能挡住
-       播放器挂载；否则来源慢一点，详情里就会先留下一个没有 src 的空视频框。 */
-    const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);
-    const followPlayer=await mountDetailPlayer(item,followVideo,appSettings.detailAutoplay,{
-      source:{src,type:selectedMedia?.media_type||item.media_type||'video/mp4'},
-      checkSourceStatus:false,
-      size:selectedMedia?.size,
-      poster:item.thumb_url,
-      mediaPromise
-    });
-    const stopFollowAmbient=mountPlayerAmbient(followVideo);
-    followPlayer?.one?.('dispose',stopFollowAmbient);
-    followVideo.addEventListener('emptied',stopFollowAmbient,{once:true});
-    wireFollowTelemetry(item,followVideo);
-  }
-  wireDrag($('#stage').querySelector('.mixlist'));
-  $('#stage').querySelectorAll('.followdetailtags [data-follow-tag]').forEach(button=>button.onclick=async()=>{
-    const tag=button.dataset.followTag;
-    if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
-    // 回到的是带上这枚标签的那一份列表：地址栏是筛选的唯一真相源，只改全局会被推回去。
-    followDetailReturnPath=followViewPath();
-    await closeDetail();
-  });
-  const write=async(button,path,body,done,{message='已更新',undo=null}={})=>{
-    const state=$('#stage').querySelector('.fstate');setActionBusy(button);
-    try{await api(path,{method:'POST',body:JSON.stringify(body)});done();state.textContent='';
-      actionReceipt(message,{undo})}
-    catch(error){state.textContent=error.message||'操作失败';actionFailure('更新关注状态',error)}
-    finally{setActionBusy(button,false)}
-  };
-  $('#stage').querySelector('[data-follow-detail-save]')?.addEventListener('click',event=>{
-    const button=event.currentTarget;
-    write(button,'/api/follow/save',{item:item.id},()=>{
-      item.status='saved';button.innerHTML=icon('check');button.title='已保存';button.setAttribute('aria-label','已保存')},
-    {message:'已保存到账本'});
-  });
-  $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(button=>button.onclick=()=>{
-    const before=item.status,to=button.dataset.followDetailStatus;
-    write(button,'/api/follow/status',{item:item.id,to},()=>{
-      item.status=to;
-      $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
-        control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===item.status)))},
-    {message:to==='seen'?'已标记看过':'已更新关注状态',undo:before!=='saved'?async()=>{
-      await api('/api/follow/status',{method:'POST',body:JSON.stringify({item:item.id,to:before})});
-      item.status=before;
-      $('#stage').querySelectorAll('[data-follow-detail-status]').forEach(control=>
-        control.setAttribute('aria-pressed',String(control.dataset.followDetailStatus===before)));
-    }:null});
-  });
-  /* 隐藏与恢复都换掉整份媒体清单，重开详情是最短的同步路径：条目从索引里摘掉，
-     下一次读取走单条查询，服务端投影自然给出新的可见集合与缩略图。 */
-  const reopenAfterMediaChange=async mediaIndex=>{
-    followItemsById.delete(item.id);
-    await openFollowDetail(item.id,false,mediaIndex,true);
-  };
-  $('#stage').querySelectorAll('[data-follow-media-hide]').forEach(button=>button.onclick=()=>{
-    const index=+button.dataset.followMediaHide;
-    const rest=(item.media_items||[]).filter(media=>media.index!==index);
-    const next=rest.find(media=>media.media_kind==='image');
-    write(button,'/api/follow/media/hide',{item:item.id,media:index,hidden:true},()=>{
-      reopenAfterMediaChange(next?next.index:null)},{message:'已隐藏这张图'});
-  });
-  $('#stage').querySelectorAll('[data-follow-media-restore]').forEach(button=>button.onclick=()=>{
-    const index=+button.dataset.followMediaRestore;
-    write(button,'/api/follow/media/hide',{item:item.id,media:index,hidden:false},()=>{
-      reopenAfterMediaChange(index)},{message:'已恢复显示'});
-  });
-  // 上游没给出媒体时，代理只会回一个不含缘由的失败。有缩略图就换上缩略图并在侧栏
-  // 说明这是缩略图；连缩略图也取不到，才说「这次没取到、多半是限流」——别让人对着
-  // 一块空画布猜。
-  const loadIssue=$('#stage').querySelector('[data-media-load-issue]');
-  const thumbFallback=$('#stage').querySelector('[data-media-thumb-fallback]');
-  $('#stage').querySelectorAll('.followdetailmedia img,.followdetailmedia video').forEach(el=>
-    el.addEventListener('error',()=>{
-      const fallback=el.dataset.fallbackSrc;
-      if(fallback&&el.getAttribute('src')!==fallback){
-        el.src=fallback;if(thumbFallback)thumbFallback.hidden=false;return}
-      if(thumbFallback)thumbFallback.hidden=true;
-      if(loadIssue)loadIssue.hidden=false}));
-  alignFollowImageControls();
-  // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
-  // 复用首页那套 sticky 偏移，标题不会被吸顶的筛选条盖住。
-  scrollItemDetailIntoView();
-}
-
-/* object-fit:contain 后图片左右黑边会随图片比例和窗口改变。箭头应位于黑边的视觉中心，
-   不能永远贴容器边缘；黑边太窄时才退回固定的安全内边距。 */
-function alignFollowImageControls(){
-  const frame=$('#stage:not([hidden]) .followdetailmedia');
-  const image=frame?.querySelector('.followdetailposter');
-  const arrow=frame?.querySelector('.followimagearrow');
-  if(!frame||!image||!arrow)return;
-  const align=()=>{
-    if(!image.naturalWidth||!image.naturalHeight)return;
-    const box=frame.getBoundingClientRect(),ratio=image.naturalWidth/image.naturalHeight;
-    const renderedWidth=Math.min(box.width,box.height*ratio);
-    const gutter=Math.max(0,(box.width-renderedWidth)/2);
-    const fallback=matchMedia('(max-width:640px)').matches?10:16;
-    const inset=gutter>=arrow.offsetWidth+fallback*2?(gutter-arrow.offsetWidth)/2:fallback;
-    frame.style.setProperty('--follow-image-arrow-inset',`${Math.round(inset)}px`);
-  };
-  if(image.complete)requestAnimationFrame(align);
-  else image.addEventListener('load',align,{once:true});
 }
 
 /* 检查完必须说清三件事：新增了什么、哪些确实没有更新、哪些失败了以及为什么。
@@ -5400,8 +5005,8 @@ function readFollowView(){
 }
 /* 看的那一页整个归 React 岛 `follow-feed`（ADR-0031）：取数、两排、玻璃、列表、写操作、检查
    更新与往回抓都在 /dist/peach-react.js 里。壳只管三样：地址栏（筛选的唯一真相源）、这一次
-   进入的取样种子、选择与照片墙这几样全站偏好。详情页读的 `followData` 由岛每取到一版列表就经
-   `loaded` 交回。
+   进入的取样种子、选择与照片墙这几样全站偏好。侧栏标签抽屉仍在壳里，岛每取到一版列表就经
+   `loaded` 交回可见条目的标签计数。
 
    岛改筛选只调 `route(view)`：这里写进地址栏，再经 `updateIsland` 推回新的 `view`。已经挂着时
    换一档（前进后退、侧栏标签、批量标记之后）也走推送，只有列表铺骨架；重挂会把页头、两排和
@@ -5459,11 +5064,7 @@ const followFeedHelpers={
 const followFeedActions={
   route:view=>routeFollowFeed(view),
   shuffle:()=>shuffleFollowFeed(),
-  loaded:(data,visible,credentials)=>{
-    followData=data;followCredentialProviders=new Set(credentials);
-    indexFollowItems(data);
-    renderFollowDrawer(visible.flatMap(group=>followCollectionItems(group)));
-  },
+  loaded:tags=>renderFollowDrawer(tags),
   openDetail:id=>openFollowDetail(id),
   openManage:()=>openFollowManage(),
   toggleSelection:(id,range)=>toggleFollowSelection(id,range),
@@ -5478,6 +5079,114 @@ const followFeedActions={
 const followFeedProps=()=>({view:followView(),seed:followDiscoverySeed,revision:followRevision,
   selectMode,selected:new Set(followSelected),photoSize:photoSize(),photoLayout:photoLayout(),
   imagesOnly:!!appSettings.followImagesOnly,helpers:followFeedHelpers,actions:followFeedActions});
+
+/* 关注详情整块归 React 岛 `follow-detail`（ADR-0031）：条目取数、媒体区、队列、侧栏与写操作都在
+   /dist/peach-react.js 里。壳留舞台本身——宿主 `.stagescroll`、进出场、小窗与 Video.js，JAV 详情
+   也在用这一套。换到组里另一条也走这里：舞台上的播放器要先拆，地址要换。 */
+const followDetailActions={
+  close:()=>closeFollowDetail(),
+  openItem:(id,mediaIndex=null)=>openFollowDetail(id,true,mediaIndex,true),
+  openTag:tag=>{
+    if(followTags.has(tag))followTags.delete(tag);else followTags.add(tag);
+    // 回到的是带上这枚标签的那一份列表：地址栏是筛选的唯一真相源，只改全局会被推回去。
+    followDetailReturnPath=followViewPath();
+    closeFollowDetail();
+  },
+  /* 小窗元数据、侧栏标签抽屉（这一条自己的标签）与氛围光、剧场模式跟着画出来的这份媒体走。 */
+  present:(item,kind)=>{
+    stageMiniplayerMeta={kind:'follow',item,title:item.title||'',sub:item.author||item.source_label||''};
+    renderFollowDrawer(sidebarTagCounts([{tags:followCardTags(item)}]));
+    $('#stage').classList.toggle('ambient-on',kind==='video'&&appSettings.ambientMode);
+    $('#stage').classList.toggle('theater-mode',kind==='video'&&appSettings.theaterMode);
+  },
+  mountPlayer:(video,item,media)=>mountFollowPlayer(video,item,media),
+  toast:(message,{undo}={})=>actionReceipt(message,{undo}),
+  failure:(action,error)=>actionFailure(action,error),
+};
+
+async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false){
+  releaseHoverPreviews();
+  id=+id;
+  const entering=!location.pathname.startsWith('/follow/item/');
+  if(push&&entering&&!preserveReturn)followDetailReturnPath=location.pathname+location.search;
+  if(!push&&!preserveReturn)followDetailReturnPath='/follow';
+  // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
+  closeMiniplayer();
+  if(!push)queueDetailResumeFromUrl('follow',id);
+  disposeStage(false,false,{miniplayer:false});
+  if(push)route(`/follow/item/${id}`);
+  const surface=surfaceToken(surfacePath());
+  placeItemDetail(detailOriginAnchor,detailOriginAbove);
+  showDetailLoading();
+  const host=document.createElement('div');host.className='stagescroll';followDetailHost=host;
+  await mountIsland('follow-detail',host,{id,mediaIndex,mediaView:followMediaView,
+    helpers:followFeedHelpers,actions:followDetailActions},{
+    isCurrent:()=>surfaceCurrent(surface)&&followDetailHost===host,
+    /* 同 `paintStage`：骨架抬成一层淡出，标题两行跟着这一次揭示。宿主由壳建、岛往里画，
+       画之前才放进舞台，骨架与内容只换一次。舞台是带着骨架开的，骨架里没有可聚焦的元素，
+       `showModal()` 只能把焦点给 dialog 本身；内容到了再照它的规矩交给第一个控件（关闭键）。 */
+    reveal:(_el,write)=>{
+      const stage=$('#stage');
+      revealSkeleton(stage,()=>{
+        stage.replaceChildren(host);write();
+        if(document.activeElement===stage)stage.querySelector('#closeStage')?.focus();
+      });
+      revealTexts(stage,':scope>:not(.skelfade) [data-reveal-line]');
+    }});
+  // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
+  if(followDetailHost===host&&host.isConnected)scrollItemDetailIntoView();
+}
+
+/* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会取回第一页——
+   「加载更多」出来的条目会一起消失。列表岛还挂着就只把地址栏上的那一份推回去（没变就是同一个
+   键，不重取）；深链直接进的详情没挂过列表，这时才挂。 */
+async function closeFollowDetail(){
+  await stageExit();
+  disposeStage(false,false,{miniplayer:false});
+  route(followDetailReturnPath||'/follow');
+  if(location.pathname!=='/follow'){await restoreRoute();return}
+  if(!followFeedLive()){await openFollow(false);return}
+  readFollowView();pushFollowFeed({view:followView()});
+}
+
+/* 岛画好的 `<video>` 交到这里挂 Video.js：氛围光画布与统计角标照 JAV 详情的位置插进媒体框，
+   片源是 `/follow-stream`，清晰度与字节数（`/follow-qualities`）跟默认片源并行解析——它要回源
+   抓详情、再 HEAD 一次正片，不能挡住播放器挂载。返回的清理在岛卸下这块媒体区时调：换一份媒体
+   只拆这一个播放器；整块舞台拆掉时 `disposeStage` 已经先处理过（进小窗或销毁），这里只补漏。 */
+function mountFollowPlayer(video,item,media){
+  video.parentElement.insertAdjacentHTML('afterbegin','<canvas class="ambientcanvas" width="32" height="18"></canvas>');
+  video.insertAdjacentHTML('beforebegin',playerStatsOverlayHtml());
+  const src=`/follow-stream?id=${item.id}${media?`&media=${media.index}`:''}`;
+  const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);
+  let player=null,released=false;
+  const release=()=>{
+    // 小窗接走的播放器归小窗。
+    if(!player||miniplayerState.player===player)return;
+    if(detailPlayer===player){
+      detailPlayer=null;
+      if(detailStatsTimer){clearInterval(detailStatsTimer);detailStatsTimer=null}
+      if(detailNetTimer){clearInterval(detailNetTimer);detailNetTimer=null}
+      if(detailNetHideTimer){clearTimeout(detailNetHideTimer);detailNetHideTimer=null}
+    }
+    if(!player.isDisposed?.()){try{player.pause();player.dispose()}catch(_e){}}
+  };
+  mountDetailPlayer(item,video,appSettings.detailAutoplay,{
+    source:{src,type:media?.media_type||item.media_type||'video/mp4'},
+    checkSourceStatus:false,
+    size:media?.size,
+    poster:item.thumb_url,
+    mediaPromise
+  }).then(mounted=>{
+    player=mounted;
+    // 挂载还没回来岛就换了媒体：这一个一出来就拆掉。
+    if(released){release();return}
+    const stopAmbient=mountPlayerAmbient(video);
+    player?.one?.('dispose',stopAmbient);
+    video.addEventListener('emptied',stopAmbient,{once:true});
+    wireFollowTelemetry(item,video);
+  });
+  return ()=>{released=true;release()};
+}
 
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -5497,23 +5206,11 @@ async function openFollow(push=true,renderForDetail=false){
     return;
   }
   if(renderForDetail){
-    /* 深链直接进详情：详情要的只是条目索引、来源与凭据，取一页就够；岛等回到列表时再挂。 */
-    const surface=claimSurface(surfacePath());
-    showManagementBody({manage:false,placeholder:detailSkeletonHtml()});
-    const [data,credentials]=await Promise.all([
-      surfaceApi(surface,followPageUrl(0)),
-      surfaceApi(surface,'/api/follow/credentials').catch(()=>({providers:[]})),
-    ]);
-    if(!surfaceCurrent(surface)||!data)return;
-    // 详情盖在这块上面；骨架留着就一直报「正在读取」，列表回来时由岛自己铺。
+    /* 深链直接进详情：详情岛自己取这一条，列表区只让出位置，岛等回到列表时再挂。侧栏抽屉由
+       详情画出来时按这一条的标签铺。 */
+    claimSurface(surfacePath());
+    showManagementBody({manage:false});
     $('#stats').replaceChildren();
-    followData=data;
-    followCredentialProviders=new Set((credentials?.providers||[])
-      .filter(provider=>provider.present).map(provider=>provider.provider));
-    indexFollowItems(data);
-    const wanted=followMediaView==='images'?'image':'video';
-    renderFollowDrawer((data.groups||[]).filter(group=>followMediaKinds(group).has(wanted))
-      .flatMap(group=>followCollectionItems(group)));
     return;
   }
   const surface=claimSurface('/follow');
@@ -5555,15 +5252,15 @@ function followAuthorAvatar(group,name=followAuthorName(group)){
 /* 卡片与详情的署名。booru 帖子由服务端认出真正的发布者时（`item.credit`），名字和头像
    都换成发布者：也关注了这位就用那位的来源，否则只出首字母，不借被关注者的头像；
    被关注者退成一行「署名含」，说明这条为什么出现在这里。认不出的照常署被关注者。 */
-/* `context` 是关注页岛那一版列表的来源与别名；详情不传，读 `followData`。 */
-function followIdentity(item,authorSources,context=null){
-  const aliases=context?.aliases||followData?.author_aliases||[];
+/* `context` 是关注页岛那一版列表（或详情岛那一条）的来源与别名。 */
+function followIdentity(item,authorSources,context){
+  const aliases=context.aliases||[];
   const poster=item.credit?.poster;
   if(!poster){const name=followAuthorName(authorSources,aliases);
     return {author:name||item.author||item.source_label||'创作者未取得',
       avatar:followAuthorAvatar(authorSources,name),credited:''}}
   const key=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  const sources=context?.sources||followData?.sources||[];
+  const sources=context.sources||[];
   const own=sources.find(row=>key(row.ref)===key(poster));
   const group=own?.author_key?sources.filter(row=>row.author_key===own.author_key):own?[own]:[];
   const author=group.length&&followAuthorName(group,aliases)||poster;
@@ -5590,7 +5287,7 @@ function followWorkMark([key,label,,icon,focus]){
    创作者在末尾的方括号里。这里只在同一个人的几种写法之间挑一个，不再自己解析标签。
    同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
    更像创作者自己写的名字。 */
-function followAuthorName(group,aliases=followData?.author_aliases||[]){
+function followAuthorName(group,aliases=[]){
   if(!group.length)return '';
   const clean=value=>String(value||'')
     .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'')
@@ -6497,11 +6194,11 @@ function buildDrawerNavigation(){
      那一格，不带动画：这时候动画早已经从 `paintNav` 那里起跑了。 */
   syncNavGlide(false);
 }
-function renderFollowDrawer(items){
+/* 侧栏那一列标签 chip。计数由调用方给：列表是岛那一版可见条目的（`loaded`），详情是这一条自己的。 */
+function renderFollowDrawer(counts){
   buildDrawerNavigation();
   const scroll=$('#drawerScroll');
   scroll.querySelectorAll('.sec').forEach(section=>section.remove());
-  const counts=sidebarTagCounts(items.map(item=>({tags:followCardTags(item)})));
   if(!counts.length)return;
   const tagBody=`<div class="chips">${
     counts.map(([tag,n])=>
@@ -7066,7 +6763,7 @@ window.addEventListener('scroll',()=>{
 /* 换了宽度就把那块玻璃重新落一次位：过了那道断点，这一排是不是住在横滚容器里
    会变，玻璃该落在哪一层跟着变，量出来的位置也跟着变。不重落的话它留在旧的那一层上，
    坐标还是按旧的算的，停在离按钮几百像素远的地方。 */
-window.addEventListener('resize',()=>{scheduleStickySurfaces();alignFollowImageControls();
+window.addEventListener('resize',()=>{scheduleStickySurfaces();
   Object.keys(GLIDE_ROWS).forEach(kind=>syncViewGlide(false,null,kind))},{passive:true});
 
 $('#scrim').onclick=()=>openDrawer(false);
@@ -7080,7 +6777,6 @@ $('#scrim').onclick=()=>openDrawer(false);
 async function loadCatalog(){
   const requestSeq=++loadRequestSeq;
   const surface=claimSurface(surfacePath());
-  wireLoadMore($('#loadSentinel'),{}).destroy();
   // 已经挂着就让它接着跑：重挂要先清空容器，而它这一刻要说的话跟上一刻是同一句。
   if(isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))
     void mountIsland('library-processing',$('#libraryProcessingNotice'),{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});
@@ -8586,7 +8282,7 @@ document.addEventListener('keydown',e=>{
   }
   // 输入态不抢键：搜索框、标签弹窗和任何可编辑区域里的按键归它们自己处理。
   if(isTypingTarget(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;
-  const imageDots=[...document.querySelectorAll('#stage:not([hidden]) .followimagedots [data-follow-image-item]')];
+  const imageDots=[...document.querySelectorAll('#stage:not([hidden]) [data-follow-image-dots] [data-follow-image-item]')];
   if(imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){
     e.preventDefault();
     const current=Math.max(0,imageDots.findIndex(dot=>dot.getAttribute('aria-current')==='true'));

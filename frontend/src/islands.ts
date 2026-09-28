@@ -40,6 +40,7 @@ export interface IslandContracts {
   'entity-body': ReactBundle.EntityBodyProps;
   'entity-filter': ReactBundle.EntityFilterProps;
   'entity-hero': ReactBundle.EntityHeroProps;
+  'follow-detail': ReactBundle.FollowDetailProps;
   'follow-feed': ReactBundle.FollowFeedProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
@@ -73,6 +74,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'entity-body': { react: 'entity-body' },
   'entity-filter': { react: 'entity-filter' },
   'entity-hero': { react: 'entity-hero' },
+  'follow-detail': { react: 'follow-detail' },
   'follow-feed': { react: 'follow-feed' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
@@ -212,11 +214,5 @@ export function showToast(
   toaster ??= import('@peach/react').then((bundle) => { bundle.mountToaster(host, icons); return bundle });
   void toaster.then((bundle) => bundle.showToast(id, request));
 }
-
-/** 图片灯箱（在 `@peach/react` 里）。它不挂在任何页面容器上，所以不走 `mountIsland`：
- *  壳里点开大图的地方直接调这一枚，React 包到了就打开。 */
-export const openPhotoLightbox = (
-  index: number, slides: ReactBundle.LightboxSlide[], host?: ReactBundle.LightboxHost,
-): Promise<void> => import('@peach/react').then((bundle) => bundle.openPhotoLightbox(index, slides, host));
 
 export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages } from './jav-artwork';

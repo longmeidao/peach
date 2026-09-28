@@ -97,7 +97,7 @@ async function lineGeometry(page: Page, selector: string) {
       alt: icon?.getAttribute('alt') ?? null,
       title: icon?.getAttribute('title') ?? null,
       icon: mid(icon),
-      mark: mid(line.querySelector('.fvkind')),
+      mark: mid(line.querySelector('[data-follow-variant]')),
       time: mid(line.querySelector('time')),
       line: mid(line),
     };
@@ -116,9 +116,9 @@ describe('关注的出处用站点图标', () => {
   });
 
   it('合集队列卡：出处是带站名的图标，与时间同一条中线', { timeout: 60_000 }, async () => {
-    const opened = await openFollow(browser, '/follow/item/1', '.followqueue .mixitem');
+    const opened = await openFollow(browser, '/follow/item/1', '[data-follow-queue-item]');
     try {
-      const rows = await lineGeometry(opened.page, '.followqueue .mixitem .fqmeta');
+      const rows = await lineGeometry(opened.page, '[data-follow-queue-item] [data-follow-queue-meta]');
       assert.equal(rows.length, 3, `队列卡数不对：${JSON.stringify(rows)}`);
       const duplicates = rows.filter((row) => row.alt !== null);
       assert.equal(duplicates.length, 2, `另一站的两条没有出处图标：${JSON.stringify(rows)}`);

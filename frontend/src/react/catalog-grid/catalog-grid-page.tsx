@@ -5,7 +5,7 @@
  * 起来（同遗留层 `revealSkeleton`），骨架还没到显示门槛就取完的直接落内容。
  *
  * 读数行（`#count`）的结构归壳，网格每接一页经 `onCount` 报一次，再把读数按位错峰写进
- * 那一格（遗留层 `popCount`）。无限滚动的判据照抄遗留层 `wireLoadMore`：哨兵进入视口 320px
+ * 那一格（遗留层 `popCount`）。无限滚动见下面的 `LoadMore`：哨兵进入视口 320px
  * 内自动取下一页，点它等于手动取；失败在哨兵后面留一条可重试的 Note，之后只有手动才重试。 */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useInfiniteQuery, type InfiniteData, type QueryKey } from '@tanstack/react-query';

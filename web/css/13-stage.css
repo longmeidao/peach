@@ -28,8 +28,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid.mixgrid>.side{grid-area:side;background:var(--detail-surface)}
 .sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px;border-left:0;border-top:1px solid var(--line-soft);
   background:var(--detail-surface)}
-.sgrid.mixgrid .mixqueueactions [data-queue-close],
-.sgrid.mixgrid .mixqueueactions [data-follow-queue-close]{display:none}
+.sgrid.mixgrid .mixqueueactions [data-queue-close]{display:none}
 .mixqueue{min-width:0;max-height:76vh;display:flex;flex-direction:column;border-left:1px solid var(--line-soft);
   background:color-mix(in srgb,var(--video-glow,#15202a) 10%,var(--surface) 90%)}
 .mixqueuehead{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;
@@ -96,6 +95,11 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid.mixgrid>.mixqueue .mixitem[data-media-kind="image"] .mixitempic img{object-fit:cover}
 .sgrid.mixgrid>.mixqueue .queueedit{position:absolute;z-index:3;right:5px;top:5px;padding:3px;border-radius:var(--control-radius);background:rgba(0,0,0,.62);color:#fff}
 .sgrid.mixgrid>.mixqueue .queueedit button{color:#fff}
+/* 关注详情的宿主 `.stagescroll` 里多一层 React 根（`follow-detail` 岛）：不占盒子，格子照旧是
+   舞台这一层的直接排版对象；字体、行高与字色照舞台往下传，不换成 React 根的那一套，里面的
+   骨架与队列是和 JAV 详情共用的遗留几何。 */
+.stagescroll>.peach-react{display:contents;font:inherit;color:inherit;-webkit-font-smoothing:inherit;
+  font-variant-ligatures:inherit;font-kerning:inherit}
 /* 宽屏时详情栏决定首行高度，脱盘／错误占位也要铺满同一行，不能留下半块空背景。 */
 @media (min-width:1081px){
   /* 浮窗里那一层竖着排：媒体格拿剩下的高度，「接着看」按内容定高钉在底下。浮窗照旧按
@@ -103,7 +107,7 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
      76vh 的画面加一条推荐带比视口高，推荐带整条落在浮窗外面。格里的媒体和详情栏都要
      `min-height:0`，行才压得下去；画面的上限跟着格走，宽了就按 contain 留黑边。 */
   .stage:not(.theater-mode)>.stagescroll{display:flex;flex-direction:column;max-height:calc(100dvh - 34px)}
-  .stage:not(.theater-mode)>.stagescroll>.sgrid{flex:1 1 auto;min-height:0}
+  .stage:not(.theater-mode)>.stagescroll>.sgrid,.stage:not(.theater-mode)>.stagescroll>.peach-react>.sgrid{flex:1 1 auto;min-height:0}
   .stage:not(.theater-mode) .sgrid>.vwrap{min-height:0}
   .stage:not(.theater-mode) .vwrap>.video-js{max-height:min(76vh,100%)}
   /* 影院模式画面独占一行、详情栏整段排在下面，总高必然超过浮窗：这一层自己滚，和窄屏
