@@ -781,6 +781,31 @@ describe('设计决定', () => {
     }
   });
 
+  it('详情舞台的焦点：骨架期间留在浮窗本身、不画焦点环，内容到了交给关闭键', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, '/', DESKTOP, { ready: `#grid [data-media-card][data-id="${ITEM.plain}"]` });
+    try {
+      const page = opened.page;
+      let release = () => {};
+      const held = new Promise<void>((resolve) => { release = resolve });
+      await page.route((url) => url.pathname === '/api/item', async (route) => { await held; await route.fallback() });
+      await page.locator(`#grid [data-media-card][data-id="${ITEM.plain}"] [data-media-title]`).first().press('Enter');
+      await page.locator('#stage[open] [data-skeleton="detail"]').waitFor();
+      /* 键盘打开也一样：骨架里没有可操作的东西，焦点环画在浮窗外沿上只是一圈噪声。 */
+      const waiting = await page.evaluate(() => {
+        const focused = document.activeElement as HTMLElement;
+        return { id: focused?.id, outline: getComputedStyle(focused).outlineStyle, visible: focused.matches(':focus-visible') };
+      });
+      assert.equal(waiting.id, 'stage', '骨架期间焦点不在浮窗上');
+      assert.equal(waiting.outline, 'none', `骨架期间浮窗画了焦点环（:focus-visible=${waiting.visible}）`);
+      release();
+      await page.locator('#stage[open] [data-item-side]').waitFor();
+      await page.waitForFunction(() => document.activeElement?.id === 'closeStage', null, { timeout: 5_000 });
+      assert.deepEqual(opened.problems.filter((line) => !line.includes('VIDEOJS')), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('React 子树读 BoardUI 的 token 原值，不被 board.css 的同名定值盖掉', { timeout: 60_000 }, async () => {
     const opened = await openAccess(browser);
     try {

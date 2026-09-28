@@ -11,8 +11,6 @@ export interface TelemetryOptions {
   ratio?: string;
   /** 放完之后要做的事（沉浸模式接着放下一条）。 */
   onEnded?: () => void;
-  /** 登记一条撤销：舞台拆掉时停表。 */
-  register?: (dispose: () => void) => void;
 }
 
 /** 作品的观看上报。
@@ -24,8 +22,8 @@ export interface TelemetryOptions {
  *  十秒一次的上报只有一个定时器。onplay 每次新起一个而只有 onpause 清的话，「播放→拖动→播放」
  *  这类不经过 pause 的序列会把定时器叠起来；更要紧的是离开详情时既不 pause 也不 ended，
  *  setInterval 连着已被销毁的 video 一直跑，每十秒往 /api/activity 打一发。所以 `emptied` 收尾，
- *  并向舞台登记一条撤销。处理器挂在 `on*` 属性上：小窗接手时重新触发 `onplay` 起表，关小窗时
- *  整组摘掉。 */
+ *  拆播放器时 `disposePlayer` 同步调一次 `onpause` 冲掉最后一段再整组摘掉。处理器挂在 `on*`
+ *  属性上，播放器从舞台搬进小窗时表不停。 */
 export function wireTelemetry(item: PlayerItem, video: HTMLVideoElement | null, options: TelemetryOptions = {}): void {
   if (!video) return;
   let last = 0, acc = 0, seeks = 0, timer: ReturnType<typeof setInterval> | null = null;
@@ -60,7 +58,6 @@ export function wireTelemetry(item: PlayerItem, video: HTMLVideoElement | null, 
   video.onpause = () => { stop(); flush(false) };
   video.onended = () => { stop(); flush(true); options.onEnded?.() };
   video.addEventListener('emptied', () => { stop(); flush(false) }, { once: true });
-  options.register?.(stop);
   paint();
 }
 

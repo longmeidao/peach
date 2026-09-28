@@ -73,12 +73,10 @@ describe('片源判据', () => {
 describe('观看上报', () => {
   beforeEach(() => { vi.useFakeTimers(); });
 
-  it('离开详情时既不 pause 也不 ended：emptied 收尾停表，撤销登记给了舞台', async () => {
+  it('离开详情时既不 pause 也不 ended：emptied 收尾停表', async () => {
     const calls = stubFetch(() => ({ real_ratio: .5 }));
     const video = document.createElement('video');
-    const disposers: (() => void)[] = [];
-    wireTelemetry({ id: 9, duration: -1 }, video, { register: (stop) => disposers.push(stop) });
-    expect(disposers).toHaveLength(1);
+    wireTelemetry({ id: 9, duration: -1 }, video);
     video.onplay?.(new Event('play'));
     video.dispatchEvent(new Event('seeking'));
     vi.advanceTimersByTime(10_000);

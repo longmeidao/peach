@@ -3182,11 +3182,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const surface=claimSurface(surfacePath());")
         self.assertPageContains("const surface=claimSurface('/follow');")
         self.assertPageContains("await openFollow(push,true);await openFollowDetail(params.id,push)")
-        self.assertPageContains("placeItemDetail(detailOriginAnchor,detailOriginAbove);")
-        self.assertPageContains("if(!stage.open)stage.showModal();")
         self.assertPageLacks("last.after($('#stage'))")
         self.assertPageContains("if(!followFeedLive()){await openFollow(false);return}")
-        self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo)")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
         self.assertPageContains("const FOLLOW_FILTERS=[['','全部'],['new','未看']")
@@ -3489,8 +3486,6 @@ class FollowWebSourceTests(unittest.TestCase):
         # 次序与玻璃由 e2e `follow-feed.test.ts` 钉住。照片墙只剩骨架那一份栅格。
         self.assertPageContains(".followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr))")
         self.assertPageLacks(".followlist.followphotowall>.stage{column-span:all}")
-        self.assertPageContains("placeItemDetail(detailOriginAnchor,detailOriginAbove);",
-                                "图片详情复用独立浮窗，保持图片墙布局")
         self.assertPageLacks(".followlist.followphotowall{display:block;column-count:5")
 
     def test_external_file_pages_do_not_default_to_video_and_paging_actions_share_one_row(self):

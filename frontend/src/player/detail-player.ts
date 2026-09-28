@@ -1,7 +1,9 @@
-/* 详情播放器：给两座详情画出来的 `<video>` 挂 Video.js 与全部 Peach 控件。
+/* 详情播放器：给舞台播放区的 `<video>` 挂 Video.js 与全部 Peach 控件。
  *
- * - `mountDetailPlayer` 挂一个 Video.js 实例：片源解析、时长校正、统计面板与加载速度角标、出错时
- *   从分片退回直读、脱盘判定，ready 之后挂设置菜单、拖动预览、Media Session、转圈与字幕。
+ * - `mountDetailPlayer` 挂一个 Video.js 实例：片源解析、时长校正、出错时从分片退回直读、脱盘判定，
+ *   ready 之后挂设置菜单、拖动预览、Media Session、转圈与字幕。
+ * - `attachPlayerChrome` 把统计面板、加载速度角标与氛围光接到一块媒体框上。播放器进小窗时摘下，
+ *   展开回舞台时接到新的媒体框上，实例本身不重建。
  * - `mountPlayer` 是舞台播放区的入口：插氛围光画布与统计角标，按作品或关注条目给片源、海报与
  *   上报，返回拆掉这一个播放器的函数。 */
 import { api, esc, fmtClock, fmtSize, icon, realDuration } from '@peach/legacy/core';
@@ -38,6 +40,23 @@ export interface DetailPlayerOptions {
   resume?: PlayerResume | null;
 }
 
+/** 媒体框里那三块读数：统计键、统计面板与加载速度角标（`playerStatsOverlayHtml`）。 */
+interface PlayerChrome {
+  statsButton: HTMLElement | null;
+  statsPanel: HTMLElement | null;
+  netBadge: HTMLElement | null;
+}
+
+/** 一个播放器实例的读数来源。面板画在哪一块框里由 `chrome` 决定，换框时只换它。 */
+interface PlayerSession {
+  chrome: PlayerChrome | null;
+  /** ready 之后统计键才露出来：控件条还没挂上时点它什么也读不到。 */
+  ready: boolean;
+  updateStats(): void;
+}
+
+const sessions = new WeakMap<VjsPlayer, PlayerSession>();
+
 /* 统计面板与加载速度角标的定时器。它们画在舞台的媒体框里，播放器进小窗时跟着舞台一起停。 */
 let statsTimer: ReturnType<typeof setInterval> | null = null;
 let netTimer: ReturnType<typeof setInterval> | null = null;
@@ -54,11 +73,10 @@ export async function mountDetailPlayer(
   item: PlayerItem, video: HTMLVideoElement, autoplay: boolean, options: DetailPlayerOptions = {},
 ): Promise<VjsPlayer | null> {
   const existing = detailPlayer();
-  if (existing) return existing;
+  if (existing && !existing.isDisposed()) return existing;
   const host = playerHost();
   const resume = options.resume ?? null;
   if (resume?.autoplay) autoplay = true;
-  const statsButton = document.getElementById('playerStatsBtn'), statsPanel = document.getElementById('playerStats');
   const source = () => (options.source ? Promise.resolve(options.source) : detailStreamSource(item));
   /* 拉不到就退回原生 video，和「页面里没有 videojs」是同一个兜底出口。 */
   let videojs;
@@ -103,17 +121,20 @@ export async function mountDetailPlayer(
     }
   };
   const segmentedNow = () => String(player.currentSource()?.type || '').includes('mpegurl');
-  const updateStats = () => {
+  const session: PlayerSession = { chrome: null, ready: false, updateStats: () => {} };
+  sessions.set(player, session);
+  session.updateStats = () => {
+    const statsPanel = session.chrome?.statsPanel;
     if (!statsPanel || statsPanel.hidden || !live()) return;
     const quality = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
     const rect = video.getBoundingClientRect(), current = `${video.videoWidth || item.width || '?'}×${video.videoHeight || item.height || '?'}`;
     const segmented = segmentedNow();
-    const session = detailStreamSession();
-    const resources = segmented ? streamEntries(item.id, session) : [];
+    const stream = detailStreamSession();
+    const resources = segmented ? streamEntries(item.id, stream) : [];
     const bytes = resources.reduce((n, entry) => n + (entry.transferSize || entry.encodedBodySize || 0), 0);
     const seconds = resources.reduce((n, entry) => n + (entry.duration || 0), 0) / 1000;
     meter.sample(video);
-    const speed = playerSpeedBits(player, item.id, session, segmented ? null : meter) || (seconds > 0 ? bytes * 8 / seconds : 0);
+    const speed = playerSpeedBits(player, item.id, stream, segmented ? null : meter) || (seconds > 0 ? bytes * 8 / seconds : 0);
     /* 分片流按已完成请求的字节累计；渐进源没有这种请求，按前沿推进折算，码率未知时退到秒。 */
     const loaded = segmented ? bytes : (meter.bitrate > 0 ? meter.bytes() : meter.seconds);
     const activity = Math.max(0, loaded - statsLoaded); statsLoaded = loaded;
@@ -133,7 +154,7 @@ export async function mountDetailPlayer(
       : ['已下载', byteScale ? `${fmtSize(loaded)}${mediaSize > 0 ? ` / ${fmtSize(mediaSize)}` : ''}` : `${loaded.toFixed(0)} 秒`,
         byteScale ? `最近一秒下载 ${activity ? fmtSize(activity) : '0 B'}` : `最近一秒下载 ${activity.toFixed(1)} 秒`];
     const rows: [string, string, string?][] = [
-      ['视频 ID / 会话', session && !options.source ? `${item.id} / ${session.slice(0, 8)}` : `${item.id}`],
+      ['视频 ID / 会话', stream && !options.source ? `${item.id} / ${stream.slice(0, 8)}` : `${item.id}`],
       ['视口 / 帧', `${Math.round(rect.width)}×${Math.round(rect.height)} / ${quality ? `${quality.totalVideoFrames - quality.droppedVideoFrames} of ${quality.totalVideoFrames}` : '—'}`],
       ['当前 / 最佳分辨率', `${current} / ${item.width || video.videoWidth || '?'}×${item.height || video.videoHeight || '?'}`],
       ['编码 / 传输', `${container} / ${segmented ? 'HLS' : 'HTTP Range'}`],
@@ -151,8 +172,8 @@ export async function mountDetailPlayer(
   };
   player.on(['loadstart', 'loadedmetadata', 'durationchange', 'error'], enforceDuration);
   let segmentedSource = false, fallbackUsed = false;
-  const netBadge = document.getElementById('playerNet');
   const updateNet = () => {
+    const netBadge = session.chrome?.netBadge;
     if (!netBadge || player.isDisposed()) return;
     const segmented = segmentedNow();
     if (!segmented) meter.sample(video);
@@ -161,12 +182,14 @@ export async function mountDetailPlayer(
     netBadge.innerHTML = `${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`;
   };
   const showNet = () => {
+    const netBadge = session.chrome?.netBadge;
     if (!netBadge || !netBadge.isConnected) return;
     netBadge.hidden = false; updateNet();
     if (netTimer) clearInterval(netTimer);
     netTimer = setInterval(updateNet, 500);
   };
   const hideNet = () => {
+    const netBadge = session.chrome?.netBadge;
     if (!netBadge) return;
     if (netHideTimer) clearTimeout(netHideTimer);
     netHideTimer = setTimeout(() => { netBadge.hidden = true; if (netTimer) { clearInterval(netTimer); netTimer = null } }, 1400);
@@ -200,24 +223,9 @@ export async function mountDetailPlayer(
     mountPlayerMediaSession(player, item);
     mountPlayerSpinner(player);
     if (!options.source) mountPlayerSubtitles(player, item.id);
-    if (statsButton) statsButton.hidden = false;
+    session.ready = true;
+    if (session.chrome?.statsButton) session.chrome.statsButton.hidden = false;
   });
-  if (statsButton && statsPanel) {
-    const closeStats = () => {
-      if (statsPanel.hidden) return;
-      statsPanel.hidden = true; statsButton.setAttribute('aria-pressed', 'false');
-      if (statsTimer) { clearInterval(statsTimer); statsTimer = null }
-    };
-    statsButton.onclick = () => {
-      if (!statsPanel.hidden) { closeStats(); return }
-      document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT, { detail: 'stats' }));
-      statsPanel.hidden = false; statsButton.setAttribute('aria-pressed', 'true');
-      updateStats(); if (statsTimer) clearInterval(statsTimer); statsTimer = setInterval(updateStats, 1000);
-    };
-    const closeStatsForOtherPanel = (event: Event) => { if ((event as CustomEvent<string>).detail !== 'stats') closeStats() };
-    document.addEventListener(PLAYER_PANEL_EVENT, closeStatsForOtherPanel);
-    player.on('dispose', () => document.removeEventListener(PLAYER_PANEL_EVENT, closeStatsForOtherPanel));
-  }
   source().then((next) => {
     if (!live()) return;
     segmentedSource = String(next.type || '').includes('mpegurl');
@@ -229,6 +237,73 @@ export async function mountDetailPlayer(
   return player;
 }
 
+const AMBIENT_CANVAS = '<canvas class="ambientcanvas" width="32" height="18"></canvas>';
+
+/** 媒体框里氛围光画布与三块读数的占位：画布是框的第一个子节点，读数插在 `before` 前面（不给就
+ *  放到最后）。已经有了就不再插。 */
+export function preparePlayerFrame(frame: HTMLElement, before: Element | null = null): void {
+  if (!frame.querySelector(':scope > .ambientcanvas')) frame.insertAdjacentHTML('afterbegin', AMBIENT_CANVAS);
+  if (frame.querySelector(':scope > #playerStatsBtn')) return;
+  const overlay = document.createElement('template');
+  overlay.innerHTML = playerStatsOverlayHtml();
+  frame.insertBefore(overlay.content, before);
+}
+
+/** 把统计面板、加载速度角标与氛围光接到 `frame` 上（它先经过 `preparePlayerFrame`）。返回摘下的
+ *  函数：进小窗时摘，播放器销毁时自己摘。 */
+export function attachPlayerChrome(player: VjsPlayer, frame: HTMLElement): () => void {
+  const session = sessions.get(player);
+  if (!session || player.isDisposed()) return () => {};
+  const find = (id: string) => frame.querySelector<HTMLElement>(`:scope > #${id}`);
+  const chrome: PlayerChrome = { statsButton: find('playerStatsBtn'), statsPanel: find('playerStats'), netBadge: find('playerNet') };
+  session.chrome = chrome;
+  const { statsButton, statsPanel } = chrome;
+  let offPanels = () => {};
+  if (statsButton && statsPanel) {
+    statsButton.hidden = !session.ready;
+    const closeStats = () => {
+      if (statsPanel.hidden) return;
+      statsPanel.hidden = true; statsButton.setAttribute('aria-pressed', 'false');
+      if (statsTimer) { clearInterval(statsTimer); statsTimer = null }
+    };
+    statsButton.onclick = () => {
+      if (!statsPanel.hidden) { closeStats(); return }
+      document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT, { detail: 'stats' }));
+      statsPanel.hidden = false; statsButton.setAttribute('aria-pressed', 'true');
+      session.updateStats();
+      if (statsTimer) clearInterval(statsTimer);
+      statsTimer = setInterval(session.updateStats, 1000);
+    };
+    const closeStatsForOtherPanel = (event: Event) => { if ((event as CustomEvent<string>).detail !== 'stats') closeStats() };
+    document.addEventListener(PLAYER_PANEL_EVENT, closeStatsForOtherPanel);
+    offPanels = () => document.removeEventListener(PLAYER_PANEL_EVENT, closeStatsForOtherPanel);
+  }
+  const tech = player.el().querySelector('video');
+  const stopAmbient = tech ? mountPlayerAmbient(tech) : () => {};
+  let attached = true;
+  const detach = () => {
+    if (!attached) return;
+    attached = false;
+    offPanels(); stopAmbient();
+    if (session.chrome === chrome) { session.chrome = null; stopPlayerPanels() }
+  };
+  player.one('dispose', detach);
+  return detach;
+}
+
+/** 拆掉一个播放器：先 pause，再同步调一次 `onpause` 让观看上报停表并把最后一段冲出去（`pause`
+ *  事件是排队派发的，等它来时句柄已经摘了），然后摘掉上报句柄，销毁时不会再替这条片子记账。 */
+export function disposePlayer(player: VjsPlayer | null): void {
+  if (!player || player.isDisposed()) return;
+  const video = player.el()?.querySelector('video');
+  try { player.pause() } catch { /* 已拆 */ }
+  if (video) {
+    try { video.onpause?.(new Event('pause')) } catch { /* 上报失败不挡拆除 */ }
+    video.onplay = null; video.ontimeupdate = null; video.onpause = null; video.onended = null;
+  }
+  try { player.dispose() } catch { /* 已拆 */ }
+}
+
 /** 关注条目里的一份媒体（组里的第几条视频）。 */
 export interface PlayerMedia { index: number; media_type?: string; size?: number | null }
 
@@ -237,27 +312,30 @@ export interface MountPlayerOptions {
   item: PlayerItem;
   media?: PlayerMedia | null;
   /** 不给就按设置（`detailAutoplay`）。 */
-  autoplay?: boolean;
+  autoplay?: boolean | undefined;
   resume?: PlayerResume | null;
-  /** 登记一条撤销，舞台整块拆掉时调。 */
-  register?: (dispose: () => void) => void;
+  /** 挂载之前在媒体框里插氛围光画布与统计角标。默认插；小窗里换片不要这些。 */
+  chrome?: boolean;
+  /** 挂上之后把实例交出去：小窗与展开要认得这一个。挂不上（Video.js 拉不到、退回原生 video）
+   *  给 null。拆得比挂载快时不回调。 */
+  onPlayer?: (player: VjsPlayer | null) => void;
   /** 这个播放器已经被小窗接走：拆播放区时不销毁它。 */
   handedOff?: (player: VjsPlayer) => boolean;
 }
 
-/** 舞台播放区的入口：给详情岛画好的 `<video>` 挂播放器，返回拆掉它的函数。
+/** 舞台播放区的入口：给播放区里的 `<video>` 挂播放器，返回拆掉它的函数。
  *
  *  氛围光画布与统计角标在挂载之前插进媒体框：Video.js 一包，`video` 的父级就换成它自己的那层了。
- *  - 作品（`item`）：片源由 `mountDetailPlayer` 按来源解析，海报是本地图，第一次开播记一次播放，
- *    离开位置与真实观看由 `wireTelemetry` 随播放写回侧栏。
+ *  - 作品（`item`）：片源由 `mountDetailPlayer` 按来源解析，海报是本地图，这一次挂载第一次开播时
+ *    记一次播放，离开位置与真实观看由 `wireTelemetry` 随播放写回侧栏。
  *  - 关注（`follow`）：片源是 `/follow-stream`，清晰度与字节数（`/follow-qualities`）跟默认片源并行
  *    解析——它要回源抓详情、再 HEAD 一次正片，不能挡住播放器挂载。
- *  返回的清理在岛卸下这块媒体区时调：换一份媒体只拆这一个播放器；被小窗接走的不拆。 */
+ *  返回的清理在舞台卸下这块媒体区时调：换一份媒体只拆这一个播放器；被小窗接走的只摘读数。 */
 export function mountPlayer(video: HTMLVideoElement, options: MountPlayerOptions): () => void {
-  const { kind, item, media = null, register, handedOff } = options;
+  const { kind, item, media = null, handedOff, onPlayer } = options;
   const host = playerHost();
-  video.parentElement?.insertAdjacentHTML('afterbegin', '<canvas class="ambientcanvas" width="32" height="18"></canvas>');
-  video.insertAdjacentHTML('beforebegin', playerStatsOverlayHtml());
+  const frame = options.chrome === false ? null : video.parentElement;
+  if (frame) preparePlayerFrame(frame, video);
   let detail: DetailPlayerOptions = { resume: options.resume ?? null };
   if (kind === 'follow') {
     detail = {
@@ -270,30 +348,26 @@ export function mountPlayer(video: HTMLVideoElement, options: MountPlayerOptions
     const poster = host.posterUrl(item);
     if (poster) video.poster = poster;
     video.addEventListener('play', () => {
-      const stage = host.stage();
-      if (stage && !stage.dataset.c) {
-        stage.dataset.c = '1';
-        void (api('/api/play', { method: 'POST', body: JSON.stringify({ id: item.id }) }) as Promise<unknown>).catch(() => {});
-      }
-    });
-    wireTelemetry(item, video, { watched: '#watched', mark: '#mark', ratio: '#ratioTxt', ...(register ? { register } : {}) });
+      void (api('/api/play', { method: 'POST', body: JSON.stringify({ id: item.id }) }) as Promise<unknown>).catch(() => {});
+    }, { once: true });
+    wireTelemetry(item, video, { watched: '#watched', mark: '#mark', ratio: '#ratioTxt' });
   }
-  let player: VjsPlayer | null = null, released = false, stopAmbient = () => {};
-  // 进小窗时播放器不销毁，氛围采样要跟着舞台一起停，别对着已经拆掉的画布继续画。
-  register?.(() => stopAmbient());
+  let player: VjsPlayer | null = null, released = false, detachChrome = () => {};
   const release = () => {
+    detachChrome();
     if (!player || handedOff?.(player)) return;
     if (detailPlayer() === player) { setDetailPlayer(null); stopPlayerPanels() }
-    if (!player.isDisposed()) { try { player.pause(); player.dispose() } catch { /* 已拆 */ } }
+    disposePlayer(player);
   };
   void mountDetailPlayer(item, video, options.autoplay ?? host.settings().detailAutoplay, detail).then((mounted) => {
     player = mounted;
-    // 挂载还没回来岛就换了媒体：这一个一出来就拆掉。
+    // 挂载还没回来媒体区就换了：这一个一出来就拆掉。
     if (released) { release(); return }
-    stopAmbient = mountPlayerAmbient(video);
-    player?.one('dispose', stopAmbient);
-    video.addEventListener('emptied', stopAmbient, { once: true });
+    if (!mounted) { onPlayer?.(null); return }
+    if (frame) detachChrome = attachPlayerChrome(mounted, frame);
     if (kind === 'follow') wireFollowTelemetry(item, video);
+    onPlayer?.(mounted);
   });
   return () => { released = true; release() };
 }
+

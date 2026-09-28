@@ -1,7 +1,7 @@
 /* 关注详情 `/follow/item/:id` 的数据与判定（ADR-0031）。
  *
- * 岛挂在舞台（`<dialog id="stage">`）里壳建好的宿主上；舞台本身、进出场、小窗与 Video.js
- * 仍归壳（JAV 详情也在用）。条目归岛：先扫关注页岛已缓存的那几页（`findFollowItem`），
+ * 这一块是舞台岛（`../stage/`）树里的子组件；舞台本身、进出场、小窗与 Video.js 归舞台岛
+ * （JAV 详情也在用）。条目归这里：先扫关注页岛已缓存的那几页（`findFollowItem`），
  * 扫不到才单条取 `GET /api/follow?item=<id>`，响应形状同列表那一页，只含这一条所在的组。 */
 import type { QueryKey } from '@tanstack/react-query';
 import { apiGet } from '../../api';
@@ -92,9 +92,10 @@ export interface FollowDetailActions {
   openTag(tag: string): void;
   /** 这一条、这一份媒体画出来了：壳据此更新小窗元数据、侧栏标签抽屉与舞台的氛围光、剧场模式。 */
   present(item: FollowDetailItem, kind: string): void;
-  /** 把岛画好的 `<video>` 交给壳挂 Video.js（片源、清晰度、氛围光与遥测都在壳里）；
-   *  返回的清理在这块媒体区卸下时调。 */
-  mountPlayer(video: HTMLVideoElement, item: FollowDetailItem, media: FollowDetailMedia | null): () => void;
+  /** 把媒体框交给舞台挂播放器（同作品详情：`<video>` 由舞台建在框里）。`onError` 是片源报错，
+   *  详情据此说明这一份没放出来。返回的清理在这块媒体区卸下时调。 */
+  mountPlayer(frame: HTMLElement, item: FollowDetailItem, media: FollowDetailMedia | null,
+    options: { onError(): void }): () => void;
   /** 操作回执；给了 `undo` 就带一颗撤销键。失败走 `failure`。 */
   toast(message: string, options?: { undo?: () => Promise<void> }): void;
   failure(action: string, error: unknown): void;

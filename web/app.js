@@ -17,7 +17,7 @@ import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
-import { applyTheaterMode, cancelDetailStream, cancelStreamSession, clickPlayerControl, closePlayerMenu, configurePlayer, configurePlayerMenu, detailPlayer, directStreamSource, ensureVideojs, fmtSpeed, mountDetailPlayer, mountPlayer, newStreamSession, playableStreamSource, setDetailPlayer, stopPlayerPanels, streamSpeedBits, wireTelemetry as playerWireTelemetry } from './dist/peach-ui.js';
+import { cancelStreamSession, clickPlayerControl, directStreamSource, ensureVideojs, fmtSpeed, loadStage, newStreamSession, playableStreamSource, stageApi, streamSpeedBits, wireTelemetry as playerWireTelemetry } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
   fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
@@ -83,9 +83,6 @@ let followFilter='',followRevision=0;
 const FOLLOW_INITIAL_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['30','最近 30 天'],
   ['90','最近 90 天']];
 let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followWorks=new Set(),followMediaView='videos',followDetailReturnPath='/follow';
-/* 舞台里那座详情岛的宿主与名字（`item-detail` 或 `follow-detail`）：`mountStageIsland` 建，
-   `disposeStage` 先卸岛再拆舞台。 */
-let stageIslandHost=null,stageIslandName='';
 /* 看的那一页按什么排。只有这三档在每条更新上都成立：观看次数、体积那几列问的是本机
    文件，而这一页上的东西多数还没下载。壳只拿它核对地址栏上的 `sort`；键上的说法在岛里
    （`follow-feed.ts` 的 `FOLLOW_FEED_DIR_WORDS`）。 */
@@ -343,23 +340,6 @@ const managementPlaceholder=path=>
   boardPageSkeleton(path,{followLayout:followListLayout(),
     ...(path==='/follow-manage'?(({sort,dir})=>({followSort:sort,followDir:dir}))(followManageParams()):{})})||
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
-/* 详情浮窗的正文：骨架换成真内容时交叉淡入，内容换内容（在队列里跳下一条）直接换。 */
-/* 浮窗里那两行标题跟着这一次重画揭示一遍。放在这里而不是各个详情函数里：换一条片子
-   走的也是这一条，标题因此只在「换了内容」时放一次，浮窗开着不动就不重放。 */
-const paintStage=html=>{
-  revealSkeleton($('#stage'),()=>{$('#stage').innerHTML=html});
-  /* 绕开正在淡出的那一层：`revealSkeleton` 把上一屏整块抬成 `.skelfade` 插在最前面，
-     而详情的骨架本身就照着最终结构画，里面也有一个 `.sidecontent`。按文档顺序找的话
-     拿到的是那一份——它上面没有揭示标记，这一句就悄悄地什么也不做。 */
-  revealTexts($('#stage'),':scope>:not(.skelfade) [data-reveal-line]');
-};
-function showDetailLoading(){
-  const stage=$('#stage');
-  if(!stage.querySelector('[data-skeleton="detail"]'))stage.innerHTML=detailSkeletonHtml();
-  fitSkeleton(stage);
-  stage.hidden=false;document.body.classList.add('detail-open');
-  presentItemDetail();
-}
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
 const hideDiscoveryBars=()=>{$('#tiers').style.display='none';$('#tagbar').style.display='none'};
@@ -384,13 +364,16 @@ function waitEntityShapes(){
   });
   return Promise.race([entityShapesReady||=loadEntityShapes(),deadline]);
 }
+/* 冷启动直接落在详情地址上：详情下面那份列表一次请求都没发过，由 `fillIdleCatalog` 补发一次。 */
+let bootDetailDeepLink=false;
 function renderInitialSurfaceLoading(){
   const path=decodeURIComponent(location.pathname);
   /* 骨架画的就是这个表面，所以先把 `data-surface` 写上：深链冷启动时 `restoreRoute()`
      排在这一步后面，等它写的话骨架会先按默认版式铺一遍，数据到货再跳成分栏。 */
   document.body.dataset.surface=location.pathname;
   if(/^\/(item\/\d+|(?:mix|parts|editions|playlists)\/\d+\/\d+)$/.test(path)){
-    hideDiscoveryBars();showDetailLoading();return;
+    /* 详情的骨架归舞台岛：路由到位后 `openItem` 取回 React 包就画。下面那份列表照这一次补发。 */
+    hideDiscoveryBars();bootDetailDeepLink=true;return;
   }
   if(path==='/junk-files'){
     /* 垃圾文件是一屏同质卡片，等的是内容结构不是后台进度：Loading Dots 说的是
@@ -995,7 +978,7 @@ $('#uiSoundsSetting').onchange=e=>{
 };
 /* 关掉小窗播放时正开着的那个小窗也一起收：设置说的是「离开详情不再进小窗」，留着一个
    已经进去的反而像没生效。 */
-$('#miniplayerSetting').onchange=e=>{appSettings.miniplayer=e.target.checked;saveSettings();if(!appSettings.miniplayer)closeMiniplayer()};
+$('#miniplayerSetting').onchange=e=>{appSettings.miniplayer=e.target.checked;saveSettings();if(!appSettings.miniplayer)stageApi()?.closeMiniplayer()};
 let followScheduleRequest=0;
 let followScheduleStatus=null;
 const followScheduleCopy=status=>{
@@ -1522,384 +1505,48 @@ const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁�
 /* `activeQueue` 是此刻开着的队列（`{kind, seedId|playlistId}`），只用来判「是不是同一个队列里换
    一条」；队列的条目归详情岛。`pendingQueueRoute` 是队列地址的前缀：停在哪一条要等岛定下来，
    画出来那一刻（`present`）才推。 */
-let total=0,facets=null,detailReturnPath='/',activeQueue=null,pendingQueueRoute=null;
+let total=0,facets=null,detailReturnPath='/',activeQueue=null,pendingQueueRoute=null,presentedItem=null;
 let detailOriginAnchor=null,detailOriginAbove=false,detailReturnNeedsRestore=false;
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
-/* ── 详情舞台的收尾登记 ──────────────────────────────────────────────────────
-   `disposeStage()` 用 `stage.innerHTML=''` 清场，那只删得掉 DOM。挂在
-   document/window 上的监听和 setInterval 不在舞台里，节点没了它们照样活着，
-   并且闭包还攥着已经脱离文档的元素——一次导航泄一份，翻十几个详情就是十几份。
-
-   所以凡是在舞台上开了「舞台之外」的东西，就在这里登记一条撤销。返回值是注销
-   函数：浮层自己先关掉时用它把登记摘掉，别让集合无界地长。 */
-let stageDisposers=new Set();
-/* 小窗播放的状态（实现在 disposeStage 之后的「小窗播放」一节）：stageMiniplayerMeta 是当前
-   详情登记的标题与来源，miniplayerRequested 让右键菜单和 i 键越过播放态判定，detailResume 是
-   展开或深链带回来的续播时刻。 */
-let stageMiniplayerMeta=null,miniplayerRequested=false,detailResume=null;
-const miniplayerState={player:null,item:null,kind:'item',token:0,off:[]};
-function onStageDispose(dispose){stageDisposers.add(dispose);return ()=>stageDisposers.delete(dispose)}
-function runStageDisposers(){
-  const pending=[...stageDisposers];stageDisposers.clear();
-  pending.forEach(dispose=>{try{dispose()}catch(_e){}});
+/* ── 详情舞台（`frontend/src/react/stage/`）──
+   浮窗、进出场、骨架、两座详情、播放器与小窗都归舞台岛，壳只留来处（`detailReturnPath`、
+   `followDetailReturnPath`、`detailOriginAnchor`）与命令式入口。舞台岛所在的 React 包在第一次
+   打开详情时才装载，之前 `stageApi()` 是 null：那时舞台没开，小窗也不在。 */
+const stageHost={
+  player:{
+    settings:()=>appSettings,saveSettings:()=>saveSettings(),
+    toast:(text,options)=>toast({text},options),
+    loadSourceStatus:()=>loadSourceStatus(),offlineReason:key=>offlineReason(key),
+    posterUrl:it=>detailPosterUrl(it),
+  },
+  sourceOffline:key=>sourceOffline(key),
+  /* 小窗里的「展开」：同一个播放器搬回这一条的详情，地址与来处照点卡片进来的那一条走。 */
+  expand:(kind,id,mediaIndex)=>{if(kind==='follow')void openFollowDetail(id,true,mediaIndex);else void openItem(id,true)},
+  openItem:id=>void openItem(id),
+  cache:it=>{CACHE[it.id]=it},
+  release:el=>releaseHoverPreviews(el),
+};
+const stageOpen=()=>!!stageApi()?.isOpen();
+/* 深链带 `?t=`：第一次挂上这一条时从这一刻接着放。 */
+function urlResume(){
+  const seconds=Number(new URLSearchParams(location.search).get('t'));
+  return Number.isFinite(seconds)&&seconds>0?{time:seconds,autoplay:false}:null;
 }
-/* 详情浮窗的退场跟设置弹层同一条：`closing` 让 `board-dialog-out` 和遮罩淡出演完，
-   再走 disposeStage。顺序不能倒过来——拆解那一步要先把舞台放回 #main 的固定槽位，
-   之后重画列表才不会把 #stage 一起删掉，所以动画只往拆解前面插一段等待，拆解和重画
-   自身的次序原样不动。等待有上限：`animation` 被别的规则关掉时 animationend 不会来。 */
-/* 按下那一刻在不在浮窗外面。详情里进度条、音量条和队列都能拖，从控件上拖出边界再松手
-   同样会在 dialog 上收到一次 click——那是一次拖动的收尾，不是要关窗。 */
-let stageDismissArmed=false;
-function stageExit(){
-  const stage=$('#stage');
-  if(!stage.open||stage.classList.contains('closing')
-    ||matchMedia('(prefers-reduced-motion: reduce)').matches)return Promise.resolve();
-  stage.classList.add('closing');
-  return new Promise(resolve=>{
-    let timer=0;
-    const done=()=>{clearTimeout(timer);stage.removeEventListener('animationend',onEnd);resolve()};
-    // 浮窗里的控件也会冒泡出 animationend，只认目标就是舞台本身的那一条。
-    const onEnd=event=>{if(event.target===stage)done()};
-    stage.addEventListener('animationend',onEnd);
-    timer=setTimeout(done,380);
-  });
-}
+function stageExit(){return stageApi()?.exit()||Promise.resolve()}
+/* 离开详情。正在放的视频默认进小窗接着放；显式关闭（叉、Escape）、换成别的详情和删掉当前条目
+   都传 miniplayer:false。 */
 function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}){
-  const stage=$('#stage');
-  closePlayerMenu();
-  // 没演完就被别的路径拆掉时把类摘干净，否则下一次开详情一上来就是退场那一帧。
-  stage.classList.remove('closing');stageDismissArmed=false;
-  if(stage.open)stage.close();
-  // 关注详情会把舞台插到头像和筛选条之后。离开详情前先放回 main 的固定槽位，
-  // 否则下一次重绘 #stats 会连同 #stage 一起删掉，后续所有详情都打不开。
-  const main=$('#main'),combo=$('#combo');
-  if(stage.parentElement!==main)main.insertBefore(stage,combo);
-  stopPlayerPanels();
-  /* 离开详情时正在放的视频不销毁：整个播放器搬进小窗接着放，流会话跟着它走。
-     显式关闭（叉、Escape）、换成别的详情和删掉当前条目都传 miniplayer:false；右键菜单
-     与 i 键的「迷你播放器」则用 miniplayerRequested 越过播放态判定。小窗自己的播放器
-     （detailPlayer 已归它）在别的表面切换时原样留着。 */
-  const meta=stageMiniplayerMeta;stageMiniplayerMeta=null;
-  const current=detailPlayer();
-  const owned=!!current&&miniplayerState.player===current;
-  const toMini=!!current&&!owned&&!!meta&&(miniplayer||miniplayerRequested)&&miniplayerEligible(current);
-  miniplayerRequested=false;
-  if(toMini)enterMiniplayer(current,meta);
-  else if(current&&!owned){try{current.pause();current.dispose()}catch(_e){}setDetailPlayer(null)}
-  stage.querySelectorAll('video').forEach(video=>{
-    if(video._hop)clearInterval(video._hop);
-    video.pause();video.removeAttribute('src');video.load();video.remove()});
-  if(!toMini&&!owned)cancelDetailStream();
-  // 两个详情都是挂在舞台里的岛：先卸根，再清舞台，别让 React 对着一块被清空的 DOM。
-  if(stageIslandHost){releaseHoverPreviews(stageIslandHost);unmountIsland(stageIslandHost);stageIslandHost=null;stageIslandName=''}
-  runStageDisposers();
-  stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');activeQueue=null;pendingQueueRoute=null;
+  stageApi()?.dispose({miniplayer});
+  activeQueue=null;pendingQueueRoute=null;presentedItem=null;
   if(!preserveInlineOrigin){
     detailOriginAnchor=null;detailOriginAbove=false;detailReturnNeedsRestore=false;
   }
   scheduleStickySurfaces();
   if(push)route(detailReturnPath||'/');
 }
-
-/* ── 小窗播放 ─────────────────────────────────────────────────────────────────
-   照 YouTube 桌面版的 miniplayer（docs/reference-snapshots/youtube-miniplayer-measured.md）：
-   离开详情时正在放的视频不销毁，Video.js 的壳整块搬进 body 级的固定容器继续放；小窗开着
-   时点别的卡片就在小窗里换片；点标题或「展开」回到详情并从同一时刻接着放；拖到哪个
-   象限就吸附到哪个角。上游 YouTube 只把播放列表内的切换留在小窗里，Peach 按用户要求
-   把卡片点击也收进来。 */
-function miniplayerActive(){return !!miniplayerState.player&&!miniplayerState.player.isDisposed()}
-function miniplayerVideo(){return miniplayerActive()?$('#miniplayerFrame')?.querySelector('video')||null:null}
-/* 「接着放」只有一次性的口子：展开时记下时刻，下一次挂载同一条时取走；深链 `?t=` 走同一条。 */
-function queueDetailResume(kind,id,time,autoplay){
-  detailResume={key:`${kind}:${id}`,time:Math.max(0,Number(time)||0),autoplay:!!autoplay};
-}
-function queueDetailResumeFromUrl(kind,id){
-  if(detailResume)return;
-  const seconds=Number(new URLSearchParams(location.search).get('t'));
-  if(Number.isFinite(seconds)&&seconds>0)queueDetailResume(kind,id,seconds,false);
-}
-function takeDetailResume(kind,id){
-  const hit=detailResume&&detailResume.key===`${kind}:${id}`?detailResume:null;
-  detailResume=null;return hit;
-}
-function miniplayerEligible(player){
-  if(!player||player.isDisposed())return false;
-  if(miniplayerRequested)return true;
-  return appSettings.miniplayer&&!player.paused()&&!player.ended()&&!player.error();
-}
-function paintMiniplayerMeta(meta){
-  $('#miniplayerTitle').textContent=meta.title||'';
-  $('#miniplayerSub').textContent=meta.sub||'';
-  $('#miniplayerInfo').setAttribute('aria-label',meta.title?`展开到详情：${meta.title}`:'展开到详情');
-}
-/* 画面区按视频比例给高：上游 4:3 的片子小窗就是 400×300。竖片压到 1:1 以内，400 宽的
-   9:16 会高过视口。 */
-function syncMiniplayerAspect(){
-  const frame=$('#miniplayerFrame'),video=miniplayerVideo();if(!frame)return;
-  const width=video?.videoWidth||Number(miniplayerState.item?.width)||16;
-  const height=video?.videoHeight||Number(miniplayerState.item?.height)||9;
-  frame.style.setProperty('--miniplayer-aspect',`${Math.max(width,height)}/${height}`);
-}
-function syncMiniplayerPlayState(){
-  const player=miniplayerState.player,button=$('#miniplayerPlay');
-  if(!player||player.isDisposed()||!button)return;
-  const paused=player.paused();
-  button.setAttribute('aria-label',paused?'播放':'暂停');
-  /* 主播放器那一枚走的是 path 形变（`morphIcon`），迷你条上这一枚只有 20px，形变看不
-     出来，走两枚字形叠着换。换的只是容器状态，不改 `use` 的 href——改 href 是硬切。 */
-  if(!button.querySelector('[data-icon-swap]'))
-    button.innerHTML=iconSwapHtml('player-pause','player-play',paused?'b':'a');
-  setIconSwap(button,paused?'b':'a');
-}
-function syncMiniplayerTime(){
-  const player=miniplayerState.player,out=$('#miniplayerTime');
-  if(!player||player.isDisposed()||!out)return;
-  const total=realDuration(miniplayerState.item?.duration)||realDuration(player.duration());
-  out.textContent=`${fmtClock(player.currentTime())} / ${total?fmtClock(total):'0:00'}`;
-}
-/* 步长跟设置走，标签里带着这个数：读屏用户按之前听得到自己会跳多远。每次接手播放器
-   时重写一遍，设置改完开的下一个小窗就是新的秒数。 */
-function syncMiniplayerSeekLabels(){
-  const step=Math.max(1,Number(appSettings.seekSeconds)||10);
-  for(const [id,text] of [['#miniplayerBack',`后退 ${step} 秒`],['#miniplayerAhead',`前进 ${step} 秒`]]){
-    const button=$(id);if(!button)continue;
-    button.setAttribute('aria-label',text);button.title=text;
-  }
-}
-function bindMiniplayerPlayer(player){
-  const on=(events,handler)=>{player.on(events,handler);miniplayerState.off.push(()=>{try{player.off(events,handler)}catch(_e){}})};
-  on(['play','pause','ended'],syncMiniplayerPlayState);
-  on(['timeupdate','durationchange','loadedmetadata'],syncMiniplayerTime);
-  on('loadedmetadata',syncMiniplayerAspect);
-  syncMiniplayerPlayState();syncMiniplayerTime();syncMiniplayerAspect();syncMiniplayerSeekLabels();
-}
-function unbindMiniplayerPlayer(){miniplayerState.off.forEach(off=>off());miniplayerState.off=[]}
-function enterMiniplayer(player,meta){
-  const root=$('#miniplayer'),frame=$('#miniplayerFrame');if(!root||!frame)return;
-  miniplayerState.player=player;miniplayerState.item=meta.item;miniplayerState.kind=meta.kind;miniplayerState.token++;
-  player.el().classList.add('vjs-peach-mini');
-  frame.prepend(player.el());
-  paintMiniplayerMeta(meta);
-  bindMiniplayerPlayer(player);
-  /* 详情的十秒观看上报随舞台收尾停了表；同一条片子还在放，重新起表。 */
-  const video=frame.querySelector('video');
-  if(video&&!player.paused()&&typeof video.onplay==='function')video.onplay();
-  const entering=root.hidden;root.hidden=false;
-  if(entering){
-    root.classList.add('miniplayer-entering');
-    const settle=()=>root.classList.remove('miniplayer-entering');
-    root.addEventListener('animationend',settle,{once:true});setTimeout(settle,500);
-  }
-  requestAnimationFrame(()=>{if(!player.isDisposed())player.trigger('resize')});
-}
-function disposeMiniplayerPlayer(player){
-  if(!player||player.isDisposed())return;
-  const video=player.el()?.querySelector('video');
-  // 先 pause 让观看上报把最后一段冲出去，再摘掉上报句柄，销毁时不会再替这条片子记账。
-  try{player.pause()}catch(_e){}
-  if(video){video.onplay=null;video.ontimeupdate=null;video.onpause=null;video.onended=null}
-  try{player.dispose()}catch(_e){}
-}
-function closeMiniplayer(){
-  const root=$('#miniplayer'),player=miniplayerState.player;
-  unbindMiniplayerPlayer();
-  miniplayerState.player=null;miniplayerState.item=null;miniplayerState.token++;
-  disposeMiniplayerPlayer(player);
-  if(player&&detailPlayer()===player)setDetailPlayer(null);
-  if(player)cancelDetailStream();
-  $('#miniplayerFrame')?.querySelectorAll('.video-js,video').forEach(el=>el.remove());
-  closePlayerMenu();
-  if(root){root.hidden=true;root.classList.remove('miniplayer-dragging','miniplayer-snapping','miniplayer-entering');root.style.transform=''}
-}
-function expandMiniplayer(){
-  if(!miniplayerActive())return;
-  const {player,item,kind}=miniplayerState;
-  queueDetailResume(kind,item.id,player.currentTime(),!player.paused());
-  closeMiniplayer();
-  if(kind==='follow')openFollowDetail(item.id,true);else openItem(item.id,true);
-}
-/* 小窗里能直接换的只有普通视频卡：分卷／版次组要先选卷，计费、脱盘和反查不到关注条目
-   的在线资产都要先过详情里那道门。 */
-function miniplayerTakesCard(it){
-  if(!miniplayerActive()||!it)return false;
-  if(it.part_group||it.edition_group)return false;
-  if(it.medium&&it.medium!=='video')return false;
-  if(it.cost==='metered'&&it.location!=='online')return false;
-  if(it.location==='online'&&!it.follow_item_id)return false;
-  if(sourceOffline(it.location))return false;
-  return true;
-}
-async function miniplayerPlay(id){
-  if(!miniplayerActive())return;
-  const token=++miniplayerState.token;
-  const it=await api('/api/item?id='+id).catch(()=>null);
-  if(token!==miniplayerState.token||!miniplayerActive())return;
-  if(!it||it.error)return;
-  if(!miniplayerTakesCard(it)){openItem(id);return}
-  CACHE[it.id]=it;
-  const previous=miniplayerState.player,frame=$('#miniplayerFrame');
-  unbindMiniplayerPlayer();
-  disposeMiniplayerPlayer(previous);
-  if(detailPlayer()===previous)setDetailPlayer(null);
-  cancelDetailStream();
-  frame.querySelectorAll('.video-js,video').forEach(el=>el.remove());
-  /* 换片就是一条新视频，重新挂一个播放器最干净：上一条的错误兜底、观看上报和清晰度表
-     都绑在旧实例的闭包里，复用它只会把新片的行为记到旧片头上。 */
-  const video=document.createElement('video');
-  video.className='video-js';video.setAttribute('playsinline','');video.preload='metadata';
-  frame.prepend(video);
-  miniplayerState.item=it;miniplayerState.kind='item';
-  paintMiniplayerMeta({title:it.title||it.name||'',sub:(it.performers||[])[0]||it.creator||'未归属'});
-  syncMiniplayerAspect();
-  wireTelemetry(it,video,{});
-  video.addEventListener('play',()=>{api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})},{once:true});
-  const player=await mountDetailPlayer(it,video,true);
-  if(token!==miniplayerState.token){if(player&&!player.isDisposed()){try{player.dispose()}catch(_e){}}return}
-  if(!player){closeMiniplayer();openItem(id);return}
-  miniplayerState.player=player;player.el().classList.add('vjs-peach-mini');
-  bindMiniplayerPlayer(player);
-}
-/* i 键与 YouTube 同义：详情里进小窗，小窗里展开回详情。 */
-function toggleMiniplayerShortcut(){
-  const stage=$('#stage');
-  if(miniplayerActive()&&(!stage||stage.hidden)){expandMiniplayer();return}
-  if(stage&&!stage.hidden&&detailPlayer()&&$('#closeStage')){miniplayerRequested=true;$('#closeStage').click();miniplayerRequested=false}
-}
-/* 拖动只改 transform，松手按小窗中心落在哪个象限选角，再用 .5s 的 transform 过渡吸过去，
-   过渡完把 data-corner 换成新角、清掉 transform——上游 AnimatingSnap 就是这么落回锚点的。 */
-function snapMiniplayer(dx,dy){
-  const root=$('#miniplayer');if(!root)return;
-  const rect=root.getBoundingClientRect();
-  const corner=(rect.top+rect.height/2<innerHeight/2?'t':'b')+(rect.left+rect.width/2<innerWidth/2?'l':'r');
-  const topInset=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topH'))||56;
-  const base={left:rect.left-dx,top:rect.top-dy};
-  const target={left:corner.endsWith('l')?16:innerWidth-16-rect.width,top:corner.startsWith('t')?topInset+16:innerHeight-16-rect.height};
-  root.classList.remove('miniplayer-dragging');
-  const finish=()=>{
-    root.classList.remove('miniplayer-snapping');
-    root.style.transition='none';root.dataset.corner=corner;root.style.transform='';
-    root.getBoundingClientRect();root.style.transition='';
-  };
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches){finish();return}
-  root.classList.add('miniplayer-snapping');
-  root.style.transform=`translate(${target.left-base.left}px,${target.top-base.top}px)`;
-  let done=false;
-  const once=()=>{if(done)return;done=true;root.removeEventListener('transitionend',once);finish()};
-  root.addEventListener('transitionend',once);setTimeout(once,600);
-}
-function wireMiniplayer(){
-  const root=$('#miniplayer'),card=$('#miniplayerCard');if(!root||!card)return;
-  $('#miniplayerClose').onclick=event=>{event.stopPropagation();closeMiniplayer()};
-  $('#miniplayerExpand').onclick=event=>{event.stopPropagation();expandMiniplayer()};
-  $('#miniplayerInfo').onclick=()=>expandMiniplayer();
-  $('#miniplayerPlay').onclick=event=>{
-    event.stopPropagation();const player=miniplayerState.player;
-    if(!player||player.isDisposed())return;
-    if(player.paused())player.play().catch(()=>{});else player.pause();
-  };
-  /* 时长取不到时不封顶：直播和还没读到元数据的片子 `duration()` 是 NaN，拿它去
-     `Math.min` 会把进度直接扔成 NaN，视频停在原地不动。 */
-  const seekBy=side=>event=>{
-    event.stopPropagation();const player=miniplayerState.player;
-    if(!player||player.isDisposed())return;
-    const step=Math.max(1,Number(appSettings.seekSeconds)||10);
-    const total=realDuration(player.duration())||realDuration(miniplayerState.item?.duration)||0;
-    const at=Math.max(0,(Number(player.currentTime())||0)+step*side);
-    player.currentTime(total?Math.min(total,at):at);
-  };
-  $('#miniplayerBack').onclick=seekBy(-1);
-  $('#miniplayerAhead').onclick=seekBy(1);
-  syncMiniplayerSeekLabels();
-  let drag=null;
-  card.addEventListener('pointerdown',event=>{
-    if(event.button!==0||event.target.closest('.miniplayerbtn,.miniplayerplay,.miniplayerseek,.vjs-control-bar'))return;
-    drag={id:event.pointerId,x:event.clientX,y:event.clientY,dx:0,dy:0,moved:false};
-    try{card.setPointerCapture(event.pointerId)}catch(_e){}
-  });
-  card.addEventListener('pointermove',event=>{
-    if(!drag||event.pointerId!==drag.id)return;
-    drag.dx=event.clientX-drag.x;drag.dy=event.clientY-drag.y;
-    if(!drag.moved&&Math.hypot(drag.dx,drag.dy)<4)return;
-    if(!drag.moved){drag.moved=true;root.classList.add('miniplayer-dragging');root.classList.remove('miniplayer-snapping')}
-    root.style.transform=`translate(${drag.dx}px,${drag.dy}px)`;
-  });
-  const release=event=>{
-    if(!drag||event.pointerId!==drag.id)return;
-    const done=drag;drag=null;
-    try{card.releasePointerCapture(event.pointerId)}catch(_e){}
-    if(!done.moved)return;
-    // 拖完松手会紧跟一个 click，落在信息栏上就是「展开」；这一下不算点。
-    root.dataset.dragged='1';setTimeout(()=>{delete root.dataset.dragged},0);
-    snapMiniplayer(done.dx,done.dy);
-  };
-  card.addEventListener('pointerup',release);card.addEventListener('pointercancel',release);
-  card.addEventListener('click',event=>{if(root.dataset.dragged){event.stopPropagation();event.preventDefault()}},true);
-}
-wireMiniplayer();
-/* 播放器模块（`frontend/src/player/`）要的设置、回执与舞台，和右键菜单里跟小窗有关的两项。 */
-configurePlayer({
-  settings:()=>appSettings,saveSettings:()=>saveSettings(),
-  toast:(text,options)=>toast({text},options),
-  loadSourceStatus:()=>loadSourceStatus(),offlineReason:key=>offlineReason(key),
-  posterUrl:it=>detailPosterUrl(it),stage:()=>$('#stage'),
-});
-configurePlayerMenu({
-  inMiniplayer:player=>miniplayerActive()&&miniplayerState.player===player,
-  kind:player=>miniplayerActive()&&miniplayerState.player===player?miniplayerState.kind:(stageMiniplayerMeta?.kind||'item'),
-  expand:()=>expandMiniplayer(),
-  toMiniplayer:()=>toggleMiniplayerShortcut(),
-});
-
-function placeItemDetail(anchor,above=false){
-  const stage=$('#stage'),main=$('#main'),combo=$('#combo');
-  if(stage.parentElement!==main)main.insertBefore(stage,combo);
-}
-
-/* 退出详情只有这一条路：关闭键、Escape、点浮窗外面走的都是它。每个表面自己那份
-   `closeDetail` 挂在关闭键上，按它一下就把该还原的列表、筛选和路径一并带回去；
-   另写一份必然漏掉其中一样。关闭键还没画出来时（深链刚落地）才走兜底那条。 */
-function dismissStage(){
-  const close=$('#closeStage');
-  if(close){close.click();return}
-  stageExit().then(()=>{
-    disposeStage(false,false,{miniplayer:false});route(detailReturnPath||'/');restoreRoute()});
-}
-function presentItemDetail(){
-  const stage=$('#stage');
-  if(stage.hidden)return;
-  stage.oncancel=event=>{event.preventDefault();dismissStage()};
-  /* 点浮窗外面就退出。原生模态里「外面」还是这个 dialog 自己——遮罩归它，落在遮罩上的
-     事件 target 就是它本人，所以判据取坐标不取 target：按 target 判，浮窗身上任何一块
-     不属于内容的地方都会被算成点了外面。只看坐标也不够：播放器全屏后铺满整个视口，
-     浮窗的矩形仍是详情排版里那块，点进度条右段或底部控制栏会落在矩形外，播放器被当成浮窗外面
-     关掉，全屏和播放一起断。所以两条都要成立：target 是 dialog 本身，坐标在浮窗外。 */
-  const outside=event=>{
-    if(event.target!==stage)return false;
-    const box=stage.getBoundingClientRect();
-    return event.clientX<box.left||event.clientX>box.right
-      ||event.clientY<box.top||event.clientY>box.bottom;
-  };
-  stage.onpointerdown=event=>{stageDismissArmed=outside(event)};
-  stage.onclick=event=>{if(stageDismissArmed&&outside(event))dismissStage()};
-  if(!stage.open)stage.showModal();
-}
-
-function scrollItemDetailIntoView(){
-  presentItemDetail();
-  scheduleStickySurfaces();
-}
-/* 换「JAV 默认封面」时，开着的详情把海报位跟同一张图一起换：挂载了走 player 的
-   海报层，脚本还在路上时改元素上的原生 poster，否则下一次开播前看到的还是旧
-   那张。开着的不是作品详情或这条没有可用的本地图时不动。 */
-function repaintDetailPoster(){
-  const it=stageMiniplayerMeta?.kind==='item'?stageMiniplayerMeta.item:null;
-  const poster=it?detailPosterUrl(it):'';
-  if(!poster)return;
-  const player=detailPlayer();
-  if(player&&!player.isDisposed())player.poster(poster);
-  else $('#vid')?.setAttribute('poster',poster);
-}
+/* 换「JAV 默认封面」时，开着的作品详情把海报位跟同一张图一起换。 */
+function repaintDetailPoster(){stageApi()?.repaintPoster()}
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
 const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
@@ -2623,7 +2270,7 @@ const gridHelpers={
 /* 打开一张作品卡：小窗开着时普通视频卡直接在小窗里换片，分卷／版次组各进自己的队列，
    其余打开详情。 */
 function openGridCard(it,anchor){
-  if(miniplayerTakesCard(it)){miniplayerPlay(it.id);return}
+  if(stageApi()?.miniplayerTakesCard(it)){stageApi().miniplayerPlay(it.id);return}
   if(it.part_group){openParts(it.part_group.seed_id,it.id,true,anchor);return}
   if(it.edition_group){openEditions(it.edition_group.seed_id,it.id,true,anchor);return}
   openItem(it.id,true,null,anchor);
@@ -2654,8 +2301,8 @@ async function runResourceOperation(it,operation){
 }
 const gridActions={
   open:(it,anchor)=>openGridCard(it,anchor),
-  openResource:(it,anchor)=>miniplayerTakesCard(it)?miniplayerPlay(it.id):openResourceCard(it.id,anchor),
-  openShort:it=>miniplayerTakesCard(it)?miniplayerPlay(it.id):openTok(it.id),
+  openResource:(it,anchor)=>stageApi()?.miniplayerTakesCard(it)?stageApi().miniplayerPlay(it.id):openResourceCard(it.id,anchor),
+  openShort:it=>stageApi()?.miniplayerTakesCard(it)?stageApi().miniplayerPlay(it.id):openTok(it.id),
   openShorts:()=>openTok(),
   openMix:(seedId,anchor)=>openMix(seedId,seedId,true,anchor),
   openEntity:(kind,name)=>openEntity(kind,name),
@@ -4130,9 +3777,9 @@ const followFeedProps=()=>({view:followView(),seed:followDiscoverySeed,revision:
   selectMode,selected:new Set(followSelected),photoSize:photoSize(),photoLayout:photoLayout(),
   imagesOnly:!!appSettings.followImagesOnly,helpers:followFeedHelpers,actions:followFeedActions});
 
-/* 关注详情整块归 React 岛 `follow-detail`（ADR-0031）：条目取数、媒体区、队列、侧栏与写操作都在
-   /dist/peach-react.js 里。壳留舞台本身——宿主 `.stagescroll`、进出场、小窗与 Video.js，JAV 详情
-   也在用这一套。换到组里另一条也走这里：舞台上的播放器要先拆，地址要换。 */
+/* 关注详情整块归舞台岛（`frontend/src/react/stage/`）：条目取数、媒体区、队列、侧栏、写操作与
+   播放器都在 /dist/peach-react.js 里。壳留来处与地址。换到组里另一条也走这里：舞台上的播放器
+   要先拆，地址要换。 */
 const followDetailActions={
   close:()=>closeFollowDetail(),
   openItem:(id,mediaIndex=null)=>openFollowDetail(id,true,mediaIndex,true),
@@ -4142,14 +3789,8 @@ const followDetailActions={
     followDetailReturnPath=followViewPath();
     closeFollowDetail();
   },
-  /* 小窗元数据、侧栏标签抽屉（这一条自己的标签）与氛围光、剧场模式跟着画出来的这份媒体走。 */
-  present:(item,kind)=>{
-    stageMiniplayerMeta={kind:'follow',item,title:item.title||'',sub:item.author||item.source_label||''};
-    renderFollowDrawer(sidebarTagCounts([{tags:followCardTags(item)}]));
-    $('#stage').classList.toggle('ambient-on',kind==='video'&&appSettings.ambientMode);
-    $('#stage').classList.toggle('theater-mode',kind==='video'&&appSettings.theaterMode);
-  },
-  mountPlayer:(video,item,media)=>mountStagePlayer('follow',video,item,media),
+  /* 侧栏标签抽屉跟着画出来的这一条走（这一条自己的标签）。 */
+  present:item=>{renderFollowDrawer(sidebarTagCounts([{tags:followCardTags(item)}]))},
   toast:(message,{undo}={})=>actionReceipt(message,{undo}),
   failure:(action,error)=>actionFailure(action,error),
 };
@@ -4160,39 +3801,15 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   const entering=!location.pathname.startsWith('/follow/item/');
   if(push&&entering&&!preserveReturn)followDetailReturnPath=location.pathname+location.search;
   if(!push&&!preserveReturn)followDetailReturnPath='/follow';
-  // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
-  closeMiniplayer();
-  if(!push)queueDetailResumeFromUrl('follow',id);
+  // 换详情不进小窗；小窗里放着别的条目也让位（舞台岛判），两个播放器不同时出声。
   disposeStage(false,false,{miniplayer:false});
   if(push)route(`/follow/item/${id}`);
-  await mountStageIsland('follow-detail',{id,mediaIndex,mediaView:followMediaView,
-    helpers:followFeedHelpers,actions:followDetailActions},surfaceToken(surfacePath()));
+  const stage=await loadStage(stageHost);
+  await stage.open({kind:'follow',id,mediaIndex,mediaView:followMediaView,
+    helpers:followFeedHelpers,actions:followDetailActions,resume:push?null:urlResume()});
+  scheduleStickySurfaces();
 }
 
-/* 两座详情岛进舞台的同一条路：宿主 `.stagescroll` 由壳建、岛往里画。窄屏下滚的是它，全站那条
-   覆盖式滚动条才有地方挂（轨道得是滚动容器的兄弟，而 `<dialog>` 在顶层，轨道挂到它父级上会
-   落进遮罩底下）；「接着看」是 `.sgrid` 的兄弟，也得一起装进来，否则它会被裁在浮窗外面。 */
-async function mountStageIsland(name,props,surface){
-  placeItemDetail(detailOriginAnchor,detailOriginAbove);
-  showDetailLoading();
-  const host=document.createElement('div');host.className='stagescroll';
-  stageIslandHost=host;stageIslandName=name;
-  await mountIsland(name,host,props,{
-    isCurrent:()=>surfaceCurrent(surface)&&stageIslandHost===host,
-    /* 同 `paintStage`：骨架抬成一层淡出，标题两行跟着这一次揭示。宿主画之前才放进舞台，骨架
-       与内容只换一次。舞台是带着骨架开的，骨架里没有可聚焦的元素，`showModal()` 只能把焦点
-       给 dialog 本身；内容到了再照它的规矩交给第一个控件（关闭键）。 */
-    reveal:(_el,write)=>{
-      const stage=$('#stage');
-      revealSkeleton(stage,()=>{
-        stage.replaceChildren(host);write();
-        if(document.activeElement===stage)stage.querySelector('#closeStage')?.focus();
-      });
-      revealTexts(stage,':scope>:not(.skelfade) [data-reveal-line]');
-    }});
-  // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
-  if(stageIslandHost===host&&host.isConnected)scrollItemDetailIntoView();
-}
 
 /* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会取回第一页——
    「加载更多」出来的条目会一起消失。列表岛还挂着就只把地址栏上的那一份推回去（没变就是同一个
@@ -4206,12 +3823,6 @@ async function closeFollowDetail(){
   readFollowView();pushFollowFeed({view:followView()});
 }
 
-/* 两座详情岛画好的 `<video>` 交给播放器模块挂 Video.js（`frontend/src/player/`）。壳这一层给的是
-   舞台自己的状态：续播时刻、舞台收尾登记，以及小窗有没有把播放器接走。`autoplay` 不给就按设置。 */
-function mountStagePlayer(kind,video,item,media,{autoplay}={}){
-  return mountPlayer(video,{kind,item,media,autoplay,resume:takeDetailResume(kind,item.id),
-    register:onStageDispose,handedOff:player=>miniplayerState.player===player});
-}
 
 async function openFollow(push=true,renderForDetail=false){
   releaseHoverPreviews();disposeStage(false);enterManagementSurface();
@@ -5896,7 +5507,7 @@ function catalogCardRatio(){
 /* 挂着卡片网格的几处：目录 `#grid`、资料页作品区、作品详情（接着看那一排在它里面，版式、
    快进秒数与选择态同名递进去）。 */
 function gridIslandHosts(){
-  return [$('#grid'),entityBodyCurrent()?entityBodyHost:null,stageIslandName==='item-detail'?stageIslandHost:null]
+  return [$('#grid'),entityBodyCurrent()?entityBodyHost:null]
     .filter(host=>host&&islandMounted(host));
 }
 /* 版式、「JAV 默认封面」、快进秒数这些展示层的设置变了，只推给正挂着的网格重画，不重取。 */
@@ -6273,13 +5884,14 @@ function hasReturnSurface(){
 function fillIdleCatalog(){
   const grid=$('#grid');
   if(islandMounted(grid)||catalogPainting)return;
-  if(!grid.querySelector('.catalog-skeleton')&&!$('#stage').querySelector('[data-skeleton="detail"]'))return;
+  const deepLink=bootDetailDeepLink;bootDetailDeepLink=false;
+  if(!grid.querySelector('.catalog-skeleton')&&!deepLink)return;
   const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
   void paintCatalogGrid(surfaceToken(surfacePath()));
 }
-/* 作品详情整块归 React 岛 `item-detail`（ADR-0031）：条目与队列的取数、播放区、侧栏、接着看与
-   写操作都在 /dist/peach-react.js 里。壳留舞台本身——宿主、进出场、小窗与 Video.js，关注详情
-   也在用这一套——以及来处：从哪一张卡进来、关掉回哪一份列表、顶栏换成哪条作品的上下文。
+/* 作品详情整块归舞台岛（`frontend/src/react/stage/`）：条目与队列的取数、播放区、侧栏、接着看、
+   写操作与播放器都在 /dist/peach-react.js 里。壳留来处：从哪一张卡进来、关掉回哪一份列表、顶栏
+   换成哪条作品的上下文。
    队列里换一条也走 `openItem`：舞台上的播放器要先拆，地址要换。 */
 const itemDetailHelpers={
   badgeHtml:(location,cost,cls)=>srcBadge(location,cost,cls),
@@ -6303,18 +5915,12 @@ const itemDetailHelpers={
 };
 const itemDetailActions={
   close:()=>closeItemDetail(),
-  /* 小窗元数据、顶栏的实体上下文、氛围光与剧场模式跟着画出来的这一条走；队列的地址也在这时
-     推，停在哪一条要等岛定下来。 */
+  /* 顶栏的实体上下文跟着画出来的这一条走；队列的地址也在这时推，停在哪一条要等岛定下来。 */
   present:item=>{
-    cache([item]);
-    stageMiniplayerMeta={kind:'item',item,title:item.title||item.name||'',
-      sub:(item.performers||[])[0]||item.creator||'未归属'};
+    cache([item]);presentedItem=item;
     const returnBars=detailReturnBarsContext;
     barsContext={type:'item',id:item.id,filters:returnBars?.type==='entity'
       ? {...returnBars.filters}:emptyEntityFilters()};
-    const stage=$('#stage');delete stage.dataset.c;
-    stage.classList.toggle('ambient-on',appSettings.ambientMode);
-    stage.classList.toggle('theater-mode',appSettings.theaterMode);
     if(pendingQueueRoute){route(`${pendingQueueRoute}/${item.id}`);pendingQueueRoute=null}
     buildBars();
   },
@@ -6328,10 +5934,9 @@ const itemDetailActions={
     disposeStage(false);
   },
   openQueueItem:(queue,id,push=true)=>void openQueue(queue.kind,queue.kind==='playlist'?queue.playlistId:queue.seedId,id,push),
-  mountPlayer:(video,item,media,options)=>mountStagePlayer('item',video,item,media,options),
   // 盘回来了就按正常路径重开，不在半路挂播放器；开着的队列跟着留下。
   reopen:()=>{
-    const it=stageMiniplayerMeta?.kind==='item'?stageMiniplayerMeta.item:null;
+    const it=presentedItem;
     if(!it)return;
     const queue=activeQueue;
     if(queue)void openQueue(queue.kind,queue.kind==='playlist'?queue.playlistId:queue.seedId,it.id,false);
@@ -6377,9 +5982,7 @@ async function openItem(id,push=true,queue=null,anchor=null,queuePush=false){
   if(!returnSurfaceReady)fillIdleCatalog();
   const returnBars=barsContext.type==='item'?detailReturnBarsContext:cloneBarsContext(barsContext);
   if(push)detailReturnPath=location.pathname+location.search;
-  // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
-  closeMiniplayer();
-  if(!push&&id!=null)queueDetailResumeFromUrl('item',id);
+  // 换详情不进小窗；小窗里放着别的条目也让位（舞台岛判），两个播放器不同时出声。
   disposeStage(false,true,{miniplayer:false});
   detailOriginAnchor=origin;detailOriginAbove=above;detailReturnNeedsRestore=needsReturnRestore;
   detailReturnBarsContext=returnBars;
@@ -6387,12 +5990,15 @@ async function openItem(id,push=true,queue=null,anchor=null,queuePush=false){
   pendingQueueRoute=queue&&queuePush
     ? `${QUEUE_ROUTES[queue.kind]}/${queue.kind==='playlist'?queue.playlistId:queue.seedId}`:null;
   if(push&&!queue)route('/item/'+id);
-  await mountStageIsland('item-detail',{
+  const stage=await loadStage(stageHost);
+  await stage.open({kind:'item',
     id,queue,relatedLimit:appSettings.relatedLimit>0?+appSettings.relatedLimit:0,
     helpers:itemDetailHelpers,actions:itemDetailActions,
     grid:{helpers:gridHelpers,actions:gridActions,cache},
     layout:catalogGridLayout(),selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,
-  },surfaceToken(surfacePath()));
+    resume:push||id==null?null:urlResume(),
+  });
+  scheduleStickySurfaces();
 }
 /* 关掉作品详情：退场动画、拆舞台，再把来处的地址、筛选与顶栏带回去。列表还在下面就不重画；
    深链直接进的详情下面没有东西，这时才照地址重建。 */
@@ -6407,10 +6013,9 @@ async function closeItemDetail(){
   else{buildBars();if(location.pathname==='/playlists')openPlaylists(false)}
 }
 
-/* 观看上报在播放器模块里（`frontend/src/player/telemetry.ts`）。壳这一层只接两件事：沉浸模式放完
-   接着放下一条，舞台拆掉时停表。 */
+/* 沉浸模式的观看上报（`frontend/src/player/telemetry.ts`）：放完接着放下一条。 */
 function wireTelemetry(it,v,sel){
-  playerWireTelemetry(it,v,{...sel,onEnded:()=>{if(!$('#tok').hidden)tokNext(1)},register:onStageDispose});
+  playerWireTelemetry(it,v,{...sel,onEnded:()=>{if(!$('#tok').hidden)tokNext(1)}});
 }
 
 /* ── 短片全屏 ── */
@@ -6538,7 +6143,7 @@ addEventListener('resize',()=>{
 });
 async function openTok(startId,push=true){
   if(push)route('/immerse');
-  closeMiniplayer();
+  stageApi()?.closeMiniplayer();
   $('#tok').hidden=false;$('#tok').classList.add('tok-idle');
   document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
   try{
@@ -6733,7 +6338,6 @@ $('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();$('#tok').hidden=
   [...tokSlides].forEach(disposeTokSlide);setTokStage(false);
   tokSwitching=false;document.body.style.overflow='';openHome()};
 addEventListener('pagehide',()=>{
-  cancelDetailStream();
   tokSlides.forEach(slide=>cancelStreamSession(slide.session));
 });
 let wl=0;
@@ -6835,17 +6439,12 @@ $('#tok').addEventListener('touchcancel',()=>{
       if(kind==='dislike'&&r.feedback==='dislike')setTimeout(()=>tokNext(1),260)
     }catch(error){actionFailure('更新反馈',error)}finally{setActionBusy(button,false)}}});
 
-/* 当前该响应播放快捷键的 video：沉浸模式优先，其次详情播放器，都没开就返回 null。
-   直接操作原生元素而不是 Video.js 实例：两边的 Video.js 读的都是这个元素，
+/* 当前该响应播放快捷键的 video：沉浸模式优先，其次舞台（详情里的，没开详情就是小窗里的），都没开
+   就返回 null。直接操作原生元素而不是 Video.js 实例：两边的 Video.js 读的都是这个元素，
    沉浸模式在播放器脚本拉不到时还是裸 video，一条实现全盖住。 */
 function activeVideo(){
   if(!$('#tok').hidden)return tokVideo();
-  const stage=$('#stage');
-  if((!stage||stage.hidden)&&miniplayerActive())return miniplayerVideo();
-  // 不能按 #vid 取：Video.js 挂载后会把 <video id="vid"> 换成同 id 的
-  // <div class="video-js">，真正的媒体元素变成 #vid_html5_api。给那个 div 写
-  // currentTime 只是挂了个同名属性——读得回来、播放却毫无变化，失败得毫无声息。
-  return stage&&!stage.hidden?stage.querySelector('video'):null;
+  return stageApi()?.activeVideo()||null;
 }
 function isTypingTarget(el){
   return !!el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable);
@@ -6861,14 +6460,16 @@ document.addEventListener('keydown',e=>{
     if(!$('#settingsPanel').hidden){openSettings(false);return}
     if(!$('#searchMenu').hidden){hideSearchMenu();return}
     if(!$('#tok').hidden){$('#tokClose').click();return}
-    const st=$('#stage');if(st&&!st.hidden){const c=$('#closeStage');if(c){c.click();return}}
+    /* 详情开着：Escape 归舞台。焦点在浮窗里时舞台自己已经收了这一下；里层弹层（标签搜索框、右键
+       菜单）先收掉的会 `preventDefault`，那一下只关弹层。焦点落在浮窗外（body）时在这里转给舞台。 */
+    if(stageOpen()){if(!e.defaultPrevented){e.preventDefault();stageApi().requestClose()}return}
     if($('#drawer').classList.contains('open')){openDrawer(false);return}
     if(selectMode||selected.size||followSelected.size){setSelectMode(false,true);return}
     return;
   }
   // 输入态不抢键：搜索框、标签弹窗和任何可编辑区域里的按键归它们自己处理。
   if(isTypingTarget(e.target)||e.ctrlKey||e.metaKey||e.altKey)return;
-  const imageDots=[...document.querySelectorAll('#stage:not([hidden]) [data-follow-image-dots] [data-follow-image-item]')];
+  const imageDots=[...document.querySelectorAll('#stage[open] [data-follow-image-dots] [data-follow-image-item]')];
   if(imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')){
     e.preventDefault();
     const current=Math.max(0,imageDots.findIndex(dot=>dot.getAttribute('aria-current')==='true'));
@@ -6879,7 +6480,7 @@ document.addEventListener('keydown',e=>{
   if(video){
     if(e.key==='t'||e.key==='T'){
       // 影院模式是详情舞台的版式，小窗里没有这个东西可切。
-      e.preventDefault();if(!$('#stage').hidden)applyTheaterMode(!appSettings.theaterMode);return;
+      e.preventDefault();stageApi()?.toggleTheater();return;
     }
     if(e.key==='ArrowLeft'||e.key==='ArrowRight'){
       e.preventDefault();
@@ -6893,7 +6494,7 @@ document.addEventListener('keydown',e=>{
     }
     if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control');return}
     if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control');return}
-    if(e.key==='i'||e.key==='I'){e.preventDefault();toggleMiniplayerShortcut();return}
+    if(e.key==='i'||e.key==='I'){e.preventDefault();stageApi()?.toggleMiniplayer();return}
   }
   // 沉浸模式：纵向切片、横向快进退，和竖屏短视频的手势方向保持一致。
   if(!$('#tok').hidden){if(e.key==='ArrowDown')tokNext(1);if(e.key==='ArrowUp')tokNext(-1)}
@@ -6905,7 +6506,7 @@ document.addEventListener('keydown',e=>{
    自动刷新只在首页空闲态执行，不打断播放、搜索、选择或其他页面。 */
 async function refreshAll(automatic=false){
   if(automatic&&(document.hidden||!isCatalogPath(decodeURIComponent(location.pathname))||
-      !$('#stage').hidden||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
+      stageOpen()||!$('#tok').hidden||selectMode||selected.size||document.activeElement===$('#q')))return false;
   if(!$('#stats').hidden){
     /* 管理区的换批行为写在路由表的 `refresh` 上：`reopen` 重开自己，
        `skip` 不参与（追更页重画要联网，只能由它自己的按钮触发），

@@ -1,6 +1,6 @@
 /* 作品详情岛：停在队列哪一条、身份与标签怎么分组、首屏要转去哪、交给壳的是什么、写完之后缓存与回执怎么变。
  *
- * 从目录进出不重取、Video.js 接管岛画的 `<video>`、脱盘说明、四种队列、拖动排序、保存 Mix、接着看与手机
+ * 从目录进出不重取、舞台在媒体框里挂 Video.js、脱盘说明、四种队列、拖动排序、保存 Mix、接着看与手机
  * 布局要真浏览器，在 `frontend/e2e/item-detail.test.ts` 里量；尺寸与色板在 `e2e/design.test.ts`。 */
 import { notifyManager, QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
 import { act } from 'react';
@@ -204,12 +204,13 @@ describe('首屏取数', () => {
 });
 
 describe('交给壳的', () => {
-  it('画出来报一次 present；岛画的 `<video>` 交给 mountPlayer，不自动播就不带 autoplay', async () => {
+  it('画出来报一次 present；播放区的媒体框交给 mountPlayer，不自动播就不带 autoplay', async () => {
     serve();
     const { host, actions: done } = await show(item(1));
     expect(done.present).toHaveBeenCalledTimes(1);
-    const video = host.querySelector('video#vid');
-    expect(done.mountPlayer).toHaveBeenCalledWith(video, expect.objectContaining({ id: 1 }), null, undefined);
+    const frame = host.querySelector('[data-item-media="video"]');
+    expect(done.mountPlayer).toHaveBeenCalledWith(frame, expect.objectContaining({ id: 1 }), null, undefined);
+    expect(host.querySelector('video')).toBeNull();
   });
 
   it('没挂载与在线拦截不挂播放器；计费来源点了说明才挂，带 autoplay', async () => {
@@ -221,7 +222,7 @@ describe('交给壳的', () => {
     const metered = await show(item(2, { cost: 'metered' }));
     expect(metered.actions.mountPlayer).not.toHaveBeenCalled();
     await click(metered.host.querySelector('[data-item-gate="metered"]'));
-    expect(metered.actions.mountPlayer).toHaveBeenCalledWith(expect.any(HTMLVideoElement), expect.objectContaining({ id: 2 }), null,
+    expect(metered.actions.mountPlayer).toHaveBeenCalledWith(metered.host.querySelector('[data-item-media="metered"]'), expect.objectContaining({ id: 2 }), null,
       { autoplay: true });
   });
 

@@ -1,7 +1,7 @@
 /* 关注详情（ADR-0031）：舞台里那一整块——媒体区、右侧队列与侧栏。
  *
- * 舞台（`<dialog id="stage">`）、它的进出场、小窗与 Video.js 都归壳，JAV 详情也在用；这里只画
- * 舞台里的内容，视频元素画好之后经 `actions.mountPlayer` 交给壳。媒体区、侧栏与队列的结构照
+ * 舞台（`<dialog id="stage">`）、它的进出场、小窗与 Video.js 都归舞台岛（`../stage/`），JAV 详情
+ * 也在用；这里只画舞台里的内容，视频的媒体框画好之后经 `actions.mountPlayer` 交给舞台挂播放器。媒体区、侧栏与队列的结构照
  * JAV 详情那一套（`.sgrid` / `.vwrap` / `.side` / `.mixqueue`，样式在 `web/css/13-stage.css`
  * 与 `15-detail.css`，两边共用，输出遗留类名）；关注自己的那几块一律 `data-*`，样式在
  * `follow-detail.css`。
@@ -129,14 +129,16 @@ function MediaFrame({ item, media, helpers, actions, onMedia, issues }: {
   const [shown, setShown] = useState(imageSrc);
 
   /* 播放器只随这一块媒体区挂一次、卸一次：写完状态换的是同一条的新对象，不能因此拆了重挂。
-     这一块本身按「条目:媒体」换，换条目或换媒体时整块重建，清理就在那一刻跑。 */
-  const videoRef = useRef<HTMLVideoElement>(null);
+     这一块本身按「条目:媒体」换，换条目或换媒体时整块重建，清理就在那一刻跑。`<video>` 由舞台
+     建在这块框里（同作品详情），报错时回到这里说明。 */
   const mounting = useRef({ item, selected });
+  const failed = useRef(issues.failed);
+  failed.current = issues.failed;
   useLayoutEffect(() => {
-    const node = videoRef.current;
-    if (!node) return;
-    return actions.mountPlayer(node, mounting.current.item, mounting.current.selected);
-  }, [actions]);
+    const node = frame.current;
+    if (!node || !playable) return;
+    return actions.mountPlayer(node, mounting.current.item, mounting.current.selected, { onError: () => failed.current() });
+  }, [actions, playable]);
 
   /* object-fit:contain 之后图片左右的黑边随图片比例和窗口变。箭头落在黑边的视觉中心，不永远
      贴着容器边缘；黑边太窄时才退回固定的安全内边距。 */
@@ -165,10 +167,7 @@ function MediaFrame({ item, media, helpers, actions, onMedia, issues }: {
       // oxlint-disable-next-line shadcn/no-inline-styles -- 画框比例与箭头内距是按这一组图的尺寸和当前视口算出来的
       style={{ '--follow-frame-ratio': frameRatio ? frameRatio.toFixed(4) : undefined, '--follow-image-arrow-inset': inset === null ? undefined : `${inset}px` } as CSSProperties}>
       <CloseStage onClose={actions.close} />
-      {playable ? (
-        <video ref={videoRef} className="video-js vjs-big-play-centered" controls playsInline preload="metadata"
-          poster={item.thumb_url || undefined} onError={issues.failed} />
-      ) : imageSrc ? (
+      {playable ? null : imageSrc ? (
         <img data-follow-detail-poster="" data-zoomable={slides.length ? '' : undefined} src={shown} alt={item.title}
           referrerPolicy="no-referrer"
           onClick={slides.length ? () => void openPhotoLightbox(Math.max(0, position), slides) : undefined}

@@ -1,8 +1,9 @@
 /* 作品详情（ADR-0031）：舞台里那一整块——播放区、右侧队列、侧栏与下方的「接着看」。
  *
- * 舞台（`<dialog id="stage">`）、它的进出场、小窗与 Video.js 都归壳，关注详情也在用；这里只画
- * 舞台里的内容，视频元素画好之后经 `actions.mountPlayer` 交给壳。点身份、标签、地区回列表或
- * 资料页，队列里换一条，都经壳：舞台上的播放器要先拆、地址与顶栏上下文要换。
+ * 舞台（`<dialog id="stage">`）、它的进出场、小窗与 Video.js 都归舞台岛（`../stage/`），关注详情
+ * 也在用；这里只画舞台里的内容，播放区的媒体框画好之后经 `actions.mountPlayer` 交给舞台挂播放器。
+ * 点身份、标签、地区回列表或资料页，队列里换一条，都经壳：舞台上的播放器要先拆、地址与顶栏上下文
+ * 要换。
  *
  * 写操作（评分、标签、反馈、稍后看、高清目标、偏好、播放列表排序与移出）都在岛里发，成功后
  * 把服务端回的那几个字段换进 `['item', id]`，目录网格缓存里的同一张卡一起换，不重读列表。 */
@@ -105,16 +106,18 @@ function MediaFrame({ item, gate, helpers, actions }: {
 }) {
   /* 计费来源先挡一层说明，点了才拉流；没挂载与在线拦截的那两种不挂播放器。 */
   const [started, setStarted] = useState<'auto' | 'clicked' | ''>(gate ? '' : 'auto');
-  const videoRef = useRef<HTMLVideoElement>(null);
+  /* 播放器挂在这块框里，`<video>` 由舞台建：Video.js 会把它包进自己的 div，从小窗展开回来时
+     整个实例还要搬进来，那一截 DOM 不归 React。 */
+  const frameRef = useRef<HTMLDivElement>(null);
   const mounting = useRef(item);
   useLayoutEffect(() => {
-    const node = videoRef.current;
+    const node = frameRef.current;
     if (!node || !started) return;
     return actions.mountPlayer(node, mounting.current, null, started === 'clicked' ? { autoplay: true } : undefined);
   }, [actions, started]);
   const badge = helpers.badgeHtml(item.location || '', item.cost || '', 'srcbig');
   return (
-    <div className="vwrap" data-item-media={gate || 'video'}>
+    <div ref={frameRef} className="vwrap" data-item-media={gate || 'video'}>
       <CloseStage onClose={actions.close} />
       {gate === 'offline' ? <OfflineGate item={item} badge={badge} helpers={helpers} actions={actions} />
         : gate === 'online' ? (
@@ -130,8 +133,6 @@ function MediaFrame({ item, gate, helpers, actions }: {
             <span>点此开始拉流 · {fmtSize(item.size || 0)}</span>
           </div>
         ) : null}
-      <video ref={videoRef} id="vid" className="video-js vjs-big-play-centered" controls playsInline
-        preload={gate ? 'none' : 'metadata'} hidden={gate === 'offline' || gate === 'online' || (gate === 'metered' && !started)} />
     </div>
   );
 }

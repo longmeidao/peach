@@ -23,7 +23,10 @@
       "sgrid", "mixgrid", "vwrap", "closestage", "video-js", "vjs-big-play-centered", "side", "sidecontent", "stitle", "smeta",
       "mono", "stags", "tg", "mav", "externallink", "fb", "later", "seen", "dislike", "dur",
       "mixqueue", "mixqueuehead", "mixqueueactions", "mixlist", "mixrow", "mixitem", "current", "mixitempic", "mixitemtext",
-      "mixgrouplabel", "mixitemmeta", "javedition", "censored", "chip", "geist-button", "primary"] }],
+      "mixgrouplabel", "mixitemmeta", "javedition", "censored", "chip", "geist-button", "primary",
+      "stage", "skelfade", "stagescroll", "miniplayer", "miniplayercard", "miniplayerframe", "miniplayerscrim", "miniplayerbtn",
+      "miniplayerexpand", "miniplayerclose", "miniplayerseek", "miniplayerplay", "miniplayertime", "miniplayerinfo",
+      "miniplayertitle", "miniplayersub"] }],
     "shadcn/require-static-classes": "error"
   }
 }

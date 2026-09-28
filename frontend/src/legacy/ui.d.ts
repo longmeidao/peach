@@ -77,6 +77,13 @@ export declare function popCount(el: HTMLElement | null, text: string): void;
  *  徽标的键记在模块里，所以整块重建的那一行也分得清「换了个数」和「刚出现」。 */
 export declare function popBadges(root: Element | null, scope?: string): void;
 
+/** 两枚字形叠在一格里，换态只改容器上的 `data-icon-state`（`setIconSwap`）。 */
+export declare function iconSwapHtml(a: string, b: string, state?: 'a' | 'b',
+  options?: { className?: string; iconClass?: string; label?: string }): string;
+export declare function setIconSwap(root: Element | null, state: 'a' | 'b' | boolean): Element | null;
+/** 一段标题从模糊里逐行揭示出来：`selector` 在 `root` 里选中的那几行按序错峰。 */
+export declare function revealTexts(root: Element | null, selector?: string): void;
+
 /** 骨架落进 DOM 之后按实际尺寸补齐到盖住视口，并挂上显示门槛（`.skeleton-awaiting`）：
  *  门槛之前就取完的，这张骨架从未被看见。 */
 export declare function fitSkeleton(root: Element | null): void;

@@ -746,46 +746,11 @@ class WebUiSourceTests(unittest.TestCase):
     def test_closing_the_detail_overlay_waits_for_its_exit_before_tearing_it_down(self):
         """显式关闭详情的每条路径都先 `stageExit()` 演完退场，再拆解舞台。
 
-        次序是硬的：拆解那一步把 `#stage` 放回 `#main` 的固定槽位，之后重画列表才不会
-        把它一起删掉。所以动画只插在拆解前面，拆解与重画自身的先后原样不动。
-
-        等待有上限，`animation` 被 reduced motion 一类的规则关掉时 animationend 不会来；
-        拆解入口无条件摘掉 `closing`，被别的路径中途拆掉的浮窗下一次仍从进场那一帧起。
+        退场动画、等待上限与减弱动效的判据归舞台岛（`frontend/src/react/stage/stage.tsx`）；
+        关闭键、Escape 与点浮窗外面都走壳的 `closeDetail`，由 e2e `stage.test.ts` 量。
         """
-        self.assertPageContains("stage.classList.add('closing')")
-        self.assertPageContains("stage.classList.remove('closing')")
-        self.assertPageContains("timer=setTimeout(done,380)")
-        self.assertPageContains(
-            "matchMedia('(prefers-reduced-motion: reduce)').matches)return Promise.resolve()")
         self.assertEqual(2, self.app_js.count("await stageExit();"),
                          "作品与关注两个 closeDetail 各等一次退场")
-        self.assertPageContains("  stageExit().then(()=>{\n"
-                                "    disposeStage(false,false,{miniplayer:false});",
-                                "关闭键还没画出来时走的兜底那条也要演完退场")
-
-    def test_clicking_outside_the_detail_overlay_leaves_it(self):
-        """点浮窗外面退出详情，和关闭键、Escape 走同一条路。
-
-        每个表面自己那份 `closeDetail` 挂在关闭键上，按它一下就把该还原的列表、筛选
-        和路径一并带回去；退出另写一份必然漏掉其中一样，所以三个入口都按那一下。
-
-        判「外面」取坐标不取事件 target：原生模态里遮罩归 dialog 自己，落在遮罩上的
-        target 就是它本人，而浮窗 `overflow:auto` 的滚动条也长在它身上，按 target 判
-        会把拖一下滚动条也算成点了外面。按下那一刻也要在外面——详情里进度条、音量条和
-        队列都能拖，从控件上拖出边界再松手同样会收到一次 click。
-
-        坐标之外还要求 target 是 dialog 本身：播放器全屏时铺满视口，浮窗矩形不变，
-        点进度条右段会落在矩形外，只看坐标就会关掉详情、连带退出全屏并停播。
-        """
-        self.assertPageContains("const outside=event=>{\n    if(event.target!==stage)return false;",
-                                "全屏播放器里的点击不算浮窗外面")
-        self.assertPageContains("stage.oncancel=event=>{event.preventDefault();dismissStage()};")
-        self.assertPageContains("stage.onpointerdown=event=>{stageDismissArmed=outside(event)};")
-        self.assertPageContains(
-            "stage.onclick=event=>{if(stageDismissArmed&&outside(event))dismissStage()};")
-        self.assertPageContains("const box=stage.getBoundingClientRect();")
-        self.assertPageContains("stage.classList.remove('closing');stageDismissArmed=false;",
-                                "拆解舞台时把武装状态一并清掉")
 
     def test_opening_a_detail_leaves_the_surface_bars_where_they_were(self):
         """详情不重画顶部三层、标签条和抽屉；回到列表时数据没变也不重画。
@@ -3008,10 +2973,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("target.classList.remove('skeleton-awaiting');")
         self.assertPageContains("if(container.querySelector('.skeleton-awaiting')){write();return}")
         self.assertPageContains(".skeleton-awaiting{visibility:hidden}")
-        # 独立于整页骨架的计数与详情也必须经过同一个门槛；「接着看」那一排由作品详情岛调同一个
-        # `fitSkeleton`。
-        for call in ("fitSkeleton(count);", "fitSkeleton(stage);"):
-            self.assertPageContains(call)
+        # 独立于整页骨架的计数也必须经过同一个门槛；详情骨架由舞台岛、「接着看」那一排由作品详情岛
+        # 调同一个 `fitSkeleton`。
+        self.assertPageContains("fitSkeleton(count);")
 
     def test_unmatched_routes_do_not_leave_an_orphan_skeleton(self):
         """没有请求的未知地址不能显示一张永远等不到内容的目录骨架。"""
@@ -3272,10 +3236,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 所以快捷键只认 video 元素，两边共用一条实现。
         self.assertPageContains("function activeVideo()")
         self.assertPageContains("if(!$('#tok').hidden)return tokVideo()")
-        # Video.js 挂载后 #vid 是 <div class="video-js">，真媒体元素是 #vid_html5_api。
-        # 按 id 取会静默失败：给 div 写 currentTime 读得回来，播放却纹丝不动。
-        self.assertPageContains("stage&&!stage.hidden?stage.querySelector('video'):null")
-        self.assertPageLacks("return stage&&!stage.hidden?$('#vid'):null")
+        # 详情与小窗里那一个由舞台岛给（`stage-player.ts` 的 `activeStageVideo`）。
         self.assertPageContains("seekVideoBy(video,appSettings.seekSeconds*(e.key==='ArrowRight'?1:-1))")
         self.assertPageContains("toggleVideoPlayback(video)")
 
@@ -3377,7 +3338,8 @@ class WebUiSourceTests(unittest.TestCase):
           document 上那条监听留着。
 
         契约不是「写成哪几行」，而是三条出口：全局监听全站唯一、按元素调用的
-        wire* 不往 window/document 上挂无人撤销的监听、舞台销毁跑一张收尾登记表。
+        wire* 不往 window/document 上挂无人撤销的监听、舞台拆掉时播放器跟着销毁——
+        最后一条归舞台岛，观看上报收到 emptied 就停表（vitest `player.test.ts`）。
         """
         app = self.app_js
         self.assertEqual(app.count("window.addEventListener('mouseup'"), 0,
@@ -3389,12 +3351,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("window.addEventListener", drag,
                          "wireDrag 按元素调用，在里面挂全局监听就是按元素泄漏")
         self.assertNotIn("document.addEventListener", drag)
-
-        self.assertPageContains("function onStageDispose(dispose)")
-        self.assertPageContains("function runStageDisposers()")
-        dispose = app[app.index("function disposeStage("):]
-        dispose = dispose[:dispose.index("\nfunction placeItemDetail")]
-        self.assertIn("runStageDisposers();", dispose, "舞台销毁必须跑收尾登记表")
         # 遥测的停表（`emptied` 收尾、向舞台登记撤销）在播放器模块里，
         # `frontend/test/player.test.ts` 按行为验。
 
@@ -3403,8 +3359,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
-        self.assertPageContains("video.pause();video.removeAttribute('src');video.load();video.remove()")
-        self.assertPageContains("document.body.classList.remove('detail-open');activeQueue=null;pendingQueueRoute=null;")
         self.assertPageContains("detailOriginAnchor=null;detailOriginAbove=false;detailReturnNeedsRestore=false")
         self.assertPageContains("scheduleStickySurfaces();")
         # 关闭键画在作品详情岛里，交回壳的 `close`。
@@ -3439,9 +3393,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_changing_the_jav_image_preference_repaints_the_open_detail(self):
         cover_body = self.app_js.split("wireIconSwitch(mount,'data-jav-image-choice',choice=>{", 1)[1].split('});', 1)[0]
         self.assertIn("repaintDetailPoster();", cover_body)
-        repaint = self.app_js.split('function repaintDetailPoster(){', 1)[1].split('\n}', 1)[0]
-        self.assertIn("player.poster(poster)", repaint)
-        self.assertIn("$('#vid')?.setAttribute('poster',poster)", repaint)
+        self.assertPageContains("function repaintDetailPoster(){stageApi()?.repaintPoster()}")
 
     def test_the_player_script_is_fetched_on_demand_instead_of_in_the_first_paint(self):
         """video.js 676KB，只有开始看片才用得上，和 Swiper 同一口径不进首屏。
@@ -3649,7 +3601,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(e.key===' '||e.key==='k'||e.key==='K')")
         self.assertPageContains("if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control')")
         self.assertPageContains("if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control')")
-        self.assertPageContains("if(e.key==='i'||e.key==='I'){e.preventDefault();toggleMiniplayerShortcut();return}")
         # 提示外观与音量百分比共用一套毛玻璃，音量提示抬到控制条上方。
         self.assertPageContains(".vjs-peach-tooltip{position:absolute;z-index:5;right:50%;bottom:calc(100% + 12px)")
         self.assertPageContains("backdrop-filter:blur(16px)")
@@ -3670,11 +3621,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="miniplayerSetting"')
         self.assertPageContains("appSettings.miniplayer=appSettings.miniplayer!==false;")
         self.assertPageContains("$('#miniplayerSetting').checked=appSettings.miniplayer;")
-        self.assertPageContains('<aside class="miniplayer" id="miniplayer" data-corner="br" aria-label="小窗播放" hidden>')
-        self.assertPageContains('id="miniplayerExpand" aria-label="展开到详情" aria-keyshortcuts="i"')
-        self.assertPageContains('id="miniplayerClose" aria-label="关闭小窗"')
-        self.assertPageContains('id="miniplayerPlay" aria-label="暂停" aria-keyshortcuts="k"')
-        self.assertPageContains('<button type="button" class="miniplayerinfo" id="miniplayerInfo" aria-label="展开到详情">')
         self.assertPageContains("--layer-miniplayer:900; --layer-dialog:1000;")
         self.assertPageContains(".miniplayer{position:fixed;z-index:var(--layer-miniplayer);width:min(400px,calc(100vw - 32px))")
         self.assertPageContains('.miniplayer[data-corner="tr"]{right:16px;top:calc(var(--topH) + 16px)}')
@@ -3684,18 +3630,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("min-height:76px")
         # 播放器搬家而不是销毁：只有显式关闭、换详情和删条目传 miniplayer:false。
         self.assertPageContains("function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={})")
-        self.assertPageContains("if(!toMini&&!owned)cancelDetailStream();")
         self.assertPageContains("disposeStage(false,true,{miniplayer:false});")
         self.assertPageContains("disposeStage(false,false,{miniplayer:false});")
         self.assertPageContains("disposeStage(true,false,{miniplayer:false});")
-        # 小窗开着时普通视频卡直接换片；展开回详情从同一时刻接着放，深链 `?t=` 走同一口子。
-        self.assertPageContains("function miniplayerTakesCard(it)")
-        self.assertPageContains("if(miniplayerTakesCard(it)){miniplayerPlay(it.id);return}")
-        self.assertPageContains("queueDetailResume(kind,item.id,player.currentTime(),!player.paused());")
-        # 拖到哪个象限就吸到哪个角；键盘 k / i 在小窗里同样有效。
-        self.assertPageContains("const corner=(rect.top+rect.height/2<innerHeight/2?'t':'b')+(rect.left+rect.width/2<innerWidth/2?'l':'r');")
-        self.assertPageContains("if((!stage||stage.hidden)&&miniplayerActive())return miniplayerVideo();")
-        self.assertPageContains("function toggleMiniplayerShortcut()")
+        # 小窗开着时普通视频卡直接换片（判据在 `stage-player.ts`）。
+        self.assertPageContains("if(stageApi()?.miniplayerTakesCard(it)){stageApi().miniplayerPlay(it.id);return}")
 
     def test_the_small_window_gets_its_own_seek_keys(self):
         """小窗里播放键两侧各一颗快退快进，步长跟设置里那个秒数走。
@@ -3706,22 +3645,7 @@ class WebUiSourceTests(unittest.TestCase):
         小窗就是新的秒数。时长取不到时不封顶——直播和还没读到元数据的片子 `duration()` 是
         NaN，拿它去 `Math.min` 会把进度扔成 NaN，视频停在原地不动。
         """
-        self.assertPageContains('<button type="button" class="miniplayerseek" id="miniplayerBack">'
-                                '<svg viewBox="0 0 24 24" aria-hidden="true">'
-                                '<use href="#i-rotate-ccw"/></svg></button>')
-        self.assertPageContains('<button type="button" class="miniplayerseek" id="miniplayerAhead">'
-                                '<svg viewBox="0 0 24 24" aria-hidden="true">'
-                                '<use href="#i-rotate-cw"/></svg></button>')
-        self.assertPageContains("function syncMiniplayerSeekLabels()")
-        self.assertPageContains("[['#miniplayerBack',`后退 ${step} 秒`],"
-                                "['#miniplayerAhead',`前进 ${step} 秒`]]")
-        self.assertPageContains("const at=Math.max(0,(Number(player.currentTime())||0)+step*side);")
-        self.assertPageContains("player.currentTime(total?Math.min(total,at):at);")
-        self.assertPageContains("$('#miniplayerBack').onclick=seekBy(-1);")
-        self.assertPageContains("$('#miniplayerAhead').onclick=seekBy(1);")
-        # 按在这两颗上不能起手拖窗，否则一次点击变成一次挪位。
-        self.assertPageContains("event.target.closest('.miniplayerbtn,.miniplayerplay,"
-                                ".miniplayerseek,.vjs-control-bar')")
+        # 两颗键的标记在 `miniplayer.tsx`，步长、标签与不封顶由 vitest `stage-player.test.ts` 量。
         self.assertPageContains(".miniplayerseek{width:36px;height:36px}")
 
     def test_player_context_menu_lists_only_the_actions_peach_can_do(self):
@@ -3732,8 +3656,7 @@ class WebUiSourceTests(unittest.TestCase):
         --floating-radius 圆角、rgba(0,0,0,.6) 加 blur(16px)、无阴影、每项 48px、图标列 56px、
         白字、悬停 rgba(255,255,255,.1)。
         """
-        self.assertPageContains('<div class="popmenu playermenu" id="playerMenu" role="menu" aria-label="播放器菜单" hidden></div>')
-        # 菜单项清单在 `frontend/src/player/menu.ts`；右键打开后逐项核对在 `frontend/e2e/stage.test.ts`。
+        # 菜单节点与项目清单在 `frontend/src/player/menu.ts`；右键打开后逐项核对在 `frontend/e2e/stage.test.ts`。
         self.assertPageContains("#playerMenu.playermenu{padding:8px;border:0;gap:0;border-radius:var(--floating-radius);background:rgba(0,0,0,.6);")
         self.assertPageContains("grid-template-columns:56px minmax(0,1fr) 32px;gap:0;align-items:center;width:100%;min-height:48px;")
         self.assertPageContains("#playerMenu>.playermenuitem:hover,#playerMenu>.playermenuitem:focus-visible{background:rgba(255,255,255,.1);color:#fff;outline:0}")
@@ -6353,7 +6276,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('key=surfacePath()+location.search')
         self.assertPageLacks("api('/api/follow/tags?limit=30')")
         self.assertPageContains('loaded:tags=>renderFollowDrawer(tags),')
-        self.assertPageContains('renderFollowDrawer(sidebarTagCounts([{tags:followCardTags(item)}]));')
+        self.assertPageContains('renderFollowDrawer(sidebarTagCounts([{tags:followCardTags(item)}]))')
         self.assertPageContains("if(!sidebarHasCatalogContent(location.pathname))return;")
         # 实体页 facets 必须按当前实体取数；详情页则按单个作品取数，不能继续复用首页全库。
         self.assertPageContains("facetParams.set('scope_kind',context.kind)")
@@ -6827,23 +6750,17 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_direct_detail_restores_the_home_list_and_uses_shared_dialog(self):
         self.assertPageContains("const needsReturnRestore=detailReturnNeedsRestore||(!push&&!returnSurfaceReady)")
-        self.assertPageContains("function placeItemDetail(anchor,above=false)")
-        self.assertPageContains('id="stage" aria-label="作品详情" hidden></dialog>')
-        self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo);")
         self.assertPageContains("anchor.getBoundingClientRect().top+anchor.getBoundingClientRect().height/2>window.innerHeight/2")
         self.assertPageContains(".grid>.stage{grid-column:1/-1;width:100%;min-width:0}")
 
     def test_detail_dialog_uses_top_layer_and_preserves_list_position(self):
-        """原生模态浮窗提供顶层、焦点与退出行为，列表不参与详情布局。"""
-        self.assertPageContains("if(!stage.open)stage.showModal();")
-        self.assertPageContains("  stageExit().then(()=>{\n"
-                                "    disposeStage(false,false,{miniplayer:false});"
-                                "route(detailReturnPath||'/');restoreRoute()});")
-        self.assertPageContains("if(stage.open)stage.close();")
-        # 图片灯箱同样开成原生模态，由 `frontend/test/react/photo-lightbox.test.tsx` 钉住。
+        """原生模态浮窗提供顶层、焦点与退出行为，列表不参与详情布局。
+
+        开关浮窗归舞台岛（`frontend/src/react/stage/stage.tsx`），顶层与焦点由 e2e `stage.test.ts`
+        与 `design.test.ts` 量；图片灯箱同样开成原生模态，由 `frontend/test/react/photo-lightbox.test.tsx` 钉住。
+        """
         self.assertPageContains("max-height:calc(100dvh - 32px)")
         self.assertPageLacks("stage.scrollIntoView(")
-        self.assertCode("if(stageIslandHost===host&&host.isConnected)scrollItemDetailIntoView();")
 
     def test_catalog_skeleton_collects_the_bottom_loading_dots(self):
         """一屏只能有一段等待态：铺骨架和收哨兵是同一件事的两半。
@@ -9040,8 +8957,7 @@ class WebUiSourceTests(unittest.TestCase):
         page = self.page
         overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
         self.assertIn("'.stagescroll'", overlay, "滚的那一层要登记才接得上覆盖式滚动条")
-        # 舞台岛的宿主就是这一层，作品详情的 `.sgrid` 与「接着看」都画在它里面。
-        self.assertPageContains("const host=document.createElement('div');host.className='stagescroll';")
+        # 这一层由舞台岛画（`stage.tsx`），作品详情的 `.sgrid` 与「接着看」都画在它里面。
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".stage>.stagescroll{max-height:calc(100dvh - 34px);"
                       "overflow:hidden auto;overscroll-behavior:contain}", board)
@@ -9345,7 +9261,7 @@ class WebUiSourceTests(unittest.TestCase):
         会把刚打开的这一屏详情一起收掉。
         """
         self.assertPageContains("function fillIdleCatalog()")
-        self.assertPageContains("if(!grid.querySelector('.catalog-skeleton')&&!$('#stage').querySelector('[data-skeleton=\"detail\"]'))return;")
+        self.assertPageContains("if(!grid.querySelector('.catalog-skeleton')&&!deepLink)return;")
         self.assertPageContains("void paintCatalogGrid(surfaceToken(surfacePath()));")
         self.assertPageContains("if(!returnSurfaceReady)fillIdleCatalog();")
         self.assertPageContains("barsContext={type:'home',filters:state};"

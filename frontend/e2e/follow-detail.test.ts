@@ -1,5 +1,5 @@
-/* 关注详情岛（`follow-detail`）在真浏览器里的行为：从列表进出、深链、Video.js 挂在岛画的
- * `<video>` 上、多图轮播、合集与多媒体两种队列、写操作与撤销、隐藏与恢复、标签回列表、手机。
+/* 关注详情岛（`follow-detail`）在真浏览器里的行为：从列表进出、深链、舞台在媒体框里挂
+ * Video.js、多图轮播、合集与多媒体两种队列、写操作与撤销、隐藏与恢复、标签回列表、手机。
  * 灯箱收到整组图那一条在 `photo-lightbox.test.ts`。
  *
  * 桩数据见 `follow-fixture.ts`（`DETAIL` 那几种形态只经单条取数交回）；关注来源的真实抓取一次都不发。 */
@@ -78,7 +78,7 @@ describe('关注详情岛', () => {
     }
   });
 
-  it('视频：Video.js 挂在岛画的 `<video>` 上，氛围光画布与统计角标插进同一个媒体框；换一条只剩一个播放器', { timeout: 60_000 }, async () => {
+  it('视频：舞台在媒体框里挂上 Video.js，氛围光画布与统计角标插进同一个媒体框；换一条只剩一个播放器', { timeout: 60_000 }, async () => {
     const opened = await openDetail(browser, DETAIL.collection);
     try {
       const page = opened.page;
@@ -86,7 +86,7 @@ describe('关注详情岛', () => {
       // 控制条在用户一段时间不动后会隐去（Video.js 的 userActive），只等它挂上，不等可见。
       await frame.locator('.video-js .vjs-control-bar').waitFor({ state: 'attached' });
       assert.equal(await frame.locator('.ambientcanvas').count(), 1);
-      assert.equal(await frame.locator('.video-js video').count(), 1, '播放器没有接管岛画的那个 video');
+      assert.equal(await frame.locator('.video-js video').count(), 1, '媒体框里的 video 不止一个');
       await page.locator('[data-follow-queue-item="5102"]').click();
       await pathIs(page, '/follow/item/5102');
       await page.locator('#stage [data-follow-queue-item="5102"][aria-current="true"]').waitFor();

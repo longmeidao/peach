@@ -75,9 +75,18 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 - `items` 挂在 `#nrow` 上：壳手上已有那一批，岛只画卡。
 - 版式、选中态与快进秒数经 `updateIsland` 推进来：换版式只重画，已载入的分页原样保留。`selected` 每次推一个新的 `Set`。
 - 壳在卡上还做三件事：悬停预览（`wireHover`／`releaseHover` 经 `helpers` 递进，状态写在卡的 `data-previewing`／`data-longhover` 上）、封面取景、图片微光（`PENDING_IMAGES` 认 `[data-media-art]>img`）。卡片的结构钩子全是 `data-media-*`；壳插进封面格的 `video.hv`、`img.hvframes` 与封套 `img.poster` 用自己的类名，样式在 `12-cards.css`。
-- 离场：`claimSurface` 卸 `#grid` 与 `#nrow`；资料页正文岛在换页或铺骨架前由 `releaseEntityBody` 卸；接着看在舞台清场时经 `onStageDispose` 卸。
+- 离场：`claimSurface` 卸 `#grid` 与 `#nrow`；资料页正文岛在换页或铺骨架前由 `releaseEntityBody` 卸；接着看是作品详情里的子组件，随舞台岛的内容一起卸。
 - 屏外卡用 `content-visibility` 跳过封面与元信息区的渲染，不做虚拟列表。
 - 单卡写操作都由用户点击触发：稍后看走 `actions.watchLater`，回收站卡的还原走 `actions.resourceOperation`，做完给撤销；彻底删除只在批量条上，先过 `confirmModal` 的危险档。
+
+### 舞台与播放器
+
+作品详情与关注详情都开在同一座常驻的舞台岛里（`frontend/src/react/stage/`）。宿主 `div[data-stage-host]` 挂在 body 末尾，岛拥有 `dialog#stage`、进出场、骨架、关闭键 `#closeStage` 与小窗；两座详情是它的子组件，共用同一份 Query 缓存。
+
+- 壳只拿命令式入口：`loadStage(host)` 第一次打开详情时装载 React 包，之后 `stageApi()` 同步可取，契约在 `stage/stage-api.ts`。来处（`detailReturnPath`、`followDetailReturnPath`、`detailOriginAnchor`）、地址与顶栏上下文仍归壳。
+- 焦点：骨架期间焦点停在 dialog 本身、不画焦点环，内容到了交给关闭键。Escape 先关最里层（右键菜单、标签搜索等弹层先吃掉），没人拦才关舞台。
+- 播放器在 `frontend/src/player/`，用 vendored 的 Video.js。入口 `mountPlayer(video, options)` 把媒体框里的 `<video>` 换成 Video.js 并返回拆除函数；详情只画媒体框，挂载由舞台的 `attachStagePlayer` 做。
+- 小窗与舞台共用同一个播放器实例：离开详情时正在放的那一个搬进小窗，展开回同一条时认领回来，不重建。显式关闭、暂停着、设置里关了小窗、换到别的条目时随舞台拆掉。交接判据钉在 `test/stage-player.test.ts`，真 Video.js 的行为在 `e2e/stage.test.ts`。
 
 ### 产物缓存
 

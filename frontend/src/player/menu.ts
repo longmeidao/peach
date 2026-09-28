@@ -24,12 +24,26 @@ export interface PlayerMenuHooks {
 let hooks: PlayerMenuHooks | null = null;
 export function configurePlayerMenu(next: PlayerMenuHooks): void { hooks = next }
 
-const menuElement = () => document.getElementById('playerMenu');
+/* 菜单节点归这个模块：第一次用到时建在 body 上，舞台开着时临时挪进舞台，关掉再放回来。
+   它不进任何 React 树——被挪来挪去的节点，React 卸载时会找不到它的父级。 */
+function menuElement(): HTMLElement {
+  let menu = document.getElementById('playerMenu');
+  if (!menu) {
+    menu = document.createElement('div');
+    menu.className = 'popmenu playermenu';
+    menu.id = 'playerMenu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', '播放器菜单');
+    menu.hidden = true;
+    document.body.append(menu);
+  }
+  return menu;
+}
 
 let cleanup: (() => void) | null = null;
 
 export function closePlayerMenu(): void {
-  const menu = menuElement();
+  const menu = document.getElementById('playerMenu');
   if (menu?.matches(':popover-open')) menu.hidePopover();
   if (menu && menu.parentElement !== document.body) document.body.append(menu);
   if (menu) dismissMenu(menu, () => { menu.innerHTML = '' });
@@ -78,7 +92,7 @@ function playerMenuItems(player: VjsPlayer): MenuItem[] {
 }
 
 export function openPlayerMenu(player: VjsPlayer, x: number, y: number): void {
-  const menu = menuElement(); if (!menu) return;
+  const menu = menuElement();
   closePlayerMenu();
   /* 舞台是模态 dialog，在顶层：菜单要进它里面才盖得住，否则落在遮罩底下。 */
   const stage = playerHost().stage();
@@ -102,7 +116,8 @@ export function openPlayerMenu(player: VjsPlayer, x: number, y: number): void {
   });
   const onDown = (event: Event) => { if (!menu.contains(event.target as Node)) closePlayerMenu() };
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === 'Escape') { event.stopPropagation(); closePlayerMenu(); return }
+    /* 这一下 Escape 只关菜单：`preventDefault` 同时拦住舞台 dialog 的 `cancel`，舞台留着。 */
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closePlayerMenu(); return }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
     const current = buttons.indexOf(document.activeElement as HTMLElement);

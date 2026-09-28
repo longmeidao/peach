@@ -13,6 +13,7 @@ import type { EntityBodyProps } from './entity-body/entity-body';
 import type { FollowDetailProps } from './follow-detail/follow-detail';
 import type { FollowFeedProps } from './follow-feed/follow-feed';
 import type { ItemDetailProps } from './item-detail/item-detail';
+import type { StageApi, StageHost } from './stage/stage-api';
 
 export type { IndexProps };
 export type { CatalogGridProps };
@@ -396,11 +397,9 @@ export interface ReactPages {
   'entity-body': ReactPage<EntityBodyProps>;
   'entity-filter': ReactPage<EntityFilterProps>;
   'entity-hero': ReactPage<EntityHeroProps>;
-  'follow-detail': ReactPage<FollowDetailProps>;
   'follow-feed': ReactPage<FollowFeedProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   index: ReactPage<IndexProps>;
-  'item-detail': ReactPage<ItemDetailProps>;
   'junk-queue': ReactPage<JunkQueueProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   playlists: ReactPage<PlaylistsProps>;
@@ -424,6 +423,11 @@ export interface ToastRequest {
   timeout: number;
   action: { label: string; run(button: HTMLButtonElement): void } | null;
 }
+
+export type { StageApi, StageHost, StagePatch, StageRequest } from './stage/stage-api';
+
+/** 接上壳给的宿主，拿回舞台岛的命令式入口（`stage/stage.tsx`）。只调一次。 */
+export declare function configureStage(host: StageHost): StageApi;
 
 /** 在 `host` 上挂全站唯一的 Toaster；重复调用是空操作。 */
 export declare function mountToaster(host: Element, icons: ToastIcons): void;

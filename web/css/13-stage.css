@@ -12,6 +12,8 @@
 /* 遮罩和设置弹层同一档：两个都是盖住整页的弹层，底下都是同一片馆藏，压成两种深浅
    只会让人以为自己打开的是两种东西。值与依据在 `01-base.css` 的 `--scrim`。 */
 .stage::backdrop{background:var(--scrim)}
+/* 骨架期间焦点停在浮窗本身（里面还没有可操作的东西），外沿不画焦点环；内容到了焦点交给关闭键。 */
+.stage:focus-visible{outline:none}
 body.detail-open{overflow:hidden}
 .stage:not(.ambient-on){background:color-mix(in srgb,var(--surface) 88%,transparent)}
 .stage[hidden]{display:none}
