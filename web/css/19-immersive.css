@@ -8,8 +8,9 @@
 .tokstage.wide{left:50%;right:auto;width:min(64vw,177.778vh);aspect-ratio:16/9;transform:translate(-50%,-50%)}
 .toktrack{position:absolute;inset:0;overflow:hidden;border-radius:var(--floating-radius);background:#000;
   box-shadow:0 0 64px rgba(0,0,0,.34);touch-action:manipulation;cursor:pointer}
-/* 还不知道第一条片子的宽高时不画框：框和片子一起出现，只有一个形状。 */
-.toktrack:empty{background:none;box-shadow:none}
+/* 第一条片子出画前只留加载提示：框、动作列、作者标题和进度条按出画时的形状一起出现，
+   不会先按竖屏摆一遍再跳。片子在隐藏的舞台里照常缓冲。 */
+.tok.tok-idle :is(.tokstage,.tokui,.tokbar){visibility:hidden}
 /* 一格一片：`.tokslide` 上下滑动，Video.js 的外包 div 和 video 都铺满它。 */
 .toktrack .tokslide{position:absolute;inset:0;background:#000;will-change:transform;
   transition:transform .2s cubic-bezier(.2,.2,.4,.9)}
