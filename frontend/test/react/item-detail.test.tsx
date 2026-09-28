@@ -229,14 +229,14 @@ describe('写完之后', () => {
     const { host, actions: done } = await show(item(1));
     await click(host.querySelector('[data-rate="3"]'));
     await settle();
-    expect(host.querySelector('.ratingvalue')?.textContent).toBe('未评分');
+    expect(host.querySelector('[data-rating-value]')?.textContent).toBe('未评分');
     expect(queryClient.getQueryData<DetailItem>(itemKey(1))?.rating).toBeNull();
     expect(queryClient.getQueryData<InfiniteData<GridPage>>(['catalog-grid', 'catalog', '', 0])?.pages[0]?.items[0]?.rating).toBeNull();
     const [message, options] = done.toast.mock.calls[0]!;
     expect(message).toBe('已取消评分');
     await options!.undo!();
     await settle();
-    expect(host.querySelector('.ratingvalue')?.textContent).toBe('3 星');
+    expect(host.querySelector('[data-rating-value]')?.textContent).toBe('3 星');
     expect(posts(fetcher).map(([, body]) => body.value)).toEqual([0, 60]);
   });
 
@@ -355,7 +355,7 @@ describe('侧栏怎么读', () => {
     expect(before(rating, host.querySelector('.smeta'))).toBe(true);
     expect(host.querySelector('[data-rate="3"]')?.getAttribute('aria-label')).toBe('取消评分（当前 3 星）');
     expect(host.querySelector('[data-rate="4"]')?.getAttribute('aria-label')).toBe('评为 4 星');
-    expect([...host.querySelectorAll('.smeta .detailmetaitem')].map(glyph)).toEqual(['#i-monitor', '#i-hard-drive', '#i-calendar']);
+    expect([...host.querySelectorAll('.smeta [data-spec-item]')].map(glyph)).toEqual(['#i-monitor', '#i-hard-drive', '#i-calendar']);
     expect(host.querySelector('.smeta')?.textContent).not.toContain('发行');
     expect(host.querySelector('#ratioTxt')?.textContent).toBe('0%');
   });
@@ -370,14 +370,14 @@ describe('侧栏怎么读', () => {
         series: [{ id: 7, name: '夏日系列' }],
       },
     } as Partial<DetailItem>));
-    const groups = [...host.querySelectorAll('[data-item-identity] .idgroup')];
-    expect(groups.map((group) => group.querySelector('.idlabel')?.textContent)).toEqual(['女优', '厂牌', '系列']);
+    const groups = [...host.querySelectorAll('[data-item-identity] [data-id-group]')];
+    expect(groups.map((group) => group.querySelector('[data-id-label]')?.textContent)).toEqual(['女优', '厂牌', '系列']);
     expect(host.querySelector('[data-entity-name="七海ひな"]')?.tagName).toBe('BUTTON');
-    const bare = [...host.querySelectorAll('.idcell')].find((cell) => cell.textContent?.includes('桜井まい'));
+    const bare = [...host.querySelectorAll('[data-id-cell]')].find((cell) => cell.textContent?.includes('桜井まい'));
     expect(bare?.tagName).toBe('SPAN');
     expect(bare?.hasAttribute('data-entity-kind')).toBe(false);
-    expect(host.querySelector('.idcell.logo img')?.getAttribute('src')).toBe('/logo?studio=Peach%20Studio&variant=icon');
-    const series = host.querySelector('.serieslink');
+    expect(host.querySelector('[data-id-cell="studio"] img')?.getAttribute('src')).toBe('/logo?studio=Peach%20Studio&variant=icon');
+    const series = host.querySelector('[data-series-link]');
     expect(glyph(series)).toBe('#i-tags');
     await click(series);
     expect(done.openEntity).toHaveBeenCalledWith('series', '夏日系列');
@@ -386,8 +386,8 @@ describe('侧栏怎么读', () => {
   it('没有署名人时，归属那一组就是「未归属」入口', async () => {
     serve();
     const { host, actions: done } = await show(item(1, { performers: [], creator: '', entity_refs: {} } as Partial<DetailItem>));
-    const group = host.querySelector('.idgroup-unowned');
-    expect(group?.querySelector('.idlabel')?.textContent).toBe('归属');
+    const group = host.querySelector('[data-id-group="unowned"]');
+    expect(group?.querySelector('[data-id-label]')?.textContent).toBe('归属');
     await click(group?.querySelector('[data-open-unowned]'));
     expect(done.openUnowned).toHaveBeenCalled();
   });
@@ -414,8 +414,8 @@ describe('侧栏怎么读', () => {
       items: [row(1, { edition_label: '中字' }), row(2, { edition_label: '无码' })],
     }));
     const { host } = await show(item(1), { queue: { kind: 'editions', seedId: 1 } });
-    expect([...host.querySelectorAll('.qedition')].map((badge) => [badge.textContent, badge.className])).toEqual([
-      ['中字', 'qedition javedition subtitle'], ['无码', 'qedition javedition uncensored'],
+    expect([...host.querySelectorAll('[data-queue-edition]')].map((badge) => [badge.textContent, badge.className])).toEqual([
+      ['中字', 'javedition subtitle'], ['无码', 'javedition uncensored'],
     ]);
   });
 

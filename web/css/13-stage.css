@@ -46,11 +46,6 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .mixitem:hover{background:var(--overlay-5)}.mixitem.current{background:var(--hover)}
 .mixitempic{position:relative;aspect-ratio:16/9;border-radius:var(--badge-radius);overflow:hidden;background:#000}
 .mixitempic img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.mixitempic .dur{right:4px;bottom:3px}
-/* 徽章和标题同一行。标题那一行因此要自己成为 flex 容器：`.mixitemtext` 的 b/span
-   都是块级的，两者并排只能靠这一层，`min-width:0` 才让中段省略照旧按剩余宽度算。 */
-.mixitemtext .mixitemhead{display:flex;align-items:center;gap:5px;margin-top:0;color:var(--ink)}
-.mixitemtext .mixitemhead b{flex:1;min-width:0}
-.mixitemtext .qedition{flex:none;font-style:normal}
 /* 队列行的署名层照抄卡片的 `.meta`：横向队列和「接着看」并排出现在同一屏，
    一边有头像一边没有，看着就是两套控件。头像在这里不可点（整行是一个 button，
    里面不能再嵌 button），所以也不给 hover 提示。 */
@@ -60,14 +55,6 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .mixitemmeta .mavstack .mav{box-shadow:0 0 0 2px var(--ground)}
 .mixitemtext{min-width:0}.mixitemtext b,.mixitemtext span{display:block;overflow:hidden;white-space:nowrap}.mixitemtext [data-truncate-end]{text-overflow:ellipsis}
 .mixitemtext b{font-size:var(--fs-xs);line-height:1.4}.mixitemtext span{font-size:var(--fs-xs);color:var(--muted);margin-top:3px}
-/* 顺序靠拖，行尾只剩抓手和移出。取色用 --ink-2 而不是 --muted：这两枚是这一行仅有的
-   两个动作，压到副文字那一档在深色底上几乎读不出来，选中行的底色又更深一层。 */
-.queueedit{display:grid;grid-auto-flow:column;align-items:center;gap:2px;padding-right:5px}
-.queuegrip{display:grid;place-items:center;width:20px;color:var(--muted);cursor:grab}
-.queuegrip svg{width:16px;height:16px;stroke:currentColor;fill:none}
-.queueedit button{width:26px;height:26px;border:0;border-radius:var(--control-radius);background:transparent;color:var(--ink-2);padding:0;display:grid;place-items:center;cursor:pointer}
-.queueedit button:hover{background:var(--hover);color:var(--ink)}
-.queueedit svg{width:15px;height:15px;stroke:currentColor;fill:none}
 /* 拖动中的行减淡，落点画一条线——和侧栏顺序那一列同一套表现，类名由共用的
    wireDragReorder 挂上。 */
 .mixrow[data-queue-row]{position:relative;cursor:grab}
@@ -93,11 +80,9 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
 .sgrid.mixgrid>.mixqueue .mixitemtext{flex:1;min-width:0}
 .sgrid.mixgrid>.mixqueue .mixitemtext b{font-size:var(--fs-sm)}
 .sgrid.mixgrid>.mixqueue .mixitem[data-media-kind="image"] .mixitempic img{object-fit:cover}
-.sgrid.mixgrid>.mixqueue .queueedit{position:absolute;z-index:3;right:5px;top:5px;padding:3px;border-radius:var(--control-radius);background:rgba(0,0,0,.62);color:#fff}
-.sgrid.mixgrid>.mixqueue .queueedit button{color:#fff}
-/* 关注详情的宿主 `.stagescroll` 里多一层 React 根（`follow-detail` 岛）：不占盒子，格子照旧是
+/* 两座详情岛（`item-detail`、`follow-detail`）的宿主 `.stagescroll` 里多一层 React 根：不占盒子，格子照旧是
    舞台这一层的直接排版对象；字体、行高与字色照舞台往下传，不换成 React 根的那一套，里面的
-   骨架与队列是和 JAV 详情共用的遗留几何。 */
+   骨架与队列是两座岛共用的遗留几何。 */
 .stagescroll>.peach-react{display:contents;font:inherit;color:inherit;-webkit-font-smoothing:inherit;
   font-variant-ligatures:inherit;font-kerning:inherit}
 /* 宽屏时详情栏决定首行高度，脱盘／错误占位也要铺满同一行，不能留下半块空背景。 */
@@ -114,7 +99,6 @@ body.index-open #tiers,body.index-open #tagbar{display:none}
      那条同一个写法。 */
   .stage.theater-mode>.stagescroll{max-height:calc(100dvh - 34px);overflow:hidden auto;overscroll-behavior:contain}
   .sgrid.mixgrid>.vwrap{align-self:stretch}
-  .sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}
   .stage.theater-mode .sgrid{grid-template-columns:minmax(0,1fr)}
   .stage.theater-mode .sgrid:not(.mixgrid)>.side{grid-column:1;border-left:0;border-top:1px solid var(--line-soft)}
   .stage.theater-mode .sgrid.mixgrid{grid-template-areas:"media" "side" "queue"}

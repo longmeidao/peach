@@ -413,9 +413,9 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
 [data-overlay-scrollbar]{scrollbar-width:none}
 [data-overlay-scrollbar]::-webkit-scrollbar{display:none}
 /* 横向行不显示滚动条（本来就能拖动/滚轮横滚） */
-.tier,.tagbar,.srow,.nrow{scrollbar-width:none}
+.tier,.tagbar,.srow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,
-.srow::-webkit-scrollbar,.nrow::-webkit-scrollbar{display:none}
+.srow::-webkit-scrollbar{display:none}
 /* 横滚容器的 overflow-x:auto 会把计算后的 overflow-y 一起变成 auto，圆头像贴着容器
    上沿时，:hover 和选中态那圈外扩 box-shadow 就被削平。留 3px 上方余量再用等量负
    margin 抵掉，位置一点不动。头像圈被遮是同一个缺陷重犯多次，横向头像行统一走这

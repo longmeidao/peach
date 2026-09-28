@@ -3556,7 +3556,6 @@ class FollowWebSourceTests(unittest.TestCase):
         # 队列头的类别名与横向拖动归作品详情岛与 `components/mix-queue.tsx`：
         # `frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')
-        self.assertPageContains('.sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
         # 媒体框不给视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在

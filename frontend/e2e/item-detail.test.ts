@@ -150,13 +150,13 @@ describe('作品详情岛', () => {
     const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
     try {
       const page = opened.page;
-      const value = page.locator('#detailRating .ratingvalue');
+      const value = page.locator('#detailRating [data-rating-value]');
       assert.equal((await value.innerText()).trim(), '3 星');
       await page.locator('#detailRating [data-rate="3"]').click();
-      await page.locator('#detailRating .ratingvalue', { hasText: '未评分' }).waitFor();
+      await page.locator('#detailRating [data-rating-value]', { hasText: '未评分' }).waitFor();
       assert.equal(await page.locator('#detailRating [data-on="true"]').count(), 0);
       await undo(page);
-      await page.locator('#detailRating .ratingvalue', { hasText: '3 星' }).waitFor();
+      await page.locator('#detailRating [data-rating-value]', { hasText: '3 星' }).waitFor();
       assert.deepEqual(opened.stub.writes.filter((write) => write.url === '/api/feedback').map((write) => write.body), [
         { id: ITEM.plain, kind: 'rate', value: 0 },
         { id: ITEM.plain, kind: 'rate', value: 60 },

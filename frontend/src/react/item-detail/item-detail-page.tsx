@@ -118,14 +118,14 @@ function MediaFrame({ item, gate, helpers, actions }: {
       <CloseStage onClose={actions.close} />
       {gate === 'offline' ? <OfflineGate item={item} badge={badge} helpers={helpers} actions={actions} />
         : gate === 'online' ? (
-          <div className="gate" id="onlineGate" role="status" data-item-gate="online">
+          <div id="onlineGate" role="status" data-item-gate="online">
             <Html html={badge} />
             <b>在线资产</b>
             <span>这条没有对应的关注条目，媒体地址无从解析。</span>
             <button className="chip" id="openSavedFollow" type="button" onClick={actions.openSavedFollow}>打开已保存关注</button>
           </div>
         ) : gate === 'metered' && !started ? (
-          <div className="gate" id="gate" data-item-gate="metered" onClick={() => setStarted('clicked')}>
+          <div id="gate" data-item-gate="metered" onClick={() => setStarted('clicked')}>
             <Html html={badge} />
             <span>点此开始拉流 · {fmtSize(item.size || 0)}</span>
           </div>
@@ -149,7 +149,7 @@ function OfflineGate({ item, badge, helpers, actions }: {
     else setStill(true);
   };
   return (
-    <div className="gate offline" id="offlineGate" role="status" data-item-gate="offline">
+    <div id="offlineGate" role="status" data-item-gate="offline">
       <Html html={badge} />
       <b>脱盘模式</b>
       <span>{helpers.offlineReason(item.location || '')}</span>
@@ -196,20 +196,20 @@ function Queue({ queue, itemId, helpers, actions }: {
     <MixQueue kind={queue.kind} title={copy.title} summary={copy.summary} onClose={actions.close} actions={head} listRef={listRef}>
       {queue.items.map((row) => {
         const edition = queue.kind === 'editions' && row.edition_label
-          ? <i className={`qedition javedition ${EDITION_TONE[row.edition_label] || 'censored'}`}>{row.edition_label}</i> : null;
+          ? <i className={`javedition ${EDITION_TONE[row.edition_label] || 'censored'}`} data-queue-edition="">{row.edition_label}</i> : null;
         return (
           <MixQueueRow key={row.id} current={row.id === itemId} data-queue-item={row.id} row={{ 'data-queue-row': row.id }}
             onClick={() => actions.openQueueItem(ref, row.id)}
             pic={<><Html html={helpers.queueThumbHtml(row)} /><i className="dur mono">{fmtDur(row.duration)}</i></>}
             lead={<Html html={helpers.queueAvatarHtml(row)} />}
             after={queue.kind === 'playlist' ? (
-              <span className="queueedit">
-                <i className="queuegrip" aria-hidden="true"><Glyph name="grip-vertical" /></i>
+              <span data-queue-edit="">
+                <i data-queue-grip="" aria-hidden="true"><Glyph name="grip-vertical" /></i>
                 <button type="button" data-queue-remove={row.id} title="移出播放列表" aria-label="移出播放列表"
                   onClick={() => reorder.remove(row.id)}><Glyph name="x" /></button>
               </span>
             ) : null}>
-            <span className="mixitemhead">{edition}<b data-middle-truncate="">{helpers.displayName(row)}</b></span>
+            <span data-queue-head="">{edition}<b data-middle-truncate="">{helpers.displayName(row)}</b></span>
             <span data-truncate-end="">{queue.kind === 'parts' ? `第 ${row.part_label || ''} 卷` : helpers.mixLabel(row)}</span>
           </MixQueueRow>
         );
@@ -294,14 +294,14 @@ function Side({ item, queue, write, helpers, actions }: {
     <div className="side" data-item-side="">
       <div className="sidecontent">
         <DetailTitle item={item} queue={queue} helpers={helpers} actions={actions} onStatus={write.setSourceState} />
-        {online ? null : <span className="srcstate detailtitlestate" aria-live="polite">{write.sourceState}</span>}
+        {online ? null : <span data-title-state="" aria-live="polite">{write.sourceState}</span>}
         <Rating item={item} write={write} />
         <div className="smeta mono" data-reveal-line="">
-          <span className="detailmetaitem"><Glyph name="monitor" /><span>{item.width || '?'}×{item.height || '?'}</span></span>
-          <span className="detailmetaitem"><Glyph name="hard-drive" /><span>{fmtSize(item.size || 0)}</span></span>
-          {item.release_date ? <span className="detailmetaitem"><Glyph name="calendar" /><span>{item.release_date}</span></span> : null}
+          <span data-spec-item=""><Glyph name="monitor" /><span>{item.width || '?'}×{item.height || '?'}</span></span>
+          <span data-spec-item=""><Glyph name="hard-drive" /><span>{fmtSize(item.size || 0)}</span></span>
+          {item.release_date ? <span data-spec-item=""><Glyph name="calendar" /><span>{item.release_date}</span></span> : null}
           {item.region_label ? (
-            <button className="detailmetaitem regionlink" type="button" data-open-region={item.region || ''}
+            <button type="button" data-spec-item="" data-open-region={item.region || ''}
               title={item.region_settled ? '已判定的产地；打开同产地的作品' : '按番号或厂牌推断的产地，批量判定后不再变；打开同产地的作品'}
               onClick={() => actions.openRegion(item.region || '')}>
               <Glyph name="globe" /><span>{item.region_label}{item.region_settled ? '' : '（推断）'}</span>
@@ -312,9 +312,9 @@ function Side({ item, queue, write, helpers, actions }: {
         <Tags item={item} write={write} helpers={helpers} actions={actions} />
         <Trace item={item} />
         <div className="fb" data-item-feedback="">
-          <button type="button" className="like" id="likeBtn" aria-label={item.liked ? '取消喜欢' : '喜欢'} title="喜欢 · 记录口味偏好"
+          <button type="button" id="likeBtn" data-fb="like" aria-label={item.liked ? '取消喜欢' : '喜欢'} title="喜欢 · 记录口味偏好"
             aria-pressed={!!item.liked} {...busy('like')} onClick={() => write.preference({ liked: !item.liked })}><Glyph name="thumbs-up" /></button>
-          <button type="button" className="reason" id="preferenceToggle" aria-label="喜爱理由" title="喜爱理由" aria-expanded={reasonOpen}
+          <button type="button" id="preferenceToggle" data-fb="reason" aria-label="喜爱理由" title="喜爱理由" aria-expanded={reasonOpen}
             aria-controls="preferencePanel" data-has-reason={String(!!item.like_reason)}
             onClick={() => setReasonOpen((open) => !open)}><Glyph name="notebook-pen" /></button>
           <button type="button" className="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重"
@@ -323,16 +323,16 @@ function Side({ item, queue, write, helpers, actions }: {
             aria-pressed={item.feedback === 'seen'} {...busy('seen')} onClick={() => write.feedback('seen')}><Glyph name="eye" /></button>
           <button type="button" className="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列"
             aria-pressed={!!item.watch_later} {...busy('later')} onClick={write.later}><Glyph name={item.watch_later ? 'check' : 'bookmark-plus'} /></button>
-          <button type="button" className="playlistadd" id="addPlaylist" aria-label="加入播放列表" title="加入播放列表"
+          <button type="button" id="addPlaylist" data-fb="playlist" aria-label="加入播放列表" title="加入播放列表"
             onClick={() => actions.addToPlaylist(item)}><Glyph name="playlist" /></button>
-          <button type="button" className="upgrade" id="betterVersion" aria-label="寻找更好版本"
+          <button type="button" id="betterVersion" data-fb="quality" aria-label="寻找更好版本"
             title={item.better_version ? (item.better_version_reason || '已标记寻找更好版本') : '寻找高清、无水印或完整版'}
             aria-pressed={!!item.better_version} {...busy('quality')} onClick={write.quality}><Glyph name="sparkles" /></button>
-          <button type="button" className="dispose" data-kind="dispose" aria-label="移入回收站" title="移入回收站 · 文件仍保留，可从回收站永久清除"
+          <button type="button" data-kind="dispose" data-fb="dispose" aria-label="移入回收站" title="移入回收站 · 文件仍保留，可从回收站永久清除"
             aria-pressed={item.disposal === 'trash'} {...busy('dispose')} onClick={() => write.feedback('dispose')}><Glyph name="trash" /></button>
         </div>
         <Preference item={item} open={reasonOpen} write={write} />
-        <button type="button" className="obtn" data-kind="o" {...busy('o')} onClick={() => write.feedback('o')}>
+        <button type="button" data-kind="o" {...busy('o')} onClick={() => write.feedback('o')}>
           <Glyph name="sperm" /><span>记一次高潮</span><b className="mono" id="oCount">{item.o_count || 0}</b>
         </button>
       </div>
@@ -363,13 +363,13 @@ function DetailTitle({ item, queue, helpers, actions, onStatus }: {
   const toggle = () => setExpanded((open) => !open);
   const html = helpers.badgeHtml(item.location || '', item.cost || '', 'srcbig') + helpers.titleHtml(item) + partLabelHtml(item, queue);
   return (
-    <div className="detailtitle">
-      <div className="stitle" data-reveal-line="">
-        <span ref={text} className="stitletext" data-detail-title="" data-expanded={expanded ? '' : undefined}
+    <div data-item-title="">
+      <div className="stitle" data-title-line="" data-reveal-line="">
+        <span ref={text} data-detail-title="" data-expanded={expanded ? '' : undefined}
           data-foldable={foldable ? '' : undefined}
           onClick={() => { if (foldable && !String(getSelection() || '')) toggle() }}
           dangerouslySetInnerHTML={{ __html: html }} />
-        <span className="srctools detailtitletools">
+        <span data-title-tools="">
           <button type="button" data-title-fold="" hidden={!foldable} aria-expanded={expanded}
             aria-label={expanded ? '收起标题' : '展开标题'} title={expanded ? '收起标题' : '展开完整标题'} onClick={toggle}>
             <Glyph name={expanded ? 'chevron-up' : 'chevron-down'} />
@@ -422,16 +422,16 @@ function SourceTools({ id, actions, onStatus }: { id: number; actions: ItemDetai
 function Rating({ item, write }: { item: DetailItem; write: DetailWrite }) {
   const on = ratingStars(item.rating);
   return (
-    <div className="rating" id="detailRating" role="group" aria-label="评分" data-value={clampRating(item.rating)}>
-      <div className="ratingstars">
+    <div id="detailRating" role="group" data-item-rating="" aria-label="评分" data-value={clampRating(item.rating)}>
+      <div data-rating-stars="">
         {[1, 2, 3, 4, 5].map((star) => (
-          <button key={star} type="button" className="star" data-rate={star} data-on={String(star <= on)}
+          <button key={star} type="button" data-rate={star} data-on={String(star <= on)}
             title={star === on ? '再点一次取消评分' : `${star} 星`}
             aria-label={star === on ? `取消评分（当前 ${star} 星）` : `评为 ${star} 星`}
             {...write.busyAttrs(`rate:${star}`)} onClick={() => write.rate(star)}><Glyph name="star" /></button>
         ))}
       </div>
-      <span className="ratingvalue" aria-live="polite">{ratingText(item.rating)}</span>
+      <span data-rating-value="" aria-live="polite">{ratingText(item.rating)}</span>
     </div>
   );
 }
@@ -450,50 +450,49 @@ function Identity({ item, helpers, actions }: { item: DetailItem; helpers: ItemD
         ? <><span>{ref.name.slice(0, 2)}</span>{ref.has_logo
           ? <img src={`/logo?studio=${encodeURIComponent(ref.name)}&variant=icon`} alt="" loading="lazy" data-drop="self" /> : null}</>
         : <span>{ref.name.slice(0, 1)}</span>;
-    const content = <><span className="idface">{face}</span><span className="idname">{ref.name}</span></>;
-    const className = `idcell${ref.id ? ' entitylink' : ''}${kind === 'studio' ? ' logo' : ''}`;
+    const content = <><span data-id-face="">{face}</span><span data-id-name="">{ref.name}</span></>;
     const overflowAttrs = kind === 'performer' && index >= CAST_SHOWN ? { 'data-castoverflow': '' } : {};
-    if (!ref.id) return <span key={`${kind}:${ref.name}`} className={className} title={ref.name} hidden={hide} {...overflowAttrs}>{content}</span>;
+    if (!ref.id) return <span key={`${kind}:${ref.name}`} data-id-cell={kind} title={ref.name} hidden={hide} {...overflowAttrs}>{content}</span>;
     return (
-      <button key={`${kind}:${ref.name}`} type="button" className={className} data-entity-kind={kind} data-entity-name={ref.name}
+      <button key={`${kind}:${ref.name}`} type="button" data-id-cell={kind} data-entity-kind={kind} data-entity-name={ref.name}
         title={ref.name} hidden={hide} {...overflowAttrs} onClick={() => actions.openEntity(kind, ref.name)}>{content}</button>
     );
   };
   const group = (label: string, kind: string, list: DetailEntityRef[], extra: ReactNode = null) => (list.length ? (
-    <section key={`${kind}:${label}`} className={`idgroup idgroup-${kind}`}>
-      <h5 className="idlabel">{label}</h5>
-      <div className="idrow">{list.map((ref, index) => cell(kind, ref, index))}{extra}</div>
+    <section key={`${kind}:${label}`} data-id-group={kind}>
+      <h5 data-id-label="">{label}</h5>
+      <div data-id-row="">{list.map((ref, index) => cell(kind, ref, index))}{extra}</div>
     </section>
   ) : null);
   const primary = [
     groups.unowned ? (
-      <section key="unowned" className="idgroup idgroup-unowned">
-        <h5 className="idlabel">归属</h5>
-        <div className="idrow">
-          <button className="idcell unownedlink" type="button" data-open-unowned="" title="打开未归属：馆藏里没有署名人的作品"
+      <section key="unowned" data-id-group="unowned">
+        <h5 data-id-label="">归属</h5>
+        <div data-id-row="">
+          <button type="button" data-id-cell="unowned" data-open-unowned="" title="打开未归属：馆藏里没有署名人的作品"
             onClick={actions.openUnowned}>
-            <span className="idface"><Glyph name="user-round" /></span><span className="idname">未归属</span>
+            <span data-id-face=""><Glyph name="user-round" /></span><span data-id-name="">未归属</span>
           </button>
         </div>
       </section>
     ) : group(helpers.performerLabel(item), 'performer', groups.cast, overflow && !castOpen
-      ? <button type="button" className="castmore" id="castMore" onClick={() => setCastOpen(true)}>还有 {overflow} 位</button> : null),
+      ? <button type="button" id="castMore" data-cast-more="" onClick={() => setCastOpen(true)}>还有 {overflow} 位</button> : null),
     group('厂牌', 'studio', groups.studios),
     group('片商', 'studio', groups.makers),
   ].filter(Boolean);
   return (
-    <div className="detailidentity" data-item-identity="">
-      {primary.length ? <div className="identityprimary">{primary}</div> : null}
+    <div data-item-identity="">
+      {primary.length ? <div data-identity-primary="">{primary}</div> : null}
       {group('创作者', 'creator', groups.creators)}
       {groups.series.length ? (
-        <section className="idgroup idseries">
-          <h5 className="idlabel">系列</h5>
-          <div className="seriesrows">
+        <section data-id-group="series">
+          <h5 data-id-label="">系列</h5>
+          <div data-series-rows="">
             {groups.series.map((ref) => (ref.id ? (
-              <button key={ref.name} type="button" className="serieslink entitylink" data-entity-kind="series" data-entity-name={ref.name}
+              <button key={ref.name} type="button" data-series-link="" data-entity-kind="series" data-entity-name={ref.name}
                 title={ref.name} onClick={() => actions.openEntity('series', ref.name)}><Glyph name="tags" /><span>{ref.name}</span></button>
             ) : (
-              <span key={ref.name} className="serieslink" title={ref.name}><Glyph name="tags" /><span>{ref.name}</span></span>
+              <span key={ref.name} data-series-link="" title={ref.name}><Glyph name="tags" /><span>{ref.name}</span></span>
             )))}
           </div>
         </section>
@@ -511,9 +510,9 @@ function Tags({ item, write, helpers, actions }: {
   return (
     <div className="stags" id="detailTags" data-item-tags="">
       {tags.map((tag) => (
-        <span key={tag.k} className="detailtag">
-          <button type="button" className="tagfilter" data-tag={tag.k} onClick={() => actions.openTag(tag.k)}>{helpers.tagLabel(tag.k)}</button>
-          <button type="button" className="tagremove" data-remove-tag={tag.k} title="从此视频隐藏该标签"
+        <span key={tag.k} data-detail-tag="">
+          <button type="button" data-tag={tag.k} onClick={() => actions.openTag(tag.k)}>{helpers.tagLabel(tag.k)}</button>
+          <button type="button" data-remove-tag={tag.k} title="从此视频隐藏该标签"
             aria-label={`删除标签 ${helpers.tagLabel(tag.k)}`} {...write.busyAttrs(`tag:${tag.k}`)}
             onClick={() => write.removeTag(tag)}><Glyph name="x" /></button>
         </span>
@@ -580,46 +579,46 @@ function TagPicker({ item, write, helpers }: { item: DetailItem; write: DetailWr
     const at = index;
     const selected = hasTag(item, tag.k);
     return (
-      <button key={`${at}:${tag.k}`} type="button" className={`tagpickitem${selected ? ' selected' : ''}${at === active ? ' active' : ''}`}
-        data-pick={tag.k} aria-pressed={selected} onClick={() => pick(tag, selected)}>
-        <Glyph name={selected ? 'check' : 'tags'} /><span className="pickname">{helpers.tagLabel(tag.k)}</span>
-        <span className="pickcount">{(tag.n || 0).toLocaleString()}</span>
+      <button key={`${at}:${tag.k}`} type="button" data-pick={tag.k} data-active={at === active ? '' : undefined}
+        aria-pressed={selected} onClick={() => pick(tag, selected)}>
+        <Glyph name={selected ? 'check' : 'tags'} /><span data-pick-name="">{helpers.tagLabel(tag.k)}</span>
+        <span data-pick-count="">{(tag.n || 0).toLocaleString()}</span>
       </button>
     );
   };
   return (
     <>
-      <button ref={plus} type="button" className="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签" aria-expanded={open}
+      <button ref={plus} type="button" id="tagPlus" data-tag-plus="" title="添加标签" aria-label="添加标签" aria-expanded={open}
         onClick={() => {
           if (!picker.current) return;
           presentMenu(picker.current);
           setOpen(true); setQuery(''); setTerm(''); setActive(-1);
           requestAnimationFrame(() => search.current?.focus());
         }}><Glyph name="plus" /></button>
-      <div ref={picker} className="tagpicker" id="tagPicker" role="dialog" aria-label="添加标签" hidden>
-        <label className="tagpicksearch">
+      <div ref={picker} id="tagPicker" data-tag-picker="" role="dialog" aria-label="添加标签" hidden>
+        <label data-tag-search="">
           <Glyph name="search" />
           <input ref={search} id="tagPickSearch" maxLength={80} placeholder="搜索或输入新标签" autoComplete="off" value={query}
             onChange={(event) => { setQuery(event.target.value); setActive(-1); if (!composing.current) setTerm(event.target.value) }}
             onCompositionStart={() => { composing.current = true }}
             onCompositionEnd={(event) => { composing.current = false; setTerm(event.currentTarget.value) }} onKeyDown={keydown} />
         </label>
-        <div className="tagpickbody" id="tagPickBody">
+        <div id="tagPickBody" data-tag-body="">
           {open && sections.recent.length ? (
-            <section className="tagpicksection"><h4>最近使用</h4><div className="tagpickgrid">{sections.recent.map(button)}</div></section>
+            <section data-tag-section=""><h4>最近使用</h4><div data-tag-grid="">{sections.recent.map(button)}</div></section>
           ) : null}
           {open ? (
-            <section className="tagpicksection">
+            <section data-tag-section="">
               <h4>{term.trim() ? '搜索结果' : '全部标签'}</h4>
-              <div className="tagpickgrid">
+              <div data-tag-grid="">
                 {sections.results.map(button)}
                 {sections.create ? (() => {
                   index += 1;
                   const at = index;
                   return (
-                    <button key="create" type="button" className={`tagpickitem${at === active ? ' active' : ''}`} data-pick={sections.create}
+                    <button key="create" type="button" data-pick={sections.create} data-active={at === active ? '' : undefined}
                       onClick={() => { close(); write.addTag(sections.create) }}>
-                      <Glyph name="plus" /><span className="pickname">新建“{sections.create}”</span>
+                      <Glyph name="plus" /><span data-pick-name="">新建“{sections.create}”</span>
                     </button>
                   );
                 })() : null}
@@ -638,15 +637,15 @@ function TagPicker({ item, write, helpers }: { item: DetailItem; write: DetailWr
 function Trace({ item }: { item: DetailItem }) {
   const real = realWatched(item);
   return (
-    <div className="trace">
-      <div className="trace-metric">
-        <div className="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
-        <div className="bar"><u id="watched" /><b id="mark" /></div>
+    <div data-item-trace="">
+      <div data-trace-metric="">
+        <div data-trace-label=""><span>离开位置</span><span id="ratioTxt">0%</span></div>
+        <div data-trace-bar=""><u id="watched" /><b id="mark" /></div>
       </div>
-      <div className="trace-metric">
-        <div className="lab mono trace-real"><span>真实观看</span><span id="realTxt">{real == null ? '0%' : `${real.toFixed(0)}%`}</span></div>
+      <div data-trace-metric="">
+        <div data-trace-label=""><span>真实观看</span><span id="realTxt">{real == null ? '0%' : `${real.toFixed(0)}%`}</span></div>
         {/* oxlint-disable-next-line shadcn/no-inline-styles -- 宽度是这一条看过的比例，之后由壳的遥测随上报改写 */}
-        <div className="bar"><u id="realBar" style={real == null ? undefined : { width: `${real.toFixed(1)}%` }} /></div>
+        <div data-trace-bar=""><u id="realBar" data-trace-real="" style={real == null ? undefined : { width: `${real.toFixed(1)}%` }} /></div>
       </div>
     </div>
   );
@@ -660,12 +659,12 @@ function Preference({ item, open, write }: { item: DetailItem; open: boolean; wr
   useEffect(() => { setReason(item.like_reason || '') }, [item.like_reason]);
   const saving = write.busy.has('preference');
   return (
-    <div className="preference" id="preferencePanel" hidden={!open}>
+    <div id="preferencePanel" data-item-preference="" hidden={!open}>
       <textarea ref={field} id="likeReason" maxLength={2000} placeholder="为什么喜欢？" value={reason}
         onChange={(event) => setReason(event.target.value)} />
-      <div className="preference-foot">
+      <div data-preference-foot="">
         <span id="preferenceState" aria-live="polite">{write.preferenceState}</span>
-        <button type="button" className="geist-button primary savepreference" id="savePreference" title="提交喜爱理由" aria-label="提交喜爱理由"
+        <button type="button" className="geist-button primary" id="savePreference" data-save-preference="" title="提交喜爱理由" aria-label="提交喜爱理由"
           {...write.busyAttrs('preference')} onClick={() => write.preference({ reason })}
           dangerouslySetInnerHTML={{ __html: saving ? `${spinnerHtml('正在提交喜爱理由')}<span>提交中…</span>` : '<span>提交</span>' }} />
       </div>
@@ -690,10 +689,10 @@ function Related(props: ItemDetailProps & { item: DetailItem }) {
   const row = useCallback((node: HTMLDivElement | null) => { if (node) { fitSkeleton(node); helpers.wireDrag(node) } }, [helpers]);
   if (result.data && !result.data.length) return null;
   return (
-    <div className="next" data-item-related="">
+    <div data-item-related="">
       {/* 作用域 Preflight 把标题字重清成 inherit，同队列头按字重三档取 semibold。 */}
       <h3 className="font-semibold">接着看</h3>
-      <div ref={row} className="nrow" id="nrow">
+      <div ref={row} id="nrow" data-related-row="">
         {result.data ? (
           <CatalogGridPage mode="items" variant="next" items={result.data} helpers={grid.helpers} actions={grid.actions}
             layout={props.layout} selectMode={props.selectMode} selected={props.selected} seekSeconds={props.seekSeconds}

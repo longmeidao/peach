@@ -43947,7 +43947,6 @@ function bue({ item: e, gate: t, helpers: n, actions: r }) {
 				helpers: n,
 				actions: r
 			}) : t === "online" ? /* @__PURE__ */ (0, L.jsxs)("div", {
-				className: "gate",
 				id: "onlineGate",
 				role: "status",
 				"data-item-gate": "online",
@@ -43964,7 +43963,6 @@ function bue({ item: e, gate: t, helpers: n, actions: r }) {
 					})
 				]
 			}) : t === "metered" && !i ? /* @__PURE__ */ (0, L.jsxs)("div", {
-				className: "gate",
 				id: "gate",
 				"data-item-gate": "metered",
 				onClick: () => o("clicked"),
@@ -43989,7 +43987,6 @@ function xue({ item: e, badge: t, helpers: n, actions: r }) {
 		a(!1), t ? r.reopen() : s(!0);
 	};
 	return /* @__PURE__ */ (0, L.jsxs)("div", {
-		className: "gate offline",
 		id: "offlineGate",
 		role: "status",
 		"data-item-gate": "offline",
@@ -44045,7 +44042,8 @@ function Sue({ queue: e, itemId: t, helpers: n, actions: r }) {
 		listRef: u,
 		children: e.items.map((a) => {
 			let o = e.kind === "editions" && a.edition_label ? /* @__PURE__ */ (0, L.jsx)("i", {
-				className: `qedition javedition ${rue[a.edition_label] || "censored"}`,
+				className: `javedition ${rue[a.edition_label] || "censored"}`,
+				"data-queue-edition": "",
 				children: a.edition_label
 			}) : null;
 			return /* @__PURE__ */ (0, L.jsxs)(aI, {
@@ -44059,9 +44057,9 @@ function Sue({ queue: e, itemId: t, helpers: n, actions: r }) {
 				})] }),
 				lead: /* @__PURE__ */ (0, L.jsx)(GL, { html: n.queueAvatarHtml(a) }),
 				after: e.kind === "playlist" ? /* @__PURE__ */ (0, L.jsxs)("span", {
-					className: "queueedit",
+					"data-queue-edit": "",
 					children: [/* @__PURE__ */ (0, L.jsx)("i", {
-						className: "queuegrip",
+						"data-queue-grip": "",
 						"aria-hidden": "true",
 						children: /* @__PURE__ */ (0, L.jsx)(WL, { name: "grip-vertical" })
 					}), /* @__PURE__ */ (0, L.jsx)("button", {
@@ -44074,7 +44072,7 @@ function Sue({ queue: e, itemId: t, helpers: n, actions: r }) {
 					})]
 				}) : null,
 				children: [/* @__PURE__ */ (0, L.jsxs)("span", {
-					className: "mixitemhead",
+					"data-queue-head": "",
 					children: [o, /* @__PURE__ */ (0, L.jsx)("b", {
 						"data-middle-truncate": "",
 						children: n.displayName(a)
@@ -44184,7 +44182,7 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 					onStatus: n.setSourceState
 				}),
 				o ? null : /* @__PURE__ */ (0, L.jsx)("span", {
-					className: "srcstate detailtitlestate",
+					"data-title-state": "",
 					"aria-live": "polite",
 					children: n.sourceState
 				}),
@@ -44197,7 +44195,7 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 					"data-reveal-line": "",
 					children: [
 						/* @__PURE__ */ (0, L.jsxs)("span", {
-							className: "detailmetaitem",
+							"data-spec-item": "",
 							children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "monitor" }), /* @__PURE__ */ (0, L.jsxs)("span", { children: [
 								e.width || "?",
 								"×",
@@ -44205,16 +44203,16 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 							] })]
 						}),
 						/* @__PURE__ */ (0, L.jsxs)("span", {
-							className: "detailmetaitem",
+							"data-spec-item": "",
 							children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "hard-drive" }), /* @__PURE__ */ (0, L.jsx)("span", { children: a(e.size || 0) })]
 						}),
 						e.release_date ? /* @__PURE__ */ (0, L.jsxs)("span", {
-							className: "detailmetaitem",
+							"data-spec-item": "",
 							children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "calendar" }), /* @__PURE__ */ (0, L.jsx)("span", { children: e.release_date })]
 						}) : null,
 						e.region_label ? /* @__PURE__ */ (0, L.jsxs)("button", {
-							className: "detailmetaitem regionlink",
 							type: "button",
+							"data-spec-item": "",
 							"data-open-region": e.region || "",
 							title: e.region_settled ? "已判定的产地；打开同产地的作品" : "按番号或厂牌推断的产地，批量判定后不再变；打开同产地的作品",
 							onClick: () => i.openRegion(e.region || ""),
@@ -44240,8 +44238,8 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 					children: [
 						/* @__PURE__ */ (0, L.jsx)("button", {
 							type: "button",
-							className: "like",
 							id: "likeBtn",
+							"data-fb": "like",
 							"aria-label": e.liked ? "取消喜欢" : "喜欢",
 							title: "喜欢 · 记录口味偏好",
 							"aria-pressed": !!e.liked,
@@ -44251,8 +44249,8 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 						}),
 						/* @__PURE__ */ (0, L.jsx)("button", {
 							type: "button",
-							className: "reason",
 							id: "preferenceToggle",
+							"data-fb": "reason",
 							"aria-label": "喜爱理由",
 							title: "喜爱理由",
 							"aria-expanded": c,
@@ -44296,8 +44294,8 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 						}),
 						/* @__PURE__ */ (0, L.jsx)("button", {
 							type: "button",
-							className: "playlistadd",
 							id: "addPlaylist",
+							"data-fb": "playlist",
 							"aria-label": "加入播放列表",
 							title: "加入播放列表",
 							onClick: () => i.addToPlaylist(e),
@@ -44305,8 +44303,8 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 						}),
 						/* @__PURE__ */ (0, L.jsx)("button", {
 							type: "button",
-							className: "upgrade",
 							id: "betterVersion",
+							"data-fb": "quality",
 							"aria-label": "寻找更好版本",
 							title: e.better_version ? e.better_version_reason || "已标记寻找更好版本" : "寻找高清、无水印或完整版",
 							"aria-pressed": !!e.better_version,
@@ -44316,8 +44314,8 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 						}),
 						/* @__PURE__ */ (0, L.jsx)("button", {
 							type: "button",
-							className: "dispose",
 							"data-kind": "dispose",
+							"data-fb": "dispose",
 							"aria-label": "移入回收站",
 							title: "移入回收站 · 文件仍保留，可从回收站永久清除",
 							"aria-pressed": e.disposal === "trash",
@@ -44334,7 +44332,6 @@ function Tue({ item: e, queue: t, write: n, helpers: r, actions: i }) {
 				}),
 				/* @__PURE__ */ (0, L.jsxs)("button", {
 					type: "button",
-					className: "obtn",
 					"data-kind": "o",
 					...s("o"),
 					onClick: () => n.feedback("o"),
@@ -44364,13 +44361,13 @@ function Eue({ item: e, queue: t, helpers: n, actions: r, onStatus: i }) {
 	}, []);
 	let u = () => s((e) => !e), d = n.badgeHtml(e.location || "", e.cost || "", "srcbig") + n.titleHtml(e) + oue(e, t);
 	return /* @__PURE__ */ (0, L.jsx)("div", {
-		className: "detailtitle",
+		"data-item-title": "",
 		children: /* @__PURE__ */ (0, L.jsxs)("div", {
 			className: "stitle",
+			"data-title-line": "",
 			"data-reveal-line": "",
 			children: [/* @__PURE__ */ (0, L.jsx)("span", {
 				ref: a,
-				className: "stitletext",
 				"data-detail-title": "",
 				"data-expanded": o ? "" : void 0,
 				"data-foldable": c ? "" : void 0,
@@ -44379,7 +44376,7 @@ function Eue({ item: e, queue: t, helpers: n, actions: r, onStatus: i }) {
 				},
 				dangerouslySetInnerHTML: { __html: d }
 			}), /* @__PURE__ */ (0, L.jsxs)("span", {
-				className: "srctools detailtitletools",
+				"data-title-tools": "",
 				children: [
 					/* @__PURE__ */ (0, L.jsx)("button", {
 						type: "button",
@@ -44446,13 +44443,13 @@ function Due({ id: e, actions: t, onStatus: n }) {
 function Oue({ item: e, write: t }) {
 	let n = IL(e.rating);
 	return /* @__PURE__ */ (0, L.jsxs)("div", {
-		className: "rating",
 		id: "detailRating",
 		role: "group",
+		"data-item-rating": "",
 		"aria-label": "评分",
 		"data-value": FL(e.rating),
 		children: [/* @__PURE__ */ (0, L.jsx)("div", {
-			className: "ratingstars",
+			"data-rating-stars": "",
 			children: [
 				1,
 				2,
@@ -44461,7 +44458,6 @@ function Oue({ item: e, write: t }) {
 				5
 			].map((e) => /* @__PURE__ */ (0, L.jsx)("button", {
 				type: "button",
-				className: "star",
 				"data-rate": e,
 				"data-on": String(e <= n),
 				title: e === n ? "再点一次取消评分" : `${e} 星`,
@@ -44471,7 +44467,7 @@ function Oue({ item: e, write: t }) {
 				children: /* @__PURE__ */ (0, L.jsx)(WL, { name: "star" })
 			}, e))
 		}), /* @__PURE__ */ (0, L.jsx)("span", {
-			className: "ratingvalue",
+			"data-rating-value": "",
 			"aria-live": "polite",
 			children: Qle(e.rating)
 		})]
@@ -44485,65 +44481,65 @@ function kue({ item: e, helpers: t, actions: n }) {
 			loading: "lazy",
 			"data-drop": "self"
 		}) : null] }) : /* @__PURE__ */ (0, L.jsx)("span", { children: r.name.slice(0, 1) }), c = /* @__PURE__ */ (0, L.jsxs)(L.Fragment, { children: [/* @__PURE__ */ (0, L.jsx)("span", {
-			className: "idface",
+			"data-id-face": "",
 			children: s
 		}), /* @__PURE__ */ (0, L.jsx)("span", {
-			className: "idname",
+			"data-id-name": "",
 			children: r.name
-		})] }), l = `idcell${r.id ? " entitylink" : ""}${e === "studio" ? " logo" : ""}`, u = e === "performer" && a >= 8 ? { "data-castoverflow": "" } : {};
+		})] }), l = e === "performer" && a >= 8 ? { "data-castoverflow": "" } : {};
 		return r.id ? /* @__PURE__ */ (0, L.jsx)("button", {
 			type: "button",
-			className: l,
+			"data-id-cell": e,
 			"data-entity-kind": e,
 			"data-entity-name": r.name,
 			title: r.name,
 			hidden: o,
-			...u,
+			...l,
 			onClick: () => n.openEntity(e, r.name),
 			children: c
 		}, `${e}:${r.name}`) : /* @__PURE__ */ (0, L.jsx)("span", {
-			className: l,
+			"data-id-cell": e,
 			title: r.name,
 			hidden: o,
-			...u,
+			...l,
 			children: c
 		}, `${e}:${r.name}`);
 	}, c = (e, t, n, r = null) => n.length ? /* @__PURE__ */ (0, L.jsxs)("section", {
-		className: `idgroup idgroup-${t}`,
+		"data-id-group": t,
 		children: [/* @__PURE__ */ (0, L.jsx)("h5", {
-			className: "idlabel",
+			"data-id-label": "",
 			children: e
 		}), /* @__PURE__ */ (0, L.jsxs)("div", {
-			className: "idrow",
+			"data-id-row": "",
 			children: [n.map((e, n) => s(t, e, n)), r]
 		})]
 	}, `${t}:${e}`) : null, l = [
 		r.unowned ? /* @__PURE__ */ (0, L.jsxs)("section", {
-			className: "idgroup idgroup-unowned",
+			"data-id-group": "unowned",
 			children: [/* @__PURE__ */ (0, L.jsx)("h5", {
-				className: "idlabel",
+				"data-id-label": "",
 				children: "归属"
 			}), /* @__PURE__ */ (0, L.jsx)("div", {
-				className: "idrow",
+				"data-id-row": "",
 				children: /* @__PURE__ */ (0, L.jsxs)("button", {
-					className: "idcell unownedlink",
 					type: "button",
+					"data-id-cell": "unowned",
 					"data-open-unowned": "",
 					title: "打开未归属：馆藏里没有署名人的作品",
 					onClick: n.openUnowned,
 					children: [/* @__PURE__ */ (0, L.jsx)("span", {
-						className: "idface",
+						"data-id-face": "",
 						children: /* @__PURE__ */ (0, L.jsx)(WL, { name: "user-round" })
 					}), /* @__PURE__ */ (0, L.jsx)("span", {
-						className: "idname",
+						"data-id-name": "",
 						children: "未归属"
 					})]
 				})
 			})]
 		}, "unowned") : c(t.performerLabel(e), "performer", r.cast, o && !i ? /* @__PURE__ */ (0, L.jsxs)("button", {
 			type: "button",
-			className: "castmore",
 			id: "castMore",
+			"data-cast-more": "",
 			onClick: () => a(!0),
 			children: [
 				"还有 ",
@@ -44555,31 +44551,30 @@ function kue({ item: e, helpers: t, actions: n }) {
 		c("片商", "studio", r.makers)
 	].filter(Boolean);
 	return /* @__PURE__ */ (0, L.jsxs)("div", {
-		className: "detailidentity",
 		"data-item-identity": "",
 		children: [
 			l.length ? /* @__PURE__ */ (0, L.jsx)("div", {
-				className: "identityprimary",
+				"data-identity-primary": "",
 				children: l
 			}) : null,
 			c("创作者", "creator", r.creators),
 			r.series.length ? /* @__PURE__ */ (0, L.jsxs)("section", {
-				className: "idgroup idseries",
+				"data-id-group": "series",
 				children: [/* @__PURE__ */ (0, L.jsx)("h5", {
-					className: "idlabel",
+					"data-id-label": "",
 					children: "系列"
 				}), /* @__PURE__ */ (0, L.jsx)("div", {
-					className: "seriesrows",
+					"data-series-rows": "",
 					children: r.series.map((e) => e.id ? /* @__PURE__ */ (0, L.jsxs)("button", {
 						type: "button",
-						className: "serieslink entitylink",
+						"data-series-link": "",
 						"data-entity-kind": "series",
 						"data-entity-name": e.name,
 						title: e.name,
 						onClick: () => n.openEntity("series", e.name),
 						children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "tags" }), /* @__PURE__ */ (0, L.jsx)("span", { children: e.name })]
 					}, e.name) : /* @__PURE__ */ (0, L.jsxs)("span", {
-						className: "serieslink",
+						"data-series-link": "",
 						title: e.name,
 						children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "tags" }), /* @__PURE__ */ (0, L.jsx)("span", { children: e.name })]
 					}, e.name))
@@ -44595,16 +44590,14 @@ function Aue({ item: e, write: t, helpers: n, actions: r }) {
 		id: "detailTags",
 		"data-item-tags": "",
 		children: [i.map((e) => /* @__PURE__ */ (0, L.jsxs)("span", {
-			className: "detailtag",
+			"data-detail-tag": "",
 			children: [/* @__PURE__ */ (0, L.jsx)("button", {
 				type: "button",
-				className: "tagfilter",
 				"data-tag": e.k,
 				onClick: () => r.openTag(e.k),
 				children: n.tagLabel(e.k)
 			}), /* @__PURE__ */ (0, L.jsx)("button", {
 				type: "button",
-				className: "tagremove",
 				"data-remove-tag": e.k,
 				title: "从此视频隐藏该标签",
 				"aria-label": `删除标签 ${n.tagLabel(e.k)}`,
@@ -44669,18 +44662,18 @@ function jue({ item: e, write: t, helpers: n }) {
 		let r = x, i = LL(e, t.k);
 		return /* @__PURE__ */ (0, L.jsxs)("button", {
 			type: "button",
-			className: `tagpickitem${i ? " selected" : ""}${r === p ? " active" : ""}`,
 			"data-pick": t.k,
+			"data-active": r === p ? "" : void 0,
 			"aria-pressed": i,
 			onClick: () => y(t, i),
 			children: [
 				/* @__PURE__ */ (0, L.jsx)(WL, { name: i ? "check" : "tags" }),
 				/* @__PURE__ */ (0, L.jsx)("span", {
-					className: "pickname",
+					"data-pick-name": "",
 					children: n.tagLabel(t.k)
 				}),
 				/* @__PURE__ */ (0, L.jsx)("span", {
-					className: "pickcount",
+					"data-pick-count": "",
 					children: (t.n || 0).toLocaleString()
 				})
 			]
@@ -44689,8 +44682,8 @@ function jue({ item: e, write: t, helpers: n }) {
 	return /* @__PURE__ */ (0, L.jsxs)(L.Fragment, { children: [/* @__PURE__ */ (0, L.jsx)("button", {
 		ref: r,
 		type: "button",
-		className: "tagplus",
 		id: "tagPlus",
+		"data-tag-plus": "",
 		title: "添加标签",
 		"aria-label": "添加标签",
 		"aria-expanded": s,
@@ -44700,13 +44693,13 @@ function jue({ item: e, write: t, helpers: n }) {
 		children: /* @__PURE__ */ (0, L.jsx)(WL, { name: "plus" })
 	}), /* @__PURE__ */ (0, L.jsxs)("div", {
 		ref: i,
-		className: "tagpicker",
 		id: "tagPicker",
+		"data-tag-picker": "",
 		role: "dialog",
 		"aria-label": "添加标签",
 		hidden: !0,
 		children: [/* @__PURE__ */ (0, L.jsxs)("label", {
-			className: "tagpicksearch",
+			"data-tag-search": "",
 			children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "search" }), /* @__PURE__ */ (0, L.jsx)("input", {
 				ref: a,
 				id: "tagPickSearch",
@@ -44726,34 +44719,38 @@ function jue({ item: e, write: t, helpers: n }) {
 				onKeyDown: b
 			})]
 		}), /* @__PURE__ */ (0, L.jsxs)("div", {
-			className: "tagpickbody",
 			id: "tagPickBody",
+			"data-tag-body": "",
 			children: [s && g.recent.length ? /* @__PURE__ */ (0, L.jsxs)("section", {
-				className: "tagpicksection",
+				"data-tag-section": "",
 				children: [/* @__PURE__ */ (0, L.jsx)("h4", { children: "最近使用" }), /* @__PURE__ */ (0, L.jsx)("div", {
-					className: "tagpickgrid",
+					"data-tag-grid": "",
 					children: g.recent.map(S)
 				})]
 			}) : null, s ? /* @__PURE__ */ (0, L.jsxs)("section", {
-				className: "tagpicksection",
+				"data-tag-section": "",
 				children: [/* @__PURE__ */ (0, L.jsx)("h4", { children: d.trim() ? "搜索结果" : "全部标签" }), /* @__PURE__ */ (0, L.jsxs)("div", {
-					className: "tagpickgrid",
-					children: [g.results.map(S), g.create ? (x += 1, /* @__PURE__ */ (0, L.jsxs)("button", {
-						type: "button",
-						className: `tagpickitem${x === p ? " active" : ""}`,
-						"data-pick": g.create,
-						onClick: () => {
-							h(), t.addTag(g.create);
-						},
-						children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "plus" }), /* @__PURE__ */ (0, L.jsxs)("span", {
-							className: "pickname",
-							children: [
-								"新建“",
-								g.create,
-								"”"
-							]
-						})]
-					}, "create")) : null]
+					"data-tag-grid": "",
+					children: [g.results.map(S), g.create ? (() => {
+						x += 1;
+						let e = x;
+						return /* @__PURE__ */ (0, L.jsxs)("button", {
+							type: "button",
+							"data-pick": g.create,
+							"data-active": e === p ? "" : void 0,
+							onClick: () => {
+								h(), t.addTag(g.create);
+							},
+							children: [/* @__PURE__ */ (0, L.jsx)(WL, { name: "plus" }), /* @__PURE__ */ (0, L.jsxs)("span", {
+								"data-pick-name": "",
+								children: [
+									"新建“",
+									g.create,
+									"”"
+								]
+							})]
+						}, "create");
+					})() : null]
 				})]
 			}) : null]
 		})]
@@ -44762,31 +44759,32 @@ function jue({ item: e, write: t, helpers: n }) {
 function Mue({ item: e }) {
 	let t = uue(e);
 	return /* @__PURE__ */ (0, L.jsxs)("div", {
-		className: "trace",
+		"data-item-trace": "",
 		children: [/* @__PURE__ */ (0, L.jsxs)("div", {
-			className: "trace-metric",
+			"data-trace-metric": "",
 			children: [/* @__PURE__ */ (0, L.jsxs)("div", {
-				className: "lab mono",
+				"data-trace-label": "",
 				children: [/* @__PURE__ */ (0, L.jsx)("span", { children: "离开位置" }), /* @__PURE__ */ (0, L.jsx)("span", {
 					id: "ratioTxt",
 					children: "0%"
 				})]
 			}), /* @__PURE__ */ (0, L.jsxs)("div", {
-				className: "bar",
+				"data-trace-bar": "",
 				children: [/* @__PURE__ */ (0, L.jsx)("u", { id: "watched" }), /* @__PURE__ */ (0, L.jsx)("b", { id: "mark" })]
 			})]
 		}), /* @__PURE__ */ (0, L.jsxs)("div", {
-			className: "trace-metric",
+			"data-trace-metric": "",
 			children: [/* @__PURE__ */ (0, L.jsxs)("div", {
-				className: "lab mono trace-real",
+				"data-trace-label": "",
 				children: [/* @__PURE__ */ (0, L.jsx)("span", { children: "真实观看" }), /* @__PURE__ */ (0, L.jsx)("span", {
 					id: "realTxt",
 					children: t == null ? "0%" : `${t.toFixed(0)}%`
 				})]
 			}), /* @__PURE__ */ (0, L.jsx)("div", {
-				className: "bar",
+				"data-trace-bar": "",
 				children: /* @__PURE__ */ (0, L.jsx)("u", {
 					id: "realBar",
+					"data-trace-real": "",
 					style: t == null ? void 0 : { width: `${t.toFixed(1)}%` }
 				})
 			})]
@@ -44802,8 +44800,8 @@ function Nue({ item: e, open: t, write: n }) {
 	}, [e.like_reason]);
 	let o = n.busy.has("preference");
 	return /* @__PURE__ */ (0, L.jsxs)("div", {
-		className: "preference",
 		id: "preferencePanel",
+		"data-item-preference": "",
 		hidden: !t,
 		children: [/* @__PURE__ */ (0, L.jsx)("textarea", {
 			ref: a,
@@ -44813,15 +44811,16 @@ function Nue({ item: e, open: t, write: n }) {
 			value: r,
 			onChange: (e) => i(e.target.value)
 		}), /* @__PURE__ */ (0, L.jsxs)("div", {
-			className: "preference-foot",
+			"data-preference-foot": "",
 			children: [/* @__PURE__ */ (0, L.jsx)("span", {
 				id: "preferenceState",
 				"aria-live": "polite",
 				children: n.preferenceState
 			}), /* @__PURE__ */ (0, L.jsx)("button", {
 				type: "button",
-				className: "geist-button primary savepreference",
+				className: "geist-button primary",
 				id: "savePreference",
+				"data-save-preference": "",
 				title: "提交喜爱理由",
 				"aria-label": "提交喜爱理由",
 				...n.busyAttrs("preference"),
@@ -44842,15 +44841,14 @@ function Pue(e) {
 		e && (y(e), r.wireDrag(e));
 	}, [r]);
 	return a.data && !a.data.length ? null : /* @__PURE__ */ (0, L.jsxs)("div", {
-		className: "next",
 		"data-item-related": "",
 		children: [/* @__PURE__ */ (0, L.jsx)("h3", {
 			className: "font-semibold",
 			children: "接着看"
 		}), /* @__PURE__ */ (0, L.jsx)("div", {
 			ref: s,
-			className: "nrow",
 			id: "nrow",
+			"data-related-row": "",
 			children: a.data ? /* @__PURE__ */ (0, L.jsx)(Zw, {
 				mode: "items",
 				variant: "next",

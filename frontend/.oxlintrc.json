@@ -23,15 +23,7 @@
       "sgrid", "mixgrid", "vwrap", "closestage", "video-js", "vjs-big-play-centered", "side", "sidecontent", "stitle", "smeta",
       "mono", "stags", "tg", "mav", "externallink", "fb", "later", "seen", "dislike", "dur",
       "mixqueue", "mixqueuehead", "mixqueueactions", "mixlist", "mixrow", "mixitem", "current", "mixitempic", "mixitemtext",
-      "mixgrouplabel", "mixitemhead", "mixitemmeta", "qedition", "queueedit", "queuegrip", "javedition", "censored",
-      "gate", "offline", "chip", "detailtitle", "stitletext", "srctools", "detailtitletools", "srcstate", "detailtitlestate",
-      "rating", "ratingstars", "star", "ratingvalue", "detailmetaitem", "regionlink",
-      "detailidentity", "identityprimary", "idgroup", "idgroup-unowned", "idseries", "idlabel", "idrow", "idcell", "idface",
-      "idname", "entitylink", "logo", "unownedlink", "castmore", "seriesrows", "serieslink",
-      "detailtag", "tagfilter", "tagremove", "tagplus", "tagpicker", "tagpicksearch", "tagpickbody", "tagpicksection",
-      "tagpickgrid", "tagpickitem", "selected", "active", "pickname", "pickcount",
-      "trace", "trace-metric", "lab", "trace-real", "bar", "like", "reason", "playlistadd", "upgrade", "dispose", "obtn",
-      "preference", "preference-foot", "geist-button", "primary", "savepreference", "next", "nrow"] }],
+      "mixgrouplabel", "mixitemmeta", "javedition", "censored", "chip", "geist-button", "primary"] }],
     "shadcn/require-static-classes": "error"
   }
 }

@@ -398,12 +398,6 @@
    否则「640 KB/s」会在这条 flex 行里断成两行，把 40px 的胶囊顶破。 */
 .playernet svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
 .playernet[hidden]{display:none}
-.gate{aspect-ratio:16/9;width:100%;background:var(--sunk);border:1px dashed var(--meter);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer}
-/* 占位说明的字号原先写在 openItem 的模板里当内联 style，三处各写一遍、
-   连 `color:var(--muted)` 也抄了三份。 */
-.gate b{font-size:var(--fs-md)}
-.gate span{font-size:var(--fs-xs);color:var(--muted)}
 /* 被门挡住的 <video> 只带 hidden 属性，而 `.video-js{display:block}` 是作者样式，
    压得住 UA 的 `[hidden]`。原先靠内联 `style="display:none"` 顶住，三个门里
    只有两个写了——第三个能对只是因为它那一支还没初始化成 `.video-js`。 */

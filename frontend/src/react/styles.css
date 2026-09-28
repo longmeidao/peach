@@ -22,6 +22,7 @@
 @import "./entity-body/entity-body.css";
 @import "./follow-feed/follow-feed.css";
 @import "./follow-detail/follow-detail.css";
+@import "./item-detail/item-detail.css";
 @import "./photo-lightbox/photo-lightbox.css";
 @import "./index/index-people.css";
 
