@@ -7,9 +7,15 @@
   transform:translate(-50%,-50%)}
 .tokstage.wide{left:50%;right:auto;width:min(64vw,177.778vh);aspect-ratio:16/9;transform:translate(-50%,-50%)}
 .toktrack{position:absolute;inset:0;overflow:hidden;border-radius:var(--floating-radius);background:#000;
-  box-shadow:0 0 64px rgba(0,0,0,.34);touch-action:manipulation;cursor:pointer}.toktrack video{position:absolute;inset:0;max-height:none;max-width:none;
-  width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover;background:#000;will-change:transform;
+  box-shadow:0 0 64px rgba(0,0,0,.34);touch-action:manipulation;cursor:pointer}
+/* 还不知道第一条片子的宽高时不画框：框和片子一起出现，只有一个形状。 */
+.toktrack:empty{background:none;box-shadow:none}
+/* 一格一片：`.tokslide` 上下滑动，Video.js 的外包 div 和 video 都铺满它。 */
+.toktrack .tokslide{position:absolute;inset:0;background:#000;will-change:transform;
   transition:transform .2s cubic-bezier(.2,.2,.4,.9)}
+.tokslide>.video-js{position:absolute;inset:0;width:100%;height:100%;background:#000}
+.toktrack video{position:absolute;inset:0;max-height:none;max-width:none;
+  width:100%;height:100%;object-fit:cover;background:#000}
 /* 片源与视口比例差得多时按原始比例完整显示（留黑边），不裁掉画面。
    判据在 JS 的 tokFitOne：这里只认结果，不再假设「竖屏才需要 contain」。 */
 .toktrack video.contain{object-fit:contain}

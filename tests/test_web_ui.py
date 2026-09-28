@@ -3391,10 +3391,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false)")
 
     def test_playback_keys_reach_both_the_detail_player_and_immerse(self):
-        # 沉浸模式没有 Video.js，详情播放器读的又是同一个原生元素，
+        # 两边的 Video.js 读的都是原生 video 元素，沉浸模式拉不到播放器脚本时还是裸 video，
         # 所以快捷键只认 video 元素，两边共用一条实现。
         self.assertPageContains("function activeVideo()")
-        self.assertPageContains("if(!$('#tok').hidden)return $('#tokVid')")
+        self.assertPageContains("if(!$('#tok').hidden)return tokVideo()")
         # Video.js 挂载后 #vid 是 <div class="video-js">，真媒体元素是 #vid_html5_api。
         # 按 id 取会静默失败：给 div 写 currentTime 读得回来，播放却纹丝不动。
         self.assertPageContains("stage&&!stage.hidden?stage.querySelector('video'):null")
@@ -3469,23 +3469,23 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('.tokbtns{left:auto;right:max(8px,env(safe-area-inset-right));bottom:92px;width:56px')
 
     def test_immerse_centres_landscape_video_while_keeping_actions_inside(self):
-        self.assertPageContains("const wide=source>=1")
-        self.assertPageContains("track.closest('.tokstage')?.classList.toggle('wide',wide)")
+        self.assertPageContains("v.videoWidth&&v.videoHeight?v.videoWidth>=v.videoHeight:!!tokItemWide(it)")
+        self.assertPageContains("$('#tok .tokstage').classList.toggle('wide',wide)")
         self.assertPageContains("$('#tok').classList.toggle('tok-wide',wide)")
         self.assertPageContains('.tokstage.wide{left:50%;right:auto;width:min(64vw,177.778vh);aspect-ratio:16/9;transform:translate(-50%,-50%)}')
         self.assertPageContains('.tokstage.wide .tokbtns{left:auto;right:12px;bottom:18px}')
         self.assertPageContains('.tok.tok-wide .tokui{width:min(500px,calc(36vw - 56px))}')
 
     def test_immerse_cancels_each_stream_when_switching_closing_or_leaving(self):
-        self.assertPageContains('function tokStreamUrl(video,id)')
-        self.assertPageContains('video.dataset.streamSession=session')
-        self.assertPageContains('`/stream?id=${id}&session=${encodeURIComponent(session)}`')
-        self.assertPageContains('function disposeTokVideo(video,remove=false)')
-        self.assertPageContains('disposeTokVideo(old,true)')
-        self.assertPageContains('disposeTokVideo(v,v.id!==\'tokVid\')')
-        self.assertPageContains("querySelectorAll('#tokIncoming').forEach(video=>disposeTokVideo(video,true))")
+        self.assertPageContains('const slide={el,video,player:null,session:newStreamSession(),disposed:false}')
+        self.assertPageContains('playableStreamSource(it,slide.session)')
+        self.assertPageContains('`/stream?id=${it.id}&session=${encodeURIComponent(session)}`')
+        self.assertPageContains('slide.disposed=true;tokSlides.delete(slide);cancelStreamSession(slide.session)')
+        self.assertPageContains('disposeTokSlide(old)')
+        self.assertPageContains('[...tokSlides].forEach(disposeTokSlide)')
+        self.assertPageContains('disposeTokSlide(incoming)')
         self.assertPageContains("addEventListener('pagehide',()=>{")
-        self.assertPageContains("$('#tokTrack').querySelectorAll('video').forEach(cancelTokStream)")
+        self.assertPageContains('tokSlides.forEach(slide=>cancelStreamSession(slide.session))')
 
     def test_nothing_a_surface_starts_outlives_the_surface(self):
         """离开一个表面时，它开的东西必须跟着结束。
@@ -4562,7 +4562,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks('class="tokspinner"')
         self.assertPageContains("function setTokLoading(on,label='加载中…',it=null)")
         self.assertPageContains("function waitTokReady(video,timeout=15000)")
-        self.assertPageContains("width:100%;height:100%;left:50%;transform:translateX(-50%);object-fit:cover")
+        self.assertPageContains("width:100%;height:100%;object-fit:cover;background:#000")
         # cover 只是基线；片源与视口比例差得多时切到 contain 完整显示。
         # 判据本身由 test_immersive_fit_compares_source_against_the_viewport 覆盖，
         # 这里只确认沉浸模式仍然接着那条规则走。
