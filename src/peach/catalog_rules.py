@@ -302,7 +302,10 @@ _WESTERN_DATE = re.compile(
     r"(0[1-9]|1[0-2])\.(0[1-9]|[12]\d|3[01])(?![0-9])")
 #: 分词只按空白与各类括号切，句点留给日期本身。
 _WESTERN_TOKEN_SEP = re.compile(r"[\s_@\[\]【】()（）]+")
-_FC2_ID = re.compile(r"^FC2(?:[-_. ]?PPV)?[-_. ]?(\d{5,})$", re.I)
+#: FC2 商品号。`FC-2052614` 是合集包常见的短写法（`B:\MVP\FC2-Selected collection-2`
+#: 下 97 个文件是这种写法），`FC` 与数字之间必须有分隔符：连写的 `FC2052614`
+#: 分不清是哪一种，仍按 `FC2` 连写读。
+_FC2_ID = re.compile(r"^(?:FC2(?:[-_. ]?PPV)?[-_. ]?|FC[-_])(\d{5,})$", re.I)
 
 #: 能证明「这是一次公开发行」的实体类型。`tag` 不在其中：口味标签谁都能挂，
 #: 挂上了不代表这条记录对应某个发行物。
@@ -459,6 +462,9 @@ def normalise_code_key(code: str | None) -> str:
     if value.startswith("FC2"):
         digits = re.search(r"(\d{5,})", value)
         return f"FC2-PPV-{digits.group(1)}" if digits else value
+    short_fc2 = _FC2_ID.match(value)
+    if short_fc2:
+        return f"FC2-PPV-{short_fc2.group(1)}"
     shape = re.match(r"^(\d{3})?([A-Z]+)-?(\d+)$", value)
     if not shape:
         return value
@@ -647,10 +653,11 @@ def is_jav_asset(code: str | None, studio: str | None = None,
     )
 
 
-#: 发行体系自己的写法，形态本身就是发行证据：FC2 商品号（含 `FC-437689` 这种变体）、
+#: 发行体系自己的写法，形态本身就是发行证据：FC2 商品号（`FC-437689` 这种变体先经
+#: `normalise_code_key` 归成 `FC2-PPV-…`）、
 #: 素人平台的三位数字前缀（`300MIUM-698`）、MGStage 素人系（`STP-26232`、`SIRO-3508`）、
 #: 日期式番号（`071213-625`）。创作者的文件名撞不出这几种形状，所以它们一概放行。
-_RELEASE_SYSTEM_SHAPE = re.compile(r"^(FC2|FC-\d{5,}|\d{3}[A-Z]+-|ST[PN]-|SIRO-|\d{6}[-_])")
+_RELEASE_SYSTEM_SHAPE = re.compile(r"^(FC2|\d{3}[A-Z]+-|ST[PN]-|SIRO-|\d{6}[-_])")
 
 
 def scrapes_as_jav(code: str | None, studio: str | None = None,

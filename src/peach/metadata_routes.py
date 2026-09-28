@@ -40,7 +40,7 @@ CONTENT_TYPES = ("censored", "amateur", "uncensored", "fc2", "kmib", "other", "u
 MGS_AMATEUR_PREFIXES = ("SIRO", "STP", "STN")
 _MGS_AMATEUR = re.compile(r"^(?:" + "|".join(MGS_AMATEUR_PREFIXES) + r")-?\d+$", re.I)
 #: 入库前没归一成 `FC2-PPV-…` 的短写法：`FC-43768`（账本实测，文件名是 `FC-437689-C.mp4`）。
-#: 与 `catalog_rules._RELEASE_SYSTEM_SHAPE` 的 `FC-\d{5,}` 同一把尺。
+#: 与 `catalog_rules._FC2_ID` 的短写法同一把尺。
 _FC2_SHORT = re.compile(r"^FC-\d{5,}$", re.I)
 #: 番号拆成字母段与数字段，用来在本机证据里找它的写法。
 _CODE_PARTS = re.compile(r"^([A-Z]+)-?0*(\d+)$")
