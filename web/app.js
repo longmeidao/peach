@@ -7997,7 +7997,8 @@ addEventListener('resize',()=>{
 async function openTok(startId,push=true){
   if(push)route('/immerse');
   closeMiniplayer();
-  $('#tok').hidden=false;document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
+  $('#tok').hidden=false;$('#tok').classList.add('tok-idle');
+  document.body.style.overflow='hidden';setTokLoading(true,'加载内容…');
   try{
     tokList=await fetchTok();
     if(startId&&!tokList.some(x=>x.id===startId)){
@@ -8019,11 +8020,7 @@ async function tokShow(dir){
   try{
     const full=await api('/api/item?id='+it.id);
     const track=$('#tokTrack'),old=tokCurrent,slide=!!(dir&&old);
-    if(!slide){
-      disposeTokSlide(old);
-      // 首条不等元数据：条目自带宽高就先摆好舞台，加载提示和随后出画的片子同一个框。
-      const known=tokItemWide(it);if(known!==null)setTokStage(known);
-    }
+    if(!slide)disposeTokSlide(old);
     incoming=createTokSlide(track,slide?(dir>0?100:-100):0);
     const v=incoming.video;applyTokFit(v);
     await loadTokSlide(incoming,it);
@@ -8039,6 +8036,7 @@ async function tokShow(dir){
       disposeTokSlide(old);next.el.style.transform='';
     }
     tokCurrent=incoming;incoming=null;
+    $('#tok').classList.remove('tok-idle');
     if(location.pathname==='/'){
       const url=new URL(location.href),query=new URLSearchParams();
       for(const key of ['q','loc','creator','studio','tag','len','dur_min','dur_max','orient','state','sort','dir']){
