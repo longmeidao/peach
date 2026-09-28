@@ -154,6 +154,33 @@ class RunnerTests(LedgerTestCase):
         self.assertEqual(done.status, "succeeded")
         self.assertEqual(done.result_summary["outcome"], "entity-avatar:performer:1")
 
+    def test_a_followup_that_says_continue_is_queued_again_in_place_until_it_stops(self):
+        """存量要跑好几轮的后继：结算时说还没完，就在同一层、同一个父任务下再排一条，排在别的后继后面。"""
+        parent = self.parent()
+        left, order = [3], []
+
+        def chunk(contract, key, handle):
+            order.append(key)
+            left[0] -= 1
+            return {"outcome": key, "continue": left[0] > 0}
+
+        def avatar(contract, key, handle):
+            order.append(key)
+            return {"outcome": key}
+
+        with registered(echo_type("code-samples", run=chunk), echo_type(AVATAR_TASK_KEY, run=avatar)):
+            self.store.enqueue_followups(parent.id, [
+                ("code-samples:stock", "code-samples", "补番号样张"),
+                ("entity-avatar:performer:1", AVATAR_TASK_KEY, "甲")])
+            self.assertEqual(FollowupRunner(self.contract()).drain(), 4)
+        self.assertEqual(order, ["code-samples:stock", "entity-avatar:performer:1",
+                                 "code-samples:stock", "code-samples:stock"])
+        rows = [row for row in self.store.children(parent.id) if row.task_key == "code-samples"]
+        self.assertEqual([row.status for row in rows], ["succeeded"] * 3)
+        self.assertEqual({(row.followup_depth, row.root_run_id, row.trigger) for row in rows},
+                         {(1, parent.id, "manual")})
+        self.assertEqual([row.result_summary["continue"] for row in rows], [True, True, False])
+
     def test_ledger_writers_share_one_lane_and_never_overlap(self):
         live, peak = [0], [0]
         guard = threading.Lock()

@@ -227,7 +227,7 @@ class FollowupTests(LedgerCase):
         self.assertEqual((summary["landed"], summary["absent"]), (0, 2))
         self.assertEqual(summary["paused"], ["mgstage"])
         self.assertEqual(summary["skipped"]["paused"], 1)
-        self.assertEqual(summary["outcome"], "这一轮没有补上样张；跳过 1 部因来源冷却")
+        self.assertEqual(summary["outcome"], "这一轮没有补上样张；跳过 1 部因来源冷却；还有 1 部待补，接着排下一轮")
         misses = sample_images.Misses(sample_images.misses_path(self.generated))
         self.assertTrue(misses.fresh("dmm", "SSIS-057"))
         self.assertFalse(misses.fresh("mgstage", "300MIUM-1000"), "冷却不是没有")
@@ -235,6 +235,40 @@ class FollowupTests(LedgerCase):
             self.assertEqual(sample_images.pending(connection, self.contract.has_cover, misses,
                                                    sample_images.snapshot_index(self.sources), limit=5),
                              ["300MIUM-1000"])
+
+    def test_snapshots_all_land_in_one_round_and_only_network_asks_are_capped(self):
+        """快照里现成的地址不占联网名额；名额用完的那部留到下一轮，这一轮推进了就说要接着跑。"""
+        for index, code in enumerate(["AAA-001", "AAA-002", "AAA-003"], start=1):
+            self.work(index, code)
+            self.snapshot(code, "dmm", {"sample_images": [dmm(code.lower().replace("-", "00"), 1, small=True)]})
+        self.work(4, "SSIS-057")
+        self.work(5, "SSIS-058")
+        asked = []
+
+        def fetch(_transport, code, *, deadline=None):
+            asked.append(code)
+            return [dmm(code.lower().replace("-", "00"), 1, small=True)]
+
+        with mock.patch.object(sample_followup, "BATCH", 1):
+            summary = self.run_followup({"dmm": fetch})
+        self.assertEqual(asked, ["SSIS-058"])
+        self.assertEqual((summary["landed"], summary["deferred"], summary["remaining"]), (4, 1, 1))
+        self.assertTrue(summary["continue"])
+        self.assertEqual(summary["outcome"], "补上 4 部的样张（4 张）；跳过 1 部联网名额用完留到下一轮；还有 1 部待补，接着排下一轮")
+        with mock.patch.object(sample_followup, "BATCH", 1):
+            last = self.run_followup({"dmm": fetch}, run_id=8)
+        self.assertEqual((last["landed"], last["remaining"], last["continue"]), (1, 0, False))
+        self.assertEqual(last["outcome"], "补上 1 部的样张（1 张）")
+
+    def test_a_round_held_up_only_by_a_cooldown_waits_for_the_next_processing(self):
+        self.work(1, "300MIUM-1000")
+
+        def mgs_fetch(_transport, code, *, deadline=None):
+            raise SourcePaused("mgstage", 0.0, "冷却中")
+
+        summary = self.run_followup({"mgstage": mgs_fetch})
+        self.assertEqual((summary["landed"], summary["remaining"], summary["continue"]), (0, 1, False))
+        self.assertEqual(summary["outcome"], "这一轮没有补上样张；跳过 1 部因来源冷却；还有 1 部待补，等下一次处理")
 
     def test_codes_nobody_can_be_asked_about_are_counted_in_the_summary(self):
         """快照里没样张、又没有官方样张站的番号（FC2）不联网也不算「没有」，摘要说清跳过了几部、为什么。"""
