@@ -163,6 +163,16 @@ class ExtractionTests(unittest.TestCase):
         self.assertEqual(release_code_from_text("FC2-PPV-2909046"), "FC2-PPV-2909046")
         self.assertEqual(release_code_from_text("fc2802296"), "FC2-PPV-802296")
 
+    def test_the_fc_dash_short_form_is_an_fc2_id(self):
+        """合集包把 FC2 写成 `FC-<商品号>`，认不出就没有番号，整条 FC2 来源链一家都不问。"""
+        for name in ("FC-2052614-1.mp4", "FC-2052614_1.mp4", "FC-2052614.mp4",
+                     "FC-2052614A.mp4", "FC-2052614-C.mp4"):
+            self.assertEqual(release_code_from_filename(name), "FC2-PPV-2052614", name)
+        self.assertEqual(release_code_from_filename("FC-437689-C.mp4"), "FC2-PPV-437689")
+        self.assertEqual(normalise_code_key("FC-437689"), "FC2-PPV-437689")
+        self.assertEqual(release_code_from_text("FC2052614"), "FC2-PPV-052614",
+                         "不带分隔符的仍按 FC2 连写读")
+
     def test_labels_and_domains_extract_to_nothing(self):
         for text in ("HHD800", "hhd800.com", "www.98t.la", "AAVV333", "bei88"):
             self.assertIsNone(release_code_from_text(text), text)
