@@ -22,6 +22,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from .config import GENERATED_DIR
+from .fsutil import atomic_path
 
 #: 复核 CSV 的编码。改它等于改所有复核产物的可读性，不要在调用处覆盖。
 ENCODING = "utf-8-sig"
@@ -54,9 +55,9 @@ def write_rows(
 ) -> None:
     """写一份复核 CSV，并按需保证原子替换。
 
-    `atomic` 走临时文件加 `os.replace`：长跑任务被打断时，读的人拿到的要么是替换前
-    那份完整文件、要么是替换后那份，不会是写了一半的。异常路径删掉临时文件再原样抛出，
-    不把中断伪装成成功。
+    `atomic` 走 `fsutil.atomic_path`：长跑任务被打断时，读的人拿到的要么是替换前
+    那份完整文件、要么是替换后那份，不会是写了一半的。复核页正开着这份表时替换会等它
+    放手，不让一次读取打死整个处理任务。异常路径删掉临时文件再原样抛出，不把中断伪装成成功。
 
     `fill_missing` 用空串补齐缺的列。默认关掉是有意的：`DictWriter` 遇到多余的键会抛
     `ValueError`，那几乎总是字段名真的写错了；无条件补齐会把这个错误变成一列静默的
@@ -80,14 +81,9 @@ def write_rows(
             dump(handle)
         return
 
-    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp")
-    try:
+    with atomic_path(target) as temporary:
         with temporary.open("w", encoding=ENCODING, newline="") as handle:
             dump(handle)
-        os.replace(temporary, target)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
 
 
 # 候选文件名带批次日期，代码里只认前缀并永远取目录里实际最后写完的一份；

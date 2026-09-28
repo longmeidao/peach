@@ -16,10 +16,38 @@
 from __future__ import annotations
 
 import os
+import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+
+#: 目标被读者占着时等它放手的期限。复核 CSV、封面这类文件的读者每次只开一瞬间。
+READER_WAIT = 10.0
+
+
+def replace_with_retry(
+    source: Path,
+    destination: Path,
+    *,
+    timeout: float = 45.0,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    """把 `source` 原子换到 `destination`，直到目标不再被占用。
+
+    Windows 上目标只要被别的进程开着（刚退出的进程仍握着自己的映像文件、服务正读着那份
+    复核 CSV），`os.replace` 就抛 `PermissionError`。重试到期限为止；期限内换不上就把原始
+    异常抛给调用方，由它决定是回滚还是原样报出来，这里不吞。
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.replace(source, destination)
+            return
+        except OSError:
+            if time.monotonic() >= deadline:
+                raise
+            sleep(0.25)
 
 
 @contextmanager
@@ -41,7 +69,7 @@ def atomic_path(target: Path | str, *, suffix: str | None = None) -> Iterator[Pa
         temporary.unlink(missing_ok=True)
         raise
     try:
-        os.replace(temporary, destination)
+        replace_with_retry(temporary, destination, timeout=READER_WAIT)
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise

@@ -8,6 +8,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from peach.review_csv import ENCODING, read_rows, write_rows
 
@@ -95,6 +96,24 @@ class ReviewCsvTests(unittest.TestCase):
         write_rows(target, FIELDS, [{"code": "old", "name": "旧"}], atomic=True)
         write_rows(target, FIELDS, [{"code": "new", "name": "新"}], atomic=True)
         self.assertEqual(read_rows(target), [{"code": "new", "name": "新"}])
+
+    def test_atomic_write_waits_for_a_reader_to_let_go(self):
+        """Windows 上复核页正读着这份表时替换被拒；等读者放手再换，处理任务不因此中断。"""
+        target = self.root / "out.csv"
+        write_rows(target, FIELDS, [{"code": "old", "name": "旧"}], atomic=True)
+        real_replace = os.replace
+        refusals = [PermissionError(5, "拒绝访问"), PermissionError(5, "拒绝访问")]
+
+        def replace(source, destination):
+            if refusals:
+                raise refusals.pop()
+            real_replace(source, destination)
+
+        with mock.patch("peach.fsutil.os.replace", side_effect=replace), \
+                mock.patch("peach.fsutil.time.sleep"):
+            write_rows(target, FIELDS, [{"code": "new", "name": "新"}], atomic=True)
+        self.assertEqual(read_rows(target), [{"code": "new", "name": "新"}])
+        self.assertEqual([p.name for p in self.root.iterdir() if p.name.startswith(".")], [])
 
 
 if __name__ == "__main__":

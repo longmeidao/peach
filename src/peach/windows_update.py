@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable
 
-from .fsutil import atomic_write_text
+from .fsutil import atomic_write_text, replace_with_retry
 
 
 log = logging.getLogger(__name__)
@@ -90,30 +90,6 @@ def sweep_onefile_extractions(
             continue
         removed.append(entry)
     return tuple(removed)
-
-
-def replace_with_retry(
-    source: Path,
-    destination: Path,
-    *,
-    timeout: float = 45.0,
-    sleep: Callable[[float], None] = time.sleep,
-) -> None:
-    """把 `source` 原子换到 `destination`，直到目标不再被占用。
-
-    Windows 上刚退出的进程仍会短暂持有自己的映像文件，`os.replace` 因此抛
-    `PermissionError`。重试到期限为止；期限内换不上就把原始异常抛给调用方，
-    由它决定是回滚还是原样报出来，这里不吞。
-    """
-    deadline = time.monotonic() + timeout
-    while True:
-        try:
-            os.replace(source, destination)
-            return
-        except OSError:
-            if time.monotonic() >= deadline:
-                raise
-            sleep(0.25)
 
 
 def swap_tray_binary(
