@@ -443,41 +443,6 @@ export function moveGlidePane(pane,from,box,axis='x'){
   pane.style.translate=settled;
 }
 
-const incrementalControls=new Map();
-let incrementalCleanup;
-/** 分页请求互斥，失败留在原位手动重试，卸载后丢弃结果。 */
-export function wireLoadMore(button,options){
-  if(!button)return;
-  const existing=incrementalControls.get(button);
-  if(existing){existing.options=options;return existing}
-  let busy=false,failed=false,errorNode=null,request=null,disposed=false;
-  const clearError=()=>{errorNode?.remove();errorNode=null;failed=false};
-  const control={options,async run(manual=false){
-    const current=control.options;
-    if(disposed||busy||button.hidden||!button.isConnected||(!manual&&failed)||current.enabled?.()===false)return;
-    clearError();busy=true;request=new AbortController();
-    const alive=()=>!disposed&&!request.signal.aborted&&button.isConnected&&current.isCurrent?.()!==false;
-    setActionBusy(button,true);
-    try{
-      const result=await current.read(request.signal);
-      if(alive())await current.apply?.(result);
-    }catch(error){
-      if(alive()&&error?.name!=='AbortError'){
-        failed=true;errorNode=document.createElement('div');
-        errorNode.innerHTML=noteHtml(error?.message||String(error),{variant:'error',actionLabel:'重试'});
-        errorNode.querySelector('[data-note-action]').onclick=()=>control.run(true);
-        button.after(errorNode);
-      }
-    }finally{busy=false;setActionBusy(button,false)}
-  },destroy(){disposed=true;request?.abort();observer.disconnect();button.removeEventListener('click',click);clearError();incrementalControls.delete(button);if(!incrementalControls.size){incrementalCleanup?.disconnect();incrementalCleanup=null}}};
-  const click=()=>control.run(true);
-  button.addEventListener('click',click);
-  const observer=new IntersectionObserver(entries=>{if(entries.some(entry=>entry.isIntersecting))void control.run()},{rootMargin:'320px'});
-  observer.observe(button);incrementalControls.set(button,control);
-  if(!incrementalCleanup){incrementalCleanup=new MutationObserver(()=>{for(const [node,item] of incrementalControls)if(!node.isConnected)item.destroy()});incrementalCleanup.observe(document.body,{childList:true,subtree:true})}
-  return control;
-}
-
 /** 两行筛选浮层；页面拥有槽位里的控件与查询状态。 */
 export function mountFilterFrame(top,bottom,{views,tags,readout,controls}){
   let frame=top.closest('[data-filter-frame]');

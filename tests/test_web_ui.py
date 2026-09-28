@@ -9793,27 +9793,6 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("showManagementBody(", body,
                           name + " 自己铺页面主体，多半又抄漏了一行")
 
-    def test_infinite_scroll_is_wired_through_one_helper(self):
-        """「载入更多」的观察器只许有一份实现。
-
-        它此前抄了三份：关注流、实体合集、照片墙。已经开始漂——后两份有 `hidden`
-        判断，关注那份没有。藏起来的按钮观察它没有意义，漏掉只是浪费一个观察器，
-        但下一次抄漏的可能就不是这一行。
-
-        重画会换掉按钮节点，所以 disconnect 不能省：旧观察器还盯着已脱离文档的节点，
-        既不会触发也不会被回收。
-        """
-        body = self._js_function("wireLoadMore")
-        self.assertIn("observer.disconnect()", body, "卸载必须断开观察器")
-        self.assertIn("busy||button.hidden||!button.isConnected", body)
-        self.assertIn("current.isCurrent?.()!==false", body)
-        self.assertIn("request?.abort()", body)
-        self.assertIn("rootMargin:'320px'", body)
-        self.assertEqual(self.page.count("new IntersectionObserver"), 1,
-                         "共享分页只有这一个观察器")
-        # 资料页照片墙与关注流的翻页在 `entity-body`、`follow-feed` 岛里，用的是卡片网格那枚
-        # `LoadMore`，同一套判据。
-
     def test_the_identity_name_leaves_room_for_descenders(self):
         """身份格子里的名字不能被行框切掉下伸部。
 
