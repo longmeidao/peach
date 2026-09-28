@@ -9,8 +9,7 @@
   内置浏览器面板导航被拒；本机 javinizer-go 快照（`sources/metadata/javinizer-go/<番号>/r18dev.json`）
   只存 `genres` 的英文名，不带编号与日文名。
 - 本文不登记进 `docs/reference-sources.json`：这是一次性的只读取证，没有需要跟踪漂移的上游原文。
-- 用法：英文名跟着同一编号的日文名走。日文名已在 `genre_taxonomy` 里的，英文名写进同一去向；
-  日文名本身也未收录的，两者一起等用户在复核页定。
+- 用法：英文名跟着同一编号的日文名走，`genre_taxonomy` 里两个名字登记同一去向。
 
 ## 已取得
 
@@ -76,3 +75,4 @@
 ## 未取得
 
 - `D***k Girl`（id 4121，取自 miad00812）：r18.dev 的 `name_ja` 是 `null`，对不上 DMM 日文名。
+  词表按打码字形读作 `Drunk Girl` 归醉酒，这是推断，不是对照证据。
