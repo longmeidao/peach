@@ -588,6 +588,38 @@ class ProfileTagTests(unittest.TestCase):
         self.assertEqual(sorted(key for key in PROFILE_GENRES
                                 if normalise_genre(key) in excluded), [])
 
+    def test_an_r18dev_name_goes_where_its_dmm_category_goes(self):
+        """r18dev 的英文名是 DMM 分类的译名，去向跟同一分类的日文名一致：收录、排除还是未收录。
+
+        对照取自 r18.dev 作品 JSON 的 `categories`（`docs/reference-snapshots/r18dev-genre-categories.md`）。
+        收录了日文名却漏了英文名，r18dev 快照里的这个分类就一个标签都投不出来。
+        """
+        same_category = {
+            "Asian Actress": "アジア女優", "Big Asses": "巨尻", "Breast Milk": "母乳",
+            "Business Suit": "ビジネススーツ", "Caucasian Actress": "白人女優", "Cherry Boy": "童貞",
+            "Club Hostess & Sex Worker": "キャバ嬢・風俗嬢", "Club Manager": "部活・マネージャー",
+            "Confessional": "体験告白", "Confinement": "監禁", "Cross Dresser": "女装・男の娘",
+            "Daydreamers": "妄想族", "Drinking Party/Mixer": "飲み会・合コン", "Embarrassment": "辱め",
+            "Employee/Coworker": "部下・同僚", "Enema": "浣腸", "Female Boss": "女上司",
+            "Female Detective": "女捜査官", "Flexible body": "軟体", "Foot Fetish": "脚フェチ",
+            "G-Spot": "ポルチオ", "Genital Close-Up": "局部アップ", "Hard Sex": "鬼畜",
+            "Hospital/Clinic": "病院・クリニック", "Hostess": "コンパニオン",
+            "Huge Dick - Large Dick": "デカチン・巨根", "Kiss Kiss": "キス・接吻", "Light Skin": "色白",
+            "Lookalike": "そっくりさん", "Love": "恋愛", "M-jo": "M女", "Masochist Man": "M男",
+            "Masturbation Support": "オナサポ", "Miniskirt": "ミニスカ", "Muscular": "筋肉",
+            "Non-nude Erotica": "着エロ", "Object Insertion": "異物挿入", "Old Playmates": "幼なじみ",
+            "Pranks": "イタズラ", "Premature Ejaculation": "早漏", "Queen": "女王様", "Quickie": "即ハメ",
+            "Race Queen": "レースクィーン", "S******n": "ショタ", "Shame": "羞恥",
+            "Shemale": "ニューハーフ", "Sister": "姉・妹", "Soapland Girl": "ヘルス・ソープ",
+            "Stepfamily": "近親相姦", "Stepmom": "義母", "Substance Use": "ドラッグ", "Sweating": "汗だく",
+            "Tight Dress": "ボディコン", "Urination": "放尿・お漏らし", "Various Worker": "職業色々",
+            "Youthful": "ミニ系",
+        }
+        apart = {english: (resolve_genre(english), resolve_genre(japanese))
+                 for english, japanese in same_category.items()
+                 if resolve_genre(english) != resolve_genre(japanese)}
+        self.assertEqual(apart, {})
+
 
 if __name__ == "__main__":
     unittest.main()
