@@ -75,10 +75,10 @@ class ReprojectTests(unittest.TestCase):
             "SELECT tag,source FROM asset_tag WHERE asset_id=?", (asset_id,)).fetchall())
 
     def test_fill_adds_what_the_snapshot_maps_to_now(self):
-        """NHDTB-455：批准时的映射认不得 `Big Asses`、`Anal Sex`，账本只剩潮吹。"""
+        """NHDTB-455：批准时的映射认不得 `Hard Sex`、`Big Asses`、`Anal Sex`，账本只剩潮吹。"""
         self.land(7, "NHDTB-455", ["Hard Sex", "Big Asses", "Squirting", "Anal Sex", "Hi-Def"], ["潮吹"])
         self.fill()
-        self.assertEqual(self.tags_of(7), ["巨臀", "潮吹", "肛交"])
+        self.assertEqual(self.tags_of(7), ["巨臀", "潮吹", "肛交", "调教"])
         self.assertTrue(self.sources_of(7)["巨臀"].startswith("auto:metadata-tags@"))
         self.assertEqual(self.sources_of(7)["潮吹"], "javinizer:javbus:tag")
 

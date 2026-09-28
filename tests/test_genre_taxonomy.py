@@ -66,7 +66,7 @@ class GenreTaxonomyTests(unittest.TestCase):
         """`乳系`、`足系` 这种粗桶已经撤掉，来源说到哪一级就取哪一级。
 
         映进撤掉的标签，等于写入一个账本清理时会整条删掉的值。`おっぱい` 只说到
-        「胸」这一级，没有对应的具体标签，所以它不进表，作为未收录词回传。
+        「胸」这一级，没有对应的具体标签，所以它归非内容，不投进哪个乳型。
         """
         offenders = sorted(
             f"{source} -> {mapped}"
@@ -74,7 +74,7 @@ class GenreTaxonomyTests(unittest.TestCase):
             for source, mapped in table.items()
             if set(mapped if isinstance(mapped, tuple) else (mapped,)) & catalog_rules.DROPPED_TAGS)
         self.assertEqual(offenders, [], "这些映射落进了撤掉的粗桶")
-        self.assertEqual(map_genres(["おっぱい"]), ([], ["おっぱい"]))
+        self.assertEqual(map_genres(["おっぱい"]), ([], []))
 
     def test_no_genre_maps_into_a_retired_name(self):
         """退役名在账本里会被改成规范名，投影表再产出它就是每轮抓取都留一次旧写法。"""
@@ -619,6 +619,17 @@ class ProfileTagTests(unittest.TestCase):
                  for english, japanese in same_category.items()
                  if resolve_genre(english) != resolve_genre(japanese)}
         self.assertEqual(apart, {})
+        self.assertEqual(sorted(english for english in same_category
+                                if resolve_genre(english) == UNMAPPED), [])
+
+    def test_a_race_queen_is_one_tag_in_either_kana_spelling(self):
+        # DMM 写小字 `ィ`，FC2 卖家写 `イ`；NFKC 不折叠，两种写法各登记一次。
+        self.assertEqual(resolve_genre("レースクィーン"), "赛车女郎")
+        self.assertEqual(resolve_genre("レースクイーン"), "赛车女郎")
+
+    def test_dressing_as_a_girl_is_told_apart_from_being_transgender(self):
+        self.assertEqual(resolve_genre("女装・男の娘"), "伪娘")
+        self.assertEqual(resolve_genre("ニューハーフ"), "跨性别")
 
 
 if __name__ == "__main__":
