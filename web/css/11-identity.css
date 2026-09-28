@@ -27,8 +27,6 @@
    截省略号，于是「Prestige」的 g 尾巴被切掉——用户实测看到的就是这个。 */
 .idname{font-size:var(--fs-xs);line-height:1.5;text-align:left;width:100%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
-.idgroup-performer .idcell{align-items:center}
-.idgroup-performer .idname{text-align:center}
 .idcell:not(.entitylink):not(.unownedlink){cursor:default}
 .idcell.entitylink:hover .idface,.idcell.unownedlink:hover .idface{box-shadow:0 0 0 2px var(--ink-2)}
 .idcell.entitylink:hover .idname,.idcell.unownedlink:hover .idname{color:var(--ink)}

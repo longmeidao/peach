@@ -9,7 +9,9 @@ import { after, before, describe, it } from 'node:test';
 import type { Browser, Locator, Page } from 'playwright-core';
 
 import { openFollowFeed } from './follow-fixture.ts';
-import { configurationBody, expectBody, launch, layout, settle, visit, VIEWPORTS, type Visit } from './harness.ts';
+import {
+  configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Visit,
+} from './harness.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 const MOBILE = VIEWPORTS.find((viewport) => viewport.mobile)!;
@@ -3227,6 +3229,51 @@ describe('设计决定', () => {
       assert.notEqual(face, 'rgba(0, 0, 0, 0)');
       assert.notEqual(face, 'rgb(255, 255, 255)', '深色下别名浮层还是白底');
       assert.notEqual(ground, 'rgb(255, 255, 255)', '主题没有切到深色');
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('详情出演区每一组的标题、头像和名字共用一条左边缘', { timeout: 60_000 }, async () => {
+    const opened = await visit(browser, '/', DESKTOP);
+    try {
+      const page = opened.page;
+      /* 演示库的作品没有女优与厂牌，身份数据按 `/api/item` 的 `entity_refs` 形状换进去；
+         名字比头像宽的那种最容易看出错位，所以女优名取四个字。 */
+      await page.route(/\/api\/item\?/, async (route) => {
+        const payload = await (await route.fetch()).json();
+        Object.assign(payload, {
+          is_jav: true, performers: ['凉森玲梦'], studio: 'Prestige', creator: '',
+          entity_refs: {
+            creator: [], series: [],
+            performer: [{ id: 90_101, name: '凉森玲梦', has_image: true }],
+            studio: [{ id: 90_102, name: 'Prestige', has_image: false, has_logo: true }],
+          },
+        });
+        await route.fulfill({ json: payload });
+      });
+      const square = { contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#888"/></svg>' };
+      await page.route(/\/entity-image\?/, (route) => route.fulfill(square));
+      await page.route(/\/logo\?/, (route) => route.fulfill(square));
+      await page.goto(new URL(`/item/${requiredEnv('PEACH_E2E_ITEM')}`, page.url()).href, { waitUntil: 'load' });
+      await page.locator('.detailidentity .idgroup-studio .idname').waitFor({ timeout: 15_000 });
+      const edges = await page.evaluate(() => Object.fromEntries(
+        ['performer', 'studio'].map((kind) => {
+          const group = document.querySelector(`.detailidentity .idgroup-${kind}`)!;
+          const name = document.createRange();
+          name.selectNodeContents(group.querySelector('.idname')!);
+          return [kind, {
+            label: group.querySelector('.idlabel')!.getBoundingClientRect().left,
+            face: group.querySelector('.idface')!.getBoundingClientRect().left,
+            name: name.getBoundingClientRect().left,
+          }];
+        })));
+      for (const [kind, edge] of Object.entries(edges)) {
+        assert.ok(Math.abs(edge.face - edge.label) < 0.5, `${kind} 组头像左缘 ${edge.face} 不在标题左缘 ${edge.label}`);
+        assert.ok(Math.abs(edge.name - edge.label) < 0.5, `${kind} 组名字左缘 ${edge.name} 不在标题左缘 ${edge.label}`);
+      }
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
