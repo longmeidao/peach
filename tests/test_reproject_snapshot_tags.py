@@ -60,12 +60,62 @@ class ReprojectTests(unittest.TestCase):
         return sorted(row[0] for row in self.connection.execute(
             "SELECT tag FROM asset_tag WHERE asset_id=?", (asset_id,)))
 
-    def run_script(self, *extra: str) -> None:
+    def run_script(self, *extra: str, since: bool = True) -> None:
         args = reproject.build_parser().parse_args(
-            ["--since", "old", "--db", str(self.db),
+            [*(["--since", "old"] if since else []), "--db", str(self.db),
              "--review-csv", str(self.root / "reproject.csv"), *extra])
         with mock.patch.object(reproject, "taxonomy_at", return_value=BEFORE):
             self.assertEqual(reproject.run(args), 0)
+
+    def fill(self) -> None:
+        self.run_script("--apply", "--backup", str(self.root / "before.db"), since=False)
+
+    def sources_of(self, asset_id: int) -> dict[str, str]:
+        return dict(self.connection.execute(
+            "SELECT tag,source FROM asset_tag WHERE asset_id=?", (asset_id,)).fetchall())
+
+    def test_fill_adds_what_the_snapshot_maps_to_now(self):
+        """NHDTB-455：批准时的映射认不得 `Big Asses`、`Anal Sex`，账本只剩潮吹。"""
+        self.land(7, "NHDTB-455", ["Hard Sex", "Big Asses", "Squirting", "Anal Sex", "Hi-Def"], ["潮吹"])
+        self.fill()
+        self.assertEqual(self.tags_of(7), ["巨臀", "潮吹", "肛交"])
+        self.assertTrue(self.sources_of(7)["巨臀"].startswith("auto:metadata-tags@"))
+        self.assertEqual(self.sources_of(7)["潮吹"], "javinizer:javbus:tag")
+
+    def test_fill_never_removes_and_never_duplicates_another_source(self):
+        self.land(8, "ABC-008", ["巨尻", "中出し"], ["自慰"])
+        self.connection.execute(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source) VALUES(8,'中出内射',1.0,'web-user')")
+        self.connection.commit()
+        self.fill()
+        self.assertEqual(self.tags_of(8), ["中出内射", "巨臀", "自慰"])
+        self.assertEqual(self.sources_of(8)["中出内射"], "web-user")
+
+    def test_a_hidden_tag_is_not_brought_back(self):
+        """页面删标签只记隐藏、行还在，补齐按行看，不会把它补回来再显示。"""
+        self.land(9, "ABC-009", ["巨尻", "中出し"], ["中出内射"])
+        self.connection.execute(
+            "INSERT INTO asset_tag_preference(profile_id,asset_id,normalized_tag,hidden,updated_at) "
+            "VALUES('local-default',9,'中出内射',1,'2026-09-02T00:00:00Z')")
+        self.connection.commit()
+        self.fill()
+        self.assertEqual(self.tags_of(9), ["中出内射", "巨臀"])
+        self.assertEqual(self.connection.execute(
+            "SELECT hidden FROM asset_tag_preference WHERE asset_id=9").fetchone()[0], 1)
+
+    def test_tags_landed_by_union_survive_a_reprojection(self):
+        """按差写只动这一组来源下的那几行，这部片已有的并集补标签原样留着。"""
+        self.land(10, "ABC-010", ["可愛い", "中出し"], ["高颜值", "中出内射"])
+        self.connection.execute(
+            "INSERT INTO asset_tag(asset_id,tag,confidence,source) "
+            "VALUES(10,'单体作品',0.9,'auto:metadata-tags@20260910T000000')")
+        self.connection.commit()
+        self.run_script("--apply", "--backup", str(self.root / "before.db"))
+        self.assertEqual(self.tags_of(10), ["中出内射", "单体作品", "可爱"])
+
+    def test_an_old_mapping_without_decisions_still_reads(self):
+        legacy = types.SimpleNamespace(map_genres=lambda genres: (["美臀"], []))
+        self.assertEqual(reproject.mapped_by(legacy, ["巨尻"], {}), ["美臀"])
 
     def test_a_split_word_moves_to_its_own_tag(self):
         self.land(1, "ABC-001", ["可愛い", "中出し"], ["高颜值", "中出内射"])
