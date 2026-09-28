@@ -1517,12 +1517,13 @@ let detailStreamSession='',detailPlayer=null,detailStatsTimer=null,detailNetTime
 function newStreamSession(){
   return globalThis.crypto?.randomUUID?.()||`${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
-function detailStreamUrl(id){
-  if(!detailStreamSession)detailStreamSession=newStreamSession();
-  return `/stream?id=${id}&session=${encodeURIComponent(detailStreamSession)}`;
+function directStreamSource(it,session){
+  return {src:`/stream?id=${it.id}&session=${encodeURIComponent(session)}`,
+    type:String(it.name||'').toLowerCase().endsWith('.webm')?'video/webm':'video/mp4'};
 }
 function directDetailSource(it){
-  return {src:detailStreamUrl(it.id),type:String(it.name||'').toLowerCase().endsWith('.webm')?'video/webm':'video/mp4'};
+  if(!detailStreamSession)detailStreamSession=newStreamSession();
+  return directStreamSource(it,detailStreamSession);
 }
 /* 在线资产的 `path` 是来源作品页，不是可播地址。能播的那条代理在
    `/follow-stream?id=<follow_item>`，保存时写了 `follow_item.asset_id`，
@@ -1531,15 +1532,20 @@ function followStreamSource(it){
   return it.location==='online'&&it.follow_item_id
     ?{src:`/follow-stream?id=${it.follow_item_id}`,type:'video/mp4'}:null;
 }
-async function detailStreamSource(it){
+/* 起播片源只有这一个判据，详情和沉浸模式共用：服务端说要转码分片就给分片，否则直读。
+   有 B 帧却缺 ctts 的 MP4 直读时浏览器按错的显示顺序丢帧，整片持续卡顿。 */
+async function playableStreamSource(it,session){
   const proxied=followStreamSource(it);
   if(proxied)return proxied;
-  const direct=directDetailSource(it);
   try{
-    const plan=await api(`/api/stream-plan?id=${it.id}&session=${encodeURIComponent(detailStreamSession)}`);
+    const plan=await api(`/api/stream-plan?id=${it.id}&session=${encodeURIComponent(session)}`);
     if(plan.protocol==='hls'&&plan.src)return {src:plan.src,type:plan.mime_type||'application/vnd.apple.mpegurl'};
   }catch(_e){}
-  return direct;
+  return directStreamSource(it,session);
+}
+function detailStreamSource(it){
+  if(!detailStreamSession)detailStreamSession=newStreamSession();
+  return playableStreamSource(it,detailStreamSession);
 }
 function cancelDetailStream(){
   const session=detailStreamSession;if(!session)return;
@@ -7867,18 +7873,45 @@ function wireFollowTelemetry(item,video){
 
 /* ── 短片全屏 ── */
 let tokList=[],tokIdx=0,tokSwitching=false,tokNetTimer=null,tokLoadHideTimer=null,tokLoadingLabel='加载中…';
-function tokStreamUrl(video,id){
-  const session=newStreamSession();video.dataset.streamSession=session;
-  return `/stream?id=${id}&session=${encodeURIComponent(session)}`;
+/* 沉浸模式的每一格：外层 `.tokslide` 负责上下滑动，里面的 video 交给 Video.js。
+   片源和详情同一个判据（`playableStreamSource`），要转码分片的片子只有 Video.js 播得了。
+   每格一个流会话，切走、关闭、离开页面时按会话取消。当前格用变量持有，不按 id 查：
+   Video.js 挂载后会把 video 的 id 挪到外包的 div 上。 */
+let tokCurrent=null;
+const tokSlides=new Set();
+const tokVideo=()=>tokCurrent?.video||null;
+function createTokSlide(track,offset=0){
+  const el=document.createElement('div');el.className='tokslide';
+  if(offset)el.style.transform=`translateY(${offset}%)`;
+  // `video-js` 类要写在挂载前的 video 上，Video.js 才会把它带到外包 div 上。
+  const video=document.createElement('video');video.className='video-js';video.playsInline=true;video.preload='auto';
+  el.appendChild(video);track.appendChild(el);
+  const slide={el,video,player:null,session:newStreamSession(),disposed:false};
+  tokSlides.add(slide);return slide;
 }
-function cancelTokStream(video){
-  const session=video?.dataset.streamSession||'';if(!session)return;
-  delete video.dataset.streamSession;cancelStreamSession(session);
+async function loadTokSlide(slide,it){
+  const [source,vjs]=await Promise.all([
+    playableStreamSource(it,slide.session),ensureVideojs().catch(()=>null)]);
+  if(slide.disposed)return;
+  const direct=directStreamSource(it,slide.session);
+  const segmented=String(source.type||'').includes('mpegurl');
+  // 播放器脚本拉不到时退回原生 video；原生元素播不了分片，只能直读。
+  if(!vjs){slide.video.src=(segmented?direct:source).src;return}
+  // 只留媒体本身：进度条、加载提示和动作键都由沉浸模式自己画。
+  slide.player=vjs(slide.video,{controls:false,preload:'auto',
+    posterImage:false,titleBar:false,textTrackDisplay:false,loadingSpinner:false,
+    bigPlayButton:false,controlBar:false,errorDisplay:false,textTrackSettings:false});
+  // 分片出错退回直读，和详情播放器同一个兜底。
+  if(segmented)slide.player.one('error',()=>{if(!slide.disposed)slide.player.src(direct)});
+  slide.player.src(source);
 }
-function disposeTokVideo(video,remove=false){
-  if(!video)return;
-  video.pause();cancelTokStream(video);video.removeAttribute('src');video.load();
-  if(remove)video.remove();
+function disposeTokSlide(slide){
+  if(!slide||slide.disposed)return;
+  slide.disposed=true;tokSlides.delete(slide);cancelStreamSession(slide.session);
+  if(slide.player&&!slide.player.isDisposed())slide.player.dispose();
+  else{slide.video.pause();slide.video.removeAttribute('src');slide.video.load()}
+  slide.el.remove();
+  if(tokCurrent===slide)tokCurrent=null;
 }
 /* 沉浸模式 = 滚动刷新的连续流，横屏竖屏都进（不是「短片模式」）。
    队列滚到尾自动续取下一页，形成无限流。 */
@@ -7932,17 +7965,23 @@ function waitTokReady(video,timeout=15000){
 const TOK_FIT_TOLERANCE=1.05;
 function tokFitOne(v){
   if(!v||!v.videoWidth||!v.videoHeight)return;
-  const track=v.parentElement;
+  const track=v.closest('.toktrack');
   const box=(track&&track.clientWidth&&track.clientHeight)
     ? track.clientWidth/track.clientHeight
     : window.innerWidth/window.innerHeight;
   if(!box||!isFinite(box))return;
   const source=v.videoWidth/v.videoHeight;
-  const wide=source>=1;
-  track.closest('.tokstage')?.classList.toggle('wide',wide);
-  $('#tok').classList.toggle('tok-wide',wide);
   const mismatch=source>box?source/box:box/source;
   v.classList.toggle('contain',mismatch>TOK_FIT_TOLERANCE);
+}
+/* 舞台形状（竖 9:16／横 16:9）只在一条片子真正出画时换。新片预加载时旧片还在屏上，
+   形状提前翻过去，旧片就被塞进另一种比例的框里。换完形状，框里每条片子的铺满判定重算。 */
+const tokItemWide=it=>it?.width>0&&it?.height>0?it.width>=it.height:null;
+const tokVideoWide=(v,it)=>v.videoWidth&&v.videoHeight?v.videoWidth>=v.videoHeight:!!tokItemWide(it);
+function setTokStage(wide){
+  $('#tok .tokstage').classList.toggle('wide',wide);
+  $('#tok').classList.toggle('tok-wide',wide);
+  $('#tokTrack').querySelectorAll('video').forEach(tokFitOne);
 }
 function applyTokFit(v){
   v.classList.remove('contain');
@@ -7976,21 +8015,30 @@ async function tokShow(dir){
      而不是重新抽一批。用 replace——每划一下都往历史里塞一条，后退键就废了。 */
   route('/immerse?id='+it.id,true);
   tokSwitching=true;setTokLoading(true,dir?'切换中…':'加载中…',it);
+  let incoming=null;
   try{
     const full=await api('/api/item?id='+it.id);
-    const track=$('#tokTrack'),old=$('#tokVid');
-    let v=old;
-    if(dir&&old&&old.getAttribute('src')){
-      v=document.createElement('video');v.id='tokIncoming';v.playsInline=true;v.preload='auto';
-      v.src=tokStreamUrl(v,it.id);applyTokFit(v);v.style.transform=`translate(-50%,${dir>0?100:-100}%)`;track.appendChild(v);
-      await waitTokReady(v);
-      requestAnimationFrame(()=>requestAnimationFrame(()=>{
-        old.style.transform=`translate(-50%,${dir>0?-100:100}%)`;v.style.transform='translate(-50%,0)'}));
-      await new Promise(resolve=>setTimeout(resolve,210));
-      disposeTokVideo(old,true);v.id='tokVid';v.style.transform='translateX(-50%)';
-    }else{
-      disposeTokVideo(v);v.preload='auto';v.src=tokStreamUrl(v,it.id);applyTokFit(v);await waitTokReady(v);
+    const track=$('#tokTrack'),old=tokCurrent,slide=!!(dir&&old);
+    if(!slide){
+      disposeTokSlide(old);
+      // 首条不等元数据：条目自带宽高就先摆好舞台，加载提示和随后出画的片子同一个框。
+      const known=tokItemWide(it);if(known!==null)setTokStage(known);
     }
+    incoming=createTokSlide(track,slide?(dir>0?100:-100):0);
+    const v=incoming.video;applyTokFit(v);
+    await loadTokSlide(incoming,it);
+    await waitTokReady(v);
+    if(incoming.disposed)return;
+    setTokStage(tokVideoWide(v,it));
+    if(slide){
+      const next=incoming;
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        old.el.style.transform=`translateY(${dir>0?-100:100}%)`;next.el.style.transform=''}));
+      await new Promise(resolve=>setTimeout(resolve,210));
+      // 动画帧没跑到（页面在后台）也要落位，否则新片停在屏幕外。
+      disposeTokSlide(old);next.el.style.transform='';
+    }
+    tokCurrent=incoming;incoming=null;
     if(location.pathname==='/'){
       const url=new URL(location.href),query=new URLSearchParams();
       for(const key of ['q','loc','creator','studio','tag','len','dur_min','dur_max','orient','state','sort','dir']){
@@ -8023,7 +8071,6 @@ async function tokShow(dir){
     $('#tokMeta').textContent=`· ${fmtDur(it.duration)} · ${it.ctx_orient||''} · ${tokIdx+1}/${tokList.length}`;
     // 进度条
     const bar=$('#tokBar'), prog=$('#tokProg');
-    v.ontimeupdate=null;
     const upd=()=>{const d=realDuration(v.duration)||realDuration(it.duration);
       if(d)prog.style.width=(v.currentTime/d*100).toFixed(2)+'%'};
     v.addEventListener('timeupdate',upd);
@@ -8038,7 +8085,7 @@ async function tokShow(dir){
     wireTelemetry(it,v,{});
     setTokLoading(false);
   }catch(_e){
-    $('#tokTrack').querySelectorAll('#tokIncoming').forEach(video=>disposeTokVideo(video,true));
+    disposeTokSlide(incoming);
     setTokLoading(false)
   }finally{tokSwitching=false}
 }
@@ -8142,13 +8189,12 @@ document.addEventListener('pointerdown',event=>{
   if(!event.target.closest('.search'))hideSearchMenu();
 },true);
 $('#brandHome').onclick=e=>{e.preventDefault();openHome(true)};
-$('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();$('#tok').hidden=true;$('#tokTrack').querySelectorAll('video').forEach(v=>{
-  disposeTokVideo(v,v.id!=='tokVid')});
-  const v=$('#tokVid');if(v){v.style.transform='translateX(-50%)'}$('#tok').classList.remove('tok-wide');
-  $('#tok .tokstage').classList.remove('wide');tokSwitching=false;document.body.style.overflow='';openHome()};
+$('#tokClose').onclick=()=>{setTokLoading(false);clearTokTap();$('#tok').hidden=true;
+  [...tokSlides].forEach(disposeTokSlide);setTokStage(false);
+  tokSwitching=false;document.body.style.overflow='';openHome()};
 addEventListener('pagehide',()=>{
   cancelDetailStream();
-  $('#tokTrack').querySelectorAll('video').forEach(cancelTokStream);
+  tokSlides.forEach(slide=>cancelStreamSession(slide.session));
 });
 let wl=0;
 $('#tok').addEventListener('wheel',e=>{const n=Date.now();if(n-wl<260)return;wl=n;tokNext(e.deltaY>0?1:-1)},{passive:true});
@@ -8166,7 +8212,7 @@ function toggleVideoPlayback(video){
   if(video.paused)video.play().catch(()=>{});else video.pause();
 }
 function handleTokTap(clientX){
-  const video=$('#tokVid');if(!video)return;
+  const video=tokVideo();if(!video)return;
   const side=clientX<window.innerWidth/2?-1:1;
   const now=Date.now();
   if(tokLastTap&&tokLastTap.side===side&&now-tokLastTap.at<=TOK_DOUBLE_TAP_MS){
@@ -8179,17 +8225,17 @@ function handleTokTap(clientX){
   tokLastTap={side,at:now};
   tokTapTimer=setTimeout(()=>{
     tokTapTimer=null;tokLastTap=null;
-    if(!$('#tok').hidden)toggleVideoPlayback($('#tokVid'));
+    if(!$('#tok').hidden)toggleVideoPlayback(tokVideo());
   },TOK_DOUBLE_TAP_MS);
 }
 $('#tokTrack').onclick=()=>{
   // 触屏的合成 click 会紧跟 touchend；那一下已经由单击/双击判定接管，不能再切一次。
   if(Date.now()<tokIgnoreClickUntil)return;
-  toggleVideoPlayback($('#tokVid'));
+  toggleVideoPlayback(tokVideo());
 };
 $('#tok').addEventListener('touchstart',e=>{
   if(e.touches.length!==1||!e.target.closest('.toktrack')){tokTouch=null;return}
-  const v=$('#tokVid');
+  const v=tokVideo();
   tokTouch={x:e.touches[0].clientX,y:e.touches[0].clientY,axis:'',
     from:v?v.currentTime||0:0};
 },{passive:true});
@@ -8202,7 +8248,7 @@ $('#tok').addEventListener('touchmove',e=>{
     if(tokTouch.axis==='x')$('#tokBar').classList.add('scrubbing');
   }
   if(tokTouch.axis!=='x')return;
-  const v=$('#tokVid'),d=v&&(v.duration||0);
+  const v=tokVideo(),d=v&&(v.duration||0);
   if(!d)return;
   e.preventDefault();                       // 横划归进度，不交给页面滚动
   tokTouch.to=Math.min(d,Math.max(0,tokTouch.from+dx/window.innerWidth*d));
@@ -8214,7 +8260,7 @@ $('#tok').addEventListener('touchend',e=>{
   tokIgnoreClickUntil=Date.now()+700;
   $('#tokBar').classList.remove('scrubbing');
   if(touch.axis==='x'){
-    const v=$('#tokVid');
+    const v=tokVideo();
     if(v&&touch.to!=null)v.currentTime=touch.to;
     return;
   }
@@ -8250,10 +8296,10 @@ $('#tok').addEventListener('touchcancel',()=>{
     }catch(error){actionFailure('更新反馈',error)}finally{setActionBusy(button,false)}}});
 
 /* 当前该响应播放快捷键的 video：沉浸模式优先，其次详情播放器，都没开就返回 null。
-   直接操作原生元素而不是 Video.js 实例——沉浸模式没有 Video.js，而详情播放器读的
-   就是这个元素，两边共用一条实现。 */
+   直接操作原生元素而不是 Video.js 实例：两边的 Video.js 读的都是这个元素，
+   沉浸模式在播放器脚本拉不到时还是裸 video，一条实现全盖住。 */
 function activeVideo(){
-  if(!$('#tok').hidden)return $('#tokVid');
+  if(!$('#tok').hidden)return tokVideo();
   const stage=$('#stage');
   if((!stage||stage.hidden)&&miniplayerActive())return miniplayerVideo();
   // 不能按 #vid 取：Video.js 挂载后会把 <video id="vid"> 换成同 id 的
