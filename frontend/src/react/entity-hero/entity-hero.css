@@ -242,13 +242,22 @@
   border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 12px 24px -4px light-dark(#0000001a, #0000008c), 0 4px 8px -2px light-dark(#0000000d, #00000073);
+  /* 落影数值照 `web/board.css` 的 `.popmenu`，随主题换浓淡。不写 `light-dark()`：构建会把它改写成
+     依赖 `color-scheme` 声明的变量，这份样式表里没有那一条，落影就整条失效。主题标记是 `<html>`
+     上的 `.dark`，和 `color-scheme` 同进退。 */
+  --hero-pop-drop-far: #0000001a;
+  --hero-pop-drop-near: #0000000d;
+  box-shadow: 0 12px 24px -4px var(--hero-pop-drop-far), 0 4px 8px -2px var(--hero-pop-drop-near);
   color: var(--ink);
   font-size: var(--fs-sm);
   line-height: 1.5;
   text-align: left;
   transform-origin: top left;
   animation: board-menu-in 0.15s ease-out backwards;
+}
+.dark .peach-react [data-hero-pop] {
+  --hero-pop-drop-far: #0000008c;
+  --hero-pop-drop-near: #00000073;
 }
 .peach-react [data-hero-pop]:not(:popover-open) { display: none; }
 .peach-react [data-hero-pop-head] { margin: 0; font-weight: 500; }

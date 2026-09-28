@@ -638,6 +638,16 @@ async function openProfiledPerformer(browser: Browser, viewport = DESKTOP, theme
   return opened;
 }
 
+/** 资料卡浮层的落影要和遗留 `.popmenu` 同一副：在同一页造一个空 `.popmenu` 取它的计算值。 */
+async function popmenuShadow(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const menu = document.body.appendChild(Object.assign(document.createElement('div'), { className: 'popmenu' }));
+    const shadow = getComputedStyle(menu).boxShadow;
+    menu.remove();
+    return shadow;
+  });
+}
+
 /** 下拉栏里一部作品的小图。字段以 `_suggest_work_card`（`src/peach/web_entity.py`）为准。 */
 const suggestCard = (id: number) => ({ id, code: `ABW-${id % 1000}`, has_cover: true, has_thumb: false, cover_frame: null, poster_box: null });
 
@@ -2898,8 +2908,10 @@ describe('设计决定', () => {
             title: element.querySelector('[data-hero-pop-head]')?.textContent?.trim(),
             groups: [...element.querySelectorAll('dt')].map((dt) => dt.textContent!.trim()),
             face: getComputedStyle(element).backgroundColor,
+            shadow: getComputedStyle(element).boxShadow,
           };
         });
+        assert.equal(shown.shadow, await popmenuShadow(page), '别名浮层的落影和 .popmenu 不是同一副');
         assert.equal(shown.topLayer, true, '别名浮层没进顶层，会被资料卡的 overflow:hidden 裁掉');
         assert.ok(shown.inView, '别名浮层越出了视口');
         assert.equal(shown.title, '7 个别名');
@@ -3225,9 +3237,13 @@ describe('设计决定', () => {
       await page.locator('[data-hero-more="alias"]').hover();
       const pop = page.locator('#entityAliasPop');
       await pop.waitFor({ state: 'visible', timeout: 5_000 });
-      const face = await pop.evaluate((element) => getComputedStyle(element).backgroundColor);
+      const { face, shadow } = await pop.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { face: style.backgroundColor, shadow: style.boxShadow };
+      });
       assert.notEqual(face, 'rgba(0, 0, 0, 0)');
       assert.notEqual(face, 'rgb(255, 255, 255)', '深色下别名浮层还是白底');
+      assert.equal(shadow, await popmenuShadow(page), '深色下别名浮层的落影和 .popmenu 不是同一副');
       assert.notEqual(ground, 'rgb(255, 255, 255)', '主题没有切到深色');
       assert.deepEqual(opened.problems, []);
     } finally {
