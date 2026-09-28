@@ -124,9 +124,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `09-skeleton.css` | Geist Skeleton 与各页骨架变体 |
 | `11-identity.css` | 身份组、演员与系列链接、重复项、质量清单、复核对照 |
 | `12-cards.css` | 壳自己画的卡片（垃圾文件、新作）、悬停预览层与密度 |
-| `13-stage.css` | 就地展开的舞台与 Mix 队列 |
-| `14-player.css` | video.js 定制、播放统计、播放器的脱盘占位 |
-| `15-detail.css` | 详情侧栏、标签选择器、反馈条、相关推荐 |
+| `15-detail.css` | 壳画的源文件管理（定位与目录对账） |
 | `16-settings.css` | 设置面板 |
 | `17-overlay.css` | Toast 与审查遮挡 |
 | `18-drawer.css` | 筛选抽屉 |
@@ -377,13 +375,14 @@ React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.cs
 `.oxlintrc.json` 里的例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
 React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`、`swiper-slide`、
 `swiper-zoom-container` 是 Swiper 核心 API 认的结构类名（图片灯箱），不写它就找不到轮播的
-容器与每一张；关注详情（`follow-detail`）的舞台版式、侧栏、合集队列与 Video.js 播放器仍用
-`13-stage.css`、`15-detail.css` 与 Video.js 皮肤，`sgrid`、`mixgrid`、`vwrap`、`closestage`、`video-js`、
-`vjs-big-play-centered`、`side`、`sidecontent`、`stitle`、`smeta`、`mono`、`stags`、`tg`、`mav`、`externallink`、
-`fb`、`later`、`seen`、`dislike`、`dur`、`current` 与 `mix*` 这一组按原名输出，舞台与播放器归 React 时一起收回；
-作品详情（`item-detail`）共用这一组，自己的部分写在 `item-detail.css`、只认 `data-*`，另按原名输出三类：
-`javedition` 与色调（`censored` 等）是目录卡片也用的版次徽章，`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它，
-`geist-button`、`primary` 是舞台模态里各处按钮共用的遗留按钮；
+容器与每一张；`video-js`、`vjs-big-play-centered` 是 Video.js 的组件契约，`/tok` 在旧样式表里
+给同一批类另写了一套；`mono` 是 `01-base.css` 的等宽数字字体栈，和 Tailwind 的 `font-mono` 不是同一组字体；
+`tg` 是目录卡片、索引页与详情共用的标签键（`12-cards.css`）；`mav` 是壳的 `followIdentity` 画的头像；
+`externallink` 是 `01-base.css` 里全站外链的图标间距；`javedition` 与色调（`censored` 等）是目录卡片也用的
+版次徽章；`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它；`geist-button`、`primary` 是
+舞台模态里各处按钮共用的遗留按钮。这几个在它们的主人（卡片、沉浸、设置等）归 React 时一起收回。
+舞台、两座详情共用的格子与队列、小窗的样式在 `frontend/src/react/stage/stage.css`，播放器画面框、
+统计角标与右键菜单在 `frontend/src/player/player.css`，都由 `styles.css` 引入、只认 `data-*`；
 `shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
 `no-raw-colors` 只认 `--color-*`，把它当成了未声明的颜色。
 

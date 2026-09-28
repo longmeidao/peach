@@ -307,8 +307,8 @@ function showMiniplayer(): void {
   const entering = root.hidden;
   root.hidden = false;
   if (!entering) return;
-  root.classList.add('miniplayer-entering');
-  const settle = () => root.classList.remove('miniplayer-entering');
+  root.setAttribute('data-miniplayer-enter', '');
+  const settle = () => root.removeAttribute('data-miniplayer-enter');
   root.addEventListener('animationend', settle, { once: true });
   setTimeout(settle, 500);
 }
@@ -317,7 +317,7 @@ function hideMiniplayer(): void {
   const root = dom?.root;
   if (!root) return;
   root.hidden = true;
-  root.classList.remove('miniplayer-dragging', 'miniplayer-snapping', 'miniplayer-entering');
+  for (const state of ['data-miniplayer-drag', 'data-miniplayer-snap', 'data-miniplayer-enter']) root.removeAttribute(state);
   root.style.transform = '';
 }
 

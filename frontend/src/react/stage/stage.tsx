@@ -34,7 +34,7 @@ interface View {
   generation: number;
   request: StageRequest;
   content: Content;
-  /* 骨架 → 淡出（骨架抬成 `.skelfade` 一层，内容同时清晰起来）→ 内容。取得比显示门槛快时跳过
+  /* 骨架 → 淡出（骨架抬成 `[data-stage-fade]` 一层，内容同时清晰起来）→ 内容。取得比显示门槛快时跳过
      中间那一段：从未露面的骨架不该再演一次退场。 */
   phase: Phase;
 }
@@ -117,7 +117,7 @@ function StageDialog({ view: current }: { view: View }) {
     ? <ItemDetailPage {...content.props} />
     : <FollowDetailPage {...content.props} />;
   return (
-    <dialog ref={ref} id="stage" className="stage" aria-label="作品详情"
+    <dialog ref={ref} id="stage" data-stage="" aria-label="作品详情"
       onKeyDown={(event) => {
         /* 里层弹层（标签搜索框、右键菜单）先处理 Escape 并 `preventDefault`，这一下就不再关浮窗。 */
         if (event.key !== 'Escape' || event.defaultPrevented) return;
@@ -127,12 +127,12 @@ function StageDialog({ view: current }: { view: View }) {
       onPointerDown={(event) => { dismissArmed = outside(event) }}
       onClick={(event) => { if (dismissArmed && outside(event)) requestClose() }}>
       {phase === 'skeleton' ? <DetailSkeleton key="skeleton" /> : null}
-      {phase === 'reveal' ? <div key="fade" className="skelfade" aria-hidden="true"><DetailSkeleton /></div> : null}
+      {phase === 'reveal' ? <div key="fade" data-stage-fade="" aria-hidden="true"><DetailSkeleton /></div> : null}
       {phase === 'skeleton' ? null : (
-        /* 窄屏下滚的是 `.stagescroll`，全站那条覆盖式滚动条挂在它的兄弟位置（`<dialog>` 在顶层，
-           轨道挂到它外面会落进遮罩底下）；「接着看」是 `.sgrid` 的兄弟，也得一起装进来。里面那层
+        /* 窄屏下滚的是 `[data-stage-scroll]`，全站那条覆盖式滚动条挂在它的兄弟位置（`<dialog>` 在顶层，
+           轨道挂到它外面会落进遮罩底下）；「接着看」是 `[data-stage-grid]` 的兄弟，也得一起装进来。里面那层
            `.peach-react` 不占盒子，token 与 Preflight 从它开始作用。 */
-        <div key="content" className="stagescroll"><div className="peach-react">{body}</div></div>
+        <div key="content" data-stage-scroll=""><div className="peach-react">{body}</div></div>
       )}
     </dialog>
   );
@@ -146,8 +146,8 @@ function requestClose(): void {
 
 function toggleStageModes(ambient: boolean, theater: boolean): void {
   const dialog = stageDialog();
-  dialog?.classList.toggle('ambient-on', ambient);
-  dialog?.classList.toggle('theater-mode', theater);
+  dialog?.toggleAttribute('data-ambient', ambient);
+  dialog?.toggleAttribute('data-theater', theater);
 }
 
 /* 两座详情的动作经舞台包一层：关闭走 `requestClose`；画出来那一刻登记小窗元数据、切氛围光与剧场
@@ -196,15 +196,16 @@ function contentFor(request: StageRequest): Content {
 
 /* 骨架抬成一层淡出，内容同时从模糊里清晰起来；走完（或 1s 兜底）摘掉那一层。 */
 function startReveal(dialog: HTMLDialogElement, mine: number): void {
-  const fade = dialog.querySelector<HTMLElement>(':scope > .skelfade');
-  dialog.classList.add('skelreveal');
+  const fade = dialog.querySelector<HTMLElement>(':scope > [data-stage-fade]');
+  dialog.setAttribute('data-stage-reveal', '');
   dialog.getBoundingClientRect();
-  dialog.classList.add('revealing');
+  dialog.setAttribute('data-stage-revealing', '');
   let timer = 0;
   const drop = () => {
     clearTimeout(timer);
     fade?.removeEventListener('transitionend', done);
-    dialog.classList.remove('skelreveal', 'revealing');
+    dialog.removeAttribute('data-stage-reveal');
+    dialog.removeAttribute('data-stage-revealing');
     if (view?.generation === mine && view.phase === 'reveal') { view = { ...view, phase: 'content' }; paint() }
   };
   const done = (event: Event) => { if (event.target === fade) drop() };
@@ -225,7 +226,7 @@ async function open(request: StageRequest): Promise<void> {
   const dialog = stageDialog();
   if (!dialog) return;
   fitSkeleton(dialog);
-  document.body.classList.add('detail-open');
+  document.body.setAttribute('data-detail-open', '');
   if (!dialog.open) dialog.showModal();
   const content = view.content;
   try {
@@ -242,21 +243,21 @@ async function open(request: StageRequest): Promise<void> {
   paint();
   if (!direct) startReveal(dialog, mine);
   /* 浮窗里那两行标题跟着这一次重画揭示一遍。绕开正在淡出的那一层：骨架照着最终结构画，里面也有
-     一个 `.sidecontent`，按文档顺序找的话拿到的是它。 */
-  revealTexts(dialog, ':scope>:not(.skelfade) [data-reveal-line]');
+     一个 `[data-stage-side-content]`，按文档顺序找的话拿到的是它。 */
+  revealTexts(dialog, ':scope>:not([data-stage-fade]) [data-reveal-line]');
   /* 骨架里没有可聚焦的元素，`showModal()` 只能把焦点给 dialog 本身；内容到了交给关闭键。 */
   const active = document.activeElement;
   if (active === dialog || !dialog.contains(active)) dialog.querySelector<HTMLElement>('#closeStage')?.focus();
 }
 
-/* 详情浮窗的退场跟设置弹层同一条：`closing` 让 `board-dialog-out` 和遮罩淡出演完，再拆。等待有
+/* 详情浮窗的退场跟设置弹层同一条：`data-closing` 让 `board-dialog-out` 和遮罩淡出演完，再拆。等待有
    上限：`animation` 被别的规则关掉时 animationend 不会来。 */
 function exit(): Promise<void> {
   const dialog = stageDialog();
-  if (!dialog?.open || dialog.classList.contains('closing') || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  if (!dialog?.open || dialog.hasAttribute('data-closing') || matchMedia('(prefers-reduced-motion: reduce)').matches) {
     return Promise.resolve();
   }
-  dialog.classList.add('closing');
+  dialog.setAttribute('data-closing', '');
   return new Promise((resolve) => {
     let timer = 0;
     const done = () => { clearTimeout(timer); dialog.removeEventListener('animationend', onEnd); resolve() };
@@ -284,7 +285,7 @@ function dispose({ miniplayer = true }: { miniplayer?: boolean } = {}): void {
   dismissArmed = false;
   paint();
   player.setStageMeta(null);
-  document.body.classList.remove('detail-open');
+  document.body.removeAttribute('data-detail-open');
 }
 
 function update(patch: StagePatch): void {

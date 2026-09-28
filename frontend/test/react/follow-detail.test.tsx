@@ -220,7 +220,7 @@ describe('媒体', () => {
       { ...image(1), resource_group: 'g1', resource_group_label: 'Gofile 文件夹' },
     ] });
     const { host } = await show(data(shown));
-    expect(host.querySelector('.mixgrouplabel')?.textContent).toBe('Gofile 文件夹 2');
+    expect(host.querySelector('[data-mix-group-label]')?.textContent).toBe('Gofile 文件夹 2');
     expect([...host.querySelectorAll('[data-follow-media-item] [data-middle-truncate]')].map((name) => name.textContent))
       .toEqual(['a.mp4', '1.jpg']);
 

@@ -40,7 +40,7 @@ export function clickPlayerControl(video: Element | null, selector: string): voi
 export function applyAmbientMode(enabled: boolean, save = true): void {
   const host = playerHost(), settings = host.settings();
   settings.ambientMode = !!enabled; if (save) host.saveSettings();
-  host.stage()?.classList.toggle('ambient-on', settings.ambientMode);
+  host.stage()?.toggleAttribute('data-ambient', settings.ambientMode);
   document.dispatchEvent(new CustomEvent('peachambientchange', { detail: { enabled: settings.ambientMode } }));
 }
 
@@ -57,7 +57,7 @@ function syncPlayerTheaterButton(button: Element | null | undefined): void {
 export function applyTheaterMode(enabled: boolean, save = true): void {
   const host = playerHost(), settings = host.settings();
   settings.theaterMode = !!enabled; if (save) host.saveSettings();
-  const stage = host.stage(); stage?.classList.toggle('theater-mode', settings.theaterMode);
+  const stage = host.stage(); stage?.toggleAttribute('data-theater', settings.theaterMode);
   syncPlayerTheaterButton(stage?.querySelector('[data-player-theater]'));
   resizeSoon(detailPlayer());
 }
@@ -69,7 +69,7 @@ export function applyTheaterMode(enabled: boolean, save = true): void {
  *  画面时才来。每条采样链带一个 run 号：暂停或页面隐藏时排队的那个回调可能永远不来，用一个
  *  「已排队」布尔判重会被它永久锁死；换成 run 号后旧回调醒来直接退出，链上永远只有一条在跑。 */
 export function mountPlayerAmbient(video: HTMLVideoElement): () => void {
-  const stage = playerHost().stage(), canvas = stage?.querySelector<HTMLCanvasElement>('.ambientcanvas');
+  const stage = playerHost().stage(), canvas = stage?.querySelector<HTMLCanvasElement>('[data-ambient-canvas]');
   if (!stage || !canvas) return () => {};
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) return () => {};
@@ -98,7 +98,7 @@ export function mountPlayerAmbient(video: HTMLVideoElement): () => void {
   const start = () => { if (stopped || !playerHost().settings().ambientMode) return; sample(); if (!video.paused) queue(++run) };
   const onChange = (event: Event) => {
     const enabled = !!(event as CustomEvent<{ enabled: boolean }>).detail.enabled;
-    stage.classList.toggle('ambient-on', enabled);
+    stage.toggleAttribute('data-ambient', enabled);
     if (enabled) start(); else { run++; clear() }
   };
   document.addEventListener('peachambientchange', onChange);

@@ -23,7 +23,7 @@ export interface PlayerHost {
   offlineReason(location: string): string;
   /** 作品详情开播前那层本地封面；没有可用的图是空串。 */
   posterUrl(item: { id: number; [field: string]: unknown }): string;
-  /** 舞台元素：氛围光的 `--video-glow`、`ambient-on` 与 `theater-mode` 挂在它身上。 */
+  /** 舞台元素：氛围光的 `--video-glow`、`data-ambient` 与 `data-theater` 挂在它身上。 */
   stage(): HTMLElement | null;
 }
 

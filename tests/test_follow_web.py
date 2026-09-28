@@ -3493,22 +3493,6 @@ class FollowWebSourceTests(unittest.TestCase):
         # 「加载更多」与「抓更早的一页」同一行、往回抓时的忙态归 `follow-feed` 岛
         # （e2e `follow-feed.test.ts`「载入更多」「往回抓一页」）。
 
-    def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):
-        self.assertPageContains('grid-template-areas:"media side" "queue queue"')
-        self.assertPageContains('.sgrid.mixgrid>.vwrap{grid-area:media}')
-        self.assertPageContains('.sgrid.mixgrid>.side{grid-area:side;background:var(--detail-surface)}')
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
-        self.assertPageContains('grid-template-areas:"media" "side" "queue"')
-        self.assertPageContains('background:var(--detail-surface)')
-        # 队列头的类别名与横向拖动归作品详情岛与 `components/mix-queue.tsx`：
-        # `frontend/test/react/item-detail.test.tsx`。
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}')
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
-        # 媒体框不给视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在
-        # vh 上时两个量在窄屏上朝相反方向走，框比画面高出一大截，上下各空一片。
-        self.assertPageLacks('min-height:min(62vh,640px)')
-
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")
         self.assertPageContains("function toggleFollowSelection(id,range=false)")

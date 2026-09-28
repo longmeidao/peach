@@ -53,8 +53,8 @@ export function ItemDetailPage(props: ItemDetailProps) {
   if (!result.data || (ref && !queue)) {
     const error = result.error || queueResult.error;
     return (
-      <div className="sgrid" data-item-detail="">
-        <div className="vwrap" data-item-media="none">
+      <div data-stage-grid="" data-item-detail="">
+        <div data-stage-media="" data-item-media="none">
           <CloseStage onClose={actions.close} />
           <div data-item-placeholder="">
             {error ? <RetryNote message={requestErrorMessage(error)}
@@ -69,7 +69,7 @@ export function ItemDetailPage(props: ItemDetailProps) {
 
 /** 关闭键。`id` 留着：Escape、点浮窗外面与壳的兜底都按 `#closeStage` 找它再点一下。 */
 const CloseStage = ({ onClose }: { onClose(): void }) => (
-  <button type="button" className="closestage" id="closeStage" title="关闭" aria-label="关闭" onClick={onClose}
+  <button type="button" data-stage-close="" id="closeStage" title="关闭" aria-label="关闭" onClick={onClose}
     dangerouslySetInnerHTML={{ __html: icon('x') }} />
 );
 
@@ -89,7 +89,7 @@ function Detail(props: ItemDetailProps & { item: DetailItem; queue: DetailQueue 
   const gate = mediaGate(item, helpers.sourceOffline(item.location || ''));
   return (
     <>
-      <div className={queue ? 'sgrid mixgrid' : 'sgrid'} data-item-detail="">
+      <div data-stage-grid="" data-with-queue={queue ? '' : undefined} data-item-detail="">
         <MediaFrame item={item} gate={gate} helpers={helpers} actions={actions} />
         {queue ? <Queue queue={queue} itemId={item.id} helpers={helpers} actions={actions} /> : null}
         <Side item={item} queue={queue} write={write} helpers={helpers} actions={actions} />
@@ -117,7 +117,7 @@ function MediaFrame({ item, gate, helpers, actions }: {
   }, [actions, started]);
   const badge = helpers.badgeHtml(item.location || '', item.cost || '', 'srcbig');
   return (
-    <div ref={frameRef} className="vwrap" data-item-media={gate || 'video'}>
+    <div ref={frameRef} data-stage-media="" data-item-media={gate || 'video'}>
       <CloseStage onClose={actions.close} />
       {gate === 'offline' ? <OfflineGate item={item} badge={badge} helpers={helpers} actions={actions} />
         : gate === 'online' ? (
@@ -201,7 +201,7 @@ function Queue({ queue, itemId, helpers, actions }: {
         return (
           <MixQueueRow key={row.id} current={row.id === itemId} data-queue-item={row.id} row={{ 'data-queue-row': row.id }}
             onClick={() => actions.openQueueItem(ref, row.id)}
-            pic={<><Html html={helpers.queueThumbHtml(row)} /><i className="dur mono">{fmtDur(row.duration)}</i></>}
+            pic={<><Html html={helpers.queueThumbHtml(row)} /><i className="mono" data-mix-item-duration="">{fmtDur(row.duration)}</i></>}
             lead={<Html html={helpers.queueAvatarHtml(row)} />}
             after={queue.kind === 'playlist' ? (
               <span data-queue-edit="">
@@ -292,12 +292,12 @@ function Side({ item, queue, write, helpers, actions }: {
   const busy = write.busyAttrs;
   const [reasonOpen, setReasonOpen] = useState(false);
   return (
-    <div className="side" data-item-side="">
-      <div className="sidecontent">
+    <div data-stage-side="" data-item-side="">
+      <div data-stage-side-content="">
         <DetailTitle item={item} queue={queue} helpers={helpers} actions={actions} onStatus={write.setSourceState} />
         {online ? null : <span data-title-state="" aria-live="polite">{write.sourceState}</span>}
         <Rating item={item} write={write} />
-        <div className="smeta mono" data-reveal-line="">
+        <div className="mono" data-stage-meta="" data-reveal-line="">
           <span data-spec-item=""><Glyph name="monitor" /><span>{item.width || '?'}×{item.height || '?'}</span></span>
           <span data-spec-item=""><Glyph name="hard-drive" /><span>{fmtSize(item.size || 0)}</span></span>
           {item.release_date ? <span data-spec-item=""><Glyph name="calendar" /><span>{item.release_date}</span></span> : null}
@@ -312,17 +312,17 @@ function Side({ item, queue, write, helpers, actions }: {
         <Identity item={item} helpers={helpers} actions={actions} />
         <Tags item={item} write={write} helpers={helpers} actions={actions} />
         <Trace item={item} />
-        <div className="fb" data-item-feedback="">
+        <div data-stage-actions="" data-item-feedback="">
           <button type="button" id="likeBtn" data-fb="like" aria-label={item.liked ? '取消喜欢' : '喜欢'} title="喜欢 · 记录口味偏好"
             aria-pressed={!!item.liked} {...busy('like')} onClick={() => write.preference({ liked: !item.liked })}><Glyph name="thumbs-up" /></button>
           <button type="button" id="preferenceToggle" data-fb="reason" aria-label="喜爱理由" title="喜爱理由" aria-expanded={reasonOpen}
             aria-controls="preferencePanel" data-has-reason={String(!!item.like_reason)}
             onClick={() => setReasonOpen((open) => !open)}><Glyph name="notebook-pen" /></button>
-          <button type="button" className="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重"
+          <button type="button" data-stage-action="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重"
             aria-pressed={item.feedback === 'dislike'} {...busy('dislike')} onClick={() => write.feedback('dislike')}><Glyph name="thumbs-down" /></button>
-          <button type="button" className="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐"
+          <button type="button" data-stage-action="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐"
             aria-pressed={item.feedback === 'seen'} {...busy('seen')} onClick={() => write.feedback('seen')}><Glyph name="eye" /></button>
-          <button type="button" className="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列"
+          <button type="button" data-stage-action="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列"
             aria-pressed={!!item.watch_later} {...busy('later')} onClick={write.later}><Glyph name={item.watch_later ? 'check' : 'bookmark-plus'} /></button>
           <button type="button" id="addPlaylist" data-fb="playlist" aria-label="加入播放列表" title="加入播放列表"
             onClick={() => actions.addToPlaylist(item)}><Glyph name="playlist" /></button>
@@ -365,7 +365,7 @@ function DetailTitle({ item, queue, helpers, actions, onStatus }: {
   const html = helpers.badgeHtml(item.location || '', item.cost || '', 'srcbig') + helpers.titleHtml(item) + partLabelHtml(item, queue);
   return (
     <div data-item-title="">
-      <div className="stitle" data-title-line="" data-reveal-line="">
+      <div data-stage-title="" data-title-line="" data-reveal-line="">
         <span ref={text} data-detail-title="" data-expanded={expanded ? '' : undefined}
           data-foldable={foldable ? '' : undefined}
           onClick={() => { if (foldable && !String(getSelection() || '')) toggle() }}
@@ -377,8 +377,10 @@ function DetailTitle({ item, queue, helpers, actions, onStatus }: {
           </button>
           {/* 取景框存的是坐标不是图片：存完重取这一条，封面地址没变，变的是接口给的 `poster_box`。 */}
           {item.has_cover && item.code ? (
-            <CoverCrop code={item.code} coverUrl={`/cover?code=${encodeURIComponent(item.code)}`} box={item.poster_box || null}
-              onSaved={() => void queryClient.invalidateQueries({ queryKey: itemKey(item.id), exact: true })} />
+            <span data-cover-crop-host="">
+              <CoverCrop code={item.code} coverUrl={`/cover?code=${encodeURIComponent(item.code)}`} box={item.poster_box || null}
+                onSaved={() => void queryClient.invalidateQueries({ queryKey: itemKey(item.id), exact: true })} />
+            </span>
           ) : null}
           {item.location === 'online' ? null : <SourceTools id={item.id} actions={actions} onStatus={onStatus} />}
         </span>
@@ -509,7 +511,7 @@ function Tags({ item, write, helpers, actions }: {
 }) {
   const tags = detailTags(item, helpers);
   return (
-    <div className="stags" id="detailTags" data-item-tags="">
+    <div data-stage-tags="" id="detailTags" data-item-tags="">
       {tags.map((tag) => (
         <span key={tag.k} data-detail-tag="">
           <button type="button" data-tag={tag.k} onClick={() => actions.openTag(tag.k)}>{helpers.tagLabel(tag.k)}</button>

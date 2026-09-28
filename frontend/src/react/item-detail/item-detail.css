@@ -1,14 +1,14 @@
 /* 作品详情（`item-detail-page.tsx`）。
  *
- * 舞台里的骨架（`.sgrid` / `.vwrap` / `.side` / `.sidecontent`）、标题行（`.stitle`）、规格行（`.smeta`）、
- * 标签行（`.stags`）、操作键条（`.fb` 与关注详情也有的 `later` / `seen` / `dislike` 三枚）和队列（`.mixqueue`
- * 一族）是和关注详情共用的，几何归 `web/css/13-stage.css`、`14-player.css`、`15-detail.css` 与
- * `web/board.css`；这里只写作品详情自己的几块。
+ * 舞台里的格子（`[data-stage-grid]` / `[data-stage-media]` / `[data-stage-side]` /
+ * `[data-stage-side-content]`）、标题行、规格行、标签行、操作键条（`[data-stage-actions]` 与关注详情
+ * 也有的 `later` / `seen` / `dislike` 三枚）和队列（`[data-mix-queue]` 一族）是和关注详情共用的，
+ * 几何归 `../stage/stage.css` 与 `../../player/player.css`；这里只写作品详情自己的几块。
  *
  * 选择器全用 `data-*`，前面挂 `[data-item-detail]`（「接着看」在格子外面，挂 `[data-item-related]`）：
- * 遗留样式表不分层、排在后面，同权重时它赢，多一层属性才压得住 `.fb button` 这类通用规则。
- * 反过来，共用容器的通用规则（`.sidecontent .fb button` 的底色、`.srcbig.metered` 的字色）在这里
- * 不能被顺手压掉，碰到这种地方选择器用 `:where()` 把权重降回去。
+ * 舞台样式表与 `web/` 下的遗留样式表都排在后面，同权重时它们赢，多一层属性才压得住
+ * `[data-stage-actions] button` 这类通用规则。反过来，共用容器的通用规则（操作键的底色、
+ * `.srcbig.metered` 的字色）在这里不能被顺手压掉，碰到这种地方选择器用 `:where()` 把权重降回去。
  *
  * 类选择器一条不写，否则产物里的类名会和旧样式表同名（`test/legacy-class-names.test.ts`）。
  * 有两处的类不是岛挂的：来源徽标由壳的 `badgeHtml` 画成 `srcbig`，选择器收起时由
@@ -54,7 +54,7 @@
 .peach-react [data-item-detail] [data-item-gate="offline"] button { cursor: pointer; margin-top: 4px; }
 
 /* ── 队列行 ──
-   徽章和标题同一行，标题那一行自己是 flex 容器：`.mixitemtext` 的 b/span 都是块级的，并排只能靠
+   徽章和标题同一行，标题那一行自己是 flex 容器：`[data-mix-item-text]` 的 b/span 都是块级的，并排只能靠
    这一层，`min-width:0` 才让中段省略照旧按剩余宽度算。 */
 .peach-react [data-item-detail] [data-queue-head] { display: flex; align-items: center; gap: 5px; margin-top: 0; color: var(--ink); }
 .peach-react [data-item-detail] [data-queue-head] b { flex: 1; min-width: 0; }
@@ -135,6 +135,9 @@
   cursor: pointer;
 }
 .peach-react [data-item-detail] [data-title-tools] button[hidden] { display: none; }
+/* 取景键包在一层 24px 行高的块级宿主里，按钮按 inline-grid 落在行框基线上，这一排高 26.5px，
+   同排的键居中后下移 0.25px，侧栏下方各块的纵向位置都以这一排为准。 */
+.peach-react [data-item-detail] [data-title-tools] [data-cover-crop-host] { display: block; line-height: 24px; }
 .peach-react [data-item-detail] [data-title-tools] button svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
 .peach-react [data-item-detail] [data-title-tools] button > svg {
   display: block;

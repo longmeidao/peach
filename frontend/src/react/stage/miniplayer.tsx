@@ -40,27 +40,27 @@ export const Miniplayer = memo(function Miniplayer() {
   useEffect(() => wireDrag(root.current!, card.current!), []);
 
   return (
-    <aside ref={root} className="miniplayer" id="miniplayer" data-corner="br" aria-label="小窗播放" hidden>
-      <div ref={card} className="miniplayercard" id="miniplayerCard">
-        <div ref={frame} className="miniplayerframe" id="miniplayerFrame">
-          <div className="miniplayerscrim">
-            <button type="button" className="miniplayerbtn miniplayerexpand" id="miniplayerExpand" aria-label="展开到详情"
+    <aside ref={root} data-miniplayer="" id="miniplayer" data-corner="br" aria-label="小窗播放" hidden>
+      <div ref={card} data-miniplayer-card="" id="miniplayerCard">
+        <div ref={frame} data-miniplayer-frame="" id="miniplayerFrame">
+          <div data-miniplayer-scrim="">
+            <button type="button" data-miniplayer-button="expand" id="miniplayerExpand" aria-label="展开到详情"
               aria-keyshortcuts="i" onClick={pressed(expandMiniplayer)}><Glyph name="maximize-2" /></button>
-            <button type="button" className="miniplayerbtn miniplayerclose" id="miniplayerClose" aria-label="关闭小窗"
+            <button type="button" data-miniplayer-button="close" id="miniplayerClose" aria-label="关闭小窗"
               onClick={pressed(closeMiniplayer)}><Glyph name="x" /></button>
-            <button ref={back} type="button" className="miniplayerseek" id="miniplayerBack"
+            <button ref={back} type="button" data-miniplayer-seek="" id="miniplayerBack"
               onClick={pressed(() => seekMiniplayer(-1))}><Glyph name="rotate-ccw" /></button>
-            <button ref={play} type="button" className="miniplayerplay" id="miniplayerPlay" aria-label="暂停" aria-keyshortcuts="k"
+            <button ref={play} type="button" data-miniplayer-play="" id="miniplayerPlay" aria-label="暂停" aria-keyshortcuts="k"
               onClick={pressed(playMiniplayer)} dangerouslySetInnerHTML={PLAY_GLYPH} />
-            <button ref={ahead} type="button" className="miniplayerseek" id="miniplayerAhead"
+            <button ref={ahead} type="button" data-miniplayer-seek="" id="miniplayerAhead"
               onClick={pressed(() => seekMiniplayer(1))}><Glyph name="rotate-cw" /></button>
-            <span ref={time} className="miniplayertime mono" id="miniplayerTime">0:00 / 0:00</span>
+            <span ref={time} className="mono" data-miniplayer-time="" id="miniplayerTime">0:00 / 0:00</span>
           </div>
         </div>
-        <button ref={info} type="button" className="miniplayerinfo" id="miniplayerInfo" aria-label="展开到详情"
+        <button ref={info} type="button" data-miniplayer-info="" id="miniplayerInfo" aria-label="展开到详情"
           onClick={() => expandMiniplayer()}>
-          <span ref={title} className="miniplayertitle" id="miniplayerTitle" />
-          <span ref={sub} className="miniplayersub" id="miniplayerSub" />
+          <span ref={title} data-miniplayer-title="" id="miniplayerTitle" />
+          <span ref={sub} data-miniplayer-sub="" id="miniplayerSub" />
         </button>
       </div>
     </aside>
@@ -78,14 +78,14 @@ function snap(root: HTMLElement, dx: number, dy: number): void {
     left: corner.endsWith('l') ? 16 : innerWidth - 16 - rect.width,
     top: corner.startsWith('t') ? topInset + 16 : innerHeight - 16 - rect.height,
   };
-  root.classList.remove('miniplayer-dragging');
+  root.removeAttribute('data-miniplayer-drag');
   const finish = () => {
-    root.classList.remove('miniplayer-snapping');
+    root.removeAttribute('data-miniplayer-snap');
     root.style.transition = 'none'; root.dataset.corner = corner; root.style.transform = '';
     root.getBoundingClientRect(); root.style.transition = '';
   };
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { finish(); return }
-  root.classList.add('miniplayer-snapping');
+  root.setAttribute('data-miniplayer-snap', '');
   root.style.transform = `translate(${target.left - base.left}px,${target.top - base.top}px)`;
   let done = false;
   const once = () => { if (done) return; done = true; root.removeEventListener('transitionend', once); finish() };
@@ -96,7 +96,7 @@ function snap(root: HTMLElement, dx: number, dy: number): void {
 function wireDrag(root: HTMLElement, card: HTMLElement): () => void {
   let drag: { id: number; x: number; y: number; dx: number; dy: number; moved: boolean } | null = null;
   const down = (event: PointerEvent) => {
-    if (event.button !== 0 || (event.target as Element).closest('.miniplayerbtn,.miniplayerplay,.miniplayerseek,.vjs-control-bar')) return;
+    if (event.button !== 0 || (event.target as Element).closest('[data-miniplayer-button],[data-miniplayer-play],[data-miniplayer-seek],.vjs-control-bar')) return;
     drag = { id: event.pointerId, x: event.clientX, y: event.clientY, dx: 0, dy: 0, moved: false };
     try { card.setPointerCapture(event.pointerId) } catch { /* 指针已经没了 */ }
   };
@@ -104,7 +104,7 @@ function wireDrag(root: HTMLElement, card: HTMLElement): () => void {
     if (!drag || event.pointerId !== drag.id) return;
     drag.dx = event.clientX - drag.x; drag.dy = event.clientY - drag.y;
     if (!drag.moved && Math.hypot(drag.dx, drag.dy) < 4) return;
-    if (!drag.moved) { drag.moved = true; root.classList.add('miniplayer-dragging'); root.classList.remove('miniplayer-snapping') }
+    if (!drag.moved) { drag.moved = true; root.setAttribute('data-miniplayer-drag', ''); root.removeAttribute('data-miniplayer-snap') }
     root.style.transform = `translate(${drag.dx}px,${drag.dy}px)`;
   };
   const release = (event: PointerEvent) => {

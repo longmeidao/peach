@@ -78,7 +78,7 @@ describe('作品详情岛', () => {
       await page.locator('#stage [data-item-media="video"] > .video-js video.vjs-tech').waitFor({ state: 'attached' });
       const shape = await page.evaluate(() => {
         const media = document.querySelector('#stage [data-item-media="video"]')!;
-        return { id: media.querySelector(':scope > .video-js')!.id, canvas: !!media.querySelector(':scope > .ambientcanvas'),
+        return { id: media.querySelector(':scope > .video-js')!.id, canvas: !!media.querySelector(':scope > [data-ambient-canvas]'),
           stats: !!media.querySelector('#playerStatsBtn'), videos: media.querySelectorAll('video').length };
       });
       assert.deepEqual(shape, { id: 'vid', canvas: true, stats: true, videos: 1 });

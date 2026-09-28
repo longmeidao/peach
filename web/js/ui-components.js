@@ -818,11 +818,12 @@ export function wireScrollers(root=document){
 
 /** 挂覆盖式滚动条的滚动容器。列表只写在这一处，样式那边认的是挂上之后的属性。
  *
- * `.stagescroll` 是详情浮窗里所有内容的外层。窄屏下整块内容自己纵向滚，滚的得是它而不是
- * `<dialog class="stage">` 本身：轨道必须是滚动容器的兄弟，而 dialog 在顶层，挂在它
+ * `[data-stage-scroll]` 是详情浮窗里所有内容的外层。窄屏下整块内容自己纵向滚，滚的得是它而不是
+ * `<dialog data-stage>` 本身：轨道必须是滚动容器的兄弟，而 dialog 在顶层，挂在它
  * 父级上的轨道会落到遮罩底下。宽屏下它不溢出，组件自己量得出来，轨道不显示。 */
 const OVERLAY_SCROLLERS=[
-  '.settingsscroll','.sidecontent','.stagescroll','.tagpickbody','.mixlist','.playlistpicklist','.playerstats',
+  '.settingsscroll','[data-stage-side-content]','[data-stage-scroll]','.tagpickbody','[data-mix-list]','.playlistpicklist',
+  '[data-player-stats]',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.skeletondashstrip','.followpagination',
   '.reviewtabs','.ftablewrap','.board-local-nav','.managebar-menu',
@@ -847,7 +848,7 @@ const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,.board-local-nav,.managebar-
  * 轨道必须是容器的兄弟：跟着内容一起滚的轨道等于没有轨道。宿主因此得是定位祖先，
  * 而且不一定和容器一样大（`.settingscard` 还含着标题栏），所以轨道的位置每次都按
  * 两个 rect 量出来，不假设它们同框。两条轴各一条轨道，谁溢出谁显示——同一个容器
- * 可能在不同版式下换轴（`.mixlist` 在 mixgrid 里就是横滚）。
+ * 可能在不同版式下换轴（队列列表 `[data-mix-list]` 在带队列的详情格里就是横滚）。
  * 整页那一条是唯一的例外：`html` 没有元素父级，轨道挂进 body 并由 `.page` 改成
  * fixed，位置只认视口，不用量。
  * 几何按 2026-09-05 实测 vercel.com 侧栏：

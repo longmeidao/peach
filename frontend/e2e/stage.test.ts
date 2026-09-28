@@ -162,7 +162,7 @@ describe('舞台岛', () => {
         const tick = () => {
           const title = document.querySelector<HTMLElement>('#stage [data-detail-title]');
           if (title) lines.push(Math.round(title.clientHeight / parseFloat(getComputedStyle(title).lineHeight)));
-          if (title && !document.querySelector('#stage .skelfade')) { resolve(lines); return }
+          if (title && !document.querySelector('#stage [data-stage-fade]')) { resolve(lines); return }
           requestAnimationFrame(tick);
         };
         tick();
@@ -197,11 +197,11 @@ describe('舞台岛', () => {
 
       const theater = page.locator('#stage [data-player-theater]');
       await theater.dispatchEvent('click');
-      assert.equal(await page.locator('#stage.theater-mode').count(), 1, '剧场键没切到剧场模式');
+      assert.equal(await page.locator('#stage[data-theater]').count(), 1, '剧场键没切到剧场模式');
       assert.equal(await theater.getAttribute('aria-pressed'), 'true');
       await page.locator('#closeStage').focus();
       await page.keyboard.press('t');
-      assert.equal(await page.locator('#stage.theater-mode').count(), 0, 'T 键没切回来');
+      assert.equal(await page.locator('#stage[data-theater]').count(), 0, 'T 键没切回来');
       assert.equal(await theater.getAttribute('aria-pressed'), 'false');
 
       /* 桩里的片源放不出来，Video.js 停在错误态、控件条不接指针，悬停量不到；只量提示的内容。 */

@@ -168,7 +168,7 @@ export async function mountDetailPlayer(
       ['日期', new Date().toLocaleString()],
     ];
     statsPanel.innerHTML = `<dl>${rows.map(([key, value, plot]) =>
-      `<dt>${esc(key)}</dt><dd${plot ? ' class="playerstatsmetric"' : ''}>${plot || ''}<span>${esc(value)}</span></dd>`).join('')}</dl>`;
+      `<dt>${esc(key)}</dt><dd${plot ? ' data-player-stats-metric=""' : ''}>${plot || ''}<span>${esc(value)}</span></dd>`).join('')}</dl>`;
   };
   player.on(['loadstart', 'loadedmetadata', 'durationchange', 'error'], enforceDuration);
   let segmentedSource = false, fallbackUsed = false;
@@ -237,12 +237,12 @@ export async function mountDetailPlayer(
   return player;
 }
 
-const AMBIENT_CANVAS = '<canvas class="ambientcanvas" width="32" height="18"></canvas>';
+const AMBIENT_CANVAS = '<canvas data-ambient-canvas="" width="32" height="18"></canvas>';
 
 /** 媒体框里氛围光画布与三块读数的占位：画布是框的第一个子节点，读数插在 `before` 前面（不给就
  *  放到最后）。已经有了就不再插。 */
 export function preparePlayerFrame(frame: HTMLElement, before: Element | null = null): void {
-  if (!frame.querySelector(':scope > .ambientcanvas')) frame.insertAdjacentHTML('afterbegin', AMBIENT_CANVAS);
+  if (!frame.querySelector(':scope > [data-ambient-canvas]')) frame.insertAdjacentHTML('afterbegin', AMBIENT_CANVAS);
   if (frame.querySelector(':scope > #playerStatsBtn')) return;
   const overlay = document.createElement('template');
   overlay.innerHTML = playerStatsOverlayHtml();

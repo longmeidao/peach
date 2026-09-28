@@ -367,11 +367,11 @@ describe('侧栏怎么读', () => {
     const { host } = await show(item(1, { width: 1920, height: 1080, release_date: '2026-08-01' }));
     const rating = host.querySelector('#detailRating');
     expect(before(host.querySelector('[data-detail-title]'), rating)).toBe(true);
-    expect(before(rating, host.querySelector('.smeta'))).toBe(true);
+    expect(before(rating, host.querySelector('[data-stage-meta]'))).toBe(true);
     expect(host.querySelector('[data-rate="3"]')?.getAttribute('aria-label')).toBe('取消评分（当前 3 星）');
     expect(host.querySelector('[data-rate="4"]')?.getAttribute('aria-label')).toBe('评为 4 星');
-    expect([...host.querySelectorAll('.smeta [data-spec-item]')].map(glyph)).toEqual(['#i-monitor', '#i-hard-drive', '#i-calendar']);
-    expect(host.querySelector('.smeta')?.textContent).not.toContain('发行');
+    expect([...host.querySelectorAll('[data-stage-meta] [data-spec-item]')].map(glyph)).toEqual(['#i-monitor', '#i-hard-drive', '#i-calendar']);
+    expect(host.querySelector('[data-stage-meta]')?.textContent).not.toContain('发行');
     expect(host.querySelector('#ratioTxt')?.textContent).toBe('0%');
   });
 

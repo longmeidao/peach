@@ -74,9 +74,10 @@ const followList = (options: { followLayout?: string; followPageSize?: number; f
   return `<div class="peach-react"><div class="mx-auto flex w-full max-w-board flex-col gap-8">${followReadings()}<div class="flex flex-col gap-6">${followTabs()}<div class="flex flex-col gap-4"><div class="min-w-0 bg-background-secondary-default rounded-2xl shadow-card flex flex-col gap-4 px-6 py-5 max-sm:px-4 follow-skeleton-surface" data-layout="${table ? 'table' : 'default'}">${followToolbar({ table, ...order })}${content}${followPager(table, size)}</div></div></div></div></div>`;
 };
 
-/** 详情骨架外层 `[data-skeleton="detail"]` 里面那一格：舞台岛自己画外层，里面照这一份写。 */
+/** 详情骨架外层 `[data-skeleton="detail"]` 里面那一格：舞台岛自己画外层，里面照这一份写。格子与详情栏
+ *  的几何是舞台的（`react/stage/stage.css`），骨架的底色与行距是壳的 `skeleton` 一族。 */
 export function detailSkeletonBody(): string {
-  return `<div class="sgrid" aria-hidden="true"><div class="vwrap skeleton-detail-media skeleton"></div><aside class="side"><div class="sidecontent skeleton-lines">${line('85%')}${line('65%')}${repeat(lines(), 4)}</div></aside></div>`;
+  return `<div data-stage-grid="" aria-hidden="true"><div data-stage-media="" class="skeleton-detail-media skeleton"></div><aside data-stage-side=""><div data-stage-side-content="" class="skeleton-lines">${line('85%')}${line('65%')}${repeat(lines(), 4)}</div></aside></div>`;
 }
 
 export function detailSkeletonHtml(): string {

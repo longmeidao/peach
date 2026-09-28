@@ -93,18 +93,18 @@ export function playerStatsPlot(samples: number[], kind: 'speed' | 'activity' | 
   const bars = values.map((value) => {
     if (value === null) return '<i aria-hidden="true"></i>';
     const level = value <= 0 ? 0 : Math.max(.08, Math.min(1, value / top));
-    const state = kind === 'buffer' ? (value < 5 ? ' low' : value < 15 ? ' mid' : ' good') : '';
-    return `<i class="active${state}" style="height:${(level * 100).toFixed(1)}%" aria-hidden="true"></i>`;
+    const state = kind === 'buffer' ? (value < 5 ? 'low' : value < 15 ? 'mid' : 'good') : 'on';
+    return `<i data-bar="${state}" style="height:${(level * 100).toFixed(1)}%" aria-hidden="true"></i>`;
   }).join('');
-  return `<span class="playerstatsplot ${kind}" role="img" aria-label="${esc(label)}">${bars}</span>`;
+  return `<span data-player-stats-plot="${kind}" role="img" aria-label="${esc(label)}">${bars}</span>`;
 }
 
 /** 统计键、加载速度角标与统计面板。作品详情与关注详情共用这一组；挂载在 Video.js 包住
  *  `<video>` 之前插到它前面，Video.js 一包，`video` 的父级就换成它自己的那层了。 */
 export function playerStatsOverlayHtml(): string {
-  return `<button class="playerstatsbtn" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
-       <div class="playernet" id="playerNet" role="status" aria-live="polite" hidden></div>
-       <div class="playerstats" id="playerStats" role="status" hidden></div>`;
+  return `<button data-player-stats-button="" id="playerStatsBtn" aria-label="播放统计" title="播放统计" aria-pressed="false" hidden>${icon('chart')}</button>
+       <div data-player-net="" id="playerNet" role="status" aria-live="polite" hidden></div>
+       <div data-player-stats="" id="playerStats" role="status" hidden></div>`;
 }
 
 export function streamEntries(id: number, session = ''): PerformanceResourceTiming[] {

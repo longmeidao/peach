@@ -30,7 +30,8 @@ function menuElement(): HTMLElement {
   let menu = document.getElementById('playerMenu');
   if (!menu) {
     menu = document.createElement('div');
-    menu.className = 'popmenu playermenu';
+    menu.className = 'popmenu';
+    menu.setAttribute('data-player-context-menu', '');
     menu.id = 'playerMenu';
     menu.setAttribute('role', 'menu');
     menu.setAttribute('aria-label', '播放器菜单');
@@ -41,6 +42,9 @@ function menuElement(): HTMLElement {
 }
 
 let cleanup: (() => void) | null = null;
+
+/** 给图标的 `<svg>` 挂一个空的 data 属性：填色图标与勾选记号各有一条样式。 */
+const mark = (svg: string, attribute: string) => attribute ? svg.replace('<svg', `<svg ${attribute}=""`) : svg;
 
 export function closePlayerMenu(): void {
   const menu = document.getElementById('playerMenu');
@@ -101,8 +105,8 @@ export function openPlayerMenu(player: VjsPlayer, x: number, y: number): void {
   const items = playerMenuItems(player);
   menu.innerHTML = items.map((item, index) => {
     const checkable = item.checked !== undefined;
-    return `<button type="button" class="playermenuitem" role="${checkable ? 'menuitemcheckbox' : 'menuitem'}"${checkable ? ` aria-checked="${item.checked}"` : ''} data-player-menu="${index}">${
-      icon(item.icon, item.fill ? 'playermenufill' : '')}<span>${esc(item.label)}</span>${checkable ? icon('check', 'playermenucheck') : ''}</button>`;
+    return `<button type="button" role="${checkable ? 'menuitemcheckbox' : 'menuitem'}"${checkable ? ` aria-checked="${item.checked}"` : ''} data-player-menu="${index}">${
+      mark(icon(item.icon), item.fill ? 'data-player-menu-fill' : '')}<span>${esc(item.label)}</span>${checkable ? mark(icon('check'), 'data-player-menu-check') : ''}</button>`;
   }).join('');
   presentMenu(menu); menu.showPopover();
   // 量 offsetWidth／offsetHeight：进场动画起手是 scale(.95)，getBoundingClientRect 量到的是缩过的框。

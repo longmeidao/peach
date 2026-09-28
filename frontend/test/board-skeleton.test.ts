@@ -41,8 +41,8 @@ describe('Board 页面骨架', () => {
   it('详情保留媒体区和资料侧栏，不创建播放器', () => {
     const root = document.createElement('div');
     root.innerHTML = detailSkeletonHtml();
-    expect(root.querySelector('.sgrid > .vwrap')).not.toBeNull();
-    expect(root.querySelector('.sgrid > .side > .sidecontent')).not.toBeNull();
+    expect(root.querySelector('[data-stage-grid] > [data-stage-media]')).not.toBeNull();
+    expect(root.querySelector('[data-stage-grid] > [data-stage-side] > [data-stage-side-content]')).not.toBeNull();
     expect(root.querySelectorAll('video, audio, iframe')).toHaveLength(0);
     expect(root.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
