@@ -94,7 +94,7 @@ shuffle_key 会改变随机浏览的顺序语义，先测关系筛选的收益�
 1. 查清 2026-09-02 那 191 行 `javinizer:%:tag` 的去向（javbus −172、r18dev −19，无可归因的写入者）。先重跑「读计数 → sqlite_backup → 再读计数」看是否可复现。
 2. 在 `/review` 处理 5 个被跳过的标题偏移值：`MY-101`～`MY-104`、`SAR-103`。
 3. 另行授权后跑 `scripts/flatten_release_dirs.py --apply --backup <落点>`：296 个目录操作（collapse 167、rename 129）落在 CloudDrive 挂载上，影响账本路径 3374 条。执行前重跑 dry-run，191 条未挂载的随挂载状态变化。
-4. 另行授权后先备份 ledger，修正 4 组已核实姓名：恢复 `星谷瞳`、`福山美佳`、`平沢すず` 的规范名；`かわいゆい` 移除错误的 `河合ゆい` 别名与 r18 外部引用，清退错误头像及 provenance 后重新生成候选；同步 actor tag 与检索投影。
+4. 另行授权后先备份 ledger，修正 2 组已核实姓名：恢复 `平沢すず` 的规范名；`かわいゆい` 移除错误的 `河合ゆい` 别名与 r18 外部引用，清退错误头像及 provenance 后重新生成候选；同步 actor tag 与检索投影。
 5. 另行授权后先备份 ledger，把 `follow_item` 181、184、185 从 `seen` 恢复为 `new`，复核状态计数、完整性与新哈希。
 6. 按复用审计依次替换 PID 锁和 Rule34Video 媒体页；每项固定版本/revision、首个消费者和隔离测试同批落地。
 7. 分类剩余 44 个无预览变体：确无图片还是解析遗漏。
@@ -156,4 +156,4 @@ shuffle_key 会改变随机浏览的顺序语义，先测关系筛选的收益�
 42. 图库同名多张、却没有可比封面人脸的女优：两家目录的两张不同照片彼此过线且占多数时已按 ADR-0062 装上，小图也作证、只有小图时装小图（ADR-0066）。仍装不上的是名下只有同一张照片的两份、或只有一张提得出脸的；可选的参照是片商或事务所资料页人像、单人作品的九宫格抽帧。
 43. 接入 avwikidb（`https://avwikidb.com/`）作为「截图 → 女优」候选来源。官方截图本身已按番号落库、在女优页照片档展示（ADR-0068，直取 DMM 与 MGS，不经 avwikidb）；剩下的是把逐张标注接到样张上，让多人作品的样张只进出场那位的照片档。2026-09-24 只读核实，作品页 `/work/{番号}/` 服务端渲染，`__NEXT_DATA__` 里 `movie.sampleImageActors` 按截图序号给 FANZA 女优 ID，FANZA 截图原图 `pics.dmm.co.jp/digital/video/{cid}/{cid}jp-N.jpg` 与缩略 `awsimgsrc.dmm.co.jp/pics_dig/…?f=webp&w=600` 都无签名可外链；标注是人工逐步补的，4 部样本覆盖六到八成，每张最多标一人，MGS 作品只给站内 `/mgsimg/` 代理路径（不用，走现有 MGS 抓取）。女优页 `/actor/{FANZA id}/` 的增量是 `alias[].fanzaAvActressId`（同一人多个 FANZA 旧 ID）、事务所与其官方页、社媒账号、逐字段来源核对记录；头像与作品元数据与现有 DMM 来源同源，无增量。带查询串的地址（分页、筛选）被 Cloudflare Turnstile 拦，只读无参数页；robots 禁 `/api/`，不接。结论只进候选。
 44. 前端测试里一条时序抖动，复跑就绿，但每次撞上都要重跑整轮 `auto`：vitest `islands.test.ts` 的 `beforeAll(import('@peach/react'))` 偶尔超过 10 秒（`peach-react.js` 已到 2.3 MB，首次导入的时间窗口在变紧，2026-09-28 撞一次）。要么拆包、要么给首次导入单独的超时。
-45. 另行授权后跑 `scripts/repair_r18_machine_translations.py --apply --backup <落点>`，把 r18 英文写法建出的系列与女优实体改回快照里的日文名，英文留作别名（2026-09-28 dry-run：rename 8，含 ABW-358 的系列 8967，以及第 4 项里的 `星谷瞳`、`福山美佳`）。另有 4 个系列（8958、8961、8962、8963）的日文名已属于另一条实体，脚本只报 `merge-needed`，要人工逐条合并；10 个女优与系列快照里没有日文写法，未取得。
+45. r18 英文写法建出的实体还剩两位素人女优的日文名未取得：8645 `Mana(23)`（413INST-168，标题 `まな`，年龄后缀的日文写法没有原文，`まな` 又常见，不猜）与 8629 `* Kuchiku`（POW-040，r18dev 原文 `Kuchiku * Reverse Bunny`，与标题 `べりさ` 对不上）。DMM 商品页的演员栏已空、演员页 404，取得原文后再改名，英文留作别名。`PREMIUM BEST`、`1VS1`、`NOZOMI` 是厂牌或官方自己的拉丁写法，保留。
