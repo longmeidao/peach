@@ -84,7 +84,7 @@ def run(contract, key: str, handle, *, transport=None, clock=time.monotonic) -> 
                             max_bytes=64 * 1024 * 1024, max_seconds=BUDGET_SECONDS), 2.0)
     deadline = clock() + BUDGET_SECONDS
     landed = images = absent = failed = deferred = asked = 0
-    #: 快照看过、里面没有样张的部数：下一轮改为联网问，也算这一轮往前推了。
+    #: 快照第一次看过、里面没有样张的部数：下一轮改为联网问，也算这一轮往前推了。
     probed = 0
     #: 没问站就跳过的部数，按原因分：快照里没样张又没有可问的官方站、那一站近期说过没有、那一站冷却中。
     skipped = {"no_site": 0, "recent_miss": 0, "paused": 0}
@@ -97,7 +97,8 @@ def run(contract, key: str, handle, *, transport=None, clock=time.monotonic) -> 
             snapshot = sample_images.snapshot_samples(snapshots.get(code, ()))
             if snapshot:
                 site, urls = snapshot
-            elif code in snapshots:
+            elif code in snapshots and not misses.fresh("snapshot", code):
+                # 只在第一次看过时算推进：每轮都算的话，那一站冷却时接续就停不下来。
                 misses.record("snapshot", code)
                 probed += 1
             if not urls:
