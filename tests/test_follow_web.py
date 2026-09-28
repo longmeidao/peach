@@ -3173,39 +3173,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn('class="fcollectionthumb" href=', self.page)
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
 
-    def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
-        # `<video class="video-js">` 由两座详情岛画、交给壳的 mountStagePlayer：
-        # `frontend/e2e/follow-detail.test.ts` 与 `frontend/e2e/item-detail.test.ts`。
-        self.assertPageContains("mountDetailPlayer(item,video,autoplay??appSettings.detailAutoplay,options)")
-        self.assertPageContains("type:media?.media_type||item.media_type||'video/mp4'},")
-        # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
-        # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
-        self.assertPageContains(
-            "function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQualities=null)")
-        self.assertPageContains(
-            "mediaPromise:api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null),")
-        self.assertPageContains("mediaPromise",
-                                "关注详情要异步补上来源档位和字节数")
-        # 档位和字节数是同一趟回源的产物，播放器两样都从这个应答里取。
-        self.assertPageContains("updateQualities?.(next?.qualities?.length?next.qualities:null);")
-        self.assertPageContains("const size=Number(next?.size)||0;")
-        player = self.page.split("function mountStagePlayer(", 1)[1].split(
-            "async function openFollow(", 1)[0]
-        self.assertNotIn("await api(`/follow-qualities", player,
-                         "清晰度回源不能挡住默认视频挂载")
-        self.assertLess(player.index("mountDetailPlayer(item,video"),
-                        player.index("wireFollowTelemetry"))
-        self.assertPageContains('aria-label="播放器设置"')
-        self.assertPageContains("data-player-quality-badge")
-        self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
-        self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("stopAmbient=mountPlayerAmbient(video);")
-        self.assertPageContains("player?.one?.('dispose',stopAmbient)")
-        self.assertPageContains("mountPlayerTheaterControl(player,root)")
-        self.assertPageContains("wireFollowTelemetry(item,video)")
-        self.assertPageContains("api('/api/follow/play'")
-        self.assertPageContains("api('/api/follow/activity'")
-
     def test_follow_image_collections_use_buttons_dots_and_arrow_keys(self):
         self.assertPageContains("imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')")
 

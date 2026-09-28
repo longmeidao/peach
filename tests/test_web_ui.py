@@ -1650,30 +1650,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-layout-x-small .vjs-progress-control"
                                 "{left:0;right:0;top:-12px;height:18px;display:flex}")
 
-    def test_picture_in_picture_gets_its_own_seek_keys(self):
-        """画中画那个窗口由浏览器画，站内控制条一颗键都递不进去。
-
-        Media Session 的动作处理器是唯一的入口：登记 `seekbackward` 和 `seekforward`
-        之后那个窗口才画得出快退快进，步长取设置里那个秒数；`setPositionState` 让它自己
-        那条进度条知道放到哪，`seekto` 让拖它生效。逐个动作单独 try——整块 try 会让一个
-        浏览器不认识的动作带走后面全部处理器。站内的小窗是另一件事，见
-        `test_the_small_window_gets_its_own_seek_keys`。
-        """
-        self.assertPageContains("function mountPlayerMediaSession(player,it){")
-        self.assertPageContains("mountPlayerMediaSession(detailPlayer,it);")
-        for needle in ("seekbackward:details=>seekTo(player.currentTime()-"
-                       "(details?.seekOffset||step()))",
-                       "seekforward:details=>seekTo(player.currentTime()+"
-                       "(details?.seekOffset||step()))",
-                       "seekto:details=>{if(typeof details?.seekTime==='number')"
-                       "seekTo(details.seekTime)}",
-                       "Math.max(1,Number(appSettings.seekSeconds)||10)",
-                       "try{session.setActionHandler(action,handler);registered.push(action)}catch(_e){}",
-                       "if(!duration||position>duration)return;"):
-            self.assertPageContains(needle)
-        # 换一条视频就换一份处理器：不摘掉的话那个窗口还按着上一条的进度条走。
-        self.assertPageContains("registered.forEach(action=>{try{session.setActionHandler(action,null)}catch(_e){}});")
-
     def test_settings_overlay_owns_the_top_fixed_layer(self):
         self.assertPageContains("--layer-dialog:1000")
         self.assertPageContains(".settingspanel{position:fixed;z-index:var(--layer-dialog);inset:0;isolation:isolate")
@@ -2122,21 +2098,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const kind=ROUTE_ENTITIES[path.split('/')[1]],name=path.split('/').slice(2).join('/');")
         self.assertPageContains('showEntityLoading(kind,name);')
         self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
-        self.assertPageContains('mountDetailPlayer(item,video,autoplay??appSettings.detailAutoplay,options)')
         self.assertPageContains('class="ptoggle" type="checkbox" id="detailAutoplaySetting"')
-
-    def test_local_assets_get_their_sidecar_subtitles_as_closed_text_tracks(self):
-        """外挂字幕挂成 text track，一条都不预先打开。
-
-        同一部片常有简体、繁体、日语三条，自动打开某一条等于替用户选了语言；
-        Video.js 的字幕菜单只在有轨时出现，让它自己出现就够了。关注条目没有 sidecar，
-        那条路径不发这一次请求。
-        """
-        self.assertPageContains("if(!options.source)mountPlayerSubtitles(detailPlayer,it.id);")
-        self.assertPageContains("api(`/api/assets/${assetId}/subtitles`)")
-        self.assertPageContains("(payload?.subtitles||[]).filter(track=>track.playable)")
-        self.assertPageContains("kind:'subtitles',src:track.src,srclang:track.language||''")
-        self.assertPageContains("label:track.label,default:false},true);")
 
     def test_entity_links_have_no_external_arrow(self):
         # `target="_blank"` 已经是外链，箭头只是重复；一排链接里它还会挤掉本就不多的
@@ -2421,10 +2383,6 @@ class WebUiSourceTests(unittest.TestCase):
         （`/follow-stream?id=<follow_item>`），保存时写的就是 `follow_item.asset_id`。
         反查不到关注条目时才拦下来，并说清是什么拦的。
         """
-        self.assertPageContains("function followStreamSource(it)")
-        self.assertPageContains(
-            "return it.location==='online'&&it.follow_item_id")
-        self.assertPageContains("const proxied=followStreamSource(it);")
         # 反查得到就转关注详情、反查不到才拦：判据在作品详情岛（`frontend/test/react/item-detail.test.tsx`），
         # 壳接住转向。
         self.assertPageContains("if(to.kind==='follow'){followDetailReturnPath=detailReturnPath||'/';"
@@ -2443,10 +2401,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("回收站中的文件仍保留，清空回收站后才会永久删除。")
 
     def test_detail_progress_uses_only_titles_and_percentages(self):
-        # 两条读数的标题与初值画在作品详情岛里，壳的遥测按 id 改写它们。
-        self.assertPageContains("wireTelemetry(item,video,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});")
-        self.assertPageContains("if(t)t.textContent=(r*100).toFixed(0)+'%'")
-        self.assertPageContains("rr.textContent=rp.toFixed(0)+'%'")
+        # 两条读数的标题与初值画在作品详情岛里，播放器模块的遥测按 id 改写它们。
         self.assertPageLacks('class="ticks mono"')
         self.assertPageLacks("开头就走")
         self.assertPageLacks("真实看 ${rp.toFixed(0)}% · 到达")
@@ -3401,7 +3356,6 @@ class WebUiSourceTests(unittest.TestCase):
     def test_immerse_cancels_each_stream_when_switching_closing_or_leaving(self):
         self.assertPageContains('const slide={el,video,player:null,session:newStreamSession(),disposed:false}')
         self.assertPageContains('playableStreamSource(it,slide.session)')
-        self.assertPageContains('`/stream?id=${it.id}&session=${encodeURIComponent(session)}`')
         self.assertPageContains('slide.disposed=true;tokSlides.delete(slide);cancelStreamSession(slide.session)')
         self.assertPageContains('disposeTokSlide(old)')
         self.assertPageContains('[...tokSlides].forEach(disposeTokSlide)')
@@ -3441,12 +3395,8 @@ class WebUiSourceTests(unittest.TestCase):
         dispose = app[app.index("function disposeStage("):]
         dispose = dispose[:dispose.index("\nfunction placeItemDetail")]
         self.assertIn("runStageDisposers();", dispose, "舞台销毁必须跑收尾登记表")
-
-        telemetry = app[app.index("function wireTelemetry(it,v,sel){"):]
-        telemetry = telemetry[:telemetry.index("\nfunction wireFollowTelemetry")]
-        for needle in ("const stopTelemetry=", "'emptied'", "onStageDispose(stopTelemetry)"):
-            self.assertIn(needle, telemetry,
-                          f"详情遥测缺少 {needle}：离开详情后定时器还在上报")
+        # 遥测的停表（`emptied` 收尾、向舞台登记撤销）在播放器模块里，
+        # `frontend/test/player.test.ts` 按行为验。
 
         # 标签选择器在作品详情岛里：点外面就收起的那条 document 监听随组件卸载撤掉，
         # 舞台销毁先卸岛。
@@ -3460,17 +3410,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 关闭键画在作品详情岛里，交回壳的 `close`。
         self.assertPageContains("close:()=>closeItemDetail(),")
         self.assertPageContains("async function closeItemDetail(){\n  const restore=cloneBarsContext(detailReturnBarsContext);")
-        self.assertPageContains("function cancelDetailStream()")
-        self.assertPageContains("/api/stream-cancel?session=")
-        self.assertPageContains("keepalive:true")
-        self.assertPageContains("dataset.peachStreamCancel=JSON.stringify(result)")
-        self.assertPageContains("/api/stream-plan?id=")
-        self.assertNotIn("if(!['115','pikpak'].includes(it.location))return direct", self.app_js)
-        self.assertPageContains("const source=()=>options.source?Promise.resolve(options.source):detailStreamSource(it)")
-        self.assertPageContains("source().then(next=>")
-        self.assertPageContains("fallbackUsed=false")
-        self.assertPageContains("player.src(directDetailSource(it))")
-        self.assertPageContains("detailPlayer.dispose()")
 
     def test_metered_stream_gate_occupies_the_player_until_clicked(self):
         # `.vwrap video{display:block}` 不能把 hidden 播放器提前画出来；否则入口和播放器
@@ -3480,7 +3419,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 说明块铺满播放器格：`frontend/e2e/design.test.ts`。
 
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
-        self.assertPageContains('/vendor/videojs/8.24.1/video.min.js')
         self.assertPageContains('/vendor/videojs/8.24.1/video-js.min.css')
 
     def test_detail_opens_with_the_local_cover_before_the_video_loads(self):
@@ -3491,8 +3429,6 @@ class WebUiSourceTests(unittest.TestCase):
         海报层，开播即收，详情侧不另写一套收尾逻辑。
         """
         self.assertPageContains("function detailPosterUrl(it){")
-        self.assertPageContains("const poster=detailPosterUrl(item);\n    if(poster)video.poster=poster;")
-        self.assertPageContains("poster:options.poster||detailPosterUrl(it)")
 
     def test_detail_poster_follows_the_jav_image_preference(self):
         body = self.app_js.split('function detailPosterUrl(it){', 1)[1].split('\n}', 1)[0]
@@ -3504,19 +3440,8 @@ class WebUiSourceTests(unittest.TestCase):
         cover_body = self.app_js.split("wireIconSwitch(mount,'data-jav-image-choice',choice=>{", 1)[1].split('});', 1)[0]
         self.assertIn("repaintDetailPoster();", cover_body)
         repaint = self.app_js.split('function repaintDetailPoster(){', 1)[1].split('\n}', 1)[0]
-        self.assertIn("detailPlayer.poster(poster)", repaint)
+        self.assertIn("player.poster(poster)", repaint)
         self.assertIn("$('#vid')?.setAttribute('poster',poster)", repaint)
-        # 海报层属于详情播放器，函数就排在它前面；开场判据里 current 是详情独有的状态。
-        self.assertLess(self.app_js.index('function repaintDetailPoster(){'),
-                        self.app_js.index('async function mountDetailPlayer('))
-
-    def test_follow_detail_poster_survives_the_player_mount(self):
-        """video.js 只认 options 里的海报，不读元素上的 poster 属性。
-
-        关注视频的缩略图已经写在元素上，挂载那一刻却被丢掉：开播前又剩黑场。
-        同一条 poster 递进 options，挂载前后看到的才是同一张图。
-        """
-        self.assertPageContains("poster:item.thumb_url")
 
     def test_the_player_script_is_fetched_on_demand_instead_of_in_the_first_paint(self):
         """video.js 676KB，只有开始看片才用得上，和 Swiper 同一口径不进首屏。
@@ -3524,10 +3449,6 @@ class WebUiSourceTests(unittest.TestCase):
         语言包必须串在主脚本之后：`videojs.addLanguage` 要求先有 videojs，
         并行加载会随机丢掉中文界面。
         """
-        self.assertCode("const ensureVideojs=()=>{")
-        self.assertCode(
-            "videojsLoader=loadScript('/vendor/videojs/8.24.1/video.min.js')"
-            ".then(()=>loadScript('/vendor/videojs/8.24.1/lang/zh-CN.js'))")
         self.assertPageLacks('<script src="/vendor/videojs',
                              "播放器脚本才用得上，不进首屏")
         # 样式表留在首屏：它是 .video-js 的版式来源，等到点开才拉会先闪一帧裸 video。
@@ -3541,7 +3462,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-control-bar>.vjs-play-control{position:relative;align-self:flex-end;flex:0 0 40px;width:40px;height:40px")
         # overflow 要放开：悬停提示挂在按钮里，裁掉溢出就等于把提示裁没。
         self.assertPageContains("border:0;border-radius:50%;background:rgba(0,0,0,.6);box-shadow:none;overflow:visible")
-        self.assertPageContains("const playIcon=morphIcon(play,'player-play'),playPath=playIcon?.querySelector('path')")
         self.assertPageContains("id=\"i-player-play\"")
         self.assertPageContains("id=\"i-player-pause\"")
         self.assertPageContains(".vjs-peach-right-controls{box-sizing:border-box;position:relative;align-self:flex-end")
@@ -3551,10 +3471,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("opacity:1;visibility:visible;pointer-events:auto")
         self.assertPageContains(".vjs-peach-right-controls>.vjs-control:hover>.vjs-peach-hover")
         self.assertPageContains("background:rgba(255,255,255,.1)")
-        self.assertPageContains("function mountPlayerChromeLayout(player)")
-        self.assertPageContains("group.className='vjs-peach-right-controls'")
-        self.assertPageContains("controlBar.querySelector(':scope>.vjs-picture-in-picture-control')")
-        self.assertPageContains("controlBar.querySelector(':scope>.vjs-fullscreen-control')")
         self.assertPageContains(".vwrap .video-js .vjs-progress-control{z-index:2;position:absolute;left:0;right:0;top:-12px;width:auto;height:18px")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress{background:var(--tungsten)}")
         self.assertPageContains(".vwrap .video-js .vjs-play-progress:before{content:\"\"")
@@ -3567,46 +3483,21 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vwrap .video-js .vjs-time-control{display:none!important}")
         self.assertPageContains(".vwrap .video-js .vjs-peach-time{box-sizing:border-box;align-self:flex-end")
         self.assertPageContains("padding:0 16px;border:0;border-radius:var(--pill-radius);background:rgba(0,0,0,.6)")
-        self.assertPageContains("time.type='button';time.className='vjs-peach-time vjs-control';time.dataset.playerTime=''")
-        self.assertPageContains("remaining=!remaining;syncTime()")
-        self.assertPageContains("time.innerHTML='<span class=\"vjs-peach-time-text\"></span>'")
-        self.assertPageContains("timeText.textContent=`${shown} / ${fmtClock(duration)}`")
         self.assertPageContains(".vjs-peach-time:hover:after")
         self.assertPageContains(".vwrap .video-js.vjs-layout-x-small .vjs-progress-control")
         self.assertPageContains(".vwrap .video-js.vjs-layout-small .vjs-current-time")
-        self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
-        self.assertPageContains("durationDisplay:true,remainingTimeDisplay:false")
         self.assertPageContains(".vjs-peach-settings [data-player-quality-badge]")
-        self.assertPageContains("${icon('settings')}")
-        self.assertPageContains("typeof player.qualityLevels==='function'?player.qualityLevels():null")
-        self.assertPageContains("activePixels>=2160?'4K':activePixels>=720?'HD':''")
-        # 「auto 开全部层级，选定某一档只留那一档」是契约；局部变量叫什么不是。
-        self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("const mute=volume?.querySelector(':scope>.vjs-mute-control'),muteIcon=morphIcon(mute,'player-volume')")
         self.assertPageLacks("volume.insertAdjacentHTML('afterbegin','<span class=\"vjs-peach-hover\"")
         self.assertPageContains("z-index:1;position:relative!important;left:0!important;top:0!important;align-self:center;flex:0 0 40px")
-        self.assertPageContains("const syncFullscreenState=()=>{")
         self.assertPageContains("id=\"i-player-volume\"")
         self.assertPageContains("id=\"i-player-volume-muted\"")
         self.assertPageContains("id=\"i-player-fullscreen-enter\"")
         self.assertPageContains("id=\"i-player-fullscreen-exit\"")
         self.assertPageContains(".vjs-peach-control-icon{position:absolute;z-index:2;left:50%;top:50%;width:24px;height:24px")
         self.assertPageContains("[data-peach-explicit-icon]:active>.vjs-peach-control-icon")
-        self.assertPageContains("function mountDetailPlayer(it,video,autoplay,options={})")
-        self.assertPageContains("detailPlayer.duration(expected)")
-        self.assertPageContains("['loadstart','loadedmetadata','durationchange','error']")
-        # 仍然是「先账本、后媒体元素」的回退，只是两边都先过 realDuration：
-        # 账本里的 -1 是探测硬失败的哨兵，裸真值判断挡不住它。
-        self.assertPageContains(
-            "const d=realDuration(it.duration)||realDuration(v.duration)")
         self.assertPageLacks("skipButtons:{backward:appSettings.seekSeconds,forward:appSettings.seekSeconds}")
 
     def test_player_seek_preview_reuses_contact_sheet_cells_and_online_falls_back_to_time(self):
-        self.assertPageContains("function mountPlayerSeekPreview(player,it,options={})")
-        self.assertPageContains("preview.dataset.playerSeekPreview='';preview.hidden=true")
-        self.assertPageContains("const nextCell=Math.min(8,Math.floor(ratio*9))")
-        self.assertPageContains("image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`")
-        self.assertPageContains("mountPlayerSeekPreview(detailPlayer,it,{thumbnail:!options.source})")
         self.assertPageContains(".vjs-peach-seek-frame{position:relative;width:240px;aspect-ratio:16/9")
 
     def test_the_player_has_exactly_one_center_feedback_circle(self):
@@ -3616,9 +3507,6 @@ class WebUiSourceTests(unittest.TestCase):
         播放、另一块闪暂停，两个图标叠在同一个圆里。所以这里既钉住那一块圆的三个触发面
         （播放键、静音键、画面本身），也钉住第二块不再存在。
         """
-        self.assertPageContains("player.el().addEventListener('click',event=>{")
-        self.assertPageContains("event.target.closest('.vjs-play-control,.vjs-tech,.vjs-poster')")
-        self.assertPageContains("event.target.closest('.vjs-mute-control')")
         self.assertPageLacks('data-center-seek=')
         self.assertPageLacks('data-center-toggle')
         self.assertPageLacks("vjs-peach-center-controls")
@@ -3631,8 +3519,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".video-js.vjs-error .vjs-peach-bezel{display:none}")
 
     def test_player_spinner_replaces_the_videojs_arcs_with_the_four_part_dom(self):
-        self.assertPageContains("function mountPlayerSpinner(player)")
-        self.assertPageContains("mountPlayerSpinner(detailPlayer)")
         self.assertPageContains("vjs-peach-spinner-container")
         self.assertPageContains("animation:peach-spinner-linspin 1.5682352941176s linear infinite")
         self.assertPageContains("animation:peach-spinner-easespin 5332ms cubic-bezier(.4,0,.2,1) infinite both")
@@ -3664,16 +3550,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("${icon('download')}<span class=\"sr-only\">加载速度")
 
     def test_player_settings_match_real_ambient_speed_and_quality_capabilities(self):
-        self.assertPageContains("class=\"vjs-peach-settings-menu\" role=\"menu\" aria-label=\"播放器设置\"")
-        self.assertPageContains('role="menuitemcheckbox" data-player-ambient')
-        self.assertPageContains("<span>氛围模式</span>")
-        self.assertPageContains("<span>播放速度</span>")
-        self.assertPageContains("<span>清晰度</span>")
-        self.assertPageContains("setSpeed(Number(button.dataset.playerSpeedOption))")
-        self.assertPageContains("applyAmbientMode(!appSettings.ambientMode)")
-        self.assertPageContains("${icon('player-ambient')}")
-        self.assertPageContains("${icon('player-speed')}")
-        self.assertPageContains("${icon('player-quality')}")
         self.assertPageContains('id="i-player-ambient"')
         self.assertPageContains('id="i-player-speed"')
         self.assertPageContains('id="i-player-quality"')
@@ -3681,7 +3557,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('id="i-player-menu-back"')
         self.assertPageContains('id="i-player-option-check"')
         self.assertPageContains('M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z')
-        self.assertPageContains("icon('player-option-check')")
         self.assertPageContains(".vjs-peach-settings-menu{box-sizing:border-box;position:absolute;z-index:2300;right:-100px;bottom:52px;width:min(274px")
         self.assertPageContains("padding:0;border:0;border-radius:var(--floating-radius);background:rgba(0,0,0,.6);box-shadow:none")
         self.assertPageContains(".vjs-peach-panel-menu{padding:8px}")
@@ -3691,10 +3566,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-peach-panel-header{box-sizing:border-box;height:57px;padding:8px 0;display:flex;align-items:center;gap:0;border-bottom:1px solid rgba(255,255,255,.2)")
         self.assertPageContains(".vjs-peach-settings-menu .vjs-peach-panel-header .vjs-peach-menu-back:before{inset:4px}")
         self.assertPageContains(".video-js .vjs-peach-menu-option{display:grid;grid-template-columns:35px minmax(0,1fr)")
-        self.assertPageContains('class="vjs-peach-option-check"')
-        self.assertPageContains('class="vjs-peach-option-label"')
-        self.assertPageContains("class=\"vjs-peach-panel-header\"")
-        self.assertPageContains('aria-label="返回上一个菜单"')
         self.assertPageContains("color:#eee")
         self.assertPageContains(".vjs-peach-switch{box-sizing:border-box;display:block;position:relative;width:40px;height:24px;border-radius:var(--floating-radius)")
         self.assertPageContains("background:rgba(0,0,0,.3)")
@@ -3761,13 +3632,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-volume-panel .vjs-volume-tooltip{z-index:5!important;left:50%;right:auto!important;top:auto")
 
     def test_theater_mode_has_button_tooltip_keyboard_and_responsive_layout(self):
-        self.assertPageContains("function mountPlayerTheaterControl(player,settingsRoot)")
-        self.assertPageContains("data-player-theater aria-pressed=")
-        self.assertPageContains(
-            "theaterButton.peachTooltipSync=playerControlTooltip(theaterButton,'影院模式','T')")
-        self.assertPageContains("function syncPlayerTheaterButton(button)")
-        self.assertPageContains("appSettings.theaterMode?'默认视图':'影院模式'")
-        self.assertPageContains("appSettings.theaterMode?'#i-theater-exit':'#i-theater-enter'")
         self.assertPageContains("if(e.key==='t'||e.key==='T')")
         self.assertPageContains(".stage.theater-mode .sgrid{grid-template-columns:minmax(0,1fr)}")
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
@@ -3780,20 +3644,8 @@ class WebUiSourceTests(unittest.TestCase):
         播放、静音、时间、画中画、设置、全屏、影院共用同一套提示与快捷键。提示层必须抹掉
         浏览器原生 title，否则两层提示会一前一后叠着弹。
         """
-        self.assertPageContains("function playerControlTooltip(button,label,shortcut='')")
-        self.assertPageContains("tip.innerHTML='<span class=\"vjs-peach-tooltip-text\"></span><kbd hidden></kbd>'")
-        self.assertPageContains("if(shortcut)button.setAttribute('aria-keyshortcuts',shortcut)")
-        self.assertPageContains("key.hidden=!shortcut")
-        self.assertPageContains("button.removeAttribute('title')")
-        self.assertPageContains("playerControlTooltip(play,'播放','K')")
-        self.assertPageContains("playerControlTooltip(mute,'静音','M')")
-        self.assertPageContains("playerControlTooltip(time,'显示剩余时间')")
         # i 键归迷你播放器（YouTube 的 aria-keyshortcuts="i"），画中画只留按钮不带徽标。
-        self.assertPageContains("playerControlTooltip(pip,'画中画')")
-        self.assertPageContains("playerControlTooltip(fullscreen,'全屏','F')")
-        self.assertPageContains("playerControlTooltip(toggle,'设置')")
         # 快捷键走按钮自己的点击路径，全屏和画中画的兜底逻辑只写一份。
-        self.assertPageContains("function clickPlayerControl(video,selector)")
         self.assertPageContains("if(e.key===' '||e.key==='k'||e.key==='K')")
         self.assertPageContains("if(e.key==='m'||e.key==='M'){e.preventDefault();clickPlayerControl(video,'.vjs-mute-control')")
         self.assertPageContains("if(e.key==='f'||e.key==='F'){e.preventDefault();clickPlayerControl(video,'.vjs-fullscreen-control')")
@@ -3832,7 +3684,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("min-height:76px")
         # 播放器搬家而不是销毁：只有显式关闭、换详情和删条目传 miniplayer:false。
         self.assertPageContains("function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={})")
-        self.assertPageContains("if(toMini)enterMiniplayer(detailPlayer,meta);")
         self.assertPageContains("if(!toMini&&!owned)cancelDetailStream();")
         self.assertPageContains("disposeStage(false,true,{miniplayer:false});")
         self.assertPageContains("disposeStage(false,false,{miniplayer:false});")
@@ -3841,8 +3692,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function miniplayerTakesCard(it)")
         self.assertPageContains("if(miniplayerTakesCard(it)){miniplayerPlay(it.id);return}")
         self.assertPageContains("queueDetailResume(kind,item.id,player.currentTime(),!player.paused());")
-        self.assertPageContains("const resume=takeDetailResume(options.source?'follow':'item',it.id);")
-        self.assertPageContains("if(resume?.time>0)player.one('loadedmetadata'")
         # 拖到哪个象限就吸到哪个角；键盘 k / i 在小窗里同样有效。
         self.assertPageContains("const corner=(rect.top+rect.height/2<innerHeight/2?'t':'b')+(rect.left+rect.width/2<innerWidth/2?'l':'r');")
         self.assertPageContains("if((!stage||stage.hidden)&&miniplayerActive())return miniplayerVideo();")
@@ -3884,16 +3733,7 @@ class WebUiSourceTests(unittest.TestCase):
         白字、悬停 rgba(255,255,255,.1)。
         """
         self.assertPageContains('<div class="popmenu playermenu" id="playerMenu" role="menu" aria-label="播放器菜单" hidden></div>')
-        self.assertPageContains("wirePlayerContextMenu(detailPlayer);")
-        self.assertPageContains("event.preventDefault();openPlayerMenu(player,event.clientX,event.clientY);")
-        for label in ("循环播放", "迷你播放器", "展开", "画中画", "复制视频网址", "复制当前时间的视频网址", "播放统计"):
-            with self.subTest(label=label):
-                self.assertPageContains(f"label:'{label}'")
-        for absent in ("复制嵌入代码", "复制调试信息", "排查播放问题"):
-            with self.subTest(label=absent):
-                self.assertPageLacks(f"label:'{absent}'")
-        self.assertPageContains("role=\"${checkable?'menuitemcheckbox':'menuitem'}\"")
-        self.assertPageContains("link.searchParams.set('t',String(Math.floor(player.currentTime()||0)));")
+        # 菜单项清单在 `frontend/src/player/menu.ts`；右键打开后逐项核对在 `frontend/e2e/stage.test.ts`。
         self.assertPageContains("#playerMenu.playermenu{padding:8px;border:0;gap:0;border-radius:var(--floating-radius);background:rgba(0,0,0,.6);")
         self.assertPageContains("grid-template-columns:56px minmax(0,1fr) 32px;gap:0;align-items:center;width:100%;min-height:48px;")
         self.assertPageContains("#playerMenu>.playermenuitem:hover,#playerMenu>.playermenuitem:focus-visible{background:rgba(255,255,255,.1);color:#fff;outline:0}")
@@ -3905,23 +3745,13 @@ class WebUiSourceTests(unittest.TestCase):
         判据是播放器自己的宽度而不是视口：同一个视口下影院模式和普通视图的播放器宽度
         差一大截，用媒体查询会在影院模式下白折叠、在普通视图下继续超框。
         """
-        self.assertPageContains("const box=player.el(),narrow=box.clientWidth<528;")
-        self.assertPageContains("box.classList.toggle('vjs-peach-xsmall',narrow)")
-        self.assertPageContains("const widthObserver=new ResizeObserver(syncWidthMode)")
-        self.assertPageContains("player.on('dispose',()=>widthObserver.disconnect())")
-        self.assertPageContains("expand.className='vjs-peach-expand vjs-control'")
-        self.assertPageContains("icon('player-expand')")
         # 菜单行那个 `>` 是 24 视框、一个单位粗的细线，铺到展开键的 32px 只有 1.3px；上游
         # 展开键自带一个 32 视框、两个单位粗的箭头，同样 32px 渲染就是 2px。
         self.assertPageContains('<symbol id="i-player-expand" viewBox="0 0 32 32"')
         self.assertPageContains('m12.59 20.34 4.58-4.59-4.58-4.59L14 9.75l6 6-6 6z')
         # 展开键排在这一簇最左：`prepend` 而不是 append，否则它落在全屏键的右边。
-        self.assertPageContains("group.prepend(expand)")
         # hover 高亮的规则是 `.vjs-control>.vjs-peach-hover`，高亮层必须是按钮的兄弟节点；
         # 塞进 <button> 里选择器就不命中，这个键会是整排里唯一没有反馈的那个。
-        self.assertPageContains(
-            '</button><span class="vjs-peach-hover" aria-hidden="true"></span>`;\n'
-            '  group.prepend(expand);')
         # 窄屏其余键的 svg 缩到 18px，展开键排除在外并单独铺满 32px：跟着缩就几乎看不出
         # 是个可点的键。上游给这个按钮的 svg 内边距同样是 0。
         self.assertPageContains(
@@ -3933,9 +3763,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("left:2px;width:32px;height:32px;border-radius:50%}")
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-expand>button>svg{width:32px;height:32px}")
-        self.assertPageContains("expandButton.setAttribute('aria-expanded',String(open))")
-        self.assertPageContains("syncExpandTooltip(open?'收起控件':'展开控件')")
-        self.assertPageContains("if(!narrow)setExpanded(false)")
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-right-controls>.vjs-control:not(.vjs-peach-settings):not(.vjs-peach-expand){display:none}")
         self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-expand{display:block}")
@@ -3958,7 +3785,6 @@ class WebUiSourceTests(unittest.TestCase):
         无障碍树，也不再接命中测试。次级菜单按上游那份 .25s cubic-bezier(.4,0,.2,1)
         同时推容器高度和推面板，两块面板在同一个容器里错开走。
         """
-        self.assertPageContains('aria-label="播放器设置" aria-hidden="true"></div>`')
         self.assertPageLacks(".vjs-peach-settings-menu[hidden]{display:none}")
         self.assertPageContains(
             ".vjs-peach-settings-menu{opacity:1;visibility:visible;"
@@ -3976,13 +3802,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".vjs-peach-panel-leaving{position:absolute;left:0;top:0;width:100%}")
         self.assertPageContains(".vjs-peach-panel-animate-back{opacity:0;transform:translateX(-100%)}")
         self.assertPageContains(".vjs-peach-panel-animate-forward{opacity:0;transform:translateX(100%)}")
-        self.assertPageContains("const isOpen=()=>menu.getAttribute('aria-hidden')!=='true';")
-        self.assertPageContains("const renderPanel=(html,direction)=>{")
-        # 动画期间容器里同时挂着两块面板，事件只能绑在这一次新建的那块上；绑在容器上
-        # 会连正在退场的旧面板一起接命中，返回键点一次退两级。
-        self.assertPageContains("const panel=renderPanel(")
-        self.assertPageContains("panel.querySelector('[data-player-menu-back]').onclick=()=>showMain(-1);")
-        self.assertPageContains("if(panelTimer)clearTimeout(panelTimer)")
 
     def test_narrow_player_keeps_both_overlays_inside_the_frame(self):
         """播放器的高度只由 16:9 和宽度决定，两个浮层各自按播放器高度收顶。
@@ -4001,8 +3820,6 @@ class WebUiSourceTests(unittest.TestCase):
             ".video-js.vjs-peach-xsmall .vjs-peach-settings-menu{right:0;"
             "width:min(274px,calc(100vw - 48px));")
         self.assertPageContains("max-height:calc(var(--peach-player-h,420px) - 74px)}")
-        # 面板的定位祖先只有 36px 高，百分比高度到不了播放器，得由布局脚本把高度写上来。
-        self.assertPageContains("box.style.setProperty('--peach-player-h',`${box.clientHeight}px`)")
 
     def test_narrow_settings_panel_fits_the_longest_option_list_without_scrolling(self):
         """清晰度多到八档，单列要 57+16+8×48=457px，320px 高的播放器只给得出 246px。
@@ -4029,24 +3846,7 @@ class WebUiSourceTests(unittest.TestCase):
         274px 的面板，所以按 53px 起算、放不下就一起收窄；伸缩量写在包裹层上，胶囊自己
         待在列向 flex 里，`flex-basis` 在那一层量的是高度。
         """
-        self.assertPageContains(
-            "const SPEED_RATES=[.25,.5,.75,1,1.25,1.5,1.75,2,3],SPEED_STEP=.05,SPEED_PRESETS=[1,1.25,1.5,2,3];")
-        self.assertPageContains('<output data-player-speed-display></output>')
-        self.assertPageContains(
-            '<input type="range" class="vjs-peach-speed-range" data-player-speed-range '
-            'min="${min}" max="${max}" step="${SPEED_STEP}" aria-label="播放速度">')
-        self.assertPageContains('data-player-speed-step="-1" aria-label="播放速度减 0.05"')
-        self.assertPageContains('data-player-speed-step="1" aria-label="播放速度加 0.05"')
-        self.assertPageContains('<span class="vjs-peach-speed-preset-label">正常</span>')
-        # player.playbackRate() 读的是 ratechange 之后才写的缓存，所以面板自己记住这一次的倍速。
-        self.assertPageContains("let rate=clampSpeed(Number(player.playbackRate())||1);")
-        self.assertPageContains("display.textContent=`${rate.toFixed(2)}x`;range.value=String(rate);")
-        self.assertPageContains("const setSpeed=value=>{rate=clampSpeed(value);player.playbackRate(rate);syncSpeed()};")
         # 轨道已过的比例由脚本写成自定义属性，上游同样是自定义属性驱动那条渐变。
-        self.assertPageContains(
-            "range.style.setProperty('--peach-speed-percent',`${(rate-min)/(max-min)*100}%`);")
-        self.assertPageContains(
-            "setSpeed(rate+Number(button.dataset.playerSpeedStep)*SPEED_STEP))")
         self.assertPageContains(
             ".vjs-peach-speed-panel{box-sizing:border-box;display:flex;flex-direction:column;padding:24px 16px 16px}")
         self.assertPageContains("font-size:var(--fs-lg);font-weight:600;line-height:22px;color:#fff}")
@@ -4068,10 +3868,6 @@ class WebUiSourceTests(unittest.TestCase):
             ".vjs-peach-speed-slider .vjs-peach-speed-button{flex:none;width:32px}")
         self.assertPageContains(
             ".vjs-peach-speed-slider .vjs-peach-speed-button>svg{width:24px;height:24px;display:block;")
-        self.assertPageContains(
-            'data-player-speed-step="-1" aria-label="播放速度减 0.05">${icon(\'minus\')}</button>')
-        self.assertPageContains(
-            'data-player-speed-step="1" aria-label="播放速度加 0.05">${icon(\'plus\')}</button>')
         self.assertPageContains(
             ".vjs-peach-speed-chips .vjs-peach-speed-button{width:100%;gap:4px;font-size:var(--fs-xs)}")
         # 设置面板里的按钮统一是 100% 宽、48px 高、`:before` 铺满的高亮层，胶囊得单独退出这套。
@@ -4103,26 +3899,18 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('C 22.08 31.26 22.65 31.5 23.25 31.5 L 26.25 31.5')
         self.assertPageLacks('d="M 18 6 L 9 6 C 8.20 6 7.44 6.31 6.87 6.87')
         # `<use>` 克隆出来的影子树改不了 `d`，所以这两个键把 sprite 里的 <path> 搬进自己的 svg。
-        self.assertPageContains("svg.setAttribute('class','vjs-peach-control-icon vjs-peach-morph-icon');")
-        self.assertPageContains("svg.innerHTML=symbol.innerHTML;button.append(svg);return svg;")
-        self.assertPageContains("if(playPath){if(cssPathD)playPath.style.d=`path(\"${d}\")`;else playPath.setAttribute('d',d)}")
         # WebKit 不认 CSS 的 `d`，只写 style 的话 iOS 上图标永远停在播放那一枚。
-        self.assertPageContains("const cssPathD=CSS.supports('d','path(\"M0 0\")');")
         self.assertPageContains(".vjs-peach-morph-icon path{transition:d .2s cubic-bezier(.4,0,.2,1)}")
         self.assertPageContains(
             ".vwrap .video-js .vjs-control-bar>.vjs-play-control>.vjs-peach-control-icon{width:26px;height:26px}")
         self.assertPageContains('<path class="vjs-peach-volume-arc-inner"')
         self.assertPageContains('<path class="vjs-peach-volume-arc-outer"')
         self.assertPageContains('<path class="vjs-peach-volume-x"')
-        self.assertPageContains(
-            "if(muteIcon)spritePaths('player-volume-muted').forEach(path=>muteIcon.append(path.cloneNode(true)));")
         # 静音那张是挖空的喇叭：外框与实心那条同一串数字，后面接上游的挖空子路径。
         self.assertPageContains('<path class="vjs-peach-volume-speaker" d="M11.60 2.08L11.48 2.14L3.91 6.68')
         self.assertPageContains('<path class="vjs-peach-volume-speaker-muted" d="M11.60 2.08L11.48 2.14L3.91 6.68')
         self.assertPageContains('C11.92 1.98 11.75 2.01 11.60 2.08ZM4.94 8.4V8.40L11 4.76V19.23L4.94 15.6')
         self.assertPageContains('<path class="vjs-peach-volume-x" d="M21.29 8.29L19 10.58L16.70 8.29')
-        self.assertPageContains(
-            "muteIcon.dataset.silent=String(silent);muteIcon.dataset.loud=String(!silent&&player.volume()>.5)")
         # 缩放中心写在变换里，所以 transform-origin 必须归零，px 也要等于视框单位。
         self.assertPageContains("transform-box:view-box;transform-origin:0 0;")
         self.assertPageContains("transition:transform .25s cubic-bezier(.4,0,.2,1)}")
@@ -4154,19 +3942,6 @@ class WebUiSourceTests(unittest.TestCase):
         1s cubic-bezier(.05,0,0,1) 走 0→1.33→1 的缩放淡出，窄屏收到 64px 配 48px 图标。
         """
         self.assertPageContains(
-            "bezel.className='vjs-peach-bezel';bezel.setAttribute('role','status');bezel.hidden=true;")
-        self.assertPageContains(
-            "bezel.innerHTML=`<span class=\"vjs-peach-bezel-icon\">${icon('player-play')}</span>`;")
-        # 重复点同一个键要重新播一次动画：撤类之后读一次布局强制回流，再挂回去。
-        self.assertPageContains("void bezel.offsetWidth;bezel.classList.add('vjs-peach-bezel-run');")
-        self.assertPageContains("player.el().insertBefore(bezel,controlBar);")
-        self.assertPageContains("flashBezel(paused?'player-play':'player-pause',paused?'播放':'暂停');")
-        self.assertPageContains(
-            "flashBezel(silent?'player-volume':'player-volume-muted',silent?'取消静音':'静音');")
-        # 捕获阶段挂在控制条上，一定早于按钮自己的 Video.js 监听，读到的是切换之前的状态，
-        # 闪出来的正好是这一次做的事；冒泡阶段读到的已经是切换之后，图标会反。
-        self.assertPageContains("    }\n  },true);")
-        self.assertPageContains(
             ".vjs-peach-bezel{position:absolute;z-index:19;left:50%;top:50%;width:78px;height:78px;"
             "margin:-39px 0 0 -39px;")
         # 基础规则是 display:grid，不写这一条 hidden 属性压不住它。
@@ -4180,26 +3955,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             ".video-js.vjs-peach-xsmall .vjs-peach-bezel{width:64px;height:64px;margin:-32px 0 0 -32px}")
         self.assertPageContains(".video-js.vjs-peach-xsmall .vjs-peach-bezel-icon{width:48px;height:48px}")
-
-    def test_opening_one_player_overlay_closes_the_other(self):
-        """设置面板和播放统计都盖在画面上，同时开就互相遮挡，开哪个另一个自己收起。
-
-        两块面板挂在不同作用域里，共享一个 document 事件名比互相持有引用干净。
-        """
-        self.assertPageContains("const PLAYER_PANEL_EVENT='peach-player-panel';")
-        self.assertPageContains(
-            "if(open)document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'settings'}))};")
-        self.assertPageContains(
-            "const closeSettingsForOtherPanel=event=>{if(event.detail!=='settings')close()};")
-        self.assertPageContains(
-            "document.dispatchEvent(new CustomEvent(PLAYER_PANEL_EVENT,{detail:'stats'}));")
-        self.assertPageContains(
-            "const closeStatsForOtherPanel=event=>{if(event.detail!=='stats')closeStats()};")
-        # 两个监听都挂在 document 上，播放器销毁时必须摘掉，否则换条目后旧闭包继续收事件。
-        self.assertPageContains(
-            "document.removeEventListener(PLAYER_PANEL_EVENT,closeSettingsForOtherPanel);")
-        self.assertPageContains(
-            "detailPlayer.on('dispose',()=>document.removeEventListener(PLAYER_PANEL_EVENT,closeStatsForOtherPanel));")
 
     def test_control_tooltip_is_dark_enough_to_read_as_a_label(self):
         """按钮提示的底色和播放器其它悬浮件同一档黑。
@@ -4358,70 +4113,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("transform:translate(-50%,-50%)}")
         self.assertPageContains("background:rgba(2,4,8,.86)")
 
-    def test_player_stats_cover_direct_range_and_future_segmented_streams(self):
-        self.assertPageContains('id="playerStatsBtn"')
-        self.assertPageContains("HTTP Range")
-        self.assertPageContains("bufferedAhead(video)")
-        self.assertPageContains("getVideoPlaybackQuality")
-        self.assertPageContains("?.vhs?.stats")
-        self.assertPageContains("application/vnd.apple.mpegurl")
-        self.assertPageContains("/stream/hls/")
-
-    def test_progressive_sources_measure_the_buffer_instead_of_resource_timing(self):
-        """本地文件和在线关注都是一条长连接边下边播，请求不结束就没有 resource timing 条目。
-
-        实测本地 MP4 播到 37 秒时 performance 里仍只有挂载那两条、字节数停在 862 KB，
-        面板于是长期显示「— · 0 请求」。渐进源改按缓冲推进量折算，只有 HLS 还查条目。
-        """
-        # 看的是缓冲前沿而不是缓冲区总长：播放时浏览器会驱逐播过的部分，总长几乎恒定，
-        # 拿它当下载量只会一直读出 0——实测就是缓冲健康稳在 4.6 秒、已下载卡在 36 MB 不动。
-        self.assertPageContains("function bufferedFrontier(video)")
-        self.assertPageContains("const step=frontier-last.frontier")
-        self.assertPageContains("if(!seeked&&step>0)advanced+=step")
-        # seek 会把前沿整段挪走，那不是这一秒下载了几十分钟。
-        self.assertPageContains("const seeked=Math.abs(ct-last.ct)>gap*4+1")
-        self.assertPageContains("function createBufferMeter(bitrate)")
-        self.assertPageContains("function averageBitrate(size,duration)")
-        self.assertPageContains("let mediaSize=Number(options.size??it.size)||0;")
-        self.assertPageContains("const meter=createBufferMeter(averageBitrate(mediaSize,it.duration))")
-        # 关注条目的字节数比挂载晚一趟回来，码率要能后填，否则速度永远换不出来。
-        self.assertPageContains("if(size>0&&!mediaSize){mediaSize=size;meter.bitrate=averageBitrate(size,it.duration)}")
-        # 分片流才有可用的已完成请求；渐进源查了只会把别的会话的条目算进来。
-        self.assertPageContains("const resources=segmented?streamEntries(it.id,detailStreamSession):[]")
-        self.assertPageContains("playerSpeedBits(detailPlayer,it.id,detailStreamSession,segmented?null:meter)")
-        self.assertPageContains("return meter?Number(meter.bits)||0:streamSpeedBits(id,session)")
-        # 缓冲吃满后浏览器停拉，增量归零，读数保留上一次而不是跳回 0。
-        self.assertPageContains("if(span>=.5&&gained>0&&this.bitrate>0)bits=gained*this.bitrate/span;")
-        # 面板和角标都关着时没人采样，重开时的大跨度样本要丢掉。
-        self.assertPageContains("if(gap*1000>BUFFER_METER_WINDOW_MS*2)samples.length=0")
-
-    def test_progressive_stats_swap_the_request_counter_for_downloaded_bytes(self):
-        """请求数对渐进源恒为 0，换成已下载量；码率未知的条目退到秒和已缓冲时长。
-
-        「× 实时」这种口径不出现在界面上：它要用户先知道倍速是拿什么除什么才读得懂，
-        而同一份数据里能直接用的读数是「现在断网还能往前放多久」。
-        """
-        self.assertPageContains("const loaded=segmented?bytes:(meter.bitrate>0?meter.bytes():meter.seconds)")
-        self.assertPageContains("const byteScale=segmented||meter.bitrate>0")
-        self.assertPageContains("请求`,")
-        self.assertPageContains(":['已下载',byteScale?")
-        self.assertPageContains("`${loaded.toFixed(0)} 秒`")
-        self.assertPageContains("function fmtLoadRate(bits,ahead)")
-        self.assertPageContains("return ahead>0?`已缓冲 ${Math.round(ahead)} 秒`:fmtSpeed(0);")
-        self.assertPageContains("const speedText=speed?`${(speed/1e6).toFixed(1)} Mbps`:'—';")
-        self.assertPageLacks("× 实时")
-
-    def test_follow_detail_gets_the_same_player_stats_overlay(self):
-        """作品详情与关注详情共用同一段统计模板，关注详情里的在线视频同样有统计入口。"""
-        self.assertPageContains("function playerStatsOverlayHtml()")
-        self.assertPageContains("video.insertAdjacentHTML('beforebegin',playerStatsOverlayHtml());")
-        self.assertPageContains("size:media?.size,")
-        self.assertEqual(self.page.count('playerstatsbtn" id="playerStatsBtn"'), 1,
-                         "统计三件套只能有一份模板，两个详情页共用")
-        # 关注条目没有落盘文件名，容器格式从片源 MIME 反推，会话号也不该显示成空的。
-        self.assertPageContains("const container=(named.includes('.')?named.split('.').pop()")
-        self.assertPageContains("detailStreamSession&&!options.source?")
-
     def test_follow_image_cards_learn_their_ratio_in_quiet_batches(self):
         """图片墙按卡片高度分列，图落地前就要知道比例，否则每张加载完整墙重排。
 
@@ -4433,11 +4124,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_player_stats_keep_a_rolling_history_instead_of_only_the_latest_value(self):
         """单个瞬时值看不出卡顿是刚发生还是一直如此，三条指标各留 24 秒采样窗口。"""
-        self.assertPageContains("const PLAYER_STATS_HISTORY=24")
-        self.assertPageContains("function playerStatsPlot(samples,kind,ceiling,label)")
-        self.assertPageContains("pushPlayerStat(statsHistory.buffer,buffer)")
-        self.assertPageContains("playerStatsPlot(statsHistory.buffer,'buffer',30")
-        self.assertPageContains('class="playerstatsmetric"')
         self.assertPageContains(".playerstatsplot{height:20px")
         self.assertPageContains(
             "@media(max-width:600px){.playerstats dd.playerstatsmetric"
@@ -4459,15 +4145,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("max-height:none!important;object-fit:cover!important")
         # 画面层不吃裸 `<video>` 那条 76vh：影院模式外框更高，画面要跟着撑满。
         self.assertPageContains(".vwrap .video-js .vjs-tech{object-fit:contain;max-height:none}")
-        self.assertPageContains("const syncFullscreenState=()=>{")
-        self.assertPageContains("player.el().toggleAttribute('data-peach-fullscreen',active)")
-        self.assertPageContains("player.on(['fullscreenchange','enterFullWindow','exitFullWindow'],syncFullscreenState)")
-        self.assertPageContains('id="playerNet"')
-        self.assertPageContains("function streamSpeedBits(id,session='')")
-        self.assertPageContains("function fmtSpeed(bits)")
-        self.assertPageContains("const rate=segmented?fmtSpeed(bits):fmtLoadRate(bits,bufferedAhead(video));")
-        self.assertPageContains(
-            """netBadge.innerHTML=`${icon('gauge')}<span class="sr-only">加载速度</span><span>${esc(rate)}</span>`""")
 
     def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
         self.assertPageContains('id="tokLoader"')
@@ -6467,8 +6144,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("event.stopPropagation();setOpen(!open)")
         # wireAnchoredMenu 之外自己开合的面板也从同一个口进出；作品详情的标签选择器在岛里调
         # 同一对 presentMenu／dismissMenu。
-        self.assertPageContains("if(menu)dismissMenu(menu,()=>{menu.innerHTML=''});")
-        self.assertPageContains("innerWidth-menu.offsetWidth-8")
         self.assertPageContains("function hideSearchMenu(){dismissMenu($('#searchMenu'))}")
         self.assertPageContains("if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();")
         self.assertPageContains("const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);")
@@ -7166,7 +6841,6 @@ class WebUiSourceTests(unittest.TestCase):
                                 "route(detailReturnPath||'/');restoreRoute()});")
         self.assertPageContains("if(stage.open)stage.close();")
         # 图片灯箱同样开成原生模态，由 `frontend/test/react/photo-lightbox.test.tsx` 钉住。
-        self.assertPageContains("if(stage.open)stage.append(menu);")
         self.assertPageContains("max-height:calc(100dvh - 32px)")
         self.assertPageLacks("stage.scrollIntoView(")
         self.assertCode("if(stageIslandHost===host&&host.isConnected)scrollItemDetailIntoView();")
@@ -7603,7 +7277,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(DIRECT_MANAGE_NAV[k]){openManage(DIRECT_MANAGE_NAV[k]);return}")
         self.assertPageContains(".settingscard{display:flex;flex-direction:column;width:min(520px,100%);max-height:min(720px,90vh);max-height:min(720px,90dvh);overflow:clip")
         self.assertPageContains(".settingsscroll{flex:1;min-height:0;overflow-y:auto")
-        self.assertPageContains("document.dispatchEvent(new CustomEvent('peachambientchange'")
         self.assertPageContains(".settingrow .gselect{min-width:148px}")
 
     def test_the_thumbnail_density_is_this_machines_state_not_this_browsers(self):
@@ -7623,21 +7296,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 采集只覆盖本机磁盘上的片子，网盘上的每张都要回源拉一次。这一条是功能范围，
         # 说明里必须写出来，否则页面上「视频缩略图采集」读起来是全库。
         self.assertPageContains("只采集本机磁盘上的片子")
-
-    def test_the_seek_preview_prefers_frames_that_match_where_the_pointer_is(self):
-        """指到哪一秒就看到哪一秒。九宫格那九格是全片九等分，两小时的片子格与格之间
-        隔着十几分钟，指的位置和看到的画面对不上；采集任务铺好了时间轴图就改用它，
-        没铺到的退回九宫格。
-        """
-        self.assertPageContains("api(`/api/timeline?id=${encodeURIComponent(it.id)}`)")
-        self.assertPageContains("if(meta&&meta.frames>0&&meta.interval>0)sheets=meta")
-        self.assertPageContains("if(sheets){showSheetFrame(duration*ratio);return}")
-        self.assertPageContains("const index=Math.min(sheets.frames-1,"
-                                "Math.max(0,Math.floor(seconds/sheets.interval)))")
-        self.assertPageContains("const sheet=Math.floor(index/per),slot=index%per")
-        # 末张通常不满 10 行，行数按它自己剩下那几帧反算；按满行铺会把格子挪到图外面。
-        self.assertPageContains("const rows=Math.ceil(Math.min(per,sheets.frames-sheet*per)/columns)")
-        self.assertPageContains("image.src=`/poster?id=${encodeURIComponent(it.id)}&c=${nextCell}`")
 
     def test_theme_is_a_three_way_choice_that_defaults_to_the_system(self):
         """主题三档：跟随系统、浅色、深色。
@@ -7767,26 +7425,11 @@ class WebUiSourceTests(unittest.TestCase):
             "font-size:var(--fs-xs);font-variant-numeric:tabular-nums}")
 
     def test_detail_has_stats_ambient_and_better_version_goal(self):
-        self.assertPageContains('class="ambientcanvas"')
-        self.assertPageContains("requestVideoFrameCallback")
         self.assertPageContains("--video-glow")
-        self.assertPageContains("function mountPlayerAmbient(video)")
         self.assertPageContains(".stage:not(.ambient-on) .ambientcanvas{display:none}")
-        self.assertPageContains("视频 ID / 会话")
         # 「寻找更好版本」键与它的写入、撤销：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageLacks("prompt('要找哪种更好版本？")
         self.assertPageLacks('id="closeStage">收起')
-
-    def test_ambient_mode_repaints_from_a_paused_frame_when_switched_back_on(self):
-        """暂停时打开氛围模式要立刻取一帧：帧回调只在有新画面时才来，链上用 run 号判重。"""
-        self.assertPageContains("const sample=()=>{if(video.readyState<2)return;")
-        self.assertPageContains("const start=()=>{if(stopped||!appSettings.ambientMode)return;"
-                                "sample();if(!video.paused)queue(++run)}")
-        self.assertPageContains("if(event.detail.enabled)start();else{run++;clear()}")
-        self.assertPageContains("video.addEventListener('play',start);"
-                                "video.addEventListener('loadeddata',start);start();")
-        self.assertPageContains("const paint=(id,now)=>{if(stopped||id!==run)return;")
-        self.assertPageLacks("scheduled=false")
 
     def test_the_whole_detail_box_takes_one_ambient_tone(self):
         """右侧详情栏和「接着看」是同一格详情的两块，底色必须同源。
@@ -9736,17 +9379,6 @@ class WebUiSourceTests(unittest.TestCase):
             "saveSettings();reloadCurrentSurface()};")
         self.assertEqual(self.page.count("groupCollapse:appSettings.groupCollapse"), 2,
                          "目录与资料页两处网格都要认这个开关")
-
-    def test_the_player_asks_the_one_duration_judge_instead_of_trusting_the_field(self):
-        """播放器不许自己判「什么算真时长」，要问 realDuration。
-
-        `-1` 是探测硬失败的哨兵；`Number(it.duration)||0` 对它求值仍是 -1，Video.js
-        会把负时长转成 Infinity，然后给本地影片挂上「直播」。判据本身（-1、0、非数字
-        都算 0）已经拿真值验收，见 test_web_js.py；这里守的是调用点。
-        """
-        self.assertPageContains("const expected=realDuration(it.duration);",
-                                "播放器仍在拿未经判定的时长，负数会被 Video.js 转成直播")
-        self.assertPageLacks("const expected=Number(it.duration)||0;")
 
     def test_duration_has_one_definition_of_real(self):
         """「什么算真时长」只许有一处说了算。

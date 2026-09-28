@@ -16,6 +16,15 @@ export declare function fmtDur(seconds: number | null | undefined): string;
 /** 字节格式化成 TB／GB／MB。 */
 export declare function fmtSize(bytes: number | null | undefined): string;
 
+/** 秒数格式化成播放器时钟 `h:mm:ss`／`m:ss`；非数值当 0。 */
+export declare function fmtClock(seconds: unknown): string;
+
+/** 正的有限时长原样返回，其余（`-1` 哨兵、NaN、Infinity）都是 0。 */
+export declare function realDuration(value: unknown): number;
+
+/** 遗留层的取数入口：JSON 请求体，失败抛带人话原因的 Error。 */
+export declare function api(path: string, options?: RequestInit): Promise<unknown>;
+
 /** 站点圆标地址。递的是服务端已知的键（采集来源键或口味域名白名单里那条后缀），不是地址。 */
 export declare function siteMarkUrl(params: { source: string } | { domain: string }): string;
 

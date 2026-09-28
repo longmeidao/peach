@@ -216,3 +216,10 @@ export function showToast(
 }
 
 export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages } from './jav-artwork';
+
+/* 播放器模块（`frontend/src/player/`）。舞台、小窗与沉浸模式仍在遗留壳里，从这里取。 */
+export {
+  applyTheaterMode, cancelDetailStream, cancelStreamSession, clickPlayerControl, closePlayerMenu, configurePlayer,
+  configurePlayerMenu, detailPlayer, directStreamSource, ensureVideojs, fmtSpeed, mountDetailPlayer, mountPlayer,
+  newStreamSession, playableStreamSource, setDetailPlayer, stopPlayerPanels, streamSpeedBits, wireTelemetry,
+} from './player';
