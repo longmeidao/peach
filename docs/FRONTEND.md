@@ -173,8 +173,10 @@ BoardUI 组件上的间距或外观，处理办法是在组件外面套一层普
 ## 界面标注
 
 指认界面上的某一块时，用 [Agentation](https://agentation.com) 在页面上点中元素、写下意见，
-复制出的 markdown 带 CSS 选择器、class、计算样式和附近文字，直接贴给智能体，不必再用话描述
-「侧栏那块光斑」。
+复制出 markdown 直接贴给智能体，不必再用话描述「侧栏那块光斑」。复制内容的多少由工具栏
+Settings 里的 Output Detail 决定，设一次就存在这台浏览器里：默认 Standard 只有选择器；
+Detailed 加上 class 与附近文字；Forensic 再加上带 id 的完整 DOM 路径（如
+`main#main > div#libraryProcessingNotice > …`）和计算样式，交给智能体时用这一档。
 
 ```powershell
 npm --prefix frontend run build:agentation   # 在要用它的那份检出里构建一次
