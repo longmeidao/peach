@@ -705,6 +705,18 @@ def cli_run(task_key: str, db_path: Path | str | None, *, label: str = "",
         yield handle
 
 
+def declared_rows(declared) -> list[tuple[str, str, str]]:
+    """任务结果里声明的后继（`[{"key", "task_key", "label"}]`）换成 `enqueue_followups` 要的行。
+
+    后台任务的结算与命令行入口共用这一份：任务结果是同一个函数给的，两边各拆一遍，
+    命令行那边漏掉，就是一整轮新登记的女优全都没人去补头像和资料。
+    """
+    if not isinstance(declared, list):
+        return []
+    return [(item.get("key"), item.get("task_key"), item.get("label", ""))
+            for item in declared if isinstance(item, dict) and item.get("key")]
+
+
 @dataclass
 class TaskRunHandle:
     """一轮任务的句柄。`run_id is None` 表示这一轮没有被记录，所有方法都是空操作。"""

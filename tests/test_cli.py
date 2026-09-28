@@ -522,6 +522,54 @@ class ScanCommandTests(unittest.TestCase):
         self.assertIn("peach init", output)
 
 
+class ProcessCommandTests(unittest.TestCase):
+    """`peach process` 和网页那一轮同一个处理函数，结算也要一样：声明的后继进任务中心。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.db = Path(self.tmp.name).resolve() / "ledger.db"
+        upgrade(self.db, MIGRATIONS)
+        config = settings_file.load_config(environ={}, strict=False)
+        for target in (mock.patch.object(settings_file, "active", lambda: config),
+                       mock.patch.object(cli, "SETTINGS_ERROR", None)):
+            target.start()
+            self.addCleanup(target.stop)
+
+    def _run(self, result):
+        output = io.StringIO()
+        with mock.patch("peach.library_processing.process_library", return_value=result), \
+                redirect_stdout(output):
+            code = cli.main(["process", "--db", str(self.db)])
+        connection = sqlite3.connect(self.db)
+        try:
+            rows = connection.execute(
+                "SELECT id,task_key,trigger,status,parent_run_id,followup_key FROM task_run "
+                "ORDER BY id").fetchall()
+        finally:
+            connection.close()
+        return code, output.getvalue(), rows
+
+    def test_the_followups_a_run_declares_are_queued_under_it(self):
+        declared = [{"key": "performer-alias:9378", "task_key": "performer-alias",
+                     "label": "补女优别名：白川麻衣"}]
+        code, output, rows = self._run({"status": "complete", "followups": declared})
+        self.assertEqual(code, 0)
+        parent, child = rows
+        self.assertEqual(parent[1:4], ("library-processing", "cli", "succeeded"))
+        self.assertEqual(child[1:], ("performer-alias", "cli", "pending", parent[0],
+                                     "performer-alias:9378"))
+        self.assertIn("入队 1 条", output)
+
+    def test_an_unfinished_run_is_recorded_as_failed_and_still_queues_its_followups(self):
+        declared = [{"key": "performer-alias:1", "task_key": "performer-alias", "label": ""}]
+        code, _, rows = self._run({"status": "failed", "error": "网盘离线",
+                                   "followups": declared})
+        self.assertEqual(code, 1)
+        self.assertEqual(rows[0][3], "failed")
+        self.assertEqual(rows[1][3], "pending")
+
+
 class ReplicationAssemblyTests(unittest.TestCase):
     """ADR-0023 第 3 阶段：整条复制链路按 `replication.enabled` 装配或完全不装配。"""
 

@@ -526,12 +526,12 @@ class BackgroundJob:
         看这一轮有没有声明，中途中断的轮次声明不到。
         没入队的三种情况各占摘要里的一行——静默丢弃和没有上限一样，事后都查不出来。
         """
-        declared = state.get("followups")
+        from .task_runs import declared_rows
+
         run_id = self._run_ids.get(job_id)
-        if self.runs is None or run_id is None or not isinstance(declared, list):
+        if self.runs is None or run_id is None:
             return {}
-        rows = [(item.get("key"), item.get("task_key"), item.get("label", ""))
-                for item in declared if isinstance(item, dict) and item.get("key")]
+        rows = declared_rows(state.get("followups"))
         if not rows:
             return {}
         result = self.runs.enqueue_followups(run_id, rows)
