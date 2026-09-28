@@ -24,11 +24,12 @@ import { useViewGlide } from '../components/use-view-glide';
 import { Segments, Shuffle } from '../entity-filter/entity-filter-page';
 import type { SegmentOption } from '../entity-filter/entity-filter';
 import { FOLLOW_CHECK_URL, FOLLOW_STATUS_URL } from '../follow-manage/follow-manage';
+import { sidebarTagCounts } from '../../sidebar';
 import { queryClient } from '../query';
 import { FollowCard } from './follow-card';
 import {
   FOLLOW_CREDENTIALS_KEY, FOLLOW_FEED_SORTS, FOLLOW_FILTERS, FOLLOW_TAGS_FIRST, FOLLOW_WORKS_FIRST,
-  dropCondition, fetchFollowCredentials, followConditions, followFeedQuery, groupMediaKinds, groupTagType, itemForMedia,
+  collectionItems, dropCondition, fetchFollowCredentials, followConditions, followFeedQuery, groupMediaKinds, groupTagType, itemForMedia,
   mergedPage, nextSort, randomOrder, sortAriaLabel, backfillState, withStatus,
   type FollowCondition, type FollowContext, type FollowFeedProps, type FollowGroup, type FollowPage, type FollowSource,
   type FollowJobState, type FollowView, type FollowWorkRow,
@@ -109,11 +110,16 @@ export function FollowFeedPage(props: FollowFeedProps) {
   const facets = useFacets(data, view, seed);
   const listPending = result.isPending || result.isPlaceholderData;
 
-  /* 详情仍在壳里、读壳的 `followData`：每取到本键自己的数据就交回去，换键时暂借的占位数据不交。 */
-  const settled = !listPending && data;
+  /* 侧栏标签抽屉仍在壳里：每取到本键自己的数据就把可见条目的标签计数交回去，换键时暂借的
+     占位数据不交。 */
+  const settled = !listPending && !!data;
+  const drawerTags = useMemo(
+    () => sidebarTagCounts(facets.visible.flatMap(collectionItems).map((item) => ({ tags: item.tags || [] }))),
+    [facets.visible],
+  );
   useEffect(() => {
-    if (settled) actions.loaded(settled, facets.visible, credentials);
-  }, [settled, facets.visible, credentials, actions]);
+    if (settled) actions.loaded(drawerTags);
+  }, [settled, drawerTags, actions]);
 
   const job = useFollowJob(props, !!data);
 

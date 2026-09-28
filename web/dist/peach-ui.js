@@ -903,6 +903,7 @@ var Z = {
 	"entity-body": { react: "entity-body" },
 	"entity-filter": { react: "entity-filter" },
 	"entity-hero": { react: "entity-hero" },
+	"follow-detail": { react: "follow-detail" },
 	"follow-feed": { react: "follow-feed" },
 	"follow-manage": { react: "follow-manage" },
 	index: { react: "index" },
@@ -964,6 +965,5 @@ var St = null;
 function Ct(e, t, n, r) {
 	St ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), St.then((e) => e.showToast(n, r));
 }
-var wt = (e, t, n) => import("/dist/peach-react.js").then((r) => r.openPhotoLightbox(e, t, n));
 //#endregion
-export { Be as boardPageSkeleton, u as boundedPreference, We as catalogEmptyHtml, Ue as catalogSuggestions, le as clampPage, $e as cleanupSkeletonHtml, ze as detailSkeletonHtml, He as emptyCatalogLayout, pe as entitySkeletonHtml, de as faceSourceScale, ne as followJobProgress, m as initBoardControls, bt as islandMounted, gt as islandNames, dt as javImageKind, C as jobActivityHtml, lt as junkCountSkeletonHtml, q as junkPath, tt as junkRoute, _t as mountIsland, f as mountNumberSetting, fe as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, ut as normalizeJavPreferences, wt as openPhotoLightbox, ce as pageCount, ue as paginationHtml, ft as panelFrame, c as preferredDirection, ht as preloadIslands, mt as relayoutJavImages, ae as selectGroup, re as selectRange, ie as selectionSummary, Ct as showToast, Ge as sidebarHasCatalogContent, b as sidebarSectionHtml, qe as sidebarTagCounts, p as syncBoardRange, pt as syncJavImages, d as syncNumberSetting, oe as syncSelectionToolbar, Ke as syncSidebarSurface, ee as transitionTheme, $ as unmountIsland, vt as updateIsland, w as watchJob, x as wireSidebarGroups };
+export { Be as boardPageSkeleton, u as boundedPreference, We as catalogEmptyHtml, Ue as catalogSuggestions, le as clampPage, $e as cleanupSkeletonHtml, ze as detailSkeletonHtml, He as emptyCatalogLayout, pe as entitySkeletonHtml, de as faceSourceScale, ne as followJobProgress, m as initBoardControls, bt as islandMounted, gt as islandNames, dt as javImageKind, C as jobActivityHtml, lt as junkCountSkeletonHtml, q as junkPath, tt as junkRoute, _t as mountIsland, f as mountNumberSetting, fe as nativeImageFit, X as normalizeJavImage, Y as normalizeJavLayout, ut as normalizeJavPreferences, ce as pageCount, ue as paginationHtml, ft as panelFrame, c as preferredDirection, ht as preloadIslands, mt as relayoutJavImages, ae as selectGroup, re as selectRange, ie as selectionSummary, Ct as showToast, Ge as sidebarHasCatalogContent, b as sidebarSectionHtml, qe as sidebarTagCounts, p as syncBoardRange, pt as syncJavImages, d as syncNumberSetting, oe as syncSelectionToolbar, Ke as syncSidebarSurface, ee as transitionTheme, $ as unmountIsland, vt as updateIsland, w as watchJob, x as wireSidebarGroups };

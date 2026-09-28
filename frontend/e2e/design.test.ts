@@ -8,7 +8,7 @@ import { after, before, describe, it } from 'node:test';
 
 import type { Browser, Locator, Page } from 'playwright-core';
 
-import { openFollowFeed } from './follow-fixture.ts';
+import { DETAIL, openFollowFeed } from './follow-fixture.ts';
 import {
   configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Visit,
 } from './harness.ts';
@@ -4389,6 +4389,85 @@ describe('设计决定', () => {
       assert.deepEqual(narrow.problems, []);
     } finally {
       await narrow.close();
+    }
+  });
+
+  it('关注详情的翻页圆钮：48px 玻璃底、窄屏 44px；落在图片黑边的视觉中心，太窄才退回 16/10 的安全内距；圆点离底 18/12', { timeout: 90_000 }, async () => {
+    const read = (page: Page) => page.evaluate(() => {
+      const frame = document.querySelector<HTMLElement>('#stage [data-follow-detail-media="image"]')!;
+      const next = frame.querySelector('[data-follow-image-arrow="next"]')!, style = getComputedStyle(next);
+      const outer = frame.getBoundingClientRect(), box = next.getBoundingClientRect();
+      const dots = frame.querySelector('[data-follow-image-dots]')!.getBoundingClientRect();
+      // 桩里的图都是 600×800：object-fit:contain 之后左右各留一道黑边。
+      const rendered = Math.min(outer.width, outer.height * 600 / 800);
+      const gutter = (outer.width - rendered) / 2;
+      return {
+        size: [box.width, box.height], background: style.backgroundColor, blur: style.backdropFilter,
+        inset: outer.right - box.right, gutter, dotsBottom: outer.bottom - dots.bottom,
+        framed: frame.hasAttribute('data-framed'),
+        ratio: getComputedStyle(frame.querySelector('[data-follow-detail-poster]')!).aspectRatio,
+      };
+    });
+    const centered = (shown: { gutter: number; size: number[] }, safe: number) =>
+      shown.gutter >= shown.size[0]! + safe * 2 ? (shown.gutter - shown.size[0]!) / 2 : safe;
+    const wide = await openFollowFeed(browser, `/follow/item/${DETAIL.gallery}`, DESKTOP,
+      { ready: '#stage [data-follow-image-arrow="next"]' });
+    try {
+      await wide.page.waitForFunction(() => (document.querySelector('#stage [data-follow-detail-poster]') as HTMLImageElement)?.complete);
+      const shown = await read(wide.page);
+      assert.deepEqual(shown.size, [48, 48]);
+      assert.equal(shown.background, 'rgba(0, 0, 0, 0.6)');
+      assert.equal(shown.blur, 'blur(16px)');
+      assert.ok(Math.abs(shown.inset - centered(shown, 16)) <= 1, `箭头没落在黑边中心：${JSON.stringify(shown)}`);
+      assert.ok(Math.abs(shown.dotsBottom - 18) <= .5, `圆点离底 ${shown.dotsBottom}px`);
+      // 画框比例跟整组图走：换图时详情不忽高忽低。
+      assert.equal(shown.framed, true);
+      assert.match(shown.ratio, /^0\.75\b/);
+      assert.deepEqual(wide.problems, []);
+    } finally {
+      await wide.close();
+    }
+    const narrow = await openFollowFeed(browser, `/follow/item/${DETAIL.gallery}`, MOBILE,
+      { ready: '#stage [data-follow-image-arrow="next"]' });
+    try {
+      await narrow.page.waitForFunction(() => (document.querySelector('#stage [data-follow-detail-poster]') as HTMLImageElement)?.complete);
+      const shown = await read(narrow.page);
+      assert.deepEqual(shown.size, [44, 44]);
+      assert.ok(Math.abs(shown.inset - centered(shown, 10)) <= 1, `窄屏箭头内距不对：${JSON.stringify(shown)}`);
+      assert.ok(Math.abs(shown.dotsBottom - 12) <= .5, `窄屏圆点离底 ${shown.dotsBottom}px`);
+      assert.deepEqual(narrow.problems, []);
+    } finally {
+      await narrow.close();
+    }
+  });
+
+  it('关注详情：没有预览的那一格占 16:9；标签按来源记下的类型取 r34 色板，未知类型取中性灰', { timeout: 60_000 }, async () => {
+    const opened = await openFollowFeed(browser, `/follow/item/${DETAIL.bare}`, DESKTOP,
+      { ready: '#stage [data-follow-detail-tags]' });
+    try {
+      const page = opened.page;
+      const shown = await page.evaluate(() => ({
+        placeholder: getComputedStyle(document.querySelector('#stage [data-follow-detail-placeholder]')!).aspectRatio,
+        tags: Object.fromEntries([...document.querySelectorAll<HTMLElement>('#stage [data-follow-tag]')].map((tag) =>
+          [tag.dataset.followTag, getComputedStyle(tag).getPropertyValue('--tag-color').trim()])),
+      }));
+      assert.equal(shown.placeholder, '16 / 9');
+      const muted = await tokenColor(page, '#stage [data-follow-detail]', '--muted');
+      const unknown = await page.evaluate(() => {
+        const tag = document.querySelector<HTMLElement>('#stage [data-follow-tag="odd"]')!;
+        const probe = document.createElement('div');
+        probe.style.backgroundColor = 'var(--tag-color)';
+        tag.append(probe);
+        const value = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return value;
+      });
+      assert.deepEqual({ ...shown.tags, odd: unknown }, {
+        ow: '#d675d6', tracer: '#68c76f', kou: '#e36c6c', solo: '#55a7ff', animated: '#f5a24a', odd: muted,
+      });
+      assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
     }
   });
 });
