@@ -3,7 +3,8 @@
  * 一格人：圆框或竖幅头像、名字、一个读数。四种实体同一副版式、同一条取图链，区别只在
  * 格宽与读数口径。圆框里那段 HTML 由遗留层 `avatarInner` 拼（有图走图、没图退首字母、
  * 小图按原尺寸摆再糊一圈底），页面不重画一遍；原尺寸取图与补底规则在
- * `web/css/01-base.css` 的 `[data-person-ring]`，量图的是遗留层挂在文档上的 `load` 监听。 */
+ * `web/css/01-base.css` 的 `[data-person-ring]`，量图的是遗留层挂在文档上的 `load` 监听。
+ * 格底、头像框、首字与读数的配色在同目录的 `index-people.css`。 */
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 
 import { cardClass } from '../components/card';
@@ -23,7 +24,7 @@ function Ring({ html, face, company, big }: { html: string; face?: string; compa
   const shape = !big ? 'size-17.5 rounded-full' : company ? 'aspect-square w-full rounded-2lg' : 'aspect-3/4 w-full rounded-2lg';
   return (
     <span ref={ring} data-person-ring="" data-fit-native={company ? 'mark' : 'portrait'}
-      className={`relative inline-grid flex-none place-items-center self-center overflow-hidden bg-background-secondary-default text-title-1-regular text-text-secondary ${shape} [&_img]:absolute [&_img]:inset-0 [&_img]:block [&_img]:size-full [&_img]:max-w-none [&_img]:object-cover [&_img]:object-(--face)`}
+      className={`relative inline-grid flex-none place-items-center self-center overflow-hidden text-title-1-regular ${shape} [&_img]:absolute [&_img]:inset-0 [&_img]:block [&_img]:size-full [&_img]:max-w-none [&_img]:object-cover [&_img]:object-(--face)`}
       dangerouslySetInnerHTML={{ __html: html }} />
   );
 }
@@ -43,7 +44,7 @@ function Cell(
       })}>
       {children}
       <span data-index-name="" className="text-body-medium break-all text-text-primary">{name}</span>
-      <span data-index-readout="" className="text-caption-1-regular text-text-secondary">{readout}</span>
+      <span data-index-readout="" className="text-caption-1-regular">{readout}</span>
     </button>
   );
 }

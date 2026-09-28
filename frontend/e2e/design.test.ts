@@ -2227,19 +2227,46 @@ describe('设计决定', () => {
     }
   });
 
-  it('索引页名册格悬停铺卡面那一档面；页头过滤框与版式切换同为 36px 高，切换两枚共 66px 宽', { timeout: 60_000 }, async () => {
+  it('索引页名册格用遗留卡面那一套：格底 --ground、头像框 --sunk、首字与读数 --muted 配 Bahnschrift，悬停掺 6% 主文字色；页头过滤框与版式切换同为 36px 高，切换两枚共 66px 宽', { timeout: 60_000 }, async () => {
     const opened = await openIndexPage(browser, '/performers');
     try {
       const page = opened.page;
       const selector = '#index [data-index-cell]';
       const cell = page.locator(selector).first();
       const rest = await cell.evaluate((element) => getComputedStyle(element).backgroundColor);
+      const face = await page.evaluate(() => {
+        const ring = document.querySelector('#index [data-person-ring]')!;
+        const initial = document.querySelector('#index [data-person-ring] .ini')!;
+        const readout = document.querySelector('#index [data-index-readout]')!;
+        return { ring: getComputedStyle(ring).backgroundColor, initial: getComputedStyle(initial).color,
+          font: getComputedStyle(initial).fontFamily, readout: getComputedStyle(readout).color };
+      });
+      assert.equal(rest, await tokenColor(page, 'html', '--ground'), '名册格底不是 --ground');
+      assert.equal(face.ring, await tokenColor(page, 'html', '--sunk'), '头像框底不是 --sunk');
+      const muted = await page.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.style.color = 'var(--muted)';
+        document.documentElement.append(probe);
+        const value = getComputedStyle(probe).color;
+        probe.remove();
+        return value;
+      });
+      assert.deepEqual([face.initial, face.readout], [muted, muted], '首字与读数不是 --muted');
+      assert.match(face.font, /^Bahnschrift/, '首字不是 Bahnschrift');
       await cell.hover();
       await page.waitForFunction(([target, before]) =>
         getComputedStyle(document.querySelector(target)!).backgroundColor !== before,
       [selector, rest] as const, { timeout: 3_000 }).catch(() => undefined);
       const hovered = await cell.evaluate((element) => getComputedStyle(element).backgroundColor);
-      assert.equal(hovered, await tokenColor(page, '.peach-react', '--card-hover'), '名册格悬停不是卡面掺 5% 主文字色');
+      const lifted = await page.evaluate(() => {
+        const probe = document.createElement('div');
+        probe.style.backgroundColor = 'color-mix(in srgb, var(--ink) 6%, var(--ground))';
+        document.documentElement.append(probe);
+        const value = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return value;
+      });
+      assert.equal(hovered, lifted, '名册格悬停不是格底掺 6% 主文字色');
       const head = await page.evaluate(() => {
         const input = document.querySelector('#index [data-index-search] input')!;
         const shell = input.closest('[role="presentation"]')!;
