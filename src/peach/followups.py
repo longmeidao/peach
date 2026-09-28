@@ -223,4 +223,8 @@ class FollowupRunner:
                            exc_info=True)
             handle.finish("failed", error=f"{type(error).__name__}: {error}")
             return
-        handle.finish("succeeded", summary=summary if isinstance(summary, dict) else {})
+        summary = summary if isinstance(summary, dict) else {}
+        handle.finish("succeeded", summary=summary)
+        # 处理器说还没做完：原地接一条，不加深（ADR-0084）。先结算再接，互斥键才空得出来。
+        if summary.get("continue"):
+            self.store.continue_followup(run, followup_type.label)

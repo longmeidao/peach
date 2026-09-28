@@ -410,6 +410,29 @@ class TaskRunStore:
                 result["queued"].append(int(cursor.lastrowid))
         return result
 
+    def continue_followup(self, run: TaskRun, label: str = "") -> int | None:
+        """一条后继结算后说「还没做完」，在原地接一条同样的：同一个父任务、同一层、同一个键。
+
+        不走 `enqueue_followups`：那是往下派一层，存量要跑几十轮的事会撞上 `MAX_FOLLOWUP_DEPTH`。
+        接续不加深，会不会停由处理器自己保证——它只在这一轮确实推进了才说要接着跑（ADR-0084）。
+        新行的 id 比已经在排的都大，同一通道里别的后继先跑。返回新行 id；同一件事已经在排就是 None。
+        """
+        if not self.enabled or not run.followup_key:
+            return None
+        with self.database.write_transaction(notify=False) as connection:
+            try:
+                cursor = connection.execute(
+                    "INSERT INTO task_run(task_key,trigger,status,mutex_key,pid,host,"
+                    "heartbeat_at,progress_label,result_summary,parent_run_id,"
+                    "root_run_id,followup_key,followup_depth) "
+                    "VALUES(?,?,'pending',?,?,?,?,?,'{}',?,?,?,?)",
+                    (run.task_key, run.trigger, run.followup_key, os.getpid(), self.host,
+                     stamp(), label, run.parent_run_id, run.root_run_id, run.followup_key,
+                     run.followup_depth))
+            except sqlite3.IntegrityError:
+                return None
+        return int(cursor.lastrowid)
+
     def claim_followup(self, task_keys) -> TaskRun | None:
         """领走这几类里最早的一条待跑后继并标 `running`；没有就返回 None。
 
