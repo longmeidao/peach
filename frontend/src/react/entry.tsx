@@ -13,7 +13,6 @@ import { prefetchTasks } from './activity/tasks';
 import type * as Bundle from './bundle';
 import { prefetchCatalogGrid } from './catalog-grid/catalog-grid';
 import { CatalogGridPage } from './catalog-grid/catalog-grid-page';
-import { CoverCrop } from './cover-crop/cover-crop-page';
 import { prefetchDataCleanup } from './data-cleanup/data-cleanup';
 import { DataCleanupPage } from './data-cleanup/data-cleanup-page';
 import { prefetchDuplicates } from './duplicates/duplicates';
@@ -28,6 +27,8 @@ import { FollowFeedPage } from './follow-feed/follow-feed-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
 import { FollowManagePage } from './follow-manage/follow-manage-page';
 import { prefetchIndex } from './index/index-data';
+import { prefetchItemDetail } from './item-detail/item-detail';
+import { ItemDetailPage } from './item-detail/item-detail-page';
 import { IndexPage } from './index/index-page';
 import { JunkQueuePage } from './junk-queue/junk-queue-page';
 import { prefetchLibraryProcessing } from './library-processing/library-processing';
@@ -102,8 +103,6 @@ const LibraryProcessing = (props: Bundle.LibraryProcessingProps) => (
 export const pages: Bundle.ReactPages = {
   activity: { prefetch: (_props, signal) => prefetchTasks(signal), mount: mounter(ActivityPage) },
   'catalog-grid': { prefetch: prefetchCatalogGrid, mount: mounter(CatalogGridPage) },
-  /* 裁剪封面同理：详情页每进一次都挂这枚键，首屏没有要取的东西，图到点开才量。 */
-  'cover-crop': { prefetch: async () => {}, mount: mounter(CoverCrop) },
   configuration: {
     prefetch: (_props, signal) => prefetchConfiguration(signal), mount: mounter(ConfigurationPage),
   },
@@ -126,6 +125,8 @@ export const pages: Bundle.ReactPages = {
   /* 关注列表第一页与凭据两趟并行，挂上就是最终样子；换筛选之后的取数由页面自己的查询驱动。 */
   'follow-detail': { prefetch: prefetchFollowDetail, mount: mounter(FollowDetailPage) },
   'follow-feed': { prefetch: prefetchFollowFeed, mount: mounter(FollowFeedPage) },
+  /* 队列与条目在预取里取齐，挂上就是最终样子；在线资产转关注、条目已删或队列空了都在这里改道。 */
+  'item-detail': { prefetch: prefetchItemDetail, mount: mounter(ItemDetailPage) },
   /* 首屏只取来源清单与凭据状态，地址栏指着「订阅源」时连它一起取。检查更新与查找那两趟
      后台任务的快照不在首屏里：它们常年躺着上一趟的回执，等它们只会让首屏多一个往返。 */
   'follow-manage': {

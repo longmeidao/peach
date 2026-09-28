@@ -79,8 +79,9 @@ let followFilter='',followRevision=0;
 const FOLLOW_INITIAL_RANGE_OPTIONS=[['0','不限时间'],['7','最近 7 天'],['30','最近 30 天'],
   ['90','最近 90 天']];
 let followAuthors=new Set(),followProviders=new Set(),followTags=new Set(),followWorks=new Set(),followMediaView='videos',followDetailReturnPath='/follow';
-// 关注详情岛的宿主（`openFollowDetail` 建、`disposeStage` 先卸岛再拆舞台）。
-let followDetailHost=null;
+/* 舞台里那座详情岛的宿主与名字（`item-detail` 或 `follow-detail`）：`mountStageIsland` 建，
+   `disposeStage` 先卸岛再拆舞台。 */
+let stageIslandHost=null,stageIslandName='';
 /* 看的那一页按什么排。只有这三档在每条更新上都成立：观看次数、体积那几列问的是本机
    文件，而这一页上的东西多数还没下载。壳只拿它核对地址栏上的 `sort`；键上的说法在岛里
    （`follow-feed.ts` 的 `FOLLOW_FEED_DIR_WORDS`）。 */
@@ -476,8 +477,6 @@ const claimSurface=path=>{
   /* 目录网格同理：目录页与回收站之间它一直挂着，换筛选只是换查询；去别的页面就卸掉，
      那些页面接着会往 `#grid` 里写自己的东西。 */
   if(!isCatalogPath(path)&&path!=='/trash')clearCatalogGrid();
-  /* 详情页接着看那一排也是一棵网格根；换页时舞台随之清场，根先卸掉。 */
-  releaseNextRow();
   surfaceRequests?.abort();
   surfaceRequests=new AbortController();
   surfaceEpoch++;return surfaceToken(path)};
@@ -1509,7 +1508,10 @@ const cloneBarsContext=context=>context&&context.type==='entity'
 const activeFilterState=()=>barsContext.type==='home'?state:barsContext.filters;
 $('#q').value=state.q;rememberSearchValue();
 const REP={};   // 创作者/厂牌 → 代表作 id，用来做圆头像（裁接触印相中心格，不另造图）
-let total=0,facets=null,current=null,detailReturnPath='/',activeQueue=null;
+/* `activeQueue` 是此刻开着的队列（`{kind, seedId|playlistId}`），只用来判「是不是同一个队列里换
+   一条」；队列的条目归详情岛。`pendingQueueRoute` 是队列地址的前缀：停在哪一条要等岛定下来，
+   画出来那一刻（`present`）才推。 */
+let total=0,facets=null,detailReturnPath='/',activeQueue=null,pendingQueueRoute=null;
 let detailOriginAnchor=null,detailOriginAbove=false,detailReturnNeedsRestore=false;
 const CACHE={};
 const cache=items=>{items.forEach(x=>CACHE[x.id]=x);return items};
@@ -1578,20 +1580,6 @@ function runStageDisposers(){
   const pending=[...stageDisposers];stageDisposers.clear();
   pending.forEach(dispose=>{try{dispose()}catch(_e){}});
 }
-/* 浮层的「点外面就关」。document 级捕获监听不随浮层 DOM 一起消失，登记与撤销
-   必须成对；关不掉的那一次由舞台销毁兜底。 */
-function bindOutsideClose(anchor,inside,close){
-  const handler=event=>{if(!inside.contains(event.target)&&event.target!==anchor)close()};
-  let unregister=null;
-  const detach=()=>{
-    document.removeEventListener('pointerdown',handler,true);
-    if(unregister){unregister();unregister=null}
-  };
-  // 延一拍再挂：打开浮层的这一次 pointerdown 还在冒泡，立刻挂上会自己把自己关掉。
-  setTimeout(()=>document.addEventListener('pointerdown',handler,true),0);
-  unregister=onStageDispose(detach);
-  return detach;
-}
 /* 详情浮窗的退场跟设置弹层同一条：`closing` 让 `board-dialog-out` 和遮罩淡出演完，
    再走 disposeStage。顺序不能倒过来——拆解那一步要先把舞台放回 #main 的固定槽位，
    之后重画列表才不会把 #stage 一起删掉，所以动画只往拆解前面插一段等待，拆解和重画
@@ -1640,10 +1628,10 @@ function disposeStage(push=false,preserveInlineOrigin=false,{miniplayer=true}={}
     if(video._hop)clearInterval(video._hop);
     video.pause();video.removeAttribute('src');video.load();video.remove()});
   if(!toMini&&!owned)cancelDetailStream();
-  // 关注详情是挂在舞台里的岛：先卸根，再清舞台，别让 React 对着一块被清空的 DOM。
-  if(followDetailHost){unmountIsland(followDetailHost);followDetailHost=null}
+  // 两个详情都是挂在舞台里的岛：先卸根，再清舞台，别让 React 对着一块被清空的 DOM。
+  if(stageIslandHost){releaseHoverPreviews(stageIslandHost);unmountIsland(stageIslandHost);stageIslandHost=null;stageIslandName=''}
   runStageDisposers();
-  stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');current=null;activeQueue=null;
+  stage.innerHTML='';stage.hidden=true;document.body.classList.remove('detail-open');activeQueue=null;pendingQueueRoute=null;
   if(!preserveInlineOrigin){
     detailOriginAnchor=null;detailOriginAbove=false;detailReturnNeedsRestore=false;
   }
@@ -2661,9 +2649,10 @@ function mountPlayerSubtitles(player,assetId){
 }
 /* 换「JAV 默认封面」时，开着的详情把海报位跟同一张图一起换：挂载了走 player 的
    海报层，脚本还在路上时改元素上的原生 poster，否则下一次开播前看到的还是旧
-   那张。详情没开（current 为空）或这条没有可用的本地图时不动。 */
+   那张。开着的不是作品详情或这条没有可用的本地图时不动。 */
 function repaintDetailPoster(){
-  const poster=current?detailPosterUrl(current):'';
+  const it=stageMiniplayerMeta?.kind==='item'?stageMiniplayerMeta.item:null;
+  const poster=it?detailPosterUrl(it):'';
   if(!poster)return;
   if(detailPlayer&&!detailPlayer.isDisposed())detailPlayer.poster(poster);
   else $('#vid')?.setAttribute('poster',poster);
@@ -3530,15 +3519,6 @@ function mixRelated(seedId){
   return mixRelatedCache.get(seedId);
 }
 const reduceMotion=()=>matchMedia('(prefers-reduced-motion:reduce)').matches;
-/* 分卷组每个 seed 只取一次：同一组的分卷队列反复打开不再发第二个请求。 */
-const partGroupCache=new Map();
-function partGroup(seedId){
-  if(!partGroupCache.has(seedId))
-    partGroupCache.set(seedId,api('/api/parts?id='+seedId)
-      .then(group=>{if(group.error)throw new Error(group.error);cache(group.items);return group})
-      .catch(error=>{partGroupCache.delete(seedId);throw error}));
-  return partGroupCache.get(seedId);
-}
 /* 一个标签是否生效、按一下变成什么，全站只有这一份判据。目录、资料页和详情页各自
    存着自己的筛选，谁在那里手写一次 `split(',')` 或 `=== filters.tag`，谁就会与其余
    几处漂开：按下态按多选算、点击按单选写，同一枚标签的显示和行为对不上。 */
@@ -4573,25 +4553,24 @@ function playlistNameField(value=''){
   return `<label class="modalfield"><span>名称</span><input class="geist-input" name="name"
     maxlength="80" placeholder="输入名称" value="${esc(value)}"></label>`;
 }
-async function saveMixAsPlaylist(mix){
-  if(mix?.kind!=='mix')return;
+/* 保存 Mix：详情岛递来标题、条数和写库那一下（`save`），存好了转去那份播放列表并给撤销。 */
+async function saveMixAsPlaylist({title,count,save}){
   const modal=formModal({
     title:'保存为播放列表',
-    description:`这个 Mix 的 ${mix.items.length} 个视频会存成一份可以继续播放的列表。`,
-    body:playlistNameField(mix.title),
+    description:`这个 Mix 的 ${count} 个视频会存成一份可以继续播放的列表。`,
+    body:playlistNameField(title),
     confirmLabel:'保存为播放列表',
     onConfirm:()=>{
       const name=modal.dialog.querySelector('[name="name"]').value.trim();
       if(!name)throw new Error('播放列表名称不能为空');
-      return playlistWrite({action:'create',name,asset_ids:mix.items.map(item=>item.id),
-        source_kind:'mix',source_seed_asset_id:mix.seedId});
+      return save(name);
     }});
   modal.dialog.querySelector('[name="name"]').select();
   const {confirmed,result}=await modal.done;
   if(!confirmed)return;
-  await openPlaylist(result.playlist.id,result.playlist.current_asset_id,true);
+  await openPlaylist(result.id,result.current_asset_id,true);
   actionReceipt('已保存为播放列表',{undo:async()=>{
-    await playlistWrite({action:'delete',id:result.playlist.id});await openPlaylists(true);
+    await playlistWrite({action:'delete',id:result.id});await openPlaylists(true);
   }});
 }
 /* 一次能勾好几份列表：此前一行就是一个按钮，点下去当场写库、弹层立刻关掉，
@@ -4631,37 +4610,6 @@ async function openAddToPlaylist(item){
     if(result.created)await playlistWrite({action:'delete',id:result.created.id});
   }});
 }
-/* 顺序由拖动定：一列十几条视频，靠上移下移一格一格挪到第九位要按八次。撤销拿的是
-   拖动之前那一份完整顺序，所以一次拖动无论跨多少行都只需按一次撤销。 */
-async function reorderPlaylistItems(queue,ids,currentId){
-  if(queue?.kind!=='playlist')return;
-  const before=queue.items.map(item=>item.id);
-  if(ids.length!==before.length||ids.every((id,index)=>id===before[index]))return;
-  await playlistWrite({action:'reorder',id:queue.playlistId,asset_ids:ids});
-  await openPlaylist(queue.playlistId,currentId,false);
-  actionReceipt('已调整播放顺序',{undo:async()=>{
-    await playlistWrite({action:'reorder',id:queue.playlistId,asset_ids:before});
-    await openPlaylist(queue.playlistId,currentId,false);
-  }});
-}
-async function removePlaylistItem(queue,assetId,currentId){
-  if(queue?.kind!=='playlist')return;
-  const before=queue.items.map(item=>item.id);
-  return confirmModal({title:'移出播放列表',body:'这个视频将从播放列表移除，视频文件保留。',confirmLabel:'移出播放列表',onConfirm:async()=>{
-    const result=await playlistWrite({action:'remove',id:queue.playlistId,asset_id:assetId});
-    /* 撤销要把它放回它那一位：`add` 只会补在末尾，所以补完再按拖动前那份顺序排一次。
-       列表被这一下清空时它已经不在页面上，撤销后带回列表页而不是空队列。 */
-    actionReceipt('已移出播放列表',{undo:async()=>{
-      await playlistWrite({action:'add',id:queue.playlistId,asset_ids:[assetId]});
-      await playlistWrite({action:'reorder',id:queue.playlistId,asset_ids:before});
-      await openPlaylist(queue.playlistId,currentId,false);
-    }});
-    if(!result.playlist.items.length){await openPlaylists(true);return}
-    const next=result.playlist.items.some(item=>item.id===currentId)?currentId:result.playlist.current_asset_id;
-    await openPlaylist(queue.playlistId,next,false);
-  }});
-}
-
 /* 播放列表页整个归 React 子树（ADR-0031）：取数、卡面、新建改名删除都在 /dist/peach-ui.js 里。
    壳只铺骨架，交出打开队列、资料页、头像 HTML、翻页门槛与回执。
    已经停在这一页、岛还挂着时要求重读（顶栏「换一批」、从播放队列返回、撤销后），
@@ -5105,7 +5053,7 @@ const followDetailActions={
     $('#stage').classList.toggle('ambient-on',kind==='video'&&appSettings.ambientMode);
     $('#stage').classList.toggle('theater-mode',kind==='video'&&appSettings.theaterMode);
   },
-  mountPlayer:(video,item,media)=>mountFollowPlayer(video,item,media),
+  mountPlayer:(video,item,media)=>mountStagePlayer('follow',video,item,media),
   toast:(message,{undo}={})=>actionReceipt(message,{undo}),
   failure:(action,error)=>actionFailure(action,error),
 };
@@ -5121,16 +5069,23 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
   if(!push)queueDetailResumeFromUrl('follow',id);
   disposeStage(false,false,{miniplayer:false});
   if(push)route(`/follow/item/${id}`);
-  const surface=surfaceToken(surfacePath());
+  await mountStageIsland('follow-detail',{id,mediaIndex,mediaView:followMediaView,
+    helpers:followFeedHelpers,actions:followDetailActions},surfaceToken(surfacePath()));
+}
+
+/* 两座详情岛进舞台的同一条路：宿主 `.stagescroll` 由壳建、岛往里画。窄屏下滚的是它，全站那条
+   覆盖式滚动条才有地方挂（轨道得是滚动容器的兄弟，而 `<dialog>` 在顶层，轨道挂到它父级上会
+   落进遮罩底下）；「接着看」是 `.sgrid` 的兄弟，也得一起装进来，否则它会被裁在浮窗外面。 */
+async function mountStageIsland(name,props,surface){
   placeItemDetail(detailOriginAnchor,detailOriginAbove);
   showDetailLoading();
-  const host=document.createElement('div');host.className='stagescroll';followDetailHost=host;
-  await mountIsland('follow-detail',host,{id,mediaIndex,mediaView:followMediaView,
-    helpers:followFeedHelpers,actions:followDetailActions},{
-    isCurrent:()=>surfaceCurrent(surface)&&followDetailHost===host,
-    /* 同 `paintStage`：骨架抬成一层淡出，标题两行跟着这一次揭示。宿主由壳建、岛往里画，
-       画之前才放进舞台，骨架与内容只换一次。舞台是带着骨架开的，骨架里没有可聚焦的元素，
-       `showModal()` 只能把焦点给 dialog 本身；内容到了再照它的规矩交给第一个控件（关闭键）。 */
+  const host=document.createElement('div');host.className='stagescroll';
+  stageIslandHost=host;stageIslandName=name;
+  await mountIsland(name,host,props,{
+    isCurrent:()=>surfaceCurrent(surface)&&stageIslandHost===host,
+    /* 同 `paintStage`：骨架抬成一层淡出，标题两行跟着这一次揭示。宿主画之前才放进舞台，骨架
+       与内容只换一次。舞台是带着骨架开的，骨架里没有可聚焦的元素，`showModal()` 只能把焦点
+       给 dialog 本身；内容到了再照它的规矩交给第一个控件（关闭键）。 */
     reveal:(_el,write)=>{
       const stage=$('#stage');
       revealSkeleton(stage,()=>{
@@ -5140,7 +5095,7 @@ async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=fals
       revealTexts(stage,':scope>:not(.skelfade) [data-reveal-line]');
     }});
   // 滚到舞台本身，不是页面头部——就近展开的意义就在于视线不被拽走。
-  if(followDetailHost===host&&host.isConnected)scrollItemDetailIntoView();
+  if(stageIslandHost===host&&host.isConnected)scrollItemDetailIntoView();
 }
 
 /* 关掉详情只是回到列表，不该重新取一遍。重取要等一个网络往返（慢），而且只会取回第一页——
@@ -5155,16 +5110,34 @@ async function closeFollowDetail(){
   readFollowView();pushFollowFeed({view:followView()});
 }
 
-/* 岛画好的 `<video>` 交到这里挂 Video.js：氛围光画布与统计角标照 JAV 详情的位置插进媒体框，
-   片源是 `/follow-stream`，清晰度与字节数（`/follow-qualities`）跟默认片源并行解析——它要回源
-   抓详情、再 HEAD 一次正片，不能挡住播放器挂载。返回的清理在岛卸下这块媒体区时调：换一份媒体
-   只拆这一个播放器；整块舞台拆掉时 `disposeStage` 已经先处理过（进小窗或销毁），这里只补漏。 */
-function mountFollowPlayer(video,item,media){
+/* 两座详情岛画好的 `<video>` 交到这里挂 Video.js。氛围光画布与统计角标在挂载之前插进媒体框：
+   Video.js 一包，`video` 的父级就换成它自己的那层了。
+   - 作品（`item`）：片源由 `mountDetailPlayer` 按来源解析，海报是本地图，第一次开播记一次播放，
+     离开位置与真实观看由 `wireTelemetry` 随播放写回侧栏。
+   - 关注（`follow`）：片源是 `/follow-stream`，清晰度与字节数（`/follow-qualities`）跟默认片源并行
+     解析——它要回源抓详情、再 HEAD 一次正片，不能挡住播放器挂载。
+   返回的清理在岛卸下这块媒体区时调：换一份媒体只拆这一个播放器；整块舞台拆掉时 `disposeStage`
+   已经先处理过（进小窗或销毁），这里只补漏。`autoplay` 不给就按设置。 */
+function mountStagePlayer(kind,video,item,media,{autoplay}={}){
   video.parentElement.insertAdjacentHTML('afterbegin','<canvas class="ambientcanvas" width="32" height="18"></canvas>');
   video.insertAdjacentHTML('beforebegin',playerStatsOverlayHtml());
-  const src=`/follow-stream?id=${item.id}${media?`&media=${media.index}`:''}`;
-  const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);
-  let player=null,released=false;
+  let options={};
+  if(kind==='follow'){
+    options={
+      source:{src:`/follow-stream?id=${item.id}${media?`&media=${media.index}`:''}`,type:media?.media_type||item.media_type||'video/mp4'},
+      checkSourceStatus:false,size:media?.size,poster:item.thumb_url,
+      mediaPromise:api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null),
+    };
+  }else{
+    const poster=detailPosterUrl(item);
+    if(poster)video.poster=poster;
+    video.addEventListener('play',()=>{const stage=$('#stage');if(!stage.dataset.c){stage.dataset.c='1';
+      api('/api/play',{method:'POST',body:JSON.stringify({id:item.id})})}});
+    wireTelemetry(item,video,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
+  }
+  let player=null,released=false,stopAmbient=()=>{};
+  // 进小窗时播放器不销毁，氛围采样要跟着舞台一起停，别对着已经拆掉的画布继续画。
+  onStageDispose(()=>stopAmbient());
   const release=()=>{
     // 小窗接走的播放器归小窗。
     if(!player||miniplayerState.player===player)return;
@@ -5176,20 +5149,14 @@ function mountFollowPlayer(video,item,media){
     }
     if(!player.isDisposed?.()){try{player.pause();player.dispose()}catch(_e){}}
   };
-  mountDetailPlayer(item,video,appSettings.detailAutoplay,{
-    source:{src,type:media?.media_type||item.media_type||'video/mp4'},
-    checkSourceStatus:false,
-    size:media?.size,
-    poster:item.thumb_url,
-    mediaPromise
-  }).then(mounted=>{
+  mountDetailPlayer(item,video,autoplay??appSettings.detailAutoplay,options).then(mounted=>{
     player=mounted;
     // 挂载还没回来岛就换了媒体：这一个一出来就拆掉。
     if(released){release();return}
-    const stopAmbient=mountPlayerAmbient(video);
+    stopAmbient=mountPlayerAmbient(video);
     player?.one?.('dispose',stopAmbient);
     video.addEventListener('emptied',stopAmbient,{once:true});
-    wireFollowTelemetry(item,video);
+    if(kind==='follow')wireFollowTelemetry(item,video);
   });
   return ()=>{released=true;release()};
 }
@@ -5871,6 +5838,12 @@ async function revealSource(id,status,{button=null}={}){
    失败的原因要回到出事的那一行旁边。`revealSource` 把原因写进 `status.textContent`，这里给它
    一个收字的对象读回来。 */
 async function revealForIsland(id){const status={textContent:''};await revealSource(id,status);return status.textContent}
+/* 同上，核对目录：状态一行读回来，外加这一趟移入回收站的那几条（作品详情据此判自己还在不在）。 */
+async function syncForIsland(id){
+  const status={textContent:''};let removed=[];
+  await syncMissing(id,status,result=>{if(result.items)removed=result.items.map(item=>item.id)});
+  return {text:status.textContent,removed};
+}
 
 async function syncMissing(id,status,done){
   status.textContent='正在核对目录…';
@@ -6857,9 +6830,11 @@ function catalogCardRatio(){
   if(layout.portrait)return 9/16;
   return layout.active&&layout.size==='big'?COVER_FRONT_RATIO:16/9;
 }
-/* 挂着卡片网格的几处：目录 `#grid`、资料页作品区、详情页的接着看。 */
+/* 挂着卡片网格的几处：目录 `#grid`、资料页作品区、作品详情（接着看那一排在它里面，版式、
+   快进秒数与选择态同名递进去）。 */
 function gridIslandHosts(){
-  return [$('#grid'),entityBodyCurrent()?entityBodyHost:null,$('#nrow')].filter(host=>host&&islandMounted(host));
+  return [$('#grid'),entityBodyCurrent()?entityBodyHost:null,stageIslandName==='item-detail'?stageIslandHost:null]
+    .filter(host=>host&&islandMounted(host));
 }
 /* 版式、「JAV 默认封面」、快进秒数这些展示层的设置变了，只推给正挂着的网格重画，不重取。 */
 function repaintCatalogGrid(){
@@ -7199,87 +7174,23 @@ $('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearc
     renderSearchMenu();refreshSearchMenu()})});
 
 /* ── 就地展开播放 ── */
-/* 版次徽章的配色跟卡片标题上的那套走。多一个 `有码`：卡片上正片不加角标是对的
-   （没角标就是正片），但队列里两条并排时「什么都不写」等于让人自己猜哪条是哪条。 */
-const EDITION_TONE={'中字':'subtitle','无码':'uncensored','无码破解':'cracked','有码':'censored'};
-/* 同一部片的几卷共用文件名，标题、女优、厂牌逐字相同：详情标题不写卷号的话，在队列里
-   换一卷，右侧整栏看上去纹丝不动。卷号说的是「第几份文件」而不是版次，用中性灰。 */
-const partLabelBadge=(it,queue)=>queue?.kind==='parts'&&it.part_label
-  ? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';
-function queueHtml(queue,itemId){
-  const action=queue.kind==='mix'
-    ? `<button data-save-mix title="保存为播放列表" aria-label="保存为播放列表">${icon('playlist')}</button>`
-    : queue.kind==='playlist'?`<button data-edit-playlist title="编辑播放列表" aria-label="编辑播放列表">${icon('playlist')}</button>`:'';
-  const countLabel=queue.kind==='parts'?`${queue.items.length} 卷`
-    :queue.kind==='editions'?`${queue.items.length} 个版本`:`${queue.items.length} 个视频`;
-  const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}[queue.kind]||'视频合集';
-  /* 版次队列的标题是「版本 · 番号」，而番号就印在正上方的详情标题里，标题栏又已经
-     写着「版本」——三处说同一件事。这里只留数量。别的队列标题带真信息（播放列表名、
-     Mix 种子），不能一起砍。 */
-  const summary=queue.kind==='editions'?countLabel:`${esc(queue.title)} · ${countLabel}`;
-  return `<aside class="mixqueue" data-queue-kind="${esc(queue.kind)}"><div class="mixqueuehead"><div><h2>${kindLabel}</h2><span>${summary}</span></div><div class="mixqueueactions">${action}
-    <button data-queue-close title="关闭" aria-label="关闭">${icon('x')}</button></div></div><div class="mixlist">${queue.items.map((x,index)=>{
-      const thumb=mixFacePoster(x,'small');
-      const edition=queue.kind==='editions'&&x.edition_label
-        ?`<i class="qedition javedition ${EDITION_TONE[x.edition_label]||'censored'}">${esc(x.edition_label)}</i>`:'';
-      /* 顺序直接拖：一列十几条，靠上移下移把最后一条挪到第二位要按十几次，而每一次
-         都是一趟写库加一次重绘。剩下的只有移出，它不是排序动作，留在行尾。 */
-      const edit=queue.kind==='playlist'?`<span class="queueedit"><i class="queuegrip" aria-hidden="true">${icon('grip-vertical')}</i><button data-queue-remove="${x.id}" title="移出播放列表" aria-label="移出播放列表">${icon('x')}</button></span>`:'';
-      return `<div class="mixrow" data-queue-row="${x.id}"><button class="mixitem ${x.id===itemId?'current':''}" data-queue-item="${x.id}" aria-current="${x.id===itemId?'true':'false'}">
-        <span class="mixitempic">${thumb}<i class="dur mono">${fmtDur(x.duration)}</i></span><span class="mixitemmeta">${cardIdentity(x,false).avatar}<span class="mixitemtext"><span class="mixitemhead">${edition}<b data-middle-truncate>${esc(javDisplayName(x))}</b></span><span data-truncate-end>${queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`:esc(mixLabel(x))}</span></span></span></button>${edit}</div>`;
-    }).join('')}</div></aside>`;
+/* 四种队列的入口（Mix、分卷、版本、播放列表）。队列的条目、停在哪一条、卷标都归详情岛
+   （`item-detail`），岛按 `{kind, seedId|playlistId}` 自己取；壳只判「是不是同一个队列里换一条」
+   （是就读岛的缓存，不重取），并记下地址的前缀，等岛定下停在哪一条之后再推。播放列表每次都
+   重取：它的顺序和内容别处也在改。版次视图复用分卷的队列：两者都是「一个番号下的几个可播
+   条目」，差别只在标题和每条的副标题。 */
+const QUEUE_ROUTES={mix:'/mix',parts:'/parts',editions:'/editions',playlist:'/playlists'};
+function openQueue(kind,key,itemId,push,anchor=null){
+  key=+key;
+  const same=activeQueue?.kind===kind&&(kind==='playlist'?activeQueue.playlistId:activeQueue.seedId)===key;
+  if(push&&(kind==='playlist'||!same))detailReturnPath=location.pathname+location.search;
+  const queue=kind==='playlist'?{kind,playlistId:key,fresh:true}:{kind,seedId:key,fresh:!same};
+  return openItem(itemId==null?null:+itemId,false,queue,anchor,push);
 }
-async function buildMix(seedId){
-  const [seed,related]=await Promise.all([api('/api/item?id='+seedId),mixRelated(seedId)]);
-  const items=[seed,...related.filter(x=>x.id!==seed.id)];cache(items);
-  return {kind:'mix',seedId,title:`Mix · ${mixLabel(seed)}`,items};
-}
-async function openMix(seedId,itemId=seedId,push=true,anchor=null){
-  const previous=activeQueue?.kind==='mix'&&activeQueue.seedId===seedId?activeQueue:null;
-  if(push&&!previous)detailReturnPath=location.pathname+location.search;
-  const mix=previous||await buildMix(seedId);
-  await openItem(itemId,false,mix,anchor);
-  if(push)route(`/mix/${seedId}/${itemId}`);
-}
-/* 版次视图复用分卷的队列：两者都是「一个番号下的几个可播条目」，差别只在标题和
-   每条的副标题。另写一套只会让队列的键盘、续播和返回路径各演化一份。 */
-async function openEditions(seedId,itemId=seedId,push=true,anchor=null){
-  const previous=activeQueue?.kind==='editions'&&activeQueue.seedId===seedId?activeQueue:null;
-  if(push&&!previous)detailReturnPath=location.pathname+location.search;
-  let queue=previous;
-  if(!queue){
-    const group=await api('/api/editions?id='+seedId);
-    if(group.error){await openItem(itemId,true);return}
-    queue={kind:'editions',seedId,title:`版本 · ${group.title}`,items:group.items};cache(queue.items);
-  }
-  const chosen=queue.items.some(item=>item.id===itemId)?itemId:queue.items[0].id;
-  await openItem(chosen,false,queue,anchor);
-  if(push)route(`/editions/${seedId}/${chosen}`);
-}
-async function openParts(seedId,itemId=seedId,push=true,anchor=null){
-  const previous=activeQueue?.kind==='parts'&&activeQueue.seedId===seedId?activeQueue:null;
-  if(push&&!previous)detailReturnPath=location.pathname+location.search;
-  let queue=previous;
-  if(!queue){
-    let group;
-    try{group=await partGroup(seedId)}catch(_e){await openItem(itemId,true);return}
-    queue={kind:'parts',seedId,title:`分卷 · ${group.title}`,items:group.items};
-  }
-  const chosen=queue.items.some(item=>item.id===itemId)?itemId:queue.items[0].id;
-  await openItem(chosen,false,queue,anchor);
-  if(push)route(`/parts/${seedId}/${chosen}`);
-}
-async function openPlaylist(playlistId,itemId=null,push=true){
-  if(push)detailReturnPath=location.pathname+location.search;
-  const playlist=await api('/api/playlist?id='+playlistId);
-  if(!playlist.items.length){await openPlaylists(push);return}
-  const chosen=playlist.items.some(item=>item.id===itemId)
-    ? itemId:(playlist.current_asset_id||playlist.items[0].id);
-  const queue={kind:'playlist',playlistId,title:playlist.name,items:playlist.items};
-  cache(queue.items);await openItem(chosen,false,queue);
-  if(push)route(`/playlists/${playlistId}/${chosen}`);
-  api('/api/playlist',{method:'POST',body:JSON.stringify({action:'progress',id:playlistId,asset_id:chosen})}).catch(()=>{});
-}
+function openMix(seedId,itemId=seedId,push=true,anchor=null){return openQueue('mix',seedId,itemId,push,anchor)}
+function openEditions(seedId,itemId=seedId,push=true,anchor=null){return openQueue('editions',seedId,itemId,push,anchor)}
+function openParts(seedId,itemId=seedId,push=true,anchor=null){return openQueue('parts',seedId,itemId,push,anchor)}
+function openPlaylist(playlistId,itemId=null,push=true){return openQueue('playlist',playlistId,itemId,push)}
 /* 关掉详情要不要重新装一遍列表，判据是「退回去有没有东西可看」。
    按 `#grid` 有没有子节点判会误判：直接打开 `/parts/28125/28125` 这类深链时，
    网格里躺着一个还没被替换掉的加载骨架，它也是子节点。于是关掉播放器后
@@ -7303,23 +7214,97 @@ function fillIdleCatalog(){
   const count=$('#count');count.removeAttribute('aria-busy');count.removeAttribute('aria-label');
   void paintCatalogGrid(surfaceToken(surfacePath()));
 }
-/* 评分落在 `asset.rating`，量纲是 0–100：这一列是 Stash 的 rating100 直接导进来的，
-   taste_history 也按 rating/20 折算成 0–5 分。所以第 n 颗星送出的是 n*20，不是 n。
-   再点当前那一颗表示撤销，送 0，后端写回 NULL——「没评过」和「评了一星」在排序上
-   必须是两件事。 */
-const RATING_STEP=20;
-const ratingStarCount=value=>Math.round(Math.min(Math.max(value||0,0),100)/RATING_STEP);
-const ratingText=value=>{const n=ratingStarCount(value);return n?`${n} 星`:'未评分'};
-const ratingStarsHtml=value=>{const on=ratingStarCount(value);
-  return [1,2,3,4,5].map(n=>`<button type="button" class="star" data-rate="${n}" data-on="${n<=on}"
-    title="${n===on?'再点一次取消评分':`${n} 星`}"
-    aria-label="${n===on?`取消评分（当前 ${n} 星）`:`评为 ${n} 星`}">${icon('star')}</button>`).join('')};
-const ratingHtml=value=>`<div class="rating" id="detailRating" role="group" aria-label="评分" data-value="${Math.min(Math.max(value||0,0),100)}">
-  <div class="ratingstars">${ratingStarsHtml(value)}</div>
-  <span class="ratingvalue" aria-live="polite">${ratingText(value)}</span></div>`;
+/* 作品详情整块归 React 岛 `item-detail`（ADR-0031）：条目与队列的取数、播放区、侧栏、接着看与
+   写操作都在 /dist/peach-react.js 里。壳留舞台本身——宿主、进出场、小窗与 Video.js，关注详情
+   也在用这一套——以及来处：从哪一张卡进来、关掉回哪一份列表、顶栏换成哪条作品的上下文。
+   队列里换一条也走 `openItem`：舞台上的播放器要先拆，地址要换。 */
+const itemDetailHelpers={
+  badgeHtml:(location,cost,cls)=>srcBadge(location,cost,cls),
+  titleHtml:it=>javTitleHtml(it),
+  displayName:it=>javDisplayName(it),
+  performerLabel:it=>performerLabel(it),
+  // 和顶栏圆头像同一条判据：没装实体图就不出 `<img>`，取不到就是首字母垫底。
+  faceHtml:ref=>entityFaceImg({id:ref.id,hasImage:ref.has_image,focus:ref.avatar_focus}),
+  queueThumbHtml:it=>mixFacePoster(it,'small'),
+  queueAvatarHtml:it=>cardIdentity(it,false).avatar,
+  mixLabel:it=>mixLabel(it),
+  tagLabel:tag=>tagLabel(tag),
+  isDurationTag:tag=>DURATION_TAGS.has(tag),
+  tagCandidates:()=>(facets&&facets.tags)||[],
+  sourceOffline:key=>sourceOffline(key),
+  offlineReason:key=>offlineReason(key),
+  relatedSkeletonHtml:()=>pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'}),
+  mixRelated:seedId=>mixRelated(seedId),
+  wireDrag:el=>wireDrag(el),
+  wireDragReorder:(root,options)=>wireDragReorder(root,options),
+};
+const itemDetailActions={
+  close:()=>closeItemDetail(),
+  /* 小窗元数据、顶栏的实体上下文、氛围光与剧场模式跟着画出来的这一条走；队列的地址也在这时
+     推，停在哪一条要等岛定下来。 */
+  present:item=>{
+    cache([item]);
+    stageMiniplayerMeta={kind:'item',item,title:item.title||item.name||'',
+      sub:(item.performers||[])[0]||item.creator||'未归属'};
+    const returnBars=detailReturnBarsContext;
+    barsContext={type:'item',id:item.id,filters:returnBars?.type==='entity'
+      ? {...returnBars.filters}:emptyEntityFilters()};
+    const stage=$('#stage');delete stage.dataset.c;
+    stage.classList.toggle('ambient-on',appSettings.ambientMode);
+    stage.classList.toggle('theater-mode',appSettings.theaterMode);
+    if(pendingQueueRoute){route(`${pendingQueueRoute}/${item.id}`);pendingQueueRoute=null}
+    buildBars();
+  },
+  /* 取数时发现要换去别处：保存过的在线资产转关注详情，队列取不到退回普通详情，播放列表空了
+     回列表页，条目已不在就收起舞台。壳一换舞台，岛这一次挂载就作废。 */
+  redirect:to=>{
+    const push=!!pendingQueueRoute;
+    if(to.kind==='follow'){followDetailReturnPath=detailReturnPath||'/';void openFollowDetail(to.id,false,null,true);return}
+    if(to.kind==='item'){void openItem(to.id,true);return}
+    if(to.kind==='playlists'){void openPlaylists(push);return}
+    disposeStage(false);
+  },
+  openQueueItem:(queue,id,push=true)=>void openQueue(queue.kind,queue.kind==='playlist'?queue.playlistId:queue.seedId,id,push),
+  mountPlayer:(video,item,media,options)=>mountStagePlayer('item',video,item,media,options),
+  // 盘回来了就按正常路径重开，不在半路挂播放器；开着的队列跟着留下。
+  reopen:()=>{
+    const it=stageMiniplayerMeta?.kind==='item'?stageMiniplayerMeta.item:null;
+    if(!it)return;
+    const queue=activeQueue;
+    if(queue)void openQueue(queue.kind,queue.kind==='playlist'?queue.playlistId:queue.seedId,it.id,false);
+    else void openItem(it.id,false);
+  },
+  checkSource:async key=>(await loadSourceStatus())[key]!==false,
+  /* 直接进「已保存」这一档。openFollow(true) 会 route 回干净的 /follow 再照 URL 推导，所以状态
+     要先写进 URL，光设全局会被推回未看。 */
+  openSavedFollow:()=>{
+    followAuthors=new Set();followProviders=new Set();followTags=new Set();followWorks=new Set();followMediaView='videos';
+    followFilter='saved';route(followViewPath());openFollow(false)},
+  openEntity:(kind,name)=>openEntity(kind,name),
+  openUnowned:()=>openUnowned(),
+  openRegion:region=>openRegion(region),
+  openTag:tag=>{commitContextFilter(filters=>{filters.tag=tag});window.scrollTo({top:0,behavior:'smooth'})},
+  addToPlaylist:item=>openAddToPlaylist(item),
+  saveMix:options=>saveMixAsPlaylist(options),
+  editPlaylist:()=>openPlaylists(true),
+  openPlaylists:()=>openPlaylists(true),
+  reveal:id=>revealForIsland(id),
+  sync:id=>syncForIsland(id),
+  /* 「垃圾文件」那一档（`state=ads`）按回收站状态列：移进回收站的这一条要从列表里消失，撤销
+     任何一次反馈之后列表也重读一遍。别的列表不受影响。 */
+  trashChanged:async(disposal,undo)=>{
+    if(state.state!=='ads')return;
+    if(!undo&&disposal!=='trash')return;
+    if(!undo)disposeStage(true,false,{miniplayer:false});
+    await loadCatalog();
+  },
+  toast:(message,{undo}={})=>actionReceipt(message,{undo}),
+  failure:(action,error)=>actionFailure(action,error),
+};
 
-async function openItem(id,push=true,queueContext=null,anchor=null){
+async function openItem(id,push=true,queue=null,anchor=null,queuePush=false){
   releaseHoverPreviews();
+  id=id==null?null:+id;
   const origin=anchor?.isConnected?anchor:(detailOriginAnchor?.isConnected?detailOriginAnchor:null);
   const above=anchor?.isConnected
     ? anchor.getBoundingClientRect().top+anchor.getBoundingClientRect().height/2>window.innerHeight/2
@@ -7331,485 +7316,32 @@ async function openItem(id,push=true,queueContext=null,anchor=null){
   if(push)detailReturnPath=location.pathname+location.search;
   // 换详情不进小窗；小窗里正放着的那条也让位，两个播放器不同时出声。
   closeMiniplayer();
-  if(!push)queueDetailResumeFromUrl('item',id);
+  if(!push&&id!=null)queueDetailResumeFromUrl('item',id);
   disposeStage(false,true,{miniplayer:false});
   detailOriginAnchor=origin;detailOriginAbove=above;detailReturnNeedsRestore=needsReturnRestore;
   detailReturnBarsContext=returnBars;
-  activeQueue=queueContext;
-  if(push&&!queueContext)route('/item/'+id);
-  const detailSurface=surfaceToken(surfacePath());
-  showDetailLoading();
-  const it=await surfaceApi(detailSurface,'/api/item?id='+id);
-  if(!surfaceCurrent(detailSurface))return;
-  if(it.error){disposeStage(false);return}
-  if(it.location==='online'&&it.follow_item_id){
-    followDetailReturnPath=detailReturnPath||'/';
-    await openFollowDetail(it.follow_item_id,false,null,true);
-    return;
-  }
-  /* 卷标只有分卷队列知道：`/api/item` 是单条口径，它答不出「这是第几卷」。不补的话
-     标题栏里的卷号在深链进来和点开队列另一条时都不出现。 */
-  if(queueContext?.kind==='parts')
-    it.part_label=queueContext.items.find(part=>part.id===it.id)?.part_label||'';
-  current=it; CACHE[it.id]=it;
-  barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'
-    ? {...returnBars.filters}:emptyEntityFilters()};
-  const gated=it.cost==='metered'&&it.location!=='online';
-  const offline=sourceOffline(it.location);
-  const online=it.location==='online';
-  /* 保存过的在线资产照常播；只有反查不到关注条目时才拦下来说明原因。 */
-  const onlineGated=online&&!it.follow_item_id;
-  const who=(it.performers||[])[0]||it.creator||'未归属';
-  stageMiniplayerMeta={kind:'item',item:it,title:it.title||it.name||'',sub:who};
-  const refs=it.entity_refs||{},studioRef=(refs.studio||[])[0];
-  // 共演作品的女优逐行列出，每行带自己的头像；标签只写在第一行，其余留空保持对齐。
-  const performerRefs=(refs.performer||[]).length
-    ? refs.performer
-    : (it.performers||[]).map(name=>({id:null,name}));
-  // 身份按类别分组：标签作为组标题写在上方，同类横向排开。
-  // 逐行一个名字在共演作品上会把整个侧栏撑满，标签列也重复得毫无信息量。
-  const identitySeen=new Set();
-  const fresh=name=>{const key=foldName(name);
-    if(!name||identitySeen.has(key))return false;identitySeen.add(key);return true};
-  const castList=performerRefs.filter(ref=>fresh(ref.name));
-  // 非规范厂牌只有扁平 `studio` 字段，它的标识可用性单独下发在 `has_studio_logo`：
-  // 不接过来，这条路径会从「本来能取到图」退化成永远只显示首字母。
-  const studioFallback=studioRef?[]
-    :(it.studio?[{id:null,name:it.studio,has_logo:it.has_studio_logo}]:[]);
-  const studioList=[...(refs.studio||[]),...studioFallback].filter(ref=>fresh(ref.name));
-  // 厂牌是某家片商旗下的 label 时（ADR-0049），片商另起一组摆在它旁边；作品仍只挂在 label 上。
-  // 上级一级套一级时（ADR-0051）整条链从近到远都在这一组里。
-  const makerList=studioList.flatMap(ref=>ref.makers||[]).filter(maker=>fresh(maker.name));
-  const creatorList=(refs.creator||[]).filter(ref=>fresh(ref.name));
-  const seriesList=(refs.series||[]).filter(ref=>fresh(ref.name));
-
-  // BEST 合集实测有 41 位出镜者，全铺开会把标签和反馈按钮挤出可视区。
-  // 前 8 位直接展示，其余默认收起但仍在 DOM 里，一次点击即可看全。
-  const CAST_SHOWN=8;
-  const castOverflow=Math.max(0,castList.length-CAST_SHOWN);
-  const idFace=(kind,item)=>kind==='performer'
-    // 和顶栏圆头像同一条判据：没装实体图就不出 `<img>`。这一格没有代表作头像可退，
-    // 取不到就是首字母垫底。
-    ? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(
-        {id:item.id,hasImage:item.has_image,focus:item.avatar_focus})}`
-    : kind==='studio'
-      // 和顶栏小圆片同一条判据：没装标识就不出 `<img>`，不再靠 404 把图摘掉。
-      ? `<span>${esc(item.name.slice(0,2))}</span>${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon" alt="" loading="lazy" data-drop="self">`:''}`
-      : `<span>${esc(item.name.slice(0,1))}</span>`;
-  const idCell=(kind,item,index)=>{
-    const hide=kind==='performer'&&index>=CAST_SHOWN;
-    const content=`<span class="idface">${idFace(kind,item)}</span><span class="idname">${esc(item.name)}</span>`;
-    if(!item.id)return `<span class="idcell${kind==='studio'?' logo':''}" title="${esc(item.name)}"${hide?' hidden data-castoverflow':''}>${content}</span>`;
-    return `<button class="idcell entitylink${kind==='studio'?' logo':''}" data-entity-kind="${kind}"
-      data-entity-name="${esc(item.name)}" title="${esc(item.name)}"${hide?' hidden data-castoverflow':''}>${content}</button>`;
-  };
-  const idGroup=(label,kind,list,extra='')=>list.length
-    ? `<section class="idgroup idgroup-${kind}"><h5 class="idlabel">${label}</h5>
-        <div class="idrow">${list.map((item,i)=>idCell(kind,item,i)).join('')}${extra}</div></section>`
-    : '';
-  const seriesCell=item=>{const content=`${icon('tags')}<span>${esc(item.name)}</span>`;
-    return item.id
-      ? `<button class="serieslink entitylink" data-entity-kind="series" data-entity-name="${esc(item.name)}" title="${esc(item.name)}">${content}</button>`
-      : `<span class="serieslink" title="${esc(item.name)}">${content}</span>`};
-  const seriesGroup=list=>list.length
-    ? `<section class="idgroup idseries"><h5 class="idlabel">系列</h5>
-        <div class="seriesrows">${list.map(seriesCell).join('')}</div></section>`
-    : '';
-  /* 一个都没有时，「未归属」就是这条作品所属的那一类，和女优、厂牌并列：馆藏里
-     4566 条同类，点进去看得到全部。写成一行「归属　未归属」的说明文字，是把一个
-     能筛的集合降级成读完就没用的字——标签和值还念的是同一个词。 */
-  const unownedGroup=`<section class="idgroup idgroup-unowned"><h5 class="idlabel">归属</h5>
-      <div class="idrow"><button class="idcell unownedlink" type="button" data-open-unowned
-        title="打开未归属：馆藏里没有署名人的作品">
-        <span class="idface">${icon('user-round')}</span><span class="idname">未归属</span></button></div></section>`;
-  /* 判据和 `owner=none` 那条 SQL 一样：没有出镜者、没有创作者实体、扁平 creator 也空。
-     厂牌和系列不算归属，有厂牌照样是未归属——两边说的必须是同一批作品，否则卡片上
-     写着「未归属」的这条点进集合会不在里面。 */
-  const unowned=!castList.length&&!creatorList.length&&!(it.creator||'').trim();
-  const primaryIdentity=
-    (unowned?unownedGroup
-      :idGroup(performerLabel(it),'performer',castList,
-        castOverflow?`<button class="castmore" id="castMore">还有 ${castOverflow} 位</button>`:''))
-    +idGroup('厂牌','studio',studioList)
-    +idGroup('片商','studio',makerList);
-  const identityRows=
-    (primaryIdentity?`<div class="identityprimary">${primaryIdentity}</div>`:'')
-    +idGroup('创作者','creator',creatorList)
-    +seriesGroup(seriesList);
-  placeItemDetail(origin,above);
-  $('#stage').hidden=false;document.body.classList.add('detail-open');delete $('#stage').dataset.c;
-  /* 浮窗里的内容统一装在 `.stagescroll` 里：窄屏下滚的是它，全站那条覆盖式滚动条才有
-     地方挂（轨道得是滚动容器的兄弟，而 `<dialog>` 在顶层，轨道挂到它父级上会落进遮罩
-     底下）。「接着看」是 `.sgrid` 的兄弟，也得一起装进来，否则它会被裁在浮窗外面。 */
-  paintStage(`<div class="stagescroll"><div class="sgrid ${queueContext?'mixgrid':''}">
-    <div class="vwrap"><canvas class="ambientcanvas" id="ambientCanvas" width="32" height="18"></canvas><button class="closestage" id="closeStage" title="关闭" aria-label="关闭">${icon('x')}</button>
-       ${playerStatsOverlayHtml()}
-      ${offline?`<div class="gate offline" id="offlineGate" role="status">
-          ${srcBadge(it.location,it.cost,'srcbig')}
-          <b>脱盘模式</b>
-          <span>${esc(offlineReason(it.location))}</span>
-          <button class="chip" id="offlineRetry" type="button">重新检测</button></div>
-        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
-       :onlineGated?`<div class="gate" id="onlineGate" role="status">
-          ${srcBadge(it.location,it.cost,'srcbig')}
-          <b>在线资产</b>
-          <span>这条没有对应的关注条目，媒体地址无从解析。</span>
-          <button class="chip" id="openSavedFollow" type="button">打开已保存关注</button></div>
-        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
-       :gated?`<div class="gate" id="gate">
-          ${srcBadge(it.location,it.cost,'srcbig')}
-          <span>点此开始拉流 · ${fmtSize(it.size||0)}</span></div>
-        <video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="none" hidden></video>`
-       :`<video id="vid" class="video-js vjs-big-play-centered" controls playsinline preload="metadata"></video>`}
-    </div>${queueContext?queueHtml(queueContext,it.id):''}
-    <div class="side"><div class="sidecontent">
-      <div class="detailtitle"><div class="stitle" data-reveal-line><span class="stitletext" data-detail-title>${srcBadge(it.location,it.cost,'srcbig')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span><span class="srctools detailtitletools"><button type="button" data-title-fold hidden aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon('chevron-down')}</button>${it.has_cover&&it.code?'<span data-cover-crop></span>':''}${it.location==='online'?'':sourceToolButtons(it.id)}</span></div></div>
-      ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
-      ${ratingHtml(it.rating)}
-      <div class="smeta mono" data-reveal-line>
-        <span class="detailmetaitem">${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span></span>
-        <span class="detailmetaitem">${icon('hard-drive')}<span>${fmtSize(it.size||0)}</span></span>
-        ${it.release_date?`<span class="detailmetaitem">${icon('calendar')}<span>${esc(it.release_date)}</span></span>`:''}
-        ${it.region_label?`<button class="detailmetaitem regionlink" type="button" data-open-region="${esc(it.region)}"
-          title="${it.region_settled?'已判定的产地；打开同产地的作品':'按番号或厂牌推断的产地，批量判定后不再变；打开同产地的作品'}"
-          >${icon('globe')}<span>${esc(it.region_label)}${it.region_settled?'':'（推断）'}</span></button>`:''}</div>
-      <div class="detailidentity">${identityRows}</div>
-      <div class="stags" id="detailTags"></div>
-      <div class="trace"><div class="trace-metric"><div class="lab mono"><span>离开位置</span><span id="ratioTxt">0%</span></div>
-        <div class="bar"><u id="watched"></u><b id="mark"></b></div></div>
-        <div class="trace-metric"><div class="lab mono trace-real"><span>真实观看</span><span id="realTxt">0%</span></div>
-        <div class="bar"><u id="realBar"></u></div></div>
-      </div>
-      <div class="fb">
-        <button class="like" id="likeBtn" aria-label="${it.liked?'取消喜欢':'喜欢'}" title="喜欢 · 记录口味偏好" aria-pressed="${!!it.liked}">${icon('thumbs-up')}</button>
-        <button class="reason" id="preferenceToggle" aria-label="喜爱理由" title="喜爱理由" aria-expanded="false" aria-controls="preferencePanel" data-has-reason="${!!it.like_reason}">${icon('notebook-pen')}</button>
-        <button class="dislike" data-kind="dislike" aria-label="不合口味" title="不合口味 · 降低推荐权重" aria-pressed="${it.feedback==='dislike'}">${icon('thumbs-down')}</button>
-        <button class="seen" data-kind="seen" aria-label="看过了" title="看过了 · 只降低近期推荐" aria-pressed="${it.feedback==='seen'}">${icon('eye')}</button>
-        <button class="later" id="stageLater" aria-label="稍后看" title="稍后看 · 加入或移出队列" aria-pressed="${!!it.watch_later}">${it.watch_later?icon('check'):icon('bookmark-plus')}</button>
-        <button class="playlistadd" id="addPlaylist" aria-label="加入播放列表" title="加入播放列表">${icon('playlist')}</button>
-        <button class="upgrade" id="betterVersion" aria-label="寻找更好版本" title="寻找高清、无水印或完整版" aria-pressed="${!!it.better_version}">${icon('sparkles')}</button>
-        <button class="dispose" data-kind="dispose" aria-label="移入回收站" title="移入回收站 · 文件仍保留，可从回收站永久清除" aria-pressed="${it.disposal==='trash'}">${icon('trash')}</button></div>
-      <div class="preference" id="preferencePanel" hidden>
-        <textarea id="likeReason" maxlength="2000" placeholder="为什么喜欢？">${esc(it.like_reason||'')}</textarea>
-        <div class="preference-foot"><span id="preferenceState" aria-live="polite"></span>
-          <button type="button" class="geist-button primary savepreference" id="savePreference" title="提交喜爱理由" aria-label="提交喜爱理由"><span>提交</span></button></div>
-      </div>
-      <button class="obtn" data-kind="o">${icon('sperm')}<span>记一次高潮</span><b class="mono" id="oCount">${it.o_count||0}</b></button>
-    </div></div></div>
-    ${queueContext||!(appSettings.relatedLimit>0)?'':`<div class="next"><h3>接着看</h3><div class="nrow" id="nrow">${
-      pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})}</div></div>`}</div>`);
-  $('#stage').classList.toggle('ambient-on',appSettings.ambientMode);
-  $('#stage').classList.toggle('theater-mode',appSettings.theaterMode);
-  fitSkeleton($('#nrow'));
-
-  const closeDetail=async()=>{const restore=cloneBarsContext(detailReturnBarsContext);
-    const returnPath=detailReturnPath||'/',restoreSurface=detailReturnNeedsRestore;
-    await stageExit();
-    disposeStage(false,false,{miniplayer:false});detailReturnBarsContext=null;
-    barsContext=restore||{type:'home',filters:state};
-    route(returnPath);
-    if(restoreSurface)await restoreRoute();
-    else{buildBars();if(location.pathname==='/playlists')openPlaylists(false)}};
-  $('#closeStage').onclick=closeDetail;
-  // 对账删掉的可能就是当前这条；删了就没什么可停留的，直接退回列表。
-  wireSourceTools($('#stage'),r=>{
-    if(r.items.some(x=>x.id===it.id))closeDetail();});
-  /* 裁剪封面挂在标题旁那排键里。取景框存的是坐标不是图片，所以存完只要把这一页
-     重新画一遍：封面地址没变，变的是接口给的 `poster_box`。 */
-  const cropHost=$('#stage').querySelector('[data-cover-crop]');
-  if(cropHost)import('/dist/peach-ui.js').then(ui=>ui.mountIsland('cover-crop',cropHost,{
-    code:it.code||'',coverUrl:`/cover?code=${encodeURIComponent(it.code||'')}`,
-    box:it.poster_box||null,onSaved:()=>openItem(it.id,false,queueContext)},
-    {isCurrent:()=>$('#stage').contains(cropHost)}));
-  /* 标题默认折成两行，真溢出才给展开键：折叠态下 scrollHeight 比 clientHeight 高，就是有
-     行被裁掉了。展开与收起换字形——往下多看一截是 chevron-down，收回去是 chevron-up。
-     展开键排在那排键最前面，紧挨着它管的标题。标题文字本身也接这一下：人想看全文时手
-     本来就落在字上。选中文字那一下不算，那是在复制标题。 */
-  const titleText=$('#stage').querySelector('[data-detail-title]');
-  const titleFold=$('#stage').querySelector('[data-title-fold]');
-  if(titleText&&titleFold){
-    const syncTitleFold=()=>{
-      const expanded=titleText.hasAttribute('data-expanded');
-      if(!expanded)titleFold.hidden=titleText.scrollHeight<=titleText.clientHeight+1;
-      titleText.toggleAttribute('data-foldable',!titleFold.hidden);
-      titleFold.setAttribute('aria-expanded',String(expanded));
-      titleFold.setAttribute('aria-label',expanded?'收起标题':'展开标题');
-      titleFold.title=expanded?'收起标题':'展开完整标题';
-      titleFold.querySelector('use').setAttribute('href',expanded?'#i-chevron-up':'#i-chevron-down');
-    };
-    titleFold.onclick=()=>{titleText.toggleAttribute('data-expanded');syncTitleFold()};
-    titleText.onclick=()=>{
-      if(titleFold.hidden||String(getSelection()||''))return;
-      titleFold.click();
-    };
-    /* 溢出不只在打开那一刻判：影院模式和普通视图之间切换时标题栏宽度差一大截，两行放得下
-       的标题换到窄栏就溢出了。观察者第一次回调就是初判；节点随浮窗重画被摘掉后一起回收。 */
-    new ResizeObserver(syncTitleFold).observe(titleText);
-  }
-  if($('#castMore'))$('#castMore').onclick=e=>{
-    $('#stage').querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false);
-    e.currentTarget.remove()};
-  $('#stage').querySelectorAll('[data-queue-close]').forEach(b=>b.onclick=closeDetail);
-  $('#stage').querySelectorAll('[data-queue-item]').forEach(b=>b.onclick=()=>queueContext.kind==='mix'
-    ?openMix(queueContext.seedId,+b.dataset.queueItem,true)
-    :queueContext.kind==='parts'?openParts(queueContext.seedId,+b.dataset.queueItem,true)
-    :queueContext.kind==='editions'?openEditions(queueContext.seedId,+b.dataset.queueItem,true)
-    :openPlaylist(queueContext.playlistId,+b.dataset.queueItem,true));
-  $('#stage').querySelectorAll('[data-save-mix]').forEach(b=>b.onclick=()=>saveMixAsPlaylist(queueContext));
-  $('#stage').querySelectorAll('[data-edit-playlist]').forEach(b=>b.onclick=()=>openPlaylists(true));
-  $('#stage').querySelectorAll('[data-queue-remove]').forEach(b=>b.onclick=()=>removePlaylistItem(queueContext,+b.dataset.queueRemove,it.id));
-  if(queueContext?.kind==='playlist'){
-    const list=$('#stage').querySelector('.mixlist');
-    if(list)wireDragReorder(list,{selector:'[data-queue-row]',attribute:'data-queue-row',
-      onMove:(from,target,after)=>{
-        const ids=queueContext.items.map(item=>item.id).filter(id=>id!==+from);
-        const at=ids.indexOf(+target);
-        ids.splice(at+(after?1:0),0,+from);
-        return reorderPlaylistItems(queueContext,ids,it.id);
-      }});
-  }
-  wireDrag($('#stage').querySelector('.mixlist'));
-  const g=$('#gate');
-  const onlineGate=$('#onlineGate');
-  $('#addPlaylist').onclick=()=>openAddToPlaylist(it);
-  /* 一排星只挂一个监听，重绘时整块换掉 innerHTML——五个按钮各挂一份的话，
-     每次评完都要重新接线，漏接就变成「点第一次有反应，第二次没有」。 */
-  const paintRating=value=>{it.rating=value==null?null:value;
-    const box=$('#detailRating');if(!box)return;
-    box.dataset.value=Math.min(Math.max(value||0,0),100);
-    box.querySelector('.ratingstars').innerHTML=ratingStarsHtml(value);
-    box.querySelector('.ratingvalue').textContent=ratingText(value)};
-  const postRating=async value=>{
-    const r=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:'rate',value})});
-    paintRating(r.rating);return r};
-  $('#detailRating')?.addEventListener('click',async event=>{
-    const star=event.target.closest('.star');if(!star)return;
-    const before=it.rating||0,picked=+star.dataset.rate*RATING_STEP;
-    const value=picked===before?0:picked;
-    setActionBusy(star);
-    try{await postRating(value);
-      actionReceipt(value?`已评 ${value/RATING_STEP} 星`:'已取消评分',
-        {undo:()=>postRating(before)});
-    }catch(error){actionFailure('评分',error)}finally{setActionBusy(star,false)}});
-  const paintDetailFeedback=result=>{
-    Object.assign(it,{feedback:result.feedback,disposal:result.disposal,o_count:result.o_count});
-    const stage=$('#stage');if(!stage)return;
-    stage.querySelector('.dislike')?.setAttribute('aria-pressed',result.feedback==='dislike');
-    stage.querySelector('.seen')?.setAttribute('aria-pressed',result.feedback==='seen');
-    stage.querySelector('.dispose')?.setAttribute('aria-pressed',result.disposal==='trash');
-    if($('#oCount'))$('#oCount').textContent=result.o_count||0;
-  };
-  const postFeedback=async kind=>{
-    const result=await api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind})});
-    paintDetailFeedback(result);return result;
-  };
-  $('#stage').querySelectorAll('[data-kind]').forEach(b=>b.onclick=async()=>{
-    const kind=b.dataset.kind;
-    const before={feedback:it.feedback||null,disposal:it.disposal||null,o_count:it.o_count||0};
-    setActionBusy(b);
-    try{
-      const r=await postFeedback(kind);
-      const messages={dislike:r.feedback==='dislike'?'已标记不合口味':'已取消不合口味',
-        seen:r.feedback==='seen'?'已标记看过':'已取消看过',
-        dispose:r.disposal==='trash'?'已移入回收站':'已移出回收站',o:'已记录一次高潮'};
-      actionReceipt(messages[kind],{undo:async()=>{
-        if(kind==='o')await postFeedback('o-undo');
-        else if(kind==='dispose')await postFeedback('dispose');
-        else{
-          if(r.feedback)await postFeedback(r.feedback);
-          if(before.feedback)await postFeedback(before.feedback);
-        }
-        if(state.state==='ads')await loadCatalog();
-      }});
-      if(kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'){
-        disposeStage(true,false,{miniplayer:false});await loadCatalog();
-      }
-    }catch(error){actionFailure('操作',error)}finally{setActionBusy(b,false)}
-  });
-  const renderDetailTags=()=>{
-    const wrap=$('#detailTags');if(!wrap)return;
-    const byDisplay=new Map();
-    (it.tags||[]).filter(t=>!DURATION_TAGS.has(t.k)).forEach(t=>{
-      const key=foldName(tagLabel(t.k)),previous=byDisplay.get(key);
-      // 改过显示名的标签可能与另一条同名；优先保留本身就是规范显示名的那条。
-      if(!previous||foldName(t.k)===key&&foldName(previous.k)!==key)byDisplay.set(key,t)});
-    const visible=[...byDisplay.values()].slice(0,40);
-    wrap.innerHTML=visible.map(t=>`<span class="detailtag"><button class="tagfilter" data-tag="${esc(t.k)}">${esc(tagLabel(t.k))}</button><button class="tagremove" data-remove-tag="${esc(t.k)}" title="从此视频隐藏该标签" aria-label="删除标签 ${esc(tagLabel(t.k))}">${icon('x')}</button></span>`).join('')+
-      `<button class="tagplus" id="tagPlus" title="添加标签" aria-label="添加标签" aria-expanded="false">${icon('plus')}</button>
-       <div class="tagpicker" id="tagPicker" role="dialog" aria-label="添加标签" hidden>
-         <label class="tagpicksearch">${icon('search')}<input id="tagPickSearch" maxlength="80" placeholder="搜索或输入新标签" autocomplete="off"></label>
-         <div class="tagpickbody" id="tagPickBody"></div>
-       </div>`;
-    wrap.querySelectorAll('[data-tag]').forEach(s=>s.onclick=()=>{
-      commitContextFilter(filters=>{filters.tag=s.dataset.tag});
-      window.scrollTo({top:0,behavior:'smooth'})});
-    wrap.querySelectorAll('[data-remove-tag]').forEach(b=>b.onclick=async()=>{
-      const tag=b.dataset.removeTag;setActionBusy(b);
-      try{const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
-        if(!r.ok)throw new Error('标签未删除');
-        const old=(it.tags||[]).find(x=>foldName(x.k)===foldName(tag))||{k:tag,cat:'general'};
-        it.tags=(it.tags||[]).filter(x=>foldName(x.k)!==foldName(tag));renderDetailTags();
-        actionReceipt(`已删除标签「${tagLabel(tag)}」`,{undo:async()=>{
-          await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'add',tag})});
-          if(!(it.tags||[]).some(x=>foldName(x.k)===foldName(tag)))it.tags.push(old);
-          renderDetailTags();
-        }});
-      }catch(error){actionFailure('删除标签',error)}finally{setActionBusy(b,false)}});
-    const addTag=async tag=>{tag=tag.trim();if(!tag)return;
-      try{const r=await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'add',tag})});
-      if(r.ok){
-        if(!it.tags.some(x=>foldName(x.k)===foldName(tag)))it.tags.push({k:tag,cat:'general'});
-        try{const old=JSON.parse(localStorage.getItem('peach.recentTags')||'[]').filter(x=>foldName(x)!==foldName(tag));
-          localStorage.setItem('peach.recentTags',JSON.stringify([tag,...old].slice(0,12)))}catch(_e){}
-        renderDetailTags();actionReceipt(`已添加标签「${tagLabel(tag)}」`,{undo:async()=>{
-          await api('/api/item-tag',{method:'POST',body:JSON.stringify({id:it.id,operation:'remove',tag})});
-          it.tags=(it.tags||[]).filter(x=>foldName(x.k)!==foldName(tag));renderDetailTags();
-        }})
-      }}catch(error){actionFailure('添加标签',error)}
-    };
-    const plus=$('#tagPlus'),picker=$('#tagPicker'),search=$('#tagPickSearch'),body=$('#tagPickBody');
-    let detachOutside=null,activeIndex=-1;
-    const closePicker=()=>{dismissMenu(picker);plus.setAttribute('aria-expanded','false');
-      if(detachOutside){detachOutside();detachOutside=null}};
-    const candidates=()=>{const source=(facets&&facets.tags)||[],byName=new Map(source.map(x=>[foldName(x.k),x]));
-      let recent=[];try{recent=JSON.parse(localStorage.getItem('peach.recentTags')||'[]')}catch(_e){}
-      return {all:source,recent:recent.map(name=>byName.get(foldName(name))||{k:name,n:0})}};
-    const pickButton=x=>{const selected=(it.tags||[]).some(t=>foldName(t.k)===foldName(x.k));
-      return `<button class="tagpickitem${selected?' selected':''}" data-pick="${esc(x.k)}" aria-pressed="${selected}">
-        ${selected?icon('check'):icon('tags')}<span class="pickname">${esc(tagLabel(x.k))}</span><span class="pickcount">${(x.n||0).toLocaleString()}</span></button>`};
-    const renderPicker=()=>{const q=foldName(search.value),data=candidates();
-      const filtered=data.all.filter(x=>!q||foldName(x.k).includes(q)).slice(0,120);
-      const recent=q?[]:data.recent.filter((x,i,a)=>a.findIndex(y=>foldName(y.k)===foldName(x.k))===i).slice(0,12);
-      const exact=filtered.some(x=>foldName(x.k)===q);
-      body.innerHTML=(recent.length?`<section class="tagpicksection"><h4>最近使用</h4><div class="tagpickgrid">${recent.map(pickButton).join('')}</div></section>`:'')+
-        `<section class="tagpicksection"><h4>${q?'搜索结果':'全部标签'}</h4><div class="tagpickgrid">${filtered.map(pickButton).join('')}
-        ${q&&!exact?`<button class="tagpickitem" data-pick="${esc(search.value.trim())}">${icon('plus')}<span class="pickname">新建“${esc(search.value.trim())}”</span></button>`:''}</div></section>`;
-      activeIndex=-1;body.querySelectorAll('[data-pick]').forEach(b=>b.onclick=()=>{
-        const selected=b.getAttribute('aria-pressed')==='true',tag=b.dataset.pick;closePicker();if(!selected)addTag(tag)})};
-    search.oninput=e=>{if(e.isComposing)return;renderPicker()};
-    search.oncompositionend=renderPicker;
-    search.onkeydown=e=>{const options=[...body.querySelectorAll('[data-pick]')];
-      /* 选字那一下的回车是定字，不是「新建这个标签」——半截拼音会真的建成标签。 */
-      if(e.isComposing)return;
-      if(e.key==='Escape'){e.preventDefault();closePicker();plus.focus();return}
-      if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();if(!options.length)return;
-        activeIndex=(activeIndex+(e.key==='ArrowDown'?1:-1)+options.length)%options.length;
-        options.forEach((b,i)=>b.classList.toggle('active',i===activeIndex));options[activeIndex].scrollIntoView({block:'nearest'});return}
-      if(e.key==='Enter'){e.preventDefault();if(activeIndex>=0&&options[activeIndex])options[activeIndex].click();
-        else if(search.value.trim()){closePicker();addTag(search.value.trim())}}};
-    plus.onclick=()=>{presentMenu(picker);plus.setAttribute('aria-expanded','true');renderPicker();search.focus();
-      detachOutside=bindOutsideClose(plus,picker,closePicker)};
-  };
-  renderDetailTags();
-  $('#stage').querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
-    openEntity(b.dataset.entityKind,b.dataset.entityName));
-  $('#stage').querySelectorAll('[data-open-unowned]').forEach(b=>b.onclick=()=>openUnowned());
-  $('#stage').querySelectorAll('[data-open-region]').forEach(b=>b.onclick=()=>openRegion(b.dataset.openRegion));
-  const paintLater=value=>{it.watch_later=value;const button=$('#stageLater');if(!button)return;
-    button.setAttribute('aria-pressed',value);button.innerHTML=value?icon('check'):icon('bookmark-plus')};
-  $('#stageLater').onclick=async()=>{const button=$('#stageLater');setActionBusy(button);
-    try{const r=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
-      paintLater(r.watch_later);actionReceipt(r.watch_later?'已加入稍后看':'已移出稍后看',{undo:async()=>{
-        const restored=await api('/api/watch-later',{method:'POST',body:JSON.stringify({id:it.id})});
-        paintLater(restored.watch_later);
-      }});
-    }catch(error){actionFailure('更新稍后看',error)}finally{setActionBusy(button,false)}};
-  $('#betterVersion').onclick=async()=>{const b=$('#betterVersion'),wanted=b.getAttribute('aria-pressed')!=='true';
-    const before={wanted:!!it.better_version,reason:it.better_version_reason||''};setActionBusy(b);
-    const paintQuality=r=>{it.better_version=r.better_version;it.better_version_reason=r.better_version_reason;
-      if(!$('#betterVersion'))return;$('#betterVersion').setAttribute('aria-pressed',String(r.better_version));
-      $('#betterVersion').title=r.better_version?(r.better_version_reason||'已标记寻找更好版本'):'寻找高清、无水印或完整版'};
-    try{const r=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted})});paintQuality(r);
-      actionReceipt(r.better_version?'已标记寻找更好版本':'已取消寻找更好版本',{undo:async()=>{
-        const restored=await api('/api/quality-goal',{method:'POST',body:JSON.stringify({id:it.id,wanted:before.wanted,reason:before.reason})});paintQuality(restored);
-      }});
-    }catch(error){actionFailure('更新版本需求',error)}finally{setActionBusy(b,false)}};
-  const preferenceToggle=$('#preferenceToggle'),preferencePanel=$('#preferencePanel');
-  preferenceToggle.onclick=()=>{const open=preferencePanel.hidden;preferencePanel.hidden=!open;
-    preferenceToggle.setAttribute('aria-expanded',String(open));if(open)$('#likeReason').focus()};
-  const savePreference=async(options={})=>{
-    const btn=$('#savePreference'),like=$('#likeBtn'),stateText=$('#preferenceState');
-    const before={liked:!!it.liked,reason:it.like_reason||''};
-    setActionBusy(btn);
-    btn.innerHTML=`${spinnerHtml('正在提交喜爱理由')}<span>提交中…</span>`;stateText.textContent='保存中…';
-    const reason=$('#likeReason').value;
-    const liked=options.liked??(like.getAttribute('aria-pressed')==='true'||reason.trim().length>0);
-    const paintPreference=r=>{it.liked=r.liked;it.like_reason=r.like_reason;
-      if(!$('#likeBtn'))return;$('#likeBtn').setAttribute('aria-pressed',r.liked);
-      $('#likeBtn').setAttribute('aria-label',r.liked?'取消喜欢':'喜欢');
-      $('#preferenceToggle').dataset.hasReason=String(!!r.like_reason);
-      $('#likeReason').value=r.like_reason||''};
-    try{const r=await api('/api/preference',{method:'POST',body:JSON.stringify({id:it.id,liked,reason})});
-      paintPreference(r);
-      stateText.textContent='已保存';setTimeout(()=>{if(stateText.textContent==='已保存')stateText.textContent=''},1400);
-      actionReceipt(r.liked?'已保存喜欢偏好':'已取消喜欢',{undo:async()=>{
-        const restored=await api('/api/preference',{method:'POST',body:JSON.stringify({id:it.id,...before})});
-        paintPreference(restored);
-      }});
-    }catch(e){stateText.textContent='保存失败 · 请重试';actionFailure('保存喜欢偏好',e)}finally{
-      setActionBusy(btn,false);btn.innerHTML='<span>提交</span>'}
-  };
-  $('#likeBtn').onclick=()=>savePreference({liked:$('#likeBtn').getAttribute('aria-pressed')!=='true'});
-  $('#savePreference').onclick=savePreference;
-  const vv=$('#vid'),poster=detailPosterUrl(it);
-  if(poster)vv.poster=poster;
-  vv.addEventListener('play',()=>{if(!$('#stage').dataset.c){$('#stage').dataset.c='1';
-    api('/api/play',{method:'POST',body:JSON.stringify({id:it.id})})}});
-  if(it.play_seconds&&realDuration(it.duration)){
-    const rp=Math.min(it.play_seconds/realDuration(it.duration),1)*100;
-    $('#realTxt').textContent=rp.toFixed(0)+'%';
-    $('#realBar').style.width=rp.toFixed(1)+'%';
-  }
-  wireTelemetry(it,vv,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});
-  let stopAmbient=()=>{};
-  // 进小窗时播放器不销毁，氛围采样要在这里跟着舞台一起停，别对着已经拆掉的画布继续画。
-  onStageDispose(()=>stopAmbient());
-  const offlineGate=$('#offlineGate');
-  if(offlineGate){
-    const retry=$('#offlineRetry');
-    if(retry)retry.onclick=async()=>{
-      retry.disabled=true;
-      const status=await loadSourceStatus();
-      retry.disabled=false;
-      if(status[it.location]===false){retry.textContent='仍未挂载 · 再试';return}
-      openItem(it.id,false);            // 盘回来了就按正常路径重开，不在这里半路挂播放器
-    };
-  }
-  else if(onlineGate){
-    /* 直接进「已保存」这一档。openFollow(true) 会 route 回干净的 /follow 再照 URL
-       推导，所以状态要先写进 URL，光设全局会被推回未看。 */
-    $('#openSavedFollow').onclick=()=>{
-      followAuthors=new Set();followProviders=new Set();followTags=new Set();followWorks=new Set();followMediaView='videos';
-      followFilter='saved';route(followViewPath());openFollow(false)};
-  }
-  else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();const mounted=await mountDetailPlayer(it,vv,true);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)};
-  else{const mounted=await mountDetailPlayer(it,vv,appSettings.detailAutoplay);stopAmbient=mountPlayerAmbient(vv);mounted?.one?.('dispose',stopAmbient)}
-  vv.addEventListener('emptied',()=>stopAmbient(),{once:true});
-  buildBars();
-  scrollItemDetailIntoView();
-
-  const nextRow=$('#nrow');
-  if(nextRow)api('/api/related?id='+it.id+'&limit='+appSettings.relatedLimit).then(d=>{
-    if(!nextRow.isConnected)return; cache(d.items);
-    /* 没有可接着看的就整块拿掉，不留一个标题配空白。 */
-    if(!d.items.length){nextRow.closest('.next')?.remove();return}
-    /* 卡片是 `catalog-grid` island 的 items 模式：壳手上已经有这一批，岛只画卡。舞台清场时
-       经 `onStageDispose` 卸掉它。 */
-    onStageDispose(()=>releaseNextRow(nextRow));
-    mountIsland('catalog-grid',nextRow,{
-      mode:'items',variant:'next',items:d.items,helpers:gridHelpers,actions:gridActions,layout:catalogGridLayout(),
-      selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,revision:0,
-      cache,wireDrag,skeletonHtml:()=>'',
-    },{isCurrent:()=>nextRow.isConnected}).catch(error=>console.error(error));
-    /* 这一排每开一次详情就重新生成，启动时那次 `wireAllDrag()` 登记的是早已不在页面上的旧节点；
-       它又没有滚动条，不在这里登记，滚轮和拖动都推不动它。 */
-    wireDrag(nextRow);});
+  activeQueue=queue&&{kind:queue.kind,seedId:queue.seedId,playlistId:queue.playlistId};
+  pendingQueueRoute=queue&&queuePush
+    ? `${QUEUE_ROUTES[queue.kind]}/${queue.kind==='playlist'?queue.playlistId:queue.seedId}`:null;
+  if(push&&!queue)route('/item/'+id);
+  await mountStageIsland('item-detail',{
+    id,queue,relatedLimit:appSettings.relatedLimit>0?+appSettings.relatedLimit:0,
+    helpers:itemDetailHelpers,actions:itemDetailActions,
+    grid:{helpers:gridHelpers,actions:gridActions,cache},
+    layout:catalogGridLayout(),selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,
+  },surfaceToken(surfacePath()));
 }
-/* 卸掉接着看那一排的网格根。舞台清场、换页之前都要先做：`#stage` 整块重写之后，挂在旧节点
-   上的根不卸就一直活着。 */
-function releaseNextRow(row=$('#nrow')){
-  if(!row)return;
-  releaseHoverPreviews(row);unmountIsland(row);
+/* 关掉作品详情：退场动画、拆舞台，再把来处的地址、筛选与顶栏带回去。列表还在下面就不重画；
+   深链直接进的详情下面没有东西，这时才照地址重建。 */
+async function closeItemDetail(){
+  const restore=cloneBarsContext(detailReturnBarsContext);
+  const returnPath=detailReturnPath||'/',restoreSurface=detailReturnNeedsRestore;
+  await stageExit();
+  disposeStage(false,false,{miniplayer:false});detailReturnBarsContext=null;
+  barsContext=restore||{type:'home',filters:state};
+  route(returnPath);
+  if(restoreSurface)await restoreRoute();
+  else{buildBars();if(location.pathname==='/playlists')openPlaylists(false)}
 }
 
 function wireTelemetry(it,v,sel){

@@ -375,9 +375,9 @@ class PageSourceTests(unittest.TestCase):
     def test_every_small_surface_asks_for_the_icon(self):
         for snippet in (
             '/logo?studio=${encodeURIComponent(x.k)}&variant=icon',
-            '/logo?studio=${encodeURIComponent(item.name)}&variant=icon',
         ):
-            # 小位只有这两处厂牌标识；网盘来源角标走 `MEDIA_SOURCE_ICONS` 那份站标，
+            # 壳里的小位只剩这一处厂牌标识，作品详情出演区的厂牌格画在 React 岛里，由
+            # `frontend/test/react/item-detail.test.tsx` 钉住；网盘来源角标走 `MEDIA_SOURCE_ICONS` 那份站标，
             # 不进这条链。`.entityfavicon` 的模板不写 `data-studio`，图片回退是
             # 声明式的，不存在按 `img.dataset.studio` 换图的第三处。「不许漏 variant」
             # 由下面那条按行扫描的断言守。

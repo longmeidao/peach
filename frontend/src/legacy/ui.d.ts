@@ -20,6 +20,9 @@ export declare function indexSkeletonHtml(options: {
 export declare function checkboxHtml(inputAttrs?: string): string;
 export declare function loadingDotsHtml(label?: string, options?: { className?: string }): string;
 export declare function progressHtml(label: string, value: number, max?: number, options?:{variant?:'active'|'warning'|'error';stops?:{value:number;label:string}[]}): string;
+/** 全站菜单面板的开合口：进场去掉 `hidden`，退场放完 150ms 动效再藏起，之后调 `finish`。 */
+export declare function presentMenu(menu: HTMLElement): void;
+export declare function dismissMenu(menu: HTMLElement, finish?: () => void): void;
 export declare function confirmModal(options: {title: string; body: string; confirmLabel: string; cancelLabel?: string; danger?: boolean; onConfirm?: () => Promise<unknown>}): Promise<{confirmed: boolean; result?: unknown}>;
 
 export declare function selectFieldHtml(items: string[][], current: string,

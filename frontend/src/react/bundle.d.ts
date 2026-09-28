@@ -12,6 +12,7 @@ import type { EntityFilterProps } from './entity-filter/entity-filter';
 import type { EntityBodyProps } from './entity-body/entity-body';
 import type { FollowDetailProps } from './follow-detail/follow-detail';
 import type { FollowFeedProps } from './follow-feed/follow-feed';
+import type { ItemDetailProps } from './item-detail/item-detail';
 
 export type { IndexProps };
 export type { CatalogGridProps };
@@ -21,6 +22,7 @@ export type { EntityFilterProps };
 export type { EntityBodyProps };
 export type { FollowDetailProps };
 export type { FollowFeedProps };
+export type { ItemDetailProps };
 
 export interface AccessState { mode: 'open' | 'password' | 'legacy' | 'locked'; revision: string }
 
@@ -341,7 +343,7 @@ export interface CoverCropProps {
   coverUrl: string;
   /** 当前生效的取景框，没有就是 null。形状同接口的 `poster_box`。 */
   box: { x0: number; y0: number; x1: number; y1: number; px: number[] } | null;
-  /** 存好之后让宿主重画封面。遗留层传的是「重新进这一页」。 */
+  /** 存好之后让宿主重画封面：作品详情重取这一条，接口给的 `poster_box` 换成新框。 */
   onSaved(): void;
 }
 
@@ -389,7 +391,6 @@ export interface ReactPages {
   'catalog-grid': ReactPage<CatalogGridProps>;
   configuration: ReactPage<ConfigurationProps>;
   'configuration-summary': ReactPage<ConfigurationSummaryProps>;
-  'cover-crop': ReactPage<CoverCropProps>;
   'data-cleanup': ReactPage<DataCleanupProps>;
   duplicates: ReactPage<DuplicatesProps>;
   'entity-body': ReactPage<EntityBodyProps>;
@@ -399,6 +400,7 @@ export interface ReactPages {
   'follow-feed': ReactPage<FollowFeedProps>;
   'follow-manage': ReactPage<FollowManageProps>;
   index: ReactPage<IndexProps>;
+  'item-detail': ReactPage<ItemDetailProps>;
   'junk-queue': ReactPage<JunkQueueProps>;
   'library-processing': ReactPage<LibraryProcessingProps>;
   playlists: ReactPage<PlaylistsProps>;

@@ -1184,19 +1184,7 @@ class WebUiSourceTests(unittest.TestCase):
         `:has(~ .star:hover)` 选中它左边的几颗——把 DOM 倒过来写也能做到同一件事，
         代价是 Tab 与读屏顺序跟着倒过来，五颗星从「评为 5 星」开始念。
         """
-        self.assertPageContains("const RATING_STEP=20;")
-        self.assertPageContains(
-            """      ${it.location==='online'?'':`<span class="srcstate detailtitlestate" aria-live="polite"></span>`}
-      ${ratingHtml(it.rating)}
-      <div class="smeta mono" data-reveal-line>""")
-        self.assertPageContains(
-            "const value=picked===before?0:picked;")
-        self.assertPageContains(
-            "api('/api/feedback',{method:'POST',body:JSON.stringify({id:it.id,kind:'rate',value})})")
-        self.assertPageContains("{undo:()=>postRating(before)}")
-        # 标签是语义契约：撤销那一颗要说清它现在是几星，否则读屏只听到「星」。
-        self.assertPageContains(
-            "aria-label=\"${n===on?`取消评分（当前 ${n} 星）`:`评为 ${n} 星`}\"")
+        # 位置、送出的分值、撤销与每颗星的读屏名归作品详情岛：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains('<symbol id="i-star" viewBox="0 0 24 24">')
         self.assertPageContains('.ratingstars .star[data-on="true"] svg{fill:currentColor}')
         self.assertPageContains(
@@ -1427,8 +1415,10 @@ class WebUiSourceTests(unittest.TestCase):
         Geist 的 Spinner 规格把这一条写成「等待超过约 1 秒要配上说明这次在做什么的
         文案」，所以判据是动词形态：进行中的说法，不是动作的名字。
         """
-        source = (Path(__file__).resolve().parents[1] / "web/app.js").read_text(
-            encoding="utf-8")
+        # 壳和 React 岛都调它：作品详情的喜爱理由、定位源文件的忙态画在岛里。
+        root = Path(__file__).resolve().parents[1]
+        source = chr(10).join(path.read_text(encoding="utf-8") for path in (
+            root / "web/app.js", *sorted((root / "frontend/src").rglob("*.tsx"))))
         labels = re.findall(r"spinnerHtml\('([^']+)'\)", source)
         self.assertGreaterEqual(len(labels), 6, "调用点少得不像全站都在用")
         ongoing = ("正在", "中", "…")
@@ -1838,13 +1828,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const handleSearchInput=e=>{\n  if(e.isComposing)return;")
         self.assertPageContains("$('#q').oninput=handleSearchInput;")
         self.assertPageContains("$('#q').addEventListener('compositionend',handleSearchInput);")
-        self.assertPageContains("search.oninput=e=>{if(e.isComposing)return;renderPicker()};")
-        self.assertPageContains("search.oncompositionend=renderPicker;")
-        # 顶部搜索和标签选择器的键盘处理在最前面让位给输入法。
+        # 顶部搜索的键盘处理在最前面让位给输入法。作品详情的标签选择器在 React 里，
+        # 同一条判据由 `frontend/test/react/item-detail.test.tsx` 验收。
         self.assertPageLacks("$('#q').oninput=()=>{searchActive=-1;")
-        self.assertPageLacks("search.oninput=renderPicker;")
-        self.assertEqual(self.app_js.count("if(e.isComposing)return;"), 4,
-                         "四处：顶部搜索的输入与键盘、标签选择器的输入与键盘")
+        self.assertEqual(self.app_js.count("if(e.isComposing)return;"), 2,
+                         "两处：顶部搜索的输入与键盘")
 
     def test_route_titles_and_settings_dialog_manage_focus(self):
         # 标题跟着路由表走：每一屏的标签写在自己那条记录上，不再有第二份
@@ -2065,8 +2053,8 @@ class WebUiSourceTests(unittest.TestCase):
         传 `null` 压过默认。
         """
         self.assertPageContains("const hint=focus===undefined?(ref&&ref.avatar_focus)||null:focus;")
-        # 详情页的出镜者格子不走 avatarInner，自己把取景递进去。
-        self.assertPageContains("{id:item.id,hasImage:item.has_image,focus:item.avatar_focus})}")
+        # 详情页的出镜者格子不走 avatarInner，壳交给详情岛的那一格自己把取景递进去。
+        self.assertPageContains("faceHtml:ref=>entityFaceImg({id:ref.id,hasImage:ref.has_image,focus:ref.avatar_focus}),")
 
     def test_an_unlaid_out_frame_is_waited_for_instead_of_measured_as_zero(self):
         """图加载完时框还没布局，`load` 不会再来第二次。
@@ -2150,8 +2138,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const kind=ROUTE_ENTITIES[path.split('/')[1]],name=path.split('/').slice(2).join('/');")
         self.assertPageContains('showEntityLoading(kind,name);')
         self.assertPageContains('appSettings.detailAutoplay=appSettings.detailAutoplay!==false;')
-        self.assertPageContains('mountDetailPlayer(it,vv,appSettings.detailAutoplay)')
-        self.assertPageContains('mountDetailPlayer(item,video,appSettings.detailAutoplay,{')
+        self.assertPageContains('mountDetailPlayer(item,video,autoplay??appSettings.detailAutoplay,options)')
         self.assertPageContains('class="ptoggle" type="checkbox" id="detailAutoplaySetting"')
 
     def test_local_assets_get_their_sidecar_subtitles_as_closed_text_tracks(self):
@@ -2339,31 +2326,23 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_detail_identity_groups_by_kind_with_the_label_on_top(self):
         # 逐行一个名字在共演作品上会把整个侧栏撑满，左侧还重复一列标签。
-        self.assertPageContains("const idGroup=(label,kind,list,extra='')=>list.length")
-        self.assertPageContains('<section class="idgroup idgroup-${kind}">')
-        self.assertPageContains('<h5 class="idlabel">${label}</h5>')
+        # 分组与组标题归作品详情岛（`frontend/test/react/item-detail.test.tsx`）；出镜者那一组的
+        # 标签跟着作品形态走，由壳的 performerLabel 给。
         self.assertPageContains(".idrow{display:flex;flex-wrap:wrap")
-        self.assertPageContains('<div class="identityprimary">${primaryIdentity}</div>')
         self.assertPageContains(".identityprimary{display:flex;flex-wrap:wrap;gap:14px 26px")
         self.assertPageContains(".identityprimary>.idgroup{width:max-content;max-width:100%}")
-        # 出镜者标签跟着作品形态走，不再写死「女优」——见 performerLabel。
-        self.assertPageContains("idGroup(performerLabel(it),'performer',castList,")
-        self.assertPageContains("idGroup('厂牌','studio',studioList)")
+        self.assertPageContains("performerLabel:it=>performerLabel(it),")
         self.assertPageLacks("const performerName=performerRef?.name")
         self.assertPageLacks(".identityrow", "旧的逐行布局必须整段删掉")
 
     def test_detail_only_links_canonical_entities(self):
         """旧标签可以作为显示回退，但不得伪造一个不存在的资料页。"""
-        self.assertPageContains("if(!item.id)return `<span class=\"idcell")
-        self.assertPageContains("const creatorList=(refs.creator||[])")
-        self.assertPageContains("const seriesList=(refs.series||[])")
+        # 没有实体 id 的只画成文字、不给入口：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains(".idcell:not(.entitylink):not(.unownedlink){cursor:default}")
         self.assertPageContains(".idcell.entitylink:hover .idface")
 
     def test_detail_series_is_a_plain_icon_link_not_a_tag_pill(self):
-        self.assertPageContains('class="serieslink entitylink" data-entity-kind="series"')
-        self.assertPageContains('<div class="seriesrows">${list.map(seriesCell).join(\'\')}</div>')
-        self.assertPageContains("const content=`${icon('tags')}<span>${esc(item.name)}</span>`")
+        # 系列一行是带图标的链接，不是标签胶囊：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains(".serieslink,.serieslink.entitylink{display:flex;width:100%")
         self.assertPageContains("white-space:normal;overflow-wrap:anywhere")
         self.assertPageContains("button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}")
@@ -2374,12 +2353,9 @@ class WebUiSourceTests(unittest.TestCase):
     def test_mutating_detail_actions_share_terminal_toasts_and_undo(self):
         self.assertPageContains("const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})")
         self.assertPageContains("action:undo?{label:'撤销'")
-        self.assertPageContains("if(kind==='o')await postFeedback('o-undo')")
-        self.assertPageContains("actionReceipt(messages[kind],{undo:async()=>")
+        # 作品详情侧栏各键的回执与撤销在岛里：`frontend/test/react/item-detail.test.tsx`。
+        self.assertPageContains("toast:(message,{undo}={})=>actionReceipt(message,{undo}),")
         self.assertPageContains("actionReceipt(r.watch_later?'已加入稍后看':'已移出稍后看'")
-        self.assertPageContains("actionReceipt(r.better_version?'已标记寻找更好版本':'已取消寻找更好版本'")
-        self.assertPageContains("actionReceipt(`已删除标签「${tagLabel(tag)}」`,{undo:async()=>")
-        self.assertPageContains("actionReceipt(r.liked?'已保存喜欢偏好':'已取消喜欢'")
         self.assertPageContains("if(kind==='o')await post('o-undo')")
 
     def test_toast_callers_declare_whether_they_pass_text_or_html(self):
@@ -2479,9 +2455,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "return it.location==='online'&&it.follow_item_id")
         self.assertPageContains("const proxied=followStreamSource(it);")
-        self.assertPageContains("const onlineGated=online&&!it.follow_item_id;")
-        self.assertPageContains("if(it.location==='online'&&it.follow_item_id){")
-        self.assertPageContains('await openFollowDetail(it.follow_item_id,false,null,true)')
+        # 反查得到就转关注详情、反查不到才拦：判据在作品详情岛（`frontend/test/react/item-detail.test.tsx`），
+        # 壳接住转向。
+        self.assertPageContains("if(to.kind==='follow'){followDetailReturnPath=detailReturnPath||'/';"
+                                "void openFollowDetail(to.id,false,null,true);return}")
         self.assertPageContains("if(location.pathname!=='/follow'){await restoreRoute();return}")
         self.assertPageLacks("这条内容从关注候选保存；媒体与原始页面在关注详情中查看。")
 
@@ -2490,23 +2467,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('<symbol id="i-download"')
 
     def test_detail_like_reason_is_an_icon_disclosure_without_idle_explanation(self):
-        self.assertPageContains('id="preferenceToggle" aria-label="喜爱理由"')
-        self.assertPageContains('id="preferencePanel" hidden')
-        self.assertPageContains("preferenceToggle.onclick=()=>{const open=preferencePanel.hidden")
-        self.assertPageContains('placeholder="为什么喜欢？"')
-        self.assertPageContains('class="geist-button primary savepreference"')
-        self.assertPageContains('aria-label="提交喜爱理由"><span>提交</span></button>')
-        self.assertPageContains("setActionBusy(btn)")
-        self.assertPageContains("spinnerHtml('正在提交喜爱理由')")
-        self.assertPageContains("setActionBusy(btn,false);btn.innerHTML='<span>提交</span>'")
+        # 图标键开合理由框、提交时的忙态：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains('.preference-foot>span{margin-right:auto')
         self.assertPageLacks('aria-label="保存喜爱理由">${icon(\'check\')}</button>')
         self.assertPageLacks("仅保存在本机")
         self.assertPageLacks("回收站中的文件仍保留，清空回收站后才会永久删除。")
 
     def test_detail_progress_uses_only_titles_and_percentages(self):
-        self.assertPageContains('<span>离开位置</span><span id="ratioTxt">0%</span>')
-        self.assertPageContains('<span>真实观看</span><span id="realTxt">0%</span>')
+        # 两条读数的标题与初值画在作品详情岛里，壳的遥测按 id 改写它们。
+        self.assertPageContains("wireTelemetry(item,video,{watched:'#watched',mark:'#mark',ratio:'#ratioTxt'});")
         self.assertPageContains("if(t)t.textContent=(r*100).toFixed(0)+'%'")
         self.assertPageContains("rr.textContent=rp.toFixed(0)+'%'")
         self.assertPageLacks('class="ticks mono"')
@@ -2706,22 +2675,14 @@ class WebUiSourceTests(unittest.TestCase):
         4566 部作品没有任何署名人。写成一行「归属　未归属」，标签和值念的是同一个
         词，读完就没有下一步；写成入口，它和女优、厂牌一样点得开、筛得出、清得掉。
         """
-        # 详情页：和女优组同一个槽位、同一种版式，不是另起一行说明。
-        self.assertPageContains('<section class="idgroup idgroup-unowned">'
-                                '<h5 class="idlabel">归属</h5>')
-        self.assertPageContains('<button class="idcell unownedlink" type="button" data-open-unowned')
-        self.assertPageContains("const unowned=!castList.length&&!creatorList.length"
-                                "&&!(it.creator||'').trim();")
-        self.assertPageContains("(unowned?unownedGroup")
-        self.assertPageContains('<div class="detailidentity">${identityRows}</div>')
+        # 详情页和女优组同一个槽位、同一种版式，不是另起一行说明：`frontend/test/react/item-detail.test.tsx`。
         # 卡片：署名位上的「未归属」也点得开。
         self.assertPageContains(':linked?`<button class="who unownedlink" type="button" data-open-unowned>'
                                 '${esc(who)}</button>`')
         # 三个表面共用一个落点，筛选写在 state.owner 上。
         self.assertPageContains("function openUnowned(){")
         self.assertPageContains("resetHomeState();state.owner='none';")
-        self.assertPageContains("$('#stage').querySelectorAll('[data-open-unowned]')"
-                                ".forEach(b=>b.onclick=()=>openUnowned());")
+        self.assertPageContains("openUnowned:()=>openUnowned(),")
         self.assertPageContains("else openUnowned()};")
         self.assertPageLacks("else if(it.code){state.q=it.code",
                              "拿番号去搜只能搜回这一条自己，那不是「同类」")
@@ -3123,8 +3084,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("target.classList.remove('skeleton-awaiting');")
         self.assertPageContains("if(container.querySelector('.skeleton-awaiting')){write();return}")
         self.assertPageContains(".skeleton-awaiting{visibility:hidden}")
-        # 独立于整页骨架的计数、详情与推荐区域也必须经过同一个门槛。
-        for call in ("fitSkeleton(count);", "fitSkeleton(stage);", "fitSkeleton($('#nrow'));"):
+        # 独立于整页骨架的计数与详情也必须经过同一个门槛；「接着看」那一排由作品详情岛调同一个
+        # `fitSkeleton`。
+        for call in ("fitSkeleton(count);", "fitSkeleton(stage);"):
             self.assertPageContains(call)
 
     def test_unmatched_routes_do_not_leave_an_orphan_skeleton(self):
@@ -3378,17 +3340,8 @@ class WebUiSourceTests(unittest.TestCase):
     def test_every_identity_cell_can_carry_its_own_portrait(self):
         # 人物格走和顶栏圆头像同一个 entityFaceImg；这一格没有代表作头像可退，
         # 装了实体图才出 `<img>`，否则就是首字母垫底。
-        self.assertPageContains("? `<span>${esc(item.name.slice(0,1))}</span>${entityFaceImg(")
-        self.assertPageContains("{id:item.id,hasImage:item.has_image,focus:item.avatar_focus})}")
-        self.assertPageContains(
-            '${item.has_logo?`<img src="/logo?studio=${encodeURIComponent(item.name)}&variant=icon"')
-
-    def test_large_casts_stay_in_the_dom_behind_one_expander(self):
-        # 收起的格子必须留在 DOM 里，展开只是取消 hidden，不重新请求也不丢身份。
-        self.assertPageContains("const CAST_SHOWN=8")
-        self.assertPageContains("const castOverflow=Math.max(0,castList.length-CAST_SHOWN)")
-        self.assertPageContains("还有 ${castOverflow} 位")
-        self.assertPageContains("querySelectorAll('[data-castoverflow]').forEach(row=>row.hidden=false)")
+        # 厂牌那一格装了标识才出 `<img>`：`frontend/test/react/item-detail.test.tsx`。
+        self.assertPageContains("faceHtml:ref=>entityFaceImg({id:ref.id,hasImage:ref.has_image,focus:ref.avatar_focus}),")
 
     def test_playback_keys_reach_both_the_detail_player_and_immerse(self):
         # 两边的 Video.js 读的都是原生 video 元素，沉浸模式拉不到播放器脚本时还是裸 video，
@@ -3526,22 +3479,18 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(needle, telemetry,
                           f"详情遥测缺少 {needle}：离开详情后定时器还在上报")
 
-        outside = app[app.index("function bindOutsideClose("):]
-        outside = outside[:outside.index("\nfunction disposeStage(")]
-        self.assertIn("document.addEventListener('pointerdown',handler,true)", outside)
-        self.assertIn("document.removeEventListener('pointerdown',handler,true)", outside)
-        self.assertIn("onStageDispose(detach)", outside,
-                      "浮层没被关掉就离开详情时，要有舞台销毁兜底")
-        self.assertPageContains("detachOutside=bindOutsideClose(plus,picker,closePicker)")
+        # 标签选择器在作品详情岛里：点外面就收起的那条 document 监听随组件卸载撤掉，
+        # 舞台销毁先卸岛。
 
     def test_detail_close_disposes_playback_source(self):
         self.assertPageContains("function disposeStage")
         self.assertPageContains("video.pause();video.removeAttribute('src');video.load();video.remove()")
-        self.assertPageContains("document.body.classList.remove('detail-open');current=null;activeQueue=null")
+        self.assertPageContains("document.body.classList.remove('detail-open');activeQueue=null;pendingQueueRoute=null;")
         self.assertPageContains("detailOriginAnchor=null;detailOriginAbove=false;detailReturnNeedsRestore=false")
         self.assertPageContains("scheduleStickySurfaces();")
-        self.assertPageContains("const closeDetail=async()=>{const restore=cloneBarsContext(detailReturnBarsContext)")
-        self.assertPageContains("$('#closeStage').onclick=closeDetail")
+        # 关闭键画在作品详情岛里，交回壳的 `close`。
+        self.assertPageContains("close:()=>closeItemDetail(),")
+        self.assertPageContains("async function closeItemDetail(){\n  const restore=cloneBarsContext(detailReturnBarsContext);")
         self.assertPageContains("function cancelDetailStream()")
         self.assertPageContains("/api/stream-cancel?session=")
         self.assertPageContains("keepalive:true")
@@ -3559,11 +3508,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 会在同一个 flex 容器里各占一半。点击入口后再取消 hidden、移除入口并自动播放。
         self.assertPageContains(".vwrap>video[hidden]{display:none}")
         self.assertPageContains(".gate{aspect-ratio:16/9;width:100%")
-        # 挂播放器现在要等 video.js 到位，入口回调因此是 async。
-        self.assertCode(
-            "else if(g)g.onclick=async()=>{vv.hidden=false;g.remove();"
-            "const mounted=await mountDetailPlayer(it,vv,true)"
-        )
+        # 点了说明才挂播放器并自动播放：`frontend/test/react/item-detail.test.tsx`。
 
     def test_detail_uses_pinned_videojs_and_authoritative_duration(self):
         self.assertPageContains('/vendor/videojs/8.24.1/video.min.js')
@@ -3577,7 +3522,7 @@ class WebUiSourceTests(unittest.TestCase):
         海报层，开播即收，详情侧不另写一套收尾逻辑。
         """
         self.assertPageContains("function detailPosterUrl(it){")
-        self.assertPageContains("const vv=$('#vid'),poster=detailPosterUrl(it);")
+        self.assertPageContains("const poster=detailPosterUrl(item);\n    if(poster)video.poster=poster;")
         self.assertPageContains("poster:options.poster||detailPosterUrl(it)")
 
     def test_detail_poster_follows_the_jav_image_preference(self):
@@ -5068,7 +5013,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_online_assets_use_rss_and_open_the_saved_follow_surface(self):
         self.assertPageContains("online:icon('rss')")
         self.assertPageLacks("online:icon('globe')")
-        self.assertPageContains('id="onlineGate"')
+        # 反查不到关注条目的在线资产由作品详情岛画说明块：`frontend/test/react/item-detail.test.tsx`。
         # 直达「已保存」这一档。筛选现在由 URL 驱动，光设全局会被 openFollow 照
         # URL 推回未看，所以状态必须先写进 URL 再重取。
         self.assertPageContains("followFilter='saved';route(followViewPath());openFollow(false)}")
@@ -5115,7 +5060,6 @@ class WebUiSourceTests(unittest.TestCase):
         """详情背景与滚动内容分层，在线占位、图片和合集都不会再露出半截底色。"""
         self.assertPageContains(".side{min-width:0;min-height:0;align-self:stretch")
         self.assertPageContains(".sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh")
-        self.assertPageContains('<div class="side"><div class="sidecontent">')
         self.assertPageContains(".sidecontent{height:auto;max-height:none}")
 
     def test_state_pages_ask_for_facets_narrowed_to_that_state(self):
@@ -5391,7 +5335,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("throw new Error(requestErrorMessage(detail,response.status))")
         self.assertPageContains("catch(error){setActionBusy(button,false);throw error}")
         self.assertPageContains("actionFailure('操作',error)")
-        self.assertPageContains("kind==='dispose'&&r.disposal==='trash'&&state.state==='ads'")
+        # 作品详情里移进回收站之后，「垃圾文件」那一档把它从列表里拿掉。
+        self.assertPageContains("if(state.state!=='ads')return;\n    if(!undo&&disposal!=='trash')return;")
 
     def test_junk_files_wait_on_a_structural_skeleton_not_loading_dots(self):
         """垃圾文件页等的是一屏同质卡片，不是后台任务的进度。
@@ -6178,19 +6123,6 @@ class WebUiSourceTests(unittest.TestCase):
         rule = stylesheet_source().split(".glowsetting{", 1)[1].split("}", 1)[0]
         self.assertIn("padding:0 10px var(--glowrow-pad) 0", rule)
 
-    def test_detail_deduplicates_identity_and_supports_tag_editing(self):
-        self.assertPageContains("const identitySeen=new Set()")
-        self.assertPageContains("data-remove-tag")
-        self.assertPageContains("/api/item-tag")
-        self.assertPageContains('class="tagplus"')
-
-    def test_tag_picker_supports_search_recent_selection_and_keyboard(self):
-        self.assertPageContains('class="tagpicker"')
-        self.assertPageContains("peach.recentTags")
-        self.assertPageContains("最近使用")
-        self.assertPageContains("e.key==='ArrowDown'||e.key==='ArrowUp'")
-        self.assertPageContains("e.key==='Escape'")
-
     def test_source_icons_are_visible_in_detail_and_list_badges(self):
         self.assertPageContains(".srcbig svg{stroke:currentColor;fill:none")
         self.assertPageContains("local:icon('hard-drive')")
@@ -6567,15 +6499,14 @@ class WebUiSourceTests(unittest.TestCase):
         # 进场起手是 scale(.95)，定位量框只能读 offsetWidth。
         self.assertCode("const anchor=toggle.getBoundingClientRect(),width=menu.offsetWidth;")
         self.assertCode("event.stopPropagation();setOpen(!open)")
-        # wireAnchoredMenu 之外自己开合的四个面板也从同一个口进出。
+        # wireAnchoredMenu 之外自己开合的面板也从同一个口进出；作品详情的标签选择器在岛里调
+        # 同一对 presentMenu／dismissMenu。
         self.assertPageContains("if(menu)dismissMenu(menu,()=>{menu.innerHTML=''});")
         self.assertPageContains("innerWidth-menu.offsetWidth-8")
         self.assertPageContains("function hideSearchMenu(){dismissMenu($('#searchMenu'))}")
         self.assertPageContains("if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();")
         self.assertPageContains("const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);")
         self.assertPageContains("if(opening)presentMenu(addMenu);else dismissMenu(addMenu);")
-        self.assertPageContains("const closePicker=()=>{dismissMenu(picker);")
-        self.assertPageContains("plus.onclick=()=>{presentMenu(picker);")
         self.assertPageLacks("$('#searchMenu').hidden=true")
 
     def test_board_batch_three_aligns_ranks_buttons_and_the_sidebar_switcher(self):
@@ -6773,14 +6704,12 @@ class WebUiSourceTests(unittest.TestCase):
     def test_jav_detail_keeps_official_tags_visually_neutral(self):
         # 「日文标题优先」这条已经改成拿真输入跑真函数验收，见
         # test_web_js.test_official_title_prefers_the_japanese_one。
-        self.assertPageContains('wrap.innerHTML=visible.map(t=>`<span class="detailtag">')
+        # 官方与非官方标签画成同一种 `.detailtag`、按显示名去重：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageLacks("<small>官方</small>")
         self.assertPageLacks(".detailtag.official{")
         # 左半边点下去是按这个标签筛选，和右边的删除键一样得有悬停反馈；
         # 它没有选中态，照孤立按钮的写法抬填充。
         self.assertPageContains(".detailtag .tagfilter:hover{background:var(--hover);color:var(--ink)}")
-        self.assertPageContains("const byDisplay=new Map()")
-        self.assertPageContains("foldName(t.k)===key&&foldName(previous.k)!==key")
 
     def test_drawer_filters_follow_entity_and_detail_context(self):
         self.assertPageContains('function buildDrawerNavigation()')
@@ -6795,7 +6724,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("facetParams.set('scope_kind',context.kind)")
         self.assertPageContains("facetParams.set('scope_name',context.name)")
         self.assertPageContains("facetParams.set('id',String(context.id))")
-        self.assertPageContains("barsContext={type:'item',id:it.id,filters:returnBars?.type==='entity'")
+        self.assertPageContains("barsContext={type:'item',id:item.id,filters:returnBars?.type==='entity'")
         self.assertPageContains("detailReturnBarsContext=returnBars")
         # 实体筛选走实体集合自己的更新路径；旧实现调用 load(true) 会把 #index 隐藏并重建首页。
         self.assertPageContains("updateEntityCollection(barsContext.kind,barsContext.name,filters,true)")
@@ -7082,8 +7011,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const load=eager?'eager':'lazy';")
         self.assertCode('''loading="${eager?'eager':'lazy'}"''')
         self.assertPageContains("const mixRelatedCache=new Map();")
-        self.assertPageContains(
-            "Promise.all([api('/api/item?id='+seedId),mixRelated(seedId)])")
+        # 作品详情岛取 Mix 队列也走壳的这一份缓存。
+        self.assertPageContains("mixRelated:seedId=>mixRelated(seedId),")
         # 队列长度不能被悬浮预取剪短：两边用同一个 limit。
         self.assertPageContains("api('/api/related?id='+seedId+'&limit=28')")
 
@@ -7106,21 +7035,15 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_mix_and_persistent_playlists_share_the_routed_side_queue(self):
         self.assertPageContains(".mixstack::before,.mixstack::after")
-        self.assertPageContains("async function openMix(seedId,itemId=seedId,push=true,anchor=null)")
-        self.assertPageContains("route(`/mix/${seedId}/${itemId}`)")
-        self.assertPageContains('class="mixqueue"')
-        self.assertPageContains('class="mixitem ${x.id===itemId?\'current\':\'\'}"')
-        self.assertPageContains("data-queue-item")
+        # 队列侧栏、续播位置、拖动排序与保存 Mix 归作品详情岛：`frontend/e2e/item-detail.test.ts`。
+        self.assertPageContains("const QUEUE_ROUTES={mix:'/mix',parts:'/parts',editions:'/editions',playlist:'/playlists'};")
+        self.assertPageContains(
+            "function openMix(seedId,itemId=seedId,push=true,anchor=null){return openQueue('mix',seedId,itemId,push,anchor)}")
         self.assertPageContains("async function openPlaylists(push=true)")
         self.assertPageContains("const surface=claimSurface('/playlists')")
-        self.assertPageContains("async function openPlaylist(playlistId,itemId=null,push=true)")
-        self.assertPageContains("route(`/playlists/${playlistId}/${chosen}`)")
-        self.assertPageContains("action:'progress'")
-        self.assertPageContains("action:'reorder'")
+        self.assertPageContains(
+            "function openPlaylist(playlistId,itemId=null,push=true){return openQueue('playlist',playlistId,itemId,push)}")
         self.assertPageContains("action:'remove'")
-        self.assertPageContains("data-save-mix")
-        self.assertPageContains("source_kind:'mix'")
-        self.assertPageContains('id="addPlaylist"')
         # 一次能勾好几份列表：行前是勾选框，右下角那个保存才写库。
         self.assertPageContains("data-pick-playlist")
         self.assertPageContains("formModal({")
@@ -7133,12 +7056,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("/api/trash/empty")
 
     def test_multipart_releases_use_a_distinct_group_card_and_queue(self):
-        self.assertPageContains("async function openParts(seedId,itemId=seedId,push=true,anchor=null)")
-        self.assertPageContains("api('/api/parts?id='+seedId)")
-        self.assertPageContains("title:`分卷 · ${group.title}`")
-        self.assertPageContains("route(`/parts/${seedId}/${chosen}`)")
-        self.assertPageContains("queue.kind==='parts'?`${queue.items.length} 卷`")
-        self.assertPageContains("queueContext.kind==='parts'?openParts")
+        # 分卷队列的取数、卷数与队列里换一条归作品详情岛：`frontend/test/react/item-detail.test.tsx`
+        # 与 `frontend/e2e/item-detail.test.ts`。
+        self.assertPageContains(
+            "function openParts(seedId,itemId=seedId,push=true,anchor=null){return openQueue('parts',seedId,itemId,push,anchor)}")
         self.assertRoute('/parts/:seed/:item', "openParts(params.seed,params.item,push)")
         self.assertPageLacks("Mix · ${group.title}")
 
@@ -7174,8 +7095,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['#tagScroll','#tagbar .filterscroll','#nrow','#count']"
                                 ".forEach(s=>wireDrag($(s)))")
         self.assertPageContains("document.querySelectorAll('.tier,.srow').forEach(wireDrag)")
-        # 「接着看」每开一次详情就重建，启动时的登记落在旧节点上；推荐结果渲染完要当场再登记一次。
-        self.assertPageContains("wireDrag(nextRow);});")
+        # 「接着看」每开一次详情就重建，启动时的登记落在旧节点上；作品详情岛画出那一排时经壳
+        # 交来的 `wireDrag` 当场再登记一次。
+        self.assertPageContains("wireDrag:el=>wireDrag(el),")
         self.assertPageContains(".nrow{display:flex;gap:11px;overflow-x:auto;overflow-y:hidden;overscroll-behavior-inline:contain;")
         # 同一个元素宽屏不溢出、窄屏才溢出，不判溢出就会在宽屏抢走滚轮和拖动。
         self.assertPageContains("event.button!==0||el.scrollWidth-el.clientWidth<=1")
@@ -7215,10 +7137,10 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".javedition.subtitle{color:var(--ink-2)}")
         self.assertPageContains(".javedition.uncensored{color:var(--meter)}")
         self.assertPageContains(".javedition.cracked{color:var(--drop)}")
-        self.assertPageContains("<span class=\"stitletext\" data-detail-title>${srcBadge(it.location,it.cost,'srcbig')}"
-                                "${javTitleHtml(it)}")
+        # 作品详情的标题与队列行由壳交给详情岛的这两个函数画。
+        self.assertPageContains("titleHtml:it=>javTitleHtml(it),")
         self.assertPageContains("$('#tokTitle').textContent=javDisplayName(it)")
-        self.assertPageContains("<b data-middle-truncate>${esc(javDisplayName(x))}</b>")
+        self.assertPageContains("displayName:it=>javDisplayName(it),")
 
     def test_remote_hover_previews_do_not_stream_full_media(self):
         self.assertPageContains("if(it.location!=='local')")
@@ -7287,7 +7209,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(stage.open)stage.append(menu);")
         self.assertPageContains("max-height:calc(100dvh - 32px)")
         self.assertPageLacks("stage.scrollIntoView(")
-        self.assertCode("buildBars();\n  scrollItemDetailIntoView();")
+        self.assertCode("if(stageIslandHost===host&&host.isConnected)scrollItemDetailIntoView();")
 
     def test_catalog_skeleton_collects_the_bottom_loading_dots(self):
         """一屏只能有一段等待态：铺骨架和收哨兵是同一件事的两半。
@@ -7325,9 +7247,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(".skeletondashhero{min-height:330px;grid-template-columns:minmax(260px,36%) minmax(0,1fr)}")
         self.assertPageContains("$('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…')")
         self.assertPageContains("pageSkeletonHtml('正在读取推荐',{cards:true,className:'related-skeleton'})")
-        # 「接着看」没有内容就整块不出现：推荐条数设为 0 时不生成，取回空列表时整块拿掉。
-        self.assertPageContains("${queueContext||!(appSettings.relatedLimit>0)?'':`<div class=\"next\"><h3>接着看</h3>")
-        self.assertPageContains("if(!d.items.length){nextRow.closest('.next')?.remove();return}")
+        # 「接着看」没有内容就整块不出现（推荐条数设为 0、取回空列表、开着队列）：
+        # `frontend/test/react/item-detail.test.tsx`。
         self.assertPageLacks("'<span class=\"empty\">暂无</span>'")
         self.assertPageLacks("count.innerHTML=`${spinnerHtml(label)}<span>载入中…</span>`")
         self.assertPageLacks("function showItemDetailLoading(anchor,above)")
@@ -7406,7 +7327,6 @@ class WebUiSourceTests(unittest.TestCase):
             "请求中的按钮必须保持可聚焦，不能再把 native disabled 和 busy 混用",
         )
         self.assertPageContains("setActionBusy(batch)")
-        self.assertPageContains("setActionBusy(btn)")
         # React 档里同一件事由 `busyProps()` 发：同样是 aria-busy 加 aria-disabled，
         # 按钮留在 tab 序列上。
         self.assertIn("{...busyProps(rowHandlers.busy)}",
@@ -7690,7 +7610,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_climax_uses_pinned_healthicons_symbol(self):
         self.assertPageContains('id="i-sperm"')
-        self.assertPageContains("icon('sperm')")
 
     def test_settings_own_useful_experience_preferences(self):
         self.assertPageContains("const DEFAULT_SETTINGS={batchSize:60,defaultSort:'seed'")
@@ -7715,7 +7634,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 不各留一套。
         self.assertPageContains("export function wireDragReorder(root,{selector,attribute,onMove}={})")
         self.assertPageContains("wireDragReorder(root,{selector:'[data-sidebar-row]',attribute:'data-sidebar-row',")
-        self.assertPageContains("wireDragReorder(list,{selector:'[data-queue-row]',attribute:'data-queue-row',")
+        self.assertPageContains("wireDragReorder:(root,options)=>wireDragReorder(root,options),")
         self.assertPageContains("function wireNavigationDrag(root){")
         self.assertPageContains("wireNavigationDrag($('#edge'))")
         self.assertPageContains("wireNavigationDrag($('#drawer').querySelector('.dnav'))")
@@ -7897,10 +7816,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function mountPlayerAmbient(video)")
         self.assertPageContains(".stage:not(.ambient-on) .ambientcanvas{display:none}")
         self.assertPageContains("视频 ID / 会话")
-        self.assertPageContains("/api/quality-goal")
-        self.assertPageContains('id="betterVersion"')
+        # 「寻找更好版本」键与它的写入、撤销：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageLacks("prompt('要找哪种更好版本？")
-        self.assertPageContains("body:JSON.stringify({id:it.id,wanted})")
         self.assertPageLacks('id="closeStage">收起')
 
     def test_ambient_mode_repaints_from_a_paused_frame_when_switched_back_on(self):
@@ -8048,33 +7965,18 @@ class WebUiSourceTests(unittest.TestCase):
         被裁掉，所以那排键不行内跟在文字后面。折叠态量 scrollHeight 判溢出，没溢出就不画
         展开键；能折的标题文字本身也接点击，选中文字那一下不算。
         """
-        self.assertPageContains(
-            '<div class="detailtitle"><div class="stitle" data-reveal-line><span class="stitletext" data-detail-title>'
-            '${srcBadge(it.location,it.cost,\'srcbig\')}${javTitleHtml(it)}${partLabelBadge(it,queueContext)}</span>'
-            '<span class="srctools detailtitletools"><button type="button" data-title-fold hidden '
-            'aria-expanded="false" aria-label="展开标题" title="展开完整标题">${icon(\'chevron-down\')}</button>'
-            '${it.has_cover&&it.code?\'<span data-cover-crop></span>\':\'\'}'
-            '${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span></div></div>')
+        # 标题与那排键的结构、量溢出、展开收起与点标题文字：作品详情岛，
+        # `frontend/e2e/item-detail.test.ts` 在真浏览器里量。
         self.assertPageContains(".stitletext[data-foldable]{cursor:pointer}")
-        self.assertCode("titleText.toggleAttribute('data-foldable',!titleFold.hidden);")
-        self.assertCode("if(titleFold.hidden||String(getSelection()||''))return;")
         self.assertPageContains(
             ".stitletext{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;overflow:hidden}")
         self.assertPageContains(".stitletext[data-expanded]{display:block;-webkit-line-clamp:unset;line-clamp:unset}")
         self.assertPageContains(".detailtitletools{display:flex;margin:6px 0 0;flex-wrap:nowrap}")
         self.assertPageContains(".detailtitletools:not(:has(button:not([hidden]))){display:none}")
         self.assertPageContains(".detailtitle .stitle{min-width:0;margin:0;line-height:1.75}")
-        self.assertCode("if(!expanded)titleFold.hidden=titleText.scrollHeight<=titleText.clientHeight+1;")
-        self.assertCode("titleFold.setAttribute('aria-label',expanded?'收起标题':'展开标题');")
-        self.assertCode("titleFold.querySelector('use').setAttribute('href',expanded?'#i-chevron-up':'#i-chevron-down');")
-        self.assertCode("titleFold.onclick=()=>{titleText.toggleAttribute('data-expanded');syncTitleFold()};")
-        # 影院模式与普通视图之间切换会改标题栏宽度，溢出要跟着重判。
-        self.assertCode("new ResizeObserver(syncTitleFold).observe(titleText);")
 
     def test_detail_metadata_uses_icons_instead_of_release_copy(self):
-        self.assertPageContains('<span class="detailmetaitem">${icon(\'monitor\')}')
-        self.assertPageContains('<span class="detailmetaitem">${icon(\'hard-drive\')}')
-        self.assertPageContains('<span class="detailmetaitem">${icon(\'calendar\')}')
+        # 规格行每一项前面是图标、不写「发行」这类说明字：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains('id="i-monitor"')
         self.assertPageContains('id="i-calendar"')
         self.assertPageLacks("发行 ${esc(it.release_date)}")
@@ -8142,15 +8044,10 @@ class WebUiSourceTests(unittest.TestCase):
         """文件名和路径保留首尾；标题、说明仍按语义使用末尾省略。"""
         self.assertPageContains("import { initMiddleTruncate } from './js/middle-truncate.js'")
         self.assertPageContains("initMiddleTruncate(document)")
-        for consumer in (
-                '<b data-middle-truncate>${esc(javDisplayName(x))}</b>',):
-            self.assertPageContains(consumer)
-        # 高清版目标页、统计页、复核页、数据管理、重复文件页、回收站资源卡、垃圾卡、图片灯箱与关注详情的多媒体队列
-        # 归 React 子树，由 frontend 的用例覆盖。
-        self.assertEqual(self.app_js.count("data-middle-truncate"), 1)
+        # 用到它的面都在 React 子树：高清版目标页、统计页、复核页、数据管理、重复文件页、回收站资源卡、
+        # 垃圾卡、图片灯箱与两种详情的队列行，由 frontend 的用例覆盖；壳只负责 `initMiddleTruncate`。
+        self.assertEqual(self.app_js.count("data-middle-truncate"), 0)
         self.assertPageContains("if(element.dataset.middleTruncateWithin===undefined)return element.clientWidth;")
-        self.assertEqual(self.app_js.count('class="mixitemtext"'), 1)
-        self.assertEqual(self.app_js.count("data-truncate-end"), 1)
         self.assertPageContains("new Intl.Segmenter(undefined,{granularity:'grapheme'})")
         self.assertPageContains("resizeObserver=new ResizeObserver")
         self.assertPageContains("context.font=style.font||`${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`")
@@ -8359,8 +8256,7 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertIn("['alphabet', '字母表', 'text-aa']", self.read_react("index/index-tags.tsx"))
         self.assertPageContains("['playlists','播放列表','playlist'],")
-        self.assertPageContains('aria-label="编辑播放列表">${icon(\'playlist\')}')
-        self.assertPageContains('title="加入播放列表">${icon(\'playlist\')}')
+        # 作品详情里编辑、加入播放列表那两枚：`frontend/test/react/item-detail.test.tsx`。
         # 关注管理的来源筛选归 React 之后用 Remix 的漏斗，含义还是筛选。
         self.assertIn("leadingIcon={RiFilter3Line}",
                       self.read_react("follow-manage/add-source.tsx"))
@@ -8395,9 +8291,9 @@ class WebUiSourceTests(unittest.TestCase):
                 'title="换一批" aria-label="换一批">${icon(\'shuffle\')}',
                 # 同步删除把这个目录在盘上和账本里对齐。
                 'aria-label="同步删除">${icon(\'folder-sync\')}',
-                # 保存为播放列表存的是一份列表。沉浸模式入口、卡上「打开详情」与灯箱缩放条
-                # 两端的字形分别在 e2e 设计用例、catalog-grid.test.tsx 与 photo-lightbox.test.tsx 里核对。
-                'aria-label="保存为播放列表">${icon(\'playlist\')}',
+                # 保存为播放列表存的是一份列表，在作品详情岛里（item-detail.test.tsx）。沉浸模式入口、
+                # 卡上「打开详情」与灯箱缩放条两端的字形分别在 e2e 设计用例、catalog-grid.test.tsx 与
+                # photo-lightbox.test.tsx 里核对。
                 ):
             self.assertPageContains(needle)
         # 女优页头（ADR-0069）归 `entity-hero` island：名字下面那一行的胶片、公文包与证件由
@@ -8410,9 +8306,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("leadingIcon={RiCheckDoubleLine}", source_list)
         # 本地是磁盘、在线是订阅源；标签页和艺人页共用这一对，和关注页的来源图标同一套。
         self.assertPageContains("const INDEX_SCOPES=[['local','本地','hard-drive'],['online','在线','rss']];")
-        # 「喜爱理由」开的是一个写字面板，不是喜欢开关——那个是旁边的 thumbs-up。
-        self.assertPageContains('data-has-reason="${!!it.like_reason}">${icon(\'notebook-pen\')}')
-        self.assertPageContains('aria-label="${it.liked?\'取消喜欢\':\'喜欢\'}"')
+        # 「喜爱理由」开的是一个写字面板，不是喜欢开关——那个是旁边的 thumbs-up。作品详情侧栏
+        # 那一排的字形由 `frontend/test/react/item-detail.test.tsx` 逐枚钉住。
         # 侧栏：已标记是书签，沉浸模式是一叠竖着翻的卡；`play` 留给真的起播。
         self.assertPageContains("['flagged','已标记','bookmark'],")
         self.assertPageContains("['immerse','沉浸模式','gallery-vertical-end'],")
@@ -8439,7 +8334,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 分辨率同样使用显示器。
         self.assertPageContains(
             "[['system','跟随系统','monitor'],['light','浅色','sun'],['dark','深色','moon']]")
-        self.assertPageContains("${icon('monitor')}<span>${it.width||'?'}×${it.height||'?'}</span>")
         # 换下来的这几枚没有别的使用者，雪碧图里也不留。星是有使用者的那一枚：
         # 详情页的五星评分，写进 `asset.rating`，不与任何别的意思共用。
         # 厂牌索引进去是出片的那些牌子，字形因此说「拍片」而不是说「一栋楼」；
@@ -8454,7 +8348,6 @@ class WebUiSourceTests(unittest.TestCase):
         for gone in ("i-monitor-cog", "i-volume-2", "i-sun-moon", "i-building",
                      "i-sliders-horizontal", "i-computer", "i-folder", "ri-hard-drive-line"):
             self.assertPageLacks(f' id="{gone}"')
-        self.assertPageContains("${icon('star')}</button>")
         self.assertPageContains('<symbol id="i-clock" viewBox="0 0 24 24">')
 
     def test_mixed_icon_sets_land_on_one_optical_grid(self):
@@ -9576,7 +9469,7 @@ class WebUiSourceTests(unittest.TestCase):
         page = self.page
         overlay = page.split("const OVERLAY_SCROLLERS=[", 1)[1].split("].join(',')", 1)[0]
         self.assertIn("'.stagescroll'", overlay, "滚的那一层要登记才接得上覆盖式滚动条")
-        self.assertPageContains('<div class="stagescroll"><div class="sgrid ${queueContext?\'mixgrid\':\'\'}">')
+        # 舞台岛的宿主就是这一层，作品详情的 `.sgrid` 与「接着看」都画在它里面。
         self.assertPageContains("const host=document.createElement('div');host.className='stagescroll';")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".stage>.stagescroll{max-height:calc(100dvh - 34px);"
@@ -9827,16 +9720,8 @@ class WebUiSourceTests(unittest.TestCase):
         点击没有 editions 分支的话会掉进播放列表分支，带着 undefined 的
         playlistId 去请求——点了没反应，控制台也只有一条被吞掉的失败。
         """
-        self.assertPageContains(
-            "kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}")
-        self.assertPageContains(":queue.kind==='editions'?`${queue.items.length} 个版本`")
-        self.assertPageContains(
-            ":queueContext.kind==='editions'?openEditions(queueContext.seedId,+b.dataset.queueItem,true)")
-        self.assertPageContains("const edition=queue.kind==='editions'&&x.edition_label")
-        self.assertPageContains(
-            "EDITION_TONE={'中字':'subtitle','无码':'uncensored','无码破解':'cracked','有码':'censored'}")
-        self.assertPageContains(
-            '<span class="mixitemtext"><span class="mixitemhead">${edition}<b data-middle-truncate>')
+        # 标题、计数、每条的版次徽章与点击归作品详情岛：`frontend/test/react/item-detail.test.tsx`
+        # 与 `frontend/e2e/item-detail.test.ts`。
         # 徽章和标题同一行，所以标题那一行要自己成为 flex 容器；`<i>` 默认斜体，
         # 徽章不是强调语气，font-style 必须写死。
         self.assertPageContains(
@@ -9847,8 +9732,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_queue_thumbnails_fall_back_to_the_jav_cover(self):
         """没抽过帧的条目在队列里退回番号封套，而不是一个纯黑块。"""
-        self.assertPageContains(
-            "const thumb=mixFacePoster(x,'small');")
+        self.assertPageContains("queueThumbHtml:it=>mixFacePoster(it,'small'),")
 
     def test_jav_image_preference_reaches_cards_mix_and_settings(self):
         self.assertPageContains('id="javImageSetting"')
@@ -9876,26 +9760,9 @@ class WebUiSourceTests(unittest.TestCase):
         标题栏不写卷号的话，点了队列里另一条，整栏看上去纹丝不动。卷号是「第几份
         文件」而不是版次，所以用中性灰，和无码／中字／破解三种版次色分开。
         """
-        self.assertPageContains("const partLabelBadge=(it,queue)=>queue?.kind==='parts'&&it.part_label")
-        self.assertPageContains(
-            """? `<small class="javedition partlabel">第 ${esc(it.part_label)} 卷</small>`:'';""")
-        self.assertPageContains("${javTitleHtml(it)}${partLabelBadge(it,queueContext)}")
+        # `/api/item` 是单条口径，答不出「这是第几卷」；作品详情岛从分卷队列补进标题，队列条目
+        # 那一侧用的是同一个字段：`frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains(".javedition.partlabel{color:var(--muted);margin-left:6px}")
-        # `/api/item` 是单条口径，答不出「这是第几卷」；不从队列补，标题栏就一直空着。
-        self.assertPageContains("if(queueContext?.kind==='parts')")
-        self.assertPageContains(
-            "it.part_label=queueContext.items.find(part=>part.id===it.id)?.part_label||'';")
-        # 队列条目那一侧本来就写着卷号，两处用的是同一个字段。
-        self.assertPageContains("queue.kind==='parts'?`第 ${esc(x.part_label)} 卷`")
-
-    def test_the_edition_queue_head_only_states_the_count(self):
-        """标题栏已经写着「版本」，番号又印在正上方的详情标题里，说明只留数量。
-
-        别的队列标题带真信息（播放列表名、Mix 种子），不能跟着一起砍。
-        """
-        self.assertPageContains(
-            "const summary=queue.kind==='editions'?countLabel:`${esc(queue.title)} · ${countLabel}`")
-        self.assertPageContains("<h2>${kindLabel}</h2><span>${summary}</span>")
 
     def test_queue_rows_carry_the_same_signature_block_as_the_cards(self):
         """队列行和「接着看」并排出现在同一屏，署名层必须是同一套 DOM。
@@ -9905,8 +9772,7 @@ class WebUiSourceTests(unittest.TestCase):
         必须走不可点分支——嵌套 <button> 会被浏览器就地拆散。
         """
         self.assertPageContains("function cardIdentity(it,linked=true)")
-        self.assertPageContains(
-            '<span class="mixitemmeta">${cardIdentity(x,false).avatar}<span class="mixitemtext">')
+        self.assertPageContains("queueAvatarHtml:it=>cardIdentity(it,false).avatar,")
         self.assertPageContains(
             "? `<button class=\"${cls} entitylink\" ${attrs}>${inner}</button>`")
         self.assertPageContains(": `<span class=\"${cls}\">${inner}</span>`")
@@ -10050,7 +9916,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn(loader, self._js_function(name),
                           name + " 自己铺索引页主体，多半又抄漏了一行")
         # 详情页内联在目录里，两个容器都还藏着：芯片在那里继续成立，不能被一起收掉。
-        self.assertPageContains("if(push&&!queueContext)route('/item/'+id);")
+        self.assertPageContains("if(push&&!queue)route('/item/'+id);")
 
     def test_tag_toggles_land_in_the_context_the_click_happened_in(self):
         """标签开关作用在当前这一屏的筛选上，读写用同一个判据。
@@ -10582,8 +10448,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("api('/api/purge-missing',{method:'POST',body:JSON.stringify({id})})")
         self.assertPageContains('data-reveal="${id}"')
         self.assertPageContains('data-sync="${id}"')
-        # 在线资产是 URL，没有本地文件可定位。
-        self.assertPageContains('${it.location===\'online\'?\'\':sourceToolButtons(it.id)}</span>')
+        # 作品详情岛也只把 asset id 交给壳；在线资产是 URL，岛里不画这两枚：
+        # `frontend/test/react/item-detail.test.tsx`。
+        self.assertPageContains("reveal:id=>revealForIsland(id),")
 
     def test_resource_sync_is_an_anchor_on_the_data_management_page(self):
         """资源同步是数据管理页上的一个锚点，扫描、清理与离线来源怎么说由
