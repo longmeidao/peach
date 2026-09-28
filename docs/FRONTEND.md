@@ -405,6 +405,10 @@ island 动态加载；`peach-react.css` 由 `index.html` 在旧样式表之前�
 契约与遗留层的助手。`build.cssTarget` 对齐 Tailwind v4 的浏览器基线
 （Chrome 111、Firefox 128、Safari 16.4），oklch 颜色原样输出：目标再旧，lightningcss 会补
 `lab()` 回退，末位小数随平台浮点不同，CI 在 Linux 上重建的产物就与提交的对不上。
+这条基线早于原生 `light-dark()`，React 子树的样式因此不写它：lightningcss 会改写成只由
+`color-scheme` 声明给值的 `--lightningcss-light/dark` 变量，`peach-react.css` 没有那条声明，
+整条声明失效。随主题变的值写成 `.dark` 祖先选择器配自定义属性（灯箱、资料卡浮层），
+`frontend/test/react-color-scheme.test.ts` 扫产物拦截。
 
 没有引入 `@testing-library/react`：`createRoot` 加 `querySelector` 已经够用
 （挂载与输入的助手在 `frontend/test/react/render.tsx`），断言的本来就是真实 DOM。
