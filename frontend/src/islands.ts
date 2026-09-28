@@ -34,7 +34,6 @@ export { junkCountSkeletonHtml, junkPath, junkRoute } from './junk-queue';
  *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
 export interface IslandContracts {
   'catalog-grid': ReactBundle.CatalogGridProps;
-  'cover-crop': ReactBundle.CoverCropProps;
   'data-cleanup': ReactBundle.DataCleanupProps;
   duplicates: ReactBundle.DuplicatesProps;
   'entity-body': ReactBundle.EntityBodyProps;
@@ -44,6 +43,7 @@ export interface IslandContracts {
   'follow-feed': ReactBundle.FollowFeedProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
+  'item-detail': ReactBundle.ItemDetailProps;
   'junk-queue': ReactBundle.JunkQueueProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
   playlists: ReactBundle.PlaylistsProps;
@@ -68,7 +68,6 @@ interface Island {
 
 const REGISTRY: { [N in IslandName]: Island } = {
   'catalog-grid': { react: 'catalog-grid' },
-  'cover-crop': { react: 'cover-crop' },
   'data-cleanup': { react: 'data-cleanup' },
   duplicates: { react: 'duplicates' },
   'entity-body': { react: 'entity-body' },
@@ -78,6 +77,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'follow-feed': { react: 'follow-feed' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
+  'item-detail': { react: 'item-detail' },
   'junk-queue': { react: 'junk-queue' },
   'library-processing': { react: 'library-processing' },
   playlists: { react: 'playlists' },

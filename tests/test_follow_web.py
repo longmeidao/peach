@@ -3189,21 +3189,22 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
 
     def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
-        self.assertPageContains('class="video-js vjs-big-play-centered" controls playsinline preload="metadata"')
-        self.assertPageContains("mountDetailPlayer(item,video,appSettings.detailAutoplay,{")
-        self.assertPageContains("source:{src,type:media?.media_type||item.media_type||'video/mp4'}")
+        # `<video class="video-js">` 由两座详情岛画、交给壳的 mountStagePlayer：
+        # `frontend/e2e/follow-detail.test.ts` 与 `frontend/e2e/item-detail.test.ts`。
+        self.assertPageContains("mountDetailPlayer(item,video,autoplay??appSettings.detailAutoplay,options)")
+        self.assertPageContains("type:media?.media_type||item.media_type||'video/mp4'},")
         # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
         # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
         self.assertPageContains(
             "function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQualities=null)")
         self.assertPageContains(
-            "const mediaPromise=api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null);")
+            "mediaPromise:api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null),")
         self.assertPageContains("mediaPromise",
                                 "关注详情要异步补上来源档位和字节数")
         # 档位和字节数是同一趟回源的产物，播放器两样都从这个应答里取。
         self.assertPageContains("updateQualities?.(next?.qualities?.length?next.qualities:null);")
         self.assertPageContains("const size=Number(next?.size)||0;")
-        player = self.page.split("function mountFollowPlayer(", 1)[1].split(
+        player = self.page.split("function mountStagePlayer(", 1)[1].split(
             "async function openFollow(", 1)[0]
         self.assertNotIn("await api(`/follow-qualities", player,
                          "清晰度回源不能挡住默认视频挂载")
@@ -3213,7 +3214,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("data-player-quality-badge")
         self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
         self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("const stopAmbient=mountPlayerAmbient(video)")
+        self.assertPageContains("stopAmbient=mountPlayerAmbient(video);")
         self.assertPageContains("player?.one?.('dispose',stopAmbient)")
         self.assertPageContains("mountPlayerTheaterControl(player,root)")
         self.assertPageContains("wireFollowTelemetry(item,video)")
@@ -3552,12 +3553,11 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
         self.assertPageContains('grid-template-areas:"media" "side" "queue"')
         self.assertPageContains('background:var(--detail-surface)')
-        self.assertPageContains("const kindLabel={mix:'Mix',parts:'分卷',editions:'版本',playlist:'播放列表'}")
+        # 队列头的类别名与横向拖动归作品详情岛与 `components/mix-queue.tsx`：
+        # `frontend/test/react/item-detail.test.tsx`。
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')
-        self.assertPageContains('.sgrid.mixgrid>.vwrap>.gate{height:100%;aspect-ratio:auto}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}')
         self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
-        self.assertPageContains("wireDrag($('#stage').querySelector('.mixlist'))")
         # 媒体框不给视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在
         # vh 上时两个量在窄屏上朝相反方向走，框比画面高出一大截，上下各空一片。
         self.assertPageLacks('min-height:min(62vh,640px)')

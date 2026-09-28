@@ -12,6 +12,7 @@ import { DETAIL, openFollowFeed } from './follow-fixture.ts';
 import {
   configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Visit,
 } from './harness.ts';
+import { ITEM, openItemPage } from './item-fixture.ts';
 
 const DESKTOP = VIEWPORTS.find((viewport) => !viewport.mobile)!;
 const MOBILE = VIEWPORTS.find((viewport) => viewport.mobile)!;
@@ -3274,15 +3275,15 @@ describe('设计决定', () => {
       await page.route(/\/entity-image\?/, (route) => route.fulfill(square));
       await page.route(/\/logo\?/, (route) => route.fulfill(square));
       await page.goto(new URL(`/item/${requiredEnv('PEACH_E2E_ITEM')}`, page.url()).href, { waitUntil: 'load' });
-      await page.locator('.detailidentity .idgroup-studio .idname').waitFor({ timeout: 15_000 });
+      await page.locator('[data-item-identity] [data-id-group="studio"] [data-id-name]').waitFor({ timeout: 15_000 });
       const edges = await page.evaluate(() => Object.fromEntries(
         ['performer', 'studio'].map((kind) => {
-          const group = document.querySelector(`.detailidentity .idgroup-${kind}`)!;
+          const group = document.querySelector(`[data-item-identity] [data-id-group="${kind}"]`)!;
           const name = document.createRange();
-          name.selectNodeContents(group.querySelector('.idname')!);
+          name.selectNodeContents(group.querySelector('[data-id-name]')!);
           return [kind, {
-            label: group.querySelector('.idlabel')!.getBoundingClientRect().left,
-            face: group.querySelector('.idface')!.getBoundingClientRect().left,
+            label: group.querySelector('[data-id-label]')!.getBoundingClientRect().left,
+            face: group.querySelector('[data-id-face]')!.getBoundingClientRect().left,
             name: name.getBoundingClientRect().left,
           }];
         })));
@@ -4482,6 +4483,279 @@ describe('设计决定', () => {
         ow: '#d675d6', tracer: '#68c76f', kou: '#e36c6c', solo: '#55a7ff', animated: '#f5a24a', odd: muted,
       });
       assert.deepEqual(opened.problems, []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  /* 作品详情（`item-detail` 岛）。桩数据见 `item-fixture.ts`：普通那一条评了 3 星、两位出演、
+     一个厂牌一个系列，都带实体 id。桩里的片源没有正片，播放器那一条 VIDEOJS 错误不算。 */
+  const withoutPlayer = (problems: string[]) => problems.filter((line) => !line.includes('VIDEOJS'));
+
+  it('作品详情标题与评分：来源徽标站在标题第一行开头；整排星一种琥珀、评没评只看填不填，悬停预演到指针那一颗', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      const title = await page.evaluate(() => {
+        const text = document.querySelector('#stage [data-detail-title]')!;
+        const badge = text.querySelector('[class~="srcbig"]')!;
+        const style = getComputedStyle(badge);
+        return {
+          clamp: getComputedStyle(text).webkitLineClamp,
+          first: text.firstElementChild === badge,
+          badge: { display: style.display, width: style.width, height: style.height, gap: style.marginRight },
+          tools: document.querySelector('#stage [data-title-tools]')!.getBoundingClientRect().top
+            >= text.getBoundingClientRect().bottom - 0.5,
+        };
+      });
+      assert.deepEqual(title, {
+        clamp: '2', first: true, badge: { display: 'inline-grid', width: '17px', height: '28px', gap: '8px' }, tools: true,
+      }, '徽标是行内块、随文字一起被两行折叠裁住；那排键自成一行排在标题下面');
+
+      const stars = page.locator('#stage [data-rate]');
+      const read = () => stars.evaluateAll((nodes) => nodes.map((node) => ({
+        color: getComputedStyle(node).color, filled: getComputedStyle(node.querySelector('svg')!).fill !== 'none',
+      })));
+      const amber = await tokenColor(page, '#stage [data-item-detail]', '--rating');
+      await page.mouse.move(0, 0);
+      const rest = await read();
+      assert.deepEqual(rest.map((star) => star.color), Array(5).fill(amber), '换色那一档在浅色主题下凑不出两级都成立的灰');
+      assert.deepEqual(rest.map((star) => star.filled), [true, true, true, false, false]);
+      await stars.nth(1).hover();
+      const preview = await read();
+      assert.deepEqual(preview.map((star) => star.color), Array(5).fill(amber));
+      assert.deepEqual(preview.map((star) => star.filled), [true, true, false, false, false]);
+      const edges = await page.evaluate(() => {
+        const box = (selector: string) => document.querySelector(`#stage ${selector}`)!.getBoundingClientRect();
+        return { stars: box('[data-rating-stars]').left, title: box('[data-detail-title]').left };
+      });
+      assert.equal(edges.stars, edges.title - 4, '26px 命中区里的星形靠右约 4px 起笔，这一排往左让回来');
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('作品详情身份区：各组按内容宽并排换行，名字行框容得下下伸部；系列是整行宽的图标链接，不是标签胶囊', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      const shown = await page.evaluate(() => {
+        const stage = document.querySelector('#stage')!;
+        const primary = stage.querySelector('[data-identity-primary]')!;
+        const width = primary.getBoundingClientRect().width;
+        const name = getComputedStyle(stage.querySelector('[data-id-group="performer"] [data-id-name]')!);
+        const series = stage.querySelector('[data-series-link]')!;
+        const link = getComputedStyle(series);
+        return {
+          primary: [getComputedStyle(primary).display, getComputedStyle(primary).flexWrap],
+          narrower: [...primary.querySelectorAll('[data-id-group]')].every((group) => group.getBoundingClientRect().width < width),
+          name: { ratio: parseFloat(name.lineHeight) / parseFloat(name.fontSize), overflow: name.textOverflow, align: name.textAlign },
+          cursor: getComputedStyle(stage.querySelector('[data-id-group="performer"] [data-id-cell]')!).cursor,
+          face: getComputedStyle(stage.querySelector('[data-id-group="performer"] [data-id-face]')!).backgroundColor,
+          series: {
+            display: link.display, wrap: link.overflowWrap, border: link.borderTopWidth,
+            full: Math.abs(series.getBoundingClientRect().width - series.parentElement!.getBoundingClientRect().width) < 0.5,
+          },
+        };
+      });
+      assert.deepEqual(shown.primary, ['flex', 'wrap']);
+      assert.equal(shown.narrower, true, '组按内容宽，共演作品不会一组占满一行');
+      assert.ok(shown.name.ratio >= 1.5, `名字行高 ${shown.name.ratio} 倍字号，拉丁字母的下伸部会被省略号那层 overflow 裁掉`);
+      assert.deepEqual([shown.name.overflow, shown.name.align], ['ellipsis', 'left']);
+      assert.equal(shown.cursor, 'pointer');
+      assert.notEqual(shown.face, 'rgba(0, 0, 0, 0)', '没图的头像画首字盘');
+      assert.deepEqual(shown.series, { display: 'flex', wrap: 'anywhere', border: '0px', full: true });
+      await page.locator('#stage [data-series-link]').hover();
+      const hovered = await page.locator('#stage [data-series-link]').evaluate((node) =>
+        [getComputedStyle(node).color, getComputedStyle(node).textDecorationLine]);
+      assert.deepEqual(hovered, [await tokenColor(page, '#stage [data-item-detail]', '--tungsten'), 'none']);
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('作品详情身份区：没实体 id 的格子不给手形，厂牌标识铺满方框', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      // 先经桩取到原样的那一条；`route.fetch()` 会绕过桩直接打到服务器。
+      const base = await page.evaluate(() => fetch('/api/item?id=14').then((response) => response.json()));
+      const payload = {
+        ...base, performers: ['无名氏'], performer_total: 1, performer_entities: [{ id: 0, has_image: false }], has_studio_logo: true,
+        entity_refs: { ...base.entity_refs,
+          performer: [{ id: 0, name: '无名氏', has_image: false, avatar_focus: null }],
+          studio: [{ id: 50, name: 'Peach Studio', has_image: false, has_logo: true }] },
+      };
+      await page.route((url) => url.pathname === '/api/item', (route) => route.fulfill({ json: payload }));
+      await page.goto(new URL('/item/14', page.url()).href, { waitUntil: 'load' });
+      await page.locator('#stage [data-id-cell="studio"] img').waitFor({ timeout: 15_000 });
+      await settle(page);
+      const shown = await page.evaluate(() => {
+        const cell = (kind: string) => document.querySelector(`#stage [data-id-cell="${kind}"]`)!;
+        const face = cell('studio').querySelector('[data-id-face]')!.getBoundingClientRect();
+        const img = cell('studio').querySelector('img')!;
+        const box = img.getBoundingClientRect();
+        return {
+          performer: [cell('performer').tagName, getComputedStyle(cell('performer')).cursor],
+          studio: getComputedStyle(cell('studio')).cursor,
+          fit: getComputedStyle(img).objectFit,
+          filled: [box.left - face.left, box.top - face.top, box.width - face.width, box.height - face.height]
+            .every((delta) => Math.abs(delta) < 0.5),
+        };
+      });
+      assert.deepEqual(shown, { performer: ['SPAN', 'default'], studio: 'pointer', fit: 'cover', filled: true },
+        '标识文件自带边距，页面再补 inset 或换成 contain 就多围出一圈框');
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('作品详情标签与反馈键：标签和卡片同一张脸，筛选那半边悬停抬填充；反馈条每一枚悬停都换色', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      const face = await page.evaluate(() => {
+        const tag = document.querySelector('#stage [data-detail-tag]')!;
+        const probe = document.createElement('div');
+        probe.style.cssText = 'border:1px solid var(--line);border-radius:var(--tag-radius);background:var(--tag-fill);color:var(--ink-2)';
+        tag.parentElement!.append(probe);
+        const want = getComputedStyle(probe);
+        const expected = { radius: want.borderTopLeftRadius, line: want.borderTopColor, fill: want.backgroundColor, ink: want.color };
+        probe.remove();
+        const style = getComputedStyle(tag);
+        return { expected, actual: { radius: style.borderTopLeftRadius, line: style.borderTopColor,
+          fill: style.backgroundColor, ink: getComputedStyle(tag.querySelector('[data-tag]')!).color } };
+      });
+      assert.deepEqual(face.actual, face.expected, '圆角、线、填充与字色都走卡片那颗 `.tg` 的同一组 token');
+      const filter = page.locator('#stage [data-detail-tag] [data-tag]').first();
+      await filter.hover();
+      assert.equal(await filter.evaluate((node) => getComputedStyle(node).backgroundColor),
+        await tokenColor(page, '#stage [data-item-detail]', '--hover'));
+
+      const buttons = ['[data-fb="like"]', '[data-fb="reason"]', '.dislike', '.seen', '.later', '[data-fb="playlist"]',
+        '[data-fb="quality"]', '[data-fb="dispose"]'];
+      const unchanged: string[] = [];
+      for (const selector of buttons) {
+        const button = page.locator(`#stage .fb ${selector}`);
+        const color = () => button.evaluate((node) => {
+          node.getAnimations({ subtree: true }).forEach((animation) => animation.finish());
+          return getComputedStyle(node).color;
+        });
+        await page.mouse.move(0, 0);
+        const rest = await color();
+        await button.hover();
+        if (await color() === rest) unchanged.push(selector);
+      }
+      assert.deepEqual(unchanged, [], '漏写配色的那一枚全程停在 --muted，看着像不能点');
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('作品详情喜爱理由框与「接着看」：输入框聚焦画 BoardUI 那枚 2px 内环；接着看和侧栏同底、顶上一条细线', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      await page.locator('#stage [data-media-card]').first().waitFor({ timeout: 15_000 });
+      await page.locator('#preferenceToggle').click();
+      const field = page.locator('#stage [data-item-preference] textarea');
+      await field.focus();
+      const ring = await field.evaluate((node) => {
+        node.getAnimations().forEach((animation) => animation.finish());
+        return getComputedStyle(node).boxShadow;
+      });
+      const active = await tokenColor(page, '#stage [data-item-detail]', '--color-border-button-active');
+      assert.equal(ring, `${active} 0px 0px 0px 2px inset`);
+
+      const related = await page.evaluate(() => {
+        const block = document.querySelector('#stage [data-item-related]')!;
+        const style = getComputedStyle(block);
+        const row = getComputedStyle(block.querySelector('[data-related-row]')!);
+        return {
+          fill: style.backgroundColor, side: getComputedStyle(document.querySelector('#stage [data-item-side]')!).backgroundColor,
+          line: [style.borderTopWidth, style.borderTopStyle, style.borderTopColor],
+          heading: getComputedStyle(block.querySelector('h3')!).fontWeight,
+          row: [row.display, row.overflowX, row.scrollbarWidth],
+        };
+      });
+      assert.equal(related.fill, related.side, '同一格详情的两块，底色同源，不然整幅宽度上留一道色差');
+      assert.deepEqual(related.line, ['1px', 'solid', await tokenColor(page, '#stage', '--line-soft')]);
+      assert.equal(related.heading, '600');
+      assert.deepEqual(related.row, ['flex', 'auto', 'none'], '那一排横滚，不露系统滚动条');
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('作品详情队列与说明块：版次徽章和标题同一行、不斜体；脱盘说明块铺满播放器格', { timeout: 60_000 }, async () => {
+    const editions = await openItemPage(browser, `/editions/${ITEM.edition}/${ITEM.edition}`, DESKTOP,
+      { ready: '#stage [data-queue-edition]' });
+    try {
+      const shown = await editions.page.evaluate(() => {
+        const badge = document.querySelector('#stage [data-queue-edition]')!;
+        const head = badge.parentElement!;
+        const name = head.querySelector('b')!.getBoundingClientRect();
+        const box = badge.getBoundingClientRect();
+        return {
+          head: [getComputedStyle(head).display, getComputedStyle(head).flexDirection],
+          badge: [getComputedStyle(badge).fontStyle, getComputedStyle(badge).flexShrink],
+          sameRow: box.top < name.bottom && box.bottom > name.top,
+          heading: getComputedStyle(document.querySelector('#stage .mixqueuehead h2')!).fontWeight,
+        };
+      });
+      assert.deepEqual(shown, { head: ['flex', 'row'], badge: ['normal', '0'], sameRow: true, heading: '600' },
+        '`<i>` 默认斜体，徽章不是强调语气');
+      assert.deepEqual(withoutPlayer(editions.problems), []);
+    } finally {
+      await editions.close();
+    }
+    const offline = await openItemPage(browser, `/item/${ITEM.offline}`, DESKTOP, { ready: '#stage #offlineGate' });
+    try {
+      const fit = await offline.page.evaluate(() => {
+        const gate = document.querySelector('#stage #offlineGate')!;
+        const cell = gate.parentElement!;
+        const a = gate.getBoundingClientRect(), b = cell.getBoundingClientRect();
+        return {
+          filled: [a.left - b.left, a.top - b.top, a.width - b.width, a.height - b.height].every((delta) => Math.abs(delta) < 0.5),
+          radius: [getComputedStyle(gate).borderTopLeftRadius, getComputedStyle(cell).borderTopLeftRadius],
+        };
+      });
+      assert.equal(fit.filled, true, '说明块铺满播放器格，不上下留黑');
+      assert.equal(fit.radius[0], fit.radius[1], '圆角跟着格走');
+      assert.notEqual(fit.radius[0], '0px');
+      assert.deepEqual(offline.problems, []);
+    } finally {
+      await offline.close();
+    }
+  });
+
+  it('作品详情标签选择器用全站下拉面板那一对开合动效，减少动态效果时当场开合', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      const picker = page.locator('#stage [data-tag-picker]');
+      const motion = () => page.evaluate(() => {
+        const node = document.querySelector<HTMLElement>('#stage [data-tag-picker]');
+        return node && !node.hidden ? getComputedStyle(node).animationName : 'closed';
+      });
+      const cycle = async () => {
+        await page.locator('#tagPlus').click();
+        await page.locator('#tagPickSearch').waitFor();
+        const opening = await motion();
+        await page.locator('#stage [data-rating-value]').click();
+        const closing = await motion();
+        await picker.waitFor({ state: 'hidden' });
+        return [opening, closing];
+      };
+      assert.deepEqual(await cycle(), ['none', 'closed']);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      assert.deepEqual(await cycle(), ['board-menu-in', 'board-menu-out']);
+      assert.deepEqual(withoutPlayer(opened.problems), []);
     } finally {
       await opened.close();
     }

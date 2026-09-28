@@ -371,6 +371,9 @@ React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`�
 `13-stage.css`、`15-detail.css` 与 Video.js 皮肤，`sgrid`、`mixgrid`、`vwrap`、`closestage`、`video-js`、
 `vjs-big-play-centered`、`side`、`sidecontent`、`stitle`、`smeta`、`mono`、`stags`、`tg`、`mav`、`externallink`、
 `fb`、`later`、`seen`、`dislike`、`dur`、`current` 与 `mix*` 这一组按原名输出，舞台与播放器归 React 时一起收回；
+作品详情（`item-detail`）共用这一组，自己的部分写在 `item-detail.css`、只认 `data-*`，另按原名输出三类：
+`javedition` 与色调（`censored` 等）是目录卡片也用的版次徽章，`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它，
+`geist-button`、`primary` 是舞台模态里各处按钮共用的遗留按钮；
 `shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
 `no-raw-colors` 只认 `--color-*`，把它当成了未声明的颜色。
 

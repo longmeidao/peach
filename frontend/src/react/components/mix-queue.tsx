@@ -34,18 +34,25 @@ export function MixQueue({ kind, title, summary, onClose, actions, listRef, chil
   );
 }
 
-/** 队列里的一行：左边缩略图（时长角标由调用方放进 `pic`），右边两行字。 */
-export function MixQueueRow({ current, pic, children, ...button }: {
+/** 队列里的一行：左边缩略图（时长角标由调用方放进 `pic`），右边两行字。作品队列的字前面还有
+ *  一枚署名头像（`lead`，和卡片的署名层同一套）；播放列表的行尾多一组抓手与移出（`after`），
+ *  拖动排序认的是行上的 `row` 属性。 */
+export function MixQueueRow({ current, pic, lead, after, row, children, ...button }: {
   current: boolean;
   pic: ReactNode;
+  lead?: ReactNode;
+  after?: ReactNode;
+  row?: Record<`data-${string}`, string | number>;
   children: ReactNode;
 } & ButtonHTMLAttributes<HTMLButtonElement> & Record<`data-${string}`, string | number>) {
+  const text = <span className="mixitemtext">{children}</span>;
   return (
-    <div className="mixrow">
+    <div className="mixrow" {...row}>
       <button type="button" className={current ? 'mixitem current' : 'mixitem'} aria-current={current ? 'true' : 'false'} {...button}>
         <span className="mixitempic">{pic}</span>
-        <span className="mixitemtext">{children}</span>
+        {lead === undefined ? text : <span className="mixitemmeta">{lead}{text}</span>}
       </button>
+      {after}
     </div>
   );
 }

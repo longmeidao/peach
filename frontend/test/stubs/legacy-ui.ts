@@ -22,6 +22,13 @@ export const checkboxHtml = (attrs = ''): string => `<span class="pcheck"><input
 export const progressHtml = (label: string, value: number, max = 100): string =>
   `<progress role="progressbar" aria-label="${label}" value="${value}" max="${max}" aria-valuenow="${value}" aria-valuemax="${max}"></progress>`;
 export const confirmModal = async (_options: unknown) => ({confirmed:false});
+/* 菜单开合：测试环境不放动画，退场当场藏起。 */
+export const presentMenu = (menu: HTMLElement): void => { menu.hidden = false };
+export const dismissMenu = (menu: HTMLElement, finish?: () => void): void => {
+  if (menu.hidden) return;
+  menu.hidden = true;
+  finish?.();
+};
 
 export const MEDIA_SOURCE_ICONS: Record<string,string> = {local:'hard-drive','115':'fixture-115',pikpak:'fixture-pikpak'};
 export const selectOptionIconHtml = (mark?: string): string => mark ? `<i data-source-icon="${mark}"></i>` : '';

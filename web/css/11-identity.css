@@ -1,45 +1,3 @@
-/* 显式 display 会盖掉浏览器默认的 [hidden]{display:none}：按钮已经 hidden=true
-   却仍然画出来，而 requestMore 首行就是 if(more.hidden)return，于是点了没反应。 */
-/* 身份区按类别分组：标签是组标题，同类横向排开并按需换行。
-   旧版每个名字独占一行、左侧还重复一列标签，共演作品会把整个侧栏撑满。 */
-.detailidentity{display:flex;flex-direction:column;gap:14px;margin:0 0 18px}
-.identityprimary{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:flex-start}
-.identityprimary>.idgroup{width:max-content;max-width:100%}
-.idgroup{min-width:0}
-.idlabel{margin:0 0 7px;
-  font-size:var(--fs-xs);font-weight:400;color:var(--muted);letter-spacing:.04em}
-.idrow{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:flex-start}
-/* 组标题、头像和名字共用左边缘；详情栏里的所有身份信息都从内容区起点对齐。 */
-.idgroup{--id-cell:62px;--id-face:46px}
-.idgroup-performer{--id-cell:58px}
-.idgroup-performer .idrow{gap:10px}
-.idcell{display:flex;flex-direction:column;align-items:flex-start;gap:5px;width:var(--id-cell,62px);
-  border:0;background:transparent;color:inherit;padding:0;cursor:pointer}
-.idcell[hidden]{display:none}
-.idface{position:relative;width:var(--id-face,46px);height:var(--id-face,46px);border-radius:50%;overflow:hidden;
-  background:var(--sunk);color:var(--muted);display:grid;place-items:center;font-size:var(--fs-md)}
-/* `#fff` 与首字母只在取不到图时露出来：厂牌标识文件是自带边距的不透明方图，
-   `.idface img` 那条 cover 铺满整格，不再另给 logo 格加 padding 和 contain。 */
-.idcell.logo .idface{border-radius:var(--surface-radius);background:#fff;color:#555}
-.idface img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-.idface svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2}
-/* 行高必须容得下下伸部。1.25 在 12px 下只有 15px 行框，而这里同时开着 overflow:hidden
-   截省略号，于是「Prestige」的 g 尾巴被切掉——用户实测看到的就是这个。 */
-.idname{font-size:var(--fs-xs);line-height:1.5;text-align:left;width:100%;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink-2)}
-.idcell:not(.entitylink):not(.unownedlink){cursor:default}
-.idcell.entitylink:hover .idface,.idcell.unownedlink:hover .idface{box-shadow:0 0 0 2px var(--ink-2)}
-.idcell.entitylink:hover .idname,.idcell.unownedlink:hover .idname{color:var(--ink)}
-.castmore{align-self:center;height:46px;padding:0 12px;border:1px dashed var(--overlay-10);
-  border-radius:var(--floating-radius);background:transparent;color:var(--ink-2);font-size:var(--fs-xs);cursor:pointer}
-.castmore:hover{background:var(--hover)}
-.seriesrows{display:grid;gap:7px}
-.serieslink,.serieslink.entitylink{display:flex;width:100%;align-items:flex-start;gap:7px;padding:0;border:0;
-  background:transparent;color:var(--ink-2);font-size:var(--fs-sm);line-height:1.4;text-align:left;
-  white-space:normal;overflow-wrap:anywhere;text-decoration:none}
-.serieslink svg{width:16px;height:16px;margin-top:1px;flex:none;stroke:currentColor;fill:none;stroke-width:2}
-button.serieslink{cursor:pointer}.serieslink:not(.entitylink){cursor:default}
-button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 /* 页面标题只有一套字形。原来管理区 26px、索引页 20px、播放列表 28px，
    在侧栏里一路点过去就是三种大小；间距由各自的版式决定，字形不再各拍各的。 */
 /* 行高 1.25 取自 2026-09-04 实测的 Geist Heading 32（32px/40px/600）。字距那一档
@@ -70,4 +28,4 @@ button.serieslink.entitylink:hover{color:var(--tungsten);text-decoration:none}
 .entitylink,.unownedlink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
 .entitylink:hover,.unownedlink:hover{color:var(--ink);text-decoration:none}
 /* Peach 的可点击身份只用颜色、头像描边和背景反馈，不使用链接下划线。 */
-.idcell.entitylink:hover,.idcell.unownedlink:hover,.mav.entitylink:hover{text-decoration:none}
+.mav.entitylink:hover{text-decoration:none}

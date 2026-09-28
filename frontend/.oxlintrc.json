@@ -23,7 +23,7 @@
       "sgrid", "mixgrid", "vwrap", "closestage", "video-js", "vjs-big-play-centered", "side", "sidecontent", "stitle", "smeta",
       "mono", "stags", "tg", "mav", "externallink", "fb", "later", "seen", "dislike", "dur",
       "mixqueue", "mixqueuehead", "mixqueueactions", "mixlist", "mixrow", "mixitem", "current", "mixitempic", "mixitemtext",
-      "mixgrouplabel"] }],
+      "mixgrouplabel", "mixitemmeta", "javedition", "censored", "chip", "geist-button", "primary"] }],
     "shadcn/require-static-classes": "error"
   }
 }

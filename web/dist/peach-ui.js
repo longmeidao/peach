@@ -897,7 +897,6 @@ function mt(e, t) {
 //#region src/islands.ts
 var Z = {
 	"catalog-grid": { react: "catalog-grid" },
-	"cover-crop": { react: "cover-crop" },
 	"data-cleanup": { react: "data-cleanup" },
 	duplicates: { react: "duplicates" },
 	"entity-body": { react: "entity-body" },
@@ -907,6 +906,7 @@ var Z = {
 	"follow-feed": { react: "follow-feed" },
 	"follow-manage": { react: "follow-manage" },
 	index: { react: "index" },
+	"item-detail": { react: "item-detail" },
 	"junk-queue": { react: "junk-queue" },
 	"library-processing": { react: "library-processing" },
 	playlists: { react: "playlists" },
