@@ -132,7 +132,7 @@ export function OrganizeCard(
           <p className="text-caption-1-regular text-text-secondary">{line}</p></div>
       : <LoadingDots label={line} />;
   } else if (outcome?.status === 'failed') {
-    state = <Note tone="error" title="任务失败">{outcome.error || '任务失败'}</Note>;
+    state = <Note tone="error" title="文件整理未完成">{outcome.error || '请查看任务记录，核对已处理的文件。'}</Note>;
   } else if (outcome) {
     const { text, failed } = organizeOutcome(outcome);
     state = <Note tone={failed ? 'warning' : 'success'} title={failed ? '部分完成' : '整理结果'}>{text}</Note>;
@@ -165,7 +165,7 @@ export function OrganizeCard(
         按模板给文件改名并归入目录。先预览，确认后执行；执行过的一批可以整批退回。
       </p>
       {organize.isError
-        ? <div className="mt-3"><Note tone="error" title="读取失败">{errorMessage(organize.error)}</Note></div>
+        ? <div className="mt-3"><Note tone="error" title="整理配置读取失败">{errorMessage(organize.error)}</Note></div>
         : null}
       <div className="mt-3 flex flex-col gap-3">
         {locations.length

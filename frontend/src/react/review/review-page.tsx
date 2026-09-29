@@ -319,8 +319,8 @@ export function ReviewPage(props: ReviewProps) {
               </div>
             </section>
           )) : (
-            <EmptyState icon={RiCheckboxCircleLine} title="暂无候选">
-              该分类当前没有待人工复核的项目。
+            <EmptyState icon={RiCheckboxCircleLine} title="此分类没有待复核项目">
+              可切换分类查看其他候选。
             </EmptyState>
           )}
 

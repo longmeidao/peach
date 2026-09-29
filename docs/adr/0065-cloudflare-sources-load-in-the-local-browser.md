@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-09-25
-- 修订：ADR-0060 第五条（UA 走整站、Cookie 由用户贴）与「后果」第二条（自动过验证不做）；`docs/HANDOFF.md` 「被 Cloudflare 拦的站一律放弃」那一条
+- 修订：ADR-0060 第五条（UA 走整站、Cookie 由用户贴）与「后果」第二条（自动过验证不做）；[docs/HANDOFF.md](../HANDOFF.md) 「被 Cloudflare 拦的站一律放弃」那一条
 - 依据：ADR-0060 的实测（两站只认浏览器过完验证发下的 `cf_clearance`）、`peach-reuse-first`（OpenAver 的做法作参照）
 
 ## 背景

@@ -333,7 +333,7 @@ export function ScrapingPage({ toast }: ScrapingProps) {
   if (!data) {
     return (
       <Page>
-        <Note tone="error" title="读取失败">
+        <Note tone="error" title="采集来源读取失败">
           {sources.error ? errorMessage(sources.error) : '读取采集来源失败'}
         </Note>
       </Page>

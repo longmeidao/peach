@@ -6,7 +6,7 @@
 
 Peach 是一个 FastAPI 模块化单体：逻辑上前后端分离，部署时仍是一个进程。默认单用户、本地自托管；在线追更、外部元数据和可插拔 AI 都是正式能力。
 
-应用端口不直接暴露到公网。远程访问走 VPN、Cloudflare Tunnel（默认关闭，须先设访问密码，见 `docs/OPERATIONS.md`），或 DDNS + 反代 + HTTPS。
+应用端口不直接暴露到公网。远程访问走 VPN、Cloudflare Tunnel（默认关闭，须先设访问密码，见 [docs/OPERATIONS.md](OPERATIONS.md)），或 DDNS + 反代 + HTTPS。
 
 ## 核心边界
 
@@ -16,7 +16,7 @@ Peach 是一个 FastAPI 模块化单体：逻辑上前后端分离，部署时�
 2. **API / 应用层**：FastAPI 承载页面、JSON、媒体响应和写入边界。`api.py` 只负责组装，路由分 `routes_auth`、`routes_pages`、`routes_media`、`routes_api` 四个 APIRouter；`/api/{route}` 由 `web_router` 的 handler 表分派到 `web_catalog`、`web_entity`、`web_stats`、`web_batch`、`web_follow` 等域模块。
 3. **平台层**：`peach.platform` 是账本路径与本机挂载点之间唯一的翻译层。账本只用 Windows 盘符记路径，读取时按「来源的声明根 → 本机挂载点」翻译：来源即 `asset.location`，两侧由设置文件的 `[media.locations]` 与 `[media.mounts]` 给出，`PEACH_MEDIA_MOUNTS` 可临时覆盖。没有挂载点的来源落到不可达根，整体按脱盘处理。CloudDrive 在 Windows 是盘符、在 macOS 是 macFUSE 挂载点，差异全部收在这一层。
 4. **Media Engine**：FastAPI 只持有一个 `MediaEngine`，本地文件与挂载网盘都是原生后端。远端 MP4 默认走标准 Range；`stream-plan` 只在显式开启时给出按时间生成的 HLS 片段。HLS 是例外而不是默认，因为 HEVC-in-TS 会静默黑屏（ADR-0016）。
-5. **Web**：单页、移动端优先。页面按 ADR-0031 从无构建步骤的 `web/` 逐页迁往 `frontend/` 的 React + Tailwind v4 + BoardUI 源码，构建产物提交进 `web/dist/`。只做逐页替换（strangler），不做整站重写，细节见 `docs/FRONTEND.md`。
+5. **Web**：单页、移动端优先。页面按 ADR-0031 从无构建步骤的 `web/` 逐页迁往 `frontend/` 的 React + Tailwind v4 + BoardUI 源码，构建产物提交进 `web/dist/`。只做逐页替换（strangler），不做整站重写，细节见 [docs/FRONTEND.md](FRONTEND.md)。
 6. **AI Provider**：`InferenceProvider` 与 `AgentProvider` 分开。AI 只产出带来源和置信度的候选。
 7. **Profile**：默认单用户，数据模型预留 user/profile，不引入完整账号体系。
 8. **追更来源**：RSS/Atom 等成熟协议先归一化为只读候选；原始证据、复核和 ledger 写入分层。
@@ -38,7 +38,7 @@ AI/外部元数据 -> 经复核的候选 -> ledger
 - 抓取或保存 ChatGPT/Claude OAuth token
 - 把 Stash 私有目录或 GPL 构建当作 Peach 的稳定打包依赖
 
-Stash 遗留的数据缺陷与许可证边界见 `docs/STASH.md`；复用与自研的边界、旧脚本的继任关系见 `docs/REUSE.md`。
+Stash 遗留的数据缺陷与许可证边界见 [docs/STASH.md](STASH.md)；复用与自研的边界、旧脚本的继任关系见 [docs/REUSE.md](REUSE.md)。
 
 ## 运行数据目录
 
@@ -65,4 +65,4 @@ Windows 与 macOS 各自在内置盘持有代码、`peach-data`、`.venv` 和 wo
 - `tools/`：FFmpeg 等本机托管运行时；二进制和许可证不进入 Git
 
 这是约定的分层，不是每台机器的实测形状。Mac 上 `generated` 是指向 `artifacts` 的符号链接，
-另有 `review`、`tmp`，且 `archive`/`sources`/`tools` 指向外置盘。动手前以 `docs/STATUS.md` 为准。
+另有 `review`、`tmp`，且 `archive`/`sources`/`tools` 指向外置盘。动手前以 [docs/STATUS.md](STATUS.md) 为准。

@@ -20,7 +20,7 @@ export function CloudDriveGuide() {
         <ExternalLink href="https://www.clouddrive2.com/help.html">挂载帮助</ExternalLink>
       </Help>
       <Disclosure summary="CloudDrive 缓存建议">
-        <Help>看缓存放在哪块硬盘上，照那一档填。这是起步值，按实际播放表现再调。</Help>
+        <Help>按缓存所在硬盘和可用内存选择起步值，再根据播放表现调整。</Help>
         {/* 三档同形、跨档比较：窄处每档一块纵排，宽处三项读数排成三列对齐。 */}
         <ul aria-label="按缓存所在硬盘分档" className="flex flex-col gap-2">
           {CLOUDDRIVE_PROFILES.map((profile) => (

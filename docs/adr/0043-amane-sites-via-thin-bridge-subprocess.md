@@ -6,7 +6,7 @@
 ## 背景
 
 `sqzw-x/amane`（GPL-3.0）接了二十多个 JAV 影片站的解析器，其中 fc2club、freejavbt、airav、
-avsox 是 Peach 自己没有且站点可达的。2026-09-22 的 POC（`docs/reference-snapshots/amane-crawlers-poc.md`）
+avsox 是 Peach 自己没有且站点可达的。2026-09-22 的 POC（[docs/reference-snapshots/amane-crawlers-poc.md](../reference-snapshots/amane-crawlers-poc.md)）
 证实它的爬虫层能脱离 FastAPI 与 AppRuntime 手工构造并跑通真实番号，但也量出了三道墙：它要求
 Python 3.14、依赖全用 `>=` 下限，并进 Peach 主 venv 会撞上「精确固定版本」的门槛并把 Peach 的
 下限从 3.12 抬上去；它的聚合层会连带 SQLAlchemy 与配置层；它的 `observability.invoke_source`
@@ -35,7 +35,7 @@ Peach 一侧 `peach.metadata_amane.AmaneBridge` 起它、读那一行、按站�
 
 **四、升级是人做的事。** 设置页只显示钉住的 sha 与上游最新 release 的 tag（只读 GitHub API，
 取不到写「未取得」），不自动跟上游：改 sha 前要读上游 diff 确认站点解析器的字段语义没变，再
-同批更新锁、`docs/REUSE.md` 与映射表。Dependabot 推不动 git sha 钉，所以桥不进 Dependabot。
+同批更新锁、[docs/REUSE.md](../REUSE.md) 与映射表。Dependabot 推不动 git sha 钉，所以桥不进 Dependabot。
 
 **五、聚合留在 Peach。** 一站一份 payload 按 Javinizer-Go 快照的键名交出去（`maker`、`label`、
 `actresses[].japanese_name`、`genres`），身份由 `identifies_code` 核，分歧由 `metadata_policy` /
@@ -65,7 +65,7 @@ fc2club；无码链末尾接 avsox；有码与素人链不变，freejavbt 与 ai
   多一个 `detail`；`scraping_access` 多三个冷却读写入口；来源链多一档 `amane`。
 - 设置页多一张卡、三条端点（`/api/scraping/amane-bridge` 与它的 `check`、`rebuild`）、一个后台任务。
 - amane 为 GPL-3.0，Peach 为 AGPL-3.0-or-later，两者以进程边界相接；随 Peach 分发的只有清单、锁
-  与桥脚本，不含 amane 源码，amane 由用户机器上的 uv 按锁下载。登记在 `docs/REUSE.md`。
+  与桥脚本，不含 amane 源码，amane 由用户机器上的 uv 按锁下载。登记在 [docs/REUSE.md](../REUSE.md)。
 - 每次子进程有约 0.6～1 秒的 import 开销（`amane.crawlers` 的包 `__init__` 连带 SQLAlchemy），
   接受它换来不改上游一行。
 - amane 的 `WebClient` 以 `verify=False` 发请求；这一路取回的是公开页面的文字与图片地址，不带
@@ -74,4 +74,4 @@ fc2club；无码链末尾接 avsox；有码与素人链不变，freejavbt 与 ai
 ## 修订：移除 fc2ppvdb（2026-09-22）
 
 fc2ppvdb 从开放站表、FC2 链与桥的站表中移除：当日实测三个商品号都回 HTTP 526（站方 Cloudflare 源站证书故障），用户判定该站已不可访问。 <!-- copy-lint-disable-line -->
-经桥的站只剩 fc2club、freejavbt、airav、avsox 四站；站点恢复后要接回来，按本 ADR「四」的升级流程同批改站表、链与 `docs/REUSE.md`。
+经桥的站只剩 fc2club、freejavbt、airav、avsox 四站；站点恢复后要接回来，按本 ADR「四」的升级流程同批改站表、链与 [docs/REUSE.md](../REUSE.md)。

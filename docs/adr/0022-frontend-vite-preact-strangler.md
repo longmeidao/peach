@@ -26,7 +26,7 @@
 - **单一测试入口不变**：`scripts/test.ps1` / `scripts/test.sh` 新增 `web` 域，Node 存在时跑 vitest，缺失时显式跳过并说明；`full` 包含它。
 - 服务端新增 `/dist/{path}` 静态路由，与 `/js/{name}` 同一套路径遍历、扩展名和缓存头检查；不引入 CDN。
 - 现有手工 vendored 的 video.js / swiper / lucide 暂不改；等对应页面迁移时再决定是否改为 npm 依赖经 Vite 打包。
-- 直接依赖数量要最小，每个依赖在 `docs/FRONTEND.md` 登记一句用途；版本精确锁定并提交 lockfile。
+- 直接依赖数量要最小，每个依赖在 [docs/FRONTEND.md](../FRONTEND.md) 登记一句用途；版本精确锁定并提交 lockfile。
 - 测试契约从「源码字符串」转向「用户可见文案、`data-*`、`aria-*`、路由与 API 路径」；纯函数（路由匹配、时长格式、标签显示名、回退链解析）先抽成 `web/js/*.js` 模块，供 vitest 直接测试。
 
 ## 后果

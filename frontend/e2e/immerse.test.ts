@@ -1,7 +1,7 @@
 /* 沉浸模式的取流与舞台形状。
  *
  * 队列固定成演示库里的一条横屏加一条竖屏：`/api/items` 的随机抽样换成这两条，谁先谁后由
- * 起播 id 定。两条的 `/stream` 都故意晚回，首条加载与切片预加载的窗口拉到能采样的长度。 */
+ * 起播 id 定。两条的 `/stream` 由用例在采样结束后放行，确保采到等待状态。 */
 import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
@@ -49,6 +49,7 @@ describe('沉浸模式', () => {
   it('片源先问 stream-plan；首条出画前不露舞台，切片预加载时保持旧形状，出画那一刻才换', async () => {
     const opened = await visit(browser, '/', DESKTOP);
     const { page } = opened;
+    const releases: (() => void)[] = [];
     try {
       const items: Item[] = await page.evaluate(async () =>
         (await (await fetch('/api/items?limit=60&offset=0&thumb=')).json()).items);
@@ -62,8 +63,15 @@ describe('沉浸模式', () => {
         const url = new URL(request.url());
         if (url.pathname === '/api/stream-plan') planned.push(Number(url.searchParams.get('id')));
       });
+      const holds = new Map<number, { wait: Promise<void>; release: () => void }>();
+      for (const item of [wide, tall]) {
+        let release = () => {};
+        const wait = new Promise<void>((resolve) => { release = resolve; });
+        holds.set(item.id, { wait, release });
+        releases.push(release);
+      }
       await page.route(new RegExp(`/stream\\?id=(${wide.id}|${tall.id})&`), async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, HOLD_MS));
+        await holds.get(Number(new URL(route.request().url()).searchParams.get('id')))!.wait;
         await route.continue().catch(() => {});
       });
       // 这台机器旁边有人：新插进来的每条 video 一律静音。
@@ -71,13 +79,15 @@ describe('沉浸模式', () => {
         new MutationObserver(() => document.querySelectorAll('video').forEach((video) => { video.muted = true; }))
           .observe(document, { childList: true, subtree: true });
       });
-      await page.goto(new URL(`/immerse?id=${wide.id}`, page.url()).href, { waitUntil: 'load' });
+      await page.goto(new URL(`/immerse?id=${wide.id}`, page.url()).href, { waitUntil: 'domcontentloaded' });
+      await page.locator('#tokTrack .tokslide video').waitFor({ state: 'attached' });
 
       // 首条出画前：框、动作列、作者标题一样都不露，出画时一次摆成横屏。
       const loaderHidden = () => page.evaluate(() => document.querySelector<HTMLElement>('#tokLoader')!.hidden);
-      const loading = await watch(page, loaderHidden, 20_000);
+      const loading = await watch(page, loaderHidden, HOLD_MS);
       assert.ok(loading.length > 3, `首条加载窗口里只采到 ${loading.length} 次`);
       for (const moment of loading) assert.equal(moment.shown, false, JSON.stringify(moment));
+      holds.get(wide.id)!.release();
       await settled(page);
       assert.deepEqual(await sample(page), { wide: true, shown: true, slides: [''] });
       assert.deepEqual(planned, [wide.id]);
@@ -89,11 +99,13 @@ describe('沉浸模式', () => {
       for (const moment of preloading) {
         assert.deepEqual(moment, { wide: true, shown: true, slides: ['', 'translateY(100%)'] });
       }
+      holds.get(tall.id)!.release();
       await settled(page);
       assert.deepEqual(await sample(page), { wide: false, shown: true, slides: [''] });
       assert.deepEqual(planned, [wide.id, tall.id]);
       assert.deepEqual(opened.problems, [], JSON.stringify(opened.problems));
     } finally {
+      releases.forEach((release) => release());
       await opened.close();
     }
   });

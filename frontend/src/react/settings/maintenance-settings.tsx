@@ -41,7 +41,7 @@ export function TutorialSettings({ receipt, reopenTutorial }: ConfigurationProps
   return (
     <Section title="安装教程">
       <Stack>
-        <Help>关掉的安装教程从这里叫回来：跳过的项目会重新出现，做完的仍然算完成。</Help>
+        <Help>重新显示已关闭或跳过的安装步骤，保留已完成的记录。</Help>
         {action.error ? <ErrorText>{action.error}</ErrorText> : null}
       </Stack>
       <Footer>

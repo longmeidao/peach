@@ -76,7 +76,7 @@ export function QualityGoalsPage(props: QualityGoalsProps) {
   if (!data) {
     return (
       <Page>
-        <Note tone="error" title="读取失败">{goals.error ? errorMessage(goals.error) : '读取高清版目标失败'}</Note>
+        <Note tone="error" title="高清版目标读取失败">{goals.error ? errorMessage(goals.error) : '未取得高清版目标，请刷新页面重试。'}</Note>
       </Page>
     );
   }

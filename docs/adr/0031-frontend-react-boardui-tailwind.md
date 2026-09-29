@@ -64,7 +64,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 
 ### 测试与门槛
 
-- **沿用 ADR-0022**：`npm run build` 的产物提交进 `web/dist/`，运行时不需要 Node；`/dist/{path}` 路由不变；测试入口仍是 `scripts/test.ps1` / `scripts/test.sh` 的 `web` 域；依赖精确锁定，在 `docs/FRONTEND.md` 登记用途。
+- **沿用 ADR-0022**：`npm run build` 的产物提交进 `web/dist/`，运行时不需要 Node；`/dist/{path}` 路由不变；测试入口仍是 `scripts/test.ps1` / `scripts/test.sh` 的 `web` 域；依赖精确锁定，在 [docs/FRONTEND.md](../FRONTEND.md) 登记用途。
 - **旧断言先分类再删**。页面迁走时，它在 `tests/test_web_ui.py` 等处的源码字符串断言逐条归入三类，去向写进提交说明：
   - 设计决定（用户定过的颜色、状态色块、焦点样式）写成 `frontend/e2e/design.test.ts` 里读 `getComputedStyle` 的断言，或由 lint 规则覆盖；
   - 行为（提交什么、错误写回哪个字段、控件何时可用）写成 vitest；
@@ -79,7 +79,7 @@ BoardUI 通过 shadcn 注册表发布 React + Tailwind v4 源码，表单与弹�
 ## 后果
 
 - 迁移期同一页会有两种外观：未迁移的分区仍是旧写法。
-- 每个页面多加载一份 `peach-react.css`，体积随迁移的页面增长，当前值记在 `docs/FRONTEND.md`。
+- 每个页面多加载一份 `peach-react.css`，体积随迁移的页面增长，当前值记在 [docs/FRONTEND.md](../FRONTEND.md)。
 - Oxlint 的 JS 插件 API 仍是 alpha，`@shadcn/lint` 只有 0.1.0：两者精确钉版本，升级前先跑 `web` 域。`eslint` 作为 `@shadcn/lint` 的 peer 会装进 `node_modules`，不调用。
 - 冒烟与设计决定断言依赖 npm、ffmpeg 与 Chrome。本机缺任一项时整组显式跳过，这只适用于非验收运行。CI 的 `web-bundle` 任务跑 typecheck、lint、vitest 与 build，不跑 e2e；CI 接入带浏览器的 e2e 任务、并在 CI 里把缺依赖判为失败之前，迁移分支须在本机 `web` 域输出里确认 e2e 实际执行。
 - `ReactBundleTests` 与 `BoardTokenTests` 里只在新旧并存期成立的断言，随「新旧样式并存」一节的做法一起删除。

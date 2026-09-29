@@ -24,8 +24,8 @@ export function ConfigurationPage({ receipt, reopenTutorial }: ConfigurationProp
   if (!data) {
     return (
       <div className="configpage">
-        <Note tone="error" title="打不开配置">
-          {config.error ? errorMessage(config.error) : '没有读到配置'}
+        <Note tone="error" title="配置读取失败">
+          {config.error ? errorMessage(config.error) : '未取得配置，请刷新页面重试。'}
         </Note>
       </div>
     );

@@ -63,7 +63,7 @@ https://github.com/user-attachments/assets/cc164de3-28d6-4fc9-8067-f2e70e94cb93
 - **女优页**：别名、生日身材、社媒和 JavDB、MISSAV 链接汇在一页，下面是她在你馆藏里的全部作品和照片；头像可以直接在作品封面上框一块。
 - **补资料**：按番号从片商官网、DMM、JavBus、JavDB 等站点补标题、女优、厂牌和高清封面；只填空着的，不覆盖你改过的。
 - **播放**：在浏览器里直接播放，记下看到哪；可以点喜欢、打分、稍后看、加进播放列表，也能「记一次高潮」。
-- **追新作**：在女优页打开订阅，或在关注管理里按名字订阅（馆藏里还没有她也行），Peach 会定期查她的新作；创作者可以跨 FANBOX、Patreon、Kemono 等 11 个站点一起关注，不同站点上的同一个作品合成一张卡。
+- **追新作**：在女优页打开订阅，或在关注管理里按名字订阅，馆藏中尚未收录的女优也可订阅。Peach 会定期检查新作；创作者可跨 FANBOX、Patreon、Kemono 等站点关注，不同站点的同一作品合成一张卡。
 - **统计**：片子存在哪块盘、看过多少、标签分布，一页看完。
 - **外观**：深色浅色、主题色、侧栏顺序都能自己调。
 - **多端**：电脑、平板、手机的浏览器都能用。
@@ -108,7 +108,7 @@ macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.
     - `<片名>-poster.jpg` 这样的海报。
   - 已有的标题、女优、厂牌和海报会直接显示。
 - **支持哪些网盘？**
-  - 目前是 115 和 PikPak，用 CloudDrive2 挂载成本地磁盘。
+  - 支持通过 CloudDrive2 挂载的 115 和 PikPak。
   - Peach 只把它当普通文件夹读，不保存网盘账号。
 - **手机上怎么看？**
   - 首次设置时选「同一局域网的设备」。
@@ -126,7 +126,7 @@ macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.
 
 使用：[Windows 测试版](docs/TESTING_DESKTOP.md) · [运行与配置](docs/OPERATIONS.md) · [来源采集](docs/SOURCING.md) · [网盘挂载](docs/CLOUDDRIVE.md) · [变更日志](CHANGELOG.md)
 
-参与开发：[开发约定](AGENTS.md) · [总体架构](docs/ARCHITECTURE.md) · [测试与依赖](docs/TESTING.md) · [前端开发](docs/FRONTEND.md) · [复用清单](docs/REUSE.md) · [README 维护](docs/README_MAINTENANCE.md)。改完用 Windows `& .\scripts\test.ps1` 或 macOS/Linux `./scripts/test.sh` 验证。
+参与开发：[开发约定](AGENTS.md) · [总体架构](docs/ARCHITECTURE.md) · [测试与依赖](docs/TESTING.md) · [前端开发](docs/FRONTEND.md) · [复用清单](docs/REUSE.md) · [README 维护](docs/README_MAINTENANCE.md) · [文档与界面文案](docs/WRITING.md)。改完用 Windows `& .\scripts\test.ps1` 或 macOS/Linux `./scripts/test.sh` 验证。
 
 ## 相关项目
 
@@ -135,8 +135,8 @@ macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.
 - [CloudDrive2](https://www.clouddrive2.com/)：把网盘挂载成本地磁盘。
 - [OpenAver](https://github.com/slive777/OpenAver)、[Javinizer-Go](https://github.com/javinizer/javinizer-go)、[MetaTube](https://github.com/metatube-community/metatube-sdk-go)、[MDCx](https://github.com/sqzw-x/mdcx)：Peach 参考过它们的来源解析和推荐做法。
 
-完整的复用与致谢见 [复用清单](docs/REUSE.md)。
+各项目的复用位置与取舍见 [复用清单](docs/REUSE.md)。
 
 ## 许可证
 
-[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao。随附的第三方前端文件保留各自的许可证，见 [web/vendor](web/vendor/)。
+[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao。第三方前端文件保留各自的许可证；[依赖清单](package.json) 登记版本，[生成脚本](scripts/vendor_web_dependencies.mjs) 登记 `web/vendor/` 中的文件与许可证位置。

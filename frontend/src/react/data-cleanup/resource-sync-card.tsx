@@ -125,7 +125,7 @@ export function ResourceSyncCard(
   };
   let result = null;
   if (done?.status === 'failed') {
-    result = <Note tone="error" title="任务失败">{done.error || '任务失败'}</Note>;
+    result = <Note tone="error" title="资源清理未完成">{done.error || '请查看任务记录，核对已处理的文件。'}</Note>;
   } else if (done) {
     result = receipt(done);
   } else if (apply.running) {

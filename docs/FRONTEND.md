@@ -1,11 +1,12 @@
 # 前端 island 层
 
-这份文档讲前端代码放在哪、怎么构建和测试、React 页怎么挂进遗留壳，以及迁下一个页面的步骤。
+本页说明前端构建、挂载契约和页面迁移。按任务进入：
 
-Peach 的界面正在从 `web/app.js`（无构建、一万一千余行的原生 ES module）逐页迁到
-React + Tailwind v4 + BoardUI 源码。迁移方式是 strangler：
-**遗留路由继续拥有外壳和每一个页面**，一页被重写之后，遗留入口只负责铺骨架、把容器和自己独有的助手交出去。
-为什么这么做、以及不做整体重写的理由见 `docs/adr/0031-frontend-react-boardui-tailwind.md`。
+1. 修改现有页面：从 [开发循环](#开发循环) 安装依赖、构建和验证。
+2. 新增 React 页面：按 [迁移下一个页面](#迁移下一个页面) 接入路由与挂载入口。
+3. 查询模块职责：看 [目录与产物](#目录与产物) 和 [挂载契约](#挂载契约)。
+
+Peach 按 [ADR-0031](adr/0031-frontend-react-boardui-tailwind.md) 逐页接入 React + Tailwind + BoardUI。`web/app.js` 的原生 ES module 路由拥有应用外壳，负责骨架、容器和页面助手；React 负责所挂载的页面内容。
 
 只有一条不可变的约束：**运行时没有 Node**。Python 服务、PyInstaller 包和 macOS 上的
 检出都直接读 `web/`，所以构建产物提交进 Git，不用任何 CDN。
@@ -159,7 +160,7 @@ CI（`GITHUB_ACTIONS=true`）里缺这些就判失败，由工作流负责装齐
 其余几条照样全部成立。新增路由要在 `ROUTES` 里写明它的主体。
 浏览器取本机 Google Chrome（`PEACH_E2E_CHROME` 可指定），短片由 ffmpeg 编码；缺 npm、
 `playwright-core`、ffmpeg 或 Chrome 时本机显式跳过，CI 里判失败。声明根是 Windows 形态，目前只在 Windows 上执行，
-CI 由 `web-e2e` job 在 `windows-latest` 上执行 `web` 域，矩阵扩成全量时改由 Windows 全量行覆盖（`docs/TESTING.md`）。界面验收里发现的同类问题，
+CI 由 `web-e2e` job 在 `windows-latest` 上执行 `web` 域，矩阵扩成全量时改由 Windows 全量行覆盖（[docs/TESTING.md](TESTING.md)）。界面验收里发现的同类问题，
 先在这里补一条用例再修。
 
 设计决定另有 `frontend/e2e/design.test.ts`，读 `getComputedStyle` 断言用户定过的外观：React 输入框不带旧焦点环、

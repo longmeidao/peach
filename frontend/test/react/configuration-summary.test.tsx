@@ -65,6 +65,6 @@ it('读不到配置时说打不开，按钮照样能去配置页', async () => {
   const host = await mount(
     <QueryClientProvider client={queryClient}><ConfigurationSummary openConfiguration={vi.fn()} /></QueryClientProvider>,
   );
-  expect(host.textContent).toContain('打不开配置');
+  expect(host.textContent).toContain('配置读取失败');
   expect(buttonNamed('打开配置页', host)).not.toBeNull();
 });
