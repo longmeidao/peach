@@ -1031,7 +1031,6 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 .board-page-skeleton .tastesummary>b .skeleton{height:34px}
 .skeleton-segments>span{display:flex;align-items:center;padding:4px 10px;min-height:28px;border-radius:6px;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap}
 .skeleton-segments>span.skeleton-segment-selected{color:var(--color-text-primary);font:var(--board-body-medium);background:var(--color-background-primary-default);box-shadow:var(--elevation-xs)}
-.board-page-skeleton .configpage{display:grid;gap:40px}
 .board-page-skeleton .qualitycover,.board-page-skeleton .pic{height:auto}
 .board-page-skeleton .dupcover{height:auto;min-height:0}
 .board-page-skeleton .playlistcreate{min-width:200px}

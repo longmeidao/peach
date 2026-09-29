@@ -30,7 +30,7 @@ describe('Board 页面骨架', () => {
     ['/duplicates', '.dupgroup .duprow', 4],
     ['/quality-goals', '.qualityitem > .qualitycover', 6],
     ['/follow-manage', '.peach-react .follow-skeleton-surface .follow-skeleton-author', 3],
-    ['/configuration', '.configfieldset', 1],
+    ['/configuration', '.peach-react .configpage section', 2],
     ['/playlists', '.playlistcards > .playlistcard', 6],
   ] as const)('%s 复用最终内容容器', (path, selector, count) => {
     const root = document.createElement('div');
