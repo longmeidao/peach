@@ -12,20 +12,6 @@
 /* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */
 .fsec{min-width:0;border:1px solid var(--field-ring);border-radius:var(--surface-radius);
   background:var(--ground);padding:14px 16px 16px}
-/* 面板上下异色：头部条通到卡边（负边距抵消内边距），正文是全站最亮的 --ground，
-   那条横条落到 --page 并带一条发丝线；圆角随卡收口。 */
-.fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px;
-  margin:-14px -16px 12px;padding:11px 16px;background:var(--overlay-5);
-  border-bottom:1px solid var(--line-soft);border-radius:calc(var(--surface-radius) - 1px) calc(var(--surface-radius) - 1px) 0 0}
-.fsechead h3{margin:0;font-size:var(--fs-md);font-weight:600;letter-spacing:.01em}
-/* 排序框照 Geist Select 的 prefix 做法：图标压在框内左侧，不在框外挂一个文字标签。
-   Geist 的文字 Label 是块级、排在控件上方（block ... mb-2），行内并排那种写法它没有；
-   而工具行里既没有上方空间，图标又足够把下拉框和普通按钮区分开。 */
-/* 版式开关和排序框、按钮同处分区标题行，一起收到 --control-h 上（内边距 2px + 1px 边框
-   凑齐同一个外高）。这一行不给自己开小一号的档：同排三个控件里只有下拉缩了尺寸和字号，
-   读起来就是一个点不动的说明标签，而它恰恰是这行里唯一能改变列表内容的控件。 */
-.fsechead .iconswitch{display:inline-flex;gap:2px;flex:none;padding:2px}
-.fsechead .iconswitch label{width:34px;height:32px}
 
 /* Geist Note：字段、卡片、分区旁的持久上下文，以及需要用户处理的失败，全部走这里。
    瞬时回执用 toast，销毁确认用 dialog/confirm。整页范围的失败也是这个盒子，只是多
@@ -70,17 +56,11 @@
    总在同一条竖线上，换行之后也还在这一横条的右端。 */
 @media(max-width:600px){.project-banner{justify-content:flex-start}.project-banner>a{margin-left:auto}}
 
-
 /* 检查失败明细持续保留到状态解决，复用 Note 的边界、图标和语义色。 */
 .fwarn{grid-template-columns:16px minmax(0,1fr);margin:10px 0 14px}
 .fwarn>span{min-width:0}
 .fwarn p{margin:0}
 
-/* 卡片内部的行：只用分隔线，不套框——框里再套框正是要避开的那条。 */
-/* grid 项默认 min-width:auto，最宽的一行会把整列撑出容器——窄的那一栏尤其明显。
-   容器和每一项都要显式 min-width:0 才会真的收缩。 */
-.frows{display:grid;min-width:0}
-.frows>*{min-width:0}
 /* 表格视图。数值取自 boardui.com/components/data-table 的 `.bui-table`（2026-09-08，
    登记见 docs/BOARD_UI.md）：表头与格子都是 10px 12px 内边距、14/20、竖直居中；表头
    500 字重、次要字色、次级底色、上下各一条分隔线；正文行只有一条下边线，悬停不换底。
@@ -92,12 +72,6 @@
   border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
 .ftable tbody tr{border-bottom:1px solid var(--line-soft)}
 .ftable tbody tr:last-child{border-bottom:0}
-.frow{display:flex;align-items:center;gap:12px;padding:9px 0;flex-wrap:wrap;
-  border-bottom:1px solid var(--border-10)}
-.frows>.frow:last-child{border-bottom:0}
-.frows>.frow:last-child[open]{border-bottom:0}
-.frow>b{flex:1 1 180px;min-width:0;font-weight:500;overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap}
 
 /* 进度面板与它上下的分区是同一档容器：发丝边 --field-ring 加 --ground 的面。
    `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
@@ -120,8 +94,7 @@
 
 @media (max-width:640px){
   .fsec{padding:12px 13px 14px}
-  .fsechead{margin:-12px -13px 12px;padding:12px 13px}
-  .frow{gap:8px}
+
 }
 
 /* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；

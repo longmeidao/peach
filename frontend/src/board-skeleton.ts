@@ -1,6 +1,7 @@
 import { resolveFollowSort, SORT_OPTIONS, type SortDir, type SortKey } from './follow-sort';
 import { islandButton, islandSelect } from './island-skeleton';
 import { configurationSkeleton } from './configuration-skeleton';
+import { duplicatesSkeleton, statsSkeleton } from './management-skeletons';
 
 /** 等待态复用页面容器，只有异步内容使用占位。 */
 const line = (width = '60%') => `<span class="skeleton" style="width:${width}"></span>`;
@@ -82,7 +83,7 @@ export function boardPageSkeleton(
 ): string {
   let body = '';
   if (path === '/stats') {
-    body = `<div class="insightpage statsdashboard"><header class="insighttoolbar">${line('38%')}</header>${metrics(['馆藏视频', '看过', '内容标签', '使用空间'])}${panel('馆藏视频')}${panel('内容标签')}</div>`;
+    body = statsSkeleton();
   } else if (path === '/taste') {
     body = `<div class="tastepage"><header class="tastehead">${segments(['浏览器记录', 'Peach 内部'], 'insightswitch')}${line('24%')}</header><div class="tastestate"></div>${metrics(['浏览记录', '口味维度', '浏览候选', '私有导出'], 'tastesummaries')}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${repeat(lines(), 4)}</div></section>${panel('口味分析')}<div class="board-activity-charts">${panel('浏览活动')}${panel('时间分布')}</div>${panel('标签')}</div>`;
   } else if (path === '/follow-manage') {
@@ -92,7 +93,7 @@ export function boardPageSkeleton(
   } else if (path === '/activity') {
     body = `<div class="activitypage">${['正在进行', '被挡下的', '最近完成'].map(title => `<section class="activitysection"><h3 class="geist-fieldset-title">${title}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${line('35%')}${lines()}</div></article></div></section>`).join('')}</div>`;
   } else if (path === '/duplicates') {
-    body = `<div class="review"><div class="collection-summary">${line('38%')}</div><div class="fsechead dupactions"><h3>批量保留</h3>${line('40%')}</div>${repeat(`<section class="dupgroup"><div class="duphead">${line('45%')}</div><div class="duplist">${repeat(`<div class="duprow"><span class="dupcover skeleton"></span><span class="dupmarks">${line()}</span><span class="dupname">${line('90%')}</span>${line()}${line()}${line()}<span class="duppath">${line('70%')}</span></div>`, 2)}</div></section>`, 2)}</div>`;
+    body = duplicatesSkeleton();
   } else if (path === '/quality-goals') {
     body = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${line('20%')}</div><div class="qualitylist">${repeat(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${lines()}</div><footer class="qualityactions">${line('80%')}</footer></article>`, 6)}</div></div>`;
   } else if (path === '/playlists') {

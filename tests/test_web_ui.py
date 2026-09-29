@@ -513,8 +513,7 @@ class WebUiSourceTests(unittest.TestCase):
                          ".resourcesyncbox"):
             self.assertPageContains(selector + "{", f"{selector} 应有一条自己的规则")
         css = stylesheet_source()
-        for name in (".cleanupfieldset>.geist-fieldset-footer",
-                     ".fsechead", ".resourcesyncfooter"):
+        for name in (".cleanupfieldset>.geist-fieldset-footer", ".resourcesyncfooter"):
             start = css.index(name + "{")
             rule = css[start:css.index("}", start)]
             self.assertIn("background:var(--overlay-5)", rule, f"{name} 是操作条")
@@ -1801,7 +1800,6 @@ class WebUiSourceTests(unittest.TestCase):
         add = (Path(__file__).resolve().parents[1]
                / "frontend/src/react/follow-manage/add-source.tsx").read_text(encoding="utf-8")
         self.assertIn('<Input aria-label="来源链接、名字或 id"', add)
-        self.assertIn("<LoadingDots label={byName ? BY_NAME_HINT : BY_LINK_HINT} />", add)
         self.assertPageLacks(".isearch")
 
     def test_filtering_waits_for_the_chinese_ime_to_finish_composing(self):
@@ -5272,9 +5270,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn('.followmanage .board-follow-list .board-author-actions{width:auto;flex:none}', board)
         self.assertNotIn('.board-author-actions{width:100%', board)
 
-    def test_follow_fieldset_headers_share_one_control_height(self):
-        self.assertPageContains('.fsechead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;box-sizing:border-box;min-height:56px')
-
     def test_top_level_highlight_is_exclusive_and_covers_index_pages(self):
         """首页高亮只看 state.state 的话，进管理区和索引页时它仍然亮着，两个入口一起亮。"""
         # 高亮由「当前路径匹配到哪条路由」决定，索引页和实体页因此天然分开：
@@ -6526,8 +6521,6 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".followmanage .fsec:has(.board-follow-selection){padding:0;border-radius:18px;background:var(--ground);overflow:visible}"
                       ".followmanage .fsec>.board-follow-selection{padding:4px 24px 12px}", board)
-        self.assertIn(".followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}", board)
-        self.assertIn(".followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:2}", board)
         self.assertIn("--color-border-checkbox-default:#d4d4d4;--color-border-checkbox-hover:#a3a3a3", board)
         # 暗档的默认边线比上游亮一档：框底就是卡面色，那 1px 是这个形状唯一的证据。
         self.assertIn("--color-border-checkbox-default:#525252;--color-border-checkbox-hover:#737373", board)
@@ -8005,7 +7998,6 @@ class WebUiSourceTests(unittest.TestCase):
         """新增 CSS 省略必须先决定它是语义文本，还是应改用 MiddleTruncate。"""
         reviewed_end_selectors = {
             ".alphatag span:first-of-type", ".av .nm",
-            ".frow>b",
             ".feednewcard .meta .s>.feednewperformers",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏与播放器右键菜单：标题、来源和菜单标签都是语义文本，尾部省略。
@@ -8723,7 +8715,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".cleanupgrid{gap:16px}", board)
         self.assertIn(".cleanupstats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}", board)
         # 这两个 section 的标题也走同一条字阶，不留浏览器默认的 700。
-        self.assertIn(".followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading)", board)
+        self.assertIn(".cleanupfieldset h3,.resourcesync>h2{font:var(--board-heading)", board)
 
     def test_a_scan_card_keeps_its_outcome_outside_the_box(self):
         """扫描与采集的结果和故障挂在卡片外面，和链接管理、资源同步一个写法。
@@ -8742,11 +8734,8 @@ class WebUiSourceTests(unittest.TestCase):
             "      </Fieldset>\n"
             "      <Outcome state={state} problem={problem} settled={settled} onRetry={retry} toast={toast} />",
             card)
-        self.assertIn('<Fieldset layout="split" label="扫描与采集" footer={', card)
         # 空着时整块收起：`aria-live` 的容器留一条空轨道，卡片底下会凭空多出一个间距。
         self.assertIn('<div aria-live="polite" className="flex flex-col gap-4 empty:hidden">', card)
-        # 进度条留在卡片里，和那颗按钮同一格。
-        self.assertIn("<Progress label={line} value={state.checked || 0} max={state.total} />", card)
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn(".cleanupgrid>:is(.cleanupscraping,.cleanupmediarepair){grid-column:1/-1;display:grid;gap:16px}", board)
 
@@ -9942,8 +9931,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             '@media (prefers-color-scheme:dark){html:not([data-theme="light"]){color-scheme:dark}}')
         self.assertPageContains('html[data-theme="dark"]{color-scheme:dark}')
-        # 标题行的版式开关收在 --control-h 上。
-        self.assertPageContains(".fsechead .iconswitch label{width:34px;height:32px}")
 
     def test_the_selection_mark_is_one_shape_that_does_not_flip_with_the_theme(self):
         """选中标记全站一个长相：正圆、一对固定的浅片深勾。

@@ -24,7 +24,7 @@ import { useBackgroundJob } from '../background-job';
 import { cardClass } from '../components/card';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
-import { Progress } from '../components/progress';
+import { TaskProgress } from '../components/task-progress';
 import { busyProps } from '../settings/use-action';
 import { ExternalLink, FieldLabel, Help } from '../settings/section';
 import {
@@ -374,10 +374,9 @@ export function AddSource({ data, credentials, readOnly, toast, openCredentials 
       </div>
 
       <div aria-live="polite" className="flex flex-col gap-3 empty:hidden">
-        {running || resolve.isPending ? (job?.total
-          ? <Progress label={job.message || `查找中：${job.checked || 0}/${job.total}`}
-              value={job.checked || 0} max={job.total} />
-          : <LoadingDots label={byName ? BY_NAME_HINT : BY_LINK_HINT} />) : null}
+        {running || resolve.isPending ? <TaskProgress embedded
+          label={job?.message || (job?.total ? `查找中：${job.checked || 0}/${job.total}` : byName ? BY_NAME_HINT : BY_LINK_HINT)}
+          value={job?.checked} total={job?.total} /> : null}
         {problem ? <Note tone="error" title="这一次没有完成">{problem}</Note> : null}
       </div>
 

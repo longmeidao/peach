@@ -37,9 +37,8 @@ import { cardClass } from '../components/card';
 import { DataTableFrame } from '../components/data-table-frame';
 import { EmptyState } from '../components/empty-state';
 import { clickedBlank } from '../components/row-click';
-import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
-import { Progress } from '../components/progress';
+import { TaskProgress } from '../components/task-progress';
 import { SelectionDock } from '../components/selection-dock';
 import { busyProps } from '../settings/use-action';
 import {
@@ -561,11 +560,9 @@ export function SourceList(props: SourceListProps) {
 
       {/* 这一趟在后台跑，关掉页面还在继续，所以状态留在页面上而不是只让按钮转一下。 */}
       <div aria-live="polite" className="flex flex-col gap-3 empty:hidden">
-        {running ? (job?.total
-          ? <Progress label={job.message
-              || `${job.older ? '抓取历史' : '检查更新'}：已完成 ${job.checked || 0}/${job.total} 个来源`}
-              value={job.checked || 0} max={job.total} />
-          : <LoadingDots label={job?.message || '正在准备检查任务'} />) : null}
+        {running ? <TaskProgress embedded label={job?.message || (job?.total
+          ? `${job.older ? '抓取历史' : '检查更新'}：已完成 ${job.checked || 0}/${job.total} 个来源`
+          : '正在准备检查任务')} value={job?.checked} total={job?.total} /> : null}
         {problem ? <Note tone="error" title="操作未完成">{problem}</Note> : null}
         {failures.length ? (
           <Note tone="error" title={`${failures.length} 个来源检查失败`}

@@ -40,7 +40,7 @@ import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { ExpandableRanking } from '../components/expandable-ranking';
 import { LEGACY_AVATAR_IMG } from '../components/legacy-avatar';
-import { LoadingDots } from '../components/loading-dots';
+import { TaskProgress } from '../components/task-progress';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
@@ -318,7 +318,7 @@ function HistoryActions(
         </Button>
         <Button ref={trigger} iconOnly leadingIcon={RiArrowDownSLine}
           aria-label="更多取得浏览记录的方式" aria-haspopup="dialog" aria-expanded={open}
-          onClick={() => setOpen(true)} />
+          {...busyProps(busy)} onClick={() => { if (!busy) setOpen(true) }} />
       </span>
       <Popover triggerRef={trigger} isOpen={open} onOpenChange={setOpen}
         placement="bottom end" offset={4} className={MENU_POPOVER_SURFACE}>
@@ -485,16 +485,9 @@ export function TastePage(props: TasteProps) {
           done={!!(summary.history_sources || data.updated_at)} />
         {/* 这一趟在后台跑，关掉页面还在继续，所以状态留在页面上而不是只让按钮转一下。 */}
         <div aria-live="polite" className="flex flex-col gap-3 empty:hidden">
-          {running ? (job?.total
-            ? <div className="flex flex-col gap-1.5">
-                <Progress label={job.message || '正在读取浏览记录'}
-                  value={job.checked || 0} max={job.total} />
-                <p className="text-caption-1-regular text-text-secondary">
-                  {`${job.message || '正在读取浏览记录'} · ${job.checked || 0} / ${job.total}`}
-                </p>
-              </div>
-            : <LoadingDots label={job?.message || '正在读取浏览记录并更新口味分析'} />) : null}
-          {load.isPending ? <LoadingDots label="正在导入历史文件" /> : null}
+          {running ? <TaskProgress label={job?.message || '正在读取浏览记录并更新口味分析'}
+            value={job?.checked} total={job?.total} /> : null}
+          {load.isPending ? <TaskProgress label="正在导入历史文件" /> : null}
           {problem ? <Note tone="error">{problem}</Note> : null}
         </div>
         <TabPanel id="browser" className="flex flex-col gap-5">

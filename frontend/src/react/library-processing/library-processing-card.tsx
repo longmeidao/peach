@@ -25,11 +25,10 @@ import { apiSend, errorMessage } from '../../api';
 import { SCAN_CARD_TEXT } from '../../management';
 import type { LibraryProcessingProps } from '../bundle';
 import { Fieldset, FieldsetTitle } from '../components/fieldset';
-import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { useOverlayScrollbar } from '../components/overlay-scrollbar';
 import { PathLine } from '../components/path-line';
-import { Progress } from '../components/progress';
+import { TaskProgress } from '../components/task-progress';
 import { Disclosure } from '../settings/section';
 import { busyProps } from '../settings/use-action';
 import { queryClient } from '../query';
@@ -225,7 +224,7 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Fieldset layout="split" label="扫描与采集" footer={
+      <Fieldset layout="stack" label="扫描与采集" footer={
         <>
           <LinkButton href="/scraping" size="small" trailingIcon={RiArrowRightLine}>来源和凭证</LinkButton>
           {state.candidates
@@ -241,16 +240,7 @@ export function LibraryProcessingCard(props: LibraryProcessingProps) {
           <FieldsetTitle>扫描与采集</FieldsetTitle>
           <p className="text-body-2-regular text-text-secondary">{SCAN_CARD_TEXT}</p>
           {state.status === 'running'
-            ? <div className="flex flex-col gap-1.5">
-                {state.total
-                  ? <>
-                      <Progress label={line} value={state.checked || 0} max={state.total} />
-                      <p className="text-caption-1-regular text-text-secondary">
-                        {line} · {state.checked || 0} / {state.total} 个视频
-                      </p>
-                    </>
-                  : <LoadingDots label={line} />}
-              </div>
+            ? <TaskProgress embedded label={line} value={state.checked} total={state.total} />
             : null}
         </div>
       </Fieldset>

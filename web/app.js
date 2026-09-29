@@ -467,7 +467,7 @@ const claimSurface=path=>{
   if(!isCatalogPath(path))unmountIsland($('#libraryProcessingNotice'));
   /* 首页那一行新作同样只属于目录页。管理区的入口不经过 `showHomeSurfaces`，离开目录页时
      在这里收起并清空，连同它的自动滚动一起停掉。 */
-  if(!isCatalogPath(path)){const feed=$('#feedNew');
+  if(!isFeedNewPath(path)){const feed=$('#feedNew');
     feed.querySelectorAll('.feednewrow').forEach(stopAutoScroll);feed.hidden=true;feed.innerHTML=''}
   /* 管理区正文的容器每次换页都经过这里，所以卸载也落在这里。React 档的页面是一棵自己
      管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的页面照着原节律继续敲库。
@@ -4443,12 +4443,13 @@ async function loadFeedNew(entityId,preload){
   return {items,html};
 }
 /* 首页那一行。资料页那一行在资料卡的岛里（`entity-hero`），数据同样取自 `loadFeedNew`。 */
+function isFeedNewPath(path){return isCatalogPath(path)&&path!=='/junk-files'}
 async function renderFeedNew(host,entityId){
   if(!host)return;
   host.dataset.feedEntity=entityId?String(entityId):'';
   const {items,html}=await loadFeedNew(entityId,host.getAttribute('aria-busy')==='true');
   // 取数期间人已经离开了这一页：首页那一行不画到管理区上。
-  if(!host.isConnected||host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
+  if(!host.isConnected||host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
   host.removeAttribute('aria-busy');
   if(!items.length){host.hidden=true;host.innerHTML='';return}
   host.hidden=false;
@@ -4475,7 +4476,7 @@ const entityHeroCurrent=()=>!!entityHeroHost?.isConnected&&islandMounted(entityH
 function refreshFeedRows(){
   // 首页那一行只在目录页出现，人不在那儿时不替它重取，否则会在别的页面上冒出来。
   document.querySelectorAll('.feednew[data-feed-entity]').forEach(host=>{
-    if(host.id==='feedNew'&&!isCatalogPath(location.pathname))return;
+    if(host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
     void renderFeedNew(host,Number(host.dataset.feedEntity)||undefined);
   });
   // 资料页那一行在资料卡的岛里，换一份新作交给它。
@@ -6764,7 +6765,7 @@ async function loadCatalog(){
   /* 新作那一行只在目录路径上出现：管理页、回收站这些页面回答的是别的问题，一行「外面出了
      什么」摆在那里只是噪音。离开目录时要显式收起——它是 `#main` 的固定子节点，没人收就
      一直挂在那儿。 */
-  if(isCatalogPath(location.pathname))void renderFeedNew($('#feedNew'));
+  if(isFeedNewPath(location.pathname))void renderFeedNew($('#feedNew'));
   else{$('#feedNew').hidden=true;$('#feedNew').innerHTML=''}
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
   if(state.state==='ads')return loadJunk(surface);

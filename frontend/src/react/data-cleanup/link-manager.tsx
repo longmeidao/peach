@@ -24,9 +24,8 @@ import { DataTableFrame } from '../components/data-table-frame';
 import {
   Fieldset, FieldsetTitle, PanelFooter, RESULT_PANEL, RESULT_SECTION, SectionHeading,
 } from '../components/fieldset';
-import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
-import { Progress } from '../components/progress';
+import { TaskProgress } from '../components/task-progress';
 import { spriteGlyph } from '../components/sprite-glyph';
 import { queryClient } from '../query';
 import { busyProps } from '../settings/use-action';
@@ -131,12 +130,7 @@ function LinkTable(
 function JobProgress({ line, value, total }: { line: string; value?: number; total?: number }) {
   return (
     <div className={`${RESULT_SECTION} flex flex-col gap-1.5`}>
-      {total
-        ? <>
-            <Progress label={line} value={value || 0} max={total} />
-            <p className="text-caption-1-regular text-text-secondary">{line}</p>
-          </>
-        : <LoadingDots label={line} />}
+      <TaskProgress embedded label={line} value={value} total={total} />
     </div>
   );
 }
@@ -246,7 +240,7 @@ export function LinkManager() {
   return (
     <section id="link-manager" aria-labelledby="link-manager-title" className="flex scroll-mt-20 flex-col gap-4">
       <SectionHeading id="link-manager-title">链接管理</SectionHeading>
-      <Fieldset layout="split" labelledBy="link-manager-box" footer={
+      <Fieldset layout="stack" labelledBy="link-manager-box" footer={
         <Button leadingIcon={UNLINK} {...busyProps(running)} onClick={() => run()}>
           {running ? '检查中' : done ? '重新检查' : '检查死链'}
         </Button>

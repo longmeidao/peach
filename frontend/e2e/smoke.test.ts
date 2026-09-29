@@ -256,21 +256,31 @@ describe('路由冒烟', () => {
       assert.equal(await opened.page.locator('#feedNew').isHidden(), true, '进统计页之后新作那一行还露着');
       assert.equal(await feedCards.count(), 0, '进统计页之后新作那一行没有清空');
 
-      let release!: () => void;
-      hold = new Promise((resolve) => { release = resolve; });
-      const asked = opened.page.waitForRequest(/\/api\/feeds\/discoveries\?/);
       await go('/');
-      await asked;
-      await go('/stats');
-      await expectBody(opened.page, '/stats', [statsInventoryTab(opened.page)]);
-      const before = served;
-      release();
-      for (let step = 0; step < 40 && served === before; step += 1) await opened.page.waitForTimeout(100);
-      assert.ok(served > before, '压住的那一次新作取数没有放行');
-      // 回包之后页面只剩一次同步重画；这里不用 `settle`，它还会等被切走的目录区那份加载态。
-      await opened.page.waitForTimeout(500);
-      assert.equal(await feedCards.count(), 0, '晚到的新作取数画到了统计页上');
-      await assertHolds(opened.page, opened.problems, '首页与统计页往返');
+      await expectBody(opened.page, '/', [feedCards.first()]);
+      await go('/junk-files');
+      await opened.page.locator('#count [data-junk-filters]').waitFor();
+      assert.equal(await opened.page.locator('#feedNew').isHidden(), true, '垃圾文件页不展示订阅新作');
+      assert.equal(await feedCards.count(), 0);
+
+      for (const target of ['/stats', '/junk-files']) {
+        let release!: () => void;
+        hold = new Promise((resolve) => { release = resolve; });
+        const asked = opened.page.waitForRequest(/\/api\/feeds\/discoveries\?/);
+        await go('/');
+        await asked;
+        await go(target);
+        const body = target === '/stats' ? statsInventoryTab(opened.page) : opened.page.locator('#count [data-junk-filters]');
+        await expectBody(opened.page, target, [body]);
+        const before = served;
+        release();
+        for (let step = 0; step < 40 && served === before; step += 1) await opened.page.waitForTimeout(100);
+        assert.ok(served > before, '压住的那一次新作取数没有放行');
+        // 回包之后页面只剩一次同步重画；目录区的旧加载态不属于当前页面。
+        await opened.page.waitForTimeout(500);
+        assert.equal(await feedCards.count(), 0, `晚到的新作取数画到了 ${target} 上`);
+        await assertHolds(opened.page, opened.problems, `首页与 ${target} 往返`);
+      }
     } finally {
       await opened.close();
     }
