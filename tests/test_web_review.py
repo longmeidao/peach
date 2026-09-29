@@ -25,6 +25,7 @@ from peach import web_contract as rm_web
 from peach import web_review as rm_review
 from peach.entities import upsert_asset_entity
 from peach.genre_taxonomy import map_genres
+from peach.metadata_alias_resolve import stage_name
 from peach.metadata_auto_apply import _fc2_seller_as_label, auto_apply_metadata
 from peach.field_owners import (
     EXPECTED_REVISION_FIELD,
@@ -1024,6 +1025,14 @@ class ReviewQueueTests(unittest.TestCase):
         finally:
             con.close()
         self.assertEqual(performers, 0)
+
+    def test_an_fc2ppvdb_actress_page_named_by_a_description_is_not_a_stage_name(self):
+        """fc2ppvdb 给匿名素人开的女优页拿称呼当页名，页有编号也不等于有艺名。"""
+        for name in ("犬好きFカップの音大生", "ド変態医療従事者", "たぬき顔のメンヘラ□リっ娘", "超美",
+                     "天真爛漫な地元の後輩", "某大手事務所で活躍する18歳声優", "究極のGカップ", "牛逼"):
+            self.assertIsNone(stage_name(name), name)
+        for name in ("白川麻衣", "並木菜子", "もも", "超美月", "ののか"):
+            self.assertEqual(stage_name(name), name)
 
     def test_an_fc2_row_lands_the_named_source_when_the_other_gave_only_a_description(self):
         """一家给真名、另一家只给描述性称呼时，后者不算证据，真名照常按判据落库。
