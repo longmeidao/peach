@@ -17,8 +17,10 @@ describe('范围控件',()=>{
     expect(document.querySelectorAll('.insightswitch .board-segment-thumb')).toHaveLength(1);
     expect(document.querySelector('.insightswitch')?.getAttribute('data-board-segments')).toBe('true');
   });
-  it('管理导航接上会滑的指示条，复核分类是药丸不接',()=>{
+  it('管理导航接上会滑的指示条，复核和配置分类用 Pills',()=>{
     document.body.innerHTML='<div class="reviewtabs" role="tablist"><button role="tab" aria-selected="true">元数据字段</button><button role="tab" aria-selected="false">厂牌 Logo</button></div><div class="managebar"><div class="managebar-menu"><button aria-pressed="true">统计</button></div></div>';
+    const config=document.createElement('div');config.className='board-local-nav';config.dataset.sectionNav='';
+    document.body.append(config);
     wireBoardTabs(document);wireBoardTabs(document);
     expect([...document.querySelectorAll('[data-board-tabs]')].map(group=>group.className)).toEqual(['managebar-menu']);
   });

@@ -6548,7 +6548,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         controls = (Path(__file__).resolve().parents[1] / "frontend/src/board-controls.ts").read_text(encoding="utf-8")
-        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';", controls)
         self.assertIn("const selector='.iconswitch,.insightswitch,"
                       ".follow-workspace-switch';", controls)
         self.assertIn("wireBoardSegments(root);wireBoardTabs(root)", controls)
@@ -9000,9 +8999,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("'label:has(input:checked),button[aria-selected=true]'", controls)
         self.assertIn("mutation.observe(group,{subtree:true,attributes:true,attributeFilter:['aria-selected']})",
                       controls)
-        # 它退出下划线 Tabs 那一族，否则滑块和指示条同时挂上去。
-        self.assertIn("const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';",
-                      controls)
 
     def test_hovering_a_button_lights_the_fill_and_never_the_outline(self):
         """次级按钮悬停只换填充，那圈线一动不动，全站只有一条规则说这件事。
@@ -10305,7 +10301,6 @@ class WebUiSourceTests(unittest.TestCase):
         两处各抄一份同样的数字，迟早有一处改了另一处没改，表现是读完数据整片版面跳一下。
         """
         self.assertPageContains('class="review review-workspace review-skeleton" data-skeleton="review"')
-        self.assertPageContains('<div class="reviewcontrols"><h2 class="review-category-title">复核分类</h2>')
         self.assertPageContains('<div class="reviewbulkbar reviewbulktoolbar" aria-hidden="true">')
         self.assertPageContains("'/review':()=>reviewSkeletonHtml(),")
         # 分类名是静态文案，等的只是每类多少条。

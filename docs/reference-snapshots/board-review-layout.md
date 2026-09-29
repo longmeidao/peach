@@ -2,7 +2,7 @@
 
 取证日期：2026-09-13。参考：https://www.boardui.com/components/breadcrumb 。
 
-本记录不登记进 `docs/reference-sources.json`：布局证据是用户截图，网页文本读取仅确认页面身份和内容，未取得上游布局源码。
+本记录不登记进 `docs/reference-sources.json`：它是人工取证笔记，不是可由上游资源覆盖的原文快照。
 截图文件名为 codex-clipboard-2f2b0fd0-e7ee-4751-a497-1617d6787e1a.png，SHA-256 为
 `154463DB5E13D6A533E61F2E97132B171F6E9C40D9E88AE6A7F28D8E27B8EEB9`。
 
@@ -12,6 +12,16 @@
 Peach 采用正文中间内容与右侧分类的分区关系，保留自己的管理 tabs、复核操作和玻璃材质。
 管理 tabs 横跨整个管理区域；右侧分类仅占正文列。用户于 2026-09-13 纠正了此前照参考页缩窄 tabs 的判断，此处层级不同。
 右栏宽 184px、栏间距 24px 属于 Peach 现有尺寸，不声称是上游测量值；900px 以下使用单列分类与内容。
+
+## 次级分类组件
+
+2026-09-29 通过 Chrome 对照 [Tabs](https://www.boardui.com/components/tabs) 和 [Segmented Control](https://www.boardui.com/components/segmented-control)，直接请求取得 [Tabs 注册表](https://www.boardui.com/r/tabs.json) 中的 `pill-tab.tsx`。取证目录为 `attic/evidence/20260929-section-navigation/`，保存文件 `board-tabs.json` 的 SHA-256 为 `DC94F6AE9FCA453BD8420E320A3D6087A9E0ED004B91CD811EB2BC28704A8FDC`。
+
+`gray` PillTab 的列表透明，间隔 4px；当前项使用 `background-tertiary-default` 和主文字色，未选中项用次级文字色，悬停底色为 `background-primary-hover`。条目为 10px 圆角、14px/20px 的 Medium 字体，上下内边距 5px、左右 8px。Segmented Control 使用整组轨道与滑块，官网示例是周／月／年这种短的局部选择。
+
+Peach 的复核页和配置页采用灰色 Pills 的表面和文字层级，使用右侧竖排分类；保留 184px 列宽、24px 栏间距和复核数量。桌面条目保留 40px 命中高度，900px 以下使用正文上方可横向滚动的单行导航，条目高 36px。管理 tabs 保持横跨页面，配置页 skeleton 与正文共用分类样式。Peach 需要内容面板关联和方向键操作，因此保留 React Aria Tabs／现有 tablist 语义，不直接替换为上游普通按钮组，也不增加滑块动画。
+
+纠正：Breadcrumb 参考只确定右栏布局，不能据此把复核分类改成正文锚点目录。用户要求在 Segmented Control 和 Pills Tabs 之间比较；九个带数量的复核分类与配置分区采用灰色 Pills。亮色容器透明本身不是缺样式，应保证两种主题下当前项的独立底色清晰。
 
 ## 玻璃材质回归证据
 

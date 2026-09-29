@@ -59,7 +59,7 @@ const tabPositions=new Map<string,{left:number;width:number}>();
 /** 全站的下划线 Tabs 共用一条会滑的 2px 蓝色指示条（boardui tabs.tsx：transform 与 width
     各 200ms ease）。复核分类是药丸、统计与口味的维度是分段控件，选中都靠填充，不进这条。 */
 export function wireBoardTabs(root:ParentNode){
-  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)';
+  const selector='.managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav):not([data-section-nav])';
   const groups=[...root.querySelectorAll<HTMLElement>(selector)];
   if(root instanceof HTMLElement&&root.matches(selector))groups.push(root);
   groups.forEach(group=>{

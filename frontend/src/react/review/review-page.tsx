@@ -32,10 +32,8 @@ import {
   reviewWindow, selectReviewRange, submitDecision,
 } from './review';
 
-/* 一枚药丸：不描边，选中只有一件事——填 `--picked`（Board 把它接到
-   `--color-background-tertiary-default`）再把字重提一档。尺寸取 Board 给这一页的那组：
-   竖列里 40px 高、两端对齐，窄到一行排不下时缩成 36px。 */
-const TAB_CLASS = 'flex min-h-9 cursor-pointer items-center justify-between gap-2 rounded-2lg p-2 text-left text-body-regular text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:bg-background-tertiary-default data-selected:text-text-primary review-tight:min-h-10 review-tight:px-3 review-tight:py-2.5';
+// 与配置页共用 BoardUI gray PillTab 样式；保留 tabpanel 与复核队列计数。
+const TAB_CLASS = 'flex cursor-pointer items-center justify-between gap-2';
 
 /** 页码。上一页／下一页在两端，页码居中，页数多时两侧折成「…」。 */
 function Pagination(
@@ -64,6 +62,13 @@ function Pagination(
 }
 
 export function ReviewPage(props: ReviewProps) {
+  const [narrow, setNarrow] = useState(() => matchMedia('(max-width:900px)').matches);
+  useEffect(() => {
+    const query = matchMedia('(max-width:900px)');
+    const update = () => setNarrow(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
   const {
     route, openItem, openEntity, revealSource, avatarInner, toast,
     readOnly, readOnlyMessage, writerUrl,
@@ -234,15 +239,15 @@ export function ReviewPage(props: ReviewProps) {
       ) : null}
       <GenreTagList tags={genreTags} />
 
-      {/* 分类列钉在正文右边，跟着页面滚；窄到放不下两列时并回正文上方排成一行药丸。 */}
-      <Tabs selectedKey={category} onSelectionChange={(key) => {
+      {/* 分类列位于正文右侧；窄屏使用正文上方的单行导航。 */}
+      <Tabs orientation={narrow ? 'horizontal' : 'vertical'} selectedKey={category} onSelectionChange={(key) => {
         const next = String(key);
         if (isReviewCategory(next)) goCategory(next);
       }} className="flex flex-col gap-5 review-split:flex-row-reverse review-split:items-start review-split:gap-6">
-        <div className="w-full rounded-surface bg-background-primary-default px-2 py-4 review-split:sticky review-split:top-topbar review-split:w-review-tabs review-split:shrink-0">
-          <h2 id="reviewcategories" className="px-3 pb-3 text-caption-1-regular text-text-secondary">复核分类</h2>
-          <TabList aria-labelledby="reviewcategories"
-            className="flex flex-wrap gap-1 review-split:flex-col review-split:flex-nowrap review-split:items-stretch">
+        <div data-section-nav className="w-full min-w-0 review-split:sticky review-split:top-topbar review-split:w-review-tabs review-split:shrink-0">
+          <h2 id="reviewcategories">复核分类</h2>
+          <TabList aria-labelledby="reviewcategories" data-section-items
+            className="flex review-split:flex-col review-split:items-stretch">
             {REVIEW_CATEGORIES.map((key) => {
               const count = Number(data.counts[key] || 0);
               return (

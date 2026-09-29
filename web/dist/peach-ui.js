@@ -138,7 +138,7 @@ function m() {
 }
 var h = /* @__PURE__ */ new Map();
 function g(e) {
-	let t = ".managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav)", n = [...e.querySelectorAll(t)];
+	let t = ".managebar-menu,.board-local-nav:not(.settingscard>.board-local-nav):not([data-section-nav])", n = [...e.querySelectorAll(t)];
 	e instanceof HTMLElement && e.matches(t) && n.push(e), n.forEach((e) => {
 		if (e.hasAttribute("data-board-tabs")) return;
 		e.dataset.boardTabs = "true";
@@ -483,7 +483,7 @@ var Te = "JavDB 或 MISSAV 无法访问时，可填写能访问的镜像域名�
 	attrs: "disabled data-skeleton-action"
 })}</div></div></section>`, A = (e, t = "") => `<div class="flex min-h-[52px] w-full items-center justify-between gap-4 py-2.5 pr-2.5 border-b border-separator-border last:border-b-0"><div class="flex min-w-0 flex-col"><p class="text-body-regular text-text-primary">${e}</p>${t ? `<p class="text-body-2-regular text-text-secondary">${t}</p>` : ""}</div><span class="skeleton configuration-skeleton-toggle"></span></div>`, De = (e) => `<div class="flex w-full flex-col gap-1"><p class="text-body-medium text-text-primary">${e} 地址</p><span class="skeleton configuration-skeleton-input"></span><p class="pt-px text-caption-1-medium text-text-secondary">${Ee}</p></div>`;
 function Oe() {
-	return `<div class="peach-react"><div class="configpage">${`<div class="board-local-nav">${[
+	return `<div class="peach-react"><div class="configpage">${`<div class="board-local-nav" data-section-nav data-section-items>${[
 		"通用",
 		"媒体",
 		"网络与访问",
