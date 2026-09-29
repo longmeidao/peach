@@ -1,12 +1,12 @@
 import { resolveFollowSort, SORT_OPTIONS, type SortDir, type SortKey } from './follow-sort';
 import { islandButton, islandSelect } from './island-skeleton';
+import { configurationSkeleton } from './configuration-skeleton';
 
 /** 等待态复用页面容器，只有异步内容使用占位。 */
 const line = (width = '60%') => `<span class="skeleton" style="width:${width}"></span>`;
 const lines = () => `${line('80%')}${line('48%')}`;
 const repeat = (html: string, count: number) => html.repeat(count);
 const metrics = (labels: string[], className = 'metricstrip') => `<div class="${className}">${labels.map(label => `<div class="tastesummary"><span class="board-stat-label">${label}</span><b class="board-stat-value">${line('45%')}</b><small class="board-stat-footer">${line('60%')}</small></div>`).join('')}</div>`;
-const tabs = (labels: string[], className = 'skeleton-tabs') => `<div class="${className}">${labels.map(label => `<span>${label}</span>`).join('')}</div>`;
 const segments = (labels: string[], className: string) => `<div class="${className} skeleton-segments" data-board-segments="true">${labels.map((label,index) => `<span${index===0?' class="skeleton-segment-selected"':''}>${label}</span>`).join('')}</div>`;
 const panel = (title: string) => `<section class="insightpanel"><header>${title}</header><div class="insightpanelbody skeleton-lines">${repeat(lines(), 3)}</div></section>`;
 /* 关注管理整页归 React，骨架整块画在 `.peach-react` 里，容器与按键都取 React 那侧渲染出的同一串
@@ -89,7 +89,7 @@ export function boardPageSkeleton(
   } else if (path === '/follow-manage') {
     body = followList(options);
   } else if (path === '/configuration') {
-    body = `<div class="configpage">${tabs(['通用', '媒体', '网络与访问', '更新与维护'])}<section class="configfieldset"><div class="geist-fieldset-content"><h3 class="geist-fieldset-title">开机自启</h3><div class="skeleton-lines">${repeat(`<div class="skeleton-setting">${line('35%')}<span class="skeleton skeleton-toggle"></span></div>`, 3)}</div></div><footer class="geist-fieldset-footer">${line('100px')}</footer></section></div>`;
+    body = configurationSkeleton();
   } else if (path === '/activity') {
     body = `<div class="activitypage">${['正在进行', '被挡下的', '最近完成'].map(title => `<section class="activitysection"><h3 class="geist-fieldset-title">${title}</h3><div class="activity-runs"><article class="cleanupfieldset activity-run"><div class="geist-fieldset-content skeleton-lines">${line('35%')}${lines()}</div></article></div></section>`).join('')}</div>`;
   } else if (path === '/duplicates') {
