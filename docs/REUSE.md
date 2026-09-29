@@ -6,6 +6,8 @@
 
 ## Board 界面与数值设置
 
+- 功能性动效由 `frontend/src/react/components/use-moving-surface.ts`、`modal-frame.tsx`、`selection-dock.tsx` 承担，复用现有 Motion 12.43.0（MIT）与 React Aria Components 1.21.1（Apache-2.0）。Fluid Functionalism 只提供行为与短程参数参考，见 [取证记录](reference-snapshots/fluid-functionalism.md)。不安装其 Registry：额外的 Radix、字体与上下文不符合当前 BoardUI 组合；Peach 保留单一选中底板、键盘即时反馈与原有主题。无新增依赖。
+
 页面控件与交互由哪些共用件承担；Board 的上游证据登记在 [BoardUI 适配](BOARD_UI.md)。
 
 - 作者别名管理复用逐字复制进 `frontend/src/react/boardui/` 的 BoardUI `Table`、关注列表共用的 `DataTableFrame`、`AuthorAvatar` 和既有别名 API；公开结构与固定资源见 `BOARD_UI.md`。待合并与已保存两张表都只有几行，排序、分页用不上，不接 `@tanstack/react-table`；合并范围是这一屏自己的勾选状态，所以表里的勾写 `slot={null}`，不走 React Aria Table 自己的行选择。扫描与采集那三种方式收在一颗主键加一个下拉里：触发键用 BoardUI `Button`，面板用已在用的 React Aria `Popover`，行的外观取注册表 `select` 条目带来的 `menu-styles.ts`，无新增依赖（见 `frontend/src/react/boardui/ORIGIN.md`）。

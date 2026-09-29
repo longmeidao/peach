@@ -3,6 +3,26 @@
   "policy": "上游 Markdown 只作为待审证据；先比较锁定快照，再人工判断是否影响 Peach，禁止自动改代码。",
   "sources": [
     {
+      "id": "fluid-springs",
+      "name": "Fluid Functionalism 短程弹簧参数",
+      "url": "https://www.fluidfunctionalism.com/r/springs.json",
+      "snapshot": "docs/reference-snapshots/upstream/fluid-springs.json",
+      "checked_on": "2026-09-29",
+      "sha256": "d31fea32ef50e0fd2d30d86186f04c9d4eaa28c3501d958db45f5e2ad1199c05",
+      "role": "普通分段控件与短菜单的无回弹短程参数参考；保留 Peach 主题与无障碍行为。",
+      "consumers": ["frontend/src/react/components/use-moving-surface.ts"]
+    },
+    {
+      "id": "fluid-tabs",
+      "name": "Fluid Functionalism 分段控件行为",
+      "url": "https://www.fluidfunctionalism.com/r/tabs.json",
+      "snapshot": "docs/reference-snapshots/upstream/fluid-tabs.json",
+      "checked_on": "2026-09-29",
+      "sha256": "b78dda3b5a3bf306ff36271a20e8d6b24496e373e8c6ca419cfddaad1fa1b49c",
+      "role": "独立选中底板与即时状态更新参考；不复制组件源码、字重变化与悬停双底板。",
+      "consumers": ["frontend/src/react/components/segmented.tsx"]
+    },
+    {
       "id": "vercel-report-design",
       "name": "Vercel Design Report Reference",
       "url": "https://vercel.com/design.md",

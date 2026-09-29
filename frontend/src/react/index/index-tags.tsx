@@ -150,7 +150,7 @@ export function TagDock(
   { count: number; match: 'any' | 'all'; onMatch(match: 'any' | 'all'): void; onClear(): void; onApply(): void },
 ) {
   return (
-    <SelectionDock label="所选标签操作" count={`已选 ${count} 个标签`}>
+    <SelectionDock visible={count > 0} label="所选标签操作" count={`已选 ${count} 个标签`}>
       <Checkbox isSelected={match === 'any'} onChange={(on) => onMatch(on ? 'any' : 'all')}>
         <span className="flex flex-col">
           <span className="text-body-medium">广泛匹配</span>

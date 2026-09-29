@@ -9,6 +9,7 @@
  *
  * 页头左边那枚 56px 图标方块也在这里（`ModalGlyph`）：它是弹层页头的一部分，不是卡。 */
 import type { ReactNode } from 'react';
+import { useFocusVisible } from 'react-aria';
 import { Dialog, Modal, ModalOverlay } from 'react-aria-components';
 
 const WIDTH = {
@@ -25,10 +26,12 @@ export function ModalFrame({ isOpen, onOpenChange, width, label, children }: {
   label?: string;
   children: ReactNode;
 }) {
+  const { isFocusVisible } = useFocusVisible();
   return (
     <ModalOverlay isOpen={isOpen} onOpenChange={onOpenChange} isDismissable
+      data-modal-motion="" data-motion-instant={isFocusVisible || undefined}
       className="fixed inset-0 z-dialog flex items-center justify-center bg-scrim p-4">
-      <Modal className={`flex max-h-full w-full ${WIDTH[width]} flex-col overflow-hidden rounded-2-5xl border border-separator-border bg-background-full shadow-dropdown`}>
+      <Modal data-modal-surface="" className={`flex max-h-full w-full ${WIDTH[width]} flex-col overflow-hidden rounded-2-5xl border border-separator-border bg-background-full shadow-dropdown`}>
         <Dialog aria-label={label} className="flex min-h-0 flex-col outline-none">{children}</Dialog>
       </Modal>
     </ModalOverlay>

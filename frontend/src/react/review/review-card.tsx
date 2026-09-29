@@ -196,7 +196,7 @@ export function ReviewCard(props: ReviewCardProps) {
           证据的一部分。外面一层同样只为那条轨道，负边距由它出：轨道要贴着卡的内缘，
           而这一句自己得铺满整条。 */}
       {metadata && evidence
-        ? <div className="relative -mx-5 shrink-0">
+        ? <div className="relative -mx-5 -mb-4 shrink-0">
             <p ref={current} role="region" aria-label="当前信息"
               className="max-h-22 overflow-y-auto border-t border-separator-border px-5 py-2.5 text-body-2-regular text-text-secondary">
               {evidence}

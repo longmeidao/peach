@@ -11,7 +11,8 @@ import {
   RiArrowDownSLine, RiArrowRightLine, RiDatabase2Line, RiGlobalLine, RiHardDrive2Line,
 } from '@remixicon/react';
 import { useMutation } from '@tanstack/react-query';
-import { Dialog, Popover } from 'react-aria-components';
+import { Popover } from 'react-aria-components';
+import { MenuDialog as Dialog } from '../components/menu-dialog';
 
 import { Button } from '@/components/base/buttons/button';
 import { LinkButton } from '@/components/base/buttons/link-button';

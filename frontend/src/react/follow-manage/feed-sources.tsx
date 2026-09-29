@@ -346,8 +346,7 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
         </div>
       ) : null}
 
-      {chosen.length ? (
-        <SelectionDock label="订阅源批量操作" count={`已选 ${chosen.length} 条订阅源`}>
+        <SelectionDock visible={chosen.length > 0} label="订阅源批量操作" count={`已选 ${chosen.length} 条订阅源`}>
           <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
             onClick={() => bulk.mutate({ ids: chosen.map((row) => row.id), action: 'enabled' })}>启用</Button>
           <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
@@ -357,7 +356,6 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
               () => bulk.mutateAsync({ ids: chosen.map((row) => row.id), action: 'remove' }))}>移除</Button>
           <Button variant="ghost" size="small" onClick={() => setSelected(new Set())}>取消选择</Button>
         </SelectionDock>
-      ) : null}
 
       {sources.length ? (
         <DataTableFrame onRowClick={(key) => toggleRow(Number(key))}>

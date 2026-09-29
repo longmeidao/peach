@@ -1,5 +1,7 @@
 # BoardUI 源码
 
+普通分段控件、短菜单悬停面、共用弹窗与选择条动效由 `../components/` 组合实现，参数与差异见 `docs/reference-snapshots/fluid-functionalism.md`；本目录副本不承担这些扩展。
+
 来源是 BoardUI 的 shadcn 注册表条目 `https://www.boardui.com/r/<条目>.json`，2026-09-15 取得。
 许可证为 MIT，原文见 `web/vendor/boardui-LICENSE.txt`。
 
