@@ -3039,21 +3039,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn(".fcard{", page)
         self.assertNotIn(".fsource{", page,
                          "旧来源卡片规则会给新行重新套上边框和圆角")
-        row = page[page.index(".frow{"):]
-        row = row[:row.index("}")]
-        self.assertIn("border-bottom:1px solid", row)
-        self.assertNotIn("border-radius", row)
-
-    def test_narrow_column_rows_can_actually_shrink(self):
-        """grid 项默认 `min-width:auto`，最宽的一行会把整列撑出容器。
-
-        实测右栏 320px，凭据行却量到 438px，整页横向溢出 119px。容器和每一项
-        都要显式 `min-width:0`。
-        """
-        page = self.page
-        rule = page[page.index(".frows{"):]
-        self.assertIn("min-width:0", rule[:rule.index("}")])
-        self.assertPageContains(".frows>*{min-width:0}")
 
     def test_the_panel_cites_the_registered_report_design_source(self):
         page = self.read_react("follow-manage/follow-manage-page.tsx")

@@ -1,6 +1,6 @@
 /* 统计页与口味页的等待态版式：指标带、主详情、同层数据面板。
    两页的正文都归 React（ADR-0031），这里留下的是遗留壳铺的那张骨架读到的层级。 */
-.insightpage,.tastepage{width:min(1100px,100%);margin:0 auto;padding:0 0 48px;min-width:0}.statsdashboard{display:grid;gap:16px}
+.insightpage,.tastepage{width:min(1100px,100%);margin:0 auto;padding:0 0 48px;min-width:0}
 .insighttoolbar,.tastehead{min-height:40px;display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap}
 .insighttoolbar p{margin:0;color:var(--muted);font-size:var(--fs-xs)}
 .insightswitch{display:inline-flex;padding:3px;border:1px solid var(--line-soft);border-radius:var(--surface-radius);background:var(--ground)}.insightswitch label{cursor:pointer}.insightswitch input{position:absolute;opacity:0;pointer-events:none}.insightswitch span{height:30px;display:grid;place-items:center;padding:0 12px;border-radius:var(--control-radius);color:var(--muted);font-size:var(--fs-sm)}.insightswitch input:checked+span{background:var(--picked);color:var(--ink);font-weight:500}.insightswitch input:focus-visible+span{outline:2px solid var(--tungsten);outline-offset:-2px}

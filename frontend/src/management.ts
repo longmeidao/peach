@@ -26,7 +26,7 @@ const cardText = (title: string, text: string) => `<div data-geist-fieldset-cont
 /** 「扫描与采集」卡：与 React `LibraryProcessingCard` 同一副容器、同一段正文、同一组键。
  *  「复核资料」只在有候选时出现，这里不预画。 */
 export function scanCardSkeletonHtml(): string {
-  return island(`<section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing>
+  return island(`<section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing data-fieldset-stack>
         ${cardText('扫描与采集', SCAN_CARD_TEXT)}
         <footer data-geist-fieldset-footer><a href="/scraping" class="inline-flex items-center justify-center gap-1 whitespace-nowrap font-sans rounded-sm text-body-medium text-accent-600"><span>来源和凭证</span>${islandGlyph('arrow-up', 'size-[18px] shrink-0 rotate-90')}</a><span data-button-group data-split-button data-variant="primary">${islandButton({ glyph: 'database', label: '扫描并补全资料', attrs: waitingAction })}${islandButton({ glyph: 'chevron-down', attrs: `${waitingAction} aria-label="更多扫描与采集方式"` })}</span></footer>
       </section>`);
@@ -69,7 +69,7 @@ export function cleanupSkeletonHtml(): string {
       </section></div>
     <section class="resourcesync" aria-labelledby="cleanup-loading-links">
       <h2 id="cleanup-loading-links">链接管理</h2>
-      <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
+      <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task data-fieldset-stack>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">站外链接</h3>
           <div class="linksummary"><div class="linkstats"><div><span>链接总数</span><b>${bar}</b><small>${bar}</small></div>${['官网/事务所', '社交账号', '作品资料站'].map(title => `<div><span>${title}</span><b>${bar}</b></div>`).join('')}</div>
           <div class="linkhosts"><span>主要站点</span><b>${bar}</b></div></div></div>

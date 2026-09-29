@@ -15,9 +15,8 @@ import { Select, SelectItem } from '@/components/base/select/select';
 import { errorMessage } from '../../api';
 import { useBackgroundJob } from '../background-job';
 import { Fieldset, FieldsetTitle } from '../components/fieldset';
-import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
-import { Progress } from '../components/progress';
+import { TaskProgress } from '../components/task-progress';
 import { queryClient } from '../query';
 import { SourceMark } from '../settings/section';
 import { busyProps } from '../settings/use-action';
@@ -127,10 +126,7 @@ export function OrganizeCard(
   const outcome = job.outcome;
   if (current?.status === 'running') {
     const line = current.message || current.stage || '正在整理文件…';
-    state = current.total
-      ? <div className="flex flex-col gap-1.5"><Progress label={line} value={current.checked || 0} max={current.total} />
-          <p className="text-caption-1-regular text-text-secondary">{line}</p></div>
-      : <LoadingDots label={line} />;
+    state = <TaskProgress embedded label={line} value={current.checked} total={current.total} />;
   } else if (outcome?.status === 'failed') {
     state = <Note tone="error" title="文件整理未完成">{outcome.error || '请查看任务记录，核对已处理的文件。'}</Note>;
   } else if (outcome) {
@@ -139,7 +135,7 @@ export function OrganizeCard(
   } else if (job.start.isError) {
     state = <Note tone="error" title="整理失败">{errorMessage(job.start.error)}</Note>;
   } else if (preview.isPending) {
-    state = <LoadingDots label="正在按模板算计划…" />;
+    state = <TaskProgress embedded label="正在按模板算计划…" />;
   } else if (preview.isError) {
     state = <Note tone="error" title="模板不可用">{errorMessage(preview.error)}</Note>;
   } else if (plan) {

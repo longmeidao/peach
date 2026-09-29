@@ -21,13 +21,13 @@ describe('Board 页面骨架', () => {
   it('统计预留四张指标卡，未知页面交给自身骨架', () => {
     const root = document.createElement('div');
     root.innerHTML = boardPageSkeleton('/stats');
-    expect(root.querySelectorAll('.tastesummary')).toHaveLength(4);
+    expect(root.querySelectorAll('[data-stats-metrics] > div')).toHaveLength(4);
     expect(boardPageSkeleton('/item/5')).toBe('');
   });
   it.each([
-    ['/stats', '.insightpanel > .insightpanelbody', 2],
+    ['/stats', '[data-stats-chart]', 2],
     ['/activity', '.activitysection', 3],
-    ['/duplicates', '.dupgroup .duprow', 4],
+    ['/duplicates', '[data-duplicate-group] .duplicate-row', 4],
     ['/quality-goals', '.qualityitem > .qualitycover', 6],
     ['/follow-manage', '.peach-react .follow-skeleton-surface .follow-skeleton-author', 3],
     ['/configuration', '.peach-react .configpage section', 2],

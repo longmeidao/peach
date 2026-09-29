@@ -7,19 +7,7 @@
 .listtitle,.managetitle,.follow>.pagetitle{margin:0 0 20px}
 .managetitle:has(+.pagelede:not([hidden])){margin-bottom:8px}
 .listtitle[hidden],.managetitle[hidden]{display:none}
-/* 重复文件页的正文归 React 子树（ADR-0031）。下面几条只服务遗留骨架，「批量保留」那条的
-   几何与材质归 board.css 的 `body[data-surface="/duplicates"]` 一组。 */
-.dupactions{display:flex;align-items:center;gap:8px;margin-bottom:16px}
-.dupgroup{border:1px solid var(--overlay-10);border-radius:var(--surface-radius);margin-bottom:12px;overflow:hidden}
-.duphead{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--overlay-5);flex-wrap:wrap}
-.duprow{display:grid;grid-template-columns:96px minmax(0,1fr) 84px 84px 84px;gap:10px;
-  align-items:center;padding:7px 12px;border-top:1px solid var(--overlay-5)}
-.duppath{grid-column:2/-1;min-width:0;overflow:hidden;white-space:nowrap;
-  padding-top:2px;color:var(--muted)}
-.dupname{flex:0 1 auto;min-width:0;overflow:hidden;white-space:nowrap;text-align:left;
-  border:0;background:transparent;color:inherit;cursor:pointer;padding:0}
-.dupmarks{display:flex;flex:none;gap:4px}
-.dupmarks:empty{display:none}
+
 /* 高清版目标页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架的那几张空卡，
    列数、间距与卡片几何由 `board.css` 的 `body[data-surface="/quality-goals"]` 那组给。 */
 .qualitylist{display:grid}

@@ -320,11 +320,9 @@ html.board-high-contrast .board-filter-frame.board-filter-frame.board-filter-fra
 .followmanage.followmanage{width:100%;max-width:1120px}
 .followmanage .fmain{width:100%;max-width:1120px;margin-inline:auto;gap:20px}
 .followmanage .fmain>.fsec{border:0;border-radius:18px;background:var(--ground);overflow:visible}
-.followmanage .fmain>.fsec>.fsechead{background:transparent;padding:20px 24px 8px;border:0;border-radius:18px 18px 0 0;min-height:56px}
-.followmanage .fsechead h3{font-size:16px;font-weight:500;letter-spacing:0;line-height:24px}
+
 .configfieldset.configfieldset:not([data-fieldset-type])>.geist-fieldset-footer,.cleanupfieldset.cleanupfieldset>.geist-fieldset-footer{background:var(--board-card-foot)}
-.followmanage .fmain>.fsec>.frows{padding:8px 24px}
-@media(max-width:760px){.followmanage .fmain>.fsec>.fsechead{padding:16px}.followmanage .fmain>.fsec>.frows{padding:8px 16px}}
+
 .gridstack .card .pic{border-radius:var(--surface-radius);overflow:hidden}
 .top{isolation:isolate}
 body.board-scrolled .top{box-shadow:none;border-bottom:0}
@@ -358,7 +356,7 @@ body{background:var(--page)}
 
 /* One sidebar, two states. Navigation and filters share the expanded panel. */
 .followmanage .fmain>.fsec{padding:0}
-.followmanage .fmain>.fsec>.fsechead{margin:0}
+
 :root{--railW:88px;--board-content:1120px}
 body.drawer-open{--railW:296px}
 .drawer{left:12px;top:12px;bottom:12px;width:272px;background:var(--ground);backdrop-filter:none;border:1px solid var(--line);border-radius:24px;transform:translateX(calc(-100% - 16px));box-shadow:0 2px 4px #00000003;transition:none}
@@ -455,10 +453,10 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .board-local-nav button{flex:none;background:none;border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 12px;font-family:inherit;font-size:14px;font-weight:400;line-height:20px;color:var(--ink-2);cursor:pointer;white-space:nowrap}
 .board-local-nav button[aria-selected="true"]{border-bottom-color:var(--tungsten);color:var(--tungsten);font-weight:500}
 .board-local-nav button:focus-visible{outline:2px solid var(--tungsten);outline-offset:-3px}
-/* 管理页次级导航：分类在正文右侧，窄屏放回内容上方。 */
-.configpage:has(>.board-local-nav){grid-template-columns:minmax(0,1fr) 184px;gap:24px;align-items:start}
-.configpage>.board-local-nav{grid-column:2;grid-row:1;position:sticky;top:var(--topH);display:flex;flex-direction:column;align-items:stretch;gap:0;margin:0;padding:0;border:0;border-radius:0}
-.configpage:has(>.board-local-nav)>:not(.board-local-nav):not(.configgroup){grid-column:1;grid-row:1;min-width:0}
+/* 配置分类在正文上方横排，与关注管理共用 Pills。 */
+.configpage:has(>.board-local-nav){grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
+.configpage>.board-local-nav{grid-column:1;grid-row:1;position:static;display:flex;flex-direction:row;align-items:stretch;margin:0;padding:0;border:0;border-radius:0}
+.configpage:has(>.board-local-nav)>:not(.board-local-nav):not(.configgroup){grid-column:1;grid-row:2;min-width:0}
 /* BoardUI gray PillTab：透明容器与独立选中底色，取证见 board-review-layout.md。 */
 body #stats [data-section-nav]{background:none;border-radius:0;padding:0;box-shadow:none}
 body #stats [data-section-nav] h2{margin:0 0 12px;padding:0;font:var(--board-body-medium);color:var(--color-text-primary)}
@@ -977,7 +975,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .configfieldset-heading{border:0;padding-bottom:0}.configfieldset{border:0}.configfieldset>.geist-fieldset-footer{border:0}.configfieldset .configfieldset-heading h2{margin:0}
 .board-follow-list{display:grid;border-radius:16px;background:var(--ground);padding:8px 16px}.board-follow-selection{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 12px;font-size:13px}.board-follow-selection>label{display:flex;gap:8px;align-items:center}.board-follow-selection>span{margin-right:auto;color:var(--muted)}
 @media(max-width:760px){.board-follow-list{padding:8px}}
-@media(max-width:760px){body #manageTitle{width:100%}.followmanage .fsechead{gap:8px}}
+@media(max-width:760px){body #manageTitle{width:100%}}
 
 /* 强调色的十一级色阶。机制照搬 BoardUI：主按钮、焦点环、链接、开关、选中态全都引用
    `--color-accent-*`，换强调色就是把这十一个变量整组指到另一个色相，组件规则一个字不改。
@@ -1030,7 +1028,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    面板、筛选条、交集条和标签骨架都从它取值，一处改完五处一起走。 */
 :root{--tag-radius:8px}
 body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-body)}button,input,textarea,select{font-family:var(--board-font)}
-.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.followmanage .fsechead h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b{font:var(--board-body)}.fmeta,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
+.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b{font:var(--board-body)}.fmeta,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
 .geist-button,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 /* 悬停只抬填充，那圈线一步不动：按钮静止态已经带一圈 1px，悬停再把它加深，
    鼠标扫过一排次级键就是一排边框忽明忽暗，而键本身并没有变化。 */
@@ -1051,7 +1049,6 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 .skeleton-segments>span{display:flex;align-items:center;padding:4px 10px;min-height:28px;border-radius:6px;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap}
 .skeleton-segments>span.skeleton-segment-selected{color:var(--color-text-primary);font:var(--board-body-medium);background:var(--color-background-primary-default);box-shadow:var(--elevation-xs)}
 .board-page-skeleton .qualitycover,.board-page-skeleton .pic{height:auto}
-.board-page-skeleton .dupcover{height:auto;min-height:0}
 .board-page-skeleton .playlistcreate{min-width:200px}
 .board-page-skeleton .mixcopy{flex:1}
 .board-page-skeleton .mav{width:38px;height:38px;border-radius:50%}
@@ -1123,7 +1120,6 @@ body :is(button.danger,.batchbar button.danger):not(:disabled):active::before{op
 .followmanage .ftableframe{border:1px solid var(--color-separator-border);border-radius:var(--surface-radius);background:var(--color-background-primary-default);overflow:hidden}.followmanage .ftablewrap{border-radius:0;background:transparent}.followmanage .ftable th{border-top:0}
 .followmanage .ftable th{color:var(--color-text-tertiary);background:var(--color-background-secondary-default);border-color:var(--color-separator-border)}
 .followmanage .ftable tbody tr{border-color:var(--color-separator-border)}
-@media(max-width:760px){.followmanage .fsechead .iconswitch{display:flex}}
 
 /* 导航图形使用同宽槽位；logo 的透明边距按实际可见轮廓适配。 */
 .board-home-logo{width:20px;height:20px}.drawer:not(.open) .dnav button:has(.board-home-logo){padding:8px}
@@ -1383,11 +1379,7 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 /* ── 表格：外框管边线与圆角，里层管横向滚动与两端渐隐。选中行是蓝色 8% 的一层底，不描蓝线（上游选中行样式未取得） ── */
 .followmanage .ftable tbody tr{transition:background-color .15s ease}
 .followmanage .ftable tbody tr:last-child{border-bottom:0}
-/* ── 分区标题行里的视图开关与同排按钮同高（36px）：轨道 3px、选项 30px，图标 16px、1.8 描边与 fbtn 的字形同粗 ── */
-.followmanage .fsechead .iconswitch[data-board-segments]{padding:3px;border-radius:10px;gap:2px}
-.followmanage .fsechead .iconswitch[data-board-segments]>label{width:34px;height:30px;border-radius:7px}
-.followmanage .fsechead .iconswitch[data-board-segments]>.board-segment-thumb{border-radius:7px}
-.followmanage .fsechead .iconswitch svg{width:16px;height:16px;stroke-width:2}
+
 /* ── 勾选框（boardui checkbox-glyph.tsx）：未选 1px border-checkbox-default 加 shadow-xs，悬停边线深一档、底不变；
    选中蓝渐变 + 内嵌高光；勾 2px 圆头，200ms cubic-bezier(.65,0,.35,1) 从零画出。tokens：亮 neutral-300／400，暗 neutral-600／500。
    暗档的默认边线比上游 theme.css 的 neutral-700 亮一档：这颗框的底就是卡面色，形状全靠那 1px 说话，
@@ -1485,19 +1477,7 @@ body[data-surface="/review"] .reviewlist{grid-template-columns:repeat(auto-fill,
 body .review-skeleton .reviewbulktoolbar{position:static;border-radius:16px;margin-bottom:20px;
   padding:8px 12px;background:var(--color-background-full)}
 body[data-surface="/duplicates"] #manageLede{display:none}
-/* 重复文件页的骨架：「批量保留」那条占位与分组卡。正文的玻璃条归 React 子树的 `[data-filter-glass]`。 */
-body[data-surface="/duplicates"] .dupactions{margin:0;padding:10px 16px;flex-wrap:wrap;gap:8px 10px;color:var(--glass-text)}
-body[data-surface="/duplicates"] .dupactions h3{margin:0 4px 0 0;font:var(--board-body-medium);color:inherit}
-/* 每组一张卡，头部比正文深一档，两块面自己就分得开，不靠一条细线。深色下正文 primary、头部
-   secondary 本来就是这样；浅色下 primary 与页面同是白的，正文于是跟数据管理、复核那几张卡一样
-   落到 secondary，头部再深一档取 tertiary。 */
-body[data-surface="/duplicates"] .dupgroup{margin-bottom:24px;border-color:var(--line-soft);background:var(--color-background-primary-default)}
-body[data-surface="/duplicates"] .duphead{padding:20px;gap:12px;background:var(--color-background-secondary-default)}
-html:not(.dark) body[data-surface="/duplicates"] .dupgroup{background:var(--color-background-secondary-default)}
-html:not(.dark) body[data-surface="/duplicates"] .duphead{background:var(--color-background-tertiary-default)}
-body[data-surface="/duplicates"] .duprow{grid-template-columns:112px minmax(0,1fr) 84px 84px 84px;padding:16px 20px;gap:12px}
-.dupcover{grid-row:span 2;position:relative;aspect-ratio:16/10;padding:0;overflow:hidden;border:0;border-radius:var(--control-radius);background:var(--color-background-tertiary-default);color:var(--muted);cursor:pointer;display:grid;place-items:center}
-body[data-surface="/duplicates"] .duppath{grid-column:2/-1}
+
 .quality-workspace{max-width:var(--board-content);margin:auto}
 body[data-surface="/quality-goals"] .qualitylist{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
 body[data-surface="/quality-goals"] .qualityitem{display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-rows:1fr auto;gap:0 16px;padding:12px;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--surface-radius)}
@@ -1512,6 +1492,12 @@ body[data-surface="/junk-files"] #count{flex-direction:column;align-items:stretc
    对不上的左边界。 */
 body[data-surface="/junk-files"] :is(#count,#grid,#loadSentinel){width:100%;max-width:var(--board-content);margin-inline:auto}
 body:is([data-surface="/junk-files"],[data-surface="/trash"]) .gridstack>.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
+body[data-surface="/trash"] #grid{width:100%;max-width:var(--board-content);margin-inline:auto}
+/* 任务卡等待态与正文都在底部分隔栏放操作。 */
+[data-skeleton="cleanup"] [data-fieldset-stack]{display:flex;flex-direction:column;align-items:stretch}
+[data-skeleton="cleanup"] [data-fieldset-stack]>:is([data-geist-fieldset-content],.resourcesyncbody){padding:20px 20px 16px;min-height:120px}
+[data-skeleton="cleanup"] [data-fieldset-stack]>[data-geist-fieldset-footer]{padding:12px 20px;min-height:56px;border-top:1px solid var(--color-border-button-default);background:var(--board-card-foot);justify-content:flex-end}
+@media(max-width:760px){[data-skeleton="cleanup"] [data-fieldset-stack]>:is([data-geist-fieldset-content],.resourcesyncbody){padding:18px;min-height:0}[data-skeleton="cleanup"] [data-fieldset-stack]>[data-geist-fieldset-footer]{padding-inline:18px}}
 body[data-surface="/trash"] #manageLede{padding:20px 24px;background:var(--color-background-primary-default);border-radius:var(--surface-radius);gap:16px;flex-wrap:wrap}
 body[data-surface="/trash"] #manageLede>span{font:var(--board-heading)}
 @media(max-width:900px){
@@ -1519,15 +1505,12 @@ body[data-surface="/trash"] #manageLede>span{font:var(--board-heading)}
  body[data-surface="/review"] .review-workspace>.reviewcontrols{position:static;grid-column:1;grid-row:auto!important;margin-bottom:16px}
  body[data-surface="/review"] .reviewtabs{flex-direction:row;flex-wrap:wrap}
  body[data-surface="/review"] .review-workspace>:is(.reviewsection,.reviewbulktoolbar){grid-column:1}
- body[data-surface="/duplicates"] .duprow{grid-template-columns:88px minmax(0,1fr) auto auto}
- body[data-surface="/duplicates"] .dupcover{grid-row:span 2}
- body[data-surface="/duplicates"] .duppath{grid-column:1/-1}
+
 }
 @media(max-width:600px){
  .collection-summary{padding:16px;align-items:flex-start;flex-direction:column;gap:12px}
  body[data-surface="/review"] .reviewtabs button{min-height:36px;padding:8px}
- body[data-surface="/duplicates"] .duphead{padding:16px}
- body[data-surface="/duplicates"] .duprow{padding:16px}
+
 }
 /* 批量条：隐藏的键真的隐藏（Board 的 inline-flex 曾压过 hidden）；「加入回收站」用 error 按钮的红色渐变。 */
 /* 批量条上那颗只是不在上面那份尺寸名单里，面色跟站内每一颗危险键同一份。 */
@@ -1569,20 +1552,18 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 .fmanagenav>button>span{padding:1px 5px;border-radius:var(--badge-radius);background:var(--picked);color:var(--muted);font:var(--board-caption);font-variant-numeric:tabular-nums}
 .followmanage .fmain>[data-follow-panel][hidden]{display:none}
 .followmanage .fmain>[data-follow-panel=sources]{background:transparent}
-.followmanage .fmain>[data-follow-panel=sources]>.fsechead{padding:0 0 16px;min-height:48px;gap:10px}
-.followmanage [data-follow-panel=sources]>.fsechead h3{font:var(--board-body-medium)}
+
 .followmanage .fmain>[data-follow-panel=sources]>.board-follow-selection{padding:12px 16px;background:var(--ground);border-radius:var(--surface-radius) var(--surface-radius) 0 0;border-bottom:1px solid var(--line-soft)}
 .followmanage [data-follow-panel=sources] .board-follow-list{gap:0;background:var(--ground);border-radius:0 0 var(--surface-radius) var(--surface-radius);overflow:hidden}
 .followmanage [data-follow-panel=sources] .ftableframe{border-top:0;border-radius:0 0 var(--surface-radius) var(--surface-radius)}
 .followmanage .fmain>[data-follow-panel=add]{max-width:812px;width:100%;justify-self:center}
-.followmanage .fmain>[data-follow-panel=credentials]>.frows{gap:0;background:var(--ground);border-radius:var(--surface-radius);overflow:hidden}
+
 @media(max-width:760px){
   .followmanage .fmanageoverview{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
   .fmanageoverview>div{padding:16px;gap:8px}
   .followmanage .fmanagenav{gap:4px}
   .fmanagenav>button{padding-inline:8px;gap:6px}
-  .followmanage .fmain>[data-follow-panel=sources]>.fsechead{padding:0 0 12px}
-  .followmanage [data-follow-panel=sources]>.fsechead h3{flex-basis:100%}
+
   .followmanage .fmain>[data-follow-panel=sources]>.board-follow-selection{padding:12px}
 }
 

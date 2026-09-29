@@ -236,6 +236,12 @@ it('本次亲眼见过它在跑，跑完才发回执并重取 dashboard', async 
     job: [{ status: 'running', message: '正在读取浏览记录' }, { status: 'complete' }],
   });
   expect(host.textContent).toContain('正在读取浏览记录');
+  const actions = [...host.querySelectorAll('[data-split-button] > button')];
+  expect(actions).toHaveLength(2);
+  expect(actions.every(button => button.getAttribute('aria-disabled') === 'true')).toBe(true);
+  await click(actions[1]);
+  expect(host.querySelector('[role="dialog"]')).toBeNull();
+  expect(host.querySelector('[data-task-progress]')).not.toBeNull();
   await tick(JOB_RUNNING_POLL_MS);
   await settle();
   expect(props.toast.mock.calls).toEqual([['已更新口味分析']]);
