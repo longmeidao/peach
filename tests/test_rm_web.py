@@ -2748,6 +2748,52 @@ class DuplicateDetectionTests(unittest.TestCase):
         parts = rm_web.q_parts(self.contract, {"id": str(listed[0]["id"])})
         self.assertEqual([row["part_label"] for row in parts["items"]], list(map(str, numbers)))
 
+    def test_attached_volume_markers_and_circled_titles_share_one_queue(self):
+        cases = [
+            ("DVDMS-243", ["DVDMS-243cd1.mp4", "DVDMS-243cd2.mp4"], ["1", "2"]),
+            ("IPZ-561", ["IPZ-561A.1080p.mkv", "IPZ-561B.1080p.mkv"], ["A", "B"]),
+            ("ABP-601", ["ABP-601A-C.mp4", "ABP-601B-C.mp4"], ["A", "B"]),
+            ("FC2-PPV-1261799", ["FC-1261799A.mp4", "FC-1261799B.mp4"], ["A", "B"]),
+            ("092415-001", ["1pon-092415-001-fhd1_(new).mp4",
+                            "1pon-092415-001-fhd2_(new).mp4"], ["1", "2"]),
+            ("FC2-PPV-3189414", ["FC2-PPV-3189414-0.mp4", "FC2-PPV-3189414-1.mp4"], ["0", "1"]),
+            ("FC2-PPV-3075582", ["FC2-PPV-3075582-①本編.mp4",
+                                 "FC2-PPV-3075582-③特典.mp4"], ["1", "3"]),
+            ("FC2-PPV-4550808", ["fc4550808_2.mp4", "fc4550808_3.mp4",
+                                 "fc4550808_sp1.mp4", "fc4550808_sp3.mp4"],
+                                 ["2", "3", "特典 1", "特典 3"]),
+            ("FC2-PPV-4592208", ["fc4592208.mp4", "fc4592208_sp.mp4"], ["本篇", "特典 1"]),
+            ("FC2-PPV-2498047", ["FC2-PPV-2498047【标题】.mp4",
+                                 "FC2-PPV-2498047【标题】(特典).mp4"], ["本篇", "特典 1"]),
+        ]
+        for code, names, labels in cases:
+            with self.subTest(code=code):
+                for name in reversed(names):
+                    self.add(code, 1800, 1_000_000, name=name)
+                listed = rm_web.q_items(self.contract, {"q": code, "limit": "30"})["items"]
+                self.assertEqual({row["part_group"]["count"] for row in listed}, {len(names)})
+                self.assertTrue(all("edition_group" not in row for row in listed))
+                parts = rm_web.q_parts(self.contract, {"id": str(listed[0]["id"])})
+                self.assertEqual([row["name"] for row in parts["items"]], names)
+                self.assertEqual([row["part_label"] for row in parts["items"]], labels)
+
+    def test_zero_number_requires_an_explicit_fc2_collection(self):
+        for code in ("ABC-123", "FC2-PPV-3189414"):
+            for names in (["ABC-123-0.mp4", "ABC-123-1.mp4"],
+                          ["FC2-PPV-3189414-00.mp4", "FC2-PPV-3189414-1.mp4"],
+                          ["FC2-PPV-3189414-0.mp4", "FC2-PPV-3189414.mp4"]):
+                with self.subTest(code=code, names=names):
+                    rows = [{"id": n, "code": code, "name": name} for n, name in enumerate(names)]
+                    self.assertEqual(rm_web.ordered_multipart_items(rows), [])
+
+    def test_bonus_collection_rejects_duplicate_and_mixed_complete_files(self):
+        for tails in (["", "", "_sp"], ["", "_1", "_sp"], ["_sp1", "_gift1"],
+                      ["", "_sp", "_1080p"], ["_sp", "_sp01"]):
+            with self.subTest(tails=tails):
+                rows = [{"id": n, "code": "FC2-PPV-4550808", "name": f"fc4550808{tail}.mp4"}
+                        for n, tail in enumerate(tails)]
+                self.assertEqual(rm_web.ordered_multipart_items(rows), [])
+
     def test_parts_group_when_the_edition_suffix_sits_after_the_volume_number(self):
         """卷号后面挂着版次或修复标记时，剥掉组内共有尾缀仍认得出这是一部片的几卷。
 

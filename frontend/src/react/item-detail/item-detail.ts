@@ -431,8 +431,9 @@ export function queueCopy(queue: DetailQueue): { title: string; summary: string 
 
 /** 同一部片的几卷共用文件名，标题、女优、厂牌逐字相同：详情标题不写卷号的话，在队列里换一卷，
  *  右侧整栏看上去纹丝不动。卷号说的是「第几份文件」而不是版次，用中性灰。 */
+export const partLabel = (label = '') => /^(?:\d+|[a-h])$/i.test(label) ? `第 ${label} 卷` : label;
 export const partLabelHtml = (item: DetailItem, queue: DetailQueue | null) =>
-  (queue?.kind === 'parts' && item.part_label ? `<small class="javedition partlabel">第 ${esc(item.part_label)} 卷</small>` : '');
+  (queue?.kind === 'parts' && item.part_label ? `<small class="javedition partlabel">${esc(partLabel(item.part_label))}</small>` : '');
 
 /** 拖动之后的新顺序：`from` 挪到 `target` 的前面或后面。 */
 export function movedOrder(ids: readonly number[], from: number, target: number, after: boolean): number[] {

@@ -29,6 +29,20 @@ class CoverArtworkTests(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp())
         self.target = self.root / "259LUXU-1537.jpg"
 
+    def test_full_photo_keeps_faces_on_the_left_but_sleeves_use_the_front(self):
+        detector = Detector()
+        with patch.object(detector, "detect", return_value=[Face(.22, .3, .1, .1, .95)]):
+            for code in ("FC2-PPV-3312576", "HEYZO-1380", "092415-001", "ABP-601"):
+                with self.subTest(code=code):
+                    target = self.root / f"{code}.jpg"
+                    cover_artwork.install_cover(target, code, jpeg((90, 80, 70), (800, 500)),
+                                                (800, 500), detector=detector)
+                    record = json.loads(target.with_suffix(".face.json").read_text(encoding="utf-8"))
+                    if code == "ABP-601":
+                        self.assertIsNone(record["face"])
+                    else:
+                        self.assertEqual(record["face"]["cx"], .22)
+
     def test_install_replaces_image_and_both_focus_sidecars(self):
         data = jpeg((190, 120, 80))
         cover_artwork.install_cover(

@@ -16,6 +16,7 @@ from . import media_libraries, settings_file
 
 from .catalog_rules import (
     LENGTH_TAGS,
+    fc2_collection_label,
     is_jav_asset,
     jav_display_metadata,
     names_without_shared_part_tail,
@@ -702,11 +703,14 @@ def q_parts(contract: WebContract, args):
     # 卷号后面还挂着版次或修复标记时（`PPT-018-1-uncensored.mp4`），剥掉组内共有的
     # 那段尾缀才取得到卷标；这一步和分组用的是同一个判据。
     stripped = names_without_shared_part_tail(group) or [""] * len(group)
+    has_bonus = any(fc2_collection_label(row).startswith("特典 ") for row in group)
     for position, (row, bare) in enumerate(zip(group, stripped), 1):
         item = q_item(contract, row["id"])
-        marker = part_marker(str(row.get("name") or "")) or part_marker(bare)
+        marker = part_marker(bare) or part_marker(str(row.get("name") or ""))
         # 裸名首卷没有标记，卷标按队列位置给；有标记时沿用文件名里的写法。
-        item["part_label"] = (marker.upper() if marker.isalpha() else marker) or str(position)
+        label = fc2_collection_label(row)
+        item["part_label"] = (label if has_bonus and label else
+                              (marker.upper() if marker.isalpha() else marker) or str(position))
         items.append(item)
     return {"title": code or str(seed["code"]), "count": len(items), "items": items}
 
