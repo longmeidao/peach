@@ -187,7 +187,7 @@ function PickRow(
     (candidate) => !hidden.has(candidate.provider_label || ''));
   const failures = Object.entries(row.failures || {});
   return (
-    <div className={cardClass({ padding: 'none', className: 'flex flex-col gap-2 p-4' })}>
+    <div className={cardClass({ variant: 'outlined', padding: 'none', className: 'flex flex-col gap-2 p-4' })}>
       <b className="text-body-medium text-text-primary">{row.line}</b>
       {candidates.length ? candidates.map((candidate) => {
         const key = candidateKey(at, candidate);

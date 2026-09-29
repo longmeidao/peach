@@ -24,7 +24,6 @@ import type { FollowManageProps } from '../bundle';
 import { cardClass } from '../components/card';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
-import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
 import { STAT_STRIP_SIX } from '../components/stat-card';
 import { AddSource } from './add-source';
 import { AliasManager } from './alias-manager';
@@ -141,10 +140,10 @@ export function FollowManagePage(props: FollowManageProps) {
         setTab(next);
         go({ tab: next });
       }} className="flex flex-col gap-6">
-        {/* 旧 `.follow-workspace-switch`：几块互斥面板，形态是分段控件不是三枚裸按钮。 */}
-        <TabList aria-label="关注管理区域" className={SEGMENTED_TRACK}>
+        <TabList aria-label="关注管理区域" data-section-nav data-section-items
+          className="flex max-w-full flex-nowrap overflow-x-auto">
           {TABS.map(([key, name]) => (
-            <Tab key={key} id={key} className={SEGMENT}>
+            <Tab key={key} id={key} className="cursor-pointer whitespace-nowrap">
               {key === 'source' && pending ? `${name}（${pending}）` : name}
             </Tab>
           ))}

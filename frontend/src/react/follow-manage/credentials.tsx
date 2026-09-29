@@ -162,7 +162,7 @@ export function Credentials(
       </div>
       {/* 旧 `[data-follow-panel=credentials]>.frows`：几个来源共处一张填充卡，行与行之间
           只有一条发丝线，不各自套框。 */}
-      <div className={cardClass({ padding: 'none', className: 'flex flex-col overflow-hidden' })}>
+      <div className="flex flex-col overflow-hidden">
         {rows.map((row) => (
           <CredentialSection key={row.provider} row={row} readOnly={readOnly} toast={toast} />
         ))}

@@ -7,7 +7,7 @@
 #toasts [data-sonner-toast][data-styled=true]{--normal-bg:var(--color-background-primary-default);
   --normal-border:var(--color-border-button-default);--normal-text:var(--color-text-primary);
   gap:10px;border-radius:var(--floating-radius);font:var(--board-body);
-  box-shadow:0 12px 24px -4px light-dark(#0000001a,#0000008c),0 4px 8px -2px light-dark(#0000000d,#00000073)}
+  box-shadow:var(--elevation-dropdown)}
 #toasts [data-sonner-toast] [data-title]{font-weight:500}
 #toasts [data-sonner-toast] b{font-variant-numeric:tabular-nums}
 /* 字形用全站那套描边件：成功是主色的勾，失败是警示色的圈。不写 `fill:none` 就按 `fill` 的

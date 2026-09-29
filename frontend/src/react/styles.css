@@ -292,24 +292,21 @@
     0 1px 12px 0 rgb(0 0 0 / 0.06), 0 1px 0 0 rgb(0 0 0 / 0.02);
 }
 
-/* 深色不取 `theme.css` 那组 0.1–0.2 的值：黑影落在 #111 的页面底上，能压暗的只剩到纯黑
- * 那几级，那组值在截图里和没有一样。贴边的接触影保留浅色的几何、alpha 抬几倍；卡片和
- * 浮层再加一层短的环境影，近黑的底上只有这一层还读得出高度。取值按统计页与活动页的
- * 卡片截图定。 */
+/* 深色沿用 theme.css 的阴影几何与透明度；卡片靠填充区分层级，阴影只收边。 */
 .dark {
-  --elevation-2xs: 0 1px rgb(0 0 0 / 0.5);
-  --elevation-xs: 0 1px 2px 0 rgb(0 0 0 / 0.55);
-  --elevation-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5), 0 2px 6px 0 rgb(0 0 0 / 0.4);
-  --elevation-md: 0 2px 4px -1px rgb(0 0 0 / 0.5), 0 4px 10px -1px rgb(0 0 0 / 0.45);
-  --elevation-lg: 0 4px 6px -2px rgb(0 0 0 / 0.45), 0 10px 20px -3px rgb(0 0 0 / 0.55);
-  --elevation-xl: 0 10px 10px -5px rgb(0 0 0 / 0.4), 0 20px 30px -5px rgb(0 0 0 / 0.6);
-  --elevation-card: 0 1px 2px 0 rgb(0 0 0 / 0.6), 0 2px 8px 0 rgb(0 0 0 / 0.45);
-  --elevation-dropdown: 0 1px 2px 0 rgb(0 0 0 / 0.6), 0 4px 12px 0 rgb(0 0 0 / 0.45);
+  --elevation-2xs: 0 1px rgb(0 0 0 / 0.16);
+  --elevation-xs: 0 1px 2px 0 rgb(0 0 0 / 0.18);
+  --elevation-sm: 0 1px 2px 0 rgb(0 0 0 / 0.12), 0 1px 3px 0 rgb(0 0 0 / 0.16);
+  --elevation-md: 0 2px 4px -1px rgb(0 0 0 / 0.12), 0 4px 6px -1px rgb(0 0 0 / 0.18);
+  --elevation-lg: 0 4px 6px -2px rgb(0 0 0 / 0.10), 0 10px 15px -3px rgb(0 0 0 / 0.18);
+  --elevation-xl: 0 10px 10px -5px rgb(0 0 0 / 0.08), 0 20px 25px -5px rgb(0 0 0 / 0.20);
+  --elevation-card: 0 1px 1px 0 rgb(0 0 0 / 0.14);
+  --elevation-dropdown: 0 1px 1px 0 rgb(0 0 0 / 0.14), 0 4px 4px 0 rgb(0 0 0 / 0.10);
   --elevation-sidebar:
-    0 1px 0 0 rgb(0 0 0 / 0.3), 0 1px 12px 0 rgb(0 0 0 / 0.45), 0 0 1px 0 rgb(0 0 0 / 0.7);
+    0 1px 0 0 rgb(0 0 0 / 0.10), 0 1px 12px 0 rgb(0 0 0 / 0.16), 0 0 1px 0 rgb(0 0 0 / 0.42);
   --elevation-waitlist:
-    0 0 6px 0 rgb(0 0 0 / 0.3), 0 0 64px 0 rgb(0 0 0 / 0.5), 0 0 1px 0 rgb(0 0 0 / 0.7),
-    0 1px 12px 0 rgb(0 0 0 / 0.35), 0 1px 0 0 rgb(0 0 0 / 0.2);
+    0 0 6px 0 rgb(0 0 0 / 0.12), 0 0 64px 0 rgb(0 0 0 / 0.22), 0 0 1px 0 rgb(0 0 0 / 0.42),
+    0 1px 12px 0 rgb(0 0 0 / 0.14), 0 1px 0 0 rgb(0 0 0 / 0.08);
 }
 
 /* 上游 globals.css 里 html、body 的基线，落在 React 子树的容器上。 */
