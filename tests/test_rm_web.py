@@ -2722,6 +2722,32 @@ class DuplicateDetectionTests(unittest.TestCase):
         self.assertEqual(rm_web.ordered_multipart_items(duplicate), [])
         self.assertEqual(rm_web.ordered_multipart_items(gapped), [])
 
+    def test_fc2_collection_with_missing_parts_keeps_explicit_numbers(self):
+        numbers = [21, 1, 8, 10, 13, 15]
+        items = [{"id": n, "code": "FC2-PPV-3312576",
+                  "name": f"FC2-PPV-3312576-{n}.mp4"} for n in numbers]
+        self.assertEqual([row["id"] for row in rm_web.ordered_multipart_items(items)],
+                         sorted(numbers))
+        for extra in (
+            {"id": 31, "code": "FC2-PPV-3312576", "name": "FC2-PPV-3312576-01.mp4"},
+            {"id": 32, "code": "FC2-PPV-3312576", "name": "FC2-PPV-3312576.mp4"},
+            {"id": 33, "code": "FC2-PPV-3312576", "name": "FC2-PPV-1234567-3.mp4"},
+        ):
+            with self.subTest(extra=extra):
+                self.assertEqual(rm_web.ordered_multipart_items([*items, extra]), [])
+
+    def test_fc2_collection_api_keeps_all_available_parts_in_order(self):
+        numbers = [n for n in range(1, 22) if n not in (9, 14)]
+        for n in reversed(numbers):
+            self.add("FC2-PPV-3312576", 1800 + n * 100, 1_000_000_000 + n,
+                     name=f"FC2-PPV-3312576-{n}.mp4")
+        listed = rm_web.q_items(self.contract, {"q": "FC2-PPV-3312576", "limit": "30"})["items"]
+        self.assertEqual(len(listed), 19)
+        self.assertEqual({row["part_group"]["count"] for row in listed}, {19})
+        self.assertTrue(all("edition_group" not in row for row in listed))
+        parts = rm_web.q_parts(self.contract, {"id": str(listed[0]["id"])})
+        self.assertEqual([row["part_label"] for row in parts["items"]], list(map(str, numbers)))
+
     def test_parts_group_when_the_edition_suffix_sits_after_the_volume_number(self):
         """卷号后面挂着版次或修复标记时，剥掉组内共有尾缀仍认得出这是一部片的几卷。
 

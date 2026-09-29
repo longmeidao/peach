@@ -1090,7 +1090,7 @@ def names_without_shared_part_tail(items: list[dict]) -> list[str]:
 
 
 def ordered_multipart_items(items: list[dict]) -> list[dict]:
-    """Return one unambiguous, contiguous multipart release in playback order.
+    """Return one unambiguous multipart release in playback order.
 
     Bare A/B and numeric suffixes are both common in the existing library.  A
     repeated marker means that one part has duplicate encodes, while mixed
@@ -1101,8 +1101,8 @@ def ordered_multipart_items(items: list[dict]) -> list[dict]:
     裸名也可能是整部完整版，所以只在数字标记、标记正好从 2 连续排起、且裸名时长与
     其他卷相差不大时，才把它当第 1 卷；字母卷缺 A 时无从判断裸名是不是 A，不猜。
 
-    文件名原样认不出卷号时再按 `names_without_shared_part_tail` 剥一次共有尾缀重试：
-    先原样、后剥缀，已经成组的那些走的仍是第一条路，判据一个没松。
+    文件名原样认不出卷号时再按 `names_without_shared_part_tail` 剥一次共有尾缀重试。
+    FC2 合集允许缺集，文件名前缀必须匹配登记番号，数字序号必须唯一且显式标出。
     """
     ordered = _ordered_by_markers(items, [str(item.get("name") or "") for item in items])
     if ordered:
@@ -1135,8 +1135,23 @@ def _ordered_by_markers(items: list[dict], names: list[str]) -> list[dict]:
             return []
         ordered.append((1, bare[0]))
     elif sorted(positions) != list(range(1, len(positions) + 1)):
-        return []
+        # FC2 合集按明确的文件序号浏览，允许馆藏缺集；不推断裸名文件的序号。
+        if not numeric or not _explicit_fc2_collection(items, names, positions):
+            return []
     return [item for _, item in sorted(ordered, key=lambda pair: pair[0])]
+
+
+def _explicit_fc2_collection(items: list[dict], names: list[str], positions: list[int]) -> bool:
+    """缺集的 FC2 合集需要唯一数字序号与同一番号的文件名前缀。"""
+    codes = {normalise_code_key(item.get("code")) for item in items}
+    code = next(iter(codes)) if len(codes) == 1 else ""
+    if not code.startswith("FC2-PPV-") or len(set(positions)) != len(positions):
+        return False
+    for name in names:
+        match = _PART_MARKER.search(name)
+        if not match or normalise_code_key(name[:match.start()]) != code:
+            return False
+    return True
 
 
 def duration_clusters(items: list[dict]) -> list[list[dict]]:
