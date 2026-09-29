@@ -1035,6 +1035,13 @@ class OperationalScriptTests(unittest.TestCase):
         self.assertIsNone(module.affirmative_link(
             '<a href="https://elsewhere.example/top">ENTER</a>', "https://dasdas.jp/"))
         self.assertIsNone(module.affirmative_link("<p>没有链接</p>", "https://dasdas.jp/"))
+        for content in ('は　い', '<img alt="はい">', '<img alt="WEBサイトへ入場">'):
+            self.assertEqual(module.affirmative_link(f'<a href="/top">{content}</a>',
+                                                    "https://brand.test/"), "https://brand.test/top")
+        self.assertIsNone(module.affirmative_link('<a href="/no"><img alt="いいえ"></a>',
+                                                 "https://brand.test/"))
+        self.assertIsNone(module.affirmative_link('<a href="/catalog"><img alt="EYES"></a>',
+                                                 "https://brand.test/"))
 
     def test_platform_paths_are_not_mistaken_for_accounts(self):
         module = load_script("find_studio_socials")
@@ -1042,6 +1049,80 @@ class OperationalScriptTests(unittest.TestCase):
                 '<a href="https://x.com/dahliaofficial0">官方</a>'
                 '<a href="https://twitter.com/share">share</a>')
         self.assertEqual(module.handles_in(html), {"dahliaofficial0"})
+
+    def test_studio_social_profiles_keep_multiple_accounts_and_anchor_evidence(self):
+        module = load_script("find_studio_socials")
+        html = ('<p><a href="https://x.com/SCute_av">S-Cute【公式】</a></p>'
+                '<p><a href="//twitter.com/_scute">nanairo【公式】</a></p>'
+                '<a href="https://x.com/scute_AV?lang=ja">duplicate</a>'
+                '<a href="https://x.com/actor/status/123">投稿</a>'
+                '<script>"https://x.com/not_a_link"</script>'
+                '<a href="https://x.com/intent/tweet">share</a>')
+        accounts = module.accounts_in(html)
+        self.assertEqual({a["handle"] for a in accounts}, {"SCute_av", "_scute"})
+        self.assertEqual(accounts[1]["anchor"], "nanairo【公式】")
+        rows = module.review_rows({"entity_id": 3, "studio": "S-Cute", "known": {"scute_av"}},
+                                  [{**a, "page": "https://www.s-cute.com/", "sha256": "abc"}
+                                   for a in accounts])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["url"], "https://x.com/_scute")
+        self.assertIn("nanairo【公式】", rows[0]["evidence"])
+        self.assertEqual(rows[0]["review"], "待复核账号归属")
+
+    def test_studio_social_scan_checks_response_and_completes_age_gate(self):
+        from peach.http import HttpResponse
+        module = load_script("find_studio_socials")
+        gate = ('<a href="https://x.com/main_brand">X</a>'
+                '<a href="/top">はい</a>').encode()
+        inside = '<a href="https://x.com/other_brand">関連公式</a>'.encode()
+        responses = iter([HttpResponse(200, {}, gate, "https://brand.test/"),
+                          HttpResponse(200, {}, inside, "https://brand.test/top")])
+        evidence = []
+        found, final, _ = module.scan(lambda *args: next(responses), "https://brand.test/", 1,
+                                     evidence=evidence)
+        self.assertEqual(found, {"main_brand", "other_brand"})
+        self.assertEqual(final, "https://brand.test/top")
+        self.assertEqual(len(evidence), 2)
+        for response in (HttpResponse(403, {}, inside, "https://brand.test/"),
+                         HttpResponse(200, {}, inside, "https://elsewhere.test/")):
+            found, _, note = module.scan(lambda *args: response, "https://brand.test/", 1)
+            self.assertEqual(found, set())
+            self.assertIn("未取得", note)
+
+    def test_studio_social_ledger_input_includes_existing_socials_and_only_official_sites(self):
+        module = load_script("find_studio_socials")
+        with sqlite3.connect(":memory:") as connection:
+            connection.executescript("""
+                CREATE TABLE entity(id INTEGER,kind TEXT,canonical_name TEXT);
+                CREATE TABLE entity_link(id INTEGER,entity_id INTEGER,link_kind TEXT,url TEXT);
+                INSERT INTO entity VALUES(1,'studio','S-Cute'),(2,'performer','Other');
+                INSERT INTO entity_link VALUES(1,1,'official','https://www.s-cute.com/'),
+                  (2,1,'social','https://twitter.com/SCute_av'),
+                  (3,1,'catalog','https://catalog.test/'),(4,2,'official','https://other.test/');
+            """)
+            rows = module.ledger_sites(connection)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["known"], {"scute_av"})
+        self.assertEqual(rows[0]["site"], "https://www.s-cute.com/")
+
+    def test_studio_social_cli_preserves_review_evidence_on_resume(self):
+        module = load_script("find_studio_socials")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            source, output, review = (root / n for n in ("sites.csv", "scan.csv", "review.csv"))
+            module.write_rows(source, ("studio", "site"), [{"studio": "S-Cute", "site": "https://www.s-cute.com/"}])
+            argv = ["find_studio_socials.py", "--input", str(source), "--output", str(output),
+                    "--review-output", str(review), "--interval", "0"]
+            transport = mock.Mock(return_value=HttpResponse(200, {},
+                b'<a href="https://x.com/SCute_av">official</a>'))
+            with mock.patch.object(sys, "argv", argv), mock.patch.object(module, "HttpxTransport", return_value=transport), redirect_stdout(io.StringIO()):
+                self.assertEqual(module.main(), 0)
+            saved = review.read_bytes()
+            with mock.patch.object(sys, "argv", [*argv, "--resume"]), mock.patch.object(module, "HttpxTransport", return_value=transport), redirect_stdout(io.StringIO()):
+                self.assertEqual(module.main(), 0)
+            self.assertEqual(transport.call_count, 1)
+            self.assertEqual(review.read_bytes(), saved)
+            self.assertEqual(module.read_rows(review)[0]["url"], "https://x.com/SCute_av")
 
     def test_powershell_scripts_with_chinese_carry_a_utf8_bom(self):
         """没有 BOM 的 .ps1，Windows PowerShell 5.1 会按 ANSI（简中系统即 GBK）读。
