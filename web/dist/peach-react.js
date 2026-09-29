@@ -39824,6 +39824,7 @@ function Dce({ row: e, at: t, hidden: n, unpicked: r, onPick: i }) {
 	let a = (e.candidates || []).filter((e) => !n.has(e.provider_label || "")), o = Object.entries(e.failures || {});
 	return /* @__PURE__ */ (0, L.jsxs)("div", {
 		className: aw({
+			variant: "outlined",
 			padding: "none",
 			className: "flex flex-col gap-2 p-4"
 		}),
@@ -40502,10 +40503,7 @@ function Bce({ data: e, readOnly: t, toast: n }) {
 				}) : null]
 			}),
 			/* @__PURE__ */ (0, L.jsx)("div", {
-				className: aw({
-					padding: "none",
-					className: "flex flex-col overflow-hidden"
-				}),
+				className: "flex flex-col overflow-hidden",
 				children: r.map((e) => /* @__PURE__ */ (0, L.jsx)(zce, {
 					row: e,
 					readOnly: t,
@@ -43402,10 +43400,12 @@ function Wle(e) {
 			children: [
 				/* @__PURE__ */ (0, L.jsx)(rA, {
 					"aria-label": "关注管理区域",
-					className: SN,
+					"data-section-nav": !0,
+					"data-section-items": !0,
+					className: "flex max-w-full flex-nowrap overflow-x-auto",
 					children: bL.map(([e, t]) => /* @__PURE__ */ (0, L.jsx)(iA, {
 						id: e,
-						className: CN,
+						className: "cursor-pointer whitespace-nowrap",
 						children: e === "source" && M ? `${t}（${M}）` : t
 					}, e))
 				}),

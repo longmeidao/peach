@@ -10102,14 +10102,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("保存别名", self.read_react("follow-manage/alias-manager.tsx"))
 
     def test_follow_management_actions_share_the_medium_control_height(self):
-        """同排控件用 36px；顶部保留分段控件，版式切换使用 Button Group。"""
-        page = self.read_react("follow-manage/follow-manage-page.tsx")
+        """同排控件用 36px；版式切换使用 Button Group。"""
         source_list = self.read_react("follow-manage/source-list.tsx")
         add = self.read_react("follow-manage/add-source.tsx")
         aliases = self.read_react("follow-manage/alias-manager.tsx")
         styles = self.read_react("styles.css")
-        self.assertIn("import { SEGMENT, SEGMENTED_TRACK }", page)
-        self.assertIn('<TabList aria-label="关注管理区域" className={SEGMENTED_TRACK}>', page)
         self.assertIn('<span data-button-group role="group" aria-label="关注列表版式">', source_list)
         self.assertIn('<Select aria-label="关注列表排序"', source_list)
         # 下拉的 trigger 不写高度，靠内边距撑出 38px／28px；两档都在这里锁回控件族的高度。

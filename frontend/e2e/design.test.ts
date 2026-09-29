@@ -3805,7 +3805,7 @@ describe('设计决定', () => {
     }
   });
 
-  it('暗色下 React 卡片和旧样式表控件的阴影都换成看得见的那一档', { timeout: 60_000 }, async () => {
+  it('亮暗卡片、按钮与回执使用克制的接触阴影', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/stats', DESKTOP);
     try {
       // 选中的那张页签按基线收掉接触阴影，读旁边没选中的一张。
@@ -3847,14 +3847,79 @@ describe('设计决定', () => {
       const dark = await alphas();
       for (const key of Object.keys(light) as Array<keyof typeof light>) {
         assert.ok(light[key] > 0 && light[key] < .2, `浅色下 ${key} 的阴影 ${light[key]} 不在浅色那一档`);
-        // #111 的页面底上，黑影再淡就压不出比底更暗的一圈。
-        assert.ok(dark[key] >= .4, `暗色下 ${key} 的阴影只有 ${dark[key]}，在 #111 底上看不见`);
+        assert.ok(dark[key] > light[key] && dark[key] <= .2,
+          `暗色 ${key} 阴影应保留接触感而不形成重边：${dark[key]}`);
       }
       assert.deepEqual(opened.problems, []);
     } finally {
       await opened.close();
     }
   });
+
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`关注分类使用 Pills，凭据列表与外层共用一个表面（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openFollowManage(browser, viewport);
+      try {
+        const page = opened.page;
+        const tabs = page.getByRole('tablist', { name: '关注管理区域' });
+        for (const theme of ['light', 'dark']) {
+          await page.evaluate((value) => {
+            document.documentElement.dataset.theme = value;
+            document.documentElement.classList.toggle('dark', value === 'dark');
+          }, theme);
+          await tabs.getByRole('tab', { name: /来源和凭证/ }).click();
+          const face = await tabs.evaluate((element) => {
+            const selected = element.querySelector('[aria-selected=true]')!;
+            return { track: getComputedStyle(element).backgroundColor,
+              selected: getComputedStyle(selected).backgroundColor,
+              shadow: getComputedStyle(selected).boxShadow };
+          });
+          assert.equal(face.track, 'rgba(0, 0, 0, 0)', 'Pills 容器应透明');
+          assert.notEqual(face.selected, face.track, '当前分类应有独立底色');
+          assert.equal(face.shadow, 'none', 'Pills 不使用浮起滑块');
+          const list = page.getByRole('heading', { name: '来源和凭证', exact: true }).locator('..').locator('..');
+          const rows = await list.evaluate((element) => {
+            const group = element.children[1];
+            const style = getComputedStyle(group);
+            return { shadow: style.boxShadow, radius: style.borderRadius, background: style.backgroundColor };
+          });
+          assert.deepEqual(rows, { shadow: 'none', radius: '0px', background: 'rgba(0, 0, 0, 0)' });
+          await tabs.getByRole('tab', { name: /来源和凭证/ }).focus();
+          await page.keyboard.press('Home');
+          await page.keyboard.press('Enter');
+          assert.equal(await tabs.getByRole('tab', { name: '关注列表', exact: true }).getAttribute('aria-selected'), 'true');
+          const dimensions = await layout(page);
+          assert.ok(dimensions.scrollWidth <= dimensions.viewportWidth + 1, JSON.stringify(dimensions));
+        }
+        await page.route('**/api/follow/resolve', (route) => route.fulfill({
+          status: 200, contentType: 'application/json', body: JSON.stringify({
+            status: 'done', results: [{ line: '主题测试来源', candidates: [{
+              provider: 'kemono', provider_label: 'Kemono', label: '主题测试候选', url: 'https://example.com/creator',
+            }] }],
+          }),
+        }));
+        await tabs.getByRole('tab', { name: '添加关注', exact: true }).click();
+        await page.getByRole('textbox', { name: '来源链接、名字或 id' }).fill('主题测试来源');
+        await page.getByRole('button', { name: '查找', exact: true }).click();
+        const result = page.getByText('主题测试来源', { exact: true }).locator('..');
+        await result.waitFor();
+        for (const theme of ['light', 'dark']) {
+          await page.evaluate((value) => {
+            document.documentElement.dataset.theme = value;
+            document.documentElement.classList.toggle('dark', value === 'dark');
+          }, theme);
+          const surface = await result.evaluate((element) => {
+            const s = getComputedStyle(element);
+            return { shadow: s.boxShadow, width: s.borderTopWidth, border: s.borderTopColor, bg: s.backgroundColor };
+          });
+          assert.equal(surface.shadow, 'none');
+          assert.equal(surface.width, '1px');
+          assert.notEqual(surface.border, surface.bg, '结果分组必须有可辨认边界');
+        }
+        assert.deepEqual(opened.problems, []);
+      } finally { await opened.close(); }
+    });
+  }
 
   it('使用空间按字节量级的真实容量画出已用那一段，每个卷一行、不越出卡片', { timeout: 60_000 }, async () => {
     const opened = await visit(browser, '/stats', DESKTOP);
