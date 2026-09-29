@@ -126,7 +126,7 @@ export function OrganizeCard(
   const outcome = job.outcome;
   if (current?.status === 'running') {
     const line = current.message || current.stage || '正在整理文件…';
-    state = <TaskProgress label={line} value={current.checked} total={current.total} />;
+    state = <TaskProgress embedded label={line} value={current.checked} total={current.total} />;
   } else if (outcome?.status === 'failed') {
     state = <Note tone="error" title="文件整理未完成">{outcome.error || '请查看任务记录，核对已处理的文件。'}</Note>;
   } else if (outcome) {
@@ -135,7 +135,7 @@ export function OrganizeCard(
   } else if (job.start.isError) {
     state = <Note tone="error" title="整理失败">{errorMessage(job.start.error)}</Note>;
   } else if (preview.isPending) {
-    state = <TaskProgress label="正在按模板算计划…" />;
+    state = <TaskProgress embedded label="正在按模板算计划…" />;
   } else if (preview.isError) {
     state = <Note tone="error" title="模板不可用">{errorMessage(preview.error)}</Note>;
   } else if (plan) {

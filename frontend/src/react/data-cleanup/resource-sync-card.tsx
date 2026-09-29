@@ -122,21 +122,22 @@ export function ResourceSyncCard(
       </Note>
     );
   };
+  let progress = null;
   let result = null;
   if (done?.status === 'failed') {
     result = <Note tone="error" title="资源清理未完成">{done.error || '请查看任务记录，核对已处理的文件。'}</Note>;
   } else if (done) {
     result = receipt(done);
   } else if (apply.running) {
-    result = <TaskProgress label={apply.job?.message || '正在复核并清理失效条目…'} />;
+    progress = <TaskProgress embedded label={apply.job?.message || '正在复核并清理失效条目…'} />;
   } else if (scan.start.isError) {
     result = <Note tone="error" title="扫描失败">{errorMessage(scan.start.error)}</Note>;
   } else if (scan.query.isError && state) {
     result = <Note tone="neutral" title="任务状态">{DISCONNECTED}</Note>;
   } else if (state?.status === 'running') {
     const line = scanLine(state);
-    result = (
-      <TaskProgress label={line} value={state.completed_sources} total={state.total_sources} />
+    progress = (
+      <TaskProgress embedded label={line} value={state.completed_sources} total={state.total_sources} />
     );
   } else if (state?.status === 'failed') {
     result = <Note tone="error" title="扫描失败">{state.error || '后台扫描失败'}</Note>;
@@ -177,6 +178,7 @@ export function ResourceSyncCard(
         <p className="max-w-190 text-body-2-regular leading-5 text-text-secondary">
           按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录、空文件夹，以及不再被引用的缓存。
         </p>
+        <div aria-live="polite" className="mt-4 empty:hidden">{progress}</div>
       </Fieldset>
       <div aria-live="polite" className="flex flex-col gap-4 empty:hidden">{result}</div>
     </section>

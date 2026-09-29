@@ -126,15 +126,6 @@ function LinkTable(
   );
 }
 
-/** 后台任务推进到哪儿了。总量还没算出来时不画没有分母的进度条。 */
-function JobProgress({ line, value, total }: { line: string; value?: number; total?: number }) {
-  return (
-    <div className={`${RESULT_SECTION} flex flex-col gap-1.5`}>
-      <TaskProgress embedded label={line} value={value} total={total} />
-    </div>
-  );
-}
-
 export function LinkManager() {
   const stats = useQuery({ queryKey: LINKS_KEY, queryFn: ({ signal }) => fetchLinkStats(signal) });
   const [picked, setPicked] = useState<number[]>([]);
@@ -187,6 +178,7 @@ export function LinkManager() {
   /* 删除那一趟跑完，结论就是那一句回执：旧清单里的行已经删掉或者确认保留了。 */
   const pruned = prune.outcome;
   const startError = check.start.error ?? prune.start.error;
+  let progress: ReactNode = null;
   let result: ReactNode = null;
   if (pruned?.status === 'failed') {
     result = <Note tone="error" title="链接清理未完成">{pruned.error || '请查看任务记录，核对已处理的链接。'}</Note>;
@@ -199,16 +191,18 @@ export function LinkManager() {
   } else if (state?.status === 'failed') {
     result = <Note tone="error" title="检查失败">{state.error || '检查失败'}</Note>;
   } else if (state && state.status !== 'idle') {
+    progress = <>
+      {state.status === 'running'
+        ? <TaskProgress embedded label={checkLine(state)} value={state.checked} total={state.total} />
+        : null}
+      {removing
+        ? <TaskProgress embedded label={prune.job?.message || '正在重验并删除失效链接…'}
+            value={prune.job?.checked} total={prune.job?.total} />
+        : null}
+    </>;
     const pickedLabel = picked.length ? `重试选中的 ${picked.length} 条` : '重试选中的链接';
-    result = (
+    result = done || gone.length || unclear.length ? (
       <div className={RESULT_PANEL}>
-        {state.status === 'running'
-          ? <JobProgress line={checkLine(state)} value={state.checked} total={state.total} />
-          : null}
-        {removing
-          ? <JobProgress line={prune.job?.message || '正在重验并删除失效链接…'}
-              value={prune.job?.checked} total={prune.job?.total} />
-          : null}
         <LinkTable title="地址已失效" items={gone} hint={GONE_HINT} />
         <LinkTable title="本次未访问成功" items={unclear} hint={UNCLEAR_HINT}
           picked={retryable.length ? picked : undefined} onPick={retryable.length ? setPicked : undefined}>
@@ -234,7 +228,7 @@ export function LinkManager() {
           ? <p className={`${RESULT_SECTION} text-body-regular text-notification-success-foreground`}>全部链接均可访问。</p>
           : null}
       </div>
-    );
+    ) : null;
   }
 
   return (
@@ -265,6 +259,7 @@ export function LinkManager() {
                   : null}
               </>
             : null}
+        <div aria-live="polite" className="mt-4 flex flex-col gap-3 empty:hidden">{progress}</div>
       </Fieldset>
       <div aria-live="polite" className="empty:hidden">{result}</div>
     </section>
