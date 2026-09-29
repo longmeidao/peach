@@ -115,12 +115,12 @@ export interface SourceListProps {
 }
 
 /** 页码。上一页／下一页在两端，页码居中，页数多时两侧折成「…」。 */
-function Pagination(
-  { page, pages, onPage }: { page: number; pages: number; onPage(page: number): void },
+export function Pagination(
+  { page, pages, onPage, label = '关注列表分页' }: { page: number; pages: number; onPage(page: number): void; label?: string },
 ) {
   if (pages <= 1) return null;
   return (
-    <nav aria-label="关注列表分页" className="flex flex-wrap items-center justify-center gap-2">
+    <nav aria-label={label} className="flex flex-wrap items-center justify-center gap-2">
       <Button variant="secondary" size="small" disabled={page <= 1}
         onClick={() => onPage(page - 1)}>上一页</Button>
       <ul className="flex flex-wrap items-center gap-1">

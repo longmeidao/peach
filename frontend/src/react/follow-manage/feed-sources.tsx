@@ -10,7 +10,7 @@
  * 勾选和关注列表同一套：勾在行首，点一行的空白处也是选这一行，选中了底部浮出批量操作。 */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
+import { createColumnHelper, flexRender, getCoreRowModel, getPaginationRowModel, useReactTable } from '@tanstack/react-table';
 import { RiDeleteBinLine, RiRefreshLine, RiRssLine } from '@remixicon/react';
 import { VisuallyHidden } from 'react-aria-components';
 import { mapLimit } from '@peach/legacy/core';
@@ -19,6 +19,7 @@ import { confirmModal } from '@peach/legacy/ui';
 import { Chip } from '@/components/base/badges/chip';
 import { Button } from '@/components/base/buttons/button';
 import { Checkbox } from '@/components/base/checkbox/checkbox';
+import { Select, SelectItem } from '@/components/base/select/select';
 import { Switch } from '@/components/base/switch/switch';
 import {
   Table, TableBody, TableCell, TableColumn, TableHeader, TableRow,
@@ -27,6 +28,7 @@ import {
 import { errorMessage } from '../../api';
 import type { FollowManageProps } from '../bundle';
 import { DataTableFrame } from '../components/data-table-frame';
+import { cardClass } from '../components/card';
 import { EmptyState } from '../components/empty-state';
 import { LEGACY_AVATAR_IMG } from '../components/legacy-avatar';
 import { Note } from '../components/note';
@@ -36,8 +38,9 @@ import { ErrorText, Help } from '../settings/section';
 import { busyProps, useAction } from '../settings/use-action';
 import { localTime } from '../time';
 import { AddFeed } from './add-feed';
+import { Pagination } from './source-list';
 import {
-  checkFeeds, FEEDS_KEY, fetchFeeds, removeFeed, setFeedEnabled, type FeedSource,
+  checkFeeds, FEEDS_KEY, fetchFeeds, removeFeed, setFeedEnabled, PAGE_SIZES, pageWindow, type FeedSource,
 } from './follow-manage';
 
 const COLUMN_LABELS: Record<string, string> = {
@@ -146,6 +149,10 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
   const data = feeds.data;
   const sources = useMemo(() => data?.sources ?? [], [data]);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set<number>());
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const win = pageWindow(sources.length, pageSize, page);
+  useEffect(() => { setPage((current) => Math.min(current, win.pages)) }, [win.pages]);
 
   /* 删掉的源不该还占着计数：清单换一份就把已经不在里面的 ID 丢掉。 */
   useEffect(() => {
@@ -301,13 +308,14 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
     data: sources,
     columns,
     getRowId: (row) => String(row.id),
-    state: { rowSelection },
+    state: { rowSelection, pagination: { pageIndex: win.page - 1, pageSize } },
     enableRowSelection: true,
     onRowSelectionChange: (updater) => {
       const next = typeof updater === 'function' ? updater(rowSelection) : updater;
       setSelected(new Set(Object.entries(next).filter(([, on]) => on).map(([id]) => Number(id))));
     },
     getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
 
   if (!data) {
@@ -325,12 +333,14 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
   const chosen = sources.filter((source) => selected.has(source.id));
   const failing = sources.filter((source) => source.last_error);
 
-  /* 分区名由页签「JAV 订阅源」给，表上面没有同名的小标题。 */
   return (
     <div className="flex flex-col gap-3">
       <AddFeed readOnly={readOnly} toast={toast} onAdded={() => void reload()} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Help role="status">{data.unread ? `有 ${data.unread} 条新作还没看` : '新作都看过了'}</Help>
+      <section aria-label="JAV 订阅列表"
+        className={cardClass({ padding: 'none', className: 'flex flex-col gap-4 px-6 py-5 max-sm:px-4' })}>
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="mr-auto text-title-2-medium text-text-primary">JAV 订阅源</h3>
+        <span className="text-body-2-regular text-text-secondary">{`${sources.length} 个订阅源 · ${data.unread} 条未看`}</span>
         <Button onClick={check} disabled={readOnly} {...busyProps(action.busy === 'check')}>立即拉取</Button>
       </div>
 
@@ -388,6 +398,22 @@ export function FeedSources({ readOnly, toast, avatarInner }: {
           在上面按女优名添加，或在人物页点「订阅新作」。
         </EmptyState>
       )}
+      {sources.length ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-body-2-regular text-text-secondary">{`${win.start + 1}–${win.end} / ${win.total} 个订阅源`}</span>
+          <Select aria-label="每页显示数量" size="sm" selectedKey={String(pageSize)}
+            onSelectionChange={(key) => { if (key !== null) { setPageSize(Number(key)); setPage(1) } }}>
+            {PAGE_SIZES.map((size) => <SelectItem key={size} id={String(size)}>{`每页 ${size} 条`}</SelectItem>)}
+          </Select>
+          <Pagination label="JAV 订阅分页" page={win.page} pages={win.pages} onPage={setPage} />
+        </div>
+      ) : null}
+      <footer className="-mx-6 -mb-5 flex flex-wrap items-center gap-2 border-t border-separator-border rounded-b-2xl bg-card-footer px-6 py-4 max-sm:-mx-4 max-sm:px-4">
+        <span role="status" className="mr-auto text-body-2-regular text-text-secondary">
+          {`未看 ${data.unread} · 已启用 ${sources.filter((source) => source.enabled).length} / ${sources.length}`}
+        </span>
+      </footer>
+      </section>
     </div>
   );
 }

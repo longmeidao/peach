@@ -160,13 +160,20 @@ export function Credentials(
           ? <span className="text-body-2-regular text-text-error-primary">{`${pending.length} 个待配置`}</span>
           : null}
       </div>
-      {/* 旧 `[data-follow-panel=credentials]>.frows`：几个来源共处一张填充卡，行与行之间
-          只有一条发丝线，不各自套框。 */}
-      <div className="flex flex-col overflow-hidden">
-        {rows.map((row) => (
-          <CredentialSection key={row.provider} row={row} readOnly={readOnly} toast={toast} />
-        ))}
-      </div>
+      {[
+        { title: '可配置凭据', rows: rows.filter((row) => row.requirement !== 'none' && row.requirement !== 'blocked') },
+        { title: '不需要凭据', rows: rows.filter((row) => row.requirement === 'none') },
+        { title: '暂不支持', rows: rows.filter((row) => row.requirement === 'blocked') },
+      ].filter((group) => group.rows.length).map((group) => (
+        <section key={group.title} aria-label={group.title} className="flex flex-col gap-2">
+          <h4 className="text-body-medium text-text-secondary">{group.title}</h4>
+          <div className={cardClass({ variant: 'outlined', padding: 'none', className: 'flex flex-col overflow-hidden' })}>
+            {group.rows.map((row) => (
+              <CredentialSection key={row.provider} row={row} readOnly={readOnly} toast={toast} />
+            ))}
+          </div>
+        </section>
+      ))}
       <div className="flex flex-col gap-1">
         <b className="text-body-medium text-text-primary">{STORAGE_TITLE}</b>
         <span className="text-body-2-regular text-text-secondary">{STORAGE_BODY}</span>

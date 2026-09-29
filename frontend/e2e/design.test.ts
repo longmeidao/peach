@@ -4047,7 +4047,50 @@ describe('设计决定', () => {
   });
 
   for (const viewport of [DESKTOP, MOBILE]) {
-    it(`关注分类使用 Pills，凭据列表与外层共用一个表面（${viewport.name}）`, { timeout: 60_000 }, async () => {
+    it(`JAV 订阅卡片包含分页与贴边底栏（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await openFollowManage(browser, viewport);
+      try {
+        const page = opened.page;
+        await page.route('**/api/feeds', route => route.fulfill({ json: {
+          unread: 81, sources: Array.from({ length: 25 }, (_, i) => ({
+            id: i + 1, kind: 'javdb-actor', kind_label: 'JAV 订阅', name: `测试订阅 ${i + 1}`,
+            url: `https://example.com/actors/${i + 1}`, entity_id: null, entity_name: null,
+            has_image: false, enabled: true, interval_minutes: 360, last_fetched_at: null,
+            last_error: null, last_new_count: 0, seen: 0,
+          })),
+        } }));
+        await page.reload({ waitUntil: 'load' });
+        await page.getByRole('tab', { name: 'JAV 订阅源', exact: true }).click();
+        const card = page.getByRole('region', { name: 'JAV 订阅列表', exact: true });
+        await card.getByText('1–20 / 25 个订阅源', { exact: true }).waitFor();
+        assert.equal(await card.locator('[role="row"][data-key]').count(), 20);
+        await card.getByRole('button', { name: '下一页', exact: true }).click();
+        await card.getByText('21–25 / 25 个订阅源', { exact: true }).waitFor();
+        assert.equal(await card.locator('[role="row"][data-key]').count(), 5);
+        for (const theme of ['light', 'dark']) {
+          await page.evaluate(value => {
+            document.documentElement.dataset.theme = value;
+            document.documentElement.classList.toggle('dark', value === 'dark');
+          }, theme);
+          const surface = await card.evaluate(element => {
+            const footer = element.querySelector('footer')!;
+            const box = element.getBoundingClientRect();
+            const bottom = footer.getBoundingClientRect();
+            return { background: getComputedStyle(element).backgroundColor,
+              footerBackground: getComputedStyle(footer).backgroundColor,
+              left: bottom.left - box.left, right: box.right - bottom.right,
+              bottom: box.bottom - bottom.bottom };
+          });
+          assert.notEqual(surface.background, 'rgba(0, 0, 0, 0)');
+          assert.notEqual(surface.background, surface.footerBackground);
+          for (const edge of ['left', 'right', 'bottom'] as const) assert.ok(Math.abs(surface[edge]) <= 1);
+          const dimensions = await layout(page);
+          assert.ok(dimensions.scrollWidth <= dimensions.viewportWidth + 1, JSON.stringify(dimensions));
+        }
+        assert.deepEqual(opened.problems, []);
+      } finally { await opened.close(); }
+    });
+    it(`关注分类使用 Pills，凭据按要求分组并带描边（${viewport.name}）`, { timeout: 60_000 }, async () => {
       const opened = await openFollowManage(browser, viewport);
       try {
         const page = opened.page;
@@ -4067,13 +4110,19 @@ describe('设计决定', () => {
           assert.equal(face.track, 'rgba(0, 0, 0, 0)', 'Pills 容器应透明');
           assert.notEqual(face.selected, face.track, '当前分类应有独立底色');
           assert.equal(face.shadow, 'none', 'Pills 不使用浮起滑块');
-          const list = page.getByRole('heading', { name: '来源和凭证', exact: true }).locator('..').locator('..');
-          const rows = await list.evaluate((element) => {
-            const group = element.children[1];
-            const style = getComputedStyle(group);
-            return { shadow: style.boxShadow, radius: style.borderRadius, background: style.backgroundColor };
-          });
-          assert.deepEqual(rows, { shadow: 'none', radius: '0px', background: 'rgba(0, 0, 0, 0)' });
+          for (const name of ['可配置凭据', '不需要凭据', '暂不支持']) {
+            const group = page.getByRole('region', { name, exact: true });
+            const rows = await group.evaluate((element) => {
+              const style = getComputedStyle(element.lastElementChild!);
+              return { shadow: style.boxShadow, width: style.borderTopWidth,
+                border: style.borderTopColor, background: style.backgroundColor };
+            });
+            assert.equal(rows.shadow, 'none');
+            assert.equal(rows.width, '1px');
+            assert.notEqual(rows.border, rows.background);
+          }
+          assert.match(await page.getByRole('region', { name: '不需要凭据', exact: true }).innerText(), /Kemono/);
+          assert.match(await page.getByRole('region', { name: '暂不支持', exact: true }).innerText(), /OnlyFans/);
           await tabs.getByRole('tab', { name: /来源和凭证/ }).focus();
           await page.keyboard.press('Home');
           await page.keyboard.press('Enter');

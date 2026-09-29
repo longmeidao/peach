@@ -455,10 +455,10 @@ body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);w
 .board-local-nav button{flex:none;background:none;border:0;border-bottom:2px solid transparent;border-radius:0;padding:10px 12px;font-family:inherit;font-size:14px;font-weight:400;line-height:20px;color:var(--ink-2);cursor:pointer;white-space:nowrap}
 .board-local-nav button[aria-selected="true"]{border-bottom-color:var(--tungsten);color:var(--tungsten);font-weight:500}
 .board-local-nav button:focus-visible{outline:2px solid var(--tungsten);outline-offset:-3px}
-/* 管理页次级导航：分类在正文右侧，窄屏放回内容上方。 */
-.configpage:has(>.board-local-nav){grid-template-columns:minmax(0,1fr) 184px;gap:24px;align-items:start}
-.configpage>.board-local-nav{grid-column:2;grid-row:1;position:sticky;top:var(--topH);display:flex;flex-direction:column;align-items:stretch;gap:0;margin:0;padding:0;border:0;border-radius:0}
-.configpage:has(>.board-local-nav)>:not(.board-local-nav):not(.configgroup){grid-column:1;grid-row:1;min-width:0}
+/* 配置分类在正文上方横排，与关注管理共用 Pills。 */
+.configpage:has(>.board-local-nav){grid-template-columns:minmax(0,1fr);gap:24px;align-items:start}
+.configpage>.board-local-nav{grid-column:1;grid-row:1;position:static;display:flex;flex-direction:row;align-items:stretch;margin:0;padding:0;border:0;border-radius:0}
+.configpage:has(>.board-local-nav)>:not(.board-local-nav):not(.configgroup){grid-column:1;grid-row:2;min-width:0}
 /* BoardUI gray PillTab：透明容器与独立选中底色，取证见 board-review-layout.md。 */
 body #stats [data-section-nav]{background:none;border-radius:0;padding:0;box-shadow:none}
 body #stats [data-section-nav] h2{margin:0 0 12px;padding:0;font:var(--board-body-medium);color:var(--color-text-primary)}

@@ -8063,16 +8063,12 @@ function syncLocalNavGlide(nav,active,animate){
    未取得；小标题用本站自己那一档：13px、`--muted`）。
    整块仍是一个 tablist：拆成两个的话方向键只在自己那一段里走，从「安全」按下去到不了
    「通用」，而这两段在用户眼里就是一列。小标题因此写成 presentation，不占 tab 的位置。 */
-const configurationNarrow=matchMedia('(max-width:900px)');
-configurationNarrow.addEventListener('change',()=>{
-  document.querySelectorAll('.configpage>.board-local-nav').forEach(nav=>nav.setAttribute('aria-orientation',configurationNarrow.matches?'horizontal':'vertical'));
-});
 function localTabs(root,sections,host=root){
   const items=sections.flatMap(section=>section.items);
   if(!items.length||host.querySelector(':scope > .board-local-nav'))return null;
   const prefix=`board-tabs-${++tabSequence}`;
   const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label',host===root?'配置分区':'设置分区');
-  if(host===root){nav.dataset.sectionNav='';nav.dataset.sectionItems='';nav.setAttribute('aria-orientation',configurationNarrow.matches?'horizontal':'vertical')}
+  if(host===root){nav.dataset.sectionNav='';nav.dataset.sectionItems='';nav.setAttribute('aria-orientation','horizontal')}
   const buttons=[];let active=0;
   const choose=index=>{
     const moved=active!==index;

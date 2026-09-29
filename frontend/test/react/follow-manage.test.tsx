@@ -652,7 +652,7 @@ it('地址栏指着订阅源时首屏就带着清单，开关、移除与立即�
   expect(second.querySelector('[role="rowheader"] img')).toBeNull();
   expect(second.querySelector('[role="rowheader"] [aria-hidden]')?.textContent).toBe('乙');
   expect(host.textContent).toContain('乙 的新作 拉取失败');
-  expect(host.textContent).toContain('有 3 条新作还没看');
+  expect(host.textContent).toContain('2 个订阅源 · 3 条未看');
   expect(host.textContent).not.toContain('正在读订阅源');
   expect(feedReads(fetcher)).toBe(1);
   await click(host.querySelector('[aria-label="启用 乙 的新作"]'));
@@ -774,12 +774,54 @@ it('订阅源页签不收地址，只读的这台查找、开关、移除与拉�
   expect(host.querySelector<HTMLInputElement>('input[aria-label="启用 甲 的新作"]')?.disabled).toBe(true);
 });
 
-it('没有订阅源时那张卡里是空态，分区名由页签给、卡上没有同名标题', async () => {
+it('JAV 订阅分页保留跨页选择，页容量切换回到首页', async () => {
+  const feeds = { unread: 81, sources: Array.from({ length: 25 }, (_, i) => ({
+    ...FEEDS.sources[0], id: i + 1, name: `来源 ${i + 1}`, entity_name: `来源 ${i + 1}`,
+  })) };
+  const { host } = await open({ feeds }, { tab: 'feeds' });
+  const rows = () => host.querySelectorAll('[role="row"][data-key]');
+  expect(rows()).toHaveLength(20);
+  expect(host.textContent).toContain('1–20 / 25 个订阅源');
+  await click(checkboxNamed(host, '选择 来源 1'));
+  await click(buttonNamed('下一页', host));
+  expect(rows()).toHaveLength(5);
+  expect(host.textContent).toContain('21–25 / 25 个订阅源');
+  expect(host.textContent).toContain('已选 1 条订阅源');
+  await click(checkboxNamed(host, '选择 来源 21'));
+  await click(buttonNamed('上一页', host));
+  expect(checkboxNamed(host, '选择 来源 1')?.checked).toBe(true);
+  expect(host.textContent).toContain('已选 2 条订阅源');
+  await click(buttonNamed('下一页', host));
+  await choose(host.querySelector('button[aria-label="每页显示数量"]'), '每页 10 条');
+  expect(rows()).toHaveLength(10);
+  expect(host.textContent).toContain('1–10 / 25 个订阅源');
+  expect(host.querySelector('footer')?.textContent).toContain('未看 81 · 已启用 25 / 25');
+});
+
+it('移除末页的最后一个订阅源会显示有效页', async () => {
+  stubConfirm(true);
+  const feeds = { unread: 0, sources: Array.from({ length: 21 }, (_, i) => ({
+    ...FEEDS.sources[0], id: i + 1, name: `来源 ${i + 1}`, entity_name: `来源 ${i + 1}`,
+  })) };
+  const plan: Plan = { feeds, feedWrite: ({ id }) => {
+    plan.feeds = { ...feeds, sources: feeds.sources.filter(source => source.id !== id) };
+    return ok({ ok: true });
+  } };
+  const { host } = await open(plan, { tab: 'feeds' });
+  await click(buttonNamed('下一页', host));
+  await click(buttonLabelled(host, '移除 来源 21'));
+  await settle();
+  expect(host.querySelectorAll('[role="row"][data-key]')).toHaveLength(20);
+  expect(host.textContent).toContain('1–20 / 20 个订阅源');
+});
+
+it('订阅列表卡片包含标题、空态和状态栏', async () => {
   const { host } = await open({}, { tab: 'feeds' });
   const panel = host.querySelector('[role="tabpanel"]')!;
-  expect([...panel.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(['添加 JAV 订阅', '还没有订阅源']);
+  expect([...panel.querySelectorAll('h3')].map((h) => h.textContent)).toEqual(['添加 JAV 订阅', 'JAV 订阅源', '还没有订阅源']);
   expect(panel.textContent).toContain('在上面按女优名添加，或在人物页点「订阅新作」。');
-  expect(panel.querySelector('section[aria-label="订阅源"]')).toBeNull();
+  expect(panel.querySelector('section[aria-label="JAV 订阅列表"]')).not.toBeNull();
+  expect(panel.querySelector('footer')?.textContent).toContain('未看 0 · 已启用 0 / 0');
   expect(buttonNamed('立即拉取', host)).not.toBeNull();
 });
 
@@ -1257,6 +1299,10 @@ it('每个站说清自己的处境：需要、已配置、接不进来、不需�
   expect(['Fanbox', 'Patreon', 'OnlyFans', 'Kemono'].map((label) => chipText(credentialRow(host, label))))
     .toEqual([['需要'], ['已配置'], ['接不进来'], ['不需要']]);
   expect(host.textContent).toContain('1 个待配置');
+  const groupNames = ['可配置凭据', '不需要凭据', '暂不支持'];
+  expect(groupNames.map(name => [...host.querySelectorAll(`section[aria-label="${name}"] b`)]
+    .map(node => node.textContent))).toEqual([['Fanbox', 'Patreon'], ['Kemono'], ['OnlyFans']]);
+  expect(host.querySelector('section[aria-label="不需要凭据"] input')).toBeNull();
 });
 
 it('缺什么、为什么要、去哪儿取都写在那一行上，非配不可的一进来就展开', async () => {

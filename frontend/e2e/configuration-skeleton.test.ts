@@ -32,19 +32,14 @@ describe('配置页等待态', () => {
         await expectBody(page, '/configuration', configurationBody(page));
         await settle(page);
         const nav = page.getByRole('tablist', { name: '配置分区' });
-        assert.equal(await nav.getAttribute('aria-orientation'), viewport.mobile ? 'horizontal' : 'vertical');
+        assert.equal(await nav.getAttribute('aria-orientation'), 'horizontal');
         const geometry = await measure(page);
-        if (viewport.mobile) {
-          assert.ok(geometry.nav.y + geometry.nav.height <= geometry.sections[0].label.y);
-        } else {
-          assert.ok(geometry.nav.x >= geometry.sections[0].card.x + geometry.sections[0].card.width);
-          assert.equal(geometry.nav.width, 184);
-        }
+        assert.ok(geometry.nav.y + geometry.nav.height <= geometry.sections[0].label.y);
         const input = page.getByRole('textbox', { name: 'JavDB 地址', exact: true });
         await input.fill('example.invalid');
         const general = nav.getByRole('tab', { name: '通用', exact: true });
         await general.focus();
-        await page.keyboard.press(viewport.mobile ? 'ArrowRight' : 'ArrowDown');
+        await page.keyboard.press('ArrowRight');
         assert.equal(await nav.getByRole('tab', { name: '媒体', exact: true }).getAttribute('aria-selected'), 'true');
         await page.keyboard.press('End');
         assert.equal(await nav.getByRole('tab', { name: '更新与维护' }).getAttribute('aria-selected'), 'true');
@@ -55,7 +50,7 @@ describe('配置页等待态', () => {
         assert.deepEqual(bounds.offenders, []);
         await page.setViewportSize({ width: viewport.mobile ? 1280 : 390, height: 844 });
         await page.waitForFunction(expected => document.querySelector('.configpage>.board-local-nav')?.getAttribute('aria-orientation') === expected,
-          viewport.mobile ? 'vertical' : 'horizontal');
+          'horizontal');
         assert.equal(await general.getAttribute('aria-selected'), 'true');
         assert.equal(await input.inputValue(), 'example.invalid');
         assert.deepEqual(opened.problems, []);
