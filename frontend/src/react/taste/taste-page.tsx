@@ -20,7 +20,8 @@ import {
   RiThumbUpLine, RiUploadLine, RiUserLine,
 } from '@remixicon/react';
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
-import { Dialog, Popover, Tab, TabList, TabPanel, Tabs } from 'react-aria-components';
+import { Popover, Tab, TabPanel, Tabs } from 'react-aria-components';
+import { MenuDialog as Dialog } from '../components/menu-dialog';
 
 import { fmtSize, siteMarkUrl } from '@peach/legacy/core';
 import { confirmModal } from '@peach/legacy/ui';
@@ -43,7 +44,7 @@ import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
-import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
+import { SEGMENT, SEGMENTED_TRACK, SegmentedTabList as TabList } from '../components/segmented';
 import { StatCard, statCardClass, STAT_STRIP } from '../components/stat-card';
 import { queryClient } from '../query';
 import { Disclosure } from '../settings/section';

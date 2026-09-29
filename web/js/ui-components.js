@@ -862,6 +862,14 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
   container.dataset.overlayScrollbar='true';
   // 轨道按宿主的内边距框定位，static 的宿主会把它甩到更外层某个祖先上去。
   if(!root&&getComputedStyle(host).position==='static')host.style.position='relative';
+  // 局部纵向滚动统一显示边缘提示，整页使用粘性导航层次。
+  const edges=root?null:document.createElement('div');
+  if(edges){
+    edges.className='ov-edges';
+    edges.setAttribute('aria-hidden','true');
+    edges.innerHTML='<span class="ov-edge-top"></span><span class="ov-edge-bottom"></span>';
+    host.append(edges);
+  }
   const lanes=(root?['y']:['y','x']).map(axis=>{
     const track=document.createElement('div');
     // 两个类名写全，别拼 `ov-${axis}`：样式表的选择器要能在源码里查到消费者。
@@ -900,6 +908,27 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
     }
   };
   const sync=()=>{
+    if(edges){
+      const {left,top}=offsetWithin();
+      const range=container.scrollHeight-container.clientHeight;
+      const above=range>1&&container.scrollTop>1;
+      const below=range>1&&container.scrollTop<range-1;
+      edges.hidden=!above&&!below;
+      edges.style.left=`${left}px`;
+      edges.style.top=`${top}px`;
+      edges.style.width=`${container.clientWidth}px`;
+      edges.style.height=`${container.clientHeight}px`;
+      edges.classList.toggle('can-scroll-top',above);
+      edges.classList.toggle('can-scroll-bottom',below);
+      if(above||below){
+        container.style.setProperty('--scroll-edge-top',above?'16px':'0px');
+        container.style.setProperty('--scroll-edge-bottom',below?'16px':'0px');
+      }else{
+        container.style.removeProperty('--scroll-edge-top');
+        container.style.removeProperty('--scroll-edge-bottom');
+      }
+      container.toggleAttribute('data-scroll-edges',above||below);
+    }
     lanes.forEach(lane=>{
       const {axis,track,thumb}=lane,vertical=axis==='y';
       const size=vertical?container.clientHeight:container.clientWidth;
@@ -923,11 +952,12 @@ export function attachOverlayScrollbar(container,{variant=''}={}){
   };
   (root?document:container).addEventListener('scroll',sync,{passive:true});
   new ResizeObserver(sync).observe(container);
+  if(!root)container.addEventListener('load',sync,true);
   // 内容长短变了但容器盒子没变（抽屉重建、分区展开），容器自己的 ResizeObserver 一声不响。
   // 整页那一条改看 body：它的高度就是内容高度，而在 documentElement 上挂 subtree 的
   // MutationObserver 等于每渲染一张卡都强制一次重排。
   if(root)new ResizeObserver(sync).observe(document.body);
-  else new MutationObserver(sync).observe(container,{childList:true,subtree:true});
+  else new MutationObserver(sync).observe(container,{childList:true,characterData:true,subtree:true});
   lanes.forEach(({axis,track,thumb})=>track.addEventListener('pointerdown',event=>{
     const vertical=axis==='y';
     const trackRect=track.getBoundingClientRect(),thumbRect=thumb.getBoundingClientRect();

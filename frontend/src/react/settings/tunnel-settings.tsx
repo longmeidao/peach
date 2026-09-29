@@ -4,7 +4,7 @@
  * 隧道令牌：它只往服务端去，回来的只有「存过没有」，这里任何时候都不显示令牌本身。
  * 模式选择只在源码开发环境出现，独立包收到的 `named_available` 是 false。 */
 import { useEffect, useState, type FormEvent } from 'react';
-import { Radio, RadioGroup } from 'react-aria-components';
+import { Radio } from 'react-aria-components';
 
 import { Button } from '@/components/base/buttons/button';
 import { Input } from '@/components/base/input/input';
@@ -13,7 +13,7 @@ import { ApiError, apiSend, errorMessage } from '../../api';
 import type { ConfigurationData, TunnelState } from '../bundle';
 import { Note } from '../components/note';
 import { queryClient } from '../query';
-import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
+import { SEGMENT, SEGMENTED_TRACK, SegmentedRadioGroup as RadioGroup } from '../components/segmented';
 import { CONFIGURATION_KEY, fetchConfiguration } from './configuration';
 import { ExternalLink, ErrorText, Footer, Help, Section, Stack } from './section';
 import { busyProps, useAction } from './use-action';

@@ -10,7 +10,7 @@ import { useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { RiArrowRightLine } from '@remixicon/react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Radio, RadioGroup } from 'react-aria-components';
+import { Radio } from 'react-aria-components';
 import { siteMarkUrl } from '@peach/legacy/core';
 
 import { SettingsRow } from '@/components/application/settings/settings-rows';
@@ -25,7 +25,7 @@ import type { ScrapingProps } from '../bundle';
 import { LoadingDots } from '../components/loading-dots';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
-import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
+import { SEGMENT, SEGMENTED_TRACK, SegmentedRadioGroup as RadioGroup } from '../components/segmented';
 import { queryClient } from '../query';
 import {
   ErrorText, ExternalLink, Fact, FactList, FieldLabel, Footer, Help, Rows, Section, Stack,

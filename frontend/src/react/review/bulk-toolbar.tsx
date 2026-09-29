@@ -77,8 +77,7 @@ export function BulkToolbar(props: BulkToolbarProps) {
         </Button>
       </div>
 
-      {selected.size ? (
-        <SelectionDock label="复核所选项目" count={`已选 ${selected.size} 项`}>
+        <SelectionDock label="复核所选项目" visible={selected.size > 0} count={`已选 ${selected.size} 项`}>
           {needsSource ? (
             <Select aria-label="统一选择来源" size="sm" selectedKey=""
               isDisabled={busy || !sources.length}
@@ -97,7 +96,6 @@ export function BulkToolbar(props: BulkToolbarProps) {
             ? <p role="status" className="w-full text-body-2-regular text-text-secondary">{feedback}</p>
             : null}
         </SelectionDock>
-      ) : null}
     </>
   );
 }

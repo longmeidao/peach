@@ -29,7 +29,7 @@ import { ExpandableRanking } from '../components/expandable-ranking';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
 import { Progress } from '../components/progress';
-import { SEGMENT, SEGMENTED_TRACK } from '../components/segmented';
+import { SEGMENT, SEGMENTED_TRACK, SegmentedTabList } from '../components/segmented';
 import { StatCard, statCardClass, STAT_STRIP } from '../components/stat-card';
 import { RadialCard } from './radial-card';
 import {
@@ -366,11 +366,11 @@ export function StatsPage(props: StatsProps) {
       {/* 旧 `.insightpanel`：整块一张 16px 的填充卡，页签是卡内顶上那条分段控件。 */}
       <Tabs className={`${cardClass({ padding: 'none' })} flex flex-col`}>
         <div className="px-4 pt-3">
-          <TabList aria-label="统计维度" className={SEGMENTED_TRACK}>
+          <SegmentedTabList aria-label="统计维度" className={SEGMENTED_TRACK}>
             <Tab id="tags" className={SEGMENT}>内容标签</Tab>
             <Tab id="recent" className={SEGMENT}>最近看过</Tab>
             <Tab id="sources" className={SEGMENT}>标签来源</Tab>
-          </TabList>
+          </SegmentedTabList>
         </div>
         <TabPanel id="tags" className="px-4 pt-3.5 pb-4"><TagRanking tags={data.top_tags} {...props} /></TabPanel>
         <TabPanel id="recent" className="px-4 pt-3.5 pb-4"><RecentWatches rows={data.recent} /></TabPanel>

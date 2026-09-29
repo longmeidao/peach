@@ -9,7 +9,8 @@
  * 写完让列表键重取，不重挂整页。壳在这一页上要求重读时把 `revision` 加一，页面同样只重取。 */
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Dialog, Heading, Popover } from 'react-aria-components';
+import { Heading, Popover } from 'react-aria-components';
+import { MenuDialog as Dialog } from '../components/menu-dialog';
 import { confirmModal } from '@peach/legacy/ui';
 
 import { Button } from '@/components/base/buttons/button';

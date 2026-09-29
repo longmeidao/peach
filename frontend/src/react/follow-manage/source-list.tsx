@@ -582,8 +582,7 @@ export function SourceList(props: SourceListProps) {
         {evidence ? <Note tone="warning">{`候选已入库，但这一次的原始响应没有留档：${evidence}`}</Note> : null}
       </div>
 
-      {chosen.length ? (
-        <SelectionDock label="关注来源批量操作" count={`已选 ${chosen.length} 个来源`}>
+        <SelectionDock label="关注来源批量操作" visible={chosen.length > 0} count={`已选 ${chosen.length} 个来源`}>
           <Button variant="secondary" size="small" disabled={readOnly}
             {...busyProps(rowHandlers.busy)} onClick={() => startChecking(chosen)}>检查所选</Button>
           <Button variant="secondary" size="small" disabled={readOnly} {...busyProps(bulk.isPending)}
@@ -599,7 +598,6 @@ export function SourceList(props: SourceListProps) {
             })}>删除</Button>
           <Button variant="ghost" size="small" onClick={() => onSelected(new Set())}>取消选择</Button>
         </SelectionDock>
-      ) : null}
 
       {asTable ? (
         <DataTableFrame follow onRowClick={(key) => toggleOne(Number(key), !selected.has(Number(key)))}>

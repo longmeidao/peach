@@ -16,6 +16,7 @@
 @import "./boardui/styles/theme.css";
 @import "./boardui/styles/typography.css";
 @import "./components/media-card.css";
+@import "./components/surface-motion.css";
 @import "./junk-queue/junk-queue.css";
 @import "./entity-hero/entity-hero.css";
 @import "./entity-filter/entity-filter.css";

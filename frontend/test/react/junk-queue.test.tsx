@@ -58,7 +58,7 @@ async function open(initial: JunkQueueProps) {
 function countShape(root: Element | null | undefined): string {
   const copy = root?.cloneNode(true) as Element | undefined;
   if (!copy) return '';
-  copy.querySelectorAll('.ovtrack').forEach((track) => track.remove());
+  copy.querySelectorAll('.ovtrack,.ov-edges').forEach((track) => track.remove());
   copy.querySelectorAll('[data-overlay-scrollbar]').forEach((el) => el.removeAttribute('data-overlay-scrollbar'));
   copy.querySelectorAll('[class]').forEach((el) => el.setAttribute('class', el.className.toString().trim().split(/\s+/).join(' ')));
   return copy.outerHTML;

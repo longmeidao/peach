@@ -412,6 +412,15 @@ body.settings-open>.ovtrack.page,body.photolight-open>.ovtrack.page{display:none
    脚本没跑到的容器就还留着系统滚动条，不会变成一个既没有滑块也拖不动的死框。 */
 [data-overlay-scrollbar]{scrollbar-width:none}
 [data-overlay-scrollbar]::-webkit-scrollbar{display:none}
+/* 边缘只提示仍可滚动的方向；透明渐隐适配每一档底色，覆盖层不拦点击与滚轮。 */
+[data-scroll-edges]{mask-image:linear-gradient(to bottom,transparent,#000 var(--scroll-edge-top),#000 calc(100% - var(--scroll-edge-bottom)),transparent)}
+.ov-edges{position:absolute;pointer-events:none;z-index:1;overflow:hidden}
+.ov-edges[hidden]{display:none}
+.ov-edges>span{position:absolute;left:0;right:0;height:16px;visibility:hidden;backdrop-filter:blur(2px)}
+.ov-edge-top{top:0;mask-image:linear-gradient(#000,transparent)}
+.ov-edge-bottom{bottom:0;mask-image:linear-gradient(transparent,#000)}
+.ov-edges.can-scroll-top>.ov-edge-top,.ov-edges.can-scroll-bottom>.ov-edge-bottom{visibility:visible}
+.geist-scroller:has(>[data-overlay-scrollbar])>.geist-scroller-overlay{display:none}
 /* 横向行不显示滚动条（本来就能拖动/滚轮横滚） */
 .tier,.tagbar,.srow{scrollbar-width:none}
 .tier::-webkit-scrollbar,.tagbar::-webkit-scrollbar,

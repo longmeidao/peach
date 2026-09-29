@@ -161,6 +161,7 @@ const REVIEW_ROW = {
   field_label: '厂牌',
   code: 'ABC-123',
   query: 'ABC-123',
+  evidence: '当前值：尚无；1 个匹配资产；2 个来源候选',
   candidates: [{ candidate_key: 'javdb:studio', source: 'javdb', display_value: '示例厂牌' }],
 };
 
@@ -1774,6 +1775,40 @@ describe('设计决定', () => {
     }
   });
 
+  it('复核滚动边缘按方向出现，当前信息在分隔线之间居中', { timeout: 60_000 }, async () => {
+    const opened = await openReview(browser);
+    try {
+      const card = opened.page.locator('section[data-review-key]').first();
+      const scroller = card.locator('div[data-overlay-scrollbar]').first();
+      // 增加候选内容，覆盖图片加载或队列更新后的溢出重算。
+      await scroller.evaluate((node) => {
+        const content = document.createElement('div');
+        content.style.cssText = 'height:1000px;flex-shrink:0';
+        content.dataset.scrollTest = '';
+        node.append(content);
+      });
+      const edges = scroller.locator('..').locator('.ov-edges');
+      await opened.page.waitForFunction(() => !!document.querySelector('[data-review-key] .can-scroll-bottom'));
+      assert.equal(await edges.evaluate((node) => node.classList.contains('can-scroll-top')), false);
+      await scroller.evaluate((node) => { node.scrollTop = 100 });
+      await opened.page.waitForFunction(() => !!document.querySelector('[data-review-key] .can-scroll-top.can-scroll-bottom'));
+      assert.equal(await edges.evaluate((node) => getComputedStyle(node).pointerEvents), 'none');
+      assert.equal(await edges.locator('.ov-edge-top').evaluate((node) => getComputedStyle(node).backdropFilter), 'blur(2px)');
+      await scroller.evaluate((node) => { node.scrollTop = node.scrollHeight });
+      await opened.page.waitForFunction(() => !document.querySelector('[data-review-key] .can-scroll-bottom'));
+      await scroller.locator('[data-scroll-test]').evaluate((node) => node.remove());
+      await opened.page.waitForFunction(() => !document.querySelector('[data-review-key] [data-scroll-edges]'));
+      const spacing = await card.getByRole('region', { name: '当前信息' }).evaluate((node) => {
+        const style = getComputedStyle(node);
+        const footer = node.closest('section')!.querySelector('footer')!.getBoundingClientRect();
+        return { top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom), gap: footer.top - node.getBoundingClientRect().bottom };
+      });
+      assert.equal(spacing.top, spacing.bottom);
+      assert.ok(Math.abs(spacing.gap) <= 1, `当前信息下方多出 ${spacing.gap}px`);
+      assert.deepEqual(opened.problems, []);
+    } finally { await opened.close() }
+  });
+
   it('暗色下没选中的勾选框边线不比浅色下更弱', { timeout: 60_000 }, async () => {
     const opened = await openReview(browser);
     try {
@@ -2394,6 +2429,141 @@ describe('设计决定', () => {
     } finally {
       await opened.close();
     }
+  });
+
+  it('分段底板支持鼠标反向、键盘即时切换与减少动态效果', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/performers');
+    const { page } = opened;
+    try {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const track = page.locator('[data-index-layout]');
+      const choices = track.locator('label');
+      const pane = track.locator('[data-moving-surface]');
+      await pane.waitFor();
+      const aligned = async () => {
+        await page.waitForFunction(() => {
+          const host = document.querySelector('[data-index-layout]')!;
+          const pane = host.querySelector('[data-moving-surface]')!.getBoundingClientRect();
+          const selected = host.querySelector('label[data-selected]')!.getBoundingClientRect();
+          return Math.abs(pane.x - selected.x) < 1 && Math.abs(pane.width - selected.width) < 1;
+        });
+      };
+      const assertInstant = async () => {
+        const offset = await pane.evaluate((node) => {
+          const selected = node.parentElement!.querySelector('label[data-selected]')!.getBoundingClientRect();
+          const box = node.getBoundingClientRect();
+          return { x: box.x - selected.x, width: box.width - selected.width };
+        });
+        assert.ok(Math.abs(offset.x) < 1 && Math.abs(offset.width) < 1,
+          `即时切换的底板位置：${JSON.stringify(offset)}`);
+      };
+      await choices.nth(0).click();
+      await aligned();
+      const endpoints = await choices.evaluateAll((nodes) => nodes.slice(0, 2).map((node) => node.getBoundingClientRect().x));
+      await pane.evaluate((node) => {
+        const samples: number[] = [];
+        const sample = () => {
+          samples.push(node.getBoundingClientRect().x);
+          if (samples.length < 24) requestAnimationFrame(sample);
+          else (node as HTMLElement).dataset.motionSamples = JSON.stringify(samples);
+        };
+        requestAnimationFrame(sample);
+      });
+      await choices.nth(1).click();
+      await page.waitForFunction(() => document.querySelector('[data-index-layout] [data-motion-samples]'));
+      const samples = JSON.parse((await pane.getAttribute('data-motion-samples'))!) as number[];
+      assert.ok(samples.some((x) => x > Math.min(...endpoints) + 1 && x < Math.max(...endpoints) - 1),
+        `鼠标切换应经过两项之间的位置：${JSON.stringify(samples)}`);
+      await choices.nth(0).click();
+      await choices.nth(1).click();
+      await choices.nth(0).click();
+      await aligned();
+      assert.equal(await pane.count(), 1);
+      assert.equal(await pane.getAttribute('aria-hidden'), 'true');
+      await track.getByRole('radio').nth(0).focus();
+      await page.keyboard.press('ArrowRight');
+      await assertInstant();
+      assert.equal(await track.getByRole('radio').nth(1).isChecked(), true);
+      assert.equal(await pane.evaluate((node) => node.getAnimations().length), 0);
+      assert.match(await choices.nth(1).evaluate((node) => getComputedStyle(node).getPropertyValue('--tw-ring-shadow')), /2px/,
+        '选中底板不能抹掉键盘焦点环');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await choices.nth(0).click();
+      await assertInstant();
+      assert.equal(await pane.evaluate((node) => node.getAnimations().length), 0);
+      await page.setViewportSize({ width: 390, height: 844 });
+      await aligned();
+      assert.deepEqual(opened.problems, []);
+    } finally { await opened.close(); }
+  });
+
+  it('短菜单共享悬停面，弹窗关闭释放焦点与遮罩', { timeout: 60_000 }, async () => {
+    const opened = await openPlaylistsPage(browser);
+    const { page } = opened;
+    try {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      const trigger = page.locator('[data-playlist-card="1"] [data-playlist-menu]');
+      await trigger.click();
+      const menu = page.getByRole('dialog', { name: '播放列表操作：列表1' });
+      await menu.getByRole('button', { name: '编辑名称' }).hover();
+      const pane = menu.locator('[data-moving-surface]');
+      await pane.waitFor();
+      await menu.getByRole('button', { name: '删除播放列表' }).hover();
+      await page.waitForFunction(() => {
+        const host = document.querySelector('[data-surface-host="hover"]')!;
+        const pane = host.querySelector('[data-moving-surface]')!.getBoundingClientRect();
+        const button = [...host.querySelectorAll('button')].at(-1)!.getBoundingClientRect();
+        return Math.abs(pane.y - button.y) < 1;
+      });
+      await page.keyboard.press('Tab');
+      assert.equal(await pane.isVisible(), false);
+      await menu.getByRole('button', { name: '编辑名称' }).click();
+      const modal = page.locator('[data-modal-motion]');
+      await modal.waitFor();
+      await modal.getByRole('textbox', { name: '名称' }).waitFor();
+      assert.equal(await modal.locator('[data-modal-surface]').evaluate((node) =>
+        getComputedStyle(node).transitionProperty.includes('transform')), true);
+      await modal.locator('form').getByRole('button', { name: '取消', exact: true }).click();
+      await modal.waitFor({ state: 'detached' });
+      await trigger.click();
+      await menu.getByRole('button', { name: '编辑名称' }).focus();
+      await page.keyboard.press('Enter');
+      await modal.waitFor();
+      assert.equal(await modal.getAttribute('data-motion-instant'), 'true');
+      await page.keyboard.press('Escape');
+      await modal.waitFor({ state: 'detached' });
+      assert.equal(await page.evaluate(() => document.activeElement?.closest('[data-modal-motion]') !== null), false);
+      assert.deepEqual(opened.problems, []);
+    } finally { await opened.close(); }
+  });
+
+  it('批量选择条更新计数保持节点，清空后退出且不保留可操作控件', { timeout: 60_000 }, async () => {
+    const opened = await openIndexPage(browser, '/tags');
+    const { page } = opened;
+    try {
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.locator('#selectMode').click();
+      const tags = page.locator('#index [data-alpha-tag]');
+      await tags.nth(0).click();
+      const dock = page.locator('[data-selection-dock]');
+      await dock.waitFor();
+      await dock.evaluate((node) => node.setAttribute('data-test-identity', 'retained'));
+      await tags.nth(1).click();
+      assert.equal(await dock.getAttribute('data-test-identity'), 'retained');
+      assert.match(await dock.textContent() ?? '', /已选 2 个标签/);
+      await dock.getByRole('button', { name: '清空', exact: true }).click();
+      await page.waitForFunction(() => {
+        const dock = document.querySelector<HTMLElement>('[data-selection-dock]');
+        return !dock || (dock.inert && dock.getAttribute('aria-hidden') === 'true');
+      });
+      await dock.waitFor({ state: 'detached' });
+      await tags.nth(0).click();
+      await dock.waitFor();
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await dock.getByRole('button', { name: '清空', exact: true }).click();
+      await dock.waitFor({ state: 'detached' });
+      assert.deepEqual(opened.problems, []);
+    } finally { await opened.close(); }
   });
 
   it('标签多选坞出现时页底让出 96px；在线词表的类型色走上游 tag_type 那一套', { timeout: 60_000 }, async () => {

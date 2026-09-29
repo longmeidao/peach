@@ -8,7 +8,7 @@
  * 下面那排 Tabs。标签页的读数住在浮层下排，页头不再重复一遍。 */
 import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Radio, RadioGroup } from 'react-aria-components';
+import { Radio } from 'react-aria-components';
 
 import { requestErrorMessage } from '@peach/legacy/core';
 import { indexSkeletonHtml } from '@peach/legacy/ui';
@@ -19,7 +19,7 @@ import { InputBase, TextField } from '@/components/base/input/input';
 import { BoardTabs, type BoardTab } from '../components/board-tabs';
 import { EmptyState } from '../components/empty-state';
 import { LoadingDots } from '../components/loading-dots';
-import { SEGMENTED_TRACK, SEGMENT_ICON } from '../components/segmented';
+import { SEGMENTED_TRACK, SEGMENT_ICON, SegmentedRadioGroup as RadioGroup } from '../components/segmented';
 import { spriteGlyph } from '../components/sprite-glyph';
 import type { OnlineAuthor, OnlineTag } from '../follow/online-vocab';
 import {
@@ -238,7 +238,7 @@ export function IndexPage(props: IndexProps) {
           </Button>
         </div>
       ) : null}
-      {kind === 'tags' && !onlineTags && props.selectMode && picked.size ? (
+      {kind === 'tags' && !onlineTags && props.selectMode ? (
         <TagDock count={picked.size} match={match} onMatch={setMatch}
           onClear={() => setPicked(new Set())}
           onApply={() => { const chosen = [...picked]; setPicked(new Set()); props.showTags(chosen, match) }} />

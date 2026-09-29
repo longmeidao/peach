@@ -44,6 +44,7 @@ class ReferenceUpdateTests(unittest.TestCase):
              "boardui-input",
              "boardui-theme",
              "boardui-auth-card",
+             "fluid-springs", "fluid-tabs",
              "amane-content-routes",
              "readme-yingku",
              "readme-openaver", "readme-amane",

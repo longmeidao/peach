@@ -649,7 +649,7 @@ class WebUiSourceTests(unittest.TestCase):
         # documentElement 上挂 subtree 的 MutationObserver。
         self.assertPageContains("if(root)new ResizeObserver(sync).observe(document.body);")
         self.assertPageContains("else new MutationObserver(sync).observe("
-                                "container,{childList:true,subtree:true});")
+                                "container,{childList:true,characterData:true,subtree:true});")
 
     def test_the_drawer_scrolls_in_an_inner_layer_so_the_track_can_stay_put(self):
         """抽屉自己不滚，滚的是里面那层：跟着内容一起滚的轨道等于没有轨道。"""
