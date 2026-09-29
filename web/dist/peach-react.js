@@ -47140,7 +47140,7 @@ function Jde(e) {
 }
 //#endregion
 //#region src/react/review/review-page.tsx
-var Yde = "flex min-h-9 cursor-pointer items-center justify-between gap-2 rounded-2lg p-2 text-left text-body-regular text-text-secondary outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring data-selected:bg-background-tertiary-default data-selected:text-text-primary review-tight:min-h-10 review-tight:px-3 review-tight:py-2.5";
+var Yde = "flex cursor-pointer items-center justify-between gap-2";
 function Xde({ page: e, pages: t, onPage: n }) {
 	return t <= 1 ? null : /* @__PURE__ */ (0, L.jsxs)("nav", {
 		"aria-label": "复核分页",
@@ -47179,42 +47179,47 @@ function Xde({ page: e, pages: t, onPage: n }) {
 	});
 }
 function Zde(e) {
-	let { route: t, openItem: n, openEntity: r, revealSource: i, avatarInner: a, toast: o, readOnly: s, readOnlyMessage: c, writerUrl: l } = e, [u, d] = (0, I.useState)(mE(e.category) ? e.category : pE), [f, p] = (0, I.useState)("candidates"), [m, h] = (0, I.useState)(""), [g, _] = (0, I.useState)(1), [v, y] = (0, I.useState)(/* @__PURE__ */ new Set()), [b, x] = (0, I.useState)(/* @__PURE__ */ new Map()), [S, C] = (0, I.useState)(/* @__PURE__ */ new Map()), [w, T] = (0, I.useState)(""), E = (0, I.useRef)(null), [D, O] = (0, I.useState)(0), [k, A] = (0, I.useState)(""), j = (0, I.useRef)(!0);
-	(0, I.useEffect)(() => () => {
-		j.current = !1;
+	let [t, n] = (0, I.useState)(() => matchMedia("(max-width:900px)").matches);
+	(0, I.useEffect)(() => {
+		let e = matchMedia("(max-width:900px)"), t = () => n(e.matches);
+		return e.addEventListener("change", t), () => e.removeEventListener("change", t);
 	}, []);
-	let M = Ft({
+	let { route: r, openItem: i, openEntity: a, revealSource: o, avatarInner: s, toast: c, readOnly: l, readOnlyMessage: u, writerUrl: d } = e, [f, p] = (0, I.useState)(mE(e.category) ? e.category : pE), [m, h] = (0, I.useState)("candidates"), [g, _] = (0, I.useState)(""), [v, y] = (0, I.useState)(1), [b, x] = (0, I.useState)(/* @__PURE__ */ new Set()), [S, C] = (0, I.useState)(/* @__PURE__ */ new Map()), [w, T] = (0, I.useState)(/* @__PURE__ */ new Map()), [E, D] = (0, I.useState)(""), O = (0, I.useRef)(null), [k, A] = (0, I.useState)(0), [j, M] = (0, I.useState)(""), N = (0, I.useRef)(!0);
+	(0, I.useEffect)(() => () => {
+		N.current = !1;
+	}, []);
+	let ee = Ft({
 		queryKey: uE,
 		queryFn: ({ signal: e }) => ME(e)
 	}).data || {
 		sections: {},
 		counts: {}
-	}, N = M.sections[u] || [], ee = u === "metadata_fields", te = s, P = gE(N, ee), ne = P.some(([e]) => e === f) ? f : "candidates", F = _E(N, ne), re = F.some((e) => e.key === m) ? m : "", ie = yE(vE(N, ne, re), g), ae = ie.rows.map((e) => e.item_key), oe = new Set(ae), se = F.map((e) => ({
+	}, te = ee.sections[f] || [], P = f === "metadata_fields", ne = l, F = gE(te, P), re = F.some(([e]) => e === m) ? m : "candidates", ie = _E(te, re), ae = ie.some((e) => e.key === g) ? g : "", oe = yE(vE(te, re, ae), v), se = oe.rows.map((e) => e.item_key), ce = new Set(se), le = ie.map((e) => ({
 		...e,
-		rows: e.rows.filter((e) => oe.has(e.item_key))
-	})).filter((e) => e.rows.length), ce = (e) => b.get(e.item_key) || kE(e), le = N.filter((e) => v.has(e.item_key)), ue = (e) => {
+		rows: e.rows.filter((e) => ce.has(e.item_key))
+	})).filter((e) => e.rows.length), ue = (e) => S.get(e.item_key) || kE(e), R = te.filter((e) => b.has(e.item_key)), z = (e) => {
 		let t = new Set(e);
-		y((e) => new Set([...e].filter((e) => !t.has(e)))), x((e) => new Map([...e].filter(([e]) => !t.has(e)))), C((e) => new Map([...e].filter(([e]) => !t.has(e))));
-	}, R = (e, t) => C((n) => new Map(n).set(e, t)), z = (e) => {
-		d(e), p("candidates"), h(""), _(1), y(/* @__PURE__ */ new Set()), x(/* @__PURE__ */ new Map()), C(/* @__PURE__ */ new Map()), T(""), E.current = null, t({ category: e === "metadata_fields" ? "" : e });
-	}, de = It({
-		mutationFn: ({ row: e, status: t }) => NE(AE(u, e, t, ce(e))),
+		x((e) => new Set([...e].filter((e) => !t.has(e)))), C((e) => new Map([...e].filter(([e]) => !t.has(e)))), T((e) => new Map([...e].filter(([e]) => !t.has(e))));
+	}, de = (e, t) => T((n) => new Map(n).set(e, t)), fe = (e) => {
+		p(e), h("candidates"), _(""), y(1), x(/* @__PURE__ */ new Set()), C(/* @__PURE__ */ new Map()), T(/* @__PURE__ */ new Map()), D(""), O.current = null, r({ category: e === "metadata_fields" ? "" : e });
+	}, pe = It({
+		mutationFn: ({ row: e, status: t }) => NE(AE(f, e, t, ue(e))),
 		onSuccess: (e, { row: t, status: n }) => {
 			if (!e.ok) {
-				R(t.item_key, e.error || "服务端拒绝了这次判定");
+				de(t.item_key, e.error || "服务端拒绝了这次判定");
 				return;
 			}
-			IE(u, [t.item_key]), ue([t.item_key]), o(jE(n));
+			IE(f, [t.item_key]), z([t.item_key]), c(jE(n));
 		},
-		onError: (e, { row: t }) => R(t.item_key, K(e))
-	}), fe = It({
+		onError: (e, { row: t }) => de(t.item_key, K(e))
+	}), me = It({
 		mutationFn: async (e) => {
-			let t = le, n = [], r = [];
+			let t = R, n = [], r = [];
 			for (let [i, a] of t.entries()) {
-				if (!j.current) break;
-				T(`正在处理 ${i} / ${t.length}`);
+				if (!N.current) break;
+				D(`正在处理 ${i} / ${t.length}`);
 				try {
-					let t = await NE(AE(u, a, e, ce(a)));
+					let t = await NE(AE(f, a, e, ue(a)));
 					if (!t.ok) throw Error(t.error || "服务端未采用该项");
 					n.push(a.item_key);
 				} catch (e) {
@@ -47228,80 +47233,82 @@ function Zde(e) {
 			};
 		},
 		onSuccess: ({ status: e, done: t, failures: n }) => {
-			IE(u, t), ue(t), n.forEach(([e, t]) => R(e, t)), T(""), o(`已${e === "approved" ? "通过" : "拒绝"} ${t.length} 项` + (n.length ? `，${n.length} 项未完成` : ""));
+			IE(f, t), z(t), n.forEach(([e, t]) => de(e, t)), D(""), c(`已${e === "approved" ? "通过" : "拒绝"} ${t.length} 项` + (n.length ? `，${n.length} 项未完成` : ""));
 		},
 		onError: (e) => {
-			T(K(e));
+			D(K(e));
 		}
-	}), pe = (e) => {
-		if (!(fe.isPending || !le.length)) {
-			if (e === "approved" && ee && le.some((e) => !ce(e).candidateKey)) {
-				T("先为所选的多来源候选选择来源。");
+	}), he = (e) => {
+		if (!(me.isPending || !R.length)) {
+			if (e === "approved" && P && R.some((e) => !ue(e).candidateKey)) {
+				D("先为所选的多来源候选选择来源。");
 				return;
 			}
-			T(""), fe.mutate(e);
+			D(""), me.mutate(e);
 		}
-	}, me = (e) => {
-		x((t) => {
+	}, ge = (e) => {
+		C((t) => {
 			let n = new Map(t);
-			for (let t of le) {
+			for (let t of R) {
 				let r = t.candidates?.find((t) => t.source === e);
 				r && n.set(t.item_key, {
-					...ce(t),
+					...ue(t),
 					candidateKey: r.candidate_key
 				});
 			}
 			return n;
-		}), T(`已选择 ${e}，点击通过所选采用。`);
-	}, he = async (e) => {
-		if (D) return;
-		O(e), A("");
-		let t = await i(e);
-		j.current && (O(0), A(t));
-	}, ge = RE(M.mirror, c), _e = M.genre_tags || [], ve = {
-		openItem: n,
-		openEntity: r,
-		onReveal: he,
-		revealing: D,
-		revealNote: k,
-		avatarInner: a,
-		toast: o
+		}), D(`已选择 ${e}，点击通过所选采用。`);
+	}, _e = async (e) => {
+		if (k) return;
+		A(e), M("");
+		let t = await o(e);
+		N.current && (A(0), M(t));
+	}, ve = RE(ee.mirror, u), ye = ee.genre_tags || [], be = {
+		openItem: i,
+		openEntity: a,
+		onReveal: _e,
+		revealing: k,
+		revealNote: j,
+		avatarInner: s,
+		toast: c
 	};
 	return /* @__PURE__ */ (0, L.jsx)(cw, { children: /* @__PURE__ */ (0, L.jsxs)("div", {
 		className: "flex flex-col gap-5 pb-10",
 		children: [
-			te ? /* @__PURE__ */ (0, L.jsx)(J, {
+			ne ? /* @__PURE__ */ (0, L.jsx)(J, {
 				tone: "warning",
 				title: "本机只能浏览",
-				extra: l ? /* @__PURE__ */ (0, L.jsx)("p", {
+				extra: d ? /* @__PURE__ */ (0, L.jsx)("p", {
 					className: "text-body-2-regular",
 					children: /* @__PURE__ */ (0, L.jsx)("a", {
-						href: l,
+						href: d,
 						className: "text-text-primary underline underline-offset-2",
 						children: "前往写入端复核"
 					})
 				}) : void 0,
-				children: ge
+				children: ve
 			}) : null,
-			/* @__PURE__ */ (0, L.jsx)(Rde, { tags: _e }),
+			/* @__PURE__ */ (0, L.jsx)(Rde, { tags: ye }),
 			/* @__PURE__ */ (0, L.jsxs)(nA, {
-				selectedKey: u,
+				orientation: t ? "horizontal" : "vertical",
+				selectedKey: f,
 				onSelectionChange: (e) => {
 					let t = String(e);
-					mE(t) && z(t);
+					mE(t) && fe(t);
 				},
 				className: "flex flex-col gap-5 review-split:flex-row-reverse review-split:items-start review-split:gap-6",
 				children: [/* @__PURE__ */ (0, L.jsxs)("div", {
-					className: "w-full rounded-surface bg-background-primary-default px-2 py-4 review-split:sticky review-split:top-topbar review-split:w-review-tabs review-split:shrink-0",
+					"data-section-nav": !0,
+					className: "w-full min-w-0 review-split:sticky review-split:top-topbar review-split:w-review-tabs review-split:shrink-0",
 					children: [/* @__PURE__ */ (0, L.jsx)("h2", {
 						id: "reviewcategories",
-						className: "px-3 pb-3 text-caption-1-regular text-text-secondary",
 						children: "复核分类"
 					}), /* @__PURE__ */ (0, L.jsx)(rA, {
 						"aria-labelledby": "reviewcategories",
-						className: "flex flex-wrap gap-1 review-split:flex-col review-split:flex-nowrap review-split:items-stretch",
+						"data-section-items": !0,
+						className: "flex review-split:flex-col review-split:items-stretch",
 						children: fE.map((e) => {
-							let t = Number(M.counts[e] || 0);
+							let t = Number(ee.counts[e] || 0);
 							return /* @__PURE__ */ (0, L.jsxs)(iA, {
 								id: e,
 								className: Yde,
@@ -47313,71 +47320,71 @@ function Zde(e) {
 						})
 					})]
 				}), /* @__PURE__ */ (0, L.jsxs)(aA, {
-					id: u,
+					id: f,
 					className: "flex min-w-0 flex-1 flex-col gap-5",
 					children: [
-						N.length && !te ? /* @__PURE__ */ (0, L.jsx)(Ide, {
-							groupOptions: P,
-							groupBy: ne,
+						te.length && !ne ? /* @__PURE__ */ (0, L.jsx)(Ide, {
+							groupOptions: F,
+							groupBy: re,
 							onGroupBy: (e) => {
-								p(e), h(""), _(1);
+								h(e), _(""), y(1);
 							},
-							groups: F,
-							filter: re,
+							groups: ie,
+							filter: ae,
 							onFilter: (e) => {
-								h(e), _(1);
+								_(e), y(1);
 							},
-							pageKeys: ae,
-							selected: v,
-							onSelected: y,
-							selectedRows: le,
-							metadata: ee,
-							approvable: le.every((e) => SE(u, e)),
-							busy: fe.isPending,
-							feedback: w,
-							onUnifySource: me,
-							onRun: pe
+							pageKeys: se,
+							selected: b,
+							onSelected: x,
+							selectedRows: R,
+							metadata: P,
+							approvable: R.every((e) => SE(f, e)),
+							busy: me.isPending,
+							feedback: E,
+							onUnifySource: ge,
+							onRun: he
 						}) : null,
-						ie.rows.length ? se.map((e) => /* @__PURE__ */ (0, L.jsxs)("section", {
+						oe.rows.length ? le.map((e) => /* @__PURE__ */ (0, L.jsxs)("section", {
 							className: "flex flex-col gap-3",
-							children: [se.length > 1 || ne !== "candidates" ? /* @__PURE__ */ (0, L.jsxs)("div", {
+							children: [le.length > 1 || re !== "candidates" ? /* @__PURE__ */ (0, L.jsxs)("div", {
 								className: "flex flex-wrap items-center gap-2",
 								children: [/* @__PURE__ */ (0, L.jsx)("h3", {
 									className: "text-body-medium text-text-primary",
 									children: `${e.title} · ${e.rows.length}`
-								}), te ? null : /* @__PURE__ */ (0, L.jsx)(G, {
+								}), ne ? null : /* @__PURE__ */ (0, L.jsx)(G, {
 									variant: "ghost",
 									size: "small",
 									onClick: () => {
-										let t = e.rows.map((e) => e.item_key), n = t.every((e) => v.has(e)), r = new Set(v);
+										let t = e.rows.map((e) => e.item_key), n = t.every((e) => b.has(e)), r = new Set(b);
 										for (let e of t) n ? r.delete(e) : r.add(e);
-										y(r);
+										x(r);
 									},
-									children: e.rows.every((e) => v.has(e.item_key)) ? "清空本组" : "全选本组"
+									children: e.rows.every((e) => b.has(e.item_key)) ? "清空本组" : "全选本组"
 								})]
 							}) : null, /* @__PURE__ */ (0, L.jsx)("div", {
 								className: "review-grid gap-5",
 								children: e.rows.map((e) => /* @__PURE__ */ (0, L.jsx)(Jde, {
-									category: u,
+									category: f,
 									row: e,
-									choice: ce(e),
-									onChoice: (t) => x((n) => new Map(n).set(e.item_key, t)),
-									selected: v.has(e.item_key),
-									onSelect: (t, n) => y((r) => {
+									choice: ue(e),
+									onChoice: (t) => C((n) => new Map(n).set(e.item_key, t)),
+									selected: b.has(e.item_key),
+									onSelect: (t, n) => x((r) => {
 										let i = new Set(r);
-										return E.current = xE(i, ae, E.current, e.item_key, t, n), i;
+										return O.current = xE(i, se, O.current, e.item_key, t, n), i;
 									}),
-									locked: te,
-									busy: de.isPending && de.variables?.row.item_key === e.item_key,
-									problem: S.get(e.item_key) || "",
-									genreTags: _e,
+									locked: ne,
+									busy: pe.isPending && pe.variables?.row.item_key === e.item_key,
+									problem: w.get(e.item_key) || "",
+									genreTags: ye,
 									onDecide: (t) => {
-										de.isPending || fe.isPending || (C((t) => new Map([...t].filter(([t]) => t !== e.item_key))), de.mutate({
+										pe.isPending || me.isPending || (T((t) => new Map([...t].filter(([t]) => t !== e.item_key))), pe.mutate({
 											row: e,
 											status: t
 										}));
 									},
-									handlers: ve
+									handlers: be
 								}, e.item_key))
 							})]
 						}, e.key)) : /* @__PURE__ */ (0, L.jsx)(ow, {
@@ -47386,9 +47393,9 @@ function Zde(e) {
 							children: "可切换分类查看其他候选。"
 						}),
 						/* @__PURE__ */ (0, L.jsx)(Xde, {
-							page: ie.page,
-							pages: ie.pages,
-							onPage: _
+							page: oe.page,
+							pages: oe.pages,
+							onPage: y
 						})
 					]
 				})]

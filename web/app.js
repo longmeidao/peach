@@ -62,6 +62,7 @@ wireImageFallbacks(document.body);
    之后（搜索 `state={loc:`）；这里只提前建立绑定，好让上面设置面板的 onchange
    不再落在 TDZ 里。 */
 let state;
+const selected=new Set(),followSelected=new Set();
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 // 顶部三层与抽屉上一次画的是哪一份：口径加数据，两样都没变就不必再画一遍。
 let barsRendered='';
@@ -230,9 +231,9 @@ const REVIEW_LABELS={metadata_fields:'元数据字段',creator_tags:'创作者�
    那一枚是占位。工具条上那三件——分组方式、分类筛选、全选本页——要等队列回来才知道
    选项和条数，三枚占位一件对一件。 */
 const reviewSkeletonHtml=(label='正在读取复核队列')=>`<div class="review review-workspace review-skeleton" data-skeleton="review" aria-busy="true" aria-label="${esc(label)}">
-  <div class="reviewcontrols"><h2 class="review-category-title">复核分类</h2>
-    <div class="reviewtabs">${Object.values(REVIEW_LABELS).map(text=>
-      `<button type="button" disabled>${esc(text)}<span class="skeleton reviewcountskeleton" aria-hidden="true"></span></button>`).join('')}</div></div>
+  <div class="reviewcontrols" data-section-nav><h2 class="review-category-title">复核分类</h2>
+    <div class="reviewtabs" data-section-items>${Object.values(REVIEW_LABELS).map((text,i)=>
+      `<button type="button" disabled aria-selected="${i===0}">${esc(text)}<span class="skeleton reviewcountskeleton" aria-hidden="true"></span></button>`).join('')}</div></div>
   <div class="reviewbulkbar reviewbulktoolbar" aria-hidden="true">${'<span class="skeleton reviewtoolskeleton"></span>'.repeat(3)}</div>
   <section class="reviewsection"><div class="reviewlist">${
     '<div class="skeletoncard" aria-hidden="true"><i></i><b></b><em></em></div>'.repeat(6)}</div></section></div>`;
@@ -2823,7 +2824,6 @@ async function mountDetailPlayer(it,video,autoplay,options={}){
   }).catch(()=>{});
   return detailPlayer;
 }
-const selected=new Set(),followSelected=new Set();
 let selectMode=false,lastSelectedId=null,followLastSelectedId=null,selectSurface='';
 const currentSelectSurface=()=>location.pathname==='/follow'?'follow':location.pathname==='/junk-files'?'junk':'catalog';
 function paintSelection(){
@@ -8061,11 +8061,16 @@ function syncLocalNavGlide(nav,active,animate){
    未取得；小标题用本站自己那一档：13px、`--muted`）。
    整块仍是一个 tablist：拆成两个的话方向键只在自己那一段里走，从「安全」按下去到不了
    「通用」，而这两段在用户眼里就是一列。小标题因此写成 presentation，不占 tab 的位置。 */
+const configurationNarrow=matchMedia('(max-width:900px)');
+configurationNarrow.addEventListener('change',()=>{
+  document.querySelectorAll('.configpage>.board-local-nav').forEach(nav=>nav.setAttribute('aria-orientation',configurationNarrow.matches?'horizontal':'vertical'));
+});
 function localTabs(root,sections,host=root){
   const items=sections.flatMap(section=>section.items);
   if(!items.length||host.querySelector(':scope > .board-local-nav'))return null;
   const prefix=`board-tabs-${++tabSequence}`;
   const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label',host===root?'配置分区':'设置分区');
+  if(host===root){nav.dataset.sectionNav='';nav.dataset.sectionItems='';nav.setAttribute('aria-orientation',configurationNarrow.matches?'horizontal':'vertical')}
   const buttons=[];let active=0;
   const choose=index=>{
     const moved=active!==index;
