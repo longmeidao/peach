@@ -394,6 +394,8 @@ button.danger.danger:disabled{
 @media (pointer:fine){.ovtrack{pointer-events:auto}}
 .ovtrack.ov-y{right:0;top:8px;bottom:8px;width:12px}
 .ovtrack.ov-x{left:8px;right:8px;bottom:0;height:12px}
+/* 复核卡正文的纵向轨道位于右侧内边距中，12px 命中区完整留在内容之外。 */
+[data-review-key]>div:has(>div[data-overlay-scrollbar])>.ovtrack.ov-y{translate:12px 0}
 .ovthumb{position:absolute;border-radius:var(--pill-radius);background:var(--field-ring-hover);
   cursor:default;transition:width .15s cubic-bezier(.4,0,.2,1),height .15s cubic-bezier(.4,0,.2,1)}
 .ov-y .ovthumb{right:0;top:0;width:3px}

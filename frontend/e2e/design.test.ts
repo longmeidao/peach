@@ -1794,6 +1794,26 @@ describe('设计决定', () => {
       await opened.page.waitForFunction(() => !!document.querySelector('[data-review-key] .can-scroll-top.can-scroll-bottom'));
       assert.equal(await edges.evaluate((node) => getComputedStyle(node).pointerEvents), 'none');
       assert.equal(await edges.locator('.ov-edge-top').evaluate((node) => getComputedStyle(node).backdropFilter), 'blur(2px)');
+      const track = scroller.locator('..').locator('.ovtrack.ov-y');
+      for (const viewport of [DESKTOP, MOBILE]) {
+        await opened.page.setViewportSize({ width: viewport.width, height: viewport.height });
+        const bounds = await track.evaluate((node) => {
+          const scroll = node.parentElement!.querySelector('[data-overlay-scrollbar]')!.getBoundingClientRect();
+          const rail = node.getBoundingClientRect();
+          const card = node.closest('section')!.getBoundingClientRect();
+          return { gap: rail.left - scroll.right, inset: card.right - rail.right };
+        });
+        assert.ok(bounds.gap >= -1, `滚动条命中区覆盖正文：${JSON.stringify(bounds)}`);
+        assert.ok(bounds.inset >= 1, `滚动条越出卡片：${JSON.stringify(bounds)}`);
+      }
+      await opened.page.setViewportSize({ width: DESKTOP.width, height: DESKTOP.height });
+      const thumb = await track.locator('.ovthumb').boundingBox();
+      assert.ok(thumb);
+      await opened.page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2);
+      await opened.page.mouse.down();
+      await opened.page.mouse.move(thumb.x + thumb.width / 2, thumb.y + thumb.height / 2 + 30);
+      await opened.page.mouse.up();
+      assert.ok(await scroller.evaluate((node) => node.scrollTop > 100), '右侧轨道拖动没有滚动正文');
       await scroller.evaluate((node) => { node.scrollTop = node.scrollHeight });
       await opened.page.waitForFunction(() => !document.querySelector('[data-review-key] .can-scroll-bottom'));
       await scroller.locator('[data-scroll-test]').evaluate((node) => node.remove());
