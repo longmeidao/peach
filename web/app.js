@@ -3213,7 +3213,9 @@ function avatarFrame(img){
 function coverAnchor(img){
   const r=img.naturalWidth/img.naturalHeight;
   if(!r)return;
-  img.dataset.frame=r>=1.65?'still':r>1.2?'sleeve':'front';
+  const code=new URL(img.currentSrc||img.src,location.href).searchParams.get('code')||'';
+  // FC2 封面是整幅画面，横向取景跟随人脸；宽高比不代表有 DVD 正封。
+  img.dataset.frame=/^FC2(?:-PPV)?-/i.test(code)||r>=1.65?'still':r>1.2?'sleeve':'front';
   /* `object-position` 的百分比说的是「图片上这个点对齐可见窗口的同一个百分比位置」，
      不是「这个点落到窗口正中」。所以人脸中心原样当锚点只能保证脸还在画面里：0.81
      那种偏右的脸会贴着窗口右缘，图片右边还剩一截永远露不出来。可见窗口占图片 w 时，
