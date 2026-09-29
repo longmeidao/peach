@@ -100,6 +100,20 @@ describe('停在队列哪一条', () => {
     expect(withPartLabel(plain, queue('mix', [2]))).toBe(plain);
   });
 
+  it('本篇与特典在标题和队列中使用完整标签，数字卷保留序号', async () => {
+    serve();
+    const ref = { kind: 'parts', seedId: 1 } as const;
+    queryClient.setQueryData(queueKey(ref), queue('parts', [1, 2, 3], {
+      items: [row(1, { part_label: '本篇' }), row(2, { part_label: '特典 1' }), row(3, { part_label: '0' })],
+    }));
+    const { host } = await show(item(2), { queue: ref });
+    expect(host.querySelector('.partlabel')?.textContent).toBe('特典 1');
+    expect(host.querySelector('[data-queue-item="1"]')?.textContent).toContain('本篇');
+    expect(host.querySelector('[data-queue-item="2"]')?.textContent).toContain('特典 1');
+    expect(host.querySelector('[data-queue-item="3"]')?.textContent).toContain('第 0 卷');
+    expect(host.textContent).not.toContain('第 特典');
+  });
+
   it('队列头：版次队列只写数量，其余带上标题', () => {
     expect(queueCopy(queue('editions', [1, 2]))).toEqual({ title: '版本', summary: '2 个版本' });
     expect(queueCopy(queue('parts', [1, 2, 3], { title: '分卷 · PCH-021' }))).toEqual({ title: '分卷', summary: '分卷 · PCH-021 · 3 卷' });

@@ -38,7 +38,7 @@ from peach.face_detect import FaceDetector, FaceModelUnavailable
 def detect(path: Path, detector: FaceDetector) -> dict | None:
     import cv2
     image = cv2.imread(str(path))
-    return face_record(image, detector)
+    return face_record(image, detector, code=path.stem)
 
 
 def build_parser() -> argparse.ArgumentParser:

@@ -22,7 +22,7 @@ import { queryClient } from '../query';
 import {
   CAST_SHOWN, EDITION_TONE, FEEDBACK_URL, ITEM_TAG_URL, PLAYLIST_URL, PREFERENCE_URL, QUALITY_GOAL_URL,
   RELATED_URL, WATCH_LATER_URL, chooseItem, clampRating, detailTags, feedbackReceipt, fetchItem, fetchQueue,
-  hasTag, identityGroups, itemKey, mediaGate, movedOrder, nextRating, partLabelHtml, pickerSections, playlistQueue,
+  hasTag, identityGroups, itemKey, mediaGate, movedOrder, nextRating, partLabel, partLabelHtml, pickerSections, playlistQueue,
   queueCopy, queueKey, ratingStars, ratingText, realWatched, recentTags, relatedKey, rememberTag, sameOrder,
   withPartLabel, withTag, withoutTag,
   type DetailEntityRef, type DetailItem, type DetailQueue, type DetailTag, type ItemDetailActions,
@@ -210,7 +210,7 @@ function Queue({ queue, itemId, helpers, actions }: {
               </span>
             ) : null}>
             <span data-queue-head="">{edition}<b data-middle-truncate="">{helpers.displayName(row)}</b></span>
-            <span data-truncate-end="">{queue.kind === 'parts' ? `第 ${row.part_label || ''} 卷` : helpers.mixLabel(row)}</span>
+            <span data-truncate-end="">{queue.kind === 'parts' ? partLabel(row.part_label) : helpers.mixLabel(row)}</span>
           </MixQueueRow>
         );
       })}

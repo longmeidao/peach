@@ -363,9 +363,15 @@ DUPLICATE_FLOOR_SECONDS = 15.0
 #: 卷号写成 `01`、`02` 的和写成 `1`、`2` 的一样多：`MIAD573_01.wmv` 与 `_02` 是同一部
 #: 片的两卷，不认前导零就各占一张卡、互相成了「同创作者的另一部作品」。`00` 不是卷号。
 _PART_MARKER = re.compile(
-    r"(?:^|[^a-z0-9])(?:part|pt|cd|disc|disk|dvd|vol)?[-_ ]?(0?[1-9]|[1-9]\d|[a-h])(?=\.[a-z0-9]{2,4}$)",
+    r"(?:^|[^a-z0-9]|(?<=\d)(?=[a-h]\.|(?:part|pt|cd|disc|disk|dvd|vol)))"
+    r"(?:part|pt|cd|disc|disk|dvd|vol|fhd)?[-_ ]?(0|0?[1-9]|[1-9]\d|[a-h])"
+    r"(?=\.[a-z0-9]{2,4}$)",
     re.I,
 )
+_CIRCLED_PART = re.compile(r"[-_ ]([①-⑳])[^.]*\.[a-z0-9]{2,4}$", re.I)
+_FC2_COLLECTION_NAME = re.compile(
+    r"^FC(?:2)?[-_ ]?(?:PPV[-_ ]?)?(\d{5,})(?:【[^】]*】)?(.*?)\.[a-z0-9]{2,4}$", re.I)
+_BONUS_PART = re.compile(r"(?:[-_ ](?:sp|gift)[-_ ]?(\d{1,2})?|[（(]特典[）)])$", re.I)
 
 
 def current_tags(names) -> list[str]:
@@ -1040,7 +1046,10 @@ def tag_cat(tag: str) -> str:
 def part_marker(name: str) -> str:
     """Return a trailing multipart marker, if present."""
     match = _PART_MARKER.search(name or "")
-    return match.group(1).lower() if match else ""
+    if match:
+        return match.group(1).lower()
+    circled = _CIRCLED_PART.search(name or "")
+    return str(ord(circled.group(1)) - ord("①") + 1) if circled else ""
 
 
 #: 首卷裸名（`TRE-080.mp4`）、后续卷带 `-2`/`-3` 时，裸名那份的时长必须落在其他卷的
@@ -1108,7 +1117,39 @@ def ordered_multipart_items(items: list[dict]) -> list[dict]:
     if ordered:
         return ordered
     stripped = names_without_shared_part_tail(items)
-    return _ordered_by_markers(items, stripped) if stripped else []
+    ordered = _ordered_by_markers(items, stripped) if stripped else []
+    return ordered or _fc2_bonus_collection(items)
+
+
+def fc2_collection_label(item: dict) -> str:
+    """明确的 FC2 本篇、数字集数和特典标签；不根据时长猜序号。"""
+    code = normalise_code_key(item.get("code"))
+    match = _FC2_COLLECTION_NAME.match(str(item.get("name") or ""))
+    if not code.startswith("FC2-PPV-") or not match or f"FC2-PPV-{match[1]}" != code:
+        return ""
+    tail = match[2]
+    if not tail:
+        return "本篇"
+    bonus = _BONUS_PART.fullmatch(tail)
+    if bonus:
+        return "特典 " + str(int(bonus[1] or 1))
+    number = re.fullmatch(r"[-_ ](\d{1,2})", tail)
+    return str(int(number[1])) if number else ""
+
+
+def _fc2_bonus_collection(items: list[dict]) -> list[dict]:
+    """同番号、唯一标签且含显式特典的合集可按本篇与特典排序。"""
+    labels = [fc2_collection_label(item) for item in items]
+    if (len(items) < 2 or not all(labels) or len(set(labels)) != len(labels)
+            or len({normalise_code_key(item.get("code")) for item in items}) != 1
+            or not any(label.startswith("特典 ") for label in labels)):
+        return []
+    if "本篇" in labels and any(label.isdigit() for label in labels):
+        return []  # 本篇与数字分卷并存，可能是完整版和切片。
+    def key(pair):
+        label = pair[0]
+        return (1, int(label[3:])) if label.startswith("特典 ") else (0, int(label) if label.isdigit() else -1)
+    return [item for _, item in sorted(zip(labels, items), key=key)]
 
 
 def _ordered_by_markers(items: list[dict], names: list[str]) -> list[dict]:
@@ -1148,7 +1189,7 @@ def _explicit_fc2_collection(items: list[dict], names: list[str], positions: lis
     if not code.startswith("FC2-PPV-") or len(set(positions)) != len(positions):
         return False
     for name in names:
-        match = _PART_MARKER.search(name)
+        match = _PART_MARKER.search(name) or _CIRCLED_PART.search(name)
         if not match or normalise_code_key(name[:match.start()]) != code:
             return False
     return True

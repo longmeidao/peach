@@ -23,7 +23,7 @@ def _default_detector() -> FaceDetector:
     return FaceDetector(allow_download=False)
 
 
-def face_record(image, detector) -> dict | None:
+def face_record(image, detector, *, code: str) -> dict | None:
     """已解码的封面 → 页面取景记录；无法解码时不生成记录。
 
     脸框宽高与源图尺寸 `px` 也记下，形状与头像边车（`avatar_face.face_record_of`）
@@ -35,7 +35,8 @@ def face_record(image, detector) -> dict | None:
     height, width = image.shape[:2]
     ratio = width / height if height else 0
     faces = detector.detect(image)
-    if jav_poster_crop.SLEEVE_RATIO_MIN <= ratio < jav_poster_crop.SLEEVE_RATIO_MAX:
+    if (jav_poster_crop.crops_to_portrait(code)
+            and jav_poster_crop.SLEEVE_RATIO_MIN <= ratio < jav_poster_crop.SLEEVE_RATIO_MAX):
         faces = [face for face in faces if face.cx >= FRONT_START]
     faces = [face for face in faces if MIN_FACE_Y <= face.cy <= MAX_FACE_Y]
     best = main_face(faces)
@@ -57,7 +58,7 @@ def _sidecars(code: str, payload: bytes, size: tuple[int, int], detector=None) -
     records = {jav_poster_crop.SIDECAR_SUFFIX: poster}
     try:
         active = detector if detector is not None else _default_detector()
-        face = face_record(image, active)
+        face = face_record(image, active, code=code)
     except (FaceModelUnavailable, ImportError):
         face = None
     if face is not None:
