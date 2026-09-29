@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import sys
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -17,6 +19,14 @@ import check_copy_final_state as checker  # noqa: E402
 
 
 class CopyFinalStateTests(unittest.TestCase):
+    def test_project_markdown_passes_seiso_stable_rules(self):
+        executable = shutil.which("seiso", path=str(Path(sys.executable).parent))
+        self.assertIsNotNone(executable, "缺少文档检查器，请按 docs/TESTING.md 安装开发依赖。")
+        result = subprocess.run(
+            [executable, "check", "--output-format", "concise"], cwd=ROOT,
+            capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_no_copy_narrates_a_rejected_or_superseded_state(self):
         findings = checker.scan_repo(ROOT)
         self.assertEqual(

@@ -176,7 +176,7 @@ export function PlaylistsPage({ openPlaylist, openEntity, faceAvatar, canFlip, t
   if (!data) {
     return (
       <div className="mx-auto w-full max-w-board">
-        <Note tone="error" title="读取失败">{playlists.error ? errorMessage(playlists.error) : '读取播放列表失败'}</Note>
+        <Note tone="error" title="播放列表读取失败">{playlists.error ? errorMessage(playlists.error) : '未取得播放列表，请刷新页面重试。'}</Note>
       </div>
     );
   }

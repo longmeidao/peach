@@ -439,7 +439,7 @@ export function TastePage(props: TasteProps) {
   if (!data) {
     return (
       <Page>
-        <Note tone="error" title="读取失败">
+        <Note tone="error" title="口味分析读取失败">
           {taste.error ? errorMessage(taste.error) : '读取口味分析失败'}
         </Note>
       </Page>

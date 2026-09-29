@@ -1,5 +1,9 @@
 # README 维护
 
+1. 按下表核对本次涉及的能力、安装方式与限制。
+2. 同批修改中英文 README，保留使用入口和安全说明。
+3. 按 [文档与界面文案](WRITING.md#检查与复核) 检查，再运行 [正式测试入口](TESTING.md#正式入口)。
+
 README 面向初次访问项目的人，依次讲它是什么、介绍视频与截图、能做什么、怎么装、常见问题、
 问题反馈和文档入口。用使用者的话写：说能做什么、会不会动文件，不写账本、候选、实体这类内部
 概念，内部机制与开发流程只留链接。中英文同批维护，平台支持、安装方式和能力限制保持一致。主线能力、已安装运行态和发行制品分别
@@ -8,10 +12,10 @@ README 面向初次访问项目的人，依次讲它是什么、介绍视频与�
 | 内容 | 核验入口 |
 | --- | --- |
 | Python 与桌面命令 | `pyproject.toml`、`src/peach/cli.py`、`src/peach/tray.py` |
-| 前端工具与产物 | `frontend/package.json`、`docs/FRONTEND.md` |
-| 桌面包与平台范围 | `docs/TESTING_DESKTOP.md`、`.github/workflows/release.yml` |
-| 当前行为与已部署范围 | 实现与测试、`docs/STATUS.md`、`docs/PRODUCT_BACKLOG.md` |
-| 来源、配置与数据边界 | `docs/SOURCING.md`、`docs/OPERATIONS.md`、`docs/CLOUDDRIVE.md` |
+| 前端工具与产物 | `frontend/package.json`、[docs/FRONTEND.md](FRONTEND.md) |
+| 桌面包与平台范围 | [docs/TESTING_DESKTOP.md](TESTING_DESKTOP.md)、`.github/workflows/release.yml` |
+| 当前行为与已部署范围 | 实现与测试、[docs/STATUS.md](STATUS.md)、[docs/PRODUCT_BACKLOG.md](PRODUCT_BACKLOG.md) |
+| 来源、配置与数据边界 | [docs/SOURCING.md](SOURCING.md)、[docs/OPERATIONS.md](OPERATIONS.md)、[docs/CLOUDDRIVE.md](CLOUDDRIVE.md) |
 
 README 迭代绑定 Codex 与 Claude 共用的工作树交付流程。每次提交前核对暂存差异，
 涉及用户可见能力、安装、平台或构建要求时，同批更新中英文。只改变内部实现时保留 README，
@@ -76,7 +80,7 @@ SHA-256 对不上是硬错误，不降级放行。
 **清单只能人工逐张看过后更新，不许按图库顺序自动取。** 图库把目录前缀当来源优先级排序，
 排第一的答的是「先试哪一张」，不是「哪一张能放进公开文档」：实测排在前面的大图多是片商
 宣传素材，内衣、泳装乃至露点都在里面，`8-GRAPHIS` 这种看着像写真机构的档位同样混着
-半裸。自动取必然翻车。当前清单 42 位复核于 2026-09-16，尺度是不露点。
+半裸。清单须人工复核，公开图片不得露点。2026-09-16 的复核覆盖 42 位；实际名单见 [人像清单](../scripts/demo-portraits.json)。
 
 换图或加人时：取回候选、拼联系表一次看完、剔掉出界的，再按名字对应的**文件名**（不是
 索引里的键名，那可能是别名或简称）与字节哈希写进清单，最后按内容哈希去重，因为一个人在

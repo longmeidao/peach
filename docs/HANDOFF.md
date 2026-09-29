@@ -6,7 +6,7 @@
 
 界面门槛见 `.claude/skills/peach-web-ui/SKILL.md`，这里只留代码外的判据。
 
-- NFO 见 `docs/REUSE.md`；[Banner](https://vercel.com/geist/banner) 取证见 `vercel-geist-library-banner.md`。
+- NFO 见 [docs/REUSE.md](REUSE.md)；[Banner](https://vercel.com/geist/banner) 取证见 `vercel-geist-library-banner.md`。
 - 凭据焦点外扩 3px，正文左右留 4px；输入框可收缩，验收所有裁切祖先。
 - 截图与视觉验收的画面保护：SFW 模式（设置面板「安全」组，`#censorSetting`，localStorage `peach-censor`）默认关闭、不在导航栏。只在截图要交给会审查内容的模型（自动视觉审查或外发工具）时开启，用完关掉；普通个人浏览一律不遮挡。
 - 卡片实体链接必须由同一个 `{kind,name}` 结构生成，不许先独立选显示名、再按别的字段推断类型；账本 `size` 为空或 0 时显示「大小未知」，不伪装成 `0 MB`。
@@ -22,8 +22,8 @@
 - 命中推广词不算广告，剥完还剩不剩内容才算：判据在 `web_contract.promo_residue`，`tests/test_ad_judgement.py` 守这条线。`disposal` 同时承载「这是广告」和「这个来源我不喜欢」，不能当纯广告标注集来标定判据。
 - 目录多余层的判据是名字冗余而不是「父目录只有一个子目录」，广告标记只剥头尾（`scripts/flatten_release_dirs.py`）；账本只记文件不记目录，任何目录计划落地前都要用真实文件系统复核父目录里有没有旁挂的封面、字幕和空目录。
 - 抽帧的 bt709 覆盖只在 stderr 命中坏色彩元数据时重试，无条件重试会让网盘超时的文件每帧白跑第二次，所以不能丢弃 `capture_output` 的错误流。
-- Logo 与头像都渲染成方框，候选按实测像素判定，只有 URL 没有实测尺寸不算候选；取源方向、门槛值与站点判据见 `docs/SOURCING.md`。
-- 小圆标与厂牌大 logo 是两个位置、两种资产：圆标取站点自己声明的那一份并过内容外接框闸门，宽扁字标不参加圆标竞选，`/logo` 的 `variant` 只在真有两份时才分岔（细节见 `docs/SOURCING.md`）。
+- Logo 与头像都渲染成方框，候选按实测像素判定，只有 URL 没有实测尺寸不算候选；取源方向、门槛值与站点判据见 [docs/SOURCING.md](SOURCING.md)。
+- 小圆标与厂牌大 logo 是两个位置、两种资产：圆标取站点自己声明的那一份并过内容外接框闸门，宽扁字标不参加圆标竞选，`/logo` 的 `variant` 只在真有两份时才分岔（细节见 [docs/SOURCING.md](SOURCING.md)）。
 - 改了圆标的取图规则或合成方式必须同时加 `link_marks.RENDER_VERSION`：缓存保鲜期 30 天，不换键的话代码换了用户看到的仍是旧那张。
 - 图集就是目录：账本没有图集实体，`/api/photos` 按 `path` 去掉文件名分组、ID 取该目录里最小的资产 ID，同名目录在两个来源下算两个图集。图片墙只读 `/photo-thumb`（Pillow 缩到 640 宽、每张回源一次），原图只在灯箱读；灯箱复用 Swiper，必须等其 CSS 与 JS 都就绪再构造，否则首次打开多图会重叠。
 - 人工复核入口固定为 `/review`，候选来自 writer 本机 `generated` 下的 CSV，状态写 `review_decision`；封面抓取的成功、尺寸和缺失，以及九宫格未抽出，都是机械状态，不进人工复核。
@@ -38,7 +38,7 @@
 - Codex 读取 `AGENTS.md`，Claude 通过 `CLAUDE.md` 导入；项目技能共用 `.claude/skills/`，Codex 按入口索引读取。
 - 测试入口为 Windows `& .\scripts\test.ps1`、macOS/Linux `./scripts/test.sh`。选测与 CI 见 `TESTING.md`；证据、集成互斥和锁定见 `peach-worktree`。
 - 指令维护：按任务读取，缩小技能触发，保留事故边界，用文档、行为与数据任务复核，静态检查不证明效率改善。方法见 [OpenAI](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)。
-- 改变运行事实的任务同时更新 `docs/STATUS.md`；长期规则更新本文件、`docs/REUSE.md` 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
+- 改变运行事实的任务同时更新 [docs/STATUS.md](STATUS.md)；长期规则更新本文件、[docs/REUSE.md](REUSE.md) 或 ADR；可执行流程写成 `.claude/skills/<name>/SKILL.md`。分层判据见 ADR-0015，步骤见 `peach-context-rules`。
 - 触发是概率性的：必须每次成立的规则要由脚本、测试或 hook 强制，不能只写成技能。
 - 结论、进度、待办和证据写进共享文档或机器可读产物，不靠人转述。
 
@@ -53,17 +53,16 @@
 - 复核结论写入带证据和来源的 CSV 或其他持久产物；真实 ledger 写入须另满足授权与备份门槛，执行后对账。
 - 结论被修正时所有派生产物必须重建，只改说明文字不够：过期的删除清单比没有清单更危险。
 - 直接证据：视觉逐条任务在聊天里说「已保存」但 `asset_tag` 的 `source='vision'` 为 0，根本没有写入步骤；`disposal-candidates.csv` 在 `BNST033` 修正后未重建，把真实 3.2 GB 正片列为待删。
-- 解析用的固定件必须是抓回来的那份 HTML，不能照记忆重画：那样只能证明代码和记忆一致，会出现测试全绿而线上一个字段都没采到（实例见 `docs/SOURCING.md`）。
+- 解析用的固定件必须是抓回来的那份 HTML，不能照记忆重画：那样只能证明代码和记忆一致，会出现测试全绿而线上一个字段都没采到（实例见 [docs/SOURCING.md](SOURCING.md)）。
 - Claude 的 `.claude/settings.json` 配了 Stop、StopFailure、SessionEnd hook，用 `${CLAUDE_PROJECT_DIR}/.venv/Scripts/python.exe` 调 `scripts/job_status.py --write --hook-event`：只记脱敏生命周期摘要，从 ledger 与产物重算数字后原子写入 `peach-data/state/job-status.md`，不复制 prompt、response 或凭据。
-- 那份产物不进 Git，`docs/STATUS.md` 只留一行指针；只有主检出的会话写这份状态，隔离工作树里的不写。强制杀进程或断电时 hook 不运行，下次调用会补上。
+- 那份产物不进 Git，[docs/STATUS.md](STATUS.md) 只留一行指针；只有主检出的会话写这份状态，隔离工作树里的不写。强制杀进程或断电时 hook 不运行，下次调用会补上。
 
 ## 中文文档写作规范
 
 - 全部中文内容（README、`docs/`、ADR、技能正文、界面文案）按用户级技能 tech-doc-style-chinese 写作：
   事实优先、可扫读、不新增原文没有的数字与结论；规则只作用于可见正文，代码、路径、字段和命令原样保留。
 - 来源 https://github.com/Fenng/Tech-Doc-Style-Chinese （MIT），每台机器用 `npx skills add Fenng/Tech-Doc-Style-Chinese -g` 装一份，Claude 与 Codex 共用，`npx skills update -g` 升级。
-- 检查器只有一层：`scripts/check_copy_final_state.py` 是门槛，判据与放行标记见 `peach-context-rules`；
-  技能正文的风格要求靠人工复读，没有自动检查器。
+- 分类与界面表达见 [文档与界面文案](WRITING.md)。正式入口执行 seiso 稳定规则与 `scripts/check_copy_final_state.py`；实验规则与风格由人工复核。
 - Peach 覆盖上游默认三处：智能体入口文件保留称呼「你」（术语表已定义其含义）；`DOM/CSS/JS` 是证据 <!-- copy-lint-disable-line -->
   三元组的固定写法，不展开成 JavaScript；`对齐`、`复盘` 是已注册的项目术语与技能触发词，不替换。
   其余上游黑话词（兜底、落盘、闭环、链路）一律改写成具体机制。
@@ -79,7 +78,7 @@
 
 - 渐变参数模型、`in oklab` 插值与噪点叠层：`feralui-gradients-measured`；工作台与配色圆钮：`feralui-studio-boardui-accent-measured`。
 - 相关推荐算法：`openaver-related-ranking`，固定 revision，只参考 Tag IDF 与结构化共同点，MMR 和稳定破同分是 Peach 自加，不复制上游界面或源码。
-- 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略的适用范围见 `docs/REUSE.md`。
+- 网格、控件半径、语义 token 与中间省略：`vercel-geist-grid`、`vercel-geist-controls-measured`、`vercel-geist-middle-truncate`；中间省略的适用范围见 [docs/REUSE.md](REUSE.md)。
 - 统计与口味层级，Note／Progress／Gauge／Context Card 等控件：`vercel-geist-semantics-measured`、`vercel-geist-note-progress-switch-analytics`、`vercel-geist-fieldset-scroller-empty-state`。
 - 分类切换条属于 Tabs 的 secondary 变体而不是分段器：`vercel-geist-tabs-secondary-measured`。
 - 表格、排行与面包屑：`vercel-geist-table-ranking`、`vercel-geist-breadcrumbs`；同形可比较数据才用语义 `table` 并用 tabular numerals，内容标签是固定 Top 排行和直接筛选，不伪装成可排序数据表。
@@ -103,7 +102,7 @@
 
 ## 身份、来源与标识采集
 
-判据细节、实测反例、判词含义和不能走的路见 `docs/SOURCING.md`，这里只留边界。
+判据细节、实测反例、判词含义和不能走的路见 [docs/SOURCING.md](SOURCING.md)，这里只留边界。
 
 - 采集脚本一律只产出复核 CSV；写 `entity.canonical_name`、`asset.studio`、`entity_link` 或头像字节都是另一次授权。
 - 规范名优先用有出处的简体中文通行名，旧艺名、罗马字、假名和繁体名降为别名；`no_avatar` 只表示没取得合格图片，不阻止已核实姓名落库。
@@ -120,16 +119,16 @@
 
 ## 数据安全
 
-- 真实 ledger 是写入者本机 `peach-data/database/ledger.db`（WAL），正常浏览会合法写入播放与行为字段；平台绝对路径以 `docs/STATUS.md` 为准。
+- 真实 ledger 是写入者本机 `peach-data/database/ledger.db`（WAL），正常浏览会合法写入播放与行为字段；平台绝对路径以 [docs/STATUS.md](STATUS.md) 为准。
 - 测试必须使用临时 SQLite、媒体和全部缓存根，不得写真实 ledger 或 `generated`；FastAPI 测试须显式传入 snapshots、posters、photo-thumbs、transcodes、stream-segments、按 asset 生成的头像与 covers。
 - 可重建缓存的删除边界由当前数据库路径拥有，生产库只可清理同一 `peach-data` 下的缓存，边界外一律跳过：一次漏配曾在清空回收站的测试里删掉真实 JAV 封面。
-- 已应用的迁移文件不得修改，任何后续变更必须新增版本；真实迁移与缓存删除的操作序列见 `docs/OPERATIONS.md`。
+- 已应用的迁移文件不得修改，任何后续变更必须新增版本；真实迁移与缓存删除的操作序列见 [docs/OPERATIONS.md](OPERATIONS.md)。
 - 外键 `ON DELETE` 是安全网不是删除路径：运行时连接不开 `PRAGMA foreign_keys`，物理删除仍走 `ASSET_REFERENCE_TABLES` 与 `web_playlists` 的显式 DELETE；重建被别人引用的父表要在迁移首行写 `-- peach:foreign_keys=off`，改名那步开 `PRAGMA legacy_alter_table=ON`，判据见 `0025`。
 - 外置盘目标只保存 `media`，代码、运行数据、venv 和 worktree 在两台机器各自的内置盘；`peach-data` 不进入仓库，也不整体交给文件同步，分通道边界见 ADR-0017。
 
 ## 运行与部署
 
-CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
+CloudDrive 见 [docs/CLOUDDRIVE.md](CLOUDDRIVE.md)，部署见 [docs/OPERATIONS.md](OPERATIONS.md)。
 
 - 源码部署由项目 venv 持有服务，刷新入口 `scripts/restart_windows_tray.py`。独立测试包自带运行环境，数据在用户目录；配置更改由托盘消费标记并重启子服务。
 - 「同步开发进度」（GitHub）和「同步 Ledger」（SMB 共享）是两条独立通道，任一方不可达都不该拖住另一方；服务只观察角色不自动复制。
@@ -147,16 +146,16 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 - 规范女优、厂牌、标签、创作者进入 `entity`、`entity_external_ref`、`asset_entity`；扁平 `asset_tag` 和 creator/studio 字段只是兼容投影。
 - FastAPI 与前端保持单体部署，在线来源和 AI 只通过显式适配器进入；AI runtime 与推理 API 的协议边界见 ADR-0003。
 - 前端按 ADR-0031 走 strangler 迁移：新页面进 `frontend/src/react/`（React + Tailwind + BoardUI 源码），逐页替换，不做整站重写；分发阶段见 ADR-0023。
-- 页面与交互的已定型行为写 `docs/REUSE.md`，由 API 与测试守住；版本号、像素值、批量大小与性能测量是实现快照，留在测试或参考快照，本文件不抄。
+- 页面与交互的已定型行为写 [docs/REUSE.md](REUSE.md)，由 API 与测试守住；版本号、像素值、批量大小与性能测量是实现快照，留在测试或参考快照，本文件不抄。
 - `/taste` 只读合并 Peach 行为与本机私有浏览历史，明确以浏览器记录为主要画像、Peach 内部为辅助证据，分别排序，不把「不合口味」自动归因或降权到 Tag。
 - 查询词里的负号项整体排除，下划线是组合词边界的一部分，不得把 `-ai_generated` 拆成正向 `generated`；模糊时长旧 Tag 只作兼容识别，不进入口味、索引、详情和筛选状态。
 - 原始 URL 与标题不进入页面或 ledger；上传原件存 `sources/taste-history/imports`，移除数据源只清理规范化分析库，不删原件。浏览器数据库解析固定复用 `browserexport==0.4.4`，运行中浏览器先由 SQLite backup API 取一致快照。本机发现不等于跨机同步，跨机数据要显式导出、传输并按来源去重合并。
 - 追更连接器、凭据、变体和跨站归组以 ADR-0019 为准；关注页顶部标签筛选与卡片只用来源明确标记为 `general` 的内容标签，详情页与在线索引保留全部来源标签并按类型着色，未知类型不猜成 `general`。
-- FANBOX 正文统一经过 `peach.fanbox.normalize_fanbox_post`，边界见 `docs/REUSE.md`「必须复用的成熟实现」。
+- FANBOX 正文统一经过 `peach.fanbox.normalize_fanbox_post`，边界见 [docs/REUSE.md](REUSE.md)「必须复用的成熟实现」。
 - FANBOX Cookie 与 Gofile token 都是本机可选凭据，只进各自站点的请求头，不进 URL、证据、ledger 公开投影或浏览器 JSON；只允许公开 JSON，不解机器人质询、不执行网页脚本、不读付费内容。
 - Gofile 把 contents API 限给 Premium：`error-notPremium` 按套餐限制报告，不误报成 token 无效；没取得文件列表时保留分享页，不得声称已取得视频。
 - 同一篇 FANBOX 可含多个 Gofile 文件夹：作品级仍是一个来源合集，媒体保留文件夹 id 与正文标签并在详情队列内分段，不拆作品也不压平混排。
-- 自动追更用 APScheduler，只在 ledger writer 启动，频率存 `peach-data/state/follow-schedule.json`，默认每小时且启动后等满一个间隔，不要改成启动即抓；单实例、与手动检查互斥见 `docs/REUSE.md`「必须复用的成熟实现」，reader 只显示不可用状态。
+- 自动追更用 APScheduler，只在 ledger writer 启动，频率存 `peach-data/state/follow-schedule.json`，默认每小时且启动后等满一个间隔，不要改成启动即抓；单实例、与手动检查互斥见 [docs/REUSE.md](REUSE.md)「必须复用的成熟实现」，reader 只显示不可用状态。
 - 账本路径兼容和抽帧失败处理统一见 `.claude/skills/peach-cross-platform/SKILL.md` 与 `.claude/skills/peach-batch-jobs/SKILL.md`。
 
 ## Web 性能边界
@@ -170,4 +169,4 @@ CloudDrive 见 `docs/CLOUDDRIVE.md`，部署见 `docs/OPERATIONS.md`。
 
 重构时从活动目录删除的 deprecated 脚本与按日期文档，Git 历史仍可恢复。旧 `_SHARED_STATE` 与重构前的
 根仓库元数据备份在各机 `peach-data` 的 `state`／`archive` 下，只作恢复证据；位置以
-`docs/STATUS.md` 为准，Mac 的 `archive` 是指向外置盘的符号链接，盘不在时读不到不等于备份没了。
+[docs/STATUS.md](STATUS.md) 为准，Mac 的 `archive` 是指向外置盘的符号链接，盘不在时读不到不等于备份没了。

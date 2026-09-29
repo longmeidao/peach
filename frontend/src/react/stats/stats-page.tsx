@@ -308,7 +308,7 @@ export function StatsPage(props: StatsProps) {
   if (!data) {
     return (
       <Page>
-        <Note tone="error" title="读取失败">{stats.error ? errorMessage(stats.error) : '读取统计失败'}</Note>
+        <Note tone="error" title="馆藏统计读取失败">{stats.error ? errorMessage(stats.error) : '未取得统计数据，请刷新页面重试。'}</Note>
       </Page>
     );
   }

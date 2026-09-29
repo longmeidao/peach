@@ -11,9 +11,9 @@
 
 参考实现 amane 把这件事做成了 Feed：订阅若干 RSS/Atom，按源的间隔拉取，只从条目里解出番号，
 产出一条 by-number 的刮削任务，**不下载 enclosure、不写入媒体库**（设计判据见
-`docs/reference-snapshots/amane-feed.md`）。这个形状正合适：Peach 要的也只是番号。
+[docs/reference-snapshots/amane-feed.md](../reference-snapshots/amane-feed.md)）。这个形状正合适：Peach 要的也只是番号。
 
-来源这一侧先做了取证（`docs/SOURCING.md`「番号发现源（Feed）」）。结论是原生 RSS 在这个领域
+来源这一侧先做了取证（[docs/SOURCING.md](../SOURCING.md)「番号发现源（Feed）」）。结论是原生 RSS 在这个领域
 基本绝迹：FANZA、MGStage、一本道、カリビアンコム、Tokyo-Hot、AVBase、javtrailers 全部没有，
 javlibrary 与 RSSHub 公共实例挡在 Cloudflare 后面，JavBus 有人机验证。**能用的只有两类**：
 sukebei.nyaa.si 的原生 RSS（75 条里 50 条带番号），和 JavDB 演员页当伪 Feed 抓（40 条里 39 条）。
@@ -111,7 +111,7 @@ Peach 不要：这里的目标是「看见新作」，不是「读订阅」。�
   「新作 · 未入库」区块用与目录卡同一套形状，但点开去的是外站作品页，不是播放器。
 - 馆藏统计、整理、抽帧、资源同步、回收站的口径全部不变，因为它们看的表没变。
 - 用户能订阅的来源受现实限制：能用的只有 sukebei 的原生 RSS 与 JavDB 演员页伪 Feed 两类。
-  这个清单会随站点变化，判据（「条目里那串东西是不是真的番号」）写在 `docs/SOURCING.md`。
+  这个清单会随站点变化，判据（「条目里那串东西是不是真的番号」）写在 [docs/SOURCING.md](../SOURCING.md)。
 - 一个源接进来之前必须先看它的番号样本。DUGA 那种「RSS 很正规、番号是假的」的来源
   只有人看一眼才能判出来，没有自动判据。
 

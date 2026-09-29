@@ -5,9 +5,9 @@
 
 ## 背景
 
-`AGENTS.md` 与 `docs/HANDOFF.md` 是持续追加的文件。追加成本不对称：`AGENTS.md` 每轮对话都被
+`AGENTS.md` 与 [docs/HANDOFF.md](../HANDOFF.md) 是持续追加的文件。追加成本不对称：`AGENTS.md` 每轮对话都被
 完整载入并消耗预算，而其中大量条目（迁移流程、限流标定、取证协议）只在特定任务里才成立。
-条目越多，真正的硬门槛越容易被稀释。`docs/HANDOFF.md` 已达 215 行，同时混装长期规则、
+条目越多，真正的硬门槛越容易被稀释。[docs/HANDOFF.md](../HANDOFF.md) 已达 215 行，同时混装长期规则、
 一次性事故证据和按日期记录的批次说明，读者无法只取自己需要的一段。
 
 参考视频 `https://www.youtube.com/watch?v=e1snsuY4lTI`
@@ -33,7 +33,7 @@
 - push 与 pull 两种上下文模式的区分（常驻文件 vs 按 description 触发载入的 skill），见
   <https://blog.logrocket.com/context-engineering-for-ides-agents-md-agent-skills/> 与
   <https://chrisreddington.com/blog/building-your-agent-toolbox/>。
-- 本项目 `docs/HANDOFF.md`「重复错误复盘（2026-08-16）」的结论：反复犯的错根因是
+- 本项目 [docs/HANDOFF.md](../HANDOFF.md)「重复错误复盘（2026-08-16）」的结论：反复犯的错根因是
   「文字提醒没有变成执行门槛」。因此分层规范本身也必须带可执行检查，否则它会成为下一条
   被忽略的散文。
 
@@ -45,7 +45,7 @@
 | --- | --- | --- | --- |
 | L0 全局配置 | `~/.claude/CLAUDE.md`、`~/.codex/AGENTS.md` | 与仓库无关、每个任务都成立的身份与语言偏好 | ≤ 20 行 |
 | L1 项目入口 | `AGENTS.md` | 进入 Peach 必须先成立的边界、硬门槛、术语表与技能索引 | ≤ 90 行 |
-| L2 仓库文档 | `README.md`、`docs/**` | 事实、数字、历史证据与架构决策，被指向时才读 | 按主题分节；每轮必读的 `docs/HANDOFF.md`、`docs/STATUS.md` 另有预算 |
+| L2 仓库文档 | `README.md`、`docs/**` | 事实、数字、历史证据与架构决策，被指向时才读 | 按主题分节；每轮必读的 [docs/HANDOFF.md](../HANDOFF.md)、[docs/STATUS.md](../STATUS.md) 另有预算 |
 | L3 技能 | `.claude/skills/<name>/SKILL.md`、`~/.claude/skills/<name>/SKILL.md` | 某类任务开始时才需要的可执行流程 | 每个 ≤ 120 行 |
 
 ### 预算只能降不能升
@@ -63,9 +63,9 @@
 - 内部预算（`AGENTS.md` 90、`SKILL.md` 120、`description` 200）一律严于天花板，且只能降不能升。
   天花板管「绝不越过」，内部预算管「当前写作纪律」，两者不是一回事。
 
-2026-09-03 补充：行数不是可信的度量。`docs/STATUS.md` 当时只有 226 行却重 155 KB，最长一行
+2026-09-03 补充：行数不是可信的度量。[docs/STATUS.md](../STATUS.md) 当时只有 226 行却重 155 KB，最长一行
 一万三千多字符，行数预算完全没被触发。所以入口文件改按三条判：行数、字节数、单行字符数。
-当前值为 `AGENTS.md` 12 KB、`docs/HANDOFF.md` 24 KB、`docs/STATUS.md` 12 KB，单行上限 400 字符，
+当前值为 `AGENTS.md` 12 KB、[docs/HANDOFF.md](../HANDOFF.md) 24 KB、[docs/STATUS.md](../STATUS.md) 12 KB，单行上限 400 字符，
 天花板分别是 16 KB、32 KB、16 KB。字节预算的变更记录放在 `BYTE_BUDGET_CHANGES`，语义与行数预算
 完全一致：只能降不能升，上调要写明为什么下沉不了。字节按文件实际大小算，单行按字符算。
 
@@ -148,6 +148,6 @@
 不是假结论；唯一例外是多行内容的转义损坏（静默），它的核心判据留在入口。文件从 12.2 KB
 降到 10.0 KB，字节预算同步降为 11 KB、行数降为 88。
 
-2026-08-27 复核已清退 `docs/HANDOFF.md` 中会变化的外部测量、旧测试数字、模型能力说明，以及
-已由技能、测试或 `docs/STATUS.md` 承担的重复事实；长期文档从 259 行降到 157 行，预算同步降为
-180 行。运行态仍以 `docs/STATUS.md` 为单一真相位置。
+2026-08-27 复核已清退 [docs/HANDOFF.md](../HANDOFF.md) 中会变化的外部测量、旧测试数字、模型能力说明，以及
+已由技能、测试或 [docs/STATUS.md](../STATUS.md) 承担的重复事实；长期文档从 259 行降到 157 行，预算同步降为
+180 行。运行态仍以 [docs/STATUS.md](../STATUS.md) 为单一真相位置。

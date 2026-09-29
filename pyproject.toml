@@ -58,7 +58,11 @@ peach-tray = "peach.tray:main"
 
 [project.optional-dependencies]
 # psutil 给 `scripts/agent_worktree.py` 查工作树里的残留进程：当前目录、父进程、CPU 与内存。
-dev = ["filelock==4.0.1", "psutil==7.2.2"]
+dev = [
+    "filelock==4.0.1",
+    "psutil==7.2.2",
+    "seiso==0.2.0",
+]
 build = ["pyinstaller==6.22.3"]
 macos = ["pyobjc-framework-Cocoa==12.2.2; sys_platform == 'darwin'"]
 # numpy 本来就是 opencv 的传递依赖，这里显式钉住：`face_detect.decode` 直接 import 它

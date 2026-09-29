@@ -1139,6 +1139,7 @@ build = [
 dev = [
     { name = "filelock" },
     { name = "psutil" },
+    { name = "seiso" },
 ]
 macos = [
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin'" },
@@ -1176,6 +1177,7 @@ requires-dist = [
     { name = "pyobjc-framework-cocoa", marker = "sys_platform == 'darwin' and extra == 'macos'", specifier = "==12.2.2" },
     { name = "pystray", specifier = "==0.19.5" },
     { name = "resvg-py", specifier = "==0.5.0" },
+    { name = "seiso", marker = "extra == 'dev'", specifier = "==0.2.0" },
     { name = "socksio", specifier = "==1.0.0" },
     { name = "starlette", specifier = "==1.6.0" },
     { name = "tldextract", specifier = "==5.3.2" },
@@ -2053,6 +2055,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/bb/af/28e4758e087c6d3a3e691ecd67fd1304074b9bca4b5f1563ab6d1336a6a4/resvg_py-0.5.0-cp315-abi3.abi3t-win32.whl", hash = "sha256:f0c834262db96eac4d5767e1025c21efefa0ed0359bded8dfd4b79fc7549694f", size = 1204143, upload-time = "2026-08-24T19:43:09.706Z" },
     { url = "https://files.pythonhosted.org/packages/73/5c/5b0e68ce15bd87eaee64501427437f57bece008e15bf40dd759563f0038a/resvg_py-0.5.0-cp315-abi3.abi3t-win_amd64.whl", hash = "sha256:011111a4c3f46d409e989fe88ec783a3ffae1f3877092ab0351aaf2167fe399d", size = 1240349, upload-time = "2026-08-24T19:43:11.397Z" },
     { url = "https://files.pythonhosted.org/packages/62/e6/25b6616cebbce1412bb5fe8b037545f382b4da875bc614a97ff1ecd7aa28/resvg_py-0.5.0-cp315-abi3.abi3t-win_arm64.whl", hash = "sha256:66e5a7699f2b00024ed7e95ec53df05bb3da277ee5bc86f867d487e310e4d392", size = 1152399, upload-time = "2026-08-24T19:43:12.618Z" },
+]
+
+[[package]]
+name = "seiso"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/87/a1531177ed3047f2e63facb0977b47d4033eada15bac66e7018d71532cd6/seiso-0.2.0.tar.gz", hash = "sha256:94891476a0034db74dacdbd0f7d2924771dd2a19810f1a6a4a3c16d4c13b5ba5", size = 106337, upload-time = "2026-09-28T09:27:36.29Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4e/be/90efbd4c08f960f7fc4b9a70d63b6e8d764faaec92867edfdb053cdcf14d/seiso-0.2.0-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:69a644d2230a0658f42ed034d74c92c3e3ca9168d948c2fed6e1ba6aadb42b90", size = 2280076, upload-time = "2026-09-28T09:27:27.996Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/53/bc0d9f5d2f762a2a517c4fbc386542e9127826f180931e8b1ddf2087d163/seiso-0.2.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:b48cd4bb3cd92d462fa6c6a904f900e9f23bafb6982d543f76c39fdbe060ed00", size = 2164153, upload-time = "2026-09-28T09:27:30.264Z" },
+    { url = "https://files.pythonhosted.org/packages/9a/68/359c830ae02d4b8abf8059d34380592bf6ab6c56c43f06e5e8634c33cfd0/seiso-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:44aa7757892f4b937429249dcf733ec01398ebab355b3ea690171f15163e3a34", size = 2252930, upload-time = "2026-09-28T09:27:31.893Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/b1/35b23ea87468d4bbdd1e7e6110839e3660eea911396d104543f84938ab02/seiso-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:08c8c3dd3a3f495c1617e021ac4560df5803897222897c813c73fa452d244b1d", size = 2390934, upload-time = "2026-09-28T09:27:33.25Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/58/03f3a67b7385e5c39feaaa01b91902b91d7d84a3702ca071c0e754e1f449/seiso-0.2.0-py3-none-win_amd64.whl", hash = "sha256:972b734ce9ac6f728af71d68ee264718df66fe7b22274521d4f204ab49ad1e31", size = 2282094, upload-time = "2026-09-28T09:27:34.859Z" },
 ]
 
 [[package]]

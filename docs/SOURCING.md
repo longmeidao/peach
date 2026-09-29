@@ -404,7 +404,7 @@ javdb 判的是「这个出口发得太快」，不是「你是不是机器人�
   而一整轮几百次请求能跑完、打到一定量才被封，是按出口 IP 计配额的形状。
 - **未取得**：封期之内两种 transport 的对照。要取得就得先把出口 IP 打进封锁，这一条不做，所以「被封之后换
   指纹能不能立刻通」仍然未知。脚本与原始结果在仓库外的 `attic/evidence/20260922-javdb-transport-fingerprint/`；
-  对照起因见 `docs/reference-snapshots/amane-crawlers-poc.md`。
+  对照起因见 [docs/reference-snapshots/amane-crawlers-poc.md](reference-snapshots/amane-crawlers-poc.md)。
 
 **配额和机器人判定是两件事，处理不同。** Cloudflare 与验证墙判的是「你是不是机器人」，绕过它要伪装成另一种
 客户端，一律放弃。javdb 这道判的是出口速率，换节点只是换一条线路重新计配额，没有伪装，所以换出口可以。
@@ -647,7 +647,7 @@ Instagram 的独立用户登录会话未取得，自动适配器不进正式依�
 - 候选按实测像素判定（`peach.images.classify`）：短边 < 128 拒绝；头像另按长边 ≥ 500、短边 ≥ 300 判，竖构图
   人像套用方图门槛会拒掉最好的来源。只有 URL、没有实测尺寸的不算候选。
 - **「长边 ≥ 500」是源头门槛，不是显示门槛。** 它拦的是缩略图级来源。拿它当显示门槛，会把一张脸宽 208px 的
-  382×382 挡在门外，让在位那张脸只有 55px 的封面裁片继续占着位子。显示侧的尺寸约定见 `docs/FRONTEND.md`。
+  382×382 挡在门外，让在位那张脸只有 55px 的封面裁片继续占着位子。显示侧的尺寸约定见 [docs/FRONTEND.md](FRONTEND.md)。
 - 可用来源：r18.dev、av-wiki.net、Gfriends。javlibrary、missav、xslist 被 Cloudflare 拦，njav 有验证墙，jav321 没有
   独立的女优字段。被 Cloudflare 拦的站一律放弃，不绕过机器人检测。javdb.com 抓得到，但按出口 IP 限速，见
   「javdb、AVBase 与 JavBus 的限流与封禁」。
@@ -1028,7 +1028,7 @@ AV 厂牌 Logo 的来源是厂牌自己的社交账号头像：社交头像天�
   写进复核件：`きらきらワイフ` 撞上的 `kira*kira` 是另一家真实厂牌。
 - **名录对不上账本，多数是账本里没有那家，不是缺日文别名。** 按子串加编辑距离放宽重算也只翻出假配对。MGStage 是素人／企划
   平台，没对上的多是 FANZA 系（MOODYZ、S1 等），要另找入口。补日文别名能抬高同一份名录的覆盖面，待办见
-  `docs/PRODUCT_BACKLOG.md`「待执行的操作」第 24 条。
+  [docs/PRODUCT_BACKLOG.md](PRODUCT_BACKLOG.md)「待执行的操作」第 24 条。
 
 **展会名录 jae.tokyo**（人工指定来源，Japan Adult Expo 的参展厂牌名录）：三届各带一套片商自己交的 logo，页面结构每届不同。
 
@@ -1122,7 +1122,7 @@ AV 厂牌 Logo 的来源是厂牌自己的社交账号头像：社交头像天�
 
 - 厂牌标识按位置分 icon／logo 两份，但只在真的有两份时才分岔：`<safe>.icon.img`、`<safe>.logo.img` 都回落到 `<safe>.img`。
   绝大多数厂牌两个位置拿到的是同一张。
-- 存盘后缀说明不了清晰度：有的厂牌 `icon` 只有几十像素，裸文件却有几百像素。取图位与 `variant` 参数的页面约定见 `docs/FRONTEND.md`。
+- 存盘后缀说明不了清晰度：有的厂牌 `icon` 只有几十像素，裸文件却有几百像素。取图位与 `variant` 参数的页面约定见 [docs/FRONTEND.md](FRONTEND.md)。
 
 ### 来源顺序（`studio_icons.icon_row`）
 

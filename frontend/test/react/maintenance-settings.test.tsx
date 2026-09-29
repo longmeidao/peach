@@ -151,7 +151,7 @@ describe('安装教程', () => {
     const reopenTutorial = vi.fn(async () => {});
     const receipt = vi.fn();
     const host = await mount(<TutorialSettings receipt={receipt} reopenTutorial={reopenTutorial} />);
-    expect(host.textContent).toContain('跳过的项目会重新出现');
+    expect(host.textContent).toContain('重新显示已关闭或跳过的安装步骤');
     // 主动作：BoardUI Button 的默认 variant 就是 primary，这里不该被降成 secondary。
     expect(buttonNamed('重新打开教程', host)?.className).toContain('bg-button-primary');
     await click(buttonNamed('重新打开教程', host));

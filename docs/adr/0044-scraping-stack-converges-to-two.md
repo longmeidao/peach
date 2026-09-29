@@ -34,7 +34,7 @@ Javinizer-Go 那一路还要求本机装一份特定大版本的二进制并单�
   amane 桥前必须在同一批番号上取到三条证据：桥给出的字段集合覆盖自写解析器当前给出的字段；命中率
   不低于自写（按 `metadata-source-health-*.csv` 的 `succeeded`／`attempted`）；被限流或封禁时的
   表现不差于自写（冷却写回同一份 `scraping_access` 记录、鉴权墙仍分到 `auth` 一档）。三条齐了写进
-  `docs/SOURCING.md` 再删代码；缺一条写「未取得」，解析器留着。
+  [docs/SOURCING.md](../SOURCING.md) 再删代码；缺一条写「未取得」，解析器留着。
 - **封面层独立于资料来源**：`jav_cover_fetch`、`best_cover`、`verified_cover` 与它们的图源汇总不随
   资料链变化；`sources/metadata/javinizer-go/**` 下的旧快照只作离线证据继续被读取（`cover_url`、
   `content_id`、厂牌），不再有任何一条路往里写 Javinizer 形状的新快照——`scrape_codes` 写进同一目录
@@ -54,7 +54,7 @@ Javinizer-Go 那一路还要求本机装一份特定大版本的二进制并单�
 ## 后果
 
 - 影响面：`src/peach/metadata.py`、`metadata_policy.py`、`metadata_routes.py`、`metadata_seesaa.py`、
-  `scripts/scrape_codes.py`、对应测试与 `docs/REUSE.md`、`docs/SOURCING.md`。设置页没有 Javinizer-Go
+  `scripts/scrape_codes.py`、对应测试与 [docs/REUSE.md](../REUSE.md)、[docs/SOURCING.md](../SOURCING.md)。设置页没有 Javinizer-Go
   的卡片或 API，前端无改动。
 - ADR-0006 把 Javinizer-Go 定为默认查询适配器、把 `REGISTERED_SOURCES` 定为登记位，ADR-0024 的复用表
   把它列为番号元数据的正式基础；两处由本 ADR 取代，登记位改为 `SOURCE_SPECS`，链的成员由
@@ -112,6 +112,6 @@ JavArchive 把搜索命中的每一条转存各交一份；`Session.get` 可以�
 没找到是可重试的 `incomplete_search`，按 `not_found` 冻成定论就违背「未取得不冻结」。provenance 仍是 `sougouwiki`，
 `SOURCE_LABELS`、`PROVIDER_NAMES` 补上这一行。payload 的差别只有契约统一带的 `maker`、`label`、`series`、`director` 空串键、
 `runtime` 空值与 `cover_urls`，没给标题或日期列的表按空串交出；冲突判定比较标题、出演与日期时，表上没有那一列与那一格为空同样按空串比。
-迁移状态表在 `docs/SOURCING.md`「站点解析器契约」。
+迁移状态表在 [docs/SOURCING.md](../SOURCING.md)「站点解析器契约」。
 
 归属判据由 ADR-0048 修订。 <!-- copy-lint-disable-line -->

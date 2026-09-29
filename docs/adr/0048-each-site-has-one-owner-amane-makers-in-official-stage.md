@@ -92,7 +92,7 @@ giga 与 kin8 留在桥的站表里（`tools/amane-bridge/bridge.py` 的 `SITES`
 ## 后果
 
 - 影响面：`tools/amane-bridge/bridge.py`、`src/peach/metadata_amane.py`、`metadata_routes.py`、`metadata_policy.py`、
-  `library_processing.py`、`sources/base.py`、`scripts/scrape_codes.py`，对应测试与 `docs/SOURCING.md`、`docs/REUSE.md`。
+  `library_processing.py`、`sources/base.py`、`scripts/scrape_codes.py`，对应测试与 [docs/SOURCING.md](../SOURCING.md)、[docs/REUSE.md](../REUSE.md)。
   采集设置页从 `metadata_amane.describe` 读站名，前端无改动。
 - `POLICY_VERSION` 升为 `metadata-source-policy-v5`；`SOURCE_SPECS` 多了四个来源名，`sources_fingerprint` 随之变化，
   此前记下的「没有」按新指纹作废，下一轮重问一次。

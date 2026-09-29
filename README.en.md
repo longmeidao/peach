@@ -63,7 +63,7 @@ Want to look around before installing? The [live demo](https://demo.peach.video)
 - **Performer pages**: aliases, birthday and measurements, social accounts and JavDB and MISSAV links on one page, above every video of hers in your library and her photos. You can pick an avatar by drawing a box on any cover.
 - **Filling in details**: by video code, Peach fills in titles, performers, studios and high-resolution covers from studio sites, DMM, JavBus, JavDB and others. It only fills empty fields and never overwrites your edits.
 - **Playback**: play in the browser and pick up where you left off. Like, rate, save for later, add to a playlist, or "log a climax".
-- **New releases**: turn on a subscription on a performer page, or subscribe by name in follow management (she does not need to be in your library yet), and Peach checks for her new titles regularly. Creators can be followed across 11 sites such as FANBOX, Patreon and Kemono, and the same post on different sites shows up as one card.
+- **New releases**: subscribe on a performer page or by name in follow management, including performers not yet in your library. Peach checks for new titles regularly. Follow creators across sites such as FANBOX, Patreon and Kemono; the same work on different sites appears as one card.
 - **Statistics**: which drive holds what, how much you have watched and which tags dominate, on one page.
 - **Appearance**: light or dark, accent color and sidebar order are all yours to set.
 - **Any screen**: works in the browser on desktop, tablet and phone.
@@ -126,7 +126,7 @@ Open an [issue](https://github.com/longmeidao/peach/issues) with the version, wh
 
 Using Peach: [Windows test build](docs/TESTING_DESKTOP.md) · [Operations](docs/OPERATIONS.md) · [Sourcing](docs/SOURCING.md) · [Cloud drive mounts](docs/CLOUDDRIVE.md) · [Changelog](CHANGELOG.md)
 
-Contributing: [Development guide](AGENTS.md) · [Architecture](docs/ARCHITECTURE.md) · [Testing and dependencies](docs/TESTING.md) · [Frontend](docs/FRONTEND.md) · [Reuse inventory](docs/REUSE.md) · [README maintenance](docs/README_MAINTENANCE.md). Verify changes with Windows `& .\scripts\test.ps1` or macOS/Linux `./scripts/test.sh`.
+Contributing: [Development guide](AGENTS.md) · [Architecture](docs/ARCHITECTURE.md) · [Testing and dependencies](docs/TESTING.md) · [Frontend](docs/FRONTEND.md) · [Reuse inventory](docs/REUSE.md) · [README maintenance](docs/README_MAINTENANCE.md) · [Documentation and UI copy](docs/WRITING.md). Verify changes with Windows `& .\scripts\test.ps1` or macOS/Linux `./scripts/test.sh`.
 
 ## Related projects
 
@@ -139,4 +139,4 @@ The full reuse and credits list is in the [reuse inventory](docs/REUSE.md).
 
 ## License
 
-[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao. Bundled third-party frontend files keep their own licenses; see [web/vendor](web/vendor/).
+[AGPL-3.0-or-later](LICENSE) · Copyright (C) 2026 longmeidao. Third-party frontend files keep their own licenses. The [dependency manifest](package.json) records versions, and the [vendor script](scripts/vendor_web_dependencies.mjs) records file and license locations in `web/vendor/`.

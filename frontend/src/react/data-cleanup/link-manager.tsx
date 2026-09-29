@@ -195,7 +195,7 @@ export function LinkManager() {
   const startError = check.start.error ?? prune.start.error;
   let result: ReactNode = null;
   if (pruned?.status === 'failed') {
-    result = <Note tone="error" title="任务失败">{pruned.error || '任务失败'}</Note>;
+    result = <Note tone="error" title="链接清理未完成">{pruned.error || '请查看任务记录，核对已处理的链接。'}</Note>;
   } else if (pruned) {
     result = <Note tone="success" title="完成">{pruneText(pruned)}</Note>;
   } else if (startError) {
@@ -253,7 +253,7 @@ export function LinkManager() {
       }>
         <FieldsetTitle id="link-manager-box" gap="small">站外链接</FieldsetTitle>
         {stats.isError
-          ? <Note tone="error" title="读取失败">{errorMessage(stats.error)}</Note>
+          ? <Note tone="error" title="链接统计读取失败">{errorMessage(stats.error)}</Note>
           : info
             ? <>
                 <div className="link-stat-grid mt-4 gap-x-8 gap-y-3">

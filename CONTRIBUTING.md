@@ -12,7 +12,7 @@ Peach 是单人自托管应用，由一个人维护。欢迎提 Issue 和 PR。
 ## 开 Issue
 
 - **报缺陷**：写清运行平台（Windows / macOS / Linux）、Python 版本、复现步骤、期望结果和实际结果，并附上 `/healthz` 的返回。贴日志前先去掉路径、局域网地址和凭据。
-- **提需求**：写清要解决什么问题、在什么场景下用。已知的开放需求在 [`docs/PRODUCT_BACKLOG.md`](docs/PRODUCT_BACKLOG.md)，设计边界在 [`docs/adr/`](docs/adr/)。ADR 明确排除的方向（多用户、云托管、微服务、PostgreSQL）需要先讨论值不值得新立一份 ADR。
+- **提需求**：写清问题和使用场景。开放需求见 [待办](docs/PRODUCT_BACKLOG.md)，设计边界见 [总体架构](docs/ARCHITECTURE.md#明确不做)。涉及多用户、云托管、微服务或 PostgreSQL 的提案，先讨论是否需要新增 ADR。
 - **安全问题**：不要开公开 issue，按 [`SECURITY.md`](SECURITY.md) 私下报告。
 
 ## 提 PR 之前
@@ -53,6 +53,7 @@ Peach 是单人自托管应用，由一个人维护。欢迎提 Issue 和 PR。
 
 ## 文案
 
+- 文档职责、事实归属和界面提示遵循 [文档与界面文案](docs/WRITING.md)。正式测试入口执行 seiso 稳定规则；预览规则供人工复核。
 - 文档、注释、界面文字和测试名一律用中文；代码标识、命令、协议名和库名保留英文。
 - 只写现在的状态，不写「改动前后」的对比，也不保留被否掉的做法。`tests/test_copy_final_state.py` 会检查这一条；确实需要记录的事故原文，逐行加 `copy-lint-disable-line` 放行。
 - 不要提交媒体、数据库、凭据、日志、构建缓存和个人信息（局域网地址、主机名、账号名、个人目录）。

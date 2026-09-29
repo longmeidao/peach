@@ -2,13 +2,15 @@
 
 这是实现查找表：每项能力由哪个现成实现承担、Peach 自己只负责哪一段。新增、恢复或重写代码前，按 `.claude/skills/peach-reuse-first/SKILL.md` 先查本文件、当前树、Git 历史和成熟外部实现；旧文件名不存在不等于能力缺失，继任关系见「已删除旧实现与当前继任者」。
 
+安装依赖的精确版本由 [Python 清单](../pyproject.toml)、[Python 锁文件](../uv.lock)、[前端清单](../frontend/package.json) 和 [静态依赖清单](../package.json) 维护。本页记录用途、许可证与取舍；取证版本和提交号只代表对应证据。
+
 ## Board 界面与数值设置
 
-页面控件与交互由哪些共用件承担；Board 的上游证据登记在 `BOARD_UI.md`。
+页面控件与交互由哪些共用件承担；Board 的上游证据登记在 [BoardUI 适配](BOARD_UI.md)。
 
 - 作者别名管理复用逐字复制进 `frontend/src/react/boardui/` 的 BoardUI `Table`、关注列表共用的 `DataTableFrame`、`AuthorAvatar` 和既有别名 API；公开结构与固定资源见 `BOARD_UI.md`。待合并与已保存两张表都只有几行，排序、分页用不上，不接 `@tanstack/react-table`；合并范围是这一屏自己的勾选状态，所以表里的勾写 `slot={null}`，不走 React Aria Table 自己的行选择。扫描与采集那三种方式收在一颗主键加一个下拉里：触发键用 BoardUI `Button`，面板用已在用的 React Aria `Popover`，行的外观取注册表 `select` 条目带来的 `menu-styles.ts`，无新增依赖（见 `frontend/src/react/boardui/ORIGIN.md`）。
 
-- 关注列表分页复用 `pagination.ts` 的页码范围与边界裁剪（React 与遗留层共用这一份纯函数）；默认视图按创作者组，表格按来源。表格视图新引入 `@tanstack/react-table` 8.21.3（MIT，https://github.com/TanStack/table ）：列定义、排序状态、行选择与分页交给它，行的身份是来源 ID（`getRowId`），排序与分页跑在全集上、页是最后一刀。归属与时机按 ADR-0031「前端基础库」，是这条待办点名要引入的那一个库，不是顺手加的。两种视图共用同一个来源 ID 集合，批量操作发的是整个集合而不是屏幕上这一页。官方分页与 Table 源码的固定哈希见 `BOARD_UI.md`。`frontend/test/react/follow-manage.test.tsx` 验了 25 位创作者、跨页跨视图勾选与批量写。
+- 关注列表分页复用 `pagination.ts` 的页码范围与边界裁剪（React 与遗留层共用这一份纯函数）；默认视图按创作者组，表格按来源。表格视图新引入 `@tanstack/react-table`（MIT，https://github.com/TanStack/table ）：列定义、排序状态、行选择与分页交给它，行的身份是来源 ID（`getRowId`），排序与分页跑在全集上、页是最后一刀。归属与时机按 ADR-0031「前端基础库」，是这条待办点名要引入的那一个库，不是顺手加的。两种视图共用同一个来源 ID 集合，批量操作发的是整个集合而不是屏幕上这一页。官方分页与 Table 源码的固定哈希见 `BOARD_UI.md`。`frontend/test/react/follow-manage.test.tsx` 验了 25 位创作者、跨页跨视图勾选与批量写。
 
 - 窄屏筛选框共用 `filterScrollState()`、现有滚动帧调度和原生 sticky；同一方向累计 8px 再切换吸顶，保留文档占位与键盘可达性，无新增依赖。
 
@@ -28,7 +30,7 @@
 - 后台任务复用 `watchJob`、`followJobProgress` 默认面板及 `jobActivityHtml` 的真实计数／未知总量显示；关注、来源扫描、链接检查和扫描采集共用渲染。业务保留启动、终态回执和结果面板，不新增轮询循环。
 - 图标按钮统一清除浏览器内边距并居中 SVG，不覆盖业务显隐。Remix Icon 由 `vendor_web_dependencies.mjs` 生成设置导航 symbol；随机按钮保留原有双路径动画。
 - 统计页与口味页的柱状、径向、雷达图复用 EvilCharts Recharts 分支（MIT，源码逐字复制进 `frontend/src/react/evilcharts/`，依赖 `recharts`、`motion`、`clsx`），单系列柱状图统一走 `frontend/src/react/charts/bar-card.tsx` 的 `BarCard`，悬停浮层统一走 `charts/chart-tip.tsx` 的 `ChartTip`。星期 × 小时与每日热力图是 `charts/heat-card.tsx` 的 `ActivityHeat`，统计页播放时间与口味页浏览活跃共用；EvilCharts 没有这类图（ADR-0076）。
-- `frontend/src/react/taste/taste.ts` 使用 d3-sankey 0.12.3（BSD-3-Clause；类型包 0.12.5）计算来源网站到创作者线索的流向。布局依赖不读取浏览历史；Peach 提供去重聚合值并负责隐私边界。分发许可随 `web/vendor/d3-LICENSE.txt` 保留。
+- `frontend/src/react/taste/taste.ts` 使用 d3-sankey（BSD-3-Clause）及其类型包计算来源网站到创作者线索的流向。布局依赖不读取浏览历史；Peach 提供去重聚合值并负责隐私边界。分发许可随 `web/vendor/d3-LICENSE.txt` 保留。
 
 复核复用 Checkbox、Button、Badge、Select 与 `/api/review/decision`，默认勾选并沿用馆藏页 Shift 连选语义；支持跨组通过／拒绝与无歧义的共同来源选择。按候选数量、来源组合或字段分组，每项仅出现一次，切组保留选择；成功移出、失败保留，页面离开后停止后续提交。整页在 `frontend/src/react/review/`，一条队列一个 `queryKey`，判定后改缓存不重取；完成结果复用成功 Note。身份候选复用创作者页、作品详情与 revealSource 核对样本；来源图片和缺图占位共用 220px 预览区，加载失败保留占位。样本读取支持无缩略图作品，回收站不参与。
 
@@ -39,13 +41,13 @@
 - 独立包卸载复用正常托盘退出和 Windows PowerShell 助手；计划限制程序标记、数据直属目录、媒体不重叠，助手拒绝目录链接。助手会退出仍从程序目录运行的进程并重试删除；完全卸载只把 `config.toml.<说明>-<日期>-<时刻>` 视为 Peach 写的设置备份，手工复制的 `config.toml.bak` 保留。临时程序、被占用文件、历史设置备份、数据、媒体与无关文件组成的真实输入验证只删除计划内容和整个解压程序目录。源码树仅提供手动卸载说明。
 - 扫描与采集统一挂在数据管理；首页进度 Banner 跳转同一入口。默认排序与方向使用浏览偏好，显式 URL 优先。
 
-目录页进度横幅与数据管理卡片共用 `frontend/src/react/library-processing/` 那一份读取，读同一个 `LIBRARY_PROCESSING_KEY`，轮询由 TanStack Query 合成一份；启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败跳转数据管理；数据管理持续读取阶段与真实计数。Geist Banner 取证与 Peach 差异见 `docs/reference-snapshots/vercel-geist-library-banner.md`。
+目录页进度横幅与数据管理卡片共用 `frontend/src/react/library-processing/` 那一份读取，读同一个 `LIBRARY_PROCESSING_KEY`，轮询由 TanStack Query 合成一份；启动只提交一次，状态查询接续托盘首次处理。首页在完成后收起，失败跳转数据管理；数据管理持续读取阶段与真实计数。Geist Banner 取证与 Peach 差异见 [docs/reference-snapshots/vercel-geist-library-banner.md](reference-snapshots/vercel-geist-library-banner.md)。
 
 ## 独立测试包在线更新
 
-- 自动更新设置复用 APScheduler 3.11.3（MIT，项目已有依赖，Python 3.12+ 与 Windows/macOS）、共享 HTTPX 发行查询、filelock 与原子 JSON 写入，安装继续走 `standalone_update`。按 [interval trigger](https://apscheduler.readthedocs.io/en/3.x/modules/triggers/interval.html) 每分钟检查是否到期；本机持久时间与文件锁协调多个服务，关闭、6/24/168 小时间隔与源码下载限制由 Peach 管理。默认关闭，下载仅准备安装，重启仍需确认；没有新增依赖或安装框架。设置保存在 state 目录的 `automatic-updates.json`。
+- 自动更新设置复用 APScheduler（MIT，项目已有依赖，Python 3.12+ 与 Windows/macOS）、共享 HTTPX 发行查询、filelock 与原子 JSON 写入，安装继续走 `standalone_update`。按 [interval trigger](https://apscheduler.readthedocs.io/en/3.x/modules/triggers/interval.html) 每分钟检查是否到期；本机持久时间与文件锁协调多个服务，关闭、6/24/168 小时间隔与源码下载限制由 Peach 管理。默认关闭，下载仅准备安装，重启仍需确认；没有新增依赖或安装框架。设置保存在 state 目录的 `automatic-updates.json`。
 
-- 版本与资产信息复用 GitHub Releases REST API，测试通道包含预发布版本；查询复用项目 HTTPX 0.28.1，下载用其流式读取，ZIP 解压使用 Python 3.12+ 标准库，互斥复用 FileLock。没有新增依赖。只读查询已对真实 Release 验过：只有发布记录里已上传的完整独立包才进入更新，查询不下载也不安装。
+- 版本与资产信息复用 GitHub Releases REST API，测试通道包含预发布版本；查询复用项目 HTTPX，下载用其流式读取，ZIP 解压使用 Python 3.12+ 标准库，互斥复用 FileLock。没有新增依赖。只读查询已对真实 Release 验过：只有发布记录里已上传的完整独立包才进入更新，查询不下载也不安装。
 - Peach 维护安装策略与进度：下载校验后在程序同卷暂存，用户确认重启，复制出来的包内助手等待原托盘退出，再切换完整目录；失败保留或恢复旧目录。配置、数据库与媒体不作为更新包内容写入。
 - 已核对 [Velopack Windows 文档](https://docs.velopack.io/packaging/operating-systems/windows) 和 [WinSparkle 文档](https://winsparkle.org/)：前者要求其安装目录与包格式，后者要求 appcast 并使用原生更新界面；现有 GitHub 产物为 PyInstaller ZIP，进度在 Web 显示，因此复用现有托盘进程与目录替换协议，未引入额外安装框架。
 - Web 复用 Fieldset、Progress、confirmModal；状态由 `standalone-update.json` 保存。下载按字节计量，解压按文件数计量，替换使用阶段进度；服务重启期间保留等待状态，恢复连接后核对版本。
@@ -63,14 +65,14 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
 - 外部项目不适合作为运行时依赖，但其公开数据模型或算法明显更成熟时，固定 revision 后作为参考
   实现；许可证不允许派生或来源不稳定时只作行为证据，不复制代码。
 
-- Python 安装与构建复用 [uv](https://github.com/astral-sh/uv)（`pyproject.toml` 只设下限 `>=0.12.13`，工具版本不进依赖图）和官方 setup-uv 10.0.1，Astral 持续维护，许可证分别为 MIT/Apache-2.0 与 MIT。
+- Python 安装与构建复用 [uv](https://github.com/astral-sh/uv)（`pyproject.toml` 只设下限 `>=0.12.13`，工具版本不进依赖图）和官方 setup-uv（版本见 [测试工作流](../.github/workflows/test.yml)），Astral 持续维护，许可证分别为 MIT/Apache-2.0 与 MIT。
   使用 uv 项目接口、`uv.lock` 和 `uv sync --locked`；Dependabot 使用官方 `uv` 生态维护锁文件。
   开发与构建在隔离工作树创建环境，生产 venv 不参与精确同步。直接依赖精确固定，传递依赖由锁文件复现；动态项目版本无需修改锁文件。
   测试数据库复用当前树与 Git 历史中的 `tests/support/ledger.py`，迁移生成模板后复制独立临时库；真实迁移测试仍执行迁移。重试测试复用已有 sleeper 注入点。
   Windows 临时库 POC：五次迁移 1.552 秒，五次模板复制 0.006 秒，完整 schema 一致。
   CI 复用 GitHub Actions 独立 runner 分片与现有 unittest 入口；Peach 仅维护影响域策略，不引入并发测试框架。验证记录与最小安装规则见 `TESTING.md`。
 
-- 访问密码复用 Python 3.14 的 [hashlib.scrypt](https://docs.python.org/3.14/library/hashlib.html) 与 OpenSSL，浏览器会话复用 [ItsDangerous 2.2.0](https://itsdangerous.palletsprojects.com/en/stable/)（Pallets 维护、BSD-3-Clause、Python 3.8+、纯 Python、wheel 16 KB、无传递依赖）；本机原子配置写入复用 tempfile/os.replace，并将已有 filelock 3.32.4 纳入运行依赖。当前树和 Git 的认证入口已有内部口令、三种拒绝响应和本机配置守卫，继续复用。Starlette SessionMiddleware 采用统一时长并随响应更新会话，不满足每台设备选择固定截止时间的要求；直接使用同源签名库，由 Peach 维护可选密码、截止时间与撤销策略。临时文件 POC 的密码验证、签名验证和篡改拒绝通过，耗时 0.153 秒；真实凭据未读取。新增依赖不包含账户体系或数据库迁移。
+- 访问密码复用 Python 3.14 的 [hashlib.scrypt](https://docs.python.org/3.14/library/hashlib.html) 与 OpenSSL，浏览器会话复用 [ItsDangerous](https://itsdangerous.palletsprojects.com/en/stable/)（Pallets 维护、BSD-3-Clause、Python 3.8+、纯 Python、wheel 16 KB、无传递依赖）；本机原子配置写入复用 tempfile/os.replace，并将已有 filelock 纳入运行依赖。当前树和 Git 的认证入口已有内部口令、三种拒绝响应和本机配置守卫，继续复用。Starlette SessionMiddleware 采用统一时长并随响应更新会话，不满足每台设备选择固定截止时间的要求；直接使用同源签名库，由 Peach 维护可选密码、截止时间与撤销策略。临时文件 POC 的密码验证、签名验证和篡改拒绝通过，耗时 0.153 秒；真实凭据未读取。新增依赖不包含账户体系或数据库迁移。
 - Cloudflare Quick Tunnel 复用官方 `cloudflared`（Apache-2.0）而不在 Peach 内实现隧道协议。源码环境只管理 PATH/环境变量中的进程；Windows 独立包旁路文件固定为 `2026.9.0`，资产、下载地址和 SHA-256 记录在 `scripts/cloudflared-windows.json`，由 `fetch_cloudflared.ps1` 与构建脚本双重校验。Quick Tunnel 的 URL 申请和边缘连接是两个阶段，Peach 使用官方 `--pidfile`（首次成功连接后才写入）作为就绪判据；未取得连接不向页面宣称可用。源码 HTTPS origin 使用项目 CA，独立包使用回环 HTTP，并由当前进程持有的随机 URL 参与写请求来源校验。
 
 - README 交付检查复用系统 Git 的 `diff --no-renames -z` 和 `interpret-trailers --parse`，
@@ -94,7 +96,7 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   查询回退不能承担身份确认；所有响应按原始查询检查，MGStage 官方详情路径可佐证展示编号别名。
   外部适配器负责取值，不采用其首条搜索命中作为 ledger 身份断言。
 
-- Seesaa 作品表复用 HTTPX 0.28.1（BSD-3-Clause）、Beautiful Soup 4.15.0（MIT）及现有
+- Seesaa 作品表复用 HTTPX（BSD-3-Clause）、Beautiful Soup 4.15.0（MIT）及现有
   `HostLimiter`、番号规范化、字段候选和快照协议；不新增依赖，沿用 Python 3.12+ 与 Windows/macOS。
   2026-09-06 检查 Javinizer-Go `d9724f239d7e127afcb747fa8ce4358685912f50`（MIT）及 MetaTube
   `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）的来源目录，均无 Seesaa 适配器；
@@ -120,8 +122,10 @@ JAV 默认封面（官方封面／预览图）与默认大小（大图／小图�
   女优页头（ADR-0069）只读这张表：`performer_header` 出五项与别名分组，別名栏的渠道注记从 `raw_json`
   原文里由 `minnano_av.name_entries` 拆，拆名字复用 `sources.seesaa.split_names`，不另存。
 
+文档检查复用 seiso（MIT），由开发依赖与锁文件固定；[文案门槛](../tests/test_copy_final_state.py) 调用稳定规则。文件分类和第三方原文边界见 [seiso 配置](../seiso.toml)，表达与人工复核见 [文档与界面文案](WRITING.md)。Peach 不自建 Markdown 文档职责解析器。
+
 测试与集成复用 `test_runner.py`、`agent_worktree.py`；进程互斥采用开发依赖
-`filelock==3.32.4` 的 `FileLock`（[官方用法](https://py-filelock.readthedocs.io/en/stable/tutorials.html)）。
+`filelock` 的 `FileLock`（[官方用法](https://py-filelock.readthedocs.io/en/stable/tutorials.html)）。
 跨进程占锁与释放由临时 Git 仓库回归验证；代码、环境和范围记录属于 Peach 的集成约束。
 ### 播放、身份与控件实证
 
@@ -154,16 +158,16 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - 删除失效链接与资源同步的执行阶段复用 `BackgroundJob.start_result` 保存终态回执；刷新只查状态，写入请求不自动重放，原有确认与检查结果过期门槛保持有效。
 - 关注进度复用 Fieldset 与 Progress；完成时保留内容取数，按作者检查复用 `sources` 范围参数，报错作者复用现有身份解析。无新依赖；参考取证见 `reference-snapshots/vercel-geist-note-progress-switch-analytics.md`。
 
-- 关注检查、来源查找和口味刷新复用 `jobs.BackgroundJob`，浏览器状态跟进放在 `frontend/src/jobs.ts`；不新增队列或调度依赖。HTTP 继续使用固定的 HTTPX 0.28.1（BSD-3-Clause）和 curl_cffi 0.16.2（MIT），支持现有 Python 3.12+ 与 Windows/macOS 打包。[HTTPX 原生重试](https://www.python-httpx.org/advanced/transports/)只覆盖连接失败，无法统一两个 transport 的读超时、临时 HTTP 状态与页面进度，因此由现有连接器负责 GET 重试策略。截图中的 TLS 握手超时作为隔离 transport 输入，验证第 5 次成功、耗尽、403 单次终止和 POST 不重放；不新增依赖体积。任务状态保存在服务进程，浏览器刷新后通过读接口恢复；服务重启不自动重放任务。
+- 关注检查、来源查找和口味刷新复用 `jobs.BackgroundJob`，浏览器状态跟进放在 `frontend/src/jobs.ts`；不新增队列或调度依赖。HTTP 使用 HTTPX（BSD-3-Clause）和 curl_cffi（MIT），版本与 Python 要求见 [依赖声明](../pyproject.toml)，解析结果见 [锁文件](../uv.lock)；支持 Windows/macOS 打包。[HTTPX 原生重试](https://www.python-httpx.org/advanced/transports/)只覆盖连接失败，无法统一两个 transport 的读超时、临时 HTTP 状态与页面进度，因此由现有连接器负责 GET 重试策略。截图中的 TLS 握手超时作为隔离 transport 输入，验证第 5 次成功、耗尽、403 单次终止和 POST 不重放；不新增依赖体积。任务状态保存在服务进程，浏览器刷新后通过读接口恢复；服务重启不自动重放任务。
 
-- 标签发布复用系统 Git、GitHub CLI 2.100.0（MIT）和 [Actions runs REST API](https://docs.github.com/en/rest/actions/workflow-runs)，不新增 Python 依赖；`release_tag.py` 只实现版本、主线归属、同提交最新 CI 与不可覆盖策略。Windows Python 3.14 使用提交 `45168dd` 的真实成功 Test 记录完成只读 POC；失败/运行中/其它分支与 master 并发推进用隔离测试拒绝。工作流仍复用既有 Release 制品验收，未引入发布服务。
+- 标签发布复用系统 Git、GitHub CLI（MIT）和 [Actions runs REST API](https://docs.github.com/en/rest/actions/workflow-runs)，不新增 Python 依赖；[release_tag.py](../scripts/release_tag.py) 负责版本、主线归属、同提交成功 CI 与不可覆盖策略。本机工具版本分别用 `git --version` 与 `gh --version` 查询。提交 `45168dd` 的成功 Test 记录用于只读验证；失败、运行中、其他分支及 master 并发推进由隔离测试验证拒绝。工作流复用 Release 制品验收。
 
-- 独立 Windows 测试包复用 PyInstaller 6.22.2（GPL-2.0-or-later，带分发 bootloader 例外）的 [onedir 与自启动子进程](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html)；使用已有精确固定的 build 依赖。Python 3.14 / Windows x64 在清除开发工具 PATH、隔离数据目录下实测初始化、页面与 API。保留 Peach 的进程所有权、数据目录、配置和扫描策略；onefile 的托盘入口只用于既有源码部署，独立包采用完整目录以共享资源并避免重复解包。没有新增运行时依赖。
+- 独立 Windows 测试包复用 PyInstaller（GPL-2.0-or-later，带分发 bootloader 例外）的 [onedir 与自启动子进程](https://pyinstaller.org/en/stable/common-issues-and-pitfalls.html)；使用已有精确固定的 build 依赖。Python 3.14 / Windows x64 在清除开发工具 PATH、隔离数据目录下实测初始化、页面与 API。保留 Peach 的进程所有权、数据目录、配置和扫描策略；onefile 的托盘入口只用于既有源码部署，独立包采用完整目录以共享资源并避免重复解包。没有新增运行时依赖。
 - Windows 安装包复用 Inno Setup 6.7.3（Inno Setup License，允许免费分发）与官方仓库 `Files/Languages/Unofficial/ChineseSimplified.isl` 的简体中文译文，译文随仓库放在 `scripts/installer/`。`.iss` 只管文件、开始菜单项和卸载登记；停托盘、补迁移、撤快捷方式都调 Peach 已有的入口，由 `desktop_installer` 衔接，自更新与应用内卸载继续是唯一实现。Windows 11 本机实测静默安装、托盘运行中覆盖安装、已有账本补跑迁移与卸载。没有新增运行时依赖。
 
 - 运行一致性复评：复用 `LedgerDatabase.write_transaction` 的提交边界和标准库 `OrderedDict`；HTTP 导航复用 FastAPI/Starlette，图片复验复用 `StaticFiles.is_not_modified` 与 `FileResponse` 的 ETag。列表使用 SQLite 的 IN/UNION 保留隐藏标签与多标签组合，不引入查询框架。
 - 馆藏侧栏复用 `catalog_filter` 的列表条件，已保存在线卡片复用关注来源的标签与封面投影，详情复用 `openFollowDetail`、Video.js 和媒体队列。导航范围与标签计数位于 `frontend/src/sidebar.ts`；不新增依赖。截图所示 F95 合集的只读核对结果为无封面、无标签、无已解析媒体，详情按现有来源信息展示。
-- wheel 资源复用 setuptools 84.0.0 的 `build_py.copy_tree`，资源位置遵循[官方包内数据建议](https://setuptools.pypa.io/en/stable/userguide/datafiles.html)。自定义钩子仅复制三个既有资源目录，因为源码、桌面构建和前端产物仍共用其维护位置；Windows 基础依赖全新安装及仓库外 API 冒烟已验证。
+- wheel 资源复用 setuptools 的 `build_py.copy_tree`，资源位置遵循[官方包内数据建议](https://setuptools.pypa.io/en/stable/userguide/datafiles.html)。自定义钩子仅复制三个既有资源目录，因为源码、桌面构建和前端产物仍共用其维护位置；Windows 基础依赖全新安装及仓库外 API 冒烟已验证。
 
 ## Peach 必须自研的领域逻辑
 
@@ -195,7 +199,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 ## 已定型的产品行为
 
 每条是一次验收留下的判据，一条一句。改这些行为是产品决定，照着再实现一遍是
-重复劳动，动手前先确认这里没有写过。README、`docs/HANDOFF.md`、`docs/OPERATIONS.md`
+重复劳动，动手前先确认这里没有写过。README、[docs/HANDOFF.md](HANDOFF.md)、[docs/OPERATIONS.md](OPERATIONS.md)
 和 ADR 已经写下的不在这里重复，出处用 `git log -S` 查。
 
 - 本地浏览器支持 MP4/WebM/Ogg，其余容器由 `TranscodeService` 按六秒片段缓存成 H.264/AAC MP4，永不改写原媒体；ffprobe 判定可直接复制的流不重编码，其余在 Windows 走 CUDA/NVDEC；29999、30005 实片首段及跳播解码通过。
@@ -260,7 +264,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 - reader 的 `/review` 通过严格 Peach CA HTTPS 读取 writer 的归一化 JSON 并原子缓存；决定按钮和所有关注写操作仍锁定。
 - macOS Ledger 同步在共享根判为 `offline` 时先经 NetFS 挂载 `peach-sync` 再重判，挂载失败才保留离线结果，不弹阻塞认证框。
 - 浏览历史增量采集使用 SQLite backup API 与 `browserexport`，也接受 Google Takeout ZIP；原始 URL 与标题只留本机私有目录，聚合候选不写 ledger。
-- 首次设置的可选历史引导转到 `/taste?onboarding=1`，继续使用现有读取与导入入口。指南链接按 [Google 导出说明](https://support.google.com/accounts/answer/3024190?hl=zh-Hans) 和 [browserexport](https://github.com/purarue/browserexport) 官方说明核验（2026-09-06）；沿用 `browserexport==0.4.4`，未新增依赖或解析器。
+- 首次设置的可选历史引导转到 `/taste?onboarding=1`，继续使用现有读取与导入入口。指南链接按 [Google 导出说明](https://support.google.com/accounts/answer/3024190?hl=zh-Hans) 和 [browserexport](https://github.com/purarue/browserexport) 官方说明核验（2026-09-06）；沿用 `browserexport`，未新增依赖或解析器。
 - 实体的公开事实随仓库分发（ADR-0073、ADR-0075）：`scripts/seed_pack.py export` 只读账本生成 `resources/seed/entities.json`（女优、厂牌、事务所的别名、站上编号、官网社媒链接、资料表、所属事务所、label 的片商；不带图像、本机路径、Stash 编号），同一账本同一版本逐字节一致。导入由扫描结算声明的 `seed-import:<版本>` 后继跑（`seed_followup`），命令行 `import` 默认 dry-run；只给本机已有实体填空、不造实体，旧种子写的归属、片商与资料可被新版换掉，与人写的不一致记 `conflicts`、一条对上两位记 `duplicates`，两者写进 `seed-landing.csv`；归属 `auto:seed@<版本>`，`revert_auto_landing.py --source auto:seed` 六张表一起撤。
 - 数据管理首屏直接复用实际 `cleanupfieldset` 正文和操作条，只有计数等待取数；资源同步与重复文件网盘操作根据 `/api/sources` 已配置来源显示，离线来源保留入口。资源同步的检查与执行覆盖已配置的 local、115、PikPak，一次检查同时报失效记录、空文件夹与孤儿缓存；按目录清理也支持本地磁盘。
 
@@ -271,14 +275,14 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 能力 | 复用实现 | Peach 负责 |
 |---|---|---|
 | 本机文件夹对话框 | Windows 自带 `powershell.exe` 经 `Add-Type` 调 Shell 的 `IFileOpenDialog`（带地址栏的文件夹选择框）；macOS `osascript` 的 `choose folder` | `src/peach/folder_picker.py` 只拼命令、区分取消与失败、一次只开一个；不为一个对话框引入 tkinter 或 GUI 框架 |
-| HTTP | 默认复用全项目共用的 `httpx.Client`/transport；FANBOX 公开 `post.info` 按固定证据复用 `curl_cffi==0.16.2` | 来源策略、DTO、脱敏、站点限定、大小上限；不求解机器人质询 |
+| HTTP | 默认复用全项目共用的 `httpx.Client`/transport；FANBOX 公开 `post.info` 按固定证据复用 `curl_cffi` | 来源策略、DTO、脱敏、站点限定、大小上限；不求解机器人质询 |
 | RSS/Atom | `feedparser` | 有界抓取、快照、复核、导入 |
 | 追更来源接口 | FANBOX 公开帖子 API（详情只使用用户自己的可选 Cookie 与 Firefox 传输特征）、kemono 系公开 JSON API（`Accept: text/css`，站点自述的抓取路径）、rule34.xxx 官方 dapi（需账号 API key）与官方 tag 补全（公开）、Paheal 标签/详情页、Gofile contents API（需 Premium 账号 API token）、f95zone `latest_data.php`、站内搜索（需登录 cookie）、线程页与站内 masked XHR、simpcity 线程页与站内搜索（需登录 cookie；只请求规范地址，不解 DDoS-Guard 质询） | 连接器边界、凭据隔离、多媒体顺序、文件站目标校验、变体与跨站重复判定、候选复核与批准后的 online asset 投影 |
 | XenForo 论坛解析 | gallery-dl `v1.32.11` / `2adf2a8e`（GPL-2.0）的 `extractor/xenforo.py` 只作协议证据：登录先查 cookie 再走账号密码、`article[data-content]` 楼层、`.pageNav` 分页、`data-s9e-mediaembed` 嵌入；cyberdrop-dl `5.6.21`（GPL-3.0，2024-09 起按站方要求下线 SimpCity）只作历史参照。两者都是完整下载器，不引入运行时 | f95zone 与 simpcity 共用一份 `_xenforo_posts` / `_xenforo_thread_title` / `_xenforo_search_threads`（站内搜索：先取会话绑定的 `_xfToken`，再 POST `/search/search`，按标题命中并带回版块标签）；Peach 自己负责 cookie 只发回来源站、末页由分页导航自算（HTTPX 跟随重定向会丢显式 Cookie）、纯讨论楼层过滤与 release 语义。gallery-dl 把 simpcity 登录 cookie 名写死为 `ogaddgmetaprof_user`，而站点前缀已轮换为 `yMziCv8BrCZz1o7_`，所以 Peach 不认 cookie 名、只透传整条 Cookie 头 |
-| 文件系统事件 | `watchdog==6.0.0`（Apache-2.0），只订阅 `local` 来源的根；网盘挂载不订阅，递归 watcher 在网络挂载上就是轮询。CloudDrive2 的 webhook 请求形态与「云端路径不进 pathlib」取自 `sqzw-x/amane`（GPL，只借设计，见 `docs/reference-snapshots/amane-watcher.md`） | `src/peach/push_discovery.py` 负责去抖、大小稳定的写完判定、前缀表映射、共享密钥与来源校验；登记本身调 `scan.ingest_path`，与全量扫描同一条 upsert（ADR-0041） |
+| 文件系统事件 | `watchdog`（Apache-2.0），只订阅 `local` 来源的根；网盘挂载不订阅，递归 watcher 在网络挂载上就是轮询。CloudDrive2 的 webhook 请求形态与「云端路径不进 pathlib」取自 `sqzw-x/amane`（GPL，只借设计，见 [docs/reference-snapshots/amane-watcher.md](reference-snapshots/amane-watcher.md)） | `src/peach/push_discovery.py` 负责去抖、大小稳定的写完判定、前缀表映射、共享密钥与来源校验；登记本身调 `scan.ingest_path`，与全量扫描同一条 upsert（ADR-0041） |
 | HTML 适配器 | Beautiful Soup 或 selectolax | 来源专用选择器和来源记录 |
 | 位图 | Pillow | 头像/Logo 质量和来源策略 |
-| SVG 光栅化 | `resvg-py==0.5.0`（resvg，MPL-2.0 绑定） | 只用于把站点自己的矢量图标转成位图再交给 Pillow。2026-09-02 实测 threads 的成品 app 图标只以 SVG 形式提供，不光栅化就只能退回位图 favicon。选它而不是 cairosvg：后者在 Windows 上要另装 cairo 原生库，前者是 abi3 轮子，win_amd64 / macosx_11_0_arm64 / macosx_10_12_x86_64 都有官方预编译，两个平台都不必装系统依赖。候选发现、内容比例判定、缓存与失败回退仍在 Peach。厂牌矢量标识的方形归一只在这里借一张探针：`images.bake_square_vector` 用标准库 ElementTree 包一层外层 SVG，产物仍是矢量，栅格化只用来数像素、判该配白底还是深底。 |
+| SVG 光栅化 | `resvg-py`（resvg，MPL-2.0 绑定） | 只用于把站点自己的矢量图标转成位图再交给 Pillow。2026-09-02 实测 threads 的成品 app 图标只以 SVG 形式提供，不光栅化就只能退回位图 favicon。选它而不是 cairosvg：后者在 Windows 上要另装 cairo 原生库，前者是 abi3 轮子，win_amd64 / macosx_11_0_arm64 / macosx_10_12_x86_64 都有官方预编译，两个平台都不必装系统依赖。候选发现、内容比例判定、缓存与失败回退仍在 Peach。厂牌矢量标识的方形归一只在这里借一张探针：`images.bake_square_vector` 用标准库 ElementTree 包一层外层 SVG，产物仍是矢量，栅格化只用来数像素、判该配白底还是深底。 |
 | 搜索 | SQLite FTS5 | 索引字段、排序、profile 感知筛选 |
 | 相关推荐 | OpenAver `dca4c0c368ea0c2db9cf15e48977de2fc75e7077` 的 Tag IDF + 系列／片商／出演者规则只作固定算法参考（MIT） | 独立实现规范实体评分、MMR 多样性、稳定 seed、解释原因与负反馈边界；不复制上游 UI／源码 |
 | 女优姓名对照 | `li-peifeng/Jav-Actors-Mapping` 的固定 revision，仅作私有输入（仓库未声明许可证，不随 Peach 分发） | 精确匹配、冲突复核、别名、来源与真实 ledger 写入 |
@@ -288,7 +292,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 头像写入 | `src/peach/avatar_provider.install_entity_avatar` | 采集脚本、复核页与换头像共用这一份：`.img` 经临时文件原子替换，`.ct`、`.provenance.json` 与人脸 `.face.json` 四件套一起换。检不出脸要删 sidecar 而不是留着，因为上一张图的脸框会被页面拿去给这一张取景，放大到一个空位置上，而这在界面上与「本来就该这么显示」看不出区别 |
 | 厂牌 Logo 候选 | 厂牌官网确认的社交 handle → unavatar URL 解析 → 平台 CDN 单图 | handle 归属、内容缓存、方形归一、精确/感知哈希、provenance、健康统计与变化复核 |
 | 厂牌字标名录 | 发行商与发行平台自己的厂牌名录，入口登记在 `harvest_maker_directories.DIRECTORIES`：MGStage `/ppv/makers.php` 十一页 351 家、Prestige `/api/maker` 11 家、KMP `/label` 42 家（大半是 SVG）；另有 jae.tokyo 展会名录 20 家 | slug↔账本对账（四路判据、空罗马字形当不可比）、按形状分三张指定表（方标原样装大位、字标烤方两位共用、方标只管小位）、改地址后靠 provenance 边车重新收人、复核 CSV 与安装闸门。存入口不存图片地址：KMP 的文件名带时间戳，厂牌换一次标识地址就变。不推导 URL、不猜名字：名录给什么用什么 |
-| JAV 元数据查询 | 每个站只有一个归属（ADR-0048）：自写解析器持有 r18.dev、DMM／FANZA、一本道、FC2、fc2cmadb、FC2PPV-DB、JAVten、JavArchive、AVBase、JavBus、javdb，片商官网与转载站经 amane 桥（ADR-0043、ADR-0044）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考；DMM 的 GraphQL 接口地址、`ppvContent` 与 `legacySearchPPV` 两条查询的取法参照 OpenAver（MIT）`core/scrapers/dmm.py`，cid 匹配与身份核对是 Peach 自己的（ADR-0059） | 只发送规范番号；Peach 管来源链（`metadata_routes`）、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影。amane 的 POC 判据、字段缺口与三条路线的前提见 `docs/reference-snapshots/amane-crawlers-poc.md`，采纳结果见下一行 |
+| JAV 元数据查询 | 每个站只有一个归属（ADR-0048）：自写解析器持有 r18.dev、DMM／FANZA、一本道、FC2、fc2cmadb、FC2PPV-DB、JAVten、JavArchive、AVBase、JavBus、javdb，片商官网与转载站经 amane 桥（ADR-0043、ADR-0044）；MetaTube SDK `6a5e6128c725187aeaf921d48ed7d9cd9f30671b`（Apache-2.0）只作来源身份与丰富字段模型参考；DMM 的 GraphQL 接口地址、`ppvContent` 与 `legacySearchPPV` 两条查询的取法参照 OpenAver（MIT）`core/scrapers/dmm.py`，cid 匹配与身份核对是 Peach 自己的（ADR-0059） | 只发送规范番号；Peach 管来源链（`metadata_routes`）、`provider_id`／`content_id`、逐字段优先级、原始证据、丰富目录证据、健康统计、候选复核与批准后的 ledger 投影。amane 的 POC 判据、字段缺口与三条路线的前提见 [docs/reference-snapshots/amane-crawlers-poc.md](reference-snapshots/amane-crawlers-poc.md)，采纳结果见下一行 |
 | Javinizer-Go 历史快照 | `sources/metadata/javinizer-go/<番号>/<来源>.json`，由 Javinizer-Go v1.5.x（MIT，`dd56998328d078c9baf68ff4fde2e6fcaa2a691a`）在 2026-09 之前取回；二进制与快照留在磁盘，没有调用路径（ADR-0044） | 只作离线证据：封面层读它的 `cover_url` 与 `content_id`，别名解析读企划名义，账本里 `javinizer:<站>:<字段>` 的 provenance 按 `metadata_policy.HISTORICAL_SOURCES` 认级别。`scrape_codes` 写进同一目录的新快照 `provider` 记解析器名、`provider_version` 记 Peach 版本 |
 | amane 刮削站点（官方档 makers、prestige、faleno、dahlia、mgstage；转载站 fc2club、freejavbt、airav、avsox） | amane `79ecfa763cc786318e1964a3d7f4e244a7d5c96d`（v0.16.1，GPL-3.0），经 `tools/amane-bridge/` 薄桥子进程接入（ADR-0043、ADR-0048；`makers` 是 amane 的 `official` 模块）：独立 `pyproject.toml`／`uv.lock` 钉 sha，venv 建在 `<数据根>/tools/amane-bridge/.venv`，桥只用 `amane.crawlers.sites.<站>` 与 `amane.net.*`，不碰 `aggregate` | 许可义务：amane 为 GPL-3.0，Peach 为 AGPL-3.0-or-later，两者以进程边界相接；仓库与分发件只含清单、锁与桥脚本（Peach 自己的文件），amane 源码由用户机器上的 uv 按锁下载，不随 Peach 分发；清单、桥脚本与设置页都写明上游地址与许可。升级是人做的：改 sha → `uv lock --project tools/amane-bridge` → 读上游 diff 核字段语义 → 同批改 `peach.metadata_amane.AMANE_REASONS`／`SITE_CONFIGS` 与本行。已知性质：上游 `WebClient` 以 `verify=False` 发请求，只取公开页面、不带凭据；`amane.crawlers` 包 `__init__` 连带 SQLAlchemy，每次子进程约 0.6～1 秒 import。Peach 管来源链位置、身份核对、失败分档与冷却、候选与结算 |
 | 已确认厂牌的目录归位 | Javinizer-Go v1.5.2 organizer（MIT）只作冲突预检、模板化目录和回滚边界的协议参考，不调用它，不让它持有 Peach ledger | `rehome_unknown_jav.py` 只消费人工确认映射；先出逐文件 CSV，拒绝扁平化重名与厂牌冲突，SQLite 备份后移动文件并同步 Peach 路径／实体 provenance |
@@ -305,7 +309,7 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 单列拖动排序 | `web/js/ui-components.js` 的 `wireDragReorder()` | 侧栏顺序与播放列表队列共用这一份：`dragstart` 标记被拖行，`dragover` 按指针落在行的上半还是下半给出落点线，`drop` 把整份新顺序交给调用方落库。落点线、抓手和键盘焦点样式都在共用件里，每加一处可拖列表不必各写一份 |
 | 图标 | 固定版本的本地 Lucide 子集；Health Icons 24 px outline（CC0）用于领域图标；Phosphor regular 填充字形（MIT）只用在描边说不清的地方（字母表 Aa、播放列表） | 标签、状态和交互设计 |
 | 资源文本中间省略 | Vercel Geist `MiddleTruncate` 行为契约 + 浏览器原生 `ResizeObserver`、`Intl.Segmenter`、Canvas 测量 | 文件名、路径、URL、ID 等资源标识用 `data-middle-truncate`；标题、说明、人名、标签等语义文本保留末尾省略；页面源测试登记全部末尾省略选择器，新增截断未先分类会失败 |
-| 定时轮询 | APScheduler 3.11.3（MIT，固定稳定版；3.x `BackgroundScheduler` / interval trigger） | 只在 ledger writer 启动、持久频率、首次延迟、单实例、手动/自动互斥、运行状态与来源错误汇总 |
+| 定时轮询 | APScheduler（MIT，固定稳定版；3.x `BackgroundScheduler` / interval trigger） | 只在 ledger writer 启动、持久频率、首次延迟、单实例、手动/自动互斥、运行状态与来源错误汇总 |
 | 本地文件事件 | watchdog + 定期对账 | 媒体身份和漏报修复 |
 | 局域网发现 | Python zeroconf | 服务生命周期和真实客户端验收 |
 | 生成产物跨机同步 | Syncthing 2.1.x，Windows send-only → Mac receive-only | 目录划分、忽略规则、方向固定与「Mac 不发布正式产物」的边界 |
@@ -320,11 +324,11 @@ CloudDrive 为外部应用，本项目不捆绑其二进制或依赖其管理 AP
 | 智能体用量/配额 | Provider 官方配额接口；T3 Code/CodexBar 提供本地历史 | 任务路由、脱敏、过期快照标记 |
 | 视频出处/片尾证据 | 现有 FFmpeg 抽帧 + Windows.Media.Ocr WinRT Provider（Windows PowerShell 5.1 固定适配器） | 有界首尾采样、缓存、来源/Full version 分类、健康统计与人工复核 |
 | 参考产品行为 | 当前线上交互 + 有版本的公开 DOM/CSS/JS；取不到源码时用精确截图测量 | 证据登记、无障碍、Peach 差异、回归检查 |
-| 浏览器历史解析 | `browserexport==0.4.4`（Chrome/Firefox/Zen/Safari 的 SQLite 解析，`taste_history.py` 不自写解析） | Python 3.14 依赖解析通过；POC 在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致，macOS 的 Safari／Zen／Firefox／Chrome 路径发现有独立测试。首个消费者是 `/taste` 的本机读取与导出导入；Peach 保留 SQLite backup、Takeout、私有原始存储、域名分析和 candidate 生成，并在 Windows 自己关闭只读连接以避开依赖的文件句柄滞留。跨主机同步不由该依赖提供，仍须显式导出、传输和按来源去重合并。 |
+| 浏览器历史解析 | `browserexport`（Chrome/Firefox/Zen/Safari 的 SQLite 解析，`taste_history.py` 不自写解析） | Python 3.14 依赖解析通过；POC 在本机 7 个 Chrome/Firefox/Zen profile 上与 Peach 逐库计数完全一致，macOS 的 Safari／Zen／Firefox／Chrome 路径发现有独立测试。首个消费者是 `/taste` 的本机读取与导出导入；Peach 保留 SQLite backup、Takeout、私有原始存储、域名分析和 candidate 生成，并在 Windows 自己关闭只读连接以避开依赖的文件句柄滞留。跨主机同步不由该依赖提供，仍须显式导出、传输和按来源去重合并。 |
 | 批处理进程锁 | 候选 `portalocker==4.3.0` 的 `PidFileLock`；生产仍是 `src/peach/jobs.py::PidFileLock` | Python 3.14 解析通过，现成覆盖 PID 写入、锁持有者、原子替换、陈旧文件与释放清理。替换时 Peach 只保留任务归属和错误文案映射；落地前不算已进入生产的依赖。 |
 | Rule34Video 媒体页解析 | `yt-dlp==2026.8.19`（承担格式、标签、缩略图与时间的提取） | 对真实视频 4533145 无写入提取成功，取得 4 个格式、31 个标签、缩略图与时间。Peach 仍负责作者分页、合集/超多 model 排除、来源分组和跨站去重。 |
 | Rule34.xxx / Paheal 高清封面 | 固定参考 gallery-dl `86047cf67a12bdb6ff1085774f8ad9fc347e8da9`（GPL-2.0，只作协议行为证据，不引入运行时）；运行时复用现有 FFmpeg | booru URL 明确支持 `sample_url`/`preview_url`/`file_url` 回退，Paheal 抽取器只取得原始 `file_url`。真实 POC 中 Rule34.xxx 历史 preview 为 250×141、同哈希 sample 为 1920×1080；Paheal 页面只有低清 poster/og:image，原视频可生成 1280×720 JPEG。视频缩略图工具 ffmpegthumbnailer 默认取 10% 位置，Peach 不引入这个 GPL 运行时；直接复用 FFmpeg `blackframe` 导出的 `lavfi.blackframe.pblack`，在开头 30 秒选第一张黑色像素低于 98% 的帧，并用版本化缓存键淘汰旧黑帧。Peach 继续负责 URL 白名单、同源代理、按需双并发抽帧、缓存与低清失败回退，不新增依赖、不改 ledger。 |
-| FANBOX 正文解析 | PixivUtil2 `v20251112` / `e537e96` 的公开正文模型（BSD-2-Clause，只复用数据模型，不引入整套下载器） | Peach 的独立规范化 DTO 已覆盖 image/text/file/article/video/entry、`fileMap`、`embedMap`、`urlEmbedMap` 和旧 HTML 正文，并保留正文顺序、稳定去重、可播放媒体与文件页边界；许可证依据写在实现头部。PixivUtil2 是完整下载器而非可嵌入解析库，因此不引入整套依赖；传输继续固定 `curl_cffi==0.16.2`。真实公开帖 12228983 只读 POC 得到 article、6 图和 Gofile `OS2Qz9`。 |
+| FANBOX 正文解析 | PixivUtil2 `v20251112` / `e537e96` 的公开正文模型（BSD-2-Clause，只复用数据模型，不引入整套下载器） | Peach 的独立规范化 DTO 已覆盖 image/text/file/article/video/entry、`fileMap`、`embedMap`、`urlEmbedMap` 和旧 HTML 正文，并保留正文顺序、稳定去重、可播放媒体与文件页边界；许可证依据写在实现头部。PixivUtil2 是完整下载器而非可嵌入解析库，因此不引入整套依赖；传输继续固定 `curl_cffi`。真实公开帖 12228983 只读 POC 得到 article、6 图和 Gofile `OS2Qz9`。 |
 
 依赖的第一个消费者及其隔离测试必须在同一改动落地，否则不引入依赖。
 Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检查；固定前端文件由

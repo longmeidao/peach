@@ -17,7 +17,7 @@
 重试判据彼此不同，那不是一个函数该承担的形状。
 
 参考实现 amane 把这件事拆成「任务结果声明后继、调度端统一派发」（证据与判据见
-`docs/reference-snapshots/amane-task-followups.md`）。这个形状正好答上面那个问题：补头像是
+[docs/reference-snapshots/amane-task-followups.md](../reference-snapshots/amane-task-followups.md)）。这个形状正好答上面那个问题：补头像是
 一件与刮削无关的事，它只是恰好由刮削触发。
 
 ## 决策

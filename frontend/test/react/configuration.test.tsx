@@ -85,7 +85,7 @@ it('取不到配置就说打不开，连同服务端给的那句原因', async (
   );
   await settle();
   const note = host.querySelector('[role="alert"]');
-  expect(note?.textContent).toContain('打不开配置');
+  expect(note?.textContent).toContain('配置读取失败');
   expect(note?.textContent).toContain('账本正在迁移');
   expect(host.querySelector('.configgroup')).toBeNull();
 });

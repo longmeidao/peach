@@ -114,11 +114,10 @@ export function PushDiscoveryForm({ initial, receipt }: {
         <Stack divided>
           <div className="flex flex-col gap-3">
             <FieldLabel>CloudDrive2 配置内容</FieldLabel>
-            <Help>在 CloudDrive2 的「设置 → Webhooks」里添加一条，把这段配置贴进去保存。
-              地址、端点和密钥都已经填好了；换过密钥之后要重新贴一次。
-              Webhook 是 CloudDrive2 的会员功能：不是会员时列表照样显示有效，但一条都不会发出来。
-              Windows 桌面版的编辑框会把换行存坏，列表里标「无效」：那就把这段存成 .toml
-              文件，放进 %LOCALAPPDATA%\CloudDrive.WinUI\webhooks\ 目录。</Help>
+            <Help>Webhook 需要 CloudDrive2 会员；非会员的配置即使显示有效，也不会发送通知。
+              在「设置 → Webhooks」中添加配置，粘贴下方内容并保存。地址和密钥已填好；更换密钥后需重新复制。
+              Windows 桌面版若因换行问题显示「无效」，将配置保存为 .toml
+              文件，放入 %LOCALAPPDATA%\CloudDrive.WinUI\webhooks\ 目录。</Help>
             {live.config_toml ? (
               <>
                 <div>
@@ -142,8 +141,8 @@ export function PushDiscoveryForm({ initial, receipt }: {
               </>
             ) : (
               <Help>{live.origin
-                ? '还没有生成共享密钥，保存一次配置就会有。'
-                : '这台机器还没有对外的 HTTPS 地址，配置里的地址填不出来。CloudDrive2 只能推到 HTTPS：80 口那条服务对写请求回的是 426，不会替它转发。'}</Help>
+                ? '尚未生成共享密钥，请保存配置后复制。'
+                : '请先配置 CloudDrive2 能访问的 HTTPS 地址，再生成通知配置。HTTP 地址不接受通知写入，也不会自动转发。'}</Help>
             )}
           </div>
         </Stack>
@@ -152,8 +151,8 @@ export function PushDiscoveryForm({ initial, receipt }: {
         <Stack divided>
           <div className="flex flex-col gap-3">
             <FieldLabel>云端路径前缀</FieldLabel>
-            <Help>左边填 CloudDrive2 里看到的那一层目录，右边选它对应哪个媒体根。
-              CloudDrive2 给的是它自己的路径，Peach 按这张表换算成账本里的盘符路径。</Help>
+            <Help>左侧填写 CloudDrive2 中的目录前缀，右侧选择对应的媒体文件夹。
+              Peach 按此对应关系定位通知中的文件。</Help>
             <div role="group" aria-label="云端路径前缀" className="flex flex-col gap-3">
               {rows.map((row, index) => (
                 <div key={index} className="flex items-start gap-2">

@@ -11,7 +11,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 - `src/peach/config.py` 用 `Path.home()/Desktop/peach`、`Desktop/<用户目录>/peach`、写者主机的 mDNS 名、SMB 账号名等字面量给默认值；代理与局域网 IP 散在 HANDOFF、STATUS 与技能文件里。
 - ledger 路径固定写成 Windows 盘符形状（`R:\Media\...`、`A:\`、`B:\`），由 `peach.platform` 在读取时翻译成本机挂载点；盘符含义只在文档里说明。
 - Windows 写者 / macOS 读者的单写者复制（SMB 共享、mDNS 名、钥匙串账号）默认开启、无法绕开，而多数用户只有一台机器。
-- `docs/STATUS.md`、`docs/HANDOFF.md` 与多份技能文件记录了个人运行态、真实 IP、备份文件名与磁盘布局。
+- [docs/STATUS.md](../STATUS.md)、[docs/HANDOFF.md](../HANDOFF.md) 与多份技能文件记录了个人运行态、真实 IP、备份文件名与磁盘布局。
 
 不属于本 ADR 的事：多用户与账号系统、云托管、第三方登录。它们改变产品形态，另立 ADR。
 
@@ -83,7 +83,7 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 
 ## 第 4 阶段实施记录（2026-09-04）
 
-本节是交接面：任何智能体接手开源发布，只读本节加 `docs/PRODUCT_BACKLOG.md` 即可，不需要对话记录。
+本节是交接面：任何智能体接手开源发布，只读本节加 [docs/PRODUCT_BACKLOG.md](../PRODUCT_BACKLOG.md) 即可，不需要对话记录。
 
 ### 用户已定的决定
 
@@ -130,12 +130,12 @@ Peach 要发布到 GitHub 供所有人维护与使用。使用形态不变：每
 - 分支规则集 `protect-master`（id 22263433）：默认分支禁删除、禁强推。Secret scanning、Push protection、Private vulnerability reporting、Dependabot alerts 已开启；Dependabot security updates 未开，是否让它自动开 PR 另行决定。
 - 公开后的补漏（同日）：`MachineCoordinateTests` 改成只写形状不点名的门槛（家目录路径、私网 IP、`.local` 主机名、本机账号与主机名运行时派生）；发行名定为 `peach`，目录名 `peach-app` 不变；macOS bundle ID 改中性 ID 由用户定为待办第 28 条。
 - 开箱引导的顺序由用户定：先 CLI 问答（`peach init` 无参数进入问答并可首扫，逻辑在 `peach.onboarding`，已在 master），再 GUI 引导（托盘首启打开首次运行页升级成的表单，调同一组函数），两者都已在 master。
-- GUI 引导已落地：未配置的机器上 `peach-tray` 起一条只绑回环的 `peach serve --setup` 引导服务并打开浏览器，首次运行页是表单，`POST /setup` 调与 CLI 同一个 `onboarding.apply()`；`tray.SetupGate` 在健康轮询里新鲜读设置文件，完成后不重启托盘进程就切到正常服务，并消费 `<数据根>/state/first-scan.request` 用子进程跑首扫。需要设置的判据是「没有 config.toml 且没有账本」，端口与失败形态见 `docs/OPERATIONS.md`「首次运行与设置文件」。
-- 剩余工作只在 `docs/PRODUCT_BACKLOG.md`：独立发行版、口味导入引导、README 瘦身到 `CONTRIBUTING.md` 与 `docs/`，以及「待执行的操作」里 Mac 侧的第 28 与 30 条。
+- GUI 引导已落地：未配置的机器上 `peach-tray` 起一条只绑回环的 `peach serve --setup` 引导服务并打开浏览器，首次运行页是表单，`POST /setup` 调与 CLI 同一个 `onboarding.apply()`；`tray.SetupGate` 在健康轮询里新鲜读设置文件，完成后不重启托盘进程就切到正常服务，并消费 `<数据根>/state/first-scan.request` 用子进程跑首扫。需要设置的判据是「没有 config.toml 且没有账本」，端口与失败形态见 [docs/OPERATIONS.md](../OPERATIONS.md)「首次运行与设置文件」。
+- 剩余工作只在 [docs/PRODUCT_BACKLOG.md](../PRODUCT_BACKLOG.md)：独立发行版、口味导入引导、README 瘦身到 `CONTRIBUTING.md` 与 `docs/`，以及「待执行的操作」里 Mac 侧的第 28 与 30 条。
 
 ### 外部评审的取舍（2026-09-05）
 
-用户带来一份外部模型对本仓库的评审。逐条对过代码后，采纳的四条已进 `docs/PRODUCT_BACKLOG.md`
+用户带来一份外部模型对本仓库的评审。逐条对过代码后，采纳的四条已进 [docs/PRODUCT_BACKLOG.md](../PRODUCT_BACKLOG.md)
 第 20 至 23 条（局域网默认鉴权、全新安装冒烟、`peach doctor`、性能基准），其中第 20 条是发布口径下
 唯一真正的缺陷；它的口令层已经落地（`src/peach/auth.py` 与 `cli._serve_token`），条目里只剩
 局域网明文口与手机端配对码。以下三类不采纳，记在这里是为了不被反复重提：

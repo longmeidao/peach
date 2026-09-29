@@ -118,7 +118,7 @@ export function DuplicatesPage({ openItem, toast, failure }: DuplicatesProps) {
   if (!data) {
     return (
       <div className="mx-auto w-full max-w-board">
-        <Note tone="error" title="读取失败">{duplicates.error ? errorMessage(duplicates.error) : '读取重复文件失败'}</Note>
+        <Note tone="error" title="重复文件读取失败">{duplicates.error ? errorMessage(duplicates.error) : '未取得重复文件列表，请刷新页面重试。'}</Note>
       </div>
     );
   }
