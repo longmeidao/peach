@@ -374,6 +374,7 @@ body[data-density="dense"] .card .meta .why{display:none}
 /* 占位卡直接套真卡的 `.t` 与 `.s`：标题块是两行 2.7em，下面那行放一个零宽字符，行高
    跟真卡那行字同一套规则，到货那一下整行不跳。 */
 .feednewskeleton{pointer-events:none}
+.feednewskeleton .pic{background:var(--hover)}
 .feednewskeleton .t>.skeleton{height:2.7em}
 .feednewskeleton .s>.skeleton{width:72%;height:auto}
 /* 占位卡不是在等哪一张图，它本身就是等待态：微光和骨架同一帧出现。`.imgwait` 那 180ms
