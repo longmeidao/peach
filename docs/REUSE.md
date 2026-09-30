@@ -399,3 +399,7 @@ Python、npm 与 GitHub Actions 的版本由 `.github/dependabot.yml` 每周检�
 115、PikPak；失效记录的永久删除复用 `web_batch.purge_assets`，文件仍在盘上的行进 `blocked`。展示复用 `frontend/` 构建链、Fieldset、Note、Toast 与 confirmModal；确认失败留在弹层，
 危险动作初始聚焦取消，忙态阻止重入与关闭。无新增依赖，不引入另一套对话框库。
 真实截图的 487 项／643 个缓存作为无写入渲染样本；配置历史及性能建议依据在 OPERATIONS。
+## 原位改字
+
+`scripts/dev/copy-editor.js` 复用官网本地预览的 `edit-client.js` 交互：文字范围提示、原位编辑、按钮文字就近输入、回车和失焦保存、Esc 取消。
+应用的 React 与动态页面使用现有静态文案定位、摘要校验和备份入口；演示站使用浏览器草稿。两者只在 `?edit` 启用，无新增依赖。

@@ -9,4 +9,4 @@
 | avwikidb.png | `https://avwikidb.com/apple-touch-icon.png` | 首页有验证页，公开图标可读取 |
 | github.png | `https://github.githubassets.com/favicons/favicon.svg` | 官方声明的矢量图标，经现有 `link_marks` 渲染 |
 
-取证：2026-09-30。前端直接读取静态文件，不向图标缓存服务发送访客请求；其余站点沿用 `/site-mark` 的发现与缓存。
+取证：2026-09-30。资源经 `/site-icon/{name}.png` 提供，前端不向图标缓存服务发送访客请求；其余站点沿用 `/site-mark` 的发现与缓存。

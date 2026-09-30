@@ -50,10 +50,14 @@ function SiteMark({ source }: { source: string }) {
   // 这几站的公开图标随静态资源提供，验证页和离线回放不影响来源身份。
   const bundled = ['javten', 'fc2ppvdb', 'avwikidb', 'github'].includes(source);
   return (
-    <img src={bundled ? `/vendor/site-marks/${source}.png` : siteMarkUrl({ source })} alt="" width={16} height={16} loading="lazy"
+    <img src={bundled ? `/site-icon/${source}.png` : siteMarkUrl({ source })} alt="" width={16} height={16} loading="lazy"
       onError={(event) => event.currentTarget.remove()}
       className="size-4 shrink-0 rounded-sm object-contain" />
   );
+}
+
+function GitHubMark() {
+  return <SiteMark source="github" />;
 }
 
 /** 一个来源一张卡：怎么连、拿什么身份连，底下三个动作。 */
@@ -301,7 +305,7 @@ function AmaneBridgeCard({ toast }: ScrapingProps) {
     : check.error ? errorMessage(check.error)
     : outcome?.status === 'failed' ? (outcome.error || '重建未完成') : '';
   return (
-    <Section title="amane" aside={<ExternalLink href={data.repository}><SiteMark source="github" />{data.repository}</ExternalLink>}>
+    <Section title="amane" aside={<ExternalLink href={data.repository} leadingIcon={GitHubMark}>{data.repository}</ExternalLink>}>
       <FactList>
         <Fact term="已安装版本">{data.installed_version || '未安装'}</Fact>
         <Fact term="上游最新版本">{check.data?.latest ?? '尚未检查'}</Fact>

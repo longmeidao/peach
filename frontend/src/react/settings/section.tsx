@@ -4,7 +4,7 @@
  * 注册表里没有折叠，它用 BoardUI token 组合，差异登记在 `boardui/ORIGIN.md`。
  * 提示与进度条另有页面共用的一份，在 `../components/`。 */
 import { useId, useRef, useState } from 'react';
-import type { FormEvent, MouseEvent, ReactNode } from 'react';
+import type { ComponentType, FormEvent, MouseEvent, ReactNode } from 'react';
 import { RiArrowRightSLine, RiExternalLinkLine } from '@remixicon/react';
 import { setCollapseOpen } from '@peach/legacy/ui';
 
@@ -79,10 +79,14 @@ export function FieldLabel({ children }: { children: ReactNode }) {
 
 /** 新窗口打开的外部链接，尾部带外链字形。`rel` 两项都写：新标签页不继承这一页的会话，
  *  来源地址也不带走 Peach 自己的地址。 */
-export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
+export function ExternalLink({ href, children, leadingIcon }: {
+  href: string; children: ReactNode;
+  leadingIcon?: ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>;
+}) {
   return (
-    <LinkButton href={href} target="_blank" rel="noopener noreferrer" size="small" trailingIcon={RiExternalLinkLine}>
-      {children}
+    <LinkButton href={href} target="_blank" rel="noopener noreferrer" size="small"
+      leadingIcon={leadingIcon} trailingIcon={RiExternalLinkLine} className="min-w-0 max-w-full">
+      <span className="min-w-0 whitespace-normal break-all">{children}</span>
     </LinkButton>
   );
 }

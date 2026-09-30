@@ -794,6 +794,18 @@ def agentation_bundle(request: Request, args: dict[str, str] = Depends(require_a
     return asset_response(request, path, "text/javascript")
 
 
+@router.api_route("/site-icon/{name}", methods=["GET", "HEAD"])
+def bundled_site_icon(request: Request, name: str,
+                      args: dict[str, str] = Depends(require_asset_auth)):
+    """随应用提供的来源标识，文件名只认已登记的四个来源。"""
+    if name not in {"javten.png", "fc2ppvdb.png", "avwikidb.png", "github.png"}:
+        return PlainTextResponse("missing", status_code=404)
+    path = PROJECT_ROOT / "resources" / "site-marks" / name
+    if not path.is_file():
+        return PlainTextResponse("missing", status_code=404)
+    return asset_response(request, path, "image/png")
+
+
 @router.api_route("/robots.txt", methods=["GET", "HEAD"])
 def robots_txt():
     """不要求登录：爬虫拿不到会话，被 401 挡住就等于没读到这份声明。
