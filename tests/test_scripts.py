@@ -3200,6 +3200,110 @@ class ReleaseTagTests(unittest.TestCase):
         write.assert_not_called()
 
 
+class PinnedReleaseTests(unittest.TestCase):
+    """标签、说明与 CI 都绑定已确认的提交，主线可以继续推进。"""
+
+    SHA = "1" * 40
+    NOTES = "## [0.37.0] - 2026-10-01\n\n### 修复\n\n- **界面**：统计页布局稳定。\n"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.release = load_script("release_tag")
+
+    def _shell(self, changes=None):
+        answers = {
+            ("git", "status", "--porcelain"): "",
+            ("git", "branch", "--show-current"): "master",
+            ("git", "rev-parse", f"{self.SHA}^{{commit}}"): self.SHA,
+            ("git", "show", f"{self.SHA}:src/peach/__init__.py"): '__version__ = "0.37.0"',
+            ("git", "show", f"{self.SHA}:CHANGELOG.md"): self.NOTES,
+            ("git", "tag", "--list", "v0.37.0"): "",
+        }
+        answers.update(changes or {})
+        return mock.patch.object(self.release, "command",
+                                 side_effect=lambda *args, **_: answers.get(args, ""))
+
+    def _api(self, *, status="behind", conclusion="success", tags=()):
+        def answer(_repo, endpoint):
+            if endpoint.startswith("git/matching-refs/tags/"):
+                return list(tags)
+            if endpoint == f"compare/master...{self.SHA}":
+                return {"status": status}
+            if endpoint.startswith("actions/workflows/test.yml/runs"):
+                return {"workflow_runs": [dict(
+                    id=1, head_sha=self.SHA, head_branch="master", event="push",
+                    status="completed", conclusion=conclusion, html_url="selected-test")]}
+            raise AssertionError(endpoint)
+        return mock.patch.object(self.release, "api", side_effect=answer)
+
+    def test_plan_reads_version_notes_and_ci_from_the_selected_commit(self):
+        with self._shell() as command, self._api(), \
+                mock.patch.object(self.release.version_bump, "read_version") as local_version, \
+                mock.patch.object(Path, "read_text") as local_notes:
+            result = self.release.plan_commit("owner/repo", self.SHA)
+        self.assertEqual((result["sha"], result["tag"], result["test"]),
+                         (self.SHA, "v0.37.0", "selected-test"))
+        self.assertIn("统计页布局稳定", result["section"])
+        local_version.assert_not_called()
+        local_notes.assert_not_called()
+        self.assertEqual(ShipTests._writes(command), [])
+
+    def test_moving_refs_and_abbreviated_shas_are_rejected(self):
+        for sha in ("", "master", "HEAD", "v0.37.0", self.SHA[:8], "z" * 40):
+            with self.subTest(sha=sha), self._shell(), self.assertRaisesRegex(ValueError, "完整"):
+                self.release.plan_commit("owner/repo", sha)
+
+    def test_an_explicit_empty_sha_does_not_select_the_current_head(self):
+        with self._shell() as command, mock.patch.object(self.release, "plan") as current, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(self.release.main(["--release-sha", "", "--apply"]), 1)
+        current.assert_not_called()
+        self.assertEqual(ShipTests._writes(command), [])
+
+    def test_dirty_checkout_invalid_commit_version_notes_and_local_tag_stop_before_writes(self):
+        cases = [
+            {("git", "status", "--porcelain"): " M file"},
+            {("git", "branch", "--show-current"): "feature"},
+            {("git", "rev-parse", f"{self.SHA}^{{commit}}"): "2" * 40},
+            {("git", "show", f"{self.SHA}:src/peach/__init__.py"): ""},
+            {("git", "show", f"{self.SHA}:CHANGELOG.md"): "## [未发布]\n"},
+            {("git", "show", f"{self.SHA}:CHANGELOG.md"): self.NOTES.replace("**界面**：", "web：")},
+            {("git", "tag", "--list", "v0.37.0"): "v0.37.0"},
+        ]
+        for changes in cases:
+            with self.subTest(changes=changes), self._shell(changes) as command, self._api(), \
+                    self.assertRaises((ValueError, self.release.version_bump.VersionError)):
+                self.release.plan_commit("owner/repo", self.SHA)
+            self.assertEqual(ShipTests._writes(command), [])
+
+    def test_unmerged_red_ci_and_remote_tag_cannot_be_released(self):
+        for options in (dict(status="ahead"), dict(status="diverged"),
+                        dict(conclusion="failure"), dict(tags=[{"ref": "refs/tags/v0.37.0"}])):
+            with self.subTest(options=options), self._shell() as command, self._api(**options), \
+                    redirect_stdout(io.StringIO()):
+                self.assertEqual(self.release.main(["--release-sha", self.SHA, "--apply"]), 1)
+            self.assertEqual(ShipTests._writes(command), [])
+
+    def test_apply_rechecks_the_selected_commit_and_pushes_only_its_annotated_tag(self):
+        with self._shell() as command, self._api(), \
+                mock.patch.object(self.release, "plan_commit", wraps=self.release.plan_commit) as plan, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(self.release.main([
+                "--repo", "owner/repo", "--release-sha", self.SHA, "--apply"]), 0)
+        self.assertEqual(plan.call_args_list, [mock.call("owner/repo", self.SHA)] * 2)
+        self.assertEqual(ShipTests._writes(command), [
+            ("git", "tag", "-a", "v0.37.0", self.SHA, "-m", "Peach v0.37.0 Windows 测试版"),
+            ("git", "push", "https://github.com/owner/repo.git", "refs/tags/v0.37.0"),
+        ])
+
+    def test_a_failed_recheck_cannot_create_a_tag(self):
+        planned = dict(sha=self.SHA, tag="v0.37.0", repo="owner/repo")
+        with mock.patch.object(self.release, "plan_commit", side_effect=[planned, ValueError("CI 已取消")]), \
+                mock.patch.object(self.release, "command") as command, redirect_stdout(io.StringIO()):
+            self.assertEqual(self.release.main(["--release-sha", self.SHA, "--apply"]), 1)
+        command.assert_not_called()
+
+
 class ShipTests(unittest.TestCase):
     """`--ship`：定好版之后一路到标签，中途停下再跑一次要接着走。"""
 
