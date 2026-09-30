@@ -60,6 +60,14 @@ describe('首页加载结构',()=>{
     const first=await card.elementHandle();
     const tiers=await page.locator('#tiers .tier').first().elementHandle();
     assert.equal(await page.locator('#feedNew .feednewskeleton').count()>0,hasFeed);
+    if(hasFeed){
+     const colors=await page.locator('#feedNew .feednewskeleton .pic').first().evaluate(node=>{
+      const probe=document.createElement('i');probe.style.background='var(--hover)';node.append(probe);
+      const expected=getComputedStyle(probe).backgroundColor,actual=getComputedStyle(node).backgroundColor;
+      probe.remove();return {expected,actual};
+     });
+     assert.equal(colors.actual,colors.expected,'骨架圆角底色与占位层一致');
+    }
     assert.equal(await page.evaluate(()=>(window as any).__catalogSkeletons),1,'目录骨架只能创建一次');
     assert.deepEqual(await page.evaluate(()=>(window as any).__catalogRatios),[hasFeed?3/4:16/9]);
     release();
