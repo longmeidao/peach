@@ -26,6 +26,7 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       wheel_matrix: ${{ steps.plan.outputs.wheel_matrix }}
+      wide: ${{ steps.plan.outputs.wide }}
     steps:
       - uses: actions/checkout@v7
         with:
