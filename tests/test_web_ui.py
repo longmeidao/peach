@@ -3252,7 +3252,7 @@ class WebUiSourceTests(unittest.TestCase):
         显式写了 `loc=` 就是用户自己选的。全部脱盘时保持原样：清空会变成什么都不筛。
         """
         self.assertPageContains("function dropOfflineFromDefaultLoc(){")
-        self.assertPageContains("if(initialParams.get('loc'))return;")
+        self.assertPageContains("if(initialParams.has('loc'))return;")
         self.assertPageContains("dropOfflineFromDefaultLoc();")
 
     def test_no_dropdown_falls_back_to_the_browser_control(self):

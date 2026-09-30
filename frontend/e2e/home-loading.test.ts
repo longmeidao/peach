@@ -28,6 +28,12 @@ describe('首页加载结构',()=>{
      }).observe(document,{childList:true,subtree:true});
     },{hasFeed});
     const page=await context.newPage();
+    const scopes:string[]=[];
+    await page.route('**/api/sources',route=>route.fulfill({json:{ok:true,sources:[{location:'local',online:true},{location:'115',online:false}]}}));
+    await page.route(/\/api\/facets\?/,async route=>{
+     scopes.push(new URL(route.request().url()).searchParams.get('loc')||'');
+     await route.continue();
+    });
     await page.route(/\/api\/tops\?/,async route=>{
      const first=!(Number(new URL(route.request().url()).searchParams.get('page'))>0);
      await route.fulfill({json:{performers:first?[{id:90001,k:'示例演员',n:1,has_image:false,has_avatar:false}]:[],studios:[]}});
@@ -66,6 +72,8 @@ describe('首页加载结构',()=>{
     assert.equal(await page.evaluate(()=>(window as any).__firstCard?.isConnected&&(window as any).__firstTier?.isConnected),true);
     assert.equal(await page.locator('#feedNew [data-skeleton]').count(),0);
     assert.equal(await page.locator('#feedNew').getAttribute('aria-label'),'未入库的新作');
+    assert.ok(scopes.length>0);
+    assert.deepEqual([...new Set(scopes)],['local'],'默认筛选始终排除离线来源');
    }finally{release();await context.close()}
   });
  }

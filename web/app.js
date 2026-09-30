@@ -1246,9 +1246,11 @@ state={loc:initialParams.get('loc')??'local,115',creator:initialParam('creator')
    全部来源都脱盘时保持原样——清空筛选会变成「什么都不筛」，那比原状更糟。
    必须写在 `state` 之后：`loadSourceStatus()` 在启动时调它，那时 `state` 已初始化。 */
 function dropOfflineFromDefaultLoc(){
-  if(initialParams.get('loc'))return;
-  const kept=state.loc.split(',').filter(Boolean).filter(k=>sourceOnline[k]!==false);
-  if(kept.length&&kept.length!==state.loc.split(',').filter(Boolean).length)state.loc=kept.join(',');
+  if(initialParams.has('loc'))return;
+  state.loc=onlineDefaultLoc(state.loc);
+}
+function onlineDefaultLoc(loc){
+  return loc.split(',').filter(Boolean).filter(k=>sourceOnline[k]!==false).join(',')||loc;
 }
 const HOME_QUERY_KEYS=['loc','creator','studio','owner','tag','tag_match','len','dur_min','dur_max','orient','region','sort','dir','q','jav'];
 function homePath(filters=state){
@@ -6591,9 +6593,7 @@ function javLayoutButtons(){
   return iconSwitchHtml('jav-layout','JAV 卡片版式',JAV_LAYOUTS,javLayout(),
     {attr:'data-jav-layout',className:'javlayout'});
 }
-/* 首页（非 JAV 模式）也有大图／小图。首页混着番号作品和创作者作品，大图只拉长带番号的
-   那几张，其余照旧 16:9，和资料页同一个口径。它单独记在 `homeLayout`、默认小图：
-   JAV 模式的版式是给整屏番号挑的，搬到混排的首页未必合适，两边各记各的。 */
+/* 首页与 JAV 视图分别保存版式。大图统一作品卡与 Mix 的画面框，预览图完整居中并留黑边。 */
 function homeLayoutActive(){
   return decodeURIComponent(location.pathname)==='/'&&state.jav!=='1';
 }
@@ -6846,9 +6846,7 @@ function catalogGridLayout(){
   if(!catalogLayoutValue||Object.keys(next).some(key=>next[key]!==catalogLayoutValue[key]))catalogLayoutValue=next;
   return catalogLayoutValue;
 }
-/* 作品网格的骨架（目录、回收站、资料页作品区）。封面比例跟真卡的 `cardRatio` 对番号
-   作品给的那一档一致：显式筛了竖屏是 9:16，首页与 JAV 语境下选了大图是 3:4 正封，
-   其余 16:9。首页大图只拉长番号作品，骨架不知道会回来哪几张，按版式本身给。 */
+/* 作品网格的骨架与真卡共享比例：显式竖屏为 9:16，大图为 3:4，其余为 16:9。 */
 function catalogSkeletonHtml(label='正在读取作品'){
   return pageSkeletonHtml(label,{cards:true,className:'catalog-skeleton postercard-skeleton',cardRatio:catalogCardRatio()});
 }
@@ -7983,7 +7981,7 @@ function openCatalog(path){
   const params=new URLSearchParams(location.search);
   const enteringHome=path==='/'&&lastRoutePath!=='/';
   if(enteringHome){barsDataCache=null;barsDataPromise=null}
-  state={...state,loc:params.get('loc')??'local,115',creator:params.get('creator')||'',studio:params.get('studio')||'',
+  state={...state,loc:params.get('loc')??onlineDefaultLoc('local,115'),creator:params.get('creator')||'',studio:params.get('studio')||'',
     tag:cleanTagFilter(params.get('tag')),tag_match:params.get('tag_match')==='any'?'any':'all',len:params.get('len')||'',
     dur_min:params.get('dur_min')||'',dur_max:params.get('dur_max')||'',orient:params.get('orient')||'',
     state:ROUTE_STATES[path]||params.get('state')||'',...resolveSort(params.get('sort'),params.get('dir')),

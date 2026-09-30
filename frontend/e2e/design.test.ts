@@ -1368,8 +1368,8 @@ describe('设计决定', () => {
     }
   });
 
-  it('首页也有大图／小图：默认小图，大图只拉长番号卡，选择单独记住', { timeout: 60_000 }, async () => {
-    /* 演示库没有番号作品，给首张卡挂一个；第二张保持普通视频，看它不跟着拉长。 */
+  it('首页版式默认小图，大图统一作品画面框，选择单独记住', { timeout: 60_000 }, async () => {
+    /* 首张卡使用番号封面，第二张使用普通预览图。 */
     const opened = await openCatalogFixture(browser, (payload) => {
       Object.assign(payload.items[0], { is_jav: true, code: 'ABC-123', display_code: 'ABC-123', has_cover: true });
     });
@@ -1382,13 +1382,12 @@ describe('设计决定', () => {
       assert.ok(Math.abs(await ratio(0) - 16 / 9) < 0.05, '小图下番号卡不是 16:9');
       await choice('big').check({ force: true });
       assert.ok(Math.abs(await ratio(0) - 0.75) < 0.05, '大图下番号卡没有拉成正封比例');
-      assert.ok(Math.abs(await ratio(1) - 16 / 9) < 0.05, '大图把非番号卡也拉长了');
-      // 两张卡同在首行：普通视频卡按自己的内容定高，悬停面不铺进番号卡撑出来的那截空白。
-      const box = (index: number) => page.locator('#grid [data-media-grid] > [data-media-card][data-id]').nth(index)
+      assert.ok(Math.abs(await ratio(1) - 0.75) < 0.05, '大图下普通作品画面框不是 3:4');
+      const box = (index: number) => page.locator('#grid [data-media-grid] > [data-media-card][data-id]').nth(index).locator('[data-media-pic]')
         .evaluate((element) => ({ top: element.getBoundingClientRect().top, height: element.getBoundingClientRect().height }));
       const [jav, plain] = [await box(0), await box(1)];
       assert.ok(Math.abs(jav.top - plain.top) < 1, '前两张卡不在同一行，量不到撑高');
-      assert.ok(plain.height < jav.height - 40, '普通视频卡被同行的番号卡撑到整行高');
+      assert.ok(Math.abs(plain.height - jav.height) < 1, '同行作品画面框不等高');
       // `visit()` 的初始化脚本每次导航都重写设置，刷新验不了；直接读存下来的那份。
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('peach.settings.v1') || '{}'));
       assert.equal(saved.homeLayout, 'big', '首页版式没有存下来');

@@ -43,11 +43,10 @@ const RESOURCE_LABELS: Record<string, string> = { image: '图片', audio: '音�
 /** 番号作品叫女优，其余出镜者叫艺人。判据由后端 `is_jav` 给。 */
 const performerLabel = (item: MediaItem) => (item.is_jav ? '女优' : '艺人');
 
-/** 这张卡的封面比例。一个列表里的卡必须等高，比例只由列表的语境决定：竖屏只给竖屏带和
- *  显式筛了竖屏的时候，大图只拉长番号作品。 */
-export function cardRatio(item: MediaItem, variant: MediaCardVariant, layout: MediaCardLayout): number {
+/** 一个列表里的画面框等高，比例由版式与竖屏语境决定。 */
+export function cardRatio(_item: MediaItem, variant: MediaCardVariant, layout: MediaCardLayout): number {
   if (variant === 'short' || layout.portrait) return PORTRAIT_RATIO;
-  return layout.active && item.is_jav && layout.size === 'big' ? COVER_FRONT_RATIO : 16 / 9;
+  return layout.active && layout.size === 'big' ? COVER_FRONT_RATIO : 16 / 9;
 }
 
 export interface MediaCardProps {

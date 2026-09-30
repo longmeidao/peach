@@ -14,7 +14,7 @@ import { loadingDotsHtml, popCount } from '@peach/legacy/ui';
 
 import { apiGet } from '../../api';
 import { RetryNote, useSkeletonReveal } from '../components/grid-reveal';
-import { COVER_FRONT_RATIO, MediaCard, type MediaCardVariant } from '../components/media-card';
+import { cardRatio, MediaCard, type MediaCardVariant } from '../components/media-card';
 import { MIX_FLIP_FACES, MixCard } from '../components/mix-card';
 import { javArtwork, type Artwork } from './artwork';
 import {
@@ -308,7 +308,7 @@ function HomeMix({ seed, layout, helpers, actions }: {
       poster={null} artwork={artwork}
       artworkIdentity={size === 'small' ? artwork.html : mixFace(seed, { ...layout, size: 'small' }, false, helpers).html}
       relayoutArt={(root) => helpers.relayoutArt(root, size)}
-      ratio={jav && layout.size === 'big' ? COVER_FRONT_RATIO : 16 / 9}
+      ratio={cardRatio(seed, 'grid', layout)}
       flipImages={flipImages} faceHtml={(id) => faces.current.get(id) || ''} canFlip={actions.canFlip}
       faces={[]} faceAvatar={() => ''} onOpenEntity={actions.openEntity}
       onOpen={(anchor) => actions.openMix(seed.id, anchor)} openLabel={`打开 Mix · ${label}`} />
