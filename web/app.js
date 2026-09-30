@@ -62,6 +62,8 @@ wireImageFallbacks(document.body);
    之后（搜索 `state={loc:`）；这里只提前建立绑定，好让上面设置面板的 onchange
    不再落在 TDZ 里。 */
 let state;
+let homeHasFeed=null;
+const feedRequests=new WeakMap();
 const selected=new Set(),followSelected=new Set();
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 // 顶部三层与抽屉上一次画的是哪一份：口径加数据，两样都没变就不必再画一遍。
@@ -265,8 +267,7 @@ function wireCountRow(){
    `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
    同理不动——它们本来就不随这次请求变。 */
 /* 网格还没挂上 island 时，壳把骨架写进 `#grid > .grid`。卡片都归 island：目录与回收站是
-   `catalog-grid`，垃圾文件是 `junk-queue`。骨架换骨架时 `revealSkeleton` 不播交叉淡入，
-   它自己看出去的那一屏里有没有占位。 */
+   `catalog-grid`，垃圾文件是 `junk-queue`。同形骨架复用节点，只有骨架交给内容才淡入。 */
 const setGridCards=html=>revealSkeleton($('#grid'),()=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`});
 /* 「本页有哪些卡」，Shift 连选按这个顺序：目录、垃圾文件与资料页网格里的卡。竖屏带
    和接着看那一排不在其中，它们不在网格的分段里。 */
@@ -296,7 +297,12 @@ function renderCatalogLoading(label='正在读取作品'){
   fitSkeleton(count);
   /* 网格已经挂着时骨架归它自己铺：`#grid` 是它的容器，壳往里写会把 React 根冲掉。 */
   if(islandMounted($('#grid')))return;
-  setGridCards(catalogSkeletonHtml(label));
+  const grid=$('#grid'),placeholder=catalogSkeletonHtml(label);
+  const skeleton=grid.querySelector('.catalog-skeleton');
+  if(skeleton?.dataset.skeleton===skeletonKeyOf(placeholder)
+    &&Number(skeleton.querySelector('[style]')?.style.getPropertyValue('--skeleton-card-ratio'))===catalogCardRatio())return;
+  if(skeleton)grid.innerHTML=`<div class="grid">${placeholder}</div>`;
+  else setGridCards(placeholder);
   fitSkeleton($('#grid'));
 }
 /* 每个管理表面的加载态只有一份定义，深链启动和路由到位后都从这里取。
@@ -468,7 +474,8 @@ const claimSurface=path=>{
   /* 首页那一行新作同样只属于目录页。管理区的入口不经过 `showHomeSurfaces`，离开目录页时
      在这里收起并清空，连同它的自动滚动一起停掉。 */
   if(!isFeedNewPath(path)){const feed=$('#feedNew');
-    feed.querySelectorAll('.feednewrow').forEach(stopAutoScroll);feed.hidden=true;feed.innerHTML=''}
+    feed.querySelectorAll('.feednewrow').forEach(stopAutoScroll);feed.hidden=true;feed.innerHTML='';
+    feed.removeAttribute('aria-busy')}
   /* 管理区正文的容器每次换页都经过这里，所以卸载也落在这里。React 档的页面是一棵自己
      管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的页面照着原节律继续敲库。
      没挂过东西的容器 unmountIsland 直接返回，逐页判断反而会漏掉新迁过来的那一页。 */
@@ -4283,7 +4290,7 @@ function ledgerGateNote(runtime,message,actionLabel,actionHref){
    之前跑（`loadRequestSeq++` 要抢在在途的目录请求之前作废它），而主体有的入口在取数
    前铺（配 `placeholder` 给反馈），有的在取数后铺（数据快时不闪一下骨架）。
    两个都要调，由 `test_every_full_page_view_enters_through_the_shared_helpers` 兜住。 */
-const skeletonKeyOf=html=>String(html).match(/data-skeleton="([^"]*)"/)?.[1]||'';
+function skeletonKeyOf(html){return String(html).match(/data-skeleton="([^"]*)"/)?.[1]||''}
 function showManagementBody({manage=true,placeholder=''}={}){
   $('#stats').hidden=false;$('#index').hidden=true;clearCatalogGrid();
   $('#count').textContent='';$('#loadSentinel').hidden=true;
@@ -4330,8 +4337,7 @@ function showHomeSurfaces(){
      上一页挂在里面的 React 根（换头像）就没人卸，留着一棵管着已经不在页面上的节点的根。 */
   unmountIsland($('#index'));
   $('#stats').hidden=true;$('#index').hidden=true;
-  // 新作那一行由 `loadCatalog()` 按路径重画；这里先收起，换页时不会有上一页的内容留着。
-  $('#feedNew').hidden=true;
+  if(!isFeedNewPath(location.pathname))$('#feedNew').hidden=true;
   $('#tiers').style.display='';$('#tagbar').style.display='';
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
@@ -4406,9 +4412,20 @@ const feedNewSkeletonHtml=()=>`<div class="feednewrow srow" aria-hidden="true">$
 let entityShapes=null;
 async function loadEntityShapes(){
   const data=await api('/api/entity/shapes').catch(()=>null);
-  if(data&&!data.error)entityShapes=new Map((data.entities||[])
-    .flatMap(entity=>entity.names.map(name=>[`${entity.kind}/${foldName(name)}`,entity.parts])));
+  if(data&&!data.error){
+    entityShapes=new Map((data.entities||[])
+      .flatMap(entity=>entity.names.map(name=>[`${entity.kind}/${foldName(name)}`,entity.parts])));
+    if(typeof data.home?.feed==='boolean')homeHasFeed=data.home.feed;
+    if(isFeedNewPath(location.pathname))prepareHomeFeed($('#feedNew'));
+  }
   return entityShapes;
+}
+function prepareHomeFeed(host){
+  if(!host||host.querySelector('[data-feed-id]'))return;
+  host.hidden=homeHasFeed!==true;
+  if(homeHasFeed!==true)return;
+  host.setAttribute('aria-busy','true');
+  if(!host.querySelector('.feednewskeleton'))host.innerHTML=feedNewSkeletonHtml();
 }
 const hasEntityPart=(kind,name,part)=>!!name&&!!entityShapes?.get(`${kind}/${foldName(name)}`)?.includes(part);
 const feedNewSkeletonSection=()=>`<section class="feednew">${feedNewSkeletonHtml()}</section>`;
@@ -4446,10 +4463,14 @@ async function loadFeedNew(entityId,preload){
 function isFeedNewPath(path){return isCatalogPath(path)&&path!=='/junk-files'}
 async function renderFeedNew(host,entityId){
   if(!host)return;
+  const request={},surface=surfaceToken(surfacePath());
+  feedRequests.set(host,request);
   host.dataset.feedEntity=entityId?String(entityId):'';
   const {items,html}=await loadFeedNew(entityId,host.getAttribute('aria-busy')==='true');
   // 取数期间人已经离开了这一页：首页那一行不画到管理区上。
-  if(!host.isConnected||host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
+  if(!host.isConnected||feedRequests.get(host)!==request||!surfaceCurrent(surface)
+    ||host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
+  if(host.id==='feedNew')homeHasFeed=items.length>0;
   host.removeAttribute('aria-busy');
   if(!items.length){host.hidden=true;host.innerHTML='';return}
   host.hidden=false;
@@ -4461,7 +4482,7 @@ async function renderFeedNew(host,entityId){
       body:JSON.stringify({action,ids:[Number(card.dataset.feedId)]})}).catch(()=>null);
     // 忽略的那条当场消失，已看过的留在原位只是变淡：已读是标记，不是关掉。
     if(action==='ignore')card.remove();else card.classList.add('isread');
-    if(!host.querySelector('[data-feed-id]'))host.hidden=true;
+    if(!host.querySelector('[data-feed-id]')){host.hidden=true;if(host.id==='feedNew')homeHasFeed=false}
   });
   const row=host.querySelector('.feednewrow');
   wireDrag(row);
@@ -6274,10 +6295,9 @@ function saveSidebarSetting(){
   api('/api/settings',{method:'POST',
     body:JSON.stringify({sidebarOrder:appSettings.sidebarOrder})}).catch(()=>{});
 }
-/* 启动时用账本上的那份纠正本地缓存。
-   不等它回来再画侧栏：侧栏在首屏就要出现，等一个网络往返会闪一下。
-   所以先用本地缓存画，服务端回来后只有真的不一致才重绘。 */
-async function loadSyncedSettings(){
+/* 启动时用账本上的那份纠正本地缓存。侧栏立即用缓存显示；最终横条和作品在同步后绘制，
+   读取期间只更新设置，保持已经显示的加载态。设置页主动同步时同步重画导航。 */
+async function loadSyncedSettings({render=true}={}){
   let remote=null;
   try{remote=await api('/api/settings')}catch(_e){return}
   const initial=remote&&remote.followInitialDays;
@@ -6305,7 +6325,8 @@ async function loadSyncedSettings(){
   const order=Array.isArray(remote&&remote.sidebarOrder)?remote.sidebarOrder:null;
   if(!order||!order.length||order.join(',')===appSettings.sidebarOrder.join(','))return;
   appSettings.sidebarOrder=order;
-  saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();wireAllDrag();
+  saveSettings();renderSidebarOrderSetting();
+  if(render){buildEdge();buildBars();wireAllDrag()}
 }
 function moveSidebarItem(key,targetKey,after=false){
   if(key===targetKey)return;
@@ -6765,14 +6786,18 @@ async function loadCatalog(){
   /* 新作那一行只在目录路径上出现：管理页、回收站这些页面回答的是别的问题，一行「外面出了
      什么」摆在那里只是噪音。离开目录时要显式收起——它是 `#main` 的固定子节点，没人收就
      一直挂在那儿。 */
-  if(isFeedNewPath(location.pathname))void renderFeedNew($('#feedNew'));
-  else{$('#feedNew').hidden=true;$('#feedNew').innerHTML=''}
   barsContext={type:'home',filters:state};detailReturnBarsContext=null;disposeStage(false);
   if(state.state==='ads')return loadJunk(surface);
   // 卸掉垃圾队列要赶在铺骨架之前：它的计数行也在 `#count` 里，先铺就把它挂着的那一格冲掉了。
   if(gridIsland==='junk-queue')clearCatalogGrid();
   renderCatalogLoading();
   showHomeSurfaces();
+  if(isFeedNewPath(location.pathname)){
+    await entityShapesReady;
+    if(!surfaceCurrent(surface))return;
+    prepareHomeFeed($('#feedNew'));
+    void renderFeedNew($('#feedNew'));
+  }else{$('#feedNew').hidden=true;$('#feedNew').innerHTML='';$('#feedNew').removeAttribute('aria-busy')}
   renderCombo();
   $('#count').classList.remove('manage-static','junkcount');
   return paintCatalogGrid(surface);
@@ -8007,10 +8032,9 @@ renderInitialSurfaceLoading();
 buildManageBar();
 /* 那两个聚合查询喂的是首页顶部三条横条。深链进管理页或索引页时横条一开始就收着，
    结果没人看，却排在这一页自己的数据前面。 */
-loadSourceStatus()
+Promise.all([loadSourceStatus(),loadSyncedSettings({render:false}),entityShapesReady])
   .then(()=>wantsDiscoveryBars()?buildBars():null)
-  .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()})
-  .then(loadSyncedSettings);
+  .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()});
 
 ;(()=>{
 /* Board 外壳与设置导航。 */

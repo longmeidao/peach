@@ -302,6 +302,7 @@ def q_entity_shapes(contract, args) -> dict:
     名单放在服务端，几台设备看到的是同一份。页面按地址里的名字比对，所以别名一起给。
     """
     with contract.database.read_connection() as connection:
+        home = {"feed": web_feeds.home_has_feed(contract, connection)}
         parts = {entity_id: ["feed"] for entity_id in web_feeds.feed_row_entity_ids(contract, connection)}
         for row in connection.execute(
                 "SELECT DISTINCT scope.entity_id FROM asset_entity scope"
@@ -320,7 +321,7 @@ def q_entity_shapes(contract, args) -> dict:
             names = entities.get(int(alias["entity_id"]), {}).get("names")
             if names is not None and alias["alias"] not in names:
                 names.append(alias["alias"])
-    return {"ok": True, "entities": list(entities.values())}
+    return {"ok": True, "home": home, "entities": list(entities.values())}
 
 # ────────────────────────────── 照片 ──────────────────────────────
 # 图集就是目录：账本没有图集实体，一个目录下的图片本来就是一份图集，
