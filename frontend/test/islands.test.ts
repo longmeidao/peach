@@ -42,7 +42,7 @@ describe('island 注册表', () => {
     expect(islandNames()).toEqual([
       'catalog-filter', 'catalog-grid', 'data-cleanup', 'duplicates', 'entity-body', 'entity-filter', 'entity-hero', 'follow-feed', 'follow-manage', 'index', 'junk-queue',
       'library-processing', 'playlists',
-      'scraping', 'quality-goals', 'review', 'configuration', 'configuration-summary', 'activity', 'stats', 'taste']);
+      'scraping', 'quality-goals', 'review', 'search', 'configuration', 'configuration-summary', 'activity', 'stats', 'taste']);
   });
 
   it('未注册的名字立刻失败，不是静默什么都不画', async () => {

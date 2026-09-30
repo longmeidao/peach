@@ -21,6 +21,7 @@
 @import "./entity-hero/entity-hero.css";
 @import "./entity-filter/entity-filter.css";
 @import "./catalog-filter/catalog-filter.css";
+@import "./search/search.css";
 @import "./entity-body/entity-body.css";
 @import "./follow-feed/follow-feed.css";
 @import "./follow-detail/follow-detail.css";

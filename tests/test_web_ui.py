@@ -1487,7 +1487,6 @@ class WebUiSourceTests(unittest.TestCase):
                 (".ib{", "var(--control-radius)"),
                 (".geist-button{", "var(--control-radius)"),
                 (".searchmenu{", "var(--floating-radius)"),
-                (".searchoption{", "var(--control-radius)"),
                 (".geist-modal{", "var(--floating-radius)"),
                 (".pickrow{", "var(--control-radius)"),
                 (".settingscard{", "var(--floating-radius)"),
@@ -1692,22 +1691,6 @@ class WebUiSourceTests(unittest.TestCase):
                / "frontend/src/react/follow-manage/add-source.tsx").read_text(encoding="utf-8")
         self.assertIn('<Input aria-label="来源链接、名字或 id"', add)
         self.assertPageLacks(".isearch")
-
-    def test_filtering_waits_for_the_chinese_ime_to_finish_composing(self):
-        """选字过程中不查询：拿半截拼音去筛选，筛的是「zhon」这种不存在的词。
-
-        `input` 在组字过程中照样发，事件上的 `isComposing` 是唯一可靠的判据；
-        组完由 `compositionend` 接手。索引页的过滤框在 React 里，同一条判据由
-        `frontend/test/react/index-page.test.tsx` 验收。
-        """
-        self.assertPageContains("const handleSearchInput=e=>{\n  if(e.isComposing)return;")
-        self.assertPageContains("$('#q').oninput=handleSearchInput;")
-        self.assertPageContains("$('#q').addEventListener('compositionend',handleSearchInput);")
-        # 顶部搜索的键盘处理在最前面让位给输入法。作品详情的标签选择器在 React 里，
-        # 同一条判据由 `frontend/test/react/item-detail.test.tsx` 验收。
-        self.assertPageLacks("$('#q').oninput=()=>{searchActive=-1;")
-        self.assertEqual(self.app_js.count("if(e.isComposing)return;"), 2,
-                         "两处：顶部搜索的输入与键盘")
 
     def test_route_titles_and_settings_dialog_manage_focus(self):
         # 标题跟着路由表走：每一屏的标签写在自己那条记录上，不再有第二份
@@ -2332,15 +2315,6 @@ class WebUiSourceTests(unittest.TestCase):
         """窄屏下搜索框绝对定位后脱离了流，动作按钮会挤在品牌名右侧、右半条留空。"""
         self.assertPageContains("#searchBtn{margin-left:auto}")
 
-    def test_deleting_one_search_record_keeps_the_menu_open(self):
-        """删除按钮不能抢焦点，也不能整段重建下拉栏。
-
-        抢焦点会触发 `#q` 的 blur，那个 handler 140ms 后无条件关掉下拉栏；
-        整段重建则会把推荐词重新洗牌，删一条历史却换了一批推荐。
-        """
-        self.assertPageContains("b.onmousedown=e=>e.preventDefault();")
-        self.assertPageContains("if(group&&!group.querySelector('[data-search-value]'))group.remove();")
-
     def test_search_menu_closes_without_relying_on_the_input_keeping_focus(self):
         """下拉栏的收起不能只挂在输入框失焦上。
 
@@ -2348,18 +2322,12 @@ class WebUiSourceTests(unittest.TestCase):
         点走，失焦那条 140ms 的兜底先把它收了，晚到的 then 再把它掀开——这一刻焦点
         已经不在输入框上，第二次失焦永远不会来，下拉栏就此钉在页面上。所以回调先
         确认焦点还在，另外补一条不问焦点的出口：`.search` 之外的按压一律收起。
-        捕获期是必须的，被点的元素可能吃掉事件或当场把自己摘掉。
+        捕获期是必须的，被点的元素可能吃掉事件或当场把自己摘掉。回调里的焦点守卫
+        归 `search` 岛，由 `frontend/test/react/search.test.tsx` 验收；这条出口在壳里。
         """
-        self.assertCode(".then(()=>{if(document.activeElement!==$('#q'))return;")
-        # 补全那条隔着 150ms 才回来，同一个守卫在那里也必须成立。
-        self.assertCode(
-            "if(document.activeElement===$('#q'))renderSearchMenu()}),SUGGEST_DEBOUNCE)")
         self.assertPageContains("document.addEventListener('pointerdown',event=>{\n"
                                 "  if(!event.target.closest('.search'))"
                                 "hideSearchMenu();\n},true);")
-        self.assertPageContains("const hadValue=!!$('#q').value,hadMenu=!$('#searchMenu').hidden;")
-        self.assertPageContains("if(hadMenu){hideSearchMenu();searchActive=-1;e.preventDefault();return}")
-        self.assertPageLacks("]).then(renderSearchMenu)});")
 
     def test_card_aspect_ratio_actually_reaches_the_element(self):
         """算出来的卡片比例必须写进 DOM。
@@ -3173,21 +3141,6 @@ class WebUiSourceTests(unittest.TestCase):
         # duration 在元数据到位前是 NaN，Math.min(NaN,x) 会把 currentTime 写成 NaN。
         self.assertPageContains(
             "Number.isFinite(total)?Math.max(0,Math.min(total,target)):Math.max(0,target)")
-
-    def test_search_menu_is_navigable_by_keyboard(self):
-        self.assertPageContains("function moveSearchActive(step)")
-        self.assertCode("if(e.key==='ArrowDown'||e.key==='ArrowUp'){\n    if(moveSearchActive(")
-        self.assertPageContains("options[searchActive].scrollIntoView({block:'nearest'})")
-        self.assertPageContains(".searchoption:hover,.searchoption.active{background:var(--hover)}")
-
-    def test_search_active_index_resets_when_the_list_is_rebuilt(self):
-        # 列表重建后旧索引会指向不存在的行；输入和重新渲染都必须归零。
-        self.assertPageContains("if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;")
-        self.assertPageContains("const refreshSearchMenu=()=>{searchActive=-1;")
-
-    def test_enter_uses_the_highlighted_option_before_the_suggestion(self):
-        self.assertPageContains("const picked=searchOptions()[searchActive]")
-        self.assertPageContains("runSearch(!picked,true)")
 
     def test_immerse_mode_names_the_whole_cast(self):
         self.assertPageContains("const cast=full.performers||[]")
@@ -4470,12 +4423,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("querySelectorAll('[data-junk-batch]')")
 
     def test_search_suggestions_come_from_real_data_in_bulk(self):
-        """推荐取当前馆藏，并核对实际搜索命中。"""
-        self.assertPageContains("async function loadSearchPool()")
-        self.assertPageContains("await catalogSuggestions(state,api)")
-        self.assertPageContains("searchPoolCache=[]")
-        self.assertPageContains("Promise.all([loadSearchHistory(),loadSearchPool()])")
-        self.assertPageContains("[...searchPool()]")
+        """推荐取当前馆藏，并核对实际搜索命中。`search` 岛每次聚焦都向壳要一次词池。"""
+        self.assertPageContains("pool:()=>catalogSuggestions(state,api),")
 
     def test_insight_surfaces_use_one_readable_measure(self):
         """统计和口味共享 Vercel 式阅读列；浏览型首页仍保持全宽。"""
@@ -5517,9 +5466,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode("const anchor=toggle.getBoundingClientRect(),width=menu.offsetWidth;")
         self.assertCode("event.stopPropagation();setOpen(!open)")
         # wireAnchoredMenu 之外自己开合的面板也从同一个口进出；作品详情的标签选择器在岛里调
-        # 同一对 presentMenu／dismissMenu。
-        self.assertPageContains("function hideSearchMenu(){dismissMenu($('#searchMenu'))}")
-        self.assertPageContains("if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();")
+        # 同一对 presentMenu／dismissMenu，顶栏搜索的 `search` 岛由壳递进这一对。
+        self.assertPageContains("present:menu=>presentMenu(menu),\n  dismiss:menu=>dismissMenu(menu),")
         self.assertPageContains("const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);")
         self.assertPageContains("if(opening)presentMenu(addMenu);else dismissMenu(addMenu);")
         self.assertPageLacks("$('#searchMenu').hidden=true")
@@ -6365,13 +6313,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("{k:'ads',label:'垃圾复核'}")
 
     def test_search_placeholder_is_an_actionable_recommendation(self):
+        # 占位换成词池里的一个词、空输入回车就搜它：`frontend/test/react/search.test.tsx`。
         self.assertPageLacks("const SEARCH_HINTS=")
-        self.assertPageContains("await catalogSuggestions(state,api)")
-        self.assertPageContains("$('#q').dataset.suggestion=searchSuggestion")
-        # 契约是「没有选中下拉项时，Enter 用当前推荐词」。下拉加了键盘导航后，
-        # 这个条件由 `!picked` 表达：没有高亮项时它就是 true，与旧的字面 true 等价。
-        self.assertPageContains("const picked=searchOptions()[searchActive]")
-        self.assertPageContains("runSearch(!picked,true)")
         self.assertPageLacks("试试：")
         self.assertPageLacks("ABW 番号")
 
@@ -6700,53 +6643,12 @@ class WebUiSourceTests(unittest.TestCase):
             ".settinggroup :is(.settingrow,.glowsetting)+.sidebarsetting"
             "{border-top:1px solid var(--line-soft)}")
 
-    def test_search_menu_has_local_history_and_recommendations(self):
-        self.assertPageContains("/api/search-history")
-        self.assertPageContains("搜索记录")
-        self.assertPageContains("recommendations.map")
-        self.assertPageContains("rememberSearch(query)")
-        self.assertPageContains("body:JSON.stringify({query})}).catch(()=>null)")
-        self.assertPageContains(".top:has(.search.open){overflow:visible}")
-        self.assertPageLacks("setTimeout(runSearch,320)")
-        self.assertPageContains("runSearch(!picked,true)")
-
-    def test_search_menu_completes_from_the_ledger_as_you_type(self):
-        """敲字的同时给出馆藏里的身份与作品，不是聚焦时那一批固定推荐。"""
-        self.assertPageContains("/api/suggest?q=")
-        self.assertCode("const SUGGEST_DEBOUNCE=150;")
-        # 慢的旧响应不许盖掉新的：连敲两个字时先发的那次完全可能后回来。
-        self.assertCode("const request=++suggestRequest;")
-        self.assertCode("if(request!==suggestRequest)return;")
-        # 分组顺序和名字都由后端给，页面不另排一遍。
-        self.assertCode("esc(group.label)")
-        self.assertPageLacks("const SUGGEST_GROUPS=[")
-        # 有输入时历史跟着筛，这一刻用户在找词而不是回顾搜过什么。
-        self.assertCode("foldName(x).includes(foldName(query))")
-
-    def test_a_completed_work_opens_instead_of_running_a_search(self):
-        """整句标题填回搜索框，下一次搜索会因为任何一个字符对不上而落空。"""
-        self.assertPageContains("data-open-item")
-        self.assertCode("if(x.dataset.openItem){$('#q').blur();openItem(+x.dataset.openItem);return}")
-        # 键盘选中的那一项走同一条路，回车不绕一趟搜索。
-        self.assertCode(
-            "if(picked&&picked.dataset.openItem){$('#q').blur();"
-            "openItem(+picked.dataset.openItem);return}")
-
     def test_the_search_menu_scrolls_inside_itself(self):
         """七组补全装不进一屏，滚到底不把身后的列表一起翻走。"""
         self.assertCode("max-height:min(60vh,520px);overflow:auto;overscroll-behavior:contain;")
         self.assertCode(
             ".searchmenu{position:absolute;left:-40px;right:0;top:calc(100% + 8px);max-height:70vh;"
             "overflow:auto;overscroll-behavior:contain}")
-
-    def test_a_suggestion_keeps_its_alias_and_count_subordinate(self):
-        """命中的别名和作品数都是这一行的注脚，不与统称争分量。"""
-        self.assertCode(
-            ".searchoption .matched{flex:0 8 auto;min-width:0;"
-            "color:var(--muted);font-size:var(--fs-xs)}")
-        self.assertCode(
-            ".searchoption .n{margin-left:auto;flex:none;color:var(--muted);"
-            "font-size:var(--fs-xs);font-variant-numeric:tabular-nums}")
 
     def test_detail_has_stats_ambient_and_better_version_goal(self):
         self.assertPageContains("--video-glow")
@@ -6952,9 +6854,9 @@ class WebUiSourceTests(unittest.TestCase):
             ".feednewcard .meta .s>.feednewperformers",
             ".meta .t", ".meta .who", ".mixcopy b,.mixcopy span",
             # 小窗信息栏、播放器右键菜单、统计面板与队列的尾部省略在 `stage.css` / `player.css`，
-            # 标题、来源和标签都是语义文本，不在这份遗留样式表里。
+            # 标题、来源和标签都是语义文本，不在这份遗留样式表里。顶栏搜索下拉栏里的行
+            # 归 `search.css`，截断的是词、人名和番号，同样是语义文本。
             ".pickrowtext b",
-            ".searchoption span",
             ".sidebarorderlabel>b",
             ".tastesummary>small",
             ".gselectfield>span",
@@ -9513,7 +9415,8 @@ class MotionRecipeTests(unittest.TestCase):
         """
         self.assertPageContains("export function dissolveValue(input,host=input&&input.parentElement,")
         self.assertPageContains("if(!next&&searchValueSnapshot.text)clearSearchField(searchValueSnapshot);")
-        self.assertPageContains("$('#q').addEventListener('compositionstart',()=>{cancelSearchDissolve();")
+        # 开始组字那一下由 `search` 岛在 `#q` 上接住，回调进壳收掉残影。
+        self.assertPageContains("composing:()=>{cancelSearchDissolve();")
         self.assertPageContains("$('#q').addEventListener('beforeinput'")
         self.assertPageContains(".search input.dissolving::placeholder{opacity:0}")
         self.assertPageContains("if(!host.querySelector(':scope > .cleardissolve'))input.classList.remove('dissolving')")

@@ -100,8 +100,6 @@ let entityPhotos=null,entityMediaView=emptyMediaView(),entityPhotoWall=null,enti
    不是这类页面的常态。`entityRosterKind` 是名册里每一格是什么：艺人或厂牌。 */
 let entityRosterView='people',entityRoster=[],entityRosterKind='performer';
 let sidebarDragKey=null;
-/* 搜索下拉里被键盘选中的那一项。列表每次重建都要归零，否则索引会指向已经不存在的行。 */
-let searchActive=-1;
 /* ────────────────────────────────────────────────────────────────────────── */
 
 /* ── 路由表 ───────────────────────────────────────────────────────────────────
@@ -5414,262 +5412,65 @@ function junkQueueProps(){
     canLoadMore:()=>$('#stats').hidden&&$('#index').hidden,
   };
 }
-let searchPoolCache=[];
-let searchPoolRequest=0;
-function searchPool(){return searchPoolCache}
-async function loadSearchPool(){
-  const request=++searchPoolRequest;
-  searchPoolCache=[];
-  $('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
-  try{
-    const names=await catalogSuggestions(state,api);
-    if(request!==searchPoolRequest)return searchPool();
-    searchPoolCache=names;
-    const searchSuggestion=names[Math.floor(Math.random()*names.length)]||'';
-    $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion||'搜索馆藏';
-  }catch(e){/* 推荐不可用时仍可直接输入搜索。 */}
-  return searchPool();
-}
-$('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
-let searchHistory=[];
-function readSearchHistory(){return searchHistory.slice(0,appSettings.searchHistoryLimit)}
-const loadSearchHistory=()=>!appSettings.searchHistoryLimit?Promise.resolve([]):api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
-function writeSearchHistory(list){searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory}
+/* ── 顶栏搜索 ──
+   输入框 `#q` 是顶栏的静态节点；下拉栏里的记录、推荐、补全、键盘选中与提交归 `search` 岛，
+   提交与打开都回这里走路由。残影（`clearSearchField`）、窄屏开合、失焦与外点收起也还在壳里，
+   收起一律经岛交出来的 `close()`。 */
+let searchControl=null;
 function applySearchHistoryLimit(limit){
-  appSettings.searchHistoryLimit=boundedPreference(limit,0,50,10);saveSettings();writeSearchHistory(readSearchHistory());
+  appSettings.searchHistoryLimit=boundedPreference(limit,0,50,10);saveSettings();
+  updateIsland($('#searchMenu'),{historyLimit:appSettings.searchHistoryLimit});
 }
 function postSearchHistoryLimit(){
   return api('/api/settings',{method:'POST',body:JSON.stringify({searchHistoryLimit:appSettings.searchHistoryLimit})}).catch(()=>{});
 }
-// 搜索本身是只读能力；账本暂时只读时，历史记录降级为本次页面内存，不能让一个
-// 非关键 POST 变成未处理异常或妨碍搜索结果。
-const rememberSearch=async query=>{if(!query||!appSettings.searchHistoryLimit)return;
-  writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))]);
-  await api('/api/search-history',{method:'POST',body:JSON.stringify({query})}).catch(()=>null)};
-function hideSearchMenu(){dismissMenu($('#searchMenu'))}
-/* 敲一下就查一次的补全。分组顺序和每组的名字都由 `/api/suggest` 给出，这里照抄：
-   两侧各排一次的话，改了一侧就会出现「后端认为最该先看的组显示在第三位」。 */
-const SUGGEST_DEBOUNCE=150;
-/* 「全部」每类给前几条，点一个页签再按这一类一次拉满。页签上的数是这段输入在那一类
-   里一共命中多少，由「全部」那一次带回来，切页签不重算。 */
-const SUGGEST_EACH=5,SUGGEST_ONE_KIND=20;
-let suggestGroups=[],suggestFor='',suggestRequest=0,suggestTimer=0,suggestKind='',suggestTabs=[];
-async function loadSuggestions(query,kind=''){
-  const request=++suggestRequest;
-  try{
-    const data=await api('/api/suggest?q='+encodeURIComponent(query)+
-      (kind?`&kind=${kind}&limit=${SUGGEST_ONE_KIND}`:`&limit=${SUGGEST_EACH}`));
-    /* 慢的旧响应不许盖掉新的。连敲两个字时先发的那次完全可能后回来，盖回去
-       就是下拉里挂着上一个字的补全，而输入框里已经是下一个字了。 */
-    if(request!==suggestRequest)return;
-    suggestFor=data.q||'';suggestGroups=data.groups||[];
-    if(!kind)suggestTabs=suggestGroups.map(({kind,label,total})=>({kind,label,total}));
-  }catch(e){if(request===suggestRequest){suggestFor=query;suggestGroups=[]}}
-}
-/* 有脸的那几类点开的是资料页，标签没有资料页，点它照旧是按这个词搜。 */
-const SUGGEST_PROFILE_KINDS=new Set(['performer','creator','studio','agency','series']);
-/* 下拉栏按宽度分两栏：左栏是身份和词，右栏是作品封面格。两栏各自仍按后端给的先后排，
-   窄到一栏时两栏首尾相接，就是后端的原顺序——作品垫底。 */
-const SUGGEST_RIGHT_KINDS=new Set(['asset']);
+function hideSearchMenu(){searchControl?.close()}
 /* 小图和卡片同一套取景：正封按 `--card-ratio` 从封套里切出来，番号作品跟随
    「JAV 默认封面」设置。两样都没有的画一块「无预览」，格子不塌。 */
-function searchCover(card){
+function searchCoverImage(card){
   const kind=card?javImageKind({...card,is_jav:!!card.code},appSettings.javImage):'';
-  const image=kind==='cover'?coverImage(card,'big')
+  return kind==='cover'?coverImage(card,'big')
     :kind?`<img class="poster still" src="/poster?id=${card.id}&c=4" alt="" loading="lazy" data-drop="self">`
     :'<span class="nopic">无预览</span>';
-  return `<span class="pic">${image}</span>`;
 }
-/* 人和公司的门面走索引页同一条兜底链：人是实体图 → 代表作头像，厂牌是标识，
-   事务所是官网站点圆标；都取不到就是首字母。 */
-function searchFace(item,kind){
-  const ref={id:item.entity_id,has_image:item.has_image,avatar_focus:item.avatar_focus};
-  return `<span class="searchface" data-kind="${kind}">`+
-    avatarInner(item.value,ref,item.rep||null,kind,item.mark||null,item.has_logo?item.value:'',
-                'icon',undefined,true)+'</span>';
-}
-function suggestionRow(item,kind){
-  const matched=item.matched?`<span class="matched">${esc(item.matched)}</span>`:'';
-  if(kind==='asset'){
-    /* 作品点开是详情，不是一个搜索词：整句标题填回搜索框，下一次搜索会因为其中任何
-       一个字符对不上而落空。 */
-    const byline=[item.who,item.code?item.title:''].filter(Boolean).map(esc).join(' · ');
-    return `<div class="searchoption searchwork" data-search-value="${esc(item.value)}" data-open-item="${item.id}">`+
-      `${searchCover(item.card)}<span class="searchmeta"><span class="searchname">${esc(item.value)}</span>`+
-      `<span class="searchsub">${byline}</span></span></div>`;
-  }
-  const open=SUGGEST_PROFILE_KINDS.has(kind)?` data-open-entity="${kind}"`:'';
-  if(kind==='performer'||kind==='creator'){
-    // 一行里摆得下几部近作就摆几部；窄下拉整排收起，数据照给，缓存键不跟着宽度分叉。
-    const works=(item.works||[]).map(card=>
-      `<button type="button" class="searchpeek" data-open-work="${card.id}" aria-label="打开 ${esc(card.code||item.value)}">${searchCover(card)}</button>`).join('');
-    const sub=[`${item.n.toLocaleString()} 个视频`,item.agency].filter(Boolean).map(esc).join(' · ');
-    return `<div class="searchoption searchperson" data-search-value="${esc(item.value)}"${open}>`+
-      `${searchFace(item,kind)}<span class="searchmeta"><span class="searchname"><span>${esc(item.value)}</span>${matched}</span>`+
-      `<span class="searchsub">${sub}</span></span>${works?`<span class="searchpeeks">${works}</span>`:''}</div>`;
-  }
-  const face=kind==='studio'||kind==='agency'?searchFace(item,kind):'';
-  return `<div class="searchoption" data-search-value="${esc(item.value)}"${open}>${face}<span>${esc(item.value)}</span>`+
-    `${matched}${item.n?`<span class="n">${item.n.toLocaleString()}</span>`:''}</div>`;
-}
-function renderSearchMenu(){const menu=$('#searchMenu'),query=$('#q').value.trim();
-  // 有输入时历史跟着筛：这一刻用户在找一个词，不是在回顾自己搜过什么。
-  const history=readSearchHistory().filter(x=>!query||foldName(x).includes(foldName(query)));
-  const recommendations=query?[]:[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
-  const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
-  const fresh=!!query&&suggestFor===query;
-  // 选了一类就只画这一类；拉满那一类的请求还在路上时，先用「全部」里的那几条顶着。
-  const groups=(fresh?suggestGroups:[]).filter(group=>!suggestKind||group.kind===suggestKind);
-  const section=group=>`<section class="searchgroup" data-kind="${group.kind}"><h3>${esc(group.label)}</h3>`+
-    `<div class="searchitems">${group.items.map(item=>suggestionRow(item,group.kind)).join('')}</div></section>`;
-  const left=groups.filter(group=>!SUGGEST_RIGHT_KINDS.has(group.kind)).map(section).join('');
-  const right=groups.filter(group=>SUGGEST_RIGHT_KINDS.has(group.kind)).map(section).join('');
-  /* 页签只在命中不止一类时出现：只有一类的话「全部」和那一类是同一屏。 */
-  const tab=(kind,label,total)=>`<button type="button" role="tab" data-suggest-kind="${kind}" aria-selected="${suggestKind===kind}">`+
-    `${esc(label)}${total?`<span class="board-tab-count">${total.toLocaleString()}</span>`:''}</button>`;
-  const tabs=fresh&&suggestTabs.length>1?`<div class="searchtabs" role="tablist" aria-label="按种类看补全">`+
-    tab('','全部',0)+suggestTabs.map(t=>tab(t.kind,t.label,t.total)).join('')+'</div>':'';
-  const columns=(a,b)=>a||b?`<div class="searchresults"${a&&b?' data-split':''}>`+
-    (a?`<div class="searchcol">${a}</div>`:'')+(b?`<div class="searchcol">${b}</div>`:'')+'</div>':'';
-  const recent=history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'';
-  const picks=recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'';
-  /* 页签管的是整个下拉栏，所以排在最上面；选了一类时搜索记录让位，那一屏只有这一类。
-     空输入时是记录和推荐两组短词，宽下拉并排放，不必竖着排出一长条。 */
-  menu.innerHTML=query?tabs+(suggestKind?'':recent)+columns(left,right):columns(recent,picks);
-  if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;
-  menu.querySelectorAll('[data-suggest-kind]').forEach(b=>{
-    // 按下不抢焦点：抢走会触发 `#q` 的 blur，140ms 后整个下拉栏收掉，页签等于白点。
-    b.onmousedown=e=>e.preventDefault();
-    b.onclick=()=>pickSuggestKind(b.dataset.suggestKind);
-  });
-  // 窄屏页签排不下时右缘渐隐，看得出还能往右拨。
-  wireHorizontalScroller(menu.querySelector('.searchtabs'));
-  menu.querySelectorAll('[data-open-work]').forEach(b=>{
-    b.onmousedown=e=>e.preventDefault();
-    b.onclick=e=>{e.stopPropagation();hideSearchMenu();$('#q').blur();openItem(+b.dataset.openWork)};
-  });
-  menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
-    hideSearchMenu();
-    if(x.dataset.openItem){$('#q').blur();openItem(+x.dataset.openItem);return}
-    if(x.dataset.openEntity){openSuggestedEntity(x);return}
-    $('#q').value=x.dataset.searchValue;runSearch(false,true)});
-  menu.querySelectorAll('[data-remove-history]').forEach(b=>{
-    /* 按下就 preventDefault，不让删除按钮把焦点从输入框抢走。抢走会触发 `#q` 的
-       blur，那个 handler 140ms 后无条件 `hidden=true`，于是「删一条记录」实际等于
-       「关掉整个下拉栏」。 */
-    b.onmousedown=e=>e.preventDefault();
-    b.onclick=async e=>{
-      e.stopPropagation();
-      const value=b.dataset.removeHistory;
-      await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:value})}).catch(()=>null);
-      writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(value)));
-      /* 只摘掉这一行，不整段重建：`renderSearchMenu` 每次都会把推荐词重新洗牌，
-         删一条历史却换了一批推荐，看着像列表自己跳了。 */
-      const row=b.closest('[data-search-value]'),group=row&&row.closest('.searchgroup');
-      if(row)row.remove();
-      if(group&&!group.querySelector('[data-search-value]'))group.remove();
-      // 行没了，键盘选中的下标就指不回同一项，归零重来。
-      searchActive=-1;
-      menu.querySelectorAll('[data-search-value]').forEach(x=>x.classList.remove('active'));
-    };
-  })}
-function runSearch(useSuggestion=false,committed=false){let query=$('#q').value.trim();
-  if(useSuggestion&&!query){query=$('#q').dataset.suggestion||'';$('#q').value=query}
-  rememberSearchValue();
-  if(committed)rememberSearch(query);
-  disposeStage(false);
-  state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);loadCatalog()}
-/* 人、公司和系列点开就是资料页，不绕一趟搜索：按名字搜出来的是一屏作品，而用户点的
-   是「这个人」。记进搜索记录的是这个名字，下次聚焦还找得回来。 */
-function openSuggestedEntity(option){
-  const name=option.dataset.searchValue;
-  $('#q').blur();
-  rememberSearch(name);
-  openEntity(option.dataset.openEntity,name);
-}
-function pickSuggestKind(kind){
-  const query=$('#q').value.trim();
-  if(!query||kind===suggestKind)return;
-  suggestKind=kind;
-  clearTimeout(suggestTimer);
-  renderSearchMenu();
-  $('#searchMenu').scrollTop=0;
-  loadSuggestions(query,kind).then(()=>{
-    if(document.activeElement===$('#q')&&suggestKind===kind)renderSearchMenu()});
-}
-const searchOptions=()=>{const menu=$('#searchMenu');
-  return menu.hidden?[]:[...menu.querySelectorAll('[data-search-value]')]};
-function moveSearchActive(step){
-  const options=searchOptions();if(!options.length)return false;
-  searchActive=(searchActive+step+options.length)%options.length;
-  options.forEach((option,index)=>option.classList.toggle('active',index===searchActive));
-  options[searchActive].scrollIntoView({block:'nearest'});
-  return true;
-}
-/* 每一下输入都排一次补全，但只发一次请求：150ms 内继续敲就换掉上一次的排期。
-   先按手头已有的内容重绘一遍，下拉栏不会在等请求的这段里空着。 */
-const refreshSearchMenu=()=>{searchActive=-1;
-  // 换了词就回到「全部」：上一个词选中的那一类，这个词下可能一条都没有。
-  suggestKind='';
-  clearTimeout(suggestTimer);
-  const query=$('#q').value.trim();
-  if(!query){suggestFor='';suggestGroups=[]}
-  if(!$('#searchMenu').hidden)renderSearchMenu();
-  if(!query)return;
-  suggestTimer=setTimeout(()=>loadSuggestions(query).then(()=>{
-    /* 回调回来时焦点可能已经不在输入框上：失焦那条 140ms 的兜底先把下拉栏收了，
-       晚到的 then 再把它掀开，而这一刻没有焦点，也就再不会有第二次失焦来收场。 */
-    if(document.activeElement===$('#q'))renderSearchMenu()}),SUGGEST_DEBOUNCE)};
-const handleSearchInput=e=>{
-  if(e.isComposing)return;
-  const input=$('#q'),next=input.value;
-  if(!next&&searchValueSnapshot.text)clearSearchField(searchValueSnapshot);
-  else{
-    if(next){cancelSearchDissolve();cancelSearchDissolve=()=>{}}
-    rememberSearchValue(input);
-  }
-  refreshSearchMenu();
+const searchActions={
+  search:query=>{
+    rememberSearchValue();disposeStage(false);
+    state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);loadCatalog();
+  },
+  openItem:id=>openItem(id),
+  openEntity:(kind,name)=>openEntity(kind,name),
 };
-$('#q').oninput=handleSearchInput;
-$('#q').addEventListener('compositionend',handleSearchInput);
-$('#q').addEventListener('compositionstart',()=>{cancelSearchDissolve();cancelSearchDissolve=()=>{}});
+const searchHelpers={
+  pool:()=>catalogSuggestions(state,api),
+  /* `.pic` 是卡片封面那一格（比例、底色、圆角与模糊垫底都认它），和里面那张图一起由壳给。 */
+  coverHtml:card=>`<span class="pic">${searchCoverImage(card)}</span>`,
+  /* 人和公司的门面走索引页同一条兜底链：人是实体图 → 代表作头像，厂牌是标识，
+     事务所是官网站点圆标；都取不到就是首字母。 */
+  faceHtml:(item,kind)=>avatarInner(item.value,{id:item.entity_id,has_image:item.has_image,avatar_focus:item.avatar_focus},
+    item.rep||null,kind,item.mark||null,item.has_logo?item.value:'','icon',undefined,true),
+  present:menu=>presentMenu(menu),
+  dismiss:menu=>dismissMenu(menu),
+  wireScroller:row=>wireHorizontalScroller(row),
+  /* 字变了：清空时照着上一刻的字留一段残影，敲进新字就收掉正在散的那段。 */
+  typed:input=>{
+    const next=input.value;
+    if(!next&&searchValueSnapshot.text)clearSearchField(searchValueSnapshot);
+    else{
+      if(next){cancelSearchDissolve();cancelSearchDissolve=()=>{}}
+      rememberSearchValue(input);
+    }
+  },
+  composing:()=>{cancelSearchDissolve();cancelSearchDissolve=()=>{}},
+  clearField:input=>clearSearchField({text:input.value,scrollLeft:input.scrollLeft||searchValueSnapshot.scrollLeft}),
+};
+mountIsland('search',$('#searchMenu'),{
+  input:$('#q'),historyLimit:appSettings.searchHistoryLimit,actions:searchActions,helpers:searchHelpers,
+  expose:control=>{searchControl=control},
+});
 $('#q').addEventListener('beforeinput',e=>{if(!e.isComposing)rememberSearchValue(e.currentTarget)});
 $('#q').addEventListener('scroll',e=>{if(e.currentTarget.value)rememberSearchValue(e.currentTarget)});
 $('#q').addEventListener('pointerdown',e=>{if(e.currentTarget.value)rememberSearchValue(e.currentTarget)});
-$('#q').onkeydown=e=>{
-  /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
-  if(e.isComposing)return;
-  if(e.key==='Escape'){
-    const hadValue=!!$('#q').value,hadMenu=!$('#searchMenu').hidden;
-    if(hadMenu){hideSearchMenu();searchActive=-1;e.preventDefault();return}
-    if(hadValue){clearSearchField({text:$('#q').value,scrollLeft:$('#q').scrollLeft||searchValueSnapshot.scrollLeft});
-      searchActive=-1;e.preventDefault();refreshSearchMenu();return}
-  }
-  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
-    if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
-    return;
-  }
-  if(e.key!=='Enter')return;
-  e.preventDefault();
-  const picked=searchOptions()[searchActive];
-  searchActive=-1;
-  hideSearchMenu();
-  // 选中的是一部作品时回车就开它，和点它一样，不绕一趟搜索。
-  if(picked&&picked.dataset.openItem){$('#q').blur();openItem(+picked.dataset.openItem);return}
-  if(picked&&picked.dataset.openEntity){openSuggestedEntity(picked);return}
-  if(picked){$('#q').value=picked.dataset.searchValue;rememberSearchValue()}
-  // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
-  runSearch(!picked,true);
-  $('#q').blur();
-};
-/* 两个请求回来时，焦点可能已经不在输入框上了：用户敲完就点走，失焦那条 140ms
-   的兜底先把下拉栏收了，晚到的 then 再把它掀开——而这一刻没有焦点，也就再不会
-   有第二次失焦来收场。点哪儿都关不掉的下拉栏就是这么来的。所以回调先确认焦点
-   还在自己身上。 */
-$('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()])
-  .then(()=>{if(document.activeElement!==$('#q'))return;
-    // 带着 `?q=` 进来再点回输入框时，框里已经有词，补全该跟着这个词给。
-    renderSearchMenu();refreshSearchMenu()})});
 
 /* ── 就地展开播放 ── */
 /* 四种队列的入口（Mix、分卷、版本、播放列表）。队列的条目、停在哪一条、卷标都归详情岛

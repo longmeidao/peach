@@ -50,6 +50,7 @@ export interface IslandContracts {
   'scraping': ReactBundle.ScrapingProps;
   'quality-goals': ReactBundle.QualityGoalsProps;
   review: ReactBundle.ReviewProps;
+  search: ReactBundle.SearchProps;
   configuration: ReactBundle.ConfigurationProps;
   'configuration-summary': ReactBundle.ConfigurationSummaryProps;
   activity: ReactBundle.ActivityProps;
@@ -83,6 +84,7 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'scraping': { react: 'scraping' },
   'quality-goals': { react: 'quality-goals' },
   review: { react: 'review' },
+  search: { react: 'search' },
   configuration: { react: 'configuration' },
   'configuration-summary': { react: 'configuration-summary' },
   activity: { react: 'activity' },

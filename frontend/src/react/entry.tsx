@@ -17,6 +17,7 @@ import { DuplicatesPage } from './duplicates/duplicates-page';
 import { EntityBodyPage } from './entity-body/entity-body-page';
 import { EntityFilterPage } from './entity-filter/entity-filter-page';
 import { CatalogFilterPage } from './catalog-filter/catalog-filter-page';
+import { SearchPage } from './search/search-page';
 import { EntityHeroPage } from './entity-hero/entity-hero-page';
 import { prefetchFollowFeed } from './follow-feed/follow-feed';
 import { FollowFeedPage } from './follow-feed/follow-feed-page';
@@ -114,6 +115,8 @@ export const pages: Bundle.ReactPages = {
   review: {
     prefetch: (_props, signal) => prefetchReview(signal), mount: mounter(ReviewPage),
   },
+  /* 输入框是壳的，岛只接它的事件、画下拉栏里的内容；记录与推荐聚焦时才取。 */
+  search: { prefetch: async () => {}, mount: mounter(SearchPage) },
   scraping: { prefetch: (_props, signal) => prefetchScraping(signal), mount: mounter(ScrapingPage) },
   stats: { prefetch: (_props, signal) => prefetchStats(signal), mount: mounter(StatsPage) },
   /* 首屏取的是「全部时间」那一份：分析范围是组件状态，每次进这一页都从它开始。 */

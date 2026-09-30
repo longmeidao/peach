@@ -1129,6 +1129,7 @@ var Kt = {
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },
 	review: { react: "review" },
+	search: { react: "search" },
 	configuration: { react: "configuration" },
 	"configuration-summary": { react: "configuration-summary" },
 	activity: { react: "activity" },

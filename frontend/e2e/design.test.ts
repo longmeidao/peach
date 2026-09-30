@@ -3192,24 +3192,39 @@ describe('设计决定', () => {
         if (viewport.mobile) await page.locator('#searchBtn').click();
         await page.locator('#q').fill(SUGGEST.q);
         const menu = page.locator('#searchMenu');
-        await menu.locator('.searchperson').first().waitFor({ state: 'visible', timeout: 5_000 });
+        await menu.locator('[data-search-option="person"]').first().waitFor({ state: 'visible', timeout: 5_000 });
         const shown = await page.evaluate(() => {
           const menuBox = document.querySelector('#searchMenu')!.getBoundingClientRect();
-          const results = document.querySelector<HTMLElement>('#searchMenu .searchresults')!;
-          const columns = [...results.querySelectorAll(':scope > .searchcol')];
-          const person = document.querySelector('#searchMenu .searchperson')!;
+          const results = document.querySelector<HTMLElement>('#searchMenu [data-search-results]')!;
+          const columns = [...results.querySelectorAll(':scope > [data-search-col]')];
+          const person = document.querySelector('#searchMenu [data-search-option="person"]')!;
+          /* 命中的别名与作品数是这一行的注脚：字号小一档、字色退一档，作品数靠右。 */
+          const footnote = (selector: string) => {
+            const note = document.querySelector<HTMLElement>(`#searchMenu ${selector}`)!;
+            const row = note.closest('[data-search-option]')!;
+            const name = note.previousElementSibling!;
+            const [noteStyle, nameStyle] = [getComputedStyle(note), getComputedStyle(name)];
+            return {
+              smaller: parseFloat(noteStyle.fontSize) < parseFloat(nameStyle.fontSize),
+              quieter: noteStyle.color !== nameStyle.color,
+              trailing: Math.round(row.getBoundingClientRect().right - note.getBoundingClientRect().right),
+            };
+          };
           return {
+            matched: footnote('[data-search-matched]'),
+            count: footnote('[data-search-n]'),
+            radius: getComputedStyle(person).borderRadius === getComputedStyle(document.documentElement).getPropertyValue('--control-radius').trim(),
             tabs: [...document.querySelectorAll('#searchMenu [role="tab"]')].map((tab) => tab.textContent!.trim()),
             tracks: getComputedStyle(results).gridTemplateColumns.split(' ').filter((track) => track !== 'none').length,
             divider: getComputedStyle(results, '::before').content,
             dividerHeight: parseFloat(getComputedStyle(results, '::before').height),
             resultsHeight: results.getBoundingClientRect().height,
-            right: columns.at(-1)!.querySelector('.searchgroup')?.getAttribute('data-kind'),
-            videoGrid: getComputedStyle(document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!).display,
-            peeks: getComputedStyle(person.querySelector('.searchpeeks')!).display,
-            peekCount: person.querySelectorAll('.searchpeek').length,
-            sub: person.querySelector('.searchsub')!.textContent,
-            face: person.querySelector('.searchface img')?.getAttribute('src'),
+            right: columns.at(-1)!.querySelector('[data-search-group]')?.getAttribute('data-kind'),
+            videoGrid: getComputedStyle(document.querySelector('#searchMenu [data-search-group][data-kind="asset"] [data-search-items]')!).display,
+            peeks: getComputedStyle(person.querySelector('[data-search-peeks]')!).display,
+            peekCount: person.querySelectorAll('[data-open-work]').length,
+            sub: person.querySelector('[data-search-sub]')!.textContent,
+            face: person.querySelector('[data-search-face] img')?.getAttribute('src'),
             inView: menuBox.left >= 0 && menuBox.right <= innerWidth,
             edges: [Math.round(menuBox.left), Math.round(innerWidth - menuBox.right)],
           };
@@ -3227,6 +3242,11 @@ describe('设计决定', () => {
         assert.equal(shown.peekCount, 4);
         assert.equal(shown.sub, '128 个视频 · Capsule Agency');
         assert.equal(shown.face, '/entity-image?kind=performer&id=90301&thumb=1');
+        for (const [name, note] of [['别名', shown.matched], ['作品数', shown.count]] as const) {
+          assert.ok(note.smaller && note.quieter, `${name}没有退成注脚：${JSON.stringify(note)}`);
+        }
+        assert.equal(shown.count.trailing, 10, '作品数没有靠右贴着行的内边距');
+        assert.ok(shown.radius, '补全行的圆角不是 --control-radius');
         assert.ok(shown.inView, '下拉栏越出了视口');
         // 窄屏下拉栏盖过返回键那一列，和顶栏两侧一样各留 8，不缩进到搜索框底下。
         if (viewport.mobile) assert.deepEqual(shown.edges, [8, 8], '窄屏下拉栏两侧留白不是 8');
@@ -3234,7 +3254,7 @@ describe('设计决定', () => {
         assert.ok(page_.scrollWidth <= page_.viewportWidth, `下拉把页面撑出了横向滚动：${page_.offenders.join('，')}`);
 
         await menu.getByRole('tab', { name: /^女优/ }).click();
-        await page.waitForFunction(() => document.querySelectorAll('#searchMenu .searchgroup[data-kind]').length === 1);
+        await page.waitForFunction(() => document.querySelectorAll('#searchMenu [data-search-group][data-kind]').length === 1);
         assert.equal(await menu.isVisible(), true, '点页签把下拉栏收掉了');
         assert.ok(kinds.includes('performer'), '选了一类没有按这一类去拉满');
         assert.equal(await menu.getByRole('tab', { name: /^女优/ }).getAttribute('aria-selected'), 'true');
@@ -3260,13 +3280,13 @@ describe('设计决定', () => {
       await settle(page);
       await page.locator('#q').fill(SUGGEST.q);
       const menu = page.locator('#searchMenu');
-      await menu.locator('.searchperson').first().waitFor({ state: 'visible', timeout: 5_000 });
+      await menu.locator('[data-search-option="person"]').first().waitFor({ state: 'visible', timeout: 5_000 });
       await menu.getByRole('tab', { name: /^视频/ }).click();
-      await page.waitForFunction(() => document.querySelectorAll('#searchMenu .searchgroup[data-kind]').length === 1);
+      await page.waitForFunction(() => document.querySelectorAll('#searchMenu [data-search-group][data-kind]').length === 1);
       const grid = await page.evaluate(() => {
-        const items = document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!;
+        const items = document.querySelector('#searchMenu [data-search-group][data-kind="asset"] [data-search-items]')!;
         const box = items.getBoundingClientRect();
-        const cards = [...items.querySelectorAll('.searchwork')].map((card) => card.getBoundingClientRect());
+        const cards = [...items.querySelectorAll('[data-search-option="work"]')].map((card) => card.getBoundingClientRect());
         return {
           rows: new Set(cards.map((card) => Math.round(card.top))).size,
           widths: cards.map((card) => Math.round(card.width)),
@@ -3349,10 +3369,10 @@ describe('设计决定', () => {
       await expectBody(page, '/', [page.locator('article[data-media-card][data-id]').first()]);
       await settle(page);
       await page.locator('#q').click();
-      await page.locator('#searchMenu .searchresults[data-split]').waitFor({ state: 'visible', timeout: 5_000 });
+      await page.locator('#searchMenu [data-search-results][data-split]').waitFor({ state: 'visible', timeout: 5_000 });
       const split = await page.evaluate(() => {
-        const results = document.querySelector('#searchMenu .searchresults')!;
-        const [left, right] = [...results.querySelectorAll(':scope > .searchcol')].map((col) => col.getBoundingClientRect());
+        const results = document.querySelector('#searchMenu [data-search-results]')!;
+        const [left, right] = [...results.querySelectorAll(':scope > [data-search-col]')].map((col) => col.getBoundingClientRect());
         const box = results.getBoundingClientRect();
         const line = getComputedStyle(results, '::before');
         return {
