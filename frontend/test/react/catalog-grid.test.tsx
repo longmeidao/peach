@@ -111,9 +111,9 @@ describe('比例', () => {
     expect(ratio(item(2), 'grid', { portrait: true })).toBeCloseTo(9 / 16);
   });
 
-  it('大图只拉长番号作品，番号版式没生效时照旧 16:9', () => {
+  it('大图统一所有作品的画面框，未启用的视图使用横框', () => {
     expect(ratio(jav, 'grid', { active: true, size: 'big' })).toBe(0.75);
-    expect(ratio(item(2), 'grid', { active: true, size: 'big' })).toBeCloseTo(16 / 9);
+    expect(ratio(item(2), 'grid', { active: true, size: 'big' })).toBe(0.75);
     expect(ratio(jav, 'grid', { active: false, size: 'big' })).toBeCloseTo(16 / 9);
     expect(ratio(jav, 'grid', { active: true, size: 'small' })).toBeCloseTo(16 / 9);
   });
