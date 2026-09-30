@@ -143,6 +143,8 @@ describe('照片与名册视图', () => {
       view: 'photos', video: null, actions: shell,
       photo: { back: false, shuffle: true, layout: 'fixed', layouts: [['fixed', '固定比例', 'layout-grid']], setId: 0 },
     })} />);
+    // 换一批洗的是这一批的成员，不是把同一批重新取一遍：字形是洗牌，不是转圈的刷新。
+    expect($(host, '[data-entity-batch] use')?.getAttribute('href')).toBe('#i-shuffle');
     await click($(host, '[data-entity-batch]')!);
     expect($(host, '[data-entity-batch]')?.getAttribute('aria-busy')).toBe('true');
     await click($(host, '[data-entity-batch]')!);

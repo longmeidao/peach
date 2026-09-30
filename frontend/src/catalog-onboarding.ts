@@ -3,16 +3,6 @@ import { emptyStateHtml } from '@peach/legacy/ui';
 type Request = (url: string) => Promise<any>;
 const FILTERS = ['loc', 'creator', 'performer', 'studio', 'series', 'agency', 'tag', 'tag_match', 'len', 'dur_min', 'dur_max', 'orient', 'region', 'state', 'jav', 'thumb'];
 
-/** 空馆藏占位沿横向内容轨道铺开，由容器裁切到可用宽度。 */
-export function emptyCatalogLayout(): { tiers: string; tags: string } {
-  const fill = (html: string) => Array(64).fill(html).join('');
-  return {
-    tiers: '<div class="tier catalog-placeholder" aria-hidden="true">' + fill('<span class="av"><span class="ring"></span><span class="nm">&nbsp;</span></span>')
-      + '</div><div class="tier catalog-placeholder" aria-hidden="true">' + fill('<span class="brandpill"><span class="mk"></span><span class="placeholder-name">&nbsp;</span></span>') + '</div>',
-    tags: '<span class="catalog-placeholder placeholder-tags" aria-hidden="true">' + fill('<span class="pill">&nbsp;</span>') + '</span>',
-  };
-}
-
 /** 推荐与当前列表共用筛选，并以实际搜索命中作为展示条件。 */
 export async function catalogSuggestions(state: Record<string, string>, request: Request): Promise<string[]> {
   const params = new URLSearchParams();

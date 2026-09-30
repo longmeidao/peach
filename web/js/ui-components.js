@@ -4,20 +4,8 @@ export { MEDIA_SOURCE_ICONS } from './media-source-icons.js';
 
 const NOTE_VARIANTS=new Set(['secondary','warning','error','success']);
 
-/** 标签含义、计数口径和查询由页面提供。 */
-export function filterChipHtml(label,{attr,value,selected=false,count,className='',countClass='n mono'}={}){
-  /* 计数前不写空格。`.pill` 是 flex 容器，纯空白的文本节点不参与布局，写了也量不出
-     一个像素——间隔归 `.pill .n` 的 margin，写在两处就是两份真相，而其中一份从来
-     没生效过。 */
-  return `<button type="button" class="pill${className?' '+esc(className):''}" ${attr}="${esc(value)}" aria-pressed="${selected}">${esc(label)}${count==null?'':`<span class="${esc(countClass)}" data-count-badge="${esc(value)}">${esc(count)}</span>`}</button>`;
-}
-/* `extra` 排在换一批与排序键之间。那个位置放的是版式、大小这类「这批东西怎么摆」的
-   开关，以及跟换一批同类的动作键；排序键一律排在最末，挨着它说明的那批内容。 */
-export function sortControlsHtml({items=[],renderItem=String,extra='',shuffleId='',shuffleClass='entitybatch'}={}){
-  return `<span class="sorts"><button class="batchaction ${esc(shuffleClass)}"${shuffleId?` id="${esc(shuffleId)}"`:''} type="button" title="换一批" aria-label="换一批">${icon('shuffle')}</button>${extra}${items.map(renderItem).join('')}</span>`;
-}
-/* `filterRow` 只给等待态用：那时浮层还是一段字符串，`mountFilterFrame` 没得跑，
-   槽位标记得跟着 HTML 一起生成，否则这一条会自己画成第二块浮层。 */
+/* `filterRow` 给骨架里那块两排浮层用：槽位标记跟着 HTML 一起生成，否则这一条会自己画成
+   第二块浮层。 */
 export function collectionHeaderHtml({readout='',controls='',before='',className='',loading=false,filterRow=''}={}){
   return `<div class="entitycollectionhead${className?' '+esc(className):''}"${filterRow?` data-filter-row="${esc(filterRow)}"`:''}>${before}<h3${loading?' class="skeleton"':''}>${readout}</h3>${controls}</div>`;
 }
@@ -441,31 +429,6 @@ export function moveGlidePane(pane,from,box,axis='x'){
       {duration:ease.duration,easing:'ease-in-out',fill:'none'});
   }
   pane.style.translate=settled;
-}
-
-/** 两行筛选浮层；页面拥有槽位里的控件与查询状态。 */
-export function mountFilterFrame(top,bottom,{views,tags,readout,controls}){
-  let frame=top.closest('[data-filter-frame]');
-  if(!frame){
-    frame=document.createElement('div');
-    frame.className='board-filter-frame';
-    frame.dataset.filterFrame='';
-    top.before(frame);
-    frame.append(top);
-    top.dataset.filterRow='top';
-  }
-  const previous=frame.querySelector('[data-filter-row="bottom"]');
-  if(previous!==bottom){
-    const active=document.activeElement;
-    const key=previous?.contains(active)?['id','data-sort','data-entity-sort','aria-label'].map(attr=>[attr,active.getAttribute(attr)]).find(([,value])=>value):null;
-    previous?.remove();frame.append(bottom);
-    if(key)[...bottom.querySelectorAll('button,input,[tabindex]')].find(node=>node.getAttribute(key[0])===key[1])?.focus({preventScroll:true});
-  }
-  bottom.dataset.filterRow='bottom';
-  for(const [slot,node] of Object.entries({views,tags,readout,controls})){
-    if(node)node.dataset.filterSlot=slot;
-  }
-  return frame;
 }
 
 /* 逐条明细收在 Note 自己的 <details> 里，默认折叠：一句话的结论后面跟着上千行清单时，

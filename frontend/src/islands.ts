@@ -25,7 +25,8 @@ export { paginationHtml, pageCount, clampPage } from './pagination';
 export { nativeImageFit, faceSourceScale } from './native-image';
 export { entitySkeletonHtml } from './entity-skeleton';
 export { boardPageSkeleton, detailSkeletonHtml } from './board-skeleton';
-export { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout } from './catalog-onboarding';
+export { catalogSuggestions, catalogEmptyHtml } from './catalog-onboarding';
+export { catalogFilterSkeletonHtml } from './catalog-filter-skeleton';
 export { syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent } from './sidebar';
 export { cleanupSkeletonHtml } from './management';
 export { junkCountSkeletonHtml, junkPath, junkRoute } from './junk-queue';
@@ -33,6 +34,7 @@ export { junkCountSkeletonHtml, junkPath, junkRoute } from './junk-queue';
 /** 每个 island 的 props。新增 island 时在这里登记，注册表随之要求实现；
  *  页面自己管数据，首屏落在共用的 Query 缓存里。 */
 export interface IslandContracts {
+  'catalog-filter': ReactBundle.CatalogFilterProps;
   'catalog-grid': ReactBundle.CatalogGridProps;
   'data-cleanup': ReactBundle.DataCleanupProps;
   duplicates: ReactBundle.DuplicatesProps;
@@ -65,6 +67,7 @@ interface Island {
 }
 
 const REGISTRY: { [N in IslandName]: Island } = {
+  'catalog-filter': { react: 'catalog-filter' },
   'catalog-grid': { react: 'catalog-grid' },
   'data-cleanup': { react: 'data-cleanup' },
   duplicates: { react: 'duplicates' },

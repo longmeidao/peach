@@ -345,7 +345,7 @@ async function openPlaylistsPage(browser: Browser, viewport = DESKTOP): Promise<
 /** 打开目录并等到读数与卡片一起替下首屏骨架。 */
 async function openCatalog(browser: Browser): Promise<Visit> {
   const opened = await visit(browser, '/', DESKTOP);
-  await opened.page.locator('#count [data-count-readout]').waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-catalog-filter] [data-count-readout]').waitFor({ timeout: 15_000 });
   await settle(opened.page);
   return opened;
 }
@@ -385,7 +385,7 @@ async function openCatalogFixture(
     });
   });
   await opened.page.reload({ waitUntil: 'load' });
-  await opened.page.locator('#count [data-count-readout]').waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-catalog-filter] [data-count-readout]').waitFor({ timeout: 15_000 });
   await settle(opened.page);
   return opened;
 }
@@ -1185,7 +1185,7 @@ describe('设计决定', () => {
       const input = opened.page.locator('#q');
       await opened.page.evaluate(() => {
         document.documentElement.removeAttribute('data-count-animation');
-        const count = document.querySelector('#count');
+        const count = document.querySelector('[data-catalog-filter]');
         const observer = new MutationObserver(() => {
           const digit = count?.querySelector<HTMLElement>('[data-count-readout] .digits.popping > span');
           if (!digit) return;
@@ -1201,7 +1201,7 @@ describe('设计决定', () => {
       await input.fill('读数变值');
       await input.press('Enter');
       await opened.page.waitForFunction(() =>
-        document.querySelector('#count [data-count-readout]')?.textContent?.includes('34 个符合'));
+        document.querySelector('[data-catalog-filter] [data-count-readout]')?.textContent?.includes('34 个符合'));
       /* 读数更新后还可能因自动续页再重画。在触发前观察真实节点，既能验收
          动画的计算值，也不把断言绑在之后某一次采样恰好撞上短暂节点。 */
       await opened.page.waitForFunction(() =>
@@ -1401,7 +1401,7 @@ describe('设计决定', () => {
     const { page } = opened;
     const ratio = (index: number) => page.locator('#grid [data-media-grid] > [data-media-card][data-id]').nth(index).locator('[data-media-pic]')
       .evaluate((element) => element.getBoundingClientRect().width / element.getBoundingClientRect().height);
-    const choice = (value: string) => page.locator(`#count input[name="home-layout"][value="${value}"]`);
+    const choice = (value: string) => page.locator(`[data-catalog-filter] input[name="home-layout"][value="${value}"]`);
     try {
       assert.equal(await choice('small').isChecked(), true, '首页版式默认不是小图');
       assert.ok(Math.abs(await ratio(0) - 16 / 9) < 0.05, '小图下番号卡不是 16:9');
@@ -1647,7 +1647,7 @@ describe('设计决定', () => {
     const opened = await openCatalog(browser);
     try {
       await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
-      for (const selector of ['#tiers .av', '#tiers .brandpill']) {
+      for (const selector of ['[data-tier-performer]', '[data-tier-studio]']) {
         const entry = opened.page.locator(selector).first();
         if (!await entry.count()) continue;
         await entry.hover();

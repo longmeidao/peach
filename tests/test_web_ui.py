@@ -760,7 +760,7 @@ class WebUiSourceTests(unittest.TestCase):
                                 "详情不碰表面的条")
         self.assertPageContains("const rendered=signature+'\\n'+JSON.stringify([facetData,tops]);")
         self.assertPageContains("if(rendered===barsRendered)return;")
-        self.assertPageContains("if(!tiers.innerHTML||!views.innerHTML)barsRendered='';")
+        self.assertPageContains("  if(catalogFilterProps?.tiers)return;\n  barsRendered='';")
 
     def test_the_page_recedes_so_chrome_and_boxes_can_float_on_it(self):
         """页面底是退到后面那张面，顶栏、窄栏和页面上的盒子填浮在它上面那张。
@@ -1636,7 +1636,6 @@ class WebUiSourceTests(unittest.TestCase):
     def test_studio_metadata_is_not_compiled_as_inline_javascript(self):
         self.assertPageLacks('onerror="this.parentNode.innerHTML=')
         self.assertPageLacks('onload="if(this.naturalWidth')
-        self.assertPageContains("img.addEventListener('error',fallback")
 
     def test_brand_icon_declares_the_multi_size_ico_and_draws_the_square_png(self):
         """标签页角标和页面里的品牌标记同出一张原图，取的却是两份资源。
@@ -2108,7 +2107,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_waiting_filter_frame_is_one_slab_not_two(self):
         """等待态的筛选条和作品抬头共用一块浮层，和内容回来之后是同一个形状。
 
-        这两条各自带着玻璃材质和 22px 圆角，`mountFilterFrame` 在运行时把它们收进外框；
+        这两条各自带着玻璃材质和 22px 圆角，岛里由 `FilterGlassRows` 收进同一块外框；
         骨架是一段字符串，进不了那条路径，外框和两个槽位的标记必须写在 HTML 里，
         否则等的那几秒钟里它们是上下两块独立浮层，中间一道缝。
         """
@@ -2609,11 +2608,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(sortDefaultsMigrated)saveSettings()")
         self.assertPageContains("const cleanSort=(value,fallback=appSettings.defaultSort)=>")
         # 手动换一批仍使用稳定种子，避免分页重复或漏项。
-        self.assertPageContains("sortControlsHtml({shuffleId:'batchAction'")
         self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed()")
-        # 刷新属于列表，不再占顶栏；JAV 与首页的版式开关共用同一计数/筛选行。
+        # 刷新属于列表，不再占顶栏。
         self.assertPageLacks('id="refresh"')
-        self.assertPageContains("extra:javActive()?javLayoutButtons():homeLayoutActive()?homeLayoutButtons():''")
 
     def test_sort_splits_into_a_column_and_a_direction_on_the_selected_chip(self):
         """排序拆成「列 + 方向」：箭头画在选中的那一枚里，再点一次翻方向。
@@ -2637,7 +2634,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(key!==current)return{sort:key,dir:defaultSortDir(key,words)};")
         self.assertPageContains("if(!words[key])return null;")
         self.assertPageContains("return{sort:key,dir:dir==='asc'?'desc':'asc'};")
-        self.assertPageContains("const next=nextSortState(b.dataset.sort,state.sort,state.dir);")
+        self.assertPageContains("const next=nextSortState(key,state.sort,state.dir);")
         self.assertPageContains("const filters=live(),next=nextSortState(key,filters.sort||'new',filters.dir);")
 
     def test_sort_direction_arrow_is_decorative_and_the_name_announces_the_next_state(self):
@@ -2648,9 +2645,7 @@ class WebUiSourceTests(unittest.TestCase):
         `aria-hidden`，所以箭头这一侧已经成立；名称必须取翻转后的方向词，
         照抄当前方向会让读屏用户以为点下去还是这个顺序。
         """
-        self.assertPageContains(
-            "next?` aria-label=\"按${label}${next.dir?sortDirWord(next.sort,next.dir,words):''}排序\"`:''")
-        self.assertPageContains("icon(dir==='asc'?'arrow-up':'arrow-down','sortdir')")
+        self.assertPageContains("ariaLabel:next?`按${label}${next.dir?sortDirWord(next.sort,next.dir):''}排序`:''")
         # 关注管理页的那一枚归 React：同一条规矩，箭头只是图标，名称取反方向的词。
         follow = Path(__file__).resolve().parents[1] / "frontend/src/react/follow-manage"
         self.assertIn("`按${SORT_LABELS[sort]}${SORT_DIR_WORDS[sort][dir === 'asc' ? 0 : 1]}排序`",
@@ -2660,9 +2655,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 箭头必须真在 sprite 里，否则选中项渲染出一个空 use，方向就完全看不见。
         self.assertPageContains('<symbol id="i-arrow-down" viewBox="0 0 24 24">')
         self.assertPageContains('<symbol id="i-arrow-up" viewBox="0 0 24 24">')
-        # 自带 class 而不是选 `button>svg`：同一排里的批量键是方形图标键，
-        # 那样写会给它的图标也加上左边距，把它顶偏。
-        self.assertPageContains(".sortdir{width:14px;height:14px;flex:none;margin-left:5px;")
 
     def test_sort_direction_travels_in_the_url_and_the_stored_default(self):
         """方向进地址栏与设置：等于该列默认值时不写，旧默认值迁移到当前键。"""
@@ -2695,8 +2687,6 @@ class WebUiSourceTests(unittest.TestCase):
              "background:transparent;color:var(--muted);padding:0 14px;cursor:pointer;font-size:var(--fs-sm);"),
             ("复核页标签 .reviewtabs button",
              "border-radius:var(--control-radius);background:transparent;color:var(--muted);"),
-            ("JAV 工具条 .javbar button",
-             "background:transparent;color:var(--muted);cursor:pointer;padding:0}"),
             ("抽屉导航 .dnav button",
              "text-align:left;font-size:var(--fs-lg);color:var(--muted)}"),
         ):
@@ -2710,19 +2700,8 @@ class WebUiSourceTests(unittest.TestCase):
         没点上；`.count:empty` 还会把整行折叠，网格跟着往上跳一截。垃圾文件那一屏的
         计数行是另一条控件，骨架是 `junk-queue` island 等数据时那一版的静态副本。
         """
-        self.assertPageContains("const countSortsHtml=()=>!state?'':")
-        # 加载态与最终态取同一份筛选条，两边不可能画得不一样。
-        self.assertPageContains(
-            "count.innerHTML=state&&state.state==='trash'?''\n"
-            "    :junk?junkCountSkeletonHtml(junkRoute(location.search))\n"
-            "    :`<span class=\"mono\"><span class=\"countskeleton\"></span></span>`+countSortsHtml();\n"
-            "  if(!junk)wireCountRow();")
-        self.assertPageContains("    +(trash?'':countSortsHtml());")
-        self.assertPageLacks("count.textContent=''",
-                             "加载态不能清空整行，筛选条要留在原位")
-        # 数据到位后摘掉忙碌标记，屏幕阅读器不再把这一行当成还在读取。
-        self.assertPageContains(
-            "$('#count').removeAttribute('aria-busy');$('#count').removeAttribute('aria-label');")
+        # 加载态与最终态取同一份下排：取数前推的就是最终的排序与版式，只把读数换成微光。
+        self.assertPageContains("    if(state)paintCatalogFilter({count:null,...catalogHeadProps()});")
 
     def test_the_count_placeholder_and_the_redrawn_refresh_key_keep_the_row_height(self):
         """计数骨架宽高定死，等数据时只有换批键在画，行高不变。
@@ -2845,28 +2824,15 @@ class WebUiSourceTests(unittest.TestCase):
     def test_the_top_bars_get_a_first_paint_skeleton_shaped_like_the_real_thing(self):
         """顶部三层与标签条的首屏骨架照真实几何画，形状按 Geist 的判据选。
 
-        首屏这两处还没有内容：标签条有固定高度不塌，头像那一排只有 18px 内边距，
-        内容到位时要长到一百多，会把整页往下推一截。骨架直接套 .av/.ring/.nm 与
-        .brandpill、.pill 本身，宽高就是最终内容的宽高，不另算一套；头像因此是圆的
-        （Geist 把 pill 变体指给头像），胶囊是圆角。
+        首屏这两处还没有内容：标签条有固定高度不塌，头像那一排不撑开的话，内容到位时
+        要长到一百多，会把整页往下推一截。占位格与真格同在 `catalog-filter.css` 里定几何，
+        宽高就是最终内容的宽高，不另算一套；头像因此是圆的（Geist 把 pill 变体指给头像），
+        胶囊是圆角。几何本身由 `design.test.ts` 读计算样式。
         """
         self.assertPageContains("function renderBarsLoading(filterState){")
         self.assertPageContains("  renderBarsLoading(filterState);")
-        self.assertPageContains('<span class="av avskeleton"><span class="ring"></span>')
-        self.assertPageContains(
-            '`<span class="brandpill brandskeleton" style="width:${width}px">'
-            '<span class="mk"></span></span>`')
-        self.assertPageContains('`<span class="pill tagskeleton" style="width:${width}px"></span>`')
-        self.assertPageContains(".avskeleton .ring,.avskeleton .nm{background:var(--hover)}")
         # 只在还空着时画：导航到已经有内容的页面不是从无到有，不该铺骨架。
-        self.assertPageContains("  if(!tiers.innerHTML){")
-        self.assertPageContains("  if(!views.innerHTML){")
-        self.assertPageContains("  $('#tiers').removeAttribute('aria-busy');")
-        self.assertPageContains("  $('#tagbar').removeAttribute('aria-busy');")
-        # 四枚视图胶囊由 state 决定，加载期间就画成最终样子并接上事件，和排序条同规矩。
-        self.assertPageContains("const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>")
-        self.assertPageContains("    wireViewPills();")
-        # 宽度是定值，随机会让同一次冷启动在两台机器上长得不一样，也没法测。
+        self.assertPageContains("  if(catalogFilterProps?.tiers)return;")
 
     def test_the_metric_strip_compresses_before_it_starts_scrolling(self):
         """指标带在窄屏先压宽度，横向滚动留给手机和真放不下的时候。
@@ -2904,10 +2870,8 @@ class WebUiSourceTests(unittest.TestCase):
         # 横排的推荐行不是网格，按整行补会把它裁成一张。
         self.assertPageContains("    if(!first||style.display!=='grid')continue;")
         # 每个铺骨架的表面都要接上，否则那一屏又回到写死的六张。
-        for call in ("fitSkeleton($('#grid'));", "fitSkeleton($('#index'));",
-                     "fitSkeleton(stats);", "fitSkeleton(tiers);"):
+        for call in ("fitSkeleton($('#grid'));", "fitSkeleton($('#index'));", "fitSkeleton(stats);"):
             self.assertPageContains("  " + call)
-        self.assertPageContains("    fillSkeletonTier(tags,'pill');")
         # 一列 fieldset 的两张骨架照自己的轮廓排，补整行会把它们撑成海报网格。
         self.assertPageContains("'/data-cleanup':()=>cleanupSkeletonHtml()")
         self.assertPageContains("{cards:true,count:3,fill:false,className:'followmanage-skeleton'})}</div>`,")
@@ -2934,7 +2898,7 @@ class WebUiSourceTests(unittest.TestCase):
         """关注页跟首页是同一种海报卡，几何共用一块；它自己多一条作者行和一块两排的浮层。
 
         作者行和浮层的形状取 `.tier`/`.tagbar`/`.count` 本身，跟首页顶栏是同一枚，不另画
-        一套；外框 `mountFilterFrame` 是运行时才建的，骨架得自己写全，否则等的那几秒钟
+        一套；外框在岛挂上之前没人合并，骨架得自己写全，否则等的那几秒钟
         上下两排是两块各带圆角的浮层。真正的差别只有归属行：`follow-feed` 岛的卡片署名行
         至少 21px，比首页那条高 3.6px，一页十来行叠起来就是一屏的错位，骨架那一格跟着它。
         """
@@ -2955,14 +2919,13 @@ class WebUiSourceTests(unittest.TestCase):
         收起动作只有一处定义，中央清理函数也走它——手抄一份正是筛选条漏在关注页
         标题上方那个 bug 的来源。
         """
+        self.assertPageContains("function hideDiscoveryBars(){$('#catalogFilter').style.display='none';syncCatalogFilterScreen()}")
         self.assertPageContains(
-            "const hideDiscoveryBars=()=>{$('#tiers').style.display='none';"
-            "$('#tagbar').style.display='none'};")
-        self.assertPageContains(
-            "  loadRequestSeq++;$('#combo').innerHTML='';\n"
+            "  loadRequestSeq++;hideCatalogCombo();\n"
             "  hideDiscoveryBars();")
-        self.assertEqual(self.page.count("hideDiscoveryBars();"), 5,
-                         "管理页、索引列表、实体资料页、详情页和中央清理函数各调一次，收起动作本身只写一处")
+        self.assertEqual(self.page.count("hideDiscoveryBars();"), 6,
+                         "管理页、索引列表、实体资料页、详情页、目录里的管理条和中央清理函数各调一次，"
+                         "收起动作本身只写一处")
 
     def test_a_narrow_state_falls_back_to_the_whole_library_for_the_top_tiers(self):
         """状态页收窄到聚合为空时，顶部三层退回全库口径，不整块消失。
@@ -3001,11 +2964,11 @@ class WebUiSourceTests(unittest.TestCase):
         /api/facets 冷启动实测 547ms，排在这一页自己的数据前面。要不要跑问屏幕：
         判断只写在 renderInitialSurfaceLoading() 一处，两边各抄一张路径表迟早对不上。
         """
-        self.assertPageContains("const wantsDiscoveryBars=()=>$('#tiers').style.display!=='none';")
+        self.assertPageContains("const wantsDiscoveryBars=()=>$('#catalogFilter').style.display!=='none';")
         self.assertPageContains("  .then(()=>wantsDiscoveryBars()?buildBars():null)")
         self.assertPageLacks("  .then(buildBars)")
         # 回首页时横条要重新有内容：showHomeSurfaces 放开 display，buildBars 在那条路径上补画。
-        self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display='';")
+        self.assertPageContains("$('#catalogFilter').style.display='';")
         self.assertPageContains("buildManageBar();paintListTitle();")
 
     def test_the_dashboard_skeleton_reserves_the_metric_strip_it_stands_in_for(self):
@@ -3571,11 +3534,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".gridstack .card .pic{border-radius:var(--surface-radius);overflow:hidden}", board)
         self.assertIn(".card:hover .pic::after,.card.selected .pic::after{box-sizing:border-box;border-radius:inherit}", board)
         self.assertIn(".board-filter-frame.board-filter-frame{border-radius:22px;isolation:isolate;color:var(--glass-text);overflow:visible}", board)
-        self.assertPageContains("const host=pill.closest(within);if(!host)return null;")
-        self.assertPageContains("x-=n.scrollLeft;y-=n.scrollTop;")
-        self.assertPageContains("if(rect.right<=viewport.left||rect.left>=viewport.right)return null;")
-        self.assertPageContains("if(scroller)scroller.onscroll=()=>syncViewGlide(false,null,kind);")
-        self.assertPageContains("if(!box||!box.w){if(glide)glide.pane.hidden=true;return}")
 
     def test_player_tooltips_keep_theme_independent_youtube_style(self):
         board_css = (Path(__file__).resolve().parents[1] / "web" / "board.css").read_text(encoding="utf-8")
@@ -4009,7 +3967,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("tag:cleanTagFilter(params.get('tag'))")
         self.assertPageContains("state={...state,creator:'',studio:'',tag:'',tag_match:'all'")
         self.assertPageContains("function enterManagementSurface()")
-        self.assertPageContains("loadRequestSeq++;$('#combo').innerHTML=''")
+        self.assertPageContains("loadRequestSeq++;hideCatalogCombo();")
 
     def test_sidebar_add_row_wears_the_shared_input_and_primary_button(self):
         """这一行有三条判据：颜色只走 token、高度只引用 --control-h、主次动作分得开。
@@ -4156,15 +4114,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 缓存键跟着 state 变，否则切到已标记会沿用首页那份。
         scope = self.page.split("const scope=facetParams.toString();", 1)[0]
         self.assertIn("facetParams.set('state'", scope)
-        # 收窄到空时不能留下空带：实测已标记页上两排都没人，#tiers 仍占 28px。
-        self.assertPageContains("$('#tiers').hidden=!(emptyLayout||perfRow||studioRow);")
-        self.assertPageContains(".tiers[hidden]{display:none}")
-
-    def test_empty_home_places_tags_after_view_filters_and_clips_identity_tracks(self):
-        self.assertPageContains("$('#tiers').innerHTML=emptyLayout?emptyLayout.tiers:tier(perfRow)+tier(studioRow);")
-        self.assertPageContains("$('#tagScroll').innerHTML=(emptyLayout?.tags||'')")
-        self.assertPageContains(".tier.catalog-placeholder{overflow:hidden}")
-        self.assertPageContains("flex:1 0 240px;min-width:240px;overflow:hidden")
 
     def test_the_view_pills_hold_still_while_only_the_tags_scroll(self):
         """筛选条左边钉住不动，横滚只发生在右半截；窄到手机宽度钉住的只剩最左那一档。
@@ -4179,21 +4128,13 @@ class WebUiSourceTests(unittest.TestCase):
         关注那一条不在其列：它一整排都是可加可不加的筛选，没有这种分工，钉住开头几枚
         只会占掉本来就不宽的一行。
         """
-        self.assertPageContains('<div class="tagbar" id="tagbar"><div class="filterscroll">'
-                                '<div class="viewpills" id="viewPills"></div>'
-                                '<div class="tagscroll" id="tagScroll"></div></div></div>')
         self.assertPageContains("  display:flex;gap:7px;overflow:hidden;align-items:center}")
         # 这一层定位不为自己，是给那块滑动玻璃当落脚点：窄屏时它就是横滚的那一层。
         self.assertPageContains(".filterscroll{display:flex;gap:7px;flex:1;min-width:0;"
                                 "align-items:center;position:relative}")
-        self.assertPageContains(".viewpills{display:flex;gap:7px;flex:none;align-items:center}")
-        self.assertPageContains(".tagscroll{display:flex;gap:7px;flex:1;min-width:0;align-items:center;\n"
-                                "  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
-                                "overscroll-behavior-inline:contain}")
         self.assertPageContains("@media(max-width:760px){\n"
                                 "  .filterscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;"
                                 "overscroll-behavior-inline:contain}")
-        self.assertPageContains("  .filterscroll>.tagscroll{flex:0 0 auto;min-width:auto;overflow:visible}")
         # 关注页那条归 `follow-feed` 岛，分工同资料页的 `entity-filter`（`frontend/e2e/follow-feed.test.ts`）。
         self.assertPageLacks(".followfilters{position:relative")
         # 玻璃层只收间距，不改谁滚谁不滚：整条一起滚的话左端那一档也跟着走，而它正是
@@ -4403,9 +4344,9 @@ class WebUiSourceTests(unittest.TestCase):
 
         `showHomeSurfaces` 会先把横条恢复出来，所以隐藏必须排在它之后，否则被立刻覆盖。
         """
-        self.assertPageContains("if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}")
-        home = self.page.split("function showHomeSurfaces(){", 1)[1].split("}", 1)[0]
-        self.assertLess(home.index("$('#tiers').style.display=''"), home.index("buildManageBar()"),
+        self.assertPageContains("  if(current)hideDiscoveryBars();")
+        home = self.page.split("function showHomeSurfaces(){", 1)[1].split("\n}", 1)[0]
+        self.assertLess(home.index("$('#catalogFilter').style.display=''"), home.index("buildManageBar()"),
                         "buildManageBar 必须排在恢复首页横条之后，否则隐藏会被覆盖")
 
     def test_ads_queue_count_does_not_stick_and_disposal_reports_failures(self):
@@ -4445,7 +4386,6 @@ class WebUiSourceTests(unittest.TestCase):
         """
         loading = self.app_js.split("function renderCatalogLoading(", 1)[1].split("\n}", 1)[0]
         self.assertIn("junkCountSkeletonHtml(junkRoute(location.search))", loading)
-        self.assertIn("if(!junk)wireCountRow();", loading)
         # 这一行自己的版式类平时由 loadJunk 写，深链冷启动时骨架排在它前面。
         self.assertIn("count.classList.toggle('junkcount',junk)", loading)
         self.assertIn("count.classList.toggle('manage-static',junk)", loading)
@@ -4553,7 +4493,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains('class="pagelede mono" id="manageLede" hidden')
         self.assertPageContains(".pagelede{margin:0 0 16px;color:var(--muted);font-size:var(--fs-sm);line-height:1.5}")
         self.assertPageContains("if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`,")
-        self.assertPageContains(".count.count-actions-only:empty{display:none}")
         self.assertPageLacks('class="dupsum mono"')
 
     def test_empty_trash_shares_the_lede_row_instead_of_taking_one_of_its_own(self):
@@ -4571,9 +4510,6 @@ class WebUiSourceTests(unittest.TestCase):
         lede = self.app_js.split("if(trash)paintManageLede(", 1)[1].split("$('#count')", 1)[0]
         self.assertIn('class="batchaction danger" id="emptyTrash"', lede,
                       "清空回收站要挂在说明行上，不是自己占一行")
-        # 计数栏在回收站页只剩空壳，靠 :empty 收掉；按钮不能同时还留在 .sorts 里。
-        sorts = self.app_js.split('const countSortsHtml=', 1)[1].split('});', 1)[0]
-        self.assertNotIn('id="emptyTrash"', sorts)
         self.assertPageContains(
             ".pagelede-actions{display:flex;align-items:center;justify-content:space-between;gap:16px}")
         # 危险档只有 01-base 那一份，页面各自的 .danger 覆盖已经收掉了。
@@ -5225,7 +5161,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("['tags','标签','tags']")
 
     def test_entity_profile_hides_home_facets_and_renders_context(self):
-        self.assertPageContains("body.entity-open #tiers,body.entity-open #tagbar,")
+        self.assertPageContains("body.entity-open [data-catalog-filter],body.index-open [data-catalog-filter]{display:none}")
         self.assertPageContains("logo:company&&d.has_logo?d.canonical_name:'',")
         profile = self.page[self.page.index("async function openEntity("):]
         # 资料卡（连同卡底的同台艺人）是 entity-hero island，筛选浮层是 entity-filter
@@ -5259,7 +5195,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_every_home_navigation_restores_the_shared_facets(self):
         self.assertPageContains("function showHomeSurfaces()")
-        self.assertPageContains("$('#tiers').style.display='';$('#tagbar').style.display=''")
+        self.assertPageContains("  $('#catalogFilter').style.display='';")
         self.assertPageContains("function closeStats(push=true){if(push)route('/');showHomeSurfaces();loadCatalog()}")
         self.assertPageContains("async function loadCatalog()")
         self.assertPageContains("showHomeSurfaces();disposeStage(false)")
@@ -5281,17 +5217,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(filters.sort==='seed')p.set('seed',state.seed)")
         self.assertPageContains("const JAV_RELEASE_SORT=['release','发行时间']")
         self.assertPageContains("javActive()?[JAV_RELEASE_SORT,...ordered]:ordered")
-        self.assertPageContains("items:sortOptions()")
-        self.assertPageContains("renderItem:([k,l])=>sortButtonHtml")
+        self.assertPageContains("function sortKeys(current,dir){\n  return sortOptions().map(")
         self.assertPageContains(
             "if(state.jav!=='1'&&state.sort==='release'){state.sort='seed';state.dir=''}")
         self.assertPageContains(
             "if(next)void updateEntityCollection(kind,name,{...filters,...next},true)")
         self.assertPageContains("key==='sort'&&filters[key]==='new'")
         self.assertPageContains("height:var(--filterH);margin:0 -16px;padding:9px 16px")
-        self.assertPageContains("mountFilterFrame(top,bottom,")
         self.assertPageContains(".tagbar.is-stuck,.count.is-stuck{")
-        self.assertPageContains("['.board-filter-frame','#tagbar','#count']")
+        self.assertPageContains("['.board-filter-frame','#count']")
         self.assertPageContains("scheduleStickySurfaces();")
         # 照片墙没有视频排序语义，切换后直接渲染照片，不复用作品头。
         self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
@@ -5439,7 +5373,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains(
             "logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',")
         # 小位仍要方形小标：卡片角标和顶栏那排只有二十来像素，取原图只是白下载。
-        self.assertPageContains('variant=icon"')
+        self.assertPageContains("&variant=icon`:''")
 
     def test_a_mark_smaller_than_its_frame_is_not_blown_up(self):
         """图比框还小就不拉伸：原尺寸居中，空出来的一圈用同一张图放大模糊补底。
@@ -5850,9 +5784,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertCode(
             "    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);\n"
             "    updateEntityCollection(barsContext.kind,barsContext.name,filters,true);return")
-        # 两处按下态：筛选条与卡片上的标签、侧栏那些芯片；资料页那排由岛照推过去的 props 画。
-        self.assertPageContains(
-            "    b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.tag))));")
+        # 首页筛选条与资料页那排由各自的岛照推过去的 props 画，侧栏那些芯片就地改。
+        self.assertPageContains("  else paintCatalogFilter({tags:catalogTags(filters)});")
         self.assertPageContains("$('#drawer').querySelectorAll('.chip[data-key]')")
         # 轨道上那截填充由 oninput 算，改 value 不会自己触发。
         self.assertPageContains("    durMin.dispatchEvent(new Event('input'));")
@@ -5977,13 +5910,11 @@ class WebUiSourceTests(unittest.TestCase):
         换的是成员，不是位置。
         """
         self.assertPageContains("const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);")
-        self.assertPageContains("+appliedTags.concat(pickedTags).map(tagPillHtml).join('');")
         self.assertPageLacks("topTags.slice(0,26)",
                              "取前 26 会把这一批的成员钉死在数量榜的头部")
         # 续在后面的是这一批之外的那些，抽样只决定开头露谁，不重排后面的数量序。
         self.assertPageContains("const pickedKeys=new Set(pickedTags.map(row=>row.k));")
-        self.assertPageContains(
-            "wireRowPaging($('#tagScroll'),tagPool.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);")
+        self.assertPageContains("tagPool.filter(row=>!pickedKeys.has(row.k)))")
         # 同一个种子给同一套成员，所以这一批内翻页和刷新都不会让标签跳动。
         self.assertPageContains("const seededSample=(rows,count,seed,key=row=>row.k)=>{")
         self.assertPageContains("  if(rows.length<=count)return rows;")
@@ -6007,7 +5938,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const byTagKey=new Map(topTags.map(row=>[row.k,row]));")
         self.assertPageContains("const appliedTags=appliedKeys.map(k=>byTagKey.get(k)||{k});")
         self.assertPageContains("const tagPool=topTags.filter(row=>!appliedKeys.includes(row.k));")
-        self.assertPageContains("+appliedTags.concat(pickedTags).map(tagPillHtml).join('');")
+        self.assertPageContains("catalogTagRows=appliedTags.concat(pickedTags,")
 
     def test_every_filter_row_tells_how_much_is_behind_each_tag(self):
         """标签后面带上这个标签下有多少，首页和资料页同一个口径。
@@ -6018,35 +5949,9 @@ class WebUiSourceTests(unittest.TestCase):
         生效的标签不一定在这一批抽样里，那时只有键、没有行，不印数字：印 0 会说成
         「这个标签下什么都没有」，而它此刻正筛着一屏内容。
         """
-        self.assertPageContains("const tagPillHtml=t=>filterChipHtml(tagLabel(t.k),{attr:'data-tag',value:t.k,\n"
-                                "    selected:tagPressed(filterState.tag,t.k),"
-                                "count:t.n==null?undefined:t.n.toLocaleString()});")
-        # 资料页那排的数由 entity-filter island 印，壳只把每枚的 n 照推过去。
+        # 两排的数都由岛印（首页 catalog-filter、资料页 entity-filter），壳只把每枚的 n 照推过去。
+        self.assertPageContains("({k:row.k,label:tagLabel(row.k),n:row.n??null})")
         self.assertPageContains("({k:x.k,label:tagLabel(x.k),n:x.n,selected:tagPressed(filters.tag,x.k)})")
-
-    def test_the_count_behind_a_tag_reads_as_a_footnote_not_part_of_the_name(self):
-        """计数与标签之间要有间隔，字号和颜色也各降一档。
-
-        同字号同色贴在一起时「巨乳63」读成一个词，那个数看着像这条标签自己就叫这个
-        名字。间隔只能由 CSS 给：`.pill` 是 flex 容器，标签与计数之间写一个空格文本
-        节点不参与布局，量出来仍然是零——所以模板里也不留那个空格，免得两处各存一份
-        真相而其中一份从来没生效过。
-
-        玻璃那一层要自己降档。flat 层降的是 `--muted`，而在 Board 里 `--muted` 和
-        `--ink-2` 都映射到 `--color-text-secondary`，是同一个值；照搬过去，计数和标签
-        仍然一样亮。
-        """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertPageContains('aria-pressed="${selected}">${esc(label)}${count==null?\'\':'
-                                '`<span class="${esc(countClass)}" data-count-badge="${esc(value)}">'
-                                '${esc(count)}</span>`}')
-        self.assertPageContains(".pill .n{margin-left:7px;color:var(--muted);font-size:var(--fs-xs);"
-                                "font-variant-numeric:tabular-nums}")
-        self.assertPageContains('.pill[aria-pressed="true"] .n,.pill:hover .n{color:var(--ink-2)}')
-        self.assertIn(".board-filter-frame.board-filter-frame .pill .n{margin-left:6px;font-size:11px;\n"
-                      "  color:color-mix(in srgb,var(--glass-text) 55%,transparent)}", board)
-        self.assertPageLacks(".followfilters .pill .n{margin-left:5px;color:inherit}",
-                             "跟着标签同色同字号就是没有区分，而且只管关注页一处")
 
     def test_the_refresh_key_keeps_redrawing_until_the_bars_land_too(self):
         """忙态动效归「换一批」这一层，不挂在计数行上。
@@ -6056,10 +5961,9 @@ class WebUiSourceTests(unittest.TestCase):
         与标签条不铺骨架：它们此刻有内容在屏幕上，撕成灰条再填回去比直接换掉更
         晃眼，骨架留给从无到有的首屏。
         """
-        self.assertPageContains("  document.body.classList.add('refreshing');")
+        self.assertPageContains("  paintCatalogFilter({refreshing:true});")
         self.assertPageContains("  try{await Promise.all([loadCatalog(),buildBars()])}")
-        self.assertPageContains("  finally{document.body.classList.remove('refreshing')}")
-        self.assertPageContains("body.refreshing #batchAction svg{")
+        self.assertPageContains("  finally{paintCatalogFilter({refreshing:false})}")
         # 标签条和顶部三层照旧留着旧内容等新内容，不进骨架。
         self.assertPageLacks("tagbarSkeleton", "有内容在屏幕上时不铺骨架")
 
@@ -6163,10 +6067,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("flex:0 0 auto;white-space:nowrap")
         self.assertPageContains(".count .sorts button{min-height:36px}")
         # 这些行都没有滚动条（scrollbar-width:none），不登记拖动就只剩看得见够不着的半个按钮。
-        # 筛选条里滚的那一层随宽度换：宽屏是右半截的标签，窄屏是连视图一起的 `.filterscroll`。
-        # 两层都登记，少一层就会在某一个宽度上滚不动；登记在不滚的那层上是空转。
-        self.assertPageContains("['#tagScroll','#tagbar .filterscroll','#nrow','#count']"
-                                ".forEach(s=>wireDrag($(s)))")
+        # 首页筛选条那几排由 catalog-filter 岛经壳交来的 `wireDrag` 登记。
+        self.assertPageContains("['#nrow','#count'].forEach(s=>wireDrag($(s)))")
         self.assertPageContains("document.querySelectorAll('.tier,.srow').forEach(wireDrag)")
         # 「接着看」每开一次详情就重建，启动时的登记落在旧节点上；作品详情岛画出那一排时经壳
         # 交来的 `wireDrag` 当场再登记一次。
@@ -6390,7 +6292,6 @@ class WebUiSourceTests(unittest.TestCase):
             r"disabled\s*=\s*true;[^\n]{0,100}(?:setAttribute\('aria-busy'|setActionBusy)",
             "请求中的按钮必须保持可聚焦，不能再把 native disabled 和 busy 混用",
         )
-        self.assertPageContains("setActionBusy(batch)")
         # React 档里同一件事由 `busyProps()` 发：同样是 aria-busy 加 aria-disabled，
         # 按钮留在 tab 序列上。
         self.assertIn("{...busyProps(rowHandlers.busy)}",
@@ -6432,7 +6333,7 @@ class WebUiSourceTests(unittest.TestCase):
         `src`：厂牌标识的地址必须带上 studio，也必须带上 variant（哪个位置要哪份图
         是另一条契约，见 `test_studio_icon_variants`）。
         """
-        marks = re.findall(r'src="(/logo[^"]*)"', self.page)
+        marks = re.findall(r'(?:src="|logo:[^`\n]*`)(/logo[^"`]*)', self.page)
         self.assertTrue(marks, "页面里应当仍有厂牌标识取图位")
         for url in marks:
             with self.subTest(url=url):
@@ -6540,8 +6441,8 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_state_routes_tag_multiselect_and_header_capabilities_are_explicit(self):
         self.assertPageContains("const STATE_ROUTES={fresh:'/unseen',later:'/watch-later',flagged:'/flagged',ads:'/junk-files'}")
-        self.assertPageContains('href="${v.k?STATE_ROUTES[v.k]:\'/\'}" data-state="${v.k}"')
-        self.assertPageContains("route(homePath());buildBars();loadCatalog()")
+        self.assertPageContains("href:v.k?STATE_ROUTES[v.k]:'/'")
+        self.assertPageContains("route(homePath());buildBars();loadCatalog();")
         self.assertPageContains("const canSelect=catalog||entity||path==='/tags'")
         self.assertPageContains("$('#selectMode').hidden=!canSelect;$('#density').hidden=!canDensity")
         self.assertPageLacks("const canRefresh=")
@@ -6592,9 +6493,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("function paintNav(){")
         self.assertPageContains(".edge button[data-nav],#drawer .dnav button[data-nav]")
         # 组合标签：pill 按按下态逐个命中；combo 芯片显示显示名、操作用原始 key。
-        self.assertPageContains("tagPressed(filterState.tag,t.k)")
+        self.assertPageContains("selected:tagPressed(filters.tag,row.k)")
         self.assertPageContains("tagList(filters.tag).forEach(t=>items.push({kind:'untag',key:t,label:tagLabel(t)}));")
-        self.assertPageContains("${esc(item.label)} <b data-untag=\"${esc(item.key)}\">✕</b>")
         # fwarn 提供 dismiss（会话内记忆），关闭钮样式与 toast 关闭钮同量纲。
         self.assertPageLacks("data-fwarn-dismiss")
         self.assertPageContains(".fwarn{grid-template-columns:16px minmax(0,1fr);")
@@ -7092,8 +6992,6 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_index_pages_drop_the_home_filter_bars_and_back_button(self):
         # 艺人/标签索引和资料页一样是「专注看某一类实体」的表面。
-        self.assertCode(
-            "body.entity-open #tiers,body.entity-open #tagbar,\nbody.index-open #tiers,body.index-open #tagbar{display:none}")
         self.assertPageLacks('id="iClose"', "顶栏入口本身就是返回路径")
         self.assertPageLacks("$('#iClose').onclick")
 
@@ -7166,10 +7064,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("if(followSort===FOLLOW_RANDOM_SORT)params.set('seed',String(followSeed));")
         self.assertPageContains("followSort=sort===FOLLOW_RANDOM_SORT||FOLLOW_FEED_SORTS.some(([key])=>key===sort)?sort:'new';")
         self.assertPageContains("+(followSort===FOLLOW_RANDOM_SORT?`&seed=${followSeed}`:'')")
-        # 槽位只剩 extra 一个：排序键一律排在最末，挨着它说明的那批内容。
-        self.assertPageContains("export function sortControlsHtml({items=[],renderItem=String,extra='',"
-                                "shuffleId='',shuffleClass='entitybatch'}={}){")
-        self.assertPageLacks("${items.map(renderItem).join('')}${after}")
         # 三档排序，每一档的方向词各说各的那一列。
         self.assertCode("const FOLLOW_FEED_SORTS=[['new','更新时间'],['hot','热度'],['dur','时长']];")
         self.assertPageContains("dur:['从长到短','从短到长']")
@@ -7178,8 +7072,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("+(followDir!=='desc'?`&dir=${followDir}`:'');")
         # 「仅显示图片」的字形是「收起说明」，不跟左边媒体那一档的图片字形撞。
         self.assertPageContains('<symbol id="i-captions-off" viewBox="0 0 24 24">')
-        self.assertPageContains("function viewGlideGeometry(pill,within='.board-filter-frame'){\n  const host=pill.closest(within);if(!host)return null;")
-        self.assertPageContains("Object.keys(GLIDE_ROWS).forEach(kind=>syncViewGlide(false,null,kind))},{passive:true});")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertNotIn("var(--board-blue);color:#fff;font-weight:600}", board)
         self.assertNotIn(".followrecheck", board)
@@ -7269,9 +7161,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("emptyStateHtml('search-x', '当前筛选下没有更新'", feed)
         # 转圈只剩「去问来源有没有更新」这一个意思。此前九处动作共用它，读下来全是
         # 「刷新」，可它们分别是洗牌、查链接、比差异、读历史和同步删除。
+        # 换一批的洗牌字形由 `frontend/test/react/entity-filter.test.tsx` 钉住（两座筛选岛共用那一枚键）。
         for needle in (
-                # 换一批洗的是这一批的成员，不是把同一批重新取一遍。
-                'title="换一批" aria-label="换一批">${icon(\'shuffle\')}',
                 # 同步删除把这个目录在盘上和账本里对齐。
                 'aria-label="同步删除">${icon(\'folder-sync\')}',
                 # 保存为播放列表存的是一份列表，在作品详情岛里（item-detail.test.tsx）。沉浸模式入口、
@@ -7412,11 +7303,6 @@ class WebUiSourceTests(unittest.TestCase):
                       ".board-local-nav>.navglide{"
                       "position:absolute;left:0;top:0;z-index:0;pointer-events:none;", board)
         self.assertIn("backdrop-filter:var(--glass-pick);", board)
-        self.assertIn("pills.forEach(b=>b.onpointerenter=e=>"
-                      "{if(e.pointerType!=='touch')syncViewGlide(true,b,kind)});", app)
-        # 归位挂在那一排自己身上，不挂整条筛选条：两排共用一条 `pointerleave` 的话，
-        # 指针从媒体那组挪到视图那组就算离开，媒体那块会先弹回去再被下一个悬停接住。
-        self.assertIn("row.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true,null,kind)};", app)
         # 位移和形变各占一个独立属性：一条属性上只放得下一段动画，而这两下的时间
         # 形状不是同一条曲线。
         self.assertPageContains("pane.animate([{translate:axis==='y'?`${box.x}px ${from.y}px`"
@@ -7428,8 +7314,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn(".top.top::before", board)
 
     def test_the_view_pane_is_the_only_pane_and_the_follow_row_rides_it_too(self):
-        """观看状态那一排的玻璃是一块，首页与关注页共用；关注页左端那一组媒体圆键另有一块
-        圆的。资料页那两排是同一块料，由 entity-filter island 自己挪（`use-view-glide.ts`）。
+        """观看状态那一排的玻璃是一块，首页与关注页同一块料；关注页左端那一组媒体圆键另有一块
+        圆的。首页、关注页与资料页各由自己的岛挪（`use-view-glide.ts`）。
 
         两排问的不是同一件事，共用一块的话点一下照片，玻璃从「没看过」那儿飞过来，读出来
         是两排在抢同一个当前项。圆角跟着按钮走：那几枚是正圆，一块 8px 圆角的方玻璃扣上去，
@@ -7439,12 +7325,8 @@ class WebUiSourceTests(unittest.TestCase):
         每重画一次就新建一块，动画从头起跑，看到的只是瞬移。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        # 首页那一排由壳挪；关注页两排归 `follow-feed` 岛，圆的那块是 `data-view-glide="round"`。
-        self.assertPageContains("views:{selector:'#viewPills',pressed:'[data-state][aria-pressed=\"true\"]'},")
+        # 首页那一排归 `catalog-filter` 岛；关注页两排归 `follow-feed` 岛，圆的那块是 `data-view-glide="round"`。
         self.assertIn('[data-view-glide="round"][data-view-glide]{border-radius:50%}', board)
-        self.assertPageContains("const viewGlides=new Map();")
-        self.assertPageContains("function syncViewGlide(animate,target,kind='views'){")
-        self.assertPageContains("let glide=viewGlides.get(kind);")
         # 计数徽标照 tabs.tsx：未选中黑 10% 底半透明，选中换成强调色。
         self.assertIn('.board-tab-count{display:inline-block;margin-left:6px;padding:1px 4px;border-radius:4px;', board)
         self.assertIn('.board-local-nav button[aria-selected="true"] .board-tab-count{background:color-mix(in srgb,var(--tungsten) 12%,transparent);color:var(--tungsten);opacity:1}', board)
@@ -7512,13 +7394,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn("transparent 62%),color-mix(in srgb,var(--ink) 12%,transparent);", board)
         # 描边走满一圈，不只压上缘那一道；外影取主题给的那一档。
         self.assertIn("box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}", board)
-        # 玻璃由外框承载，几何扣除横滚量，回弹和阴影允许溢出内容边沿。
-        self.assertIn("const host=pill.closest(within);if(!host)return null;", app)
-        self.assertIn("x-=n.scrollLeft;y-=n.scrollTop;", app)
-        self.assertIn("for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}", app)
-        self.assertIn("if(glide.pane.parentElement!==box.host)box.host.prepend(glide.pane);", app)
-        # 视口变化时每一排的玻璃都按按钮的新位置重新落位，不只四枚视图那一排。
-        self.assertIn("Object.keys(GLIDE_ROWS).forEach(kind=>syncViewGlide(false,null,kind))},{passive:true});", app)
         # 冲过落点再弹回：那条曲线是一次弹簧模拟的采样，峰值 1.103、313ms 收住。
         self.assertIn("--spring-pane:linear(0,0.1515,", board)
         self.assertIn(",1.0477,1.096,1.1029,1.0901,1.0641,", board)
@@ -7635,7 +7510,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("  syncNavGlide(true);\n}", app)
         # 换的是轴，不是另一套动画：竖排缩 Y，走的还是那一块的搬运函数。
         self.assertIn("moveGlidePane(navGlide,animate?from:null,box,'y');", app)
-        self.assertIn("moveGlidePane(glide.pane,animate?from:null,box,'x');", app)
         self.assertPageContains("{scale:axis==='y'?`1 ${grow}`:`${grow} 1`,offset:.3},{scale:'1 1',offset:1}],")
         self.assertIn("wireNavigationDrag($('#drawer').querySelector('.dnav'));\n  syncNavGlide(false);", app)
 
@@ -7920,44 +7794,10 @@ class WebUiSourceTests(unittest.TestCase):
         手上这份用完再去要下一页：`/api/tops` 一次最多回六十个，而库里六百多位女优，
         没有续页那一排就停在第六十位。
         """
-        self.assertPageContains("const ROW_FIRST=24,TAGS_FIRST=26,ROW_BATCH=12;")
         self.assertPageContains("const params=new URLSearchParams({n:'60',seed:state.seed||''});")
-        self.assertPageContains("const perfRow=tops.performers.slice(0,ROW_FIRST).map(avHtml).join('');")
-        self.assertCode(
-            "    while(atEnd()){\n"
-            "      if(cursor>=rest.length){\n"
-            "        if(drained)break;\n"
-            "        fetching=true;"
-        )
-        self.assertCode(
-            "        const more=await nextPage().catch(()=>[]);\n"
-            "        fetching=false;\n"
-            "        if(!more.length){drained=true;break}\n"
-            "        rest=rest.concat(more);\n"
-            "      }\n"
-            "      row.insertAdjacentHTML('beforeend',rest.slice(cursor,cursor+ROW_BATCH).map(itemHtml).join(''));\n"
-            "      cursor+=ROW_BATCH;added=true;\n"
-            "    }"
-        )
-        # 要页的这段时间里人还在滚：进得来第二遍就会把同一页要两次，续上来的成双。
-        self.assertPageContains("    if(fetching)return;")
-        self.assertPageContains("if(drained&&cursor>=rest.length)row.removeEventListener('scroll',fill);")
-        self.assertPageContains("row.addEventListener('scroll',fill,{passive:true});")
-        # 页号各排各记：共用一个的话，先到头的那排会替另一排把页翻过去。
-        self.assertCode(
-            "    const nextTopsPage=kind=>{let page=0;\n"
-            "      return async()=>(await loadTops(topsQueryParams(context,++page)))[kind]||[]};"
-        )
+        # 页号各排各记：共用一个的话，先到头的那排会替另一排把页翻过去。续排本身归岛（`usePaged`）。
+        self.assertPageContains("const rows=(await loadTops(topsQueryParams(pages.context,++pages[kind])))[kind]||[];")
         self.assertPageContains("if(page)params.set('page',String(page));")
-        self.assertCode(
-            "    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,\n"
-            "      wireTierEntities,nextTopsPage('performers'));\n"
-            "    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,\n"
-            "      wireTierEntities,nextTopsPage('studios'));"
-        )
-        # 续上来的那几个要跟第一屏一样能点开、一样有图片兜底。
-        self.assertPageContains("function wireTierEntities(root){")
-        self.assertPageContains("root.querySelectorAll('.mk img:not([data-fallback-wired])')")
 
     def test_both_ends_of_a_range_slider_always_report_their_value(self):
         """时长两端的读数常显：这里是唯一报数的地方。
@@ -8408,8 +8248,6 @@ class WebUiSourceTests(unittest.TestCase):
         不渐隐的话，浮层圆角那儿最后一个标签被直角硬切掉半个字，也看不出右边还有。
         """
         self.assertPageContains("function wireHorizontalScroller(el,")
-        self.assertPageContains(
-            "if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(el=>wireHorizontalScroller(el));")
 
     def test_the_board_layer_rows_that_can_overflow_are_all_registered(self):
         """board.css 与 `frontend/` 画出来的横滚层走名单，不走按 id 点名的那份清单。
@@ -8797,11 +8635,10 @@ class WebUiSourceTests(unittest.TestCase):
         for name in ("openStats", "openTaste", "openPlaylists", "openReview", "openFollow"):
             self.assertIn("enterManagementSurface()", self._js_function(name),
                           name + " 没有走中央清理函数，多半又手抄了一份不完整的")
-        self.assertPageContains("loadRequestSeq++;$('#combo').innerHTML='';",
+        self.assertPageContains("loadRequestSeq++;hideCatalogCombo();",
                                 "中央清理函数必须同时收掉筛选芯片和在途的目录请求")
-        # 手抄正是这个 bug 的来源。除了清理函数自己，只有目录内部的管理条可以直接动
-        # 这两个元素——它换的是目录自己的形态，而不是切去另一个页面。
-        self.assertEqual(self.page.count("$('#tagbar').style.display='none'"), 2,
+        # 手抄正是这个 bug 的来源：收起筛选条只有 `hideDiscoveryBars` 那一处写法。
+        self.assertEqual(self.page.count("$('#catalogFilter').style.display='none'"), 1,
                          "又有地方手抄了清理逻辑，请改调 enterManagementSurface()")
 
     def test_the_filter_chips_paint_only_while_the_catalog_is_on_screen(self):
@@ -8819,17 +8656,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const catalogOnScreen=()=>$('#index').hidden&&$('#stats').hidden;",
                                 "整页视图铺开的是这两个容器，它们就是「目录被盖住了」的判据")
         combo = self._js_function("renderCombo")
-        self.assertIn("if(!catalogOnScreen()){$('#combo').innerHTML='';return}", combo,
+        self.assertIn("paintCatalogFilter({combo:comboItems(state),comboHidden:!catalogOnScreen()});", combo,
                       "芯片必须先问过屏幕再画，否则每加一个整页视图就复发一次")
         # 资料页那条是它自己的，读的是这一页的筛选，不是目录的 `state`；由 entity-filter
         # island 画在浮层正上方，照片视图下收起，由 e2e 量。
         self.assertIn("pushEntityFilter({combo:comboItems(barsContext.filters)});", combo)
-        self.assertLess(combo.index("catalogOnScreen()"), combo.index("$('#combo').innerHTML=\n"),
-                        "判据要在拼 HTML 之前，不能画完再擦")
         # 铺开索引页／资料页与进入管理页是同一件事的两侧，各自的共用函数都要收掉芯片。
         self.assertPageContains(
-            "$('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();"
-            "$('#combo').innerHTML='';",
+            "$('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();hideCatalogCombo();",
             "索引页与资料页的共用铺开函数必须收掉目录的筛选芯片")
         for name, loader in (("openIndex", "showIndexSkeleton("), ("openEntity", "showEntityLoading(")):
             self.assertIn(loader, self._js_function(name),
@@ -8856,18 +8690,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("state.tag=tg.dataset.tag",
                              "卡片上的标签绕过语境，在资料页点一下就把人带回目录")
         # 顶部标签条、资料页标签、卡片标签、芯片的 ✕ 与「全部清除」：五个入口一个落点。
-        self.assertPageContains("wireTagPills($('#tagScroll'));")
-        self.assertPageContains("root.querySelectorAll('[data-tag]')"
-                                ".forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});")
         self.assertPageContains("toggleTag:tag=>toggleTag(tag),")
         self.assertPageContains("commitContextFilter(filters=>{filters.tag=tagPressed(filters.tag,tag)?'':tag});")
         self.assertPageContains("$('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;")
-        self.assertPageContains("root.querySelectorAll('[data-untag]')"
-                                ".forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));")
-        self.assertCode("if(clear)clear.onclick=()=>commitContextFilter(filters=>{\n"
-                        "    filters.tag='';filters.creator='';filters.studio='';filters.owner=''});")
+        self.assertPageContains("clearAll:()=>commitContextFilter(filters=>{"
+                                "filters.tag='';filters.creator='';filters.studio='';filters.owner=''}),")
         # 按下态与表头也读同一份判据，资料页的标签因此和目录一样能叠加。
-        self.assertPageContains("tagPressed(filterState.tag,t.k)")
+        self.assertPageContains("selected:tagPressed(filters.tag,row.k)")
         self.assertPageContains("selected:tagPressed(filters.tag,x.k)")
         self.assertPageContains("const entityTags=tagList(filters.tag).map(tagLabel);")
 
@@ -9203,8 +9032,6 @@ class WebUiSourceTests(unittest.TestCase):
             line = next(row for row in board.splitlines() if row.startswith(fallback))
             self.assertIn(pane, line, fallback + " 漏了整块玻璃")
         self.assertIn(pane + '.board-is-stuck{box-shadow:inset 0 1px 0 var(--glass-rim)', board)
-        self.assertPageContains('mountFilterFrame(top,bottom,')
-        self.assertPageContains('mountFilterFrame(boardTagbar,countbar,')
         self.assertPageContains("'tag','state','dur_min'")
         self.assertPageContains("setState:value=>void updateEntityCollection(kind,name,{...live(),state:value},true),")
         self.assertNotIn(".entitytagbar.is-stuck::before{", board)
@@ -9222,14 +9049,9 @@ class WebUiSourceTests(unittest.TestCase):
         # 资料页那一格由 entity-filter island 画，壳给同一份选项与现值，按下回同一个 setJavLayout。
         self.assertPageContains("jav:javActive()?{layout:javLayout(),options:JAV_LAYOUTS}:null")
         self.assertPageContains("setJavLayout:value=>{setJavLayout(value);")
-        self.assertPageContains("extra:javActive()?javLayoutButtons():homeLayoutActive()")
-        # 首页的版式开关和关注列表的紧凑开关是同一个控件：共用 iconSwitchHtml 与 .iconswitch
-        # 样式，.javlayout 只留排序行里的位置微调。
-        self.assertPageContains("iconSwitchHtml('jav-layout','JAV 卡片版式',JAV_LAYOUTS,javLayout(),")
-        self.assertPageContains("{attr:'data-jav-layout',className:'javlayout'}")
+        # 首页那一格归 `catalog-filter` 岛，同一个 `Segments`；设置页那几组开关用 iconSwitchHtml。
         self.assertPageContains('type="radio" name="${esc(name)}" value="${esc(value)}" ${attr}')
         self.assertPageContains("${value===current?'checked':''}")
-        self.assertPageContains("wireIconSwitch(root,'data-jav-layout',setJavLayout)")
         self.assertPageContains(".iconswitch label:has(input:checked){background:var(--surface);color:var(--ink)")
         self.assertPageContains("let entityRequestSeq=0,entityJavLayout=false")
         self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
@@ -9709,10 +9531,7 @@ class MotionRecipeTests(unittest.TestCase):
         # 起点那一帧不带过渡：带的话挂上去只是开始朝零缩，同一次调用里摘掉时回程无处可走。
         self.assertPageContains(
             ".countbadge.popped{transform:scale(0);opacity:0;filter:blur(2px);transition:none}")
-        for call in ("popBadges($('#tagScroll'),'tagbar')",
-                     "popBadges($('#drawerScroll'),'drawer')"):
-            with self.subTest(call=call):
-                self.assertPageContains(call)
+        self.assertPageContains("popBadges($('#drawerScroll'),'drawer')")
 
     def test_titles_reveal_by_line_and_leave_no_filter_behind(self):
         """按行不按词：这几处标题正是最常被复制走的几段字，拆成一串 span 会散架。

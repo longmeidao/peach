@@ -4,13 +4,13 @@
  * 重读时查询换键，整个网格按新键重挂：先铺壳那份骨架，数据回来后骨架淡出、内容从模糊里清晰
  * 起来（同遗留层 `revealSkeleton`），骨架还没到显示门槛就取完的直接落内容。
  *
- * 读数行（`#count`）的结构归壳，网格每接一页经 `onCount` 报一次，再把读数按位错峰写进
- * 那一格（遗留层 `popCount`）。无限滚动见下面的 `LoadMore`：哨兵进入视口 320px
+ * 网格每接一页经 `onCount` 报一次总数与显示的卡数，读数画在首页筛选条（`catalog-filter` 岛）的
+ * 下排。无限滚动见下面的 `LoadMore`：哨兵进入视口 320px
  * 内自动取下一页，点它等于手动取；失败在哨兵后面留一条可重试的 Note，之后只有手动才重试。 */
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { useInfiniteQuery, type InfiniteData, type QueryKey } from '@tanstack/react-query';
 import { requestErrorMessage } from '@peach/legacy/core';
-import { loadingDotsHtml, popCount } from '@peach/legacy/ui';
+import { loadingDotsHtml } from '@peach/legacy/ui';
 
 import { apiGet } from '../../api';
 import { RetryNote, useSkeletonReveal } from '../components/grid-reveal';
@@ -22,10 +22,6 @@ import {
   shortsBoundaries, shortsParams, splitSections, type GridPage, type ShortsCut, type Tile,
 } from './catalog-grid';
 import type { CatalogGridProps, MediaCardLayout, MediaCardHelpers, MediaItem, MediaPage } from './types';
-
-/* 上一次写出去的读数。读数那一格每次随读数行整块重建，靠它分清「换了个数」和「刚出现」：
-   只有前者按位错峰长出来。跨查询、跨重挂都要记得，所以放在模块里，同遗留层 `lastCountReadout`。 */
-let lastReadout = '';
 
 export function CatalogGridPage(props: CatalogGridProps) {
   if (props.mode === 'items') return <ItemsGrid {...props} />;
@@ -89,16 +85,8 @@ function GridBody(props: CatalogGridProps) {
   const body = useRef<HTMLDivElement | null>(null);
   const cuts = useShortsStrips(props, result.data, tiles, pageStarts, body);
 
-  /* 读数：先让壳重画读数行，再把数写进它新建的那一格。 */
   useLayoutEffect(() => {
-    if (!result.data) return;
-    props.onCount?.(total, shown);
-    const readout = trash ? null : props.countRow?.querySelector<HTMLElement>('[data-count-readout]');
-    if (!readout) return;
-    const text = `${total.toLocaleString()} 个符合 · 显示 ${shown}`;
-    if (lastReadout) readout.dataset.popCount = lastReadout;
-    lastReadout = text;
-    popCount(readout, text);
+    if (result.data) props.onCount?.(total, shown);
   }, [result.data, total, shown]);
 
   const open = useCallback((item: MediaItem, anchor: HTMLElement) => actions.open(item, anchor), [actions]);

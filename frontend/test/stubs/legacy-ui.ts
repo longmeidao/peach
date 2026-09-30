@@ -12,8 +12,8 @@ export const emptyStateHtml = (
   + `<div class="es-icon" data-icon="${iconName}"></div>`
   + `<div class="es-copy"><h3>${title}</h3><p>${description}</p></div>${options.actions || ''}</div>`;
 
-// @ts-expect-error 索引骨架复用正式模板，折叠开合、覆盖式滚动条、徽标弹跳、滚动判据与补充信息卡用正式实现。
-export {attachOverlayScrollbar, iconSwapHtml, indexSkeletonHtml, popBadges, revealTexts, scrollMovesAnchor, setCollapseOpen, setIconSwap, wireContextCard} from '../../../web/js/ui-components.js';
+// @ts-expect-error 索引骨架复用正式模板，折叠开合、覆盖式滚动条、徽标与读数弹跳、滚动判据与补充信息卡用正式实现。
+export {attachOverlayScrollbar, iconSwapHtml, indexSkeletonHtml, popBadges, popCount, revealTexts, scrollMovesAnchor, setCollapseOpen, setIconSwap, wireContextCard} from '../../../web/js/ui-components.js';
 /* 测试环境没有布局，骨架补齐量不出东西，这里什么都不做。 */
 export const fitSkeleton = (_root: Element | null): void => {};
 export const loadingDotsHtml = (label: string): string => `<span>${label}</span>`;

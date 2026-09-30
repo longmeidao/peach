@@ -364,9 +364,9 @@ Radio card 沿用 2026-09-08 取得的 `r/checkbox-card.json`（`checkbox-card.t
 
 筛选浮层、排序与图片墙：
 
-- 筛选条 `.tagbar` 与读数 `.count` 收进同一块 `mountFilterFrame` 浮层。
+- 筛选条与读数收进同一块 `FilterGlassRows` 浮层。
 - 上排最左是视频／图片两枚媒体圆键，跟资料页那一组同形，圆玻璃是 `GLIDE_ROWS.media`（资料页那一组在 `entity-filter` 岛里，同一条 `[data-view-glide="round"]` 材质）。隔一道竖杠是四枚状态（全部、未看、已保存、已忽略，不挂计数），与首页四枚视图同一个控件，共用那块滑动玻璃（`GLIDE_ROWS.views` 多认 `.followviews`）。来源图标与标签在右半截横滚，来源类型只在选中时上色。
-- 下排读数照首页写「N 项更新 · 显示 M」，右端是 `sortControlsHtml` 那一组：换一批（切到 `sort=rand&seed=`，整批按种子打散，种子写进地址），然后是更新时间／热度／时长三档排序。换一批等数据时也画首页那段描边忙态（读数行挂 `aria-busy`）。
+- 下排读数照首页写「N 项更新 · 显示 M」，右端是换一批与排序键那一组：换一批（切到 `sort=rand&seed=`，整批按种子打散，种子写进地址），然后是更新时间／热度／时长三档排序。换一批等数据时也画首页那段描边忙态（读数行挂 `aria-busy`）。
 - 图片墙上多一枚 30px 见方的「仅显示图片」图标开关，字形是 Lucide `captions-off`，不跟媒体那一档的图片字形撞。开着时垫筛选条那块滑动玻璃（`GLIDE_ROWS.imagesonly`），跟旁边的版式分段器同一块料、同一副尺寸：浮层上的分段器轨道不留内边距，选项 30px 见方、8px 圆角。
 - 排序归服务端（`/api/follow?sort=&dir=&seed=`）：分页在服务端，浏览器只拿到当前这几页。`FollowStore.group()` 结尾无条件按 `newest_at` 倒序，所以条目层和发布组层都要按同一把尺再排一次（`_sorted_items` 与 `_sorted_groups`）。
 - 生效的筛选摊在浮层正下方，用首页那条交集筛选条（`.combo` 容器加 `.cb` 芯片加「全部清除」）。放上方会把吸顶玻璃和两排头像一起推下去；放下方只推列表，而列表本来就要重画。

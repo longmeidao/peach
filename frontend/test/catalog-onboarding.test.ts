@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { catalogEmptyHtml, catalogSuggestions, emptyCatalogLayout } from '../src/catalog-onboarding';
+import { catalogEmptyHtml, catalogSuggestions } from '../src/catalog-onboarding';
 
 describe('当前馆藏推荐', () => {
   it('空实例不显示示例词', async () => {
@@ -18,14 +18,6 @@ describe('当前馆藏推荐', () => {
 });
 
 describe('馆藏与资料空状态', () => {
-  it('空首页保留横向头像、厂牌和标签的静止布局', () => {
-    const layout = emptyCatalogLayout();
-    expect(layout.tiers.match(/class="av"/g)).toHaveLength(64);
-    expect(layout.tiers.match(/class="brandpill"/g)).toHaveLength(64);
-    expect(layout.tags.match(/class="pill"/g)).toHaveLength(64);
-    expect(layout.tiers).not.toContain('aria-busy');
-    expect(layout.tiers).toContain('aria-hidden="true"');
-  });
   it('空首页提供添加内容与来源的真实入口', () => {
     const html = catalogEmptyHtml({ configurable: true });
     expect(html).toContain('data-geist-empty-state');

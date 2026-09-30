@@ -231,16 +231,15 @@
 
 </header>
 
-<div class="tiers" id="tiers"></div>
-<div class="tagbar" id="tagbar"><div class="filterscroll"><div class="viewpills" id="viewPills"></div><div class="tagscroll" id="tagScroll"></div></div></div>
-<div class="javbar" id="javbar" hidden></div>
+<!-- 首页筛选条（`catalog-filter` 岛）：两排头像与筛选浮层。宿主不生成盒子，里面那几块直接当 body 的孩子排。 -->
+<div id="catalogFilter" data-catalog-filter></div>
 <nav class="edge" id="edge"></nav>
 
 <main id="main" tabindex="-1">
   <div id="libraryProcessingNotice"></div>
   <!-- 订阅源发现的新作（ADR-0042）。只在首页那几条目录路径上出现，由 app.js 按路径开合。 -->
   <section class="feednew" id="feedNew" aria-label="未入库的新作" hidden></section>
-  <div class="combo" id="combo"></div>
+  <div id="combo"></div>
   <section class="index" id="index" hidden></section>
   <nav class="managebar" id="managebar" hidden></nav>
   <h2 class="disp listtitle" id="listTitle" hidden></h2>

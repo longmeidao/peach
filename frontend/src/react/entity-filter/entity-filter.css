@@ -8,21 +8,24 @@
  * 真浮层时高度才不跳。
  *
  * 选择器全用 `data-*`：遗留样式表不分层、排在后面，写遗留类名会被接管。颜色读遗留层的 `--glass-text`、
- * `--glass-low`、`--ink-2` 这组：它们在 `:root` 上算好再继承进来，和页面其余部分同一档。 */
+ * `--glass-low`、`--ink-2` 这组：它们在 `:root` 上算好再继承进来，和页面其余部分同一档。
+ *
+ * 首页那块浮层（`catalog-filter`，根上标 `[data-catalog-frame]`）的下排、交集条与这里是同一组组件，
+ * 浮层级的几条规则两边一起认。 */
 
 /* ── 宿主 ──
  * 宿主（`[data-entity-filter]`）和 React 根那一层都不生成盒子：浮层要吸顶，吸住的范围是它父元素
  * 的盒子，父元素只裹着它自己的话一格都走不动。两层让开之后它的父元素就是 `#index`，和骨架里
  * 那块 `.board-filter-frame` 同一个。这两条写在 `web/css/07-entity.css`。 */
 
-.peach-react [data-entity-filter-glass] {
+.peach-react :is([data-entity-filter-glass], [data-catalog-frame]) {
   z-index: 60;
   font: var(--board-body);
   letter-spacing: normal;
 }
 
 /* 全站焦点环（`01-base.css`）把 React 子树排除在外，这里自己画同一副。 */
-.peach-react :is([data-entity-filter-glass], [data-entity-combo]) :is(button, [role="radio"]):focus-visible {
+.peach-react :is([data-entity-filter-glass], [data-catalog-frame], [data-entity-combo]) :is(button, [role="radio"]):focus-visible {
   outline: 2px solid var(--tungsten);
   outline-offset: 2px;
 }
@@ -312,7 +315,7 @@
 
 /* 浮层下半在手机上仍是一横条：读数在左，控件跟在右边，装不下就整条往右滚。 */
 @media (max-width: 760px) {
-  .peach-react [data-entity-filter-glass] > [data-filter-row="bottom"] {
+  .peach-react :is([data-entity-filter-glass], [data-catalog-frame]) > [data-filter-row="bottom"] {
     flex-wrap: nowrap;
     gap: 10px;
     overflow-x: auto;
@@ -321,7 +324,7 @@
     scrollbar-width: none;
     touch-action: pan-x pan-y;
   }
-  .peach-react [data-entity-filter-glass] > [data-filter-row="bottom"]::-webkit-scrollbar { display: none; }
+  .peach-react :is([data-entity-filter-glass], [data-catalog-frame]) > [data-filter-row="bottom"]::-webkit-scrollbar { display: none; }
   .peach-react [data-entity-sorts] {
     flex: none;
     width: max-content;
@@ -333,7 +336,7 @@
 /* 窄屏往下滚时浮层让出顶栏下沿，往回滚再落下来；`--filter-free-top` 与标记由壳的
    `updateMobileFilterScroll` 写。 */
 @media (max-width: 760px) {
-  .peach-react [data-entity-filter-glass][data-filter-free] { top: var(--filter-free-top); }
+  .peach-react :is([data-entity-filter-glass], [data-catalog-frame])[data-filter-free] { top: var(--filter-free-top); }
 }
 
 /* ── 交集条 ──

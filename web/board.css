@@ -184,15 +184,6 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
 .board-filter-frame>[data-filter-row]::before,.board-filter-frame>[data-filter-row]::after{display:none}
 /* 资料页骨架那块浮层的上排：微光药丸之间的间距同真浮层上排。 */
 .board-filter-frame .entitytagbar .filterscroll{gap:6px}
-/* 标签后面那个数在这块玻璃上要自己降一档。flat 层那条降的是 --muted，而在这一层里
-   --muted 和 --ink-2 都映射到 --color-text-secondary，是同一个值——照搬过来，计数
-   和标签仍然一样亮。按这一排自己的文字色降档，口径跟未选中的视图胶囊那一档同源。
-   13px 的标签配 11px 的数：差一档能看出来，再小就不是附注而是难以辨认了。 */
-.board-filter-frame.board-filter-frame .pill .n{margin-left:6px;font-size:11px;
-  color:color-mix(in srgb,var(--glass-text) 55%,transparent)}
-.board-filter-frame.board-filter-frame .pill:hover .n,
-.board-filter-frame.board-filter-frame .pill[aria-pressed="true"] .n{
-  color:color-mix(in srgb,var(--glass-text) 80%,transparent)}
 /* 版式、大小这类分段开关问的也是「你在哪儿」。滑块的位置和几何归分段器自己管，这里
    只换材质与配色：那一套是给 flat 面配的，一块灰底衬一枚不透明的白滑块，摆到浮层上
    就是整条里唯一一块实心的面，读起来像贴上去的另一个控件；字色取的也是 flat 面的
@@ -341,7 +332,7 @@ body{background:var(--page)}
 .top{background:var(--page);backdrop-filter:none;border-bottom:0;height:64px}
 :root{--topH:64px}
 .top .search{background:var(--ground);border:1px solid var(--line);border-radius:var(--control-radius)}
-.tiers,.tagbar,.javbar{background:var(--page)}
+.tiers,.tagbar{background:var(--page)}
 .managebar{background:var(--ground);border:1px solid var(--line);border-radius:14px;padding:6px}
 .stats>section,.stats>.fieldset,.fieldset{border-radius:var(--surface-radius)}
 .settingscard,.drawer{box-shadow:0 12px 40px light-dark(#0000000d,#00000080)}

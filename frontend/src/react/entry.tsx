@@ -16,6 +16,7 @@ import { prefetchDuplicates } from './duplicates/duplicates';
 import { DuplicatesPage } from './duplicates/duplicates-page';
 import { EntityBodyPage } from './entity-body/entity-body-page';
 import { EntityFilterPage } from './entity-filter/entity-filter-page';
+import { CatalogFilterPage } from './catalog-filter/catalog-filter-page';
 import { EntityHeroPage } from './entity-hero/entity-hero-page';
 import { prefetchFollowFeed } from './follow-feed/follow-feed';
 import { FollowFeedPage } from './follow-feed/follow-feed-page';
@@ -87,6 +88,7 @@ export const pages: Bundle.ReactPages = {
   'entity-hero': { prefetch: async () => {}, mount: mounter(EntityHeroPage) },
   /* 筛选、读数与排序项都由壳算好递进来，挂上就是最终样子。 */
   'entity-filter': { prefetch: async () => {}, mount: mounter(EntityFilterPage) },
+  'catalog-filter': { prefetch: async () => {}, mount: mounter(CatalogFilterPage) },
   /* 名册随资料下来，作品第一页与照片由壳和页头并行取好递进来，挂上就是最终样子。 */
   'entity-body': { prefetch: async () => {}, mount: mounter(EntityBodyPage) },
   /* 关注列表第一页与凭据两趟并行，挂上就是最终样子；换筛选之后的取数由页面自己的查询驱动。 */

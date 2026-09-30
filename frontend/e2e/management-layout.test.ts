@@ -71,6 +71,12 @@ describe('管理页面容器与骨架', () => {
         await page.reload({ waitUntil: 'load' });
         const skeleton = page.locator('[data-skeleton="board/stats"]');
         await skeleton.waitFor();
+        /* 冷启动时侧栏展开那段过渡（`body` 的 padding-left 与侧栏宽度）还在走，整页正文跟着它横移。
+           先等它落定再量：这里比的是骨架与接管后的落位，不是量的那一刻侧栏走到了哪儿。 */
+        await page.evaluate(() => Promise.all(document.getAnimations()
+          .filter((motion) => motion instanceof CSSTransition && ['padding-left', 'width'].includes(motion.transitionProperty)
+            && (motion.effect as KeyframeEffect | null)?.target?.matches('body, #drawer'))
+          .map((motion) => motion.finished.catch(() => undefined))));
         const metrics = await box(skeleton.locator('[data-stats-metrics]'));
         const chart = await box(skeleton.locator('[data-stats-chart]').first());
         const waitingLayout = await layout(page);

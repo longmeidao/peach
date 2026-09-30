@@ -134,10 +134,7 @@ export interface CatalogGridProps {
   mix?: boolean;
   /** 每接一页插一条竖屏带。 */
   shorts?: boolean;
-  /** 读数与排序那一行（`#count`）。行的结构（排序、换一批、版式键）归壳，每次 `onCount`
-   *  时重画；读数那一格（`[data-count-readout]`）由网格按位错峰写进去。 */
-  countRow?: HTMLElement | null;
-  /** 每接一页报一次：总数与此刻显示的卡数（Mix 与竖屏带不算）。壳据此重画读数行、批量条，
+  /** 每接一页报一次：总数与此刻显示的卡数（Mix 与竖屏带不算）。壳据此推筛选条的读数、重画批量条，
    *  回收站把读数写在说明行上。 */
   onCount?(total: number, shown: number): void;
   /** 空态 HTML。`libraryEmpty` 是整个馆藏都还没有作品。 */

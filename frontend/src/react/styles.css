@@ -20,6 +20,7 @@
 @import "./junk-queue/junk-queue.css";
 @import "./entity-hero/entity-hero.css";
 @import "./entity-filter/entity-filter.css";
+@import "./catalog-filter/catalog-filter.css";
 @import "./entity-body/entity-body.css";
 @import "./follow-feed/follow-feed.css";
 @import "./follow-detail/follow-detail.css";
@@ -31,6 +32,7 @@
 
 @source "./";
 @source "../management-skeletons.ts";
+@source "../catalog-filter-skeleton.ts";
 /* 扫描不分代码与注释：这几个词各在注释里出现过，生成出来就和旧样式表的 `.ring`、`.grid`、
  * `.sr-only` 同名。React 子树三个类都不用——只读屏的文字走 `VisuallyHidden`，它把样式写在
  * 元素上。直接不生成。 */
