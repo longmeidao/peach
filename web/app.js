@@ -1,4 +1,4 @@
-import { boundedPreference, mountNumberSetting, syncNumberSetting, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
+import { boundedPreference, createSettingsStore, mountNumberSetting, syncNumberSetting, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, entityPath, esc, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration, seededRank} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
@@ -575,7 +575,10 @@ document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverD
    在各自的入口自己响。 */
 setUiSoundsEnabled(appSettings.uiSounds);
 wireUiSounds();
-const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
+/* 这份对象的读写都在壳里原地改字段；落盘走 store，同一下通知开着的设置面板跟上
+   （`frontend/src/settings-store.ts`）。 */
+const settingsStore=createSettingsStore(SETTINGS_KEY,appSettings);
+const saveSettings=()=>settingsStore.save();
 if(sortDefaultsMigrated)saveSettings();
 /* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
    交还给 `prefers-color-scheme`。React 子树里的 BoardUI 源码把深色 token 挂在 `.dark` 上，

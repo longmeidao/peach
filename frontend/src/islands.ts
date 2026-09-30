@@ -13,6 +13,7 @@
  * 容器由遗留层拥有：它会在别的页面进入时直接 `innerHTML=`。因此 `mountIsland` 每次
  * 都先自我卸载，`unmountIsland` 也不假设 DOM 还在原处。 */
 export { preferredDirection } from './sort-preferences';
+export { createSettingsStore } from './settings-store';
 export { boundedPreference, mountNumberSetting, syncNumberSetting } from './number-setting';
 export { initBoardControls, syncBoardRange } from './board-controls';
 export { sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './sidebar-groups';
