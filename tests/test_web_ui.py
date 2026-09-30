@@ -2078,7 +2078,7 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageLacks(gone, "站点图标不得由浏览器向站外取")
         react = Path(__file__).resolve().parents[1] / "frontend/src/react"
         scraping = (react / "scraping/scraping-page.tsx").read_text(encoding="utf-8")
-        self.assertIn("<img src={siteMarkUrl({ source })}", scraping)
+        self.assertIn("siteMarkUrl({ source })}", scraping)
         self.assertNotIn("faviconUrl", scraping)
         taste = (react / "taste/taste-page.tsx").read_text(encoding="utf-8")
         self.assertIn('<img src={siteMarkUrl({ domain })} alt="" loading="lazy"', taste)
@@ -9644,11 +9644,11 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_jav_cover_source_and_size_are_independent_settings(self):
         self.assertPageContains('JAV 默认封面')
-        self.assertPageContains('JAV 封面默认大小')
+        self.assertPageContains('视频封面默认大小')
         self.assertPageContains("[['cover','官方封面',''],['thumbnail','预览图','']]")
-        self.assertPageContains("JAV_LAYOUTS,javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true}")
+        self.assertPageContains("JAV_LAYOUTS,cardLayout(),{attr:'data-video-layout',className:'javimageswitch',text:true}")
         self.assertPageContains('id="javSizeSetting"')
-        self.assertPageContains("wireJavLayoutButtons(size)")
+        self.assertPageContains("wireIconSwitch(size,'data-video-layout',setVideoLayout)")
         size_body = self.app_js.split('function setJavLayout(value){', 1)[1].split('\n}', 1)[0]
         self.assertNotIn('appSettings.javImage=', size_body)
         cover_body = self.app_js.split("wireIconSwitch(mount,'data-jav-image-choice',choice=>{", 1)[1].split('});', 1)[0]

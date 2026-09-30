@@ -264,7 +264,7 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
 .poster.cover.front.panel{inset:var(--panel-top,0%) auto auto var(--panel-left,0%);width:auto;
   max-width:none;height:var(--panel-height,100%);object-fit:fill;
   clip-path:inset(var(--panel-clip,0 0 0 0))}
-.poster.cover.front[data-frame="front"]{object-position:50% var(--cover-y,22%)}
+.poster.cover.front[data-frame="front"]{object-fit:contain;object-position:50% 50%}
 /* 剧照比大图容器宽得多，裁的是横向，所以横向锚点必须跟着人走。没检出时回落
    居中：那是取不到人脸时唯一站得住的猜测。 */
 .poster.cover.front[data-frame="still"]{object-position:var(--cover-x,50%) var(--cover-y,22%)}
@@ -280,5 +280,4 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
    还压住旁边的「发行时间」。`.sorts button` 早就有 `flex:0 0 auto`，但 fieldset 不是
    button，那条规则选不到它。照片那一排的大小开关是同一个控件，走同一条。 */
 .sorts .iconswitch{display:inline-flex;gap:2px;margin:0 6px;flex:none}
-
 

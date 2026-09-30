@@ -5,7 +5,7 @@
 与网络层——`amane.crawlers.sites.<站>`、`amane.crawlers.http`、`amane.net.*`；不碰
 `amane.aggregate`（它把配置层与数据库层一起拖进来，聚合逻辑 Peach 自己在
 `metadata_policy` 里做），也不经 `observability.invoke_source`（失败原因会被它吞进
-Recorder，返回值只剩站点名）。这里自己 catch `SourceError`，把 `FailureReason` 那 16 档
+Recorder，返回值只剩站点名）。这里自己 catch `SourceError`，把 `FailureReason` 那 17 档
 原样写进 JSON，冷却与分档由 Peach 一侧决定。
 
 已知代价：`amane.crawlers` 的包 `__init__` 会连带 SQLAlchemy 等模块（实测导入约 0.6～1 秒），
@@ -64,7 +64,7 @@ EXIT_FOUND, EXIT_NOT_FOUND, EXIT_FAILED, EXIT_USAGE = 0, 2, 3, 4
 #: 上游 `FailureReason` 的全部取值，照抄 `amane/net/errors.py`。桥不解释它们，只保证写进
 #: JSON 的 `reason` 落在这张表里；上游加档时这里要跟着改，Peach 一侧的映射也是。
 FAILURE_REASONS = (
-    "http_error", "not_found", "rate_limited", "server_error", "timeout", "network",
+    "http_error", "api_error", "not_found", "rate_limited", "server_error", "timeout", "network",
     "cloudflare_challenge", "cloudflare_blocked", "ip_banned", "geo_restricted",
     "age_verification", "empty_response", "no_usable_metadata", "parse_error",
     "crawler_unavailable", "unexpected",

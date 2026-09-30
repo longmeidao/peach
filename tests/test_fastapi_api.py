@@ -876,6 +876,18 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
         await self.client.get("/site-mark?t=secret&domain=kemono.cr")
         self.assertTrue(any(host.endswith("kemono.cr") for host in hosts[reached:]), hosts)
 
+    async def test_copy_editor_is_source_only_and_rejects_cross_origin_saves(self):
+        from unittest.mock import patch
+        from peach import routes_pages
+        with patch.object(routes_pages.sys, "frozen", True, create=True):
+            refused = await self.client.get('/dev/copy-editor.js?t=secret')
+            self.assertEqual(refused.status_code, 404)
+            page = await self.client.get('/?edit&t=secret', follow_redirects=True)
+            self.assertNotIn('data-peach-copy-mode', page.text)
+        refused = await self.client.post('/dev/copy-save?t=secret', json={},
+                                         headers={'Origin': 'https://another.example'})
+        self.assertEqual(refused.status_code, 403)
+
     def _archive_links(self, colour_of):
         """两条存档链接；上游按 `colour_of(url)` 给一枚圆形图标，给 None 就 404。返回请求过的地址。"""
         from PIL import Image, ImageDraw

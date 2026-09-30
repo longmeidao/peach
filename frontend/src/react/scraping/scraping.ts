@@ -67,6 +67,7 @@ export interface AmaneBridge {
   revision: string;
   version: string;
   installed: boolean;
+  installed_version: string;
   python: string;
   sites: { source: string; label: string }[];
   job: CoverJob;

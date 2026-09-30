@@ -81,7 +81,7 @@ class ManifestTests(unittest.TestCase):
         reasons = set(__import__("re").findall(r'"([a-z_]+)",?\s', (
             metadata_amane.BRIDGE_SCRIPT).read_text(encoding="utf-8").split("FAILURE_REASONS = (", 1)[1]
             .split(")", 1)[0]))
-        self.assertEqual(len(reasons), 16)
+        self.assertEqual(len(reasons), 17)
         self.assertEqual(reasons - set(metadata_amane.AMANE_REASONS), set())
         for upstream, reason in metadata_amane.AMANE_REASONS.items():
             with self.subTest(upstream=upstream):
@@ -89,11 +89,11 @@ class ManifestTests(unittest.TestCase):
                 self.assertIn(REASON_KINDS[reason], {"auth", "unavailable", "not_found"})
 
     def test_the_three_tier_classification_of_every_upstream_reason(self):
-        """十六档各落到哪一档是冷却与重试的依据，逐条钉住；契约表改了这里要跟着改。"""
+        """十七档各落到哪一档是冷却与重试的依据，逐条钉住；契约表改了这里要跟着改。"""
         expected = {
             "not_found": "not_found", "no_usable_metadata": "not_found",
             "rate_limited": "unavailable", "server_error": "unavailable", "timeout": "unavailable",
-            "network": "unavailable", "http_error": "unavailable", "empty_response": "unavailable",
+            "network": "unavailable", "http_error": "unavailable", "api_error": "unavailable", "empty_response": "unavailable",
             "unexpected": "unavailable", "crawler_unavailable": "unavailable", "parse_error": "unavailable",
             "cloudflare_challenge": "auth", "cloudflare_blocked": "auth", "ip_banned": "auth",
             "geo_restricted": "auth", "age_verification": "auth",
@@ -153,10 +153,18 @@ class RebuildTests(unittest.TestCase):
     def test_describe_lists_the_facts_the_settings_card_shows(self):
         with tempfile.TemporaryDirectory() as tmp:
             facts = metadata_amane.describe(Path(tmp))
-        self.assertEqual(set(facts), {"repository", "license", "revision", "version", "installed", "python", "sites"})
+        self.assertEqual(set(facts), {"repository", "license", "revision", "version", "installed", "installed_version", "python", "sites"})
         self.assertFalse(facts["installed"])
+        self.assertEqual(facts["installed_version"], "")
         self.assertEqual([site["source"] for site in facts["sites"]], list(metadata_amane.SITES))
 
+    def test_installed_version_reads_the_isolated_package_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tools = Path(tmp)
+            package = metadata_amane.bridge_home(tools) / ".venv" / "Lib" / "site-packages" / "amane-0.17.0.dist-info"
+            package.mkdir(parents=True)
+            (package / "METADATA").write_text("Metadata-Version: 2.1\nName: amane\nVersion: 0.17.0\n", encoding="utf-8")
+            self.assertEqual(metadata_amane.describe(tools)["installed_version"], "0.17.0")
     def test_the_upstream_tag_is_never_guessed(self):
         class Client:
             def __init__(self, status, body):

@@ -60,7 +60,7 @@ SITES: dict[str, str] = {name: config.label for name, config in SITE_CONFIGS.ite
 #: 都是 2020-12-11、2025-07-18。它不当 `release_date` 候选，只记在 `extra['delivery_date']`，发行日留给链上下一档。
 DELIVERY_DATE_SITES = frozenset({"prestige"})
 
-#: amane 的 `FailureReason`（桥脚本 `FAILURE_REASONS` 那十六档）→ 契约的 `FailureReason`，一对一。
+#: amane 的 `FailureReason`（桥脚本 `FAILURE_REASONS` 那十七档）→ 契约的 `FailureReason`，一对一。
 #: 三档分类、冷却动作与可否重试都由契约那张表定（`sources.base.REASON_KINDS` 等），这里只做名字翻译：
 #: `cloudflare_blocked`（Ray ID 拦截页）与 `ip_banned` 同属出口被封；`age_verification` 是要 Cookie 的门；
 #: `http_error`、`empty_response`、`crawler_unavailable` 都是「桥那一侧这次没答上」，归服务端错误；
@@ -73,6 +73,7 @@ AMANE_REASONS: dict[str, FailureReason] = {
     "timeout": FailureReason.TIMEOUT,
     "network": FailureReason.NETWORK,
     "http_error": FailureReason.SERVER_ERROR,
+    "api_error": FailureReason.SERVER_ERROR,
     "empty_response": FailureReason.SERVER_ERROR,
     "unexpected": FailureReason.NETWORK,
     "crawler_unavailable": FailureReason.SERVER_ERROR,
@@ -192,9 +193,22 @@ def describe(tools_root: Path, *, root: Path = BRIDGE_ROOT) -> dict:
         "revision": pinned_revision(root),
         "version": locked_version(root),
         "installed": python.is_file(),
+        "installed_version": installed_version(tools_root),
         "python": str(python),
         "sites": [{"source": name, "label": label} for name, label in SITES.items()],
     }
+
+
+def installed_version(tools_root: Path) -> str:
+    """从独立运行环境的包元数据读取版本，不导入上游或启动子进程。"""
+    from importlib.metadata import distributions
+
+    venv = bridge_home(tools_root) / ".venv"
+    paths = [venv / "Lib" / "site-packages", *venv.glob("lib/python*/site-packages")]
+    for distribution in distributions(path=[str(path) for path in paths if path.is_dir()]):
+        if distribution.metadata.get("Name", "").casefold() == "amane":
+            return distribution.version
+    return ""
 
 
 def latest_upstream_tag(client_options: Mapping[str, object], *, timeout: float = 10.0) -> str:

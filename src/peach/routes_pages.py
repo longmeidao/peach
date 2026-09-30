@@ -16,8 +16,10 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
+import sys
 from collections.abc import Mapping, Sequence
 import re
 
@@ -29,6 +31,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
+    JSONResponse,
     PlainTextResponse,
     RedirectResponse,
     Response,
@@ -521,10 +524,63 @@ def index(request: Request, args: dict[str, str] = Depends(require_page_auth)):
         return HTMLResponse(setup_page(settings_file.active(), windows=os.name == "nt"))
     if not settings.page_path.is_file():
         return PlainTextResponse("Peach page missing", status_code=500)
-    response = FileResponse(settings.page_path, media_type="text/html")
+    if "edit" in request.query_params and _copy_editor_available():
+        html = settings.page_path.read_text(encoding="utf-8")
+        html = html.replace("<body", '<body data-peach-copy-mode="source"', 1)
+        html = html.replace("</body>", '<script src="/dev/copy-editor.js" defer></script></body>')
+        response = HTMLResponse(html)
+    else:
+        response = FileResponse(settings.page_path, media_type="text/html")
     response.headers["Cache-Control"] = "no-store"
     set_auth_cookie(response, request)
     return response
+
+
+def _copy_editor_available() -> bool:
+    return not getattr(sys, "frozen", False) and (PROJECT_ROOT / "scripts/dev/copy-editor.js").is_file()
+
+
+def _require_copy_editor():
+    if not _copy_editor_available():
+        raise HTTPException(404, "missing")
+
+
+@router.get("/dev/copy-editor.js")
+def copy_editor_script(request: Request, args: dict[str, str] = Depends(require_asset_auth)):
+    _require_copy_editor()
+    return asset_response(request, PROJECT_ROOT / "scripts/dev/copy-editor.js", "text/javascript")
+
+
+@router.get("/dev/copy-edits")
+def copy_editor_edits(args: dict[str, str] = Depends(require_asset_auth)):
+    _require_copy_editor()
+    path = PROJECT_ROOT / "build/copy-editor/edits.json"
+    return JSONResponse(json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {},
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.get("/dev/copy-candidates")
+def copy_editor_candidates(text: str = "", args: dict[str, str] = Depends(require_asset_auth)):
+    _require_copy_editor()
+    from . import dev_copy
+    try:
+        return JSONResponse(dev_copy.candidates(PROJECT_ROOT, text), headers={"Cache-Control": "no-store"})
+    except ValueError as error:
+        raise HTTPException(400, str(error)) from error
+
+
+@router.post("/dev/copy-save")
+async def copy_editor_save(request: Request, args: dict[str, str] = Depends(require_asset_auth)):
+    _require_copy_editor()
+    if request.headers.get("origin") != str(request.base_url).rstrip("/"):
+        raise HTTPException(403, "same origin required")
+    if len(await request.body()) > 32768:
+        raise HTTPException(413, "too large")
+    from . import dev_copy
+    try:
+        return JSONResponse(dev_copy.save(PROJECT_ROOT, await request.json()))
+    except (ValueError, TypeError, KeyError) as error:
+        return JSONResponse({"error": str(error)}, status_code=409)
 
 
 @router.post("/setup")

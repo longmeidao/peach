@@ -672,9 +672,9 @@ function renderJavImageSetting(){
     repaintDetailPoster();
   });
   const size=$('#javSizeSetting');
-  size.innerHTML=iconSwitchHtml('jav-size','JAV 封面默认大小',
-    JAV_LAYOUTS,javLayout(),{attr:'data-jav-layout',className:'javimageswitch',text:true});
-  wireJavLayoutButtons(size);
+  size.innerHTML=iconSwitchHtml('video-size','视频封面默认大小',
+    JAV_LAYOUTS,cardLayout(),{attr:'data-video-layout',className:'javimageswitch',text:true});
+  wireIconSwitch(size,'data-video-layout',setVideoLayout);
 }
 /* 侧栏光晕的详细设置照 feralui.dev/gradients 的工作台面板来：参数行是「84px 标签 +
    自绘拉条 + 右侧等宽读数」，颜色行点开在自己下方弹一张色板。
@@ -3243,21 +3243,20 @@ function coverAnchor(img){
   posterPanel(img,car);
   /* 小图版式整张放进卡片（`.whole`）：FC2 那种方图、竖版正封放进横卡片，两侧同样留出
      两条，垫模糊底而不是黑边。比例差不到 2% 的那一丝留白看不出来，不必多解一张图。 */
-  if(img.classList.contains('whole')&&Math.abs(r/car-1)>.02)coverBackdrop(img);
+  if((img.classList.contains('whole')||img.dataset.frame==='front')&&Math.abs(r/car-1)>.02)coverBackdrop(img);
 }
 /* 只把折痕右边那块正封摆进卡片，封底一个像素都不露。折痕位置在 `data-posterbox` 里，
    换算要的容器比例只有页面知道，两边在这里才凑齐。整张封套和「剧照 | 正封 | 剧照」
    的 16:9 拼图才有正封可切；没有框（本机 1516 张封面里 771 张判定为不裁，永远拿不到）
    就一个字都不写，CSS 里那份贴右缘或按人脸的回退照旧生效。 */
-/* 正封的宽高比先验，与 `jav_poster_crop.PANEL_ASPECT` 同一个数。只给还没装进本机的
-   远程封套用：它没有边车，贴右缘时 0.75 的卡片比正封宽，会带进一条书脊。 */
+/* 正封的宽高比先验，与 `jav_poster_crop.PANEL_ASPECT` 同一个数。没有边车的封套
+   按正封宽度取景，贴右缘时 0.75 的卡片比正封宽，会带进一条书脊。 */
 const PANEL_ASPECT=0.704;
 function posterPanel(img,ratio){
   if(img.dataset.frame==='front')return;
   let [x0,imgW,imgH,y0,x1,y1]=String(img.dataset.posterbox||'').split(' ').map(Number);
-  /* 本机封面没有框是判定过「不该裁」，照回退走；远程封套是还没判过，按先验从右缘量回去，
-     和服务端折痕找不到时的 `ratio` 那一档同一个框。 */
-  if(!img.dataset.posterbox&&img.dataset.panelPrior&&img.dataset.frame==='sleeve'){
+  /* 没有框的双页封套按先验从右缘量回去，与服务端折痕找不到时的比例框一致。 */
+  if(!img.dataset.posterbox&&img.dataset.frame==='sleeve'){
     imgW=img.naturalWidth;imgH=img.naturalHeight;
     x0=Math.round(imgW-PANEL_ASPECT*imgH);y0=0;x1=imgW;y1=imgH;
   }
@@ -3333,8 +3332,12 @@ const PENDING_IMAGES='.pic>img.poster,[data-media-art]>img,.ring>img,[data-perso
 const pendingSince=new WeakMap();
 function watchPendingImages(node){
   const found=node.matches(PENDING_IMAGES)?[node]:node.querySelectorAll(PENDING_IMAGES);
-  for(const img of found)if(!img.complete){
-    img.parentElement.classList.add('imgwait');pendingSince.set(img.parentElement,performance.now());
+  for(const img of found){
+    // 缓存图插入时先完成取景；load 尚未派发也不露出默认的居中封套。
+    if(img.complete&&img.naturalWidth&&img.classList.contains('cover'))coverAnchor(img);
+    if(!img.complete){
+      img.parentElement.classList.add('imgwait');pendingSince.set(img.parentElement,performance.now());
+    }
   }
 }
 function settleImage(img){
@@ -6609,6 +6612,7 @@ function setHomeLayout(value){
   appSettings.homeLayout=normalizeJavLayout(value);
   saveSettings();
   document.querySelectorAll('[data-home-layout]').forEach(input=>{input.checked=input.value===appSettings.homeLayout});
+  syncVideoLayoutSetting();
   if(!$('#grid').hidden)repaintCatalogGrid();
 }
 function wireJavLayoutButtons(root){wireIconSwitch(root,'data-jav-layout',setJavLayout)}
@@ -6616,7 +6620,17 @@ function setJavLayout(value){
   appSettings.javLayout=normalizeJavLayout(value);
   saveSettings();
   document.querySelectorAll('[data-jav-layout]').forEach(input=>{input.checked=input.value===appSettings.javLayout});
+  syncVideoLayoutSetting();
   // 只重画卡片，不重新请求：版式是纯展示层的事。资料页保留已经载入的分页。
+  repaintCatalogGrid();
+}
+function syncVideoLayoutSetting(){
+  document.querySelectorAll('[data-video-layout]').forEach(input=>{input.checked=input.value===cardLayout()});
+}
+function setVideoLayout(value){
+  appSettings.homeLayout=appSettings.javLayout=normalizeJavLayout(value);
+  saveSettings();
+  document.querySelectorAll('[data-home-layout],[data-jav-layout],[data-video-layout]').forEach(input=>{input.checked=input.value===appSettings.javLayout});
   repaintCatalogGrid();
 }
 function paintJavBar(){
