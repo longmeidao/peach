@@ -28,6 +28,7 @@ describe('首页加载结构',()=>{
      }).observe(document,{childList:true,subtree:true});
     },{hasFeed});
     const page=await context.newPage();
+    page.setDefaultTimeout(8000);
     const scopes:string[]=[];
     await page.route('**/api/sources',route=>route.fulfill({json:{ok:true,sources:[{location:'local',online:true},{location:'115',online:false}]}}));
     await page.route(/\/api\/facets\?/,async route=>{
