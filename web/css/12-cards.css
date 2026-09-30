@@ -37,8 +37,6 @@ main{position:relative;z-index:1;padding:14px 16px 90px}
    回收站这类页面直接贴着顶栏吸。manage-static（垃圾复核）不吸顶，要压过这条。 */
 .count.no-tagbar{top:var(--topH)}
 .count.manage-static{position:relative;top:auto;z-index:1}
-.count.count-actions-only{position:relative;top:auto;min-height:0;margin:0 0 16px;padding:0;justify-content:flex-end}
-.count.count-actions-only:empty{display:none}
 .resourcesync{scroll-margin-top:calc(var(--topH) + 18px);display:grid;gap:16px}.resourcesync>h2{margin:0;font-size:var(--fs-xl)}
 .resourcesyncbox{overflow:clip;border:1px solid var(--field-ring);border-radius:var(--floating-radius);background:var(--ground)}.resourcesyncbody{padding:20px}.resourcesyncbody p{max-width:760px;margin:0;color:var(--muted);font-size:var(--fs-sm);line-height:1.55}.resourcesyncfooter{box-sizing:border-box;min-height:var(--fieldset-bar-h);display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--line-soft);background:var(--overlay-5)}.resourcesyncfooter p{margin:0;color:var(--muted);font-size:var(--fs-xs);line-height:1.5}.resourceaction{box-sizing:border-box;height:36px;padding:0 12px;border:0;border-radius:var(--control-radius);box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink-2);display:inline-flex;align-items:center;justify-content:center;gap:8px;flex:none;font:inherit;font-size:var(--fs-sm);font-weight:500;cursor:pointer;transition:background-color .12s,color .12s}.resourceaction:hover:not(:disabled){background:color-mix(in srgb,var(--ink) 8%,var(--ground));color:var(--ink)}.resourceaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}.resourceaction:disabled{background:var(--sunk);color:var(--muted);cursor:not-allowed}.resourceaction svg{width:16px;height:16px;stroke:currentColor;fill:none}
 .tagbar,.count{transition:background-color .16s ease,border-color .16s ease}
@@ -100,10 +98,6 @@ body.refreshing #batchAction svg{
   flex:0 0 auto;white-space:nowrap}
 .count .sorts button:hover{color:var(--ink)}
 .count .sorts button[aria-pressed="true"]{background:var(--picked);color:var(--ink)}
-/* 方向箭头只画在选中的那一枚里，跟着它的文字色走。自带 class 而不是选 `button>svg`：
-   同一排里的批量键是 36px 方形图标键，那条规则会给它的图标也加上左边距。 */
-.sortdir{width:14px;height:14px;flex:none;margin-left:5px;stroke:currentColor;fill:none;stroke-width:2;
-  stroke-linecap:round;stroke-linejoin:round}
 /* 这一排里的批量键是强调档，面色连同悬停归 `board.css` 一处：那一层按这条工具带的形状
    重排过它们，在这里再写一份，算出来生效的仍是那一层。 */
 /* 形状按类写，不按 id：换一批键挂在 id 上的话每多一页就要在这里补一个选择器，而漏掉的
@@ -340,7 +334,7 @@ body[data-density="dense"] .card .meta .why{display:none}
 /* 卡片悬停时底色向四周多铺 8px（`box-shadow` 的 spread），而横滚容器把纵向溢出一并
    裁掉：四边各留 8px 内边距，再用同样的负外边距收回来，卡片落点不动。 */
 .feednewrow{padding:8px;margin:-8px -8px 0}
-/* 往右翻时卡片从侧栏底下穿过去，和首页那几排（`board.css` 的 `#tiers .tier`）同一个
+/* 往右翻时卡片从侧栏底下穿过去，和首页那几排头像（`catalog-filter.css` 的 `[data-catalog-tier]`）同一个
    理由、同一种写法：让出轨道宽度加 `main` 的 16px 内边距，再原样加回内边距，第一张
    仍站在这一屏的左对齐线上。首页与人物页的这一行都直接住在 `main` 里，所以让出的是
    同一个数；窄屏的抽屉盖在内容上面，没有这条常驻的边，那一档不让。 */

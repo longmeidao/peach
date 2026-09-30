@@ -22,11 +22,11 @@
 
 - 横排滚到头的回弹由 `wireHorizontalScroller` 内的 `edgeBounce` 承载，头像排、厂牌排、新作排、筛选条共用。transitions.dev 的配方里没有这一条（2026-09-23 核对过全部 43 条）。越界位移借 UIScrollView 的橡皮筋公式 `(1 - 1/(x·c/d + 1))·d`，c = 0.55，与 use-gesture 的 `rubberband` 同一条（MIT，https://github.com/pmndrs/use-gesture ）。回弹走 `--spring-pane`。只抄了公式，不引依赖：use-gesture 管的是手势识别，而这几排的拖动与滚轮归属已经由 `wireHorizontalScroller` 判定。新作排的自动滚动是同一文件里的 `wireAutoScroll`，同样没有新增依赖。
 
-- 浮层筛选在首页与关注页由 `web/js/ui-components.js` 的 `mountFilterFrame()` 承载视图、标签、读数、控件四个槽位；实体资料页那块是 React 岛 `entity-filter`（`FilterGlassRows` 两排，滑动玻璃走 `use-view-glide.ts`）。外框负责玻璃与吸顶，壳负责查询状态和取数，岛只画、动作回壳，按下态在发请求之前由 `updateIsland` 推到。身份与观看状态的组合沿用 `/api/items`。
+- 浮层筛选首页是 React 岛 `catalog-filter`，实体资料页是 `entity-filter`，两座共用 `FilterGlassRows` 两排与交集条、排序键组件，滑动玻璃走 `use-view-glide.ts`。外框负责玻璃与吸顶，壳负责查询状态和取数，岛只画、动作回壳，按下态在发请求之前由 `updateIsland` 推到。身份与观看状态的组合沿用 `/api/items`。
 
 - 组件映射、官方公开注册表证据与许可证见 [Board 界面](BOARD_UI.md)。`web/board.css` 共用正式页面结构；登录、首启与错误页共用 `web_entry.entry_page_style()`，登录页是首启 Auth Card 的单字段形态。
 - `frontend/src/number-setting.ts` 共用带单位输入、可选 Switch、整数边界和锚定错误提示。关闭保留上次合法值，异步读取后切换也恢复实际值；业务保存仍由调用方负责。
-- 筛选内层复用 `filterChipHtml`、`sortControlsHtml`，首页与关注页提供查询键及读数；`collectionHeaderHtml` 只剩资料页骨架那一排读数。横向行复用 `wireHorizontalScroller`，拖动、滚轮、渐隐与卸载清理归同一个生命周期。
+- 筛选内层的标签胶囊是 `FilterPill`，换一批、排序键与交集条是 `entity-filter-page.tsx` 导出的同一组组件，用到它们的页面各自提供查询键及读数；`collectionHeaderHtml` 只剩资料页骨架那一排读数。横向行复用 `wireHorizontalScroller`，拖动、滚轮、渐隐与卸载清理归同一个生命周期。
 - 选择范围与工具条复用 `frontend/src/selection.ts`；馆藏、关注与复核保持各自身份、可见顺序、默认选择及写入权限。批量失败项的保留由业务负责。
 - React 设置分区复用 `frontend/src/react/settings/section.tsx`：`Section` 提供标题、卡片与表单外壳，`Footer`、`Note`、`ErrorText`、`FactList`、`Progress`、`Disclosure` 补齐 BoardUI 注册表没有的底栏、行内提示、读数、进度与折叠。`use-action.ts` 的 `useAction` 负责提交互斥、卸载取消与原位错误，`busyProps` 写忙态。密码字段校验与服务端回执仍归各分区，不自动重试写入。后台任务（口味读取、封面采集、amane 桥重建、关注检查与查找）共用 `frontend/src/react/background-job.ts` 的 `useBackgroundJob`。
 - 增量列表复用 `frontend/src/react/catalog-grid/catalog-grid-page.tsx` 的 `LoadMore`：请求互斥、失败留原位重试、卸载即停；目录、资料页照片墙与关注页注入读取和可用条件。首页页码在读取成功后推进，照片沿用随机种子，关注合并分组。显式页码继续使用 `pagination.ts`。

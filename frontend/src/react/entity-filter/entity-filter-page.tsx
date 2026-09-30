@@ -18,7 +18,7 @@ import { spriteGlyph } from '../components/sprite-glyph';
 import { useViewGlide } from '../components/use-view-glide';
 import {
   videoOnly, type EntityComboItem, type EntityFilterActions, type EntityFilterHelpers, type EntityFilterProps,
-  type EntityPhotoHead, type EntityVideoHead, type EntityView, type EntityViewKeys, type SegmentOption,
+  type EntityPhotoHead, type EntitySortKey, type EntityVideoHead, type EntityView, type EntityViewKeys, type SegmentOption,
 } from './entity-filter';
 
 const Sep = () => <span data-entity-sep="" aria-hidden="true" />;
@@ -118,8 +118,11 @@ function ViewKeys({ keys, view, row, glide, onView }: {
   );
 }
 
-/** 生效的作品筛选。跟浮层分开摆在它上面：它说的是「现在加了哪些」，一颗一颗撤得掉。 */
-function Combo({ items, hidden, actions }: { items: EntityComboItem[]; hidden: boolean; actions: EntityFilterActions }) {
+/** 生效的作品筛选。跟浮层分开摆在它上面：它说的是「现在加了哪些」，一颗一颗撤得掉。首页那条
+ *  （`catalog-filter`）是同一枚。 */
+export function Combo({ items, hidden, actions }: {
+  items: EntityComboItem[]; hidden: boolean; actions: Pick<EntityFilterActions, 'toggleTag' | 'clearFilter' | 'clearAll'>;
+}) {
   return (
     <div data-entity-combo="" hidden={hidden}>
       {items.length ? (
@@ -168,12 +171,13 @@ function Readout({ text, busy }: { text: string; busy: boolean }) {
   );
 }
 
-/** 玻璃上的分段开关：卡片版式、图片布局。选中那一格是浮层选中态那块料。关注页浮层用的是同一枚。 */
-export function Segments({ label, value, options, onChange }: {
-  label: string; value: string; options: readonly SegmentOption[]; onChange(value: string): void;
+/** 玻璃上的分段开关：卡片版式、图片布局。选中那一格是浮层选中态那块料。关注页与首页浮层用的是
+ *  同一枚；`name` 给那一组单选框一个表单名（首页那组叫 `home-layout`／`jav-layout`）。 */
+export function Segments({ name, label, value, options, onChange }: {
+  name?: string; label: string; value: string; options: readonly SegmentOption[]; onChange(value: string): void;
 }) {
   return (
-    <RadioGroup aria-label={label} orientation="horizontal" value={value} onChange={onChange}
+    <RadioGroup name={name} aria-label={label} orientation="horizontal" value={value} onChange={onChange}
       data-entity-layout="" className={SEGMENTED_GLASS_TRACK}>
       {options.map(([option, text, symbol]) => {
         const Glyph = spriteGlyph(symbol);
@@ -203,16 +207,26 @@ function VideoControls({ head, actions }: { head: EntityVideoHead; actions: Enti
       {head.jav ? (
         <Segments label="JAV 卡片版式" value={head.jav.layout} options={head.jav.options} onChange={actions.setJavLayout} />
       ) : null}
-      {head.sorts.map((sort) => {
+      <SortKeys sorts={head.sorts} onSort={actions.setSort} />
+    </span>
+  );
+}
+
+/** 一排排序键。方向只画在选中的那一枚上：箭头既是当前方向，也是「再点一次能翻」的唯一提示。
+ *  无障碍名称播报的是点下去会得到什么，当前状态由 `aria-pressed` 与这枚箭头各自表达。 */
+export function SortKeys({ sorts, onSort }: { sorts: readonly EntitySortKey[]; onSort(key: string): void }) {
+  return (
+    <>
+      {sorts.map((sort) => {
         const Arrow = spriteGlyph(sort.dir === 'asc' ? 'arrow-up' : 'arrow-down');
         return (
           <button key={sort.key} type="button" data-entity-sort={sort.key} data-entity-press=""
-            aria-pressed={sort.pressed} aria-label={sort.ariaLabel || undefined} onClick={() => actions.setSort(sort.key)}>
+            aria-pressed={sort.pressed} aria-label={sort.ariaLabel || undefined} onClick={() => onSort(sort.key)}>
             {sort.label}{sort.pressed && sort.dir ? <Arrow className="size-3.5" /> : null}
           </button>
         );
       })}
-    </span>
+    </>
   );
 }
 

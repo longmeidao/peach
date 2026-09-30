@@ -221,8 +221,8 @@
   <a class="brand" href="#" id="brandHome"><img class="mark" src="/peach-logo.png" alt=""><h1 class="disp">Peach</h1><span class="sub mono">蜜桃</span></a>
   <button class="ib searchback" id="searchBack" title="退出搜索" aria-label="退出搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"/></svg></button>
   <div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg>
-    <input id="q" name="q" type="search" placeholder="FC2" autocomplete="off" aria-label="搜索作品、女优、厂牌或标签">
-    <div class="searchmenu" id="searchMenu" hidden></div></div>
+    <input id="q" name="q" type="search" placeholder="搜索馆藏" data-suggestion="" autocomplete="off" aria-label="搜索作品、女优、厂牌或标签">
+    <div class="searchmenu" id="searchMenu" data-search-menu hidden></div></div>
   <button class="ib" id="searchBtn" title="搜索" aria-label="搜索"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-search"/></svg></button>
   <button class="ib" id="immerseBtn" title="沉浸模式 · 随机连播" aria-label="进入沉浸模式"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-play"/></svg></button>
   <button class="ib" id="selectMode" title="多选（Ctrl 单项，Shift 连续）" aria-label="多选模式" aria-pressed="false"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-square-check-big"/></svg></button>
@@ -231,16 +231,15 @@
 
 </header>
 
-<div class="tiers" id="tiers"></div>
-<div class="tagbar" id="tagbar"><div class="filterscroll"><div class="viewpills" id="viewPills"></div><div class="tagscroll" id="tagScroll"></div></div></div>
-<div class="javbar" id="javbar" hidden></div>
+<!-- 首页筛选条（`catalog-filter` 岛）：两排头像与筛选浮层。宿主不生成盒子，里面那几块直接当 body 的孩子排。 -->
+<div id="catalogFilter" data-catalog-filter></div>
 <nav class="edge" id="edge"></nav>
 
 <main id="main" tabindex="-1">
   <div id="libraryProcessingNotice"></div>
   <!-- 订阅源发现的新作（ADR-0042）。只在首页那几条目录路径上出现，由 app.js 按路径开合。 -->
   <section class="feednew" id="feedNew" aria-label="未入库的新作" hidden></section>
-  <div class="combo" id="combo"></div>
+  <div id="combo"></div>
   <section class="index" id="index" hidden></section>
   <nav class="managebar" id="managebar" hidden></nav>
   <h2 class="disp listtitle" id="listTitle" hidden></h2>

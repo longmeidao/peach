@@ -10,7 +10,7 @@ import type { Browser, Locator, Page } from 'playwright-core';
 
 import { DETAIL, openFollowFeed } from './follow-fixture.ts';
 import {
-  configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Visit,
+  configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Viewport, type Visit,
 } from './harness.ts';
 import { ITEM, openItemPage } from './item-fixture.ts';
 
@@ -345,9 +345,35 @@ async function openPlaylistsPage(browser: Browser, viewport = DESKTOP): Promise<
 /** 打开目录并等到读数与卡片一起替下首屏骨架。 */
 async function openCatalog(browser: Browser): Promise<Visit> {
   const opened = await visit(browser, '/', DESKTOP);
-  await opened.page.locator('#count [data-count-readout]').waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-catalog-filter] [data-count-readout]').waitFor({ timeout: 15_000 });
   await settle(opened.page);
   return opened;
+}
+
+/** 打开目录，两排头像与标签条用桩数据铺满：演示库那十几部作品凑不出一排标签。 */
+async function openCatalogBars(browser: Browser, viewport: Viewport = DESKTOP): Promise<Visit> {
+  const opened = await visit(browser, '/', viewport);
+  const performers = Array.from({ length: 6 }, (_, at) => ({
+    id: 96_000 + at, k: `演示女优${at + 1}`, n: 30 - at, has_image: false, has_avatar: false, avatar_focus: null, rep: null,
+  }));
+  const studios = Array.from({ length: 3 }, (_, at) => ({ k: `演示厂牌${at + 1}`, n: 20 - at, has_logo: false }));
+  const tags = Array.from({ length: 8 }, (_, at) => ({ k: `演示标签${at + 1}`, n: 90 - at }));
+  await opened.page.route((url) => url.pathname === '/api/tops', (route) =>
+    route.fulfill({ json: Number(new URL(route.request().url()).searchParams.get('page') || 0)
+      ? { performers: [], studios: [] } : { performers, studios } }));
+  await opened.page.route((url) => url.pathname === '/api/facets', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...await response.json(), tags } });
+  });
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('[data-catalog-filter] [data-catalog-tag]').first().waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-catalog-filter] [data-tier-studio]').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  // 关页时还在路上的那一趟桩请求不算失败。
+  return { ...opened, close: async () => {
+    await opened.page.unrouteAll({ behavior: 'ignoreErrors' });
+    await opened.close();
+  } };
 }
 
 interface CatalogFixture {
@@ -385,7 +411,7 @@ async function openCatalogFixture(
     });
   });
   await opened.page.reload({ waitUntil: 'load' });
-  await opened.page.locator('#count [data-count-readout]').waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-catalog-filter] [data-count-readout]').waitFor({ timeout: 15_000 });
   await settle(opened.page);
   return opened;
 }
@@ -1185,7 +1211,7 @@ describe('设计决定', () => {
       const input = opened.page.locator('#q');
       await opened.page.evaluate(() => {
         document.documentElement.removeAttribute('data-count-animation');
-        const count = document.querySelector('#count');
+        const count = document.querySelector('[data-catalog-filter]');
         const observer = new MutationObserver(() => {
           const digit = count?.querySelector<HTMLElement>('[data-count-readout] .digits.popping > span');
           if (!digit) return;
@@ -1201,7 +1227,7 @@ describe('设计决定', () => {
       await input.fill('读数变值');
       await input.press('Enter');
       await opened.page.waitForFunction(() =>
-        document.querySelector('#count [data-count-readout]')?.textContent?.includes('34 个符合'));
+        document.querySelector('[data-catalog-filter] [data-count-readout]')?.textContent?.includes('34 个符合'));
       /* 读数更新后还可能因自动续页再重画。在触发前观察真实节点，既能验收
          动画的计算值，也不把断言绑在之后某一次采样恰好撞上短暂节点。 */
       await opened.page.waitForFunction(() =>
@@ -1401,7 +1427,7 @@ describe('设计决定', () => {
     const { page } = opened;
     const ratio = (index: number) => page.locator('#grid [data-media-grid] > [data-media-card][data-id]').nth(index).locator('[data-media-pic]')
       .evaluate((element) => element.getBoundingClientRect().width / element.getBoundingClientRect().height);
-    const choice = (value: string) => page.locator(`#count input[name="home-layout"][value="${value}"]`);
+    const choice = (value: string) => page.locator(`[data-catalog-filter] input[name="home-layout"][value="${value}"]`);
     try {
       assert.equal(await choice('small').isChecked(), true, '首页版式默认不是小图');
       assert.ok(Math.abs(await ratio(0) - 16 / 9) < 0.05, '小图下番号卡不是 16:9');
@@ -1417,6 +1443,84 @@ describe('设计决定', () => {
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('peach.settings.v1') || '{}'));
       assert.equal(saved.homeLayout, 'big', '首页版式没有存下来');
     } finally {
+      await opened.close();
+    }
+  });
+
+  it('首页标签：没加上去是 --field-ring-hover 的虚线，加上去是玻璃上那圈实线，视图不画虚线；触屏上排 52、视图与标签 36', { timeout: 60_000 }, async () => {
+    /* 虚线只说「这条筛选可加、此刻没加」，取 Vercel 筛选令牌未生效那一档；四枚视图恒有一枚生效，不画。
+       圆角同卡片、详情与交集条那一颗（`--tag-radius`）。触屏上 30px 不够一枚指尖。 */
+    const opened = await openCatalogBars(browser);
+    try {
+      const { page } = opened;
+      const scope = '[data-catalog-filter]';
+      const ring = await tokenColor(page, scope, '--field-ring-hover');
+      const low = await tokenColor(page, scope, '--glass-low');
+      const edge = (selector: string) => page.locator(`${scope} ${selector}`).first().evaluate((element) => {
+        const style = getComputedStyle(element);
+        const probe = document.createElement('div');
+        probe.style.borderRadius = 'var(--tag-radius)';
+        element.append(probe);
+        const radius = getComputedStyle(probe).borderTopLeftRadius;
+        probe.remove();
+        return { style: style.borderTopStyle, color: style.borderTopColor, radius: style.borderTopLeftRadius === radius };
+      });
+      assert.deepEqual(await edge('[data-catalog-tag][aria-pressed="false"]'), { style: 'dashed', color: ring, radius: true },
+        '没加上去的标签不是 --field-ring-hover 的虚线，或圆角不是 --tag-radius');
+      assert.notEqual((await edge('[data-catalog-view]')).style, 'dashed', '视图恒有一枚生效，不画虚线');
+      await page.locator(`${scope} [data-catalog-tag][aria-pressed="false"]`).first().click();
+      await page.locator(`${scope} [data-catalog-tag][aria-pressed="true"]`).waitFor({ timeout: 5_000 });
+      assert.deepEqual(await edge('[data-catalog-tag][aria-pressed="true"]'), { style: 'solid', color: low, radius: true },
+        '加上去的标签那圈线不是玻璃上的 --glass-low');
+    } finally {
+      await opened.close();
+    }
+    const phone = await openCatalogBars(browser, MOBILE);
+    try {
+      const { page } = phone;
+      const heights = await page.evaluate(() => {
+        const height = (selector: string) => {
+          const element = document.querySelector(`[data-catalog-filter] ${selector}`);
+          return element ? Math.round(element.getBoundingClientRect().height) : null;
+        };
+        return { coarse: matchMedia('(pointer: coarse)').matches, row: height('[data-filter-row="top"]'),
+          view: height('[data-catalog-view]'), tag: height('[data-catalog-tag]') };
+      });
+      assert.deepEqual(heights, { coarse: true, row: 52, view: 36, tag: 36 }, '触屏上筛选条上排没有放大到指尖尺寸');
+    } finally {
+      await phone.close();
+    }
+  });
+
+  it('首页换一批：头像、厂牌与标签原地藏起来只露一层微光，名字条收成 52px，四枚视图不盖', { timeout: 60_000 }, async () => {
+    /* 框就是它们自己的框，零位移；`visibility:hidden` 的控件也不可聚焦。视图由 state 决定，这一趟不改它们。 */
+    const opened = await openCatalogBars(browser);
+    let release = () => {};
+    try {
+      const { page } = opened;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      // 后注册的先拦：拖住这一趟，放行后交回夹具那一份。
+      await page.route((url) => url.pathname === '/api/tops', async (route) => { await held; await route.fallback(); });
+      await page.locator('[data-catalog-filter] [data-entity-batch]').click();
+      await page.locator('[data-catalog-filter] [data-catalog-root][data-refreshing]').waitFor({ timeout: 5_000 });
+      const shown = await page.evaluate(() => {
+        const read = (selector: string) => {
+          const element = document.querySelector(`[data-catalog-filter] ${selector}`);
+          if (!element) return null;
+          return { hidden: getComputedStyle(element).visibility, sheen: getComputedStyle(element, '::after').visibility,
+            width: Math.round(element.getBoundingClientRect().width) };
+        };
+        return { tag: read('[data-catalog-tag]'), ring: read('[data-tier-ring]'), name: read('[data-tier-name]'),
+          studio: read('[data-tier-studio]'), view: read('[data-catalog-view]') };
+      });
+      for (const key of ['tag', 'ring', 'name', 'studio'] as const) {
+        assert.equal(shown[key]?.hidden, 'hidden', `换一批时${key}没有藏起来：${JSON.stringify(shown[key])}`);
+        assert.equal(shown[key]?.sheen, 'visible', `换一批时${key}上没有那层微光：${JSON.stringify(shown[key])}`);
+      }
+      assert.equal(shown.name?.width, 52, '名字条没有收成首屏骨架那一宽');
+      assert.equal(shown.view?.hidden, 'visible', '视图不随这一趟变，不该盖');
+    } finally {
+      release();
       await opened.close();
     }
   });
@@ -1647,7 +1751,7 @@ describe('设计决定', () => {
     const opened = await openCatalog(browser);
     try {
       await opened.page.emulateMedia({ reducedMotion: 'no-preference' });
-      for (const selector of ['#tiers .av', '#tiers .brandpill']) {
+      for (const selector of ['[data-tier-performer]', '[data-tier-studio]']) {
         const entry = opened.page.locator(selector).first();
         if (!await entry.count()) continue;
         await entry.hover();
@@ -3192,24 +3296,39 @@ describe('设计决定', () => {
         if (viewport.mobile) await page.locator('#searchBtn').click();
         await page.locator('#q').fill(SUGGEST.q);
         const menu = page.locator('#searchMenu');
-        await menu.locator('.searchperson').first().waitFor({ state: 'visible', timeout: 5_000 });
+        await menu.locator('[data-search-option="person"]').first().waitFor({ state: 'visible', timeout: 5_000 });
         const shown = await page.evaluate(() => {
           const menuBox = document.querySelector('#searchMenu')!.getBoundingClientRect();
-          const results = document.querySelector<HTMLElement>('#searchMenu .searchresults')!;
-          const columns = [...results.querySelectorAll(':scope > .searchcol')];
-          const person = document.querySelector('#searchMenu .searchperson')!;
+          const results = document.querySelector<HTMLElement>('#searchMenu [data-search-results]')!;
+          const columns = [...results.querySelectorAll(':scope > [data-search-col]')];
+          const person = document.querySelector('#searchMenu [data-search-option="person"]')!;
+          /* 命中的别名与作品数是这一行的注脚：字号小一档、字色退一档，作品数靠右。 */
+          const footnote = (selector: string) => {
+            const note = document.querySelector<HTMLElement>(`#searchMenu ${selector}`)!;
+            const row = note.closest('[data-search-option]')!;
+            const name = note.previousElementSibling!;
+            const [noteStyle, nameStyle] = [getComputedStyle(note), getComputedStyle(name)];
+            return {
+              smaller: parseFloat(noteStyle.fontSize) < parseFloat(nameStyle.fontSize),
+              quieter: noteStyle.color !== nameStyle.color,
+              trailing: Math.round(row.getBoundingClientRect().right - note.getBoundingClientRect().right),
+            };
+          };
           return {
+            matched: footnote('[data-search-matched]'),
+            count: footnote('[data-search-n]'),
+            radius: getComputedStyle(person).borderRadius === getComputedStyle(document.documentElement).getPropertyValue('--control-radius').trim(),
             tabs: [...document.querySelectorAll('#searchMenu [role="tab"]')].map((tab) => tab.textContent!.trim()),
             tracks: getComputedStyle(results).gridTemplateColumns.split(' ').filter((track) => track !== 'none').length,
             divider: getComputedStyle(results, '::before').content,
             dividerHeight: parseFloat(getComputedStyle(results, '::before').height),
             resultsHeight: results.getBoundingClientRect().height,
-            right: columns.at(-1)!.querySelector('.searchgroup')?.getAttribute('data-kind'),
-            videoGrid: getComputedStyle(document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!).display,
-            peeks: getComputedStyle(person.querySelector('.searchpeeks')!).display,
-            peekCount: person.querySelectorAll('.searchpeek').length,
-            sub: person.querySelector('.searchsub')!.textContent,
-            face: person.querySelector('.searchface img')?.getAttribute('src'),
+            right: columns.at(-1)!.querySelector('[data-search-group]')?.getAttribute('data-kind'),
+            videoGrid: getComputedStyle(document.querySelector('#searchMenu [data-search-group][data-kind="asset"] [data-search-items]')!).display,
+            peeks: getComputedStyle(person.querySelector('[data-search-peeks]')!).display,
+            peekCount: person.querySelectorAll('[data-open-work]').length,
+            sub: person.querySelector('[data-search-sub]')!.textContent,
+            face: person.querySelector('[data-search-face] img')?.getAttribute('src'),
             inView: menuBox.left >= 0 && menuBox.right <= innerWidth,
             edges: [Math.round(menuBox.left), Math.round(innerWidth - menuBox.right)],
           };
@@ -3227,6 +3346,11 @@ describe('设计决定', () => {
         assert.equal(shown.peekCount, 4);
         assert.equal(shown.sub, '128 个视频 · Capsule Agency');
         assert.equal(shown.face, '/entity-image?kind=performer&id=90301&thumb=1');
+        for (const [name, note] of [['别名', shown.matched], ['作品数', shown.count]] as const) {
+          assert.ok(note.smaller && note.quieter, `${name}没有退成注脚：${JSON.stringify(note)}`);
+        }
+        assert.equal(shown.count.trailing, 10, '作品数没有靠右贴着行的内边距');
+        assert.ok(shown.radius, '补全行的圆角不是 --control-radius');
         assert.ok(shown.inView, '下拉栏越出了视口');
         // 窄屏下拉栏盖过返回键那一列，和顶栏两侧一样各留 8，不缩进到搜索框底下。
         if (viewport.mobile) assert.deepEqual(shown.edges, [8, 8], '窄屏下拉栏两侧留白不是 8');
@@ -3234,7 +3358,7 @@ describe('设计决定', () => {
         assert.ok(page_.scrollWidth <= page_.viewportWidth, `下拉把页面撑出了横向滚动：${page_.offenders.join('，')}`);
 
         await menu.getByRole('tab', { name: /^女优/ }).click();
-        await page.waitForFunction(() => document.querySelectorAll('#searchMenu .searchgroup[data-kind]').length === 1);
+        await page.waitForFunction(() => document.querySelectorAll('#searchMenu [data-search-group][data-kind]').length === 1);
         assert.equal(await menu.isVisible(), true, '点页签把下拉栏收掉了');
         assert.ok(kinds.includes('performer'), '选了一类没有按这一类去拉满');
         assert.equal(await menu.getByRole('tab', { name: /^女优/ }).getAttribute('aria-selected'), 'true');
@@ -3260,13 +3384,13 @@ describe('设计决定', () => {
       await settle(page);
       await page.locator('#q').fill(SUGGEST.q);
       const menu = page.locator('#searchMenu');
-      await menu.locator('.searchperson').first().waitFor({ state: 'visible', timeout: 5_000 });
+      await menu.locator('[data-search-option="person"]').first().waitFor({ state: 'visible', timeout: 5_000 });
       await menu.getByRole('tab', { name: /^视频/ }).click();
-      await page.waitForFunction(() => document.querySelectorAll('#searchMenu .searchgroup[data-kind]').length === 1);
+      await page.waitForFunction(() => document.querySelectorAll('#searchMenu [data-search-group][data-kind]').length === 1);
       const grid = await page.evaluate(() => {
-        const items = document.querySelector('#searchMenu [data-kind="asset"] .searchitems')!;
+        const items = document.querySelector('#searchMenu [data-search-group][data-kind="asset"] [data-search-items]')!;
         const box = items.getBoundingClientRect();
-        const cards = [...items.querySelectorAll('.searchwork')].map((card) => card.getBoundingClientRect());
+        const cards = [...items.querySelectorAll('[data-search-option="work"]')].map((card) => card.getBoundingClientRect());
         return {
           rows: new Set(cards.map((card) => Math.round(card.top))).size,
           widths: cards.map((card) => Math.round(card.width)),
@@ -3349,10 +3473,10 @@ describe('设计决定', () => {
       await expectBody(page, '/', [page.locator('article[data-media-card][data-id]').first()]);
       await settle(page);
       await page.locator('#q').click();
-      await page.locator('#searchMenu .searchresults[data-split]').waitFor({ state: 'visible', timeout: 5_000 });
+      await page.locator('#searchMenu [data-search-results][data-split]').waitFor({ state: 'visible', timeout: 5_000 });
       const split = await page.evaluate(() => {
-        const results = document.querySelector('#searchMenu .searchresults')!;
-        const [left, right] = [...results.querySelectorAll(':scope > .searchcol')].map((col) => col.getBoundingClientRect());
+        const results = document.querySelector('#searchMenu [data-search-results]')!;
+        const [left, right] = [...results.querySelectorAll(':scope > [data-search-col]')].map((col) => col.getBoundingClientRect());
         const box = results.getBoundingClientRect();
         const line = getComputedStyle(results, '::before');
         return {

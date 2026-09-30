@@ -23,7 +23,7 @@ describe('首页加载结构',()=>{
      });
       if(!(window as any).__firstCard){
        const card=document.querySelector('#grid [data-media-card]');
-       if(card){(window as any).__firstCard=card;(window as any).__firstTier=document.querySelector('#tiers .tier')}
+       if(card){(window as any).__firstCard=card;(window as any).__firstTier=document.querySelector('[data-catalog-tier]')}
       }
      }).observe(document,{childList:true,subtree:true});
     },{hasFeed});
@@ -59,7 +59,7 @@ describe('首页加载结构',()=>{
     await page.waitForTimeout(1100);
     const before=(await card.boundingBox())!;
     const first=await card.elementHandle();
-    const tiers=await page.locator('#tiers .tier').first().elementHandle();
+    const tiers=await page.locator('[data-catalog-tier]').first().elementHandle();
     assert.equal(await page.locator('#feedNew .feednewskeleton').count()>0,hasFeed);
     if(hasFeed){
      const colors=await page.locator('#feedNew .feednewskeleton .pic').first().evaluate(node=>{

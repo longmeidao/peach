@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 // @ts-expect-error 浏览器共享控件使用正式实现。
-import { wireHorizontalScroller, rubberBand, sortControlsHtml, filterChipHtml } from '../../web/js/ui-components.js';
+import { wireHorizontalScroller, rubberBand } from '../../web/js/ui-components.js';
 
 afterEach(async () => {document.body.replaceChildren();await new Promise(resolve=>setTimeout(resolve,0));vi.unstubAllGlobals()});
 function button(){const node=document.createElement('button');document.body.append(node);return node}
@@ -79,12 +79,4 @@ it('横排推过头按橡皮筋收敛，顶在边上再推也弹，一次滚轮�
   expect(node.style.getPropertyValue('--edge-pull')).toBe('');
   expect(animate).toHaveBeenCalledTimes(3);
   clock.mockRestore();
-});
-
-it('排序空选项可用，标签内容与属性均转义', () => {
-  expect(sortControlsHtml()).toContain('aria-label="换一批"');
-  const node=document.createElement('div');node.innerHTML=filterChipHtml('<script>',{attr:'data-tag',value:'"<',selected:true,count:0});
-  expect(node.querySelector('script')).toBeNull();expect(node.querySelector('button')?.dataset.tag).toBe('"<');
-  // 计数前不写空格：`.pill` 是 flex 容器，纯空白文本节点不参与布局，间隔归 `.pill .n` 的外边距。
-  expect(node.textContent).toBe('<script>0');
 });

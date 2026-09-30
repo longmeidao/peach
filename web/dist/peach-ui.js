@@ -273,7 +273,7 @@ function ne(e, t, n) {
 function w(e, n = 0, r = 0) {
 	return r > 0 ? ne(e, n, r) : t(e);
 }
-async function re(e) {
+async function T(e) {
 	let t = e.pause || ((e) => new Promise((t) => setTimeout(t, e))), n = 0;
 	for (; e.active();) {
 		let r;
@@ -288,14 +288,14 @@ async function re(e) {
 		await t(2e3);
 	}
 }
-function ie(e) {
+function re(e) {
 	let n = e.note || ((e) => r(e, {
 		label: "任务状态",
 		variant: "error"
 	})), i = e.loading || t, a = e.progress || ((e, t, n) => w(n || `已处理 ${e} / ${t}`, e, t)), o = e.container || ((e) => `<section class="followtask" data-geist-fieldset aria-label="任务进度"><div class="geist-fieldset-content">${e}</div></section>`), s = document.createElement("div");
 	e.host.hidden = !0, s.dataset.followJob = "", s.setAttribute("aria-live", "polite"), e.host.prepend(s);
 	let c = e.storageKey || "peach-follow-job", l = sessionStorage.getItem(c) || void 0, u = !1;
-	re({
+	T({
 		read: e.read,
 		active: () => !u && e.active() && s.isConnected,
 		keepWatching: e.watchIdle !== !1,
@@ -321,11 +321,11 @@ function ie(e) {
 }
 //#endregion
 //#region src/selection.ts
-function ae(e, t, n, r, i, a = i || !e.has(r)) {
+function ie(e, t, n, r, i, a = i || !e.has(r)) {
 	let o = n === null ? -1 : t.indexOf(n), s = t.indexOf(r);
 	return i && o >= 0 && s >= 0 ? t.slice(Math.min(o, s), Math.max(o, s) + 1).forEach((t) => e.add(t)) : a ? e.add(r) : e.delete(r), r;
 }
-function oe(e, t) {
+function ae(e, t) {
 	let n = t.filter((t) => e.has(t)).length;
 	return {
 		count: n,
@@ -333,14 +333,14 @@ function oe(e, t) {
 		mixed: n > 0 && n < t.length
 	};
 }
-function se(e, t, n) {
+function oe(e, t, n) {
 	t.forEach((t) => n ? e.add(t) : e.delete(t));
 }
-function ce({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
+function se({ count: e, label: t, all: n, summary: r, actions: i, locked: a = !1 }) {
 	e && (e.textContent = t), n && (n.checked = r.all, n.indeterminate = r.mixed);
 	for (let e of i) e.disabled = !r.count || a;
 }
-function le(e, t, n = 1) {
+function ce(e, t, n = 1) {
 	let r = (e, t) => Array.from({ length: t - e + 1 }, (t, n) => e + n);
 	if (n * 2 + 5 >= t) return r(1, t);
 	let i = Math.max(e - n, 1), a = Math.min(e + n, t), o = i > 2, s = a < t - 2;
@@ -360,15 +360,15 @@ function le(e, t, n = 1) {
 		t
 	];
 }
-function ue(e, t) {
+function le(e, t) {
 	return Math.max(1, Math.ceil(e / t));
 }
-function de(e, t) {
+function ue(e, t) {
 	return Math.min(Math.max(1, Math.floor(e) || 1), t);
 }
-function fe(e, t, n) {
+function de(e, t, n) {
 	if (t <= 1) return "";
-	let r = le(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
+	let r = ce(e, t).map((t) => t === "…" ? "<li class=\"board-page-dots\" aria-hidden=\"true\">…</li>" : `<li><button type="button" class="board-page" data-page="${t}" aria-label="第 ${t} 页"${t === e ? " aria-current=\"page\"" : ""}>${t}</button></li>`).join("");
 	return `<nav class="board-pagination" aria-label="${n}">
     <button type="button" class="geist-button" data-page="${e - 1}"${e <= 1 ? " disabled" : ""}><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-left"></use></svg>上一页</button>
     <ul>${r}</ul>
@@ -377,12 +377,12 @@ function fe(e, t, n) {
 }
 //#endregion
 //#region src/native-image.ts
-function pe(e, t, n, r) {
+function fe(e, t, n, r) {
 	if (!(e > 0 && t > 0 && n > 0 && r > 0)) return 0;
 	let i = e / n, a = t / r;
 	return i > 1.001 || a > 1.001 || Math.abs(i - a) > Math.max(i, a) * .01 ? 0 : i;
 }
-function me(e, t, n, r, i = 1) {
+function pe(e, t, n, r, i = 1) {
 	let a = Number.isFinite(i) && i > 0 ? i : 1;
 	e /= a, t /= a;
 	let o = [
@@ -399,7 +399,7 @@ function me(e, t, n, r, i = 1) {
 }
 //#endregion
 //#region src/entity-skeleton.ts
-function he(e, t, n) {
+function me(e, t, n) {
 	return `<section data-skeleton="entity/${e}" role="status" aria-label="正在读取资料">
     <span class="sr-only">正在读取资料</span><div aria-hidden="true">
     <section class="entityhero"><div class="entityprofile"><div class="entityportrait ${e === "studio" || e === "agency" ? "square " : ""}skeleton"></div>
@@ -413,7 +413,7 @@ function he(e, t, n) {
 }
 //#endregion
 //#region src/follow-sort.ts
-var ge = [
+var he = [
 	["checked", "检查时间"],
 	["added", "添加时间"],
 	["name", "创作者名称"],
@@ -421,7 +421,7 @@ var ge = [
 	["source", "来源名称"],
 	["provider", "站点"],
 	["status", "状态"]
-], _e = "checked", ve = {
+], ge = "checked", _e = {
 	checked: "desc",
 	added: "desc",
 	name: "asc",
@@ -429,21 +429,21 @@ var ge = [
 	source: "asc",
 	provider: "asc",
 	status: "asc"
-}, ye = (e) => ge.some(([t]) => t === e);
-function be(e, t) {
-	let n = ye(e) ? e : _e;
+}, ve = (e) => he.some(([t]) => t === e);
+function ye(e, t) {
+	let n = ve(e) ? e : ge;
 	return {
 		sort: n,
-		dir: t === "asc" || t === "desc" ? t : ve[n]
+		dir: t === "asc" || t === "desc" ? t : _e[n]
 	};
 }
 //#endregion
 //#region src/island-skeleton.ts
-var xe = "inline-flex items-center justify-center gap-0.5 whitespace-nowrap overflow-hidden font-sans", T = {
+var be = "inline-flex items-center justify-center gap-0.5 whitespace-nowrap overflow-hidden font-sans", xe = {
 	medium: "h-9 rounded-2lg p-2 text-body-medium",
 	small: "h-8 rounded-lg px-2 py-1.5 text-body-medium"
 }, Se = {
-	medium: T.medium,
+	medium: xe.medium,
 	small: "size-8 rounded-lg p-0 text-body-medium"
 }, Ce = {
 	medium: "size-5 shrink-0",
@@ -457,8 +457,8 @@ var xe = "inline-flex items-center justify-center gap-0.5 whitespace-nowrap over
 	ghost: "bg-button-ghost-background text-button-ghost-foreground"
 }, E = (e, t) => `<svg class="${t}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-${e}"/></svg>`;
 function D({ variant: e = "primary", size: t = "medium", glyph: n, label: r, attrs: i = "", compact: a = !1 }) {
-	let o = r ? T[t] : Se[t], s = n ? E(n, Ce[t]) : "", c = r ? `<span class="${we[t]}"${a ? " data-compact-label" : ""}>${r}</span>` : "";
-	return `<button type="button" class="${xe} ${o} ${Te[e]}"${i ? ` ${i}` : ""}>${s}${c}</button>`;
+	let o = r ? xe[t] : Se[t], s = n ? E(n, Ce[t]) : "", c = r ? `<span class="${we[t]}"${a ? " data-compact-label" : ""}>${r}</span>` : "";
+	return `<button type="button" class="${be} ${o} ${Te[e]}"${i ? ` ${i}` : ""}>${s}${c}</button>`;
 }
 var Ee = {
 	md: {
@@ -478,21 +478,21 @@ function O(e, { size: t = "md", className: n = "", attrs: r = "" } = {}) {
 }
 //#endregion
 //#region src/configuration-copy.ts
-var De = "JavDB 或 MISSAV 无法访问时，可填写能访问的镜像域名，Peach 会保留人物页路径。 资料页只显示已有站点身份记录的入口；JavDB 和 MISSAV 还要求有 JAV 目录站记录。 缺少这些记录的 FC2 创作者不会显示这两个入口。", Oe = "仅填域名；留空使用默认地址", ke = (e, t) => `<section aria-label="${e}" class="flex w-full flex-col gap-2"><p class="w-full px-3 text-body-2-medium text-text-secondary">${e}</p><div class="flex w-full flex-col rounded-2xl bg-background-secondary-default pl-3">${t}<div class="-ml-3 flex flex-wrap items-center justify-end gap-3 rounded-b-2xl border-t border-separator-border bg-card-footer px-3 py-3">${D({
+var De = "JavDB 或 MISSAV 无法访问时，可填写能访问的镜像域名，Peach 会保留人物页路径。 资料页只显示已有站点身份记录的入口；JavDB 和 MISSAV 还要求有 JAV 目录站记录。 缺少这些记录的 FC2 创作者不会显示这两个入口。", Oe = "仅填域名；留空使用默认地址", k = (e, t) => `<section aria-label="${e}" class="flex w-full flex-col gap-2"><p class="w-full px-3 text-body-2-medium text-text-secondary">${e}</p><div class="flex w-full flex-col rounded-2xl bg-background-secondary-default pl-3">${t}<div class="-ml-3 flex flex-wrap items-center justify-end gap-3 rounded-b-2xl border-t border-separator-border bg-card-footer px-3 py-3">${D({
 	label: "保存配置",
 	attrs: "disabled data-skeleton-action"
-})}</div></div></section>`, k = (e, t = "") => `<div class="flex min-h-[52px] w-full items-center justify-between gap-4 py-2.5 pr-2.5 border-b border-separator-border last:border-b-0"><div class="flex min-w-0 flex-col"><p class="text-body-regular text-text-primary">${e}</p>${t ? `<p class="text-body-2-regular text-text-secondary">${t}</p>` : ""}</div><span class="skeleton configuration-skeleton-toggle"></span></div>`, Ae = (e) => `<div class="flex w-full flex-col gap-1"><p class="text-body-medium text-text-primary">${e} 地址</p><span class="skeleton configuration-skeleton-input"></span><p class="pt-px text-caption-1-medium text-text-secondary">${Oe}</p></div>`;
-function je() {
+})}</div></div></section>`, A = (e, t = "") => `<div class="flex min-h-[52px] w-full items-center justify-between gap-4 py-2.5 pr-2.5 border-b border-separator-border last:border-b-0"><div class="flex min-w-0 flex-col"><p class="text-body-regular text-text-primary">${e}</p>${t ? `<p class="text-body-2-regular text-text-secondary">${t}</p>` : ""}</div><span class="skeleton configuration-skeleton-toggle"></span></div>`, j = (e) => `<div class="flex w-full flex-col gap-1"><p class="text-body-medium text-text-primary">${e} 地址</p><span class="skeleton configuration-skeleton-input"></span><p class="pt-px text-caption-1-medium text-text-secondary">${Oe}</p></div>`;
+function ke() {
 	return `<div class="peach-react"><div class="configpage">${`<div class="board-local-nav" data-section-nav data-section-items>${[
 		"通用",
 		"媒体",
 		"网络与访问",
 		"更新与维护"
-	].map((e, t) => `<button type="button" tabindex="-1" aria-selected="${t === 0}">${e}</button>`).join("")}</div>`}<div class="flex flex-col gap-6">${ke("开机自启", `<div class="flex flex-col">${k("开机后启动 Peach")}${k("静默启动", "开机后只显示托盘图标，不打开网页；「开机后启动 Peach」打开时生效。")}${k("在桌面创建快捷方式", "双击图标打开 Peach 网页；卸载时一并移除。")}</div>`)}${ke("外部入口", `<div class="flex flex-col gap-4 py-4 pr-3"><p class="text-body-2-regular text-text-secondary">${De}</p>${Ae("JavDB")}${Ae("MISSAV")}</div>`)}</div></div></div>`;
+	].map((e, t) => `<button type="button" tabindex="-1" aria-selected="${t === 0}">${e}</button>`).join("")}</div>`}<div class="flex flex-col gap-6">${k("开机自启", `<div class="flex flex-col">${A("开机后启动 Peach")}${A("静默启动", "开机后只显示托盘图标，不打开网页；「开机后启动 Peach」打开时生效。")}${A("在桌面创建快捷方式", "双击图标打开 Peach 网页；卸载时一并移除。")}</div>`)}${k("外部入口", `<div class="flex flex-col gap-4 py-4 pr-3"><p class="text-body-2-regular text-text-secondary">${De}</p>${j("JavDB")}${j("MISSAV")}</div>`)}</div></div></div>`;
 }
 //#endregion
 //#region src/management-skeletons.ts
-var A = "relative overflow-hidden skeleton-sheen bg-background-tertiary-default rounded-lg", j = (e = "60%") => `<span class="${A} inline-block max-w-full align-middle" style="width:${e};height:1em"></span>`, M = "disabled data-skeleton-action", N = "min-w-0 rounded-2-5xl bg-background-secondary-default p-5 flex flex-col gap-4 max-sm:p-4";
+var M = "relative overflow-hidden skeleton-sheen bg-background-tertiary-default rounded-lg", N = (e = "60%") => `<span class="${M} inline-block max-w-full align-middle" style="width:${e};height:1em"></span>`, Ae = "disabled data-skeleton-action", je = "min-w-0 rounded-2-5xl bg-background-secondary-default p-5 flex flex-col gap-4 max-sm:p-4";
 function Me() {
 	let e = [
 		"馆藏视频",
@@ -501,27 +501,27 @@ function Me() {
 		"使用空间"
 	].map((e, t) => `
     <div class="min-w-0 rounded-2xl shadow-card flex flex-col overflow-hidden pt-4 text-left ${t === 0 ? "ring-2 ring-border-focus-ring bg-background-primary-default" : "bg-background-secondary-default"}">
-      <span class="flex min-w-0 items-center gap-2 px-4 text-body-regular text-text-secondary max-sm:gap-1.5 max-sm:px-3"><i class="${A} size-7 max-sm:size-6"></i>${e}</span>
-      <b class="px-4 pt-3 pb-4 text-title-1-medium max-sm:px-3 max-sm:pb-3">${j("4em")}</b>
-      <small class="mt-auto block min-h-9.5 bg-card-footer px-4 py-2.5 text-caption-1-regular max-sm:px-3 max-sm:py-2">${j("6em")}</small>
-    </div>`).join(""), t = (e) => `<section class="${N}" data-stats-chart>
-    <header class="flex flex-wrap items-end justify-between gap-x-4 gap-y-1"><span class="flex min-w-0 flex-col gap-1"><h3 class="text-title-2-medium text-text-primary">${e}</h3><b class="text-display-4-medium">${j("4em")}</b></span><small class="text-caption-1-regular text-text-secondary">个视频</small></header>
+      <span class="flex min-w-0 items-center gap-2 px-4 text-body-regular text-text-secondary max-sm:gap-1.5 max-sm:px-3"><i class="${M} size-7 max-sm:size-6"></i>${e}</span>
+      <b class="px-4 pt-3 pb-4 text-title-1-medium max-sm:px-3 max-sm:pb-3">${N("4em")}</b>
+      <small class="mt-auto block min-h-9.5 bg-card-footer px-4 py-2.5 text-caption-1-regular max-sm:px-3 max-sm:py-2">${N("6em")}</small>
+    </div>`).join(""), t = (e) => `<section class="${je}" data-stats-chart>
+    <header class="flex flex-wrap items-end justify-between gap-x-4 gap-y-1"><span class="flex min-w-0 flex-col gap-1"><h3 class="text-title-2-medium text-text-primary">${e}</h3><b class="text-display-4-medium">${N("4em")}</b></span><small class="text-caption-1-regular text-text-secondary">个视频</small></header>
     <svg class="h-75 w-full max-sm:h-65 text-background-tertiary-default" viewBox="0 0 200 200" fill="none" stroke="currentColor" stroke-width="12">${[
 		76,
 		54,
 		32
 	].map((e) => `<circle cx="100" cy="100" r="${e}"/>`).join("")}</svg>
-    <div class="inline-grid w-full grid-cols-3 gap-2 max-sm:grid-cols-2">${Array.from({ length: 3 }, () => `<div class="flex min-w-0 flex-col gap-1 rounded-xl bg-background-tertiary-default p-2.5"><span class="text-caption-1-regular">${j()}</span><b class="text-title-2-medium">${j("3em")}</b><small class="text-caption-1-regular">${j()}</small></div>`).join("")}</div>
+    <div class="inline-grid w-full grid-cols-3 gap-2 max-sm:grid-cols-2">${Array.from({ length: 3 }, () => `<div class="flex min-w-0 flex-col gap-1 rounded-xl bg-background-tertiary-default p-2.5"><span class="text-caption-1-regular">${N()}</span><b class="text-title-2-medium">${N("3em")}</b><small class="text-caption-1-regular">${N()}</small></div>`).join("")}</div>
   </section>`;
 	return `<div class="peach-react"><div class="mx-auto flex w-full max-w-board flex-col gap-8">
-    <p class="text-caption-1-regular text-text-secondary">账本当前快照 · ${j("12em")}</p>
+    <p class="text-caption-1-regular text-text-secondary">账本当前快照 · ${N("12em")}</p>
     <div class="flex flex-col gap-4"><div class="inline-grid w-full grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4" data-stats-metrics>${e}</div>
       <div class="flex flex-col gap-5"><div class="inline-grid w-full gap-5 md:grid-cols-2">${t("网盘与本地")}${t("媒体库")}</div>
         <div class="inline-grid w-full gap-5 md:grid-cols-2 xl:grid-cols-3">${[
 		"时长",
 		"画质",
 		"文件类型"
-	].map((e) => `<section class="${N}"><h3 class="text-title-2-medium">${e}</h3><div class="${A} h-64"></div></section>`).join("")}</div>
+	].map((e) => `<section class="${je}"><h3 class="text-title-2-medium">${e}</h3><div class="${M} h-64"></div></section>`).join("")}</div>
       </div>
     </div>
     <section class="rounded-surface bg-background-secondary-default dark:bg-background-primary-default">
@@ -530,19 +530,19 @@ function Me() {
 		"最近看过",
 		"标签来源"
 	].map((e) => `<span>${e}</span>`).join("")}</div>
-      <div class="flex flex-col gap-3 px-4 pt-3.5 pb-4">${Array.from({ length: 5 }, () => `<div class="${A} h-7"></div>`).join("")}</div>
+      <div class="flex flex-col gap-3 px-4 pt-3.5 pb-4">${Array.from({ length: 5 }, () => `<div class="${M} h-7"></div>`).join("")}</div>
     </section>
   </div></div>`;
 }
 function Ne() {
 	let e = `<div class="duplicate-row items-center gap-3 border-t border-separator-border px-5 py-4 max-compact:p-4">
-    <span class="${A} row-span-2 inline-grid aspect-16/10 w-full rounded-2lg"></span>
-    <span class="text-body-regular max-duplicate-narrow:col-start-2 max-duplicate-narrow:-col-end-1">${j("70%")}</span>
-    ${Array.from({ length: 3 }, () => `<span class="font-mono text-caption-1-regular leading-5">${j("3em")}</span>`).join("")}
-    <span class="col-start-2 -col-end-1 min-w-0 pt-0.5 font-mono text-caption-1-regular leading-5 max-duplicate-narrow:col-span-full">${j("75%")}</span>
+    <span class="${M} row-span-2 inline-grid aspect-16/10 w-full rounded-2lg"></span>
+    <span class="text-body-regular max-duplicate-narrow:col-start-2 max-duplicate-narrow:-col-end-1">${N("70%")}</span>
+    ${Array.from({ length: 3 }, () => `<span class="font-mono text-caption-1-regular leading-5">${N("3em")}</span>`).join("")}
+    <span class="col-start-2 -col-end-1 min-w-0 pt-0.5 font-mono text-caption-1-regular leading-5 max-duplicate-narrow:col-span-full">${N("75%")}</span>
   </div>`, t = `<section class="mb-6 overflow-hidden rounded-surface bg-background-secondary-default dark:bg-background-primary-default" data-duplicate-group>
     <div class="flex flex-wrap items-center gap-3 bg-background-tertiary-default p-5 max-compact:p-4 dark:bg-background-secondary-default">
-      <b class="text-title-2-medium">${j("5em")}</b><span class="font-mono text-caption-1-regular leading-5">${j("8em")}</span>
+      <b class="text-title-2-medium">${N("5em")}</b><span class="font-mono text-caption-1-regular leading-5">${N("8em")}</span>
       <span class="ml-auto flex flex-wrap gap-2 max-compact:ml-0 max-compact:w-full">${[
 		"留最大",
 		"留最长",
@@ -551,14 +551,14 @@ function Ne() {
 		variant: "secondary",
 		size: "small",
 		label: e,
-		attrs: M
+		attrs: Ae
 	})).join("")}</span>
     </div>${e.repeat(2)}</section>`;
 	return `<div class="peach-react"><div class="mx-auto w-full max-w-board pb-10.5">
     <div data-collection-summary class="mb-5 flex items-end justify-between gap-4 rounded-surface bg-background-secondary-default px-6 py-5 max-compact:flex-col max-compact:items-start max-compact:gap-3 max-compact:p-4 dark:bg-background-primary-default">
-      <div class="flex min-w-0 flex-col gap-2"><span class="text-body-regular text-text-secondary">重复内容</span><strong class="text-display-4-medium">${j("4em")}</strong></div><p class="text-body-regular text-text-secondary">${j("12em")}</p>
+      <div class="flex min-w-0 flex-col gap-2"><span class="text-body-regular text-text-secondary">重复内容</span><strong class="text-display-4-medium">${N("4em")}</strong></div><p class="text-body-regular text-text-secondary">${N("12em")}</p>
     </div>
-    <div data-filter-glass data-glass-pane class="mb-5.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5"><h3 class="mr-1 text-body-medium">批量保留</h3>${["全部保留最大", "全部保留最长"].map((e) => `<button ${M} class="h-7.5 rounded-full border border-separator-border px-3 text-body-2-medium">${e}</button>`).join("")}</div>
+    <div data-filter-glass data-glass-pane class="mb-5.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5"><h3 class="mr-1 text-body-medium">批量保留</h3>${["全部保留最大", "全部保留最长"].map((e) => `<button ${Ae} class="h-7.5 rounded-full border border-separator-border px-3 text-body-2-medium">${e}</button>`).join("")}</div>
     ${t.repeat(2)}
   </div></div>`;
 }
@@ -577,7 +577,7 @@ var P = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, F = 
 	"JAV 订阅源",
 	"来源和凭证"
 ].map((e, t) => `<span class="whitespace-nowrap" aria-selected="${t === 0}">${e}</span>`).join("")}</div>`, V = (e = "") => `<span class="group inline-flex items-center select-none gap-2"><span class="flex shrink-0 items-center justify-center rounded-sm size-4 border bg-background-primary-default shadow-xs border-border-checkbox-default"></span>${e ? `<span class="text-body-medium text-text-primary">${e}</span>` : ""}</span>`, ze = ({ table: e, sort: t, dir: n }) => {
-	let r = ge.find(([e]) => e === t)[1];
+	let r = he.find(([e]) => e === t)[1];
 	return `<div class="flex flex-wrap items-center gap-2 follow-skeleton-toolbar"><h3 class="mr-auto text-title-2-medium text-text-primary">关注列表</h3><span class="text-body-2-regular text-text-secondary">${z("132px")}</span>${D({
 		glyph: "refresh-cw",
 		label: "检查全部",
@@ -657,7 +657,7 @@ var P = (e = "60%") => `<span class="skeleton" style="width:${e}"></span>`, F = 
 	z("113px"),
 	Be()
 ].map((e) => `<td>${e}</td>`).join("")}</tr>`, e)}</tbody></table></div></div>`, qe = (e, t) => `<div class="flex flex-wrap items-center justify-between gap-3"><span class="text-body-2-regular text-text-secondary">${z("111px")}</span>${O(`每页 ${t} ${e ? "条" : "位"}`, { size: "sm" })}${B(204, 32)}</div>`, Je = (e) => {
-	let t = e.followLayout === "table", n = be(e.followSort, e.followDir), r = e.followPageSize || He(), i = t ? Ke(r, n) : `${V("全选本页")}<div class="flex flex-col gap-3">${H(3)}${H(4)}${H(3)}</div>`;
+	let t = e.followLayout === "table", n = ye(e.followSort, e.followDir), r = e.followPageSize || He(), i = t ? Ke(r, n) : `${V("全选本页")}<div class="flex flex-col gap-3">${H(3)}${H(4)}${H(3)}</div>`;
 	return `<div class="peach-react"><div class="mx-auto flex w-full max-w-board flex-col gap-8">${Le()}<div class="flex flex-col gap-6">${Re()}<div class="flex flex-col gap-4"><div class="min-w-0 bg-background-secondary-default rounded-2xl shadow-card flex flex-col gap-4 px-6 py-5 max-sm:px-4 follow-skeleton-surface" data-layout="${t ? "table" : "default"}">${ze({
 		table: t,
 		...n
@@ -679,7 +679,7 @@ function Ze(e, t = {}) {
 		"私有导出"
 	], "tastesummaries")}<section class="tastehero"><div class="insightcopy"><span>浏览器画像</span><div class="skeleton skeleton-radar"></div></div><div class="tastebars skeleton-lines">${I(F(), 4)}</div></section>${L("口味分析")}<div class="board-activity-charts">${L("浏览活动")}${L("时间分布")}</div>${L("标签")}</div>`;
 	else if (e === "/follow-manage") n = Je(t);
-	else if (e === "/configuration") n = je();
+	else if (e === "/configuration") n = ke();
 	else if (e === "/activity") n = `<div class="activitypage">${[
 		"正在进行",
 		"被挡下的",
@@ -711,14 +711,7 @@ var Qe = [
 	"jav",
 	"thumb"
 ];
-function $e() {
-	let e = (e) => Array(64).fill(e).join("");
-	return {
-		tiers: "<div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"av\"><span class=\"ring\"></span><span class=\"nm\">&nbsp;</span></span>") + "</div><div class=\"tier catalog-placeholder\" aria-hidden=\"true\">" + e("<span class=\"brandpill\"><span class=\"mk\"></span><span class=\"placeholder-name\">&nbsp;</span></span>") + "</div>",
-		tags: "<span class=\"catalog-placeholder placeholder-tags\" aria-hidden=\"true\">" + e("<span class=\"pill\">&nbsp;</span>") + "</span>"
-	};
-}
-async function et(e, t) {
+async function $e(e, t) {
 	let n = new URLSearchParams();
 	for (let t of Qe) e[t] && n.set(t, e[t]);
 	let [r, i] = await Promise.all([t("/api/facets?" + n), t("/api/items?" + n + "&limit=5")]), a = [...new Set([
@@ -731,7 +724,7 @@ async function et(e, t) {
 		return r.set("q", e), r.set("limit", "1"), (await t("/api/items?" + r)).total > 0 ? e : "";
 	}))).filter(Boolean);
 }
-function tt({ kind: t = "catalog", filtered: n = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
+function et({ kind: t = "catalog", filtered: n = !1, jav: r = !1, configurable: i = !1, online: a = !1 } = {}) {
 	let o = i ? "<button class=\"geist-button primary\" data-empty-settings>添加内容</button>" : "", s = "<a class=\"geist-button" + (!i || a ? " primary" : "") + "\" href=\"/follow-manage?tab=add\">添加关注</a>";
 	if (n || r) return e("search", r ? "还没有符合条件的 JAV 作品" : "没有符合条件的内容", r ? "已扫描但尚未补充发行资料的视频可在全部内容中查看。" : "清除筛选或搜索条件后查看全部内容。", { actions: "<a class=\"geist-button primary\" href=\"/?loc=&thumb=0\">查看全部内容</a>" });
 	if (t !== "catalog") {
@@ -751,8 +744,20 @@ function tt({ kind: t = "catalog", filtered: n = !1, jav: r = !1, configurable: 
 	return e("play", "还没有视频", "添加媒体文件夹或关注来源，开始建立你的馆藏。", { actions: o + s });
 }
 //#endregion
+//#region src/catalog-filter-skeleton.ts
+var tt = 64, U = (e) => e.replace(/[&<>"]/g, (e) => ({
+	"&": "&amp;",
+	"<": "&lt;",
+	">": "&gt;",
+	"\"": "&quot;"
+})[e]), nt = (e) => e.repeat(tt);
+function rt(e, t) {
+	let n = e.map((e) => `<a href="${U(e.href)}" data-catalog-view="${U(e.k)}" data-entity-press="" aria-pressed="${t === e.k}">${U(e.label)}</a>`).join("");
+	return "<div class=\"peach-react\"><div class=\"contents\" data-catalog-root=\"\" data-loading=\"\"><div data-catalog-tiers=\"\" aria-busy=\"true\"><div data-catalog-tier=\"performers\" data-skeleton=\"tiers\">" + nt("<span data-catalog-placeholder=\"performer\" aria-hidden=\"true\"><span></span><span>&nbsp;</span></span>") + "</div><div data-catalog-tier=\"studios\">" + nt("<span data-catalog-placeholder=\"studio\" aria-hidden=\"true\"><span></span><span>&nbsp;</span></span>") + `</div></div><div role="group" aria-label="筛选与排序" data-filter-glass="" data-glass-pane="" data-filter-frame="" data-catalog-frame="" class="sticky top-topbar z-10 mb-5.5 flex flex-col mx-4"><div role="group" aria-label="视图与标签" data-filter-row="top" class="flex h-12 min-w-0 items-center overscroll-x-contain px-3 py-2 gap-1.5 overflow-visible"><div data-catalog-scroll=""><div role="group" aria-label="视图" data-catalog-views="">${n}<span data-entity-sep="" aria-hidden="true"></span></div><div data-catalog-tags=""><span data-catalog-placeholder="tag" aria-hidden="true">` + "<span></span>".repeat(tt) + "</span></div></div></div><div data-filter-row=\"bottom\" aria-busy=\"true\" class=\"flex min-w-0 items-center gap-3 px-3 py-2 min-h-12\"><span data-catalog-readout=\"\"><span data-skeleton=\"count\" aria-hidden=\"true\" class=\"relative inline-block h-3.5 w-37.5 rounded-md align-middle skeleton-sheen\"></span></span></div></div></div></div>";
+}
+//#endregion
 //#region src/sidebar.ts
-function nt(e) {
+function it(e) {
 	return [
 		"/",
 		"/unseen",
@@ -762,96 +767,96 @@ function nt(e) {
 		"/junk-files"
 	].includes(e) || /^\/(item|mix|parts|editions)\//.test(e) || /^\/playlists\/\d+\/\d+$/.test(e) || /^\/(performers|studios|creators|series|agencies)\/.+/.test(e);
 }
-function rt(e, t) {
+function at(e, t) {
 	return e.dataset.surface?.split("?")[0] === t.split("?")[0] && e.querySelector(".dnav") ? (e.dataset.surface = t, !1) : (e.dataset.surface = t, e.replaceChildren(), !0);
 }
-function it(e) {
+function ot(e) {
 	let t = /* @__PURE__ */ new Map();
 	for (let n of e) for (let e of new Set(n.tags || [])) t.set(e, (t.get(e) || 0) + 1);
 	return [...t].sort((e, t) => t[1] - e[1]).slice(0, 30);
 }
 //#endregion
 //#region src/management.ts
-var at = "扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。", ot = "修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。", U = "<span class=\"skeleton skeleton-text\" aria-hidden=\"true\"></span>", W = "type=\"button\" disabled data-skeleton-action", G = "disabled data-skeleton-action", st = "aria-disabled=\"true\"", K = (e) => `<div class="peach-react"><div class="flex flex-col gap-4">${e}</div></div>`, q = (e, t) => `<div data-geist-fieldset-content>
+var st = "扫描媒体文件夹，导入已有资料，采集缺失信息。两段也可以分开跑：新盘刚接上时先只扫描，几万个文件登记完就能用；采集被网络拖住时只重跑采集，不必再扫一遍磁盘。", ct = "修缺时间戳表（播放卡顿）和缺索引（打不开）的 MP4。常看的片子先修。", W = "<span class=\"skeleton skeleton-text\" aria-hidden=\"true\"></span>", G = "type=\"button\" disabled data-skeleton-action", K = "disabled data-skeleton-action", lt = "aria-disabled=\"true\"", ut = (e) => `<div class="peach-react"><div class="flex flex-col gap-4">${e}</div></div>`, dt = (e, t) => `<div data-geist-fieldset-content>
           <h3 class="text-title-2-medium text-text-primary">${e}</h3>
           <p class="text-body-2-regular text-text-secondary">${t}</p></div>`;
-function ct() {
-	return K(`<section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing data-fieldset-stack>
-        ${q("扫描与采集", at)}
+function ft() {
+	return ut(`<section aria-label="扫描与采集" data-geist-fieldset data-cleanup-task data-cleanup-processing data-fieldset-stack>
+        ${dt("扫描与采集", st)}
         <footer data-geist-fieldset-footer><a href="/scraping" class="inline-flex items-center justify-center gap-1 whitespace-nowrap font-sans rounded-sm text-body-medium text-accent-600"><span>来源和凭证</span>${E("arrow-up", "size-[18px] shrink-0 rotate-90")}</a><span data-button-group data-split-button data-variant="primary">${D({
 		glyph: "database",
 		label: "扫描并补全资料",
-		attrs: G
+		attrs: K
 	})}${D({
 		glyph: "chevron-down",
-		attrs: `${G} aria-label="更多扫描与采集方式"`
+		attrs: `${K} aria-label="更多扫描与采集方式"`
 	})}</span></footer>
       </section>`);
 }
-function lt() {
-	return K(`<section aria-label="媒体修复" data-geist-fieldset data-cleanup-task data-cleanup-processing>
-        ${q("媒体修复", ot)}
-        <footer data-geist-fieldset-footer>${O(U, {
+function pt() {
+	return ut(`<section aria-label="媒体修复" data-geist-fieldset data-cleanup-task data-cleanup-processing>
+        ${dt("媒体修复", ct)}
+        <footer data-geist-fieldset-footer>${O(W, {
 		className: "w-48",
-		attrs: st
+		attrs: lt
 	})}${D({
 		label: "开始修复",
-		attrs: G
+		attrs: K
 	})}</footer>
       </section>`);
 }
-function ut() {
+function mt() {
 	let e = [
 		["人工复核", "square-check-big"],
 		["高清版", "sparkles"],
 		["重复文件", "file-stack"],
 		["垃圾文件", "file-archive"],
 		["回收站", "trash"]
-	], t = `<span class="geist-button organize-preset-skeleton">${U}</span>`.repeat(3), n = (e) => `<div class="organizefield"><span>${e}</span>
-            <span class="geist-input organize-input-skeleton">${U}</span></div>`;
+	], t = `<span class="geist-button organize-preset-skeleton">${W}</span>`.repeat(3), n = (e) => `<div class="organizefield"><span>${e}</span>
+            <span class="geist-input organize-input-skeleton">${W}</span></div>`;
 	return `<div class="cleanuppage" data-skeleton="cleanup" aria-busy="true" aria-label="正在读取数据管理状态">
     <div class="cleanupstats">${e.map(([e, t]) => `
       <button type="button" class="board-plain-stat" disabled>
         <span class="board-plain-stat-head"><span class="board-stat-tile">${c(t)}</span>${e}</span>
-        <strong>${U}</strong><span class="cleanupmeta">${U}</span></button>`).join("")}</div>
+        <strong>${W}</strong><span class="cleanupmeta">${W}</span></button>`).join("")}</div>
     <div class="cleanupgrid">
-      <div class="cleanupscraping">${ct()}</div>
-      <div class="cleanupmediarepair">${lt()}</div>
+      <div class="cleanupscraping">${ft()}</div>
+      <div class="cleanupmediarepair">${pt()}</div>
       <section class="cleanupfieldset cleanuporganize" data-geist-fieldset data-cleanup-task aria-labelledby="cleanup-loading-organize">
         <div class="geist-fieldset-content"><h3 class="geist-fieldset-title" id="cleanup-loading-organize">整理</h3>
           <p>按模板给文件改名并归入目录。先预览，确认后执行；执行过的一批可以整批退回。</p>
           <div class="organizefields">
-            <div class="organizesource"><span class="gselect"><span class="gselectfield organize-source-skeleton">${U}${c("chevron-down")}</span></span></div>
+            <div class="organizesource"><span class="gselect"><span class="gselectfield organize-source-skeleton">${W}${c("chevron-down")}</span></span></div>
             ${n("文件名模板")}
             ${n("目录模板")}
             <div class="organizepresets">${t}</div>
-            <p class="cleanupmeta">${U}</p>
+            <p class="cleanupmeta">${W}</p>
           </div></div>
-        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button class="geist-button primary" ${W}>预览</button></footer>
+        <footer class="geist-fieldset-footer" data-geist-fieldset-footer><button class="geist-button primary" ${G}>预览</button></footer>
       </section></div>
     <section class="resourcesync" aria-labelledby="cleanup-loading-links">
       <h2 id="cleanup-loading-links">链接管理</h2>
       <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task data-fieldset-stack>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">站外链接</h3>
-          <div class="linksummary"><div class="linkstats"><div><span>链接总数</span><b>${U}</b><small>${U}</small></div>${[
+          <div class="linksummary"><div class="linkstats"><div><span>链接总数</span><b>${W}</b><small>${W}</small></div>${[
 		"官网/事务所",
 		"社交账号",
 		"作品资料站"
-	].map((e) => `<div><span>${e}</span><b>${U}</b></div>`).join("")}</div>
-          <div class="linkhosts"><span>主要站点</span><b>${U}</b></div></div></div>
-        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${W}>${c("unlink")}<span>检查死链</span></button></div>
+	].map((e) => `<div><span>${e}</span><b>${W}</b></div>`).join("")}</div>
+          <div class="linkhosts"><span>主要站点</span><b>${W}</b></div></div></div>
+        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${G}>${c("unlink")}<span>检查死链</span></button></div>
       </div></section>
     <section class="resourcesync" aria-labelledby="cleanup-loading-sync">
       <h2 id="cleanup-loading-sync">资源同步</h2>
       <div class="resourcesyncbox" data-geist-fieldset data-cleanup-task>
         <div class="resourcesyncbody geist-fieldset-content"><h3 class="geist-fieldset-title">文件与记录核对</h3>
           <p>按馆藏记录逐条查找本地磁盘与网盘上的文件，列出文件已不存在的记录、空文件夹，以及不再被引用的缓存。</p></div>
-        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${W}>${c("git-compare")}<span>检查文件</span></button></div>
+        <div class="resourcesyncfooter geist-fieldset-footer" data-geist-fieldset-footer><button class="resourceaction primary" ${G}>${c("git-compare")}<span>检查文件</span></button></div>
       </div></section></div>`;
 }
 //#endregion
 //#region src/junk-queue.ts
-var J = [
+var ht = [
 	[
 		"",
 		"全部",
@@ -887,60 +892,60 @@ var J = [
 		"其它",
 		"hard-drive"
 	]
-], dt = (e) => J.find(([t]) => t === e)?.[0] ?? "";
-function ft(e) {
+], gt = (e) => ht.find(([t]) => t === e)?.[0] ?? "";
+function _t(e) {
 	let t = new URLSearchParams(e);
 	return {
-		kind: dt(t.get("type")),
+		kind: gt(t.get("type")),
 		view: t.get("view") === "dismissed" ? "dismissed" : "pending"
 	};
 }
-function Y(e = "", t = "pending") {
+function q(e = "", t = "pending") {
 	let n = new URLSearchParams();
 	e && n.set("type", e), t === "dismissed" && n.set("view", "dismissed");
 	let r = n.toString();
 	return `/junk-files${r ? `?${r}` : ""}`;
 }
-function pt(e) {
+function vt(e) {
 	return e === "dismissed" ? {
 		view: "pending",
 		label: "返回待判断",
 		glyph: "rotate-ccw",
-		href: Y("", "pending")
+		href: q("", "pending")
 	} : {
 		view: "dismissed",
 		label: "已排除",
 		glyph: "eye-off",
-		href: Y("", "dismissed")
+		href: q("", "dismissed")
 	};
 }
-var mt = (e) => e === "dismissed" ? "已排除" : "待判断", ht = "flex items-end justify-between gap-4 rounded-surface bg-background-secondary-default px-6 py-5 max-compact:flex-col max-compact:items-start max-compact:gap-3 max-compact:p-4 dark:bg-background-primary-default", gt = "flex min-w-0 flex-col gap-2", _t = "text-body-regular text-text-secondary", vt = "text-display-4-medium tabular-nums text-text-primary", yt = "relative inline-block h-8 w-24 rounded-2lg align-middle skeleton-sheen", bt = (e) => `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${e}"></use></svg>`;
-function xt({ kind: e, view: t }) {
-	let n = J.map(([n, r, i]) => `<a href="${Y(n, t)}" data-junk-kind-link="${n}"${n === e ? " aria-current=\"page\"" : ""}>${bt(i)}${s(r)}</a>`).join(""), r = pt(t);
-	return `<div class="peach-react" data-junk-count-skeleton=""><div data-junk-count=""><div data-junk-summary="" aria-live="polite"><div data-collection-summary="" class="${ht}"><div class="${gt}"><span class="${_t}">${mt(t)}</span><strong class="${vt}"><span data-skeleton="count" aria-hidden="true" class="${yt}"></span></strong></div></div></div><div data-junk-filters-frame=""><nav data-junk-filters="" aria-label="垃圾文件分类">${n}<i data-junk-divider="" aria-hidden="true"></i><a href="${r.href}" data-junk-view-link="${r.view}"${t === "dismissed" ? " aria-current=\"page\"" : ""}>${bt(r.glyph)}${r.label}</a></nav></div></div></div>`;
+var yt = (e) => e === "dismissed" ? "已排除" : "待判断", bt = "flex items-end justify-between gap-4 rounded-surface bg-background-secondary-default px-6 py-5 max-compact:flex-col max-compact:items-start max-compact:gap-3 max-compact:p-4 dark:bg-background-primary-default", xt = "flex min-w-0 flex-col gap-2", St = "text-body-regular text-text-secondary", Ct = "text-display-4-medium tabular-nums text-text-primary", wt = "relative inline-block h-8 w-24 rounded-2lg align-middle skeleton-sheen", Tt = (e) => `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${e}"></use></svg>`;
+function Et({ kind: e, view: t }) {
+	let n = ht.map(([n, r, i]) => `<a href="${q(n, t)}" data-junk-kind-link="${n}"${n === e ? " aria-current=\"page\"" : ""}>${Tt(i)}${s(r)}</a>`).join(""), r = vt(t);
+	return `<div class="peach-react" data-junk-count-skeleton=""><div data-junk-count=""><div data-junk-summary="" aria-live="polite"><div data-collection-summary="" class="${bt}"><div class="${xt}"><span class="${St}">${yt(t)}</span><strong class="${Ct}"><span data-skeleton="count" aria-hidden="true" class="${wt}"></span></strong></div></div></div><div data-junk-filters-frame=""><nav data-junk-filters="" aria-label="垃圾文件分类">${n}<i data-junk-divider="" aria-hidden="true"></i><a href="${r.href}" data-junk-view-link="${r.view}"${t === "dismissed" ? " aria-current=\"page\"" : ""}>${Tt(r.glyph)}${r.label}</a></nav></div></div></div>`;
 }
 //#endregion
 //#region src/jav-artwork.ts
-function St(e) {
+function Dt(e) {
 	return [
 		"small",
 		"sleeve",
 		"preview"
 	].includes(String(e)) ? "small" : "big";
 }
-function Ct(e) {
+function Ot(e) {
 	return {
-		javLayout: St(e.javLayout),
-		javImage: X(e.javLayout === "preview" ? "thumbnail" : e.javImage)
+		javLayout: Dt(e.javLayout),
+		javImage: J(e.javLayout === "preview" ? "thumbnail" : e.javImage)
 	};
 }
-function X(e) {
+function J(e) {
 	return e === "thumbnail" ? "thumbnail" : "cover";
 }
-function wt(e, t) {
-	return e.is_jav && e.code && e.has_cover && (X(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
+function kt(e, t) {
+	return e.is_jav && e.code && e.has_cover && (J(t) === "cover" || !e.has_thumb) ? "cover" : e.has_thumb ? "thumbnail" : "";
 }
-function Tt(e, t) {
+function At(e, t) {
 	let n = Number(e?.px?.[0]), r = Number(e?.px?.[1]), i = Number(e?.x0);
 	if (!(n > 0 && r > 0 && t > 0) || !Number.isFinite(i)) return null;
 	let a = (e, t, n) => Math.min(n, Math.max(0, Number.isFinite(Number(e)) ? Number(e) : t)), o = a(i, 0, n), s = Math.max(o, a(e?.x1, n, n)), c = a(e?.y0, 0, r), l = Math.max(c, a(e?.y1, r, r)), u = s - o, d = l - c;
@@ -960,13 +965,13 @@ function Tt(e, t) {
 		height: m(r / d)
 	};
 }
-function Et(e, t) {
+function jt(e, t) {
 	e.querySelectorAll("img[data-jav-image]").forEach((e) => {
-		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (X(t) === "cover" || !r)), a = i ? n : r;
+		let n = e.dataset.javCover || "", r = e.dataset.javThumb || "", i = !!(n && (J(t) === "cover" || !r)), a = i ? n : r;
 		e.classList.toggle("cover", i), e.classList.toggle("whole", i && e.dataset.javImageLayout !== "big"), e.classList.toggle("front", i && e.dataset.javImageLayout === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic,[data-media-pic]")?.style.removeProperty("--cover-blur"), a && e.getAttribute("src") !== a && (e.src = a);
 	});
 }
-function Dt(e, t) {
+function Mt(e, t) {
 	let n = [];
 	return e.querySelectorAll("img[data-jav-image]").forEach((e) => {
 		e.dataset.javImageLayout !== t && (e.dataset.javImageLayout = t, e.classList.contains("cover") && (e.classList.toggle("whole", t !== "big"), e.classList.toggle("front", t === "big"), e.classList.remove("panel"), e.removeAttribute("style"), e.closest(".pic,[data-media-pic]")?.style.removeProperty("--cover-blur"), e.complete && e.naturalWidth && n.push(e)));
@@ -974,43 +979,43 @@ function Dt(e, t) {
 }
 //#endregion
 //#region src/player/stats.ts
-function Ot(e, t = "") {
+function Nt(e, t = "") {
 	let n = t ? encodeURIComponent(t) : "";
 	return performance.getEntriesByType("resource").filter((t) => t.name.includes("/stream") && (t.name.includes(`/stream?id=${e}`) || t.name.includes(`/stream/hls/${e}/`)) && (!n || t.name.includes(`session=${n}`)));
 }
-function kt(e, t = "") {
-	let n = Ot(e, t), r = n.reduce((e, t) => e + (t.transferSize || t.encodedBodySize || 0), 0), i = n.reduce((e, t) => e + (t.duration || 0), 0) / 1e3;
+function Pt(e, t = "") {
+	let n = Nt(e, t), r = n.reduce((e, t) => e + (t.transferSize || t.encodedBodySize || 0), 0), i = n.reduce((e, t) => e + (t.duration || 0), 0) / 1e3;
 	return r > 0 && i > 0 ? r * 8 / i : 0;
 }
-function At(e) {
+function Ft(e) {
 	if (!Number.isFinite(e) || e <= 0) return "加载中…";
 	let t = e / 8;
 	return t >= 1048576 ? `${(t / 1048576).toFixed(1)} MB/s` : `${Math.max(1, Math.round(t / 1024))} KB/s`;
 }
 //#endregion
 //#region src/player/controls.ts
-function jt(e, t) {
+function It(e, t) {
 	e?.closest(".video-js")?.querySelector(`.vjs-control-bar ${t}`)?.click();
 }
 //#endregion
 //#region src/player/stream.ts
-function Mt() {
+function Lt() {
 	return globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
-function Nt(e, t) {
+function Rt(e, t) {
 	return {
 		src: `/stream?id=${e.id}&session=${encodeURIComponent(t)}`,
 		type: String(e.name || "").toLowerCase().endsWith(".webm") ? "video/webm" : "video/mp4"
 	};
 }
-function Pt(e) {
+function zt(e) {
 	return e.location === "online" && e.follow_item_id ? {
 		src: `/follow-stream?id=${e.follow_item_id}`,
 		type: "video/mp4"
 	} : null;
 }
-async function Ft(e, t) {
-	let n = Pt(e);
+async function Bt(e, t) {
+	let n = zt(e);
 	if (n) return n;
 	try {
 		let n = await o(`/api/stream-plan?id=${e.id}&session=${encodeURIComponent(t)}`);
@@ -1019,9 +1024,9 @@ async function Ft(e, t) {
 			type: n.mime_type || "application/vnd.apple.mpegurl"
 		};
 	} catch {}
-	return Nt(e, t);
+	return Rt(e, t);
 }
-function It(e) {
+function Vt(e) {
 	e && fetch(`/api/stream-cancel?session=${encodeURIComponent(e)}`, {
 		method: "POST",
 		credentials: "same-origin",
@@ -1032,7 +1037,7 @@ function It(e) {
 }
 //#endregion
 //#region src/player/telemetry.ts
-function Lt(e, t, n = {}) {
+function Ht(e, t, n = {}) {
 	if (!t) return;
 	let r = 0, i = 0, a = 0, s = null;
 	t.addEventListener("seeking", () => {
@@ -1082,7 +1087,7 @@ function Lt(e, t, n = {}) {
 }
 //#endregion
 //#region src/player/videojs.ts
-var Rt = "/vendor/videojs/8.24.1/", zt = (e) => new Promise((t, n) => {
+var Ut = "/vendor/videojs/8.24.1/", Wt = (e) => new Promise((t, n) => {
 	let r = document.head.querySelector(`script[src="${e}"]`);
 	if (r?.dataset.loaded) {
 		t();
@@ -1094,20 +1099,21 @@ var Rt = "/vendor/videojs/8.24.1/", zt = (e) => new Promise((t, n) => {
 	}, { once: !0 }), i.addEventListener("error", () => {
 		i.remove(), n(/* @__PURE__ */ Error(`script unavailable: ${e}`));
 	}, { once: !0 }), r || (i.src = e, document.head.appendChild(i));
-}), Bt = () => globalThis.videojs, Z = null;
-function Vt() {
-	let e = Bt();
-	return e ? Promise.resolve(e) : (Z ??= zt(`${Rt}video.min.js`).then(() => zt(`${Rt}lang/zh-CN.js`)).then(() => {
-		let e = Bt();
+}), Y = () => globalThis.videojs, X = null;
+function Gt() {
+	let e = Y();
+	return e ? Promise.resolve(e) : (X ??= Wt(`${Ut}video.min.js`).then(() => Wt(`${Ut}lang/zh-CN.js`)).then(() => {
+		let e = Y();
 		if (!e) throw Error("videojs unavailable");
 		return e;
 	}).catch((e) => {
-		throw Z = null, e;
-	}), Z);
+		throw X = null, e;
+	}), X);
 }
 //#endregion
 //#region src/islands.ts
-var Ht = {
+var Kt = {
+	"catalog-filter": { react: "catalog-filter" },
 	"catalog-grid": { react: "catalog-grid" },
 	"data-cleanup": { react: "data-cleanup" },
 	duplicates: { react: "duplicates" },
@@ -1123,25 +1129,26 @@ var Ht = {
 	scraping: { react: "scraping" },
 	"quality-goals": { react: "quality-goals" },
 	review: { react: "review" },
+	search: { react: "search" },
 	configuration: { react: "configuration" },
 	"configuration-summary": { react: "configuration-summary" },
 	activity: { react: "activity" },
 	stats: { react: "stats" },
 	taste: { react: "taste" }
-}, Ut = () => import("/dist/peach-react.js").then(() => void 0), Wt = () => Object.keys(Ht), Q = /* @__PURE__ */ new Map();
-async function Gt(e, t, n, r = {}) {
-	let i = Ht[e];
+}, qt = () => import("/dist/peach-react.js").then(() => void 0), Jt = () => Object.keys(Kt), Z = /* @__PURE__ */ new Map();
+async function Yt(e, t, n, r = {}) {
+	let i = Kt[e];
 	if (!i) throw Error(`未注册的 island：${String(e)}`);
-	Yt(t);
+	$t(t);
 	let a = { controller: new AbortController() };
-	Q.set(t, a);
+	Z.set(t, a);
 	let o = (await import("/dist/peach-react.js")).pages[i.react];
 	try {
 		await o.prefetch(n, a.controller.signal);
 	} catch {
 		if (a.controller.signal.aborted) return;
 	}
-	if (!qt(t, a, r)) return;
+	if (!Zt(t, a, r)) return;
 	let s = () => {
 		t.textContent = "";
 		let e = t.ownerDocument.createElement("div");
@@ -1153,32 +1160,32 @@ async function Gt(e, t, n, r = {}) {
 	};
 	r.reveal ? r.reveal(t, s) : s();
 }
-function Kt(e, t) {
-	let n = e ? Q.get(e) : void 0;
+function Xt(e, t) {
+	let n = e ? Z.get(e) : void 0;
 	!n?.update || !n.props || (n.props = {
 		...n.props,
 		...t
 	}, n.update(n.props));
 }
-function qt(e, t, n) {
-	return Q.get(e) === t ? n.isCurrent && !n.isCurrent() ? (Q.delete(e), !1) : !0 : !1;
+function Zt(e, t, n) {
+	return Z.get(e) === t ? n.isCurrent && !n.isCurrent() ? (Z.delete(e), !1) : !0 : !1;
 }
-var Jt = (e) => !!e && Q.has(e);
-function Yt(e) {
-	for (let t of [...Q.keys()]) (t === e || e.contains(t)) && Xt(t);
+var Qt = (e) => !!e && Z.has(e);
+function $t(e) {
+	for (let t of [...Z.keys()]) (t === e || e.contains(t)) && en(t);
 }
-function Xt(e) {
-	let t = Q.get(e);
-	t && (t.controller.abort(), Q.delete(e), t.dispose?.());
-}
-var Zt = null;
-function Qt(e, t, n, r) {
-	Zt ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), Zt.then((e) => e.showToast(n, r));
-}
-var $t = null, $ = null;
 function en(e) {
-	return $t ??= import("/dist/peach-react.js").then((t) => ($ = t.configureStage(e), $)), $t;
+	let t = Z.get(e);
+	t && (t.controller.abort(), Z.delete(e), t.dispose?.());
 }
-var tn = () => $;
+var tn = null;
+function nn(e, t, n, r) {
+	tn ??= import("/dist/peach-react.js").then((n) => (n.mountToaster(e, t), n)), tn.then((e) => e.showToast(n, r));
+}
+var Q = null, $ = null;
+function rn(e) {
+	return Q ??= import("/dist/peach-react.js").then((t) => ($ = t.configureStage(e), $)), Q;
+}
+var an = () => $;
 //#endregion
-export { Ze as boardPageSkeleton, f as boundedPreference, It as cancelStreamSession, tt as catalogEmptyHtml, et as catalogSuggestions, de as clampPage, ut as cleanupSkeletonHtml, jt as clickPlayerControl, Xe as detailSkeletonHtml, Nt as directStreamSource, $e as emptyCatalogLayout, Vt as ensureVideojs, he as entitySkeletonHtml, pe as faceSourceScale, At as fmtSpeed, ie as followJobProgress, g as initBoardControls, Jt as islandMounted, Wt as islandNames, wt as javImageKind, w as jobActivityHtml, xt as junkCountSkeletonHtml, Y as junkPath, ft as junkRoute, en as loadStage, Gt as mountIsland, m as mountNumberSetting, me as nativeImageFit, Mt as newStreamSession, X as normalizeJavImage, St as normalizeJavLayout, Ct as normalizeJavPreferences, ue as pageCount, fe as paginationHtml, Tt as panelFrame, Ft as playableStreamSource, u as preferredDirection, Ut as preloadIslands, Dt as relayoutJavImages, se as selectGroup, ae as selectRange, oe as selectionSummary, Qt as showToast, nt as sidebarHasCatalogContent, S as sidebarSectionHtml, it as sidebarTagCounts, tn as stageApi, kt as streamSpeedBits, h as syncBoardRange, Et as syncJavImages, p as syncNumberSetting, ce as syncSelectionToolbar, rt as syncSidebarSurface, te as transitionTheme, Yt as unmountIsland, Kt as updateIsland, re as watchJob, ee as wireSidebarGroups, Lt as wireTelemetry };
+export { Ze as boardPageSkeleton, f as boundedPreference, Vt as cancelStreamSession, et as catalogEmptyHtml, rt as catalogFilterSkeletonHtml, $e as catalogSuggestions, ue as clampPage, mt as cleanupSkeletonHtml, It as clickPlayerControl, Xe as detailSkeletonHtml, Rt as directStreamSource, Gt as ensureVideojs, me as entitySkeletonHtml, fe as faceSourceScale, Ft as fmtSpeed, re as followJobProgress, g as initBoardControls, Qt as islandMounted, Jt as islandNames, kt as javImageKind, w as jobActivityHtml, Et as junkCountSkeletonHtml, q as junkPath, _t as junkRoute, rn as loadStage, Yt as mountIsland, m as mountNumberSetting, pe as nativeImageFit, Lt as newStreamSession, J as normalizeJavImage, Dt as normalizeJavLayout, Ot as normalizeJavPreferences, le as pageCount, de as paginationHtml, At as panelFrame, Bt as playableStreamSource, u as preferredDirection, qt as preloadIslands, Mt as relayoutJavImages, oe as selectGroup, ie as selectRange, ae as selectionSummary, nn as showToast, it as sidebarHasCatalogContent, S as sidebarSectionHtml, ot as sidebarTagCounts, an as stageApi, Pt as streamSpeedBits, h as syncBoardRange, jt as syncJavImages, p as syncNumberSetting, se as syncSelectionToolbar, at as syncSidebarSurface, te as transitionTheme, $t as unmountIsland, Xt as updateIsland, T as watchJob, ee as wireSidebarGroups, Ht as wireTelemetry };

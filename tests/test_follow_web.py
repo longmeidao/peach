@@ -3193,7 +3193,6 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_follow_horizontal_rails_are_wired_after_each_render(self):
         # 两排与筛选条的拖动横滚归 `follow-feed` 岛（`FilterGlassRows`）；骨架那两排同形。
         self.assertPageContains(".followauthors{padding:3px 0 10px")
-        self.assertPageContains(".tagscroll::-webkit-scrollbar{display:none}")
         self.assertPageLacks(".followfilters{position:relative")
 
     def test_the_watch_page_does_not_carry_source_management(self):

@@ -44,13 +44,6 @@
 .postercard-skeleton .skeletoncard i{grid-column:1/-1;border-radius:var(--surface-radius)}
 .postercard-skeleton .skeletoncard s{display:block;grid-column:1;grid-row:2/span 3;align-self:start;
   width:38px;height:38px;margin-top:5px;border-radius:50%;background:var(--hover)}
-.catalog-placeholder{pointer-events:none}
-.catalog-placeholder .ring,.catalog-placeholder .nm,.catalog-placeholder .mk,.catalog-placeholder .placeholder-name,.catalog-placeholder .pill{background:var(--hover)}
-.catalog-placeholder .nm{width:60%;margin-inline:auto;border-radius:var(--badge-radius)}
-.catalog-placeholder .placeholder-name{width:48px;border-radius:var(--badge-radius)}
-.tier.catalog-placeholder{overflow:hidden}
-.placeholder-tags{display:inline-flex;gap:8px;flex:1 0 240px;min-width:240px;overflow:hidden}
-.placeholder-tags .pill{width:64px;border-color:transparent}
 .postercard-skeleton .skeletoncard b,
 .postercard-skeleton .skeletoncard em,
 .postercard-skeleton .skeletoncard u{grid-column:2}
@@ -148,19 +141,14 @@
 .skeletondashpanel i,.skeletondashpanel b,.skeletondashpanel em,
 .skeletondashstrip i,.skeletondashstrip b,.skeletondashstrip em,
 .skeletoncard s,.skeletoncard u,
-.countskeleton,.avskeleton .ring,.avskeleton .nm,.brandskeleton,.tagskeleton,
-body.refreshing #tagbar [data-tag],body.refreshing #tiers .av .ring,
-body.refreshing #tiers .av .nm,body.refreshing #tiers .brandpill{position:relative;overflow:hidden}
+.countskeleton,.avskeleton .ring,.avskeleton .nm,.brandskeleton,.tagskeleton{position:relative;overflow:hidden}
 .skeleton::after,.skeletoncard i::after,.skeletoncard b::after,.skeletoncard em::after,
 .skeletondashhero i::after,.skeletondashhero b::after,
 .skeletondashpanel i::after,.skeletondashpanel b::after,.skeletondashpanel em::after,
 .skeletondashstrip i::after,.skeletondashstrip b::after,.skeletondashstrip em::after,
 .skeletoncard s::after,.skeletoncard u::after,
 .countskeleton::after,.avskeleton .ring::after,.avskeleton .nm::after,
-.brandskeleton::after,.tagskeleton::after,
-body.refreshing #tagbar [data-tag]::after,body.refreshing #tiers .av .ring::after,
-body.refreshing #tiers .av .nm::after,
-body.refreshing #tiers .brandpill::after{content:'';position:absolute;inset:0;right:-200%;
+.brandskeleton::after,.tagskeleton::after{content:'';position:absolute;inset:0;right:-200%;
   visibility:visible;border-radius:inherit;
   background:linear-gradient(to right,var(--hover),var(--skeleton-sheen) 50%,var(--hover));
   background-size:50% 100%;
@@ -183,8 +171,6 @@ body.refreshing #tiers .brandpill::after{content:'';position:absolute;inset:0;ri
 .imgwait::after{opacity:1;filter:none;visibility:visible;transition-delay:180ms;
   animation:skeleton-sweep 1.5s ease-in-out infinite reverse}
 @starting-style{.imgwait::after{opacity:0;filter:blur(2px)}}
-/* 首页刷新那一层微光也画在头像圈的 `::after` 上；已经收尾的圈别把它一起藏掉。 */
-body.refreshing #tiers .av .ring.imgdone::after{opacity:1;filter:none;visibility:visible}
 
 
 /* 计数骨架的宽高定死：跟着真实文本走的话，数字回来那一刻整行会横向弹一下。
@@ -207,7 +193,7 @@ body.refreshing #tiers .av .ring.imgdone::after{opacity:1;filter:none;visibility
 .tagskeleton{background:var(--hover);border-color:transparent;padding:0}
 /* 顶部三层第一次填内容之前只有 18px 的内边距，内容到位后长到一百多，
    每次冷启动都把整页往下推一截；标签条有固定高度不塌，但空着一整条。 */
-.tiers[aria-busy="true"],.tagbar[aria-busy="true"]{pointer-events:none}
+.tagbar[aria-busy="true"]{pointer-events:none}
 /* 占位不是控件：整块骨架和每一枚占位都不接指针，套在最终形状上的 hover 描边、底色和
    手型光标也就一条都触发不了，点下去落到后面的页面上。占位直接借用 `.av`、`.pill` 这些
    最终类名画形状，所以只能在这里一处关掉，不能逐条给 hover 规则补 `:not()`。
@@ -215,19 +201,6 @@ body.refreshing #tiers .av .ring.imgdone::after{opacity:1;filter:none;visibility
    等数据的键（`data-skeleton-action`）是例外，它要亮出 not-allowed 光标说明「现在按不了」。 */
 :is([data-skeleton],.avskeleton,.brandskeleton),:is([data-skeleton],.avskeleton,.brandskeleton) *,.tagskeleton,.countskeleton,.skeletoncard,.skeleton{pointer-events:none}
 [data-skeleton-action]:disabled{pointer-events:auto}
-
-/* 换一批时标签条走 Geist 的 wrap-children 变体：真实胶囊留在 DOM 里，用 visibility
-   藏起来，微光画在 ::after 上并单独 visible。框就是胶囊自己的框，所以零位移；
-   visibility:hidden 的元素同时不可聚焦，正好满足规范里「加载期间不要把可聚焦控件
-   放进骨架」。只盖会变的标签胶囊——四枚视图胶囊由 state 决定，这次请求不改它们。 */
-body.refreshing #tagbar [data-tag]{visibility:hidden;background:var(--hover);border-color:transparent}
-/* 头像和厂牌跟标签条同一套：换一批换的是这三层的成员，所以三层一起盖。头像那格
-   分成圆片和名字条两块，尺寸取首屏骨架的同一组值（64 圆 + 52 名条），两条通道
-   看起来就是同一枚；`.av` 宽度写死 76px，名条居中收窄不动周围任何东西。 */
-body.refreshing #tiers .av .ring,body.refreshing #tiers .av .nm,
-body.refreshing #tiers .brandpill{visibility:hidden;background:var(--hover)}
-body.refreshing #tiers .av .nm{width:52px;margin:0 auto;border-radius:var(--control-radius)}
-body.refreshing #tiers .brandpill{border-color:transparent}
 
 .stats-lede-skeleton{display:block;width:min(380px,75%);height:22px;margin-bottom:16px}
 .config-skeleton-card .skeleton{display:block;height:20px;width:60%}

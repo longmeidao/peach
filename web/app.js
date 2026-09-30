@@ -15,14 +15,14 @@ import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js
 import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast, followJobProgress } from './dist/peach-ui.js';
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
-import { catalogSuggestions, catalogEmptyHtml, emptyCatalogLayout, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
+import { catalogSuggestions, catalogEmptyHtml, catalogFilterSkeletonHtml, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
 import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import { cancelStreamSession, clickPlayerControl, directStreamSource, ensureVideojs, fmtSpeed, loadStage, newStreamSession, playableStreamSource, stageApi, streamSpeedBits, wireTelemetry as playerWireTelemetry } from './dist/peach-ui.js';
 import {
   attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
-  fillSkeletonTier, fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
+  fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   dissolveValue, popBadges, revealSkeleton, revealTexts, setIconSwap, swapText,
-  boardTabsHtml, mountFilterFrame, filterChipHtml, moveGlidePane, glideEase, sortControlsHtml, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
+  boardTabsHtml, moveGlidePane, glideEase, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
   SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
   wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, configurationSkeletonHtml, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
@@ -69,6 +69,8 @@ const selected=new Set(),followSelected=new Set();
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 // 顶部三层与抽屉上一次画的是哪一份：口径加数据，两样都没变就不必再画一遍。
 let barsRendered='';
+/* 首页筛选条（`catalog-filter` 岛）的整份 props、挂载中的那一次、标签条的成员（见 `paintCatalogFilter`）。 */
+let catalogFilterProps=null,catalogFilterMounting=null,catalogTagRows=[],catalogTopsPages=null;
 /* 侧栏「更多」摊开时要照最新那份 facets 重画那一列。挂在 buildBars 的闭包上就只能是
    画那一遍时的那份——中途改过筛选，摊开看到的是一列旧数字。 */
 let barsFacets=null,barsScopedCreators=[];
@@ -98,8 +100,6 @@ let entityPhotos=null,entityMediaView=emptyMediaView(),entityPhotoWall=null,enti
    不是这类页面的常态。`entityRosterKind` 是名册里每一格是什么：艺人或厂牌。 */
 let entityRosterView='people',entityRoster=[],entityRosterKind='performer';
 let sidebarDragKey=null;
-/* 搜索下拉里被键盘选中的那一项。列表每次重建都要归零，否则索引会指向已经不存在的行。 */
-let searchActive=-1;
 /* ────────────────────────────────────────────────────────────────────────── */
 
 /* ── 路由表 ───────────────────────────────────────────────────────────────────
@@ -213,8 +213,8 @@ const followContentSkeletonHtml=(media=new URLSearchParams(location.search).get(
    高一点（岛卡片的署名行至少 21px，见 `follow-feed.css`）。上面是它自己的创作者行、题材行和那块
    两排的玻璃浮层，形状取 `.tier`、`.tagbar`、`.count` 本身，所以和首页顶栏那两排是
    同一枚：创作者行铺 `av`、题材行铺 `brandpill`，跟内容回来之后的形状一致。外框
-   要自己写全：`mountFilterFrame` 是运行时才建的，骨架进不了那条路径，少了它上下两排
-   会被画成两块各带圆角的浮层，等内容回来又并成一块。 */
+   要自己写全：岛挂上之前没有别处替它合并外框，少了它上下两排会被画成两块各带圆角的
+   浮层，等内容回来又并成一块。 */
 const followSkeletonHtml=(label='正在读取关注内容')=>`<div class="follow">
   <div class="followhead"><h2 class="pagetitle">关注</h2></div>
   <div class="tier followauthors" data-skeleton-tier="av"></div>
@@ -239,31 +239,6 @@ const reviewSkeletonHtml=(label='正在读取复核队列')=>`<div class="review
     '<div class="skeletoncard" aria-hidden="true"><i></i><b></b><em></em></div>'.repeat(6)}</div></section></div>`;
 $('#loadSentinel').innerHTML=loadingDotsHtml('继续载入中…');
 $('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'));
-/* 筛选条只由当前 state 决定，这次加载不会改变它，所以它现在就能画成最终样子。
-   `state` 在启动 URL 解析之后才赋值，冷启动第一张骨架比它早，那一次只画计数骨架。 */
-const countSortsHtml=()=>!state?'':sortControlsHtml({shuffleId:'batchAction',shuffleClass:'',
-  extra:javActive()?javLayoutButtons():homeLayoutActive()?homeLayoutButtons():'',items:sortOptions(),
-  renderItem:([k,l])=>sortButtonHtml(k,l,state.sort,state.dir,'data-sort')});
-function wireCountRow(){
-  const batch=$('#batchAction');
-  if(batch)batch.onclick=async()=>{
-    if(batch.getAttribute('aria-busy')==='true')return;
-    const old=batch.innerHTML;setActionBusy(batch);batch.innerHTML=spinnerHtml('正在换一批');
-    try{await refreshAll()}finally{setActionBusy(batch,false);batch.innerHTML=old}
-  };
-  wireJavLayoutButtons($('#count'));
-  wireIconSwitch($('#count'),'data-home-layout',setHomeLayout);
-  $('#count').querySelectorAll('[data-sort]').forEach(b=>b.onclick=()=>{
-    const next=nextSortState(b.dataset.sort,state.sort,state.dir);
-    if(!next)return;
-    state.sort=next.sort;state.dir=next.dir;
-    loadCatalog()});
-}
-/* 骨架只盖这次加载真会变的东西，也就是计数那一串数字。筛选条照常画出来并接上事件：
-   连它一起清空的话，点下去的那一枚会在等数据的这段时间里失去高亮，看着像没点上；
-   `.count:empty` 还会让整行折叠，网格跟着往上跳一截。计数骨架宽高固定、行本身有
-   `min-height:var(--sortH)` 兜底，所以数字回来时不发生位移。上方的标签条和已选条件
-   同理不动——它们本来就不随这次请求变。 */
 /* 网格还没挂上 island 时，壳把骨架写进 `#grid > .grid`。卡片都归 island：目录与回收站是
    `catalog-grid`，垃圾文件是 `junk-queue`。同形骨架复用节点，只有骨架交给内容才淡入。 */
 const setGridCards=html=>revealSkeleton($('#grid'),()=>{$('#grid').innerHTML=`<div class="grid">${html}</div>`});
@@ -271,28 +246,31 @@ const setGridCards=html=>revealSkeleton($('#grid'),()=>{$('#grid').innerHTML=`<d
    和接着看那一排不在其中，它们不在网格的分段里。 */
 const gridCards=()=>document.querySelectorAll(
   ':is(#grid,#index [data-entity-grid]) [data-media-grid] > [data-media-card][data-id]');
+/* 骨架只盖这次加载真会变的东西，也就是读数那一串数字：筛选条下排那一格换成微光，排序键与
+   版式照当前 state 推过去。连它们一起收掉的话，点下去的那一枚会在等数据的这段时间里失去高亮，
+   看着像没点上。上方的标签条和已选条件同理不动，它们本来就不随这次请求变。 */
 function renderCatalogLoading(label='正在读取作品'){
   const count=$('#count');
-  count.setAttribute('aria-busy','true');
-  count.setAttribute('aria-label',label);
   /* 垃圾文件那一屏的计数行是自己的：一块摘要面加一条分类切换，没有排序也没有换批。
-     照目录那条画的话，等待期间摆着一排这一页根本没有的排序键，数据到货整行再换成
-     另一种东西。这一版是 `junk-queue` island 等数据时那一版的静态副本，island 挂上就换掉它；
-     骨架里的分类链接是真的 `<a href>`，React 包没到时点下去照常换页。 */
+     这一版是 `junk-queue` island 等数据时那一版的静态副本，island 挂上就换掉它；骨架里的
+     分类链接是真的 `<a href>`，React 包没到时点下去照常换页。目录与回收站的读数在筛选条里，
+     这一行留空。 */
   const junk=decodeURIComponent(location.pathname)==='/junk-files';
   count.classList.toggle('manage-static',junk);
   count.classList.toggle('junkcount',junk);
-  // 回收站的计数挂在说明行上，这一行只剩「清空回收站」，没有会变的数字可占位。
-  count.innerHTML=state&&state.state==='trash'?''
-    :junk?junkCountSkeletonHtml(junkRoute(location.search))
-    :`<span class="mono"><span class="countskeleton"></span></span>`+countSortsHtml();
-  if(!junk)wireCountRow();
+  if(junk){
+    count.setAttribute('aria-busy','true');count.setAttribute('aria-label',label);
+    count.innerHTML=junkCountSkeletonHtml(junkRoute(location.search));
+    fitSkeleton(count);
+  }else{
+    count.removeAttribute('aria-busy');count.removeAttribute('aria-label');count.textContent='';
+    if(state)paintCatalogFilter({count:null,...catalogHeadProps()});
+  }
   /* 骨架一铺上去就得把底部那颗 Loading Dots 收掉。骨架说的是「等下会出现几张什么
      形状的卡」，dots 说的是「上面已经有内容，还在往下接」；两段同时在场时一屏里
      铺着两种等待动画，而实际只有一次请求在跑。哨兵的可见性由数据落地后的
      `has_more` 重新决定，所以这里只管收，不必记住原值。 */
   $('#loadSentinel').hidden=true;
-  fitSkeleton(count);
   /* 网格已经挂着时骨架归它自己铺：`#grid` 是它的容器，壳往里写会把 React 根冲掉。 */
   if(islandMounted($('#grid')))return;
   const grid=$('#grid'),placeholder=catalogSkeletonHtml(label);
@@ -342,10 +320,10 @@ const managementPlaceholder=path=>
   (MANAGEMENT_PLACEHOLDERS[path]||(()=>pageSkeletonHtml('正在读取页面')))();
 /* 顶部三层只属于首页。深链启动时先画一遍再由路由收起来，等于向管理页和索引页
    承诺了三条永远不会到货的横条。 */
-const hideDiscoveryBars=()=>{$('#tiers').style.display='none';$('#tagbar').style.display='none'};
+function hideDiscoveryBars(){$('#catalogFilter').style.display='none';syncCatalogFilterScreen()}
 /* 启动那一屏收没收横条，就是这一次启动要不要那两个聚合查询。问屏幕不问路径：
    判断只写在上面那个函数里一份，两边各抄一张路径表迟早会对不上。 */
-const wantsDiscoveryBars=()=>$('#tiers').style.display!=='none';
+const wantsDiscoveryBars=()=>$('#catalogFilter').style.display!=='none';
 /* 资料页形状名单（`loadEntityShapes`）的在途请求，和画骨架前最多等它多久。 */
 let entityShapesReady=null;
 const ENTITY_SHAPES_WAIT=400;
@@ -2042,7 +2020,7 @@ document.addEventListener('load',event=>{
    那层 `::after`。React 索引页的头像框（`[data-person-ring]`）与资料卡的大位、同台艺人
    （`[data-entity-portrait]`、`[data-hero-ring]`）里那张图同样由遗留层拼，插进页面时照样
    被这里看见。 */
-const PENDING_IMAGES='.pic>img.poster,[data-media-art]>img,.ring>img,[data-person-ring]>img,[data-entity-portrait]>img,[data-hero-ring]>img';
+const PENDING_IMAGES='.pic>img.poster,[data-media-art]>img,.ring>img,[data-tier-ring]>img,[data-person-ring]>img,[data-entity-portrait]>img,[data-hero-ring]>img';
 const pendingSince=new WeakMap();
 function watchPendingImages(node){
   const found=node.matches(PENDING_IMAGES)?[node]:node.querySelectorAll(PENDING_IMAGES);
@@ -2388,10 +2366,8 @@ function scrollFilteredViewToTop(){
    所以按下态就地改，成员和滚动位置一概不动。选中的标签排到最前是重画时的事——刚点的
    那枚就在他眼皮底下，这一下把它抽走反倒是替他决定现在该看哪儿。 */
 function applyFilterStateInPlace(filters){
-  const bar=$('#tagScroll');
-  if(bar)bar.querySelectorAll('.pill[data-tag]').forEach(b=>
-    b.setAttribute('aria-pressed',String(tagPressed(filters.tag,b.dataset.tag))));
   if(barsContext.type==='entity')pushEntityFilter({tags:entityFilterTags(filters)});
+  else paintCatalogFilter({tags:catalogTags(filters)});
   $('#drawer').querySelectorAll('.chip[data-key]').forEach(b=>
     b.setAttribute('aria-pressed',String(String(filters[b.dataset.key]||'')
       .split(',').filter(Boolean).includes(b.dataset.val))));
@@ -2446,88 +2422,10 @@ function commitContextFilter(mutate){
   applyFilterStateInPlace(state);refreshFacetCounts(barsContext);
   loadCatalog();
 }
-/* 首屏时顶部三层和标签条还是两个空 div，而这一次请求要花约一秒。Geist 的判据是
-   骨架宽高必须等于最终内容——「200×20 的块变成 80×16 的字读起来像故障」——所以
-   这里直接套真实类名，让几何自己对上。只在还空着时画：导航到已经有内容的页面
-   留着旧内容等新内容，那不是从无到有，不该铺骨架。四枚视图胶囊由 state 决定，
-   这次请求不改它们，所以现在就画成最终样子并接上事件。 */
+/* 左端四枚视图。资料页那一条（`entity-filter` 岛）用同一份清单画自己的观看状态。 */
 const VIEW_PILLS=[{k:'',label:'全部'},{k:'fresh',label:'没看过'},
                   {k:'later',label:'稍后看'},{k:'flagged',label:'已标记'}];
-const viewPillsHtml=filterState=>VIEW_PILLS.map(v=>
-    `<a class="pill" href="${v.k?STATE_ROUTES[v.k]:'/'}" data-state="${v.k}" aria-pressed="${
-      filterState.state===v.k}">${v.label}</a>`).join('')+`<span class="sep"></span>`;
-/* 视图之间移动的那块玻璃是常驻节点，`#tagbar` 每次重画都把同一个节点挪回去而不是
-   新建：换了元素，动画就从头开始，看到的只是瞬移。节点由 `viewGlides` 按排持有。
-   点下去要立刻动。切换视图会重新取数，`buildBars` 约一秒后才把 `aria-pressed` 写成
-   新值，等它就等于点完先僵一下再跳。 */
-/* 动画层由外框承载，允许回弹与阴影越过内容边沿。横滚只裁剪按钮内容；
-   玻璃坐标扣除祖先滚动量，目标完全滚出可视区域时收起。 */
-/* 玻璃默认挂在整块外框上；`within` 可以把它挂近一点。挂在外框上的那几排都靠左端，坐标
-   只跟自己排里的东西有关；靠右端那一组前面是一段会变宽的读数，旁边的分段器又是插进
-   文档之后才由观察器换成 30px 那副几何——量早了一步，钉在外框坐标上的玻璃就跟键错开
-   半个身位。只有一枚键的开关干脆把玻璃挂在键自己身上：坐标恒为零，量不早也量不晚。 */
-function viewGlideGeometry(pill,within='.board-filter-frame'){
-  const host=pill.closest(within);if(!host)return null;
-  let x=0,y=0;
-  for(let n=pill;n&&n!==host;n=n.offsetParent){x+=n.offsetLeft;y+=n.offsetTop}
-  const rect=pill.getBoundingClientRect();
-  for(let n=pill.parentElement;n&&n!==host;n=n.parentElement){
-    x-=n.scrollLeft;y-=n.scrollTop;
-    if(n.scrollWidth>n.clientWidth&&getComputedStyle(n).overflowX!=='visible'){
-      const viewport=n.getBoundingClientRect();
-      if(rect.right<=viewport.left||rect.left>=viewport.right)return null;
-    }
-  }
-  return {host,x,w:pill.offsetWidth,y,h:pill.offsetHeight};
-}
-/* 首页那排几选一的滑动玻璃。判据是「此刻量得出宽度」，不是「存在」也不是自己那个
-   `hidden`：这一排在同一份文档里一直都在，别的页面开着的时候它只是被祖先收起来了，
-   `hidden` 上看不出来。零宽度把这一种连同 `display:none` 一起挡住——玻璃留在一排收起来的
-   按钮上，就是在一块空玻璃上亮着。资料页与关注页那几排是同一块料，由各自的岛挪
-   （`use-view-glide.ts`）。 */
-const GLIDE_ROWS={
-  views:{selector:'#viewPills',pressed:'[data-state][aria-pressed="true"]'},
-};
-function viewPillsRow(kind){
-  for(const row of document.querySelectorAll(GLIDE_ROWS[kind].selector)){
-    if(row.offsetWidth&&row.closest('.board-filter-frame'))return row;
-  }
-  return null;
-}
-/* 悬停跟随和离开归位这两下两页是同一回事，接法也只有一种。用属性赋值而不是
-   `addEventListener`：资料页每换一次筛选都会把这一排重新接一遍，叠加式的接法会让
-   同一枚按钮上攒下越来越多份同样的监听。点击各自接——那一下要做的事两页不一样。
-   离开归位挂在那一排自己身上，不挂整条筛选条：两排共用一条 `pointerleave` 的话，
-   指针从媒体那组挪到视图那组就算「离开」，媒体那块玻璃会先弹回去再被下一个悬停接住。 */
-function wireViewGlideRow(row,pills,kind='views'){
-  pills.forEach(b=>b.onpointerenter=e=>{if(e.pointerType!=='touch')syncViewGlide(true,b,kind)});
-  row.onpointerleave=e=>{if(e.pointerType!=='touch')syncViewGlide(true,null,kind)};
-  const scroller=row.closest('.filterscroll');
-  if(scroller)scroller.onscroll=()=>syncViewGlide(false,null,kind);
-  syncViewGlide(false,null,kind);
-}
-/* 每排各存自己那块玻璃和它上一次的落点。键取那一排的用途，不取那一排的元素：资料页
-   每换一次筛选就把整条重画一遍，拿节点当键等于每重画一次就新建一块玻璃，动画从头
-   起跑，看到的只是瞬移。 */
-const viewGlides=new Map();
-function syncViewGlide(animate,target,kind='views'){
-  const row=viewPillsRow(kind);
-  const active=row&&(target||row.querySelector(GLIDE_ROWS[kind].pressed));
-  let glide=viewGlides.get(kind);
-  if(!active){if(glide)glide.pane.hidden=true;return}
-  const box=viewGlideGeometry(active,GLIDE_ROWS[kind].host);
-  if(!box||!box.w){if(glide)glide.pane.hidden=true;return}
-  if(!glide){
-    const pane=document.createElement('span');
-    pane.className=`viewglide${GLIDE_ROWS[kind].className?` ${GLIDE_ROWS[kind].className}`:''}`;
-    pane.setAttribute('aria-hidden','true');
-    glide={pane,box:null};viewGlides.set(kind,glide);
-  }
-  if(glide.pane.parentElement!==box.host)box.host.prepend(glide.pane);
-  glide.pane.hidden=false;
-  const from=glide.box;glide.box=box;
-  moveGlidePane(glide.pane,animate?from:null,box,'x');
-}
+const catalogViews=()=>VIEW_PILLS.map(v=>({...v,href:v.k?STATE_ROUTES[v.k]:'/'}));
 /* 抽屉那一列跟筛选条那一排是同一块玻璃，只是换了根轴。它挂在 `#drawer` 上而不是那
    一列里：切页会把 `#drawerScroll` 整块重画，住在里面的话玻璃跟着一起没，动画在第
    一个微任务里就断了，看到的只是当前项换了个地方亮起来。`#drawer` 自己不重画，是这
@@ -2617,87 +2515,109 @@ $('#drawer').addEventListener('pointerout',event=>{
   const column=event.target.closest?.('.dnav');
   if(column&&!column.contains(event.relatedTarget))syncNavGlide(true);
 });
-function wireViewPills(){
-  const row=$('#viewPills'),pills=[...row.querySelectorAll('[data-state]')];
-  pills.forEach(b=>b.onclick=e=>{
-    e.preventDefault();state.state=b.dataset.state;
-    pills.forEach(p=>p.setAttribute('aria-pressed',String(p===b)));syncViewGlide(true,b);
-    route(homePath());buildBars();loadCatalog()});
-  /* 玻璃跟着指针走，不等点击：指到哪一枚就滑过去，指针离开这一排再回到真正选中的
-     那枚。这一排是四选一，滑过去等于先把这一下的结果比划出来，点不点是下一步的事。
-     `aria-pressed` 全程不动——移过去不是选中，读屏和键盘那边不该跟着变。 */
-  wireViewGlideRow(row,pills);
+/* ── 首页筛选条（`catalog-filter` 岛，ADR-0031） ──
+   两排头像、浮层上排的视图与标签、下排读数与排序，外加正文里网格上面那条交集条。筛选、路由与
+   取数仍归壳：成员与按下态在这里算好当 props 递进去，动作回到这里，落点照旧是
+   `commitContextFilter` 与 `loadCatalog`。壳手上留一份完整的 props，每次只改其中几项：岛画好了
+   就推补丁；还在挂就先记着，挂完再把整份推一次。 */
+/* 顶上那几排先画一屏够用的量，横滚到右端再续下一批（岛里的 `usePaged`）。标签条先摆的是生效
+   的那几枚加抽出来的这一批。 */
+const TAGS_FIRST=26;
+function catalogFilterBase(){
+  return {tiers:null,empty:false,tags:[],tagFirst:TAGS_FIRST,views:catalogViews(),state:'',count:null,
+    trash:false,sorts:[],layout:null,refreshing:false,offscreen:false,combo:[],comboHidden:true,comboHost:$('#combo'),
+    actions:catalogFilterActions(),
+    helpers:{wireDrag,wireScroller:row=>{if(row)wireHorizontalScroller(row)}}};
 }
-// 宽度是一组定值而不是随机数：随机会让同一次冷启动在两台机器上长得不一样，也没法测。
-function renderBarsLoading(filterState){
-  const tiers=$('#tiers'),tagbar=$('#tagbar'),views=$('#viewPills'),tags=$('#tagScroll');
-  // 铺了骨架就必须有一次真的绘制来顶掉它，哪怕取回的数据跟上一次一模一样。
-  if(!tiers.innerHTML||!views.innerHTML)barsRendered='';
-  if(!tiers.innerHTML){
-    tiers.hidden=false;tiers.setAttribute('aria-busy','true');
-    tiers.innerHTML=`<div class="tier" data-skeleton-tier="av"></div>
-      <div class="tier" data-skeleton-tier="brandpill"></div>`;
-    fitSkeleton(tiers);
-  }
-  if(!views.innerHTML){
-    tagbar.setAttribute('aria-busy','true');
-    views.innerHTML=viewPillsHtml(filterState);
-    fillSkeletonTier(tags,'pill');
-    wireViewPills();
-  }
+/* 筛选条收起或露出之后补推一次，岛才知道这一刻在不在屏幕上。还没挂过就不必：挂的那一刻自己会算。 */
+function syncCatalogFilterScreen(){if(catalogFilterProps)paintCatalogFilter({})}
+function paintCatalogFilter(patch){
+  const host=$('#catalogFilter');
+  /* 收起时岛只留两排头像：浮层那两排与资料页、索引页的是同一组控件，藏着一份就是两套同名的，
+     等不来的读数微光也会一直挂在页面上。收起时同样不铺静态骨架。 */
+  const offscreen=host.style.display==='none'||document.body.matches('.entity-open,.index-open');
+  patch={...patch,offscreen};
+  catalogFilterProps={...(catalogFilterProps||catalogFilterBase()),...patch};
+  if(catalogFilterMounting)return;
+  if(islandMounted(host)){updateIsland(host,patch);return}
+  if(!host.firstChild&&!offscreen){host.innerHTML=catalogFilterSkeletonHtml(catalogViews(),catalogFilterProps.state);fitSkeleton(host)}
+  catalogFilterMounting=mountIsland('catalog-filter',host,catalogFilterProps)
+    .then(()=>updateIsland(host,catalogFilterProps))
+    .finally(()=>{catalogFilterMounting=null});
 }
-/* 顶上那几排先画一屏够用的量，横滚到右端再续下一批。一排里每个头像都是一张要解码的
-   图，把手上这份全画出来等于让首屏替一个多半不会滚到那么远的人买单；而滚到头就没有
-   了、还剩大半份在内存里没露面，那一排看起来就是「只有这些」。
-   续的门槛留 320px，不是等真的贴到右端：滚到那一刻才开始拼 HTML，手底下已经是一段
-   空白了。手上这份用完再去要下一页：库里六百多位女优，一次全取回来是替一个多半滚不到
-   那里的人买单，取一页就停下则是另一种「只有这些」。 */
-const ROW_FIRST=24,TAGS_FIRST=26,ROW_BATCH=12;
-function wireRowPaging(row,rest,itemHtml,wire,nextPage){
-  if(!row||(!rest.length&&!nextPage))return;
-  let cursor=0,fetching=false,drained=!nextPage;
-  const atEnd=()=>row.scrollLeft+row.clientWidth>=row.scrollWidth-320;
-  /* 续到这一排真的溢出为止再停：宽屏上一批十二个可能还填不满一行，而没溢出就滚不动，
-     滚不动就再没有第二次 `scroll` 来接着续——那一排会停在「还有货但拿不出来」。 */
-  const fill=async()=>{
-    if(fetching)return;
-    let added=false;
-    while(atEnd()){
-      if(cursor>=rest.length){
-        if(drained)break;
-        fetching=true;
-        // 要下一页的这段时间里人还在滚，`fetching` 挡住重入，免得同一页要两遍。
-        const more=await nextPage().catch(()=>[]);
-        fetching=false;
-        if(!more.length){drained=true;break}
-        rest=rest.concat(more);
-      }
-      row.insertAdjacentHTML('beforeend',rest.slice(cursor,cursor+ROW_BATCH).map(itemHtml).join(''));
-      cursor+=ROW_BATCH;added=true;
-    }
-    if(added)wire(row);
-    if(drained&&cursor>=rest.length)row.removeEventListener('scroll',fill);
+function catalogFilterActions(){
+  return {
+    openEntity:(kind,name)=>openEntity(kind,name),
+    /* 按下去当场就推新的按下态，滑动玻璃跟着走，不等这一趟取数。 */
+    setView:view=>{
+      state.state=view;paintCatalogFilter({state:view});
+      route(homePath());buildBars();loadCatalog();
+    },
+    toggleTag:tag=>toggleTag(tag),
+    clearFilter:key=>commitContextFilter(filters=>{filters[key]=''}),
+    clearAll:()=>commitContextFilter(filters=>{filters.tag='';filters.creator='';filters.studio='';filters.owner=''}),
+    setSort:key=>{
+      const next=nextSortState(key,state.sort,state.dir);
+      if(!next)return;
+      state.sort=next.sort;state.dir=next.dir;loadCatalog();
+    },
+    reshuffle:()=>refreshAll(),
+    setLayout:value=>{if(javActive())setJavLayout(value);else setHomeLayout(value)},
+    /* 每排各记各的页号：两排的长度不一样，共用一个计数会让先到头的那排替另一排把页翻过去。
+       页号跟着这一份名单走，`buildBars` 换名单时从头数起。 */
+    moreTops:async kind=>{
+      const pages=catalogTopsPages;if(!pages)return [];
+      const rows=(await loadTops(topsQueryParams(pages.context,++pages[kind])))[kind]||[];
+      return kind==='performers'?rows.map(tierPerformer):rows.map(tierStudio);
+    },
   };
-  row.addEventListener('scroll',fill,{passive:true});
-  fill();
 }
-/* 接线按整排重跑，不只认新添的那几个：`onclick` 是覆盖赋值，旧的那些接第二遍等于没
-   发生，比记住「哪些已经接过」省一份状态。 */
-function wireTierEntities(root){
-  root.querySelectorAll('[data-entity-kind]').forEach(b=>b.onclick=()=>
-    openEntity(b.dataset.entityKind,b.dataset.entityName));
-  // 兜底只剩「装了但读不出来」这一种：文件坏了，或归一漏掉、图小到看不出是什么。
-  // 「没装标识」在 bpHtml 就已经不出图了，走不到这里。
-  root.querySelectorAll('.mk img:not([data-fallback-wired])').forEach(img=>{
-    img.dataset.fallbackWired='1';
-    const fallback=()=>{const box=img.parentNode;if(box)box.textContent=box.dataset.fallback||''};
-    img.addEventListener('error',fallback,{once:true});
-    img.addEventListener('load',()=>{if(img.naturalWidth<32)fallback()},{once:true});
-  });
+/* 读数右边那组分段开关：JAV 与首页各存一份卡片版式，别的目录路径上没有。 */
+function catalogLayoutProp(){
+  if(javActive())return {name:'jav-layout',label:'JAV 卡片版式',value:javLayout(),options:JAV_LAYOUTS};
+  if(homeLayoutActive())return {name:'home-layout',label:'首页卡片版式',value:cardLayout(),options:JAV_LAYOUTS};
+  return null;
 }
-function wireTagPills(root){
-  root.querySelectorAll('[data-tag]').forEach(b=>b.onclick=()=>{toggleTag(b.dataset.tag)});
+/* 下排只由当前 state 决定，这次加载不会改变它，所以每次取数前就推成最终样子。回收站是待清理
+   队列，不是浏览列表：换一批和排序在那里没有意义，读数挂在说明行上，岛不出下排。 */
+function catalogHeadProps(){
+  return {sorts:sortKeys(state.sort,state.dir),layout:catalogLayoutProp(),
+    state:state.state||'',trash:state.state==='trash'};
 }
+/* 标签条的成员由 `buildBars` 定，按下态跟着筛选走：加一条筛选只改按下态，成员与滚动位置不动。 */
+function catalogTags(filters){
+  return catalogTagRows.map(row=>({...row,selected:tagPressed(filters.tag,row.k)}));
+}
+/* 这排圆框只有 48 px，脸在里面本来就小。框越小，同一张图能无损放大的余量越大：
+   `performer-8711` 那种全身站姿照在资料页只放得到 2 倍，在这里放到 3 倍还没碰到
+   源图 1:1。取景与索引页同一份 sidecar、同一个换算。 */
+function tierPerformer(x){
+  return {name:x.k,ringHtml:`<span data-tier-initial>${esc(x.k.slice(0,1))}</span>${entityFaceImg(
+    {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,style:facePos(x.avatar_focus),focus:x.avatar_focus})}`};
+}
+/* 正规厂牌用官网 logo；缺失时只显示首两个字，绝不把作品截图冒充厂牌图标。
+
+   没装标识就不给地址，一个 `<img>` 都不出。无条件出图、靠 `/logo` 回 404 换成首字母的
+   代价是：一排 30 个厂牌里 21 个是 404，而 404 那条响应不可缓存，每次重绘再打一整轮。
+   `has_logo` 由 `/api/tops` 下发，判据和取图同一个函数。 */
+function tierStudio(x){
+  return {name:x.k,fallback:x.k.slice(0,2),
+    logo:x.has_logo?`/logo?studio=${encodeURIComponent(x.k)}&variant=icon`:''};
+}
+/* 首屏时这一块要等两个聚合查询，约一秒。铺上骨架就必须有一次真的绘制来顶掉它，哪怕取回的
+   数据跟上一次一模一样。只在还没画过时铺：导航到已经有内容的页面留着旧内容等新内容，那不是
+   从无到有。React 包没到之前宿主里是壳铺的那份静态骨架（`paintCatalogFilter`），四枚视图已经是
+   真链接，点下去由宿主上的委托接住。 */
+function renderBarsLoading(filterState){
+  if(catalogFilterProps?.tiers)return;
+  barsRendered='';
+  paintCatalogFilter({tiers:null,state:filterState.state||''});
+}
+$('#catalogFilter').addEventListener('click',event=>{
+  const view=event.target.closest?.('[data-catalog-view]');
+  if(!view||event.defaultPrevented)return;
+  event.preventDefault();catalogFilterActions().setView(view.dataset.catalogView);
+});
 /* 展开与收起是同一枚键的两面，`aria-expanded` 说的就是这一组眼下摊开到哪一步，箭头照它
    翻。一个箭头说得完的事不再配一句字：名单末尾那个位置，字比图标更像名单的最后一项。 */
 const sidebarMoreHtml=(key,group)=>`<button class="sidemore" data-more="${key}" aria-expanded="false" aria-label="展开全部${group}"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>`;
@@ -2727,83 +2647,36 @@ async function buildBars(){
   if(context.type==='home')facets=facetData;
   const topTags=facetData.tags||[];
 
-  // 顶部三层：女优圆头像 / 厂牌 / 内容标签
-  /* REP 表只收真能取到头像的代表作：卡片署名圈回落时读的就是它，取不到的进了表
+  /* 顶部三层：女优圆头像 / 厂牌 / 内容标签。
+     REP 表只收真能取到头像的代表作：卡片署名圈回落时读的就是它，取不到的进了表
      就是一个必然 404 的 `<img>`。`has_avatar` 说的是「已经裁好或印相还在」，不是
      「目录里有没有那张 jpg」——`/avatar` 按需生成，还没抓过的那条路留着。 */
   tops.performers.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
   tops.studios.forEach(x=>{if(x.rep&&x.has_avatar)REP[x.k]=x.rep});
-  /* 这排圆框只有 64 px，脸在里面本来就小。框越小，同一张图能无损放大的余量越大：
-     `performer-8711` 那种全身站姿照在资料页只放得到 2 倍，在这里放到 3 倍还没碰到
-     源图 1:1。取景与索引页同一份 sidecar、同一个换算。 */
-  const avHtml=x=>`<button class="av" data-entity-kind="performer" data-entity-name="${esc(x.k)}">
-    <span class="ring"><span class="ini">${esc(x.k.slice(0,1))}</span>${entityFaceImg(
-      {id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
-       style:facePos(x.avatar_focus),focus:x.avatar_focus})}</span>
-    <span class="nm">${esc(x.k)}</span></button>`;
-  /* 正规厂牌用官网 logo；缺失时只显示首字母，绝不把作品截图冒充厂牌图标。
-
-     没装标识就一个 `<img>` 都不输出。无条件出图、靠 `/logo` 回 404 换成首字母的
-     代价是：顶栏一排 30 个厂牌里 21 个是 404，而 404 那条响应不可缓存，每次重绘
-     再打一整轮。`has_logo` 由 `/api/tops` 下发，判据和取图同一个函数。 */
-  const bpHtml=x=>{
-    const fallback=`${esc(x.k.slice(0,2))}`;
-    const mark=x.has_logo
-      ? `<img src="/logo?studio=${encodeURIComponent(x.k)}&variant=icon" alt="">`
-      : fallback;
-    return `<button class="brandpill" data-entity-kind="studio" data-entity-name="${esc(x.k)}">
-      <span class="mk" data-fallback="${fallback}">${mark}</span>${esc(x.k)}</button>`;
-  };
-  // 空的一排仍占 28px，画出来就是一条什么都没有的空带，所以没人就不画那一排。
   // 「两排都空」现在只剩全库真的一个人都没有这一种：窄集合已经由 loadTops 退回全库口径。
-  const perfRow=tops.performers.slice(0,ROW_FIRST).map(avHtml).join('');
-  const studioRow=tops.studios.slice(0,ROW_FIRST).map(bpHtml).join('');
-  const tier=html=>html?`<div class="tier">${html}</div>`:'';
   const emptyHome=context.type==='home'&&!javActive()&&!state.state&&!state.q&&!facetData.locations.some(row=>row.n>0);
-  const emptyLayout=emptyHome?emptyCatalogLayout():null;
-  $('#tiers').innerHTML=emptyLayout?emptyLayout.tiers:tier(perfRow)+tier(studioRow);
-  $('#tiers').hidden=!(emptyLayout||perfRow||studioRow);
-  $('#tiers').removeAttribute('aria-busy');
-  wireTierEntities($('#tiers'));
-  if(!emptyLayout){
-    /* 每排各记各的页号：两排的长度不一样，共用一个计数会让先到头的那排替另一排把页
-       翻过去。同一次重画里建的闭包，重画一次就从头数起。 */
-    const nextTopsPage=kind=>{let page=0;
-      return async()=>(await loadTops(topsQueryParams(context,++page)))[kind]||[]};
-    // 空的那一排根本没画出来，`.tier` 的序号跟着往前挪，认死 0 和 1 会把厂牌续到女优那排。
-    const rows=$('#tiers').querySelectorAll('.tier');let next=0;
-    if(perfRow)wireRowPaging(rows[next++],tops.performers.slice(ROW_FIRST),avHtml,
-      wireTierEntities,nextTopsPage('performers'));
-    if(studioRow)wireRowPaging(rows[next++],tops.studios.slice(ROW_FIRST),bpHtml,
-      wireTierEntities,nextTopsPage('studios'));
-  }
-
-  $('#tagbar').removeAttribute('aria-busy');
-  $('#viewPills').innerHTML=viewPillsHtml(filterState);
+  catalogTopsPages={context,performers:0,studios:0};
   /* 加上去的那几枚排在最前面，按加的先后。它们不一定在抽出来的这一批里，也可能压根不
      在榜上——人是从卡片或详情页点进来的。这一排横着滚，一枚生效的标签落在第三十位跟没
      画出来是一回事：要撤掉刚加的那一条，得先把整排推过去把它找回来。
      第一屏其余的位置由那一批抽样填——「换一批」换的就是这批成员。续上去的是这一批之外
-     剩下的，照数量从多到少读下来：抽样只管开头露谁，后面的顺序不归它管。 */
+     剩下的，照数量从多到少读下来：抽样只管开头露谁，后面的顺序不归它管。
+     标签后面带上这个标签下有多少，跟资料页那条筛选条同一个口径；生效的标签不在这一批里
+     时不印数字（`n` 为空）。 */
   const appliedKeys=tagList(filterState.tag);
   const byTagKey=new Map(topTags.map(row=>[row.k,row]));
   const appliedTags=appliedKeys.map(k=>byTagKey.get(k)||{k});
   const tagPool=topTags.filter(row=>!appliedKeys.includes(row.k));
   const pickedTags=seededSample(tagPool,TAGS_FIRST,`tags:${state.seed||''}`);
   const pickedKeys=new Set(pickedTags.map(row=>row.k));
-  /* 标签后面带上这个标签下有多少，跟资料页那条筛选条同一个口径：这一排每一枚都是
-     可加可不加的筛选，加上去还剩几屏，点之前就该看得到。
-     `appliedTags` 里可能只有一个键——生效的标签不一定在这一批抽样里，那时不印数字。
-     印 0 会说成「这个标签下什么都没有」，而它此刻正筛着一屏内容。 */
-  const tagPillHtml=t=>filterChipHtml(tagLabel(t.k),{attr:'data-tag',value:t.k,
-    selected:tagPressed(filterState.tag,t.k),count:t.n==null?undefined:t.n.toLocaleString()});
-  $('#tagScroll').innerHTML=(emptyLayout?.tags||'')
-    +appliedTags.concat(pickedTags).map(tagPillHtml).join('');
-  wireViewPills();
-  wireTagPills($('#tagScroll'));
-  popBadges($('#tagScroll'),'tagbar');
-  wireRowPaging($('#tagScroll'),tagPool.filter(row=>!pickedKeys.has(row.k)),tagPillHtml,wireTagPills);
-  renderCombo(); wireAllDrag();
+  catalogTagRows=appliedTags.concat(pickedTags,tagPool.filter(row=>!pickedKeys.has(row.k)))
+    .map(row=>({k:row.k,label:tagLabel(row.k),n:row.n??null}));
+  paintCatalogFilter({
+    tiers:{key:String(barsRequestSeq),performers:tops.performers.map(tierPerformer),studios:tops.studios.map(tierStudio)},
+    empty:emptyHome,tags:catalogTags(filterState),tagFirst:appliedTags.length+pickedTags.length,
+    views:catalogViews(),state:filterState.state||'',
+  });
+  renderCombo();
 
   const chips=(items,key,multi,limit)=>items.length?`<div class="chips">`+items.slice(0,limit||999).map(it=>{
     const sel=(filterState[key]||'').split(',').filter(Boolean).includes(String(it.k));
@@ -2906,9 +2779,8 @@ async function buildBars(){
     if(expanded)group.querySelector('.board-section-toggle').click();
     bind();hold();requestAnimationFrame(hold);});
 }
-/* 排序和换批都属于当前列表，放在计数行，不占用全局导航。目录网格每接一页报一次总数与
-   显示的卡数（竖屏带与 Mix 不算）；读数那一格（`data-count-readout`）由网格按位错峰写进去，
-   它记着上一次的值，分得清「换了个数」和「刚建出来」。 */
+/* 排序和换批都属于当前列表，放在筛选条下排，不占用全局导航。目录网格每接一页报一次总数与
+   显示的卡数（竖屏带与 Mix 不算），读数由岛按位错峰写出来。 */
 function paintCatalogCount(nextTotal,n){
   total=nextTotal;buildManageBar();
   const trash=state.state==='trash';
@@ -2916,13 +2788,7 @@ function paintCatalogCount(nextTotal,n){
      标题和网格之间会空出一条只放一个按钮的带子。 */
   if(trash)paintManageLede(`${total.toLocaleString()} 个符合 · 显示 ${n}`,
     total?`<button class="batchaction danger" id="emptyTrash" type="button" title="永久删除回收站内容">清空回收站</button>`:'');
-  $('#count').classList.toggle('count-actions-only',trash);
-  $('#count').removeAttribute('aria-busy');$('#count').removeAttribute('aria-label');
-  $('#count').innerHTML=
-    (trash?'':`<span class="mono" data-count-readout></span>`)
-    // 回收站是待清理队列，不是浏览列表：换一批和排序在这里没有意义。
-    +(trash?'':countSortsHtml());
-  wireCountRow();
+  paintCatalogFilter({count:{total,shown:n}});
   const emptyTrash=$('#emptyTrash');
   if(emptyTrash)emptyTrash.onclick=async(e)=>{
     return confirmModal({title:'清空回收站',body:'回收站中的全部文件和馆藏记录将永久删除，无法恢复。',confirmLabel:'清空回收站',danger:true,onConfirm:async()=>{
@@ -2951,7 +2817,7 @@ function toggleTag(t){commitContextFilter(filters=>{filters.tag=t?withTagToggled
 const catalogOnScreen=()=>$('#index').hidden&&$('#stats').hidden;
 const COMBO_LABELS={creator:'创作者',studio:'厂牌',owner:'归属'};
 /* 生效的筛选一颗一颗列出来：先是创作者、厂牌与归属这几条整项的，再是叠加的标签。目录那条
-   拼成 HTML，资料页那条（`entity-filter` 岛）直接拿这份清单画。 */
+   （`catalog-filter` 岛）与资料页那条（`entity-filter` 岛）拿同一份清单画。 */
 function comboItems(filters){
   const items=[];
   if(filters.creator)items.push({kind:'clear',key:'creator',label:`${COMBO_LABELS.creator} ${filters.creator}`});
@@ -2960,31 +2826,14 @@ function comboItems(filters){
   tagList(filters.tag).forEach(t=>items.push({kind:'untag',key:t,label:tagLabel(t)}));
   return items;
 }
-function comboHtml(filters){
-  const items=comboItems(filters);
-  if(!items.length)return '';
-  return items.map(item=>item.kind==='clear'
-    ?`<span class="cb">${esc(item.label)}<b data-clear="${item.key}">✕</b></span>`
-    :`<span class="cb">${esc(item.label)} <b data-untag="${esc(item.key)}">✕</b></span>`).join('')
-    +`<button class="clr" type="button">全部清除</button>`;
-}
-function wireCombo(root){
-  root.querySelectorAll('[data-untag]').forEach(b=>b.onclick=()=>toggleTag(b.dataset.untag));
-  root.querySelectorAll('[data-clear]').forEach(b=>b.onclick=()=>
-    commitContextFilter(filters=>{filters[b.dataset.clear]=''}));
-  const clear=root.querySelector('.clr');
-  if(clear)clear.onclick=()=>commitContextFilter(filters=>{
-    filters.tag='';filters.creator='';filters.studio='';filters.owner=''});
-}
 /* 资料页有自己的一条，挂在这一页的玻璃浮层正上方，所指的是这一页的筛选；目录那条这时
-   跟目录一起被盖住。两条是同一样东西，清单和落点都共用。 */
+   跟目录一起被盖住。两条是同一样东西，清单、组件和落点都共用。 */
 function renderCombo(){
   if(barsContext.type==='entity')pushEntityFilter({combo:comboItems(barsContext.filters)});
-  if(!catalogOnScreen()){$('#combo').innerHTML='';return}
-  $('#combo').innerHTML=
-    comboHtml(state);
-  wireCombo($('#combo'));
+  paintCatalogFilter({combo:comboItems(state),comboHidden:!catalogOnScreen()});
 }
+/* 盖住目录的整页入口当场收起目录那条。筛选条还没挂过时没有东西可收。 */
+const hideCatalogCombo=()=>{if(catalogFilterProps)paintCatalogFilter({comboHidden:true})};
 
 /* ── 统计与管理 ── */
 /* 账本只读时铺在复核页与关注管理页顶上的那一条，用的就是 Note，不另画一只框：
@@ -3029,7 +2878,7 @@ function showManagementBody({manage=true,placeholder=''}={}){
 function enterManagementSurface(){
   // A catalog request started before browser Back must not repaint filters over
   // the management page after it resolves.
-  loadRequestSeq++;$('#combo').innerHTML='';
+  loadRequestSeq++;hideCatalogCombo();
   hideDiscoveryBars();
   document.body.classList.remove('entity-open','index-open');
 }
@@ -3050,14 +2899,14 @@ async function openStats(push=true){
 }
 function showHomeSurfaces(){
   // 两个类都要清：只清 entity-open 会让从索引页回首页时顶栏一直空着，
-  // 而且下面那两行 style.display='' 恢复不了被 class 隐藏的元素。
+  // 而且下面那一行 style.display='' 恢复不了被 class 隐藏的元素。
   document.body.classList.remove('entity-open','index-open');
   /* 索引页和资料页都画进 #index，两条路都先经过这里再 `innerHTML=`：直接盖掉的话，
      上一页挂在里面的 React 根（换头像）就没人卸，留着一棵管着已经不在页面上的节点的根。 */
   unmountIsland($('#index'));
   $('#stats').hidden=true;$('#index').hidden=true;
   if(!isFeedNewPath(location.pathname))$('#feedNew').hidden=true;
-  $('#tiers').style.display='';$('#tagbar').style.display='';
+  $('#catalogFilter').style.display='';syncCatalogFilterScreen();
   buildManageBar();paintListTitle();   // 放在最后：管理区要盖掉上面刚恢复的首页横条
 }
 function closeStats(push=true){if(push)route('/');showHomeSurfaces();loadCatalog()}
@@ -4129,7 +3978,7 @@ function indexPlaceholderHtml({kind,q,scope,view}){
    shimmer 从头放一遍。 */
 function showIndexSkeleton(params){
   releaseEntityBody();
-  $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();$('#combo').innerHTML='';
+  $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();hideCatalogCombo();
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const placeholder=indexPlaceholderHtml(params);
   if($('#index').querySelector('[data-skeleton]')?.dataset.skeleton!==skeletonKeyOf(placeholder)){
@@ -4167,7 +4016,7 @@ async function openIndex(kind,push=true){
   showHomeSurfaces();
   // 必须在 showHomeSurfaces 之后加：它会清掉这两个类并恢复顶部横条，
   // 写在前面等于自己加完自己删。
-  document.body.classList.add('index-open');
+  document.body.classList.add('index-open');syncCatalogFilterScreen();
   disposeStage(false);
   showIndexSkeleton(params);
   await mountIsland('index',$('#index'),{...params,layout:peopleIndexLayout(),selectMode,
@@ -4239,11 +4088,14 @@ function pushEntityFilter(patch){if(entityFilterCurrent())updateIsland(entityFil
    决定现在该看哪儿。数的是这个人／厂牌名下带这个标签的视频。 */
 function entityFilterTags(filters){
   return entityFilterTagRows.map(x=>({k:x.k,label:tagLabel(x.k),n:x.n,selected:tagPressed(filters.tag,x.k)}))}
-/* 排序键同首页那一排：箭头只画在选中那一枚上，无障碍名称播报的是点下去会得到什么。 */
-const entitySortKeys=filters=>sortOptions().map(([key,label])=>{
-  const current=filters.sort||'new',pressed=current===key,next=nextSortState(key,current,filters.dir);
-  return {key,label,pressed,dir:pressed&&sortDirWord(key,filters.dir)?(filters.dir==='asc'?'asc':'desc'):'',
-    ariaLabel:next?`按${label}${next.dir?sortDirWord(next.sort,next.dir):''}排序`:''}});
+/* 首页与资料页的排序键：箭头只画在选中那一枚上，无障碍名称播报的是点下去会得到什么。 */
+function sortKeys(current,dir){
+  return sortOptions().map(([key,label])=>{
+    const pressed=current===key,next=nextSortState(key,current,dir);
+    return {key,label,pressed,dir:pressed&&sortDirWord(key,dir)?(dir==='asc'?'asc':'desc'):'',
+      ariaLabel:next?`按${label}${next.dir?sortDirWord(next.sort,next.dir):''}排序`:''}});
+}
+const entitySortKeys=filters=>sortKeys(filters.sort||'new',filters.dir);
 const entityVideoHead=filters=>({sorts:entitySortKeys(filters),
   jav:javActive()?{layout:javLayout(),options:JAV_LAYOUTS}:null});
 /* 这一页的写操作都回到壳里同一套落点：筛选走 `commitContextFilter`／`updateEntityCollection`，
@@ -4709,8 +4561,8 @@ async function openEntity(kind,name,push=true){
   barsContext={type:'entity',kind,name,filters};
   showHomeSurfaces();
   disposeStage(false);
-  document.body.classList.add('entity-open');
-  $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();$('#combo').innerHTML='';
+  document.body.classList.add('entity-open');syncCatalogFilterScreen();
+  $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();hideCatalogCombo();
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const seq=++entityRequestSeq;
   /* 名单启动时就在取；深链直接落在资料页时它可能还在路上，稍等一下再画骨架，画出来
@@ -4742,7 +4594,7 @@ async function openEntity(kind,name,push=true){
      语境，避免大图／小图／预览图按钮只在从 JAV 首页点进来时偶然存在。 */
   entityJavLayout=(kind==='performer'||kind==='studio')&&
     (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
-  document.body.classList.add('entity-open');
+  document.body.classList.add('entity-open');syncCatalogFilterScreen();
   $('#index').hidden=false;clearCatalogGrid();$('#count').textContent='';
   $('#loadSentinel').hidden=true;
   entityFilterTagRows=d.tags||[];
@@ -5080,10 +4932,9 @@ function buildManageBar(){
   // 管理区是行政界面，不该顶着首页的人物/厂牌横条和标签筛选。
   // 隐藏 tagbar 的同时同步 count 栏的吸顶偏移：它默认按「顶栏+筛选条」留位，
   // 筛选条不在时那个偏移会留出一条 58px 的缝，滚动内容从缝里穿出来。
-  if(current){$('#tiers').style.display='none';$('#tagbar').style.display='none'}
+  if(current)hideDiscoveryBars();
   $('#count').classList.toggle('no-tagbar',!!current);
   buildEdge();     // 顶层高亮跟随管理区；否则从首页进来时仍停在「首页」上
-  paintJavBar();
   paintManageTitle();
   if(!current)return;
   const entry=MANAGE_SECTIONS.find(([k])=>k===current);
@@ -5204,18 +5055,6 @@ function sortOptions(){
   const ordered=SORTS.filter(([key])=>key!=='seed');
   return javActive()?[JAV_RELEASE_SORT,...ordered]:ordered;
 }
-/* 方向只画在选中的那一枚上：箭头既是当前方向，也是「再点一次能翻」的唯一提示。
-   未选中项不画箭头——那会变成八个方向按钮，其中七个的方向此刻不生效。
-   箭头对辅助技术隐藏（`icon()` 自带 aria-hidden），无障碍名称播报的是「点下去会得到
-   什么」而不是当前状态：Geist Table 的可排序表头就是这么分工的，当前状态由
-   `aria-pressed` 和这枚箭头各自表达，名称留给下一步动作。 */
-function sortButtonHtml(key,label,current,dir,attr,words=SORT_DIR_WORDS){
-  const on=current===key,next=nextSortState(key,current,dir,words);
-  const word=on?sortDirWord(key,dir,words):'';
-  return `<button type="button" ${attr}="${key}" aria-pressed="${on}"${
-    next?` aria-label="按${label}${next.dir?sortDirWord(next.sort,next.dir,words):''}排序"`:''}>${label}${
-    word?icon(dir==='asc'?'arrow-up':'arrow-down','sortdir'):''}</button>`;
-}
 /* 点未选中项＝换列并用该列的默认方向；点选中项＝翻方向。随机没有方向，重复点它
    什么都不做——换一批是它旁边那枚按钮的事。 */
 function nextSortState(key,current,dir,words=SORT_DIR_WORDS){
@@ -5226,10 +5065,6 @@ function nextSortState(key,current,dir,words=SORT_DIR_WORDS){
 function javLayout(){
   return normalizeJavLayout(appSettings.javLayout);
 }
-function javLayoutButtons(){
-  return iconSwitchHtml('jav-layout','JAV 卡片版式',JAV_LAYOUTS,javLayout(),
-    {attr:'data-jav-layout',className:'javlayout'});
-}
 /* 首页与 JAV 视图分别保存版式。大图统一作品卡与 Mix 的画面框，预览图完整居中并留黑边。 */
 function homeLayoutActive(){
   return decodeURIComponent(location.pathname)==='/'&&state.jav!=='1';
@@ -5238,38 +5073,29 @@ function cardLayoutActive(){return javActive()||homeLayoutActive()}
 function cardLayout(){
   return homeLayoutActive()?normalizeJavLayout(appSettings.homeLayout):javLayout();
 }
-function homeLayoutButtons(){
-  return iconSwitchHtml('home-layout','首页卡片版式',JAV_LAYOUTS,cardLayout(),
-    {attr:'data-home-layout',className:'javlayout'});
-}
 function setHomeLayout(value){
   appSettings.homeLayout=normalizeJavLayout(value);
   saveSettings();
-  document.querySelectorAll('[data-home-layout]').forEach(input=>{input.checked=input.value===appSettings.homeLayout});
   syncVideoLayoutSetting();
   if(!$('#grid').hidden)repaintCatalogGrid();
 }
-function wireJavLayoutButtons(root){wireIconSwitch(root,'data-jav-layout',setJavLayout)}
 function setJavLayout(value){
   appSettings.javLayout=normalizeJavLayout(value);
   saveSettings();
-  document.querySelectorAll('[data-jav-layout]').forEach(input=>{input.checked=input.value===appSettings.javLayout});
   syncVideoLayoutSetting();
   // 只重画卡片，不重新请求：版式是纯展示层的事。资料页保留已经载入的分页。
   repaintCatalogGrid();
 }
+/* 版式开关在两处：设置里那一组与筛选条下排那一组，改了哪边都让另一边跟上。 */
 function syncVideoLayoutSetting(){
   document.querySelectorAll('[data-video-layout]').forEach(input=>{input.checked=input.value===cardLayout()});
+  if(catalogFilterProps)paintCatalogFilter({layout:catalogLayoutProp()});
 }
 function setVideoLayout(value){
   appSettings.homeLayout=appSettings.javLayout=normalizeJavLayout(value);
   saveSettings();
-  document.querySelectorAll('[data-home-layout],[data-jav-layout],[data-video-layout]').forEach(input=>{input.checked=input.value===appSettings.javLayout});
+  syncVideoLayoutSetting();
   repaintCatalogGrid();
-}
-function paintJavBar(){
-  // 版式按钮现在长在排序行里（见 renderCount），这里只负责收掉旧容器。
-  const bar=$('#javbar');if(bar)bar.hidden=true;
 }
 function toggleJavMode(){
   state.jav=state.jav==='1'?'':'1';
@@ -5389,7 +5215,7 @@ function updateMobileFilterScroll(){
 }
 function updateStickySurfaces(){
   updateMobileFilterScroll();
-  ['.board-filter-frame','#tagbar','#count'].forEach(selector=>{
+  ['.board-filter-frame','#count'].forEach(selector=>{
     const el=$(selector),css=el&&getComputedStyle(el),top=css?parseFloat(css.top):NaN;
     const stuck=!!el&&css.position==='sticky'&&el.offsetParent!==null&&window.scrollY>0&&
       Number.isFinite(top)&&el.getBoundingClientRect().top-(parseFloat(css.translate.split(' ')[1])||0)<=top+1;
@@ -5411,11 +5237,7 @@ window.addEventListener('scroll',()=>{
   releaseHoverPreviews();
   clearTimeout(scrollT); scrollT=setTimeout(()=>{window.__scrolling=false},180);
 },{passive:true});
-/* 换了宽度就把那块玻璃重新落一次位：过了那道断点，这一排是不是住在横滚容器里
-   会变，玻璃该落在哪一层跟着变，量出来的位置也跟着变。不重落的话它留在旧的那一层上，
-   坐标还是按旧的算的，停在离按钮几百像素远的地方。 */
-window.addEventListener('resize',()=>{scheduleStickySurfaces();
-  Object.keys(GLIDE_ROWS).forEach(kind=>syncViewGlide(false,null,kind))},{passive:true});
+window.addEventListener('resize',scheduleStickySurfaces,{passive:true});
 
 $('#scrim').onclick=()=>openDrawer(false);
 
@@ -5590,262 +5412,65 @@ function junkQueueProps(){
     canLoadMore:()=>$('#stats').hidden&&$('#index').hidden,
   };
 }
-let searchPoolCache=[];
-let searchPoolRequest=0;
-function searchPool(){return searchPoolCache}
-async function loadSearchPool(){
-  const request=++searchPoolRequest;
-  searchPoolCache=[];
-  $('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
-  try{
-    const names=await catalogSuggestions(state,api);
-    if(request!==searchPoolRequest)return searchPool();
-    searchPoolCache=names;
-    const searchSuggestion=names[Math.floor(Math.random()*names.length)]||'';
-    $('#q').dataset.suggestion=searchSuggestion;$('#q').placeholder=searchSuggestion||'搜索馆藏';
-  }catch(e){/* 推荐不可用时仍可直接输入搜索。 */}
-  return searchPool();
-}
-$('#q').dataset.suggestion='';$('#q').placeholder='搜索馆藏';
-let searchHistory=[];
-function readSearchHistory(){return searchHistory.slice(0,appSettings.searchHistoryLimit)}
-const loadSearchHistory=()=>!appSettings.searchHistoryLimit?Promise.resolve([]):api('/api/search-history?limit='+appSettings.searchHistoryLimit).then(d=>{searchHistory=Array.isArray(d.items)?d.items:[];return searchHistory}).catch(()=>searchHistory);
-function writeSearchHistory(list){searchHistory=list.slice(0,appSettings.searchHistoryLimit);return searchHistory}
+/* ── 顶栏搜索 ──
+   输入框 `#q` 是顶栏的静态节点；下拉栏里的记录、推荐、补全、键盘选中与提交归 `search` 岛，
+   提交与打开都回这里走路由。残影（`clearSearchField`）、窄屏开合、失焦与外点收起也还在壳里，
+   收起一律经岛交出来的 `close()`。 */
+let searchControl=null;
 function applySearchHistoryLimit(limit){
-  appSettings.searchHistoryLimit=boundedPreference(limit,0,50,10);saveSettings();writeSearchHistory(readSearchHistory());
+  appSettings.searchHistoryLimit=boundedPreference(limit,0,50,10);saveSettings();
+  updateIsland($('#searchMenu'),{historyLimit:appSettings.searchHistoryLimit});
 }
 function postSearchHistoryLimit(){
   return api('/api/settings',{method:'POST',body:JSON.stringify({searchHistoryLimit:appSettings.searchHistoryLimit})}).catch(()=>{});
 }
-// 搜索本身是只读能力；账本暂时只读时，历史记录降级为本次页面内存，不能让一个
-// 非关键 POST 变成未处理异常或妨碍搜索结果。
-const rememberSearch=async query=>{if(!query||!appSettings.searchHistoryLimit)return;
-  writeSearchHistory([query,...readSearchHistory().filter(x=>foldName(x)!==foldName(query))]);
-  await api('/api/search-history',{method:'POST',body:JSON.stringify({query})}).catch(()=>null)};
-function hideSearchMenu(){dismissMenu($('#searchMenu'))}
-/* 敲一下就查一次的补全。分组顺序和每组的名字都由 `/api/suggest` 给出，这里照抄：
-   两侧各排一次的话，改了一侧就会出现「后端认为最该先看的组显示在第三位」。 */
-const SUGGEST_DEBOUNCE=150;
-/* 「全部」每类给前几条，点一个页签再按这一类一次拉满。页签上的数是这段输入在那一类
-   里一共命中多少，由「全部」那一次带回来，切页签不重算。 */
-const SUGGEST_EACH=5,SUGGEST_ONE_KIND=20;
-let suggestGroups=[],suggestFor='',suggestRequest=0,suggestTimer=0,suggestKind='',suggestTabs=[];
-async function loadSuggestions(query,kind=''){
-  const request=++suggestRequest;
-  try{
-    const data=await api('/api/suggest?q='+encodeURIComponent(query)+
-      (kind?`&kind=${kind}&limit=${SUGGEST_ONE_KIND}`:`&limit=${SUGGEST_EACH}`));
-    /* 慢的旧响应不许盖掉新的。连敲两个字时先发的那次完全可能后回来，盖回去
-       就是下拉里挂着上一个字的补全，而输入框里已经是下一个字了。 */
-    if(request!==suggestRequest)return;
-    suggestFor=data.q||'';suggestGroups=data.groups||[];
-    if(!kind)suggestTabs=suggestGroups.map(({kind,label,total})=>({kind,label,total}));
-  }catch(e){if(request===suggestRequest){suggestFor=query;suggestGroups=[]}}
-}
-/* 有脸的那几类点开的是资料页，标签没有资料页，点它照旧是按这个词搜。 */
-const SUGGEST_PROFILE_KINDS=new Set(['performer','creator','studio','agency','series']);
-/* 下拉栏按宽度分两栏：左栏是身份和词，右栏是作品封面格。两栏各自仍按后端给的先后排，
-   窄到一栏时两栏首尾相接，就是后端的原顺序——作品垫底。 */
-const SUGGEST_RIGHT_KINDS=new Set(['asset']);
+function hideSearchMenu(){searchControl?.close()}
 /* 小图和卡片同一套取景：正封按 `--card-ratio` 从封套里切出来，番号作品跟随
    「JAV 默认封面」设置。两样都没有的画一块「无预览」，格子不塌。 */
-function searchCover(card){
+function searchCoverImage(card){
   const kind=card?javImageKind({...card,is_jav:!!card.code},appSettings.javImage):'';
-  const image=kind==='cover'?coverImage(card,'big')
+  return kind==='cover'?coverImage(card,'big')
     :kind?`<img class="poster still" src="/poster?id=${card.id}&c=4" alt="" loading="lazy" data-drop="self">`
     :'<span class="nopic">无预览</span>';
-  return `<span class="pic">${image}</span>`;
 }
-/* 人和公司的门面走索引页同一条兜底链：人是实体图 → 代表作头像，厂牌是标识，
-   事务所是官网站点圆标；都取不到就是首字母。 */
-function searchFace(item,kind){
-  const ref={id:item.entity_id,has_image:item.has_image,avatar_focus:item.avatar_focus};
-  return `<span class="searchface" data-kind="${kind}">`+
-    avatarInner(item.value,ref,item.rep||null,kind,item.mark||null,item.has_logo?item.value:'',
-                'icon',undefined,true)+'</span>';
-}
-function suggestionRow(item,kind){
-  const matched=item.matched?`<span class="matched">${esc(item.matched)}</span>`:'';
-  if(kind==='asset'){
-    /* 作品点开是详情，不是一个搜索词：整句标题填回搜索框，下一次搜索会因为其中任何
-       一个字符对不上而落空。 */
-    const byline=[item.who,item.code?item.title:''].filter(Boolean).map(esc).join(' · ');
-    return `<div class="searchoption searchwork" data-search-value="${esc(item.value)}" data-open-item="${item.id}">`+
-      `${searchCover(item.card)}<span class="searchmeta"><span class="searchname">${esc(item.value)}</span>`+
-      `<span class="searchsub">${byline}</span></span></div>`;
-  }
-  const open=SUGGEST_PROFILE_KINDS.has(kind)?` data-open-entity="${kind}"`:'';
-  if(kind==='performer'||kind==='creator'){
-    // 一行里摆得下几部近作就摆几部；窄下拉整排收起，数据照给，缓存键不跟着宽度分叉。
-    const works=(item.works||[]).map(card=>
-      `<button type="button" class="searchpeek" data-open-work="${card.id}" aria-label="打开 ${esc(card.code||item.value)}">${searchCover(card)}</button>`).join('');
-    const sub=[`${item.n.toLocaleString()} 个视频`,item.agency].filter(Boolean).map(esc).join(' · ');
-    return `<div class="searchoption searchperson" data-search-value="${esc(item.value)}"${open}>`+
-      `${searchFace(item,kind)}<span class="searchmeta"><span class="searchname"><span>${esc(item.value)}</span>${matched}</span>`+
-      `<span class="searchsub">${sub}</span></span>${works?`<span class="searchpeeks">${works}</span>`:''}</div>`;
-  }
-  const face=kind==='studio'||kind==='agency'?searchFace(item,kind):'';
-  return `<div class="searchoption" data-search-value="${esc(item.value)}"${open}>${face}<span>${esc(item.value)}</span>`+
-    `${matched}${item.n?`<span class="n">${item.n.toLocaleString()}</span>`:''}</div>`;
-}
-function renderSearchMenu(){const menu=$('#searchMenu'),query=$('#q').value.trim();
-  // 有输入时历史跟着筛：这一刻用户在找一个词，不是在回顾自己搜过什么。
-  const history=readSearchHistory().filter(x=>!query||foldName(x).includes(foldName(query)));
-  const recommendations=query?[]:[...searchPool()].sort(()=>Math.random()-.5).filter(x=>!history.some(h=>foldName(h)===foldName(x))).slice(0,5);
-  const row=(value,type)=>`<div class="searchoption" data-search-value="${esc(value)}">${icon(type==='history'?'history':'sparkles')}<span>${esc(value)}</span>${type==='history'?`<button class="removehistory" data-remove-history="${esc(value)}" aria-label="删除历史 ${esc(value)}">${icon('x')}</button>`:''}</div>`;
-  const fresh=!!query&&suggestFor===query;
-  // 选了一类就只画这一类；拉满那一类的请求还在路上时，先用「全部」里的那几条顶着。
-  const groups=(fresh?suggestGroups:[]).filter(group=>!suggestKind||group.kind===suggestKind);
-  const section=group=>`<section class="searchgroup" data-kind="${group.kind}"><h3>${esc(group.label)}</h3>`+
-    `<div class="searchitems">${group.items.map(item=>suggestionRow(item,group.kind)).join('')}</div></section>`;
-  const left=groups.filter(group=>!SUGGEST_RIGHT_KINDS.has(group.kind)).map(section).join('');
-  const right=groups.filter(group=>SUGGEST_RIGHT_KINDS.has(group.kind)).map(section).join('');
-  /* 页签只在命中不止一类时出现：只有一类的话「全部」和那一类是同一屏。 */
-  const tab=(kind,label,total)=>`<button type="button" role="tab" data-suggest-kind="${kind}" aria-selected="${suggestKind===kind}">`+
-    `${esc(label)}${total?`<span class="board-tab-count">${total.toLocaleString()}</span>`:''}</button>`;
-  const tabs=fresh&&suggestTabs.length>1?`<div class="searchtabs" role="tablist" aria-label="按种类看补全">`+
-    tab('','全部',0)+suggestTabs.map(t=>tab(t.kind,t.label,t.total)).join('')+'</div>':'';
-  const columns=(a,b)=>a||b?`<div class="searchresults"${a&&b?' data-split':''}>`+
-    (a?`<div class="searchcol">${a}</div>`:'')+(b?`<div class="searchcol">${b}</div>`:'')+'</div>':'';
-  const recent=history.length?`<section class="searchgroup"><h3>搜索记录</h3>${history.map(x=>row(x,'history')).join('')}</section>`:'';
-  const picks=recommendations.length?`<section class="searchgroup"><h3>推荐</h3>${recommendations.map(x=>row(x,'recommend')).join('')}</section>`:'';
-  /* 页签管的是整个下拉栏，所以排在最上面；选了一类时搜索记录让位，那一屏只有这一类。
-     空输入时是记录和推荐两组短词，宽下拉并排放，不必竖着排出一长条。 */
-  menu.innerHTML=query?tabs+(suggestKind?'':recent)+columns(left,right):columns(recent,picks);
-  if(menu.innerHTML)presentMenu(menu);else hideSearchMenu();searchActive=-1;
-  menu.querySelectorAll('[data-suggest-kind]').forEach(b=>{
-    // 按下不抢焦点：抢走会触发 `#q` 的 blur，140ms 后整个下拉栏收掉，页签等于白点。
-    b.onmousedown=e=>e.preventDefault();
-    b.onclick=()=>pickSuggestKind(b.dataset.suggestKind);
-  });
-  // 窄屏页签排不下时右缘渐隐，看得出还能往右拨。
-  wireHorizontalScroller(menu.querySelector('.searchtabs'));
-  menu.querySelectorAll('[data-open-work]').forEach(b=>{
-    b.onmousedown=e=>e.preventDefault();
-    b.onclick=e=>{e.stopPropagation();hideSearchMenu();$('#q').blur();openItem(+b.dataset.openWork)};
-  });
-  menu.querySelectorAll('[data-search-value]').forEach(x=>x.onclick=e=>{if(e.target.closest('[data-remove-history]'))return;
-    hideSearchMenu();
-    if(x.dataset.openItem){$('#q').blur();openItem(+x.dataset.openItem);return}
-    if(x.dataset.openEntity){openSuggestedEntity(x);return}
-    $('#q').value=x.dataset.searchValue;runSearch(false,true)});
-  menu.querySelectorAll('[data-remove-history]').forEach(b=>{
-    /* 按下就 preventDefault，不让删除按钮把焦点从输入框抢走。抢走会触发 `#q` 的
-       blur，那个 handler 140ms 后无条件 `hidden=true`，于是「删一条记录」实际等于
-       「关掉整个下拉栏」。 */
-    b.onmousedown=e=>e.preventDefault();
-    b.onclick=async e=>{
-      e.stopPropagation();
-      const value=b.dataset.removeHistory;
-      await api('/api/search-history',{method:'POST',body:JSON.stringify({operation:'remove',query:value})}).catch(()=>null);
-      writeSearchHistory(readSearchHistory().filter(x=>foldName(x)!==foldName(value)));
-      /* 只摘掉这一行，不整段重建：`renderSearchMenu` 每次都会把推荐词重新洗牌，
-         删一条历史却换了一批推荐，看着像列表自己跳了。 */
-      const row=b.closest('[data-search-value]'),group=row&&row.closest('.searchgroup');
-      if(row)row.remove();
-      if(group&&!group.querySelector('[data-search-value]'))group.remove();
-      // 行没了，键盘选中的下标就指不回同一项，归零重来。
-      searchActive=-1;
-      menu.querySelectorAll('[data-search-value]').forEach(x=>x.classList.remove('active'));
-    };
-  })}
-function runSearch(useSuggestion=false,committed=false){let query=$('#q').value.trim();
-  if(useSuggestion&&!query){query=$('#q').dataset.suggestion||'';$('#q').value=query}
-  rememberSearchValue();
-  if(committed)rememberSearch(query);
-  disposeStage(false);
-  state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);loadCatalog()}
-/* 人、公司和系列点开就是资料页，不绕一趟搜索：按名字搜出来的是一屏作品，而用户点的
-   是「这个人」。记进搜索记录的是这个名字，下次聚焦还找得回来。 */
-function openSuggestedEntity(option){
-  const name=option.dataset.searchValue;
-  $('#q').blur();
-  rememberSearch(name);
-  openEntity(option.dataset.openEntity,name);
-}
-function pickSuggestKind(kind){
-  const query=$('#q').value.trim();
-  if(!query||kind===suggestKind)return;
-  suggestKind=kind;
-  clearTimeout(suggestTimer);
-  renderSearchMenu();
-  $('#searchMenu').scrollTop=0;
-  loadSuggestions(query,kind).then(()=>{
-    if(document.activeElement===$('#q')&&suggestKind===kind)renderSearchMenu()});
-}
-const searchOptions=()=>{const menu=$('#searchMenu');
-  return menu.hidden?[]:[...menu.querySelectorAll('[data-search-value]')]};
-function moveSearchActive(step){
-  const options=searchOptions();if(!options.length)return false;
-  searchActive=(searchActive+step+options.length)%options.length;
-  options.forEach((option,index)=>option.classList.toggle('active',index===searchActive));
-  options[searchActive].scrollIntoView({block:'nearest'});
-  return true;
-}
-/* 每一下输入都排一次补全，但只发一次请求：150ms 内继续敲就换掉上一次的排期。
-   先按手头已有的内容重绘一遍，下拉栏不会在等请求的这段里空着。 */
-const refreshSearchMenu=()=>{searchActive=-1;
-  // 换了词就回到「全部」：上一个词选中的那一类，这个词下可能一条都没有。
-  suggestKind='';
-  clearTimeout(suggestTimer);
-  const query=$('#q').value.trim();
-  if(!query){suggestFor='';suggestGroups=[]}
-  if(!$('#searchMenu').hidden)renderSearchMenu();
-  if(!query)return;
-  suggestTimer=setTimeout(()=>loadSuggestions(query).then(()=>{
-    /* 回调回来时焦点可能已经不在输入框上：失焦那条 140ms 的兜底先把下拉栏收了，
-       晚到的 then 再把它掀开，而这一刻没有焦点，也就再不会有第二次失焦来收场。 */
-    if(document.activeElement===$('#q'))renderSearchMenu()}),SUGGEST_DEBOUNCE)};
-const handleSearchInput=e=>{
-  if(e.isComposing)return;
-  const input=$('#q'),next=input.value;
-  if(!next&&searchValueSnapshot.text)clearSearchField(searchValueSnapshot);
-  else{
-    if(next){cancelSearchDissolve();cancelSearchDissolve=()=>{}}
-    rememberSearchValue(input);
-  }
-  refreshSearchMenu();
+const searchActions={
+  search:query=>{
+    rememberSearchValue();disposeStage(false);
+    state.q=query;route(state.q?'/?q='+encodeURIComponent(state.q):'/',true);loadCatalog();
+  },
+  openItem:id=>openItem(id),
+  openEntity:(kind,name)=>openEntity(kind,name),
 };
-$('#q').oninput=handleSearchInput;
-$('#q').addEventListener('compositionend',handleSearchInput);
-$('#q').addEventListener('compositionstart',()=>{cancelSearchDissolve();cancelSearchDissolve=()=>{}});
+const searchHelpers={
+  pool:()=>catalogSuggestions(state,api),
+  /* `.pic` 是卡片封面那一格（比例、底色、圆角与模糊垫底都认它），和里面那张图一起由壳给。 */
+  coverHtml:card=>`<span class="pic">${searchCoverImage(card)}</span>`,
+  /* 人和公司的门面走索引页同一条兜底链：人是实体图 → 代表作头像，厂牌是标识，
+     事务所是官网站点圆标；都取不到就是首字母。 */
+  faceHtml:(item,kind)=>avatarInner(item.value,{id:item.entity_id,has_image:item.has_image,avatar_focus:item.avatar_focus},
+    item.rep||null,kind,item.mark||null,item.has_logo?item.value:'','icon',undefined,true),
+  present:menu=>presentMenu(menu),
+  dismiss:menu=>dismissMenu(menu),
+  wireScroller:row=>wireHorizontalScroller(row),
+  /* 字变了：清空时照着上一刻的字留一段残影，敲进新字就收掉正在散的那段。 */
+  typed:input=>{
+    const next=input.value;
+    if(!next&&searchValueSnapshot.text)clearSearchField(searchValueSnapshot);
+    else{
+      if(next){cancelSearchDissolve();cancelSearchDissolve=()=>{}}
+      rememberSearchValue(input);
+    }
+  },
+  composing:()=>{cancelSearchDissolve();cancelSearchDissolve=()=>{}},
+  clearField:input=>clearSearchField({text:input.value,scrollLeft:input.scrollLeft||searchValueSnapshot.scrollLeft}),
+};
+mountIsland('search',$('#searchMenu'),{
+  input:$('#q'),historyLimit:appSettings.searchHistoryLimit,actions:searchActions,helpers:searchHelpers,
+  expose:control=>{searchControl=control},
+});
 $('#q').addEventListener('beforeinput',e=>{if(!e.isComposing)rememberSearchValue(e.currentTarget)});
 $('#q').addEventListener('scroll',e=>{if(e.currentTarget.value)rememberSearchValue(e.currentTarget)});
 $('#q').addEventListener('pointerdown',e=>{if(e.currentTarget.value)rememberSearchValue(e.currentTarget)});
-$('#q').onkeydown=e=>{
-  /* 组字过程中的方向键在挑候选字、回车在定字，都不是给这个菜单的。 */
-  if(e.isComposing)return;
-  if(e.key==='Escape'){
-    const hadValue=!!$('#q').value,hadMenu=!$('#searchMenu').hidden;
-    if(hadMenu){hideSearchMenu();searchActive=-1;e.preventDefault();return}
-    if(hadValue){clearSearchField({text:$('#q').value,scrollLeft:$('#q').scrollLeft||searchValueSnapshot.scrollLeft});
-      searchActive=-1;e.preventDefault();refreshSearchMenu();return}
-  }
-  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
-    if(moveSearchActive(e.key==='ArrowDown'?1:-1))e.preventDefault();
-    return;
-  }
-  if(e.key!=='Enter')return;
-  e.preventDefault();
-  const picked=searchOptions()[searchActive];
-  searchActive=-1;
-  hideSearchMenu();
-  // 选中的是一部作品时回车就开它，和点它一样，不绕一趟搜索。
-  if(picked&&picked.dataset.openItem){$('#q').blur();openItem(+picked.dataset.openItem);return}
-  if(picked&&picked.dataset.openEntity){openSuggestedEntity(picked);return}
-  if(picked){$('#q').value=picked.dataset.searchValue;rememberSearchValue()}
-  // 选中某一项时用它原样搜索；没选中才回退到「空输入按 Enter 用推荐词」。
-  runSearch(!picked,true);
-  $('#q').blur();
-};
-/* 两个请求回来时，焦点可能已经不在输入框上了：用户敲完就点走，失焦那条 140ms
-   的兜底先把下拉栏收了，晚到的 then 再把它掀开——而这一刻没有焦点，也就再不会
-   有第二次失焦来收场。点哪儿都关不掉的下拉栏就是这么来的。所以回调先确认焦点
-   还在自己身上。 */
-$('#q').addEventListener('focus',()=>{Promise.all([loadSearchHistory(),loadSearchPool()])
-  .then(()=>{if(document.activeElement!==$('#q'))return;
-    // 带着 `?q=` 进来再点回输入框时，框里已经有词，补全该跟着这个词给。
-    renderSearchMenu();refreshSearchMenu()})});
 
 /* ── 就地展开播放 ── */
 /* 四种队列的入口（Mix、分卷、版本、播放列表）。队列的条目、停在哪一条、卷标都归详情岛
@@ -6521,13 +6146,12 @@ async function refreshAll(automatic=false){
   // 顶部三层（女优头像、厂牌、标签）有 30 秒会话缓存，而 refreshAll 只重载网格：
   // 不清掉这两个缓存，「换一批」之后上面还是同一批人。
   barsDataCache=null;barsDataPromise=null;
-  /* 网格和顶部三层一起换，两边耗时不一样，所以转圈归这一层管：挂在计数行的
-     aria-busy 上时，网格先到就被 renderCount 摘掉，标签条还在等的那段时间里
-     按钮已经停了。顶部三层与标签条不铺骨架——它们此刻有内容在屏幕上，撕成
-     灰条再填回去比直接换掉更晃眼；骨架留给从无到有的首屏。 */
-  document.body.classList.add('refreshing');
+  /* 网格和顶部三层一起换，两边耗时不一样，所以转圈归这一层管：换批键转到这个 Promise
+     落定，网格先到时标签条还在等的那段时间里它不停。顶部三层与标签条不铺骨架——它们此刻
+     有内容在屏幕上，撕成灰条再填回去比直接换掉更晃眼；只铺一层微光，骨架留给从无到有的首屏。 */
+  paintCatalogFilter({refreshing:true});
   try{await Promise.all([loadCatalog(),buildBars()])}
-  finally{document.body.classList.remove('refreshing')}
+  finally{paintCatalogFilter({refreshing:false})}
   if(!automatic)window.scrollTo({top:0,behavior:'smooth'});
   return true;
 }
@@ -6553,9 +6177,9 @@ $('#censorSetting').onchange=e=>{
 };
 
 function wireDrag(el){return wireHorizontalScroller(el,{drag:true})}
-/* `#count` 一起登记：窄屏下排序筛选整行由 `.count` 自己横向滚动，而它没有滚动条，
-   不接拖动和滚轮就只剩看得见够不着的半个按钮。 */
-function wireAllDrag(){['#tagScroll','#tagbar .filterscroll','#nrow','#count'].forEach(s=>wireDrag($(s)));
+/* `#count` 一起登记：窄屏下垃圾文件那一行由 `.count` 自己横向滚动，而它没有滚动条，
+   不接拖动和滚轮就只剩看得见够不着的半个按钮。首页筛选条那几排由岛自己登记。 */
+function wireAllDrag(){['#nrow','#count'].forEach(s=>wireDrag($(s)));
   document.querySelectorAll('.tier,.srow').forEach(wireDrag)}
 
 /* 目录页（首页 + 四个筛选态）：筛选全部从 URL 读，路径只决定初始筛选态。
@@ -6708,7 +6332,7 @@ function localTabs(root,sections,host=root){
       buttons.push(button);nav.append(button);
     });
   });
-  /* 那块玻璃跟着指针走，跟筛选条那排药丸是同一条连线（`wireViewGlideRow`）：一列里只有
+  /* 那块玻璃跟着指针走，跟筛选条那排视图是同一条连线（`use-view-glide.ts`）：一列里只有
      当前那格铺着面，鼠标停在哪一条得靠字色那一档去读，扫下来分不出自己停在了第几条。
      指针离开这一列就滑回当前那格。触点没有「悬停」，碰一下就滑过去等于替用户点了一次，
      所以跟那边一样把 touch 挡在外面。配置页那一份没有玻璃，`syncLocalNavGlide` 自己在
@@ -6782,7 +6406,6 @@ function decorate(){
       settings.addEventListener('scroll',fade,{passive:true});fade()}}
   document.querySelectorAll('#managebar [data-manage]').forEach(button=>{if(button.getAttribute('aria-pressed')==='true')button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});
 }
-let filterFrame;
 const boardBrand=document.querySelector('#brandHome');
 boardBrand.setAttribute('aria-label','Peach 首页');
 const libraryPicker=document.createElement('div');libraryPicker.className='board-library-menu';libraryPicker.id='boardLibraryMenu';libraryPicker.hidden=true;libraryPicker.setAttribute('popover','manual');libraryPicker.setAttribute('role','dialog');libraryPicker.setAttribute('aria-label','媒体库');
@@ -6930,20 +6553,6 @@ placeBrand();
 document.addEventListener('board:sidebar',placeBrand);
 addEventListener('resize',placeBrand);
 new MutationObserver(placeBrand).observe(document.querySelector('#drawer'),{childList:true,subtree:true});
-const boardTagbar=document.querySelector('#tagbar'),countbar=document.querySelector('#count');
-const tagHome=document.createComment('filter position');boardTagbar.before(tagHome);
-const countHome=document.createComment('sort position');countbar.before(countHome);
-function syncFilterFrame(){
-  const catalog=!boardTagbar.hidden&&!countbar.hidden&&getComputedStyle(boardTagbar).display!=='none'&&getComputedStyle(countbar).display!=='none';
-  if(catalog){filterFrame=mountFilterFrame(boardTagbar,countbar,{views:$('#viewPills'),tags:$('#tagScroll'),readout:countbar.querySelector('.mono'),controls:countbar.querySelector('.sorts')})}
-  else if(!catalog&&filterFrame){tagHome.after(boardTagbar);countHome.after(countbar);filterFrame.remove();filterFrame=null}
-  if(filterFrame)[boardTagbar,countbar.querySelector('.sorts')].forEach(el=>wireHorizontalScroller(el));
-}
-syncFilterFrame();
-new MutationObserver(syncFilterFrame).observe(countbar,{childList:true,subtree:true});
-new MutationObserver(syncFilterFrame).observe(boardTagbar,{childList:true});
-new MutationObserver(syncFilterFrame).observe(boardTagbar,{attributes:true,attributeFilter:['hidden','style']});
-new MutationObserver(syncFilterFrame).observe(countbar,{attributes:true,attributeFilter:['hidden','style']});
 decorate();
 new MutationObserver(decorate).observe(document.querySelector('#stats'),{childList:true,subtree:true});
 new MutationObserver(decorate).observe(document.querySelector('#managebar'),{childList:true});
@@ -6952,7 +6561,6 @@ let floatingScheduled=false;
 function updateFloating(){
   floatingScheduled=false;
   document.body.classList.toggle('board-scrolled',scrollY>8);
-  if(filterFrame){const top=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--topH'))||64;filterFrame.classList.toggle('board-is-stuck',filterFrame.getBoundingClientRect().top<=top+9)}
 }
 addEventListener('scroll',()=>{if(!floatingScheduled){floatingScheduled=true;requestAnimationFrame(updateFloating)}},{passive:true});addEventListener('resize',updateFloating);updateFloating();
 
