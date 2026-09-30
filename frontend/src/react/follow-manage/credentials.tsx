@@ -79,12 +79,12 @@ function CredentialForm({ row, readOnly, toast }:
         {row.where ? <> <ExternalLink href={row.where}>去取</ExternalLink></> : null}
       </Help>
       {row.howto ? <Help>{row.howto}</Help> : null}
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex w-full flex-col gap-3">
         {(row.needs || []).map((name) => (
           <Input key={name} type="password" label={name} placeholder={fieldHint(row, name)}
             autoComplete="off" spellCheck="false" isDisabled={readOnly}
             value={values[name] || ''} onChange={(value) => setValues({ ...values, [name]: value })}
-            className="w-48" />
+            className="w-full min-w-0" />
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-2">

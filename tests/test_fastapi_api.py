@@ -888,6 +888,19 @@ class FastApiContractTests(unittest.IsolatedAsyncioTestCase):
                                          headers={'Origin': 'https://another.example'})
         self.assertEqual(refused.status_code, 403)
 
+    async def test_bundled_site_icons_require_auth_and_validate_names(self):
+        from peach.config import PROJECT_ROOT
+        self.assertEqual((await self.client.get('/site-icon/github.png')).status_code, 401)
+        for name in ('javten', 'fc2ppvdb', 'avwikidb', 'github'):
+            response = await self.client.get(f'/site-icon/{name}.png?t=secret')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers['content-type'], 'image/png')
+            self.assertEqual(response.content, (PROJECT_ROOT / 'resources/site-marks' / f'{name}.png').read_bytes())
+            cached = await self.client.get(f'/site-icon/{name}.png?t=secret', headers={'If-None-Match': response.headers['etag']})
+            self.assertEqual(cached.status_code, 304)
+        for name in ('unknown.png', 'github.svg', '..%2Fgithub.png'):
+            self.assertEqual((await self.client.get(f'/site-icon/{name}?t=secret')).status_code, 404)
+
     def _archive_links(self, colour_of):
         """两条存档链接；上游按 `colour_of(url)` 给一枚圆形图标，给 None 就 404。返回请求过的地址。"""
         from PIL import Image, ImageDraw
