@@ -3173,39 +3173,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertNotIn('class="fcollectionthumb" href=', self.page)
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
 
-    def test_follow_video_uses_the_shared_videojs_player_and_quality_control(self):
-        # `<video class="video-js">` 由两座详情岛画、交给壳的 mountStagePlayer：
-        # `frontend/e2e/follow-detail.test.ts` 与 `frontend/e2e/item-detail.test.ts`。
-        self.assertPageContains("mountDetailPlayer(item,video,autoplay??appSettings.detailAutoplay,options)")
-        self.assertPageContains("type:media?.media_type||item.media_type||'video/mp4'},")
-        # 第四个参数是来源自己给的清晰度表：rule34video 把每档写成独立 mp4 字段，
-        # videojs 的 qualityLevels 只认 HLS/DASH 的自适应轨道，看不到它们。
-        self.assertPageContains(
-            "function mountPlayerQualityControl(player,video,fallbackHeight=0,initialSourceQualities=null)")
-        self.assertPageContains(
-            "mediaPromise:api(`/follow-qualities?id=${encodeURIComponent(item.id)}`).catch(()=>null),")
-        self.assertPageContains("mediaPromise",
-                                "关注详情要异步补上来源档位和字节数")
-        # 档位和字节数是同一趟回源的产物，播放器两样都从这个应答里取。
-        self.assertPageContains("updateQualities?.(next?.qualities?.length?next.qualities:null);")
-        self.assertPageContains("const size=Number(next?.size)||0;")
-        player = self.page.split("function mountStagePlayer(", 1)[1].split(
-            "async function openFollow(", 1)[0]
-        self.assertNotIn("await api(`/follow-qualities", player,
-                         "清晰度回源不能挡住默认视频挂载")
-        self.assertLess(player.index("mountDetailPlayer(item,video"),
-                        player.index("wireFollowTelemetry"))
-        self.assertPageContains('aria-label="播放器设置"')
-        self.assertPageContains("data-player-quality-badge")
-        self.assertPageContains("currentTimeDisplay:true,timeDivider:true")
-        self.assertPageContains("levels[index].enabled=selectedQuality==='auto'||selectedQuality===String(index)")
-        self.assertPageContains("stopAmbient=mountPlayerAmbient(video);")
-        self.assertPageContains("player?.one?.('dispose',stopAmbient)")
-        self.assertPageContains("mountPlayerTheaterControl(player,root)")
-        self.assertPageContains("wireFollowTelemetry(item,video)")
-        self.assertPageContains("api('/api/follow/play'")
-        self.assertPageContains("api('/api/follow/activity'")
-
     def test_follow_image_collections_use_buttons_dots_and_arrow_keys(self):
         self.assertPageContains("imageDots.length&&(e.key==='ArrowLeft'||e.key==='ArrowRight')")
 
@@ -3215,11 +3182,8 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("const surface=claimSurface(surfacePath());")
         self.assertPageContains("const surface=claimSurface('/follow');")
         self.assertPageContains("await openFollow(push,true);await openFollowDetail(params.id,push)")
-        self.assertPageContains("placeItemDetail(detailOriginAnchor,detailOriginAbove);")
-        self.assertPageContains("if(!stage.open)stage.showModal();")
         self.assertPageLacks("last.after($('#stage'))")
         self.assertPageContains("if(!followFeedLive()){await openFollow(false);return}")
-        self.assertPageContains("if(stage.parentElement!==main)main.insertBefore(stage,combo)")
 
     def test_follow_filters_put_all_first_and_sources_are_icon_only(self):
         self.assertPageContains("const FOLLOW_FILTERS=[['','全部'],['new','未看']")
@@ -3522,30 +3486,12 @@ class FollowWebSourceTests(unittest.TestCase):
         # 次序与玻璃由 e2e `follow-feed.test.ts` 钉住。照片墙只剩骨架那一份栅格。
         self.assertPageContains(".followlist.followphotowall{grid-template-columns:repeat(5,minmax(0,1fr))")
         self.assertPageLacks(".followlist.followphotowall>.stage{column-span:all}")
-        self.assertPageContains("placeItemDetail(detailOriginAnchor,detailOriginAbove);",
-                                "图片详情复用独立浮窗，保持图片墙布局")
         self.assertPageLacks(".followlist.followphotowall{display:block;column-count:5")
 
     def test_external_file_pages_do_not_default_to_video_and_paging_actions_share_one_row(self):
         self.assertPageLacks("else kinds.add(item.media_kind==='image'?'image':'video')")
         # 「加载更多」与「抓更早的一页」同一行、往回抓时的忙态归 `follow-feed` 岛
         # （e2e `follow-feed.test.ts`「载入更多」「往回抓一页」）。
-
-    def test_mix_and_follow_queues_stay_below_media_with_details_on_the_right(self):
-        self.assertPageContains('grid-template-areas:"media side" "queue queue"')
-        self.assertPageContains('.sgrid.mixgrid>.vwrap{grid-area:media}')
-        self.assertPageContains('.sgrid.mixgrid>.side{grid-area:side;background:var(--detail-surface)}')
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue{grid-area:queue;max-height:360px')
-        self.assertPageContains('grid-template-areas:"media" "side" "queue"')
-        self.assertPageContains('background:var(--detail-surface)')
-        # 队列头的类别名与横向拖动归作品详情岛与 `components/mix-queue.tsx`：
-        # `frontend/test/react/item-detail.test.tsx`。
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixlist{display:grid;grid-auto-flow:column')
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueuehead>div:first-child{min-width:0}')
-        self.assertPageContains('.sgrid.mixgrid>.mixqueue .mixqueueactions{grid-column:2;grid-row:1;align-self:center}')
-        # 媒体框不给视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在
-        # vh 上时两个量在窄屏上朝相反方向走，框比画面高出一大截，上下各空一片。
-        self.assertPageLacks('min-height:min(62vh,640px)')
 
     def test_follow_uses_the_global_multi_select_mode(self):
         self.assertPageContains("const selected=new Set(),followSelected=new Set();")

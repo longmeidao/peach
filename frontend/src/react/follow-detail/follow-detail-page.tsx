@@ -1,10 +1,9 @@
 /* 关注详情（ADR-0031）：舞台里那一整块——媒体区、右侧队列与侧栏。
  *
- * 舞台（`<dialog id="stage">`）、它的进出场、小窗与 Video.js 都归壳，JAV 详情也在用；这里只画
- * 舞台里的内容，视频元素画好之后经 `actions.mountPlayer` 交给壳。媒体区、侧栏与队列的结构照
- * JAV 详情那一套（`.sgrid` / `.vwrap` / `.side` / `.mixqueue`，样式在 `web/css/13-stage.css`
- * 与 `15-detail.css`，两边共用，输出遗留类名）；关注自己的那几块一律 `data-*`，样式在
- * `follow-detail.css`。
+ * 舞台（`<dialog id="stage">`）、它的进出场、小窗与 Video.js 都归舞台岛（`../stage/`），JAV 详情
+ * 也在用；这里只画舞台里的内容，视频的媒体框画好之后经 `actions.mountPlayer` 交给舞台挂播放器。媒体区、侧栏与队列的结构照
+ * JAV 详情那一套（`[data-stage-grid]` / `[data-stage-media]` / `[data-stage-side]` / `[data-mix-queue]`，两边共用，
+ * 样式在 `../stage/stage.css`）；关注自己多出来的几块样式在 `follow-detail.css`。
  *
  * 换一份媒体（轮播、多媒体队列）只改岛内状态：媒体区按「条目:媒体」换一块，播放器随之拆了重挂。
  * 换到组里另一条经壳（`actions.openItem`），因为舞台上的播放器要先拆、地址也要换。 */
@@ -50,8 +49,8 @@ export function FollowDetailPage(props: FollowDetailProps) {
 
   if (!result.data) {
     return (
-      <div className="sgrid" data-follow-detail="">
-        <div className="vwrap" data-follow-detail-media="none">
+      <div data-stage-grid="" data-follow-detail="">
+        <div data-stage-media="" data-follow-detail-media="none">
           <CloseStage onClose={actions.close} />
           <div data-follow-detail-placeholder="">
             {result.isError
@@ -70,7 +69,7 @@ export function FollowDetailPage(props: FollowDetailProps) {
 
 /** 关闭键。`id` 留着：Escape、点浮窗外面与壳的兜底都按 `#closeStage` 找它再点一下。 */
 const CloseStage = ({ onClose }: { onClose(): void }) => (
-  <button type="button" className="closestage" id="closeStage" title="关闭" aria-label="关闭" onClick={onClose}
+  <button type="button" data-stage-close="" id="closeStage" title="关闭" aria-label="关闭" onClick={onClose}
     dangerouslySetInnerHTML={{ __html: icon('x') }} />
 );
 
@@ -100,7 +99,7 @@ function Detail({ data, context, mediaIndex, onMedia, mediaView, helpers, action
       : null;
 
   return (
-    <div className={queue ? 'sgrid mixgrid' : 'sgrid'} data-follow-detail="">
+    <div data-stage-grid="" data-with-queue={queue ? '' : undefined} data-follow-detail="">
       <MediaFrame key={frameKey} item={item} media={media}
         helpers={helpers} actions={actions} onMedia={onMedia} issues={issues} />
       {queue}
@@ -129,14 +128,16 @@ function MediaFrame({ item, media, helpers, actions, onMedia, issues }: {
   const [shown, setShown] = useState(imageSrc);
 
   /* 播放器只随这一块媒体区挂一次、卸一次：写完状态换的是同一条的新对象，不能因此拆了重挂。
-     这一块本身按「条目:媒体」换，换条目或换媒体时整块重建，清理就在那一刻跑。 */
-  const videoRef = useRef<HTMLVideoElement>(null);
+     这一块本身按「条目:媒体」换，换条目或换媒体时整块重建，清理就在那一刻跑。`<video>` 由舞台
+     建在这块框里（同作品详情），报错时回到这里说明。 */
   const mounting = useRef({ item, selected });
+  const failed = useRef(issues.failed);
+  failed.current = issues.failed;
   useLayoutEffect(() => {
-    const node = videoRef.current;
-    if (!node) return;
-    return actions.mountPlayer(node, mounting.current.item, mounting.current.selected);
-  }, [actions]);
+    const node = frame.current;
+    if (!node || !playable) return;
+    return actions.mountPlayer(node, mounting.current.item, mounting.current.selected, { onError: () => failed.current() });
+  }, [actions, playable]);
 
   /* object-fit:contain 之后图片左右的黑边随图片比例和窗口变。箭头落在黑边的视觉中心，不永远
      贴着容器边缘；黑边太窄时才退回固定的安全内边距。 */
@@ -161,14 +162,11 @@ function MediaFrame({ item, media, helpers, actions, onMedia, issues }: {
 
   const step = (delta: number) => onMedia(images[(position + delta + images.length) % images.length]!.index);
   return (
-    <div ref={frame} className="vwrap" data-follow-detail-media={kind || 'none'} data-framed={frameRatio ? '' : undefined}
+    <div ref={frame} data-stage-media="" data-follow-detail-media={kind || 'none'} data-framed={frameRatio ? '' : undefined}
       // oxlint-disable-next-line shadcn/no-inline-styles -- 画框比例与箭头内距是按这一组图的尺寸和当前视口算出来的
       style={{ '--follow-frame-ratio': frameRatio ? frameRatio.toFixed(4) : undefined, '--follow-image-arrow-inset': inset === null ? undefined : `${inset}px` } as CSSProperties}>
       <CloseStage onClose={actions.close} />
-      {playable ? (
-        <video ref={videoRef} className="video-js vjs-big-play-centered" controls playsInline preload="metadata"
-          poster={item.thumb_url || undefined} onError={issues.failed} />
-      ) : imageSrc ? (
+      {playable ? null : imageSrc ? (
         <img data-follow-detail-poster="" data-zoomable={slides.length ? '' : undefined} src={shown} alt={item.title}
           referrerPolicy="no-referrer"
           onClick={slides.length ? () => void openPhotoLightbox(Math.max(0, position), slides) : undefined}
@@ -239,7 +237,7 @@ function CollectionQueue({ group, itemId, helpers, actions }: {
             onClick={() => actions.openItem(member.id)}
             pic={<>
               {member.thumb_url ? <QueueThumb src={member.thumb_url} /> : <NoThumb kind="video" />}
-              {realDuration(member.duration) ? <i className="dur mono">{fmtDur(member.duration)}</i> : null}
+              {realDuration(member.duration) ? <i className="mono" data-mix-item-duration="">{fmtDur(member.duration)}</i> : null}
             </>}>
             <b data-truncate-end="">{copy.title}</b>
             <span data-follow-queue-meta="">
@@ -307,10 +305,10 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
   const { busy } = write;
   const busyAttrs = (key: string) => (busy.has(key) ? { 'aria-busy': true, 'aria-disabled': true } as const : {});
   return (
-    <div className="side" data-follow-detail-side="">
-      <div className="sidecontent">
+    <div data-stage-side="" data-follow-detail-side="">
+      <div data-stage-side-content="">
         <div data-follow-detail-title="">
-          <div className="stitle" data-follow-detail-name="" data-reveal-line=""
+          <div data-stage-title="" data-follow-detail-name="" data-reveal-line=""
             dangerouslySetInnerHTML={{ __html: helpers.titleMarks(single, item) + esc(item.title) }} />
           {item.url ? (
             <a className="externallink" data-follow-origin="" href={item.url} target="_blank" rel="noreferrer noopener"
@@ -326,7 +324,7 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
             {identity.credited ? <span>署名含 {identity.credited}</span> : null}
           </div>
         </div>
-        <div className="smeta mono" data-reveal-line="">
+        <div className="mono" data-stage-meta="" data-reveal-line="">
           <span>{helpers.when(item)}</span>
           {realDuration(item.duration) ? <span>{fmtDur(item.duration)}</span> : null}
           {badges ? <span data-follow-badges="" dangerouslySetInnerHTML={{ __html: badges }} /> : null}
@@ -350,14 +348,14 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
             ))}
           </div>
         ) : null}
-        <div className="fb" data-follow-detail-actions="">
-          <button type="button" className="later" data-follow-detail-save="" aria-label={saved ? '已保存' : '保存到账本'}
+        <div data-stage-actions="" data-follow-detail-actions="">
+          <button type="button" data-stage-action="later" data-follow-detail-save="" aria-label={saved ? '已保存' : '保存到账本'}
             title={saved ? '已保存' : '保存到账本'} disabled={saved} {...busyAttrs('save')}
             onClick={write.save} dangerouslySetInnerHTML={{ __html: icon(saved ? 'check' : 'bookmark-plus') }} />
-          <button type="button" className="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看"
+          <button type="button" data-stage-action="seen" data-follow-detail-status="seen" aria-label="标记已看" title="标记已看"
             aria-pressed={item.status === 'seen'} {...busyAttrs('seen')} onClick={() => write.status('seen')}
             dangerouslySetInnerHTML={{ __html: icon('eye') }} />
-          <button type="button" className="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略"
+          <button type="button" data-stage-action="dislike" data-follow-detail-status="ignored" aria-label="忽略" title="忽略"
             aria-pressed={item.status === 'ignored'} {...busyAttrs('ignored')} onClick={() => write.status('ignored')}
             dangerouslySetInnerHTML={{ __html: icon('eye-off') }} />
           {item.status === 'seen' || item.status === 'ignored' ? (
@@ -366,7 +364,7 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
               dangerouslySetInnerHTML={{ __html: icon('rotate-ccw') }} />
           ) : null}
           {kind === 'image' && selected ? (
-            <button type="button" className="dislike" data-follow-media-hide={selected.index} aria-label="隐藏这张图"
+            <button type="button" data-stage-action="dislike" data-follow-media-hide={selected.index} aria-label="隐藏这张图"
               title="隐藏这张图" {...busyAttrs(`hide:${selected.index}`)} onClick={() => write.hide(selected.index)}
               dangerouslySetInnerHTML={{ __html: icon('image-off') }} />
           ) : null}
@@ -394,7 +392,7 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
         ) : null}
         <span data-follow-state="" aria-live="polite">{write.failure}</span>
         {tags.length ? (
-          <div className="stags" data-follow-detail-tags="">
+          <div data-stage-tags="" data-follow-detail-tags="">
             {tags.map((tag) => (
               <button type="button" key={tag} className="tg" data-tag-cat={tagCategory(item, tag)} data-follow-tag={tag}
                 onClick={() => actions.openTag(tag)}>{helpers.tagLabel(tag)}</button>

@@ -20,10 +20,8 @@
     "shadcn/no-arbitrary-values": "error",
     "shadcn/no-inline-styles": "error",
     "shadcn/no-unknown-classes": ["error", { "allow": ["configpage", "configgroup", "swiper", "swiper-wrapper", "swiper-slide", "swiper-zoom-container",
-      "sgrid", "mixgrid", "vwrap", "closestage", "video-js", "vjs-big-play-centered", "side", "sidecontent", "stitle", "smeta",
-      "mono", "stags", "tg", "mav", "externallink", "fb", "later", "seen", "dislike", "dur",
-      "mixqueue", "mixqueuehead", "mixqueueactions", "mixlist", "mixrow", "mixitem", "current", "mixitempic", "mixitemtext",
-      "mixgrouplabel", "mixitemmeta", "javedition", "censored", "chip", "geist-button", "primary"] }],
+      "video-js", "vjs-big-play-centered", "mono", "tg", "mav", "externallink", "javedition", "censored", "chip", "geist-button",
+      "primary"] }],
     "shadcn/require-static-classes": "error"
   }
 }

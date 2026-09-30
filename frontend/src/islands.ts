@@ -39,11 +39,9 @@ export interface IslandContracts {
   'entity-body': ReactBundle.EntityBodyProps;
   'entity-filter': ReactBundle.EntityFilterProps;
   'entity-hero': ReactBundle.EntityHeroProps;
-  'follow-detail': ReactBundle.FollowDetailProps;
   'follow-feed': ReactBundle.FollowFeedProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
-  'item-detail': ReactBundle.ItemDetailProps;
   'junk-queue': ReactBundle.JunkQueueProps;
   'library-processing': ReactBundle.LibraryProcessingProps;
   playlists: ReactBundle.PlaylistsProps;
@@ -73,11 +71,9 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'entity-body': { react: 'entity-body' },
   'entity-filter': { react: 'entity-filter' },
   'entity-hero': { react: 'entity-hero' },
-  'follow-detail': { react: 'follow-detail' },
   'follow-feed': { react: 'follow-feed' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },
-  'item-detail': { react: 'item-detail' },
   'junk-queue': { react: 'junk-queue' },
   'library-processing': { react: 'library-processing' },
   playlists: { react: 'playlists' },
@@ -216,3 +212,21 @@ export function showToast(
 }
 
 export { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages } from './jav-artwork';
+
+/* 舞台岛（`react/stage/`）：详情浮窗、两座详情、播放器与小窗都在 `@peach/react` 里，壳只拿命令式
+ * 入口。第一次打开详情时才装载 React 包、接上宿主；之后 `stageApi()` 同步可取，包还没装载时是
+ * null——那时舞台必然没开，小窗也不在。 */
+let stage: Promise<ReactBundle.StageApi> | null = null;
+let stageReady: ReactBundle.StageApi | null = null;
+export function loadStage(host: ReactBundle.StageHost): Promise<ReactBundle.StageApi> {
+  stage ??= import('@peach/react').then((bundle) => { stageReady = bundle.configureStage(host); return stageReady });
+  return stage;
+}
+export const stageApi = (): ReactBundle.StageApi | null => stageReady;
+
+/* 沉浸模式用到的那几样播放器件（`frontend/src/player/`）：片源、流会话、上报与控件点击都不带模块
+ * 状态。详情播放器、宿主与右键菜单带状态，只在舞台岛那一份产物里用。 */
+export {
+  cancelStreamSession, clickPlayerControl, directStreamSource, ensureVideojs, fmtSpeed, newStreamSession,
+  playableStreamSource, streamSpeedBits, wireTelemetry,
+} from './player';

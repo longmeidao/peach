@@ -1,15 +1,16 @@
 /* 关注详情（`follow-detail-page.tsx`）。
  *
- * 舞台里的骨架（`.sgrid` / `.vwrap` / `.side` / `.sidecontent`）、队列（`.mixqueue` 一族）、操作键条
- * （`.fb`）与标签（`.tg`）是 JAV 详情共用的，几何归 `web/css/13-stage.css`、`14-player.css`、
- * `15-detail.css` 与 `web/board.css`；这里只写关注详情自己多出来的几块。
+ * 舞台里的格子（`[data-stage-grid]` / `[data-stage-media]` / `[data-stage-side]` /
+ * `[data-stage-side-content]`）、队列（`[data-mix-queue]` 一族）与操作键条（`[data-stage-actions]`）是和
+ * 作品详情共用的，几何归 `../stage/stage.css` 与 `../../player/player.css`；标签（`.tg`）归
+ * `web/css/` 的遗留样式表。这里只写关注详情自己多出来的几块。
  *
- * 选择器全用 `data-*`，前面挂 `[data-follow-detail]`：遗留样式表不分层、排在后面，同权重时它赢，
- * 多一层属性才压得住 `.stitle`、`.fb button` 这类通用规则。 */
+ * 选择器全用 `data-*`，前面挂 `[data-follow-detail]`：舞台样式表与遗留样式表都排在后面，同权重时
+ * 它们赢，多一层属性才压得住 `[data-stage-title]`、`[data-stage-actions] button` 这类通用规则。 */
 
 /* ── 媒体区 ──
    媒体框不设视口高度的地板：里面的播放器高度由 16:9 和自己的宽度推出来，地板挂在 vh 上，两个量朝
-   相反方向走（414×913 的视口给出 566px 的框装 208px 的画面）。播放器未初始化时 `.vwrap>.video-js`
+   相反方向走（414×913 的视口给出 566px 的框装 208px 的画面）。播放器未初始化时 `[data-stage-media]>.video-js`
    那条 16:9 已经把高度定住了，不会塌。 */
 .peach-react [data-follow-detail] [data-follow-detail-media] { --follow-image-arrow-inset: 16px; }
 .peach-react [data-follow-detail] [data-follow-detail-media="image"] {
@@ -113,7 +114,7 @@
    （自带尾部省略），时间不收。 */
 .peach-react [data-follow-detail] [data-follow-queue-meta] { display: flex; align-items: center; gap: 6px; }
 /* 包图标的那层不占盒子，图标本身是这一行的弹性子项；不用 `contents` 工具类，队列行里的
-   `.mixitemtext span{display:block}`（`13-stage.css`）比它权重高。 */
+   `[data-mix-item-text] span{display:block}`（`../stage/stage.css`）比它权重高。 */
 .peach-react [data-follow-detail] [data-follow-queue-meta] > [data-follow-queue-source] { display: contents; }
 .peach-react [data-follow-detail] [data-follow-queue-meta] img { flex: none; margin: 0; }
 .peach-react [data-follow-detail] [data-follow-queue-meta] time { flex: none; white-space: nowrap; }
@@ -231,7 +232,7 @@
 }
 .peach-react [data-follow-detail] [data-follow-resources] a { height: 34px; }
 
-/* 操作键条：几何取 `.fb`（`15-detail.css` 与 `board.css` 的 `.sidecontent .fb`）。下载是 `<a download>`，
+/* 操作键条：几何取 `[data-stage-actions]`（`../stage/stage.css`）。下载是 `<a download>`，
    不是按钮：让浏览器自己落盘，不经过 JS，几何与同排按钮一致。 */
 .peach-react [data-follow-detail] [data-follow-detail-actions] button:disabled { opacity: .45; cursor: not-allowed; }
 .peach-react [data-follow-detail] [data-follow-download] {

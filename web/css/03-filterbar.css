@@ -87,3 +87,6 @@
   display:inline-flex;align-items:center;border:1px solid transparent;border-radius:var(--control-radius);
   background:var(--ink);color:var(--ground);font:inherit;font-size:var(--fs-xs);font-weight:500;cursor:pointer}
 .pagelede-actions .batchaction:focus-visible{outline:2px solid var(--tungsten);outline-offset:2px}
+/* 实体页与索引页不显示首页顶部的 `#tiers` 与 `#tagbar`。 */
+body.entity-open #tiers,body.entity-open #tagbar,
+body.index-open #tiers,body.index-open #tagbar{display:none}

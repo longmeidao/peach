@@ -75,9 +75,18 @@ island。原因是那一套一上来就打 `/api/items`，而未配置的机器�
 - `items` 挂在 `#nrow` 上：壳手上已有那一批，岛只画卡。
 - 版式、选中态与快进秒数经 `updateIsland` 推进来：换版式只重画，已载入的分页原样保留。`selected` 每次推一个新的 `Set`。
 - 壳在卡上还做三件事：悬停预览（`wireHover`／`releaseHover` 经 `helpers` 递进，状态写在卡的 `data-previewing`／`data-longhover` 上）、封面取景、图片微光（`PENDING_IMAGES` 认 `[data-media-art]>img`）。卡片的结构钩子全是 `data-media-*`；壳插进封面格的 `video.hv`、`img.hvframes` 与封套 `img.poster` 用自己的类名，样式在 `12-cards.css`。
-- 离场：`claimSurface` 卸 `#grid` 与 `#nrow`；资料页正文岛在换页或铺骨架前由 `releaseEntityBody` 卸；接着看在舞台清场时经 `onStageDispose` 卸。
+- 离场：`claimSurface` 卸 `#grid` 与 `#nrow`；资料页正文岛在换页或铺骨架前由 `releaseEntityBody` 卸；接着看是作品详情里的子组件，随舞台岛的内容一起卸。
 - 屏外卡用 `content-visibility` 跳过封面与元信息区的渲染，不做虚拟列表。
 - 单卡写操作都由用户点击触发：稍后看走 `actions.watchLater`，回收站卡的还原走 `actions.resourceOperation`，做完给撤销；彻底删除只在批量条上，先过 `confirmModal` 的危险档。
+
+### 舞台与播放器
+
+作品详情与关注详情都开在同一座常驻的舞台岛里（`frontend/src/react/stage/`）。宿主 `div[data-stage-host]` 挂在 body 末尾，岛拥有 `dialog#stage`、进出场、骨架、关闭键 `#closeStage` 与小窗；两座详情是它的子组件，共用同一份 Query 缓存。
+
+- 壳只拿命令式入口：`loadStage(host)` 第一次打开详情时装载 React 包，之后 `stageApi()` 同步可取，契约在 `stage/stage-api.ts`。来处（`detailReturnPath`、`followDetailReturnPath`、`detailOriginAnchor`）、地址与顶栏上下文仍归壳。
+- 焦点：骨架期间焦点停在 dialog 本身、不画焦点环，内容到了交给关闭键。Escape 先关最里层（右键菜单、标签搜索等弹层先吃掉），没人拦才关舞台。
+- 播放器在 `frontend/src/player/`，用 vendored 的 Video.js。入口 `mountPlayer(video, options)` 把媒体框里的 `<video>` 换成 Video.js 并返回拆除函数；详情只画媒体框，挂载由舞台的 `attachStagePlayer` 做。
+- 小窗与舞台共用同一个播放器实例：离开详情时正在放的那一个搬进小窗，展开回同一条时认领回来，不重建。显式关闭、暂停着、设置里关了小窗、换到别的条目时随舞台拆掉。交接判据钉在 `test/stage-player.test.ts`，真 Video.js 的行为在 `e2e/stage.test.ts`。
 
 ### 产物缓存
 
@@ -115,9 +124,7 @@ URL 都从它来，它被缓存住就没人看得到新产物。
 | `09-skeleton.css` | Geist Skeleton 与各页骨架变体 |
 | `11-identity.css` | 身份组、演员与系列链接、重复项、质量清单、复核对照 |
 | `12-cards.css` | 壳自己画的卡片（垃圾文件、新作）、悬停预览层与密度 |
-| `13-stage.css` | 就地展开的舞台与 Mix 队列 |
-| `14-player.css` | video.js 定制、播放统计、播放器的脱盘占位 |
-| `15-detail.css` | 详情侧栏、标签选择器、反馈条、相关推荐 |
+| `15-detail.css` | 壳画的源文件管理（定位与目录对账） |
 | `16-settings.css` | 设置面板 |
 | `17-overlay.css` | Toast 与审查遮挡 |
 | `18-drawer.css` | 筛选抽屉 |
@@ -368,13 +375,14 @@ React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.cs
 `.oxlintrc.json` 里的例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
 React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`、`swiper-slide`、
 `swiper-zoom-container` 是 Swiper 核心 API 认的结构类名（图片灯箱），不写它就找不到轮播的
-容器与每一张；关注详情（`follow-detail`）的舞台版式、侧栏、合集队列与 Video.js 播放器仍用
-`13-stage.css`、`15-detail.css` 与 Video.js 皮肤，`sgrid`、`mixgrid`、`vwrap`、`closestage`、`video-js`、
-`vjs-big-play-centered`、`side`、`sidecontent`、`stitle`、`smeta`、`mono`、`stags`、`tg`、`mav`、`externallink`、
-`fb`、`later`、`seen`、`dislike`、`dur`、`current` 与 `mix*` 这一组按原名输出，舞台与播放器归 React 时一起收回；
-作品详情（`item-detail`）共用这一组，自己的部分写在 `item-detail.css`、只认 `data-*`，另按原名输出三类：
-`javedition` 与色调（`censored` 等）是目录卡片也用的版次徽章，`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它，
-`geist-button`、`primary` 是舞台模态里各处按钮共用的遗留按钮；
+容器与每一张；`video-js`、`vjs-big-play-centered` 是 Video.js 的组件契约，`/tok` 在旧样式表里
+给同一批类另写了一套；`mono` 是 `01-base.css` 的等宽数字字体栈，和 Tailwind 的 `font-mono` 不是同一组字体；
+`tg` 是目录卡片、索引页与详情共用的标签键（`12-cards.css`）；`mav` 是壳的 `followIdentity` 画的头像；
+`externallink` 是 `01-base.css` 里全站外链的图标间距；`javedition` 与色调（`censored` 等）是目录卡片也用的
+版次徽章；`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它；`geist-button`、`primary` 是
+舞台模态里各处按钮共用的遗留按钮。这几个在它们的主人（卡片、沉浸、设置等）归 React 时一起收回。
+舞台、两座详情共用的格子与队列、小窗的样式在 `frontend/src/react/stage/stage.css`，播放器画面框、
+统计角标与右键菜单在 `frontend/src/player/player.css`，都由 `styles.css` 引入、只认 `data-*`；
 `shadow-dropdown` 是 BoardUI 主题里的 `--shadow-*`，
 `no-raw-colors` 只认 `--color-*`，把它当成了未声明的颜色。
 

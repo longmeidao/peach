@@ -781,6 +781,31 @@ describe('设计决定', () => {
     }
   });
 
+  it('详情舞台的焦点：骨架期间留在浮窗本身、不画焦点环，内容到了交给关闭键', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, '/', DESKTOP, { ready: `#grid [data-media-card][data-id="${ITEM.plain}"]` });
+    try {
+      const page = opened.page;
+      let release = () => {};
+      const held = new Promise<void>((resolve) => { release = resolve });
+      await page.route((url) => url.pathname === '/api/item', async (route) => { await held; await route.fallback() });
+      await page.locator(`#grid [data-media-card][data-id="${ITEM.plain}"] [data-media-title]`).first().press('Enter');
+      await page.locator('#stage[open] [data-skeleton="detail"]').waitFor();
+      /* 键盘打开也一样：骨架里没有可操作的东西，焦点环画在浮窗外沿上只是一圈噪声。 */
+      const waiting = await page.evaluate(() => {
+        const focused = document.activeElement as HTMLElement;
+        return { id: focused?.id, outline: getComputedStyle(focused).outlineStyle, visible: focused.matches(':focus-visible') };
+      });
+      assert.equal(waiting.id, 'stage', '骨架期间焦点不在浮窗上');
+      assert.equal(waiting.outline, 'none', `骨架期间浮窗画了焦点环（:focus-visible=${waiting.visible}）`);
+      release();
+      await page.locator('#stage[open] [data-item-side]').waitFor();
+      await page.waitForFunction(() => document.activeElement?.id === 'closeStage', null, { timeout: 5_000 });
+      assert.deepEqual(opened.problems.filter((line) => !line.includes('VIDEOJS')), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
   it('React 子树读 BoardUI 的 token 原值，不被 board.css 的同名定值盖掉', { timeout: 60_000 }, async () => {
     const opened = await openAccess(browser);
     try {
@@ -4938,11 +4963,11 @@ describe('设计决定', () => {
       assert.equal(await filter.evaluate((node) => getComputedStyle(node).backgroundColor),
         await tokenColor(page, '#stage [data-item-detail]', '--hover'));
 
-      const buttons = ['[data-fb="like"]', '[data-fb="reason"]', '.dislike', '.seen', '.later', '[data-fb="playlist"]',
+      const buttons = ['[data-fb="like"]', '[data-fb="reason"]', '[data-stage-action="dislike"]', '[data-stage-action="seen"]', '[data-stage-action="later"]', '[data-fb="playlist"]',
         '[data-fb="quality"]', '[data-fb="dispose"]'];
       const unchanged: string[] = [];
       for (const selector of buttons) {
-        const button = page.locator(`#stage .fb ${selector}`);
+        const button = page.locator(`#stage [data-stage-actions] ${selector}`);
         const color = () => button.evaluate((node) => {
           node.getAnimations({ subtree: true }).forEach((animation) => animation.finish());
           return getComputedStyle(node).color;
@@ -5008,11 +5033,17 @@ describe('设计决定', () => {
           head: [getComputedStyle(head).display, getComputedStyle(head).flexDirection],
           badge: [getComputedStyle(badge).fontStyle, getComputedStyle(badge).flexShrink],
           sameRow: box.top < name.bottom && box.bottom > name.top,
-          heading: getComputedStyle(document.querySelector('#stage .mixqueuehead h2')!).fontWeight,
+          heading: getComputedStyle(document.querySelector('#stage [data-mix-queue-head] h2')!).fontWeight,
         };
       });
       assert.deepEqual(shown, { head: ['flex', 'row'], badge: ['normal', '0'], sameRow: true, heading: '600' },
         '`<i>` 默认斜体，徽章不是强调语气');
+      /* 队列头的按钮是关闭一类的操作，走控件圆角，不是圆形标签。 */
+      const head = await editions.page.evaluate(() => {
+        const button = document.querySelector('#stage [data-mix-queue-head] button')!;
+        return [getComputedStyle(button).borderTopLeftRadius, getComputedStyle(button).getPropertyValue('--control-radius').trim()];
+      });
+      assert.equal(head[0], head[1]);
       assert.deepEqual(withoutPlayer(editions.problems), []);
     } finally {
       await editions.close();
@@ -5058,6 +5089,195 @@ describe('设计决定', () => {
       assert.deepEqual(await cycle(), ['none', 'closed']);
       await page.emulateMedia({ reducedMotion: 'no-preference' });
       assert.deepEqual(await cycle(), ['board-menu-in', 'board-menu-out']);
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  /* 舞台与播放器的外观：数值照 YouTube 桌面版 delhi-modern 的播放器与 ytd-miniplayer 实测定下。
+     桩里的片源放不出来，Video.js 停在错误态，控件照样挂着，读的是计算值。 */
+  const PLAYER_BAR = '#stage .video-js .vjs-control-bar';
+  const PLAYER_BLACK = 'rgba(0, 0, 0, 0.6)';
+  const styleOf = (page: Page, selector: string, properties: string[], pseudo = '') => page.evaluate(
+    ([target, names, element]) => {
+      const node = document.querySelector(target);
+      if (!node) return null;
+      const style = getComputedStyle(node, element || null);
+      return Object.fromEntries(names.map((name) => [name, style.getPropertyValue(name)]));
+    }, [selector, properties, pseudo] as const);
+  const tokenOf = (page: Page, selector: string, token: string) => page.evaluate(([target, name]) =>
+    getComputedStyle(document.querySelector(target)!).getPropertyValue(name).trim(), [selector, token] as const);
+
+  it('详情浮窗：遮罩同一档 --scrim、不带模糊，进出场同设置弹层；关闭键是压在画面上的 40px 黑圆；媒体格只圆左上角，剧场模式圆上面两角、排成单列', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP, { settings: { theme: 'light' } });
+    try {
+      const page = opened.page;
+      const scrim = await tokenColor(page, 'body', '--scrim');
+      assert.equal(scrim, 'rgba(0, 0, 0, 0.7)');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      assert.deepEqual(await styleOf(page, '#stage', ['background-color', 'backdrop-filter', 'animation-name'], '::backdrop'),
+        { 'background-color': scrim, 'backdrop-filter': 'none', 'animation-name': 'settings-backdrop-in' });
+      assert.equal((await styleOf(page, '#stage', ['animation-name']))!['animation-name'], 'board-dialog-in');
+      /* 亮色主题下白底白晕看不出悬停，用户以 YouTube 为参照：播放器上的键在亮色下也是黑底。 */
+      assert.deepEqual(await styleOf(page, '#closeStage', ['width', 'height', 'border-top-left-radius', 'background-color', 'color']),
+        { width: '40px', height: '40px', 'border-top-left-radius': '50%', 'background-color': PLAYER_BLACK, color: 'rgb(255, 255, 255)' });
+
+      const corners = () => styleOf(page, '#stage [data-stage-media]',
+        ['border-top-left-radius', 'border-top-right-radius', 'border-bottom-left-radius']);
+      const wide = (await corners())!;
+      assert.notEqual(wide['border-top-left-radius'], '0px', '媒体格左上角没圆');
+      assert.deepEqual([wide['border-top-right-radius'], wide['border-bottom-left-radius']], ['0px', '0px'],
+        '媒体格右边贴着侧栏、下面接着「接着看」，只圆左上角');
+      /* `overflow-y:auto` 会把 overflow-x 算成 auto，内容宽出 1px 就冒横向滚动条；侧栏撑满所在那一行，不露半截底色。 */
+      assert.deepEqual(await styleOf(page, '#stage [data-stage-side-content]', ['overflow-x', 'overflow-y']),
+        { 'overflow-x': 'hidden', 'overflow-y': 'auto' });
+      assert.equal((await styleOf(page, '#stage [data-stage-side]', ['align-self']))!['align-self'], 'stretch');
+      await page.locator('#stage [data-player-theater]').dispatchEvent('click');
+      await page.locator('#stage[data-theater]').waitFor();
+      const theater = (await corners())!;
+      assert.deepEqual([theater['border-top-right-radius'], theater['border-bottom-left-radius']],
+        [wide['border-top-left-radius'], '0px'], '剧场模式下媒体格圆上面两角');
+      const columns = (await styleOf(page, '#stage [data-stage-grid]', ['grid-template-columns']))!['grid-template-columns']!;
+      assert.equal(columns.split(' ').length, 1, `剧场模式没排成单列：${columns}`);
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('手机上详情浮窗离屏幕边 8px，滚的是里面那一层，视频格吸在它顶上', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, MOBILE);
+    try {
+      const page = opened.page;
+      await page.locator(PLAYER_BAR).waitFor({ state: 'attached' });
+      const box = (await page.locator('#stage').boundingBox())!;
+      assert.deepEqual([box.x, box.y, box.width], [8, 8, MOBILE.width - 16]);
+      assert.equal((await styleOf(page, '#stage > [data-stage-scroll]', ['overflow-y']))!['overflow-y'], 'auto');
+      assert.deepEqual(await styleOf(page, '#stage [data-stage-media]', ['position', 'top']), { position: 'sticky', top: '0px' });
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('播放器控件：40px 黑圆播放键、同一档黑的右侧胶囊与提示、钨丝色进度、页面字体；统计键与加载速度角标压在左上；报错是一张盖在统计上面的卡', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      await page.locator(PLAYER_BAR).waitFor({ state: 'attached' });
+      assert.deepEqual(await styleOf(page, `${PLAYER_BAR} > .vjs-play-control`, ['width', 'height', 'border-top-left-radius', 'background-color']),
+        { width: '40px', height: '40px', 'border-top-left-radius': '50%', 'background-color': PLAYER_BLACK });
+      assert.equal((await styleOf(page, '#stage .vjs-peach-right-controls', ['background-color']))!['background-color'], PLAYER_BLACK);
+      /* 错误态下控件条收起、量不到盒子，读它离播放器四边的计算值。 */
+      assert.deepEqual(await styleOf(page, PLAYER_BAR, ['left', 'right', 'bottom', 'height']),
+        { left: '12px', right: '12px', bottom: '8px', height: '59px' });
+      /* 彩条 6px，抓取区 18px，多出来的 12px 全在条上方：往下扩会盖住按钮那一排的顶边。 */
+      assert.deepEqual(await styleOf(page, '#stage .vjs-progress-control', ['height', 'top']), { height: '18px', top: '-12px' });
+      assert.equal((await styleOf(page, '#stage .vjs-progress-holder', ['height']))!.height, '6px', '彩条本身不变粗');
+      assert.equal((await styleOf(page, '#stage .vjs-play-progress', ['background-color']))!['background-color'],
+        await tokenColor(page, '#stage', '--tungsten'));
+      assert.deepEqual(await styleOf(page, '#stage .vjs-big-play-button', ['width', 'height']), { width: '56px', height: '56px' });
+      assert.equal((await styleOf(page, '#stage .video-js', ['font-family']))!['font-family'],
+        (await styleOf(page, 'body', ['font-family']))!['font-family'], '播放器里的字用页面字体，不是 Video.js 的 Arial');
+      assert.deepEqual(await styleOf(page, '#stage [data-player-theater] > .vjs-peach-tooltip',
+        ['background-color', 'color', 'padding-top', 'padding-left', 'backdrop-filter', 'white-space']),
+      { 'background-color': PLAYER_BLACK, color: 'rgb(255, 255, 255)', 'padding-top': '5px', 'padding-left': '9px',
+        'backdrop-filter': 'blur(16px)', 'white-space': 'nowrap' });
+      assert.deepEqual(await styleOf(page, '#stage #playerStatsBtn', ['left', 'top', 'width', 'height', 'border-top-left-radius', 'background-color']),
+        { left: '11px', top: '11px', width: '40px', height: '40px', 'border-top-left-radius': '50%', 'background-color': PLAYER_BLACK });
+      /* 音量胶囊和右边那枚同一排，毛玻璃同一档：只有一边磨砂，展开后它就比邻居更透。 */
+      assert.equal((await styleOf(page, `${PLAYER_BAR} > .vjs-volume-panel`, ['backdrop-filter']))!['backdrop-filter'], 'blur(16px)');
+      assert.deepEqual(await styleOf(page, '#stage #playerNet', ['left', 'top', 'height', 'white-space']),
+        { left: '58px', top: '11px', height: '40px', 'white-space': 'nowrap' }, '速率断成两行会顶破 40px 的胶囊');
+      /* sprite 里的仪表盘是描边图形，容器不声明就按 SVG 默认填成黑块，压在黑底上等于没有图标。
+         演示库的片子放不出来、角标没有速率可写，量的是临时塞进去的一枚 svg。 */
+      const gauge = await page.evaluate(() => {
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        document.querySelector('#stage #playerNet')!.append(svg);
+        const style = getComputedStyle(svg);
+        const shown = { fill: style.fill, stroke: style.stroke };
+        svg.remove();
+        return shown;
+      });
+      assert.deepEqual(gauge, { fill: 'none', stroke: 'rgb(255, 255, 255)' });
+      await page.locator('#stage .video-js.vjs-error').waitFor({ timeout: 10_000 });
+      const error = (await styleOf(page, '#stage .vjs-error-display .vjs-modal-dialog-content', ['background-color', 'z-index']))!;
+      const stats = (await styleOf(page, '#stage #playerStats', ['z-index']))!;
+      assert.equal(error['background-color'], 'rgba(2, 4, 8, 0.86)');
+      assert.ok(Number(error['z-index']) > Number(stats['z-index']), `报错卡压在统计面板底下：${error['z-index']} / ${stats['z-index']}`);
+      const card = (await page.locator('#stage .vjs-error-display .vjs-modal-dialog-content').boundingBox())!;
+      const frame = (await page.locator('#stage .video-js').boundingBox())!;
+      assert.ok(Math.abs(card.x + card.width / 2 - (frame.x + frame.width / 2)) < 1
+        && Math.abs(card.y + card.height / 2 - (frame.y + frame.height / 2)) < 1, '报错卡居中在画面里，躲开左上角的速率角标');
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('播放器的设置面板与右键菜单：同一档黑、浮层圆角、48px 的行；右键菜单悬停抬一层白', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      await page.locator('#stage #playerStatsBtn').waitFor();
+      const menu = '#stage .vjs-peach-settings-menu';
+      /* 关闭态不能是 display:none：它没有可过渡的中间态，面板只会瞬间消失。 */
+      assert.deepEqual(await styleOf(page, menu, ['display', 'opacity', 'visibility']),
+        { display: 'block', opacity: '0', visibility: 'hidden' });
+      await page.locator('#stage .vjs-peach-settings-toggle').dispatchEvent('click');
+      const floating = await tokenOf(page, menu, '--floating-radius');
+      const settings = (await styleOf(page, menu, ['background-color', 'border-top-left-radius', 'width', 'backdrop-filter']))!;
+      assert.equal(settings['background-color'], PLAYER_BLACK);
+      assert.equal(settings['backdrop-filter'], 'blur(16px)', '设置面板的毛玻璃没生效');
+      assert.equal(settings['border-top-left-radius'], floating);
+      assert.ok(parseFloat(settings.width!) <= 274, `设置面板宽 ${settings.width}`);
+      assert.equal((await styleOf(page, `${menu} .vjs-peach-menu-row`, ['min-height']))!['min-height'], '48px');
+      await page.locator('#stage .vjs-peach-settings-toggle').dispatchEvent('click');
+
+      await page.locator('#stage .video-js').click({ button: 'right' });
+      await page.locator('#playerMenu:popover-open').waitFor();
+      assert.deepEqual(await styleOf(page, '#playerMenu', ['padding-top', 'background-color', 'border-top-left-radius', 'backdrop-filter']),
+        { 'padding-top': '8px', 'background-color': PLAYER_BLACK, 'border-top-left-radius': await tokenOf(page, '#playerMenu', '--floating-radius'),
+          'backdrop-filter': 'blur(16px)' });
+      const row = (await styleOf(page, '#playerMenu [data-player-menu]', ['min-height', 'grid-template-columns']))!;
+      assert.equal(row['min-height'], '48px');
+      const tracks = row['grid-template-columns']!.split(' ');
+      assert.deepEqual([tracks[0], tracks.at(-1)], ['56px', '32px'], `右键菜单行的列：${row['grid-template-columns']}`);
+      await page.locator('#playerMenu [data-player-menu]').first().hover();
+      assert.equal((await styleOf(page, '#playerMenu [data-player-menu]', ['background-color']))!['background-color'],
+        'rgba(255, 255, 255, 0.1)');
+      await page.keyboard.press('Escape');
+      assert.deepEqual(withoutPlayer(opened.problems), []);
+    } finally {
+      await opened.close();
+    }
+  });
+
+  it('统计图 20px 高，缓冲那条按健康度换色；小窗照 ytd-miniplayer：固定在右下角 16px、宽 400px、层级在弹层之下，快退快进键 36px', { timeout: 60_000 }, async () => {
+    const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
+    try {
+      const page = opened.page;
+      await page.locator('#stage #playerStatsBtn').click();
+      const plot = '#stage [data-player-stats-plot="buffer"]';
+      assert.equal((await styleOf(page, plot, ['height']))!.height, '20px');
+      const colors = await page.evaluate((selector) => ['low', 'mid'].map((state) => {
+        const bar = document.createElement('i');
+        bar.dataset.bar = state;
+        document.querySelector(selector)!.append(bar);
+        const color = getComputedStyle(bar).backgroundColor;
+        bar.remove();
+        return color;
+      }), plot);
+      assert.deepEqual(colors, ['rgb(225, 105, 98)', 'rgb(239, 181, 95)']);
+
+      await page.locator('#closeStage').focus();
+      await page.keyboard.press('i');
+      await page.locator('#miniplayer:not([hidden]) .video-js').waitFor({ timeout: 10_000 });
+      assert.deepEqual(await styleOf(page, '#miniplayer', ['position', 'z-index']), { position: 'fixed', 'z-index': '900' });
+      const box = (await page.locator('#miniplayer').boundingBox())!;
+      assert.deepEqual([box.width, box.x + box.width, box.y + box.height], [400, DESKTOP.width - 16, DESKTOP.height - 16]);
+      assert.deepEqual(await styleOf(page, '#miniplayerBack', ['width', 'height']), { width: '36px', height: '36px' });
       assert.deepEqual(withoutPlayer(opened.problems), []);
     } finally {
       await opened.close();

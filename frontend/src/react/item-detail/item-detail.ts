@@ -1,7 +1,7 @@
 /* 作品详情 `/item/:id` 与四种队列（Mix、分卷、版本、播放列表）的数据与判定（ADR-0031）。
  *
- * 岛挂在舞台（`<dialog id="stage">`）里壳建好的宿主上，舞台本身、进出场、小窗与 Video.js
- * 归壳，关注详情也在用同一套。条目归岛：`/api/items` 的卡片没有 `entity_refs`、标签也只是
+ * 这一块是舞台岛（`../stage/`）树里的子组件，舞台本身、进出场、小窗与 Video.js 归舞台岛，
+ * 关注详情也在用同一套。条目归这里：`/api/items` 的卡片没有 `entity_refs`、标签也只是
  * 字符串，拿来当详情只会让身份区与标签区先画一版再跳，所以一律单条取 `GET /api/item?id=`。
  *
  * 队列也归岛，按 `{kind, seedId|playlistId}` 取、键里带上它们：同一个队列里换一条走缓存，
@@ -252,10 +252,11 @@ export interface ItemDetailActions {
   redirect(to: ItemDetailRedirect): void;
   /** 队列里点另一条：舞台上的播放器要先拆、地址要换，经壳重挂。`push` 为假时不推地址。 */
   openQueueItem(queue: QueueRef, id: number, push?: boolean): void;
-  /** 把岛画好的 `<video>` 交给壳挂 Video.js（片源、清晰度、海报、氛围光与遥测都在壳里）；返回
-   *  的清理在这块媒体区卸下时调。签名与关注详情同一个：作品详情没有「第几份媒体」，`media`
-   *  传 null；`autoplay` 不给就按设置，计费拦截点开的那一下给 true。 */
-  mountPlayer(video: HTMLVideoElement, item: DetailItem, media: null, options?: { autoplay?: boolean }): () => void;
+  /** 把媒体框交给舞台挂播放器：`<video>` 由舞台建在框里、交给 Video.js，不进这棵 React 树——
+   *  从小窗展开回来时同一个实例要整块搬进这块框。返回的清理在这块媒体区卸下时调。签名与关注
+   *  详情同一个：作品详情没有「第几份媒体」，`media` 传 null；`autoplay` 不给就按设置，计费
+   *  拦截点开的那一下给 true。 */
+  mountPlayer(frame: HTMLElement, item: DetailItem, media: null, options?: { autoplay?: boolean }): () => void;
   /** 盘回来了：按正常路径重开这一条，不在半路挂播放器。 */
   reopen(): void;
   /** 重新检测一个来源挂没挂上。 */

@@ -1,4 +1,4 @@
-/* 作品详情岛（`item-detail`）在真浏览器里的行为：从目录卡进出、深链、Video.js 挂在岛画的 `<video>` 上、
+/* 作品详情岛（`item-detail`）在真浏览器里的行为：从目录卡进出、深链、舞台在媒体框里挂 Video.js、
  * 脱盘说明、共演收起、标题折叠、评分与标签的撤销、反馈键态、四种队列、播放列表排序与移出、保存 Mix、接着看、
  * 实体页入口与手机布局。
  *
@@ -71,14 +71,14 @@ describe('作品详情岛', () => {
     }
   });
 
-  it('岛画的 `<video>` 交给壳挂上 Video.js，氛围光画布与统计角标跟它进同一块媒体区', { timeout: 60_000 }, async () => {
+  it('舞台在媒体框里挂上 Video.js，氛围光画布与统计角标跟它进同一块媒体区', { timeout: 60_000 }, async () => {
     const opened = await openItemPage(browser, `/item/${ITEM.plain}`, DESKTOP);
     try {
       const page = opened.page;
       await page.locator('#stage [data-item-media="video"] > .video-js video.vjs-tech').waitFor({ state: 'attached' });
       const shape = await page.evaluate(() => {
         const media = document.querySelector('#stage [data-item-media="video"]')!;
-        return { id: media.querySelector(':scope > .video-js')!.id, canvas: !!media.querySelector(':scope > .ambientcanvas'),
+        return { id: media.querySelector(':scope > .video-js')!.id, canvas: !!media.querySelector(':scope > [data-ambient-canvas]'),
           stats: !!media.querySelector('#playerStatsBtn'), videos: media.querySelectorAll('video').length };
       });
       assert.deepEqual(shape, { id: 'vid', canvas: true, stats: true, videos: 1 });

@@ -23,10 +23,6 @@
 #toasts [data-sonner-toast] [data-action]:hover:not(:disabled){background:var(--board-blue-hover);color:var(--color-text-white)}
 #toasts [data-sonner-toast] [data-action]:active:not(:disabled){background:var(--board-blue-active);color:var(--color-text-white)}
 #toasts [data-sonner-toast] [data-action]:focus-visible{outline:2px solid var(--color-border-focus-ring);outline-offset:2px}
-.mixgrouplabel{display:flex;align-items:center;gap:8px;margin:12px 10px 6px;color:var(--ink);
-  font-size:var(--fs-xs);font-weight:600}
-.mixgrouplabel:first-child{margin-top:4px}
-.mixgrouplabel span{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:400}
 
 /* SFW 模式默认关闭，浏览器保存显式选择。全站图片、视频及 videojs 海报层
    使用模糊、降低饱和度与压暗处理；品牌标识、来源图标保持可见。

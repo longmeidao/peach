@@ -26,6 +26,8 @@
 @import "./item-detail/item-detail.css";
 @import "./photo-lightbox/photo-lightbox.css";
 @import "./index/index-people.css";
+@import "../player/player.css";
+@import "./stage/stage.css";
 
 @source "./";
 @source "../management-skeletons.ts";

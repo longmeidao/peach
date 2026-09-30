@@ -99,11 +99,6 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   box-shadow:0 0 0 1px var(--line-soft);background:var(--ground);color:var(--ink);padding:9px 12px;cursor:pointer}.batchbar button:hover{background:var(--hover);color:var(--ink)}
 .batchbar button svg{width:17px;height:17px;margin-right:6px;vertical-align:-4px;stroke:currentColor;fill:none;stroke-width:2}
 
-@media (max-width:1080px){.sgrid,.sgrid.mixgrid{grid-template-columns:minmax(0,1fr)}
-  .sgrid.mixgrid{grid-template-areas:"media" "side" "queue"}
-  .side,.sgrid.mixgrid>.side{grid-column:auto;border-left:0;border-top:1px solid var(--line-soft)}
-  .sidecontent{height:auto;max-height:none}
-  .mixqueue,.sgrid.mixgrid>.mixqueue{max-height:420px;border-left:0;border-top:1px solid var(--line-soft)}}
 @media (max-width:760px){
   .readout{display:none} .brand .sub{display:none}
   :root{--tile:168px;--topH:52px;--sortH:60px}
@@ -142,7 +137,6 @@ body:has(#batchbar:not([hidden])) #stage{padding-bottom:180px}
   .batchbar:has([data-junk-batch]:not([hidden])) button[hidden]{display:none}
   .batchbar:has([data-junk-batch]:not([hidden])) button svg{margin-right:4px}
   .playlistpage>header{align-items:stretch;flex-direction:column}
-  .fb{width:100%}.fb button{flex:1 1 0;min-width:38px}
   /* 顶栏在窄屏会被搜索框撑破 —— 搜索收成一个按钮，点了才展开。只裁横向：竖向也裁的话，
      那几枚玻璃按钮往下落的投影在顶栏下沿被切平，头像那一排上方就多出一条横线。 */
   .top{gap:4px;padding:0 8px;overflow:clip visible}

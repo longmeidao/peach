@@ -664,11 +664,6 @@ body>.board-filter-frame{margin-inline:16px}
 @media(prefers-reduced-motion:reduce){.ptoggle,.ptoggle::after,.ptoggle::before{transition:none}}
 
 /* 媒体详情、实体与管理共享卡片层级，播放器仍使用原有播放交互。 */
-.stage{border:1px solid var(--line);border-radius:var(--surface-radius);overflow:clip;background:var(--ground);box-shadow:0 2px 8px light-dark(#0000000a,#00000066);--detail-surface:var(--ground)}
-.stage:not(.ambient-on){background:var(--ground)}
-.stage .side{background:var(--ground);backdrop-filter:none;border-color:var(--line-soft)}
-.sidecontent{padding:20px;gap:4px}
-.stitle{font-weight:500;line-height:1.5}
 .srctools button{border-radius:8px;background:var(--surface)}
 .geist-fieldset,.configfieldset,.cleanupfieldset,.resourcesyncbox{border-color:var(--line);border-radius:var(--surface-radius);background:var(--ground);overflow:clip}
 .geist-fieldset-footer,.configfieldset>.geist-fieldset-footer{background:var(--surface);border-top:1px solid var(--line-soft)}
@@ -679,37 +674,11 @@ body>.board-filter-frame{margin-inline:16px}
 .card{overflow:visible;border-radius:var(--surface-radius)}
 .card :is(.pic,.mixstack){border-radius:var(--surface-radius)}
 .card .info{background:transparent}
-@media(max-width:760px){.sidecontent{padding:16px}.stage{border-radius:12px}.stage .side{border-left:0;border-top:1px solid var(--line-soft)}}
-/* 单列时媒体、详情栏和队列上下排成一列，总高超过浮窗，滚的是里面那一格内容：`<dialog>`
-   在顶层，它自己滚就只能用系统滚动条，全站那条 3px 浮在内容上的轨道挂不上去（轨道得是
-   滚动容器的兄弟，挂到浮窗父级上会落进遮罩底下）。浮窗照旧按内容定高、`overflow:clip`
-   照旧管横向，上限由这一层自己端着：34px 是浮窗那 16px 上下留白加两条边线，减出来的高度
-   与浮窗自己那条 `max-height` 落在同一个数上，浮窗于是不会比这一层高出一条空边。
-   浮窗不改成 flex 或 grid：那一下会让内部几处百分比高度取得到定值，整块内容当场缩成
-   半屏，浮窗下半截空着。
-   视频格吸在这一层顶上，往下翻标签和动作时画面还在；图片不吸——一张竖图就能占满整屏，
-   吸住它下面就没有地方可滚。 */
-@media(max-width:1080px){
-  .stage>.stagescroll{max-height:calc(100dvh - 34px);overflow:hidden auto;overscroll-behavior:contain}
-  .stage .vwrap:has(>.video-js){position:sticky;top:0;z-index:3}}
-/* 手机上浮窗离屏幕边只留 8px，画面格按视频自己的比例排：竖屏和方形视频装进 16:9 的格子里
-   只剩中间一小块画面。比例由播放器读到元数据后写进 `--peach-video-ratio`，读到之前仍是 16:9；
-   高度封顶 56dvh，吸顶以后下面至少还有四成屏给详情。
-   上沿让出状态栏、下沿按 dvh 停在地址栏之上，浮窗和吸在它顶上的画面不钻到这两条栏底下。 */
-@media(max-width:760px){
-  .stage{inset:calc(env(safe-area-inset-top) + 8px) 8px auto;margin:0 auto;width:calc(100vw - 16px);max-width:calc(100vw - 16px);
-    max-height:calc(100dvh - env(safe-area-inset-top) - 16px)}
-  /* 手机上浮窗自己的上限换了一条，滚动层跟着换，两边仍旧差两条边线。 */
-  .stage>.stagescroll{max-height:calc(100dvh - env(safe-area-inset-top) - 18px)}
-  .vwrap>.video-js{aspect-ratio:var(--peach-video-ratio,16/9);max-height:56dvh}
-}
 @media(max-width:760px){.settingspanel.settingspanel{padding:12px;grid-template-columns:minmax(0,1fr)}.settingscard.settingscard{width:calc(100vw - 24px);max-width:calc(100vw - 24px);min-width:0}.settingscard .settingsscroll .settingrow:has(.board-optional-number){grid-template-columns:minmax(0,1fr) auto;gap:12px}.settingscard>.board-local-nav{min-width:0;max-width:100%}}
 /* 纯图标按钮不继承浏览器按钮的水平内边距。 */
 :is(.settingshead button,.srctools button,.sidebarorderrow button,#drawerClose){padding:0;display:inline-grid;place-items:center;line-height:1;flex-shrink:0}
 :is(.settingshead button,.srctools button,.sidebarorderrow button,#drawerClose)>svg{display:block;margin:0;flex-shrink:0;align-self:center;justify-self:center}
 :is(.settingshead button,.srctools button,.sidebarorderrow button,#drawerClose)[hidden]{display:none}
-.closestage{padding:0;display:grid;place-items:center;line-height:1;border-radius:50%;background:var(--surface);color:var(--ink)}
-.closestage svg{display:block;margin:0;justify-self:center;align-self:center}
 
 /* BoardUI surface tokens; Peach retains its layouts and specialized media UI. */
 :root{--board-motion:.3s cubic-bezier(.4,0,.2,1);--board-dialog-motion:.3s cubic-bezier(.32,.72,0,1);--fs-lg:16px;--fs-xl:20px;--fs-2xl:24px;--control-h:36px}
@@ -739,14 +708,6 @@ button,input,select,textarea{font-family:inherit}
 .settingspanel.closing .settingscard.settingscard{animation:board-dialog-out var(--board-dialog-motion) both}
 @keyframes board-dialog-in{from{opacity:0;transform:scale(.85);filter:blur(4px)}to{opacity:1;transform:scale(1);filter:blur(0)}}
 @keyframes board-dialog-out{from{opacity:1;transform:scale(1);filter:blur(0)}to{opacity:0;transform:scale(.85);filter:blur(4px)}}
-/* 作品详情浮窗进出场跟设置弹层同一组关键帧、同一个时长 token，遮罩也是同一条淡入淡出：
-   两个都是盖住整页的弹层，一个缩放着淡进来、另一个直接闪出来的话，读起来像两种东西。
-   `backwards` 的理由同上，这里更要紧——`.stage .side` 自己就带 backdrop-filter。
-   退场期间收掉指针：浮窗已经在缩小，关闭键和播放器控件还能点到就会收到第二次触发。 */
-.stage{animation:board-dialog-in var(--board-dialog-motion) backwards}
-.stage::backdrop{animation:settings-backdrop-in .35s cubic-bezier(.4,0,.2,1) both}
-.stage.closing{animation:board-dialog-out var(--board-dialog-motion) both;pointer-events:none}
-.stage.closing::backdrop{animation:settings-backdrop-out .35s cubic-bezier(.4,0,.2,1) both}
 /* 设置弹层左栏跟左侧抽屉走同一张面：两者是同一件事的两种形态——抽屉是全站导航，
    这一栏是设置内部的导航，抽屉上的液态玻璃没有理由进了弹层就换成一块实色。
    整张卡片仍旧自己铺 --page，让那一栏的 backdrop 采样到的是这块实色而不是身后的页面：
@@ -925,7 +886,6 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .board-sidebar-head #brandHome .mark{display:grid;place-items:center;background:none;border-radius:0}.board-sidebar-head .mark svg,.board-library-avatar svg,.drawer .dnav button svg{width:20px;height:20px;stroke-width:2}.board-library-avatar{background:none;border-radius:0}.board-home-logo{width:24px;height:24px;object-fit:contain;flex:none}.drawer:not(.open) .dnav button:has(.board-home-logo){padding:6px}
 .drawer.drawer .dnav button[aria-pressed=true]:hover,.drawer.drawer .dnav button[aria-pressed=true]:active{background:var(--board-blue);color:white;filter:brightness(1.08)}
 .board-section-toggle>span{font-size:12px;line-height:20px;font-weight:500;color:var(--muted)}
-.stage .vwrap{overflow:hidden;border-radius:var(--surface-radius)}
 .board-section-toggle svg{order:2;margin-left:auto;width:14px;height:14px;flex:none;fill:none;stroke:currentColor;stroke-width:2;transform:rotate(0deg)}
 .board-section-toggle[aria-expanded=true] svg{transform:rotate(90deg)}
 .drawer .board-sidebar-body[hidden]{display:none}
@@ -943,11 +903,6 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 .drawer .board-sidebar-body .sidemore svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s cubic-bezier(0,0,.2,1)}
 .drawer .board-sidebar-body .sidemore[aria-expanded=true] svg{transform:rotate(180deg)}
 @media(prefers-reduced-motion:reduce){.drawer .board-sidebar-body .sidemore svg{transition:none}}
-/* 动作键成组，操作按钮保留各自的可访问名称。 */
-.sidecontent .fb{display:flex;flex-wrap:wrap;gap:4px;width:100%;padding:0;border:0;background:transparent;overflow:visible;margin:0 0 16px}
-.sidecontent .fb button{flex:0 0 36px;width:36px;height:36px;min-width:36px;display:grid;place-items:center;padding:0;border:0;border-radius:8px;background:var(--surface)}
-.sidecontent .fb button svg{display:block;width:18px;height:18px;margin:0}
-.sidecontent .fb button[aria-pressed=true]{box-shadow:inset 0 0 0 1px currentColor}
 .board-filter-frame.board-filter-frame .sorts .batchaction:hover{background:var(--board-blue-hover);color:#fff}
 .board-job-progress{display:flex;align-items:center;gap:12px;padding:12px 0;font-size:14px;line-height:20px}
 .board-job-progress svg{flex:none}.board-job-progress circle{fill:none;stroke-width:2.5;stroke-linecap:round}
@@ -1326,10 +1281,6 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 .drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);transition:color .15s ease}
 .drawer .board-sidebar-head #filterBtn:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-head{gap:10px}}
-/* ── 详情页：播放器格只圆左上角——右边贴着侧栏，下面接着「接着看」 ── */
-.stage .vwrap{border-radius:var(--surface-radius) 0 0 0}
-.stage.theater-mode .vwrap{border-radius:var(--surface-radius) var(--surface-radius) 0 0}
-@media(max-width:1080px){.stage .vwrap{border-radius:var(--surface-radius) var(--surface-radius) 0 0}}
 /* ── 首页顶部两排。女优是竖排人像格：48px 圆头像在上、名字（Caption）在下，格宽 76、圆角 12——Board 的 Avatar 只到
    lg 36px（avatar.tsx），竖排格无对应，48 取的是它 `size-12` 那一级；厂牌是 40px 的灰 Pill（pill-tab.tsx gray 放大一档）：
    28px 圆标识在左、名字在右。两排都不描边、悬停 primary-hover、选中 tertiary 底主文字色；标签那一排是 30px 的描边药丸，
@@ -1527,10 +1478,6 @@ body .batchbar button[hidden],body .batchbar button.danger[hidden]{display:none}
 .drawer .board-sidebar-head #filterBtn{width:20px;height:20px;padding:0;background:none;box-shadow:none}
 .drawer .board-sidebar-head #filterBtn:hover{background:none;color:var(--color-text-primary)}
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-head{min-height:0;gap:10px;align-items:center;justify-content:flex-start}.drawer:not(.open) .board-sidebar-head #filterBtn{width:36px;height:20px}.drawer:not(.open) #brandHome{width:32px;height:32px;min-height:32px;padding:0;max-width:none}.drawer:not(.open) #brandHome .mark{width:32px;height:32px}}
-/* 详情页的关闭键压在画面上：亮色主题下白底白晕看不出悬停，用户以 YouTube 为参照——播放器上的键在亮色下也是黑底。 */
-.closestage,.closestage:hover{background:rgba(0,0,0,.6);color:#fff}
-.closestage:hover:after,.closestage:focus-visible:after{background:rgba(255,255,255,.2)}
-.closestage:active:after{background:rgba(255,255,255,.3)}
 
 /* 关注工作区：Board Tabs、读数与 Table 的层级，业务分区保留各自表单。 */
 .followmanage .fmanageoverview{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}

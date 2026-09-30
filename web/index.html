@@ -240,7 +240,6 @@
   <div id="libraryProcessingNotice"></div>
   <!-- 订阅源发现的新作（ADR-0042）。只在首页那几条目录路径上出现，由 app.js 按路径开合。 -->
   <section class="feednew" id="feedNew" aria-label="未入库的新作" hidden></section>
-  <dialog class="stage" id="stage" aria-label="作品详情" hidden></dialog>
   <div class="combo" id="combo"></div>
   <section class="index" id="index" hidden></section>
   <nav class="managebar" id="managebar" hidden></nav>
@@ -289,22 +288,6 @@
   </div>
 </div>
 
-<aside class="miniplayer" id="miniplayer" data-corner="br" aria-label="小窗播放" hidden>
-  <div class="miniplayercard" id="miniplayerCard">
-    <div class="miniplayerframe" id="miniplayerFrame">
-      <div class="miniplayerscrim">
-        <button type="button" class="miniplayerbtn miniplayerexpand" id="miniplayerExpand" aria-label="展开到详情" aria-keyshortcuts="i"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-maximize-2"/></svg></button>
-        <button type="button" class="miniplayerbtn miniplayerclose" id="miniplayerClose" aria-label="关闭小窗"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
-        <button type="button" class="miniplayerseek" id="miniplayerBack"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-rotate-ccw"/></svg></button>
-        <button type="button" class="miniplayerplay" id="miniplayerPlay" aria-label="暂停" aria-keyshortcuts="k"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-player-pause"/></svg></button>
-        <button type="button" class="miniplayerseek" id="miniplayerAhead"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-rotate-cw"/></svg></button>
-        <span class="miniplayertime mono" id="miniplayerTime">0:00 / 0:00</span>
-      </div>
-    </div>
-    <button type="button" class="miniplayerinfo" id="miniplayerInfo" aria-label="展开到详情"><span class="miniplayertitle" id="miniplayerTitle"></span><span class="miniplayersub" id="miniplayerSub"></span></button>
-  </div>
-</aside>
-<div class="popmenu playermenu" id="playerMenu" role="menu" aria-label="播放器菜单" hidden></div>
 
 <section class="settingspanel" id="settingsPanel" hidden aria-modal="true" role="dialog" aria-labelledby="settingsTitle">
   <div class="settingscard">

@@ -1,10 +1,3 @@
-.side{min-width:0;min-height:0;align-self:stretch;border-left:1px solid var(--line-soft);overflow:hidden;
-  background:var(--detail-surface);backdrop-filter:blur(18px)}
-/* 背景属于整列，滚动属于内容。两者不能放在同一层，否则 76vh 会把在线占位、
-   图片详情和合集详情右侧的背景一起截短。所有详情分支共用这层结构。 */
-.sidecontent{box-sizing:border-box;width:100%;height:100%;max-height:76vh;padding:18px;display:flex;gap:0;
-  flex-direction:column;overflow-y:auto;overflow-x:hidden}
-.stitle{font-size:var(--fs-lg);line-height:1.4;word-break:break-all;margin-bottom:8px}
 /* 源文件管理：定位 + 目录对账。图标必须显式写 stroke/fill，Lucide 是描边路径，
    缺了就被按默认 fill:black 画成黑块（灯箱 `photo-lightbox.css` 的圆钮图标同样显式写了）。 */
 .srctools{display:flex;align-items:center;gap:6px;margin:0 0 10px;flex-wrap:wrap}
@@ -15,18 +8,3 @@
 .srctools button:hover{background:var(--hover);color:var(--ink)}
 .srctools button:disabled{background:var(--sunk);border-color:var(--line-soft);color:var(--muted);cursor:not-allowed}
 .srcstate{font-size:var(--fs-xs);color:var(--muted);min-width:0;flex:1 1 100%}
-.smeta{display:flex;gap:9px;flex-wrap:wrap;color:var(--muted);margin-bottom:18px}
-.stags{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 18px}
-.fb{display:flex;align-items:center;gap:0;margin:0 0 12px;padding:0;border:1px solid var(--border-10);border-radius:var(--control-radius);background:var(--overlay-5);width:max-content;overflow:hidden;flex:none}
-.fb button{width:44px;height:42px;padding:0;border:0;border-right:1px solid var(--border-10);background:transparent;border-radius:0;
-  cursor:pointer;display:grid;place-items:center;color:var(--muted);transition:transform .14s ease,color .14s ease,background .14s ease}
-.fb button svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.fb button:last-child{border-right:0}.fb button:hover{transform:none;background:var(--hover)}
-/* 作品详情与关注详情都有的三枚：色相各自指向一种判断（红=不合口味、绿=看过、青=稍后看）。
-   作品详情多出来的几枚写在 `frontend/src/react/item-detail/item-detail.css`。 */
-.fb .dislike:hover,.fb .dislike[aria-pressed="true"]{color:var(--drop);background:color-mix(in srgb,var(--drop) 12%,transparent)}
-.fb .seen:hover,.fb .seen[aria-pressed="true"]{color:var(--keep);background:color-mix(in srgb,var(--keep) 12%,transparent)}
-.fb .later:hover,.fb .later[aria-pressed="true"]{color:var(--loupe);background:color-mix(in srgb,var(--loupe) 12%,transparent)}
-/* Mix 切换带里的窄卡只放两个头像：第三个挤掉的正好是署名那一行的宽度，元数据会折成
-   三到四行。接着看那一排的窄卡是同一个判据，写在 `media-card.css` 的 `next` 变体上。 */
-.sgrid.mixgrid>.mixqueue .mavstack .mav:nth-child(n+3){display:none}
