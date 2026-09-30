@@ -225,7 +225,7 @@ def plan(repo: str) -> dict:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--repo", default="longmeidao/peach")
+    parser.add_argument("--repo", default="peach-mitao/peach")
     parser.add_argument("--apply", action="store_true",
                         help="真的动手：带 --bump 时写版本号与变更日志，带 --ship 时走完发布，"
                              "都不带时创建并推送标签")

@@ -7,17 +7,17 @@
 <p align="center">给自己用的私人影片馆藏：本地硬盘、网盘和关注的创作者，放在一个地方看。</p>
 
 <p align="center">
-  <a href="https://github.com/longmeidao/peach/releases">下载 Windows 版</a> ·
+  <a href="https://github.com/peach-mitao/peach/releases">下载 Windows 版</a> ·
   <a href="https://demo.peach.video">在线演示</a> ·
-  <a href="https://github.com/longmeidao/peach/releases/tag/intro-video">介绍视频</a> ·
-  <a href="https://github.com/longmeidao/peach/issues">问题反馈</a> ·
+  <a href="https://github.com/peach-mitao/peach/releases/tag/intro-video">介绍视频</a> ·
+  <a href="https://github.com/peach-mitao/peach/issues">问题反馈</a> ·
   <a href="#文档">文档</a> ·
   <a href="README.en.md">English</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&amp;label=tests&amp;logo=githubactions&amp;logoColor=white" alt="tests"></a>
-  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&amp;label=release&amp;logo=github&amp;logoColor=white" alt="release"></a>
+  <a href="https://github.com/peach-mitao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/peach-mitao/peach/test.yml?branch=master&amp;label=tests&amp;logo=githubactions&amp;logoColor=white" alt="tests"></a>
+  <a href="https://github.com/peach-mitao/peach/releases"><img src="https://img.shields.io/github/v/release/peach-mitao/peach?include_prereleases&amp;label=release&amp;logo=github&amp;logoColor=white" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?logo=gnu&amp;logoColor=white" alt="license"></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xIDFoMTB2MTBIMXptMTIgMGgxMHYxMEgxM3pNMSAxM2gxMHYxMEgxem0xMiAwaDEwdjEwSDEzeiIvPjwvc3ZnPg%3D%3D" alt="Windows">
@@ -40,16 +40,16 @@ https://github.com/user-attachments/assets/cc164de3-28d6-4fc9-8067-f2e70e94cb93
 
 <table>
   <tr>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-home.jpg" alt="首页"></td>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-performer.jpg" alt="女优页"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-home.jpg" alt="首页"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-performer.jpg" alt="女优页"></td>
   </tr>
   <tr>
     <td align="center">首页：按来源、时长、标签筛选</td>
     <td align="center">女优页：资料、别名、外部链接和全部作品</td>
   </tr>
   <tr>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-follow.jpg" alt="关注"></td>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-stats.jpg" alt="统计"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-follow.jpg" alt="关注"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-stats.jpg" alt="统计"></td>
   </tr>
   <tr>
     <td align="center">关注：一个创作者在多个站点的更新汇到一起</td>
@@ -72,7 +72,7 @@ https://github.com/user-attachments/assets/cc164de3-28d6-4fc9-8067-f2e70e94cb93
 
 ### Windows
 
-1. 从 [Releases](https://github.com/longmeidao/peach/releases) 下载其中一种：
+1. 从 [Releases](https://github.com/peach-mitao/peach/releases) 下载其中一种：
    - 安装包 `Peach-<版本>-windows-x64-setup.exe`：双击安装，不需要管理员权限，开始菜单里有 Peach，可以在系统设置里卸载。
    - 免安装包 `Peach-<版本>-windows-x64.zip`：右键「全部解压」，双击里面的 `Peach.exe`。
 2. 浏览器会打开首次设置页。
@@ -85,7 +85,7 @@ https://github.com/user-attachments/assets/cc164de3-28d6-4fc9-8067-f2e70e94cb93
 需要 Git、[uv](https://docs.astral.sh/uv/getting-started/installation/) 和 Python 3.12 或更高（uv 会自动下载缺的解释器）：
 
 ```powershell
-git clone https://github.com/longmeidao/peach.git peach-app
+git clone https://github.com/peach-mitao/peach.git peach-app
 cd peach-app
 uv sync --locked --python 3.14
 & .\.venv\Scripts\peach-tray.exe
@@ -120,7 +120,7 @@ macOS 把后两条换成 `uv sync --locked --python 3.14 --extra macos` 和 `./.
 
 ## 问题反馈
 
-在 [Issues](https://github.com/longmeidao/peach/issues) 里写清楚版本号、做了什么、想要的结果和实际看到的结果，最好附截图。截图前遮掉密码、Cookie、局域网地址和文件完整路径，不要上传数据库文件或媒体。安全问题请按 [安全政策](SECURITY.md) 私下报告。
+在 [Issues](https://github.com/peach-mitao/peach/issues) 里写清楚版本号、做了什么、想要的结果和实际看到的结果，最好附截图。截图前遮掉密码、Cookie、局域网地址和文件完整路径，不要上传数据库文件或媒体。安全问题请按 [安全政策](SECURITY.md) 私下报告。
 
 ## 文档
 

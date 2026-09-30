@@ -7,17 +7,17 @@
 <p align="center">A private video library for yourself: local drives, cloud drives and the creators you follow, all in one place.</p>
 
 <p align="center">
-  <a href="https://github.com/longmeidao/peach/releases">Download for Windows</a> ·
+  <a href="https://github.com/peach-mitao/peach/releases">Download for Windows</a> ·
   <a href="https://demo.peach.video">Live demo</a> ·
-  <a href="https://github.com/longmeidao/peach/releases/tag/intro-video">Intro video</a> ·
-  <a href="https://github.com/longmeidao/peach/issues">Report a problem</a> ·
+  <a href="https://github.com/peach-mitao/peach/releases/tag/intro-video">Intro video</a> ·
+  <a href="https://github.com/peach-mitao/peach/issues">Report a problem</a> ·
   <a href="#documentation">Documentation</a> ·
   <a href="README.md">中文</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/longmeidao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/longmeidao/peach/test.yml?branch=master&amp;label=tests&amp;logo=githubactions&amp;logoColor=white" alt="tests"></a>
-  <a href="https://github.com/longmeidao/peach/releases"><img src="https://img.shields.io/github/v/release/longmeidao/peach?include_prereleases&amp;label=release&amp;logo=github&amp;logoColor=white" alt="release"></a>
+  <a href="https://github.com/peach-mitao/peach/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/peach-mitao/peach/test.yml?branch=master&amp;label=tests&amp;logo=githubactions&amp;logoColor=white" alt="tests"></a>
+  <a href="https://github.com/peach-mitao/peach/releases"><img src="https://img.shields.io/github/v/release/peach-mitao/peach?include_prereleases&amp;label=release&amp;logo=github&amp;logoColor=white" alt="release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue?logo=gnu&amp;logoColor=white" alt="license"></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white" alt="Python 3.12+">
   <img src="https://img.shields.io/badge/platform-Windows-0078D4?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGQ9Ik0xIDFoMTB2MTBIMXptMTIgMGgxMHYxMEgxM3pNMSAxM2gxMHYxMEgxem0xMiAwaDEwdjEwSDEzeiIvPjwvc3ZnPg%3D%3D" alt="Windows">
@@ -40,16 +40,16 @@ Want to look around before installing? The [live demo](https://demo.peach.video)
 
 <table>
   <tr>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-home.jpg" alt="Home"></td>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-performer.jpg" alt="Performer page"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-home.jpg" alt="Home"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-performer.jpg" alt="Performer page"></td>
   </tr>
   <tr>
     <td align="center">Home: filter by source, length and tags</td>
     <td align="center">Performer page: profile, aliases, links and every video</td>
   </tr>
   <tr>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-follow.jpg" alt="Following"></td>
-    <td><img src="https://github.com/longmeidao/peach/releases/download/intro-video/peach-stats.jpg" alt="Statistics"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-follow.jpg" alt="Following"></td>
+    <td><img src="https://github.com/peach-mitao/peach/releases/download/intro-video/peach-stats.jpg" alt="Statistics"></td>
   </tr>
   <tr>
     <td align="center">Following: one creator's updates from several sites in one feed</td>
@@ -72,7 +72,7 @@ Want to look around before installing? The [live demo](https://demo.peach.video)
 
 ### Windows
 
-1. Download one of the two packages from [Releases](https://github.com/longmeidao/peach/releases):
+1. Download one of the two packages from [Releases](https://github.com/peach-mitao/peach/releases):
    - Installer `Peach-<version>-windows-x64-setup.exe`: double-click to install. No administrator rights needed; Peach appears in the Start menu and can be uninstalled from Windows Settings.
    - Portable `Peach-<version>-windows-x64.zip`: right-click it, choose "Extract All", then double-click `Peach.exe` inside.
 2. Your browser opens the first-run setup page.
@@ -85,7 +85,7 @@ The test package is not code-signed yet. If Windows says "Windows protected your
 You need Git, [uv](https://docs.astral.sh/uv/getting-started/installation/) and Python 3.12 or newer (uv downloads a missing interpreter for you):
 
 ```powershell
-git clone https://github.com/longmeidao/peach.git peach-app
+git clone https://github.com/peach-mitao/peach.git peach-app
 cd peach-app
 uv sync --locked --python 3.14
 & .\.venv\Scripts\peach-tray.exe
@@ -120,7 +120,7 @@ LAN access, access passwords, updates and uninstalling are covered in [Operation
 
 ## Reporting problems
 
-Open an [issue](https://github.com/longmeidao/peach/issues) with the version, what you did, what you expected and what actually happened, ideally with a screenshot. Before taking screenshots, hide passwords, cookies, LAN addresses and full file paths, and do not upload database files or media. Report security issues privately as described in the [security policy](SECURITY.md).
+Open an [issue](https://github.com/peach-mitao/peach/issues) with the version, what you did, what you expected and what actually happened, ideally with a screenshot. Before taking screenshots, hide passwords, cookies, LAN addresses and full file paths, and do not upload database files or media. Report security issues privately as described in the [security policy](SECURITY.md).
 
 ## Documentation
 
