@@ -35,6 +35,33 @@ describe('关注页岛', () => {
     await browser.close();
   });
 
+  for (const viewport of [DESKTOP, MOBILE]) {
+    it(`${viewport.name} 多图数量按钮可以打开详情`, { timeout: 60_000 }, async () => {
+      const opened = await openFollowFeed(browser, '/follow?media=images', viewport, { settings: { followImagesOnly: false } });
+      try {
+        const page = opened.page;
+        const payload = await page.evaluate(async () => {
+          const list = await (await fetch('/api/follow?media=images')).json();
+          const detail = await (await fetch('/api/follow?item=5001')).json();
+          list.groups = detail.groups.map((group: Record<string, unknown>) => ({
+            ...group, stack: { media: 3, kind: 'image', faces: [] },
+          }));
+          list.has_more = false;
+          return list;
+        });
+        await page.route((url) => url.pathname === '/api/follow' && !url.searchParams.has('item'),
+          (route) => route.fulfill({ json: payload }));
+        await page.reload({ waitUntil: 'networkidle' });
+        await page.locator('[data-follow-list] [data-follow-collection="5001"]').click();
+        await page.waitForURL('**/follow/item/5001');
+        await page.locator('#stage[open]').waitFor();
+        assert.deepEqual(withoutPlayer(opened.problems), []);
+      } finally {
+        await opened.close();
+      }
+    });
+  }
+
   it('首屏：「全部」按下，页头、两排、筛选浮层、列表自上而下', { timeout: 60_000 }, async () => {
     const opened = await openFollowFeed(browser, '/follow', DESKTOP);
     try {
