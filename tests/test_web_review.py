@@ -1053,23 +1053,66 @@ class ReviewQueueTests(unittest.TestCase):
                          [{"source": "javdb", "value": "145cm色白お嬢様"}])
 
     def test_fc2_rows_that_still_need_a_person_to_pick_a_name_stay_in_review(self):
-        """两种行不替人决定。
+        """四种行不替人决定。
 
         剔掉描述性称呼后只剩短单名的：`飛鳥` 两个字，按它认人会命中别人（ADR-0072）。
         一条候选里一半是真名的：`神山ももか` 是人，整条丢掉就把她一起丢了。
+        敬称前的名字只是另一家名单里的一位：`みおちゃん` 对不上三个人的整条。
+        敬称前的名字在账本里是别人的别名：`夏希` 落下去就挂到 `夏希南` 名下（ADR-0086）。
         """
         self._asset(132, "FC2-PPV-1512000", "FC2-PPV-1512000.mp4")
         self._asset(133, "FC2-PPV-1512001", "FC2-PPV-1512001.mp4")
+        self._asset(137, "FC2-PPV-1512002", "FC2-PPV-1512002.mp4")
+        self._asset(138, "FC2-PPV-1512003", "FC2-PPV-1512003.mp4")
+        con = sqlite3.connect(self.db_path)
+        con.execute("INSERT INTO entity(id,kind,canonical_name,normalized_name,created_at,"
+                    "updated_at) VALUES(62,'performer','夏希南','夏希南','2026-01-01','2026-01-01')")
+        con.execute("INSERT INTO entity_alias(entity_id,alias,normalized_alias,source,"
+                    "confidence) VALUES(62,'夏希','夏希','user:manual',1.0)")
+        con.commit(); con.close()
         self.write_metadata_rows([
             self._fc2_performer_row("SHORT", "FC2-PPV-1512000",
-                                    ("fc2ppvdb", "飛鳥"), ("javdb", "飛鳥ちゃん")),
+                                    ("fc2ppvdb", "飛鳥"), ("javdb", "145cm色白お嬢様")),
             self._fc2_performer_row("HALF", "FC2-PPV-1512001",
                                     ("javdb", "神山ももか、かえでちゃん")),
+            self._fc2_performer_row("TRIO", "FC2-PPV-1512002",
+                                    ("fc2ppvdb", "もか、美雲そら、みお"), ("javdb", "みおちゃん")),
+            self._fc2_performer_row("ALIAS", "FC2-PPV-1512003",
+                                    ("fc2ppvdb", "夏希"), ("javdb", "夏希ちゃん")),
         ])
         result = self._auto_without_snapshots()
         self.assertEqual((result["applied"], result["auto_rejected"]), (0, 0))
-        self.assertEqual(sorted(self.queue_keys("metadata_fields")), ["HALF", "SHORT"])
-        self.assertEqual(self._performers_of(132), [])
+        self.assertEqual(sorted(self.queue_keys("metadata_fields")),
+                         ["ALIAS", "HALF", "SHORT", "TRIO"])
+        self.assertEqual(self._performers_of(132) + self._performers_of(138), [])
+
+    def test_an_fc2_honorific_and_the_bare_name_count_as_two_agreeing_sources(self):
+        """javdb 的 `飛鳥ちゃん` 与 fc2ppvdb 的 `飛鳥` 是两家一致，按镜像站那条落库（ADR-0086）。
+
+        javdb 演员页的编号不跟着落：那一页是这家站自己的，短名实体由各家卖家共用。
+        """
+        self._asset(139, "FC2-PPV-1512004", "FC2-PPV-1512004.mp4")
+        row = self._fc2_performer_row("ECHO", "FC2-PPV-1512004",
+                                      ("fc2ppvdb", "飛鳥"), ("javdb", "飛鳥ちゃん"))
+        row["candidates"][1]["value"][0]["external_id"] = "PrME"
+        self.write_metadata_rows([row])
+        result = self._auto_without_snapshots()
+        self.assertEqual((result["applied"], result["auto_rejected"]), (1, 0))
+        self.assertEqual(self._performers_of(139), ["飛鳥"])
+        status, note = self._decision("ECHO")
+        note = json.loads(note)
+        self.assertEqual(status, "approved")
+        self.assertEqual((note["source"], note["value"]), ("fc2ppvdb", "飛鳥"))
+        self.assertEqual(note["rule"], "adr-0086-fc2-honorific-2-agreed-sources")
+        self.assertEqual(note["honorific_agreed"], [{"source": "javdb", "value": "飛鳥ちゃん"}])
+        self.assertNotIn("descriptive_dropped", note)
+        con = sqlite3.connect(self.db_path)
+        try:
+            refs = con.execute("SELECT count(*) FROM entity_external_ref "
+                               "WHERE external_id='PrME'").fetchone()[0]
+        finally:
+            con.close()
+        self.assertEqual(refs, 0)
 
     def test_an_auto_rejection_is_judged_again_when_a_source_adds_a_candidate(self):
         """自动否决只覆盖否决那一刻的候选：来源后来给出真名，这一行重新判、照常落库。

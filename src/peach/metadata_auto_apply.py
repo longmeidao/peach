@@ -352,6 +352,63 @@ def _names_nobody(candidate: dict, resolve=None) -> bool:
 #: FC2 出演者行的自动否决写在这个规则名下（ADR-0079）。撤回脚本按它整批认出来。
 FC2_DESCRIPTIVE_REJECTION_RULE = "adr-0079-fc2-descriptive-performer"
 
+#: FC2 出演者按敬称算作一致的落库，规则名以它开头（ADR-0086）。
+FC2_HONORIFIC_AGREEMENT_RULE = "adr-0086-fc2-honorific"
+_HONORIFIC = "ちゃん"
+
+
+def _names_only_itself(connection, name: str) -> bool:
+    """这个写法在账本里没有别的主人：解析不到实体，或解析到的就是以它为规范名的那一条。
+
+    `夏希` 登记成了 `夏希南` 的别名，按它落库就是把这部片挂到 `夏希南` 名下。
+    """
+    known = resolve_entity(connection, "performer", name)
+    return known is None or (normalize_entity_name(str(known["canonical_name"]))
+                             == normalize_entity_name(name))
+
+
+def _with_honorific_echoes(connection, code: str, field: str, candidates: list[dict],
+                           resolve=None) -> tuple[list[dict], list[dict]]:
+    """FC2 出演者里 javdb 的 `みおちゃん` 与镜像站的 `みお` 算两家一致（ADR-0086）。
+
+    返回 `(候选, 按敬称折过的那些 {source, value})`。只折这样的候选：整条只有一位，写法是
+    `X` 加 `ちゃん`，同一行另有一家整条就是 `X`，`X` 本身剪得出艺名，账本里 `X` 也没有别的
+    主人（`_names_only_itself`）。单独一家的 `みおちゃん` 不折：没有另一家给出同一个名字，
+    敬称前面那两个字是不是她的艺名就无从对照，那一行照旧归 ADR-0079 判。
+
+    折过的候选只留名字：站上编号属于那家站自己的演员页，挂到按短名共用的实体上不成立。
+    """
+    if field != "performers" or not _FC2_CODE.match(code):
+        return candidates, []
+    plain = set()
+    for candidate in candidates:
+        names, _resolved = _stage_names(candidate, resolve)
+        if names is not None and len(names) == 1:
+            plain.add(names[0])
+    folded: list[dict] = []
+    echoes: list[dict] = []
+    for candidate in candidates:
+        people = candidate.get("value")
+        raw = (str(people[0].get("name") or "").strip()
+               if isinstance(people, list) and len(people) == 1 and isinstance(people[0], dict)
+               else "")
+        name = raw.removesuffix(_HONORIFIC)
+        if (name != raw and name in plain and _stage_name(name) == name
+                and _names_only_itself(connection, name)):
+            folded.append({**candidate, "value": [{"name": name}], "display_value": name,
+                           "honorific_value": raw})
+            echoes.append({"source": str(candidate.get("source") or "").strip(), "value": raw})
+        else:
+            folded.append(candidate)
+    return folded, echoes
+
+
+def _honorific_agreement(candidates: list[dict]) -> dict:
+    """取值一致的那组里按敬称折过的几家，写成落库记录的 `honorific_agreed` 一项。"""
+    folded = [{"source": str(c.get("source") or "").strip(), "value": c["honorific_value"]}
+              for c in candidates if c.get("honorific_value")]
+    return {"honorific_agreed": folded} if folded else {}
+
 
 def _without_descriptive_performers(code: str, field: str, candidates: list[dict],
                                     resolve=None) -> tuple[list[dict], list[dict]]:
@@ -360,9 +417,10 @@ def _without_descriptive_performers(code: str, field: str, candidates: list[dict
     返回 `(留下的候选, 被剔掉的候选)`。全都剔光时原样返回：那一行交给自动否决判，
     不在这里把它变成「没有候选」。
 
-    剩下的里有短单名（`entities.is_short_single_name`）时不剔：`飛鳥ちゃん` 与 `飛鳥`
-    两家并列时，剔掉前者就是按一个两字名去认人，ADR-0072 说过这种名字会命中别人。
-    两家各执一词的行交人工，不因为少了一家就替人认了。
+    剩下的里有短单名（`entities.is_short_single_name`）时不剔：`飛鳥` 与 `145cm色白お嬢様`
+    两家并列时，剔掉后者就是只凭一个两字名去认人，ADR-0072 说过这种名字会命中别人。
+    两家各执一词的行交人工，不因为少了一家就替人认了。`飛鳥ちゃん` 与 `飛鳥` 到这里之前
+    已由 `_with_honorific_echoes` 折成两家一致。
     """
     if field != "performers" or not _FC2_CODE.match(code):
         return candidates, []
@@ -619,6 +677,8 @@ def _auto_apply_rule(candidate: dict, agreed: int) -> str:
     source = str(candidate.get("source") or "").strip()
     if candidate.get("alias_source"):
         return f"adr-0038-planning-alias-resolved-{candidate['alias_source']}"
+    if candidate.get("honorific_agreed"):
+        return f"{FC2_HONORIFIC_AGREEMENT_RULE}-{agreed}-agreed-sources"
     if candidate.get("chain_winner"):
         return f"adr-0038-chain-{candidate['chain_winner']}"
     if candidate.get("replaces_current"):
@@ -878,8 +938,9 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
     if not code:
         return None
     resolve = _planning_alias_resolver(connection, row, snapshot_root)
-    evidence, descriptive = _without_descriptive_performers(
-        code, field, _evidence_candidates(row, field), resolve)
+    evidence, _echoes = _with_honorific_echoes(
+        connection, code, field, _evidence_candidates(row, field), resolve)
+    evidence, descriptive = _without_descriptive_performers(code, field, evidence, resolve)
     candidates, settled_by, overruled = _settled_candidates(
         connection, field, code, _unmasked_titles(
             field, evidence, str(row.get("current_value") or "")), resolve)
@@ -914,6 +975,7 @@ def metadata_auto_apply_candidate(connection, row: dict, *,
             **({"chain_winner": str(candidate.get("source") or "").strip(),
                 "overruled": overruled} if overruled else {}),
             **({"pending_genres": found} if (found := pending_genres(candidates)) else {}),
+            **_honorific_agreement(candidates),
             **({"descriptive_dropped": [
                 {"source": str(c.get("source") or "").strip(),
                  "value": str(c.get("display_value") or "").strip()} for c in descriptive]}
@@ -1397,39 +1459,48 @@ def auto_apply_metadata(database, candidate_root, *, batch_size=AUTO_APPLY_BATCH
                     "VALUES('metadata_fields',?,'approved',?,?) "
                     "ON CONFLICT(category,item_key) DO UPDATE SET status=excluded.status,"
                     "note=excluded.note,updated_at=excluded.updated_at",
-                    (item_key, json.dumps({
-                        "auto_applied": True,
-                        # 规则名记来源的实际级别，不写死 official：补空对 community 源同样
-                        # 成立，但两者日后要分开回溯时，note 是唯一还留着这个区别的地方。
-                        "rule": _auto_apply_rule(candidate, candidate.get("agreed_sources") or 1),
-                        "candidate_key": candidate.get("candidate_key"),
-                        "source": candidate.get("source"),
-                        "value": candidate.get("display_value"),
-                        # 链上被压下的说法。自动结算的前提是事后答得出「当时还有哪些
-                        # 说法、为什么没选它」，而候选 CSV 会被下一批盖掉，这里是唯一
-                        # 跟着账本一起留下来的那一份（ADR-0038）。
-                        **({"overruled": candidate["overruled"]}
-                           if candidate.get("overruled") else {}),
-                        # 三张表都不认的 genre。标签已经落了认得出的那些，这几个词
-                        # 单独等人收录，复核页按它把这一行重新摆出来。
-                        **({"pending_genres": candidate["pending_genres"]}
-                           if candidate.get("pending_genres") else {}),
-                        # FC2 出演者里一个艺名都没有、没算作证据的那几家（ADR-0079）。
-                        **({"descriptive_dropped": candidate["descriptive_dropped"]}
-                           if candidate.get("descriptive_dropped") else {}),
-                        # 出演者写的是剪过的艺名，原文得留着：事后要答得出账本里这个名字
-                        # 是从哪一句剪出来的。
-                        **({"raw_value": candidate["raw_display_value"]}
-                           if candidate.get("raw_display_value")
-                           and candidate["raw_display_value"] != candidate.get("display_value")
-                           else {}),
-                    }, ensure_ascii=False, separators=(",", ":")), now),
+                    (item_key, json.dumps(_auto_landing_note(candidate),
+                                          ensure_ascii=False, separators=(",", ":")), now),
                 )
                 applied.append({"item_key": item_key, "field": row.get("field"),
                                 "value": candidate.get("display_value"),
                                 "assets": count})
     return {"ok": True, "applied": len(applied), "auto_rejected": rejected,
             "refreshed": refreshed, "left_to_review": skipped, "items": applied}
+
+
+#: 落库候选里有值才原样抄进 note 的几项。
+_LANDING_NOTE_EXTRAS = (
+    # 链上被压下的说法。自动结算的前提是事后答得出「当时还有哪些说法、为什么没选它」，
+    # 而候选 CSV 会被下一批盖掉，这里是唯一跟着账本一起留下来的那一份（ADR-0038）。
+    "overruled",
+    # 三张表都不认的 genre。标签已经落了认得出的那些，这几个词单独等人收录，复核页按它
+    # 把这一行重新摆出来。
+    "pending_genres",
+    # 按敬称算作一致的那几家与它们的原写法（ADR-0086）。
+    "honorific_agreed",
+    # FC2 出演者里一个艺名都没有、没算作证据的那几家（ADR-0079）。
+    "descriptive_dropped",
+)
+
+
+def _auto_landing_note(candidate: dict) -> dict:
+    """自动落库写进 `review_decision.note` 的那份记录。"""
+    note = {
+        "auto_applied": True,
+        # 规则名记来源的实际级别，不写死 official：补空对 community 源同样成立，但两者
+        # 日后要分开回溯时，note 是唯一还留着这个区别的地方。
+        "rule": _auto_apply_rule(candidate, candidate.get("agreed_sources") or 1),
+        "candidate_key": candidate.get("candidate_key"),
+        "source": candidate.get("source"),
+        "value": candidate.get("display_value"),
+        **{key: candidate[key] for key in _LANDING_NOTE_EXTRAS if candidate.get(key)},
+    }
+    # 出演者写的是剪过的艺名，原文得留着：事后要答得出账本里这个名字是从哪一句剪出来的。
+    raw = candidate.get("raw_display_value")
+    if raw and raw != candidate.get("display_value"):
+        note["raw_value"] = raw
+    return note
 
 
 def _reopened_approval(connection, item_key: str, decision: dict, row: dict,
