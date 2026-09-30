@@ -342,8 +342,8 @@
   aspect-ratio: auto 1;
 }
 
-/* 右上角：合并计数与主页卡片的版本角标同一个位置，右下角只留给时长。悬停时计数让位，
- * 操作键占住右上角；触屏上操作键常驻，排在计数下面。 */
+/* 右上角：合并计数与主页卡片的版本角标同一个位置，右下角只留给时长。
+ * 操作键排在计数下面，悬停时出现，触屏上常驻。 */
 .peach-react [data-follow-corner] {
   position: absolute;
   top: 10px;
@@ -400,7 +400,6 @@
 .peach-react [data-follow-actions] button[aria-busy] { cursor: wait; opacity: .72; }
 @media (hover: hover) and (pointer: fine) {
   .peach-react [data-follow-item]:hover [data-follow-actions] { opacity: 1; pointer-events: auto; }
-  .peach-react [data-follow-item]:hover [data-follow-collection] { display: none; }
 }
 @media (hover: none), (pointer: coarse) {
   .peach-react [data-follow-item] [data-follow-actions] { opacity: 1; pointer-events: auto; }
