@@ -125,6 +125,33 @@ class FeedWebFixture(unittest.TestCase):
 
 
 class FeedWebTest(FeedWebFixture):
+    def test_home_shape_tracks_visible_discoveries_without_an_entity(self):
+        def has_feed():
+            return dispatch_api_get(self.contract, "/api/entity/shapes", {})["home"]["feed"]
+
+        self.assertFalse(has_feed())
+        self._add()
+        self._check()
+        self.assertTrue(has_feed())
+        items = dispatch_api_get(self.contract, "/api/feeds/discoveries", {})["items"]
+        dispatch_api_post(self.contract, "/api/feeds/discovery",
+                          {"action": "read", "ids": [item["id"] for item in items]})
+        self.assertTrue(has_feed())
+        dispatch_api_post(self.contract, "/api/feeds/discovery",
+                          {"action": "ignore", "ids": [item["id"] for item in items]})
+        self.assertFalse(has_feed())
+
+    def test_home_shape_applies_library_and_compilation_filters(self):
+        self._compilation("波多野結衣、篠田ゆう")
+        with self.contract.database.write_transaction() as connection:
+            connection.execute(
+                "INSERT INTO asset(location,path,name,medium,code) "
+                "VALUES('R','R:\\media\\hmn071.mp4','hmn071.mp4','video','HMN-071')")
+        shape = lambda: dispatch_api_get(self.contract, "/api/entity/shapes", {})["home"]["feed"]
+        self.assertFalse(shape())
+        dispatch_api_post(self.contract, "/api/settings", {"feedHideGroupCompilations": False})
+        self.assertTrue(shape())
+
     def test_settings_snapshot_lists_the_source(self):
         self._add()
         snapshot = dispatch_api_get(self.contract, "/api/feeds", {})

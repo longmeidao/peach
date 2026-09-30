@@ -508,6 +508,14 @@ def q_feed_discoveries(contract, args) -> dict:
     } for row in rows[:limit]]}
 
 
+def home_has_feed(contract, connection) -> bool:
+    """首页新作行是否有内容，与新作列表共用未入库、未忽略和合集筛选条件。"""
+    feeds.register_functions(connection, web_settings.hidden_compilations(contract.database))
+    return bool(connection.execute(
+        "SELECT EXISTS(SELECT 1 FROM feed_discovery d"
+        f" WHERE d.ignored_at IS NULL AND {' AND '.join(LISTED)})").fetchone()[0])
+
+
 def feed_row_entity_ids(contract, connection) -> set[int]:
     """资料页上会出现新作那一行的实体：判据和按人取新作的那一份同一套（`LISTED`、未忽略）。"""
     feeds.register_functions(connection, web_settings.hidden_compilations(contract.database))

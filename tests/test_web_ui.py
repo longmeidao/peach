@@ -7184,7 +7184,7 @@ class WebUiSourceTests(unittest.TestCase):
         body = body.split("\n}", 1)[0]
         self.assertIn("$('#loadSentinel').hidden=true;", body)
         self.assertLess(body.index("$('#loadSentinel').hidden=true;"),
-                        body.index("setGridCards(catalogSkeletonHtml"),
+                        body.index("setGridCards(placeholder)"),
                         "哨兵要在骨架铺上之前收掉，别让 dots 和骨架同时存在一帧")
         # 目录这条链上收哨兵只有这一处：分支里再补一次就是又一个会漏掉的地方。
         ads = self.app_js.split("function loadJunk(surface){", 1)[1].split("\n}", 1)[0]
@@ -7194,7 +7194,7 @@ class WebUiSourceTests(unittest.TestCase):
 
     def test_page_loading_uses_one_structural_skeleton_phase(self):
         self.assertPageContains("function renderCatalogLoading(label='正在读取作品')")
-        self.assertPageContains("setGridCards(catalogSkeletonHtml(label));")
+        self.assertPageContains("setGridCards(placeholder);")
         self.assertPageContains("count.setAttribute('aria-label',label);")
         self.assertPageContains(".grid>.skeletonpanel{grid-column:1/-1;width:100%;min-width:0}")
         self.assertPageContains("function renderInitialSurfaceLoading()")
