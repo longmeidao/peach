@@ -215,6 +215,14 @@
 /* 标签的圆角同详情里那一颗（`--tag-radius`）。虚线只画在「此刻还没加上去」的那几枚上，悬停只把虚线
  * 拉成实线、字提到 `--ink`；加上去之后是 `--picked` 的面，同交集条那一颗。
  *
+ * 虚线与实线两档取自 2026-09-05 实测的 vercel.com/<team>/~/deployments 筛选令牌：未生效
+ * `background:rgba(0,0,0,0)` 配 `1px dashed rgba(0,0,0,.21)`，已生效 `background:#FFFFFF` 配
+ * `1px solid rgba(0,0,0,.08)`，两个数就是 `--field-ring-hover` 与 `--field-ring`，暗色一档换成同位置的白
+ * 透明度。未生效那道虚线照它取 `--field-ring-hover`；加上去之后那圈实线落在 `--picked` 的面上，取玻璃上
+ * 那一档 `--glass-low`，说的是「这是一颗标签」。虚线说的是「这条筛选可加、此刻没加」，四枚视图四选一、
+ * 恒有一枚生效，这句话对它们从来不成立，所以不画。悬停只拉成实线、不填：同排还有恒常生效的视图，悬停也
+ * 填就会同屏读出两种「已生效」。
+ *
  * 计数是标签的附注，不是标签名的一部分：同字号同色贴在一起时「巨乳63」读成一个词。所以 13px 的标签
  * 配 11px 等宽的数，退到五成五的字色，悬停或按下时回到八成；再小就难以辨认了。间隔只能由外边距给，
  * 药丸是 flex 容器，标签与计数之间的空格文本节点不参与布局。字色按这块玻璃自己的文字色降档：玻璃上
@@ -222,12 +230,13 @@
 .peach-react [data-catalog-tag] {
   gap: 0;
   border-radius: var(--tag-radius);
+  border-color: var(--field-ring-hover);
   color: var(--glass-text);
 }
 .peach-react [data-catalog-tag]:hover { color: var(--ink); }
 .peach-react [data-catalog-tag][aria-pressed="true"] {
   border-style: solid;
-  border-color: var(--field-ring);
+  border-color: var(--glass-low);
   background: var(--picked);
 }
 .peach-react [data-catalog-tag] [data-count-badge] {
@@ -239,6 +248,12 @@
 }
 .peach-react [data-catalog-tag]:is(:hover, [aria-pressed="true"]) [data-count-badge] {
   color: color-mix(in srgb, var(--glass-text) 80%, transparent);
+}
+
+/* 触屏上 30px 不够一枚指尖：视图与标签放到 36px，这一排跟着长到 52px。下排的排序键归资料页那一条。 */
+@media (pointer: coarse) {
+  .peach-react [data-catalog-frame] > [data-filter-row="top"] { height: 52px; }
+  .peach-react :is([data-catalog-view], [data-catalog-tag]) { height: 36px; }
 }
 
 /* ── 下排 ──

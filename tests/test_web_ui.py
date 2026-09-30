@@ -784,9 +784,10 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertIn("var(--ground)", rule, f"{name} 是页面上的一个面")
 
     def test_only_the_home_filter_bar_draws_the_dashed_unapplied_edge(self):
-        """虚线只在 `#tagbar` 那一排，别处的药丸一律实线；选中一律填 --picked。
+        """虚线只在首页筛选条的标签上，flat 层的药丸一律实线；选中一律填 --picked。
 
-        2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌：未生效
+        首页那一排归 `catalog-filter` 岛，虚线、按下态与视图不画虚线由 `frontend/e2e/design.test.ts`
+        读计算值核对；这里守 flat 层这一份不再另画一道虚线。2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌：未生效
         `rgba(0,0,0,0)` 配 `1px dashed rgba(0,0,0,.21)`，已生效 `#FFFFFF` 配
         `1px solid rgba(0,0,0,.08)`，两个数正是 `--field-ring-hover` 与 `--field-ring`。
         只借这一处：虚线说的是「这条筛选还没加上去」，配得上它的只有恒常在场、
@@ -804,16 +805,10 @@ class WebUiSourceTests(unittest.TestCase):
             self.assertPageContains(base + ":hover{border-color:var(--field-ring-hover);color:var(--ink)}")
             self.assertPageContains(base + '[aria-pressed="true"]{border-color:var(--field-ring);'
                                            "background:var(--picked);color:var(--ink)}")
-        self.assertPageContains('#tagbar .pill[data-tag]:not([aria-pressed="true"])'
-                                "{border-style:dashed;border-color:var(--field-ring-hover)}")
-        self.assertPageContains(
-            '#tagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}')
-        # 药丸里的虚线只此一条：多一条就说明它不再指向「这条筛选还没加上去」。
+        # flat 层一条药丸虚线都不画：多一条就说明它不再指向「这条筛选还没加上去」。
         dashed_pills = [line for line in css.splitlines()
                         if "dashed" in line and "pill" in line and not line.startswith(" ")]
-        self.assertEqual(len(dashed_pills), 1, dashed_pills)
-        # 左边四枚视图胶囊四选一、恒有一枚生效，「这条筛选还没加上去」对它们从来不成立。
-        self.assertNotIn("[data-state]", dashed_pills[0])
+        self.assertEqual(dashed_pills, [])
         # 交集条上那颗填同一份 --picked，但不穿药丸那身线：见下一条。
         start = css.index(".combo .cb{")
         applied = css[start:css.index("}", start)]
@@ -861,10 +856,8 @@ class WebUiSourceTests(unittest.TestCase):
         board = (Path(__file__).resolve().parents[1] / "web" / "board.css").read_text(encoding="utf-8")
         self.assertIn(":root{--tag-radius:8px}", board)
         self.assertNotIn(".detailtag{", board, "基底那颗的脸归 --tag-fill 与 --tag-radius 管")
-        # 筛选条那一排也从同一个 token 取形状，只有描边换成玻璃上的那一档；资料页、关注页
-        # 那排由 e2e `entity-filter.test.ts`、`follow-feed.test.ts` 量。
-        self.assertIn(".board-filter-frame.board-filter-frame .tagbar .pill[data-tag]"
-                      "{border-radius:var(--tag-radius);border-color:var(--glass-low)}", board)
+        # 筛选条那一排也从同一个 token 取形状，只有描边换成玻璃上的那一档：首页那排由 e2e
+        # `design.test.ts` 量，资料页、关注页那排由 `entity-filter.test.ts`、`follow-feed.test.ts` 量。
 
     def test_the_video_area_has_no_frame_and_the_portrait_strip_shares_the_card_face(self):
         """视频网格不画框：卡片直接摆在页面上，竖屏带和卡片同一张面。
@@ -2962,44 +2955,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 口味页与统计页同一套版式，占位也该是同一张。
         self.assertPageContains("pageSkeletonHtml('正在读取口味分析',{variant:'dashboard'})")
 
-    def test_refreshing_wraps_the_tag_pills_instead_of_replacing_them(self):
-        """换一批时标签胶囊走 wrap-children 骨架：真实元素留着，用 visibility 藏起来。
-
-        框就是胶囊自己的框，所以零位移；visibility:hidden 的元素同时不可聚焦，正好
-        满足规范里「加载期间不要把可聚焦控件放进骨架」。只盖会变的标签胶囊——四枚
-        视图胶囊由 state 决定，这次请求不改它们。
-        """
-        self.assertPageContains(
-            "body.refreshing #tagbar [data-tag]{visibility:hidden;"
-            "background:var(--hover);border-color:transparent}")
-        self.assertPageContains(
-            "body.refreshing #tagbar [data-tag],body.refreshing #tiers .av .ring,\n"
-            "body.refreshing #tiers .av .nm,body.refreshing #tiers .brandpill"
-            "{position:relative;overflow:hidden}")
-        self.assertPageContains(
-            "body.refreshing #tagbar [data-tag]::after,body.refreshing #tiers .av .ring::after,\n"
-            "body.refreshing #tiers .av .nm::after,\n"
-            "body.refreshing #tiers .brandpill::after{content:'';position:absolute;inset:0;right:-200%;")
-        self.assertPageLacks("body.refreshing #tagbar [data-state]",
-                             "视图胶囊不随这次请求变，不进骨架")
-
-    def test_refreshing_wraps_the_avatar_and_brand_tiers_the_same_way(self):
-        """换一批换的是顶部三层的成员，所以三层一起走 wrap-children，不只标签条。
-
-        头像那格分成圆片和名字条两块，尺寸取首屏骨架的同一组值，两条通道看起来是
-        同一枚；`.av` 宽度写死，名字条居中收窄不动周围任何元素，厂牌胶囊保留自己的
-        框，所以换批前后零位移。
-        """
-        self.assertPageContains(
-            "body.refreshing #tiers .av .ring,body.refreshing #tiers .av .nm,\n"
-            "body.refreshing #tiers .brandpill{visibility:hidden;background:var(--hover)}")
-        self.assertPageContains(
-            "body.refreshing #tiers .av .nm{width:52px;margin:0 auto;"
-            "border-radius:var(--control-radius)}")
-        self.assertPageContains("body.refreshing #tiers .brandpill{border-color:transparent}")
-        # 首屏骨架的名字条同宽，两条通道才是同一枚。
-        self.assertPageContains(".avskeleton .nm{width:52px;margin:0 auto;")
-
     def test_the_catalog_skeleton_card_is_built_to_the_real_card_height(self):
         """首页骨架一行和真卡一行等高，内容到位那一下下面不会往上跳。
 
@@ -4116,8 +4071,9 @@ class WebUiSourceTests(unittest.TestCase):
         题材收来源记成 copyright 的作品与记成 character 的人物，不按词形猜——画师手柄
         在字面上跟作品名没有区别。作者、来源、题材点什么就只看什么，一维只按着一枚；
         标签那一维仍是交集。
-        进页骨架那两排和首页共用 board.css 里同一份规则，只按 `#tiers` 写的话骨架会
-        落回 flat 层那份 64px 头像加一圈描边；两排本身归 `follow-feed` 岛（`follow-feed.css`）。
+        进页骨架那两排的形归 board.css 的头像条规则，漏写的话骨架会落回 flat 层那份 64px
+        头像加一圈描边；两排本身归 `follow-feed` 岛（`follow-feed.css`），首页那两排归
+        `catalog-filter` 岛，同一副几何在两座岛里各按 `data-*` 写。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains('<div class="tier followworks" data-skeleton-tier="brandpill"></div>')
@@ -4127,14 +4083,14 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("+(followWorks.size?`&work=${encodeURIComponent([...followWorks].join(','))}`:'')")
         self.assertPageContains("if(followWorks.size)params.set('work',[...followWorks].join(','));")
         self.assertPageContains("followWorks=one('work');")
-        # 两排的形归 board.css 同一份规则，关注页那两排跟着一起写进选择器。
-        self.assertIn("#tiers .av,:is(.followauthors,.followworks,.relatedpeople) .av{display:flex;"
+        # 骨架那两排的形归 board.css 的头像条规则。
+        self.assertIn(":is(.followauthors,.followworks,.relatedpeople) .av{display:flex;"
                       "flex-direction:column;align-items:center;gap:6px;width:76px;", board)
-        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks,.relatedpeople) .av .ring"
+        self.assertIn(":is(.followauthors,.followworks,.relatedpeople) .av .ring"
                       "{width:48px;height:48px;", board)
-        self.assertIn("#tiers .brandpill,:is(.followauthors,.followworks) .brandpill"
+        self.assertIn(":is(.followauthors,.followworks) .brandpill"
                       "{display:inline-flex;", board)
-        self.assertIn("#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk"
+        self.assertIn(":is(.followauthors,.followworks) .brandpill .mk"
                       "{width:28px;height:28px;", board)
 
     def test_the_work_row_asks_the_server_for_a_cover_and_never_hands_it_an_address(self):
@@ -5554,13 +5510,13 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn("body :is(#manageTitle,#manageCrumb,#manageLede){max-width:var(--board-content);width:100%;margin-left:auto;margin-right:auto}", board)
         self.assertIn(".drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);", board)
         # 门挡铺满播放器格、没图的身份头像画首字盘：作品详情岛，`frontend/e2e/design.test.ts` 量。
-        # 首页顶上两排：女优是竖排人像格（48px 圆头像在上、名字在下），厂牌是 40px 的灰 Pill（28px 圆标识在左）。
-        # 关注页那两排是同一个控件，所以每条规则都把它们一起写进选择器。
-        self.assertIn("#tiers .av,:is(.followauthors,.followworks,.relatedpeople) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
-        self.assertIn("#tiers .brandpill,:is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}", board)
-        self.assertIn("#tiers .av .ring,:is(.followauthors,.followworks,.relatedpeople) .av .ring{width:48px;height:48px;", board)
-        self.assertIn("#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;", board)
-        self.assertIn("#tiers .av .nm,:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
+        # 头像条：女优是竖排人像格（48px 圆头像在上、名字在下），厂牌是 40px 的灰 Pill（28px 圆标识在左）。
+        # 这一份给关注页骨架与人物页同台艺人；首页那两排归 `catalog-filter` 岛。
+        self.assertIn(":is(.followauthors,.followworks,.relatedpeople) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}", board)
+        self.assertIn(":is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}", board)
+        self.assertIn(":is(.followauthors,.followworks,.relatedpeople) .av .ring{width:48px;height:48px;", board)
+        self.assertIn(":is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;", board)
+        self.assertIn(":is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);", board)
         self.assertPageContains("const list=d.items.filter(x=>x.cost!=='metered' && x.duration && !sourceOffline(x.location));")
 
     def test_the_select_menu_keeps_a_touch_target_on_phones(self):
@@ -7276,7 +7232,7 @@ class WebUiSourceTests(unittest.TestCase):
         一成——从最左跳到最后一枚甩得最开，跳到隔壁只是轻轻一顿。另算一份「按跨度乘个
         系数」等于同一件事上摆两处能各自漂移的数。形变只在这一列排布的方向上，另一根
         轴的尺寸是那一排给定的。
-        它挂在 `.board-filter-frame` 上而不是 `#tagbar` 里：那一排横滚会裁掉越界的部分，
+        它挂在 `.board-filter-frame` 上而不是上排里：那一排横滚会裁掉越界的部分，
         住在里面的话跳到头一枚时那下回弹就在框沿被切平。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
@@ -7333,8 +7289,7 @@ class WebUiSourceTests(unittest.TestCase):
                       "var(--spring-press),background .12s}", board)
         self.assertIn(".dnav button:active,.pill:active,.sorts button:active,.edge button:active{"
                       "scale:.96;transition:scale .06s ease-out}", board)
-        self.assertIn("#tiers .av:active,#tiers .brandpill:active,\n"
-                      ":is(.followauthors,.followworks,.relatedpeople) .av:active,"
+        self.assertIn(":is(.followauthors,.followworks,.relatedpeople) .av:active,"
                       ":is(.followauthors,.followworks) .brandpill:active"
                       "{scale:.96;transition:scale .06s ease-out}", board)
         self.assertIn("cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) "
@@ -7673,13 +7628,16 @@ class WebUiSourceTests(unittest.TestCase):
         所以 `scrollLeft` 归零时第一枚站的位置跟不越界时一模一样，越界只发生在往右
         那一侧。竖屏那一条连同它的底一起铺过去，卡片才不会在面板边缘从自己的底上掉
         出来，铺到视口边的那一侧不留圆角。窄屏的抽屉是盖上来的，没有常驻轨道，这一
-        段整体不开。
+        段整体不开。这几排归 `catalog-filter` 岛。
         """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
+        island = (Path(__file__).resolve().parents[1]
+                  / "frontend/src/react/catalog-filter/catalog-filter.css").read_text(encoding="utf-8")
         self.assertIn(
-            "@media(min-width:761px){\n"
-            "  #tiers .tier{margin-left:calc(-1 * var(--railW));padding-left:calc(var(--railW) + 16px)}",
-            board,
+            "@media (min-width: 761px) {\n"
+            "  .peach-react [data-catalog-tier] {\n"
+            "    margin-left: calc(-1 * var(--railW));\n"
+            "    padding-left: calc(var(--railW) + 16px);",
+            island,
         )
 
     def test_the_home_rows_keep_loading_as_they_scroll_toward_their_right_end(self):
@@ -8740,7 +8698,7 @@ class WebUiSourceTests(unittest.TestCase):
         """动作键一律不描边，自己是一块与条子／卡面不同的面。
 
         描边档与实心档并排时看着一大一小，差的不是那 1px，是「一个是块面、一个是个框」。
-        筛选不在此列：`#tagbar` 那一排与标签分类靠边的虚实说「这条筛选生效没生效」，
+        筛选不在此列：首页筛选条的标签与标签分类靠边的虚实说「这条筛选生效没生效」，
         浮在缩略图上的纯图标键也不在此列，那圈半透明白边是它与照片之间唯一的分界。
         """
         css = stylesheet_source()

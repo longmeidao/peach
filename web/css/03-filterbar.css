@@ -27,21 +27,9 @@
 .pill:hover{border-color:var(--field-ring-hover);color:var(--ink)}
 .pill[aria-pressed="true"]{border-color:var(--field-ring);background:var(--picked);color:var(--ink)}
 
-/* 虚线只画在「可加可不加、此刻还没加上去」的筛选药丸上：首页筛选条右半截的标签是这一条；
-   关注页的标签与来源、资料页的标签、标签页的类型药丸都住在 Board 的玻璃浮层里，
-   同一判据由 board.css 那几条写。视图那几枚恒有一枚生效，一律实线。
-   2026-09-05 实测 vercel.com/<team>/~/deployments 的筛选令牌，两端是这样的：
-   未生效 `background:rgba(0,0,0,0)` + `1px dashed rgba(0,0,0,.21)`；
-   已生效 `background:#FFFFFF` + `1px solid rgba(0,0,0,.08)`。两个数就是 Peach 的
-   --field-ring-hover 与 --field-ring，暗色一档换成同位置的白透明度。
-   分界就是那道 `.sep`：左边四枚 `[data-state]` 是视图，四选一、恒有一枚生效，
-   「这条筛选还没加上去」对它们从来不成立，画成虚线等于说三枚视图都还没生效。
-   右边的 `[data-tag]` 才是可加可不加的筛选，虚线在那里才指向一件真事。
-   悬停只把虚线拉成实线——「这颗点得动」——填充留给真正选中的那颗：
-   Vercel 的令牌可叠加，悬停预演成生效态没有代价；Peach 这一排的标签也是可叠加的，
-   但同排还有恒常生效的视图胶囊，悬停也填就会同屏读出两种「已生效」。 */
-#tagbar .pill[data-tag]:not([aria-pressed="true"]){border-style:dashed;border-color:var(--field-ring-hover)}
-#tagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
+/* flat 层的药丸一律实线。虚线只画在「可加可不加、此刻还没加上去」的筛选药丸上：首页筛选条的标签归
+   `catalog-filter` 岛，判据与 Vercel 筛选令牌的实测出处写在 `catalog-filter.css`；关注页、资料页与
+   标签页那几排住在 Board 的玻璃浮层里，同一判据由各自的岛与 board.css 写。 */
 .sep{flex:none;width:1px;height:19px;background:var(--field-ring-hover);margin:0 3px}
 
 /* 多标签交集筛选条 */

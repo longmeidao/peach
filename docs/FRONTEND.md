@@ -375,8 +375,7 @@ React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.cs
 `.oxlintrc.json` 里的例外也在那儿定：`configpage`、`configgroup` 是旧样式表的类名，
 React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`、`swiper-slide`、
 `swiper-zoom-container` 是 Swiper 核心 API 认的结构类名（图片灯箱），不写它就找不到轮播的
-容器与每一张；`video-js`、`vjs-big-play-centered` 是 Video.js 的组件契约，`/tok` 在旧样式表里
-给同一批类另写了一套；`mono` 是 `01-base.css` 的等宽数字字体栈，和 Tailwind 的 `font-mono` 不是同一组字体；
+容器与每一张；`mono` 是 `01-base.css` 的等宽数字字体栈，和 Tailwind 的 `font-mono` 不是同一组字体；
 `tg` 是目录卡片、索引页与详情共用的标签键（`12-cards.css`）；`mav` 是壳的 `followIdentity` 画的头像；
 `externallink` 是 `01-base.css` 里全站外链的图标间距；`javedition` 与色调（`censored` 等）是目录卡片也用的
 版次徽章；`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它；`geist-button`、`primary` 是

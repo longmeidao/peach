@@ -217,9 +217,9 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
 /* `left:0` 不能省：只写 `top` 的话水平方向还是 auto，绝对定位就回落到它作为第一个
    子元素本该待的静态位置——也就是 `.board-filter-frame` 那一圈内边距之后，再叠上按
    `offsetLeft` 算的位移，整块正好右移一个内边距，盖不住选中那枚的左半边。 */
-/* 它挂在 `.board-filter-frame` 上而不是 `#tagbar` 里：那一排要横滚，`overflow-x:auto`
+/* 它挂在 `.board-filter-frame` 上而不是上排（`[data-filter-row="top"]`）里：那一排要横滚，`overflow-x:auto`
    会把另一根轴一起算成滚动，纵向再怎么弹也在框沿被切平。挪到外面这一层，弹过头的那
-   几像素落在 `#tagbar` 的内边距里，仍在同一块玻璃的合成范围内——`isolation:isolate`
+   几像素落在上排的内边距里，仍在同一块玻璃的合成范围内——`isolation:isolate`
    把这块玻璃定成了 backdrop root，出了这个框，`--glass-pick` 采不到东西就成了一块
    死白。横向裁切的活由 app.js 接手：滚出这一排的可视范围就收起来。 */
 /* 形变走 `scale` 而不是动 `width`：宽度是布局属性，每一帧都要让整份文档重新排版，
@@ -543,24 +543,10 @@ body>.board-filter-frame{margin-inline:16px}
   .top:has(.search.search-morphing){overflow:visible}
   .top:has(.search.search-morphing) #searchBtn{opacity:0}
 }
-/* 首页的 `#tagbar`：左端几枚视图记在 `data-state` 上，右半截的标签记在 `data-tag`。规则按
-   类名写，关注页骨架里那条 `.followfilters` 同形；关注页本身那条归 `follow-feed` 岛。 */
+/* 浮层上排的骨架：关注页进页那条 `.followfilters` 与标签页那条类型药丸都按这一副几何铺占位，
+   React 落地时原地换成真的那一排。首页那一排（视图与标签）归 `catalog-filter` 岛。 */
 .board-filter-frame .tagbar{height:48px;gap:6px;padding:8px 12px}
 .board-filter-frame .tagbar .pill{height:30px;padding:0 10px;font-size:13px;line-height:20px;border-radius:8px;border:1px solid transparent}
-/* 几枚视图自己不铺底，选中那一枚的填充由 `.viewglide` 那块滑过去的玻璃提供：
-   两边都铺，静止态就是一块不透明的 `--picked` 压在玻璃上面，切换时也只能看见它
-   瞬间换位置，滑动的那块从头到尾被盖住。 */
-.board-filter-frame .tagbar .pill[data-state]{border:0;background:none;color:color-mix(in srgb,var(--glass-text) 60%,transparent)}
-.board-filter-frame .tagbar .pill[data-state]:hover,
-.board-filter-frame .tagbar .pill[data-state][aria-pressed="true"]{background:none;color:var(--glass-text)}
-/* 可加可不加的筛选没生效时是虚线，悬停拉成实线；判据与 flat 层那条同一份，见 03-filterbar.css。 */
-.board-filter-frame .tagbar .pill[data-tag]:not([aria-pressed="true"]){border:1px dashed var(--line);background:transparent}
-.board-filter-frame .tagbar .pill[data-tag]:not([aria-pressed="true"]):hover{border-style:solid}
-/* 右半截这些是标签，圆角从标签那个 token 取，跟卡片、详情面板、交集条一起走；左边几枚
-   是分段器，形状归它自己那一排。线画满两态：填充说的是这条加没加上去，那一圈线说的是
-   「这是一颗标签」，两句话不能合成一句讲。玻璃上取 --glass-low、flat 面上取 --line，
-   同一个角色各按自己的底选值。 */
-.board-filter-frame.board-filter-frame .tagbar .pill[data-tag]{border-radius:var(--tag-radius);border-color:var(--glass-low)}
 .board-filter-frame .count{padding:8px 12px;min-height:46px;gap:12px}
 .board-filter-frame .sorts{gap:4px}.board-filter-frame .sorts button{height:30px;min-height:30px;font-size:12px;padding:0 8px;border:0;border-radius:7px;background:transparent}
 /* 资料卡照 Board 的卡排：secondary 底、18px 圆角、不描边，卡底那条带取卡脚那一档色阶。
@@ -593,7 +579,7 @@ body>.board-filter-frame{margin-inline:16px}
 .alphatag{border-radius:8px}
 #grid.gridstack{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
 #grid.gridstack>.grid{border:0;background:transparent;padding:0;box-shadow:none;border-radius:0}
-@media(pointer:coarse){.board-filter-frame #tagbar .pill{height:36px}.board-filter-frame #tagbar{height:52px}.board-filter-frame .sorts button{height:36px}}
+@media(pointer:coarse){.board-filter-frame .sorts button{height:36px}}
 #applyUISetting{padding:8px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
 #applyUISetting[hidden]{display:none}
 
@@ -1272,44 +1258,24 @@ body .followmanage .board-pagination>.geist-button{height:32px;min-height:32px;p
 .drawer .board-sidebar-head #filterBtn{border-radius:0;color:var(--color-text-secondary);transition:color .15s ease}
 .drawer .board-sidebar-head #filterBtn:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary)}
 @media(min-width:761px){.drawer:not(.open) .board-sidebar-head{gap:10px}}
-/* ── 首页顶部两排。女优是竖排人像格：48px 圆头像在上、名字（Caption）在下，格宽 76、圆角 12——Board 的 Avatar 只到
+/* ── 头像条。女优是竖排人像格：48px 圆头像在上、名字（Caption）在下，格宽 76、圆角 12——Board 的 Avatar 只到
    lg 36px（avatar.tsx），竖排格无对应，48 取的是它 `size-12` 那一级；厂牌是 40px 的灰 Pill（pill-tab.tsx gray 放大一档）：
-   28px 圆标识在左、名字在右。两排都不描边、悬停 primary-hover、选中 tertiary 底主文字色；标签那一排是 30px 的描边药丸，
-   厂牌靠更高的身量、圆标识和无边框跟它分开。 ── */
-#tiers .tier{gap:4px;padding:0 16px 6px;align-items:center}
-#tiers .tier:last-child{padding-bottom:4px}
-/* 往右翻的时候这几排从侧栏底下穿过去，不在侧栏那条边上被切平：侧栏是一块玻璃，底下
-   有东西在走才看得出它是透的，一整屏都在那条边上齐刷刷停住的话，那块玻璃身后永远是
-   同一片空底。左边界仍停在原处——那是这一屏的左对齐线，跟着一起挪等于把整页的对齐线
-   也挪了，所以让出去多少宽度就原样加回内边距，滚到头时第一枚还站在原位。窄屏那一档
-   的抽屉是盖上来的，没有这条常驻的边，让出去的宽度只会把内容推到屏幕外，所以整段只
-   在留了轨道宽度的档位上开。 */
-@media(min-width:761px){
-  #tiers .tier{margin-left:calc(-1 * var(--railW));padding-left:calc(var(--railW) + 16px)}
-}
-/* 关注页顶上那两排跟首页这两排是同一个控件，所以规则一份写全：那边是「谁出的」加
-   「哪个厂牌」，这边是「谁发的」加「哪部作品」，人在两页看到的该是同一种东西。它们
-   住在 `#stats` 里而不是 `#tiers` 里，只按 id 写的话关注页拿不到这一整套，落回 flat
-   层那份 64px 头像加一圈描边，同一个人在两页大小和选中样子都不一样。人物页资料卡底
-   那排同台艺人也是这一枚女优头像，同一套规则：悬停抬整格底色，不在圆上描圈。 */
-#tiers .av,#tiers .brandpill,
+   28px 圆标识在左、名字在右。两排都不描边、悬停 primary-hover、选中 tertiary 底主文字色。
+   首页那两排归 `catalog-filter` 岛（`catalog-filter.css`），同一副几何在那里按 `data-*` 再写一份；
+   这里留给关注页骨架的「谁出的」与「哪部作品」，以及人物页资料卡底那排同台艺人：悬停抬整格底色，
+   不在圆上描圈。 ── */
 :is(.followauthors,.followworks,.relatedpeople) .av,:is(.followauthors,.followworks) .brandpill{flex:none;border:0;background:transparent;color:var(--color-text-secondary);font:var(--board-body-medium);white-space:nowrap;transition:transform var(--lift-motion,var(--board-motion)),scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),background-color .2s ease-out,color .2s ease-out}
-#tiers .av:active,#tiers .brandpill:active,
 :is(.followauthors,.followworks,.relatedpeople) .av:active,:is(.followauthors,.followworks) .brandpill:active{scale:.96;transition:scale .06s ease-out}
-#tiers .av,:is(.followauthors,.followworks,.relatedpeople) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
-#tiers .brandpill,:is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
-#tiers .av:hover,#tiers .brandpill:hover,
+:is(.followauthors,.followworks,.relatedpeople) .av{display:flex;flex-direction:column;align-items:center;gap:6px;width:76px;max-width:none;height:auto;padding:6px 4px;border-radius:12px;text-align:center}
+:is(.followauthors,.followworks) .brandpill{display:inline-flex;align-items:center;gap:8px;width:auto;max-width:none;height:40px;padding:6px 12px 6px 6px;border-radius:12px;text-align:left}
 :is(.followauthors,.followworks,.relatedpeople) .av:hover,:is(.followauthors,.followworks) .brandpill:hover{background:var(--color-background-primary-hover);color:var(--color-text-primary);border-color:transparent}
-#tiers .av[aria-pressed="true"],#tiers .brandpill[aria-pressed="true"],
 :is(.followauthors,.followworks,.relatedpeople) .av[aria-pressed="true"],:is(.followauthors,.followworks) .brandpill[aria-pressed="true"]{background:var(--color-background-tertiary-default);color:var(--color-text-primary);border-color:transparent}
-#tiers .av .ring,#tiers .brandpill .mk,
 :is(.followauthors,.followworks,.relatedpeople) .av .ring,:is(.followauthors,.followworks) .brandpill .mk{position:relative;flex:none;margin:0;border-radius:50%;overflow:hidden;background:color-mix(in srgb,var(--color-text-primary) 10%,var(--color-background-primary-default));color:var(--color-text-secondary)}
-#tiers .av .ring,:is(.followauthors,.followworks,.relatedpeople) .av .ring{width:48px;height:48px;font:600 18px/24px var(--board-font)}
-#tiers .brandpill .mk,:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;font:600 12px/16px var(--board-font)}
-#tiers .av .ring .ini,:is(.followauthors,.followworks,.relatedpeople) .av .ring .ini{font:inherit;color:inherit}
-#tiers .av:hover .ring,#tiers .av[aria-pressed="true"] .ring,
+:is(.followauthors,.followworks,.relatedpeople) .av .ring{width:48px;height:48px;font:600 18px/24px var(--board-font)}
+:is(.followauthors,.followworks) .brandpill .mk{width:28px;height:28px;font:600 12px/16px var(--board-font)}
+:is(.followauthors,.followworks,.relatedpeople) .av .ring .ini{font:inherit;color:inherit}
 :is(.followauthors,.followworks,.relatedpeople) .av:hover .ring,:is(.followauthors,.followworks,.relatedpeople) .av[aria-pressed="true"] .ring{box-shadow:none}
-#tiers .av .nm,:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
+:is(.followauthors,.followworks,.relatedpeople) .av .nm{display:block;max-width:100%;font:var(--board-caption);color:inherit;text-align:center;overflow:hidden;text-overflow:ellipsis}
 :is(.followauthors,.followworks,.relatedpeople){gap:4px;align-items:center}
 .followworks{padding:0 0 10px;margin:0 0 2px;overscroll-behavior-inline:contain}
 

@@ -10,7 +10,7 @@ import type { Browser, Locator, Page } from 'playwright-core';
 
 import { DETAIL, openFollowFeed } from './follow-fixture.ts';
 import {
-  configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Visit,
+  configurationBody, expectBody, launch, layout, requiredEnv, settle, visit, VIEWPORTS, type Viewport, type Visit,
 } from './harness.ts';
 import { ITEM, openItemPage } from './item-fixture.ts';
 
@@ -348,6 +348,32 @@ async function openCatalog(browser: Browser): Promise<Visit> {
   await opened.page.locator('[data-catalog-filter] [data-count-readout]').waitFor({ timeout: 15_000 });
   await settle(opened.page);
   return opened;
+}
+
+/** 打开目录，两排头像与标签条用桩数据铺满：演示库那十几部作品凑不出一排标签。 */
+async function openCatalogBars(browser: Browser, viewport: Viewport = DESKTOP): Promise<Visit> {
+  const opened = await visit(browser, '/', viewport);
+  const performers = Array.from({ length: 6 }, (_, at) => ({
+    id: 96_000 + at, k: `演示女优${at + 1}`, n: 30 - at, has_image: false, has_avatar: false, avatar_focus: null, rep: null,
+  }));
+  const studios = Array.from({ length: 3 }, (_, at) => ({ k: `演示厂牌${at + 1}`, n: 20 - at, has_logo: false }));
+  const tags = Array.from({ length: 8 }, (_, at) => ({ k: `演示标签${at + 1}`, n: 90 - at }));
+  await opened.page.route((url) => url.pathname === '/api/tops', (route) =>
+    route.fulfill({ json: Number(new URL(route.request().url()).searchParams.get('page') || 0)
+      ? { performers: [], studios: [] } : { performers, studios } }));
+  await opened.page.route((url) => url.pathname === '/api/facets', async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...await response.json(), tags } });
+  });
+  await opened.page.reload({ waitUntil: 'load' });
+  await opened.page.locator('[data-catalog-filter] [data-catalog-tag]').first().waitFor({ timeout: 15_000 });
+  await opened.page.locator('[data-catalog-filter] [data-tier-studio]').first().waitFor({ timeout: 15_000 });
+  await settle(opened.page);
+  // 关页时还在路上的那一趟桩请求不算失败。
+  return { ...opened, close: async () => {
+    await opened.page.unrouteAll({ behavior: 'ignoreErrors' });
+    await opened.close();
+  } };
 }
 
 interface CatalogFixture {
@@ -1417,6 +1443,84 @@ describe('设计决定', () => {
       const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('peach.settings.v1') || '{}'));
       assert.equal(saved.homeLayout, 'big', '首页版式没有存下来');
     } finally {
+      await opened.close();
+    }
+  });
+
+  it('首页标签：没加上去是 --field-ring-hover 的虚线，加上去是玻璃上那圈实线，视图不画虚线；触屏上排 52、视图与标签 36', { timeout: 60_000 }, async () => {
+    /* 虚线只说「这条筛选可加、此刻没加」，取 Vercel 筛选令牌未生效那一档；四枚视图恒有一枚生效，不画。
+       圆角同卡片、详情与交集条那一颗（`--tag-radius`）。触屏上 30px 不够一枚指尖。 */
+    const opened = await openCatalogBars(browser);
+    try {
+      const { page } = opened;
+      const scope = '[data-catalog-filter]';
+      const ring = await tokenColor(page, scope, '--field-ring-hover');
+      const low = await tokenColor(page, scope, '--glass-low');
+      const edge = (selector: string) => page.locator(`${scope} ${selector}`).first().evaluate((element) => {
+        const style = getComputedStyle(element);
+        const probe = document.createElement('div');
+        probe.style.borderRadius = 'var(--tag-radius)';
+        element.append(probe);
+        const radius = getComputedStyle(probe).borderTopLeftRadius;
+        probe.remove();
+        return { style: style.borderTopStyle, color: style.borderTopColor, radius: style.borderTopLeftRadius === radius };
+      });
+      assert.deepEqual(await edge('[data-catalog-tag][aria-pressed="false"]'), { style: 'dashed', color: ring, radius: true },
+        '没加上去的标签不是 --field-ring-hover 的虚线，或圆角不是 --tag-radius');
+      assert.notEqual((await edge('[data-catalog-view]')).style, 'dashed', '视图恒有一枚生效，不画虚线');
+      await page.locator(`${scope} [data-catalog-tag][aria-pressed="false"]`).first().click();
+      await page.locator(`${scope} [data-catalog-tag][aria-pressed="true"]`).waitFor({ timeout: 5_000 });
+      assert.deepEqual(await edge('[data-catalog-tag][aria-pressed="true"]'), { style: 'solid', color: low, radius: true },
+        '加上去的标签那圈线不是玻璃上的 --glass-low');
+    } finally {
+      await opened.close();
+    }
+    const phone = await openCatalogBars(browser, MOBILE);
+    try {
+      const { page } = phone;
+      const heights = await page.evaluate(() => {
+        const height = (selector: string) => {
+          const element = document.querySelector(`[data-catalog-filter] ${selector}`);
+          return element ? Math.round(element.getBoundingClientRect().height) : null;
+        };
+        return { coarse: matchMedia('(pointer: coarse)').matches, row: height('[data-filter-row="top"]'),
+          view: height('[data-catalog-view]'), tag: height('[data-catalog-tag]') };
+      });
+      assert.deepEqual(heights, { coarse: true, row: 52, view: 36, tag: 36 }, '触屏上筛选条上排没有放大到指尖尺寸');
+    } finally {
+      await phone.close();
+    }
+  });
+
+  it('首页换一批：头像、厂牌与标签原地藏起来只露一层微光，名字条收成 52px，四枚视图不盖', { timeout: 60_000 }, async () => {
+    /* 框就是它们自己的框，零位移；`visibility:hidden` 的控件也不可聚焦。视图由 state 决定，这一趟不改它们。 */
+    const opened = await openCatalogBars(browser);
+    let release = () => {};
+    try {
+      const { page } = opened;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      // 后注册的先拦：拖住这一趟，放行后交回夹具那一份。
+      await page.route((url) => url.pathname === '/api/tops', async (route) => { await held; await route.fallback(); });
+      await page.locator('[data-catalog-filter] [data-entity-batch]').click();
+      await page.locator('[data-catalog-filter] [data-catalog-root][data-refreshing]').waitFor({ timeout: 5_000 });
+      const shown = await page.evaluate(() => {
+        const read = (selector: string) => {
+          const element = document.querySelector(`[data-catalog-filter] ${selector}`);
+          if (!element) return null;
+          return { hidden: getComputedStyle(element).visibility, sheen: getComputedStyle(element, '::after').visibility,
+            width: Math.round(element.getBoundingClientRect().width) };
+        };
+        return { tag: read('[data-catalog-tag]'), ring: read('[data-tier-ring]'), name: read('[data-tier-name]'),
+          studio: read('[data-tier-studio]'), view: read('[data-catalog-view]') };
+      });
+      for (const key of ['tag', 'ring', 'name', 'studio'] as const) {
+        assert.equal(shown[key]?.hidden, 'hidden', `换一批时${key}没有藏起来：${JSON.stringify(shown[key])}`);
+        assert.equal(shown[key]?.sheen, 'visible', `换一批时${key}上没有那层微光：${JSON.stringify(shown[key])}`);
+      }
+      assert.equal(shown.name?.width, 52, '名字条没有收成首屏骨架那一宽');
+      assert.equal(shown.view?.hidden, 'visible', '视图不随这一趟变，不该盖');
+    } finally {
+      release();
       await opened.close();
     }
   });

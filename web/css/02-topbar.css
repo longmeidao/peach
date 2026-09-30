@@ -62,7 +62,7 @@
 .av[aria-pressed="true"] .nm{color:var(--ink)}
 /* 二层：厂牌大药丸 */
 /* 这一排点开的是厂牌页，不是往当前列表上加一条筛选，所以走实线：虚线留给
-   `#tagbar` 那一排真能开关的筛选，见 03-filterbar.css。选中填 --picked 与 .pill 一致。 */
+   首页筛选条上那一排真能开关的标签，见 03-filterbar.css。选中填 --picked 与 .pill 一致。 */
 .brandpill{flex:none;display:flex;align-items:center;gap:8px;padding:6px 14px 6px 6px;
   border-radius:var(--pill-radius);background:transparent;border:1px solid var(--field-ring);cursor:pointer;
   font-size:var(--fs-md);white-space:nowrap}

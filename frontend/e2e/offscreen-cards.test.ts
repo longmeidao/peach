@@ -45,6 +45,12 @@ async function serveLongItems(page: Page): Promise<void> {
   let baseline: CatalogPayload | undefined;
   await page.route(/\/api\/items\?/, async (route) => {
     const url = new URL(route.request().url());
+    /* 首页那条竖屏带是第一页落地之后另取、再插进网格中间的附加内容，何时到只看请求快慢。它落在
+       首次测量之后，整页就凭空多出一条带的高度，量的却不是估计误差。这里给它空列表，带子不插。 */
+    if (url.searchParams.has('orient')) {
+      await route.fulfill({ json: { items: [], total: 0, has_more: false } });
+      return;
+    }
     if (url.searchParams.get('offset') !== '0') {
       await route.continue();
       return;

@@ -31,7 +31,7 @@
 .peach-react button:is([data-follow-manage], [data-follow-older]) > svg { width: 14px; height: 14px; }
 
 /* ── 创作者行与题材行 ──
- * 同首页那两排（`#tiers .av`、`#tiers .brandpill`）：圆头像 48px、名字一行 Caption；题材是 40px 高的
+ * 同首页那两排（`catalog-filter.css` 的 `[data-tier-performer]`、`[data-tier-studio]`）：圆头像 48px、名字一行 Caption；题材是 40px 高的
  * 药丸，左端 28px 圆标。按下铺 tertiary 面，不描边。 */
 .peach-react :is([data-follow-authors], [data-follow-works]) {
   display: flex;
