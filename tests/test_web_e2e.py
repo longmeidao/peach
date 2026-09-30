@@ -100,14 +100,15 @@ def e2e_command(node: str, concurrency: str = "", files: tuple[str, ...] = ()) -
 
 
 def e2e_batches(frontend: Path) -> tuple[tuple[str, ...], ...]:
-    """设计检查与交互回归各占一批，所有文件串行执行，每批限时 600 秒。"""
+    """设计检查、交互回归与路由冒烟各占一批，每批串行且限时 600 秒。"""
     files = tuple(sorted(path.relative_to(frontend).as_posix()
                          for path in (frontend / "e2e").rglob("*.test.ts")))
     if not files:
         raise AssertionError("frontend/e2e 没有浏览器用例")
     design = tuple(path for path in files if path == "e2e/design.test.ts")
-    interactions = tuple(path for path in files if path not in design)
-    return tuple(batch for batch in (design, interactions) if batch)
+    routes = tuple(path for path in files if path == "e2e/smoke.test.ts")
+    interactions = tuple(path for path in files if path not in design + routes)
+    return tuple(batch for batch in (design, interactions, routes) if batch)
 
 
 @windows_ledger_roots
@@ -248,7 +249,10 @@ class WebE2ESmokeTests(unittest.TestCase):
     def test_every_route_holds_the_layout_and_runtime_invariants(self):
         env = dict(os.environ, PEACH_E2E_ORIGIN=self.origin, PEACH_E2E_ITEM=str(self.item),
                    PEACH_E2E_CHROME=self.chrome)
-        for batch in e2e_batches(FRONTEND):
+        log_root = ROOT / "build" / "agent-verification" / "browser"
+        log_root.mkdir(parents=True, exist_ok=True)
+        for index, batch in enumerate(e2e_batches(FRONTEND), 1):
+            log_path = log_root / f"batch-{index}.tap"
             with self.subTest(files=batch):
                 try:
                     completed = subprocess.run(
@@ -260,8 +264,10 @@ class WebE2ESmokeTests(unittest.TestCase):
                     partial = expired.stdout or ""
                     if isinstance(partial, bytes):
                         partial = partial.decode("utf-8", errors="replace")
-                    self.fail(f"本批 {E2E_SECONDS} 秒内没跑完，已输出：\n{partial[-4000:]}")
+                    log_path.write_text(partial, encoding="utf-8")
+                    self.fail(f"本批 {E2E_SECONDS} 秒内没跑完，完整日志：{log_path}\n{partial[-4000:]}")
                 output = f"{completed.stdout}\n{completed.stderr}"
+                log_path.write_text(output, encoding="utf-8")
                 self.assertEqual(completed.returncode, 0, f"{output}\n--- serve.log ---\n{self._server_log()}")
                 self.assertRegex(output, r"# pass [1-9]\d*", output)
                 self.assertRegex(output, r"# fail 0\b", output)
@@ -280,10 +286,11 @@ class MissingPrerequisiteTests(unittest.TestCase):
                 path.touch()
             batches = e2e_batches(frontend)
             self.assertEqual(batches[0], ("e2e/design.test.ts",))
+            self.assertEqual(batches[-1], ("e2e/smoke.test.ts",))
             flattened = tuple(path for batch in batches for path in batch)
             self.assertCountEqual(flattened, paths)
             self.assertEqual(len(flattened), len(set(flattened)))
-            self.assertEqual(e2e_command("node", files=batches[1])[-2:], list(batches[1]))
+            self.assertEqual(e2e_command("node", files=batches[1])[-len(batches[1]):], list(batches[1]))
 
     def test_browser_batches_require_at_least_one_suite(self):
         with tempfile.TemporaryDirectory() as folder:

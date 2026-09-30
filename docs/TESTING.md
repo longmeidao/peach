@@ -64,7 +64,7 @@ Dependabot 的 PR 一律在本地接管，不在网页上合：
 
 浏览器冒烟与设计决定断言（`tests/test_web_e2e.py`）由 `web-e2e` job 在 `windows-latest` 上执行 `web` 域。它装 Node 24、`frontend/node_modules`、ffmpeg，并经 `PEACH_E2E_CHROME` 指定 runner 自带的 Chrome。矩阵扩成全量（`plan` 输出的 `wide`）时，Windows 全量行本身就跑 `web` 域，这个 job 按条件跳过；`verified` 只在这种情况接受它的 skipped，别的 job 跳过照样算红。
 
-浏览器用例分为设计检查和交互回归两批，每批限时 600 秒。两批及批内文件默认串行执行，覆盖 `frontend/e2e` 下全部 `*.test.ts`，包括子目录；任一批失败，整轮验证失败。
+浏览器用例分为设计检查、交互回归和路由冒烟三批，每批限时 600 秒。各批及批内文件默认串行执行，覆盖 `frontend/e2e` 下全部 `*.test.ts`，包括子目录；任一批失败，整轮验证失败。完整 TAP 日志保存在 `build/agent-verification/browser/`，CI 在测试结束后上传该目录。
 
 需要外部前置条件（Node、ffmpeg、Chrome 等）的用例，本机缺条件时跳过，在 CI（`GITHUB_ACTIONS=true`）里判失败，判定集中在 `tests/support/conditions.py` 的 `missing_prerequisite`。所以 `python` 矩阵里 `core` 以外的行也装 Node，Windows 行另装 ffmpeg 与 Chrome。
 
