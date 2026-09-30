@@ -45,8 +45,8 @@ wheels = [
 
 [[package]]
 name = "amane"
-version = "0.16.1"
-source = { git = "https://github.com/sqzw-x/amane?rev=79ecfa763cc786318e1964a3d7f4e244a7d5c96d#79ecfa763cc786318e1964a3d7f4e244a7d5c96d" }
+version = "0.17.0"
+source = { git = "https://github.com/sqzw-x/amane?rev=3c416618a9617be1c377694b1a150bf9821a7e6d#3c416618a9617be1c377694b1a150bf9821a7e6d" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiolimiter" },
@@ -828,7 +828,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "amane", git = "https://github.com/sqzw-x/amane?rev=79ecfa763cc786318e1964a3d7f4e244a7d5c96d" }]
+requires-dist = [{ name = "amane", git = "https://github.com/sqzw-x/amane?rev=3c416618a9617be1c377694b1a150bf9821a7e6d" }]
 
 [[package]]
 name = "pillow"

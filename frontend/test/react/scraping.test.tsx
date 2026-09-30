@@ -82,6 +82,7 @@ async function open(handlers: Record<string, (body: never) => Reply | Promise<Re
 const BRIDGE: AmaneBridge = {
   repository: 'https://github.com/sqzw-x/amane', license: 'GPL-3.0',
   revision: '79ecfa763cc786318e1964a3d7f4e244a7d5c96d', version: '0.16.1', installed: true,
+  installed_version: '0.16.1',
   python: 'T:/tools/amane-bridge/.venv/Scripts/python.exe',
   sites: [{ source: 'fc2ppvdb', label: 'FC2PPVDB' }, { source: 'avsox', label: 'AVSOX' }],
   job: { status: 'idle' },
@@ -106,9 +107,9 @@ it('首屏用 prefetch 落进缓存的三份画出来，挂载时不再请求一
   expect(calls.map((call) => call.path)).toEqual(FIRST_SCREEN);
   expect(section(host, 'JavBus')).not.toBeNull();
   expect(section(host, '高清封面')).not.toBeNull();
-  const bridge = section(host, 'amane 桥');
+  const bridge = section(host, 'amane');
   expect(bridge).not.toBeNull();
-  expect(bridge?.textContent).toContain('0.16.1 · 79ecfa763cc7');
+  expect(bridge?.textContent).toContain('已安装版本0.16.1');
   expect(bridge?.textContent).toContain('FC2PPVDB、AVSOX');
   expect(buttonNamed('重新安装', bridge!)).not.toBeNull();
   // 连接方式是 BoardUI 的 Select，画出来的是按钮；原生 select 是 React Aria 藏在后面
@@ -300,14 +301,14 @@ it('amane 桥：检查上游只填「上游最新版本」那一行，重建跟�
   });
   await prefetchScraping(new AbortController().signal);
   const host = await mount(page(toast));
-  const bridge = section(host, 'amane 桥')!;
+  const bridge = section(host, 'amane')!;
   expect(bridge.textContent).toContain('尚未检查');
 
   await click(buttonNamed('检查上游版本', bridge));
   await settle();
   expect(calls[FIRST_SCREEN.length]).toMatchObject({ path: '/api/scraping/amane-bridge/check', method: 'POST' });
   expect(bridge.textContent).toContain('v0.17.0');
-  expect(bridge.textContent, '钉住的版本不因上游有新版而改变').toContain('0.16.1 · 79ecfa763cc7');
+  expect(bridge.textContent, '检查上游不改变已安装版本').toContain('已安装版本0.16.1');
 
   await click(buttonNamed('重新安装', bridge));
   await settle();

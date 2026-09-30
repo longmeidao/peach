@@ -70,8 +70,8 @@ def run_main(argv, runtime):
 
 class BridgeContractTests(unittest.TestCase):
     def test_the_failure_reasons_are_the_upstream_sixteen(self):
-        self.assertEqual(len(bridge.FAILURE_REASONS), 16)
-        self.assertEqual(len(set(bridge.FAILURE_REASONS)), 16)
+        self.assertEqual(len(bridge.FAILURE_REASONS), 17)
+        self.assertEqual(len(set(bridge.FAILURE_REASONS)), 17)
 
     def test_a_hit_prints_one_json_line_and_exits_zero(self):
         runtime = make_runtime({

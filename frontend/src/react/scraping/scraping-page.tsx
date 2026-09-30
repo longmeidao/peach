@@ -47,8 +47,10 @@ const COOKIE_METHODS = [['paste', '粘贴 Cookie'], ['file', '导入文件']] as
    `/favicon.ico` 那一枚 16px，站点自己备好的 apple-touch-icon 和 SVG 问都不问；
    需要代理才通的来源更是常年空着。取不到时把 `<img>` 摘掉，不留破图。 */
 function SiteMark({ source }: { source: string }) {
+  // 这几站的公开图标随静态资源提供，验证页和离线回放不影响来源身份。
+  const bundled = ['javten', 'fc2ppvdb', 'avwikidb', 'github'].includes(source);
   return (
-    <img src={siteMarkUrl({ source })} alt="" width={16} height={16} loading="lazy"
+    <img src={bundled ? `/vendor/site-marks/${source}.png` : siteMarkUrl({ source })} alt="" width={16} height={16} loading="lazy"
       onError={(event) => event.currentTarget.remove()}
       className="size-4 shrink-0 rounded-sm object-contain" />
   );
@@ -291,7 +293,7 @@ function AmaneBridgeCard({ toast }: ScrapingProps) {
 
   if (!data) {
     return bridge.error
-      ? <Section title="amane 桥"><Stack><Note tone="error">{errorMessage(bridge.error)}</Note></Stack></Section>
+      ? <Section title="amane"><Stack><Note tone="error">{errorMessage(bridge.error)}</Note></Stack></Section>
       : null;
   }
   const busy = running || rebuild.isPending || check.isPending;
@@ -299,17 +301,17 @@ function AmaneBridgeCard({ toast }: ScrapingProps) {
     : check.error ? errorMessage(check.error)
     : outcome?.status === 'failed' ? (outcome.error || '重建未完成') : '';
   return (
-    <Section title="amane 桥" aside={<ExternalLink href={data.repository}>{data.repository}</ExternalLink>}>
+    <Section title="amane" aside={<ExternalLink href={data.repository}><SiteMark source="github" />{data.repository}</ExternalLink>}>
       <FactList>
-        <Fact term="钉住的版本">{data.version ? `${data.version} · ` : ''}{data.revision.slice(0, 12)}</Fact>
+        <Fact term="已安装版本">{data.installed_version || '未安装'}</Fact>
         <Fact term="上游最新版本">{check.data?.latest ?? '尚未检查'}</Fact>
         <Fact term="运行环境">{data.installed ? '已安装' : '未安装'}</Fact>
-        <Fact term="开放的站">{data.sites.map((site) => site.label).join('、')}</Fact>
+        <Fact term="内置站点">{data.sites.map((site) => site.label).join('、')}</Fact>
       </FactList>
       <Stack divided>
         <Help>
-          这几站由 amane（{data.license}）的解析器经独立子进程回答，运行环境按钉住的版本单独安装，
-          不随上游自动升级；换版本要人读过上游改动再改清单。首次安装约需下载 98 MB。
+          已安装版本：{data.installed_version || '未安装'}。amane（{data.license}）提供这些内置站点的解析能力。
+          重新安装会使用 Peach 内置的 {data.version} 版本，不随上游自动升级。
         </Help>
         {running ? <LoadingDots label="正在重建运行环境" /> : null}
         {problem ? <Note tone="error">{problem}</Note> : null}

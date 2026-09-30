@@ -126,7 +126,7 @@ SCOPES: dict[str, tuple[str, ...]] = {
             "test_legacy_shell_routes.py",
             "test_web_perf.py", "test_copy_final_state.py",
             "test_agency_entity.py", "test_label_maker.py", "test_dependency_policy.py",
-            "test_desktop_settings.py",
+            "test_desktop_settings.py", "test_dev_copy.py",
             "test_fastapi_api.py", "test_follow_assets.py", "test_follow_web.py",
             "test_metadata_library.py", "test_studio_icon_variants.py", "test_web_settings.py"),
     "core": ("test_access.py", "test_auth.py", "test_config.py", "test_field_owners.py",
@@ -155,6 +155,8 @@ SCOPE_TEST_IDS: dict[str, tuple[str, ...]] = {
 # 一个文件可以落到多个域：读它的测试登记在哪个域，改它就得跑到哪个域。
 # `tests/test_test_planning.py` 按测试源码里真实读到的路径反查这两张表，漏一条本地就红。
 AUTO_SCOPE_FILES: dict[str, tuple[str, ...]] = {
+    "src/peach/dev_copy.py": ("web",),
+    "scripts/dev/copy-editor.js": ("web",),
     # 路由页面同时被目录、工具与前端三个域的测试读源码。
     "src/peach/routes_pages.py": ("catalog", "tooling", "web"),
     # 托盘既是 sync 域的服务编排，也被版本与桌面设置那些 tooling 测试读源码。

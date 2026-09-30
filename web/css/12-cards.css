@@ -380,3 +380,5 @@ body[data-density="dense"] .card .meta .why{display:none}
 /* 占位卡不是在等哪一张图，它本身就是等待态：微光和骨架同一帧出现。`.imgwait` 那 180ms
    的淡入门槛是给本地图的，套在这里，那 180ms 里露出来的是 `.pic` 的黑底。 */
 .feednewskeleton .pic.imgwait::after{transition:none}
+/* 新作先完成封套识别与正封取景再显示，慢图和缓存图共用加载监听与插入检查。 */
+.feednew .poster.cover:not([data-frame]){visibility:hidden}
