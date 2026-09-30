@@ -297,7 +297,7 @@ def release(root: Path, version: str, *, repo: str, spec: str, today: str | None
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--repo", default="longmeidao/peach")
+    parser.add_argument("--repo", default="peach-mitao/peach")
     parser.add_argument("--range", dest="spec", help="提交区间，默认上一个版本标签到 HEAD")
     parser.add_argument("--release", help=f"把{UNRELEASED}节定版成这个版本号")
     parser.add_argument("--apply", action="store_true", help=f"写进 {CHANGELOG}")

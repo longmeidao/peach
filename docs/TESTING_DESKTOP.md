@@ -1,6 +1,6 @@
 # Windows 测试版
 
-Windows 测试版有安装包和免安装包两种，程序文件相同，都不需要安装 Python、Git、Node 或 OpenSSL。macOS 暂无独立包，请按 [README](https://github.com/longmeidao/peach) 从源码运行。
+Windows 测试版有安装包和免安装包两种，程序文件相同，都不需要安装 Python、Git、Node 或 OpenSSL。macOS 暂无独立包，请按 [README](https://github.com/peach-mitao/peach) 从源码运行。
 
 | | 安装包 | 免安装包 |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ Windows 测试版有安装包和免安装包两种，程序文件相同，都不
 
 ## 开始使用
 
-1. 从 [GitHub Releases](https://github.com/longmeidao/peach/releases) 下载其中一种，以及 `SHA256SUMS.txt`。
+1. 从 [GitHub Releases](https://github.com/peach-mitao/peach/releases) 下载其中一种，以及 `SHA256SUMS.txt`。
 2. 核对哈希：在 PowerShell 里运行 `Get-FileHash .\<下载的文件名>`，结果应与 `SHA256SUMS.txt` 里对应的那一行相同（不区分大小写）。
 3. 安装包：双击，按提示完成安装，最后一步勾选「运行 Peach」。免安装包：右键压缩包，选「全部解压」，保留整个 `Peach` 文件夹，不要只拿出 `Peach.exe`，然后双击 `Peach.exe`。
 4. 浏览器会打开首次设置页。
@@ -77,7 +77,7 @@ Windows 第一次询问防火墙权限时，只勾选「专用网络」。
 4. 在「高清封面」里填一个馆藏里已有的番号，点「抓取封面」。只有新图能完整解码、而且像素比现有封面大时才替换；失败时保留已有的图。同一个番号 24 小时内抓成功过，会直接用本机已有的文件。
 5. 需要 Cookie 的来源（例如 FC2）选「粘贴 Cookie」或「导入文件」其中一种，文件支持 Netscape 格式的 `.txt`。Cookie 只保存在这台电脑上，不同电脑之间不共享。
 
-「已保存」只表示 Cookie 存下来了，不代表登录仍然有效。撤销后，这个来源需要登录的采集要重新提供 Cookie。浏览器里的 Cookie 不能直接导入，只能粘贴或导入文件。更多来源的说明见 [来源采集](https://github.com/longmeidao/peach/blob/master/docs/SOURCING.md)。
+「已保存」只表示 Cookie 存下来了，不代表登录仍然有效。撤销后，这个来源需要登录的采集要重新提供 Cookie。浏览器里的 Cookie 不能直接导入，只能粘贴或导入文件。更多来源的说明见 [来源采集](https://github.com/peach-mitao/peach/blob/master/docs/SOURCING.md)。
 
 ## 更新
 

@@ -8,8 +8,8 @@ import httpx
 from . import __version__, distribution
 from .http import HttpRequest, HttpxTransport
 
-RELEASES_URL = "https://github.com/longmeidao/peach/releases"
-API_URL = "https://api.github.com/repos/longmeidao/peach/releases?per_page=100"
+RELEASES_URL = "https://github.com/peach-mitao/peach/releases"
+API_URL = "https://api.github.com/repos/peach-mitao/peach/releases?per_page=100"
 
 
 def snapshot() -> dict:

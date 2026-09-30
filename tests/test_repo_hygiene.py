@@ -523,7 +523,7 @@ class MachineCoordinateTests(unittest.TestCase):
                         r"C:\Users\RUNNER~1\AppData\Local\Temp", "/home/runner/work",
                         "https://www.pixiv.net/users/93812377",
                         "Chrome/131.0.0.0", "10.0.26200.1234", r"R:\media",
-                        "https://github.com/longmeidao/peach",
+                        "https://github.com/peach-mitao/peach",
                         "Copyright (C) 2026 longmeidao"):
             self.assertIsNone(MACHINE_COORDINATE.search(allowed), allowed)
 
