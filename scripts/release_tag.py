@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
@@ -222,6 +223,30 @@ def plan(repo: str) -> dict:
     return {**verify(repo, sha), "tag": tag, "repo": repo}
 
 
+def plan_commit(repo: str, sha: str) -> dict:
+    """发布明确选定的主线提交，版本与说明均取自这个提交。"""
+    _require_clean_master()
+    if not re.fullmatch(r"[0-9a-f]{40}", sha):
+        raise ValueError("--release-sha 必须是完整的 40 位提交 SHA")
+    if command("git", "rev-parse", f"{sha}^{{commit}}") != sha:
+        raise ValueError("--release-sha 必须指向提交对象")
+    text = command("git", "show", f"{sha}:{version_bump.VERSION_FILE}")
+    match = version_bump.VERSION_PATTERN.search(text)
+    if match is None:
+        raise ValueError("选定提交没有有效的 __version__")
+    version = ".".join(match.group(index) for index in (2, 3, 4))
+    document = command("git", "show", f"{sha}:{changelog.CHANGELOG}")
+    if not changelog.has_section(document, version):
+        raise ValueError(f"选定提交的 {changelog.CHANGELOG} 缺少 {version} 一节")
+    changelog.require_labeled_entries(document, version)
+    tag = f"v{version}"
+    _require_free_tag(repo, tag)
+    if command("git", "tag", "--list", tag):
+        raise ValueError(f"本地 {tag} 已存在，请先检查它的归属")
+    return {**verify(repo, sha), "tag": tag, "version": version, "repo": repo,
+            "section": changelog.section_of(document, version)}
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -237,6 +262,7 @@ def main(argv=None) -> int:
     mode.add_argument("--ship", action="store_true",
                       help="把定好版的工作区送到标签：提交、推送、等 Test 转绿、打标签")
     mode.add_argument("--verify-sha", help="仅核对指定提交的主线归属与 CI，供 Release 工作流使用")
+    mode.add_argument("--release-sha", help="为完整 SHA 指定的已通过 CI 的主线提交补打标签")
     args = parser.parse_args(argv)
     try:
         if args.verify_sha:
@@ -250,10 +276,13 @@ def main(argv=None) -> int:
             print(json.dumps(ship(args.repo, apply=args.apply, timeout=args.timeout),
                              ensure_ascii=False, indent=2))
             return 0
-        result = plan(args.repo)
+        result = (plan_commit(args.repo, args.release_sha)
+                  if args.release_sha is not None else plan(args.repo))
         if args.apply:
-            # 创建前再次查询远端主线，拒绝把并发推进的 master 当成已核验版本。
-            if api(args.repo, "git/ref/heads/master")["object"]["sha"] != result["sha"]:
+            # 固定提交在动手前复核归属、CI、版本说明与标签占用。
+            if args.release_sha is not None:
+                result = plan_commit(args.repo, args.release_sha)
+            elif api(args.repo, "git/ref/heads/master")["object"]["sha"] != result["sha"]:
                 raise ValueError("检查期间 master 已更新，请重新执行")
             command("git", "tag", "-a", result["tag"], result["sha"],
                     "-m", f"Peach {result['tag']} Windows 测试版")
