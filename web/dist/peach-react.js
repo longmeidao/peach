@@ -71477,6 +71477,7 @@ function xNe(e) {
 			children: `账本当前快照 · ${o.toLocaleString()} 个视频 · ${a(s)}`
 		}),
 		/* @__PURE__ */ (0, L.jsxs)(_A, {
+			defaultSelectedKey: "inventory",
 			className: "flex flex-col gap-4",
 			children: [
 				/* @__PURE__ */ (0, L.jsxs)(vA, {
@@ -71600,6 +71601,7 @@ function xNe(e) {
 			]
 		}),
 		/* @__PURE__ */ (0, L.jsxs)(_A, {
+			defaultSelectedKey: "tags",
 			className: `${gw({ padding: "none" })} flex flex-col`,
 			children: [
 				/* @__PURE__ */ (0, L.jsx)("div", {

@@ -43,11 +43,30 @@ describe('管理页面容器与骨架', () => {
       try {
         const page = opened.page;
         await page.getByRole('tablist', { name: '统计视图' }).waitFor();
+        await page.emulateMedia({ reducedMotion: 'no-preference' });
+        const cpu = await page.context().newCDPSession(page);
+        await cpu.send('Emulation.setCPUThrottlingRate', { rate: 4 });
         const pending = new Promise<void>(resolve => { release = resolve; });
         await page.route('**/api/stats*', async route => {
           const response = await route.fetch();
           await pending;
           await route.fulfill({ response });
+        });
+        await page.addInitScript(() => {
+          const frames: { inventory: boolean; ranking: boolean; metricsY: number; dimensionsY: number }[] = [];
+          (window as unknown as { statsPaintFrames: typeof frames }).statsPaintFrames = frames;
+          const sample = () => {
+            const metrics = document.querySelector('[role="tablist"][aria-label="统计视图"]');
+            const dimensions = document.querySelector('[role="tablist"][aria-label="统计维度"]');
+            if (metrics && dimensions) frames.push({
+              inventory: !!document.querySelector('[role="img"][aria-label="网盘与本地"]'),
+              ranking: !!document.querySelector('[role="tabpanel"][id$="tags"]'),
+              metricsY: metrics.getBoundingClientRect().y,
+              dimensionsY: dimensions.getBoundingClientRect().y,
+            });
+            if (frames.length < 12) requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
         });
         await page.reload({ waitUntil: 'load' });
         const skeleton = page.locator('[data-skeleton="board/stats"]');
@@ -60,6 +79,15 @@ describe('管理页面容器与骨架', () => {
         await settle(page);
         aligned(metrics, await box(page.getByRole('tablist', { name: '统计视图' })));
         aligned(chart, await box(page.getByRole('img', { name: '网盘与本地', exact: true }).locator('..')), ['x', 'y', 'width']);
+        await page.waitForFunction(() => (window as unknown as { statsPaintFrames: unknown[] }).statsPaintFrames.length >= 12);
+        const frames = await page.evaluate(() => (window as unknown as {
+          statsPaintFrames: { inventory: boolean; ranking: boolean; metricsY: number; dimensionsY: number }[];
+        }).statsPaintFrames);
+        assert.ok(frames.every(frame => frame.inventory && frame.ranking), '统计首个可见帧缺少选中页签内容');
+        for (const frame of frames) {
+          assert.ok(Math.abs(frame.metricsY - frames[0]!.metricsY) <= 1, '读数卡加载完成后发生位移');
+          assert.ok(Math.abs(frame.dimensionsY - frames[0]!.dimensionsY) <= 1, '统计维度加载完成后发生位移');
+        }
         assert.ok(waitingLayout.scrollWidth <= waitingLayout.viewportWidth);
         assert.deepEqual(opened.problems, []);
       } finally { release(); await opened.close(); }
