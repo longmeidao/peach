@@ -322,7 +322,7 @@ export function StatsPage(props: StatsProps) {
       <p className="text-caption-1-regular text-text-secondary">
         {`账本当前快照 · ${videos.toLocaleString()} 个视频 · ${fmtSize(bytes)}`}
       </p>
-      <Tabs className="flex flex-col gap-4">
+      <Tabs defaultSelectedKey="inventory" className="flex flex-col gap-4">
         <TabList aria-label="统计视图" className={STAT_STRIP}>
           <MetricTab id="inventory" label="馆藏视频" icon={RiDatabase2Line} accent={0}
             figure={videos.toLocaleString()} detail={fmtSize(bytes)} />
@@ -364,7 +364,7 @@ export function StatsPage(props: StatsProps) {
         </TabPanel>
       </Tabs>
       {/* 旧 `.insightpanel`：整块一张 16px 的填充卡，页签是卡内顶上那条分段控件。 */}
-      <Tabs className={`${cardClass({ padding: 'none' })} flex flex-col`}>
+      <Tabs defaultSelectedKey="tags" className={`${cardClass({ padding: 'none' })} flex flex-col`}>
         <div className="px-4 pt-3">
           <SegmentedTabList aria-label="统计维度" className={SEGMENTED_TRACK}>
             <Tab id="tags" className={SEGMENT}>内容标签</Tab>

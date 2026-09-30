@@ -835,8 +835,8 @@ class BrowserSuiteWorkflowTests(unittest.TestCase):
         verified = self.job("verified")
         self.assertIn("WIDE: ${{ needs.plan.outputs.wide }}", verified)
         self.assertIn('name == "web-e2e" and wide and job["result"] == "skipped"', verified)
-        self.assertIn('"wide"', (ROOT / "scripts" / "ci_plan.py").read_text(encoding="utf-8"),
-                      "ci_plan.py 没把 wide 写进 GITHUB_OUTPUT")
+        self.assertIn('wide: ${{ steps.plan.outputs.wide }}', self.job("plan"),
+                      "plan job 没有向后续任务提供全量矩阵状态")
 
     def test_matrix_rows_beyond_core_install_what_the_node_suites_need(self):
         job = self.job("python")

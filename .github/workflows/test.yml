@@ -26,6 +26,7 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       wheel_matrix: ${{ steps.plan.outputs.wheel_matrix }}
+      wide: ${{ steps.plan.outputs.wide }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -141,6 +142,13 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: '& .\scripts\test.ps1 -Scope ${{ matrix.scope }} -Fresh -Base $env:BASE_SHA -ShardIndex ${{ matrix.shard_index }} -ShardCount ${{ matrix.shard_count }}'
+      - name: 保存浏览器测试日志
+        if: always() && runner.os == 'Windows' && matrix.scope != 'core'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-${{ matrix.python }}-${{ matrix.scope }}-${{ matrix.shard_index }}
+          path: build/agent-verification/browser/*.tap
+          if-no-files-found: ignore
       - name: 安装 macOS 依赖
         if: runner.os == 'macOS'
         shell: bash
@@ -230,6 +238,13 @@ jobs:
       - name: 运行 web 域
         shell: pwsh
         run: '& .\scripts\test.ps1 -Scope web -Fresh'
+      - name: 保存浏览器测试日志
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-web
+          path: build/agent-verification/browser/*.tap
+          if-no-files-found: ignore
 
   web-vendor:
     name: 固定前端依赖

@@ -237,6 +237,7 @@ describe('关注页岛', () => {
       const page = opened.page;
       await page.locator('[data-follow-older]').click();
       await page.locator('[data-follow-older][aria-busy="true"]').waitFor();
+      await page.locator('[data-follow-older]').filter({ hasText: '抓取中' }).waitFor();
       assert.match(await page.locator('[data-follow-older]').innerText(), /抓取中/);
       await page.locator('[data-follow-recheck][aria-busy="true"]').waitFor();
       assert.deepEqual(opened.stub.writes, [{ url: '/api/follow/check', body: { older: true, background: true } }]);

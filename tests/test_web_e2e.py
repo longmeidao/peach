@@ -87,7 +87,7 @@ def refuse_network(*args, **kwargs):
     raise AssertionError("演示库的 process 不应向任何外部来源发请求")
 
 
-def e2e_command(node: str, concurrency: str = "") -> list[str]:
+def e2e_command(node: str, concurrency: str = "", files: tuple[str, ...] = ()) -> list[str]:
     """串行跑是浏览器进程预算：每条用例的 Chrome 只给两个渲染进程（`e2e/harness.ts`）。
 
     直接启动 Node 也省掉资源守卫内的一层 npm 进程。
@@ -96,7 +96,19 @@ def e2e_command(node: str, concurrency: str = "") -> list[str]:
     if not selected.isdecimal() or int(selected) < 1:
         raise AssertionError("PEACH_E2E_CONCURRENCY 必须是正整数")
     return [node, "--test", f"--test-concurrency={int(selected)}",
-            "--test-reporter=tap", "e2e/**/*.test.ts"]
+            "--test-reporter=tap", *(files or ("e2e/**/*.test.ts",))]
+
+
+def e2e_batches(frontend: Path) -> tuple[tuple[str, ...], ...]:
+    """设计检查、交互回归与路由冒烟各占一批，每批串行且限时 600 秒。"""
+    files = tuple(sorted(path.relative_to(frontend).as_posix()
+                         for path in (frontend / "e2e").rglob("*.test.ts")))
+    if not files:
+        raise AssertionError("frontend/e2e 没有浏览器用例")
+    design = tuple(path for path in files if path == "e2e/design.test.ts")
+    routes = tuple(path for path in files if path == "e2e/smoke.test.ts")
+    interactions = tuple(path for path in files if path not in design + routes)
+    return tuple(batch for batch in (design, interactions, routes) if batch)
 
 
 @windows_ledger_roots
@@ -237,25 +249,53 @@ class WebE2ESmokeTests(unittest.TestCase):
     def test_every_route_holds_the_layout_and_runtime_invariants(self):
         env = dict(os.environ, PEACH_E2E_ORIGIN=self.origin, PEACH_E2E_ITEM=str(self.item),
                    PEACH_E2E_CHROME=self.chrome)
-        try:
-            completed = subprocess.run(
-                e2e_command(self.node, os.environ.get("PEACH_E2E_CONCURRENCY", "").strip()),
-                capture_output=True, text=True, encoding="utf-8", errors="replace",
-                cwd=str(FRONTEND), env=env, timeout=E2E_SECONDS, check=False)
-        except subprocess.TimeoutExpired as expired:
-            # 已经跑完的那几条 TAP 行指出卡在哪一条之后；只报超时等于什么都没说。
-            partial = expired.stdout or ""
-            if isinstance(partial, bytes):
-                partial = partial.decode("utf-8", errors="replace")
-            self.fail(f"{E2E_SECONDS} 秒内没跑完，已输出：\n{partial[-4000:]}")
-        output = f"{completed.stdout}\n{completed.stderr}"
-        self.assertEqual(completed.returncode, 0, f"{output}\n--- serve.log ---\n{self._server_log()}")
-        self.assertRegex(output, r"# pass [1-9]\d*", output)
-        self.assertRegex(output, r"# fail 0\b", output)
+        log_root = ROOT / "build" / "agent-verification" / "browser"
+        log_root.mkdir(parents=True, exist_ok=True)
+        for index, batch in enumerate(e2e_batches(FRONTEND), 1):
+            log_path = log_root / f"batch-{index}.tap"
+            with self.subTest(files=batch):
+                try:
+                    completed = subprocess.run(
+                        e2e_command(self.node, os.environ.get("PEACH_E2E_CONCURRENCY", "").strip(), batch),
+                        capture_output=True, text=True, encoding="utf-8", errors="replace",
+                        cwd=str(FRONTEND), env=env, timeout=E2E_SECONDS, check=False)
+                except subprocess.TimeoutExpired as expired:
+                    # TAP 行指出超时前的最后一条用例。
+                    partial = expired.stdout or ""
+                    if isinstance(partial, bytes):
+                        partial = partial.decode("utf-8", errors="replace")
+                    log_path.write_text(partial, encoding="utf-8")
+                    self.fail(f"本批 {E2E_SECONDS} 秒内没跑完，完整日志：{log_path}\n{partial[-4000:]}")
+                output = f"{completed.stdout}\n{completed.stderr}"
+                log_path.write_text(output, encoding="utf-8")
+                self.assertEqual(completed.returncode, 0, f"{output}\n--- serve.log ---\n{self._server_log()}")
+                self.assertRegex(output, r"# pass [1-9]\d*", output)
+                self.assertRegex(output, r"# fail 0\b", output)
 
 
 class MissingPrerequisiteTests(unittest.TestCase):
     """CI 里浏览器用例只能执行或失败，不能静默跳过；工作流那一半由 `test_frontend_build.py` 守。"""
+
+    def test_browser_batches_cover_every_file_once_and_include_nested_suites(self):
+        with tempfile.TemporaryDirectory() as folder:
+            frontend = Path(folder).resolve()
+            paths = ("e2e/design.test.ts", "e2e/smoke.test.ts", "e2e/nested/feature.test.ts")
+            for name in paths:
+                path = frontend / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            batches = e2e_batches(frontend)
+            self.assertEqual(batches[0], ("e2e/design.test.ts",))
+            self.assertEqual(batches[-1], ("e2e/smoke.test.ts",))
+            flattened = tuple(path for batch in batches for path in batch)
+            self.assertCountEqual(flattened, paths)
+            self.assertEqual(len(flattened), len(set(flattened)))
+            self.assertEqual(e2e_command("node", files=batches[1])[-len(batches[1]):], list(batches[1]))
+
+    def test_browser_batches_require_at_least_one_suite(self):
+        with tempfile.TemporaryDirectory() as folder:
+            with self.assertRaisesRegex(AssertionError, "没有浏览器用例"):
+                e2e_batches(Path(folder).resolve())
 
     def test_headless_browser_stays_within_the_resource_guard_process_budget(self):
         harness = (FRONTEND / "e2e" / "harness.ts").read_text(encoding="utf-8")
