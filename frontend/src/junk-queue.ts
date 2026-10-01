@@ -8,6 +8,8 @@
  * 所以接管那一拍这一行不跳。分类与视图此刻就有答案，只有读数和各类的计数徽标要等数据。 */
 import { esc } from '@peach/legacy/core';
 
+import { islandSummary } from './island-skeleton';
+
 export type JunkView = 'pending' | 'dismissed';
 export type JunkKind = '' | 'video' | 'image' | 'archive' | 'audio' | 'url' | 'other';
 
@@ -48,27 +50,18 @@ export function junkViewLink(view: JunkView): { view: JunkView; label: string; g
 
 export const junkSummaryLabel = (view: JunkView) => (view === 'dismissed' ? '已排除' : '待判断');
 
-/* 以下类名抄自 `react/components/collection-summary.tsx` 的等待态，由用例逐字对照。 */
-const SUMMARY_CLASS = 'flex items-end justify-between gap-4 rounded-surface bg-background-secondary-default px-6 py-5 '
-  + 'max-compact:flex-col max-compact:items-start max-compact:gap-3 max-compact:p-4 dark:bg-background-primary-default';
-const SUMMARY_TERMS = 'flex min-w-0 flex-col gap-2';
-const SUMMARY_LABEL = 'text-body-regular text-text-secondary';
-const SUMMARY_FIGURE = 'text-display-4-medium tabular-nums text-text-primary';
-const SUMMARY_PENDING = 'relative inline-block h-8 w-24 rounded-2lg align-middle skeleton-sheen';
-
 const glyph = (name: string) => `<svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 
-/** 壳在 React 包加载之前铺的计数行：摘要面与分类条，读数与计数徽标留空。 */
+/** 壳在 React 包加载之前铺的计数行：摘要面与分类条，读数与计数徽标留空。滑动玻璃由 island
+ *  量着放，这一版里它收着，当前那一类自己垫一块同料的玻璃（`junk-queue.css`）。 */
 export function junkCountSkeletonHtml({ kind, view }: JunkRoute): string {
   const links = JUNK_KIND_OPTIONS.map(([key, label, icon]) =>
     `<a href="${junkPath(key, view)}" data-junk-kind-link="${key}"${key === kind ? ' aria-current="page"' : ''}>${glyph(icon)}${esc(label)}</a>`).join('');
   const other = junkViewLink(view);
   return `<div class="peach-react" data-junk-count-skeleton=""><div data-junk-count="">`
-    + `<div data-junk-summary="" aria-live="polite"><div data-collection-summary="" class="${SUMMARY_CLASS}"><div class="${SUMMARY_TERMS}">`
-    + `<span class="${SUMMARY_LABEL}">${junkSummaryLabel(view)}</span>`
-    + `<strong class="${SUMMARY_FIGURE}"><span data-skeleton="count" aria-hidden="true" class="${SUMMARY_PENDING}"></span></strong>`
-    + `</div></div></div>`
-    + `<div data-junk-filters-frame=""><nav data-junk-filters="" aria-label="垃圾文件分类">${links}<i data-junk-divider="" aria-hidden="true"></i>`
+    + `<div data-junk-summary="" aria-live="polite">${islandSummary(junkSummaryLabel(view))}</div>`
+    + `<div data-junk-filters-frame="" data-filter-glass="" data-glass-pane=""><span data-view-glide="" aria-hidden="true" hidden></span>`
+    + `<nav data-junk-filters="" aria-label="垃圾文件分类">${links}<i data-junk-divider="" aria-hidden="true"></i>`
     + `<a href="${other.href}" data-junk-view-link="${other.view}"${view === 'dismissed' ? ' aria-current="page"' : ''}>${glyph(other.glyph)}${other.label}</a>`
     + `</nav></div></div></div>`;
 }

@@ -30,7 +30,7 @@ export type CardPadding = 'none' | 'default';
  *
  *  - `filled`：`--ground` 填充、无描边。Board 管理区的主力卡。
  *  - `outlined`：`--color-background-primary-default` 底加一条 `--line-soft`。复核页的条目卡。
- *  - `raised`：primary 底、无描边。卡上再浮一层（高清版页头那条汇总）。 */
+ *  - `raised`：primary 底、无描边。卡上再浮一层（关注管理里按作者分组的那张卡）。 */
 export type CardVariant = 'filled' | 'outlined' | 'raised';
 
 export type CardOptions = {

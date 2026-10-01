@@ -28,7 +28,7 @@ describe('Board 页面骨架', () => {
     ['/stats', '[data-stats-chart]', 2],
     ['/activity', '.activitysection', 3],
     ['/duplicates', '[data-duplicate-group] .duplicate-row', 4],
-    ['/quality-goals', '.qualityitem > .qualitycover', 6],
+    ['/quality-goals', '.peach-react .card-grid-cover > li', 6],
     ['/follow-manage', '.peach-react .follow-skeleton-surface .follow-skeleton-author', 3],
     ['/configuration', '.peach-react .configpage section', 2],
     ['/playlists', '.playlistcards > .playlistcard', 6],

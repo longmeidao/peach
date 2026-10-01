@@ -1,7 +1,7 @@
 import { resolveFollowSort, SORT_OPTIONS, type SortDir, type SortKey } from './follow-sort';
 import { islandButton, islandSelect } from './island-skeleton';
 import { configurationSkeleton } from './configuration-skeleton';
-import { duplicatesSkeleton, statsSkeleton } from './management-skeletons';
+import { duplicatesSkeleton, qualityGoalsSkeleton, statsSkeleton } from './management-skeletons';
 
 /** 等待态复用页面容器，只有异步内容使用占位。 */
 const line = (width = '60%') => `<span class="skeleton" style="width:${width}"></span>`;
@@ -101,7 +101,7 @@ export function boardPageSkeleton(
   } else if (path === '/duplicates') {
     body = duplicatesSkeleton();
   } else if (path === '/quality-goals') {
-    body = `<div class="quality-workspace"><div class="collection-summary"><strong>待升级</strong>${line('20%')}</div><div class="qualitylist">${repeat(`<article class="qualityitem"><span class="qualitycover skeleton"></span><div class="qualitybody skeleton-lines">${lines()}</div><footer class="qualityactions">${line('80%')}</footer></article>`, 6)}</div></div>`;
+    body = qualityGoalsSkeleton();
   } else if (path === '/playlists') {
     body = `<section class="playlistpage"><header><div><h2>播放列表</h2><p>保存 Mix，按自己的顺序继续播放。</p></div><div class="playlistcreate skeleton-lines"><span>新播放列表</span>${line('200px')}</div></header><div class="playlistcards">${repeat(`<article class="card playlistcard"><div class="mixstack"><div class="pic skeleton"></div></div><div class="mixmeta"><span class="mav skeleton"></span><div class="mixcopy skeleton-lines">${lines()}</div></div></article>`, 6)}</div></section>`;
   } else return '';

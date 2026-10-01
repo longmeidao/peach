@@ -66,3 +66,19 @@ export function islandSelect(
   const shape = SELECT[size];
   return `<div class="group flex flex-col${className ? ` ${className}` : ''}"><button type="button" aria-haspopup="listbox"${attrs ? ` ${attrs}` : ''} class="flex w-full items-center justify-between rounded-2lg border border-border-button-default bg-background-primary-default shadow-xs text-text-primary ${shape.box}"><span class="flex min-w-0 items-center truncate ${shape.value}">${label}</span>${islandGlyph('chevron-down', `shrink-0 text-text-secondary ${shape.chevron}`)}</button></div>`;
 }
+
+/* 以下类名抄自 `react/components/collection-summary.tsx` 的等待态，由用例逐字对照。 */
+const SUMMARY_CLASS = 'flex items-end justify-between gap-4 rounded-surface bg-background-secondary-default px-6 py-5 '
+  + 'max-compact:flex-col max-compact:items-start max-compact:gap-3 max-compact:p-4 dark:bg-background-primary-default';
+const SUMMARY_TERMS = 'flex min-w-0 flex-col gap-2';
+const SUMMARY_LABEL = 'text-body-regular text-text-secondary';
+const SUMMARY_FIGURE = 'text-display-4-medium tabular-nums text-text-primary';
+const SUMMARY_PENDING = 'relative inline-block h-8 w-24 rounded-2lg align-middle skeleton-sheen';
+
+/** `CollectionSummary` 带 `flush`、等数据时的那一版：名目此刻就有，大数那一格是微光占位。 */
+export function islandSummary(label: string): string {
+  return `<div data-collection-summary="" class="${SUMMARY_CLASS}"><div class="${SUMMARY_TERMS}">`
+    + `<span class="${SUMMARY_LABEL}">${label}</span>`
+    + `<strong class="${SUMMARY_FIGURE}"><span data-skeleton="count" aria-hidden="true" class="${SUMMARY_PENDING}"></span></strong>`
+    + `</div></div>`;
+}

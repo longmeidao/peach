@@ -8,10 +8,6 @@
 .managetitle:has(+.pagelede:not([hidden])){margin-bottom:8px}
 .listtitle[hidden],.managetitle[hidden]{display:none}
 
-/* 高清版目标页的正文归 React 子树（ADR-0031）。这两条只服务遗留骨架的那几张空卡，
-   列数、间距与卡片几何由 `board.css` 的 `body[data-surface="/quality-goals"]` 那组给。 */
-.qualitylist{display:grid}
-.qualityitem{min-width:0;background:var(--ground)}
 /* 「未归属」和实体名一样是个入口，只是它指向一个集合而不是一个人，样式同源。 */
 .entitylink,.unownedlink{border:0;background:none;padding:0;color:var(--tungsten);cursor:pointer;text-decoration:none}
 .entitylink:hover,.unownedlink:hover{color:var(--ink);text-decoration:none}

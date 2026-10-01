@@ -5,8 +5,8 @@
  *
  * 数字回来之前，大数那一格是一条 96×32 的微光占位（旧 `.collection-summary strong .countskeleton`），
  * 行高照旧，数字到货时整块不改高度。`flush` 去掉块下方的间距：落在一行自己排间距的容器里时
- * （垃圾文件的计数行），间距归那一行。垃圾文件页的首屏骨架（`src/junk-queue.ts`）抄的是这里
- * 等待态的类名，改这里要一起改那边。 */
+ * （垃圾文件的计数行、`Page` 自己排间距的高清版），间距归那一层。壳铺的首屏骨架
+ * （`src/island-skeleton.ts` 的 `islandSummary`）抄的是这里等待态的类名，改这里要一起改那边。 */
 export function CollectionSummary({ label, figure, detail = '', pending = false, flush = false }: {
   label: string; figure: string; detail?: string; pending?: boolean; flush?: boolean;
 }) {

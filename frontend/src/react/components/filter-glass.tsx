@@ -83,9 +83,10 @@ export function FilterPill(
   );
 }
 
+/* 浮层上的动作键：平时一圈 `--glass-low` 细线，悬停浮起一块首页那种提亮的玻璃（料在 `../styles.css`
+ * 的 `[data-glass-pill]`）。只换填充的话，浅色下那一档白压在同样发白的浮层上分不出来。 */
 const PILL = 'h-7.5 cursor-pointer rounded-full border border-(--glass-low) bg-transparent px-3'
   + ' text-body-2-regular leading-none whitespace-nowrap text-inherit outline-none'
-  + ' hover:border-(--glass-rim) hover:bg-(--glass-pick-fill)'
   + ' focus-visible:ring-2 focus-visible:ring-border-focus-ring'
   + ' aria-busy:cursor-wait aria-busy:opacity-55';
 
@@ -93,7 +94,7 @@ export function GlassPill(
   { children, onPress, busy = false }: { children: ReactNode; onPress(): void; busy?: boolean },
 ) {
   return (
-    <button type="button" className={PILL} aria-busy={busy || undefined} aria-disabled={busy || undefined}
+    <button type="button" data-glass-pill="" className={PILL} aria-busy={busy || undefined} aria-disabled={busy || undefined}
       onClick={() => { if (!busy) onPress() }}>
       {children}
     </button>
