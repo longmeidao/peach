@@ -63,7 +63,9 @@ body[data-density="dense"] .peach-react [data-media-card][data-variant="short"] 
   .peach-react [data-media-card][data-longhover] { z-index: 8; transform: translateY(-7px) scale(1.065); filter: brightness(1.04); }
 }
 
-/* 回收站那一屏的卡是一块有边的面，封面贴边；元信息区沿用网格卡的 8px 内边距。 */
+/* 回收站那一屏的卡是一块有边的面，封面贴边；元信息区在框里留出四周的边距，不用网格卡那套
+ * 「垫 8px 再 -8px 抵消」（卡本身 overflow:hidden，垫出去的一圈也会被裁掉）。文件名多是一行，
+ * 标题不预留第二行，头像与标题加署名那一块居中对齐；屏外估高跟着按一行算。 */
 body[data-surface="/trash"] .peach-react [data-media-card] {
   gap: 0;
   overflow: hidden;
@@ -71,6 +73,12 @@ body[data-surface="/trash"] .peach-react [data-media-card] {
   background: var(--color-background-primary-default);
 }
 body[data-surface="/trash"] .peach-react [data-media-card] [data-media-pic] { border-radius: 0; }
+body[data-surface="/trash"] .peach-react [data-media-card] [data-media-meta] {
+  --card-meta-block: calc(var(--fs-md) * 1.35 + 3px + var(--card-meta-byline) + var(--card-meta-tags));
+  margin: 0;
+  padding: 10px 12px 12px;
+}
+body[data-surface="/trash"] .peach-react [data-media-card] [data-media-title] { min-height: 0; }
 
 /* 整张卡的打开点击区垫在封面与元信息区下面。 */
 .peach-react [data-media-open] {
