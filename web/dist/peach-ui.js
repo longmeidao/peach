@@ -1077,6 +1077,7 @@ var Kt = {
 	"data-cleanup": { react: "data-cleanup" },
 	duplicates: { react: "duplicates" },
 	"entity-page": { react: "entity-page" },
+	"feed-new": { react: "feed-new" },
 	"follow-feed": { react: "follow-feed" },
 	"follow-manage": { react: "follow-manage" },
 	index: { react: "index" },

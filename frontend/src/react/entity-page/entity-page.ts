@@ -13,7 +13,8 @@ import { api } from '@peach/legacy/core';
 import type { CatalogGridProps, MediaItem, MediaPage } from '../catalog-grid/types';
 import type { EntityBodyActions, EntityBodyHelpers, EntityCodeSet, EntityLocalPhoto, PhotoLayout, PhotoSize } from '../entity-body/entity-body';
 import type { EntityComboItem, EntitySortKey, SegmentOption } from '../entity-filter/entity-filter';
-import type { EntityHeroData, HeroCostar, HeroFeedNew } from '../entity-hero/entity-hero';
+import type { EntityHeroData, HeroCostar } from '../entity-hero/entity-hero';
+import { feedNewKey, feedNewOptions, type FeedRowHtml } from '../feed-new/feed-new';
 import type { IndexPerson, PeopleLayout } from '../index/index-data';
 import { queryClient } from '../query';
 
@@ -52,9 +53,6 @@ export interface PhotoPage {
   seed?: string;
 }
 
-/** `/api/feeds/discoveries` 的回话：条目与最近一轮取封面断在连接上的部数。 */
-export interface FeedDiscoveries { items?: { id: number; has_cover?: boolean }[]; cover_network?: number }
-
 /** 写操作与站内跳转里仍归壳的那几样：地址、确认弹层的表单、全站回执与筛选的唯一落点。 */
 export interface EntityPageActions {
   /** 换视图、换观看状态：壳写好地址再把新的 `filters`／`media` 推回来。 */
@@ -92,7 +90,7 @@ export interface EntityPageHelpers {
   /** 新作那一行：拖动、滚轮，按设置接自动滚动。 */
   wireFeedRow(row: Element | null): void;
   /** 新作那一行的整段 HTML：连不上图片主机时的 Note 与一排卡（`feedNewCardHtml`）。 */
-  feedRowHtml(data: FeedDiscoveries | null): string;
+  feedRowHtml: FeedRowHtml;
   /** 操作回执（`actionReceipt`），给了 `undo` 就带一颗撤销键。 */
   receipt(message: string, options?: { undo?: () => Promise<void> }): void;
   /** 失败回执（`actionFailure`）。 */
@@ -150,7 +148,6 @@ export interface EntityPageProps extends SharedGridProps {
 }
 
 export const entityKey = (kind: string, name: string) => ['entity', kind, name] as const;
-export const feedNewKey = (entityId: number) => ['feed-new', entityId] as const;
 export const entityItemsKey = (kind: string, name: string, query: string, revision: number) =>
   ['entity-items', kind, name, query, revision] as const;
 export const entityPhotosKey = (kind: string, name: string, set: number, seed: string) =>
@@ -202,42 +199,6 @@ export const entityOptions = (kind: string, name: string) => ({
   queryKey: entityKey(kind, name),
   queryFn: ({ signal }: { signal: AbortSignal }) =>
     api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`, { signal }) as Promise<EntityPageData>,
-  staleTime: Infinity,
-});
-
-const FEED_SKELETON_CARDS = 8;
-const FEED_COVER_WAIT = 1500;
-
-/** 把一段 HTML 里头 `count` 张图先取进缓存，最多等 `ms` 毫秒。插进页面时它们已经 `complete`，
- *  遗留层的等待微光不再给它们挂上。 */
-export function preloadImages(html: string, count: number, ms: number): Promise<unknown> {
-  const probe = document.createElement('template');
-  probe.innerHTML = html;
-  const loads = [...probe.content.querySelectorAll('img[src]')].slice(0, count).map((source) => {
-    const img = new Image();
-    img.referrerPolicy = source.getAttribute('referrerpolicy') || '';
-    img.src = source.getAttribute('src') || '';
-    return img.decode().catch(() => {});
-  });
-  return Promise.race([Promise.all(loads), new Promise((resolve) => { setTimeout(resolve, ms) })]);
-}
-
-/** 这一页的新作。拉取由定时器做，页面只读已经发现的那些。骨架还占着时（首屏）先把头几张封面取到手
- *  再整行换掉：否则骨架退场、真卡进来，封面格里又是一轮微光，同一行等了两遍。慢的那几张不等满。 */
-export async function fetchFeedNew(entityId: number, rowHtml: (data: FeedDiscoveries | null) => string,
-  preload: boolean): Promise<HeroFeedNew> {
-  const data = await (api(`/api/feeds/discoveries?${new URLSearchParams({ limit: '12', entity: String(entityId) })}`)
-    .catch(() => null) as Promise<FeedDiscoveries | null>);
-  const ok = data && !(data as { error?: string }).error ? data : null;
-  const items = ok?.items || [];
-  const html = rowHtml(ok);
-  if (preload && items.length) await preloadImages(html, FEED_SKELETON_CARDS, FEED_COVER_WAIT);
-  return { items, html };
-}
-
-export const feedNewOptions = (entityId: number, rowHtml: (data: FeedDiscoveries | null) => string, preload = false) => ({
-  queryKey: feedNewKey(entityId),
-  queryFn: () => fetchFeedNew(entityId, rowHtml, preload),
   staleTime: Infinity,
 });
 

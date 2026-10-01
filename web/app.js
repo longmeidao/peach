@@ -64,7 +64,6 @@ wireImageFallbacks(document.body);
    不再落在 TDZ 里。 */
 let state;
 let homeHasFeed=null;
-const feedRequests=new WeakMap();
 const selected=new Set(),followSelected=new Set();
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 // 顶部三层与抽屉上一次画的是哪一份：口径加数据，两样都没变就不必再画一遍。
@@ -429,9 +428,7 @@ const claimSurface=path=>{
   if(!isProcessingNoticePath(path))unmountIsland($('#libraryProcessingNotice'));
   /* 首页那一行新作同样只属于目录页。管理区的入口不经过 `showHomeSurfaces`，离开目录页时
      在这里收起并清空，连同它的自动滚动一起停掉。 */
-  if(!isFeedNewPath(path)){const feed=$('#feedNew');
-    feed.querySelectorAll('.feednewrow').forEach(stopAutoScroll);feed.hidden=true;feed.innerHTML='';
-    feed.removeAttribute('aria-busy')}
+  if(!isFeedNewPath(path))clearHomeFeed();
   /* 管理区正文的容器每次换页都经过这里，所以卸载也落在这里。React 档的页面是一棵自己
      管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的页面照着原节律继续敲库。
      没挂过东西的容器 unmountIsland 直接返回，逐页判断反而会漏掉新迁过来的那一页。 */
@@ -2576,20 +2573,6 @@ function feedNewCardHtml(item){
    不占的话，那一行在资料卡和作品之间凭空插进来，把下面整个作品网格往下推一截。
    封面格直接挂 `imgwait`，微光与真卡等封面时是同一层。 */
 const FEED_SKELETON_CARDS=8;
-const FEED_COVER_WAIT=1500;
-/* 把一段 HTML 里头 `count` 张图先取进缓存，最多等 `ms` 毫秒。插进页面时它们已经
-   `complete`，`watchPendingImages` 不再给它们挂微光。 */
-function preloadImages(html,count,ms){
-  const probe=document.createElement('template');
-  probe.innerHTML=html;
-  const loads=[...probe.content.querySelectorAll('img[src]')].slice(0,count).map(source=>{
-    const img=new Image();
-    img.referrerPolicy=source.getAttribute('referrerpolicy')||'';
-    img.src=source.getAttribute('src');
-    return img.decode().catch(()=>{});
-  });
-  return Promise.race([Promise.all(loads),new Promise(resolve=>setTimeout(resolve,ms))]);
-}
 const feedNewSkeletonHtml=()=>`<div class="feednewrow srow" aria-hidden="true">${
   `<article class="card feednewcard feednewskeleton"><div class="pic imgwait" style="--card-ratio:${COVER_FRONT_RATIO}"></div>
     <div class="meta"><div class="mtext"><span class="t"><span class="skeleton"></span></span>
@@ -2610,7 +2593,8 @@ async function loadEntityShapes(){
   return entityShapes;
 }
 function prepareHomeFeed(host){
-  if(!host||host.querySelector('[data-feed-id]'))return;
+  // 岛一挂上，宿主就归它：骨架只在挂载之前铺，之后由岛画的那一行或空着说话。
+  if(!host||islandMounted(host)||host.querySelector('[data-feed-id]'))return;
   host.hidden=homeHasFeed!==true;
   if(homeHasFeed!==true)return;
   host.setAttribute('aria-busy','true');
@@ -2640,62 +2624,43 @@ function feedRowHtml(data){
   return feedNetworkNote(data?.cover_network,items)
     +`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
 }
-/* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次
-   刷新都变成对别人服务器的一次拉取，而订阅的间隔本来就是按天算的。 */
-async function loadFeedNew(entityId,preload){
-  const query=new URLSearchParams({limit:'12'});
-  if(entityId)query.set('entity',String(entityId));
-  const data=await api('/api/feeds/discoveries?'+query).catch(()=>null);
-  const items=data&&!data.error?(data.items||[]):[];
-  const html=feedRowHtml(data);
-  // 骨架还占着时，先把头几张封面取到手再整行换掉：否则骨架退场、真卡进来，封面格里
-  // 又是一轮微光，同一行等了两遍。慢的那几张不等满，到点照换，剩下的留给卡片自己的等待态。
-  if(preload&&items.length)await preloadImages(html,FEED_SKELETON_CARDS,FEED_COVER_WAIT);
-  return {items,html};
+/* 新作那一行：拖动、滚轮，按设置接自动滚动。首页与资料页两行同一份。 */
+function wireFeedNewRow(row){
+  if(!row)return;
+  wireDrag(row);
+  if(appSettings.feedAutoScroll)wireAutoScroll(row);
 }
-/* 首页那一行。资料页那一行在资料页的岛里（`entity-page`），整段 HTML 同样出自 `feedRowHtml`。 */
+/* 首页那一行归 `feed-new` 岛（`frontend/src/react/feed-new/`），与资料页那一行同一个组件、同一族
+   查询键：取数、换掉骨架、卡上那两颗键都在岛里。壳留骨架、宿主和它什么时候在场。
+   合集开关改了、或人在目录页里换了一次筛选，都换一个代次推过去，岛见它变了就重取；资料页那
+   一行收的是同一个代次。 */
 function isFeedNewPath(path){return isCatalogPath(path)&&path!=='/junk-files'}
 /* 处理横幅同样只挂在首页那几条名单上。垃圾文件也是目录路径，但它是数据管理底下的一页，
    顶上是管理区的 tabs，库里那趟任务的进度与下场归数据管理首页那张卡。 */
 function isProcessingNoticePath(path){return isCatalogPath(path)&&path!=='/junk-files'}
-async function renderFeedNew(host,entityId){
-  if(!host)return;
-  const request={},surface=surfaceToken(surfacePath());
-  feedRequests.set(host,request);
-  host.dataset.feedEntity=entityId?String(entityId):'';
-  const {items,html}=await loadFeedNew(entityId,host.getAttribute('aria-busy')==='true');
-  // 取数期间人已经离开了这一页：首页那一行不画到管理区上。
-  if(!host.isConnected||feedRequests.get(host)!==request||!surfaceCurrent(surface)
-    ||host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
-  if(host.id==='feedNew')homeHasFeed=items.length>0;
-  host.removeAttribute('aria-busy');
-  if(!items.length){host.hidden=true;host.innerHTML='';return}
-  host.hidden=false;
-  host.innerHTML=html;
-  host.querySelectorAll('[data-feed-action]').forEach(button=>button.onclick=async()=>{
-    const card=button.closest('[data-feed-id]');
-    const action=button.dataset.feedAction;
-    await api('/api/feeds/discovery',{method:'POST',
-      body:JSON.stringify({action,ids:[Number(card.dataset.feedId)]})}).catch(()=>null);
-    // 忽略的那条当场消失，已看过的留在原位只是变淡：已读是标记，不是关掉。
-    if(action==='ignore')card.remove();else card.classList.add('isread');
-    if(!host.querySelector('[data-feed-id]')){host.hidden=true;if(host.id==='feedNew')homeHasFeed=false}
-  });
-  const row=host.querySelector('.feednewrow');
-  wireDrag(row);
-  if(appSettings.feedAutoScroll)wireAutoScroll(row);
+let feedRevision=0;
+const feedNewHelpers={feedRowHtml,wireFeedRow:row=>wireFeedNewRow(row)};
+const feedNewActions={settled:hasItems=>{homeHasFeed=hasItems}};
+function renderHomeFeed(){
+  const host=$('#feedNew');
+  if(islandMounted(host)){updateIsland(host,{revision:++feedRevision});return}
+  prepareHomeFeed(host);
+  /* 这一行不随筛选变，判在不在场只看路径：换筛选换掉的是目录的代次，不该把它这一趟作废。 */
+  void mountIsland('feed-new',host,{host,revision:feedRevision,helpers:feedNewHelpers,actions:feedNewActions},
+    {isCurrent:()=>isFeedNewPath(location.pathname)});
 }
-/* 合集开关改了，页面上已经画过的那几行照新的筛法重取一遍。资料页那一行归岛，壳记一个代次
-   推过去，岛见它变了就重取。 */
-let entityFeedRevision=0;
+/* 离开目录页时收起并清空，连同它的自动滚动一起停掉。岛还没画出来时宿主里是骨架，一起清。 */
+function clearHomeFeed(){
+  const host=$('#feedNew');
+  host.querySelectorAll('.feednewrow').forEach(stopAutoScroll);
+  unmountIsland(host);
+  host.hidden=true;host.innerHTML='';host.removeAttribute('aria-busy');
+}
 function refreshFeedRows(){
-  // 首页那一行只在目录页出现，人不在那儿时不替它重取，否则会在别的页面上冒出来。
-  document.querySelectorAll('.feednew[data-feed-entity]').forEach(host=>{
-    if(host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
-    void renderFeedNew(host,Number(host.dataset.feedEntity)||undefined);
-  });
-  // 资料页那一行在资料页的岛里：换一个代次，岛重取这一位的新作。
-  pushEntityPage({feedRevision:++entityFeedRevision});
+  feedRevision+=1;
+  // 首页那一行只在目录页挂着，人不在那儿时 `updateIsland` 是空操作，不会在别的页面上冒出来。
+  updateIsland($('#feedNew'),{revision:feedRevision});
+  pushEntityPage({feedRevision});
 }
 /* 设置里开关自动滚动，页面上已经摆着的那几行当场跟着停或走，不等下一次重画。 */
 function syncFeedAutoScroll(){
@@ -3000,78 +2965,9 @@ const followPageUrl=offset=>
    卡片和详情面板上都还能把一条标成已看。 */
 const FOLLOW_FILTERS=[['','全部'],['new','未看'],['saved','已保存'],['ignored','已忽略']];
 
-/* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
-   直接把那串字面量印出来的话，UTC+8 的人看到的每个时间都早 8 小时。 */
-function localTime(iso){
-  if(!iso)return '';
-  // 没有时区标记的按 UTC 解释——存进去的时候就是 UTC。
-  const text=/[Zz]|[+-]\d\d:?\d\d$/.test(iso)?iso:iso+'Z';
-  const when=new Date(text);
-  if(isNaN(when))return String(iso).replace('T',' ').slice(0,16);
-  const pad=n=>String(n).padStart(2,'0');
-  return `${when.getFullYear()}-${pad(when.getMonth()+1)}-${pad(when.getDate())} `
-    +`${pad(when.getHours())}:${pad(when.getMinutes())}`;
-}
-
-/* 版式切换只翻容器上的一个属性、不重画列表，所以「去掉年份」不能靠换一次格式化，
-   得让同一份 DOM 两种显示：年份单独包一层，由 CSS 在紧凑版式里收掉。 */
-function localTimeHtml(iso){
-  const text=localTime(iso);
-  return /^\d{4}-/.test(text)
-    ? `<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5,10))}<span class="fclock">${esc(text.slice(10))}</span>`
-    : esc(text);
-}
-
-function followWhen(item){
-  const raw=item.published_at||'';
-  if(!raw)return '时间未取得';
-  const text=localTime(raw);
-  // 精度仍保留在 API；列表按用户要求不再给近似时间加「约」前缀。
-  return text;
-}
-
 /* 卡片、详情、筛选条和在线标签页都只消费服务端的内容标签投影。过滤只维护一份，
    原始来源标签仍完整留在 metadata。 */
 const followCardTags=item=>item.tags||[];
-/* 正文不报组里有几条：条数只由封面角标报一次，数的是合并了几个媒体（`followStack`）。 */
-/* 说「这一条是哪个版本」的字样排在标题前面，与主页标题里的版次字样同一个控件，扫标题
-   时就分得出来。WIP 说的是这一条，不是这一组：`2B Camp [4K]` 判的是 alt，只因为同组
-   还有一条 `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」；同组有 WIP 仍然
-   要说，但要说成「含」。声音版本说的是卡面这一条：同一段动画的无声原片与配音重发常在
-   同一个流里前后出现，配音版着色、无声版弱化加虚线框，两者一眼分开。 */
-function followTitleMarks(group,shown=group.primary){
-  const marks=[];
-  if(group.primary.variant_kind==='wip')marks.push('<small class="javedition followmark wip">WIP</small>');
-  else if(group.has_wip)marks.push('<small class="javedition followmark wip partial">含 WIP</small>');
-  if(group.primary.version)marks.push(`<small class="javedition followmark ver">${esc(group.primary.version)}</small>`);
-  const audio={voiced:'配音版',silent:'无声版'}[shown.audio];
-  if(audio)marks.push(`<small class="javedition followmark ${shown.audio}">${audio}</small>`);
-  return marks.join('');
-}
-
-function followBadges(group,shown=group.primary){
-  const badges=[];
-  /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。
-     「另见」相对卡面这一条（`shown`）说：主条目没有当前视图的媒体时，卡面换成组里别的站
-     那条，这时主条目的站才是另见，卡面自己的站不再列。 */
-  const sites=new Map([group.primary,...group.variants,...group.duplicates]
-    .filter(member=>member.provider!==shown.provider)
-    .map(member=>[member.provider,member.provider_label||member.provider]));
-  if(sites.size){
-    const marks=[...sites].map(([provider,label])=>
-      sourceIcon(provider,label)||`<span>${esc(label)}</span>`).join('');
-    badges.push(`<span class="fbadge dup" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`);
-  }
-  return badges.join('');
-}
-
-function followMediaIssue(item,credentials){
-  if(item.media_error)return `媒体未取得：${item.media_error}`;
-  if(item.media_needs_credential&&!credentials.has(item.provider))return item.playable
-    ?'部分媒体未取得：需要 F95 登录会话解析'
-    :'媒体未取得：需要 F95 登录会话解析';
-  return '';
-}
 
 /* 检查完必须说清三件事：新增了什么、哪些确实没有更新、哪些失败了以及为什么。
    反馈走两条通道（Geist toast 处方，取证见 docs/reference-snapshots/vercel-geist-toast.md）：
@@ -3197,21 +3093,13 @@ function shuffleFollowFeed(){
   routeFollowFeed({...followView(),sort:FOLLOW_RANDOM_SORT},{seed:followDiscoverySeed});
 }
 /* 岛要的助手与动作各只有一份、身份不变：卡片按引用比较，每次推新对象进去就是整屏重画。
-   头像、署名、题材圆标与来源图标跟详情共用这一份实现。 */
+   这里只剩要借壳里实现的几样：题材圆标借资料页的取景，标签写法、拖动与横滚、骨架和后台
+   任务进度都是壳的那一份；署名、头像、来源图标与标题前后的字样在岛里（`follow-marks.ts`）。 */
 const followFeedHelpers={
-  sourceIcon:(provider,label='')=>sourceIcon(provider,label),
-  authorAvatar:(sources,context)=>followAuthorAvatar(sources,followAuthorName(sources,context.aliases)),
-  authorName:(sources,context)=>followAuthorName(sources,context.aliases),
-  identity:(item,authorSources,context)=>followIdentity(item,authorSources,context),
   workMark:row=>followWorkMark(row),
-  titleMarks:(group,shown)=>followTitleMarks(group,shown),
-  badges:(group,shown)=>followBadges(group,shown),
-  mediaIssue:(item,context)=>followMediaIssue(item,context.credentials),
-  when:item=>followWhen(item),
   tagLabel:tag=>tagLabel(tag),
   wireDrag:row=>{if(row)wireDrag(row)},
   wireScroller:row=>{if(row)wireHorizontalScroller(row)},
-  learnDims:(item,media,width,height)=>learnFollowDims(item,media,width,height),
   listSkeletonHtml:media=>followContentSkeletonHtml(media),
   jobProgress:options=>followJobProgress(options),
 };
@@ -3313,53 +3201,6 @@ async function openFollow(push=true,renderForDetail=false){
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
 
-/* 有站点图标的来源。图标由服务端按 follow_assets.SOURCE_ICON_URLS 取回、保存在本机，
-   页面只认这张名单：没登记的来源直接不出 <img>，取不到的由 data-drop 摘掉退回纯文字。
-   图标独自代表站名时传 label，alt 与 title 写站名；外层已经带名字的传空，图只作装饰。 */
-const SOURCE_ICON_PROVIDERS=new Set(['fanbox','patreon','subscribestar','kemono','coomer','pawchive',
-  'rule34video','rule34xxx','rule34paheal','gofile','f95zone','simpcity']);
-function sourceIcon(provider,label=''){return SOURCE_ICON_PROVIDERS.has(provider)
-  ? `<img class="ficon" src="/source-icon?provider=${encodeURIComponent(provider)}" alt="${esc(label)}"${label?` title="${esc(label)}"`:''} loading="lazy" data-drop="self">`
-  : ''}
-
-function followAvatarInitial(name){
-  name=String(name||'').trim();
-  const ascii=name.match(/[A-Za-z0-9]/);
-  return (ascii?ascii[0]:Array.from(name)[0]||'?').toUpperCase();
-}
-
-/* 同一创作者的官方来源优先提供头像，归档来源只回退。都取不到时明确用创作者首字母，
-   不再从某条来源的中文显示标签切出“初”“一”之类与创作者无关的字。 */
-function followAuthorAvatar(group,name=followAuthorName(group)){
-  const official=group.find(source=>source.official_avatar_url);
-  const mirror=group.find(source=>source.avatar_url);
-  const src=official?.official_avatar_url||mirror?.avatar_url;
-  const fallback=official&&mirror&&mirror.avatar_url!==src?mirror.avatar_url:'';
-  const initial=followAvatarInitial(name);
-  if(src)return `<img class="favatar" src="${esc(src)}" alt=""
-    loading="lazy" referrerpolicy="no-referrer" ${imageFallbackAttrs({
-      drop:'initial',dropClass:'favatar none',initial,fallbacks:[fallback]})}>`;
-  return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
-}
-
-/* 卡片与详情的署名。booru 帖子由服务端认出真正的发布者时（`item.credit`），名字和头像
-   都换成发布者：也关注了这位就用那位的来源，否则只出首字母，不借被关注者的头像；
-   被关注者退成一行「署名含」，说明这条为什么出现在这里。认不出的照常署被关注者。 */
-/* `context` 是关注页岛那一版列表（或详情岛那一条）的来源与别名。 */
-function followIdentity(item,authorSources,context){
-  const aliases=context.aliases||[];
-  const poster=item.credit?.poster;
-  if(!poster){const name=followAuthorName(authorSources,aliases);
-    return {author:name||item.author||item.source_label||'创作者未取得',
-      avatar:followAuthorAvatar(authorSources,name),credited:''}}
-  const key=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  const sources=context.sources||[];
-  const own=sources.find(row=>key(row.ref)===key(poster));
-  const group=own?.author_key?sources.filter(row=>row.author_key===own.author_key):own?[own]:[];
-  const author=group.length&&followAuthorName(group,aliases)||poster;
-  return {author,avatar:followAuthorAvatar(group,author),credited:item.credit.credited||''};
-}
-
 /* 题材那一枚跟首页的厂牌药丸同形：28px 圆标识加作品名。圆里装的是这个题材下最热的
    那几条里第一张看得见脸的封面，服务端按 `work` 这个身份自己去挑再存在本机，页面
    递不进地址。挑不出图的题材（facet 那一行的第四位说了算）直接出两个字母，不出
@@ -3372,36 +3213,6 @@ function followIdentity(item,authorSources,context){
 function followWorkMark([key,label,,icon,focus]){
   const fallback=esc(String(label||'').slice(0,2));
   return icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy"${facePos(focus)}${faceBoxAttrs(focus)}>`:fallback;
-}
-
-/* 分组标题要用创作者本人的名字，不是某一条来源的标签。哪一段标签是人名由服务端一处
-   判定（`author_name`）：`LazyProcrastinator · fanbox` 的「· fanbox」只说明他在哪个
-   平台连载，F95 的 `Strauzek Collection [2026-09-04] [Mr_Strauz]` 则整串都是线程标题，
-   创作者在末尾的方括号里。这里只在同一个人的几种写法之间挑一个，不再自己解析标签。
-   同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
-   更像创作者自己写的名字。 */
-function followAuthorName(group,aliases=[]){
-  if(!group.length)return '';
-  const clean=value=>String(value||'')
-    .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'')
-    .replace(/\s+collections?\s*$/i,'').trim();
-  const authored=source=>String(source.author_name||'').trim()||clean(source.label);
-  const entity=group.find(source=>source.entity_name);
-  if(entity)return entity.entity_name;
-  const aliasGroup=aliases.find(
-    item=>`name:${item.canonical_key}`===group[0]?.author_key);
-  if(aliasGroup)return clean(aliasGroup.canonical_name);
-  // 官方主页来源不只优先提供头像，也优先提供创作者写法；否则 F95 的线程标题
-  // `Lazy Procrastinator Collection` 会因为大写字母更多而抢成分组标题。
-  const official=group.find(source=>source.official_avatar_url);
-  if(official){
-    const officialName=authored(official);
-    if(officialName)return officialName;
-  }
-  const names=group.map(authored).filter(Boolean);
-  if(!names.length)return group[0].label||group[0].ref||'';
-  const caps=text=>(text.match(/[A-Z]/g)||[]).length;
-  return names.reduce((best,name)=>caps(name)>caps(best)?name:best,names[0]);
 }
 
 /* ── 管的那一页 ──
@@ -3468,29 +3279,6 @@ document.addEventListener('click',event=>{
   event.preventDefault();
   void openFollowManage(true,'add');
 });
-
-/* ── 共用接线 ── */
-/* 这次会话里已经回写过的图，`条目:媒体序号`。回写只补空缺，服务端本来就会
-   忽略已有尺寸的条目，但每次重渲染都把同一批再发一遍是白跑。 */
-const followDimsReported=new Set();
-let followDimsQueue=[],followDimsTimer=0;
-function flushFollowDims(){
-  followDimsTimer=0;
-  if(!followDimsQueue.length)return;
-  const entries=followDimsQueue.splice(0,200);
-  /* 静默：这是顺手学习，不是用户的动作；只读端 409 和网络抖动都不该弹提示。 */
-  api('/api/follow/image-dims',{method:'POST',body:JSON.stringify({entries})}).catch(()=>{});
-  if(followDimsQueue.length)followDimsTimer=setTimeout(flushFollowDims,800);
-}
-function learnFollowDims(item,media,width,height){
-  const key=`${item}:${media??''}`;
-  if(followDimsReported.has(key))return;
-  followDimsReported.add(key);
-  const entry={item,width,height};
-  if(media!==null&&media!==undefined)entry.media=media;
-  followDimsQueue.push(entry);
-  if(!followDimsTimer)followDimsTimer=setTimeout(flushFollowDims,800);
-}
 
 /* ── 全部艺人 / 创作者 / 厂牌 / 事务所 / 标签索引页 ──
    整页在 React（`frontend/src/react/index/`）。壳做三件事：从地址栏读出这一页的状态、铺骨架、
@@ -3708,11 +3496,7 @@ const entityPageHelpers={
     style:facePos(x.avatar_focus),focus:x.avatar_focus}),
   wireDrag:row=>{if(row)wireDrag(row)},
   wireScroller:row=>{if(row)wireHorizontalScroller(row)},
-  wireFeedRow:row=>{
-    if(!row)return;
-    wireDrag(row);
-    if(appSettings.feedAutoScroll)wireAutoScroll(row);
-  },
+  wireFeedRow:row=>wireFeedNewRow(row),
   feedRowHtml,
   receipt:(message,options)=>actionReceipt(message,options),
   failure:(label,error)=>actionFailure(label,error),
@@ -3755,7 +3539,7 @@ function entityPageActions(kind,name){
 /* 卡片网格原样要的那几样与展示设置随挂载带上现值，之后由各自的开关经 `updateIsland` 推最新值。 */
 function entityPageProps(kind,name,filters,media,hosts){
   return {kind,name,filters,media,hosts,
-    jav:state.jav==='1',seed:String(state.seed||''),revision:entityPageRevision,feedRevision:entityFeedRevision,
+    jav:state.jav==='1',seed:String(state.seed||''),revision:entityPageRevision,feedRevision,
     photoSize:photoSize(),photoLayout:photoLayout(),photoLayouts:PHOTO_LAYOUTS,
     javLayout:javLayout(),javLayouts:JAV_LAYOUTS,states:VIEW_PILLS,peopleLayout:peopleIndexLayout(),
     layout:catalogGridLayout(),selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,
@@ -4579,9 +4363,8 @@ async function loadCatalog(){
   if(isFeedNewPath(location.pathname)){
     await entityShapesReady;
     if(!surfaceCurrent(surface))return;
-    prepareHomeFeed($('#feedNew'));
-    void renderFeedNew($('#feedNew'));
-  }else{$('#feedNew').hidden=true;$('#feedNew').innerHTML='';$('#feedNew').removeAttribute('aria-busy')}
+    renderHomeFeed();
+  }else clearHomeFeed();
   renderCombo();
   $('#count').classList.remove('manage-static','junkcount');
   return paintCatalogGrid(surface);

@@ -18,6 +18,8 @@ import { CatalogFilterPage } from './catalog-filter/catalog-filter-page';
 import { SearchPage } from './search/search-page';
 import { prefetchEntityPage } from './entity-page/entity-page';
 import { EntityPage } from './entity-page/entity-page-view';
+import { prefetchFeedNew } from './feed-new/feed-new';
+import { FeedNewPage } from './feed-new/feed-new-page';
 import { prefetchFollowFeed } from './follow-feed/follow-feed';
 import { FollowFeedPage } from './follow-feed/follow-feed-page';
 import { prefetchFollowManage } from './follow-manage/follow-manage';
@@ -83,6 +85,8 @@ export const pages: Bundle.ReactPages = {
   /* 资料（连同新作与头几张封面）、作品第一页与照片并行取齐再画，骨架与整页一次换掉。换头像的
      候选不在这里预取：资料页每进一次就打一遍图库的话，多数时候没人点开它。 */
   'entity-page': { prefetch: (props) => prefetchEntityPage(props), mount: mounter(EntityPage) },
+  /* 首页那一行新作：骨架还占着就连头几张封面一起等，再一次换掉。 */
+  'feed-new': { prefetch: prefetchFeedNew, mount: mounter(FeedNewPage) },
   /* 关注列表第一页与凭据两趟并行，挂上就是最终样子；换筛选之后的取数由页面自己的查询驱动。 */
   'follow-feed': { prefetch: prefetchFollowFeed, mount: mounter(FollowFeedPage) },
   /* 首屏只取来源清单与凭据状态，地址栏指着「订阅源」时连它一起取。检查更新与查找那两趟

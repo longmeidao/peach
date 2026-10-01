@@ -37,6 +37,8 @@ interface Plan {
   photos?: (query: URLSearchParams) => unknown;
   set?: (query: URLSearchParams) => unknown;
   feed?: unknown;
+  /** `/api/feeds/check` 的回话，按次序一问一个；问完了就一直是最后那个。 */
+  checks?: string[];
 }
 
 /** 按端点分流的假 fetch，记下每一次请求的地址与写入的内容。 */
@@ -60,7 +62,10 @@ function serve(plan: Plan = {}) {
     if (url.pathname === '/api/photos') return reply(plan.photos ? plan.photos(query) : photos(0));
     if (url.pathname === '/api/photo-set') return reply(plan.set ? plan.set(query) : photos(2, { id: 9, title: '图集' }));
     if (url.pathname === '/api/feeds/discoveries') return reply(plan.feed ?? { items: [] });
-    if (url.pathname === '/api/feeds/check') return reply({ status: 'idle' });
+    if (url.pathname === '/api/feeds/check') {
+      const checks = plan.checks ?? ['idle'];
+      return reply({ status: checks.length > 1 ? checks.shift() : checks[0] });
+    }
     throw new Error(`没有安排这个端点：${url.pathname}`);
   });
   vi.stubGlobal('fetch', fetcher);
@@ -339,6 +344,20 @@ describe('写操作', () => {
     await settle();
     expect(page.props.helpers.failure).toHaveBeenCalledWith('取消订阅新作', expect.any(Error));
     expect(toggle().checked).toBe(true);
+  });
+
+  it('刚订上：等服务端这一轮拉取跑完，再把新作那一行重取一遍；跑着的时候不重取', async () => {
+    const page = await open({ checks: ['running', 'idle'] });
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    await click(page.host.querySelector<HTMLInputElement>('input[data-entity-feed]'));
+    await settle();
+    const step = async () => { await act(async () => { vi.advanceTimersByTime(3000) }); await settle() };
+    await step();
+    expect(page.calls('/api/feeds/check')).toHaveLength(1);
+    expect(page.calls('/api/feeds/discoveries')).toHaveLength(1);
+    await step();
+    expect(page.calls('/api/feeds/check')).toHaveLength(2);
+    expect(page.calls('/api/feeds/discoveries')).toHaveLength(2);
   });
 
   it('合集开关改了换一个代次，新作那一行重取', async () => {

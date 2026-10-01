@@ -21,9 +21,10 @@ import type {
 import { EntityFilterPage } from '../entity-filter/entity-filter-page';
 import type { EntityHeroActions, EntityHeroHelpers } from '../entity-hero/entity-hero';
 import { EntityHeroPage } from '../entity-hero/entity-hero-page';
+import { feedNewKey, feedNewOptions, postFeedAction } from '../feed-new/feed-new';
 import { queryClient } from '../query';
 import {
-  EMPTY_MEDIA, codeSetsOf, entityKey, entityOptions, entityPhotosKey, feedNewKey, feedNewOptions, fetchItems, itemsOptions,
+  EMPTY_MEDIA, codeSetsOf, entityKey, entityOptions, entityPhotosKey, fetchItems, itemsOptions,
   photosOptions, tagList, tagPressed, type EntityPageData, type EntityPageProps, type PhotoPage,
 } from './entity-page';
 
@@ -206,9 +207,7 @@ function EntityLoaded(props: EntityPageProps & { entity: EntityPageData }) {
         if (alive.current) await queryClient.invalidateQueries({ queryKey: feedNewKey(entityId) });
       })();
     },
-    // 忽略与已读都是标记，写失败了卡片照样收起：这一行下次取数时会按服务端的现状重排。
-    feedAction: (feedId, action) => (api('/api/feeds/discovery', {
-      method: 'POST', body: JSON.stringify({ action, ids: [feedId] }) }) as Promise<unknown>).then(() => undefined, () => undefined),
+    feedAction: postFeedAction,
     /* 圆框角上那个加号：头像索引在服务端已经换过，重取资料、整块资料卡重建才读得到新图。 */
     avatarPicked: () => {
       void queryClient.refetchQueries({ queryKey: entityKey(kind, name) }).then(() => {

@@ -18,6 +18,9 @@ import {
   FOLLOW_CREDENTIALS_KEY, fetchFollowCredentials, replaceFollowItem, setFollowItemStatus, videoItems,
   type FollowContext, type FollowFeedHelpers, type FollowGroup,
 } from '../follow-feed/follow-feed';
+import {
+  followBadges, followIdentity, followMediaIssue, followTitleMarks, followWhen, sourceIcon,
+} from '../follow-feed/follow-marks';
 import { FOLLOW_STATUS_URL } from '../follow-manage/follow-manage';
 import { openPhotoLightbox } from '../photo-lightbox/photo-lightbox-dialog';
 import { queryClient } from '../query';
@@ -176,7 +179,7 @@ function MediaFrame({ item, media, helpers, actions, onMedia, issues }: {
           }} />
       ) : (
         <div data-follow-detail-placeholder="">
-          <span className="contents" dangerouslySetInnerHTML={{ __html: helpers.sourceIcon(item.resource_provider || item.provider) }} />
+          <span className="contents" dangerouslySetInnerHTML={{ __html: sourceIcon(item.resource_provider || item.provider) }} />
           <span>没有可用预览</span>
         </div>
       )}
@@ -231,7 +234,7 @@ function CollectionQueue({ group, itemId, helpers, actions }: {
         const duplicate = group.duplicates.includes(member);
         const copy = collectionCopy(group, member, duplicate ? member.provider_label : '');
         /* 另一站的同一条由站点图标报出处，图标的 alt 就是站名；没登记图标的站仍写站名。 */
-        const siteIcon = duplicate ? helpers.sourceIcon(member.provider, member.provider_label) : '';
+        const siteIcon = duplicate ? sourceIcon(member.provider, member.provider_label) : '';
         return (
           <MixQueueRow key={member.id} current={member.id === itemId} data-follow-queue-item={member.id}
             onClick={() => actions.openItem(member.id)}
@@ -244,7 +247,7 @@ function CollectionQueue({ group, itemId, helpers, actions }: {
               {siteIcon
                 ? <span data-follow-queue-source="" dangerouslySetInnerHTML={{ __html: siteIcon }} />
                 : <i data-follow-variant={member.variant_kind || ''}>{copy.label}</i>}
-              <time dateTime={member.published_at || ''}>{helpers.when(member)}</time>
+              <time dateTime={member.published_at || ''}>{followWhen(member)}</time>
             </span>
           </MixQueueRow>
         );
@@ -295,11 +298,11 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
 }) {
   const { kind, selected, src } = media;
   const single: FollowGroup = { primary: item, variants: [], duplicates: [], has_wip: item.variant_kind === 'wip' };
-  const badges = helpers.badges(single, item);
-  const identity = helpers.identity(item, authorSources(item, data.sources), context);
+  const badges = followBadges(single, item);
+  const identity = followIdentity(item, authorSources(item, data.sources), context);
   const postedBy = identity.credited ? ''
     : item.author && foldName(item.author) !== foldName(identity.author) ? item.author : '';
-  const mediaIssue = helpers.mediaIssue(item, context);
+  const mediaIssue = followMediaIssue(item, context);
   const tags = detailTags(item, helpers.tagLabel);
   const saved = item.status === 'saved';
   const { busy } = write;
@@ -309,7 +312,7 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
       <div data-stage-side-content="">
         <div data-follow-detail-title="">
           <div data-stage-title="" data-follow-detail-name="" data-reveal-line=""
-            dangerouslySetInnerHTML={{ __html: helpers.titleMarks(single, item) + esc(item.title) }} />
+            dangerouslySetInnerHTML={{ __html: followTitleMarks(single, item) + esc(item.title) }} />
           {item.url ? (
             <a className="externallink" data-follow-origin="" href={item.url} target="_blank" rel="noreferrer noopener"
               title="打开来源页面" aria-label="打开来源页面"
@@ -325,7 +328,7 @@ function Side({ item, data, context, media, write, issue, helpers, actions }: {
           </div>
         </div>
         <div className="mono" data-stage-meta="" data-reveal-line="">
-          <span>{helpers.when(item)}</span>
+          <span>{followWhen(item)}</span>
           {realDuration(item.duration) ? <span>{fmtDur(item.duration)}</span> : null}
           {badges ? <span data-follow-badges="" dangerouslySetInnerHTML={{ __html: badges }} /> : null}
         </div>

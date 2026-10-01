@@ -3127,19 +3127,6 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertIn('<Table aria-label="关注来源"', sources)
         self.assertIn('<TableBody renderEmptyState={() => \'这一页没有来源\'}>', sources)
 
-    def test_follow_source_icons_fail_back_to_plain_text(self):
-        """图标由服务端取回落盘（follow_assets.SOURCE_ICON_URLS），页面只认名单、只请求本机。"""
-        icons = self.page.split("const SOURCE_ICON_PROVIDERS=new Set([", 1)[1].split("]);", 1)[0]
-        for provider in ("kemono", "pawchive", "simpcity"):
-            self.assertIn(f"'{provider}'", icons)
-        self.assertNotIn("https://", icons)
-        self.assertPageContains(
-            'src="/source-icon?provider=${encodeURIComponent(provider)}" alt="${esc(label)}"'
-            '${label?` title="${esc(label)}"`:\'\'} loading="lazy" data-drop="self"')
-        # 取不到图标就把 <img> 摘掉，露出纯文字；收场动作由 image-fallback 的
-        # 委托监听执行，模板里只声明 `data-drop`。
-        self.assertPageContains('data-drop="self"')
-
     def test_follow_watch_filters_use_the_source_identity(self):
         # 判定本身搬去了服务端（见 FollowContractTests 里的筛选用例）；页面这一侧要
         # 保证的是把身份原样交出去，而不是把显示名或来源标签当筛选值送过去。
@@ -3158,9 +3145,7 @@ class FollowWebSourceTests(unittest.TestCase):
         self.assertPageContains("+(followTags.size?`&tag=${encodeURIComponent([...followTags].join(','))}`:'')")
 
     def test_follow_cards_use_author_avatars_and_open_details_inside_peach(self):
-        # 卡片本身归 `follow-feed` 岛：头像取壳的 `followAuthorAvatar`，点卡交给壳开详情。
-        self.assertPageContains(
-            "authorAvatar:(sources,context)=>followAuthorAvatar(sources,followAuthorName(sources,context.aliases)),")
+        # 卡片本身归 `follow-feed` 岛，头像与署名在岛里（`follow-marks.test.ts`）；点卡交给壳开详情。
         self.assertPageContains("openDetail:id=>openFollowDetail(id),")
         self.assertNotIn(
             'class="mav fsourceavatar" title="${esc(item.provider_label)}">${sourceIcon(item.provider)}',
@@ -3168,7 +3153,6 @@ class FollowWebSourceTests(unittest.TestCase):
         )
         self.assertPageContains("async function openFollowDetail(id,push=true,mediaIndex=null,preserveReturn=false)")
         self.assertNotIn('打开来源页面</a>', self.page)
-        self.assertPageContains("followAuthorAvatar(authorSources,name)")
         self.assertNotIn('class="cardopenhit" href=', self.page)
         self.assertNotIn('class="fcollectionthumb" href=', self.page)
         self.assertPageContains("route(followDetailReturnPath||'/follow')")
@@ -3202,29 +3186,6 @@ class FollowWebSourceTests(unittest.TestCase):
         for management in ("followAdd", "data-follow-remove", "fcreds", "data-follow-bulk"):
             if management in watch:
                 self.fail(f"看的那一页不应出现管理控件：{management!r}")
-
-    def test_times_are_rendered_in_the_viewer_timezone_not_raw_utc(self):
-        # 账本存 UTC；直接把那串字面量印出来，UTC+8 的人看到的每个时间都早 8 小时。
-        self.assertPageContains("function localTime(iso)")
-        self.assertPageContains("new Date(text)")
-        self.assertPageContains("when.getHours()")
-        page = self.page
-        body = page[page.index("function followWhen("):page.index("function followBadges(")]
-        self.assertNotIn(".replace('T',' ').slice(0,16)", body)
-
-    def test_approximate_timestamps_keep_precision_without_the_visible_prefix(self):
-        # 精度留在 API，列表按用户要求不显示「约」。
-        body = self.page[self.page.index("function followWhen("):
-                         self.page.index("function followBadges(")]
-        self.assertNotIn("约 ${text}", body)
-        self.assertIn("return text", body)
-
-    def test_cross_site_duplicates_are_shown_as_another_source(self):
-        self.assertPageContains("另见 ")
-        self.assertPageContains("fbadge dup")
-
-    def test_wip_has_its_own_badge(self):
-        self.assertPageContains('<small class="javedition followmark wip">WIP</small>')
 
     def test_network_check_is_an_explicit_button_not_an_auto_refresh(self):
         # 联网只发生在按下「检查全部」的那一刻（`frontend/test/react/follow-manage.test.tsx`）。
@@ -3351,8 +3312,7 @@ class FollowWebSourceTests(unittest.TestCase):
         row = {"entity_id": None, "entity_name": None, "provider": "f95zone",
                "ref": "63802", "label": "Strauzek Collection [2026-09-04] [Mr_Strauz]"}
         self.assertEqual(web_follow._author_display_name(row), "Mr_Strauz")
-        # 页面不再自己解析标签，那份口径只在服务端一处。
-        self.assertPageContains("source.author_name")
+        # 页面不自己解析标签，只认服务端给的 `author_name`（`frontend/test/react/follow-marks.test.ts`）。
 
     def test_the_card_in_the_opening_post_suggests_the_other_spelling(self):
         """`strauzek` 与 `Mr_Strauz` 是同一张名片上并列的两个写法。
@@ -3444,17 +3404,13 @@ class FollowWebSourceTests(unittest.TestCase):
         """`2B Camp [4K]` 判的是 alt，只因为同组还有一条 `[WIP]` 就挂上 WIP。
 
         `has_wip` 是组属性（`any(item.variant_kind == "wip" for item in self.variants)`），
-        角标却贴在主条目标题旁边，读起来就是「这一条是半成品」。
+        角标却贴在主条目标题旁边，读起来就是「这一条是半成品」。哪一条挂哪枚字样由
+        `frontend/test/react/follow-marks.test.ts` 量；这里只管「含 WIP」弱化的那一笔样式。
         """
-        self.assertPageContains(
-            "if(group.primary.variant_kind==='wip')marks.push('<small class=\"javedition followmark wip\">WIP</small>');")
-        self.assertPageContains(
-            "else if(group.has_wip)marks.push('<small class=\"javedition followmark wip partial\">含 WIP</small>');")
         self.assertPageContains(".javedition.followmark.wip.partial{color:var(--muted)}")
 
     def test_only_actionable_media_failures_enter_the_information_stream(self):
-        self.assertPageContains("媒体未取得：需要 F95 登录会话解析")
-        self.assertPageContains("部分媒体未取得：需要 F95 登录会话解析")
+        # 能动手的那两句（缺 F95 会话时分「部分」与「全部」）由 `follow-marks.test.ts` 量。
         self.assertPageLacks("已显示可读取附件；F95 登录会话已保存")
         self.assertPageLacks("这条旧记录的受保护资源会在下次检查重新解析")
         self.assertPageLacks("个外部文件页；视频列表未取得")

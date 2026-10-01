@@ -13,8 +13,14 @@ import {
   type FollowPage, type FollowSource, type FollowStackInfo, type FollowView,
 } from '../../src/react/follow-feed/follow-feed';
 import { FollowFeedPage } from '../../src/react/follow-feed/follow-feed-page';
+import { learnFollowDims } from '../../src/react/follow-feed/follow-marks';
 import { queryClient } from '../../src/react/query';
 import { click, mount, settle } from './render';
+
+/* 回写尺寸那一批由 `follow-marks.test.ts` 量；这里只看卡片在什么时候报。 */
+vi.mock(import('../../src/react/follow-feed/follow-marks'), async (importOriginal) => ({
+  ...(await importOriginal()), learnFollowDims: vi.fn(),
+}));
 
 afterEach(() => { queryClient.clear() });
 notifyManager.setScheduler((notify) => notify());
@@ -173,11 +179,8 @@ describe('写完换缓存里的局部', () => {
 
 function helpers(): FollowFeedHelpers {
   return {
-    sourceIcon: (provider) => `<img alt="${provider}">`, authorAvatar: (list) => `<span>${String(list[0]?.author_key).slice(5, 6)}</span>`,
-    authorName: (list) => String(list[0]?.author_key || '').slice(5), identity: (shown) => ({ author: `作者 ${shown.id}`, avatar: '', credited: '' }),
-    workMark: (row) => row[1].slice(0, 2), titleMarks: () => '', badges: () => '', mediaIssue: () => '',
-    when: (shown) => String(shown.published_at || ''), tagLabel: (tag) => tag, wireDrag: vi.fn(), wireScroller: vi.fn(),
-    learnDims: vi.fn(), listSkeletonHtml: () => '<div data-test-skeleton>骨架</div>', jobProgress: vi.fn(),
+    workMark: (row) => row[1].slice(0, 2), tagLabel: (tag) => tag, wireDrag: vi.fn(), wireScroller: vi.fn(),
+    listSkeletonHtml: () => '<div data-test-skeleton>骨架</div>', jobProgress: vi.fn(),
   };
 }
 
@@ -434,14 +437,16 @@ describe('页面', () => {
       Object.defineProperty(element, 'naturalHeight', { value: 500 });
       await act(async () => { element.dispatchEvent(new Event('load')) });
     };
+    const learn = vi.mocked(learnFollowDims);
+    learn.mockClear();
     await load(image(3));
-    expect(given.helpers.learnDims).toHaveBeenCalledWith(3, null, 300, 500);
+    expect(learn).toHaveBeenCalledWith(3, null, 300, 500);
     await load(image(2));
-    expect(given.helpers.learnDims).toHaveBeenCalledTimes(1);
+    expect(learn).toHaveBeenCalledTimes(1);
     await act(async () => push({ view: view() }));
     await settle();
     await load(image(1));
-    expect(given.helpers.learnDims).toHaveBeenCalledTimes(1);
+    expect(learn).toHaveBeenCalledTimes(1);
   });
 
   it('「仅显示图片」只在图片视图出现，点下交给壳存偏好', async () => {

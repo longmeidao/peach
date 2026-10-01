@@ -3368,15 +3368,6 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn(".vjs-volume-tooltip", board_css)
         # 提示本身的配色与字号由 `frontend/e2e/design.test.ts` 读计算样式。
 
-    def test_follow_image_cards_learn_their_ratio_in_quiet_batches(self):
-        """图片墙按卡片高度分列，图落地前就要知道比例，否则每张加载完整墙重排。
-
-        哪张卡占位、哪张卡加载完回写由 `follow-feed` 岛判定（`follow-feed.test.tsx`）；
-        回写归壳：学习是顺手的事，攒一批再发，失败静默，同一张这次会话只报一次。
-        """
-        self.assertPageContains("api('/api/follow/image-dims',{method:'POST',body:JSON.stringify({entries})}).catch(()=>{});")
-        self.assertPageContains("if(followDimsReported.has(key))return;")
-
     def test_immerse_mode_has_loading_state_and_full_viewport_cover(self):
         self.assertPageContains('id="tokLoader"')
         self.assertPageContains("$('#tokLoader').insertAdjacentHTML('afterbegin',spinnerHtml('媒体加载中'))")
