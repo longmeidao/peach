@@ -3509,13 +3509,15 @@ class WebUiSourceTests(unittest.TestCase):
         上下那两个数和设置行同为 10px：这一块是同一列里的又一行，写 16 和 12 的话它和
         前一行之间就比上面每两行之间宽出一截。
         """
-        board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
-        self.assertIn(".settingscard .settingsscroll .settingrow+.sidebarsetting{border-top:0}", board)
-        self.assertIn(".settingscard .settingsscroll .sidebarsetting"
-                      "{padding:10px 12px 10px 0!important;margin:0 16px 0 0!important}", board)
-        self.assertIn(".settingscard .settingsscroll .settingrow{min-height:52px;"
+        panel = (Path(__file__).resolve().parents[1]
+                 / "frontend/src/react/settings-panel/settings-panel.css").read_text(encoding="utf-8")
+        scope = "[data-settings-panel] [data-settings-card] [data-settings-scroll] "
+        self.assertIn(scope + "[data-setting-row]+[data-sidebar-setting]{border-top:0}", panel)
+        self.assertIn(scope + "[data-sidebar-setting]"
+                      "{padding:10px 12px 10px 0!important;margin:0 16px 0 0!important}", panel)
+        self.assertIn(scope + "[data-setting-row]{min-height:52px;"
                       "padding:10px 10px 10px 0;gap:16px;border-top:0;"
-                      "border-bottom:1px solid var(--line-soft)}", board)
+                      "border-bottom:1px solid var(--line-soft)}", panel)
 
     def test_a_locked_page_does_not_keep_drawing_its_own_scrollbar(self):
         """弹层盖住页面时只剩弹层自己那条滚动条。
@@ -4580,7 +4582,9 @@ class WebUiSourceTests(unittest.TestCase):
                       "圆球拿的就是这一档真会写上去的两级")
         # 开关、勾选框、滑轨填充与主操作键也是同一个意思。漏掉任何一个，换了强调色的页面
         # 上就会剩下几枚蓝件，读起来像是没换干净。
-        self.assertIn(".ptoggle:checked{background:var(--board-blue);", css)
+        self.assertIn("[data-settings-panel] [data-toggle]:checked{background:var(--board-blue);",
+                      (Path(__file__).resolve().parents[1]
+                       / "frontend/src/react/settings-panel/settings-panel.css").read_text(encoding="utf-8"))
         self.assertIn(".pcheck input:is(:checked,:indeterminate)+span{color:#fff;"
                       "border-color:transparent;background:var(--board-blue);", css)
         self.assertIn("accent-color:var(--color-accent-600);", css)
@@ -5249,8 +5253,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(":is(.popmenu,.context-card,.board-library-menu,.searchmenu).leaving"
                       "{animation:board-menu-out .15s ease-out forwards}", board)
         # 作品详情的标签选择器用同一对关键帧，写在 item-detail 岛里，`frontend/e2e/design.test.ts` 量。
-        # 缩放原点跟着开的方向：向上开从下沿、侧开从左沿。
-        self.assertIn(":is(.popmenu,.context-card,.board-library-menu)[data-placement=top],.sidebaraddmenu.sidebaraddmenu{transform-origin:bottom left}", board)
+        # 缩放原点跟着开的方向：向上开从下沿、侧开从左沿。侧栏「添加」那张总是向上开的菜单
+        # 在 settings-panel 岛的样式里自己声明下沿原点。
+        self.assertIn(":is(.popmenu,.context-card,.board-library-menu)[data-placement=top]{transform-origin:bottom left}", board)
         self.assertIn(".board-library-menu[data-placement=right]{transform-origin:left}", board)
         self.assertNotIn("board-library-in", board, "媒体库菜单没有自己单独的一份动画")
         self.assertCode("menu.dataset.placement=downward?'bottom':'top';")
@@ -6942,8 +6947,7 @@ class WebUiSourceTests(unittest.TestCase):
         # 选中那枚的填充只有一处，就是那块玻璃自己。
         self.assertNotIn('.board-filter-frame #tagbar .pill[data-state][aria-pressed="true"]{'
                          'background:var(--picked)', board)
-        self.assertIn(".viewglide.viewglide,[data-view-glide][data-view-glide],.drawer.drawer>.navglide,"
-                      ".board-local-nav>.navglide{"
+        self.assertIn(".viewglide.viewglide,[data-view-glide][data-view-glide],.drawer.drawer>.navglide{"
                       "position:absolute;left:0;top:0;z-index:0;pointer-events:none;", board)
         self.assertIn("backdrop-filter:var(--glass-pick);", board)
         # 位移和形变各占一个独立属性：一条属性上只放得下一段动画，而这两下的时间
@@ -8920,7 +8924,7 @@ class BoardStyleIsolationTests(unittest.TestCase):
         rules = re.findall(r'([^{}]+)\{([^{}]*)\}', css)
         centering = [selector for selector, body in rules
                      if 'display:inline-grid' in body and 'place-items:center' in body]
-        self.assertTrue(any('.settingshead button' in selector for selector in centering))
+        self.assertTrue(any('#drawerClose' in selector for selector in centering))
         self.assertFalse(any('.ib,' in selector or '.sidebaraddmenu button' in selector
                              for selector in centering))
 
@@ -9016,9 +9020,11 @@ class MotionRecipeTests(unittest.TestCase):
         那十几枚开关会当场各弹一次。
         """
         board = (Path(__file__).resolve().parents[1]
-                 / "web/board.css").read_text(encoding="utf-8")
-        for pseudo in (".ptoggle::after{", ".ptoggle::before{"):
-            start = board.index(pseudo)
+                 / "frontend/src/react/settings-panel/settings-panel.css").read_text(encoding="utf-8")
+        # 岛里先写 Geist Toggle 的底层，再写 Board 那一层；生效的是后写的、独占一行的那一条。
+        for pseudo in ("[data-settings-panel] [data-toggle]::after{",
+                       "[data-settings-panel] [data-toggle]::before{"):
+            start = board.rindex("\n" + pseudo) + 1
             rule = board[start:board.index("}", start)]
             with self.subTest(rule=pseudo):
                 self.assertIn("transition:transform calc(var(--spring-press-ms)*1ms) "
