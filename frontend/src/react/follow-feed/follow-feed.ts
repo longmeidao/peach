@@ -396,31 +396,15 @@ export interface FollowContext {
   credentials: ReadonlySet<string>;
 }
 
-/** 仍由遗留层给的 HTML 与判定：详情用的是同一份，只有一处实现。 */
+/** 仍由遗留层给的 HTML 与接线：详情用的是同一份，只有一处实现。署名、头像、来源图标与标题前后
+ *  那几处字样在岛里（`follow-marks.ts`）。 */
 export interface FollowFeedHelpers {
-  /** 站点图标（`sourceIcon`），没登记图标的站是空串。 */
-  sourceIcon(provider: string, label?: string): string;
-  /** 创作者圆框里那段 HTML（`followAuthorAvatar`）：官方头像优先，归档站回退，都没有写首字母。 */
-  authorAvatar(sources: readonly FollowSource[], context: FollowContext): string;
-  /** 创作者名（`followAuthorName`）。 */
-  authorName(sources: readonly FollowSource[], context: FollowContext): string;
-  /** 卡片署名（`followIdentity`）。 */
-  identity(item: FollowItem, authorSources: readonly FollowSource[], context: FollowContext): FollowIdentity;
-  /** 题材圆标里那段（有代表图出 `<img>`，没有写两个字母）。 */
+  /** 题材圆标里那段（有代表图出 `<img>`，没有写两个字母）；取景与放大走资料页那两个函数。 */
   workMark(row: FollowWorkRow): string;
-  /** 标题前的版本字样（`followTitleMarks`）与另见徽章（`followBadges`）。 */
-  titleMarks(group: FollowGroup, shown: FollowItem): string;
-  badges(group: FollowGroup, shown: FollowItem): string;
-  /** 「媒体未取得」那一句（`followMediaIssue`），没有就是空串。 */
-  mediaIssue(item: FollowItem, context: FollowContext): string;
-  /** 本地时间（`followWhen`）。 */
-  when(item: FollowItem): string;
   tagLabel(tag: string): string;
   /** 横滚行接上拖动与滚轮（`wireDrag`）；只接滚轮与两端渐隐（`wireHorizontalScroller`）。 */
   wireDrag(row: Element | null): void;
   wireScroller(row: Element | null): void;
-  /** 图片视图里没有尺寸的卡面图加载完，把固有尺寸回写给它的主人（`/api/follow/image-dims`）。 */
-  learnDims(item: number, media: number | null, width: number, height: number): void;
   /** 进页整块骨架（`followSkeletonHtml`）之外，换筛选时列表区那一块骨架。 */
   listSkeletonHtml(media: FollowMedia): string;
   /** 检查更新与往回抓那一趟后台任务的进度条（`peach-ui` 的 `followJobProgress`），作业 id 记在

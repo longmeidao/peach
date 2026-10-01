@@ -34,10 +34,8 @@ const image = (index: number, extra: Record<string, unknown> = {}) => ({
 
 function helpers(patch: Partial<FollowFeedHelpers> = {}): FollowFeedHelpers {
   return {
-    sourceIcon: (provider) => `<img alt="${provider}">`, authorAvatar: () => '', authorName: () => '',
-    identity: () => ({ author: '作者', avatar: '<span>作</span>', credited: '' }), workMark: () => '', titleMarks: () => '',
-    badges: () => '', mediaIssue: () => '', when: (shown) => String(shown.published_at || ''), tagLabel: (tag) => tag,
-    wireDrag: vi.fn(), wireScroller: vi.fn(), learnDims: vi.fn(), listSkeletonHtml: () => '', jobProgress: vi.fn(),
+    workMark: () => '', tagLabel: (tag) => tag,
+    wireDrag: vi.fn(), wireScroller: vi.fn(), listSkeletonHtml: () => '', jobProgress: vi.fn(),
     ...patch,
   };
 }
@@ -115,10 +113,10 @@ describe('侧栏', () => {
   });
 
   it('来源外链、网盘链接与下载键；发布者与署名作者不同才写', async () => {
-    const { host } = await show(data(item(2, {
+    const { host } = await show({ ...data(item(2, {
       url: 'https://example.invalid/post/2', author: 'Poster',
       resource_urls: ['https://gofile.io/d/a', 'https://mega.nz/folder/b', 'https://files.example.org/c'],
-    })));
+    })), sources: [{ id: 1, provider: 'kemono', author_name: '作者' }] });
     const origin = host.querySelector('[data-follow-origin]')!;
     expect([origin.getAttribute('title'), origin.getAttribute('aria-label'), origin.getAttribute('href')])
       .toEqual(['打开来源页面', '打开来源页面', 'https://example.invalid/post/2']);
@@ -130,11 +128,9 @@ describe('侧栏', () => {
     expect(host.querySelector('[data-follow-detail-identity] > div')?.textContent).toBe('作者发布者 Poster');
   });
 
-  it('壳判出的媒体提示原样画在侧栏里', async () => {
-    const note = 'F95 的附件要登录后才看得到，去来源页面打开。';
-    const { host } = await show(data(item(3, { playable: false, media_kind: 'external' })),
-      { helpers: helpers({ mediaIssue: () => note }) });
-    expect(host.querySelector('[data-follow-media-issue]:not([hidden])')?.textContent).toBe(note);
+  it('媒体没取回来的原因画在侧栏里', async () => {
+    const { host } = await show(data(item(3, { playable: false, media_kind: 'external', media_error: '附件要登录' })));
+    expect(host.querySelector('[data-follow-media-issue]:not([hidden])')?.textContent).toBe('媒体未取得：附件要登录');
   });
 });
 

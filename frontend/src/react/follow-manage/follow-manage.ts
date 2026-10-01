@@ -263,11 +263,22 @@ const clean = (value: string | undefined): string => String(value || '')
   .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/, '')
   .replace(/\s+collections?\s*$/i, '').trim();
 
+/** 署名与头像只读来源上的这几列：关注管理页与关注页（`follow-feed/follow-marks.ts`）的来源都给得出。 */
+export interface AuthorSource {
+  author_key?: string | undefined;
+  author_name?: string | undefined;
+  label?: string | undefined;
+  ref?: string | undefined;
+  entity_name?: string | undefined;
+  official_avatar_url?: string | undefined;
+  avatar_url?: string | undefined;
+}
+
 /** 分组标题用创作者本人的名字，不是某一条来源的标签。哪一段是人名由服务端一处判定
  *  （`author_name`），这里只在同一个人的几种写法之间挑一个。 */
-export function authorName(group: FollowSource[], aliases: AliasGroup[] = []): string {
+export function authorName(group: readonly AuthorSource[], aliases: readonly AliasGroup[] = []): string {
   if (!group.length) return '';
-  const authored = (source: FollowSource) => String(source.author_name || '').trim() || clean(source.label);
+  const authored = (source: AuthorSource) => String(source.author_name || '').trim() || clean(source.label);
   const entity = group.find((source) => source.entity_name);
   if (entity) return entity.entity_name!;
   const aliasGroup = aliases.find((item) => `name:${item.canonical_key}` === group[0]?.author_key);
@@ -289,7 +300,7 @@ export function authorInitial(name: string): string {
 }
 
 /** 同一位创作者的官方来源优先提供头像，归档来源只回退。都取不到时用首字母。 */
-export function authorAvatar(group: FollowSource[]): { src: string; fallback: string } {
+export function authorAvatar(group: readonly AuthorSource[]): { src: string; fallback: string } {
   const official = group.find((source) => source.official_avatar_url);
   const mirror = group.find((source) => source.avatar_url);
   const src = official?.official_avatar_url || mirror?.avatar_url || '';

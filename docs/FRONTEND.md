@@ -376,9 +376,7 @@ React 子树的样式是 Tailwind v4 加 BoardUI 主题，产物 `peach-react.cs
 React 页要按原名输出壳才拆得出分区；`swiper`、`swiper-wrapper`、`swiper-slide`、
 `swiper-zoom-container` 是 Swiper 核心 API 认的结构类名（图片灯箱），不写它就找不到轮播的
 容器与每一张；`mono` 是 `01-base.css` 的等宽数字字体栈，和 Tailwind 的 `font-mono` 不是同一组字体；
-`tg` 是目录卡片、索引页与详情共用的标签键（`12-cards.css`）；`mav` 是壳的 `followIdentity` 画的头像；
-`externallink` 是 `01-base.css` 里全站外链的图标间距；`javedition` 与色调（`censored` 等）是目录卡片也用的
-版次徽章；`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它；`geist-button`、`primary` 是
+`javedition` 与色调（`censored` 等）是目录卡片也用的版次徽章；`chip` 是筛选抽屉的药丸键，脱盘与在线说明块里的按钮沿用它；`geist-button`、`primary` 是
 舞台模态里各处按钮共用的遗留按钮，设置面板的「添加」「恢复默认」也沿用；`popmenu` 是遗留浮层菜单的盒子，
 `presentMenu`／`dismissMenu` 的开合动效按它起，设置面板的色板弹层与侧栏「添加」菜单都是它；`geist-input`
 是 `01-base.css` 的输入框，设置面板的数值框沿用；`board-glow-grid` 那一格预设球由壳的 `renderGlowPresetGrid`

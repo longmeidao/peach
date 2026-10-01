@@ -314,7 +314,7 @@
 /* ── 外链 ──
  * 一行次级按钮：36px 高、10px 圆角、一圈线，跟 Board 的 secondary Button 同一个形。它们是「去哪」
  * 的入口，不是标签，所以不画成药丸。选择器要压过 `board.css` 里「一句话就是一个链接」那条
- * （`body a:is(.externallink,[target=_blank])…`，三个类两个标签）：它会把字染蓝、抹平边框与内边距。 */
+ * （`body a[target=_blank]:not(…):not(.cardlink)`，三个类两个标签）：它会把字染蓝、抹平边框与内边距。 */
 .peach-react [data-entity-links] {
   display: flex;
   flex-wrap: wrap;

@@ -7,17 +7,18 @@
  * 头像、同台艺人的脸和新作卡仍由遗留层拼：取图失败时兜底链（`image-fallback.js`）会把 `<img>`
  * 从 DOM 里摘掉、人脸放大（`avatarFrame`）往图上写内联尺寸、等待微光挂在图的父元素上，这几样
  * 都直接改节点，所以那几格用 `dangerouslySetInnerHTML`，React 不拥有里面的节点。 */
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { entityPath, esc, icon } from '@peach/legacy/core';
 
 import { AvatarPicker } from '../avatar-picker/avatar-picker-page';
+import { FeedNewRow } from '../feed-new/feed-new-row';
 import { Glyph } from './glyph';
 import { FeedSwitch, MorePop } from './hero-pop';
 import { NamePicker } from './name-picker';
 import {
   agencyOf, entityFeedTip, entryMarks, factRows, heroLinks, isCompany, isPeople, nameChoices, nameLine, shownTags,
-  type EntityHeroActions, type EntityHeroData, type EntityHeroHelpers, type EntityHeroProps, type HeroFeedNew,
+  type EntityHeroActions, type EntityHeroData, type EntityHeroHelpers, type EntityHeroProps,
   type LinkMark, type LinkView,
 } from './entity-hero';
 
@@ -90,7 +91,9 @@ export function EntityHeroPage({ kind, name, entity, feedNew, feedHost, actions,
           </div>
         ) : null}
       </section>
-      {feedHost ? createPortal(<FeedRow feedNew={feedNew} host={feedHost} actions={actions} helpers={helpers} />, feedHost) : null}
+      {/* 新作那一行摆在壳留好的 `section.feednew[data-feed-new]` 里，与首页那一行同一个组件。 */}
+      {feedHost ? createPortal(<FeedNewRow feedNew={feedNew} host={feedHost} wire={helpers.wireFeedRow}
+        act={(feedId, action) => actions.feedAction(feedId, action)} />, feedHost) : null}
     </>
   );
 }
@@ -282,33 +285,4 @@ function EntryMarks({ entity, actions, helpers }: {
         tip={entityFeedTip(following)} /> : null}
     </div>
   );
-}
-
-/** 新作那一行：摆在壳留好的 `section.feednew[data-feed-new]` 里，卡片和首页那一行同一份模板
- *  （`feedNewCardHtml`）。忽略的那条当场消失，已看过的留在原位只是变淡；两样都直接改这一行的
- *  节点，不重画整行——重画会把横滚的位置和自动滚动一起打回起点。一条都没有就整块不出。 */
-function FeedRow({ feedNew, host, actions, helpers }: {
-  feedNew: HeroFeedNew | null; host: HTMLElement; actions: EntityHeroActions; helpers: EntityHeroHelpers;
-}) {
-  const box = useRef<HTMLDivElement>(null);
-  const html = feedNew?.items.length ? feedNew.html : '';
-  useLayoutEffect(() => {
-    host.removeAttribute('aria-busy');
-    host.hidden = !html;
-  }, [host, html]);
-  useEffect(() => {
-    if (html) helpers.wireFeedRow(box.current?.querySelector('.feednewrow') ?? null);
-  }, [helpers, html]);
-  const click = async (event: MouseEvent<HTMLDivElement>) => {
-    const button = (event.target as Element).closest<HTMLElement>('[data-feed-action]');
-    const card = button?.closest<HTMLElement>('[data-feed-id]');
-    if (!button || !card) return;
-    const action = button.dataset.feedAction || '';
-    await actions.feedAction(Number(card.dataset.feedId), action);
-    if (action === 'ignore') card.remove();
-    else card.classList.add('isread');
-    if (!box.current?.querySelector('[data-feed-id]')) host.hidden = true;
-  };
-  return html ? <div ref={box} className="contents" onClick={(event) => { void click(event) }}
-    dangerouslySetInnerHTML={{ __html: html }} /> : null;
 }

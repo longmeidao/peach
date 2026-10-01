@@ -64,7 +64,6 @@ wireImageFallbacks(document.body);
    不再落在 TDZ 里。 */
 let state;
 let homeHasFeed=null;
-const feedRequests=new WeakMap();
 const selected=new Set(),followSelected=new Set();
 let barsRequestSeq=0,barsDataCache=null,barsDataAt=0,barsDataPromise=null;
 // 顶部三层与抽屉上一次画的是哪一份：口径加数据，两样都没变就不必再画一遍。
@@ -93,12 +92,6 @@ const FOLLOW_FEED_SORTS=[['new','更新时间'],['hot','热度'],['dur','时长'
    排序键——那三枚键任一按下就离开它；种子写进地址，刷新和后退回到的是同一批次序。 */
 const FOLLOW_RANDOM_SORT='rand';
 let followSort='new',followDir='desc',followSeed=0;
-let entityPhotos=null,entityMediaView=emptyMediaView(),entityPhotoWall=null,entityPhotoRevision=0,entityPhotoMore=null;
-/* 事务所页看的是它签了谁，所以进页面先摆艺人；片商页同理，先摆旗下 label。视频照样在，
-   只是换一个开关的距离：那批片是成员或各个 label 各自出的，混成一条 feed 回答不了
-   「这家有哪些人、哪些牌子」。每次进页面都回到名册，切到视频是这一次浏览的选择，
-   不是这类页面的常态。`entityRosterKind` 是名册里每一格是什么：艺人或厂牌。 */
-let entityRosterView='people',entityRoster=[],entityRosterKind='performer';
 let sidebarDragKey=null;
 /* ────────────────────────────────────────────────────────────────────────── */
 
@@ -435,9 +428,7 @@ const claimSurface=path=>{
   if(!isProcessingNoticePath(path))unmountIsland($('#libraryProcessingNotice'));
   /* 首页那一行新作同样只属于目录页。管理区的入口不经过 `showHomeSurfaces`，离开目录页时
      在这里收起并清空，连同它的自动滚动一起停掉。 */
-  if(!isFeedNewPath(path)){const feed=$('#feedNew');
-    feed.querySelectorAll('.feednewrow').forEach(stopAutoScroll);feed.hidden=true;feed.innerHTML='';
-    feed.removeAttribute('aria-busy')}
+  if(!isFeedNewPath(path))clearHomeFeed();
   /* 管理区正文的容器每次换页都经过这里，所以卸载也落在这里。React 档的页面是一棵自己
      管取数的根：不卸掉它，离开之后那棵根还活着，有轮询的页面照着原节律继续敲库。
      没挂过东西的容器 unmountIsland 直接返回，逐页判断反而会漏掉新迁过来的那一页。 */
@@ -1991,8 +1982,8 @@ function scrollFilteredViewToTop(){
    所以按下态就地改，成员和滚动位置一概不动。选中的标签排到最前是重画时的事——刚点的
    那枚就在他眼皮底下，这一下把它抽走反倒是替他决定现在该看哪儿。 */
 function applyFilterStateInPlace(filters){
-  if(barsContext.type==='entity')pushEntityFilter({tags:entityFilterTags(filters)});
-  else paintCatalogFilter({tags:catalogTags(filters)});
+  // 资料页那一条的按下态由岛按地址上的筛选算，新的筛选已经经 `routeEntityPage` 推过去了。
+  if(barsContext.type!=='entity')paintCatalogFilter({tags:catalogTags(filters)});
   $('#drawer').querySelectorAll('.chip[data-key]').forEach(b=>
     b.setAttribute('aria-pressed',String(String(filters[b.dataset.key]||'')
       .split(',').filter(Boolean).includes(b.dataset.val))));
@@ -2027,18 +2018,21 @@ async function refreshFacetCounts(context){
 function commitContextFilter(mutate){
   scrollFilteredViewToTop();
   if(barsContext.type==='entity'){
+    // 标签是作品筛选，点了就回到作品视图：留在照片或名册里既不生效，标签条也会自相矛盾。
     const filters={...barsContext.filters};mutate(filters);
-    barsContext={...barsContext,filters};
-    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);
-    updateEntityCollection(barsContext.kind,barsContext.name,filters,true);return
+    routeEntityPage(barsContext.kind,barsContext.name,filters);
+    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);return
   }
   if(barsContext.type==='item'){
     // 从详情回到列表是换语境，不是换一条筛选：那几排本来就要照新语境重新画。
     const target=cloneBarsContext(detailReturnBarsContext);
     disposeStage(false);detailReturnBarsContext=null;
     if(target&&target.type==='entity'){
-      mutate(target.filters);barsContext=target;
-      buildBars();updateEntityCollection(target.kind,target.name,target.filters,true);return
+      mutate(target.filters);
+      // 详情下面那一页通常还挂着，推新筛选就够；深链进的详情下面没有它，照新地址重开。
+      if(routeEntityPage(target.kind,target.name,target.filters))buildBars();
+      else void openEntity(target.kind,target.name,false);
+      return
     }
     mutate(state);barsContext={type:'home',filters:state};route(homePath());showHomeSurfaces();
     buildBars();loadCatalog();return
@@ -2454,7 +2448,6 @@ function comboItems(filters){
 /* 资料页有自己的一条，挂在这一页的玻璃浮层正上方，所指的是这一页的筛选；目录那条这时
    跟目录一起被盖住。两条是同一样东西，清单、组件和落点都共用。 */
 function renderCombo(){
-  if(barsContext.type==='entity')pushEntityFilter({combo:comboItems(barsContext.filters)});
   paintCatalogFilter({combo:comboItems(state),comboHidden:!catalogOnScreen()});
 }
 /* 盖住目录的整页入口当场收起目录那条。筛选条还没挂过时没有东西可收。 */
@@ -2580,20 +2573,6 @@ function feedNewCardHtml(item){
    不占的话，那一行在资料卡和作品之间凭空插进来，把下面整个作品网格往下推一截。
    封面格直接挂 `imgwait`，微光与真卡等封面时是同一层。 */
 const FEED_SKELETON_CARDS=8;
-const FEED_COVER_WAIT=1500;
-/* 把一段 HTML 里头 `count` 张图先取进缓存，最多等 `ms` 毫秒。插进页面时它们已经
-   `complete`，`watchPendingImages` 不再给它们挂微光。 */
-function preloadImages(html,count,ms){
-  const probe=document.createElement('template');
-  probe.innerHTML=html;
-  const loads=[...probe.content.querySelectorAll('img[src]')].slice(0,count).map(source=>{
-    const img=new Image();
-    img.referrerPolicy=source.getAttribute('referrerpolicy')||'';
-    img.src=source.getAttribute('src');
-    return img.decode().catch(()=>{});
-  });
-  return Promise.race([Promise.all(loads),new Promise(resolve=>setTimeout(resolve,ms))]);
-}
 const feedNewSkeletonHtml=()=>`<div class="feednewrow srow" aria-hidden="true">${
   `<article class="card feednewcard feednewskeleton"><div class="pic imgwait" style="--card-ratio:${COVER_FRONT_RATIO}"></div>
     <div class="meta"><div class="mtext"><span class="t"><span class="skeleton"></span></span>
@@ -2614,7 +2593,8 @@ async function loadEntityShapes(){
   return entityShapes;
 }
 function prepareHomeFeed(host){
-  if(!host||host.querySelector('[data-feed-id]'))return;
+  // 岛一挂上，宿主就归它：骨架只在挂载之前铺，之后由岛画的那一行或空着说话。
+  if(!host||islandMounted(host)||host.querySelector('[data-feed-id]'))return;
   host.hidden=homeHasFeed!==true;
   if(homeHasFeed!==true)return;
   host.setAttribute('aria-busy','true');
@@ -2638,66 +2618,49 @@ function feedNetworkNote(unreachable,items){
   return noteHtml(`${unreachable} 部新作的封面连不上 DMM 图片主机，中国移动宽带常见。把 DMM / FANZA 的连接方式设成 Peach 代理，下一轮会自动重取。`,
     {variant:'warning',className:'feednetwork',actionLabel:'配置连接方式',actionHref:'/scraping'});
 }
-/* 拉取由定时器做，页面只读已经发现的那些：进这一页顺手发一轮请求，等于把用户的每次
-   刷新都变成对别人服务器的一次拉取，而订阅的间隔本来就是按天算的。 */
-async function loadFeedNew(entityId,preload){
-  const query=new URLSearchParams({limit:'12'});
-  if(entityId)query.set('entity',String(entityId));
-  const data=await api('/api/feeds/discoveries?'+query).catch(()=>null);
+/* 新作那一行的整段 HTML：首页那一行与资料页那一行同一份。 */
+function feedRowHtml(data){
   const items=data&&!data.error?(data.items||[]):[];
-  const html=feedNetworkNote(data?.cover_network,items)
+  return feedNetworkNote(data?.cover_network,items)
     +`<div class="feednewrow srow">${items.map(feedNewCardHtml).join('')}</div>`;
-  // 骨架还占着时，先把头几张封面取到手再整行换掉：否则骨架退场、真卡进来，封面格里
-  // 又是一轮微光，同一行等了两遍。慢的那几张不等满，到点照换，剩下的留给卡片自己的等待态。
-  if(preload&&items.length)await preloadImages(html,FEED_SKELETON_CARDS,FEED_COVER_WAIT);
-  return {items,html};
 }
-/* 首页那一行。资料页那一行在资料卡的岛里（`entity-hero`），数据同样取自 `loadFeedNew`。 */
+/* 新作那一行：拖动、滚轮，按设置接自动滚动。首页与资料页两行同一份。 */
+function wireFeedNewRow(row){
+  if(!row)return;
+  wireDrag(row);
+  if(appSettings.feedAutoScroll)wireAutoScroll(row);
+}
+/* 首页那一行归 `feed-new` 岛（`frontend/src/react/feed-new/`），与资料页那一行同一个组件、同一族
+   查询键：取数、换掉骨架、卡上那两颗键都在岛里。壳留骨架、宿主和它什么时候在场。
+   合集开关改了、或人在目录页里换了一次筛选，都换一个代次推过去，岛见它变了就重取；资料页那
+   一行收的是同一个代次。 */
 function isFeedNewPath(path){return isCatalogPath(path)&&path!=='/junk-files'}
 /* 处理横幅同样只挂在首页那几条名单上。垃圾文件也是目录路径，但它是数据管理底下的一页，
    顶上是管理区的 tabs，库里那趟任务的进度与下场归数据管理首页那张卡。 */
 function isProcessingNoticePath(path){return isCatalogPath(path)&&path!=='/junk-files'}
-async function renderFeedNew(host,entityId){
-  if(!host)return;
-  const request={},surface=surfaceToken(surfacePath());
-  feedRequests.set(host,request);
-  host.dataset.feedEntity=entityId?String(entityId):'';
-  const {items,html}=await loadFeedNew(entityId,host.getAttribute('aria-busy')==='true');
-  // 取数期间人已经离开了这一页：首页那一行不画到管理区上。
-  if(!host.isConnected||feedRequests.get(host)!==request||!surfaceCurrent(surface)
-    ||host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
-  if(host.id==='feedNew')homeHasFeed=items.length>0;
-  host.removeAttribute('aria-busy');
-  if(!items.length){host.hidden=true;host.innerHTML='';return}
-  host.hidden=false;
-  host.innerHTML=html;
-  host.querySelectorAll('[data-feed-action]').forEach(button=>button.onclick=async()=>{
-    const card=button.closest('[data-feed-id]');
-    const action=button.dataset.feedAction;
-    await api('/api/feeds/discovery',{method:'POST',
-      body:JSON.stringify({action,ids:[Number(card.dataset.feedId)]})}).catch(()=>null);
-    // 忽略的那条当场消失，已看过的留在原位只是变淡：已读是标记，不是关掉。
-    if(action==='ignore')card.remove();else card.classList.add('isread');
-    if(!host.querySelector('[data-feed-id]')){host.hidden=true;if(host.id==='feedNew')homeHasFeed=false}
-  });
-  const row=host.querySelector('.feednewrow');
-  wireDrag(row);
-  if(appSettings.feedAutoScroll)wireAutoScroll(row);
+let feedRevision=0;
+const feedNewHelpers={feedRowHtml,wireFeedRow:row=>wireFeedNewRow(row)};
+const feedNewActions={settled:hasItems=>{homeHasFeed=hasItems}};
+function renderHomeFeed(){
+  const host=$('#feedNew');
+  if(islandMounted(host)){updateIsland(host,{revision:++feedRevision});return}
+  prepareHomeFeed(host);
+  /* 这一行不随筛选变，判在不在场只看路径：换筛选换掉的是目录的代次，不该把它这一趟作废。 */
+  void mountIsland('feed-new',host,{host,revision:feedRevision,helpers:feedNewHelpers,actions:feedNewActions},
+    {isCurrent:()=>isFeedNewPath(location.pathname)});
 }
-/* 资料页顶上的资料卡与新作那一行归 React（`entity-hero`，ADR-0031 第 10c 步）。`/api/entity`
-   与新作仍由这里取，写操作也由这里做成 `actions` 递进去；宿主记在这里，合集开关改了、
-   订阅后那一轮拉取跑完时，找得到它把新作换一份。宿主的 `data-entity-hero` 记着实体 id。 */
-let entityHeroHost=null;
-const entityHeroCurrent=()=>!!entityHeroHost?.isConnected&&islandMounted(entityHeroHost);
-/* 合集开关改了，页面上已经画过的那几行照新的筛法重取一遍。 */
+/* 离开目录页时收起并清空，连同它的自动滚动一起停掉。岛还没画出来时宿主里是骨架，一起清。 */
+function clearHomeFeed(){
+  const host=$('#feedNew');
+  host.querySelectorAll('.feednewrow').forEach(stopAutoScroll);
+  unmountIsland(host);
+  host.hidden=true;host.innerHTML='';host.removeAttribute('aria-busy');
+}
 function refreshFeedRows(){
-  // 首页那一行只在目录页出现，人不在那儿时不替它重取，否则会在别的页面上冒出来。
-  document.querySelectorAll('.feednew[data-feed-entity]').forEach(host=>{
-    if(host.id==='feedNew'&&!isFeedNewPath(location.pathname))return;
-    void renderFeedNew(host,Number(host.dataset.feedEntity)||undefined);
-  });
-  // 资料页那一行在资料卡的岛里，换一份新作交给它。
-  if(entityHeroCurrent())void refreshEntityFeed(entityHeroHost);
+  feedRevision+=1;
+  // 首页那一行只在目录页挂着，人不在那儿时 `updateIsland` 是空操作，不会在别的页面上冒出来。
+  updateIsland($('#feedNew'),{revision:feedRevision});
+  pushEntityPage({feedRevision});
 }
 /* 设置里开关自动滚动，页面上已经摆着的那几行当场跟着停或走，不等下一次重画。 */
 function syncFeedAutoScroll(){
@@ -2705,24 +2668,6 @@ function syncFeedAutoScroll(){
     appSettings.feedAutoScroll?wireAutoScroll(row):stopAutoScroll(row));
 }
 
-/* 资料卡岛里那一行新作换一份。 */
-async function refreshEntityFeed(host){
-  const feedNew=await loadFeedNew(Number(host.dataset.entityHero)||undefined,false);
-  if(host===entityHeroHost&&host.isConnected)updateIsland(host,{feedNew});
-}
-/* 「订阅新作」的地址不经页面：服务端按这位的 JavDB 演员页现拼，页面只送开或关。打开时
-   服务端当场在后台拉一轮，拉完这里把未入库的新作那一行重取一次；等的上限是那一轮自己的
-   时长量级，页面换走了就不再等。 */
-const ENTITY_FEED_WAIT_TRIES=40;
-async function refreshEntityFeedAfterCheck(host){
-  const onPage=()=>host===entityHeroHost&&entityHeroCurrent();
-  for(let tries=0;tries<ENTITY_FEED_WAIT_TRIES&&onPage();tries+=1){
-    await new Promise(resolve=>setTimeout(resolve,3000));
-    const job=await api('/api/feeds/check').catch(()=>null);
-    if(!job||job.status!=='running')break;
-  }
-  if(onPage())await refreshEntityFeed(host);
-}
 /* 资料卡排不排三栏看 `#index` 自己有多宽（判据与原因见 07-entity.css 那条规则）。
    量的是常驻的内容区，骨架和画好的页头读同一个开关，换页时不跳一次。 */
 const HERO_WIDE_PX=900;
@@ -3020,78 +2965,9 @@ const followPageUrl=offset=>
    卡片和详情面板上都还能把一条标成已看。 */
 const FOLLOW_FILTERS=[['','全部'],['new','未看'],['saved','已保存'],['ignored','已忽略']];
 
-/* 账本里一律存 UTC（ISO 带 Z），界面要按看的人所在时区显示。
-   直接把那串字面量印出来的话，UTC+8 的人看到的每个时间都早 8 小时。 */
-function localTime(iso){
-  if(!iso)return '';
-  // 没有时区标记的按 UTC 解释——存进去的时候就是 UTC。
-  const text=/[Zz]|[+-]\d\d:?\d\d$/.test(iso)?iso:iso+'Z';
-  const when=new Date(text);
-  if(isNaN(when))return String(iso).replace('T',' ').slice(0,16);
-  const pad=n=>String(n).padStart(2,'0');
-  return `${when.getFullYear()}-${pad(when.getMonth()+1)}-${pad(when.getDate())} `
-    +`${pad(when.getHours())}:${pad(when.getMinutes())}`;
-}
-
-/* 版式切换只翻容器上的一个属性、不重画列表，所以「去掉年份」不能靠换一次格式化，
-   得让同一份 DOM 两种显示：年份单独包一层，由 CSS 在紧凑版式里收掉。 */
-function localTimeHtml(iso){
-  const text=localTime(iso);
-  return /^\d{4}-/.test(text)
-    ? `<i class="fyear">${esc(text.slice(0,5))}</i>${esc(text.slice(5,10))}<span class="fclock">${esc(text.slice(10))}</span>`
-    : esc(text);
-}
-
-function followWhen(item){
-  const raw=item.published_at||'';
-  if(!raw)return '时间未取得';
-  const text=localTime(raw);
-  // 精度仍保留在 API；列表按用户要求不再给近似时间加「约」前缀。
-  return text;
-}
-
 /* 卡片、详情、筛选条和在线标签页都只消费服务端的内容标签投影。过滤只维护一份，
    原始来源标签仍完整留在 metadata。 */
 const followCardTags=item=>item.tags||[];
-/* 正文不报组里有几条：条数只由封面角标报一次，数的是合并了几个媒体（`followStack`）。 */
-/* 说「这一条是哪个版本」的字样排在标题前面，与主页标题里的版次字样同一个控件，扫标题
-   时就分得出来。WIP 说的是这一条，不是这一组：`2B Camp [4K]` 判的是 alt，只因为同组
-   还有一条 `[WIP]` 就在它头上挂 WIP，读起来就成了「这一条是半成品」；同组有 WIP 仍然
-   要说，但要说成「含」。声音版本说的是卡面这一条：同一段动画的无声原片与配音重发常在
-   同一个流里前后出现，配音版着色、无声版弱化加虚线框，两者一眼分开。 */
-function followTitleMarks(group,shown=group.primary){
-  const marks=[];
-  if(group.primary.variant_kind==='wip')marks.push('<small class="javedition followmark wip">WIP</small>');
-  else if(group.has_wip)marks.push('<small class="javedition followmark wip partial">含 WIP</small>');
-  if(group.primary.version)marks.push(`<small class="javedition followmark ver">${esc(group.primary.version)}</small>`);
-  const audio={voiced:'配音版',silent:'无声版'}[shown.audio];
-  if(audio)marks.push(`<small class="javedition followmark ${shown.audio}">${audio}</small>`);
-  return marks.join('');
-}
-
-function followBadges(group,shown=group.primary){
-  const badges=[];
-  /* 另见的站用站点图标列出，站名落在图标的 alt 与徽章的 title 上；没登记图标的站写站名。
-     「另见」相对卡面这一条（`shown`）说：主条目没有当前视图的媒体时，卡面换成组里别的站
-     那条，这时主条目的站才是另见，卡面自己的站不再列。 */
-  const sites=new Map([group.primary,...group.variants,...group.duplicates]
-    .filter(member=>member.provider!==shown.provider)
-    .map(member=>[member.provider,member.provider_label||member.provider]));
-  if(sites.size){
-    const marks=[...sites].map(([provider,label])=>
-      sourceIcon(provider,label)||`<span>${esc(label)}</span>`).join('');
-    badges.push(`<span class="fbadge dup" title="另见 ${esc([...sites.values()].join('、'))}">另见 ${marks}</span>`);
-  }
-  return badges.join('');
-}
-
-function followMediaIssue(item,credentials){
-  if(item.media_error)return `媒体未取得：${item.media_error}`;
-  if(item.media_needs_credential&&!credentials.has(item.provider))return item.playable
-    ?'部分媒体未取得：需要 F95 登录会话解析'
-    :'媒体未取得：需要 F95 登录会话解析';
-  return '';
-}
 
 /* 检查完必须说清三件事：新增了什么、哪些确实没有更新、哪些失败了以及为什么。
    反馈走两条通道（Geist toast 处方，取证见 docs/reference-snapshots/vercel-geist-toast.md）：
@@ -3217,21 +3093,13 @@ function shuffleFollowFeed(){
   routeFollowFeed({...followView(),sort:FOLLOW_RANDOM_SORT},{seed:followDiscoverySeed});
 }
 /* 岛要的助手与动作各只有一份、身份不变：卡片按引用比较，每次推新对象进去就是整屏重画。
-   头像、署名、题材圆标与来源图标跟详情共用这一份实现。 */
+   这里只剩要借壳里实现的几样：题材圆标借资料页的取景，标签写法、拖动与横滚、骨架和后台
+   任务进度都是壳的那一份；署名、头像、来源图标与标题前后的字样在岛里（`follow-marks.ts`）。 */
 const followFeedHelpers={
-  sourceIcon:(provider,label='')=>sourceIcon(provider,label),
-  authorAvatar:(sources,context)=>followAuthorAvatar(sources,followAuthorName(sources,context.aliases)),
-  authorName:(sources,context)=>followAuthorName(sources,context.aliases),
-  identity:(item,authorSources,context)=>followIdentity(item,authorSources,context),
   workMark:row=>followWorkMark(row),
-  titleMarks:(group,shown)=>followTitleMarks(group,shown),
-  badges:(group,shown)=>followBadges(group,shown),
-  mediaIssue:(item,context)=>followMediaIssue(item,context.credentials),
-  when:item=>followWhen(item),
   tagLabel:tag=>tagLabel(tag),
   wireDrag:row=>{if(row)wireDrag(row)},
   wireScroller:row=>{if(row)wireHorizontalScroller(row)},
-  learnDims:(item,media,width,height)=>learnFollowDims(item,media,width,height),
   listSkeletonHtml:media=>followContentSkeletonHtml(media),
   jobProgress:options=>followJobProgress(options),
 };
@@ -3333,53 +3201,6 @@ async function openFollow(push=true,renderForDetail=false){
   if(surfaceCurrent(surface))window.scrollTo({top:0,behavior:'smooth'});
 }
 
-/* 有站点图标的来源。图标由服务端按 follow_assets.SOURCE_ICON_URLS 取回、保存在本机，
-   页面只认这张名单：没登记的来源直接不出 <img>，取不到的由 data-drop 摘掉退回纯文字。
-   图标独自代表站名时传 label，alt 与 title 写站名；外层已经带名字的传空，图只作装饰。 */
-const SOURCE_ICON_PROVIDERS=new Set(['fanbox','patreon','subscribestar','kemono','coomer','pawchive',
-  'rule34video','rule34xxx','rule34paheal','gofile','f95zone','simpcity']);
-function sourceIcon(provider,label=''){return SOURCE_ICON_PROVIDERS.has(provider)
-  ? `<img class="ficon" src="/source-icon?provider=${encodeURIComponent(provider)}" alt="${esc(label)}"${label?` title="${esc(label)}"`:''} loading="lazy" data-drop="self">`
-  : ''}
-
-function followAvatarInitial(name){
-  name=String(name||'').trim();
-  const ascii=name.match(/[A-Za-z0-9]/);
-  return (ascii?ascii[0]:Array.from(name)[0]||'?').toUpperCase();
-}
-
-/* 同一创作者的官方来源优先提供头像，归档来源只回退。都取不到时明确用创作者首字母，
-   不再从某条来源的中文显示标签切出“初”“一”之类与创作者无关的字。 */
-function followAuthorAvatar(group,name=followAuthorName(group)){
-  const official=group.find(source=>source.official_avatar_url);
-  const mirror=group.find(source=>source.avatar_url);
-  const src=official?.official_avatar_url||mirror?.avatar_url;
-  const fallback=official&&mirror&&mirror.avatar_url!==src?mirror.avatar_url:'';
-  const initial=followAvatarInitial(name);
-  if(src)return `<img class="favatar" src="${esc(src)}" alt=""
-    loading="lazy" referrerpolicy="no-referrer" ${imageFallbackAttrs({
-      drop:'initial',dropClass:'favatar none',initial,fallbacks:[fallback]})}>`;
-  return `<span class="favatar none" title="没有可用头像">${esc(initial)}</span>`;
-}
-
-/* 卡片与详情的署名。booru 帖子由服务端认出真正的发布者时（`item.credit`），名字和头像
-   都换成发布者：也关注了这位就用那位的来源，否则只出首字母，不借被关注者的头像；
-   被关注者退成一行「署名含」，说明这条为什么出现在这里。认不出的照常署被关注者。 */
-/* `context` 是关注页岛那一版列表（或详情岛那一条）的来源与别名。 */
-function followIdentity(item,authorSources,context){
-  const aliases=context.aliases||[];
-  const poster=item.credit?.poster;
-  if(!poster){const name=followAuthorName(authorSources,aliases);
-    return {author:name||item.author||item.source_label||'创作者未取得',
-      avatar:followAuthorAvatar(authorSources,name),credited:''}}
-  const key=value=>String(value||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-  const sources=context.sources||[];
-  const own=sources.find(row=>key(row.ref)===key(poster));
-  const group=own?.author_key?sources.filter(row=>row.author_key===own.author_key):own?[own]:[];
-  const author=group.length&&followAuthorName(group,aliases)||poster;
-  return {author,avatar:followAuthorAvatar(group,author),credited:item.credit.credited||''};
-}
-
 /* 题材那一枚跟首页的厂牌药丸同形：28px 圆标识加作品名。圆里装的是这个题材下最热的
    那几条里第一张看得见脸的封面，服务端按 `work` 这个身份自己去挑再存在本机，页面
    递不进地址。挑不出图的题材（facet 那一行的第四位说了算）直接出两个字母，不出
@@ -3392,36 +3213,6 @@ function followIdentity(item,authorSources,context){
 function followWorkMark([key,label,,icon,focus]){
   const fallback=esc(String(label||'').slice(0,2));
   return icon?`<img src="/work-icon?work=${encodeURIComponent(key)}" alt="" loading="lazy"${facePos(focus)}${faceBoxAttrs(focus)}>`:fallback;
-}
-
-/* 分组标题要用创作者本人的名字，不是某一条来源的标签。哪一段标签是人名由服务端一处
-   判定（`author_name`）：`LazyProcrastinator · fanbox` 的「· fanbox」只说明他在哪个
-   平台连载，F95 的 `Strauzek Collection [2026-09-04] [Mr_Strauz]` 则整串都是线程标题，
-   创作者在末尾的方括号里。这里只在同一个人的几种写法之间挑一个，不再自己解析标签。
-   同名的几种写法里取大写最多的那个：`LazyProcrastinator` 比 `lazyprocrastinator`
-   更像创作者自己写的名字。 */
-function followAuthorName(group,aliases=[]){
-  if(!group.length)return '';
-  const clean=value=>String(value||'')
-    .replace(/\s*[·|]\s*[A-Za-z0-9_-]+\s*$/,'')
-    .replace(/\s+collections?\s*$/i,'').trim();
-  const authored=source=>String(source.author_name||'').trim()||clean(source.label);
-  const entity=group.find(source=>source.entity_name);
-  if(entity)return entity.entity_name;
-  const aliasGroup=aliases.find(
-    item=>`name:${item.canonical_key}`===group[0]?.author_key);
-  if(aliasGroup)return clean(aliasGroup.canonical_name);
-  // 官方主页来源不只优先提供头像，也优先提供创作者写法；否则 F95 的线程标题
-  // `Lazy Procrastinator Collection` 会因为大写字母更多而抢成分组标题。
-  const official=group.find(source=>source.official_avatar_url);
-  if(official){
-    const officialName=authored(official);
-    if(officialName)return officialName;
-  }
-  const names=group.map(authored).filter(Boolean);
-  if(!names.length)return group[0].label||group[0].ref||'';
-  const caps=text=>(text.match(/[A-Z]/g)||[]).length;
-  return names.reduce((best,name)=>caps(name)>caps(best)?name:best,names[0]);
 }
 
 /* ── 管的那一页 ──
@@ -3488,29 +3279,6 @@ document.addEventListener('click',event=>{
   event.preventDefault();
   void openFollowManage(true,'add');
 });
-
-/* ── 共用接线 ── */
-/* 这次会话里已经回写过的图，`条目:媒体序号`。回写只补空缺，服务端本来就会
-   忽略已有尺寸的条目，但每次重渲染都把同一批再发一遍是白跑。 */
-const followDimsReported=new Set();
-let followDimsQueue=[],followDimsTimer=0;
-function flushFollowDims(){
-  followDimsTimer=0;
-  if(!followDimsQueue.length)return;
-  const entries=followDimsQueue.splice(0,200);
-  /* 静默：这是顺手学习，不是用户的动作；只读端 409 和网络抖动都不该弹提示。 */
-  api('/api/follow/image-dims',{method:'POST',body:JSON.stringify({entries})}).catch(()=>{});
-  if(followDimsQueue.length)followDimsTimer=setTimeout(flushFollowDims,800);
-}
-function learnFollowDims(item,media,width,height){
-  const key=`${item}:${media??''}`;
-  if(followDimsReported.has(key))return;
-  followDimsReported.add(key);
-  const entry={item,width,height};
-  if(media!==null&&media!==undefined)entry.media=media;
-  followDimsQueue.push(entry);
-  if(!followDimsTimer)followDimsTimer=setTimeout(flushFollowDims,800);
-}
 
 /* ── 全部艺人 / 创作者 / 厂牌 / 事务所 / 标签索引页 ──
    整页在 React（`frontend/src/react/index/`）。壳做三件事：从地址栏读出这一页的状态、铺骨架、
@@ -3605,7 +3373,6 @@ function indexPlaceholderHtml({kind,q,scope,view}){
 /* 屏幕上已经是同一张骨架就别重画：深链冷启动时首屏骨架先铺过一遍，innerHTML 换新节点会把
    shimmer 从头放一遍。 */
 function showIndexSkeleton(params){
-  releaseEntityBody();
   $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();hideCatalogCombo();
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const placeholder=indexPlaceholderHtml(params);
@@ -3664,226 +3431,130 @@ async function openIndex(kind,push=true){
    套上 JAV 的行业称谓既不准确也会和创作者身份混淆。判据由后端 `is_jav` 给。 */
 function performerLabel(it){return it&&it.is_jav?'女优':'艺人'}
 let entityRequestSeq=0,entityJavLayout=false;
-async function fetchEntityItems(kind,name,filters,offset=0,signal){
-  const p=new URLSearchParams();p.set(kind,name);p.set('limit','48');p.set('offset',String(offset));
-  p.set('sort',filters.sort||'new');
-  if(filters.dir)p.set('dir',filters.dir);
-  if(filters.sort==='seed')p.set('seed',state.seed);
-  if(offset)p.set('count','0');
-  ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind&&key!=='sort')p.set(key,filters[key])});
-  // 资料页继承 JAV 开关：女优页和厂牌页同样是按番号浏览的语境。
-  if(state.jav==='1')p.set('jav','1');
-  const items=await api('/api/items?'+p,{signal});cache(items.items);return items
-}
-/* 筛选浮层下面那一整块正文归 React（`entity-body`，ADR-0031 第 10e 步）：名册、作品网格
-   （`catalog-grid` 的 entity 模式，续页、分卷／版次折叠和「载入更多」都在岛里）三选一。壳取数、
-   岛只画：换视图、换筛选都经 `pushEntityBody` 推过去，不重挂。作品每请求一次换一个代次，网格
-   随之换键；等的那一下先推 `items:null`，岛里铺骨架。宿主 `[data-entity-body]` 记在这里：
-   `#index` 整块重写之前必须先卸掉它，否则那棵根挂在脱离文档的节点上一直活着。 */
-let entityBodyHost=null,entityBodyRevision=0,entityBodyView='';
-const entityBodyCurrent=()=>!!entityBodyHost?.isConnected&&islandMounted(entityBodyHost);
-function pushEntityBody(patch){
-  if(!entityBodyCurrent())return;
-  if(patch.view)entityBodyView=patch.view;
-  updateIsland(entityBodyHost,patch);
-}
-function releaseEntityBody(){
-  if(!entityBodyHost)return;
-  releaseHoverPreviews(entityBodyHost);unmountIsland(entityBodyHost);entityBodyView='';
-}
-/* 名册一格的取图同索引页；卡片的助手与动作就是目录那一份，身份不变。照片墙多两样：
-   灯箱里定位本地图片的源文件，翻本地图片的下一页。 */
-const entityBodyHelpers={...gridHelpers,personAvatar};
-const entityBodyActions={...gridActions,
-  revealSource:revealForIsland,
-  loadMorePhotos:()=>entityPhotoMore?entityPhotoMore():Promise.resolve()};
-const entityBodyCanLoadMore=()=>!$('#index').hidden&&$('#stats').hidden;
-const entityBodySkeleton=()=>catalogSkeletonHtml();
-/* 卡片网格原样要的那几样：版式、选择状态与展示设置随每次推送带上最新值。 */
-const entityGridShared=()=>({layout:catalogGridLayout(),selectMode,selected:new Set(selected),
-  seekSeconds:appSettings.seekSeconds,groupCollapse:appSettings.groupCollapse});
-const entityRosterProps=()=>entityRoster.length
-  ?{kind:entityRosterKind==='studio'?'studios':'performers',people:entityRoster,layout:peopleIndexLayout()}:null;
-const entityItemsFetcher=(kind,name,filters)=>(offset,signal)=>fetchEntityItems(kind,name,filters,offset,signal);
-/* 资料卡下面那一整块（交集条、两排玻璃浮层）归 React（`entity-filter`，ADR-0031 第 10d 步）。
-   壳取数、岛只画：这一页的筛选、当前视图、排序与读数都经 `pushEntityFilter` 推过去，点下去的
-   动作回壳。按下态在发请求之前就推，`aria-pressed` 与滑动玻璃当场到位，读数换成微光等这一趟。
-   宿主 `[data-entity-filter]` 记在这里：换一页时先卸掉旧的那棵根，它在窗口上登记着重量玻璃的监听。 */
-let entityFilterHost=null,entityFilterTagRows=[],entityPhotoHeadNow=null;
-const entityFilterCurrent=()=>!!entityFilterHost?.isConnected&&islandMounted(entityFilterHost);
-function pushEntityFilter(patch){if(entityFilterCurrent())updateIsland(entityFilterHost,patch)}
-/* 标签按资料里的顺序摆，选中的不往前挪：刚点的那枚就在指针底下，这一下把它抽走反倒是替人
-   决定现在该看哪儿。数的是这个人／厂牌名下带这个标签的视频。 */
-function entityFilterTags(filters){
-  return entityFilterTagRows.map(x=>({k:x.k,label:tagLabel(x.k),n:x.n,selected:tagPressed(filters.tag,x.k)}))}
-/* 首页与资料页的排序键：箭头只画在选中那一枚上，无障碍名称播报的是点下去会得到什么。 */
-function sortKeys(current,dir){
-  return sortOptions().map(([key,label])=>{
+/* 资料页整页归 React（`entity-page`，ADR-0031 第 11d 步）：资料卡、筛选浮层、新作那一行与正文是
+   同一座岛，`/api/entity`、作品、照片与新作都由岛按查询键取（`frontend/src/react/entity-page/`）。
+   壳只写地址、挂岛、递 props：地址栏是这一页筛选与媒体视图的唯一真相源，岛改筛选调
+   `actions.route`，壳写好地址再经 `routeEntityPage` 把新的 `filters`／`media` 推回去。
+   挂载点是资料卡那一格（`[data-entity-hero]`）；浮层、新作与正文三块由壳在 `#index` 里排好，
+   岛用 portal 画进去——浮层吸顶要它的父盒就是 `#index`，新作那一行是遗留层的卡片。 */
+let entityPageHost=null,entityBodyHost=null,entityPageView='',entityPageRevision=0;
+const entityPageCurrent=()=>!!entityPageHost?.isConnected&&islandMounted(entityPageHost);
+const entityPageLive=(kind,name)=>entityPageCurrent()&&!$('#index').hidden
+  &&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name;
+function pushEntityPage(patch){if(entityPageCurrent())updateIsland(entityPageHost,patch)}
+/* 首页与资料页的排序键：箭头只画在选中那一枚上，无障碍名称播报的是点下去会得到什么。
+   资料页的 JAV 语境由岛按第一页作品推出来，随参数递进来。 */
+function sortKeys(current,dir,jav=javActive()){
+  return sortOptions(jav).map(([key,label])=>{
     const pressed=current===key,next=nextSortState(key,current,dir);
     return {key,label,pressed,dir:pressed&&sortDirWord(key,dir)?(dir==='asc'?'asc':'desc'):'',
       ariaLabel:next?`按${label}${next.dir?sortDirWord(next.sort,next.dir):''}排序`:''}});
 }
-const entitySortKeys=filters=>sortKeys(filters.sort||'new',filters.dir);
-const entityVideoHead=filters=>({sorts:entitySortKeys(filters),
-  jav:javActive()?{layout:javLayout(),options:JAV_LAYOUTS}:null});
-/* 这一页的写操作都回到壳里同一套落点：筛选走 `commitContextFilter`／`updateEntityCollection`，
-   视图走 `switchEntityMedia`。筛选现读 `barsContext`，不捕获挂载那一刻的那一份。 */
-function entityFilterActions(kind,name,initial){
+/* 地址栏上的媒体视图：`media=photos` 与目录图集 `set=<id>`。名册不进地址栏，是事务所页与片商页
+   进页时的默认视图，归岛记。 */
+const EMPTY_ENTITY_MEDIA={media:'videos',set:0};
+const parseMediaView=search=>{const params=new URLSearchParams(search),set=params.get('set')||'';
+  return {media:params.get('media')==='photos'?'photos':'videos',set:/^\d+$/.test(set)?Number(set):0}};
+const entityViewSearch=(filters,view)=>{const params=new URLSearchParams(entityFilterSearch(filters));
+  if(view&&view.media==='photos'){params.set('media','photos');if(view.set)params.set('set',String(view.set))}
+  return params.toString()};
+/* 这一页换筛选、换视图的唯一落点：地址先写好，再把新的筛选与视图推给岛，岛按新键重取。
+   这一页没挂着（从作品详情回来、深链）时返回 false，由调用方重开这一页。 */
+function routeEntityPage(kind,name,filters,media=EMPTY_ENTITY_MEDIA,{push=true}={}){
+  const search=entityViewSearch(filters,media);
+  if(push)route(entityPath(kind,name)+(search?'?'+search:''));
+  barsContext={type:'entity',kind,name,filters:{...filters}};
+  if(!entityPageLive(kind,name))return false;
+  releaseHoverPreviews(entityBodyHost);
+  pushEntityPage({filters:{...filters},media:{...media},seed:String(state.seed||''),jav:state.jav==='1'});
+  return true;
+}
+/* 名册一格的取图同索引页；卡片的助手与动作就是目录那一份，身份不变。照片墙多一样：灯箱里
+   定位本地图片的源文件。 */
+const entityCard={helpers:{...gridHelpers,personAvatar},actions:{...gridActions,revealSource:revealForIsland}};
+const entityBodyCanLoadMore=()=>!$('#index').hidden&&$('#stats').hidden;
+const entityBodySkeleton=()=>catalogSkeletonHtml();
+/* 资料页里仍由遗留层拼的 HTML 与接线：头像的 `<img>`（兜底链、人脸放大与等待微光都直接改这个
+   节点）、横滚行的拖动与滚轮、回执与弹层、图集那两枚源文件键。 */
+const entityPageHelpers={
+  /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网圆标），人是
+     实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接露出来。四个标志
+     （`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由 `/api/entity` 随资料下发。
+
+     作品截图不给公司用：厂牌那张是自家片没错，可这一页要认的是牌子；事务所名下的片更是成员
+     各自拍的，拿其中一部的画面当门面，说的是别人的事。 */
+  portraitImg:(kind,d)=>{
+    const company=kind==='studio'||kind==='agency';
+    return d.id?entityFaceImg({kind,id:d.id,hasImage:d.has_image,
+      rep:company||!d.has_avatar?null:d.representative_asset_id,
+      mark:kind==='agency'?d.mark_link_id:null,
+      logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',
+      alt:esc(d.canonical_name),lazy:false,
+      style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
+      dropStyle:true}):''},
+  costarImg:x=>entityFaceImg({id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
+    style:facePos(x.avatar_focus),focus:x.avatar_focus}),
+  wireDrag:row=>{if(row)wireDrag(row)},
+  wireScroller:row=>{if(row)wireHorizontalScroller(row)},
+  wireFeedRow:row=>wireFeedNewRow(row),
+  feedRowHtml,
+  receipt:(message,options)=>actionReceipt(message,options),
+  failure:(label,error)=>actionFailure(label,error),
+  aliasForm:(mine,write)=>entityAliasForm(mine,write),
+  sourceToolsHtml:id=>sourceTools(id),
+  wireSourceTools:(root,done)=>wireSourceTools(root,done),
+  tagLabel:tag=>tagLabel(tag),
+  comboItems:filters=>comboItems(filters),
+  sortKeys:(sort,dir,jav)=>sortKeys(sort,dir,jav),
+};
+/* 岛递回来的写操作与跳转。筛选现读 `barsContext`，不捕获挂载那一刻的那一份。 */
+function entityPageActions(kind,name){
   const live=()=>barsContext.type==='entity'&&barsContext.kind===kind&&barsContext.name===name
-    ?barsContext.filters:initial;
+    ?barsContext.filters:emptyEntityFilters();
   return {
-    setView:view=>void switchEntityMedia(kind,name,live(),view),
-    setState:value=>void updateEntityCollection(kind,name,{...live(),state:value},true),
+    route:(filters,media)=>void routeEntityPage(kind,name,filters,media),
     toggleTag:tag=>toggleTag(tag),
     clearFilter:key=>commitContextFilter(filters=>{filters[key]=''}),
     clearAll:()=>commitContextFilter(filters=>{
       filters.tag='';filters.creator='';filters.studio='';filters.owner=''}),
     setSort:key=>{
       const filters=live(),next=nextSortState(key,filters.sort||'new',filters.dir);
-      if(next)void updateEntityCollection(kind,name,{...filters,...next},true)},
-    reshuffle:()=>{
-      if(entityViewNow(kind)==='photos')return shufflePhotos(kind,name,live(),entityMediaView.set||0);
-      state.seed=rollSeed();return updateEntityCollection(kind,name,{...live(),sort:'seed'},true)},
-    setJavLayout:value=>{setJavLayout(value);pushEntityFilter({video:entityVideoHead(live())})},
+      if(next)routeEntityPage(kind,name,{...filters,...next})},
+    reshuffleVideos:()=>{
+      state.seed=rollSeed();routeEntityPage(kind,name,{...live(),sort:'seed'});return String(state.seed)},
+    setJavLayout:value=>{setJavLayout(value);pushEntityPage({javLayout:javLayout()})},
     setPhotoLayout:value=>{
-      appSettings.photoLayout=allowedSetting(value,['fixed','masonry'],'masonry');saveSettings();syncPhotoWalls();
-      if(entityPhotoHeadNow)pushEntityFilter({photo:entityPhotoHeadNow={...entityPhotoHeadNow,layout:photoLayout()}})},
-    photoBack:()=>showAllPhotos(kind,name,live()),
+      appSettings.photoLayout=allowedSetting(value,['fixed','masonry'],'masonry');saveSettings();syncPhotoWalls()},
+    openEntity:(target,to)=>void openEntity(target,to),
+    javContext:on=>{entityJavLayout=!!on},
+    painted:view=>{
+      const wasPhotos=photoViewActive();entityPageView=view;
+      if(photoViewActive()!==wasPhotos)syncDensityControl();
+      scheduleStickySurfaces()},
+    missing:()=>queueMicrotask(()=>{
+      if(!entityPageCurrent())return;
+      unmountIsland($('#index'));showEntityMissing(kind)}),
   };
 }
-/* 浮层里仍由遗留层接的那几样：横向行的拖动与滚轮，图集那两枚源文件键（照片详情里复用的是
-   同一对）。对账后整组数量都变了，重开这一组比逐格摘除简单也更不容易错。 */
-function entityFilterHelpers(kind,name,initial){
-  const live=()=>barsContext.type==='entity'?barsContext.filters:initial;
-  return {
-    wireDrag:row=>{if(row)wireDrag(row)},
-    wireScroller:row=>{if(row)wireHorizontalScroller(row)},
-    sourceToolsHtml:id=>sourceTools(id),
-    wireSourceTools:root=>wireSourceTools(root,()=>openPhotoSet(kind,name,live(),entityMediaView.set,false)),
-  };
-}
-/* 名册：事务所页是艺人，片商页是旗下 label。和对应的索引页摆的是同一格、同一套版式
-   设置，只是这批随资料页一起下来了，不再单独请求；读数写的是这一格有多少视频。 */
-function renderEntityRoster(people){
-  releaseHoverPreviews(entityBodyHost);
-  pushEntityBody({view:'people'});
-  pushEntityFilter({view:'people',busy:false,
-    readout:(entityRosterKind==='studio'?'厂牌':'艺人')+' · '+people.length.toLocaleString()});
-  scheduleStickySurfaces();
-}
-/* 作品视图那一栏的读数与排序行。资料页的标签同样可以叠加，读数把生效的几个都写出来。 */
-function pushEntityVideoHead(items,filters){
-  const entityTags=tagList(filters.tag).map(tagLabel);
-  pushEntityFilter({view:'videos',busy:false,video:entityVideoHead(filters),
-    readout:`视频 · ${(items.total||0).toLocaleString()}${entityTags.length?' · '+entityTags.join(' · '):''}`});
-}
-function renderEntityCollection(kind,name,items,filters,revision=++entityBodyRevision){
-  pushEntityBody({...entityGridShared(),view:'videos',items,revision,fetchPage:entityItemsFetcher(kind,name,filters)});
-  pushEntityVideoHead(items,filters);
-  scheduleStickySurfaces();
-}
-async function updateEntityCollection(kind,name,filters,push=true){
-  // 标签是作品筛选，点了就回到作品视图：留在照片或名册里既不生效，标签条也会自相矛盾。
-  entityMediaView=emptyMediaView();
-  entityRosterView='videos';
-  const search=entityFilterSearch(filters);
-  if(push)route(entityPath(kind,name)+(search?'?'+search:''));
-  barsContext={type:'entity',kind,name,filters:{...filters}};
-  const seq=++entityRequestSeq;
-  /* 换列、翻方向、换观看状态和加减标签此刻就已确定，用不着等一次请求才在界面上生效：先把
-     按下态推成最终样子，只让会变的 `视频 · N` 换成微光。 */
-  pushEntityFilter({view:'videos',busy:true,state:filters.state||'',video:entityVideoHead(filters),
-    tags:entityFilterTags(filters),combo:comboItems(filters)});
-  /* 名单已经不是刚才那一份了。把旧卡片留在屏幕上等新的回来，等的这一下人读到的是一份
-     跟头上的筛选对不上的列表——数字在转圈，底下那几十张却还是上一次的答案。 */
-  const revision=++entityBodyRevision;
-  if(entityBodyView==='videos'){releaseHoverPreviews(entityBodyHost);pushEntityBody({items:null,revision})}
-  const items=await fetchEntityItems(kind,name,filters);
-  if(seq!==entityRequestSeq)return;
-  renderEntityCollection(kind,name,items,filters,revision)
-}
-/* ── 资料页的照片 ─────────────────────────────────────────────────────────────
-   图集就是目录：账本里没有图集实体，`<作品目录>\P\001.jpg` 这种约定只保留在后端，
-   页面不先造一层图集封面，照片标签直接进入这面墙，再点图进入灯箱。
-   墙归 React（`entity-body` 岛的照片视图）：分段、缩略图口与列数的取舍写在
-   `frontend/src/react/entity-body/` 里。壳取数、记翻页，推一份 `photos` 过去；灯箱留在壳里。
-   番号样张按作品分段、不另开一层：名下每部作品的官方样张按发行日从新到旧一段一段铺在
-   本地图片前面，每段一行段头（ADR-0068）。`set=` 参数只认目录图集的整数 id。 ── */
-function emptyMediaView(){return {media:'videos',set:0}}
-const parseMediaView=search=>{const params=new URLSearchParams(search),set=params.get('set')||'';
-  return {media:params.get('media')==='photos'?'photos':'videos',set:/^\d+$/.test(set)?Number(set):0}};
-const entityViewSearch=(filters,view)=>{const params=new URLSearchParams(entityFilterSearch(filters));
-  if(view&&view.media==='photos'){params.set('media','photos');if(view.set)params.set('set',String(view.set))}
-  return params.toString()};
-const routeEntityView=(kind,name,view)=>{
-  const filters=barsContext.type==='entity'?barsContext.filters:emptyEntityFilters();
-  const search=entityViewSearch(filters,view);
-  route(entityPath(kind,name)+(search?'?'+search:''))};
-const photoTotalOf=()=>entityPhotos&&!entityPhotos.error?(entityPhotos.total||0):0;
-const codeSetsOf=(data=entityPhotos)=>data&&!data.error?(data.sets||[]).filter(set=>set.kind==='code'):[];
-// 照片档出不出看两样：本地有图，或者名下作品有官方样张。只有样张时整面墙就是样张。
-const photosAvailable=()=>photoTotalOf()>0||codeSetsOf().length>0;
-
-/* 这一页当前是哪个视图。名册和媒体不共用 `entityMediaView`：地址栏只认 `media`，
-   而名册是事务所页的默认视图，进页面就该在那里，不靠一个参数撑着。 */
-function entityViewNow(kind){return (kind==='agency'||kind==='studio')&&entityRosterView==='people'&&entityRoster.length
-  ?'people':(entityMediaView.media==='photos'?'photos':'videos')}
-
-/* 按下去那一下视图键就换过去，玻璃跟着滑，不等换视图的活干完：切到视频要取一次作品，
-   反馈跟着等就是点完先僵一下再亮。等的这一下读数换成微光，排序键已经是视频那一排。 */
-async function switchEntityMedia(kind,name,filters,media){
-  if(entityViewNow(kind)===media&&!entityMediaView.set)return;
-  entityRosterView=media==='people'?'people':'videos';
-  if(media==='people'){
-    entityMediaView=emptyMediaView();
-    routeEntityView(kind,name,entityMediaView);
-    renderEntityRoster(entityRoster);
-    return;
-  }
-  entityMediaView=media==='photos'?{media:'photos',set:0}:emptyMediaView();
-  routeEntityView(kind,name,entityMediaView);
-  if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}
-  pushEntityFilter({view:'videos',busy:true,video:entityVideoHead(filters)});
-  const seq=++entityRequestSeq;
-  const items=await fetchEntityItems(kind,name,filters);
-  if(seq!==entityRequestSeq)return;
-  renderEntityCollection(kind,name,items,filters);
-}
-
-async function openPhotoSet(kind,name,filters,setId,push=true){
-  const seq=++entityRequestSeq;
-  const data=await api('/api/photo-set?id='+setId+'&limit=120');
-  if(seq!==entityRequestSeq||data.error)return;
-  entityMediaView={media:'photos',set:setId};
-  if(push)routeEntityView(kind,name,entityMediaView);
-  renderPhotoWall(kind,name,filters,data);
-}
-function showAllPhotos(kind,name,filters,push=true){
-  entityMediaView={media:'photos',set:0};
-  if(push)routeEntityView(kind,name,entityMediaView);
-  renderPhotoWall(kind,name,filters,entityPhotos);
-}
-
-/* 换一批：换一粒种子把这一屏重排一遍，整组照片或单个图集都是。翻页沿用回话里带回的
-   那一粒。等的这一下键上转圈，跟首页那枚一样：转圈归浮层那枚键自己，它等的就是这个
-   Promise 落定。 */
-async function shufflePhotos(kind,name,filters,setId){
-  const seq=++entityRequestSeq,seed=encodeURIComponent(rollSeed());
-  const data=await api(setId
-    ?`/api/photo-set?id=${setId}&limit=120&seed=${seed}`
-    :`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&seed=${seed}`);
-  if(seq!==entityRequestSeq||data.error)return;
-  if(!setId)entityPhotos=data;
-  renderPhotoWall(kind,name,filters,data);
+/* 卡片网格原样要的那几样与展示设置随挂载带上现值，之后由各自的开关经 `updateIsland` 推最新值。 */
+function entityPageProps(kind,name,filters,media,hosts){
+  return {kind,name,filters,media,hosts,
+    jav:state.jav==='1',seed:String(state.seed||''),revision:entityPageRevision,feedRevision,
+    photoSize:photoSize(),photoLayout:photoLayout(),photoLayouts:PHOTO_LAYOUTS,
+    javLayout:javLayout(),javLayouts:JAV_LAYOUTS,states:VIEW_PILLS,peopleLayout:peopleIndexLayout(),
+    layout:catalogGridLayout(),selectMode,selected:new Set(selected),seekSeconds:appSettings.seekSeconds,
+    groupCollapse:appSettings.groupCollapse,cache,wireDrag,skeletonHtml:entityBodySkeleton,
+    canLoadMore:entityBodyCanLoadMore,
+    card:entityCard,helpers:entityPageHelpers,actions:entityPageActions(kind,name)};
 }
 function photoSize(){
   return allowedSetting(appSettings.photoSize,PHOTO_SIZES.map(([key])=>key),'small');
 }
 function photoLayout(){return allowedSetting(appSettings.photoLayout,['fixed','masonry'],'masonry')}
 /* 资料页与关注页那面墙都由岛异步画，刚推过去的这一刻 DOM 里还没有它：按视图状态判，不查墙。
-   剩下那一条认的是进页骨架里借照片墙网格的那一块。 */
+   资料页的视图由岛每次画完报回来（`painted`）。剩下那一条认的是进页骨架里借照片墙网格的那一块。 */
 function photoViewActive(){
-  if(entityBodyView==='photos'&&entityBodyCurrent()&&!$('#index').hidden)return true;
+  if(entityPageView==='photos'&&entityPageCurrent()&&!$('#index').hidden)return true;
   if(location.pathname==='/follow'&&followMediaView==='images'&&!$('#stats').hidden)return true;
   return [...document.querySelectorAll('.followphotowall')].some(wall=>wall.getClientRects().length>0)}
 function syncPhotoWalls(){
@@ -3891,8 +3562,12 @@ function syncPhotoWalls(){
   document.querySelectorAll('.followphotowall').forEach(wall=>{
     wall.dataset.size=photoSize();wall.dataset.layout='fixed';
     wall.dataset.imagesOnly=String(!!appSettings.followImagesOnly)});
-  pushEntityBody({photoSize:photoSize(),photoLayout:photoLayout()});
+  pushEntityPage({photoSize:photoSize(),photoLayout:photoLayout()});
   pushFollowFeed({photoSize:photoSize(),photoLayout:photoLayout(),imagesOnly:!!appSettings.followImagesOnly});
+  syncDensityControl();
+}
+/* 顶栏那枚大小图键：停在照片墙上时管照片的大小，别处管卡片密度。 */
+function syncDensityControl(){
   if(photoViewActive()){
     $('#density').setAttribute('aria-pressed',String(photoSize()==='small'));
     $('#density').title='当前：'+(photoSize()==='big'?'大图':'小图');
@@ -3904,48 +3579,6 @@ function syncPhotoWalls(){
 function setPhotoSize(value){
   appSettings.photoSize=allowedSetting(value,PHOTO_SIZES.map(([key])=>key),'small');
   saveSettings();
-  syncPhotoWalls();
-}
-const photoReadout=(data,codeSets)=>'照片 · '+[
-  data.total||!codeSets.length?`${(data.total||0).toLocaleString()} 张`:'',
-  codeSets.length?`样张 ${(data.sample_total||0).toLocaleString()} 张 · ${codeSets.length} 部作品`:'']
-  .filter(Boolean).join(' · ');
-
-/* 照片这一栏跟视频那一栏是同一块浮层的下半（`entity-filter` 岛），这一排不给排序键：排序
-   读的是每条记录上的值，而账本里图片只有文件名、体积和来源三样。这一排只放张数、换一批与
-   图片布局，图集里再加那两枚源文件键。不点换一批时按文件名排：`001.jpg` 这类编号本来就是
-   一套图的顺序。换一批只打散本地图片，样张的顺序就是官方给的顺序，文件也不在本机。 */
-const photoHead=(data,{back=false,codeSets=[]}={})=>({
-  readout:back?`${data.title} · ${(data.total||0).toLocaleString()} 张`:photoReadout(data,codeSets),
-  // 只有样张时没有本地图可换，换一批那枚键不出。
-  photo:{back,shuffle:!!data.total,layout:photoLayout(),layouts:PHOTO_LAYOUTS,setId:back?Number(data.id):0}});
-/* 样张各段在前、本地图片那一面墙在后，翻页只数本地图片：样张一次铺完，不走分页。 */
-const localPhotoCount=()=>entityPhotoWall?entityPhotoWall.items.length:0;
-/* 推给岛的是这一屏的整份照片（`entity-body` 的 `photos`）：换一批、进出图集时换代，墙从头画；
-   翻页只把本地图片接长。下一页怎么取记在 `entityPhotoMore` 里，岛那枚「载入更多」调它，
-   取不到就抛错由键下的重试接住；取回时这一页已经换走就不接。 */
-function renderPhotoWall(kind,name,filters,data,append=false){
-  if(!entityBodyCurrent())return;
-  const entityWide=!data.id;
-  if(!append||!entityPhotoWall){
-    const codeSets=entityWide?codeSetsOf(data):[];
-    entityPhotoWall={revision:++entityPhotoRevision,codeSets,items:[],total:data.total||0,hasMore:false};
-    const head=photoHead(data,{back:!entityWide,codeSets});
-    entityPhotoHeadNow=head.photo;
-    pushEntityFilter({view:'photos',busy:false,...head});
-    releaseHoverPreviews(entityBodyHost);
-  }
-  entityPhotoWall={...entityPhotoWall,items:[...entityPhotoWall.items,...(data.items||[])],hasMore:!!data.has_more};
-  const seq=entityRequestSeq,seed=data.seed?`&seed=${encodeURIComponent(data.seed)}`:'';
-  const isCurrent=()=>seq===entityRequestSeq&&$('#index').dataset.entityKind===kind&&$('#index').dataset.entityName===name;
-  entityPhotoMore=data.has_more?async()=>{
-    const next=await api(entityWide
-      ? `/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${localPhotoCount()}${seed}`
-      : `/api/photo-set?id=${data.id}&limit=120&offset=${localPhotoCount()}${seed}`);
-    if(!isCurrent())return;
-    if(next.error)throw new Error(next.error);
-    renderPhotoWall(kind,name,filters,next,true)}:null;
-  pushEntityBody({view:'photos',photos:entityPhotoWall});
   syncPhotoWalls();
 }
 
@@ -4027,19 +3660,12 @@ function wireSourceTools(root,done){
   if(sync)sync.onclick=()=>syncMissing(Number(sync.dataset.sync),status,done);
 }
 
-/* 名字下拉的行为：在已有的名字里挑一个当统称，或者添一个新的。换统称改的是
-   `entity.canonical_name` 这个真相字段，所以只在服务端换完之后才重画这一页；撤销
-   同样是一次真实写回，不在本地把标题改回去当成功。添别名写的是 `entity_alias`，
-   两者分成两个端点：一个是身份补充、有自己的冲突判定，一个只在本条实体的名字里选。
-   菜单本身在资料卡的岛里（`name-picker.tsx`），这里是它递过来的两件事。 */
-const renameEntity=(kind,from,to)=>api('/api/entity-name',
-  {method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});
-async function addEntityAlias(kind,current,mine){
-  const alias=payload=>api('/api/entity-alias',
-    {method:'POST',body:JSON.stringify({kind,name:current,...payload})});
-  /* 添别名只往这条实体上加一个写法，不改任何已有断言，所以不再问一遍；撤销摆在
-     同一个弹层里，添和撤是一件事的两头。写回来的名字随后就出现在这个菜单里，
-     要把它提成统称再点一次即可——那一步有它自己的代价，仍走确认。 */
+/* 「添加别名」弹层。名字下拉本身在资料卡里（`name-picker.tsx`），换统称的确认也在岛里；这一段
+   只是弹层的表单与回执，写回交给岛递进来的 `write`（`/api/entity-alias`，成功后岛重取资料与作品）。
+   添别名写的是 `entity_alias`，只往这条实体上加一个写法，不改任何已有断言，所以不再问一遍；撤销
+   摆在同一个弹层里，添和撤是一件事的两头。写回来的名字随后就出现在下拉里，要把它提成统称再点
+   一次即可——那一步有它自己的代价，仍走确认。 */
+async function entityAliasForm(mine,write){
   const form=formModal({
     title:'添加别名',
     description:'图库按名字存图，多记一个写法就多一批候选；这里添的名字也能提为统称。',
@@ -4052,7 +3678,7 @@ async function addEntityAlias(kind,current,mine){
             aria-label="撤销别名 ${esc(one)}">${icon('x')}</button></span>`).join('')}</div></div>`:''),
     confirmLabel:'添加别名',
     confirmDisabled:true,
-    onConfirm:()=>alias({alias:field.value.trim()})});
+    onConfirm:()=>write({alias:field.value.trim()})});
   const field=form.dialog.querySelector('[name=alias]');
   field.oninput=()=>{form.confirmButton.disabled=!field.value.trim()};
   /* 撤销只认自己添的那几个：刮削和合并留下的别名是这条实体当初被认成这个人的依据，
@@ -4060,34 +3686,15 @@ async function addEntityAlias(kind,current,mine){
   form.dialog.querySelectorAll('[data-alias-drop]').forEach(chip=>chip.onclick=async()=>{
     const gone=chip.dataset.aliasDrop;
     form.close();
-    try{await alias({alias:gone,remove:true})}
+    try{await write({alias:gone,remove:true})}
     catch(error){actionFailure('撤销别名',error);return}
-    actionReceipt(`已撤销别名 ${gone}`,{undo:async()=>{
-      await alias({alias:gone});await openEntity(kind,current)}});
-    await openEntity(kind,current);
+    actionReceipt(`已撤销别名 ${gone}`,{undo:async()=>{await write({alias:gone})}});
   });
   const {confirmed,result}=await form.done;
   if(!confirmed)return;
   if(result?.added)actionReceipt(`已添加别名 ${result.alias}`,{undo:async()=>{
-    await alias({alias:result.alias,remove:true});await openEntity(kind,current)}});
+    await write({alias:result.alias,remove:true})}});
   else actionReceipt(`${result?.alias} 已经是这条实体的名字`);
-  await openEntity(kind,current);
-}
-async function chooseEntityName(kind,current,chosen){
-  if(chosen===current)return;
-  /* 换统称要重写整条实体的扁平投影，先把代价说清再问。确认键、标题和成功回执共用
-     「更改统称」这一个动词；写入失败时弹层留在原地，原因写在正文下方等重试。 */
-  const {confirmed,result}=await confirmModal({
-    title:'更改统称',
-    body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`
-      +'作品上的署名、搜索和标签都会跟着改写。',
-    confirmLabel:'更改统称',
-    onConfirm:()=>renameEntity(kind,current,chosen)});
-  if(!confirmed||!result?.changed)return;
-  actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{
-    await renameEntity(kind,result.canonical_name,result.previous_name);
-    await openEntity(kind,result.previous_name)}});
-  await openEntity(kind,result.canonical_name);
 }
 
 /* 横着滚的那一行两端要渐隐：不然浮层圆角那儿最后一个标签被直角硬切掉半个字，
@@ -4125,66 +3732,21 @@ function showEntityMissing(kind){
   const actions=INDEX_TITLES[index]?`<a class="geist-button primary" href="/${index}">返回${title}列表</a>`:'';
   $('#index').innerHTML=emptyState('search-x',`找不到这个${title}`,'名字可能拼错了，或者已经合并到别的名字下；回列表里重新找。',{actions});
 }
-/* 资料卡要做的写操作和站内跳转。岛不自己拼请求：失败回执、确认弹层与「写完重进这一页」
-   都和壳里其余页面同一套。 */
-function entityHeroActions(kind,name,d,host){
-  const id=Number(d.id);
-  return {
-    openEntity:(target,to)=>void openEntity(target,to),
-    chooseName:chosen=>void chooseEntityName(kind,d.canonical_name,chosen),
-    addAlias:()=>void addEntityAlias(kind,d.canonical_name,d.user_aliases||[]),
-    follow:async on=>{
-      try{
-        await api('/api/feeds/source',{method:'POST',
-          body:JSON.stringify({action:'follow',entity_id:id,enabled:on})});
-      }catch(error){actionFailure(on?'订阅新作':'取消订阅新作',error);throw error}
-    },
-    refreshFeedAfterCheck:()=>void refreshEntityFeedAfterCheck(host),
-    // 忽略与已读都是标记，写失败了卡片照样收起：这一行下次取数时会按服务端的现状重排。
-    feedAction:(feedId,action)=>api('/api/feeds/discovery',{method:'POST',
-      body:JSON.stringify({action,ids:[feedId]})}).then(()=>undefined,()=>undefined),
-    /* 圆框角上那个加号。换完重进这一页：头像索引在服务端已经失效过一次，重画才读得到新图。 */
-    avatarPicked:()=>void openEntity(kind,name,false),
-  };
-}
-/* 资料卡里仍由遗留层拼的那几段：头像的 `<img>`（兜底链、人脸放大与等待微光都直接改这个
-   节点）、横滚行的拖动与滚轮、回执。 */
-function entityHeroHelpers(kind,d){
-  /* 大位这条链每一环都先问过再出图：公司取自己的标识（厂牌是 `/logo`，事务所是官网
-     圆标），人是实体图→代表作头像，一环都取不到就一个 `<img>` 都不出，首字母垫底直接
-     露出来。四个标志（`has_logo`／`has_image`／`has_avatar`／`mark_link_id`）都由
-     `/api/entity` 随资料下发。
-
-     作品截图不给公司用：厂牌那张是自家片没错，可这一页要认的是牌子；事务所名下的片
-     更是成员各自拍的，拿其中一部的画面当门面，说的是别人的事。 */
-  const company=kind==='studio'||kind==='agency';
-  return {
-    portraitImg:()=>d.id?entityFaceImg({kind,id:d.id,hasImage:d.has_image,
-      rep:company||!d.has_avatar?null:d.representative_asset_id,
-      mark:kind==='agency'?d.mark_link_id:null,
-      logo:company&&d.has_logo?d.canonical_name:'',logoVariant:'large',
-      alt:esc(d.canonical_name),lazy:false,
-      style:company?'':facePos(d.avatar_focus),focus:company?null:d.avatar_focus,
-      dropStyle:true}):'',
-    costarImg:x=>entityFaceImg({id:x.id,hasImage:x.has_image,rep:x.has_avatar?x.rep:null,
-      style:facePos(x.avatar_focus),focus:x.avatar_focus}),
-    wireScroller:row=>{if(row)wireDrag(row)},
-    wireFeedRow:row=>{
-      if(!row)return;
-      wireDrag(row);
-      if(appSettings.feedAutoScroll)wireAutoScroll(row);
-    },
-    receipt:(message,options)=>actionReceipt(message,options),
-  };
-}
+/* 资料页的路由入口：写地址、铺骨架、挂岛。取数与页内状态都在岛里，挂载时 `prefetch` 把资料
+   （连同新作）、作品第一页与照片取齐，骨架与整页一次换掉。前进后退落在同一位的另一份筛选上时
+   这一页还挂着，只把地址上的新筛选推过去，不重挂。 */
 async function openEntity(kind,name,push=true){
-  releaseHoverPreviews();releaseEntityBody();
   const filters=push?emptyEntityFilters():parseEntityFilters(location.search);
   if(kind==='creator')filters.creator='';
-  const expectedPath=entityPath(kind,name);
   // 深链和前进后退要能直接落到照片视图；点进来的新页面一律从作品开始。
-  entityMediaView=push?emptyMediaView():parseMediaView(location.search);
-  const search=entityViewSearch(filters,entityMediaView);
+  const media=push?EMPTY_ENTITY_MEDIA:parseMediaView(location.search);
+  if(!push&&barsContext.type==='entity'&&barsContext.kind===kind&&barsContext.name===name
+    &&routeEntityPage(kind,name,filters,media,{push:false})){
+    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);return;
+  }
+  releaseHoverPreviews();
+  const expectedPath=entityPath(kind,name);
+  const search=entityViewSearch(filters,media);
   if(push)route(expectedPath+(search?'?'+search:''));
   barsContext={type:'entity',kind,name,filters};
   showHomeSurfaces();
@@ -4193,6 +3755,8 @@ async function openEntity(kind,name,push=true){
   $('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();hideCatalogCombo();
   $('#count').textContent='';$('#loadSentinel').hidden=true;
   const seq=++entityRequestSeq;
+  // 资料页是 React 岛：包在等名单、铺骨架的这一下就开始取，挂载时取数不再排在下包后面。
+  void preloadIslands();
   /* 名单启动时就在取；深链直接落在资料页时它可能还在路上，稍等一下再画骨架，画出来
      就是最终的形状。等不到就先画，名单到了再补那两块。 */
   if(!entityShapes){
@@ -4201,93 +3765,29 @@ async function openEntity(kind,name,push=true){
   }
   showEntityLoading(kind,name);
   detailReturnBarsContext=null;
-  entityJavLayout=false;
-  entityRosterView='people';
+  entityJavLayout=false;entityPageView='';
   // 名单每进一页重取一遍，下一页用的就是服务端的现状。
   void loadEntityShapes().then(()=>{if(seq===entityRequestSeq)syncEntitySkeletonParts(kind,name)});
-  const [d,items,photos]=await Promise.all([
-    // 新作那一行跟资料一起到：资料一回来就接着取这一页的新作和头几张封面，和作品、图集并行，
-    // 三样齐了整页一次画出，不再是整页先出来、那一行再单独等一轮。
-    api(`/api/entity?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`).then(async d=>{
-      if(d&&!d.error&&d.id)d.feedNew=await loadFeedNew(d.id,true);
-      return d}),
-    fetchEntityItems(kind,name,filters),
-    api(`/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}`),
-    // 资料卡是 React 岛：包和资料一起取，数据一到就能画。
-    preloadIslands()]);
-  if(seq!==entityRequestSeq||
-     decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath))return;
-  if(d.error){showEntityMissing(kind);return}
-  /* 直达或刷新资料页时 URL 没有 `jav=1`。以返回作品的真实 `is_jav` 恢复女优／厂牌
-     语境，避免大图／小图／预览图按钮只在从 JAV 首页点进来时偶然存在。 */
-  entityJavLayout=(kind==='performer'||kind==='studio')&&
-    (state.jav==='1'||(items.items||[]).some(item=>item.is_jav));
-  document.body.classList.add('entity-open');syncCatalogFilterScreen();
-  $('#index').hidden=false;clearCatalogGrid();$('#count').textContent='';
-  $('#loadSentinel').hidden=true;
-  entityFilterTagRows=d.tags||[];
-  /* 事务所名下的这批人不摆在资料卡底那排小圆头像里：那是「同台艺人」，一条附注；名册是
-     这一页的正文，占的是下面那整块。所以同一份 `related_performers` 在事务所页走另一条路。
-     片商页的名册是旗下 label（`d.labels`），同台艺人那排照旧留在卡底。 */
-  const roster=kind==='agency'?(d.related_performers||[]):kind==='studio'?(d.labels||[]):[];
-  entityRoster=roster;entityRosterKind=kind==='studio'?'studio':'performer';
-  // 照片那枚键数的是这一档里能看的图：本地图片加番号样张。
-  const photoCount=photos&&!photos.error?(photos.total||0)+(photos.sample_total||0):0;
-  /* 艺人名册、视频、照片是这一页的三个互斥视图，共用一组圆键：它们回答的是同一个
-     问题，摆成两个控件只会各说各的。切换只重画下面那块，不重开这一页——名册已经随
-     资料下来了，视频那一半本来也要请求。
-
-     这一组排在整条筛选条的最左端，隔一道竖杠再是四枚观看状态、再一道才是标签。三段
-     由粗到细：先定这一页现在摆的是哪一类东西，再定这一类里看哪一档，最后才是可加可
-     不加的筛选。夹在视图和标签中间时它读起来像标签那排的第一枚，而它换掉的是整页
-     内容，不是给当前这批加一条筛选。只有一类东西时不出这一组：一枚孤零零的键没有可切的对象。 */
-  const views=(photoCount||roster.length)?{label:roster.length?'页面视图':'媒体类型',
-    people:roster.length?{label:kind==='studio'?'厂牌':'艺人',count:roster.length,
-      icon:kind==='studio'?'clapperboard':'user-round'}:null,
-    videos:{count:d.asset_count||0},photos:photoCount?{count:photoCount}:null}:null;
-  entityPhotos=photos&&!photos.error?photos:null;
-  if(entityMediaView.media==='photos'&&!photosAvailable())entityMediaView=emptyMediaView();
-  $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
-  /* 资料卡与新作那一行归 React（`entity-hero`），资料卡下面的交集条与玻璃浮层（`entity-filter`）
-     和再下面那一整块正文（`entity-body`）也是。卡外面依次是交集条、玻璃筛选条、新作和正文，
-     顶到底一条线；新作那一行的容器留在筛选条和正文之间，由资料卡那座岛接管。三座岛挂上之前
-     宿主都是空的：React 包已随取数预载好，挂载里剩下的都是微任务，换掉骨架与画出整页落在同一帧。 */
-  if(entityFilterHost)unmountIsland(entityFilterHost);
-  $('#index').innerHTML=`<div data-entity-hero="${d.id?Number(d.id):''}"></div>
-    <div data-entity-filter></div>
+  /* 卡外面依次是交集条与玻璃浮层、新作和正文，顶到底一条线。四块宿主先在文档外排好，岛取齐数据
+     那一刻才换掉骨架：换掉与画出整页落在同一帧。浮层与正文各带一层 `.peach-react`（React 子树的
+     样式范围）；新作那一行是遗留层的卡片，宿主不进这个范围。 */
+  const frame=document.createElement('template');
+  frame.innerHTML=`<div data-entity-hero></div>
+    <div data-entity-filter><div class="peach-react"></div></div>
     <section class="feednew" data-feed-new aria-label="未入库的新作" hidden></section>
-    <div data-entity-body></div>`;
-  const heroHost=$('#index').querySelector('[data-entity-hero]');
-  const filterHost=$('#index').querySelector('[data-entity-filter]');
-  const bodyHost=$('#index').querySelector('[data-entity-body]');
-  entityHeroHost=heroHost;entityFilterHost=filterHost;entityBodyHost=bodyHost;entityPhotoHeadNow=null;
-  entityPhotoWall=null;entityPhotoMore=null;
-  const onPage=host=>()=>seq===entityRequestSeq&&host.isConnected;
-  const view=entityViewNow(kind);entityBodyView=view;
-  await Promise.all([
-    mountIsland('entity-hero',heroHost,{kind,name,entity:d,feedNew:d.feedNew||null,
-      feedHost:d.id?$('#index').querySelector('[data-feed-new]'):null,jav:entityJavLayout,
-      actions:entityHeroActions(kind,name,d,heroHost),helpers:entityHeroHelpers(kind,d)},
-    {isCurrent:onPage(heroHost)}),
-    /* 读数由下面那一格画完时推过来；深链直达一个图集时要先取这一组，读数先是微光。 */
-    mountIsland('entity-filter',filterHost,{kind,name,view,views,
-      state:filters.state||'',states:VIEW_PILLS,tags:entityFilterTags(filters),combo:comboItems(filters),
-      readout:'',busy:!!(entityMediaView.media==='photos'&&entityMediaView.set),
-      video:entityVideoHead(filters),photo:null,
-      actions:entityFilterActions(kind,name,filters),helpers:entityFilterHelpers(kind,name,filters)},
-    {isCurrent:onPage(filterHost)}),
-    /* 作品第一页不论落在哪个视图都已取回：落在作品视图时首帧就是卡片，切过去也不必再等。 */
-    mountIsland('entity-body',bodyHost,{...entityGridShared(),kind,name,view,roster:entityRosterProps(),
-      items,revision:++entityBodyRevision,fetchPage:entityItemsFetcher(kind,name,filters),
-      photos:null,photoSize:photoSize(),photoLayout:photoLayout(),
-      helpers:entityBodyHelpers,actions:entityBodyActions,cache,wireDrag,skeletonHtml:entityBodySkeleton,
-      canLoadMore:entityBodyCanLoadMore},
-    {isCurrent:onPage(bodyHost)})]);
-  if(seq!==entityRequestSeq||!heroHost.isConnected)return;
-  if(view==='people')renderEntityRoster(roster);
-  else if(view==='videos')pushEntityVideoHead(items,filters);
-  else if(entityMediaView.set)await openPhotoSet(kind,name,filters,entityMediaView.set,false);
-  else renderPhotoWall(kind,name,filters,entityPhotos);
+    <div data-entity-body><div class="peach-react"></div></div>`;
+  const parts=[...frame.content.childNodes];
+  const heroHost=frame.content.querySelector('[data-entity-hero]');
+  const hosts={filter:frame.content.querySelector('[data-entity-filter]>.peach-react'),
+    feed:frame.content.querySelector('[data-feed-new]'),
+    body:frame.content.querySelector('[data-entity-body]>.peach-react')};
+  entityPageHost=heroHost;entityBodyHost=hosts.body.parentElement;
+  const isCurrent=()=>seq===entityRequestSeq&&
+    decodeURIComponent(location.pathname)===decodeURIComponent(expectedPath);
+  await mountIsland('entity-page',heroHost,entityPageProps(kind,name,filters,media,hosts),{isCurrent,
+    reveal:(_el,paint)=>{$('#index').replaceChildren(...parts);paint()}});
+  if(!isCurrent()||!entityPageCurrent())return;
+  $('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;
   buildBars();
   window.scrollTo({top:0,behavior:'smooth'});
 }
@@ -4647,9 +4147,9 @@ function javActive(){
 }
 /* 发行时间只对有正式发行证据的番号列表有意义。普通馆藏继续使用入库时间，
    避免把大量空日期的创作者作品挂上一个看似可用、实际无值的排序。 */
-function sortOptions(){
+function sortOptions(jav=javActive()){
   const ordered=SORTS.filter(([key])=>key!=='seed');
-  return javActive()?[JAV_RELEASE_SORT,...ordered]:ordered;
+  return jav?[JAV_RELEASE_SORT,...ordered]:ordered;
 }
 /* 点未选中项＝换列并用该列的默认方向；点选中项＝翻方向。随机没有方向，重复点它
    什么都不做——换一批是它旁边那枚按钮的事。 */
@@ -4707,7 +4207,9 @@ async function reloadCurrentSurface(){
   const index=$('#index');
   const kind=index?.dataset.entityKind,name=index?.dataset.entityName;
   if(kind&&name&&!index.hidden){
-    await updateEntityCollection(kind,name,parseEntityFilters(location.search),false);
+    // 换一个代次，岛按地址上的筛选重取作品；照片与名册不受批量操作影响。还没挂上就照地址重开。
+    if(entityPageLive(kind,name))pushEntityPage({revision:++entityPageRevision});
+    else await openEntity(kind,name,false);
     return;
   }
   const hit=matchRoute(ROUTES,decodeURIComponent(location.pathname));
@@ -4861,9 +4363,8 @@ async function loadCatalog(){
   if(isFeedNewPath(location.pathname)){
     await entityShapesReady;
     if(!surfaceCurrent(surface))return;
-    prepareHomeFeed($('#feedNew'));
-    void renderFeedNew($('#feedNew'));
-  }else{$('#feedNew').hidden=true;$('#feedNew').innerHTML='';$('#feedNew').removeAttribute('aria-busy')}
+    renderHomeFeed();
+  }else clearHomeFeed();
   renderCombo();
   $('#count').classList.remove('manage-static','junkcount');
   return paintCatalogGrid(surface);
@@ -4925,7 +4426,7 @@ function catalogCardRatio(){
 /* 挂着卡片网格的几处：目录 `#grid`、资料页作品区、作品详情（接着看那一排在它里面，版式、
    快进秒数与选择态同名递进去）。 */
 function gridIslandHosts(){
-  return [$('#grid'),entityBodyCurrent()?entityBodyHost:null]
+  return [$('#grid'),entityPageCurrent()?entityPageHost:null]
     .filter(host=>host&&islandMounted(host));
 }
 /* 版式、「JAV 默认封面」、快进秒数这些展示层的设置变了，只推给正挂着的网格重画，不重取。 */

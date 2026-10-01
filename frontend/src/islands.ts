@@ -39,9 +39,8 @@ export interface IslandContracts {
   'catalog-grid': ReactBundle.CatalogGridProps;
   'data-cleanup': ReactBundle.DataCleanupProps;
   duplicates: ReactBundle.DuplicatesProps;
-  'entity-body': ReactBundle.EntityBodyProps;
-  'entity-filter': ReactBundle.EntityFilterProps;
-  'entity-hero': ReactBundle.EntityHeroProps;
+  'entity-page': ReactBundle.EntityPageProps;
+  'feed-new': ReactBundle.FeedNewProps;
   'follow-feed': ReactBundle.FollowFeedProps;
   'follow-manage': ReactBundle.FollowManageProps;
   index: ReactBundle.IndexProps;
@@ -72,9 +71,8 @@ const REGISTRY: { [N in IslandName]: Island } = {
   'catalog-grid': { react: 'catalog-grid' },
   'data-cleanup': { react: 'data-cleanup' },
   duplicates: { react: 'duplicates' },
-  'entity-body': { react: 'entity-body' },
-  'entity-filter': { react: 'entity-filter' },
-  'entity-hero': { react: 'entity-hero' },
+  'entity-page': { react: 'entity-page' },
+  'feed-new': { react: 'feed-new' },
   'follow-feed': { react: 'follow-feed' },
   'follow-manage': { react: 'follow-manage' },
   index: { react: 'index' },

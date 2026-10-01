@@ -6,8 +6,8 @@
  *
  * 结构与样式钩子沿用作品卡的 `data-media-*`（几何、悬停面、选中描边、勾选圆都在
  * `../components/media-card.css`），关注卡自己多出来的几格用 `data-follow-*`，写在
- * `./follow-feed.css`。标题前的版本字样、另见徽章、头像圆框与来源图标是遗留层拼的 HTML，详情里
- * 用的是同一份，这一格 React 不拥有里面的节点。
+ * `./follow-feed.css`。标题前的版本字样、另见徽章、头像圆框与来源图标是 `./follow-marks.ts` 拼的
+ * HTML 串，类名沿用遗留样式表，详情里用的是同一份，这一格 React 不拥有里面的节点。
  *
  * 一叠（`isMix`）悬停时逐张翻过组里彼此不同的画面，时序与门槛同 Mix 卡（`../components/use-stack-flip.ts`）。
  * 翻的是卡片渲染时就在手上的缩略图，悬停不为动画再发请求；第一张是静止封面本身。 */
@@ -19,6 +19,9 @@ import {
   followStack, itemForMedia, videoItems, type FollowContext, type FollowFeedActions, type FollowFeedHelpers,
   type FollowGroup, type FollowMedia, type FollowSource,
 } from './follow-feed';
+import {
+  followBadges, followIdentity, followMediaIssue, followTitleMarks, followWhen, learnFollowDims, sourceIcon,
+} from './follow-marks';
 
 /** 时长只在是真时长时写：来源没给、给了 0 或给了一个明显是占位的数，都不出这一格。 */
 const realDuration = (value: unknown) => Number(value) > 0;
@@ -79,7 +82,7 @@ function FollowCardView(props: FollowCardProps) {
     ? [cardMedia, itemOwnsCard ? item : null].find((owner) => Number(owner?.width) > 0 && Number(owner?.height) > 0)
     : null;
   const learn = imageView && !sized && thumbUrl
-    ? (width: number, height: number) => helpers.learnDims(item.id, cardMedia ? cardMedia.index : null, width, height)
+    ? (width: number, height: number) => learnFollowDims(item.id, cardMedia ? cardMedia.index : null, width, height)
     : undefined;
   const videos = media === 'videos' ? videoItems(group) : [];
   const embedded = item.media_items || [];
@@ -102,11 +105,11 @@ function FollowCardView(props: FollowCardProps) {
     if (el) el._stopHover = () => stop.current();
   }, []);
 
-  const identity = helpers.identity(item, authorSources, context);
-  const when = helpers.when(item);
+  const identity = followIdentity(item, authorSources, context);
+  const when = followWhen(item);
   const tags = (item.tags || []).slice(0, 3);
-  const issue = helpers.mediaIssue(item, context);
-  const badges = helpers.badges(group, item);
+  const issue = followMediaIssue(item, context);
+  const badges = followBadges(group, item);
   const saved = item.status === 'saved';
 
   const click = (event: MouseEvent<HTMLElement>) => {
@@ -132,7 +135,7 @@ function FollowCardView(props: FollowCardProps) {
           <button type="button" data-follow-open="" aria-label={`打开 ${item.title} 详情`} />
           {thumbUrl
             ? <Thumb key={thumbUrl} src={thumbUrl} width={sized?.width} height={sized?.height} onLearn={learn} />
-            : <span data-follow-nothumb="" dangerouslySetInnerHTML={{ __html: helpers.sourceIcon(item.resource_provider || item.provider) }} />}
+            : <span data-follow-nothumb="" dangerouslySetInnerHTML={{ __html: sourceIcon(item.resource_provider || item.provider) }} />}
           {stack.faces.length > 1 ? (
             <div data-mix-faces="" hidden={!flip.faces.length}>
               {flip.faces.map((src, index) => (
@@ -143,7 +146,7 @@ function FollowCardView(props: FollowCardProps) {
             </div>
           ) : null}
           <span data-media-badge="" title={item.provider_label} aria-label={`来源：${item.provider_label || ''}`}
-            dangerouslySetInnerHTML={{ __html: helpers.sourceIcon(item.provider) }} />
+            dangerouslySetInnerHTML={{ __html: sourceIcon(item.provider) }} />
           <span data-media-check="" onClick={(event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -188,7 +191,7 @@ function FollowCardView(props: FollowCardProps) {
           dangerouslySetInnerHTML={{ __html: identity.avatar }} />
         <div data-media-text="">
           <button type="button" data-media-title=""
-            dangerouslySetInnerHTML={{ __html: helpers.titleMarks(group, item) + esc(item.title) }} />
+            dangerouslySetInnerHTML={{ __html: followTitleMarks(group, item) + esc(item.title) }} />
           <div data-follow-byline="">
             <span data-follow-author="" title={identity.author}>{identity.author}</span>
             <time dateTime={item.published_at || ''} title={when}>{compactWhen(when)}</time>

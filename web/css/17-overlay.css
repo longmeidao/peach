@@ -29,4 +29,4 @@
    悬停预览由 JS 停止启动，文字不受图片滤镜影响。 */
 body.censor img,body.censor video,body.censor .vjs-poster{
   filter:blur(30px) saturate(.3) brightness(.6)}
-body.censor .brand .mark,body.censor .src img,body.censor .ficon{filter:none}
+body.censor .brand .mark,body.censor .src img,body.censor [data-follow-site-icon]{filter:none}

@@ -1,17 +1,7 @@
-/* ── 关注管理页 ──
-   取证记录见 docs/reference-snapshots/vercel-geist-controls-measured.md。
-   上一版把「避免卡片套卡片」误读成「不要任何容器」，做成了没有可读性的裸列表——
-   而同一份文档明确警告过不要因为躲开那些默认套路就做出一个无设计的模板。
-   2026-08-26 实测 vercel.com/templates：页面底色纯黑，卡片是 8px 圆角 +
-   1px `rgb(41,41,41)` 发丝边 + `rgb(10,10,10)` 比页面亮一档的表面，没有阴影。
-   所以容器要有框；不要的是**框里再套框**——卡片内部的行只用分隔线。
-   控件仍按实测 Geist：32px 高、14px 字、6px 圆角。 */
-.followmanage{padding:2px 0 48px;display:grid;gap:20px;width:min(812px,100%);
-  margin-left:auto;margin-right:auto;align-items:start;font-size:var(--fs-md)}
-.fmain{display:grid;gap:20px;min-width:0}
-/* 容器：发丝边 + 比页面亮一档的表面。内部的行不再各自套框。 */
-.fsec{min-width:0;border:1px solid var(--field-ring);border-radius:var(--surface-radius);
-  background:var(--ground);padding:14px 16px 16px}
+/* ── 关注一族与管理区共用的反馈控件 ──
+   关注管理页本身归 `follow-manage` 岛，分区卡是 `frontend/src/react/components/card.tsx`。这里剩下的
+   是壳与几座岛都在挂的 Geist Note、项目横幅、上下文卡、任务进度面板、创作者圆框、行内链接，
+   以及链接管理骨架与进度圆环。控件按实测 Geist（docs/reference-snapshots/vercel-geist-controls-measured.md）。 */
 
 /* Geist Note：字段、卡片、分区旁的持久上下文，以及需要用户处理的失败，全部走这里。
    瞬时回执用 toast，销毁确认用 dialog/confirm。整页范围的失败也是这个盒子，只是多
@@ -61,24 +51,10 @@
 .fwarn>span{min-width:0}
 .fwarn p{margin:0}
 
-/* 表格视图。数值取自 boardui.com/components/data-table 的 `.bui-table`（2026-09-08，
-   登记见 docs/BOARD_UI.md）：表头与格子都是 10px 12px 内边距、14/20、竖直居中；表头
-   500 字重、次要字色、次级底色、上下各一条分隔线；正文行只有一条下边线，悬停不换底。
-   窄屏不折叠列——它的做法是容器横向滚动，这里照做。 */
-.ftablewrap{overflow-x:auto;overscroll-behavior-x:contain}
-.ftable{width:100%;min-width:760px;border-collapse:collapse;text-align:left;font-size:var(--fs-md);line-height:20px}
-.ftable th,.ftable td{padding:10px 12px;vertical-align:middle}
-.ftable th{font-weight:500;white-space:nowrap;color:var(--muted);background:var(--sunk);
-  border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
-.ftable tbody tr{border-bottom:1px solid var(--line-soft)}
-.ftable tbody tr:last-child{border-bottom:0}
-
-/* 进度面板与它上下的分区是同一档容器：发丝边 --field-ring 加 --ground 的面。
-   `--border-10` 配 `--surface` 会让它在同一列里比 `.fsec` 亮一档、边又淡一档，
-   读起来像另一种东西浮在页面上。 */
+/* 进度面板（`frontend/src/jobs.ts`）：发丝边 --field-ring 配 primary 的白面，和 CheckboxCard 同一档，
+   躺在分区的 --ground 灰面上是一张白卡。 */
 .followtask{border:1px solid var(--field-ring);border-radius:var(--surface-radius);background:var(--color-background-primary-default);margin-bottom:16px}
 .followtask>.geist-fieldset-content{padding:20px;min-width:0;overflow-wrap:anywhere}
-.followmanage .followtask{margin-bottom:0}
 .favatar{width:28px;height:28px;flex:none;border-radius:var(--pill-radius);object-fit:cover;
   background:var(--overlay-5);outline:1px solid oklch(1 0 0 / 0.1);outline-offset:-1px}
 /* 取不到头像时是一个明确的空位，不是首字母——首字母会让「未取得」看着像取到了。 */
@@ -90,18 +66,6 @@
 .flink{border:0;background:none;padding:0;color:var(--tungsten);font:inherit;cursor:pointer}
 .flink:hover{color:var(--tungsten);text-decoration:none}
 .empty .flink{margin-left:6px}
-.followmanage [data-follow-workspace-panel="list"]{scroll-margin-top:calc(var(--topH) + 16px)}
-
-@media (max-width:640px){
-  .fsec{padding:12px 13px 14px}
-
-}
-
-/* 关注页底部：两个翻页动作同属列表末尾，放在一条底栏；
-   按钮仍保留各自的本地加载 / 站点抓取语义。 */
-.followpagination{display:flex;align-items:center;gap:14px 24px;min-width:0;margin:18px 0 0;
-  padding-top:14px;border-top:1px solid var(--line-soft);white-space:nowrap;overflow-x:auto}
-@media(max-width:640px){.followpagination{align-items:flex-start;flex-wrap:wrap;white-space:normal}}
 
 /* 资源标识统一由 MiddleTruncate 计算可见文本。星号让本规则与「类 + 元素」的末尾省略
    选择器同权重，并凭源码顺序覆盖，避免两套省略同时生效。 */

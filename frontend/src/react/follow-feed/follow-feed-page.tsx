@@ -27,6 +27,7 @@ import { FOLLOW_CHECK_URL, FOLLOW_STATUS_URL } from '../follow-manage/follow-man
 import { sidebarTagCounts } from '../../sidebar';
 import { queryClient } from '../query';
 import { FollowCard } from './follow-card';
+import { authorAvatarHtml, followAuthorName, sourceIcon } from './follow-marks';
 import {
   FOLLOW_CREDENTIALS_KEY, FOLLOW_FEED_SORTS, FOLLOW_FILTERS, FOLLOW_TAGS_FIRST, FOLLOW_WORKS_FIRST,
   collectionItems, dropCondition, fetchFollowCredentials, followConditions, followFeedQuery, groupMediaKinds, groupTagType, itemForMedia,
@@ -131,7 +132,7 @@ export function FollowFeedPage(props: FollowFeedProps) {
   }
   const route = (patch: Partial<FollowView>) => actions.route({ ...view, ...patch });
   const conditions = followConditions({ ...view, author: facets.author, provider: facets.provider }, {
-    authors: new Map([...facets.authorSources].map(([key, list]) => [key, helpers.authorName(list, context)])),
+    authors: new Map([...facets.authorSources].map(([key, list]) => [key, followAuthorName(list, context)])),
     providers: facets.providers,
     works: facets.workNames,
   });
@@ -284,8 +285,8 @@ function Authors({ facets, pressed, context, props, onPick }: {
         const list = facets.authorSources.get(key) || [];
         return (
           <button key={key} type="button" data-follow-author={key} aria-pressed={pressed === key} onClick={() => onPick(key)}>
-            <span data-follow-ring="" dangerouslySetInnerHTML={{ __html: props.helpers.authorAvatar(list, context) }} />
-            <span data-follow-name="">{props.helpers.authorName(list, context)}</span>
+            <span data-follow-ring="" dangerouslySetInnerHTML={{ __html: authorAvatarHtml(list, followAuthorName(list, context)) }} />
+            <span data-follow-name="">{followAuthorName(list, context)}</span>
           </button>
         );
       })}
@@ -384,7 +385,7 @@ function Glass({ facets, view, total, busy, props, route }: {
               <button key={key} type="button" data-follow-provider={key} data-entity-press=""
                 aria-pressed={facets.provider === key} title={label} aria-label={`来源：${label}`}
                 onClick={() => route({ provider: facets.provider === key ? '' : key })}
-                dangerouslySetInnerHTML={{ __html: helpers.sourceIcon(key) }} />
+                dangerouslySetInnerHTML={{ __html: sourceIcon(key) }} />
             ))}
             {providers.length && facets.tagRows.length ? <Sep /> : null}
             {facets.tagRows.map(([tag, n]) => (

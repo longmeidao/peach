@@ -318,13 +318,15 @@ class SourceIconTableTests(unittest.TestCase):
         """页面只认名单、服务端只认地址：两边各写一份就会漂，漂了就是一格空白。"""
         for provider, url in follow_assets.SOURCE_ICON_URLS.items():
             self.assertTrue(url.startswith("https://"), (provider, url))
-        page = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(encoding="utf-8")
-        raw = re.search(r"const SOURCE_ICON_PROVIDERS=new Set\(\[(.*?)\]\);", page, re.S).group(1)
+        root = Path(__file__).resolve().parents[1]
+        listing = (root / "frontend" / "src" / "react" / "follow-manage" / "follow-manage.ts").read_text(encoding="utf-8")
+        raw = re.search(r"export const SOURCE_ICON_PROVIDERS = new Set\(\[(.*?)\]\);", listing, re.S).group(1)
         listed = {item.strip().strip("'") for item in raw.split(",") if item.strip()}
         self.assertEqual(listed, set(follow_assets.SOURCE_ICON_URLS))
-        # 页面里不再有任何一条站点图标的远端地址：图标全部经 Peach 落盘后再给页面。
-        self.assertNotIn("favicon.ico'", page)
-        self.assertIn("src=\"/source-icon?provider=${encodeURIComponent(provider)}\"", page)
+        # 页面里没有任何一条站点图标的远端地址：图标全部经 Peach 落盘后再给页面，
+        # 图标地址怎么拼在 `frontend/test/react/follow-marks.test.ts`。
+        for page in (listing, (root / "web" / "app.js").read_text(encoding="utf-8")):
+            self.assertNotIn("favicon.ico'", page)
 
 
 if __name__ == "__main__":

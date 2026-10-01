@@ -5,6 +5,8 @@
  * 右边的资料表、外链、外部入口和同台艺人。 */
 import { brandIcon, foldName, linkMarkUrl, officialLinkText } from '@peach/legacy/core';
 
+import type { FeedNew } from '../feed-new/feed-new';
+
 /** 一条外链，形状同 `/api/entity` 的 `links[]`。 */
 export interface HeroLink {
   link_id?: number | null;
@@ -80,12 +82,6 @@ export interface EntityHeroData {
   name_groups?: HeroNameGroups | null;
 }
 
-/** 这一页的新作：壳的 `loadFeedNew` 取回来的条目与拼好的整行 HTML（封面、角标、两枚操作键）。 */
-export interface HeroFeedNew {
-  items: { id: number }[];
-  html: string;
-}
-
 /** 写操作与站内跳转都归壳。 */
 export interface EntityHeroActions {
   /** 站内跳转，走遗留路由的同一个入口。 */
@@ -123,7 +119,8 @@ export interface EntityHeroProps {
   /** 地址栏上的那个名字：首字母垫底取它，和骨架同一个字。 */
   name: string;
   entity: EntityHeroData;
-  feedNew: HeroFeedNew | null;
+  /** 这一页的新作（`feed-new/feed-new.ts` 取回来的条目与壳拼好的整行 HTML）。 */
+  feedNew: FeedNew | null;
   /** 壳在 `#index` 里留给新作那一行的 `section.feednew[data-feed-new]`。 */
   feedHost: HTMLElement | null;
   /** 这一页是不是 JAV 语境（`entityJavLayout`）。 */
