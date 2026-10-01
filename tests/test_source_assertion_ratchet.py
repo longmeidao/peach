@@ -52,8 +52,8 @@ BASELINE: dict[str, int] = {
     "test_tray.py": 3,
     "test_web_e2e.py": 2,
     "test_web_js.py": 1,
-    "test_web_settings.py": 8,
-    "test_web_ui.py": 2801,
+    "test_web_settings.py": 5,
+    "test_web_ui.py": 2652,
     "test_windows_update.py": 3,
 }
 

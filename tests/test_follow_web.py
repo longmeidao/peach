@@ -3502,7 +3502,8 @@ class FollowWebSourceTests(unittest.TestCase):
     def test_ignore_actions_do_not_reuse_the_close_icon(self):
         self.assertPageContains('<symbol id="i-eye-off"')
         self.assertPageContains('data-follow-batch="ignored" hidden><svg viewBox="0 0 24 24"><use href="#i-eye-off"')
-        self.assertPageContains("${icon('eye-off')}</button>")
+        # 设置面板侧栏排序那一行的「隐藏」也是 eye-off，不借关闭的叉。
+        self.assertIn('<Icon name="eye-off" /></button>', self.read_react("settings-panel/sidebar-order.tsx"))
 
     def test_the_check_button_stays_visible_on_a_narrow_viewport(self):
         # 管理入口不再混进横滚筛选条；390 宽下始终留在标题右侧。

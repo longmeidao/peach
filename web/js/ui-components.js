@@ -785,7 +785,7 @@ export function wireScrollers(root=document){
  * `<dialog data-stage>` 本身：轨道必须是滚动容器的兄弟，而 dialog 在顶层，挂在它
  * 父级上的轨道会落到遮罩底下。宽屏下它不溢出，组件自己量得出来，轨道不显示。 */
 const OVERLAY_SCROLLERS=[
-  '.settingsscroll','[data-stage-side-content]','[data-stage-scroll]','.tagpickbody','[data-mix-list]','.playlistpicklist',
+  '[data-stage-side-content]','[data-stage-scroll]','.tagpickbody','[data-mix-list]','.playlistpicklist',
   '[data-player-stats]',
   '.vjs-peach-settings-menu','.geist-scroller-container','.metricstrip','.tastesummaries',
   '.skeletondashstrip','.followpagination',
@@ -795,8 +795,8 @@ const OVERLAY_SCROLLERS=[
 /* Board 层里会超宽的横向滚动层：两端按滚动位置渐隐说明「那边还有」，鼠标停在上面时竖向
    滚轮转成横向。边线留给外层框，渐隐只落在这一层。
    这里登记的都是 `frontend/` 或 board.css 画出来的层，它们不经过 `wireAllDrag` 那份按 id
-   点名的清单，漏登记就是「看得见、够不着」：设置弹层那排分区在 390px 下溢出 244px，
-   实测既没有渐隐也不接滚轮。组件自己量溢出，不溢出的宽度上登记等于空转，所以按可能
+   点名的清单，漏登记就是「看得见、够不着」：一排分区在 390px 下溢出两百多像素，
+   却既没有渐隐也不接滚轮。组件自己量溢出，不溢出的宽度上登记等于空转，所以按可能
    溢出的层登记，不按某一个断点登记。React 档的页面自己用 `overflow-x-auto`，不进这份清单。 */
 const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,.board-local-nav,.managebar-menu,'
   +'.follow-workspace-switch,.fmanagenav';
@@ -809,7 +809,7 @@ const BOARD_EDGE_SCROLLERS='.reviewtabs,.ftablewrap,.board-local-nav,.managebar-
  * 这里只往既有滚动容器的父元素上挂轨道，不动内容结构，两者可以叠加使用。
  *
  * 轨道必须是容器的兄弟：跟着内容一起滚的轨道等于没有轨道。宿主因此得是定位祖先，
- * 而且不一定和容器一样大（`.settingscard` 还含着标题栏），所以轨道的位置每次都按
+ * 而且不一定和容器一样大（设置面板的卡片还含着标题栏），所以轨道的位置每次都按
  * 两个 rect 量出来，不假设它们同框。两条轴各一条轨道，谁溢出谁显示——同一个容器
  * 可能在不同版式下换轴（队列列表 `[data-mix-list]` 在带队列的详情格里就是横滚）。
  * 整页那一条是唯一的例外：`html` 没有元素父级，轨道挂进 body 并由 `.page` 改成

@@ -1,63 +1,4 @@
 @import url('/vendor/inter/5.3.0/index.css');
-/* 右边这 16px 和设置行一样，是给覆盖式滑块让出的道；不留的话这一块会比上面几行宽出
-   一截，它那条上边线直贴到卡片边上。
-   上下那两个数也和设置行同一份（`.settingsscroll .settingrow` 的 10px）：这一块是同一
-   列里的又一行，上面写 16 下面写 12 的话，它和前一行之间就比上面每两行之间宽出一截，
-   同一屏里读得出来。 */
-.settingscard .settingsscroll .sidebarsetting{padding:10px 12px 10px 0!important;margin:0 16px 0 0!important}
-.settingscard .settingsscroll .settingsortcontrols>[hidden]{display:none}
-.board-optional-number{display:flex;align-items:center;gap:12px;flex-direction:row-reverse}.board-number-fields[hidden]{display:none}
-.board-number-control input::-webkit-inner-spin-button,.board-number-control input::-webkit-outer-spin-button{appearance:none;margin:0}.board-number-control input{appearance:textfield;-moz-appearance:textfield}
-/* `--settings-gap` 是标题和第一行之间那段留白，也是那道影子的门槛：它长在滚动区的上
-   内边距上，所以滚掉它就等于两块重合。CSS 和 `app.js` 的判据都读这一个值。 */
-.settingscard.settingscard{--settings-gap:16px;width:871px;max-width:calc(100vw - 32px);height:614px;max-height:calc(100dvh - 32px);border-radius:24px;grid-template-columns:274px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:clip;background:var(--page)}
-.settingscard.settingscard>.board-local-nav{position:relative;grid-column:1;grid-row:1/3;display:flex;flex-direction:column;align-items:stretch;padding:10px;gap:4px;background:var(--ground);border:0}
-/* 左栏分块：一个小标题带一组条目。第一块贴着栏顶，后面每块自己往上让 12px 断开。 */
-.settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:12px 0 0;font-size:13px;color:var(--muted);padding:4px 8px 8px}
-.settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{margin-top:0}
-.settingscard.settingscard>.board-local-nav button{flex:0 0 auto;justify-content:flex-start;padding:8px;border:0;border-radius:10px;font-size:14px;min-height:36px;font-weight:500}
-.settingscard.settingscard>.board-local-nav button{display:flex;align-items:center;gap:8px}.settingscard.settingscard>.board-local-nav button svg{width:20px;height:20px;fill:currentColor;stroke:none;flex:none}
-/* 这一列自己不铺底，当前那一条的填充由 `.navglide` 那块滑过去的玻璃提供——跟筛选条上
-   四枚视图、左侧抽屉那一列是同一套做法。两边都铺的话，静止态就是一块不透明的
-   `--picked` 压在玻璃上面，切换时只看得见它瞬间换位置，滑动的那块从头到尾被盖住。
-   文字色走 `--glass-text`：这一列站在玻璃上，跟着卡片的 `--ink` 走会在玻璃的提亮
-   之后偏灰。按钮抬到玻璃之上，玻璃自己是 `z-index:0`。 */
-.settingscard.settingscard>.board-local-nav>:is(button,.board-local-nav-caption){position:relative;z-index:1}
-.settingscard.settingscard>.board-local-nav button{color:color-mix(in srgb,var(--glass-text) 65%,transparent)}
-.settingscard.settingscard>.board-local-nav button[aria-selected=true]{background:none;box-shadow:none;color:var(--glass-text)}
-.settingscard.settingscard>.board-local-nav button:hover{color:var(--glass-text)}
-/* 这块玻璃扣在一条 10px 圆角的按钮上，跟着它走；`.navglide` 的默认 8px 是给筛选条上
-   那排药丸的。 */
-.settingscard.settingscard>.board-local-nav>.navglide{border-radius:10px}
-/* 顶边那道高光不要：它是给浮在页面上的玻璃打边用的，而这一栏嵌在卡片里、上边贴着卡片
-   自己的圆角，那道白线横在「设置」上面，读起来像卡片被切成了上下两截。其余三面的内描边
-   和落影照旧。 */
-.settingscard.settingscard.settingscard>.board-local-nav{
-  box-shadow:inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
-/* 标题和下面那一组之间留 24px：这一栏没有分隔线也不吸顶，标题与内容之间只剩这一段
-   留白在说「上面那行是这一页的名字」。12px 和组内两行之间的间距是同一个量级，读下来
-   标题像是第一行设置。 */
-.settingscard.settingscard .settingshead{grid-column:2;grid-row:1;padding:32px 32px 24px;background:transparent;border:0}
-.settingscard .settingshead h2{font-size:20px;font-weight:500;line-height:28px}
-.settingscard .settingshead button{width:24px;height:24px;border-radius:50%;background:var(--surface)}
-.settingscard .settingshead button svg{width:16px;height:16px}
-.settingscard.settingscard .settingsscroll{padding:var(--settings-gap) 32px 32px;min-height:0;overflow-y:auto}
-/* 右侧这一栏和配置页是同一套分区：标题与页底是 `--page`，每组开关行坐在一张 `--ground`
-   灰卡上，16px 圆角、左内边距 12px，行的分隔线在卡片左沿内 12px 收住——即 BoardUI
-   `SettingsCard` 的尺寸。「这台电脑」那张摘要卡也坐在这张灰卡上。 */
-.settingscard .settingsscroll>.settinggroup{background:var(--ground);border-radius:16px;padding:0 0 0 12px}
-.settingscard .settingsscroll>.settinggroup>h3{display:none}
-.settingscard .settingsscroll .settingrow{min-height:52px;padding:10px 10px 10px 0;gap:16px;border-top:0;border-bottom:1px solid var(--line-soft)}
-.settingscard .settingsscroll .settingrow:last-child{border-bottom:0}
-/* 一组里排在设置行后面的分区（「左侧导航」是唯一一处）不自己画上边线：这一层的线挂在
-   行的下沿，两条 1px 落在同一条 y 上就成了一道 2px 的粗线。 */
-.settingscard .settingsscroll .settingrow+.sidebarsetting{border-top:0}
-.settingscard .settingsscroll .settingrow b{font-size:14px;line-height:20px;font-weight:400}
-.settingscard .settingsscroll .settingrow small{font-size:12px;line-height:18px;margin-top:2px;max-width:none}
-.settingscard .settingsscroll .gselect{min-width:90px;min-height:32px;height:32px;padding:6px 8px;font-size:13px;border-radius:8px}
-.settingscard .board-number-control{gap:5px;font-size:12px}.settingscard .board-number-control input{width:64px;height:32px;padding:6px;border-radius:8px;font-size:13px}
-.settingscard .board-number-control button{min-height:32px;padding:4px 8px;font-size:12px}
-@media(max-width:760px){.settingscard.settingscard{display:flex;flex-direction:column;width:calc(100vw - 24px);max-width:calc(100vw - 24px)}.settingscard.settingscard>.board-local-nav{flex-direction:row;flex-shrink:0;overflow-x:auto;border-right:0}.settingscard.settingscard>.board-local-nav .board-local-nav-caption{margin:0;padding:0 4px 0 8px;align-self:center;white-space:nowrap}.settingscard.settingscard>.board-local-nav .board-local-nav-caption:first-child{padding-left:0}.settingscard.settingscard .settingshead{padding:16px 20px 12px}.settingscard.settingscard .settingsscroll{padding:var(--settings-gap) 20px 20px;flex:1}}
 /* Translucent navigation experiment, using browser-native backdrop compositing. */
 /* 底色薄到能看见身后的东西在动，可读性交给 `--glass-lume`：Apple 的 regular 变体
    「blurs and adjusts the luminosity of background content」，压暗（暗色）或提亮（浅色）
@@ -149,7 +90,7 @@
   87.5%{background-position-y:7.6%,92.4%,0}
   100%{background-position-y:-10%,50%,0}
 }
-.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.settingscard.settingscard>.board-local-nav{
+.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{
   background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);
   background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;
   background-position:50% 20%,80% 70%,0 0;
@@ -168,7 +109,7 @@
 /* 搜索框使用浏览器原生模糊，尺寸变化不依赖异步 SVG 位移贴图。 */
 .top .search.search.search{--glass-optic:blur(22px)}
 /* 快照里的玻璃使用实底承接光晕；实时页面恢复后再采样背景。 */
-html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,[data-view-glide],.navglide,.settingscard>.board-local-nav,.selectiondock,.batchbar,[data-glass-pane]){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
+html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectionhead,.drawer,.edge,.search,.top>.ib,.board-library-menu,.board-glow-menu,.viewglide,[data-view-glide],.navglide,.selectiondock,.batchbar,[data-glass-pane]){backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background-color:var(--ground)!important;transition:none!important}
 /* 快照撤掉那一下，材质要淡回来：揭示动画刚停，浮层从实底「啪」地跳成毛玻璃，读起来
    像主题又切了第二次。过渡只写在常态上——进快照那一下正在拍旧状态的快照，拍到一半
    路上的颜色就会闪，所以上面那条规则自己把过渡关掉。 */
@@ -229,7 +170,7 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
    要的：一块软东西被拽着走，本来就该在跑的方向上抻开。
    缩放的原点留在正中，两端一起外扩；位移写在 `translate` 属性上，不看这个原点。 */
 /* 资料页浮层那两块由 `entity-filter` 岛画成 `[data-view-glide]`，形状与材质同这一条。 */
-.viewglide.viewglide,[data-view-glide][data-view-glide],.drawer.drawer>.navglide,.board-local-nav>.navglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
+.viewglide.viewglide,[data-view-glide][data-view-glide],.drawer.drawer>.navglide{position:absolute;left:0;top:0;z-index:0;pointer-events:none;
   border-radius:8px;will-change:translate,scale;
   /* 高光从上往下，不走那道 125° 对角线：对角线是按盒子自己的长边铺的，在一枚
      三十来像素高的药丸上，转折点正好落在中间，静止看是左右两块拼起来的。 */
@@ -240,7 +181,7 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
      落影按这块的尺寸缩过：整条筛选条那三层是给一块二十几像素圆角的板算的，原样套到
      一枚三十来像素高的药丸上，最远那层比药丸本身还大一圈，看着是它在发光而不是浮起。 */
   box-shadow:inset 0 0 0 1px var(--glass-rim),var(--glass-pick-shadow)}
-.viewglide.viewglide[hidden],.drawer.drawer>.navglide[hidden],.board-local-nav>.navglide[hidden]{display:none}
+.viewglide.viewglide[hidden],.drawer.drawer>.navglide[hidden]{display:none}
 /* 媒体那一档的按钮是正圆，这块跟着它走：方玻璃扣在圆按钮上，四个角先露出来。 */
 [data-view-glide="round"][data-view-glide]{border-radius:50%}
 /* 侧栏那一列是竖排，圆角照按钮自己的 10px 走，不跟着那一排药丸的 8px。
@@ -299,8 +240,8 @@ html[data-theme-snapshot] :is(.board-filter-frame,.entitytagbar,.entitycollectio
    项。格子底下再垫一层薄白就是两套反馈同时说话——薄白说「鼠标在这儿」，玻璃说「你
    在这儿」，指针停在别的格上时这两句话指着两个地方。 */
 .drawer.drawer.drawer .dnav button:hover{background:none;color:var(--glass-text)}
-@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.settingscard.settingscard.settingscard>.board-local-nav{background:var(--ground);animation:none}}
-@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib,.settingscard.settingscard.settingscard>.board-local-nav{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
+@supports not (backdrop-filter:blur(1px)){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search{background:var(--ground);animation:none}}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){.board-filter-frame.board-filter-frame.board-filter-frame,.entitytagbar.entitytagbar.entitytagbar,.entitycollectionhead.entitycollectionhead.entitycollectionhead,.drawer.drawer,.drawer.drawer.open,.edge.edge,.top .search.search,.top.top>.ib{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}}
 /* 面上那两团光停在 `background-position` 给的那一处，不再挪：它讲的是光在动，而这
    台机器上「减少动态效果」说的就是别让不由我操作的东西自己动。停住之后它还是两团
    高光，玻璃仍有厚度，只是这屋里的光不再走了。 */
@@ -335,8 +276,7 @@ body{background:var(--page)}
 .tiers,.tagbar{background:var(--page)}
 .managebar{background:var(--ground);border:1px solid var(--line);border-radius:14px;padding:6px}
 .stats>section,.stats>.fieldset,.fieldset{border-radius:var(--surface-radius)}
-.settingscard,.drawer{box-shadow:0 12px 40px light-dark(#0000000d,#00000080)}
-.settingscard{border:1px solid var(--line)}
+.drawer{box-shadow:0 12px 40px light-dark(#0000000d,#00000080)}
 .gridstack .card{background:transparent}
 /* 强调档不写在这一段：它那一面连同悬停归 `body :is(…).primary` 一处。在这里再写一份
    的话，静止那条会被后面那条压掉、悬停那条却比它重一个类，一颗按钮的静止和悬停就由
@@ -463,14 +403,7 @@ body #stats [data-section-items]>[aria-selected]:focus-visible{outline:2px solid
  body #stats [data-section-items]{flex-direction:row;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain}
  body #stats [data-section-items]>[aria-selected]{min-height:36px;padding:8px;white-space:nowrap}
 }
-[data-board-group]:not(.board-group-active){display:none!important}
-.settingscard{display:grid}
-.settingscard>.board-local-nav{margin:0;border:0;border-right:1px solid var(--line-soft);overflow-y:auto}
-.settingsscroll{grid-column:2;grid-row:2}
-.settingsscroll>.settinggroup{border:0;margin:0}
-.settingsscroll .settingrow{grid-template-columns:minmax(0,1fr) auto}
-.board-number-control{display:flex;align-items:center;gap:8px}.board-number-control input{width:96px;padding:8px 10px}.board-number-help{font-size:11px!important}.board-number-error{color:#ef6868!important;font-size:12px!important}.board-number-error:empty{display:none}
-@media(max-width:600px){.settingsscroll .settingrow{grid-template-columns:1fr;gap:12px}.settingsscroll .settingrow:has(input[type=checkbox]){grid-template-columns:minmax(0,1fr) auto}.board-number-control input{width:110px}}
+[data-board-group]:not(.board-group-active){display:none!important}.board-number-help{font-size:11px!important}
 .pselect,.popmenu{border-radius:12px;border-color:var(--line);box-shadow:0 8px 24px light-dark(#00000012,#00000080)}
 .geist-switch,.switchgroup{background:var(--surface);border-radius:10px}
 .iconswitch[data-board-segments]{position:relative;display:inline-flex;align-items:center;gap:2px;padding:4px;border:0;border-radius:10px;background:var(--color-background-tertiary-default)}
@@ -582,8 +515,6 @@ body>.board-filter-frame{margin-inline:16px}
 @media(pointer:coarse){.board-filter-frame .sorts button{height:36px}}
 #applyUISetting{padding:8px 12px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
 #applyUISetting[hidden]{display:none}
-
-@media(max-width:1000px){.settingscard{width:calc(100vw - 32px)}}
 @media(max-width:760px){
   :root,body.drawer-open{--railW:0px}
   .drawer{top:64px;bottom:12px;width:min(320px,calc(100vw - 24px));border-radius:20px;z-index:97}
@@ -598,47 +529,13 @@ body>.board-filter-frame{margin-inline:16px}
   body.cleanup-layout #manageTitle,body.configuration-layout #manageTitle,body.cleanup-layout #manageCrumb{width:100%;font-size:22px}
   .cleanupfieldset>.geist-fieldset-content{min-height:0;padding:18px}
   .cleanupfieldset strong{font-size:22px}.cleanupfieldset>.geist-fieldset-footer{padding:12px 18px}
-  .settingscard{display:flex;flex-direction:column;width:calc(100vw - 24px);max-height:calc(100dvh - 24px)}
-  .settingshead{padding:16px 20px}
-  .settingscard>.board-local-nav{flex-direction:row;border-right:0;border-bottom:1px solid var(--line);padding:8px 12px;background:var(--ground);overflow-x:auto}
-  .settingsscroll{min-height:0;padding:20px;overflow:auto}.settingsscroll .settingrow{gap:16px;flex-wrap:wrap}
   .configfieldset>.geist-fieldset-content{padding:20px}.board-local-nav{gap:0}.board-local-nav button{padding:10px 9px;font-size:13px}
 }
 
-/* Settings rows use a shared baseline; controls wrap only on narrow screens. */
-.settingscard .settingsscroll .settingrow.settingsortrow{grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;padding-block:12px}
-.settingscard .settingsscroll .settingsortcontrols{display:flex;gap:8px;justify-content:end}
-.settingscard .settingsscroll .settingsortcontrols>div{flex:0 1 112px;min-width:0}
-.settingscard .settingsscroll .settingsortcontrols .gselect{width:112px;min-width:0;padding:0}
-.settingscard .settingsscroll .gselectfield{height:32px;padding:0 8px;border-radius:8px;font-size:13px;gap:6px}
-.settingscard .settingsscroll .board-number-help{display:none}
-.board-number-fields{position:relative}
-.settingscard .board-number-control{display:flex;gap:0;height:32px;border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden;align-items:stretch}
-.settingscard .board-number-control input{border:0;box-shadow:none;background:transparent;width:64px;min-width:0;height:30px;border-radius:0;padding:6px 8px;font:inherit;outline:none}
-.settingscard .board-number-control:focus-within{box-shadow:0 0 0 3px var(--line);border-color:var(--muted)}
-.settingscard .board-number-control>span{display:flex;align-items:center;padding:0 8px;border-left:1px solid var(--line);color:var(--muted);font-size:12px;background:var(--ground)}
-.settingscard .board-number-control:has([aria-invalid=true]){border-color:var(--error,#e5484d);box-shadow:0 0 0 2px color-mix(in srgb,var(--error,#e5484d) 15%,transparent)}
-.settingscard .board-number-error:not(:empty){position:absolute;z-index:10;right:0;top:calc(100% + 6px);width:max-content;max-width:240px;padding:6px 10px;background:var(--ground);border:1px solid color-mix(in srgb,var(--error,#e5484d) 35%,var(--line));border-radius:8px;box-shadow:0 4px 14px light-dark(#0002,#0008);color:var(--error,#e5484d);font-size:12px;line-height:18px;margin:0}
-.settingscard .board-number-error[hidden]{display:none}
-.settingscard .board-optional-number{position:relative}
-/* 手柄那一下走 `--spring-press`：那条曲线本来就是冲过落点再荡回来一次，18px 的行程上
-   读出来正是「过头一点点、退回来、停住」两跳，不必另写一组带 55%／80% 停的关键帧。
-   轨道换色仍走自己的钟，它是一次颜色交叉淡入，跟着手柄一起弹会把整枚开关读成在呼吸。
-   写成 transition 而不是 animation，是因为 animation 一挂上去，页面载入时已经是开态的
-   那几枚会当场各弹一次——这一屏设置里有十几个开关，进页面就是一片抖。 */
-.ptoggle{width:42px;height:24px;background:var(--color-background-tertiary-default);border:0;border-radius:999px;transition:background .2s}
-.ptoggle::after{width:18px;height:18px;top:3px;left:3px;background:linear-gradient(#fff 44%,#f3f3f3);box-shadow:0 3px 3px #00000008;transition:transform calc(var(--spring-press-ms)*1ms) var(--spring-press);transform:none}
-.ptoggle::before{content:'';position:absolute;z-index:1;left:8.25px;top:8.25px;width:7.5px;height:7.5px;border-radius:50%;background:var(--surface);box-shadow:inset 0 0 0 .375px var(--line);transition:transform calc(var(--spring-press-ms)*1ms) var(--spring-press)}
-.ptoggle:checked{background:var(--board-blue);box-shadow:inset 0 1.5px 0 #ffffff40,inset 0 0 0 .75px var(--color-accent-400)}
-.ptoggle:checked::after{left:3px;transform:translateX(18px)}
-.ptoggle:checked::before{transform:translateX(18px);background:linear-gradient(var(--color-accent-700),var(--color-accent-500))}
-.ptoggle:disabled{opacity:.5}
 #applyUISetting{grid-column:1/-1;width:100%;background:var(--board-blue);color:#fff;border:1px solid var(--color-accent-400);box-shadow:inset 0 1px 1px #ffffff60}
 /* 悬停压暗而不是提亮：这枚键铺满一整行，提亮那一档在浅色面上会让它看起来先亮一下再
    被按下去。压暗那一档正好是 `--board-blue-active` 的两级。 */
 #applyUISetting:hover{background:var(--board-blue-active);color:#fff}
-@media(max-width:760px){.settingscard .settingsscroll .settingrow.settingsortrow{grid-template-columns:1fr;gap:10px}.settingscard .settingsscroll .settingsortcontrols{width:100%}.settingscard .settingsscroll .settingsortcontrols>div{flex:1}.settingscard .settingsscroll .settingsortcontrols .gselect{width:100%}}
-@media(prefers-reduced-motion:reduce){.ptoggle,.ptoggle::after,.ptoggle::before{transition:none}}
 
 /* 媒体详情、实体与管理共享卡片层级，播放器仍使用原有播放交互。 */
 .srctools button{border-radius:8px;background:var(--surface)}
@@ -651,11 +548,10 @@ body>.board-filter-frame{margin-inline:16px}
 .card{overflow:visible;border-radius:var(--surface-radius)}
 .card :is(.pic,.mixstack){border-radius:var(--surface-radius)}
 .card .info{background:transparent}
-@media(max-width:760px){.settingspanel.settingspanel{padding:12px;grid-template-columns:minmax(0,1fr)}.settingscard.settingscard{width:calc(100vw - 24px);max-width:calc(100vw - 24px);min-width:0}.settingscard .settingsscroll .settingrow:has(.board-optional-number){grid-template-columns:minmax(0,1fr) auto;gap:12px}.settingscard>.board-local-nav{min-width:0;max-width:100%}}
 /* 纯图标按钮不继承浏览器按钮的水平内边距。 */
-:is(.settingshead button,.srctools button,.sidebarorderrow button,#drawerClose){padding:0;display:inline-grid;place-items:center;line-height:1;flex-shrink:0}
-:is(.settingshead button,.srctools button,.sidebarorderrow button,#drawerClose)>svg{display:block;margin:0;flex-shrink:0;align-self:center;justify-self:center}
-:is(.settingshead button,.srctools button,.sidebarorderrow button,#drawerClose)[hidden]{display:none}
+:is(.srctools button,#drawerClose){padding:0;display:inline-grid;place-items:center;line-height:1;flex-shrink:0}
+:is(.srctools button,#drawerClose)>svg{display:block;margin:0;flex-shrink:0;align-self:center;justify-self:center}
+:is(.srctools button,#drawerClose)[hidden]{display:none}
 
 /* BoardUI surface tokens; Peach retains its layouts and specialized media UI. */
 :root{--board-motion:.3s cubic-bezier(.4,0,.2,1);--board-dialog-motion:.3s cubic-bezier(.32,.72,0,1);--fs-lg:16px;--fs-xl:20px;--fs-2xl:24px;--control-h:36px}
@@ -681,32 +577,8 @@ button,input,select,textarea{font-family:inherit}
    `filter:blur(0)`。非 none 的 filter 会另起一个 backdrop root，卡片里任何
    backdrop-filter 从此只采样得到卡片自己的内容——左栏的玻璃于是退化成一块半透明色。
    退场那条仍要 both，它的终点（透明）不是自然状态。 */
-.settingscard.settingscard{border:0;animation:board-dialog-in var(--board-dialog-motion) backwards}
-.settingspanel.closing .settingscard.settingscard{animation:board-dialog-out var(--board-dialog-motion) both}
 @keyframes board-dialog-in{from{opacity:0;transform:scale(.85);filter:blur(4px)}to{opacity:1;transform:scale(1);filter:blur(0)}}
 @keyframes board-dialog-out{from{opacity:1;transform:scale(1);filter:blur(0)}to{opacity:0;transform:scale(.85);filter:blur(4px)}}
-/* 设置弹层左栏跟左侧抽屉走同一张面：两者是同一件事的两种形态——抽屉是全站导航，
-   这一栏是设置内部的导航，抽屉上的液态玻璃没有理由进了弹层就换成一块实色。
-   整张卡片仍旧自己铺 --page，让那一栏的 backdrop 采样到的是这块实色而不是身后的页面：
-   弹层底下压着一层 70% 的黑遮罩，透过去模糊出来的是被压暗的馆藏封面，浅色主题下
-   整栏发灰，那一列的字读不出来。抽屉那块玻璃身后是亮着的页面，同一份配方在它那儿
-   成立、在这儿不成立——这一栏要的是那块玻璃的材质（漂移的光晕、内缘那圈亮线、
-   边缘折射），不是它当时恰好采到的东西。 */
-.settingscard.settingscard{background:var(--page)}
-.settingscard.settingscard>.settingshead,.settingscard.settingscard>.settingsscroll{background:var(--page)}
-/* 这一栏的玻璃不在这里画：它和抽屉、筛选条那几块并在同一条规则上（本文件靠前那条
-   液态玻璃名单），连同漂移的光晕、内缘那圈亮线和边缘折射一起。自己另配一份
-   `saturate(1.8) blur(20px)` 加两档 frost 色的结果是两块玻璃看着就不是一种材质——
-   抽屉是全站导航、这一栏是设置内部的导航，同一件事的两种形态不该有两种光学。 */
-html.board-high-contrast .settingscard.settingscard{background:var(--page)}
-html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
-/* 标题下那道影子跟左栏那块玻璃是同一份 `--glass-shadow`。裁剪不能省：那三层各带十几到
-   几十像素的模糊，往上会糊在标题自己头上、往左会糊到左栏那一列上，要的只是往下那一半。
-   它也只在内容压上来时才点亮——这一栏滚到头时标题和第一行之间留着 `--settings-gap`，
-   影子出现在那时候就是凭空多了一条线。 */
-.settingscard .settingshead{position:relative;z-index:2;clip-path:inset(0 0 -96px 0);transition:box-shadow .2s ease-out}
-.settingscard.board-settings-scrolled .settingshead{box-shadow:var(--glass-shadow)}
-.settingscard .settingshead h2{line-height:26px}
 .drawer .board-sidebar-head #drawerClose{display:none}
 .drawer .board-sidebar-head #filterBtn{display:grid;place-items:center;padding:0;width:36px;height:36px;flex:none;border-radius:8px;background:transparent}
 .drawer .board-sidebar-head #filterBtn svg{width:20px;height:20px;margin:0}
@@ -736,12 +608,9 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
   .scrim.scrim.on{top:0;z-index:101;background:none;visibility:hidden}
   .scrim.scrim.on::before{content:'';position:absolute;inset:0;background:#0007;visibility:visible}
   .index .ihead .geist-search{flex-basis:160px}
-  .index .ihead .geist-search input,.geist-input,.settingscard .board-number-control input{font-size:16px}
-  .settingscard .board-number-control{height:40px}.settingscard .board-number-control input{height:38px}
-  .settingscard .settingsscroll .gselect,.settingscard .settingsscroll .gselectfield{height:40px;font-size:14px}
-  .settingscard .settingsscroll .board-number-control>span{font-size:14px}
+  .index .ihead .geist-search input,.geist-input{font-size:16px}
 }
-@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0;--motion-swap:0s;--motion-count:0s;--motion-reveal:0s;--motion-stagger:0ms;--motion-pop:0s}.settingscard .settingshead::after{transition:none}}
+@media(prefers-reduced-motion:reduce){:root{--board-motion:0s;--board-dialog-motion:0s;--spring-pane-ms:0;--spring-press-ms:0;--motion-swap:0s;--motion-count:0s;--motion-reveal:0s;--motion-stagger:0ms;--motion-pop:0s}}
 /* Stat Cards 的内层读数与底栏；统计卡仍是可键盘切换的视图入口。 */
 /* 侧栏分组使用标题行与带计数的叶项。 */
 .drawer.drawer{display:flex;flex-direction:column;overflow:hidden}
@@ -770,7 +639,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
 @keyframes board-menu-out{to{opacity:0;transform:scale(.95);filter:blur(2px)}}
 :is(.popmenu,.context-card,.board-library-menu,.searchmenu):not([hidden]){animation:board-menu-in .15s ease-out backwards;transform-origin:top left}
 :is(.popmenu,.context-card,.board-library-menu,.searchmenu).leaving{animation:board-menu-out .15s ease-out forwards}
-:is(.popmenu,.context-card,.board-library-menu)[data-placement=top],.sidebaraddmenu.sidebaraddmenu{transform-origin:bottom left}
+:is(.popmenu,.context-card,.board-library-menu)[data-placement=top]{transform-origin:bottom left}
 .board-library-menu[data-placement=right]{transform-origin:left}
 .board-sidebar-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;flex:none;padding:12px}
 .board-foot-actions{display:flex;align-items:center;gap:6px}
@@ -960,7 +829,7 @@ html.board-high-contrast .settingscard.settingscard>.board-local-nav{background:
    面板、筛选条、交集条和标签骨架都从它取值，一处改完五处一起走。 */
 :root{--tag-radius:8px}
 body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-body)}button,input,textarea,select{font-family:var(--board-font)}
-.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.settingscard .settingshead h2,.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button,.settingrow b{font:var(--board-body)}.fmeta,.settingrow small{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
+.pagetitle,.listtitle,body #manageTitle,.index .ihead h2,.indexheading,.playlistpage h2{font:var(--board-title);letter-spacing:0}.configfieldset h2,.configfieldset h3,.cleanupfieldset h3,.resourcesync>h2{font:var(--board-heading);letter-spacing:0}.metricstrip>button .board-stat-value,.tastesummary>.board-stat-value{font:var(--board-figure);letter-spacing:0}.drawer .dnav button,.board-library-rows button{font:var(--board-body)}.fmeta{font:var(--board-compact)}.board-stat-footer,.board-watch-measures small,.insighttoolbar p{font:var(--board-caption);letter-spacing:.15px}
 .geist-button,.resourceaction{background-color:var(--color-background-primary-default);border-color:var(--color-border-button-default);color:var(--color-text-primary);transition:background-color .15s ease,border-color .15s ease,color .15s ease}
 /* 悬停只抬填充，那圈线一步不动：按钮静止态已经带一圈 1px，悬停再把它加深，
    鼠标扫过一排次级键就是一排边框忽明忽暗，而键本身并没有变化。 */
@@ -1065,7 +934,6 @@ body :is(button.danger,.batchbar button.danger):not(:disabled):active::before{op
 .board-library-menu .board-library-rows button:is(:hover,[aria-pressed=true]){background:none;box-shadow:none;color:var(--glass-text)}
 .board-library-menu .board-library-rows>.viewglide{border-radius:10px}
 .board-library-menu footer{border-color:var(--glass-low)}
-@media(max-width:760px){.settingscard.settingscard .settingsscroll{padding-top:16px}}
 .board-sidebar-head #brandHome:hover{background:var(--color-background-primary-hover);border-radius:var(--pill-radius)}
 .drawer .sec[data-sidebar-group]>.board-section-toggle{box-sizing:border-box;display:flex;width:100%;min-height:36px;margin:0 0 4px;padding:8px 10px;gap:8px;border-radius:8px;list-style:none;color:var(--color-text-secondary);font:var(--board-caption)}
 .board-section-toggle::-webkit-details-marker{display:none}.drawer .sec[data-sidebar-group]>.board-section-toggle:hover{background:var(--picked)}.board-section-toggle>span{flex:1;min-width:0}.board-section-toggle>svg{order:3;flex:none;margin-left:auto}.drawer .sec[data-sidebar-group]>.fcollapse>.fcollapsebody{padding:0 0 0 10px}
@@ -1076,7 +944,7 @@ body :is(button.danger,.batchbar button.danger):not(:disabled):active::before{op
 .pcheck input:is(:checked,:indeterminate)+span{color:#fff;border-color:transparent;background:var(--board-blue);box-shadow:inset 0 1px 0 #ffffff40,0 1px 2px #0450e229}
 .pcheck input:indeterminate+span svg{visibility:hidden}.pcheck input:indeterminate+span::after{content:'';position:absolute;top:6px;left:3px;width:8px;height:2px;border-radius:1px;background:#fff}
 .pcheck input:disabled+span{opacity:.5}.pcheck>span svg{width:14px;height:14px;stroke-width:2}.pcheck:hover>span{border-color:var(--color-border-button-hover)}
-input[type=checkbox]:not(.ptoggle):not(.pcheck input):not(.peach-react input){accent-color:var(--color-accent-600);width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
+input[type=checkbox]:not([data-toggle]):not(.pcheck input):not(.peach-react input){accent-color:var(--color-accent-600);width:16px;height:16px;vertical-align:middle;margin:0;flex:none}
 .dual-range .range-base,.dual-range .range-fill{height:6px;top:11px}.dual-range .range-base{background:var(--color-background-tertiary-default);box-shadow:inset 0 1px 1px #0000000f}.dual-range .range-fill{background:linear-gradient(90deg,var(--color-accent-400),var(--color-accent-600));box-shadow:inset 0 1px 0 #ffffff3d,0 1px 2px #0450e229}
 body :is(.dual-range input,.vjs-peach-speed-range)::-webkit-slider-thumb{appearance:none;width:20px;height:20px;border:1px solid var(--color-border-button-default);border-radius:50%;background:radial-gradient(circle at center,#fff 3px,#e5e5e5 3.5px,#fff 4px);box-shadow:0 2px 4px light-dark(#0000001a,#00000080),inset 0 1px 0 #ffffffcc;cursor:grab;transition:scale calc(var(--spring-press-ms) * 1ms) var(--spring-press),box-shadow .15s}
 /* 抓住的时候手柄涨一圈，松开按同一条弹簧收回去。位置不参与任何过渡——手柄要贴着
@@ -1178,7 +1046,6 @@ body [data-split-button]>[data-skeleton-action][data-skeleton-action]:disabled{b
 body [data-follow-bulk],body [data-follow-status=seen],body [data-follow-status=ignored]{background:color-mix(in srgb,var(--color-accent-400) 16%,var(--color-background-primary-default));color:var(--color-accent-600);border-color:transparent}
 .reviewcontrols{border:0;border-radius:20px}.batchbar{background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);border:0;box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);border-radius:20px}
 .reviewtabs{overflow-x:auto!important;overflow-y:hidden;scrollbar-width:none!important;touch-action:pan-x pan-y;overscroll-behavior-x:contain}.reviewtabs::-webkit-scrollbar{display:none!important}.reviewtabs .os-scrollbar{display:none!important}
-.settingsscroll .settingrow{margin-right:16px}.settingsscroll .settinggroup{border-bottom:0}
 .iconswitch.themeswitch[data-board-segments]{padding:4px;border:0;border-radius:24px;background:var(--picked);gap:4px}.iconswitch.themeswitch[data-board-segments]>label{width:32px;height:32px;border-radius:50%}.themeswitch .board-segment-thumb{border-radius:50%;background:var(--ground)}
 .card .pic>.badge{padding:4px;border-radius:10px;background:var(--glass-fill);box-shadow:inset 0 1px 0 var(--glass-rim),var(--glass-shadow);backdrop-filter:blur(16px) saturate(145%)}.card .pic>.badge .src{background:transparent;padding:0;width:20px;height:20px}
 body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),var(--glass-drift-b),linear-gradient(125deg,var(--glass-sheen),transparent 42%,var(--glass-low)),var(--glass-fill);background-size:200% 200%,200% 200%,auto;background-repeat:no-repeat,no-repeat,repeat;background-position:50% 20%,80% 70%,0 0;animation:glassdriftx calc(41s * var(--glow-drift-scale)) linear infinite,glassdrifty calc(67s * var(--glow-drift-scale)) linear infinite;animation-play-state:var(--glow-drift-play);backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%);box-shadow:inset 0 1px 0 var(--glass-rim),inset 1px 0 0 var(--glass-low),inset -1px 0 0 var(--glass-low),inset 0 -1px 0 var(--glass-low),var(--glass-shadow)}
@@ -1190,6 +1057,13 @@ body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),
    标准属性留在不经转换的共享样式表里，数值逐项对齐首页上下两块玻璃。 */
 body .peach-react :is([data-review-filter],[data-filter-glass]){backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}
 body .peach-react [data-selection-dock]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%)}
+/* 设置面板左栏（`settings-panel.css`）与它那块滑动玻璃。高对比与减弱透明照全站玻璃一起退成实底；
+   主题切换拍快照的那一帧不采样背后。 */
+body [data-settings-nav]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}
+body [data-settings-nav]>[data-settings-glide]{backdrop-filter:var(--glass-pick)}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){body [data-settings-nav]{backdrop-filter:none}}
+html.board-high-contrast body [data-settings-nav]{backdrop-filter:none}
+html[data-theme-snapshot] body :is([data-settings-nav],[data-settings-glide]){backdrop-filter:none!important}
 html.board-high-contrast :is(.selectiondock,.batchbar,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;-webkit-backdrop-filter:none;animation:none}
 @media(prefers-reduced-transparency:reduce){body :is(.selectiondock,.batchbar,.card .badge,[data-glass-pane]){background:var(--ground);backdrop-filter:none;animation:none}}
 @media(prefers-reduced-motion:reduce){body :is(.selectiondock,.batchbar){animation:none}}

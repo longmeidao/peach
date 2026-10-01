@@ -15,7 +15,8 @@
       "@/lib/utils": ["./charts/cn.ts"],
       "@/*": ["./boardui/*"],
       "@peach/legacy/core": ["../legacy/core.d.ts"],
-      "@peach/legacy/ui": ["../legacy/ui.d.ts"]
+      "@peach/legacy/ui": ["../legacy/ui.d.ts"],
+      "@peach/legacy/home-glow": ["../legacy/home-glow.d.ts"]
     }
   },
   "include": ["./", "../../test/react"],

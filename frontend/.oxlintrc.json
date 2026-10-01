@@ -21,7 +21,7 @@
     "shadcn/no-inline-styles": "error",
     "shadcn/no-unknown-classes": ["error", { "allow": ["configpage", "configgroup", "swiper", "swiper-wrapper", "swiper-slide", "swiper-zoom-container",
       "mono", "tg", "mav", "externallink", "javedition", "censored", "chip", "geist-button",
-      "primary"] }],
+      "primary", "popmenu", "geist-input", "board-glow-grid"] }],
     "shadcn/require-static-classes": "error"
   }
 }

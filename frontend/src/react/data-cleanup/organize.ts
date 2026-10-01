@@ -6,13 +6,13 @@
  * 来源与模板原样留着。执行与回滚是真实 ledger 写入，调用方必须先过确认弹层。 */
 import { apiGet, apiSend } from '../../api';
 import { queryClient } from '../query';
+/* 模板跟着账本走（`SYNCED_SETTING_KEYS` 里的 `organizeTemplates`），写的是设置面板同一个端点。 */
+import { SETTINGS_URL } from '../settings-panel/settings-data';
 
 export const ORGANIZE_URL = '/api/organize';
 export const ORGANIZE_PREVIEW_URL = '/api/organize/preview';
 export const ORGANIZE_APPLY_URL = '/api/organize/apply';
 export const ORGANIZE_ROLLBACK_URL = '/api/organize/rollback';
-/** 模板跟着账本走（`SYNCED_SETTING_KEYS` 里的 `organizeTemplates`）。 */
-export const SETTINGS_URL = '/api/settings';
 
 export const ORGANIZE_KEY = ['organize'] as const;
 

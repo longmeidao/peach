@@ -1,4 +1,4 @@
-import { boundedPreference, mountNumberSetting, syncNumberSetting, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
+import { boundedPreference, createSettingsStore, loadSettingsPanel, settingsPanelApi, sidebarSectionHtml, wireSidebarGroups, transitionTheme } from './dist/peach-ui.js';
 import {$, ENTITY_ROUTES, LOC, ROUTE_ENTITIES, ROUTE_STATES, STATE_LABELS, STATE_ROUTES, api, isAbort, mapLimit, entityPath, esc, fmtClock, fmtDur, fmtSize, foldName, icon, isCatalogPath, realDuration, seededRank} from './js/core.js';
 import { faceFrame } from './js/face-frame.js';
 import { searchMorphFrames } from './js/search-morph.js';
@@ -12,19 +12,19 @@ import { matchRoute, routeLabel } from './js/routes.js';
 import { initMiddleTruncate } from './js/middle-truncate.js';
 import { tagLabel } from './js/tags.js';
 import { playUiSound, setUiSoundsEnabled, wireUiSounds } from './js/ui-sounds.js';
-import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, GLOW_SPOT_LABELS, GLOW_SWATCHES, GLOW_SWATCH_FAMILIES, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowColor, glowPalette, glowPresetName, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
+import { ACCENTS, DEFAULT_ACCENT, DEFAULT_HOME_GLOW, GLASS_NATIVE_PRESET, HOME_GLOW_CHOICES, HOME_GLOW_PRESETS, HOME_GLOW_SPOTS, glowAccent, glowChipFill, glowPalette, isNativeGlass, normalizeAccent, normalizeHomeGlow, paintGlassFaces, paintHomeGlow } from './js/home-glow.js';
 import { mountIsland, unmountIsland, updateIsland, islandMounted, preloadIslands, paginationHtml, pageCount, clampPage, preferredDirection, showToast, followJobProgress } from './dist/peach-ui.js';
 import { junkCountSkeletonHtml, junkPath, junkRoute } from './dist/peach-ui.js';
 import { catalogSuggestions, catalogEmptyHtml, catalogFilterSkeletonHtml, syncSidebarSurface, sidebarTagCounts, sidebarHasCatalogContent, cleanupSkeletonHtml } from './dist/peach-ui.js';
-import { javImageKind, normalizeJavImage, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
+import { javImageKind, normalizeJavLayout, normalizeJavPreferences, panelFrame, relayoutJavImages, syncJavImages, nativeImageFit, faceSourceScale, entitySkeletonHtml } from './dist/peach-ui.js';
 import { cancelStreamSession, clickPlayerControl, directStreamSource, ensureVideojs, fmtSpeed, loadStage, newStreamSession, playableStreamSource, stageApi, streamSpeedBits, wireTelemetry as playerWireTelemetry } from './dist/peach-ui.js';
 import {
-  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, closeAnchoredMenu, confirmModal, dialSliderHtml, dismissMenu, emptyStateHtml,
+  attachOverlayScrollbar, breadcrumbHtml, checkboxHtml, confirmModal, dismissMenu, emptyStateHtml,
   fitSkeleton, formModal, iconSwapHtml, iconSwitchHtml, indexSkeletonHtml, loadingDotsHtml,
   dissolveValue, popBadges, revealSkeleton, revealTexts, setIconSwap, swapText,
-  boardTabsHtml, moveGlidePane, glideEase, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml, selectFieldHtml,
-  SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDialSlider, wireDragReorder,
-  wireIconSwitch, wireOverlayScrollbars, wireScrollers, wireSelectField, configurationSkeletonHtml, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
+  boardTabsHtml, moveGlidePane, glideEase, collectionHeaderHtml, wireHorizontalScroller, noteHtml, presentMenu, gaugeHtml, scrollerHtml, searchInputHtml,
+  SKELETON_REVEAL_DELAY, setActionBusy, skeletonHtml, spinnerHtml, growCollapse, wireAnchoredMenu, wireBusyActions, wireCollapse, wireDragReorder,
+  wireOverlayScrollbars, wireScrollers, configurationSkeletonHtml, wireAutoScroll, stopAutoScroll, scrollMovesAnchor,
   postSetupTutorialMarker, setPostSetupTutorialMarker, postSetupTutorialCollapsed, setPostSetupTutorialCollapsed,
   postSetupTutorialSkipped, setPostSetupTutorialSkipped, postSetupTutorialSignature,
   nextPostSetupTutorialRequest, isCurrentPostSetupTutorialRequest, resetPostSetupTutorialState,
@@ -553,9 +553,7 @@ appSettings.uiSounds=appSettings.uiSounds!==false;
 appSettings.feedAutoScroll=appSettings.feedAutoScroll!==false;
 /* 新作那一行收不收合集由服务端按账本里的设置筛（列表、未读数、补封面同一份），这里只是
    镜像：开关的真相在 `/api/settings`。默认收起大合集与切片、单人合集照列。 */
-const FEED_COMPILATION_SWITCHES=[['feedHideGroupSetting','feedHideGroupCompilations','大合集'],
-  ['feedHideSoloSetting','feedHideSoloCompilations','单人合集'],
-  ['feedHideExcerptSetting','feedHideExcerpts','切片']];
+const FEED_COMPILATION_KEYS=['feedHideGroupCompilations','feedHideSoloCompilations','feedHideExcerpts'];
 appSettings.feedHideGroupCompilations=appSettings.feedHideGroupCompilations!==false;
 appSettings.feedHideSoloCompilations=appSettings.feedHideSoloCompilations===true;
 appSettings.feedHideExcerpts=appSettings.feedHideExcerpts!==false;
@@ -575,7 +573,10 @@ document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverD
    在各自的入口自己响。 */
 setUiSoundsEnabled(appSettings.uiSounds);
 wireUiSounds();
-const saveSettings=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify(appSettings));
+/* 这份对象的读写都在壳里原地改字段；落盘走 store，同一下通知开着的设置面板跟上
+   （`frontend/src/settings-store.ts`）。 */
+const settingsStore=createSettingsStore(SETTINGS_KEY,appSettings);
+const saveSettings=()=>settingsStore.save();
 if(sortDefaultsMigrated)saveSettings();
 /* 主题只写属性，不写颜色：两套色板都在 web/css/01-base.css，选跟随系统就把属性摘掉，
    交还给 `prefers-color-scheme`。React 子树里的 BoardUI 源码把深色 token 挂在 `.dark` 上，
@@ -621,30 +622,9 @@ function applyGlassFaces(){paintGlassFaces(glowRoot,appSettings.homeGlow)}
 function applyAccent(){glowRoot.dataset.accent=appSettings.accent}
 paintHomeGlow(glowField,appSettings.homeGlow);
 applyGlassFaces();applyAccent();
-/* 三档互斥视图是 Geist Switch（一组共享 name 的 radio），与卡片版式切换共用同一份模板；
-   形状按 vercel.com 的主题选择器单独给，见 web/css/16-settings.css。 */
-function renderJavImageSetting(){
-  const mount=$('#javImageSetting');
-  mount.innerHTML=iconSwitchHtml('jav-image','JAV 默认封面',
-    [['cover','官方封面',''],['thumbnail','预览图','']],appSettings.javImage,{attr:'data-jav-image-choice',className:'javimageswitch',text:true});
-  wireIconSwitch(mount,'data-jav-image-choice',choice=>{
-    appSettings.javImage=normalizeJavImage(choice);saveSettings();
-    syncJavImages(document,appSettings.javImage);repaintCatalogGrid();
-    document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
-    repaintDetailPoster();
-  });
-  const size=$('#javSizeSetting');
-  size.innerHTML=iconSwitchHtml('video-size','视频封面默认大小',
-    JAV_LAYOUTS,cardLayout(),{attr:'data-video-layout',className:'javimageswitch',text:true});
-  wireIconSwitch(size,'data-video-layout',setVideoLayout);
-}
-/* 侧栏光晕的详细设置照 feralui.dev/gradients 的工作台面板来：参数行是「84px 标签 +
-   自绘拉条 + 右侧等宽读数」，颜色行点开在自己下方弹一张色板。
-   取证见 docs/reference-snapshots/feralui-studio-boardui-accent-measured.md。
-   预设在这一屏和侧栏底部那枚配色钮上各有一份，是同一组色块、同一份写入：两处读的都是
-   `appSettings.homeGlow`，点哪一边另一边当场对齐，所以不存在「哪一个说了算」。
-   当前档名、预设色块和五条参数同属「配色」这一组，组名与下面「颜色」同一档式样：这一屏
-   在设置里排在「侧栏光晕」那一行之后，没有组名的话它读起来是散在上一行底下的几条控件。 */
+/* 光晕预设色块在侧栏底部那枚配色钮和设置面板（`frontend/src/react/settings-panel/`）上各有
+   一份，是同一组色块、同一份写入：两处读的都是 `appSettings.homeGlow`，都由下面这两个函数
+   画和接，点哪一边另一边当场对齐。 */
 /* 预设色块照 feralui 的预设 chip 做：三枚光晕色等分一圈 conic-gradient，再叠 BoardUI 那
    三层白色高光。「玻璃原色」那一格的球不带颜色：它画的是当前主题下玻璃自带的那两团
    反光，两个主题各一套，值只有样式表里一份，所以这里交出一个标记、由 CSS 去取。 */
@@ -684,357 +664,51 @@ function wireGlowPresetGrid(grid){
     saveSettings();applyHomeGlow();applyGlassFaces();applyAccent();syncGlowChrome();
   });
 }
-const glowSwatchesHtml=()=>GLOW_SWATCHES.map(([family,name,hex])=>
-  `<button type="button" class="glowswatch" role="radio" aria-checked="false" data-glow-swatch="${hex}"
-    data-glow-family="${family}" style="--glow-swatch:${hex}" title="${esc(name)}" aria-label="${esc(name)}"></button>`).join('');
-const glowPillsHtml=()=>GLOW_SWATCH_FAMILIES.map(([key,label],index)=>
-  `<button type="button" class="glowpill" data-glow-pill="${key}" aria-pressed="${index===0}">${esc(label)}</button>`).join('');
-const glowStopRowHtml=(key,index)=>{
-  const label=GLOW_SPOT_LABELS[index];
-  return `<div class="glowstop" data-glow-stop="${key}">
-    <button type="button" class="glowstopmain" data-glow-stop-toggle aria-haspopup="dialog" aria-expanded="false">
-      <span class="glowstopdot" aria-hidden="true" data-glow-stop-dot></span>
-      <span class="glowstoptext"><b>${esc(label)}</b><small class="mono" data-glow-stop-hex></small></span>
-      ${icon('chevron-down')}</button>
-    <div class="popmenu glowstoppop" data-glow-stop-pop popover="manual" hidden>
-      <div class="glowpills" role="group" aria-label="色系">${glowPillsHtml()}</div>
-      <div class="glowpalette" role="radiogroup" aria-label="${esc(label)}颜色">${glowSwatchesHtml()}</div>
-    </div></div>`;
-};
-const glowFieldRowHtml=(field,label,max)=>`<div class="glowfield" data-glow-field="${field}"><span class="glowfieldlabel">${esc(label)}</span>${
-  dialSliderHtml({value:appSettings.homeGlow[field],min:0,max,step:1,label,attr:`data-glow-dial="${field}"`})}</div>`;
-/* 「玻璃原色」那一档没有三枚光晕：那一层整个算作 0，面上漂的是每块玻璃自带的两团反光。
-   强度、颗粒、柔化、大小和三枚颜色于是全都管不着任何东西，留在屏上就是几样按了不动的
-   控件，所以这一档把它们收起来，换一句说明这一档的颜色由明暗主题给。漂移速度不收——
-   自带那两团也在漂，那条拉条在任何一档下都说了算。「恢复默认」同样不收：任何一档下都
-   要能一步回到出厂那一套，所以它排在分组外面。 */
-const homeGlowControlsHtml=()=>`<section class="glowgroup"><h4>配色</h4>
-  <p class="glowcurrent">当前配色<b data-glow-preset-name></b></p>
-  <div class="board-glow-grid" data-glow-grid role="group" aria-label="光晕配色"></div>
-  <p class="glownative" data-glow-native-note hidden>这一档用每块玻璃自带的反光，颜色跟着明暗主题走。</p>
-  <div class="glowfields">
-    ${glowFieldRowHtml('strength','强度',100)}${glowFieldRowHtml('noise','颗粒',60)}${
-    glowFieldRowHtml('speed','漂移速度',300)}${glowFieldRowHtml('soften','柔化',100)}${
-    glowFieldRowHtml('size','大小',100)}</div></section>
-  <section class="glowgroup" data-glow-colours><h4>颜色</h4>
-    <div class="glowstops">${HOME_GLOW_SPOTS.map(glowStopRowHtml).join('')}</div></section>
-  <div class="glowactions"><button type="button" class="geist-button" data-glow-reset>恢复默认</button></div>`;
-/* 侧栏那枚钮和这一屏读的是同一份参数，改完两边一起对齐。侧栏还没装配时这里是个空函数，
-   首页第一帧就打开设置面板也不会炸。 */
+/* 侧栏那枚配色钮由壳尾的装配段接上；接上之前这里是个空函数，首页第一帧就改光晕也不会炸。
+   设置面板读的是同一份 `appSettings.homeGlow`，经 store 通知自己跟上。 */
 let syncGlowSidebar=()=>{};
-const glowDials=new Map();
-function syncHomeGlowSetting(){
-  const mount=$('#homeGlowControls');
-  if(!mount||mount.dataset.glowWired!=='true')return;
-  const glow=appSettings.homeGlow,native=isNativeGlass(glow.preset);
-  mount.querySelector('[data-glow-preset-name]').textContent=glowPresetName(glow.preset);
-  renderGlowPresetGrid(mount.querySelector('[data-glow-grid]'));
-  mount.querySelector('[data-glow-native-note]').hidden=!native;
-  mount.querySelectorAll('[data-glow-field]').forEach(row=>
-    row.hidden=native&&row.dataset.glowField!=='speed');
-  mount.querySelector('[data-glow-colours]').hidden=native;
-  glowDials.forEach((dial,field)=>dial.set(glow[field]));
-  mount.querySelectorAll('[data-glow-stop]').forEach(row=>{
-    const color=glow[row.dataset.glowStop].color;
-    row.querySelector('[data-glow-stop-dot]').style.setProperty('--glow-swatch',color);
-    row.querySelector('[data-glow-stop-hex]').textContent=color;
-    row.querySelectorAll('[data-glow-swatch]').forEach(swatch=>
-      swatch.setAttribute('aria-checked',String(swatch.dataset.glowSwatch===color)));
-  });
-}
-function syncGlowChrome(){syncHomeGlowSetting();syncGlowSidebar()}
-function wireHomeGlowControls(mount){
-  const glow=()=>appSettings.homeGlow;
-  wireGlowPresetGrid(mount.querySelector('[data-glow-grid]'));
-  mount.querySelectorAll('[data-glow-dial]').forEach(node=>{
-    const field=node.dataset.glowDial;
-    /* 拖动中只改参数、只排一帧重画；落盘留给松手那一下。每一步都 saveSettings() 的话，
-       一次拖动就是几十次同步 JSON 序列化加一次 localStorage 写入，全在主线程上。
-       其余玻璃面跟着走的只有速度，而它那两枚变量只能写在根上——写一次根整棵树重算样式，
-       拖动时每帧一次必掉帧。所以拖动期间只有侧栏那一层在变，松手那一下才铺到整页。 */
-    glowDials.set(field,wireDialSlider(node,{
-      onInput:value=>{glow()[field]=value;applyHomeGlow()},
-      onChange:()=>{saveSettings();if(field==='speed')applyGlassFaces()}}));
-  });
-  mount.querySelectorAll('[data-glow-stop]').forEach(row=>{
-    const key=row.dataset.glowStop;
-    const toggle=row.querySelector('[data-glow-stop-toggle]'),pop=row.querySelector('[data-glow-stop-pop]');
-    /* 弹层左右贴齐这一行：宽度不跟着行走的话，一张比行窄的色板看不出是从哪一行开出来的。
-       这条要排在 wireAnchoredMenu 之前，它按当前宽度算左缘。 */
-    toggle.addEventListener('click',()=>{pop.style.width=`${row.getBoundingClientRect().width}px`});
-    wireAnchoredMenu(row,toggle,pop);
-    const pills=[...pop.querySelectorAll('[data-glow-pill]')];
-    const swatches=[...pop.querySelectorAll('[data-glow-swatch]')];
-    pills.forEach(pill=>{
-      pill.onclick=()=>{
-        pills.forEach(other=>other.setAttribute('aria-pressed',String(other===pill)));
-        const family=pill.dataset.glowPill;
-        swatches.forEach(swatch=>{swatch.hidden=family!=='all'&&swatch.dataset.glowFamily!==family});
-      };
-    });
-    swatches.forEach(swatch=>{
-      swatch.onclick=()=>{
-        const spot=glow()[key];
-        spot.color=glowColor(swatch.dataset.glowSwatch,spot.color);
-        glow().preset='custom';
-        saveSettings();applyHomeGlow();applyGlassFaces();syncGlowChrome();closeAnchoredMenu();toggle.focus();
-      };
-    });
-  });
-  mount.querySelector('[data-glow-reset]').onclick=()=>{
-    appSettings.homeGlow=normalizeHomeGlow(null);saveSettings();applyHomeGlow();applyGlassFaces();syncGlowChrome();
-  };
-}
-/* 开关在上面那行设置行上，参数区由这里画。面板每次打开都会走一遍，但 DOM 只建一次：
-   重建会把正开着的颜色弹层、焦点和拉条的拖动状态一起扔掉。 */
-function renderHomeGlowSetting(){
-  const glow=appSettings.homeGlow,toggle=$('#homeGlowSetting'),mount=$('#homeGlowControls');
-  if(!toggle||!mount)return;
-  toggle.checked=glow.on;mount.hidden=!glow.on;
-  /* 侧栏那张卡跟着这一下立刻改：开关在面板里，弹层在侧栏底部，两处同时看得见，
-     等下一次刷新才对齐的话，关掉之后那一组光晕球还整整齐齐摆在那儿。 */
-  toggle.onchange=()=>{glow.on=toggle.checked;mount.hidden=!glow.on;saveSettings();applyHomeGlow();applyGlassFaces();syncGlowSidebar()};
-  if(mount.dataset.glowWired!=='true'){
-    mount.dataset.glowWired='true';
-    mount.innerHTML=homeGlowControlsHtml();
-    wireHomeGlowControls(mount);
-  }
-  syncHomeGlowSetting();
-}
-function renderThemeSetting(){
-  const mount=$('#themeSetting');
-  mount.innerHTML=iconSwitchHtml('theme','主题',THEME_OPTIONS,appSettings.theme,{attr:'data-theme-choice',className:'themeswitch'});
-  wireIconSwitch(mount,'data-theme-choice',choice=>{appSettings.theme=choice;saveSettings();applyTheme()});
-}
-/* 设置面板里的每个下拉：选项、当前值和应用方式写在一起。它们此前是 index.html 里的
-   浏览器自带的 select，弹出层由系统画、跟不上站内色板；换成 Geist Select 之后这里是唯一
-   一处写它们的地方，面板每次打开重画一遍。关注自动更新那一档也在表里，它的应用是
-   一次网络写入，所以额外报告状态并在往返期间禁用自己。 */
-const SETTING_SELECTS=[
-  ['batchSizeSetting','每批作品',[['30','30 个'],['60','60 个'],['90','90 个']],
-    ()=>appSettings.batchSize,
-    value=>{appSettings.batchSize=+value||60;saveSettings();if(location.pathname==='/')loadCatalog()}],
-  ['defaultSortSetting','默认排序',[['seed','随机'],['rating','评分'],['o','高潮计数'],['plays','观看次数'],
-    ['dur','时长'],['size','体积'],['new','入库时间'],['played','观看时间']],
-    ()=>appSettings.defaultSort,
-    value=>{appSettings.defaultSort=value;syncSortDirectionSetting();saveSettings();state.sort=appSettings.defaultSort;
-      state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')loadCatalog()}],
-  ['defaultSortDirectionSetting','默认排序方向',[['desc','降序'],['asc','升序']],
-    ()=>appSettings.defaultSortDirection==='asc'?'asc':'desc',
-    value=>{appSettings.defaultSortDirection=value;syncSortDirectionSetting();saveSettings();state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);if(location.pathname==='/')loadCatalog()}],
-  ['hoverDelaySetting','悬停放大',[['0','关闭'],['3','3 秒'],['5','5 秒'],['8','8 秒']],
-    ()=>appSettings.hoverDelaySeconds,
-    value=>{appSettings.hoverDelaySeconds=boundedPreference(+value,0,60,5);
-      if(!appSettings.hoverDelaySeconds)document.querySelectorAll('[data-previewing],[data-longhover]')
-        .forEach(el=>{setHoverState(el,'previewing',false);setHoverState(el,'longhover',false)});
-      document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);saveSettings()}],
-  ['seekSecondsSetting','快进 / 快退',[['5','5 秒'],['10','10 秒'],['30','30 秒']],
-    ()=>appSettings.seekSeconds,
-    value=>{appSettings.seekSeconds=+value||10;saveSettings();repaintCatalogGrid()}],
-  /* 档位跟着这台机器走（/api/thumbnail-jobs），不存在本地：跑的是这台机器上的一条
-     长任务，从另一台设备打开设置要看到的是它正在按什么密度采，不是那台设备上次选的。
-     初值写 off，真值由 `loadVideoThumbnailSetting` 读回来填。 */
-  ['videoThumbnailSetting','视频缩略图采集',[['off','关闭'],['precise','精准'],['coarse','粗略']],
-    ()=>'off',value=>saveVideoThumbnailMode(value)],
-  ['relatedLimitSetting','相关推荐',[['12','12 个'],['20','20 个'],['30','30 个']],
-    ()=>appSettings.relatedLimit,
-    value=>{appSettings.relatedLimit=+value;saveSettings()}],
-  /* 条数跟着账本走（/api/settings），所有访问端看到同一个数；本地那份只是镜像。 */
-  ['searchHistoryLimitSetting','搜索记录',[['5','最近 5 条'],['10','最近 10 条'],['20','最近 20 条']],
-    ()=>appSettings.searchHistoryLimit,
-    value=>{applySearchHistoryLimit(+value);postSearchHistoryLimit()}],
-  ['followScheduleSetting','关注自动更新',[['0','关闭'],['15','每 15 分钟'],['30','每 30 分钟'],['60','每小时'],
-    ['180','每 3 小时'],['360','每 6 小时'],['720','每 12 小时'],['1440','每天']],
-    ()=>'0',value=>saveFollowSchedule(+value)],
-  /* 服务端按这个数决定要不要重取，所以它跟着账本走（/api/settings），本地那份只是镜像。 */
-  ['followInitialDaysSetting','首次采集历史范围',FOLLOW_INITIAL_RANGE_OPTIONS,
-    ()=>appSettings.followInitialDays,value=>saveFollowInitialDays(+value)],
-  ['metadataRefreshSetting','头像与站点图标刷新',[['7','每周'],['30','每月'],['90','每季'],['0','从不']],
-    ()=>appSettings.metadataRefreshDays,
-    value=>{appSettings.metadataRefreshDays=allowedSetting(+value,METADATA_REFRESH_DAYS,30);saveSettings();
-      api('/api/settings',{method:'POST',body:JSON.stringify({metadataRefreshDays:appSettings.metadataRefreshDays})}).catch(()=>{})}],
-];
-function syncSortDirectionSetting(){
-  const directionMount=$('#defaultSortDirectionSetting');
-  if(directionMount)directionMount.hidden=appSettings.defaultSort==='seed';
-  const field=$('#defaultSortDirectionSetting .gselect');
-  if(field){
-    field.disabled=appSettings.defaultSort==='seed';
-    const ascending=appSettings.defaultSortDirection==='asc';
-    /* 两枚箭头叠在同一格里，换的只是方向这一件事。`innerHTML` 重写会把旧字形连同它的
-       动画一起丢掉，读出来是一次硬切，所以只在这一格还没建起来时写一次。 */
-    const mark=field.querySelector('[data-select-label]');
-    if(!mark.querySelector('[data-icon-swap]'))
-      mark.innerHTML=iconSwapHtml('arrow-up','arrow-down','a',
-        {className:'gselectmark',iconClass:'gselectmark'})+'<span data-sort-direction-label></span>';
-    setIconSwap(mark,ascending?'a':'b');
-    mark.querySelector('[data-sort-direction-label]').textContent=ascending?'升序':'降序';
-  }
-  const help=$('#sortDirectionHelp');
-  if(help)help.textContent=appSettings.defaultSort==='seed'?'随机排序不使用方向。':'打开首页时使用的排序与方向。';
-}
-function renderSettingSelects(){
-  for(const [id,label,options,read,apply] of SETTING_SELECTS){
-    const mount=$(`#${id}`);if(!mount)continue;
-    if(mountNumberSetting(mount,id,label,+read(),apply))continue;
-    mount.innerHTML=selectFieldHtml(options,read(),{label});
-    const field=wireSelectField(mount.firstElementChild);
-    field.addEventListener('change',()=>apply(field.value));
-  }
-  syncSortDirectionSetting();
-}
-function syncSettingsPanel(){
-  $('#groupCollapseSetting').checked=appSettings.groupCollapse;
-  $('#feedAutoScrollSetting').checked=appSettings.feedAutoScroll;
-  for(const [id,key] of FEED_COMPILATION_SWITCHES)$('#'+id).checked=appSettings[key];
-  $('#detailAutoplaySetting').checked=appSettings.detailAutoplay;
-  $('#miniplayerSetting').checked=appSettings.miniplayer;
-  $('#uiSoundsSetting').checked=appSettings.uiSounds;
-  renderSettingSelects();
-  renderThemeSetting();
-  renderHomeGlowSetting();
-  renderJavImageSetting();
-  renderSidebarOrderSetting();
-  loadFollowScheduleSetting();
-  void loadSyncedSettings();
-  void loadVideoThumbnailSetting();
-}
-let settingsReturnFocus=null,settingsTransition=0,settingsRequestedSection='';
-let refreshSettingsTabs=null;
-function openSettings(open=true,section=''){
-  const panel=$('#settingsPanel');
-  if(open){
-    /* 设置这一屏盖住整页，任何还开着的锚定弹层都得先收掉。做在这里而不是逐枚入口上补：
-       设置能从侧栏的设置钮、配色弹层的「详细设置」和快捷键三处进来，往每一处补一句
-       的话，下一个入口照样会漏。 */
-    closeAnchoredMenu();
-    settingsRequestedSection=section;
-    settingsTransition++;panel.classList.remove('closing');
-    settingsReturnFocus=settingsReturnFocus||document.activeElement;panel.hidden=false;
-    playUiSound('whoosh');
-    document.documentElement.style.overflow='hidden';
-    document.body.classList.add('settings-open');syncSettingsPanel();void syncMachineSettings();refreshSettingsTabs?.();
-    queueMicrotask(()=>$('#settingsClose').focus());return
-  }
-  if(panel.hidden||panel.classList.contains('closing'))return;
-  settingsRequestedSection='';
-  const transition=++settingsTransition;panel.classList.add('closing');
-  const finish=()=>{
-    if(transition!==settingsTransition||!panel.classList.contains('closing'))return;
-    panel.hidden=true;panel.classList.remove('closing');
-    document.documentElement.style.overflow='';
-    document.body.classList.remove('settings-open');
-    if(settingsReturnFocus&&document.contains(settingsReturnFocus))settingsReturnFocus.focus();
-    settingsReturnFocus=null;
-  };
-  if(matchMedia('(prefers-reduced-motion: reduce)').matches)queueMicrotask(finish);
-  else{
-    panel.querySelector('.settingscard')?.addEventListener('animationend',finish,{once:true});
-    setTimeout(finish,380);
-  }
-}
-$('#settingsBtn').onclick=()=>openSettings(true);$('#settingsClose').onclick=()=>openSettings(false);
-$('#settingsPanel').onclick=e=>{if(e.target===$('#settingsPanel'))openSettings(false)};
-$('#settingsPanel').onkeydown=e=>{
-  if(e.key!=='Tab')return;
-  const focusable=[...e.currentTarget.querySelectorAll('button:not([disabled]),input:not([disabled]),textarea:not([disabled]),a[href]')];
-  if(!focusable.length)return;
-  const first=focusable[0],last=focusable.at(-1);
-  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus()}
-  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus()}
+function syncGlowChrome(){syncGlowSidebar()}
+/* 设置面板归 React 岛（`frontend/src/react/settings-panel/`）。岛只改 `appSettings` 的字段并落盘，
+   改完用效果名告诉这里跟着做什么：重画网格、重取目录、换主题、重排侧栏都还是壳的事。 */
+const settingsEffects={
+  theme:()=>applyTheme(),
+  /* 开这一格时立刻响一声开关音，人才知道它开了。关的那一声由 document 上的 change 监听
+     发出：捕获阶段排在这里前面，那时开关还没关掉，最后一声还能响出来。 */
+  uiSounds:()=>{setUiSoundsEnabled(appSettings.uiSounds);if(appSettings.uiSounds)playUiSound('toggle-on')},
+  glowFrame:()=>applyHomeGlow(),
+  glow:()=>{applyHomeGlow();applyGlassFaces();syncGlowSidebar()},
+  batchSize:()=>{if(location.pathname==='/')loadCatalog()},
+  defaultSort:()=>{
+    state.sort=appSettings.defaultSort;
+    state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);
+    if(location.pathname==='/')loadCatalog();
+  },
+  sortDirection:()=>{
+    state.dir=preferredDirection(state.sort,appSettings.defaultSort,appSettings.defaultSortDirection);
+    if(location.pathname==='/')loadCatalog();
+  },
+  hoverDelay:()=>{
+    if(!appSettings.hoverDelaySeconds)document.querySelectorAll('[data-previewing],[data-longhover]')
+      .forEach(el=>{setHoverState(el,'previewing',false);setHoverState(el,'longhover',false)});
+    document.documentElement.style.setProperty('--hover-delay',`${appSettings.hoverDelaySeconds}s`);
+  },
+  seekSeconds:()=>repaintCatalogGrid(),
+  /* 折叠是在渲染时做的，不重取的话已经被跳过的那些卡不会自己冒出来。 */
+  groupCollapse:()=>reloadCurrentSurface(),
+  feedAutoScroll:()=>syncFeedAutoScroll(),
+  feedCompilations:()=>refreshFeedRows(),
+  /* 设置说的是「离开详情不再进小窗」，已经开着的那个小窗留着反而像没生效。 */
+  miniplayer:()=>{if(!appSettings.miniplayer)stageApi()?.closeMiniplayer()},
+  javImage:()=>{
+    syncJavImages(document,appSettings.javImage);repaintCatalogGrid();
+    document.querySelectorAll('img[data-jav-image].cover').forEach(coverAnchor);
+    repaintDetailPoster();
+  },
+  searchHistoryLimit:()=>updateIsland($('#searchMenu'),{historyLimit:appSettings.searchHistoryLimit}),
+  sidebarOrder:()=>{buildEdge();buildBars()},
 };
-/* 关掉后同一番号的每个分卷／版次各占一张卡。改完要重取当前列表：折叠是在渲染
-   时做的，不重画的话已经被跳过的那些卡不会自己冒出来。 */
-$('#groupCollapseSetting').onchange=e=>{appSettings.groupCollapse=!!e.target.checked;saveSettings();reloadCurrentSurface()};
-$('#detailAutoplaySetting').onchange=e=>{appSettings.detailAutoplay=e.target.checked;saveSettings()};
-$('#feedAutoScrollSetting').onchange=e=>{appSettings.feedAutoScroll=e.target.checked;saveSettings();syncFeedAutoScroll()};
-/* 开这一格时立刻响一声开关音，人才知道它开了。关的那一声由 document 上的 change 监听
-   发出：捕获阶段排在这个处理器前面，那时开关还没关掉，最后一声还能响出来。 */
-$('#uiSoundsSetting').onchange=e=>{
-  appSettings.uiSounds=e.target.checked;setUiSoundsEnabled(appSettings.uiSounds);saveSettings();
-  if(appSettings.uiSounds)playUiSound('toggle-on');
-};
-/* 关掉小窗播放时正开着的那个小窗也一起收：设置说的是「离开详情不再进小窗」，留着一个
-   已经进去的反而像没生效。 */
-$('#miniplayerSetting').onchange=e=>{appSettings.miniplayer=e.target.checked;saveSettings();if(!appSettings.miniplayer)stageApi()?.closeMiniplayer()};
-let followScheduleRequest=0;
-let followScheduleStatus=null;
-const followScheduleCopy=status=>{
-  if(!status.available)return '只在账本写入端运行';
-  if(status.running)return '正在检查全部来源…';
-  if(status.last_error)return `上次失败：${status.last_error}`;
-  if(status.last_finished_at)return `上次完成 ${localTime(status.last_finished_at)} · 新增 ${status.last_added||0}`;
-  if(status.next_run_at)return `下次 ${localTime(status.next_run_at)}`;
-  return status.enabled?'等待首次运行':'已关闭';
-};
-const followScheduleField=()=>$('#followScheduleSetting input[type=number]');
-async function loadFollowScheduleSetting(){
-  const field=followScheduleField(),state=$('#followScheduleState'),request=++followScheduleRequest;
-  syncNumberSetting($('#followScheduleSetting'),null,true);state.innerHTML=loadingDotsHtml('正在读取状态');
-  try{
-    const status=await api('/api/follow/schedule');if(request!==followScheduleRequest)return;
-    followScheduleStatus=status;field.value=String(status.interval_minutes);
-    syncNumberSetting($('#followScheduleSetting'),status.enabled?status.interval_minutes:0,!status.available);
-    field.disabled=!status.available;state.textContent=followScheduleCopy(status);
-  }catch(error){if(request===followScheduleRequest)state.textContent=`状态未取得：${error.message||error}`}
-}
-async function saveFollowSchedule(minutes){
-  const field=followScheduleField(),state=$('#followScheduleState');syncNumberSetting($('#followScheduleSetting'),null,true);
-  state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
-  try{
-    const status=await api('/api/follow/schedule',{method:'POST',body:JSON.stringify({enabled:minutes>0,interval_minutes:minutes||60})});
-    followScheduleStatus=status;
-    state.textContent=followScheduleCopy(status);
-  }catch(error){state.textContent=error.message||'保存失败'}
-  finally{const status=followScheduleStatus;syncNumberSetting($('#followScheduleSetting'),status?(status.enabled?status.interval_minutes:0):null,status?!status.available:false)}
-}
-/* 视频缩略图采集。档位在服务端，设置行只读回档位和一句状态；采集进度在活动页（任务中心），
-   这里不轮询。同一个 `videoThumbnailRequest` 兼作过期判据，又点了一次就丢弃在途的那一轮。 */
-let videoThumbnailRequest=0;
-function videoThumbnailField(){return $('#videoThumbnailSetting .gselect')}
-function videoThumbnailCopy(status){
-  if(status.status==='running')return '正在采集，进度在活动页查看。';
-  if(status.status==='failed')return `上一轮采集停下了：${status.stopped||'原因未取得'}`;
-  if(status.status==='complete')return status.stopped?'上一轮采集已按停。':'上一轮采集已完成。';
-  return status.mode==='off'
-    ?'关闭时不采集；已经生成的图留在盘上，清理走数据管理页。'
-    :'选定档位后从最近看过的片子开始采集。';
-}
-function applyVideoThumbnailStatus(status){
-  const field=videoThumbnailField(),state=$('#videoThumbnailState');
-  if(field){field.disabled=false;field.value=status.mode||'off'}
-  if(state)state.textContent=videoThumbnailCopy(status);
-}
-async function loadVideoThumbnailSetting(){
-  const state=$('#videoThumbnailState');if(!state)return;
-  const request=++videoThumbnailRequest,field=videoThumbnailField();
-  if(field)field.disabled=true;
-  state.innerHTML=loadingDotsHtml('正在读取状态');
-  try{
-    const status=await api('/api/thumbnail-jobs');
-    if(request!==videoThumbnailRequest)return;
-    applyVideoThumbnailStatus(status);
-  }catch(error){
-    if(request!==videoThumbnailRequest)return;
-    if(field)field.disabled=false;
-    state.textContent=`状态未取得：${error.message||error}`;
-  }
-}
-async function saveVideoThumbnailMode(mode){
-  const state=$('#videoThumbnailState'),field=videoThumbnailField();
-  const request=++videoThumbnailRequest;
-  if(field)field.disabled=true;
-  if(state)state.innerHTML=`${spinnerHtml('保存中')}<span>正在保存…</span>`;
-  try{
-    const status=await api('/api/thumbnail-jobs',{method:'POST',body:JSON.stringify({mode})});
-    if(request!==videoThumbnailRequest)return;
-    applyVideoThumbnailStatus(status);
-  }catch(error){
-    if(request!==videoThumbnailRequest)return;
-    if(field)field.disabled=false;
-    if(state)state.textContent=error.message||'保存失败';
-  }
-}
+/* 折射贴图由壳尾的装配段挂；设置面板左栏那块玻璃第一次进 DOM 时要它再扫一遍。 */
+let syncGlassOptics=()=>{};
 /* 来源图标：品牌使用已缓存的官方资产；通用操作图标统一使用本地 Lucide 子集。
    115 与 PikPak 都取 `MEDIA_SOURCE_ICONS` 里那份官方站标（取证
    follow-source-icons-measured.md）：来源角标、媒体库切换器和配置页问的是同一件事
@@ -1112,55 +786,6 @@ const actionReceipt=(message,{undo=null,timeout=undo?8000:6000}={})=>{
 };
 const actionFailure=(message,error)=>toast(
   {text:`${message}失败：${error?.message||'请重试'}`},{warn:true});
-/* 合集开关由服务端判，列表、未读数和补封面排队都跟着它，所以先存到服务端再重画。 */
-for(const [id,key,label] of FEED_COMPILATION_SWITCHES)$('#'+id).onchange=async e=>{
-  const box=e.target,on=box.checked;
-  setActionBusy(box);
-  try{
-    const saved=await api('/api/settings',{method:'POST',body:JSON.stringify({[key]:on})});
-    appSettings[key]=saved[key];saveSettings();refreshFeedRows();
-    actionReceipt(on?`新作已收起${label}`:`新作已列出${label}`);
-  }catch(error){box.checked=!on;actionFailure(`保存${label}开关`,error)}
-  finally{setActionBusy(box,false)}
-};
-
-async function saveFollowInitialDays(value){
-  const field=$('#followInitialDaysSetting .gselect'),state=$('#followInitialDaysState');
-  if(field.getAttribute('aria-busy')==='true')return;
-  setActionBusy(field);state.textContent='正在保存…';
-  try{
-    const saved=await api('/api/settings',{method:'POST',body:JSON.stringify({followInitialDays:value})});
-    appSettings.followInitialDays=saved.followInitialDays;saveSettings();
-    state.textContent='已保存，适用于尚未开始采集的来源。';actionReceipt('已保存首次采集历史范围');
-  }catch(error){field.value=String(appSettings.followInitialDays);state.textContent=error.message;actionFailure('保存首次采集历史范围',error)}
-  finally{setActionBusy(field,false)}
-}
-
-/* 设置弹层最后一格「这台电脑」只放一张摘要卡：媒体库数、端口、更新状态，加一颗「打开
-   配置页」。要改的东西都在 `/configuration`（ADR-0050）。别的设备打开设置照样看得见这一格，
-   里面换成一句话说清在哪儿改——判据是 `/healthz` 的 `configurable`（服务由托盘管、已完成
-   配置、请求来自本机三条同时成立）。
-   写在这儿是因为它要用上面那两个模块级绑定；`openSettings` 靠函数声明提升调到它。 */
-let machineSettingsMounted=false;
-async function syncMachineSettings(){
-  const host=$('#machineSettings');
-  if(!host||machineSettingsMounted)return;
-  const open=()=>!$('#settingsPanel').hidden;
-  const runtime=await api('/healthz').catch(()=>null);
-  if(!open())return;
-  if(runtime)runtimeConfigurable=!!runtime.configurable;
-  if(!runtime||!runtimeConfigurable){
-    host.innerHTML=noteHtml('媒体文件夹、端口、代理与更新只能在运行 Peach 服务的那台设备上改：在它的浏览器里打开配置页。',
-      {label:'在服务端设备修改'});
-    return;
-  }
-  machineSettingsMounted=true;
-  await mountIsland('configuration-summary',host,
-    {openConfiguration:()=>{openSettings(false);void openConfiguration(true)}},{isCurrent:open});
-  /* 挂到一半用户把弹层关了：island 认出自己过期，不会画，这一格里一样东西都没有。
-     退回未挂状态让下次重来，别留一格点开是空白的「这台电脑」。 */
-  if(!open())machineSettingsMounted=false;
-}
 
 /* 随机排序每次进入首页都换种子；同一次访问继续复用该种子，保证筛选和分页
    不会重复或漏项。「换一批」仍可在当前访问里主动生成下一批。 */
@@ -4773,6 +4398,32 @@ const OPTIONAL_EDGE_ICONS=MANAGE_SECTIONS.filter(([key])=>key!=='configuration')
     :key==='cleanup'?['data-cleanup',label,ic]:[key,label,ic]);
 const NAV_CATALOG=[...EDGE_ICONS,...OPTIONAL_EDGE_ICONS];
 const DIRECT_MANAGE_NAV={stats:'stats',review:'review','data-cleanup':'cleanup',trash:'trash','follow-manage':'follow',quality:'quality',activity:'activity'};
+/* 设置面板第一次打开时才装载 React 包；宿主只在那一下建一次，里面读到的常量那时都已就位。 */
+const settingsHost=()=>({
+  store:settingsStore,
+  changed:effect=>settingsEffects[effect]?.(),
+  sound:name=>playUiSound(name),
+  navCatalog:NAV_CATALOG,themeOptions:THEME_OPTIONS,videoLayouts:JAV_LAYOUTS,
+  followInitialRanges:FOLLOW_INITIAL_RANGE_OPTIONS,
+  videoLayout:()=>cardLayout(),setVideoLayout,
+  censored:censorOn,setCensored,
+  highContrast:()=>document.documentElement.classList.contains('board-high-contrast'),setHighContrast,
+  renderGlowGrid:renderGlowPresetGrid,wireGlowGrid:wireGlowPresetGrid,
+  receipt:message=>actionReceipt(message),
+  failure:actionFailure,
+  syncRemote:remote=>applySyncedSettings(remote),
+  openConfiguration:()=>void openConfiguration(true),
+  attached:()=>syncGlassOptics(),
+  /* 「这台电脑」那一格的判据：服务由托盘管、已完成配置、请求来自本机三条同时成立。 */
+  configurable:()=>api('/healthz')
+    .then(runtime=>{runtimeConfigurable=!!runtime.configurable;return runtimeConfigurable})
+    .catch(()=>null),
+});
+/* 设置能从侧栏的设置钮、配色弹层的「详细设置」和快捷键几处进来；给了分区名就落到那一页。 */
+function openSettings(section=''){
+  return loadSettingsPanel(settingsHost()).then(panel=>{panel.open(section);return panel});
+}
+$('#settingsBtn').onclick=()=>void openSettings();
 function orderedEdgeIcons(){
   const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
   return appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
@@ -4782,41 +4433,39 @@ function orderedEdgeIcons(){
    写服务端失败不回滚也不打断：reader 会返回 409，本地顺序照样已经生效，
    只是这次改动不跨机同步——那是只读端的既定约束，不是操作失败。 */
 function saveSidebarSetting(){
-  saveSettings();renderSidebarOrderSetting();buildEdge();buildBars();
+  saveSettings();buildEdge();buildBars();
   api('/api/settings',{method:'POST',
     body:JSON.stringify({sidebarOrder:appSettings.sidebarOrder})}).catch(()=>{});
 }
 /* 启动时用账本上的那份纠正本地缓存。侧栏立即用缓存显示；最终横条和作品在同步后绘制，
-   读取期间只更新设置，保持已经显示的加载态。设置页主动同步时同步重画导航。 */
+   读取期间只更新设置，保持已经显示的加载态。 */
 async function loadSyncedSettings({render=true}={}){
   let remote=null;
   try{remote=await api('/api/settings')}catch(_e){return}
+  applySyncedSettings(remote,{render});
+}
+/* 账本那一份落进本地缓存。设置面板每次打开都重取一次再交到这里，开着的面板经 store 通知跟上；
+   那时侧栏已经画过，顺序变了就当场重画。 */
+function applySyncedSettings(remote,{render=true}={}){
   const initial=remote&&remote.followInitialDays;
-  if([0,7,30,90].includes(initial)){
-    appSettings.followInitialDays=initial;saveSettings();
-    const field=$('#followInitialDaysSetting .gselect');if(field&&field.getAttribute('aria-busy')!=='true')field.value=String(initial);
-  }
+  if([0,7,30,90].includes(initial)){appSettings.followInitialDays=initial;saveSettings()}
   const days=remote&&remote.metadataRefreshDays;
   if(METADATA_REFRESH_DAYS.includes(days)&&days!==appSettings.metadataRefreshDays){
     appSettings.metadataRefreshDays=days;saveSettings();
-    const field=$('#metadataRefreshSetting .gselect');if(field)field.value=String(days);
   }
-  for(const [id,key] of FEED_COMPILATION_SWITCHES){
+  for(const key of FEED_COMPILATION_KEYS){
     if(typeof remote?.[key]!=='boolean'||remote[key]===appSettings[key])continue;
-    appSettings[key]=remote[key];saveSettings();$('#'+id).checked=remote[key];
+    appSettings[key]=remote[key];saveSettings();
   }
   /* 账本里还没有条数时，这台设备本地改过的那个数替所有访问端先定下来，只送这一次。 */
   const limit=remote&&remote.searchHistoryLimit;
   if(Number.isInteger(limit)&&limit>=0&&limit<=50){
-    if(limit!==appSettings.searchHistoryLimit){
-      applySearchHistoryLimit(limit);
-      const mount=$('#searchHistoryLimitSetting');if(mount)syncNumberSetting(mount,limit,false);
-    }
+    if(limit!==appSettings.searchHistoryLimit)applySearchHistoryLimit(limit);
   }else if(remote&&remote.searchHistoryLimit===null&&appSettings.searchHistoryLimit!==DEFAULT_SETTINGS.searchHistoryLimit)postSearchHistoryLimit();
   const order=Array.isArray(remote&&remote.sidebarOrder)?remote.sidebarOrder:null;
   if(!order||!order.length||order.join(',')===appSettings.sidebarOrder.join(','))return;
   appSettings.sidebarOrder=order;
-  saveSettings();renderSidebarOrderSetting();
+  saveSettings();
   if(render){buildEdge();buildBars();wireAllDrag()}
 }
 function moveSidebarItem(key,targetKey,after=false){
@@ -4853,70 +4502,6 @@ function wireNavigationDrag(root){
       sidebarDragKey=null;items.forEach(node=>node.classList.remove('nav-dragging','nav-drop-before','nav-drop-after'));
     };
   });
-}
-function renderSidebarOrderSetting(){
-  const root=$('#sidebarOrderSetting');if(!root)return;
-  const byKey=new Map(NAV_CATALOG.map(item=>[item[0],item]));
-  const visible=appSettings.sidebarOrder.map(key=>byKey.get(key)).filter(Boolean);
-  const available=NAV_CATALOG.filter(([key])=>!appSettings.sidebarOrder.includes(key));
-  const rows=visible.map(([key,label,ic],index)=>
-    `<div class="sidebarorderrow" draggable="true" data-sidebar-row="${esc(key)}">
-      <span class="sidebarorderlabel"><i class="sidebardrag" aria-hidden="true">${icon('grip-vertical')}</i>${icon(ic)}<b>${esc(label)}</b></span><span class="sidebarorderactions">
-      <button data-sidebar-key="${esc(key)}" data-sidebar-move="-1" aria-label="上移 ${esc(label)}" title="上移"${index===0?' disabled':''}>${icon('chevron-up')}</button>
-      <button data-sidebar-key="${esc(key)}" data-sidebar-move="1" aria-label="下移 ${esc(label)}" title="下移"${index===visible.length-1?' disabled':''}>${icon('chevron-down')}</button>
-      <button data-sidebar-key="${esc(key)}" data-sidebar-hide aria-label="隐藏 ${esc(label)}" title="隐藏"${visible.length===1?' disabled':''}>${icon('eye-off')}</button></span></div>`).join('');
-  const firstValue=available.length?(available[0][0]===''?'__home__':available[0][0]):'';
-  root.innerHTML=rows+`<div class="sidebaradd"><div class="sidebaraddpicker">
-      <button type="button" class="sidebaraddfield" data-sidebar-add-trigger aria-haspopup="listbox" aria-expanded="false"${available.length?'':' disabled'}>
-        ${available.length?`${icon(available[0][2])}<span data-sidebar-add-label>${esc(available[0][1])}</span>${icon('chevron-down')}`:`${icon('check')}<span>全部页面都已显示</span>`}
-      </button>
-      ${available.length?`<div class="popmenu sidebaraddmenu" data-sidebar-add-menu role="listbox" aria-label="选择要添加的页面" hidden>${available.map(([key,label,ic],index)=>
-        `<button type="button" role="option" data-sidebar-add-option="${esc(key===''?'__home__':key)}" aria-selected="${index===0}" tabindex="${index===0?'0':'-1'}">${icon(ic)}<span>${esc(label)}</span></button>`).join('')}</div>`:''}
-    </div>
-    <button type="button" class="geist-button primary" data-sidebar-add${available.length?'':' disabled'}>添加</button></div>`;
-  let selectedAddKey=firstValue;
-  const addTrigger=root.querySelector('[data-sidebar-add-trigger]'),addMenu=root.querySelector('[data-sidebar-add-menu]');
-  const closeAddMenu=()=>{if(!addMenu)return;dismissMenu(addMenu);addTrigger.setAttribute('aria-expanded','false')};
-  addTrigger?.addEventListener('click',()=>{
-    if(!addMenu)return;const opening=addTrigger.getAttribute('aria-expanded')!=='true';
-    if(opening)presentMenu(addMenu);else dismissMenu(addMenu);addTrigger.setAttribute('aria-expanded',String(opening));
-    if(opening)addMenu.querySelector('[aria-selected="true"]')?.focus();
-  });
-  addMenu?.querySelectorAll('[data-sidebar-add-option]').forEach(option=>{
-    option.onclick=()=>{
-      selectedAddKey=option.dataset.sidebarAddOption;
-      addMenu.querySelectorAll('[role="option"]').forEach(item=>{item.setAttribute('aria-selected',String(item===option));item.tabIndex=item===option?0:-1});
-      const item=NAV_CATALOG.find(([key])=>(key===''?'__home__':key)===selectedAddKey);
-      if(item)addTrigger.innerHTML=`${icon(item[2])}<span data-sidebar-add-label>${esc(item[1])}</span>${icon('chevron-down')}`;
-      closeAddMenu();addTrigger.focus();
-    };
-    option.onkeydown=e=>{
-      if(e.key==='Escape'){e.preventDefault();closeAddMenu();addTrigger.focus();return}
-      const all=[...addMenu.querySelectorAll('[role="option"]')],at=all.indexOf(option);
-      if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();all[(at+(e.key==='ArrowDown'?1:-1)+all.length)%all.length].focus()}
-    };
-  });
-  root.querySelector('.sidebaraddpicker')?.addEventListener('focusout',e=>{
-    if(!e.currentTarget.contains(e.relatedTarget))closeAddMenu();
-  });
-  root.querySelectorAll('[data-sidebar-move]').forEach(button=>button.onclick=()=>{
-    const from=appSettings.sidebarOrder.indexOf(button.dataset.sidebarKey),to=from+(+button.dataset.sidebarMove);
-    if(from<0||to<0||to>=appSettings.sidebarOrder.length)return;
-    const next=[...appSettings.sidebarOrder];[next[from],next[to]]=[next[to],next[from]];
-    appSettings.sidebarOrder=next;saveSidebarSetting();
-  });
-  root.querySelectorAll('[data-sidebar-hide]').forEach(button=>button.onclick=()=>{
-    if(appSettings.sidebarOrder.length<=1)return;
-    appSettings.sidebarOrder=appSettings.sidebarOrder.filter(key=>key!==button.dataset.sidebarKey);
-    saveSidebarSetting();
-  });
-  root.querySelector('[data-sidebar-add]')?.addEventListener('click',()=>{
-    const key=selectedAddKey==='__home__'?'':selectedAddKey;
-    if(key===undefined||appSettings.sidebarOrder.includes(key)||!ALL_SIDEBAR_KEYS.includes(key))return;
-    appSettings.sidebarOrder=[...appSettings.sidebarOrder,key];saveSidebarSetting();
-  });
-  wireDragReorder(root,{selector:'[data-sidebar-row]',attribute:'data-sidebar-row',
-    onMove:moveSidebarItem});
 }
 /* 当前在哪个管理区。路由表里的 `section` 是唯一判据；垃圾文件那一屏没有自己的
    身份，它是数据管理的一部分，`state.state` 才是判据（`/junk-files` 从启动那一刻
@@ -6082,7 +5667,8 @@ function seekVideoBy(video,seconds){
 }
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){
-    if(!$('#settingsPanel').hidden){openSettings(false);return}
+    const settings=settingsPanelApi();
+    if(settings?.isOpen()){settings.close();return}
     if(!$('#searchMenu').hidden){hideSearchMenu();return}
     if(!$('#tok').hidden){$('#tokClose').click();return}
     /* 详情开着：Escape 归舞台。焦点在浮窗里时舞台自己已经收了这一下；里层弹层（标签搜索框、右键
@@ -6165,16 +5751,20 @@ const CENSOR_KEY='peach-censor';
 function censorOn(){return document.body.classList.contains('censor')}
 function applyCensor(on){
   document.body.classList.toggle('censor',on);
-  const box=$('#censorSetting');
-  if(box)box.checked=on;
+  settingsStore.notify();
 }
 applyCensor(localStorage.getItem(CENSOR_KEY)==='1');
-$('#censorSetting').onchange=e=>{
-  const on=e.target.checked;
+function setCensored(on){
   localStorage.setItem(CENSOR_KEY,on?'1':'0');
   applyCensor(on);
   if(on)releaseHoverPreviews();
-};
+}
+/* 增加对比度：关掉玻璃折射与透明，换实色背景。只落这台设备，壳尾的装配段启动时读回。 */
+function setHighContrast(on){
+  localStorage.setItem('peach.high-contrast',String(on));
+  document.documentElement.classList.toggle('board-high-contrast',on);
+  settingsStore.notify();
+}
 
 function wireDrag(el){return wireHorizontalScroller(el,{drag:true})}
 /* `#count` 一起登记：窄屏下垃圾文件那一行由 `.count` 自己横向滚动，而它没有滚动条，
@@ -6244,109 +5834,33 @@ Promise.all([loadSourceStatus(),loadSyncedSettings({render:false}),entityShapesR
   .then(async()=>{buildEdge();wireAllDrag();await restoreRoute();scheduleStickySurfaces()});
 
 ;(()=>{
-/* Board 外壳与设置导航。 */
+/* Board 外壳与配置页导航。 */
 document.documentElement.classList.toggle('board-high-contrast',localStorage.getItem('peach.high-contrast')==='true');
-
-function installUISetting(){
-  const group=document.querySelector('.settingsscroll .settinggroup');
-  if(!group||document.getElementById('glassContrastSetting'))return;
-  const contrastRow=document.createElement('div');contrastRow.className='settingrow';
-  contrastRow.innerHTML='<label for="glassContrastSetting"><b>增加对比度</b><small style="display:block">关闭玻璃折射与透明效果，使用实色背景。</small></label><input type="checkbox" id="glassContrastSetting" class="ptoggle" role="switch">';
-  group.querySelector('.settingrow').after(contrastRow);
-  const contrast=contrastRow.querySelector('input');contrast.checked=document.documentElement.classList.contains('board-high-contrast');
-  contrast.onchange=()=>{localStorage.setItem('peach.high-contrast',String(contrast.checked));document.documentElement.classList.toggle('board-high-contrast',contrast.checked)};
-}
 let tabSequence=0;
-/* 设置弹层左栏的当前项由一块滑过去的玻璃标出来，跟左侧抽屉是同一件事的两种形态，
-   所以用的也是同一块 `.navglide`——只是宿主换成左栏自己。抽屉那份要把纵滚补回来，
-   这里不用：左栏既是定位宿主也是滚动容器，玻璃当它的子元素就跟着内容一起滚。
-   坐标取 `offsetTop` 不取屏幕坐标，理由和抽屉那份一样——弹层开合自带一段缩放动画，
-   量屏幕坐标会把正在走的那一下吃进来，玻璃于是在一次开合里连着起跑好几段。
-
-   管理区那份配置页也走 `localTabs`，但它是横排的下划线式页签，不在这里加玻璃：
-   判据取 `.settingscard` 祖先，不取排列方向——方向由媒体查询改，窄屏下左栏也横过来，
-   那时它仍然该有玻璃。 */
-const localNavGlides=new WeakMap();
-function syncLocalNavGlide(nav,active,animate){
-  if(!nav.closest('.settingscard'))return;
-  let glide=localNavGlides.get(nav);
-  /* 玻璃和那个观察器先建起来，再判落点量不量得到。反过来先判的话，`choose(0)` 跑在
-     面板还收着的时候——那一栏零尺寸，一进来就返回，观察器永远挂不上，玻璃也就再没有
-     第二次出现的机会。 */
-  if(!glide||glide.pane.parentElement!==nav){
-    const pane=document.createElement('span');pane.className='navglide';
-    pane.setAttribute('aria-hidden','true');pane.hidden=true;nav.prepend(pane);
-    glide={pane,box:null};localNavGlides.set(nav,glide);
-    /* 面板收着时这一栏是零尺寸，`choose(0)` 那一次量不到落点。等它露出来那一帧再对
-       一次；宽度跟着窄屏断点变时也是这一条把玻璃带过去。 */
-    new ResizeObserver(()=>{
-      const current=nav.querySelector('[role=tab][aria-selected=true]');
-      if(current)syncLocalNavGlide(nav,current,false);
-    }).observe(nav);
-  }
-  if(!active||!active.offsetHeight){glide.pane.hidden=true;return}
-  glide.pane.hidden=false;
-  const box={x:active.offsetLeft,y:active.offsetTop,w:active.offsetWidth,h:active.offsetHeight};
-  const from=glide.box;glide.box=box;
-  moveGlidePane(glide.pane,animate?from:null,box,'y');
-}
-/* 左栏按分区分块：一个小标题带一组条目。形状照 BoardUI 的设置弹层
-   （boardui.com/components/settings-modal 的组件页只写了怎么装，量不到间距与字号，
-   未取得；小标题用本站自己那一档：13px、`--muted`）。
-   整块仍是一个 tablist：拆成两个的话方向键只在自己那一段里走，从「安全」按下去到不了
-   「通用」，而这两段在用户眼里就是一列。小标题因此写成 presentation，不占 tab 的位置。 */
-function localTabs(root,sections,host=root){
-  const items=sections.flatMap(section=>section.items);
-  if(!items.length||host.querySelector(':scope > .board-local-nav'))return null;
+/* 配置页的左栏是一排下划线式页签，一条管一段节点。整块是一个 tablist，方向键在整排里走。 */
+function localTabs(root,items){
+  if(!items.length||root.querySelector(':scope > .board-local-nav'))return null;
   const prefix=`board-tabs-${++tabSequence}`;
-  const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label',host===root?'配置分区':'设置分区');
-  if(host===root){nav.dataset.sectionNav='';nav.dataset.sectionItems='';nav.setAttribute('aria-orientation','horizontal')}
-  const buttons=[];let active=0;
+  const nav=document.createElement('div');nav.className='board-local-nav';nav.setAttribute('role','tablist');nav.setAttribute('aria-label','配置分区');
+  nav.dataset.sectionNav='';nav.dataset.sectionItems='';nav.setAttribute('aria-orientation','horizontal');
+  const buttons=[];
   const choose=index=>{
-    const moved=active!==index;
-    active=index;
-    if(host!==root){const heading=host.querySelector('.settingshead h2');
-      if(heading){heading.textContent=items[index].title;
-        /* 只在换了分区时揭示。`choose(0)` 还会在面板收着的时候跑一遍对齐玻璃，
-           那一次标题没换，跟着放就成了开面板时莫名其妙飘一下。 */
-        if(moved)revealTexts(heading.parentElement,'h2');}
-      root.scrollTop=0}
     /* 先全清再点亮当前这一条。一条可以带好几个节点，逐条 toggle 的话节点之间有重叠时，
        后面那条会把前面点亮的又抹掉。 */
     items.forEach(item=>item.nodes.forEach(node=>node.classList.remove('board-group-active')));
     items[index].nodes.forEach(node=>node.classList.add('board-group-active'));
     buttons.forEach((button,i)=>{button.setAttribute('aria-selected',String(i===index));button.tabIndex=i===index?0:-1});
-    syncLocalNavGlide(nav,buttons[index],moved);
   };
-  sections.forEach(section=>{
-    if(section.caption){const caption=document.createElement('p');caption.className='board-local-nav-caption';caption.setAttribute('role','presentation');caption.textContent=section.caption;nav.append(caption)}
-    section.items.forEach(item=>{
-      const i=buttons.length;
-      const button=document.createElement('button');button.type='button';button.role='tab';button.id=`${prefix}-tab-${i}`;button.textContent=item.title;
-      item.nodes.forEach((node,j)=>{node.dataset.boardGroup=String(i);node.id||=`${prefix}-panel-${i}-${j}`;node.setAttribute('role','tabpanel');node.setAttribute('aria-labelledby',button.id)});
-      /* 这一排都是 Remix：它那套线条件是靠 `fill` 画出来的轮廓，不是描边。全站默认的
-         `stroke:currentColor;fill:none` 会让它整枚消失，所以在这里反过来写。 */
-      if(item.icon){const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');svg.style.fill='currentColor';svg.style.stroke='none';svg.innerHTML=`<use href="#${item.icon}"/>`;button.prepend(svg)}
-      button.setAttribute('aria-controls',item.nodes.map(node=>node.id).join(' '));button.onclick=()=>choose(i);
-      button.onkeydown=event=>{let next=i;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(i+1)%items.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(i+items.length-1)%items.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;else return;event.preventDefault();choose(next);buttons[next].focus()};
-      buttons.push(button);nav.append(button);
-    });
+  items.forEach((item,i)=>{
+    const button=document.createElement('button');button.type='button';button.role='tab';button.id=`${prefix}-tab-${i}`;button.textContent=item.title;
+    item.nodes.forEach((node,j)=>{node.dataset.boardGroup=String(i);node.id||=`${prefix}-panel-${i}-${j}`;node.setAttribute('role','tabpanel');node.setAttribute('aria-labelledby',button.id)});
+    button.setAttribute('aria-controls',item.nodes.map(node=>node.id).join(' '));button.onclick=()=>choose(i);
+    button.onkeydown=event=>{let next=i;if(event.key==='ArrowRight'||event.key==='ArrowDown')next=(i+1)%items.length;else if(event.key==='ArrowLeft'||event.key==='ArrowUp')next=(i+items.length-1)%items.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=items.length-1;else return;event.preventDefault();choose(next);buttons[next].focus()};
+    buttons.push(button);nav.append(button);
   });
-  /* 那块玻璃跟着指针走，跟筛选条那排视图是同一条连线（`use-view-glide.ts`）：一列里只有
-     当前那格铺着面，鼠标停在哪一条得靠字色那一档去读，扫下来分不出自己停在了第几条。
-     指针离开这一列就滑回当前那格。触点没有「悬停」，碰一下就滑过去等于替用户点了一次，
-     所以跟那边一样把 touch 挡在外面。配置页那一份没有玻璃，`syncLocalNavGlide` 自己在
-     第一行就返回了。 */
-  buttons.forEach(button=>{button.onpointerenter=event=>{
-    if(event.pointerType!=='touch')syncLocalNavGlide(nav,button,true)}});
-  nav.onpointerleave=event=>{
-    if(event.pointerType==='touch')return;
-    const current=nav.querySelector('[role=tab][aria-selected=true]');
-    if(current)syncLocalNavGlide(nav,current,true);
-  };
-  host===root?root.prepend(nav):host.insertBefore(nav,root);
+  root.prepend(nav);
   choose(0);
-  return {nav,select:index=>choose(Math.min(Math.max(index,0),items.length-1)),get index(){return active}};
+  return {nav,select:index=>choose(Math.min(Math.max(index,0),items.length-1))};
 }
 /* 一张配置页按 `.configgroup` 小标题切成几段，标题本身不进面板：它的字已经由左栏那一条
    写出来了，留着就是同一句话在两处各说一遍。 */
@@ -6355,36 +5869,11 @@ const configTabItems=page=>{
   [...page.children].forEach(node=>{if(node.matches('.configgroup'))items.push({title:node.textContent.trim(),nodes:[]});else if(items.length)items.at(-1).nodes.push(node)});
   return items.filter(item=>item.nodes.length);
 };
-/* 字形按条目自己的名字取，不按它排第几：分组增删时按下标取字形只会整排错位。
-   整列取自 Remix，一家画的笔画才一样粗：Lucide 的描边是 2，Remix 的轮廓约 1.2，两家
-   并排时下半列每一枚都比上半列重一档，看上去像是颜色不一致。 */
-const SETTINGS_TAB_ICONS={'界面':'ri-palette-line','浏览':'ri-layout-grid-line','播放':'ri-play-circle-line',
-  '搜索':'ri-search-line','关注':'ri-rss-line','安全':'ri-shield-check-line','这台电脑':'ri-macbook-line'};
-let settingsTabs=null;
-function buildSettingsTabs(){
-  const settings=document.querySelector('.settingsscroll');
-  if(!settings)return;
-  if(settingsTabs){
-    settingsTabs.nav.remove();
-    settings.querySelectorAll('[data-board-group]').forEach(node=>{delete node.dataset.boardGroup;
-      node.classList.remove('board-group-active');node.removeAttribute('role');node.removeAttribute('aria-labelledby')});
-  }
-  const keep=settingsTabs?settingsTabs.index:0;
-  const groups=[...settings.querySelectorAll(':scope > .settinggroup')];
-  const item=node=>{const title=node.querySelector('h3').textContent.trim();return{title,icon:SETTINGS_TAB_ICONS[title],nodes:[node]}};
-  const sections=[{caption:'设置',items:groups.map(item)}];
-  settingsTabs=localTabs(settings,sections,settings.parentElement);
-  const requested=sections.flatMap(section=>section.items).findIndex(item=>item.title===settingsRequestedSection);
-  settingsTabs?.select(requested>=0?requested:keep);
-  if(requested>=0)settingsRequestedSection='';
-}
-refreshSettingsTabs=buildSettingsTabs;
 function decorate(){
-  installUISetting();
   const config=document.querySelector('#stats .configpage');
   if(config&&!config.querySelector(':scope > .board-local-nav')){
     const items=configTabItems(config);
-    const tabs=localTabs(config,[{items}]);
+    const tabs=localTabs(config,items);
     /* 骨架也带 `.configpage`，但切不出页签；真页签画出来之后才消费这次请求。 */
     if(tabs){
       const requested=items.findIndex(item=>item.title===configurationRequestedSection);
@@ -6392,18 +5881,6 @@ function decorate(){
       configurationRequestedSection='';
     }
   }
-  const settings=document.querySelector('.settingsscroll');
-  if(settings){if(!settingsTabs)buildSettingsTabs();
-    /* 标题下那道影子的门槛是那段留白自己：它长在这一栏的上内边距上，滚掉它就等于两块
-       重合，差 4px 时点亮。一滚就亮的话，那段留白还整个摊在眼前，影子却已经在说上面
-       那层浮起来了。留白的值只写在 `--settings-gap` 一处，这里读它。 */
-    if(!settings.dataset.boardScroll){settings.dataset.boardScroll='true';
-      const card=settings.parentElement;
-      const fade=()=>{
-        const gap=parseFloat(getComputedStyle(card).getPropertyValue('--settings-gap'))||0;
-        card.classList.toggle('board-settings-scrolled',settings.scrollTop>Math.max(gap-4,0));
-      };
-      settings.addEventListener('scroll',fade,{passive:true});fade()}}
   document.querySelectorAll('#managebar [data-manage]').forEach(button=>{if(button.getAttribute('aria-pressed')==='true')button.setAttribute('aria-current','page');else button.removeAttribute('aria-current')});
 }
 const boardBrand=document.querySelector('#brandHome');
@@ -6475,7 +5952,7 @@ boardFoot.innerHTML=`<div class="board-theme-toggle" role="group" aria-label="�
 boardFoot.insertAdjacentHTML('beforeend',`<div class="board-foot-actions"><button type="button" class="board-glow-toggle" id="boardGlowBtn" aria-label="光晕配色" aria-haspopup="dialog" aria-expanded="false" aria-controls="boardGlowMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#ri-palette-line"/></svg><span class="board-glow-mark" aria-hidden="true"><span class="board-glow-mark-glow"></span><span class="board-glow-mark-accent"></span></span></button></div>`);
 boardFoot.querySelector('.board-foot-actions').append(document.querySelector('#settingsBtn'));
 document.querySelector('#drawer').append(boardFoot);
-boardFoot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme();renderThemeSetting()})});
+boardFoot.querySelectorAll('[data-board-theme]').forEach(button=>button.onclick=()=>{if(button.getAttribute('aria-pressed')==='true')return;transitionTheme(button,()=>{appSettings.theme=button.dataset.boardTheme;saveSettings();applyTheme()})});
 applyTheme();
 /* 侧栏的光晕配色弹层照 boardui.com 右下角那枚「Accent color」：钮上不画字形，画的就是
    它管的那两样——左上一枚光晕色的圆、右下一枚强调色的圆叠在它上面，卡里两组球各取一枚；
@@ -6530,8 +6007,8 @@ glowPicker.querySelector('[data-glow-preset-reset]').onclick=()=>{
   saveSettings();applyHomeGlow();applyGlassFaces();applyAccent();syncGlowChrome();
 };
 glowPicker.querySelector('[data-glow-detail]').onclick=()=>{
-  glowFloating.setOpen(false);openDrawer(false);openSettings(true,'界面');
-  queueMicrotask(()=>$('#homeGlowControls')?.scrollIntoView({block:'nearest'}));
+  glowFloating.setOpen(false);openDrawer(false);
+  void openSettings('界面').then(panel=>panel.reveal('#homeGlowControls'));
 };
 syncGlowSidebar();
 function placeBrand(){
@@ -6623,11 +6100,12 @@ if(/Chrome|Chromium|Edg\//.test(navigator.userAgent)){
     for(const [node,{observer,filter}] of attached){
       if(!node.isConnected){observer.disconnect();filter.remove();attached.delete(node)}
     }
-    /* 设置弹层那一栏也在名单里。它挂在 `<body>` 上、不在 `#main` 里，所以下面那个
-       观察器看不到它开合——但它从头到尾都在 DOM 里，初次 `sync` 就能接上；面板收着时
+    /* 设置面板左栏那块 `[data-glass-pane]` 挂在 `<body>` 上、不在 `#main` 里，下面那个
+       观察器看不到它；岛第一次画出面板时经 `syncGlassOptics` 叫这里再扫一遍。面板收着时
        宽高是零，`draw` 直接返回，等 `ResizeObserver` 在它露出来那一帧再画一次贴图。 */
-    document.querySelectorAll('.board-filter-frame,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar,.settingscard>.board-local-nav,[data-glass-pane]').forEach(attach);
+    document.querySelectorAll('.board-filter-frame,.top>.ib,.edge,.drawer,.selectiondock,.reviewcontrols,.reviewgroupbar,[data-glass-pane]').forEach(attach);
   };
+  syncGlassOptics=sync;
   new MutationObserver(sync).observe(document.querySelector('#main'),{childList:true,subtree:true});sync();
 }
 

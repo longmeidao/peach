@@ -16,6 +16,7 @@ import type { FollowDetailProps } from './follow-detail/follow-detail';
 import type { FollowFeedProps } from './follow-feed/follow-feed';
 import type { ItemDetailProps } from './item-detail/item-detail';
 import type { StageApi, StageHost } from './stage/stage-api';
+import type { SettingsPanelApi, SettingsPanelHost } from './settings-panel/settings-panel-api';
 
 export type { IndexProps };
 export type { CatalogGridProps };
@@ -165,12 +166,6 @@ export interface ConfigurationProps {
   receipt(message: string): void;
   /** 让安装教程重新出现：跳过与折叠归位、撤回账本标记。 */
   reopenTutorial(): Promise<void>;
-}
-
-/** 设置弹层「这台电脑」那张摘要卡。读的是配置页同一份快照，要改的都去配置页。 */
-export interface ConfigurationSummaryProps {
-  /** 关掉设置弹层、换到 `/configuration`。整页换成哪一屏归遗留壳。 */
-  openConfiguration(): void;
 }
 
 /** 配置页的一个分组（「通用」「媒体」「网络与访问」「更新与维护」）。
@@ -395,7 +390,6 @@ export interface ReactPages {
   activity: ReactPage<ActivityProps>;
   'catalog-grid': ReactPage<CatalogGridProps>;
   configuration: ReactPage<ConfigurationProps>;
-  'configuration-summary': ReactPage<ConfigurationSummaryProps>;
   'data-cleanup': ReactPage<DataCleanupProps>;
   duplicates: ReactPage<DuplicatesProps>;
   'entity-body': ReactPage<EntityBodyProps>;
@@ -434,6 +428,13 @@ export type { StageApi, StageHost, StagePatch, StageRequest } from './stage/stag
 
 /** 接上壳给的宿主，拿回舞台岛的命令式入口（`stage/stage.tsx`）。只调一次。 */
 export declare function configureStage(host: StageHost): StageApi;
+
+export type {
+  SettingsEffect, SettingsPanelApi, SettingsPanelHost,
+} from './settings-panel/settings-panel-api';
+
+/** 接上壳给的宿主，拿回设置面板岛的命令式入口（`settings-panel/settings-panel.tsx`）。只调一次。 */
+export declare function configureSettingsPanel(host: SettingsPanelHost): SettingsPanelApi;
 
 /** 在 `host` 上挂全站唯一的 Toaster；重复调用是空操作。 */
 export declare function mountToaster(host: Element, icons: ToastIcons): void;

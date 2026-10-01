@@ -256,20 +256,21 @@ class ContractRegistrationTests(unittest.TestCase):
         """选项两边各一份：服务端多一个前端没有的值，页面就会把账本里的值打回默认。"""
         import re
 
-        page = (Path(__file__).resolve().parents[1] / "web" / "app.js").read_text(
-            encoding="utf-8")
-        raw = re.search(r"const METADATA_REFRESH_DAYS=\[(.*?)\];", page).group(1)
-        self.assertEqual(tuple(int(item) for item in raw.split(",")),
-                         web_settings.METADATA_REFRESH_DAYS)
-        options = re.search(r"\['metadataRefreshSetting','头像与站点图标刷新',\[(.*?)\]\],", page).group(1)
+        root = Path(__file__).resolve().parents[1]
+        page = (root / "web" / "app.js").read_text(encoding="utf-8")
+        panel = (root / "frontend/src/react/settings-panel/settings-panel.tsx").read_text(encoding="utf-8")
+        for source, pattern in ((page, r"const METADATA_REFRESH_DAYS=\[(.*?)\];"),
+                                (panel, r"const METADATA_REFRESH_DAYS = \[(.*?)\];")):
+            raw = re.search(pattern, source).group(1)
+            self.assertEqual(tuple(int(item) for item in raw.split(",")),
+                             web_settings.METADATA_REFRESH_DAYS)
+        # 设置面板那一格（`settings-panel` 岛）列的档位与服务端同一组。
+        options = re.search(r"const METADATA_OPTIONS: readonly Choice\[\] = \[(.*?)\];", panel).group(1)
         self.assertEqual(sorted(int(value) for value in re.findall(r"\['(\d+)',", options)),
                          sorted(web_settings.METADATA_REFRESH_DAYS))
         # 选中的值要写进账本（服务端按它决定要不要出网），启动时再用账本那份纠正本地镜像。
-        self.assertIn("body:JSON.stringify({metadataRefreshDays:appSettings.metadataRefreshDays})", page)
+        self.assertIn("save.mutate({ metadataRefreshDays: settings.metadataRefreshDays }", panel)
         self.assertIn("const days=remote&&remote.metadataRefreshDays;", page)
-        html = (Path(__file__).resolve().parents[1] / "web" / "index.html").read_text(encoding="utf-8")
-        self.assertIn('<b>头像与站点图标刷新</b>', html)
-        self.assertIn('id="metadataRefreshSetting"', html)
 
     def test_initial_history_choices_are_in_settings_and_match_the_server(self):
         import re
@@ -278,11 +279,11 @@ class ContractRegistrationTests(unittest.TestCase):
         options = re.search(r'const FOLLOW_INITIAL_RANGE_OPTIONS=\[(.*?)\];', page, re.S).group(1)
         self.assertEqual(tuple(int(value) for value in re.findall(r"\['(\d+)',", options)),
                          web_settings.FOLLOW_INITIAL_DAYS)
-        self.assertIn('body:JSON.stringify({followInitialDays:value})', page)
-        self.assertNotIn('data-follow-unread-days', page)
-        html = (root / 'web/index.html').read_text(encoding='utf-8')
-        self.assertIn('<b>首次采集历史范围</b>', html)
-        self.assertIn('id="followInitialDaysSetting"', html)
+        # 设置面板那一格在 `settings-panel` 岛里，选项由壳递进 `followInitialRanges`，选完写账本。
+        panel = (root / 'frontend/src/react/settings-panel/settings-panel.tsx').read_text(encoding='utf-8')
+        self.assertIn('followInitialRanges:FOLLOW_INITIAL_RANGE_OPTIONS,', page)
+        self.assertIn('initial.mutate({ followInitialDays: value }', panel)
+        self.assertNotIn('data-follow-unread-days', page + panel)
 
 if __name__ == "__main__":
     unittest.main()

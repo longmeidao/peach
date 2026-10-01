@@ -14,6 +14,7 @@ import { defineConfig } from 'vite';
 export const LEGACY_MODULES = {
   '@peach/legacy/core': '/js/core.js',
   '@peach/legacy/ui': '/js/ui-components.js',
+  '@peach/legacy/home-glow': '/js/home-glow.js',
 } as const;
 
 /** React 子树的产物（`vite.react.config.ts`）。island 只在挂 React 子树时动态 import 它。 */
