@@ -347,4 +347,31 @@ describe('实体页筛选浮层', () => {
       await opened.close();
     }
   });
+
+  it('深链带 media=photos 直接落在照片墙；回到视频后加一枚标签只重取一次，切照片再切回不重取', { timeout: 60_000 }, async () => {
+    const opened = await openPerformer(browser, DESKTOP, '?media=photos');
+    try {
+      const { page, stubs } = opened;
+      await page.locator('[data-entity-readout]', { hasText: /^照片/ }).waitFor({ timeout: 15_000 });
+      assert.equal(await page.locator('[data-media-view="photos"]').getAttribute('aria-pressed'), 'true');
+      assert.equal(await page.locator('[data-local-wall] [data-photo-index]').count(), PHOTOS.items.length);
+      await page.locator('[data-media-view="videos"]').click();
+      await page.locator('[data-entity-readout]', { hasText: /^视频 · 24$/ }).waitFor({ timeout: 15_000 });
+      assert.doesNotMatch(page.url(), /[?&]media=/);
+      const before = stubs.itemQueries.length;
+      await page.locator('[data-entity-tag="中出"]').click();
+      await page.locator('[data-entity-readout]', { hasText: '视频 · 24 · 中出' }).waitFor({ timeout: 15_000 });
+      await settle(page);
+      assert.equal(stubs.itemQueries.length - before, 1, `加一枚标签发了 ${stubs.itemQueries.length - before} 次作品请求`);
+      await page.locator('[data-media-view="photos"]').click();
+      await page.locator('[data-entity-readout]', { hasText: /^照片/ }).waitFor({ timeout: 15_000 });
+      await page.locator('[data-media-view="videos"]').click();
+      await page.locator('[data-entity-readout]', { hasText: '视频 · 24 · 中出' }).waitFor({ timeout: 15_000 });
+      await settle(page);
+      assert.equal(stubs.itemQueries.length - before, 1, '切照片再切回视频又取了一遍作品');
+      assert.deepEqual(unexpected(opened), []);
+    } finally {
+      await opened.close();
+    }
+  });
 });

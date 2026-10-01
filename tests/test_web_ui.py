@@ -2541,7 +2541,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("'orient','region','sort','dir','q','jav']")
         self.assertPageContains("!(key==='dir'&&value===defaultSortDir(filters.sort))")
         self.assertPageContains("&&!(key==='dir'&&filters[key]===defaultSortDir(filters.sort))")
-        self.assertPageContains("if(filters.dir)p.set('dir',filters.dir);")
+        # 资料页列表请求带上方向由岛的 `itemsParams` 拼，见 entity-page.test.tsx。
         self.assertPageContains("...resolveSort(params.get('sort'),params.get('dir'))")
         self.assertPageContains("defaultSort:'seed',sortDefaultsVersion:3")
         self.assertPageContains(
@@ -3263,7 +3263,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_filter_random_action_and_glass_polish(self):
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertPageContains("const ordered=SORTS.filter(([key])=>key!=='seed');")
-        self.assertPageContains("return javActive()?[JAV_RELEASE_SORT,...ordered]:ordered;")
+        self.assertPageContains("return jav?[JAV_RELEASE_SORT,...ordered]:ordered;")
         self.assertPageContains("state.sort='seed';state.dir='';state.seed=rollSeed();")
         # 浅色那档的两团自带反光是霁蓝配石灰，比深色那档浓一档、也大一圈：底下是一片
         # 近白的页面，照搬深色那组的 10% 白等于什么也看不见。色相由 `--glass-tint-a/b`
@@ -4081,7 +4081,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("const surface=claimSurface('/review')")
         self.assertPageContains("if(!surfaceCurrent(surface))return")
         self.assertCode("async function restoreRoute(){\n  surfaceEpoch++")
-        self.assertPageContains("decodeURIComponent(location.pathname)!==decodeURIComponent(expectedPath)")
+        # 资料页晚到的挂载：地址已换走就不画，判据交给 `mountIsland` 的 isCurrent。
+        self.assertPageContains("decodeURIComponent(location.pathname)===decodeURIComponent(expectedPath)")
         # 「换一批」在管理区的行为写在路由表的 refresh 上，不再每页一条分支。
         self.assertPageContains("if(hit?.route.refresh==='reopen'){await hit.route.open(hit.params,false);return}")
         self.assertRoute('/review', "refresh:'reopen'")
@@ -4910,10 +4911,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("body.entity-open [data-catalog-filter],body.index-open [data-catalog-filter]{display:none}")
         self.assertPageContains("logo:company&&d.has_logo?d.canonical_name:'',")
         profile = self.page[self.page.index("async function openEntity("):]
-        # 资料卡（连同卡底的同台艺人）是 entity-hero island，筛选浮层是 entity-filter
-        # island，宿主排在资料卡之后；两块的外观由 e2e 设计用例量。
-        self.assertLess(profile.index('<div data-entity-hero="'),
-                        profile.index('<div data-entity-filter>'))
+        # 资料卡与筛选浮层是 entity-page 岛的两块，浮层排在资料卡之后、两者的间距由 e2e
+        # `entity-filter.test.ts` 量。
         self.assertPageLacks("entityfootlabel")
         self.assertNotIn("关联艺人", profile)
         self.assertNotIn("相关标签", profile)
@@ -4947,34 +4946,27 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("showHomeSurfaces();disposeStage(false)")
 
     def test_entity_tags_filter_inside_the_current_entity_page(self):
-        self.assertPageContains("ENTITY_FILTER_KEYS.forEach(key=>{if(filters[key]&&key!==kind&&key!=='sort')p.set(key,filters[key])})")
-        self.assertPageContains("async function updateEntityCollection")
-        # 资料页的标签走全站共用的那个开关，落在这一页的筛选上，不重开页面。
+        # 资料页的标签走全站共用的那个开关，落在这一页的筛选上，不重开页面：作品请求的口径与
+        # 「加一个标签只重取一次」由 `frontend/test/react/entity-page.test.tsx` 钉住。
         self.assertPageContains("toggleTag:tag=>toggleTag(tag),")
-        self.assertPageContains("updateEntityCollection(barsContext.kind,barsContext.name,filters,true)")
-        self.assertPageContains("renderEntityCollection(kind,name,items,filters)")
         self.assertPageLacks("openEntity(kind,name,true,next)")
         self.assertPageLacks(
             "document.body.classList.remove('entity-open');$('#index').hidden=true;state.tag=b.dataset.entityTag"
         )
 
     def test_every_entity_video_collection_reuses_applicable_sort_controls(self):
-        self.assertPageContains("p.set('sort',filters.sort||'new')")
-        self.assertPageContains("if(filters.sort==='seed')p.set('seed',state.seed)")
+        # 资料页作品请求带哪几样排序参数、JAV 语境下多一枚发行时间，由
+        # `frontend/test/react/entity-page.test.tsx` 钉住；照片那一排不给排序键由 e2e
+        # `entity-filter.test.ts` 量。
         self.assertPageContains("const JAV_RELEASE_SORT=['release','发行时间']")
-        self.assertPageContains("javActive()?[JAV_RELEASE_SORT,...ordered]:ordered")
-        self.assertPageContains("function sortKeys(current,dir){\n  return sortOptions().map(")
+        self.assertPageContains("function sortKeys(current,dir,jav=javActive()){\n  return sortOptions(jav).map(")
         self.assertPageContains(
             "if(state.jav!=='1'&&state.sort==='release'){state.sort='seed';state.dir=''}")
-        self.assertPageContains(
-            "if(next)void updateEntityCollection(kind,name,{...filters,...next},true)")
         self.assertPageContains("key==='sort'&&filters[key]==='new'")
         self.assertPageContains("height:var(--filterH);margin:0 -16px;padding:9px 16px")
         self.assertPageContains(".tagbar.is-stuck,.count.is-stuck{")
         self.assertPageContains("['.board-filter-frame','#count']")
         self.assertPageContains("scheduleStickySurfaces();")
-        # 照片墙没有视频排序语义，切换后直接渲染照片，不复用作品头。
-        self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
 
     def test_the_agency_page_reuses_the_entity_route_table(self):
         """实体本来就只有 kind 不同，事务所加进同一张表就有了 `/agencies/<名字>`。"""
@@ -5021,25 +5013,14 @@ class WebUiSourceTests(unittest.TestCase):
             "  const frame=faceFrame({cx,cy,faceW:faceW*scale,imgW:imgW*scale,imgH:imgH*scale},\n"
             "    {w:rect.width,h:rect.height},window.devicePixelRatio||1);")
 
-    def test_the_agency_page_opens_on_its_roster(self):
-        """这一页要回答的是「这家签了谁」，所以进页面先摆艺人，视频是另一个视图。"""
-        self.assertPageContains(
-            "let entityRosterView='people',entityRoster=[],entityRosterKind='performer';")
-        self.assertCode("  entityJavLayout=false;\n  entityRosterView='people';")
-        # 进页落在名册、切到视频再切回来，由 e2e `entity-filter.test.ts` 在真浏览器里走。
-
     def test_the_agency_roster_reuses_the_people_index_cell_and_layout(self):
         """名册和艺人索引摆的是同一格人，取图链只有一份。
 
         格子本身是 `entity-body` 岛里的 `PeopleGrid`（与索引页同一个组件），点一格去哪儿
-        由 `frontend/test/react/entity-body.test.tsx` 钉住。"""
+        由 `frontend/test/react/entity-body.test.tsx` 钉住；事务所名册取旗下艺人、片商名册
+        取旗下 label、进页先落在名册，由 `entity-page.test.tsx` 钉住。"""
         # 索引页那批行的实体 id 叫 entity_id，名册那批叫 id，取图链只认一个。
         self.assertPageContains("const ref=x.entity_id||x.id;")
-        # 名册占的是正文那一整块，所以这批人不再挤进「同台艺人」那排小圆头像（资料卡岛
-        # 在事务所页不画卡底，见 entity-hero.test.tsx）；片商页的名册是旗下 label，同台
-        # 艺人照旧留在卡底。
-        self.assertCode("const roster=kind==='agency'?(d.related_performers||[])"
-                        ":kind==='studio'?(d.labels||[]):[];")
         # 圆框越小越需要取景：一张 3762×2535 的封面塞进 44px 的圆里，几何居中给出的是
         # 封面正中那块版式，脸在不在里面全看运气。按人脸框放大由 e2e 设计用例量。
         self.assertPageContains(
@@ -5059,20 +5040,6 @@ class WebUiSourceTests(unittest.TestCase):
         # 手机上 343px 只装得下一列 180px，整块卡横着铺满而标识还是那 70px；窄屏收回人格那一档。
         self.assertPageContains('  .igrid[data-cells="company"]{grid-template-columns:'
                                 'repeat(auto-fill,minmax(150px,1fr))}\n}')
-
-    def test_the_roster_and_the_media_keys_are_one_button_group(self):
-        """三个键问的是同一件事——这一页现在显示什么，所以在同一组里、同一个尺寸。
-
-        那一组由 entity-filter island 画，同组同尺寸由 e2e `entity-filter.test.ts` 量。"""
-        self.assertPageContains("people:roster.length?{label:kind==='studio'?'厂牌':'艺人',count:roster.length,")
-        # 当前视图只有一个来源，按下哪个键、下面画什么都读它。
-        self.assertPageContains("function entityViewNow(kind){return (kind==='agency'||kind==='studio')"
-                                "&&entityRosterView==='people'&&entityRoster.length")
-        # 没有照片的实体不出照片键，不是出一个按下去什么都不显示的键。
-        self.assertPageContains("photos:photoCount?{count:photoCount}:null}:null;")
-        # 标签筛的是作品，点了就回到视频视图，否则开关和内容各说各的。
-        self.assertCode("entityRosterView='videos';")
-
 
     def test_the_maker_index_switch_moves_between_two_routes(self):
         """厂牌出片、事务所出人，是两种实体：开关切的是路径，不是同一批数据再筛一次。"""
@@ -5185,15 +5152,12 @@ class WebUiSourceTests(unittest.TestCase):
     def test_entity_name_picker_is_there_even_for_someone_with_one_name(self):
         """只剩一个名字的人最需要补一个：图库按名字存图，少一个写法就少一批图。
 
-        菜单在资料卡的岛里，恒在、末尾那一项是添别名（`entity-hero.test.tsx`）；弹层与
-        写回仍是壳的 `addEntityAlias`。
+        菜单在资料卡的岛里，恒在、末尾那一项是添别名（`entity-hero.test.tsx`）；弹层的表单
+        在壳（`entityAliasForm`），写回 `entity_alias` 与写完重取资料和作品由
+        `entity-page.test.tsx` 钉住。
         """
-        # 添别名写的是 `entity_alias`，跟在已有名字里挑统称是两个端点。
-        self.assertCode("const alias=payload=>api('/api/entity-alias',")
-        self.assertCode("onConfirm:()=>alias({alias:field.value.trim()})});")
         # 撤销只给自己添的那几个，服务端按来源守这条线。
         self.assertCode("form.dialog.querySelectorAll('[data-alias-drop]')")
-        self.assertCode("addAlias:()=>void addEntityAlias(kind,d.canonical_name,d.user_aliases||[]),")
 
     def test_an_open_anchored_menu_yields_to_the_settings_panel_and_to_its_neighbours(self):
         """开着的锚定弹层，点设置或点它那片祖先里别的控件，都要收掉。
@@ -5371,25 +5335,9 @@ class WebUiSourceTests(unittest.TestCase):
         """
         self.assertPageContains(".popmenu.gselectmenu button{min-height:44px}")
 
-    def test_entity_name_picker_writes_through_the_server_before_repainting(self):
-        self.assertCode("const renameEntity=(kind,from,to)=>api('/api/entity-name',")
-        self.assertCode(
-            "{method:'POST',body:JSON.stringify({kind,name:from,canonical:to})});")
-        self.assertCode("onConfirm:()=>renameEntity(kind,current,chosen)});")
-        self.assertCode("if(!confirmed||!result?.changed)return;")
-        # 撤销是一次真实写回，不在本地把标题改回去。
-        self.assertCode("await renameEntity(kind,result.canonical_name,result.previous_name);")
-
     def test_entity_name_picker_confirms_and_names_both_writings_first(self):
-        # 换统称会重写整条实体的扁平投影，写之前必须让用户看见换成什么、旧写法去哪。
-        self.assertCode("const {confirmed,result}=await confirmModal({")
-        self.assertCode("title:'更改统称',")
-        self.assertCode(
-            "body:`「${chosen}」将成为这条实体的规范名，「${current}」留作别名。`")
-        self.assertCode("+'作品上的署名、搜索和标签都会跟着改写。',")
-        # Geist 的判据：主按钮是与标题同一个动词的「动词+名词」，成功回执共用那个动词。
-        self.assertCode("confirmLabel:'更改统称',")
-        self.assertCode("actionReceipt(`已把统称更改为 ${result.canonical_name}`,{undo:async()=>{")
+        # 换统称先问、写回成功才换页、撤销是另一次写回，弹层的标题、正文与按钮文字由
+        # `frontend/test/react/entity-page.test.tsx` 钉住。
         # 弹层顶上来之前先把菜单收掉，否则它固定在视口里会浮在遮罩上。
         self.assertCode("anchored.setOpen(false);")
 
@@ -5480,10 +5428,11 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("facetParams.set('id',String(context.id))")
         self.assertPageContains("barsContext={type:'item',id:item.id,filters:returnBars?.type==='entity'")
         self.assertPageContains("detailReturnBarsContext=returnBars")
-        # 实体筛选走实体集合自己的更新路径；旧实现调用 load(true) 会把 #index 隐藏并重建首页。
-        self.assertPageContains("updateEntityCollection(barsContext.kind,barsContext.name,filters,true)")
+        # 实体筛选走资料页自己的落点（写地址、推给岛），不重建首页；地址的写法由
+        # `entityViewSearch` 统一拼。
+        self.assertPageContains("routeEntityPage(barsContext.kind,barsContext.name,filters);")
         self.assertPageContains("function commitContextFilter(mutate)")
-        self.assertPageContains("const search=entityFilterSearch(filters)")
+        self.assertPageContains("const params=new URLSearchParams(entityFilterSearch(filters));")
         # 没有数据的区块不渲染，画幅也必须来自 scoped API，不能硬画横屏/竖屏两个按钮。
         self.assertPageContains("sidebarSectionHtml(t,b,x,cat)")
         self.assertPageContains("const chips=(items,key,multi,limit)=>items.length?")
@@ -5529,10 +5478,10 @@ class WebUiSourceTests(unittest.TestCase):
             "  applyFilterStateInPlace(state);refreshFacetCounts(barsContext);\n"
             "  loadCatalog();")
         self.assertCode(
-            "    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);\n"
-            "    updateEntityCollection(barsContext.kind,barsContext.name,filters,true);return")
+            "    routeEntityPage(barsContext.kind,barsContext.name,filters);\n"
+            "    applyFilterStateInPlace(filters);refreshFacetCounts(barsContext);return")
         # 首页筛选条与资料页那排由各自的岛照推过去的 props 画，侧栏那些芯片就地改。
-        self.assertPageContains("  else paintCatalogFilter({tags:catalogTags(filters)});")
+        self.assertPageContains("  if(barsContext.type!=='entity')paintCatalogFilter({tags:catalogTags(filters)});")
         self.assertPageContains("$('#drawer').querySelectorAll('.chip[data-key]')")
         # 轨道上那截填充由 oninput 算，改 value 不会自己触发。
         self.assertPageContains("    durMin.dispatchEvent(new Event('input'));")
@@ -5696,9 +5645,9 @@ class WebUiSourceTests(unittest.TestCase):
         生效的标签不一定在这一批抽样里，那时只有键、没有行，不印数字：印 0 会说成
         「这个标签下什么都没有」，而它此刻正筛着一屏内容。
         """
-        # 两排的数都由岛印（首页 catalog-filter、资料页 entity-filter），壳只把每枚的 n 照推过去。
+        # 两排的数都由岛印（首页 catalog-filter、资料页 entity-page），首页由壳把每枚的 n 照推过去；
+        # 资料页那排的标签与计数由岛自己从资料里取，见 `frontend/test/react/entity-page.test.tsx`。
         self.assertPageContains("({k:row.k,label:tagLabel(row.k),n:row.n??null})")
-        self.assertPageContains("({k:x.k,label:tagLabel(x.k),n:x.n,selected:tagPressed(filters.tag,x.k)})")
 
     def test_the_refresh_key_keeps_redrawing_until_the_bars_land_too(self):
         """忙态动效归「换一批」这一层，不挂在计数行上。
@@ -5715,8 +5664,7 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageLacks("tagbarSkeleton", "有内容在屏幕上时不铺骨架")
 
     def test_large_collections_render_in_bounded_batches(self):
-        self.assertPageContains("p.set('limit','48')")
-        self.assertPageContains("if(offset)p.set('count','0')")
+        # 资料页每批 48 条、续页不再数总数，由岛的 `itemsParams` 拼，见 entity-page.test.tsx。
         self.assertPageContains("barsRequestSeq")
         self.assertPageContains("async function getBarsData(context=barsContext)")
         self.assertPageContains("Date.now()-barsDataAt<30000")
@@ -8219,9 +8167,9 @@ class WebUiSourceTests(unittest.TestCase):
         combo = self._js_function("renderCombo")
         self.assertIn("paintCatalogFilter({combo:comboItems(state),comboHidden:!catalogOnScreen()});", combo,
                       "芯片必须先问过屏幕再画，否则每加一个整页视图就复发一次")
-        # 资料页那条是它自己的，读的是这一页的筛选，不是目录的 `state`；由 entity-filter
-        # island 画在浮层正上方，照片视图下收起，由 e2e 量。
-        self.assertIn("pushEntityFilter({combo:comboItems(barsContext.filters)});", combo)
+        # 资料页那条是它自己的，读的是这一页的筛选，不是目录的 `state`；由 entity-page 岛
+        # 照自己的筛选画在浮层正上方，照片视图下收起，由 e2e 量。
+        self.assertNotIn("barsContext", combo)
         # 铺开索引页／资料页与进入管理页是同一件事的两侧，各自的共用函数都要收掉芯片。
         self.assertPageContains(
             "$('#stats').hidden=true;$('#index').hidden=false;clearCatalogGrid();hideCatalogCombo();",
@@ -8256,10 +8204,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("$('#index').dataset.entityKind=kind;$('#index').dataset.entityName=name;")
         self.assertPageContains("clearAll:()=>commitContextFilter(filters=>{"
                                 "filters.tag='';filters.creator='';filters.studio='';filters.owner=''}),")
-        # 按下态与表头也读同一份判据，资料页的标签因此和目录一样能叠加。
+        # 按下态与表头也读同一份判据，资料页的标签因此和目录一样能叠加；资料页那份在岛里
+        # （`tagPressed`、`tagList`），叠加与只重取一次见 entity-page.test.tsx。
         self.assertPageContains("selected:tagPressed(filters.tag,row.k)")
-        self.assertPageContains("selected:tagPressed(filters.tag,x.k)")
-        self.assertPageContains("const entityTags=tagList(filters.tag).map(tagLabel);")
 
     def test_the_follow_url_is_the_only_source_of_truth_for_its_filters(self):
         """关注页的五个筛选必须能在 URL 和界面之间原样往返。
@@ -8513,9 +8460,8 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertNotIn('variant="primary" size="small" disabled={readOnly || !canonical.trim()', aliases)
 
     def test_photo_tab_opens_the_flat_wall_without_album_cover_cards(self):
-        self.assertPageContains("if(media==='photos'){renderPhotoWall(kind,name,filters,entityPhotos);return}")
-        self.assertPageContains("readout:back?`${data.title} · ${(data.total||0).toLocaleString()} 张`:photoReadout(data,codeSets)")
-        self.assertPageContains("/api/photos?kind=${encodeURIComponent(kind)}&name=${encodeURIComponent(name)}&limit=120&offset=${localPhotoCount()}")
+        # 照片视图直接是一面平铺的墙，读数、续页的 offset 与种子由 entity-page 岛取，
+        # 见 `frontend/test/react/entity-page.test.tsx`；壳里不再有图集封面卡那一层。
         self.assertPageLacks("renderPhotoSets")
         self.assertPageLacks(".photosetcover{display:block;aspect-ratio:3/4")
 
@@ -8525,16 +8471,10 @@ class WebUiSourceTests(unittest.TestCase):
         账本里图片只有文件名、体积和来源，视频那排排序键在这里没有对应的数。换一批跟
         视频那一排同一枚键、同一个位置；大小是列数，一次请求都不发。那排标签数的是视频，
         照片视图下收起来。等着的那一下骨架也带着下半，浮层不会缺一截。"""
-        # 那一排由 entity-filter island 画，壳只给读数与这几样的现值。
-        self.assertPageContains("const photoHead=(data,{back=false,codeSets=[]}={})=>({")
-        self.assertPageContains(
-            "photo:{back,shuffle:!!data.total,layout:photoLayout(),layouts:PHOTO_LAYOUTS,setId:back?Number(data.id):0}});")
+        # 那一排由 entity-page 岛画，壳只给这几样的现值；读数、换一批与续页沿用同一粒种子
+        # 都在岛里，见 entity-page.test.tsx。
+        self.assertPageContains("photoSize:photoSize(),photoLayout:photoLayout(),photoLayouts:PHOTO_LAYOUTS,")
         self.assertPageLacks("photorefresh")
-        self.assertPageContains(
-            "if(entityViewNow(kind)==='photos')return shufflePhotos(kind,name,live(),entityMediaView.set||0);")
-        # 换过一批，后面几页沿用同一粒种子。
-        self.assertPageContains("seed=data.seed?`&seed=${encodeURIComponent(data.seed)}`:'';")
-        self.assertPageContains("offset=${localPhotoCount()}${seed}`")
         # 大小：存进设置，改的只是那面墙上的一个属性。
         self.assertPageContains("photoSize:'small',")
         self.assertPageContains("wall.dataset.size=photoSize();wall.dataset.layout='fixed';")
@@ -8593,8 +8533,8 @@ class WebUiSourceTests(unittest.TestCase):
             line = next(row for row in board.splitlines() if row.startswith(fallback))
             self.assertIn(pane, line, fallback + " 漏了整块玻璃")
         self.assertIn(pane + '.board-is-stuck{box-shadow:inset 0 1px 0 var(--glass-rim)', board)
+        # 状态胶囊按下去写地址、推给岛，由 entity-page.test.tsx 的视图键用例验。
         self.assertPageContains("'tag','state','dur_min'")
-        self.assertPageContains("setState:value=>void updateEntityCollection(kind,name,{...live(),state:value},true),")
         self.assertNotIn(".entitytagbar.is-stuck::before{", board)
         self.assertNotIn(".entitytagbar.entitytagbar.entitytagbar,body .review .reviewbulktoolbar{", board)
         self.assertNotIn("body .review .reviewbulktoolbar{clip-path:", board)
@@ -8607,15 +8547,15 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertIn(".board-filter-frame.board-filter-frame .iconswitch[data-board-segments]{background:none}", board)
 
     def test_jav_entity_pages_render_and_wire_the_same_layout_buttons(self):
-        # 资料页那一格由 entity-filter island 画，壳给同一份选项与现值，按下回同一个 setJavLayout。
-        self.assertPageContains("jav:javActive()?{layout:javLayout(),options:JAV_LAYOUTS}:null")
+        # 资料页那一格由 entity-page 岛画，壳给同一份选项与现值，按下回同一个 setJavLayout；
+        # 何时算 JAV 语境（地址带 jav=1 或第一页有 is_jav）在岛里，见 entity-page.test.tsx。
+        self.assertPageContains("javLayout:javLayout(),javLayouts:JAV_LAYOUTS,")
         self.assertPageContains("setJavLayout:value=>{setJavLayout(value);")
         # 首页那一格归 `catalog-filter` 岛，同一个 `Segments`；设置页那几组开关用 iconSwitchHtml。
         self.assertPageContains('type="radio" name="${esc(name)}" value="${esc(value)}" ${attr}')
         self.assertPageContains("${value===current?'checked':''}")
         self.assertPageContains(".iconswitch label:has(input:checked){background:var(--surface);color:var(--ink)")
         self.assertPageContains("let entityRequestSeq=0,entityJavLayout=false")
-        self.assertPageContains("(items.items||[]).some(item=>item.is_jav)")
         self.assertPageContains("return state.jav==='1'||entityJavLayout")
         self.assertPageContains("active:cardLayoutActive(),size:cardLayout()")
 
@@ -8772,7 +8712,7 @@ class WebUiSourceTests(unittest.TestCase):
     def test_photo_view_is_addressable_and_survives_a_reload(self):
         self.assertPageContains("params.get('media')==='photos'?'photos':'videos'")
         self.assertPageContains("params.set('media','photos')")
-        self.assertPageContains("entityMediaView=push?emptyMediaView():parseMediaView(location.search)")
+        self.assertPageContains("const media=push?EMPTY_ENTITY_MEDIA:parseMediaView(location.search);")
 
     def test_index_open_is_applied_after_the_surface_reset(self):
         # showHomeSurfaces 会清掉这两个类；写在它前面等于自己加完自己删。

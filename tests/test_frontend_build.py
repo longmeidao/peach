@@ -175,7 +175,7 @@ class ReactBundleTests(unittest.TestCase):
         self.assertIn('import("/dist/peach-react.js")', self.islands)
         self.assertNotIn("react-dom", self.islands)
         # 注册表按名字取页面，名字得在产物里对得上。
-        for page in ("entity-hero", "library-processing", "quality-goals", "configuration"):
+        for page in ("entity-page", "library-processing", "quality-goals", "configuration"):
             self.assertIn(page, self.react)
 
     def test_the_react_bundle_keeps_the_legacy_modules_external(self):
