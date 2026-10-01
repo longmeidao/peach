@@ -155,8 +155,7 @@
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
 }
 
-/* 带封面的列表卡窄一档：封面 150px 加右边那一列文字，280px 就够排，旧
- * `body[data-surface="/quality-goals"] .qualitylist` 钉的就是这个数。 */
+/* 带封面的列表卡窄一档：封面 150px 加右边那一列文字，280px 就够排（高清版目标页）。 */
 @utility card-grid-cover {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
@@ -526,6 +525,15 @@
 /* 玻璃浮层上分段控件选中的那一格（`components/segmented.tsx` 的 `SEGMENT_GLASS`）：
  * 白填充垫底、斜光一道、整圈 rim 描边，与浮层上其余「当前在哪儿」的那块同一副料。 */
 .peach-react [data-glass-segment][data-selected] {
+  background: linear-gradient(180deg, var(--glass-sheen), transparent 62%), var(--glass-pick-fill);
+  box-shadow: inset 0 0 0 1px var(--glass-rim), var(--glass-pick-shadow);
+}
+
+/* 浮层上动作键（`components/filter-glass.tsx` 的 `GlassPill`）指上去的那一下：同一副料，
+ * 细线让给整圈 rim，落影把它从浮层上托起来，跟首页筛选条上滑到指针下的那块一样。那一档
+ * `backdrop-filter` 提亮写在 `web/board.css`：构建会把标准属性折成 Chromium 不认的前缀写法。 */
+.peach-react [data-glass-pill]:hover:not([aria-busy]) {
+  border-color: transparent;
   background: linear-gradient(180deg, var(--glass-sheen), transparent 62%), var(--glass-pick-fill);
   box-shadow: inset 0 0 0 1px var(--glass-rim), var(--glass-pick-shadow);
 }

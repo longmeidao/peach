@@ -849,7 +849,7 @@ body,.disp{font-family:var(--board-font);letter-spacing:0}body{font:var(--board-
 .board-page-skeleton .tastesummary>b .skeleton{height:34px}
 .skeleton-segments>span{display:flex;align-items:center;padding:4px 10px;min-height:28px;border-radius:6px;color:var(--color-text-secondary);font:var(--board-body);white-space:nowrap}
 .skeleton-segments>span.skeleton-segment-selected{color:var(--color-text-primary);font:var(--board-body-medium);background:var(--color-background-primary-default);box-shadow:var(--elevation-xs)}
-.board-page-skeleton .qualitycover,.board-page-skeleton .pic{height:auto}
+.board-page-skeleton .pic{height:auto}
 .board-page-skeleton .playlistcreate{min-width:200px}
 .board-page-skeleton .mixcopy{flex:1}
 .board-page-skeleton .mav{width:38px;height:38px;border-radius:50%}
@@ -872,9 +872,17 @@ body[data-surface="/trash"] .catalog-skeleton .skeletoncard s{grid-row:2/span 2;
 body[data-surface="/trash"] .catalog-skeleton .skeletoncard b{width:auto;height:1.35em;margin:7px 12px 0 0}
 body[data-surface="/trash"] .catalog-skeleton .skeletoncard em{height:20px}
 body[data-surface="/trash"] .catalog-skeleton .skeletoncard u{display:none}
-body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard{grid-template-columns:minmax(0,1fr)}
+/* 垃圾卡照 `junk-queue.css` 排：面色同真卡，预览格贴边，元信息区四周 20px、文件名与事实两行各 20px、
+   行间 6px，键行是一条沉一档底色、顶上压一条发丝线的 61px 横条（12px 内边距夹一排 36px 的键）。 */
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard{grid-template-columns:minmax(0,1fr);gap:0;padding:0;background:var(--color-background-primary-default)}
 body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard s{display:none}
-body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard :is(b,em,u){grid-column:1;margin-inline:12px;width:calc(100% - 24px)}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard :is(i,b,em,u){grid-column:1}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard b{width:62%;height:20px;margin:20px 20px 0}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard em{width:40%;height:20px;margin:6px 20px 20px}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard u{display:block;box-sizing:border-box;width:auto;height:61px;margin:0;border-radius:0;border-top:1px solid var(--line-soft);background:var(--color-background-secondary-default)}
+body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard u::after{content:none}
+/* 手机上真卡的键升到 44px，键行跟着高 8px。 */
+@media(max-width:760px){body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard u{height:69px}}
 .skeleton,.skeletoncard i,.skeletoncard b,.skeletoncard em,.skeletoncard s,.skeletoncard u{background:var(--color-background-tertiary-default);border-radius:8px}.skeletoncard i{border-radius:12px}.postercard-skeleton .skeletoncard{gap:6px 12px}.postercard-skeleton .skeletoncard s{border-radius:50%}.skeleton-cards>div{gap:24px 16px}.cleanup-skeleton .skeletoncard{border:0;border-radius:16px}.cleanup-skeleton .skeletoncard i,.review-skeleton .skeletoncard i{border-radius:8px}.index-skeleton .icell .ring{border-radius:50%}.entityskeletontext .skeleton{height:20px;border-radius:8px}.entityportrait.skeleton{border-radius:16px}.follow-content-skeleton .skeletoncard{padding-bottom:16px}.skeletondashstrip{border:0;gap:16px;background:none}.skeletondashstrip>span{border:0;border-radius:16px;background:var(--ground);min-height:152px}.skeletondashhero,.skeletondashpanel{border:0;border-radius:16px}
 
 /* Board secondary：实体细边框、轻阴影和统一的三档控件尺寸。
@@ -1064,6 +1072,9 @@ body .selectiondock{border:0;border-radius:22px;background:var(--glass-drift-a),
    标准属性留在不经转换的共享样式表里，数值逐项对齐首页上下两块玻璃。 */
 body .peach-react :is([data-review-filter],[data-filter-glass]){backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}
 body .peach-react [data-selection-dock]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(145%)}
+/* 浮层上提亮的那一小块不由滑动玻璃给的几处：动作键悬停（`GlassPill`），垃圾文件分类条上换视图那一枚
+   与首屏骨架里的当前分类（`junk-queue.css`）。提亮同 `[data-view-glide]`。 */
+body .peach-react :is([data-glass-pill]:hover:not([aria-busy]),:is([data-junk-view-link],[data-junk-count-skeleton] [data-junk-kind-link])[aria-current="page"]){backdrop-filter:var(--glass-pick)}
 /* 设置面板左栏（`settings-panel.css`）与它那块滑动玻璃。高对比与减弱透明照全站玻璃一起退成实底；
    主题切换拍快照的那一帧不采样背后。 */
 body [data-settings-nav]{backdrop-filter:var(--glass-optic,blur(22px)) saturate(160%) var(--glass-lume)}
@@ -1241,16 +1252,6 @@ body .review{width:100%;max-width:var(--board-content);margin:0 auto;box-sizing:
 body .review .reviewcontrols{position:static;z-index:auto;padding-block:0;display:block;border-radius:0}
 
 /* 数据管理子页：结果标题、证据区域和操作栏各有固定归属。 */
-.collection-summary{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;padding:20px 24px;margin-bottom:20px;border-radius:var(--surface-radius);background:var(--color-background-primary-default)}
-.collection-summary>div{display:grid;gap:8px;min-width:0}
-.collection-summary span{font:var(--board-body);color:var(--color-text-secondary)}
-.collection-summary strong{font:var(--board-title);color:var(--color-text-primary);font-variant-numeric:tabular-nums}
-.collection-summary p{margin:0;color:var(--color-text-secondary);font:var(--board-body)}
-/* 浅色下 primary 就是页面底色，这块不描边的面于是整个消失，读起来是数字直接落在页面上。
-   深色下 primary 比页面亮一档，本来就分得开——跟重复文件那两块面同一条判据。 */
-html:not(.dark) .collection-summary{background:var(--color-background-secondary-default)}
-/* 数字回来前占它的位置：跟着 --board-title 的 32px 走，行高 44px 容得下，数字到货不改行高。 */
-.collection-summary strong .countskeleton{width:96px;height:32px}
 body[data-surface="/review"] .review-workspace{display:grid;grid-template-columns:minmax(0,1fr) 184px;column-gap:24px;align-items:start}
 body[data-surface="/review"] .review-workspace>.reviewcontrols{grid-column:2;grid-row:1 / span 4;position:sticky;top:var(--topH);padding:16px 8px;border-radius:var(--surface-radius)}
 body[data-surface="/review"] .review-category-title{font:var(--board-caption);color:var(--muted);margin:0 12px 12px}
@@ -1267,12 +1268,6 @@ body .review-skeleton .reviewbulktoolbar{position:static;border-radius:16px;marg
   padding:8px 12px;background:var(--color-background-full)}
 body[data-surface="/duplicates"] #manageLede{display:none}
 
-.quality-workspace{max-width:var(--board-content);margin:auto}
-body[data-surface="/quality-goals"] .qualitylist{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
-body[data-surface="/quality-goals"] .qualityitem{display:grid;grid-template-columns:150px minmax(0,1fr);grid-template-rows:1fr auto;gap:0 16px;padding:12px;overflow:hidden;border:1px solid var(--line-soft);border-radius:var(--surface-radius)}
-body[data-surface="/quality-goals"] .qualitycover{position:relative;display:grid;place-items:center;grid-row:1 / span 2;width:150px;aspect-ratio:16/10;border-radius:var(--control-radius);background:var(--color-background-tertiary-default)}
-.qualitybody{padding:4px 4px 0;min-width:0}
-.qualityactions{display:flex;justify-content:flex-end;padding:8px 4px 0;background:transparent}
 /* 垃圾文件的计数行只装 `junk-queue` 的那一格：摘要面在上、分类条在下，两块的版式在
    island 自己的样式表里。这一行按目录页的横排走的话那一格只有内容宽，这里竖排、拉满。 */
 body[data-surface="/junk-files"] #count{flex-direction:column;align-items:stretch;gap:16px;padding-inline:0}
@@ -1309,7 +1304,6 @@ body[data-surface="/trash"] :is(#manageLede>.trash-lede-skeleton,.catalog-skelet
 
 }
 @media(max-width:600px){
- .collection-summary{padding:16px;align-items:flex-start;flex-direction:column;gap:12px}
  body[data-surface="/review"] .reviewtabs button{min-height:36px;padding:8px}
 
 }

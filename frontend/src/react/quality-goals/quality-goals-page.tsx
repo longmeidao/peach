@@ -15,6 +15,7 @@ import { Button } from '@/components/base/buttons/button';
 import { errorMessage } from '../../api';
 import type { QualityGoalsProps } from '../bundle';
 import { cardClass } from '../components/card';
+import { CollectionSummary } from '../components/collection-summary';
 import { EmptyState } from '../components/empty-state';
 import { Note } from '../components/note';
 import { Page } from '../components/page';
@@ -94,12 +95,7 @@ export function QualityGoalsPage(props: QualityGoalsProps) {
     <Page>
       {/* 总数取服务端的 `total` 而不是这一页的条数：`limit` 截断时两者不是一个数，
           而这一行要回答的是「一共还欠多少部」。 */}
-      <div className={cardClass({
-        variant: 'raised', className: 'flex flex-col gap-1 px-6 py-5 max-sm:px-4',
-      })}>
-        <span className="text-body-2-regular text-text-secondary">待升级</span>
-        <b className="text-display-4-medium tabular-nums text-text-primary">{`${data.total} 部作品`}</b>
-      </div>
+      <CollectionSummary label="待升级" figure={`${data.total} 部作品`} flush />
       <ul className="card-grid-cover gap-5">
         {items.map((item) => <GoalCard key={item.id} item={item} {...props} />)}
       </ul>

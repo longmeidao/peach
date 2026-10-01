@@ -127,6 +127,73 @@ describe('管理页面容器与骨架', () => {
         assert.ok(dimensions.scrollWidth <= dimensions.viewportWidth);
       } finally { release(); await opened.close(); }
     });
+    it(`高清版骨架与落地同一副几何，摘要在两种主题下都和页面底色分得开（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await visit(browser, '/quality-goals', viewport);
+      let release = () => {};
+      try {
+        const page = opened.page;
+        const pending = new Promise<void>(resolve => { release = resolve; });
+        await page.route('**/api/quality-goals**', async route => {
+          await pending;
+          await route.fulfill({ json: { total: 3, offset: 0, has_more: false, items: [1, 2, 3].map(id => ({
+            id, name: `DEMO-${id}.mp4`, code: `DEMO-${id}`, location: 'local', size: 1e9, duration: 3600,
+            reason: '', cost: '', has_thumb: false, has_cover: false })) } });
+        });
+        await page.reload({ waitUntil: 'load' });
+        const skeleton = page.locator('[data-skeleton="board/quality-goals"]');
+        await skeleton.waitFor();
+        const summary = await box(skeleton.locator('[data-collection-summary]'));
+        const card = await box(skeleton.locator('.card-grid-cover > li').first());
+        release();
+        const first = page.locator('#stats li[data-goal-id]').first();
+        await first.waitFor();
+        await settle(page);
+        aligned(summary, await box(page.locator('#stats [data-collection-summary]')));
+        aligned(card, await box(first));
+        // 浅色下 primary 就是页面底色：摘要取 primary 的话整块化进页面，看不出那是一块面。
+        const faces = await page.evaluate(() => {
+          const root = document.documentElement;
+          const before = { theme: root.dataset.theme, dark: root.classList.contains('dark') };
+          const read = (theme: string) => {
+            root.dataset.theme = theme;
+            root.classList.toggle('dark', theme === 'dark');
+            return [getComputedStyle(document.querySelector('#stats [data-collection-summary]')!).backgroundColor,
+              getComputedStyle(document.body).backgroundColor];
+          };
+          const result = { light: read('light'), dark: read('dark') };
+          if (before.theme === undefined) delete root.dataset.theme;
+          else root.dataset.theme = before.theme;
+          root.classList.toggle('dark', before.dark);
+          return result;
+        });
+        for (const [theme, [face, ground]] of Object.entries(faces)) {
+          assert.notEqual(face, ground, `${theme} 主题下高清版摘要和页面同一个底色：${face}`);
+        }
+      } finally { release(); await opened.close(); }
+    });
+    it(`垃圾卡骨架与落地同一副几何（${viewport.name}）`, { timeout: 60_000 }, async () => {
+      const opened = await visit(browser, '/junk-files', viewport);
+      let release = () => {};
+      try {
+        const page = opened.page;
+        const pending = new Promise<void>(resolve => { release = resolve; });
+        await page.route('**/api/ads?**', async route => {
+          await pending;
+          await route.fulfill({ json: { total: 2, all_total: 2, dismissed_total: 0, counts: { video: 2 },
+            items: [1, 2].map(id => ({ id, name: `推广-${id}.mp4`, junk_kind: 'video', why: '文件名像推广',
+              size: 1048576, location: 'local', cost: '' })) } });
+        });
+        await page.reload({ waitUntil: 'load' });
+        const skeleton = page.locator('#grid .catalog-skeleton .skeletoncard').first();
+        await skeleton.waitFor();
+        const card = await box(skeleton);
+        release();
+        const first = page.locator('#grid [data-junk-card]').first();
+        await first.waitFor();
+        await settle(page);
+        aligned(card, await box(first));
+      } finally { release(); await opened.close(); }
+    });
     it(`回收站网格与标题、汇总栏同宽（${viewport.name}）`, { timeout: 60_000 }, async () => {
       const opened = await visit(browser, '/trash', viewport);
       try {

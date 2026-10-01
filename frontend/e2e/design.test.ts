@@ -995,6 +995,12 @@ describe('设计决定', () => {
       }
       assert.ok(surface.line[3]! < surface.ink[3]!,
         '线和字一样实，整条读起来像三行字');
+      // 垃圾文件也是目录路径，但它是数据管理底下的一页：同一趟失败的任务，横幅不跟进去。
+      await failed.page.goto(new URL('/junk-files', failed.page.url()).href, { waitUntil: 'load' });
+      await failed.page.locator('[data-junk-filters]').waitFor({ state: 'visible', timeout: 15_000 });
+      await failed.page.waitForTimeout(1_000);
+      assert.equal(await failed.page.locator('#libraryProcessingNotice [role="alert"]').count(), 0,
+        '垃圾文件页顶上挂了目录页的处理横幅');
     } finally {
       await failed.close();
     }
@@ -2122,10 +2128,10 @@ describe('设计决定', () => {
         return {
           title: span('#manageTitle'),
           summary: span('#count [data-collection-summary]'),
-          filters: span('#count [data-junk-filters]'),
+          filters: span('#count [data-junk-filters-frame]'),
           grid: span('#grid'),
           summaryFace: face('#count [data-collection-summary]'),
-          filtersFace: face('#count [data-junk-filters]'),
+          filtersFace: face('#count [data-junk-filters-frame]'),
           page: getComputedStyle(document.body).backgroundColor,
         };
       });
@@ -2211,10 +2217,18 @@ describe('设计决定', () => {
             label: getComputedStyle(button.querySelector('[data-junk-label]')!).display,
           };
         });
+        const rect = (node: Element | null) => {
+          if (!node) return null;
+          const { left, top, width, height } = node.getBoundingClientRect();
+          return [left, top, width, height].map(Math.round);
+        };
         const links = [...document.querySelectorAll('#count [data-junk-filters] a')].map((link) => ({
           current: link.getAttribute('aria-current') === 'page', face: getComputedStyle(link).backgroundColor,
-          height: Math.round(link.getBoundingClientRect().height),
+          height: Math.round(link.getBoundingClientRect().height), box: rect(link),
         }));
+        // 计数徽标到货时玻璃带动画重新落位：跑完再量，量的是它停下的地方。
+        document.querySelector('#count [data-view-glide]')?.getAnimations().forEach((one) => one.finish());
+        const glide = rect(document.querySelector('#count [data-view-glide]:not([hidden])'));
         // 卡在 island 里取 oklch，页面底是 rgb：各画一个像素再比，字面不同不等于颜色不同。
         const pixel = (color: string) => {
           const context = document.createElement('canvas').getContext('2d')!;
@@ -2225,7 +2239,7 @@ describe('设计决定', () => {
         const style = getComputedStyle(card);
         const ground = [document.body, document.documentElement].map((el) => pixel(getComputedStyle(el).backgroundColor))
           .find((value) => !value.endsWith(',0')) ?? '255,255,255,255';
-        return { edge: style.borderTopWidth, line: pixel(style.borderTopColor), page: ground, keys, links };
+        return { edge: style.borderTopWidth, line: pixel(style.borderTopColor), page: ground, keys, links, glide };
       });
       const red = await tokenColor(page, 'body', '--board-red');
       const wide = await read();
@@ -2243,8 +2257,9 @@ describe('设计决定', () => {
       for (const key of wide.keys.filter((one) => one.action !== 'dispose')) assert.equal(key.border, '1px', `${key.action} 没有描边`);
       const current = wide.links.filter((link) => link.current);
       assert.equal(current.length, 1);
-      assert.ok(wide.links.filter((link) => !link.current).every((link) => link.face === 'rgba(0, 0, 0, 0)'), '未选中的分类不该有底');
-      assert.notEqual(current[0]!.face, 'rgba(0, 0, 0, 0)', '选中的分类没有抬底');
+      // 分类条是首页筛选条那一副：键自己不铺底，当前那一类底下垫的是那块滑动玻璃。
+      assert.ok(wide.links.every((link) => link.face === 'rgba(0, 0, 0, 0)'), '分类键自己铺了底，不是首页那副滑动玻璃');
+      assert.deepEqual(wide.glide, current[0]!.box, '滑动玻璃没有落在当前那一类上');
 
       // 紧凑密度下键上只剩图标。
       await page.evaluate(() => { document.body.dataset.density = 'dense' });

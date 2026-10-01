@@ -432,7 +432,7 @@ const claimSurface=path=>{
      卸了再挂，换一条筛选就会让它塌一下再撑回来——实测那一下底下整块先往上跳 62px，
      二十来毫秒后落回原处，比它要说的那句话显眼得多。目录页之间它一直挂着，自己在轮询
      库那边的进度；离开目录页才收起，那些页面本来就不该有它。 */
-  if(!isCatalogPath(path))unmountIsland($('#libraryProcessingNotice'));
+  if(!isProcessingNoticePath(path))unmountIsland($('#libraryProcessingNotice'));
   /* 首页那一行新作同样只属于目录页。管理区的入口不经过 `showHomeSurfaces`，离开目录页时
      在这里收起并清空，连同它的自动滚动一起停掉。 */
   if(!isFeedNewPath(path)){const feed=$('#feedNew');
@@ -2654,6 +2654,9 @@ async function loadFeedNew(entityId,preload){
 }
 /* 首页那一行。资料页那一行在资料卡的岛里（`entity-hero`），数据同样取自 `loadFeedNew`。 */
 function isFeedNewPath(path){return isCatalogPath(path)&&path!=='/junk-files'}
+/* 处理横幅同样只挂在首页那几条名单上。垃圾文件也是目录路径，但它是数据管理底下的一页，
+   顶上是管理区的 tabs，库里那趟任务的进度与下场归数据管理首页那张卡。 */
+function isProcessingNoticePath(path){return isCatalogPath(path)&&path!=='/junk-files'}
 async function renderFeedNew(host,entityId){
   if(!host)return;
   const request={},surface=surfaceToken(surfacePath());
@@ -4844,7 +4847,7 @@ async function loadCatalog(){
   const requestSeq=++loadRequestSeq;
   const surface=claimSurface(surfacePath());
   // 已经挂着就让它接着跑：重挂要先清空容器，而它这一刻要说的话跟上一刻是同一句。
-  if(isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))
+  if(isProcessingNoticePath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))
     void mountIsland('library-processing',$('#libraryProcessingNotice'),{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});
   /* 新作那一行只在目录路径上出现：管理页、回收站这些页面回答的是别的问题，一行「外面出了
      什么」摆在那里只是噪音。离开目录时要显式收起——它是 `#main` 的固定子节点，没人收就

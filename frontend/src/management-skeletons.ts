@@ -1,4 +1,4 @@
-import { islandButton } from './island-skeleton';
+import { islandButton, islandSummary } from './island-skeleton';
 
 const placeholder = 'relative overflow-hidden skeleton-sheen bg-background-tertiary-default rounded-lg';
 const text = (width = '60%') => `<span class="${placeholder} inline-block max-w-full align-middle" style="width:${width};height:1em"></span>`;
@@ -51,5 +51,20 @@ export function duplicatesSkeleton(): string {
     </div>
     <div data-filter-glass data-glass-pane class="mb-5.5 flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5"><h3 class="mr-1 text-body-medium">批量保留</h3>${['全部保留最大', '全部保留最长'].map(label => `<button ${wait} class="h-7.5 rounded-full border border-separator-border px-3 text-body-2-medium">${label}</button>`).join('')}</div>
     ${group.repeat(2)}
+  </div></div>`;
+}
+
+/** 高清版首屏：摘要面与六张待升级的卡，类名同 `QualityGoalsPage` 落地那一版（卡面是
+ *  `cardClass({ padding: 'none', bordered: 'soft' })`），接管那一拍间距、卡高与底色都不跳。 */
+export function qualityGoalsSkeleton(): string {
+  const card = `<li class="min-w-0 bg-background-secondary-default rounded-2xl shadow-card border border-separator-border flex flex-col gap-3 p-3">
+    <div class="flex min-w-0 gap-4"><span class="${placeholder} inline-grid w-card-cover shrink-0 aspect-card-cover rounded-2lg"></span>
+      <div class="flex min-w-0 flex-1 flex-col gap-1.5"><h3 class="text-headline-medium">${text('80%')}</h3><p class="text-body-2-regular">${text('60%')}</p></div>
+    </div>
+    <footer class="flex justify-end">${islandButton({ variant: 'secondary', size: 'small', label: '查看版本', attrs: wait })}</footer>
+  </li>`;
+  return `<div class="peach-react"><div class="mx-auto flex w-full max-w-board flex-col gap-8">
+    ${islandSummary('待升级')}
+    <ul class="card-grid-cover gap-5">${card.repeat(6)}</ul>
   </div></div>`;
 }

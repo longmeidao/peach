@@ -4187,24 +4187,20 @@ class WebUiSourceTests(unittest.TestCase):
         `flex:none` 占满整行，分类切换 `min-width:0` 被压成 0 宽、内容滚进看不见的地方，
         宽屏上那条分类整个消失。宽度同理：它是数据管理的子页，标题与区块切换条都收在
         `--board-content` 里，只有网格那一支铺满内容区时，同一页会有两条对不上的左边界。
-        浅色下 `primary` 就是页面底色，这两块不描边的面于是整个看不见——跟重复文件那两块
-        面同一条判据。
         """
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
         self.assertIn('body[data-surface="/junk-files"] #count{flex-direction:column;'
                       'align-items:stretch;gap:16px;padding-inline:0}', board)
         self.assertIn('body[data-surface="/junk-files"] :is(#count,#grid,#loadSentinel)'
                       '{width:100%;max-width:var(--board-content);margin-inline:auto}', board)
-        self.assertIn('html:not(.dark) .collection-summary'
-                      '{background:var(--color-background-secondary-default)}', board)
 
     def test_category_switchers_are_geist_secondary_tabs_not_a_segmented_control(self):
-        """复核分类和垃圾文件分类共用一套外观：带描边的 Geist Tabs secondary 几何。
+        """复核分类是 Geist Tabs secondary 几何，不是分段器。
 
         证据：`docs/reference-snapshots/vercel-geist-tabs-secondary-measured.md`，上游正文锁在
         `docs/reference-snapshots/upstream/vercel-geist-tabs.md` 与 `.../vercel-geist-switch.md`。
-        分段器（Switch）只承担 2–3 项互斥视图，标签超过两三个字就要换 Tabs；复核分类 10 项、
-        垃圾文件分类 7 项都在界外，所以这两条是 Tabs 不是分段器。几何取 secondary 变体：
+        分段器（Switch）只承担 2–3 项互斥视图，标签超过两三个字就要换 Tabs；复核分类 10 项
+        在界外，所以这一条是 Tabs 不是分段器。几何取 secondary 变体：
         高 32px、左右 12px、6px 圆角、13px/400，hover 只换文字色，选中只抬底不动边框。
         两态都不描边，跟上游 secondary 一致：给每一枚都画一圈线之后，一排读起来是七个
         一模一样的框，选中那一枚只能靠填充说话，而线比填充响得多，浅色一档上「哪一枚被
@@ -4224,9 +4220,9 @@ class WebUiSourceTests(unittest.TestCase):
         self.assertPageContains("'.reviewtabs','.ftablewrap',")
         # 40em 以下要抬高触摸目标；控件现在是定高，min-height 压不动它。
         self.assertPageContains(".reviewtabs button{height:44px}")
-        # 垃圾文件那条分类归 `junk-queue` island：导航链接而不是 tablist、计数徽标为 0 时
-        # 整枚去掉由 `frontend/test/react/junk-queue.test.tsx` 断言，几何与选中抬底由
-        # `frontend/e2e/design.test.ts` 在真浏览器里量。
+        # 垃圾文件那条分类归 `junk-queue` island，是首页筛选条那一副玻璃：导航链接而不是
+        # tablist、计数徽标为 0 时整枚去掉由 `frontend/test/react/junk-queue.test.tsx` 断言，
+        # 几何与滑动玻璃落位由 `frontend/e2e/design.test.ts` 在真浏览器里量。
 
     def test_junk_review_and_trash_render_every_physical_resource_type(self):
         """图片、网址快捷方式等不能复用视频播放器，但必须可预览、回收和还原。
@@ -5575,9 +5571,9 @@ class WebUiSourceTests(unittest.TestCase):
         所以照交集条那样长出来，高度从 0 走到 auto。容器里常驻一个 `.peach-react`
         宿主（React 根挂在它里面），「有没有东西」就看那一层空不空。
         """
-        self.assertPageContains("  if(!isCatalogPath(path))unmountIsland($('#libraryProcessingNotice'));")
+        self.assertPageContains("  if(!isProcessingNoticePath(path))unmountIsland($('#libraryProcessingNotice'));")
         self.assertCode(
-            "  if(isCatalogPath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))\n"
+            "  if(isProcessingNoticePath(location.pathname)&&!islandMounted($('#libraryProcessingNotice')))\n"
             "    void mountIsland('library-processing',$('#libraryProcessingNotice'),"
             "{toast,mode:'notice'},{isCurrent:()=>surfaceCurrent(surface)});")
         board = (Path(__file__).resolve().parents[1] / "web/board.css").read_text(encoding="utf-8")
