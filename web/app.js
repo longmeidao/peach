@@ -4568,7 +4568,10 @@ function paintManageTitle(){
   const pageLabel=current==='cleanup'?MANAGE_CRUMB_PAGES[decodeURIComponent(location.pathname)]:null;
   if(entry)el.textContent=pageLabel||entry[1];
   paintManageCrumb();
-  paintManageLede();
+  /* 回收站的说明行由目录计数写（paintCatalogCount）。读数到之前先铺同形占位，计数栏不在
+     落地那一下才冒出来把网格往下推；已经写着读数的（同页重画）原样留着。 */
+  if(current==='trash'){if(!$('#manageLede [data-lede-text]'))paintTrashLedeSkeleton()}
+  else paintManageLede();
   /* 换了页才揭示一遍。同一页里的每一次重画（筛选、判完一批、翻页）走的也是这个函数，
      不比一下标题的话，页面标题会跟着每一次取数再飘一次。
      统计页正文里那几块节标题归 React 那一档（ADR-0031），这一批不动 React 子树；
@@ -4607,6 +4610,11 @@ function paintManageLede(text='',actionsHtml=''){
     swapText(slot,text);
   }else if(keep)keep.remove();
   if(actionsHtml)el.insertAdjacentHTML('beforeend',actionsHtml);
+}
+function paintTrashLedeSkeleton(){
+  const el=$('#manageLede');if(!el)return;
+  el.hidden=false;el.classList.add('pagelede-actions');
+  el.innerHTML='<span class="skeleton trash-lede-skeleton" aria-hidden="true"></span><span class="skeleton trash-lede-skeleton" aria-hidden="true"></span>';
 }
 function paintListTitle(){
   const el=$('#listTitle');if(!el)return;

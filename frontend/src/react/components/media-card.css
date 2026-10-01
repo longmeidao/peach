@@ -591,10 +591,11 @@ body[data-surface="/trash"] .peach-react [data-media-card] [data-media-title] { 
 }
 
 /* 密集一档固定为标题、身份、标签三行。缺少标签时第三行仍保留，同一网格不会被撑成四行；
- * 普通卡也留出叠层卡的 7px，每行是否出现分卷卡不决定整行高度。 */
-body[data-density="dense"] .peach-react [data-media-grid] > [data-media-card] { padding-top: 7px; }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-meta] { --card-meta-block: calc(2.7em + 36px); }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-text] {
+ * 普通卡也留出叠层卡的 7px，每行是否出现分卷卡不决定整行高度。回收站的网格列宽是自己定的，
+ * 不跟密度走，卡是有边的面，这一套不套给它。 */
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-grid] > [data-media-card] { padding-top: 7px; }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-meta] { --card-meta-block: calc(2.7em + 36px); }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-text] {
   display: grid;
   grid-template-rows: 1.35em 1.35em 30px;
   gap: 3px;
@@ -604,8 +605,8 @@ body[data-density="dense"] .peach-react [data-media-card] [data-media-text] {
   overflow: hidden;
   pointer-events: none;
 }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-text] > :not([data-media-tags]) { pointer-events: auto; }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-title] {
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-text] > :not([data-media-tags]) { pointer-events: auto; }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-title] {
   display: block;
   max-width: 100%;
   min-height: 1.35em;
@@ -614,18 +615,18 @@ body[data-density="dense"] .peach-react [data-media-card] [data-media-title] {
   white-space: nowrap;
   -webkit-line-clamp: unset;
 }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-byline] {
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-byline] {
   flex-wrap: nowrap;
   height: 1.35em;
   min-height: 0;
   overflow: hidden;
   white-space: nowrap;
 }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-who] { flex: 0 1 auto; }
-body[data-density="dense"] .peach-react [data-media-card] :is([data-media-who-more], [data-media-size]) { flex: none; white-space: nowrap; }
-body[data-density="dense"] .peach-react [data-media-card] :is([data-media-why], [data-media-watch-count]) { display: none; }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-tags] { flex-wrap: nowrap; align-items: flex-start; height: 38px; overflow: hidden; }
-body[data-density="dense"] .peach-react [data-media-card] [data-media-tag]:nth-child(n+2) { display: none; }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-who] { flex: 0 1 auto; }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] :is([data-media-who-more], [data-media-size]) { flex: none; white-space: nowrap; }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] :is([data-media-why], [data-media-watch-count]) { display: none; }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-tags] { flex-wrap: nowrap; align-items: flex-start; height: 38px; overflow: hidden; }
+body[data-density="dense"]:not([data-surface="/trash"]) .peach-react [data-media-card] [data-media-tag]:nth-child(n+2) { display: none; }
 
 /* ── 回收站里的资源卡 ── */
 .peach-react [data-media-glyph] {

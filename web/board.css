@@ -865,6 +865,13 @@ body[data-density="dense"] .postercard-skeleton .skeletoncard em{height:1.35em}
 body[data-density="dense"] .postercard-skeleton .skeletoncard u{height:30px}
 body:is([data-surface="/junk-files"],[data-surface="/trash"]) .catalog-skeleton>div{grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:20px}
 body:is([data-surface="/junk-files"],[data-surface="/trash"]) .catalog-skeleton .skeletoncard{border:1px solid var(--line-soft);border-radius:var(--surface-radius);overflow:hidden;background:var(--ground);padding-bottom:20px}
+/* 回收站卡照 `media-card.css` 里回收站那几条排：面色同真卡，元信息区四周 10px 12px 12px，
+   头像列 38px 加左边距 12px，标题一行 1.35em、署名一行 20px；文件多是图片与压缩包，不带标签行。 */
+body[data-surface="/trash"] .catalog-skeleton .skeletoncard{grid-template-columns:50px minmax(0,1fr);gap:3px 10px;padding:0 0 12px;background:var(--color-background-primary-default)}
+body[data-surface="/trash"] .catalog-skeleton .skeletoncard s{grid-row:2/span 2;margin:9px 0 0 12px}
+body[data-surface="/trash"] .catalog-skeleton .skeletoncard b{width:auto;height:1.35em;margin:7px 12px 0 0}
+body[data-surface="/trash"] .catalog-skeleton .skeletoncard em{height:20px}
+body[data-surface="/trash"] .catalog-skeleton .skeletoncard u{display:none}
 body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard{grid-template-columns:minmax(0,1fr)}
 body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard s{display:none}
 body[data-surface="/junk-files"] .catalog-skeleton .skeletoncard :is(b,em,u){grid-column:1;margin-inline:12px;width:calc(100% - 24px)}
@@ -1281,7 +1288,19 @@ body[data-surface="/trash"] #grid{width:100%;max-width:var(--board-content);marg
 [data-skeleton="cleanup"] [data-fieldset-stack]>[data-geist-fieldset-footer]{padding:12px 20px;min-height:56px;border-top:1px solid var(--color-border-button-default);background:var(--board-card-foot);justify-content:flex-end}
 @media(max-width:760px){[data-skeleton="cleanup"] [data-fieldset-stack]>:is([data-geist-fieldset-content],.resourcesyncbody){padding:18px;min-height:0}[data-skeleton="cleanup"] [data-fieldset-stack]>[data-geist-fieldset-footer]{padding-inline:18px}}
 body[data-surface="/trash"] #manageLede{padding:20px 24px;background:var(--color-background-primary-default);border-radius:var(--surface-radius);gap:16px;flex-wrap:wrap}
+/* 浅色下 primary 那一档就是页面的纯白，计数栏会化进页面；换成管理区填充卡的浅灰。
+   选择器照 Geist token 自己的切法：显式浅色，或没定主题时跟随系统浅色。 */
+:root[data-theme="light"] body[data-surface="/trash"] #manageLede{background:var(--color-background-secondary-default)}
+@media(prefers-color-scheme:light){:root:not([data-theme]) body[data-surface="/trash"] #manageLede{background:var(--color-background-secondary-default)}}
 body[data-surface="/trash"] #manageLede>span{font:var(--board-heading)}
+/* 读数到之前的同形占位：读数一格按「161 个符合 · 显示 60」的宽，右端是「清空回收站」那颗键的尺寸，
+   计数栏从进页起就占着自己的高度。 */
+body[data-surface="/trash"] #manageLede>.trash-lede-skeleton{height:20px;width:180px;max-width:60%}
+body[data-surface="/trash"] #manageLede>.trash-lede-skeleton+.trash-lede-skeleton{width:88px;height:32px;max-width:none}
+@media(max-width:760px){body[data-surface="/trash"] #manageLede>.trash-lede-skeleton+.trash-lede-skeleton{width:92px;height:44px}}
+/* 回收站的栏底与卡面都是 primary 那一档，而骨架条的 tertiary 在深色下正是同一个 #262626，条会化进面里；
+   这一页的占位条改成随正文色走的一层薄叠色，深浅两种底上都看得出。 */
+body[data-surface="/trash"] :is(#manageLede>.trash-lede-skeleton,.catalog-skeleton .skeletoncard>*){background:color-mix(in srgb,var(--ink) 7%,transparent)}
 @media(max-width:900px){
  body[data-surface="/review"] .review-workspace{grid-template-columns:1fr}
  body[data-surface="/review"] .review-workspace>.reviewcontrols{position:static;grid-column:1;grid-row:auto!important;margin-bottom:16px}
